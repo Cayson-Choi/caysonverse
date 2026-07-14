@@ -17,8 +17,13 @@
  *   Phase 2 — server restarted / window expired: silent fresh join (join-existing
  *     -only against the boot-created singleton world) with the cached identity and
  *     the pure exponential backoff (1s,2s,4s… cap 8s, ~30s). A new avatar at spawn
- *     is EXPECTED (no DB). A full world here surfaces the capacity notice.
- *   Exhausted → entry screen with the failure notice.
+ *     is EXPECTED (no DB). A 521 ("no rooms found") is NOT treated as terminal
+ *     capacity here — the room may still be re-creating in the server's boot window
+ *     (mass reconnect after a restart lands exactly there), so it is RETRIED through
+ *     the same backoff like any other failure.
+ *   Exhausted → entry screen with a notice chosen from the LAST error: the capacity
+ *     notice only if that final error was capacity-shaped (the world really is full),
+ *     otherwise the generic failure notice.
  *
  * Every successful (re)connection produces a NEW room; `onReconnected` swaps the
  * room handle, re-arms resilience, and bumps the connection epoch so the scene
@@ -36,6 +41,7 @@ import {
   waitForSelf,
 } from "./connection";
 import { reconnectBackoffMs } from "./backoff";
+import { retryWhile } from "./joinRetry";
 import {
   decideLeave,
   isCapacityError,
@@ -137,9 +143,11 @@ async function startReconnect(): Promise<void> {
     // Phase 1 — same avatar within the window.
     if (await phaseTokenReconnect()) return;
     // Phase 2 — fresh avatar (server restarted / window expired).
-    if (await phaseFreshJoin(store)) return;
-    // Exhausted.
-    store.leaveToEntry(FAILED_NOTICE);
+    const outcome = await phaseFreshJoin();
+    if (outcome === "connected") return;
+    // Budget spent: capacity notice only if the world is genuinely full, else
+    // the generic failure notice.
+    store.leaveToEntry(outcome === "capacity" ? CAPACITY_NOTICE : FAILED_NOTICE);
   } catch {
     // Defensive: never strand the user on an unexpected error.
     store.leaveToEntry(FAILED_NOTICE);
@@ -172,31 +180,37 @@ async function phaseTokenReconnect(): Promise<boolean> {
   return false;
 }
 
-/** Phase 2: silent fresh join with cached identity + exponential backoff. */
-async function phaseFreshJoin(store: ReturnType<typeof useAppStore.getState>): Promise<boolean> {
+/** How Phase 2 ended: recovered, exhausted-because-full, or exhausted-otherwise. */
+type FreshJoinOutcome = "connected" | "capacity" | "failed";
+
+/**
+ * Phase 2: silent fresh join with cached identity + exponential backoff. EVERY
+ * failure (including a 521 "no rooms found") is retried through the backoff — a
+ * 521 may just mean the singleton world is still re-creating in the server's boot
+ * window, not that it is full. Only once the budget is spent do we decide the
+ * notice from the LAST error: `capacity` if it was capacity-shaped (really full),
+ * else `failed`.
+ */
+async function phaseFreshJoin(): Promise<FreshJoinOutcome> {
   const identity = loadIdentity();
   const params = {
     nickname: identity.nickname,
     character: identity.character,
     tint: identity.tint,
   };
-  const schedule = reconnectBackoffMs();
 
-  for (let attempt = 0; ; attempt++) {
-    try {
-      const room = await joinRoom(params);
-      await waitForSelf(room);
-      onReconnected(room);
-      return true;
-    } catch (err) {
-      // A full room is terminal — show the capacity notice, don't hammer it.
-      if (isCapacityError(err)) {
-        store.leaveToEntry(CAPACITY_NOTICE);
-        return true;
-      }
-      if (attempt >= schedule.length) return false; // budget spent
-      await sleep(schedule[attempt]);
-    }
+  try {
+    const room = await retryWhile({
+      attempt: () => joinRoom(params),
+      shouldRetry: () => true, // retry every failure through the backoff
+      delaysMs: reconnectBackoffMs(),
+      sleep,
+    });
+    await waitForSelf(room);
+    onReconnected(room);
+    return "connected";
+  } catch (err) {
+    return isCapacityError(err) ? "capacity" : "failed";
   }
 }
 

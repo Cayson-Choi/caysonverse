@@ -6,8 +6,22 @@ import { WORLD_ROOM, CHAT_MAX_LENGTH } from "@caysonverse/shared/constants";
 import { MessageType } from "@caysonverse/shared/messages";
 import type { MovePayload } from "@caysonverse/shared/messages";
 import { SERVER_URL } from "./endpoint";
-import { joinErrorNotice } from "./reconnectPolicy";
+import { joinErrorNotice, isCapacityError } from "./reconnectPolicy";
+import { retryWhile } from "./joinRetry";
 import { attachResilience } from "./resilience";
+
+/**
+ * Bounded retry for the INITIAL join only (named in one place). A 521 "no rooms
+ * found" at entry can mean the server is still in its boot window — the transport
+ * accepts matchmake requests a sub-ms before `matchMaker.createRoom(WORLD_ROOM)`
+ * resolves (see server/src/index.ts), and a mass reconnect after a restart is
+ * exactly when a click lands there. So retry a 521 a couple of times, ~700ms
+ * apart, before concluding the world is full. Its length is the retry count (2).
+ * NON-capacity errors (nickname rejection, network failure) are NOT retried.
+ */
+const INITIAL_JOIN_RETRY_DELAYS_MS = [700, 700];
+
+const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
 /** Options sent to the server's `onJoin` (validated there against the contract). */
 export interface JoinParams {
@@ -59,11 +73,20 @@ export function joinRoom(params: JoinParams): Promise<Room<WorldState>> {
  * Resilience is attached BEFORE the join-wait: a drop during `waitForSelf` (up
  * to 2s) is then handled by the reconnection driver rather than stranding the
  * user on a dead canvas (closes the Task 4 [task4-m5] gap).
+ *
+ * A 521 is retried a bounded number of times (INITIAL_JOIN_RETRY_DELAYS_MS) to
+ * ride out the server boot window; only if it persists do we surface the capacity
+ * notice. Other errors (nickname rejection etc.) surface immediately.
  */
 export async function joinWorld(params: JoinParams): Promise<Room<WorldState>> {
   let joined: Room<WorldState>;
   try {
-    joined = await joinRoom(params);
+    joined = await retryWhile({
+      attempt: () => joinRoom(params),
+      shouldRetry: isCapacityError,
+      delaysMs: INITIAL_JOIN_RETRY_DELAYS_MS,
+      sleep,
+    });
   } catch (err) {
     throw new Error(joinErrorNotice(err));
   }
