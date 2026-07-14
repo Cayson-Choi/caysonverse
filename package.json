@@ -4,7 +4,7 @@
   "private": true,
   "description": "웹 기반 3D 메타버스 (React Three Fiber + Colyseus)",
   "engines": {
-    "node": ">=22"
+    "node": ">=24"
   },
   "workspaces": [
     "shared",

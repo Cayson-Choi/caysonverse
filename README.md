@@ -13,7 +13,7 @@ npm workspaces 모노레포로 구성됩니다.
 
 ## 요구 사항
 
-- Node.js 22 이상 (개발 환경은 Node 24)
+- Node.js 24 이상 (개발 환경은 Node 24)
 
 ## 명령어
 
