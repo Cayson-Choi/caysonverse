@@ -4,6 +4,7 @@ import {
   MOVE_SPEED_SLACK,
   MOVE_ELAPSED_FLOOR_MS,
   WORLD_BOUNDS,
+  PLAYER_RADIUS,
 } from "@caysonverse/shared/constants";
 import { validateMove } from "./movement";
 
@@ -85,20 +86,55 @@ describe("validateMove — elapsed floor", () => {
 });
 
 describe("validateMove — bounds clamp", () => {
+  // The clamp keeps the player CENTER a body-radius off the boundary walls, so a
+  // clamped edge position rests flush against the wall (still accepted, not
+  // dropped). z = 12 stays clear of the east-wall screen.
   it("clamps a legal-speed move that overshoots the edge", () => {
-    // Start near the +x edge; a legal step past maxX is clamped, not dropped.
-    const current = { x: WORLD_BOUNDS.maxX - 0.1, z: 0 };
-    const result = validateMove(current, { x: WORLD_BOUNDS.maxX + 5, z: 0, yaw: 0 }, 2000);
+    const current = { x: WORLD_BOUNDS.maxX - 0.1, z: 12 };
+    const result = validateMove(current, { x: WORLD_BOUNDS.maxX + 5, z: 12, yaw: 0 }, 2000);
     expect(result).not.toBeNull();
-    expect(result!.x).toBe(WORLD_BOUNDS.maxX);
+    expect(result!.x).toBeCloseTo(WORLD_BOUNDS.maxX - PLAYER_RADIUS, 6);
   });
 
   it("clamps on every edge", () => {
     const c = { x: WORLD_BOUNDS.minX + 0.1, z: WORLD_BOUNDS.minZ + 0.1 };
     const result = validateMove(c, { x: WORLD_BOUNDS.minX - 5, z: WORLD_BOUNDS.minZ - 5, yaw: 0 }, 10000);
     expect(result).not.toBeNull();
-    expect(result!.x).toBe(WORLD_BOUNDS.minX);
-    expect(result!.z).toBe(WORLD_BOUNDS.minZ);
+    expect(result!.x).toBeCloseTo(WORLD_BOUNDS.minX + PLAYER_RADIUS, 6);
+    expect(result!.z).toBeCloseTo(WORLD_BOUNDS.minZ + PLAYER_RADIUS, 6);
+  });
+});
+
+describe("validateMove — obstacle drop", () => {
+  it("drops a move whose target lands inside furniture", () => {
+    // The E2E test sofa sits at (-15, -7); its centre is solidly inside it.
+    const result = validateMove({ x: -15, z: -6.5 }, { x: -15, z: -7, yaw: 0 }, 1000);
+    expect(result).toBeNull();
+  });
+
+  it("drops a move into the interior divider wall", () => {
+    // The divider (x≈0) is solid away from the door; z = -8 is wall, not gap.
+    const result = validateMove({ x: 0.7, z: -8 }, { x: 0, z: -8, yaw: 0 }, 1000);
+    expect(result).toBeNull();
+  });
+
+  it("drops a move into the lecture-hall screen", () => {
+    const result = validateMove({ x: 29, z: 0 }, { x: 29.6, z: 0, yaw: 0 }, 1000);
+    expect(result).toBeNull();
+  });
+
+  it("accepts a target hugging a wall (tangent, not penetrating)", () => {
+    // Flush against the divider's east face at a solid section — legal.
+    const hugX = 0.25 + PLAYER_RADIUS;
+    const result = validateMove({ x: 1.2, z: -8 }, { x: hugX, z: -8, yaw: 0 }, 1000);
+    expect(result).not.toBeNull();
+    expect(result!.x).toBeCloseTo(hugX, 6);
+  });
+
+  it("accepts an open-floor move through the door gap", () => {
+    const result = validateMove({ x: -0.5, z: 0 }, { x: 0.5, z: 0, yaw: 0 }, 1000);
+    expect(result).not.toBeNull();
+    expect(result!.x).toBeCloseTo(0.5, 6);
   });
 });
 

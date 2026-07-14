@@ -61,11 +61,14 @@ export const TINT_COLORS = [
   "#ffb3e6", // 7 pink
 ] as const;
 
-/** Playable area bounds (placeholder box, refined in Task 6). */
-export const WORLD_BOUNDS = { minX: -30, maxX: 30, minZ: -30, maxZ: 30 };
-
-/** Spawn origin (refined in Task 6). */
-export const SPAWN_POINT = { x: 0, z: 0 };
-
-/** Random spawn radius so simultaneous joiners don't stack. */
-export const SPAWN_JITTER = 2;
+/**
+ * Map geometry lives in worldMap.ts (the single source of truth for bounds,
+ * spawn, furniture and collision). Re-exported here so existing importers of
+ * `@caysonverse/shared/constants` keep working; there is still ONE definition.
+ */
+export {
+  WORLD_BOUNDS,
+  SPAWN_POINT,
+  SPAWN_JITTER,
+  PLAYER_RADIUS,
+} from "./worldMap";

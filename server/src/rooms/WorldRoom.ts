@@ -8,6 +8,7 @@ import {
   SPAWN_POINT,
   SPAWN_JITTER,
   WORLD_BOUNDS,
+  PLAYER_RADIUS,
 } from "@caysonverse/shared/constants";
 import { validateMove } from "./movement";
 import { validateJoinOptions } from "./joinValidation";
@@ -115,8 +116,8 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     const x = SPAWN_POINT.x + radius * Math.cos(angle);
     const z = SPAWN_POINT.z + radius * Math.sin(angle);
     return {
-      x: clamp(x, WORLD_BOUNDS.minX, WORLD_BOUNDS.maxX),
-      z: clamp(z, WORLD_BOUNDS.minZ, WORLD_BOUNDS.maxZ),
+      x: clamp(x, WORLD_BOUNDS.minX + PLAYER_RADIUS, WORLD_BOUNDS.maxX - PLAYER_RADIUS),
+      z: clamp(z, WORLD_BOUNDS.minZ + PLAYER_RADIUS, WORLD_BOUNDS.maxZ - PLAYER_RADIUS),
     };
   }
 }

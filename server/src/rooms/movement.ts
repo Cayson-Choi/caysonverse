@@ -3,7 +3,10 @@ import {
   MOVE_SPEED_SLACK,
   MOVE_ELAPSED_FLOOR_MS,
   WORLD_BOUNDS,
+  PLAYER_RADIUS,
 } from "@caysonverse/shared/constants";
+import { OBSTACLES } from "@caysonverse/shared/worldMap";
+import { isBlocked } from "@caysonverse/shared/collision";
 import type { MovePayload } from "@caysonverse/shared/messages";
 
 /**
@@ -20,9 +23,16 @@ import type { MovePayload } from "@caysonverse/shared/messages";
  * Pipeline (invalid messages are dropped whole — never partially applied):
  *   1. payload must be an object with finite x, z, yaw
  *   3. displacement from `current` must fit the speed budget for `elapsedMs`
- *   4. clamp target into WORLD_BOUNDS (legal-speed overshoot is clamped, not dropped)
- *   5. normalize yaw into [-PI, PI]
- * (step 2, the per-client rate cap, and step 6, applying the result, live in the room.)
+ *   4. clamp target into WORLD_BOUNDS, inset by PLAYER_RADIUS (legal-speed
+ *      overshoot is clamped, not dropped)
+ *   5. drop the move if the clamped target's body overlaps any OBSTACLE — the
+ *      client already slides around obstacles, so this only rejects a modified
+ *      client trying to walk into furniture/walls (silent-drop policy)
+ *   6. normalize yaw into [-PI, PI]
+ * (the per-client rate cap and applying the result live in the room.)
+ *
+ * Collision is enforced from the SAME `OBSTACLES` the client slides against, so
+ * both sides share one source of map/collision truth.
  */
 export function validateMove(
   current: { x: number; z: number },
@@ -44,12 +54,17 @@ export function validateMove(
   const dz = p.z - current.z;
   if (Math.hypot(dx, dz) > maxDist) return null;
 
-  // 4. clamp into bounds. 5. normalize yaw.
-  return {
-    x: clamp(p.x, WORLD_BOUNDS.minX, WORLD_BOUNDS.maxX),
-    z: clamp(p.z, WORLD_BOUNDS.minZ, WORLD_BOUNDS.maxZ),
-    yaw: normalizeAngle(p.yaw),
-  };
+  // 4. clamp the player CENTRE into bounds inset by the body radius, so a
+  //    clamped edge position rests flush against the boundary wall.
+  const x = clamp(p.x, WORLD_BOUNDS.minX + PLAYER_RADIUS, WORLD_BOUNDS.maxX - PLAYER_RADIUS);
+  const z = clamp(p.z, WORLD_BOUNDS.minZ + PLAYER_RADIUS, WORLD_BOUNDS.maxZ - PLAYER_RADIUS);
+
+  // 5. obstacle overlap → drop (a small epsilon in isBlocked tolerates the
+  //    floating-point rounding of a legitimately wall-hugging client).
+  if (isBlocked(x, z, PLAYER_RADIUS, OBSTACLES)) return null;
+
+  // 6. normalize yaw.
+  return { x, z, yaw: normalizeAngle(p.yaw) };
 }
 
 function isFiniteNumber(value: unknown): value is number {

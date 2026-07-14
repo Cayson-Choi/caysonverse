@@ -5,6 +5,7 @@ import { SPAWN_POINT, WORLD_BOUNDS } from "@caysonverse/shared/constants";
 import { CAMERA, FOG_FAR, FOG_NEAR, MOVE_KEYS, SKY_COLOR } from "./constants";
 import { LocalPlayer } from "./LocalPlayer";
 import { RemotePlayers } from "./RemotePlayers";
+import { WorldMap } from "./WorldMap";
 import { CameraRig } from "./CameraRig";
 import { getRoom } from "../net/connection";
 import type { Identity } from "../stores/appStore";
@@ -62,11 +63,7 @@ export function WorldScene({ identity }: { identity: Identity }) {
           shadow-camera-bottom={-35}
         />
 
-        {/* Ground sized to WORLD_BOUNDS (centered at origin). */}
-        <mesh rotation-x={-Math.PI / 2} receiveShadow>
-          <planeGeometry args={[width, depth]} />
-          <meshStandardMaterial color="#2b2748" roughness={1} metalness={0} />
-        </mesh>
+        {/* Subtle floor grid over the whole playable area. */}
         <Grid
           args={[width, depth]}
           cellSize={1}
@@ -76,11 +73,13 @@ export function WorldScene({ identity }: { identity: Identity }) {
           fadeDistance={60}
           fadeStrength={1.5}
           infiniteGrid={false}
-          position={[0, 0.01, 0]}
+          position={[0, 0.02, 0]}
         />
 
         <KeyboardControls map={MOVE_KEYS}>
           <Suspense fallback={null}>
+            {/* Furnished lounge + lecture hall, walls and screen (static). */}
+            <WorldMap />
             <LocalPlayer
               character={identity.character}
               tint={identity.tint}

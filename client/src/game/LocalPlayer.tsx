@@ -4,6 +4,8 @@ import { useAnimations, useGLTF, useKeyboardControls } from "@react-three/drei";
 import { SkeletonUtils } from "three-stdlib";
 import { Color, Group, Mesh, Material } from "three";
 import { MOVE_SPEED, WORLD_BOUNDS, TINT_COLORS } from "@caysonverse/shared/constants";
+import { OBSTACLES, PLAYER_RADIUS } from "@caysonverse/shared/worldMap";
+import { resolveCollision } from "@caysonverse/shared/collision";
 import { readIntent, worldDirection } from "./input";
 import { stepYaw } from "./yaw";
 import { createMoveSender } from "./moveSender";
@@ -90,8 +92,19 @@ export function LocalPlayer({ character, tint, pose, orbit }: LocalPlayerProps) 
 
     if (moving) {
       const dir = worldDirection(intent, orbit.yaw);
-      pose.x = clamp(pose.x + dir.x * MOVE_SPEED * delta, WORLD_BOUNDS.minX, WORLD_BOUNDS.maxX);
-      pose.z = clamp(pose.z + dir.z * MOVE_SPEED * delta, WORLD_BOUNDS.minZ, WORLD_BOUNDS.maxZ);
+      // Slide the body (circle-vs-AABB) along walls/furniture from the SAME
+      // OBSTACLES the server validates against, then keep the centre a radius
+      // inside WORLD_BOUNDS as a backstop.
+      const next = resolveCollision(
+        pose.x,
+        pose.z,
+        dir.x * MOVE_SPEED * delta,
+        dir.z * MOVE_SPEED * delta,
+        PLAYER_RADIUS,
+        OBSTACLES,
+      );
+      pose.x = clamp(next.x, WORLD_BOUNDS.minX + PLAYER_RADIUS, WORLD_BOUNDS.maxX - PLAYER_RADIUS);
+      pose.z = clamp(next.z, WORLD_BOUNDS.minZ + PLAYER_RADIUS, WORLD_BOUNDS.maxZ - PLAYER_RADIUS);
       const targetYaw = Math.atan2(dir.x, dir.z);
       pose.yaw = stepYaw(pose.yaw, targetYaw, TURN_SPEED * delta);
     }
