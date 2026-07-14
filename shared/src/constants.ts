@@ -42,6 +42,25 @@ export const CHARACTER_COUNT = 4;
 /** Number of selectable tint palette entries (valid index range 0..TINT_COUNT-1). */
 export const TINT_COUNT = 8;
 
+/**
+ * Selectable character tint colors (index matches `Player.tint`).
+ *
+ * Applied as a THREE multiply tint on the model's base material, which can only
+ * DARKEN toward the chosen hue — so every entry is light/pastel and index 0 is
+ * pure white (`#ffffff`), i.e. "untinted". All values are browser-safe CSS hex
+ * usable both for the entry-screen swatches and `material.color.set(...)`.
+ */
+export const TINT_COLORS = [
+  "#ffffff", // 0 untinted (white)
+  "#ffb3b3", // 1 red
+  "#ffd0a6", // 2 orange
+  "#fff3a6", // 3 yellow
+  "#b6e8b6", // 4 green
+  "#a6d8ff", // 5 blue
+  "#c9b6ff", // 6 violet
+  "#ffb3e6", // 7 pink
+] as const;
+
 /** Playable area bounds (placeholder box, refined in Task 6). */
 export const WORLD_BOUNDS = { minX: -30, maxX: 30, minZ: -30, maxZ: 30 };
 
