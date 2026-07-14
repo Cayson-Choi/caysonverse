@@ -53,6 +53,17 @@ export const MAX_VISIBLE_BUBBLES = 30;
 /** Cap on retained chat-log rows (session-only; oldest beyond this are dropped). */
 export const MAX_CHAT_LOG = 100;
 
+// ── Emoji reactions (Task 8) — one auditable place for every emoji limit. ──
+
+/** The six selectable reactions (index matches the client palette and shortcuts 1-6). */
+export const EMOJIS = ["👍", "❤️", "😂", "👏", "🎉", "🙋"] as const;
+
+/** Per-client emoji rate cap: at most `count` accepted reactions per `windowMs`. */
+export const EMOJI_RATE = { count: 1, windowMs: 500 } as const;
+
+/** How long (ms) an emoji reaction floats above its sender before removal. */
+export const EMOJI_DISPLAY_MS = 3000;
+
 /** Number of selectable character presets (valid index range 0..CHARACTER_COUNT-1). */
 export const CHARACTER_COUNT = 4;
 

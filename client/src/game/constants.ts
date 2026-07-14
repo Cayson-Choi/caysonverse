@@ -144,3 +144,13 @@ export const NAMETAG_HEIGHT = 2.1;
  * bubble module adds half its own height to this anchor when positioning.
  */
 export const BUBBLE_BASE_HEIGHT = 2.5;
+
+/** World height (m) of the emoji-reaction sprite (a single glyph, no backdrop). */
+export const EMOJI_SPRITE_HEIGHT = 0.5;
+
+/**
+ * World height (m) at which the emoji sprite sits BEFORE the float animation's
+ * rise is added — slightly above the speech bubble's anchor (BUBBLE_BASE_HEIGHT)
+ * so a reaction and a bubble can be visible at once without overlapping.
+ */
+export const EMOJI_BASE_HEIGHT = BUBBLE_BASE_HEIGHT + 0.4;

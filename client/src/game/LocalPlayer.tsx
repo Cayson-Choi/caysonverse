@@ -9,6 +9,7 @@ import { resolveCollision } from "@caysonverse/shared/collision";
 import { readIntent, worldDirection } from "./input";
 import { guardMoveKeys, isUiCaptured } from "./uiCapture";
 import { useSpeechBubble } from "./useSpeechBubble";
+import { useEmoji } from "./useEmoji";
 import { stepYaw } from "./yaw";
 import { createMoveSender } from "./moveSender";
 import { installDebugHook } from "./debug";
@@ -51,6 +52,8 @@ export function LocalPlayer({ sessionId, character, tint, pose, orbit }: LocalPl
   // Own speech bubble: driven by the server broadcast (not a local echo), so
   // self and remotes share one path. Attached above this avatar's group.
   useSpeechBubble(sessionId, groupRef);
+  // Own emoji reaction: same broadcast-driven, self-included discipline.
+  useEmoji(sessionId, groupRef);
 
   // Clone the skinned hierarchy (independent skeleton) and tint cloned materials
   // ONCE per character/tint — not per frame.

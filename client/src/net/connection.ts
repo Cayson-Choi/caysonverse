@@ -61,6 +61,14 @@ export function sendChat(text: string): void {
 }
 
 /**
+ * Send an emoji reaction (index into EMOJIS). No-op if not connected; the
+ * server re-validates the index and is authoritative on the rate cap.
+ */
+export function sendEmoji(index: number): void {
+  room?.send(MessageType.Emoji, { index });
+}
+
+/**
  * True once the server has placed our player in the synced state. Null-safe:
  * `joinOrCreate` can resolve before the reflection-decoded `state.players`
  * MapSchema exists, so we must not assume the shape is ready yet.

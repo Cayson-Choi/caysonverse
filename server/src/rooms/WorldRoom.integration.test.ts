@@ -7,9 +7,14 @@ import {
   PATCH_RATE_MS,
   WORLD_BOUNDS,
   CHAT_MAX_LENGTH,
+  EMOJIS,
 } from "@caysonverse/shared/constants";
 import { MessageType } from "@caysonverse/shared/messages";
-import type { ChatBroadcast, ChatRejectedPayload } from "@caysonverse/shared/messages";
+import type {
+  ChatBroadcast,
+  ChatRejectedPayload,
+  EmojiBroadcast,
+} from "@caysonverse/shared/messages";
 import { rooms, type WorldRoom } from "./index";
 
 const VALID_JOIN = { nickname: "케이슨", character: 1, tint: 2 };
@@ -159,5 +164,79 @@ describe("WorldRoom (integration)", () => {
     expect(aRejected).toHaveLength(1);
     expect(aRejected[0].reason).toContain("너무 빨라요");
     expect(bRejected).toHaveLength(0);
+  });
+
+  it("relays an emoji reaction to every client tagged with the sender's sid", async () => {
+    const room = await colyseus.createRoom<WorldRoom>(WORLD_ROOM);
+    const alice = await colyseus.connectTo(room, JOIN_A);
+    const bob = await colyseus.connectTo(room, JOIN_B);
+
+    const aEmojis: EmojiBroadcast[] = [];
+    const bEmojis: EmojiBroadcast[] = [];
+    alice.onMessage(MessageType.Emoji, (m: EmojiBroadcast) => aEmojis.push(m));
+    bob.onMessage(MessageType.Emoji, (m: EmojiBroadcast) => bEmojis.push(m));
+
+    alice.send(MessageType.Emoji, { index: 3 });
+    await room.waitForNextMessage();
+    await flush();
+
+    const expected = { sid: alice.sessionId, index: 3 };
+    expect(aEmojis).toEqual([expected]); // sender receives its own reaction too
+    expect(bEmojis).toEqual([expected]);
+  });
+
+  it("drops an out-of-range emoji index without broadcasting to anyone", async () => {
+    const room = await colyseus.createRoom<WorldRoom>(WORLD_ROOM);
+    const alice = await colyseus.connectTo(room, JOIN_A);
+    const bob = await colyseus.connectTo(room, JOIN_B);
+
+    const emojis: EmojiBroadcast[] = [];
+    alice.onMessage(MessageType.Emoji, (m: EmojiBroadcast) => emojis.push(m));
+    bob.onMessage(MessageType.Emoji, (m: EmojiBroadcast) => emojis.push(m));
+
+    alice.send(MessageType.Emoji, { index: EMOJIS.length });
+    await room.waitForNextMessage();
+    await flush();
+
+    expect(emojis).toHaveLength(0);
+  });
+
+  it("drops a malformed emoji payload without broadcasting to anyone", async () => {
+    const room = await colyseus.createRoom<WorldRoom>(WORLD_ROOM);
+    const alice = await colyseus.connectTo(room, JOIN_A);
+    const bob = await colyseus.connectTo(room, JOIN_B);
+
+    const emojis: EmojiBroadcast[] = [];
+    alice.onMessage(MessageType.Emoji, (m: EmojiBroadcast) => emojis.push(m));
+    bob.onMessage(MessageType.Emoji, (m: EmojiBroadcast) => emojis.push(m));
+
+    alice.send(MessageType.Emoji, { index: 1.5 });
+    await room.waitForNextMessage();
+    await flush();
+
+    expect(emojis).toHaveLength(0);
+  });
+
+  it("rejects a burst of 3 emoji within 500ms — only the first is broadcast", async () => {
+    const room = await colyseus.createRoom<WorldRoom>(WORLD_ROOM);
+    const alice = await colyseus.connectTo(room, JOIN_A);
+    const bob = await colyseus.connectTo(room, JOIN_B);
+
+    const aEmojis: EmojiBroadcast[] = [];
+    const bEmojis: EmojiBroadcast[] = [];
+    alice.onMessage(MessageType.Emoji, (m: EmojiBroadcast) => aEmojis.push(m));
+    bob.onMessage(MessageType.Emoji, (m: EmojiBroadcast) => bEmojis.push(m));
+
+    // Three sends land within milliseconds — all inside the 500ms window.
+    for (let i = 0; i < 3; i++) {
+      alice.send(MessageType.Emoji, { index: i });
+      await room.waitForNextMessage();
+    }
+    await flush();
+
+    // Only the first is accepted (count: 1, windowMs: 500); the rest are
+    // silently dropped — no personal notice, unlike chat's rate rejection.
+    expect(aEmojis).toEqual([{ sid: alice.sessionId, index: 0 }]);
+    expect(bEmojis).toEqual([{ sid: alice.sessionId, index: 0 }]);
   });
 });

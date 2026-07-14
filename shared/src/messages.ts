@@ -8,6 +8,8 @@ export const MessageType = {
   Chat: "chat",
   /** Server -> one client: a personal notice that their chat line was rejected. */
   ChatRejected: "chat_rejected",
+  /** Client -> server: fire an emoji reaction. Server -> all: relay a reaction. */
+  Emoji: "emoji",
 } as const;
 
 export type MessageType = (typeof MessageType)[keyof typeof MessageType];
@@ -39,9 +41,23 @@ export interface ChatRejectedPayload {
   reason: string;
 }
 
+/** Client -> server: an emoji reaction the sender fired (index into EMOJIS). */
+export interface EmojiPayload {
+  index: number;
+}
+
+/** Server -> every client: an accepted emoji reaction, tagged with its author. */
+export interface EmojiBroadcast {
+  /** Sender session id (matches the avatar's key in world state). */
+  sid: string;
+  /** Index into EMOJIS. */
+  index: number;
+}
+
 /** Payload type for each message id, keyed by MessageType. */
 export interface MessagePayloads {
   [MessageType.Move]: MovePayload;
   [MessageType.Chat]: ChatPayload;
   [MessageType.ChatRejected]: ChatRejectedPayload;
+  [MessageType.Emoji]: EmojiPayload;
 }

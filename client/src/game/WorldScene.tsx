@@ -8,6 +8,7 @@ import { RemotePlayers } from "./RemotePlayers";
 import { WorldMap } from "./WorldMap";
 import { CameraRig } from "./CameraRig";
 import { Chat } from "../ui/Chat";
+import { EmojiPalette } from "../ui/EmojiPalette";
 import { getRoom } from "../net/connection";
 import type { Identity } from "../stores/appStore";
 import type { Orbit, Pose } from "./types";
@@ -97,6 +98,7 @@ export function WorldScene({ identity }: { identity: Identity }) {
       </Canvas>
       <LoadingOverlay />
       <Chat />
+      <EmojiPalette />
     </>
   );
 }

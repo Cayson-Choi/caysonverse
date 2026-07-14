@@ -6,6 +6,7 @@ import {
   PATCH_RATE_MS,
   MOVE_MAX_MSGS_PER_SEC,
   CHAT_RATE,
+  EMOJI_RATE,
   SPAWN_POINT,
   SPAWN_JITTER,
   WORLD_BOUNDS,
@@ -14,6 +15,7 @@ import {
 import { validateMove } from "./movement";
 import { validateJoinOptions } from "./joinValidation";
 import { sanitizeChat } from "./chat";
+import { validateEmojiIndex } from "./emoji";
 import { RateWindow } from "./rateLimit";
 
 /** Korean notice sent to a sender whose chat was dropped for exceeding the rate. */
@@ -27,6 +29,8 @@ interface ClientTracking {
   rate: RateWindow;
   /** Sliding-window rate cap for chat messages (3 per 5s). */
   chatRate: RateWindow;
+  /** Sliding-window rate cap for emoji reactions (1 per 500ms). */
+  emojiRate: RateWindow;
 }
 
 /**
@@ -55,6 +59,9 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     this.onMessage(MessageType.Chat, (client, payload) => {
       this.handleChat(client, payload);
     });
+    this.onMessage(MessageType.Emoji, (client, payload) => {
+      this.handleEmoji(client, payload);
+    });
   }
 
   onJoin(client: Client, options: unknown): void {
@@ -79,6 +86,7 @@ export class WorldRoom extends Room<{ state: WorldState }> {
       lastAcceptedAt: this.now(),
       rate: new RateWindow(MOVE_MAX_MSGS_PER_SEC),
       chatRate: new RateWindow(CHAT_RATE.count, CHAT_RATE.windowMs),
+      emojiRate: new RateWindow(EMOJI_RATE.count, EMOJI_RATE.windowMs),
     });
   }
 
@@ -134,6 +142,26 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     if (text === null) return; // empty/oversized/garbage → silent drop
 
     this.broadcast(MessageType.Chat, { sid: client.sessionId, name: player.nickname, text });
+  }
+
+  /**
+   * Emoji pipeline (binding order): sender must have a seat → per-client rate
+   * cap (1 per 500ms; exceeded → drop, SILENTLY — it's a button, not typed
+   * effort, so unlike chat there is no personal notice) → pure index validate
+   * (garbage → drop silently) → broadcast to everyone as a transient event.
+   * Emoji never touches synced schema state.
+   */
+  private handleEmoji(client: Client, payload: unknown): void {
+    const player = this.state.players.get(client.sessionId);
+    const track = this.tracking.get(client.sessionId);
+    if (!player || !track) return; // no seat yet / already left → drop
+
+    if (!track.emojiRate.tryAccept(this.now())) return; // flood → silent drop
+
+    const index = validateEmojiIndex(payload);
+    if (index === null) return; // invalid/garbage → silent drop
+
+    this.broadcast(MessageType.Emoji, { sid: client.sessionId, index });
   }
 
   /** Wall-clock time in ms. Isolated here so the pure validators never read it. */

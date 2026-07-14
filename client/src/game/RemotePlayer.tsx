@@ -5,6 +5,7 @@ import { AnimationMixer, Group, type AnimationAction, type Material } from "thre
 import { cloneTinted } from "./avatar";
 import { createNametag } from "./nametag";
 import { useSpeechBubble } from "./useSpeechBubble";
+import { useEmoji } from "./useEmoji";
 import { getRemoteRecord } from "./remoteStore";
 import { sample, exceedsSnapDistance } from "./interpolation";
 import { nextWalking } from "./locomotion";
@@ -51,6 +52,9 @@ export function RemotePlayer({ sessionId }: { sessionId: string }) {
   // Speech bubble above this avatar, driven by the chat broadcast. Cleaned up
   // with the avatar when it unmounts (leaving player) — no leaked sprites.
   useSpeechBubble(sessionId, groupRef);
+  // Emoji reaction above this avatar, driven by the emoji broadcast. Same
+  // cleanup-with-avatar discipline as the speech bubble.
+  useEmoji(sessionId, groupRef);
 
   // Build heavy resources ONCE. Disposed on unmount (see the cleanup effect).
   const avatar = useMemo(() => cloneTinted(scene, tint), [scene, tint]);

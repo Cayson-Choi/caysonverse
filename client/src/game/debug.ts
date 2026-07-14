@@ -1,6 +1,7 @@
 import type { Pose } from "./types";
 import { getRemotes } from "./remoteStore";
 import { bubbleRegistry } from "./bubbleRegistry";
+import { emojiRegistry } from "./emojiRegistry";
 
 /** Shape of one remote player in the dev/E2E hook. */
 export interface RemoteView {
@@ -16,6 +17,12 @@ export interface BubbleView {
   text: string;
 }
 
+/** Shape of one active emoji reaction in the dev/E2E hook. */
+export interface EmojiView {
+  sid: string;
+  index: number;
+}
+
 declare global {
   interface Window {
     /** Dev-only E2E hook (see installDebugHook). Absent in production builds. */
@@ -26,6 +33,8 @@ declare global {
       getRemotes: () => RemoteView[];
       /** Every currently-visible speech bubble (sid + text). */
       getBubbles: () => BubbleView[];
+      /** Every currently-active emoji reaction (sid + EMOJIS index). */
+      getEmojis: () => EmojiView[];
     };
   }
 }
@@ -43,6 +52,8 @@ export function installDebugHook(getPose: () => Pose): () => void {
     getRemotes: () => getRemotes(),
     getBubbles: () =>
       bubbleRegistry.snapshot(performance.now()).map((b) => ({ sid: b.sid, text: b.text })),
+    getEmojis: () =>
+      emojiRegistry.snapshot(performance.now()).map((e) => ({ sid: e.sid, index: e.index })),
   };
   return () => {
     delete window.__cv;
