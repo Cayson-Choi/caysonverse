@@ -45,6 +45,10 @@ caysonverse(웹 3D 메타버스)를 Railway에 배포하는 방법입니다. Dev
    > `ADMIN_CODE`는 서버에서만 비교되며 클라이언트 번들에는 절대 포함되지
    > 않습니다(코드가 브라우저로 전송되지 않음). 값은 커밋하지 말고 Railway
    > 대시보드에만 넣으세요.
+   >
+   > **코드 강도 권장**: 무차별 대입은 분당 5회로 제한되지만, 코드 자체도
+   > 16자 이상의 무작위 문자열을 쓰세요 (사전 단어·생일·전화번호 금지).
+   > 생성 예: `node -e "console.log(require('crypto').randomBytes(16).toString('base64url'))"`
 
 4. **헬스체크 경로**: `railway.toml`에 `/healthz`로 이미 지정되어 있습니다.
    Railway는 배포 후 이 경로가 HTTP 200을 반환할 때까지 기다렸다가, 200이

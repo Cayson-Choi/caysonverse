@@ -33,6 +33,10 @@ npm run loadtest  # 부하 테스트 봇 실행 (인자 pass-through, docs/loadt
 사용하며, 서버가 클라이언트 정적 파일(`client/dist`)을 같은 오리진에서 서빙합니다. `npm run build` 후
 `npm start`만 실행하면(별도 환경변수 불필요) SPA까지 서빙됩니다.
 
+> 주의: 정적 서빙은 `client/dist` 존재 여부로 켜지므로, 과거에 `npm run build`를 한 적이 있는
+> 개발 PC에서 `:2567`에 직접 접속하면 **오래된 빌드**가 보일 수 있습니다. 개발 중에는 항상
+> Vite 개발 서버(`http://localhost:5173`)로 접속하세요.
+
 ## 배포
 
 Railway 배포 방법과 운영 팁은 [`docs/deploy.md`](docs/deploy.md)를 참고하세요.
