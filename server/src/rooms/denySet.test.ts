@@ -10,30 +10,37 @@ describe("normalizeNick", () => {
 });
 
 describe("DenySet", () => {
-  it("denies a candidate whose IP matches a banned entry", () => {
+  it("denies a same-nickname rejoin regardless of IP (case/trim-insensitive)", () => {
     const deny = new DenySet();
     deny.add({ ip: "203.0.113.7", nickname: "밥이" });
-    expect(deny.isDenied({ ip: "203.0.113.7", nickname: "다른닉네임" })).toBe(true);
-  });
-
-  it("denies a candidate whose nickname matches (weak fallback), case/trim-insensitive", () => {
-    const deny = new DenySet();
-    deny.add({ ip: "203.0.113.7", nickname: "밥이" });
-    // Different IP (or none), but the nickname fallback still catches the ban.
+    // Same nickname from the SAME IP → denied.
+    expect(deny.isDenied({ ip: "203.0.113.7", nickname: "밥이" })).toBe(true);
+    // Same nickname from a DIFFERENT IP (or none) → still denied (nickname key).
     expect(deny.isDenied({ ip: "198.51.100.2", nickname: "밥이" })).toBe(true);
     expect(deny.isDenied({ ip: null, nickname: "  밥이 " })).toBe(true);
     expect(deny.isDenied({ ip: null, nickname: "BOB" })).toBe(false); // not banned
   });
 
-  it("bans by nickname only when the IP is unavailable (global/no-proxy fallback)", () => {
+  it("does NOT deny a different nickname on the SAME (shared NAT) IP — classroom lockout fix (F7)", () => {
+    // The whole point of F7: kicking one student on shared classroom Wi-Fi must
+    // NOT ban every classmate sharing that one public NAT IP. Only the kicked
+    // nickname is denied; a classmate with a different nickname joins freely.
+    const deny = new DenySet();
+    deny.add({ ip: "203.0.113.7", nickname: "방해꾼" });
+    expect(deny.isDenied({ ip: "203.0.113.7", nickname: "앨리스" })).toBe(false);
+    expect(deny.isDenied({ ip: "203.0.113.7", nickname: "밥이" })).toBe(false);
+    // …but the kicked student refreshing on the same IP is still blocked.
+    expect(deny.isDenied({ ip: "203.0.113.7", nickname: "방해꾼" })).toBe(true);
+  });
+
+  it("bans by nickname when the IP is unavailable (no-proxy fallback)", () => {
     const deny = new DenySet();
     deny.add({ ip: null, nickname: "밥이" });
-    // No IP was stored, so a different-IP rejoin is caught purely by nickname.
     expect(deny.isDenied({ ip: "10.0.0.9", nickname: "밥이" })).toBe(true);
     expect(deny.isDenied({ ip: "10.0.0.9", nickname: "앨리스" })).toBe(false);
   });
 
-  it("does not deny an unrelated candidate (different ip and nickname)", () => {
+  it("does not deny an unrelated candidate (different nickname)", () => {
     const deny = new DenySet();
     deny.add({ ip: "203.0.113.7", nickname: "밥이" });
     expect(deny.isDenied({ ip: "198.51.100.2", nickname: "앨리스" })).toBe(false);
@@ -46,11 +53,10 @@ describe("DenySet", () => {
     expect(deny.isDenied({ ip: null, nickname: "   " })).toBe(false);
   });
 
-  it("ignores empty IP keys so a blank IP never matches everyone", () => {
+  it("never bans on IP alone — an IP-only entry stores nothing", () => {
     const deny = new DenySet();
-    deny.add({ ip: "", nickname: "밥이" });
-    // The empty IP must not be treated as a real key.
-    expect(deny.isDenied({ ip: "", nickname: "앨리스" })).toBe(false);
-    expect(deny.isDenied({ ip: "", nickname: "밥이" })).toBe(true); // nickname still bans
+    deny.add({ ip: "203.0.113.7", nickname: "" }); // no nickname → nothing to ban
+    // A candidate from that exact IP is NOT denied (IP is not a ban key).
+    expect(deny.isDenied({ ip: "203.0.113.7", nickname: "앨리스" })).toBe(false);
   });
 });
