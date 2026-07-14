@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2022"],
+    "types": ["node"],
+    "strict": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": {
+      "@caysonverse/shared/*": ["../shared/src/*"]
+    },
+
+    // bot.ts only TYPE-imports `WorldState` from the shared schema (no decorator
+    // runtime enters this bundle — same discipline as the client), but tsc still
+    // parses schema.ts's decorator syntax while resolving that type. Mirrors the
+    // flags in client/tsconfig.json (see that file's comment) so it typechecks
+    // here too. Do NOT change these two.
+    "experimentalDecorators": true,
+    "useDefineForClassFields": false
+  },
+  "include": ["*.ts"]
+}

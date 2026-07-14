@@ -9,6 +9,7 @@ import {
   WORLD_BOUNDS,
   CHAT_MAX_LENGTH,
   EMOJIS,
+  MOVE_MAX_MSGS_PER_SEC,
 } from "@caysonverse/shared/constants";
 import { MessageType } from "@caysonverse/shared/messages";
 import type {
@@ -129,6 +130,32 @@ describe("WorldRoom (integration)", () => {
 
     expect(player.x).toBe(startX);
     expect(player.z).toBe(startZ);
+  });
+
+  // Gap closed (Task 12 audit): the pure RateWindow class was already exhaustively
+  // unit-tested (rateLimit.test.ts), but nothing proved the ROOM actually wires it
+  // to moves — the design's explicit "30 msg/s 초과 드롭" behavior. Mirrors the
+  // existing chat/emoji rate-cap integration tests below.
+  it("drops move messages beyond the 30 msg/s rate cap", async () => {
+    const room = await colyseus.createRoom<WorldRoom>(WORLD_ROOM);
+    const client = await colyseus.connectTo(room, VALID_JOIN);
+    const player = room.state.players.get(client.sessionId)!;
+    const startX = player.x;
+
+    // Each step is tiny — the displacement budget is never the limiting factor
+    // here, only the per-second message-count cap is under test.
+    const STEP = 0.001;
+    const BURST = MOVE_MAX_MSGS_PER_SEC + 3; // past the cap, still a fast burst
+    for (let i = 1; i <= BURST; i++) {
+      client.send(MessageType.Move, { x: startX + i * STEP, z: player.z, yaw: 0 });
+      await room.waitForNextMessage();
+    }
+    await flush();
+
+    // At most MOVE_MAX_MSGS_PER_SEC of the burst could land inside one window —
+    // the rest were rate-dropped, so x can be at most that many steps past start.
+    expect(player.x).toBeLessThanOrEqual(startX + MOVE_MAX_MSGS_PER_SEC * STEP + 1e-9);
+    expect(player.x).toBeGreaterThan(startX); // some of the burst DID get through
   });
 
   it("relays a chat message to every client tagged with the sender's sid + name", async () => {
@@ -445,6 +472,40 @@ describe("WorldRoom admin (integration)", () => {
 
     expect(bobLeft).toBe(false);
     expect(room.state.players.has(bob.sessionId)).toBe(true);
+  });
+
+  // Gap closed (Task 12 audit): handleKick's "malformed payload" and "target
+  // must exist" branches (see WorldRoom.ts) had no test exercising them.
+  it("ignores a Kick with a malformed payload (wrong type / missing sid)", async () => {
+    process.env.ADMIN_CODE = ADMIN_CODE;
+    const room = await colyseus.createRoom<WorldRoom>(WORLD_ROOM);
+    const admin = await colyseus.connectTo(room, { ...ADMIN_JOIN, adminCode: ADMIN_CODE });
+    const bob = await colyseus.connectTo(room, JOIN_B);
+
+    admin.send(MessageType.Kick, { sid: 123 }); // wrong type
+    await room.waitForNextMessage();
+    admin.send(MessageType.Kick, {}); // missing sid
+    await room.waitForNextMessage();
+    admin.send(MessageType.Kick, { sid: "" }); // empty sid
+    await room.waitForNextMessage();
+    await flush();
+
+    // Nobody was removed — both connections are untouched.
+    expect(room.state.players.size).toBe(2);
+    expect(room.state.players.has(bob.sessionId)).toBe(true);
+  });
+
+  it("ignores a Kick naming a session id that does not exist", async () => {
+    process.env.ADMIN_CODE = ADMIN_CODE;
+    const room = await colyseus.createRoom<WorldRoom>(WORLD_ROOM);
+    const admin = await colyseus.connectTo(room, { ...ADMIN_JOIN, adminCode: ADMIN_CODE });
+
+    admin.send(MessageType.Kick, { sid: "no-such-session-id" });
+    await room.waitForNextMessage();
+    await flush();
+
+    // Only the admin is in the room — the bogus target simply had no effect.
+    expect(room.state.players.size).toBe(1);
   });
 
   it("ignores an admin attempting to kick themselves", async () => {

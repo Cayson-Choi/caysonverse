@@ -43,8 +43,12 @@ export const SPAWN_JITTER = 2;
 // ─────────────────────────────── Walls ────────────────────────────────
 
 const WALL_THICKNESS = 0.5;
-/** Half-width (m) of the door opening in the divider, centred on z = 0. */
-const DOOR_HALF_WIDTH = 2;
+/**
+ * Half-width (m) of the door opening in the divider, centred on z = 0.
+ * Exported as part of the single map-geometry truth: the loadtest bots route
+ * their lounge <-> lecture-hall walks through this gap.
+ */
+export const DOOR_HALF_WIDTH = 2;
 const B = WORLD_BOUNDS;
 const T = WALL_THICKNESS;
 

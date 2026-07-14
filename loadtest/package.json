@@ -1,0 +1,20 @@
+{
+  "name": "@caysonverse/loadtest",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "100봇 부하 테스트 스크립트 (@colyseus/loadtest 기반)",
+  "scripts": {
+    "loadtest": "node run.mjs",
+    "bot": "tsx bot.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@colyseus/sdk": "^0.17.43"
+  },
+  "devDependencies": {
+    "@colyseus/loadtest": "^0.17.8",
+    "@types/node": "^24.0.0",
+    "tsx": "^4.23.1"
+  }
+}
