@@ -1,7 +1,11 @@
 import type { Orbit, Pose } from "./types";
 import { getRemotes } from "./remoteStore";
+import { getRoom } from "../net/connection";
 import { bubbleRegistry } from "./bubbleRegistry";
 import { emojiRegistry } from "./emojiRegistry";
+
+/** Non-consented close code (MAY_TRY_RECONNECT) used by the dev drop hook. */
+const DEV_DROP_CODE = 4010;
 
 /** Shape of one remote player in the dev/E2E hook. */
 export interface RemoteView {
@@ -9,6 +13,8 @@ export interface RemoteView {
   nickname: string;
   x: number;
   z: number;
+  /** False while this remote is disconnected (drives the 50%-opacity ghost). */
+  connected: boolean;
 }
 
 /** Shape of one active speech bubble in the dev/E2E hook. */
@@ -37,6 +43,13 @@ declare global {
       getBubbles: () => BubbleView[];
       /** Every currently-active emoji reaction (sid + EMOJIS index). */
       getEmojis: () => EmojiView[];
+      /**
+       * Force a TRANSIENT connection drop (dev/E2E only) by closing the
+       * transport with a non-consented code — the server holds the seat
+       * (allowReconnection) and the resilience driver should re-establish the
+       * SAME avatar within the window. Returns true if a room was connected.
+       */
+      dropConnection: () => boolean;
     };
   }
 }
@@ -57,6 +70,12 @@ export function installDebugHook(getPose: () => Pose, getOrbit: () => Orbit): ()
       bubbleRegistry.snapshot(performance.now()).map((b) => ({ sid: b.sid, text: b.text })),
     getEmojis: () =>
       emojiRegistry.snapshot(performance.now()).map((e) => ({ sid: e.sid, index: e.index })),
+    dropConnection: () => {
+      const room = getRoom();
+      if (!room) return false;
+      room.connection.close(DEV_DROP_CODE, "dev drop");
+      return true;
+    },
   };
   return () => {
     delete window.__cv;

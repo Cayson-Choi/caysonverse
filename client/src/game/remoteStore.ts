@@ -76,16 +76,34 @@ export function pushRemoteSnapshot(sessionId: string, snapshot: Snapshot): void 
   if (record) pushSnapshot(record.snapshots, snapshot);
 }
 
-/** Drop all remotes (on room leave / teardown) and notify the roster once. */
+/**
+ * Drop all remotes (on room leave / teardown) and notify the roster once. This
+ * is the first half of a reconnection RESYNC: `startRemoteSync`'s teardown calls
+ * it, then the fresh room's `onAdd` replay re-adds every current player. Because
+ * `addRemote` keys by sessionId, that clear→replay rebuild can never leave a
+ * duplicate avatar behind (covered by remoteStore.test.ts).
+ */
 export function clearRemotes(): void {
   if (records.size === 0) return;
   records.clear();
   refreshRoster();
 }
 
-/** Dev/E2E view: each remote's newest known position. */
-export function getRemotes(): Array<{ sessionId: string; nickname: string; x: number; z: number }> {
-  const out: Array<{ sessionId: string; nickname: string; x: number; z: number }> = [];
+/** Dev/E2E view: each remote's newest known position + ghost (connected) flag. */
+export function getRemotes(): Array<{
+  sessionId: string;
+  nickname: string;
+  x: number;
+  z: number;
+  connected: boolean;
+}> {
+  const out: Array<{
+    sessionId: string;
+    nickname: string;
+    x: number;
+    z: number;
+    connected: boolean;
+  }> = [];
   for (const record of records.values()) {
     const last = record.snapshots[record.snapshots.length - 1];
     out.push({
@@ -93,6 +111,7 @@ export function getRemotes(): Array<{ sessionId: string; nickname: string; x: nu
       nickname: record.nickname,
       x: last?.x ?? 0,
       z: last?.z ?? 0,
+      connected: record.connected,
     });
   }
   return out;

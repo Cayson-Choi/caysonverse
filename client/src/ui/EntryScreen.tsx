@@ -5,49 +5,16 @@ import { CHARACTERS } from "../game/constants";
 import { validateEntry } from "./validation";
 import { joinWorld } from "../net/connection";
 import { clearKicked } from "../net/kickSeam";
+import { loadIdentity, saveIdentity } from "../net/identityCache";
 import { useAppStore } from "../stores/appStore";
 import "./entry.css";
-
-const STORAGE_KEY = "cv.entry";
-
-interface SavedEntry {
-  nickname: string;
-  character: number;
-  tint: number;
-}
-
-/** Load the last-used selection for prefill (best-effort; never throws). */
-function loadSaved(): SavedEntry {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw) as Partial<SavedEntry>;
-      return {
-        nickname: typeof parsed.nickname === "string" ? parsed.nickname : "",
-        character: Number.isInteger(parsed.character) ? (parsed.character as number) : 0,
-        tint: Number.isInteger(parsed.tint) ? (parsed.tint as number) : 0,
-      };
-    }
-  } catch {
-    // ignore malformed/absent storage
-  }
-  return { nickname: "", character: 0, tint: 0 };
-}
-
-function persist(entry: SavedEntry): void {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(entry));
-  } catch {
-    // storage may be unavailable (private mode); non-fatal
-  }
-}
 
 export function EntryScreen() {
   const enterWorld = useAppStore((s) => s.enterWorld);
   const notice = useAppStore((s) => s.notice);
   const clearNotice = useAppStore((s) => s.clearNotice);
 
-  const [saved] = useState(loadSaved);
+  const [saved] = useState(loadIdentity);
   const [nickname, setNickname] = useState(saved.nickname);
   const [character, setCharacter] = useState(saved.character);
   const [tint, setTint] = useState(saved.tint);
@@ -74,7 +41,9 @@ export function EntryScreen() {
     setError(null);
     clearNotice();
     setSubmitting(true);
-    persist(result.value);
+    // Cache the identity so a reconnect after a server restart can silently
+    // re-join with the same nickname/character/tint.
+    saveIdentity(result.value);
 
     // A deliberate manual entry clears any prior kick block (Task 11 seam).
     clearKicked();

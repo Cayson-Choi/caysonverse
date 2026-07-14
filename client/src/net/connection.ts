@@ -6,9 +6,8 @@ import { WORLD_ROOM, CHAT_MAX_LENGTH } from "@caysonverse/shared/constants";
 import { MessageType } from "@caysonverse/shared/messages";
 import type { MovePayload } from "@caysonverse/shared/messages";
 import { SERVER_URL } from "./endpoint";
-import { useAppStore } from "../stores/appStore";
-import { leaveAction } from "./leaveAction";
-import { markKicked } from "./kickSeam";
+import { joinErrorNotice } from "./reconnectPolicy";
+import { attachResilience } from "./resilience";
 
 /** Options sent to the server's `onJoin` (validated there against the contract). */
 export interface JoinParams {
@@ -23,33 +22,49 @@ export interface JoinParams {
   adminCode?: string;
 }
 
-const client = new Client(SERVER_URL);
+/** The one SDK client. Shared with the resilience driver (reconnect/re-join). */
+export const client = new Client(SERVER_URL);
 
 // Module-level room handle — NOT React state. The scene reads it via getRoom().
 let room: Room<WorldState> | null = null;
 
-/** The currently joined world room, or null when not connected. */
+/** The currently joined world room, or null when not connected/reconnecting. */
 export function getRoom(): Room<WorldState> | null {
   return room;
 }
 
+/** Swap the active room handle (used by the resilience driver on reconnect). */
+export function setRoom(next: Room<WorldState> | null): void {
+  room = next;
+}
+
+/** Raw joinOrCreate — throws the SDK's native error (the caller maps it). */
+export function joinOrCreateRoom(params: JoinParams): Promise<Room<WorldState>> {
+  return client.joinOrCreate<WorldState>(WORLD_ROOM, params);
+}
+
 /**
- * Join (or create) the world room. Resolves once our own player exists in the
- * synced state (so the caller can read the authoritative spawn). Rejects with an
- * Error whose message is user-facing Korean — the server's rejection string when
- * available, otherwise a generic connection-failure message.
+ * Join (or create) the world room from the entry screen. Resolves once our own
+ * player exists in the synced state (so the caller can read the authoritative
+ * spawn). Rejects with an Error whose message is user-facing Korean — the
+ * server's rejection string when available, the capacity notice for a full room,
+ * else a generic connection-failure message.
+ *
+ * Resilience is attached BEFORE the join-wait: a drop during `waitForSelf` (up
+ * to 2s) is then handled by the reconnection driver rather than stranding the
+ * user on a dead canvas (closes the Task 4 [task4-m5] gap).
  */
 export async function joinWorld(params: JoinParams): Promise<Room<WorldState>> {
   let joined: Room<WorldState>;
   try {
-    joined = await client.joinOrCreate<WorldState>(WORLD_ROOM, params);
+    joined = await joinOrCreateRoom(params);
   } catch (err) {
-    throw new Error(toKoreanJoinError(err));
+    throw new Error(joinErrorNotice(err));
   }
 
-  room = joined;
+  setRoom(joined);
+  attachResilience(joined);
   await waitForSelf(joined);
-  registerLeaveHandler(joined);
   return joined;
 }
 
@@ -103,10 +118,11 @@ function hasSelf(r: Room<WorldState>): boolean {
 }
 
 /**
- * `joinOrCreate` can resolve a tick before the first state patch arrives. Wait
- * (briefly) for our player so the caller reads the real spawn, not a default.
+ * `joinOrCreate`/`reconnect` can resolve a tick before the first state patch
+ * arrives. Wait (briefly) for our player so the caller reads the real spawn, not
+ * a default. Exported so the resilience driver reuses the exact same gate.
  */
-function waitForSelf(r: Room<WorldState>): Promise<void> {
+export function waitForSelf(r: Room<WorldState>): Promise<void> {
   if (hasSelf(r)) return Promise.resolve();
   return new Promise((resolve) => {
     const done = () => {
@@ -124,30 +140,12 @@ function waitForSelf(r: Room<WorldState>): Promise<void> {
   });
 }
 
-/**
- * Return the user to the entry screen if the room ever drops (kick / server
- * down). The leave CODE decides the UX (see leaveAction): code 4001 is an
- * admin kick — show the kick notice and persist the no-reconnect seam so Task
- * 11's reconnection logic honors it; any other code is an ordinary disconnect.
- * Full reconnection UX is Task 11 — here we only avoid stranding the user.
- */
-function registerLeaveHandler(joined: Room<WorldState>): void {
-  joined.onLeave((code: number) => {
-    if (room !== joined) return; // superseded by a newer join
-    room = null;
-    const action = leaveAction(code);
-    // Kick seam for Task 11: mark the session so auto-reconnection is refused.
-    if (action.blockReconnect) markKicked();
-    useAppStore.getState().leaveToEntry(action.notice);
+// Best-effort CONSENTED leave on a deliberate tab close / navigation, so the
+// server removes the player immediately instead of holding a 20s ghost window.
+// `pagehide` (not `beforeunload`) fires on mobile too; the send is best-effort.
+if (typeof window !== "undefined") {
+  window.addEventListener("pagehide", () => {
+    // Consented leave → server `onLeave` removes at once (no reconnection window).
+    void room?.leave(true);
   });
-}
-
-// Hangul range — used to tell a server-authored Korean rejection apart from a
-// low-level network error (whose message would be unhelpful English).
-const HANGUL = /[가-힣]/;
-
-function toKoreanJoinError(err: unknown): string {
-  const message = err instanceof Error ? err.message : String(err);
-  if (message && HANGUL.test(message)) return message;
-  return "서버에 연결하지 못했습니다. 잠시 후 다시 시도해주세요.";
 }

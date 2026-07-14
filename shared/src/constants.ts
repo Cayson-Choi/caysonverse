@@ -82,6 +82,16 @@ export const ANNOUNCE_MAX_LENGTH = 300;
  */
 export const KICK_CLOSE_CODE = 4001;
 
+/**
+ * Reconnection grace window in SECONDS. On an unexpected drop the server marks
+ * the player `connected = false` and calls `allowReconnection(client, this)`;
+ * the client has this long to re-establish the SAME session (same avatar and
+ * position) before the server removes the player permanently. Kicks (4001) and
+ * consented leaves bypass this window entirely (immediate removal). Shared so the
+ * server window and the client's transient-reconnect budget agree on one value.
+ */
+export const RECONNECT_WINDOW_S = 20;
+
 /** Number of selectable character presets (valid index range 0..CHARACTER_COUNT-1). */
 export const CHARACTER_COUNT = 4;
 

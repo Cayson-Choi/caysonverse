@@ -60,9 +60,12 @@ beforeEach(async () => {
   await colyseus.cleanup();
 });
 
-// Restore the env after EVERY test so ADMIN_CODE never leaks between tests.
+// Restore the env after EVERY test so test-only overrides never leak between
+// tests (ADMIN_CODE, and the Task 11 reconnection-window / maxClients overrides).
 afterEach(() => {
   delete process.env.ADMIN_CODE;
+  delete process.env.CV_RECONNECT_WINDOW_S;
+  delete process.env.CV_MAX_CLIENTS;
 });
 
 describe("WorldRoom (integration)", () => {
@@ -459,5 +462,109 @@ describe("WorldRoom admin (integration)", () => {
 
     expect(adminLeft).toBe(false);
     expect(room.state.players.has(admin.sessionId)).toBe(true);
+  });
+});
+
+// ── Task 11: reconnection lifecycle (onDrop / onReconnect / onLeave) + capacity ──
+//
+// Verified Colyseus 0.17 server API (from @colyseus/core Room):
+//   onDrop(client, code): unexpected close → allowReconnection(client, seconds).
+//   onReconnect(client):  the SAME session re-established within the window.
+//   onLeave(client, code): permanent departure (consented / kick / window expiry).
+// A drop is forced in-process by closing the client transport with a non-consented
+// code (MAY_TRY_RECONNECT=4010); a reconnect uses colyseus.sdk.reconnect(token).
+
+describe("WorldRoom reconnection (integration)", () => {
+  it("keeps a dropped player as connected=false, then a reconnect restores it with the SAME position", async () => {
+    // A 5s window: long enough to reconnect within, short enough that the pending
+    // seat timeout is cleared by the successful reconnect (no dangling timer).
+    process.env.CV_RECONNECT_WINDOW_S = "5";
+    const room = await colyseus.createRoom<WorldRoom>(WORLD_ROOM);
+    const client = await colyseus.connectTo(room, JOIN_A);
+    const sid = client.sessionId;
+    const token = client.reconnectionToken;
+    const player = room.state.players.get(sid)!;
+    const x0 = player.x;
+    const z0 = player.z;
+    expect(player.connected).toBe(true);
+
+    // Force an ABNORMAL drop (not a consented leave). Disable the test client's
+    // own auto-reconnect so ONLY our explicit reconnect drives recovery.
+    client.reconnection.enabled = false;
+    client.connection.close(4010, "test drop");
+
+    // The player stays in state, flagged disconnected → drives the ghost render.
+    expect(await pollFor(() => room.state.players.get(sid)?.connected === false)).toBe(true);
+    expect(room.state.players.has(sid)).toBe(true);
+
+    // Reconnect the SAME session within the window → ghost clears, pose preserved
+    // (the player never left state, so x/z are byte-identical).
+    const reconnected = await colyseus.sdk.reconnect(token);
+    expect(reconnected.sessionId).toBe(sid);
+    expect(await pollFor(() => room.state.players.get(sid)?.connected === true)).toBe(true);
+    expect(room.state.players.get(sid)!.x).toBe(x0);
+    expect(room.state.players.get(sid)!.z).toBe(z0);
+  });
+
+  it("removes the player when the reconnection window expires (no reconnect)", async () => {
+    process.env.CV_RECONNECT_WINDOW_S = "0.2"; // sub-second expiry — no 20s wait
+    const room = await colyseus.createRoom<WorldRoom>(WORLD_ROOM);
+    const client = await colyseus.connectTo(room, JOIN_A);
+    const sid = client.sessionId;
+
+    client.reconnection.enabled = false;
+    client.connection.close(4010, "test drop");
+
+    // First it lingers disconnected…
+    expect(await pollFor(() => room.state.players.get(sid)?.connected === false)).toBe(true);
+    // …then, with no reconnect inside the 0.2s window, it is removed permanently.
+    expect(await pollFor(() => !room.state.players.has(sid), 3000)).toBe(true);
+  });
+
+  it("removes a player immediately on a CONSENTED leave (no reconnection window)", async () => {
+    const room = await colyseus.createRoom<WorldRoom>(WORLD_ROOM);
+    const client = await colyseus.connectTo(room, JOIN_A);
+    const sid = client.sessionId;
+
+    await client.leave(true); // consented → onLeave, immediate removal
+    expect(await pollFor(() => !room.state.players.has(sid))).toBe(true);
+  });
+
+  it("kicks immediately with NO reconnection window — a kicked client cannot reconnect", async () => {
+    process.env.ADMIN_CODE = ADMIN_CODE;
+    const room = await colyseus.createRoom<WorldRoom>(WORLD_ROOM);
+    const admin = await colyseus.connectTo(room, { ...ADMIN_JOIN, adminCode: ADMIN_CODE });
+    const bob = await colyseus.connectTo(room, JOIN_B);
+    const sid = bob.sessionId;
+    const token = bob.reconnectionToken;
+    bob.reconnection.enabled = false;
+
+    admin.send(MessageType.Kick, { sid });
+    await room.waitForNextMessage();
+
+    // Removed PROMPTLY (not held for a 20s ghost window like an abnormal drop).
+    expect(await pollFor(() => !room.state.players.has(sid), 2000)).toBe(true);
+    // No window was opened, so reconnecting with the kicked token is rejected.
+    await expect(colyseus.sdk.reconnect(token)).rejects.toThrow();
+  });
+
+  it("rejects a join to a FULL room with a locked-room error (maps to the capacity notice)", async () => {
+    process.env.CV_MAX_CLIENTS = "1"; // test-only shrink; production stays MAX_CLIENTS
+    const room = await colyseus.createRoom<WorldRoom>(WORLD_ROOM);
+    expect(room.maxClients).toBe(1);
+    await colyseus.connectTo(room, JOIN_A); // fills the room → it locks
+
+    // A second join to the SAME room is rejected by matchmaking because it is
+    // locked. The client maps code 522 + a "locked" message to the Korean
+    // capacity notice (see client reconnectPolicy.isCapacityError).
+    let caught: unknown;
+    try {
+      await colyseus.connectTo(room, JOIN_B);
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeDefined();
+    expect(String((caught as { message?: unknown }).message)).toMatch(/lock/i);
+    expect((caught as { code?: unknown }).code).toBe(522);
   });
 });

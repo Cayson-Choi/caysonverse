@@ -28,6 +28,20 @@ interface AppState {
   isAdmin: boolean;
   /** One-shot Korean notice shown on the entry screen (e.g. after a kick). */
   notice: string | null;
+  /**
+   * True while the resilience driver is recovering a dropped connection: the
+   * "재연결 중..." overlay shows, the world freezes behind it, and input is
+   * suspended (LocalPlayer reads this each frame without subscribing). Set false
+   * again on a successful reconnect or when we fall back to the entry screen.
+   */
+  reconnecting: boolean;
+  /**
+   * Monotonic connection generation. Bumped on every successful (re)connection
+   * so the WorldScene, keyed by it, REMOUNTS against the new room — every
+   * scene-level `getRoom()` binding (remote sync, banner, chat) rebinds and the
+   * remote store is rebuilt clean. The first join uses generation 0.
+   */
+  connectionEpoch: number;
 
   /** Enter the world after a successful join. `isAdmin` gates the admin panel. */
   enterWorld: (identity: Identity, isAdmin?: boolean) => void;
@@ -35,6 +49,14 @@ interface AppState {
   leaveToEntry: (notice?: string | null) => void;
   /** Clear the entry notice (e.g. once the user edits the form). */
   clearNotice: () => void;
+  /** Show/hide the reconnection overlay + input suspension. */
+  setReconnecting: (reconnecting: boolean) => void;
+  /**
+   * A reconnection succeeded on `sessionId`. Adopt it (unchanged for a same-
+   * session token reconnect, new for a fresh re-join), bump the epoch to remount
+   * the scene, and clear the reconnection overlay.
+   */
+  reconnected: (sessionId: string) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -42,9 +64,19 @@ export const useAppStore = create<AppState>((set) => ({
   identity: null,
   isAdmin: false,
   notice: null,
+  reconnecting: false,
+  connectionEpoch: 0,
 
   enterWorld: (identity, isAdmin = false) =>
-    set({ screen: "world", identity, isAdmin, notice: null }),
-  leaveToEntry: (notice = null) => set({ screen: "entry", identity: null, isAdmin: false, notice }),
+    set({ screen: "world", identity, isAdmin, notice: null, reconnecting: false }),
+  leaveToEntry: (notice = null) =>
+    set({ screen: "entry", identity: null, isAdmin: false, notice, reconnecting: false }),
   clearNotice: () => set({ notice: null }),
+  setReconnecting: (reconnecting) => set({ reconnecting }),
+  reconnected: (sessionId) =>
+    set((s) => ({
+      identity: s.identity ? { ...s.identity, sessionId } : s.identity,
+      connectionEpoch: s.connectionEpoch + 1,
+      reconnecting: false,
+    })),
 }));

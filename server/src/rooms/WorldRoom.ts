@@ -12,6 +12,7 @@ import {
   WORLD_BOUNDS,
   PLAYER_RADIUS,
   KICK_CLOSE_CODE,
+  RECONNECT_WINDOW_S,
 } from "@caysonverse/shared/constants";
 import { validateMove } from "./movement";
 import { validateJoinOptions } from "./joinValidation";
@@ -79,7 +80,10 @@ interface ClientTracking {
  * options reject the join by throwing (the client receives the Korean error).
  */
 export class WorldRoom extends Room<{ state: WorldState }> {
-  maxClients = MAX_CLIENTS;
+  // Production cap is MAX_CLIENTS (110). `CV_MAX_CLIENTS` is a TEST-ONLY override
+  // (read once at construction) so an integration test can fill a tiny room and
+  // observe the full-room join failure WITHOUT weakening the production value.
+  maxClients = readMaxClients();
   patchRate = PATCH_RATE_MS;
   state = new WorldState();
 
@@ -188,10 +192,58 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     throw new Error(ADMIN_CODE_WRONG);
   }
 
+  /**
+   * Unexpected disconnect (Colyseus 0.17 lifecycle). Fires for any non-consented
+   * close. We keep the player in state but mark `connected = false` (drives the
+   * client's 50%-opacity ghost) and open a reconnection window with
+   * `allowReconnection(client, RECONNECT_WINDOW_S)`. The framework tracks that
+   * deferred: on a successful reconnect it calls `onReconnect`; on window expiry
+   * it calls `onLeave` (permanent removal). We deliberately do NOT await it here
+   * (the idiomatic 0.17 onDrop pattern — the framework owns the deferred).
+   *
+   * A KICK (close code 4001) is NOT a transient drop: we open NO window, so the
+   * subsequent `onLeave` removes the player immediately with no ghost.
+   */
+  onDrop(client: Client, code?: number): void {
+    if (code === KICK_CLOSE_CODE) return; // kicked → no reconnection window
+
+    const player = this.state.players.get(client.sessionId);
+    if (player) player.connected = false;
+    // Fire-and-forget: the framework attaches its own handlers to this deferred
+    // (resolve → onReconnect, reject/expiry → onLeave). Guard the rejection so a
+    // window expiry never surfaces as an unhandled rejection.
+    void this.allowReconnection(client, this.reconnectWindowSeconds()).catch(() => {});
+  }
+
+  /**
+   * A dropped client re-established the SAME session within the window. Its
+   * player never left state, so position/identity are already correct — we only
+   * clear the ghost flag.
+   */
+  onReconnect(client: Client): void {
+    const player = this.state.players.get(client.sessionId);
+    if (player) player.connected = true;
+  }
+
+  /**
+   * Permanent departure: a consented leave, a kick (4001), or a reconnection
+   * window that expired. Remove the player from state and drop its bookkeeping.
+   */
   onLeave(client: Client): void {
-    // Reconnection (allowReconnection/onDrop) is Task 11 — just remove for now.
     this.state.players.delete(client.sessionId);
     this.tracking.delete(client.sessionId);
+  }
+
+  /**
+   * Reconnection grace window in seconds. Production is RECONNECT_WINDOW_S (20);
+   * `CV_RECONNECT_WINDOW_S` is a TEST-ONLY override so an integration test can
+   * force a sub-second expiry without waiting 20 real seconds or touching the
+   * production constant.
+   */
+  private reconnectWindowSeconds(): number {
+    const raw = process.env.CV_RECONNECT_WINDOW_S;
+    const seconds = raw !== undefined ? Number(raw) : NaN;
+    return Number.isFinite(seconds) && seconds > 0 ? seconds : RECONNECT_WINDOW_S;
   }
 
   private handleMove(client: Client, payload: unknown): void {
@@ -331,6 +383,17 @@ export class WorldRoom extends Room<{ state: WorldState }> {
 
 function clamp(value: number, min: number, max: number): number {
   return value < min ? min : value > max ? max : value;
+}
+
+/**
+ * Resolve the room's client cap. Production uses MAX_CLIENTS (110). A test may
+ * set `CV_MAX_CLIENTS` (a positive integer) BEFORE the room is created to shrink
+ * the cap for a full-room test — never set in production.
+ */
+function readMaxClients(): number {
+  const raw = process.env.CV_MAX_CLIENTS;
+  const n = raw !== undefined ? Number(raw) : NaN;
+  return Number.isInteger(n) && n > 0 ? n : MAX_CLIENTS;
 }
 
 /**

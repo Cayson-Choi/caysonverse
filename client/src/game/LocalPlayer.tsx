@@ -19,6 +19,7 @@ import { ANIM_FADE, CHARACTERS, CLIP, MODEL_FACING_OFFSET, TURN_SPEED } from "./
 import type { MoveControl } from "./constants";
 import type { Orbit, Pose } from "./types";
 import { sendMove } from "../net/connection";
+import { isInputSuspended } from "../net/resilience";
 
 interface LocalPlayerProps {
   /** Own session id — keys this player's speech bubble in the broadcast. */
@@ -111,17 +112,22 @@ export function LocalPlayer({
     const group = groupRef.current;
     if (!group) return;
 
-    // Focus guard: while the chat input owns keyboard input, movement keys are
-    // zeroed so typing never walks the avatar. We don't touch drei's key
-    // listeners, so nothing can get stuck on blur (see uiCapture.ts).
-    const keys = guardMoveKeys(getKeys(), isUiCaptured());
+    // Focus guard: while the chat input owns keyboard input — OR while the
+    // resilience driver is reconnecting (world frozen behind the overlay) —
+    // movement keys are zeroed so nothing walks the avatar. We don't touch drei's
+    // key listeners, so nothing can get stuck on blur (see uiCapture.ts).
+    const suspended = isInputSuspended();
+    const keys = guardMoveKeys(getKeys(), isUiCaptured() || suspended);
     const keyIntent = readIntent(keys);
     // Combine keyboard + joystick into ONE camera-relative intent. worldDirection
-    // normalizes, so a blended push still moves at the constant MOVE_SPEED.
-    const intent: Intent = {
-      forward: keyIntent.forward + moveInput.forward,
-      right: keyIntent.right + moveInput.right,
-    };
+    // normalizes, so a blended push still moves at the constant MOVE_SPEED. While
+    // suspended, the joystick contribution is dropped too (full input freeze).
+    const intent: Intent = suspended
+      ? { forward: 0, right: 0 }
+      : {
+          forward: keyIntent.forward + moveInput.forward,
+          right: keyIntent.right + moveInput.right,
+        };
     const moving = intent.forward !== 0 || intent.right !== 0;
 
     if (moving) {
