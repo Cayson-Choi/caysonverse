@@ -3,6 +3,7 @@ import { useFrame } from "@react-three/fiber";
 import { useGLTF } from "@react-three/drei";
 import { AnimationMixer, Group, type AnimationAction, type Material } from "three";
 import { cloneTinted } from "./avatar";
+import { BlobShadow } from "./BlobShadow";
 import { createNametag } from "./nametag";
 import { useSpeechBubble } from "./useSpeechBubble";
 import { useEmoji } from "./useEmoji";
@@ -36,7 +37,14 @@ function applyOpacity(materials: Material[], opacity: number): void {
  * and written straight to the Object3D — never through React state. Mounted and
  * unmounted by the roster in RemotePlayers.
  */
-export function RemotePlayer({ sessionId }: { sessionId: string }) {
+export function RemotePlayer({
+  sessionId,
+  blobShadow,
+}: {
+  sessionId: string;
+  /** Draw a cheap blob shadow under this avatar (low-spec/touch profile). */
+  blobShadow: boolean;
+}) {
   // Identity is captured once at mount (the record exists — the roster derives
   // from the same map). Snapshots are read live in useFrame, not here.
   const record = getRemoteRecord(sessionId);
@@ -160,6 +168,7 @@ export function RemotePlayer({ sessionId }: { sessionId: string }) {
     <group ref={groupRef}>
       <primitive object={avatar.root} />
       <primitive object={nametag.sprite} />
+      {blobShadow && <BlobShadow />}
     </group>
   );
 }

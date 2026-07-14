@@ -1,4 +1,4 @@
-import type { Pose } from "./types";
+import type { Orbit, Pose } from "./types";
 import { getRemotes } from "./remoteStore";
 import { bubbleRegistry } from "./bubbleRegistry";
 import { emojiRegistry } from "./emojiRegistry";
@@ -29,6 +29,8 @@ declare global {
     __cv?: {
       /** The local player's live pose. */
       getPos: () => Pose;
+      /** The live third-person camera orbit (yaw/pitch/distance). */
+      getOrbit: () => Orbit;
       /** Every OTHER connected player's newest known position. */
       getRemotes: () => RemoteView[];
       /** Every currently-visible speech bubble (sid + text). */
@@ -45,10 +47,11 @@ declare global {
  * behind the DEV guard, so production evaluates `import.meta.env.DEV` to `false`
  * and tree-shakes the hook away. Returns a cleanup that removes the global.
  */
-export function installDebugHook(getPose: () => Pose): () => void {
+export function installDebugHook(getPose: () => Pose, getOrbit: () => Orbit): () => void {
   if (!import.meta.env.DEV) return () => {};
   window.__cv = {
     getPos: () => ({ ...getPose() }),
+    getOrbit: () => ({ ...getOrbit() }),
     getRemotes: () => getRemotes(),
     getBubbles: () =>
       bubbleRegistry.snapshot(performance.now()).map((b) => ({ sid: b.sid, text: b.text })),

@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useChatStore } from "../stores/chatStore";
+import { isTouchDevice } from "../device";
 
 /** Auto-scroll only when the user is already within this many px of the bottom. */
 const STICK_THRESHOLD = 24;
@@ -12,7 +13,9 @@ const STICK_THRESHOLD = 24;
  */
 export function ChatLog() {
   const log = useChatStore((s) => s.log);
-  const [collapsed, setCollapsed] = useState(false);
+  // Touch: start collapsed and open as a bottom sheet on demand (screen space is
+  // scarce and the joystick/input own the lower edge). Desktop: expanded as before.
+  const [collapsed, setCollapsed] = useState(isTouchDevice);
   const rowsRef = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
 
@@ -35,7 +38,11 @@ export function ChatLog() {
   }, [collapsed]);
 
   return (
-    <div className={"cv-chat-log" + (collapsed ? " is-collapsed" : "")}>
+    <div
+      className={
+        "cv-chat-log" + (collapsed ? " is-collapsed" : "") + (isTouchDevice ? " is-touch" : "")
+      }
+    >
       <button
         className="cv-chat-toggle"
         type="button"

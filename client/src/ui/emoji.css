@@ -36,3 +36,21 @@
   border-color: rgba(170, 150, 255, 0.9);
   background: rgba(96, 74, 166, 0.55);
 }
+
+/* ── Touch devices ── ≥44px targets, thumb spacing, wrap into a corner cluster,
+   respect the bottom safe-area, and sit clear of the bottom-left joystick. */
+.cv-touch .cv-emoji-palette {
+  right: 12px;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
+  width: 158px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.cv-touch .cv-emoji-btn {
+  width: 46px;
+  height: 46px;
+  font-size: 22px;
+  touch-action: manipulation;
+}

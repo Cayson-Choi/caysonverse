@@ -16,7 +16,14 @@ import type { Pose } from "./types";
  * `selfPose` is threaded through so the sync layer can apply self kick-back
  * corrections to the local player's live pose.
  */
-export function RemotePlayers({ selfPose }: { selfPose: Pose }) {
+export function RemotePlayers({
+  selfPose,
+  blobShadow,
+}: {
+  selfPose: Pose;
+  /** Draw blob shadows under remote avatars (low-spec/touch profile). */
+  blobShadow: boolean;
+}) {
   useEffect(() => {
     const room = getRoom();
     if (!room) return;
@@ -36,7 +43,7 @@ export function RemotePlayers({ selfPose }: { selfPose: Pose }) {
         // Per-avatar Suspense so one remote's model load never blanks the others
         // (or the local player, which shares the scene's outer boundary).
         <Suspense key={sessionId} fallback={null}>
-          <RemotePlayer sessionId={sessionId} />
+          <RemotePlayer sessionId={sessionId} blobShadow={blobShadow} />
         </Suspense>
       ))}
     </>

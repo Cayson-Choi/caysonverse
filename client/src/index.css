@@ -21,3 +21,14 @@ body,
   overflow: hidden;
   background: #0b0d14;
 }
+
+/* Own touch gestures on the 3D canvas ONLY (not the UI overlays): a drag/pinch
+   must rotate/zoom the camera, never scroll, bounce, or page-zoom the document. */
+.cv-canvas canvas {
+  touch-action: none;
+}
+
+/* Kill the 300ms double-tap-zoom delay on every button when on touch. */
+.cv-touch button {
+  touch-action: manipulation;
+}

@@ -111,3 +111,53 @@
 .cv-chat-log.is-collapsed .cv-chat-rows {
   display: none;
 }
+
+/* ── Touch devices ── larger targets, safe-area, chat as a bottom sheet ── */
+.cv-touch .cv-chat-toggle {
+  min-height: 44px;
+  padding: 10px 16px;
+  font-size: 15px;
+  touch-action: manipulation;
+}
+
+/* Raise the input clear of the joystick (bottom-left) + emoji (bottom-right)
+   cluster; a 16px field stops iOS auto-zoom on focus, and floating it here keeps
+   it visible above the on-screen keyboard. Respect the bottom safe-area inset. */
+.cv-touch .cv-chat-input {
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 158px);
+  width: min(560px, calc(100vw - 24px));
+}
+
+.cv-touch .cv-chat-field {
+  padding: 13px 16px;
+  font-size: 16px;
+  touch-action: manipulation;
+}
+
+/* Touch chat toggle lives top-left (clear of the joystick, emoji and input);
+   the expanded log drops in as a bottom sheet. */
+.cv-chat-log.is-touch {
+  top: calc(env(safe-area-inset-top, 0px) + 12px);
+  bottom: auto;
+  left: 12px;
+  right: auto;
+  width: auto;
+  align-items: flex-start;
+  padding: 0;
+}
+
+.cv-chat-log.is-touch .cv-chat-toggle {
+  margin: 0;
+}
+
+.cv-chat-log.is-touch .cv-chat-rows {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  max-height: 55vh;
+  border-radius: 16px 16px 0 0;
+  padding: 14px 16px calc(14px + env(safe-area-inset-bottom, 0px));
+  z-index: 40;
+}

@@ -1,0 +1,12 @@
+/* Virtual joystick zone (touch devices). Fixed bottom-left, safe-area aware. */
+.cv-joystick-zone {
+  position: fixed;
+  left: calc(env(safe-area-inset-left, 0px) + 20px);
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 24px);
+  width: 128px;
+  height: 128px;
+  z-index: 25;
+  /* Own the touch here so a stick drag never scrolls/bounces the page, and never
+     leaks to the canvas as a camera rotation. */
+  touch-action: none;
+}

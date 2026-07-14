@@ -9,11 +9,15 @@ import { WorldMap } from "./WorldMap";
 import { CameraRig } from "./CameraRig";
 import { Chat } from "../ui/Chat";
 import { EmojiPalette } from "../ui/EmojiPalette";
+import { TouchJoystick } from "../ui/TouchJoystick";
 import { Banner } from "../ui/Banner";
 import { AdminPanel } from "../ui/AdminPanel";
 import { getRoom } from "../net/connection";
+import { isTouchDevice } from "../device";
+import { getRenderProfile } from "./renderProfile";
 import { useAppStore } from "../stores/appStore";
 import type { Identity } from "../stores/appStore";
+import type { Intent } from "./input";
 import type { Orbit, Pose } from "./types";
 
 /** DOM loading overlay driven by three's loader progress (GLB fetch/parse). */
@@ -43,6 +47,13 @@ export function WorldScene({ identity }: { identity: Identity }) {
     pitch: CAMERA.pitch,
     distance: CAMERA.distance,
   }).current;
+  // Shared joystick movement intent (touch). Written by TouchJoystick, read by
+  // LocalPlayer and ADDED to the keyboard intent — one movement path, no fork.
+  const moveInput = useRef<Intent>({ forward: 0, right: 0 }).current;
+
+  // Static per-session render budget — chosen once at Canvas creation from the
+  // touch verdict (no runtime switching): dpr cap, real vs blob shadows.
+  const profile = getRenderProfile(isTouchDevice);
 
   const width = WORLD_BOUNDS.maxX - WORLD_BOUNDS.minX;
   const depth = WORLD_BOUNDS.maxZ - WORLD_BOUNDS.minZ;
@@ -50,8 +61,9 @@ export function WorldScene({ identity }: { identity: Identity }) {
   return (
     <>
       <Canvas
-        dpr={[1, 1.5]}
-        shadows
+        className="cv-canvas"
+        dpr={profile.dpr}
+        shadows={profile.shadows}
         camera={{ fov: 55, near: 0.1, far: 200, position: [0, 3, 8] }}
       >
         <color attach="background" args={[SKY_COLOR]} />
@@ -59,7 +71,7 @@ export function WorldScene({ identity }: { identity: Identity }) {
 
         <hemisphereLight args={[0xbcd4ff, 0x2a2340, 0.85]} />
         <directionalLight
-          castShadow
+          castShadow={profile.shadows}
           position={[8, 14, 6]}
           intensity={1.4}
           shadow-mapSize={[1024, 1024]}
@@ -94,10 +106,12 @@ export function WorldScene({ identity }: { identity: Identity }) {
               tint={identity.tint}
               pose={pose}
               orbit={orbit}
+              moveInput={moveInput}
+              blobShadow={profile.blobShadows}
             />
             {/* Other connected players: snapshot-interpolated, tinted, nametagged.
                 Mounts/unmounts on roster changes only; poses stream via the store. */}
-            <RemotePlayers selfPose={pose} />
+            <RemotePlayers selfPose={pose} blobShadow={profile.blobShadows} />
           </Suspense>
           <CameraRig pose={pose} orbit={orbit} />
         </KeyboardControls>
@@ -106,6 +120,8 @@ export function WorldScene({ identity }: { identity: Identity }) {
       <Banner />
       <Chat />
       <EmojiPalette />
+      {/* Virtual joystick — touch devices only. Keyboard stays active regardless. */}
+      {isTouchDevice && <TouchJoystick moveInput={moveInput} />}
       {isAdmin && <AdminPanel />}
     </>
   );

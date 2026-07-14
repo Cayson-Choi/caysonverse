@@ -7,7 +7,9 @@ import { MOVE_SPEED, WORLD_BOUNDS, TINT_COLORS } from "@caysonverse/shared/const
 import { OBSTACLES, PLAYER_RADIUS } from "@caysonverse/shared/worldMap";
 import { resolveCollision } from "@caysonverse/shared/collision";
 import { readIntent, worldDirection } from "./input";
+import type { Intent } from "./input";
 import { guardMoveKeys, isUiCaptured } from "./uiCapture";
+import { BlobShadow } from "./BlobShadow";
 import { useSpeechBubble } from "./useSpeechBubble";
 import { useEmoji } from "./useEmoji";
 import { stepYaw } from "./yaw";
@@ -27,6 +29,15 @@ interface LocalPlayerProps {
   pose: Pose;
   /** Shared mutable camera orbit (read for camera-relative movement). */
   orbit: Orbit;
+  /**
+   * Shared mutable joystick intent (touch). Written by the virtual joystick,
+   * read here each frame and ADDED to the keyboard intent so both input paths
+   * drive ONE camera-relative movement (no forked path). Zeroed when idle/in the
+   * dead-zone; on desktop it stays {0,0} and this is a no-op.
+   */
+  moveInput: Intent;
+  /** Draw a cheap blob shadow under this avatar (low-spec/touch profile). */
+  blobShadow: boolean;
 }
 
 /** Clone a material so tinting never mutates the shared cached asset material. */
@@ -42,7 +53,15 @@ function clamp(value: number, min: number, max: number): number {
   return value < min ? min : value > max ? max : value;
 }
 
-export function LocalPlayer({ sessionId, character, tint, pose, orbit }: LocalPlayerProps) {
+export function LocalPlayer({
+  sessionId,
+  character,
+  tint,
+  pose,
+  orbit,
+  moveInput,
+  blobShadow,
+}: LocalPlayerProps) {
   const preset = CHARACTERS[character];
   const { scene, animations } = useGLTF(preset.model);
   const [, getKeys] = useKeyboardControls<MoveControl>();
@@ -77,14 +96,14 @@ export function LocalPlayer({ sessionId, character, tint, pose, orbit }: LocalPl
   useEffect(() => {
     const idle = actions[CLIP.idle];
     idle?.reset().fadeIn(0).play();
-    const removeHook = installDebugHook(() => pose);
+    const removeHook = installDebugHook(() => pose, () => orbit);
     return () => {
       removeHook();
       actions[CLIP.idle]?.stop();
       actions[CLIP.walk]?.stop();
     };
     // actions identity changes when the (memoized) model does — safe to depend on.
-  }, [actions, pose]);
+  }, [actions, pose, orbit]);
 
   const sender = useRef(createMoveSender(sendMove)).current;
 
@@ -96,7 +115,13 @@ export function LocalPlayer({ sessionId, character, tint, pose, orbit }: LocalPl
     // zeroed so typing never walks the avatar. We don't touch drei's key
     // listeners, so nothing can get stuck on blur (see uiCapture.ts).
     const keys = guardMoveKeys(getKeys(), isUiCaptured());
-    const intent = readIntent(keys);
+    const keyIntent = readIntent(keys);
+    // Combine keyboard + joystick into ONE camera-relative intent. worldDirection
+    // normalizes, so a blended push still moves at the constant MOVE_SPEED.
+    const intent: Intent = {
+      forward: keyIntent.forward + moveInput.forward,
+      right: keyIntent.right + moveInput.right,
+    };
     const moving = intent.forward !== 0 || intent.right !== 0;
 
     if (moving) {
@@ -138,6 +163,7 @@ export function LocalPlayer({ sessionId, character, tint, pose, orbit }: LocalPl
   return (
     <group ref={groupRef}>
       <primitive object={model} />
+      {blobShadow && <BlobShadow />}
     </group>
   );
 }

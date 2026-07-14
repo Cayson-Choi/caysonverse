@@ -69,8 +69,9 @@ export const CAMERA = {
   minPitch: -0.1,
   maxPitch: 1.2,
   yaw: 0, // initial azimuth (rad) — camera starts behind the +Z-facing model
-  dragSpeed: 0.005, // rad per pixel of pointer drag
-  zoomSpeed: 0.01, // m per wheel delta unit
+  dragSpeed: 0.005, // rad per pixel of pointer drag (mouse + one-finger touch)
+  zoomSpeed: 0.01, // m per wheel delta unit (desktop wheel zoom)
+  pinchSpeed: 0.02, // m per pixel of two-finger pinch spread change (touch zoom)
 } as const;
 
 /** Scene palette — matches the entry screen's cosmic navy/violet backdrop. */
