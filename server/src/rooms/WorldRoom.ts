@@ -85,6 +85,15 @@ export class WorldRoom extends Room<{ state: WorldState }> {
   // observe the full-room join failure WITHOUT weakening the production value.
   maxClients = readMaxClients();
   patchRate = PATCH_RATE_MS;
+  // Singleton-world topology (Task 11 fix): the world is ONE shared room that must
+  // exist before any client joins and survive 0-player periods. The room is
+  // pre-created at server boot (see server/src/index.ts) and never auto-disposes
+  // when empty, so the client's join-existing-only `client.join(WORLD_ROOM)` always
+  // has exactly one room to land in — a full room is rejected (capacity notice)
+  // rather than silently spawning a second, parallel world. (A forced
+  // `room.disconnect()` still flips this to true, so test cleanup / shutdown dispose
+  // it normally.)
+  autoDispose = false;
   state = new WorldState();
 
   private readonly tracking = new Map<string, ClientTracking>();

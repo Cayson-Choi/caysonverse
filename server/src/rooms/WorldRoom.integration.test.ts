@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from "vitest";
 import { boot, type ColyseusTestServer } from "@colyseus/testing";
 import config from "@colyseus/tools";
+import { matchMaker } from "colyseus";
 import {
   WORLD_ROOM,
   MAX_CLIENTS,
@@ -548,23 +549,54 @@ describe("WorldRoom reconnection (integration)", () => {
     await expect(colyseus.sdk.reconnect(token)).rejects.toThrow();
   });
 
-  it("rejects a join to a FULL room with a locked-room error (maps to the capacity notice)", async () => {
+  it("rejects a client.join to a FULL world room (521 no-rooms-found → capacity notice)", async () => {
+    // Exercise the ACTUAL production join verb: the client uses `client.join`
+    // (join-existing-only, NEVER joinOrCreate — see connection.ts / resilience.ts),
+    // so a full world must be REJECTED here rather than silently spawning a second
+    // parallel room. Using the SDK client's `join` (colyseus.sdk) instead of the
+    // harness `connectTo` (which is join-by-id) is the whole point of this test.
     process.env.CV_MAX_CLIENTS = "1"; // test-only shrink; production stays MAX_CLIENTS
     const room = await colyseus.createRoom<WorldRoom>(WORLD_ROOM);
     expect(room.maxClients).toBe(1);
-    await colyseus.connectTo(room, JOIN_A); // fills the room → it locks
 
-    // A second join to the SAME room is rejected by matchmaking because it is
-    // locked. The client maps code 522 + a "locked" message to the Korean
-    // capacity notice (see client reconnectPolicy.isCapacityError).
+    // Fill via the same verb the client uses → the singleton locks.
+    await colyseus.sdk.join(WORLD_ROOM, JOIN_A);
+
+    // A second client.join finds no AVAILABLE (unlocked) room named "world" and is
+    // rejected with MATCHMAKE_INVALID_CRITERIA (521) + "no rooms found …". Crucially
+    // it does NOT create a second room. The client maps 521 to the Korean capacity
+    // notice (see client reconnectPolicy.isCapacityError).
     let caught: unknown;
     try {
-      await colyseus.connectTo(room, JOIN_B);
+      await colyseus.sdk.join(WORLD_ROOM, JOIN_B);
     } catch (err) {
       caught = err;
     }
     expect(caught).toBeDefined();
-    expect(String((caught as { message?: unknown }).message)).toMatch(/lock/i);
-    expect((caught as { code?: unknown }).code).toBe(522);
+    expect((caught as { code?: unknown }).code).toBe(521);
+    expect(String((caught as { message?: unknown }).message)).toMatch(/no rooms/i);
+
+    // No second world was spawned by the rejected join — still exactly one room.
+    const worldRooms = await matchMaker.query({ name: WORLD_ROOM });
+    expect(worldRooms.length).toBe(1);
+  });
+
+  it("keeps the world room alive when empty (autoDispose off — singleton survives 0 players)", async () => {
+    // The singleton topology requires the world room to survive 0-player periods
+    // (so a mass reconnect after a lull still finds the ONE room). WorldRoom sets
+    // autoDispose = false; an auto-disposing room would vanish here and the rejoin
+    // below would fail with "room not found".
+    const room = await colyseus.createRoom<WorldRoom>(WORLD_ROOM);
+    expect(room.autoDispose).toBe(false);
+
+    const first = await colyseus.connectTo(room, JOIN_A);
+    await first.leave(true); // consented → onLeave removes the only player
+    expect(await pollFor(() => room.state.players.size === 0)).toBe(true);
+
+    // The empty room was NOT disposed: a fresh join-by-id to the SAME instance
+    // still succeeds (proving it survived being empty).
+    await new Promise((r) => setTimeout(r, 100));
+    const second = await colyseus.connectTo(room, JOIN_B);
+    expect(room.state.players.has(second.sessionId)).toBe(true);
   });
 });

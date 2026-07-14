@@ -20,7 +20,15 @@ import { KICK_CLOSE_CODE } from "@caysonverse/shared/constants";
 const CONSENTED = 4000;
 /** WebSocket normal-closure code. */
 const NORMAL_CLOSURE = 1000;
-/** Matchmake error code the server returns for an invalid/locked room. */
+/**
+ * Matchmake error code the server returns when `client.join` finds NO available
+ * (unlocked) room for the requested name. In the singleton-world topology the
+ * world room is pre-created at boot and never auto-disposes, so the ONLY reason a
+ * join finds no available room is that the sole world room is locked (at capacity).
+ * (ErrorCode.MATCHMAKE_INVALID_CRITERIA in the installed Colyseus 0.17.)
+ */
+const MATCHMAKE_INVALID_CRITERIA = 521;
+/** Matchmake error code the server returns for a join-by-id to a locked room. */
 const MATCHMAKE_INVALID_ROOM_ID = 522;
 
 // ── User-facing Korean strings (identifiers stay English). ──
@@ -59,14 +67,19 @@ interface ErrorLike {
   message?: unknown;
 }
 
-/** True when a join failure means the room is full/locked (capacity reached). */
+/** True when a join failure means the world room is full/locked (capacity reached). */
 export function isCapacityError(err: unknown): boolean {
   if (err === null || typeof err !== "object") return false;
   const e = err as ErrorLike;
   const message = typeof e.message === "string" ? e.message : "";
-  // A specific room that is at capacity is "locked" and rejected by matchmaking
-  // with MATCHMAKE_INVALID_ROOM_ID + a "…is locked" message (verified via the
-  // server integration test with a tiny maxClients override).
+  // PRODUCTION path — `client.join(WORLD_ROOM)` (join-existing-only): a full world
+  // room is locked, so matchmaking finds no available room and rejects with
+  // MATCHMAKE_INVALID_CRITERIA (521) + "no rooms found …". Because the singleton
+  // world is pre-created at boot and never auto-disposes, 521 can only mean it is
+  // full (verified via the server integration test with a tiny maxClients override).
+  if (e.code === MATCHMAKE_INVALID_CRITERIA) return true;
+  // Legacy join-by-id path: a specific room at capacity is "locked" and rejected
+  // with MATCHMAKE_INVALID_ROOM_ID (522) + a "…is locked" message.
   return e.code === MATCHMAKE_INVALID_ROOM_ID && /lock(ed)?/i.test(message);
 }
 

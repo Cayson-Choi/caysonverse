@@ -14,9 +14,10 @@
  *     `reconnectionToken` (server held the seat via allowReconnection), within the
  *     RECONNECT_WINDOW_S budget → same avatar, same position. If the server
  *     answers but rejects the token (it restarted), we skip straight to Phase 2.
- *   Phase 2 — server restarted / window expired: silent fresh joinOrCreate with
- *     the cached identity and the pure exponential backoff (1s,2s,4s… cap 8s,
- *     ~30s). A new avatar at spawn is EXPECTED (no DB).
+ *   Phase 2 — server restarted / window expired: silent fresh join (join-existing
+ *     -only against the boot-created singleton world) with the cached identity and
+ *     the pure exponential backoff (1s,2s,4s… cap 8s, ~30s). A new avatar at spawn
+ *     is EXPECTED (no DB). A full world here surfaces the capacity notice.
  *   Exhausted → entry screen with the failure notice.
  *
  * Every successful (re)connection produces a NEW room; `onReconnected` swaps the
@@ -31,7 +32,7 @@ import {
   client,
   getRoom,
   setRoom,
-  joinOrCreateRoom,
+  joinRoom,
   waitForSelf,
 } from "./connection";
 import { reconnectBackoffMs } from "./backoff";
@@ -183,7 +184,7 @@ async function phaseFreshJoin(store: ReturnType<typeof useAppStore.getState>): P
 
   for (let attempt = 0; ; attempt++) {
     try {
-      const room = await joinOrCreateRoom(params);
+      const room = await joinRoom(params);
       await waitForSelf(room);
       onReconnected(room);
       return true;

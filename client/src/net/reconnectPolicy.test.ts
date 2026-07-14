@@ -47,13 +47,26 @@ describe("decideLeave (leave-code → action table)", () => {
 });
 
 describe("capacity + join-error mapping", () => {
-  it("detects a locked/full-room matchmake error", () => {
+  it("detects the production client.join full-room error (521 no-rooms-found)", () => {
+    // client.join to the full singleton world → matchmaking finds no available
+    // (unlocked) room → MATCHMAKE_INVALID_CRITERIA (521). This is the production
+    // path (connection.ts / resilience.ts both call client.join).
+    expect(
+      isCapacityError({ code: 521, message: "no rooms found with provided criteria" }),
+    ).toBe(true);
+  });
+
+  it("still detects a legacy join-by-id locked/full-room matchmake error (522 locked)", () => {
     expect(isCapacityError({ code: 522, message: 'room "abc" is locked' })).toBe(true);
     expect(isCapacityError(new Error("something else"))).toBe(false);
+    expect(isCapacityError({ code: 521 })).toBe(true); // bare code — message not required
     expect(isCapacityError(null)).toBe(false);
   });
 
   it("maps a capacity error to the exact Korean capacity notice", () => {
+    expect(
+      joinErrorNotice({ code: 521, message: "no rooms found with provided criteria" }),
+    ).toBe(CAPACITY_NOTICE);
     expect(joinErrorNotice({ code: 522, message: 'room "abc" is locked' })).toBe(CAPACITY_NOTICE);
     expect(CAPACITY_NOTICE).toContain("정원이 가득"); // 정원이 가득
     expect(CAPACITY_NOTICE).toContain("110");

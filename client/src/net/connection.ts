@@ -38,17 +38,23 @@ export function setRoom(next: Room<WorldState> | null): void {
   room = next;
 }
 
-/** Raw joinOrCreate — throws the SDK's native error (the caller maps it). */
-export function joinOrCreateRoom(params: JoinParams): Promise<Room<WorldState>> {
-  return client.joinOrCreate<WorldState>(WORLD_ROOM, params);
+/**
+ * Raw join of the ONE shared world room — join-existing-only (NEVER joinOrCreate).
+ * The room is pre-created at server boot and never auto-disposes, so this always
+ * targets the single canonical world. If it is full/locked, matchmaking rejects
+ * (it will NOT spawn a second room), and the caller maps that to the capacity
+ * notice. Throws the SDK's native error (the caller maps it).
+ */
+export function joinRoom(params: JoinParams): Promise<Room<WorldState>> {
+  return client.join<WorldState>(WORLD_ROOM, params);
 }
 
 /**
- * Join (or create) the world room from the entry screen. Resolves once our own
- * player exists in the synced state (so the caller can read the authoritative
- * spawn). Rejects with an Error whose message is user-facing Korean — the
- * server's rejection string when available, the capacity notice for a full room,
- * else a generic connection-failure message.
+ * Join the world room from the entry screen. Resolves once our own player exists
+ * in the synced state (so the caller can read the authoritative spawn). Rejects
+ * with an Error whose message is user-facing Korean — the server's rejection
+ * string when available, the capacity notice for a full room, else a generic
+ * connection-failure message.
  *
  * Resilience is attached BEFORE the join-wait: a drop during `waitForSelf` (up
  * to 2s) is then handled by the reconnection driver rather than stranding the
@@ -57,7 +63,7 @@ export function joinOrCreateRoom(params: JoinParams): Promise<Room<WorldState>> 
 export async function joinWorld(params: JoinParams): Promise<Room<WorldState>> {
   let joined: Room<WorldState>;
   try {
-    joined = await joinOrCreateRoom(params);
+    joined = await joinRoom(params);
   } catch (err) {
     throw new Error(joinErrorNotice(err));
   }

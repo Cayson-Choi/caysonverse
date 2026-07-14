@@ -1,8 +1,8 @@
 import path from "node:path";
 import fs from "node:fs";
 import express from "express";
-import { defineServer } from "colyseus";
-import { APP_NAME, DEFAULT_SERVER_PORT } from "@caysonverse/shared/constants";
+import { defineServer, matchMaker } from "colyseus";
+import { APP_NAME, DEFAULT_SERVER_PORT, WORLD_ROOM } from "@caysonverse/shared/constants";
 import { rooms } from "./rooms";
 
 const PORT = Number(process.env.PORT ?? DEFAULT_SERVER_PORT);
@@ -45,6 +45,15 @@ const server = defineServer({
   },
 });
 
-server.listen(PORT).then(() => {
+server.listen(PORT).then(async () => {
+  // Pre-create the ONE shared world room at boot (verified against Colyseus 0.17:
+  // matchMaker.createRoom must run AFTER listen() — beforeListen is too early, the
+  // matchmaker has no processId yet). Combined with WorldRoom.autoDispose = false,
+  // the singleton exists before the first client and survives empty. The client
+  // uses join-existing-only (`client.join`), so a full room surfaces the capacity
+  // notice instead of silently spawning a second world. Runs on every boot, so a
+  // server restart re-creates the room for reconnecting clients. With the in-memory
+  // LocalDriver/LocalPresence this resolves before the transport serves any request.
+  await matchMaker.createRoom(WORLD_ROOM, {});
   console.log(`[${APP_NAME}] listening on http://localhost:${PORT}`);
 });
