@@ -40,6 +40,11 @@ describe("sanitizeChat", () => {
     expect(sanitizeChat("a\u200Bb\u200Cc\u200Dd\u2060e\uFEFFf")).toBe("abcdef");
   });
 
+  it("strips an embedded newline between words (chat is single-line)", () => {
+    // Contrast with sanitizeAnnounce, which PRESERVES this newline (F6).
+    expect(sanitizeChat("1교시\n2교시")).toBe("1교시2교시");
+  });
+
   it("preserves a Korean sentence that contains no control chars", () => {
     const s = "가나다라마바사아자차카타파하 밥이랑 놀자!";
     expect(sanitizeChat(s)).toBe(s);
@@ -80,5 +85,18 @@ describe("stripControl", () => {
 
   it("does not trim (trimming is the caller's responsibility)", () => {
     expect(stripControl("  hi  ")).toBe("  hi  ");
+  });
+
+  it("strips newlines by default (single-line policy for chat)", () => {
+    expect(stripControl("a\nb\r\nc")).toBe("abc");
+  });
+
+  it("preserves newlines with keepNewlines, still stripping other controls", () => {
+    // \n kept; \t and a zero-width joiner (U+200D) still stripped.
+    expect(stripControl("a\nb\tc" + String.fromCharCode(0x200D) + "d", { keepNewlines: true })).toBe("a\nbcd");
+  });
+
+  it("normalizes CRLF and bare CR to LF when keeping newlines", () => {
+    expect(stripControl("a\r\nb\rc", { keepNewlines: true })).toBe("a\nb\nc");
   });
 });

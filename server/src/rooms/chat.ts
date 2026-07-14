@@ -35,11 +35,25 @@ function isStripped(code: number): boolean {
  * visible content and regular spaces. Does NOT trim — the caller decides whether
  * leading/trailing spaces matter. Shared by sanitizeChat and sanitizeAnnounce so
  * the strip policy lives in exactly one place.
+ *
+ * `keepNewlines` (announce only, final-review F6): when true, line feeds are
+ * CONTENT, not noise — the announce UI is deliberately multi-line (rows=3
+ * textarea, pre-wrap banner). We first normalize `\r\n` and bare `\r` to `\n`,
+ * then preserve `\n` (0x0A) while still stripping every OTHER C0/C1/zero-width
+ * character. Chat leaves this false so it stays single-line (newlines stripped).
  */
-export function stripControl(text: string): string {
+export function stripControl(text: string, opts: { keepNewlines?: boolean } = {}): string {
+  const keepNewlines = opts.keepNewlines === true;
+  // Normalize CRLF / bare CR to LF so any newline the user typed survives as \n.
+  const source = keepNewlines ? text.replace(/\r\n?/g, "\n") : text;
   let cleaned = "";
-  for (const ch of text) {
-    if (!isStripped(ch.codePointAt(0)!)) cleaned += ch;
+  for (const ch of source) {
+    const code = ch.codePointAt(0)!;
+    if (keepNewlines && code === 0x0a) {
+      cleaned += ch; // preserve the line feed as content
+      continue;
+    }
+    if (!isStripped(code)) cleaned += ch;
   }
   return cleaned;
 }
