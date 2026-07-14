@@ -4,6 +4,9 @@ dist/
 .env
 .env.*
 !.env.example
+# Vite convention: .env.development holds non-secret dev defaults and is committed
+# (unlike .env*.local). The client dev server URL lives here.
+!client/.env.development
 .DS_Store
 Thumbs.db
 .superpowers/

@@ -1,0 +1,27 @@
+{
+  "name": "caysonverse",
+  "version": "0.1.0",
+  "private": true,
+  "description": "웹 기반 3D 메타버스 (React Three Fiber + Colyseus)",
+  "engines": {
+    "node": ">=22"
+  },
+  "workspaces": [
+    "shared",
+    "server",
+    "client"
+  ],
+  "scripts": {
+    "dev": "concurrently -k -n server,client -c blue,green npm:dev:server npm:dev:client",
+    "dev:server": "npm run dev -w server",
+    "dev:client": "npm run dev -w client",
+    "build": "npm run build -w server && npm run build -w client",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "start": "node server/dist/index.cjs"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.3",
+    "typescript": "~5.9.3"
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "CommonJS",
+    "moduleResolution": "node10",
+    "lib": ["ES2022"],
+    "types": ["node"],
+    "strict": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "forceConsistentCasingInFileNames": true,
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": {
+      "@caysonverse/shared/*": ["../shared/src/*"]
+    },
+
+    // @colyseus/schema decorators run on the SERVER at runtime, so these flags
+    // must match shared/tsconfig.json. Without useDefineForClassFields:false the
+    // @type field initializers shadow the change-tracking accessors and state
+    // sync fails SILENTLY. The production bundle uses this file via esbuild
+    // `--tsconfig`, so esbuild applies the same flags. Do NOT change these two.
+    "experimentalDecorators": true,
+    "useDefineForClassFields": false
+  },
+  "include": ["src"]
+}

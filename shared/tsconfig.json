@@ -1,0 +1,26 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2022"],
+    "strict": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": false,
+    "forceConsistentCasingInFileNames": true,
+    "noEmit": true,
+
+    // @colyseus/schema state sync depends on TypeScript "legacy" decorators AND
+    // on class fields compiling to plain assignments. With
+    // useDefineForClassFields:true, each `@type` field initializer becomes an
+    // OWN data property that shadows the accessor @type installs on the
+    // prototype, so mutations are never tracked and encode() emits nothing —
+    // state sync then fails SILENTLY at runtime. The schema smoke test guards
+    // this. Do NOT change these two flags.
+    "experimentalDecorators": true,
+    "useDefineForClassFields": false
+  },
+  "include": ["src"]
+}
