@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { normalizeAngle, stepYaw } from "./yaw";
+import { normalizeAngle, stepYaw, lerpAngle } from "./yaw";
 
 const PI = Math.PI;
 
@@ -36,5 +36,22 @@ describe("stepYaw", () => {
     expect(out).toBeCloseTo(-3.1, 6);
     expect(out).toBeGreaterThanOrEqual(-PI);
     expect(out).toBeLessThanOrEqual(PI);
+  });
+});
+
+describe("lerpAngle", () => {
+  it("interpolates linearly within a segment", () => {
+    expect(lerpAngle(0, 1, 0)).toBeCloseTo(0, 6);
+    expect(lerpAngle(0, 1, 1)).toBeCloseTo(1, 6);
+    expect(lerpAngle(0, 1, 0.5)).toBeCloseTo(0.5, 6);
+  });
+
+  it("takes the shortest arc across the +/-PI seam", () => {
+    // -3.1 -> +3.1 midpoint sits near -PI (short arc through -PI), not near 0.
+    const mid = lerpAngle(-3.1, 3.1, 0.5);
+    expect(Math.abs(mid)).toBeCloseTo(PI, 2);
+    expect(Math.abs(mid)).toBeGreaterThan(3.0);
+    expect(mid).toBeGreaterThanOrEqual(-PI);
+    expect(mid).toBeLessThanOrEqual(PI);
   });
 });

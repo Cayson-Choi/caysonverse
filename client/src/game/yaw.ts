@@ -18,3 +18,13 @@ export function stepYaw(current: number, target: number, maxDelta: number): numb
   if (Math.abs(diff) <= maxDelta) return normalizeAngle(target);
   return normalizeAngle(current + Math.sign(diff) * maxDelta);
 }
+
+/**
+ * Interpolate from angle `a` to angle `b` by fraction `f` (0..1) along the
+ * shortest arc, wrapped/normalized to [-PI, PI]. Used for snapshot yaw blending
+ * so a facing change near the +/-PI seam takes the short way, never a full spin.
+ */
+export function lerpAngle(a: number, b: number, f: number): number {
+  const diff = normalizeAngle(b - a);
+  return normalizeAngle(a + diff * f);
+}

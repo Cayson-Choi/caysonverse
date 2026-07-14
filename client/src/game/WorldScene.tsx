@@ -4,6 +4,7 @@ import { Grid, KeyboardControls, useProgress } from "@react-three/drei";
 import { SPAWN_POINT, WORLD_BOUNDS } from "@caysonverse/shared/constants";
 import { CAMERA, FOG_FAR, FOG_NEAR, MOVE_KEYS, SKY_COLOR } from "./constants";
 import { LocalPlayer } from "./LocalPlayer";
+import { RemotePlayers } from "./RemotePlayers";
 import { CameraRig } from "./CameraRig";
 import { getRoom } from "../net/connection";
 import type { Identity } from "../stores/appStore";
@@ -86,6 +87,9 @@ export function WorldScene({ identity }: { identity: Identity }) {
               pose={pose}
               orbit={orbit}
             />
+            {/* Other connected players: snapshot-interpolated, tinted, nametagged.
+                Mounts/unmounts on roster changes only; poses stream via the store. */}
+            <RemotePlayers selfPose={pose} />
           </Suspense>
           <CameraRig pose={pose} orbit={orbit} />
         </KeyboardControls>

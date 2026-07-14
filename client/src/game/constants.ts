@@ -77,3 +77,63 @@ export const CAMERA = {
 export const SKY_COLOR = "#171335";
 export const FOG_NEAR = 25;
 export const FOG_FAR = 70;
+
+/*
+ * ── Remote-avatar snapshot interpolation & rendering (BINDING values) ──
+ * These are the exact tuning numbers Task 5 mandates. Kept in one auditable
+ * place; the pure modules (interpolation/locomotion/mixerThrottle) and the
+ * RemotePlayer component all reference them so a change never drifts.
+ */
+
+/**
+ * Render remote players this many ms in the past. We always draw from a time
+ * behind the newest received snapshot so there are two snapshots to interpolate
+ * BETWEEN, hiding jitter/loss. Buffered latency, deliberately traded for smooth.
+ */
+export const RENDER_DELAY_MS = 150;
+
+/**
+ * When the render time runs past the newest snapshot (a dropped/late patch), we
+ * dead-reckon at the last segment's velocity for at most this long, then freeze
+ * in place (which the locomotion layer reads as idle).
+ */
+export const EXTRAPOLATE_MAX_MS = 250;
+
+/** Per-remote-player snapshot ring buffer capacity (oldest evicted). */
+export const SNAPSHOT_CAPACITY = 10;
+
+/**
+ * If a freshly sampled target is farther than this (m) from where the avatar is
+ * currently drawn, teleport instead of sliding — the server clamped/rejected a
+ * move (kick-back) or the player respawned. Also the self kick-back threshold.
+ */
+export const SNAP_DISTANCE = 3;
+
+/**
+ * Locomotion hysteresis (m/s): begin the walk cycle above ON, end it below OFF.
+ * The gap between the two keeps the animation from flapping when interpolated
+ * speed wobbles around a single threshold at snapshot boundaries.
+ */
+export const WALK_ON_SPEED = 0.3;
+export const WALK_OFF_SPEED = 0.15;
+
+/**
+ * Mixer-update distance bands (m from camera) and their frame strides. Distant
+ * avatars advance their animation less often to save CPU (v1 rule, no LOD yet):
+ *   d < NEAR         → every frame
+ *   NEAR ≤ d ≤ FAR   → every 3rd frame
+ *   d > FAR          → every 6th frame
+ * The withheld frames' deltas are accumulated and passed on the frame we tick,
+ * so the animation plays at the correct speed, just chunkier.
+ */
+export const MIXER_NEAR_DIST = 10;
+export const MIXER_FAR_DIST = 25;
+export const MIXER_STRIDE_NEAR = 1;
+export const MIXER_STRIDE_MID = 3;
+export const MIXER_STRIDE_FAR = 6;
+
+/** Hide a remote player's nametag beyond this distance from the camera (m). */
+export const NAMETAG_MAX_DIST = 20;
+
+/** Height (m) of the nametag sprite above the avatar's feet. */
+export const NAMETAG_HEIGHT = 2.1;
