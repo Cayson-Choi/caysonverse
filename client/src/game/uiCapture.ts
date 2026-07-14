@@ -31,3 +31,21 @@ export function guardMoveKeys(keys: MoveKeys, uiCaptured: boolean): MoveKeys {
   if (!uiCaptured) return keys;
   return { forward: false, backward: false, left: false, right: false };
 }
+
+/**
+ * React-effect helper for a focus-capturing UI element (chat input, admin panel).
+ * Returns a disposer that RELEASES the capture flag on unmount.
+ *
+ * Why this is needed: the flag is normally released by the element's onBlur /
+ * focusout, but browsers fire NO blur/focusout when a focused element is removed
+ * from the DOM — which is exactly what happens when a reconnect bumps the
+ * connection epoch (WorldScene remounts, unmounting a focused ChatInput) or a
+ * kick/failed reconnect tears down the world. Without this disposer the flag
+ * stays stranded `true` forever: WASD is zeroed every frame, Enter-to-chat and
+ * emoji shortcuts are swallowed — desktop movement silently dead until the user
+ * manually clicks and blurs the (now gone) field. Wire it as
+ * `useEffect(captureReleaseEffect, [])`.
+ */
+export function captureReleaseEffect(): () => void {
+  return () => setUiCaptured(false);
+}

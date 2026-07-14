@@ -1,4 +1,4 @@
-import { Suspense, useRef } from "react";
+import { Suspense, useEffect, useRef } from "react";
 import { Canvas } from "@react-three/fiber";
 import { Grid, KeyboardControls, useProgress } from "@react-three/drei";
 import { SPAWN_POINT, WORLD_BOUNDS } from "@caysonverse/shared/constants";
@@ -15,6 +15,7 @@ import { AdminPanel } from "../ui/AdminPanel";
 import { getRoom } from "../net/connection";
 import { isTouchDevice } from "../device";
 import { getRenderProfile } from "./renderProfile";
+import { setUiCaptured } from "./uiCapture";
 import { useAppStore } from "../stores/appStore";
 import type { Identity } from "../stores/appStore";
 import type { Intent } from "./input";
@@ -50,6 +51,12 @@ export function WorldScene({ identity }: { identity: Identity }) {
   // Shared joystick movement intent (touch). Written by TouchJoystick, read by
   // LocalPlayer and ADDED to the keyboard intent — one movement path, no fork.
   const moveInput = useRef<Intent>({ forward: 0, right: 0 }).current;
+
+  // Belt-and-braces: every fresh world (initial join AND each reconnect remount,
+  // since this scene is keyed by connectionEpoch) starts with movement UNcaptured.
+  // The per-component unmount cleanups already release the flag, but resetting on
+  // mount guarantees a stranded capture can never survive into a new world.
+  useEffect(() => setUiCaptured(false), []);
 
   // Static per-session render budget — chosen once at Canvas creation from the
   // touch verdict (no runtime switching): dpr cap, real vs blob shadows.

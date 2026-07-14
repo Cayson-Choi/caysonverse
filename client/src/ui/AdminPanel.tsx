@@ -1,8 +1,8 @@
-import { useState, useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { ANNOUNCE_MAX_LENGTH } from "@caysonverse/shared/constants";
 import { sendAnnounce, sendKick } from "../net/connection";
 import { getRoster, subscribeRoster, getRemoteRecord } from "../game/remoteStore";
-import { setUiCaptured } from "../game/uiCapture";
+import { setUiCaptured, captureReleaseEffect } from "../game/uiCapture";
 import { useAppStore } from "../stores/appStore";
 import "./admin.css";
 
@@ -33,6 +33,11 @@ export function AdminPanel() {
   const [open, setOpen] = useState(true);
   const [text, setText] = useState("");
   const [confirmSid, setConfirmSid] = useState<string | null>(null);
+
+  // Release the UI-capture flag if the panel unmounts while a field is focused
+  // (a reconnect epoch bump remounts the scene, or the instructor loses admin) —
+  // browsers fire no focusout for a removed element, so handleBlur never runs.
+  useEffect(captureReleaseEffect, []);
 
   if (!identity) return null;
 

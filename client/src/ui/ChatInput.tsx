@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { CHAT_MAX_LENGTH } from "@caysonverse/shared/constants";
-import { setUiCaptured, isUiCaptured } from "../game/uiCapture";
+import { setUiCaptured, isUiCaptured, captureReleaseEffect } from "../game/uiCapture";
 import { sendChat } from "../net/connection";
 
 const PLACEHOLDER = "메시지를 입력하세요 (Enter)";
@@ -35,6 +35,12 @@ export function ChatInput() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
+
+  // Release the UI-capture flag if this input unmounts WHILE focused. A reconnect
+  // (epoch bump → WorldScene remount) or a kick removes the focused field from
+  // the DOM, and browsers fire no blur for a removed element — so onBlur never
+  // runs and the flag would otherwise strand `true`, killing WASD/Enter/emoji.
+  useEffect(captureReleaseEffect, []);
 
   function submit() {
     sendChat(value); // trims + drops empty; server is authoritative
