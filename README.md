@@ -24,9 +24,16 @@ npm run dev       # 서버(tsx watch) + 클라이언트(vite) 동시 실행
 npm run build     # 서버 번들(server/dist/index.cjs) + 클라이언트 빌드(client/dist)
 npm run typecheck # 전체 워크스페이스 타입 검사
 npm run test      # vitest 테스트 실행 (스키마 스모크 테스트 포함)
-npm start         # 빌드된 프로덕션 서버 실행 (NODE_ENV=production 권장)
+npm start         # 빌드된 프로덕션 서버 실행 (client/dist가 있으면 SPA도 같은 오리진에서 서빙)
 npm run loadtest  # 부하 테스트 봇 실행 (인자 pass-through, docs/loadtest.md 참고)
 ```
 
 개발 시 클라이언트는 `client/.env.development`의 `VITE_SERVER_URL`(기본 `http://localhost:2567`)로
-서버에 접속합니다. 프로덕션에서는 서버가 클라이언트 정적 파일을 같은 오리진에서 서빙합니다.
+서버에 접속합니다. 프로덕션에서는 `VITE_SERVER_URL`이 없어 클라이언트가 `window.location.origin`을
+사용하며, 서버가 클라이언트 정적 파일(`client/dist`)을 같은 오리진에서 서빙합니다. `npm run build` 후
+`npm start`만 실행하면(별도 환경변수 불필요) SPA까지 서빙됩니다.
+
+## 배포
+
+Railway 배포 방법과 운영 팁은 [`docs/deploy.md`](docs/deploy.md)를 참고하세요.
+배포 설정은 저장소 루트 `railway.toml`에 코드로 들어 있습니다.

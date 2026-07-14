@@ -6,11 +6,10 @@ import { APP_NAME, DEFAULT_SERVER_PORT, WORLD_ROOM } from "@caysonverse/shared/c
 import { rooms } from "./rooms";
 
 const PORT = Number(process.env.PORT ?? DEFAULT_SERVER_PORT);
-const isProduction = process.env.NODE_ENV === "production";
 
 // Built client assets, produced by `vite build`. This resolves to
 // <repo>/client/dist both in dev (tsx, __dirname = server/src) and in the
-// production bundle (__dirname = server/dist). Present in production only.
+// production bundle (__dirname = server/dist). Present after `npm run build`.
 const clientDist = path.resolve(__dirname, "..", "..", "client", "dist");
 
 const server = defineServer({
@@ -26,10 +25,13 @@ const server = defineServer({
       res.json({ ok: true });
     });
 
-    // Serve the built SPA in production only. In dev the client runs on the
-    // Vite dev server and `client/dist` usually does not exist — skip serving
-    // gracefully so the server still boots.
-    if (isProduction && fs.existsSync(clientDist)) {
+    // Serve the built SPA whenever `client/dist` exists — no NODE_ENV gate, so a
+    // bare `npm start` (which does NOT set NODE_ENV) serves the app on Railway
+    // and locally alike (resolves [task2-m1]). In dev the client runs on the
+    // Vite dev server and `client/dist` usually does not exist, so this block is
+    // skipped and the server still boots; if a stale dist happens to be present
+    // on a dev box, serving it is harmless (the Vite dev server is used anyway).
+    if (fs.existsSync(clientDist)) {
       app.use(express.static(clientDist));
 
       // SPA fallback: return index.html for client-side routes but never for
