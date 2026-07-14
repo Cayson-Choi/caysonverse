@@ -95,10 +95,19 @@ export const RENDER_DELAY_MS = 150;
 
 /**
  * When the render time runs past the newest snapshot (a dropped/late patch), we
- * dead-reckon at the last segment's velocity for at most this long, then freeze
- * in place (which the locomotion layer reads as idle).
+ * dead-reckon at the last segment's velocity for at most this long, then ease
+ * back to the authoritative rest pose (see EXTRAPOLATE_SETTLE_MS).
  */
 export const EXTRAPOLATE_MAX_MS = 250;
+
+/**
+ * After the extrapolation window closes, the avatar EASES from the overshot
+ * dead-reckon position back to `newest` (the last authoritative pose) over this
+ * long, then holds there. A remote that stopped walking emits no further patches,
+ * so extrapolation must be a transient loss-hiding measure that CONVERGES to the
+ * server position — never a permanent standing offset ~1m past the true stop.
+ */
+export const EXTRAPOLATE_SETTLE_MS = 150;
 
 /** Per-remote-player snapshot ring buffer capacity (oldest evicted). */
 export const SNAPSHOT_CAPACITY = 10;

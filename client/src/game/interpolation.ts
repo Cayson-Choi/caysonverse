@@ -6,8 +6,14 @@
  * by the caller, so this module reads no clock and is exhaustively unit-testable.
  */
 
+import { MOVE_SPEED } from "@caysonverse/shared/constants";
 import { normalizeAngle, lerpAngle } from "./yaw";
-import { EXTRAPOLATE_MAX_MS, SNAPSHOT_CAPACITY, SNAP_DISTANCE } from "./constants";
+import {
+  EXTRAPOLATE_MAX_MS,
+  EXTRAPOLATE_SETTLE_MS,
+  SNAPSHOT_CAPACITY,
+  SNAP_DISTANCE,
+} from "./constants";
 
 /** One received position sample. `t` is a local (client) receive timestamp. */
 export interface Snapshot {
@@ -45,8 +51,9 @@ export function pushSnapshot(
  *
  * - renderT before the oldest snapshot → clamp to the oldest (idle).
  * - renderT between two snapshots → linear x/z, shortest-arc yaw.
- * - renderT past the newest → extrapolate at the last segment's velocity for at
- *   most EXTRAPOLATE_MAX_MS, then freeze in place (speed 0 → reads as idle).
+ * - renderT past the newest → extrapolate at the last segment's velocity (clamped
+ *   to MOVE_SPEED) for at most EXTRAPOLATE_MAX_MS, then ease back to `newest` (the
+ *   authoritative rest pose) over EXTRAPOLATE_SETTLE_MS and hold (speed 0 → idle).
  */
 export function sample(snapshots: readonly Snapshot[], renderT: number): Sample | null {
   const n = snapshots.length;
@@ -82,9 +89,17 @@ export function sample(snapshots: readonly Snapshot[], renderT: number): Sample 
 }
 
 /**
- * Dead-reckon past the newest snapshot using the last segment's velocity,
- * capped at EXTRAPOLATE_MAX_MS then frozen. A single snapshot (or a zero-length
- * segment) simply holds position.
+ * Dead-reckon past the newest snapshot using the last segment's velocity, then
+ * converge back to the authoritative rest pose:
+ *   - velocity is CLAMPED to MOVE_SPEED — any faster segment is receive-time
+ *     jitter (a delayed-then-burst patch pair), not real motion, and must not
+ *     fling the avatar (potentially through walls/furniture);
+ *   - within EXTRAPOLATE_MAX_MS we dead-reckon forward (still "moving");
+ *   - after the window, since a stopped remote emits no further patches, we EASE
+ *     from the overshoot back to `newest` over EXTRAPOLATE_SETTLE_MS and hold —
+ *     so idle avatars settle onto their server position instead of freezing ~1m
+ *     past the true stop.
+ * A single snapshot (or a zero-length segment) simply holds position.
  */
 function extrapolate(snapshots: readonly Snapshot[], renderT: number, newest: Snapshot): Sample {
   if (snapshots.length < 2) {
@@ -97,18 +112,38 @@ function extrapolate(snapshots: readonly Snapshot[], renderT: number, newest: Sn
   }
 
   const ahead = renderT - newest.t; // > 0 by the caller's guard
-  const capped = Math.min(ahead, EXTRAPOLATE_MAX_MS);
-  const vx = (newest.x - prev.x) / span; // m per ms
-  const vz = (newest.z - prev.z) / span;
+
+  // Last-segment velocity (m per ms), clamped in MAGNITUDE to MOVE_SPEED.
+  let vx = (newest.x - prev.x) / span;
+  let vz = (newest.z - prev.z) / span;
+  const speedMs = Math.hypot(vx, vz); // m per ms
+  const maxMs = MOVE_SPEED / 1000; // MOVE_SPEED m/s → m per ms
+  if (speedMs > maxMs) {
+    const k = maxMs / speedMs;
+    vx *= k;
+    vz *= k;
+  }
   const wYaw = normalizeAngle(newest.yaw - prev.yaw) / span; // rad per ms
 
-  const x = newest.x + vx * capped;
-  const z = newest.z + vz * capped;
-  const yaw = normalizeAngle(newest.yaw + wYaw * capped);
-  // Within the extrapolation window we're still "moving"; once frozen past the
-  // cap the avatar holds position and reads as idle.
-  const speed = ahead <= EXTRAPOLATE_MAX_MS ? Math.hypot(vx, vz) * 1000 : 0;
-  return { x, z, yaw, speed };
+  // The overshoot pose at the end of the dead-reckon window (the clamped reach).
+  const capped = Math.min(ahead, EXTRAPOLATE_MAX_MS);
+  const overX = newest.x + vx * capped;
+  const overZ = newest.z + vz * capped;
+  const overYaw = normalizeAngle(newest.yaw + wYaw * capped);
+
+  // Phase A — still within the window: dead-reckon forward, reads as moving.
+  if (ahead <= EXTRAPOLATE_MAX_MS) {
+    return { x: overX, z: overZ, yaw: overYaw, speed: Math.hypot(vx, vz) * 1000 };
+  }
+
+  // Phase B/C — past the window: ease the overshoot back to the authoritative
+  // rest pose and hold. e goes 0→1 across the settle; at e=1 we are exactly at
+  // `newest`. A settling correction reads as idle (speed 0), not a walk cycle.
+  const e = Math.min((ahead - EXTRAPOLATE_MAX_MS) / EXTRAPOLATE_SETTLE_MS, 1);
+  const x = overX + (newest.x - overX) * e;
+  const z = overZ + (newest.z - overZ) * e;
+  const yaw = lerpAngle(overYaw, newest.yaw, e);
+  return { x, z, yaw, speed: 0 };
 }
 
 /**
