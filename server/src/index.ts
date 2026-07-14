@@ -3,6 +3,7 @@ import fs from "node:fs";
 import express from "express";
 import { defineServer } from "colyseus";
 import { APP_NAME, DEFAULT_SERVER_PORT } from "@caysonverse/shared/constants";
+import { rooms } from "./rooms";
 
 const PORT = Number(process.env.PORT ?? DEFAULT_SERVER_PORT);
 const isProduction = process.env.NODE_ENV === "production";
@@ -13,8 +14,8 @@ const isProduction = process.env.NODE_ENV === "production";
 const clientDist = path.resolve(__dirname, "..", "..", "client", "dist");
 
 const server = defineServer({
-  // No rooms registered yet — the "world" room is added in Task 3.
-  rooms: {},
+  // The authoritative world room, keyed by WORLD_ROOM (see ./rooms).
+  rooms,
 
   // Colyseus initializes an Express app and hands it to this callback for our
   // custom HTTP routes. The transport mounts matchmaking/WebSocket routes

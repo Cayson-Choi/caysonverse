@@ -9,3 +9,44 @@ export const DEFAULT_SERVER_PORT = 2567;
 
 /** Matchmaking name of the main world room (registered in Task 3). */
 export const WORLD_ROOM = "world";
+
+/** Max clients allowed in the world room (100 target + reconnection headroom). */
+export const MAX_CLIENTS = 110;
+
+/** State broadcast interval in milliseconds (10Hz). */
+export const PATCH_RATE_MS = 100;
+
+/** Maximum walk speed in meters/second. */
+export const MOVE_SPEED = 4;
+
+/** Displacement clamp multiplier — tolerated overshoot over the ideal step. */
+export const MOVE_SPEED_SLACK = 1.5;
+
+/** Per-client move-message rate cap (messages per second). */
+export const MOVE_MAX_MSGS_PER_SEC = 30;
+
+/**
+ * Floor for the elapsed-time budget used in move displacement validation.
+ * Prevents a burst of messages (elapsed ~= 0) from collapsing the allowed
+ * step to zero and dropping otherwise-legal tiny moves. See MOVEMENT spec.
+ */
+export const MOVE_ELAPSED_FLOOR_MS = 10;
+
+/** Nickname length bounds, counted after trimming. */
+export const NICKNAME_MIN = 2;
+export const NICKNAME_MAX = 12;
+
+/** Number of selectable character presets (valid index range 0..CHARACTER_COUNT-1). */
+export const CHARACTER_COUNT = 4;
+
+/** Number of selectable tint palette entries (valid index range 0..TINT_COUNT-1). */
+export const TINT_COUNT = 8;
+
+/** Playable area bounds (placeholder box, refined in Task 6). */
+export const WORLD_BOUNDS = { minX: -30, maxX: 30, minZ: -30, maxZ: 30 };
+
+/** Spawn origin (refined in Task 6). */
+export const SPAWN_POINT = { x: 0, z: 0 };
+
+/** Random spawn radius so simultaneous joiners don't stack. */
+export const SPAWN_JITTER = 2;

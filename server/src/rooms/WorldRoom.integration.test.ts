@@ -1,0 +1,91 @@
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
+import { boot, type ColyseusTestServer } from "@colyseus/testing";
+import config from "@colyseus/tools";
+import {
+  WORLD_ROOM,
+  MAX_CLIENTS,
+  PATCH_RATE_MS,
+  WORLD_BOUNDS,
+} from "@caysonverse/shared/constants";
+import { MessageType } from "@caysonverse/shared/messages";
+import { rooms, type WorldRoom } from "./index";
+
+const VALID_JOIN = { nickname: "케이슨", character: 1, tint: 2 };
+
+describe("WorldRoom (integration)", () => {
+  let colyseus: ColyseusTestServer;
+
+  beforeAll(async () => {
+    // Passing a tools config object (not a Server) makes boot() suppress the
+    // greet banner and logs, keeping test output pristine.
+    colyseus = await boot(config({ rooms }));
+  });
+
+  afterAll(async () => {
+    await colyseus.shutdown();
+  });
+
+  beforeEach(async () => {
+    await colyseus.cleanup();
+  });
+
+  it("registers the room with the configured maxClients and patch rate", async () => {
+    const room = await colyseus.createRoom<WorldRoom>(WORLD_ROOM);
+    expect(room.maxClients).toBe(MAX_CLIENTS);
+    expect(room.patchRate).toBe(PATCH_RATE_MS);
+  });
+
+  it("adds a player with the given nickname, spawned within bounds", async () => {
+    const room = await colyseus.createRoom<WorldRoom>(WORLD_ROOM);
+    const client = await colyseus.connectTo(room, VALID_JOIN);
+
+    expect(room.state.players.size).toBe(1);
+    const player = room.state.players.get(client.sessionId);
+    expect(player).toBeDefined();
+    expect(player!.nickname).toBe("케이슨");
+    expect(player!.character).toBe(1);
+    expect(player!.tint).toBe(2);
+    expect(player!.x).toBeGreaterThanOrEqual(WORLD_BOUNDS.minX);
+    expect(player!.x).toBeLessThanOrEqual(WORLD_BOUNDS.maxX);
+    expect(player!.z).toBeGreaterThanOrEqual(WORLD_BOUNDS.minZ);
+    expect(player!.z).toBeLessThanOrEqual(WORLD_BOUNDS.maxZ);
+  });
+
+  it("rejects a join with an invalid nickname", async () => {
+    const room = await colyseus.createRoom<WorldRoom>(WORLD_ROOM);
+    await expect(
+      colyseus.connectTo(room, { nickname: "a", character: 0, tint: 0 }),
+    ).rejects.toThrow("닉네임");
+    expect(room.state.players.size).toBe(0);
+  });
+
+  it("applies a valid move to the player's state", async () => {
+    const room = await colyseus.createRoom<WorldRoom>(WORLD_ROOM);
+    const client = await colyseus.connectTo(room, VALID_JOIN);
+    const player = room.state.players.get(client.sessionId)!;
+
+    // A tiny step (well within even the elapsed-floor speed budget) plus a new
+    // facing — independent of how much wall-clock elapsed since join.
+    const target = { x: player.x + 0.02, z: player.z, yaw: 1.2 };
+    client.send(MessageType.Move, target);
+    await room.waitForNextMessage();
+
+    expect(player.x).toBeCloseTo(target.x, 4);
+    expect(player.z).toBeCloseTo(target.z, 4);
+    expect(player.yaw).toBeCloseTo(1.2, 4);
+  });
+
+  it("drops a teleport move and leaves the player position unchanged", async () => {
+    const room = await colyseus.createRoom<WorldRoom>(WORLD_ROOM);
+    const client = await colyseus.connectTo(room, VALID_JOIN);
+    const player = room.state.players.get(client.sessionId)!;
+    const startX = player.x;
+    const startZ = player.z;
+
+    client.send(MessageType.Move, { x: startX + 1000, z: startZ + 1000, yaw: 0.5 });
+    await room.waitForNextMessage();
+
+    expect(player.x).toBe(startX);
+    expect(player.z).toBe(startZ);
+  });
+});
