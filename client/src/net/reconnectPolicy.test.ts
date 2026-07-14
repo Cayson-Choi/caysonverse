@@ -3,6 +3,8 @@ import { KICK_CLOSE_CODE } from "@caysonverse/shared/constants";
 import {
   decideLeave,
   isCapacityError,
+  isDeterministicRejection,
+  shouldRetryFreshJoin,
   joinErrorNotice,
   CAPACITY_NOTICE,
   KICKED_NOTICE,
@@ -80,5 +82,38 @@ describe("capacity + join-error mapping", () => {
   it("falls back to a generic Korean connection message for a network error", () => {
     const notice = joinErrorNotice(new TypeError("fetch failed"));
     expect(notice).toContain("연결"); // 연결
+  });
+});
+
+describe("fresh-join retry policy (D2 — don't hammer deterministic rejections)", () => {
+  // A server-authored (Hangul) rejection can NEVER succeed on retry: a denySet
+  // kick, a nickname-rule violation, an out-of-range cached identity.
+  const KICK_DENY = new Error("입장이 제한되었습니다"); // 입장이 제한되었습니다
+  const NICK_RULE = { code: 4002, message: "닉네임은 2~12자여야 합니다" }; // server object shape
+
+  it("flags a server-authored Hangul rejection as deterministic (not retryable)", () => {
+    expect(isDeterministicRejection(KICK_DENY)).toBe(true);
+    expect(isDeterministicRejection(NICK_RULE)).toBe(true);
+    expect(shouldRetryFreshJoin(KICK_DENY)).toBe(false);
+    expect(shouldRetryFreshJoin(NICK_RULE)).toBe(false);
+  });
+
+  it("keeps capacity/boot-window (521) RETRYABLE — it may clear after the boot window", () => {
+    const err521 = { code: 521, message: "no rooms found with provided criteria" };
+    expect(isDeterministicRejection(err521)).toBe(false);
+    expect(shouldRetryFreshJoin(err521)).toBe(true);
+  });
+
+  it("keeps transient network / abnormal-close errors RETRYABLE (no Hangul reason)", () => {
+    expect(shouldRetryFreshJoin(new TypeError("fetch failed"))).toBe(true);
+    expect(shouldRetryFreshJoin({ code: 1006, message: "abnormal close" })).toBe(true);
+    expect(shouldRetryFreshJoin(new Error("cv:closed-during-recovery"))).toBe(true);
+    expect(shouldRetryFreshJoin(null)).toBe(true);
+  });
+
+  it("surfaces the real Korean reason for a terminal deterministic rejection", () => {
+    // The kicked-user-in-lost-4001-race path: show the denySet reason immediately.
+    expect(joinErrorNotice(KICK_DENY)).toBe("입장이 제한되었습니다"); // 입장이 제한되었습니다
+    expect(joinErrorNotice(NICK_RULE)).toBe("닉네임은 2~12자여야 합니다"); // verbatim
   });
 });

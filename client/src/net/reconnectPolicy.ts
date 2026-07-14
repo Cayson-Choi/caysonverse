@@ -67,6 +67,18 @@ interface ErrorLike {
   message?: unknown;
 }
 
+/** Best-effort message extraction — handles Error, string, and {message} objects
+ *  (matchmake rejections arrive as plain objects, not always Error instances). */
+function messageOf(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  if (typeof err === "string") return err;
+  if (err !== null && typeof err === "object") {
+    const m = (err as ErrorLike).message;
+    if (typeof m === "string") return m;
+  }
+  return "";
+}
+
 /** True when a join failure means the world room is full/locked (capacity reached). */
 export function isCapacityError(err: unknown): boolean {
   if (err === null || typeof err !== "object") return false;
@@ -86,8 +98,31 @@ export function isCapacityError(err: unknown): boolean {
 /** Map any JOIN failure to the Korean notice shown on the entry screen. */
 export function joinErrorNotice(err: unknown): string {
   if (isCapacityError(err)) return CAPACITY_NOTICE;
-  const message = err instanceof Error ? err.message : typeof err === "string" ? err : "";
+  const message = messageOf(err);
   // A Korean message is a server-authored rejection (nickname rule, kick, …).
   if (message && HANGUL.test(message)) return message;
   return GENERIC_JOIN_NOTICE;
+}
+
+/**
+ * A DETERMINISTIC join rejection: the server actively refused with a Korean
+ * (server-authored) reason — a denySet kick ("입장이 제한되었습니다"), a
+ * nickname-rule violation, an out-of-range cached identity, a wrong admin code.
+ * Unlike a capacity 521 (which may clear once the server's boot window closes)
+ * or a transient network failure, retrying this can NEVER succeed.
+ */
+export function isDeterministicRejection(err: unknown): boolean {
+  if (isCapacityError(err)) return false; // capacity/boot-window stays retryable
+  const message = messageOf(err);
+  return message.length > 0 && HANGUL.test(message);
+}
+
+/**
+ * Phase-2 fresh-join retry predicate: retry EVERY failure through the backoff
+ * EXCEPT a deterministic server rejection. Retrying a deterministic verdict for
+ * ~31s behind the overlay only to then show a misleading generic notice is the
+ * D2 bug; a denied/kicked user must see the real reason immediately instead.
+ */
+export function shouldRetryFreshJoin(err: unknown): boolean {
+  return !isDeterministicRejection(err);
 }
