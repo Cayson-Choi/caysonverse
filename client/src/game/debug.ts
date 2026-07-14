@@ -1,5 +1,6 @@
 import type { Pose } from "./types";
 import { getRemotes } from "./remoteStore";
+import { bubbleRegistry } from "./bubbleRegistry";
 
 /** Shape of one remote player in the dev/E2E hook. */
 export interface RemoteView {
@@ -7,6 +8,12 @@ export interface RemoteView {
   nickname: string;
   x: number;
   z: number;
+}
+
+/** Shape of one active speech bubble in the dev/E2E hook. */
+export interface BubbleView {
+  sid: string;
+  text: string;
 }
 
 declare global {
@@ -17,6 +24,8 @@ declare global {
       getPos: () => Pose;
       /** Every OTHER connected player's newest known position. */
       getRemotes: () => RemoteView[];
+      /** Every currently-visible speech bubble (sid + text). */
+      getBubbles: () => BubbleView[];
     };
   }
 }
@@ -32,6 +41,8 @@ export function installDebugHook(getPose: () => Pose): () => void {
   window.__cv = {
     getPos: () => ({ ...getPose() }),
     getRemotes: () => getRemotes(),
+    getBubbles: () =>
+      bubbleRegistry.snapshot(performance.now()).map((b) => ({ sid: b.sid, text: b.text })),
   };
   return () => {
     delete window.__cv;

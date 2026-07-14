@@ -4,6 +4,7 @@ import { useGLTF } from "@react-three/drei";
 import { AnimationMixer, Group, type AnimationAction, type Material } from "three";
 import { cloneTinted } from "./avatar";
 import { createNametag } from "./nametag";
+import { useSpeechBubble } from "./useSpeechBubble";
 import { getRemoteRecord } from "./remoteStore";
 import { sample, exceedsSnapDistance } from "./interpolation";
 import { nextWalking } from "./locomotion";
@@ -46,6 +47,10 @@ export function RemotePlayer({ sessionId }: { sessionId: string }) {
   const { scene, animations } = useGLTF(preset.model);
 
   const groupRef = useRef<Group>(null);
+
+  // Speech bubble above this avatar, driven by the chat broadcast. Cleaned up
+  // with the avatar when it unmounts (leaving player) — no leaked sprites.
+  useSpeechBubble(sessionId, groupRef);
 
   // Build heavy resources ONCE. Disposed on unmount (see the cleanup effect).
   const avatar = useMemo(() => cloneTinted(scene, tint), [scene, tint]);

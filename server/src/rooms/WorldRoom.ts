@@ -5,6 +5,7 @@ import {
   MAX_CLIENTS,
   PATCH_RATE_MS,
   MOVE_MAX_MSGS_PER_SEC,
+  CHAT_RATE,
   SPAWN_POINT,
   SPAWN_JITTER,
   WORLD_BOUNDS,
@@ -12,14 +13,20 @@ import {
 } from "@caysonverse/shared/constants";
 import { validateMove } from "./movement";
 import { validateJoinOptions } from "./joinValidation";
+import { sanitizeChat } from "./chat";
 import { RateWindow } from "./rateLimit";
 
-/** Per-client bookkeeping for move validation (not part of synced state). */
-interface MoveTracking {
+/** Korean notice sent to a sender whose chat was dropped for exceeding the rate. */
+const CHAT_TOO_FAST = "메시지가 너무 빨라요. 잠시 후 다시 시도해주세요.";
+
+/** Per-client bookkeeping (not part of synced state). */
+interface ClientTracking {
   /** ms timestamp of this client's last accepted move (seeded at join). */
   lastAcceptedAt: number;
   /** Sliding-window rate cap for move messages. */
   rate: RateWindow;
+  /** Sliding-window rate cap for chat messages (3 per 5s). */
+  chatRate: RateWindow;
 }
 
 /**
@@ -39,11 +46,14 @@ export class WorldRoom extends Room<{ state: WorldState }> {
   patchRate = PATCH_RATE_MS;
   state = new WorldState();
 
-  private readonly tracking = new Map<string, MoveTracking>();
+  private readonly tracking = new Map<string, ClientTracking>();
 
   onCreate(): void {
     this.onMessage(MessageType.Move, (client, payload) => {
       this.handleMove(client, payload);
+    });
+    this.onMessage(MessageType.Chat, (client, payload) => {
+      this.handleChat(client, payload);
     });
   }
 
@@ -68,6 +78,7 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     this.tracking.set(client.sessionId, {
       lastAcceptedAt: this.now(),
       rate: new RateWindow(MOVE_MAX_MSGS_PER_SEC),
+      chatRate: new RateWindow(CHAT_RATE.count, CHAT_RATE.windowMs),
     });
   }
 
@@ -99,6 +110,30 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     player.z = next.z;
     player.yaw = next.yaw;
     track.lastAcceptedAt = now;
+  }
+
+  /**
+   * Chat pipeline (binding order): sender must have a seat → per-client rate cap
+   * (3 per 5s; exceeded → drop + personal Korean notice) → pure sanitize (garbage
+   * → drop SILENTLY, no notice) → broadcast to everyone as a transient event.
+   * Chat never touches synced schema state.
+   */
+  private handleChat(client: Client, payload: unknown): void {
+    const player = this.state.players.get(client.sessionId);
+    const track = this.tracking.get(client.sessionId);
+    if (!player || !track) return; // no seat yet / already left → drop
+
+    // Rate cap ahead of sanitize (mirrors move): floods are throttled with a
+    // personal notice, and a rate-dropped message never consumes a slot.
+    if (!track.chatRate.tryAccept(this.now())) {
+      client.send(MessageType.ChatRejected, { reason: CHAT_TOO_FAST });
+      return;
+    }
+
+    const text = sanitizeChat((payload as { text?: unknown } | null | undefined)?.text);
+    if (text === null) return; // empty/oversized/garbage → silent drop
+
+    this.broadcast(MessageType.Chat, { sid: client.sessionId, name: player.nickname, text });
   }
 
   /** Wall-clock time in ms. Isolated here so the pure validators never read it. */

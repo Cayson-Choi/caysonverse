@@ -7,6 +7,8 @@ import { MOVE_SPEED, WORLD_BOUNDS, TINT_COLORS } from "@caysonverse/shared/const
 import { OBSTACLES, PLAYER_RADIUS } from "@caysonverse/shared/worldMap";
 import { resolveCollision } from "@caysonverse/shared/collision";
 import { readIntent, worldDirection } from "./input";
+import { guardMoveKeys, isUiCaptured } from "./uiCapture";
+import { useSpeechBubble } from "./useSpeechBubble";
 import { stepYaw } from "./yaw";
 import { createMoveSender } from "./moveSender";
 import { installDebugHook } from "./debug";
@@ -16,6 +18,8 @@ import type { Orbit, Pose } from "./types";
 import { sendMove } from "../net/connection";
 
 interface LocalPlayerProps {
+  /** Own session id — keys this player's speech bubble in the broadcast. */
+  sessionId: string;
   character: number;
   tint: number;
   /** Shared mutable pose (mutated per frame — never React state). */
@@ -37,12 +41,16 @@ function clamp(value: number, min: number, max: number): number {
   return value < min ? min : value > max ? max : value;
 }
 
-export function LocalPlayer({ character, tint, pose, orbit }: LocalPlayerProps) {
+export function LocalPlayer({ sessionId, character, tint, pose, orbit }: LocalPlayerProps) {
   const preset = CHARACTERS[character];
   const { scene, animations } = useGLTF(preset.model);
   const [, getKeys] = useKeyboardControls<MoveControl>();
   const groupRef = useRef<Group>(null);
   const movingRef = useRef(false);
+
+  // Own speech bubble: driven by the server broadcast (not a local echo), so
+  // self and remotes share one path. Attached above this avatar's group.
+  useSpeechBubble(sessionId, groupRef);
 
   // Clone the skinned hierarchy (independent skeleton) and tint cloned materials
   // ONCE per character/tint — not per frame.
@@ -81,13 +89,11 @@ export function LocalPlayer({ character, tint, pose, orbit }: LocalPlayerProps) 
     const group = groupRef.current;
     if (!group) return;
 
-    const keys = getKeys();
-    const intent = readIntent({
-      forward: keys.forward,
-      backward: keys.backward,
-      left: keys.left,
-      right: keys.right,
-    });
+    // Focus guard: while the chat input owns keyboard input, movement keys are
+    // zeroed so typing never walks the avatar. We don't touch drei's key
+    // listeners, so nothing can get stuck on blur (see uiCapture.ts).
+    const keys = guardMoveKeys(getKeys(), isUiCaptured());
+    const intent = readIntent(keys);
     const moving = intent.forward !== 0 || intent.right !== 0;
 
     if (moving) {

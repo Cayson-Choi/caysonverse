@@ -2,7 +2,7 @@ import { Client, Room } from "@colyseus/sdk";
 // TYPE-ONLY: schema.ts runs @colyseus/schema decorators and must never enter the
 // browser bundle. We only borrow WorldState's shape for typing the room state.
 import type { WorldState } from "@caysonverse/shared/schema";
-import { WORLD_ROOM } from "@caysonverse/shared/constants";
+import { WORLD_ROOM, CHAT_MAX_LENGTH } from "@caysonverse/shared/constants";
 import { MessageType } from "@caysonverse/shared/messages";
 import type { MovePayload } from "@caysonverse/shared/messages";
 import { SERVER_URL } from "./endpoint";
@@ -48,6 +48,16 @@ export async function joinWorld(params: JoinParams): Promise<Room<WorldState>> {
 /** Send a throttled position update. No-op if not connected. */
 export function sendMove(payload: MovePayload): void {
   room?.send(MessageType.Move, payload);
+}
+
+/**
+ * Send a chat line. Pre-trimmed to CHAT_MAX_LENGTH (the server re-validates and
+ * is authoritative). No-op if not connected or the trimmed text is empty.
+ */
+export function sendChat(text: string): void {
+  const trimmed = text.trim().slice(0, CHAT_MAX_LENGTH);
+  if (trimmed.length === 0) return;
+  room?.send(MessageType.Chat, { text: trimmed });
 }
 
 /**

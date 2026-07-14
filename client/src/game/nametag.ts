@@ -8,8 +8,9 @@
  * (disposed on unmount) so opacity/state never bleeds between avatars.
  */
 
-import { CanvasTexture, LinearFilter, Sprite, SpriteMaterial, SRGBColorSpace } from "three";
+import { CanvasTexture, Sprite, SpriteMaterial } from "three";
 import { NAMETAG_HEIGHT } from "./constants";
+import { billboardSprite, canvas2d, canvasTexture, roundRect } from "./spriteCanvas";
 
 interface CachedTag {
   texture: CanvasTexture;
@@ -23,23 +24,6 @@ const cache = new Map<string, CachedTag>();
 /** World-space height (m) of the sprite; width follows the text aspect ratio. */
 const SPRITE_HEIGHT = 0.42;
 
-function roundRect(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-  r: number,
-): void {
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.arcTo(x + w, y, x + w, y + h, r);
-  ctx.arcTo(x + w, y + h, x, y + h, r);
-  ctx.arcTo(x, y + h, x, y, r);
-  ctx.arcTo(x, y, x + w, y, r);
-  ctx.closePath();
-}
-
 /** Rasterize the nickname onto a snug canvas with a subtle rounded backdrop. */
 function renderCanvas(nickname: string): { canvas: HTMLCanvasElement; aspect: number } {
   const fontSize = 48;
@@ -47,8 +31,7 @@ function renderCanvas(nickname: string): { canvas: HTMLCanvasElement; aspect: nu
   const padY = 14;
   const font = `600 ${fontSize}px system-ui, -apple-system, "Segoe UI", "Malgun Gothic", sans-serif`;
 
-  const measureCtx = document.createElement("canvas").getContext("2d");
-  if (!measureCtx) throw new Error("2D canvas context unavailable");
+  const measureCtx = canvas2d(document.createElement("canvas"));
   measureCtx.font = font;
   const textWidth = Math.ceil(measureCtx.measureText(nickname).width);
 
@@ -58,8 +41,7 @@ function renderCanvas(nickname: string): { canvas: HTMLCanvasElement; aspect: nu
   canvas.width = width;
   canvas.height = height;
 
-  const ctx = canvas.getContext("2d");
-  if (!ctx) throw new Error("2D canvas context unavailable");
+  const ctx = canvas2d(canvas);
   ctx.font = font;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
@@ -78,10 +60,7 @@ function acquire(nickname: string): CachedTag {
   let entry = cache.get(nickname);
   if (!entry) {
     const { canvas, aspect } = renderCanvas(nickname);
-    const texture = new CanvasTexture(canvas);
-    texture.minFilter = LinearFilter; // canvas is not power-of-two; avoid mipmaps
-    texture.colorSpace = SRGBColorSpace;
-    entry = { texture, aspect, refs: 0 };
+    entry = { texture: canvasTexture(canvas), aspect, refs: 0 };
     cache.set(nickname, entry);
   }
   entry.refs += 1;
@@ -108,21 +87,13 @@ export interface Nametag {
 /** Create a nametag sprite for `nickname`, positioned above the avatar's head. */
 export function createNametag(nickname: string): Nametag {
   const entry = acquire(nickname);
-  const material = new SpriteMaterial({
-    map: entry.texture,
-    transparent: true,
-    depthTest: false, // always readable, never clipped by the body
-    depthWrite: false,
-  });
-  const sprite = new Sprite(material);
-  sprite.scale.set(SPRITE_HEIGHT * entry.aspect, SPRITE_HEIGHT, 1);
+  const sprite = billboardSprite(entry.texture, entry.aspect, SPRITE_HEIGHT, 999);
   sprite.position.set(0, NAMETAG_HEIGHT, 0);
-  sprite.renderOrder = 999;
 
   return {
     sprite,
     dispose() {
-      material.dispose();
+      (sprite.material as SpriteMaterial).dispose();
       release(nickname);
     },
   };

@@ -36,6 +36,23 @@ export const MOVE_ELAPSED_FLOOR_MS = 10;
 export const NICKNAME_MIN = 2;
 export const NICKNAME_MAX = 12;
 
+// ── Chat (Task 7) — one auditable place for every chat limit. ──
+
+/** Maximum chat message length in characters, counted after trimming. */
+export const CHAT_MAX_LENGTH = 200;
+
+/** Per-client chat rate cap: at most `count` accepted messages per `windowMs`. */
+export const CHAT_RATE = { count: 3, windowMs: 5000 } as const;
+
+/** How long (ms) a speech bubble stays visible above its author before removal. */
+export const SPEECH_BUBBLE_MS = 6000;
+
+/** Cap on concurrently visible speech bubbles; oldest beyond this are hidden. */
+export const MAX_VISIBLE_BUBBLES = 30;
+
+/** Cap on retained chat-log rows (session-only; oldest beyond this are dropped). */
+export const MAX_CHAT_LOG = 100;
+
 /** Number of selectable character presets (valid index range 0..CHARACTER_COUNT-1). */
 export const CHARACTER_COUNT = 4;
 

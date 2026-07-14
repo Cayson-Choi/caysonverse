@@ -137,3 +137,10 @@ export const NAMETAG_MAX_DIST = 20;
 
 /** Height (m) of the nametag sprite above the avatar's feet. */
 export const NAMETAG_HEIGHT = 2.1;
+
+/**
+ * World height (m) at which a speech bubble's BOTTOM edge sits — above the
+ * nametag (which spans roughly 1.9–2.3 m). Sprites are centre-origin, so the
+ * bubble module adds half its own height to this anchor when positioning.
+ */
+export const BUBBLE_BASE_HEIGHT = 2.5;

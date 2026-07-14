@@ -7,6 +7,7 @@ import { LocalPlayer } from "./LocalPlayer";
 import { RemotePlayers } from "./RemotePlayers";
 import { WorldMap } from "./WorldMap";
 import { CameraRig } from "./CameraRig";
+import { Chat } from "../ui/Chat";
 import { getRoom } from "../net/connection";
 import type { Identity } from "../stores/appStore";
 import type { Orbit, Pose } from "./types";
@@ -81,6 +82,7 @@ export function WorldScene({ identity }: { identity: Identity }) {
             {/* Furnished lounge + lecture hall, walls and screen (static). */}
             <WorldMap />
             <LocalPlayer
+              sessionId={identity.sessionId}
               character={identity.character}
               tint={identity.tint}
               pose={pose}
@@ -94,6 +96,7 @@ export function WorldScene({ identity }: { identity: Identity }) {
         </KeyboardControls>
       </Canvas>
       <LoadingOverlay />
+      <Chat />
     </>
   );
 }

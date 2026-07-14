@@ -4,6 +4,10 @@
 /** Identifiers for client <-> server room messages. */
 export const MessageType = {
   Move: "move",
+  /** Client -> server: submit a chat line. Server -> all: relay a chat line. */
+  Chat: "chat",
+  /** Server -> one client: a personal notice that their chat line was rejected. */
+  ChatRejected: "chat_rejected",
 } as const;
 
 export type MessageType = (typeof MessageType)[keyof typeof MessageType];
@@ -15,7 +19,29 @@ export interface MovePayload {
   yaw: number;
 }
 
+/** Client -> server: a chat line the sender typed (validated server-side). */
+export interface ChatPayload {
+  text: string;
+}
+
+/** Server -> every client: an accepted chat line, tagged with its author. */
+export interface ChatBroadcast {
+  /** Sender session id (matches the avatar's key in world state). */
+  sid: string;
+  /** Sender nickname, resolved from state at broadcast time. */
+  name: string;
+  /** The sanitized message text. */
+  text: string;
+}
+
+/** Server -> the sender only: why their chat line was dropped (Korean reason). */
+export interface ChatRejectedPayload {
+  reason: string;
+}
+
 /** Payload type for each message id, keyed by MessageType. */
 export interface MessagePayloads {
   [MessageType.Move]: MovePayload;
+  [MessageType.Chat]: ChatPayload;
+  [MessageType.ChatRejected]: ChatRejectedPayload;
 }

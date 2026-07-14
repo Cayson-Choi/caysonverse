@@ -6,11 +6,18 @@ import {
   MAX_CLIENTS,
   PATCH_RATE_MS,
   WORLD_BOUNDS,
+  CHAT_MAX_LENGTH,
 } from "@caysonverse/shared/constants";
 import { MessageType } from "@caysonverse/shared/messages";
+import type { ChatBroadcast, ChatRejectedPayload } from "@caysonverse/shared/messages";
 import { rooms, type WorldRoom } from "./index";
 
 const VALID_JOIN = { nickname: "케이슨", character: 1, tint: 2 };
+const JOIN_A = { nickname: "앨리스", character: 0, tint: 0 };
+const JOIN_B = { nickname: "밥이", character: 1, tint: 1 };
+
+/** Let broadcast/personal messages propagate to the in-process test clients. */
+const flush = () => new Promise((r) => setTimeout(r, 60));
 
 describe("WorldRoom (integration)", () => {
   let colyseus: ColyseusTestServer;
@@ -87,5 +94,70 @@ describe("WorldRoom (integration)", () => {
 
     expect(player.x).toBe(startX);
     expect(player.z).toBe(startZ);
+  });
+
+  it("relays a chat message to every client tagged with the sender's sid + name", async () => {
+    const room = await colyseus.createRoom<WorldRoom>(WORLD_ROOM);
+    const alice = await colyseus.connectTo(room, JOIN_A);
+    const bob = await colyseus.connectTo(room, JOIN_B);
+
+    const aChats: ChatBroadcast[] = [];
+    const bChats: ChatBroadcast[] = [];
+    alice.onMessage(MessageType.Chat, (m: ChatBroadcast) => aChats.push(m));
+    bob.onMessage(MessageType.Chat, (m: ChatBroadcast) => bChats.push(m));
+
+    alice.send(MessageType.Chat, { text: "  안녕하세요!  " }); // trimmed by the server
+    await room.waitForNextMessage();
+    await flush();
+
+    const expected = { sid: alice.sessionId, name: JOIN_A.nickname, text: "안녕하세요!" };
+    expect(aChats).toEqual([expected]); // sender receives its own message too
+    expect(bChats).toEqual([expected]);
+  });
+
+  it("drops an oversized chat message without broadcasting to anyone", async () => {
+    const room = await colyseus.createRoom<WorldRoom>(WORLD_ROOM);
+    const alice = await colyseus.connectTo(room, JOIN_A);
+    const bob = await colyseus.connectTo(room, JOIN_B);
+
+    const chats: ChatBroadcast[] = [];
+    alice.onMessage(MessageType.Chat, (m: ChatBroadcast) => chats.push(m));
+    bob.onMessage(MessageType.Chat, (m: ChatBroadcast) => chats.push(m));
+
+    alice.send(MessageType.Chat, { text: "가".repeat(CHAT_MAX_LENGTH + 1) });
+    await room.waitForNextMessage();
+    await flush();
+
+    expect(chats).toHaveLength(0);
+  });
+
+  it("rejects the 4th chat inside the window, notifying only the sender", async () => {
+    const room = await colyseus.createRoom<WorldRoom>(WORLD_ROOM);
+    const alice = await colyseus.connectTo(room, JOIN_A);
+    const bob = await colyseus.connectTo(room, JOIN_B);
+
+    const aChats: ChatBroadcast[] = [];
+    const bChats: ChatBroadcast[] = [];
+    const aRejected: ChatRejectedPayload[] = [];
+    const bRejected: ChatRejectedPayload[] = [];
+    alice.onMessage(MessageType.Chat, (m: ChatBroadcast) => aChats.push(m));
+    bob.onMessage(MessageType.Chat, (m: ChatBroadcast) => bChats.push(m));
+    alice.onMessage(MessageType.ChatRejected, (m: ChatRejectedPayload) => aRejected.push(m));
+    bob.onMessage(MessageType.ChatRejected, (m: ChatRejectedPayload) => bRejected.push(m));
+
+    // Four sends land within milliseconds — all inside the 5s window.
+    for (let i = 0; i < 4; i++) {
+      alice.send(MessageType.Chat, { text: `메시지 ${i}` });
+      await room.waitForNextMessage();
+    }
+    await flush();
+
+    // First 3 accepted → broadcast to both; the 4th is rate-dropped with a
+    // personal notice to the sender only.
+    expect(aChats).toHaveLength(3);
+    expect(bChats).toHaveLength(3);
+    expect(aRejected).toHaveLength(1);
+    expect(aRejected[0].reason).toContain("너무 빨라요");
+    expect(bRejected).toHaveLength(0);
   });
 });
