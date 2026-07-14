@@ -148,6 +148,29 @@
   box-shadow: 0 0 0 3px rgba(166, 139, 255, 0.55);
 }
 
+/* Admin code: a low-key toggle link that reveals a password field. */
+.cv-admin-toggle {
+  display: flex;
+  flex-direction: column;
+  margin-top: -6px;
+}
+
+.cv-admin-link {
+  align-self: flex-start;
+  padding: 2px 0;
+  border: 0;
+  background: transparent;
+  color: #8f88c2;
+  font-size: 12.5px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+.cv-admin-link:hover {
+  color: #b9a8ff;
+}
+
 .cv-message {
   margin: -2px 0 0;
   padding: 10px 12px;

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from "vitest";
 import { boot, type ColyseusTestServer } from "@colyseus/testing";
 import config from "@colyseus/tools";
 import {
@@ -24,22 +24,48 @@ const JOIN_B = { nickname: "밥이", character: 1, tint: 1 };
 /** Let broadcast/personal messages propagate to the in-process test clients. */
 const flush = () => new Promise((r) => setTimeout(r, 60));
 
+// Task 9 admin fixtures.
+const ADMIN_CODE = "관리자-s3cret-9";
+const ADMIN_JOIN = { nickname: "선생님", character: 0, tint: 0 };
+const ANNOUNCE_TEXT = "오늘 수업은 8시 시작!";
+
+/** Poll a getter until it is truthy (or timeout), then return its value. */
+async function pollFor<T>(read: () => T, timeoutMs = 2000, stepMs = 20): Promise<T> {
+  const deadline = Date.now() + timeoutMs;
+  let v = read();
+  while (!v && Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, stepMs));
+    v = read();
+  }
+  return v;
+}
+
+// One shared in-process server for the whole file. Two separate boot() calls in
+// one process race on Colyseus's module-level matchmaker singleton (observed as
+// a "fetch failed" on the second boot's first request), so both describe blocks
+// use these file-scoped hooks instead of booting their own server.
+let colyseus: ColyseusTestServer;
+
+beforeAll(async () => {
+  // Passing a tools config object (not a Server) makes boot() suppress the
+  // greet banner and logs, keeping test output pristine.
+  colyseus = await boot(config({ rooms }));
+});
+
+afterAll(async () => {
+  await colyseus.shutdown();
+});
+
+beforeEach(async () => {
+  await colyseus.cleanup();
+});
+
+// Restore the env after EVERY test so ADMIN_CODE never leaks between tests.
+afterEach(() => {
+  delete process.env.ADMIN_CODE;
+});
+
 describe("WorldRoom (integration)", () => {
-  let colyseus: ColyseusTestServer;
-
-  beforeAll(async () => {
-    // Passing a tools config object (not a Server) makes boot() suppress the
-    // greet banner and logs, keeping test output pristine.
-    colyseus = await boot(config({ rooms }));
-  });
-
-  afterAll(async () => {
-    await colyseus.shutdown();
-  });
-
-  beforeEach(async () => {
-    await colyseus.cleanup();
-  });
 
   it("registers the room with the configured maxClients and patch rate", async () => {
     const room = await colyseus.createRoom<WorldRoom>(WORLD_ROOM);
@@ -238,5 +264,200 @@ describe("WorldRoom (integration)", () => {
     // silently dropped — no personal notice, unlike chat's rate rejection.
     expect(aEmojis).toEqual([{ sid: alice.sessionId, index: 0 }]);
     expect(bEmojis).toEqual([{ sid: alice.sessionId, index: 0 }]);
+  });
+});
+
+// ── Task 9: admin auth + announce banner + kick ──
+
+describe("WorldRoom admin (integration)", () => {
+  it("documents the installed-Colyseus IP availability (server-side marker only)", async () => {
+    const room = await colyseus.createRoom<WorldRoom>(WORLD_ROOM);
+    const client = await colyseus.connectTo(room, VALID_JOIN);
+    const marker = room.clients[0].userData as { isAdmin: boolean; ip: string | null };
+
+    // The admin marker is a per-connection server-side object, NEVER schema.
+    expect(marker.isAdmin).toBe(false);
+    // IP availability finding: the @colyseus/testing harness populates the auth
+    // context with the socket loopback (e.g. "::ffff:127.0.0.1"), so per-IP
+    // keying is exercised here. In production the real HTTP matchmake route
+    // sources ip ONLY from x-forwarded-for/x-client-ip/x-real-ip headers — so
+    // without a reverse proxy it is undefined and the code falls back to the
+    // global limiter key + nickname-only denySet. Robust to either shape:
+    expect(marker.ip === null || typeof marker.ip === "string").toBe(true);
+    // Admin status must NOT be observable in synced state.
+    expect(JSON.stringify(client.state.toJSON())).not.toContain("isAdmin");
+  });
+
+  it("admits an admin with the correct code and marks them server-side only", async () => {
+    process.env.ADMIN_CODE = ADMIN_CODE;
+    const room = await colyseus.createRoom<WorldRoom>(WORLD_ROOM);
+    const admin = await colyseus.connectTo(room, { ...ADMIN_JOIN, adminCode: ADMIN_CODE });
+
+    expect(room.state.players.size).toBe(1);
+    const marker = room.clients[0].userData as { isAdmin: boolean };
+    expect(marker.isAdmin).toBe(true);
+    // No admin flag anywhere in the synced player/root state.
+    expect(JSON.stringify(admin.state.toJSON())).not.toContain("isAdmin");
+  });
+
+  it("rejects a join with a wrong admin code (Korean typo error)", async () => {
+    process.env.ADMIN_CODE = ADMIN_CODE;
+    const room = await colyseus.createRoom<WorldRoom>(WORLD_ROOM);
+    await expect(
+      colyseus.connectTo(room, { ...ADMIN_JOIN, adminCode: "틀린코드" }),
+    ).rejects.toThrow("관리자 코드가 올바르지 않습니다");
+    expect(room.state.players.size).toBe(0);
+  });
+
+  it("rejects any admin code when ADMIN_CODE env is unset (admin impossible)", async () => {
+    // afterEach guarantees ADMIN_CODE is unset here.
+    const room = await colyseus.createRoom<WorldRoom>(WORLD_ROOM);
+    await expect(
+      colyseus.connectTo(room, { ...ADMIN_JOIN, adminCode: "아무코드" }),
+    ).rejects.toThrow("관리자 코드가 올바르지 않습니다");
+    expect(room.state.players.size).toBe(0);
+  });
+
+  it("still admits a NORMAL join (no adminCode) when the env is unset", async () => {
+    const room = await colyseus.createRoom<WorldRoom>(WORLD_ROOM);
+    const client = await colyseus.connectTo(room, JOIN_A);
+    expect(room.state.players.size).toBe(1);
+    expect((room.clients[0].userData as { isAdmin: boolean }).isAdmin).toBe(false);
+    void client;
+  });
+
+  it("blocks brute force: the 6th wrong code within a minute gets a generic error", async () => {
+    process.env.ADMIN_CODE = ADMIN_CODE;
+    const room = await colyseus.createRoom<WorldRoom>(WORLD_ROOM);
+    // Keep the room alive: a room that empties (every join failing) is disposed
+    // by the matchmaker, after which further connects fail with "room not found".
+    await colyseus.connectTo(room, JOIN_A);
+
+    // 5 wrong attempts each get the specific typo error…
+    for (let i = 0; i < 5; i++) {
+      await expect(
+        colyseus.connectTo(room, { ...ADMIN_JOIN, adminCode: `틀림${i}` }),
+      ).rejects.toThrow("관리자 코드가 올바르지 않습니다");
+    }
+    // …the 6th is blocked with the generic rate-limit error (no compare).
+    await expect(
+      colyseus.connectTo(room, { ...ADMIN_JOIN, adminCode: ADMIN_CODE }),
+    ).rejects.toThrow("시도가 너무 많습니다");
+  });
+
+  it("sets the announcement banner in schema state that a second client sees", async () => {
+    process.env.ADMIN_CODE = ADMIN_CODE;
+    const room = await colyseus.createRoom<WorldRoom>(WORLD_ROOM);
+    const admin = await colyseus.connectTo(room, { ...ADMIN_JOIN, adminCode: ADMIN_CODE });
+    const viewer = await colyseus.connectTo(room, JOIN_A);
+
+    admin.send(MessageType.Announce, { text: ANNOUNCE_TEXT });
+    await room.waitForNextMessage();
+    await flush();
+
+    expect(room.state.announcement).toBe(ANNOUNCE_TEXT);
+    expect(room.state.announcedAt).toBeGreaterThan(0);
+    // The second client's SYNCED state carries the banner (it is schema state).
+    expect(await pollFor(() => viewer.state.announcement === ANNOUNCE_TEXT)).toBe(true);
+  });
+
+  it("shows the current banner to a LATE joiner automatically", async () => {
+    process.env.ADMIN_CODE = ADMIN_CODE;
+    const room = await colyseus.createRoom<WorldRoom>(WORLD_ROOM);
+    const admin = await colyseus.connectTo(room, { ...ADMIN_JOIN, adminCode: ADMIN_CODE });
+
+    admin.send(MessageType.Announce, { text: ANNOUNCE_TEXT });
+    await room.waitForNextMessage();
+    await flush();
+
+    // Someone who joins AFTER the announce still receives it via state sync.
+    const late = await colyseus.connectTo(room, JOIN_B);
+    expect(await pollFor(() => late.state.announcement === ANNOUNCE_TEXT)).toBe(true);
+  });
+
+  it("clears the banner when the admin sends an empty announcement", async () => {
+    process.env.ADMIN_CODE = ADMIN_CODE;
+    const room = await colyseus.createRoom<WorldRoom>(WORLD_ROOM);
+    const admin = await colyseus.connectTo(room, { ...ADMIN_JOIN, adminCode: ADMIN_CODE });
+
+    admin.send(MessageType.Announce, { text: ANNOUNCE_TEXT });
+    await room.waitForNextMessage();
+    await flush();
+    expect(room.state.announcement).toBe(ANNOUNCE_TEXT);
+
+    admin.send(MessageType.Announce, { text: "   " }); // whitespace-only → clear
+    await room.waitForNextMessage();
+    await flush();
+    expect(room.state.announcement).toBe("");
+  });
+
+  it("drops an Announce from a NON-admin (banner unchanged)", async () => {
+    const room = await colyseus.createRoom<WorldRoom>(WORLD_ROOM);
+    const normal = await colyseus.connectTo(room, JOIN_A);
+
+    normal.send(MessageType.Announce, { text: "허가되지 않은 공지" });
+    await room.waitForNextMessage();
+    await flush();
+
+    expect(room.state.announcement).toBe("");
+  });
+
+  it("kicks a target: closes with 4001 and blocks a same-nickname rejoin", async () => {
+    process.env.ADMIN_CODE = ADMIN_CODE;
+    const room = await colyseus.createRoom<WorldRoom>(WORLD_ROOM);
+    const admin = await colyseus.connectTo(room, { ...ADMIN_JOIN, adminCode: ADMIN_CODE });
+    const bob = await colyseus.connectTo(room, JOIN_B);
+
+    let leaveCode: number | null = null;
+    bob.onLeave((code) => {
+      leaveCode = code;
+    });
+
+    admin.send(MessageType.Kick, { sid: bob.sessionId });
+    await room.waitForNextMessage();
+
+    expect(await pollFor(() => leaveCode !== null)).toBe(true);
+    expect(leaveCode).toBe(4001);
+    await flush();
+    expect(room.state.players.has(bob.sessionId)).toBe(false);
+
+    // Rejoining with the SAME nickname is blocked by the denySet (nickname key).
+    await expect(colyseus.connectTo(room, JOIN_B)).rejects.toThrow("입장이 제한되었습니다");
+  });
+
+  it("drops a Kick from a NON-admin (target stays connected)", async () => {
+    const room = await colyseus.createRoom<WorldRoom>(WORLD_ROOM);
+    const alice = await colyseus.connectTo(room, JOIN_A);
+    const bob = await colyseus.connectTo(room, JOIN_B);
+
+    let bobLeft = false;
+    bob.onLeave(() => {
+      bobLeft = true;
+    });
+
+    alice.send(MessageType.Kick, { sid: bob.sessionId });
+    await room.waitForNextMessage();
+    await flush();
+
+    expect(bobLeft).toBe(false);
+    expect(room.state.players.has(bob.sessionId)).toBe(true);
+  });
+
+  it("ignores an admin attempting to kick themselves", async () => {
+    process.env.ADMIN_CODE = ADMIN_CODE;
+    const room = await colyseus.createRoom<WorldRoom>(WORLD_ROOM);
+    const admin = await colyseus.connectTo(room, { ...ADMIN_JOIN, adminCode: ADMIN_CODE });
+
+    let adminLeft = false;
+    admin.onLeave(() => {
+      adminLeft = true;
+    });
+
+    admin.send(MessageType.Kick, { sid: admin.sessionId });
+    await room.waitForNextMessage();
+    await flush();
+
+    expect(adminLeft).toBe(false);
+    expect(room.state.players.has(admin.sessionId)).toBe(true);
   });
 });

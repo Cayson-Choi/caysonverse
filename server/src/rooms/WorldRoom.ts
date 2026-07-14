@@ -1,4 +1,4 @@
-import { Room, type Client } from "colyseus";
+import { Room, type Client, type AuthContext } from "colyseus";
 import { Player, WorldState } from "@caysonverse/shared/schema";
 import { MessageType } from "@caysonverse/shared/messages";
 import {
@@ -11,15 +11,48 @@ import {
   SPAWN_JITTER,
   WORLD_BOUNDS,
   PLAYER_RADIUS,
+  KICK_CLOSE_CODE,
 } from "@caysonverse/shared/constants";
 import { validateMove } from "./movement";
 import { validateJoinOptions } from "./joinValidation";
 import { sanitizeChat } from "./chat";
+import { sanitizeAnnounce } from "./announce";
 import { validateEmojiIndex } from "./emoji";
 import { RateWindow } from "./rateLimit";
+import { DenySet } from "./denySet";
+import { compareAdminCode, AdminAttemptLimiter } from "./adminAuth";
 
 /** Korean notice sent to a sender whose chat was dropped for exceeding the rate. */
 const CHAT_TOO_FAST = "메시지가 너무 빨라요. 잠시 후 다시 시도해주세요.";
+
+// User-facing Korean strings for admin auth / kick. Identifiers stay English.
+const ADMIN_CODE_WRONG = "관리자 코드가 올바르지 않습니다";
+const ADMIN_TOO_MANY = "관리자 코드 시도가 너무 많습니다. 잠시 후 다시 시도해주세요.";
+const KICKED_OUT = "입장이 제한되었습니다";
+
+/**
+ * Shared key used by the brute-force limiter when the client IP is not
+ * obtainable. The installed Colyseus 0.17 sources `AuthContext.ip` ONLY from the
+ * `x-forwarded-for` / `x-client-ip` / `x-real-ip` headers (see onAuth) — never
+ * the socket address — so without a reverse proxy the IP is undefined and every
+ * failed attempt falls back to this single global counter (per the brief).
+ */
+const GLOBAL_IP_KEY = "__no_ip__";
+
+/** Server-side per-connection marker. NEVER synchronized into schema state. */
+interface AdminMarker {
+  /** True only for a connection that presented the correct admin code at join. */
+  isAdmin: boolean;
+  /** Resolved client IP, or null when unavailable (used for the kick denySet). */
+  ip: string | null;
+  /** Trimmed nickname, cached for the denySet nickname fallback on kick. */
+  nickname: string;
+}
+
+/** What `onAuth` hands to `onJoin` (becomes `client.auth`). */
+interface AuthResult {
+  ip: string | null;
+}
 
 /** Per-client bookkeeping (not part of synced state). */
 interface ClientTracking {
@@ -52,6 +85,12 @@ export class WorldRoom extends Room<{ state: WorldState }> {
 
   private readonly tracking = new Map<string, ClientTracking>();
 
+  /** Kick deny list — per-room-instance memory (cleared on server restart). */
+  private readonly denySet = new DenySet();
+
+  /** Per-IP failed-admin-code counter (global fallback when IP is unavailable). */
+  private readonly adminAttempts = new AdminAttemptLimiter();
+
   onCreate(): void {
     this.onMessage(MessageType.Move, (client, payload) => {
       this.handleMove(client, payload);
@@ -62,14 +101,46 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     this.onMessage(MessageType.Emoji, (client, payload) => {
       this.handleEmoji(client, payload);
     });
+    this.onMessage(MessageType.Announce, (client, payload) => {
+      this.handleAnnounce(client, payload);
+    });
+    this.onMessage(MessageType.Kick, (client, payload) => {
+      this.handleKick(client, payload);
+    });
   }
 
-  onJoin(client: Client, options: unknown): void {
+  /**
+   * Runs BEFORE onJoin. The ONLY place the client IP is exposed by the installed
+   * Colyseus 0.17: `context.ip` is derived from `x-forwarded-for` / `x-client-ip`
+   * / `x-real-ip` headers (see default_routes.ts) — not the socket — so it is
+   * commonly `undefined` in dev/test/no-proxy. We resolve it here and hand it to
+   * onJoin via the returned auth object. We never reject here (that keeps all
+   * user-facing rejections in onJoin, where the Korean message is known to
+   * propagate to the client); returning a truthy object always allows the seat.
+   */
+  onAuth(_client: Client, _options: unknown, context: AuthContext): AuthResult {
+    return { ip: resolveClientIp(context) };
+  }
+
+  onJoin(client: Client, options: unknown, auth?: AuthResult): void {
+    const ip = auth?.ip ?? null;
+
     const result = validateJoinOptions(options);
     if ("error" in result) {
       // Reject the join; Colyseus forwards this message to the client.
       throw new Error(result.error);
     }
+
+    // Kick deny list: a kicked player cannot rejoin (IP match when available,
+    // else the normalized-nickname fallback). Checked before admin so a banned
+    // connection never even reaches code verification.
+    if (this.denySet.isDenied({ ip, nickname: result.nickname })) {
+      throw new Error(KICKED_OUT);
+    }
+
+    // Admin authentication (optional). A provided code is verified server-side
+    // only; the result is a per-connection marker, NEVER schema state.
+    const isAdmin = this.authenticateAdmin(options, ip);
 
     const spawn = this.spawnPosition();
     const player = new Player();
@@ -82,12 +153,39 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     player.connected = true;
 
     this.state.players.set(client.sessionId, player);
+    const marker: AdminMarker = { isAdmin, ip, nickname: result.nickname };
+    client.userData = marker;
     this.tracking.set(client.sessionId, {
       lastAcceptedAt: this.now(),
       rate: new RateWindow(MOVE_MAX_MSGS_PER_SEC),
       chatRate: new RateWindow(CHAT_RATE.count, CHAT_RATE.windowMs),
       emojiRate: new RateWindow(EMOJI_RATE.count, EMOJI_RATE.windowMs),
     });
+  }
+
+  /**
+   * Verify the optional admin code from join options. Returns true only for the
+   * correct code. No code provided → normal user (false). Wrong code → throws
+   * the Korean typo error so the instructor notices. Brute-force guard: 5 failed
+   * attempts per minute per IP (or the shared global key), exceeded → generic
+   * Korean error, WITHOUT comparing (so a flood cannot brute-force the code).
+   * ADMIN_CODE is read fresh from the environment on every attempt; unset ⇒ any
+   * provided code is wrong ⇒ admin login is impossible.
+   */
+  private authenticateAdmin(options: unknown, ip: string | null): boolean {
+    const provided = (options as { adminCode?: unknown } | null | undefined)?.adminCode;
+    if (typeof provided !== "string" || provided.length === 0) return false;
+
+    const key = ip ?? GLOBAL_IP_KEY;
+    const now = this.now();
+    if (this.adminAttempts.isBlocked(key, now)) {
+      throw new Error(ADMIN_TOO_MANY);
+    }
+
+    if (compareAdminCode(provided, process.env.ADMIN_CODE)) return true;
+
+    this.adminAttempts.recordFailure(key, now);
+    throw new Error(ADMIN_CODE_WRONG);
   }
 
   onLeave(client: Client): void {
@@ -164,6 +262,52 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     this.broadcast(MessageType.Emoji, { sid: client.sessionId, index });
   }
 
+  /**
+   * Announce pipeline: sender MUST be admin (else silent drop — an unauthorized
+   * message is never acknowledged) → sanitize with the 300-char announce cap →
+   * write schema state. The banner lives in `state.announcement` (NOT a
+   * broadcast), so late joiners receive the current banner automatically via
+   * state sync. An empty result is a valid CLEAR (sanitizeAnnounce returns "").
+   */
+  private handleAnnounce(client: Client, payload: unknown): void {
+    if (!this.isAdmin(client)) return; // silent drop
+
+    const text = sanitizeAnnounce((payload as { text?: unknown } | null | undefined)?.text);
+    if (text === null) return; // not a string / oversized → drop
+
+    this.state.announcement = text;
+    this.state.announcedAt = this.now();
+  }
+
+  /**
+   * Kick pipeline: sender MUST be admin (else silent drop). The target must
+   * exist and must not be the admin themselves. On kick, add the target to the
+   * denySet (IP when available, ALWAYS the normalized nickname too) so a rejoin
+   * is blocked, then close the target's connection with KICK_CLOSE_CODE (4001) —
+   * the client maps exactly that code to the kicked UX.
+   */
+  private handleKick(client: Client, payload: unknown): void {
+    if (!this.isAdmin(client)) return; // silent drop
+
+    const sid = (payload as { sid?: unknown } | null | undefined)?.sid;
+    if (typeof sid !== "string" || sid.length === 0) return;
+    if (sid === client.sessionId) return; // cannot kick oneself
+
+    const target = this.clients.getById(sid);
+    if (!target) return; // target must exist
+
+    const targetMarker = target.userData as AdminMarker | undefined;
+    const nickname = this.state.players.get(sid)?.nickname ?? targetMarker?.nickname ?? "";
+    this.denySet.add({ ip: targetMarker?.ip ?? null, nickname });
+
+    target.leave(KICK_CLOSE_CODE);
+  }
+
+  /** True if this connection authenticated as admin (server-side marker only). */
+  private isAdmin(client: Client): boolean {
+    return (client.userData as AdminMarker | undefined)?.isAdmin === true;
+  }
+
   /** Wall-clock time in ms. Isolated here so the pure validators never read it. */
   private now(): number {
     return Date.now();
@@ -187,4 +331,18 @@ export class WorldRoom extends Room<{ state: WorldState }> {
 
 function clamp(value: number, min: number, max: number): number {
   return value < min ? min : value > max ? max : value;
+}
+
+/**
+ * Normalize the auth-context IP to a single string, or null when unavailable.
+ * `x-forwarded-for` may carry a comma-separated chain (or arrive as an array) —
+ * the left-most entry is the originating client. Anything empty ⇒ null (the
+ * caller then uses the global limiter key + nickname-only denySet fallback).
+ */
+function resolveClientIp(context: AuthContext | undefined): string | null {
+  const raw = context?.ip;
+  const first = Array.isArray(raw) ? raw[0] : raw;
+  if (typeof first !== "string") return null;
+  const ip = first.split(",")[0]?.trim() ?? "";
+  return ip.length > 0 ? ip : null;
 }

@@ -1,0 +1,169 @@
+/* Instructor admin panel — top-left, collapsible, above the 3D canvas.
+   Top-left keeps it clear of the chat log (top-right), emoji palette
+   (bottom-right) and chat input (bottom-center). */
+.cv-admin {
+  position: fixed;
+  top: 16px;
+  left: 16px;
+  z-index: 25;
+  width: min(300px, calc(100vw - 32px));
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  color: #ece7ff;
+  background: rgba(14, 11, 30, 0.82);
+  border: 1px solid rgba(150, 130, 220, 0.32);
+  border-radius: 12px;
+  backdrop-filter: blur(8px);
+  overflow: hidden;
+}
+
+.cv-admin-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border: 0;
+  background: rgba(120, 96, 224, 0.28);
+  color: #f2eeff;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.cv-admin-head:hover {
+  background: rgba(120, 96, 224, 0.4);
+}
+
+.cv-admin-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 14px;
+}
+
+.cv-admin-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cv-admin-title {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #b7b2df;
+}
+
+.cv-admin-textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: 60px;
+  padding: 9px 11px;
+  font-size: 13.5px;
+  font-family: inherit;
+  line-height: 1.4;
+  color: #f2eeff;
+  background: rgba(9, 8, 24, 0.6);
+  border: 1px solid rgba(150, 132, 235, 0.3);
+  border-radius: 10px;
+  outline: none;
+}
+.cv-admin-textarea:focus {
+  border-color: #8f7bff;
+  box-shadow: 0 0 0 3px rgba(143, 123, 255, 0.22);
+}
+
+.cv-admin-row-between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.cv-admin-counter {
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  color: rgba(210, 202, 240, 0.65);
+}
+
+.cv-admin-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.cv-admin-confirm {
+  display: flex;
+  gap: 6px;
+}
+
+.cv-admin-btn {
+  padding: 6px 10px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #e8e2ff;
+  background: rgba(30, 24, 58, 0.9);
+  border: 1px solid rgba(150, 130, 220, 0.32);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: filter 0.12s ease, background 0.12s ease, border-color 0.12s ease;
+  white-space: nowrap;
+}
+.cv-admin-btn:hover:not(:disabled) {
+  filter: brightness(1.12);
+}
+.cv-admin-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.cv-admin-btn.is-primary {
+  background: linear-gradient(92deg, #7d5bff, #a06bff);
+  border-color: transparent;
+  color: #fff;
+}
+
+.cv-admin-btn.is-danger {
+  background: #d1425a;
+  border-color: transparent;
+  color: #fff;
+}
+
+.cv-admin-btn.is-danger-outline {
+  background: transparent;
+  border-color: rgba(224, 96, 120, 0.55);
+  color: #ffb3c0;
+}
+.cv-admin-btn.is-danger-outline:hover {
+  background: rgba(209, 66, 90, 0.18);
+}
+
+.cv-admin-users {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: min(40vh, 280px);
+  overflow-y: auto;
+}
+
+.cv-admin-user {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 5px 8px;
+  background: rgba(9, 8, 24, 0.45);
+  border-radius: 8px;
+}
+
+.cv-admin-nick {
+  font-size: 13px;
+  word-break: break-word;
+}
+
+.cv-admin-me {
+  color: #b9a8ff;
+  font-weight: 700;
+}

@@ -4,6 +4,7 @@ import { APP_NAME, TINT_COLORS } from "@caysonverse/shared/constants";
 import { CHARACTERS } from "../game/constants";
 import { validateEntry } from "./validation";
 import { joinWorld } from "../net/connection";
+import { clearKicked } from "../net/kickSeam";
 import { useAppStore } from "../stores/appStore";
 import "./entry.css";
 
@@ -50,6 +51,8 @@ export function EntryScreen() {
   const [nickname, setNickname] = useState(saved.nickname);
   const [character, setCharacter] = useState(saved.character);
   const [tint, setTint] = useState(saved.tint);
+  const [showAdmin, setShowAdmin] = useState(false);
+  const [adminCode, setAdminCode] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -73,11 +76,21 @@ export function EntryScreen() {
     setSubmitting(true);
     persist(result.value);
 
+    // A deliberate manual entry clears any prior kick block (Task 11 seam).
+    clearKicked();
+
+    // Only supply a code when the admin field has one; a successful join with a
+    // code proves it was correct (a wrong code is rejected server-side), so we
+    // can infer admin status locally without the server leaking it.
+    const trimmedCode = adminCode.trim();
+    const asAdmin = trimmedCode.length > 0;
+    const params = asAdmin ? { ...result.value, adminCode: trimmedCode } : result.value;
+
     try {
       // Warm the model cache so the world scene has no load stall.
       useGLTF.preload(CHARACTERS[character].model);
-      const room = await joinWorld(result.value);
-      enterWorld({ ...result.value, sessionId: room.sessionId });
+      const room = await joinWorld(params);
+      enterWorld({ ...result.value, sessionId: room.sessionId }, asAdmin);
       // On success this component unmounts; do not touch state afterwards.
     } catch (err) {
       setError(err instanceof Error ? err.message : "입장에 실패했습니다. 다시 시도해주세요.");
@@ -150,6 +163,34 @@ export function EntryScreen() {
             ))}
           </div>
         </fieldset>
+
+        <div className="cv-admin-toggle">
+          {showAdmin ? (
+            <label className="cv-field">
+              <span className="cv-label">관리자 코드</span>
+              <input
+                className="cv-input"
+                type="password"
+                value={adminCode}
+                placeholder="강사 전용"
+                autoComplete="off"
+                aria-label="관리자 코드"
+                onChange={(e) => {
+                  setAdminCode(e.target.value);
+                  dismissMessages();
+                }}
+              />
+            </label>
+          ) : (
+            <button
+              type="button"
+              className="cv-admin-link"
+              onClick={() => setShowAdmin(true)}
+            >
+              관리자이신가요?
+            </button>
+          )}
+        </div>
 
         {message && (
           <p className="cv-message" role="alert">

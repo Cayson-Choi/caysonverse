@@ -7,12 +7,20 @@ import { MessageType } from "@caysonverse/shared/messages";
 import type { MovePayload } from "@caysonverse/shared/messages";
 import { SERVER_URL } from "./endpoint";
 import { useAppStore } from "../stores/appStore";
+import { leaveAction } from "./leaveAction";
+import { markKicked } from "./kickSeam";
 
 /** Options sent to the server's `onJoin` (validated there against the contract). */
 export interface JoinParams {
   nickname: string;
   character: number;
   tint: number;
+  /**
+   * Optional admin code (instructor). Sent verbatim to the server, which is the
+   * ONLY place it is compared — it is never checked or stored in the client. An
+   * empty/absent value joins as a normal user.
+   */
+  adminCode?: string;
 }
 
 const client = new Client(SERVER_URL);
@@ -69,6 +77,23 @@ export function sendEmoji(index: number): void {
 }
 
 /**
+ * Admin: set (or clear) the announcement banner. An empty/whitespace `text`
+ * clears it — that is intentional and handled server-side. No-op if not
+ * connected; the server drops the message unless this connection is admin.
+ */
+export function sendAnnounce(text: string): void {
+  room?.send(MessageType.Announce, { text });
+}
+
+/**
+ * Admin: kick the player owning `sid`. No-op if not connected; the server drops
+ * the message unless this connection is admin, and refuses self-kicks.
+ */
+export function sendKick(sid: string): void {
+  room?.send(MessageType.Kick, { sid });
+}
+
+/**
  * True once the server has placed our player in the synced state. Null-safe:
  * `joinOrCreate` can resolve before the reflection-decoded `state.players`
  * MapSchema exists, so we must not assume the shape is ready yet.
@@ -100,15 +125,20 @@ function waitForSelf(r: Room<WorldState>): Promise<void> {
 }
 
 /**
- * Return the user to the entry screen if the room ever drops unexpectedly
- * (kick / server down). Full reconnection UX is Task 11 — here we only avoid
- * stranding the user on a dead canvas.
+ * Return the user to the entry screen if the room ever drops (kick / server
+ * down). The leave CODE decides the UX (see leaveAction): code 4001 is an
+ * admin kick — show the kick notice and persist the no-reconnect seam so Task
+ * 11's reconnection logic honors it; any other code is an ordinary disconnect.
+ * Full reconnection UX is Task 11 — here we only avoid stranding the user.
  */
 function registerLeaveHandler(joined: Room<WorldState>): void {
-  joined.onLeave(() => {
+  joined.onLeave((code: number) => {
     if (room !== joined) return; // superseded by a newer join
     room = null;
-    useAppStore.getState().leaveToEntry("서버와의 연결이 끊어졌습니다. 다시 입장해주세요.");
+    const action = leaveAction(code);
+    // Kick seam for Task 11: mark the session so auto-reconnection is refused.
+    if (action.blockReconnect) markKicked();
+    useAppStore.getState().leaveToEntry(action.notice);
   });
 }
 

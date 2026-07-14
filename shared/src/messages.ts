@@ -10,6 +10,10 @@ export const MessageType = {
   ChatRejected: "chat_rejected",
   /** Client -> server: fire an emoji reaction. Server -> all: relay a reaction. */
   Emoji: "emoji",
+  /** Client(admin) -> server: set/clear the announcement banner (schema state). */
+  Announce: "announce",
+  /** Client(admin) -> server: kick a target player by session id. */
+  Kick: "kick",
 } as const;
 
 export type MessageType = (typeof MessageType)[keyof typeof MessageType];
@@ -54,10 +58,27 @@ export interface EmojiBroadcast {
   index: number;
 }
 
+/**
+ * Client(admin) -> server: set the announcement banner. An empty (or
+ * whitespace-only) string is VALID and CLEARS the banner. The server verifies
+ * the sender is admin (server-side marker, never in schema) and drops otherwise.
+ */
+export interface AnnouncePayload {
+  text: string;
+}
+
+/** Client(admin) -> server: kick the player owning `sid`. */
+export interface KickPayload {
+  /** Target session id (the admin cannot kick themselves). */
+  sid: string;
+}
+
 /** Payload type for each message id, keyed by MessageType. */
 export interface MessagePayloads {
   [MessageType.Move]: MovePayload;
   [MessageType.Chat]: ChatPayload;
   [MessageType.ChatRejected]: ChatRejectedPayload;
   [MessageType.Emoji]: EmojiPayload;
+  [MessageType.Announce]: AnnouncePayload;
+  [MessageType.Kick]: KickPayload;
 }

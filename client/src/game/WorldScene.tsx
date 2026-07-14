@@ -9,7 +9,10 @@ import { WorldMap } from "./WorldMap";
 import { CameraRig } from "./CameraRig";
 import { Chat } from "../ui/Chat";
 import { EmojiPalette } from "../ui/EmojiPalette";
+import { Banner } from "../ui/Banner";
+import { AdminPanel } from "../ui/AdminPanel";
 import { getRoom } from "../net/connection";
+import { useAppStore } from "../stores/appStore";
 import type { Identity } from "../stores/appStore";
 import type { Orbit, Pose } from "./types";
 
@@ -29,6 +32,9 @@ function readSpawn(): Pose {
 }
 
 export function WorldScene({ identity }: { identity: Identity }) {
+  // Local-only: gates the admin panel. Never derived from schema state.
+  const isAdmin = useAppStore((s) => s.isAdmin);
+
   // Per-frame mutable game state — created once, mutated in place, never in
   // React state. Shared by LocalPlayer (writes) and CameraRig (reads).
   const pose = useRef<Pose>(readSpawn()).current;
@@ -97,8 +103,10 @@ export function WorldScene({ identity }: { identity: Identity }) {
         </KeyboardControls>
       </Canvas>
       <LoadingOverlay />
+      <Banner />
       <Chat />
       <EmojiPalette />
+      {isAdmin && <AdminPanel />}
     </>
   );
 }

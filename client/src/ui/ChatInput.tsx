@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { CHAT_MAX_LENGTH } from "@caysonverse/shared/constants";
-import { setUiCaptured } from "../game/uiCapture";
+import { setUiCaptured, isUiCaptured } from "../game/uiCapture";
 import { sendChat } from "../net/connection";
 
 const PLACEHOLDER = "메시지를 입력하세요 (Enter)";
@@ -19,10 +19,14 @@ export function ChatInput() {
   const inputRef = useRef<HTMLInputElement>(null);
   const [value, setValue] = useState("");
 
-  // Global Enter focuses the input when it isn't already the active element.
+  // Global Enter focuses the input — but only when no other UI field owns the
+  // keyboard. Without this guard, pressing Enter inside another text field (e.g.
+  // the admin announce textarea, which sets the same capture flag) would steal
+  // focus to the chat bar instead of inserting a newline.
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       if (e.key !== "Enter" || e.isComposing) return;
+      if (isUiCaptured()) return; // another field (or chat itself) is focused
       const input = inputRef.current;
       if (!input || document.activeElement === input) return;
       e.preventDefault();

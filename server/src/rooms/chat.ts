@@ -30,16 +30,33 @@ function isStripped(code: number): boolean {
   );
 }
 
-/** Return the cleaned message, or null if it must be dropped. */
-export function sanitizeChat(text: unknown): string | null {
-  if (typeof text !== "string") return null;
-
+/**
+ * Remove every invisible/formatting code point (see isStripped) but keep all
+ * visible content and regular spaces. Does NOT trim — the caller decides whether
+ * leading/trailing spaces matter. Shared by sanitizeChat and sanitizeAnnounce so
+ * the strip policy lives in exactly one place.
+ */
+export function stripControl(text: string): string {
   let cleaned = "";
   for (const ch of text) {
     if (!isStripped(ch.codePointAt(0)!)) cleaned += ch;
   }
-  cleaned = cleaned.trim();
+  return cleaned;
+}
 
-  if (cleaned.length === 0 || cleaned.length > CHAT_MAX_LENGTH) return null;
+/**
+ * Return the cleaned message, or null if it must be dropped.
+ *
+ * `maxLength` parameterizes the length cap (default CHAT_MAX_LENGTH) so the same
+ * sanitizer backs both chat and the longer admin announcement — no duplicated
+ * strip/trim logic. Empty (after strip+trim) is still a drop here; the announce
+ * path handles "empty clears" separately (see announce.ts).
+ */
+export function sanitizeChat(text: unknown, maxLength: number = CHAT_MAX_LENGTH): string | null {
+  if (typeof text !== "string") return null;
+
+  const cleaned = stripControl(text).trim();
+
+  if (cleaned.length === 0 || cleaned.length > maxLength) return null;
   return cleaned;
 }

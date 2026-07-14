@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { CHAT_MAX_LENGTH } from "@caysonverse/shared/constants";
-import { sanitizeChat } from "./chat";
+import { sanitizeChat, stripControl } from "./chat";
 
 describe("sanitizeChat", () => {
   it("returns null for non-string input", () => {
@@ -58,5 +58,27 @@ describe("sanitizeChat", () => {
   it("measures the limit after trimming and stripping, not before", () => {
     const padded = "   " + "나".repeat(CHAT_MAX_LENGTH) + "\t\t";
     expect(sanitizeChat(padded)).toBe("나".repeat(CHAT_MAX_LENGTH));
+  });
+
+  it("accepts an override maxLength argument (parameterized limit)", () => {
+    // Default cap rejects; a larger explicit cap accepts the same text.
+    const long = "다".repeat(CHAT_MAX_LENGTH + 50);
+    expect(sanitizeChat(long)).toBeNull();
+    expect(sanitizeChat(long, CHAT_MAX_LENGTH + 50)).toBe(long);
+    // A smaller explicit cap rejects text the default would accept.
+    expect(sanitizeChat("다".repeat(10), 5)).toBeNull();
+    expect(sanitizeChat("다".repeat(5), 5)).toBe("다".repeat(5));
+  });
+});
+
+describe("stripControl", () => {
+  it("removes control and zero-width characters but keeps visible content + spaces", () => {
+    expect(stripControl("a\tb\nc")).toBe("abc");
+    expect(stripControl("공지\u200B사항")).toBe("공지사항");
+    expect(stripControl("오늘 수업")).toBe("오늘 수업"); // regular spaces preserved
+  });
+
+  it("does not trim (trimming is the caller's responsibility)", () => {
+    expect(stripControl("  hi  ")).toBe("  hi  ");
   });
 });

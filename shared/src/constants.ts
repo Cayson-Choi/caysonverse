@@ -64,6 +64,24 @@ export const EMOJI_RATE = { count: 1, windowMs: 500 } as const;
 /** How long (ms) an emoji reaction floats above its sender before removal. */
 export const EMOJI_DISPLAY_MS = 3000;
 
+// ── Admin: announce banner + kick (Task 9). ──
+
+/**
+ * Maximum announcement banner length in characters, counted after trimming.
+ * Larger than CHAT_MAX_LENGTH because a notice may carry more than one line of
+ * instruction. Parameterizes the shared chat sanitizer (see server chat.ts).
+ */
+export const ANNOUNCE_MAX_LENGTH = 300;
+
+/**
+ * WebSocket close code the server uses when an admin KICKS a client. In the
+ * application-reserved 4000–4999 range so the SDK delivers it verbatim to
+ * `room.onLeave(code)`. The client maps exactly this code to the kicked UX
+ * (entry screen + Korean notice + no auto-reconnect); every other code is an
+ * ordinary disconnect. Shared so client and server agree on one value.
+ */
+export const KICK_CLOSE_CODE = 4001;
+
 /** Number of selectable character presets (valid index range 0..CHARACTER_COUNT-1). */
 export const CHARACTER_COUNT = 4;
 
