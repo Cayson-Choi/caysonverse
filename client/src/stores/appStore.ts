@@ -55,8 +55,15 @@ interface AppState {
    * A reconnection succeeded on `sessionId`. Adopt it (unchanged for a same-
    * session token reconnect, new for a fresh re-join), bump the epoch to remount
    * the scene, and clear the reconnection overlay.
+   *
+   * `isAdmin` reconciles admin status with what the server actually granted:
+   *  - omitted → PRESERVE (Phase-1 token reconnect keeps the server-side userData
+   *    marker, so an admin stays an admin);
+   *  - explicit → SET (Phase-2 fresh join: `true` only if the admin code was
+   *    re-sent and accepted, else `false` so the panel stops rendering and the
+   *    client stops pretending it can announce/kick — the F5 fix).
    */
-  reconnected: (sessionId: string) => void;
+  reconnected: (sessionId: string, isAdmin?: boolean) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -73,9 +80,10 @@ export const useAppStore = create<AppState>((set) => ({
     set({ screen: "entry", identity: null, isAdmin: false, notice, reconnecting: false }),
   clearNotice: () => set({ notice: null }),
   setReconnecting: (reconnecting) => set({ reconnecting }),
-  reconnected: (sessionId) =>
+  reconnected: (sessionId, isAdmin) =>
     set((s) => ({
       identity: s.identity ? { ...s.identity, sessionId } : s.identity,
+      isAdmin: isAdmin === undefined ? s.isAdmin : isAdmin,
       connectionEpoch: s.connectionEpoch + 1,
       reconnecting: false,
     })),

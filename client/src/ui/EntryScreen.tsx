@@ -5,6 +5,7 @@ import { CHARACTERS } from "../game/constants";
 import { validateEntry } from "./validation";
 import { joinWorld } from "../net/connection";
 import { clearKicked } from "../net/kickSeam";
+import { rememberAdminCode, forgetAdminCode } from "../net/adminSession";
 import { loadIdentity, saveIdentity } from "../net/identityCache";
 import { useAppStore } from "../stores/appStore";
 import "./entry.css";
@@ -59,6 +60,11 @@ export function EntryScreen() {
       // Warm the model cache so the world scene has no load stall.
       useGLTF.preload(CHARACTERS[character].model);
       const room = await joinWorld(params);
+      // A join that supplied a code AND succeeded proves the code was correct, so
+      // remember it (module memory only) to re-authenticate on a Phase-2 fresh
+      // rejoin after a server restart; a non-admin join clears any stale code.
+      if (asAdmin) rememberAdminCode(trimmedCode);
+      else forgetAdminCode();
       enterWorld({ ...result.value, sessionId: room.sessionId }, asAdmin);
       // On success this component unmounts; do not touch state afterwards.
     } catch (err) {
