@@ -32,6 +32,19 @@ export const MOVE_MAX_MSGS_PER_SEC = 30;
  */
 export const MOVE_ELAPSED_FLOOR_MS = 10;
 
+/**
+ * Ceiling (ms) for the elapsed-time budget in move displacement validation
+ * (anti-teleport, final-review D1). `elapsed = now - lastAcceptedAt` is
+ * client-influenceable and otherwise UNBOUNDED: a client that idles/reconnects
+ * then sends one move would accumulate a world-spanning single-step budget
+ * (`MOVE_SPEED * elapsed/1000 * slack`), letting it jump to any open-floor point
+ * in one message despite the bounds clamp. Capping elapsed at a few patch
+ * intervals bounds one post-idle move to ~MOVE_SPEED * 0.5 * slack ≈ 3 m while
+ * staying well above any legitimate resume-after-hiccup step (moves flow at 10 Hz
+ * = PATCH_RATE_MS). The room applies `Math.min(elapsed, this)` BEFORE the floor.
+ */
+export const MOVE_ELAPSED_CEIL_MS = 500;
+
 /** Nickname length bounds, counted after trimming. */
 export const NICKNAME_MIN = 2;
 export const NICKNAME_MAX = 12;

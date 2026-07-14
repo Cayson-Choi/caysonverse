@@ -5,6 +5,7 @@ import {
   MAX_CLIENTS,
   PATCH_RATE_MS,
   MOVE_MAX_MSGS_PER_SEC,
+  MOVE_ELAPSED_CEIL_MS,
   CHAT_RATE,
   EMOJI_RATE,
   SPAWN_POINT,
@@ -21,6 +22,7 @@ import { sanitizeAnnounce } from "./announce";
 import { validateEmojiIndex } from "./emoji";
 import { RateWindow } from "./rateLimit";
 import { DenySet } from "./denySet";
+import { resolveClientIp } from "./clientIp";
 import { compareAdminCode, AdminAttemptLimiter } from "./adminAuth";
 
 /** Korean notice sent to a sender whose chat was dropped for exceeding the rate. */
@@ -126,10 +128,12 @@ export class WorldRoom extends Room<{ state: WorldState }> {
    * Runs BEFORE onJoin. The ONLY place the client IP is exposed by the installed
    * Colyseus 0.17: `context.ip` is derived from `x-forwarded-for` / `x-client-ip`
    * / `x-real-ip` headers (see default_routes.ts) — not the socket — so it is
-   * commonly `undefined` in dev/test/no-proxy. We resolve it here and hand it to
-   * onJoin via the returned auth object. We never reject here (that keeps all
-   * user-facing rejections in onJoin, where the Korean message is known to
-   * propagate to the client); returning a truthy object always allows the seat.
+   * commonly `undefined` in dev/test/no-proxy. `resolveClientIp` selects the
+   * RIGHT-most (trusted-proxy-appended) hop so a client-spoofed X-Forwarded-For
+   * prefix cannot control the IP that keys the admin throttle (see clientIp.ts).
+   * We hand the result to onJoin via the returned auth object. We never reject
+   * here (that keeps all user-facing rejections in onJoin, where the Korean
+   * message is known to propagate to the client); a truthy return allows the seat.
    */
   onAuth(_client: Client, _options: unknown, context: AuthContext): AuthResult {
     return { ip: resolveClientIp(context) };
@@ -144,9 +148,9 @@ export class WorldRoom extends Room<{ state: WorldState }> {
       throw new Error(result.error);
     }
 
-    // Kick deny list: a kicked player cannot rejoin (IP match when available,
-    // else the normalized-nickname fallback). Checked before admin so a banned
-    // connection never even reaches code verification.
+    // Kick deny list: a kicked player cannot rejoin under the same nickname
+    // (normalized-nickname key only — IP is NOT a ban key, see denySet.ts / F7).
+    // Checked before admin so a banned connection never reaches code verification.
     if (this.denySet.isDenied({ ip, nickname: result.nickname })) {
       throw new Error(KICKED_OUT);
     }
@@ -232,6 +236,12 @@ export class WorldRoom extends Room<{ state: WorldState }> {
   onReconnect(client: Client): void {
     const player = this.state.players.get(client.sessionId);
     if (player) player.connected = true;
+    // Reset the move-speed clock so the disconnect gap (up to the reconnection
+    // window) is not spendable as a one-shot displacement budget on the first
+    // post-reconnect move (anti-teleport, D1). The handleMove ceiling also bounds
+    // this, but resetting keeps elapsed honest from the moment the session resumes.
+    const track = this.tracking.get(client.sessionId);
+    if (track) track.lastAcceptedAt = this.now();
   }
 
   /**
@@ -268,7 +278,10 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     if (!track.rate.tryAccept(now)) return;
 
     // Steps 1,3,4,5: shape + speed + bounds + yaw, decided purely.
-    const elapsed = now - track.lastAcceptedAt;
+    // Cap elapsed to a small ceiling (anti-teleport, D1): lastAcceptedAt is
+    // client-influenceable, so an idle/reconnect gap must NOT translate into a
+    // world-spanning one-shot displacement budget. The validator then floors it.
+    const elapsed = Math.min(now - track.lastAcceptedAt, MOVE_ELAPSED_CEIL_MS);
     const next = validateMove({ x: player.x, z: player.z }, payload, elapsed);
     if (next === null) return; // invalid → drop whole message
 
@@ -343,9 +356,15 @@ export class WorldRoom extends Room<{ state: WorldState }> {
   /**
    * Kick pipeline: sender MUST be admin (else silent drop). The target must
    * exist and must not be the admin themselves. On kick, add the target to the
-   * denySet (IP when available, ALWAYS the normalized nickname too) so a rejoin
-   * is blocked, then close the target's connection with KICK_CLOSE_CODE (4001) —
-   * the client maps exactly that code to the kicked UX.
+   * denySet by NORMALIZED NICKNAME ONLY so a same-name rejoin is blocked, then
+   * close the target's connection with KICK_CLOSE_CODE (4001) — the client maps
+   * exactly that code to the kicked UX.
+   *
+   * We deliberately do NOT ban the IP (final-review F7): behind Railway the IP is
+   * the shared public NAT of a whole classroom, so an IP ban would lock out every
+   * other student after one kick. The nickname key blocks the kicked user's
+   * trivial rejoin without over-blocking classmates (see denySet.ts). The target
+   * IP is still passed for shape/audit but is ignored as a ban key.
    */
   private handleKick(client: Client, payload: unknown): void {
     if (!this.isAdmin(client)) return; // silent drop
@@ -359,7 +378,7 @@ export class WorldRoom extends Room<{ state: WorldState }> {
 
     const targetMarker = target.userData as AdminMarker | undefined;
     const nickname = this.state.players.get(sid)?.nickname ?? targetMarker?.nickname ?? "";
-    this.denySet.add({ ip: targetMarker?.ip ?? null, nickname });
+    this.denySet.add({ ip: targetMarker?.ip ?? null, nickname }); // ip ignored (F7)
 
     target.leave(KICK_CLOSE_CODE);
   }
@@ -403,18 +422,4 @@ function readMaxClients(): number {
   const raw = process.env.CV_MAX_CLIENTS;
   const n = raw !== undefined ? Number(raw) : NaN;
   return Number.isInteger(n) && n > 0 ? n : MAX_CLIENTS;
-}
-
-/**
- * Normalize the auth-context IP to a single string, or null when unavailable.
- * `x-forwarded-for` may carry a comma-separated chain (or arrive as an array) —
- * the left-most entry is the originating client. Anything empty ⇒ null (the
- * caller then uses the global limiter key + nickname-only denySet fallback).
- */
-function resolveClientIp(context: AuthContext | undefined): string | null {
-  const raw = context?.ip;
-  const first = Array.isArray(raw) ? raw[0] : raw;
-  if (typeof first !== "string") return null;
-  const ip = first.split(",")[0]?.trim() ?? "";
-  return ip.length > 0 ? ip : null;
 }

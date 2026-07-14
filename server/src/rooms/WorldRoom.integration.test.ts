@@ -132,6 +132,42 @@ describe("WorldRoom (integration)", () => {
     expect(player.z).toBe(startZ);
   });
 
+  // Anti-teleport, final-review D1: `elapsed = now - lastAcceptedAt` must be
+  // CAPPED. Without the ceiling a client that idles (or reconnects) then sends one
+  // move would get a world-spanning displacement budget and clamp-accept anywhere
+  // on open floor. We simulate the idle by backdating the client's last-accepted
+  // clock (white-box reach into the private tracking map — the ceiling is room
+  // timing, not the pure validator).
+  it("caps the elapsed budget so a big move after a long idle gap is DROPPED", async () => {
+    const room = await colyseus.createRoom<WorldRoom>(WORLD_ROOM);
+    const client = await colyseus.connectTo(room, VALID_JOIN);
+    const player = room.state.players.get(client.sessionId)!;
+    const startX = player.x;
+    const startZ = player.z;
+
+    // Backdate 60s: an UNCAPPED budget (4 m/s * 60s * 1.5) would allow ~360 m,
+    // clamp-accepting any in-bounds target. The ceiling must cut this to ~3 m.
+    const tracking = (room as unknown as {
+      tracking: Map<string, { lastAcceptedAt: number }>;
+    }).tracking;
+    tracking.get(client.sessionId)!.lastAcceptedAt = Date.now() - 60_000;
+
+    // A 10 m step to open lounge floor (in-bounds, no obstacle): beyond the capped
+    // ~3 m budget → dropped. It is NOT dropped for bounds/obstacle reasons.
+    client.send(MessageType.Move, { x: startX, z: startZ + 10, yaw: 0 });
+    await room.waitForNextMessage();
+    await flush();
+    expect(player.x).toBe(startX);
+    expect(player.z).toBe(startZ);
+
+    // The SAME idle gap still permits a normal in-budget step (~1 m < 3 m cap):
+    // capping the budget does not blanket-block moves after an idle.
+    client.send(MessageType.Move, { x: startX, z: startZ + 1, yaw: 0 });
+    await room.waitForNextMessage();
+    await flush();
+    expect(player.z).toBeCloseTo(startZ + 1, 4);
+  });
+
   // Gap closed (Task 12 audit): the pure RateWindow class was already exhaustively
   // unit-tested (rateLimit.test.ts), but nothing proved the ROOM actually wires it
   // to moves — the design's explicit "30 msg/s 초과 드롭" behavior. Mirrors the
