@@ -25,10 +25,30 @@ caysonverse(웹 3D 메타버스)를 Railway에 배포하는 방법입니다. Dev
 
 1. Railway 대시보드에서 **New Project → Deploy from GitHub repo** 를 선택하고
    이 저장소를 고릅니다.
+
+   > ⚠️ **서비스는 반드시 1개여야 합니다.** Railway는 npm workspaces 모노레포를
+   > 자동 감지해 `@caysonverse/server` 와 `@caysonverse/client` **두 개의 서비스**를
+   > 만들자고 제안합니다(클라이언트 서비스의 시작 명령을 `npm run dev` 로 잡는
+   > 잘못된 설정까지 포함). caysonverse 는 **서버 하나가 클라이언트 정적 파일까지
+   > 같은 오리진에서 서빙**하는 단일 서비스 구조이므로, 배포 전 `Details` 화면에서
+   > **`@caysonverse/client` 서비스는 Discard** 하세요.
+   >
+   > 남은 `@caysonverse/server` 서비스에서도 Railway가 자동으로 채워 넣는
+   > **Build Command / Start Command / Watch Patterns 는 모두 Discard** 하세요.
+   > 이 값들은 워크스페이스 스코프(`--workspace=@caysonverse/server`)라 잘못됐고,
+   > 지우면 아래 `railway.toml` 값이 그대로 적용됩니다. (특히 Watch Patterns
+   > `["/server/**"]` 를 남기면 클라이언트 코드를 고쳐도 재배포되지 않습니다.)
+   >
+   > 최종적으로 남길 설정은 **Branch(main) / Repo / Builder(RAILPACK)** 3개뿐입니다.
+
 2. Railway가 저장소의 `railway.toml`을 자동으로 읽어 다음을 설정합니다. 별도
    입력이 필요 없습니다.
    - 빌더: **Railpack** (Railway의 현재 기본 빌더)
-   - 빌드 명령: `npm ci && npm run build`
+   - 빌드 명령: `npm run build`
+     (의존성 설치는 Railpack의 install 단계가 이미 `npm ci`로 처리합니다.
+     여기서 `npm ci`를 또 부르면 이미 설치된 node_modules를 지우려다
+     `EBUSY ... rmdir '/app/client/node_modules/.vite'` 로 빌드가 실패합니다 —
+     실제 배포에서 확인된 사항입니다.)
    - 시작 명령: `npm start`
    - 헬스체크 경로: `/healthz`
    - Node 버전: `package.json`의 `engines.node`(`>=24`)를 Railpack이 읽어
@@ -39,8 +59,11 @@ caysonverse(웹 3D 메타버스)를 Railway에 배포하는 방법입니다. Dev
    |---|---|---|
    | `ADMIN_CODE` | *(강사만 아는 비밀 코드)* | 관리자(강사) 로그인 코드. 미설정 시 관리자 기능이 비활성화됩니다. |
 
-   > ⚠️ **`PORT`는 설정하지 마세요.** Railway가 배포할 때 자동으로 주입하며,
-   > 서버는 그 값을 사용합니다. 직접 지정하면 헬스체크가 실패할 수 있습니다.
+   > ⚠️ **`PORT`는 설정하지 않아도 됩니다.** 실제 배포에서 확인한 결과, Railway가
+   > 자동으로 넣어주는 변수는 `RAILWAY_*` 계열뿐이고 **`PORT`는 주입되지 않습니다.**
+   > 서버는 `process.env.PORT ?? 2567` 이므로 폴백값 **2567**로 리슨하며, 아래 5번의
+   > 도메인 생성 시 **타깃 포트를 2567**로 지정하면 정상 동작합니다.
+   > (`PORT`를 직접 설정한다면, 도메인의 타깃 포트도 반드시 같은 값으로 맞추세요.)
 
    > `ADMIN_CODE`는 서버에서만 비교되며 클라이언트 번들에는 절대 포함되지
    > 않습니다(코드가 브라우저로 전송되지 않음). 값은 커밋하지 말고 Railway
@@ -56,8 +79,9 @@ caysonverse(웹 3D 메타버스)를 Railway에 배포하는 방법입니다. Dev
 
 5. **도메인 발급 & 배포 확인**:
    - 서비스 **Settings → Networking → Generate Domain** 으로 공개 URL을
-     만듭니다. WebSocket은 기본 HTTP 서비스에서 그대로 동작합니다(추가 설정
-     불필요).
+     만듭니다. **포트를 물어보면 `2567` 을 입력하세요** (서버의 리슨 포트 —
+     위 3번의 `PORT` 설명 참고). WebSocket은 기본 HTTP 서비스에서 그대로
+     동작합니다(추가 설정 불필요).
    - 브라우저에서 `https://<발급된-도메인>/healthz` 를 열어 `{"ok":true}`가
      보이면 서버가 정상입니다.
    - 루트 `https://<발급된-도메인>/` 에 접속하면 입장 화면(닉네임·캐릭터 선택)이

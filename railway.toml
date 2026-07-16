@@ -13,10 +13,13 @@
 # 기본값이 바뀌어도 흔들리지 않도록 명시합니다.
 builder = "RAILPACK"
 
-# 설치 + 빌드. Railpack이 install 단계에서 npm ci 를 자동 실행하지만,
-# npm workspaces 모노레포에서 확실히 하기 위해 빌드 커맨드에 명시합니다.
+# 빌드만 수행합니다. 의존성 설치는 Railpack 의 install 단계가 이미 npm ci 로
+# 처리하므로(워크스페이스 포함), 여기서 npm ci 를 또 부르면 안 됩니다.
+# 실제 배포에서 확인: 중복 npm ci 는 이미 설치된 node_modules 를 지우려다
+#   EBUSY: resource busy or locked, rmdir '/app/client/node_modules/.vite'
+# 로 빌드가 실패합니다.
 # 결과물: server/dist/index.cjs (서버 번들) + client/dist (정적 SPA).
-buildCommand = "npm ci && npm run build"
+buildCommand = "npm run build"
 
 [deploy]
 # 프로덕션 시작 명령. server/dist/index.cjs 를 실행하며, 이 서버가
