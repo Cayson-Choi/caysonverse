@@ -64,7 +64,9 @@ export const MOVE_KEYS: KeyboardControlsEntry<MoveControl>[] = [
 export const CAMERA = {
   distance: 6, // initial follow distance (m)
   minDistance: 2.5,
-  maxDistance: 10,
+  // 18m + pitch 0.35 puts the camera ~7.8m up — above the 4m walls, so max
+  // zoom-out reads as a bird's-eye overview of the room instead of a wall face.
+  maxDistance: 18,
   pitch: 0.35, // initial elevation (rad)
   minPitch: -0.1,
   maxPitch: 1.2,
@@ -76,8 +78,10 @@ export const CAMERA = {
 
 /** Scene palette — matches the entry screen's cosmic navy/violet backdrop. */
 export const SKY_COLOR = "#171335";
-export const FOG_NEAR = 25;
-export const FOG_FAR = 70;
+// Pushed out with maxDistance=18: at full zoom-out across the 60m map the far
+// wall sits ~75-80m from the camera, so the old FOG_FAR=70 would swallow it.
+export const FOG_NEAR = 35;
+export const FOG_FAR = 100;
 
 /*
  * ── Remote-avatar snapshot interpolation & rendering (BINDING values) ──

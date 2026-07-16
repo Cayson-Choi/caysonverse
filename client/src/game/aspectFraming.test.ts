@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { aspectDistanceScale, PORTRAIT_MAX_SCALE } from "./aspectFraming";
+import { CAMERA } from "./constants";
 
 describe("aspectDistanceScale", () => {
   it("leaves landscape and square viewports untouched", () => {
@@ -20,10 +21,10 @@ describe("aspectDistanceScale", () => {
     expect(pixel).toBeCloseTo(1.427, 2);
   });
 
-  it("keeps the default 6m follow distance inside the 10m zoom ceiling", () => {
+  it("keeps the default follow distance inside the zoom ceiling", () => {
     // The pull-back must not silently exceed CAMERA.maxDistance for a default view.
-    expect(6 * aspectDistanceScale(390 / 664)).toBeLessThan(10);
-    expect(6 * PORTRAIT_MAX_SCALE).toBeLessThanOrEqual(10);
+    expect(CAMERA.distance * aspectDistanceScale(390 / 664)).toBeLessThan(CAMERA.maxDistance);
+    expect(CAMERA.distance * PORTRAIT_MAX_SCALE).toBeLessThanOrEqual(CAMERA.maxDistance);
   });
 
   it("caps the pull-back on absurdly narrow viewports", () => {
