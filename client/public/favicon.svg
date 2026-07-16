@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- caysonverse favicon: a speech bubble with typing dots — someone is here,
+       talking — floating in the cosmic navy of the world's night sky. -->
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1d1745"/>
+      <stop offset="1" stop-color="#120e2b"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="url(#sky)"/>
+  <!-- faint grid horizon of the world floor -->
+  <path d="M6 50 L58 50 M14 56 L50 56" stroke="#4a3fa8" stroke-width="1.6" stroke-linecap="round" opacity="0.55"/>
+  <!-- small star (the "verse") -->
+  <path d="M50 12 l1.8 4.2 4.2 1.8 -4.2 1.8 -1.8 4.2 -1.8 -4.2 -4.2 -1.8 4.2 -1.8 z" fill="#f5d77a"/>
+  <!-- speech bubble -->
+  <rect x="10" y="16" width="38" height="24" rx="9" fill="#f3f1ff"/>
+  <path d="M18 38 L16 48 L27 39 Z" fill="#f3f1ff"/>
+  <!-- typing dots -->
+  <circle cx="21" cy="28" r="3.2" fill="#6d5fd5"/>
+  <circle cx="29.5" cy="28" r="3.2" fill="#8d7ff0"/>
+  <circle cx="38" cy="28" r="3.2" fill="#b9b3f8"/>
+</svg>
