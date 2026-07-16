@@ -63,6 +63,49 @@ describe("CHARACTERS table integrity", () => {
       expect(preset.model).toMatch(/^\/models\/[a-z]+\.glb$/);
     }
   });
+
+  // ── v2 Task 13: royals are UNARMED, fixed-palette variants. ──
+
+  it("marks each royal with its own id on the crown config (palette key)", () => {
+    for (const preset of CHARACTERS.slice(4)) {
+      expect(preset.crown?.royal).toBe(preset.id);
+    }
+    // Base presets carry no royal marker (their tint path must stay untouched).
+    for (const preset of CHARACTERS.slice(0, 4)) {
+      expect(preset.crown?.royal).toBeUndefined();
+    }
+  });
+
+  it("hides every weapon node of its body on each royal (unarmed royalty)", () => {
+    // Weapon/prop node names per body GLB, measured by scripts/dump-uv-cells.mjs.
+    const weapons: Record<string, string[]> = {
+      "/models/knight.glb": [
+        "1H_Sword",
+        "2H_Sword",
+        "1H_Sword_Offhand",
+        "Badge_Shield",
+        "Rectangle_Shield",
+        "Round_Shield",
+        "Spike_Shield",
+      ],
+      "/models/barbarian.glb": ["1H_Axe", "2H_Axe", "1H_Axe_Offhand", "Barbarian_Round_Shield"],
+      "/models/mage.glb": ["1H_Wand", "2H_Staff", "Spellbook", "Spellbook_open"],
+      "/models/rogue.glb": ["Knife", "Knife_Offhand", "1H_Crossbow", "2H_Crossbow", "Throwable"],
+    };
+    for (const royal of CHARACTERS.slice(4)) {
+      for (const weapon of weapons[royal.model]) {
+        expect(royal.hideNodes, `${royal.id} must hide ${weapon}`).toContain(weapon);
+      }
+    }
+  });
+
+  it("keeps every royal's built-in cape VISIBLE (repainted, not hidden)", () => {
+    for (const royal of CHARACTERS.slice(4)) {
+      for (const node of royal.hideNodes ?? []) {
+        expect(node).not.toMatch(/_Cape$/);
+      }
+    }
+  });
 });
 
 // The crown attach-time transform helper. Pure math (no THREE): given a crown

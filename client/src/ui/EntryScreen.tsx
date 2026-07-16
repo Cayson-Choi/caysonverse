@@ -31,6 +31,11 @@ export function EntryScreen() {
     if (notice) clearNotice();
   }
 
+  // Royals wear a FIXED palette (v2 Task 13) — the tint never touches them, so
+  // the swatches are disabled with a notice. The tint value itself stays valid
+  // (server schema unchanged); it simply has no visual effect on a royal.
+  const royalSelected = CHARACTERS[character].crown?.royal !== undefined;
+
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     if (submitting) return;
@@ -135,10 +140,13 @@ export function EntryScreen() {
               <button
                 type="button"
                 key={color}
-                className={"cv-swatch" + (index === tint ? " is-selected" : "")}
+                className={
+                  "cv-swatch" + (index === tint && !royalSelected ? " is-selected" : "")
+                }
                 style={{ background: color }}
                 aria-label={`색상 ${index + 1}`}
-                aria-pressed={index === tint}
+                aria-pressed={index === tint && !royalSelected}
+                disabled={royalSelected}
                 onClick={() => {
                   setTint(index);
                   dismissMessages();
@@ -146,6 +154,9 @@ export function EntryScreen() {
               />
             ))}
           </div>
+          {royalSelected && (
+            <p className="cv-swatch-note">왕실 의상은 고정 색상입니다</p>
+          )}
         </fieldset>
 
         <div className="cv-admin-toggle">

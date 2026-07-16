@@ -1,6 +1,12 @@
 import type { KeyboardControlsEntry } from "@react-three/drei";
 
 /**
+ * The four royal presets (v2 Task 13). Keys the fixed atlas palette
+ * (royalPalette.ts) and the procedural accessories (royalAttachments.ts).
+ */
+export type RoyalId = "king" | "queen" | "princess" | "prince";
+
+/**
  * Attach-time transform for a crown accessory. The crown GLB bakes its own
  * +Z→+Y stand-up rotation and a ×100 node scale, so all we vary per royal is a
  * uniform fit-scale (`scale`, a multiplier on CROWN_BASE_SCALE) and an optional
@@ -12,6 +18,16 @@ export interface CrownConfig {
   scale: number;
   /** Height-axis (Y) squash factor in (0, 1]; omitted ⇒ 1 (no flatten). */
   flatten?: number;
+  /**
+   * Royal identity marker (v2 Task 13). Set exactly on the four royal presets;
+   * it selects the fixed palette texture (tint is NOT applied — pastel
+   * multiplication would corrupt the gold) and the procedural accessories. It
+   * rides on the crown config because the avatar assembly call sites
+   * (LocalPlayer/RemotePlayer, other work lanes) forward only
+   * `{hideNodes, crown, crownScene}` — and a crown is precisely what makes a
+   * preset royal, so the marker introduces no new plumbing.
+   */
+  royal?: RoyalId;
 }
 
 /**
@@ -44,55 +60,105 @@ export const CHARACTERS: readonly CharacterPreset[] = [
   { id: "barbarian", label: "바바리안", model: "/models/barbarian.glb" },
   { id: "mage", label: "마법사", model: "/models/mage.glb" },
   { id: "rogue", label: "도적", model: "/models/rogue.glb" },
-  // ── Royals (v2 Task 2) — same bodies, accessories hidden, crown on the head. ──
-  // 왕: barbarian body, hat + mug removed, full-size gold crown.
+  // ── Royals (v2 Task 13) — same bodies in ROYAL DRESS: fixed atlas palette
+  //    (crown.royal → royalPalette.ts), ALL weapons hidden (unarmed royalty,
+  //    node names measured by scripts/dump-uv-cells.mjs), built-in cape kept
+  //    and repainted, procedural gold accessories, crown on the head. ──
+  // 왕: barbarian body — deep-red garment + gold, red cape, full-size crown.
   {
     id: "king",
     label: "왕",
     model: "/models/barbarian.glb",
-    hideNodes: ["Barbarian_Hat", "Mug"],
-    crown: { scale: 1.0 },
+    hideNodes: [
+      "Barbarian_Hat",
+      "Mug",
+      "1H_Axe",
+      "2H_Axe",
+      "1H_Axe_Offhand",
+      "Barbarian_Round_Shield",
+    ],
+    crown: { scale: 1.0, royal: "king" },
   },
-  // 왕비: mage body, pointed hat removed (keeps the cape as a gown), medium crown.
+  // 왕비: mage body — deep-purple gown + gold trim, cape as a royal train,
+  // gold medallion + waist band, staff/spellbooks hidden, medium crown.
   {
     id: "queen",
     label: "왕비",
     model: "/models/mage.glb",
-    hideNodes: ["Mage_Hat"],
-    crown: { scale: 0.8 },
+    hideNodes: ["Mage_Hat", "1H_Wand", "2H_Staff", "Spellbook", "Spellbook_open"],
+    crown: { scale: 0.8, royal: "queen" },
   },
-  // 공주: rogue body, cape kept, a low flattened tiara.
+  // 공주: rogue body — rose dress + pale-gold straps, rose cape, flared peplum
+  // (hidden while seated), daggers/crossbows hidden, a low flattened tiara.
   {
     id: "princess",
     label: "공주",
     model: "/models/rogue.glb",
-    crown: { scale: 0.7, flatten: 0.5 },
+    hideNodes: ["Knife", "Knife_Offhand", "1H_Crossbow", "2H_Crossbow", "Throwable"],
+    crown: { scale: 0.7, flatten: 0.5, royal: "princess" },
   },
-  // 왕자: knight body, helmet removed (exposes Knight_Head), a small circlet.
+  // 왕자: knight body — gold plate + royal-blue tunic/cape, gold epaulettes,
+  // helmet + every sword/shield hidden, a small circlet.
   {
     id: "prince",
     label: "왕자",
     model: "/models/knight.glb",
-    hideNodes: ["Knight_Helmet"],
-    crown: { scale: 0.8, flatten: 0.72 },
+    hideNodes: [
+      "Knight_Helmet",
+      "1H_Sword",
+      "2H_Sword",
+      "1H_Sword_Offhand",
+      "Badge_Shield",
+      "Rectangle_Shield",
+      "Round_Shield",
+      "Spike_Shield",
+    ],
+    crown: { scale: 0.8, flatten: 0.72, royal: "prince" },
   },
 ] as const;
 
 /**
  * Accessory node names that presets are allowed to hide. Verified to exist in the
- * respective KayKit GLBs (parsed from each model's node list). The config-integrity
- * unit test checks every preset's `hideNodes` against THIS list, so a typo can't
- * silently no-op in the browser — no GLB is loaded in the test.
+ * respective KayKit GLBs (measured by scripts/dump-uv-cells.mjs, which parses
+ * each model's node list). The config-integrity unit test checks every preset's
+ * `hideNodes` against THIS list, so a typo can't silently no-op in the browser —
+ * no GLB is loaded in the test.
  */
 export const HIDEABLE_NODES = [
+  // Headwear / props
   "Knight_Helmet",
-  "Knight_Cape",
   "Barbarian_Hat",
-  "Barbarian_Cape",
-  "Mug",
   "Mage_Hat",
+  "Mug",
+  // Built-in capes (visible by default in the GLBs; royals KEEP + repaint them)
+  "Knight_Cape",
+  "Barbarian_Cape",
   "Mage_Cape",
   "Rogue_Cape",
+  // Knight weapons/shields (v2 Task 13 — unarmed royalty)
+  "1H_Sword",
+  "2H_Sword",
+  "1H_Sword_Offhand",
+  "Badge_Shield",
+  "Rectangle_Shield",
+  "Round_Shield",
+  "Spike_Shield",
+  // Barbarian weapons/shield
+  "1H_Axe",
+  "2H_Axe",
+  "1H_Axe_Offhand",
+  "Barbarian_Round_Shield",
+  // Mage implements
+  "1H_Wand",
+  "2H_Staff",
+  "Spellbook",
+  "Spellbook_open",
+  // Rogue weapons
+  "Knife",
+  "Knife_Offhand",
+  "1H_Crossbow",
+  "2H_Crossbow",
+  "Throwable",
 ] as const;
 
 /** Public path to the crown accessory GLB (Quaternius, CC0 — see models/LICENSE.md). */
