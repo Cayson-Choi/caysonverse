@@ -15,12 +15,14 @@ export const cameraProbe = {
   z: 0,
   /** Effective follow distance after the portrait pull-back AND the maze cap. */
   distance: 0,
-  /** Active view mode ('tp' | 'fp'). */
+  /** Active view mode ('tp' | 'fp' | 'ov'). */
   mode: "tp" as ViewMode,
   /** TP<->FP transition factor (0 = third-person, 1 = first-person). */
   blend: 0,
   /** First-person look azimuth (rad); meaningful while `mode === 'fp'`. */
   fpYaw: 0,
+  /** Overview transition factor (0 = normal view, 1 = fully top-down). */
+  ovBlend: 0,
 };
 
 declare global {
@@ -39,6 +41,7 @@ declare global {
       mode: ViewMode;
       blend: number;
       fpYaw: number;
+      ovBlend: number;
     };
   }
 }

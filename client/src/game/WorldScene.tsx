@@ -7,18 +7,20 @@ import { LocalPlayer } from "./LocalPlayer";
 import { RemotePlayers } from "./RemotePlayers";
 import { WorldMap } from "./WorldMap";
 import { CameraRig } from "./CameraRig";
+import { OverviewMarker } from "./OverviewMarker";
 import { Chat } from "../ui/Chat";
 import { EmojiPalette } from "../ui/EmojiPalette";
 import { TouchJoystick } from "../ui/TouchJoystick";
 import { SitPrompt } from "../ui/SitPrompt";
 import { ViewToggle } from "../ui/ViewToggle";
+import { OverviewToggle } from "../ui/OverviewToggle";
 import { Banner } from "../ui/Banner";
 import { AdminPanel } from "../ui/AdminPanel";
 import { getRoom } from "../net/connection";
 import { isTouchDevice } from "../device";
 import { getRenderProfile } from "./renderProfile";
 import { setUiCaptured } from "./uiCapture";
-import { resetViewMode, toggleViewMode } from "./viewState";
+import { resetViewMode, toggleViewMode, toggleOverview } from "./viewState";
 import { useAppStore } from "../stores/appStore";
 import type { Identity } from "../stores/appStore";
 import type { Intent } from "./input";
@@ -131,6 +133,8 @@ export function WorldScene({ identity }: { identity: Identity }) {
             {/* Other connected players: snapshot-interpolated, tinted, nametagged.
                 Mounts/unmounts on roster changes only; poses stream via the store. */}
             <RemotePlayers selfPose={pose} selfSeat={seat} blobShadow={profile.blobShadows} />
+            {/* Overview-only self marker (design 20) — hidden outside overview. */}
+            <OverviewMarker pose={pose} />
           </Suspense>
           <CameraRig pose={pose} orbit={orbit} />
         </KeyboardControls>
@@ -142,6 +146,9 @@ export function WorldScene({ identity }: { identity: Identity }) {
       {/* First-person 👁 toggle — touch only (desktop uses V / wheel). Seeds yaw
           from the shared orbit so the world doesn't spin on toggle. */}
       <ViewToggle onToggle={() => toggleViewMode(orbit)} />
+      {/* Overview 🗺 toggle — touch only (desktop uses M). Remembers the current
+          mode and restores it on exit; the camera work lives in CameraRig. */}
+      <OverviewToggle onToggle={() => toggleOverview()} />
       {/* Sit/stand prompt: desktop hint + touch button + occupied-seat notice. */}
       <SitPrompt pose={pose} seat={seat} />
       {/* Virtual joystick — touch devices only. Keyboard stays active regardless. */}

@@ -193,6 +193,11 @@ export const CAMERA = {
   dragSpeed: 0.005, // rad per pixel of pointer drag (mouse + one-finger touch)
   zoomSpeed: 0.01, // m per wheel delta unit (desktop wheel zoom)
   pinchSpeed: 0.02, // m per pixel of two-finger pinch spread change (touch zoom)
+  // Overview (top-down) zoom sensitivity — metres of camera HEIGHT per input unit
+  // (design 20). Tuned so a few wheel notches / a pinch cross the overview's
+  // [15 m … full-map] height band without feeling twitchy.
+  ovZoomSpeed: 0.08, // m of height per wheel delta unit
+  ovPinchSpeed: 0.15, // m of height per pixel of pinch spread change
 } as const;
 
 /** Scene palette — matches the entry screen's cosmic navy/violet backdrop. */

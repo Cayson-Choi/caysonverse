@@ -9,7 +9,7 @@ import { readIntent, worldDirection } from "./input";
 import type { Intent } from "./input";
 import { guardMoveKeys, isUiCaptured } from "./uiCapture";
 import { viewState } from "./viewState";
-import { HIDE_BLEND } from "./viewMode";
+import { HIDE_BLEND, stepFollowYaw } from "./viewMode";
 import { cloneTinted } from "./avatar";
 import { BlobShadow } from "./BlobShadow";
 import { useSpeechBubble } from "./useSpeechBubble";
@@ -146,8 +146,10 @@ export function LocalPlayer({
     // (also parented here), which is correct: you don't see your own bubble in FP.
     // Set on EVERY path (incl. seated below) and restored automatically on exit /
     // reconnect remount (resetViewMode zeroes the blend). Remote avatars, seats,
-    // and the maze are untouched — they live in other groups.
-    group.visible = viewState.blend < HIDE_BLEND;
+    // and the maze are untouched — they live in other groups. Overview is a
+    // third-person top-down: the own avatar is ALWAYS shown there (design 20), even
+    // if it was hidden in the FP it was opened from.
+    group.visible = viewState.mode === "ov" ? true : viewState.blend < HIDE_BLEND;
 
     // Focus guard: while the chat input owns keyboard input — OR while the
     // resilience driver is reconnecting (world frozen behind the overlay) —
@@ -230,9 +232,12 @@ export function LocalPlayer({
     }
 
     // Movement stays camera-relative off the ACTIVE view yaw: the TP orbit yaw in
-    // third-person, the FP look yaw in first-person (design 19).
+    // third-person, the FP look yaw in first-person (design 19), or a FIXED yaw 0
+    // in overview — so W = -Z (north) on the screen regardless of the free pan
+    // (design 20). The overview camera itself never follows the player.
     const inFp = viewState.mode === "fp";
-    const activeYaw = inFp ? viewState.fpYaw : orbit.yaw;
+    const inOv = viewState.mode === "ov";
+    const activeYaw = inFp ? viewState.fpYaw : inOv ? 0 : orbit.yaw;
     if (moving) {
       const dir = worldDirection(intent, activeYaw);
       // Slide the body (circle-vs-AABB) along walls/furniture from the SAME
@@ -248,8 +253,14 @@ export function LocalPlayer({
       );
       pose.x = clamp(next.x, WORLD_BOUNDS.minX + PLAYER_RADIUS, WORLD_BOUNDS.maxX - PLAYER_RADIUS);
       pose.z = clamp(next.z, WORLD_BOUNDS.minZ + PLAYER_RADIUS, WORLD_BOUNDS.maxZ - PLAYER_RADIUS);
-      if (!inFp) {
-        // TP: the body turns smoothly toward the movement direction.
+      if (inFp) {
+        // FP look-follows-movement (design 20): rotate the look toward the walk
+        // direction at a gentle rate. `dir` came from the CURRENT look, so W keeps
+        // the look still and a strafe curves it. Paused while a look-drag is active
+        // (viewState.dragging) so drag look-control always takes priority.
+        viewState.fpYaw = stepFollowYaw(viewState.fpYaw, dir, delta, viewState.dragging);
+      } else {
+        // TP + overview: the (visible) body turns smoothly toward the movement dir.
         const targetYaw = Math.atan2(dir.x, dir.z);
         pose.yaw = stepYaw(pose.yaw, targetYaw, TURN_SPEED * delta);
       }

@@ -14,12 +14,12 @@
  */
 
 import { normalizeAngle } from "./yaw";
-import { stepBlend, stepZoomMode, type ViewMode, type ZoomBand } from "./viewMode";
+import { stepBlend, stepZoomMode, OV_BLEND_SEC, type ViewMode, type ZoomBand } from "./viewMode";
 import { useViewStore } from "../stores/viewStore";
 import type { Orbit } from "./types";
 
 export interface ViewState {
-  /** Active view mode. `blend` animates the visual transition toward it. */
+  /** Active view mode ('tp' | 'fp' | 'ov'). `blend`/`ovBlend` animate the visuals. */
   mode: ViewMode;
   /** 0 = fully third-person, 1 = fully first-person (eased in CameraRig). */
   blend: number;
@@ -27,14 +27,48 @@ export interface ViewState {
   fpYaw: number;
   /** FP look pitch (rad), separate from orbit.pitch; clamped to the FP range. */
   fpPitch: number;
+  /** 0 = the underlying tp/fp pose, 1 = fully the top-down overview pose. */
+  ovBlend: number;
+  /** Mode to restore when overview exits ('tp' | 'fp' — never 'ov'). */
+  prevMode: ViewMode;
+  /** Overview pan-centre X (world). Clamped to WORLD_BOUNDS while panning. */
+  ovCenterX: number;
+  /** Overview pan-centre Z (world). */
+  ovCenterZ: number;
+  /** Overview camera height (m) — the zoom level. 0 until CameraRig seeds a fit. */
+  ovHeight: number;
+  /**
+   * True while a one-finger LOOK drag is in progress (FP) — pauses the FP
+   * look-follows-movement so the manual look and the auto-follow never fight
+   * (design 20). Set by CameraRig's pointer handlers, read by LocalPlayer.
+   */
+  dragging: boolean;
 }
 
 /** The single shared view state — mutated in place, read per frame. */
-export const viewState: ViewState = { mode: "tp", blend: 0, fpYaw: 0, fpPitch: 0 };
+export const viewState: ViewState = {
+  mode: "tp",
+  blend: 0,
+  fpYaw: 0,
+  fpPitch: 0,
+  ovBlend: 0,
+  prevMode: "tp",
+  ovCenterX: 0,
+  ovCenterZ: 0,
+  ovHeight: 0,
+  dragging: false,
+};
 
-/** Mirror the mode into the UI button flag (drives one React render, off-frame). */
+/** Mirror the active mode into the UI button flags (one React render, off-frame). */
 function syncButton(): void {
-  useViewStore.getState().setFp(viewState.mode === "fp");
+  const store = useViewStore.getState();
+  store.setFp(viewState.mode === "fp");
+  store.setOv(viewState.mode === "ov");
+}
+
+/** The mode whose pose sits UNDER the overview (the one we'll restore on exit). */
+function underlyingMode(): ViewMode {
+  return viewState.mode === "ov" ? viewState.prevMode : viewState.mode;
 }
 
 /** Enter first-person, seeding the look yaw from the current TP orbit yaw. */
@@ -72,14 +106,56 @@ export function applyZoom(orbit: Orbit, delta: number, band: ZoomBand): void {
 }
 
 /**
- * Advance the blend factor toward the active mode's target (1 = FP, 0 = TP) by
- * `dt`. Called once per frame by CameraRig; returns the new factor. Reversal-safe
- * (a mid-blend toggle just flips the target and the factor continues).
+ * Enter the top-down overview (design 20), remembering the current mode so exit
+ * restores it. A no-op if already in overview — so pressing the toggle rapidly
+ * (M-spam) can never overwrite `prevMode` with 'ov' and strand the machine. The
+ * overview pan-centre / height are seeded by CameraRig on the first overview
+ * frame (it owns the camera fov/aspect the fit calculation needs).
+ */
+export function enterOverview(): void {
+  if (viewState.mode === "ov") return;
+  viewState.prevMode = viewState.mode; // 'tp' or 'fp'
+  viewState.mode = "ov";
+  syncButton();
+}
+
+/** Exit the overview back to whatever mode it was opened from (design 20). */
+export function exitOverview(): void {
+  if (viewState.mode !== "ov") return;
+  viewState.mode = viewState.prevMode;
+  syncButton();
+}
+
+/**
+ * Toggle the overview (M key / 🗺 button). Enter remembers the current mode; exit
+ * restores it with the FP look / TP orbit exactly as they were (overview never
+ * mutates fpYaw or the orbit, so a round-trip preserves both).
+ */
+export function toggleOverview(): void {
+  if (viewState.mode === "ov") exitOverview();
+  else enterOverview();
+}
+
+/**
+ * Advance the TP<->FP blend toward its target by `dt`. In overview the target is
+ * the REMEMBERED mode's pose (1 = FP, 0 = TP) so the pose beneath the overview
+ * stays put and a restore lands exactly where it left. Reversal-safe.
  */
 export function stepViewBlend(dt: number): number {
-  const target = viewState.mode === "fp" ? 1 : 0;
+  const target = underlyingMode() === "fp" ? 1 : 0;
   viewState.blend = stepBlend(viewState.blend, target, dt);
   return viewState.blend;
+}
+
+/**
+ * Advance the overview blend toward its target (1 = overview, 0 = normal) by
+ * `dt`. Separate machine from the TP<->FP blend so the two compose in CameraRig;
+ * reversal-safe (a mid-blend re-toggle continues from the current value).
+ */
+export function stepOvBlend(dt: number): number {
+  const target = viewState.mode === "ov" ? 1 : 0;
+  viewState.ovBlend = stepBlend(viewState.ovBlend, target, dt, OV_BLEND_SEC);
+  return viewState.ovBlend;
 }
 
 /**
@@ -93,5 +169,11 @@ export function resetViewMode(): void {
   viewState.blend = 0;
   viewState.fpYaw = 0;
   viewState.fpPitch = 0;
+  viewState.ovBlend = 0;
+  viewState.prevMode = "tp";
+  viewState.ovCenterX = 0;
+  viewState.ovCenterZ = 0;
+  viewState.ovHeight = 0;
+  viewState.dragging = false;
   syncButton();
 }

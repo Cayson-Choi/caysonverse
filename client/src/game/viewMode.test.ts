@@ -1,14 +1,20 @@
 import { describe, it, expect } from "vitest";
 import {
   BLEND_SEC,
+  OV_BLEND_SEC,
   FP_PITCH_MIN,
   FP_PITCH_MAX,
+  FP_FOLLOW_RATE,
   HIDE_BLEND,
   stepBlend,
   easeBlend,
   clampFpPitch,
   stepZoomMode,
+  lookYawForDir,
+  stepFollowYaw,
 } from "./viewMode";
+import { worldDirection } from "./input";
+import { normalizeAngle } from "./yaw";
 
 const BAND = { min: 2.5, max: 18 };
 
@@ -122,5 +128,96 @@ describe("viewMode — constants", () => {
     expect(BLEND_SEC).toBeCloseTo(0.25, 6);
     expect(HIDE_BLEND).toBeGreaterThan(0);
     expect(HIDE_BLEND).toBeLessThan(1);
+  });
+
+  it("exposes a ~0.3s overview blend and a gentle FP follow rate", () => {
+    expect(OV_BLEND_SEC).toBeCloseTo(0.3, 6);
+    expect(FP_FOLLOW_RATE).toBeGreaterThan(1);
+    expect(FP_FOLLOW_RATE).toBeLessThan(6);
+  });
+});
+
+describe("viewMode — lookYawForDir (yaw that points ALONG a ground direction)", () => {
+  it("inverts the FP forward map: the forward look for yaw y maps back to y", () => {
+    for (const y of [-2.5, -0.3, 0, 0.7, 2.9]) {
+      const fwd = worldDirection({ forward: 1, right: 0 }, y); // FP forward
+      expect(lookYawForDir(fwd.x, fwd.z, 999)).toBeCloseTo(normalizeAngle(y), 6);
+    }
+  });
+
+  it("returns the fallback for a zero-length direction (never NaN)", () => {
+    expect(lookYawForDir(0, 0, 1.234)).toBe(1.234);
+  });
+});
+
+describe("viewMode — stepFollowYaw (FP look-follows-movement)", () => {
+  const dt = 0.1; // → maxDelta = FP_FOLLOW_RATE * 0.1
+
+  it("W (moving straight forward) causes ZERO rotation (forward = current look)", () => {
+    for (const y of [-2.0, 0, 1.1]) {
+      const fwd = worldDirection({ forward: 1, right: 0 }, y);
+      expect(stepFollowYaw(y, fwd, dt, false)).toBeCloseTo(y, 9);
+    }
+  });
+
+  it("A (strafe left) swings the look LEFT (yaw increases), by exactly rate·dt", () => {
+    const y = 0;
+    const left = worldDirection({ forward: 0, right: -1 }, y); // strafe-left world dir
+    const next = stepFollowYaw(y, left, dt, false);
+    expect(next).toBeGreaterThan(y);
+    expect(next).toBeCloseTo(FP_FOLLOW_RATE * dt, 6); // rate-limited step toward +π/2
+  });
+
+  it("D (strafe right) swings the look RIGHT (yaw decreases)", () => {
+    const y = 0;
+    const right = worldDirection({ forward: 0, right: 1 }, y);
+    const next = stepFollowYaw(y, right, dt, false);
+    expect(next).toBeLessThan(y);
+    expect(next).toBeCloseTo(-FP_FOLLOW_RATE * dt, 6);
+  });
+
+  it("forward-left diagonal turns left but less sharply than a pure strafe", () => {
+    const y = 0;
+    const diag = worldDirection({ forward: 1, right: -1 }, y);
+    const pure = worldDirection({ forward: 0, right: -1 }, y);
+    // Target for the diagonal is +π/4 vs +π/2 for the strafe; over a rate-limited
+    // step both move the SAME amount (rate·dt), but the follow direction is left.
+    const dDiag = stepFollowYaw(y, diag, dt, false);
+    const dPure = stepFollowYaw(y, pure, dt, false);
+    expect(dDiag).toBeGreaterThan(0);
+    expect(dPure).toBeGreaterThan(0);
+    // Sanity: with a tiny dt (below the target offset) both are rate-limited equally.
+    const tiny = 0.001;
+    expect(stepFollowYaw(y, diag, tiny, false)).toBeCloseTo(FP_FOLLOW_RATE * tiny, 6);
+  });
+
+  it("PAUSES while dragging (drag priority) — returns the look unchanged", () => {
+    const y = 0.5;
+    const left = worldDirection({ forward: 0, right: -1 }, y);
+    expect(stepFollowYaw(y, left, dt, true)).toBe(y); // dragging → no follow
+  });
+
+  it("holds on zero movement (never NaN)", () => {
+    expect(stepFollowYaw(0.5, { x: 0, z: 0 }, dt, false)).toBe(0.5);
+  });
+
+  it("is wrap-safe across the +/-PI seam (shortest-arc, normalized)", () => {
+    const y = 3.0; // near +PI
+    const left = worldDirection({ forward: 0, right: -1 }, y); // target ≈ y + π/2 (wraps)
+    const next = stepFollowYaw(y, left, dt, false);
+    // The wrapped delta is a small LEFT step of exactly rate·dt.
+    expect(normalizeAngle(next - y)).toBeCloseTo(FP_FOLLOW_RATE * dt, 6);
+    expect(next).toBeGreaterThanOrEqual(-Math.PI);
+    expect(next).toBeLessThanOrEqual(Math.PI);
+  });
+
+  it("converges (does not overshoot) when the remaining arc is below rate·dt", () => {
+    // A small residual offset: target within one step is reached exactly.
+    const y = 0;
+    // Craft a direction whose look-yaw is only 0.05 rad left of y.
+    const target = 0.05;
+    const dir = { x: -Math.sin(target), z: -Math.cos(target) }; // look dir for `target`
+    const next = stepFollowYaw(y, dir, 1, false); // dt huge → not rate-limited
+    expect(next).toBeCloseTo(target, 6);
   });
 });

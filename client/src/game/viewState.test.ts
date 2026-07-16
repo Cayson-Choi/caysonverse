@@ -4,13 +4,16 @@ import {
   enterFp,
   exitFp,
   toggleViewMode,
+  toggleOverview,
+  enterOverview,
   applyZoom,
   resetViewMode,
   stepViewBlend,
+  stepOvBlend,
 } from "./viewState";
 import { normalizeAngle } from "./yaw";
 import { useViewStore } from "../stores/viewStore";
-import { BLEND_SEC } from "./viewMode";
+import { BLEND_SEC, OV_BLEND_SEC } from "./viewMode";
 import type { Orbit } from "./types";
 
 const BAND = { min: 2.5, max: 18 };
@@ -22,17 +25,36 @@ function orbit(over: Partial<Orbit> = {}): Orbit {
 beforeEach(() => resetViewMode());
 
 describe("viewState — reset", () => {
-  it("returns to TP, blend 0, level look, and clears the button flag", () => {
-    viewState.mode = "fp";
+  it("returns to TP, blend 0, level look, no overview, and clears the button flags", () => {
+    viewState.mode = "ov";
     viewState.blend = 1;
     viewState.fpYaw = 2;
     viewState.fpPitch = 0.5;
+    viewState.ovBlend = 1;
+    viewState.prevMode = "fp";
+    viewState.ovCenterX = -18;
+    viewState.ovCenterZ = 4;
+    viewState.ovHeight = 60;
+    viewState.dragging = true;
     useViewStore.getState().setFp(true);
+    useViewStore.getState().setOv(true);
 
     resetViewMode();
 
-    expect(viewState).toEqual({ mode: "tp", blend: 0, fpYaw: 0, fpPitch: 0 });
+    expect(viewState).toEqual({
+      mode: "tp",
+      blend: 0,
+      fpYaw: 0,
+      fpPitch: 0,
+      ovBlend: 0,
+      prevMode: "tp",
+      ovCenterX: 0,
+      ovCenterZ: 0,
+      ovHeight: 0,
+      dragging: false,
+    });
     expect(useViewStore.getState().isFp).toBe(false);
+    expect(useViewStore.getState().isOv).toBe(false);
   });
 });
 
@@ -127,5 +149,86 @@ describe("viewState — stepViewBlend", () => {
     expect(viewState.blend).toBeCloseTo(0.25, 6);
     stepViewBlend(BLEND_SEC); // overshoot guard
     expect(viewState.blend).toBe(0);
+  });
+});
+
+describe("viewState — overview mode machine (design 20)", () => {
+  it("tp → ov → tp round-trip restores TP and preserves orbit yaw/pitch/distance", () => {
+    const o = orbit({ yaw: 0.7, pitch: 0.9, distance: 12 });
+    toggleOverview(); // enter overview from TP
+    expect(viewState.mode).toBe("ov");
+    expect(viewState.prevMode).toBe("tp");
+    toggleOverview(); // exit → restore TP
+    expect(viewState.mode).toBe("tp");
+    expect(o).toEqual({ yaw: 0.7, pitch: 0.9, distance: 12 }); // orbit untouched
+  });
+
+  it("fp → ov → fp round-trip restores FP and preserves the FP look yaw", () => {
+    const o = orbit({ yaw: 0.2 });
+    toggleViewMode(o); // → FP
+    viewState.fpYaw = 1.35; // looked around in FP
+    viewState.fpPitch = 0.4;
+    toggleOverview(); // enter overview from FP
+    expect(viewState.mode).toBe("ov");
+    expect(viewState.prevMode).toBe("fp");
+    toggleOverview(); // exit → restore FP
+    expect(viewState.mode).toBe("fp");
+    expect(viewState.fpYaw).toBeCloseTo(1.35, 6); // FP look preserved across overview
+    expect(viewState.fpPitch).toBeCloseTo(0.4, 6);
+  });
+
+  it("drives BOTH button flags: isOv while in overview, restored on exit", () => {
+    const o = orbit();
+    expect(useViewStore.getState().isOv).toBe(false);
+    toggleOverview();
+    expect(useViewStore.getState().isOv).toBe(true);
+    expect(useViewStore.getState().isFp).toBe(false);
+    toggleOverview();
+    expect(useViewStore.getState().isOv).toBe(false);
+    // From FP, isFp must be restored (not stuck) after an overview round-trip.
+    toggleViewMode(o); // → FP
+    expect(useViewStore.getState().isFp).toBe(true);
+    toggleOverview();
+    expect(useViewStore.getState().isFp).toBe(false); // overview owns the button
+    expect(useViewStore.getState().isOv).toBe(true);
+    toggleOverview();
+    expect(useViewStore.getState().isFp).toBe(true); // FP button back
+    expect(useViewStore.getState().isOv).toBe(false);
+  });
+
+  it("is M-spam safe: a redundant enterOverview never clobbers the remembered mode", () => {
+    const o = orbit({ yaw: 0.5 });
+    toggleViewMode(o); // → FP
+    enterOverview(); // remembers FP
+    expect(viewState.prevMode).toBe("fp");
+    enterOverview(); // stray second enter (already in overview) — must NOT set prevMode = ov
+    enterOverview();
+    expect(viewState.prevMode).toBe("fp"); // still FP
+    toggleOverview(); // exit → FP (not stuck in overview)
+    expect(viewState.mode).toBe("fp");
+  });
+
+  it("stepOvBlend eases to 1 in overview and back to 0 outside, reversal-safe", () => {
+    toggleOverview(); // → ov, target 1
+    stepOvBlend(OV_BLEND_SEC / 2);
+    expect(viewState.ovBlend).toBeCloseTo(0.5, 6);
+    toggleOverview(); // exit → target 0, continues DOWN from 0.5
+    stepOvBlend(OV_BLEND_SEC / 4);
+    expect(viewState.ovBlend).toBeCloseTo(0.25, 6);
+    stepOvBlend(OV_BLEND_SEC); // overshoot guard
+    expect(viewState.ovBlend).toBe(0);
+  });
+
+  it("keeps the underlying TP<->FP blend aimed at the REMEMBERED mode while in overview", () => {
+    const o = orbit();
+    toggleViewMode(o); // → FP, blend heads to 1
+    stepViewBlend(BLEND_SEC); // fully FP (blend 1)
+    expect(viewState.blend).toBe(1);
+    toggleOverview(); // overview over FP — underlying target stays 1 (FP)
+    stepViewBlend(BLEND_SEC);
+    expect(viewState.blend).toBe(1); // underlying pose remains FP beneath the overview
+    toggleOverview(); // back to FP
+    expect(viewState.mode).toBe("fp");
+    expect(viewState.blend).toBe(1);
   });
 });
