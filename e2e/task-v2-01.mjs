@@ -12,7 +12,7 @@
 //      hides taken seats, so the __cv.sit dev hook drives the race deterministically)
 //      → B gets the "이미 사용 중인 자리예요" system row and stays unseated.
 //   3. A holds W → A stands (seatIndex -1, ≈ its dismount point) and can walk; then
-//      B sits on the now-free seat (seatIndex 2).
+//      B sits on the now-free seat (SEAT_INDEX, currently 8 in the 20-seat grid).
 //   4. Screenshots at each step; zero console/page errors; dev processes untouched
 //      (started/killed by the caller).
 //

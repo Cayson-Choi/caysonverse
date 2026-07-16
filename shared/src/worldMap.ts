@@ -263,9 +263,12 @@ export const SEAT_DISMOUNT = 0.9;
  * convention `atan2(dirX, dirZ)` (model faces +Z at yaw 0; see client
  * MODEL_FACING_OFFSET/worldDirection) → facing +X is `atan2(1, 0) = +PI/2`.
  *
- * NOTE this is deliberately NOT the furniture chair's `rotY = -PI/2`: furniture
- * models rest facing -Z, so a chair rendered at rotY -PI/2 and a player seated at
- * yaw +PI/2 both end up facing +X. The E2E screenshot review guards this sign.
+ * The furniture chair model rests facing +Z (verified EMPIRICALLY by screenshot,
+ * 2026-07-16 — an earlier "rests facing -Z" assumption put every chair backwards),
+ * so the chair's `rotY` is ALSO +PI/2 to face the screen. The two +PI/2 values
+ * agreeing is a coincidence of conventions, not a shared constant: player yaw is
+ * `atan2(dirX, dirZ)`, chair rotY is a plain Y-rotation of the model. A regression
+ * test asserts all 21 chairs at +PI/2; the E2E screenshot guards the visual.
  */
 export const SEAT_YAW = Math.PI / 2;
 

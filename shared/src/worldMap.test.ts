@@ -172,7 +172,8 @@ describe("worldMap — seats (derived from the classroom placement)", () => {
   it("faces every seat toward the screen (+X): player-yaw = +PI/2", () => {
     // Player-yaw convention is atan2(dirX, dirZ) with the model facing +Z at yaw 0
     // (see client MODEL_FACING_OFFSET/worldDirection). Facing +X ⇒ atan2(1,0) = +PI/2.
-    // NOT the furniture chair's rotY (-PI/2), which uses a different convention.
+    // The chair model's rotY is also +PI/2 (model rests facing +Z — see SEAT_YAW
+    // doc; separate convention, asserted by its own regression test).
     for (const s of SEATS) {
       expect(s.yaw).toBeCloseTo(Math.PI / 2, 10);
     }
