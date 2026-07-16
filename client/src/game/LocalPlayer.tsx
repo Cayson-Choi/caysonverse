@@ -208,7 +208,10 @@ export function LocalPlayer({
     const manual = intent.forward !== 0 || intent.right !== 0;
     if (manual) {
       clearClickTarget();
-    } else if (!suspended && !seated) {
+    } else if (!suspended && !seated && !isUiCaptured()) {
+      // ui-capture gate (review v2-14 M1): while the chat input owns the keyboard
+      // the KEYS are frozen above — a pre-set click target must freeze too, or the
+      // avatar keeps walking while the user types (asymmetric input freeze).
       const autoDir = stepClickMove(pose.x, pose.z, delta);
       if (autoDir) {
         const auto = dirToIntent(autoDir, activeYaw);
