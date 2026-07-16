@@ -159,22 +159,29 @@ const HALF_PI = Math.PI / 2;
  * the derived SEATS read from (no duplicated coordinates). Desks sit at each
  * `STUDENT_ROWS_X` × `STUDENT_COLS_Z` cell; the student chair is `STUDENT_CHAIR_DX`
  * along X from its desk (negative = between the desk and the aisle/screen).
+ *
+ * The grid is 4 rows (X, receding east→west from the door) × 5 columns (Z) = 20
+ * student desks. The 5 columns are shifted south of centre so the door↔screen
+ * corridor at z = 0 lands in a clear gap (between the z = -3 and z = 3 columns) —
+ * a symmetric 5-column layout would put a column ON z = 0 and wall off the aisle.
  */
-const STUDENT_ROWS_X = [9, 14, 19];
-const STUDENT_COLS_Z = [-9, -3, 3, 9];
+const STUDENT_ROWS_X = [4, 9, 14, 19];
+const STUDENT_COLS_Z = [-15, -9, -3, 3, 9];
 const STUDENT_CHAIR_DX = -1.3;
 const INSTRUCTOR_DESK_X = 25;
 const INSTRUCTOR_CHAIR_X = 26.2;
 const INSTRUCTOR_Z = 0;
 
 // Build the classroom's student desk+chair grid: rows recede from the screen,
-// columns straddle a central aisle aligned with the door (z = 0).
+// columns straddle a central aisle aligned with the door (z = 0). The chair model
+// rests facing +Z, so rotY = +HALF_PI turns its seat toward the screen (+X) with
+// the backrest to the west — matching the seated player's SEAT_YAW (+PI/2).
 function classroomSeating(): Furniture[] {
   const out: Furniture[] = [];
   for (const x of STUDENT_ROWS_X) {
     for (const z of STUDENT_COLS_Z) {
       out.push({ model: "desk", x, z, rotY: -HALF_PI }); // desk faces the screen (+X)
-      out.push({ model: "chairDesk", x: x + STUDENT_CHAIR_DX, z, rotY: -HALF_PI }); // student behind it
+      out.push({ model: "chairDesk", x: x + STUDENT_CHAIR_DX, z, rotY: HALF_PI }); // seat toward the screen
     }
   }
   return out;
@@ -200,7 +207,7 @@ export const FURNITURE: readonly Furniture[] = [
 
   // ── Lecture hall (x > 0) ──
   { model: "desk", x: INSTRUCTOR_DESK_X, z: INSTRUCTOR_Z, rotY: -HALF_PI }, // instructor desk, faces the class
-  { model: "chairDesk", x: INSTRUCTOR_CHAIR_X, z: INSTRUCTOR_Z, rotY: -HALF_PI }, // instructor chair
+  { model: "chairDesk", x: INSTRUCTOR_CHAIR_X, z: INSTRUCTOR_Z, rotY: HALF_PI }, // instructor chair, seat toward the screen
   { model: "bookcaseClosedWide", x: 8, z: 17, rotY: Math.PI }, // against the north wall
   { model: "bookcaseClosedWide", x: 20, z: 17, rotY: Math.PI },
   ...classroomSeating(),
@@ -279,7 +286,7 @@ export interface Seat {
 /**
  * Derive one seat from a chair placement and the X of its paired desk. The
  * dismount point is `SEAT_DISMOUNT` from the chair along X, on the side AWAY from
- * the desk — the aisle for the 12 students (desk to the east ⇒ dismount west) and
+ * the desk — the aisle for the 20 students (desk to the east ⇒ dismount west) and
  * the open floor for the instructor (desk to the west ⇒ dismount east). Deriving
  * the direction from the desk keeps every dismount clear of that desk by data,
  * not by hand-tuned literals (guaranteed by the worldMap map-invariant tests).
@@ -291,19 +298,19 @@ function makeSeat(chairX: number, chairZ: number, deskX: number): Seat {
 
 function deriveSeats(): Seat[] {
   const seats: Seat[] = [];
-  // Students first (indices 0..11), row-major from the front row nearest the door.
+  // Students first (indices 0..19), row-major from the front row nearest the door.
   for (const rowX of STUDENT_ROWS_X) {
     for (const z of STUDENT_COLS_Z) {
       seats.push(makeSeat(rowX + STUDENT_CHAIR_DX, z, rowX));
     }
   }
-  // Instructor last (index 12).
+  // Instructor last (index 20).
   seats.push(makeSeat(INSTRUCTOR_CHAIR_X, INSTRUCTOR_Z, INSTRUCTOR_DESK_X));
   return seats;
 }
 
 /**
- * The 13 sittable seats (12 students + 1 instructor), derived at module load from
+ * The 21 sittable seats (20 students + 1 instructor), derived at module load from
  * the SAME placement literals the FURNITURE grid uses — never a duplicated table.
  * Index === `Player.seatIndex`; the server assigns/validates by this index.
  */

@@ -149,14 +149,24 @@ describe("worldMap — walls keep the player in", () => {
 });
 
 describe("worldMap — seats (derived from the classroom placement)", () => {
-  it("derives exactly 13 seats (12 students + 1 instructor)", () => {
-    expect(SEATS.length).toBe(13);
+  it("derives exactly 21 seats (20 students + 1 instructor)", () => {
+    expect(SEATS.length).toBe(21);
   });
 
   it("places every seat inside the lecture-hall zone", () => {
     for (const s of SEATS) {
       expect(inside(ZONES.lectureHall, s.x, s.z)).toBe(true);
     }
+  });
+
+  it("faces every chair MODEL toward the screen (+X): rotY = +PI/2 (backrest west)", () => {
+    // The chair GLB rests facing +Z, so rotY = +PI/2 turns the seat toward +X (the
+    // screen) with the backrest to the west — matching the seated player's SEAT_YAW.
+    // Empirically confirmed by the task-v2-04 screenshots; a regression that flips a
+    // chair back to -PI/2 (seat facing AWAY from the screen) fails here.
+    const chairs = FURNITURE.filter((p) => p.model === "chairDesk");
+    expect(chairs.length).toBe(SEATS.length); // one chair per seat (20 students + instructor)
+    for (const c of chairs) expect(c.rotY).toBeCloseTo(Math.PI / 2, 10);
   });
 
   it("faces every seat toward the screen (+X): player-yaw = +PI/2", () => {
@@ -195,11 +205,11 @@ describe("worldMap — seats (derived from the classroom placement)", () => {
   });
 
   it("dismounts the instructor to the EAST (its desk is to the west), students to the west", () => {
-    // The 12 students dismount west (-X, aisle); the instructor's desk sits west of
+    // The 20 students dismount west (-X, aisle); the instructor's desk sits west of
     // its chair, so its dismount must be east (+X) — proving 'away from the desk'.
-    const students = SEATS.slice(0, 12);
+    const students = SEATS.slice(0, SEATS.length - 1);
     for (const s of students) expect(s.standX).toBeLessThan(s.x);
-    const instructor = SEATS[12];
+    const instructor = SEATS[SEATS.length - 1];
     expect(instructor.standX).toBeGreaterThan(instructor.x);
   });
 

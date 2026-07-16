@@ -5,8 +5,8 @@
 // navigation steered by window.__cv.getPos coordinates (camera stays at yaw 0 →
 // d/a = +/-X, s/w = +/-Z).
 //
-//   1. A walks to the nearest student chair (seat 2 = front row, +z), the desktop
-//      "E 앉기" hint appears, A presses E → A.seatIndex === 2, snapped to the seat
+//   1. A walks to the nearest student chair (seat 8 = 2nd row from the door, +z),
+//      the desktop "E 앉기" hint appears, A presses E → A.seatIndex === 8, snapped
 //      centre facing the screen (yaw ≈ +PI/2). B sees remote A seated at the seat.
 //   2. B walks within reach of the SAME seat and forces a Sit on it (the prompt UI
 //      hides taken seats, so the __cv.sit dev hook drives the race deterministically)
@@ -28,9 +28,10 @@ const CLIENT_URL = process.env.CV_CLIENT_URL || "http://localhost:5173";
 const ALICE = "앨리스";
 const BOB = "밥이";
 
-// SEATS[2] (derived in shared/worldMap): front row, chair at (7.7, 3), dismount at
-// (6.8, 3), seated facing the screen (+X) ⇒ player-yaw +PI/2.
-const SEAT_INDEX = 2;
+// SEATS[8] (derived in shared/worldMap, 20-seat grid): 2nd row from the door,
+// chair at (7.7, 3), dismount at (6.8, 3), seated facing the screen (+X) ⇒
+// player-yaw +PI/2. (This same (7.7, 3) chair was seat 2 in the old 12-seat grid.)
+const SEAT_INDEX = 8;
 const SEAT = { x: 7.7, z: 3 };
 const STAND = { x: 6.8, z: 3 };
 const SEAT_YAW = Math.PI / 2;
