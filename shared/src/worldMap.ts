@@ -7,13 +7,16 @@
  * collision resolver and the server drop-check both collide against the SAME
  * `OBSTACLES`, and there is exactly one place a map literal ever lives.
  *
- * Layout (60 m × 36 m, split by a walled divider at x = 0 with a central door):
+ * Layout ([maze]⇄[lounge]⇄[lecture hall] along X; the GALLERY annex extends the
+ * lounge NORTH — north is -Z, matching design 25's "라운지 북벽 z=-18"):
  *
- *        z=-18 ┌───────────────── divider ──────────────────┐ z=-18
+ *                 z=-34 ┌──────────────────┐ z=-34
+ *                       │ GALLERY (초상 9점) │  x ∈ [-24, -6]
+ *        z=-18 ┌────────┴───── ◘ door ─────┴─────────────────┐ z=-18
  *              │  LOUNGE (warm)      │ ▓  LECTURE HALL (cool) │
  *              │    sofas / table    │ ▓   desks → ▐screen▌   │
- *   x=-30 ─────┤        · spawn ·    ◘ (door)   lectern       ├───── x=30
- *              │    plants           │ ▓   bookcases (N wall) │
+ *   [ MAZE ]───┤        · spawn ·    ◘ (door)   lectern       ├───── x=30
+ *              │    plants           │ ▓   bookcases          │
  *        z=+18 └─────────────────────┴───────────────────────┘ z=+18
  *                west half (x<0)        east half (x>0)
  */
@@ -27,19 +30,43 @@ export type { AABB };
 export const PLAYER_RADIUS = 0.4;
 
 /**
- * Playable area bounds (final). Walls sit on these lines; the divider is at x=0.
- * The WEST edge is the maze zone's far wall (v2-3 west extension): the map now
- * runs [maze]⇄[lounge]⇄[lecture]. `minX` is DERIVED from the maze zone so the
- * outer west wall, the spawn clamp, and the loadtest wander all track one value.
- * The lounge/lecture halves and every existing coordinate are unchanged.
+ * The gallery annex north of the lounge (design 25 — "최무호 일대기"): an
+ * 18 m × 16 m room bolted onto the lounge's north wall (its south edge IS the
+ * old z = -18 wall line), entered through one central door (below). The nine
+ * portraits are wall décor rendered by the client — the room floor contributes
+ * ZERO obstacles, so only the three new walls + the split lounge north wall
+ * shape collision here.
  */
-export const WORLD_BOUNDS = { minX: MAZE_ZONE.minX, maxX: 30, minZ: -18, maxZ: 18 } as const;
+export const GALLERY_ZONE: AABB = { minX: -24, maxX: -6, minZ: -34, maxZ: -18 };
+
+/** Gallery door centre X on the lounge's north wall (aligned with the spawn column). */
+export const GALLERY_DOOR_X = -15;
+
+/** Half-width (m) of the gallery door opening (design 25: ~2.5 m wide). */
+export const GALLERY_DOOR_HALF_WIDTH = 1.25;
+
+/**
+ * Playable area bounds (final). Walls sit on these lines; the divider is at x=0.
+ * The WEST edge is the maze zone's far wall (v2-3 west extension) and the NORTH
+ * edge is the gallery annex's far wall (v2-11 north extension): the map runs
+ * [maze]⇄[lounge]⇄[lecture] with the gallery on top. `minX` is DERIVED from the
+ * maze zone and `minZ` from the gallery zone — the SAME single-source pattern —
+ * so the outer walls, the spawn clamp, the server bounds clamp and the overview
+ * fit all track one value each. Every pre-existing coordinate is unchanged.
+ */
+export const WORLD_BOUNDS = {
+  minX: MAZE_ZONE.minX,
+  maxX: 30,
+  minZ: GALLERY_ZONE.minZ,
+  maxZ: 18,
+} as const;
 
 /** Named zones (AABBs) for ground styling and zone features (camera cap). */
-export const ZONES: Readonly<Record<"maze" | "lounge" | "lectureHall", AABB>> = {
+export const ZONES: Readonly<Record<"maze" | "lounge" | "lectureHall" | "gallery", AABB>> = {
   maze: MAZE_ZONE,
   lounge: { minX: -30, maxX: 0, minZ: -18, maxZ: 18 },
   lectureHall: { minX: 0, maxX: 30, minZ: -18, maxZ: 18 },
+  gallery: GALLERY_ZONE,
 };
 
 /** Spawn origin — centre of the lounge, kept clear of furniture + jitter. */
@@ -60,19 +87,48 @@ export const DOOR_HALF_WIDTH = 2;
 const B = WORLD_BOUNDS;
 const T = WALL_THICKNESS;
 
+/** The z = -18 wall line: lounge/hall north edge, and the gallery's south side. */
+const NORTH_WALL_Z = ZONES.lounge.minZ;
+const G = GALLERY_ZONE;
+
 /**
  * Wall AABBs = collision truth AND render geometry (the scene draws a box per
  * wall). Outer walls sit just OUTSIDE each bound (inner face exactly on the
  * bound) so the whole playable rectangle stays usable; the divider at x = 0 is
  * two segments leaving a `2·DOOR_HALF_WIDTH` gap toward the lounge.
+ *
+ * North extension (v2-11): the old full-width z = -18 outer wall is now TWO
+ * segments leaving the gallery door open, and the gallery box adds its own
+ * west/north/east walls. Every z-run that used to read `B.minZ` (= -18 then)
+ * is pinned to its ZONE edge instead, so extending `WORLD_BOUNDS.minZ` to the
+ * gallery does NOT drag the west/east outer walls or the divider into the void
+ * strip beside the gallery. Gallery walls overhang by T at their corners so the
+ * perimeter is watertight (the wall-seal invariant test proves the whole z<-18
+ * region is unreachable except through the door).
  */
 export const WALLS: readonly AABB[] = [
-  { minX: B.minX - T, maxX: B.maxX + T, minZ: B.maxZ, maxZ: B.maxZ + T }, // north
-  { minX: B.minX - T, maxX: B.maxX + T, minZ: B.minZ - T, maxZ: B.minZ }, // south
-  { minX: B.minX - T, maxX: B.minX, minZ: B.minZ, maxZ: B.maxZ }, // west
-  { minX: B.maxX, maxX: B.maxX + T, minZ: B.minZ, maxZ: B.maxZ }, // east
-  { minX: -T / 2, maxX: T / 2, minZ: B.minZ, maxZ: -DOOR_HALF_WIDTH }, // divider, south of door
-  { minX: -T / 2, maxX: T / 2, minZ: DOOR_HALF_WIDTH, maxZ: B.maxZ }, // divider, north of door
+  { minX: B.minX - T, maxX: B.maxX + T, minZ: B.maxZ, maxZ: B.maxZ + T }, // south (z=+18), full width
+  // North wall (z=-18), split around the gallery door.
+  {
+    minX: B.minX - T,
+    maxX: GALLERY_DOOR_X - GALLERY_DOOR_HALF_WIDTH,
+    minZ: NORTH_WALL_Z - T,
+    maxZ: NORTH_WALL_Z,
+  },
+  {
+    minX: GALLERY_DOOR_X + GALLERY_DOOR_HALF_WIDTH,
+    maxX: B.maxX + T,
+    minZ: NORTH_WALL_Z - T,
+    maxZ: NORTH_WALL_Z,
+  },
+  { minX: B.minX - T, maxX: B.minX, minZ: MAZE_ZONE.minZ, maxZ: MAZE_ZONE.maxZ }, // outer west (maze far wall)
+  { minX: B.maxX, maxX: B.maxX + T, minZ: ZONES.lectureHall.minZ, maxZ: B.maxZ }, // outer east
+  { minX: -T / 2, maxX: T / 2, minZ: ZONES.lounge.minZ, maxZ: -DOOR_HALF_WIDTH }, // divider, north of door
+  { minX: -T / 2, maxX: T / 2, minZ: DOOR_HALF_WIDTH, maxZ: B.maxZ }, // divider, south of door
+  // Gallery annex (design 25): west, far-north and east walls seal the box.
+  { minX: G.minX - T, maxX: G.minX, minZ: G.minZ - T, maxZ: G.maxZ }, // gallery west
+  { minX: G.minX - T, maxX: G.maxX + T, minZ: G.minZ - T, maxZ: G.minZ }, // gallery north (the new world edge)
+  { minX: G.maxX, maxX: G.maxX + T, minZ: G.minZ - T, maxZ: G.maxZ }, // gallery east
 ];
 
 /** Height (m) of every wall box in the scene. */

@@ -9,6 +9,9 @@ import {
   PLAYER_RADIUS,
   WORLD_BOUNDS,
   ZONES,
+  GALLERY_ZONE,
+  GALLERY_DOOR_X,
+  GALLERY_DOOR_HALF_WIDTH,
   SEATS,
   SEAT_REACH,
   SEAT_YAW,
@@ -16,7 +19,7 @@ import {
   nearestFreeSeat,
 } from "./worldMap";
 import { MAZE_WALLS, MAZE_ZONE, MAZE_GOAL, MAZE_PORTAL, MAZE_RETURN } from "./maze";
-import { isBlocked, resolveCollision } from "./collision";
+import { isBlocked, resolveCollision, COLLISION_EPS } from "./collision";
 
 function inside(box: { minX: number; maxX: number; minZ: number; maxZ: number }, x: number, z: number) {
   return x >= box.minX && x <= box.maxX && z >= box.minZ && z <= box.maxZ;
@@ -144,7 +147,11 @@ describe("worldMap — walls keep the player in", () => {
   it("blocks a body pressed against each outer bound", () => {
     expect(isBlocked(WORLD_BOUNDS.maxX, 0, PLAYER_RADIUS, OBSTACLES)).toBe(true); // east
     expect(isBlocked(WORLD_BOUNDS.minX, 0, PLAYER_RADIUS, OBSTACLES)).toBe(true); // west
-    expect(isBlocked(0, WORLD_BOUNDS.minZ, PLAYER_RADIUS, OBSTACLES)).toBe(true); // south (in the hall/lounge corner is walled)
+    expect(isBlocked(0, WORLD_BOUNDS.maxZ, PLAYER_RADIUS, OBSTACLES)).toBe(true); // south (z=+18)
+    // The world's minZ line is the GALLERY's far wall (v2-11) — solid on the
+    // door axis; off the gallery's x-range that line borders unreachable void
+    // (sealed at z=-18 instead — see the wall-seal invariant suite).
+    expect(isBlocked(GALLERY_DOOR_X, WORLD_BOUNDS.minZ, PLAYER_RADIUS, OBSTACLES)).toBe(true); // north
   });
 });
 
@@ -248,6 +255,243 @@ describe("worldMap — nearestFreeSeat (client proximity, pure)", () => {
     const s = SEATS[0];
     // A point exactly SEAT_REACH + a hair past the seat centre is out of reach.
     expect(nearestFreeSeat(s.x - (SEAT_REACH + 0.01), s.z, none)).toBeNull();
+  });
+});
+
+describe("worldMap — gallery zone integration (v2-11 north extension, design 25)", () => {
+  it("extends WORLD_BOUNDS north to the gallery zone; every other edge unchanged", () => {
+    expect(WORLD_BOUNDS.minZ).toBe(GALLERY_ZONE.minZ); // derived, not a bumped literal
+    expect(WORLD_BOUNDS.minX).toBe(MAZE_ZONE.minX);
+    expect(WORLD_BOUNDS.maxX).toBe(30);
+    expect(WORLD_BOUNDS.maxZ).toBe(18);
+  });
+
+  it("shapes the gallery as an 18×16 m annex on the lounge's north wall", () => {
+    expect(GALLERY_ZONE).toEqual({ minX: -24, maxX: -6, minZ: -34, maxZ: -18 });
+    expect(ZONES.gallery).toEqual(GALLERY_ZONE);
+    // The annex sits entirely on the lounge's footprint edge (never past it).
+    expect(GALLERY_ZONE.minX).toBeGreaterThanOrEqual(ZONES.lounge.minX);
+    expect(GALLERY_ZONE.maxX).toBeLessThanOrEqual(ZONES.lounge.maxX);
+    expect(GALLERY_ZONE.maxZ).toBe(ZONES.lounge.minZ);
+    // Existing zones are byte-identical to their pre-extension values.
+    expect(ZONES.lounge).toEqual({ minX: -30, maxX: 0, minZ: -18, maxZ: 18 });
+    expect(ZONES.lectureHall).toEqual({ minX: 0, maxX: 30, minZ: -18, maxZ: 18 });
+    expect(ZONES.maze).toEqual(MAZE_ZONE);
+  });
+
+  it("opens the gallery door inside the gallery's own south wall (never the void)", () => {
+    const doorMin = GALLERY_DOOR_X - GALLERY_DOOR_HALF_WIDTH;
+    const doorMax = GALLERY_DOOR_X + GALLERY_DOOR_HALF_WIDTH;
+    expect(doorMax - doorMin).toBeCloseTo(2.5, 10); // design 25: ~2.5 m opening
+    expect(doorMin).toBeGreaterThan(GALLERY_ZONE.minX);
+    expect(doorMax).toBeLessThan(GALLERY_ZONE.maxX);
+  });
+
+  it("connects spawn → gallery centre along a clear walked route (door included)", () => {
+    // Legs mirror the E2E walk: west around the E2E sofa (-15,-7), north to the
+    // wall, over to the door axis, straight through the 2.5 m opening, then deep
+    // into the room. Every sampled body position must be walkable.
+    const legs: Array<[number, number, number, number]> = [
+      [-15, 0, -18, 0], // spawn → west of the sofa column
+      [-18, 0, -18, -16.5], // north along the clear corridor
+      [-18, -16.5, -15, -16.5], // over to the door axis
+      [-15, -16.5, -15, -20], // THROUGH the door (crosses z = -18)
+      [-15, -20, -15, -26], // to the gallery centre
+    ];
+    for (const [x0, z0, x1, z1] of legs) {
+      const steps = Math.ceil(Math.hypot(x1 - x0, z1 - z0) / 0.25);
+      for (let s = 0; s <= steps; s++) {
+        const x = x0 + ((x1 - x0) * s) / steps;
+        const z = z0 + ((z1 - z0) * s) / steps;
+        expect(isBlocked(x, z, PLAYER_RADIUS, OBSTACLES), `blocked at (${x}, ${z})`).toBe(false);
+      }
+    }
+  });
+
+  it("keeps the lounge north wall solid away from the door", () => {
+    expect(isBlocked(-20, -18, PLAYER_RADIUS, OBSTACLES)).toBe(true); // west of the door
+    expect(isBlocked(-10, -18, PLAYER_RADIUS, OBSTACLES)).toBe(true); // east of the door
+    expect(isBlocked(-27, -18, PLAYER_RADIUS, OBSTACLES)).toBe(true); // lounge segment west of the gallery
+    expect(isBlocked(-3, -18, PLAYER_RADIUS, OBSTACLES)).toBe(true); // lounge segment east of the gallery
+    expect(isBlocked(15, -18, PLAYER_RADIUS, OBSTACLES)).toBe(true); // lecture hall north wall
+  });
+
+  it("keeps the gallery interior obstacle-free (portraits are wall décor, not obstacles)", () => {
+    // A generous inner margin (walls + body radius) — the whole exhibition floor
+    // is walkable, so visitors can stand anywhere in front of any portrait.
+    for (let x = GALLERY_ZONE.minX + 1; x <= GALLERY_ZONE.maxX - 1; x += 0.5) {
+      for (let z = GALLERY_ZONE.minZ + 1; z <= GALLERY_ZONE.maxZ - 1.5; z += 0.5) {
+        expect(isBlocked(x, z, PLAYER_RADIUS, OBSTACLES), `blocked at (${x}, ${z})`).toBe(false);
+      }
+    }
+  });
+});
+
+describe("worldMap — wall-seal invariant (north extension opens NO gap into the void)", () => {
+  /**
+   * Exact free (walkable-centre) intervals for a body of radius r sliding along a
+   * fixed-Z line: the complement of the union of every obstacle's blocked
+   * x-interval, computed in CLOSED FORM from the same circle-vs-AABB math
+   * `isBlocked` uses (dz = distance to the box's z-band; blocked where
+   * dx² + dz² < eff²) — so, unlike a sampled scan, a sliver thinner than any
+   * sampling step cannot hide between probes.
+   */
+  function freeIntervalsAlongZ(
+    zLine: number,
+    x0: number,
+    x1: number,
+    r: number,
+  ): Array<[number, number]> {
+    const eff = r - COLLISION_EPS; // isBlocked's slack-adjusted effective radius
+    const blocked: Array<[number, number]> = [];
+    for (const b of OBSTACLES) {
+      const dz = zLine < b.minZ ? b.minZ - zLine : zLine > b.maxZ ? zLine - b.maxZ : 0;
+      if (dz >= eff) continue;
+      const halfW = Math.sqrt(eff * eff - dz * dz);
+      blocked.push([b.minX - halfW, b.maxX + halfW]);
+    }
+    blocked.sort((a, b) => a[0] - b[0]);
+    const free: Array<[number, number]> = [];
+    let cursor = x0;
+    for (const [s, e] of blocked) {
+      if (e <= cursor) continue;
+      if (s > cursor) free.push([cursor, Math.min(s, x1)]);
+      cursor = Math.max(cursor, e);
+      if (cursor >= x1) break;
+    }
+    if (cursor < x1) free.push([cursor, x1]);
+    return free.filter(([s, e]) => e - s > 1e-9);
+  }
+
+  /** Same closed-form seal scan for a fixed-X line (gallery west/east walls). */
+  function freeIntervalsAlongX(
+    xLine: number,
+    z0: number,
+    z1: number,
+    r: number,
+  ): Array<[number, number]> {
+    const eff = r - COLLISION_EPS;
+    const blocked: Array<[number, number]> = [];
+    for (const b of OBSTACLES) {
+      const dx = xLine < b.minX ? b.minX - xLine : xLine > b.maxX ? xLine - b.maxX : 0;
+      if (dx >= eff) continue;
+      const halfW = Math.sqrt(eff * eff - dx * dx);
+      blocked.push([b.minZ - halfW, b.maxZ + halfW]);
+    }
+    blocked.sort((a, b) => a[0] - b[0]);
+    const free: Array<[number, number]> = [];
+    let cursor = z0;
+    for (const [s, e] of blocked) {
+      if (e <= cursor) continue;
+      if (s > cursor) free.push([cursor, Math.min(s, z1)]);
+      cursor = Math.max(cursor, e);
+      if (cursor >= z1) break;
+    }
+    if (cursor < z1) free.push([cursor, z1]);
+    return free.filter(([s, e]) => e - s > 1e-9);
+  }
+
+  it("seals the ENTIRE z = -18 interface except exactly one opening: the gallery door", () => {
+    // Any path from the old map into the extension strip must cross z = -18.
+    // The exact free set of that whole 96 m line must be ONE interval, and it must
+    // lie inside the gallery door span (which itself opens into the gallery box).
+    const free = freeIntervalsAlongZ(
+      ZONES.lounge.minZ,
+      WORLD_BOUNDS.minX,
+      WORLD_BOUNDS.maxX,
+      PLAYER_RADIUS,
+    );
+    expect(free.length).toBe(1);
+    const [s, e] = free[0];
+    expect(s).toBeGreaterThanOrEqual(GALLERY_DOOR_X - GALLERY_DOOR_HALF_WIDTH);
+    expect(e).toBeLessThanOrEqual(GALLERY_DOOR_X + GALLERY_DOOR_HALF_WIDTH);
+    // …and a real body actually fits through it (a sliver would be a broken door).
+    expect(e - s).toBeGreaterThan(2 * PLAYER_RADIUS);
+  });
+
+  it("seals the gallery's west, east and north walls completely (no opening at all)", () => {
+    const west = freeIntervalsAlongX(
+      GALLERY_ZONE.minX,
+      GALLERY_ZONE.minZ,
+      GALLERY_ZONE.maxZ,
+      PLAYER_RADIUS,
+    );
+    expect(west).toEqual([]);
+    const east = freeIntervalsAlongX(
+      GALLERY_ZONE.maxX,
+      GALLERY_ZONE.minZ,
+      GALLERY_ZONE.maxZ,
+      PLAYER_RADIUS,
+    );
+    expect(east).toEqual([]);
+    const north = freeIntervalsAlongZ(
+      GALLERY_ZONE.minZ,
+      GALLERY_ZONE.minX,
+      GALLERY_ZONE.maxX,
+      PLAYER_RADIUS,
+    );
+    expect(north).toEqual([]);
+  });
+
+  it("flood-fills from spawn into every zone but never escapes the zone union", () => {
+    // Grid BFS over the whole bounds (+2 m margin past every edge so an escape
+    // would be caught, not clipped): a cell is enterable iff a body there is not
+    // blocked. The reachable set must (a) touch all four zones — the doors work —
+    // and (b) contain no cell outside maze∪lounge∪hall∪gallery: the void exposed
+    // by the north extension is unreachable, wall-sealed everywhere but the door.
+    const step = 0.4;
+    const margin = 2;
+    const minX = WORLD_BOUNDS.minX - margin;
+    const maxX = WORLD_BOUNDS.maxX + margin;
+    const minZ = WORLD_BOUNDS.minZ - margin;
+    const maxZ = WORLD_BOUNDS.maxZ + margin;
+    const cols = Math.floor((maxX - minX) / step) + 1;
+    const rows = Math.floor((maxZ - minZ) / step) + 1;
+    const xOf = (i: number) => minX + i * step;
+    const zOf = (j: number) => minZ + j * step;
+    const si = Math.round((SPAWN_POINT.x - minX) / step);
+    const sj = Math.round((SPAWN_POINT.z - minZ) / step);
+    expect(isBlocked(xOf(si), zOf(sj), PLAYER_RADIUS, OBSTACLES)).toBe(false); // seed sanity
+
+    const seen = new Uint8Array(cols * rows);
+    const queue: number[] = [si + sj * cols];
+    seen[queue[0]] = 1;
+    const reached: Array<{ x: number; z: number }> = [];
+    while (queue.length) {
+      const idx = queue.pop()!;
+      const i = idx % cols;
+      const j = (idx - i) / cols;
+      reached.push({ x: xOf(i), z: zOf(j) });
+      for (const [di, dj] of [
+        [1, 0],
+        [-1, 0],
+        [0, 1],
+        [0, -1],
+      ] as const) {
+        const ni = i + di;
+        const nj = j + dj;
+        if (ni < 0 || nj < 0 || ni >= cols || nj >= rows) continue;
+        const nidx = ni + nj * cols;
+        if (seen[nidx]) continue;
+        seen[nidx] = 1;
+        if (!isBlocked(xOf(ni), zOf(nj), PLAYER_RADIUS, OBSTACLES)) queue.push(nidx);
+      }
+    }
+
+    expect(reached.length).toBeGreaterThan(5000); // sanity: the world really was walked
+    const zones = Object.values(ZONES);
+    const eps = 1e-9;
+    const escapes = reached.filter(
+      (p) =>
+        !zones.some(
+          (zn) =>
+            p.x >= zn.minX - eps && p.x <= zn.maxX + eps && p.z >= zn.minZ - eps && p.z <= zn.maxZ + eps,
+        ),
+    );
+    expect(escapes).toEqual([]); // NOT ONE reachable point outside the zone union
+    for (const [name, zn] of Object.entries(ZONES)) {
+      expect(reached.some((p) => inside(zn, p.x, p.z)), `zone ${name} is reachable`).toBe(true);
+    }
   });
 });
 

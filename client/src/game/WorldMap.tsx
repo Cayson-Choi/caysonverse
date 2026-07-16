@@ -14,11 +14,13 @@ import {
   type AABB,
 } from "@caysonverse/shared/worldMap";
 import { MazeWalls } from "./MazeWalls";
+import { GalleryRoom } from "./GalleryRoom";
 
 /** Ground colours per zone (lounge warm, lecture hall cool, maze dim). */
 const LOUNGE_COLOR = "#463a52"; // warm mauve
 const HALL_COLOR = "#36485e"; // cool slate-blue
 const MAZE_COLOR = "#2c2a40"; // dim indigo — reads as a separate, cooler room
+const GALLERY_COLOR = "#5b4536"; // warm walnut — the exhibition room reads distinct (design 25)
 const WALL_COLOR = "#6a6390";
 const SCREEN_BODY = "#0b0b14";
 
@@ -143,13 +145,18 @@ export function WorldMap() {
 
   return (
     <group>
-      {/* Ground, one plane per zone (maze west, lounge centre, hall east). */}
+      {/* Ground, one plane per zone (maze west, lounge centre, hall east,
+          gallery annex north). */}
       <ZoneFloor zone={ZONES.maze} color={MAZE_COLOR} />
       <ZoneFloor zone={ZONES.lounge} color={LOUNGE_COLOR} />
       <ZoneFloor zone={ZONES.lectureHall} color={HALL_COLOR} />
+      <ZoneFloor zone={ZONES.gallery} color={GALLERY_COLOR} />
 
       {/* Maze: merged walls (1 draw call), goal tile, return portal, chamber light. */}
       <MazeWalls />
+
+      {/* 최무호 일대기 gallery: 9 portraits, frames, plaques, banner, sign (design 25). */}
+      <GalleryRoom />
 
       {/* Walls: box meshes matching the collision AABBs exactly. */}
       {WALLS.map((w, i) => {
