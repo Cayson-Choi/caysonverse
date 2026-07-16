@@ -1,0 +1,63 @@
+/* First-person D-pad (touch devices, design 21). Occupies the SAME bottom-left
+   movement slot as the joystick zone (they never mount together — WorldScene
+   swaps them on the fp flag). ONE touch zone; the ▲▼◀▶ buttons are display-only
+   (pointer-events: none) so the zone sees every pointer and a slide across
+   buttons stays a single uninterrupted touch. NEW file on purpose — touch.css
+   belongs to a parallel work lane and is not modified. */
+.cv-dpad-zone {
+  position: fixed;
+  left: calc(env(safe-area-inset-left, 0px) + 16px);
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 20px);
+  width: 156px;
+  height: 156px;
+  z-index: 25;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, 1fr);
+  /* Own the touch here so a pad drag never scrolls/bounces the page, and never
+     leaks to the canvas as a camera rotation (same contract as the joystick). */
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Each grid cell is 52px; the visible chip is 48px (≥44px touch guideline —
+   visual only, since the whole zone is the target, but parity keeps it honest).
+   Palette matches the overlay buttons (cosmic navy chip / violet accent). */
+.cv-dpad-btn {
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  margin: auto;
+  font-size: 18px;
+  line-height: 1;
+  color: #f2eeff;
+  background: rgba(18, 14, 36, 0.6);
+  border: 1px solid rgba(150, 130, 220, 0.35);
+  border-radius: 12px;
+  transition: background 0.1s ease, border-color 0.1s ease, color 0.1s ease;
+}
+
+.cv-dpad-up {
+  grid-area: 1 / 2;
+}
+.cv-dpad-left {
+  grid-area: 2 / 1;
+}
+.cv-dpad-right {
+  grid-area: 2 / 3;
+}
+.cv-dpad-down {
+  grid-area: 3 / 2;
+}
+
+/* Active direction highlight — a diagonal sector lights the two adjacent chips. */
+.cv-dpad-btn.is-active {
+  background: rgba(96, 74, 166, 0.78);
+  border-color: rgba(170, 150, 255, 0.8);
+  color: #ffffff;
+}
