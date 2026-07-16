@@ -9,7 +9,7 @@ import { readIntent, worldDirection } from "./input";
 import type { Intent } from "./input";
 import { guardMoveKeys, isUiCaptured } from "./uiCapture";
 import { viewState } from "./viewState";
-import { HIDE_BLEND, stepFollowYaw } from "./viewMode";
+import { HIDE_BLEND, OV_VIS_BLEND, stepFollowYaw } from "./viewMode";
 import { cloneTinted } from "./avatar";
 import { BlobShadow } from "./BlobShadow";
 import { useSpeechBubble } from "./useSpeechBubble";
@@ -147,9 +147,10 @@ export function LocalPlayer({
     // Set on EVERY path (incl. seated below) and restored automatically on exit /
     // reconnect remount (resetViewMode zeroes the blend). Remote avatars, seats,
     // and the maze are untouched — they live in other groups. Overview is a
-    // third-person top-down: the own avatar is ALWAYS shown there (design 20), even
-    // if it was hidden in the FP it was opened from.
-    group.visible = viewState.mode === "ov" ? true : viewState.blend < HIDE_BLEND;
+    // third-person top-down: the own avatar is shown there (design 20) even if it
+    // was hidden in the FP it was opened from — gated on the ov BLEND, not the
+    // instant mode flip, so neither transition direction flashes near the eye.
+    group.visible = viewState.ovBlend > OV_VIS_BLEND ? true : viewState.blend < HIDE_BLEND;
 
     // Focus guard: while the chat input owns keyboard input — OR while the
     // resilience driver is reconnecting (world frozen behind the overlay) —

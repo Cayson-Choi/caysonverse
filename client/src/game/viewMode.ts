@@ -56,6 +56,17 @@ export const FP_PITCH_MAX = 1.2;
  */
 export const HIDE_BLEND = 0.5;
 
+/**
+ * Overview blend factor at/after which the overview-only visuals apply: the self
+ * marker shows, and the own avatar counts as third-person (visible even if the FP
+ * it was opened from hid it). Gating on the BLEND — not the instant mode flip —
+ * keeps both transitions pop-free (the HIDE_BLEND rule, applied to ov): at the
+ * halfway point the camera is ~30 m up, so entering ov from FP never flashes the
+ * body interior around the eye, and exiting keeps the avatar + marker on screen
+ * while the camera is still high, only reverting mid-descent.
+ */
+export const OV_VIS_BLEND = 0.5;
+
 /** Follow-distance clamp band (metres). */
 export interface ZoomBand {
   min: number;

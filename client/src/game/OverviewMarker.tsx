@@ -2,6 +2,7 @@ import { useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import { DoubleSide, type Group } from "three";
 import { viewState } from "./viewState";
+import { OV_VIS_BLEND } from "./viewMode";
 import type { Pose } from "./types";
 
 /**
@@ -21,8 +22,10 @@ export function OverviewMarker({ pose }: { pose: Pose }) {
   useFrame((state) => {
     const g = ref.current;
     if (!g) return;
-    // Show once the overview transition has meaningfully begun; hide otherwise.
-    const show = viewState.mode === "ov" && viewState.ovBlend > 0.02;
+    // Gate on the ov blend, not the mode flip: the marker appears once the camera
+    // is high enough mid-ascent and STAYS through most of the exit descent (the
+    // user keeps their "where am I" anchor while the map is still readable).
+    const show = viewState.ovBlend > OV_VIS_BLEND;
     g.visible = show;
     if (!show) return;
     g.position.set(pose.x, 0, pose.z);

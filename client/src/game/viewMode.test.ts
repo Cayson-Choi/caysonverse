@@ -6,6 +6,7 @@ import {
   FP_PITCH_MAX,
   FP_FOLLOW_RATE,
   HIDE_BLEND,
+  OV_VIS_BLEND,
   stepBlend,
   easeBlend,
   clampFpPitch,
@@ -134,6 +135,11 @@ describe("viewMode — constants", () => {
     expect(OV_BLEND_SEC).toBeCloseTo(0.3, 6);
     expect(FP_FOLLOW_RATE).toBeGreaterThan(1);
     expect(FP_FOLLOW_RATE).toBeLessThan(6);
+  });
+
+  it("gates overview-only visuals strictly inside the ov blend (no edge pops)", () => {
+    expect(OV_VIS_BLEND).toBeGreaterThan(0);
+    expect(OV_VIS_BLEND).toBeLessThan(1);
   });
 });
 
