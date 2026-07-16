@@ -16,7 +16,9 @@ import type {
   ChatBroadcast,
   ChatRejectedPayload,
   EmojiBroadcast,
+  SitRejectedPayload,
 } from "@caysonverse/shared/messages";
+import { SEATS } from "@caysonverse/shared/worldMap";
 import { rooms, type WorldRoom } from "./index";
 
 const VALID_JOIN = { nickname: "케이슨", character: 1, tint: 2 };
@@ -695,5 +697,193 @@ describe("WorldRoom reconnection (integration)", () => {
     await new Promise((r) => setTimeout(r, 100));
     const second = await colyseus.connectTo(room, JOIN_B);
     expect(room.state.players.has(second.sessionId)).toBe(true);
+  });
+});
+
+// ── v2 Task 1: seating (sit / stand / occupancy / cleanup) ──
+//
+// A seat is only sittable within SEAT_REACH of its centre; players spawn in the
+// lounge, far from every chair. To keep these deterministic we place the player
+// directly on the target seat's clear dismount point (white-box state edit — the
+// long walk itself is exercised by the two-tab E2E), then drive the real Sit/
+// Stand/Move message handlers.
+describe("WorldRoom seating (integration)", () => {
+  const SEAT = 1; // a front-row student chair
+  const seat = SEATS[SEAT];
+
+  /** Put `sid` on `seat`'s dismount point so a Sit for it is in range. */
+  function placeAtDismount(room: WorldRoom, sid: string, s = seat): void {
+    const player = room.state.players.get(sid)!;
+    player.x = s.standX;
+    player.z = s.standZ;
+  }
+
+  it("seats a player: snaps position + facing to the seat and syncs seatIndex", async () => {
+    const room = await colyseus.createRoom<WorldRoom>(WORLD_ROOM);
+    const client = await colyseus.connectTo(room, JOIN_A);
+    placeAtDismount(room, client.sessionId);
+
+    client.send(MessageType.Sit, { seatIndex: SEAT });
+    await room.waitForNextMessage();
+    await flush();
+
+    const player = room.state.players.get(client.sessionId)!;
+    expect(player.seatIndex).toBe(SEAT);
+    expect(player.x).toBeCloseTo(seat.x, 6);
+    expect(player.z).toBeCloseTo(seat.z, 6);
+    expect(player.yaw).toBeCloseTo(seat.yaw, 6); // faces the screen (+X)
+  });
+
+  it("drops an out-of-range Sit (player far from the seat) silently", async () => {
+    const room = await colyseus.createRoom<WorldRoom>(WORLD_ROOM);
+    const client = await colyseus.connectTo(room, JOIN_A);
+    // Left at the lounge spawn — nowhere near seat SEAT.
+    const before = room.state.players.get(client.sessionId)!;
+    const x0 = before.x;
+    const z0 = before.z;
+
+    client.send(MessageType.Sit, { seatIndex: SEAT });
+    await room.waitForNextMessage();
+    await flush();
+
+    expect(before.seatIndex).toBe(-1);
+    expect(before.x).toBe(x0);
+    expect(before.z).toBe(z0);
+  });
+
+  it("rejects the second sitter on an occupied seat — notice to that client ONLY", async () => {
+    const room = await colyseus.createRoom<WorldRoom>(WORLD_ROOM);
+    const alice = await colyseus.connectTo(room, JOIN_A);
+    const bob = await colyseus.connectTo(room, JOIN_B);
+    placeAtDismount(room, alice.sessionId);
+    placeAtDismount(room, bob.sessionId);
+
+    const aRejected: SitRejectedPayload[] = [];
+    const bRejected: SitRejectedPayload[] = [];
+    alice.onMessage(MessageType.SitRejected, (m: SitRejectedPayload) => aRejected.push(m));
+    bob.onMessage(MessageType.SitRejected, (m: SitRejectedPayload) => bRejected.push(m));
+
+    alice.send(MessageType.Sit, { seatIndex: SEAT });
+    await room.waitForNextMessage();
+    await flush();
+    bob.send(MessageType.Sit, { seatIndex: SEAT }); // seat now taken by alice
+    await room.waitForNextMessage();
+    await flush();
+
+    expect(room.state.players.get(alice.sessionId)!.seatIndex).toBe(SEAT);
+    expect(room.state.players.get(bob.sessionId)!.seatIndex).toBe(-1); // bob stayed standing
+    expect(bRejected).toHaveLength(1);
+    expect(bRejected[0].reason).toBe("이미 사용 중인 자리예요");
+    expect(aRejected).toHaveLength(0); // the winner is never notified
+  });
+
+  it("drops a Move while seated — the seated position is unchanged", async () => {
+    const room = await colyseus.createRoom<WorldRoom>(WORLD_ROOM);
+    const client = await colyseus.connectTo(room, JOIN_A);
+    placeAtDismount(room, client.sessionId);
+    client.send(MessageType.Sit, { seatIndex: SEAT });
+    await room.waitForNextMessage();
+    await flush();
+
+    const player = room.state.players.get(client.sessionId)!;
+    // A tiny, otherwise-legal step: dropped only because the sender is seated.
+    client.send(MessageType.Move, { x: seat.x + 0.05, z: seat.z, yaw: 0.3 });
+    await room.waitForNextMessage();
+    await flush();
+
+    expect(player.seatIndex).toBe(SEAT);
+    expect(player.x).toBeCloseTo(seat.x, 6);
+    expect(player.z).toBeCloseTo(seat.z, 6);
+  });
+
+  it("stands a player to the dismount point, frees the seat, lets another sit", async () => {
+    const room = await colyseus.createRoom<WorldRoom>(WORLD_ROOM);
+    const alice = await colyseus.connectTo(room, JOIN_A);
+    const bob = await colyseus.connectTo(room, JOIN_B);
+    placeAtDismount(room, alice.sessionId);
+    placeAtDismount(room, bob.sessionId);
+
+    alice.send(MessageType.Sit, { seatIndex: SEAT });
+    await room.waitForNextMessage();
+    await flush();
+
+    alice.send(MessageType.Stand, {});
+    await room.waitForNextMessage();
+    await flush();
+
+    const a = room.state.players.get(alice.sessionId)!;
+    expect(a.seatIndex).toBe(-1);
+    expect(a.x).toBeCloseTo(seat.standX, 6);
+    expect(a.z).toBeCloseTo(seat.standZ, 6);
+
+    // The freed seat is now sittable by bob.
+    bob.send(MessageType.Sit, { seatIndex: SEAT });
+    await room.waitForNextMessage();
+    await flush();
+    expect(room.state.players.get(bob.sessionId)!.seatIndex).toBe(SEAT);
+  });
+
+  it("drops a Stand from a standing player (silent)", async () => {
+    const room = await colyseus.createRoom<WorldRoom>(WORLD_ROOM);
+    const client = await colyseus.connectTo(room, JOIN_A);
+    const player = room.state.players.get(client.sessionId)!;
+    const x0 = player.x;
+    const z0 = player.z;
+
+    client.send(MessageType.Stand, {});
+    await room.waitForNextMessage();
+    await flush();
+
+    expect(player.seatIndex).toBe(-1);
+    expect(player.x).toBe(x0);
+    expect(player.z).toBe(z0);
+  });
+
+  it("frees the seat on a consented leave while seated (another player can sit)", async () => {
+    const room = await colyseus.createRoom<WorldRoom>(WORLD_ROOM);
+    const alice = await colyseus.connectTo(room, JOIN_A);
+    const bob = await colyseus.connectTo(room, JOIN_B);
+    placeAtDismount(room, bob.sessionId);
+
+    placeAtDismount(room, alice.sessionId);
+    alice.send(MessageType.Sit, { seatIndex: SEAT });
+    await room.waitForNextMessage();
+    await flush();
+    expect(room.state.players.get(alice.sessionId)!.seatIndex).toBe(SEAT);
+
+    await alice.leave(true); // consented → onLeave frees the seat
+    expect(await pollFor(() => !room.state.players.has(alice.sessionId))).toBe(true);
+
+    bob.send(MessageType.Sit, { seatIndex: SEAT });
+    await room.waitForNextMessage();
+    await flush();
+    expect(room.state.players.get(bob.sessionId)!.seatIndex).toBe(SEAT);
+  });
+
+  it("frees the seat when a seated player is kicked (another player can sit)", async () => {
+    process.env.ADMIN_CODE = ADMIN_CODE;
+    const room = await colyseus.createRoom<WorldRoom>(WORLD_ROOM);
+    const admin = await colyseus.connectTo(room, { ...ADMIN_JOIN, adminCode: ADMIN_CODE });
+    const bob = await colyseus.connectTo(room, JOIN_B);
+    placeAtDismount(room, bob.sessionId);
+
+    placeAtDismount(room, bob.sessionId, seat); // ensure bob is in range too
+    // Seat bob, then have the admin kick him — the seat must be freed on removal.
+    bob.send(MessageType.Sit, { seatIndex: SEAT });
+    await room.waitForNextMessage();
+    await flush();
+    expect(room.state.players.get(bob.sessionId)!.seatIndex).toBe(SEAT);
+
+    admin.send(MessageType.Kick, { sid: bob.sessionId });
+    await room.waitForNextMessage();
+    expect(await pollFor(() => !room.state.players.has(bob.sessionId))).toBe(true);
+    await flush();
+
+    // The admin (placed in range) can now take the freed seat.
+    placeAtDismount(room, admin.sessionId, seat);
+    admin.send(MessageType.Sit, { seatIndex: SEAT });
+    await room.waitForNextMessage();
+    await flush();
+    expect(room.state.players.get(admin.sessionId)!.seatIndex).toBe(SEAT);
   });
 });

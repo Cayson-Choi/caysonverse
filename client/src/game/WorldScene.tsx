@@ -10,6 +10,7 @@ import { CameraRig } from "./CameraRig";
 import { Chat } from "../ui/Chat";
 import { EmojiPalette } from "../ui/EmojiPalette";
 import { TouchJoystick } from "../ui/TouchJoystick";
+import { SitPrompt } from "../ui/SitPrompt";
 import { Banner } from "../ui/Banner";
 import { AdminPanel } from "../ui/AdminPanel";
 import { getRoom } from "../net/connection";
@@ -19,7 +20,7 @@ import { setUiCaptured } from "./uiCapture";
 import { useAppStore } from "../stores/appStore";
 import type { Identity } from "../stores/appStore";
 import type { Intent } from "./input";
-import type { Orbit, Pose } from "./types";
+import type { Orbit, Pose, SeatState } from "./types";
 
 /** DOM loading overlay driven by three's loader progress (GLB fetch/parse). */
 function LoadingOverlay() {
@@ -51,6 +52,9 @@ export function WorldScene({ identity }: { identity: Identity }) {
   // Shared joystick movement intent (touch). Written by TouchJoystick, read by
   // LocalPlayer and ADDED to the keyboard intent — one movement path, no fork.
   const moveInput = useRef<Intent>({ forward: 0, right: 0 }).current;
+  // The local player's server-confirmed seat (schema-driven). Written by the
+  // remote-sync self listener; read by LocalPlayer (pose/anim) + the SitPrompt.
+  const seat = useRef<SeatState>({ index: -1 }).current;
 
   // Belt-and-braces: every fresh world (initial join AND each reconnect remount,
   // since this scene is keyed by connectionEpoch) starts with movement UNcaptured.
@@ -113,12 +117,13 @@ export function WorldScene({ identity }: { identity: Identity }) {
               tint={identity.tint}
               pose={pose}
               orbit={orbit}
+              seat={seat}
               moveInput={moveInput}
               blobShadow={profile.blobShadows}
             />
             {/* Other connected players: snapshot-interpolated, tinted, nametagged.
                 Mounts/unmounts on roster changes only; poses stream via the store. */}
-            <RemotePlayers selfPose={pose} blobShadow={profile.blobShadows} />
+            <RemotePlayers selfPose={pose} selfSeat={seat} blobShadow={profile.blobShadows} />
           </Suspense>
           <CameraRig pose={pose} orbit={orbit} />
         </KeyboardControls>
@@ -127,6 +132,8 @@ export function WorldScene({ identity }: { identity: Identity }) {
       <Banner />
       <Chat />
       <EmojiPalette />
+      {/* Sit/stand prompt: desktop hint + touch button + occupied-seat notice. */}
+      <SitPrompt pose={pose} seat={seat} />
       {/* Virtual joystick — touch devices only. Keyboard stays active regardless. */}
       {isTouchDevice && <TouchJoystick moveInput={moveInput} />}
       {isAdmin && <AdminPanel />}

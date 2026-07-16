@@ -15,6 +15,7 @@ function rec(sessionId: string, over: Partial<RemotePlayerRecord> = {}): RemoteP
     character: 0,
     tint: 0,
     connected: true,
+    seatIndex: -1,
     snapshots: [],
     ...over,
   };

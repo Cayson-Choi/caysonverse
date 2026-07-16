@@ -1,11 +1,17 @@
 import type { Orbit, Pose } from "./types";
 import { getRemotes } from "./remoteStore";
-import { getRoom } from "../net/connection";
+import { getRoom, sendSit, sendStand } from "../net/connection";
 import { bubbleRegistry } from "./bubbleRegistry";
 import { emojiRegistry } from "./emojiRegistry";
 
 /** Non-consented close code (MAY_TRY_RECONNECT) used by the dev drop hook. */
 const DEV_DROP_CODE = 4010;
+
+/** Local pose plus the server-confirmed seat, exposed to the E2E hook. */
+export interface PoseView extends Pose {
+  /** -1 = standing; >= 0 = the occupied seat (server-authoritative). */
+  seatIndex: number;
+}
 
 /** Shape of one remote player in the dev/E2E hook. */
 export interface RemoteView {
@@ -13,8 +19,11 @@ export interface RemoteView {
   nickname: string;
   x: number;
   z: number;
+  yaw: number;
   /** False while this remote is disconnected (drives the 50%-opacity ghost). */
   connected: boolean;
+  /** -1 = standing; >= 0 = the seat this remote occupies. */
+  seatIndex: number;
 }
 
 /** Shape of one active speech bubble in the dev/E2E hook. */
@@ -33,11 +42,11 @@ declare global {
   interface Window {
     /** Dev-only E2E hook (see installDebugHook). Absent in production builds. */
     __cv?: {
-      /** The local player's live pose. */
-      getPos: () => Pose;
+      /** The local player's live pose + server-confirmed seatIndex. */
+      getPos: () => PoseView;
       /** The live third-person camera orbit (yaw/pitch/distance). */
       getOrbit: () => Orbit;
-      /** Every OTHER connected player's newest known position. */
+      /** Every OTHER connected player's newest known position + seatIndex. */
       getRemotes: () => RemoteView[];
       /** Every currently-visible speech bubble (sid + text). */
       getBubbles: () => BubbleView[];
@@ -50,6 +59,14 @@ declare global {
        * SAME avatar within the window. Returns true if a room was connected.
        */
       dropConnection: () => boolean;
+      /**
+       * Send a Sit request for `seatIndex` (dev/E2E only). Deterministically
+       * drives the occupied-seat race the proximity UI intentionally can't (it
+       * hides taken seats). The server stays authoritative — it still validates.
+       */
+      sit: (seatIndex: number) => void;
+      /** Send a Stand request (dev/E2E only). */
+      stand: () => void;
     };
   }
 }
@@ -60,10 +77,14 @@ declare global {
  * behind the DEV guard, so production evaluates `import.meta.env.DEV` to `false`
  * and tree-shakes the hook away. Returns a cleanup that removes the global.
  */
-export function installDebugHook(getPose: () => Pose, getOrbit: () => Orbit): () => void {
+export function installDebugHook(
+  getPose: () => Pose,
+  getOrbit: () => Orbit,
+  getSeatIndex: () => number,
+): () => void {
   if (!import.meta.env.DEV) return () => {};
   window.__cv = {
-    getPos: () => ({ ...getPose() }),
+    getPos: () => ({ ...getPose(), seatIndex: getSeatIndex() }),
     getOrbit: () => ({ ...getOrbit() }),
     getRemotes: () => getRemotes(),
     getBubbles: () =>
@@ -76,6 +97,8 @@ export function installDebugHook(getPose: () => Pose, getOrbit: () => Orbit): ()
       room.connection.close(DEV_DROP_CODE, "dev drop");
       return true;
     },
+    sit: (seatIndex: number) => sendSit(seatIndex),
+    stand: () => sendStand(),
   };
   return () => {
     delete window.__cv;

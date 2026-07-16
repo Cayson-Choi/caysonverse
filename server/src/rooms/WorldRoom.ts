@@ -15,7 +15,9 @@ import {
   KICK_CLOSE_CODE,
   RECONNECT_WINDOW_S,
 } from "@caysonverse/shared/constants";
+import { SEATS } from "@caysonverse/shared/worldMap";
 import { validateMove } from "./movement";
+import { validateSit } from "./seating";
 import { validateJoinOptions } from "./joinValidation";
 import { sanitizeChat } from "./chat";
 import { sanitizeAnnounce } from "./announce";
@@ -100,6 +102,13 @@ export class WorldRoom extends Room<{ state: WorldState }> {
 
   private readonly tracking = new Map<string, ClientTracking>();
 
+  /**
+   * Seat occupancy: seatIndex → the sessionId sitting there. Server memory only
+   * (the per-player `seatIndex` is the synced mirror). Enforces 1-chair-1-person
+   * and is freed through the single `releaseSeat` helper on every removal path.
+   */
+  private readonly occupancy = new Map<number, string>();
+
   /** Kick deny list — per-room-instance memory (cleared on server restart). */
   private readonly denySet = new DenySet();
 
@@ -121,6 +130,12 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     });
     this.onMessage(MessageType.Kick, (client, payload) => {
       this.handleKick(client, payload);
+    });
+    this.onMessage(MessageType.Sit, (client, payload) => {
+      this.handleSit(client, payload);
+    });
+    this.onMessage(MessageType.Stand, (client) => {
+      this.handleStand(client);
     });
   }
 
@@ -249,6 +264,11 @@ export class WorldRoom extends Room<{ state: WorldState }> {
    * window that expired. Remove the player from state and drop its bookkeeping.
    */
   onLeave(client: Client): void {
+    // Free the seat FIRST (the single cleanup path for every permanent removal:
+    // consented leave, kick, and reconnection-window expiry all land here). A
+    // transient drop does NOT reach onLeave (onDrop opens a window), so a ghost
+    // keeps its seat as required.
+    this.releaseSeat(client.sessionId);
     this.state.players.delete(client.sessionId);
     this.tracking.delete(client.sessionId);
   }
@@ -269,6 +289,10 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     const player = this.state.players.get(client.sessionId);
     const track = this.tracking.get(client.sessionId);
     if (!player || !track) return; // no seat yet / already left → drop
+
+    // Seated → moves are dropped silently. Standing up is an explicit Stand
+    // message (design 14): while seated the player is fully server-positioned.
+    if (player.seatIndex >= 0) return;
 
     const now = this.now();
 
@@ -381,6 +405,75 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     this.denySet.add({ ip: targetMarker?.ip ?? null, nickname }); // ip ignored (F7)
 
     target.leave(KICK_CLOSE_CODE);
+  }
+
+  /**
+   * Sit pipeline: sender must have a seat in state → pure validate (garbage /
+   * already-seated / out-of-range distance → SILENT drop; occupied-by-other →
+   * personal Korean notice). On success, claim the seat, snap the player onto it
+   * (position + screen-facing yaw), and reset the move-clock baseline so the
+   * seated span can't later be spent as a one-shot displacement budget (D1).
+   * Server-authoritative: the client only sees itself seated once seatIndex syncs.
+   */
+  private handleSit(client: Client, payload: unknown): void {
+    const player = this.state.players.get(client.sessionId);
+    const track = this.tracking.get(client.sessionId);
+    if (!player || !track) return; // no seat yet / already left → drop
+
+    const result = validateSit(
+      { x: player.x, z: player.z, seatIndex: player.seatIndex },
+      payload,
+      this.occupancy,
+      client.sessionId,
+    );
+    if (result === null) return; // malformed / already seated / out of reach → silent
+    if ("reason" in result) {
+      client.send(MessageType.SitRejected, { reason: result.reason }); // occupied race
+      return;
+    }
+
+    const seat = SEATS[result.seatIndex];
+    this.occupancy.set(result.seatIndex, client.sessionId);
+    player.seatIndex = result.seatIndex;
+    player.x = seat.x;
+    player.z = seat.z;
+    player.yaw = seat.yaw;
+    track.lastAcceptedAt = this.now();
+  }
+
+  /**
+   * Stand pipeline: only a SEATED sender is served (else silent drop). Move the
+   * player to the seat's clear dismount point, free the seat (single helper), and
+   * reset the move-clock baseline — the just-freed seated span must not seed the
+   * first walking step's elapsed budget.
+   */
+  private handleStand(client: Client): void {
+    const player = this.state.players.get(client.sessionId);
+    const track = this.tracking.get(client.sessionId);
+    if (!player || !track) return;
+    if (player.seatIndex < 0) return; // not seated → silent drop
+
+    const seat = SEATS[player.seatIndex];
+    player.x = seat.standX;
+    player.z = seat.standZ;
+    this.releaseSeat(client.sessionId);
+    track.lastAcceptedAt = this.now();
+  }
+
+  /**
+   * The ONE place a seat is freed. Clears the occupancy entry (only if this
+   * session still owns it) and resets the synced `seatIndex` to standing. Called
+   * from Stand and from onLeave (consented leave, kick, reconnection expiry) —
+   * never from onDrop, so a transient-drop ghost keeps its seat. Safe to call for
+   * a standing player (no-op).
+   */
+  private releaseSeat(sessionId: string): void {
+    const player = this.state.players.get(sessionId);
+    if (!player || player.seatIndex < 0) return;
+    if (this.occupancy.get(player.seatIndex) === sessionId) {
+      this.occupancy.delete(player.seatIndex);
+    }
+    player.seatIndex = -1;
   }
 
   /** True if this connection authenticated as admin (server-side marker only). */

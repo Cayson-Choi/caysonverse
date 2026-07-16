@@ -9,7 +9,11 @@ import {
   PLAYER_RADIUS,
   WORLD_BOUNDS,
   ZONES,
+  SEATS,
+  SEAT_REACH,
+  SEAT_YAW,
   furnitureObstacle,
+  nearestFreeSeat,
 } from "./worldMap";
 import { isBlocked, resolveCollision } from "./collision";
 
@@ -78,6 +82,98 @@ describe("worldMap — walls keep the player in", () => {
     expect(isBlocked(WORLD_BOUNDS.maxX, 0, PLAYER_RADIUS, OBSTACLES)).toBe(true); // east
     expect(isBlocked(WORLD_BOUNDS.minX, 0, PLAYER_RADIUS, OBSTACLES)).toBe(true); // west
     expect(isBlocked(0, WORLD_BOUNDS.minZ, PLAYER_RADIUS, OBSTACLES)).toBe(true); // south (in the hall/lounge corner is walled)
+  });
+});
+
+describe("worldMap — seats (derived from the classroom placement)", () => {
+  it("derives exactly 13 seats (12 students + 1 instructor)", () => {
+    expect(SEATS.length).toBe(13);
+  });
+
+  it("places every seat inside the lecture-hall zone", () => {
+    for (const s of SEATS) {
+      expect(inside(ZONES.lectureHall, s.x, s.z)).toBe(true);
+    }
+  });
+
+  it("faces every seat toward the screen (+X): player-yaw = +PI/2", () => {
+    // Player-yaw convention is atan2(dirX, dirZ) with the model facing +Z at yaw 0
+    // (see client MODEL_FACING_OFFSET/worldDirection). Facing +X ⇒ atan2(1,0) = +PI/2.
+    // NOT the furniture chair's rotY (-PI/2), which uses a different convention.
+    for (const s of SEATS) {
+      expect(s.yaw).toBeCloseTo(Math.PI / 2, 10);
+    }
+    expect(SEAT_YAW).toBeCloseTo(Math.PI / 2, 10);
+  });
+
+  it("keeps every dismount point clear of all obstacles (chair, desk, walls)", () => {
+    for (const s of SEATS) {
+      expect(isBlocked(s.standX, s.standZ, PLAYER_RADIUS, OBSTACLES)).toBe(false);
+    }
+  });
+
+  it("keeps every dismount point inside the world bounds (inset by the body radius)", () => {
+    for (const s of SEATS) {
+      expect(s.standX).toBeGreaterThanOrEqual(WORLD_BOUNDS.minX + PLAYER_RADIUS);
+      expect(s.standX).toBeLessThanOrEqual(WORLD_BOUNDS.maxX - PLAYER_RADIUS);
+      expect(s.standZ).toBeGreaterThanOrEqual(WORLD_BOUNDS.minZ + PLAYER_RADIUS);
+      expect(s.standZ).toBeLessThanOrEqual(WORLD_BOUNDS.maxZ - PLAYER_RADIUS);
+    }
+  });
+
+  it("keeps each seat↔dismount distance sane (0.5..2 m) and within reach", () => {
+    for (const s of SEATS) {
+      const d = Math.hypot(s.x - s.standX, s.z - s.standZ);
+      expect(d).toBeGreaterThanOrEqual(0.5);
+      expect(d).toBeLessThanOrEqual(2);
+      // A player standing at the dismount point can always sit back down.
+      expect(d).toBeLessThanOrEqual(SEAT_REACH);
+    }
+  });
+
+  it("dismounts the instructor to the EAST (its desk is to the west), students to the west", () => {
+    // The 12 students dismount west (-X, aisle); the instructor's desk sits west of
+    // its chair, so its dismount must be east (+X) — proving 'away from the desk'.
+    const students = SEATS.slice(0, 12);
+    for (const s of students) expect(s.standX).toBeLessThan(s.x);
+    const instructor = SEATS[12];
+    expect(instructor.standX).toBeGreaterThan(instructor.x);
+  });
+
+  it("puts each seat on the same chairDesk footprint the furniture renders", () => {
+    // Every seat centre must coincide with a real chairDesk placement (single truth).
+    const chairs = FURNITURE.filter((p) => p.model === "chairDesk");
+    for (const s of SEATS) {
+      const match = chairs.find((c) => Math.abs(c.x - s.x) < 1e-9 && Math.abs(c.z - s.z) < 1e-9);
+      expect(match).toBeDefined();
+    }
+  });
+});
+
+describe("worldMap — nearestFreeSeat (client proximity, pure)", () => {
+  const none = () => false;
+
+  it("returns null when no seat is within reach", () => {
+    expect(nearestFreeSeat(SPAWN_POINT.x, SPAWN_POINT.z, none)).toBeNull();
+  });
+
+  it("returns the seat whose dismount point you are standing on", () => {
+    const target = 5;
+    const s = SEATS[target];
+    expect(nearestFreeSeat(s.standX, s.standZ, none)).toBe(target);
+  });
+
+  it("skips an occupied seat and offers the next nearest free one", () => {
+    const target = 5;
+    const s = SEATS[target];
+    // Standing on seat 5's dismount but seat 5 is taken → no OTHER seat is in reach.
+    expect(nearestFreeSeat(s.standX, s.standZ, (i) => i === target)).toBeNull();
+  });
+
+  it("never offers a seat beyond SEAT_REACH", () => {
+    const s = SEATS[0];
+    // A point exactly SEAT_REACH + a hair past the seat centre is out of reach.
+    expect(nearestFreeSeat(s.x - (SEAT_REACH + 0.01), s.z, none)).toBeNull();
   });
 });
 

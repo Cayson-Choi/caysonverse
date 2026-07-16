@@ -5,7 +5,7 @@ import { startRemoteSync } from "./remoteSync";
 import { getRoster, subscribeRoster } from "./remoteStore";
 import { RemotePlayer } from "./RemotePlayer";
 import { CHARACTERS } from "./constants";
-import type { Pose } from "./types";
+import type { Pose, SeatState } from "./types";
 
 /**
  * Roster container. Wires the Colyseus state callbacks into the remote store
@@ -18,9 +18,12 @@ import type { Pose } from "./types";
  */
 export function RemotePlayers({
   selfPose,
+  selfSeat,
   blobShadow,
 }: {
   selfPose: Pose;
+  /** The local player's server-confirmed seat (written by the schema sync). */
+  selfSeat: SeatState;
   /** Draw blob shadows under remote avatars (low-spec/touch profile). */
   blobShadow: boolean;
 }) {
@@ -32,8 +35,8 @@ export function RemotePlayers({
     // local player's already-loaded model). Not done at module load — that would
     // fetch every GLB on the entry screen before the user even joins.
     for (const preset of CHARACTERS) useGLTF.preload(preset.model);
-    return startRemoteSync(room, () => performance.now(), selfPose);
-  }, [selfPose]);
+    return startRemoteSync(room, () => performance.now(), selfPose, selfSeat);
+  }, [selfPose, selfSeat]);
 
   const roster = useSyncExternalStore(subscribeRoster, getRoster, getRoster);
 

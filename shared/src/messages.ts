@@ -14,6 +14,12 @@ export const MessageType = {
   Announce: "announce",
   /** Client(admin) -> server: kick a target player by session id. */
   Kick: "kick",
+  /** Client -> server: request to sit on a specific seat index. */
+  Sit: "sit",
+  /** Client -> server: request to stand up from the current seat. */
+  Stand: "stand",
+  /** Server -> one client: a personal notice that their sit request was rejected. */
+  SitRejected: "sit_rejected",
 } as const;
 
 export type MessageType = (typeof MessageType)[keyof typeof MessageType];
@@ -73,6 +79,19 @@ export interface KickPayload {
   sid: string;
 }
 
+/** Client -> server: request to sit on seat `seatIndex` (0..SEATS.length-1). */
+export interface SitPayload {
+  seatIndex: number;
+}
+
+/** Client -> server: request to stand up. Carries no data. */
+export type StandPayload = Record<string, never>;
+
+/** Server -> the sender only: why their sit request was dropped (Korean reason). */
+export interface SitRejectedPayload {
+  reason: string;
+}
+
 /** Payload type for each message id, keyed by MessageType. */
 export interface MessagePayloads {
   [MessageType.Move]: MovePayload;
@@ -81,4 +100,7 @@ export interface MessagePayloads {
   [MessageType.Emoji]: EmojiPayload;
   [MessageType.Announce]: AnnouncePayload;
   [MessageType.Kick]: KickPayload;
+  [MessageType.Sit]: SitPayload;
+  [MessageType.Stand]: StandPayload;
+  [MessageType.SitRejected]: SitRejectedPayload;
 }

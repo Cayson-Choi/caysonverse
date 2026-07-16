@@ -31,6 +31,11 @@ export const CHARACTERS: readonly CharacterPreset[] = [
 export const CLIP = {
   idle: "Idle",
   walk: "Walking_A",
+  // Seating (v2 Task 1) — verified present in all 4 KayKit GLBs (same Rig_Medium
+  // skeleton). Down = sit-down motion, Idle = the held seated pose, StandUp = rise.
+  sitDown: "Sit_Chair_Down",
+  sitIdle: "Sit_Chair_Idle",
+  sitStand: "Sit_Chair_StandUp",
 } as const;
 
 /** Crossfade duration (seconds) between idle and walk. */

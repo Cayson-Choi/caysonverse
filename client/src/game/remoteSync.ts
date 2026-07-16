@@ -9,7 +9,7 @@
 import { getStateCallbacks, type Room } from "@colyseus/sdk";
 // TYPE-ONLY: schema decorators must never enter the browser bundle.
 import type { WorldState } from "@caysonverse/shared/schema";
-import type { Pose } from "./types";
+import type { Pose, SeatState } from "./types";
 import { exceedsSnapDistance } from "./interpolation";
 import {
   addRemote,
@@ -17,6 +17,7 @@ import {
   pushRemoteSnapshot,
   removeRemote,
   setRemoteConnected,
+  setRemoteSeat,
 } from "./remoteStore";
 
 /**
@@ -30,6 +31,7 @@ export function startRemoteSync(
   room: Room<WorldState>,
   nowMs: () => number,
   selfPose: Pose,
+  selfSeat: SeatState,
 ): () => void {
   const $ = getStateCallbacks(room);
   const selfId = room.sessionId;
@@ -54,7 +56,14 @@ export function startRemoteSync(
           selfPose.z = player.z;
         }
       });
-      perPlayer.set(sessionId, [off]);
+      // Seat is server-authoritative: mirror my own seatIndex into the shared
+      // SeatState so LocalPlayer confirms sit/stand from the schema, never
+      // optimistically. Seeds the current value immediately.
+      selfSeat.index = player.seatIndex;
+      const offSeat = $(player).listen("seatIndex", (value: number) => {
+        selfSeat.index = value;
+      });
+      perPlayer.set(sessionId, [off, offSeat]);
       return;
     }
 
@@ -64,6 +73,7 @@ export function startRemoteSync(
       character: player.character,
       tint: player.tint,
       connected: player.connected,
+      seatIndex: player.seatIndex,
       snapshots: [],
     });
     // Seed with the current position so the avatar shows up immediately.
@@ -76,7 +86,10 @@ export function startRemoteSync(
     const offConnected = $(player).listen("connected", (value: boolean) => {
       setRemoteConnected(sessionId, value);
     });
-    perPlayer.set(sessionId, [offChange, offConnected]);
+    const offSeat = $(player).listen("seatIndex", (value: number) => {
+      setRemoteSeat(sessionId, value);
+    });
+    perPlayer.set(sessionId, [offChange, offConnected, offSeat]);
   }, true); // immediate → replay players already present when we joined
 
   const offRemove = $(room.state).players.onRemove((_player, sessionId: string) => {

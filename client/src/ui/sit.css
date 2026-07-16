@@ -1,0 +1,62 @@
+/* Sit/stand interaction layer — desktop HUD hint + touch button. */
+
+/* Desktop hint: a translucent pill near the bottom centre, above the canvas. */
+.cv-sit-hint {
+  position: fixed;
+  left: 50%;
+  bottom: 96px;
+  transform: translateX(-50%);
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  font-size: 15px;
+  color: #f2eeff;
+  background: rgba(18, 14, 36, 0.72);
+  border: 1px solid rgba(150, 130, 220, 0.35);
+  border-radius: 12px;
+  backdrop-filter: blur(6px);
+  pointer-events: none; /* purely informational — never eats a click */
+  white-space: nowrap;
+}
+
+.cv-sit-hint kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  color: #1a1230;
+  background: #d9cfff;
+  border-radius: 6px;
+  box-shadow: 0 1px 0 rgba(90, 70, 160, 0.6);
+}
+
+/* Touch button: a big tap target beside the bottom-left joystick zone. */
+.cv-sit-btn {
+  position: fixed;
+  left: calc(env(safe-area-inset-left, 0px) + 164px);
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 60px);
+  z-index: 25;
+  min-width: 88px;
+  height: 48px;
+  padding: 0 18px;
+  font-size: 17px;
+  font-weight: 600;
+  color: #f2eeff;
+  background: rgba(96, 74, 166, 0.72);
+  border: 1px solid rgba(170, 150, 255, 0.55);
+  border-radius: 14px;
+  backdrop-filter: blur(6px);
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.cv-sit-btn:active {
+  background: rgba(120, 96, 200, 0.85);
+}

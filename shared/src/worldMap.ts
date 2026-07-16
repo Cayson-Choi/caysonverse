@@ -146,16 +146,27 @@ export interface Furniture {
 
 const HALF_PI = Math.PI / 2;
 
+/**
+ * Classroom placement literals — the SINGLE source both the furniture grid and
+ * the derived SEATS read from (no duplicated coordinates). Desks sit at each
+ * `STUDENT_ROWS_X` × `STUDENT_COLS_Z` cell; the student chair is `STUDENT_CHAIR_DX`
+ * along X from its desk (negative = between the desk and the aisle/screen).
+ */
+const STUDENT_ROWS_X = [9, 14, 19];
+const STUDENT_COLS_Z = [-9, -3, 3, 9];
+const STUDENT_CHAIR_DX = -1.3;
+const INSTRUCTOR_DESK_X = 25;
+const INSTRUCTOR_CHAIR_X = 26.2;
+const INSTRUCTOR_Z = 0;
+
 // Build the classroom's student desk+chair grid: rows recede from the screen,
 // columns straddle a central aisle aligned with the door (z = 0).
 function classroomSeating(): Furniture[] {
-  const rowsX = [9, 14, 19];
-  const colsZ = [-9, -3, 3, 9];
   const out: Furniture[] = [];
-  for (const x of rowsX) {
-    for (const z of colsZ) {
+  for (const x of STUDENT_ROWS_X) {
+    for (const z of STUDENT_COLS_Z) {
       out.push({ model: "desk", x, z, rotY: -HALF_PI }); // desk faces the screen (+X)
-      out.push({ model: "chairDesk", x: x - 1.3, z, rotY: -HALF_PI }); // student behind it
+      out.push({ model: "chairDesk", x: x + STUDENT_CHAIR_DX, z, rotY: -HALF_PI }); // student behind it
     }
   }
   return out;
@@ -180,8 +191,8 @@ export const FURNITURE: readonly Furniture[] = [
   { model: "pottedPlant", x: -3, z: -6, rotY: 0 }, // frames the door (lounge side, south)
 
   // ── Lecture hall (x > 0) ──
-  { model: "desk", x: 25, z: 0, rotY: -HALF_PI }, // instructor desk, faces the class
-  { model: "chairDesk", x: 26.2, z: 0, rotY: -HALF_PI }, // instructor chair
+  { model: "desk", x: INSTRUCTOR_DESK_X, z: INSTRUCTOR_Z, rotY: -HALF_PI }, // instructor desk, faces the class
+  { model: "chairDesk", x: INSTRUCTOR_CHAIR_X, z: INSTRUCTOR_Z, rotY: -HALF_PI }, // instructor chair
   { model: "bookcaseClosedWide", x: 8, z: 17, rotY: Math.PI }, // against the north wall
   { model: "bookcaseClosedWide", x: 20, z: 17, rotY: Math.PI },
   ...classroomSeating(),
@@ -215,3 +226,99 @@ export const OBSTACLES: readonly AABB[] = [
   ...WALLS,
   screenObstacle(),
 ];
+
+// ───────────────────────────────── Seats ─────────────────────────────────
+
+/**
+ * Max distance (m) from the player to a seat centre at which sitting is allowed.
+ * The client only shows the sit prompt within this radius; the server re-checks
+ * it (a farther Sit message is a tampered client → silent drop). Single source.
+ */
+export const SEAT_REACH = 1.5;
+
+/** Distance (m) the dismount point sits from the chair centre (aisle side). */
+export const SEAT_DISMOUNT = 0.9;
+
+/**
+ * Seated player-yaw: everyone faces the screen (+X). This is the PLAYER yaw
+ * convention `atan2(dirX, dirZ)` (model faces +Z at yaw 0; see client
+ * MODEL_FACING_OFFSET/worldDirection) → facing +X is `atan2(1, 0) = +PI/2`.
+ *
+ * NOTE this is deliberately NOT the furniture chair's `rotY = -PI/2`: furniture
+ * models rest facing -Z, so a chair rendered at rotY -PI/2 and a player seated at
+ * yaw +PI/2 both end up facing +X. The E2E screenshot review guards this sign.
+ */
+export const SEAT_YAW = Math.PI / 2;
+
+/** A sittable seat: chair centre, seated facing, and its clear dismount point. */
+export interface Seat {
+  /** Chair-centre X (== the chairDesk furniture placement). */
+  x: number;
+  /** Chair-centre Z. */
+  z: number;
+  /** Seated player-yaw (SEAT_YAW — faces the screen). */
+  yaw: number;
+  /** Dismount X: SEAT_DISMOUNT from the chair, on the side away from its desk. */
+  standX: number;
+  /** Dismount Z (same row as the chair). */
+  standZ: number;
+}
+
+/**
+ * Derive one seat from a chair placement and the X of its paired desk. The
+ * dismount point is `SEAT_DISMOUNT` from the chair along X, on the side AWAY from
+ * the desk — the aisle for the 12 students (desk to the east ⇒ dismount west) and
+ * the open floor for the instructor (desk to the west ⇒ dismount east). Deriving
+ * the direction from the desk keeps every dismount clear of that desk by data,
+ * not by hand-tuned literals (guaranteed by the worldMap map-invariant tests).
+ */
+function makeSeat(chairX: number, chairZ: number, deskX: number): Seat {
+  const away = Math.sign(chairX - deskX) || -1;
+  return { x: chairX, z: chairZ, yaw: SEAT_YAW, standX: chairX + away * SEAT_DISMOUNT, standZ: chairZ };
+}
+
+function deriveSeats(): Seat[] {
+  const seats: Seat[] = [];
+  // Students first (indices 0..11), row-major from the front row nearest the door.
+  for (const rowX of STUDENT_ROWS_X) {
+    for (const z of STUDENT_COLS_Z) {
+      seats.push(makeSeat(rowX + STUDENT_CHAIR_DX, z, rowX));
+    }
+  }
+  // Instructor last (index 12).
+  seats.push(makeSeat(INSTRUCTOR_CHAIR_X, INSTRUCTOR_Z, INSTRUCTOR_DESK_X));
+  return seats;
+}
+
+/**
+ * The 13 sittable seats (12 students + 1 instructor), derived at module load from
+ * the SAME placement literals the FURNITURE grid uses — never a duplicated table.
+ * Index === `Player.seatIndex`; the server assigns/validates by this index.
+ */
+export const SEATS: readonly Seat[] = deriveSeats();
+
+/**
+ * Pure client proximity pick: the index of the nearest FREE seat within `reach`
+ * of `(x, z)`, or null. `isOccupied(i)` reports seats taken by ANY player
+ * (self + remotes, read from the schema-synced `seatIndex`). No allocation, so
+ * the throttled prompt loop can call it directly.
+ */
+export function nearestFreeSeat(
+  x: number,
+  z: number,
+  isOccupied: (index: number) => boolean,
+  reach: number = SEAT_REACH,
+): number | null {
+  let best = -1;
+  let bestDist = reach;
+  for (let i = 0; i < SEATS.length; i++) {
+    if (isOccupied(i)) continue;
+    const s = SEATS[i];
+    const d = Math.hypot(x - s.x, z - s.z);
+    if (d <= bestDist) {
+      bestDist = d;
+      best = i;
+    }
+  }
+  return best >= 0 ? best : null;
+}

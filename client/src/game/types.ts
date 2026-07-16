@@ -13,3 +13,12 @@ export interface Orbit {
   pitch: number;
   distance: number;
 }
+
+/**
+ * The local player's server-confirmed seat. `index` is -1 while standing and the
+ * occupied seat index while seated. Written ONLY by the schema sync (never
+ * optimistically) and read each frame by LocalPlayer + the sit-prompt UI.
+ */
+export interface SeatState {
+  index: number;
+}

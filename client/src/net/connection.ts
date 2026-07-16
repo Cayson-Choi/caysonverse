@@ -121,6 +121,20 @@ export function sendEmoji(index: number): void {
 }
 
 /**
+ * Request to sit on `seatIndex`. No-op if not connected; the server is
+ * authoritative — it validates range/reach/occupancy and confirms by syncing the
+ * player's `seatIndex` (the client never self-declares seated).
+ */
+export function sendSit(seatIndex: number): void {
+  room?.send(MessageType.Sit, { seatIndex });
+}
+
+/** Request to stand up. No-op if not connected; the server drops it unless seated. */
+export function sendStand(): void {
+  room?.send(MessageType.Stand, {});
+}
+
+/**
  * Admin: set (or clear) the announcement banner. An empty/whitespace `text`
  * clears it — that is intentional and handled server-side. No-op if not
  * connected; the server drops the message unless this connection is admin.

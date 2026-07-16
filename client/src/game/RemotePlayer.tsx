@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import { useGLTF } from "@react-three/drei";
-import { AnimationMixer, Group, type AnimationAction, type Material } from "three";
+import { AnimationMixer, Group, LoopOnce, type AnimationAction, type Material } from "three";
 import { cloneTinted } from "./avatar";
 import { BlobShadow } from "./BlobShadow";
 import { createNametag } from "./nametag";
@@ -19,6 +19,19 @@ import {
   NAMETAG_MAX_DIST,
   RENDER_DELAY_MS,
 } from "./constants";
+
+/** Fallback seconds for a sit/stand clip if its duration can't be read yet. */
+const SIT_CLIP_FALLBACK_SEC = 0.8;
+
+/** Play a one-shot clip clamped on its last frame; returns its duration (s). */
+function playOnce(action: AnimationAction | null): number {
+  if (!action) return SIT_CLIP_FALLBACK_SEC;
+  action.reset();
+  action.setLoop(LoopOnce, 1);
+  action.clampWhenFinished = true;
+  action.fadeIn(ANIM_FADE).play();
+  return action.getClip().duration || SIT_CLIP_FALLBACK_SEC;
+}
 
 /** Set opacity across an avatar's cloned materials (only when it changes). */
 function applyOpacity(materials: Material[], opacity: number): void {
@@ -72,27 +85,47 @@ export function RemotePlayer({
   // Per-frame mutable state — refs, never React state.
   const idleAction = useRef<AnimationAction | null>(null);
   const walkAction = useRef<AnimationAction | null>(null);
+  const sitDownAction = useRef<AnimationAction | null>(null);
+  const sitIdleAction = useRef<AnimationAction | null>(null);
+  const sitStandAction = useRef<AnimationAction | null>(null);
   const walkingRef = useRef(false);
   const fadeRef = useRef(0); // remaining crossfade time (s); mixer ticks while > 0
+  // Seating anim state machine: `up` = normal loco; `sitting`/`standing` are the
+  // one-shot transient clips; `seated` is the held Sit_Chair_Idle pose.
+  const seatModeRef = useRef<"up" | "sitting" | "seated" | "standing">("up");
+  const seatTimerRef = useRef(0); // seconds left in the current transient clip
   const framesSinceRef = useRef(0); // frames since last mixer.update
   const accDeltaRef = useRef(0); // accumulated delta (s) since last mixer.update
   const prevConnectedRef = useRef(true);
 
-  // Bind the idle/walk actions and settle the idle pose (mixer stays paused
-  // afterward — an idle avatar is a frozen idle pose, per the v1 mixer rules).
+  // Bind idle/walk/sit actions and settle the resting pose (mixer stays paused
+  // afterward — an idle/seated avatar is a frozen pose, per the v1 mixer rules).
+  // A remote that is ALREADY seated when we join settles straight into the held
+  // seated pose (no replayed sit-down animation).
   useEffect(() => {
-    const idleClip = animations.find((clip) => clip.name === CLIP.idle);
-    const walkClip = animations.find((clip) => clip.name === CLIP.walk);
-    const idle = idleClip ? mixer.clipAction(idleClip) : null;
-    const walk = walkClip ? mixer.clipAction(walkClip) : null;
-    idle?.reset().fadeIn(0).play();
-    idleAction.current = idle;
-    walkAction.current = walk;
-    mixer.update(0); // apply idle frame 0 so we don't render the bind/T-pose
+    const bind = (name: string): AnimationAction | null => {
+      const clip = animations.find((c) => c.name === name);
+      return clip ? mixer.clipAction(clip) : null;
+    };
+    idleAction.current = bind(CLIP.idle);
+    walkAction.current = bind(CLIP.walk);
+    sitDownAction.current = bind(CLIP.sitDown);
+    sitIdleAction.current = bind(CLIP.sitIdle);
+    sitStandAction.current = bind(CLIP.sitStand);
+
+    const startedSeated = (getRemoteRecord(sessionId)?.seatIndex ?? -1) >= 0;
+    if (startedSeated) {
+      sitIdleAction.current?.reset().fadeIn(0).play();
+      seatModeRef.current = "seated";
+    } else {
+      idleAction.current?.reset().fadeIn(0).play();
+      seatModeRef.current = "up";
+    }
+    mixer.update(0); // apply frame 0 so we don't render the bind/T-pose
     return () => {
       mixer.stopAllAction();
     };
-  }, [mixer, animations]);
+  }, [mixer, animations, sessionId]);
 
   // Dispose per-avatar GPU resources on unmount. Cloned geometry/textures stay
   // shared with the cached GLTF and are intentionally NOT disposed here.
@@ -112,14 +145,55 @@ export function RemotePlayer({
     if (!group || !rec) return;
 
     // 1) Sample the snapshot buffer RENDER_DELAY_MS in the past and write pose.
+    //    Seated players emit no moves, so their buffer converges on the seat
+    //    position/yaw — interpolation naturally settles them onto the chair.
     const renderT = performance.now() - RENDER_DELAY_MS;
     const target = sample(rec.snapshots, renderT);
+    let snapped = false;
     if (target) {
-      const snapped = exceedsSnapDistance(group.position.x, group.position.z, target.x, target.z);
+      snapped = exceedsSnapDistance(group.position.x, group.position.z, target.x, target.z);
       group.position.set(target.x, 0, target.z);
       group.rotation.y = target.yaw + MODEL_FACING_OFFSET;
+    }
 
-      // 2) Locomotion from interpolated speed (a teleport frame isn't walking).
+    // 2) Seat transitions (server-authoritative seatIndex). Sitting/standing are
+    //    one-shot clips; the walk/idle machine is frozen while not `up`.
+    const seated = rec.seatIndex >= 0;
+    if (seated && seatModeRef.current === "up") {
+      (walkingRef.current ? walkAction.current : idleAction.current)?.fadeOut(ANIM_FADE);
+      walkingRef.current = false;
+      seatTimerRef.current = playOnce(sitDownAction.current);
+      seatModeRef.current = "sitting";
+    } else if (!seated && (seatModeRef.current === "seated" || seatModeRef.current === "sitting")) {
+      sitIdleAction.current?.fadeOut(ANIM_FADE);
+      sitDownAction.current?.fadeOut(ANIM_FADE);
+      seatTimerRef.current = playOnce(sitStandAction.current);
+      seatModeRef.current = "standing";
+    }
+
+    // 3) Advance the transient sit/stand clips off a timer, then hand off.
+    if (seatModeRef.current === "sitting") {
+      seatTimerRef.current -= delta;
+      if (seatTimerRef.current <= 0) {
+        sitDownAction.current?.fadeOut(ANIM_FADE);
+        sitIdleAction.current?.reset().fadeIn(ANIM_FADE).play();
+        seatModeRef.current = "seated";
+        fadeRef.current = ANIM_FADE;
+      }
+    } else if (seatModeRef.current === "standing") {
+      seatTimerRef.current -= delta;
+      if (seatTimerRef.current <= 0) {
+        sitStandAction.current?.fadeOut(ANIM_FADE);
+        idleAction.current?.reset().fadeIn(ANIM_FADE).play();
+        walkingRef.current = false;
+        seatModeRef.current = "up";
+        fadeRef.current = ANIM_FADE;
+      }
+    }
+
+    // 4) Locomotion from interpolated speed — ONLY while standing (a seated avatar
+    //    must never show the walk cycle, even if a stray snapshot implies speed).
+    if (target && seatModeRef.current === "up") {
       const speed = snapped ? 0 : target.speed;
       const walking = nextWalking(walkingRef.current, speed);
       if (walking !== walkingRef.current) {
@@ -132,27 +206,28 @@ export function RemotePlayer({
       }
     }
 
-    // 3) Connected → opacity, applied only on transition (not every frame).
+    // 5) Connected → opacity, applied only on transition (not every frame).
     if (rec.connected !== prevConnectedRef.current) {
       applyOpacity(avatar.materials, rec.connected ? 1 : 0.5);
       prevConnectedRef.current = rec.connected;
     }
 
-    // 4) Nametag culling by camera distance (reused for the mixer throttle).
+    // 6) Nametag culling by camera distance (reused for the mixer throttle).
     const camDist = state.camera.position.distanceTo(group.position);
     nametag.sprite.visible = camDist <= NAMETAG_MAX_DIST;
 
-    // 5) Mixer discipline: paused while idle; every-frame during a crossfade;
-    //    distance-throttled while walking.
-    const active = walkingRef.current || fadeRef.current > 0;
+    // 7) Mixer discipline: paused while idle/seated-settled; every-frame during a
+    //    crossfade OR a one-shot sit/stand clip; distance-throttled while walking.
+    const transient = seatModeRef.current === "sitting" || seatModeRef.current === "standing";
+    const active = walkingRef.current || fadeRef.current > 0 || transient;
     if (active) {
       accDeltaRef.current += delta;
       framesSinceRef.current += 1;
-      if (fadeRef.current > 0) {
+      if (fadeRef.current > 0 || transient) {
         mixer.update(accDeltaRef.current);
         accDeltaRef.current = 0;
         framesSinceRef.current = 0;
-        fadeRef.current = Math.max(0, fadeRef.current - delta);
+        if (fadeRef.current > 0) fadeRef.current = Math.max(0, fadeRef.current - delta);
       } else {
         const tick = decideMixerTick(camDist, framesSinceRef.current, accDeltaRef.current);
         if (tick.update) {

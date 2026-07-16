@@ -29,6 +29,10 @@ export class Player extends Schema {
   @type("float32") z = 0;
   @type("float32") yaw = 0; // radians, normalized to [-PI, PI]
   @type("boolean") connected = true; // used by reconnection (Task 11)
+  // Seating (v2 Task 1): -1 = standing; 0..SEATS.length-1 = the occupied seat.
+  // The first legitimate discrete synced state — a seated player is fully
+  // server-positioned (x/z/yaw snapped to the seat), so 100 seated avatars sync.
+  @type("int8") seatIndex = -1;
 }
 
 export class WorldState extends Schema {

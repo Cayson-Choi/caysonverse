@@ -16,6 +16,8 @@ export interface RemotePlayerRecord {
   character: number;
   tint: number;
   connected: boolean;
+  /** Seat (v2 Task 1): -1 = standing; >= 0 = the seat this remote occupies. */
+  seatIndex: number;
   /** Position history ring buffer, sampled by the interpolation layer. */
   snapshots: Snapshot[];
 }
@@ -70,6 +72,25 @@ export function setRemoteConnected(sessionId: string, connected: boolean): void 
   if (record) record.connected = connected;
 }
 
+/** Update a remote's seat (drives seated rendering + client-side occupancy). */
+export function setRemoteSeat(sessionId: string, seatIndex: number): void {
+  const record = records.get(sessionId);
+  if (record) record.seatIndex = seatIndex;
+}
+
+/**
+ * Seats currently occupied by REMOTE players. Read by the throttled sit-prompt
+ * loop (~5 Hz) to hide taken seats; the caller unions in its own seat. Allocates
+ * a small array per call — fine off the per-frame path.
+ */
+export function getRemoteSeatIndices(): number[] {
+  const out: number[] = [];
+  for (const record of records.values()) {
+    if (record.seatIndex >= 0) out.push(record.seatIndex);
+  }
+  return out;
+}
+
 /** Append a position snapshot to a remote player's ring buffer. */
 export function pushRemoteSnapshot(sessionId: string, snapshot: Snapshot): void {
   const record = records.get(sessionId);
@@ -89,20 +110,24 @@ export function clearRemotes(): void {
   refreshRoster();
 }
 
-/** Dev/E2E view: each remote's newest known position + ghost (connected) flag. */
+/** Dev/E2E view: each remote's newest known position + ghost flag + seat. */
 export function getRemotes(): Array<{
   sessionId: string;
   nickname: string;
   x: number;
   z: number;
+  yaw: number;
   connected: boolean;
+  seatIndex: number;
 }> {
   const out: Array<{
     sessionId: string;
     nickname: string;
     x: number;
     z: number;
+    yaw: number;
     connected: boolean;
+    seatIndex: number;
   }> = [];
   for (const record of records.values()) {
     const last = record.snapshots[record.snapshots.length - 1];
@@ -111,7 +136,9 @@ export function getRemotes(): Array<{
       nickname: record.nickname,
       x: last?.x ?? 0,
       z: last?.z ?? 0,
+      yaw: last?.yaw ?? 0,
       connected: record.connected,
+      seatIndex: record.seatIndex,
     });
   }
   return out;
