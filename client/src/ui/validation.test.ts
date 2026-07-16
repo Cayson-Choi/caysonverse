@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { CHARACTER_COUNT, TINT_COUNT } from "@caysonverse/shared/constants";
 import { validateNickname, validateEntry } from "./validation";
 
 describe("validateNickname", () => {
@@ -47,8 +48,15 @@ describe("validateEntry", () => {
 
   it("rejects an out-of-range character index", () => {
     expect(validateEntry({ nickname: "테스터", character: -1, tint: 0 }).ok).toBe(false);
-    expect(validateEntry({ nickname: "테스터", character: 4, tint: 0 }).ok).toBe(false);
+    // The roster now has 8 presets (0..7); CHARACTER_COUNT is the first invalid one.
+    expect(validateEntry({ nickname: "테스터", character: CHARACTER_COUNT, tint: 0 }).ok).toBe(false);
     expect(validateEntry({ nickname: "테스터", character: 1.5, tint: 0 }).ok).toBe(false);
+  });
+
+  it("accepts the four new royal indices (4..7)", () => {
+    for (let c = 4; c < CHARACTER_COUNT; c++) {
+      expect(validateEntry({ nickname: "테스터", character: c, tint: 0 }).ok).toBe(true);
+    }
   });
 
   it("rejects an out-of-range tint index", () => {
@@ -57,10 +65,10 @@ describe("validateEntry", () => {
   });
 
   it("accepts every in-range character and tint index", () => {
-    for (let c = 0; c < 4; c++) {
+    for (let c = 0; c < CHARACTER_COUNT; c++) {
       expect(validateEntry({ nickname: "테스터", character: c, tint: 0 }).ok).toBe(true);
     }
-    for (let t = 0; t < 8; t++) {
+    for (let t = 0; t < TINT_COUNT; t++) {
       expect(validateEntry({ nickname: "테스터", character: 0, tint: t }).ok).toBe(true);
     }
   });

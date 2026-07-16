@@ -1,21 +1,21 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import { useAnimations, useGLTF, useKeyboardControls } from "@react-three/drei";
-import { SkeletonUtils } from "three-stdlib";
-import { Color, Group, Mesh, Material, LoopOnce } from "three";
-import { MOVE_SPEED, WORLD_BOUNDS, TINT_COLORS } from "@caysonverse/shared/constants";
+import { Group, LoopOnce } from "three";
+import { MOVE_SPEED, WORLD_BOUNDS } from "@caysonverse/shared/constants";
 import { OBSTACLES, PLAYER_RADIUS, SEATS } from "@caysonverse/shared/worldMap";
 import { resolveCollision } from "@caysonverse/shared/collision";
 import { readIntent, worldDirection } from "./input";
 import type { Intent } from "./input";
 import { guardMoveKeys, isUiCaptured } from "./uiCapture";
+import { cloneTinted } from "./avatar";
 import { BlobShadow } from "./BlobShadow";
 import { useSpeechBubble } from "./useSpeechBubble";
 import { useEmoji } from "./useEmoji";
 import { stepYaw } from "./yaw";
 import { createMoveSender } from "./moveSender";
 import { installDebugHook } from "./debug";
-import { ANIM_FADE, CHARACTERS, CLIP, MODEL_FACING_OFFSET, TURN_SPEED } from "./constants";
+import { ANIM_FADE, CHARACTERS, CLIP, CROWN_MODEL, MODEL_FACING_OFFSET, TURN_SPEED } from "./constants";
 import type { MoveControl } from "./constants";
 import type { Orbit, Pose, SeatState } from "./types";
 import { getRoom, sendMove, sendStand } from "../net/connection";
@@ -46,15 +46,6 @@ interface LocalPlayerProps {
   blobShadow: boolean;
 }
 
-/** Clone a material so tinting never mutates the shared cached asset material. */
-function tintMaterial(material: Material, color: Color): Material {
-  const cloned = material.clone();
-  // KayKit materials expose `.color`; multiply-tint darkens toward the hue.
-  const withColor = cloned as Material & { color?: Color };
-  if (withColor.color) withColor.color.copy(color);
-  return cloned;
-}
-
 function clamp(value: number, min: number, max: number): number {
   return value < min ? min : value > max ? max : value;
 }
@@ -71,6 +62,9 @@ export function LocalPlayer({
 }: LocalPlayerProps) {
   const preset = CHARACTERS[character];
   const { scene, animations } = useGLTF(preset.model);
+  // Crown GLB is loaded (once, cached) for every character to keep hook order
+  // stable; attached only when this preset is a royal (preset.crown).
+  const { scene: crownScene } = useGLTF(CROWN_MODEL);
   const [, getKeys] = useKeyboardControls<MoveControl>();
   const groupRef = useRef<Group>(null);
   const movingRef = useRef(false);
@@ -87,21 +81,22 @@ export function LocalPlayer({
   // Own emoji reaction: same broadcast-driven, self-included discipline.
   useEmoji(sessionId, groupRef);
 
-  // Clone the skinned hierarchy (independent skeleton) and tint cloned materials
-  // ONCE per character/tint — not per frame.
-  const model = useMemo(() => {
-    const cloned = SkeletonUtils.clone(scene);
-    const color = new Color(TINT_COLORS[tint]);
-    cloned.traverse((obj) => {
-      const mesh = obj as Mesh;
-      if (!mesh.isMesh) return;
-      mesh.castShadow = true;
-      mesh.material = Array.isArray(mesh.material)
-        ? mesh.material.map((m) => tintMaterial(m, color))
-        : tintMaterial(mesh.material, color);
-    });
-    return cloned;
-  }, [scene, tint]);
+  // Clone the skinned hierarchy (independent skeleton), tint cloned materials, and
+  // (for royals) hide accessories + attach the crown — ONCE per character/tint via
+  // the SAME assembly path remotes use, not per frame.
+  const avatar = useMemo(
+    () => cloneTinted(scene, tint, { hideNodes: preset.hideNodes, crown: preset.crown, crownScene }),
+    [scene, tint, preset, crownScene],
+  );
+  const model = avatar.root;
+
+  // Dispose this avatar's cloned materials (body + crown) on unmount; shared
+  // geometry/textures stay with the cache and are intentionally not disposed.
+  useEffect(() => {
+    return () => {
+      for (const material of avatar.materials) material.dispose();
+    };
+  }, [avatar]);
 
   const { actions } = useAnimations(animations, model);
 

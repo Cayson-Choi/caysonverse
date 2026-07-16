@@ -97,6 +97,7 @@
   box-shadow: 0 0 0 3px rgba(143, 123, 255, 0.22);
 }
 
+/* 8 presets (4 base + 4 royals) → a 4×2 grid; stays 4-wide at 390 px. */
 .cv-characters {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -104,7 +105,11 @@
 }
 
 .cv-character {
-  padding: 11px 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px; /* touch target floor (mobile ≥44 px) */
+  padding: 10px 4px;
   border-radius: 12px;
   border: 1px solid rgba(150, 132, 235, 0.24);
   background: rgba(9, 8, 24, 0.5);

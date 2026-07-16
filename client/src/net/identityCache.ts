@@ -6,12 +6,26 @@
  * (private mode / disabled storage never throws).
  */
 
+import { CHARACTER_COUNT, TINT_COUNT } from "@caysonverse/shared/constants";
+
 const STORAGE_KEY = "cv.entry";
 
 export interface CachedIdentity {
   nickname: string;
   character: number;
   tint: number;
+}
+
+/**
+ * Coerce a stored index to a valid preset index, else 0. Guards against a value
+ * saved by an OLDER session (roster grew/shrank), a corrupted store, or a
+ * non-integer — the entry screen renders CHARACTERS[character], so an
+ * out-of-range index must never survive to a `CHARACTERS[99] is undefined` crash.
+ */
+function safeIndex(value: unknown, count: number): number {
+  return Number.isInteger(value) && (value as number) >= 0 && (value as number) < count
+    ? (value as number)
+    : 0;
 }
 
 /** Load the last-used selection (prefill + reconnect re-join). Never throws. */
@@ -22,8 +36,8 @@ export function loadIdentity(): CachedIdentity {
       const parsed = JSON.parse(raw) as Partial<CachedIdentity>;
       return {
         nickname: typeof parsed.nickname === "string" ? parsed.nickname : "",
-        character: Number.isInteger(parsed.character) ? (parsed.character as number) : 0,
-        tint: Number.isInteger(parsed.tint) ? (parsed.tint as number) : 0,
+        character: safeIndex(parsed.character, CHARACTER_COUNT),
+        tint: safeIndex(parsed.tint, TINT_COUNT),
       };
     }
   } catch {

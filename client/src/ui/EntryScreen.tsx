@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useGLTF } from "@react-three/drei";
 import { APP_NAME, TINT_COLORS } from "@caysonverse/shared/constants";
-import { CHARACTERS } from "../game/constants";
+import { CHARACTERS, CROWN_MODEL } from "../game/constants";
 import { validateEntry } from "./validation";
 import { joinWorld } from "../net/connection";
 import { clearKicked } from "../net/kickSeam";
@@ -57,8 +57,10 @@ export function EntryScreen() {
     const params = asAdmin ? { ...result.value, adminCode: trimmedCode } : result.value;
 
     try {
-      // Warm the model cache so the world scene has no load stall.
+      // Warm the model cache so the world scene has no load stall. Royals also
+      // need the crown GLB (attached to the head bone); it is tiny and cached once.
       useGLTF.preload(CHARACTERS[character].model);
+      if (CHARACTERS[character].crown) useGLTF.preload(CROWN_MODEL);
       const room = await joinWorld(params);
       // A join that supplied a code AND succeeded proves the code was correct, so
       // remember it (module memory only) to re-authenticate on a Phase-2 fresh

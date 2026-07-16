@@ -114,6 +114,7 @@ export function clearRemotes(): void {
 export function getRemotes(): Array<{
   sessionId: string;
   nickname: string;
+  character: number;
   x: number;
   z: number;
   yaw: number;
@@ -123,6 +124,7 @@ export function getRemotes(): Array<{
   const out: Array<{
     sessionId: string;
     nickname: string;
+    character: number;
     x: number;
     z: number;
     yaw: number;
@@ -134,6 +136,7 @@ export function getRemotes(): Array<{
     out.push({
       sessionId: record.sessionId,
       nickname: record.nickname,
+      character: record.character,
       x: last?.x ?? 0,
       z: last?.z ?? 0,
       yaw: last?.yaw ?? 0,

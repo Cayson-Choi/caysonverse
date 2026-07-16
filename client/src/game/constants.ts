@@ -1,10 +1,27 @@
 import type { KeyboardControlsEntry } from "@react-three/drei";
 
 /**
+ * Attach-time transform for a crown accessory. The crown GLB bakes its own
+ * +Z→+Y stand-up rotation and a ×100 node scale, so all we vary per royal is a
+ * uniform fit-scale (`scale`, a multiplier on CROWN_BASE_SCALE) and an optional
+ * `flatten` that squashes ONLY the height (Y) axis — turning the tall gold crown
+ * into a low tiara/circlet without changing its footprint.
+ */
+export interface CrownConfig {
+  /** Uniform fit-scale multiplier over CROWN_BASE_SCALE. */
+  scale: number;
+  /** Height-axis (Y) squash factor in (0, 1]; omitted ⇒ 1 (no flatten). */
+  flatten?: number;
+}
+
+/**
  * Single source of truth for character presets. Index === `Player.character`
- * (0..3) and must stay aligned with the server's CHARACTER_COUNT. The model
- * files were verified to be valid glTF; the animation clip names below were
- * discovered by inspecting the GLBs (see models/LICENSE.md), NOT hardcoded blind.
+ * (0..7) and must stay aligned with the server's CHARACTER_COUNT. 0..3 are the
+ * base KayKit bodies; 4..7 are the royals (왕/왕비/공주/왕자), COMPOSED from those
+ * same cached bodies (no new GLB) by hiding a few accessory nodes and attaching a
+ * crown to the `head` bone. The avatar assembly (avatar.ts) reads this config —
+ * there is no per-character branching anywhere. Clip names were discovered by
+ * inspecting the GLBs (see models/LICENSE.md), NOT hardcoded blind.
  */
 export interface CharacterPreset {
   /** English id (asset/debug). */
@@ -13,6 +30,13 @@ export interface CharacterPreset {
   label: string;
   /** Public path to the GLB (served from client/public). */
   model: string;
+  /**
+   * Names of accessory nodes to hide (`visible = false`, never deleted — the
+   * geometry stays shared with the cache). Every name must be in HIDEABLE_NODES.
+   */
+  hideNodes?: readonly string[];
+  /** Crown accessory attached to the `head` bone after tinting (royals only). */
+  crown?: CrownConfig;
 }
 
 export const CHARACTERS: readonly CharacterPreset[] = [
@@ -20,7 +44,88 @@ export const CHARACTERS: readonly CharacterPreset[] = [
   { id: "barbarian", label: "바바리안", model: "/models/barbarian.glb" },
   { id: "mage", label: "마법사", model: "/models/mage.glb" },
   { id: "rogue", label: "도적", model: "/models/rogue.glb" },
+  // ── Royals (v2 Task 2) — same bodies, accessories hidden, crown on the head. ──
+  // 왕: barbarian body, hat + mug removed, full-size gold crown.
+  {
+    id: "king",
+    label: "왕",
+    model: "/models/barbarian.glb",
+    hideNodes: ["Barbarian_Hat", "Mug"],
+    crown: { scale: 1.0 },
+  },
+  // 왕비: mage body, pointed hat removed (keeps the cape as a gown), medium crown.
+  {
+    id: "queen",
+    label: "왕비",
+    model: "/models/mage.glb",
+    hideNodes: ["Mage_Hat"],
+    crown: { scale: 0.8 },
+  },
+  // 공주: rogue body, cape kept, a low flattened tiara.
+  {
+    id: "princess",
+    label: "공주",
+    model: "/models/rogue.glb",
+    crown: { scale: 0.7, flatten: 0.5 },
+  },
+  // 왕자: knight body, helmet removed (exposes Knight_Head), a small circlet.
+  {
+    id: "prince",
+    label: "왕자",
+    model: "/models/knight.glb",
+    hideNodes: ["Knight_Helmet"],
+    crown: { scale: 0.6, flatten: 0.35 },
+  },
 ] as const;
+
+/**
+ * Accessory node names that presets are allowed to hide. Verified to exist in the
+ * respective KayKit GLBs (parsed from each model's node list). The config-integrity
+ * unit test checks every preset's `hideNodes` against THIS list, so a typo can't
+ * silently no-op in the browser — no GLB is loaded in the test.
+ */
+export const HIDEABLE_NODES = [
+  "Knight_Helmet",
+  "Knight_Cape",
+  "Barbarian_Hat",
+  "Barbarian_Cape",
+  "Mug",
+  "Mage_Hat",
+  "Mage_Cape",
+  "Rogue_Cape",
+] as const;
+
+/** Public path to the crown accessory GLB (Quaternius, CC0 — see models/LICENSE.md). */
+export const CROWN_MODEL = "/models/crown.glb";
+
+/**
+ * Base fit-scale applied to the crown before the per-royal `scale` multiplier.
+ * The raw crown is ~0.89 m wide (mesh × the GLB's ×100 node scale); the `head`
+ * bone has unit world scale, so this shrinks it onto the ~0.3 m head. Tuned by
+ * E2E screenshot across idle/walk/sit.
+ */
+export const CROWN_BASE_SCALE = 0.36;
+
+/**
+ * Local +Y offset (head-bone space, which is unit-scaled and axis-aligned with
+ * world) that lifts the crown from the head-bone origin (~1.24 m) onto the top of
+ * the head. Screenshot-tuned; the same value works for all four bodies (shared rig).
+ */
+export const CROWN_Y_OFFSET = 0.2;
+
+/** Name of the head joint the crown is parented to (shared across all four bodies). */
+export const HEAD_BONE_NAME = "head";
+
+/**
+ * Pure crown transform helper: the local [x, y, z] scale that fits a crown onto
+ * the head. Width (X/Z) scales by `base × cfg.scale`; height (Y) additionally by
+ * `cfg.flatten` (default 1). Kept THREE-free so it is unit-testable in isolation.
+ */
+export function crownLocalScale(cfg: CrownConfig, base: number): [number, number, number] {
+  const s = base * cfg.scale;
+  const flatten = cfg.flatten ?? 1;
+  return [s, s * flatten, s];
+}
 
 /**
  * Animation clip names present in every KayKit Adventurers GLB (76 clips on a

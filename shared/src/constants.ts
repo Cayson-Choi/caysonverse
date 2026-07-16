@@ -105,8 +105,14 @@ export const KICK_CLOSE_CODE = 4001;
  */
 export const RECONNECT_WINDOW_S = 20;
 
-/** Number of selectable character presets (valid index range 0..CHARACTER_COUNT-1). */
-export const CHARACTER_COUNT = 4;
+/**
+ * Number of selectable character presets (valid index range 0..CHARACTER_COUNT-1).
+ * 0..3 are the base KayKit bodies (기사/바바리안/마법사/도적); 4..7 are the royals
+ * (왕/왕비/공주/왕자), composed from those same bodies + a crown (v2 Task 2). The
+ * join validators read this constant, so widening the roster widens the accepted
+ * range automatically.
+ */
+export const CHARACTER_COUNT = 8;
 
 /** Number of selectable tint palette entries (valid index range 0..TINT_COUNT-1). */
 export const TINT_COUNT = 8;

@@ -23,7 +23,7 @@ import { Schema, type, MapSchema } from "@colyseus/schema";
  */
 export class Player extends Schema {
   @type("string") nickname = ""; // set once at join
-  @type("uint8") character = 0; // 0..3 preset index
+  @type("uint8") character = 0; // 0..7 preset index (4..7 = royals)
   @type("uint8") tint = 0; // 0..7 palette index
   @type("float32") x = 0;
   @type("float32") z = 0;

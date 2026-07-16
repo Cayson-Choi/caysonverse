@@ -15,6 +15,7 @@ import {
   ANIM_FADE,
   CHARACTERS,
   CLIP,
+  CROWN_MODEL,
   MODEL_FACING_OFFSET,
   NAMETAG_MAX_DIST,
   RENDER_DELAY_MS,
@@ -67,6 +68,9 @@ export function RemotePlayer({
 
   const preset = CHARACTERS[character];
   const { scene, animations } = useGLTF(preset.model);
+  // Crown GLB is loaded (once, cached by drei) for every avatar so the hook order
+  // is stable; it is only attached when this preset is a royal (preset.crown).
+  const { scene: crownScene } = useGLTF(CROWN_MODEL);
 
   const groupRef = useRef<Group>(null);
 
@@ -77,8 +81,18 @@ export function RemotePlayer({
   // cleanup-with-avatar discipline as the speech bubble.
   useEmoji(sessionId, groupRef);
 
-  // Build heavy resources ONCE. Disposed on unmount (see the cleanup effect).
-  const avatar = useMemo(() => cloneTinted(scene, tint), [scene, tint]);
+  // Build heavy resources ONCE. Disposed on unmount (see the cleanup effect). The
+  // crown's cloned materials ride along in avatar.materials, so the existing
+  // opacity + disposal paths cover them; its shared geometry is never disposed.
+  const avatar = useMemo(
+    () =>
+      cloneTinted(scene, tint, {
+        hideNodes: preset.hideNodes,
+        crown: preset.crown,
+        crownScene,
+      }),
+    [scene, tint, preset, crownScene],
+  );
   const nametag = useMemo(() => createNametag(nickname), [nickname]);
   const mixer = useMemo(() => new AnimationMixer(avatar.root), [avatar]);
 

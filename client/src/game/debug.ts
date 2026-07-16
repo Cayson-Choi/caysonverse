@@ -17,6 +17,8 @@ export interface PoseView extends Pose {
 export interface RemoteView {
   sessionId: string;
   nickname: string;
+  /** Character preset index (0..7; 4..7 = royals) — lets E2E assert royal remotes. */
+  character: number;
   x: number;
   z: number;
   yaw: number;
