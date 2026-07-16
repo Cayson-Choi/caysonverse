@@ -15,6 +15,7 @@ import {
 } from "@caysonverse/shared/worldMap";
 import { MazeWalls } from "./MazeWalls";
 import { GalleryRoom } from "./GalleryRoom";
+import { RoomPosters } from "./RoomPosters";
 
 /** Ground colours per zone (lounge warm, lecture hall cool, maze dim). */
 const LOUNGE_COLOR = "#463a52"; // warm mauve
@@ -155,8 +156,12 @@ export function WorldMap() {
       {/* Maze: merged walls (1 draw call), goal tile, return portal, chamber light. */}
       <MazeWalls />
 
-      {/* 최무호 일대기 gallery: 9 portraits, frames, plaques, banner, sign (design 25). */}
+      {/* 최무호 일대기 gallery: 9 portraits, frames, plaques, banner (design 25). */}
       <GalleryRoom />
+
+      {/* Lounge-side room-name posters beside each door: 미로방 🌀 / 강의실 📚 /
+          갤러리 🖼 — every room is tellable from the lounge (design 26). */}
+      <RoomPosters />
 
       {/* Walls: box meshes matching the collision AABBs exactly. */}
       {WALLS.map((w, i) => {

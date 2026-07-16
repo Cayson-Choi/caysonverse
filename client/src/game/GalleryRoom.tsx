@@ -13,7 +13,6 @@ import {
 import { mergeBufferGeometries } from "three-stdlib";
 import { canvas2d, canvasTexture, roundRect } from "./spriteCanvas";
 import {
-  ENTRANCE_SIGN,
   FRAME_DEPTH,
   FRAME_MARGIN,
   FRAME_WALL_GAP,
@@ -342,7 +341,7 @@ function GalleryPlaques() {
   return <primitive object={group} />;
 }
 
-/** One wall-mounted canvas-texture panel (title banner / entrance sign). */
+/** One wall-mounted canvas-texture panel (the north-wall title banner). */
 function WallText({ panel, title }: { panel: WallPanel; title: string }) {
   const texture = useMemo(
     // Canvas resolution tracks the panel's aspect at ~210 px per metre.
@@ -369,11 +368,13 @@ function WallText({ panel, title }: { panel: WallPanel; title: string }) {
 /**
  * "최무호 일대기" gallery room contents (design 25): nine unlit chronological
  * portraits in merged gold frames, age plaques, the north-wall title banner,
- * the lounge-side entrance sign, and one warm fill light so the walnut floor
- * and walls read warm against the cosmic palette (photos need no light at all —
- * they are unlit by design; this is ambience, not a lighting system). The room
- * floor is WorldMap's ZoneFloor; the walls come from the shared WALLS render.
- * Everything here is static: matrices are baked once and frozen.
+ * and one warm fill light so the walnut floor and walls read warm against the
+ * cosmic palette (photos need no light at all — they are unlit by design; this
+ * is ambience, not a lighting system). The former lounge-side entrance sign was
+ * removed by design 26 (it duplicated the in-room banner) — the lounge-side
+ * RoomPosters name the door instead. The room floor is WorldMap's ZoneFloor;
+ * the walls come from the shared WALLS render. Everything here is static:
+ * matrices are baked once and frozen.
  */
 export function GalleryRoom() {
   return (
@@ -382,7 +383,6 @@ export function GalleryRoom() {
       <GalleryPhotos />
       <GalleryPlaques />
       <WallText panel={TITLE_BANNER} title="최무호 일대기" />
-      <WallText panel={ENTRANCE_SIGN} title="최무호 일대기 갤러리" />
       {/* Warm centre fill — kept inside the room (distance < room half-diagonal
           + falloff) so it never spills past the gallery walls. */}
       <pointLight position={[-15, 3.4, -26]} intensity={10} distance={16} decay={2} color="#ffd9a8" />
