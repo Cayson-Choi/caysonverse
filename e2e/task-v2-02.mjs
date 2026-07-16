@@ -26,8 +26,9 @@ const KING = "왕앨리스";
 const PRINCE = "왕자밥";
 const KING_CHAR = 4; // CHARACTERS index for 왕
 
-// SEATS[2]: front row student chair at (7.7, 3); dismount at (6.8, 3).
-const SEAT_INDEX = 2;
+// A front-row student chair at (7.7, 3); approach/dismount at (6.8, 3). We assert
+// "seated at this chair" by POSITION, not a fixed seat index (the index is derived
+// from worldMap and isn't load-bearing for the crown-stays-on-while-seated check).
 const SEAT = { x: 7.7, z: 3 };
 const STAND = { x: 6.8, z: 3 };
 
@@ -106,20 +107,19 @@ async function zoomIn(page, steps = 30) {
   await sleep(200);
 }
 
-/** Orbit the follow camera by dragging horizontally across the canvas (rad ≈ px*0.005). */
-async function orbit(page, dxPx) {
-  const box = await page.locator("canvas").boundingBox();
-  const cy = box.y + box.height / 2;
-  const startX = box.x + box.width / 2;
-  await page.mouse.move(startX, cy);
-  await page.mouse.down();
-  const steps = 24;
-  for (let i = 1; i <= steps; i++) {
-    await page.mouse.move(startX + (dxPx * i) / steps, cy);
-    await sleep(10);
-  }
-  await page.mouse.up();
-  await sleep(200);
+/**
+ * Turn a STANDING avatar to face the camera. The follow camera starts behind the
+ * +Z-facing model (yaw 0), so tapping 's' (walk −Z) yaws the avatar toward π —
+ * i.e. toward the camera — giving a face-on view of the head and crown. (Dragging
+ * the camera to orbit is unreliable under headless synthetic pointer events, so we
+ * rotate the avatar instead.)
+ */
+async function turnToFace(page) {
+  await page.locator("canvas").click();
+  await page.keyboard.down("s");
+  await sleep(450);
+  await page.keyboard.up("s");
+  await sleep(400);
 }
 
 /**
@@ -227,20 +227,20 @@ async function main() {
     );
     if (!remotesA.some((r) => r.nickname === PRINCE)) throw new Error("tab A never observed remote 왕자");
 
-    // ── Step 1: 왕's own avatar — crown on, hat + mug gone (zoom + orbit). ──
+    // ── Step 1: 왕's own avatar — crown on top, hat + mug gone. ──
     await pageA.locator("canvas").click();
-    await zoomIn(pageA, 30);
+    await zoomIn(pageA, 12);
     await shot(pageA, "01-tabA-king-back.png");
-    await orbit(pageA, 620); // ~180° → face the front
+    await turnToFace(pageA); // face the camera → crown clearly on top of the head
+    await zoomIn(pageA, 8);
     await shot(pageA, "02-tabA-king-front.png");
-    await orbit(pageA, -300); // ~3/4 side
-    await shot(pageA, "03-tabA-king-threequarter.png");
 
-    // ── Step 2: 왕자's own avatar — bare head + circlet, no helmet. ──
+    // ── Step 2: 왕자's own avatar — bare head (no helmet) + crown. ──
     await pageB.locator("canvas").click();
-    await zoomIn(pageB, 30);
+    await zoomIn(pageB, 12);
     await shot(pageB, "04-tabB-prince-back.png");
-    await orbit(pageB, 620);
+    await turnToFace(pageB);
+    await zoomIn(pageB, 8);
     await shot(pageB, "05-tabB-prince-front.png");
 
     // ── Step 3: B walks next to A, orbits, and screenshots the REMOTE 왕's crown. ──
@@ -264,20 +264,23 @@ async function main() {
     await pageA.keyboard.press("e");
     const aSeated = await pollUntil(
       () => getPos(pageA),
-      (p) => p.seatIndex === SEAT_INDEX && Math.hypot(p.x - SEAT.x, p.z - SEAT.z) < 0.1,
+      (p) => p.seatIndex >= 0 && Math.hypot(p.x - SEAT.x, p.z - SEAT.z) < 0.1,
       6000,
     );
     log.aSeated = aSeated;
-    if (aSeated.seatIndex !== SEAT_INDEX) failures.push(`왕 did not sit: seatIndex=${aSeated.seatIndex}`);
+    if (aSeated.seatIndex < 0) failures.push(`왕 did not sit: seatIndex=${aSeated.seatIndex}`);
+    else if (Math.hypot(aSeated.x - SEAT.x, aSeated.z - SEAT.z) >= 0.1) {
+      failures.push(`왕 not snapped to the chair: ${JSON.stringify(aSeated)}`);
+    }
     await sleep(600); // let the sit-down clip settle into the held seated pose
-    await zoomIn(pageA, 26);
-    await shot(pageA, "07-tabA-king-seated-back.png");
-    await orbit(pageA, 620);
-    await shot(pageA, "08-tabA-king-seated-front.png");
+    // Seated king faces the screen (+X); the camera (yaw 0) sees his side — enough
+    // to confirm the crown stayed on the head bone through the sit animation.
+    await zoomIn(pageA, 22);
+    await shot(pageA, "07-tabA-king-seated.png");
     // B sees A seated (remote crown stays on through the seated pose).
     const bSeesSeated = await pollUntil(
       () => getRemotes(pageB),
-      (list) => list.some((r) => r.nickname === KING && r.seatIndex === SEAT_INDEX),
+      (list) => list.some((r) => r.nickname === KING && r.seatIndex >= 0),
       6000,
     );
     log.bSeesSeated = bSeesSeated.find((r) => r.nickname === KING);
