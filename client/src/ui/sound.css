@@ -1,0 +1,59 @@
+/* TTS 🔊/🔇 mute toggle (design 23). Unlike the touch-only 👁/🗺, this renders
+   on EVERY device, so the base rule is a REAL desktop slot: right-aligned with
+   the bottom-right emoji row (right 16, bottom 24, height 40) and parked 12px
+   ABOVE it (bottom 76) — clear of the chat log (top-right) and the sit hint
+   (bottom-centre). Same chip geometry/palette as the other overlay buttons. */
+.cv-sound-btn {
+  position: fixed;
+  right: 16px;
+  bottom: 76px;
+  z-index: 22;
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  font-size: 22px;
+  line-height: 1;
+  color: #f2eeff;
+  background: rgba(18, 14, 36, 0.72);
+  border: 1px solid rgba(150, 130, 220, 0.35);
+  border-radius: 12px;
+  cursor: pointer;
+  backdrop-filter: blur(6px);
+  transition: transform 0.1s ease, background 0.15s ease, border-color 0.15s ease;
+}
+
+.cv-sound-btn:hover {
+  background: rgba(28, 22, 54, 0.85);
+  border-color: rgba(170, 150, 255, 0.6);
+}
+
+/* Touch: ≥44px, safe-area aware. Slot regime (design 22): continues the
+   right-middle toggle column — 👁 at 246px, 🗺 at 302px, so 🔊 takes the next
+   48px+8px slot at 358px. Same x-lane (right 12, width 48) as the others. */
+.cv-touch .cv-sound-btn {
+  right: 12px;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 358px);
+  width: 48px;
+  height: 48px;
+  touch-action: manipulation;
+}
+
+/* Chat input focused: hide, so the keyboard-lifted input bar can never land on
+   it (design 22 — same dodge as the 👁/🗺 toggles and the emoji palette). */
+.cv-touch.cv-chat-focus .cv-sound-btn {
+  display: none;
+}
+
+/* Muted state: dimmed chip (the 🔇 glyph is the primary signal). */
+.cv-sound-btn.is-muted {
+  color: rgba(210, 202, 240, 0.55);
+  background: rgba(18, 14, 36, 0.55);
+}
+
+.cv-sound-btn:active {
+  background: rgba(96, 74, 166, 0.72);
+  border-color: rgba(170, 150, 255, 0.7);
+}

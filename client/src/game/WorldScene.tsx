@@ -15,6 +15,7 @@ import { TouchDpad } from "../ui/TouchDpad";
 import { SitPrompt } from "../ui/SitPrompt";
 import { ViewToggle } from "../ui/ViewToggle";
 import { OverviewToggle } from "../ui/OverviewToggle";
+import { SoundToggle } from "../ui/SoundToggle";
 import { Banner } from "../ui/Banner";
 import { AdminPanel } from "../ui/AdminPanel";
 import { getRoom } from "../net/connection";
@@ -166,6 +167,8 @@ export function WorldScene({ identity }: { identity: Identity }) {
       {/* Overview 🗺 toggle — touch only (desktop uses M). Remembers the current
           mode and restores it on exit; the camera work lives in CameraRig. */}
       <OverviewToggle onToggle={() => toggleOverview()} />
+      {/* TTS 🔊/🔇 mute toggle — every device (design 23). */}
+      <SoundToggle />
       {/* Sit/stand prompt: desktop hint + touch button + occupied-seat notice. */}
       <SitPrompt pose={pose} seat={seat} />
       {/* Movement control — touch devices only (joystick, or D-pad in FP).
