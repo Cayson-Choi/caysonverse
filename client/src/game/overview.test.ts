@@ -9,12 +9,15 @@ import {
   overviewPanDelta,
 } from "./overview";
 import { worldDirection } from "./input";
+import { WORLD_BOUNDS } from "@caysonverse/shared/constants";
 
-// The real map (WORLD_BOUNDS): x[-66,30] (96 wide), z[-18,18] (36 deep).
-const MAP_W = 96;
-const MAP_D = 36;
+// The REAL map bounds, imported so these tests keep validating the actual world
+// as it grows (maze west, gallery north — a hardcoded copy silently went stale
+// once already: review v2-11 M2).
+const BOUNDS = WORLD_BOUNDS;
+const MAP_W = BOUNDS.maxX - BOUNDS.minX;
+const MAP_D = BOUNDS.maxZ - BOUNDS.minZ;
 const FOV = (55 * Math.PI) / 180; // WorldScene camera vertical fov
-const BOUNDS = { minX: -66, maxX: 30, minZ: -18, maxZ: 18 };
 
 describe("overview — fit height (whole map in frame, no hardcode)", () => {
   it("lands high enough that the map (with margin) fits at a landscape aspect", () => {
@@ -29,10 +32,10 @@ describe("overview — fit height (whole map in frame, no hardcode)", () => {
     expect(halfX).toBeGreaterThanOrEqual((MAP_W / 2) * OV_FIT_MARGIN - 1e-6);
   });
 
-  it("is width-bound on a wide map (96×36) and grows as the viewport narrows", () => {
+  it("is width-bound on the wide map and grows as the viewport narrows", () => {
     const wide = overviewFitHeight(MAP_W, MAP_D, FOV, 1.6);
     const narrow = overviewFitHeight(MAP_W, MAP_D, FOV, 0.5); // portrait phone
-    // The 96 m width dominates a 36 m depth on any normal aspect, and a narrower
+    // The map is wider than deep (96 m vs current depth), and a narrower
     // viewport must back FURTHER away to still fit that width.
     expect(narrow).toBeGreaterThan(wide);
   });

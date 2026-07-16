@@ -95,6 +95,11 @@ export function WorldScene({ identity }: { identity: Identity }) {
 
   const width = WORLD_BOUNDS.maxX - WORLD_BOUNDS.minX;
   const depth = WORLD_BOUNDS.maxZ - WORLD_BOUNDS.minZ;
+  // Grid must be centred on the BOUNDS centre, not the origin — the map is not
+  // origin-symmetric (maze west, gallery north), so an origin-centred grid ends
+  // mid-room (review v2-11 M1: cut off at z=-26 inside the gallery).
+  const centerX = (WORLD_BOUNDS.minX + WORLD_BOUNDS.maxX) / 2;
+  const centerZ = (WORLD_BOUNDS.minZ + WORLD_BOUNDS.maxZ) / 2;
 
   return (
     <>
@@ -131,7 +136,7 @@ export function WorldScene({ identity }: { identity: Identity }) {
           fadeDistance={60}
           fadeStrength={1.5}
           infiniteGrid={false}
-          position={[0, 0.02, 0]}
+          position={[centerX, 0.02, centerZ]}
         />
 
         <KeyboardControls map={MOVE_KEYS}>
