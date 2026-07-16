@@ -5,11 +5,16 @@
 //   PORT=2568 npm run dev -w server
 //   cd client && VITE_SERVER_URL=http://localhost:2568 npx vite --port 5174
 //
-// Proves design 22 end to end on a 390×844 + hasTouch mobile viewport:
+// Proves design 22 end to end on a hasTouch mobile viewport:
 //   1. Join → default bottom UI: ZERO pairwise bounding-box overlap among
 //      chat input / emoji palette / 👁 / 🗺 / joystick zone (+ screenshot).
 //   2. Walk to a chair → 앉기 button shows → ZERO overlap including the sit
-//      button; tap to sit → 일어서기 button → ZERO overlap again (+ shots).
+//      button, swept across 390 / 360 / 320 px widths (review B1: the old
+//      left-anchored slot overlapped the right-anchored palette on every phone
+//      under 384px — the sweep makes the guarantee width-independent), AND in
+//      FIRST-PERSON where the joystick swaps for the wider D-pad zone (review
+//      B2: x ≤ 172 vs the old sit left edge 164) — same three widths; then tap
+//      to sit → 일어서기 button → ZERO overlap again (+ shots).
 //   3. Focus the chat input → the palette/toggles/sit button hide (cv-chat-focus
 //      dodge) and nothing overlaps the input. Playwright cannot emulate the soft
 //      keyboard, so the visualViewport shrink is MOCKED (height getter override +
@@ -38,15 +43,26 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const getPos = (page) => page.evaluate(() => window.__cv.getPos());
 const getOrbit = (page) => page.evaluate(() => window.__cv.getOrbit());
 
-/** The mobile bottom-UI slot elements under the zero-overlap contract. */
+/** The mobile bottom-UI slot elements under the zero-overlap contract.
+ *  joystickZone (TP) and dpadZone (FP) are the two movement-zone variants —
+ *  WorldScene mounts exactly one of them at a time. */
 const SELECTORS = {
   chatInput: ".cv-chat-input",
   emojiPalette: ".cv-emoji-palette",
   viewToggle: ".cv-view-btn",
   overviewToggle: ".cv-overview-btn",
   joystickZone: ".cv-joystick-zone",
+  dpadZone: ".cv-dpad-zone",
   sitButton: ".cv-sit-btn",
+  // Parallel-lane 🔊 TTS toggle (right-edge stack) — tracked so the merged-tree
+  // zero-overlap contract covers it too; absent (null) if that lane changes it.
+  soundToggle: ".cv-sound-btn",
 };
+
+/** Widths under the zero-overlap contract (390 = iPhone 14, 360 = Galaxy S /
+ *  iPhone mini, 320 = smallest supported). Height stays 844 — every slot is
+ *  bottom-anchored, so width is the only overlap-relevant dimension. */
+const WIDTHS = [390, 360, 320];
 
 /** Visible-element bounding rects (display:none / absent → null). */
 async function rects(page) {
@@ -179,8 +195,40 @@ async function main() {
     await walkTo(mPage, 1.5, 0, { timeout: 15000 });
     await walkTo(mPage, 1.9, 2.6, { timeout: 15000, tol: 0.4 });
     await mPage.locator(".cv-sit-btn").waitFor({ state: "visible", timeout: 5000 });
-    assertNoOverlap("sitPrompt", await rects(mPage));
-    await shot(mPage, "after-02-sit-prompt.png");
+
+    // ── 2a. TP width sweep (review B1): sit button + palette + joystick must
+    //        all be VISIBLE (non-vacuous) and pairwise disjoint at every width. ──
+    for (const w of WIDTHS) {
+      await mPage.setViewportSize({ width: w, height: 844 });
+      await sleep(250);
+      const rs = await rects(mPage);
+      for (const must of ["sitButton", "emojiPalette", "joystickZone", "chatInput", "viewToggle"]) {
+        if (!rs[must]) failures.push(`sitPrompt@${w}: ${must} not visible (check is vacuous)`);
+      }
+      assertNoOverlap(`sitPrompt@${w}`, rs);
+      await shot(mPage, `after-02-sit-prompt-${w}.png`);
+    }
+
+    // ── 2b. FP width sweep (review B2): 👁 → first-person swaps the joystick
+    //        for the wider D-pad zone (x ≤ 172); the sit button must clear it
+    //        at every width too. ──
+    await mPage.locator(".cv-view-btn").click();
+    await mPage.waitForFunction(() => window.__cv.getView().mode === "fp", null, { timeout: 5000 });
+    await sleep(300);
+    for (const w of WIDTHS) {
+      await mPage.setViewportSize({ width: w, height: 844 });
+      await sleep(250);
+      const rs = await rects(mPage);
+      for (const must of ["sitButton", "dpadZone", "emojiPalette", "chatInput"]) {
+        if (!rs[must]) failures.push(`fpSitPrompt@${w}: ${must} not visible (check is vacuous)`);
+      }
+      assertNoOverlap(`fpSitPrompt@${w}`, rs);
+    }
+    await shot(mPage, "after-02-fp-sit-320.png"); // hardest width, D-pad visible
+    await mPage.locator(".cv-view-btn").click(); // back to TP
+    await mPage.waitForFunction(() => window.__cv.getView().mode === "tp", null, { timeout: 5000 });
+    await mPage.setViewportSize({ width: 390, height: 844 });
+    await sleep(250);
 
     await mPage.locator(".cv-sit-btn").click();
     await mPage.waitForFunction(() => window.__cv.getPos().seatIndex >= 0, null, { timeout: 5000 });
@@ -240,6 +288,9 @@ async function main() {
     allErrors.push(watchErrors(dPage, "desktop"));
     await joinAs(dPage, { nickname: "관찰나", characterLabel: "도적", tintIndex: 2 });
     await dPage.bringToFront();
+    // Desktop-regression screenshot HERE (at spawn, before any walking) so the
+    // evidence differs from the 10m nametag shot (review M2: they were dups).
+    await shot(dPage, "after-08-desktop.png");
 
     const a = await getPos(mPage); // A seated at (2.7, 3)
     // Route: door gap at z=0, north along the clear x=1.2 lane, approach from
@@ -279,7 +330,6 @@ async function main() {
     if (Math.abs(desktop.inputBottomGap - 24) > 2) {
       failures.push(`desktop: chat input not in its original slot (gap ${desktop.inputBottomGap}px, want 24)`);
     }
-    await shot(dPage, "after-08-desktop.png");
 
     // ── 6. Zero console/page errors on both tabs ──
     const errs = allErrors.flat();
@@ -293,7 +343,14 @@ async function main() {
     await browser.close();
   }
 
-  for (const state of ["default", "sitPrompt", "seated", "focused"]) {
+  const states = [
+    "default",
+    ...WIDTHS.map((w) => `sitPrompt@${w}`),
+    ...WIDTHS.map((w) => `fpSitPrompt@${w}`),
+    "seated",
+    "focused",
+  ];
+  for (const state of states) {
     console.log(`${state}: overlaps=${JSON.stringify(log[state]?.overlaps)}`);
   }
   console.log("kbd mock:", JSON.stringify(log.kbdMock));

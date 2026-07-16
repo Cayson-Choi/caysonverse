@@ -37,15 +37,27 @@
   box-shadow: 0 1px 0 rgba(90, 70, 160, 0.6);
 }
 
-/* Touch button: a big tap target beside the bottom-left joystick zone.
-   Slot regime (design 22): the bottom band is joystick (x ≤ 148) | sit button
-   (x 164..~270, "일어서기" is the widest label) | 2-col emoji palette (x ≥ 276
-   on 390px) — three fixed, disjoint x-ranges, so the button can never land on
-   the palette (the old 3-col palette started at x=220 and overlapped it). */
+/* Touch button: a centred pill one row ABOVE the chat input (mirrors the
+   desktop hint's bottom-centre placement).
+
+   Slot regime (design 22, rev.2 after review B1/B2): the old left-anchored spot
+   (left:164) was width-DEPENDENT against the right-anchored palette (gap =
+   W−384 → overlap on every phone under 384px) and sat under the FP D-pad's
+   right edge (172px). This slot is separated VERTICALLY instead, so it is
+   overlap-free at ANY width ≥ 320 and in BOTH TP/FP. Bottom-anchored y-bands
+   (px from the viewport bottom edge, safe-area = 0):
+     16..176  movement zone (joystick 24..152, x≤148 / FP D-pad 20..176, x≤172)
+              + emoji palette 16..174 (right-anchored, x ≥ W−114)
+     190..238 chat input row (full width)
+     246..294 ← THIS button (centred, ≤106px wide for "일어서기")
+     246..350+ right toggle column 👁/🗺(+🔊 reserved), x ≥ W−60 — the only
+              slot sharing this y-band; x-disjoint because the button's right
+              edge is W/2+53, leaving a gap of W/2−113 ≥ 47px even at W=320. */
 .cv-sit-btn {
   position: fixed;
-  left: calc(env(safe-area-inset-left, 0px) + 164px);
-  bottom: calc(env(safe-area-inset-bottom, 0px) + 60px);
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 246px);
   z-index: 25;
   min-width: 88px;
   height: 48px;

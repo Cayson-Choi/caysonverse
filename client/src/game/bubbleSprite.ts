@@ -26,7 +26,7 @@ const MAX_TEXT_WIDTH = 560;
 const DPR = 2;
 /**
  * Metres per CSS pixel — the nametag's ORIGINAL text-to-world density (0.42m /
- * 76px canvas). Deliberately kept after the nametag shrank to 2/3 (design 22):
+ * 76px canvas). Deliberately kept after the nametag shrank to 0.30 (design 22):
  * bubbles stay at the larger scale so they read as the visual protagonist.
  */
 const WORLD_PER_PX = 0.42 / 76;
