@@ -1,10 +1,17 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import type { PerspectiveCamera } from "three";
 import { CAMERA, HEAD_HEIGHT } from "./constants";
 import { normalizeAngle } from "./yaw";
 import { applyPinchZoom } from "./pinchZoom";
 import { aspectDistanceScale } from "./aspectFraming";
+import {
+  isInMaze,
+  stepMazeCapEngage,
+  cappedFollowDistance,
+  cappedCameraY,
+} from "./mazeCamera";
+import { cameraProbe } from "./cameraProbe";
 import type { Orbit, Pose } from "./types";
 
 interface CameraRigProps {
@@ -43,6 +50,19 @@ function spread(pointers: Map<number, { x: number; y: number }>): number {
 export function CameraRig({ pose, orbit }: CameraRigProps) {
   const camera = useThree((s) => s.camera);
   const gl = useThree((s) => s.gl);
+  // Maze anti-peek cap engagement (0 = off, 1 = fully capped). Lerped in useFrame
+  // so entering/leaving the maze eases the cap in/out with no snap. Ref, not state.
+  const capEngage = useRef(0);
+
+  // Dev/E2E only: expose the live camera (the maze cap is not reflected in
+  // orbit.distance, so this is the only truthful readout). Tree-shaken in prod.
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    window.__cvCamera = () => ({ ...cameraProbe });
+    return () => {
+      delete window.__cvCamera;
+    };
+  }, []);
 
   useEffect(() => {
     const el = gl.domElement;
@@ -114,20 +134,35 @@ export function CameraRig({ pose, orbit }: CameraRigProps) {
     };
   }, [gl, orbit]);
 
-  useFrame(() => {
+  useFrame((_state, delta) => {
     // `orbit.distance` stays the user's zoom intent (wheel/pinch); the portrait
     // pull-back is applied only at render time, so a phone shows the world
     // around the avatar instead of a close-up. Landscape is scale 1 (unchanged).
     const aspect = (camera as PerspectiveCamera).aspect;
-    const distance = orbit.distance * aspectDistanceScale(aspect);
+
+    // Maze anti-peek cap: ease the engagement toward 1 while the LOCAL player is
+    // inside the maze zone, then clamp BOTH the effective distance and the final
+    // camera height so no pitch/aspect combination lifts the camera over the walls.
+    const engage = stepMazeCapEngage(capEngage.current, isInMaze(pose.x, pose.z), delta);
+    capEngage.current = engage;
+
+    const distance = cappedFollowDistance(orbit.distance * aspectDistanceScale(aspect), engage);
     const horiz = distance * Math.cos(orbit.pitch);
     const height = distance * Math.sin(orbit.pitch);
+    const camY = cappedCameraY(HEAD_HEIGHT + height, engage);
     camera.position.set(
       pose.x + horiz * Math.sin(orbit.yaw),
-      HEAD_HEIGHT + height,
+      camY,
       pose.z + horiz * Math.cos(orbit.yaw),
     );
     camera.lookAt(pose.x, HEAD_HEIGHT, pose.z);
+
+    // Publish the live camera for the dev/E2E hook (getCamera) — the cap is not
+    // reflected in orbit.distance, so this is the only truthful readout.
+    cameraProbe.x = camera.position.x;
+    cameraProbe.y = camera.position.y;
+    cameraProbe.z = camera.position.z;
+    cameraProbe.distance = distance;
   });
 
   return null;

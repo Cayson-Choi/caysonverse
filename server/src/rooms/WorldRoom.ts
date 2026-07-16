@@ -16,6 +16,13 @@ import {
   RECONNECT_WINDOW_S,
 } from "@caysonverse/shared/constants";
 import { SEATS } from "@caysonverse/shared/worldMap";
+import {
+  MAZE_RETURN,
+  isInMazeGoal,
+  isOnMazePortal,
+  escapeAllowed,
+  escapeMessage,
+} from "@caysonverse/shared/maze";
 import { validateMove } from "./movement";
 import { validateSit } from "./seating";
 import { validateJoinOptions } from "./joinValidation";
@@ -63,6 +70,12 @@ interface AuthResult {
 interface ClientTracking {
   /** ms timestamp of this client's last accepted move (seeded at join). */
   lastAcceptedAt: number;
+  /**
+   * ms timestamp of this client's last maze-escape broadcast. Seeded to
+   * `-Infinity` so the first escape always fires; the 30 s cooldown then
+   * suppresses re-entry spam (design 18). Room-timed, injected-clock testable.
+   */
+  lastEscapeAt: number;
   /** Sliding-window rate cap for move messages. */
   rate: RateWindow;
   /** Sliding-window rate cap for chat messages (3 per 5s). */
@@ -189,6 +202,7 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     client.userData = marker;
     this.tracking.set(client.sessionId, {
       lastAcceptedAt: this.now(),
+      lastEscapeAt: Number.NEGATIVE_INFINITY,
       rate: new RateWindow(MOVE_MAX_MSGS_PER_SEC),
       chatRate: new RateWindow(CHAT_RATE.count, CHAT_RATE.windowMs),
       emojiRate: new RateWindow(EMOJI_RATE.count, EMOJI_RATE.windowMs),
@@ -314,6 +328,37 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     player.z = next.z;
     player.yaw = next.yaw;
     track.lastAcceptedAt = now;
+
+    // v2-3: judge the maze goal/portal on the ACCEPTED position only (server-
+    // authoritative; no new tick loop). Cheap AABB point tests, no allocation.
+    this.judgeMaze(client, player, track, now);
+  }
+
+  /**
+   * Maze escape + return-portal judgment, run on each accepted move.
+   *  - Inside the GOAL area: broadcast the Korean escape notice to everyone
+   *    (dimmed system row), gated by this session's 30 s cooldown so re-entry
+   *    can't spam. The escaper's sid rides along for the client self-celebration.
+   *  - On the PORTAL pad: teleport to the clear lounge spot near the maze door
+   *    (NOT the spawn) and RESET the move-clock baseline (same anti-teleport
+   *    pattern as sitting/standing) so the jump can't seed a huge next step.
+   * Position stays server-authoritative; the client's existing >3 m self kick-
+   * back snap applies the teleport locally with no new code.
+   */
+  private judgeMaze(client: Client, player: Player, track: ClientTracking, now: number): void {
+    if (isInMazeGoal(player.x, player.z) && escapeAllowed(track.lastEscapeAt, now)) {
+      track.lastEscapeAt = now;
+      this.broadcast(MessageType.System, {
+        text: escapeMessage(player.nickname),
+        sid: client.sessionId,
+      });
+    }
+
+    if (isOnMazePortal(player.x, player.z)) {
+      player.x = MAZE_RETURN.x;
+      player.z = MAZE_RETURN.z;
+      track.lastAcceptedAt = now; // baseline reset — anti-teleport (D1), like sitting
+    }
   }
 
   /**

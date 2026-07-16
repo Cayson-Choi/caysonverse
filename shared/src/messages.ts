@@ -20,6 +20,12 @@ export const MessageType = {
   Stand: "stand",
   /** Server -> one client: a personal notice that their sit request was rejected. */
   SitRejected: "sit_rejected",
+  /**
+   * Server -> all clients: a room-wide system notice (dimmed chat-log row for
+   * EVERYONE). Used by the maze escape broadcast. Carries the escaper's `sid` so
+   * the client can fire the local 🎉 celebration on self without a new sync.
+   */
+  System: "system",
 } as const;
 
 export type MessageType = (typeof MessageType)[keyof typeof MessageType];
@@ -92,6 +98,16 @@ export interface SitRejectedPayload {
   reason: string;
 }
 
+/**
+ * Server -> every client: a system notice rendered as a dimmed chat-log row for
+ * all. `sid` (when present) is the session the notice is ABOUT — the client
+ * compares it to its own session id to fire a local self-celebration.
+ */
+export interface SystemBroadcast {
+  text: string;
+  sid?: string;
+}
+
 /** Payload type for each message id, keyed by MessageType. */
 export interface MessagePayloads {
   [MessageType.Move]: MovePayload;
@@ -103,4 +119,5 @@ export interface MessagePayloads {
   [MessageType.Sit]: SitPayload;
   [MessageType.Stand]: StandPayload;
   [MessageType.SitRejected]: SitRejectedPayload;
+  [MessageType.System]: SystemBroadcast;
 }

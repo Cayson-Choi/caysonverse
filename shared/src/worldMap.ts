@@ -19,17 +19,25 @@
  */
 
 import type { AABB } from "./collision";
+import { MAZE_ZONE, MAZE_WALLS } from "./maze";
 
 export type { AABB };
 
 /** Player collision radius (m) — the circle both sides resolve against. */
 export const PLAYER_RADIUS = 0.4;
 
-/** Playable area bounds (final). Walls sit on these lines; the divider is at x=0. */
-export const WORLD_BOUNDS = { minX: -30, maxX: 30, minZ: -18, maxZ: 18 } as const;
+/**
+ * Playable area bounds (final). Walls sit on these lines; the divider is at x=0.
+ * The WEST edge is the maze zone's far wall (v2-3 west extension): the map now
+ * runs [maze]⇄[lounge]⇄[lecture]. `minX` is DERIVED from the maze zone so the
+ * outer west wall, the spawn clamp, and the loadtest wander all track one value.
+ * The lounge/lecture halves and every existing coordinate are unchanged.
+ */
+export const WORLD_BOUNDS = { minX: MAZE_ZONE.minX, maxX: 30, minZ: -18, maxZ: 18 } as const;
 
-/** Named zones (AABBs) for ground styling and future zone features. */
-export const ZONES: Readonly<Record<"lounge" | "lectureHall", AABB>> = {
+/** Named zones (AABBs) for ground styling and zone features (camera cap). */
+export const ZONES: Readonly<Record<"maze" | "lounge" | "lectureHall", AABB>> = {
+  maze: MAZE_ZONE,
   lounge: { minX: -30, maxX: 0, minZ: -18, maxZ: 18 },
   lectureHall: { minX: 0, maxX: 30, minZ: -18, maxZ: 18 },
 };
@@ -218,13 +226,17 @@ export function furnitureObstacle(p: Furniture): AABB {
 
 /**
  * Every collision obstacle, derived at module load: solid furniture footprints
- * + walls + the screen. Both the client slide resolver and the server drop
- * check import THIS array — no obstacle literal is ever duplicated.
+ * + room walls + the screen + the maze walls. Both the client slide resolver and
+ * the server drop check import THIS array — no obstacle literal is ever
+ * duplicated. The maze's EAST perimeter wall (in `MAZE_WALLS`, at x = -30 with a
+ * single middle-row opening) IS the lounge's west door — one wall, one gap, no
+ * separate divider.
  */
 export const OBSTACLES: readonly AABB[] = [
   ...FURNITURE.filter((p) => FURNITURE_MODELS[p.model].solid).map(furnitureObstacle),
   ...WALLS,
   screenObstacle(),
+  ...MAZE_WALLS,
 ];
 
 // ───────────────────────────────── Seats ─────────────────────────────────

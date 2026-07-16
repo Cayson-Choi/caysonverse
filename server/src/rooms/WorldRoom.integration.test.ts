@@ -17,8 +17,10 @@ import type {
   ChatRejectedPayload,
   EmojiBroadcast,
   SitRejectedPayload,
+  SystemBroadcast,
 } from "@caysonverse/shared/messages";
 import { SEATS } from "@caysonverse/shared/worldMap";
+import { MAZE_GOAL, MAZE_PORTAL, MAZE_RETURN, ESCAPE_COOLDOWN_MS } from "@caysonverse/shared/maze";
 import { rooms, type WorldRoom } from "./index";
 
 const VALID_JOIN = { nickname: "케이슨", character: 1, tint: 2 };
@@ -885,5 +887,118 @@ describe("WorldRoom seating (integration)", () => {
     await room.waitForNextMessage();
     await flush();
     expect(room.state.players.get(admin.sessionId)!.seatIndex).toBe(SEAT);
+  });
+});
+
+// ── v2 Task 3: maze goal-escape broadcast + return portal ──
+//
+// Goal/portal are judged on the accepted-move path. Walking the whole maze in a
+// test is impractical, so (like the seating tests) we white-box place the player
+// on the goal/portal floor and drive ONE real Move that lands on it. The move
+// clock is white-box read/written where a specific elapsed budget is needed.
+describe("WorldRoom maze goal/portal (integration)", () => {
+  const goalCenter = { x: (MAZE_GOAL.minX + MAZE_GOAL.maxX) / 2, z: (MAZE_GOAL.minZ + MAZE_GOAL.maxZ) / 2 };
+  const portalCenter = { x: (MAZE_PORTAL.minX + MAZE_PORTAL.maxX) / 2, z: (MAZE_PORTAL.minZ + MAZE_PORTAL.maxZ) / 2 };
+
+  /** White-box handle on the private per-session move/escape clocks. */
+  function trackingOf(room: WorldRoom, sid: string) {
+    return (room as unknown as {
+      tracking: Map<string, { lastAcceptedAt: number; lastEscapeAt: number }>;
+    }).tracking.get(sid)!;
+  }
+
+  it("broadcasts the escape notice ONCE, then the 30s cooldown suppresses repeats", async () => {
+    const room = await colyseus.createRoom<WorldRoom>(WORLD_ROOM);
+    const alice = await colyseus.connectTo(room, JOIN_A);
+    const bob = await colyseus.connectTo(room, JOIN_B);
+
+    const aSys: SystemBroadcast[] = [];
+    const bSys: SystemBroadcast[] = [];
+    alice.onMessage(MessageType.System, (m: SystemBroadcast) => aSys.push(m));
+    bob.onMessage(MessageType.System, (m: SystemBroadcast) => bSys.push(m));
+
+    // Place alice on the goal floor; a tiny in-goal step is an accepted move.
+    const p = room.state.players.get(alice.sessionId)!;
+    p.x = goalCenter.x;
+    p.z = goalCenter.z;
+
+    alice.send(MessageType.Move, { x: goalCenter.x + 0.02, z: goalCenter.z, yaw: 0 });
+    await room.waitForNextMessage();
+    await flush();
+
+    // Fires once, to EVERYONE, tagged with the escaper's sid + Korean text.
+    expect(aSys).toHaveLength(1);
+    expect(bSys).toHaveLength(1);
+    expect(aSys[0].sid).toBe(alice.sessionId);
+    expect(aSys[0].text).toContain(JOIN_A.nickname);
+    expect(aSys[0].text).toContain("미로를 탈출했습니다");
+
+    // A second accepted move still inside the goal within the cooldown → NO repeat.
+    alice.send(MessageType.Move, { x: goalCenter.x + 0.04, z: goalCenter.z, yaw: 0 });
+    await room.waitForNextMessage();
+    await flush();
+    expect(aSys).toHaveLength(1);
+    expect(bSys).toHaveLength(1);
+
+    // Backdate this session's escape clock past the cooldown → it fires again.
+    trackingOf(room, alice.sessionId).lastEscapeAt = Date.now() - ESCAPE_COOLDOWN_MS - 1000;
+    alice.send(MessageType.Move, { x: goalCenter.x + 0.06, z: goalCenter.z, yaw: 0 });
+    await room.waitForNextMessage();
+    await flush();
+    expect(aSys).toHaveLength(2);
+    expect(bSys).toHaveLength(2);
+  });
+
+  it("teleports off the portal to the lounge door spot, baseline reset, then moves normally", async () => {
+    const room = await colyseus.createRoom<WorldRoom>(WORLD_ROOM);
+    const alice = await colyseus.connectTo(room, JOIN_A);
+    const p = room.state.players.get(alice.sessionId)!;
+
+    // No System notice on a pure portal step (portal ≠ goal).
+    const sys: SystemBroadcast[] = [];
+    alice.onMessage(MessageType.System, (m: SystemBroadcast) => sys.push(m));
+
+    p.x = portalCenter.x;
+    p.z = portalCenter.z;
+    alice.send(MessageType.Move, { x: portalCenter.x + 0.02, z: portalCenter.z, yaw: 0 });
+    await room.waitForNextMessage();
+    await flush();
+
+    // Server teleported to the clear lounge spot near the door (NOT the spawn).
+    expect(p.x).toBeCloseTo(MAZE_RETURN.x, 6);
+    expect(p.z).toBeCloseTo(MAZE_RETURN.z, 6);
+    expect(sys).toHaveLength(0);
+
+    // Baseline reset: the clock is `now`, so a huge next step is DROPPED (the
+    // ~21 m teleport did not seed an exploitable one-shot budget)…
+    alice.send(MessageType.Move, { x: MAZE_RETURN.x + 8, z: MAZE_RETURN.z, yaw: 0 });
+    await room.waitForNextMessage();
+    await flush();
+    expect(p.x).toBeCloseTo(MAZE_RETURN.x, 6); // dropped — unchanged
+
+    // …yet a normal in-budget step from the return spot is accepted.
+    trackingOf(room, alice.sessionId).lastAcceptedAt = Date.now() - 200; // ~1.2 m budget
+    alice.send(MessageType.Move, { x: MAZE_RETURN.x + 0.5, z: MAZE_RETURN.z, yaw: 0 });
+    await room.waitForNextMessage();
+    await flush();
+    expect(p.x).toBeCloseTo(MAZE_RETURN.x + 0.5, 4);
+  });
+
+  it("drops a move that tunnels through a maze wall (existing obstacle check)", async () => {
+    const room = await colyseus.createRoom<WorldRoom>(WORLD_ROOM);
+    const alice = await colyseus.connectTo(room, JOIN_A);
+    const p = room.state.players.get(alice.sessionId)!;
+
+    // Entrance-cell centre; straight west is an internal maze wall (x ≈ -32.4).
+    p.x = -31.2;
+    p.z = 0;
+    trackingOf(room, alice.sessionId).lastAcceptedAt = Date.now() - 400; // ~2.4 m budget
+    alice.send(MessageType.Move, { x: -32.4, z: 0, yaw: 0 });
+    await room.waitForNextMessage();
+    await flush();
+
+    // The body would overlap the wall → the move is dropped, position unchanged.
+    expect(p.x).toBe(-31.2);
+    expect(p.z).toBe(0);
   });
 });

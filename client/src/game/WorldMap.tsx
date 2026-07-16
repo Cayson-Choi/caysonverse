@@ -12,10 +12,12 @@ import {
   ZONES,
   type AABB,
 } from "@caysonverse/shared/worldMap";
+import { MazeWalls } from "./MazeWalls";
 
-/** Ground colours per zone (lounge warm, lecture hall cool). */
+/** Ground colours per zone (lounge warm, lecture hall cool, maze dim). */
 const LOUNGE_COLOR = "#463a52"; // warm mauve
 const HALL_COLOR = "#36485e"; // cool slate-blue
+const MAZE_COLOR = "#2c2a40"; // dim indigo — reads as a separate, cooler room
 const WALL_COLOR = "#6a6390";
 const SCREEN_BODY = "#0b0b14";
 const SCREEN_FACE = "#7c8cff";
@@ -98,9 +100,13 @@ export function WorldMap() {
 
   return (
     <group>
-      {/* Two-tone ground, one plane per zone. */}
+      {/* Ground, one plane per zone (maze west, lounge centre, hall east). */}
+      <ZoneFloor zone={ZONES.maze} color={MAZE_COLOR} />
       <ZoneFloor zone={ZONES.lounge} color={LOUNGE_COLOR} />
       <ZoneFloor zone={ZONES.lectureHall} color={HALL_COLOR} />
+
+      {/* Maze: merged walls (1 draw call), goal tile, return portal, chamber light. */}
+      <MazeWalls />
 
       {/* Walls: box meshes matching the collision AABBs exactly. */}
       {WALLS.map((w, i) => {

@@ -96,12 +96,25 @@ describe("validateMove — bounds clamp", () => {
     expect(result!.x).toBeCloseTo(WORLD_BOUNDS.maxX - PLAYER_RADIUS, 6);
   });
 
-  it("clamps on every edge", () => {
-    const c = { x: WORLD_BOUNDS.minX + 0.1, z: WORLD_BOUNDS.minZ + 0.1 };
-    const result = validateMove(c, { x: WORLD_BOUNDS.minX - 5, z: WORLD_BOUNDS.minZ - 5, yaw: 0 }, 10000);
+  it("clamps a south-edge overshoot to rest flush against the wall (clear lounge x)", () => {
+    // The min-Z (south) boundary at a clear lounge x (spawn column): a legal-speed
+    // overshoot south of the world clamps the centre a body-radius off the wall
+    // (accepted, not dropped). NOTE the SW/min-X corner is now the MAZE's walled
+    // corner (v2-3 west extension) — overshooting there is correctly DROPPED, so
+    // this exercises the clamp on the still-open south edge.
+    const c = { x: -15, z: WORLD_BOUNDS.minZ + 0.1 };
+    const result = validateMove(c, { x: -15, z: WORLD_BOUNDS.minZ - 5, yaw: 0 }, 10000);
     expect(result).not.toBeNull();
-    expect(result!.x).toBeCloseTo(WORLD_BOUNDS.minX + PLAYER_RADIUS, 6);
+    expect(result!.x).toBeCloseTo(-15, 6);
     expect(result!.z).toBeCloseTo(WORLD_BOUNDS.minZ + PLAYER_RADIUS, 6);
+  });
+
+  it("drops an overshoot into the maze west wall (the min-X boundary is now walled)", () => {
+    // After the west extension the world's min-X edge coincides with the maze's
+    // solid west wall, so a clamp there lands inside a wall → dropped (not accepted).
+    const c = { x: WORLD_BOUNDS.minX + PLAYER_RADIUS + 0.2, z: -10 };
+    const result = validateMove(c, { x: WORLD_BOUNDS.minX - 5, z: -10, yaw: 0 }, 10000);
+    expect(result).toBeNull();
   });
 });
 
