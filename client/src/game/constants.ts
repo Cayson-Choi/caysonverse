@@ -74,7 +74,7 @@ export const CHARACTERS: readonly CharacterPreset[] = [
     label: "왕자",
     model: "/models/knight.glb",
     hideNodes: ["Knight_Helmet"],
-    crown: { scale: 0.6, flatten: 0.35 },
+    crown: { scale: 0.8, flatten: 0.72 },
   },
 ] as const;
 
@@ -101,17 +101,18 @@ export const CROWN_MODEL = "/models/crown.glb";
 /**
  * Base fit-scale applied to the crown before the per-royal `scale` multiplier.
  * The raw crown is ~0.89 m wide (mesh × the GLB's ×100 node scale); the `head`
- * bone has unit world scale, so this shrinks it onto the ~0.3 m head. Tuned by
- * E2E screenshot across idle/walk/sit.
+ * bone has unit world scale, so this shrinks it onto the head. Tuned by screenshot.
  */
-export const CROWN_BASE_SCALE = 0.36;
+export const CROWN_BASE_SCALE = 0.55;
 
 /**
- * Local +Y offset (head-bone space, which is unit-scaled and axis-aligned with
- * world) that lifts the crown from the head-bone origin (~1.24 m) onto the top of
- * the head. Screenshot-tuned; the same value works for all four bodies (shared rig).
+ * Head-bone-local Y at which the crown's BOTTOM RIM is anchored. The KayKit chibi
+ * head mesh tops out ~0.95 m above the head bone (measured, near-identical across
+ * all four bodies); anchoring the rim just under that (0.9) rests every crown on
+ * the crown of the head/hair. Anchoring the RIM (not a fixed pivot) is what keeps
+ * the flattened tiara/circlet on TOP of the hair instead of sinking into it.
  */
-export const CROWN_Y_OFFSET = 0.2;
+export const CROWN_RIM_Y = 0.9;
 
 /** Name of the head joint the crown is parented to (shared across all four bodies). */
 export const HEAD_BONE_NAME = "head";

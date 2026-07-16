@@ -6,11 +6,11 @@
  */
 
 import { SkeletonUtils } from "three-stdlib";
-import { Color, Material, Mesh, Object3D, Sphere, Vector3 } from "three";
+import { Box3, Color, Material, Mesh, Object3D, Sphere, Vector3 } from "three";
 import { TINT_COLORS } from "@caysonverse/shared/constants";
 import {
   CROWN_BASE_SCALE,
-  CROWN_Y_OFFSET,
+  CROWN_RIM_Y,
   HEAD_BONE_NAME,
   crownLocalScale,
   type CrownConfig,
@@ -68,12 +68,19 @@ function cloneUntinted(material: Material, out: Material[]): Material {
 
 /**
  * Clone the cached crown scene, give it its own (untinted) materials so opacity
- * and disposal are per-avatar, and apply the fit-scale + flatten + head offset.
+ * and disposal are per-avatar, apply the fit-scale + flatten, then position it so
+ * its BOTTOM RIM sits at CROWN_RIM_Y in the head bone's local frame.
+ *
+ * Rim-anchoring (not a fixed pivot offset) is what makes the flattened tiara and
+ * circlet sit ON TOP of the head/hair instead of collapsing into it: `flatten`
+ * shrinks the crown toward its own origin, so a fixed-pivot placement would bury a
+ * thin crown below the ~0.95 m-tall chibi head. Anchoring the scaled rim keeps
+ * every variant resting at the same height on the head, regardless of flatten.
+ *
  * The crown is a static (non-skinned) mesh, so a plain deep clone is enough — the
  * GLB already bakes the +Z→+Y stand-up rotation and the head bone is axis-aligned
  * with world, so no extra rotation is needed. Shared geometry is NEVER disposed;
- * the returned clone's cloned materials are pushed into `out` for the caller to
- * dispose with the avatar.
+ * the clone's cloned materials are pushed into `out` for the caller to dispose.
  */
 function attachCrown(crownScene: Object3D, cfg: CrownConfig, out: Material[]): Object3D {
   const crown = crownScene.clone(true);
@@ -81,13 +88,20 @@ function attachCrown(crownScene: Object3D, cfg: CrownConfig, out: Material[]): O
     const mesh = obj as Mesh;
     if (!mesh.isMesh) return;
     mesh.castShadow = true;
+    // Bone-attached: its rest-pose bounds don't track the animated head, so stock
+    // frustum culling would pop it off-screen mid-animation. Disable culling (the
+    // same rationale as the skinned-mesh bounding sphere above).
+    mesh.frustumCulled = false;
     mesh.material = Array.isArray(mesh.material)
       ? mesh.material.map((m) => cloneUntinted(m, out))
       : cloneUntinted(mesh.material, out);
   });
   const [sx, sy, sz] = crownLocalScale(cfg, CROWN_BASE_SCALE);
   crown.scale.set(sx, sy, sz);
-  crown.position.set(0, CROWN_Y_OFFSET, 0);
+  // Measure the scaled rim (lowest point) at the origin, then lift it to CROWN_RIM_Y.
+  crown.updateMatrixWorld(true);
+  const rimY = new Box3().setFromObject(crown).min.y;
+  crown.position.set(0, CROWN_RIM_Y - rimY, 0);
   return crown;
 }
 
