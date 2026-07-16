@@ -50,9 +50,18 @@ const PEPLUM_GEO = new CylinderGeometry(0.17, 0.35, 0.27, 48, 1, true);
  */
 export const PEPLUM_HIDE_HIPS_Y = 0.44;
 
-/** Pure predicate (unit-tested): peplum shows unless the hips sit chair-high. */
-export function peplumVisibleForHipsY(hipsY: number): boolean {
-  return hipsY < PEPLUM_HIDE_HIPS_Y;
+/**
+ * Re-show threshold BELOW the hide one — hysteresis (review v2-13 M2): the
+ * StandUp clip's hips curve crosses 0.44 in BOTH directions before settling,
+ * which would flicker a single-threshold predicate. Re-showing only once the
+ * hips drop under 0.41 yields one clean transition per sit/stand; idle/walk
+ * never exceed 0.3921, so a standing avatar always ends up shown.
+ */
+export const PEPLUM_SHOW_HIPS_Y = 0.41;
+
+/** Pure predicate (unit-tested): hide chair-high, re-show only clearly below. */
+export function peplumVisibleForHipsY(hipsY: number, wasVisible: boolean): boolean {
+  return hipsY < (wasVisible ? PEPLUM_HIDE_HIPS_Y : PEPLUM_SHOW_HIPS_Y);
 }
 
 /** Dev registry of live peplums (E2E asserts the seated hide/restore). */
@@ -148,9 +157,11 @@ export function attachRoyalAccessories(root: Object3D, royal: RoyalId, out: Mate
     // Seated hide: `visible` becomes a live view of the animated hips pose, so
     // the skirt vanishes exactly while the sit clips hold the chair pose — no
     // per-frame wiring in the player components, works for local AND remote.
+    // `shown` carries the hysteresis state across reads (see PEPLUM_SHOW_HIPS_Y).
+    let shown = true;
     Object.defineProperty(peplum, "visible", {
       configurable: true,
-      get: () => peplumVisibleForHipsY(hips.position.y),
+      get: () => (shown = peplumVisibleForHipsY(hips.position.y, shown)),
       set: () => {}, // pose is the single source of truth — writes are no-ops
     });
     hips.add(peplum);

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { ATLAS_GRID, ROYAL_RECIPES, type AtlasCell } from "./royalPalette";
-import { PEPLUM_HIDE_HIPS_Y, peplumVisibleForHipsY } from "./royalAttachments";
+import { PEPLUM_HIDE_HIPS_Y, PEPLUM_SHOW_HIPS_Y, peplumVisibleForHipsY } from "./royalAttachments";
 import { CHARACTERS } from "./constants";
 
 /**
@@ -109,20 +109,28 @@ describe("ROYAL_RECIPES integrity", () => {
 // The peplum hides off the ANIMATED hips height (the pose the server-driven
 // seatIndex produces). Ranges below are measured from the GLB clips by
 // scripts/dump-uv-cells.mjs and shared by all four models (same rig).
-describe("peplumVisibleForHipsY", () => {
-  it("shows the peplum through the whole idle/walk hips range", () => {
-    expect(peplumVisibleForHipsY(0.3254)).toBe(true); // Walking_A min
-    expect(peplumVisibleForHipsY(0.3921)).toBe(true); // Idle max
-    expect(peplumVisibleForHipsY(0.4057)).toBe(true); // bind pose (first frame)
+describe("peplumVisibleForHipsY (hysteresis — review v2-13 M2)", () => {
+  it("shows the peplum through the whole idle/walk hips range, from either prior state", () => {
+    expect(peplumVisibleForHipsY(0.3254, true)).toBe(true); // Walking_A min
+    expect(peplumVisibleForHipsY(0.3921, false)).toBe(true); // Idle max — re-shows under 0.41
+    expect(peplumVisibleForHipsY(0.4057, true)).toBe(true); // bind pose (first frame)
   });
 
   it("hides the peplum at the held seated pose and the stand-up peak", () => {
-    expect(peplumVisibleForHipsY(0.4813)).toBe(false); // Sit_Chair_Idle
-    expect(peplumVisibleForHipsY(0.5512)).toBe(false); // Sit_Chair_StandUp peak
+    expect(peplumVisibleForHipsY(0.4813, true)).toBe(false); // Sit_Chair_Idle
+    expect(peplumVisibleForHipsY(0.5512, false)).toBe(false); // Sit_Chair_StandUp peak
   });
 
-  it("keeps the threshold strictly between the two measured ranges", () => {
-    expect(PEPLUM_HIDE_HIPS_Y).toBeGreaterThan(0.3921);
+  it("suppresses StandUp flicker: in-band hips keep the PRIOR state", () => {
+    // The StandUp curve crosses 0.44 both ways before settling; between the two
+    // thresholds the previous visibility must win (single clean transition).
+    expect(peplumVisibleForHipsY(0.42, true)).toBe(true);
+    expect(peplumVisibleForHipsY(0.42, false)).toBe(false);
+  });
+
+  it("keeps both thresholds strictly between the measured ranges, show below hide", () => {
+    expect(PEPLUM_SHOW_HIPS_Y).toBeGreaterThan(0.3921);
+    expect(PEPLUM_SHOW_HIPS_Y).toBeLessThan(PEPLUM_HIDE_HIPS_Y);
     expect(PEPLUM_HIDE_HIPS_Y).toBeLessThan(0.4813);
   });
 });
