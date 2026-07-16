@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { MAZE_WALLS, MAZE_SEED, MAZE_WALL_T, pointInAABB } from "@caysonverse/shared/maze";
+import { ZONES } from "@caysonverse/shared/worldMap";
 import {
   LANDMARK_EMOJIS,
   PLAQUE_SIZE,
@@ -93,9 +94,23 @@ describe("mazeLandmarks — adjacent anchors never share an emoji", () => {
 });
 
 describe("mazeLandmarks — plaque quads stay flush on the wall face", () => {
-  it("each anchor yields two quads (one per wall face)", () => {
+  it("each anchor yields 1..2 quads — interior faces only (design 26 follow-up)", () => {
     const quads = plaqueQuads(MAZE_LANDMARKS);
-    expect(quads.length).toBe(MAZE_LANDMARKS.length * 2);
+    // Boundary-wall anchors drop their outward (lounge/void) face, interior
+    // anchors keep both — so strictly fewer than 2× but at least 1× (every
+    // anchor always has a corridor-side face).
+    expect(quads.length).toBeGreaterThanOrEqual(MAZE_LANDMARKS.length);
+    expect(quads.length).toBeLessThan(MAZE_LANDMARKS.length * 2);
+  });
+
+  it("generates NO quad outside the maze zone (nothing visible from the lobby)", () => {
+    const m = ZONES.maze;
+    for (const q of plaqueQuads(MAZE_LANDMARKS)) {
+      expect(q.x).toBeGreaterThanOrEqual(m.minX);
+      expect(q.x).toBeLessThanOrEqual(m.maxX);
+      expect(q.z).toBeGreaterThanOrEqual(m.minZ);
+      expect(q.z).toBeLessThanOrEqual(m.maxZ);
+    }
   });
 
   it("every plaque face is within 0.05 m of a wall face (no corridor intrusion)", () => {

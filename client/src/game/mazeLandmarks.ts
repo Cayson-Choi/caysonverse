@@ -18,6 +18,7 @@
 
 import type { AABB } from "@caysonverse/shared/collision";
 import { MAZE_WALLS, MAZE_SEED, MAZE_WALL_T } from "@caysonverse/shared/maze";
+import { ZONES } from "@caysonverse/shared/worldMap";
 
 /**
  * ~24 one-glyph landmarks (animals · fruit · symbols), each visually distinct at a
@@ -172,24 +173,40 @@ export function buildMazeLandmarks(walls: readonly AABB[], seed: number): Landma
 }
 
 /**
- * Expand anchors into render-ready plaque quads: TWO per anchor, one flush on each
- * of the wall's two faces, each rotated so its front points out into the flanking
- * corridor (the back is occluded by the 4 m-tall wall, so a corridor only ever sees
- * the correct-reading side). The face gap keeps every quad within PLAQUE_FACE_GAP
- * of the wall — never intruding into the corridor.
+ * True when a plaque face point lies inside the maze zone. Plaques are
+ * INTERIOR-ONLY (design 26 follow-up): an anchor on a boundary wall would put
+ * its outward face in the lounge (visible from the lobby — owner rejected) or
+ * in the void outside the world, so those faces are simply not generated.
+ */
+function insideMaze(x: number, z: number): boolean {
+  const m = ZONES.maze;
+  return x >= m.minX && x <= m.maxX && z >= m.minZ && z <= m.maxZ;
+}
+
+/**
+ * Expand anchors into render-ready plaque quads: one flush on each of the wall's
+ * two faces — but ONLY faces inside the maze (see insideMaze; interior walls keep
+ * both, boundary walls keep just the corridor side). Each quad is rotated so its
+ * front points out into the flanking corridor (the back is occluded by the
+ * 4 m-tall wall, so a corridor only ever sees the correct-reading side). The face
+ * gap keeps every quad within PLAQUE_FACE_GAP of the wall — never intruding into
+ * the corridor.
  */
 export function plaqueQuads(landmarks: readonly Landmark[]): PlaqueQuad[] {
   const out: PlaqueQuad[] = [];
   const off = HT + PLAQUE_FACE_GAP;
+  const push = (q: PlaqueQuad) => {
+    if (insideMaze(q.x, q.z)) out.push(q);
+  };
   for (const lm of landmarks) {
     if (lm.axis === "x") {
       // Horizontal wall → faces at ±Z. Plane +Z normal: rotY 0 faces +Z, PI faces -Z.
-      out.push({ x: lm.x, y: PLAQUE_EYE_Y, z: lm.z + off, rotationY: 0, emojiIndex: lm.emojiIndex });
-      out.push({ x: lm.x, y: PLAQUE_EYE_Y, z: lm.z - off, rotationY: Math.PI, emojiIndex: lm.emojiIndex });
+      push({ x: lm.x, y: PLAQUE_EYE_Y, z: lm.z + off, rotationY: 0, emojiIndex: lm.emojiIndex });
+      push({ x: lm.x, y: PLAQUE_EYE_Y, z: lm.z - off, rotationY: Math.PI, emojiIndex: lm.emojiIndex });
     } else {
       // Vertical wall → faces at ±X. rotY +PI/2 faces +X, -PI/2 faces -X.
-      out.push({ x: lm.x + off, y: PLAQUE_EYE_Y, z: lm.z, rotationY: Math.PI / 2, emojiIndex: lm.emojiIndex });
-      out.push({ x: lm.x - off, y: PLAQUE_EYE_Y, z: lm.z, rotationY: -Math.PI / 2, emojiIndex: lm.emojiIndex });
+      push({ x: lm.x + off, y: PLAQUE_EYE_Y, z: lm.z, rotationY: Math.PI / 2, emojiIndex: lm.emojiIndex });
+      push({ x: lm.x - off, y: PLAQUE_EYE_Y, z: lm.z, rotationY: -Math.PI / 2, emojiIndex: lm.emojiIndex });
     }
   }
   return out;
