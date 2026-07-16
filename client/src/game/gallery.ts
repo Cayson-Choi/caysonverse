@@ -159,18 +159,3 @@ export const TITLE_BANNER: WallPanel = {
   rotY: 0,
 };
 
-/**
- * "최무호 일대기 갤러리" entrance sign: on the LOUNGE side of the north wall,
- * spanning the door opening like a lintel sign (the doorway is a full-height
- * gap, so the panel doubles as its visual header). Faces +Z toward the lounge.
- */
-export const ENTRANCE_SIGN: WallPanel = {
-  x: GALLERY_DOOR_X,
-  y: 3.25,
-  z: GALLERY_ZONE.maxZ,
-  w: 4.4,
-  h: 0.75,
-  nx: 0,
-  nz: 1,
-  rotY: 0,
-};

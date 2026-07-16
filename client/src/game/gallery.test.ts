@@ -2,7 +2,6 @@ import { describe, it, expect } from "vitest";
 import {
   GALLERY_ZONE,
   GALLERY_DOOR_X,
-  GALLERY_DOOR_HALF_WIDTH,
   WALL_HEIGHT,
 } from "@caysonverse/shared/worldMap";
 import {
@@ -14,7 +13,6 @@ import {
   PHOTO_CENTER_Y,
   FRAME_MARGIN,
   TITLE_BANNER,
-  ENTRANCE_SIGN,
 } from "./gallery";
 
 /** Frame half-extent along the wall run (photo half-width + border). */
@@ -164,15 +162,4 @@ describe("gallery — title banner and entrance sign anchors", () => {
     expect(TITLE_BANNER.w).toBeLessThanOrEqual(LX - 2);
   });
 
-  it("hangs the entrance sign over the door on the LOUNGE side, facing the lounge", () => {
-    expect(ENTRANCE_SIGN.x).toBe(GALLERY_DOOR_X);
-    expect(ENTRANCE_SIGN.z).toBe(Z.maxZ); // the lounge-side face of the north wall
-    expect(ENTRANCE_SIGN.nx).toBe(0);
-    expect(ENTRANCE_SIGN.nz).toBe(1); // toward the lounge (+Z)
-    // Spans at least the door opening (reads as the door's lintel sign).
-    expect(ENTRANCE_SIGN.w).toBeGreaterThanOrEqual(2 * GALLERY_DOOR_HALF_WIDTH);
-    expect(ENTRANCE_SIGN.y + ENTRANCE_SIGN.h / 2).toBeLessThanOrEqual(WALL_HEIGHT);
-    // Above head height — never in a walking avatar's way.
-    expect(ENTRANCE_SIGN.y - ENTRANCE_SIGN.h / 2).toBeGreaterThan(2.2);
-  });
 });
