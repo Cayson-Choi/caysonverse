@@ -1,6 +1,7 @@
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { useGLTF } from "@react-three/drei";
 import { Group, Mesh, type Object3D } from "three";
+import { canvas2d, canvasTexture, roundRect } from "./spriteCanvas";
 import {
   FURNITURE,
   FURNITURE_MODELS,
@@ -20,7 +21,46 @@ const HALL_COLOR = "#36485e"; // cool slate-blue
 const MAZE_COLOR = "#2c2a40"; // dim indigo — reads as a separate, cooler room
 const WALL_COLOR = "#6a6390";
 const SCREEN_BODY = "#0b0b14";
-const SCREEN_FACE = "#7c8cff";
+
+/** Welcome slide shown on the lecture-hall screen (design 24). */
+const SCREEN_TEXT = "최무호 월드에 오신 것을 환영합니다.";
+
+/**
+ * Rasterize the welcome slide for the screen face. The canvas aspect matches
+ * the face plane (SCREEN.width*0.94 x SCREEN.height*0.9 ≈ 2.94:1) so the text
+ * is not stretched. The gradient keeps the former glow-blue "lit screen" look
+ * (#7c8cff family) so the hall reads the same from across the room; the text
+ * line shrinks to fit so any future copy change cannot overflow the frame.
+ */
+function drawWelcomeSlide(): HTMLCanvasElement {
+  const canvas = document.createElement("canvas");
+  canvas.width = 1880;
+  canvas.height = 640;
+  const ctx = canvas2d(canvas);
+
+  const grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+  grad.addColorStop(0, "#95a2ff");
+  grad.addColorStop(1, "#6272e6");
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Thin inner frame — reads as a projected slide, not a painted wall.
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.45)";
+  ctx.lineWidth = 6;
+  roundRect(ctx, 24, 24, canvas.width - 48, canvas.height - 48, 28);
+  ctx.stroke();
+
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  let size = 152;
+  do {
+    ctx.font = `700 ${size}px "Malgun Gothic", "Apple SD Gothic Neo", sans-serif`;
+    size -= 4;
+  } while (size > 40 && ctx.measureText(SCREEN_TEXT).width > canvas.width * 0.86);
+  ctx.fillStyle = "#171335";
+  ctx.fillText(SCREEN_TEXT, canvas.width / 2, canvas.height / 2);
+  return canvas;
+}
 
 const MODEL_IDS = Object.keys(FURNITURE_MODELS) as (keyof typeof FURNITURE_MODELS)[];
 const MODEL_URLS = MODEL_IDS.map((id) => `${FURNITURE_URL_BASE}${id}.glb`);
@@ -97,6 +137,9 @@ function Furniture() {
 /** Walls, ground, big screen and all furniture. Purely static geometry. */
 export function WorldMap() {
   const screenFaceX = SCREEN.x - SCREEN.depth / 2 - 0.02;
+  // One texture per mount; disposed on unmount (WorldScene remounts on reconnect).
+  const screenTexture = useMemo(() => canvasTexture(drawWelcomeSlide()), []);
+  useEffect(() => () => screenTexture.dispose(), [screenTexture]);
 
   return (
     <group>
@@ -126,14 +169,11 @@ export function WorldMap() {
           <meshStandardMaterial color={SCREEN_BODY} roughness={0.5} metalness={0.1} />
         </mesh>
       </group>
+      {/* Screen face: the welcome slide, unlit so it stays readable ("lit screen")
+          under the dim hall lighting. */}
       <mesh position={[screenFaceX, SCREEN.y, SCREEN.z]} rotation-y={-Math.PI / 2}>
         <planeGeometry args={[SCREEN.width * 0.94, SCREEN.height * 0.9]} />
-        <meshStandardMaterial
-          color={SCREEN_FACE}
-          emissive={SCREEN_FACE}
-          emissiveIntensity={0.45}
-          roughness={0.4}
-        />
+        <meshBasicMaterial map={screenTexture} toneMapped={false} />
       </mesh>
 
       <Furniture />
