@@ -1,8 +1,10 @@
 import { useEffect } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
+import type { PerspectiveCamera } from "three";
 import { CAMERA, HEAD_HEIGHT } from "./constants";
 import { normalizeAngle } from "./yaw";
 import { applyPinchZoom } from "./pinchZoom";
+import { aspectDistanceScale } from "./aspectFraming";
 import type { Orbit, Pose } from "./types";
 
 interface CameraRigProps {
@@ -34,6 +36,9 @@ function spread(pointers: Map<number, { x: number; y: number }>): number {
  * (mouse-drag / one-finger), two active pointers pinch-zoom. Joystick and UI
  * touches never reach here — those DOM overlays sit above the canvas and swallow
  * their own pointers — so dragging the stick can't rotate the camera.
+ *
+ * On portrait viewports the effective follow distance is scaled up (see
+ * `aspectFraming`) so a phone doesn't render a close-up of the avatar's back.
  */
 export function CameraRig({ pose, orbit }: CameraRigProps) {
   const camera = useThree((s) => s.camera);
@@ -110,8 +115,13 @@ export function CameraRig({ pose, orbit }: CameraRigProps) {
   }, [gl, orbit]);
 
   useFrame(() => {
-    const horiz = orbit.distance * Math.cos(orbit.pitch);
-    const height = orbit.distance * Math.sin(orbit.pitch);
+    // `orbit.distance` stays the user's zoom intent (wheel/pinch); the portrait
+    // pull-back is applied only at render time, so a phone shows the world
+    // around the avatar instead of a close-up. Landscape is scale 1 (unchanged).
+    const aspect = (camera as PerspectiveCamera).aspect;
+    const distance = orbit.distance * aspectDistanceScale(aspect);
+    const horiz = distance * Math.cos(orbit.pitch);
+    const height = distance * Math.sin(orbit.pitch);
     camera.position.set(
       pose.x + horiz * Math.sin(orbit.yaw),
       HEAD_HEIGHT + height,
