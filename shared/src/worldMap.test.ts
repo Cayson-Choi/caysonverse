@@ -156,8 +156,8 @@ describe("worldMap — walls keep the player in", () => {
 });
 
 describe("worldMap — seats (derived from the classroom placement)", () => {
-  it("derives exactly 21 seats (20 students + 1 instructor)", () => {
-    expect(SEATS.length).toBe(21);
+  it("derives exactly 20 student seats (the instructor set was removed — design 27)", () => {
+    expect(SEATS.length).toBe(20);
   });
 
   it("places every seat inside the lecture-hall zone", () => {
@@ -172,7 +172,7 @@ describe("worldMap — seats (derived from the classroom placement)", () => {
     // Empirically confirmed by the task-v2-04 screenshots; a regression that flips a
     // chair back to -PI/2 (seat facing AWAY from the screen) fails here.
     const chairs = FURNITURE.filter((p) => p.model === "chairDesk");
-    expect(chairs.length).toBe(SEATS.length); // one chair per seat (20 students + instructor)
+    expect(chairs.length).toBe(SEATS.length); // one chair per seat (20 students)
     for (const c of chairs) expect(c.rotY).toBeCloseTo(Math.PI / 2, 10);
   });
 
@@ -212,13 +212,10 @@ describe("worldMap — seats (derived from the classroom placement)", () => {
     }
   });
 
-  it("dismounts the instructor to the EAST (its desk is to the west), students to the west", () => {
-    // The 20 students dismount west (-X, aisle); the instructor's desk sits west of
-    // its chair, so its dismount must be east (+X) — proving 'away from the desk'.
-    const students = SEATS.slice(0, SEATS.length - 1);
-    for (const s of students) expect(s.standX).toBeLessThan(s.x);
-    const instructor = SEATS[SEATS.length - 1];
-    expect(instructor.standX).toBeGreaterThan(instructor.x);
+  it("dismounts every student to the WEST (each desk is to the east — the aisle side)", () => {
+    // All 20 seats are students; each desk sits east of its chair, so 'away from
+    // the desk' must resolve west (-X) for every seat.
+    for (const s of SEATS) expect(s.standX).toBeLessThan(s.x);
   });
 
   it("puts each seat on the same chairDesk footprint the furniture renders", () => {
