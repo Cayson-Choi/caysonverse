@@ -15,7 +15,7 @@
  */
 
 import type { AABB } from "@caysonverse/shared/collision";
-import { GALLERY_ZONE, GALLERY_DOOR_X } from "@caysonverse/shared/worldMap";
+import { GALLERY_ZONE } from "@caysonverse/shared/worldMap";
 
 /** The nine milestone ages, in life order — one committed jpg each. */
 export const PORTRAIT_AGES: readonly number[] = [1, 4, 17, 28, 40, 60, 70, 80, 100];
