@@ -8,11 +8,13 @@ import { resolveCollision } from "@caysonverse/shared/collision";
 import { readIntent, worldDirection } from "./input";
 import type { Intent } from "./input";
 import { guardMoveKeys, isUiCaptured } from "./uiCapture";
+import { viewState } from "./viewState";
+import { HIDE_BLEND } from "./viewMode";
 import { cloneTinted } from "./avatar";
 import { BlobShadow } from "./BlobShadow";
 import { useSpeechBubble } from "./useSpeechBubble";
 import { useEmoji } from "./useEmoji";
-import { stepYaw } from "./yaw";
+import { normalizeAngle, stepYaw } from "./yaw";
 import { createMoveSender } from "./moveSender";
 import { installDebugHook } from "./debug";
 import { ANIM_FADE, CHARACTERS, CLIP, CROWN_MODEL, MODEL_FACING_OFFSET, TURN_SPEED } from "./constants";
@@ -104,7 +106,12 @@ export function LocalPlayer({
   useEffect(() => {
     const idle = actions[CLIP.idle];
     idle?.reset().fadeIn(0).play();
-    const removeHook = installDebugHook(() => pose, () => orbit, () => seat.index);
+    const removeHook = installDebugHook(
+      () => pose,
+      () => orbit,
+      () => seat.index,
+      () => groupRef.current?.visible ?? true,
+    );
     return () => {
       removeHook();
       actions[CLIP.idle]?.stop();
@@ -132,6 +139,15 @@ export function LocalPlayer({
   useFrame((_state, delta) => {
     const group = groupRef.current;
     if (!group) return;
+
+    // Own-avatar hiding (design 19): in first-person the LOCAL avatar GROUP is
+    // hidden past the mid-blend point — body, crown, AND blob shadow together
+    // (all children of this group), plus the own speech-bubble / emoji sprites
+    // (also parented here), which is correct: you don't see your own bubble in FP.
+    // Set on EVERY path (incl. seated below) and restored automatically on exit /
+    // reconnect remount (resetViewMode zeroes the blend). Remote avatars, seats,
+    // and the maze are untouched — they live in other groups.
+    group.visible = viewState.blend < HIDE_BLEND;
 
     // Focus guard: while the chat input owns keyboard input — OR while the
     // resilience driver is reconnecting (world frozen behind the overlay) —
@@ -213,8 +229,12 @@ export function LocalPlayer({
       return;
     }
 
+    // Movement stays camera-relative off the ACTIVE view yaw: the TP orbit yaw in
+    // third-person, the FP look yaw in first-person (design 19).
+    const inFp = viewState.mode === "fp";
+    const activeYaw = inFp ? viewState.fpYaw : orbit.yaw;
     if (moving) {
-      const dir = worldDirection(intent, orbit.yaw);
+      const dir = worldDirection(intent, activeYaw);
       // Slide the body (circle-vs-AABB) along walls/furniture from the SAME
       // OBSTACLES the server validates against, then keep the centre a radius
       // inside WORLD_BOUNDS as a backstop.
@@ -228,9 +248,17 @@ export function LocalPlayer({
       );
       pose.x = clamp(next.x, WORLD_BOUNDS.minX + PLAYER_RADIUS, WORLD_BOUNDS.maxX - PLAYER_RADIUS);
       pose.z = clamp(next.z, WORLD_BOUNDS.minZ + PLAYER_RADIUS, WORLD_BOUNDS.maxZ - PLAYER_RADIUS);
-      const targetYaw = Math.atan2(dir.x, dir.z);
-      pose.yaw = stepYaw(pose.yaw, targetYaw, TURN_SPEED * delta);
+      if (!inFp) {
+        // TP: the body turns smoothly toward the movement direction.
+        const targetYaw = Math.atan2(dir.x, dir.z);
+        pose.yaw = stepYaw(pose.yaw, targetYaw, TURN_SPEED * delta);
+      }
     }
+    // FP: the body yaw follows the look direction DIRECTLY (no TURN_SPEED lag),
+    // moving or standing. Network semantics are unchanged — yaw still reaches
+    // others only via move messages (moveSender fires on movement); there is NO
+    // idle-yaw streaming, so rotating the view while standing sends nothing.
+    if (inFp) pose.yaw = normalizeAngle(viewState.fpYaw);
 
     group.position.set(pose.x, 0, pose.z);
     group.rotation.y = pose.yaw + MODEL_FACING_OFFSET;

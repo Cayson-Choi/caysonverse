@@ -73,4 +73,18 @@ describe("worldDirection", () => {
     expect(right.x).toBeCloseTo(0, 6);
     expect(right.z).toBeCloseTo(-1, 6);
   });
+
+  it("uses the ACTIVE view yaw — first-person walks along the FP look, not the TP orbit", () => {
+    // v2 Task 5: movement stays camera-relative but the caller feeds the active
+    // yaw — orbit.yaw in TP, fpYaw in FP. Same pure function, different yaw ⇒
+    // "forward" tracks whichever view is live. Here the TP orbit sits at yaw 0
+    // while the FP look points at +PI/2; forward must follow the FP look.
+    const tpForward = worldDirection({ forward: 1, right: 0 }, 0);
+    const fpForward = worldDirection({ forward: 1, right: 0 }, Math.PI / 2);
+    expect(tpForward.x).toBeCloseTo(0, 6);
+    expect(tpForward.z).toBeCloseTo(-1, 6);
+    // FP look yaw +PI/2 ⇒ forward is -X (into the FP view direction).
+    expect(fpForward.x).toBeCloseTo(-1, 6);
+    expect(fpForward.z).toBeCloseTo(0, 6);
+  });
 });

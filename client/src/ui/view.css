@@ -1,0 +1,40 @@
+/* First-person 👁 toggle button (touch only). Rendered by ViewToggle, which
+   returns null on non-touch devices, so only the touch geometry below matters —
+   the base rule is kept for parity with the other overlay buttons. */
+.cv-view-btn {
+  position: fixed;
+  right: 16px;
+  bottom: 24px;
+  z-index: 22;
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  font-size: 22px;
+  line-height: 1;
+  color: #f2eeff;
+  background: rgba(18, 14, 36, 0.72);
+  border: 1px solid rgba(150, 130, 220, 0.35);
+  border-radius: 12px;
+  cursor: pointer;
+  backdrop-filter: blur(6px);
+  transition: transform 0.1s ease, background 0.15s ease, border-color 0.15s ease;
+}
+
+/* Touch: ≥44px, safe-area aware, parked ABOVE the emoji palette cluster
+   (which wraps into ~2 rows in the bottom-right) so the two never overlap. */
+.cv-touch .cv-view-btn {
+  right: 12px;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 132px);
+  width: 48px;
+  height: 48px;
+  touch-action: manipulation;
+}
+
+.cv-view-btn:active,
+.cv-view-btn.is-fp {
+  background: rgba(96, 74, 166, 0.72);
+  border-color: rgba(170, 150, 255, 0.7);
+}

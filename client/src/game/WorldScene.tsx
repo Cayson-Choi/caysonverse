@@ -11,12 +11,14 @@ import { Chat } from "../ui/Chat";
 import { EmojiPalette } from "../ui/EmojiPalette";
 import { TouchJoystick } from "../ui/TouchJoystick";
 import { SitPrompt } from "../ui/SitPrompt";
+import { ViewToggle } from "../ui/ViewToggle";
 import { Banner } from "../ui/Banner";
 import { AdminPanel } from "../ui/AdminPanel";
 import { getRoom } from "../net/connection";
 import { isTouchDevice } from "../device";
 import { getRenderProfile } from "./renderProfile";
 import { setUiCaptured } from "./uiCapture";
+import { resetViewMode, toggleViewMode } from "./viewState";
 import { useAppStore } from "../stores/appStore";
 import type { Identity } from "../stores/appStore";
 import type { Intent } from "./input";
@@ -57,10 +59,15 @@ export function WorldScene({ identity }: { identity: Identity }) {
   const seat = useRef<SeatState>({ index: -1 }).current;
 
   // Belt-and-braces: every fresh world (initial join AND each reconnect remount,
-  // since this scene is keyed by connectionEpoch) starts with movement UNcaptured.
-  // The per-component unmount cleanups already release the flag, but resetting on
-  // mount guarantees a stranded capture can never survive into a new world.
-  useEffect(() => setUiCaptured(false), []);
+  // since this scene is keyed by connectionEpoch) starts with movement UNcaptured
+  // AND in third-person with the own avatar visible. The per-component unmount
+  // cleanups already release the capture flag, but resetting on mount guarantees a
+  // stranded capture — or a stuck FP with the avatar hidden — can never survive
+  // into a new world (design 19: view mode does not persist across a reconnect).
+  useEffect(() => {
+    setUiCaptured(false);
+    resetViewMode();
+  }, []);
 
   // Static per-session render budget — chosen once at Canvas creation from the
   // touch verdict (no runtime switching): dpr cap, real vs blob shadows.
@@ -132,6 +139,9 @@ export function WorldScene({ identity }: { identity: Identity }) {
       <Banner />
       <Chat />
       <EmojiPalette />
+      {/* First-person 👁 toggle — touch only (desktop uses V / wheel). Seeds yaw
+          from the shared orbit so the world doesn't spin on toggle. */}
+      <ViewToggle onToggle={() => toggleViewMode(orbit)} />
       {/* Sit/stand prompt: desktop hint + touch button + occupied-seat notice. */}
       <SitPrompt pose={pose} seat={seat} />
       {/* Virtual joystick — touch devices only. Keyboard stays active regardless. */}

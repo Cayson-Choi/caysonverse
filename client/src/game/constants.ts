@@ -160,6 +160,14 @@ export const TURN_SPEED = 12;
 /** Approximate character head height (m) — camera look-at target and eye level. */
 export const HEAD_HEIGHT = 1.4;
 
+/**
+ * First-person camera eye height (m). A touch above HEAD_HEIGHT so the FP view
+ * sits at the eye level of the (hidden) own avatar rather than inside its head.
+ * The whole own group is hidden in FP, so this can't clip; tuned for a natural
+ * standing eye-line. Seated FP keeps this same height (design 19 — simplest).
+ */
+export const FP_EYE_HEIGHT = HEAD_HEIGHT + 0.1;
+
 /** drei KeyboardControls action names (typed control set). */
 export type MoveControl = "forward" | "backward" | "left" | "right";
 

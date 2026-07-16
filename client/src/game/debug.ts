@@ -3,6 +3,7 @@ import { getRemotes } from "./remoteStore";
 import { getRoom, sendSit, sendStand } from "../net/connection";
 import { bubbleRegistry } from "./bubbleRegistry";
 import { emojiRegistry } from "./emojiRegistry";
+import { viewState, type ViewState } from "./viewState";
 
 /** Non-consented close code (MAY_TRY_RECONNECT) used by the dev drop hook. */
 const DEV_DROP_CODE = 4010;
@@ -48,6 +49,20 @@ declare global {
       getPos: () => PoseView;
       /** The live third-person camera orbit (yaw/pitch/distance). */
       getOrbit: () => Orbit;
+      /**
+       * Whether the LOCAL avatar group is currently rendered. False in
+       * first-person once the blend passes the hide threshold (own body + crown +
+       * blob shadow hidden together). Lets the FP E2E assert own-avatar hiding
+       * without reaching into the three scene graph.
+       */
+      getSelfVisible: () => boolean;
+      /**
+       * The live view state (mode / blend / fp yaw+pitch), read straight from the
+       * module mutable — updated SYNCHRONOUSLY by the toggle + drag handlers, so
+       * (unlike the rAF-published __cvCamera) it is truthful even on a background
+       * tab whose requestAnimationFrame is throttled.
+       */
+      getView: () => ViewState;
       /** Every OTHER connected player's newest known position + seatIndex. */
       getRemotes: () => RemoteView[];
       /** Every currently-visible speech bubble (sid + text). */
@@ -83,11 +98,14 @@ export function installDebugHook(
   getPose: () => Pose,
   getOrbit: () => Orbit,
   getSeatIndex: () => number,
+  getSelfVisible: () => boolean,
 ): () => void {
   if (!import.meta.env.DEV) return () => {};
   window.__cv = {
     getPos: () => ({ ...getPose(), seatIndex: getSeatIndex() }),
     getOrbit: () => ({ ...getOrbit() }),
+    getSelfVisible: () => getSelfVisible(),
+    getView: () => ({ ...viewState }),
     getRemotes: () => getRemotes(),
     getBubbles: () =>
       bubbleRegistry.snapshot(performance.now()).map((b) => ({ sid: b.sid, text: b.text })),
