@@ -23,14 +23,23 @@
   transition: transform 0.1s ease, background 0.15s ease, border-color 0.15s ease;
 }
 
-/* Touch: ≥44px, safe-area aware, parked ABOVE the emoji palette cluster
-   (which wraps into ~2 rows in the bottom-right) so the two never overlap. */
+/* Touch: ≥44px, safe-area aware. Slot regime (design 22): the toggles live in a
+   RIGHT-MIDDLE column ABOVE the chat input row (input top edge is at ~238px from
+   the bottom: 190px offset + ~48px bar), which itself clears the 2-col emoji
+   palette (top at 174px). 246px keeps an 8px gap to the input — the old 132px
+   collided with the input's right end on a 390px-wide screen. */
 .cv-touch .cv-view-btn {
   right: 12px;
-  bottom: calc(env(safe-area-inset-bottom, 0px) + 132px);
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 246px);
   width: 48px;
   height: 48px;
   touch-action: manipulation;
+}
+
+/* Chat input focused: hide, so the keyboard-lifted input bar can never land on
+   it (design 22 — same dodge as the emoji palette). */
+.cv-touch.cv-chat-focus .cv-view-btn {
+  display: none;
 }
 
 .cv-view-btn:active,
@@ -63,14 +72,20 @@
   transition: transform 0.1s ease, background 0.15s ease, border-color 0.15s ease;
 }
 
-/* Touch: ≥44px, safe-area aware, one slot above the 👁 button (which sits at
-   132px), so the two never overlap and both clear the emoji palette. */
+/* Touch: ≥44px, safe-area aware, one slot (48px + 8px gap) above the 👁 button
+   (at 246px), so the right-middle column stacks 🗺 / 👁 clear of the chat input
+   row below and of each other. */
 .cv-touch .cv-overview-btn {
   right: 12px;
-  bottom: calc(env(safe-area-inset-bottom, 0px) + 188px);
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 302px);
   width: 48px;
   height: 48px;
   touch-action: manipulation;
+}
+
+/* Chat input focused: hide (same dodge as 👁). */
+.cv-touch.cv-chat-focus .cv-overview-btn {
+  display: none;
 }
 
 .cv-overview-btn:active,

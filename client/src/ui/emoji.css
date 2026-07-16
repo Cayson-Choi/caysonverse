@@ -37,12 +37,15 @@
   background: rgba(96, 74, 166, 0.55);
 }
 
-/* ── Touch devices ── ≥44px targets, thumb spacing, wrap into a corner cluster,
-   respect the bottom safe-area, and sit clear of the bottom-left joystick. */
+/* ── Touch devices ── ≥44px targets, thumb spacing, respect the bottom
+   safe-area. Slot regime (design 22): the palette is the BOTTOM-RIGHT slot, a
+   2-col × 3-row stack hugging the right edge (width 102px = 2×46 + 10 gap →
+   x ≥ ~276 on a 390px screen). Keeping it this narrow is what guarantees the
+   sit/stand button (left of it, x ≤ ~270) can never overlap it. */
 .cv-touch .cv-emoji-palette {
   right: 12px;
   bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
-  width: 158px;
+  width: 102px;
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: 10px;
@@ -53,4 +56,10 @@
   height: 46px;
   font-size: 22px;
   touch-action: manipulation;
+}
+
+/* Chat input focused (soft keyboard up): the palette leaves the screen so the
+   keyboard-lifted input bar can never land on it (design 22 — documented dodge). */
+.cv-touch.cv-chat-focus .cv-emoji-palette {
+  display: none;
 }

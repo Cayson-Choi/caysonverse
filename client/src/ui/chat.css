@@ -120,11 +120,22 @@
   touch-action: manipulation;
 }
 
-/* Raise the input clear of the joystick (bottom-left) + emoji (bottom-right)
-   cluster; a 16px field stops iOS auto-zoom on focus, and floating it here keeps
-   it visible above the on-screen keyboard. Respect the bottom safe-area inset. */
+/* Slot regime (design 22): the input is the full-width CENTRE row, wholly above
+   the bottom clusters — joystick top ≈ 152px (24 + 128) and the 2-col emoji
+   palette top ≈ 174px (16 + 3×46 + 2×10) — so 190px clears both; everything
+   else that used to share this band (👁/🗺 toggles) moved above it (view.css).
+   A 16px font stops iOS auto-zoom on focus.
+
+   Soft keyboard: --cv-kbd-inset is the strip of layout viewport the keyboard
+   covers, measured from visualViewport by ChatInput while focused (0 otherwise).
+   max() lets whichever is higher win: keyboard up → the bar floats 12px above
+   the keyboard; keyboard down (or a browser that resizes the layout viewport,
+   where the inset computes ~0) → the normal 190px slot, no double lift. */
 .cv-touch .cv-chat-input {
-  bottom: calc(env(safe-area-inset-bottom, 0px) + 158px);
+  bottom: max(
+    calc(env(safe-area-inset-bottom, 0px) + 190px),
+    calc(var(--cv-kbd-inset, 0px) + 12px)
+  );
   width: min(560px, calc(100vw - 24px));
 }
 

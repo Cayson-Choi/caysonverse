@@ -37,7 +37,11 @@
   box-shadow: 0 1px 0 rgba(90, 70, 160, 0.6);
 }
 
-/* Touch button: a big tap target beside the bottom-left joystick zone. */
+/* Touch button: a big tap target beside the bottom-left joystick zone.
+   Slot regime (design 22): the bottom band is joystick (x ≤ 148) | sit button
+   (x 164..~270, "일어서기" is the widest label) | 2-col emoji palette (x ≥ 276
+   on 390px) — three fixed, disjoint x-ranges, so the button can never land on
+   the palette (the old 3-col palette started at x=220 and overlapped it). */
 .cv-sit-btn {
   position: fixed;
   left: calc(env(safe-area-inset-left, 0px) + 164px);
@@ -59,4 +63,10 @@
 
 .cv-sit-btn:active {
   background: rgba(120, 96, 200, 0.85);
+}
+
+/* Chat input focused: hide, so the keyboard-lifted input bar can never land on
+   it (design 22 — same dodge as the emoji palette / view toggles). */
+.cv-touch.cv-chat-focus .cv-sit-btn {
+  display: none;
 }

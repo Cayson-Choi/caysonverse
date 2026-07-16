@@ -21,8 +21,13 @@ interface CachedTag {
 
 const cache = new Map<string, CachedTag>();
 
-/** World-space height (m) of the sprite; width follows the text aspect ratio. */
-const SPRITE_HEIGHT = 0.42;
+/**
+ * World-space height (m) of the sprite; width follows the text aspect ratio.
+ * 0.28 = 2/3 of the original 0.42 (design 22): the nametag steps back so the
+ * speech bubble reads as the visual protagonist. Only the WORLD scale shrinks —
+ * the canvas px resolution (fontSize below) is untouched, so no blur.
+ */
+const SPRITE_HEIGHT = 0.28;
 
 /** Rasterize the nickname onto a snug canvas with a subtle rounded backdrop. */
 function renderCanvas(nickname: string): { canvas: HTMLCanvasElement; aspect: number } {
