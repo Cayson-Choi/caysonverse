@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
+import { Raycaster, Vector2 } from "three";
 import type { Fog, PerspectiveCamera } from "three";
 import { WORLD_BOUNDS } from "@caysonverse/shared/constants";
 import { CAMERA, FOG_FAR, FOG_NEAR, FP_EYE_HEIGHT, HEAD_HEIGHT } from "./constants";
@@ -20,6 +21,7 @@ import {
   overviewPanDelta,
 } from "./overview";
 import { isUiCaptured } from "./uiCapture";
+import { DRAG_SIGN, isClick, groundPoint, setClickTarget, getClickTarget } from "./clickMove";
 import { aspectDistanceScale } from "./aspectFraming";
 import {
   isInMaze,
@@ -82,6 +84,12 @@ function spread(pointers: Map<number, { x: number; y: number }>): number {
  * uiCapture so chat typing never toggles), a wheel notch past minDistance, an
  * equivalent pinch, and the 👁 touch button (WorldScene → toggleViewMode).
  *
+ * Pointer input (design 29): both look-drags (TP orbit, FP look) consume their
+ * deltas through DRAG_SIGN — the single inversion switch — while the overview
+ * pan and pinch zoom stay untouched. A press that ends within isClick's px/ms
+ * budget is a floor CLICK instead: raycast to y=0 and handed to clickMove as
+ * the auto-move target (LocalPlayer steers; overview clicks are ignored).
+ *
  * All per-frame state lives in the shared `orbit` object and the module `viewState`
  * (both mutated in place) — never React state.
  *
@@ -108,8 +116,12 @@ export function CameraRig({ pose, orbit }: CameraRigProps) {
   useEffect(() => {
     if (!import.meta.env.DEV) return;
     window.__cvCamera = () => ({ ...cameraProbe });
+    // The live click-move target (design 29) — lets the E2E assert retarget /
+    // stuck-release without inferring it from position traces alone.
+    window.__cvClickTarget = () => getClickTarget();
     return () => {
       delete window.__cvCamera;
+      delete window.__cvClickTarget;
     };
   }, []);
 
@@ -117,9 +129,21 @@ export function CameraRig({ pose, orbit }: CameraRigProps) {
     const el = gl.domElement;
     const pointers = new Map<number, { x: number; y: number }>();
     let pinchPrev = 0; // previous two-finger spread (px); 0 while not pinching
+    // Click-move candidate (design 29): the down point/time of a SINGLE primary-
+    // button press on the canvas. A second pointer (pinch) or a non-primary
+    // button voids it; on release, only a press that passes isClick (< ~6px,
+    // < ~400ms) becomes a floor click — anything longer stays a pure look-drag.
+    let clickStart: { id: number; x: number; y: number; t: number } | null = null;
+    // Reused per mount for the floor raycast (never per event — no GC churn).
+    const raycaster = new Raycaster();
+    const ndc = new Vector2();
 
     const onDown = (e: PointerEvent) => {
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      clickStart =
+        e.button === 0 && pointers.size === 1
+          ? { id: e.pointerId, x: e.clientX, y: e.clientY, t: performance.now() }
+          : null;
       try {
         el.setPointerCapture(e.pointerId);
       } catch {
@@ -154,8 +178,11 @@ export function CameraRig({ pose, orbit }: CameraRigProps) {
         return;
       }
       // Single pointer → drive the ACTIVE view. Overview: PAN the centre (grab-
-      // style, clamped to the world). FP: rotate the separate fp yaw/pitch (wider
+      // style, clamped to the world — design 29 keeps the pan UNinverted, it is
+      // "grab the map and drag"). FP: rotate the separate fp yaw/pitch (wider
       // clamp) AND flag the drag so the look-follow pauses. TP: rotate the orbit.
+      // The FP/TP look drags consume their deltas through DRAG_SIGN — the single
+      // inversion switch of design 29, both axes, applied nowhere else.
       if (viewState.mode === "ov") {
         const cam = camera as PerspectiveCamera;
         const fovRad = (cam.fov * Math.PI) / 180;
@@ -169,15 +196,45 @@ export function CameraRig({ pose, orbit }: CameraRigProps) {
         viewState.ovCenterX = c.x;
         viewState.ovCenterZ = c.z;
       } else if (viewState.mode === "fp") {
-        viewState.fpYaw = normalizeAngle(viewState.fpYaw - dx * CAMERA.dragSpeed);
-        viewState.fpPitch = clampFpPitch(viewState.fpPitch + dy * CAMERA.dragSpeed);
+        viewState.fpYaw = normalizeAngle(viewState.fpYaw - DRAG_SIGN * dx * CAMERA.dragSpeed);
+        viewState.fpPitch = clampFpPitch(viewState.fpPitch + DRAG_SIGN * dy * CAMERA.dragSpeed);
         viewState.dragging = true; // drag look-control → pause the auto-follow
       } else {
-        orbit.yaw = normalizeAngle(orbit.yaw - dx * CAMERA.dragSpeed);
-        orbit.pitch = clamp(orbit.pitch + dy * CAMERA.dragSpeed, CAMERA.minPitch, CAMERA.maxPitch);
+        orbit.yaw = normalizeAngle(orbit.yaw - DRAG_SIGN * dx * CAMERA.dragSpeed);
+        orbit.pitch = clamp(
+          orbit.pitch + DRAG_SIGN * dy * CAMERA.dragSpeed,
+          CAMERA.minPitch,
+          CAMERA.maxPitch,
+        );
       }
     };
     const onUp = (e: PointerEvent) => {
+      // Click-move (design 29): a released candidate that stayed a "click"
+      // (short + still + not cancelled) raycasts onto the y=0 floor and becomes
+      // the auto-move target. Skipped in overview (no overview click-move —
+      // YAGNI, documented) and inert for clicks on DOM UI, which never reach
+      // these canvas-only down handlers. Runs in TP and FP alike (FP walk then
+      // couples with the look-follow naturally).
+      if (clickStart && clickStart.id === e.pointerId) {
+        const start = clickStart;
+        clickStart = null;
+        if (
+          e.type === "pointerup" && // a pointercancel is never a click
+          viewState.mode !== "ov" &&
+          isClick(e.clientX - start.x, e.clientY - start.y, performance.now() - start.t)
+        ) {
+          const rect = el.getBoundingClientRect();
+          ndc.set(
+            ((e.clientX - rect.left) / rect.width) * 2 - 1,
+            -(((e.clientY - rect.top) / rect.height) * 2 - 1),
+          );
+          raycaster.setFromCamera(ndc, camera);
+          const o = raycaster.ray.origin;
+          const d = raycaster.ray.direction;
+          const point = groundPoint(o.x, o.y, o.z, d.x, d.y, d.z);
+          if (point) setClickTarget(point.x, point.z); // 하늘 클릭은 무시
+        }
+      }
       pointers.delete(e.pointerId);
       if (pointers.size < 2) pinchPrev = 0;
       // Last pointer released → the FP look-follow may resume.

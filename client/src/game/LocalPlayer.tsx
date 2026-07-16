@@ -7,6 +7,13 @@ import { OBSTACLES, PLAYER_RADIUS, SEATS } from "@caysonverse/shared/worldMap";
 import { resolveCollision } from "@caysonverse/shared/collision";
 import { readIntent, worldDirection } from "./input";
 import type { Intent } from "./input";
+import {
+  stepClickMove,
+  dirToIntent,
+  clearClickTarget,
+  getClickTarget,
+  resetClickMove,
+} from "./clickMove";
 import { guardMoveKeys, isUiCaptured } from "./uiCapture";
 import { viewState } from "./viewState";
 import { HIDE_BLEND, OV_VIS_BLEND, stepFollowYaw } from "./viewMode";
@@ -125,6 +132,14 @@ export function LocalPlayer({
 
   const sender = useRef(createMoveSender(sendMove)).current;
 
+  // 클릭 자동 이동 리셋 (design 29 (e)): 이 컴포넌트는 접속 세대(epoch)마다
+  // 리마운트되므로, 마운트/언마운트 양쪽에서 target을 비워 재접속·월드 교체
+  // 후에 이전 세계의 목표 지점으로 걸어가는 일이 없게 한다.
+  useEffect(() => {
+    resetClickMove();
+    return () => resetClickMove();
+  }, []);
+
   /** Play a one-shot clip (clamped on its last frame); returns its duration (s). */
   function playOnce(name: string): number {
     const action = actions[name];
@@ -168,7 +183,14 @@ export function LocalPlayer({
           forward: keyIntent.forward + moveInput.forward,
           right: keyIntent.right + moveInput.right,
         };
-    const moving = intent.forward !== 0 || intent.right !== 0;
+
+    // Movement stays camera-relative off the ACTIVE view yaw: the TP orbit yaw in
+    // third-person, the FP look yaw in first-person (design 19), or a FIXED yaw 0
+    // in overview — so W = -Z (north) on the screen regardless of the free pan
+    // (design 20). The overview camera itself never follows the player.
+    const inFp = viewState.mode === "fp";
+    const inOv = viewState.mode === "ov";
+    const activeYaw = inFp ? viewState.fpYaw : inOv ? 0 : orbit.yaw;
 
     // Seat state is server-authoritative (schema). LocalPlayer only CONFIRMS the
     // transition here — it never self-declares seated.
@@ -176,8 +198,30 @@ export function LocalPlayer({
     const seated = seatIndex >= 0;
     const wasSeated = prevSeatRef.current >= 0;
 
+    // 클릭 자동 이동 (design 29): 수동 이동 입력(키/조이스틱/D-패드)이 하나라도
+    // 있으면 target을 즉시 버리고(자동 이동은 수동 입력에 항상 양보), 없으면
+    // target 방향 단위벡터를 카메라 기준 intent로 되투영(dirToIntent)해 합성한다
+    // — 아래의 기존 worldDirection → 충돌 슬라이드 → moveSender 경로를 그대로
+    // 통과하므로 이동 코드 포크가 없다(일반 이동과 동일 속도·검증). 도착·진행
+    // 불가(벽) 해제는 stepClickMove가 스스로 판정하고, 착석 중에는 조향하지
+    // 않는다(착석 분기가 "이동 입력=기립"으로 위임 — 아래).
+    const manual = intent.forward !== 0 || intent.right !== 0;
+    if (manual) {
+      clearClickTarget();
+    } else if (!suspended && !seated) {
+      const autoDir = stepClickMove(pose.x, pose.z, delta);
+      if (autoDir) {
+        const auto = dirToIntent(autoDir, activeYaw);
+        intent.forward = auto.forward;
+        intent.right = auto.right;
+      }
+    }
+    const moving = intent.forward !== 0 || intent.right !== 0;
+
     if (seated && !wasSeated) {
       // Sit confirmed: snap onto the seat, stop locomotion, play Down → hold Idle.
+      // 진행 중이던 클릭 자동 이동도 여기서 해제된다 (design 29 (e) 착석 완료).
+      clearClickTarget();
       const s = SEATS[seatIndex];
       pose.x = s.x;
       pose.z = s.z;
@@ -221,9 +265,12 @@ export function LocalPlayer({
     }
 
     // Seated → fully server-positioned: no integration, no moveSender. Standing up
-    // is explicit — any movement intent (keys or joystick) sends ONE Stand.
+    // is explicit — any movement intent (keys or joystick) sends ONE Stand. 착석
+    // 중 바닥 클릭도 같은 규칙에 위임한다(design 29 착석 상호작용): target이
+    // 잡히면 Stand 한 번을 보내고 target은 남겨 두어, 기립이 확정되면 자동
+    // 이동이 그 지점으로 이어진다 — "자동 기립 후 이동" 채택.
     if (seated) {
-      if (moving && !standRequestedRef.current) {
+      if ((moving || getClickTarget() !== null) && !standRequestedRef.current) {
         sendStand();
         standRequestedRef.current = true;
       }
@@ -232,13 +279,6 @@ export function LocalPlayer({
       return;
     }
 
-    // Movement stays camera-relative off the ACTIVE view yaw: the TP orbit yaw in
-    // third-person, the FP look yaw in first-person (design 19), or a FIXED yaw 0
-    // in overview — so W = -Z (north) on the screen regardless of the free pan
-    // (design 20). The overview camera itself never follows the player.
-    const inFp = viewState.mode === "fp";
-    const inOv = viewState.mode === "ov";
-    const activeYaw = inFp ? viewState.fpYaw : inOv ? 0 : orbit.yaw;
     if (moving) {
       const dir = worldDirection(intent, activeYaw);
       // Slide the body (circle-vs-AABB) along walls/furniture from the SAME
