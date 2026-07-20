@@ -249,7 +249,9 @@ function classroomSeating(): Furniture[] {
  */
 export const FURNITURE: readonly Furniture[] = [
   // ── Lounge (x < 0) ──
-  { model: "loungeSofa", x: -15, z: -7, rotY: 0 }, // faces spawn; the E2E collision target
+  // (The old lone sofa at (-15,-7) and the long sofa by the west wall were
+  // removed on the owner's request — they crowded the gallery and maze doors.
+  // The collision-simulation tests now target the central set's north sofa.)
   // Central conversation set (발주자 요청 "로비 가운데에 이쁘게"): a symmetric
   // four-sofa ring around a rugged coffee table, centred on the spawn column at
   // (-15, 6.2). Every seat faces the table. The centre sits SOUTH of the spawn
@@ -264,7 +266,6 @@ export const FURNITURE: readonly Furniture[] = [
   { model: "loungeSofa", x: -12.2, z: 6.2, rotY: -HALF_PI }, // east seat, faces -X
   { model: "pottedPlant", x: -18.2, z: 3.2, rotY: 0 }, // NW accent of the set
   { model: "pottedPlant", x: -11.8, z: 9.2, rotY: 0 }, // SE accent of the set
-  { model: "loungeSofaLong", x: -26, z: 0, rotY: HALF_PI }, // against the west wall
   { model: "lampSquareFloor", x: -28, z: 10, rotY: 0 }, // corner lamp (non-solid)
   { model: "pottedPlant", x: -28, z: -14, rotY: 0 }, // SW corner greenery
   { model: "pottedPlant", x: -3, z: 6, rotY: 0 }, // frames the door (lounge side, north)

@@ -285,7 +285,7 @@ describe("worldMap — gallery zone integration (v2-11 north extension, design 2
   });
 
   it("connects spawn → gallery centre along a clear walked route (door included)", () => {
-    // Legs mirror the E2E walk: west around the E2E sofa (-15,-7), north to the
+    // Legs mirror the E2E walk: west of the spawn column, north to the
     // wall, over to the door axis, straight through the 2.5 m opening, then deep
     // into the room. Every sampled body position must be walkable.
     const legs: Array<[number, number, number, number]> = [
@@ -492,23 +492,25 @@ describe("worldMap — wall-seal invariant (north extension opens NO gap into th
   });
 });
 
-describe("worldMap — E2E sofa collision (deterministic simulation)", () => {
-  it("stops a player walking north into the test sofa OUTSIDE its footprint", () => {
-    const sofa = FURNITURE.find((p) => p.model === "loungeSofa" && p.x === -15 && p.z === -7)!;
+describe("worldMap — sofa collision (deterministic simulation)", () => {
+  it("stops a player walking south into the central set's north sofa OUTSIDE its footprint", () => {
+    // The central conversation set's north seat (design 32) — directly south of
+    // the spawn, so holding 's' from spawn walks straight into its back.
+    const sofa = FURNITURE.find((p) => p.model === "loungeSofa" && p.x === -15 && p.z === 3.5)!;
     const footprint = furnitureObstacle(sofa);
 
-    // Simulate the E2E: hold 'w' (moves -Z) from spawn for ~3 s at 4 m/s, 50 ms steps.
+    // Simulate the E2E: hold 's' (moves +Z) from spawn for ~3 s at 4 m/s, 50 ms steps.
     let pos: { x: number; z: number } = { x: SPAWN_POINT.x, z: SPAWN_POINT.z };
     for (let i = 0; i < 60; i++) {
-      pos = resolveCollision(pos.x, pos.z, 0, -4 * 0.05, PLAYER_RADIUS, OBSTACLES);
+      pos = resolveCollision(pos.x, pos.z, 0, 4 * 0.05, PLAYER_RADIUS, OBSTACLES);
     }
 
     // Walked a real distance toward the sofa …
-    expect(pos.z).toBeLessThan(-5);
-    // … but stopped SOUTH of (outside) the footprint — never passed through.
-    expect(pos.z).toBeGreaterThan(footprint.maxZ);
+    expect(pos.z).toBeGreaterThan(1.5);
+    // … but stopped NORTH of (outside) the footprint — never passed through.
+    expect(pos.z).toBeLessThan(footprint.minZ);
     expect(inside(footprint, pos.x, pos.z)).toBe(false);
     // and it is resting ~one radius off the sofa face (proves collision stopped it).
-    expect(pos.z).toBeCloseTo(footprint.maxZ + PLAYER_RADIUS, 6);
+    expect(pos.z).toBeCloseTo(footprint.minZ - PLAYER_RADIUS, 6);
   });
 });

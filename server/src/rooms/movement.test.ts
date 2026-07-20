@@ -120,8 +120,8 @@ describe("validateMove — bounds clamp", () => {
 
 describe("validateMove — obstacle drop", () => {
   it("drops a move whose target lands inside furniture", () => {
-    // The E2E test sofa sits at (-15, -7); its centre is solidly inside it.
-    const result = validateMove({ x: -15, z: -6.5 }, { x: -15, z: -7, yaw: 0 }, 1000);
+    // The central set's north sofa sits at (-15, 3.5); its centre is solidly inside it.
+    const result = validateMove({ x: -15, z: 2.4 }, { x: -15, z: 3.5, yaw: 0 }, 1000);
     expect(result).toBeNull();
   });
 
