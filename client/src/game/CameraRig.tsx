@@ -21,7 +21,14 @@ import {
   overviewPanDelta,
 } from "./overview";
 import { isUiCaptured } from "./uiCapture";
-import { DRAG_SIGN, isClick, groundPoint, setClickTarget, getClickTarget } from "./clickMove";
+import {
+  DRAG_SIGN,
+  isClick,
+  groundPoint,
+  setClickTarget,
+  getClickTarget,
+  clearClickTarget,
+} from "./clickMove";
 import { aspectDistanceScale } from "./aspectFraming";
 import {
   isInMaze,
@@ -267,6 +274,8 @@ export function CameraRig({ pose, orbit }: CameraRigProps) {
         toggleViewMode(orbit);
       } else if (e.code === "KeyM") {
         toggleOverview(); // M toggles overview (and is the ONLY way out of it)
+      } else if (e.code === "Escape") {
+        clearClickTarget(); // 진행 중인 클릭 자동 이동을 즉시 중단
       }
     };
 
