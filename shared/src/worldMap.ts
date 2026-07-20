@@ -250,11 +250,21 @@ function classroomSeating(): Furniture[] {
 export const FURNITURE: readonly Furniture[] = [
   // ── Lounge (x < 0) ──
   { model: "loungeSofa", x: -15, z: -7, rotY: 0 }, // faces spawn; the E2E collision target
-  { model: "rugRectangle", x: -22, z: 0, rotY: 0 }, // decorative floor rug (non-solid)
+  // Central conversation set (발주자 요청 "로비 가운데에 이쁘게"): a symmetric
+  // four-sofa ring around a rugged coffee table, centred on the spawn column at
+  // (-15, 6.2). Every seat faces the table. The centre sits SOUTH of the spawn
+  // so the spawn-clearance circle (SPAWN_JITTER + PLAYER_RADIUS = 2.4 m) and
+  // the tested z = 0 west corridor stay free (north sofa's near edge is at
+  // z = 3.05 > 2.4 — verified by the spawn-clearance invariant test).
+  { model: "rugRectangle", x: -15, z: 6.2, rotY: 0 }, // anchors the set (non-solid)
+  { model: "tableCoffee", x: -15, z: 6.2, rotY: 0 },
+  { model: "loungeSofa", x: -15, z: 3.5, rotY: 0 }, // north seat, faces the table (+Z)
+  { model: "loungeSofa", x: -15, z: 8.9, rotY: Math.PI }, // south seat, faces the table (-Z)
+  { model: "loungeSofa", x: -17.8, z: 6.2, rotY: HALF_PI }, // west seat, faces +X
+  { model: "loungeSofa", x: -12.2, z: 6.2, rotY: -HALF_PI }, // east seat, faces -X
+  { model: "pottedPlant", x: -18.2, z: 3.2, rotY: 0 }, // NW accent of the set
+  { model: "pottedPlant", x: -11.8, z: 9.2, rotY: 0 }, // SE accent of the set
   { model: "loungeSofaLong", x: -26, z: 0, rotY: HALF_PI }, // against the west wall
-  { model: "tableCoffee", x: -22, z: 0, rotY: 0 },
-  { model: "loungeSofa", x: -22, z: -5, rotY: 0 }, // north of the coffee table
-  { model: "loungeSofa", x: -22, z: 5, rotY: Math.PI }, // south of the coffee table
   { model: "lampSquareFloor", x: -28, z: 10, rotY: 0 }, // corner lamp (non-solid)
   { model: "pottedPlant", x: -28, z: -14, rotY: 0 }, // SW corner greenery
   { model: "pottedPlant", x: -3, z: 6, rotY: 0 }, // frames the door (lounge side, north)
