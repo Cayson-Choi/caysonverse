@@ -12,7 +12,8 @@
   "dependencies": {
     "@colyseus/schema": "^4.0.27",
     "colyseus": "^0.17.10",
-    "express": "^5.2.1"
+    "express": "^5.2.1",
+    "msedge-tts": "^2.0.7"
   },
   "devDependencies": {
     "@colyseus/testing": "^0.17.11",

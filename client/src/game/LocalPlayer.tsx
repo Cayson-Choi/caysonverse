@@ -3,8 +3,9 @@ import { useFrame } from "@react-three/fiber";
 import { useAnimations, useGLTF, useKeyboardControls } from "@react-three/drei";
 import { Group, LoopOnce } from "three";
 import { MOVE_SPEED, WORLD_BOUNDS } from "@caysonverse/shared/constants";
-import { OBSTACLES, PLAYER_RADIUS, SEATS } from "@caysonverse/shared/worldMap";
+import { PLAYER_RADIUS, SEATS } from "@caysonverse/shared/worldMap";
 import { resolveCollision } from "@caysonverse/shared/collision";
+import { collectObstacles } from "./playerObstacles";
 import { readIntent, worldDirection } from "./input";
 import type { Intent } from "./input";
 import {
@@ -285,15 +286,16 @@ export function LocalPlayer({
     if (moving) {
       const dir = worldDirection(intent, activeYaw);
       // Slide the body (circle-vs-AABB) along walls/furniture from the SAME
-      // OBSTACLES the server validates against, then keep the centre a radius
-      // inside WORLD_BOUNDS as a backstop.
+      // static OBSTACLES the server validates against — plus a dynamic box per
+      // connected remote player (design 33: characters are solid) — then keep
+      // the centre a radius inside WORLD_BOUNDS as a backstop.
       const next = resolveCollision(
         pose.x,
         pose.z,
         dir.x * MOVE_SPEED * delta,
         dir.z * MOVE_SPEED * delta,
         PLAYER_RADIUS,
-        OBSTACLES,
+        collectObstacles(pose.x, pose.z),
       );
       pose.x = clamp(next.x, WORLD_BOUNDS.minX + PLAYER_RADIUS, WORLD_BOUNDS.maxX - PLAYER_RADIUS);
       pose.z = clamp(next.z, WORLD_BOUNDS.minZ + PLAYER_RADIUS, WORLD_BOUNDS.maxZ - PLAYER_RADIUS);

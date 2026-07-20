@@ -110,6 +110,20 @@ export function clearRemotes(): void {
   refreshRoster();
 }
 
+/**
+ * Allocation-free per-frame iteration over each remote's NEWEST known position
+ * (design 33 — remote players are solid): the collision layer builds its
+ * dynamic obstacle list from this every frame, so no arrays are created here.
+ */
+export function forEachRemotePosition(
+  fn: (x: number, z: number, connected: boolean) => void,
+): void {
+  for (const record of records.values()) {
+    const last = record.snapshots[record.snapshots.length - 1];
+    if (last) fn(last.x, last.z, record.connected);
+  }
+}
+
 /** Dev/E2E view: each remote's newest known position + ghost flag + seat. */
 export function getRemotes(): Array<{
   sessionId: string;

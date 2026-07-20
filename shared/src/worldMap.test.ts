@@ -20,6 +20,7 @@ import {
 } from "./worldMap";
 import { MAZE_WALLS, MAZE_ZONE, MAZE_GOAL, MAZE_PORTAL, MAZE_RETURN } from "./maze";
 import { isBlocked, resolveCollision, COLLISION_EPS } from "./collision";
+import { NPC_SPOTS } from "./worldMap";
 
 function inside(box: { minX: number; maxX: number; minZ: number; maxZ: number }, x: number, z: number) {
   return x >= box.minX && x <= box.maxX && z >= box.minZ && z <= box.maxZ;
@@ -33,9 +34,10 @@ describe("worldMap — structure", () => {
     }
   });
 
-  it("derives OBSTACLES = solid furniture + walls + screen + maze walls (no others)", () => {
+  it("derives OBSTACLES = solid furniture + walls + screen + NPCs + maze walls (no others)", () => {
     const solidFurniture = FURNITURE.filter((p) => FURNITURE_MODELS[p.model].solid).length;
-    expect(OBSTACLES.length).toBe(solidFurniture + WALLS.length + 1 + MAZE_WALLS.length);
+    const npcs = Object.keys(NPC_SPOTS).length; // design 33: the 조교 3인 are solid
+    expect(OBSTACLES.length).toBe(solidFurniture + WALLS.length + 1 + npcs + MAZE_WALLS.length);
   });
 
   it("excludes non-solid decor (rug, lamp) from obstacles", () => {
@@ -313,14 +315,20 @@ describe("worldMap — gallery zone integration (v2-11 north extension, design 2
     expect(isBlocked(15, -18, PLAYER_RADIUS, OBSTACLES)).toBe(true); // lecture hall north wall
   });
 
-  it("keeps the gallery interior obstacle-free (portraits are wall décor, not obstacles)", () => {
+  it("keeps the gallery interior obstacle-free except the 제미나이 NPC (design 33)", () => {
     // A generous inner margin (walls + body radius) — the whole exhibition floor
-    // is walkable, so visitors can stand anywhere in front of any portrait.
+    // is walkable, so visitors can stand anywhere in front of any portrait. The
+    // single exception is the stationed NPC's solid body (플레이어 크기 박스).
+    const npc = NPC_SPOTS.gallery;
+    const npcClearance = 2 * PLAYER_RADIUS + 0.1;
     for (let x = GALLERY_ZONE.minX + 1; x <= GALLERY_ZONE.maxX - 1; x += 0.5) {
       for (let z = GALLERY_ZONE.minZ + 1; z <= GALLERY_ZONE.maxZ - 1.5; z += 0.5) {
+        if (Math.abs(x - npc.x) <= npcClearance && Math.abs(z - npc.z) <= npcClearance) continue;
         expect(isBlocked(x, z, PLAYER_RADIUS, OBSTACLES), `blocked at (${x}, ${z})`).toBe(false);
       }
     }
+    // And the NPC itself IS solid where it stands.
+    expect(isBlocked(npc.x, npc.z, PLAYER_RADIUS, OBSTACLES)).toBe(true);
   });
 });
 

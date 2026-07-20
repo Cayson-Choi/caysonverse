@@ -6,15 +6,18 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import { NPC_NAME } from "../game/npc";
+import { NPC_LABEL } from "../game/npc";
 import { setUiCaptured, captureReleaseEffect } from "../game/uiCapture";
 import { NPC_INPUT_MAX, useNpcStore } from "../stores/npcStore";
 import "./npc.css";
 
+const EMPTY: never[] = [];
+
 export function NpcChatPanel() {
-  const open = useNpcStore((s) => s.open);
+  const activeNpc = useNpcStore((s) => s.activeNpc);
+  const open = activeNpc !== null;
   const sending = useNpcStore((s) => s.sending);
-  const messages = useNpcStore((s) => s.messages);
+  const messages = useNpcStore((s) => (s.activeNpc ? (s.histories[s.activeNpc] ?? EMPTY) : EMPTY));
   const [draft, setDraft] = useState("");
   const listRef = useRef<HTMLDivElement>(null);
 
@@ -48,9 +51,9 @@ export function NpcChatPanel() {
   };
 
   return (
-    <div className="cv-npc-panel" role="dialog" aria-label={`${NPC_NAME} 대화`}>
+    <div className="cv-npc-panel" role="dialog" aria-label={`${NPC_LABEL} 대화`}>
       <div className="cv-npc-head">
-        <span className="cv-npc-title">🤖 {NPC_NAME}</span>
+        <span className="cv-npc-title">🤖 {NPC_LABEL}</span>
         <button
           type="button"
           className="cv-npc-close"

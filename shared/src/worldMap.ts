@@ -159,6 +159,42 @@ function screenObstacle(): AABB {
   };
 }
 
+// ───────────────────────────── AI 조교 NPCs ─────────────────────────────
+
+/**
+ * The three AI 조교 NPC standing spots (design 31 + 후속 — one per room). They
+ * live HERE (not client-only) because NPCs are SOLID (design 33 — 발주자:
+ * "유령처럼 통과하지 않게"): each contributes an obstacle box to OBSTACLES
+ * below, so the client slide and the server drop-check both collide with them
+ * through the single shared array. The client renders models + talk UI from
+ * these same spots. Every spot is chosen clear of the tested walk corridors
+ * (z = 0 west leg, x = -18 north leg, x = -15 gallery axis) and the
+ * spawn-clearance circle — the map-invariant tests prove it stays that way.
+ *
+ *  - hall    (이름 "클로드"):   beside the screen's south edge, faces the room
+ *  - lobby   (이름 "챗지피티"): by the west wall, faces the central sofa set
+ *  - gallery (이름 "제미나이"): east half of the gallery, faces the door
+ */
+export const NPC_SPOTS = {
+  hall: { x: SCREEN.x - 1.0, z: SCREEN.z - SCREEN.width / 2 - 1.2 },
+  lobby: { x: -24, z: 6.2 },
+  gallery: { x: -11.5, z: -26 },
+} as const;
+
+export type NpcId = keyof typeof NPC_SPOTS;
+
+/** Half-extent (m) of an NPC's solid footprint (a player-sized box). */
+const NPC_HALF = PLAYER_RADIUS;
+
+function npcObstacles(): AABB[] {
+  return Object.values(NPC_SPOTS).map((s) => ({
+    minX: s.x - NPC_HALF,
+    maxX: s.x + NPC_HALF,
+    minZ: s.z - NPC_HALF,
+    maxZ: s.z + NPC_HALF,
+  }));
+}
+
 // ──────────────────────────────── Furniture ────────────────────────────────
 
 /** Uniform up-scale applied to every Kenney model (kit models are ~0.5× life). */
@@ -307,6 +343,7 @@ export const OBSTACLES: readonly AABB[] = [
   ...FURNITURE.filter((p) => FURNITURE_MODELS[p.model].solid).map(furnitureObstacle),
   ...WALLS,
   screenObstacle(),
+  ...npcObstacles(),
   ...MAZE_WALLS,
 ];
 

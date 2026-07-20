@@ -17,6 +17,13 @@ import {
   extractReply,
   validateNpcChatBody,
 } from "./npc/groqChat";
+import {
+  VOICE_RATE_LIMIT,
+  VOICE_RATE_WINDOW_MS,
+  VoiceCache,
+  synthesizeVoice,
+  validateVoiceBody,
+} from "./npc/voice";
 
 const PORT = Number(process.env.PORT ?? DEFAULT_SERVER_PORT);
 
@@ -81,7 +88,11 @@ const server = defineServer({
             "content-type": "application/json",
           },
           body: JSON.stringify(
-            buildGroqRequest(parsed.messages, process.env.GROQ_MODEL || GROQ_DEFAULT_MODEL),
+            buildGroqRequest(
+              parsed.messages,
+              process.env.GROQ_MODEL || GROQ_DEFAULT_MODEL,
+              parsed.npc,
+            ),
           ),
           signal: AbortSignal.timeout(NPC_TIMEOUT_MS),
         });
@@ -96,6 +107,47 @@ const server = defineServer({
         // Timeout/network — never leak upstream details to the client.
         console.error(`[${APP_NAME}] npc-chat error:`, err);
         res.status(502).json({ error: NPC_ERRORS.upstream });
+      }
+    });
+
+    // ── AI 조교 neural voice (design 31 후속) ───────────────────────────────
+    // The panel posts each NPC line here and plays the returned MP3 (Edge TTS
+    // ko-KR-SunHi neural voice). Failures are non-fatal: the client falls back
+    // to the browser's Web Speech voice.
+    const voiceLimiters = new Map<string, RateWindow>();
+    const voiceCache = new VoiceCache();
+    app.post("/api/npc-voice", express.json({ limit: "8kb" }), async (req, res) => {
+      const ip =
+        resolveClientIp({ ip: req.headers["x-forwarded-for"] } as never) ??
+        req.socket.remoteAddress ??
+        "unknown";
+      if (voiceLimiters.size > 2000) voiceLimiters.clear();
+      let limiter = voiceLimiters.get(ip);
+      if (!limiter) {
+        limiter = new RateWindow(VOICE_RATE_LIMIT, VOICE_RATE_WINDOW_MS);
+        voiceLimiters.set(ip, limiter);
+      }
+      if (!limiter.tryAccept(Date.now())) {
+        res.status(429).json({ error: "rate limited" });
+        return;
+      }
+      const parsed = validateVoiceBody(req.body);
+      if (!parsed.ok) {
+        res.status(400).json({ error: parsed.error });
+        return;
+      }
+      try {
+        let audio = voiceCache.get(parsed.text);
+        if (!audio) {
+          audio = await synthesizeVoice(parsed.text);
+          voiceCache.set(parsed.text, audio);
+        }
+        res.setHeader("content-type", "audio/mpeg");
+        res.setHeader("cache-control", "no-store");
+        res.send(audio);
+      } catch (err) {
+        console.error(`[${APP_NAME}] npc-voice error:`, err);
+        res.status(502).json({ error: "voice synthesis failed" });
       }
     });
 

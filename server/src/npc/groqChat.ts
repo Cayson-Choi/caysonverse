@@ -30,16 +30,32 @@ export const NPC_TIMEOUT_MS = 20_000;
 export const NPC_MAX_TOKENS = 400;
 
 /**
- * The NPC persona. Korean, warm, concise — a teaching assistant standing beside
- * the lecture-hall screen in 최무호 월드.
+ * Per-NPC identity (design 31 후속 — 발주자 지정 이름): the badge always reads
+ * "AI 조교"; the personal NAME is revealed only in conversation when asked.
  */
-export const NPC_SYSTEM_PROMPT = [
-  "너는 '최무호 월드' 강의실의 AI 조교야. 강의실 대형 스크린 옆에 서 있는 NPC로, 다가온 방문자와 1:1로 대화해.",
-  "항상 한국어 해요체로, 친근하고 정중하게, 2~4문장으로 간결하게 답해.",
-  "AI·프로그래밍 등 공부 관련 질문은 쉽고 정확하게 설명해 줘.",
-  "월드 안내도 도와줘: 라운지(중앙 휴게 공간), 강의실(동쪽, 네가 있는 곳), 갤러리(북쪽 — 최무호 님의 1살부터 100살까지 일대기 초상), 미로방(서쪽 — 중앙 골에 도달하면 탈출 성공).",
-  "욕설·혐오 표현이나 개인정보 요구에는 정중히 거절해.",
-].join(" ");
+export const NPC_PERSONAS = {
+  hall: { name: "클로드", place: "강의실(동쪽 방)의 대형 스크린 옆" },
+  lobby: { name: "챗지피티", place: "로비(라운지) 중앙 소파 세트 근처" },
+  gallery: { name: "제미나이", place: "갤러리(최무호 일대기 전시실) 안" },
+} as const;
+
+export type NpcId = keyof typeof NPC_PERSONAS;
+
+/**
+ * The persona system prompt for one NPC. Korean, warm, concise — a teaching
+ * assistant stationed in its own room of 최무호 월드.
+ */
+export function npcSystemPrompt(npc: NpcId): string {
+  const { name, place } = NPC_PERSONAS[npc];
+  return [
+    `너는 '최무호 월드'의 AI 조교 NPC야. ${place}에 서서 다가온 방문자와 1:1로 대화해.`,
+    `네 이름은 '${name}'야 — 명찰에는 'AI 조교'라고만 적혀 있어서, 이름을 물어보면 '${name}'라고 알려줘.`,
+    "항상 한국어 해요체로, 친근하고 정중하게, 2~4문장으로 간결하게 답해.",
+    "AI·프로그래밍 등 공부 관련 질문은 쉽고 정확하게 설명해 줘.",
+    "월드 안내도 도와줘: 라운지(중앙 휴게 공간), 강의실(동쪽 — 대형 스크린), 갤러리(북쪽 — 최무호 님의 1살부터 100살까지 일대기 초상), 미로방(서쪽 — 중앙 골에 도달하면 탈출 성공).",
+    "욕설·혐오 표현이나 개인정보 요구에는 정중히 거절해.",
+  ].join(" ");
+}
 
 /** One chat turn as exchanged with the client and with Groq. */
 export interface NpcMessage {
@@ -48,16 +64,19 @@ export interface NpcMessage {
 }
 
 export type ValidationResult =
-  | { ok: true; messages: NpcMessage[] }
+  | { ok: true; messages: NpcMessage[]; npc: NpcId }
   | { ok: false; error: string };
 
 /**
- * Validate the request body from the client. Strict: unknown roles, empty or
- * over-long messages, non-array bodies and over-long histories are rejected
- * (the panel never produces them — a rejection means a tampered client).
- * The LAST message must be from the user (it is the turn being answered).
+ * Validate the request body from the client. Strict: unknown roles/NPC ids,
+ * empty or over-long messages, non-array bodies and over-long histories are
+ * rejected (the panel never produces them — a rejection means a tampered
+ * client). The LAST message must be from the user (the turn being answered).
  */
 export function validateNpcChatBody(body: unknown): ValidationResult {
+  const npc = (body as { npc?: unknown } | null | undefined)?.npc;
+  if (typeof npc !== "string" || !(npc in NPC_PERSONAS))
+    return { ok: false, error: "알 수 없는 NPC입니다" };
   const messages = (body as { messages?: unknown } | null | undefined)?.messages;
   if (!Array.isArray(messages) || messages.length === 0)
     return { ok: false, error: "messages 배열이 필요합니다" };
@@ -76,17 +95,18 @@ export function validateNpcChatBody(body: unknown): ValidationResult {
   }
   if (out[out.length - 1].role !== "user")
     return { ok: false, error: "마지막 메시지는 사용자 메시지여야 합니다" };
-  return { ok: true, messages: out };
+  return { ok: true, messages: out, npc: npc as NpcId };
 }
 
 /** Build the Groq (OpenAI-compatible) request payload: persona + history. */
 export function buildGroqRequest(
   messages: NpcMessage[],
   model: string = GROQ_DEFAULT_MODEL,
+  npc: NpcId = "hall",
 ): object {
   return {
     model,
-    messages: [{ role: "system", content: NPC_SYSTEM_PROMPT }, ...messages],
+    messages: [{ role: "system", content: npcSystemPrompt(npc) }, ...messages],
     max_tokens: NPC_MAX_TOKENS,
     temperature: 0.7,
   };

@@ -7,6 +7,7 @@ import { LocalPlayer } from "./LocalPlayer";
 import { RemotePlayers } from "./RemotePlayers";
 import { WorldMap } from "./WorldMap";
 import { NpcCharacter } from "./NpcCharacter";
+import { NPCS } from "./npc";
 import { NpcPrompt } from "../ui/NpcPrompt";
 import { NpcChatPanel } from "../ui/NpcChatPanel";
 import { CameraRig } from "./CameraRig";
@@ -127,8 +128,10 @@ export function WorldScene({ identity }: { identity: Identity }) {
           <Suspense fallback={null}>
             {/* Furnished lounge + lecture hall, walls and screen (static). */}
             <WorldMap />
-            {/* AI 조교 NPC beside the screen (design 31) — décor + nametag. */}
-            <NpcCharacter />
+            {/* AI 조교 NPC 3인 — 강의실·로비·갤러리 (design 31 + 후속). */}
+            {NPCS.map((npc) => (
+              <NpcCharacter key={npc.id} npc={npc} />
+            ))}
             <LocalPlayer
               sessionId={identity.sessionId}
               character={identity.character}
