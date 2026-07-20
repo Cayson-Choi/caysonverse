@@ -1,0 +1,184 @@
+/* AI 조교 NPC — talk prompt + private side-chat panel (design 31). */
+
+/* ── Desktop hint (bottom-centre, above the sit-hint band) ── */
+.cv-npc-hint {
+  position: fixed;
+  left: 50%;
+  bottom: 108px;
+  transform: translateX(-50%);
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  font-size: 14px;
+  color: #f2eeff;
+  background: rgba(18, 14, 36, 0.72);
+  border: 1px solid rgba(150, 130, 220, 0.35);
+  border-radius: 10px;
+  backdrop-filter: blur(6px);
+  pointer-events: none;
+}
+
+.cv-npc-hint kbd {
+  padding: 2px 7px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #171335;
+  background: #e8e2ff;
+  border-radius: 5px;
+}
+
+/* ── Touch talk button — same centre slot family as the sit button ── */
+.cv-npc-btn {
+  position: fixed;
+  left: 50%;
+  bottom: 246px;
+  transform: translateX(-50%);
+  z-index: 20;
+  min-height: 48px;
+  padding: 12px 22px;
+  font-size: 16px;
+  font-weight: 700;
+  color: #f2eeff;
+  background: rgba(38, 30, 70, 0.88);
+  border: 1px solid rgba(170, 150, 255, 0.5);
+  border-radius: 14px;
+  touch-action: manipulation;
+}
+
+/* ── Side panel (right drawer) ── */
+.cv-npc-panel {
+  position: fixed;
+  right: 16px;
+  bottom: 132px;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  width: min(340px, calc(100vw - 32px));
+  max-height: min(52vh, 460px);
+  background: rgba(14, 11, 30, 0.88);
+  border: 1px solid rgba(150, 130, 220, 0.35);
+  border-radius: 14px;
+  backdrop-filter: blur(8px);
+  overflow: hidden;
+}
+
+.cv-npc-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(150, 130, 220, 0.22);
+}
+
+.cv-npc-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #e8e2ff;
+}
+
+.cv-npc-close {
+  min-width: 32px;
+  min-height: 32px;
+  font-size: 14px;
+  color: #cfc6f2;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.cv-npc-close:hover {
+  background: rgba(150, 130, 220, 0.18);
+}
+
+.cv-npc-list {
+  flex: 1;
+  min-height: 120px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  overscroll-behavior: contain;
+}
+
+.cv-npc-msg {
+  max-width: 85%;
+  padding: 8px 12px;
+  font-size: 13px;
+  line-height: 1.45;
+  border-radius: 12px;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+.cv-npc-msg.is-npc {
+  align-self: flex-start;
+  color: #ece7ff;
+  background: rgba(90, 76, 160, 0.45);
+  border-bottom-left-radius: 4px;
+}
+
+.cv-npc-msg.is-user {
+  align-self: flex-end;
+  color: #171335;
+  background: #d9d2f7;
+  border-bottom-right-radius: 4px;
+}
+
+.cv-npc-msg.is-pending {
+  opacity: 0.7;
+  font-style: italic;
+}
+
+.cv-npc-form {
+  display: flex;
+  gap: 8px;
+  padding: 10px 12px;
+  border-top: 1px solid rgba(150, 130, 220, 0.22);
+}
+
+.cv-npc-field {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 12px;
+  font-size: 14px;
+  color: #f2eeff;
+  background: rgba(18, 14, 36, 0.72);
+  border: 1px solid rgba(150, 130, 220, 0.35);
+  border-radius: 10px;
+  outline: none;
+}
+
+.cv-npc-field:focus {
+  border-color: rgba(170, 150, 255, 0.85);
+}
+
+.cv-npc-send {
+  flex: none;
+  padding: 10px 14px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #171335;
+  background: #b9a8ff;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.cv-npc-send:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* ── Touch: 16px font stops iOS zoom; panel sits above the emoji cluster ── */
+.cv-touch .cv-npc-field {
+  font-size: 16px;
+}
+
+.cv-touch .cv-npc-panel {
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 246px);
+  max-height: 44vh;
+}

@@ -6,5 +6,8 @@
 //
 // The actual Colyseus connection is wired up in a later task; this module only
 // exposes the resolved base URL.
+// The `typeof window` guard keeps the module importable in window-less test
+// runs (vitest node env) — in the browser it always resolves to the origin.
 export const SERVER_URL: string =
-  import.meta.env.VITE_SERVER_URL || window.location.origin;
+  import.meta.env.VITE_SERVER_URL ||
+  (typeof window === "undefined" ? "" : window.location.origin);

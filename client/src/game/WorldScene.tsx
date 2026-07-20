@@ -6,6 +6,9 @@ import { CAMERA, FOG_FAR, FOG_NEAR, MOVE_KEYS, SKY_COLOR } from "./constants";
 import { LocalPlayer } from "./LocalPlayer";
 import { RemotePlayers } from "./RemotePlayers";
 import { WorldMap } from "./WorldMap";
+import { NpcCharacter } from "./NpcCharacter";
+import { NpcPrompt } from "../ui/NpcPrompt";
+import { NpcChatPanel } from "../ui/NpcChatPanel";
 import { CameraRig } from "./CameraRig";
 import { OverviewMarker } from "./OverviewMarker";
 import { Chat } from "../ui/Chat";
@@ -124,6 +127,8 @@ export function WorldScene({ identity }: { identity: Identity }) {
           <Suspense fallback={null}>
             {/* Furnished lounge + lecture hall, walls and screen (static). */}
             <WorldMap />
+            {/* AI 조교 NPC beside the screen (design 31) — décor + nametag. */}
+            <NpcCharacter />
             <LocalPlayer
               sessionId={identity.sessionId}
               character={identity.character}
@@ -157,6 +162,9 @@ export function WorldScene({ identity }: { identity: Identity }) {
       <SoundToggle />
       {/* Sit/stand prompt: desktop hint + touch button + occupied-seat notice. */}
       <SitPrompt pose={pose} seat={seat} />
+      {/* AI 조교 talk prompt + private side-chat panel (design 31). */}
+      <NpcPrompt pose={pose} />
+      <NpcChatPanel />
       {/* Movement control — touch devices only (joystick, or D-pad in FP).
           Keyboard stays active regardless. */}
       {isTouchDevice && <TouchMoveControl moveInput={moveInput} />}

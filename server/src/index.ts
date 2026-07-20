@@ -4,6 +4,19 @@ import express from "express";
 import { defineServer, matchMaker } from "colyseus";
 import { APP_NAME, DEFAULT_SERVER_PORT, WORLD_ROOM } from "@caysonverse/shared/constants";
 import { rooms } from "./rooms";
+import { RateWindow } from "./rooms/rateLimit";
+import { resolveClientIp } from "./rooms/clientIp";
+import {
+  GROQ_URL,
+  GROQ_DEFAULT_MODEL,
+  NPC_ERRORS,
+  NPC_RATE_LIMIT,
+  NPC_RATE_WINDOW_MS,
+  NPC_TIMEOUT_MS,
+  buildGroqRequest,
+  extractReply,
+  validateNpcChatBody,
+} from "./npc/groqChat";
 
 const PORT = Number(process.env.PORT ?? DEFAULT_SERVER_PORT);
 
@@ -23,6 +36,67 @@ const server = defineServer({
     // Liveness probe.
     app.get("/healthz", (_req, res) => {
       res.json({ ok: true });
+    });
+
+    // ── AI 조교 NPC chat proxy (design 31) ──────────────────────────────────
+    // The Groq key lives ONLY in the server env; the client posts its running
+    // 1:1 conversation here. Per-IP sliding-window limiter (same trusted-proxy
+    // model as the admin limiter: right-most XFF hop, socket address fallback).
+    const npcLimiters = new Map<string, RateWindow>();
+    app.post("/api/npc-chat", express.json({ limit: "32kb" }), async (req, res) => {
+      const ip =
+        resolveClientIp({ ip: req.headers["x-forwarded-for"] } as never) ??
+        req.socket.remoteAddress ??
+        "unknown";
+      // Memory backstop: the per-IP map cannot grow unbounded (drop-all reset
+      // is fine — the window is only a minute).
+      if (npcLimiters.size > 2000) npcLimiters.clear();
+      let limiter = npcLimiters.get(ip);
+      if (!limiter) {
+        limiter = new RateWindow(NPC_RATE_LIMIT, NPC_RATE_WINDOW_MS);
+        npcLimiters.set(ip, limiter);
+      }
+      if (!limiter.tryAccept(Date.now())) {
+        res.status(429).json({ error: NPC_ERRORS.rateLimited });
+        return;
+      }
+
+      const parsed = validateNpcChatBody(req.body);
+      if (!parsed.ok) {
+        res.status(400).json({ error: parsed.error });
+        return;
+      }
+
+      const apiKey = process.env.GROQ_API_KEY;
+      if (!apiKey) {
+        res.status(503).json({ error: NPC_ERRORS.notConfigured });
+        return;
+      }
+
+      try {
+        const upstream = await fetch(GROQ_URL, {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${apiKey}`,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify(
+            buildGroqRequest(parsed.messages, process.env.GROQ_MODEL || GROQ_DEFAULT_MODEL),
+          ),
+          signal: AbortSignal.timeout(NPC_TIMEOUT_MS),
+        });
+        const reply = upstream.ok ? extractReply(await upstream.json()) : null;
+        if (!reply) {
+          console.error(`[${APP_NAME}] npc-chat upstream failure: HTTP ${upstream.status}`);
+          res.status(502).json({ error: NPC_ERRORS.upstream });
+          return;
+        }
+        res.json({ reply });
+      } catch (err) {
+        // Timeout/network — never leak upstream details to the client.
+        console.error(`[${APP_NAME}] npc-chat error:`, err);
+        res.status(502).json({ error: NPC_ERRORS.upstream });
+      }
     });
 
     // Serve the built SPA whenever `client/dist` exists — no NODE_ENV gate, so a
