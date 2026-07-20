@@ -12,13 +12,21 @@ import { MAZE_WALLS, MAZE_GOAL, MAZE_PORTAL, MAZE_ORIGIN, MAZE_CELL } from "@cay
 import { WALL_HEIGHT, type AABB } from "@caysonverse/shared/worldMap";
 import { canvas2d, canvasTexture, roundRect } from "./spriteCanvas";
 import { LANDMARK_EMOJIS, MAZE_LANDMARKS, PLAQUE_SIZE, plaqueQuads } from "./mazeLandmarks";
+import { ZONE_WALL_COLORS, isMazeLobbyBoundary } from "./wallColors";
 
 /**
- * Maze wall tone — light lavender-grey stone, a shade cooler than the ivory
- * room walls so the maze still reads as its own space (design 30). The old
- * self-glow (a dark-world legibility aid) is gone: daylight carries it now.
+ * Maze wall tones (design 30 후속): the INTERIOR labyrinth is light
+ * lavender-grey stone (the maze room's own colour), while the EAST perimeter
+ * run — the wall the LOBBY sees, holding the entrance door — is painted in the
+ * lounge's ivory. Per the owner's request the lobby-side wall colour must
+ * differ from the colour inside the maze room.
  */
-const MAZE_WALL_COLOR = "#d8d4e4";
+const MAZE_WALL_COLOR = ZONE_WALL_COLORS.maze;
+const MAZE_BOUNDARY_COLOR = ZONE_WALL_COLORS.lounge;
+
+/** Static split, once at module load (MAZE_WALLS is deterministic). */
+const boundaryWalls = MAZE_WALLS.filter(isMazeLobbyBoundary);
+const interiorWalls = MAZE_WALLS.filter((w) => !isMazeLobbyBoundary(w));
 /** Goal chamber tile — warm, gently emissive (a beckoning centre). */
 const GOAL_COLOR = "#ffcf5a";
 /** Return portal pad — cyan, brighter emissive (clearly "step here to leave"). */
@@ -35,13 +43,15 @@ function boxOf(a: AABB) {
 }
 
 /**
- * Every maze wall merged into ONE BufferGeometry → a single draw call. Each wall
- * AABB becomes a box baked at its world position (the geometry carries absolute
- * coords), so the mesh sits at the origin with an identity, non-updating matrix.
+ * A set of maze walls merged into ONE BufferGeometry → a single draw call. Each
+ * wall AABB becomes a box baked at its world position (the geometry carries
+ * absolute coords), so the mesh sits at the origin with an identity,
+ * non-updating matrix. Rendered twice: interior walls + the lobby-facing east
+ * perimeter, each with its own colour (2 draw calls total).
  */
-function MergedMazeWalls() {
+function MergedMazeWalls({ walls, color }: { walls: readonly AABB[]; color: string }) {
   const geometry = useMemo(() => {
-    const geos = MAZE_WALLS.map((w) => {
+    const geos = walls.map((w) => {
       const { cx, cz, sx, sz } = boxOf(w);
       const g = new BoxGeometry(sx, WALL_HEIGHT, sz);
       g.translate(cx, WALL_HEIGHT / 2, cz);
@@ -50,11 +60,11 @@ function MergedMazeWalls() {
     const merged = mergeBufferGeometries(geos, false);
     geos.forEach((g) => g.dispose());
     return merged ?? new BoxGeometry(0, 0, 0);
-  }, []);
+  }, [walls]);
 
   return (
     <mesh geometry={geometry} castShadow receiveShadow>
-      <meshStandardMaterial color={MAZE_WALL_COLOR} roughness={0.82} metalness={0} />
+      <meshStandardMaterial color={color} roughness={0.82} metalness={0} />
     </mesh>
   );
 }
@@ -186,7 +196,8 @@ export function MazeWalls() {
 
   return (
     <group>
-      <MergedMazeWalls />
+      <MergedMazeWalls walls={interiorWalls} color={MAZE_WALL_COLOR} />
+      <MergedMazeWalls walls={boundaryWalls} color={MAZE_BOUNDARY_COLOR} />
       {/* Emoji landmark plaques — deterministic, per-emoji merged, flush on walls. */}
       <MazePlaques />
       {/* Goal marker: warm, subtle (you feel you've arrived). */}

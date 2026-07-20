@@ -1,7 +1,17 @@
 import { useEffect, useMemo } from "react";
 import { useGLTF } from "@react-three/drei";
-import { Group, Mesh, type Object3D } from "three";
+import {
+  CanvasTexture,
+  Group,
+  Mesh,
+  MeshStandardMaterial,
+  RepeatWrapping,
+  SRGBColorSpace,
+  type Object3D,
+  type Texture,
+} from "three";
 import { canvas2d, canvasTexture, roundRect } from "./spriteCanvas";
+import { faceColors, renderSegments } from "./wallColors";
 import {
   FURNITURE,
   FURNITURE_MODELS,
@@ -24,10 +34,46 @@ import { RoomPosters } from "./RoomPosters";
  */
 const LOUNGE_COLOR = "#c9a97b"; // light oak wood
 const HALL_COLOR = "#c3ccd6"; // pale porcelain tile (cool, keeps the hall's identity)
+const HALL_GROUT = "#a7b2c0"; // tile joint lines — the hall keeps its floor grid (발주자 요청)
 const MAZE_COLOR = "#c7c3d3"; // light limestone with a lavender hint
 const GALLERY_COLOR = "#ab7d51"; // mid walnut — clearly deeper than the lounge oak (design 25)
-const WALL_COLOR = "#ece6da"; // warm ivory painted plaster
 const SCREEN_BODY = "#0b0b14";
+
+/** Edge length (m) of one lecture-hall floor tile. */
+const HALL_TILE_M = 2;
+
+/**
+ * Wall materials shared by colour (module lifetime — the wall set is static).
+ * Face colours come from wallColors.ts; a handful of rooms ⇒ a handful of
+ * materials, reused across every wall segment.
+ */
+const wallMaterials = new Map<string, MeshStandardMaterial>();
+function wallMaterial(color: string): MeshStandardMaterial {
+  let m = wallMaterials.get(color);
+  if (!m) {
+    m = new MeshStandardMaterial({ color, roughness: 0.9, metalness: 0 });
+    wallMaterials.set(color, m);
+  }
+  return m;
+}
+
+/**
+ * One 2 m porcelain tile with grout on its edges. Repeated over the hall floor,
+ * the shared edges form the grid pattern the owner asked to keep in the hall
+ * (and only there — the other rooms' floors stay plain finishes).
+ */
+function drawHallTile(): HTMLCanvasElement {
+  const canvas = document.createElement("canvas");
+  canvas.width = 128; // power-of-two: mipmaps stay available for the repeat
+  canvas.height = 128;
+  const ctx = canvas2d(canvas);
+  ctx.fillStyle = HALL_COLOR;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.strokeStyle = HALL_GROUT;
+  ctx.lineWidth = 6; // 3px visible per tile edge ≈ 5 cm grout at 2 m tiles
+  ctx.strokeRect(0, 0, canvas.width, canvas.height);
+  return canvas;
+}
 
 /** Welcome slide shown on the lecture-hall screen (design 24). */
 const SCREEN_TEXT = "최무호 월드에 오신 것을 환영합니다.";
@@ -83,13 +129,13 @@ function boxOf(a: AABB) {
   };
 }
 
-/** A flat ground plane covering one zone AABB. */
-function ZoneFloor({ zone, color }: { zone: AABB; color: string }) {
+/** A flat ground plane covering one zone AABB (optionally textured). */
+function ZoneFloor({ zone, color, map }: { zone: AABB; color?: string; map?: Texture }) {
   const { cx, cz, sx, sz } = boxOf(zone);
   return (
     <mesh position={[cx, 0, cz]} rotation-x={-Math.PI / 2} receiveShadow>
       <planeGeometry args={[sx, sz]} />
-      <meshStandardMaterial color={color} roughness={1} metalness={0} />
+      <meshStandardMaterial color={map ? "#ffffff" : color} map={map} roughness={1} metalness={0} />
     </mesh>
   );
 }
@@ -148,13 +194,26 @@ export function WorldMap() {
   const screenTexture = useMemo(() => canvasTexture(drawWelcomeSlide()), []);
   useEffect(() => () => screenTexture.dispose(), [screenTexture]);
 
+  // Hall tile texture: power-of-two canvas, default mipmapping (repeat at grazing
+  // angles), repeated so each tile spans HALL_TILE_M metres exactly.
+  const hallTexture = useMemo(() => {
+    const t = new CanvasTexture(drawHallTile());
+    t.colorSpace = SRGBColorSpace;
+    t.wrapS = RepeatWrapping;
+    t.wrapT = RepeatWrapping;
+    const hall = ZONES.lectureHall;
+    t.repeat.set((hall.maxX - hall.minX) / HALL_TILE_M, (hall.maxZ - hall.minZ) / HALL_TILE_M);
+    return t;
+  }, []);
+  useEffect(() => () => hallTexture.dispose(), [hallTexture]);
+
   return (
     <group>
       {/* Ground, one plane per zone (maze west, lounge centre, hall east,
           gallery annex north). */}
       <ZoneFloor zone={ZONES.maze} color={MAZE_COLOR} />
       <ZoneFloor zone={ZONES.lounge} color={LOUNGE_COLOR} />
-      <ZoneFloor zone={ZONES.lectureHall} color={HALL_COLOR} />
+      <ZoneFloor zone={ZONES.lectureHall} map={hallTexture} />
       <ZoneFloor zone={ZONES.gallery} color={GALLERY_COLOR} />
 
       {/* Maze: merged walls (1 draw call), goal tile, return portal, chamber light. */}
@@ -167,13 +226,20 @@ export function WorldMap() {
           갤러리 🖼 — every room is tellable from the lounge (design 26). */}
       <RoomPosters />
 
-      {/* Walls: box meshes matching the collision AABBs exactly. */}
-      {WALLS.map((w, i) => {
-        const { cx, cz, sx, sz } = boxOf(w);
+      {/* Walls: box meshes over the collision AABBs, split per room for render
+          so each face is painted in the colour of the room that sees it
+          (design 30 후속 — collision uses the UNsplit WALLS unchanged). */}
+      {WALLS.flatMap(renderSegments).map((seg, i) => {
+        const { cx, cz, sx, sz } = boxOf(seg);
         return (
-          <mesh key={i} position={[cx, WALL_HEIGHT / 2, cz]} castShadow receiveShadow>
+          <mesh
+            key={i}
+            position={[cx, WALL_HEIGHT / 2, cz]}
+            castShadow
+            receiveShadow
+            material={faceColors(seg).map(wallMaterial)}
+          >
             <boxGeometry args={[sx, WALL_HEIGHT, sz]} />
-            <meshStandardMaterial color={WALL_COLOR} roughness={0.9} metalness={0} />
           </mesh>
         );
       })}

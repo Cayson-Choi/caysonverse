@@ -1,12 +1,16 @@
 /**
  * Device capability detection (Task 10). Decides ONCE, at startup, whether this
- * session is a touch device. No user-agent sniffing: we ask the platform via the
- * coarse-pointer media query and the touch-point count. Both are injected through
- * `TouchEnv` so the pure helper is fully testable and non-DOM safe.
+ * session is a touch device. No user-agent sniffing: we ask the platform which
+ * pointer is PRIMARY via the coarse-pointer media query; `maxTouchPoints` is only
+ * the fallback when matchMedia is unavailable. Injected through `TouchEnv` so the
+ * pure helper is fully testable and non-DOM safe.
  *
- * A hybrid laptop (mouse + touchscreen) reads as a touch device here — that only
- * governs joystick VISIBILITY and the render profile; keyboard/mouse input keep
- * working regardless (both input paths are always active).
+ * A hybrid laptop (mouse + touchscreen) reads as a DESKTOP here (design 30 후속):
+ * Windows machines routinely report maxTouchPoints > 0 from a digitizer driver
+ * even when the user drives with a mouse, and treating those as touch pushed the
+ * touch UI slots (chat bar at 190px, joystick) onto PC screens. The primary
+ * pointer is what the user actually steers with; touch INPUT keeps working
+ * regardless of this verdict (both input paths are always active).
  */
 
 /** The (injectable) slice of the platform the detector consults. */
@@ -17,11 +21,15 @@ export interface TouchEnv {
   maxTouchPoints?: number;
 }
 
-/** Pure predicate: coarse pointer OR at least one touch point ⇒ touch device. */
+/**
+ * Pure predicate: the PRIMARY pointer decides — coarse ⇒ touch UI, fine ⇒
+ * desktop UI (even with a touchscreen present). Only when the media query is
+ * unavailable does the touch-point count decide.
+ */
 export function detectTouchDevice(env: TouchEnv): boolean {
-  const coarsePointer = env.matchMedia?.("(pointer: coarse)").matches ?? false;
-  const touchPoints = env.maxTouchPoints ?? 0;
-  return coarsePointer || touchPoints > 0;
+  const coarse = env.matchMedia?.("(pointer: coarse)").matches;
+  if (coarse !== undefined) return coarse;
+  return (env.maxTouchPoints ?? 0) > 0;
 }
 
 /** Read the live platform once (browser only; falls back to a non-touch env). */
