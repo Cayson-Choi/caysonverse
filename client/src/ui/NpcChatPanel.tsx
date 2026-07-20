@@ -6,18 +6,11 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import { MAZE_PORTAL } from "@caysonverse/shared/maze";
 import { NPC_LABEL } from "../game/npc";
-import { setClickTarget } from "../game/clickMove";
+import { sendPortalReturn } from "../net/connection";
 import { setUiCaptured, captureReleaseEffect } from "../game/uiCapture";
 import { NPC_INPUT_MAX, useNpcStore } from "../stores/npcStore";
 import "./npc.css";
-
-/** Centre of the maze return portal pad — the 큐리 panel's "go home" target. */
-const PORTAL_CENTER = {
-  x: (MAZE_PORTAL.minX + MAZE_PORTAL.maxX) / 2,
-  z: (MAZE_PORTAL.minZ + MAZE_PORTAL.maxZ) / 2,
-};
 
 const EMPTY: never[] = [];
 
@@ -71,14 +64,14 @@ export function NpcChatPanel() {
           ✕
         </button>
       </div>
-      {/* 미로 골 챔버 전용 (design 34 후속): 큐리를 만났으면 한 번의 클릭으로
-          귀환 포탈 위로 자동 이동 → 서버가 로비로 텔레포트. */}
+      {/* 미로 골 챔버 전용 (design 34 후속): 밟기 자동 포탈은 제거됨 — 큐리와
+          대화한 뒤 이 버튼으로만 귀환(서버가 챔버 안 여부를 검증·텔레포트). */}
       {activeNpc === "maze" && (
         <button
           type="button"
           className="cv-npc-portal"
           onClick={() => {
-            setClickTarget(PORTAL_CENTER.x, PORTAL_CENTER.z);
+            sendPortalReturn();
             useNpcStore.getState().closePanel();
           }}
         >

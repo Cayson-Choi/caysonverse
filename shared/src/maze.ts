@@ -243,6 +243,21 @@ export function isOnMazePortal(x: number, z: number): boolean {
 }
 
 /**
+ * Radius (m) around the portal pad's centre within which the EXPLICIT
+ * return-to-lobby request (design 34 후속: stepping no longer auto-teleports —
+ * the 큐리 panel button asks the server) is honoured. Covers the whole 2×2
+ * goal chamber and nothing beyond its walls.
+ */
+export const PORTAL_USE_RADIUS = 4;
+
+/** True if a player at (x,z) may use the return portal (in/near the chamber). */
+export function canUsePortal(x: number, z: number): boolean {
+  const cx = (MAZE_PORTAL.minX + MAZE_PORTAL.maxX) / 2;
+  const cz = (MAZE_PORTAL.minZ + MAZE_PORTAL.maxZ) / 2;
+  return Math.hypot(x - cx, z - cz) <= PORTAL_USE_RADIUS;
+}
+
+/**
  * Whether an escape broadcast is allowed now, given the player's last escape
  * time. Pure + clock-injected so the room's 30 s cooldown is unit-testable
  * without time mocking (`lastEscapeAt = -Infinity` ⇒ always allowed the first time).

@@ -73,7 +73,13 @@ export const useNpcStore = create<NpcChatState>((set, get) => ({
 
   closePanel() {
     stopNpcVoice(); // the 조교 stops mid-sentence when you close the chat
-    set({ activeNpc: null });
+    // 발주자 확정: 헤어지면 대화는 초기화 — 다시 만나면 인사부터 새로 시작.
+    set((s) => {
+      if (!s.activeNpc) return { activeNpc: null };
+      const histories = { ...s.histories };
+      delete histories[s.activeNpc];
+      return { activeNpc: null, histories };
+    });
   },
 
   async send(raw: string) {

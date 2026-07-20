@@ -15,7 +15,6 @@
  */
 
 import {
-  BoxGeometry,
   CylinderGeometry,
   Mesh,
   MeshStandardMaterial,
@@ -93,17 +92,15 @@ export function getNpcTexture(accent: string, source: Texture): Texture {
   return built;
 }
 
-// ── Procedural android accessories (visor + halo antenna) ──
+// ── Procedural android accessories (halo antenna — 발주자: 바이저 없이 링만) ──
 
-/** Visor band across the eyes: head-local metrics, screenshot-tuned. */
-const VISOR_GEO = new BoxGeometry(0.52, 0.11, 0.06);
 /** Antenna stem up from the crown of the head. */
 const STEM_GEO = new CylinderGeometry(0.015, 0.015, 0.14, 8);
 /** Floating halo ring (horizontal). */
 const HALO_GEO = new TorusGeometry(0.2, 0.025, 10, 32);
 
 function emissivePart(
-  geometry: BoxGeometry | CylinderGeometry | TorusGeometry,
+  geometry: CylinderGeometry | TorusGeometry,
   color: string,
   out: Material[],
   intensity: number,
@@ -122,21 +119,14 @@ function emissivePart(
 }
 
 /**
- * Attach the glowing visor + halo antenna to the clone's head bone. Head-local
- * anchors derive from the crown constants' frame (head top ≈ y 0.9, face front
- * +Z on the chibi head). Materials are per-avatar clones pushed into `out`.
+ * Attach the glowing halo antenna to the clone's head bone (발주자 확정: 이마
+ * 바이저 바는 제거, 머리 위 링만). Head-local anchors derive from the crown
+ * constants' frame (head top ≈ y 0.9). Materials are per-avatar clones pushed
+ * into `out`.
  */
 export function attachNpcAccessories(root: Object3D, accent: string, out: Material[]): void {
   const head = root.getObjectByName(HEAD_BONE_NAME);
   if (!head) return;
-
-  const visor = emissivePart(VISOR_GEO, accent, out, 1.4);
-  // Forward of the chibi face surface (z ≈ 0.35 at eye height — the first
-  // placement at 0.3 sank INSIDE the head, screenshot-verified).
-  visor.position.set(0, 0.55, 0.42);
-  visor.updateMatrix();
-  visor.matrixAutoUpdate = false;
-  head.add(visor);
 
   const stem = emissivePart(STEM_GEO, accent, out, 0.8);
   stem.position.set(0, 0.95, 0);

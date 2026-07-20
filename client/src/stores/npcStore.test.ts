@@ -70,16 +70,35 @@ describe("npc placement (4 assistants — design 31 후속 + 33 solidity + 34 �
 });
 
 describe("useNpcStore (per-assistant conversations)", () => {
-  it("greets once per assistant and keeps SEPARATE histories", () => {
+  it("greets on open and RESETS the conversation on close (발주자: 헤어지면 초기화)", () => {
     useNpcStore.getState().openPanel("hall");
+    expect(useNpcStore.getState().histories.hall).toEqual([
+      { role: "assistant", text: NPC_GREETING },
+    ]);
+    useNpcStore.setState((s) => ({
+      histories: {
+        ...s.histories,
+        hall: [...s.histories.hall!, { role: "user" as const, text: "질문했음" }],
+      },
+    }));
     useNpcStore.getState().closePanel();
+    // 헤어지면 그 조교와의 이력은 사라진다.
+    expect(useNpcStore.getState().histories.hall).toBeUndefined();
+    // 다시 만나면 인사부터 처음처럼.
+    useNpcStore.getState().openPanel("hall");
+    expect(useNpcStore.getState().histories.hall).toEqual([
+      { role: "assistant", text: NPC_GREETING },
+    ]);
+  });
+
+  it("closing one assistant's chat does not touch another's (while it lasts)", () => {
+    useNpcStore.getState().openPanel("hall");
+    useNpcStore.setState({ activeNpc: null }); // panel closed WITHOUT reset path
     useNpcStore.getState().openPanel("lobby");
+    useNpcStore.getState().closePanel(); // wipes lobby only
     const s = useNpcStore.getState();
-    expect(s.histories.hall).toEqual([{ role: "assistant", text: NPC_GREETING }]);
-    expect(s.histories.lobby).toEqual([{ role: "assistant", text: NPC_GREETING }]);
-    useNpcStore.getState().closePanel();
-    useNpcStore.getState().openPanel("hall");
-    expect(useNpcStore.getState().histories.hall).toHaveLength(1); // no duplicate greeting
+    expect(s.histories.lobby).toBeUndefined();
+    expect(s.histories.hall).toHaveLength(1);
   });
 
   it("send() posts the trimmed history WITH the active npc id and appends the reply", async () => {

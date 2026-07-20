@@ -135,6 +135,15 @@ export function sendStand(): void {
 }
 
 /**
+ * Explicit maze return-to-lobby (design 34 후속: the 큐리 panel button). The
+ * server validates the sender is actually in the goal chamber; elsewhere it is
+ * a silent no-op.
+ */
+export function sendPortalReturn(): void {
+  room?.send(MessageType.PortalReturn, {});
+}
+
+/**
  * Admin: set (or clear) the announcement banner. An empty/whitespace `text`
  * clears it — that is intentional and handled server-side. No-op if not
  * connected; the server drops the message unless this connection is admin.

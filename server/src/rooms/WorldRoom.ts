@@ -18,8 +18,8 @@ import {
 import { SEATS } from "@caysonverse/shared/worldMap";
 import {
   MAZE_RETURN,
+  canUsePortal,
   isInMazeGoal,
-  isOnMazePortal,
   escapeAllowed,
   escapeMessage,
 } from "@caysonverse/shared/maze";
@@ -149,6 +149,9 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     });
     this.onMessage(MessageType.Stand, (client) => {
       this.handleStand(client);
+    });
+    this.onMessage(MessageType.PortalReturn, (client) => {
+      this.handlePortalReturn(client);
     });
   }
 
@@ -354,11 +357,28 @@ export class WorldRoom extends Room<{ state: WorldState }> {
       });
     }
 
-    if (isOnMazePortal(player.x, player.z)) {
-      player.x = MAZE_RETURN.x;
-      player.z = MAZE_RETURN.z;
-      track.lastAcceptedAt = now; // baseline reset — anti-teleport (D1), like sitting
-    }
+    // NOTE (design 34 후속): stepping on the portal pad NO LONGER teleports —
+    // arriving players must be able to meet 큐리 first (발주자: 가운데 가자마자
+    // 포탈돼서 대화를 못 함). The explicit PortalReturn message below is the
+    // only way home; the pad remains as the chamber's visual marker.
+  }
+
+  /**
+   * Explicit return-to-lobby (design 34 후속): the 큐리 panel button sends
+   * this. Server-authoritative validation — the sender must actually stand in
+   * the goal chamber (shared canUsePortal); anywhere else it is a silent no-op
+   * (a tampered client cannot teleport from arbitrary positions). Seated
+   * players cannot be in the maze, but the seat guard keeps the invariant
+   * explicit. Baseline reset mirrors the old pad teleport (anti-teleport D1).
+   */
+  private handlePortalReturn(client: Client): void {
+    const player = this.state.players.get(client.sessionId);
+    if (!player || player.seatIndex >= 0) return;
+    if (!canUsePortal(player.x, player.z)) return;
+    const track = this.tracking.get(client.sessionId);
+    player.x = MAZE_RETURN.x;
+    player.z = MAZE_RETURN.z;
+    if (track) track.lastAcceptedAt = Date.now();
   }
 
   /**

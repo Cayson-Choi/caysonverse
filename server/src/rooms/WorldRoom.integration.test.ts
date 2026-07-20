@@ -951,7 +951,7 @@ describe("WorldRoom maze goal/portal (integration)", () => {
     expect(bSys).toHaveLength(2);
   });
 
-  it("teleports off the portal to the lounge door spot, baseline reset, then moves normally", async () => {
+  it("stepping on the pad NO LONGER teleports; the explicit PortalReturn does (design 34 후속)", async () => {
     const room = await colyseus.createRoom<WorldRoom>(WORLD_ROOM);
     const alice = await colyseus.connectTo(room, JOIN_A);
     const p = room.state.players.get(alice.sessionId)!;
@@ -966,10 +966,17 @@ describe("WorldRoom maze goal/portal (integration)", () => {
     await room.waitForNextMessage();
     await flush();
 
-    // Server teleported to the clear lounge spot near the door (NOT the spawn).
+    // 발주자: 가운데 도달만으로는 포탈되지 않는다 — 큐리와 먼저 만나야 하니까.
+    expect(p.x).toBeCloseTo(portalCenter.x + 0.02, 4);
+    expect(p.z).toBeCloseTo(portalCenter.z, 6);
+    expect(sys).toHaveLength(0);
+
+    // The EXPLICIT request (큐리 panel button) from inside the chamber teleports.
+    alice.send(MessageType.PortalReturn, {});
+    await room.waitForNextMessage();
+    await flush();
     expect(p.x).toBeCloseTo(MAZE_RETURN.x, 6);
     expect(p.z).toBeCloseTo(MAZE_RETURN.z, 6);
-    expect(sys).toHaveLength(0);
 
     // Baseline reset: the clock is `now`, so a huge next step is DROPPED (the
     // ~21 m teleport did not seed an exploitable one-shot budget)…
@@ -984,6 +991,21 @@ describe("WorldRoom maze goal/portal (integration)", () => {
     await room.waitForNextMessage();
     await flush();
     expect(p.x).toBeCloseTo(MAZE_RETURN.x + 0.5, 4);
+  });
+
+  it("ignores PortalReturn sent away from the goal chamber (tampered client)", async () => {
+    const room = await colyseus.createRoom<WorldRoom>(WORLD_ROOM);
+    const alice = await colyseus.connectTo(room, JOIN_A);
+    const p = room.state.players.get(alice.sessionId)!;
+    const beforeX = p.x;
+    const beforeZ = p.z;
+
+    // From the lounge spawn — far outside the chamber radius: silent no-op.
+    alice.send(MessageType.PortalReturn, {});
+    await room.waitForNextMessage();
+    await flush();
+    expect(p.x).toBeCloseTo(beforeX, 6);
+    expect(p.z).toBeCloseTo(beforeZ, 6);
   });
 
   it("drops a move that tunnels through a maze wall (existing obstacle check)", async () => {

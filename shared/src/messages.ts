@@ -26,6 +26,13 @@ export const MessageType = {
    * the client can fire the local 🎉 celebration on self without a new sync.
    */
   System: "system",
+  /**
+   * Client -> server: EXPLICIT return-to-lobby request from the maze goal
+   * chamber (design 34 후속 — 발주자: 가운데 도달만으로 자동 포탈 금지, 큐리와
+   * 대화 후 버튼으로만). Server validates the sender actually stands in the
+   * chamber (shared canUsePortal) before teleporting; elsewhere it is a no-op.
+   */
+  PortalReturn: "portal_return",
 } as const;
 
 export type MessageType = (typeof MessageType)[keyof typeof MessageType];
