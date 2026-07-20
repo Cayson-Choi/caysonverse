@@ -266,8 +266,12 @@ export const CAMERA = {
   ovPinchSpeed: 0.15, // m of height per pixel of pinch spread change
 } as const;
 
-/** Scene palette — matches the entry screen's cosmic navy/violet backdrop. */
-export const SKY_COLOR = "#171335";
+/**
+ * Scene palette — bright daylight sky (design 30: the world reads as a lit real
+ * building). The entry screen keeps its cosmic navy branding; only the 3D world
+ * changed. Also the fog colour, so distance fades into haze, not darkness.
+ */
+export const SKY_COLOR = "#cde3f5";
 // Pushed out with maxDistance=18: at full zoom-out across the 60m map the far
 // wall sits ~75-80m from the camera, so the old FOG_FAR=70 would swallow it.
 export const FOG_NEAR = 35;

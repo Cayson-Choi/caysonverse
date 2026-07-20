@@ -17,12 +17,16 @@ import { MazeWalls } from "./MazeWalls";
 import { GalleryRoom } from "./GalleryRoom";
 import { RoomPosters } from "./RoomPosters";
 
-/** Ground colours per zone (lounge warm, lecture hall cool, maze dim). */
-const LOUNGE_COLOR = "#463a52"; // warm mauve
-const HALL_COLOR = "#36485e"; // cool slate-blue
-const MAZE_COLOR = "#2c2a40"; // dim indigo — reads as a separate, cooler room
-const GALLERY_COLOR = "#5b4536"; // warm walnut — the exhibition room reads distinct (design 25)
-const WALL_COLOR = "#6a6390";
+/**
+ * Ground colours per zone — bright architectural finishes (design 30): every
+ * room keeps a DISTINCT material so zones stay tellable, but all read as a lit
+ * real building instead of the former cosmic-night palette.
+ */
+const LOUNGE_COLOR = "#c9a97b"; // light oak wood
+const HALL_COLOR = "#c3ccd6"; // pale porcelain tile (cool, keeps the hall's identity)
+const MAZE_COLOR = "#c7c3d3"; // light limestone with a lavender hint
+const GALLERY_COLOR = "#ab7d51"; // mid walnut — clearly deeper than the lounge oak (design 25)
+const WALL_COLOR = "#ece6da"; // warm ivory painted plaster
 const SCREEN_BODY = "#0b0b14";
 
 /** Welcome slide shown on the lecture-hall screen (design 24). */

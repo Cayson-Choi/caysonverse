@@ -14,12 +14,11 @@ import { canvas2d, canvasTexture, roundRect } from "./spriteCanvas";
 import { LANDMARK_EMOJIS, MAZE_LANDMARKS, PLAQUE_SIZE, plaqueQuads } from "./mazeLandmarks";
 
 /**
- * Maze wall tone — a bright lavender-grey (cohesive with the room walls #6a6390
- * but lighter) with a weak self-glow, so faces stay legible under the maze fog and
- * dim floor. The room/lounge walls are unchanged (they live in WorldMap).
+ * Maze wall tone — light lavender-grey stone, a shade cooler than the ivory
+ * room walls so the maze still reads as its own space (design 30). The old
+ * self-glow (a dark-world legibility aid) is gone: daylight carries it now.
  */
-const MAZE_WALL_COLOR = "#7d76b0";
-const MAZE_WALL_EMISSIVE = "#2a2550";
+const MAZE_WALL_COLOR = "#d8d4e4";
 /** Goal chamber tile — warm, gently emissive (a beckoning centre). */
 const GOAL_COLOR = "#ffcf5a";
 /** Return portal pad — cyan, brighter emissive (clearly "step here to leave"). */
@@ -55,13 +54,7 @@ function MergedMazeWalls() {
 
   return (
     <mesh geometry={geometry} castShadow receiveShadow>
-      <meshStandardMaterial
-        color={MAZE_WALL_COLOR}
-        emissive={MAZE_WALL_EMISSIVE}
-        emissiveIntensity={0.4}
-        roughness={0.82}
-        metalness={0}
-      />
+      <meshStandardMaterial color={MAZE_WALL_COLOR} roughness={0.82} metalness={0} />
     </mesh>
   );
 }

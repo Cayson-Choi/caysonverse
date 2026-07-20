@@ -1,7 +1,7 @@
 import { Suspense, useEffect, useRef } from "react";
 import { Canvas } from "@react-three/fiber";
-import { Grid, KeyboardControls, useProgress } from "@react-three/drei";
-import { SPAWN_POINT, WORLD_BOUNDS } from "@caysonverse/shared/constants";
+import { KeyboardControls, useProgress } from "@react-three/drei";
+import { SPAWN_POINT } from "@caysonverse/shared/constants";
 import { CAMERA, FOG_FAR, FOG_NEAR, MOVE_KEYS, SKY_COLOR } from "./constants";
 import { LocalPlayer } from "./LocalPlayer";
 import { RemotePlayers } from "./RemotePlayers";
@@ -93,14 +93,6 @@ export function WorldScene({ identity }: { identity: Identity }) {
   // touch verdict (no runtime switching): dpr cap, real vs blob shadows.
   const profile = getRenderProfile(isTouchDevice);
 
-  const width = WORLD_BOUNDS.maxX - WORLD_BOUNDS.minX;
-  const depth = WORLD_BOUNDS.maxZ - WORLD_BOUNDS.minZ;
-  // Grid must be centred on the BOUNDS centre, not the origin — the map is not
-  // origin-symmetric (maze west, gallery north), so an origin-centred grid ends
-  // mid-room (review v2-11 M1: cut off at z=-26 inside the gallery).
-  const centerX = (WORLD_BOUNDS.minX + WORLD_BOUNDS.maxX) / 2;
-  const centerZ = (WORLD_BOUNDS.minZ + WORLD_BOUNDS.maxZ) / 2;
-
   return (
     <>
       <Canvas
@@ -112,11 +104,13 @@ export function WorldScene({ identity }: { identity: Identity }) {
         <color attach="background" args={[SKY_COLOR]} />
         <fog attach="fog" args={[SKY_COLOR, FOG_NEAR, FOG_FAR]} />
 
-        <hemisphereLight args={[0xbcd4ff, 0x2a2340, 0.85]} />
+        {/* Daylight interior (design 30): near-white sky bounce + warm floor
+            bounce, bright enough that the rooms read as a lit real building. */}
+        <hemisphereLight args={[0xffffff, 0xd8cfc2, 1.1]} />
         <directionalLight
           castShadow={profile.shadows}
           position={[8, 14, 6]}
-          intensity={1.4}
+          intensity={1.7}
           shadow-mapSize={[1024, 1024]}
           shadow-camera-near={1}
           shadow-camera-far={60}
@@ -124,19 +118,6 @@ export function WorldScene({ identity }: { identity: Identity }) {
           shadow-camera-right={35}
           shadow-camera-top={35}
           shadow-camera-bottom={-35}
-        />
-
-        {/* Subtle floor grid over the whole playable area. */}
-        <Grid
-          args={[width, depth]}
-          cellSize={1}
-          cellColor="#3a3560"
-          sectionSize={5}
-          sectionColor="#5b53a0"
-          fadeDistance={60}
-          fadeStrength={1.5}
-          infiniteGrid={false}
-          position={[centerX, 0.02, centerZ]}
         />
 
         <KeyboardControls map={MOVE_KEYS}>
