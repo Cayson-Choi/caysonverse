@@ -44,7 +44,9 @@
    sit/stand button (left of it, x ≤ ~270) can never overlap it. */
 .cv-touch .cv-emoji-palette {
   right: 12px;
-  bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
+  /* Raised above the very-bottom chat bar (design 34 후속); still below the
+     👁/🗺/🔊 toggle column (view.css/sound.css at 246px+). */
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 80px);
   width: 102px;
   flex-wrap: wrap;
   justify-content: flex-end;

@@ -1,18 +1,25 @@
 /**
- * The AI 조교 1:1 side-chat panel (design 31): a right-side drawer above the
- * canvas, visible only to this player. Message list + input; Esc or ✕ closes
- * (walking away also closes it — NpcPrompt). While the input is focused the
- * shared uiCapture flag freezes movement keys, exactly like the world chat.
+ * The AI 조교 1:1 dialogue panel (design 31). Desktop: a right-side drawer.
+ * Mobile (design 34 후속 — 발주자: NPC가 보이도록): a bottom SHEET filling the
+ * lower ~44vh, so the 3D NPC stays visible in the top half; while it is open a
+ * `cv-npc-open` root class hides the world chat bar, emoji palette, movement
+ * zone and toggles (npc.css) so only the NPC and the sheet remain. Visible only
+ * to this player. Esc or ✕ closes (walking away also closes it — NpcPrompt).
+ * While the input is focused the shared uiCapture flag freezes movement keys.
  */
 
 import { useEffect, useRef, useState } from "react";
 import { NPC_LABEL } from "../game/npc";
 import { sendPortalReturn } from "../net/connection";
 import { setUiCaptured, captureReleaseEffect } from "../game/uiCapture";
+import { isTouchDevice } from "../device";
+import { trackKbdInset } from "./kbdInset";
 import { NPC_INPUT_MAX, useNpcStore } from "../stores/npcStore";
 import "./npc.css";
 
 const EMPTY: never[] = [];
+/** <html> class while an NPC dialogue is open — mobile hides other overlays. */
+const NPC_OPEN_CLASS = "cv-npc-open";
 
 export function NpcChatPanel() {
   const activeNpc = useNpcStore((s) => s.activeNpc);
@@ -20,7 +27,23 @@ export function NpcChatPanel() {
   const sending = useNpcStore((s) => s.sending);
   const messages = useNpcStore((s) => (s.activeNpc ? (s.histories[s.activeNpc] ?? EMPTY) : EMPTY));
   const [draft, setDraft] = useState("");
+  const [typing, setTyping] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
+
+  // Flag the root while open so the mobile sheet can hide the other overlays.
+  useEffect(() => {
+    if (!open) return;
+    const root = document.documentElement;
+    root.classList.add(NPC_OPEN_CLASS);
+    return () => root.classList.remove(NPC_OPEN_CLASS);
+  }, [open]);
+
+  // Lift the bottom sheet above the soft keyboard while the field is focused
+  // (touch) — same --cv-kbd-inset the world chat bar uses.
+  useEffect(() => {
+    if (!typing || !isTouchDevice) return;
+    return trackKbdInset();
+  }, [typing]);
 
   // Keep the newest message in view.
   useEffect(() => {
@@ -99,8 +122,14 @@ export function NpcChatPanel() {
           maxLength={NPC_INPUT_MAX}
           placeholder="조교에게 물어보세요"
           onChange={(e) => setDraft(e.target.value)}
-          onFocus={() => setUiCaptured(true)}
-          onBlur={() => setUiCaptured(false)}
+          onFocus={() => {
+            setUiCaptured(true);
+            setTyping(true);
+          }}
+          onBlur={() => {
+            setUiCaptured(false);
+            setTyping(false);
+          }}
         />
         <button type="submit" className="cv-npc-send" disabled={sending || !draft.trim()}>
           전송

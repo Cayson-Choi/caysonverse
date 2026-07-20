@@ -120,23 +120,21 @@
   touch-action: manipulation;
 }
 
-/* Slot regime (design 22): the input is the full-width CENTRE row, wholly above
-   the bottom clusters — joystick top ≈ 152px (24 + 128) and the 2-col emoji
-   palette top ≈ 174px (16 + 3×46 + 2×10) — so 190px clears both; everything
-   else that used to share this band (👁/🗺 toggles) moved above it (view.css).
-   A 16px font stops iOS auto-zoom on focus.
+/* Mobile chat bar sits at the VERY BOTTOM (design 34 후속 — 발주자: 일반
+   대화창을 맨 아래로, PC와 동일하게). The movement zone and emoji palette are
+   raised to a band ABOVE it (touch.css / dpad.css / emoji.css bottom:80) so the
+   full-width bar never lands on them. A 16px font stops iOS auto-zoom on focus.
 
-   Soft keyboard: --cv-kbd-inset is the strip of layout viewport the keyboard
-   covers, measured from visualViewport by ChatInput while focused (0 otherwise).
-   max() lets whichever is higher win: keyboard up → the bar floats 12px above
-   the keyboard; keyboard down (or a browser that resizes the layout viewport,
-   where the inset computes ~0) → the normal 190px slot, no double lift. */
+   Soft keyboard: --cv-kbd-inset (kbdInset.ts) is the strip of layout viewport
+   the keyboard covers. max() lets whichever is higher win: keyboard up → the bar
+   floats 12px above the keyboard; keyboard down (or a browser that resizes the
+   layout viewport, where the inset computes ~0) → the bottom 12px slot. */
 .cv-touch .cv-chat-input {
   bottom: max(
-    calc(env(safe-area-inset-bottom, 0px) + 190px),
+    calc(env(safe-area-inset-bottom, 0px) + 12px),
     calc(var(--cv-kbd-inset, 0px) + 12px)
   );
-  width: min(560px, calc(100vw - 24px));
+  width: min(560px, calc(100vw - 16px));
 }
 
 .cv-touch .cv-chat-field {

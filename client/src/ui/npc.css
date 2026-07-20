@@ -191,12 +191,35 @@
   cursor: default;
 }
 
-/* ── Touch: 16px font stops iOS zoom; panel sits above the emoji cluster ── */
+/* ── Touch (design 34 후속): the panel is a full-width BOTTOM SHEET filling the
+   lower ~44vh, so the 3D NPC you walked up to stays visible in the top half.
+   It lifts above the soft keyboard via --cv-kbd-inset (kbdInset.ts). ── */
 .cv-touch .cv-npc-field {
-  font-size: 16px;
+  font-size: 16px; /* stops iOS auto-zoom on focus */
 }
 
 .cv-touch .cv-npc-panel {
-  bottom: calc(env(safe-area-inset-bottom, 0px) + 246px);
-  max-height: 44vh;
+  left: 0;
+  right: 0;
+  bottom: var(--cv-kbd-inset, 0px);
+  width: 100%;
+  max-width: none;
+  max-height: 46vh;
+  border-radius: 20px 20px 0 0;
+  border-bottom: none;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* While an NPC dialogue is open, clear the other bottom overlays so only the
+   NPC and the sheet remain (touch only — desktop keeps its side drawer). */
+.cv-touch.cv-npc-open .cv-chat-input,
+.cv-touch.cv-npc-open .cv-chat-log,
+.cv-touch.cv-npc-open .cv-emoji-palette,
+.cv-touch.cv-npc-open .cv-view-btn,
+.cv-touch.cv-npc-open .cv-overview-btn,
+.cv-touch.cv-npc-open .cv-sound-btn,
+.cv-touch.cv-npc-open .cv-joystick-zone,
+.cv-touch.cv-npc-open .cv-dpad-zone,
+.cv-touch.cv-npc-open .cv-sit-btn {
+  display: none !important;
 }

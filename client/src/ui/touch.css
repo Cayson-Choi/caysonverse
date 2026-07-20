@@ -2,7 +2,8 @@
 .cv-joystick-zone {
   position: fixed;
   left: calc(env(safe-area-inset-left, 0px) + 20px);
-  bottom: calc(env(safe-area-inset-bottom, 0px) + 24px);
+  /* Raised above the very-bottom chat bar (design 34 후속). */
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 80px);
   width: 128px;
   height: 128px;
   z-index: 25;

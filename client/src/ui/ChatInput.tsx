@@ -3,6 +3,7 @@ import { CHAT_MAX_LENGTH } from "@caysonverse/shared/constants";
 import { setUiCaptured, isUiCaptured, captureReleaseEffect } from "../game/uiCapture";
 import { sendChat } from "../net/connection";
 import { isTouchDevice } from "../device";
+import { KBD_INSET_VAR, trackKbdInset } from "./kbdInset";
 
 const PLACEHOLDER = "메시지를 입력하세요 (Enter)";
 /** Show the length counter once within this many characters of the limit. */
@@ -14,20 +15,6 @@ const COUNTER_LEAD = 20;
  * hide, so the keyboard-lifted input bar can never land on them (design 22).
  */
 const FOCUS_CLASS = "cv-chat-focus";
-
-/** CSS custom property carrying the soft-keyboard inset (px) — read by chat.css. */
-const KBD_INSET_VAR = "--cv-kbd-inset";
-
-/**
- * Publish how much of the LAYOUT viewport's bottom the soft keyboard covers.
- * `innerHeight - vv.height - vv.offsetTop` is the strip below the visual
- * viewport: exactly the keyboard overlap when it is up, 0 when it is down.
- */
-function updateKbdInset(): void {
-  const vv = window.visualViewport;
-  const inset = vv ? Math.max(0, window.innerHeight - vv.height - vv.offsetTop) : 0;
-  document.documentElement.style.setProperty(KBD_INSET_VAR, `${Math.round(inset)}px`);
-}
 
 /**
  * Bottom-centre chat input bar.
@@ -60,13 +47,9 @@ export function ChatInput() {
     if (!focused || !isTouchDevice) return;
     const root = document.documentElement;
     root.classList.add(FOCUS_CLASS);
-    updateKbdInset();
-    const vv = window.visualViewport;
-    vv?.addEventListener("resize", updateKbdInset);
-    vv?.addEventListener("scroll", updateKbdInset);
+    const stop = trackKbdInset();
     return () => {
-      vv?.removeEventListener("resize", updateKbdInset);
-      vv?.removeEventListener("scroll", updateKbdInset);
+      stop();
       root.classList.remove(FOCUS_CLASS);
       root.style.setProperty(KBD_INSET_VAR, "0px");
     };
