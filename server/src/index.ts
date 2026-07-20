@@ -20,6 +20,7 @@ import {
 import {
   VOICE_RATE_LIMIT,
   VOICE_RATE_WINDOW_MS,
+  VOICES_BY_GENDER,
   VoiceCache,
   synthesizeVoice,
   validateVoiceBody,
@@ -137,10 +138,17 @@ const server = defineServer({
         return;
       }
       try {
-        let audio = voiceCache.get(parsed.text);
+        // Gender picks the neural voice (chat: per character; NPC: female
+        // default — NPC_VOICE env can override the female voice only).
+        const voice =
+          parsed.gender === "female"
+            ? process.env.NPC_VOICE || VOICES_BY_GENDER.female
+            : VOICES_BY_GENDER.male;
+        const cacheKey = `${voice}|${parsed.text}`;
+        let audio = voiceCache.get(cacheKey);
         if (!audio) {
-          audio = await synthesizeVoice(parsed.text);
-          voiceCache.set(parsed.text, audio);
+          audio = await synthesizeVoice(parsed.text, voice);
+          voiceCache.set(cacheKey, audio);
         }
         res.setHeader("content-type", "audio/mpeg");
         res.setHeader("cache-control", "no-store");

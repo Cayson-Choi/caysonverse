@@ -34,7 +34,7 @@ function runSpan(p: (typeof ROOM_POSTERS)[number]): [number, number] {
 describe("room posters — identity (design 26)", () => {
   it("names the three enterable rooms, in maze → lecture → gallery order", () => {
     expect(ROOM_POSTERS.map((p) => p.room)).toEqual(["maze", "lectureHall", "gallery"]);
-    expect(ROOM_POSTERS.map((p) => p.title)).toEqual(["미로방", "강의실", "갤러리"]);
+    expect(ROOM_POSTERS.map((p) => p.title)).toEqual(["미로방", "강의실", "AI 갤러리"]);
   });
 
   it("pairs each room with its symbol emoji (미로 🌀 · 강의실 📚 · 갤러리 🖼)", () => {

@@ -29,6 +29,13 @@ export interface AtlasCell {
 /** A cell to repaint with the given CSS color (canvas `color` blend). */
 export interface RecolorCell extends AtlasCell {
   color: string;
+  /**
+   * Paint mode: default hue-swap keeps the cell's baked luminosity (royal
+   * gold on gray armor). `flat` overwrites the pixels outright — needed when
+   * the TARGET brightness differs from the source (the android's WHITE shell
+   * over the mage's dark navy robe stays near-black under the hue-swap).
+   */
+  flat?: boolean;
 }
 
 /** Per-royal repaint plan over its body atlas. */
@@ -143,12 +150,13 @@ export const ROYAL_RECIPES: Record<RoyalId, RoyalRecipe> = {
 const paletteCache = new Map<RoyalId, CanvasTexture>();
 
 /**
- * Repaint the recipe cells over the source atlas on an offscreen canvas. The
- * `color` composite op replaces hue/saturation but keeps the destination
+ * Repaint arbitrary recolor cells over the source atlas on an offscreen canvas.
+ * The `color` composite op replaces hue/saturation but keeps the destination
  * luminosity, so the atlas' baked gradients (and the narrow shadow strip inside
- * each cell) survive the swap.
+ * each cell) survive the swap. Exported for OTHER palette consumers (the NPC
+ * android look, npcLook.ts) — the royal path below is unchanged.
  */
-function buildRoyalTexture(recipe: RoyalRecipe, source: Texture): CanvasTexture {
+export function buildPaletteTexture(cells: readonly RecolorCell[], source: Texture): CanvasTexture {
   const image = source.image as HTMLImageElement | ImageBitmap;
   const canvas = document.createElement("canvas");
   canvas.width = image.width;
@@ -157,8 +165,8 @@ function buildRoyalTexture(recipe: RoyalRecipe, source: Texture): CanvasTexture 
   ctx.drawImage(image, 0, 0);
   const cellW = canvas.width / ATLAS_GRID;
   const cellH = canvas.height / ATLAS_GRID;
-  ctx.globalCompositeOperation = "color";
-  for (const cell of recipe.cells) {
+  for (const cell of cells) {
+    ctx.globalCompositeOperation = cell.flat ? "source-over" : "color";
     ctx.fillStyle = cell.color;
     ctx.fillRect(cell.col * cellW, cell.row * cellH, cellW, cellH);
   }
@@ -185,7 +193,7 @@ function buildRoyalTexture(recipe: RoyalRecipe, source: Texture): CanvasTexture 
 export function getRoyalTexture(royal: RoyalId, source: Texture): Texture {
   const cached = paletteCache.get(royal);
   if (cached) return cached;
-  const built = buildRoyalTexture(ROYAL_RECIPES[royal], source);
+  const built = buildPaletteTexture(ROYAL_RECIPES[royal].cells, source);
   paletteCache.set(royal, built);
   return built;
 }

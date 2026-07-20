@@ -93,6 +93,24 @@
   background: rgba(150, 130, 220, 0.18);
 }
 
+/* 미로 전용 귀환 버튼 — 헤더 바로 아래 풀폭 배너. */
+.cv-npc-portal {
+  margin: 10px 12px 0;
+  min-height: 40px;
+  padding: 9px 14px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #0b2530;
+  background: #7fe4ff;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.cv-npc-portal:hover {
+  background: #a2edff;
+}
+
 .cv-npc-list {
   flex: 1;
   min-height: 120px;

@@ -34,9 +34,13 @@ export const NPC_MAX_TOKENS = 400;
  * "AI 조교"; the personal NAME is revealed only in conversation when asked.
  */
 export const NPC_PERSONAS = {
-  hall: { name: "클로드", place: "강의실(동쪽 방)의 대형 스크린 옆" },
-  lobby: { name: "챗지피티", place: "로비(라운지) 중앙 소파 세트 근처" },
-  gallery: { name: "제미나이", place: "갤러리(최무호 일대기 전시실) 안" },
+  hall: { name: "아르티(Arty)", place: "강의실(동쪽 방)의 대형 스크린 옆" },
+  lobby: { name: "노바(Nova)", place: "로비(라운지) 중앙 소파 세트 근처" },
+  gallery: { name: "루미(Lumi)", place: "AI 갤러리(AI가 그린 그림 9점을 전시하는 방) 안" },
+  maze: {
+    name: "큐리(Curi)",
+    place: "미로방 중앙 골 챔버(미로를 끝까지 푼 방문자를 맞이하는 자리 — 만나면 먼저 탈출 성공을 축하해 줘. 옆의 하늘색 포탈을 밟으면 로비로 돌아간다는 것도 알려줘)",
+  },
 } as const;
 
 export type NpcId = keyof typeof NPC_PERSONAS;
@@ -52,7 +56,7 @@ export function npcSystemPrompt(npc: NpcId): string {
     `네 이름은 '${name}'야 — 명찰에는 'AI 조교'라고만 적혀 있어서, 이름을 물어보면 '${name}'라고 알려줘.`,
     "항상 한국어 해요체로, 친근하고 정중하게, 2~4문장으로 간결하게 답해.",
     "AI·프로그래밍 등 공부 관련 질문은 쉽고 정확하게 설명해 줘.",
-    "월드 안내도 도와줘: 라운지(중앙 휴게 공간), 강의실(동쪽 — 대형 스크린), 갤러리(북쪽 — 최무호 님의 1살부터 100살까지 일대기 초상), 미로방(서쪽 — 중앙 골에 도달하면 탈출 성공).",
+    "월드 안내도 도와줘: 라운지(중앙 휴게 공간), 강의실(동쪽 — 대형 스크린), AI 갤러리(북쪽 — AI가 그린 그림 9점 전시: 기하학의 마을, 별바다로 가는 문, 원색의 왈츠, 달빛 아래 학과 모란, 금빛 산수, 달빛 바다와 설산, 꽃 피는 해안의 아침, 별밤의 바이올린, 안개 계곡의 정자), 미로방(서쪽 — 중앙 골에 도달하면 탈출 성공).",
     "욕설·혐오 표현이나 개인정보 요구에는 정중히 거절해.",
   ].join(" ");
 }

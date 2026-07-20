@@ -8,15 +8,32 @@
  */
 
 import { MsEdgeTTS, OUTPUT_FORMAT } from "msedge-tts";
+import { speechOnlyText } from "@caysonverse/shared/speech";
 
 /** Natural Korean female neural voice (발주자 지정: "edge tts의 여자"). */
 export const NPC_VOICE_DEFAULT = "ko-KR-SunHiNeural";
 
+/**
+ * Gender → Edge neural voice (design 34 후속: 채팅 낭독도 Edge TTS로, 남자
+ * 캐릭터는 남성 목소리·여자 캐릭터는 여성 목소리). The NPC keeps the female
+ * default; chat requests pick per-character.
+ */
+export const VOICES_BY_GENDER = {
+  female: "ko-KR-SunHiNeural",
+  male: "ko-KR-InJoonNeural",
+} as const;
+
+export type VoiceGender = keyof typeof VOICES_BY_GENDER;
+
 /** Longest line we synthesize (covers NPC_MAX_TOKENS-long replies with slack). */
 export const VOICE_MAX_CHARS = 600;
 
-/** Per-IP sliding-window limit — one call per NPC line (greeting + replies). */
-export const VOICE_RATE_LIMIT = 20;
+/**
+ * Per-IP sliding-window limit. Sized for CHAT listening too (design 34 후속):
+ * a client requests one synthesis per heard message (queue-capped locally),
+ * plus its own NPC lines.
+ */
+export const VOICE_RATE_LIMIT = 40;
 export const VOICE_RATE_WINDOW_MS = 60_000;
 
 /** Synthesis timeout (ms) — the upstream websocket must not pin a request. */
@@ -25,16 +42,32 @@ export const VOICE_TIMEOUT_MS = 15_000;
 /** Cache cap: the greeting repeats for every visitor; replies rarely repeat. */
 export const VOICE_CACHE_MAX = 50;
 
-export type VoiceValidation = { ok: true; text: string } | { ok: false; error: string };
+export type VoiceValidation =
+  | { ok: true; text: string; gender: VoiceGender }
+  | { ok: false; error: string };
 
-/** Validate the request body: a non-empty string within the length cap. */
+/**
+ * Validate the request body and reduce it to SPEAKABLE prose. The same
+ * speech-only filter as the client (defense in depth + one canonical cache
+ * key): emojis and ASCII-art lines are dropped HERE too, so the voice can
+ * never read a pictograph or a drawing aloud regardless of the caller. The
+ * length cap applies to the prose that will actually be spoken — a long reply
+ * whose bulk is a drawing still speaks its one-line caption. Nothing speakable
+ * ⇒ rejected (the client treats that as "don't speak").
+ */
 export function validateVoiceBody(body: unknown): VoiceValidation {
-  const text = (body as { text?: unknown } | null | undefined)?.text;
-  if (typeof text !== "string" || text.trim().length === 0)
-    return { ok: false, error: "text가 필요합니다" };
+  const raw = (body as { text?: unknown } | null | undefined)?.text;
+  const genderRaw = (body as { gender?: unknown } | null | undefined)?.gender;
+  if (typeof raw !== "string") return { ok: false, error: "text가 필요합니다" };
+  if (raw.length > 8_000) return { ok: false, error: "text가 너무 깁니다" };
+  // Absent gender ⇒ female (the NPC default); anything else must be a known key.
+  const gender: VoiceGender = genderRaw === undefined ? "female" : (genderRaw as VoiceGender);
+  if (!(gender in VOICES_BY_GENDER)) return { ok: false, error: "알 수 없는 음성입니다" };
+  const text = speechOnlyText(raw);
+  if (text.length === 0) return { ok: false, error: "낭독할 텍스트가 없습니다" };
   if ([...text].length > VOICE_MAX_CHARS)
-    return { ok: false, error: `text는 ${VOICE_MAX_CHARS}자 이내여야 합니다` };
-  return { ok: true, text: text.trim() };
+    return { ok: false, error: `낭독 텍스트는 ${VOICE_MAX_CHARS}자 이내여야 합니다` };
+  return { ok: true, text, gender };
 }
 
 /** Tiny FIFO cache (insertion-ordered Map): oldest entry evicted at the cap. */

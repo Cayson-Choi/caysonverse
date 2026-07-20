@@ -18,19 +18,19 @@ export interface NpcConfig {
   pos: { x: number; z: number };
   /** Facing (Y rotation of the +Z-facing model). */
   rotY: number;
-  /** Robe tint index (TINT_COLORS) — a subtle brand nod per assistant. */
-  tint: number;
 }
 
 /**
  * The stationed assistants. Facing: hall → -X (into the hall), lobby → +X
  * (toward the central sofa set), gallery → toward the gallery door (NW-ish).
- * Tints: 클로드=orange, 챗지피티=green, 제미나이=blue.
+ * Their android look + per-assistant accent hue live in npcLook.ts.
  */
 export const NPCS: readonly NpcConfig[] = [
-  { id: "hall", pos: NPC_SPOTS.hall, rotY: -Math.PI / 2, tint: 2 },
-  { id: "lobby", pos: NPC_SPOTS.lobby, rotY: Math.PI / 2, tint: 4 },
-  { id: "gallery", pos: NPC_SPOTS.gallery, rotY: Math.atan2(-3.5, 8), tint: 5 },
+  { id: "hall", pos: NPC_SPOTS.hall, rotY: -Math.PI / 2 },
+  { id: "lobby", pos: NPC_SPOTS.lobby, rotY: Math.PI / 2 },
+  { id: "gallery", pos: NPC_SPOTS.gallery, rotY: Math.atan2(-3.5, 8) },
+  // 미로 골 챔버: faces +Z (south) — toward the goal tile, greeting solvers.
+  { id: "maze", pos: NPC_SPOTS.maze, rotY: 0 },
 ];
 
 /** Talk prompt radius (m) — walk up close to start the conversation. */

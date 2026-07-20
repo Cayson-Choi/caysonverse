@@ -11,5 +11,6 @@ dist/
 Thumbs.db
 .superpowers/
 
-# 갤러리 원본 사진 (웹용 변환본만 client/public/gallery에 커밋)
+# 갤러리 원본 사진/그림 (웹용 변환본만 client/public/gallery에 커밋)
 mypictures/
+art/

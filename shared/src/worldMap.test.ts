@@ -497,6 +497,14 @@ describe("worldMap — wall-seal invariant (north extension opens NO gap into th
     for (const [name, zn] of Object.entries(ZONES)) {
       expect(reached.some((p) => inside(zn, p.x, p.z)), `zone ${name} is reachable`).toBe(true);
     }
+
+    // The maze GOAL tile and the return PORTAL stay reachable — the 라마 NPC's
+    // solid body in the goal chamber (design 34) must never wall off the win
+    // condition or the way home.
+    expect(reached.some((p) => inside(MAZE_GOAL, p.x, p.z)), "maze goal reachable").toBe(true);
+    expect(reached.some((p) => inside(MAZE_PORTAL, p.x, p.z)), "return portal reachable").toBe(
+      true,
+    );
   });
 });
 

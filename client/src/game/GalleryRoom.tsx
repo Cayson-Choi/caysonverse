@@ -13,19 +13,19 @@ import {
 import { mergeBufferGeometries } from "three-stdlib";
 import { canvas2d, canvasTexture, roundRect } from "./spriteCanvas";
 import {
+  ARTWORKS,
   FRAME_DEPTH,
   FRAME_MARGIN,
   FRAME_WALL_GAP,
+  GALLERY_TITLE,
   PANEL_WALL_GAP,
   PHOTO_CENTER_Y,
   PHOTO_H,
-  PHOTO_W,
   PHOTO_WALL_GAP,
   PLAQUE_CENTER_Y,
   PLAQUE_H,
   PLAQUE_W,
   PLAQUE_WALL_GAP,
-  PORTRAITS,
   TITLE_BANNER,
   type WallPanel,
 } from "./gallery";
@@ -48,14 +48,14 @@ const KR_FONT = `"Malgun Gothic", "Apple SD Gothic Neo", sans-serif`;
 // ─────────────────────────── Canvas rasterizers ───────────────────────────
 
 /**
- * Age plaque: a bright ivory card with dark lettering. The type fills ~60% of
- * the card height so "N살" stays readable from across the room (the first E2E
- * pass showed a 46%-height face washing out at ~9 m).
+ * Title plaque: a bright ivory caption card with dark lettering. Titles are
+ * full phrases now (design 34), so the type SHRINKS to fit the card (the
+ * lecture-slide precedent) instead of assuming a two-glyph "N살" label.
  */
 function drawPlaque(label: string): HTMLCanvasElement {
   const canvas = document.createElement("canvas");
-  canvas.width = 384;
-  canvas.height = 168;
+  canvas.width = 704;
+  canvas.height = 172;
   const ctx = canvas2d(canvas);
   const inset = 10;
   ctx.fillStyle = "#f6efdd"; // warm ivory
@@ -66,10 +66,14 @@ function drawPlaque(label: string): HTMLCanvasElement {
   roundRect(ctx, inset, inset, canvas.width - inset * 2, canvas.height - inset * 2, 22);
   ctx.stroke();
   ctx.fillStyle = "#33250f";
-  ctx.font = `700 100px ${KR_FONT}`;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillText(label, canvas.width / 2, canvas.height / 2 + 6);
+  let size = 84;
+  do {
+    ctx.font = `700 ${size}px ${KR_FONT}`;
+    size -= 4;
+  } while (size > 28 && ctx.measureText(label).width > canvas.width * 0.86);
+  ctx.fillText(label, canvas.width / 2, canvas.height / 2 + 5);
   return canvas;
 }
 
@@ -154,14 +158,14 @@ function drawGoldPanel(title: string, width: number, height: number): HTMLCanvas
 function GalleryFrames() {
   const geometry = useMemo(() => {
     const geos: BoxGeometry[] = [];
-    const outerW = PHOTO_W + 2 * FRAME_MARGIN;
     const depthOff = FRAME_WALL_GAP + FRAME_DEPTH / 2;
-    for (const p of PORTRAITS) {
+    for (const p of ARTWORKS) {
+      const outerW = p.w + 2 * FRAME_MARGIN; // per-work: widths follow aspect
       const rails: Array<[number, number, number, number]> = [
         [0, PHOTO_H / 2 + FRAME_MARGIN / 2, outerW, FRAME_MARGIN], // top rail
         [0, -(PHOTO_H / 2 + FRAME_MARGIN / 2), outerW, FRAME_MARGIN], // bottom rail
-        [-(PHOTO_W / 2 + FRAME_MARGIN / 2), 0, FRAME_MARGIN, PHOTO_H], // left stile
-        [PHOTO_W / 2 + FRAME_MARGIN / 2, 0, FRAME_MARGIN, PHOTO_H], // right stile
+        [-(p.w / 2 + FRAME_MARGIN / 2), 0, FRAME_MARGIN, PHOTO_H], // left stile
+        [p.w / 2 + FRAME_MARGIN / 2, 0, FRAME_MARGIN, PHOTO_H], // right stile
       ];
       for (const [cx, cy, sx, sy] of rails) {
         const g = new BoxGeometry(sx, sy, FRAME_DEPTH);
@@ -202,12 +206,14 @@ function GalleryPhotos() {
   const gl = useThree((s) => s.gl);
 
   const { group, entries, dispose } = useMemo(() => {
-    const geometry = new PlaneGeometry(PHOTO_W, PHOTO_H);
+    // One UNIT plane shared by all: each mesh scales to its work's aspect-true
+    // width at the shared eye-line height (never stretching the image).
+    const geometry = new PlaneGeometry(1, 1);
     const loader = new TextureLoader();
     const group = new Group();
     let disposed = false;
 
-    const entries = PORTRAITS.map((p) => {
+    const entries = ARTWORKS.map((p) => {
       const material = new MeshBasicMaterial({ color: PLACEHOLDER_COLOR, toneMapped: false });
       const mesh = new Mesh(geometry, material);
       mesh.position.set(
@@ -216,11 +222,12 @@ function GalleryPhotos() {
         p.z + p.nz * PHOTO_WALL_GAP,
       );
       mesh.rotation.y = p.rotY;
+      mesh.scale.set(p.w, PHOTO_H, 1);
       mesh.updateMatrix();
       mesh.matrixAutoUpdate = false;
       group.add(mesh);
 
-      const entry = { age: p.age, url: p.url, loaded: false, texture: null as Texture | null, material };
+      const entry = { title: p.title, url: p.url, loaded: false, texture: null as Texture | null, material };
       loader.load(
         p.url,
         (texture) => {
@@ -282,10 +289,10 @@ function GalleryPhotos() {
       }
     };
     const w = window as unknown as {
-      __cvGallery?: () => { age: number; url: string; loaded: boolean; mean: number | null }[];
+      __cvGallery?: () => { title: string; url: string; loaded: boolean; mean: number | null }[];
     };
     w.__cvGallery = () =>
-      entries.map((e) => ({ age: e.age, url: e.url, loaded: e.loaded, mean: sampleMean(e.texture) }));
+      entries.map((e) => ({ title: e.title, url: e.url, loaded: e.loaded, mean: sampleMean(e.texture) }));
     return () => {
       delete w.__cvGallery;
     };
@@ -294,13 +301,13 @@ function GalleryPhotos() {
   return <primitive object={group} />;
 }
 
-/** The nine "N살" plaques — one canvas texture each, flush under the frames. */
+/** The nine title plaques — one canvas texture each, flush under the frames. */
 function GalleryPlaques() {
   const group = useMemo(() => {
     const geometry = new PlaneGeometry(PLAQUE_W, PLAQUE_H);
     const root = new Group();
-    for (const p of PORTRAITS) {
-      const texture = canvasTexture(drawPlaque(p.label));
+    for (const p of ARTWORKS) {
+      const texture = canvasTexture(drawPlaque(p.title));
       const material = new MeshBasicMaterial({
         map: texture,
         transparent: true,
@@ -366,15 +373,14 @@ function WallText({ panel, title }: { panel: WallPanel; title: string }) {
 }
 
 /**
- * "최무호 일대기" gallery room contents (design 25): nine unlit chronological
- * portraits in merged gold frames, age plaques, the north-wall title banner,
- * and one warm fill light so the walnut floor and walls read warm against the
- * cosmic palette (photos need no light at all — they are unlit by design; this
- * is ambience, not a lighting system). The former lounge-side entrance sign was
- * removed by design 26 (it duplicated the in-room banner) — the lounge-side
- * RoomPosters name the door instead. The room floor is WorldMap's ZoneFloor;
- * the walls come from the shared WALLS render. Everything here is static:
- * matrices are baked once and frozen.
+ * "AI 갤러리" room contents (design 25 room, design 34 exhibition): nine unlit
+ * AI-painted works in merged gold frames, curator-title plaques, the
+ * north-wall title banner, and one warm fill light for ambience (the artworks
+ * need no light at all — they are unlit by design). The former lounge-side
+ * entrance sign was removed by design 26 — the lounge-side RoomPosters name
+ * the door instead. The room floor is WorldMap's ZoneFloor; the walls come
+ * from the shared WALLS render. Everything here is static: matrices are baked
+ * once and frozen.
  */
 export function GalleryRoom() {
   return (
@@ -382,7 +388,7 @@ export function GalleryRoom() {
       <GalleryFrames />
       <GalleryPhotos />
       <GalleryPlaques />
-      <WallText panel={TITLE_BANNER} title="최무호 일대기" />
+      <WallText panel={TITLE_BANNER} title={GALLERY_TITLE} />
       {/* Warm centre fill — kept inside the room (distance < room half-diagonal
           + falloff) so it never spills past the gallery walls. */}
       <pointLight position={[-15, 3.4, -26]} intensity={10} distance={16} decay={2} color="#ffd9a8" />

@@ -128,7 +128,7 @@ function buildRoomPosters(): RoomPoster[] {
     },
     {
       room: "gallery",
-      title: "갤러리",
+      title: "AI 갤러리",
       emoji: "\u{1F5BC}\u{FE0F}", // 🖼
       x: GALLERY_DOOR_X + GALLERY_DOOR_HALF_WIDTH + side, // east of the gallery door
       z: ZONES.lounge.minZ, // lounge-side face of the north wall

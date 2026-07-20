@@ -171,14 +171,18 @@ function screenObstacle(): AABB {
  * (z = 0 west leg, x = -18 north leg, x = -15 gallery axis) and the
  * spawn-clearance circle — the map-invariant tests prove it stays that way.
  *
- *  - hall    (이름 "클로드"):   beside the screen's south edge, faces the room
- *  - lobby   (이름 "챗지피티"): by the west wall, faces the central sofa set
- *  - gallery (이름 "제미나이"): east half of the gallery, faces the door
+ *  - hall    (이름 "아르티"): beside the screen's south edge, faces the room
+ *  - lobby   (이름 "노바"):   by the west wall, faces the central sofa set
+ *  - gallery (이름 "루미"):   east half of the gallery, faces the door
+ *  - maze    (이름 "큐리"):   the goal chamber's north side — the one who
+ *    greets you when you SOLVE the maze (골 타일·귀환 포탈·챔버 통로와 무간섭,
+ *    the flood-fill reachability test pins goal AND portal walkable)
  */
 export const NPC_SPOTS = {
   hall: { x: SCREEN.x - 1.0, z: SCREEN.z - SCREEN.width / 2 - 1.2 },
   lobby: { x: -24, z: 6.2 },
   gallery: { x: -11.5, z: -26 },
+  maze: { x: -49.2, z: -2.9 },
 } as const;
 
 export type NpcId = keyof typeof NPC_SPOTS;

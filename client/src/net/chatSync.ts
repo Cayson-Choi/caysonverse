@@ -18,7 +18,9 @@ import type { ChatBroadcast, ChatRejectedPayload, SystemBroadcast } from "@cayso
 import { EMOJIS } from "@caysonverse/shared/constants";
 import { bubbleRegistry } from "../game/bubbleRegistry";
 import { emojiRegistry } from "../game/emojiRegistry";
-import { speakChat, stopTts } from "../game/tts";
+import { stopTts } from "../game/tts";
+import { speakChatNeural, stopChatVoice, type ChatVoiceGender } from "../game/chatVoice";
+import { CHARACTERS } from "../game/constants";
 import { useChatStore } from "../stores/chatStore";
 import { useSoundStore } from "../stores/soundStore";
 
@@ -29,20 +31,22 @@ export function startChatSync(room: Room<WorldState>): () => void {
   const offChat = room.onMessage(MessageType.Chat, (m: ChatBroadcast) => {
     bubbleRegistry.set(m.sid, m.text, performance.now());
     useChatStore.getState().pushMessage(m.name, m.text);
-    // TTS (design 23): distance from the authoritative schema positions — the
-    // 10 Hz patch lag is acceptable for an audibility gate. My own message is
-    // distance 0 (always spoken) without touching the state; a sender missing
-    // from the state (join/leave race) yields NaN, which speakChat skips.
+    // Neural TTS (design 23 gate + design 34 후속 voices): distance from the
+    // authoritative schema positions — the 10 Hz patch lag is acceptable for
+    // an audibility gate. My own message is distance 0 (always spoken); a
+    // sender missing from the state (join/leave race) yields NaN, skipped.
+    // The SENDER's character picks the male/female Edge voice.
     const muted = useSoundStore.getState().muted;
+    const players = room.state?.players;
+    const sender = players?.get?.(m.sid);
+    const gender: ChatVoiceGender = CHARACTERS[sender?.character ?? 0]?.voice ?? "male";
     if (m.sid === room.sessionId) {
-      speakChat(m.text, 0, { muted });
+      speakChatNeural(m.text, 0, gender, muted);
     } else {
-      const players = room.state?.players;
       const me = players?.get?.(room.sessionId);
-      const sender = players?.get?.(m.sid);
       const distance =
         me && sender ? Math.hypot(sender.x - me.x, sender.z - me.z) : Number.NaN;
-      speakChat(m.text, distance, { muted });
+      speakChatNeural(m.text, distance, gender, muted);
     }
   });
 
@@ -66,8 +70,9 @@ export function startChatSync(room: Room<WorldState>): () => void {
     offSystem();
     bubbleRegistry.clear();
     useChatStore.getState().clear();
-    // Stop any in-flight reading and flush the queue — a reconnect remounts
+    // Stop any in-flight reading and flush both queues — a reconnect remounts
     // this sync, and a stale utterance must not talk over the new world.
     stopTts();
+    stopChatVoice();
   };
 }

@@ -1,33 +1,61 @@
 /**
- * "최무호 일대기" gallery — portrait placement data (design 25). A PURE,
- * client-only module (no THREE, no React, no server contract — the server never
- * knows portraits exist; only the gallery WALLS are shared collision truth).
- * Every anchor derives from the shared GALLERY_ZONE, mirroring mazeLandmarks'
- * single-source discipline: the renderer (GalleryRoom.tsx) consumes these
- * anchors verbatim, and gallery.test.ts pins the on-wall / spacing / life-order
- * invariants without touching a scene graph.
+ * "AI 갤러리" — artwork placement data (design 25, re-curated by design 34: the
+ * former 최무호 일대기 portraits were replaced with nine AI-painted works from
+ * the owner's collection, titled by the curator). A PURE, client-only module
+ * (no THREE, no React, no server contract — the server never knows artworks
+ * exist; only the gallery WALLS are shared collision truth). Every anchor
+ * derives from the shared GALLERY_ZONE, mirroring mazeLandmarks' single-source
+ * discipline: the renderer (GalleryRoom.tsx) consumes these anchors verbatim,
+ * and gallery.test.ts pins the on-wall / spacing / order invariants without
+ * touching a scene graph.
  *
- * Curation (design 25): nine life-milestone portraits hang in CHRONOLOGICAL
- * counter-clockwise order — enter through the south door, read the west wall
- * top-to-bottom of life's first act (1·4·17), the far north wall (28·40·60,
- * with 40살 dead ahead of the door as the focal point), and the east wall walks
- * you back to the door through 70·80·100.
+ * Curation (design 34): enter through the south door and walk the west wall
+ * (기하학의 마을 → 별바다로 가는 문 → 원색의 왈츠), the far north wall (달빛
+ * 아래 학과 모란 → 금빛 산수 dead ahead of the door as the focal wide piece →
+ * 달빛 바다와 설산), then the east wall back to the door (꽃 피는 해안의 아침
+ * → 별밤의 바이올린 → 안개 계곡의 정자).
  */
 
 import type { AABB } from "@caysonverse/shared/collision";
 import { GALLERY_ZONE } from "@caysonverse/shared/worldMap";
 
-/** The nine milestone ages, in life order — one committed jpg each. */
-export const PORTRAIT_AGES: readonly number[] = [1, 4, 17, 28, 40, 60, 70, 80, 100];
+/** The exhibition room's display name (banner + lounge poster + persona). */
+export const GALLERY_TITLE = "AI 갤러리";
 
-/** Photo plane size (m). 1.6 × 2.0 keeps the committed 819×1024 jpg's 4:5 ratio. */
-export const PHOTO_W = 1.6;
+/**
+ * The nine AI-painted works, in VISIT order (west 3 → north 3 → east 3). The
+ * curator titles were written after viewing each committed image; `aspect` is
+ * the committed jpg's true width/height, so no canvas is ever stretched.
+ */
+export const ARTWORKS_DATA: readonly { file: string; title: string; aspect: number }[] = [
+  { file: "art-1.jpg", title: "기하학의 마을", aspect: 1.0 },
+  { file: "art-3.jpg", title: "별바다로 가는 문", aspect: 0.75 },
+  { file: "art-2.jpg", title: "원색의 왈츠", aspect: 2.0 },
+  { file: "art-4.jpg", title: "달빛 아래 학과 모란", aspect: 1.0 },
+  { file: "art-5.jpg", title: "금빛 산수 — 소나무와 학", aspect: 1.778 },
+  { file: "art-6.jpg", title: "달빛 바다와 설산", aspect: 1.499 },
+  { file: "art-7.jpg", title: "꽃 피는 해안의 아침", aspect: 1.668 },
+  { file: "art-8.jpg", title: "별밤의 바이올린", aspect: 0.8 },
+  { file: "art-9.jpg", title: "안개 계곡의 정자", aspect: 0.667 },
+];
+
+/**
+ * Canvas plane height (m) — one shared museum eye-line for every work; each
+ * width follows its own aspect (clamped so a very wide piece can never touch
+ * its neighbours given the thirds spacing below).
+ */
 export const PHOTO_H = 2.0;
+export const PHOTO_MAX_W = 4.2;
+
+/** Width (m) of one artwork plane: aspect-true at the shared height, capped. */
+export function artworkWidth(aspect: number): number {
+  return Math.min(PHOTO_H * aspect, PHOTO_MAX_W);
+}
 
 /** Photo centre height (m) — museum-style eye level for the chibi avatars. */
 export const PHOTO_CENTER_Y = 1.8;
 
-/** Frame border width beyond the photo on every side (m). */
+/** Frame border width beyond the canvas on every side (m). */
 export const FRAME_MARGIN = 0.12;
 
 /** Frame depth off the wall (m) — a real moulding, not a decal. */
@@ -43,13 +71,12 @@ export const FRAME_WALL_GAP = 0.03;
 export const PHOTO_WALL_GAP = 0.05;
 
 /**
- * Age plaque quad (m) under each photo — canvas-textured "N살" card. Sized up
- * slightly from the design sketch (~0.5×0.22) after the E2E screenshots showed
- * the label unreadable at tour distance (~9 m); its top edge meets the frame's
- * bottom rail (0.685 ≈ 0.68) like a museum caption.
+ * Title plaque quad (m) under each work — canvas-textured caption card. Wider
+ * than the old age plaques (titles are sentences, not "N살"); the painter
+ * shrinks the type to fit, so any title length stays inside the card.
  */
-export const PLAQUE_W = 0.62;
-export const PLAQUE_H = 0.27;
+export const PLAQUE_W = 1.15;
+export const PLAQUE_H = 0.28;
 export const PLAQUE_CENTER_Y = 0.55;
 export const PLAQUE_WALL_GAP = 0.03;
 
@@ -59,17 +86,19 @@ export const PANEL_WALL_GAP = 0.02;
 /** The three exhibition walls, in viewing order. */
 export type GalleryWall = "west" | "north" | "east";
 
-/** One hung portrait: identity + its wall-face anchor and inward normal. */
-export interface Portrait {
-  /** Milestone age (PORTRAIT_AGES entry). */
-  age: number;
-  /** Korean plaque text ("1살" … "100살"). */
-  label: string;
-  /** Public photo URL (client/public/gallery). */
+/** One hung artwork: identity + its wall-face anchor and inward normal. */
+export interface Artwork {
+  /** Curator title (plaque text). */
+  title: string;
+  /** Public image URL (client/public/gallery). */
   url: string;
+  /** Committed image aspect (width/height). */
+  aspect: number;
+  /** Plane width (m) at the shared PHOTO_H — aspect-true, capped. */
+  w: number;
   /** Which exhibition wall it hangs on. */
   wall: GalleryWall;
-  /** Photo-centre anchor ON the wall's inner face line (y = PHOTO_CENTER_Y). */
+  /** Canvas-centre anchor ON the wall's inner face line (y = PHOTO_CENTER_Y). */
   x: number;
   z: number;
   /** Outward (into-the-room) unit normal — offsets and facing derive from it. */
@@ -79,7 +108,7 @@ export interface Portrait {
   rotY: number;
 }
 
-/** A wall-mounted text panel (title banner / entrance sign) anchor. */
+/** A wall-mounted text panel (title banner) anchor. */
 export interface WallPanel {
   x: number;
   y: number;
@@ -99,11 +128,11 @@ function thirds(start: number, length: number): [number, number, number] {
 }
 
 /**
- * Derive the nine portrait anchors from the gallery zone. Pure and total: the
+ * Derive the nine artwork anchors from the gallery zone. Pure and total: the
  * same zone always yields byte-identical placement (asserted by the tests), so
  * a future room resize re-hangs the whole exhibition with zero literal edits.
  */
-export function buildPortraits(zone: AABB): Portrait[] {
+export function buildArtworks(zone: AABB): Artwork[] {
   const runZ = zone.maxZ - zone.minZ;
   const runX = zone.maxX - zone.minX;
 
@@ -131,8 +160,8 @@ export function buildPortraits(zone: AABB): Portrait[] {
   }));
 
   return [...west, ...north, ...east].map((slot, i) => {
-    const age = PORTRAIT_AGES[i];
-    return { age, label: `${age}살`, url: `/gallery/age-${age}.jpg`, ...slot };
+    const { file, title, aspect } = ARTWORKS_DATA[i];
+    return { title, url: `/gallery/${file}`, aspect, w: artworkWidth(aspect), ...slot };
   });
 }
 
@@ -140,12 +169,12 @@ export function buildPortraits(zone: AABB): Portrait[] {
  * The exhibition, derived ONCE at module load from the shared zone. Consumed by
  * GalleryRoom.tsx; identical on every client (pure data, no network).
  */
-export const PORTRAITS: readonly Portrait[] = buildPortraits(GALLERY_ZONE);
+export const ARTWORKS: readonly Artwork[] = buildArtworks(GALLERY_ZONE);
 
 /**
- * "최무호 일대기" title banner: high on the north wall, centred, facing the
- * room — visible the moment a visitor steps through the door. Its bottom edge
- * (y - h/2 = 3.0) clears the frame tops (2.92) so title and portraits never
+ * "AI 갤러리" title banner: high on the north wall, centred, facing the room —
+ * visible the moment a visitor steps through the door. Its bottom edge
+ * (y - h/2 = 3.0) clears the frame tops (2.92) so title and artworks never
  * overlap even on the shared north wall.
  */
 export const TITLE_BANNER: WallPanel = {
@@ -158,4 +187,3 @@ export const TITLE_BANNER: WallPanel = {
   nz: 1,
   rotY: 0,
 };
-

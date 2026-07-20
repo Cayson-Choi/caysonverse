@@ -1,10 +1,10 @@
-/* First-person 👁 toggle button (touch only). Rendered by ViewToggle, which
-   returns null on non-touch devices, so only the touch geometry below matters —
-   the base rule is kept for parity with the other overlay buttons. */
+/* First-person 👁 toggle button — every device (design 30 후속 복원). The
+   desktop base slot sits ABOVE the bottom-right emoji palette (top ≈ 182px:
+   24 + 3×46 + 2×10) so the right column stacks palette / 👁 / 🗺 cleanly. */
 .cv-view-btn {
   position: fixed;
   right: 16px;
-  bottom: 24px;
+  bottom: 190px;
   z-index: 22;
   width: 48px;
   height: 48px;
@@ -48,12 +48,12 @@
   border-color: rgba(170, 150, 255, 0.7);
 }
 
-/* Overview 🗺 toggle button (touch only). Same chip geometry as 👁, parked one
-   slot ABOVE it so the cluster stacks 🗺 / 👁 clear of the emoji palette. */
+/* Overview 🗺 toggle button — every device. Same chip geometry as 👁, parked
+   one slot (48px + 8px gap) ABOVE it, clear of the emoji palette below. */
 .cv-overview-btn {
   position: fixed;
   right: 16px;
-  bottom: 80px;
+  bottom: 246px;
   z-index: 22;
   width: 48px;
   height: 48px;

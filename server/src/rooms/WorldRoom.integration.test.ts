@@ -156,9 +156,11 @@ describe("WorldRoom (integration)", () => {
     }).tracking;
     tracking.get(client.sessionId)!.lastAcceptedAt = Date.now() - 60_000;
 
-    // A 10 m step to open lounge floor (in-bounds, no obstacle): beyond the capped
-    // ~3 m budget → dropped. It is NOT dropped for bounds/obstacle reasons.
-    client.send(MessageType.Move, { x: startX, z: startZ + 10, yaw: 0 });
+    // A 10 m step NORTH to open lounge floor (in-bounds, no obstacle — the
+    // spawn→gallery-door corridor is kept clear by the map invariants; SOUTH
+    // would now meet the central sofa set, design 32): beyond the capped ~3 m
+    // budget → dropped. It is NOT dropped for bounds/obstacle reasons.
+    client.send(MessageType.Move, { x: startX, z: startZ - 10, yaw: 0 });
     await room.waitForNextMessage();
     await flush();
     expect(player.x).toBe(startX);
@@ -166,10 +168,10 @@ describe("WorldRoom (integration)", () => {
 
     // The SAME idle gap still permits a normal in-budget step (~1 m < 3 m cap):
     // capping the budget does not blanket-block moves after an idle.
-    client.send(MessageType.Move, { x: startX, z: startZ + 1, yaw: 0 });
+    client.send(MessageType.Move, { x: startX, z: startZ - 1, yaw: 0 });
     await room.waitForNextMessage();
     await flush();
-    expect(player.z).toBeCloseTo(startZ + 1, 4);
+    expect(player.z).toBeCloseTo(startZ - 1, 4);
   });
 
   // Gap closed (Task 12 audit): the pure RateWindow class was already exhaustively

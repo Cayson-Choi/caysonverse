@@ -19,9 +19,9 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("npc placement (3 assistants — design 31 후속 + 33 solidity)", () => {
-  it("stations three assistants with pairwise separation beyond both radii", () => {
-    expect(NPCS).toHaveLength(3);
+describe("npc placement (4 assistants — design 31 후속 + 33 solidity + 34 미로)", () => {
+  it("stations four assistants with pairwise separation beyond both radii", () => {
+    expect(NPCS).toHaveLength(4);
     for (let i = 0; i < NPCS.length; i++)
       for (let j = i + 1; j < NPCS.length; j++) {
         const a = NPCS[i].pos;
@@ -47,6 +47,7 @@ describe("npc placement (3 assistants — design 31 후속 + 33 solidity)", () =
       hall: { x: NPC_SPOTS.hall.x - 1.4, z: NPC_SPOTS.hall.z },
       lobby: { x: NPC_SPOTS.lobby.x + 1.4, z: NPC_SPOTS.lobby.z },
       gallery: { x: NPC_SPOTS.gallery.x - 1.4, z: NPC_SPOTS.gallery.z },
+      maze: { x: NPC_SPOTS.maze.x, z: NPC_SPOTS.maze.z + 1.4 }, // 골 타일 쪽
     } as const;
     for (const npc of NPCS) {
       const p = fronts[npc.id];

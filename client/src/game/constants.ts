@@ -53,13 +53,19 @@ export interface CharacterPreset {
   hideNodes?: readonly string[];
   /** Crown accessory attached to the `head` bone after tinting (royals only). */
   crown?: CrownConfig;
+  /**
+   * Chat-voice gender (design 34 후속): the Edge-TTS neural voice this
+   * character SPEAKS with when its chat messages are read aloud — male
+   * characters get the male voice, female characters the female voice.
+   */
+  voice: "male" | "female";
 }
 
 export const CHARACTERS: readonly CharacterPreset[] = [
-  { id: "knight", label: "기사", model: "/models/knight.glb" },
-  { id: "barbarian", label: "바바리안", model: "/models/barbarian.glb" },
-  { id: "mage", label: "마법사", model: "/models/mage.glb" },
-  { id: "rogue", label: "도적", model: "/models/rogue.glb" },
+  { id: "knight", label: "기사", model: "/models/knight.glb", voice: "male" },
+  { id: "barbarian", label: "바바리안", model: "/models/barbarian.glb", voice: "male" },
+  { id: "mage", label: "마법사", model: "/models/mage.glb", voice: "male" },
+  { id: "rogue", label: "도적", model: "/models/rogue.glb", voice: "female" },
   // ── Royals (v2 Task 13) — same bodies in ROYAL DRESS: fixed atlas palette
   //    (crown.royal → royalPalette.ts), ALL weapons hidden (unarmed royalty,
   //    node names measured by scripts/dump-uv-cells.mjs), built-in cape kept
@@ -78,6 +84,7 @@ export const CHARACTERS: readonly CharacterPreset[] = [
       "Barbarian_Round_Shield",
     ],
     crown: { scale: 1.0, royal: "king" },
+    voice: "male",
   },
   // 왕비: mage body — deep-purple gown + gold trim, cape as a royal train,
   // gold medallion + waist band, staff/spellbooks hidden, medium crown.
@@ -87,6 +94,7 @@ export const CHARACTERS: readonly CharacterPreset[] = [
     model: "/models/mage.glb",
     hideNodes: ["Mage_Hat", "1H_Wand", "2H_Staff", "Spellbook", "Spellbook_open"],
     crown: { scale: 0.8, royal: "queen" },
+    voice: "female",
   },
   // 공주: rogue body — rose dress + pale-gold straps, rose cape, flared peplum
   // (hidden while seated), daggers/crossbows hidden, a low flattened tiara.
@@ -96,6 +104,7 @@ export const CHARACTERS: readonly CharacterPreset[] = [
     model: "/models/rogue.glb",
     hideNodes: ["Knife", "Knife_Offhand", "1H_Crossbow", "2H_Crossbow", "Throwable"],
     crown: { scale: 0.7, flatten: 0.5, royal: "princess" },
+    voice: "female",
   },
   // 왕자: knight body — gold plate + royal-blue tunic/cape, gold epaulettes,
   // helmet + every sword/shield hidden, a small circlet.
@@ -114,6 +123,7 @@ export const CHARACTERS: readonly CharacterPreset[] = [
       "Spike_Shield",
     ],
     crown: { scale: 0.8, flatten: 0.72, royal: "prince" },
+    voice: "male",
   },
 ] as const;
 

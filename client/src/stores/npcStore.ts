@@ -8,8 +8,8 @@
  */
 
 import { create } from "zustand";
+import { speechOnlyText } from "@caysonverse/shared/speech";
 import { SERVER_URL } from "../net/endpoint";
-import { speakChat } from "../game/tts";
 import { playNpcVoice, stopNpcVoice } from "../game/npcVoice";
 import { useSoundStore } from "./soundStore";
 import type { NpcId } from "../game/npc";
@@ -42,14 +42,17 @@ interface NpcChatState {
 }
 
 /**
- * Speak an NPC line: the natural Edge-TTS neural voice first (design 31 후속),
- * the browser's Web Speech voice only as fallback. Mute-aware.
+ * Speak an NPC line — Edge-TTS neural voice ONLY (발주자: 모든 NPC 음성은
+ * Edge TTS로; the browser Web Speech fallback was removed because it broke the
+ * voice mid-conversation). Synthesis failure ⇒ silence, never another voice.
+ * Only the PROSE is spoken: emojis and ASCII/이모지 그림 lines are filtered
+ * out (the panel keeps the full text); an art-only reply is not spoken at all.
  */
 function speakNpc(text: string): void {
   if (useSoundStore.getState().muted) return;
-  void playNpcVoice(text).then((played) => {
-    if (!played) speakChat(text, 0, { muted: useSoundStore.getState().muted });
-  });
+  const speech = speechOnlyText(text);
+  if (!speech) return;
+  void playNpcVoice(speech);
 }
 
 export const useNpcStore = create<NpcChatState>((set, get) => ({

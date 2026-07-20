@@ -55,9 +55,10 @@ describe("validateNpcChatBody", () => {
 
 describe("npcSystemPrompt (per-NPC identity — 발주자 지정 이름)", () => {
   it("gives each NPC its own name while the badge stays 'AI 조교'", () => {
-    expect(npcSystemPrompt("hall")).toContain("클로드");
-    expect(npcSystemPrompt("lobby")).toContain("챗지피티");
-    expect(npcSystemPrompt("gallery")).toContain("제미나이");
+    expect(npcSystemPrompt("hall")).toContain("아르티");
+    expect(npcSystemPrompt("lobby")).toContain("노바");
+    expect(npcSystemPrompt("gallery")).toContain("루미");
+    expect(npcSystemPrompt("maze")).toContain("큐리");
     for (const npc of Object.keys(NPC_PERSONAS) as (keyof typeof NPC_PERSONAS)[]) {
       expect(npcSystemPrompt(npc)).toContain("AI 조교");
     }
@@ -72,7 +73,7 @@ describe("buildGroqRequest", () => {
     };
     expect(req.model).toBe(GROQ_DEFAULT_MODEL);
     expect(req.messages[0].role).toBe("system");
-    expect(req.messages[0].content).toContain("챗지피티");
+    expect(req.messages[0].content).toContain("노바");
     expect(req.messages[1]).toEqual({ role: "user", content: "질문" });
   });
 
