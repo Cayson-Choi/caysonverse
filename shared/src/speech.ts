@@ -46,12 +46,21 @@ export function isArtLine(line: string): boolean {
 }
 
 /**
+ * "노바(Nova)" → "노바": a parenthetical containing ONLY ASCII (romanized
+ * spelling) doubles the name when read aloud (발주자 지적 — "노바 노바" 금지),
+ * so it is dropped from SPEECH. Korean parentheticals ("(참고)") are kept.
+ */
+const ASCII_PARENTHETICAL = /\s*\(\s*[A-Za-z0-9 .,'/-]*\s*\)/g;
+
+/**
  * The SPEAKABLE prose of a reply (발주자: 이모지·문자 그림은 낭독 금지, 글로
- * 적은 것만): emojis stripped, then every art-like line dropped whole, keeping
- * only real sentences. May return "" (an art-only reply is simply not spoken).
+ * 적은 것만): emojis + romanized parentheticals stripped, then every art-like
+ * line dropped whole, keeping only real sentences. May return "" (an art-only
+ * reply is simply not spoken).
  */
 export function speechOnlyText(text: string): string {
   return text
+    .replace(ASCII_PARENTHETICAL, "")
     .split(/\r?\n/)
     .filter((line) => !isArtLine(line))
     .map((line) => stripEmojiForSpeech(line))

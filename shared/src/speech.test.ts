@@ -54,4 +54,13 @@ describe("speechOnlyText (문자 그림 낭독 금지 — 글로 적은 것만)"
   it("keeps a plain multi-line prose reply intact (joined by spaces)", () => {
     expect(speechOnlyText("첫째 줄이에요.\n둘째 줄이에요.")).toBe("첫째 줄이에요. 둘째 줄이에요.");
   });
+
+  it("drops romanized parentheticals so '노바(Nova)' is spoken ONCE (발주자 지적)", () => {
+    expect(speechOnlyText("제 이름은 노바(Nova)예요.")).toBe("제 이름은 노바예요.");
+    expect(speechOnlyText("아르티(Arty)라고 불러 주세요.")).toBe("아르티라고 불러 주세요.");
+    // Korean parentheticals stay — they carry real content.
+    expect(speechOnlyText("3가지 방(강의실/갤러리/미로)이 있어요.")).toBe(
+      "3가지 방(강의실/갤러리/미로)이 있어요.",
+    );
+  });
 });

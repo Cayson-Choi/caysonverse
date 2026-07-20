@@ -95,3 +95,23 @@ export function stopChatVoice(): void {
   current?.pause();
   cleanup();
 }
+
+/** A zero-sample silent WAV — enough to unlock HTMLAudio inside a gesture. */
+const SILENT_WAV =
+  "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=";
+
+/**
+ * Unlock audio playback inside a user gesture (the entry screen's join click)
+ * so later PROGRAMMATIC Audio.play() calls — chat lines arriving, NPC replies
+ * — pass mobile autoplay policies. Replaces the old Web Speech primeTts().
+ */
+export function primeChatAudio(): void {
+  if (typeof Audio === "undefined") return;
+  try {
+    const a = new Audio(SILENT_WAV);
+    a.volume = 0;
+    void a.play().catch(() => {});
+  } catch {
+    // priming is best-effort; failures never block joining
+  }
+}

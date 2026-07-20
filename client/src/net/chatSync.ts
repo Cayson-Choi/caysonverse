@@ -18,8 +18,8 @@ import type { ChatBroadcast, ChatRejectedPayload, SystemBroadcast } from "@cayso
 import { EMOJIS } from "@caysonverse/shared/constants";
 import { bubbleRegistry } from "../game/bubbleRegistry";
 import { emojiRegistry } from "../game/emojiRegistry";
-import { stopTts } from "../game/tts";
 import { speakChatNeural, stopChatVoice, type ChatVoiceGender } from "../game/chatVoice";
+import { stopNpcVoice } from "../game/npcVoice";
 import { CHARACTERS } from "../game/constants";
 import { useChatStore } from "../stores/chatStore";
 import { useSoundStore } from "../stores/soundStore";
@@ -70,9 +70,10 @@ export function startChatSync(room: Room<WorldState>): () => void {
     offSystem();
     bubbleRegistry.clear();
     useChatStore.getState().clear();
-    // Stop any in-flight reading and flush both queues — a reconnect remounts
-    // this sync, and a stale utterance must not talk over the new world.
-    stopTts();
+    // Stop any in-flight reading and flush both neural channels — a reconnect
+    // remounts this sync, and a stale line must not talk over the new world.
+    // (Web Speech is fully unwired — Edge TTS is the ONLY voice, 발주자 요청.)
     stopChatVoice();
+    stopNpcVoice();
   };
 }

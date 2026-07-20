@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useGLTF } from "@react-three/drei";
 import { APP_NAME, TINT_COLORS } from "@caysonverse/shared/constants";
 import { CHARACTERS, CROWN_MODEL } from "../game/constants";
-import { primeTts } from "../game/tts";
+import { primeChatAudio } from "../game/chatVoice";
 import { validateEntry } from "./validation";
 import { joinWorld } from "../net/connection";
 import { clearKicked } from "../net/kickSeam";
@@ -44,7 +44,7 @@ export function EntryScreen() {
     // design 23) HERE, synchronously inside the click's user gesture — after an
     // await the gesture may no longer count. Safe no-op where SpeechSynthesis
     // is absent, and idempotent across repeated (e.g. failed-validation) clicks.
-    primeTts();
+    primeChatAudio();
 
     const result = validateEntry({ nickname, character, tint });
     if (!result.ok) {

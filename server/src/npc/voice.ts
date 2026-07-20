@@ -103,7 +103,8 @@ export async function synthesizeVoice(
   voice: string = process.env.NPC_VOICE || NPC_VOICE_DEFAULT,
 ): Promise<Buffer> {
   const tts = new MsEdgeTTS();
-  await tts.setMetadata(voice, OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3);
+  // 96 kbps (was 48): the lower rate read as "not the Edge voice" on speakers.
+  await tts.setMetadata(voice, OUTPUT_FORMAT.AUDIO_24KHZ_96KBITRATE_MONO_MP3);
   const { audioStream } = await tts.toStream(text);
   const chunks: Buffer[] = [];
   return new Promise<Buffer>((resolve, reject) => {
