@@ -10,8 +10,14 @@
 
 export const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
 
-/** Default model — overridable via GROQ_MODEL without a code change. */
-export const GROQ_DEFAULT_MODEL = "llama-3.3-70b-versatile";
+/**
+ * Default model — overridable via GROQ_MODEL without a code change.
+ * 2026-07-20 A/B (같은 페르소나·같은 키로 실측): llama-3.3-70b는 강화 프롬프트
+ * 후에도 중국어 혼입이 재발했고, qwen3.6-27b는 <think> 사고 과정이 답에 샜다.
+ * openai/gpt-oss-120b는 순수 한국어·규칙 준수·간결 — 게다가 유료 단가도
+ * 라마보다 저렴($0.15/$0.75 vs $0.59/$0.79 per 1M). 같은 무료 티어.
+ */
+export const GROQ_DEFAULT_MODEL = "openai/gpt-oss-120b";
 
 /** The client sends at most this many prior turns (user+assistant combined). */
 export const NPC_MAX_TURNS = 12;
