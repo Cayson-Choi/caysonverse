@@ -33,8 +33,8 @@ const IPHONE_UA =
 /** A player that closed its tab lingers 20 s as a ghost: nicknames are unique per run. */
 const RUN = String(Date.now() % 1000).padStart(3, "0");
 const NAME = { A: `폰${RUN}`, B: `관찰${RUN}`, G: `안내${RUN}` };
-const STICK_R = 56; // joystick.ts STICK_RADIUS_PX
-const STICK_EDGE = 24; // joystick.ts STICK_EDGE_PX
+/** Numbers read from the source modules once A is in the world (see "shared constants" in the run). */
+let CODE = null;
 
 // ───────────────────────────── tiny harness ─────────────────────────────
 
@@ -280,7 +280,7 @@ async function stickWalkTo(page, touch, tx, tz, { tol = 0.5, timeout = 40000, an
       if (d <= tol) break;
       const f = (dx * -Math.sin(yaw) + dz * -Math.cos(yaw)) / d;
       const r = (dx * Math.cos(yaw) + dz * -Math.sin(yaw)) / d;
-      const push = d > 5 ? 60 : 34;
+      const push = d > 5 ? CODE.stickRadius : CODE.stickRadius * 0.6; // rim = run, 0.6 of it = walk
       await touch.move(0, anchor.x + r * push, anchor.y - f * push);
       await sleep(40);
     }
@@ -321,6 +321,24 @@ async function pcWalkTo(page, tx, tz, { tol = 1, timeout = 12000 } = {}) {
 }
 
 /** Wait for the click-move target to clear (arrival / cancel). */
+/** Frames per second the page's rAF loop actually gets, measured over `ms`. */
+const measureFps = (page, ms = 1000) =>
+  page.evaluate(
+    (ms) =>
+      new Promise((res) => {
+        let n = 0;
+        const t0 = performance.now();
+        const f = () => {
+          n++;
+          const dt = performance.now() - t0;
+          if (dt >= ms) res((n * 1000) / dt);
+          else requestAnimationFrame(f);
+        };
+        requestAnimationFrame(f);
+      }),
+    ms,
+  );
+
 const settleWalk = (page, ms = 9000) => pollUntil(() => getTarget(page), (t) => t === null, ms, 100);
 
 /** Every touch button that is reachable right now, with its box and whether it is round. */
@@ -361,19 +379,38 @@ function gap(a, b) {
   return Math.hypot(dx, dy);
 }
 
+/** Plain bounding-box gap (0 = touching or overlapping). */
+function boxGap(a, b) {
+  const dx = Math.max(0, a.x - (b.x + b.w), b.x - (a.x + a.w));
+  const dy = Math.max(0, a.y - (b.y + b.h), b.y - (a.y + a.h));
+  return Math.hypot(dx, dy);
+}
+
 /** Assert the 48 px / 8 px / on-screen layout rules over everything reachable right now. */
 function checkLayout(label, els, { mustHave = [] } = {}) {
-  const small = els.filter((e) => e.w < 47.5 || e.h < 47.5).map((e) => `${e.name} ${r2(e.w)}×${r2(e.h)}`);
+  const small = els.filter((e) => e.w < 48 - 1e-3 || e.h < 48 - 1e-3).map((e) => `${e.name} ${r2(e.w)}×${r2(e.h)}`);
   const outside = els.filter((e) => e.x < -0.01 || e.y < -0.01 || e.x + e.w > PHONE.width + 0.01 || e.y + e.h > PHONE.height + 0.01).map((e) => e.name);
   const tight = [];
+  // Two readings of every pair: the shape-aware gap (a round button is its circle) decides; the plain
+  // bounding-box gap is logged next to it (round buttons placed diagonally read smaller there).
+  let minShape = { g: Infinity, pair: "" };
+  let minBox = { g: Infinity, pair: "" };
   for (let i = 0; i < els.length; i++)
     for (let j = i + 1; j < els.length; j++) {
       const g = gap(els[i], els[j]);
-      if (g < 8 - 0.01) tight.push(`${els[i].name} | ${els[j].name} gap ${r2(g)}`);
+      const bg = boxGap(els[i], els[j]);
+      const pair = `${els[i].name} | ${els[j].name}`;
+      if (g < minShape.g) minShape = { g, pair };
+      if (bg < minBox.g) minBox = { g: bg, pair };
+      if (g < 8 - 0.01) tight.push(`${pair} gap ${r2(g)}`); // 0.01: float noise of hypot() on an exact 8
     }
   const missing = mustHave.filter((m) => !els.some((e) => e.name.includes(m) || e.name.split(" ").includes(m)));
   check(`${label}: ${els.length} buttons, every one ≥ 48×48`, small.length === 0 && els.length >= 6, small.length ? small : { count: els.length });
-  check(`${label}: every gap ≥ 8 px (none overlap)`, tight.length === 0, tight);
+  check(`${label}: every gap ≥ 8 px (none overlap)`, tight.length === 0, {
+    tight,
+    minShapeGap: r2(minShape.g), minShapePair: minShape.pair,
+    minBoxGap: r2(minBox.g), minBoxPair: minBox.pair,
+  });
   check(`${label}: all inside the screen`, outside.length === 0, outside);
   check(`${label}: jump, action, emoji and chat buttons are all there`, missing.length === 0, missing.length ? { missing } : { buttons: els.map((e) => e.name) });
 }
@@ -402,17 +439,50 @@ try {
   check("B sees the phone player", !!sidA, { sidA });
   const isTouchUi = await pa.evaluate(() => matchMedia("(pointer: coarse)").matches && !!document.querySelector(".cv-stick-zone"));
   check("A runs the touch UI (coarse pointer + stick zone)", isTouchUi, {});
+  const fps = [await measureFps(pa), await measureFps(pb)];
+  check("precondition: both tabs render ≥ 15 fps (use the GPU, not SwiftShader)", fps.every((f) => f >= 15), {
+    fpsA: Math.round(fps[0]), fpsB: Math.round(fps[1]),
+  });
 
   const fsUrl = (rel) => "/@fs/" + pathToFileURL(join(REPO, rel)).pathname.replace(/^\//, "");
   const shared = await pa.evaluate(
-    async ({ wm, kc }) => {
+    async ({ wm, kc, js, tg, ch }) => {
       const W = await import(wm);
       const K = await import(kc);
-      return { SEATS: W.SEATS, MOVE_SPEED: K.MOVE_SPEED, RUN_SPEED: K.RUN_SPEED };
+      const J = await import(js);
+      const T = await import(tg);
+      const C = await import(ch);
+      return {
+        SEATS: W.SEATS,
+        MOVE_SPEED: K.MOVE_SPEED,
+        RUN_SPEED: K.RUN_SPEED,
+        RUN_SPEED_MULTIPLIER: K.RUN_SPEED_MULTIPLIER,
+        stickRadius: J.STICK_RADIUS_PX,
+        stickEdge: J.STICK_EDGE_PX,
+        deadZone: J.JOYSTICK_DEAD_ZONE,
+        runForce: J.STICK_RUN_FORCE,
+        doubleTapMs: T.DOUBLE_TAP_MS,
+        coachMoveM: C.COACH_MOVE_M,
+      };
     },
-    { wm: fsUrl("shared/src/worldMap.ts"), kc: fsUrl("shared/src/constants.ts") },
+    {
+      wm: fsUrl("shared/src/worldMap.ts"),
+      kc: fsUrl("shared/src/constants.ts"),
+      js: "/src/game/joystick.ts",
+      tg: "/src/game/tapGesture.ts",
+      ch: "/src/game/coach.ts",
+    },
   );
   const { SEATS, MOVE_SPEED, RUN_SPEED } = shared;
+  CODE = { stickRadius: shared.stickRadius, stickEdge: shared.stickEdge, doubleTapMs: shared.doubleTapMs, coachMoveM: shared.coachMoveM };
+  // Not a copy of the numbers: only that the modules loaded and the relations the steps rely on hold.
+  check("shared constants loaded from the source modules", MOVE_SPEED > 0 && Math.abs(RUN_SPEED - MOVE_SPEED * shared.RUN_SPEED_MULTIPLIER) < 1e-9 && SEATS.length > 1 && CODE.stickRadius > 0 && CODE.doubleTapMs > 0, {
+    MOVE_SPEED, RUN_SPEED, seats: SEATS.length, ...CODE,
+  });
+  // The brief's pushes: 20 px up must read as a walk, 60 px up as a run.
+  check("a 20 px push is a walk and a 60 px push a run (force = push / stick radius)", 20 / CODE.stickRadius >= shared.deadZone && 20 / CODE.stickRadius < shared.runForce && 60 / CODE.stickRadius >= shared.runForce, {
+    walkForce: r2(20 / CODE.stickRadius), runForce: r2(60 / CODE.stickRadius), deadZone: shared.deadZone, runAt: shared.runForce,
+  });
 
   await startRecorder(pa, "A", () => {
     const p = window.__cv.getPos();
@@ -420,6 +490,8 @@ try {
     return {
       x: p.x, z: p.z, yaw: p.yaw, seat: p.seatIndex, gait: window.__cv.getGait(), oy: o.yaw, dist: o.distance,
       jumps: window.__cv.getJumps().map((j) => j.sid + ":" + j.seq),
+      goal: !!window.__cv.getView().orbitGoal, // a recenter / seat glide is pending
+      target: window.__cvClickTarget && window.__cvClickTarget() ? 1 : 0, // a click-move target exists
     };
   });
   await startRecorder(
@@ -483,7 +555,7 @@ try {
   await step("3 왼쪽 가장자리 24 px", async () => {
     await stickWalkTo(pa, touch, -15, -3, { tol: 0.6 });
     const p0 = await getPos(pa);
-    check("(10, 640) is inside the 24 px edge strip, still under the stick zone (the zone swallows the touch)", 10 < STICK_EDGE && /cv-stick-zone/.test((await topAt(pa, 10, 640)) ?? ""), {
+    check("(10, 640) is inside the 24 px edge strip, still under the stick zone (the zone swallows the touch)", 10 < CODE.stickEdge && /cv-stick-zone/.test((await topAt(pa, 10, 640)) ?? ""), {
       top: await topAt(pa, 10, 640),
     });
     await touch.down(0, 10, 640);
@@ -494,6 +566,7 @@ try {
       await sleep(30);
     }
     await sleep(700);
+    await shot(pa, "m-03-edge-drag.png"); // finger still down, 60 px up from the edge: no stick, no walk
     const p1 = await getPos(pa);
     const target = await getTarget(pa);
     check("no stick appears at the edge", !st.active && st.visibility === "hidden", st);
@@ -508,7 +581,8 @@ try {
     await touch.tap(110, 700, 45);
     const t0 = Date.now();
     const target = await pollUntil(() => getTarget(pa), (t) => t !== null, 600, 20);
-    check("a quick tap inside the stick zone sets a click-move target at once (< 250 ms)", !!target && Date.now() - t0 < 250, {
+    await shot(pa, "m-extra-stick-zone-tap.png"); // the destination ring, A already on its way
+    check("a quick tap inside the stick zone sets a click-move target at once (before the double-tap wait would end)", !!target && Date.now() - t0 < CODE.doubleTapMs - 50, {
       target: target ? [r2(target.x), r2(target.z)] : null, ms: Date.now() - t0,
     });
     const st = await stickState(pa);
@@ -611,15 +685,19 @@ try {
     const pose = await getPos(pa);
     const yawBefore = (await getOrbit(pa)).yaw;
     check("setup: the camera is not behind the body", Math.abs(norm(yawBefore - recenterYaw(pose.yaw))) > 0.3, { yaw: r2(yawBefore), want: r2(recenterYaw(pose.yaw)) });
-    check("the double tap spot is on the canvas", /^$|canvas|CANVAS/i.test((await topAt(pa, 290, 520)) ?? ""), await topAt(pa, 290, 520));
+    const spotTop = await topAt(pa, 290, 520);
+    check("the double tap spot is the canvas (a null or any other element fails)", spotTop === "CANVAS", { top: spotTop });
+    const tTap1 = Date.now();
     await touch.tap(290, 520, 40);
     await sleep(110);
     await touch.tap(293, 522, 40);
-    await sleep(120);
-    const goal = (await getView(pa)).orbitGoal;
-    const t100 = await getTarget(pa);
-    check("two quick taps set a recenter goal and no walk target", !!goal && typeof goal.yaw === "number" && t100 === null, { goal, target: t100 });
-    await sleep(700);
+    await sleep(CODE.doubleTapMs + 500); // past the held-back single-tap walk, and long enough for the glide to finish
+    const rowsTap = await rowsBetween(pa, "A", tTap1, Date.now());
+    const goalRows = rowsTap.filter((r) => r.goal);
+    const targetRows = rowsTap.filter((r) => r.target);
+    check("two quick taps: a recenter goal was set at some sample", goalRows.length > 0, { samples: rowsTap.length, withGoal: goalRows.length, firstAfterMs: goalRows.length ? goalRows[0].t - tTap1 : null });
+    check("…and no walk target existed at any sample (the first tap's walk was cancelled)", targetRows.length === 0, { withTarget: targetRows.length });
+    await sleep(100);
     const yawAfter = (await getOrbit(pa)).yaw;
     check("orbit.yaw ≈ recenterYaw(pose.yaw) ±0.05", Math.abs(norm(yawAfter - recenterYaw(pose.yaw))) <= 0.05, { yaw: r2(yawAfter), want: r2(recenterYaw(pose.yaw)) });
     check("__cvClickTarget() stays null after the 300 ms window", (await getTarget(pa)) === null, {});
@@ -634,7 +712,7 @@ try {
     const late = await pollUntil(() => getTarget(pa), (t) => t !== null, 1500, 25);
     const appearedAfter = Date.now() - tTap;
     check("a single tap: no target yet 120 ms later", early === null, { early });
-    check("…the click target appears after the 300 ms wait", !!late && appearedAfter >= 250 && appearedAfter < 1200, {
+    check("…the click target appears after the 300 ms wait", !!late && appearedAfter >= CODE.doubleTapMs - 50 && appearedAfter < 1200, {
       afterMs: appearedAfter, target: late ? [r2(late.x), r2(late.z)] : null,
     });
     await shot(pa, "m-06-tap-walk.png");
@@ -830,7 +908,7 @@ try {
     const p0 = await getPos(pg);
     await gt.down(0, 110, 640);
     await gt.move(0, 110, 600);
-    await pollUntil(() => getPos(pg), (p) => dist(p, p0) >= 1.9, 6000, 40);
+    await pollUntil(() => getPos(pg), (p) => dist(p, p0) >= CODE.coachMoveM + 0.4, 6000, 40);
     await gt.up(0);
     const c2 = await pollUntil(card, (c) => c?.step === "look", 3000);
     check("walking 1.5 m with the stick moves on to ② 둘러보기", c2?.step === "look" && c2.title === "② 둘러보기", c2);

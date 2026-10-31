@@ -264,6 +264,9 @@ async function walkTo(page, tx, tz, { tol = 0.5, timeout = 30000 } = {}) {
   return getPos(page);
 }
 
+/** Numbers read from the source modules once A is in the world (see "shared constants" below). */
+let CODE = null;
+
 /** Closed-loop camera aim with Z (yaw up) / C (yaw down). */
 async function aimCamera(page, targetYaw, tries = 40) {
   for (let i = 0; i < tries; i++) {
@@ -272,7 +275,7 @@ async function aimCamera(page, targetYaw, tries = 40) {
     if (Math.abs(d) < 0.04) break;
     const key = d > 0 ? "z" : "c";
     await page.keyboard.down(key);
-    await sleep(Math.min(600, Math.max(50, (Math.abs(d) / 2.2) * 1000 * 0.7)));
+    await sleep(Math.min(600, Math.max(50, (Math.abs(d) / CODE.keyYawRate) * 1000 * 0.7)));
     await page.keyboard.up(key);
     await sleep(120);
   }
@@ -325,22 +328,30 @@ try {
   // assertions follow the code instead of a copy of its numbers.
   const fsUrl = (rel) => "/@fs/" + pathToFileURL(join(REPO, rel)).pathname.replace(/^\//, "");
   const shared = await pa.evaluate(
-    async ({ wm, kc }) => {
+    async ({ wm, kc, cc, jp }) => {
       const W = await import(wm);
       const K = await import(kc);
+      const C = await import(cc);
+      const J = await import(jp);
       return {
         SEATS: W.SEATS,
         SEAT_YAW: W.SEAT_YAW,
         MOVE_SPEED: K.MOVE_SPEED,
         RUN_SPEED: K.RUN_SPEED,
+        RUN_SPEED_MULTIPLIER: K.RUN_SPEED_MULTIPLIER,
         ROLE_TEACHER: K.ROLE_TEACHER,
+        TYPING_WINDOW_MS: K.TYPING_RATE.windowMs,
+        KEY_YAW_RATE: C.CAMERA_KEY_YAW_RATE,
+        JUMP_COOLDOWN_MS: J.JUMP_CLIENT_COOLDOWN_MS,
       };
     },
-    { wm: fsUrl("shared/src/worldMap.ts"), kc: fsUrl("shared/src/constants.ts") },
+    { wm: fsUrl("shared/src/worldMap.ts"), kc: fsUrl("shared/src/constants.ts"), cc: "/src/game/cameraControls.ts", jp: "/src/game/jump.ts" },
   );
   const { SEATS, SEAT_YAW, MOVE_SPEED, RUN_SPEED, ROLE_TEACHER } = shared;
-  check("shared constants loaded", MOVE_SPEED === 4 && Math.abs(RUN_SPEED - 6.4) < 1e-9 && SEATS.length === 20, {
-    MOVE_SPEED, RUN_SPEED, seats: SEATS.length, SEAT_YAW,
+  CODE = { keyYawRate: shared.KEY_YAW_RATE, jumpCooldownMs: shared.JUMP_COOLDOWN_MS, typingWindowMs: shared.TYPING_WINDOW_MS };
+  // Not a copy of the numbers: only that the modules loaded and the relations the steps rely on hold.
+  check("shared constants loaded from the source modules", MOVE_SPEED > 0 && Math.abs(RUN_SPEED - MOVE_SPEED * shared.RUN_SPEED_MULTIPLIER) < 1e-9 && SEATS.length > 1 && CODE.keyYawRate > 0 && CODE.jumpCooldownMs > 0, {
+    MOVE_SPEED, RUN_SPEED, seats: SEATS.length, SEAT_YAW, ...CODE,
   });
 
   await startRecorder(pa, "A", () => {
@@ -462,7 +473,8 @@ try {
 
   // ── 4. 점프 ─────────────────────────────────────────────────────────────────────
   await step("4 점프: Space", async () => {
-    await sleep(900);
+    const COOL = CODE.jumpCooldownMs; // client cooldown between two jumps
+    await sleep(COOL + 50);
     const wsBefore = { ...A.ws.sent };
     const t0 = Date.now();
     await pa.keyboard.press("Space");
@@ -476,8 +488,8 @@ try {
     await shot(pa, "pc-04-jump-A.png");
     await shot(pb, "pc-04-jump-B.png");
 
-    // Two Space presses within 300 ms → one jump on B (the client cooldown is 850 ms).
-    await sleep(1200);
+    // Two Space presses within 300 ms → one jump on B (the second falls inside the client cooldown).
+    await sleep(COOL + 350);
     const wsMid = { ...A.ws.sent };
     const t1 = Date.now();
     await pa.keyboard.press("Space");
@@ -492,7 +504,7 @@ try {
     check("…and A plays 1 jump / sends 1 jump message", seqsA.length === 1 && (A.ws.sent.jump || 0) - (wsMid.jump || 0) === 1, { seqsA, sent: (A.ws.sent.jump || 0) - (wsMid.jump || 0) });
 
     // (extra, Review Focus 2) a mouse click on an emoji button, then Space: no extra emoji message.
-    await sleep(900);
+    await sleep(COOL + 50);
     const emojiBtn = pa.locator(".cv-emoji-btn").first();
     await emojiBtn.click();
     const emojiB = await pollUntil(
@@ -504,7 +516,7 @@ try {
     const focus = await active(pa);
     check("(extra) the emoji button does not keep focus after a click", focus.tag === "BODY", focus);
     const wsE = { sent: { ...A.ws.sent }, recv: { ...B.ws.recv } };
-    await sleep(900);
+    await sleep(COOL + 50);
     const t2 = Date.now();
     await pa.keyboard.press("Space");
     await sleep(1400);
@@ -525,12 +537,13 @@ try {
     await aimCamera(pa, 0.6);
     await sleep(900); // the follow point and the arm settle behind the player
     const here = await getPos(pa);
-    check("A stands in the hall aisle", here.x > 1 && here.x < 2.6 && Math.abs(here.z - -1.0) < 0.8, { x: r2(here.x), z: r2(here.z) });
+    check("A stands in the hall aisle", Math.abs(here.x - stand.x) < 1 && Math.abs(here.z - -1.0) < 0.8, { x: r2(here.x), z: r2(here.z) });
 
     // Click the floor at SEATS[1]'s dismount point: aim from the live camera, correct from what the click hit.
     let want = { x: stand.x, y: 0, z: stand.z };
     let hit = null;
     let aim = { x: 0, y: 0 };
+    const attempts = [];
     for (let i = 0; i < 4; i++) {
       const cam = await pa.evaluate(() => window.__cvCamera());
       const px = projectToPixel(cam, await getPos(pa), want.x, 0, want.z);
@@ -538,6 +551,7 @@ try {
       aim = px;
       await pa.mouse.click(px.x, px.y);
       hit = await pollUntil(() => getTarget(pa), (t) => t !== null, 1500);
+      attempts.push({ click: [Math.round(px.x), Math.round(px.y)], hit: hit ? [r2(hit.x), r2(hit.z)] : null });
       if (hit && dist(hit, stand) < 1.0) break;
       // Aim again, shifted by how far the click landed from where it was meant to.
       if (hit) want = { x: want.x + (stand.x - hit.x), y: 0, z: want.z + (stand.z - hit.z) };
@@ -545,10 +559,11 @@ try {
       await sleep(80);
       await pa.keyboard.up("s");
       await sleep(250);
-      if (!(await pollUntil(() => getTarget(pa), (t) => t === null, 1000))) break;
+      // pollUntil returns the last reading: null = the target is gone, anything else = it could not be dropped.
+      if ((await pollUntil(() => getTarget(pa), (t) => t === null, 1000)) !== null) break;
     }
     check("the floor click set a target next to SEATS[1]'s dismount point", !!hit && dist(hit, stand) < 1.0, {
-      target: hit ? [r2(hit.x), r2(hit.z)] : null, stand: [stand.x, stand.z], click: [Math.round(aim.x), Math.round(aim.y)],
+      target: hit ? [r2(hit.x), r2(hit.z)] : null, stand: [stand.x, stand.z], click: [Math.round(aim.x), Math.round(aim.y)], attempts,
     });
     check("the ring is clear of the avatar on screen (≥ 150 px to the side of the screen centre)", Math.abs(aim.x - VIEW.width / 2) >= 150, {
       px: [Math.round(aim.x), Math.round(aim.y)],
@@ -607,7 +622,13 @@ try {
   await step("6 채팅: / → 입력 → Enter", async () => {
     await pa.bringToFront();
     const pos0 = await getPos(pa);
-    check("A stands beside a free chair (so a stray E would sit)", pos0.seatIndex === -1, { x: r2(pos0.x), z: r2(pos0.z) });
+    const pill = await pa.evaluate(() => {
+      const b = document.querySelector(".cv-action-btn");
+      return b ? { kbd: b.querySelector("kbd")?.textContent ?? null, text: b.querySelector(".cv-action-text")?.textContent ?? null } : null;
+    });
+    check('A stands beside a free chair: the pill reads "E 앉기", so a stray E would sit', pos0.seatIndex === -1 && !!pill && pill.kbd === "E" && pill.text === "앉기", {
+      x: r2(pos0.x), z: r2(pos0.z), pill,
+    });
     const ws0 = { jump: A.ws.sent.jump || 0, emoji: A.ws.sent.emoji || 0 };
     const t0 = Date.now();
 
@@ -644,7 +665,7 @@ try {
     await shot(pb, "pc-06-bubble-B.png");
 
     // (extra) blur clears the typing indicator too: type one character, then Esc.
-    await sleep(3200); // typing ON is limited to once per 3 s
+    await sleep(CODE.typingWindowMs + 200); // typing ON is limited to once per window
     await pa.keyboard.press("Enter");
     await pollUntil(() => active(pa), (a) => /cv-chat-field/.test(a.cls), 2000);
     await pa.keyboard.type("x", { delay: 20 });
@@ -677,12 +698,14 @@ try {
     await sleep(150);
     const y1 = (await getOrbit(pa)).yaw;
     const dz = norm(y1 - y0);
-    check("Z held 0.5 s → yaw ≈ +1.1", dz >= 0.8 && dz <= 1.4, { delta: r2(dz) });
+    const wantTurn = CODE.keyYawRate * 0.5; // the brief's "about +1.1" for 0.5 s, from the code's rate
+    check("the key turn rate gives ≈ 1.1 rad per 0.5 s (the brief's number)", Math.abs(wantTurn - 1.1) < 0.05, { rate: CODE.keyYawRate });
+    check("Z held 0.5 s → yaw ≈ +1.1", Math.abs(dz - wantTurn) <= 0.3, { delta: r2(dz), want: r2(wantTurn) });
     await holdKeys(pa, ["c"], 500);
     await sleep(150);
     const y2 = (await getOrbit(pa)).yaw;
     const dc = norm(y2 - y1);
-    check("C held 0.5 s → the opposite way, ≈ −1.1", dc <= -0.8 && dc >= -1.4, { delta: r2(dc) });
+    check("C held 0.5 s → the opposite way, ≈ −1.1", Math.abs(dc + wantTurn) <= 0.3, { delta: r2(dc), want: r2(-wantTurn) });
 
     // R: make sure the camera is NOT behind the body first, then press R.
     const pose = await getPos(pa);
@@ -734,7 +757,7 @@ try {
     await pa.locator(".cv-roster").waitFor({ state: "visible", timeout: 3000 });
     const heldFocus = await active(pa);
     check("Tab held → .cv-roster visible", await pa.locator(".cv-roster").isVisible(), {});
-    check("(extra) Tab did not move focus into a HUD button", !/cv-hud-btn|cv-emoji|cv-action/.test(heldFocus.cls) && heldFocus.tag !== "BUTTON", heldFocus);
+    check("(extra) Tab did not move focus into a HUD button (activeElement is still the body)", heldFocus.tag === "BODY", heldFocus);
     await shot(pa, "pc-09-roster-held-A.png");
     await pa.keyboard.up("Tab");
     await pa.locator(".cv-roster").waitFor({ state: "detached", timeout: 3000 }).catch(() => {});
@@ -749,7 +772,7 @@ try {
     await pa.keyboard.up("Tab");
 
     // (extra) a HUD button clicked with the mouse never keeps focus: Space / Enter do not press it again.
-    await sleep(900);
+    await sleep(CODE.jumpCooldownMs + 50);
     await pa.locator(".cv-hud-people").click();
     await pa.locator(".cv-roster").waitFor({ state: "visible", timeout: 3000 });
     const afterClick = await active(pa);
@@ -778,7 +801,7 @@ try {
       (r) => r && r.role === ROLE_TEACHER,
       8000,
     );
-    check("B's getRemotes() has C with role === 1", !!remoteC && remoteC.role === 1, { role: remoteC?.role });
+    check("B getRemotes() has C with the teacher role (1)", !!remoteC && remoteC.role === ROLE_TEACHER, { role: remoteC?.role });
     // A name tag is only drawn for someone ON SCREEN (and within 30 m): B turns its camera toward C.
     const me = await getPos(pb);
     const toC = await aimCamera(pb, Math.atan2(-(remoteC.x - me.x), -(remoteC.z - me.z)));
@@ -791,7 +814,7 @@ try {
     );
     check("B's getNametags() has C selected", !!tag && tag.selected === true, tag ? { selected: tag.selected, opacity: r2(tag.opacity) } : null);
     const roleA = (await getRemotes(pb)).find((r) => r.sessionId === sidA)?.role;
-    check("A (no code) stays a student on B", roleA === 0, { roleA });
+    check("A (no code) stays a student on B", typeof roleA === "number" && roleA !== ROLE_TEACHER, { roleA });
     const cost = await pb.evaluate(() => ({ ms: window.__cv.getNametagCostMs(), mode: window.__cv.getNametagMode() }));
     check("name tag system reports its cost and the default mode", typeof cost.ms === "number" && cost.mode === "nearby", cost);
     await shot(pb, "pc-10-teacher-B.png");
