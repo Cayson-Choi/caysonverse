@@ -4,6 +4,7 @@ import { getRoom, sendSit, sendStand } from "../net/connection";
 import { bubbleRegistry } from "./bubbleRegistry";
 import { emojiRegistry } from "./emojiRegistry";
 import { jumpRegistry } from "./jump";
+import { typingRegistry } from "./typing";
 import { viewState, type ViewState } from "./viewState";
 import { remoteGaitProbe, type Gait } from "./gait";
 
@@ -95,6 +96,8 @@ declare global {
       getEmojis: () => EmojiView[];
       /** Every jump still in the air (sid, seq, ms since take-off) — own and remote. */
       getJumps: () => JumpView[];
+      /** Session ids of every OTHER player whose typing "…" is currently up. */
+      getTyping: () => string[];
       /**
        * Force a TRANSIENT connection drop (dev/E2E only) by closing the
        * transport with a non-consented code — the server holds the seat
@@ -146,6 +149,7 @@ export function installDebugHook(
         .snapshot(now)
         .map((j) => ({ sid: j.sid, seq: j.seq, elapsedMs: now - j.startedAt }));
     },
+    getTyping: () => typingRegistry.snapshot(performance.now()),
     dropConnection: () => {
       const room = getRoom();
       if (!room) return false;

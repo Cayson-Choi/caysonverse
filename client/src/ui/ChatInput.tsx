@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { CHAT_MAX_LENGTH } from "@caysonverse/shared/constants";
 import { setUiCaptured, captureReleaseEffect } from "../game/uiCapture";
 import { onHotkey } from "../game/hotkeys";
-import { sendChat } from "../net/connection";
+import { createTypingSender } from "../game/typing";
+import { sendChat, sendTyping } from "../net/connection";
 import { isTouchDevice } from "../device";
 import { KBD_INSET_VAR, trackKbdInset } from "./kbdInset";
 
@@ -12,7 +13,7 @@ const COUNTER_LEAD = 20;
 
 /**
  * <html> class while the chat input is focused on a touch device. The other
- * bottom-slot overlays (emoji palette, 👁/🗺 toggles, sit button) key off it to
+ * bottom-slot overlays (emoji palette, 👁/🗺 toggles, action and jump buttons) key off it to
  * hide, so the keyboard-lifted input bar can never land on them (design 22).
  */
 const FOCUS_CLASS = "cv-chat-focus";
@@ -24,14 +25,20 @@ const FOCUS_CLASS = "cv-chat-focus";
  *  - While focused, `setUiCaptured(true)` tells the movement system to ignore
  *    keys (see uiCapture.ts), so typing never walks the avatar.
  *  - IME-safe: never sends while a composition (e.g. Hangul) is in progress.
+ *  - Typing indicator (Task 12): every change tells the typing sender whether the
+ *    field has text (ON on the first keystroke + a heartbeat, OFF when cleared);
+ *    sending, blur and unmount stop it. The "…" itself is drawn by the name tag.
  */
 export function ChatInput() {
   const inputRef = useRef<HTMLInputElement>(null);
   const [value, setValue] = useState("");
   const [focused, setFocused] = useState(false);
+  // One sender per mount (it remembers the last ON it sent, for the server's rate
+  // window) — useState, not useMemo, so React can never silently rebuild it.
+  const [typing] = useState(() => createTypingSender(sendTyping));
 
   // Soft-keyboard handling (touch only): while focused, mark <html> with
-  // FOCUS_CLASS (the palette/toggles/sit button hide via CSS) and track the
+  // FOCUS_CLASS (the palette/toggles/action and jump buttons hide via CSS) and track the
   // keyboard inset from visualViewport. Browser behaviours differ:
   //  - iOS Safari: the keyboard NEVER resizes the layout viewport — a fixed
   //    bottom bar stays anchored where the keyboard now is. The VISUAL viewport
@@ -77,7 +84,12 @@ export function ChatInput() {
   // runs and the flag would otherwise strand `true`, killing WASD/Enter/emoji.
   useEffect(captureReleaseEffect, []);
 
+  // Same for the typing indicator: an input that unmounts while ON (reconnect
+  // remount, kick) fires no blur, so tell the others it stopped.
+  useEffect(() => () => typing.stop(), [typing]);
+
   function submit() {
+    typing.stop(); // OFF first, so the receivers drop the "…" before the bubble lands
     sendChat(value); // trims + drops empty; server is authoritative
     setValue("");
     inputRef.current?.blur();
@@ -100,8 +112,13 @@ export function ChatInput() {
         onBlur={() => {
           setUiCaptured(false);
           setFocused(false);
+          typing.stop();
         }}
-        onChange={(e) => setValue(e.target.value.slice(0, CHAT_MAX_LENGTH))}
+        onChange={(e) => {
+          const next = e.target.value.slice(0, CHAT_MAX_LENGTH);
+          setValue(next);
+          typing.onInput(performance.now(), next.trim().length > 0);
+        }}
         onKeyDown={(e) => {
           if (e.nativeEvent.isComposing) return; // let the IME finish first
           if (e.key === "Enter") {

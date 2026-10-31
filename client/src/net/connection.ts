@@ -130,6 +130,16 @@ export function sendJump(): void {
 }
 
 /**
+ * Tell the server this client started (`on: true`) or stopped (`on: false`) typing a
+ * chat line (a broadcast EVENT, not state). No-op if not connected. The server drops
+ * an ON over the TYPING_RATE cap and an OFF that has no ON before it, so callers go
+ * through `createTypingSender`, which already follows both rules.
+ */
+export function sendTyping(on: boolean): void {
+  room?.send(MessageType.Typing, { on });
+}
+
+/**
  * Request to sit on `seatIndex`. No-op if not connected; the server is
  * authoritative — it validates range/reach/occupancy and confirms by syncing the
  * player's `seatIndex` (the client never self-declares seated).

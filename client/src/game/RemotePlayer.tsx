@@ -13,6 +13,7 @@ import { nextGait } from "./locomotion";
 import { remoteGaitProbe } from "./gait";
 import type { Gait } from "./gait";
 import { decideMixerTick } from "./mixerThrottle";
+import { typingRegistry } from "./typing";
 import {
   JUMP_FADE_IN_S,
   currentJump,
@@ -180,9 +181,13 @@ export function RemotePlayer({
     if (import.meta.env.DEV) remoteGaitProbe.set(sessionId, g);
   };
 
-  // A leaving avatar takes its pending hop with it, so a reused sid can't inherit one.
+  // A leaving avatar takes its pending hop and its typing "…" with it, so a reused sid
+  // can't inherit either.
   useEffect(() => {
-    return () => jumpRegistry.remove(sessionId);
+    return () => {
+      jumpRegistry.remove(sessionId);
+      typingRegistry.remove(sessionId);
+    };
   }, [sessionId]);
 
   // Dispose per-avatar GPU resources on unmount. Cloned geometry/textures stay
