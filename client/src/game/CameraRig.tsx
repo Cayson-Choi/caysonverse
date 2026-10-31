@@ -1,9 +1,11 @@
 import { useEffect, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
+import { useKeyboardControls } from "@react-three/drei";
 import { Raycaster, Vector2 } from "three";
 import type { Fog, PerspectiveCamera } from "three";
 import { WORLD_BOUNDS } from "@caysonverse/shared/constants";
 import { CAMERA, FOG_FAR, FOG_NEAR, FP_EYE_HEIGHT, HEAD_HEIGHT } from "./constants";
+import type { MoveControl } from "./constants";
 import { normalizeAngle } from "./yaw";
 import { clampFpPitch, easeBlend } from "./viewMode";
 import {
@@ -13,6 +15,8 @@ import {
   stepOvBlend,
   toggleViewMode,
   toggleOverview,
+  requestRecenter,
+  cancelOrbitGoal,
 } from "./viewState";
 import {
   overviewFitHeight,
@@ -21,6 +25,18 @@ import {
   overviewPanDelta,
 } from "./overview";
 import { onHotkey } from "./hotkeys";
+import { isUiCaptured } from "./uiCapture";
+import {
+  CAMERA_LOOK_LIFT,
+  ZOOM_BAND,
+  pinchZoomDelta,
+  smoothToward,
+  stepFollow,
+  stepKeyYaw,
+  stepOrbitToward,
+} from "./cameraControls";
+import { DOUBLE_TAP_MS, isDoubleTap, isLookHalf } from "./tapGesture";
+import type { TapRecord } from "./tapGesture";
 import {
   DRAG_SIGN,
   isClick,
@@ -44,8 +60,14 @@ interface CameraRigProps {
   orbit: Orbit;
 }
 
-/** Follow-distance clamp band shared by the wheel and pinch zoom paths. */
-const ZOOM_BAND = { min: CAMERA.minDistance, max: CAMERA.maxDistance } as const;
+/** Longest frame (s) a held Z / C may turn the view for — a stalled tab can't spin it. */
+const MAX_KEY_TURN_DT = 0.1;
+
+/**
+ * Left-handed play mirrors which half of the screen is the look half. The
+ * settings wiring comes with Task 15; until then every player is right-handed.
+ */
+const LEFT_HANDED = false;
 
 /**
  * Overview mode IS allowed to bypass the maze anti-peek cap (design 20 —
@@ -95,7 +117,16 @@ function spread(pointers: Map<number, { x: number; y: number }>): number {
  * deltas through DRAG_SIGN — the single inversion switch — while the overview
  * pan and pinch zoom stay untouched. A press that ends within isClick's px/ms
  * budget is a floor CLICK instead: raycast to y=0 and handed to clickMove as
- * the auto-move target (LocalPlayer steers; overview clicks are ignored).
+ * the auto-move target (LocalPlayer steers; overview clicks are ignored). A touch
+ * tap on the LOOK half of the screen waits DOUBLE_TAP_MS for a second tap: one tap
+ * walks there, two taps swing the camera back behind the body (requestRecenter).
+ * Mouse clicks and taps on the stick half walk at once.
+ *
+ * The camera never turns by itself. The TP orbit yaw changes only by a drag, the
+ * held Z / C keys, or `viewState.orbitGoal` (R, double tap, sitting down) — which
+ * any drag / wheel / pinch / Z / C cancels. The view also eases: the TP follow
+ * point trails the body (stepFollow) and the follow DISTANCE glides to the zoom
+ * intent (smoothToward), so footsteps and wheel notches never jolt the picture.
  *
  * All per-frame state lives in the shared `orbit` object and the module `viewState`
  * (both mutated in place) — never React state.
@@ -117,6 +148,12 @@ export function CameraRig({ pose, orbit }: CameraRigProps) {
   // Previous frame's mode, to detect the EDGE into overview and seed its camera
   // (distinct from viewState.prevMode, which is the mode overview will restore).
   const lastFrameMode = useRef(viewState.mode);
+  // Z / C are registered in the shared KeyboardControls map; read their live state.
+  const [, getKeys] = useKeyboardControls<MoveControl>();
+  // Smoothed TP follow point (trails the body) and smoothed follow distance (glides
+  // to the zoom intent). Refs, mutated in place per frame — never React state.
+  const follow = useRef({ x: pose.x, z: pose.z });
+  const renderDist = useRef(orbit.distance);
 
   // Dev/E2E only: expose the live camera (the maze cap is not reflected in
   // orbit.distance, and the FP look yaw lives outside orbit). Tree-shaken in prod.
@@ -144,6 +181,30 @@ export function CameraRig({ pose, orbit }: CameraRigProps) {
     // Reused per mount for the floor raycast (never per event — no GC churn).
     const raycaster = new Raycaster();
     const ndc = new Vector2();
+    // Touch double-tap bookkeeping (look half only): the last finished tap, and the
+    // single-tap walk that is being held back for DOUBLE_TAP_MS in case a second
+    // tap turns it into a recenter. The timer is cleared on a double tap, a pinch
+    // and unmount.
+    let lastTap: TapRecord | null = null;
+    let pendingWalk: ReturnType<typeof setTimeout> | null = null;
+    const clearPendingWalk = () => {
+      if (pendingWalk !== null) {
+        clearTimeout(pendingWalk);
+        pendingWalk = null;
+      }
+    };
+    /** Raycast a screen point onto the y=0 floor (null for the sky). */
+    const groundAt = (clientX: number, clientY: number) => {
+      const rect = el.getBoundingClientRect();
+      ndc.set(
+        ((clientX - rect.left) / rect.width) * 2 - 1,
+        -(((clientY - rect.top) / rect.height) * 2 - 1),
+      );
+      raycaster.setFromCamera(ndc, camera);
+      const o = raycaster.ray.origin;
+      const d = raycaster.ray.direction;
+      return groundPoint(o.x, o.y, o.z, d.x, d.y, d.z);
+    };
 
     const onDown = (e: PointerEvent) => {
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -156,7 +217,12 @@ export function CameraRig({ pose, orbit }: CameraRigProps) {
       } catch {
         // synthetic events may have no active pointer; capture is best-effort
       }
-      if (pointers.size === 2) pinchPrev = spread(pointers);
+      if (pointers.size === 2) {
+        pinchPrev = spread(pointers);
+        // A second finger means a pinch, not a double tap: forget the held-back walk.
+        clearPendingWalk();
+        lastTap = null;
+      }
     };
     const onMove = (e: PointerEvent) => {
       const p = pointers.get(e.pointerId);
@@ -171,14 +237,15 @@ export function CameraRig({ pose, orbit }: CameraRigProps) {
         // a pinch past the extremes crosses into/out of FP just like the wheel.
         const curr = spread(pointers);
         if (pinchPrev > 0) {
-          const delta = pinchPrev - curr; // fingers together → positive → zoom out
           if (viewState.mode === "ov") {
+            const delta = pinchPrev - curr; // fingers together → positive → zoom out
             viewState.ovHeight = clampOverviewHeight(
               viewState.ovHeight + delta * CAMERA.ovPinchSpeed,
               fitHeight.current,
             );
           } else {
-            applyZoom(orbit, delta * CAMERA.pinchSpeed, ZOOM_BAND);
+            cancelOrbitGoal(); // the player took the camera back
+            applyZoom(orbit, pinchZoomDelta(pinchPrev, curr), ZOOM_BAND);
           }
         }
         pinchPrev = curr;
@@ -203,9 +270,11 @@ export function CameraRig({ pose, orbit }: CameraRigProps) {
         viewState.ovCenterX = c.x;
         viewState.ovCenterZ = c.z;
       } else if (viewState.mode === "fp") {
+        cancelOrbitGoal();
         viewState.fpYaw = normalizeAngle(viewState.fpYaw - DRAG_SIGN * dx * CAMERA.dragSpeed);
         viewState.fpPitch = clampFpPitch(viewState.fpPitch + DRAG_SIGN * dy * CAMERA.dragSpeed);
       } else {
+        cancelOrbitGoal(); // a drag takes the camera back from any recenter / seat glide
         orbit.yaw = normalizeAngle(orbit.yaw - DRAG_SIGN * dx * CAMERA.dragSpeed);
         orbit.pitch = clamp(
           orbit.pitch + DRAG_SIGN * dy * CAMERA.dragSpeed,
@@ -220,7 +289,9 @@ export function CameraRig({ pose, orbit }: CameraRigProps) {
       // the auto-move target. Skipped in overview (no overview click-move —
       // YAGNI, documented) and inert for clicks on DOM UI, which never reach
       // these canvas-only down handlers. Runs in TP and FP alike (in FP the walk
-      // is camera-relative and never turns the look).
+      // is camera-relative and never turns the look). The touch stick zone passes
+      // its quick taps in as a replayed down + up on this canvas (TouchJoystick),
+      // so they take exactly this path — on the stick half, hence at once.
       if (clickStart && clickStart.id === e.pointerId) {
         const start = clickStart;
         clickStart = null;
@@ -229,16 +300,28 @@ export function CameraRig({ pose, orbit }: CameraRigProps) {
           viewState.mode !== "ov" &&
           isClick(e.clientX - start.x, e.clientY - start.y, performance.now() - start.t)
         ) {
-          const rect = el.getBoundingClientRect();
-          ndc.set(
-            ((e.clientX - rect.left) / rect.width) * 2 - 1,
-            -(((e.clientY - rect.top) / rect.height) * 2 - 1),
-          );
-          raycaster.setFromCamera(ndc, camera);
-          const o = raycaster.ray.origin;
-          const d = raycaster.ray.direction;
-          const point = groundPoint(o.x, o.y, o.z, d.x, d.y, d.z);
-          if (point) setClickTarget(point.x, point.z); // 하늘 클릭은 무시
+          const point = groundAt(e.clientX, e.clientY);
+          if (e.pointerType === "touch" && isLookHalf(e.clientX, window.innerWidth, LEFT_HANDED)) {
+            // Look half: wait for a possible second tap. Two taps recenter the
+            // camera; one tap walks after DOUBLE_TAP_MS (measured on the target
+            // the finger actually touched, not wherever the camera is by then).
+            const tap: TapRecord = { t: performance.now(), x: e.clientX, y: e.clientY };
+            clearPendingWalk();
+            if (isDoubleTap(lastTap, tap)) {
+              lastTap = null;
+              requestRecenter(pose.yaw);
+            } else {
+              lastTap = tap;
+              if (point) {
+                pendingWalk = setTimeout(() => {
+                  pendingWalk = null;
+                  if (viewState.mode !== "ov") setClickTarget(point.x, point.z);
+                }, DOUBLE_TAP_MS);
+              }
+            }
+          } else if (point) {
+            setClickTarget(point.x, point.z); // 하늘 클릭은 무시
+          }
         }
       }
       pointers.delete(e.pointerId);
@@ -261,9 +344,10 @@ export function CameraRig({ pose, orbit }: CameraRigProps) {
       }
       // deltaY < 0 = zoom in (toward min → one notch past min enters FP);
       // deltaY > 0 = zoom out (an outward notch in FP returns to TP).
+      cancelOrbitGoal(); // the player took the camera back
       applyZoom(orbit, e.deltaY * CAMERA.zoomSpeed, ZOOM_BAND);
     };
-    // V / M / Esc come from the shared hotkey table (hotkeys.ts), which already
+    // V / M / R / Esc come from the shared hotkey table (hotkeys.ts), which already
     // drops auto-repeat, IME composition and keys typed into a focused chat field.
     const offHotkey = onHotkey((action) => {
       if (action.type === "toggleView") {
@@ -271,6 +355,8 @@ export function CameraRig({ pose, orbit }: CameraRigProps) {
         toggleViewMode(orbit);
       } else if (action.type === "toggleMap") {
         toggleOverview(); // M toggles overview (and is the ONLY way out of it)
+      } else if (action.type === "recenter") {
+        requestRecenter(pose.yaw); // R: swing the TP camera back behind the body
       } else if (action.type === "menu") {
         clearClickTarget(); // 진행 중인 클릭 자동 이동을 즉시 중단
       }
@@ -288,10 +374,39 @@ export function CameraRig({ pose, orbit }: CameraRigProps) {
       window.removeEventListener("pointercancel", onUp);
       el.removeEventListener("wheel", onWheel);
       offHotkey();
+      clearPendingWalk();
     };
-  }, [gl, orbit, camera]);
+  }, [gl, orbit, camera, pose]);
 
   useFrame((state, delta) => {
+    // ── Who turns the view? Only the player (drag, Z / C) and an orbit goal. ──
+    // Z / C turn the active view while held — the TP orbit, or the FP look yaw — but
+    // never while a text field owns the keyboard (typing "zc" must not spin the
+    // camera). A TP press also takes the camera back from any running goal.
+    if (!isUiCaptured() && (viewState.mode === "tp" || viewState.mode === "fp")) {
+      const keys = getKeys();
+      if (keys.camLeft || keys.camRight) {
+        const turnDt = Math.min(delta, MAX_KEY_TURN_DT);
+        if (viewState.mode === "fp") {
+          viewState.fpYaw = stepKeyYaw(viewState.fpYaw, keys.camLeft, keys.camRight, turnDt);
+        } else {
+          cancelOrbitGoal();
+          orbit.yaw = stepKeyYaw(orbit.yaw, keys.camLeft, keys.camRight, turnDt);
+        }
+      }
+    }
+    // A pending goal (R, double tap, sitting down) glides the orbit; done → dropped.
+    const goal = viewState.orbitGoal;
+    if (goal && stepOrbitToward(orbit, goal, delta)) viewState.orbitGoal = null;
+
+    // The follow point trails the body; the follow distance glides to the zoom
+    // intent. FP ignores both (its eye sits on the pose), but they keep tracking so
+    // leaving FP never jumps.
+    stepFollow(follow.current, pose.x, pose.z, delta);
+    renderDist.current = smoothToward(renderDist.current, orbit.distance, delta);
+    const followX = follow.current.x;
+    const followZ = follow.current.z;
+
     // Advance BOTH blend machines, then ease them. `t` = TP<->FP weight (the pose
     // UNDER the overview), `ovT` = overview weight on top.
     const t = easeBlend(stepViewBlend(delta));
@@ -320,12 +435,12 @@ export function CameraRig({ pose, orbit }: CameraRigProps) {
     // camera over the walls.
     const engage = stepMazeCapEngage(capEngage.current, isInMaze(pose.x, pose.z), delta);
     capEngage.current = engage;
-    const distance = cappedFollowDistance(orbit.distance * aspectDistanceScale(aspect), engage);
+    const distance = cappedFollowDistance(renderDist.current * aspectDistanceScale(aspect), engage);
     const horiz = distance * Math.cos(orbit.pitch);
     const height = distance * Math.sin(orbit.pitch);
-    const tpX = pose.x + horiz * Math.sin(orbit.yaw);
+    const tpX = followX + horiz * Math.sin(orbit.yaw);
     const tpY = cappedCameraY(HEAD_HEIGHT + height, engage);
-    const tpZ = pose.z + horiz * Math.cos(orbit.yaw);
+    const tpZ = followZ + horiz * Math.cos(orbit.yaw);
 
     // ── First-person pose ── camera at the eye; look along the fp yaw/pitch. The
     // horizontal forward (-sin, -cos) matches worldDirection's convention, so
@@ -340,9 +455,11 @@ export function CameraRig({ pose, orbit }: CameraRigProps) {
     const uPosX = lerp(tpX, pose.x, t);
     const uPosY = lerp(tpY, FP_EYE_HEIGHT, t);
     const uPosZ = lerp(tpZ, pose.z, t);
-    const uTgtX = lerp(pose.x, pose.x + fwdX, t);
-    const uTgtY = lerp(HEAD_HEIGHT, FP_EYE_HEIGHT + fwdY, t);
-    const uTgtZ = lerp(pose.z, pose.z + fwdZ, t);
+    // TP looks at the (smoothed) follow point, a little above the head; FP at the
+    // pose-anchored eye line.
+    const uTgtX = lerp(followX, pose.x + fwdX, t);
+    const uTgtY = lerp(HEAD_HEIGHT + CAMERA_LOOK_LIFT, FP_EYE_HEIGHT + fwdY, t);
+    const uTgtZ = lerp(followZ, pose.z + fwdZ, t);
 
     // ── Overview pose ── straight up over the pan-centre, looking down. The maze
     // cap is bypassed here by construction (this is a separate pose term, never

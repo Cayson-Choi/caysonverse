@@ -138,6 +138,16 @@ export function getClickTarget(): GroundVec | null {
   return state.target ? { ...state.target } : null;
 }
 
+/**
+ * The live target itself, NOT a copy — for per-frame readers (the destination
+ * ring) that must not allocate. Read-only: the object is replaced by every
+ * setClickTarget and never mutated in place, so holding it is safe but changing
+ * it is not.
+ */
+export function peekClickTarget(): Readonly<GroundVec> | null {
+  return state.target;
+}
+
 /** Drop the target (manual-input yield / sit-confirm — design 29 (b)/(e)). */
 export function clearClickTarget(): void {
   state.target = null;

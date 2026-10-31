@@ -12,6 +12,7 @@ import { NpcPrompt } from "../ui/NpcPrompt";
 import { NpcChatPanel } from "../ui/NpcChatPanel";
 import { CameraRig } from "./CameraRig";
 import { OverviewMarker } from "./OverviewMarker";
+import { ClickMarker } from "./ClickMarker";
 import { Chat } from "../ui/Chat";
 import { EmojiPalette } from "../ui/EmojiPalette";
 import { TouchJoystick } from "../ui/TouchJoystick";
@@ -131,6 +132,8 @@ export function WorldScene({ identity }: { identity: Identity }) {
             <RemotePlayers selfPose={pose} selfSeat={seat} blobShadow={profile.blobShadows} />
             {/* Overview-only self marker (design 20) — hidden outside overview. */}
             <OverviewMarker pose={pose} />
+            {/* Destination ring for a floor click / tap walk (hidden when idle). */}
+            <ClickMarker />
           </Suspense>
           <CameraRig pose={pose} orbit={orbit} />
         </KeyboardControls>

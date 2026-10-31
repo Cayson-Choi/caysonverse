@@ -10,7 +10,10 @@ import {
   resetViewMode,
   stepViewBlend,
   stepOvBlend,
+  requestRecenter,
+  cancelOrbitGoal,
 } from "./viewState";
+import { recenterYaw } from "./cameraControls";
 import { normalizeAngle } from "./yaw";
 import { useViewStore } from "../stores/viewStore";
 import { BLEND_SEC, OV_BLEND_SEC } from "./viewMode";
@@ -35,6 +38,8 @@ describe("viewState — reset", () => {
     viewState.ovCenterX = -18;
     viewState.ovCenterZ = 4;
     viewState.ovHeight = 60;
+    viewState.orbitGoal = { yaw: 1, pitch: 0.4 };
+    viewState.savedOrbit = { yaw: 0.2, pitch: 0.3, distance: 8 };
     useViewStore.getState().setFp(true);
     useViewStore.getState().setOv(true);
 
@@ -50,6 +55,8 @@ describe("viewState — reset", () => {
       ovCenterX: 0,
       ovCenterZ: 0,
       ovHeight: 0,
+      orbitGoal: null,
+      savedOrbit: null,
     });
     expect(useViewStore.getState().isFp).toBe(false);
     expect(useViewStore.getState().isOv).toBe(false);
@@ -228,5 +235,68 @@ describe("viewState — overview mode machine (design 20)", () => {
     toggleOverview(); // back to FP
     expect(viewState.mode).toBe("fp");
     expect(viewState.blend).toBe(1);
+  });
+});
+
+describe("viewState — camera goals (R recenter, double-tap, seat camera)", () => {
+  it("requestRecenter sets a yaw goal in TP and is a no-op in FP and overview", () => {
+    const o = orbit();
+    // TP: the goal is the camera-behind-the-body yaw, nothing else.
+    requestRecenter(0.7);
+    expect(viewState.orbitGoal).toEqual({ yaw: recenterYaw(0.7) });
+    expect(viewState.orbitGoal).not.toHaveProperty("pitch");
+    expect(viewState.orbitGoal).not.toHaveProperty("distance");
+
+    // A later request replaces the goal (latest wins).
+    requestRecenter(-2);
+    expect(viewState.orbitGoal).toEqual({ yaw: recenterYaw(-2) });
+
+    // FP: no TP orbit to turn — the request is ignored.
+    cancelOrbitGoal();
+    toggleViewMode(o); // → FP
+    requestRecenter(1.2);
+    expect(viewState.orbitGoal).toBeNull();
+
+    // Overview (from FP, then from TP): also ignored.
+    toggleOverview();
+    requestRecenter(1.2);
+    expect(viewState.orbitGoal).toBeNull();
+    toggleOverview(); // back to FP
+    toggleViewMode(o); // → TP
+    toggleOverview(); // overview over TP
+    expect(viewState.mode).toBe("ov");
+    requestRecenter(1.2);
+    expect(viewState.orbitGoal).toBeNull();
+  });
+
+  it("cancelOrbitGoal clears it; resetViewMode clears orbitGoal and savedOrbit", () => {
+    requestRecenter(1);
+    expect(viewState.orbitGoal).not.toBeNull();
+    cancelOrbitGoal();
+    expect(viewState.orbitGoal).toBeNull();
+    cancelOrbitGoal(); // idempotent
+    expect(viewState.orbitGoal).toBeNull();
+
+    viewState.orbitGoal = { yaw: 2, distance: 4 };
+    viewState.savedOrbit = { yaw: 0.1, pitch: 0.2, distance: 7 };
+    resetViewMode();
+    expect(viewState.orbitGoal).toBeNull();
+    expect(viewState.savedOrbit).toBeNull();
+  });
+
+  it("entering first-person drops a pending TP goal (it must not turn the orbit behind FP)", () => {
+    const o = orbit({ yaw: 0.4 });
+    requestRecenter(2);
+    expect(viewState.orbitGoal).not.toBeNull();
+    toggleViewMode(o); // V → FP
+    expect(viewState.mode).toBe("fp");
+    expect(viewState.orbitGoal).toBeNull();
+    // Same through the zoom threshold.
+    resetViewMode();
+    const z = orbit({ distance: BAND.min });
+    requestRecenter(2);
+    applyZoom(z, -0.5, BAND); // one notch past min → FP
+    expect(viewState.mode).toBe("fp");
+    expect(viewState.orbitGoal).toBeNull();
   });
 });

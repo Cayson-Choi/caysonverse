@@ -2,9 +2,10 @@
  * First-person / third-person runtime state (module mutable — NEVER React state)
  * plus the discrete toggle mutations. Read every frame by CameraRig (camera pose)
  * and LocalPlayer (own-avatar hiding + camera-relative movement yaw); mutated only
- * by the four toggle paths (V key / wheel / pinch / 👁 button) and the reconnect
- * remount reset. The pure math lives in viewMode.ts; the UI button flag lives in
- * the zustand viewStore.
+ * by the four toggle paths (V key / wheel / pinch / 👁 button), the camera-goal
+ * requests (R / double tap → `orbitGoal`) and the reconnect remount reset. The
+ * pure math lives in viewMode.ts and cameraControls.ts; the UI button flag lives
+ * in the zustand viewStore.
  *
  * Yaw continuity (design 19): on ENTER, the FP look yaw seeds from the current TP
  * orbit yaw; on EXIT, the TP orbit yaw seeds back from the FP look yaw — so the
@@ -14,6 +15,7 @@
  */
 
 import { normalizeAngle } from "./yaw";
+import { recenterYaw, type OrbitGoal } from "./cameraControls";
 import { stepBlend, stepZoomMode, OV_BLEND_SEC, type ViewMode, type ZoomBand } from "./viewMode";
 import { useViewStore } from "../stores/viewStore";
 import type { Orbit } from "./types";
@@ -37,6 +39,14 @@ export interface ViewState {
   ovCenterZ: number;
   /** Overview camera height (m) — the zoom level. 0 until CameraRig seeds a fit. */
   ovHeight: number;
+  /**
+   * Where the TP orbit should glide to (R, double tap, sitting down), or null.
+   * CameraRig steps it every frame and drops it on arrival; a drag, wheel, pinch,
+   * Z / C or entering first-person cancels it.
+   */
+  orbitGoal: OrbitGoal | null;
+  /** The orbit to restore after the seat camera lets go (null when nothing is saved). */
+  savedOrbit: Orbit | null;
 }
 
 /** The single shared view state — mutated in place, read per frame. */
@@ -50,6 +60,8 @@ export const viewState: ViewState = {
   ovCenterX: 0,
   ovCenterZ: 0,
   ovHeight: 0,
+  orbitGoal: null,
+  savedOrbit: null,
 };
 
 /** Mirror the active mode into the UI button flags (one React render, off-frame). */
@@ -68,6 +80,7 @@ function underlyingMode(): ViewMode {
 export function enterFp(orbitYaw: number): void {
   viewState.fpYaw = normalizeAngle(orbitYaw);
   viewState.mode = "fp";
+  viewState.orbitGoal = null; // a TP glide must not keep turning the orbit behind the FP view
   syncButton();
 }
 
@@ -130,6 +143,23 @@ export function toggleOverview(): void {
 }
 
 /**
+ * Ask the third-person camera to swing back behind the body (R key, double tap on
+ * the right half of the screen). The orbit yaw glides to `recenterYaw(bodyYaw)` —
+ * CameraRig does the stepping. Only third-person has an orbit to turn: in
+ * first-person the body already faces the view, and the overview map has no body
+ * view, so the request is ignored there.
+ */
+export function requestRecenter(bodyYaw: number): void {
+  if (viewState.mode !== "tp") return;
+  viewState.orbitGoal = { yaw: recenterYaw(bodyYaw) };
+}
+
+/** Drop any pending orbit goal (the player took the camera back: drag, wheel, pinch, Z / C). */
+export function cancelOrbitGoal(): void {
+  viewState.orbitGoal = null;
+}
+
+/**
  * Advance the TP<->FP blend toward its target by `dt`. In overview the target is
  * the REMEMBERED mode's pose (1 = FP, 0 = TP) so the pose beneath the overview
  * stays put and a restore lands exactly where it left. Reversal-safe.
@@ -167,5 +197,7 @@ export function resetViewMode(): void {
   viewState.ovCenterX = 0;
   viewState.ovCenterZ = 0;
   viewState.ovHeight = 0;
+  viewState.orbitGoal = null;
+  viewState.savedOrbit = null;
   syncButton();
 }

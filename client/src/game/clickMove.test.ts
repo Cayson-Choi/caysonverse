@@ -14,6 +14,7 @@ import {
   dirToIntent,
   setClickTarget,
   getClickTarget,
+  peekClickTarget,
   clearClickTarget,
   resetClickMove,
   stepClickMove,
@@ -101,6 +102,20 @@ describe("clickMove — target set/clamp/replace", () => {
     clearClickTarget();
     expect(getClickTarget()).toBeNull();
     expect(stepClickMove(0, 0, 0.016)).toBeNull();
+  });
+
+  it("peekClickTarget reads the live target without copying (per-frame ring), null when idle", () => {
+    expect(peekClickTarget()).toBeNull();
+    setClickTarget(4, -2);
+    const first = peekClickTarget();
+    expect(first).toEqual({ x: 4, z: -2 });
+    expect(peekClickTarget()).toBe(first); // same object every call: no per-frame allocation
+    expect(getClickTarget()).not.toBe(first); // getClickTarget keeps its defensive copy
+    setClickTarget(1, 1);
+    expect(peekClickTarget()).toEqual({ x: 1, z: 1 });
+    expect(first).toEqual({ x: 4, z: -2 }); // a held reference is never mutated by a re-click
+    clearClickTarget();
+    expect(peekClickTarget()).toBeNull();
   });
 });
 
