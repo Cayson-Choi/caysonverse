@@ -3,6 +3,8 @@ import {
   OV_MIN_HEIGHT,
   OV_MAX_HEIGHT_FACTOR,
   OV_FIT_MARGIN,
+  OV_FAR_FACTOR,
+  overviewFar,
   overviewFitHeight,
   clampOverviewHeight,
   clampOverviewCenter,
@@ -101,6 +103,46 @@ describe("overview — pan delta (pixels → world, height-scaled, grab-style)",
     const p = overviewPanDelta(0, 800, h, FOV, 800);
     const worldSpan = 2 * h * Math.tan(FOV / 2);
     expect(Math.abs(p.dz)).toBeCloseTo(worldSpan, 5);
+  });
+});
+
+describe("overview — far plane rides with the blend (a tall phone puts the camera past 200 m)", () => {
+  const BASE_FAR = 200; // CAMERA_FAR
+  const PHONE_ASPECT = 375 / 812;
+
+  it("is exactly the normal far plane at ovT = 0, whatever the height (leaving the map restores the view)", () => {
+    expect(overviewFar(BASE_FAR, 209.6, 0)).toBe(BASE_FAR);
+    expect(overviewFar(BASE_FAR, 0, 0)).toBe(BASE_FAR);
+    expect(overviewFar(BASE_FAR, 1e6, -0.5)).toBe(BASE_FAR);
+    expect(overviewFar(BASE_FAR, 209.6, Number.NaN)).toBe(BASE_FAR);
+  });
+
+  it("stays at the normal far plane before the first overview frame (ovHeight 0) and for a low camera", () => {
+    expect(overviewFar(BASE_FAR, 0, 1)).toBe(BASE_FAR);
+    expect(overviewFar(BASE_FAR, 60, 1)).toBe(BASE_FAR); // 60 × 1.6 = 96 < 200
+  });
+
+  it("reaches OV_FAR_FACTOR x the camera height at the full map, and never goes down while the blend rises", () => {
+    const h = 209.6;
+    expect(overviewFar(BASE_FAR, h, 1)).toBeCloseTo(h * OV_FAR_FACTOR, 9);
+    expect(overviewFar(BASE_FAR, h, 2)).toBeCloseTo(h * OV_FAR_FACTOR, 9); // clamped at 1
+    let prev = overviewFar(BASE_FAR, h, 0);
+    for (let i = 1; i <= 20; i++) {
+      const f = overviewFar(BASE_FAR, h, i / 20);
+      expect(f).toBeGreaterThanOrEqual(prev);
+      prev = f;
+    }
+  });
+
+  it("covers the whole map from the highest allowed camera, at any screen shape (the blank-map bug at 375×812)", () => {
+    // Worst case: the highest zoom-out, the pan centre at one corner of the map, looking at the far corner.
+    for (const aspect of [0.3, PHONE_ASPECT, 1, 1.6, 2.4]) {
+      const ovHeight = overviewFitHeight(MAP_W, MAP_D, FOV, aspect) * OV_MAX_HEIGHT_FACTOR;
+      const farthestCorner = Math.sqrt(ovHeight ** 2 + MAP_W ** 2 + MAP_D ** 2);
+      expect(overviewFar(BASE_FAR, ovHeight, 1)).toBeGreaterThanOrEqual(farthestCorner);
+    }
+    // And the bug itself: at 375×812 the fit height is past the old far plane.
+    expect(overviewFitHeight(MAP_W, MAP_D, FOV, PHONE_ASPECT)).toBeGreaterThan(BASE_FAR);
   });
 });
 

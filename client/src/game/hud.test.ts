@@ -396,8 +396,41 @@ describe("touch HUD layout across sizes, hands and phone screens", () => {
 
   it("the left column hangs from the corner opposite the top group (side + offsets)", () => {
     const r = touchHudLayout({ vw: 375, vh: 812, safe: NO_INSETS, size: "medium", leftHanded: false });
-    expect(r.column).toEqual({ side: "left", inset: 12, top: 12 });
+    expect(r.column).toMatchObject({ side: "left", inset: 12, top: 12 });
     const l = touchHudLayout({ vw: 375, vh: 812, safe: NO_INSETS, size: "medium", leftHanded: true });
-    expect(l.column).toEqual({ side: "right", inset: 12, top: 12 });
+    expect(l.column).toMatchObject({ side: "right", inset: 12, top: 12 });
+  });
+
+  it("the column's height cap keeps it 8 px above every bottom button it could meet, and on screen", () => {
+    const SAFE: SafeInsets = { top: 0, right: 0, bottom: 0, left: 0 };
+    for (const { vw, vh } of VIEWPORTS) {
+      for (const size of SIZES) {
+        for (const leftHanded of [false, true]) {
+          const l = touchHudLayout({ vw, vh, safe: SAFE, size, leftHanded });
+          const { side, inset, top, maxHeight } = l.column;
+          const colW = Math.min(300, vw - 24);
+          const x0 = side === "left" ? inset : vw - inset - colW;
+          const col: Rect = { x: x0, y: top, w: colW, h: maxHeight };
+          const where = `${vw}×${vh} ${size} ${leftHanded ? "left" : "right"}`;
+          expect(maxHeight, where).toBeGreaterThan(0);
+          expect(top + maxHeight, where).toBeLessThanOrEqual(vh - MIN_GAP_PX + 1e-9);
+          for (const r of [l.jump, l.action, l.emoji, l.chat]) {
+            expect(rectGap(col, r), `${where} column vs ${JSON.stringify(r)}`).toBeGreaterThanOrEqual(MIN_GAP_PX - 1e-9);
+          }
+        }
+      }
+    }
+  });
+
+  it("375×812 large: the column may use most of the height above the cluster; a landscape phone has the whole left side", () => {
+    const SAFE: SafeInsets = { top: 0, right: 0, bottom: 0, left: 0 };
+    const portrait = touchHudLayout({ vw: 375, vh: 812, safe: SAFE, size: "large", leftHanded: false });
+    // The cluster's top is the action button (y = 619; the emoji row is at 624): 619 - 8 - 12 = 599 px.
+    expect(portrait.column.maxHeight).toBe(Math.min(portrait.emoji.y, portrait.action.y) - MIN_GAP_PX - portrait.column.top);
+    expect(portrait.column.maxHeight).toBe(599);
+    const landscape = touchHudLayout({ vw: 812, vh: 375, safe: SAFE, size: "large", leftHanded: false });
+    expect(landscape.column.maxHeight).toBe(375 - MIN_GAP_PX - landscape.column.top);
+    const withInsets = touchHudLayout({ vw: 812, vh: 375, safe: { top: 0, right: 47, bottom: 21, left: 47 }, size: "large", leftHanded: false });
+    expect(withInsets.column.maxHeight).toBe(375 - 21 - MIN_GAP_PX - withInsets.column.top);
   });
 });

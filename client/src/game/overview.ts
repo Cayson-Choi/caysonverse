@@ -54,6 +54,24 @@ export function overviewFitHeight(
   return Math.max(hForDepth, hForWidth);
 }
 
+/** The far plane is kept at least this multiple of the overview camera height (see overviewFar). */
+export const OV_FAR_FACTOR = 1.6;
+
+/**
+ * The camera's far plane (m) while the overview blend is `ovT` (0 = normal view, 1 = the
+ * map). On a tall phone the whole-map fit is width-limited and puts the camera over 200 m
+ * up (209 m at 375×812), past the normal far plane, which would clip the entire map away;
+ * so the far plane rises toward `OV_FAR_FACTOR × ovHeight` with the blend. Never below
+ * `baseFar`, continuous in `ovT`, and exactly `baseFar` at ovT = 0 (so leaving the map
+ * restores the normal view bit for bit). `ovHeight` is 0 until the first overview frame.
+ */
+export function overviewFar(baseFar: number, ovHeight: number, ovT: number): number {
+  if (!(ovT > 0)) return baseFar;
+  const t = ovT > 1 ? 1 : ovT;
+  const target = Math.max(baseFar, ovHeight * OV_FAR_FACTOR);
+  return baseFar + (target - baseFar) * t;
+}
+
 /**
  * Clamp the overview camera height into [OV_MIN_HEIGHT, fitHeight·OV_MAX_HEIGHT_FACTOR].
  * `fitHeight` is the current whole-map fit (aspect-dependent), so the ceiling

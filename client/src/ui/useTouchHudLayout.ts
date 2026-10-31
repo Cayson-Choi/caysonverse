@@ -1,5 +1,6 @@
 import { useMemo, useSyncExternalStore, type CSSProperties } from "react";
 import { touchHudLayout, type Rect, type SafeInsets, type TouchHudLayout } from "../game/hud";
+import { isTouchDevice } from "../device";
 import { useSettingsStore } from "../stores/settingsStore";
 
 /** The screen the touch HUD is laid out for: the layout viewport plus the notch / home-bar insets. */
@@ -45,9 +46,14 @@ function same(a: Viewport, b: Viewport): boolean {
 
 // One shared snapshot and one resize listener for every HUD component (jump, action,
 // emoji, chat, top rows). The snapshot object is replaced only when a number changed, so
-// useSyncExternalStore never re-renders for a resize that did not move anything.
+// useSyncExternalStore never re-renders for a resize that did not move anything. Resize
+// events (a dragged window, the keyboard animating) are coalesced to one measure per frame.
 let snapshot: Viewport | null = null;
 const listeners = new Set<() => void>();
+let frame = 0;
+
+/** What a PC reports: the touch layout is not drawn there, so nothing is measured or listened to. */
+const DESKTOP_VIEWPORT: Viewport = { w: 1280, h: 800, safe: { top: 0, right: 0, bottom: 0, left: 0 } };
 
 function refresh(): void {
   const next = measure();
@@ -56,23 +62,35 @@ function refresh(): void {
   for (const l of listeners) l();
 }
 
+function onResize(): void {
+  if (frame) return;
+  frame = requestAnimationFrame(() => {
+    frame = 0;
+    refresh();
+  });
+}
+
 function getSnapshot(): Viewport {
+  if (!isTouchDevice) return DESKTOP_VIEWPORT;
   if (!snapshot) snapshot = measure();
   return snapshot;
 }
 
 function subscribe(listener: () => void): () => void {
+  if (!isTouchDevice) return () => {};
   if (listeners.size === 0) {
-    window.addEventListener("resize", refresh);
-    window.addEventListener("orientationchange", refresh);
+    window.addEventListener("resize", onResize);
+    window.addEventListener("orientationchange", onResize);
     refresh(); // the screen may have turned while nobody listened
   }
   listeners.add(listener);
   return () => {
     listeners.delete(listener);
     if (listeners.size === 0) {
-      window.removeEventListener("resize", refresh);
-      window.removeEventListener("orientationchange", refresh);
+      window.removeEventListener("resize", onResize);
+      window.removeEventListener("orientationchange", onResize);
+      cancelAnimationFrame(frame);
+      frame = 0;
     }
   };
 }
@@ -80,7 +98,8 @@ function subscribe(listener: () => void): () => void {
 /**
  * The touch HUD's rectangles for the current screen, 버튼 크기 and 왼손잡이 mode — the
  * numbers from game/hud.ts `touchHudLayout`, which hud.test.ts checks. Only touch
- * components apply them; on a PC the layout is plain CSS (hud.css) and this is unused.
+ * components apply them; on a PC the layout is plain CSS (hud.css), so this does no work
+ * there (no probe, no resize listener) and the returned layout is not used.
  */
 export function useTouchHudLayout(): TouchHudLayout {
   const vp = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);

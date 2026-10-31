@@ -4,7 +4,7 @@ import { isTouchDevice } from "../device";
 import { useUiStore } from "../stores/uiStore";
 import type { Pose } from "../game/types";
 import { HudButton } from "./HudButton";
-import { RosterPanel, useRosterHotkey, useRosterRows } from "./RosterPanel";
+import { RosterPanel, useRosterCount, useRosterHotkey } from "./RosterPanel";
 import { ViewToggle } from "./ViewToggle";
 import { OverviewToggle } from "./OverviewToggle";
 import { SoundToggle } from "./SoundToggle";
@@ -29,7 +29,7 @@ function useZoneLabel(pose: Pose): string {
 /** Room name chip + the 👥 button with the player count (it opens the roster list). */
 function HudInfo({ pose }: { pose: Pose }) {
   const zone = useZoneLabel(pose);
-  const count = useRosterRows().length;
+  const count = useRosterCount();
   const rosterOpen = useUiStore((s) => s.rosterOpen);
   return (
     <div className="cv-hud-info">
@@ -99,6 +99,7 @@ export function HudTop({ pose, onToggleView, onToggleOverview, children }: HudTo
     ? {
         ...sizeVar,
         top: layout.column.top,
+        maxHeight: layout.column.maxHeight,
         ...(layout.column.side === "left"
           ? { left: layout.column.inset, right: "auto" }
           : { right: layout.column.inset, left: "auto" }),

@@ -51,6 +51,9 @@ export interface RosterRow {
   self: boolean;
 }
 
+/** One collator for every roster sort (building one per compare would cost more than the sort). */
+const KOREAN = new Intl.Collator("ko");
+
 /** 선생님 → 나 → 나머지 (한글 가나다순). A teacher who is me is the first teacher. */
 export function rosterRows(self: RosterRow, remotes: readonly RosterRow[]): RosterRow[] {
   const all: RosterRow[] = [{ ...self, self: true }, ...remotes.map((r) => ({ ...r, self: false }))];
@@ -59,7 +62,7 @@ export function rosterRows(self: RosterRow, remotes: readonly RosterRow[]): Rost
     (a, b) =>
       rank(a) - rank(b) ||
       Number(b.self) - Number(a.self) ||
-      a.nickname.localeCompare(b.nickname, "ko") ||
+      KOREAN.compare(a.nickname, b.nickname) ||
       (a.sid < b.sid ? -1 : a.sid > b.sid ? 1 : 0),
   );
 }
@@ -154,6 +157,8 @@ export const HUD_CHIP_H_PX = 28;
 export const HUD_INFO_BTN_W_PX = 72;
 /** Screens narrower than this stack the cluster in two rows. */
 export const HUD_NARROW_BELOW_PX = 480;
+/** The widest thing in the top-left column (the admin panel) — what the column's height cap must keep clear of the cluster. */
+export const HUD_COLUMN_MAX_W_PX = 300;
 /** Buttons in the top-right group: 👁 first-person, 🗺 map, 🔊 sound, ☰ menu. */
 export const HUD_TOP_BUTTON_COUNT = 4;
 
@@ -176,8 +181,13 @@ export interface TouchHudLayout {
   roster: Rect;
   /** The chat-log toggle below 👥. */
   chatLog: Rect;
-  /** Where the top-left column hangs: from `side`'s edge by `inset`, `top` from the top. */
-  column: { side: "left" | "right"; inset: number; top: number };
+  /**
+   * Where the top-left column hangs: from `side`'s edge by `inset`, `top` from the top, and
+   * how tall it may grow (`maxHeight`): its bottom stays MIN_GAP_PX above every bottom button
+   * it could meet sideways, or above the screen's bottom edge. The roster list and the admin
+   * panel scroll inside that.
+   */
+  column: { side: "left" | "right"; inset: number; top: number; maxHeight: number };
   /** The open fan's buttons, left (180°) to right (0°). */
   fan: Rect[];
 }
@@ -296,22 +306,39 @@ export function touchHudLayout({ vw, vh, safe, size, leftHanded }: TouchHudInput
   const chatLog: Rect = { x: roster.x, y: roster.y + top + MIN_GAP_PX, w: HUD_INFO_BTN_W_PX, h: top };
 
   const m = (r: Rect): Rect => (leftHanded ? mirrorRect(r, L, R) : r);
+  const jumpF = m(jump);
+  const actionF = m(action);
   const emojiF = m(emoji);
+  const chatF = m(chat);
   const topF = topButtons.map(m);
+
+  // The column's height cap: it may reach down to MIN_GAP_PX above any bottom button that
+  // shares its columns of the screen (full width of its widest content), else to the bottom edge.
+  const colTop = T + HUD_TOP_INSET_PX;
+  const colW = Math.min(HUD_COLUMN_MAX_W_PX, R - L - 2 * HUD_TOP_INSET_PX);
+  const colX0 = leftHanded ? R - HUD_TOP_INSET_PX - colW : L + HUD_TOP_INSET_PX;
+  let colLimit = B - MIN_GAP_PX;
+  for (const r of [jumpF, actionF, emojiF, chatF]) {
+    if (r.x < colX0 + colW + MIN_GAP_PX && r.x + r.w > colX0 - MIN_GAP_PX) {
+      colLimit = Math.min(colLimit, r.y - MIN_GAP_PX);
+    }
+  }
+  const maxHeight = Math.max(0, colLimit - colTop);
+
   return {
     narrow,
     topPx: top,
-    jump: m(jump),
-    action: m(action),
+    jump: jumpF,
+    action: actionF,
     emoji: emojiF,
-    chat: m(chat),
+    chat: chatF,
     topButtons: topF,
     topGroup: union(topF),
     roster: m(roster),
     chatLog: m(chatLog),
     column: leftHanded
-      ? { side: "right", inset: safe.right + HUD_TOP_INSET_PX, top: T + HUD_TOP_INSET_PX }
-      : { side: "left", inset: safe.left + HUD_TOP_INSET_PX, top: T + HUD_TOP_INSET_PX },
+      ? { side: "right", inset: safe.right + HUD_TOP_INSET_PX, top: colTop, maxHeight }
+      : { side: "left", inset: safe.left + HUD_TOP_INSET_PX, top: colTop, maxHeight },
     fan: fanRects(emojiF, EMOJIS.length, L, R),
   };
 }

@@ -38,8 +38,18 @@ export function useRosterHotkey(): void {
   }, []);
 }
 
+/**
+ * How many players are in the world, me included — the number on the 👥 button. Counts
+ * only (no rows are built or sorted), and re-renders on join / leave only.
+ */
+export function useRosterCount(): number {
+  const hasIdentity = useAppStore((s) => s.identity !== null);
+  const roster = useSyncExternalStore(subscribeRoster, getRoster, getRoster);
+  return roster.length + (hasIdentity ? 1 : 0);
+}
+
 /** The player list's rows: me plus every remote, in the order game/hud.ts `rosterRows` gives. */
-export function useRosterRows(): RosterRow[] {
+function useRosterRows(): RosterRow[] {
   const identity = useAppStore((s) => s.identity);
   const isAdmin = useAppStore((s) => s.isAdmin);
   // Re-renders on join / leave only (the roster is the set of ids, never positions).
@@ -67,8 +77,12 @@ export function useRosterRows(): RosterRow[] {
  */
 export function RosterPanel() {
   const open = useUiStore((s) => s.rosterOpen);
+  return open ? <RosterList /> : null;
+}
+
+/** The open list. Its own component so the rows are built and sorted only while it is up. */
+function RosterList() {
   const rows = useRosterRows();
-  if (!open) return null;
   return (
     <section className="cv-roster" aria-label="접속자 목록">
       <h2 className="cv-roster-title">{rosterTitle(rows.length)}</h2>

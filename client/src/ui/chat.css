@@ -54,7 +54,17 @@
 }
 
 /* ── Chat log (PC: bottom-left, above the input bar; collapsible) ──
-   column-reverse puts the toggle (first in the DOM) at the bottom and the rows above it. */
+   column-reverse puts the toggle (first in the DOM) at the bottom and the rows above it.
+
+   The log's worst-case top edge, as a distance from the viewport bottom: its 88 px bottom
+   offset + the 32 px toggle + the 8 px gap + the rows' cap. The top-left HUD column (room
+   chip, 👥, roster, admin panel) is capped to end 8 px above it (hud.css), so the two can
+   never overlap whatever the window height. */
+:root {
+  --cv-log-rows-max: min(35vh, 280px);
+  --cv-log-reserve: calc(88px + 32px + 8px + var(--cv-log-rows-max));
+}
+
 .cv-chat-log {
   position: fixed;
   left: 16px;
@@ -70,7 +80,8 @@
 
 .cv-chat-toggle {
   pointer-events: auto;
-  padding: 6px 12px;
+  height: 32px;
+  padding: 0 12px;
   font-size: 13px;
   font-weight: 600;
   color: #e8e2ff;
@@ -88,7 +99,7 @@
 .cv-chat-rows {
   pointer-events: auto;
   width: 100%;
-  max-height: min(35vh, 280px);
+  max-height: var(--cv-log-rows-max);
   overflow-y: auto;
   display: flex;
   flex-direction: column;

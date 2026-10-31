@@ -99,6 +99,25 @@
   pointer-events: auto;
 }
 
+/* A PC: the column may not reach the chat log below it (chat.css --cv-log-reserve is the
+   log's worst-case height from the bottom): it ends at least 8 px above it. The room chip
+   and 👥 never shrink; the roster list and the admin panel's body scroll inside what is left. */
+html:not(.cv-touch) .cv-hud-left {
+  max-height: calc(100vh - 16px - var(--cv-log-reserve, 360px) - 8px);
+  overflow: hidden;
+}
+
+/* A phone: the same, from the model — HudTop sets `max-height` inline (game/hud.ts
+   column.maxHeight: 8 px above the cluster buttons it could meet sideways, else above the
+   bottom edge). */
+.cv-touch .cv-hud-left {
+  overflow: hidden;
+}
+
+.cv-hud-info {
+  flex: none;
+}
+
 .cv-hud-left.is-right {
   align-items: flex-end;
 }
@@ -149,6 +168,8 @@
 
 /* ── Roster (접속자 N명) ── */
 .cv-roster {
+  flex: 0 1 auto;
+  min-height: 100px;
   display: flex;
   flex-direction: column;
   width: min(260px, calc(100vw - 24px));
@@ -171,6 +192,8 @@
 }
 
 .cv-roster-list {
+  flex: 1 1 auto;
+  min-height: 0;
   list-style: none;
   display: flex;
   flex-direction: column;

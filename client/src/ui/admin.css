@@ -3,6 +3,10 @@
    them instead of being pinned to the corner; the column is above the 3D canvas. */
 .cv-admin {
   position: relative;
+  /* In the HUD column's flow it shrinks (its body scrolls) when the column is capped — three times
+     as eagerly as the roster, so a list the player just opened keeps most of its height. */
+  flex: 0 3 auto;
+  min-height: 44px;
   width: min(300px, calc(100vw - 24px));
   display: flex;
   flex-direction: column;
@@ -16,6 +20,7 @@
 }
 
 .cv-admin-head {
+  flex: none;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -38,6 +43,10 @@
 }
 
 .cv-admin-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -119,6 +128,15 @@
   cursor: default;
 }
 
+/* A phone: every admin button is a 48 px touch target (공지 보내기 / 지우기, 강퇴, 확인 / 취소). */
+.cv-touch .cv-admin-btn {
+  min-width: 48px;
+  min-height: 48px;
+  padding: 0 14px;
+  font-size: 14px;
+  touch-action: manipulation;
+}
+
 .cv-admin-btn.is-primary {
   background: linear-gradient(92deg, #7d5bff, #a06bff);
   border-color: transparent;
@@ -147,8 +165,7 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
-  max-height: min(40vh, 280px);
-  overflow-y: auto;
+  /* No scroll box of its own: the panel's body is the one scroller (a nested one would trap the wheel). */
 }
 
 .cv-admin-user {

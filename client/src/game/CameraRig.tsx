@@ -19,6 +19,7 @@ import {
   cancelOrbitGoal,
 } from "./viewState";
 import {
+  overviewFar,
   overviewFitHeight,
   clampOverviewHeight,
   clampOverviewCenter,
@@ -567,7 +568,7 @@ export function CameraRig({ pose, orbit, seat }: CameraRigProps) {
     // The far plane rides with the overview too: the whole-map fit height is width-limited
     // on a tall phone (209 m at 375×812), past CAMERA_FAR, and the map would be clipped
     // away entirely. Continuous in ovT, and restored exactly to CAMERA_FAR at 0.
-    const far = lerp(CAMERA_FAR, Math.max(CAMERA_FAR, viewState.ovHeight * 1.6), ovT);
+    const far = overviewFar(CAMERA_FAR, viewState.ovHeight, ovT);
     if (cam.far !== far) {
       cam.far = far;
       cam.updateProjectionMatrix();
