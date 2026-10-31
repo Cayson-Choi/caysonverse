@@ -11,6 +11,8 @@ import {
   EMOJIS,
   MOVE_MAX_MSGS_PER_SEC,
   JUMP_RATE,
+  ROLE_STUDENT,
+  ROLE_TEACHER,
 } from "@caysonverse/shared/constants";
 import { MessageType } from "@caysonverse/shared/messages";
 import type {
@@ -360,7 +362,8 @@ describe("WorldRoom admin (integration)", () => {
     // without a reverse proxy it is undefined and the code falls back to the
     // global limiter key + nickname-only denySet. Robust to either shape:
     expect(marker.ip === null || typeof marker.ip === "string").toBe(true);
-    // Admin status must NOT be observable in synced state.
+    // The isAdmin marker must NOT be observable in synced state (only the
+    // derived Player.role is — see the role tests below).
     expect(JSON.stringify(client.state.toJSON())).not.toContain("isAdmin");
   });
 
@@ -372,7 +375,7 @@ describe("WorldRoom admin (integration)", () => {
     expect(room.state.players.size).toBe(1);
     const marker = room.clients[0].userData as { isAdmin: boolean };
     expect(marker.isAdmin).toBe(true);
-    // No admin flag anywhere in the synced player/root state.
+    // No isAdmin flag anywhere in the synced player/root state.
     expect(JSON.stringify(admin.state.toJSON())).not.toContain("isAdmin");
   });
 
@@ -569,6 +572,108 @@ describe("WorldRoom admin (integration)", () => {
 
     expect(adminLeft).toBe(false);
     expect(room.state.players.has(admin.sessionId)).toBe(true);
+  });
+
+  // ── controls-ux Task 3: Player.role (0 student / 1 teacher) ──
+
+  it("syncs role=1 for an admin join and 0 for a normal join, visible to OTHER clients", async () => {
+    process.env.ADMIN_CODE = ADMIN_CODE;
+    const room = await colyseus.createRoom<WorldRoom>(WORLD_ROOM);
+    const bob = await colyseus.connectTo(room, JOIN_B); // student joins first
+    const admin = await colyseus.connectTo(room, { ...ADMIN_JOIN, adminCode: ADMIN_CODE });
+
+    // Server truth.
+    expect(room.state.players.get(admin.sessionId)!.role).toBe(ROLE_TEACHER);
+    expect(room.state.players.get(bob.sessionId)!.role).toBe(ROLE_STUDENT);
+
+    // The student's client sees the teacher as role 1 (the point of the field:
+    // OTHER clients render the teacher badge) and itself as role 0.
+    expect(
+      await pollFor(() => bob.state.players.get(admin.sessionId)?.role === ROLE_TEACHER),
+    ).toBe(true);
+    expect(bob.state.players.get(bob.sessionId)!.role).toBe(ROLE_STUDENT);
+
+    // And the reverse direction: the teacher sees the student as role 0.
+    expect(await pollFor(() => admin.state?.players?.has(bob.sessionId))).toBe(true);
+    expect(admin.state.players.get(bob.sessionId)!.role).toBe(ROLE_STUDENT);
+    // Wire-level: the synced state exposes the teacher only via `role`.
+    expect(JSON.stringify(bob.state.toJSON())).not.toContain("isAdmin");
+  });
+
+  it("ignores a client-supplied role in join options", async () => {
+    process.env.ADMIN_CODE = ADMIN_CODE;
+    const room = await colyseus.createRoom<WorldRoom>(WORLD_ROOM);
+
+    // A normal join claiming role 1 (and a teacher-looking string) stays a student.
+    const sneaky = await colyseus.connectTo(room, { ...JOIN_A, role: ROLE_TEACHER });
+    const sneakier = await colyseus.connectTo(room, { ...JOIN_B, role: "teacher", isAdmin: true });
+    expect(room.state.players.get(sneaky.sessionId)!.role).toBe(ROLE_STUDENT);
+    expect(room.state.players.get(sneakier.sessionId)!.role).toBe(ROLE_STUDENT);
+    expect((room.clients[0].userData as { isAdmin: boolean }).isAdmin).toBe(false);
+
+    // The option cannot demote a really-authenticated admin either: role is
+    // derived from the admin-code result alone.
+    const admin = await colyseus.connectTo(room, {
+      ...ADMIN_JOIN,
+      adminCode: ADMIN_CODE,
+      role: ROLE_STUDENT,
+    });
+    expect(room.state.players.get(admin.sessionId)!.role).toBe(ROLE_TEACHER);
+  });
+
+  it("no client message changes role", async () => {
+    process.env.ADMIN_CODE = ADMIN_CODE;
+    const room = await colyseus.createRoom<WorldRoom>(WORLD_ROOM);
+    const student = await colyseus.connectTo(room, JOIN_A);
+    const admin = await colyseus.connectTo(room, { ...ADMIN_JOIN, adminCode: ADMIN_CODE });
+    const studentState = room.state.players.get(student.sessionId)!;
+    const adminState = room.state.players.get(admin.sessionId)!;
+
+    // Stand the student at a front-row chair's dismount point so Sit is legal.
+    const seat = SEATS[1];
+    studentState.x = seat.standX;
+    studentState.z = seat.standZ;
+
+    // Every payload tries to smuggle a role alongside its real fields.
+    const sendAll = async (c: typeof student, own: typeof studentState, smuggled: number) => {
+      c.send(MessageType.Move, { x: own.x + 0.01, z: own.z, yaw: 0.1, role: smuggled });
+      await room.waitForNextMessage();
+      c.send(MessageType.Chat, { text: "안녕하세요", role: smuggled });
+      await room.waitForNextMessage();
+      c.send(MessageType.Emoji, { index: 0, role: smuggled });
+      await room.waitForNextMessage();
+      c.send(MessageType.Jump, { role: smuggled });
+      await room.waitForNextMessage();
+      c.send(MessageType.Typing, { on: true, role: smuggled });
+      await room.waitForNextMessage();
+      c.send(MessageType.Typing, { on: false, role: smuggled });
+      await room.waitForNextMessage();
+    };
+
+    await sendAll(student, studentState, ROLE_TEACHER);
+    student.send(MessageType.Sit, { seatIndex: 1, role: ROLE_TEACHER });
+    await room.waitForNextMessage();
+    await flush();
+    // Non-vacuous: the Sit really was processed (so the handler ran with the payload).
+    expect(studentState.seatIndex).toBe(1);
+    expect(studentState.role).toBe(ROLE_STUDENT);
+
+    student.send(MessageType.Stand, { role: ROLE_TEACHER });
+    await room.waitForNextMessage();
+    await flush();
+    expect(studentState.seatIndex).toBe(-1);
+    expect(studentState.role).toBe(ROLE_STUDENT);
+
+    // The reverse: a teacher cannot demote themselves with a message either.
+    await sendAll(admin, adminState, ROLE_STUDENT);
+    await flush();
+    expect(adminState.role).toBe(ROLE_TEACHER);
+
+    // Re-check what the other client actually received over the wire.
+    expect(
+      await pollFor(() => student.state.players.get(admin.sessionId)?.role === ROLE_TEACHER),
+    ).toBe(true);
+    expect(admin.state.players.get(student.sessionId)!.role).toBe(ROLE_STUDENT);
   });
 });
 

@@ -5,6 +5,7 @@ import {
   clearRemotes,
   getRoster,
   getRemoteRecord,
+  getRemotes,
   type RemotePlayerRecord,
 } from "./remoteStore";
 
@@ -16,6 +17,7 @@ function rec(sessionId: string, over: Partial<RemotePlayerRecord> = {}): RemoteP
     tint: 0,
     connected: true,
     seatIndex: -1,
+    role: 0,
     snapshots: [],
     ...over,
   };
@@ -66,5 +68,21 @@ describe("remoteStore roster + resync rebuild dedup", () => {
     addRemote(rec("a"));
     clearRemotes();
     expect(getRoster()).toEqual([]);
+  });
+});
+
+describe("remoteStore role", () => {
+  beforeEach(() => clearRemotes());
+
+  it("keeps the synced role on the record and in getRemotes()", () => {
+    addRemote(rec("student"));
+    addRemote(rec("teacher", { role: 1 }));
+
+    expect(getRemoteRecord("student")?.role).toBe(0);
+    expect(getRemoteRecord("teacher")?.role).toBe(1);
+
+    const remotes = getRemotes();
+    expect(remotes.find((r) => r.sessionId === "student")?.role).toBe(0);
+    expect(remotes.find((r) => r.sessionId === "teacher")?.role).toBe(1);
   });
 });

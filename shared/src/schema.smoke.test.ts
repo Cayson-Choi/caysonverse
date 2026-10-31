@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { Schema, type, Encoder, Decoder } from "@colyseus/schema";
+import { Player } from "./schema";
+import { ROLE_STUDENT, ROLE_TEACHER } from "./constants";
 
 /**
  * Guards the @colyseus/schema `useDefineForClassFields` trap.
@@ -37,5 +39,22 @@ describe("@colyseus/schema decorator wiring", () => {
 
     expect(decoded.label).toBe("caysonverse");
     expect(decoded.count).toBe(42);
+  });
+
+  it("Player.role defaults to 0 and round-trips 1", () => {
+    const player = new Player();
+    expect(player.role).toBe(ROLE_STUDENT); // default: student
+    expect(ROLE_STUDENT).toBe(0);
+    expect(ROLE_TEACHER).toBe(1);
+
+    player.nickname = "선생님";
+    player.role = ROLE_TEACHER;
+
+    const bytes = new Encoder(player).encodeAll();
+    const decoded = new Player();
+    new Decoder(decoded).decode(bytes);
+
+    expect(decoded.role).toBe(ROLE_TEACHER);
+    expect(decoded.nickname).toBe("선생님"); // the rest of the Player still syncs
   });
 });

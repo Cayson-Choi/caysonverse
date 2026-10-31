@@ -20,6 +20,9 @@ import { Schema, type, MapSchema } from "@colyseus/schema";
  *   fly-hacks (a client simply cannot express vertical position).
  * - No chat text: transient messages are events, not state (anti-pattern to
  *   keep them in the synced tree).
+ * - No admin marker: the `isAdmin` marker is server-only (WorldRoom's
+ *   per-connection userData). The only thing published is `role`, which the
+ *   server derives from it once at join (controls-ux §5).
  */
 export class Player extends Schema {
   @type("string") nickname = ""; // set once at join
@@ -33,6 +36,11 @@ export class Player extends Schema {
   // The first legitimate discrete synced state — a seated player is fully
   // server-positioned (x/z/yaw snapped to the seat), so 100 seated avatars sync.
   @type("int8") seatIndex = -1;
+  // Role (controls-ux Task 3): 0 = student, 1 = teacher (ROLE_STUDENT /
+  // ROLE_TEACHER in constants.ts). Written exactly once, by WorldRoom.onJoin, from
+  // the server-side admin-code result — never from join options or client
+  // messages — so it is fixed for the whole session and clients read it once.
+  @type("uint8") role = 0;
 }
 
 export class WorldState extends Schema {

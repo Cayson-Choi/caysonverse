@@ -18,6 +18,12 @@ export interface RemotePlayerRecord {
   connected: boolean;
   /** Seat (v2 Task 1): -1 = standing; >= 0 = the seat this remote occupies. */
   seatIndex: number;
+  /**
+   * Synced `Player.role` (0 = student / 1 = teacher; ROLE_* in shared constants).
+   * Read ONCE at add — the server fixes it for the whole session, so there is no
+   * setter and no listener.
+   */
+  role: number;
   /** Position history ring buffer, sampled by the interpolation layer. */
   snapshots: Snapshot[];
 }
@@ -124,7 +130,7 @@ export function forEachRemotePosition(
   }
 }
 
-/** Dev/E2E view: each remote's newest known position + ghost flag + seat. */
+/** Dev/E2E view: each remote's newest known position + ghost flag + seat + role. */
 export function getRemotes(): Array<{
   sessionId: string;
   nickname: string;
@@ -134,6 +140,7 @@ export function getRemotes(): Array<{
   yaw: number;
   connected: boolean;
   seatIndex: number;
+  role: number;
 }> {
   const out: Array<{
     sessionId: string;
@@ -144,6 +151,7 @@ export function getRemotes(): Array<{
     yaw: number;
     connected: boolean;
     seatIndex: number;
+    role: number;
   }> = [];
   for (const record of records.values()) {
     const last = record.snapshots[record.snapshots.length - 1];
@@ -156,6 +164,7 @@ export function getRemotes(): Array<{
       yaw: last?.yaw ?? 0,
       connected: record.connected,
       seatIndex: record.seatIndex,
+      role: record.role,
     });
   }
   return out;

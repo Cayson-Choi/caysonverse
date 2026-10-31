@@ -90,7 +90,8 @@ export interface EmojiBroadcast {
 /**
  * Client(admin) -> server: set the announcement banner. An empty (or
  * whitespace-only) string is VALID and CLEARS the banner. The server verifies
- * the sender is admin (server-side marker, never in schema) and drops otherwise.
+ * the sender is admin (server-side `isAdmin` marker, not the synced
+ * `Player.role`) and drops otherwise.
  */
 export interface AnnouncePayload {
   text: string;

@@ -74,6 +74,7 @@ export function startRemoteSync(
       tint: player.tint,
       connected: player.connected,
       seatIndex: player.seatIndex,
+      role: player.role, // fixed for the session by the server: read once, no listener
       snapshots: [],
     });
     // Seed with the current position so the avatar shows up immediately.

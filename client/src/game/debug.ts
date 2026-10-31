@@ -27,6 +27,8 @@ export interface RemoteView {
   connected: boolean;
   /** -1 = standing; >= 0 = the seat this remote occupies. */
   seatIndex: number;
+  /** Synced role: 0 = student, 1 = teacher (lets E2E assert the teacher marker). */
+  role: number;
 }
 
 /** Shape of one active speech bubble in the dev/E2E hook. */

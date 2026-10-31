@@ -110,6 +110,18 @@ export const TYPING_RATE = { count: 1, windowMs: 3000 } as const;
  */
 export const TYPING_TTL_MS = 5000;
 
+// ── Roles (controls-ux Task 3) — synced as `Player.role` (uint8). ──
+
+/** `Player.role` for an ordinary participant (the schema default). */
+export const ROLE_STUDENT = 0;
+
+/**
+ * `Player.role` for the teacher. The server writes it ONLY when the join's admin
+ * code authenticated (WorldRoom.onJoin); join options and client messages can
+ * never set it. The `isAdmin` marker itself stays server-only.
+ */
+export const ROLE_TEACHER = 1;
+
 // ── Admin: announce banner + kick (Task 9). ──
 
 /**

@@ -16,6 +16,8 @@ import {
   PLAYER_RADIUS,
   KICK_CLOSE_CODE,
   RECONNECT_WINDOW_S,
+  ROLE_STUDENT,
+  ROLE_TEACHER,
 } from "@caysonverse/shared/constants";
 import { SEATS } from "@caysonverse/shared/worldMap";
 import {
@@ -54,7 +56,11 @@ const KICKED_OUT = "입장이 제한되었습니다";
  */
 const GLOBAL_IP_KEY = "__no_ip__";
 
-/** Server-side per-connection marker. NEVER synchronized into schema state. */
+/**
+ * Server-side per-connection marker. The marker itself (`isAdmin`, ip, nickname)
+ * is NEVER synchronized into schema state; the only public trace of `isAdmin` is
+ * the derived `Player.role`, written once in onJoin (controls-ux §5).
+ */
 interface AdminMarker {
   /** True only for a connection that presented the correct admin code at join. */
   isAdmin: boolean;
@@ -205,7 +211,8 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     }
 
     // Admin authentication (optional). A provided code is verified server-side
-    // only; the result is a per-connection marker, NEVER schema state.
+    // only; the result is a per-connection marker (never schema state) plus the
+    // derived, public `Player.role` set below.
     const isAdmin = this.authenticateAdmin(options, ip);
 
     const spawn = this.spawnPosition();
@@ -217,6 +224,10 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     player.z = spawn.z;
     player.yaw = 0;
     player.connected = true;
+    // The ONLY write of `role`: it follows the admin-code result and nothing a
+    // client sent (join options are never read for it). Set before the player
+    // enters the map so the first patch already carries it.
+    player.role = isAdmin ? ROLE_TEACHER : ROLE_STUDENT;
 
     this.state.players.set(client.sessionId, player);
     const marker: AdminMarker = { isAdmin, ip, nickname: result.nickname };
