@@ -1,11 +1,14 @@
 import { describe, it, expect } from "vitest";
 import type { AABB } from "@caysonverse/shared/collision";
 import { MAZE_WALLS } from "@caysonverse/shared/maze";
-import { WALLS, WALL_HEIGHT } from "@caysonverse/shared/worldMap";
+import { PLAYER_RADIUS, WALLS, WALL_HEIGHT } from "@caysonverse/shared/worldMap";
 import {
   ARM_FREE,
   CAMERA_BOXES,
+  SEAT_ARM,
   SPRING,
+  armHeightScale,
+  armLookLift,
   segmentHitFraction,
   springArmDistance,
   stepArmLimit,
@@ -138,6 +141,41 @@ describe("segmentHitFraction", () => {
   });
 });
 
+describe("segmentHitFraction — margin (boxes inflated in XZ for the cast)", () => {
+  it("a margin pulls the hit earlier by exactly that much for a perpendicular segment", () => {
+    // Wall face at z = 4: with a 0.2 margin the segment enters the inflated box at z = 3.8.
+    expect(segmentHitFraction(0, 1.4, 0, 0, 1.4, 10, [WALL], WALL_HEIGHT, 0.2)).toBeCloseTo(0.38, 6);
+    expect(segmentHitFraction(0, 1.4, 0, 0, 1.4, 10, [WALL], WALL_HEIGHT, 0)).toBeCloseTo(0.4, 6);
+  });
+
+  it("the margin grows the box sideways too: a segment that grazes just past the end of a wall is caught", () => {
+    // Wall spans x −5..5; this segment runs at x = 5.1 — outside the raw box, inside the inflated one.
+    expect(segmentHitFraction(5.1, 1.4, 0, 5.1, 1.4, 10, [WALL])).toBe(1);
+    expect(segmentHitFraction(5.1, 1.4, 0, 5.1, 1.4, 10, [WALL], WALL_HEIGHT, 0.2)).toBeCloseTo(0.38, 6);
+  });
+
+  it("does not inflate height: a segment above the wall top still passes over", () => {
+    expect(segmentHitFraction(0, WALL_HEIGHT + 0.1, 0, 0, WALL_HEIGHT + 0.1, 10, [WALL], WALL_HEIGHT, 0.2)).toBe(1);
+  });
+
+  it("a start inside the inflated box but outside the raw one tests the raw box (no fold to zero)", () => {
+    // Head 0.1 m in front of the wall face: inside the 0.2 margin. The camera still has room up to the face.
+    expect(segmentHitFraction(0, 1.4, 3.9, 0, 1.4, 10, [WALL], WALL_HEIGHT, 0.2)).toBeCloseTo(0.1 / 6.1, 6);
+    // ...and a start inside the raw box is skipped, margin or not.
+    expect(segmentHitFraction(0, 1.4, 4.1, 0, 1.4, 10, [WALL], WALL_HEIGHT, 0.2)).toBe(1);
+  });
+
+  it("the head can never start inside an inflated wall: PLAYER_RADIUS keeps it at least the pad away", () => {
+    expect(PLAYER_RADIUS).toBeGreaterThanOrEqual(SPRING.pad);
+    // Touching a wall face (centre PLAYER_RADIUS away) is outside the inflated box.
+    const z = WALL.minZ - PLAYER_RADIUS;
+    expect(z).toBeLessThan(WALL.minZ - SPRING.pad);
+    // Touching a corner (circle tangent to the corner) is outside it on at least one axis.
+    const off = PLAYER_RADIUS / Math.SQRT2;
+    expect(off).toBeGreaterThan(SPRING.pad);
+  });
+});
+
 describe("springArmDistance", () => {
   it("returns the desired distance untouched when nothing is in the way", () => {
     expect(springArmDistance(0, 1.4, 0, 0, 1.4, -10, 10, [WALL])).toBe(10);
@@ -149,6 +187,22 @@ describe("springArmDistance", () => {
     expect(springArmDistance(0, 1.4, 0, 0, 1.4, 10, 10, [{ ...WALL, minZ: 0.05, maxZ: 0.3 }])).toBe(
       SPRING.minDist,
     );
+  });
+
+  it("keeps the pad PERPENDICULAR to the wall at a shallow angle (not along the ray)", () => {
+    // Head 0.4 m from the wall face (as close as the player body can get), camera swung out nearly
+    // parallel to the wall: 10 m along X, 1 m toward it (about 5.7 degrees). The old "t × desired − pad"
+    // stopped 0.2 m along the ray = only ~0.02 m from the wall plane, inside the near plane.
+    const ax = -4;
+    const az = 3.6;
+    const bx = 6;
+    const bz = 4.6;
+    const desired = Math.hypot(bx - ax, bz - az);
+    const arm = springArmDistance(ax, 1.4, az, bx, 1.4, bz, desired, [WALL]);
+    const camZ = az + ((bz - az) / desired) * arm;
+    expect(arm).toBeLessThan(desired);
+    expect(WALL.minZ - camZ).toBeGreaterThanOrEqual(SPRING.pad - 1e-6);
+    expect(WALL.minZ - camZ).toBeLessThan(SPRING.pad + 1e-6);
   });
 
   it("scales with the desired distance (t × desired)", () => {
@@ -218,5 +272,40 @@ describe("stepArmLimit — the eased limit behind the spring arm", () => {
 
   it("is larger than any arm the camera can ask for (maxDistance × the portrait pull-back)", () => {
     expect(ARM_FREE).toBeGreaterThan(18 * 1.6);
+  });
+});
+
+describe("seated arm shaping (row-0 seats: the pulled-in camera must still see the screen)", () => {
+  it("keeps the tuned values", () => {
+    // lookLift tuned on the row-0 screenshot (the front row sits behind the divider wall).
+    expect(SEAT_ARM).toEqual({ lookLift: 1.6, blendRate: 8 });
+  });
+
+  it("standing: the height offset shrinks with the arm (uniform scale), nothing is lifted", () => {
+    expect(armHeightScale(0.5, 0)).toBe(0.5);
+    expect(armLookLift(0.5, 0)).toBe(0);
+  });
+
+  it("seated: the height offset is kept whole and the look target rises by (1 − k) × lookLift", () => {
+    expect(armHeightScale(0.5, 1)).toBe(1);
+    expect(armLookLift(0.5, 1)).toBeCloseTo(0.5 * SEAT_ARM.lookLift, 9);
+    expect(armLookLift(0.25, 1)).toBeCloseTo(0.75 * SEAT_ARM.lookLift, 9);
+  });
+
+  it("an unshortened arm (k = 1) changes nothing, seated or not", () => {
+    expect(armHeightScale(1, 0)).toBe(1);
+    expect(armHeightScale(1, 1)).toBe(1);
+    expect(armLookLift(1, 1)).toBe(0);
+  });
+
+  it("blends linearly with the eased seat factor, so sitting down and standing up never jump", () => {
+    expect(armHeightScale(0.4, 0.5)).toBeCloseTo(0.7, 9);
+    expect(armLookLift(0.4, 0.5)).toBeCloseTo(0.5 * 0.6 * SEAT_ARM.lookLift, 9);
+    let prev = armHeightScale(0.4, 0);
+    for (let b = 0.1; b <= 1.0001; b += 0.1) {
+      const v = armHeightScale(0.4, b);
+      expect(v).toBeGreaterThanOrEqual(prev);
+      prev = v;
+    }
   });
 });

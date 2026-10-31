@@ -65,6 +65,13 @@ export const viewState: ViewState = {
   savedOrbit: null,
 };
 
+/**
+ * The goal object `endSeatCamera` handed to `orbitGoal` (the glide back to the pre-sit
+ * orbit), kept by identity so a quick sit-down can tell that glide is still running.
+ * Not part of `viewState`: nothing reads it per frame.
+ */
+let seatRestoreGoal: Orbit | null = null;
+
 /** Mirror the active mode into the UI button flags (one React render, off-frame). */
 function syncButton(): void {
   const store = useViewStore.getState();
@@ -169,13 +176,21 @@ export function cancelOrbitGoal(): void {
  * pitch and distance. First-person: the look snaps onto the screen.
  * Under the overview the mode underneath decides, since that is what the map hides.
  *
+ * Sitting down again while the stand-up glide back home is still running saves that
+ * glide's destination (the real pre-sit orbit), not the half-turned orbit it has
+ * reached. A glide that has arrived, or that the player cancelled or replaced, is no
+ * longer "running": the current orbit is what the player left, so that is saved.
+ *
  * Call it AFTER any enter/leave of first-person in the same transition: `enterFp`
  * drops a pending `orbitGoal`.
  */
 export function beginSeatCamera(orbit: Orbit, seatYaw: number): void {
   if (viewState.savedOrbit === null) {
-    viewState.savedOrbit = { yaw: orbit.yaw, pitch: orbit.pitch, distance: orbit.distance };
+    const home =
+      seatRestoreGoal !== null && viewState.orbitGoal === seatRestoreGoal ? seatRestoreGoal : orbit;
+    viewState.savedOrbit = { yaw: home.yaw, pitch: home.pitch, distance: home.distance };
   }
+  seatRestoreGoal = null;
   const yaw = recenterYaw(seatYaw);
   if (underlyingMode() === "fp") viewState.fpYaw = yaw;
   else viewState.orbitGoal = { yaw, ...SEAT_CAM };
@@ -191,6 +206,7 @@ export function beginSeatCamera(orbit: Orbit, seatYaw: number): void {
 export function endSeatCamera(orbit?: Orbit): void {
   const saved = viewState.savedOrbit;
   viewState.savedOrbit = null;
+  seatRestoreGoal = null;
   if (saved === null) return;
   if (underlyingMode() === "fp") {
     if (orbit) {
@@ -200,6 +216,7 @@ export function endSeatCamera(orbit?: Orbit): void {
     return;
   }
   viewState.orbitGoal = saved;
+  seatRestoreGoal = saved;
 }
 
 /**
@@ -242,5 +259,6 @@ export function resetViewMode(): void {
   viewState.ovHeight = 0;
   viewState.orbitGoal = null;
   viewState.savedOrbit = null;
+  seatRestoreGoal = null;
   syncButton();
 }

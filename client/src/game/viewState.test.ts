@@ -451,6 +451,79 @@ describe("viewState — seat camera (sit → behind the seat facing the screen, 
     expect(viewState.savedOrbit).toBeNull();
   });
 
+  it("sitting again while the stand-up restore glide is still running keeps the ORIGINAL orbit", () => {
+    const o = orbit({ yaw: 0.9, pitch: 0.5, distance: 8 });
+    const home = { yaw: 0.9, pitch: 0.5, distance: 8 };
+    beginSeatCamera(o, SEAT_YAW);
+    // The seat glide finishes…
+    while (viewState.orbitGoal && !stepOrbitToward(o, viewState.orbitGoal, 1 / 60)) {
+      /* glide */
+    }
+    viewState.orbitGoal = null;
+    // …the player stands, and the restore glide gets only part of the way home…
+    endSeatCamera();
+    const restore = viewState.orbitGoal;
+    expect(restore).not.toBeNull();
+    for (let i = 0; i < 4; i++) stepOrbitToward(o, restore ?? {}, 1 / 60);
+    expect(viewState.orbitGoal).toBe(restore); // still running (nothing has dropped it)
+    expect(o).not.toEqual(home); // mid-glide
+    // …and they sit down again at once: the saved orbit is the one being restored, not the mid-glide one.
+    beginSeatCamera(o, SEAT_YAW);
+    expect(viewState.savedOrbit).toEqual(home);
+    expect(viewState.orbitGoal).toEqual({
+      yaw: recenterYaw(SEAT_YAW),
+      pitch: SEAT_CAM.pitch,
+      distance: SEAT_CAM.distance,
+    });
+    // Standing up once more still goes all the way home.
+    endSeatCamera();
+    expect(viewState.orbitGoal).toEqual(home);
+  });
+
+  it("a finished, cancelled or replaced restore glide is not mistaken for a running one", () => {
+    const home = { yaw: 0.9, pitch: 0.5, distance: 8 };
+    // Finished (CameraRig drops the goal on arrival): the orbit IS home, so the current orbit is saved.
+    let o = orbit({ ...home });
+    beginSeatCamera(o, SEAT_YAW);
+    endSeatCamera();
+    viewState.orbitGoal = null; // arrived
+    o.yaw = 0.2; // (the player has since turned the camera)
+    beginSeatCamera(o, SEAT_YAW);
+    expect(viewState.savedOrbit).toEqual({ yaw: 0.2, pitch: 0.5, distance: 8 });
+
+    // Cancelled by a drag: the player took the camera, so what they left is what gets saved.
+    resetViewMode();
+    o = orbit({ ...home });
+    beginSeatCamera(o, SEAT_YAW);
+    endSeatCamera();
+    cancelOrbitGoal();
+    o.yaw = -0.4;
+    beginSeatCamera(o, SEAT_YAW);
+    expect(viewState.savedOrbit).toEqual({ yaw: -0.4, pitch: 0.5, distance: 8 });
+
+    // Replaced by R: a different goal, so the current orbit is saved.
+    resetViewMode();
+    o = orbit({ ...home });
+    beginSeatCamera(o, SEAT_YAW);
+    endSeatCamera();
+    requestRecenter(1);
+    o.yaw = 0.1;
+    beginSeatCamera(o, SEAT_YAW);
+    expect(viewState.savedOrbit).toEqual({ yaw: 0.1, pitch: 0.5, distance: 8 });
+
+    // A reset forgets the restore goal too.
+    resetViewMode();
+    o = orbit({ ...home });
+    beginSeatCamera(o, SEAT_YAW);
+    endSeatCamera();
+    const staleGoal = viewState.orbitGoal;
+    resetViewMode();
+    viewState.orbitGoal = staleGoal; // even if that very goal object turns up again, it is not a running restore
+    o.yaw = 1.5;
+    beginSeatCamera(o, SEAT_YAW);
+    expect(viewState.savedOrbit).toEqual({ yaw: 1.5, pitch: 0.5, distance: 8 });
+  });
+
   it("the order matters: FP entry clears a goal, so the seat goal is set after it", () => {
     const o = orbit();
     toggleViewMode(o); // → FP

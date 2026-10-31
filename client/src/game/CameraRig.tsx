@@ -52,7 +52,14 @@ import {
   cappedFollowDistance,
   cappedCameraY,
 } from "./mazeCamera";
-import { ARM_FREE, springArmDistance, stepArmLimit } from "./cameraCollision";
+import {
+  ARM_FREE,
+  SEAT_ARM,
+  armHeightScale,
+  armLookLift,
+  springArmDistance,
+  stepArmLimit,
+} from "./cameraCollision";
 import { cameraProbe } from "./cameraProbe";
 import type { Orbit, Pose, SeatState } from "./types";
 
@@ -164,6 +171,8 @@ export function CameraRig({ pose, orbit, seat }: CameraRigProps) {
   // Spring-arm limit (m): snaps in when a wall is in the way, eases back out at
   // SPRING.returnRate, and sits at ARM_FREE (no limit) in the open.
   const armLimit = useRef(ARM_FREE);
+  // Eased 0..1 "seated" factor for the shortened-arm shaping below (0 standing, 1 seated).
+  const seatBlend = useRef(0);
 
   // Dev/E2E only: expose the live camera (the maze cap is not reflected in
   // orbit.distance, and the FP look yaw lives outside orbit). Tree-shaken in prod.
@@ -460,8 +469,18 @@ export function CameraRig({ pose, orbit, seat }: CameraRigProps) {
 
     // Spring arm: cast head → wanted camera spot against the walls and, when one is
     // in the way, shorten the arm (scale the offset from the head) to just in front of
-    // it. Skipped at full FP weight, where the TP term is not drawn; the limit is
-    // reset there so coming back out of FP starts with a free arm.
+    // it. Seated, only the horizontal offset shrinks: the camera keeps its height and
+    // the look target rises (armLookLift), so a seat close to a wall — the front row —
+    // still shows the screen instead of the back of the head. Skipped at full FP
+    // weight, where the TP term is not drawn; the limit is reset there so coming back
+    // out of FP starts with a free arm.
+    let tpLookLift = 0;
+    seatBlend.current = smoothToward(
+      seatBlend.current,
+      seat.index >= 0 ? 1 : 0,
+      delta,
+      SEAT_ARM.blendRate,
+    );
     if (t < 1) {
       const offX = tpX - followX;
       const offY = tpY - HEAD_HEIGHT;
@@ -473,8 +492,9 @@ export function CameraRig({ pose, orbit, seat }: CameraRigProps) {
         if (armLimit.current < reach) {
           const k = armLimit.current / reach;
           tpX = followX + offX * k;
-          tpY = HEAD_HEIGHT + offY * k;
+          tpY = HEAD_HEIGHT + offY * armHeightScale(k, seatBlend.current);
           tpZ = followZ + offZ * k;
+          tpLookLift = armLookLift(k, seatBlend.current);
         }
       }
     } else {
@@ -497,7 +517,7 @@ export function CameraRig({ pose, orbit, seat }: CameraRigProps) {
     // TP looks at the (smoothed) follow point, a little above the head; FP at the
     // pose-anchored eye line.
     const uTgtX = lerp(followX, pose.x + fwdX, t);
-    const uTgtY = lerp(HEAD_HEIGHT + CAMERA_LOOK_LIFT, FP_EYE_HEIGHT + fwdY, t);
+    const uTgtY = lerp(HEAD_HEIGHT + CAMERA_LOOK_LIFT + tpLookLift, FP_EYE_HEIGHT + fwdY, t);
     const uTgtZ = lerp(followZ, pose.z + fwdZ, t);
 
     // ── Overview pose ── straight up over the pan-centre, looking down. The maze

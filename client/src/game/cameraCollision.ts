@@ -41,6 +41,12 @@ export const ARM_FREE = 64;
  * Per box this is the usual slab test on x, y and z. A box that already contains A
  * is skipped — a head hugging a wall must not fold the camera to zero — and so is
  * one the segment only touches at B.
+ *
+ * `margin` (m) inflates every box in X and Z (not in height) for the cast: the hit is
+ * then where the segment comes within `margin` of the wall, measured ACROSS the wall,
+ * however shallow the angle. A start inside the inflated box but outside the raw one
+ * (closer than `margin` to a wall) is tested against the raw box instead, so it never
+ * folds to zero either.
  */
 export function segmentHitFraction(
   ax: number,
@@ -51,6 +57,7 @@ export function segmentHitFraction(
   bz: number,
   boxes: readonly AABB[] = CAMERA_BOXES,
   height: number = WALL_HEIGHT,
+  margin: number = 0,
 ): number {
   const dx = bx - ax;
   const dy = by - ay;
@@ -64,25 +71,28 @@ export function segmentHitFraction(
   let best = 1;
   for (let i = 0; i < boxes.length; i++) {
     const b = boxes[i];
-    if (b.maxX < loX || b.minX > hiX || b.maxZ < loZ || b.minZ > hiZ) continue;
-    if (
-      ax >= b.minX &&
-      ax <= b.maxX &&
-      az >= b.minZ &&
-      az <= b.maxZ &&
-      ay >= 0 &&
-      ay <= height
-    ) {
-      continue; // the start is inside this box
+    let minX = b.minX - margin;
+    let maxX = b.maxX + margin;
+    let minZ = b.minZ - margin;
+    let maxZ = b.maxZ + margin;
+    if (maxX < loX || minX > hiX || maxZ < loZ || minZ > hiZ) continue;
+    if (ay >= 0 && ay <= height && ax >= minX && ax <= maxX && az >= minZ && az <= maxZ) {
+      // The start is inside the (inflated) box: judge it against the raw one instead…
+      minX = b.minX;
+      maxX = b.maxX;
+      minZ = b.minZ;
+      maxZ = b.maxZ;
+      // …and skip the box altogether if the start is inside that too.
+      if (ax >= minX && ax <= maxX && az >= minZ && az <= maxZ) continue;
     }
 
     let enter = 0;
     let exit = 1;
     if (dx === 0) {
-      if (ax < b.minX || ax > b.maxX) continue;
+      if (ax < minX || ax > maxX) continue;
     } else {
-      let t1 = (b.minX - ax) / dx;
-      let t2 = (b.maxX - ax) / dx;
+      let t1 = (minX - ax) / dx;
+      let t2 = (maxX - ax) / dx;
       if (t1 > t2) {
         const swap = t1;
         t1 = t2;
@@ -107,10 +117,10 @@ export function segmentHitFraction(
       if (enter > exit) continue;
     }
     if (dz === 0) {
-      if (az < b.minZ || az > b.maxZ) continue;
+      if (az < minZ || az > maxZ) continue;
     } else {
-      let t1 = (b.minZ - az) / dz;
-      let t2 = (b.maxZ - az) / dz;
+      let t1 = (minZ - az) / dz;
+      let t2 = (maxZ - az) / dz;
       if (t1 > t2) {
         const swap = t1;
         t1 = t2;
@@ -127,8 +137,13 @@ export function segmentHitFraction(
 
 /**
  * How long the arm may be: `desired` (m) when the segment from the head to the
- * camera spot is clear, otherwise the distance to the wall it hits minus `SPRING.pad`
- * — but never under `SPRING.minDist`. `desired` is the length of that segment.
+ * camera spot is clear, otherwise the distance at which it comes within `SPRING.pad`
+ * of a wall — never under `SPRING.minDist`. `desired` is the length of that segment.
+ *
+ * The pad is applied by inflating the walls for the cast (see `segmentHitFraction`),
+ * so it is `SPRING.pad` ACROSS the wall at any angle. Subtracting it along the ray
+ * (`t × desired − pad`) is the same for a head-on cast, but at a shallow angle it
+ * leaves the camera only `pad × sin(angle)` from the wall — inside the near plane.
  */
 export function springArmDistance(
   headX: number,
@@ -140,9 +155,9 @@ export function springArmDistance(
   desired: number,
   boxes: readonly AABB[] = CAMERA_BOXES,
 ): number {
-  const t = segmentHitFraction(headX, headY, headZ, camX, camY, camZ, boxes);
+  const t = segmentHitFraction(headX, headY, headZ, camX, camY, camZ, boxes, WALL_HEIGHT, SPRING.pad);
   if (t >= 1) return desired;
-  return Math.max(SPRING.minDist, t * desired - SPRING.pad);
+  return Math.max(SPRING.minDist, t * desired);
 }
 
 /**
@@ -169,4 +184,29 @@ export function stepSpringDistance(current: number, target: number, dt: number):
  */
 export function stepArmLimit(limit: number, reach: number, desired: number, dt: number): number {
   return stepSpringDistance(limit, reach < desired ? reach : ARM_FREE, dt);
+}
+
+/**
+ * Seated camera shaping for a SHORTENED arm (a seat close to a wall, e.g. the front
+ * row behind the divider). Scaling the whole offset toward the head would drop the
+ * camera to head height and fill the view with the avatar's head; seated, the height
+ * offset is kept instead and the look target is raised so the screen stays in view.
+ * `lookLift` (m) is the raise for a fully pulled-in arm (k → 0); `blendRate` (1/s) is
+ * how fast the seated factor eases in and out when sitting down / standing up.
+ */
+export const SEAT_ARM = { lookLift: 1.6, blendRate: 8 } as const;
+
+/**
+ * Factor on the camera's height offset when the arm is shortened to the fraction `k`
+ * (0..1) of the wanted length. `seat` is the eased 0..1 seated factor: standing
+ * (0) the height shrinks with the arm like the rest of the offset (`k`); seated (1)
+ * it is kept whole (1).
+ */
+export function armHeightScale(k: number, seat: number): number {
+  return k + (1 - k) * seat;
+}
+
+/** How far (m) the look target rises for a shortened arm `k`, scaled by the seated factor. */
+export function armLookLift(k: number, seat: number): number {
+  return (1 - k) * seat * SEAT_ARM.lookLift;
 }
