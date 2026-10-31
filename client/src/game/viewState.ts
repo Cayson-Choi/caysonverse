@@ -37,12 +37,6 @@ export interface ViewState {
   ovCenterZ: number;
   /** Overview camera height (m) — the zoom level. 0 until CameraRig seeds a fit. */
   ovHeight: number;
-  /**
-   * True while a one-finger LOOK drag is in progress (FP) — pauses the FP
-   * look-follows-movement so the manual look and the auto-follow never fight
-   * (design 20). Set by CameraRig's pointer handlers, read by LocalPlayer.
-   */
-  dragging: boolean;
 }
 
 /** The single shared view state — mutated in place, read per frame. */
@@ -56,7 +50,6 @@ export const viewState: ViewState = {
   ovCenterX: 0,
   ovCenterZ: 0,
   ovHeight: 0,
-  dragging: false,
 };
 
 /** Mirror the active mode into the UI button flags (one React render, off-frame). */
@@ -174,6 +167,5 @@ export function resetViewMode(): void {
   viewState.ovCenterX = 0;
   viewState.ovCenterZ = 0;
   viewState.ovHeight = 0;
-  viewState.dragging = false;
   syncButton();
 }

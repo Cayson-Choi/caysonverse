@@ -35,7 +35,6 @@ describe("viewState — reset", () => {
     viewState.ovCenterX = -18;
     viewState.ovCenterZ = 4;
     viewState.ovHeight = 60;
-    viewState.dragging = true;
     useViewStore.getState().setFp(true);
     useViewStore.getState().setOv(true);
 
@@ -51,7 +50,6 @@ describe("viewState — reset", () => {
       ovCenterX: 0,
       ovCenterZ: 0,
       ovHeight: 0,
-      dragging: false,
     });
     expect(useViewStore.getState().isFp).toBe(false);
     expect(useViewStore.getState().isOv).toBe(false);

@@ -187,7 +187,7 @@ export function CameraRig({ pose, orbit }: CameraRigProps) {
       // Single pointer → drive the ACTIVE view. Overview: PAN the centre (grab-
       // style, clamped to the world — design 29 keeps the pan UNinverted, it is
       // "grab the map and drag"). FP: rotate the separate fp yaw/pitch (wider
-      // clamp) AND flag the drag so the look-follow pauses. TP: rotate the orbit.
+      // clamp). TP: rotate the orbit.
       // The FP/TP look drags consume their deltas through DRAG_SIGN — the single
       // inversion switch of design 29, both axes, applied nowhere else.
       if (viewState.mode === "ov") {
@@ -205,7 +205,6 @@ export function CameraRig({ pose, orbit }: CameraRigProps) {
       } else if (viewState.mode === "fp") {
         viewState.fpYaw = normalizeAngle(viewState.fpYaw - DRAG_SIGN * dx * CAMERA.dragSpeed);
         viewState.fpPitch = clampFpPitch(viewState.fpPitch + DRAG_SIGN * dy * CAMERA.dragSpeed);
-        viewState.dragging = true; // drag look-control → pause the auto-follow
       } else {
         orbit.yaw = normalizeAngle(orbit.yaw - DRAG_SIGN * dx * CAMERA.dragSpeed);
         orbit.pitch = clamp(
@@ -220,8 +219,8 @@ export function CameraRig({ pose, orbit }: CameraRigProps) {
       // (short + still + not cancelled) raycasts onto the y=0 floor and becomes
       // the auto-move target. Skipped in overview (no overview click-move —
       // YAGNI, documented) and inert for clicks on DOM UI, which never reach
-      // these canvas-only down handlers. Runs in TP and FP alike (FP walk then
-      // couples with the look-follow naturally).
+      // these canvas-only down handlers. Runs in TP and FP alike (in FP the walk
+      // is camera-relative and never turns the look).
       if (clickStart && clickStart.id === e.pointerId) {
         const start = clickStart;
         clickStart = null;
@@ -244,8 +243,6 @@ export function CameraRig({ pose, orbit }: CameraRigProps) {
       }
       pointers.delete(e.pointerId);
       if (pointers.size < 2) pinchPrev = 0;
-      // Last pointer released → the FP look-follow may resume.
-      if (pointers.size === 0) viewState.dragging = false;
       try {
         el.releasePointerCapture(e.pointerId);
       } catch {

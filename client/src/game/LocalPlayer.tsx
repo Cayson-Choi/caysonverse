@@ -19,7 +19,7 @@ import {
 } from "./clickMove";
 import { guardMoveKeys, isUiCaptured } from "./uiCapture";
 import { viewState } from "./viewState";
-import { HIDE_BLEND, OV_VIS_BLEND, stepFollowYaw } from "./viewMode";
+import { HIDE_BLEND, OV_VIS_BLEND } from "./viewMode";
 import { cloneTinted } from "./avatar";
 import { BlobShadow } from "./BlobShadow";
 import { useSpeechBubble } from "./useSpeechBubble";
@@ -205,7 +205,7 @@ export function LocalPlayer({
     const seated = seatIndex >= 0;
     const wasSeated = prevSeatRef.current >= 0;
 
-    // 클릭 자동 이동 (design 29): 수동 이동 입력(키/조이스틱/D-패드)이 하나라도
+    // 클릭 자동 이동 (design 29): 수동 이동 입력(키/조이스틱)이 하나라도
     // 있으면 target을 즉시 버리고(자동 이동은 수동 입력에 항상 양보), 없으면
     // target 방향 단위벡터를 카메라 기준 intent로 되투영(dirToIntent)해 합성한다
     // — 아래의 기존 worldDirection → 충돌 슬라이드 → moveSender 경로를 그대로
@@ -311,22 +311,19 @@ export function LocalPlayer({
       );
       pose.x = clamp(next.x, WORLD_BOUNDS.minX + PLAYER_RADIUS, WORLD_BOUNDS.maxX - PLAYER_RADIUS);
       pose.z = clamp(next.z, WORLD_BOUNDS.minZ + PLAYER_RADIUS, WORLD_BOUNDS.maxZ - PLAYER_RADIUS);
-      if (inFp) {
-        // FP look-follows-movement (design 20): rotate the look toward the walk
-        // direction at a gentle rate. `dir` came from the CURRENT look, so W keeps
-        // the look still and a strafe curves it. Paused while a look-drag is active
-        // (viewState.dragging) so drag look-control always takes priority.
-        viewState.fpYaw = stepFollowYaw(viewState.fpYaw, dir, delta, viewState.dragging);
-      } else {
+      if (!inFp) {
         // TP + overview: the (visible) body turns smoothly toward the movement dir.
+        // FP never turns the view for movement — A/D strafe, S backs up, and the
+        // look changes only by drag / Z·C (general 3D game feel).
         const targetYaw = Math.atan2(dir.x, dir.z);
         pose.yaw = stepYaw(pose.yaw, targetYaw, TURN_SPEED * delta);
       }
     }
     // FP: the body yaw follows the look direction DIRECTLY (no TURN_SPEED lag),
-    // moving or standing. Network semantics are unchanged — yaw still reaches
-    // others only via move messages (moveSender fires on movement); there is NO
-    // idle-yaw streaming, so rotating the view while standing sends nothing.
+    // moving or standing — it is simply fpYaw. Network semantics are unchanged —
+    // yaw still reaches others only via move messages (moveSender fires on
+    // movement); there is NO idle-yaw streaming, so rotating the view while
+    // standing sends nothing.
     if (inFp) pose.yaw = normalizeAngle(viewState.fpYaw);
 
     group.position.set(pose.x, 0, pose.z);

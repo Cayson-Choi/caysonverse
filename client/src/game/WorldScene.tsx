@@ -15,7 +15,6 @@ import { OverviewMarker } from "./OverviewMarker";
 import { Chat } from "../ui/Chat";
 import { EmojiPalette } from "../ui/EmojiPalette";
 import { TouchJoystick } from "../ui/TouchJoystick";
-import { TouchDpad } from "../ui/TouchDpad";
 import { SitPrompt } from "../ui/SitPrompt";
 import { ViewToggle } from "../ui/ViewToggle";
 import { OverviewToggle } from "../ui/OverviewToggle";
@@ -28,7 +27,6 @@ import { getRenderProfile } from "./renderProfile";
 import { setUiCaptured } from "./uiCapture";
 import { resetViewMode, toggleViewMode, toggleOverview } from "./viewState";
 import { useAppStore } from "../stores/appStore";
-import { useViewStore } from "../stores/viewStore";
 import type { Identity } from "../stores/appStore";
 import type { MoveInput } from "./input";
 import type { Orbit, Pose, SeatState } from "./types";
@@ -38,21 +36,6 @@ function LoadingOverlay() {
   const { active } = useProgress();
   if (!active) return null;
   return <div className="cv-loading">불러오는 중…</div>;
-}
-
-/**
- * Bottom-left movement control (touch only): the analog joystick normally, the
- * 8-way D-pad while first-person (design 21) — discrete {-1,0,1} intents give FP
- * the keyboard's exact-zero forward so thumb tremor can't excite the look-follow
- * loop. Both controls write the SAME shared moveInput and both zero it on
- * unmount, so a mid-hold mode switch never strands movement. A separate
- * component so the fp-flag subscription re-renders only this control — never the
- * Canvas tree. Overview intentionally keeps the joystick (isFp is false there):
- * ov movement is screen-relative analog with no auto look-follow.
- */
-function TouchMoveControl({ moveInput }: { moveInput: MoveInput }) {
-  const isFp = useViewStore((s) => s.isFp);
-  return isFp ? <TouchDpad moveInput={moveInput} /> : <TouchJoystick moveInput={moveInput} />;
 }
 
 /** Seed the local pose from the authoritative server spawn (falls back safely). */
@@ -169,9 +152,9 @@ export function WorldScene({ identity }: { identity: Identity }) {
       {/* AI 조교 talk prompt + private side-chat panel (design 31). */}
       <NpcPrompt pose={pose} />
       <NpcChatPanel />
-      {/* Movement control — touch devices only (joystick, or D-pad in FP).
-          Keyboard stays active regardless. */}
-      {isTouchDevice && <TouchMoveControl moveInput={moveInput} />}
+      {/* Movement control — touch devices only: the analog joystick in every view
+          (first-person strafes camera-relative). Keyboard stays active regardless. */}
+      {isTouchDevice && <TouchJoystick moveInput={moveInput} />}
       {isAdmin && <AdminPanel />}
     </>
   );

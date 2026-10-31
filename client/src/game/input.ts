@@ -27,7 +27,7 @@ export interface Intent {
 
 /**
  * The shared touch-input object WorldScene owns and LocalPlayer reads each frame:
- * the joystick / D-pad intent plus the run flag. Mutated in place, never React state.
+ * the joystick intent plus the run flag. Mutated in place, never React state.
  */
 export interface MoveInput extends Intent {
   run: boolean;

@@ -8,9 +8,11 @@
  * between the two poses. These helpers are the tested, injected-dt core; the
  * mutable runtime state and the three.js camera work live in viewState.ts /
  * CameraRig.tsx.
+ *
+ * First-person movement is camera-relative off the look yaw (`worldDirection`), like
+ * a general 3D game: W/S walk along the look, A/D strafe. The look turns only by
+ * explicit input (drag, Z/C keys) — there is no auto look-follow-movement.
  */
-
-import { normalizeAngle, stepYaw } from "./yaw";
 
 /**
  * The three view modes (design 19 + design 20):
@@ -31,15 +33,6 @@ export const BLEND_SEC = 0.25;
  * safe (a mid-blend re-toggle continues, never snaps). Mirrors stepBlend usage.
  */
 export const OV_BLEND_SEC = 0.3;
-
-/**
- * First-person look-follows-movement turn rate (rad/s, design 20). When a
- * movement intent is active in FP the look yaw eases toward the WORLD direction
- * of travel at this rate — gentle enough (~2.5 rad/s) that holding a strafe reads
- * as a natural curved turn, not a snap. Drag look-control pauses it (see
- * `stepFollowYaw`), so the two inputs never fight.
- */
-export const FP_FOLLOW_RATE = 2.5;
 
 /**
  * First-person look-pitch clamp (rad). Wider than the TP orbit pitch
@@ -110,51 +103,6 @@ export function easeBlend(t: number): number {
 /** Clamp a first-person look pitch into the wider FP range. */
 export function clampFpPitch(pitch: number): number {
   return pitch < FP_PITCH_MIN ? FP_PITCH_MIN : pitch > FP_PITCH_MAX ? FP_PITCH_MAX : pitch;
-}
-
-/** A ground-plane direction (XZ), as produced by `worldDirection`. */
-interface Dir2 {
-  x: number;
-  z: number;
-}
-
-/**
- * The FP look yaw that points ALONG a world ground direction `(dx, dz)`.
- *
- * The FP forward look for yaw `y` is `(-sin y, -cos y)` (CameraRig), so a yaw that
- * looks toward `(dx, dz)` is `atan2(-dx, -dz)` — the exact inverse. Returns
- * `fallback` (normalized-safe caller yaw) for a zero-length vector so a stationary
- * frame never produces NaN.
- */
-export function lookYawForDir(dx: number, dz: number, fallback: number): number {
-  if (Math.hypot(dx, dz) < 1e-9) return fallback;
-  return normalizeAngle(Math.atan2(-dx, -dz));
-}
-
-/**
- * One frame of first-person look-follows-movement (design 20). Eases the look
- * yaw toward the WORLD movement direction along the shortest arc at
- * `rate` rad/s, wrap-safe. Key properties:
- *   - Moving straight forward (W) → target == current look → ZERO rotation.
- *   - Strafing left (A) → the look swings left; because movement is camera-
- *     relative, the target stays ~π/2 ahead, yielding a smooth curved turn.
- *   - `dragging` (a one-finger look drag in progress) PAUSES the follow so the
- *     manual look and the auto-follow never fight; it resumes on release.
- *   - Zero movement holds the current yaw (never NaN).
- *
- * Pure and dt-injected; the mutable fp yaw lives in viewState, the drag flag is
- * set by CameraRig's pointer handlers.
- */
-export function stepFollowYaw(
-  fpYaw: number,
-  moveDir: Dir2,
-  dt: number,
-  dragging: boolean,
-  rate = FP_FOLLOW_RATE,
-): number {
-  if (dragging) return fpYaw; // drag priority — auto-follow steps aside
-  const target = lookYawForDir(moveDir.x, moveDir.z, fpYaw);
-  return stepYaw(fpYaw, target, rate * dt);
 }
 
 /**
