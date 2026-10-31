@@ -1,62 +1,176 @@
 import { useEffect, useRef } from "react";
-import nipplejs from "nipplejs";
-import { joystickIntent } from "../game/joystick";
-import type { Intent, MoveInput } from "../game/input";
+import {
+  STICK_RADIUS_PX,
+  createStickState,
+  isStickTap,
+  stickDown,
+  stickMove,
+  stickUp,
+} from "../game/joystick";
+import type { MoveInput } from "../game/input";
 import "./touch.css";
 
 interface TouchJoystickProps {
   /**
    * Shared movement input (the SAME object LocalPlayer reads and the keyboard's
-   * intent is added to). Written on every joystick move; recentred on release.
-   * `run` is always false for now — the touch run control arrives with the new
-   * touch layout, which will own that flag.
+   * intent is added to). Written on every stick move, zeroed on release/unmount.
+   * `run` is true while the stick is pushed out to the rim (see stickGait).
    */
   moveInput: MoveInput;
+  /** Mirror the stick to the lower-RIGHT quarter (Task 15 wires this to settings). */
+  leftHanded?: boolean;
+}
+
+/** Half of the knob's CSS size (48px) — centres it on the thumb. */
+const KNOB_HALF_PX = 24;
+
+/** Centre `el` (a fixed div at the viewport origin) on viewport point (cx, cy). */
+function place(el: HTMLElement, cx: number, cy: number, halfPx: number): void {
+  el.style.transform = `translate(${cx - halfPx}px, ${cy - halfPx}px)`;
 }
 
 /**
- * Bottom-left virtual joystick (touch devices only). nipplejs is integrated
- * DIRECTLY — created in a useEffect and destroyed on unmount, no React wrapper —
- * in STATIC mode anchored to the centre of a fixed, safe-area-aware zone. Each
- * `move` maps the stick's direction vector + force to the movement intent via the
- * pure `joystickIntent` (camera-relative, 0.15 dead-zone, direction only); `end`
- * recentres it. The zone element swallows its own pointers, so dragging the stick
- * never reaches the canvas and never rotates the camera.
+ * Hand a quick tap to the 3D canvas as a normal press-and-release, so a tap in
+ * the stick zone still becomes a click-move (CameraRig turns a short, still press
+ * on the canvas into the ground target). The zone sits above the canvas, so the
+ * real tap never reached it; the replay carries the real pointer's position.
  */
-export function TouchJoystick({ moveInput }: TouchJoystickProps) {
+function passTapToGround(e: PointerEvent): void {
+  const canvas = document.querySelector(".cv-canvas canvas");
+  if (!canvas) return;
+  const init: PointerEventInit = {
+    pointerId: e.pointerId,
+    pointerType: e.pointerType,
+    isPrimary: true,
+    button: 0,
+    clientX: e.clientX,
+    clientY: e.clientY,
+    bubbles: true,
+    cancelable: true,
+  };
+  canvas.dispatchEvent(new PointerEvent("pointerdown", { ...init, buttons: 1 }));
+  canvas.dispatchEvent(new PointerEvent("pointerup", init));
+}
+
+/**
+ * Dynamic joystick (touch devices only): put a thumb anywhere in the lower-left
+ * quarter of the screen and a stick appears right there; push lightly to walk, to
+ * the rim to run; lift to hide it. The zone element swallows its own pointers, so
+ * a stick drag never reaches the canvas and never rotates the camera — except a
+ * quick tap, which is passed on as a click-move tap (see passTapToGround).
+ *
+ * All the logic is the pure state machine in game/joystick.ts. This component
+ * only wires pointer events to it and moves two divs: per-move work writes
+ * `moveInput` and `style.transform` through refs — never React state.
+ */
+export function TouchJoystick({ moveInput, leftHanded = false }: TouchJoystickProps) {
   const zoneRef = useRef<HTMLDivElement>(null);
+  const stickRef = useRef<HTMLDivElement>(null);
+  const baseRef = useRef<HTMLDivElement>(null);
+  const knobRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const zone = zoneRef.current;
-    if (!zone) return;
+    const stick = stickRef.current;
+    const base = baseRef.current;
+    const knob = knobRef.current;
+    if (!zone || !stick || !base || !knob) return;
 
-    const write = (intent: Intent) => {
-      moveInput.forward = intent.forward;
-      moveInput.right = intent.right;
+    const state = createStickState();
+    let downX = 0;
+    let downY = 0;
+    let downAt = 0;
+
+    const clearInput = () => {
+      moveInput.forward = 0;
+      moveInput.right = 0;
       moveInput.run = false;
     };
-
-    const manager = nipplejs.create({
-      zone,
-      mode: "static",
-      position: { left: "50%", top: "50%" },
-      size: 108,
-      color: "rgba(180, 162, 255, 0.55)",
-      restOpacity: 0.55,
-    });
-
-    manager.on("move", (evt) => {
-      const data = evt.data;
-      write(joystickIntent(data.vector, data.force));
-    });
-    manager.on("end", () => write({ forward: 0, right: 0 }));
-
-    return () => {
-      manager.destroy();
-      // Never strand a stale intent after unmount — the avatar would keep walking.
-      write({ forward: 0, right: 0 });
+    const hide = () => {
+      stick.classList.remove("is-active");
+      knob.classList.remove("is-run");
     };
-  }, [moveInput]);
 
-  return <div ref={zoneRef} className="cv-joystick-zone" aria-hidden="true" />;
+    const onDown = (e: PointerEvent) => {
+      if (e.button !== 0) return;
+      const { innerWidth: vw, innerHeight: vh } = window;
+      if (!stickDown(state, e.pointerId, e.clientX, e.clientY, vw, vh, leftHanded)) {
+        return; // second finger, or the edge strip: swallowed, nothing happens
+      }
+      downX = e.clientX;
+      downY = e.clientY;
+      downAt = performance.now();
+      place(base, state.ox, state.oy, STICK_RADIUS_PX);
+      place(knob, state.ox, state.oy, KNOB_HALF_PX);
+      stick.classList.add("is-active");
+    };
+
+    const onMove = (e: PointerEvent) => {
+      const input = stickMove(state, e.pointerId, e.clientX, e.clientY);
+      if (!input) return;
+      moveInput.forward = input.forward;
+      moveInput.right = input.right;
+      moveInput.run = input.run;
+      // The knob follows the thumb but stays inside the base's rim.
+      const dx = e.clientX - state.ox;
+      const dy = e.clientY - state.oy;
+      const dist = Math.hypot(dx, dy);
+      const k = dist > STICK_RADIUS_PX ? STICK_RADIUS_PX / dist : 1;
+      place(knob, state.ox + dx * k, state.oy + dy * k, KNOB_HALF_PX);
+      knob.classList.toggle("is-run", input.run);
+    };
+
+    const onEnd = (e: PointerEvent) => {
+      if (!stickUp(state, e.pointerId)) return;
+      hide();
+      clearInput();
+      if (
+        e.type === "pointerup" &&
+        isStickTap(e.clientX - downX, e.clientY - downY, performance.now() - downAt)
+      ) {
+        passTapToGround(e);
+      }
+    };
+
+    // The window losing focus mid-drag can swallow the lift: never keep walking.
+    const onBlur = () => {
+      if (state.pointerId !== null && stickUp(state, state.pointerId)) {
+        hide();
+        clearInput();
+      }
+    };
+    // A long press must not open the browser's context menu over the stick.
+    const onContextMenu = (e: Event) => e.preventDefault();
+
+    zone.addEventListener("pointerdown", onDown);
+    zone.addEventListener("contextmenu", onContextMenu);
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onEnd);
+    window.addEventListener("pointercancel", onEnd);
+    window.addEventListener("blur", onBlur);
+    return () => {
+      zone.removeEventListener("pointerdown", onDown);
+      zone.removeEventListener("contextmenu", onContextMenu);
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onEnd);
+      window.removeEventListener("pointercancel", onEnd);
+      window.removeEventListener("blur", onBlur);
+      // Never strand a stale intent after unmount — the avatar would keep walking.
+      clearInput();
+    };
+  }, [moveInput, leftHanded]);
+
+  return (
+    <>
+      <div
+        ref={zoneRef}
+        className={"cv-stick-zone" + (leftHanded ? " is-left-handed" : "")}
+        aria-hidden="true"
+      />
+      <div ref={stickRef} className="cv-stick" aria-hidden="true">
+        <div ref={baseRef} className="cv-stick-base" />
+        <div ref={knobRef} className="cv-stick-knob" />
+      </div>
+    </>
+  );
 }

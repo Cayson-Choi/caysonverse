@@ -218,7 +218,7 @@
 .cv-touch.cv-npc-open .cv-view-btn,
 .cv-touch.cv-npc-open .cv-overview-btn,
 .cv-touch.cv-npc-open .cv-sound-btn,
-.cv-touch.cv-npc-open .cv-joystick-zone,
+.cv-touch.cv-npc-open .cv-stick-zone,
 .cv-touch.cv-npc-open .cv-dpad-zone,
 .cv-touch.cv-npc-open .cv-sit-btn {
   display: none !important;

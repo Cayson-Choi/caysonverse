@@ -1,13 +1,76 @@
-/* Virtual joystick zone (touch devices). Fixed bottom-left, safe-area aware. */
-.cv-joystick-zone {
+/* Dynamic joystick (touch devices). The zone is the lower-left quarter of the
+   screen (lower-right when left-handed); the stick itself is drawn wherever the
+   thumb lands, positioned by TouchJoystick through style.transform. */
+
+/* Percentages of a fixed box are the live viewport — the same innerWidth/Height
+   that isStickZone measures (50vh would be the tall viewport on a phone whose
+   URL bar is showing). z-index sits BELOW the HUD (chat bar, emoji, action
+   buttons are all 20+), so those take their own touches first. */
+.cv-stick-zone {
   position: fixed;
-  left: calc(env(safe-area-inset-left, 0px) + 20px);
-  /* Raised above the very-bottom chat bar (design 34 후속). */
-  bottom: calc(env(safe-area-inset-bottom, 0px) + 80px);
-  width: 128px;
-  height: 128px;
-  z-index: 25;
+  left: 0;
+  bottom: 0;
+  width: 50%;
+  height: 50%;
+  z-index: 10;
   /* Own the touch here so a stick drag never scrolls/bounces the page, and never
      leaks to the canvas as a camera rotation. */
   touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.cv-stick-zone.is-left-handed {
+  left: auto;
+  right: 0;
+}
+
+/* The stick art: a zero-size fixed anchor at the viewport origin; base and knob
+   are placed in viewport pixels by translate(). Shown only while a thumb is down
+   (classList, not React state). */
+.cv-stick {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  z-index: 10;
+  pointer-events: none;
+  visibility: hidden;
+}
+
+.cv-stick.is-active {
+  visibility: visible;
+}
+
+.cv-stick-base,
+.cv-stick-knob {
+  position: absolute;
+  left: 0;
+  top: 0;
+  border-radius: 50%;
+  will-change: transform;
+}
+
+/* 112px = 2 x STICK_RADIUS_PX; the knob (48px) travels on the rim at full push. */
+.cv-stick-base {
+  width: 112px;
+  height: 112px;
+  background: rgba(180, 162, 255, 0.18);
+  border: 2px solid rgba(180, 162, 255, 0.5);
+}
+
+.cv-stick-knob {
+  width: 48px;
+  height: 48px;
+  background: rgba(180, 162, 255, 0.7);
+  border: 2px solid rgba(242, 238, 255, 0.8);
+}
+
+/* Pushed to the rim = running: the knob warms up so the gait change is visible. */
+.cv-stick-knob.is-run {
+  background: rgba(255, 176, 96, 0.85);
+  border-color: rgba(255, 236, 205, 0.95);
 }
