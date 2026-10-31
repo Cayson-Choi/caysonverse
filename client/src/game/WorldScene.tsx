@@ -164,7 +164,7 @@ export function WorldScene({ identity }: { identity: Identity }) {
       <ActionButton pose={pose} seat={seat} />
       {/* Jump button — touch only (desktop jumps with Space, handled in LocalPlayer).
           Sits at the bottom-right edge with the action button right above it. */}
-      {isTouchDevice && <JumpButton sessionId={identity.sessionId} seat={seat} />}
+      {isTouchDevice && <JumpButton sessionId={identity.sessionId} />}
       {/* AI 조교 private side-chat panel (design 31). */}
       <NpcChatPanel />
       {/* Movement control — touch devices only: the analog joystick in every view

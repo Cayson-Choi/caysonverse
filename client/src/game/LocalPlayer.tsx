@@ -21,10 +21,13 @@ import { guardMoveKeys, isUiCaptured } from "./uiCapture";
 import { onHotkey } from "./hotkeys";
 import {
   JUMP_FADE_IN_S,
+  currentJump,
   jumpOffsetY,
+  jumpPhase,
   jumpRegistry,
   jumpTimeScale,
-  localJump,
+  pressJump,
+  publishLocalJump,
   resetLocalJump,
 } from "./jump";
 import { beginSeatCamera, endSeatCamera, viewState } from "./viewState";
@@ -162,22 +165,22 @@ export function LocalPlayer({
   }, []);
 
   // 점프 (Task 11): Space는 공용 단축키 표가 입력 중·자동반복을 이미 걸러 준다.
-  // 앉아 있거나(착석 확정) 앉기/일어서기 동작 중이면 누르기만 버린다 — 서버도
-  // 앉은 사람의 점프는 버린다. 재접속 중(입력 정지)에도 반응하지 않는다.
-  // 컴포넌트 수명 동안 쿨다운과 내 점프 기록을 비워 새 세계에 이어지지 않게 한다.
+  // 앉아 있거나, 앉기/일어서기 동작 중이거나, 재접속 중이면 누르기만 버린다 — 그
+  // 판정은 아래 useFrame이 매 프레임 publishLocalJump로 올리는 "막힘" 깃발 하나이고,
+  // 터치 점프 버튼도 같은 pressJump를 지나므로 두 경로가 어긋날 수 없다(서버도
+  // 앉은 사람의 점프는 버린다). 컴포넌트 수명 동안 쿨다운·깃발·내 점프 기록을 비워
+  // 새 세계에 이어지지 않게 한다.
   useEffect(() => {
     resetLocalJump();
     const off = onHotkey((action) => {
-      if (action.type !== "jump" || isInputSuspended()) return;
-      const blocked = seat.index >= 0 || animStateRef.current !== "loco";
-      localJump(sessionId, blocked, performance.now(), sendJump);
+      if (action.type === "jump") pressJump(sessionId, performance.now(), sendJump);
     });
     return () => {
       off();
       resetLocalJump();
       jumpRegistry.remove(sessionId);
     };
-  }, [sessionId, seat]);
+  }, [sessionId]);
 
   /** Play a one-shot clip (clamped on its last frame); returns its duration (s). */
   function playOnce(name: string): number {
@@ -201,12 +204,13 @@ export function LocalPlayer({
    */
   function stepJump(now: number, canJump: boolean, gait: Gait): number {
     const jump = actions[CLIP.jump];
-    const entry = canJump ? jumpRegistry.get(sessionId, now) : null;
-    if (!canJump) jumpRegistry.remove(sessionId);
+    const entry = currentJump(sessionId, canJump, now);
+    const phase = jumpPhase(entry, canJump, jumpSeqRef.current);
 
-    if (entry) {
-      if (entry.seq !== jumpSeqRef.current) {
-        jumpSeqRef.current = entry.seq;
+    if (phase === "takeoff" || phase === "air") {
+      const hop = entry!; // takeoff / air only happen with a live entry
+      if (phase === "takeoff") {
+        jumpSeqRef.current = hop.seq;
         if (jump) {
           actions[gaitClip(gaitRef.current)]?.fadeOut(JUMP_FADE_IN_S);
           jump.timeScale = jumpTimeScale(jump.getClip().duration);
@@ -216,14 +220,14 @@ export function LocalPlayer({
           jump.fadeIn(JUMP_FADE_IN_S).play();
         }
       }
-      return jumpOffsetY(now - entry.startedAt);
+      return jumpOffsetY(now - hop.startedAt);
     }
 
-    if (jumpSeqRef.current !== -1) {
+    if (phase === "landed" || phase === "dropped") {
       jumpSeqRef.current = -1;
       if (jump) {
         jump.fadeOut(ANIM_FADE);
-        if (canJump) {
+        if (phase === "landed") {
           // Landed: resume the loop for whatever the player is doing right now.
           actions[gaitClip(gait)]?.reset().fadeIn(ANIM_FADE).play();
           gaitRef.current = gait;
@@ -233,11 +237,17 @@ export function LocalPlayer({
     return 0;
   }
 
-  /** Put the avatar group on the pose (x, z) lifted by the hop; the blob shadow stays on the floor. */
-  function placeGroup(group: Group, canJump: boolean, gait: Gait): void {
+  /**
+   * Put the avatar group on the pose (x, z) lifted by the hop (the blob shadow stays on
+   * the floor) and publish, allocation-free, what the rest of the app reads about it:
+   * the lift (the first-person eye rises with it) and the "a press may not jump now"
+   * flag shared by Space and the touch button (seated, sit / stand-up clip, reconnecting).
+   */
+  function placeGroup(group: Group, canJump: boolean, gait: Gait, suspended: boolean): void {
     const lift = stepJump(performance.now(), canJump, gait);
     group.position.set(pose.x, lift, pose.z);
     if (shadowRef.current) shadowRef.current.position.y = -lift;
+    publishLocalJump(lift, !canJump || suspended);
   }
 
   useFrame((_state, delta) => {
@@ -375,7 +385,7 @@ export function LocalPlayer({
         sendStand();
         standRequestedRef.current = true;
       }
-      placeGroup(group, false, gait);
+      placeGroup(group, false, gait, suspended);
       group.rotation.y = pose.yaw + MODEL_FACING_OFFSET;
       return;
     }
@@ -412,7 +422,7 @@ export function LocalPlayer({
     // standing sends nothing.
     if (inFp) pose.yaw = normalizeAngle(viewState.fpYaw);
 
-    placeGroup(group, animStateRef.current === "loco", gait);
+    placeGroup(group, animStateRef.current === "loco", gait, suspended);
     group.rotation.y = pose.yaw + MODEL_FACING_OFFSET;
 
     // Crossfade idle <-> walk <-> run on gait changes — but only in pure loco; the

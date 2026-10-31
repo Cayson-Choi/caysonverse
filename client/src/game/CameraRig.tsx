@@ -61,6 +61,7 @@ import {
   stepArmLimit,
 } from "./cameraCollision";
 import { cameraProbe } from "./cameraProbe";
+import { getLocalLift } from "./jump";
 import type { Orbit, Pose, SeatState } from "./types";
 
 interface CameraRigProps {
@@ -512,12 +513,16 @@ export function CameraRig({ pose, orbit, seat }: CameraRigProps) {
     // ── Underlying pose (tp<->fp, no teleport-cut) — the base the overview lifts
     // FROM and settles BACK TO. ──
     const uPosX = lerp(tpX, pose.x, t);
-    const uPosY = lerp(tpY, FP_EYE_HEIGHT, t);
+    // Own hop (jump.ts): the first-person eye and look target rise with the avatar's
+    // display-only lift, weighted by the FP blend — the own body is hidden there, so
+    // without this a Space press would show nothing. TP (t = 0) is untouched.
+    const hop = getLocalLift();
+    const uPosY = lerp(tpY, FP_EYE_HEIGHT + hop, t);
     const uPosZ = lerp(tpZ, pose.z, t);
     // TP looks at the (smoothed) follow point, a little above the head; FP at the
     // pose-anchored eye line.
     const uTgtX = lerp(followX, pose.x + fwdX, t);
-    const uTgtY = lerp(HEAD_HEIGHT + CAMERA_LOOK_LIFT + tpLookLift, FP_EYE_HEIGHT + fwdY, t);
+    const uTgtY = lerp(HEAD_HEIGHT + CAMERA_LOOK_LIFT + tpLookLift, FP_EYE_HEIGHT + hop + fwdY, t);
     const uTgtZ = lerp(followZ, pose.z + fwdZ, t);
 
     // ── Overview pose ── straight up over the pan-centre, looking down. The maze

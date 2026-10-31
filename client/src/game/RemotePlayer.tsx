@@ -13,7 +13,14 @@ import { nextGait } from "./locomotion";
 import { remoteGaitProbe } from "./gait";
 import type { Gait } from "./gait";
 import { decideMixerTick } from "./mixerThrottle";
-import { JUMP_FADE_IN_S, jumpOffsetY, jumpRegistry, jumpTimeScale } from "./jump";
+import {
+  JUMP_FADE_IN_S,
+  currentJump,
+  jumpOffsetY,
+  jumpPhase,
+  jumpRegistry,
+  jumpTimeScale,
+} from "./jump";
 import {
   ANIM_FADE,
   CHARACTERS,
@@ -252,12 +259,13 @@ export function RemotePlayer({
     let landed = false;
     {
       const canJump = seatModeRef.current === "up";
-      const entry = canJump ? jumpRegistry.get(sessionId, nowMs) : null;
-      if (!canJump) jumpRegistry.remove(sessionId);
+      const entry = currentJump(sessionId, canJump, nowMs);
+      const phase = jumpPhase(entry, canJump, jumpSeqRef.current);
       const jump = jumpAction.current;
-      if (entry) {
-        if (entry.seq !== jumpSeqRef.current) {
-          jumpSeqRef.current = entry.seq;
+      if (phase === "takeoff" || phase === "air") {
+        const hop = entry!; // takeoff / air only happen with a live entry
+        if (phase === "takeoff") {
+          jumpSeqRef.current = hop.seq;
           if (jump) {
             gaitAction(gaitRef.current)?.fadeOut(JUMP_FADE_IN_S);
             jump.timeScale = jumpTimeScale(jump.getClip().duration);
@@ -267,12 +275,12 @@ export function RemotePlayer({
             jump.fadeIn(JUMP_FADE_IN_S).play();
           }
         }
-        lift = jumpOffsetY(nowMs - entry.startedAt);
-      } else if (jumpSeqRef.current !== -1) {
+        lift = jumpOffsetY(nowMs - hop.startedAt);
+      } else if (phase === "landed" || phase === "dropped") {
         jumpSeqRef.current = -1;
         if (jump) {
           jump.fadeOut(ANIM_FADE);
-          if (canJump) {
+          if (phase === "landed") {
             // Landed: resume the gait loop; step 4 re-syncs it next frame if the
             // avatar started or stopped moving meanwhile.
             gaitAction(gaitRef.current)?.reset().fadeIn(ANIM_FADE).play();

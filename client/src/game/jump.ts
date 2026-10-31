@@ -100,17 +100,78 @@ export function jumpTimeScale(clipSeconds: number): number {
   return clipSeconds > 0 ? clipSeconds / (JUMP_DURATION_MS / 1000) : 1;
 }
 
+/** What one avatar's frame should do about its hop (see `jumpPhase`). */
+export type JumpPhase = "idle" | "takeoff" | "air" | "landed" | "dropped";
+
+/**
+ * The hop `sid` should show at `now`: its registry entry while the avatar can jump,
+ * null otherwise. An avatar that cannot jump (seated, or in the sit / stand-up clip)
+ * also DROPS any pending entry, so a hop pressed or broadcast then is never replayed
+ * late once it can move again. Allocation-free (per-frame, per avatar).
+ */
+export function currentJump(sid: string, canJump: boolean, now: number): JumpEntry | null {
+  if (!canJump) {
+    jumpRegistry.remove(sid);
+    return null;
+  }
+  return jumpRegistry.get(sid, now);
+}
+
+/**
+ * The per-frame decision LocalPlayer and RemotePlayer share, pure and allocation-free:
+ * `entry` is `currentJump`'s result, `canJump` whether the avatar may hop now, and
+ * `playingSeq` the seq whose clip is currently playing (-1 = none).
+ *  - "takeoff": a hop this avatar is not yet playing (new seq) — start the clip.
+ *  - "air": the hop it is already playing — just lift.
+ *  - "landed": the hop ended — fade the clip out and resume the gait loop.
+ *  - "dropped": the avatar stopped being able to jump mid-air (sat down) — fade the
+ *    clip out only; the sit / stand clip owns the body.
+ *  - "idle": nothing playing, nothing to start.
+ */
+export function jumpPhase(entry: JumpEntry | null, canJump: boolean, playingSeq: number): JumpPhase {
+  if (!canJump) return playingSeq !== -1 ? "dropped" : "idle";
+  if (entry === null) return playingSeq !== -1 ? "landed" : "idle";
+  return entry.seq !== playingSeq ? "takeoff" : "air";
+}
+
 /** Wall-clock ms of the last hop THIS client played (the cooldown anchor). */
 let lastLocalJumpAt = Number.NEGATIVE_INFINITY;
 
 /**
+ * Whether a press may NOT hop right now, and the display lift (m) of our own avatar.
+ * LocalPlayer writes both every frame (`publishLocalJump`) — the one place that knows
+ * the avatar's seat / sit / stand-up state — and every consumer reads them: Space and
+ * the touch button through `pressJump`, the first-person camera through
+ * `getLocalLift`. Plain module values, so reading is allocation-free. Blocked until
+ * LocalPlayer's first frame: with no avatar there is nothing to jump.
+ */
+let jumpBlocked = true;
+let localLift = 0;
+
+/** LocalPlayer, once per frame: our avatar's lift (m) and whether a press may not jump now. */
+export function publishLocalJump(lift: number, blocked: boolean): void {
+  localLift = lift;
+  jumpBlocked = blocked;
+}
+
+/** Our own avatar's current hop height (m) — the first-person eye rises with it. */
+export function getLocalLift(): number {
+  return localLift;
+}
+
+/** True while a press must be refused (seated, sit / stand-up clip, reconnecting, no avatar yet). */
+export function isJumpBlocked(): boolean {
+  return jumpBlocked;
+}
+
+/**
  * Press → hop. Refused (returns false, nothing played or sent, no cooldown burnt)
- * while seated — a chair holds the avatar — and inside JUMP_CLIENT_COOLDOWN_MS of
+ * while `blocked` — a chair holds the avatar — and inside JUMP_CLIENT_COOLDOWN_MS of
  * the previous hop, so a held or mashed key can never flood the server. Otherwise
  * the hop starts locally at once (no round trip) and `send` tells the server.
  */
-export function localJump(sid: string, seated: boolean, now: number, send: () => void): boolean {
-  if (seated) return false;
+export function localJump(sid: string, blocked: boolean, now: number, send: () => void): boolean {
+  if (blocked) return false;
   if (now - lastLocalJumpAt < JUMP_CLIENT_COOLDOWN_MS) return false;
   lastLocalJumpAt = now;
   jumpRegistry.set(sid, now);
@@ -118,7 +179,17 @@ export function localJump(sid: string, seated: boolean, now: number, send: () =>
   return true;
 }
 
-/** Forget the cooldown — LocalPlayer calls this on mount and unmount (new world). */
+/**
+ * The ONE entry point for a jump press — Space and the touch button both call it, so
+ * they can never disagree: `localJump` gated by the blocked flag LocalPlayer publishes.
+ */
+export function pressJump(sid: string, now: number, send: () => void): boolean {
+  return localJump(sid, jumpBlocked, now, send);
+}
+
+/** Forget the cooldown, the lift and the blocked flag — LocalPlayer calls this on mount and unmount (new world). */
 export function resetLocalJump(): void {
   lastLocalJumpAt = Number.NEGATIVE_INFINITY;
+  localLift = 0;
+  jumpBlocked = true;
 }

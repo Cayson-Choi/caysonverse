@@ -1,7 +1,5 @@
-import { localJump } from "../game/jump";
-import type { SeatState } from "../game/types";
+import { pressJump } from "../game/jump";
 import { sendJump } from "../net/connection";
-import { isInputSuspended } from "../net/resilience";
 import "./action.css";
 
 /**
@@ -9,15 +7,18 @@ import "./action.css";
  * action button sits right above it — action.css). Mounted on touch devices only;
  * on a desktop Space jumps (LocalPlayer's hotkey).
  *
- * A press hops at once: `localJump` plays our own jump locally (no round trip) and
- * tells the server, and refuses while seated or inside the client cooldown — the
- * same gate Space goes through, so tapping it twice quickly sends one jump. It reads
- * the live `seat` ref at press time, so the button needs no state and never re-renders.
+ * A press goes through `pressJump` — the SAME gate Space uses: one "jump blocked"
+ * flag that LocalPlayer publishes every frame (seated, in the sit / stand-up clip,
+ * reconnecting, or no avatar yet) plus the client cooldown. So a tap while blocked
+ * is refused outright — it sends nothing and burns no cooldown — and tapping twice
+ * quickly sends one jump. Otherwise `localJump` plays our own hop at once (no round
+ * trip) and tells the server. The button reads that flag at press time, so it needs
+ * no state and never re-renders.
  *
  * It reacts on pointer DOWN (a tap must feel instant) and cancels the default so the
  * button never takes focus or fires a synthetic mouse event / click behind it.
  */
-export function JumpButton({ sessionId, seat }: { sessionId: string; seat: SeatState }) {
+export function JumpButton({ sessionId }: { sessionId: string }) {
   return (
     <button
       type="button"
@@ -26,8 +27,7 @@ export function JumpButton({ sessionId, seat }: { sessionId: string; seat: SeatS
       tabIndex={-1}
       onPointerDown={(e) => {
         e.preventDefault();
-        if (isInputSuspended()) return;
-        localJump(sessionId, seat.index >= 0, performance.now(), sendJump);
+        pressJump(sessionId, performance.now(), sendJump);
       }}
       onMouseDown={(e) => e.preventDefault()}
       onContextMenu={(e) => e.preventDefault()}

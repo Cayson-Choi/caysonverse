@@ -4,23 +4,23 @@ import {
   JUMP_CLIENT_COOLDOWN_MS,
   JUMP_HEIGHT_M,
   JumpRegistry,
+  currentJump,
+  getLocalLift,
+  isJumpBlocked,
   jumpOffsetY,
+  jumpPhase,
   jumpRegistry,
   jumpTimeScale,
   localJump,
+  pressJump,
+  publishLocalJump,
   resetLocalJump,
 } from "./jump";
 
-describe("jump constants", () => {
-  it("pin the owner-requested hop: 1 m high, 0.8 s long, server cap == duration", () => {
+describe("jump constants (the duration / rate pin lives in shared/src/constants.test.ts)", () => {
+  it("the apex is the owner-requested 1 m; the client sends no faster than the server takes + slack", () => {
     expect(JUMP_HEIGHT_M).toBe(1.0);
-    expect(JUMP_DURATION_MS).toBe(800);
-    // Accepted jumps never overlap: the server lets one through per duration.
-    expect(JUMP_RATE.windowMs).toBe(JUMP_DURATION_MS);
-    expect(JUMP_RATE.count).toBe(1);
-    // The client only sends what the server will accept, plus network slack.
     expect(JUMP_CLIENT_COOLDOWN_MS).toBe(JUMP_RATE.windowMs + 50);
-    expect(JUMP_CLIENT_COOLDOWN_MS).toBe(850);
   });
 });
 
@@ -119,6 +119,130 @@ describe("JumpRegistry", () => {
     expect(snap.map((e) => e.sid)).toEqual(["new"]);
     expect(snap[0].startedAt).toBe(500);
     expect(reg.snapshot(500 + JUMP_DURATION_MS)).toEqual([]);
+  });
+});
+
+describe("currentJump", () => {
+  beforeEach(() => jumpRegistry.clear());
+
+  it("returns the live entry while the avatar can jump, null once it expired", () => {
+    jumpRegistry.set("a", 100);
+    expect(currentJump("a", true, 100)?.startedAt).toBe(100);
+    expect(currentJump("a", true, 100 + JUMP_DURATION_MS)).toBeNull();
+  });
+
+  it("an avatar that cannot jump drops the pending entry for good (no late replay)", () => {
+    jumpRegistry.set("a", 100);
+    expect(currentJump("a", false, 150)).toBeNull();
+    // It can move again 300 ms later, well inside the old hop's window: nothing resumes.
+    expect(currentJump("a", true, 400)).toBeNull();
+    expect(jumpRegistry.get("a", 400)).toBeNull();
+  });
+
+  it("only touches the asked-for session", () => {
+    jumpRegistry.set("a", 0);
+    jumpRegistry.set("b", 0);
+    currentJump("a", false, 10);
+    expect(jumpRegistry.get("b", 10)).not.toBeNull();
+  });
+});
+
+describe("jumpPhase (shared by LocalPlayer and RemotePlayer)", () => {
+  const entry = (seq: number) => ({ sid: "a", startedAt: 0, seq });
+
+  it("a hop we are not yet playing is a take-off; the one we play is air", () => {
+    expect(jumpPhase(entry(5), true, -1)).toBe("takeoff");
+    expect(jumpPhase(entry(5), true, 5)).toBe("air");
+  });
+
+  it("a re-jump (newer seq) while one is playing takes off again", () => {
+    expect(jumpPhase(entry(6), true, 5)).toBe("takeoff");
+  });
+
+  it("the entry vanishing while a clip plays is a landing; with nothing playing it is idle", () => {
+    expect(jumpPhase(null, true, 5)).toBe("landed");
+    expect(jumpPhase(null, true, -1)).toBe("idle");
+  });
+
+  it("an avatar that cannot jump never takes off: it drops a playing clip, else stays idle", () => {
+    expect(jumpPhase(entry(5), false, -1)).toBe("idle");
+    expect(jumpPhase(entry(5), false, 5)).toBe("dropped");
+    expect(jumpPhase(null, false, 5)).toBe("dropped");
+    expect(jumpPhase(null, false, -1)).toBe("idle");
+  });
+
+  it("walks a whole hop: idle → takeoff → air → landed → idle", () => {
+    jumpRegistry.clear();
+    jumpRegistry.set("a", 1000);
+    let playing = -1;
+    const phases: string[] = [];
+    for (const t of [1000, 1400, 1799, 1000 + JUMP_DURATION_MS, 1900]) {
+      const e = currentJump("a", true, t);
+      const p = jumpPhase(e, true, playing);
+      phases.push(p);
+      if (p === "takeoff" && e) playing = e.seq;
+      if (p === "landed" || p === "dropped") playing = -1;
+    }
+    expect(phases).toEqual(["takeoff", "air", "air", "landed", "idle"]);
+  });
+});
+
+describe("local lift + blocked flag (published by LocalPlayer each frame)", () => {
+  beforeEach(() => resetLocalJump());
+
+  it("starts blocked with no lift: no avatar yet, nothing to jump", () => {
+    expect(isJumpBlocked()).toBe(true);
+    expect(getLocalLift()).toBe(0);
+  });
+
+  it("publishLocalJump sets both; reset clears them", () => {
+    publishLocalJump(0.42, false);
+    expect(getLocalLift()).toBe(0.42);
+    expect(isJumpBlocked()).toBe(false);
+    resetLocalJump();
+    expect(getLocalLift()).toBe(0);
+    expect(isJumpBlocked()).toBe(true);
+  });
+});
+
+describe("pressJump — the one gate Space and the touch button share", () => {
+  beforeEach(() => {
+    resetLocalJump();
+    jumpRegistry.clear();
+  });
+
+  it("a blocked state refuses without sending, playing, or consuming the cooldown", () => {
+    let sends = 0;
+    const send = () => sends++;
+    publishLocalJump(0, true); // seated, or in the ~1 s stand-up clip
+    expect(pressJump("me", 5000, send)).toBe(false);
+    expect(pressJump("me", 5100, send)).toBe(false);
+    expect(sends).toBe(0);
+    expect(jumpRegistry.get("me", 5100)).toBeNull();
+    // The blocked presses burnt nothing: the very next frame it unblocks, a press jumps.
+    publishLocalJump(0, false);
+    expect(pressJump("me", 5101, send)).toBe(true);
+    expect(sends).toBe(1);
+    expect(jumpRegistry.get("me", 5102)).not.toBeNull();
+  });
+
+  it("is blocked by default (before LocalPlayer's first frame) and after a reset", () => {
+    let sends = 0;
+    expect(pressJump("me", 0, () => sends++)).toBe(false);
+    publishLocalJump(0, false);
+    resetLocalJump();
+    expect(pressJump("me", 1, () => sends++)).toBe(false);
+    expect(sends).toBe(0);
+  });
+
+  it("an unblocked press still obeys the client cooldown", () => {
+    let sends = 0;
+    const send = () => sends++;
+    publishLocalJump(0, false);
+    expect(pressJump("me", 0, send)).toBe(true);
+    expect(pressJump("me", JUMP_CLIENT_COOLDOWN_MS - 1, send)).toBe(false);
+    expect(pressJump("me", JUMP_CLIENT_COOLDOWN_MS, send)).toBe(true);
+    expect(sends).toBe(2);
   });
 });
 
