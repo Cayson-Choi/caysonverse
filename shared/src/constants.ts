@@ -87,6 +87,29 @@ export const EMOJI_RATE = { count: 1, windowMs: 500 } as const;
 /** How long (ms) an emoji reaction floats above its sender before removal. */
 export const EMOJI_DISPLAY_MS = 3000;
 
+// ── Jump + typing events (controls-ux Task 2) — broadcast events, not state. ──
+
+/** Per-client jump rate cap: at most `count` accepted jumps per `windowMs`. */
+export const JUMP_RATE = { count: 1, windowMs: 600 } as const;
+
+/**
+ * How long (ms) a jump lasts on an avatar (the client's jump animation window).
+ * Equals `JUMP_RATE.windowMs`, so two accepted jumps never overlap.
+ */
+export const JUMP_DURATION_MS = 600;
+
+/**
+ * Per-client "typing" ON cap: at most `count` accepted ONs per `windowMs`. The OFF
+ * is never limited (it must always get through to clear the indicator).
+ */
+export const TYPING_RATE = { count: 1, windowMs: 3000 } as const;
+
+/**
+ * Safety TTL (ms) for the "…" typing indicator on the receiving side: if the OFF
+ * is lost (disconnect, dropped packet) the indicator expires on its own.
+ */
+export const TYPING_TTL_MS = 5000;
+
 // ── Admin: announce banner + kick (Task 9). ──
 
 /**

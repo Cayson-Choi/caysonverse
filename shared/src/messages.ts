@@ -33,6 +33,16 @@ export const MessageType = {
    * chamber (shared canUsePortal) before teleporting; elsewhere it is a no-op.
    */
   PortalReturn: "portal_return",
+  /**
+   * Client -> server: the sender jumped. Server -> all: relay tagged with the
+   * sender's sid. A transient event (y is server-fixed, never schema state).
+   */
+  Jump: "jump",
+  /**
+   * Client -> server: the sender started/stopped typing a chat line. Server ->
+   * all: relay `{ sid, on }`. A transient event, never schema state.
+   */
+  Typing: "typing",
 } as const;
 
 export type MessageType = (typeof MessageType)[keyof typeof MessageType];
@@ -115,6 +125,27 @@ export interface SystemBroadcast {
   sid?: string;
 }
 
+/** Client -> server: the sender jumped. Carries no data (the server never reads it). */
+export type JumpPayload = Record<string, never>;
+
+/** Server -> every client: someone jumped, tagged with the jumper's sid. */
+export interface JumpBroadcast {
+  /** Jumper session id (matches the avatar's key in world state). */
+  sid: string;
+}
+
+/** Client -> server: the sender started (`on: true`) or stopped typing a chat line. */
+export interface TypingPayload {
+  on: boolean;
+}
+
+/** Server -> every client: someone started/stopped typing, tagged with their sid. */
+export interface TypingBroadcast {
+  /** Typist session id (matches the avatar's key in world state). */
+  sid: string;
+  on: boolean;
+}
+
 /** Payload type for each message id, keyed by MessageType. */
 export interface MessagePayloads {
   [MessageType.Move]: MovePayload;
@@ -127,4 +158,8 @@ export interface MessagePayloads {
   [MessageType.Stand]: StandPayload;
   [MessageType.SitRejected]: SitRejectedPayload;
   [MessageType.System]: SystemBroadcast;
+  // Jump/Typing travel both ways under one id (request up, relay down), so each
+  // entry lists both shapes.
+  [MessageType.Jump]: JumpPayload | JumpBroadcast;
+  [MessageType.Typing]: TypingPayload | TypingBroadcast;
 }

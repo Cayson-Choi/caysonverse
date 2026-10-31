@@ -8,6 +8,8 @@ import {
   MOVE_ELAPSED_CEIL_MS,
   CHAT_RATE,
   EMOJI_RATE,
+  JUMP_RATE,
+  TYPING_RATE,
   SPAWN_POINT,
   SPAWN_JITTER,
   WORLD_BOUNDS,
@@ -29,6 +31,7 @@ import { validateJoinOptions } from "./joinValidation";
 import { sanitizeChat } from "./chat";
 import { sanitizeAnnounce } from "./announce";
 import { validateEmojiIndex } from "./emoji";
+import { validateTypingPayload } from "./typing";
 import { RateWindow } from "./rateLimit";
 import { DenySet } from "./denySet";
 import { resolveClientIp } from "./clientIp";
@@ -82,6 +85,15 @@ interface ClientTracking {
   chatRate: RateWindow;
   /** Sliding-window rate cap for emoji reactions (1 per 500ms). */
   emojiRate: RateWindow;
+  /** Sliding-window rate cap for jumps (1 per 600ms). */
+  jumpRate: RateWindow;
+  /** Sliding-window rate cap for typing ON (1 per 3s); OFF is never limited. */
+  typingRate: RateWindow;
+  /**
+   * Whether this client's last relayed typing event was ON. Gates the OFF relay
+   * (an OFF from a non-typist is dropped) and is cleared when a chat is accepted.
+   */
+  typing: boolean;
 }
 
 /**
@@ -137,6 +149,12 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     });
     this.onMessage(MessageType.Emoji, (client, payload) => {
       this.handleEmoji(client, payload);
+    });
+    this.onMessage(MessageType.Jump, (client) => {
+      this.handleJump(client);
+    });
+    this.onMessage(MessageType.Typing, (client, payload) => {
+      this.handleTyping(client, payload);
     });
     this.onMessage(MessageType.Announce, (client, payload) => {
       this.handleAnnounce(client, payload);
@@ -209,6 +227,9 @@ export class WorldRoom extends Room<{ state: WorldState }> {
       rate: new RateWindow(MOVE_MAX_MSGS_PER_SEC),
       chatRate: new RateWindow(CHAT_RATE.count, CHAT_RATE.windowMs),
       emojiRate: new RateWindow(EMOJI_RATE.count, EMOJI_RATE.windowMs),
+      jumpRate: new RateWindow(JUMP_RATE.count, JUMP_RATE.windowMs),
+      typingRate: new RateWindow(TYPING_RATE.count, TYPING_RATE.windowMs),
+      typing: false,
     });
   }
 
@@ -403,6 +424,9 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     if (text === null) return; // empty/oversized/garbage → silent drop
 
     this.broadcast(MessageType.Chat, { sid: client.sessionId, name: player.nickname, text });
+    // An accepted chat ends the typing state; receivers clear their own "…" on
+    // Chat (no separate OFF is sent), so a late OFF from this client is dropped.
+    track.typing = false;
   }
 
   /**
@@ -423,6 +447,56 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     if (index === null) return; // invalid/garbage → silent drop
 
     this.broadcast(MessageType.Emoji, { sid: client.sessionId, index });
+  }
+
+  /**
+   * Jump pipeline (binding order): sender must be in the world state → a SEATED
+   * sender is dropped silently (a sitting avatar is server-positioned, it cannot
+   * jump) → per-client rate cap (1 per 600ms; exceeded → drop silently, it's a
+   * key press) → broadcast `{ sid }` to everyone as a transient event. The
+   * payload is never read: the sid always comes from the connection. y is
+   * server-fixed (no schema field), so a jump is purely a cosmetic broadcast.
+   */
+  private handleJump(client: Client): void {
+    const player = this.state.players.get(client.sessionId);
+    const track = this.tracking.get(client.sessionId);
+    if (!player || !track) return; // no seat yet / already left → drop
+
+    if (player.seatIndex >= 0) return; // seated → silent drop
+
+    if (!track.jumpRate.tryAccept(this.now())) return; // flood → silent drop
+
+    this.broadcast(MessageType.Jump, { sid: client.sessionId });
+  }
+
+  /**
+   * Typing pipeline (binding order): sender must be in the world state → pure
+   * payload validate (garbage → drop silently; ahead of the rate cap because the
+   * cap only applies to ON, and a malformed message must not consume a slot) →
+   *  - ON: per-client rate cap (1 per 3s; exceeded → drop silently), then mark
+   *    `track.typing` and broadcast `{ sid, on: true }`;
+   *  - OFF: relayed ONLY if the sender is currently typing (else silent drop),
+   *    then clear `track.typing` and broadcast `{ sid, on: false }`. OFF is
+   *    never rate-limited — it must always get through to clear the indicator.
+   * Typing never touches synced schema state.
+   */
+  private handleTyping(client: Client, payload: unknown): void {
+    const player = this.state.players.get(client.sessionId);
+    const track = this.tracking.get(client.sessionId);
+    if (!player || !track) return; // no seat yet / already left → drop
+
+    const on = validateTypingPayload(payload);
+    if (on === null) return; // invalid/garbage → silent drop
+
+    if (on) {
+      if (!track.typingRate.tryAccept(this.now())) return; // flood → silent drop
+      track.typing = true;
+    } else {
+      if (!track.typing) return; // OFF without a prior ON → silent drop
+      track.typing = false;
+    }
+
+    this.broadcast(MessageType.Typing, { sid: client.sessionId, on });
   }
 
   /**

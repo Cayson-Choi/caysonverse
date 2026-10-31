@@ -10,14 +10,17 @@ import {
   CHAT_MAX_LENGTH,
   EMOJIS,
   MOVE_MAX_MSGS_PER_SEC,
+  JUMP_RATE,
 } from "@caysonverse/shared/constants";
 import { MessageType } from "@caysonverse/shared/messages";
 import type {
   ChatBroadcast,
   ChatRejectedPayload,
   EmojiBroadcast,
+  JumpBroadcast,
   SitRejectedPayload,
   SystemBroadcast,
+  TypingBroadcast,
 } from "@caysonverse/shared/messages";
 import { SEATS } from "@caysonverse/shared/worldMap";
 import { MAZE_GOAL, MAZE_PORTAL, MAZE_RETURN, ESCAPE_COOLDOWN_MS } from "@caysonverse/shared/maze";
@@ -1024,5 +1027,181 @@ describe("WorldRoom maze goal/portal (integration)", () => {
     // The body would overlap the wall → the move is dropped, position unchanged.
     expect(p.x).toBe(-31.2);
     expect(p.z).toBe(0);
+  });
+});
+
+// ── Controls UX Task 2: jump + typing broadcast events ──
+
+describe("WorldRoom jump/typing (integration)", () => {
+  /** Two clients in one room, each collecting the events it receives. */
+  async function twoClients() {
+    const room = await colyseus.createRoom<WorldRoom>(WORLD_ROOM);
+    const alice = await colyseus.connectTo(room, JOIN_A);
+    const bob = await colyseus.connectTo(room, JOIN_B);
+
+    const aJumps: JumpBroadcast[] = [];
+    const bJumps: JumpBroadcast[] = [];
+    const aTyping: TypingBroadcast[] = [];
+    const bTyping: TypingBroadcast[] = [];
+    alice.onMessage(MessageType.Jump, (m: JumpBroadcast) => aJumps.push(m));
+    bob.onMessage(MessageType.Jump, (m: JumpBroadcast) => bJumps.push(m));
+    alice.onMessage(MessageType.Typing, (m: TypingBroadcast) => aTyping.push(m));
+    bob.onMessage(MessageType.Typing, (m: TypingBroadcast) => bTyping.push(m));
+    return { room, alice, bob, aJumps, bJumps, aTyping, bTyping };
+  }
+
+  it("relays a Jump to every client tagged with the sender's sid", async () => {
+    const { room, alice, aJumps, bJumps } = await twoClients();
+
+    alice.send(MessageType.Jump, {});
+    await room.waitForNextMessage();
+    await flush();
+
+    const expected = [{ sid: alice.sessionId }];
+    expect(aJumps).toEqual(expected); // sender receives its own jump too
+    expect(bJumps).toEqual(expected);
+  });
+
+  it("ignores the Jump payload — the sid always comes from the connection", async () => {
+    const { room, alice, bob, aJumps, bJumps } = await twoClients();
+
+    alice.send(MessageType.Jump, { sid: bob.sessionId });
+    await room.waitForNextMessage();
+    await flush();
+
+    expect(aJumps).toEqual([{ sid: alice.sessionId }]);
+    expect(bJumps).toEqual([{ sid: alice.sessionId }]);
+  });
+
+  it("drops a second Jump inside JUMP_RATE.windowMs — one broadcast", async () => {
+    const { room, alice, aJumps, bJumps } = await twoClients();
+
+    // Two sends land within milliseconds — well inside the 600ms window.
+    for (let i = 0; i < 2; i++) {
+      alice.send(MessageType.Jump, {});
+      await room.waitForNextMessage();
+    }
+    await flush();
+
+    expect(aJumps).toEqual([{ sid: alice.sessionId }]);
+    expect(bJumps).toEqual([{ sid: alice.sessionId }]);
+  });
+
+  it("accepts the next Jump once JUMP_RATE.windowMs has passed", async () => {
+    const { room, alice, bJumps } = await twoClients();
+
+    alice.send(MessageType.Jump, {});
+    await room.waitForNextMessage();
+    await new Promise((r) => setTimeout(r, JUMP_RATE.windowMs + 80));
+    alice.send(MessageType.Jump, {});
+    await room.waitForNextMessage();
+    await flush();
+
+    expect(bJumps).toEqual([{ sid: alice.sessionId }, { sid: alice.sessionId }]);
+  });
+
+  it("drops a Jump from a seated player", async () => {
+    const { room, alice, aJumps, bJumps } = await twoClients();
+    room.state.players.get(alice.sessionId)!.seatIndex = 1;
+
+    alice.send(MessageType.Jump, {});
+    await room.waitForNextMessage();
+    await flush();
+
+    expect(aJumps).toHaveLength(0);
+    expect(bJumps).toHaveLength(0);
+  });
+
+  it("relays typing on then off to everyone", async () => {
+    const { room, alice, aTyping, bTyping } = await twoClients();
+
+    alice.send(MessageType.Typing, { on: true });
+    await room.waitForNextMessage();
+    alice.send(MessageType.Typing, { on: false });
+    await room.waitForNextMessage();
+    await flush();
+
+    const expected = [
+      { sid: alice.sessionId, on: true },
+      { sid: alice.sessionId, on: false },
+    ];
+    expect(aTyping).toEqual(expected); // sender receives its own events too
+    expect(bTyping).toEqual(expected);
+  });
+
+  it("rate-limits typing ON to 1 per 3 s but never drops the OFF", async () => {
+    const { room, alice, aTyping, bTyping } = await twoClients();
+
+    // on, on (inside TYPING_RATE.windowMs → dropped), off (never rate-limited).
+    for (const on of [true, true, false]) {
+      alice.send(MessageType.Typing, { on });
+      await room.waitForNextMessage();
+    }
+    await flush();
+
+    const expected = [
+      { sid: alice.sessionId, on: true },
+      { sid: alice.sessionId, on: false },
+    ];
+    expect(aTyping).toEqual(expected);
+    expect(bTyping).toEqual(expected);
+  });
+
+  it("drops an OFF from a sender that was not typing, and malformed payloads", async () => {
+    const { room, alice, aTyping, bTyping } = await twoClients();
+
+    alice.send(MessageType.Typing, { on: false }); // never turned on
+    await room.waitForNextMessage();
+    alice.send(MessageType.Typing, { on: "yes" }); // not a boolean
+    await room.waitForNextMessage();
+    alice.send(MessageType.Typing, {}); // missing `on`
+    await room.waitForNextMessage();
+    await flush();
+
+    expect(aTyping).toHaveLength(0);
+    expect(bTyping).toHaveLength(0);
+  });
+
+  it("drops a malformed ON without consuming the typing rate slot", async () => {
+    const { room, alice, bTyping } = await twoClients();
+
+    alice.send(MessageType.Typing, { on: 1 }); // invalid → dropped before the cap
+    await room.waitForNextMessage();
+    alice.send(MessageType.Typing, { on: true }); // first VALID ON still goes through
+    await room.waitForNextMessage();
+    await flush();
+
+    expect(bTyping).toEqual([{ sid: alice.sessionId, on: true }]);
+  });
+
+  it("clears the typing flag when a chat line is accepted (a later OFF is dropped)", async () => {
+    const { room, alice, bTyping } = await twoClients();
+
+    alice.send(MessageType.Typing, { on: true });
+    await room.waitForNextMessage();
+    alice.send(MessageType.Chat, { text: "안녕하세요" });
+    await room.waitForNextMessage();
+    alice.send(MessageType.Typing, { on: false }); // already cleared by the chat
+    await room.waitForNextMessage();
+    await flush();
+
+    expect(bTyping).toEqual([{ sid: alice.sessionId, on: true }]);
+  });
+
+  it("keeps the typing flag when a chat line is rejected (the OFF still goes out)", async () => {
+    const { room, alice, bTyping } = await twoClients();
+
+    alice.send(MessageType.Typing, { on: true });
+    await room.waitForNextMessage();
+    alice.send(MessageType.Chat, { text: "   " }); // empty after trim → silent drop
+    await room.waitForNextMessage();
+    alice.send(MessageType.Typing, { on: false });
+    await room.waitForNextMessage();
+    await flush();
+
+    expect(bTyping).toEqual([
+      { sid: alice.sessionId, on: true },
+      { sid: alice.sessionId, on: false },
+    ]);
   });
 });
