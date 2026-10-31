@@ -100,7 +100,7 @@
 }
 
 .cv-menu-seg-btn:hover,
-.cv-menu-link:hover:not(:disabled),
+.cv-menu-link:hover,
 .cv-menu-close:hover {
   background: rgba(86, 68, 160, 0.7);
   border-color: rgba(170, 150, 255, 0.6);
@@ -195,11 +195,6 @@
   padding: 0 14px;
   font-size: 15px;
   font-weight: 600;
-}
-
-.cv-menu-link:disabled {
-  cursor: default;
-  opacity: 0.45;
 }
 
 .cv-menu-close {

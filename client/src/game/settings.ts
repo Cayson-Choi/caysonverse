@@ -26,7 +26,7 @@ export interface Settings {
   nametagMode: NametagMode;
   /** Also draw the local player's own tag. */
   showOwnNametag: boolean;
-  /** The first-visit guide has been seen (Task 17 writes it). */
+  /** The first-visit guide has been seen (coachStore saves it when the guide ends; a restart leaves it). */
   coachDone: boolean;
 }
 

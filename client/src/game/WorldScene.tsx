@@ -25,6 +25,7 @@ import { JumpButton } from "../ui/JumpButton";
 import { Banner } from "../ui/Banner";
 import { AdminPanel } from "../ui/AdminPanel";
 import { MenuPanel } from "../ui/MenuPanel";
+import { CoachMarks } from "../ui/CoachMarks";
 import { getRoom } from "../net/connection";
 import { startJumpSync } from "../net/jumpSync";
 import { isTouchDevice } from "../device";
@@ -34,6 +35,7 @@ import { resetViewMode, toggleViewMode, toggleOverview, viewState } from "./view
 import { applySettingsToRoot, clearSettingsFromRoot } from "./settings";
 import { setNametagMode } from "./labelRegistry";
 import { useAppStore } from "../stores/appStore";
+import { useCoachStore } from "../stores/coachStore";
 import { useSettingsStore } from "../stores/settingsStore";
 import { useUiStore } from "../stores/uiStore";
 import type { Identity } from "../stores/appStore";
@@ -222,9 +224,15 @@ export function WorldScene({ identity }: { identity: Identity }) {
       {/* Movement control — touch devices only: the analog joystick in every view
           (first-person strafes camera-relative). Keyboard stays active regardless. */}
       {isTouchDevice && <TouchJoystick moveInput={moveInput} leftHanded={leftHanded} />}
+      {/* First-visit guide (Task 17): ① 움직이기 ② 둘러보기 ③ 말하기, one card at a time near
+          the control it explains. Measures the live pose / view yaw at 5 Hz; never blocks play. */}
+      <CoachMarks pose={pose} orbit={orbit} />
       {/* Esc / ☰ menu (Tasks 15–16): settings, the first-person switch, the guide. Above
           every HUD layer; also the single subscriber of the Esc key. */}
-      <MenuPanel onToggleView={toggleViewUnlessMap} />
+      <MenuPanel
+        onToggleView={toggleViewUnlessMap}
+        onShowGuide={() => useCoachStore.getState().report("restart")}
+      />
     </>
   );
 }

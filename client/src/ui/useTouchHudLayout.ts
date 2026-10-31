@@ -4,7 +4,7 @@ import { isTouchDevice } from "../device";
 import { useSettingsStore } from "../stores/settingsStore";
 
 /** The screen the touch HUD is laid out for: the layout viewport plus the notch / home-bar insets. */
-interface Viewport {
+export interface Viewport {
   w: number;
   h: number;
   safe: SafeInsets;
@@ -96,13 +96,22 @@ function subscribe(listener: () => void): () => void {
 }
 
 /**
+ * The screen the touch HUD is laid out for (CSS px + safe-area insets), from the one shared
+ * snapshot `useTouchHudLayout` is built on — for the few things that need the screen itself
+ * next to the layout (the first-visit guide's card placement). A PC gets a constant.
+ */
+export function useTouchViewport(): Viewport {
+  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+}
+
+/**
  * The touch HUD's rectangles for the current screen, 버튼 크기 and 왼손잡이 mode — the
  * numbers from game/hud.ts `touchHudLayout`, which hud.test.ts checks. Only touch
  * components apply them; on a PC the layout is plain CSS (hud.css), so this does no work
  * there (no probe, no resize listener) and the returned layout is not used.
  */
 export function useTouchHudLayout(): TouchHudLayout {
-  const vp = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+  const vp = useTouchViewport();
   const size = useSettingsStore((s) => s.settings.buttonSize);
   const leftHanded = useSettingsStore((s) => s.settings.leftHanded);
   return useMemo(

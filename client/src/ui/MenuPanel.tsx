@@ -14,11 +14,8 @@ import "./menu.css";
 interface MenuPanelProps {
   /** Toggle first-person / third-person (the same switch V and the zoom-through use). */
   onToggleView: () => void;
-  /**
-   * Replay the first-visit guide (Task 17 connects it). Without a handler the button
-   * is shown dimmed and does nothing, so the menu keeps its final layout.
-   */
-  onShowGuide?: () => void;
+  /** Replay the first-visit guide from ① ("조작 안내 다시 보기"); the menu closes first. */
+  onShowGuide: () => void;
 }
 
 const BUTTON_SIZE_OPTIONS: readonly { value: ButtonSize; label: string }[] = [
@@ -315,9 +312,7 @@ export function MenuPanel({ onToggleView, onShowGuide }: MenuPanelProps) {
           <button
             type="button"
             className="cv-menu-link"
-            disabled={!onShowGuide}
             onClick={() => {
-              if (!onShowGuide) return;
               close();
               onShowGuide();
             }}

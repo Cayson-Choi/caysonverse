@@ -5,6 +5,7 @@ import { onHotkey } from "../game/hotkeys";
 import { createTypingSender } from "../game/typing";
 import { sendChat, sendTyping } from "../net/connection";
 import { isTouchDevice } from "../device";
+import { useCoachStore } from "../stores/coachStore";
 import { HudButton } from "./HudButton";
 import { KBD_INSET_VAR, trackKbdInset } from "./kbdInset";
 import { rectStyle, useTouchHudLayout } from "./useTouchHudLayout";
@@ -33,6 +34,8 @@ const FOCUS_CLASS = "cv-chat-focus";
  *  - While focused, the "chat" capture tells the movement system to ignore
  *    keys (see uiCapture.ts), so typing never walks the avatar.
  *  - IME-safe: never sends while a composition (e.g. Hangul) is in progress.
+ *  - A sent line is the guide's ③ "말하기": submit reports `talked` (coachStore) — only for a
+ *    line that really goes out, never an empty or blank one.
  *  - Typing indicator (Task 12): every change tells the typing sender whether the
  *    field has text (ON on the first keystroke + a heartbeat, OFF when cleared);
  *    sending, blur and unmount stop it. The "…" itself is drawn by the name tag.
@@ -99,7 +102,9 @@ export function ChatInput() {
 
   function submit() {
     typing.stop(); // OFF first, so the receivers drop the "…" before the bubble lands
+    const text = value.trim();
     sendChat(value); // trims + drops empty; server is authoritative
+    if (text) useCoachStore.getState().report("talked"); // ③ of the first-visit guide
     setValue("");
     inputRef.current?.blur();
   }
