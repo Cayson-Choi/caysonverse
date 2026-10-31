@@ -1,8 +1,9 @@
 /* TTS 🔊/🔇 mute toggle (design 23). Unlike the touch-only 👁/🗺, this renders
    on EVERY device, so the base rule is a REAL desktop slot: right-aligned with
    the bottom-right emoji row (right 16, bottom 24, height 40) and parked 12px
-   ABOVE it (bottom 76) — clear of the chat log (top-right) and the sit hint
-   (bottom-centre). Same chip geometry/palette as the other overlay buttons. */
+   ABOVE it (bottom 76) — clear of the chat log (top-right) and the chat bar
+   (bottom-centre); the action button (action.css) shares this row to its left.
+   Same chip geometry/palette as the other overlay buttons. */
 .cv-sound-btn {
   position: fixed;
   right: 16px;

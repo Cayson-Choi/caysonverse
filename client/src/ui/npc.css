@@ -1,51 +1,5 @@
-/* AI 조교 NPC — talk prompt + private side-chat panel (design 31). */
-
-/* ── Desktop hint (bottom-centre, above the sit-hint band) ── */
-.cv-npc-hint {
-  position: fixed;
-  left: 50%;
-  bottom: 108px;
-  transform: translateX(-50%);
-  z-index: 20;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 14px;
-  font-size: 14px;
-  color: #f2eeff;
-  background: rgba(18, 14, 36, 0.72);
-  border: 1px solid rgba(150, 130, 220, 0.35);
-  border-radius: 10px;
-  backdrop-filter: blur(6px);
-  pointer-events: none;
-}
-
-.cv-npc-hint kbd {
-  padding: 2px 7px;
-  font-size: 12px;
-  font-weight: 700;
-  color: #171335;
-  background: #e8e2ff;
-  border-radius: 5px;
-}
-
-/* ── Touch talk button — same centre slot family as the sit button ── */
-.cv-npc-btn {
-  position: fixed;
-  left: 50%;
-  bottom: 246px;
-  transform: translateX(-50%);
-  z-index: 20;
-  min-height: 48px;
-  padding: 12px 22px;
-  font-size: 16px;
-  font-weight: 700;
-  color: #f2eeff;
-  background: rgba(38, 30, 70, 0.88);
-  border: 1px solid rgba(170, 150, 255, 0.5);
-  border-radius: 14px;
-  touch-action: manipulation;
-}
+/* AI 조교 NPC — private side-chat panel (design 31). The talk prompt itself is the
+   shared action button (action.css, Task 10). */
 
 /* ── Side panel (right drawer) ── */
 .cv-npc-panel {
@@ -220,6 +174,6 @@
 .cv-touch.cv-npc-open .cv-sound-btn,
 .cv-touch.cv-npc-open .cv-stick-zone,
 .cv-touch.cv-npc-open .cv-dpad-zone,
-.cv-touch.cv-npc-open .cv-sit-btn {
+.cv-touch.cv-npc-open .cv-action-btn {
   display: none !important;
 }

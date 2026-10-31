@@ -8,7 +8,6 @@ import { RemotePlayers } from "./RemotePlayers";
 import { WorldMap } from "./WorldMap";
 import { NpcCharacter } from "./NpcCharacter";
 import { NPCS } from "./npc";
-import { NpcPrompt } from "../ui/NpcPrompt";
 import { NpcChatPanel } from "../ui/NpcChatPanel";
 import { CameraRig } from "./CameraRig";
 import { OverviewMarker } from "./OverviewMarker";
@@ -16,7 +15,7 @@ import { ClickMarker } from "./ClickMarker";
 import { Chat } from "../ui/Chat";
 import { EmojiPalette } from "../ui/EmojiPalette";
 import { TouchJoystick } from "../ui/TouchJoystick";
-import { SitPrompt } from "../ui/SitPrompt";
+import { ActionButton } from "../ui/ActionButton";
 import { ViewToggle } from "../ui/ViewToggle";
 import { OverviewToggle } from "../ui/OverviewToggle";
 import { SoundToggle } from "../ui/SoundToggle";
@@ -64,7 +63,7 @@ export function WorldScene({ identity }: { identity: Identity }) {
   // movement path, no fork. `run` is OR-ed with the Shift key.
   const moveInput = useRef<MoveInput>({ forward: 0, right: 0, run: false }).current;
   // The local player's server-confirmed seat (schema-driven). Written by the
-  // remote-sync self listener; read by LocalPlayer (pose/anim) + the SitPrompt.
+  // remote-sync self listener; read by LocalPlayer (pose/anim) + the ActionButton.
   const seat = useRef<SeatState>({ index: -1 }).current;
 
   // Belt-and-braces: every fresh world (initial join AND each reconnect remount,
@@ -150,10 +149,9 @@ export function WorldScene({ identity }: { identity: Identity }) {
       <OverviewToggle onToggle={() => toggleOverview()} />
       {/* TTS 🔊/🔇 mute toggle — every device (design 23). */}
       <SoundToggle />
-      {/* Sit/stand prompt: desktop hint + touch button + occupied-seat notice. */}
-      <SitPrompt pose={pose} seat={seat} />
-      {/* AI 조교 talk prompt + private side-chat panel (design 31). */}
-      <NpcPrompt pose={pose} />
+      {/* E / F and the context button: sit, stand, or talk to an AI 조교 (Task 10). */}
+      <ActionButton pose={pose} seat={seat} />
+      {/* AI 조교 private side-chat panel (design 31). */}
       <NpcChatPanel />
       {/* Movement control — touch devices only: the analog joystick in every view
           (first-person strafes camera-relative). Keyboard stays active regardless. */}

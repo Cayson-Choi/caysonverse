@@ -5,7 +5,7 @@
  * accent hue, and a glowing visor + halo antenna (npcLook.ts). Looping Idle +
  * the shared "AI 조교" badge nametag. Solidity comes from the shared map
  * obstacle (design 33), not from this component; the interaction layer
- * (NpcPrompt / NpcChatPanel) lives in the DOM overlay.
+ * (ActionButton / NpcChatPanel) lives in the DOM overlay.
  */
 
 import { useEffect, useMemo, useRef } from "react";

@@ -1,0 +1,99 @@
+/* Context action button (Task 10): sit / stand / talk to an AI 조교, shown only
+   when one of them applies. Never takes focus (see ActionButton.tsx). */
+
+/* Desktop: a small pill at the bottom right, left of the 🔊 chip (right 16, bottom
+   76, 48 square) so it shares its row, clears the emoji row (bottom 24..64), the
+   👁 / 🗺 stack above (bottom 190+) and the 조교 side panel (bottom 132+). */
+.cv-action-btn {
+  position: fixed;
+  right: 72px;
+  bottom: 80px;
+  z-index: 25;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 14px;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  white-space: nowrap;
+  color: #f2eeff;
+  background: rgba(18, 14, 36, 0.72);
+  border: 1px solid rgba(150, 130, 220, 0.35);
+  border-radius: 12px;
+  backdrop-filter: blur(6px);
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.cv-action-btn:hover {
+  background: rgba(28, 22, 54, 0.85);
+  border-color: rgba(170, 150, 255, 0.6);
+}
+
+.cv-action-btn:active {
+  background: rgba(96, 74, 166, 0.72);
+}
+
+.cv-action-btn kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  color: #1a1230;
+  background: #d9cfff;
+  border-radius: 6px;
+  box-shadow: 0 1px 0 rgba(90, 70, 160, 0.6);
+}
+
+/* Touch: a 60 px circle (icon over a small label) sitting directly above the jump
+   slot — the jump button is 72 px at the bottom-right edge (16 px inset), so this
+   one is centred over it (right = 16 + (72 − 60) / 2) with a 12 px gap (bottom =
+   16 + 72 + 12). >= 48 px target, >= 8 px gap (global constraints). Safe-area
+   aware. z-index 25 beats the stick zone (10) and the HUD (20+), so it takes its
+   own touch and nothing falls through to the canvas. */
+.cv-touch .cv-action-btn {
+  right: 22px;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 100px);
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+  width: 60px;
+  height: 60px;
+  padding: 0;
+  border-radius: 50%;
+  background: rgba(96, 74, 166, 0.78);
+  border: 1px solid rgba(170, 150, 255, 0.6);
+  touch-action: manipulation;
+}
+
+.cv-touch .cv-action-btn:active {
+  background: rgba(120, 96, 200, 0.9);
+}
+
+.cv-action-icon {
+  font-size: 22px;
+  line-height: 1;
+}
+
+.cv-touch .cv-action-text {
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+}
+
+/* Chat input focused (soft keyboard up): hide, so the keyboard-lifted input bar can
+   never land on it (design 22 — same dodge as the emoji palette / toggles). */
+.cv-touch.cv-chat-focus .cv-action-btn {
+  display: none;
+}

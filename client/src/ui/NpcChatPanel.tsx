@@ -4,7 +4,7 @@
  * lower ~44vh, so the 3D NPC stays visible in the top half; while it is open a
  * `cv-npc-open` root class hides the world chat bar, emoji palette, movement
  * zone and toggles (npc.css) so only the NPC and the sheet remain. Visible only
- * to this player. Esc or ✕ closes (walking away also closes it — NpcPrompt).
+ * to this player. Esc or ✕ closes (walking away also closes it — ActionButton).
  * While the input is focused the shared uiCapture flag freezes movement keys.
  */
 
