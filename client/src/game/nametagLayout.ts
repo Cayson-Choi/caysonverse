@@ -77,6 +77,47 @@ export function stepOpacity(
 }
 
 /**
+ * CSS pixels that one metre of height spans at view depth `depthM`, for a camera with
+ * vertical field of view `fovRad` on a canvas `viewportHpx` tall — the factor that turns
+ * a tag's world height into its screen height, and (inverted) a stacking lift in px into
+ * metres. 0 for a degenerate camera or viewport, so callers can guard on it.
+ */
+export function pixelsPerMetre(depthM: number, fovRad: number, viewportHpx: number): number {
+  const d = Math.max(depthM, MIN_DIST_M);
+  const px = viewportHpx / (2 * d * Math.tan(fovRad / 2));
+  return px > 0 && Number.isFinite(px) ? px : 0;
+}
+
+/**
+ * Project the world point (x, y, z) through `m` — the camera's projection × view matrix
+ * (`elements`, column-major) — into normalized device coordinates, written to `out`
+ * (x right, y up, both −1..1 across the screen). Returns whether the point is in front of
+ * the camera (between its near and far planes) and within `margin` of the screen — e.g.
+ * 0.1 admits points up to 10 % of the half-screen outside it, so a tag hugging the edge
+ * does not blink out. `out` is written only on a true return. Allocation-free.
+ */
+export function projectPoint(
+  m: ArrayLike<number>,
+  x: number,
+  y: number,
+  z: number,
+  margin: number,
+  out: { x: number; y: number },
+): boolean {
+  const cw = m[3] * x + m[7] * y + m[11] * z + m[15];
+  if (!(cw > 0)) return false;
+  const cz = m[2] * x + m[6] * y + m[10] * z + m[14];
+  if (cz < -cw || cz > cw) return false;
+  const nx = (m[0] * x + m[4] * y + m[8] * z + m[12]) / cw;
+  const ny = (m[1] * x + m[5] * y + m[9] * z + m[13]) / cw;
+  const limit = 1 + margin;
+  if (nx < -limit || nx > limit || ny < -limit || ny > limit) return false;
+  out.x = nx;
+  out.y = ny;
+  return true;
+}
+
+/**
  * Depth (m) of the world point (x, y, z) along the camera's forward axis, given the
  * camera's `matrixWorld.elements` (column-major; camera looks down its local -Z, so
  * forward = -column 2). Negative behind the camera. This is the number a perspective

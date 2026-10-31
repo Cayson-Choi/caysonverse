@@ -35,10 +35,12 @@ const FONT = `500 ${FONT_SIZE}px system-ui, -apple-system, "Segoe UI", "Malgun G
 
 export interface BubbleSprite {
   sprite: Sprite;
+  /** World height (m) of the bubble, so its owner can seat its bottom edge anywhere. */
+  heightM: number;
   dispose(): void;
 }
 
-/** Build a bubble sprite for `text`, positioned above the avatar's nametag. */
+/** Build a bubble sprite for `text`, initially positioned at BUBBLE_BASE_HEIGHT. */
 export function createBubbleSprite(text: string): BubbleSprite {
   const measureCtx = canvas2d(document.createElement("canvas"));
   measureCtx.font = FONT;
@@ -72,11 +74,13 @@ export function createBubbleSprite(text: string): BubbleSprite {
   const heightM = cssHeight * WORLD_PER_PX;
   const texture = canvasTexture(canvas);
   const sprite = billboardSprite(texture, cssWidth / cssHeight, heightM, 1000);
-  // Anchor the bubble's bottom edge at BUBBLE_BASE_HEIGHT (sprite is centred).
+  // Anchor the bubble's bottom edge at BUBBLE_BASE_HEIGHT (sprite is centred). Its owner
+  // (useSpeechBubble) re-seats it every frame on top of the avatar's nametag.
   sprite.position.set(0, BUBBLE_BASE_HEIGHT + heightM / 2, 0);
 
   return {
     sprite,
+    heightM,
     dispose() {
       texture.dispose();
       (sprite.material as SpriteMaterial).dispose();

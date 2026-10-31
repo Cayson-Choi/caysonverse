@@ -12,6 +12,7 @@ import { NpcChatPanel } from "../ui/NpcChatPanel";
 import { CameraRig } from "./CameraRig";
 import { OverviewMarker } from "./OverviewMarker";
 import { ClickMarker } from "./ClickMarker";
+import { NametagSystem } from "./NametagSystem";
 import { Chat } from "../ui/Chat";
 import { EmojiPalette } from "../ui/EmojiPalette";
 import { TouchJoystick } from "../ui/TouchJoystick";
@@ -147,6 +148,9 @@ export function WorldScene({ identity }: { identity: Identity }) {
           </Suspense>
           <CameraRig pose={pose} orbit={orbit} seat={seat} />
         </KeyboardControls>
+        {/* Name tags (Task 14): which are shown, their stacking, fade, size and the
+            speech-bubble anchor. Drives the tags the avatars register; draws nothing. */}
+        <NametagSystem />
       </Canvas>
       <LoadingOverlay />
       <Banner />

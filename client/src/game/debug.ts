@@ -7,6 +7,7 @@ import { jumpRegistry } from "./jump";
 import { typingRegistry } from "./typing";
 import { viewState, type ViewState } from "./viewState";
 import { remoteGaitProbe, type Gait } from "./gait";
+import { getNametagCostMs, nametagProbe } from "./labelRegistry";
 
 /** Non-consented close code (MAY_TRY_RECONNECT) used by the dev drop hook. */
 const DEV_DROP_CODE = 4010;
@@ -44,6 +45,30 @@ export interface BubbleView {
 export interface EmojiView {
   sid: string;
   index: number;
+}
+
+/** Shape of one name tag in the dev/E2E hook. */
+export interface NametagView {
+  /** The owner's session id (an AI 조교 is `npc:<id>`). */
+  id: string;
+  /** Whether the selection (nearest 15 + speakers + pinned) currently wants this tag shown. */
+  selected: boolean;
+  /** Current opacity 0..1 (chasing its target, so it eases rather than jumps). */
+  opacity: number;
+  /** Whether a wall is between the camera and this tag (it is dimmed to 35 %). */
+  occluded: boolean;
+  /** The blue speaking highlight is on. */
+  highlight: boolean;
+  /** The trailing typing "…" is on. */
+  typing: boolean;
+  /** Stacking lift applied to the tag (m). */
+  liftM: number;
+  /** Height (m above the avatar) of the tag's top edge. */
+  tagTopM: number;
+  /** Height (m above the avatar) of the bottom edge of the avatar's speech bubble. */
+  bubbleM: number;
+  /** Projected text height (CSS px) — 12–16 for a visible tag. */
+  textPx: number;
 }
 
 /** Shape of one in-flight jump in the dev/E2E hook. */
@@ -99,6 +124,14 @@ declare global {
       /** Session ids of every OTHER player whose typing "…" is currently up. */
       getTyping: () => string[];
       /**
+       * Every name tag the NametagSystem manages (players by session id, AI 조교 as
+       * `npc:<id>`): selected?, current opacity, occluded?, plus the highlight / typing
+       * looks, the stacking lift, the tag's top edge and the speech bubble's anchor height.
+       */
+      getNametags: () => NametagView[];
+      /** Average ms the NametagSystem's frame took over the last 120 frames (0 before any). */
+      getNametagCostMs: () => number;
+      /**
        * Force a TRANSIENT connection drop (dev/E2E only) by closing the
        * transport with a non-consented code — the server holds the seat
        * (allowReconnection) and the resilience driver should re-establish the
@@ -150,6 +183,22 @@ export function installDebugHook(
         .map((j) => ({ sid: j.sid, seq: j.seq, elapsedMs: now - j.startedAt }));
     },
     getTyping: () => typingRegistry.snapshot(performance.now()),
+    getNametags: () =>
+      // Field by field: the probe object is the system's live per-tag state (it also holds
+      // the avatar's scene nodes), which must not leak into a serialized E2E result.
+      Array.from(nametagProbe, ([id, t]) => ({
+        id,
+        selected: t.selected,
+        opacity: t.opacity,
+        occluded: t.occluded,
+        highlight: t.highlight,
+        typing: t.typing,
+        liftM: t.liftM,
+        tagTopM: t.tagTopM,
+        bubbleM: t.bubbleM,
+        textPx: t.textPx,
+      })),
+    getNametagCostMs: () => getNametagCostMs(),
     dropConnection: () => {
       const room = getRoom();
       if (!room) return false;

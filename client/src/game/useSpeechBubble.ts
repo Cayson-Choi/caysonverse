@@ -8,6 +8,11 @@
  * for free and is removed when the avatar unmounts. The registry is read every
  * frame (a cheap Map lookup), but a canvas is (re)rasterized ONLY when the
  * registry seq for this sid changes — never per frame.
+ *
+ * Height: the bubble's bottom edge sits at `anchor.y` (metres above the avatar's
+ * group), re-read every frame — the NametagSystem keeps it just above the avatar's
+ * nametag, however tall or lifted that is (Task 14). Without an anchor (the local
+ * player, who has no tag) it sits at BUBBLE_BASE_HEIGHT.
  */
 
 import { useEffect, useRef, type RefObject } from "react";
@@ -15,8 +20,13 @@ import { useFrame } from "@react-three/fiber";
 import type { Group } from "three";
 import { bubbleRegistry } from "./bubbleRegistry";
 import { createBubbleSprite, type BubbleSprite } from "./bubbleSprite";
+import { BUBBLE_BASE_HEIGHT } from "./constants";
 
-export function useSpeechBubble(sessionId: string, groupRef: RefObject<Group | null>): void {
+export function useSpeechBubble(
+  sessionId: string,
+  groupRef: RefObject<Group | null>,
+  anchor?: { y: number },
+): void {
   const stateRef = useRef<{ seq: number; bubble: BubbleSprite | null }>({ seq: -1, bubble: null });
 
   function detach(): void {
@@ -48,6 +58,8 @@ export function useSpeechBubble(sessionId: string, groupRef: RefObject<Group | n
       s.bubble = bubble;
       s.seq = entry.seq;
     }
+    // Sprites are centre-origin: the bottom edge at anchor.y puts the centre half a bubble higher.
+    s.bubble.sprite.position.y = (anchor?.y ?? BUBBLE_BASE_HEIGHT) + s.bubble.heightM / 2;
   });
 
   useEffect(() => {

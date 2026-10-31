@@ -7,12 +7,11 @@ import {
   LoopOnce,
   type AnimationAction,
   type Material,
-  type PerspectiveCamera,
 } from "three";
 import { cloneTinted } from "./avatar";
 import { BlobShadow } from "./BlobShadow";
-import { createNametag, type Nametag } from "./nametag";
-import { distanceFade, nametagWorldHeight, stepOpacity, viewDepth } from "./nametagLayout";
+import { createNametag } from "./nametag";
+import { registerLabel } from "./labelRegistry";
 import { useSpeechBubble } from "./useSpeechBubble";
 import { useEmoji } from "./useEmoji";
 import { getRemoteRecord } from "./remoteStore";
@@ -35,9 +34,9 @@ import {
   ANIM_FADE,
   CHARACTERS,
   CLIP,
+  BUBBLE_BASE_HEIGHT,
   CROWN_MODEL,
   MODEL_FACING_OFFSET,
-  NAMETAG_HEIGHT,
   RENDER_DELAY_MS,
 } from "./constants";
 
@@ -96,9 +95,14 @@ export function RemotePlayer({
 
   const groupRef = useRef<Group>(null);
 
+  // Where the bottom edge of this avatar's speech bubble sits (m above the group): the
+  // NametagSystem rewrites it every frame so the bubble rests just above the nametag,
+  // wherever that is (stacked, lifted by a jump, grown at distance).
+  const bubbleAnchor = useRef({ y: BUBBLE_BASE_HEIGHT }).current;
+
   // Speech bubble above this avatar, driven by the chat broadcast. Cleaned up
   // with the avatar when it unmounts (leaving player) — no leaked sprites.
-  useSpeechBubble(sessionId, groupRef);
+  useSpeechBubble(sessionId, groupRef, bubbleAnchor);
   // Emoji reaction above this avatar, driven by the emoji broadcast. Same
   // cleanup-with-avatar discipline as the speech bubble.
   useEmoji(sessionId, groupRef);
@@ -139,11 +143,6 @@ export function RemotePlayer({
   const framesSinceRef = useRef(0); // frames since last mixer.update
   const accDeltaRef = useRef(0); // accumulated delta (s) since last mixer.update
   const prevConnectedRef = useRef(true);
-  // The nametag (created and released by the effect below) and its current opacity,
-  // chased toward the distance fade every frame: it fades in when the avatar appears,
-  // and out past 25 m — never pops.
-  const nametagRef = useRef<Nametag | null>(null);
-  const tagOpacityRef = useRef(0);
 
   // Bind idle/walk/sit actions and settle the resting pose (mixer stays paused
   // afterward — an idle/seated avatar is a frozen pose, per the v1 mixer rules).
@@ -208,21 +207,29 @@ export function RemotePlayer({
   // The nametag lives exactly as long as this effect (a create/release pair, so React's
   // dev double-run of effects and renders cannot leak a texture reference): the sprite is
   // parented to the avatar group — it rides the jump lift — and starts invisible so it
-  // fades in rather than flashing at full opacity.
+  // fades in rather than flashing at full opacity. The NametagSystem owns it from the
+  // registration on: whether it is shown (nearest 15 / speaking / the teacher, pinned),
+  // its fade, size, stacking, typing "…" and the bubble anchor. The teacher's tag is
+  // pinned: everyone sees the 👑 whenever the teacher is on screen and in range.
   useEffect(() => {
     const group = groupRef.current;
     if (!group) return;
     const tag = createNametag(nickname, isTeacher ? "teacher" : "none");
     tag.setOpacity(0);
-    tagOpacityRef.current = 0;
     group.add(tag.sprite);
-    nametagRef.current = tag;
+    const unregister = registerLabel({
+      id: sessionId,
+      anchor: group,
+      tag,
+      pinned: isTeacher,
+      bubbleAnchor,
+    });
     return () => {
-      nametagRef.current = null;
+      unregister();
       group.remove(tag.sprite);
       tag.dispose();
     };
-  }, [nickname, isTeacher]);
+  }, [sessionId, nickname, isTeacher, bubbleAnchor]);
 
   // Dispose per-avatar GPU resources on unmount. Cloned geometry/textures stay
   // shared with the cached GLTF and are intentionally NOT disposed here.
@@ -353,31 +360,9 @@ export function RemotePlayer({
       prevConnectedRef.current = rec.connected;
     }
 
-    // 6) Nametag: fades out between 25 and 30 m from the camera, and its size is chosen
-    //    each frame so the text reads 12–16 px at any distance. The tag is a child of this
-    //    group, so it rides the jump lift with the avatar. camDist is reused below for the
-    //    mixer throttle. Allocation-free: scalar maths and in-place writes only.
+    // 6) Camera distance for the mixer throttle below. (The nametag — fade, size, stacking,
+    //    typing — is the NametagSystem's job; this avatar only registered it.)
     const camDist = state.camera.position.distanceTo(group.position);
-    const nametag = nametagRef.current;
-    if (nametag) {
-      const tagOpacity = stepOpacity(tagOpacityRef.current, distanceFade(camDist), delta);
-      tagOpacityRef.current = tagOpacity;
-      nametag.setOpacity(tagOpacity);
-      if (tagOpacity > 0.01) {
-        const cam = state.camera as PerspectiveCamera;
-        // Size from the depth along the view axis (what the projection divides by),
-        // measured at the tag's own height — the straight-line distance would over-size
-        // tags near the screen edge.
-        const depth = viewDepth(
-          cam.matrixWorld.elements,
-          group.position.x,
-          group.position.y + NAMETAG_HEIGHT,
-          group.position.z,
-        );
-        nametag.setHeight(nametagWorldHeight(depth, (cam.fov * Math.PI) / 180, state.size.height));
-        nametag.setTyping(typingRegistry.isTyping(sessionId, nowMs));
-      }
-    }
 
     // 7) Mixer discipline: paused while idle/seated-settled; every-frame during a
     //    crossfade OR a one-shot sit/stand/jump clip; distance-throttled while walking/running.

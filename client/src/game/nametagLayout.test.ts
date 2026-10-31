@@ -9,7 +9,15 @@ import {
   NAMETAG_TEXT_FRACTION,
   NAMETAG_TEXT_PX,
 } from "./constants";
-import { distanceFade, nametagWorldHeight, stepOpacity, viewDepth } from "./nametagLayout";
+import { Matrix4, PerspectiveCamera, Vector3 } from "three";
+import {
+  distanceFade,
+  nametagWorldHeight,
+  pixelsPerMetre,
+  projectPoint,
+  stepOpacity,
+  viewDepth,
+} from "./nametagLayout";
 
 const FOV = (55 * Math.PI) / 180; // WorldScene camera vertical fov
 const textPx = (h: number, d: number, vpH: number) =>
@@ -191,5 +199,68 @@ describe("viewDepth", () => {
     const m = [0, 0, 1, 0, 0, 1, 0, 0, -1, 0, 0, 0, 0, 0, 0, 1];
     expect(viewDepth(m, 8, 0, 0)).toBeCloseTo(8, 9);
     expect(viewDepth(m, 0, 0, 8)).toBeCloseTo(0, 9);
+  });
+});
+
+describe("pixelsPerMetre", () => {
+  it("is the inverse of the pinhole projection: vpH / (2 d tan(fov/2))", () => {
+    expect(pixelsPerMetre(10, FOV, 800)).toBeCloseTo(800 / (2 * 10 * Math.tan(FOV / 2)), 9);
+  });
+
+  it("halves when the distance doubles", () => {
+    expect(pixelsPerMetre(20, FOV, 800)).toBeCloseTo(pixelsPerMetre(10, FOV, 800) / 2, 9);
+  });
+
+  it("turns a tag height into the same px nametagWorldHeight aims for", () => {
+    const d = 8;
+    const h = nametagWorldHeight(d, FOV, 800);
+    expect(h * pixelsPerMetre(d, FOV, 800) * NAMETAG_TEXT_FRACTION).toBeGreaterThanOrEqual(NAMETAG_TEXT_PX.min - 1e-9);
+  });
+
+  it("is 0 for a degenerate viewport or fov (callers guard on it)", () => {
+    expect(pixelsPerMetre(10, FOV, 0)).toBe(0);
+    expect(pixelsPerMetre(10, 0, 800)).toBe(0);
+    expect(pixelsPerMetre(10, NaN, 800)).toBe(0);
+  });
+});
+
+describe("projectPoint", () => {
+  // A 55 deg camera at (0, 3, 10) looking down -Z (three"s default), on a 4:3 canvas.
+  const camera = new PerspectiveCamera(55, 4 / 3, 0.1, 200);
+  camera.position.set(0, 3, 10);
+  camera.updateMatrixWorld();
+  const m = new Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse).elements;
+  const out = { x: NaN, y: NaN };
+
+  it("puts a point dead ahead at the screen centre and agrees with three", () => {
+    expect(projectPoint(m, 0, 3, 0, 0, out)).toBe(true);
+    expect(out.x).toBeCloseTo(0, 9);
+    expect(out.y).toBeCloseTo(0, 9);
+    const ref = new Vector3(2, 4, -5).project(camera);
+    expect(projectPoint(m, 2, 4, -5, 0, out)).toBe(true);
+    expect(out.x).toBeCloseTo(ref.x, 9);
+    expect(out.y).toBeCloseTo(ref.y, 9);
+  });
+
+  it("is false behind the camera, past the far plane and off to the side", () => {
+    expect(projectPoint(m, 0, 3, 20, 0, out)).toBe(false); // behind
+    expect(projectPoint(m, 0, 3, -250, 0, out)).toBe(false); // beyond far = 200 (camera is at z = 10)
+    expect(projectPoint(m, 50, 3, 0, 0, out)).toBe(false); // far to the right
+  });
+
+  it("a margin admits a point just outside the screen edge, and only then", () => {
+    // 9 m ahead of the camera at x chosen so ndc.x is about 1.05.
+    const halfW = 9 * Math.tan((55 * Math.PI) / 360) * (4 / 3);
+    const x = halfW * 1.05;
+    expect(projectPoint(m, x, 3, 1, 0, out)).toBe(false);
+    expect(projectPoint(m, x, 3, 1, 0.1, out)).toBe(true);
+    expect(out.x).toBeCloseTo(1.05, 6);
+  });
+
+  it("leaves out untouched when it returns false", () => {
+    out.x = 7;
+    out.y = 8;
+    projectPoint(m, 0, 3, 20, 0, out);
+    expect([out.x, out.y]).toEqual([7, 8]);
   });
 });

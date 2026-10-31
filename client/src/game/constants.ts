@@ -438,15 +438,53 @@ export const NAMETAG_FONT_PX = 48;
 export const NAMETAG_PAD_Y_PX = 14;
 export const NAMETAG_TEXT_FRACTION = NAMETAG_FONT_PX / (NAMETAG_FONT_PX + 2 * NAMETAG_PAD_Y_PX);
 
-/** Height (m) of the nametag sprite above the avatar's feet. */
+/**
+ * Height (m) of the nametag sprite's CENTRE above the avatar's feet, at rest (no
+ * overlap lift). The tag is NAMETAG_BASE_HEIGHT_M (0.30 m) tall up close but is grown
+ * with distance to keep its text 12 px: about 0.8 m tall at 30 m on a 720 px-tall
+ * canvas, and about 1.6 m on a 360 px-tall landscape phone. So its vertical span is
+ * roughly 1.95–2.25 m up close, 1.7–2.5 m at 30 m on a desktop-sized canvas and
+ * 1.3–2.9 m at 30 m on a short phone — higher still while the tag is lifted
+ * (DECLUTTER). The top edge can therefore pass the old fixed 2.5 m bubble anchor, so
+ * nothing may be anchored to a fixed height above the tag: the NametagSystem publishes
+ * each avatar's bubble anchor (LabelEntry.bubbleAnchor) from the tag's real top edge
+ * every frame.
+ */
 export const NAMETAG_HEIGHT = 2.1;
 
 /**
- * World height (m) at which a speech bubble's BOTTOM edge sits — above the
- * nametag (which spans roughly 1.9–2.3 m). Sprites are centre-origin, so the
- * bubble module adds half its own height to this anchor when positioning.
+ * World height (m) at which a speech bubble's BOTTOM edge sits when there is no
+ * nametag to sit on: the local player (whose own tag is not drawn) and an avatar
+ * before the NametagSystem has published its anchor. Sprites are centre-origin, so
+ * the bubble module adds half its own height to the anchor when positioning. With a
+ * tag the bubble sits just above the tag's top edge instead (BUBBLE_GAP_M).
  */
 export const BUBBLE_BASE_HEIGHT = 2.5;
+
+/**
+ * Name tag selection and layout (controls-ux Task 14, spec §6): which tags are drawn
+ * (the nearest NAMETAG_CAP on screen, plus everyone speaking, plus the pinned teacher
+ * and AI assistants), how overlapping ones stack, and how a wall in the way dims them.
+ */
+export const NAMETAG_CAP = 15;
+/** Selection and stacking are recomputed at 5 Hz, not every frame. */
+export const NAMETAG_SELECT_INTERVAL_MS = 200;
+/** The wall-occlusion ray test visits this many tags per frame (round-robin). */
+export const NAMETAG_OCCLUSION_PER_FRAME = 8;
+/** Opacity factor of a tag whose line of sight to the camera crosses a wall. */
+export const NAMETAG_OCCLUDED_OPACITY = 0.35;
+/** How long a tag's blue highlight border stays after its owner speaks. */
+export const NAMETAG_HIGHLIGHT_MS = 1000;
+/** Overlap stacking: each tag lifts at most maxSteps times, (its height + gapPx) screen px each. */
+export const DECLUTTER = { maxSteps: 3, gapPx: 2 } as const;
+/**
+ * How fast a tag's lift chases its stacking target, per second (exponential
+ * smoothing): a stack settles in about a quarter of a second instead of snapping
+ * whenever the 5 Hz layout changes.
+ */
+export const NAMETAG_LIFT_RATE = 12;
+/** Clear space (m) between the top of a tag and the bottom of its speech bubble. */
+export const BUBBLE_GAP_M = 0.06;
 
 /** World height (m) of the emoji-reaction sprite (a single glyph, no backdrop). */
 export const EMOJI_SPRITE_HEIGHT = 0.5;
