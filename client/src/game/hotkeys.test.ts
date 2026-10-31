@@ -73,6 +73,45 @@ describe("resolveHotkey — key table", () => {
     expect(resolveHotkey(kd("Escape", { isComposing: true }), true)).toBeNull();
   });
 
+  it("ignores browser/OS chords: Ctrl, Meta or Alt held, and Shift+Tab", () => {
+    // Ctrl/Cmd+1..6 switch browser tabs, Ctrl+R reloads, Ctrl+F finds, Ctrl/Cmd+V pastes,
+    // Alt+Tab switches windows, Shift+Tab walks focus backwards — none may fire an action.
+    const chords: [string, Partial<KeyLike>][] = [
+      ["KeyR", { ctrlKey: true }],
+      ["KeyF", { ctrlKey: true }],
+      ["Digit1", { metaKey: true }],
+      ["Digit3", { ctrlKey: true }],
+      ["Tab", { altKey: true }],
+      ["Tab", { shiftKey: true }],
+      ["Space", { ctrlKey: true }],
+      ["Slash", { ctrlKey: true }],
+      ["Enter", { altKey: true }],
+      ["KeyV", { metaKey: true }],
+      ["KeyM", { metaKey: true }],
+      ["Enter", { ctrlKey: true }],
+      ["Space", { altKey: true }],
+      ["Escape", { ctrlKey: true }],
+    ];
+    for (const [code, mods] of chords) {
+      expect(resolveHotkey(kd(code, mods), false), `${code} ${JSON.stringify(mods)}`).toBeNull();
+      expect(resolveHotkey(kd(code, mods), true), `${code} ${JSON.stringify(mods)} captured`).toBeNull();
+    }
+  });
+
+  it("Shift alone does not block a hotkey (only Shift+Tab is excluded)", () => {
+    // Shift is the run key; Shift+/ is `?` on a US layout but still the Slash key.
+    expect(resolveHotkey(kd("Space", { shiftKey: true }), false)).toEqual({ type: "jump" });
+    expect(resolveHotkey(kd("Slash", { shiftKey: true }), false)).toEqual({ type: "openChat" });
+    expect(resolveHotkey(kd("KeyE", { shiftKey: true }), false)).toEqual({ type: "interact" });
+    expect(resolveHotkey(kd("Tab", { shiftKey: false }), false)).toEqual({ type: "roster", show: true });
+  });
+
+  it("an explicit false for every modifier is the same as leaving them out", () => {
+    const none = { ctrlKey: false, metaKey: false, altKey: false, shiftKey: false };
+    expect(resolveHotkey(kd("Space", none), false)).toEqual({ type: "jump" });
+    expect(resolveHotkey(kd("Tab", none), false)).toEqual({ type: "roster", show: true });
+  });
+
   it("Tab keyup hides the roster even while captured", () => {
     expect(resolveHotkey(ku("Tab"), false)).toEqual({ type: "roster", show: false });
     expect(resolveHotkey(ku("Tab"), true)).toEqual({ type: "roster", show: false });
@@ -81,6 +120,15 @@ describe("resolveHotkey — key table", () => {
       type: "roster",
       show: false,
     });
+  });
+
+  it("Tab keyup hides the roster whatever modifiers are held at release", () => {
+    // Alt+Tab / Shift released before Tab, Ctrl held, etc. — a stuck roster is worse
+    // than an extra hide, so the release path ignores modifiers entirely.
+    for (const mods of [{ altKey: true }, { ctrlKey: true }, { metaKey: true }, { shiftKey: true }]) {
+      expect(resolveHotkey(ku("Tab", mods), false), JSON.stringify(mods)).toEqual({ type: "roster", show: false });
+      expect(resolveHotkey(ku("Tab", mods), true), JSON.stringify(mods)).toEqual({ type: "roster", show: false });
+    }
   });
 
   it("keyup of every other key is null", () => {
@@ -162,7 +210,7 @@ describe("onHotkey — one shared window listener", () => {
   function press(
     type: "keydown" | "keyup",
     code: string,
-    o: { repeat?: boolean; isComposing?: boolean } = {},
+    o: Partial<Pick<KeyLike, "repeat" | "isComposing" | "ctrlKey" | "metaKey" | "altKey" | "shiftKey">> = {},
   ): Event {
     const ev = Object.assign(new Event(type, { cancelable: true }), {
       code,
@@ -303,6 +351,41 @@ describe("onHotkey — one shared window listener", () => {
       { type: "roster", show: false },
     ]);
     off();
+  });
+
+  it("browser/OS chords produce zero deliveries and zero preventDefault calls", () => {
+    const fn = vi.fn();
+    sub(fn);
+    // Each of these would be cancelled (Space, Enter, Slash, Tab) or delivered (the rest)
+    // if the modifier were ignored: tab switching, reload, find, window switching.
+    const chords: [string, Parameters<typeof press>[2]][] = [
+      ["KeyR", { ctrlKey: true }],
+      ["KeyF", { ctrlKey: true }],
+      ["Digit1", { metaKey: true }],
+      ["Digit3", { ctrlKey: true }],
+      ["Tab", { altKey: true }],
+      ["Tab", { shiftKey: true }],
+      ["Space", { ctrlKey: true }],
+      ["Slash", { ctrlKey: true }],
+      ["Enter", { altKey: true }],
+      ["Enter", { ctrlKey: true }],
+      ["Space", { altKey: true }],
+    ];
+    for (const [code, mods] of chords) {
+      const ev = press("keydown", code, mods);
+      expect(ev.defaultPrevented, `${code} ${JSON.stringify(mods)}`).toBe(false);
+    }
+    expect(fn).not.toHaveBeenCalled();
+  });
+
+  it("Tab keyup with Alt held still reaches subscribers as a roster hide", () => {
+    const fn = vi.fn();
+    sub(fn);
+
+    press("keyup", "Tab", { altKey: true });
+
+    expect(fn).toHaveBeenCalledTimes(1);
+    expect(fn.mock.calls[0][0]).toEqual({ type: "roster", show: false });
   });
 
   it("ignores auto-repeat for subscribers", () => {

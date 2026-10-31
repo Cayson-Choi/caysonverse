@@ -37,6 +37,11 @@ export interface KeyLike {
   repeat: boolean;
   isComposing: boolean;
   defaultPrevented: boolean;
+  /** Modifier state — optional so plain test objects stay valid; a real KeyboardEvent has all four. */
+  ctrlKey?: boolean;
+  metaKey?: boolean;
+  altKey?: boolean;
+  shiftKey?: boolean;
 }
 
 /** `Digit1`..`Digit6` (the six-emoji palette); capture group = the digit. */
@@ -50,6 +55,9 @@ const EMOJI_CODE = /^Digit([1-6])$/;
  * — e.g. ChatInput's own Enter/Esc), during IME composition, on auto-repeat (one
  * action per physical press), and while a DOM field owns the keyboard. Escape alone
  * passes the capture rule so the 조교 대화창 can still be closed while typing in it.
+ * Ctrl / Cmd / Alt chords are never ours (Ctrl+1..6 switches browser tabs, Ctrl+R
+ * reloads, Alt+Tab switches windows, ...), and neither is Shift+Tab (focus walks
+ * backwards); Shift on its own is the run key and blocks nothing else.
  * keyup only matters for Tab (roster hide) and is deliberately unconditional: the
  * list must never stay stuck open because the chat grabbed focus mid-hold.
  */
@@ -58,6 +66,8 @@ export function resolveHotkey(e: KeyLike, uiCaptured: boolean): HotkeyAction | n
     return e.code === "Tab" ? { type: "roster", show: false } : null;
   }
   if (e.defaultPrevented || e.isComposing || e.repeat) return null;
+  if (e.ctrlKey || e.metaKey || e.altKey) return null;
+  if (e.shiftKey && e.code === "Tab") return null;
   if (uiCaptured && e.code !== "Escape") return null;
 
   switch (e.code) {
