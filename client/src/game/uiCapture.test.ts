@@ -7,8 +7,8 @@ import {
 } from "./uiCapture";
 import type { MoveKeys } from "./input";
 
-const held: MoveKeys = { forward: true, backward: false, left: true, right: false };
-const none: MoveKeys = { forward: false, backward: false, left: false, right: false };
+const held: MoveKeys = { forward: true, backward: false, left: true, right: false, run: false };
+const none: MoveKeys = { forward: false, backward: false, left: false, right: false, run: false };
 
 describe("uiCaptured flag", () => {
   beforeEach(() => setUiCaptured(false));
@@ -30,8 +30,16 @@ describe("guardMoveKeys", () => {
     expect(guardMoveKeys(held, true)).toEqual(none);
   });
 
+  it("zeroes run too while captured — Shift held while typing never runs", () => {
+    expect(guardMoveKeys({ ...held, run: true }, true)).toEqual({ ...none, run: false });
+  });
+
   it("passes keys through untouched when the UI is not captured", () => {
     expect(guardMoveKeys(held, false)).toEqual(held);
+  });
+
+  it("passes run through when the UI is not captured", () => {
+    expect(guardMoveKeys({ ...held, run: true }, false)).toEqual({ ...held, run: true });
   });
 
   it("holds no latched state — flipping capture off restores the exact raw keys", () => {

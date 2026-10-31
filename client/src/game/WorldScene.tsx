@@ -30,7 +30,7 @@ import { resetViewMode, toggleViewMode, toggleOverview } from "./viewState";
 import { useAppStore } from "../stores/appStore";
 import { useViewStore } from "../stores/viewStore";
 import type { Identity } from "../stores/appStore";
-import type { Intent } from "./input";
+import type { MoveInput } from "./input";
 import type { Orbit, Pose, SeatState } from "./types";
 
 /** DOM loading overlay driven by three's loader progress (GLB fetch/parse). */
@@ -50,7 +50,7 @@ function LoadingOverlay() {
  * Canvas tree. Overview intentionally keeps the joystick (isFp is false there):
  * ov movement is screen-relative analog with no auto look-follow.
  */
-function TouchMoveControl({ moveInput }: { moveInput: Intent }) {
+function TouchMoveControl({ moveInput }: { moveInput: MoveInput }) {
   const isFp = useViewStore((s) => s.isFp);
   return isFp ? <TouchDpad moveInput={moveInput} /> : <TouchJoystick moveInput={moveInput} />;
 }
@@ -75,9 +75,10 @@ export function WorldScene({ identity }: { identity: Identity }) {
     pitch: CAMERA.pitch,
     distance: CAMERA.distance,
   }).current;
-  // Shared joystick movement intent (touch). Written by TouchJoystick, read by
-  // LocalPlayer and ADDED to the keyboard intent — one movement path, no fork.
-  const moveInput = useRef<Intent>({ forward: 0, right: 0 }).current;
+  // Shared touch movement input (joystick intent + run flag). Written by
+  // TouchJoystick, read by LocalPlayer and ADDED to the keyboard intent — one
+  // movement path, no fork. `run` is OR-ed with the Shift key.
+  const moveInput = useRef<MoveInput>({ forward: 0, right: 0, run: false }).current;
   // The local player's server-confirmed seat (schema-driven). Written by the
   // remote-sync self listener; read by LocalPlayer (pose/anim) + the SitPrompt.
   const seat = useRef<SeatState>({ index: -1 }).current;

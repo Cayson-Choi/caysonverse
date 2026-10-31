@@ -5,7 +5,7 @@ import {
   exceedsSnapDistance,
   type Snapshot,
 } from "./interpolation";
-import { MOVE_SPEED } from "@caysonverse/shared/constants";
+import { RUN_SPEED } from "@caysonverse/shared/constants";
 import {
   EXTRAPOLATE_MAX_MS,
   EXTRAPOLATE_SETTLE_MS,
@@ -72,8 +72,8 @@ describe("sample — clamp to oldest", () => {
 });
 
 describe("sample — extrapolation (loss-hiding that converges to the rest pose)", () => {
-  it("extrapolates at a real (sub-MOVE_SPEED) segment velocity within the cap", () => {
-    // 0.3m in x over 100ms => 3 m/s, BELOW MOVE_SPEED (4) => passes through unclamped.
+  it("extrapolates at a real (sub-RUN_SPEED) segment velocity within the cap", () => {
+    // 0.3m in x over 100ms => 3 m/s, BELOW RUN_SPEED (6.4) => passes through unclamped.
     const buf = [snap(0, 0, 0), snap(100, 0.3, 0)];
     // 100ms past the newest, inside the 250ms cap.
     const s = sample(buf, 200)!;
@@ -81,22 +81,30 @@ describe("sample — extrapolation (loss-hiding that converges to the rest pose)
     expect(s.speed).toBeCloseTo(3, 4);
   });
 
-  it("clamps a jitter-inflated segment velocity to MOVE_SPEED (never flings through walls)", () => {
+  it("dead-reckons a running remote at its real speed — a RUN_SPEED segment is NOT clamped to the walk speed", () => {
+    // 0.6m in x over 100ms => 6 m/s: a runner (above the 4 m/s walk speed, below RUN_SPEED).
+    const buf = [snap(0, 0, 0), snap(100, 0.6, 0)];
+    const s = sample(buf, 200)!;
+    expect(s.x).toBeCloseTo(0.6 + 0.006 * 100, 6); // 1.2 — NOT 0.6 + 0.004*100 = 1.0
+    expect(s.speed).toBeCloseTo(6, 4); // still reads above RUN_ON_SPEED (5.6) → run cycle
+  });
+
+  it("clamps a jitter-inflated segment velocity to RUN_SPEED (never flings through walls)", () => {
     // 0.4m received over 20ms READS as 20 m/s — receive-time burst, not real motion.
     const buf = [snap(0, 0, 0), snap(20, 0.4, 0)];
-    // 100ms past the newest: clamped v = MOVE_SPEED (4 m/s) = 0.004 m/ms.
+    // 100ms past the newest: clamped v = RUN_SPEED (6.4 m/s) = 0.0064 m/ms.
     const s = sample(buf, 120)!;
-    expect(s.x).toBeCloseTo(0.4 + 0.004 * 100, 6); // 0.8 — NOT 0.4 + 0.02*100 = 2.4
-    expect(s.speed).toBeCloseTo(MOVE_SPEED, 4);
-    // Overshoot at the cap is bounded by MOVE_SPEED * cap, not the inflated speed.
+    expect(s.x).toBeCloseTo(0.4 + 0.0064 * 100, 6); // 1.04 — NOT 0.4 + 0.02*100 = 2.4
+    expect(s.speed).toBeCloseTo(RUN_SPEED, 4);
+    // Overshoot at the cap is bounded by RUN_SPEED * cap, not the inflated speed.
     const atCap = sample(buf, 20 + EXTRAPOLATE_MAX_MS)!;
-    expect(atCap.x).toBeCloseTo(0.4 + (MOVE_SPEED / 1000) * EXTRAPOLATE_MAX_MS, 6); // 1.4
+    expect(atCap.x).toBeCloseTo(0.4 + (RUN_SPEED / 1000) * EXTRAPOLATE_MAX_MS, 6); // 2.0
   });
 
   it("eases back to the newest authoritative pose after the cap, then holds there", () => {
-    const buf = [snap(0, 0, 0), snap(100, 1, 0)]; // 10 m/s => clamped to MOVE_SPEED (4)
-    const vClampMs = MOVE_SPEED / 1000; // 0.004 m/ms
-    const overshootX = 1 + vClampMs * EXTRAPOLATE_MAX_MS; // 1 + 1.0 = 2.0 at the cap
+    const buf = [snap(0, 0, 0), snap(100, 1, 0)]; // 10 m/s => clamped to RUN_SPEED (6.4)
+    const vClampMs = RUN_SPEED / 1000; // 0.0064 m/ms
+    const overshootX = 1 + vClampMs * EXTRAPOLATE_MAX_MS; // 1 + 1.6 = 2.6 at the cap
     // Midway through the settle: partway back from the overshoot toward newest.x=1.
     const mid = sample(buf, 100 + EXTRAPOLATE_MAX_MS + EXTRAPOLATE_SETTLE_MS / 2)!;
     expect(mid.x).toBeCloseTo(overshootX + (1 - overshootX) * 0.5, 5);

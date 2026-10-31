@@ -9,7 +9,9 @@ import { useSpeechBubble } from "./useSpeechBubble";
 import { useEmoji } from "./useEmoji";
 import { getRemoteRecord } from "./remoteStore";
 import { sample, exceedsSnapDistance } from "./interpolation";
-import { nextWalking } from "./locomotion";
+import { nextGait } from "./locomotion";
+import { remoteGaitProbe } from "./gait";
+import type { Gait } from "./gait";
 import { decideMixerTick } from "./mixerThrottle";
 import {
   ANIM_FADE,
@@ -99,10 +101,12 @@ export function RemotePlayer({
   // Per-frame mutable state — refs, never React state.
   const idleAction = useRef<AnimationAction | null>(null);
   const walkAction = useRef<AnimationAction | null>(null);
+  const runAction = useRef<AnimationAction | null>(null);
   const sitDownAction = useRef<AnimationAction | null>(null);
   const sitIdleAction = useRef<AnimationAction | null>(null);
   const sitStandAction = useRef<AnimationAction | null>(null);
-  const walkingRef = useRef(false);
+  // Current gait (idle / walk / run), derived from interpolated speed only.
+  const gaitRef = useRef<Gait>("idle");
   const fadeRef = useRef(0); // remaining crossfade time (s); mixer ticks while > 0
   // Seating anim state machine: `up` = normal loco; `sitting`/`standing` are the
   // one-shot transient clips; `seated` is the held Sit_Chair_Idle pose.
@@ -123,6 +127,7 @@ export function RemotePlayer({
     };
     idleAction.current = bind(CLIP.idle);
     walkAction.current = bind(CLIP.walk);
+    runAction.current = bind(CLIP.run);
     sitDownAction.current = bind(CLIP.sitDown);
     sitIdleAction.current = bind(CLIP.sitIdle);
     sitStandAction.current = bind(CLIP.sitStand);
@@ -140,6 +145,26 @@ export function RemotePlayer({
       mixer.stopAllAction();
     };
   }, [mixer, animations, sessionId]);
+
+  // DEV-only E2E probe (window.__cv.getRemoteGaits): publish this avatar's gait,
+  // and drop the entry when it leaves. Dead code in production builds.
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    remoteGaitProbe.set(sessionId, "idle");
+    return () => {
+      remoteGaitProbe.delete(sessionId);
+    };
+  }, [sessionId]);
+
+  /** The looping action that belongs to a gait (null if the clip is missing). */
+  const gaitAction = (g: Gait): AnimationAction | null =>
+    g === "run" ? runAction.current : g === "walk" ? walkAction.current : idleAction.current;
+
+  /** Settle on a gait (the caller owns the crossfade) and mirror it to the DEV probe. */
+  const setGait = (g: Gait): void => {
+    gaitRef.current = g;
+    if (import.meta.env.DEV) remoteGaitProbe.set(sessionId, g);
+  };
 
   // Dispose per-avatar GPU resources on unmount. Cloned geometry/textures stay
   // shared with the cached GLTF and are intentionally NOT disposed here.
@@ -174,8 +199,8 @@ export function RemotePlayer({
     //    one-shot clips; the walk/idle machine is frozen while not `up`.
     const seated = rec.seatIndex >= 0;
     if (seated && seatModeRef.current === "up") {
-      (walkingRef.current ? walkAction.current : idleAction.current)?.fadeOut(ANIM_FADE);
-      walkingRef.current = false;
+      gaitAction(gaitRef.current)?.fadeOut(ANIM_FADE);
+      setGait("idle");
       seatTimerRef.current = playOnce(sitDownAction.current);
       seatModeRef.current = "sitting";
     } else if (!seated && (seatModeRef.current === "seated" || seatModeRef.current === "sitting")) {
@@ -199,23 +224,21 @@ export function RemotePlayer({
       if (seatTimerRef.current <= 0) {
         sitStandAction.current?.fadeOut(ANIM_FADE);
         idleAction.current?.reset().fadeIn(ANIM_FADE).play();
-        walkingRef.current = false;
+        setGait("idle");
         seatModeRef.current = "up";
         fadeRef.current = ANIM_FADE;
       }
     }
 
     // 4) Locomotion from interpolated speed — ONLY while standing (a seated avatar
-    //    must never show the walk cycle, even if a stray snapshot implies speed).
+    //    must never show the walk or run cycle, even if a stray snapshot implies speed).
     if (target && seatModeRef.current === "up") {
       const speed = snapped ? 0 : target.speed;
-      const walking = nextWalking(walkingRef.current, speed);
-      if (walking !== walkingRef.current) {
-        const from = walkingRef.current ? walkAction.current : idleAction.current;
-        const to = walking ? walkAction.current : idleAction.current;
-        from?.fadeOut(ANIM_FADE);
-        to?.reset().fadeIn(ANIM_FADE).play();
-        walkingRef.current = walking;
+      const gait = nextGait(gaitRef.current, speed);
+      if (gait !== gaitRef.current) {
+        gaitAction(gaitRef.current)?.fadeOut(ANIM_FADE);
+        gaitAction(gait)?.reset().fadeIn(ANIM_FADE).play();
+        setGait(gait);
         fadeRef.current = ANIM_FADE;
       }
     }
@@ -231,9 +254,9 @@ export function RemotePlayer({
     nametag.sprite.visible = camDist <= NAMETAG_MAX_DIST;
 
     // 7) Mixer discipline: paused while idle/seated-settled; every-frame during a
-    //    crossfade OR a one-shot sit/stand clip; distance-throttled while walking.
+    //    crossfade OR a one-shot sit/stand clip; distance-throttled while walking/running.
     const transient = seatModeRef.current === "sitting" || seatModeRef.current === "standing";
-    const active = walkingRef.current || fadeRef.current > 0 || transient;
+    const active = gaitRef.current !== "idle" || fadeRef.current > 0 || transient;
     if (active) {
       accDeltaRef.current += delta;
       framesSinceRef.current += 1;

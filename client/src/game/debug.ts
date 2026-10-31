@@ -4,6 +4,7 @@ import { getRoom, sendSit, sendStand } from "../net/connection";
 import { bubbleRegistry } from "./bubbleRegistry";
 import { emojiRegistry } from "./emojiRegistry";
 import { viewState, type ViewState } from "./viewState";
+import { remoteGaitProbe, type Gait } from "./gait";
 
 /** Non-consented close code (MAY_TRY_RECONNECT) used by the dev drop hook. */
 const DEV_DROP_CODE = 4010;
@@ -59,6 +60,17 @@ declare global {
        */
       getSelfVisible: () => boolean;
       /**
+       * The LOCAL avatar's current gait (idle / walk / run) — the animation the
+       * loco crossfade last settled on. Lets the run E2E assert the Running_A
+       * cycle without reading the three mixer.
+       */
+      getGait: () => Gait;
+      /**
+       * The gait each REMOTE avatar is showing, keyed by session id (derived from
+       * interpolated speed — never synced). A remote that is not mounted is absent.
+       */
+      getRemoteGaits: () => Record<string, Gait>;
+      /**
        * The live view state (mode / blend / fp yaw+pitch), read straight from the
        * module mutable — updated SYNCHRONOUSLY by the toggle + drag handlers, so
        * (unlike the rAF-published __cvCamera) it is truthful even on a background
@@ -101,12 +113,15 @@ export function installDebugHook(
   getOrbit: () => Orbit,
   getSeatIndex: () => number,
   getSelfVisible: () => boolean,
+  getGait: () => Gait,
 ): () => void {
   if (!import.meta.env.DEV) return () => {};
   window.__cv = {
     getPos: () => ({ ...getPose(), seatIndex: getSeatIndex() }),
     getOrbit: () => ({ ...getOrbit() }),
     getSelfVisible: () => getSelfVisible(),
+    getGait: () => getGait(),
+    getRemoteGaits: () => Object.fromEntries(remoteGaitProbe),
     getView: () => ({ ...viewState }),
     getRemotes: () => getRemotes(),
     getBubbles: () =>

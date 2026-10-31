@@ -2,12 +2,14 @@ import { useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import { useAnimations, useGLTF, useKeyboardControls } from "@react-three/drei";
 import { Group, LoopOnce } from "three";
-import { MOVE_SPEED, WORLD_BOUNDS } from "@caysonverse/shared/constants";
+import { WORLD_BOUNDS } from "@caysonverse/shared/constants";
 import { PLAYER_RADIUS, SEATS } from "@caysonverse/shared/worldMap";
 import { resolveCollision } from "@caysonverse/shared/collision";
 import { collectObstacles } from "./playerObstacles";
 import { readIntent, worldDirection } from "./input";
-import type { Intent } from "./input";
+import type { Intent, MoveInput } from "./input";
+import { gaitClip, gaitFor, moveSpeed } from "./gait";
+import type { Gait } from "./gait";
 import {
   stepClickMove,
   dirToIntent,
@@ -49,9 +51,10 @@ interface LocalPlayerProps {
    * Shared mutable joystick intent (touch). Written by the virtual joystick,
    * read here each frame and ADDED to the keyboard intent so both input paths
    * drive ONE camera-relative movement (no forked path). Zeroed when idle/in the
-   * dead-zone; on desktop it stays {0,0} and this is a no-op.
+   * dead-zone; on desktop it stays {0,0} and this is a no-op. `run` is the touch
+   * run flag, OR-ed with the Shift key into the single run intent.
    */
-  moveInput: Intent;
+  moveInput: MoveInput;
   /** Draw a cheap blob shadow under this avatar (low-spec/touch profile). */
   blobShadow: boolean;
 }
@@ -77,7 +80,8 @@ export function LocalPlayer({
   const { scene: crownScene } = useGLTF(CROWN_MODEL);
   const [, getKeys] = useKeyboardControls<MoveControl>();
   const groupRef = useRef<Group>(null);
-  const movingRef = useRef(false);
+  // The gait the idle/walk/run crossfade last settled on (loco state only).
+  const gaitRef = useRef<Gait>("idle");
   // Seating anim state machine (v2 Task 1). `loco` = normal walk/idle; `sitDown`
   // and `standUp` are one-shot transient clips; `sitIdle` is the held seated pose.
   const animStateRef = useRef<"loco" | "sitDown" | "sitIdle" | "standUp">("loco");
@@ -119,11 +123,13 @@ export function LocalPlayer({
       () => orbit,
       () => seat.index,
       () => groupRef.current?.visible ?? true,
+      () => gaitRef.current,
     );
     return () => {
       removeHook();
       actions[CLIP.idle]?.stop();
       actions[CLIP.walk]?.stop();
+      actions[CLIP.run]?.stop();
       actions[CLIP.sitDown]?.stop();
       actions[CLIP.sitIdle]?.stop();
       actions[CLIP.sitStand]?.stop();
@@ -176,7 +182,7 @@ export function LocalPlayer({
     const keys = guardMoveKeys(getKeys(), isUiCaptured() || suspended);
     const keyIntent = readIntent(keys);
     // Combine keyboard + joystick into ONE camera-relative intent. worldDirection
-    // normalizes, so a blended push still moves at the constant MOVE_SPEED. While
+    // normalizes, so a blended push still moves at the constant gait speed. While
     // suspended, the joystick contribution is dropped too (full input freeze).
     const intent: Intent = suspended
       ? { forward: 0, right: 0 }
@@ -221,6 +227,11 @@ export function LocalPlayer({
       }
     }
     const moving = intent.forward !== 0 || intent.right !== 0;
+    // Run intent: Shift (zeroed by the guard while a field owns the keyboard) or the
+    // touch run flag, dropped while suspended. It also applies to click-move: the
+    // auto-move target is walked at whichever speed the player is holding right now.
+    const run = !suspended && (keys.run || moveInput.run);
+    const gait = gaitFor(moving, run);
 
     if (seated && !wasSeated) {
       // Sit confirmed: snap onto the seat, stop locomotion, play Down → hold Idle.
@@ -230,8 +241,8 @@ export function LocalPlayer({
       pose.x = s.x;
       pose.z = s.z;
       pose.yaw = s.yaw;
-      (movingRef.current ? actions[CLIP.walk] : actions[CLIP.idle])?.fadeOut(ANIM_FADE);
-      movingRef.current = false;
+      actions[gaitClip(gaitRef.current)]?.fadeOut(ANIM_FADE);
+      gaitRef.current = "idle";
       standRequestedRef.current = false;
       animTimerRef.current = playOnce(CLIP.sitDown);
       animStateRef.current = "sitDown";
@@ -264,7 +275,7 @@ export function LocalPlayer({
       if (animTimerRef.current <= 0) {
         actions[CLIP.sitStand]?.fadeOut(ANIM_FADE);
         animStateRef.current = "loco";
-        movingRef.current = !moving; // force the loco crossfade to re-sync next frame
+        gaitRef.current = gait === "idle" ? "walk" : "idle"; // force the loco crossfade to re-sync next frame
       }
     }
 
@@ -285,6 +296,7 @@ export function LocalPlayer({
 
     if (moving) {
       const dir = worldDirection(intent, activeYaw);
+      const speed = moveSpeed(run);
       // Slide the body (circle-vs-AABB) along walls/furniture from the SAME
       // static OBSTACLES the server validates against — plus a dynamic box per
       // connected remote player (design 33: characters are solid) — then keep
@@ -292,8 +304,8 @@ export function LocalPlayer({
       const next = resolveCollision(
         pose.x,
         pose.z,
-        dir.x * MOVE_SPEED * delta,
-        dir.z * MOVE_SPEED * delta,
+        dir.x * speed * delta,
+        dir.z * speed * delta,
         PLAYER_RADIUS,
         collectObstacles(pose.x, pose.z),
       );
@@ -320,14 +332,12 @@ export function LocalPlayer({
     group.position.set(pose.x, 0, pose.z);
     group.rotation.y = pose.yaw + MODEL_FACING_OFFSET;
 
-    // Crossfade idle <-> walk on movement-state changes — but only in pure loco;
+    // Crossfade idle <-> walk <-> run on gait changes — but only in pure loco;
     // the StandUp one-shot owns the body until it finishes.
-    if (animStateRef.current === "loco" && moving !== movingRef.current) {
-      const from = movingRef.current ? actions[CLIP.walk] : actions[CLIP.idle];
-      const to = moving ? actions[CLIP.walk] : actions[CLIP.idle];
-      from?.fadeOut(ANIM_FADE);
-      to?.reset().fadeIn(ANIM_FADE).play();
-      movingRef.current = moving;
+    if (animStateRef.current === "loco" && gait !== gaitRef.current) {
+      actions[gaitClip(gaitRef.current)]?.fadeOut(ANIM_FADE);
+      actions[gaitClip(gait)]?.reset().fadeIn(ANIM_FADE).play();
+      gaitRef.current = gait;
     }
 
     // Throttled network send (idle: nothing; moving: <=1 per PATCH_RATE_MS;

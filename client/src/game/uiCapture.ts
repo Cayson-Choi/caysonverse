@@ -26,10 +26,22 @@ export function isUiCaptured(): boolean {
   return captured;
 }
 
-/** Movement keys the controller should act on: all-false while UI-captured. */
+/** The all-released key set returned while captured — shared and frozen so the per-frame guard never allocates. */
+const NO_KEYS: Readonly<MoveKeys> = Object.freeze({
+  forward: false,
+  backward: false,
+  left: false,
+  right: false,
+  run: false,
+});
+
+/**
+ * Movement keys the controller should act on: all-false while UI-captured —
+ * `run` included, so Shift held while typing never runs (or sprints the click-move).
+ */
 export function guardMoveKeys(keys: MoveKeys, uiCaptured: boolean): MoveKeys {
   if (!uiCaptured) return keys;
-  return { forward: false, backward: false, left: false, right: false };
+  return NO_KEYS;
 }
 
 /**

@@ -7,18 +7,30 @@
  * ground direction so movement stays intuitive regardless of camera angle.
  */
 
-/** Which movement keys are currently held. */
+/** Which movement keys are currently held (`run` = Shift, the run modifier). */
 export interface MoveKeys {
   forward: boolean;
   backward: boolean;
   left: boolean;
   right: boolean;
+  run: boolean;
 }
+
+/** The four direction keys alone — what `readIntent` consumes (run never changes direction). */
+export type DirKeys = Omit<MoveKeys, "run">;
 
 /** Local movement intent on two axes, each in {-1, 0, 1}. */
 export interface Intent {
   forward: number;
   right: number;
+}
+
+/**
+ * The shared touch-input object WorldScene owns and LocalPlayer reads each frame:
+ * the joystick / D-pad intent plus the run flag. Mutated in place, never React state.
+ */
+export interface MoveInput extends Intent {
+  run: boolean;
 }
 
 /** A direction on the ground plane (XZ). */
@@ -28,7 +40,7 @@ export interface GroundVec {
 }
 
 /** Collapse held keys into a local intent, cancelling opposing pairs. */
-export function readIntent(keys: MoveKeys): Intent {
+export function readIntent(keys: DirKeys): Intent {
   return {
     forward: (keys.forward ? 1 : 0) - (keys.backward ? 1 : 0),
     right: (keys.right ? 1 : 0) - (keys.left ? 1 : 0),

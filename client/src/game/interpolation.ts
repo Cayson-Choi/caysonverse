@@ -6,7 +6,7 @@
  * by the caller, so this module reads no clock and is exhaustively unit-testable.
  */
 
-import { MOVE_SPEED } from "@caysonverse/shared/constants";
+import { RUN_SPEED } from "@caysonverse/shared/constants";
 import { normalizeAngle, lerpAngle } from "./yaw";
 import {
   EXTRAPOLATE_MAX_MS,
@@ -52,7 +52,7 @@ export function pushSnapshot(
  * - renderT before the oldest snapshot → clamp to the oldest (idle).
  * - renderT between two snapshots → linear x/z, shortest-arc yaw.
  * - renderT past the newest → extrapolate at the last segment's velocity (clamped
- *   to MOVE_SPEED) for at most EXTRAPOLATE_MAX_MS, then ease back to `newest` (the
+ *   to RUN_SPEED) for at most EXTRAPOLATE_MAX_MS, then ease back to `newest` (the
  *   authoritative rest pose) over EXTRAPOLATE_SETTLE_MS and hold (speed 0 → idle).
  */
 export function sample(snapshots: readonly Snapshot[], renderT: number): Sample | null {
@@ -91,9 +91,11 @@ export function sample(snapshots: readonly Snapshot[], renderT: number): Sample 
 /**
  * Dead-reckon past the newest snapshot using the last segment's velocity, then
  * converge back to the authoritative rest pose:
- *   - velocity is CLAMPED to MOVE_SPEED — any faster segment is receive-time
- *     jitter (a delayed-then-burst patch pair), not real motion, and must not
- *     fling the avatar (potentially through walls/furniture);
+ *   - velocity is CLAMPED to RUN_SPEED — the fastest a player can really move
+ *     (a runner; capping at the walk speed would dead-reckon every runner 37%
+ *     slow). Any faster segment is receive-time jitter (a delayed-then-burst
+ *     patch pair), not real motion, and must not fling the avatar (potentially
+ *     through walls/furniture);
  *   - within EXTRAPOLATE_MAX_MS we dead-reckon forward (still "moving");
  *   - after the window, since a stopped remote emits no further patches, we EASE
  *     from the overshoot back to `newest` over EXTRAPOLATE_SETTLE_MS and hold —
@@ -113,11 +115,11 @@ function extrapolate(snapshots: readonly Snapshot[], renderT: number, newest: Sn
 
   const ahead = renderT - newest.t; // > 0 by the caller's guard
 
-  // Last-segment velocity (m per ms), clamped in MAGNITUDE to MOVE_SPEED.
+  // Last-segment velocity (m per ms), clamped in MAGNITUDE to RUN_SPEED.
   let vx = (newest.x - prev.x) / span;
   let vz = (newest.z - prev.z) / span;
   const speedMs = Math.hypot(vx, vz); // m per ms
-  const maxMs = MOVE_SPEED / 1000; // MOVE_SPEED m/s → m per ms
+  const maxMs = RUN_SPEED / 1000; // RUN_SPEED m/s → m per ms
   if (speedMs > maxMs) {
     const k = maxMs / speedMs;
     vx *= k;

@@ -1,15 +1,17 @@
 import { useEffect, useRef } from "react";
 import nipplejs from "nipplejs";
 import { joystickIntent } from "../game/joystick";
-import type { Intent } from "../game/input";
+import type { Intent, MoveInput } from "../game/input";
 import "./touch.css";
 
 interface TouchJoystickProps {
   /**
-   * Shared movement intent (the SAME object LocalPlayer reads and the keyboard's
+   * Shared movement input (the SAME object LocalPlayer reads and the keyboard's
    * intent is added to). Written on every joystick move; recentred on release.
+   * `run` is always false for now — the touch run control arrives with the new
+   * touch layout, which will own that flag.
    */
-  moveInput: Intent;
+  moveInput: MoveInput;
 }
 
 /**
@@ -31,6 +33,7 @@ export function TouchJoystick({ moveInput }: TouchJoystickProps) {
     const write = (intent: Intent) => {
       moveInput.forward = intent.forward;
       moveInput.right = intent.right;
+      moveInput.run = false;
     };
 
     const manager = nipplejs.create({

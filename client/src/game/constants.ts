@@ -213,6 +213,8 @@ export function crownLocalScale(cfg: CrownConfig, base: number): [number, number
 export const CLIP = {
   idle: "Idle",
   walk: "Walking_A",
+  // Run cycle (controls-ux Task 5) — 0.800 s loop; verified present in all 4 GLBs.
+  run: "Running_A",
   // Seating (v2 Task 1) — verified present in all 4 KayKit GLBs (same Rig_Medium
   // skeleton). Down = sit-down motion, Idle = the held seated pose, StandUp = rise.
   sitDown: "Sit_Chair_Down",
@@ -220,7 +222,7 @@ export const CLIP = {
   sitStand: "Sit_Chair_StandUp",
 } as const;
 
-/** Crossfade duration (seconds) between idle and walk. */
+/** Crossfade duration (seconds) between the idle / walk / run loops. */
 export const ANIM_FADE = 0.2;
 
 /**
@@ -245,14 +247,21 @@ export const HEAD_HEIGHT = 1.4;
 export const FP_EYE_HEIGHT = HEAD_HEIGHT + 0.1;
 
 /** drei KeyboardControls action names (typed control set). */
-export type MoveControl = "forward" | "backward" | "left" | "right";
+export type MoveControl = "forward" | "backward" | "left" | "right" | "run" | "camLeft" | "camRight";
 
-/** WASD + arrow keys. `code` values match regardless of shift/capslock. */
+/**
+ * WASD + arrow keys walk, Shift (held) runs, Z / C are registered for the held-key
+ * camera turn. `code` values match regardless of shift/capslock — which is also
+ * why Shift+W still reads as W.
+ */
 export const MOVE_KEYS: KeyboardControlsEntry<MoveControl>[] = [
   { name: "forward", keys: ["ArrowUp", "KeyW"] },
   { name: "backward", keys: ["ArrowDown", "KeyS"] },
   { name: "left", keys: ["ArrowLeft", "KeyA"] },
   { name: "right", keys: ["ArrowRight", "KeyD"] },
+  { name: "run", keys: ["ShiftLeft", "ShiftRight"] },
+  { name: "camLeft", keys: ["KeyZ"] },
+  { name: "camRight", keys: ["KeyC"] },
 ];
 
 /** Third-person orbit camera tuning. */
@@ -334,6 +343,16 @@ export const SNAP_DISTANCE = 3;
  */
 export const WALK_ON_SPEED = 0.3;
 export const WALK_OFF_SPEED = 0.15;
+
+/**
+ * Remote run/walk hysteresis (m/s). A remote's gait is derived from its
+ * INTERPOLATED speed only (the client never syncs walk/run). Walking is 4 m/s and
+ * running 6.4 m/s; the ON threshold sits above a walker's ±30% jitter ceiling
+ * (5.2 m/s), and the OFF threshold sits well below the run speed, so ordinary
+ * jitter neither flashes the run cycle on a walker nor drops a runner back to walk.
+ */
+export const RUN_ON_SPEED = 5.6;
+export const RUN_OFF_SPEED = 4.8;
 
 /**
  * Mixer-update distance bands (m from camera) and their frame strides. Distant
