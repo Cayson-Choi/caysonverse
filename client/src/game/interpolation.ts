@@ -13,7 +13,9 @@ import {
   EXTRAPOLATE_SETTLE_MS,
   SNAPSHOT_CAPACITY,
   SNAP_DISTANCE,
-  SPEED_MIN_SPAN_MS,
+  SPEED_LONG_MIN_MS,
+  SPEED_LONG_WINDOW_MS,
+  SPEED_WINDOW_MS,
 } from "./constants";
 
 /** One received position sample. `t` is a local (client) receive timestamp. */
@@ -29,7 +31,10 @@ export interface Sample {
   x: number;
   z: number;
   yaw: number;
-  /** Interpolated ground speed (m/s) — drives the idle/walk/run decision. */
+  /**
+   * Instantaneous speed (m/s) of the bracketing segment (diagnostic: it is noisy
+   * under delivery jitter). The idle/walk/run decision uses `remoteGaitSpeed`.
+   */
   speed: number;
 }
 
@@ -55,17 +60,8 @@ export function pushSnapshot(
  * - renderT past the newest → extrapolate at the last segment's velocity (clamped
  *   to RUN_SPEED) for at most EXTRAPOLATE_MAX_MS, then ease back to `newest` (the
  *   authoritative rest pose) over EXTRAPOLATE_SETTLE_MS and hold (speed 0 → idle).
- *
- * Speed is only measured from a segment at least SPEED_MIN_SPAN_MS long: a shorter
- * one is a receive-time burst (distance / a few ms reads 20-40 m/s), so that frame
- * returns `heldSpeed` — the caller's previous speed — instead. The pose is
- * unaffected; only the speed READING is held.
  */
-export function sample(
-  snapshots: readonly Snapshot[],
-  renderT: number,
-  heldSpeed = 0,
-): Sample | null {
+export function sample(snapshots: readonly Snapshot[], renderT: number): Sample | null {
   const n = snapshots.length;
   if (n === 0) return null;
 
@@ -76,7 +72,7 @@ export function sample(
 
   const newest = snapshots[n - 1];
   if (renderT >= newest.t) {
-    return extrapolate(snapshots, renderT, newest, heldSpeed);
+    return extrapolate(snapshots, renderT, newest);
   }
 
   // Find the bracketing pair (searching from the newest end — the common case).
@@ -89,8 +85,7 @@ export function sample(
       const x = a.x + (b.x - a.x) * f;
       const z = a.z + (b.z - a.z) * f;
       const yaw = lerpAngle(a.yaw, b.yaw, f);
-      const speed =
-        span >= SPEED_MIN_SPAN_MS ? Math.hypot(b.x - a.x, b.z - a.z) / (span / 1000) : heldSpeed;
+      const speed = span > 0 ? Math.hypot(b.x - a.x, b.z - a.z) / (span / 1000) : 0;
       return { x, z, yaw, speed };
     }
   }
@@ -114,12 +109,7 @@ export function sample(
  *     past the true stop.
  * A single snapshot (or a zero-length segment) simply holds position.
  */
-function extrapolate(
-  snapshots: readonly Snapshot[],
-  renderT: number,
-  newest: Snapshot,
-  heldSpeed: number,
-): Sample {
+function extrapolate(snapshots: readonly Snapshot[], renderT: number, newest: Snapshot): Sample {
   if (snapshots.length < 2) {
     return { x: newest.x, z: newest.z, yaw: newest.yaw, speed: 0 };
   }
@@ -151,10 +141,7 @@ function extrapolate(
 
   // Phase A — still within the window: dead-reckon forward, reads as moving.
   if (ahead <= EXTRAPOLATE_MAX_MS) {
-    // A burst last segment (span < SPEED_MIN_SPAN_MS) still steers the dead-reckoned
-    // pose (clamped to RUN_SPEED) but must not be READ as a speed: hold the previous.
-    const speed = span >= SPEED_MIN_SPAN_MS ? Math.hypot(vx, vz) * 1000 : heldSpeed;
-    return { x: overX, z: overZ, yaw: overYaw, speed };
+    return { x: overX, z: overZ, yaw: overYaw, speed: Math.hypot(vx, vz) * 1000 };
   }
 
   // Phase B/C — past the window: ease the overshoot back to the authoritative
@@ -180,4 +167,60 @@ export function exceedsSnapDistance(
   snapDistance: number = SNAP_DISTANCE,
 ): boolean {
   return Math.hypot(currentX - targetX, currentZ - targetZ) > snapDistance;
+}
+
+/**
+ * The ground speed (m/s) travelled along the buffered path over the trailing
+ * `windowMs` of render time, i.e. the length of the interpolated polyline between
+ * `renderT - windowMs` and `renderT`, divided by the window (or by `minDivisorMs`
+ * if the buffered part of the window is shorter than that).
+ *
+ * Path length rather than net displacement, so a runner circling at full speed
+ * still reads as running. Only the buffered span counts: both ends of the window
+ * are clipped to [oldest.t, newest.t], so the dead-reckon overshoot and the
+ * settle-back past the newest snapshot (which would read as motion backwards)
+ * never contribute. Dividing by the full window makes the reading ramp up over it
+ * at the start of a move and decay to 0 over it after a stop. Allocates nothing.
+ * The pose (`sample`) is unaffected - this only feeds the gait.
+ */
+export function windowedSpeed(
+  snapshots: readonly Snapshot[],
+  renderT: number,
+  windowMs: number,
+  minDivisorMs: number = windowMs,
+): number {
+  const n = snapshots.length;
+  if (n < 2 || windowMs <= 0) return 0;
+  const first = snapshots[0].t;
+  const last = snapshots[n - 1].t;
+  const startT = renderT - windowMs;
+  const from = startT < first ? first : startT > last ? last : startT;
+  const to = renderT < first ? first : renderT > last ? last : renderT;
+  if (to <= from) return 0;
+
+  let length = 0;
+  for (let i = 1; i < n; i++) {
+    const a = snapshots[i - 1];
+    const b = snapshots[i];
+    const span = b.t - a.t;
+    if (span <= 0 || b.t <= from || a.t >= to) continue;
+    const lo = a.t > from ? a.t : from;
+    const hi = b.t < to ? b.t : to;
+    length += Math.hypot(b.x - a.x, b.z - a.z) * ((hi - lo) / span);
+  }
+  const divisor = to - from > minDivisorMs ? to - from : minDivisorMs;
+  return length / (divisor / 1000);
+}
+
+/**
+ * The speed (m/s) the remote idle/walk/run decision runs on: the smaller of the
+ * short-window reading (responsive: ramps and decays over SPEED_WINDOW_MS) and the
+ * long-window reading (SPEED_LONG_WINDOW_MS, which contains a whole stall-then-
+ * catch-up burst that the short window alone reads as a sprint). A real runner
+ * reads ~RUN_SPEED on both; a walker hit by a delivery burst only on the short one.
+ */
+export function remoteGaitSpeed(snapshots: readonly Snapshot[], renderT: number): number {
+  const short = windowedSpeed(snapshots, renderT, SPEED_WINDOW_MS);
+  const long = windowedSpeed(snapshots, renderT, SPEED_LONG_WINDOW_MS, SPEED_LONG_MIN_MS);
+  return short < long ? short : long;
 }

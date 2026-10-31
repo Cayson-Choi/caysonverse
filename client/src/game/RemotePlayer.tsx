@@ -8,8 +8,8 @@ import { createNametag } from "./nametag";
 import { useSpeechBubble } from "./useSpeechBubble";
 import { useEmoji } from "./useEmoji";
 import { getRemoteRecord } from "./remoteStore";
-import { sample, exceedsSnapDistance } from "./interpolation";
-import { createRunGate, nextGaitTimed } from "./locomotion";
+import { sample, exceedsSnapDistance, remoteGaitSpeed } from "./interpolation";
+import { nextGait } from "./locomotion";
 import { remoteGaitProbe } from "./gait";
 import type { Gait } from "./gait";
 import { decideMixerTick } from "./mixerThrottle";
@@ -107,9 +107,6 @@ export function RemotePlayer({
   const sitStandAction = useRef<AnimationAction | null>(null);
   // Current gait (idle / walk / run), derived from interpolated speed only.
   const gaitRef = useRef<Gait>("idle");
-  // Run-entry clock + the last speed reading (held through burst-span frames).
-  const runGateRef = useRef(createRunGate());
-  const speedRef = useRef(0);
   const fadeRef = useRef(0); // remaining crossfade time (s); mixer ticks while > 0
   // Seating anim state machine: `up` = normal loco; `sitting`/`standing` are the
   // one-shot transient clips; `seated` is the held Sit_Chair_Idle pose.
@@ -189,12 +186,10 @@ export function RemotePlayer({
     // 1) Sample the snapshot buffer RENDER_DELAY_MS in the past and write pose.
     //    Seated players emit no moves, so their buffer converges on the seat
     //    position/yaw — interpolation naturally settles them onto the chair.
-    const now = performance.now();
-    const renderT = now - RENDER_DELAY_MS;
-    const target = sample(rec.snapshots, renderT, speedRef.current);
+    const renderT = performance.now() - RENDER_DELAY_MS;
+    const target = sample(rec.snapshots, renderT);
     let snapped = false;
     if (target) {
-      speedRef.current = target.speed;
       snapped = exceedsSnapDistance(group.position.x, group.position.z, target.x, target.z);
       group.position.set(target.x, 0, target.z);
       group.rotation.y = target.yaw + MODEL_FACING_OFFSET;
@@ -206,8 +201,6 @@ export function RemotePlayer({
     if (seated && seatModeRef.current === "up") {
       gaitAction(gaitRef.current)?.fadeOut(ANIM_FADE);
       setGait("idle");
-      runGateRef.current.aboveSince = -1; // a pre-sit clock / speed must not leak past standing up
-      speedRef.current = 0;
       seatTimerRef.current = playOnce(sitDownAction.current);
       seatModeRef.current = "sitting";
     } else if (!seated && (seatModeRef.current === "seated" || seatModeRef.current === "sitting")) {
@@ -240,8 +233,10 @@ export function RemotePlayer({
     // 4) Locomotion from interpolated speed — ONLY while standing (a seated avatar
     //    must never show the walk or run cycle, even if a stray snapshot implies speed).
     if (target && seatModeRef.current === "up") {
-      const speed = snapped ? 0 : target.speed;
-      const gait = nextGaitTimed(gaitRef.current, speed, now, runGateRef.current);
+      // Gait speed is a windowed path length (not the noisy per-segment speed), so
+      // receive-time bursts and jitter cannot flip walk <-> run; see remoteGaitSpeed.
+      const speed = snapped ? 0 : remoteGaitSpeed(rec.snapshots, renderT);
+      const gait = nextGait(gaitRef.current, speed);
       if (gait !== gaitRef.current) {
         gaitAction(gaitRef.current)?.fadeOut(ANIM_FADE);
         gaitAction(gait)?.reset().fadeIn(ANIM_FADE).play();

@@ -355,23 +355,24 @@ export const RUN_ON_SPEED = 5.6;
 export const RUN_OFF_SPEED = 4.8;
 
 /**
- * Time hysteresis for ENTERING run (ms). Speed alone cannot tell a runner from a
- * walker whose patches arrive in a burst, so a remote is promoted to run only
- * once 150 ms have passed since its measured speed first went above RUN_ON_SPEED
- * (wall-clock, so it does not depend on frame rate). The entry clock survives
- * readings that dip into the hysteresis band and restarts only when the speed
- * falls below RUN_OFF_SPEED, because a runner's own delivery jitter routinely
- * reads below RUN_ON. Leaving run is immediate.
+ * Render-time windows (ms) the remote gait speed is measured over (see
+ * `remoteGaitSpeed`). A single patch-to-patch speed is useless for the idle/walk/run
+ * decision: receive-time bursts make a 4 m/s walker read 20-40 m/s for a segment
+ * and a runner on a jittery link dip to 4 m/s. So the speed is the path length
+ * travelled over a window, divided by the window:
+ *   - SPEED_WINDOW_MS (300)       the responsive reading: ramps up over it when a move
+ *                                 starts and decays to 0 over it after a stop;
+ *   - SPEED_LONG_WINDOW_MS (600)  the sanity reading: long enough to contain a whole
+ *                                 stall-then-catch-up burst (a 250-400 ms late patch
+ *                                 and the patches queued behind it), which the short
+ *                                 window alone reads as a ~7 m/s sprint;
+ *   - SPEED_LONG_MIN_MS (150)     the shortest span the long reading divides by, so it
+ *                                 has no ramp-up of its own at the start of a move.
+ * The gait uses the smaller of the two readings.
  */
-export const RUN_ENTER_MS = 150;
-
-/**
- * Shortest snapshot span (ms) allowed to yield a speed sample. Two patches that
- * arrive closer together than this are a receive-time burst (a 0.4 m patch step
- * over 70 ms already reads 5.7 m/s, above RUN_ON_SPEED; over a few ms it reads
- * 20-40 m/s), so that frame holds the previous speed instead.
- */
-export const SPEED_MIN_SPAN_MS = 70;
+export const SPEED_WINDOW_MS = 300;
+export const SPEED_LONG_WINDOW_MS = 600;
+export const SPEED_LONG_MIN_MS = 150;
 
 /**
  * Mixer-update distance bands (m from camera) and their frame strides. Distant
