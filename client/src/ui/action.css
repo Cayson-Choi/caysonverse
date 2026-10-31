@@ -60,11 +60,16 @@
 /* The touch stack's geometry, in ONE place so the two buttons can never drift apart:
    jump 72 px at the bottom-right edge (16 px inset), action 60 px centred right above
    it with a 12 px gap. Both are >= 48 px targets with >= 8 px between them (global
-   constraints). */
+   constraints).
+
+   "버튼 크기" (menu) scales the two sizes through --cv-btn-scale on <html> (settings:
+   0.85 / 1 / 1.25), never below 48 px — the CSS twin of buttonPx() in game/settings.ts.
+   The action button is placed from --cv-jump-size, so the stack stays centred and 12 px
+   apart at every size. */
 .cv-touch {
-  --cv-jump-size: 72px;
+  --cv-jump-size: max(48px, calc(72px * var(--cv-btn-scale, 1)));
   --cv-jump-inset: 16px;
-  --cv-action-size: 60px;
+  --cv-action-size: max(48px, calc(60px * var(--cv-btn-scale, 1)));
   --cv-action-gap: 12px;
 }
 
@@ -158,6 +163,19 @@
   font-weight: 700;
   line-height: 1;
   letter-spacing: -0.02em;
+}
+
+/* "왼손잡이 모드" (menu): the whole thumb layout is mirrored — the stick takes the right
+   half (TouchJoystick), so the jump / action stack moves to the left edge, under the
+   look-drag thumb. <html> carries cv-left-handed (settings). */
+.cv-left-handed.cv-touch .cv-jump-btn {
+  right: auto;
+  left: var(--cv-jump-inset);
+}
+
+.cv-left-handed.cv-touch .cv-action-btn {
+  right: auto;
+  left: calc(var(--cv-jump-inset) + (var(--cv-jump-size) - var(--cv-action-size)) / 2);
 }
 
 /* Chat input focused (soft keyboard up): hide, so the keyboard-lifted input bar can

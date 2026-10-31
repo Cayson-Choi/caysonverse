@@ -15,7 +15,7 @@
 
 import { DECLUTTER, NAMETAG_CAP, NAMETAG_FADE_END } from "./constants";
 
-/** "all" = every tag in range, "nearby" = the spec's smart selection, "off" = none (Settings, Task 15). */
+/** "all" = every tag in range, "nearby" = the spec's smart selection, "off" = none ("이름표 보기" in the menu). */
 export type NametagMode = "all" | "nearby" | "off";
 
 export interface NametagCandidate {

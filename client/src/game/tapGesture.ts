@@ -48,7 +48,7 @@ export function isLookHalf(x: number, vw: number, leftHanded: boolean = false): 
  * Whether the held-back single-tap walk may still start when its DOUBLE_TAP_MS timer
  * fires — the world can change during that wait, so it is decided again then:
  *   - the overview map opened (a tap on it is not a walk),
- *   - chat / a panel took the keyboard (`uiCaptured`; the Esc menu joins it later),
+ *   - chat / a panel took the keyboard (`uiCaptured`; the Esc menu captures it while open),
  *   - the player SAT DOWN meanwhile (`seatedNow` but not `seatedAtTap`): a walk target
  *     would stand them straight back up.
  * A tap made while already seated keeps its meaning — "stand up and go there" — like

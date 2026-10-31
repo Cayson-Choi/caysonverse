@@ -7,7 +7,7 @@ import { jumpRegistry } from "./jump";
 import { typingRegistry } from "./typing";
 import { viewState, type ViewState } from "./viewState";
 import { remoteGaitProbe, type Gait } from "./gait";
-import { getNametagCostMs, nametagProbe } from "./labelRegistry";
+import { getNametagCostMs, getNametagMode, nametagProbe } from "./labelRegistry";
 
 /** Non-consented close code (MAY_TRY_RECONNECT) used by the dev drop hook. */
 const DEV_DROP_CODE = 4010;
@@ -131,6 +131,8 @@ declare global {
       getNametags: () => NametagView[];
       /** Average ms the NametagSystem's frame took over the last 120 frames (0 before any). */
       getNametagCostMs: () => number;
+      /** The name tag mode the world is using right now ("all" / "nearby" / "off"), as set from the menu. */
+      getNametagMode: () => "all" | "nearby" | "off";
       /**
        * Force a TRANSIENT connection drop (dev/E2E only) by closing the
        * transport with a non-consented code — the server holds the seat
@@ -199,6 +201,7 @@ export function installDebugHook(
         textPx: t.textPx,
       })),
     getNametagCostMs: () => getNametagCostMs(),
+    getNametagMode: () => getNametagMode(),
     dropConnection: () => {
       const room = getRoom();
       if (!room) return false;

@@ -62,6 +62,7 @@ import {
 } from "./cameraCollision";
 import { cameraProbe } from "./cameraProbe";
 import { getLocalLift } from "./jump";
+import { useSettingsStore } from "../stores/settingsStore";
 import type { Orbit, Pose, SeatState } from "./types";
 
 interface CameraRigProps {
@@ -73,12 +74,6 @@ interface CameraRigProps {
 
 /** Longest frame (s) a held Z / C may turn the view for — a stalled tab can't spin it. */
 const MAX_KEY_TURN_DT = 0.1;
-
-/**
- * Left-handed play mirrors which half of the screen is the look half. The
- * settings wiring comes with Task 15; until then every player is right-handed.
- */
-const LEFT_HANDED = false;
 
 /**
  * Overview mode IS allowed to bypass the maze anti-peek cap (design 20 —
@@ -226,6 +221,11 @@ export function CameraRig({ pose, orbit, seat }: CameraRigProps) {
       return groundPoint(o.x, o.y, o.z, d.x, d.y, d.z);
     };
 
+    // The look-drag gain: CAMERA.dragSpeed x the player's sensitivity setting, read
+    // when the drag moves (not captured at mount), so changing it in the menu applies
+    // to the very next drag.
+    const dragSpeed = () => CAMERA.dragSpeed * useSettingsStore.getState().settings.lookSensitivity;
+
     const onDown = (e: PointerEvent) => {
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       clickStart =
@@ -291,13 +291,15 @@ export function CameraRig({ pose, orbit, seat }: CameraRigProps) {
         viewState.ovCenterZ = c.z;
       } else if (viewState.mode === "fp") {
         cancelOrbitGoal();
-        viewState.fpYaw = normalizeAngle(viewState.fpYaw - DRAG_SIGN * dx * CAMERA.dragSpeed);
-        viewState.fpPitch = clampFpPitch(viewState.fpPitch + DRAG_SIGN * dy * CAMERA.dragSpeed);
+        const gain = dragSpeed();
+        viewState.fpYaw = normalizeAngle(viewState.fpYaw - DRAG_SIGN * dx * gain);
+        viewState.fpPitch = clampFpPitch(viewState.fpPitch + DRAG_SIGN * dy * gain);
       } else {
         cancelOrbitGoal(); // a drag takes the camera back from any recenter / seat glide
-        orbit.yaw = normalizeAngle(orbit.yaw - DRAG_SIGN * dx * CAMERA.dragSpeed);
+        const gain = dragSpeed();
+        orbit.yaw = normalizeAngle(orbit.yaw - DRAG_SIGN * dx * gain);
         orbit.pitch = clamp(
-          orbit.pitch + DRAG_SIGN * dy * CAMERA.dragSpeed,
+          orbit.pitch + DRAG_SIGN * dy * gain,
           CAMERA.minPitch,
           CAMERA.maxPitch,
         );
@@ -321,7 +323,11 @@ export function CameraRig({ pose, orbit, seat }: CameraRigProps) {
           isClick(e.clientX - start.x, e.clientY - start.y, performance.now() - start.t)
         ) {
           const point = groundAt(e.clientX, e.clientY);
-          if (e.pointerType === "touch" && isLookHalf(e.clientX, window.innerWidth, LEFT_HANDED)) {
+          // Which half is the look half follows the left-handed setting — the SAME store
+          // field TouchJoystick's prop comes from (WorldScene), so the stick half and
+          // the look half can never overlap or leave a gap.
+          const leftHanded = useSettingsStore.getState().settings.leftHanded;
+          if (e.pointerType === "touch" && isLookHalf(e.clientX, window.innerWidth, leftHanded)) {
             // Look half: wait for a possible second tap. Two taps recenter the
             // camera; one tap walks after DOUBLE_TAP_MS (measured on the target
             // the finger actually touched, not wherever the camera is by then).
@@ -384,7 +390,7 @@ export function CameraRig({ pose, orbit, seat }: CameraRigProps) {
       } else if (action.type === "recenter") {
         requestRecenter(pose.yaw); // R: swing the TP camera back behind the body
       } else if (action.type === "menu") {
-        clearClickTarget(); // 진행 중인 클릭 자동 이동을 즉시 중단
+        clearClickTarget(); // Esc: stop a click-move in progress (the menu itself is MenuPanel's)
       }
     });
 

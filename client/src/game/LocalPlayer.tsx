@@ -34,16 +34,29 @@ import { beginSeatCamera, endSeatCamera, viewState } from "./viewState";
 import { HIDE_BLEND, OV_VIS_BLEND } from "./viewMode";
 import { cloneTinted } from "./avatar";
 import { BlobShadow } from "./BlobShadow";
+import { createNametag } from "./nametag";
+import { registerLabel } from "./labelRegistry";
+import { isLocalTeacher } from "./ownNametag";
 import { useSpeechBubble } from "./useSpeechBubble";
 import { useEmoji } from "./useEmoji";
 import { normalizeAngle, stepYaw } from "./yaw";
 import { createMoveSender } from "./moveSender";
 import { installDebugHook } from "./debug";
-import { ANIM_FADE, CHARACTERS, CLIP, CROWN_MODEL, MODEL_FACING_OFFSET, TURN_SPEED } from "./constants";
+import {
+  ANIM_FADE,
+  BUBBLE_BASE_HEIGHT,
+  CHARACTERS,
+  CLIP,
+  CROWN_MODEL,
+  MODEL_FACING_OFFSET,
+  TURN_SPEED,
+} from "./constants";
 import type { MoveControl } from "./constants";
 import type { Orbit, Pose, SeatState } from "./types";
 import { getRoom, sendJump, sendMove, sendStand } from "../net/connection";
 import { isInputSuspended } from "../net/resilience";
+import { useAppStore } from "../stores/appStore";
+import { useSettingsStore } from "../stores/settingsStore";
 
 /** Fallback seconds for a sit/stand clip if its duration can't be read yet. */
 const SIT_CLIP_FALLBACK_SEC = 0.8;
@@ -51,6 +64,8 @@ const SIT_CLIP_FALLBACK_SEC = 0.8;
 interface LocalPlayerProps {
   /** Own session id — keys this player's speech bubble in the broadcast. */
   sessionId: string;
+  /** Own nickname — what the optional own name tag ("내 이름표 보기") says. */
+  nickname: string;
   character: number;
   tint: number;
   /** Shared mutable pose (mutated per frame — never React state). */
@@ -77,6 +92,7 @@ function clamp(value: number, min: number, max: number): number {
 
 export function LocalPlayer({
   sessionId,
+  nickname,
   character,
   tint,
   pose,
@@ -106,8 +122,41 @@ export function LocalPlayer({
   const shadowRef = useRef<Group>(null);
 
   // Own speech bubble: driven by the server broadcast (not a local echo), so
-  // self and remotes share one path. Attached above this avatar's group.
-  useSpeechBubble(sessionId, groupRef);
+  // self and remotes share one path. Attached above this avatar's group. It rests on
+  // `bubbleAnchor`: the NametagSystem raises that to just above the own name tag while
+  // "내 이름표 보기" is on (like a remote's bubble), and it stays at BUBBLE_BASE_HEIGHT
+  // (2.5 m) otherwise, when no tag exists.
+  const bubbleAnchor = useRef({ y: BUBBLE_BASE_HEIGHT }).current;
+  useSpeechBubble(sessionId, groupRef, bubbleAnchor);
+
+  // Own name tag — off by default; the player turns it on in the menu. Same create /
+  // register / release pair as a remote avatar's (RemotePlayer), so the NametagSystem
+  // sizes, fades and stacks it with the rest. Pinned: your own tag is never dropped for
+  // being outside the nearest 15. The teacher badge follows the synced role (the admin
+  // flag only stands in until the room state can be read).
+  const showOwnNametag = useSettingsStore((s) => s.settings.showOwnNametag);
+  const isAdmin = useAppStore((s) => s.isAdmin);
+  useEffect(() => {
+    const group = groupRef.current;
+    if (!showOwnNametag || !group) return;
+    const role = getRoom()?.state?.players?.get?.(sessionId)?.role;
+    const tag = createNametag(nickname, isLocalTeacher(role, isAdmin) ? "teacher" : "none");
+    tag.setOpacity(0); // fades in under the NametagSystem instead of flashing at full opacity
+    group.add(tag.sprite);
+    const unregister = registerLabel({
+      id: sessionId,
+      anchor: group,
+      tag,
+      pinned: true,
+      bubbleAnchor,
+    });
+    return () => {
+      unregister();
+      group.remove(tag.sprite);
+      tag.dispose();
+      bubbleAnchor.y = BUBBLE_BASE_HEIGHT; // no tag any more: the bubble drops back to its default height
+    };
+  }, [showOwnNametag, sessionId, nickname, isAdmin, bubbleAnchor]);
   // Own emoji reaction: same broadcast-driven, self-included discipline.
   useEmoji(sessionId, groupRef);
 

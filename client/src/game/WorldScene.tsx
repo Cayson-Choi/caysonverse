@@ -1,4 +1,4 @@
-import { Suspense, useEffect, useRef } from "react";
+import { Suspense, useEffect, useLayoutEffect, useRef } from "react";
 import { Canvas } from "@react-three/fiber";
 import { KeyboardControls, useProgress } from "@react-three/drei";
 import { SPAWN_POINT } from "@caysonverse/shared/constants";
@@ -23,13 +23,18 @@ import { OverviewToggle } from "../ui/OverviewToggle";
 import { SoundToggle } from "../ui/SoundToggle";
 import { Banner } from "../ui/Banner";
 import { AdminPanel } from "../ui/AdminPanel";
+import { MenuPanel } from "../ui/MenuPanel";
 import { getRoom } from "../net/connection";
 import { startJumpSync } from "../net/jumpSync";
 import { isTouchDevice } from "../device";
 import { getRenderProfile } from "./renderProfile";
 import { setUiCaptured } from "./uiCapture";
-import { resetViewMode, toggleViewMode, toggleOverview } from "./viewState";
+import { resetViewMode, toggleViewMode, toggleOverview, viewState } from "./viewState";
+import { applySettingsToRoot, clearSettingsFromRoot } from "./settings";
+import { setNametagMode } from "./labelRegistry";
 import { useAppStore } from "../stores/appStore";
+import { useSettingsStore } from "../stores/settingsStore";
+import { useUiStore } from "../stores/uiStore";
 import type { Identity } from "../stores/appStore";
 import type { MoveInput } from "./input";
 import type { Orbit, Pose, SeatState } from "./types";
@@ -49,9 +54,33 @@ function readSpawn(): Pose {
   return { x: me?.x ?? SPAWN_POINT.x, z: me?.z ?? SPAWN_POINT.z, yaw: me?.yaw ?? 0 };
 }
 
+/**
+ * Put the player's settings to work for as long as the world is up: the left-handed
+ * class and --cv-btn-scale on <html> (CSS mirrors / scales the touch buttons off them)
+ * and the name tag mode (the NametagSystem reads it at its next 5 Hz pass). The
+ * look-drag gain and the look half are read from the store at event time (CameraRig),
+ * and the own name tag by LocalPlayer, so they need nothing here. A layout effect, so
+ * the first painted frame already has the saved layout.
+ */
+function useApplySettings(): void {
+  const settings = useSettingsStore((s) => s.settings);
+  useLayoutEffect(() => {
+    applySettingsToRoot(settings, document.documentElement);
+  }, [settings]);
+  useEffect(() => {
+    setNametagMode(settings.nametagMode);
+  }, [settings.nametagMode]);
+  // The entry screen has no use for the world's layout classes.
+  useLayoutEffect(() => () => clearSettingsFromRoot(document.documentElement), []);
+}
+
 export function WorldScene({ identity }: { identity: Identity }) {
   // Local-only: gates the admin panel. Never derived from schema state.
   const isAdmin = useAppStore((s) => s.isAdmin);
+  // The ONE source of the left-handed layout: the stick half here, the look half in
+  // CameraRig (it reads the same store field when a tap lands).
+  const leftHanded = useSettingsStore((s) => s.settings.leftHanded);
+  useApplySettings();
 
   // Per-frame mutable game state — created once, mutated in place, never in
   // React state. Shared by LocalPlayer (writes) and CameraRig (reads).
@@ -78,6 +107,7 @@ export function WorldScene({ identity }: { identity: Identity }) {
   useEffect(() => {
     setUiCaptured(false);
     resetViewMode();
+    useUiStore.getState().resetPanels(); // an open menu / roster does not survive a reconnect remount
   }, []);
 
   // Other players' jumps (Task 11): the server's jump broadcast feeds the registry the
@@ -130,6 +160,7 @@ export function WorldScene({ identity }: { identity: Identity }) {
             ))}
             <LocalPlayer
               sessionId={identity.sessionId}
+              nickname={identity.nickname}
               character={identity.character}
               tint={identity.tint}
               pose={pose}
@@ -173,8 +204,15 @@ export function WorldScene({ identity }: { identity: Identity }) {
       <NpcChatPanel />
       {/* Movement control — touch devices only: the analog joystick in every view
           (first-person strafes camera-relative). Keyboard stays active regardless. */}
-      {isTouchDevice && <TouchJoystick moveInput={moveInput} />}
+      {isTouchDevice && <TouchJoystick moveInput={moveInput} leftHanded={leftHanded} />}
       {isAdmin && <AdminPanel />}
+      {/* Esc menu (Task 15): settings, the first-person switch, the guide. Above every
+          HUD layer; also the single subscriber of the Esc key. */}
+      <MenuPanel
+        onToggleView={() => {
+          if (viewState.mode !== "ov") toggleViewMode(orbit); // like V: the map has its own way out
+        }}
+      />
     </>
   );
 }

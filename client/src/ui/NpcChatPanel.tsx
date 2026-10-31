@@ -4,7 +4,7 @@
  * lower ~44vh, so the 3D NPC stays visible in the top half; while it is open a
  * `cv-npc-open` root class hides the world chat bar, emoji palette, movement
  * zone and toggles (npc.css) so only the NPC and the sheet remain. Visible only
- * to this player. Esc or ✕ closes (walking away also closes it — ActionButton).
+ * to this player. Esc (handled in game/escape.ts) or ✕ closes (walking away also closes it — ActionButton).
  * While the input is focused the shared uiCapture flag freezes movement keys.
  */
 
@@ -51,16 +51,10 @@ export function NpcChatPanel() {
     if (list) list.scrollTop = list.scrollHeight;
   }, [messages, open]);
 
-  // Esc closes while open. If the input had focus, its unmount would swallow
-  // the blur — captureReleaseEffect below guarantees the flag is released.
-  useEffect(() => {
-    if (!open) return;
-    function onKeyDown(e: KeyboardEvent) {
-      if (e.code === "Escape") useNpcStore.getState().closePanel();
-    }
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [open]);
+  // Esc is NOT handled here any more: the shared hotkey table's Esc goes through
+  // handleEscape (game/escape.ts), which closes this panel first. If the input had
+  // focus, its unmount would swallow the blur — captureReleaseEffect below guarantees
+  // the flag is released.
 
   // Unmount safety: a panel removed while its input is focused fires no blur.
   useEffect(() => (open ? captureReleaseEffect() : undefined), [open]);

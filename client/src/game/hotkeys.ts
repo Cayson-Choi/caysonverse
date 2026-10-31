@@ -54,7 +54,8 @@ const EMOJI_CODE = /^Digit([1-6])$/;
  * keydown is dropped when another handler already consumed it (`defaultPrevented`
  * — e.g. ChatInput's own Enter/Esc), during IME composition, on auto-repeat (one
  * action per physical press), and while a DOM field owns the keyboard. Escape alone
- * passes the capture rule so the 조교 대화창 can still be closed while typing in it.
+ * passes the capture rule so the 조교 대화창 can still be closed while typing in it and
+ * the menu (which captures the keyboard while open) can be closed again.
  * Ctrl / Cmd / Alt chords are never ours (Ctrl+1..6 switches browser tabs, Ctrl+R
  * reloads, Alt+Tab switches windows, ...), and neither is Shift+Tab (focus walks
  * backwards); Shift on its own is the run key and blocks nothing else.
@@ -95,6 +96,26 @@ export function resolveHotkey(e: KeyLike, uiCaptured: boolean): HotkeyAction | n
       return m ? { type: "emoji", index: Number(m[1]) - 1 } : null; // 1 → EMOJIS[0]
     }
   }
+}
+
+/** What one Esc press does (controls-ux Task 15). */
+export type EscapeAction = "closeNpc" | "closeRoster" | "closeMenu" | "openMenu";
+
+/**
+ * The ONE place that decides what Esc does: it closes the topmost thing that is open —
+ * the 조교 dialogue first, then the player roster, then the menu — and when nothing is
+ * open it opens the menu. (A focused text field lets go of the keyboard before any of
+ * this: see escape.ts.) Nothing else listens for Esc to close a panel.
+ */
+export function resolveEscape(s: {
+  npcOpen: boolean;
+  rosterOpen: boolean;
+  menuOpen: boolean;
+}): EscapeAction {
+  if (s.npcOpen) return "closeNpc";
+  if (s.rosterOpen) return "closeRoster";
+  if (s.menuOpen) return "closeMenu";
+  return "openMenu";
 }
 
 /**

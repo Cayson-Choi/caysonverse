@@ -9,6 +9,7 @@ import {
 } from "../game/joystick";
 import type { MoveInput } from "../game/input";
 import { useViewStore } from "../stores/viewStore";
+import { useUiStore } from "../stores/uiStore";
 import "./touch.css";
 
 interface TouchJoystickProps {
@@ -18,7 +19,11 @@ interface TouchJoystickProps {
    * `run` is true while the stick is pushed out to the rim (see stickGait).
    */
   moveInput: MoveInput;
-  /** Mirror the stick to the lower-RIGHT quarter (Task 15 wires this to settings). */
+  /**
+   * Mirror the stick to the lower-RIGHT quarter. WorldScene passes the "왼손잡이 모드"
+   * setting; CameraRig reads the same store field for its look half, so the two halves
+   * always agree.
+   */
   leftHanded?: boolean;
 }
 
@@ -63,12 +68,12 @@ function passTapToGround(e: PointerEvent): void {
  * In the overview map the stick is off: the zone turns click-through (`is-ov`) so a
  * one-finger drag pans the map as before. Turning the map on mid-drag re-runs the
  * effect, whose cleanup releases the stick (art hidden, `moveInput` zeroed). The
- * same cleanup covers a `leftHanded` flip mid-drag.
+ * same cleanup covers a `leftHanded` flip mid-drag and the Esc menu opening mid-drag.
  *
  * All the logic is the pure state machine in game/joystick.ts. This component
  * only wires pointer events to it and moves two divs: per-move work writes
  * `moveInput` and `style.transform` through refs — never React state (the
- * only React state read is the rare overview flag, not per-frame data).
+ * only React state read is the rare overview / menu flags, not per-frame data).
  */
 export function TouchJoystick({ moveInput, leftHanded = false }: TouchJoystickProps) {
   const zoneRef = useRef<HTMLDivElement>(null);
@@ -76,6 +81,7 @@ export function TouchJoystick({ moveInput, leftHanded = false }: TouchJoystickPr
   const baseRef = useRef<HTMLDivElement>(null);
   const knobRef = useRef<HTMLDivElement>(null);
   const isOv = useViewStore((s) => s.isOv);
+  const menuOpen = useUiStore((s) => s.menuOpen);
 
   useEffect(() => {
     const zone = zoneRef.current;
@@ -98,8 +104,10 @@ export function TouchJoystick({ moveInput, leftHanded = false }: TouchJoystickPr
       stick.classList.remove("is-active");
       knob.classList.remove("is-run");
     };
-    // Overview: the zone is click-through, so there is nothing to listen for.
-    if (isOv) return;
+    // Overview: the zone is click-through, so there is nothing to listen for. The menu
+    // covers the zone while it is open, so no new stick can start; this also lets go
+    // of one that was already down.
+    if (isOv || menuOpen) return;
 
     const onDown = (e: PointerEvent) => {
       if (e.button !== 0) return;
@@ -170,7 +178,7 @@ export function TouchJoystick({ moveInput, leftHanded = false }: TouchJoystickPr
       hide();
       clearInput();
     };
-  }, [moveInput, leftHanded, isOv]);
+  }, [moveInput, leftHanded, isOv, menuOpen]);
 
   return (
     <>

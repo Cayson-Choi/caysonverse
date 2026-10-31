@@ -5,7 +5,7 @@
  * NametagSystem then owns the tag's opacity, size, stacking lift, typing "…" and
  * highlight, and publishes the height the avatar's speech bubble should sit at.
  *
- * Also holds the "show name tags" mode (Task 15 wires it to Settings) and the DEV-only
+ * Also holds the "show name tags" mode (WorldScene feeds it from the "이름표 보기" setting) and the DEV-only
  * probes the debug hook reads (`__cv.getNametags`, `__cv.getNametagCostMs`).
  */
 
@@ -55,7 +55,7 @@ export function labelEntries(): readonly LabelEntry[] {
 
 let mode: NametagMode = "nearby";
 
-/** "all" / "nearby" (default) / "off" — Task 15 connects this to the settings. */
+/** "all" / "nearby" (default) / "off" — set from the "이름표 보기" setting while the world is up. */
 export function setNametagMode(m: NametagMode): void {
   mode = m;
 }

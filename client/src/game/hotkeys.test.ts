@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   resolveHotkey,
+  resolveEscape,
   hotkeyPreventsDefault,
   onHotkey,
   type HotkeyAction,
@@ -437,5 +438,31 @@ describe("onHotkey — one shared window listener", () => {
     off();
     offB();
     offC();
+  });
+});
+
+describe("resolveEscape — what one Esc press does", () => {
+  const state = (npcOpen: boolean, rosterOpen: boolean, menuOpen: boolean) => ({ npcOpen, rosterOpen, menuOpen });
+
+  it("NPC panel first, then roster, then the menu toggle", () => {
+    expect(resolveEscape({ npcOpen: true, rosterOpen: true, menuOpen: true })).toBe("closeNpc");
+    expect(resolveEscape({ npcOpen: false, rosterOpen: true, menuOpen: false })).toBe("closeRoster");
+    expect(resolveEscape({ npcOpen: false, rosterOpen: false, menuOpen: true })).toBe("closeMenu");
+    expect(resolveEscape({ npcOpen: false, rosterOpen: false, menuOpen: false })).toBe("openMenu");
+  });
+
+  it("covers every combination: the first open panel in npc → roster → menu order wins", () => {
+    for (const npc of [false, true])
+      for (const roster of [false, true])
+        for (const menu of [false, true]) {
+          const want = npc ? "closeNpc" : roster ? "closeRoster" : menu ? "closeMenu" : "openMenu";
+          expect(resolveEscape(state(npc, roster, menu)), `${npc}/${roster}/${menu}`).toBe(want);
+        }
+  });
+
+  it("Esc reaches the menu action while the keyboard is captured, so an open menu can be closed", () => {
+    // MenuPanel sets the capture flag while open — Escape must still resolve.
+    expect(resolveHotkey(kd("Escape"), true)).toEqual({ type: "menu" });
+    expect(resolveHotkey(kd("Escape"), false)).toEqual({ type: "menu" });
   });
 });

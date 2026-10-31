@@ -1,0 +1,219 @@
+/* Esc menu (controls-ux Task 15): a centred card over a lightly dimmed world, above
+   every HUD layer (banner 30, 조교 panel 30, chat log 40) and below only the
+   reconnecting overlay (100). The palette is the HUD's own: dark violet glass, light
+   text, violet accents. */
+.cv-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom));
+  background: rgba(8, 6, 20, 0.5);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.cv-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: min(400px, 100%);
+  max-height: 100%;
+  padding: 18px 18px 16px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  color: #f2eeff;
+  background: rgba(18, 14, 36, 0.94);
+  border: 1px solid rgba(150, 130, 220, 0.45);
+  border-radius: 16px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(8px);
+  user-select: none;
+  -webkit-user-select: none;
+  outline: none;
+}
+
+.cv-menu-title {
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.cv-menu-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(150, 130, 220, 0.25);
+}
+
+.cv-menu-section-title {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: rgba(210, 202, 240, 0.7);
+}
+
+/* A label with its control. Wide controls (segments, slider) take the whole line under
+   the label; a switch sits at the right end of the label's line. */
+.cv-menu-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 12px;
+  min-height: 44px;
+}
+
+.cv-menu-label {
+  flex: 1 1 auto;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.cv-menu-seg {
+  display: flex;
+  flex: 1 1 100%;
+  gap: 6px;
+}
+
+.cv-menu-seg-btn,
+.cv-menu-link,
+.cv-menu-close {
+  font: inherit;
+  color: #f2eeff;
+  cursor: pointer;
+  background: rgba(60, 48, 110, 0.55);
+  border: 1px solid rgba(150, 130, 220, 0.35);
+  border-radius: 10px;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.cv-menu-seg-btn {
+  flex: 1 1 0;
+  min-height: 44px;
+  padding: 0 6px;
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.cv-menu-seg-btn:hover,
+.cv-menu-link:hover:not(:disabled),
+.cv-menu-close:hover {
+  background: rgba(86, 68, 160, 0.7);
+  border-color: rgba(170, 150, 255, 0.6);
+}
+
+.cv-menu-seg-btn.is-on {
+  background: rgba(124, 100, 214, 0.95);
+  border-color: rgba(206, 192, 255, 0.85);
+  color: #fff;
+}
+
+/* On/off switch. The visible track is 56 x 32; the ::before widens the press area to 48 px tall
+   (it is placed from the padding box, so 9 px past it = 8 px past the 1 px border). */
+.cv-menu-switch {
+  position: relative;
+  flex: none;
+  width: 56px;
+  height: 32px;
+  padding: 0;
+  cursor: pointer;
+  background: rgba(60, 48, 110, 0.7);
+  border: 1px solid rgba(150, 130, 220, 0.45);
+  border-radius: 16px;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.cv-menu-switch::before {
+  content: "";
+  position: absolute;
+  inset: -9px -5px;
+}
+
+.cv-menu-switch-knob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 24px;
+  height: 24px;
+  background: #d9cfff;
+  border-radius: 50%;
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+
+.cv-menu-switch.is-on {
+  background: rgba(124, 100, 214, 0.95);
+  border-color: rgba(206, 192, 255, 0.85);
+}
+
+.cv-menu-switch.is-on .cv-menu-switch-knob {
+  background: #fff;
+  transform: translateX(24px);
+}
+
+.cv-menu-slider {
+  display: flex;
+  flex: 1 1 100%;
+  align-items: center;
+  gap: 12px;
+}
+
+.cv-menu-slider input[type="range"] {
+  flex: 1;
+  min-width: 0;
+  height: 32px;
+  accent-color: #8b7bff;
+  cursor: pointer;
+}
+
+.cv-menu-value {
+  flex: none;
+  min-width: 56px;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: rgba(210, 202, 240, 0.85);
+}
+
+.cv-menu-link,
+.cv-menu-close {
+  min-height: 44px;
+  padding: 0 14px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.cv-menu-link:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.cv-menu-close {
+  background: rgba(96, 74, 166, 0.85);
+  border-color: rgba(170, 150, 255, 0.6);
+}
+
+/* Touch: every control is a >= 48 px target. */
+.cv-touch .cv-menu-seg-btn,
+.cv-touch .cv-menu-link,
+.cv-touch .cv-menu-close {
+  min-height: 48px;
+}
+
+.cv-touch .cv-menu-row {
+  min-height: 48px;
+}
+
+/* A short landscape phone: tighten the card so most of it fits without scrolling. */
+@media (max-height: 520px) {
+  .cv-menu {
+    gap: 8px;
+    padding: 12px 14px;
+  }
+  .cv-menu-section {
+    padding-top: 8px;
+  }
+}
