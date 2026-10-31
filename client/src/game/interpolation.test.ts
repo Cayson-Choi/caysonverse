@@ -11,6 +11,7 @@ import {
   EXTRAPOLATE_SETTLE_MS,
   SNAPSHOT_CAPACITY,
   SNAP_DISTANCE,
+  SPEED_MIN_SPAN_MS,
 } from "./constants";
 
 const PI = Math.PI;
@@ -90,14 +91,15 @@ describe("sample — extrapolation (loss-hiding that converges to the rest pose)
   });
 
   it("clamps a jitter-inflated segment velocity to RUN_SPEED (never flings through walls)", () => {
-    // 0.4m received over 20ms READS as 20 m/s — receive-time burst, not real motion.
-    const buf = [snap(0, 0, 0), snap(20, 0.4, 0)];
+    // 0.4m received over 40ms (the shortest span that still counts as a speed
+    // sample) READS as 10 m/s — a receive-time burst, not real motion.
+    const buf = [snap(0, 0, 0), snap(40, 0.4, 0)];
     // 100ms past the newest: clamped v = RUN_SPEED (6.4 m/s) = 0.0064 m/ms.
-    const s = sample(buf, 120)!;
-    expect(s.x).toBeCloseTo(0.4 + 0.0064 * 100, 6); // 1.04 — NOT 0.4 + 0.02*100 = 2.4
+    const s = sample(buf, 140)!;
+    expect(s.x).toBeCloseTo(0.4 + 0.0064 * 100, 6); // 1.04 — NOT 0.4 + 0.01*100 = 1.4
     expect(s.speed).toBeCloseTo(RUN_SPEED, 4);
     // Overshoot at the cap is bounded by RUN_SPEED * cap, not the inflated speed.
-    const atCap = sample(buf, 20 + EXTRAPOLATE_MAX_MS)!;
+    const atCap = sample(buf, 40 + EXTRAPOLATE_MAX_MS)!;
     expect(atCap.x).toBeCloseTo(0.4 + (RUN_SPEED / 1000) * EXTRAPOLATE_MAX_MS, 6); // 2.0
   });
 
@@ -134,6 +136,45 @@ describe("sample — extrapolation (loss-hiding that converges to the rest pose)
     expect(s.z).toBe(4);
     expect(s.yaw).toBeCloseTo(0.5, 6);
     expect(s.speed).toBe(0);
+  });
+});
+
+describe("sample — burst spans never produce a speed sample", () => {
+  it("holds the previous speed for a bracket shorter than SPEED_MIN_SPAN_MS (position still interpolates)", () => {
+    // Two patches 10ms apart (0.4m) would read 40 m/s — a receive-time burst.
+    const buf = [snap(0, 0, 0), snap(10, 0.4, 0)];
+    const held = sample(buf, 5, 3.5)!;
+    expect(held.speed).toBe(3.5); // the caller's previous speed, NOT 40 m/s
+    expect(held.x).toBeCloseTo(0.2, 6); // the pose itself is still the linear interpolation
+    // With nothing held yet (default), a burst bracket reads idle rather than a huge speed.
+    expect(sample(buf, 5)!.speed).toBe(0);
+  });
+
+  it("the shortest span that still counts is exactly SPEED_MIN_SPAN_MS", () => {
+    expect(SPEED_MIN_SPAN_MS).toBe(40);
+    const justShort = [snap(0, 0, 0), snap(SPEED_MIN_SPAN_MS - 1, 0.4, 0)];
+    expect(sample(justShort, 10, 2)!.speed).toBe(2); // 39ms: held
+    const exactly = [snap(0, 0, 0), snap(SPEED_MIN_SPAN_MS, 0.4, 0)];
+    expect(sample(exactly, 10, 2)!.speed).toBeCloseTo(10, 6); // 40ms: a real sample (0.4m / 0.04s)
+  });
+
+  it("extrapolating off a burst last segment holds the previous speed but still dead-reckons the position", () => {
+    const buf = [snap(0, 0, 0), snap(10, 0.4, 0)]; // 40 m/s on paper
+    const s = sample(buf, 60, 4.2)!; // 50ms past the newest, inside the extrapolation window
+    expect(s.speed).toBe(4.2); // held — a walker is not promoted to a runner for 250ms
+    expect(s.x).toBeCloseTo(0.4 + (RUN_SPEED / 1000) * 50, 6); // position behaviour unchanged (clamped to RUN_SPEED)
+  });
+
+  it("a settling correction after the window still reads idle whatever speed was held", () => {
+    const buf = [snap(0, 0, 0), snap(10, 0.4, 0)];
+    const s = sample(buf, 10 + EXTRAPOLATE_MAX_MS + EXTRAPOLATE_SETTLE_MS + 500, 4.2)!;
+    expect(s.speed).toBe(0);
+    expect(s.x).toBeCloseTo(0.4, 6);
+  });
+
+  it("a normal 100ms bracket ignores the held speed and measures its own", () => {
+    const buf = [snap(0, 0, 0), snap(100, 0.4, 0)];
+    expect(sample(buf, 50, 9.9)!.speed).toBeCloseTo(4, 6);
   });
 });
 

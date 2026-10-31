@@ -355,6 +355,21 @@ export const RUN_ON_SPEED = 5.6;
 export const RUN_OFF_SPEED = 4.8;
 
 /**
+ * Time hysteresis for ENTERING run (ms). Speed alone cannot tell a runner from a
+ * walker whose patches arrive in a burst, so a remote is promoted to run only
+ * after its measured speed has stayed above RUN_ON_SPEED continuously for this
+ * long (wall-clock, so it does not depend on frame rate). Leaving run is immediate.
+ */
+export const RUN_ENTER_MS = 150;
+
+/**
+ * Shortest snapshot span (ms) allowed to yield a speed sample. Two patches that
+ * arrive closer together than this are a receive-time burst (distance / a few ms
+ * reads 20-40 m/s), so that frame holds the previous speed instead.
+ */
+export const SPEED_MIN_SPAN_MS = 40;
+
+/**
  * Mixer-update distance bands (m from camera) and their frame strides. Distant
  * avatars advance their animation less often to save CPU (v1 rule, no LOD yet):
  *   d < NEAR         → every frame

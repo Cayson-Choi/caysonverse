@@ -1,6 +1,15 @@
 import { describe, it, expect } from "vitest";
-import { nextGait, nextWalking } from "./locomotion";
-import { RUN_OFF_SPEED, RUN_ON_SPEED, WALK_OFF_SPEED, WALK_ON_SPEED } from "./constants";
+import { createRunGate, nextGait, nextGaitTimed, nextWalking } from "./locomotion";
+import {
+  RENDER_DELAY_MS,
+  RUN_ENTER_MS,
+  RUN_OFF_SPEED,
+  RUN_ON_SPEED,
+  WALK_OFF_SPEED,
+  WALK_ON_SPEED,
+} from "./constants";
+import { pushSnapshot, sample } from "./interpolation";
+import type { Snapshot } from "./interpolation";
 import type { Gait } from "./gait";
 
 describe("nextWalking (hysteresis)", () => {
@@ -96,5 +105,164 @@ describe("nextGait (idle / walk / run hysteresis)", () => {
       g = nextGait(g, s);
     }
     expect(g).toBe("run");
+  });
+});
+
+describe("nextGaitTimed (entering run needs a sustained speed)", () => {
+  it("promotes to run only after the speed stayed above RUN_ON_SPEED for RUN_ENTER_MS", () => {
+    expect(RUN_ENTER_MS).toBe(150);
+    const gate = createRunGate();
+    let g: Gait = "walk";
+    g = nextGaitTimed(g, 6.4, 1000, gate); // first frame above RUN_ON: the clock starts
+    expect(g).toBe("walk");
+    g = nextGaitTimed(g, 6.4, 1000 + RUN_ENTER_MS - 1, gate); // 149 ms: still not enough
+    expect(g).toBe("walk");
+    g = nextGaitTimed(g, 6.4, 1000 + RUN_ENTER_MS, gate); // 150 ms: run
+    expect(g).toBe("run");
+  });
+
+  it("a single frame at or below RUN_ON_SPEED restarts the clock", () => {
+    const gate = createRunGate();
+    let g: Gait = "walk";
+    g = nextGaitTimed(g, 6.4, 0, gate);
+    g = nextGaitTimed(g, 6.4, 100, gate);
+    g = nextGaitTimed(g, RUN_ON_SPEED, 120, gate); // exactly ON is not "above": restart
+    expect(g).toBe("walk");
+    g = nextGaitTimed(g, 6.4, 140, gate); // clock restarts here
+    g = nextGaitTimed(g, 6.4, 140 + RUN_ENTER_MS - 1, gate);
+    expect(g).toBe("walk"); // 149 ms since the restart (289 ms since the first frame)
+    g = nextGaitTimed(g, 6.4, 140 + RUN_ENTER_MS, gate);
+    expect(g).toBe("run");
+  });
+
+  it("a runner starting from standing still shows walk first, then run once sustained", () => {
+    const gate = createRunGate();
+    let g: Gait = "idle";
+    g = nextGaitTimed(g, 6.4, 0, gate);
+    expect(g).toBe("walk"); // above WALK_ON, run not yet earned
+    g = nextGaitTimed(g, 6.4, RUN_ENTER_MS, gate);
+    expect(g).toBe("run");
+  });
+
+  it("leaving run is immediate and keeps the nextGait hysteresis band", () => {
+    const gate = createRunGate();
+    let g: Gait = "run";
+    g = nextGaitTimed(g, (RUN_ON_SPEED + RUN_OFF_SPEED) / 2, 0, gate);
+    expect(g).toBe("run"); // in the band: held
+    g = nextGaitTimed(g, RUN_OFF_SPEED - 0.01, 10, gate);
+    expect(g).toBe("walk"); // no delay when leaving run
+    g = nextGaitTimed("run", 0.1, 20, gate);
+    expect(g).toBe("idle");
+  });
+
+  it("matches nextGait everywhere except the run entry (walk / idle behaviour unchanged)", () => {
+    const gate = createRunGate();
+    const speeds = [0, 0.1, 0.2, 0.31, 1, 2.8, 4, 5.2, RUN_ON_SPEED, 4.9, 0.14, 0];
+    let timed: Gait = "idle";
+    let plain: Gait = "idle";
+    speeds.forEach((s, i) => {
+      timed = nextGaitTimed(timed, s, i * 16, gate);
+      plain = nextGait(plain, s);
+      expect(timed).toBe(plain);
+    });
+  });
+
+  it("a stale clock cannot promote after the gate is reset (seat / respawn)", () => {
+    const gate = createRunGate();
+    nextGaitTimed("walk", 6.4, 0, gate);
+    gate.aboveSince = -1; // what RemotePlayer does when the avatar sits down
+    expect(nextGaitTimed("walk", 6.4, 5000, gate)).toBe("walk"); // clock restarted at 5000
+  });
+});
+
+/** One scripted patch arrival for the end-to-end remote simulations below. */
+interface Arrival {
+  recv: number;
+  x: number;
+}
+
+/**
+ * A straight-line mover sending a patch every 100 ms (PATCH_RATE_MS) at `speed`
+ * m/s. `delays[k % delays.length]` is how late patch k is; delivery is in order,
+ * so a late patch drags the ones behind it into a burst (>= 10 ms apart).
+ */
+function arrivals(speed: number, delays: readonly number[], count: number): Arrival[] {
+  const out: Arrival[] = [];
+  let prevRecv = -Infinity;
+  for (let k = 0; k < count; k++) {
+    const recv = Math.max(100 * k + delays[k % delays.length], prevRecv + 10);
+    out.push({ recv, x: speed * 0.1 * k });
+    prevRecv = recv;
+  }
+  return out;
+}
+
+interface Frame {
+  now: number;
+  speed: number;
+  gait: Gait;
+}
+
+/**
+ * Drive the REAL remote pipeline the way RemotePlayer's frame does — sample the
+ * buffer RENDER_DELAY_MS in the past, hold the previous speed, feed nextGaitTimed —
+ * at 60 fps, and return every frame.
+ */
+function simulate(patches: readonly Arrival[], endMs: number): Frame[] {
+  const buf: Snapshot[] = [];
+  const gate = createRunGate();
+  const frames: Frame[] = [];
+  let next = 0;
+  let held = 0;
+  let gait: Gait = "idle";
+  for (let now = 0; now <= endMs; now += 1000 / 60) {
+    while (next < patches.length && patches[next].recv <= now) {
+      pushSnapshot(buf, { t: patches[next].recv, x: patches[next].x, z: 0, yaw: 0 });
+      next++;
+    }
+    const s = sample(buf, now - RENDER_DELAY_MS, held);
+    if (s) {
+      held = s.speed;
+      gait = nextGaitTimed(gait, s.speed, now, gate);
+      frames.push({ now, speed: s.speed, gait });
+    }
+  }
+  return frames;
+}
+
+describe("remote gait end to end (interpolation + hold + run gate)", () => {
+  it("a 4 m/s walker whose patches sometimes arrive 10 ms apart and sometimes 250 ms late never yields run", () => {
+    // Late-then-burst delivery: 250 ms late patches are followed by patches 10 ms
+    // apart (0.4 m each = 40 m/s on paper), and 120 / double-250 variants too.
+    const delays = [0, 0, 250, 0, 0, 0, 120, 0, 250, 250, 0, 0, 0, 0];
+    const patches = arrivals(4, delays, 140);
+    const spans = patches.slice(1).map((p, i) => p.recv - patches[i].recv);
+    expect(Math.min(...spans)).toBe(10); // the model really contains 10 ms bursts...
+    expect(Math.max(...spans)).toBeGreaterThanOrEqual(250); // ...and 250 ms stalls
+    const frames = simulate(patches, 13000);
+    expect(frames.length).toBeGreaterThan(500);
+    expect(frames.filter((f) => f.gait === "run")).toEqual([]);
+    expect(Math.max(...frames.map((f) => f.speed))).toBeLessThanOrEqual(RUN_ON_SPEED); // not even a speed reading
+    expect(frames.some((f) => f.gait === "walk")).toBe(true); // and it did walk
+  });
+
+  it("a real 6.4 m/s runner enters run within 200 ms of first reading above RUN_ON_SPEED", () => {
+    const frames = simulate(arrivals(6.4, [0], 60), 5000);
+    const firstFast = frames.find((f) => f.speed > RUN_ON_SPEED);
+    const firstRun = frames.find((f) => f.gait === "run");
+    expect(firstFast).toBeDefined();
+    expect(firstRun).toBeDefined();
+    const lag = firstRun!.now - firstFast!.now;
+    expect(lag).toBeGreaterThanOrEqual(RUN_ENTER_MS);
+    expect(lag).toBeLessThanOrEqual(200);
+    // ...and it keeps running for the rest of the run (no flapping back to walk).
+    expect(frames.filter((f) => f.now >= firstRun!.now).every((f) => f.gait === "run")).toBe(true);
+  });
+
+  it("a runner with ±25 ms delivery jitter (segments read 5.1-8.5 m/s, all above RUN_OFF_SPEED) reaches run and holds it", () => {
+    const frames = simulate(arrivals(6.4, [0, 15, 0, 25, 0, 10], 60), 5000);
+    const firstRun = frames.findIndex((f) => f.gait === "run");
+    expect(firstRun).toBeGreaterThan(-1);
+    expect(frames.slice(firstRun + 5).every((f) => f.gait === "run")).toBe(true);
   });
 });

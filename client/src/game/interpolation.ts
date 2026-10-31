@@ -13,6 +13,7 @@ import {
   EXTRAPOLATE_SETTLE_MS,
   SNAPSHOT_CAPACITY,
   SNAP_DISTANCE,
+  SPEED_MIN_SPAN_MS,
 } from "./constants";
 
 /** One received position sample. `t` is a local (client) receive timestamp. */
@@ -28,7 +29,7 @@ export interface Sample {
   x: number;
   z: number;
   yaw: number;
-  /** Interpolated ground speed (m/s) — drives the walk/idle decision. */
+  /** Interpolated ground speed (m/s) — drives the idle/walk/run decision. */
   speed: number;
 }
 
@@ -54,8 +55,17 @@ export function pushSnapshot(
  * - renderT past the newest → extrapolate at the last segment's velocity (clamped
  *   to RUN_SPEED) for at most EXTRAPOLATE_MAX_MS, then ease back to `newest` (the
  *   authoritative rest pose) over EXTRAPOLATE_SETTLE_MS and hold (speed 0 → idle).
+ *
+ * Speed is only measured from a segment at least SPEED_MIN_SPAN_MS long: a shorter
+ * one is a receive-time burst (distance / a few ms reads 20-40 m/s), so that frame
+ * returns `heldSpeed` — the caller's previous speed — instead. The pose is
+ * unaffected; only the speed READING is held.
  */
-export function sample(snapshots: readonly Snapshot[], renderT: number): Sample | null {
+export function sample(
+  snapshots: readonly Snapshot[],
+  renderT: number,
+  heldSpeed = 0,
+): Sample | null {
   const n = snapshots.length;
   if (n === 0) return null;
 
@@ -66,7 +76,7 @@ export function sample(snapshots: readonly Snapshot[], renderT: number): Sample 
 
   const newest = snapshots[n - 1];
   if (renderT >= newest.t) {
-    return extrapolate(snapshots, renderT, newest);
+    return extrapolate(snapshots, renderT, newest, heldSpeed);
   }
 
   // Find the bracketing pair (searching from the newest end — the common case).
@@ -79,7 +89,8 @@ export function sample(snapshots: readonly Snapshot[], renderT: number): Sample 
       const x = a.x + (b.x - a.x) * f;
       const z = a.z + (b.z - a.z) * f;
       const yaw = lerpAngle(a.yaw, b.yaw, f);
-      const speed = span > 0 ? Math.hypot(b.x - a.x, b.z - a.z) / (span / 1000) : 0;
+      const speed =
+        span >= SPEED_MIN_SPAN_MS ? Math.hypot(b.x - a.x, b.z - a.z) / (span / 1000) : heldSpeed;
       return { x, z, yaw, speed };
     }
   }
@@ -103,7 +114,12 @@ export function sample(snapshots: readonly Snapshot[], renderT: number): Sample 
  *     past the true stop.
  * A single snapshot (or a zero-length segment) simply holds position.
  */
-function extrapolate(snapshots: readonly Snapshot[], renderT: number, newest: Snapshot): Sample {
+function extrapolate(
+  snapshots: readonly Snapshot[],
+  renderT: number,
+  newest: Snapshot,
+  heldSpeed: number,
+): Sample {
   if (snapshots.length < 2) {
     return { x: newest.x, z: newest.z, yaw: newest.yaw, speed: 0 };
   }
@@ -135,7 +151,10 @@ function extrapolate(snapshots: readonly Snapshot[], renderT: number, newest: Sn
 
   // Phase A — still within the window: dead-reckon forward, reads as moving.
   if (ahead <= EXTRAPOLATE_MAX_MS) {
-    return { x: overX, z: overZ, yaw: overYaw, speed: Math.hypot(vx, vz) * 1000 };
+    // A burst last segment (span < SPEED_MIN_SPAN_MS) still steers the dead-reckoned
+    // pose (clamped to RUN_SPEED) but must not be READ as a speed: hold the previous.
+    const speed = span >= SPEED_MIN_SPAN_MS ? Math.hypot(vx, vz) * 1000 : heldSpeed;
+    return { x: overX, z: overZ, yaw: overYaw, speed };
   }
 
   // Phase B/C — past the window: ease the overshoot back to the authoritative
