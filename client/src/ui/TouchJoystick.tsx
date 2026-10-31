@@ -8,6 +8,7 @@ import {
   stickUp,
 } from "../game/joystick";
 import type { MoveInput } from "../game/input";
+import { useViewStore } from "../stores/viewStore";
 import "./touch.css";
 
 interface TouchJoystickProps {
@@ -59,15 +60,22 @@ function passTapToGround(e: PointerEvent): void {
  * a stick drag never reaches the canvas and never rotates the camera — except a
  * quick tap, which is passed on as a click-move tap (see passTapToGround).
  *
+ * In the overview map the stick is off: the zone turns click-through (`is-ov`) so a
+ * one-finger drag pans the map as before. Turning the map on mid-drag re-runs the
+ * effect, whose cleanup releases the stick (art hidden, `moveInput` zeroed). The
+ * same cleanup covers a `leftHanded` flip mid-drag.
+ *
  * All the logic is the pure state machine in game/joystick.ts. This component
  * only wires pointer events to it and moves two divs: per-move work writes
- * `moveInput` and `style.transform` through refs — never React state.
+ * `moveInput` and `style.transform` through refs — never React state (the
+ * only React state read is the rare overview flag, not per-frame data).
  */
 export function TouchJoystick({ moveInput, leftHanded = false }: TouchJoystickProps) {
   const zoneRef = useRef<HTMLDivElement>(null);
   const stickRef = useRef<HTMLDivElement>(null);
   const baseRef = useRef<HTMLDivElement>(null);
   const knobRef = useRef<HTMLDivElement>(null);
+  const isOv = useViewStore((s) => s.isOv);
 
   useEffect(() => {
     const zone = zoneRef.current;
@@ -90,6 +98,8 @@ export function TouchJoystick({ moveInput, leftHanded = false }: TouchJoystickPr
       stick.classList.remove("is-active");
       knob.classList.remove("is-run");
     };
+    // Overview: the zone is click-through, so there is nothing to listen for.
+    if (isOv) return;
 
     const onDown = (e: PointerEvent) => {
       if (e.button !== 0) return;
@@ -155,16 +165,18 @@ export function TouchJoystick({ moveInput, leftHanded = false }: TouchJoystickPr
       window.removeEventListener("pointerup", onEnd);
       window.removeEventListener("pointercancel", onEnd);
       window.removeEventListener("blur", onBlur);
-      // Never strand a stale intent after unmount — the avatar would keep walking.
+      // Never strand a stale intent or a drawn stick after unmount, a `leftHanded`
+      // flip or the map turning on mid-drag — the avatar would keep walking.
+      hide();
       clearInput();
     };
-  }, [moveInput, leftHanded]);
+  }, [moveInput, leftHanded, isOv]);
 
   return (
     <>
       <div
         ref={zoneRef}
-        className={"cv-stick-zone" + (leftHanded ? " is-left-handed" : "")}
+        className={"cv-stick-zone" + (leftHanded ? " is-left-handed" : "") + (isOv ? " is-ov" : "")}
         aria-hidden="true"
       />
       <div ref={stickRef} className="cv-stick" aria-hidden="true">

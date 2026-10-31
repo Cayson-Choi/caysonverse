@@ -27,6 +27,12 @@
   right: 0;
 }
 
+/* Overview (map) mode: no stick — let the touch fall through to the canvas so a
+   one-finger drag pans the map. */
+.cv-stick-zone.is-ov {
+  pointer-events: none;
+}
+
 /* The stick art: a zero-size fixed anchor at the viewport origin; base and knob
    are placed in viewport pixels by translate(). Shown only while a thumb is down
    (classList, not React state). */
