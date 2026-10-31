@@ -5,7 +5,8 @@
 .cv-npc-panel {
   position: fixed;
   right: 16px;
-  bottom: 132px;
+  /* Above the PC action pill, which sits over the emoji row (24 + row + 8 + 40 + 12). */
+  bottom: calc(var(--cv-pc-emoji-h, 40px) + 92px);
   z-index: 30;
   display: flex;
   flex-direction: column;
@@ -164,16 +165,15 @@
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
-/* While an NPC dialogue is open, clear the other bottom overlays so only the
-   NPC and the sheet remain (touch only — desktop keeps its side drawer). */
+/* While an NPC dialogue is open, clear the bottom overlays so only the NPC and the
+   sheet remain (touch only — desktop keeps its side drawer): the chat bar and 💬 button,
+   the chat-log toggle, the emoji fan, the joystick zone, the action and jump buttons. The
+   top rows (👁 🗺 🔊 ☰, 👥) are far from the sheet and stay. */
 .cv-touch.cv-npc-open .cv-chat-input,
+.cv-touch.cv-npc-open .cv-chat-btn,
 .cv-touch.cv-npc-open .cv-chat-log,
-.cv-touch.cv-npc-open .cv-emoji-palette,
-.cv-touch.cv-npc-open .cv-view-btn,
-.cv-touch.cv-npc-open .cv-overview-btn,
-.cv-touch.cv-npc-open .cv-sound-btn,
+.cv-touch.cv-npc-open .cv-emoji-fan .cv-hud-btn,
 .cv-touch.cv-npc-open .cv-stick-zone,
-.cv-touch.cv-npc-open .cv-dpad-zone,
 .cv-touch.cv-npc-open .cv-action-btn,
 .cv-touch.cv-npc-open .cv-jump-btn {
   display: none !important;

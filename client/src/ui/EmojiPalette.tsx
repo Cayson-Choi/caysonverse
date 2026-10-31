@@ -9,15 +9,18 @@ import "./emoji.css";
 const PULSE_MS = 200;
 
 /**
- * Bottom-right emoji reaction palette: 6 buttons (the glyph itself is the
- * label) plus 1-6 keyboard shortcuts. The shortcut keys come from the shared
- * hotkey table (hotkeys.ts), which honours the SAME focus flag the chat input
- * sets (uiCapture.ts) so digits never leak into a reaction while typing a
- * message. Wires the emoji broadcast into the module registry for this
- * component's lifetime (mirrors Chat.tsx's startChatSync wiring). The float-up
- * sprites themselves live in the 3D scene (useEmoji, per avatar), not here.
+ * Everything an emoji control needs, shared by the PC palette and the touch fan (mount
+ * ONE of them — this registers the room's emoji broadcast and the 1–6 keys):
+ *  - wires the emoji broadcast into the module registry for the caller's lifetime (mirrors
+ *    Chat.tsx's startChatSync wiring); the float-up sprites live in the 3D scene (useEmoji),
+ *  - the 1–6 shortcut from the shared hotkey table (hotkeys.ts), which honours the SAME
+ *    capture rule the chat input sets (uiCapture.ts) so digits never leak into a reaction
+ *    while typing a message,
+ *  - `fire(index)`: a client-side mirror of the server's 500 ms rate cap (the button feels
+ *    immediate without spamming the network — the server stays authoritative),
+ *  - `pulseIndex`: which button to flash for PULSE_MS after a send.
  */
-export function EmojiPalette() {
+export function useEmojiFire(): { fire: (index: number) => void; pulseIndex: number | null } {
   useEffect(() => {
     const room = getRoom();
     if (!room) return;
@@ -29,9 +32,6 @@ export function EmojiPalette() {
 
   function fire(index: number) {
     const now = performance.now();
-    // Client-side mirror of the server's 500ms rate cap: keeps the button
-    // feeling responsive (immediate pulse) without spamming the network — the
-    // server remains authoritative and silently drops any excess regardless.
     if (now - lastSentAt.current < EMOJI_RATE.windowMs) return;
     lastSentAt.current = now;
     sendEmoji(index);
@@ -47,6 +47,16 @@ export function EmojiPalette() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  return { fire, pulseIndex };
+}
+
+/**
+ * PC emoji reactions: one row of six buttons at the bottom right (the glyph itself is the
+ * label) next to the 1–6 keys. Phones get the EmojiFan instead (one button that opens a
+ * half circle); WorldScene mounts exactly one of the two.
+ */
+export function EmojiPalette() {
+  const { fire, pulseIndex } = useEmojiFire();
   return (
     <div className="cv-emoji-palette" role="group" aria-label="이모지 리액션">
       {EMOJIS.map((emoji, index) => (
@@ -55,6 +65,9 @@ export function EmojiPalette() {
           type="button"
           className={"cv-emoji-btn" + (pulseIndex === index ? " is-pulse" : "")}
           aria-label={`${emoji} 리액션 보내기 (단축키 ${index + 1})`}
+          tabIndex={-1}
+          onPointerDown={(e) => e.preventDefault()}
+          onMouseDown={(e) => e.preventDefault()}
           onClick={() => fire(index)}
         >
           {emoji}

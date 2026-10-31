@@ -1,4 +1,14 @@
-/* Emoji reaction palette (bottom-right, non-blocking layer above the 3D canvas). */
+/* Emoji reactions (non-blocking layer above the 3D canvas).
+     PC     one row of six at the bottom right (EmojiPalette).
+     phone  one round button in the bottom-right cluster that opens the six as an upward
+            half circle (EmojiFan); its rectangles come from game/hud.ts. */
+
+/* Height of the PC row, so the action pill (action.css) and the 조교 panel (npc.css) stack
+   above it whatever it is. A narrow window folds the row into 3 × 2. */
+:root {
+  --cv-pc-emoji-h: 40px;
+}
+
 .cv-emoji-palette {
   position: fixed;
   right: 16px;
@@ -37,31 +47,68 @@
   background: rgba(96, 74, 166, 0.55);
 }
 
-/* ── Touch devices ── ≥44px targets, thumb spacing, respect the bottom
-   safe-area. Slot regime (design 22): the palette is the BOTTOM-RIGHT slot, a
-   2-col × 3-row stack hugging the right edge (width 102px = 2×46 + 10 gap →
-   x ≥ ~276 on a 390px screen). Keeping it this narrow is what guarantees the
-   sit/stand button (left of it, x ≤ ~270) can never overlap it. */
-.cv-touch .cv-emoji-palette {
-  right: 12px;
-  /* Raised above the very-bottom chat bar (design 34 후속); still below the
-     👁/🗺/🔊 toggle column (view.css/sound.css at 246px+). */
-  bottom: calc(env(safe-area-inset-bottom, 0px) + 80px);
-  width: 102px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 10px;
+/* A window under ~900 px would run the row under the centred chat bar: fold it into 3 × 2
+   (3 × 40 + 2 × 8 = 136 px wide). */
+@media (max-width: 900px) {
+  :root {
+    --cv-pc-emoji-h: 88px;
+  }
+  .cv-emoji-palette {
+    flex-wrap: wrap;
+    width: 136px;
+  }
 }
 
-.cv-touch .cv-emoji-btn {
-  width: 46px;
-  height: 46px;
-  font-size: 22px;
-  touch-action: manipulation;
+/* ── Phone: the fan ── */
+
+/* The wrapper has no box of its own: the buttons are pinned individually (inline style). */
+.cv-emoji-fan {
+  display: contents;
 }
 
-/* Chat input focused (soft keyboard up): the palette leaves the screen so the
-   keyboard-lifted input bar can never land on it (design 22 — documented dodge). */
-.cv-touch.cv-chat-focus .cv-emoji-palette {
+.cv-emoji-toggle .cv-hud-glyph,
+.cv-emoji-fan-btn .cv-hud-glyph {
+  font-size: 26px;
+}
+
+.cv-emoji-fan-btn {
+  animation: cv-fan-pop 0.14s ease-out backwards;
+  animation-delay: calc(var(--cv-fan-i, 0) * 18ms);
+}
+
+.cv-emoji-fan-btn.is-pulse {
+  transform: scale(1.15);
+  background: rgba(96, 74, 166, 0.72);
+  border-color: rgba(170, 150, 255, 0.9);
+}
+
+@keyframes cv-fan-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cv-emoji-fan-btn {
+    animation: none;
+  }
+}
+
+/* Chat input focused (soft keyboard up): the fan's buttons leave the screen so the
+   keyboard-lifted input bar can never land on them (design 22 — documented dodge). */
+.cv-touch.cv-chat-focus .cv-emoji-fan .cv-hud-btn {
   display: none;
+}
+
+/* The fan is drawn over the corner the jump, action and 💬 buttons use: they step aside
+   while it is open (visibility, not display, so nothing around them shifts). */
+.cv-fan-open .cv-jump-btn,
+.cv-fan-open .cv-action-btn,
+.cv-fan-open .cv-chat-btn {
+  visibility: hidden;
 }

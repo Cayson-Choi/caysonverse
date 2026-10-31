@@ -4,6 +4,7 @@ import { sendAnnounce, sendKick } from "../net/connection";
 import { getRoster, subscribeRoster, getRemoteRecord } from "../game/remoteStore";
 import { acquireUiCapture, releaseUiCapture, captureReleaseEffect } from "../game/uiCapture";
 import { useAppStore } from "../stores/appStore";
+import { isTouchDevice } from "../device";
 import "./admin.css";
 
 interface Row {
@@ -13,8 +14,10 @@ interface Row {
 }
 
 /**
- * Instructor admin panel (top-left, collapsible). Rendered ONLY for the admin
- * (WorldScene gates on `isAdmin`), so no admin-only wiring runs for guests.
+ * Instructor admin panel (collapsible; in the top-left HUD column, under the room name and
+ * the roster). Rendered ONLY for the admin (WorldScene gates on `isAdmin`), so no
+ * admin-only wiring runs for guests. A phone starts it folded (it would otherwise cover
+ * the left half of a small screen, including the joystick's corner).
  *
  * Two tools:
  *  - Announce: a 300-char textarea (+counter) with [공지 보내기] / [공지 지우기].
@@ -30,7 +33,7 @@ export function AdminPanel() {
   const identity = useAppStore((s) => s.identity);
   const roster = useSyncExternalStore(subscribeRoster, getRoster, getRoster);
 
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(!isTouchDevice);
   const [text, setText] = useState("");
   const [confirmSid, setConfirmSid] = useState<string | null>(null);
 

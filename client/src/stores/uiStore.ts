@@ -9,8 +9,8 @@ interface UiStore {
   /** The Esc / ☰ menu (MenuPanel). */
   menuOpen: boolean;
   /**
-   * The player roster (Task 16 draws it: Tab held on a PC, the 👥 toggle on a phone).
-   * Always false until that panel exists; Esc already closes it first when it is up.
+   * The player roster (RosterPanel): Tab held on a PC, the 👥 toggle on a phone. Esc
+   * closes it before the menu (resolveEscape); a Tab-held list also hides on window blur.
    */
   rosterOpen: boolean;
   setMenuOpen: (open: boolean) => void;

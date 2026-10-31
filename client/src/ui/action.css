@@ -1,15 +1,18 @@
 /* Context action button (Task 10): sit / stand / talk to an AI 조교, shown only
    when one of them applies. Never takes focus (see ActionButton.tsx). The touch
    jump button (Task 11) lives in this file too, because the two are one stack:
-   jump 72 px at the bottom-right edge, the action circle right above it. */
+   jump 72 px at the bottom-right edge, the action circle right above it.
 
-/* Desktop: a small pill at the bottom right, left of the 🔊 chip (right 16, bottom
-   76, 48 square) so it shares its row, clears the emoji row (bottom 24..64), the
-   👁 / 🗺 stack above (bottom 190+) and the 조교 side panel (bottom 132+). */
+   On a phone BOTH are pinned by inline style from game/hud.ts `touchHudLayout` (the
+   rectangles hud.test.ts keeps 48 px big and 8 px apart; mirrored when left-handed;
+   scaled by 버튼 크기), so this file only styles how they look. */
+
+/* Desktop: a small pill at the bottom right, 8 px above the emoji row (right 16, bottom
+   24, --cv-pc-emoji-h tall), clearing the 조교 side panel above it (npc.css). */
 .cv-action-btn {
   position: fixed;
-  right: 72px;
-  bottom: 80px;
+  right: 16px;
+  bottom: calc(24px + var(--cv-pc-emoji-h, 40px) + 8px);
   z-index: 25;
   display: flex;
   align-items: center;
@@ -57,37 +60,15 @@
   box-shadow: 0 1px 0 rgba(90, 70, 160, 0.6);
 }
 
-/* The touch stack's geometry, in ONE place so the two buttons can never drift apart:
-   jump 72 px at the bottom-right edge (16 px inset), action 60 px centred right above
-   it with a 12 px gap. Both are >= 48 px targets with >= 8 px between them (global
-   constraints).
-
-   "버튼 크기" (menu) scales the two sizes through --cv-btn-scale on <html> (settings:
-   0.85 / 1 / 1.25), never below 48 px — the CSS twin of buttonPx() in game/settings.ts.
-   The action button is placed from --cv-jump-size, so the stack stays centred and 12 px
-   apart at every size. */
-.cv-touch {
-  --cv-jump-size: max(48px, calc(72px * var(--cv-btn-scale, 1)));
-  --cv-jump-inset: 16px;
-  --cv-action-size: max(48px, calc(60px * var(--cv-btn-scale, 1)));
-  --cv-action-gap: 12px;
-}
-
-/* Touch: a 60 px circle (icon over a small label) centred above the jump button
-   (right = inset + (72 − 60) / 2 = 22 px; bottom = inset + 72 + gap = 100 px).
-   Safe-area aware. z-index 25 beats the stick zone (10) and the HUD (20+), so it
-   takes its own touch and nothing falls through to the canvas. */
+/* Touch: a round button (icon over a small label), 60 px at 보통, centred above the jump
+   button. z-index 25 beats the stick zone (10) and the HUD (20+), so it takes its own touch
+   and nothing falls through to the canvas. Size and place come from the inline style. */
 .cv-touch .cv-action-btn {
-  right: calc(var(--cv-jump-inset) + (var(--cv-jump-size) - var(--cv-action-size)) / 2);
-  bottom: calc(
-    env(safe-area-inset-bottom, 0px) + var(--cv-jump-inset) + var(--cv-jump-size) +
-      var(--cv-action-gap)
-  );
+  right: auto;
+  bottom: auto;
   flex-direction: column;
   justify-content: center;
   gap: 1px;
-  width: var(--cv-action-size);
-  height: var(--cv-action-size);
   padding: 0;
   border-radius: 50%;
   background: rgba(96, 74, 166, 0.78);
@@ -112,21 +93,17 @@
 }
 
 /* Jump button (touch only — JumpButton.tsx). A 72 px round thumb target at the
-   bottom-right edge, safe-area aware, the biggest button on screen. Never takes focus.
-   z-index 25 like the action button: it beats the stick zone (10) and the HUD (20+),
-   so a press is its own and nothing leaks through to the canvas as a camera drag. */
+   bottom-right edge, the biggest button on screen. Never takes focus. z-index 25 like the
+   action button: it beats the stick zone (10) and the HUD (20+), so a press is its own and
+   nothing leaks through to the canvas as a camera drag. Size and place: inline style. */
 .cv-jump-btn {
   position: fixed;
-  right: var(--cv-jump-inset, 16px);
-  bottom: calc(env(safe-area-inset-bottom, 0px) + var(--cv-jump-inset, 16px));
   z-index: 25;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 0;
-  width: var(--cv-jump-size, 72px);
-  height: var(--cv-jump-size, 72px);
   padding: 0;
   font: inherit;
   color: #f2eeff;
@@ -165,21 +142,12 @@
   letter-spacing: -0.02em;
 }
 
-/* "왼손잡이 모드" (menu): the whole thumb layout is mirrored — the stick takes the right
-   half (TouchJoystick), so the jump / action stack moves to the left edge, under the
-   look-drag thumb. <html> carries cv-left-handed (settings). */
-.cv-left-handed.cv-touch .cv-jump-btn {
-  right: auto;
-  left: var(--cv-jump-inset);
-}
-
-.cv-left-handed.cv-touch .cv-action-btn {
-  right: auto;
-  left: calc(var(--cv-jump-inset) + (var(--cv-jump-size) - var(--cv-action-size)) / 2);
-}
+/* "왼손잡이 모드" (menu) mirrors the whole thumb layout — the stick takes the right half
+   (TouchJoystick) and these two move to the left edge — but that is game/hud.ts's job (the
+   rectangles arrive mirrored), not a CSS rule. */
 
 /* Chat input focused (soft keyboard up): hide, so the keyboard-lifted input bar can
-   never land on them (design 22 — same dodge as the emoji palette / toggles). */
+   never land on them (design 22 — same dodge as the emoji fan / the 💬 button). */
 .cv-touch.cv-chat-focus .cv-action-btn,
 .cv-touch.cv-chat-focus .cv-jump-btn {
   display: none;

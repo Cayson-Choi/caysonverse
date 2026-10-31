@@ -1,0 +1,229 @@
+/* HUD chips and the top rows (controls-ux Task 16).
+
+   One button look for everything that is a HudButton: the top-right 👁 🗺 🔊 ☰, the 👥
+   count, and — as circles pinned by game/hud.ts — the phone's 💬 and emoji buttons. The
+   jump and action buttons keep their own look in action.css but share the layout model.
+
+   Sizes: `--cv-hud-btn` is 48 px on a PC. On a phone HudTop sets it inline from the 버튼 크기
+   setting (never under 48 px). Positions: a PC lays the two top containers out here; a
+   phone gets `left/top` inline from touchHudLayout (the numbers hud.test.ts checks).
+   Gaps are 8 px everywhere, the minimum between two buttons. */
+
+.cv-hud-btn {
+  position: relative;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--cv-hud-btn, 48px);
+  height: var(--cv-hud-btn, 48px);
+  padding: 0;
+  font: inherit;
+  font-size: 22px;
+  line-height: 1;
+  color: #f2eeff;
+  background: rgba(18, 14, 36, 0.72);
+  border: 1px solid rgba(150, 130, 220, 0.35);
+  border-radius: 12px;
+  backdrop-filter: blur(6px);
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  transition: transform 0.1s ease, background 0.15s ease, border-color 0.15s ease;
+}
+
+.cv-hud-btn:hover {
+  background: rgba(28, 22, 54, 0.85);
+  border-color: rgba(170, 150, 255, 0.6);
+}
+
+.cv-hud-btn:active,
+.cv-hud-btn.is-on {
+  background: rgba(96, 74, 166, 0.72);
+  border-color: rgba(170, 150, 255, 0.7);
+}
+
+/* Muted 🔇: a dimmed chip (the glyph is the main signal). */
+.cv-hud-btn.is-muted {
+  color: rgba(210, 202, 240, 0.55);
+  background: rgba(18, 14, 36, 0.55);
+}
+
+.cv-hud-glyph {
+  display: flex;
+  align-items: center;
+  pointer-events: none; /* the button is the target, never its glyph */
+}
+
+/* A round button pinned by inline left / top / width / height (touchHudLayout): 💬, the
+   emoji button and the fan. Above the stick zone (10) and the other HUD rows. */
+.cv-hud-btn.is-round {
+  position: fixed;
+  z-index: 24;
+  border-radius: 50%;
+}
+
+/* ── Top-right: 👁 🗺 🔊 ☰ ── */
+.cv-hud-right {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 22;
+  display: flex;
+  gap: 8px;
+}
+
+/* Left-handed: the group sits in the top-left corner with the menu button outermost. */
+.cv-hud-right.is-mirrored {
+  flex-direction: row-reverse;
+}
+
+/* ── Top-left: room name + 👥, then the roster / chat-log toggle / admin panel ── */
+.cv-hud-left {
+  position: fixed;
+  top: 16px;
+  left: 16px;
+  z-index: 22;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  max-width: calc(100vw - 32px);
+  pointer-events: none; /* empty column space must not eat canvas clicks */
+}
+
+.cv-hud-left > * {
+  pointer-events: auto;
+}
+
+.cv-hud-left.is-right {
+  align-items: flex-end;
+}
+
+.cv-hud-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cv-hud-zone {
+  display: inline-flex;
+  align-items: center;
+  height: 28px;
+  padding: 0 12px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #f2eeff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background: rgba(18, 14, 36, 0.72);
+  border: 1px solid rgba(150, 130, 220, 0.35);
+  border-radius: 14px;
+  backdrop-filter: blur(6px);
+  pointer-events: none; /* a label, not a control */
+}
+
+.cv-hud-people {
+  width: auto;
+  min-width: var(--cv-hud-btn, 48px);
+  padding: 0 12px;
+}
+
+.cv-hud-people .cv-hud-glyph {
+  gap: 4px;
+}
+
+.cv-hud-people-icon {
+  font-size: 18px;
+}
+
+.cv-hud-people-count {
+  font-size: 16px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Roster (접속자 N명) ── */
+.cv-roster {
+  display: flex;
+  flex-direction: column;
+  width: min(260px, calc(100vw - 24px));
+  max-height: min(40vh, 320px);
+  color: #ece7ff;
+  background: rgba(14, 11, 30, 0.86);
+  border: 1px solid rgba(150, 130, 220, 0.32);
+  border-radius: 12px;
+  backdrop-filter: blur(8px);
+  overflow: hidden;
+}
+
+.cv-roster-title {
+  flex: none;
+  padding: 10px 14px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #f2eeff;
+  background: rgba(120, 96, 224, 0.28);
+}
+
+.cv-roster-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.cv-roster-row {
+  padding: 6px 8px;
+  font-size: 14px;
+  line-height: 1.35;
+  border-radius: 8px;
+  word-break: break-word;
+}
+
+.cv-roster-row.is-self {
+  font-weight: 700;
+  background: rgba(120, 96, 224, 0.2);
+}
+
+/* ── Phone ── */
+
+/* Room name above the 👥 button (a column), 72 px buttons — game/hud.ts `roster` rect. The
+   chip may not run under the top-right group: it ends 8 px short of it. */
+.cv-touch .cv-hud-info {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.cv-touch .cv-hud-left.is-right .cv-hud-info {
+  align-items: flex-end;
+}
+
+.cv-touch .cv-hud-zone {
+  max-width: calc(100vw - 24px - (4 * var(--cv-hud-btn, 48px) + 3 * 8px) - 8px);
+}
+
+.cv-touch .cv-hud-people {
+  width: 72px;
+  min-width: 0;
+  padding: 0;
+}
+
+.cv-touch .cv-roster-row {
+  padding: 9px 10px;
+  font-size: 15px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cv-hud-btn {
+    transition: none;
+  }
+}

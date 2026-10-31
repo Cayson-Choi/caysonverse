@@ -6,15 +6,18 @@ import { isTouchDevice } from "../device";
 const STICK_THRESHOLD = 24;
 
 /**
- * Right-side collapsible chat log. Rows are `[닉네임] 메시지`, newest at the
- * bottom; system notices (e.g. rate-limit rejections) render dimmed and appear
- * only for the local user. Auto-scrolls to the newest row unless the user has
- * scrolled up to read history.
+ * Collapsible chat log. Rows are `[닉네임] 메시지`, newest at the bottom; system notices
+ * (e.g. rate-limit rejections) render dimmed and appear only for the local user.
+ * Auto-scrolls to the newest row unless the user has scrolled up to read history.
+ *
+ * Where it sits (Task 16): on a PC it is bottom-left, just above the input bar
+ * (`Chat` mounts it); on a phone only its toggle is on screen — WorldScene hangs the log
+ * in HudTop's top-left column, under the 👥 button, and the rows open as a bottom sheet.
  */
 export function ChatLog() {
   const log = useChatStore((s) => s.log);
   // Touch: start collapsed and open as a bottom sheet on demand (screen space is
-  // scarce and the joystick/input own the lower edge). Desktop: expanded as before.
+  // scarce and the joystick/cluster own the lower edge). Desktop: expanded as before.
   const [collapsed, setCollapsed] = useState(isTouchDevice);
   const rowsRef = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
@@ -37,6 +40,15 @@ export function ChatLog() {
     if (!collapsed) stickToBottom.current = true;
   }, [collapsed]);
 
+  // A phone's open log is a bottom sheet: the jump / action / 💬 / emoji buttons step aside
+  // (chat.css keys off this class), so nothing floats over the lines being read.
+  useEffect(() => {
+    if (!isTouchDevice || collapsed) return;
+    const root = document.documentElement;
+    root.classList.add("cv-log-open");
+    return () => root.classList.remove("cv-log-open");
+  }, [collapsed]);
+
   return (
     <div
       className={
@@ -47,6 +59,8 @@ export function ChatLog() {
         className="cv-chat-toggle"
         type="button"
         aria-expanded={!collapsed}
+        // Never take focus from a press: a focused chat field keeps its caret (and the keyboard).
+        onPointerDown={(e) => e.preventDefault()}
         onClick={() => setCollapsed((c) => !c)}
       >
         채팅 <span aria-hidden="true">{collapsed ? "▲" : "▼"}</span>

@@ -16,7 +16,7 @@ import type { NametagMode } from "./nametagSelect";
 export type ButtonSize = "small" | "medium" | "large";
 
 export interface Settings {
-  /** Size of the touch buttons (jump, action). */
+  /** Size of the touch buttons (jump, action, emoji, 💬 and the top rows; never under 48 px). */
   buttonSize: ButtonSize;
   /** Mirror the touch layout: the stick on the right half, look-drag and the buttons on the left. */
   leftHanded: boolean;
@@ -57,9 +57,9 @@ export const MIN_GAP_PX = 8;
 /** localStorage key. The `v1` is the schema version of the stored blob. */
 export const SETTINGS_STORAGE_KEY = "cv-settings-v1";
 
-/** `<html>` class while left-handed play is on (CSS mirrors the touch buttons off it). */
+/** `<html>` class while left-handed play is on (for CSS; the touch HUD itself reads the store, see game/hud.ts). */
 export const LEFT_HANDED_CLASS = "cv-left-handed";
-/** `<html>` custom property holding the current BUTTON_SCALE. */
+/** `<html>` custom property holding the current BUTTON_SCALE (the same scale buttonPx() applies). */
 export const BTN_SCALE_VAR = "--cv-btn-scale";
 
 const BUTTON_SIZES: readonly ButtonSize[] = ["small", "medium", "large"];

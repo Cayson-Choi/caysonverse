@@ -18,6 +18,7 @@ import { useChatStore } from "../stores/chatStore";
 import { useNpcStore } from "../stores/npcStore";
 import { isTouchDevice } from "../device";
 import type { Pose, SeatState } from "../game/types";
+import { rectStyle, useTouchHudLayout } from "./useTouchHudLayout";
 import "./action.css";
 
 /** How often the proximity check runs (ms). ~5 Hz — off the per-frame path. */
@@ -43,8 +44,9 @@ function perform(it: Interaction): void {
  * sit on a nearby free chair, stand up, or talk to a nearby AI 조교 — whichever is
  * nearest (interact.ts decides). Renders nothing when there is nothing to do.
  *
- *  - Touch: a 60 px round button right above the 72 px JumpButton (icon + short label).
- *  - Desktop: a small pill at the bottom right, `E 앉기` (clickable too).
+ *  - Touch: a 60 px round button right above the 72 px JumpButton (icon + short label),
+ *    pinned to the rectangle game/hud.ts `touchHudLayout` gives it.
+ *  - Desktop: a small pill at the bottom right, above the emoji row, `E 앉기` (clickable too).
  *
  * It also owns what the old SitPrompt / NpcPrompt did off the render path:
  *  - a ~5 Hz proximity check (occupancy comes from every player's schema-synced
@@ -65,6 +67,7 @@ export function ActionButton({ pose, seat }: { pose: Pose; seat: SeatState }) {
   const current = useRef<Interaction | null>(null);
   // Re-evaluate at once when a chat panel opens or closes (F → button gone).
   const panelOpen = useNpcStore((s) => s.activeNpc !== null);
+  const layout = useTouchHudLayout();
 
   // Personal rejection notice (occupied-seat race) → dimmed system row. Mirrors
   // chatSync's ChatRejected wiring; registered for this component's lifetime.
@@ -131,6 +134,7 @@ export function ActionButton({ pose, seat }: { pose: Pose; seat: SeatState }) {
     <button
       type="button"
       className={"cv-action-btn" + (isTouchDevice ? " is-touch" : "")}
+      style={isTouchDevice ? rectStyle(layout.action) : undefined}
       // Never take focus: a focused button would be re-pressed by Space / Enter and
       // would steal the caret from the chat field (Review Focus 2).
       onPointerDown={(e) => e.preventDefault()}

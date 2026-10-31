@@ -34,6 +34,12 @@
   white-space: pre-wrap;
 }
 
+/* A phone: the banner steps below the top row (HudTop publishes where it ends), so it never
+   hides the 🗺 / ☰ buttons for as long as an announcement is up. */
+.cv-touch .cv-banner {
+  top: calc(var(--cv-hud-top-end, 12px) + 8px);
+}
+
 @keyframes cv-banner-in {
   from {
     opacity: 0;

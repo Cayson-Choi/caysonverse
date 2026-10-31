@@ -1,11 +1,14 @@
 import { pressJump } from "../game/jump";
 import { sendJump } from "../net/connection";
+import { rectStyle, useTouchHudLayout } from "./useTouchHudLayout";
 import "./action.css";
 
 /**
  * The touch jump button: a 72 px round thumb target at the bottom-right edge (the
- * action button sits right above it — action.css). Mounted on touch devices only;
- * on a desktop Space jumps (LocalPlayer's hotkey).
+ * action button sits right above it). Mounted on touch devices only; on a desktop Space
+ * jumps (LocalPlayer's hotkey). Its rectangle comes from game/hud.ts `touchHudLayout`
+ * (the same numbers hud.test.ts keeps 8 px from every other button; mirrored when
+ * left-handed), so it is pinned by inline style, not CSS.
  *
  * A press goes through `pressJump` — the SAME gate Space uses: one "jump blocked"
  * flag that LocalPlayer publishes every frame (seated, in the sit / stand-up clip,
@@ -19,10 +22,12 @@ import "./action.css";
  * button never takes focus or fires a synthetic mouse event / click behind it.
  */
 export function JumpButton({ sessionId }: { sessionId: string }) {
+  const layout = useTouchHudLayout();
   return (
     <button
       type="button"
       className="cv-jump-btn"
+      style={rectStyle(layout.jump)}
       aria-label="점프"
       tabIndex={-1}
       onPointerDown={(e) => {

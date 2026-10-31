@@ -308,6 +308,13 @@ export const SKY_COLOR = "#cde3f5";
 export const FOG_NEAR = 35;
 export const FOG_FAR = 100;
 
+/**
+ * The scene camera's far plane (m). The overview raises it with its blend (CameraRig): on a
+ * tall phone the whole-map fit is width-limited and puts the camera over 200 m up, which
+ * would clip the entire map away.
+ */
+export const CAMERA_FAR = 200;
+
 /*
  * ── Remote-avatar snapshot interpolation & rendering (BINDING values) ──
  * These are the exact tuning numbers Task 5 mandates. Kept in one auditable

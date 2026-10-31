@@ -7,7 +7,7 @@ import { jumpRegistry } from "./jump";
 import { typingRegistry } from "./typing";
 import { viewState, type ViewState } from "./viewState";
 import { remoteGaitProbe, type Gait } from "./gait";
-import { getNametagCostMs, getNametagMode, nametagProbe } from "./labelRegistry";
+import { getNametagCostMs, getNametagMode, nametagProbe, overviewLabelProbe } from "./labelRegistry";
 
 /** Non-consented close code (MAY_TRY_RECONNECT) used by the dev drop hook. */
 const DEV_DROP_CODE = 4010;
@@ -133,6 +133,8 @@ declare global {
       getNametagCostMs: () => number;
       /** The name tag mode the world is using right now ("all" / "nearby" / "off"), as set from the menu. */
       getNametagMode: () => "all" | "nearby" | "off";
+      /** The map's room labels: sprite count, drawn this frame (overview blend past OV_VIS_BLEND)?, opacity. */
+      getOverviewLabels: () => { count: number; visible: boolean; opacity: number };
       /**
        * Force a TRANSIENT connection drop (dev/E2E only) by closing the
        * transport with a non-consented code — the server holds the seat
@@ -202,6 +204,7 @@ export function installDebugHook(
       })),
     getNametagCostMs: () => getNametagCostMs(),
     getNametagMode: () => getNametagMode(),
+    getOverviewLabels: () => ({ ...overviewLabelProbe }),
     dropConnection: () => {
       const room = getRoom();
       if (!room) return false;

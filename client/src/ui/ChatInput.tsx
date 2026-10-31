@@ -5,7 +5,9 @@ import { onHotkey } from "../game/hotkeys";
 import { createTypingSender } from "../game/typing";
 import { sendChat, sendTyping } from "../net/connection";
 import { isTouchDevice } from "../device";
+import { HudButton } from "./HudButton";
 import { KBD_INSET_VAR, trackKbdInset } from "./kbdInset";
+import { rectStyle, useTouchHudLayout } from "./useTouchHudLayout";
 
 const PLACEHOLDER = "메시지를 입력하세요 (Enter)";
 /** Show the length counter once within this many characters of the limit. */
@@ -13,13 +15,19 @@ const COUNTER_LEAD = 20;
 
 /**
  * <html> class while the chat input is focused on a touch device. The other
- * bottom-slot overlays (emoji palette, 👁/🗺 toggles, action and jump buttons) key off it to
- * hide, so the keyboard-lifted input bar can never land on them (design 22).
+ * bottom-cluster overlays (the emoji fan, action and jump buttons, the 💬 button) key off
+ * it to hide, so the keyboard-lifted input bar can never land on them (design 22).
  */
 const FOCUS_CLASS = "cv-chat-focus";
 
 /**
  * Bottom-centre chat input bar.
+ *  - PC: always visible. Phone: the bar is always MOUNTED but folded away (`is-collapsed`:
+ *    opacity 0, no pointer events) until the 💬 button — or a hardware Enter / `/` — focuses
+ *    it; blur folds it again. The 💬 button calls `input.focus()` straight from its click
+ *    handler: iOS raises the keyboard only for a focus() inside a user gesture, so nothing
+ *    may be deferred to an effect or a timer. The bar then rides on the keyboard
+ *    (`--cv-kbd-inset`, chat.css).
  *  - Enter or `/` (unfocused) focuses the input; Enter (focused) sends + blurs.
  *  - Escape blurs.
  *  - While focused, the "chat" capture tells the movement system to ignore
@@ -36,9 +44,10 @@ export function ChatInput() {
   // One sender per mount (it remembers the last ON it sent, for the server's rate
   // window) — useState, not useMemo, so React can never silently rebuild it.
   const [typing] = useState(() => createTypingSender(sendTyping));
+  const layout = useTouchHudLayout();
 
   // Soft-keyboard handling (touch only): while focused, mark <html> with
-  // FOCUS_CLASS (the palette/toggles/action and jump buttons hide via CSS) and track the
+  // FOCUS_CLASS (the emoji fan, 💬, action and jump buttons hide via CSS) and track the
   // keyboard inset from visualViewport. Browser behaviours differ:
   //  - iOS Safari: the keyboard NEVER resizes the layout viewport — a fixed
   //    bottom bar stays anchored where the keyboard now is. The VISUAL viewport
@@ -96,45 +105,58 @@ export function ChatInput() {
   }
 
   return (
-    <div className="cv-chat-input">
-      <input
-        ref={inputRef}
-        className="cv-chat-field"
-        type="text"
-        value={value}
-        placeholder={PLACEHOLDER}
-        maxLength={CHAT_MAX_LENGTH}
-        aria-label="채팅 입력"
-        onFocus={() => {
-          acquireUiCapture("chat");
-          setFocused(true);
-        }}
-        onBlur={() => {
-          releaseUiCapture("chat");
-          setFocused(false);
-          typing.stop();
-        }}
-        onChange={(e) => {
-          const next = e.target.value.slice(0, CHAT_MAX_LENGTH);
-          setValue(next);
-          typing.onInput(performance.now(), next.trim().length > 0);
-        }}
-        onKeyDown={(e) => {
-          if (e.nativeEvent.isComposing) return; // let the IME finish first
-          if (e.key === "Enter") {
-            e.preventDefault();
-            submit();
-          } else if (e.key === "Escape") {
-            e.preventDefault();
-            inputRef.current?.blur();
-          }
-        }}
-      />
-      {value.length >= CHAT_MAX_LENGTH - COUNTER_LEAD && (
-        <span className="cv-chat-counter">
-          {value.length}/{CHAT_MAX_LENGTH}
-        </span>
+    <>
+      {isTouchDevice && !focused && (
+        <HudButton
+          label="채팅 입력"
+          className="is-round cv-chat-btn"
+          style={rectStyle(layout.chat)}
+          // Synchronous, inside the click: the one place iOS lets focus() bring up the keyboard.
+          onClick={() => inputRef.current?.focus()}
+        >
+          💬
+        </HudButton>
       )}
-    </div>
+      <div className={"cv-chat-input" + (isTouchDevice && !focused ? " is-collapsed" : "")}>
+        <input
+          ref={inputRef}
+          className="cv-chat-field"
+          type="text"
+          value={value}
+          placeholder={PLACEHOLDER}
+          maxLength={CHAT_MAX_LENGTH}
+          aria-label="채팅 입력"
+          onFocus={() => {
+            acquireUiCapture("chat");
+            setFocused(true);
+          }}
+          onBlur={() => {
+            releaseUiCapture("chat");
+            setFocused(false);
+            typing.stop();
+          }}
+          onChange={(e) => {
+            const next = e.target.value.slice(0, CHAT_MAX_LENGTH);
+            setValue(next);
+            typing.onInput(performance.now(), next.trim().length > 0);
+          }}
+          onKeyDown={(e) => {
+            if (e.nativeEvent.isComposing) return; // let the IME finish first
+            if (e.key === "Enter") {
+              e.preventDefault();
+              submit();
+            } else if (e.key === "Escape") {
+              e.preventDefault();
+              inputRef.current?.blur();
+            }
+          }}
+        />
+        {value.length >= CHAT_MAX_LENGTH - COUNTER_LEAD && (
+          <span className="cv-chat-counter">
+            {value.length}/{CHAT_MAX_LENGTH}
+          </span>
+        )}
+      </div>
+    </>
   );
 }

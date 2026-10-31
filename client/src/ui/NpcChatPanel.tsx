@@ -2,8 +2,8 @@
  * The AI 조교 1:1 dialogue panel (design 31). Desktop: a right-side drawer.
  * Mobile (design 34 후속 — 발주자: NPC가 보이도록): a bottom SHEET filling the
  * lower ~44vh, so the 3D NPC stays visible in the top half; while it is open a
- * `cv-npc-open` root class hides the world chat bar, emoji palette, movement
- * zone and toggles (npc.css) so only the NPC and the sheet remain. Visible only
+ * `cv-npc-open` root class hides the world chat bar and 💬, emoji fan, movement
+ * zone, action and jump buttons (npc.css) so only the NPC and the sheet remain. Visible only
  * to this player. Esc (handled in game/escape.ts) or ✕ closes (walking away also closes it — ActionButton).
  * While the input is focused the shared uiCapture flag freezes movement keys.
  */

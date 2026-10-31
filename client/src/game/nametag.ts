@@ -48,7 +48,7 @@ export interface Nametag {
 // ── look ──────────────────────────────────────────────────────────────────────
 
 /** Korean + Latin + emoji on Windows, macOS and Android; measured with this same stack. */
-const FONT_FAMILY =
+export const FONT_FAMILY =
   'system-ui, -apple-system, "Segoe UI", "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", ' +
   '"Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif';
 const TEXT_FONT = `600 ${NAMETAG_FONT_PX}px ${FONT_FAMILY}`;

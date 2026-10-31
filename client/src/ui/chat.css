@@ -1,4 +1,10 @@
-/* Chat overlays — non-blocking layers above the 3D canvas. */
+/* Chat overlays — non-blocking layers above the 3D canvas.
+   Where things sit (controls-ux Task 16):
+     PC     input bar bottom-centre (always there), log bottom-left just above it.
+     phone  💬 button in the bottom-right cluster (positioned by game/hud.ts, see
+            ChatInput.tsx); the input bar is mounted but folded away until the button
+            focuses it, then rides on the keyboard. The log's toggle hangs in the top-left
+            column (HudTop) and its rows open as a bottom sheet. */
 
 /* ── Input bar (bottom centre) ── */
 .cv-chat-input {
@@ -10,11 +16,14 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  width: min(560px, calc(100vw - 32px));
+  /* Leaves room for the PC emoji row on the right (6 × 40 + 5 × 8 = 280, 16 from the edge):
+     the bar narrows with the window instead of running under it. */
+  width: clamp(240px, calc(100vw - 640px), 560px);
 }
 
 .cv-chat-field {
   flex: 1;
+  min-width: 0;
   padding: 12px 16px;
   font-size: 15px;
   color: #f2eeff;
@@ -44,16 +53,17 @@
   color: rgba(210, 202, 240, 0.7);
 }
 
-/* ── Chat log (right side, collapsible) ── */
+/* ── Chat log (PC: bottom-left, above the input bar; collapsible) ──
+   column-reverse puts the toggle (first in the DOM) at the bottom and the rows above it. */
 .cv-chat-log {
   position: fixed;
-  right: 16px;
-  top: 16px;
+  left: 16px;
+  bottom: 88px;
   z-index: 20;
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 6px;
+  flex-direction: column-reverse;
+  align-items: flex-start;
+  gap: 8px;
   width: min(320px, calc(100vw - 32px));
   pointer-events: none; /* only the interactive children capture the pointer */
 }
@@ -78,7 +88,7 @@
 .cv-chat-rows {
   pointer-events: auto;
   width: 100%;
-  max-height: min(45vh, 360px);
+  max-height: min(35vh, 280px);
   overflow-y: auto;
   display: flex;
   flex-direction: column;
@@ -108,27 +118,17 @@
   font-style: italic;
 }
 
-.cv-chat-log.is-collapsed .cv-chat-rows {
+.cv-chat-log.is-collapsed .cv-chat-rows,
+.cv-chat-rows:empty {
   display: none;
 }
 
 /* ── Touch devices ── larger targets, safe-area, chat as a bottom sheet ── */
-.cv-touch .cv-chat-toggle {
-  min-height: 44px;
-  padding: 10px 16px;
-  font-size: 15px;
-  touch-action: manipulation;
-}
 
-/* Mobile chat bar sits at the VERY BOTTOM (design 34 후속 — 발주자: 일반
-   대화창을 맨 아래로, PC와 동일하게). The movement zone and emoji palette are
-   raised to a band ABOVE it (touch.css / dpad.css / emoji.css bottom:80) so the
-   full-width bar never lands on them. A 16px font stops iOS auto-zoom on focus.
-
-   Soft keyboard: --cv-kbd-inset (kbdInset.ts) is the strip of layout viewport
-   the keyboard covers. max() lets whichever is higher win: keyboard up → the bar
-   floats 12px above the keyboard; keyboard down (or a browser that resizes the
-   layout viewport, where the inset computes ~0) → the bottom 12px slot. */
+/* Soft keyboard: --cv-kbd-inset (kbdInset.ts) is the strip of layout viewport the
+   keyboard covers. max() lets whichever is higher win: keyboard up → the bar floats 12px
+   above the keyboard; keyboard down (or a browser that resizes the layout viewport, where
+   the inset computes ~0) → the bottom 12px slot. A 16px font stops iOS auto-zoom on focus. */
 .cv-touch .cv-chat-input {
   bottom: max(
     calc(env(safe-area-inset-bottom, 0px) + 12px),
@@ -137,28 +137,58 @@
   width: min(560px, calc(100vw - 16px));
 }
 
+/* Folded away until the 💬 button focuses the field (ChatInput.tsx): still in the DOM and
+   still focusable by script, but invisible and untouchable. */
+.cv-touch .cv-chat-input.is-collapsed {
+  opacity: 0;
+  pointer-events: none;
+}
+
 .cv-touch .cv-chat-field {
   padding: 13px 16px;
   font-size: 16px;
   touch-action: manipulation;
 }
 
-/* Touch chat toggle lives top-left (clear of the joystick, emoji and input);
-   the expanded log drops in as a bottom sheet. */
+/* The 💬 button: a round HudButton (hud.css) whose rectangle comes from game/hud.ts. It is
+   unmounted while the field has focus (the bar took its place); the rest of the cluster
+   hides under cv-chat-focus (action.css / emoji.css). */
+.cv-chat-btn .cv-hud-glyph {
+  font-size: 26px;
+}
+
+/* The log's toggle on a phone: a button in the top-left column (HudTop), 72 px wide and as
+   tall as the other top buttons — its rectangle in game/hud.ts is `chatLog`. */
 .cv-chat-log.is-touch {
-  top: calc(env(safe-area-inset-top, 0px) + 12px);
-  bottom: auto;
-  left: 12px;
-  right: auto;
+  position: static;
+  display: block;
   width: auto;
-  align-items: flex-start;
   padding: 0;
 }
 
-.cv-chat-log.is-touch .cv-chat-toggle {
-  margin: 0;
+.cv-touch .cv-chat-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  width: 72px;
+  height: var(--cv-hud-btn, 48px);
+  padding: 0 6px;
+  font-size: 14px;
+  white-space: nowrap;
+  touch-action: manipulation;
 }
 
+/* While the bottom sheet is open (ChatLog.tsx sets cv-log-open) the bottom-right cluster steps
+   aside: the sheet lives in the top-left column's stacking context, below those buttons. */
+.cv-touch.cv-log-open .cv-jump-btn,
+.cv-touch.cv-log-open .cv-action-btn,
+.cv-touch.cv-log-open .cv-chat-btn,
+.cv-touch.cv-log-open .cv-emoji-fan .cv-hud-btn {
+  display: none;
+}
+
+/* The expanded log is a bottom sheet over everything but the menu. */
 .cv-chat-log.is-touch .cv-chat-rows {
   position: fixed;
   left: 0;

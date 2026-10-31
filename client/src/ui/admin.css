@@ -1,12 +1,9 @@
-/* Instructor admin panel — top-left, collapsible, above the 3D canvas.
-   Top-left keeps it clear of the chat log (top-right), emoji palette
-   (bottom-right) and chat input (bottom-center). */
+/* Instructor admin panel — collapsible. It hangs in the top-left HUD column (HudTop),
+   under the room name + 👥 button (and the roster while it is open), so it flows with
+   them instead of being pinned to the corner; the column is above the 3D canvas. */
 .cv-admin {
-  position: fixed;
-  top: 16px;
-  left: 16px;
-  z-index: 25;
-  width: min(300px, calc(100vw - 32px));
+  position: relative;
+  width: min(300px, calc(100vw - 24px));
   display: flex;
   flex-direction: column;
   gap: 0;
@@ -32,6 +29,12 @@
 }
 .cv-admin-head:hover {
   background: rgba(120, 96, 224, 0.4);
+}
+
+/* A phone: the header is a touch target (48 px). */
+.cv-touch .cv-admin-head {
+  min-height: 48px;
+  touch-action: manipulation;
 }
 
 .cv-admin-body {
@@ -88,12 +91,12 @@
 
 .cv-admin-actions {
   display: flex;
-  gap: 6px;
+  gap: 8px;
 }
 
 .cv-admin-confirm {
   display: flex;
-  gap: 6px;
+  gap: 8px;
 }
 
 .cv-admin-btn {

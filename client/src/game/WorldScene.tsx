@@ -2,7 +2,7 @@ import { Suspense, useEffect, useLayoutEffect, useRef } from "react";
 import { Canvas } from "@react-three/fiber";
 import { KeyboardControls, useProgress } from "@react-three/drei";
 import { SPAWN_POINT } from "@caysonverse/shared/constants";
-import { CAMERA, FOG_FAR, FOG_NEAR, MOVE_KEYS, SKY_COLOR } from "./constants";
+import { CAMERA, CAMERA_FAR, FOG_FAR, FOG_NEAR, MOVE_KEYS, SKY_COLOR } from "./constants";
 import { LocalPlayer } from "./LocalPlayer";
 import { RemotePlayers } from "./RemotePlayers";
 import { WorldMap } from "./WorldMap";
@@ -11,16 +11,17 @@ import { NPCS } from "./npc";
 import { NpcChatPanel } from "../ui/NpcChatPanel";
 import { CameraRig } from "./CameraRig";
 import { OverviewMarker } from "./OverviewMarker";
+import { OverviewLabels } from "./OverviewLabels";
 import { ClickMarker } from "./ClickMarker";
 import { NametagSystem } from "./NametagSystem";
 import { Chat } from "../ui/Chat";
+import { ChatLog } from "../ui/ChatLog";
 import { EmojiPalette } from "../ui/EmojiPalette";
+import { EmojiFan } from "../ui/EmojiFan";
+import { HudTop } from "../ui/HudTop";
 import { TouchJoystick } from "../ui/TouchJoystick";
 import { ActionButton } from "../ui/ActionButton";
 import { JumpButton } from "../ui/JumpButton";
-import { ViewToggle } from "../ui/ViewToggle";
-import { OverviewToggle } from "../ui/OverviewToggle";
-import { SoundToggle } from "../ui/SoundToggle";
 import { Banner } from "../ui/Banner";
 import { AdminPanel } from "../ui/AdminPanel";
 import { MenuPanel } from "../ui/MenuPanel";
@@ -56,7 +57,8 @@ function readSpawn(): Pose {
 
 /**
  * Put the player's settings to work for as long as the world is up: the left-handed
- * class and --cv-btn-scale on <html> (CSS mirrors / scales the touch buttons off them)
+ * class and --cv-btn-scale on <html> (available to CSS; the touch HUD's own rectangles
+ * come from game/hud.ts, which reads the same store fields through useTouchHudLayout)
  * and the name tag mode (the NametagSystem reads it at its next 5 Hz pass). The
  * look-drag gain and the look half are read from the store at event time (CameraRig),
  * and the own name tag by LocalPlayer, so they need nothing here. A layout effect, so
@@ -123,13 +125,20 @@ export function WorldScene({ identity }: { identity: Identity }) {
   // touch verdict (no runtime switching): dpr cap, real vs blob shadows.
   const profile = getRenderProfile(isTouchDevice);
 
+  // First-person <-> third-person from the 👁 button and the menu switch. Like V it is
+  // ignored under the overview map, which has its own way out (🗺 / M); seeds the look yaw
+  // from the shared orbit so the world does not spin on toggle.
+  const toggleViewUnlessMap = () => {
+    if (viewState.mode !== "ov") toggleViewMode(orbit);
+  };
+
   return (
     <>
       <Canvas
         className="cv-canvas"
         dpr={profile.dpr}
         shadows={profile.shadows}
-        camera={{ fov: 55, near: 0.1, far: 200, position: [0, 3, 8] }}
+        camera={{ fov: 55, near: 0.1, far: CAMERA_FAR, position: [0, 3, 8] }}
       >
         <color attach="background" args={[SKY_COLOR]} />
         <fog attach="fog" args={[SKY_COLOR, FOG_NEAR, FOG_FAR]} />
@@ -174,6 +183,8 @@ export function WorldScene({ identity }: { identity: Identity }) {
             <RemotePlayers selfPose={pose} selfSeat={seat} blobShadow={profile.blobShadows} />
             {/* Overview-only self marker (design 20) — hidden outside overview. */}
             <OverviewMarker pose={pose} />
+            {/* Overview-only room names (Task 16) — shown once the map blend passes OV_VIS_BLEND. */}
+            <OverviewLabels />
             {/* Destination ring for a floor click / tap walk (hidden when idle). */}
             <ClickMarker />
           </Suspense>
@@ -185,16 +196,22 @@ export function WorldScene({ identity }: { identity: Identity }) {
       </Canvas>
       <LoadingOverlay />
       <Banner />
+      {/* Chat: the input bar (a phone folds it behind the 💬 button) and, on a PC, the log
+          at the bottom left. */}
       <Chat />
-      <EmojiPalette />
-      {/* First-person 👁 toggle — touch only (desktop uses V / wheel). Seeds yaw
-          from the shared orbit so the world doesn't spin on toggle. */}
-      <ViewToggle onToggle={() => toggleViewMode(orbit)} />
-      {/* Overview 🗺 toggle — touch only (desktop uses M). Remembers the current
-          mode and restores it on exit; the camera work lives in CameraRig. */}
-      <OverviewToggle onToggle={() => toggleOverview()} />
-      {/* TTS 🔊/🔇 mute toggle — every device (design 23). */}
-      <SoundToggle />
+      {/* Emoji (Task 16): a PC gets the one-row palette, a phone the button that fans the
+          six out. Exactly one of them registers the emoji broadcast and the 1–6 keys. */}
+      {isTouchDevice ? <EmojiFan /> : <EmojiPalette />}
+      {/* The top of the screen: room name + 👥 roster on the left, 👁 🗺 🔊 ☰ on the right.
+          Under the 👥 column hang the phone's chat-log toggle and the teacher's admin panel. */}
+      <HudTop
+        pose={pose}
+        onToggleView={toggleViewUnlessMap}
+        onToggleOverview={() => toggleOverview()}
+      >
+        {isTouchDevice && <ChatLog />}
+        {isAdmin && <AdminPanel />}
+      </HudTop>
       {/* E / F and the context button: sit, stand, or talk to an AI 조교 (Task 10). */}
       <ActionButton pose={pose} seat={seat} />
       {/* Jump button — touch only (desktop jumps with Space, handled in LocalPlayer).
@@ -205,14 +222,9 @@ export function WorldScene({ identity }: { identity: Identity }) {
       {/* Movement control — touch devices only: the analog joystick in every view
           (first-person strafes camera-relative). Keyboard stays active regardless. */}
       {isTouchDevice && <TouchJoystick moveInput={moveInput} leftHanded={leftHanded} />}
-      {isAdmin && <AdminPanel />}
-      {/* Esc menu (Task 15): settings, the first-person switch, the guide. Above every
-          HUD layer; also the single subscriber of the Esc key. */}
-      <MenuPanel
-        onToggleView={() => {
-          if (viewState.mode !== "ov") toggleViewMode(orbit); // like V: the map has its own way out
-        }}
-      />
+      {/* Esc / ☰ menu (Tasks 15–16): settings, the first-person switch, the guide. Above
+          every HUD layer; also the single subscriber of the Esc key. */}
+      <MenuPanel onToggleView={toggleViewUnlessMap} />
     </>
   );
 }

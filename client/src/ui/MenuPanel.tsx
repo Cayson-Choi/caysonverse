@@ -106,8 +106,8 @@ function Switch({
 }
 
 /**
- * The menu (controls-ux Task 15): Esc opens it (the ☰ button joins in Task 16), Esc or
- * "닫기" closes it. A centred card over a lightly dimmed world with the player's
+ * The menu (controls-ux Tasks 15–16): Esc or the ☰ button (top right, HudTop) opens it, Esc
+ * or "닫기" closes it. A centred card over a lightly dimmed world with the player's
  * settings, the view switch and the guide button. Every change applies at once and is
  * saved (settingsStore); nothing waits for a confirm.
  *

@@ -88,6 +88,13 @@ export interface NametagProbe {
 /** id → live state, for `__cv.getNametags`. Populated by the NametagSystem under DEV only. */
 export const nametagProbe = new Map<string, NametagProbe>();
 
+/**
+ * The overview room labels (OverviewLabels.tsx) as the dev/E2E hook sees them: how many
+ * sprites exist, whether the group is drawn this frame (overview blend past OV_VIS_BLEND)
+ * and their current opacity. Mutated in place by the labels; read only by debug.ts.
+ */
+export const overviewLabelProbe = { count: 0, visible: false, opacity: 0 };
+
 const COST_FRAMES = 120;
 const costRing = new Float64Array(COST_FRAMES);
 let costCount = 0;

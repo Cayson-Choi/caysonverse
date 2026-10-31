@@ -4,7 +4,7 @@ import { useKeyboardControls } from "@react-three/drei";
 import { Raycaster, Vector2 } from "three";
 import type { Fog, PerspectiveCamera } from "three";
 import { WORLD_BOUNDS } from "@caysonverse/shared/constants";
-import { CAMERA, FOG_FAR, FOG_NEAR, FP_EYE_HEIGHT, HEAD_HEIGHT } from "./constants";
+import { CAMERA, CAMERA_FAR, FOG_FAR, FOG_NEAR, FP_EYE_HEIGHT, HEAD_HEIGHT } from "./constants";
 import type { MoveControl } from "./constants";
 import { normalizeAngle } from "./yaw";
 import { clampFpPitch, easeBlend } from "./viewMode";
@@ -562,6 +562,15 @@ export function CameraRig({ pose, orbit, seat }: CameraRigProps) {
       const h = viewState.ovHeight;
       fog.near = lerp(FOG_NEAR, Math.max(FOG_NEAR, h * 0.6), ovT);
       fog.far = lerp(FOG_FAR, Math.max(FOG_FAR, h * 2.2), ovT);
+    }
+
+    // The far plane rides with the overview too: the whole-map fit height is width-limited
+    // on a tall phone (209 m at 375×812), past CAMERA_FAR, and the map would be clipped
+    // away entirely. Continuous in ovT, and restored exactly to CAMERA_FAR at 0.
+    const far = lerp(CAMERA_FAR, Math.max(CAMERA_FAR, viewState.ovHeight * 1.6), ovT);
+    if (cam.far !== far) {
+      cam.far = far;
+      cam.updateProjectionMatrix();
     }
 
     // Publish the live camera for the dev/E2E hook.
