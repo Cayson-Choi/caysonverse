@@ -18,6 +18,15 @@ import {
   resetClickMove,
 } from "./clickMove";
 import { guardMoveKeys, isUiCaptured } from "./uiCapture";
+import { onHotkey } from "./hotkeys";
+import {
+  JUMP_FADE_IN_S,
+  jumpOffsetY,
+  jumpRegistry,
+  jumpTimeScale,
+  localJump,
+  resetLocalJump,
+} from "./jump";
 import { beginSeatCamera, endSeatCamera, viewState } from "./viewState";
 import { HIDE_BLEND, OV_VIS_BLEND } from "./viewMode";
 import { cloneTinted } from "./avatar";
@@ -30,7 +39,7 @@ import { installDebugHook } from "./debug";
 import { ANIM_FADE, CHARACTERS, CLIP, CROWN_MODEL, MODEL_FACING_OFFSET, TURN_SPEED } from "./constants";
 import type { MoveControl } from "./constants";
 import type { Orbit, Pose, SeatState } from "./types";
-import { getRoom, sendMove, sendStand } from "../net/connection";
+import { getRoom, sendJump, sendMove, sendStand } from "../net/connection";
 import { isInputSuspended } from "../net/resilience";
 
 /** Fallback seconds for a sit/stand clip if its duration can't be read yet. */
@@ -88,6 +97,10 @@ export function LocalPlayer({
   const animTimerRef = useRef(0); // seconds left in the current transient clip
   const prevSeatRef = useRef(-1); // previous confirmed seatIndex (transition edge)
   const standRequestedRef = useRef(false); // debounce: one Stand per seated episode
+  // Jump (Task 11): seq of the registry hop currently animating (-1 = none), and the
+  // wrapper that keeps the blob shadow on the floor while the avatar is in the air.
+  const jumpSeqRef = useRef(-1);
+  const shadowRef = useRef<Group>(null);
 
   // Own speech bubble: driven by the server broadcast (not a local echo), so
   // self and remotes share one path. Attached above this avatar's group.
@@ -133,6 +146,7 @@ export function LocalPlayer({
       actions[CLIP.sitDown]?.stop();
       actions[CLIP.sitIdle]?.stop();
       actions[CLIP.sitStand]?.stop();
+      actions[CLIP.jump]?.stop();
     };
     // actions identity changes when the (memoized) model does — safe to depend on.
   }, [actions, pose, orbit, seat]);
@@ -147,6 +161,24 @@ export function LocalPlayer({
     return () => resetClickMove();
   }, []);
 
+  // 점프 (Task 11): Space는 공용 단축키 표가 입력 중·자동반복을 이미 걸러 준다.
+  // 앉아 있거나(착석 확정) 앉기/일어서기 동작 중이면 누르기만 버린다 — 서버도
+  // 앉은 사람의 점프는 버린다. 재접속 중(입력 정지)에도 반응하지 않는다.
+  // 컴포넌트 수명 동안 쿨다운과 내 점프 기록을 비워 새 세계에 이어지지 않게 한다.
+  useEffect(() => {
+    resetLocalJump();
+    const off = onHotkey((action) => {
+      if (action.type !== "jump" || isInputSuspended()) return;
+      const blocked = seat.index >= 0 || animStateRef.current !== "loco";
+      localJump(sessionId, blocked, performance.now(), sendJump);
+    });
+    return () => {
+      off();
+      resetLocalJump();
+      jumpRegistry.remove(sessionId);
+    };
+  }, [sessionId, seat]);
+
   /** Play a one-shot clip (clamped on its last frame); returns its duration (s). */
   function playOnce(name: string): number {
     const action = actions[name];
@@ -156,6 +188,56 @@ export function LocalPlayer({
     action.clampWhenFinished = true;
     action.fadeIn(ANIM_FADE).play();
     return action.getClip().duration || SIT_CLIP_FALLBACK_SEC;
+  }
+
+  /**
+   * One frame of the hop (Task 11): detect a new jump in the registry (take-off:
+   * fade the gait loop out, play Jump_Full_Short once at the speed that fits
+   * JUMP_DURATION_MS) or its end (landing: back to the current gait loop), and
+   * return the display-only lift in metres. `canJump` is false while seated or in
+   * the stand-up clip: a hop pressed then is dropped, never replayed late, and a
+   * hop still in the air when the seat is confirmed just fades out. Reads the
+   * registry without allocating (per-frame path).
+   */
+  function stepJump(now: number, canJump: boolean, gait: Gait): number {
+    const jump = actions[CLIP.jump];
+    const entry = canJump ? jumpRegistry.get(sessionId, now) : null;
+    if (!canJump) jumpRegistry.remove(sessionId);
+
+    if (entry) {
+      if (entry.seq !== jumpSeqRef.current) {
+        jumpSeqRef.current = entry.seq;
+        if (jump) {
+          actions[gaitClip(gaitRef.current)]?.fadeOut(JUMP_FADE_IN_S);
+          jump.timeScale = jumpTimeScale(jump.getClip().duration);
+          jump.reset();
+          jump.setLoop(LoopOnce, 1);
+          jump.clampWhenFinished = true;
+          jump.fadeIn(JUMP_FADE_IN_S).play();
+        }
+      }
+      return jumpOffsetY(now - entry.startedAt);
+    }
+
+    if (jumpSeqRef.current !== -1) {
+      jumpSeqRef.current = -1;
+      if (jump) {
+        jump.fadeOut(ANIM_FADE);
+        if (canJump) {
+          // Landed: resume the loop for whatever the player is doing right now.
+          actions[gaitClip(gait)]?.reset().fadeIn(ANIM_FADE).play();
+          gaitRef.current = gait;
+        }
+      }
+    }
+    return 0;
+  }
+
+  /** Put the avatar group on the pose (x, z) lifted by the hop; the blob shadow stays on the floor. */
+  function placeGroup(group: Group, canJump: boolean, gait: Gait): void {
+    const lift = stepJump(performance.now(), canJump, gait);
+    group.position.set(pose.x, lift, pose.z);
+    if (shadowRef.current) shadowRef.current.position.y = -lift;
   }
 
   useFrame((_state, delta) => {
@@ -293,7 +375,7 @@ export function LocalPlayer({
         sendStand();
         standRequestedRef.current = true;
       }
-      group.position.set(pose.x, 0, pose.z);
+      placeGroup(group, false, gait);
       group.rotation.y = pose.yaw + MODEL_FACING_OFFSET;
       return;
     }
@@ -330,12 +412,13 @@ export function LocalPlayer({
     // standing sends nothing.
     if (inFp) pose.yaw = normalizeAngle(viewState.fpYaw);
 
-    group.position.set(pose.x, 0, pose.z);
+    placeGroup(group, animStateRef.current === "loco", gait);
     group.rotation.y = pose.yaw + MODEL_FACING_OFFSET;
 
-    // Crossfade idle <-> walk <-> run on gait changes — but only in pure loco;
-    // the StandUp one-shot owns the body until it finishes.
-    if (animStateRef.current === "loco" && gait !== gaitRef.current) {
+    // Crossfade idle <-> walk <-> run on gait changes — but only in pure loco; the
+    // StandUp one-shot and an airborne hop own the body until they finish (a landing
+    // resumes the gait loop itself).
+    if (animStateRef.current === "loco" && jumpSeqRef.current === -1 && gait !== gaitRef.current) {
       actions[gaitClip(gaitRef.current)]?.fadeOut(ANIM_FADE);
       actions[gaitClip(gait)]?.reset().fadeIn(ANIM_FADE).play();
       gaitRef.current = gait;
@@ -349,7 +432,11 @@ export function LocalPlayer({
   return (
     <group ref={groupRef}>
       <primitive object={model} />
-      {blobShadow && <BlobShadow />}
+      {blobShadow && (
+        <group ref={shadowRef}>
+          <BlobShadow />
+        </group>
+      )}
     </group>
   );
 }

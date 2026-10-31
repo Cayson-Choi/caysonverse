@@ -43,7 +43,7 @@ function perform(it: Interaction): void {
  * sit on a nearby free chair, stand up, or talk to a nearby AI 조교 — whichever is
  * nearest (interact.ts decides). Renders nothing when there is nothing to do.
  *
- *  - Touch: a 60 px round button above the jump slot (icon + short label).
+ *  - Touch: a 60 px round button right above the 72 px JumpButton (icon + short label).
  *  - Desktop: a small pill at the bottom right, `E 앉기` (clickable too).
  *
  * It also owns what the old SitPrompt / NpcPrompt did off the render path:

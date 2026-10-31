@@ -3,6 +3,7 @@ import { getRemotes } from "./remoteStore";
 import { getRoom, sendSit, sendStand } from "../net/connection";
 import { bubbleRegistry } from "./bubbleRegistry";
 import { emojiRegistry } from "./emojiRegistry";
+import { jumpRegistry } from "./jump";
 import { viewState, type ViewState } from "./viewState";
 import { remoteGaitProbe, type Gait } from "./gait";
 
@@ -44,6 +45,15 @@ export interface EmojiView {
   index: number;
 }
 
+/** Shape of one in-flight jump in the dev/E2E hook. */
+export interface JumpView {
+  sid: string;
+  /** Bumps on every new hop of the same player. */
+  seq: number;
+  /** Milliseconds since take-off (0 .. JUMP_DURATION_MS). */
+  elapsedMs: number;
+}
+
 declare global {
   interface Window {
     /** Dev-only E2E hook (see installDebugHook). Absent in production builds. */
@@ -83,6 +93,8 @@ declare global {
       getBubbles: () => BubbleView[];
       /** Every currently-active emoji reaction (sid + EMOJIS index). */
       getEmojis: () => EmojiView[];
+      /** Every jump still in the air (sid, seq, ms since take-off) — own and remote. */
+      getJumps: () => JumpView[];
       /**
        * Force a TRANSIENT connection drop (dev/E2E only) by closing the
        * transport with a non-consented code — the server holds the seat
@@ -128,6 +140,12 @@ export function installDebugHook(
       bubbleRegistry.snapshot(performance.now()).map((b) => ({ sid: b.sid, text: b.text })),
     getEmojis: () =>
       emojiRegistry.snapshot(performance.now()).map((e) => ({ sid: e.sid, index: e.index })),
+    getJumps: () => {
+      const now = performance.now();
+      return jumpRegistry
+        .snapshot(now)
+        .map((j) => ({ sid: j.sid, seq: j.seq, elapsedMs: now - j.startedAt }));
+    },
     dropConnection: () => {
       const room = getRoom();
       if (!room) return false;

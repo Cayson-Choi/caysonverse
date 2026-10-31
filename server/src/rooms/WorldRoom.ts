@@ -91,7 +91,7 @@ interface ClientTracking {
   chatRate: RateWindow;
   /** Sliding-window rate cap for emoji reactions (1 per 500ms). */
   emojiRate: RateWindow;
-  /** Sliding-window rate cap for jumps (1 per 600ms). */
+  /** Sliding-window rate cap for jumps (1 per JUMP_RATE.windowMs = 800 ms). */
   jumpRate: RateWindow;
   /** Sliding-window rate cap for typing ON (1 per 3s); OFF is never limited. */
   typingRate: RateWindow;
@@ -463,10 +463,11 @@ export class WorldRoom extends Room<{ state: WorldState }> {
   /**
    * Jump pipeline (binding order): sender must be in the world state → a SEATED
    * sender is dropped silently (a sitting avatar is server-positioned, it cannot
-   * jump) → per-client rate cap (1 per 600ms; exceeded → drop silently, it's a
-   * key press) → broadcast `{ sid }` to everyone as a transient event. The
-   * payload is never read: the sid always comes from the connection. y is
-   * server-fixed (no schema field), so a jump is purely a cosmetic broadcast.
+   * jump) → per-client rate cap (1 per JUMP_RATE.windowMs = 800 ms; exceeded →
+   * drop silently, it's a key press) → broadcast `{ sid }` to everyone as a
+   * transient event. The payload is never read: the sid always comes from the
+   * connection. y is server-fixed (no schema field), so a jump is purely a
+   * cosmetic broadcast.
    */
   private handleJump(client: Client): void {
     const player = this.state.players.get(client.sessionId);

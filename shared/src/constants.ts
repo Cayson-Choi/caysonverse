@@ -89,14 +89,17 @@ export const EMOJI_DISPLAY_MS = 3000;
 
 // ── Jump + typing events (controls-ux Task 2) — broadcast events, not state. ──
 
-/** Per-client jump rate cap: at most `count` accepted jumps per `windowMs`. */
-export const JUMP_RATE = { count: 1, windowMs: 600 } as const;
+/**
+ * Per-client jump rate cap: at most `count` accepted jumps per `windowMs`. 0.8 s
+ * (owner request: a 1 m hop needs air time to read as a jump, not a twitch).
+ */
+export const JUMP_RATE = { count: 1, windowMs: 800 } as const;
 
 /**
  * How long (ms) a jump lasts on an avatar (the client's jump animation window).
  * Equals `JUMP_RATE.windowMs`, so two accepted jumps never overlap.
  */
-export const JUMP_DURATION_MS = 600;
+export const JUMP_DURATION_MS = 800;
 
 /**
  * Per-client "typing" ON cap: at most `count` accepted ONs per `windowMs`. The OFF

@@ -215,6 +215,9 @@ export const CLIP = {
   walk: "Walking_A",
   // Run cycle (controls-ux Task 5) — 0.800 s loop; verified present in all 4 GLBs.
   run: "Running_A",
+  // Jump (controls-ux Task 11) — 1.167 s clip, played one-shot at ~1.46x so it spans
+  // JUMP_DURATION_MS (jump.ts); verified present in all 4 GLBs.
+  jump: "Jump_Full_Short",
   // Seating (v2 Task 1) — verified present in all 4 KayKit GLBs (same Rig_Medium
   // skeleton). Down = sit-down motion, Idle = the held seated pose, StandUp = rise.
   sitDown: "Sit_Chair_Down",

@@ -121,6 +121,15 @@ export function sendEmoji(index: number): void {
 }
 
 /**
+ * Tell the server this client jumped (a broadcast EVENT, not state — y is
+ * server-fixed). No-op if not connected. The server drops it when the sender is
+ * seated or over the JUMP_RATE cap, so callers gate with `localJump` first.
+ */
+export function sendJump(): void {
+  room?.send(MessageType.Jump, {});
+}
+
+/**
  * Request to sit on `seatIndex`. No-op if not connected; the server is
  * authoritative — it validates range/reach/occupancy and confirms by syncing the
  * player's `seatIndex` (the client never self-declares seated).

@@ -1181,7 +1181,7 @@ describe("WorldRoom jump/typing (integration)", () => {
   it("drops a second Jump inside JUMP_RATE.windowMs — one broadcast", async () => {
     const { room, alice, aJumps, bJumps } = await twoClients();
 
-    // Two sends land within milliseconds — well inside the 600ms window.
+    // Two sends land within milliseconds — well inside the 800 ms window.
     for (let i = 0; i < 2; i++) {
       alice.send(MessageType.Jump, {});
       await room.waitForNextMessage();

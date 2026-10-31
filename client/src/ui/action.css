@@ -1,5 +1,7 @@
 /* Context action button (Task 10): sit / stand / talk to an AI 조교, shown only
-   when one of them applies. Never takes focus (see ActionButton.tsx). */
+   when one of them applies. Never takes focus (see ActionButton.tsx). The touch
+   jump button (Task 11) lives in this file too, because the two are one stack:
+   jump 72 px at the bottom-right edge, the action circle right above it. */
 
 /* Desktop: a small pill at the bottom right, left of the 🔊 chip (right 16, bottom
    76, 48 square) so it shares its row, clears the emoji row (bottom 24..64), the
@@ -55,20 +57,32 @@
   box-shadow: 0 1px 0 rgba(90, 70, 160, 0.6);
 }
 
-/* Touch: a 60 px circle (icon over a small label) sitting directly above the jump
-   slot — the jump button is 72 px at the bottom-right edge (16 px inset), so this
-   one is centred over it (right = 16 + (72 − 60) / 2) with a 12 px gap (bottom =
-   16 + 72 + 12). >= 48 px target, >= 8 px gap (global constraints). Safe-area
-   aware. z-index 25 beats the stick zone (10) and the HUD (20+), so it takes its
-   own touch and nothing falls through to the canvas. */
+/* The touch stack's geometry, in ONE place so the two buttons can never drift apart:
+   jump 72 px at the bottom-right edge (16 px inset), action 60 px centred right above
+   it with a 12 px gap. Both are >= 48 px targets with >= 8 px between them (global
+   constraints). */
+.cv-touch {
+  --cv-jump-size: 72px;
+  --cv-jump-inset: 16px;
+  --cv-action-size: 60px;
+  --cv-action-gap: 12px;
+}
+
+/* Touch: a 60 px circle (icon over a small label) centred above the jump button
+   (right = inset + (72 − 60) / 2 = 22 px; bottom = inset + 72 + gap = 100 px).
+   Safe-area aware. z-index 25 beats the stick zone (10) and the HUD (20+), so it
+   takes its own touch and nothing falls through to the canvas. */
 .cv-touch .cv-action-btn {
-  right: 22px;
-  bottom: calc(env(safe-area-inset-bottom, 0px) + 100px);
+  right: calc(var(--cv-jump-inset) + (var(--cv-jump-size) - var(--cv-action-size)) / 2);
+  bottom: calc(
+    env(safe-area-inset-bottom, 0px) + var(--cv-jump-inset) + var(--cv-jump-size) +
+      var(--cv-action-gap)
+  );
   flex-direction: column;
   justify-content: center;
   gap: 1px;
-  width: 60px;
-  height: 60px;
+  width: var(--cv-action-size);
+  height: var(--cv-action-size);
   padding: 0;
   border-radius: 50%;
   background: rgba(96, 74, 166, 0.78);
@@ -92,8 +106,63 @@
   letter-spacing: -0.02em;
 }
 
+/* Jump button (touch only — JumpButton.tsx). A 72 px round thumb target at the
+   bottom-right edge, safe-area aware, the biggest button on screen. Never takes focus.
+   z-index 25 like the action button: it beats the stick zone (10) and the HUD (20+),
+   so a press is its own and nothing leaks through to the canvas as a camera drag. */
+.cv-jump-btn {
+  position: fixed;
+  right: var(--cv-jump-inset, 16px);
+  bottom: calc(env(safe-area-inset-bottom, 0px) + var(--cv-jump-inset, 16px));
+  z-index: 25;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  width: var(--cv-jump-size, 72px);
+  height: var(--cv-jump-size, 72px);
+  padding: 0;
+  font: inherit;
+  color: #f2eeff;
+  background: rgba(86, 64, 160, 0.82);
+  border: 2px solid rgba(190, 172, 255, 0.7);
+  border-radius: 50%;
+  backdrop-filter: blur(6px);
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  transition: background 0.1s ease, transform 0.1s ease;
+}
+
+.cv-jump-btn:active {
+  background: rgba(124, 100, 214, 0.95);
+  transform: scale(0.94);
+}
+
+.cv-jump-icon {
+  width: 30px;
+  height: 30px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.cv-jump-text {
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+
 /* Chat input focused (soft keyboard up): hide, so the keyboard-lifted input bar can
-   never land on it (design 22 — same dodge as the emoji palette / toggles). */
-.cv-touch.cv-chat-focus .cv-action-btn {
+   never land on them (design 22 — same dodge as the emoji palette / toggles). */
+.cv-touch.cv-chat-focus .cv-action-btn,
+.cv-touch.cv-chat-focus .cv-jump-btn {
   display: none;
 }

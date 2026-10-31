@@ -16,12 +16,14 @@ import { Chat } from "../ui/Chat";
 import { EmojiPalette } from "../ui/EmojiPalette";
 import { TouchJoystick } from "../ui/TouchJoystick";
 import { ActionButton } from "../ui/ActionButton";
+import { JumpButton } from "../ui/JumpButton";
 import { ViewToggle } from "../ui/ViewToggle";
 import { OverviewToggle } from "../ui/OverviewToggle";
 import { SoundToggle } from "../ui/SoundToggle";
 import { Banner } from "../ui/Banner";
 import { AdminPanel } from "../ui/AdminPanel";
 import { getRoom } from "../net/connection";
+import { startJumpSync } from "../net/jumpSync";
 import { isTouchDevice } from "../device";
 import { getRenderProfile } from "./renderProfile";
 import { setUiCaptured } from "./uiCapture";
@@ -76,6 +78,15 @@ export function WorldScene({ identity }: { identity: Identity }) {
     setUiCaptured(false);
     resetViewMode();
   }, []);
+
+  // Other players' jumps (Task 11): the server's jump broadcast feeds the registry the
+  // avatars read each frame. Our own echo is skipped — it plays the instant we press.
+  // The scene remounts per connection epoch, so this rebinds to every new room.
+  useEffect(() => {
+    const room = getRoom();
+    if (!room) return;
+    return startJumpSync(room, identity.sessionId);
+  }, [identity.sessionId]);
 
   // Static per-session render budget — chosen once at Canvas creation from the
   // touch verdict (no runtime switching): dpr cap, real vs blob shadows.
@@ -151,6 +162,9 @@ export function WorldScene({ identity }: { identity: Identity }) {
       <SoundToggle />
       {/* E / F and the context button: sit, stand, or talk to an AI 조교 (Task 10). */}
       <ActionButton pose={pose} seat={seat} />
+      {/* Jump button — touch only (desktop jumps with Space, handled in LocalPlayer).
+          Sits at the bottom-right edge with the action button right above it. */}
+      {isTouchDevice && <JumpButton sessionId={identity.sessionId} seat={seat} />}
       {/* AI 조교 private side-chat panel (design 31). */}
       <NpcChatPanel />
       {/* Movement control — touch devices only: the analog joystick in every view

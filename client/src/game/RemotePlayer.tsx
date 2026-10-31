@@ -13,6 +13,7 @@ import { nextGait } from "./locomotion";
 import { remoteGaitProbe } from "./gait";
 import type { Gait } from "./gait";
 import { decideMixerTick } from "./mixerThrottle";
+import { JUMP_FADE_IN_S, jumpOffsetY, jumpRegistry, jumpTimeScale } from "./jump";
 import {
   ANIM_FADE,
   CHARACTERS,
@@ -105,6 +106,11 @@ export function RemotePlayer({
   const sitDownAction = useRef<AnimationAction | null>(null);
   const sitIdleAction = useRef<AnimationAction | null>(null);
   const sitStandAction = useRef<AnimationAction | null>(null);
+  const jumpAction = useRef<AnimationAction | null>(null);
+  // Jump (Task 11): seq of the registry hop currently animating (-1 = none), and the
+  // wrapper that keeps the blob shadow on the floor while the avatar is in the air.
+  const jumpSeqRef = useRef(-1);
+  const shadowRef = useRef<Group>(null);
   // Current gait (idle / walk / run), derived from interpolated speed only.
   const gaitRef = useRef<Gait>("idle");
   const fadeRef = useRef(0); // remaining crossfade time (s); mixer ticks while > 0
@@ -131,6 +137,7 @@ export function RemotePlayer({
     sitDownAction.current = bind(CLIP.sitDown);
     sitIdleAction.current = bind(CLIP.sitIdle);
     sitStandAction.current = bind(CLIP.sitStand);
+    jumpAction.current = bind(CLIP.jump);
 
     const startedSeated = (getRemoteRecord(sessionId)?.seatIndex ?? -1) >= 0;
     if (startedSeated) {
@@ -166,6 +173,11 @@ export function RemotePlayer({
     if (import.meta.env.DEV) remoteGaitProbe.set(sessionId, g);
   };
 
+  // A leaving avatar takes its pending hop with it, so a reused sid can't inherit one.
+  useEffect(() => {
+    return () => jumpRegistry.remove(sessionId);
+  }, [sessionId]);
+
   // Dispose per-avatar GPU resources on unmount. Cloned geometry/textures stay
   // shared with the cached GLTF and are intentionally NOT disposed here.
   useEffect(() => {
@@ -186,7 +198,8 @@ export function RemotePlayer({
     // 1) Sample the snapshot buffer RENDER_DELAY_MS in the past and write pose.
     //    Seated players emit no moves, so their buffer converges on the seat
     //    position/yaw — interpolation naturally settles them onto the chair.
-    const renderT = performance.now() - RENDER_DELAY_MS;
+    const nowMs = performance.now();
+    const renderT = nowMs - RENDER_DELAY_MS;
     const target = sample(rec.snapshots, renderT);
     let snapped = false;
     if (target) {
@@ -230,9 +243,52 @@ export function RemotePlayer({
       }
     }
 
+    // 3b) Jump (Task 11): a broadcast hop lifts the group (display only — the server
+    //    y never changes) and plays Jump_Full_Short once, squeezed into
+    //    JUMP_DURATION_MS. Only a standing avatar hops: a seated or sitting/standing
+    //    one drops the hop (no late replay), and a hop in the air when the seat is
+    //    confirmed just fades out. Registry reads allocate nothing.
+    let lift = 0;
+    let landed = false;
+    {
+      const canJump = seatModeRef.current === "up";
+      const entry = canJump ? jumpRegistry.get(sessionId, nowMs) : null;
+      if (!canJump) jumpRegistry.remove(sessionId);
+      const jump = jumpAction.current;
+      if (entry) {
+        if (entry.seq !== jumpSeqRef.current) {
+          jumpSeqRef.current = entry.seq;
+          if (jump) {
+            gaitAction(gaitRef.current)?.fadeOut(JUMP_FADE_IN_S);
+            jump.timeScale = jumpTimeScale(jump.getClip().duration);
+            jump.reset();
+            jump.setLoop(LoopOnce, 1);
+            jump.clampWhenFinished = true;
+            jump.fadeIn(JUMP_FADE_IN_S).play();
+          }
+        }
+        lift = jumpOffsetY(nowMs - entry.startedAt);
+      } else if (jumpSeqRef.current !== -1) {
+        jumpSeqRef.current = -1;
+        if (jump) {
+          jump.fadeOut(ANIM_FADE);
+          if (canJump) {
+            // Landed: resume the gait loop; step 4 re-syncs it next frame if the
+            // avatar started or stopped moving meanwhile.
+            gaitAction(gaitRef.current)?.reset().fadeIn(ANIM_FADE).play();
+            landed = true;
+          }
+          fadeRef.current = ANIM_FADE; // keep the mixer ticking through the crossfade
+        }
+      }
+      group.position.y = lift;
+      if (shadowRef.current) shadowRef.current.position.y = -lift;
+    }
+
     // 4) Locomotion from interpolated speed — ONLY while standing (a seated avatar
-    //    must never show the walk or run cycle, even if a stray snapshot implies speed).
-    if (target && seatModeRef.current === "up") {
+    //    must never show the walk or run cycle, even if a stray snapshot implies speed)
+    //    and not mid-hop (the hop owns the body; landing resumes the loop above).
+    if (target && seatModeRef.current === "up" && jumpSeqRef.current === -1 && !landed) {
       // Gait speed is a windowed path length (not the noisy per-segment speed), so
       // receive-time bursts and jitter cannot flip walk <-> run; see remoteGaitSpeed.
       const speed = snapped ? 0 : remoteGaitSpeed(rec.snapshots, renderT);
@@ -256,8 +312,11 @@ export function RemotePlayer({
     nametag.sprite.visible = camDist <= NAMETAG_MAX_DIST;
 
     // 7) Mixer discipline: paused while idle/seated-settled; every-frame during a
-    //    crossfade OR a one-shot sit/stand clip; distance-throttled while walking/running.
-    const transient = seatModeRef.current === "sitting" || seatModeRef.current === "standing";
+    //    crossfade OR a one-shot sit/stand/jump clip; distance-throttled while walking/running.
+    const transient =
+      seatModeRef.current === "sitting" ||
+      seatModeRef.current === "standing" ||
+      jumpSeqRef.current !== -1;
     const active = gaitRef.current !== "idle" || fadeRef.current > 0 || transient;
     if (active) {
       accDeltaRef.current += delta;
@@ -282,7 +341,11 @@ export function RemotePlayer({
     <group ref={groupRef}>
       <primitive object={avatar.root} />
       <primitive object={nametag.sprite} />
-      {blobShadow && <BlobShadow />}
+      {blobShadow && (
+        <group ref={shadowRef}>
+          <BlobShadow />
+        </group>
+      )}
     </group>
   );
 }
