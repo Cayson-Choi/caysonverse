@@ -401,8 +401,42 @@ export const MIXER_STRIDE_NEAR = 1;
 export const MIXER_STRIDE_MID = 3;
 export const MIXER_STRIDE_FAR = 6;
 
-/** Hide a remote player's nametag beyond this distance from the camera (m). */
-export const NAMETAG_MAX_DIST = 20;
+/**
+ * Name tag distance fade (controls-ux Task 13, spec §6): fully opaque up to
+ * NAMETAG_FADE_START metres from the camera, fading linearly to nothing at
+ * NAMETAG_FADE_END. Replaces the old instant hide at 20 m.
+ */
+export const NAMETAG_FADE_START = 25;
+export const NAMETAG_FADE_END = 30;
+
+/**
+ * The tag's text stays between these projected CSS pixel heights at every distance
+ * (readable far away, not shouting up close). The tag's WORLD size follows from it
+ * (nametagLayout.ts).
+ */
+export const NAMETAG_TEXT_PX = { min: 12, max: 16 } as const;
+
+/**
+ * How fast a tag's opacity chases its target, in opacity per second — so a tag
+ * crossing the fade line (or being selected / dropped) dissolves instead of popping.
+ */
+export const NAMETAG_FADE_RATE = 4;
+
+/**
+ * World height (m) of the whole tag (capsule included) at the distances where the
+ * natural size already puts the text inside NAMETAG_TEXT_PX. 0.30 (design 22):
+ * small enough that the speech bubble stays the visual protagonist.
+ */
+export const NAMETAG_BASE_HEIGHT_M = 0.30;
+
+/**
+ * Tag canvas metrics (px): the text em size and the capsule's vertical padding
+ * above and below it. The canvas is always FONT + 2·PAD tall, so the text takes
+ * NAMETAG_TEXT_FRACTION of the tag's height whatever the badge or border.
+ */
+export const NAMETAG_FONT_PX = 48;
+export const NAMETAG_PAD_Y_PX = 14;
+export const NAMETAG_TEXT_FRACTION = NAMETAG_FONT_PX / (NAMETAG_FONT_PX + 2 * NAMETAG_PAD_Y_PX);
 
 /** Height (m) of the nametag sprite above the avatar's feet. */
 export const NAMETAG_HEIGHT = 2.1;

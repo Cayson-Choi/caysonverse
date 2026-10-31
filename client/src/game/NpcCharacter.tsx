@@ -14,7 +14,7 @@ import type { Group, Material, Mesh, Texture } from "three";
 import { CLIP } from "./constants";
 import { cloneTinted } from "./avatar";
 import { createNametag } from "./nametag";
-import { NPC_LABEL, type NpcConfig } from "./npc";
+import { NPC_TAG_TEXT, type NpcConfig } from "./npc";
 import { NPC_ACCENTS, NPC_HIDE_NODES, attachNpcAccessories, getNpcTexture } from "./npcLook";
 
 const NPC_MODEL = "/models/mage.glb";
@@ -50,11 +50,11 @@ export function NpcCharacter({ npc }: { npc: NpcConfig }) {
     actions[CLIP.idle]?.reset().play();
   }, [actions]);
 
-  // Badge nametag above the head, released with the avatar.
+  // "AI 조교" nametag above the head (AI pill + "조교"), released with the avatar.
   useEffect(() => {
     const group = groupRef.current;
     if (!group) return;
-    const tag = createNametag(NPC_LABEL);
+    const tag = createNametag(NPC_TAG_TEXT, "ai");
     group.add(tag.sprite);
     return () => {
       group.remove(tag.sprite);

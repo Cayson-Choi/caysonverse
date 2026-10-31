@@ -10,8 +10,14 @@ import { NPC_SPOTS, type NpcId } from "@caysonverse/shared/worldMap";
 
 export type { NpcId };
 
-/** The badge every NPC wears (nametag + panel header) — never a personal name. */
+/** The badge every NPC wears (panel header) — never a personal name. */
 export const NPC_LABEL = "AI 조교";
+
+/**
+ * The text on the in-world nametag: the "AI" pill (nametag.ts badge "ai") is drawn
+ * in front of it, so together the tag reads "AI 조교" — NPC_LABEL.
+ */
+export const NPC_TAG_TEXT = "조교";
 
 export interface NpcConfig {
   id: NpcId;

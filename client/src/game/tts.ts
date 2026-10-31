@@ -56,10 +56,10 @@ export interface TtsEnv {
 }
 
 /**
- * Audible radius (m), player-to-player. Deliberately tighter than
- * NAMETAG_MAX_DIST (20, camera-based culling): a voice carrying as far as the
- * furthest readable nametag would make a full classroom loud, and the speech
- * bubble itself has no distance cull to align with. ~15 m ≈ half the lounge.
+ * Audible radius (m), player-to-player. Deliberately tighter than the nametag
+ * fade (NAMETAG_FADE_START..END, 25–30 m from the camera): a voice carrying as
+ * far as the furthest readable nametag would make a full classroom loud, and the
+ * speech bubble itself has no distance cull to align with. ~15 m ≈ half the lounge.
  */
 export const TTS_RADIUS_M = 15;
 
