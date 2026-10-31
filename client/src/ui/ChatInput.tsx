@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { CHAT_MAX_LENGTH } from "@caysonverse/shared/constants";
-import { setUiCaptured, isUiCaptured, captureReleaseEffect } from "../game/uiCapture";
+import { setUiCaptured, captureReleaseEffect } from "../game/uiCapture";
+import { onHotkey } from "../game/hotkeys";
 import { sendChat } from "../net/connection";
 import { isTouchDevice } from "../device";
 import { KBD_INSET_VAR, trackKbdInset } from "./kbdInset";
@@ -18,7 +19,7 @@ const FOCUS_CLASS = "cv-chat-focus";
 
 /**
  * Bottom-centre chat input bar.
- *  - Enter (unfocused) focuses the input; Enter (focused) sends + blurs.
+ *  - Enter or `/` (unfocused) focuses the input; Enter (focused) sends + blurs.
  *  - Escape blurs.
  *  - While focused, `setUiCaptured(true)` tells the movement system to ignore
  *    keys (see uiCapture.ts), so typing never walks the avatar.
@@ -55,21 +56,19 @@ export function ChatInput() {
     };
   }, [focused]);
 
-  // Global Enter focuses the input — but only when no other UI field owns the
-  // keyboard. Without this guard, pressing Enter inside another text field (e.g.
-  // the admin announce textarea, which sets the same capture flag) would steal
-  // focus to the chat bar instead of inserting a newline.
+  // Enter or `/` (the shared hotkey table's openChat) focuses the input. The table
+  // already drops the key while another UI field owns the keyboard — without that,
+  // pressing Enter inside another text field (e.g. the admin announce textarea,
+  // which sets the same capture flag) would steal focus to the chat bar instead of
+  // inserting a newline — and cancels the browser default once for all subscribers,
+  // which is also why the `/` that opens chat is never typed into the field.
   useEffect(() => {
-    function onKeyDown(e: KeyboardEvent) {
-      if (e.key !== "Enter" || e.isComposing) return;
-      if (isUiCaptured()) return; // another field (or chat itself) is focused
+    return onHotkey((action) => {
+      if (action.type !== "openChat") return;
       const input = inputRef.current;
       if (!input || document.activeElement === input) return;
-      e.preventDefault();
       input.focus();
-    }
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+    });
   }, []);
 
   // Release the UI-capture flag if this input unmounts WHILE focused. A reconnect

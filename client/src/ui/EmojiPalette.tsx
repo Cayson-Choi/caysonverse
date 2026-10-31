@@ -2,20 +2,18 @@ import { useEffect, useRef, useState } from "react";
 import { EMOJIS, EMOJI_RATE } from "@caysonverse/shared/constants";
 import { getRoom, sendEmoji } from "../net/connection";
 import { startEmojiSync } from "../net/emojiSync";
-import { isUiCaptured } from "../game/uiCapture";
+import { onHotkey } from "../game/hotkeys";
 import "./emoji.css";
-
-/** `KeyboardEvent.code` values for the 1-6 shortcuts, in EMOJIS index order. */
-const SHORTCUT_CODES = ["Digit1", "Digit2", "Digit3", "Digit4", "Digit5", "Digit6"];
 
 /** How long the click/press pulse feedback lingers (ms). */
 const PULSE_MS = 200;
 
 /**
  * Bottom-right emoji reaction palette: 6 buttons (the glyph itself is the
- * label) plus 1-6 keyboard shortcuts, guarded by the SAME focus flag the chat
- * input sets (uiCapture.ts) so digits never leak into a reaction while typing
- * a message. Wires the emoji broadcast into the module registry for this
+ * label) plus 1-6 keyboard shortcuts. The shortcut keys come from the shared
+ * hotkey table (hotkeys.ts), which honours the SAME focus flag the chat input
+ * sets (uiCapture.ts) so digits never leak into a reaction while typing a
+ * message. Wires the emoji broadcast into the module registry for this
  * component's lifetime (mirrors Chat.tsx's startChatSync wiring). The float-up
  * sprites themselves live in the 3D scene (useEmoji, per avatar), not here.
  */
@@ -42,14 +40,9 @@ export function EmojiPalette() {
   }
 
   useEffect(() => {
-    function onKeyDown(e: KeyboardEvent) {
-      if (isUiCaptured()) return; // chat input owns the keyboard — never steal digits
-      const index = SHORTCUT_CODES.indexOf(e.code);
-      if (index === -1) return;
-      fire(index);
-    }
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+    return onHotkey((action) => {
+      if (action.type === "emoji") fire(action.index);
+    });
     // fire reads only a ref + a stable state setter — safe to register once.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

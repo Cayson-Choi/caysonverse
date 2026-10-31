@@ -20,7 +20,7 @@ import {
   clampOverviewCenter,
   overviewPanDelta,
 } from "./overview";
-import { isUiCaptured } from "./uiCapture";
+import { onHotkey } from "./hotkeys";
 import {
   DRAG_SIGN,
   isClick,
@@ -266,32 +266,31 @@ export function CameraRig({ pose, orbit }: CameraRigProps) {
       // deltaY > 0 = zoom out (an outward notch in FP returns to TP).
       applyZoom(orbit, e.deltaY * CAMERA.zoomSpeed, ZOOM_BAND);
     };
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (isUiCaptured()) return; // typing in chat must never toggle the view
-      if (e.repeat) return; // one toggle per physical press (no auto-repeat)
-      if (e.code === "KeyV") {
+    // V / M / Esc come from the shared hotkey table (hotkeys.ts), which already
+    // drops auto-repeat, IME composition and keys typed into a focused chat field.
+    const offHotkey = onHotkey((action) => {
+      if (action.type === "toggleView") {
         if (viewState.mode === "ov") return; // V / zoom-through are ignored in overview
         toggleViewMode(orbit);
-      } else if (e.code === "KeyM") {
+      } else if (action.type === "toggleMap") {
         toggleOverview(); // M toggles overview (and is the ONLY way out of it)
-      } else if (e.code === "Escape") {
+      } else if (action.type === "menu") {
         clearClickTarget(); // 진행 중인 클릭 자동 이동을 즉시 중단
       }
-    };
+    });
 
     el.addEventListener("pointerdown", onDown);
     el.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
     window.addEventListener("pointercancel", onUp);
     el.addEventListener("wheel", onWheel, { passive: false });
-    window.addEventListener("keydown", onKeyDown);
     return () => {
       el.removeEventListener("pointerdown", onDown);
       el.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
       window.removeEventListener("pointercancel", onUp);
       el.removeEventListener("wheel", onWheel);
-      window.removeEventListener("keydown", onKeyDown);
+      offHotkey();
     };
   }, [gl, orbit, camera]);
 
