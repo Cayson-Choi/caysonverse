@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { CHAT_MAX_LENGTH } from "@caysonverse/shared/constants";
-import { setUiCaptured, captureReleaseEffect } from "../game/uiCapture";
+import { acquireUiCapture, releaseUiCapture, captureReleaseEffect } from "../game/uiCapture";
 import { onHotkey } from "../game/hotkeys";
 import { createTypingSender } from "../game/typing";
 import { sendChat, sendTyping } from "../net/connection";
@@ -22,7 +22,7 @@ const FOCUS_CLASS = "cv-chat-focus";
  * Bottom-centre chat input bar.
  *  - Enter or `/` (unfocused) focuses the input; Enter (focused) sends + blurs.
  *  - Escape blurs.
- *  - While focused, `setUiCaptured(true)` tells the movement system to ignore
+ *  - While focused, the "chat" capture tells the movement system to ignore
  *    keys (see uiCapture.ts), so typing never walks the avatar.
  *  - IME-safe: never sends while a composition (e.g. Hangul) is in progress.
  *  - Typing indicator (Task 12): every change tells the typing sender whether the
@@ -82,7 +82,7 @@ export function ChatInput() {
   // (epoch bump → WorldScene remount) or a kick removes the focused field from
   // the DOM, and browsers fire no blur for a removed element — so onBlur never
   // runs and the flag would otherwise strand `true`, killing WASD/Enter/emoji.
-  useEffect(captureReleaseEffect, []);
+  useEffect(() => captureReleaseEffect("chat"), []);
 
   // Same for the typing indicator: an input that unmounts while ON (reconnect
   // remount, kick) fires no blur, so tell the others it stopped.
@@ -106,11 +106,11 @@ export function ChatInput() {
         maxLength={CHAT_MAX_LENGTH}
         aria-label="채팅 입력"
         onFocus={() => {
-          setUiCaptured(true);
+          acquireUiCapture("chat");
           setFocused(true);
         }}
         onBlur={() => {
-          setUiCaptured(false);
+          releaseUiCapture("chat");
           setFocused(false);
           typing.stop();
         }}

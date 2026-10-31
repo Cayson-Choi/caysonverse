@@ -11,7 +11,7 @@
 import { useEffect, useRef, useState } from "react";
 import { NPC_LABEL } from "../game/npc";
 import { sendPortalReturn } from "../net/connection";
-import { setUiCaptured, captureReleaseEffect } from "../game/uiCapture";
+import { acquireUiCapture, releaseUiCapture, captureReleaseEffect } from "../game/uiCapture";
 import { isTouchDevice } from "../device";
 import { trackKbdInset } from "./kbdInset";
 import { NPC_INPUT_MAX, useNpcStore } from "../stores/npcStore";
@@ -57,7 +57,7 @@ export function NpcChatPanel() {
   // the flag is released.
 
   // Unmount safety: a panel removed while its input is focused fires no blur.
-  useEffect(() => (open ? captureReleaseEffect() : undefined), [open]);
+  useEffect(() => (open ? captureReleaseEffect("npc") : undefined), [open]);
 
   if (!open) return null;
 
@@ -117,11 +117,11 @@ export function NpcChatPanel() {
           placeholder="조교에게 물어보세요"
           onChange={(e) => setDraft(e.target.value)}
           onFocus={() => {
-            setUiCaptured(true);
+            acquireUiCapture("npc");
             setTyping(true);
           }}
           onBlur={() => {
-            setUiCaptured(false);
+            releaseUiCapture("npc");
             setTyping(false);
           }}
         />

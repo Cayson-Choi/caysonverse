@@ -7,7 +7,7 @@ import {
   type HotkeyAction,
   type KeyLike,
 } from "./hotkeys";
-import { setUiCaptured } from "./uiCapture";
+import { acquireUiCapture, releaseAllUiCapture } from "./uiCapture";
 
 const kd = (code: string, o: Partial<KeyLike> = {}): KeyLike => ({
   type: "keydown",
@@ -226,13 +226,13 @@ describe("onHotkey — one shared window listener", () => {
   beforeEach(() => {
     win = new FakeWindow();
     vi.stubGlobal("window", win);
-    setUiCaptured(false);
+    releaseAllUiCapture();
   });
   afterEach(() => {
     for (const off of disposers) off(); // idempotent — tests that already disposed are fine
     disposers = [];
     vi.unstubAllGlobals();
-    setUiCaptured(false);
+    releaseAllUiCapture();
   });
 
   it("two subscribers both receive the same action (no starvation by preventDefault)", () => {
@@ -335,7 +335,7 @@ describe("onHotkey — one shared window listener", () => {
     const fn = vi.fn();
     const off = sub(fn);
 
-    setUiCaptured(true);
+    acquireUiCapture("chat");
     const enter = press("keydown", "Enter");
     const slash = press("keydown", "Slash");
     const digit = press("keydown", "Digit2");

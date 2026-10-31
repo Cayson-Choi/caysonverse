@@ -43,7 +43,7 @@
 .cv-menu-section {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
   padding-top: 12px;
   border-top: 1px solid rgba(150, 130, 220, 0.25);
 }
@@ -62,7 +62,7 @@
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 6px 12px;
+  gap: 8px 12px;
   min-height: 44px;
 }
 
@@ -75,7 +75,7 @@
 .cv-menu-seg {
   display: flex;
   flex: 1 1 100%;
-  gap: 6px;
+  gap: 8px;
 }
 
 .cv-menu-seg-btn,
@@ -144,6 +144,17 @@
   transition: transform 0.15s ease, background 0.15s ease;
 }
 
+.cv-menu-switch:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.cv-menu-note {
+  flex: 1 1 100%;
+  font-size: 13px;
+  color: rgba(210, 202, 240, 0.7);
+}
+
 .cv-menu-switch.is-on {
   background: rgba(124, 100, 214, 0.95);
   border-color: rgba(206, 192, 255, 0.85);
@@ -205,6 +216,10 @@
 
 .cv-touch .cv-menu-row {
   min-height: 48px;
+}
+
+.cv-touch .cv-menu-slider input[type="range"] {
+  height: 48px;
 }
 
 /* A short landscape phone: tighten the card so most of it fits without scrolling. */

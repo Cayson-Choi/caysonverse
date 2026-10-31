@@ -28,7 +28,7 @@ import { getRoom } from "../net/connection";
 import { startJumpSync } from "../net/jumpSync";
 import { isTouchDevice } from "../device";
 import { getRenderProfile } from "./renderProfile";
-import { setUiCaptured } from "./uiCapture";
+import { releaseAllUiCapture } from "./uiCapture";
 import { resetViewMode, toggleViewMode, toggleOverview, viewState } from "./viewState";
 import { applySettingsToRoot, clearSettingsFromRoot } from "./settings";
 import { setNametagMode } from "./labelRegistry";
@@ -105,7 +105,7 @@ export function WorldScene({ identity }: { identity: Identity }) {
   // stranded capture — or a stuck FP with the avatar hidden — can never survive
   // into a new world (design 19: view mode does not persist across a reconnect).
   useEffect(() => {
-    setUiCaptured(false);
+    releaseAllUiCapture();
     resetViewMode();
     useUiStore.getState().resetPanels(); // an open menu / roster does not survive a reconnect remount
   }, []);

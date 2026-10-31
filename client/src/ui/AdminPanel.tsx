@@ -2,7 +2,7 @@ import { useEffect, useState, useSyncExternalStore } from "react";
 import { ANNOUNCE_MAX_LENGTH } from "@caysonverse/shared/constants";
 import { sendAnnounce, sendKick } from "../net/connection";
 import { getRoster, subscribeRoster, getRemoteRecord } from "../game/remoteStore";
-import { setUiCaptured, captureReleaseEffect } from "../game/uiCapture";
+import { acquireUiCapture, releaseUiCapture, captureReleaseEffect } from "../game/uiCapture";
 import { useAppStore } from "../stores/appStore";
 import "./admin.css";
 
@@ -37,7 +37,7 @@ export function AdminPanel() {
   // Release the UI-capture flag if the panel unmounts while a field is focused
   // (a reconnect epoch bump remounts the scene, or the instructor loses admin) —
   // browsers fire no focusout for a removed element, so handleBlur never runs.
-  useEffect(captureReleaseEffect, []);
+  useEffect(() => captureReleaseEffect("admin"), []);
 
   if (!identity) return null;
 
@@ -51,12 +51,12 @@ export function AdminPanel() {
   ];
 
   function handleFocus() {
-    setUiCaptured(true);
+    acquireUiCapture("admin");
   }
   function handleBlur(e: React.FocusEvent<HTMLDivElement>) {
     // Only release when focus leaves the panel entirely (not between children).
     if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
-    setUiCaptured(false);
+    releaseUiCapture("admin");
   }
 
   function kick(sid: string) {

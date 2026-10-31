@@ -2,12 +2,13 @@ import { useEffect, useRef } from "react";
 import { onHotkey } from "../game/hotkeys";
 import { blurTextEntry, handleEscape, type FocusLike } from "../game/escape";
 import { clearClickTarget } from "../game/clickMove";
-import { setUiCaptured } from "../game/uiCapture";
+import { acquireUiCapture, releaseUiCapture } from "../game/uiCapture";
 import { SENSITIVITY, type ButtonSize } from "../game/settings";
 import type { NametagMode } from "../game/nametagSelect";
 import { useSettingsStore } from "../stores/settingsStore";
 import { useUiStore } from "../stores/uiStore";
 import { useViewStore } from "../stores/viewStore";
+import { FOCUSABLE_SELECTOR, tabWrapTarget } from "./focusTrap";
 import "./menu.css";
 
 interface MenuPanelProps {
@@ -76,11 +77,15 @@ function Segmented<T extends string>({
 /** An on/off switch. */
 function Switch({
   labelledBy,
+  describedBy,
   on,
+  disabled = false,
   onChange,
 }: {
   labelledBy: string;
+  describedBy?: string;
   on: boolean;
+  disabled?: boolean;
   onChange: (v: boolean) => void;
 }) {
   return (
@@ -89,6 +94,8 @@ function Switch({
       role="switch"
       aria-checked={on}
       aria-labelledby={labelledBy}
+      aria-describedby={describedBy}
+      disabled={disabled}
       className={"cv-menu-switch" + (on ? " is-on" : "")}
       onClick={() => onChange(!on)}
       {...noFocusOnPress}
@@ -108,10 +115,13 @@ function Switch({
  * resolveEscape): this component only subscribes to it, so the 조교 dialogue, the roster
  * and the menu close in a fixed order and no other listener reacts to Esc.
  *
- * While open it owns the keyboard (the same capture flag the chat input uses): WASD,
- * Space, E and the other hotkeys do nothing behind the card, a pending click-move is
- * dropped, and a text field that still had focus (chat, the admin announce box) is
- * released first so closing the menu can never strand a focused field with the flag off.
+ * While open it owns the keyboard under its own capture owner ("menu", see uiCapture.ts):
+ * WASD, Space, E and the other hotkeys do nothing behind the card, and nobody else
+ * letting go (the 조교 dialogue closing, the chat input blurring) can free them. A
+ * pending click-move is dropped, and a text field that still had focus (chat, the admin
+ * announce box) is released first. Tab stays inside the card (a key handler wraps it, a
+ * focusin guard pulls back any focus that lands outside), so focus can never walk into
+ * the chat field behind it.
  */
 export function MenuPanel({ onToggleView, onShowGuide }: MenuPanelProps) {
   const open = useUiStore((s) => s.menuOpen);
@@ -131,22 +141,35 @@ export function MenuPanel({ onToggleView, onShowGuide }: MenuPanelProps) {
     [],
   );
 
-  // Open: take the keyboard. The flag is released on close AND on unmount (a reconnect
+  // Open: take the keyboard. The hold is released on close AND on unmount (a reconnect
   // remount or a kick while the menu is up fires no close).
   useEffect(() => {
     if (!open) return;
-    // A focused chat / admin field would otherwise keep typing behind the card, and its
-    // blur (which clears the flag) would land after ours on a later click. Let go first.
+    // A focused chat / admin field would otherwise keep typing behind the card. Let go first.
     blurTextEntry(document.activeElement as FocusLike | null);
     clearClickTarget();
-    setUiCaptured(true);
+    acquireUiCapture("menu");
     panelRef.current?.focus({ preventScroll: true });
-    return () => setUiCaptured(false);
+    // Safety net for the Tab trap: whatever moves focus outside the card (a click on a
+    // HUD control behind it, a programmatic focus) is pulled back to the card.
+    const onFocusIn = (e: FocusEvent) => {
+      const card = panelRef.current;
+      if (card && e.target instanceof Node && !card.contains(e.target)) {
+        card.focus({ preventScroll: true });
+      }
+    };
+    document.addEventListener("focusin", onFocusIn);
+    return () => {
+      document.removeEventListener("focusin", onFocusIn);
+      releaseUiCapture("menu");
+    };
   }, [open]);
 
   if (!open) return null;
 
   const close = () => useUiStore.getState().setMenuOpen(false);
+  // "끄기" hides every tag, your own included: say so instead of leaving a switch that does nothing.
+  const ownTagOff = settings.nametagMode === "off";
 
   return (
     <div
@@ -168,6 +191,26 @@ export function MenuPanel({ onToggleView, onShowGuide }: MenuPanelProps) {
         aria-modal="true"
         aria-labelledby="cv-menu-title"
         tabIndex={-1}
+        onKeyDown={(e) => {
+          // Tab trap: wrap at both ends so focus never leaves the card.
+          if (e.key !== "Tab") return;
+          const card = panelRef.current;
+          if (!card) return;
+          const items = Array.from(card.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR));
+          if (items.length === 0) {
+            e.preventDefault();
+            return;
+          }
+          const target = tabWrapTarget(
+            items.length,
+            items.indexOf(document.activeElement as HTMLElement),
+            e.shiftKey,
+          );
+          if (target !== null) {
+            e.preventDefault();
+            items[target].focus();
+          }
+        }}
       >
         <h2 id="cv-menu-title" className="cv-menu-title">
           메뉴
@@ -240,9 +283,16 @@ export function MenuPanel({ onToggleView, onShowGuide }: MenuPanelProps) {
             </span>
             <Switch
               labelledBy="cv-menu-own-nametag"
+              describedBy={ownTagOff ? "cv-menu-own-nametag-note" : undefined}
               on={settings.showOwnNametag}
+              disabled={ownTagOff}
               onChange={(showOwnNametag) => update({ showOwnNametag })}
             />
+            {ownTagOff && (
+              <p id="cv-menu-own-nametag-note" className="cv-menu-note">
+                이름표 보기가 꺼져 있어요
+              </p>
+            )}
           </div>
         </section>
 
