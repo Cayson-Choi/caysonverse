@@ -357,17 +357,21 @@ export const RUN_OFF_SPEED = 4.8;
 /**
  * Time hysteresis for ENTERING run (ms). Speed alone cannot tell a runner from a
  * walker whose patches arrive in a burst, so a remote is promoted to run only
- * after its measured speed has stayed above RUN_ON_SPEED continuously for this
- * long (wall-clock, so it does not depend on frame rate). Leaving run is immediate.
+ * once 150 ms have passed since its measured speed first went above RUN_ON_SPEED
+ * (wall-clock, so it does not depend on frame rate). The entry clock survives
+ * readings that dip into the hysteresis band and restarts only when the speed
+ * falls below RUN_OFF_SPEED, because a runner's own delivery jitter routinely
+ * reads below RUN_ON. Leaving run is immediate.
  */
 export const RUN_ENTER_MS = 150;
 
 /**
  * Shortest snapshot span (ms) allowed to yield a speed sample. Two patches that
- * arrive closer together than this are a receive-time burst (distance / a few ms
- * reads 20-40 m/s), so that frame holds the previous speed instead.
+ * arrive closer together than this are a receive-time burst (a 0.4 m patch step
+ * over 70 ms already reads 5.7 m/s, above RUN_ON_SPEED; over a few ms it reads
+ * 20-40 m/s), so that frame holds the previous speed instead.
  */
-export const SPEED_MIN_SPAN_MS = 40;
+export const SPEED_MIN_SPAN_MS = 70;
 
 /**
  * Mixer-update distance bands (m from camera) and their frame strides. Distant

@@ -50,7 +50,7 @@ export function nextGait(current: Gait, speed: number): Gait {
  * mutated in place) so the per-frame path allocates nothing.
  */
 export interface RunGate {
-  /** Clock time (ms) the speed first went above RUN_ON_SPEED and has stayed there; -1 while it is not. */
+  /** Clock time (ms) the speed first went above RUN_ON_SPEED with no reading since below RUN_OFF_SPEED; -1 while no clock runs. */
   aboveSince: number;
 }
 
@@ -59,18 +59,26 @@ export function createRunGate(): RunGate {
 }
 
 /**
- * `nextGait` plus a TIME hysteresis on entering run: the speed must stay above
- * RUN_ON_SPEED continuously for RUN_ENTER_MS (wall-clock `nowMs`, so frame rate
- * does not matter) before a non-running avatar is promoted. Until then it shows
- * walk (or idle) exactly as `nextGait` would without the run rule; any frame that
- * is not above RUN_ON_SPEED restarts the clock. Leaving run, and everything
- * between idle and walk, is unchanged. Reset `gate.aboveSince = -1` whenever the
- * avatar leaves standing locomotion (seat) so a stale clock cannot promote.
+ * `nextGait` plus a TIME hysteresis on entering run: a non-running avatar is
+ * promoted only once RUN_ENTER_MS (wall-clock `nowMs`, so frame rate does not
+ * matter) have passed since its speed first went above RUN_ON_SPEED. The clock
+ * keeps running through readings that fall back into the RUN_OFF..RUN_ON band
+ * (a runner's own delivery jitter reads there) and restarts only on a reading
+ * below RUN_OFF_SPEED. Until promotion it shows walk (or idle) exactly as
+ * `nextGait` would without the run rule. Leaving run, and everything between idle
+ * and walk, is unchanged. Reset `gate.aboveSince = -1` whenever the avatar leaves
+ * standing locomotion (seat) so a stale clock cannot promote.
  */
 export function nextGaitTimed(current: Gait, speed: number, nowMs: number, gate: RunGate): Gait {
   const next = nextGait(current, speed);
-  if (current === "run" || next !== "run") {
+  if (current === "run") {
     gate.aboveSince = -1;
+    return next;
+  }
+  if (next !== "run") {
+    // Not above RUN_ON_SPEED this frame: a dip into the band keeps the clock, a
+    // reading below RUN_OFF_SPEED is clearly not running and restarts it.
+    if (speed < RUN_OFF_SPEED) gate.aboveSince = -1;
     return next;
   }
   // Above RUN_ON_SPEED but not running yet: start (or keep) the clock.

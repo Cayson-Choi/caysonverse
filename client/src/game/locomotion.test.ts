@@ -121,18 +121,42 @@ describe("nextGaitTimed (entering run needs a sustained speed)", () => {
     expect(g).toBe("run");
   });
 
-  it("a single frame at or below RUN_ON_SPEED restarts the clock", () => {
+  it("a dip into the hysteresis band (RUN_OFF_SPEED..RUN_ON_SPEED) keeps the clock running", () => {
+    const gate = createRunGate();
+    let g: Gait = "walk";
+    g = nextGaitTimed(g, 6.4, 0, gate); // above RUN_ON: the clock starts at 0
+    g = nextGaitTimed(g, RUN_ON_SPEED, 60, gate); // exactly ON is not "above", but still >= RUN_OFF
+    expect(g).toBe("walk");
+    g = nextGaitTimed(g, RUN_OFF_SPEED, 120, gate); // exactly OFF is still not "below"
+    expect(g).toBe("walk");
+    g = nextGaitTimed(g, 6.4, RUN_ENTER_MS - 1, gate);
+    expect(g).toBe("walk"); // 149 ms since the first reading
+    g = nextGaitTimed(g, 6.4, RUN_ENTER_MS, gate);
+    expect(g).toBe("run"); // the dips did not restart the clock
+  });
+
+  it("a reading below RUN_OFF_SPEED restarts the clock", () => {
     const gate = createRunGate();
     let g: Gait = "walk";
     g = nextGaitTimed(g, 6.4, 0, gate);
     g = nextGaitTimed(g, 6.4, 100, gate);
-    g = nextGaitTimed(g, RUN_ON_SPEED, 120, gate); // exactly ON is not "above": restart
+    g = nextGaitTimed(g, RUN_OFF_SPEED - 0.01, 120, gate); // clearly not running speed: restart
     expect(g).toBe("walk");
     g = nextGaitTimed(g, 6.4, 140, gate); // clock restarts here
     g = nextGaitTimed(g, 6.4, 140 + RUN_ENTER_MS - 1, gate);
     expect(g).toBe("walk"); // 149 ms since the restart (289 ms since the first frame)
     g = nextGaitTimed(g, 6.4, 140 + RUN_ENTER_MS, gate);
     expect(g).toBe("run");
+  });
+
+  it("the clock only STARTS on a reading above RUN_ON_SPEED (band readings alone never promote)", () => {
+    const gate = createRunGate();
+    let g: Gait = "walk";
+    for (let t = 0; t <= 2000; t += 50) {
+      g = nextGaitTimed(g, (RUN_ON_SPEED + RUN_OFF_SPEED) / 2, t, gate);
+    }
+    expect(g).toBe("walk");
+    expect(gate.aboveSince).toBe(-1);
   });
 
   it("a runner starting from standing still shows walk first, then run once sustained", () => {
@@ -184,13 +208,18 @@ interface Arrival {
 /**
  * A straight-line mover sending a patch every 100 ms (PATCH_RATE_MS) at `speed`
  * m/s. `delays[k % delays.length]` is how late patch k is; delivery is in order,
- * so a late patch drags the ones behind it into a burst (>= 10 ms apart).
+ * so a late patch drags the ones behind it into a burst (>= `minGap` ms apart).
  */
-function arrivals(speed: number, delays: readonly number[], count: number): Arrival[] {
+function arrivals(
+  speed: number,
+  delays: readonly number[],
+  count: number,
+  minGap = 10,
+): Arrival[] {
   const out: Arrival[] = [];
   let prevRecv = -Infinity;
   for (let k = 0; k < count; k++) {
-    const recv = Math.max(100 * k + delays[k % delays.length], prevRecv + 10);
+    const recv = Math.max(100 * k + delays[k % delays.length], prevRecv + minGap);
     out.push({ recv, x: speed * 0.1 * k });
     prevRecv = recv;
   }
@@ -264,5 +293,40 @@ describe("remote gait end to end (interpolation + hold + run gate)", () => {
     const firstRun = frames.findIndex((f) => f.gait === "run");
     expect(firstRun).toBeGreaterThan(-1);
     expect(frames.slice(firstRun + 5).every((f) => f.gait === "run")).toBe(true);
+  });
+
+  it("a 6.4 m/s runner under delivery delays [0,15,0,25,0,10] ms reaches run within 400 ms of first reading above RUN_ON_SPEED", () => {
+    const frames = simulate(arrivals(6.4, [0, 15, 0, 25, 0, 10], 80), 6000);
+    const firstFast = frames.find((f) => f.speed > RUN_ON_SPEED);
+    const firstRun = frames.find((f) => f.gait === "run");
+    expect(firstFast).toBeDefined();
+    expect(firstRun).toBeDefined();
+    expect(firstRun!.now - firstFast!.now).toBeLessThanOrEqual(400);
+  });
+
+  it("a 6.4 m/s runner under heavy delivery delays [0,24,0,40,8,0,32] ms reaches run within 1000 ms of first reading above RUN_ON_SPEED", () => {
+    // 80% of the [0,30,0,50,10,0,40] profile. At 100% the 140-150 ms segments read
+    // 4.3-4.6 m/s (< RUN_OFF_SPEED) every 700 ms and keep restarting the entry clock,
+    // so that profile never reaches run - the limit of any speed-only remote gait.
+    const frames = simulate(arrivals(6.4, [0, 24, 0, 40, 8, 0, 32], 80), 6000);
+    const firstFast = frames.find((f) => f.speed > RUN_ON_SPEED);
+    const firstRun = frames.find((f) => f.gait === "run");
+    expect(firstFast).toBeDefined();
+    expect(firstRun).toBeDefined();
+    expect(firstRun!.now - firstFast!.now).toBeLessThanOrEqual(1000);
+  });
+
+  it("a 4 m/s walker whose burst patches arrive 45 ms or 60 ms apart never yields run either", () => {
+    const delays = [0, 0, 250, 0, 0, 0, 120, 0, 250, 250, 0, 0, 0, 0];
+    for (const gap of [45, 60]) {
+      const patches = arrivals(4, delays, 140, gap);
+      const spans = patches.slice(1).map((p, i) => p.recv - patches[i].recv);
+      expect(spans.filter((s) => s === gap).length).toBeGreaterThan(10); // the bursts really are `gap` ms apart
+      const frames = simulate(patches, 13000);
+      expect(frames.length).toBeGreaterThan(500);
+      // (A reading can still touch ~5.7 m/s where a span lands on exactly 70 ms - 0.4 m / 0.07 s -
+      // so the assertion is on the gait, which the entry clock keeps at walk.)
+      expect(frames.filter((f) => f.gait === "run")).toEqual([]);
+    }
   });
 });
