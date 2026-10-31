@@ -1,5 +1,5 @@
 import {
-  MOVE_SPEED,
+  RUN_SPEED,
   MOVE_SPEED_SLACK,
   MOVE_ELAPSED_FLOOR_MS,
   WORLD_BOUNDS,
@@ -33,6 +33,9 @@ import type { MovePayload } from "@caysonverse/shared/messages";
  *
  * Collision is enforced from the SAME `OBSTACLES` the client slides against, so
  * both sides share one source of map/collision truth.
+ *
+ * 기준 속도 = 달리기 속도 (controls-ux §5): the client never reports walk/run, so
+ * the speed budget is sized for RUN_SPEED (MOVE_SPEED × 1.6).
  */
 export function validateMove(
   current: { x: number; z: number },
@@ -49,7 +52,7 @@ export function validateMove(
   // 3. displacement / speed. Floor elapsed so a burst (elapsed ~= 0) still
   //    grants a small budget instead of collapsing every step to zero.
   const elapsed = Math.max(elapsedMs, MOVE_ELAPSED_FLOOR_MS);
-  const maxDist = MOVE_SPEED * (elapsed / 1000) * MOVE_SPEED_SLACK;
+  const maxDist = RUN_SPEED * (elapsed / 1000) * MOVE_SPEED_SLACK;
   const dx = p.x - current.x;
   const dz = p.z - current.z;
   if (Math.hypot(dx, dz) > maxDist) return null;

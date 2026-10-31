@@ -149,8 +149,8 @@ describe("WorldRoom (integration)", () => {
     const startX = player.x;
     const startZ = player.z;
 
-    // Backdate 60s: an UNCAPPED budget (4 m/s * 60s * 1.5) would allow ~360 m,
-    // clamp-accepting any in-bounds target. The ceiling must cut this to ~3 m.
+    // Backdate 60s: an UNCAPPED budget (RUN_SPEED 6.4 m/s * 60s * 1.5) would allow ~576 m,
+    // clamp-accepting any in-bounds target. The ceiling must cut this to ~4.8 m.
     const tracking = (room as unknown as {
       tracking: Map<string, { lastAcceptedAt: number }>;
     }).tracking;
@@ -158,7 +158,7 @@ describe("WorldRoom (integration)", () => {
 
     // A 10 m step NORTH to open lounge floor (in-bounds, no obstacle — the
     // spawn→gallery-door corridor is kept clear by the map invariants; SOUTH
-    // would now meet the central sofa set, design 32): beyond the capped ~3 m
+    // would now meet the central sofa set, design 32): beyond the capped ~4.8 m
     // budget → dropped. It is NOT dropped for bounds/obstacle reasons.
     client.send(MessageType.Move, { x: startX, z: startZ - 10, yaw: 0 });
     await room.waitForNextMessage();
@@ -166,7 +166,7 @@ describe("WorldRoom (integration)", () => {
     expect(player.x).toBe(startX);
     expect(player.z).toBe(startZ);
 
-    // The SAME idle gap still permits a normal in-budget step (~1 m < 3 m cap):
+    // The SAME idle gap still permits a normal in-budget step (~1 m < 4.8 m cap):
     // capping the budget does not blanket-block moves after an idle.
     client.send(MessageType.Move, { x: startX, z: startZ - 1, yaw: 0 });
     await room.waitForNextMessage();

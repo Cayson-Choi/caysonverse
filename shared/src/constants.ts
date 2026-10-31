@@ -22,6 +22,16 @@ export const MOVE_SPEED = 4;
 /** Displacement clamp multiplier — tolerated overshoot over the ideal step. */
 export const MOVE_SPEED_SLACK = 1.5;
 
+/** Run speed as a multiple of the walk speed (Shift held; controls-ux §5). */
+export const RUN_SPEED_MULTIPLIER = 1.6;
+
+/**
+ * Maximum run speed in meters/second (`MOVE_SPEED * RUN_SPEED_MULTIPLIER` = 6.4).
+ * The client never reports walk/run state, so the server's move budget is sized
+ * for the fastest legal gait.
+ */
+export const RUN_SPEED = MOVE_SPEED * RUN_SPEED_MULTIPLIER;
+
 /** Per-client move-message rate cap (messages per second). */
 export const MOVE_MAX_MSGS_PER_SEC = 30;
 
@@ -37,9 +47,9 @@ export const MOVE_ELAPSED_FLOOR_MS = 10;
  * (anti-teleport, final-review D1). `elapsed = now - lastAcceptedAt` is
  * client-influenceable and otherwise UNBOUNDED: a client that idles/reconnects
  * then sends one move would accumulate a world-spanning single-step budget
- * (`MOVE_SPEED * elapsed/1000 * slack`), letting it jump to any open-floor point
+ * (`RUN_SPEED * elapsed/1000 * slack`), letting it jump to any open-floor point
  * in one message despite the bounds clamp. Capping elapsed at a few patch
- * intervals bounds one post-idle move to ~MOVE_SPEED * 0.5 * slack ≈ 3 m while
+ * intervals bounds one post-idle move to ~RUN_SPEED × 0.5 × 1.5 ≈ 4.8 m while
  * staying well above any legitimate resume-after-hiccup step (moves flow at 10 Hz
  * = PATCH_RATE_MS). The room applies `Math.min(elapsed, this)` BEFORE the floor.
  */

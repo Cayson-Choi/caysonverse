@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   MOVE_SPEED,
+  RUN_SPEED,
   MOVE_SPEED_SLACK,
   MOVE_ELAPSED_FLOOR_MS,
   WORLD_BOUNDS,
@@ -13,7 +14,7 @@ const ORIGIN = { x: 0, z: 0 };
 // Distance a client may legally travel in the given elapsed window.
 function budget(elapsedMs: number): number {
   const elapsed = Math.max(elapsedMs, MOVE_ELAPSED_FLOOR_MS);
-  return MOVE_SPEED * (elapsed / 1000) * MOVE_SPEED_SLACK;
+  return RUN_SPEED * (elapsed / 1000) * MOVE_SPEED_SLACK;
 }
 
 describe("validateMove — payload shape", () => {
@@ -64,6 +65,22 @@ describe("validateMove — displacement / speed", () => {
     expect(validateMove(current, { x: 10.2, z: 10.1, yaw: 0 }, 100)).not.toBeNull();
     // …but the same target coords are a teleport when measured from origin.
     expect(validateMove(ORIGIN, { x: 10.2, z: 10.1, yaw: 0 }, 100)).toBeNull();
+  });
+});
+
+describe("validateMove — run speed (controls-ux §5)", () => {
+  it("pins the run multiplier at 1.6", () => {
+    expect(RUN_SPEED).toBeCloseTo(MOVE_SPEED * 1.6, 9);
+  });
+
+  it("accepts a run step the old walk budget dropped", () => {
+    const d = MOVE_SPEED * 0.1 * MOVE_SPEED_SLACK + 0.1; // > 0.6 m (old cap)
+    expect(validateMove(ORIGIN, { x: d, z: 0, yaw: 0 }, 100)).not.toBeNull();
+  });
+
+  it("drops a step just beyond RUN_SPEED × elapsed × slack", () => {
+    const d = RUN_SPEED * 0.1 * MOVE_SPEED_SLACK + 0.01;
+    expect(validateMove(ORIGIN, { x: d, z: 0, yaw: 0 }, 100)).toBeNull();
   });
 });
 
