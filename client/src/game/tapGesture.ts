@@ -7,6 +7,8 @@
  * see whether a second tap follows (CameraRig owns that timer).
  */
 
+import type { ViewMode } from "./viewMode";
+
 /** A second tap within this many ms of the first makes it a double tap. */
 export const DOUBLE_TAP_MS = 300;
 
@@ -40,4 +42,24 @@ export function isDoubleTap(prev: TapRecord | null, next: TapRecord): boolean {
  */
 export function isLookHalf(x: number, vw: number, leftHanded: boolean = false): boolean {
   return leftHanded ? x < vw / 2 : x >= vw / 2;
+}
+
+/**
+ * Whether the held-back single-tap walk may still start when its DOUBLE_TAP_MS timer
+ * fires — the world can change during that wait, so it is decided again then:
+ *   - the overview map opened (a tap on it is not a walk),
+ *   - chat / a panel took the keyboard (`uiCaptured`; the Esc menu joins it later),
+ *   - the player SAT DOWN meanwhile (`seatedNow` but not `seatedAtTap`): a walk target
+ *     would stand them straight back up.
+ * A tap made while already seated keeps its meaning — "stand up and go there" — like
+ * a mouse click does.
+ */
+export function canTapWalk(
+  mode: ViewMode,
+  uiCaptured: boolean,
+  seatedAtTap: boolean,
+  seatedNow: boolean,
+): boolean {
+  if (mode === "ov" || uiCaptured) return false;
+  return seatedAtTap || !seatedNow;
 }

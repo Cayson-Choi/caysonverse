@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { DOUBLE_TAP_MS, DOUBLE_TAP_PX, isDoubleTap, isLookHalf } from "./tapGesture";
+import { DOUBLE_TAP_MS, DOUBLE_TAP_PX, canTapWalk, isDoubleTap, isLookHalf } from "./tapGesture";
 
 describe("tapGesture — constants", () => {
   it("keeps the agreed window (300 ms) and slop (30 px)", () => {
@@ -55,5 +55,36 @@ describe("isLookHalf", () => {
     for (const x of [0, 24, 100, 187, 187.5, 188, 300, 374, 375]) {
       expect(isLookHalf(x, 375, false)).toBe(!isLookHalf(x, 375, true));
     }
+  });
+});
+
+describe("canTapWalk — re-checked when the held-back single-tap walk fires", () => {
+  it("walks when nothing changed while the tap waited for a possible second tap", () => {
+    expect(canTapWalk("tp", false, false, false)).toBe(true);
+    expect(canTapWalk("fp", false, false, false)).toBe(true);
+  });
+
+  it("does not walk once the overview map is open", () => {
+    expect(canTapWalk("ov", false, false, false)).toBe(false);
+  });
+
+  it("does not walk while chat / a panel owns the keyboard", () => {
+    expect(canTapWalk("tp", true, false, false)).toBe(false);
+    expect(canTapWalk("fp", true, false, false)).toBe(false);
+  });
+
+  it("does not walk when the player sat down inside the window (it would stand them straight up)", () => {
+    expect(canTapWalk("tp", false, false, true)).toBe(false);
+    expect(canTapWalk("fp", false, false, true)).toBe(false);
+  });
+
+  it("a tap made while already seated still means 'stand up and walk there' (design 29)", () => {
+    expect(canTapWalk("tp", false, true, true)).toBe(true);
+    expect(canTapWalk("tp", true, true, true)).toBe(false); // ...unless the UI took the keyboard
+    expect(canTapWalk("ov", false, true, true)).toBe(false);
+  });
+
+  it("walking after standing up inside the window is fine", () => {
+    expect(canTapWalk("tp", false, true, false)).toBe(true);
   });
 });

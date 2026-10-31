@@ -135,7 +135,7 @@ export function WorldScene({ identity }: { identity: Identity }) {
             {/* Destination ring for a floor click / tap walk (hidden when idle). */}
             <ClickMarker />
           </Suspense>
-          <CameraRig pose={pose} orbit={orbit} />
+          <CameraRig pose={pose} orbit={orbit} seat={seat} />
         </KeyboardControls>
       </Canvas>
       <LoadingOverlay />

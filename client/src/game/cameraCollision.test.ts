@@ -1,0 +1,222 @@
+import { describe, it, expect } from "vitest";
+import type { AABB } from "@caysonverse/shared/collision";
+import { MAZE_WALLS } from "@caysonverse/shared/maze";
+import { WALLS, WALL_HEIGHT } from "@caysonverse/shared/worldMap";
+import {
+  ARM_FREE,
+  CAMERA_BOXES,
+  SPRING,
+  segmentHitFraction,
+  springArmDistance,
+  stepArmLimit,
+  stepSpringDistance,
+} from "./cameraCollision";
+
+// A long wall across the +Z side of the origin: 0.3 m thick, face at z = 4.
+const WALL: AABB = { minX: -5, maxX: 5, minZ: 4, maxZ: 4.3 };
+
+describe("cameraCollision — constants (verbatim from the brief)", () => {
+  it("keeps the agreed spring tuning", () => {
+    expect(SPRING).toEqual({ minDist: 0.6, pad: 0.2, returnRate: 6 });
+  });
+
+  it("CAMERA_BOXES is every room wall plus every maze wall, in that order", () => {
+    expect(CAMERA_BOXES.length).toBe(WALLS.length + MAZE_WALLS.length);
+    expect(CAMERA_BOXES.slice(0, WALLS.length)).toEqual(WALLS);
+    expect(CAMERA_BOXES.slice(WALLS.length)).toEqual(MAZE_WALLS);
+    expect(MAZE_WALLS.length).toBeGreaterThan(0);
+  });
+});
+
+describe("segmentHitFraction", () => {
+  it("returns 1 when clear", () => {
+    expect(segmentHitFraction(0, 1.4, 0, 0, 1.4, -10, [WALL])).toBe(1);
+  });
+
+  it("hits a wall between head and camera at the right fraction", () => {
+    expect(segmentHitFraction(0, 1.4, 0, 0, 1.4, 10, [WALL])).toBeCloseTo(0.4, 6);
+  });
+
+  it("passes over a wall when the segment is above WALL_HEIGHT", () => {
+    expect(segmentHitFraction(0, 5, 0, 0, 5, 10, [WALL])).toBe(1);
+  });
+
+  it("is blocked by the wall for a rising segment only until it clears the top", () => {
+    // Steep climb: at the wall face (t = 0.4) the segment is at y = 1.4 + 7.6·0.4 = 4.44 > WALL_HEIGHT,
+    // so it has already left the wall's height band → passes over.
+    expect(segmentHitFraction(0, 1.4, 0, 0, 9, 10, [WALL])).toBe(1);
+    // A gentler climb is still under the top at the face (y = 2.84) → blocked there.
+    expect(segmentHitFraction(0, 1.4, 0, 0, 5, 10, [WALL])).toBeCloseTo(0.4, 6);
+  });
+
+  it("clips on the height axis too: a segment starting above the wall and diving into it is a hit", () => {
+    // y falls from 6 to −2 over the 10 m run: at the wall face (t = 0.4) y = 2.8 ≤ 4 → hit,
+    // but it only drops under WALL_HEIGHT at t = 0.25, so the entry is the face (0.4), not 0.25.
+    expect(segmentHitFraction(0, 6, 0, 0, -2, 10, [WALL])).toBeCloseTo(0.4, 6);
+  });
+
+  it("honours a custom box height", () => {
+    // Same wall but only 1 m tall: a segment at 1.4 m flies over it.
+    expect(segmentHitFraction(0, 1.4, 0, 0, 1.4, 10, [WALL], 1)).toBe(1);
+    expect(segmentHitFraction(0, 0.5, 0, 0, 0.5, 10, [WALL], 1)).toBeCloseTo(0.4, 6);
+  });
+
+  it("ignores a box that contains the start point", () => {
+    // The head is inside the wall (hugging it): that wall must not fold the camera to zero.
+    expect(segmentHitFraction(0, 1.4, 4.1, 0, 1.4, 10, [WALL])).toBe(1);
+    expect(segmentHitFraction(0, 1.4, 4.1, 0, 1.4, -10, [WALL])).toBe(1);
+    // ...but a second wall further along the segment still blocks it.
+    const far: AABB = { minX: -5, maxX: 5, minZ: 8, maxZ: 8.5 };
+    expect(segmentHitFraction(0, 1.4, 4.1, 0, 1.4, 10, [WALL, far])).toBeCloseTo((8 - 4.1) / 5.9, 6);
+  });
+
+  it("a start point above the box is not contained (height counts)", () => {
+    // x,z are inside the wall's footprint but the head is above it → the wall can block a downward ray.
+    expect(segmentHitFraction(0, 5, 4.1, 0, 1, 4.1, [WALL])).toBeCloseTo((5 - 4) / 4, 6);
+  });
+
+  it("returns the nearest hit, whatever the box order", () => {
+    const near: AABB = { minX: -5, maxX: 5, minZ: 2, maxZ: 2.3 };
+    expect(segmentHitFraction(0, 1.4, 0, 0, 1.4, 10, [WALL, near])).toBeCloseTo(0.2, 6);
+    expect(segmentHitFraction(0, 1.4, 0, 0, 1.4, 10, [near, WALL])).toBeCloseTo(0.2, 6);
+  });
+
+  it("is not blocked by a wall that lies beyond the end of the segment, or only touched at the end", () => {
+    expect(segmentHitFraction(0, 1.4, 0, 0, 1.4, 3, [WALL])).toBe(1); // stops 1 m short
+    expect(segmentHitFraction(0, 1.4, 0, 0, 1.4, 4, [WALL])).toBe(1); // ends exactly on the face
+  });
+
+  it("is not blocked by a wall behind the head (ray direction matters)", () => {
+    expect(segmentHitFraction(0, 1.4, 0, 0, 1.4, -10, [WALL])).toBe(1);
+    expect(segmentHitFraction(0, 1.4, 9, 0, 1.4, 20, [WALL])).toBe(1);
+  });
+
+  it("works for a segment pointing the other way (−Z wall) and a diagonal one", () => {
+    const north: AABB = { minX: -5, maxX: 5, minZ: -4.3, maxZ: -4 };
+    expect(segmentHitFraction(0, 1.4, 0, 0, 1.4, -10, [north])).toBeCloseTo(0.4, 6);
+    // 45° in XZ toward the +Z wall: reaches z = 4 at x = 4 (inside the wall's X span).
+    expect(segmentHitFraction(0, 1.4, 0, 8, 1.4, 8, [WALL])).toBeCloseTo(0.5, 6);
+    // ...but a diagonal that leaves the wall's X span before z = 4 misses it.
+    expect(segmentHitFraction(0, 1.4, 0, 20, 1.4, 8, [WALL])).toBe(1);
+  });
+
+  it("rejects a box beside the segment (broad phase) and a segment parallel to a slab", () => {
+    const side: AABB = { minX: 3, maxX: 4, minZ: 0, maxZ: 10 };
+    expect(segmentHitFraction(0, 1.4, 0, 0, 1.4, 10, [side])).toBe(1);
+    // dx = 0 and the x slab does not contain the segment's x → no hit even though z overlaps.
+    expect(segmentHitFraction(2.9, 1.4, 0, 2.9, 1.4, 10, [side])).toBe(1);
+    expect(segmentHitFraction(3.5, 1.4, -2, 3.5, 1.4, 10, [side])).toBeCloseTo(2 / 12, 6);
+  });
+
+  it("a zero-length segment is never a hit", () => {
+    expect(segmentHitFraction(0, 1.4, 5, 0, 1.4, 5, [WALL])).toBe(1);
+    expect(segmentHitFraction(0, 1.4, 0, 0, 1.4, 0, [WALL])).toBe(1);
+  });
+
+  it("with no boxes there is nothing to hit", () => {
+    expect(segmentHitFraction(0, 1.4, 0, 0, 1.4, 10, [])).toBe(1);
+  });
+
+  it("uses the real room walls by default: from the lounge to the south wall", () => {
+    // WALLS' south wall face is at z = WORLD_BOUNDS.maxZ = 18; x = −15 is clear of everything else.
+    expect(segmentHitFraction(-15, 1.4, 0, -15, 1.4, 30)).toBeCloseTo(18 / 30, 6);
+    // ...and a camera 10 m up in the air sails over the 4 m wall.
+    expect(segmentHitFraction(-15, WALL_HEIGHT + 6, 0, -15, WALL_HEIGHT + 6, 30)).toBe(1);
+  });
+
+  it("uses the maze walls by default too", () => {
+    // Cast straight across a real maze wall that is thin in Z: it (or something nearer) must be hit.
+    const w = MAZE_WALLS.find((m) => m.maxZ - m.minZ < 1 && m.maxX - m.minX > 1);
+    expect(w).toBeDefined();
+    const box = w as AABB;
+    const cx = (box.minX + box.maxX) / 2;
+    const cz = (box.minZ + box.maxZ) / 2;
+    const depth = box.maxZ - box.minZ;
+    const t = segmentHitFraction(cx, 1.4, cz - 5, cx, 1.4, cz + 5);
+    expect(t).toBeGreaterThanOrEqual(0);
+    expect(t).toBeLessThanOrEqual(0.5 - depth / 20 + 1e-9);
+  });
+});
+
+describe("springArmDistance", () => {
+  it("returns the desired distance untouched when nothing is in the way", () => {
+    expect(springArmDistance(0, 1.4, 0, 0, 1.4, -10, 10, [WALL])).toBe(10);
+    expect(springArmDistance(0, 1.4, 0, 0, 1.4, 10, 10, [])).toBe(10);
+  });
+
+  it("pulls in front of the wall by SPRING.pad, floored at SPRING.minDist", () => {
+    expect(springArmDistance(0, 1.4, 0, 0, 1.4, 10, 10, [WALL])).toBeCloseTo(3.8, 6);
+    expect(springArmDistance(0, 1.4, 0, 0, 1.4, 10, 10, [{ ...WALL, minZ: 0.05, maxZ: 0.3 }])).toBe(
+      SPRING.minDist,
+    );
+  });
+
+  it("scales with the desired distance (t × desired)", () => {
+    // Same segment, but `desired` is the arm length the caller measured: a 5 m arm hits at 0.4 → 2 − 0.2.
+    expect(springArmDistance(0, 1.4, 0, 0, 1.4, 5, 5, [{ ...WALL, minZ: 2, maxZ: 2.3 }])).toBeCloseTo(
+      1.8,
+      6,
+    );
+  });
+});
+
+describe("stepSpringDistance", () => {
+  it("snaps in and eases out at SPRING.returnRate", () => {
+    expect(stepSpringDistance(6, 2, 0.016)).toBe(2);
+    expect(stepSpringDistance(2, 6, 0.1)).toBeCloseTo(2.6, 6);
+  });
+
+  it("never eases past the target, holds when already there, and a zero step holds", () => {
+    expect(stepSpringDistance(2, 2.1, 1)).toBe(2.1);
+    expect(stepSpringDistance(3, 3, 0.5)).toBe(3);
+    expect(stepSpringDistance(2, 6, 0)).toBe(2);
+  });
+
+  it("takes (target − current) / returnRate seconds to come all the way back out", () => {
+    let cur = 1;
+    let frames = 0;
+    while (cur < 7 && frames < 1000) {
+      cur = stepSpringDistance(cur, 7, 1 / 60);
+      frames++;
+    }
+    expect(cur).toBe(7);
+    // 6 m at 6 m/s = 1 s = 60 frames (± the float edge).
+    expect(frames).toBeGreaterThanOrEqual(59);
+    expect(frames).toBeLessThanOrEqual(61);
+  });
+});
+
+describe("stepArmLimit — the eased limit behind the spring arm", () => {
+  it("a blocked arm snaps in at once", () => {
+    // desired 6, wall allows 2.5: the limit drops from 'free' straight to 2.5.
+    expect(stepArmLimit(ARM_FREE, 2.5, 6, 0.016)).toBe(2.5);
+    expect(stepArmLimit(5, 2.5, 6, 0.016)).toBe(2.5);
+  });
+
+  it("once the wall is gone the limit eases out at SPRING.returnRate", () => {
+    // reach === desired means clear.
+    expect(stepArmLimit(2, 6, 6, 0.1)).toBeCloseTo(2.6, 6);
+    let limit = 2;
+    for (let i = 0; i < 30; i++) limit = stepArmLimit(limit, 6, 6, 1 / 60);
+    expect(limit).toBeCloseTo(2 + 6 * 0.5, 6);
+  });
+
+  it("in the clear it never limits the arm: a zoom-out is not slowed by the spring", () => {
+    let limit = ARM_FREE;
+    for (let i = 0; i < 10; i++) limit = stepArmLimit(limit, 6, 6, 1 / 60);
+    expect(limit).toBe(ARM_FREE);
+    // The wheel pushes the desired distance 6 → 18 in one frame: the arm is min(desired, limit) = 18.
+    limit = stepArmLimit(limit, 18, 18, 1 / 60);
+    expect(Math.min(18, limit)).toBe(18);
+  });
+
+  it("stays clear of the free value even after a long walk in the open", () => {
+    let limit = 2;
+    for (let i = 0; i < 6000; i++) limit = stepArmLimit(limit, 8, 8, 1 / 60);
+    expect(limit).toBe(ARM_FREE);
+  });
+
+  it("is larger than any arm the camera can ask for (maxDistance × the portrait pull-back)", () => {
+    expect(ARM_FREE).toBeGreaterThan(18 * 1.6);
+  });
+});

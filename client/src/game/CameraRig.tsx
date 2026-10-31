@@ -35,7 +35,7 @@ import {
   stepKeyYaw,
   stepOrbitToward,
 } from "./cameraControls";
-import { DOUBLE_TAP_MS, isDoubleTap, isLookHalf } from "./tapGesture";
+import { DOUBLE_TAP_MS, canTapWalk, isDoubleTap, isLookHalf } from "./tapGesture";
 import type { TapRecord } from "./tapGesture";
 import {
   DRAG_SIGN,
@@ -52,12 +52,15 @@ import {
   cappedFollowDistance,
   cappedCameraY,
 } from "./mazeCamera";
+import { ARM_FREE, springArmDistance, stepArmLimit } from "./cameraCollision";
 import { cameraProbe } from "./cameraProbe";
-import type { Orbit, Pose } from "./types";
+import type { Orbit, Pose, SeatState } from "./types";
 
 interface CameraRigProps {
   pose: Pose;
   orbit: Orbit;
+  /** The local player's server-confirmed seat (read, never written): a held-back tap-walk checks it. */
+  seat: SeatState;
 }
 
 /** Longest frame (s) a held Z / C may turn the view for — a stalled tab can't spin it. */
@@ -123,10 +126,14 @@ function spread(pointers: Map<number, { x: number; y: number }>): number {
  * Mouse clicks and taps on the stick half walk at once.
  *
  * The camera never turns by itself. The TP orbit yaw changes only by a drag, the
- * held Z / C keys, or `viewState.orbitGoal` (R, double tap, sitting down) — which
- * any drag / wheel / pinch / Z / C cancels. The view also eases: the TP follow
- * point trails the body (stepFollow) and the follow DISTANCE glides to the zoom
- * intent (smoothToward), so footsteps and wheel notches never jolt the picture.
+ * held Z / C keys, or `viewState.orbitGoal` (R, double tap, sitting down, standing
+ * up) — which any drag / wheel / pinch / Z / C cancels. The view also eases: the TP
+ * follow point trails the body (stepFollow) and the follow DISTANCE glides to the
+ * zoom intent (smoothToward), so footsteps and wheel notches never jolt the picture.
+ *
+ * Spring arm: a wall between the head and the wanted TP camera spot pulls the camera
+ * in front of it (cameraCollision) — at once on the way in, eased on the way out.
+ * Like the portrait pull-back and the maze cap it shapes ONLY the TP pose term.
  *
  * All per-frame state lives in the shared `orbit` object and the module `viewState`
  * (both mutated in place) — never React state.
@@ -136,7 +143,7 @@ function spread(pointers: Map<number, { x: number; y: number }>): number {
  * term below, so at full FP (blend 1, TP weight 0) they are inert by construction —
  * the FP eye ignores follow distance entirely and sits well under the maze walls.
  */
-export function CameraRig({ pose, orbit }: CameraRigProps) {
+export function CameraRig({ pose, orbit, seat }: CameraRigProps) {
   const camera = useThree((s) => s.camera);
   const gl = useThree((s) => s.gl);
   // Maze anti-peek cap engagement (0 = off, 1 = fully capped). Lerped in useFrame
@@ -154,6 +161,9 @@ export function CameraRig({ pose, orbit }: CameraRigProps) {
   // to the zoom intent). Refs, mutated in place per frame — never React state.
   const follow = useRef({ x: pose.x, z: pose.z });
   const renderDist = useRef(orbit.distance);
+  // Spring-arm limit (m): snaps in when a wall is in the way, eases back out at
+  // SPRING.returnRate, and sits at ARM_FREE (no limit) in the open.
+  const armLimit = useRef(ARM_FREE);
 
   // Dev/E2E only: expose the live camera (the maze cap is not reflected in
   // orbit.distance, and the FP look yaw lives outside orbit). Tree-shaken in prod.
@@ -305,6 +315,9 @@ export function CameraRig({ pose, orbit }: CameraRigProps) {
             // Look half: wait for a possible second tap. Two taps recenter the
             // camera; one tap walks after DOUBLE_TAP_MS (measured on the target
             // the finger actually touched, not wherever the camera is by then).
+            // The world can change during that wait, so the walk is re-checked
+            // when it fires (overview opened, chat took the keyboard, the player
+            // sat down meanwhile — see canTapWalk).
             const tap: TapRecord = { t: performance.now(), x: e.clientX, y: e.clientY };
             clearPendingWalk();
             if (isDoubleTap(lastTap, tap)) {
@@ -313,9 +326,12 @@ export function CameraRig({ pose, orbit }: CameraRigProps) {
             } else {
               lastTap = tap;
               if (point) {
+                const seatedAtTap = seat.index >= 0;
                 pendingWalk = setTimeout(() => {
                   pendingWalk = null;
-                  if (viewState.mode !== "ov") setClickTarget(point.x, point.z);
+                  if (canTapWalk(viewState.mode, isUiCaptured(), seatedAtTap, seat.index >= 0)) {
+                    setClickTarget(point.x, point.z);
+                  }
                 }, DOUBLE_TAP_MS);
               }
             }
@@ -376,7 +392,7 @@ export function CameraRig({ pose, orbit }: CameraRigProps) {
       offHotkey();
       clearPendingWalk();
     };
-  }, [gl, orbit, camera, pose]);
+  }, [gl, orbit, camera, pose, seat]);
 
   useFrame((state, delta) => {
     // ── Who turns the view? Only the player (drag, Z / C) and an orbit goal. ──
@@ -438,9 +454,32 @@ export function CameraRig({ pose, orbit }: CameraRigProps) {
     const distance = cappedFollowDistance(renderDist.current * aspectDistanceScale(aspect), engage);
     const horiz = distance * Math.cos(orbit.pitch);
     const height = distance * Math.sin(orbit.pitch);
-    const tpX = followX + horiz * Math.sin(orbit.yaw);
-    const tpY = cappedCameraY(HEAD_HEIGHT + height, engage);
-    const tpZ = followZ + horiz * Math.cos(orbit.yaw);
+    let tpX = followX + horiz * Math.sin(orbit.yaw);
+    let tpY = cappedCameraY(HEAD_HEIGHT + height, engage);
+    let tpZ = followZ + horiz * Math.cos(orbit.yaw);
+
+    // Spring arm: cast head → wanted camera spot against the walls and, when one is
+    // in the way, shorten the arm (scale the offset from the head) to just in front of
+    // it. Skipped at full FP weight, where the TP term is not drawn; the limit is
+    // reset there so coming back out of FP starts with a free arm.
+    if (t < 1) {
+      const offX = tpX - followX;
+      const offY = tpY - HEAD_HEIGHT;
+      const offZ = tpZ - followZ;
+      const reach = Math.sqrt(offX * offX + offY * offY + offZ * offZ);
+      if (reach > 1e-6) {
+        const clear = springArmDistance(followX, HEAD_HEIGHT, followZ, tpX, tpY, tpZ, reach);
+        armLimit.current = stepArmLimit(armLimit.current, clear, reach, delta);
+        if (armLimit.current < reach) {
+          const k = armLimit.current / reach;
+          tpX = followX + offX * k;
+          tpY = HEAD_HEIGHT + offY * k;
+          tpZ = followZ + offZ * k;
+        }
+      }
+    } else {
+      armLimit.current = ARM_FREE;
+    }
 
     // ── First-person pose ── camera at the eye; look along the fp yaw/pitch. The
     // horizontal forward (-sin, -cos) matches worldDirection's convention, so

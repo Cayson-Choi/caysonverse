@@ -286,6 +286,15 @@ export const CAMERA = {
 } as const;
 
 /**
+ * The third-person view that takes over while seated: a camera right behind the
+ * chair, high and far enough to look over the avatar's head at the lecture-hall
+ * screen. Tuned by screenshot — the plan's first guess (0.22 rad, 3.2 m) left the big
+ * chibi head covering half of the screen. Applied as an orbit goal (the yaw comes from
+ * the seat), and given back when the player stands.
+ */
+export const SEAT_CAM = { pitch: 0.32, distance: 4.2 } as const;
+
+/**
  * Scene palette — bright daylight sky (design 30: the world reads as a lit real
  * building). The entry screen keeps its cosmic navy branding; only the 3D world
  * changed. Also the fog colour, so distance fades into haze, not darkness.

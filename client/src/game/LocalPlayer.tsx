@@ -18,7 +18,7 @@ import {
   resetClickMove,
 } from "./clickMove";
 import { guardMoveKeys, isUiCaptured } from "./uiCapture";
-import { viewState } from "./viewState";
+import { beginSeatCamera, endSeatCamera, viewState } from "./viewState";
 import { HIDE_BLEND, OV_VIS_BLEND } from "./viewMode";
 import { cloneTinted } from "./avatar";
 import { BlobShadow } from "./BlobShadow";
@@ -246,6 +246,8 @@ export function LocalPlayer({
       standRequestedRef.current = false;
       animTimerRef.current = playOnce(CLIP.sitDown);
       animStateRef.current = "sitDown";
+      // The camera swings behind the chair toward the screen (FP: the look snaps to it).
+      beginSeatCamera(orbit, s.yaw);
     } else if (!seated && wasSeated) {
       // Stand confirmed: snap to the server's dismount pose, play StandUp → loco.
       const me = getRoom()?.state?.players?.get?.(sessionId);
@@ -258,6 +260,8 @@ export function LocalPlayer({
       actions[CLIP.sitDown]?.fadeOut(ANIM_FADE);
       animTimerRef.current = playOnce(CLIP.sitStand);
       animStateRef.current = "standUp";
+      // ...and back to the view the player had before sitting down.
+      endSeatCamera(orbit);
     }
     prevSeatRef.current = seatIndex;
 
