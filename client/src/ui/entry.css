@@ -17,6 +17,8 @@
   --cv-ink-3: #6b6994;
   --cv-indigo: #4b4fd8;
   --cv-violet: #8b5cf6;
+  /* Violet for small text on white glass (≈ 7:1; #8b5cf6 is only ≈ 4.2:1). */
+  --cv-violet-ink: #5b3ec8;
   --cv-glass: rgba(255, 255, 255, 0.6);
   --cv-glass-hi: rgba(255, 255, 255, 0.86);
   --cv-edge: rgba(255, 255, 255, 0.95);
@@ -131,7 +133,14 @@
   }
 }
 
-/* Light motes drifting upward (8–14 s loops). */
+/* Light motes drifting upward (8–14 s loops). On desktop they also lean away from the pointer a little
+   (--cv-px / --cv-py from EntryScreen, −0.5…0.5; transform only). */
+.cv-motes {
+  position: absolute;
+  inset: 0;
+  transform: translate3d(calc(var(--cv-px, 0) * -18px), calc(var(--cv-py, 0) * -12px), 0);
+  transition: transform 0.6s ease-out;
+}
 .cv-motes span {
   position: absolute;
   width: 9px;
@@ -276,7 +285,21 @@
   backdrop-filter: blur(18px) saturate(1.5);
   -webkit-backdrop-filter: blur(18px) saturate(1.5);
   box-shadow: var(--cv-panel-shadow);
-  translate: 0 calc(50% - 22px);
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+}
+/* A code is typed (the popover may be closed): a small violet dot on the key pill. */
+.cv-admin-link[data-has-code]::after {
+  content: "";
+  position: absolute;
+  top: 7px;
+  right: 4px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  background: var(--cv-violet);
 }
 .cv-admin-pop .cv-label {
   font-family: var(--cv-display);
@@ -360,7 +383,7 @@
   text-align: center;
 }
 .cv-nameplate .cv-input::placeholder {
-  color: #8a87ad;
+  color: var(--cv-ink-3);
   font-size: 12.5px;
   font-weight: 600;
   letter-spacing: -0.3px;
@@ -385,6 +408,14 @@
   .cv-nameplate-pencil {
     display: none;
   }
+}
+/* 900–959 px windows: the plate is ~180 px; the n/12 counter gives its room to the name. */
+@container cv-plate (max-width: 160px) {
+  .cv-nameplate-count {
+    display: none;
+  }
+}
+@container cv-plate (max-width: 200px) {
   /* A narrow, empty plate shows just the placeholder; "닉네임" stays the field's (screen-reader) label. */
   .cv-nameplate .cv-label:has(+ .cv-input:placeholder-shown) {
     position: absolute;
@@ -431,14 +462,17 @@
 
 /* ── message toast (role=alert) above 입장 ── */
 
+/* Placed by stageLayout().toast: wide screens at the top of the stage (top edge = --cv-toast-y), sheets just
+   above 입장 (bottom edge = --cv-toast-y). It never covers the nameplate row, ⟲ ⟳ or 입장, and lets clicks through. */
 .cv-message {
   position: absolute;
   z-index: 3;
-  left: var(--cv-feet-x);
-  bottom: calc(100% - var(--cv-cta-y, 100%) + 12px);
+  left: var(--cv-toast-x);
+  top: var(--cv-toast-y);
   translate: -50% 0;
   width: max-content;
-  max-width: calc(var(--cv-stage-w) - 24px);
+  max-width: var(--cv-toast-w);
+  pointer-events: none;
   margin: 0;
   padding: 10px 14px 10px 36px;
   border-radius: 14px;
@@ -482,7 +516,21 @@
   letter-spacing: 1px;
   text-shadow: 0 2px 0 rgba(40, 30, 140, 0.45);
   cursor: pointer;
-  transition: transform 0.12s ease, filter 0.15s ease;
+  transition: transform 0.12s ease;
+}
+/* Hover brightening and the press flash: a white layer's opacity (no filter animation). */
+.cv-submit-shine {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: #fff;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.22s ease;
+}
+.cv-submit:active:not(:disabled) .cv-submit-shine {
+  opacity: 0.5;
+  transition: none;
 }
 /* Gloss band. */
 .cv-submit::before {
@@ -548,8 +596,10 @@
 }
 @media (hover: hover) {
   .cv-submit:hover:not(:disabled) {
-    filter: brightness(1.07);
     transform: translateY(-2px);
+  }
+  .cv-submit:hover:not(:disabled) .cv-submit-shine {
+    opacity: 0.14;
   }
 }
 .cv-submit:active:not(:disabled) {
@@ -679,14 +729,13 @@
 .cv-entry:not([data-layout="wide"]) .cv-message {
   position: fixed;
   z-index: 6;
-  left: 16px;
-  right: 16px;
-  bottom: calc(max(18px, env(safe-area-inset-bottom, 0px)) + 58px + 14px);
-  translate: none;
-  width: auto;
+  top: auto;
+  /* stageLayout assumes 입장 18 px up; a taller home-indicator inset lifts both. */
+  bottom: calc(100% - var(--cv-toast-y) + max(0px, env(safe-area-inset-bottom, 0px) - 18px));
+  width: var(--cv-toast-w);
   max-width: none;
 }
-.cv-entry[data-layout="side"] :is(.cv-submit, .cv-message, .cv-cta-fade) {
+.cv-entry[data-layout="side"] .cv-submit {
   left: calc(100% - var(--cv-sheet-w) + 16px);
 }
 .cv-entry[data-layout="side"] .cv-cta-fade {

@@ -8,8 +8,9 @@
  * 의 --art 와 같은 방식). 필요한 것: Python + fontTools(pyftsubset). brotli 가 없으므로 WOFF2 가 아니라 WOFF 를 만든다.
  *
  * 하는 일:
- *   1. client/src/ui/builderOptions.ts 의 BUILDER_FONT_TEXT(조립실이 Jua 로 그리는 고정 글자: 제목·탭·칩 이름·
- *      프리셋 이름·버튼·안내)를 Vite 모듈 러너로 읽는다(manifest labels·slotLabels·프리셋·BUILDER_COPY·목소리에서 모은 것).
+ *   1. client/src/ui/builderOptions.ts 의 BUILDER_FONT_TEXT(조립실이 Jua 로 그리는 고정 글자: 제목·묶음 이름·탭·
+ *      프리셋 이름·버튼·안내 — manifest slotLabels·프리셋·BUILDER_COPY·목소리·색 라벨에서 모은 것. 부품 카드 이름은
+ *      본문 글꼴이라 넣지 않는다)를 Vite 모듈 러너로 읽는다.
  *   2. 글자마다 원본 글꼴에 있는지 본다. 없는 글자(예: "…")는 fallback 으로 적는다 — 브라우저가 다음 글꼴로 그린다.
  *   3. pyftsubset 으로 있는 글자만 남긴 WOFF 를 만든다(힌팅·레이아웃 기능 제거).
  *        → client/public/fonts/jua-builder.woff

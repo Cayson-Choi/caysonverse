@@ -1,8 +1,9 @@
 // 조립실 패널(설계 4장·5.3, Task 7b 배치): 추천 캐릭터 8개 + 🎲 랜덤, 슬롯 탭 7개, 지금 탭의 부품 카드와 색 견본, 목소리.
 // 외형을 직접 들고 있지 않고 onChange로 새 외형만 올린다(EntryScreen이 상태와 저장을 맡는다).
 //
-// 넓은 화면: 왼쪽 유리 패널(추천 캐릭터·목소리)과 오른쪽 유리 패널(아이콘 탭 레일·부품 카드·색).
-// 휴대폰: 아래 시트 하나(손잡이로 47% ↔ 88%, 안에서 스크롤): 추천 캐릭터 → 탭 → 색 → 부품 카드 → 목소리.
+// DOM 순서는 휴대폰에서 보이는 순서다: 추천 캐릭터(🎲 먼저) → 탭 → 색 → 부품 카드 → 목소리.
+// 넓은 화면: CSS grid로 왼쪽 유리 패널(추천 캐릭터·목소리)과 오른쪽 유리 패널(세로 아이콘 탭 레일·부품 카드·색)에 놓는다
+// (부품 카드가 색보다 위에 보이는 것만 DOM과 다르다). 휴대폰: 아래 시트 하나(손잡이로 펼치기, 안에서 스크롤).
 // 클래스·role·aria·글자 노드는 Task 7 그대로이고(E2E가 이것으로 찾는다), 감싸는 요소와 장식(그림·아이콘)만 더했다.
 
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type RefObject } from "react";
@@ -50,6 +51,7 @@ export function BuilderPanel({
   onPresetApplied,
   scrollerRef,
   sheet,
+  orientation = "horizontal",
 }: {
   appearance: Appearance;
   onChange: (next: Appearance) => void;
@@ -59,6 +61,8 @@ export function BuilderPanel({
   scrollerRef?: RefObject<HTMLDivElement | null>;
   /** 아래 시트의 쉴 때·펼친 높이(px). 시트가 아닌 배치면 null. */
   sheet?: { rest: number; open: number } | null;
+  /** 탭 목록의 방향: 넓은 화면의 세로 레일(↑/↓)이나 휴대폰·옆 시트의 가로 막대(←/→). */
+  orientation?: "horizontal" | "vertical";
 }) {
   const [slot, setSlot] = useState<CharacterSlot>(CHARACTER_SLOTS[0]);
   const [open, setOpen] = useState(false);
@@ -81,7 +85,8 @@ export function BuilderPanel({
   }, [appearance, slot]);
   useEffect(() => () => thumbStore.want([]), []);
 
-  // 휴대폰 탭 막대가 넘치면(가로 스크롤) 고른 탭이 보이게 막대만 민다(페이지·시트는 건드리지 않는다).
+  // 아주 좁은 시트(7개 × 44 px가 안 들어가는 가로 휴대폰)에서는 탭 막대가 가로로 스크롤된다: 고른 탭이 보이게
+  // 막대만 민다(페이지·시트는 건드리지 않는다). 조립실의 9가지 확인 화면에서는 7개가 모두 들어간다.
   useLayoutEffect(() => {
     const list = tabListRef.current;
     const tab = tabRefs.current[slot];
@@ -93,7 +98,7 @@ export function BuilderPanel({
 
   /** 탭 목록의 화살표·Home·End(WAI-ARIA 탭 패턴): 고르고 그 탭으로 초점을 옮긴다. */
   function onTabKey(e: React.KeyboardEvent<HTMLDivElement>) {
-    const next = arrowIndex(e.key, CHARACTER_SLOTS.indexOf(slot), CHARACTER_SLOTS.length);
+    const next = arrowIndex(e.key, CHARACTER_SLOTS.indexOf(slot), CHARACTER_SLOTS.length, orientation);
     if (next < 0) return;
     e.preventDefault();
     const target = CHARACTER_SLOTS[next];
@@ -161,169 +166,180 @@ export function BuilderPanel({
         <span className="cv-sheet-grabber-bar" aria-hidden="true" />
       </button>
 
+      {/* DOM 순서 = 휴대폰에서 보이는 순서(추천 캐릭터 → 탭 → 색 → 부품 카드 → 목소리). 넓은 화면은 grid로 두 패널에 놓는다. */}
       <div className="cv-sheet-body" ref={scrollerRef}>
-        <div className="cv-panel cv-panel-left">
-          <div className="cv-builder-group cv-presets-group">
-            <div className="cv-builder-group-head">
-              <span className="cv-label" id="cv-presets-label">
-                {BUILDER_COPY.presets}
-              </span>
-              <span className="cv-sub">{BUILDER_COPY.presetsHint}</span>
-            </div>
-            <div className="cv-presets" role="group" aria-labelledby="cv-presets-label">
+        <div className="cv-builder-group cv-presets-group">
+          <div className="cv-builder-group-head">
+            <span className="cv-label" id="cv-presets-label">
+              {BUILDER_COPY.presets}
+            </span>
+            <span className="cv-sub">{BUILDER_COPY.presetsHint}</span>
+          </div>
+          <div className="cv-presets" role="group" aria-labelledby="cv-presets-label">
+            <button
+              type="button"
+              className="cv-random"
+              onClick={() => {
+                setRolls((n) => n + 1);
+                onChange({ ...randomAppearance(Math.random), voice: appearance.voice });
+                onPresetApplied?.();
+              }}
+            >
+              <span className="cv-random-icon" aria-hidden="true" data-roll={rolls === 0 ? undefined : rolls % 2}>
+                {RANDOM_ICON}
+              </span>{" "}
+              <span className="cv-random-text">{RANDOM_TEXT}</span>
+            </button>
+            {APPEARANCE_PRESETS.map((preset) => (
               <button
                 type="button"
-                className="cv-random"
+                key={preset.id}
+                className="cv-preset"
+                aria-pressed={presetWorn(appearance, preset)}
                 onClick={() => {
-                  setRolls((n) => n + 1);
-                  onChange({ ...randomAppearance(Math.random), voice: appearance.voice });
+                  onChange(applyPreset(appearance, preset));
                   onPresetApplied?.();
                 }}
               >
-                <span className="cv-random-icon" aria-hidden="true" data-roll={rolls === 0 ? undefined : rolls % 2}>
-                  {RANDOM_ICON}
-                </span>{" "}
-                <span className="cv-random-text">{RANDOM_TEXT}</span>
-              </button>
-              {APPEARANCE_PRESETS.map((preset) => (
-                <button
-                  type="button"
-                  key={preset.id}
-                  className="cv-preset"
-                  aria-pressed={presetWorn(appearance, preset)}
-                  onClick={() => {
-                    onChange(applyPreset(appearance, preset));
-                    onPresetApplied?.();
-                  }}
-                >
-                  <span className="cv-preset-portrait" aria-hidden="true">
-                    <ThumbImg thumbKey={presetThumbKey(preset.id)} />
-                  </span>
-                  <span className="cv-preset-name">{preset.label}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="cv-builder-group cv-voice-group">
-            <div className="cv-builder-group-head">
-              <span className="cv-label" id="cv-voice-label">
-                {BUILDER_COPY.voice}
-              </span>
-              <span className="cv-sub">{BUILDER_COPY.voiceHint}</span>
-            </div>
-            <div className="cv-voice-options" role="radiogroup" aria-labelledby="cv-voice-label" onKeyDown={onVoiceKey}>
-              {VOICE_OPTIONS.map((option, i) => (
-                <button
-                  type="button"
-                  key={option.index}
-                  ref={(el) => {
-                    voiceRefs.current[i] = el;
-                  }}
-                  role="radio"
-                  className="cv-voice-option"
-                  aria-checked={appearance.voice === option.index}
-                  tabIndex={appearance.voice === option.index ? 0 : -1}
-                  onClick={() => onChange({ ...appearance, voice: option.index })}
-                >
-                  <BuilderIcon name="voice" />
-                  {option.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        <div className="cv-panel cv-panel-right">
-          <div className="cv-slot-tabs" role="tablist" aria-label="꾸밀 곳" onKeyDown={onTabKey} ref={tabListRef}>
-            {CHARACTER_SLOTS.map((s) => (
-              <button
-                type="button"
-                key={s}
-                role="tab"
-                id={`cv-slot-tab-${s}`}
-                ref={(el) => {
-                  tabRefs.current[s] = el;
-                }}
-                className="cv-slot-tab"
-                aria-selected={s === slot}
-                aria-controls="cv-slot-panel"
-                tabIndex={s === slot ? 0 : -1}
-                onClick={() => setSlot(s)}
-              >
-                <BuilderIcon name={SLOT_ICONS[s]} />
-                <span className="cv-slot-tab-label">{CHARACTER_MANIFEST.slotLabels[s]}</span>
+                <span className="cv-preset-portrait" aria-hidden="true">
+                  <ThumbImg thumbKey={presetThumbKey(preset.id)} />
+                </span>
+                <span className="cv-preset-name">{preset.label}</span>
               </button>
             ))}
           </div>
+        </div>
 
-          <div className="cv-slot-panel" role="tabpanel" id="cv-slot-panel" aria-labelledby={`cv-slot-tab-${slot}`}>
-            {/* 탭 이름·고른 것은 그림 글자(CSS content)로만 보인다: 탭·칩 글자와 겹쳐 getByText가 둘을 찾지 않게. */}
-            <div
-              className="cv-slot-head"
-              aria-hidden="true"
-              data-slot={CHARACTER_MANIFEST.slotLabels[slot]}
-              data-picked={slotPickedLabel(appearance, slot)}
-            />
-            <div className="cv-chips">
-              {partChips(slot).map((chip, n) => {
-                const pressed = appearance[slot] === chip.index;
-                const part = SLOT_OPTIONS[slot][chip.index];
-                const hex = chipThumbHex(appearance, slot, chip.index);
-                return (
+        <div
+          className="cv-slot-tabs"
+          role="tablist"
+          aria-label="꾸밀 곳"
+          aria-orientation={orientation}
+          onKeyDown={onTabKey}
+          ref={tabListRef}
+        >
+          {CHARACTER_SLOTS.map((s) => (
+            <button
+              type="button"
+              key={s}
+              role="tab"
+              id={`cv-slot-tab-${s}`}
+              ref={(el) => {
+                tabRefs.current[s] = el;
+              }}
+              className="cv-slot-tab"
+              aria-selected={s === slot}
+              aria-controls="cv-slot-panel"
+              tabIndex={s === slot ? 0 : -1}
+              onClick={() => setSlot(s)}
+            >
+              <BuilderIcon name={SLOT_ICONS[s]} />
+              <span className="cv-slot-tab-label" data-len={labelLength(CHARACTER_MANIFEST.slotLabels[s])}>
+                {CHARACTER_MANIFEST.slotLabels[s]}
+              </span>
+            </button>
+          ))}
+        </div>
+
+        <div className="cv-slot-panel" role="tabpanel" id="cv-slot-panel" aria-labelledby={`cv-slot-tab-${slot}`}>
+          {/* 탭 이름·고른 것은 그림 글자(CSS content)로만 보인다: 탭·칩 글자와 겹쳐 getByText가 둘을 찾지 않게. */}
+          <div
+            className="cv-slot-head"
+            aria-hidden="true"
+            data-slot={CHARACTER_MANIFEST.slotLabels[slot]}
+            data-picked={slotPickedLabel(appearance, slot)}
+          />
+          {swatches && (
+            // 탭마다 다시 마운트해 견본이 새로 나타난다(페이드).
+            <div key={slot} className="cv-builder-group cv-swatch-group">
+              <div className="cv-swatch-head">
+                <span className="cv-label" id="cv-colors-label">
+                  {colorLabel(slot)}
+                </span>
+                <span className="cv-swatch-name" aria-hidden="true" data-name={palette[appearance[colorField]]?.label ?? ""} />
+              </div>
+              <div className="cv-builder-swatches" role="group" aria-labelledby="cv-colors-label">
+                {palette.map((color, index) => (
                   <button
                     type="button"
-                    key={`${slot}:${chip.index}`}
-                    className="cv-chip"
-                    aria-pressed={pressed}
-                    style={{ "--i": n } as React.CSSProperties}
-                    onClick={() => onChange(withPart(appearance, slot, chip.index))}
-                  >
-                    <span className="cv-chip-thumb" aria-hidden="true">
-                      {part == null || hex === null ? (
-                        <BuilderIcon name="none" />
-                      ) : (
-                        <ThumbImg thumbKey={chipThumbKey(slot, part, hex)} />
-                      )}
-                    </span>
-                    <span className="cv-chip-label">{chip.label}</span>
-                    {pressed && (
-                      <span className="cv-check" aria-hidden="true">
-                        <BuilderIcon name="check" />
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-
-            {swatches && (
-              <div className="cv-builder-group cv-swatch-group">
-                <div className="cv-swatch-head">
-                  <span className="cv-label" id="cv-colors-label">
-                    {colorLabel(slot)}
-                  </span>
-                  <span className="cv-swatch-name" aria-hidden="true" data-name={palette[appearance[colorField]]?.label ?? ""} />
-                </div>
-                <div className="cv-builder-swatches" role="group" aria-labelledby="cv-colors-label">
-                  {palette.map((color, index) => (
-                    <button
-                      type="button"
-                      key={color.hex}
-                      className="cv-swatch"
-                      style={{ background: color.hex, color: swatchInk(color.hex) }}
-                      aria-label={color.label}
-                      title={color.label}
-                      aria-pressed={appearance[colorField] === index}
-                      onClick={() => onChange({ ...appearance, [colorField]: index })}
-                    />
-                  ))}
-                </div>
+                    key={color.hex}
+                    className="cv-swatch"
+                    style={{ background: color.hex, color: swatchInk(color.hex) }}
+                    aria-label={color.label}
+                    title={color.label}
+                    aria-pressed={appearance[colorField] === index}
+                    onClick={() => onChange({ ...appearance, [colorField]: index })}
+                  />
+                ))}
               </div>
-            )}
+            </div>
+          )}
+          <div className="cv-chips">
+            {partChips(slot).map((chip, n) => {
+              const pressed = appearance[slot] === chip.index;
+              const part = SLOT_OPTIONS[slot][chip.index];
+              const hex = chipThumbHex(appearance, slot, chip.index);
+              return (
+                <button
+                  type="button"
+                  key={`${slot}:${chip.index}`}
+                  className="cv-chip"
+                  aria-pressed={pressed}
+                  style={{ "--i": n } as React.CSSProperties}
+                  onClick={() => onChange(withPart(appearance, slot, chip.index))}
+                >
+                  <span className="cv-chip-thumb" aria-hidden="true">
+                    {part == null || hex === null ? (
+                      <BuilderIcon name="none" />
+                    ) : (
+                      <ThumbImg thumbKey={chipThumbKey(slot, part, hex)} />
+                    )}
+                  </span>
+                  <span className="cv-chip-label">{chip.label}</span>
+                  {pressed && (
+                    <span className="cv-check" aria-hidden="true">
+                      <BuilderIcon name="check" />
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="cv-builder-group cv-voice-group">
+          <div className="cv-builder-group-head">
+            <span className="cv-label" id="cv-voice-label">
+              {BUILDER_COPY.voice}
+            </span>
+            <span className="cv-sub">{BUILDER_COPY.voiceHint}</span>
+          </div>
+          <div className="cv-voice-options" role="radiogroup" aria-labelledby="cv-voice-label" onKeyDown={onVoiceKey}>
+            {VOICE_OPTIONS.map((option, i) => (
+              <button
+                type="button"
+                key={option.index}
+                ref={(el) => {
+                  voiceRefs.current[i] = el;
+                }}
+                role="radio"
+                className="cv-voice-option"
+                aria-checked={appearance.voice === option.index}
+                tabIndex={appearance.voice === option.index ? 0 : -1}
+                onClick={() => onChange({ ...appearance, voice: option.index })}
+              >
+                <BuilderIcon name="voice" />
+                {option.label}
+              </button>
+            ))}
           </div>
         </div>
       </div>
     </div>
   );
+}
+
+/** 탭 글자 길이 묶음: 고른 탭이 글자를 펼칠 수 있는지 CSS(@container)가 이 길이로 정한다. */
+function labelLength(label: string): "s" | "m" | "l" {
+  return label.length <= 2 ? "s" : label.length <= 4 ? "m" : "l";
 }

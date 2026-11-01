@@ -6,7 +6,7 @@
 // three 부분(ThumbStudio): character.glb 장면을 한 번 복제해 Idle 자세로 세운 "촬영용 인형"을 만들고(셰이더는
 // compileAsync로 미리), 일감마다 보일 부품과 색만 바꿔 캔버스 왼쪽 아래 구석에 그린 뒤 그 구석을 2D 캔버스로
 // 복사해 비동기로 WebP blob URL을 만든다. 그 프레임의 미리보기 렌더가 곧바로 화면 전체를 다시 그리므로 구석
-// 그림은 보이지 않는다. 촬영용 인형은 일감이 끝나고 잠시 뒤 놓는다(복제한 재질·뼈 텍스처를 dispose).
+// 그림은 보이지 않는다. 촬영용 인형은 조립실이 닫힐 때 놓는다(복제한 재질·뼈 텍스처를 dispose).
 // useAvatar를 거치지 않으므로 __cvAvatars 항목도, 합친 지오메트리 캐시 몫도 늘지 않는다. 그림이 없거나
 // 실패하면 카드는 이름만 보인다.
 
@@ -44,6 +44,7 @@ import {
 } from "@caysonverse/shared/appearance";
 import { CHARACTER_MANIFEST, CHARACTER_SLOTS, type CharacterSlot } from "@caysonverse/shared/characterManifest";
 import { lookFromAppearance, visibleParts, type TintKey } from "../game/characterLook";
+import { THUMB_LIGHTS } from "./builderOptions";
 import { CLIP } from "../game/constants";
 
 /** 그림 크기(px): 칩은 64 CSS px에 2배, 프리셋은 80 CSS px에 2배. */
@@ -113,14 +114,18 @@ function revokeBlobUrl(url: string): void {
   if (url.startsWith("blob:")) URL.revokeObjectURL(url);
 }
 
+const NO_KEYS: ReadonlySet<string> = new Set();
+
 /**
  * 그림 캐시: 키 → 그림 URL(실패는 null). 그리는 중(begin~set)인 키도 "있음"으로 쳐서 다시 일감으로 나가지 않는다.
- * 상한을 넘으면 오래된 것부터, 지금 원하는 키가 아닌 것만 버리고 그 URL을 놓는다.
+ * 상한을 넘으면 오래된 것부터, 지금 원하는 키가 아닌 것만 버리고 그 URL을 놓는다. 무엇이든 바뀌면 version이 오른다.
  */
 export class ThumbCache {
   private readonly urls = new Map<string, string | null>();
   private readonly pending = new Set<string>();
   private readonly listeners = new Set<() => void>();
+  /** begin·set·forgetFailures마다 오른다(스케줄러가 다시 훑을지 정한다). */
+  version = 0;
 
   constructor(
     private readonly max = THUMB_CACHE_MAX,
@@ -144,10 +149,12 @@ export class ThumbCache {
   /** 그리기 시작(인코딩이 끝나 set이 올 때까지). */
   begin(key: string): void {
     this.pending.add(key);
+    this.version += 1;
   }
 
-  set(key: string, url: string | null, keep: ReadonlySet<string> = new Set()): void {
+  set(key: string, url: string | null, keep: ReadonlySet<string> = NO_KEYS): void {
     this.pending.delete(key);
+    this.version += 1;
     const old = this.urls.get(key);
     if (old && old !== url) this.revoke(old);
     this.urls.delete(key);
@@ -161,6 +168,17 @@ export class ThumbCache {
     }
   }
 
+  /** 실패한 그림을 잊는다(다시 일감이 된다). 캔버스 크기가 바뀌어 이제는 그릴 수 있을 때. */
+  forgetFailures(): void {
+    let forgot = false;
+    for (const [key, url] of this.urls) {
+      if (url !== null) continue;
+      this.urls.delete(key);
+      forgot = true;
+    }
+    if (forgot) this.version += 1;
+  }
+
   subscribe = (listener: () => void): (() => void) => {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
@@ -171,9 +189,12 @@ export class ThumbCache {
   }
 }
 
-/** 이번 프레임에 그릴 일감: 순서대로, 아직 캐시에 없는(그린 적도, 실패한 적도, 그리는 중도 아닌) 것 n개까지. */
-export function nextThumbJobs(jobs: readonly ThumbJob[], cache: ThumbCache, n = THUMBS_PER_FRAME): ThumbJob[] {
-  const out: ThumbJob[] = [];
+/**
+ * 이번 프레임에 그릴 일감: 순서대로, 아직 캐시에 없는(그린 적도, 실패한 적도, 그리는 중도 아닌) 것 n개까지.
+ * out을 비우고 채워 돌려준다(프레임마다 새 배열을 만들지 않게).
+ */
+export function nextThumbJobs(jobs: readonly ThumbJob[], cache: ThumbCache, n = THUMBS_PER_FRAME, out: ThumbJob[] = []): ThumbJob[] {
+  out.length = 0;
   for (const job of jobs) {
     if (out.length >= n) break;
     if (!cache.has(job.key)) out.push(job);
@@ -181,16 +202,130 @@ export function nextThumbJobs(jobs: readonly ThumbJob[], cache: ThumbCache, n = 
   return out;
 }
 
-/** 조립실 하나가 쓰는 그림 캐시와 지금 원하는 일감(패널이 정하고, 미리보기 Canvas 안의 그리는 쪽이 가져간다). */
-export const thumbStore = {
-  cache: new ThumbCache(),
-  jobs: [] as readonly ThumbJob[],
-  keys: new Set<string>() as ReadonlySet<string>,
+/**
+ * 프레임 경로의 그림 일감 고르기. 패널이 want()로 원하는 일감을 바꾸고, 미리보기 Canvas가 프레임마다 next()를 부른다.
+ * 일감도 캐시도 그대로면 다시 훑지 않고(모두 그린 뒤에는 프레임마다 하는 일이 없다), 늘 같은 배열을 채워 준다.
+ * disable()하면 이 세션 동안 그림을 그리지 않는다(카드는 이름만).
+ */
+export class ThumbScheduler {
+  private jobs: readonly ThumbJob[] = [];
+  private wanted: ReadonlySet<string> = NO_KEYS;
+  private wantVersion = 0;
+  /** 마지막으로 "할 일 없음"을 확인한 때의 버전. 그대로면 다시 훑지 않는다. */
+  private idleAt = { want: -1, cache: -1 };
+  private readonly batch: ThumbJob[] = [];
+  disabled = false;
+
+  constructor(readonly cache: ThumbCache = new ThumbCache()) {}
+
+  /** 지금 원하는 그림 키(캐시가 상한을 넘어도 이것들은 지우지 않는다). */
+  get keys(): ReadonlySet<string> {
+    return this.wanted;
+  }
+
   want(jobs: readonly ThumbJob[]): void {
     this.jobs = jobs;
-    this.keys = new Set(jobs.map((j) => j.key));
-  },
-};
+    this.wanted = new Set(jobs.map((j) => j.key));
+    this.wantVersion += 1;
+  }
+
+  next(n = THUMBS_PER_FRAME): readonly ThumbJob[] {
+    if (this.disabled || (this.idleAt.want === this.wantVersion && this.idleAt.cache === this.cache.version)) {
+      this.batch.length = 0;
+      return this.batch;
+    }
+    nextThumbJobs(this.jobs, this.cache, n, this.batch);
+    if (this.batch.length === 0) {
+      this.idleAt.want = this.wantVersion;
+      this.idleAt.cache = this.cache.version;
+    }
+    return this.batch;
+  }
+
+  /** 실패한 그림을 다시 해 본다(캔버스·배치 크기가 바뀐 뒤). */
+  retryFailed(): void {
+    this.cache.forgetFailures();
+  }
+
+  disable(): void {
+    this.disabled = true;
+  }
+}
+
+/** 조립실이 쓰는 그림 일감·캐시(패널이 정하고, 미리보기 Canvas 안의 그리는 쪽이 가져간다). */
+export const thumbStore = new ThumbScheduler();
+
+/** 그림을 찍는 쪽(ThumbStudio). 테스트에서는 가짜를 넣는다. */
+export interface ThumbShooter<G> {
+  /** 찍을 준비가 되었는가(촬영용 인형·셰이더). 던지면 그림을 끈다. */
+  prepare(gl: G): boolean;
+  /** 지금 찍고, 인코딩이 끝나면 URL. 그릴 수 없으면 null. */
+  shoot(gl: G, job: ThumbJob): Promise<string | null> | null;
+  release(): void;
+}
+
+/** 기본 시계(모듈 하나 — 프레임마다 새 함수를 만들지 않게). */
+const now = () => performance.now();
+
+/** 한 프레임에서 그림 찍기에 쓰는 시간: 첫 장을 찍고 이만큼 넘었으면 둘째 장은 다음 프레임으로 미룬다. */
+export const THUMB_FRAME_BUDGET_MS = 6;
+
+/**
+ * 미리보기 프레임마다 한 번(useFrame): 그릴 그림이 있으면 2장까지(시간이 모자라면 1장) 찍는다. 일감이 없을 때는
+ * 할당 없이 바로 돌아간다. 촬영용 인형은 일이 없어도 놓지 않는다 — 조립실이 떠 있는 동안 두고 닫힐 때 놓는다
+ * (PreviewThumbs). 색을 바꿀 때마다 다시 만들면 4배 느린 CPU에서 그 프레임이 약 30 ms 더 길어졌다(보고서 Fix round 1).
+ * 촬영 준비가 던지면(WebGL 기능 부족 등) 이 세션의 그림을 끄고 인형을 놓는다 — 미리보기는 계속 그린다.
+ */
+export function drawThumbFrame<G>(
+  scheduler: ThumbScheduler,
+  studio: ThumbShooter<G>,
+  gl: G,
+  clock: () => number = now,
+): void {
+  const jobs = scheduler.next();
+  if (jobs.length === 0) return;
+  try {
+    if (!studio.prepare(gl)) return; // 셰이더를 만드는 중(메인 스레드를 막지 않는다)
+  } catch (err) {
+    scheduler.disable();
+    try {
+      studio.release();
+    } catch {
+      /* 이미 반쯤 만든 것을 놓다 실패해도 미리보기는 계속 */
+    }
+    if (import.meta.env?.DEV) console.warn("[builder] card pictures are off for this session", err);
+    return;
+  }
+  const { cache } = scheduler;
+  const start = clock();
+  for (let i = 0; i < jobs.length; i++) {
+    const job = jobs[i];
+    if (i > 0 && clock() - start > THUMB_FRAME_BUDGET_MS) break;
+    let shot: Promise<string | null> | null = null;
+    try {
+      shot = studio.shoot(gl, job);
+    } catch (err) {
+      if (import.meta.env?.DEV) console.warn("[builder] thumbnail failed", job.key, err);
+    }
+    if (!shot) {
+      cache.set(job.key, null, scheduler.keys);
+      cache.notify();
+      continue;
+    }
+    cache.begin(job.key);
+    const key = job.key;
+    shot.then(
+      (url) => {
+        cache.set(key, url, scheduler.keys);
+        cache.notify();
+      },
+      () => {
+        cache.set(key, null, scheduler.keys);
+        cache.notify();
+      },
+    );
+  }
+}
 
 // ── three: 촬영 ───────────────────────────────────────────────────────────────
 
@@ -217,6 +352,9 @@ const THUMB_FOV = 22;
 /** 칩은 크게 찍어 부품 상자(화면에 투영한 것)로 자른 뒤 128에 맞춘다(여백 8%). */
 const CHIP_RENDER_PX = 192;
 const CHIP_PAD = 0.08;
+/** 프리셋 얼굴 그림이 담는 높이(머리 높이의 배수)와 그 가운데(머리 아래에서 머리 높이의 비율). */
+const PORTRAIT_SPAN = 1.3;
+const PORTRAIT_CENTER = 0.5;
 /** 기본 외형의 색(머리카락 칩의 피부·얼굴 칩의 머리처럼 고정으로 보이는 부분). */
 const BASE_COLORS = lookFromAppearance(DEFAULT_APPEARANCE).colors;
 
@@ -256,14 +394,14 @@ export class ThumbStudio {
   private readonly saved = { viewport: new Vector4(), scissor: new Vector4(), clear: new Color(), size: new Vector2() };
 
   constructor(private readonly source: { scene: Object3D; animations: AnimationClip[] }) {
-    this.scene.add(new HemisphereLight(0xfff8ee, 0xb8a6e8, 1.5));
-    const key = new DirectionalLight(0xffffff, 2.3);
-    key.position.set(3, 7, 6);
-    const fill = new DirectionalLight(0xdfe8ff, 0.6);
-    fill.position.set(-5, 3, 4);
-    const rim = new DirectionalLight(0xe6dcff, 1.1);
-    rim.position.set(-3, 4, -6);
-    this.scene.add(key, fill, rim);
+    // 미리보기와 같은 조명(테두리광만 THUMB_RIM_LIGHT).
+    const { hemi, sun, fill, rim } = THUMB_LIGHTS;
+    this.scene.add(new HemisphereLight(hemi.sky, hemi.ground, hemi.intensity));
+    for (const light of [sun, fill, rim]) {
+      const d = new DirectionalLight(light.color, light.intensity);
+      d.position.set(light.position[0], light.position[1], light.position[2]);
+      this.scene.add(d);
+    }
   }
 
   /**
@@ -418,13 +556,17 @@ export class ThumbStudio {
     return crop.w > 1 && crop.h > 1 ? crop : null;
   }
 
-  /** 프리셋 얼굴 그림: 머리를 중심으로 모자 일부와 어깨까지(상반신). 찍은 정사각형 전체를 쓴다. */
+  /**
+   * 프리셋 얼굴 그림: 시안처럼 얼굴이 카드를 채운다 — 머리를 가운데 두고 머리 높이의 1.3배만 담는다(큰 모자 끝과 어깨는
+   * 잘린다). 카드는 가운데 맞춰 자르므로(object-fit: cover) 세로로 긴 카드는 양옆이, 가로로 긴 휴대폰 카드는 위아래가
+   * 잘려도 얼굴은 남는다. 찍은 정사각형 전체를 쓴다.
+   */
   private framePortrait(rig: Rig, renderPx: number): Crop | null {
     const head = this.posedBox(rig, "body__head");
     if (!head) return null;
     const size = head.getSize(new Vector3());
-    const side = size.y * 1.6;
-    const center = new Vector3((head.min.x + head.max.x) / 2, head.min.y + size.y * 0.58, (head.min.z + head.max.z) / 2);
+    const side = size.y * PORTRAIT_SPAN;
+    const center = new Vector3((head.min.x + head.max.x) / 2, head.min.y + size.y * PORTRAIT_CENTER, (head.min.z + head.max.z) / 2);
     this.aim(center, side / 2 / Math.tan(MathUtils.degToRad(THUMB_FOV) / 2), 0.45, 0.08);
     return { x: 0, y: 0, w: renderPx, h: renderPx };
   }

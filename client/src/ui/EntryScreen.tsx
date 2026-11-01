@@ -8,7 +8,8 @@ import { NICKNAME_ERROR, validateEntry, validateNickname } from "./validation";
 import { BuilderPreview } from "./BuilderPreview";
 import { BuilderPanel } from "./BuilderPanel";
 import { BuilderIcon } from "./BuilderIcons";
-import { BUILDER_COPY, ENTRY_ART, stageLayout, type StageLayout } from "./builderOptions";
+import { BUILDER_COPY } from "./builderOptions";
+import { ENTRY_ART, stageLayout, type StageLayout } from "./stageLayout";
 import { joinWorld } from "../net/connection";
 import { clearKicked } from "../net/kickSeam";
 import { rememberAdminCode, forgetAdminCode } from "../net/adminSession";
@@ -48,6 +49,9 @@ function layoutStyle(L: StageLayout): CSSProperties {
     "--cv-rot-size": px(L.nameRow.button),
     "--cv-rot-gap": px(L.nameRow.gap),
     "--cv-panel-w": px(L.panelWidth),
+    "--cv-toast-x": px(L.toast.x),
+    "--cv-toast-y": px(L.toast.y),
+    "--cv-toast-w": px(L.toast.maxWidth),
   };
   if (L.cta) {
     vars["--cv-cta-x"] = px(L.cta.x);
@@ -65,6 +69,41 @@ function layoutStyle(L: StageLayout): CSSProperties {
 
 function viewportLayout(): StageLayout {
   return stageLayout(window.innerWidth, window.innerHeight);
+}
+
+/** 포인터 시차의 값(−0.5~0.5를 40칸으로): 미리 만든 문자열이라 움직일 때마다 새 문자열을 만들지 않는다. */
+const PARALLAX_STEPS = 40;
+const PARALLAX_VALUES = Array.from({ length: PARALLAX_STEPS + 1 }, (_, i) => String(i / PARALLAX_STEPS - 0.5));
+const parallaxValue = (t: number) => PARALLAX_VALUES[Math.round(Math.min(1, Math.max(0, t)) * PARALLAX_STEPS)];
+
+/**
+ * 데스크톱(정밀 포인터 + 호버)에서만: 포인터 위치를 --cv-px·--cv-py(−0.5~0.5)로 적어 빛 알갱이가 살짝 따라 움직이게 한다
+ * (CSS transform). 포인터가 움직인 프레임에만, rAF 한 번으로 적는다. 움직임 줄이기 설정이면 켜지 않는다.
+ */
+function usePointerParallax(ref: { current: HTMLElement | null }) {
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof matchMedia !== "function") return;
+    if (!matchMedia("(hover: hover) and (pointer: fine)").matches || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    let x = 0.5;
+    let y = 0.5;
+    let raf = 0;
+    const apply = () => {
+      raf = 0;
+      el.style.setProperty("--cv-px", parallaxValue(x));
+      el.style.setProperty("--cv-py", parallaxValue(y));
+    };
+    const onMove = (e: PointerEvent) => {
+      x = e.clientX / window.innerWidth;
+      y = e.clientY / window.innerHeight;
+      if (!raf) raf = requestAnimationFrame(apply);
+    };
+    window.addEventListener("pointermove", onMove, { passive: true });
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, [ref]);
 }
 
 /**
@@ -95,6 +134,10 @@ export function EntryScreen() {
   /** Bumped by every rejected nickname: restarts the nameplate shake. */
   const [shakes, setShakes] = useState(0);
   const scrollerRef = useRef<HTMLDivElement>(null);
+  const entryRef = useRef<HTMLDivElement>(null);
+  const adminRef = useRef<HTMLDivElement>(null);
+  const adminButtonRef = useRef<HTMLButtonElement>(null);
+  usePointerParallax(entryRef);
 
   // Warm the model cache as soon as the builder opens (the preview and then the world both use character.glb).
   useEffect(() => {
@@ -106,6 +149,21 @@ export function EntryScreen() {
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
+
+  // The admin code popover closes on Esc / the toggle (focus back to the toggle) and on any press outside it.
+  // A typed code is kept while it is closed (the toggle shows a dot) and is still sent with 입장.
+  function closeAdmin(returnFocus: boolean) {
+    setShowAdmin(false);
+    if (returnFocus) adminButtonRef.current?.focus();
+  }
+  useEffect(() => {
+    if (!showAdmin) return;
+    const onDown = (e: PointerEvent) => {
+      if (!adminRef.current?.contains(e.target as Node)) setShowAdmin(false);
+    };
+    document.addEventListener("pointerdown", onDown, true);
+    return () => document.removeEventListener("pointerdown", onDown, true);
+  }, [showAdmin]);
 
   // Editing the form dismisses any leftover kick/disconnect notice.
   function dismissMessages() {
@@ -173,6 +231,7 @@ export function EntryScreen() {
 
   return (
     <div
+      ref={entryRef}
       className="cv-entry"
       data-layout={layout.mode}
       data-art={layout.art}
@@ -242,13 +301,34 @@ export function EntryScreen() {
               onPresetApplied={() => setSpin((n) => n + 1)}
               scrollerRef={scrollerRef}
               sheet={layout.mode === "phone" ? layout.sheet : null}
+              orientation={layout.mode === "wide" ? "vertical" : "horizontal"}
             />
           </div>
         </section>
 
-        <div className="cv-admin-toggle">
-          {showAdmin ? (
-            <label className="cv-field cv-admin-pop">
+        <div
+          className="cv-admin-toggle"
+          ref={adminRef}
+          onKeyDown={(e) => {
+            if (e.key !== "Escape" || !showAdmin) return;
+            e.stopPropagation();
+            closeAdmin(true);
+          }}
+        >
+          <button
+            type="button"
+            className="cv-admin-link"
+            ref={adminButtonRef}
+            aria-expanded={showAdmin}
+            aria-controls="cv-admin-pop"
+            data-has-code={adminCode.trim() ? "" : undefined}
+            onClick={() => (showAdmin ? closeAdmin(true) : setShowAdmin(true))}
+          >
+            <BuilderIcon name="key" />
+            <span className="cv-admin-text">{BUILDER_COPY.admin}</span>
+          </button>
+          {showAdmin && (
+            <label className="cv-field cv-admin-pop" id="cv-admin-pop">
               <span className="cv-label">{BUILDER_COPY.adminCode}</span>
               <input
                 className="cv-input"
@@ -257,7 +337,7 @@ export function EntryScreen() {
                 placeholder={BUILDER_COPY.adminPlaceholder}
                 autoComplete="off"
                 aria-label="관리자 코드"
-                // The link that opened this field is gone: keep the keyboard focus here.
+                // Opened from the toggle: type right away.
                 autoFocus
                 onChange={(e) => {
                   setAdminCode(e.target.value);
@@ -265,11 +345,6 @@ export function EntryScreen() {
                 }}
               />
             </label>
-          ) : (
-            <button type="button" className="cv-admin-link" onClick={() => setShowAdmin(true)}>
-              <BuilderIcon name="key" />
-              <span className="cv-admin-text">{BUILDER_COPY.admin}</span>
-            </button>
           )}
         </div>
 
@@ -287,6 +362,8 @@ export function EntryScreen() {
           disabled={submitting}
         >
           {submitting ? BUILDER_COPY.submitting : BUILDER_COPY.submit}
+          {/* Hover brightening and the press flash: an opacity layer (no filter animation). */}
+          <span className="cv-submit-shine" aria-hidden="true" />
           <span className="cv-submit-go" aria-hidden="true">
             {submitting ? <span className="cv-spinner" /> : <BuilderIcon name="go" />}
           </span>

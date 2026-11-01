@@ -27,16 +27,17 @@ import { BlobShadow } from "../game/BlobShadow";
 import { CLIP } from "../game/constants";
 import {
   BUILDER_COPY,
-  FIGURE_TOP,
   PREVIEW_CAMERA,
   PREVIEW_DRAG_SPEED,
+  PREVIEW_LIGHTS,
   PREVIEW_ROTATE_MS,
   PREVIEW_ROTATE_STEP,
   PREVIEW_SPIN_MS,
   PREVIEW_START_YAW,
   tweenYaw,
 } from "./builderOptions";
-import { ThumbStudio, nextThumbJobs, thumbStore } from "./builderThumbs";
+import { ThumbStudio, drawThumbFrame, thumbStore } from "./builderThumbs";
+import { FIGURE_TOP } from "./stageLayout";
 import { BuilderIcon } from "./BuilderIcons";
 
 /** `__cvAvatars()`에서 미리보기 인형의 키. */
@@ -53,11 +54,9 @@ const PREVIEW_CAMERA_OPTIONS = {
   far: 40,
   position: [0, PREVIEW_CAMERA.eyeY, PREVIEW_CAMERA.distance] as [number, number, number],
 };
-/** 밝은 하늘 정원 무대의 조명: 하늘빛 위 + 라벤더 바닥 반사, 해(앞 오른쪽 위), 보조광, 보라 테두리광. */
-const HEMI_LIGHT: [number, number, number] = [0xfff8ee, 0xb8a6e8, 1.5];
-const SUN_POSITION: [number, number, number] = [3, 7, 6];
-const FILL_POSITION: [number, number, number] = [-5, 3, 4];
-const RIM_POSITION: [number, number, number] = [-3, 4, -6];
+/** 밝은 하늘 정원 무대의 조명(PREVIEW_LIGHTS, 카드 그림과 같은 것). */
+const { hemi: HEMI, sun: SUN, fill: FILL, rim: RIM } = PREVIEW_LIGHTS;
+const HEMI_LIGHT: [number, number, number] = [HEMI.sky, HEMI.ground, HEMI.intensity];
 
 /** 터치로 끌 때 이만큼 움직이면 가로(돌리기)·세로(시트 스크롤) 중 하나로 정한다. */
 const AXIS_LOCK_PX = 8;
@@ -221,60 +220,22 @@ function PreviewFigure({ look, base, onShown }: FigureProps) {
   );
 }
 
-/** 한 프레임에서 그림 찍기에 쓰는 시간: 첫 장을 찍고 이만큼 넘었으면 둘째 장은 다음 프레임으로 미룬다. */
-const THUMB_FRAME_BUDGET_MS = 6;
-/** 일감이 없어진 뒤 촬영용 인형을 놓기까지(색을 연달아 바꿀 때 인형·셰이더를 다시 만들지 않게). */
-const THUMB_RELEASE_IDLE_MS = 1500;
-
 /**
- * 부품·프리셋 카드 그림을 이 Canvas의 렌더러로 그린다: 프레임마다 아직 없는 그림을 2장까지(지금 탭 먼저, 시간이
- * 모자라면 1장). 미리보기 렌더(이 useFrame 다음)가 화면 전체를 다시 그리므로 구석에 찍은 그림은 보이지 않는다.
- * 할 일이 없어지고 잠시 뒤 촬영용 인형을 놓는다.
+ * 부품·프리셋 카드 그림을 이 Canvas의 렌더러로 그린다(drawThumbFrame: 프레임마다 2장까지, 지금 탭 먼저, 할 일이
+ * 없으면 할당 없이 바로 돌아간다). 미리보기 렌더(이 useFrame 다음)가 화면 전체를 다시 그리므로 구석에 찍은 그림은
+ * 보이지 않는다. 캔버스 크기가 바뀌면 실패한 그림(캔버스가 작아 못 찍은 것 등)을 다시 해 본다.
  */
 function PreviewThumbs() {
   const gl = useThree((s) => s.gl);
+  const width = useThree((s) => s.size.width);
+  const height = useThree((s) => s.size.height);
   const { scene, animations } = useGLTF(CHARACTER_MODEL_URL);
   // 만들 때는 GPU 자원을 잡지 않는다(촬영용 인형은 첫 일감에서 만든다): StrictMode가 두 번 만들어도 샐 것이 없다.
+  // 촬영용 인형은 조립실이 떠 있는 동안 두고(색을 바꿀 때 다시 만들지 않게) 언마운트할 때 놓는다.
   const studio = useMemo(() => new ThumbStudio({ scene, animations }), [scene, animations]);
   useEffect(() => () => studio.release(), [studio]);
-  const idleSince = useRef<number | null>(null);
-  useFrame(() => {
-    const jobs = nextThumbJobs(thumbStore.jobs, thumbStore.cache);
-    const now = performance.now();
-    if (jobs.length === 0) {
-      idleSince.current ??= now;
-      if (now - idleSince.current > THUMB_RELEASE_IDLE_MS) studio.release();
-      return;
-    }
-    idleSince.current = null;
-    if (!studio.prepare(gl)) return; // 셰이더를 만드는 중(메인 스레드를 막지 않는다)
-    for (const job of jobs) {
-      if (job !== jobs[0] && performance.now() - now > THUMB_FRAME_BUDGET_MS) break;
-      const { cache } = thumbStore;
-      let shot: Promise<string | null> | null = null;
-      try {
-        shot = studio.shoot(gl, job);
-      } catch (err) {
-        if (import.meta.env.DEV) console.warn("[builder] thumbnail failed", job.key, err);
-      }
-      if (!shot) {
-        cache.set(job.key, null, thumbStore.keys);
-        cache.notify();
-        continue;
-      }
-      cache.begin(job.key);
-      shot.then(
-        (url) => {
-          cache.set(job.key, url, thumbStore.keys);
-          cache.notify();
-        },
-        () => {
-          cache.set(job.key, null, thumbStore.keys);
-          cache.notify();
-        },
-      );
-    }
-  });
+  useEffect(() => thumbStore.retryFailed(), [width, height]);
+  useFrame(() => drawThumbFrame(thumbStore, studio, gl));
   return null;
 }
 
@@ -448,9 +409,9 @@ export function BuilderPreview({
         <div className="cv-builder-stage">
           <Canvas dpr={PREVIEW_DPR} frameloop={onScreen ? "always" : "never"} camera={PREVIEW_CAMERA_OPTIONS}>
             <hemisphereLight args={HEMI_LIGHT} />
-            <directionalLight color={0xffffff} intensity={2.3} position={SUN_POSITION} />
-            <directionalLight color={0xdfe8ff} intensity={0.6} position={FILL_POSITION} />
-            <directionalLight color={0xd9ccff} intensity={1.4} position={RIM_POSITION} />
+            {[SUN, FILL, RIM].map((light, i) => (
+              <directionalLight key={i} color={light.color} intensity={light.intensity} position={light.position} />
+            ))}
             <PreviewCamera yawRef={yawRef} tweenRef={tweenRef} cameraRef={cameraRef} />
             <Suspense fallback={null}>
               <PreviewFigure key={key} look={look} base={base} onShown={onShown} />

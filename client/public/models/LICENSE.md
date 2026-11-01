@@ -29,7 +29,7 @@
 
 ## 글꼴 — `../fonts/jua-builder.woff` (Jua)
 
-조립실의 제목·탭·부품 이름·프리셋 이름·버튼·안내에만 쓰는 제목용 글꼴입니다.
+조립실의 제목·묶음 이름·탭·프리셋 이름·버튼·안내에만 쓰는 제목용 글꼴입니다. 부품 카드 이름·닉네임 입력·알림은 본문 글꼴입니다.
 
 - **Jua** — Copyright 2018 The Jua Project Authors (google/fonts). License: **SIL Open Font License 1.1** — 전문은 `../fonts/OFL-Jua.txt`.
 - 조립실 고정 문구에 쓰인 글자만 남긴 부분집합(WOFF)입니다. `scripts/subset-builder-font.mjs`가 원본 `Jua-Regular.ttf`에서 만듭니다. 이름은 OFL의 예약 글꼴 이름이 없어 그대로 둡니다.

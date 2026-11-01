@@ -12,12 +12,15 @@ import {
   THUMBS_PER_FRAME,
   THUMB_PX,
   ThumbCache,
+  ThumbScheduler,
+  drawThumbFrame,
   chipThumbHex,
   chipThumbKey,
   nextThumbJobs,
   presetThumbKey,
   thumbJobs,
   type ThumbJob,
+  type ThumbShooter,
 } from "./builderThumbs";
 
 const hex = (label: string) => CLOTHES_PALETTE.find((c) => c.label === label)!.hex;
@@ -146,5 +149,118 @@ describe("builderThumbs — at most two pictures a frame", () => {
     stop();
     cache.notify();
     expect(listener).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("builderThumbs — the per-frame scheduler", () => {
+  it("fills one reused array instead of allocating a new one every frame", () => {
+    const jobs = thumbJobs(DEFAULT_APPEARANCE, "hat");
+    const cache = new ThumbCache();
+    const out: ThumbJob[] = [];
+    expect(nextThumbJobs(jobs, cache, 2, out)).toBe(out);
+    expect(out).toHaveLength(2);
+    for (const j of jobs) cache.set(j.key, "x");
+    expect(nextThumbJobs(jobs, cache, 2, out)).toBe(out);
+    expect(out).toHaveLength(0);
+    const scheduler = new ThumbScheduler(new ThumbCache());
+    scheduler.want(jobs);
+    expect(scheduler.next()).toBe(scheduler.next());
+  });
+
+  it("does not rescan the job list once everything is drawn, until a job or a picture changes", () => {
+    const cache = new ThumbCache();
+    const scheduler = new ThumbScheduler(cache);
+    const jobs = thumbJobs(DEFAULT_APPEARANCE, "top");
+    scheduler.want(jobs);
+    for (const j of jobs) cache.set(j.key, "x");
+    const has = vi.spyOn(cache, "has");
+    expect(scheduler.next()).toHaveLength(0); // one scan finds nothing to do…
+    const afterFirst = has.mock.calls.length;
+    expect(afterFirst).toBe(jobs.length);
+    for (let frame = 0; frame < 100; frame++) expect(scheduler.next()).toHaveLength(0);
+    expect(has.mock.calls.length).toBe(afterFirst); // …and the next 100 frames do not look again
+    cache.set("chip:hat:cap:#000000", "y"); // a picture arrived (any change)
+    scheduler.next();
+    expect(has.mock.calls.length).toBe(afterFirst + jobs.length);
+    const green = { ...DEFAULT_APPEARANCE, topColor: 4 };
+    scheduler.want(thumbJobs(green, "top")); // a new colour: new jobs
+    expect(scheduler.next().map((j) => j.key)).toEqual(thumbJobs(green, "top").slice(0, 2).map((j) => j.key));
+  });
+
+  it("retries failed pictures after a size change, never the drawn ones", () => {
+    const cache = new ThumbCache();
+    const scheduler = new ThumbScheduler(cache);
+    const jobs = thumbJobs(DEFAULT_APPEARANCE, "hat");
+    scheduler.want(jobs);
+    cache.set(jobs[0].key, null); // e.g. the canvas was too small
+    for (const j of jobs.slice(1)) cache.set(j.key, "x");
+    expect(scheduler.next()).toHaveLength(0);
+    scheduler.retryFailed();
+    expect(scheduler.next().map((j) => j.key)).toEqual([jobs[0].key]);
+    expect(cache.get(jobs[0].key)).toBeUndefined();
+  });
+});
+
+describe("builderThumbs — drawing a frame", () => {
+  const gl = {};
+  function setup(shooter: Partial<ThumbShooter<object>>) {
+    const cache = new ThumbCache();
+    const scheduler = new ThumbScheduler(cache);
+    scheduler.want(thumbJobs(DEFAULT_APPEARANCE, "hat"));
+    const studio: ThumbShooter<object> = {
+      prepare: vi.fn(() => true),
+      shoot: vi.fn(() => Promise.resolve("blob:x")),
+      release: vi.fn(),
+      ...shooter,
+    };
+    return { cache, scheduler, studio };
+  }
+
+  it("turns the pictures off for the session (name-only cards) when the studio cannot start", () => {
+    const { scheduler, studio } = setup({ prepare: vi.fn(() => { throw new Error("no WebGL2 context"); }) });
+    expect(() => drawThumbFrame(scheduler, studio, gl)).not.toThrow();
+    expect(scheduler.disabled).toBe(true);
+    expect(studio.release).toHaveBeenCalled();
+    expect(scheduler.next()).toHaveLength(0);
+    drawThumbFrame(scheduler, studio, gl);
+    expect(studio.prepare).toHaveBeenCalledTimes(1);
+    expect(studio.shoot).not.toHaveBeenCalled();
+  });
+
+  it("draws two pictures a frame when they are quick, one when the first is slow", () => {
+    let now = 0;
+    const clock = () => now;
+    const quick = setup({});
+    drawThumbFrame(quick.scheduler, quick.studio, gl, clock);
+    expect(quick.studio.shoot).toHaveBeenCalledTimes(2);
+    const slow = setup({ shoot: vi.fn(() => { now += 12; return Promise.resolve("blob:y"); }) });
+    drawThumbFrame(slow.scheduler, slow.studio, gl, clock);
+    expect(slow.studio.shoot).toHaveBeenCalledTimes(1);
+  });
+
+  it("marks a picture as being drawn, stores it when encoded, and stores a failure as null", async () => {
+    const { cache, scheduler, studio } = setup({ shoot: vi.fn((_gl: object, job: ThumbJob) => (job.kind === "chip" && job.part === "cap" ? null : Promise.resolve(`blob:${job.key}`))) });
+    const [a, b] = scheduler.next().map((j) => j.key);
+    drawThumbFrame(scheduler, studio, gl);
+    expect(cache.get(a)).toBeNull(); // cap could not be drawn
+    expect(cache.has(b) && cache.get(b) === undefined).toBe(true); // encoding
+    await Promise.resolve();
+    expect(cache.get(b)).toBe(`blob:${b}`);
+  });
+
+  it("keeps the studio's rig while there is nothing to draw (no rebuild on the next colour change)", () => {
+    const { cache, scheduler, studio } = setup({});
+    for (const j of thumbJobs(DEFAULT_APPEARANCE, "hat")) cache.set(j.key, "x");
+    for (let frame = 0; frame < 300; frame++) drawThumbFrame(scheduler, studio, gl);
+    expect(studio.release).not.toHaveBeenCalled();
+    expect(studio.prepare).not.toHaveBeenCalled();
+  });
+
+  it("waits while the studio compiles its shaders, without marking anything", () => {
+    const { cache, scheduler, studio } = setup({ prepare: vi.fn(() => false) });
+    drawThumbFrame(scheduler, studio, gl);
+    expect(studio.shoot).not.toHaveBeenCalled();
+    expect(cache.size).toBe(0);
+    expect(scheduler.next()).toHaveLength(2);
   });
 });
