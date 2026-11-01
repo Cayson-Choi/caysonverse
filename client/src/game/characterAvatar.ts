@@ -76,7 +76,8 @@ export const MAX_DRAW_MESHES = 8;
 export const SOLID_ROUGHNESS = 0.45;
 /**
  * 스킨 메시마다 주는 넉넉한 경계 구. 스킨 메시의 경계는 쉬는 자세 기준이라 애니메이션 중에 화면 가장자리에서
- * 잘려 사라진다. 객체 자신의 boundingSphere를 주면 three가 공유 지오메트리 대신 이것을 본다(옛 avatar.ts BOUNDS_*).
+ * 잘려 사라진다. 객체 자신의 boundingSphere를 주면 three가 공유 지오메트리 대신 이것을 본다.
+ * 중심은 발 위 1 m, 반지름 3 m라 걷기·달리기·앉기 자세 어디서도 아바타 전체를 덮는다.
  */
 export const AVATAR_BOUNDS = { center: [0, 1, 0], radius: 3 } as const;
 
