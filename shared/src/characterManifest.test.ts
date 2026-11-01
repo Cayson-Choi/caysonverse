@@ -1,11 +1,12 @@
 import { createHash } from "node:crypto";
 import { readFileSync, statSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { resolve } from "node:path";
 import { describe, it, expect } from "vitest";
 import { BODY_MESHES, CHARACTER_GLB_HASH, CHARACTER_MANIFEST, CHARACTER_SLOTS } from "./characterManifest";
 
-// 이 파일(shared/src) 기준으로 찾는다: 어느 폴더에서 vitest를 돌려도 같은 GLB를 읽는다.
-const GLB = fileURLToPath(new URL("../../client/public/models/character.glb", import.meta.url));
+// 테스트는 shared/ 에서 실행되므로 client/public 은 한 단계 위에서 찾는다.
+// (import.meta.url은 쓰지 않는다: 서버 typecheck가 이 파일도 CommonJS 설정으로 검사한다.)
+const GLB = resolve(process.cwd(), "../client/public/models/character.glb");
 
 interface GltfNode {
   name?: string;
