@@ -1,17 +1,17 @@
 /**
- * The AI 조교 "android docent" look (발주자: 기존 캐릭터에 없는 새 모습). Built
- * on the mage body via the PROVEN royal composite pipeline — but styled to read
- * as a brand-new character, not any player preset:
+ * The AI 조교 "android docent" look: the same toy body every player has, dressed in
+ * the NPC-only `android` outfit (white shell + one accent stripe per assistant), with
+ * its own hair, a smile, and no hat or item. A hand-built AvatarLook that NpcCharacter
+ * feeds to `useAvatar` like any player look — so the four assistants share the player
+ * assembly path (one merged solid mesh + the face) and need no atlas or texture of their
+ * own.
  *
- *  - hat/wand/staff/spellbooks hidden (no wizard silhouette),
- *  - whole robe palette-swapped to clean android WHITE with one ACCENT hue per
- *    assistant (클로드 orange / 챗지피티 green / 제미나이 blue),
- *  - a glowing eye VISOR across the face + a floating HALO ring antenna above
- *    the head — procedural, emissive, unmistakably non-human.
- *
- * Cell addresses reuse the queen recipe's verified mage-atlas map (same body,
- * same dump); skin/hand cells are simply never painted. One palette texture is
- * cached per accent (three total), shared by clones.
+ *  - the accent hue is the only thing that tints the outfit's stripe (클로드 orange /
+ *    챗지피티 green / 제미나이 blue / 큐리 violet); everything else is white,
+ *  - the hair shape differs per assistant too, so they tell apart by silhouette,
+ *  - a floating HALO ring on an antenna stem above the head — procedural, emissive,
+ *    unmistakably non-human — is attached once at assembly through `useAvatar`'s
+ *    `decorate` hook (attachNpcAccessories).
  */
 
 import {
@@ -21,13 +21,13 @@ import {
   TorusGeometry,
   type Material,
   type Object3D,
-  type Texture,
 } from "three";
+import { SKIN_PALETTE } from "@caysonverse/shared/appearance";
 import { HEAD_BONE_NAME } from "./constants";
-import { buildPaletteTexture, type RecolorCell } from "./royalPalette";
+import { TINT_KEYS, type AvatarLook } from "./characterLook";
 import type { NpcId } from "./npc";
 
-/** Per-assistant accent hue (visor/halo/trim) — a subtle brand nod. */
+/** Per-assistant accent hue (outfit stripe/halo) — a subtle brand nod. */
 export const NPC_ACCENTS: Record<NpcId, string> = {
   hall: "#e8833a", // 아르티 — warm orange
   lobby: "#2fbf8a", // 노바 — teal green
@@ -35,61 +35,43 @@ export const NPC_ACCENTS: Record<NpcId, string> = {
   maze: "#a06bf0", // 큐리 — violet (미로 골 챔버의 안내자)
 };
 
-/** Android body tones. */
-const SHELL_WHITE = "#eef1f5"; // robe → clean desaturated shell
-const SLATE = "#4a5160"; // under-robe/boots → dark tech slate
+/** Tech-slate hair shared by all four assistants (the old android under-robe tone). */
+export const NPC_HAIR_COLOR = "#4A5160";
 
-/** Mage-hat + weapon nodes hidden on every assistant (same set as the queen). */
-export const NPC_HIDE_NODES: readonly string[] = [
-  "Mage_Hat",
-  "Mage_Cape", // the red drape breaks the android silhouette (screenshot)
-  "1H_Wand",
-  "2H_Staff",
-  "Spellbook",
-  "Spellbook_open",
-];
+/** Hair shape per assistant — a second way to tell them apart besides the accent hue. */
+export const NPC_HAIR: Record<NpcId, string> = {
+  hall: "short",
+  lobby: "bob",
+  gallery: "ponytail",
+  maze: "curly",
+};
 
-const band = (
-  col: number,
-  b: number,
-  color: string,
-  flat = false,
-): [RecolorCell, RecolorCell] => [
-  { col, row: b * 2, color, flat },
-  { col, row: b * 2 + 1, color, flat },
-];
+/** The outfit is a white shell: every tint but skin, hair and accent stays white. */
+const NPC_WHITE = "#FFFFFF";
 
 /**
- * Android recolor plan over the mage atlas (cells verified by the UV dump via
- * the queen recipe; skin (0,0)/(0,1 face band top) wait — face band is (0, b0);
- * protected cells (0,0),(1,0),(2,0 bands) and bare hands (7, b2) are simply
- * not listed here, so they keep the authored skin/hair pixels.
+ * The AvatarLook of one assistant: no hat, its own hair, a smile, the npcOnly `android`
+ * top/bottom/shoes and no item. Each call returns a fresh object. `android` has no
+ * clip variants, so clipFor(base, npcLook(id)) is always the base clip.
  */
-function androidCells(accent: string): RecolorCell[] {
-  // Shell cells use FLAT paint: the mage's robe cells are dark navy, and the
-  // luminosity-keeping hue-swap left "white" near-black (screenshot-verified).
-  return [
-    ...band(0, 1, SHELL_WHITE, true), // robe body/arms
-    ...band(1, 1, SHELL_WHITE, true), // hood/collar cloth
-    ...band(7, 1, SHELL_WHITE, true), // dominant outer-robe surface
-    ...band(2, 2, accent), // pouches/accents
-    ...band(3, 2, SLATE, true), // boots
-    ...band(3, 0, accent), // gray trim
-    ...band(4, 0, accent), // arm cuffs
-    ...band(5, 0, accent), // sash
-  ];
-}
-
-/** One cached palette texture per assistant accent (module lifetime). */
-const npcPaletteCache = new Map<string, Texture>();
-
-/** The (cached) android palette texture for `accent`. Never dispose it. */
-export function getNpcTexture(accent: string, source: Texture): Texture {
-  const cached = npcPaletteCache.get(accent);
-  if (cached) return cached;
-  const built = buildPaletteTexture(androidCells(accent), source);
-  npcPaletteCache.set(accent, built);
-  return built;
+export function npcLook(id: NpcId): AvatarLook {
+  const colors = {} as AvatarLook["colors"];
+  for (const key of TINT_KEYS) colors[key] = NPC_WHITE;
+  colors.skin = SKIN_PALETTE[0].hex;
+  colors.hair = NPC_HAIR_COLOR;
+  colors.accent = NPC_ACCENTS[id];
+  return {
+    parts: {
+      hat: null,
+      hair: NPC_HAIR[id],
+      face: "smile",
+      top: "android",
+      bottom: "android",
+      shoes: "android",
+      item: null,
+    },
+    colors,
+  };
 }
 
 // ── Procedural android accessories (halo antenna — 발주자: 바이저 없이 링만) ──
@@ -114,15 +96,17 @@ function emissivePart(
   });
   out.push(material);
   const mesh = new Mesh(geometry, material);
-  mesh.frustumCulled = false; // bone-attached (same rationale as the crown)
+  mesh.frustumCulled = false; // bone-attached: the bounds don't follow the animation
   return mesh;
 }
 
 /**
  * Attach the glowing halo antenna to the clone's head bone (발주자 확정: 이마
- * 바이저 바는 제거, 머리 위 링만). Head-local anchors derive from the crown
- * constants' frame (head top ≈ y 0.9). Materials are per-avatar clones pushed
- * into `out`.
+ * 바이저 바는 제거, 머리 위 링만). The toy body's head top sits ≈ 0.92 m above the
+ * head bone (bone y 1.241, `body__head` top y 2.16), so the stem (0.95) starts at the
+ * crown and the ring (1.1) floats clear above it. Materials are per-avatar and pushed
+ * into `out` — pass `a.materials` from useAvatar's `decorate`, which disposes them with
+ * the avatar. The two geometries are shared module constants and never disposed.
  */
 export function attachNpcAccessories(root: Object3D, accent: string, out: Material[]): void {
   const head = root.getObjectByName(HEAD_BONE_NAME);

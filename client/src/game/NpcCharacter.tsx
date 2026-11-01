@@ -1,57 +1,50 @@
 /**
- * One AI 조교 NPC standing in its room (design 31 + 후속: three of them). The
- * "android docent" look (발주자: 기존 캐릭터에 없는 새 모습): mage body with
- * hat/weapons hidden, the whole robe palette-swapped to android white + one
- * accent hue, and a glowing visor + halo antenna (npcLook.ts). Looping Idle +
- * the shared "AI 조교" badge nametag (pinned in the NametagSystem — always shown
- * while the NPC is on screen and in range, an exception to the nearest-15 rule; sized
- * and faded with the same maths as the players' tags). Solidity comes from the shared map
- * obstacle (design 33), not from this component; the interaction layer
+ * One AI 조교 NPC standing in its room (design 31 + 후속: four of them). The
+ * "android docent" look (발주자: 기존 캐릭터에 없는 새 모습): the players' toy body in
+ * the NPC-only `android` outfit with one accent stripe and its own hair, plus a
+ * glowing halo antenna (npcLook.ts). It is assembled by the same `useAvatar` path as
+ * the players — the hook owns the cloned skeleton, the merged solid geometry and the
+ * materials, and releases them on unmount, so this component never disposes them.
+ * Looping Idle + the shared "AI 조교" badge nametag (pinned in the NametagSystem —
+ * always shown while the NPC is on screen and in range, an exception to the nearest-15
+ * rule; sized and faded with the same maths as the players' tags). Solidity comes from
+ * the shared map obstacle (design 33), not from this component; the interaction layer
  * (ActionButton / NpcChatPanel) lives in the DOM overlay.
  */
 
 import { useEffect, useMemo, useRef } from "react";
-import { useAnimations, useGLTF } from "@react-three/drei";
-import type { Group, Material, Mesh, Texture } from "three";
+import { useAnimations } from "@react-three/drei";
+import type { Group } from "three";
 import { CLIP, BUBBLE_BASE_HEIGHT } from "./constants";
-import { cloneTinted } from "./avatar";
+import { clipFor } from "./characterLook";
 import { createNametag } from "./nametag";
 import { registerLabel } from "./labelRegistry";
 import { NPC_TAG_TEXT, type NpcConfig } from "./npc";
-import { NPC_ACCENTS, NPC_HIDE_NODES, attachNpcAccessories, getNpcTexture } from "./npcLook";
-
-const NPC_MODEL = "/models/mage.glb";
-useGLTF.preload(NPC_MODEL);
+import { NPC_ACCENTS, attachNpcAccessories, npcLook } from "./npcLook";
+import { reportAvatarClip, useAvatar } from "./useAvatar";
 
 export function NpcCharacter({ npc }: { npc: NpcConfig }) {
-  const { scene, animations } = useGLTF(NPC_MODEL);
   const groupRef = useRef<Group>(null);
 
-  // Same assembly path as the players (independent skeleton, own material
-  // clones — disposed on unmount, shared geometry/textures stay), then the
-  // android dressing: tint 0 is the identity multiply, the cloned materials'
-  // atlas map is swapped for the cached accent palette, and the procedural
-  // visor/halo attach to the head bone.
-  const avatar = useMemo(() => {
-    const accent = NPC_ACCENTS[npc.id];
-    const built = cloneTinted(scene, 0, { hideNodes: NPC_HIDE_NODES });
-    built.root.traverse((obj) => {
-      const mesh = obj as Mesh;
-      if (!mesh.isMesh) return;
-      for (const m of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) {
-        const withMap = m as Material & { map?: Texture | null };
-        if (withMap.map) withMap.map = getNpcTexture(accent, withMap.map);
-      }
-    });
-    attachNpcAccessories(built.root, accent, built.materials);
-    return built;
-  }, [scene, npc]);
-  useEffect(() => () => avatar.materials.forEach((m) => m.dispose()), [avatar]);
+  // Assemble the assistant ONCE from its fixed look. `decorate` runs only when the avatar is
+  // assembled (never again under StrictMode) and pushes the halo's materials into
+  // `a.materials`, so the hook disposes them with the avatar.
+  const look = useMemo(() => npcLook(npc.id), [npc.id]);
+  const probeId = `npc:${npc.id}`;
+  const { avatar, animations } = useAvatar(look, {
+    probeId,
+    decorate: (a) => attachNpcAccessories(a.root, NPC_ACCENTS[npc.id], a.materials),
+  });
 
+  // Declared after useAvatar so the avatar probe entry exists when the clip is reported.
+  // The clip name goes through clipFor like every avatar's (an `android` bottom has no
+  // variant, so this is plain Idle).
   const { actions } = useAnimations(animations, groupRef);
   useEffect(() => {
-    actions[CLIP.idle]?.reset().play();
-  }, [actions]);
+    const idle = actions[clipFor(CLIP.idle, look)];
+    idle?.reset().play();
+    if (import.meta.env.DEV && idle) reportAvatarClip(probeId, idle.getClip().name);
+  }, [actions, look, probeId]);
 
   // "AI 조교" nametag above the head (AI pill + "조교"), released with the avatar.
   // Registered as pinned: the NametagSystem sizes and fades it (it starts invisible and
