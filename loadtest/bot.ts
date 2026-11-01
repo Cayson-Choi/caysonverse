@@ -22,6 +22,14 @@
  * 환경변수:
  *  - CV_BOT_OFFSET: 닉네임 번호 오프셋 (샤드 간 닉네임 중복 방지, 기본 0)
  *  - CV_LOADTEST_STATUS: 이 프로세스의 통계 하트비트 JSON 경로
+ *  - CV_BOT_ZONE: `lounge` | `lectureHall` — 걷기 목표를 그 구역 안에서만 뽑는다
+ *    (교실 100명 장면). 비우면 월드 전체. run.mjs의 `--zone`이 이 값을 넘긴다.
+ *
+ * 행동 비율(조작 개편 Task 19 — 실사용 모양): 새 목표를 뽑을 때마다 30%는 그 구간을
+ * 달리기 속도(RUN_SPEED)로 가고, 봇의 20%는 4~10초마다 점프 1건, 채팅하는 봇(20%)은
+ * 채팅 1.5~3초 전에 "입력 중" 켜기를, 채팅 뒤에 끄기를 보낸다. 점프하는 봇은 봇 번호로
+ * 고르게(층화) 뽑는다 — 10봇 스모크에서도 항상 2명이 나오도록. 채팅하는 봇(20%)도
+ * 같은 방식으로 뽑아, 소규모 스모크에서 입력 중이 0이 되지 않게 한다.
  *
  * 이동 정책(바인딩): 봇은 오직 합법적인 트래픽만 보낸다 — 검증기를 시험하는 게
  * 아니라 서버 용량을 시험하는 것이다. 매 틱마다 "지금 서버가 알고 있는 내 위치"
@@ -43,13 +51,14 @@ import { MessageType } from "@caysonverse/shared/messages";
 import {
   WORLD_ROOM,
   MOVE_SPEED,
+  RUN_SPEED,
   WORLD_BOUNDS,
   PLAYER_RADIUS,
   CHARACTER_COUNT,
   TINT_COUNT,
   EMOJIS,
 } from "@caysonverse/shared/constants";
-import { OBSTACLES, DOOR_HALF_WIDTH } from "@caysonverse/shared/worldMap";
+import { OBSTACLES, DOOR_HALF_WIDTH, ZONES } from "@caysonverse/shared/worldMap";
 import { resolveCollision } from "@caysonverse/shared/collision";
 
 // ── Tunables (see docs/loadtest.md for the design-gate rationale) ──
@@ -64,6 +73,21 @@ const CHAT_INTERVAL_MS: [number, number] = [8000, 15000];
 const EMOJI_CHANCE = 0.3;
 /** Emoji interval bounds (ms) — comfortably under EMOJI_RATE (1 per 500ms). */
 const EMOJI_INTERVAL_MS: [number, number] = [5000, 10000];
+/**
+ * Chance that a freshly picked wander target is walked at RUN_SPEED instead of
+ * MOVE_SPEED (the real client runs while Shift / the stick's outer ring is held).
+ */
+const RUN_LEG_CHANCE = 0.3;
+/** Fraction of bots that jump periodically. */
+const JUMP_CHANCE = 0.2;
+/** Jump interval bounds (ms) — far slower than JUMP_RATE (1 per 800 ms). */
+const JUMP_INTERVAL_MS: [number, number] = [4000, 10000];
+/**
+ * "Typing" lead before a chat line (ms): the ON event goes out this long before the
+ * chat, the OFF right after it. The chat interval (8 s+) leaves room for the typing
+ * cap (TYPING_RATE: 1 ON per 3 s).
+ */
+const TYPING_LEAD_MS: [number, number] = [1500, 3000];
 /** Distance (m) from the wander target at which a bot picks a new one. */
 const ARRIVE_EPS = 0.5;
 /**
@@ -80,6 +104,22 @@ const DOOR_Z_MARGIN = 0.6;
 /** Stuck safety net: re-roll the target if we moved less than this in the window. */
 const STUCK_DIST = 0.05;
 const STUCK_TICKS = 30;
+
+/**
+ * Zones the bots may be confined to. Only the two rooms joined by the divider door
+ * qualify — the maze and the gallery need their own routing (nextWaypoint only
+ * knows the lounge/hall door).
+ */
+const BOT_ZONES = ["lounge", "lectureHall"] as const;
+type BotZone = (typeof BOT_ZONES)[number];
+
+const ZONE_ENV = process.env.CV_BOT_ZONE?.trim() ?? "";
+if (ZONE_ENV !== "" && !(BOT_ZONES as readonly string[]).includes(ZONE_ENV)) {
+  process.stderr.write(`CV_BOT_ZONE 값이 올바르지 않아요: "${ZONE_ENV}" (가능: ${BOT_ZONES.join(", ")})\n`);
+  process.exit(1);
+}
+/** The AABB wander targets are drawn from — the confined zone, else the whole world. */
+const WANDER_AREA = ZONE_ENV === "" ? WORLD_BOUNDS : ZONES[ZONE_ENV as BotZone];
 
 const CHAT_LINES = [
   "안녕하세요!",
@@ -110,6 +150,12 @@ const stats = {
   movesSent: 0,
   chatsSent: 0,
   emojisSent: 0,
+  /** Jump messages sent (the server accepts at most 1 per JUMP_RATE.windowMs). */
+  jumpsSent: 0,
+  /** Typing messages sent — ON and OFF both count (an OFF after an accepted chat is dropped silently by the server). */
+  typingSent: 0,
+  /** Move messages sent at RUN_SPEED (a subset of movesSent). */
+  runMovesSent: 0,
   /**
    * Total WebSocket bytes received across this process's bots (downstream).
    * Counted with the same raw-socket message hook @colyseus/loadtest's own
@@ -152,9 +198,19 @@ function clamp(value: number, min: number, max: number): number {
 function randomWanderTarget(): { x: number; z: number } {
   const margin = PLAYER_RADIUS + 0.5;
   return {
-    x: randomInRange(WORLD_BOUNDS.minX + margin, WORLD_BOUNDS.maxX - margin),
-    z: randomInRange(WORLD_BOUNDS.minZ + margin, WORLD_BOUNDS.maxZ - margin),
+    x: randomInRange(WANDER_AREA.minX + margin, WANDER_AREA.maxX - margin),
+    z: randomInRange(WANDER_AREA.minZ + margin, WANDER_AREA.maxZ - margin),
   };
+}
+
+/**
+ * Evenly spread pick: true for exactly `chance` of the consecutive indices (4, 9, 14...
+ * for 0.2), shifted by `phase`. Bot numbers are global (shard offset + client id), so a
+ * 10-bot smoke run always has 2 jumpers instead of a coin flip.
+ */
+function picked(index: number, chance: number, phase: number): boolean {
+  const eps = 1e-9;
+  return Math.floor((index + phase + 1) * chance + eps) > Math.floor((index + phase) * chance + eps);
 }
 
 /**
@@ -183,6 +239,7 @@ function botNickname(clientId: number): string {
 
 async function main(options: Options): Promise<void> {
   const nickname = botNickname(options.clientId);
+  const botIndex = BOT_OFFSET + options.clientId;
   const character = randomInt(CHARACTER_COUNT);
   const tint = randomInt(TINT_COUNT);
 
@@ -223,8 +280,10 @@ async function main(options: Options): Promise<void> {
     stats.disconnects++;
     process.stderr.write(`[${nickname}] 연결 종료 (code=${code})\n`);
     clearInterval(moveTimer);
+    if (typingTimer) clearTimeout(typingTimer);
     if (chatTimer) clearTimeout(chatTimer);
     if (emojiTimer) clearTimeout(emojiTimer);
+    if (jumpTimer) clearTimeout(jumpTimer);
   });
   room.onError((code, message) => {
     stats.roomErrors++;
@@ -240,6 +299,13 @@ async function main(options: Options): Promise<void> {
   });
 
   let target = randomWanderTarget();
+  /** Whether the current leg (the walk to `target`) is run at RUN_SPEED. */
+  let running = Math.random() < RUN_LEG_CHANCE;
+  /** Pick the next wander target and decide, leg by leg, whether it is run. */
+  const pickTarget = (): void => {
+    target = randomWanderTarget();
+    running = Math.random() < RUN_LEG_CHANCE;
+  };
   let stuckAnchor = { x: NaN, z: NaN };
   let stuckCount = 0;
 
@@ -253,14 +319,14 @@ async function main(options: Options): Promise<void> {
     const cur = { x: self.x, z: self.z }; // re-anchor to the AUTHORITATIVE position
 
     if (Math.hypot(target.x - cur.x, target.z - cur.z) < ARRIVE_EPS) {
-      target = randomWanderTarget();
+      pickTarget();
     }
 
     // Stuck safety net: barely moved for STUCK_TICKS while far from the target
     // (wedged in a furniture pocket or a wall corner) -> re-roll the target.
     if (Math.hypot(cur.x - stuckAnchor.x, cur.z - stuckAnchor.z) < STUCK_DIST) {
       if (++stuckCount >= STUCK_TICKS) {
-        target = randomWanderTarget();
+        pickTarget();
         stuckCount = 0;
       }
     } else {
@@ -273,9 +339,9 @@ async function main(options: Options): Promise<void> {
     const dirX = waypoint.x - cur.x;
     const dirZ = waypoint.z - cur.z;
     const dist = Math.hypot(dirX, dirZ) || 1;
-    // Walk at exactly MOVE_SPEED (no slack used) — well inside the server's
-    // MOVE_SPEED_SLACK-widened budget even under scheduler jitter.
-    const stepLen = Math.min(MOVE_SPEED * (MOVE_INTERVAL_MS / 1000), dist);
+    // Walk at exactly MOVE_SPEED — RUN_SPEED on a running leg — with no slack used:
+    // well inside the server's MOVE_SPEED_SLACK-widened budget even under scheduler jitter.
+    const stepLen = Math.min((running ? RUN_SPEED : MOVE_SPEED) * (MOVE_INTERVAL_MS / 1000), dist);
     const dx = (dirX / dist) * stepLen;
     const dz = (dirZ / dist) * stepLen;
 
@@ -288,18 +354,41 @@ async function main(options: Options): Promise<void> {
 
     room.send(MessageType.Move, { x, z, yaw });
     stats.movesSent++;
+    if (running) stats.runMovesSent++;
   }, MOVE_INTERVAL_MS);
 
   let chatTimer: NodeJS.Timeout | undefined;
-  if (Math.random() < CHAT_CHANCE) {
+  let typingTimer: NodeJS.Timeout | undefined;
+  if (picked(botIndex, CHAT_CHANCE, 2)) {
+    // Like a person: "typing" ON, 1.5-3 s later the chat line, then "typing" OFF.
     const scheduleChat = (): void => {
-      chatTimer = setTimeout(() => {
-        room.send(MessageType.Chat, { text: CHAT_LINES[randomInt(CHAT_LINES.length)] });
-        stats.chatsSent++;
-        scheduleChat();
-      }, randomInRange(...CHAT_INTERVAL_MS));
+      const wait = randomInRange(...CHAT_INTERVAL_MS);
+      const lead = Math.min(randomInRange(...TYPING_LEAD_MS), wait);
+      typingTimer = setTimeout(() => {
+        room.send(MessageType.Typing, { on: true });
+        stats.typingSent++;
+        chatTimer = setTimeout(() => {
+          room.send(MessageType.Chat, { text: CHAT_LINES[randomInt(CHAT_LINES.length)] });
+          stats.chatsSent++;
+          room.send(MessageType.Typing, { on: false });
+          stats.typingSent++;
+          scheduleChat();
+        }, lead);
+      }, wait - lead);
     };
     scheduleChat();
+  }
+
+  let jumpTimer: NodeJS.Timeout | undefined;
+  if (picked(botIndex, JUMP_CHANCE, 0)) {
+    const scheduleJump = (): void => {
+      jumpTimer = setTimeout(() => {
+        room.send(MessageType.Jump, {});
+        stats.jumpsSent++;
+        scheduleJump();
+      }, randomInRange(...JUMP_INTERVAL_MS));
+    };
+    scheduleJump();
   }
 
   let emojiTimer: NodeJS.Timeout | undefined;

@@ -20,7 +20,7 @@
 - 터치 버튼은 터치 영역 최소 48px, 버튼 사이 간격 최소 8px. 화면 왼쪽 가장자리 24px 안쪽은 조이스틱이 반응하지 않는다(왼손잡이 모드는 오른쪽 가장자리).
 - PC 키: WASD·방향키 걷기, Shift 누르는 동안 달리기(걷기의 1.6배), Space 점프, 마우스 드래그(왼쪽·오른쪽 버튼)와 Z/C 시점, R 카메라 뒤로 정렬, 휠 줌, 바닥 짧은 클릭 이동, E(F도 같음) 상호작용, Enter 또는 `/` 채팅 열기(Enter 보내기, Esc 닫기), 1~6 이모지, Tab 누르는 동안 접속자 목록, M 지도, V 1/3인칭, Esc 메뉴.
 - 채팅·관리자 입력이 키보드를 쥔 동안(`isUiCaptured()`)과 자동반복(`e.repeat`)에는 단축키가 반응하지 않는다(예외는 Esc와 Tab 떼기, Task 4).
-- 서버 권위: y는 서버 고정이다(스키마에 y 없음). 점프와 입력 중은 상태가 아니라 broadcast 이벤트다. 점프는 0.6초에 1번, 입력 중(켜기)은 3초에 1번으로 제한한다. 클라이언트는 걷기/달리기 상태를 보내지 않는다.
+- 서버 권위: y는 서버 고정이다(스키마에 y 없음). 점프와 입력 중은 상태가 아니라 broadcast 이벤트다. 점프(1.0 m, 0.8초)는 0.8초에 1번, 입력 중(켜기)은 3초에 1번으로 제한한다. 클라이언트는 걷기/달리기 상태를 보내지 않는다.
 - 이동 검증 예산 = `RUN_SPEED(= MOVE_SPEED × 1.6) × 경과시간 × MOVE_SPEED_SLACK(1.5)`. 기존 규칙에서 기준 속도만 바뀐다.
 - `Player.role`(uint8, 0 학생 / 1 선생님)은 서버가 관리자 코드 인증에 성공했을 때만 1로 쓴다. join 옵션이나 클라이언트 메시지로는 바뀌지 않는다.
 - `shared/src/schema.ts`는 클라이언트·로드테스트에서 `import type`으로만 쓴다.
@@ -726,7 +726,7 @@ it("localJump refuses while seated (Review Focus 4) and inside the client cooldo
 - [ ] **Step 2: 실패 확인.** `npm run test -w client -- jump` → FAIL.
 - [ ] **Step 3: 구현.** 클립 이름 재확인(네 줄 모두 `true true`여야 함):
   `node -e "const fs=require('fs');for(const m of ['knight','barbarian','mage','rogue']){const b=fs.readFileSync('client/public/models/'+m+'.glb');const j=JSON.parse(b.subarray(20,20+b.readUInt32LE(12)));const n=j.animations.map(a=>a.name);console.log(m,n.includes('Jump_Full_Short'),n.includes('Running_A'))}"`
-- [ ] **Step 4: 통과 확인.** `npm run test && npm run typecheck` PASS. 두 탭에서 Space → 양쪽 모두 0.6 s 깡총. 앉은 채 Space → 아무 일 없음.
+- [ ] **Step 4: 통과 확인.** `npm run test && npm run typecheck` PASS. 두 탭에서 Space → 양쪽 모두 1.0 m, 0.8 s 깡총. 앉은 채 Space → 아무 일 없음.
 - [ ] **Step 5: stage + 보고.** 제안 커밋 `feat: Space·점프 버튼 깡총 — 이벤트 방송, 서버 y 고정 유지 (조작 개편 Task 11)`.
 
 ### Task 12: 입력 중 표시 — 보내기·받기
@@ -1248,7 +1248,7 @@ it("copy is Korean for both devices", () => expect(coachCopy("move", true).title
 - Consumes: `RUN_SPEED`, `JUMP_RATE`, `TYPING_RATE`, `MessageType.Jump/Typing`, `ZONES`, `__cv.getNametagCostMs`.
 - 봇 행동(실사용 비율):
   - 달리기: 새 목표를 뽑을 때마다 `RUN_LEG_CHANCE = 0.3` 확률로 그 구간을 `RUN_SPEED`로 간다(`stepLen = RUN_SPEED × MOVE_INTERVAL_MS / 1000`).
-  - 점프: 봇의 `JUMP_CHANCE = 0.2`가 `JUMP_INTERVAL_MS = [4000, 10000]`마다 `Jump` 1건(600 ms 제한보다 훨씬 느림).
+  - 점프: 봇의 `JUMP_CHANCE = 0.2`가 `JUMP_INTERVAL_MS = [4000, 10000]`마다 `Jump` 1건(800 ms 제한보다 훨씬 느림).
   - 입력 중: 채팅하는 봇(기존 20%)이 채팅 1.5~3 s 전에 `Typing { on: true }`, 채팅 뒤 `{ on: false }`.
   - 통계에 `jumpsSent`, `typingSent`를 더한다. `CV_BOT_ZONE=lectureHall`이면 목표를 `ZONES.lectureHall` 안에서만 뽑는다(교실 100명 장면).
 

@@ -9,7 +9,10 @@
  *
  * 사용:
  *   node run.mjs --numClients 100 --shards 4 --duration 600 \
- *     --endpoint http://localhost:2567 --statusDir <dir>
+ *     --endpoint http://localhost:2567 --statusDir <dir> [--zone lectureHall]
+ *
+ * `--zone lounge|lectureHall` confines every bot's wander targets to that room
+ * (CV_BOT_ZONE, 교실 100명 장면 — bot.ts 참고). 생략하면 월드 전체.
  *
  * 각 샤드는 CV_BOT_OFFSET으로 닉네임 번호를 이어받고(봇001…봇100), 자기 통계를
  * <statusDir>/shard-<n>.json 하트비트로 남긴다. duration이 지나면 샤드 프로세스
@@ -43,6 +46,11 @@ const shards = Number(argv.shards ?? 4);
 const durationSec = Number(argv.duration ?? 600);
 const endpoint = argv.endpoint ?? "http://localhost:2567";
 const statusDir = argv.statusDir ?? join(HERE, "status");
+const zone = argv.zone ?? "";
+if (zone !== "" && zone !== "lounge" && zone !== "lectureHall") {
+  console.error(`--zone 값이 올바르지 않아요: "${zone}" (가능: lounge, lectureHall)`);
+  process.exit(1);
+}
 
 mkdirSync(statusDir, { recursive: true });
 
@@ -60,7 +68,7 @@ for (let s = 0; s < shards; s++) {
     [tsxCli, join(HERE, "bot.ts"), "--room", "world", "--numClients", String(count), "--endpoint", endpoint, "--delay", "50"],
     {
       cwd: HERE,
-      env: { ...process.env, CV_BOT_OFFSET: String(offset), CV_LOADTEST_STATUS: statusFile },
+      env: { ...process.env, CV_BOT_OFFSET: String(offset), CV_LOADTEST_STATUS: statusFile, CV_BOT_ZONE: zone },
       stdio: ["ignore", "ignore", "pipe"], // stderr = join failures/disconnects
     },
   );
@@ -96,6 +104,9 @@ function aggregate() {
     movesSent: 0,
     chatsSent: 0,
     emojisSent: 0,
+    jumpsSent: 0,
+    typingSent: 0,
+    runMovesSent: 0,
     bytesReceived: 0,
   };
   for (const { statusFile, shard } of children) {
@@ -111,7 +122,9 @@ function aggregate() {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-console.log(`${numClients}봇 / ${shards}샤드 / ${durationSec}s 실행 중... (endpoint: ${endpoint})`);
+console.log(
+  `${numClients}봇 / ${shards}샤드 / ${durationSec}s 실행 중... (endpoint: ${endpoint}${zone ? `, zone: ${zone}` : ""})`,
+);
 
 // Periodic aggregate progress so an operator can see liveness at a glance.
 const progress = setInterval(() => {
@@ -134,7 +147,8 @@ console.log(`join 시도: ${t.joinAttempts} / 성공: ${t.joined} / 실패: ${t.
 console.log(`중도 이탈(테스트 중 절단): ${t.disconnects}`);
 console.log(`순단/재접속: ${t.drops} / ${t.reconnects}`);
 console.log(`방 오류: ${t.roomErrors}`);
-console.log(`전송 — 이동: ${t.movesSent}, 채팅: ${t.chatsSent}, 이모지: ${t.emojisSent}`);
+console.log(`전송 — 이동: ${t.movesSent} (그중 달리기 ${t.runMovesSent}), 채팅: ${t.chatsSent}, 이모지: ${t.emojisSent}`);
+console.log(`전송 — 점프: ${t.jumpsSent}, 입력 중(켜기+끄기): ${t.typingSent}`);
 const perClientDownKBs = t.bytesReceived / 1024 / Math.max(1, numClients) / durationSec;
 console.log(
   `수신 합계: ${(t.bytesReceived / 1024 / 1024).toFixed(1)}MB` +
