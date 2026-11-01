@@ -294,7 +294,8 @@ loadtest의 `cli()`는 console.warn을 가로채 **계속 자라는 TUI 로그 �
 
 - 실행일: 2026-11-01(KayKit 기준선). 브랜치 `feature/character-stage3`, 조작 개편이 병합된 main(`f78f31c`) 위에서 **캐릭터를 바꾸기 전에** 쟀다. 전부 로컬이고 Oracle 서버는 건드리지 않았다. 같은 PC(Ryzen 7 6800H, AMD Radeon 내장 GPU, Windows 11 Pro 10.0.26300, Node v24.19.0).
 - 목적: "100명 성능이 지금보다 나빠지지 않는다"와 "첫 접속 18MB → 8MB"를 **같은 방법으로 앞뒤 비교**한다. 이 장의 KayKit 열은 교체 전 값이고, toy 열은 캐릭터 3단계 Task 11이 같은 스크립트로 다시 재서 채운다.
-- 결론(교체 전): 첫 접속 17.03 MiB(17,856,194 B, 설계 2장의 "약 18MB"와 같음). 교실 100명 장면은 4배 느린 CPU의 headless에서 12.8fps, 한 프레임에 draw call 약 806개·삼각형 약 33.6만 개. 아바타(KayKit 5개 파일 14,528,820 B)가 첫 접속의 81%를 차지한다.
+- 결론(교체 전): 첫 접속 17.03 MiB(17,856,194 B, 설계 2장의 "약 18MB"와 같음). 교실 100명 장면은 4배 느린 CPU의 headless에서 12.8fps(세 번 평균), 한 프레임에 draw call 약 770개·삼각형 약 31.6만 개(세 번 평균). 아바타(KayKit 5개 파일 14,528,820 B)가 첫 접속의 81%를 차지한다.
+- **기준선은 한 번이 아니라 세 번의 평균이다.** 같은 빌드를 세 번 쟀더니 draw calls가 806.2 / 756.9 / 748.2로 흔들렸다(7.4). toy 게이트는 toy도 세 번 재서 **평균끼리** 비교한다.
 
 ### 7.1 어떻게 재나
 
@@ -309,30 +310,35 @@ node e2e/task-char-load.mjs                       # toy → load-toy.json + 게�
 
 # 교실 100명 렌더 — 서버는 같은 프로덕션 번들, 클라이언트는 DEV(:5173, 렌더 통계 훅이 DEV에만 있다)
 npm run dev -w client
-npm run loadtest -- --numClients 100 --duration 300 --zone lectureHall
-node e2e/task-char-perf.mjs --baseline            # KayKit 기준선 → perf-kaykit.json
-node e2e/task-char-perf.mjs                       # toy → perf-toy.json + 게이트
+npm run loadtest -- --numClients 100 --duration 600 --zone lectureHall   # 3회 측정이 4~5분 걸리므로 600초
+node e2e/task-char-perf.mjs --baseline            # KayKit 기준선(3회) → perf-kaykit.json
+node e2e/task-char-perf.mjs                       # toy(3회) → perf-toy.json + 게이트
 ```
 
-- `task-char-load.mjs`: 새 브라우저 컨텍스트, CDP `Network.enable` + `Network.setCacheDisabled`로 캐시를 끄고 `Network.loadingFinished.encodedDataLength`(헤더 포함 와이어 바이트, 웹소켓 프레임 제외)를 모두 더한다. 첫 페이지 열기 → `button.cv-submit` 보임 → networkidle → 닉네임("용량측정")만 입력하고 입장 → 월드에서 10 s 대기 + networkidle까지. 합계와 URL별 목록(JSON에는 전체, 화면에는 상위 15개)을 남긴다. toy 게이트: 합계 ≤ 8,388,608 B, `/models/character.glb` ≤ 4,718,592 B(manifest `maxBytes`), `knight|barbarian|mage|rogue|crown`.glb 요청 0건.
-- `task-char-perf.mjs`: 375×812 터치 휴대폰 컨텍스트(DPR 2), 닉네임 "성능측정"과 입장 버튼만 쓰고(캐릭터·색 선택은 건드리지 않는다 — 선택 화면은 Task 7에서 바뀐다), `cv-settings-v1` = `{"coachDone":true}`를 먼저 심는다. 입장 뒤 CDP `Emulation.setCPUThrottlingRate { rate: 4 }`, `task-ux-perf.mjs`와 같은 걷기로 강의실 한가운데(12, 0)에 서서 `__cv.getRemotes()`가 100명 이상이고 90% 이상이 강의실 안일 때까지 기다린 뒤, Z 키로 카메라를 계속 돌리며 **20초** 잰다.
+- `task-char-load.mjs`: 새 브라우저 컨텍스트, CDP `Network.enable` + `Network.setCacheDisabled`로 캐시를 끄고 `Network.loadingFinished.encodedDataLength`(헤더 포함 와이어 바이트, 웹소켓 프레임 제외)를 더한다. **같은 URL은 한 번만 센다**(가장 큰 응답 하나). 첫 페이지 열기 → `button.cv-submit` 보임 → networkidle → 닉네임("용량측정")만 입력하고 입장 → 월드에서 10 s 대기 + networkidle까지. 합계와 URL별 목록(JSON에는 전체, 화면에는 상위 15개), 단순 합(`rawTotalBytes`)과 되풀이한 URL(`repeatedUrls`)을 남긴다. toy 게이트: 합계 ≤ 8,388,608 B, `/models/character.glb` ≤ 4,718,592 B(manifest `maxBytes`), `knight|barbarian|mage|rogue|crown`.glb 요청 0건. 예상치(투영)는 기준선 JSON에만 있고 toy JSON에는 없다.
+- `task-char-perf.mjs`: **3회(`CV_PERF_RUNS`) 연속, 회마다 새 브라우저.** 한 회는 375×812 터치 휴대폰 컨텍스트(DPR 2), 닉네임 "성능측정"과 입장 버튼만 쓰고(캐릭터·색 선택은 건드리지 않는다 — 선택 화면은 Task 7에서 바뀐다), `cv-settings-v1` = `{"coachDone":true}`를 먼저 심는다. 입장 뒤 CDP `Emulation.setCPUThrottlingRate { rate: 4 }`, `task-ux-perf.mjs`와 같은 걷기로 강의실 한가운데(12, 0)에 서서 `__cv.getRemotes()`가 100명 이상이고 전원 접속 중이며 90% 이상이 강의실 안일 때까지 기다린 뒤, Z 키로 카메라를 계속 돌리며 **20초** 잰다. 회 사이에 25초(`CV_PERF_GAP_MS`) 쉰다 — 서버는 끊긴 자리를 20초 붙잡아 두므로, 앞 회 탭의 유령(반투명한 101번째 원격)이 사라져야 모든 회가 같은 원격 100명을 본다.
   - fps: 매 프레임 rAF 시각으로 평균, 하위 5%(= 가장 느린 5% 프레임의 fps = 1000 ÷ 프레임 시간 p95).
   - 1초마다 `__cvRenderInfo()`(calls·triangles·geometries·textures, DEV 전용 `RenderStatsProbe`)와 `performance.memory.usedJSHeapSize`(`--enable-precise-memory-info`).
-  - `window.__cvAvatars`가 있으면(Task 5 이후) 항목 수·최대 `drawMeshes`·평균 `triangles`.
-  - toy 게이트: `__cvAvatars` 항목 ≥ 100, 최대 `drawMeshes` ≤ 8, 평균 calls ≤ `perf-kaykit.json`의 평균 calls. fps는 나란히 기록만 한다(headless 값은 참고, 30fps는 Task 11의 발주자 실기기 확인으로 판정).
-- 두 스크립트의 판정 경로는 KayKit 빌드에 toy 모드로 돌려 확인했다(게이트가 실패하고 종료 코드 1: 합계 17,856,194 B > 8,388,608, `character.glb` 없음, KayKit GLB 5개 요청, `__cvAvatars` 없음; 평균 calls 비교는 통과). 이 점검 결과 파일은 지웠다.
+  - `window.__cvAvatars`가 있으면(Task 5 이후, 함수·`Map`·객체 모두 읽는다) 1초마다 항목 수, 숫자 `drawMeshes`·`triangles`가 없는 항목 수, 최대 `drawMeshes`, 평균 `triangles`.
+  - 판정하는 수치는 **회별 평균의 평균**이다. JSON에는 `runs[]`(회별)와 같은 모양의 합계가 함께 남는다.
+  - toy 게이트(어느 하나라도 틀리면 종료 코드 1):
+    1. **비교 가능한 실행인가** — 기준선 JSON과 CPU 스로틀·샘플 길이·렌더러 종류(하드웨어 GPU)·원격 수·강의실 비율·장면(뷰포트·DPR·서 있는 자리·최소 봇 수)이 같다. 다르면 무엇이 다른지 밝히고 실패한다(같은 설정으로 다시 재거나, 일부러 바꿨다면 `--baseline`으로 KayKit부터 다시 잰다).
+    2. **모든 회에서** `__cvAvatars`가 1초 표본마다 있었고, 항목마다 숫자 `drawMeshes`·`triangles`가 있으며, 항목 수 최솟값 ≥ 100, 최대 `drawMeshes`가 1 이상 8 이하다(표본이 하나라도 비거나 규격 밖 항목이 있으면 "0이라서 통과"가 되지 않도록 실패한다).
+    3. 평균 calls(회 평균) ≤ `perf-kaykit.json`의 평균 calls(= KayKit 세 번 평균).
+    - fps는 나란히 기록만 한다(headless 값은 참고, 30fps는 Task 11의 발주자 실기기 확인으로 판정).
+- 확인한 것: 판정 함수는 픽스처 JSON과 가짜 `__cvAvatars`(함수·객체·`Map`, 규격 밖 항목, 늦게 생기는 프로브, 예외를 던지는 프로브, 프로브 없음)로 36개를 검사했다(저장소에는 없는 임시 검사). 스크립트 전체는 KayKit 빌드에 toy 모드로 돌려 게이트가 실패하는지(종료 코드 1) 보았고, 10봇 스모크로 기준선 2회·같은 설정 toy·스로틀 1배 toy(비교 불가로 실패)를 돌렸다. 이 점검 결과 파일은 지웠다.
 
 ### 7.2 표 (행: 지표, 열: 교체 전 / 교체 후)
 
 | 지표 | KayKit (교체 전, 2026-11-01) | toy (교체 후) | 게이트 / 목표 |
 |---|---|---|---|
-| 첫 접속 바이트 | **17,856,194 B** (17.03 MiB, 요청 28개) | Task 11에서 채움 | ≤ 8,388,608 B |
+| 첫 접속 바이트 | **17,856,194 B** (17.03 MiB, 서로 다른 URL 28개) | Task 11에서 채움 | ≤ 8,388,608 B |
 | character GLB 바이트 | knight 3,660,108 + rogue 3,616,860 + barbarian 3,613,844 + mage 3,589,816 + crown 48,192 = **14,528,820 B** (파일 5개) | `/models/character.glb` 1개 | ≤ 4,718,592 B, KayKit GLB 요청 0건 |
-| 평균 draw calls | **806.2** (712~878) | Task 11에서 채움 | ≤ KayKit 평균 |
-| 평균 triangles | **335,525** (304,935~364,172) | Task 11에서 채움 | 기록만 |
-| fps 평균 / 하위 5% | **12.80 / 11.96** (프레임 257개, 프레임 시간 p50 83.4 · p95 83.6 · 최대 133.6 ms) | Task 11에서 채움 | 기록만 (30fps는 실기기) |
-| JS heap (평균 / 최대) | **175.33 / 192.40 MiB** | Task 11에서 채움 | 기록만 |
-| (참고) geometries / textures | 133 / 814 | Task 11에서 채움 | 기록만 |
+| 평균 draw calls (3회 평균) | **770.43** (회별 806.2 / 756.9 / 748.2, 1초 표본의 최소~최대 600~878) | Task 11에서 채움 | ≤ KayKit 평균 |
+| 평균 triangles (3회 평균) | **315,949** (회별 335,525 / 307,116 / 305,207) | Task 11에서 채움 | 기록만 |
+| fps 평균 / 하위 5% (3회 평균) | **12.79 / 11.30** (회별 12.80 / 11.96, 12.78 / 11.96, 12.80 / 9.98) | Task 11에서 채움 | 기록만 (30fps는 실기기) |
+| JS heap (평균 / 최대, 2회) | **175.39 / 192.40 MiB** | Task 11에서 채움 | 기록만 |
+| (참고) geometries / textures | 133 / 806 (최대 816) | Task 11에서 채움 | 기록만 |
 | `__cvAvatars` 항목 / 최대 drawMeshes | 없음 (Task 5에서 생김) | Task 11에서 채움 | ≥ 100 / ≤ 8 |
 
 - 장면: 서버에 `--zone lectureHall` 봇 100명, 측정 탭 1개 = 101명(HUD 101). 샘플 동안 원격 100명 모두 강의실 안. 렌더러는 ANGLE/D3D11(AMD Radeon 내장 GPU), SwiftShader가 아니다. 콘솔·페이지 오류 0.
@@ -355,7 +361,8 @@ KayKit 첫 접속 17,856,194 B의 내역(상위, 와이어 바이트):
 | `/assets/index-*.css` | 26,208 |
 | `/`, `favicon.svg`, `/matchmake/join/world` | 2,864 + 1,690 + 520 |
 
-- 입장 화면이 뜬 시점 5,138,512 B(요청 15개), 월드 입장 직후 8,799,140 B(18개), 월드에서 10초 기다린 뒤 17,856,194 B(32개 중 data:/blob: 4개 제외 28개). 4종 아바타 GLB는 모두 받는다(원격 아바타 렌더가 4종을 미리 불러온다).
+- 입장 화면이 뜬 시점 5,138,512 B(요청 15개), 월드 입장 직후 8,799,140 B(18개), 월드에서 10초 기다린 뒤 17,856,194 B(서로 다른 URL 28개). 4종 아바타 GLB는 모두 받는다(원격 아바타 렌더가 4종을 미리 불러온다).
+- **같은 URL은 한 번만 센다.** 캐시를 끈 채 재면 페이지가 같은 URL을 두 번 요청할 때 두 번 받는다. 실제로 갤러리 사진 9장이 그렇게 두 번 내려온 실행이 한 번 있었다(단순 합 19,634,352 B = 17,856,194 + 1,778,158). 그 뒤 같은 빌드를 여섯 번 더 쟀을 때는 되풀이가 없었다. 원인은 `GalleryPhotos`가 사진을 `useMemo` 안에서 불러오는데, 장면이 서스펜드되는 동안 React가 그 렌더를 다시 돌리면 불러오기가 한 번 더 일어나는 것으로 보인다(타이밍에 따라 달라짐 — 원인을 코드로 확인하지는 않았다). 실제 브라우저는 캐시가 있어 두 번째 요청이 네트워크로 나가지 않으므로 판정 합계는 URL마다 한 번이고, 단순 합과 되풀이한 URL은 JSON에 따로 남는다.
 - 로컬 서버는 JS를 압축하지 않아 와이어 바이트가 파일 크기(1,387,579 B)와 같다(gzip이면 396.89 kB). 게이트는 로컬에서 잰 이 값으로 판정한다.
 
 **예상 toy 첫 접속(투영, Task 11 전의 조기 경보)** = 측정한 KayKit 합계 − Task 9가 지우는 바이트 + 새 `character.glb` + 조립실 제목 로고.
@@ -372,17 +379,19 @@ KayKit 첫 접속 17,856,194 B의 내역(상위, 와이어 바이트):
 - 이 여유 315,021 B는 새 코드(JS 1.39 MB에 외형·조립실·합치기 코드가 더해진다)가 먼저 갉아먹는다. 캐릭터가 아닌 몫 3,327,374 B 중에서는 갤러리 사진 9장(1.78 MB)이 첫 접속에 통째로 내려가는 것이 가장 큰 줄일 거리다.
 - 투영은 파일 본문 바이트 기준이고 측정값은 응답 헤더를 포함한다(요청당 약 0.58 KB 차이: 예를 들어 `knight.glb`는 파일 3,659,532 B, 와이어 3,660,108 B). toy 실측(Task 11)이 이 투영을 대체한다.
 
-### 7.4 100명 측정의 편차
+### 7.4 100명 측정의 편차 — 기준선은 세 번의 평균
 
 같은 빌드·같은 장면을 세 번 쟀다. 값이 조금씩 다른 원인은 따로 조사하지 않았다(봇이 계속 움직이고 카메라가 도는 시작 방향도 실행마다 다르다).
 
 | 실행 | draw calls 평균 | triangles 평균 | fps 평균 / 하위 5% | JS heap 평균 |
 |---|---|---|---|---|
-| 1 (표의 값, `perf-kaykit.json`) | 806.2 | 335,525 | 12.80 / 11.96 | 175.33 MiB |
+| 1 | 806.2 | 335,525 | 12.80 / 11.96 | 175.33 MiB |
 | 2 | 756.9 | 307,116 | 12.78 / 11.96 | 175.45 MiB |
 | 3 (toy 모드 게이트 점검 중에 나온 값) | 748.2 | 305,207 | 12.80 / 9.98 | (미기록) |
+| **기준선 = 세 번의 평균** | **770.43** | **315,949** | **12.79 / 11.30** | **175.39 MiB (2회)** |
 
-- draw calls는 세 번의 평균 770.4 대비 −3%~+5%다. toy의 draw calls 게이트(≤ KayKit 평균)는 실행 1의 806.2와 비교한다. 이 편차가 결과를 읽을 때의 잡음 바닥이다.
+- `perf-kaykit.json`이 이 평균(`render.calls.mean` 등)과 `runs[]` 세 개를 담는다. 1·2회는 그 실행이 남긴 JSON에서, 3회는 점검 실행이 화면에 찍은 숫자(fps·draw calls·triangles·geometries/textures·프레임 시간)에서 옮겼고 JSON 파일은 지워서 heap과 일부 최대값은 없다(`runs[2].source`에 적었다).
+- draw calls는 평균 770.43 대비 −3%~+5%다. toy의 draw calls 게이트(≤ KayKit 평균)는 이 770.43과, toy 세 번의 평균을 비교한다. 이 편차가 결과를 읽을 때의 잡음 바닥이다.
 - fps 평균은 세 번 모두 12.8, 하위 5%는 3번에서 한 번 9.98로 떨어졌다(프레임 p95 100.2 ms).
 
 ### 7.5 발주자 실기기 확인

@@ -11,14 +11,14 @@
 // `Network.setCacheDisabled`) opens the page, waits until `button.cv-submit` is visible and the network is
 // idle, types a nickname into `input.cv-input[placeholder="2~12자"]`, presses the submit button, and waits
 // 10 s + networkidle inside the world. Every `Network.loadingFinished.encodedDataLength` (bytes over the wire,
-// response headers included) is summed. WebSocket frames are not part of it. The entry uses the nickname and
-// `.cv-submit` ONLY (no character / colour clicks: the character picker is replaced in Task 7, and this script is
+// response headers included) is summed, each distinct URL ONCE (see "numbers" below for why). WebSocket frames are
+// not part of it. The entry uses the nickname and `.cv-submit` ONLY (no character / colour clicks: the character picker is replaced in Task 7, and this script is
 // re-run unchanged in Task 11), and seeds localStorage `cv-settings-v1` = {"coachDone":true} like the other scripts.
 //
 // Evidence -> .superpowers/sdd/evidence/task-char/load-<label>.json (label: kaykit with --baseline, toy otherwise).
-// Baseline mode records only. The JSON also carries a PROJECTED toy first-load total (the baseline minus what the
-// KayKit characters took, plus the new character.glb and the builder-title logo) to show early whether the 8 MB
-// budget is reachable.
+// Baseline mode records only. The BASELINE JSON (and only it) also carries a PROJECTED toy first-load total (the
+// baseline minus what the KayKit characters took, plus the new character.glb and the builder-title logo) to show early
+// whether the 8 MB budget is reachable. A toy JSON measures the real thing and has no projection.
 //
 // Gates (toy only; exit 1 if any fails):
 //   total <= 8,388,608 B (design 5.4)
@@ -27,7 +27,7 @@
 // Exit code 0 = no gate failed and no console/page error and the measurement itself ran.
 //
 // Knobs: CV_CLIENT_URL (default http://localhost:2567), CV_IDLE_WAIT_MS (the in-world wait, default 10000),
-// CV_CHROME_PATH, CV_E2E_RENDER=software.
+// CV_CHAR_EVIDENCE_DIR (default .superpowers/sdd/evidence/task-char), CV_CHROME_PATH, CV_E2E_RENDER=software.
 
 import { chromium } from "playwright";
 import { fileURLToPath } from "node:url";
@@ -42,7 +42,7 @@ const IN_WORLD_WAIT_MS = Number(process.env.CV_IDLE_WAIT_MS || 10000);
 const NICKNAME = "용량측정";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, "..");
-const EVIDENCE = join(REPO, ".superpowers", "sdd", "evidence", "task-char");
+const EVIDENCE = process.env.CV_CHAR_EVIDENCE_DIR ? resolve(process.env.CV_CHAR_EVIDENCE_DIR) : join(REPO, ".superpowers", "sdd", "evidence", "task-char");
 mkdirSync(EVIDENCE, { recursive: true });
 
 const GATE = {
@@ -203,29 +203,58 @@ try {
 
 // ───────────────────────────── numbers ─────────────────────────────
 
-const rows = [...requests.values()]
+const allRows = [...requests.values()]
   .filter((r) => r.finished && !r.url.startsWith("data:") && !r.url.startsWith("blob:"))
   .map((r) => ({ url: shortUrl(r.url), bytes: r.bytes, status: r.status, mime: r.mime }));
 const failedRows = [...requests.values()].filter((r) => r.failed).map((r) => shortUrl(r.url));
+// Every URL counts ONCE (the largest response it got). With the cache switched off for the measurement, a URL the page
+// asks for twice is downloaded twice — the gallery photos are (GalleryPhotos loads them from a useMemo that React can
+// run twice while the scene suspends), and whether it happens varies from run to run: the raw sum swung by the whole
+// 1.78 MB photo set between two identical runs. A real browser serves the second request from its cache, so the judged
+// total is the sum over distinct URLs; the raw sum and the repeats stay in the output.
+const byUrl = new Map();
+for (const r of allRows) {
+  const prev = byUrl.get(r.url);
+  if (!prev) byUrl.set(r.url, { ...r, requests: 1, repeatBytes: 0 });
+  else {
+    prev.requests++;
+    if (r.bytes > prev.bytes) {
+      prev.repeatBytes += prev.bytes;
+      Object.assign(prev, { bytes: r.bytes, status: r.status, mime: r.mime });
+    } else prev.repeatBytes += r.bytes;
+  }
+}
+const rows = [...byUrl.values()].map(({ requests: n, repeatBytes, ...row }) => ({ ...row, ...(n > 1 ? { requests: n, repeatBytes } : {}) }));
+const repeats = rows.filter((r) => r.requests > 1).map((r) => ({ url: r.url, requests: r.requests, repeatBytes: r.repeatBytes }));
+const rawTotalBytes = allRows.reduce((s, r) => s + r.bytes, 0);
 const totalBytes = rows.reduce((s, r) => s + r.bytes, 0);
 const byBytes = rows.slice().sort((a, b) => b.bytes - a.bytes);
 const top15 = byBytes.slice(0, 15);
 const pathOf = (u) => u.split("?")[0].split("#")[0];
 const characterGlb = rows.find((r) => pathOf(r.url) === CHARACTER_GLB_PATH) || null;
 const forbidden = rows.filter((r) => FORBIDDEN_GLB.test(r.url));
-const kaykitRemovable = rows.filter((r) => KAYKIT_GLB.test(pathOf(r.url)) || MODELS_SIDE_FILE.test(pathOf(r.url)));
+// Baseline only: what the KayKit characters took (the toy result carries neither this list nor the projection).
+const kaykitRemovable = BASELINE ? rows.filter((r) => KAYKIT_GLB.test(pathOf(r.url)) || MODELS_SIDE_FILE.test(pathOf(r.url))) : [];
 const kaykitRemovableBytes = kaykitRemovable.reduce((s, r) => s + r.bytes, 0);
 
 console.log(`\n══ 첫 접속 바이트 (${LABEL}) ══`);
-console.log(`합계: ${fmt(totalBytes)} B = ${mb(totalBytes)} MiB, 요청 ${rows.length}개`);
+console.log(`합계(URL마다 한 번): ${fmt(totalBytes)} B = ${mb(totalBytes)} MiB, 서로 다른 URL ${rows.length}개`);
+if (repeats.length > 0) {
+  const extra = rawTotalBytes - totalBytes;
+  console.log(`  (같은 URL을 두 번 이상 받은 것 ${repeats.length}개, 되풀이 ${fmt(extra)} B는 합계에서 뺐다. 단순 합 ${fmt(rawTotalBytes)} B)`);
+  for (const r of repeats) console.log(`    ${r.requests}회  ${fmt(r.repeatBytes)} B 되풀이  ${r.url}`);
+}
 console.log("상위 15개:");
 for (const r of top15) console.log(`  ${String(fmt(r.bytes)).padStart(11)} B  ${r.url}`);
-console.log(`KayKit 캐릭터가 차지하는 분(Task 9가 지움): ${fmt(kaykitRemovableBytes)} B`);
-for (const r of kaykitRemovable) console.log(`  ${String(fmt(r.bytes)).padStart(11)} B  ${r.url}`);
+if (BASELINE) {
+  console.log(`KayKit 캐릭터가 차지하는 분(Task 9가 지움): ${fmt(kaykitRemovableBytes)} B`);
+  for (const r of kaykitRemovable) console.log(`  ${String(fmt(r.bytes)).padStart(11)} B  ${r.url}`);
+}
 
-// The projection (meaningful for the KayKit baseline; also recorded for a toy run as a sanity cross-check).
+// The projection exists ONLY for the KayKit baseline (it is "baseline - what Task 9 deletes + the new files"); a toy run
+// measures the real thing and must not carry a projection or its verdict.
 const projectedTotal = totalBytes - kaykitRemovableBytes + PROJECTION.characterGlbBytes + PROJECTION.logoPngBytes;
-const projection = {
+const projection = !BASELINE ? null : {
   note: "baseline total - KayKit character GLBs/crown/side files (listed) + new character.glb + builder-title logo PNG",
   baselineTotalBytes: totalBytes,
   subtracted: kaykitRemovable.map((r) => ({ url: r.url, bytes: r.bytes })),
@@ -248,7 +277,7 @@ if (BASELINE) {
 }
 
 check("the measurement ran to the end (entry screen, world entry, 10 s wait)", measurementRan);
-check("some bytes were measured", totalBytes > 0, { totalBytes, requests: rows.length });
+check("some bytes were measured", totalBytes > 0, { totalBytes, distinctUrls: rows.length, rawTotalBytes, repeatedUrls: repeats.length });
 check("no failed network request", failedRows.length === 0, failedRows.slice(0, 5));
 check("no console error or page error", errors.length === 0, errors.slice(0, 5));
 
@@ -269,18 +298,22 @@ const out = {
   nickname: NICKNAME,
   measuredAt: new Date().toISOString(),
   inWorldWaitMs: IN_WORLD_WAIT_MS,
+  // Judged total: every distinct URL once. rawTotalBytes is the plain sum of every response (repeats included).
   totalBytes,
   totalMiB: Number(mb(totalBytes)),
-  requestCount: rows.length,
+  rawTotalBytes,
+  repeatBytes: rawTotalBytes - totalBytes,
+  repeatedUrls: repeats,
+  requestCount: allRows.length,
+  distinctUrlCount: rows.length,
   timeline,
   top15,
   characterGlb,
-  kaykitCharacterBytes: kaykitRemovableBytes,
-  kaykitCharacterFiles: kaykitRemovable,
   forbiddenGlbRequests: forbidden,
-  projection,
+  // Baseline only: the KayKit bytes Task 9 deletes and the projected toy total built from them.
+  ...(BASELINE ? { kaykitCharacterBytes: kaykitRemovableBytes, kaykitCharacterFiles: kaykitRemovable, projection } : {}),
   gates: BASELINE ? null : { ...GATE, forbiddenPattern: String(FORBIDDEN_GLB) },
-  allRequests: byBytes,
+  allRequests: allRows.slice().sort((a, b) => b.bytes - a.bytes),
   errors,
   results,
   ok: failed.length === 0,
