@@ -32,7 +32,8 @@ import type { MapGeometry } from "@caysonverse/shared/school/geometry";
 import { PlayerRoom, baseTracking, spawnInDisk, type Tracking } from "../rooms/PlayerRoom";
 import { RateWindow } from "../rooms/rateLimit";
 import { assertSpawnToken } from "../rooms/spawnToken";
-import { publicContent, resolveText } from "./content";
+import { createBanditAi, type BanditAi } from "./banditAi";
+import { publicContent, resolveText, secretStrings } from "./content";
 import { cancelHold, isSolo } from "./coop";
 import { applyAction, createEngineState, inspectView, type EngineAction, type EngineCtx, type EngineEvent, type EngineState } from "./engine";
 import { GameClock } from "./gameClock";
@@ -285,6 +286,13 @@ export class EscapeRoom extends PlayerRoom<EscapeState, EscapeTracking> {
   private emptyTimer: Delayed | null = null;
   private holdTimer: Delayed | null = null;
 
+  /** The optional 반딧 polish (Task 12): null = off, the default; hints go out as authored. */
+  private bandit: BanditAi | null = null;
+  private hintSecrets: readonly string[] = [];
+  /** Hints are delivered in the order they were asked: each waits for the one before it. */
+  private hintTail: Promise<void> = Promise.resolve();
+  private disposed = false;
+
   onCreate(options: EscapeCreateOptions): void {
     // FIRST: only server code knows the token, so a client's create / joinOrCreate stops here,
     // before this room has touched anything.
@@ -306,6 +314,7 @@ export class EscapeRoom extends PlayerRoom<EscapeState, EscapeTracking> {
     for (const l of o.def.locks) this.lockObjects.set(l.id, l.objectId);
     this.es = createEngineState(o.def);
     this.ctx = { now: 0, connected: this.connected, names: this.names, maxHintTier: o.maxHintTier, level: o.textLevel };
+    this.useBanditAi(createBanditAi()); // null unless BANDIT_AI=1 and GROQ_API_KEY are set
 
     this.state.roomDefId = o.roomDefId;
     this.state.teamName = o.teamName;
@@ -330,6 +339,7 @@ export class EscapeRoom extends PlayerRoom<EscapeState, EscapeTracking> {
 
   /** Tell the class the team's instance is gone (whatever closed it: end, empty, shutdown). */
   onDispose(): void {
+    this.disposed = true; // a hint still waiting for the model is dropped
     if (!this.created) return; // a refused create owns nothing
     void this.report("escapeDisposed", [this.teamId, this.roomId]);
   }
@@ -740,9 +750,47 @@ export class EscapeRoom extends PlayerRoom<EscapeState, EscapeTracking> {
         this.escape(ev.lines);
         continue;
       }
-      if (ev.e === "hint") this.state.hints.push(ev.text);
+      if (ev.e === "hint") {
+        this.deliverHint(ev);
+        continue;
+      }
       this.sendEvent(ev);
     }
+  }
+
+  /**
+   * A hint is kept (`state.hints`, for late joiners) and told to the team. Off (the default): at
+   * once, as authored. On (Task 12): the engine has already counted it; the sentence goes out once
+   * 반딧 has said it again — or, after the polish step's timeout or on any doubt, as authored. This
+   * never waits for the model itself (the message loop goes on), and hints keep their order.
+   */
+  private deliverHint(ev: Extract<EngineEvent, { e: "hint" }>): void {
+    const send = (text: string): void => {
+      if (this.disposed) return;
+      this.state.hints.push(text);
+      this.sendEvent(text === ev.text ? ev : { ...ev, text });
+    };
+    if (this.bandit === null) {
+      send(ev.text);
+      return;
+    }
+    const polished = this.bandit.rephrase(ev.text, this.hintSecrets); // never rejects, never later than its timeout
+    this.hintTail = Promise.all([this.hintTail, polished])
+      .then(([, text]) => send(text))
+      .catch(() => {
+        // (a room closing under us) — nothing to log: no hint text may reach a log
+      });
+  }
+
+  private useBanditAi(ai: BanditAi | null): void {
+    this.bandit = ai;
+    this.hintSecrets = ai === null ? [] : secretStrings(this.def);
+  }
+
+  /** Tests only: swaps the polish step (a fake fetch behind it). Throws outside the test runner. */
+  debugUseBanditAi(ai: BanditAi | null): void {
+    if (!process.env.VITEST) throw new Error("debugUseBanditAi is for tests only");
+    this.useBanditAi(ai);
   }
 
   /** Events go out after the state patch that carries their effect. */
