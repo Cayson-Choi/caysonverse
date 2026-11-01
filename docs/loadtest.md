@@ -343,9 +343,9 @@ node e2e/task-char-perf.mjs                       # toy(3회) → perf-toy.json 
 | (참고) geometries / textures | 133 / 806 (최대 816) | 187 / 270 (최대 282) | 기록만 | 기록 |
 | `__cvAvatars` 항목 / 최대 drawMeshes | 없음 (Task 5에서 생김) | **105** (원격 100 + 내 아바타 1 + AI 조교 4; 매 1초 표본 20/20, 규격 밖 0) / **4**(조교; 플레이어는 2) | ≥ 100 / ≤ 8 | **통과** |
 
-- **triangles가 늘어난 것은 예상한 대로다.** 토이 인형은 아바타당 평균 **15,845 삼각형**(`__cvAvatars` 평균, 조교 4명 포함)이고, 장면 전체는 31.6만 → 82.0만으로 **2.6배**다. KayKit 아바타 한 명의 삼각형 수는 이번에 다시 재지 않았다(앞선 기록은 약 3천~7천으로 엇갈려 아바타당 배수는 2~5배 사이로만 말할 수 있다 — 장면 전체 배수만 측정값이다). 부품을 합친 메시 2개로 그려 draw calls는 −64%, textures는 806 → 270으로 줄었고, 그 덕에 4배 느린 CPU의 headless에서는 fps가 오히려 1.9배다. 하지만 이 headless 측정은 **CPU 쪽 비용(draw call)** 에 민감하고 삼각형 비용은 거의 안 본다(데스크톱급 내장 GPU). 휴대폰 GPU는 정점 처리가 더 빠듯할 수 있어 삼각형 2.6배가 실기기에서 어떻게 나올지는 7.5절 발주자 확인으로 본다. 줄이는 방법(LOD·Decimate)은 아래 7.5.
+- **triangles가 늘어난 것은 예상한 대로다.** 토이 인형은 아바타당 평균 **15,845 삼각형**(`__cvAvatars` 평균, 조교 4명 포함)이고, 장면 전체는 31.6만 → 82.0만으로 **2.6배**다. KayKit 아바타 한 명의 삼각형 수는 이번에 다시 재지 않았다(앞선 기록은 약 3천~7천으로 엇갈려 아바타당 배수는 2~5배 사이로만 말할 수 있다 — 장면 전체 배수만 측정값이다). 부품을 합친 메시 2개로 그려 draw calls는 −64%, textures는 806 → 270으로 줄었고, 그 덕에 4배 느린 CPU의 headless에서는 fps가 오히려 1.9배다. 하지만 이 headless 측정은 **CPU 쪽 비용(draw call)** 에 민감하고, 삼각형 비용은 보지 못했을 가능성이 크다(데스크톱급 내장 GPU). 휴대폰 GPU는 정점 처리가 더 빠듯할 수 있어 삼각형 2.6배가 실기기에서 어떻게 나올지는 7.5절 발주자 확인으로 본다. 줄이는 방법(LOD·Decimate)은 아래 7.5.
 - 장면: 서버에 `--zone lectureHall` 봇 100명, 측정 탭 1개 = 101명(HUD 101). 샘플 동안 원격 100명 모두 강의실 안. 렌더러는 ANGLE/D3D11(AMD Radeon 내장 GPU), SwiftShader가 아니다. 콘솔·페이지 오류 0.
-- 측정 환경(2026-11-02 02:49~02:53, 재측정): 서버는 프로덕션 번들(`NODE_ENV=production node server/dist/index.cjs`)을 새로 띄웠고 클라이언트는 DEV(:5173) — 7.1절의 기준선과 같은 구성이다. 같은 PC에서 돌던 다른 것: Blender 5.2 **GUI** 한 개(MCP 서버가 쓰는 상주 인스턴스, 2026-10-31 20:53 시작, `-b` 아님, 측정 중 CPU 1~4%)와 Claude 데스크톱·WebView2·상주 서비스. 헤드리스 Blender 렌더는 없었다. 스냅샷(5초 창): 전체 CPU 사용률 8~21%, 한 코어를 넘게 쓰는 프로세스 없음. 모든 헤드리스 Blender를 기다리는 규칙에 따라 측정 전에 `MEASURING.lock`을 만들고 끝나면 지웠다. 그래서 fps는 "동시 부하 아래"라고 표시하지 않는다.
+- 측정 환경(2026-11-02 02:49~02:53, 재측정): 서버는 프로덕션 번들(`NODE_ENV=production node server/dist/index.cjs`)을 새로 띄웠고 클라이언트는 DEV(:5173) — 7.1절의 기준선과 같은 구성이다. 같은 PC에서 돌던 다른 것: Blender 5.2 **GUI** 한 개(MCP 서버가 쓰는 상주 인스턴스, 2026-10-31 20:53 시작, `-b` 아님, 측정 중 CPU 1~4%)와 Claude 데스크톱·WebView2·상주 서비스. 헤드리스 Blender 렌더는 없었다. 스냅샷(5초 창): 전체 CPU 사용률 8~21%, 한 코어를 넘게 쓰는 프로세스 없음. 헤드리스 Blender가 모두 끝나기를 기다리는 규칙에 따라, 측정 전에 `MEASURING.lock`(측정 중이라는 표시 파일 — 이 파일이 있는 동안 같은 PC에서 헤드리스 Blender 같은 무거운 작업을 새로 시작하지 않는다)을 만들고 끝나면 지웠다. 그래서 fps는 "동시 부하 아래"라고 표시하지 않는다.
 - 읽는 법: 이 fps는 6.3절과 같은 종류의 headless 참고값이다(4배 느린 CPU, 프레임 시간이 83.3 ms = 12fps 근처에 몰린다). 같은 장면·같은 설정끼리의 앞뒤 비교에만 쓴다. 클라이언트가 DEV 빌드(React 개발 모드)라 JS heap도 프로덕션보다 크게 나오며, 앞뒤를 같은 DEV 설정으로 비교한다.
 
 ### 7.3 첫 접속 내역과 toy 예상치
@@ -423,7 +423,7 @@ KayKit 첫 접속 17,856,194 B의 내역(상위, 와이어 바이트):
 
 휴대폰으로 보는 방법(휴대폰과 PC가 같은 Wi-Fi여야 한다):
 
-- PC에서 프로덕션 번들을 띄운다: `npm run build` → `NODE_ENV=production node server/dist/index.cjs`. 서버는 모든 주소(`::`)에서 받고, 클라이언트는 페이지를 받아 온 주소로 서버에 붙으므로(`client/src/net/endpoint.ts`) 휴대폰 주소창에는 `http://<PC의 IPv4>:2567`만 넣으면 된다(IPv4는 PC에서 `ipconfig`로 본다. 2026-11-02에는 Wi-Fi 192.168.0.93). 이 PC의 Windows 방화벽에는 Node.js 인바운드 허용 규칙이 이미 있다(공용 네트워크 포함).
+- PC에서 프로덕션 번들을 띄운다: `npm run build` → `NODE_ENV=production node server/dist/index.cjs`. 서버는 모든 주소(`::`)에서 받고, 클라이언트는 페이지를 받아 온 주소로 서버에 붙으므로(`client/src/net/endpoint.ts`) 휴대폰 주소창에는 `http://<PC의 IPv4>:2567`만 넣으면 된다(`<PC의 IPv4>`는 PC에서 `ipconfig`로 본다 — 휴대폰과 같은 Wi-Fi 어댑터의 주소). 이 PC의 Windows 방화벽에는 Node.js 인바운드 허용 규칙이 이미 있다(공용 네트워크 포함).
 - 교실 100명 장면: 다른 터미널에서 `npm run loadtest -- --numClients 100 --duration 1200 --zone lectureHall`을 돌려 두고, 봇이 강의실로 모이는 20~30초 뒤에 휴대폰으로 입장해 오른쪽(동쪽)으로 걸어 가운데 문을 지나 강의실로 들어간다. 사람 수(HUD)가 100명 이상이면 된다.
 - `npm run dev`는 휴대폰에서 그대로는 안 붙는다: Vite는 `localhost`에만 열리고(`client/vite.config.ts`에 host 설정이 없다) 개발용 서버 주소가 `client/.env.development`의 `VITE_SERVER_URL=http://localhost:2567`이라 휴대폰의 localhost를 가리키기 때문이다. 굳이 개발 서버로 보려면 `npm run dev:server`와, PowerShell에서 `$env:VITE_SERVER_URL="http://<PC의 IPv4>:2567"; npm run dev -w client -- --host`를 따로 띄워 `http://<PC의 IPv4>:5173`을 연다(DEV 빌드는 프로덕션보다 느려 fps 확인에는 맞지 않는다).
 
@@ -480,4 +480,4 @@ npm run loadtest -- --numClients 100 --duration 1830
 
 ### 8.4 측정 중 같은 PC에서 돌던 것
 
-측정 전에 `MEASURING.lock`을 만들고 헤드리스 Blender가 없는 것을 확인했다(`Get-CimInstance Win32_Process`로 `blender.exe`의 시작 시각·명령줄 확인: 있는 것은 2026-10-31 20:53에 시작한 GUI 인스턴스 하나뿐이고 `-b` 없음). 5분마다 남긴 스냅샷 8장(5초 창): 전체 CPU 사용률 11~29%(평균 약 20%), 한 코어를 넘게 쓰는 프로세스 없음(Claude 데스크톱·WebView2가 각각 14~21%, 서버 프로세스 자신 4~7%, Blender GUI 1~4%). 서버 CPU%는 서버 프로세스 자신의 값이라 다른 프로세스의 영향은 경쟁(스케줄링)으로만 받는다. (입장 단계에서 멈춘 첫 시도 때의 스냅샷 두 장에는 짧게 뜬 `python` 하나가 한 코어 100%를 쓰는 순간이 있었다. 100명 렌더 재측정과 이 30분 실행의 스냅샷에는 없었다.)
+측정 전에 `MEASURING.lock`(측정 중이라는 표시 파일, 7.2절)을 만들고 헤드리스 Blender가 없는 것을 확인했다(`Get-CimInstance Win32_Process`로 `blender.exe`의 시작 시각·명령줄 확인: 있는 것은 2026-10-31 20:53에 시작한 GUI 인스턴스 하나뿐이고 `-b` 없음). 5분마다 남긴 스냅샷 8장(5초 창): 전체 CPU 사용률 11~29%(평균 약 20%), 한 코어를 넘게 쓰는 프로세스 없음(Claude 데스크톱·WebView2가 각각 14~21%, 서버 프로세스 자신 4~7%, Blender GUI 1~4%). 서버 CPU%는 서버 프로세스 자신의 값이라 다른 프로세스의 영향은 경쟁(스케줄링)으로만 받는다. (입장 단계에서 멈춘 첫 시도 때의 스냅샷 두 장에는 짧게 뜬 `python` 하나가 한 코어 100%를 쓰는 순간이 있었다. 100명 렌더 재측정과 이 30분 실행의 스냅샷에는 없었다.)
