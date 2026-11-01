@@ -14,6 +14,7 @@ import { OverviewMarker } from "./OverviewMarker";
 import { OverviewLabels } from "./OverviewLabels";
 import { ClickMarker } from "./ClickMarker";
 import { NametagSystem } from "./NametagSystem";
+import { RenderStatsProbe } from "./RenderStatsProbe";
 import { Chat } from "../ui/Chat";
 import { ChatLog } from "../ui/ChatLog";
 import { EmojiPalette } from "../ui/EmojiPalette";
@@ -186,6 +187,8 @@ export function WorldScene({ identity }: { identity: Identity }) {
         {/* Name tags (Task 14): which are shown, their stacking, fade, size and the
             speech-bubble anchor. Drives the tags the avatars register; draws nothing. */}
         <NametagSystem />
+        {/* DEV-only render counters (window.__cvRenderInfo) for the character swap measurements. */}
+        {import.meta.env.DEV && <RenderStatsProbe />}
       </Canvas>
       <LoadingOverlay />
       <Banner />
