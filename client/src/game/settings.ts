@@ -42,7 +42,7 @@ export const DEFAULT_SETTINGS: Settings = {
 /** The look-sensitivity slider: 0.5x .. 2x in quarter steps. */
 export const SENSITIVITY = { min: 0.5, max: 2, step: 0.25 } as const;
 
-/** The scale each button size applies to a button's base size (`--cv-btn-scale`). */
+/** The scale each button size applies to a button's base size (see `buttonPx`). */
 export const BUTTON_SCALE: Record<ButtonSize, number> = {
   small: 0.85,
   medium: 1,
@@ -56,11 +56,6 @@ export const MIN_GAP_PX = 8;
 
 /** localStorage key. The `v1` is the schema version of the stored blob. */
 export const SETTINGS_STORAGE_KEY = "cv-settings-v1";
-
-/** `<html>` class while left-handed play is on (for CSS; the touch HUD itself reads the store, see game/hud.ts). */
-export const LEFT_HANDED_CLASS = "cv-left-handed";
-/** `<html>` custom property holding the current BUTTON_SCALE (the same scale buttonPx() applies). */
-export const BTN_SCALE_VAR = "--cv-btn-scale";
 
 const BUTTON_SIZES: readonly ButtonSize[] = ["small", "medium", "large"];
 const NAMETAG_MODES: readonly NametagMode[] = ["all", "nearby", "off"];
@@ -153,22 +148,4 @@ export function saveSettings(
   } catch {
     // Storage blocked or full — the settings still apply for this session.
   }
-}
-
-/** The bits of `<html>` the settings write to — lets a test pass a plain object. */
-export interface RootLike {
-  classList: { toggle(name: string, force?: boolean): unknown };
-  style: { setProperty(name: string, value: string): void; removeProperty(name: string): unknown };
-}
-
-/** Put the layout-affecting settings on `<html>`: the left-handed class and `--cv-btn-scale`. */
-export function applySettingsToRoot(settings: Settings, root: RootLike): void {
-  root.classList.toggle(LEFT_HANDED_CLASS, settings.leftHanded);
-  root.style.setProperty(BTN_SCALE_VAR, String(BUTTON_SCALE[settings.buttonSize]));
-}
-
-/** Undo `applySettingsToRoot` (the world went away; the entry screen has no use for them). */
-export function clearSettingsFromRoot(root: RootLike): void {
-  root.classList.toggle(LEFT_HANDED_CLASS, false);
-  root.style.removeProperty(BTN_SCALE_VAR);
 }

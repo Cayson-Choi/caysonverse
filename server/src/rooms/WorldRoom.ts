@@ -464,10 +464,10 @@ export class WorldRoom extends Room<{ state: WorldState }> {
    * Jump pipeline (binding order): sender must be in the world state → a SEATED
    * sender is dropped silently (a sitting avatar is server-positioned, it cannot
    * jump) → per-client rate cap (1 per JUMP_RATE.windowMs = 800 ms; exceeded →
-   * drop silently, it's a key press) → broadcast `{ sid }` to everyone as a
-   * transient event. The payload is never read: the sid always comes from the
-   * connection. y is server-fixed (no schema field), so a jump is purely a
-   * cosmetic broadcast.
+   * drop silently, it's a key press) → broadcast `{ sid }` to everyone EXCEPT the
+   * sender as a transient event (the sender already hopped locally the instant it
+   * pressed). The payload is never read: the sid always comes from the connection.
+   * y is server-fixed (no schema field), so a jump is purely a cosmetic broadcast.
    */
   private handleJump(client: Client): void {
     const player = this.state.players.get(client.sessionId);
@@ -478,7 +478,7 @@ export class WorldRoom extends Room<{ state: WorldState }> {
 
     if (!track.jumpRate.tryAccept(this.now())) return; // flood → silent drop
 
-    this.broadcast(MessageType.Jump, { sid: client.sessionId });
+    this.broadcast(MessageType.Jump, { sid: client.sessionId }, { except: client });
   }
 
   /**
@@ -490,6 +490,7 @@ export class WorldRoom extends Room<{ state: WorldState }> {
    *  - OFF: relayed ONLY if the sender is currently typing (else silent drop),
    *    then clear `track.typing` and broadcast `{ sid, on: false }`. OFF is
    *    never rate-limited — it must always get through to clear the indicator.
+   * Both go to everyone EXCEPT the typist (nobody shows their own "…").
    * Typing never touches synced schema state.
    */
   private handleTyping(client: Client, payload: unknown): void {
@@ -508,7 +509,7 @@ export class WorldRoom extends Room<{ state: WorldState }> {
       track.typing = false;
     }
 
-    this.broadcast(MessageType.Typing, { sid: client.sessionId, on });
+    this.broadcast(MessageType.Typing, { sid: client.sessionId, on }, { except: client });
   }
 
   /**

@@ -1,9 +1,9 @@
 /**
  * Bridge the room's jump broadcast into the module JUMP REGISTRY (the hop each
  * avatar's render loop plays). Mirrors emojiSync.ts, with one difference: the
- * server relays a jump to EVERYONE, sender included, but the sender already
- * played its own hop the instant it pressed (`localJump`) — replaying the echo
- * ~RTT later would restart the animation mid-air. So our own sid is ignored.
+ * server relays a jump to everyone EXCEPT the sender (the sender already played its
+ * own hop the instant it pressed, `localJump`). Our own sid is still ignored here as a
+ * guard — an echo replayed ~RTT later would restart the animation mid-air.
  * Returns a teardown that unregisters the handler and clears the registry.
  */
 

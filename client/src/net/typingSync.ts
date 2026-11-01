@@ -1,8 +1,8 @@
 /**
  * Bridge the room's typing broadcast into the module TYPING REGISTRY (the "…" each
  * name tag reads). Mirrors jumpSync.ts: the server relays a typing event to
- * EVERYONE, sender included, but we never show our own "…", so our own sid is
- * ignored. Besides the explicit OFF, a chat line from the typist also removes them
+ * everyone EXCEPT the typist, and we never show our own "…" anyway, so our own sid is
+ * still ignored here as a guard. Besides the explicit OFF, a chat line from the typist also removes them
  * at once (the server clears its flag on a chat and sends no OFF), and an ON that
  * is never followed by either expires by itself (TYPING_TTL_MS, in the registry).
  * Returns a teardown that unregisters both handlers and clears the registry.

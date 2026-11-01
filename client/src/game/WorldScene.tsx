@@ -1,4 +1,4 @@
-import { Suspense, useEffect, useLayoutEffect, useRef } from "react";
+import { Suspense, useEffect, useRef } from "react";
 import { Canvas } from "@react-three/fiber";
 import { KeyboardControls, useProgress } from "@react-three/drei";
 import { SPAWN_POINT } from "@caysonverse/shared/constants";
@@ -32,8 +32,7 @@ import { isTouchDevice } from "../device";
 import { getRenderProfile } from "./renderProfile";
 import { releaseAllUiCapture } from "./uiCapture";
 import { resetViewMode, toggleViewMode, toggleOverview, viewState } from "./viewState";
-import { applySettingsToRoot, clearSettingsFromRoot } from "./settings";
-import { setNametagMode } from "./labelRegistry";
+import { bindNametagMode } from "./settingsBridge";
 import { useAppStore } from "../stores/appStore";
 import { useCoachStore } from "../stores/coachStore";
 import { useSettingsStore } from "../stores/settingsStore";
@@ -58,24 +57,16 @@ function readSpawn(): Pose {
 }
 
 /**
- * Put the player's settings to work for as long as the world is up: the left-handed
- * class and --cv-btn-scale on <html> (available to CSS; the touch HUD's own rectangles
- * come from game/hud.ts, which reads the same store fields through useTouchHudLayout)
- * and the name tag mode (the NametagSystem reads it at its next 5 Hz pass). The
- * look-drag gain and the look half are read from the store at event time (CameraRig),
- * and the own name tag by LocalPlayer, so they need nothing here. A layout effect, so
- * the first painted frame already has the saved layout.
+ * Put the player's settings to work for as long as the world is up. Only the name tag mode
+ * needs forwarding (the NametagSystem reads it at its next 5 Hz pass) — and it goes through
+ * a plain store subscription (settingsBridge), NOT a React one: subscribing to the settings
+ * here would re-render WorldScene, the Canvas and every RemotePlayer on each slider step.
+ * Everything else reads the store where it is used — the touch HUD's rectangles through
+ * game/hud.ts (useTouchHudLayout), the look-drag gain and the look half in CameraRig at
+ * event time, the own name tag in LocalPlayer, the left-handed stick half below.
  */
 function useApplySettings(): void {
-  const settings = useSettingsStore((s) => s.settings);
-  useLayoutEffect(() => {
-    applySettingsToRoot(settings, document.documentElement);
-  }, [settings]);
-  useEffect(() => {
-    setNametagMode(settings.nametagMode);
-  }, [settings.nametagMode]);
-  // The entry screen has no use for the world's layout classes.
-  useLayoutEffect(() => () => clearSettingsFromRoot(document.documentElement), []);
+  useEffect(() => bindNametagMode(), []);
 }
 
 export function WorldScene({ identity }: { identity: Identity }) {

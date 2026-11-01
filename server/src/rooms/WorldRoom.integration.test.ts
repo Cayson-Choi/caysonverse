@@ -1155,16 +1155,22 @@ describe("WorldRoom jump/typing (integration)", () => {
     return { room, alice, bob, aJumps, bJumps, aTyping, bTyping };
   }
 
-  it("relays a Jump to every client tagged with the sender's sid", async () => {
-    const { room, alice, aJumps, bJumps } = await twoClients();
+  it("relays a Jump to every OTHER client tagged with the sender's sid (no echo to the sender)", async () => {
+    const { room, alice, bob, aJumps, bJumps } = await twoClients();
 
     alice.send(MessageType.Jump, {});
     await room.waitForNextMessage();
     await flush();
 
-    const expected = [{ sid: alice.sessionId }];
-    expect(aJumps).toEqual(expected); // sender receives its own jump too
-    expect(bJumps).toEqual(expected);
+    expect(bJumps).toEqual([{ sid: alice.sessionId }]);
+    expect(aJumps).toEqual([]); // the sender already hopped locally — nothing comes back
+
+    // ...and it is the sender that is skipped, not one fixed client: bob's jump reaches alice only.
+    bob.send(MessageType.Jump, {});
+    await room.waitForNextMessage();
+    await flush();
+    expect(aJumps).toEqual([{ sid: bob.sessionId }]);
+    expect(bJumps).toEqual([{ sid: alice.sessionId }]);
   });
 
   it("ignores the Jump payload — the sid always comes from the connection", async () => {
@@ -1174,7 +1180,7 @@ describe("WorldRoom jump/typing (integration)", () => {
     await room.waitForNextMessage();
     await flush();
 
-    expect(aJumps).toEqual([{ sid: alice.sessionId }]);
+    expect(aJumps).toEqual([]);
     expect(bJumps).toEqual([{ sid: alice.sessionId }]);
   });
 
@@ -1188,7 +1194,7 @@ describe("WorldRoom jump/typing (integration)", () => {
     }
     await flush();
 
-    expect(aJumps).toEqual([{ sid: alice.sessionId }]);
+    expect(aJumps).toEqual([]);
     expect(bJumps).toEqual([{ sid: alice.sessionId }]);
   });
 
@@ -1217,7 +1223,7 @@ describe("WorldRoom jump/typing (integration)", () => {
     expect(bJumps).toHaveLength(0);
   });
 
-  it("relays typing on then off to everyone", async () => {
+  it("relays typing on then off to every OTHER client (no echo to the typist)", async () => {
     const { room, alice, aTyping, bTyping } = await twoClients();
 
     alice.send(MessageType.Typing, { on: true });
@@ -1230,7 +1236,7 @@ describe("WorldRoom jump/typing (integration)", () => {
       { sid: alice.sessionId, on: true },
       { sid: alice.sessionId, on: false },
     ];
-    expect(aTyping).toEqual(expected); // sender receives its own events too
+    expect(aTyping).toEqual([]); // we never show our own "…" — nothing comes back
     expect(bTyping).toEqual(expected);
   });
 
@@ -1248,7 +1254,7 @@ describe("WorldRoom jump/typing (integration)", () => {
       { sid: alice.sessionId, on: true },
       { sid: alice.sessionId, on: false },
     ];
-    expect(aTyping).toEqual(expected);
+    expect(aTyping).toEqual([]);
     expect(bTyping).toEqual(expected);
   });
 

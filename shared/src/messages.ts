@@ -34,13 +34,14 @@ export const MessageType = {
    */
   PortalReturn: "portal_return",
   /**
-   * Client -> server: the sender jumped. Server -> all: relay tagged with the
-   * sender's sid. A transient event (y is server-fixed, never schema state).
+   * Client -> server: the sender jumped. Server -> everyone except the sender: relay
+   * tagged with the sender's sid (the sender hopped locally). A transient event
+   * (y is server-fixed, never schema state).
    */
   Jump: "jump",
   /**
    * Client -> server: the sender started/stopped typing a chat line. Server ->
-   * all: relay `{ sid, on }`. A transient event, never schema state.
+   * everyone except the sender: relay `{ sid, on }`. A transient event, never schema state.
    */
   Typing: "typing",
 } as const;

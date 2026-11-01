@@ -1,21 +1,16 @@
 import { describe, it, expect } from "vitest";
 import {
-  BTN_SCALE_VAR,
   BUTTON_SCALE,
   DEFAULT_SETTINGS,
-  LEFT_HANDED_CLASS,
   MIN_GAP_PX,
   MIN_TOUCH_PX,
   SENSITIVITY,
   SETTINGS_STORAGE_KEY,
-  applySettingsToRoot,
   buttonPx,
-  clearSettingsFromRoot,
   loadSettings,
   normalizeSettings,
   parseSettings,
   saveSettings,
-  type RootLike,
   type Settings,
   type StorageLike,
 } from "./settings";
@@ -193,52 +188,5 @@ describe("loadSettings / saveSettings", () => {
     expect(() => saveSettings({ ...DEFAULT_SETTINGS, leftHanded: true }, blockedStorage)).not.toThrow();
     expect(loadSettings(null)).toEqual(DEFAULT_SETTINGS);
     expect(() => saveSettings(DEFAULT_SETTINGS, null)).not.toThrow();
-  });
-});
-
-describe("applySettingsToRoot", () => {
-  function fakeRoot(): RootLike & { classes: Set<string>; vars: Map<string, string> } {
-    const classes = new Set<string>();
-    const vars = new Map<string, string>();
-    return {
-      classes,
-      vars,
-      classList: {
-        toggle(name: string, force?: boolean) {
-          const on = force ?? !classes.has(name);
-          if (on) classes.add(name);
-          else classes.delete(name);
-          return on;
-        },
-      },
-      style: {
-        setProperty: (k: string, v: string) => void vars.set(k, v),
-        removeProperty: (k: string) => vars.delete(k),
-      },
-    };
-  }
-
-  it("sets cv-left-handed and --cv-btn-scale from the settings", () => {
-    const root = fakeRoot();
-    applySettingsToRoot({ ...DEFAULT_SETTINGS, leftHanded: true, buttonSize: "large" }, root);
-    expect(LEFT_HANDED_CLASS).toBe("cv-left-handed");
-    expect(BTN_SCALE_VAR).toBe("--cv-btn-scale");
-    expect(root.classes.has("cv-left-handed")).toBe(true);
-    expect(root.vars.get("--cv-btn-scale")).toBe("1.25");
-
-    applySettingsToRoot({ ...DEFAULT_SETTINGS, leftHanded: false, buttonSize: "small" }, root);
-    expect(root.classes.has("cv-left-handed")).toBe(false);
-    expect(root.vars.get("--cv-btn-scale")).toBe("0.85");
-
-    applySettingsToRoot(DEFAULT_SETTINGS, root);
-    expect(root.vars.get("--cv-btn-scale")).toBe("1");
-  });
-
-  it("clearSettingsFromRoot removes both again", () => {
-    const root = fakeRoot();
-    applySettingsToRoot({ ...DEFAULT_SETTINGS, leftHanded: true, buttonSize: "large" }, root);
-    clearSettingsFromRoot(root);
-    expect(root.classes.size).toBe(0);
-    expect(root.vars.size).toBe(0);
   });
 });
