@@ -43,17 +43,12 @@ function principleLabel(id: PrincipleId): string {
   return p.label;
 }
 
-/** 이/가 after a number read the Sino-Korean way (일, 이, 삼 …): 2, 4, 5 end in a vowel. */
-function subjectParticle(n: number): string {
-  return [2, 4, 5].includes(n % 10) ? "가" : "이";
-}
-
 /** The locked half of a split clue; `{owner}` becomes the nicknames of the teammates who hold it. */
 const LOCKED_HALF = "글씨가 흐릿해요. 이 쪽지는 {owner}님만 읽을 수 있어요.";
 
 const DRAWER_BODY = "'비밀을 알리기 전에 꼭 지킬 것'이라고 적힌 쪽지가 있어요.";
 const DRAWER_STATES = [
-  { when: { none: ["solved:cabinet_lock"] }, body: "서랍이 잠겨 있어요. 캐비닛 안에 열쇠가 있을지도 몰라요." },
+  { when: { none: ["solved:cabinet_lock"] }, body: "서랍이 잠겨 있어요. 캐비닛이 열리면 서랍도 열릴 것 같아요." },
 ];
 
 /**
@@ -69,7 +64,7 @@ function note(n: number, tag: "private" | "public", body: Text, digit: number): 
     inspect: {
       title: `쪽지 ${n}`,
       body,
-      back: `쪽지 뒷면 구석에 작은 숫자 ${n}${subjectParticle(n)} 적혀 있어요.`,
+      back: `쪽지 뒷면 구석에 '${n}번'이라고 적혀 있어요.`,
       reveal: { item: "uv_flashlight", text: `숨은 숫자 ${digit}` },
     },
   };
@@ -117,8 +112,12 @@ export const counsel: RoomDef = validateRoomDef<RoomDef>({
       kind: "inspect",
       inspect: {
         title: "상담 기록 캐비닛",
-        body: "숫자 네 개로 잠겨 있어요.",
-        states: [{ when: { all: ["solved:cabinet_lock"] }, body: "캐비닛이 열렸어요. 안에 분류 카드가 들어 있어요." }],
+        body: "네 자리 숫자 자물쇠로 잠겨 있어요.",
+        // The first state that holds wins: once the cards are taken, say so.
+        states: [
+          { when: { all: ["picked:sort_cards"] }, body: "캐비닛이 열려 있어요. 카드는 이미 꺼냈어요." },
+          { when: { all: ["solved:cabinet_lock"] }, body: "캐비닛이 열렸어요. 안에 분류 카드가 들어 있어요." },
+        ],
       },
       locks: ["cabinet_lock"],
       pickup: { item: "sort_cards", when: { all: ["solved:cabinet_lock"] } },
@@ -138,8 +137,8 @@ export const counsel: RoomDef = validateRoomDef<RoomDef>({
       2,
       "private",
       {
-        easy: "제 전화번호는 010-0000-0000이에요. 밤에 몰래 연락 주세요.",
-        hard: "제 개인 연락처(010-0000-0000)를 남깁니다. 늦은 시간에 따로 연락 부탁드려요.",
+        easy: "제 전화번호는 010-0000-0000이에요. 상담 선생님만 보시고 연락 주세요.",
+        hard: "제 개인 연락처(010-0000-0000)를 남깁니다. 상담 선생님께서만 확인하시고 연락 부탁드려요.",
       },
       4,
     ),
@@ -229,11 +228,11 @@ export const counsel: RoomDef = validateRoomDef<RoomDef>({
       kind: "inspect",
       inspect: {
         title: "금고",
-        body: "금고가 단단히 잠겨 있어요. 열쇠 구멍이 양쪽 벽에 하나씩 있대요.",
+        body: "금고가 단단히 잠겨 있어요. 양쪽 벽에 열쇠 스위치가 하나씩 보여요.",
         // The first state that holds wins: once open, "open" beats "unlocked".
         states: [
           { when: { all: ["safe_open"] }, body: "금고 안에 '아리의 마음 칩'이 있었어요." },
-          { when: { all: ["safe_unlocked"] }, body: "금고 잠금이 풀렸어요! 양쪽 벽의 열쇠를 두 사람이 함께 돌려야 해요." },
+          { when: { all: ["safe_unlocked"] }, body: "금고 열쇠 스위치에 불이 들어왔어요! 양쪽 벽의 열쇠를 두 사람이 함께 돌려야 열려요." },
         ],
       },
     },
@@ -261,7 +260,7 @@ export const counsel: RoomDef = validateRoomDef<RoomDef>({
     { id: "flashlight", label: "손전등", icon: "🔦" },
     { id: "uv_film", label: "보라색 필름", icon: "🟪" },
     { id: "uv_flashlight", label: "자외선 손전등", icon: "🔮" },
-    { id: "sort_cards", label: "분류 카드 8장", icon: "🗂️" },
+    { id: "sort_cards", label: "분류 카드 8장", icon: "🗂\uFE0F" }, // U+FE0F (emoji presentation) kept as an escape, never as an invisible literal
     { id: "memory_chip", label: "아리의 마음 칩", icon: "💾" },
   ],
 
@@ -310,11 +309,11 @@ export const counsel: RoomDef = validateRoomDef<RoomDef>({
         { id: "festival", label: "학교 축제 날짜" },
         { id: "lunch", label: "이번 주 급식 메뉴" },
         { id: "club_notice", label: "동아리 모집 포스터" },
-        { id: "my_drawing", label: "내가 올리기로 한 내 그림" },
+        { id: "my_drawing", label: "내가 공개하기로 정한 내 그림" },
         { id: "phone_number", label: "친구 전화번호" },
         { id: "address", label: "친구네 집 주소" },
         { id: "medical", label: "친구의 병원 기록" },
-        { id: "password", label: "친구의 비밀번호" },
+        { id: "password", label: "내 비밀번호" },
       ],
       answer: {
         festival: "ok",
@@ -367,8 +366,8 @@ export const counsel: RoomDef = validateRoomDef<RoomDef>({
       doneWhen: "solved:board_lock",
       hints: [
         "캐비닛에서 꺼낸 카드를 분류판에 놓아 봐요. 누군지 알 수 있는 정보는 조심해야 해요.",
-        "모두가 함께 보는 학교 소식은 공개해도 돼요. 한 사람에 대한 정보는 멈춰요.",
-        "멈춰요: 친구 전화번호, 친구네 집 주소, 친구의 병원 기록, 친구의 비밀번호. 나머지는 공개해도 돼요.",
+        "모두가 함께 보는 학교 소식과, 내가 공개하기로 정한 내 것은 공개해도 돼요. 다른 사람의 개인정보와 비밀번호는 멈춰요.",
+        "멈춰요: 친구 전화번호, 친구네 집 주소, 친구의 병원 기록, 내 비밀번호. 나머지는 공개해도 돼요.",
       ],
     },
     {
@@ -387,7 +386,7 @@ export const counsel: RoomDef = validateRoomDef<RoomDef>({
       doneWhen: "escaped",
       hints: [
         "아리가 무엇을 잘못 알고 있는지 생각해 봐요. 이 방에서 지킨 것은 무엇이었나요?",
-        "이 방의 쪽지와 카드는 모두 '개인의 정보와 사생활'에 관한 것이었어요.",
+        "이 방에서 우리는 전화번호·집 주소·병원·가족 이야기처럼 함부로 알리면 안 되는 것을 골라냈어요. 그것을 지키는 원칙은 무엇일까요?",
         "원칙은 '프라이버시 보호', 약속은 '먼저 물어보고 허락받기'예요.",
       ],
     },
@@ -415,7 +414,7 @@ export const counsel: RoomDef = validateRoomDef<RoomDef>({
           {
             id: "reliability",
             label: principleLabel("reliability"),
-            desc: "AI가 정해진 목적 안에서 믿을 만하게 작동해요.",
+            desc: "AI가 실수 없이 믿을 만하게 작동해요.",
             explain:
               "신뢰성은 AI가 틀리지 않고 믿을 만하게 일하는 거예요. 정확한 정보라도 친구의 비밀을 함부로 알려도 된다는 뜻은 아니에요.",
           },
@@ -423,7 +422,7 @@ export const counsel: RoomDef = validateRoomDef<RoomDef>({
             id: "fairness",
             label: principleLabel("fairness"),
             desc: "누구도 차별받거나 따돌림당하지 않게 해요.",
-            explain: "공정성·포용성도 중요하지만, 이 방의 문제는 친구의 비밀을 허락 없이 알린 거예요.",
+            explain: "공정성·포용성도 중요하지만, 이 방의 문제는 친구의 비밀을 허락 없이 알리려고 한 거예요.",
           },
         ],
         correct: "privacy",
@@ -461,10 +460,10 @@ export const counsel: RoomDef = validateRoomDef<RoomDef>({
     intro_3: { speaker: "narrator", text: "철컥! 상담실 문이 잠겼어요." },
     intro_4: { speaker: "bandit", text: "앗, 아리가 비밀을 퍼뜨리기 전에 바로잡아야 해요! 막히면 오른쪽 위의 저를 눌러 주세요." },
     bandit_uv: { speaker: "bandit", text: "자외선 손전등 완성! 쪽지를 조사하고 '자외선 비추기'를 눌러 봐요." },
-    cabinet_open: { speaker: "bandit", text: "캐비닛이 열렸어요. 안에 분류 카드가 있어요!" },
-    cover_open: { speaker: "bandit", text: "덮개가 열렸어요. 카드를 알맞은 칸에 놓아 봐요." },
-    board_done: { speaker: "bandit", text: "철컥! 금고 잠금이 풀렸어요. 양쪽 벽의 열쇠를 함께 돌려요!" },
-    safe_open: { speaker: "bandit", text: "금고에서 '아리의 마음 칩'을 찾았어요. 아리가 깨어나요!" },
+    cabinet_open: { speaker: "bandit", text: "캐비닛이 열렸어요! 안에 분류 카드가 있고, 양쪽 서랍도 열렸어요." },
+    cover_open: { speaker: "bandit", text: "덮개가 열렸어요. 캐비닛에서 꺼낸 카드를 알맞은 칸에 놓아 봐요." },
+    board_done: { speaker: "bandit", text: "철컥! 금고 열쇠 스위치에 불이 들어왔어요. 양쪽 벽의 열쇠를 함께 돌려요!" },
+    safe_open: { speaker: "bandit", text: "금고에서 '아리의 마음 칩'을 찾았어요! 이제 마지막 문에서 아리를 설득해 봐요." },
     // Escape lines: they retell the answer, so they travel only with the `escaped` event.
     escape_1: {
       speaker: "ari",
@@ -473,7 +472,7 @@ export const counsel: RoomDef = validateRoomDef<RoomDef>({
         hard: "이제 알겠어. 개인정보는 그 사람의 것이니, 공개하기 전에 반드시 동의를 구할게.",
       },
     },
-    escape_2: { speaker: "bandit", text: "상담실이 다시 환해졌어요! 학교 모형의 창문도 환한 색으로 바뀌었을 거예요." },
+    escape_2: { speaker: "bandit", text: "상담실이 다시 환해졌어요! 중앙 홀 학교 모형의 상담실 창문도 반짝이고 있을 거예요." },
   },
   introLines: ["intro_1", "intro_2", "intro_3", "intro_4"],
   escapeLines: ["escape_1", "escape_2"],
@@ -489,7 +488,7 @@ export const counsel: RoomDef = validateRoomDef<RoomDef>({
         hard: "타인의 정보를 공개하거나 공유하려면 먼저 당사자의 동의를 받아야 합니다.",
       },
       {
-        easy: "AI도 개인정보를 지키도록 만들고 써야 해요.",
+        easy: "AI도 개인정보를 지키도록 만들고, 그렇게 써야 해요.",
         hard: "AI 역시 개인정보를 보호하도록 설계되고 사용되어야 합니다.",
       },
     ],

@@ -574,7 +574,7 @@ describe("EscapeRoom puzzles", () => {
     placeAt(room, garam, "cabinet", 2.15);
     await act(room, garam, EscapeMsg.Inspect, { objectId: "cabinet" });
     expect(garam.inbox.views).toEqual([
-      { objectId: "cabinet", title: "상담 기록 캐비닛", body: "숫자 네 개로 잠겨 있어요.", lockId: "cabinet_lock" },
+      { objectId: "cabinet", title: "상담 기록 캐비닛", body: "네 자리 숫자 자물쇠로 잠겨 있어요.", lockId: "cabinet_lock" },
     ]);
     expect(daon.inbox.views).toEqual([]);
     // Looking changes nothing.

@@ -234,7 +234,7 @@ describe("counsel room (상담실, 개인정보)", () => {
     expect(pickup(t, "cabinet")).toEqual([]);
     expect(view(t, "cabinet")?.canPickup).toBeUndefined();
     expect(view(t, "drawer_left")?.split).toBeUndefined();
-    expect(view(t, "drawer_left")?.body).toBe("서랍이 잠겨 있어요. 캐비닛 안에 열쇠가 있을지도 몰라요.");
+    expect(view(t, "drawer_left")?.body).toBe("서랍이 잠겨 있어요. 캐비닛이 열리면 서랍도 열릴 것 같아요.");
     // the safe before the board
     expect(press(t, "safe_key_left", "s1")).toEqual([]);
     expect(press(t, "safe_key_right", "s2", 300)).toEqual([]);
@@ -305,9 +305,7 @@ describe("counsel room (상담실, 개인정보)", () => {
     for (const n of notes()) {
       expect(n.inspect.reveal?.item, n.id).toBe("uv_flashlight");
       expect(n.inspect.reveal?.text, n.id).toMatch(/^숨은 숫자 \d$/);
-      // 이/가 follows the number as read aloud (2 이, 4 사, 5 오 end in a vowel → 가)
-      const particle = [2, 4, 5].includes(noteNumber(n)) ? "가" : "이";
-      expect(n.inspect.back, n.id).toBe(`쪽지 뒷면 구석에 작은 숫자 ${noteNumber(n)}${particle} 적혀 있어요.`);
+      expect(n.inspect.back, n.id).toBe(`쪽지 뒷면 구석에 '${noteNumber(n)}번'이라고 적혀 있어요.`);
       expect(n.tag === "private" || n.tag === "public", n.id).toBe(true);
     }
     // the UV text shows only while the team bag holds the UV light
@@ -331,7 +329,7 @@ describe("counsel room (상담실, 개인정보)", () => {
     expect(cover.kind === "letters" && cover.answer.map((l, i) => cover.wheels[i].indexOf(l)).join("")).toBe("1356");
   });
 
-  it("the sort answer: school news and my own drawing may be shared; a friend's details stop", () => {
+  it("the sort answer: school news and what I chose to share may go public; personal details and passwords stop", () => {
     expect(board.answer).toEqual(SORT);
     expect(board.bins).toEqual([
       { id: "ok", label: "공개해도 돼요" },
@@ -341,11 +339,11 @@ describe("counsel room (상담실, 개인정보)", () => {
       festival: "학교 축제 날짜",
       lunch: "이번 주 급식 메뉴",
       club_notice: "동아리 모집 포스터",
-      my_drawing: "내가 올리기로 한 내 그림",
+      my_drawing: "내가 공개하기로 정한 내 그림",
       phone_number: "친구 전화번호",
       address: "친구네 집 주소",
       medical: "친구의 병원 기록",
-      password: "친구의 비밀번호",
+      password: "내 비밀번호",
     });
     expect(board.needsItem).toBe("sort_cards");
   });
@@ -440,12 +438,89 @@ describe("counsel room (상담실, 개인정보)", () => {
       return typeof t === "string" ? [t] : [t.easy, t.hard];
     });
     for (const line of story) expect(line).not.toMatch(/밤|달빛|별빛|별이|달이/);
+    // the whole room stays in daytime, the notes included (fix round 1: no "밤에 몰래")
+    for (const s of allStrings(counsel)) expect(s).not.toMatch(/밤|달빛|별빛/);
     for (const level of ["easy", "hard"] as const) {
       const lines = publicContent(counsel, level).lines;
       for (const id of counsel.escapeLines) expect(lines).not.toHaveProperty(id);
       // no public text names the cover-lock word before the team finds it
       for (const s of allStrings(publicContent(counsel, level))) expect(s).not.toContain("동의");
     }
+  });
+
+  it("un-gated inspect text (titles, bodies, backs, state bodies) at both levels holds none of secretStrings(counsel)", () => {
+    const secrets = secretStrings(counsel);
+    const leaks = (texts: string[]) => texts.flatMap((x) => secrets.filter((sec) => x.includes(sec)).map((sec) => `${x} ⊃ ${sec}`));
+    for (const level of ["easy", "hard"] as const) {
+      // straight from the data: everything inspectView may show without a reveal item or a split share
+      const fromData = counsel.objects.flatMap((o) => {
+        const ins = o.inspect;
+        const out = [resolveText(ins.title, level), resolveText(ins.body, level)];
+        if (ins.back !== undefined) out.push(resolveText(ins.back, level));
+        for (const st of ins.states ?? []) out.push(resolveText(st.body, level));
+        return out;
+      });
+      expect(fromData.length).toBeGreaterThan(40);
+      expect(leaks(fromData), level).toEqual([]);
+      // and through inspectView itself, at the start and at every step of the golden path
+      const t = team(["s1", "s2"], level);
+      const seen: string[] = [];
+      const look = () => {
+        for (const o of counsel.objects) {
+          const v = view(t, o.id)!;
+          seen.push(v.title, v.body, ...(v.back === undefined ? [] : [v.back]));
+        }
+      };
+      look();
+      makeUvLight(t);
+      look();
+      input(t, "cabinet_lock", "4719");
+      submit(t, "cabinet_lock");
+      look();
+      pickup(t, "cabinet", "s2");
+      input(t, "cover_lock", "1356");
+      submit(t, "cover_lock");
+      look();
+      for (const [card, bin] of Object.entries(SORT)) place(t, card, bin);
+      submit(t, "board_lock");
+      look();
+      press(t, "safe_key_left", "s1");
+      press(t, "safe_key_right", "s2", 900);
+      look();
+      expect(t.s.phase).toBe("finale");
+      expect(leaks(seen), level).toEqual([]);
+    }
+  });
+
+  it("inspect bodies follow the puzzle: the cabinet and the safe say what is true now", () => {
+    const t = team();
+    const body = (id: string) => view(t, id)!.body;
+    expect([body("cabinet"), body("safe")]).toEqual(["네 자리 숫자 자물쇠로 잠겨 있어요.", "금고가 단단히 잠겨 있어요. 양쪽 벽에 열쇠 스위치가 하나씩 보여요."]);
+    openCabinet(t);
+    expect(body("cabinet")).toBe("캐비닛이 열렸어요. 안에 분류 카드가 들어 있어요.");
+    expect(body("drawer_left")).toBe("'비밀을 알리기 전에 꼭 지킬 것'이라고 적힌 쪽지가 있어요.");
+    pickup(t, "cabinet");
+    expect(body("cabinet")).toBe("캐비닛이 열려 있어요. 카드는 이미 꺼냈어요.");
+    input(t, "cover_lock", "1356");
+    submit(t, "cover_lock");
+    expect(body("sort_board")).toBe("카드를 알맞은 칸에 놓아요.");
+    for (const [card, bin] of Object.entries(SORT)) place(t, card, bin);
+    submit(t, "board_lock");
+    expect(body("safe")).toBe("금고 열쇠 스위치에 불이 들어왔어요! 양쪽 벽의 열쇠를 두 사람이 함께 돌려야 열려요.");
+    press(t, "safe_key_left", "s1");
+    press(t, "safe_key_right", "s2", 900);
+    expect(body("safe")).toBe("금고 안에 '아리의 마음 칩'이 있었어요.");
+    // the bandit lines along the way tell the team what just opened and what to do next
+    const line = (id: string) => resolveText(counsel.lines[id].text, "easy");
+    expect(line("cabinet_open")).toBe("캐비닛이 열렸어요! 안에 분류 카드가 있고, 양쪽 서랍도 열렸어요.");
+    expect(line("cover_open")).toBe("덮개가 열렸어요. 캐비닛에서 꺼낸 카드를 알맞은 칸에 놓아 봐요.");
+    expect(line("board_done")).toBe("철컥! 금고 열쇠 스위치에 불이 들어왔어요. 양쪽 벽의 열쇠를 함께 돌려요!");
+    expect(line("safe_open")).toBe("금고에서 '아리의 마음 칩'을 찾았어요! 이제 마지막 문에서 아리를 설득해 봐요.");
+    // note 2 asks for the counsellor only, at both levels
+    expect(obj("note_2").inspect.body).toEqual({
+      easy: "제 전화번호는 010-0000-0000이에요. 상담 선생님만 보시고 연락 주세요.",
+      hard: "제 개인 연락처(010-0000-0000)를 남깁니다. 상담 선생님께서만 확인하시고 연락 부탁드려요.",
+    });
   });
 
   it("5 stages × 3 hints; publicContent(counsel) contains none of secretStrings(counsel)", () => {
