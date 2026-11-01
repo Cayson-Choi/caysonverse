@@ -28,6 +28,13 @@ export interface BubbleEntry {
 export class BubbleRegistry {
   private readonly entries = new Map<string, BubbleEntry>();
   private counter = 0;
+  /**
+   * A lower bound on the earliest `expiresAt` in `entries` (Infinity when empty). Every
+   * avatar asks `get` once a frame, so `prune` must not walk the map each time: while
+   * `now` is still below this bound nothing can have expired. A removed or replaced entry
+   * only ever leaves the bound too LOW (one wasted walk, which recomputes it), never too high.
+   */
+  private minExpiresAt = Infinity;
 
   /** Show (or replace) `sid`'s bubble with `text`, visible from `now`. */
   set(sid: string, text: string, now: number): void {
@@ -37,6 +44,7 @@ export class BubbleRegistry {
       expiresAt: now + SPEECH_BUBBLE_MS,
       seq: ++this.counter,
     });
+    this.minExpiresAt = Math.min(this.minExpiresAt, now + SPEECH_BUBBLE_MS);
   }
 
   /** Drop `sid`'s bubble immediately (e.g. the player left). */
@@ -47,6 +55,7 @@ export class BubbleRegistry {
   /** Drop every bubble (room teardown). */
   clear(): void {
     this.entries.clear();
+    this.minExpiresAt = Infinity;
   }
 
   /** The visible bubble for `sid` at `now`, or null (expired / evicted / none). */
@@ -82,11 +91,15 @@ export class BubbleRegistry {
     return all.sort((a, b) => a.seq - b.seq).slice(all.length - MAX_VISIBLE_BUBBLES);
   }
 
-  /** Delete expired entries (visible while now < expiresAt). */
+  /** Delete expired entries (visible while now < expiresAt); a no-op until the earliest could be due. */
   private prune(now: number): void {
+    if (now < this.minExpiresAt) return;
+    let min = Infinity;
     for (const [sid, entry] of this.entries) {
       if (entry.expiresAt <= now) this.entries.delete(sid);
+      else if (entry.expiresAt < min) min = entry.expiresAt;
     }
+    this.minExpiresAt = min;
   }
 
   /** True when `entry` is among the newest MAX_VISIBLE_BUBBLES by seq. */

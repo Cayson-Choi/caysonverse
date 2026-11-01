@@ -102,10 +102,10 @@ export function RemotePlayer({
 
   // Speech bubble above this avatar, driven by the chat broadcast. Cleaned up
   // with the avatar when it unmounts (leaving player) — no leaked sprites.
-  useSpeechBubble(sessionId, groupRef, bubbleAnchor);
+  const bubbleTop = useSpeechBubble(sessionId, groupRef, bubbleAnchor);
   // Emoji reaction above this avatar, driven by the emoji broadcast. Same
-  // cleanup-with-avatar discipline as the speech bubble.
-  useEmoji(sessionId, groupRef);
+  // cleanup-with-avatar discipline as the speech bubble; it starts above the bubble.
+  useEmoji(sessionId, groupRef, bubbleAnchor, bubbleTop);
 
   // Build heavy resources ONCE. Disposed on unmount (see the cleanup effect). The
   // crown's cloned materials ride along in avatar.materials, so the existing

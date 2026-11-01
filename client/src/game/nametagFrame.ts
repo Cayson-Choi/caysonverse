@@ -60,6 +60,7 @@ import {
 } from "./labelRegistry";
 import {
   distanceFade,
+  liftMetres,
   nametagWorldHeight,
   pixelsPerMetre,
   projectPoint,
@@ -391,11 +392,12 @@ export function createNametagFrame(): NametagFrame {
           s.opacity = stepOpacity(s.opacity, target, dt);
           tag.setOpacity(s.opacity);
 
-          // The stacking target is in screen px; at this depth it is liftPx / px-per-metre.
+          // The stacking target is in screen px: a metre of height spans px-per-metre × the camera's
+          // up-axis world-Y (view[5], cos(pitch)) of them, so a camera looking down needs more metres.
           let liftTarget = 0;
           if (s.liftPx > 0) {
             const ppm = pixelsPerMetre(viewDepth(view, s.anchorX, s.headY, s.anchorZ), fov, heightPx);
-            if (ppm > 0) liftTarget = s.liftPx / ppm;
+            liftTarget = liftMetres(s.liftPx, ppm, view[5]);
           }
           s.liftM = smoothToward(s.liftM, liftTarget, dt, NAMETAG_LIFT_RATE);
           if (liftTarget === 0 && s.liftM < LIFT_REST_M && s.liftM > -LIFT_REST_M) s.liftM = 0;

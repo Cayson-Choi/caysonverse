@@ -497,8 +497,10 @@ export const BUBBLE_GAP_M = 0.06;
 export const EMOJI_SPRITE_HEIGHT = 0.5;
 
 /**
- * World height (m) at which the emoji sprite sits BEFORE the float animation's
- * rise is added — slightly above the speech bubble's anchor (BUBBLE_BASE_HEIGHT)
- * so a reaction and a bubble can be visible at once without overlapping.
+ * DEFAULT world height (m) of the emoji sprite's centre BEFORE the float animation's rise
+ * is added — slightly above the speech bubble's default anchor (BUBBLE_BASE_HEIGHT). It is
+ * only the floor: emojiBaseHeight (emojiFloat.ts) starts the glyph above the avatar's real
+ * speech bubble when one is up, and above a tall or stacked name tag, so a reaction and a
+ * bubble can be visible at once without overlapping however far the bubble was lifted.
  */
 export const EMOJI_BASE_HEIGHT = BUBBLE_BASE_HEIGHT + 0.4;

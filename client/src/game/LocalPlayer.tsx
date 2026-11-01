@@ -127,7 +127,7 @@ export function LocalPlayer({
   // "내 이름표 보기" is on (like a remote's bubble), and it stays at BUBBLE_BASE_HEIGHT
   // (2.5 m) otherwise, when no tag exists.
   const bubbleAnchor = useRef({ y: BUBBLE_BASE_HEIGHT }).current;
-  useSpeechBubble(sessionId, groupRef, bubbleAnchor);
+  const bubbleTop = useSpeechBubble(sessionId, groupRef, bubbleAnchor);
 
   // Own name tag — off by default; the player turns it on in the menu. Same create /
   // register / release pair as a remote avatar's (RemotePlayer), so the NametagSystem
@@ -157,8 +157,8 @@ export function LocalPlayer({
       bubbleAnchor.y = BUBBLE_BASE_HEIGHT; // no tag any more: the bubble drops back to its default height
     };
   }, [showOwnNametag, sessionId, nickname, isAdmin, bubbleAnchor]);
-  // Own emoji reaction: same broadcast-driven, self-included discipline.
-  useEmoji(sessionId, groupRef);
+  // Own emoji reaction: same broadcast-driven, self-included discipline; it starts above the own bubble.
+  useEmoji(sessionId, groupRef, bubbleAnchor, bubbleTop);
 
   // Clone the skinned hierarchy (independent skeleton), tint cloned materials, and
   // (for royals) hide accessories + attach the crown — ONCE per character/tint via

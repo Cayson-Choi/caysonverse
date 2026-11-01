@@ -13,6 +13,11 @@
  * group), re-read every frame — the NametagSystem keeps it just above the avatar's
  * nametag, however tall or lifted that is (Task 14). Without an anchor (the local
  * player, who has no tag) it sits at BUBBLE_BASE_HEIGHT.
+ *
+ * Returns a stable ref holding the TOP edge of the bubble that is up right now (m above the
+ * group; null when none), rewritten every frame — the avatar's emoji reaction starts above
+ * it (useEmoji) so the two never draw over each other. Call this hook BEFORE useEmoji: both
+ * run in the same frame, in registration order.
  */
 
 import { useEffect, useRef, type RefObject } from "react";
@@ -22,12 +27,18 @@ import { bubbleRegistry } from "./bubbleRegistry";
 import { createBubbleSprite, type BubbleSprite } from "./bubbleSprite";
 import { BUBBLE_BASE_HEIGHT } from "./constants";
 
+/** Where the bubble currently up ends (see useSpeechBubble). */
+export interface BubbleTop {
+  topY: number | null;
+}
+
 export function useSpeechBubble(
   sessionId: string,
   groupRef: RefObject<Group | null>,
   anchor?: { y: number },
-): void {
+): BubbleTop {
   const stateRef = useRef<{ seq: number; bubble: BubbleSprite | null }>({ seq: -1, bubble: null });
+  const top = useRef<BubbleTop>({ topY: null }).current;
 
   function detach(): void {
     const s = stateRef.current;
@@ -48,6 +59,7 @@ export function useSpeechBubble(
 
     if (!entry) {
       if (s.bubble) detach();
+      top.topY = null;
       return;
     }
     // (Re)build only when the active message actually changed.
@@ -59,12 +71,15 @@ export function useSpeechBubble(
       s.seq = entry.seq;
     }
     // Sprites are centre-origin: the bottom edge at anchor.y puts the centre half a bubble higher.
-    s.bubble.sprite.position.y = (anchor?.y ?? BUBBLE_BASE_HEIGHT) + s.bubble.heightM / 2;
+    const bottomY = anchor?.y ?? BUBBLE_BASE_HEIGHT;
+    s.bubble.sprite.position.y = bottomY + s.bubble.heightM / 2;
+    top.topY = bottomY + s.bubble.heightM;
   });
 
   useEffect(() => {
     return () => {
       detach();
+      top.topY = null;
       // Avatar left/unmounted: drop any lingering entry so a reused sid can't
       // inherit a stale bubble.
       bubbleRegistry.remove(sessionId);
@@ -72,4 +87,6 @@ export function useSpeechBubble(
     // detach reads only refs; sessionId identifies the entry to clean up.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);
+
+  return top;
 }

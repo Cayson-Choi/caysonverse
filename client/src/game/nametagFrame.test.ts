@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { Group, PerspectiveCamera, Sprite } from "three";
+import { Group, PerspectiveCamera, Sprite, Vector3 } from "three";
 import { SPEECH_BUBBLE_MS, TYPING_TTL_MS } from "@caysonverse/shared/constants";
 import { bubbleRegistry } from "./bubbleRegistry";
 import {
   BUBBLE_GAP_M,
+  DECLUTTER,
   NAMETAG_BASE_HEIGHT_M,
   NAMETAG_CAP,
   NAMETAG_HEIGHT,
@@ -365,6 +366,38 @@ describe("stacking", () => {
     run(13); // a 5 Hz tick has certainly run, but the smoothing has not finished
     expect(farther.tag.offsetM).toBeGreaterThan(0);
     expect(farther.tag.offsetM).toBeLessThan(settled * 0.999);
+  });
+});
+
+describe("stacking under a pitched camera", () => {
+  /** Screen y (px, down) of the world point (x, y, z) through `camera`. */
+  function screenY(camera: PerspectiveCamera, x: number, y: number, z: number): number {
+    const p = new Vector3(x, y, z).project(camera);
+    return (0.5 - p.y / 2) * H;
+  }
+
+  it("lifts the farther tag by its stacking step in SCREEN px even when the camera looks steeply down", () => {
+    // 59 degrees down from 12 m up: the camera's up axis has world-Y of only ~0.5, so a lift
+    // computed as px / pixelsPerMetre would move the tag half as far on screen as asked.
+    cam.position.set(8, 12, 8);
+    cam.lookAt(8, 2, 2);
+    cam.updateMatrixWorld();
+    expect(cam.matrixWorld.elements[5]).toBeLessThan(0.6);
+
+    addAvatar("nearer", 8, 2);
+    const farther = addAvatar("farther", 8.1, 1.6);
+    run(120);
+    expect(farther.tag.offsetM).toBeGreaterThan(0.05);
+
+    const e = cam.matrixWorld.elements;
+    const depth = viewDepth(e, 8.1, NAMETAG_HEIGHT + farther.tag.offsetM, 1.6);
+    const ppm = pixelsPerMetre(depth, FOV_RAD, H);
+    const tagPx = farther.tag.sprite.scale.y * ppm;
+    const shiftPx =
+      screenY(cam, 8.1, NAMETAG_HEIGHT, 1.6) - screenY(cam, 8.1, NAMETAG_HEIGHT + farther.tag.offsetM, 1.6);
+    const steps = shiftPx / (tagPx + DECLUTTER.gapPx);
+    expect(Math.abs(steps - Math.round(steps)), `steps ${steps}`).toBeLessThan(0.12);
+    expect(Math.round(steps)).toBeGreaterThanOrEqual(1);
   });
 });
 

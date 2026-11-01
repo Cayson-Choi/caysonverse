@@ -21,8 +21,12 @@ const FONT = `${Math.round(CANVAS_PX * 0.78)}px "Segoe UI Emoji", "Apple Color E
 
 export interface EmojiSpriteHandle {
   sprite: Sprite;
-  /** Apply this frame's float-animation state: rise (m, added above the base height) and opacity. */
-  setProgress(offsetY: number, opacity: number): void;
+  /**
+   * Apply this frame's float-animation state: rise (m, added above the base height) and
+   * opacity. `baseY` is where the rise starts (default EMOJI_BASE_HEIGHT; the avatar's hook
+   * passes a height clear of its name tag and speech bubble, see emojiBaseHeight).
+   */
+  setProgress(offsetY: number, opacity: number, baseY?: number): void;
   dispose(): void;
 }
 
@@ -48,8 +52,8 @@ export function createEmojiSprite(glyph: string): EmojiSpriteHandle {
 
   return {
     sprite,
-    setProgress(offsetY, opacity) {
-      sprite.position.y = EMOJI_BASE_HEIGHT + offsetY;
+    setProgress(offsetY, opacity, baseY = EMOJI_BASE_HEIGHT) {
+      sprite.position.y = baseY + offsetY;
       material.opacity = opacity;
     },
     dispose() {

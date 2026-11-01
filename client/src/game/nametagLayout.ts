@@ -89,6 +89,24 @@ export function pixelsPerMetre(depthM: number, fovRad: number, viewportHpx: numb
 }
 
 /**
+ * The smallest world-Y of the camera's up axis the stacking lift divides by. Looking
+ * straight down it tends to 0 and the world height needed for a screen-px lift to infinity;
+ * below this the lift is capped (a tag 4× as high as on a level view, not out of the sky).
+ */
+export const MIN_CAMERA_UP_Y = 0.25;
+
+/**
+ * A stacking lift of `liftPx` screen pixels as world metres of height: a metre straight
+ * up spans `ppm` (pixelsPerMetre) × `cameraUpY` pixels on screen, where `cameraUpY` is
+ * the world-Y component of the camera's up axis (`matrixWorld.elements[5]`: 1 on a level
+ * view, cos(pitch) when it looks down). 0 for a degenerate scale, so callers need no guard.
+ */
+export function liftMetres(liftPx: number, ppm: number, cameraUpY: number): number {
+  if (!(ppm > 0) || !Number.isFinite(ppm)) return 0;
+  return liftPx / (ppm * Math.max(cameraUpY, MIN_CAMERA_UP_Y));
+}
+
+/**
  * Project the world point (x, y, z) through `m` — the camera's projection × view matrix
  * (`elements`, column-major) — into normalized device coordinates, written to `out`
  * (x right, y up, both −1..1 across the screen). Returns whether the point is in front of

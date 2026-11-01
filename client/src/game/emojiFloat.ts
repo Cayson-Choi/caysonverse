@@ -12,6 +12,7 @@
  */
 
 import { EMOJI_DISPLAY_MS } from "@caysonverse/shared/constants";
+import { BUBBLE_GAP_M, EMOJI_BASE_HEIGHT, EMOJI_SPRITE_HEIGHT } from "./constants";
 
 /** Total upward travel (m) over the animation's lifetime. */
 export const EMOJI_RISE_M = 0.8;
@@ -28,6 +29,22 @@ export interface EmojiProgress {
 
 function clamp01(v: number): number {
   return v < 0 ? 0 : v > 1 ? 1 : v;
+}
+
+/**
+ * Height (m above the avatar's group) of the emoji sprite's CENTRE before the rise is added.
+ * `anchorY` is the avatar's bubble anchor (the bottom edge of its speech bubble, just above
+ * its name tag — it moves with stacking, jumps and distance); `bubbleTopY` is the top edge of
+ * the speech bubble when one is up, else null.
+ *  - bubble up: just above its top edge, so a reaction and a bubble never overlap however
+ *    tall or lifted the bubble is;
+ *  - no bubble: the default EMOJI_BASE_HEIGHT, raised only if the tag reaches above it
+ *    (a far, tall or stacked tag), so the glyph is never drawn over the tag.
+ */
+export function emojiBaseHeight(anchorY: number, bubbleTopY: number | null): number {
+  const half = EMOJI_SPRITE_HEIGHT / 2;
+  if (bubbleTopY !== null) return bubbleTopY + BUBBLE_GAP_M + half;
+  return Math.max(EMOJI_BASE_HEIGHT, anchorY + BUBBLE_GAP_M + half);
 }
 
 /** Animation state at `elapsedMs` since the emoji started showing. */

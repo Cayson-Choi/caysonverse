@@ -11,7 +11,9 @@ import {
 } from "./constants";
 import { Matrix4, PerspectiveCamera, Vector3 } from "three";
 import {
+  MIN_CAMERA_UP_Y,
   distanceFade,
+  liftMetres,
   nametagWorldHeight,
   pixelsPerMetre,
   projectPoint,
@@ -262,5 +264,31 @@ describe("projectPoint", () => {
     out.y = 8;
     projectPoint(m, 0, 3, 20, 0, out);
     expect([out.x, out.y]).toEqual([7, 8]);
+  });
+});
+
+describe("liftMetres — a stacking lift in screen px, back in world metres", () => {
+  it("level camera (up axis straight up): px / pixelsPerMetre", () => {
+    expect(liftMetres(30, 100, 1)).toBeCloseTo(0.3, 9);
+  });
+
+  it("a pitched camera needs MORE world height for the same screen px (a metre only spans up.y of it)", () => {
+    // Looking 60 degrees down: the camera's up axis has world-Y of cos(60) = 0.5.
+    expect(liftMetres(30, 100, 0.5)).toBeCloseTo(0.6, 9);
+    expect(liftMetres(30, 100, 0.5)).toBeGreaterThan(liftMetres(30, 100, 1));
+  });
+
+  it("is clamped at MIN_CAMERA_UP_Y so a near-vertical view cannot fling a tag into the sky", () => {
+    expect(MIN_CAMERA_UP_Y).toBe(0.25);
+    expect(liftMetres(30, 100, 0)).toBeCloseTo(30 / (100 * MIN_CAMERA_UP_Y), 9);
+    expect(liftMetres(30, 100, -0.7)).toBeCloseTo(30 / (100 * MIN_CAMERA_UP_Y), 9);
+    expect(liftMetres(30, 100, 0.1)).toBeCloseTo(30 / (100 * MIN_CAMERA_UP_Y), 9);
+    expect(liftMetres(30, 100, 0.25)).toBeCloseTo(30 / (100 * MIN_CAMERA_UP_Y), 9);
+  });
+
+  it("zero lift stays zero and a degenerate scale (ppm 0 / NaN) gives no lift instead of Infinity", () => {
+    expect(liftMetres(0, 100, 0.5)).toBe(0);
+    expect(liftMetres(30, 0, 1)).toBe(0);
+    expect(liftMetres(30, NaN, 1)).toBe(0);
   });
 });
