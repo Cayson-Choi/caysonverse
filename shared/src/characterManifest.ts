@@ -274,3 +274,6 @@ export const CHARACTER_SLOTS: readonly CharacterSlot[] = Object.keys(CHARACTER_M
 
 /** 모든 아바타가 쓰는 공통 몸 메시. */
 export const BODY_MESHES = ["body__head", "body__hands", "body__torso", "body__legs", "body__feet"] as const;
+
+/** character.glb 내용의 sha256 앞 8자리. 클라이언트가 모델 URL에 ?v=로 붙인다(새 GLB를 배포하면 URL이 바뀐다). */
+export const CHARACTER_GLB_HASH = "85dae890";

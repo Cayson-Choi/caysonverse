@@ -1,10 +1,11 @@
+import { createHash } from "node:crypto";
 import { readFileSync, statSync } from "node:fs";
-import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, it, expect } from "vitest";
-import { BODY_MESHES, CHARACTER_MANIFEST, CHARACTER_SLOTS } from "./characterManifest";
+import { BODY_MESHES, CHARACTER_GLB_HASH, CHARACTER_MANIFEST, CHARACTER_SLOTS } from "./characterManifest";
 
-// 테스트는 shared/ 에서 실행되므로 client/public 은 한 단계 위에서 찾는다.
-const GLB = resolve(process.cwd(), "../client/public/models/character.glb");
+// 이 파일(shared/src) 기준으로 찾는다: 어느 폴더에서 vitest를 돌려도 같은 GLB를 읽는다.
+const GLB = fileURLToPath(new URL("../../client/public/models/character.glb", import.meta.url));
 
 interface GltfNode {
   name?: string;
@@ -47,6 +48,14 @@ const BASE_CLIPS = ["Idle", "Walking_A", "Running_A", "Sit_Chair_Down", "Sit_Cha
 const PART_NODE = /^(body|hat|hair|face|top|bottom|shoes|item)__/;
 
 describe("character manifest ↔ character.glb", () => {
+  it("carries the GLB's content hash (sha256, first 8 hex) for the versioned model URL", () => {
+    // The client loads /models/character.glb?v=CHARACTER_GLB_HASH; a GLB copied in without re-running
+    // scripts/sync-character-assets.mjs would keep the old URL and let browsers serve the old cached model.
+    const sha = createHash("sha256").update(readFileSync(GLB)).digest("hex");
+    expect(CHARACTER_GLB_HASH).toMatch(/^[0-9a-f]{8}$/);
+    expect(CHARACTER_GLB_HASH).toBe(sha.slice(0, 8));
+  });
+
   it("ships every manifest part, hat variant, npcOnly part and body mesh as a mesh node", () => {
     expect(BODY_MESHES).toEqual(["body__head", "body__hands", "body__torso", "body__legs", "body__feet"]);
 
