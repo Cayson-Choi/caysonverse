@@ -23,6 +23,7 @@ import { Vector3, type Camera } from "three";
 import type { Appearance } from "@caysonverse/shared/appearance";
 import { clipFor, lookFromAppearance, lookKey, type AvatarLook } from "../game/characterLook";
 import { CHARACTER_MODEL_URL, avatarProbe, reportAvatarClip, useAvatar } from "../game/useAvatar";
+import { MODEL_RETRY_DELAYS_MS, characterModel, isModelLoadError } from "../game/characterModel";
 import { BlobShadow } from "../game/BlobShadow";
 import { CLIP } from "../game/constants";
 import {
@@ -239,26 +240,63 @@ function PreviewThumbs() {
   return null;
 }
 
+/** 미리보기가 무너진 이유: 모델을 못 받아 다시 받는 중 | 다시 받기를 다 해 봐도 못 받음 | 그 밖(WebGL 등). */
+type PreviewFailure = "modelRetrying" | "modelFailed" | "other";
+
+interface BoundaryState {
+  failed: boolean;
+  loadError: boolean;
+  /** 이 외형(resetKey)에서 모델을 다시 받아 본 횟수. */
+  retries: number;
+}
+
 /**
  * WebGL이 없거나 모델을 못 받아도 입장 화면 전체가 무너지지 않게, 미리보기만 대체 문구로 바꾼다.
- * 외형(resetKey)이 바뀌면 다시 해 본다. 모델을 못 받은 실패였으면 캐시된 오류를 지우고 다시 받는다.
+ * 모델을 못 받은 실패는 로더 캐시에 오류로 남아 그대로 두면 다시 받지 않는다(characterModel.ts). 그래서 잡으면
+ * MODEL_RETRY_DELAYS_MS 간격으로 그 실패를 지우고 다시 받아 본다(최대 3번). 그래도 안 되면 대체 문구를 두고,
+ * 입장하기가 한 번 더 받아 본다(EntryScreen). 외형이나 resetKey가 바뀌면 횟수를 처음부터 센다.
  */
 class PreviewBoundary extends Component<
-  { fallback: ReactNode; children: ReactNode; resetKey: string },
-  { failed: boolean; loadError: boolean }
+  { fallback: (failure: PreviewFailure) => ReactNode; children: ReactNode; resetKey: string },
+  BoundaryState
 > {
-  state = { failed: false, loadError: false };
-  static getDerivedStateFromError(error: unknown): { failed: boolean; loadError: boolean } {
-    return { failed: true, loadError: String(error).includes(CHARACTER_MODEL_URL) };
+  state: BoundaryState = { failed: false, loadError: false, retries: 0 };
+  private retryTimer: ReturnType<typeof setTimeout> | undefined;
+
+  static getDerivedStateFromError(error: unknown): Partial<BoundaryState> {
+    return { failed: true, loadError: isModelLoadError(error, CHARACTER_MODEL_URL) };
+  }
+  componentDidCatch() {
+    clearTimeout(this.retryTimer);
+    const delay = MODEL_RETRY_DELAYS_MS[this.state.retries];
+    if (!this.state.loadError || delay === undefined) return;
+    this.retryTimer = setTimeout(() => {
+      characterModel.retry();
+      this.setState((s) => ({ failed: false, loadError: false, retries: s.retries + 1 }));
+    }, delay);
   }
   componentDidUpdate(prev: { resetKey: string }) {
-    if (!this.state.failed || prev.resetKey === this.props.resetKey) return;
-    if (this.state.loadError) useGLTF.clear(CHARACTER_MODEL_URL);
-    this.setState({ failed: false, loadError: false });
+    if (prev.resetKey === this.props.resetKey) return;
+    clearTimeout(this.retryTimer);
+    if (this.state.loadError) characterModel.retry();
+    if (this.state.failed || this.state.retries > 0) this.setState({ failed: false, loadError: false, retries: 0 });
+  }
+  componentWillUnmount() {
+    clearTimeout(this.retryTimer);
   }
   render() {
-    return this.state.failed ? this.props.fallback : this.props.children;
+    if (!this.state.failed) return this.props.children;
+    if (!this.state.loadError) return this.props.fallback("other");
+    return this.props.fallback(MODEL_RETRY_DELAYS_MS[this.state.retries] === undefined ? "modelFailed" : "modelRetrying");
   }
+}
+
+function previewFallback(failure: PreviewFailure): ReactNode {
+  return (
+    <p className="cv-builder-hint is-failed" data-failure={failure} role="status">
+      {BUILDER_COPY[failure === "other" ? "failed" : failure]}
+    </p>
+  );
 }
 
 function prefersReducedMotion(): boolean {
@@ -274,10 +312,13 @@ export function BuilderPreview({
   appearance,
   spin = 0,
   scrollerRef,
+  modelReloads = 0,
 }: {
   appearance: Appearance;
   spin?: number;
   scrollerRef?: RefObject<HTMLElement | null>;
+  /** 입장하기가 모델을 다시 받아 볼 때마다 늘어난다: 무너진 미리보기도 다시 해 본다. */
+  modelReloads?: number;
 }) {
   const look = useMemo(() => lookFromAppearance(appearance), [appearance]);
   const key = lookKey(look);
@@ -405,7 +446,7 @@ export function BuilderPreview({
       onPointerUp={endDrag}
       onPointerCancel={endDrag}
     >
-      <PreviewBoundary resetKey={key} fallback={<p className="cv-builder-hint is-failed">{BUILDER_COPY.failed}</p>}>
+      <PreviewBoundary resetKey={`${key}#${modelReloads}`} fallback={previewFallback}>
         <div className="cv-builder-stage">
           <Canvas dpr={PREVIEW_DPR} frameloop={onScreen ? "always" : "never"} camera={PREVIEW_CAMERA_OPTIONS}>
             <hemisphereLight args={HEMI_LIGHT} />

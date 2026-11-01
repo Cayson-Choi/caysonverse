@@ -1,0 +1,55 @@
+/* App-wide error screen (AppErrorBoundary): replaces a blank page with a refresh prompt. Bright like the builder. */
+.cv-crash {
+  position: fixed;
+  inset: 0;
+  z-index: 110; /* above the reconnection overlay */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  font-family: "Pretendard", system-ui, -apple-system, "Segoe UI", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  background: linear-gradient(180deg, #e9f2ff 0%, #f3efea 100%);
+  color-scheme: light;
+}
+
+.cv-crash-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  max-width: 420px;
+  padding: 28px 24px;
+  text-align: center;
+  color: #1b1640;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(75, 79, 216, 0.18);
+  border-radius: 20px;
+  box-shadow: 0 18px 50px rgba(27, 22, 64, 0.14);
+}
+
+.cv-crash-text {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.5;
+  word-break: keep-all;
+}
+
+.cv-crash-reload {
+  min-width: 160px;
+  min-height: 48px;
+  padding: 0 24px;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 700;
+  color: #ffffff;
+  background: linear-gradient(135deg, #4b4fd8, #8b5cf6);
+  border: 0;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.cv-crash-reload:focus-visible {
+  outline: 3px solid #8b5cf6;
+  outline-offset: 3px;
+}
