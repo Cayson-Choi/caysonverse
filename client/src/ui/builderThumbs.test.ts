@@ -1,5 +1,19 @@
 import { describe, expect, it, vi } from "vitest";
-import { BoxGeometry, Color, Group, Mesh, MeshStandardMaterial, Vector2, Vector4, type Material, type Object3D, type WebGLRenderer } from "three";
+import {
+  BoxGeometry,
+  BufferGeometry,
+  Color,
+  Group,
+  Material,
+  Mesh,
+  MeshStandardMaterial,
+  Vector2,
+  Vector4,
+  WebGLRenderTarget,
+  type Object3D,
+  type Scene,
+  type WebGLRenderer,
+} from "three";
 import {
   APPEARANCE_PRESETS,
   CLOTHES_PALETTE,
@@ -392,7 +406,8 @@ describe("builderThumbs — the studio never draws on the screen", () => {
   it("draws card pictures only into its own render targets and gives the renderer back as it was", async () => {
     const studio = new ThumbStudio({ scene: capScene(), animations: [] });
     const { gl, log, target, autoClear } = fakeRenderer();
-    // A minimal 2D canvas so the encoding step can run without a DOM.
+    // A minimal 2D canvas so the encoding step can run without a DOM. Unstubbed in finally: a failed assertion must
+    // not leave the fake document behind for the next test.
     vi.stubGlobal("document", {
       createElement: () => ({
         width: 0,
@@ -401,20 +416,54 @@ describe("builderThumbs — the studio never draws on the screen", () => {
         toBlob: (done: (b: null) => void) => done(null),
       }),
     });
-    expect(studio.prepare(gl)).toBe(false); // compiling
-    await Promise.resolve();
-    expect(studio.prepare(gl)).toBe(true);
-    const job = thumbJobs(DEFAULT_APPEARANCE, "hat").find((j) => j.kind === "chip" && j.part === "cap")!;
-    const shot = studio.shoot(gl, job);
-    expect(shot).not.toBeNull();
-    await shot; // the stub canvas encodes nothing: null, no throw
-    expect(log.filter((l) => /SCREEN|setViewport|setScissor/.test(l))).toEqual([]);
-    expect(log.filter((l) => l.startsWith("render on"))).toEqual(["render on target", "render on target"]); // scene, output pass
-    expect(log).toContain("read target");
-    expect(target()).toBeNull(); // the previous (screen) target is bound again
-    expect(autoClear()).toBe(true);
-    expect(log.filter((l) => l.startsWith("setClearColor")).pop()).toBe("setClearColor 0.25");
-    studio.release();
-    vi.unstubAllGlobals();
+    try {
+      expect(studio.prepare(gl)).toBe(false); // compiling
+      await Promise.resolve();
+      expect(studio.prepare(gl)).toBe(true);
+      const job = thumbJobs(DEFAULT_APPEARANCE, "hat").find((j) => j.kind === "chip" && j.part === "cap")!;
+      const shot = studio.shoot(gl, job);
+      expect(shot).not.toBeNull();
+      await shot; // the stub canvas encodes nothing: null, no throw
+      expect(log.filter((l) => /SCREEN|setViewport|setScissor/.test(l))).toEqual([]);
+      expect(log.filter((l) => l.startsWith("render on"))).toEqual(["render on target", "render on target"]); // scene, output pass
+      expect(log).toContain("read target");
+      expect(target()).toBeNull(); // the previous (screen) target is bound again
+      expect(autoClear()).toBe(true);
+      expect(log.filter((l) => l.startsWith("setClearColor")).pop()).toBe("setClearColor 0.25");
+    } finally {
+      studio.release();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("frees everything it made when compiling throws (drawThumbFrame then calls release)", () => {
+    const studio = new ThumbStudio({ scene: capScene(), animations: [] });
+    const { gl, target } = fakeRenderer();
+    let compiles = 0;
+    (gl as unknown as { compile: () => never }).compile = () => {
+      compiles++;
+      throw new Error("context lost");
+    };
+    const studioScene = (studio as unknown as { scene: Scene }).scene;
+    const lights = studioScene.children.length;
+    const targetDispose = vi.spyOn(WebGLRenderTarget.prototype, "dispose");
+    const materialDispose = vi.spyOn(Material.prototype, "dispose");
+    const geometryDispose = vi.spyOn(BufferGeometry.prototype, "dispose");
+    try {
+      expect(() => studio.prepare(gl)).toThrow("context lost");
+      expect(compiles).toBe(1);
+      expect(target()).toBeNull(); // the screen target is bound again even though compile threw
+      expect(studioScene.children.length).toBe(lights + 1); // the posed figure was already added
+
+      studio.release();
+      expect(studioScene.children.length).toBe(lights); // the figure is gone again
+      expect(targetDispose).toHaveBeenCalledTimes(2); // scene + output render targets
+      expect(materialDispose).toHaveBeenCalledTimes(2); // the cloned cap material + the output pass
+      expect(geometryDispose).toHaveBeenCalledTimes(1); // the output quad
+    } finally {
+      targetDispose.mockRestore();
+      materialDispose.mockRestore();
+      geometryDispose.mockRestore();
+    }
   });
 });
