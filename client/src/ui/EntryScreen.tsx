@@ -1,19 +1,26 @@
 import { useState } from "react";
 import { APP_NAME } from "@caysonverse/shared/constants";
+import type { Appearance } from "@caysonverse/shared/appearance";
 import { primeChatAudio } from "../game/chatVoice";
 import { preloadCharacterAssets } from "../game/useAvatar";
 import { validateEntry } from "./validation";
+import { BuilderPreview } from "./BuilderPreview";
+import { BuilderPanel } from "./BuilderPanel";
+import { BUILDER_COPY } from "./builderOptions";
 import { joinWorld } from "../net/connection";
 import { clearKicked } from "../net/kickSeam";
 import { rememberAdminCode, forgetAdminCode } from "../net/adminSession";
 import { loadIdentity, saveIdentity } from "../net/identityCache";
 import { useAppStore } from "../stores/appStore";
 import "./entry.css";
+import "./builder.css";
 
 /**
- * Entry screen. TEMPORARY state (character stage 3, Task 6): the saved appearance
- * (or the default look) is sent as-is — the character builder replaces this form's
- * body in Task 7. The old preset grid, tint swatches and royal notice are gone.
+ * Entry screen with the character builder ("캐릭터 조립실", character stage 3):
+ * app title → nickname → builder (3D preview | presets, slot chips, colours, voice)
+ * → admin → message → submit. The last look (localStorage "cv.entry") is loaded on
+ * open and saved only on 입장 — never on every edit. Entering the world unmounts
+ * this screen, and with it the preview's WebGL canvas and its render loop.
  */
 export function EntryScreen() {
   const enterWorld = useAppStore((s) => s.enterWorld);
@@ -22,9 +29,9 @@ export function EntryScreen() {
 
   const [saved] = useState(loadIdentity);
   const [nickname, setNickname] = useState(saved.nickname);
-  // The look this entry sends: the cached one, or DEFAULT_APPEARANCE (loadIdentity
-  // migrates a pre-builder or corrupt cache). Task 7's builder edits it.
-  const [appearance] = useState(saved.appearance);
+  // The look being built: starts from the cached one, or DEFAULT_APPEARANCE
+  // (loadIdentity migrates a pre-builder or corrupt cache).
+  const [appearance, setAppearance] = useState(saved.appearance);
   const [showAdmin, setShowAdmin] = useState(false);
   const [adminCode, setAdminCode] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -34,6 +41,12 @@ export function EntryScreen() {
   function dismissMessages() {
     if (error) setError(null);
     if (notice) clearNotice();
+  }
+
+  // Every builder edit (preset, 🎲, chip, swatch, voice) replaces the whole look.
+  function changeAppearance(next: Appearance) {
+    setAppearance(next);
+    dismissMessages();
   }
 
   async function handleSubmit(event: React.FormEvent) {
@@ -54,8 +67,8 @@ export function EntryScreen() {
     setError(null);
     clearNotice();
     setSubmitting(true);
-    // Cache the identity so a reconnect after a server restart can silently
-    // re-join with the same nickname and appearance.
+    // Remember the last look for the next visit (spec §4 "마지막 외형 기억") — saved
+    // here on 입장 only, not on every builder edit.
     saveIdentity(result.value);
 
     // A deliberate manual entry clears any prior kick block (Task 11 seam).
@@ -111,6 +124,16 @@ export function EntryScreen() {
             }}
           />
         </label>
+
+        <section className="cv-builder-section" aria-labelledby="cv-builder-title">
+          <h2 className="cv-builder-title" id="cv-builder-title">
+            <img src="/brand/cayson-logo-white.png" alt="Cayson" height="28" /> {BUILDER_COPY.title}
+          </h2>
+          <div className="cv-builder">
+            <BuilderPreview appearance={appearance} />
+            <BuilderPanel appearance={appearance} onChange={changeAppearance} />
+          </div>
+        </section>
 
         <div className="cv-admin-toggle">
           {showAdmin ? (

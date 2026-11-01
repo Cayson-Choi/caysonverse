@@ -1,13 +1,21 @@
 /* Entry screen — cosmic navy -> violet backdrop with a centered glass card.
    Plain CSS (no UI framework), Korean-facing copy. */
 
+/* `.cv-entry` is the scroller (not the page). A card taller than the screen
+   starts at the TOP (the card's auto block margins only centre it when it fits),
+   so its top is never clipped; sticky children stick to this scroller. */
 .cv-entry {
+  /* Bottom padding of the scroller = the gap under the sticky 입장 (sticky offsets
+     are measured inside it), so the button's fade reaches exactly the screen edge. */
+  --cv-entry-pad-bottom: 24px;
   position: fixed;
   inset: 0;
   display: grid;
-  place-items: center;
-  padding: 24px;
+  justify-items: center;
+  align-items: start;
+  padding: 24px 24px var(--cv-entry-pad-bottom);
   overflow: auto;
+  overscroll-behavior: contain;
   background:
     radial-gradient(1100px 700px at 20% -10%, #3a2a6b 0%, transparent 55%),
     radial-gradient(900px 600px at 100% 110%, #4b2a72 0%, transparent 50%),
@@ -19,11 +27,13 @@
 }
 
 .cv-card {
-  width: min(420px, 100%);
+  width: min(920px, 100%);
+  min-width: 0;
+  margin-block: auto;
   display: flex;
   flex-direction: column;
-  gap: 20px;
-  padding: 32px 28px;
+  gap: 18px;
+  padding: 28px;
   border-radius: 20px;
   background: rgba(20, 17, 46, 0.72);
   border: 1px solid rgba(150, 132, 235, 0.24);
@@ -97,88 +107,21 @@
   box-shadow: 0 0 0 3px rgba(143, 123, 255, 0.22);
 }
 
-/* 8 presets (4 base + 4 royals) → a 4×2 grid; stays 4-wide at 390 px. */
-.cv-characters {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 8px;
-}
-
-.cv-character {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 44px; /* touch target floor (mobile ≥44 px) */
-  padding: 10px 4px;
-  border-radius: 12px;
-  border: 1px solid rgba(150, 132, 235, 0.24);
-  background: rgba(9, 8, 24, 0.5);
-  color: #d7d3f5;
-  font-size: 13.5px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: border-color 0.15s ease, background 0.15s ease, transform 0.08s ease;
-}
-.cv-character:hover {
-  border-color: rgba(150, 132, 235, 0.5);
-}
-.cv-character:active {
-  transform: translateY(1px);
-}
-.cv-character.is-selected {
-  border-color: #a68bff;
-  background: rgba(120, 96, 224, 0.32);
-  color: #ffffff;
-}
-
-.cv-swatches {
-  display: grid;
-  grid-template-columns: repeat(8, 1fr);
-  gap: 8px;
-}
-
-.cv-swatch {
-  aspect-ratio: 1;
-  border-radius: 50%;
-  border: 2px solid rgba(255, 255, 255, 0.14);
-  cursor: pointer;
-  padding: 0;
-  transition: transform 0.08s ease, box-shadow 0.15s ease, border-color 0.15s ease;
-}
-.cv-swatch:hover {
-  transform: scale(1.08);
-}
-.cv-swatch.is-selected {
-  border-color: #ffffff;
-  box-shadow: 0 0 0 3px rgba(166, 139, 255, 0.55);
-}
-
-/* Royal presets wear a fixed palette — swatches gray out (v2 Task 13). */
-.cv-swatch:disabled {
-  opacity: 0.35;
-  filter: saturate(0.25);
-  cursor: default;
-}
-.cv-swatch:disabled:hover {
-  transform: none;
-}
-
-.cv-swatch-note {
-  margin: 8px 0 0;
-  font-size: 12px;
-  color: #8f88c2;
-}
-
-/* Admin code: a low-key toggle link that reveals a password field. */
+/* Admin code: a low-key toggle link that reveals a password field. The link
+   looks like text but keeps a 44 px touch target (the entry screen's floor). */
 .cv-admin-toggle {
   display: flex;
   flex-direction: column;
-  margin-top: -6px;
+  margin-block: -10px -6px;
 }
 
 .cv-admin-link {
   align-self: flex-start;
-  padding: 2px 0;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0;
   border: 0;
   background: transparent;
   color: #8f88c2;
@@ -192,27 +135,65 @@
   color: #b9a8ff;
 }
 
+/* The card can be taller than the screen (the builder), so 입장 and the message
+   right above it stick to the bottom of the `.cv-entry` scroller: the button is
+   always within reach and a kick/disconnect notice is never below the fold. They
+   only "float" while their natural spot is off screen. */
+.cv-card {
+  --cv-submit-h: 50px;
+}
+
 .cv-message {
+  position: sticky;
+  bottom: calc(var(--cv-submit-h) + 8px);
+  z-index: 3;
   margin: -2px 0 0;
   padding: 10px 12px;
   border-radius: 10px;
-  background: rgba(255, 96, 120, 0.12);
-  border: 1px solid rgba(255, 96, 120, 0.35);
+  /* Opaque (the old 12 % red over the card), so nothing shows through while it floats. */
+  background: #321b38;
+  border: 1px solid rgba(255, 96, 120, 0.45);
   color: #ffb3c0;
   font-size: 13px;
+  box-shadow: 0 8px 24px rgba(8, 5, 30, 0.45);
 }
 
 .cv-submit {
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
+  min-height: var(--cv-submit-h);
   margin-top: 4px;
   padding: 13px 16px;
   border: 0;
   border-radius: 12px;
-  background: linear-gradient(92deg, #7d5bff, #a06bff);
+  /* The pill itself is ::after: a sticky element is its own stacking context, and
+     its own background would paint UNDER the ::before fade. */
+  background: transparent;
   color: #ffffff;
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 700;
+  letter-spacing: 0.02em;
   cursor: pointer;
   transition: filter 0.15s ease, transform 0.08s ease;
+}
+/* While floating, a fade of the card colour hides what scrolls beneath it. */
+.cv-submit::before,
+.cv-submit::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  pointer-events: none;
+}
+.cv-submit::before {
+  inset: -18px -12px calc(-1 * var(--cv-entry-pad-bottom)) -12px;
+  background: linear-gradient(to bottom, rgba(19, 16, 43, 0), rgba(19, 16, 43, 0.97) 45%);
+}
+.cv-submit::after {
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(92deg, #7d5bff, #a06bff);
+  box-shadow: 0 10px 28px rgba(8, 5, 30, 0.55);
 }
 .cv-submit:hover:not(:disabled) {
   filter: brightness(1.08);
@@ -221,7 +202,8 @@
   transform: translateY(1px);
 }
 .cv-submit:disabled {
-  opacity: 0.6;
+  /* Not opacity: a floating (sticky) button must stay opaque over the builder. */
+  filter: grayscale(0.4) brightness(0.8);
   cursor: default;
 }
 

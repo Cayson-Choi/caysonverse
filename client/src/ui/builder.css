@@ -1,0 +1,422 @@
+/* 캐릭터 조립실 — the entry screen's character builder (character stage 3).
+   Phone first: one column (preview, then the panel). When the builder itself is
+   ≥ 720 px wide it becomes preview | panel (340 px | 1fr) and the preview sticks
+   while the panel scrolls. Every button is ≥ 44×44 px (the entry screen's touch
+   floor), and nothing here may widen the page: the presets scroll inside their
+   own row on narrow panels, and the swatch grid drops to 5 columns if 6 would
+   not fit. Sizes key off the builder's / panel's own width (container queries),
+   so a phone in landscape gets the two-column layout too. */
+
+.cv-builder-section {
+  container: cv-builder / inline-size;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.cv-builder-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  color: #f2f0ff;
+}
+.cv-builder-title img {
+  display: block;
+  width: auto;
+  height: 28px;
+  /* The logo is white: keep it crisp, a touch softer than pure white text. */
+  opacity: 0.95;
+}
+
+.cv-builder {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+/* ── Preview ── */
+
+/* A cream stage (the stage-1 viewer's backdrop) with a caption strip under it. */
+.cv-builder-preview {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: clamp(220px, 38vh, 340px);
+  border-radius: 16px;
+  overflow: hidden;
+  background: #efe6da;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.35),
+    0 10px 30px rgba(0, 0, 0, 0.35);
+  /* Horizontal drags turn the figure; vertical drags still scroll the page. */
+  touch-action: pan-y;
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.cv-builder-preview:active {
+  cursor: grabbing;
+}
+.cv-builder-stage {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.cv-builder-preview canvas {
+  display: block;
+  touch-action: pan-y;
+}
+
+.cv-builder-hint {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 34px;
+  margin: 0;
+  padding: 0 12px 4px;
+  color: #6f5a45;
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.cv-builder-hint::before {
+  content: "↔";
+  font-size: 14px;
+  opacity: 0.8;
+}
+.cv-builder-hint.is-loading {
+  color: #8a7660;
+  font-weight: 500;
+}
+.cv-builder-hint.is-loading::before,
+.cv-builder-hint.is-failed::before {
+  content: none;
+}
+.cv-builder-hint.is-failed {
+  flex: 1 1 auto;
+  height: auto;
+  padding: 16px;
+  white-space: normal;
+  text-align: center;
+  word-break: keep-all;
+  color: #6f5a45;
+  font-size: 13.5px;
+}
+
+/* Wide builder (desktop, a phone on its side): preview | panel. The preview
+   sticks while the panel scrolls, and leaves room for the sticky 입장 button. */
+@container cv-builder (min-width: 720px) {
+  .cv-builder {
+    grid-template-columns: 340px minmax(0, 1fr);
+    gap: 24px;
+  }
+  .cv-builder-preview {
+    position: sticky;
+    top: 12px;
+    height: min(380px, calc(100vh - 100px));
+    height: min(380px, calc(100dvh - 100px));
+    min-height: 240px;
+  }
+}
+
+/* ── Panel ── */
+
+.cv-builder-panel {
+  container: cv-panel / inline-size;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+.cv-builder-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.cv-builder-group-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+/* Shared look of the builder's text buttons (presets, tabs, chips, voice). */
+.cv-preset,
+.cv-random,
+.cv-slot-tab,
+.cv-chip,
+.cv-voice-option {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  margin: 0;
+  border: 1px solid rgba(150, 132, 235, 0.24);
+  background: rgba(9, 8, 24, 0.5);
+  color: #d7d3f5;
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease,
+    color 0.15s ease,
+    transform 0.08s ease;
+}
+.cv-preset:active,
+.cv-random:active,
+.cv-slot-tab:active,
+.cv-chip:active,
+.cv-voice-option:active {
+  transform: translateY(1px);
+}
+@media (hover: hover) {
+  .cv-preset:hover,
+  .cv-slot-tab:hover,
+  .cv-chip:hover,
+  .cv-voice-option:hover {
+    border-color: rgba(166, 139, 255, 0.55);
+    color: #ffffff;
+  }
+}
+.cv-preset[aria-pressed="true"],
+.cv-chip[aria-pressed="true"],
+.cv-voice-option[aria-checked="true"] {
+  border-color: #a68bff;
+  background: rgba(120, 96, 224, 0.4);
+  color: #ffffff;
+  box-shadow: inset 0 0 0 1px rgba(166, 139, 255, 0.45);
+}
+.cv-preset:focus-visible,
+.cv-random:focus-visible,
+.cv-slot-tab:focus-visible,
+.cv-chip:focus-visible,
+.cv-voice-option:focus-visible,
+.cv-swatch:focus-visible {
+  outline: 2px solid #c9b6ff;
+  outline-offset: 2px;
+}
+
+/* Presets: phone → one row that scrolls inside itself, bleeding to the card's
+   edge (its 16 px padding) and fading out there; wider panels → 4 × 2. */
+.cv-presets {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x proximity;
+  scroll-padding-inline: 16px;
+  scrollbar-width: none;
+  /* 3 px of block room for the focus ring, which the scroller would otherwise clip. */
+  padding: 3px 16px;
+  margin: -3px -16px;
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+}
+.cv-presets::-webkit-scrollbar {
+  display: none;
+}
+.cv-preset {
+  flex: 0 0 auto;
+  padding: 0 16px;
+  border-radius: 12px;
+  scroll-snap-align: start;
+}
+@container cv-panel (min-width: 352px) {
+  .cv-presets {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    overflow: visible;
+    padding: 0;
+    margin: 0;
+    -webkit-mask-image: none;
+    mask-image: none;
+  }
+  .cv-preset {
+    padding: 0 6px;
+  }
+}
+
+.cv-random {
+  flex: 0 0 auto;
+  gap: 6px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border-color: rgba(255, 179, 230, 0.5);
+  background: linear-gradient(120deg, rgba(255, 140, 200, 0.24), rgba(143, 123, 255, 0.3));
+  color: #ffe9f6;
+}
+@media (hover: hover) {
+  .cv-random:hover {
+    border-color: rgba(255, 179, 230, 0.85);
+    background: linear-gradient(120deg, rgba(255, 140, 200, 0.34), rgba(143, 123, 255, 0.42));
+  }
+}
+.cv-random-icon {
+  font-size: 18px;
+  line-height: 1;
+}
+
+/* Slot tabs: a segmented bar. Narrow panel → 4 + 3 (손에 드는 것 spans two);
+   a wide one fits all seven on one line. */
+.cv-slot-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+  padding: 4px;
+  border-radius: 14px;
+  background: rgba(9, 8, 24, 0.55);
+  border: 1px solid rgba(150, 132, 235, 0.18);
+}
+.cv-slot-tab {
+  padding: 0 8px;
+  border-color: transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: #b7b2df;
+}
+.cv-slot-tab:last-child {
+  grid-column: span 2;
+}
+.cv-slot-tab[aria-selected="true"] {
+  background: linear-gradient(92deg, #7d5bff, #a06bff);
+  color: #ffffff;
+  box-shadow: 0 4px 14px rgba(125, 91, 255, 0.35);
+}
+@container cv-panel (min-width: 470px) {
+  .cv-slot-tabs {
+    display: flex;
+  }
+  .cv-slot-tab {
+    flex: 1 0 auto;
+  }
+}
+
+/* The selected tab's part chips and colours. The chips keep three rows' worth of
+   room, so switching tabs does not make everything below jump. */
+.cv-slot-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+.cv-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  gap: 8px;
+  min-height: calc(44px * 3 + 8px * 2);
+}
+.cv-chip {
+  padding: 0 14px;
+  border-radius: 999px;
+}
+
+/* Builder swatches: their own 6 × 44 px grid (not the old 8-column one). */
+.cv-builder-swatches {
+  display: grid;
+  grid-template-columns: repeat(6, 44px);
+  gap: 8px;
+}
+@container cv-panel (max-width: 303px) {
+  .cv-builder-swatches {
+    grid-template-columns: repeat(5, 44px);
+  }
+  /* 320 px phones: "머리카락" must still fit a quarter of the tab bar. */
+  .cv-slot-tab {
+    padding: 0 2px;
+    font-size: 12.5px;
+  }
+}
+.cv-swatch {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.16);
+  cursor: pointer;
+  transition: transform 0.08s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+@media (hover: hover) {
+  .cv-swatch:hover {
+    transform: scale(1.08);
+  }
+}
+.cv-swatch[aria-pressed="true"] {
+  border-color: #ffffff;
+  box-shadow: 0 0 0 3px rgba(166, 139, 255, 0.75);
+}
+/* A check mark in the swatch's own contrasting ink (set inline as `color`). */
+.cv-swatch[aria-pressed="true"]::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 46%;
+  width: 7px;
+  height: 13px;
+  border: solid currentColor;
+  border-width: 0 3px 3px 0;
+  border-radius: 1px;
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+
+/* Voice: two equal halves. */
+.cv-voice-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  max-width: 360px;
+}
+.cv-voice-option {
+  padding: 0 12px;
+  border-radius: 12px;
+}
+
+/* Phones: a tighter frame so the builder gets the width (≥ 304 px for 6 swatches
+   on a 360 px screen), and no backdrop blur — the long card scrolls over it. */
+@media (max-width: 719px), (max-height: 500px) {
+  .cv-entry {
+    /* The home-indicator inset lifts the sticky 입장 too (see entry.css). */
+    --cv-entry-pad-bottom: max(12px, env(safe-area-inset-bottom, 0px));
+    padding: max(12px, env(safe-area-inset-top, 0px)) max(10px, env(safe-area-inset-right, 0px))
+      var(--cv-entry-pad-bottom) max(10px, env(safe-area-inset-left, 0px));
+  }
+  .cv-card {
+    gap: 16px;
+    /* ≥ the scroller's bottom padding, so the 입장 fade stays inside the card at rest. */
+    padding: 22px 16px max(22px, var(--cv-entry-pad-bottom));
+    border-radius: 18px;
+    backdrop-filter: none;
+    background: rgba(20, 17, 46, 0.86);
+  }
+  .cv-title {
+    font-size: 30px;
+  }
+}
+/* A phone on its side: a shorter header, so the builder starts sooner. */
+@media (max-height: 500px) {
+  .cv-head {
+    gap: 2px;
+  }
+  .cv-title {
+    font-size: 24px;
+  }
+}

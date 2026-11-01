@@ -15,7 +15,7 @@
  *     RECONNECT_WINDOW_S budget → same avatar, same position. If the server
  *     answers but rejects the token (it restarted), we skip straight to Phase 2.
  *   Phase 2 — server restarted / window expired: silent fresh join (join-existing
- *     -only against the boot-created singleton world) with the cached identity and
+ *     -only against the boot-created singleton world) with this tab's identity and
  *     the pure exponential backoff (1s,2s,4s… cap 8s, ~30s). A new avatar at spawn
  *     is EXPECTED (no DB). A 521 ("no rooms found") and transient/network failures
  *     are RETRIED — the room may still be re-creating in the server's boot window
@@ -252,7 +252,7 @@ async function phaseTokenReconnect(): Promise<boolean> {
 type FreshJoinOutcome = { status: "connected" } | { status: "terminal"; notice: string };
 
 /**
- * Phase 2: silent fresh join with cached identity + exponential backoff.
+ * Phase 2: silent fresh join with this tab's identity (appStore) + exponential backoff.
  *
  * Retry policy (D2): a 521 "no rooms found" and transient/network failures are
  * retried through the backoff (the singleton world may still be re-creating in
@@ -267,7 +267,11 @@ type FreshJoinOutcome = { status: "connected" } | { status: "terminal"; notice: 
  * to a normal-user join — it must not fail recovery.
  */
 async function phaseFreshJoin(): Promise<FreshJoinOutcome> {
-  const identity = loadIdentity();
+  // Rejoin as the identity THIS tab entered with (in memory), not the shared
+  // localStorage cache: another tab's character builder may have saved a different
+  // look (or nickname) since, and re-joining with that would desync the server from
+  // what this tab shows. The cache is only a fallback if the identity is gone.
+  const identity = useAppStore.getState().identity ?? loadIdentity();
   const baseParams = {
     nickname: identity.nickname,
     appearance: identity.appearance,

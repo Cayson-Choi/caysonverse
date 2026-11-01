@@ -143,10 +143,10 @@ describe("F4 — a drop during the confirm wait must not strand a zombie world",
   });
 });
 
-describe("fresh re-join carries the cached appearance (character stage 3)", () => {
-  it("joins with the cached nickname + appearance, never the pre-builder character/tint", async () => {
+describe("fresh re-join carries this tab's appearance (character stage 3)", () => {
+  it("joins with the in-memory nickname + appearance, never the pre-builder character/tint", async () => {
     const look = { ...DEFAULT_APPEARANCE, top: 3, topColor: 5, voice: 1 };
-    localStorage.setItem("cv.entry", JSON.stringify({ nickname: "케이슨", appearance: look }));
+    useAppStore.setState({ identity: { nickname: "케이슨", appearance: look, sessionId: "R0" } });
     h.joinRoom.mockResolvedValueOnce(fakeRoom("A"));
     h.waitForSelf.mockResolvedValue(undefined);
 
@@ -154,7 +154,40 @@ describe("fresh re-join carries the cached appearance (character stage 3)", () =
     await flush();
 
     expect(h.joinRoom).toHaveBeenCalledTimes(1);
+    // Exactly nickname + appearance: no sessionId, no pre-builder character/tint.
     expect(h.joinRoom.mock.calls[0][0]).toEqual({ nickname: "케이슨", appearance: look });
+  });
+
+  it("ignores a different look another tab's builder saved to localStorage meanwhile", async () => {
+    const mine = { ...DEFAULT_APPEARANCE, hat: 4, hatColor: 11, voice: 1 };
+    const otherTab = { ...DEFAULT_APPEARANCE, top: 2, topColor: 0, voice: 0 };
+    useAppStore.setState({ identity: { nickname: "케이슨", appearance: mine, sessionId: "R0" } });
+    // Another tab entered later with another look and nickname: the shared cache now holds THAT one.
+    localStorage.setItem("cv.entry", JSON.stringify({ nickname: "다른탭", appearance: otherTab }));
+    h.joinRoom.mockResolvedValueOnce(fakeRoom("A"));
+    h.waitForSelf.mockResolvedValue(undefined);
+
+    dropInitialRoom();
+    await flush();
+
+    expect(h.joinRoom).toHaveBeenCalledTimes(1);
+    expect(h.joinRoom.mock.calls[0][0]).toEqual({ nickname: "케이슨", appearance: mine });
+    // The rejoined world still shows the look this tab entered with.
+    expect(useAppStore.getState().identity?.appearance).toEqual(mine);
+  });
+
+  it("falls back to the cached identity only when no in-memory identity exists", async () => {
+    const cached = { ...DEFAULT_APPEARANCE, shoes: 3, voice: 1 };
+    useAppStore.setState({ identity: null });
+    localStorage.setItem("cv.entry", JSON.stringify({ nickname: "캐시", appearance: cached }));
+    h.joinRoom.mockResolvedValueOnce(fakeRoom("A"));
+    h.waitForSelf.mockResolvedValue(undefined);
+
+    dropInitialRoom();
+    await flush();
+
+    expect(h.joinRoom).toHaveBeenCalledTimes(1);
+    expect(h.joinRoom.mock.calls[0][0]).toEqual({ nickname: "캐시", appearance: cached });
   });
 });
 
