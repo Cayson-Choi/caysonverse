@@ -928,11 +928,17 @@ try {
     // baseline tick (twice the poll period, for timer slack under load) so the whole drag is measured.
     await sleep(2 * CODE.coachPollMs);
     await gt.drag(0, 340, 520, 200, 520, { steps: 10 }); // right half (the lower-left quarter would be the stick)
+    const dragEnd = Date.now();
     const c3 = await pollUntil(card, (c) => c?.step === "talk", 3000);
     check("dragging the right half moves on to ③ 말하기", c3?.step === "talk" && c3.title === "③ 말하기", c3);
     await shot(pg, "m-12-guide-3.png");
 
-    // say hello with 💬
+    // say hello with 💬 — not ~0.1 s after the drag. ③ usually appears within 0.1–0.2 s of lifting the finger, and a
+    // tap that close behind the drag's touchEnd sometimes gets no click from Chrome's touch emulation: pointerdown,
+    // touchstart, pointerup and touchend all reach the 💬 button, then no click (2026-11-02: 6 of 24 runs lost the
+    // click at a ~0.1–0.2 s gap, 0 of 9 at ≥ 1.5 s). The field then never focuses and "안녕" goes nowhere. A thumb
+    // reads the card before tapping, so give the gap a human 1.5 s.
+    await sleep(Math.max(0, 1500 - (Date.now() - dragEnd)));
     const cc = await center(pg, ".cv-chat-btn");
     await gt.tap(cc.x, cc.y, 50);
     await pollUntil(() => pg.evaluate(() => document.activeElement?.className ?? ""), (cls) => /cv-chat-field/.test(cls), 3000);
