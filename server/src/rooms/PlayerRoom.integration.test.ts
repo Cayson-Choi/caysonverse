@@ -111,8 +111,12 @@ class GuardRoom extends ProbeRoom {
     return this.filterOn ? super.checkProfanity(text) : { ok: true };
   }
 
+  /** true → onChatBlocked records the line and then throws (a buggy override). */
+  throwOnBlock = false;
+
   protected onChatBlocked(client: Client, player: Player, masked: string): void {
     this.blocked.push({ sid: client.sessionId, nickname: player.nickname, masked });
+    if (this.throwOnBlock) throw new Error("onChatBlocked override failed");
   }
 }
 
@@ -391,7 +395,7 @@ describe("PlayerRoom profanity filter (a room built on the base)", () => {
     const { room, alice, seen, say } = await chatPair();
 
     await say(alice, `시발 ${"가".repeat(CHAT_MAX_LENGTH)}`); // oversized → silent drop, no notice
-    await say(alice, "  ​  "); // blank after the strip → silent drop
+    await say(alice, "  \u200b  "); // blank after the strip → silent drop
 
     expect(seen.aRejected).toEqual([]);
     expect(seen.aChats).toEqual([]);
@@ -417,6 +421,21 @@ describe("PlayerRoom profanity filter (a room built on the base)", () => {
     await room.waitForNextMessage();
     await flush();
     expect(seen.bTyping).toEqual([{ sid: alice.sessionId, on: true }]);
+  });
+
+  it("clears the typing flag BEFORE the hooks run, so a throwing onChatBlocked cannot leave typing on", async () => {
+    const { room, alice } = await chatPair();
+    const track = trackingOf(room).get(alice.sessionId)!;
+    track.typing = true;
+    room.throwOnBlock = true;
+
+    // Drive the handler directly: Colyseus would route a throwing handler into its transport.
+    const handleChat = (room as unknown as { handleChat(c: Client, payload: unknown): void }).handleChat.bind(room);
+    const serverSide = room.clients.getById(alice.sessionId)!;
+    expect(() => handleChat(serverSide, { text: SWEAR })).toThrow("onChatBlocked override failed");
+
+    expect(room.blocked).toHaveLength(1); // the hook did run (and fail)
+    expect(track.typing).toBe(false);
   });
 
   it("a room opts out of the filter with one checkProfanity override", async () => {

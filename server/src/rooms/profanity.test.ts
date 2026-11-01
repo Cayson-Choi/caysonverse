@@ -25,6 +25,107 @@ const KID_TALK = [
   "자물쇠 번호 맞아?", "열쇠는 책장 뒤에 있어", "개인정보는 소중해요", "친구랑 같이 풀자", "hello world", "good job",
 ];
 
+// ── Fix round 1 (review of Task 3): kid shorthand must pass, variant swears must not slip by ──
+
+// Chat shorthand and everyday words that the first version blocked or could block by accident.
+// ㅇㅈ(인정) ㅈㅅ(죄송) ㅉㅉ ㅇㅋ ㄱㅅ(감사) ㅅㄱ(수고); 쫒 is the usual child spelling of 쫓;
+// 씹다/쉽다/십/진다 fold to the same tokens as swear stems, so none of those stems is listed.
+const KID_SHORTHAND_AND_LOOKALIKES = [
+  "ㅇㅈ", "ㅈㅅ", "ㅉㅉ", "ㅇㅋ", "ㄱㅅ", "ㅅㄱ", "ㄱㅅㄱㅅ", "ㅅㄱㅅㄱ", "ㅈㅈ", "ㅈㄱㄴ", "ㅈㅅ합니다", "맞아 ㅇㅈ",
+  "쫒아와", "쫒아가자", "쫓아와", "졸라맨 그려요", "허리띠를 졸라매자", "허리띠를 졸라맸어요",
+  "넘어진다", "십년 뒤", "쉽다", "쉽게 풀자", "십분만 기다려", "껌을 씹지 마", "음식을 꼭꼭 씹어 먹어요",
+  "새끼손가락", "미친 듯이", "도시바", "도시바 노트북", "이시바 선생님", "Fukuoka", "Fukushima", "shiitake", "shitake",
+];
+// New swears and the variants a child would try.
+const NEWLY_BLOCKED = [
+  "씹새끼", "씹새", "씹창", "ㅅㄲ", "ㅆㄲ", "좃나", "좃같네", "ㅈ같네", "ㅈ같", "개색기", "시ㅂㅏㄹ", "ㅂㅕㅇㅅㅣㄴ",
+  "ㅅㅣㅂㅏㄹ", "ㅈㅗㅈ", "fck", "wtf", "stfu", "ⓕⓤⓒⓚ", "𝐟𝐮𝐜𝐤", "Ｆｕｃｋ",
+];
+const MORE_KOREAN_WORDS = ["좃", "ㅈ같", "ㅅㄲ", "씹새", "씹창", "개색기"];
+const MORE_LATIN_WORDS = ["fck", "wtf", "stfu"];
+
+describe("checkProfanity (fix round 1)", () => {
+  it.each(KID_SHORTHAND_AND_LOOKALIKES)("allows shorthand / lookalike: %s", (t) => {
+    expect(checkProfanity(t)).toEqual({ ok: true });
+  });
+  it.each(NEWLY_BLOCKED)("blocks the newly covered form: %s", (t) => {
+    expect(checkProfanity(t).ok).toBe(false);
+  });
+  it.each(MORE_KOREAN_WORDS)("blocks the newly listed word %s alone and in a sentence", (w) => {
+    expect(checkProfanity(w).ok).toBe(false);
+    expect(checkProfanity(`너 정말 ${w} 같아`).ok).toBe(false);
+  });
+  it.each(MORE_LATIN_WORDS)("blocks the newly listed latin word %s in any case", (w) => {
+    expect(checkProfanity(w).ok).toBe(false);
+    expect(checkProfanity(w.toUpperCase()).ok).toBe(false);
+  });
+
+  it("never blocks a lone consonant jamo: a one-syllable word has no bare-jamo shorthand", () => {
+    for (const c of "ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ") expect(checkProfanity(c), c).toEqual({ ok: true });
+  });
+
+  it("blocks exactly the swear pairs of loose jamo and no other two-jamo pair", () => {
+    const consonants = [..."ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ"];
+    const blocked: string[] = [];
+    for (const a of consonants) for (const b of consonants) if (!checkProfanity(a + b).ok) blocked.push(a + b);
+    // ㅂㅅ ㅅㅂ ㅈㄴ ㅈㄹ ㅅㄲ and their fortis spellings (ㅆㅂ, ㅉㄴ, ㅃㅅ …); ㄱㅅ, ㅅㄱ, ㅇㅈ, ㅈㅅ … pass.
+    expect(blocked.sort()).toEqual(
+      ["ㅂㅅ", "ㅂㅆ", "ㅃㅅ", "ㅃㅆ", "ㅅㄲ", "ㅅㅂ", "ㅅㅃ", "ㅆㄲ", "ㅆㅂ", "ㅆㅃ", "ㅈㄴ", "ㅈㄹ", "ㅉㄴ", "ㅉㄹ"].sort(),
+    );
+  });
+
+  it("keeps ㅈ같 blocked now that the bare ㅈ is gone, but only as a word", () => {
+    expect(checkProfanity("ㅈ같네").ok).toBe(false);
+    expect(checkProfanity("ㅈ같이 하자").ok).toBe(false);
+    expect(checkProfanity("ㅇㅈ 같이 하자")).toEqual({ ok: true });
+  });
+
+  it("allows the new ALLOW words but still blocks a real swear next to them", () => {
+    for (const t of ["졸라맨", "졸라매", "졸라맸", "도시바", "이시바"]) expect(checkProfanity(t), t).toEqual({ ok: true });
+    expect(checkProfanity("졸라맨 졸라").ok).toBe(false);
+    expect(checkProfanity("도시바 시발").ok).toBe(false);
+  });
+
+  it("allows the latin place names but blocks a swear glued to one", () => {
+    for (const t of ["Fukuoka", "Fukui", "Fukushima", "shiitake"]) expect(checkProfanity(t), t).toEqual({ ok: true });
+    expect(checkProfanity("fukuoka fuck").ok).toBe(false);
+    expect(checkProfanity("shiitakefuck").ok).toBe(false);
+  });
+
+  it("composes loose jamo typed one key at a time, without touching real syllables", () => {
+    expect(checkProfanity("시ㅂㅏㄹ").ok).toBe(false);
+    expect(checkProfanity("ㅂㅕㅇㅅㅣㄴ").ok).toBe(false);
+    expect(checkProfanity("ㅂㅕㅇ신").ok).toBe(false);
+    // A real syllable followed by loose ㅅㅂ keeps the swear: composing must not glue ㅅ onto 아.
+    expect(checkProfanity("아ㅅㅂ").ok).toBe(false);
+    // ...and a swear hidden by composing is still seen in its original form.
+    expect(checkProfanity("그ㅅㅂㅗㅗ").ok).toBe(false);
+    // Typed-out jamo that spell an innocent word are not a swear.
+    expect(checkProfanity("ㅇㅏㄴㅕㅇ")).toEqual({ ok: true });
+  });
+
+  it("unmasks styled latin letters with NFKC, and leaves Hangul on NFC", () => {
+    expect(checkProfanity("ⓕⓤⓒⓚ").ok).toBe(false);
+    expect(checkProfanity("𝐟𝐮𝐜𝐤").ok).toBe(false);
+    expect(checkProfanity("진짜 ⓕⓤⓒⓚ 해요")).toEqual({ ok: false, masked: "진짜 ●●●● 해요" });
+    // Compatibility jamo stay jamo (NFKC on the Hangul path would have composed them).
+    expect(checkProfanity("ㅅㅂ").ok).toBe(false);
+    expect(checkProfanity("ㅇㅈ")).toEqual({ ok: true });
+  });
+
+  it("folds the child misspelling 쫒 to 쫓 so it is not read as 좆", () => {
+    expect(checkProfanity("쫒아와")).toEqual({ ok: true });
+    expect(checkProfanity("좆")).toEqual({ ok: false, masked: "●" });
+  });
+
+  it("keeps ㄲ out of the loose-jamo fold: ㄱㅅㄱㅅ is thanks, ㅅㄲ is the swear", () => {
+    expect(foldHangul("ㄱㅅㄱㅅ")).not.toContain("|ㅅ|ㄲ|");
+    expect(foldHangul("ㅅㄲ")).toBe("|ㅅ|ㄲ|");
+    expect(checkProfanity("ㄱㅅㄱㅅ")).toEqual({ ok: true });
+    expect(checkProfanity("ㅅㄲ").ok).toBe(false);
+  });
+});
+
 describe("checkProfanity", () => {
   it.each(BAD)("blocks %s", (t) => expect(checkProfanity(t).ok).toBe(false));
   it.each(GOOD)("allows %s", (t) => expect(checkProfanity(t)).toEqual({ ok: true }));
@@ -78,9 +179,9 @@ describe("checkProfanity", () => {
   });
 
   it("ignores zero-width and control characters slipped between letters", () => {
-    expect(checkProfanity("시​발").ok).toBe(false);
+    expect(checkProfanity("시\u200b발").ok).toBe(false);
     expect(checkProfanity("씨\u0007발").ok).toBe(false);
-    expect(checkProfanity("f‍uck").ok).toBe(false);
+    expect(checkProfanity("f\u200duck").ok).toBe(false);
   });
 
   it("keeps the allow-listed words that merely contain a blocked sound", () => {

@@ -306,6 +306,11 @@ export abstract class PlayerRoom<S extends PlayersState, T extends Tracking = Tr
     const text = sanitizeChat((payload as { text?: unknown } | null | undefined)?.text);
     if (text === null) return; // empty/oversized/garbage → silent drop
 
+    // A chat — accepted or blocked — ends the typing state; receivers clear their own "…" on
+    // Chat (the client sends its OFF before the line), so a late OFF from this client is dropped.
+    // Cleared BEFORE the room's hooks run, so a hook that throws cannot leave typing on.
+    track.typing = false;
+
     const verdict = this.checkProfanity(text);
     if (verdict.ok) {
       this.deliverChat(client, player, text);
@@ -315,9 +320,6 @@ export abstract class PlayerRoom<S extends PlayersState, T extends Tracking = Tr
       client.send(MessageType.ChatRejected, { reason: CHAT_NOT_NICE });
       this.onChatBlocked(client, player, verdict.masked);
     }
-    // A chat — accepted or blocked — ends the typing state; receivers clear their own "…" on
-    // Chat (the client sends its OFF before the line), so a late OFF from this client is dropped.
-    track.typing = false;
   }
 
   /**
