@@ -88,7 +88,7 @@ export interface ClassPayloads {
   [ClassMsg.ResultsCsv]: ResultsCsvPayload;
 }
 
-// EscapeMsg and its payloads are added to this file by Task 10.
+// EscapeMsg and its payloads (Task 10) are at the end of this file, after the engine's public shapes.
 
 // ─────────────────────── Puzzle engine: public shapes (Task 7) ───────────────────────
 //
@@ -198,3 +198,109 @@ export type EngineEvent =
   /** The team escaped. `lines` = the room's escape lines (kept off RoomContent: they may retell the answer). */
   | { e: "escaped"; lines: StoryLine[] }
   | { e: "members" };
+
+// ─────────────────────────────── EscapeRoom messages (Task 10) ───────────────────────────────
+
+/**
+ * EscapeRoom messages (client → server unless noted). The room also handles the world's Move,
+ * Chat, Emoji, Jump and Typing (it is a PlayerRoom): its chat is the team chat.
+ */
+export const EscapeMsg = {
+  /** Server → one client, on every join and reconnect: the room's public content (`RoomContent`). */
+  Content: "x_content",
+  /** Look at an object up close (changes nothing; the answer is `InspectView`, to the asker only). */
+  Inspect: "x_inspect",
+  /** Server → the asker: one object's close-up for that player (`InspectViewPayload`). */
+  InspectView: "x_inspect_view",
+  Pickup: "x_pickup",
+  Combine: "x_combine",
+  /** Set the team's shared input of a digits / letters lock. */
+  LockInput: "x_lock_input",
+  /** Put a card on a sort-lock bin ("" = take it back). */
+  BoardPlace: "x_board_place",
+  LockSubmit: "x_lock_submit",
+  /** Press a coop switch (two members within COOP_WINDOW_MS). */
+  Press: "x_press",
+  /** A lone member starts / stops holding a coop switch (SOLO_HOLD_MS). */
+  HoldStart: "x_hold_start",
+  HoldEnd: "x_hold_end",
+  /** Vote for an option of the current last-door step. */
+  Vote: "x_vote",
+  HintRequest: "x_hint",
+  /** "다시 도전" after the time ran out: ESCAPE_RETRY_EXTRA_S more, overtime. */
+  Retry: "x_retry",
+  /** Server → the team: what happened (`EscapeEventPayload`). */
+  Event: "x_event",
+  /** Server → one client: a personal Korean notice. */
+  Notice: "x_notice",
+} as const;
+
+export type EscapeMsg = (typeof EscapeMsg)[keyof typeof EscapeMsg];
+
+/** Inspect, Pickup, Press, HoldStart, HoldEnd. */
+export interface ObjectActionPayload {
+  objectId: string;
+}
+export interface CombinePayload {
+  a: string;
+  b: string;
+}
+export interface LockInputPayload {
+  lockId: string;
+  /** digits: the digits; letters: one wheel-index digit per wheel. */
+  value: string;
+}
+export interface BoardPlacePayload {
+  lockId: string;
+  cardId: string;
+  /** A bin id, or "" to take the card back. */
+  bin: string;
+}
+export interface LockSubmitPayload {
+  lockId: string;
+}
+export interface VotePayload {
+  optionId: string;
+}
+
+/** The room's closing summary, resolved for the class's text level (sent only with the escape). */
+export interface EscapeSummary {
+  lines: string[];
+  question: string;
+  source: string;
+}
+
+/**
+ * The team escaped: the engine's escape lines plus the stars, the play time and the summary.
+ * Re-sent to a member who joins or reconnects after the escape (the lines exist nowhere else).
+ */
+export interface EscapedEvent {
+  e: "escaped";
+  lines: StoryLine[];
+  stars: number;
+  elapsedS: number;
+  summary: EscapeSummary;
+}
+
+/** `EscapeMsg.Event`: an engine event, except that the escape carries the room's extras. */
+export type EscapeEventPayload = Exclude<EngineEvent, { e: "escaped" }> | EscapedEvent;
+
+/** Payload type for each EscapeMsg value. */
+export interface EscapePayloads {
+  [EscapeMsg.Content]: RoomContent;
+  [EscapeMsg.Inspect]: ObjectActionPayload;
+  [EscapeMsg.InspectView]: InspectViewPayload;
+  [EscapeMsg.Pickup]: ObjectActionPayload;
+  [EscapeMsg.Combine]: CombinePayload;
+  [EscapeMsg.LockInput]: LockInputPayload;
+  [EscapeMsg.BoardPlace]: BoardPlacePayload;
+  [EscapeMsg.LockSubmit]: LockSubmitPayload;
+  [EscapeMsg.Press]: ObjectActionPayload;
+  [EscapeMsg.HoldStart]: ObjectActionPayload;
+  [EscapeMsg.HoldEnd]: ObjectActionPayload;
+  [EscapeMsg.Vote]: VotePayload;
+  [EscapeMsg.HintRequest]: EmptyPayload;
+  [EscapeMsg.Retry]: EmptyPayload;
+  [EscapeMsg.Event]: EscapeEventPayload;
+  [EscapeMsg.Notice]: NoticePayload;
+}

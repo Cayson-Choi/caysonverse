@@ -1,5 +1,5 @@
 import { Schema, type, MapSchema, ArraySchema } from "@colyseus/schema";
-import type { ClassPhase, TextLevel } from "./escape/constants";
+import type { ClassPhase, EscapePhase, TextLevel } from "./escape/constants";
 
 /**
  * Root room state, synchronized from the server to every connected client.
@@ -113,4 +113,48 @@ export class ClassState extends WorldState {
   @type(["string"]) openRooms = new ArraySchema<string>();
   /** RoomIds lit up on the school-model progress board (solved by some team). */
   @type(["string"]) litRooms = new ArraySchema<string>();
+}
+
+/**
+ * The synced state of one team's escape room (EscapeRoom, Task 10). Server-written only: the
+ * room copies the puzzle engine's state in here (`projectToSchema`) after every action, so it
+ * holds only what every teammate may see — never an answer, a hint not yet given, a clue
+ * original or anyone's split half (those go to one player as `InspectView`). The room data's
+ * public part comes once per join as `EscapeMsg.Content`.
+ *
+ * Collections are written append-only (flags, hints) or as a whole (bag: clear + push), never by
+ * index, for the same mid-patch-window reason as `Team.members` (see ClassRoom.writeMembers).
+ */
+export class EscapeState extends Schema {
+  @type({ map: Player }) players = new MapSchema<Player>();
+  /** The room (RoomId) this instance runs, the team's display name and the class's reading level. */
+  @type("string") roomDefId = "";
+  @type("string") teamName = "";
+  @type("string") textLevel: TextLevel = "easy";
+  /** ended > escaped > timeup > intro > the engine's play / finale. */
+  @type("string") phase: EscapePhase = "intro";
+  /** The teacher paused the class (game time stands still, puzzle actions are dropped). */
+  @type("boolean") paused = false;
+  /** Exactly one member is connected: the switch becomes a long press, split clues show both halves. */
+  @type("boolean") solo = false;
+  /** The team pressed "다시 도전" after the time ran out. */
+  @type("boolean") overtime = false;
+  @type("uint16") timeLeftS = 0;
+  /** Seconds until the team may vote again at the last door after a wrong choice. */
+  @type("uint8") cooldownS = 0;
+  /** Puzzle flags (`picked:…`, `solved:…`, …), in the order they were set; never removed. */
+  @type(["string"]) flags = new ArraySchema<string>();
+  /** The team bag: item ids. */
+  @type(["string"]) bag = new ArraySchema<string>();
+  /** Shared lock input: lockId → digits / wheel indexes. */
+  @type({ map: "string" }) lockInput = new MapSchema<string>();
+  /** Sort board: cardId → binId. */
+  @type({ map: "string" }) board = new MapSchema<string>();
+  /** Last-door votes of the current step: EscapeRoom sessionId → optionId. */
+  @type({ map: "string" }) votes = new MapSchema<string>();
+  @type("uint8") finaleStep = 0;
+  @type("uint8") hintsUsed = 0;
+  @type("uint16") wrongAttempts = 0;
+  /** Hint sentences the team received, in order (a teammate who comes in late reads them too). */
+  @type(["string"]) hints = new ArraySchema<string>();
 }

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { Schema, type, Encoder, Decoder } from "@colyseus/schema";
-import { ClassState, Player, Team } from "./schema";
+import { ClassState, EscapeState, Player, Team } from "./schema";
 import { ROLE_STUDENT, ROLE_TEACHER } from "./constants";
 import { PLACE_ESCAPE, PLACE_HUB } from "./escape/constants";
 import { APPEARANCE_FIELDS, APPEARANCE_RANGES, pickAppearance, type Appearance } from "./appearance";
@@ -161,5 +161,79 @@ describe("@colyseus/schema decorator wiring", () => {
     expect(p.nickname).toBe("가람");
     expect(p.teamId).toBe("t1");
     expect(p.place).toBe(PLACE_ESCAPE);
+  });
+
+  it("EscapeState: defaults, then every field round-trips (uint8/uint16 ranges included)", () => {
+    const fresh = new EscapeState();
+    expect(fresh.toJSON()).toEqual({
+      players: {},
+      roomDefId: "",
+      teamName: "",
+      textLevel: "easy",
+      phase: "intro",
+      paused: false,
+      solo: false,
+      overtime: false,
+      timeLeftS: 0,
+      cooldownS: 0,
+      flags: [],
+      bag: [],
+      lockInput: {},
+      board: {},
+      votes: {},
+      finaleStep: 0,
+      hintsUsed: 0,
+      wrongAttempts: 0,
+      hints: [],
+    });
+
+    const state = new EscapeState();
+    state.roomDefId = "counsel";
+    state.teamName = "햇살(파랑)";
+    state.textLevel = "hard";
+    state.phase = "finale";
+    state.paused = true;
+    state.solo = true;
+    state.overtime = true;
+    state.timeLeftS = 1200; // above 255: needs the uint16
+    state.cooldownS = 30;
+    state.flags.push("picked:flashlight", "solved:cabinet_lock");
+    state.bag.push("uv_flashlight");
+    state.lockInput.set("cabinet_lock", "1234");
+    state.board.set("festival", "ok");
+    state.votes.set("s1", "privacy");
+    state.finaleStep = 1;
+    state.hintsUsed = 2;
+    state.wrongAttempts = 300; // above 255: needs the uint16
+    state.hints.push("손전등을 살펴봐요.");
+    const player = new Player();
+    player.nickname = "가람";
+    state.players.set("s1", player);
+
+    const decoded = new EscapeState();
+    new Decoder(decoded).decode(new Encoder(state).encodeAll());
+    const json = decoded.toJSON() as Record<string, unknown>;
+    expect({ ...json, players: undefined }).toEqual({
+      players: undefined,
+      roomDefId: "counsel",
+      teamName: "햇살(파랑)",
+      textLevel: "hard",
+      phase: "finale",
+      paused: true,
+      solo: true,
+      overtime: true,
+      timeLeftS: 1200,
+      cooldownS: 30,
+      flags: ["picked:flashlight", "solved:cabinet_lock"],
+      bag: ["uv_flashlight"],
+      lockInput: { cabinet_lock: "1234" },
+      board: { festival: "ok" },
+      votes: { s1: "privacy" },
+      finaleStep: 1,
+      hintsUsed: 2,
+      wrongAttempts: 300,
+      hints: ["손전등을 살펴봐요."],
+    });
+    expect(decoded.players.get("s1")?.nickname).toBe("가람");
   });
 });
