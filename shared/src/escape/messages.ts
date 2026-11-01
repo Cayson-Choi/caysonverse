@@ -89,3 +89,104 @@ export interface ClassPayloads {
 }
 
 // EscapeMsg and its payloads are added to this file by Task 10.
+
+// ─────────────────────── Puzzle engine: public shapes (Task 7) ───────────────────────
+//
+// What the client may know about a puzzle room. The server-only room data
+// (server/src/escape/types.ts: RoomDef, LockDef, ItemDef, ObjectDef …) carries the answers,
+// the hints and the clue originals; the server maps it onto these shapes in `publicContent`
+// (field by field, never by spreading) and `inspectView`. Types only: nothing here may hold a
+// puzzle answer or clue text, and shared/ never imports from server/.
+
+/** The four kinds of puzzle object (the client picks the action icon by kind). */
+export type ObjectKind = "inspect" | "switch" | "screen" | "door";
+/** Who says a story line. */
+export type LineSpeaker = "ari" | "bandit" | "narrator";
+
+/** A bag item as the client sees it. */
+export interface PublicItem {
+  id: string;
+  label: string;
+  icon: string;
+}
+
+interface PublicLockBase {
+  id: string;
+  /** The object whose inspect view opens this lock. */
+  objectId: string;
+  /** The lock's plate text, already resolved for the class's text level. */
+  plate: string;
+}
+/**
+ * A lock without its answer (and without the server's `requires`/`onSolve` logic: the client
+ * learns that a lock is usable from `InspectViewPayload.lockId` and that it opened from the
+ * `solved:<id>` flag).
+ */
+export type PublicLock =
+  | (PublicLockBase & { kind: "digits"; length: number })
+  | (PublicLockBase & { kind: "letters"; wheels: string[][] })
+  | (PublicLockBase & {
+      kind: "sort";
+      bins: { id: string; label: string }[];
+      cards: { id: string; label: string }[];
+      /** The cards must be in the team bag before they can be placed. */
+      needsItem?: string;
+    });
+
+/**
+ * A room's public content, sent once when a player joins an escape room, every Text already
+ * resolved for one text level. Leaves out hints, answers, clue originals (inspect bodies, split
+ * halves, hidden UV text), the persuasion explanations and the summary.
+ */
+export interface RoomContent {
+  roomId: RoomId;
+  title: string;
+  objects: { id: string; label: string; kind: ObjectKind }[];
+  items: PublicItem[];
+  locks: PublicLock[];
+  stages: { id: string; title: string }[];
+  lines: Record<string, { speaker: LineSpeaker; text: string }>;
+  /** Line ids (keys of `lines`) played at the start / after the escape. */
+  introLines: string[];
+  escapeLines: string[];
+  finale: {
+    claim: string;
+    steps: { id: string; prompt: string; options: { id: string; label: string; desc?: string }[] }[];
+  };
+}
+
+/** One object's close-up view for one viewer (server → that viewer only). */
+export interface InspectViewPayload {
+  objectId: string;
+  title: string;
+  body: string;
+  back?: string;
+  image?: string;
+  /** Hidden text, present only while the team bag holds the object's reveal item (UV light). */
+  reveal?: string;
+  /** Item id the viewer can put in the bag right now. */
+  canPickup?: string;
+  /** The first unsolved lock on this object whose conditions hold. */
+  lockId?: string;
+  /** Half of a split clue (Task 8): the viewer's half, or who holds it. */
+  split?: { text?: string; lockedText?: string };
+}
+
+/** What happened after a puzzle action (server → the team). `by` is the acting sessionId. */
+export type EngineEvent =
+  | { e: "picked"; item: string; by: string }
+  | { e: "combined"; out: string; by: string }
+  | { e: "solved"; lockId: string; by: string }
+  | { e: "wrong"; lockId: string; wrongCount?: number; unplaced?: number }
+  | { e: "say"; lineId: string }
+  | { e: "hint"; stageId: string; tier: number; text: string }
+  | { e: "hintWait"; waitS: number }
+  | { e: "hintMax" }
+  | { e: "coop"; objectId: string; by: string }
+  | { e: "hold"; objectId: string; by: string; on: boolean }
+  | { e: "coopDone"; coopId: string }
+  | { e: "finale"; step: number }
+  | { e: "votes" }
+  | { e: "finaleWrong"; stepId: string; optionId: string; explain: string }
+  | { e: "escaped" }
+  | { e: "members" };
