@@ -467,7 +467,7 @@ describe("persuasion vote (설득 투표)", () => {
     // different principles are kept apart
     const two: RoomDef = {
       ...def,
-      finale: { ...def.finale, steps: [def.finale.steps[0], { ...def.finale.steps[1], principleId: "no_harm" as const }] },
+      finale: { ...def.finale, steps: [def.finale.steps[0], { ...def.finale.steps[1], principleId: "safety" as const }] },
     };
     reset(["s1", "s2"], true, two);
     toFinale();
@@ -479,7 +479,7 @@ describe("persuasion vote (설득 투표)", () => {
     vote("s1", "right");
     vote("s2", "right");
     expect(s.phase).toBe("escaped");
-    expect(Object.fromEntries(s.firstTry)).toEqual({ privacy: true, no_harm: false });
+    expect(Object.fromEntries(s.firstTry)).toEqual({ privacy: true, safety: false });
   });
 });
 
