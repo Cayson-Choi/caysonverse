@@ -47,6 +47,8 @@ export interface EngineCtx {
   connected: readonly string[];
   names: ReadonlyMap<string, string>;
   maxHintTier: number;
+  /** The class's reading level: event text (the escape lines) is resolved with it. */
+  level: TextLevel;
 }
 
 export type EngineAction =

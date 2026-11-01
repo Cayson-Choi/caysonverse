@@ -103,6 +103,12 @@ export type ObjectKind = "inspect" | "switch" | "screen" | "door";
 /** Who says a story line. */
 export type LineSpeaker = "ari" | "bandit" | "narrator";
 
+/** One story line, resolved for the class's text level. */
+export interface StoryLine {
+  speaker: LineSpeaker;
+  text: string;
+}
+
 /** A bag item as the client sees it. */
 export interface PublicItem {
   id: string;
@@ -136,7 +142,9 @@ export type PublicLock =
 /**
  * A room's public content, sent once when a player joins an escape room, every Text already
  * resolved for one text level. Leaves out hints, answers, clue originals (inspect bodies, split
- * halves, hidden UV text), the persuasion explanations and the summary.
+ * halves, hidden UV text), the persuasion explanations, the summary and the escape lines (those
+ * come with the `escaped` event). Sort cards and finale options come in a fixed order that does
+ * not depend on the data order or the answer.
  */
 export interface RoomContent {
   roomId: RoomId;
@@ -145,10 +153,9 @@ export interface RoomContent {
   items: PublicItem[];
   locks: PublicLock[];
   stages: { id: string; title: string }[];
-  lines: Record<string, { speaker: LineSpeaker; text: string }>;
-  /** Line ids (keys of `lines`) played at the start / after the escape. */
+  lines: Record<string, StoryLine>;
+  /** Line ids (keys of `lines`) played at the start. */
   introLines: string[];
-  escapeLines: string[];
   finale: {
     claim: string;
     steps: { id: string; prompt: string; options: { id: string; label: string; desc?: string }[] }[];
@@ -188,5 +195,6 @@ export type EngineEvent =
   | { e: "finale"; step: number }
   | { e: "votes" }
   | { e: "finaleWrong"; stepId: string; optionId: string; explain: string }
-  | { e: "escaped" }
+  /** The team escaped. `lines` = the room's escape lines (kept off RoomContent: they may retell the answer). */
+  | { e: "escaped"; lines: StoryLine[] }
   | { e: "members" };

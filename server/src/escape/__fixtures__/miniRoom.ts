@@ -218,7 +218,7 @@ export const miniRoom: RoomDef = {
     made_ab: { speaker: "bandit", text: "손전등이 보랏빛으로 빛나요!" },
     solved_d: { speaker: "narrator", text: "딸깍, 숫자 칸이 열렸어요." },
     co_open: { speaker: "bandit", text: "철컥! 두 스위치가 함께 돌아갔어요." },
-    bye1: { speaker: "ari", text: "잘했어! 다음 방에서 또 만나." },
+    bye1: { speaker: "ari", text: { easy: "잘했어! 다음 방에서 또 만나.", hard: "훌륭해. 다음 방에서 다시 만나자." } },
   },
   introLines: ["intro1"],
   escapeLines: ["bye1"],

@@ -20,7 +20,7 @@ let ctx: EngineCtx;
 
 beforeEach(() => {
   s = createEngineState(def);
-  ctx = { now: 0, connected: ["p1", "p2"], names: new Map([["p1", "가람"], ["p2", "나래"]]), maxHintTier: 3 };
+  ctx = { now: 0, connected: ["p1", "p2"], names: new Map([["p1", "가람"], ["p2", "나래"]]), maxHintTier: 3, level: "easy" };
 });
 
 const act = (a: EngineAction, d: RoomDef = def) => applyAction(d, s, a, ctx);

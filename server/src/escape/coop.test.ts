@@ -31,7 +31,7 @@ function reset(connected: readonly string[] = ["s1", "s2"], open = true, d: Room
   room = d;
   s = createEngineState(d);
   if (open) s.flags.add("solved:lk_d");
-  ctx = { now: 0, connected, names: NAMES, maxHintTier: 3 };
+  ctx = { now: 0, connected, names: NAMES, maxHintTier: 3, level: "easy" };
 }
 beforeEach(() => reset());
 
@@ -109,8 +109,8 @@ describe("split views (나눠 보기)", () => {
       split: { text: textA },
     });
     expect(view("dA", "s3")?.split).toEqual({ text: textA });
-    // the other group gets every owner's nickname, joined with 、
-    expect(view("dA", "s2")?.split).toEqual({ lockedText: "글씨가 흐릿해요. 이 쪽지는 가람、다온님만 읽을 수 있어요." });
+    // the other group gets every owner's nickname, each with 님, joined by ", "
+    expect(view("dA", "s2")?.split).toEqual({ lockedText: "글씨가 흐릿해요. 이 쪽지는 가람님, 다온님만 읽을 수 있어요." });
     // the locked view never carries the half itself, at either level
     for (const level of ["easy", "hard"] as const) {
       expect(JSON.stringify(inspectView(room, s, "dA", "s2", ctx, level))).not.toContain(textA);
@@ -123,6 +123,16 @@ describe("split views (나눠 보기)", () => {
     expect(view("dB", "s1")?.split).toEqual({ lockedText: lockedFor("$&별$1") });
     // objects without a split never get one
     expect(view("shelf", "s1")).not.toHaveProperty("split");
+  });
+
+  it("a locked half names one owner as before and several owners each with 님, joined by \", \"", () => {
+    s.flags.add("picked:a");
+    ctx = { ...ctx, names: new Map([...NAMES, ["s4", "라온"], ["s5", "마루"]]) };
+    ctx = { ...ctx, connected: ["s1", "s2"] }; // one owner per half
+    expect(view("dB", "s1")?.split).toEqual({ lockedText: "글씨가 흐릿해요. 이 쪽지는 나래님만 읽을 수 있어요." });
+    ctx = { ...ctx, connected: ["s1", "s2", "s3", "s4", "s5"] }; // A: s1 s3 s5 · B: s2 s4
+    expect(view("dA", "s2")?.split).toEqual({ lockedText: "글씨가 흐릿해요. 이 쪽지는 가람님, 다온님, 마루님만 읽을 수 있어요." });
+    expect(view("dB", "s3")?.split).toEqual({ lockedText: "글씨가 흐릿해요. 이 쪽지는 나래님, 라온님만 읽을 수 있어요." });
   });
 
   it("a member left alone reads both halves; a reconnect splits them again (Review Focus 2)", () => {
@@ -392,7 +402,7 @@ describe("persuasion vote (설득 투표)", () => {
     expect(vote("s1", "wrong")).toEqual([{ e: "finaleWrong", stepId: "f1", optionId: "o2", explain: "" }]);
   });
 
-  it("after the cooldown the right picks advance; the last step escapes and says escapeLines", () => {
+  it("after the cooldown the right picks advance; the last step escapes and carries the escape lines", () => {
     toFinale();
     vote("s1", "wrong", undefined, 0);
     vote("s2", "wrong");
@@ -403,7 +413,8 @@ describe("persuasion vote (설득 투표)", () => {
     expect(s.phase).toBe("finale");
 
     vote("s1", "right");
-    expect(vote("s2", "right")).toEqual([{ e: "escaped" }, ...def.escapeLines.map((lineId) => ({ e: "say", lineId }))]);
+    // the escape lines (they may retell the answer) travel with the event, resolved for the class's level
+    expect(vote("s2", "right")).toEqual([{ e: "escaped", lines: [{ speaker: "ari", text: "잘했어! 다음 방에서 또 만나." }] }]);
     expect(def.escapeLines).toEqual(["bye1"]);
     expect(s.phase).toBe("escaped");
     expect(s.flags.has("escaped")).toBe(true);
@@ -422,7 +433,8 @@ describe("persuasion vote (설득 투표)", () => {
     expect(ev).toContainEqual({ e: "finale", step: 1 });
     expect(ev).toEqual([{ e: "finale", step: 1 }, { e: "members" }]);
     // the one who is left can finish alone
-    expect(vote("s1", "right", ["s1"])).toEqual([{ e: "escaped" }, { e: "say", lineId: "bye1" }]);
+    ctx = { ...ctx, level: "hard" };
+    expect(vote("s1", "right", ["s1"])).toEqual([{ e: "escaped", lines: [{ speaker: "ari", text: "훌륭해. 다음 방에서 다시 만나자." }] }]);
   });
 
   it("firstTry keeps only the first outcome per principle", () => {

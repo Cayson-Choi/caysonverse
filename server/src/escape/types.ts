@@ -126,8 +126,12 @@ export interface RoomDef {
   stages: StageDef[];
   finale: FinaleDef;
   lines: Record<string, LineDef>;
-  /** Line ids (keys of `lines`). */
+  /** Line ids (keys of `lines`) played at the start; they are public. */
   introLines: string[];
+  /**
+   * Line ids played after the escape. They may retell the answer, so they stay off the public
+   * content and travel with the `escaped` event; validateRoomDef refuses one said earlier.
+   */
   escapeLines: string[];
   summary: { lines: [Text, Text, Text]; question: Text; source: string };
 }

@@ -18,17 +18,33 @@ function leaves(x: unknown, out: string[] = []): string[] {
   return out;
 }
 
-/** A string as esbuild prints it with charset=ascii: each non-ASCII UTF-16 unit as a \uXXXX escape. */
-function asciiEscaped(s: string, upper = true): string {
+/**
+ * A string as esbuild prints it with charset=ascii: U+0080..U+00FF as a \xXX escape (or \u00XX
+ * with `latin1: "u"`, as other tools do), every other non-ASCII UTF-16 unit as \uXXXX.
+ */
+function asciiEscaped(s: string, upper = true, latin1: "x" | "u" = "x"): string {
+  const hex = (h: string) => (upper ? h.toUpperCase() : h);
   let out = "";
   for (let i = 0; i < s.length; i++) {
     const c = s.charCodeAt(i);
-    if (c > 0x7e) {
-      const h = c.toString(16).padStart(4, "0");
-      out += "\\u" + (upper ? h.toUpperCase() : h);
-    } else out += s[i];
+    if (c > 0x7e && c <= 0xff && latin1 === "x") out += "\\x" + hex(c.toString(16).padStart(2, "0"));
+    else if (c > 0x7e) out += "\\u" + hex(c.toString(16).padStart(4, "0"));
+    else out += s[i];
   }
   return out;
+}
+
+/** The public card / option ids in the order the client gets them. */
+const cardIds = (c: RoomContent) => c.locks.flatMap((l) => (l.kind === "sort" ? l.cards.map((x) => x.id) : []));
+const optionIds = (c: RoomContent) => c.finale.steps.map((st) => st.options.map((o) => o.id));
+/** Content with sort cards and finale options sorted by id, for order-free comparisons. */
+function byIds(c: RoomContent): RoomContent {
+  const sortById = <T extends { id: string }>(xs: T[]) => [...xs].sort((a, b) => (a.id < b.id ? -1 : 1));
+  return {
+    ...c,
+    locks: c.locks.map((l) => (l.kind === "sort" ? { ...l, cards: sortById(l.cards) } : l)),
+    finale: { ...c.finale, steps: c.finale.steps.map((st) => ({ ...st, options: sortById(st.options) })) },
+  };
 }
 
 const hit = (needles: readonly RegExp[], text: string) => needles.filter((n) => n.test(text)).map(String);
@@ -68,7 +84,7 @@ describe("publicContent", () => {
     expect(c.objects).toContainEqual({ id: "exit_door", label: "마지막 문", kind: "door" });
     for (const o of c.objects) expect(Object.keys(o).sort()).toEqual(["id", "kind", "label"]);
     expect(c.items[0]).toEqual({ id: "a", label: "손전등", icon: "flashlight" });
-    expect(c.locks).toEqual([
+    expect(byIds(c).locks).toEqual([
       { id: "lk_d", objectId: "panel", plate: "숫자 세 개를 맞춰요", kind: "digits", length: 3 },
       { id: "lk_l", objectId: "panel", plate: "글자 두 개를 맞춰요", kind: "letters", wheels: [["가", "나"], ["다", "라"]] },
       {
@@ -92,17 +108,90 @@ describe("publicContent", () => {
       { id: "st_locks", title: "자물쇠 열기" },
       { id: "st_sort", title: "카드 나누기" },
     ]);
-    expect(c.finale.steps[0].options).toEqual([
+    expect(byIds(c).finale.steps[0].options).toEqual([
       { id: "o1", label: "먼저 허락을 받아요", desc: "사진 속 친구에게 물어봐요" },
       { id: "o2", label: "몰래 올려요" },
     ]);
     expect(Object.keys(c.finale.steps[0]).sort()).toEqual(["id", "options", "prompt"]);
-    expect([c.introLines, c.escapeLines]).toEqual([["intro1"], ["bye1"]]);
+    // escape lines arrive with the `escaped` event (they may retell the answer), not at join
+    expect(c.introLines).toEqual(["intro1"]);
+    expect(c).not.toHaveProperty("escapeLines");
+    // exactly these fields, at the top and in the finale (an added field must be a deliberate change)
+    expect(Object.keys(c).sort()).toEqual(["finale", "introLines", "items", "lines", "locks", "objects", "roomId", "stages", "title"]);
+    expect(Object.keys(c.finale).sort()).toEqual(["claim", "steps"]);
+    expect(Object.keys(c.lines).sort()).toEqual(["co_open", "intro1", "made_ab", "solved_d"]);
     // the projection is a copy: changing it cannot reach the server's room data
     (c.locks[1] as Extract<PublicLock, { kind: "letters" }>).wheels[0][0] = "X";
     expect(def.locks[1].kind === "letters" && def.locks[1].wheels[0][0]).toBe("가");
     // type level: no public lock shape can carry an answer
     expectTypeOf<Extract<PublicLock, { answer: unknown }>>().toEqualTypeOf<never>();
+  });
+});
+
+describe("public order", () => {
+  /** A copy of `d` whose sort cards and finale options are listed in reverse. */
+  const reversed = (d: RoomDef): RoomDef => ({
+    ...d,
+    locks: d.locks.map((l) => (l.kind === "sort" ? { ...l, cards: [...l.cards].reverse() } : l)),
+    finale: { ...d.finale, steps: d.finale.steps.map((st) => ({ ...st, options: [...st.options].reverse() })) },
+  });
+  /** Eight cards listed grouped by answer (x × 4, then y × 4) and four steps of four options, right one first — like the counselling room's data. */
+  const grouped: RoomDef = {
+    ...def,
+    locks: def.locks.map((l) =>
+      l.kind === "sort"
+        ? {
+            ...l,
+            cards: Array.from({ length: 8 }, (_, i) => ({ id: `n${i + 1}`, label: `쪽지 ${i + 1}` })),
+            answer: Object.fromEntries(Array.from({ length: 8 }, (_, i) => [`n${i + 1}`, i < 4 ? "x" : "y"])),
+          }
+        : l,
+    ),
+    finale: {
+      ...def.finale,
+      steps: ["f1", "f2", "f3", "f4"].map((id) => ({
+        id,
+        prompt: `질문 ${id}`,
+        options: ["o1", "o2", "o3", "o4"].map((o) => ({ id: o, label: `보기 ${o}` })),
+        correct: "o1",
+      })),
+    },
+  };
+
+  it("sort cards and finale options follow a fixed hash order, not the data order (no answer leak)", () => {
+    for (const d of [def, grouped]) {
+      const base = publicContent(d, "easy");
+      // listing the data the other way round, or changing the answers, gives the same board
+      const answersChanged: RoomDef = {
+        ...d,
+        locks: d.locks.map((l) =>
+          l.kind === "sort" ? { ...l, answer: Object.fromEntries(l.cards.map((c) => [c.id, l.bins[1].id])) } : l,
+        ),
+        finale: { ...d.finale, steps: d.finale.steps.map((st) => ({ ...st, correct: st.options[st.options.length - 1].id })) },
+      };
+      for (const variant of [d, reversed(d), answersChanged])
+        for (const level of ["easy", "hard"] as const) {
+          const c = publicContent(variant, level);
+          expect(cardIds(c)).toEqual(cardIds(base));
+          expect(optionIds(c)).toEqual(optionIds(base));
+        }
+      // same ids, nothing lost
+      expect([...cardIds(base)].sort()).toEqual(d.locks.flatMap((l) => (l.kind === "sort" ? l.cards.map((c) => c.id) : [])).sort());
+    }
+    // the grouped data does not come out grouped, and the right option is not pinned first
+    const g = publicContent(grouped, "easy");
+    const bins = cardIds(g)
+      .map((id) => (Number(id.slice(1)) <= 4 ? "x" : "y"))
+      .join("");
+    expect(["xxxxyyyy", "yyyyxxxx"]).not.toContain(bins);
+    // (one step may keep its data order by chance; the order still says nothing about the answer)
+    expect(optionIds(g).filter((ids) => ids.join() !== "o1,o2,o3,o4").length).toBeGreaterThan(0);
+    // letter wheels keep their order: lock input indexes them
+    const letters = g.locks.find((l) => l.kind === "letters");
+    expect(letters?.kind === "letters" && letters.wheels).toEqual([
+      ["가", "나"],
+      ["다", "라"],
+    ]);
   });
 });
 
@@ -136,6 +225,8 @@ describe("secretStrings", () => {
         "올리기 전에 먼저 물어봐요.",
         "오늘 무엇을 지켰나요?",
         "오늘 우리는 무엇을 지켰을까?",
+        "잘했어! 다음 방에서 또 만나.", // escape line, both levels
+        "훌륭해. 다음 방에서 다시 만나자.",
       ]),
     );
     expect(secrets).toHaveLength(new Set(secrets).size);
@@ -193,5 +284,43 @@ describe("bundleNeedles", () => {
     for (const form of ["마지막 문", `"마지막 문"`, asciiEscaped(`"마지막 문"`), `x="47"`, "47"]) expect(hit(n2, form), form).toEqual([]);
     expect(hit(n2, `answer:"123"`)).not.toEqual([]); // the other secrets are still caught
     expect(hit(n2, `"${resolveText(def.summary.lines[1], "easy")}"`)).not.toEqual([]);
+  });
+
+  it("finds U+0080..U+00FF secrets printed as \\xXX or \\u00XX (esbuild charset=ascii)", () => {
+    const dotted: RoomDef = {
+      ...def,
+      stages: def.stages.map((st, i) => (i === 0 ? { ...st, hints: ["손전등·필름을 합쳐 봐요.", st.hints[1], st.hints[2]] } : st)),
+    };
+    const needles = bundleNeedles(dotted);
+    const code = `h=["손전등·필름을 합쳐 봐요."]`;
+    expect(asciiEscaped(code)).toContain("\\xB7"); // the helper prints what esbuild prints
+    for (const form of [code, asciiEscaped(code), asciiEscaped(code, false), asciiEscaped(code, true, "u"), asciiEscaped(code, false, "u")])
+      expect(hit(needles, form), form).not.toEqual([]);
+    expect(hit(needles, asciiEscaped(`h=["손전등-필름을 합쳐 봐요."]`))).toEqual([]);
+  });
+
+  it("a letters answer shorter than 4 characters is a needle only as a quoted literal", () => {
+    const needles = bundleNeedles(def); // answer 나라 (2 letters)
+    for (const q of [`w="나라"`, `w='나라'`, asciiEscaped(`w="나라"`)]) expect(hit(needles, q), q).not.toEqual([]);
+    for (const clean of [`t="우리나라"`, `t="나라를 지켜요"`, asciiEscaped(`t="우리나라"`)]) expect(hit(needles, clean), clean).toEqual([]);
+    // from 4 letters on, the joined word is a bare needle again (found inside a longer string)
+    const long: RoomDef = {
+      ...def,
+      locks: def.locks.map((l) =>
+        l.kind === "letters"
+          ? {
+              ...l,
+              wheels: [
+                ["동", "가"],
+                ["의", "나"],
+                ["먼", "다"],
+                ["저", "라"],
+              ],
+              answer: ["동", "의", "먼", "저"],
+            }
+          : l,
+      ),
+    };
+    expect(hit(bundleNeedles(long), `t="이제 동의먼저 해요"`)).not.toEqual([]);
   });
 });

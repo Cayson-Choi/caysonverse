@@ -16,13 +16,17 @@
 
 import { COOP_WINDOW_MS, FINALE_COOLDOWN_MS, SOLO_HOLD_MS } from "@caysonverse/shared/escape/constants";
 import type { EngineEvent, InspectViewPayload } from "@caysonverse/shared/escape/messages";
+import { resolveText } from "./content";
 import { applyEffects, holds, type EngineCtx, type EngineState } from "./engine";
 import type { CoopDef, ObjectDef, RoomDef } from "./types";
 
 export type SplitGroup = "A" | "B";
 
-/** Joins the owners' nicknames in a locked split half ("가람、다온님만 …"). */
-const OWNER_SEPARATOR = "、";
+/**
+ * Joins the owners' nicknames in a locked split half. The template already has 님 after
+ * `{owner}`, so one owner reads "가람님만 …" and several read "가람님, 다온님만 …".
+ */
+const OWNER_SEPARATOR = "님, ";
 
 /** The connected members in join order, each once. */
 function membersOf(connected: readonly string[]): string[] {
@@ -170,7 +174,8 @@ export function castVote(def: RoomDef, s: EngineState, sid: string, optionId: st
 
 /**
  * Drops the votes of members who are not connected, then judges the step if every connected
- * member picked the same option: wrong → explanation + cooldown; right → next step or escaped.
+ * member picked the same option: wrong → explanation + cooldown; right → next step or escaped
+ * (with the escape lines resolved for `ctx.level`).
  * The first outcome per principle is kept in `firstTry`.
  */
 function resolveVotes(def: RoomDef, s: EngineState, ctx: EngineCtx): EngineEvent[] {
@@ -192,7 +197,12 @@ function resolveVotes(def: RoomDef, s: EngineState, ctx: EngineCtx): EngineEvent
   if (s.finaleStep < def.finale.steps.length) return [{ e: "finale", step: s.finaleStep }];
   s.phase = "escaped";
   s.flags.add("escaped");
-  return [{ e: "escaped" }, ...def.escapeLines.map((lineId) => ({ e: "say" as const, lineId }))];
+  // The escape lines travel with the event, not in RoomContent: they may retell the answer.
+  const lines = def.escapeLines.flatMap((id) => {
+    const line = def.lines[id];
+    return line ? [{ speaker: line.speaker, text: resolveText(line.text, ctx.level) }] : [];
+  });
+  return [{ e: "escaped", lines }];
 }
 
 /**
