@@ -119,6 +119,7 @@
   - 지금 쓰는 것(`CLIP`): Idle, Walking_A, Sit_Chair_Down, Sit_Chair_Idle, Sit_Chair_StandUp
   - 조작 개편 설계(2026-10-31-controls-ux-design.md)에서 쓰는 것: 달리기 Running_A, 점프 Jump_Full_Short
   - 롱스커트 전용(다리 움직임을 줄인 파생 클립): Walking_A_LongSkirt, Running_A_LongSkirt, Jump_Full_Short_LongSkirt. manifest `clipVariants`로 롱스커트를 입었을 때만 쓴다(2026-11-01).
+  - 짧은 치마 전용(보폭은 그대로, 무릎 뒤로 접힘만 제한해 발꿈치가 뒷단을 지나가지 않게): Walking_A_ShortSkirt, Running_A_ShortSkirt, Jump_Full_Short_ShortSkirt. 치마·꽃잎 치마에 쓴다(2026-11-01. 롱스커트 동작을 쓰면 다리가 보여 뒷걸음질처럼 보였다).
 - 그 밖의 클립은 넣지 않는다.
 
 **교체식 구조**
@@ -134,7 +135,7 @@
 - 단, 6장의 렌더 점검을 통과해야 한다.
 
 **파일 구성**
-- 하나의 GLB `character.glb`에 넣는다: 뼈대, 모든 부품 메시(이름 규칙 `slot__id`, 예: `hair__ponytail`), 동작 클립 10개(기본 7개 Idle, Walking_A, Running_A, Jump_Full_Short, Sit_Chair_Down, Sit_Chair_Idle, Sit_Chair_StandUp + 롱스커트 변형 3개).
+- 하나의 GLB `character.glb`에 넣는다: 뼈대, 모든 부품 메시(이름 규칙 `slot__id`, 예: `hair__ponytail`), 동작 클립 13개(기본 7개 Idle, Walking_A, Running_A, Jump_Full_Short, Sit_Chair_Down, Sit_Chair_Idle, Sit_Chair_StandUp + 롱스커트 변형 3개 + 짧은 치마 변형 3개).
 - 함께 `character.manifest.json`을 내보낸다. 슬롯별 부품 id, 한글 이름, 색 적용 여부를 담는다.
 
 **색 적용 방식**

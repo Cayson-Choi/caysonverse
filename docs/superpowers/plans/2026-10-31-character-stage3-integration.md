@@ -47,7 +47,7 @@
   - 독립 Playwright 스크립트, `CV_CLIENT_URL` 기본값 `http://localhost:5173`(프로덕션 번들을 재는 `task-char-load.mjs`만 `http://localhost:2567`)
   - 증적은 `.superpowers/sdd/evidence/task-char/`에 남긴다.
   - 콘솔·페이지 오류 0, 종료 코드 0이면 통과다.
-- 동작 클립은 manifest `clips` 10개다. 기본 7개(Idle, Walking_A, Running_A, Sit_Chair_Down, Sit_Chair_Idle, Sit_Chair_StandUp, Jump_Full_Short)와 롱스커트 변형 3개(Walking_A_LongSkirt, Running_A_LongSkirt, Jump_Full_Short_LongSkirt)다.
+- 동작 클립은 manifest `clips` 13개다. 기본 7개(Idle, Walking_A, Running_A, Sit_Chair_Down, Sit_Chair_Idle, Sit_Chair_StandUp, Jump_Full_Short), 롱스커트 변형 3개(Walking_A_LongSkirt, Running_A_LongSkirt, Jump_Full_Short_LongSkirt), 짧은 치마 변형 3개(Walking_A_ShortSkirt, Running_A_ShortSkirt, Jump_Full_Short_ShortSkirt)다.
   - 기본 7개의 이름은 조작 개편 후의 `CLIP` 값과 같다. 이름을 바꾸지 않는다.
   - 변형은 `CLIP`에 넣지 않는다. manifest `clipVariants`(하의 부품 id → 기본 클립 → 변형 클립)로만 고르고, 지금 매핑은 `longskirt`의 걷기·달리기·점프뿐이다.
   - 아바타 애니메이션 코드는 재생할 클립 이름을 항상 `clipFor(CLIP.x, look)`(Task 4)로 정한다. 롱스커트 아바타가 기본 클립을 그대로 재생하면 다리가 치마를 뚫는다(Review Focus 7).
@@ -215,7 +215,7 @@ export interface CharacterManifestShape {
   covers: Record<string, string>; hatVariants: Record<string, string>; hairCut: number; hatHidesHair: readonly string[];
   npcOnly: Record<string, readonly string[]>;
   clips: readonly string[];                                        // 기본 7 + 롱스커트 변형 3 = 10
-  clipVariants: Record<string /* bottom 부품 id */, Record<string /* 기본 클립 */, string /* 변형 클립 */>>;
+  clipVariants: Record<string /* bottom 부품 id */, Record<string /* 기본 클립 */, string /* 변형 클립 */>>; // 지금: longskirt → *_LongSkirt 3개, skirt·petal_skirt → *_ShortSkirt 3개(보폭 유지, 무릎 접힘만 제한)
   maxBytes: number; draco: boolean;
 }
 export const CHARACTER_MANIFEST = { /* character.manifest.json 그대로 */ } as const satisfies CharacterManifestShape;
@@ -243,15 +243,15 @@ export const BODY_MESHES = ["body__head", "body__hands", "body__torso", "body__l
     - item: `scepter`, `rose`, `staff`, `map`, `wooden_sword`, `telescope`
     - `defaultColors.hat.tiara`는 `"#D4A93A"`(금색. crown과 같다)
     - 위 부품이 모두 있는지는 아래 GLB 일치 테스트가 확인한다. 첫 테스트가 부품마다 메시 노드를 보고, 부품 수 고정 테스트가 슬롯별 개수(hat 11, top 12, bottom 7, shoes 8, item 12)와 금색 기본값을 고정한다.
-  - **롱스커트 변형 클립도 manifest와 GLB에 모두 들어 있어야 한다.** manifest `clips` 10개(기본 7개 + `Walking_A_LongSkirt`, `Running_A_LongSkirt`, `Jump_Full_Short_LongSkirt`)와 `clipVariants.longskirt`(`Walking_A`·`Running_A`·`Jump_Full_Short` → 위 변형)가 있어야 한다. 없으면 멈추고 2단계 자산 쪽에 보고한다. 클립 일치는 아래 GLB 일치 테스트가 확인한다.
+  - **롱스커트 변형 클립도 manifest와 GLB에 모두 들어 있어야 한다.** manifest `clips` 13개(기본 7개 + `*_LongSkirt` 3개 + `*_ShortSkirt` 3개)와 `clipVariants`(longskirt → `*_LongSkirt`, skirt·petal_skirt → `*_ShortSkirt`)가 있어야 한다. 없으면 멈추고 2단계 자산 쪽에 보고한다. 클립 일치는 아래 GLB 일치 테스트가 확인한다.
 - [ ] **Step 1: 실패하는 테스트 작성.** 테스트는 `shared/`에서 실행되므로 경로는 `resolve(process.cwd(), "../client/public/…")`로 잡는다. GLB JSON 청크는 `buf.readUInt32LE(12)` 길이만큼 `buf.subarray(20, …)`에서 읽는다.
 
 ```ts
 it("ships every manifest part, hat variant, npcOnly part and body mesh as a mesh node");
 const BASE_CLIPS = ["Idle", "Walking_A", "Running_A", "Sit_Chair_Down", "Sit_Chair_Idle", "Sit_Chair_StandUp", "Jump_Full_Short"];
-const VARIANT_CLIPS = ["Walking_A_LongSkirt", "Running_A_LongSkirt", "Jump_Full_Short_LongSkirt"];
+const VARIANT_CLIPS = ["Walking_A_LongSkirt", "Running_A_LongSkirt", "Jump_Full_Short_LongSkirt", "Walking_A_ShortSkirt", "Running_A_ShortSkirt", "Jump_Full_Short_ShortSkirt"];
 it("ships exactly the manifest clips: the 7 base clips plus the 3 long-skirt variants", () => {
-  expect([...CHARACTER_MANIFEST.clips].sort()).toEqual([...BASE_CLIPS, ...VARIANT_CLIPS].sort()); // 10개. 기본 7개 이름은 바뀌지 않는다
+  expect([...CHARACTER_MANIFEST.clips].sort()).toEqual([...BASE_CLIPS, ...VARIANT_CLIPS].sort()); // 13개. 기본 7개 이름은 바뀌지 않는다
   expect(gltf.animations.map((a) => a.name).sort()).toEqual([...CHARACTER_MANIFEST.clips].sort());
 });
 it("clipVariants only names real bottom parts and real clips", () => {
