@@ -15,11 +15,14 @@
  */
 
 import type { AABB } from "@caysonverse/shared/collision";
-import { MAZE_WALLS } from "@caysonverse/shared/maze";
-import { WALLS, WALL_HEIGHT } from "@caysonverse/shared/worldMap";
+import { LEGACY_GEOMETRY, WALL_HEIGHT } from "@caysonverse/shared/worldMap";
 
-/** Every box the camera can be blocked by: the room walls and the maze walls (0..WALL_HEIGHT tall). */
-export const CAMERA_BOXES: readonly AABB[] = [...WALLS, ...MAZE_WALLS];
+/**
+ * Every box the camera can be blocked by in the legacy world: the room walls and the maze walls
+ * (0..WALL_HEIGHT tall). It IS `LEGACY_GEOMETRY.cameraBoxes` — the one list the school maps'
+ * geometries also carry — so there is no second copy of this geometry to drift.
+ */
+export const CAMERA_BOXES: readonly AABB[] = LEGACY_GEOMETRY.cameraBoxes;
 
 /**
  * Spring arm tuning: the arm never gets shorter than `minDist` (m), stops `pad` (m)

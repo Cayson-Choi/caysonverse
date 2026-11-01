@@ -74,6 +74,19 @@
 
 발주자가 쓴 `uiStore`라는 이름은 controls 계획에 없다. 이 계획에서 같은 역할은 `isUiCaptured()`(`uiCapture.ts`)와 `useSettingsStore`(controls Task 15)가 맡는다.
 
+**Task 1 Step 0 기준선 확인 (2026-11-02, `feature/escape-phase1` @ `cec0648`):**
+
+- 확인됨: `git merge-base --is-ancestor feature/controls-ux HEAD` → `controls-ok`. `shared/src/schema.ts`에 `role`·`hatColor`가 있다. `hotkeys.ts`·`interact.ts`·`settings.ts`·`cameraCollision.ts`·`nametagSelect.ts`가 모두 있다.
+- 점수: `npm run typecheck` 통과. `npm run test` shared 140 · server 201 · client 1320 모두 통과.
+- 위 표와 이름이 다른 곳(이후 태스크는 아래 실제 이름을 쓴다):
+  - `character.manifest.json`은 배포 파일이 없다. 생성물 `shared/src/characterManifest.ts`(`CHARACTER_MANIFEST`, 원본은 `art/character/export/character.manifest.json`)를 import한다.
+  - 아바타 조립 함수(`cloneTinted` 대체)는 `assembleAvatar`·`buildAvatar`(`client/src/game/characterAvatar.ts`)다.
+  - 외형 필드 목록은 `APPEARANCE_FIELDS`·`AppearanceField`(`shared/src/appearance.ts`, `shared/src/constants.ts`가 다시 내보냄)다. 이 계획의 `APPEARANCE_KEYS`·`AppearanceKey`는 만들지 않는다(E5). 그 이름을 쓰는 뒤쪽 태스크는 `APPEARANCE_FIELDS`로 읽는다.
+  - `jumpSync.ts`·`typingSync.ts`는 `client/src/net/`에, `jump.ts`·`typing.ts`는 `client/src/game/`에 있다. `MessageType.Jump`·`Typing`은 `shared/src/messages.ts`에 있다.
+  - `ClientTracking`은 `server/src/rooms/WorldRoom.ts` 안의 비공개 인터페이스다(내보내지 않음).
+  - `uiStore`는 실제로 있다: `client/src/stores/uiStore.ts`의 `useUiStore`(`menuOpen`·`rosterOpen` 패널 열림 상태). 위 문장과 달리 이름이 코드에 있으니, 패널 상태는 그것을 쓰고 입력 가로채기는 계속 `isUiCaptured()`를 쓴다.
+  - 클라이언트 `CAMERA_BOXES`는 `LEGACY_GEOMETRY.cameraBoxes`와 같은 배열이다(E17, Task 1에서 바꿨다).
+
 ## 파일 구조
 
 | 파일 | 상태 | 책임 |

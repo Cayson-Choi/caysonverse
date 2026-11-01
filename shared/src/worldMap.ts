@@ -2,8 +2,8 @@
  * Single source of truth for the world map: bounds, zones, spawn, furniture
  * placements, the derived collision OBSTACLES, and the lecture-hall screen.
  *
- * Browser-safe and data-driven: it imports ONLY the `AABB` type (no THREE, no
- * @colyseus/schema, no clocks), so the client scene renders from it, the client
+ * Browser-safe and data-driven: it imports ONLY types (`AABB`, `MapGeometry`) and the maze
+ * (no THREE, no @colyseus/schema, no clocks), so the client scene renders from it, the client
  * collision resolver and the server drop-check both collide against the SAME
  * `OBSTACLES`, and there is exactly one place a map literal ever lives.
  *
@@ -23,6 +23,7 @@
 
 import type { AABB } from "./collision";
 import { MAZE_ZONE, MAZE_WALLS } from "./maze";
+import type { MapGeometry } from "./school/geometry";
 
 export type { AABB };
 
@@ -446,3 +447,19 @@ export function nearestFreeSeat(
   }
   return best >= 0 ? best : null;
 }
+
+// ──────────────────────────── Map geometry bundle ────────────────────────────
+
+/**
+ * This world as a `MapGeometry`, so code that works on "the map the player stands in" (server
+ * movement check, client collision, camera spring arm) treats the legacy world like the school
+ * maps. It only bundles the constants above — `bounds` and `obstacles` are the very same
+ * objects, and the camera boxes are the walls (room walls, then maze walls) that the third-person
+ * camera must not see through. Nothing here is a second copy of the geometry.
+ */
+export const LEGACY_GEOMETRY: MapGeometry = {
+  id: "legacy",
+  bounds: WORLD_BOUNDS,
+  obstacles: OBSTACLES,
+  cameraBoxes: [...WALLS, ...MAZE_WALLS],
+};
