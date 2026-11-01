@@ -1,225 +1,25 @@
 import type { KeyboardControlsEntry } from "@react-three/drei";
 
-/**
- * The four royal presets (v2 Task 13). Keys the fixed atlas palette
- * (royalPalette.ts) and the procedural accessories (royalAttachments.ts).
- */
-export type RoyalId = "king" | "queen" | "princess" | "prince";
-
-/**
- * Attach-time transform for a crown accessory. The crown GLB bakes its own
- * +Z→+Y stand-up rotation and a ×100 node scale, so all we vary per royal is a
- * uniform fit-scale (`scale`, a multiplier on CROWN_BASE_SCALE) and an optional
- * `flatten` that squashes ONLY the height (Y) axis — turning the tall gold crown
- * into a low tiara/circlet without changing its footprint.
- */
-export interface CrownConfig {
-  /** Uniform fit-scale multiplier over CROWN_BASE_SCALE. */
-  scale: number;
-  /** Height-axis (Y) squash factor in (0, 1]; omitted ⇒ 1 (no flatten). */
-  flatten?: number;
-  /**
-   * Royal identity marker (v2 Task 13). Set exactly on the four royal presets;
-   * it selects the fixed palette texture (tint is NOT applied — pastel
-   * multiplication would corrupt the gold) and the procedural accessories. It
-   * rides on the crown config because the avatar assembly call sites
-   * (LocalPlayer/RemotePlayer, other work lanes) forward only
-   * `{hideNodes, crown, crownScene}` — and a crown is precisely what makes a
-   * preset royal, so the marker introduces no new plumbing.
-   */
-  royal?: RoyalId;
-}
-
-/**
- * Single source of truth for character presets. Index === `Player.character`
- * (0..7) and must stay aligned with the server's CHARACTER_COUNT. 0..3 are the
- * base KayKit bodies; 4..7 are the royals (왕/왕비/공주/왕자), COMPOSED from those
- * same cached bodies (no new GLB) by hiding a few accessory nodes and attaching a
- * crown to the `head` bone. The avatar assembly (avatar.ts) reads this config —
- * there is no per-character branching anywhere. Clip names were discovered by
- * inspecting the GLBs (see models/LICENSE.md), NOT hardcoded blind.
- */
-export interface CharacterPreset {
-  /** English id (asset/debug). */
-  id: string;
-  /** Korean label shown in the entry screen. */
-  label: string;
-  /** Public path to the GLB (served from client/public). */
-  model: string;
-  /**
-   * Names of accessory nodes to hide (`visible = false`, never deleted — the
-   * geometry stays shared with the cache). Every name must be in HIDEABLE_NODES.
-   */
-  hideNodes?: readonly string[];
-  /** Crown accessory attached to the `head` bone after tinting (royals only). */
-  crown?: CrownConfig;
-  /**
-   * Chat-voice gender (design 34 후속): the Edge-TTS neural voice this
-   * character SPEAKS with when its chat messages are read aloud — male
-   * characters get the male voice, female characters the female voice.
-   */
-  voice: "male" | "female";
-}
-
-export const CHARACTERS: readonly CharacterPreset[] = [
-  { id: "knight", label: "기사", model: "/models/knight.glb", voice: "male" },
-  { id: "barbarian", label: "바바리안", model: "/models/barbarian.glb", voice: "male" },
-  { id: "mage", label: "마법사", model: "/models/mage.glb", voice: "male" },
-  { id: "rogue", label: "도적", model: "/models/rogue.glb", voice: "female" },
-  // ── Royals (v2 Task 13) — same bodies in ROYAL DRESS: fixed atlas palette
-  //    (crown.royal → royalPalette.ts), ALL weapons hidden (unarmed royalty,
-  //    node names measured by scripts/dump-uv-cells.mjs), built-in cape kept
-  //    and repainted, procedural gold accessories, crown on the head. ──
-  // 왕: barbarian body — deep-red garment + gold, red cape, full-size crown.
-  {
-    id: "king",
-    label: "왕",
-    model: "/models/barbarian.glb",
-    hideNodes: [
-      "Barbarian_Hat",
-      "Mug",
-      "1H_Axe",
-      "2H_Axe",
-      "1H_Axe_Offhand",
-      "Barbarian_Round_Shield",
-    ],
-    crown: { scale: 1.0, royal: "king" },
-    voice: "male",
-  },
-  // 왕비: mage body — deep-purple gown + gold trim, cape as a royal train,
-  // gold medallion + waist band, staff/spellbooks hidden, medium crown.
-  {
-    id: "queen",
-    label: "왕비",
-    model: "/models/mage.glb",
-    hideNodes: ["Mage_Hat", "1H_Wand", "2H_Staff", "Spellbook", "Spellbook_open"],
-    crown: { scale: 0.8, royal: "queen" },
-    voice: "female",
-  },
-  // 공주: rogue body — rose dress + pale-gold straps, rose cape, flared peplum
-  // (hidden while seated), daggers/crossbows hidden, a low flattened tiara.
-  {
-    id: "princess",
-    label: "공주",
-    model: "/models/rogue.glb",
-    hideNodes: ["Knife", "Knife_Offhand", "1H_Crossbow", "2H_Crossbow", "Throwable"],
-    crown: { scale: 0.7, flatten: 0.5, royal: "princess" },
-    voice: "female",
-  },
-  // 왕자: knight body — gold plate + royal-blue tunic/cape, gold epaulettes,
-  // helmet + every sword/shield hidden, a small circlet.
-  {
-    id: "prince",
-    label: "왕자",
-    model: "/models/knight.glb",
-    hideNodes: [
-      "Knight_Helmet",
-      "1H_Sword",
-      "2H_Sword",
-      "1H_Sword_Offhand",
-      "Badge_Shield",
-      "Rectangle_Shield",
-      "Round_Shield",
-      "Spike_Shield",
-    ],
-    crown: { scale: 0.8, flatten: 0.72, royal: "prince" },
-    voice: "male",
-  },
-] as const;
-
-/**
- * Accessory node names that presets are allowed to hide. Verified to exist in the
- * respective KayKit GLBs (measured by scripts/dump-uv-cells.mjs, which parses
- * each model's node list). The config-integrity unit test checks every preset's
- * `hideNodes` against THIS list, so a typo can't silently no-op in the browser —
- * no GLB is loaded in the test.
- */
-export const HIDEABLE_NODES = [
-  // Headwear / props
-  "Knight_Helmet",
-  "Barbarian_Hat",
-  "Mage_Hat",
-  "Mug",
-  // Built-in capes (visible by default in the GLBs; royals KEEP + repaint them)
-  "Knight_Cape",
-  "Barbarian_Cape",
-  "Mage_Cape",
-  "Rogue_Cape",
-  // Knight weapons/shields (v2 Task 13 — unarmed royalty)
-  "1H_Sword",
-  "2H_Sword",
-  "1H_Sword_Offhand",
-  "Badge_Shield",
-  "Rectangle_Shield",
-  "Round_Shield",
-  "Spike_Shield",
-  // Barbarian weapons/shield
-  "1H_Axe",
-  "2H_Axe",
-  "1H_Axe_Offhand",
-  "Barbarian_Round_Shield",
-  // Mage implements
-  "1H_Wand",
-  "2H_Staff",
-  "Spellbook",
-  "Spellbook_open",
-  // Rogue weapons
-  "Knife",
-  "Knife_Offhand",
-  "1H_Crossbow",
-  "2H_Crossbow",
-  "Throwable",
-] as const;
-
-/** Public path to the crown accessory GLB (Quaternius, CC0 — see models/LICENSE.md). */
-export const CROWN_MODEL = "/models/crown.glb";
-
-/**
- * Base fit-scale applied to the crown before the per-royal `scale` multiplier.
- * The raw crown is ~0.89 m wide (mesh × the GLB's ×100 node scale); the `head`
- * bone has unit world scale, so this shrinks it onto the head. Tuned by screenshot.
- */
-export const CROWN_BASE_SCALE = 0.55;
-
-/**
- * Head-bone-local Y at which the crown's BOTTOM RIM is anchored. The KayKit chibi
- * head mesh tops out ~0.95 m above the head bone (measured, near-identical across
- * all four bodies); anchoring the rim just under that (0.9) rests every crown on
- * the crown of the head/hair. Anchoring the RIM (not a fixed pivot) is what keeps
- * the flattened tiara/circlet on TOP of the hair instead of sinking into it.
- */
-export const CROWN_RIM_Y = 0.9;
-
-/** Name of the head joint the crown is parented to (shared across all four bodies). */
+/** Name of the head joint accessories (e.g. the AI 조교 halo) are parented to in character.glb. */
 export const HEAD_BONE_NAME = "head";
 
 /**
- * Pure crown transform helper: the local [x, y, z] scale that fits a crown onto
- * the head. Width (X/Z) scales by `base × cfg.scale`; height (Y) additionally by
- * `cfg.flatten` (default 1). Kept THREE-free so it is unit-testable in isolation.
- */
-export function crownLocalScale(cfg: CrownConfig, base: number): [number, number, number] {
-  const s = base * cfg.scale;
-  const flatten = cfg.flatten ?? 1;
-  return [s, s * flatten, s];
-}
-
-/**
- * Animation clip names present in every KayKit Adventurers GLB (76 clips on a
- * shared skeleton). Verified by parsing the GLB JSON chunk for all four models.
- * Keep every clip name the client uses here so a future asset swap touches one
- * place only.
+ * Base animation clip names of character.glb — the first seven entries of the
+ * manifest `clips` (shared/src/characterManifest.ts). The long/short-skirt variant
+ * clips are NOT listed here: they are picked through manifest `clipVariants`
+ * (`clipFor(CLIP.x, look)`). Keep every base clip name the client uses here so a
+ * future asset swap touches one place only.
  */
 export const CLIP = {
   idle: "Idle",
   walk: "Walking_A",
-  // Run cycle (controls-ux Task 5) — 0.800 s loop; verified present in all 4 GLBs.
+  // Run cycle (controls-ux Task 5) — 0.800 s loop.
   run: "Running_A",
   // Jump (controls-ux Task 11) — 1.167 s clip, played one-shot at ~1.46x so it spans
-  // JUMP_DURATION_MS (jump.ts); verified present in all 4 GLBs.
+  // JUMP_DURATION_MS (jump.ts).
   jump: "Jump_Full_Short",
-  // Seating (v2 Task 1) — verified present in all 4 KayKit GLBs (same Rig_Medium
-  // skeleton). Down = sit-down motion, Idle = the held seated pose, StandUp = rise.
+  // Seating (v2 Task 1). Down = sit-down motion, Idle = the held seated pose,
+  // StandUp = rise.
   sitDown: "Sit_Chair_Down",
   sitIdle: "Sit_Chair_Idle",
   sitStand: "Sit_Chair_StandUp",
@@ -229,7 +29,7 @@ export const CLIP = {
 export const ANIM_FADE = 0.2;
 
 /**
- * KayKit models face +Z at yaw 0; our `pose.yaw` also measures facing as
+ * The character model faces +Z at yaw 0; our `pose.yaw` also measures facing as
  * `atan2(dirX, dirZ)` (0 => +Z), so no extra offset is needed. Kept as a named
  * constant so a model with a different rest orientation is a one-line change.
  */

@@ -96,7 +96,7 @@ declare global {
       getOrbit: () => Orbit;
       /**
        * Whether the LOCAL avatar group is currently rendered. False in
-       * first-person once the blend passes the hide threshold (own body + crown +
+       * first-person once the blend passes the hide threshold (own body +
        * blob shadow hidden together). Lets the FP E2E assert own-avatar hiding
        * without reaching into the three scene graph.
        */

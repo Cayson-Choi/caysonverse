@@ -337,7 +337,7 @@ export function LocalPlayer({
     if (!group) return;
 
     // Own-avatar hiding (design 19): in first-person the LOCAL avatar GROUP is
-    // hidden past the mid-blend point — body, crown, AND blob shadow together
+    // hidden past the mid-blend point — body AND blob shadow together
     // (all children of this group), plus the own speech-bubble / emoji sprites
     // (also parented here), which is correct: you don't see your own bubble in FP.
     // Set on EVERY path (incl. seated below) and restored automatically on exit /
