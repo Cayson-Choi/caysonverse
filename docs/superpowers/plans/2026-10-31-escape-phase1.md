@@ -1,4 +1,4 @@
-# 한밤의 AI 학교 — 1단계(기반 + 시범 교실 "상담실") Implementation Plan
+# AI 학교 탈출 — 1단계(기반 + 시범 교실 "상담실") Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -10,7 +10,14 @@
 
 **Spec:** `docs/superpowers/specs/2026-10-31-ai-school-escape-design.md` — 승인됨. 이 계획은 §12의 1단계와 §14 "반 코드로 함께"·"한 번에 끝내기"를 구현한다. 기반 인터페이스는 `docs/superpowers/specs/2026-10-31-controls-ux-design.md`, `docs/superpowers/specs/2026-10-31-character-builder-design.md`, `docs/superpowers/plans/2026-10-31-controls-ux.md`, `docs/superpowers/plans/2026-10-31-character-parts-stage2.md`를 따른다.
 
-**변경 (2026-11-01 발주자: 밤 → 밝은 낮):** 학교 배경이 밝은 낮이 되어 조명·하늘·진행판 창·탈출 연출·밝기 검사·스타일 승인을 밝은 낮 기준으로 바꿨다(태스크 번호와 나머지는 그대로). 제목 '한밤의 AI 학교'는 이름 변경 예정이며 발주자 결정 대기 중이라 아직 바꾸지 않았다.
+**변경 (2026-11-01 발주자: 밤 → 밝은 낮):** 학교 배경이 밝은 낮이 되어 조명·하늘·진행판 창·탈출 연출·밝기 검사·스타일 승인을 밝은 낮 기준으로 바꿨다(태스크 번호와 나머지는 그대로).
+
+**변경 (2026-11-01 발주자: 이름·caysonverse 안의 체험 하나):**
+- 제목은 "AI 학교 탈출"이다.
+- caysonverse는 여러 체험을 담아 넓혀 가는 곳이고, 이 게임은 그 체험 중 하나다(스펙 14장 "기존 월드와 다른 체험").
+- 이 계획의 구조는 그대로 맞는다. 공통 `PlayerRoom` 위에 기존 `WorldRoom`을 그대로 두고 반별 `ClassRoom`을 따로 올린다.
+- Task 14 입장 화면은 나중에 "어디로 갈까요?" 체험 고르기를 붙일 수 있게 만든다.
+- 지금 월드를 입장 화면에 보일지(지금 계획: `?world=legacy`로만)는 Task 14 전에 발주자에게 확인한다.
 
 ## Global Constraints
 
@@ -1563,7 +1570,7 @@ export function startClassSync(room: Room<ClassState>): () => void;   // EscapeT
 export function startEscapeSync(room: Room<EscapeState>): () => void; // Content, InspectView, Event, Notice, 상태 → escapeStore
 
 // download.ts
-export function resultsFilename(code: string, d: Date): string;        // "한밤의AI학교_AB2CDE_20261031-1405.csv"
+export function resultsFilename(code: string, d: Date): string;        // "AI학교탈출_AB2CDE_20261031-1405.csv"
 export function downloadCsv(filename: string, csv: string): void;      // Blob + a[download]
 ```
 
@@ -1580,7 +1587,7 @@ it("move/chat/emoji/jump/typing go to the escape room while one is set, else to 
   setEscapeRoom(esc as never); sendChat("안녕"); expect(esc.send).toHaveBeenCalledTimes(1);
 });
 it("teacherSession lives in memory only (no localStorage/sessionStorage writes)");
-it("resultsFilename", () => expect(resultsFilename("AB2CDE", new Date(2026, 9, 31, 14, 5))).toBe("한밤의AI학교_AB2CDE_20261031-1405.csv"));
+it("resultsFilename", () => expect(resultsFilename("AB2CDE", new Date(2026, 9, 31, 14, 5))).toBe("AI학교탈출_AB2CDE_20261031-1405.csv"));
 it("teamRows puts my team first and marks members inside rooms");
 it("toEscapeView copies schema collections into plain arrays/records");
 ```
@@ -2172,7 +2179,7 @@ node e2e/luma-check.mjs <png...>                                   # 평균 상�
 ### Task 27: 문서 정리 + 발주자 상담실 플레이 확인(체크포인트)
 
 **Files:**
-- Modify: `docs/design.md`(새 36장 "한밤의 AI 학교 1단계" 요약: 방 구조·반 코드·선생님 키·팀·퍼즐 엔진·보안 규칙·품질 단계·부하 결과, 발주자 확인 결과), `docs/deploy.md`(선생님 키·`TEACHER_KEYS_FILE`·`BANDIT_AI`), `docs/licenses.md`(최종 확인일)
+- Modify: `docs/design.md`(새 36장 "AI 학교 탈출 1단계" 요약: 방 구조·반 코드·선생님 키·팀·퍼즐 엔진·보안 규칙·품질 단계·부하 결과, 발주자 확인 결과), `docs/deploy.md`(선생님 키·`TEACHER_KEYS_FILE`·`BANDIT_AI`), `docs/licenses.md`(최종 확인일)
 
 - [ ] **Step 1: 문서.** 위 세 파일. `npm run typecheck && npm run test && npm run build` PASS.
 - [ ] **Step 2: 플레이 준비.** 발주자에게 두 방법 중 고르게 한다: (a) 내 PC에서 `npm run build && npm start` + 같은 Wi-Fi 휴대폰으로 `http://<PC IP>:2567`, (b) Oracle에 이 브랜치를 올림(발주자 OK, 수업 없는 시간). 시험용 선생님 키를 하나 발급해 발주자에게만 전달한다(터미널 한 번 출력).
