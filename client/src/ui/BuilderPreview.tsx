@@ -222,8 +222,8 @@ function PreviewFigure({ look, base, onShown }: FigureProps) {
 
 /**
  * 부품·프리셋 카드 그림을 이 Canvas의 렌더러로 그린다(drawThumbFrame: 프레임마다 2장까지, 지금 탭 먼저, 할 일이
- * 없으면 할당 없이 바로 돌아간다). 미리보기 렌더(이 useFrame 다음)가 화면 전체를 다시 그리므로 구석에 찍은 그림은
- * 보이지 않는다. 캔버스 크기가 바뀌면 실패한 그림(캔버스가 작아 못 찍은 것 등)을 다시 해 본다.
+ * 없으면 할당 없이 바로 돌아간다). 그림은 렌더 타깃에만 찍으므로 화면(미리보기)에는 닿지 않는다. 캔버스 크기가
+ * 바뀌면 실패한 그림을 다시 해 본다.
  */
 function PreviewThumbs() {
   const gl = useThree((s) => s.gl);

@@ -1,6 +1,6 @@
 /* 캐릭터 조립실 — the builder on the sky-garden stage (character stage 3, Task 7b).
    The DOM order is the phone's visual order: presets → tabs → colours → part cards → voice.
-   Wide screens (data-layout="wide"): a grid puts them in two glass panels around the stage — left: 추천 캐릭터
+   Wide screens (.is-wide): a grid puts them in two glass panels around the stage — left: 추천 캐릭터
    (🎲 + 8 portrait cards) and 목소리; right: an icon tab rail, the part cards and the colours. Phones ("phone"):
    one bottom sheet (rest height from stageLayout, opening to 88 % with its grabber), scrolling inside, in DOM
    order. Tablets / landscape phones ("side"): the same sheet as a right-hand panel. Every button is
@@ -76,10 +76,10 @@
   white-space: nowrap;
   pointer-events: none;
 }
-.cv-entry[data-layout="wide"] .cv-builder-hint {
+.cv-entry.is-wide .cv-builder-hint {
   translate: -50% 0;
 }
-.cv-entry:not([data-layout="wide"]) .cv-builder-hint {
+.cv-entry.is-sheet .cv-builder-hint {
   padding: 0 11px;
   font-size: 13px;
 }
@@ -598,10 +598,10 @@
    the stage (empty, lets drags through), columns 3–4 = right panel (tab rail | the open tab). The two glass
    panels are the grid's ::before / ::after. */
 
-.cv-entry[data-layout="wide"] .cv-builder-panel {
+.cv-entry.is-wide .cv-builder-panel {
   display: contents;
 }
-.cv-entry[data-layout="wide"] .cv-sheet-body {
+.cv-entry.is-wide .cv-sheet-body {
   position: absolute;
   z-index: 3;
   inset: 88px 24px 24px;
@@ -610,8 +610,8 @@
   grid-template-rows: minmax(0, 1fr) auto;
   pointer-events: none;
 }
-.cv-entry[data-layout="wide"] .cv-sheet-body::before,
-.cv-entry[data-layout="wide"] .cv-sheet-body::after {
+.cv-entry.is-wide .cv-sheet-body::before,
+.cv-entry.is-wide .cv-sheet-body::after {
   content: "";
   grid-row: 1 / 3;
   background: var(--cv-glass);
@@ -622,41 +622,41 @@
   box-shadow: var(--cv-panel-shadow);
   pointer-events: auto;
 }
-.cv-entry[data-layout="wide"] .cv-sheet-body::before {
+.cv-entry.is-wide .cv-sheet-body::before {
   grid-column: 1;
 }
-.cv-entry[data-layout="wide"] .cv-sheet-body::after {
+.cv-entry.is-wide .cv-sheet-body::after {
   grid-column: 3 / 5;
 }
-.cv-entry[data-layout="wide"] .cv-sheet-body > * {
+.cv-entry.is-wide .cv-sheet-body > * {
   position: relative;
   z-index: 1;
   min-width: 0;
   min-height: 0;
   pointer-events: auto;
 }
-.cv-entry[data-layout="wide"] .cv-presets-group {
+.cv-entry.is-wide .cv-presets-group {
   grid-column: 1;
   grid-row: 1;
   padding: 20px 20px 0;
   overflow: hidden auto;
   scrollbar-width: thin;
 }
-.cv-entry[data-layout="wide"] .cv-presets {
+.cv-entry.is-wide .cv-presets {
   flex: 1 1 auto;
   min-height: 300px;
   grid-template-rows: repeat(3, minmax(0, 158px));
   align-content: start;
 }
-.cv-entry[data-layout="wide"] .cv-voice-group {
+.cv-entry.is-wide .cv-voice-group {
   grid-column: 1;
   grid-row: 2;
   padding: 18px 20px 22px;
 }
-.cv-entry[data-layout="wide"] .cv-voice-group .cv-builder-group-head {
+.cv-entry.is-wide .cv-voice-group .cv-builder-group-head {
   margin-bottom: 10px;
 }
-.cv-entry[data-layout="wide"] .cv-slot-tabs {
+.cv-entry.is-wide .cv-slot-tabs {
   grid-column: 3;
   grid-row: 1 / 3;
   display: grid;
@@ -671,11 +671,11 @@
   overflow-y: auto;
   scrollbar-width: none;
 }
-.cv-entry[data-layout="wide"] .cv-slot-tab {
+.cv-entry.is-wide .cv-slot-tab {
   font-size: 12.5px;
   letter-spacing: -0.6px;
 }
-.cv-entry[data-layout="wide"] .cv-slot-panel {
+.cv-entry.is-wide .cv-slot-panel {
   grid-column: 4;
   grid-row: 1 / 3;
   overflow-y: auto;
@@ -684,16 +684,16 @@
   scrollbar-width: thin;
 }
 /* The one allowed difference from the DOM order: on the wide panel the part cards sit above the colours. */
-.cv-entry[data-layout="wide"] .cv-chips {
+.cv-entry.is-wide .cv-chips {
   order: 1;
 }
-.cv-entry[data-layout="wide"] .cv-swatch-group {
+.cv-entry.is-wide .cv-swatch-group {
   order: 2;
 }
 
 /* ════════════════ phones and tablets: the sheet ════════════════ */
 
-.cv-entry:not([data-layout="wide"]) .cv-builder-panel {
+.cv-entry.is-sheet .cv-builder-panel {
   position: fixed;
   z-index: 4;
   display: flex;
@@ -704,7 +704,7 @@
   -webkit-backdrop-filter: blur(24px) saturate(1.5);
   box-shadow: 0 -18px 40px -20px rgba(48, 40, 150, 0.45);
 }
-.cv-entry[data-layout="phone"] .cv-builder-panel {
+.cv-entry.is-phone .cv-builder-panel {
   left: 0;
   right: 0;
   bottom: 0;
@@ -714,13 +714,13 @@
   transform: translateY(calc(var(--cv-sheet-open) - var(--cv-sheet-rest)));
   transition: transform 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
-.cv-entry[data-layout="phone"] .cv-builder-panel[data-sheet="open"] {
+.cv-entry.is-phone .cv-builder-panel[data-sheet="open"] {
   transform: none;
 }
-.cv-entry[data-layout="phone"] .cv-builder-panel.is-dragging {
+.cv-entry.is-phone .cv-builder-panel.is-dragging {
   transition: none;
 }
-.cv-entry[data-layout="side"] .cv-builder-panel {
+.cv-entry.is-side .cv-builder-panel {
   top: 0;
   right: 0;
   bottom: 0;
@@ -731,7 +731,7 @@
   border-radius: 28px 0 0 28px;
   background: rgba(255, 255, 255, 0.84);
 }
-.cv-entry[data-layout="phone"] .cv-sheet-grabber {
+.cv-entry.is-phone .cv-sheet-grabber {
   flex: none;
   align-self: center;
   display: grid;
@@ -751,7 +751,7 @@
   border-radius: 3px;
   background: rgba(79, 76, 124, 0.3);
 }
-.cv-entry:not([data-layout="wide"]) .cv-sheet-body {
+.cv-entry.is-sheet .cv-sheet-body {
   container: cv-sheet / inline-size;
   flex: 1 1 auto;
   min-height: 0;
@@ -764,32 +764,33 @@
   scrollbar-width: none;
   padding: 4px 16px var(--cv-cta-room);
 }
-.cv-entry:not([data-layout="wide"]) .cv-sheet-body::-webkit-scrollbar {
+/* Rows that scroll inside themselves show no scrollbar (scrollbar-width: none, and this for Safari). */
+.cv-entry.is-sheet :is(.cv-sheet-body, .cv-presets, .cv-slot-tabs, .cv-builder-swatches)::-webkit-scrollbar {
   display: none;
 }
 /* At rest the lowest part of the (open-height) sheet is below the screen: give it as much extra scroll room. */
-.cv-entry[data-layout="phone"] .cv-builder-panel:not([data-sheet="open"]) .cv-sheet-body {
+.cv-entry.is-phone .cv-builder-panel:not([data-sheet="open"]) .cv-sheet-body {
   padding-bottom: calc(var(--cv-cta-room) + var(--cv-sheet-open) - var(--cv-sheet-rest));
 }
 /* The sheet scrolls as a whole: its rows (some are horizontal scrollers) must never shrink to fit. */
-.cv-entry:not([data-layout="wide"]) :is(.cv-presets-group, .cv-slot-tabs, .cv-slot-panel, .cv-voice-group, .cv-swatch-group, .cv-chips) {
+.cv-entry.is-sheet :is(.cv-presets-group, .cv-slot-tabs, .cv-slot-panel, .cv-voice-group, .cv-swatch-group, .cv-chips) {
   flex-shrink: 0;
 }
-.cv-entry:not([data-layout="wide"]) .cv-voice-group {
+.cv-entry.is-sheet .cv-voice-group {
   margin-top: 4px;
 }
-.cv-entry:not([data-layout="wide"]) .cv-builder-group-head {
+.cv-entry.is-sheet .cv-builder-group-head {
   margin-bottom: 4px;
 }
-.cv-entry:not([data-layout="wide"]) .cv-builder-group .cv-label {
+.cv-entry.is-sheet .cv-builder-group .cv-label {
   font-size: 16px;
 }
-.cv-entry:not([data-layout="wide"]) .cv-sub {
+.cv-entry.is-sheet .cv-sub {
   font-size: 11.5px;
 }
 
 /* Presets: one row that scrolls inside itself, 🎲 first; the next card peeks at the edge. */
-.cv-entry:not([data-layout="wide"]) .cv-presets {
+.cv-entry.is-sheet .cv-presets {
   display: flex;
   gap: 8px;
   margin: -4px -16px 0;
@@ -800,10 +801,7 @@
   scroll-padding-inline: 16px;
   scrollbar-width: none;
 }
-.cv-entry:not([data-layout="wide"]) .cv-presets::-webkit-scrollbar {
-  display: none;
-}
-.cv-entry:not([data-layout="wide"]) :is(.cv-preset, .cv-random) {
+.cv-entry.is-sheet :is(.cv-preset, .cv-random) {
   flex: none;
   width: 72px;
   height: 80px;
@@ -811,21 +809,21 @@
   border-radius: 16px;
   scroll-snap-align: start;
 }
-.cv-entry:not([data-layout="wide"]) .cv-preset-portrait {
+.cv-entry.is-sheet .cv-preset-portrait {
   border-radius: 12px;
 }
-.cv-entry:not([data-layout="wide"]) :is(.cv-preset-name, .cv-random-text) {
+.cv-entry.is-sheet :is(.cv-preset-name, .cv-random-text) {
   font-size: 13px;
   line-height: 22px;
 }
-.cv-entry:not([data-layout="wide"]) .cv-random-icon {
+.cv-entry.is-sheet .cv-random-icon {
   background-size: 32px 32px;
 }
 
 /* Tabs: a segmented bar of seven 44 px icons; the open tab takes the room left and shows its word only when
    the word fits (@container on that tab; the other words stay for screen readers). All seven always fit from
    a 288 px sheet up (narrow sheets bleed the bar into the side padding); only narrower ones scroll, with a fade. */
-.cv-entry:not([data-layout="wide"]) .cv-slot-tabs {
+.cv-entry.is-sheet .cv-slot-tabs {
   display: flex;
   gap: 2px;
   padding: 3px;
@@ -836,18 +834,15 @@
   overflow-x: auto;
   scrollbar-width: none;
 }
-.cv-entry:not([data-layout="wide"]) .cv-slot-tabs::-webkit-scrollbar {
-  display: none;
-}
 @container cv-sheet (max-width: 340px) {
-  .cv-entry:not([data-layout="wide"]) .cv-slot-tabs {
+  .cv-entry.is-sheet .cv-slot-tabs {
     gap: 1px;
     padding: 2px;
     margin-inline: -6px;
   }
 }
 @container cv-sheet (max-width: 300px) {
-  .cv-entry:not([data-layout="wide"]) .cv-slot-tabs {
+  .cv-entry.is-sheet .cv-slot-tabs {
     gap: 0;
     padding: 1px;
     border-width: 0;
@@ -855,12 +850,12 @@
   }
 }
 @container cv-sheet (max-width: 279px) {
-  .cv-entry:not([data-layout="wide"]) .cv-slot-tabs {
+  .cv-entry.is-sheet .cv-slot-tabs {
     -webkit-mask-image: linear-gradient(to right, #000 85%, transparent);
     mask-image: linear-gradient(to right, #000 85%, transparent);
   }
 }
-.cv-entry:not([data-layout="wide"]) .cv-slot-tab {
+.cv-entry.is-sheet .cv-slot-tab {
   flex: 0 0 44px;
   flex-direction: row;
   gap: 5px;
@@ -869,11 +864,11 @@
   border-radius: 22px;
   font-size: 15px;
 }
-.cv-entry:not([data-layout="wide"]) .cv-slot-tab .cv-icon {
+.cv-entry.is-sheet .cv-slot-tab .cv-icon {
   width: 23px;
   height: 23px;
 }
-.cv-entry:not([data-layout="wide"]) .cv-slot-tab-label {
+.cv-entry.is-sheet .cv-slot-tab-label {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -881,67 +876,90 @@
   clip-path: inset(50%);
   white-space: nowrap;
 }
-.cv-entry:not([data-layout="wide"]) .cv-slot-tab[aria-selected="true"] {
+/* The open tab always names its slot: the icon goes when the word would not fit beside it, a long word gets
+   smaller, and 손에 드는 것 wraps to two lines on the narrowest tabs (thresholds = the tab's content box). */
+.cv-entry.is-sheet .cv-slot-tab[aria-selected="true"] {
   container: cv-tab / inline-size;
   flex: 1 0 44px;
-  padding: 0 6px;
+  padding: 0 4px;
 }
-/* Room (content box) for the icon 23 + gap 5 + the word, by word length (s ≤ 2 ≈ 24 px, m ≤ 4 ≈ 48, l = 손에 드는 것 ≈ 66). */
+.cv-entry.is-sheet .cv-slot-tab[aria-selected="true"] > .cv-icon {
+  display: none;
+}
+.cv-entry.is-sheet .cv-slot-tab[aria-selected="true"] .cv-slot-tab-label {
+  position: static;
+  width: auto;
+  height: auto;
+  overflow: visible;
+  clip-path: none;
+  line-height: 1.05;
+  text-align: center;
+}
 @container cv-tab (min-width: 54px) {
-  .cv-entry:not([data-layout="wide"]) .cv-slot-tab[aria-selected="true"] .cv-slot-tab-label[data-len="s"] {
-    position: static;
-    width: auto;
-    height: auto;
-    overflow: visible;
-    clip-path: none;
+  .cv-entry.is-sheet .cv-slot-tab[data-len="s"] > .cv-icon {
+    display: inline;
   }
 }
 @container cv-tab (min-width: 77px) {
-  .cv-entry:not([data-layout="wide"]) .cv-slot-tab[aria-selected="true"] .cv-slot-tab-label[data-len="m"] {
-    position: static;
-    width: auto;
-    height: auto;
-    overflow: visible;
-    clip-path: none;
+  .cv-entry.is-sheet .cv-slot-tab[data-len="m"] > .cv-icon {
+    display: inline;
   }
 }
 @container cv-tab (min-width: 96px) {
-  .cv-entry:not([data-layout="wide"]) .cv-slot-tab[aria-selected="true"] .cv-slot-tab-label[data-len="l"] {
-    position: static;
-    width: auto;
-    height: auto;
-    overflow: visible;
-    clip-path: none;
+  .cv-entry.is-sheet .cv-slot-tab[data-len="l"] > .cv-icon {
+    display: inline;
+  }
+}
+@container cv-tab (max-width: 48px) {
+  .cv-entry.is-sheet .cv-slot-tab[data-len="m"] .cv-slot-tab-label {
+    font-size: 13px;
+  }
+}
+@container cv-tab (max-width: 42px) {
+  .cv-entry.is-sheet .cv-slot-tab[data-len="m"] .cv-slot-tab-label {
+    font-size: 11px;
+  }
+}
+@container cv-tab (max-width: 66px) {
+  .cv-entry.is-sheet .cv-slot-tab[data-len="l"] .cv-slot-tab-label {
+    font-size: 13px;
+  }
+}
+@container cv-tab (max-width: 57px) {
+  .cv-entry.is-sheet .cv-slot-tab[data-len="l"] .cv-slot-tab-label {
+    font-size: 12px;
+    white-space: normal;
+    word-break: keep-all;
   }
 }
 
 /* The open tab: colours (one scrolling row), then the part cards in 4 columns — the DOM order. */
-.cv-entry:not([data-layout="wide"]) .cv-slot-head {
+.cv-entry.is-sheet .cv-slot-head {
   display: none;
 }
-.cv-entry:not([data-layout="wide"]) .cv-slot-panel {
+.cv-entry.is-sheet .cv-slot-panel {
   gap: 8px;
 }
-.cv-entry:not([data-layout="wide"]) .cv-swatch-group {
+.cv-entry.is-sheet .cv-swatch-group {
   flex-direction: row;
   align-items: center;
   gap: 6px;
   margin: 0 -16px 0 0;
 }
-.cv-entry:not([data-layout="wide"]) .cv-swatch-head {
+.cv-entry.is-sheet .cv-swatch-head {
   flex: none;
   flex-direction: column;
   align-items: flex-start;
   gap: 0;
   margin: 0 4px 0 2px;
 }
-.cv-entry:not([data-layout="wide"]) .cv-swatch-head .cv-label {
+.cv-entry.is-sheet .cv-swatch-head .cv-label {
   font-size: 15px;
 }
-.cv-entry:not([data-layout="wide"]) .cv-swatch-name::before {
+.cv-entry.is-sheet .cv-swatch-name::before {
   font-size: 11px;
 }
-.cv-entry:not([data-layout="wide"]) .cv-builder-swatches {
+.cv-entry.is-sheet .cv-builder-swatches {
   display: flex;
   flex: 1 1 auto;
   min-width: 0;
@@ -950,36 +968,33 @@
   overflow-x: auto;
   scrollbar-width: none;
 }
-.cv-entry:not([data-layout="wide"]) .cv-builder-swatches::-webkit-scrollbar {
-  display: none;
-}
-.cv-entry:not([data-layout="wide"]) .cv-swatch {
+.cv-entry.is-sheet .cv-swatch {
   flex: none;
 }
-.cv-entry:not([data-layout="wide"]) .cv-chips {
+.cv-entry.is-sheet .cv-chips {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
-.cv-entry[data-layout="side"] .cv-chips {
+.cv-entry.is-side .cv-chips {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
-.cv-entry:not([data-layout="wide"]) .cv-chip {
+.cv-entry.is-sheet .cv-chip {
   padding: 5px 3px 4px;
   border-radius: 16px;
 }
-.cv-entry:not([data-layout="wide"]) .cv-chip-thumb {
+.cv-entry.is-sheet .cv-chip-thumb {
   aspect-ratio: 1 / 0.72;
 }
-.cv-entry:not([data-layout="wide"]) .cv-chip-label {
+.cv-entry.is-sheet .cv-chip-label {
   font-size: 11.5px;
   min-height: 2.3em;
 }
-.cv-entry:not([data-layout="wide"]) .cv-check {
+.cv-entry.is-sheet .cv-check {
   top: -6px;
   right: -6px;
   width: 22px;
   height: 22px;
 }
-.cv-entry:not([data-layout="wide"]) .cv-voice-option {
+.cv-entry.is-sheet .cv-voice-option {
   height: 50px;
   font-size: 15px;
 }

@@ -2,7 +2,8 @@
    The page is one fixed, full-screen layer: the background art (one image per device) with the 3D figure on
    its podium, a top bar, the nameplate + 입장 under the figure, and the builder (builder.css) in glass
    panels (wide screens) or a sheet (phones / tablets). Positions come from stageLayout() as CSS variables
-   on .cv-entry (EntryScreen.tsx); `data-layout` is wide | side | phone. Plain CSS, Korean-facing copy. */
+   on .cv-entry (EntryScreen.tsx); its layout class is is-wide | is-side | is-phone, plus is-sheet for the two
+   sheet layouts. Plain CSS, Korean-facing copy. */
 
 /* Jua (SIL OFL 1.1, self-hosted, only the builder's fixed words — scripts/subset-builder-font.mjs). */
 @font-face {
@@ -26,8 +27,8 @@
   --cv-sel-soft: linear-gradient(180deg, #f1ecff 0%, #e2dcff 100%);
   --cv-card-shadow: 0 6px 14px -6px rgba(60, 52, 170, 0.35);
   --cv-panel-shadow: 0 30px 60px -24px rgba(48, 40, 150, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.9);
-  --cv-display: "CV Jua", "Pretendard", system-ui, -apple-system, "Segoe UI", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
   --cv-body: "Pretendard", system-ui, -apple-system, "Segoe UI", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  --cv-display: "CV Jua", var(--cv-body);
   /* Scroll room under the sheet content for the floating 입장 (58 + 18 + air). */
   --cv-cta-room: 100px;
 
@@ -74,7 +75,7 @@
   inset: 0;
   background: radial-gradient(60% 70% at 50% 58%, transparent 55%, rgba(236, 232, 255, 0.55) 100%);
 }
-.cv-entry[data-layout="phone"] .cv-entry-bg::after {
+.cv-entry.is-phone .cv-entry-bg::after {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0) 60%, rgba(236, 232, 255, 0.6) 100%);
 }
 
@@ -133,8 +134,8 @@
   }
 }
 
-/* Light motes drifting upward (8–14 s loops). On desktop they also lean away from the pointer a little
-   (--cv-px / --cv-py from EntryScreen, −0.5…0.5; transform only). */
+/* Light motes drifting upward (8–14 s loops; each mote's place, size and timing are inline, from EntryScreen's
+   MOTES). On desktop they also lean away from the pointer a little (--cv-px / --cv-py, −0.5…0.5; transform only). */
 .cv-motes {
   position: absolute;
   inset: 0;
@@ -143,22 +144,12 @@
 }
 .cv-motes span {
   position: absolute;
-  width: 9px;
-  height: 9px;
   border-radius: 50%;
   background: radial-gradient(circle, #fff 0 35%, rgba(255, 255, 255, 0) 70%);
   opacity: 0;
   animation: cv-mote 11s linear infinite;
 }
-.cv-motes span:nth-child(1) { left: 37%; top: 30%; animation-duration: 9s; }
-.cv-motes span:nth-child(2) { left: 61%; top: 22%; width: 7px; height: 7px; animation-duration: 12s; animation-delay: -4s; }
-.cv-motes span:nth-child(3) { left: 43%; top: 55%; width: 6px; height: 6px; animation-duration: 10s; animation-delay: -7s; }
-.cv-motes span:nth-child(4) { left: 58%; top: 47%; animation-duration: 13s; animation-delay: -2s; }
-.cv-motes span:nth-child(5) { left: 52%; top: 15%; width: 6px; height: 6px; animation-duration: 14s; animation-delay: -9s; }
-.cv-motes span:nth-child(6) { left: 39%; top: 42%; width: 7px; height: 7px; animation-duration: 8s; animation-delay: -5s; }
-.cv-motes span:nth-child(7) { left: 66%; top: 36%; width: 5px; height: 5px; animation-duration: 11s; animation-delay: -1s; }
-.cv-motes span:nth-child(8) { left: 47%; top: 26%; width: 5px; height: 5px; animation-duration: 12.5s; animation-delay: -6s; }
-.cv-entry[data-layout="phone"] .cv-motes span:nth-child(n + 6) { display: none; }
+.cv-entry.is-phone .cv-motes span:nth-child(n + 6) { display: none; }
 @keyframes cv-mote {
   0% { transform: translateY(24px); opacity: 0; }
   20% { opacity: 0.9; }
@@ -173,8 +164,10 @@
   inset: 0;
 }
 
-/* The app name and tagline stay for screen readers; the visible title is the builder's ("캐릭터 조립실"). */
-.cv-head {
+/* Kept for screen readers only: the app name and tagline (the visible title is the builder's "캐릭터 조립실"),
+   and 관리자이신가요? on a compact bar (just the key shows). */
+.cv-head,
+.cv-entry[data-compact-bar] .cv-admin-text {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -637,30 +630,30 @@
 
 /* ── phones and the tablet side sheet ── */
 
-.cv-entry:not([data-layout="wide"]) .cv-builder-title {
+.cv-entry.is-sheet .cv-builder-title {
   left: 14px;
   gap: 9px;
   font-size: 20px;
 }
-.cv-entry:not([data-layout="wide"]) .cv-brand-badge {
+.cv-entry.is-sheet .cv-brand-badge {
   height: 36px;
   padding: 0 13px;
   border-radius: 18px;
 }
-.cv-entry:not([data-layout="wide"]) .cv-brand-badge img {
+.cv-entry.is-sheet .cv-brand-badge img {
   height: 17px;
 }
-.cv-entry:not([data-layout="wide"]) .cv-admin-toggle {
+.cv-entry.is-sheet .cv-admin-toggle {
   right: 10px;
 }
-.cv-entry[data-layout="side"] .cv-admin-toggle {
+.cv-entry.is-side .cv-admin-toggle {
   right: calc(var(--cv-sheet-w) + 10px);
 }
-.cv-entry:not([data-layout="wide"]) .cv-admin-link {
+.cv-entry.is-sheet .cv-admin-link {
   padding: 0 12px 0 9px;
   font-size: 13.5px;
 }
-.cv-entry:not([data-layout="wide"]) .cv-admin-link::before {
+.cv-entry.is-sheet .cv-admin-link::before {
   inset: 5px 0;
   border-radius: 17px;
 }
@@ -680,22 +673,14 @@
   inset: 5px;
   border-radius: 50%;
 }
-.cv-entry[data-compact-bar] .cv-admin-text {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
-}
 
-.cv-entry:not([data-layout="wide"]) .cv-nameplate .cv-label {
+.cv-entry.is-sheet .cv-nameplate .cv-label {
   padding: 0 10px;
   font-size: 13.5px;
 }
 
 /* 입장 floats at the bottom of the sheet with a fade behind it. */
-.cv-entry:not([data-layout="wide"]) .cv-submit {
+.cv-entry.is-sheet .cv-submit {
   position: fixed;
   z-index: 6;
   left: 16px;
@@ -711,11 +696,11 @@
     inset 0 2px 0 rgba(255, 255, 255, 0.45),
     0 0 0 4px rgba(255, 255, 255, 0.8);
 }
-.cv-entry:not([data-layout="wide"]) .cv-submit-go {
+.cv-entry.is-sheet .cv-submit-go {
   width: 34px;
   height: 34px;
 }
-.cv-entry:not([data-layout="wide"]) .cv-cta-fade {
+.cv-entry.is-sheet .cv-cta-fade {
   display: block;
   position: fixed;
   z-index: 5;
@@ -726,7 +711,7 @@
   pointer-events: none;
   background: linear-gradient(180deg, rgba(244, 241, 255, 0) 0%, rgba(244, 241, 255, 0.92) 45%, #f4f1ff 100%);
 }
-.cv-entry:not([data-layout="wide"]) .cv-message {
+.cv-entry.is-sheet .cv-message {
   position: fixed;
   z-index: 6;
   top: auto;
@@ -735,10 +720,10 @@
   width: var(--cv-toast-w);
   max-width: none;
 }
-.cv-entry[data-layout="side"] .cv-submit {
+.cv-entry.is-side .cv-submit {
   left: calc(100% - var(--cv-sheet-w) + 16px);
 }
-.cv-entry[data-layout="side"] .cv-cta-fade {
+.cv-entry.is-side .cv-cta-fade {
   left: calc(100% - var(--cv-sheet-w));
 }
 

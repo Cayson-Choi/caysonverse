@@ -74,11 +74,24 @@ function viewportLayout(): StageLayout {
 /** 포인터 시차의 값(−0.5~0.5를 40칸으로): 미리 만든 문자열이라 움직일 때마다 새 문자열을 만들지 않는다. */
 const PARALLAX_STEPS = 40;
 const PARALLAX_VALUES = Array.from({ length: PARALLAX_STEPS + 1 }, (_, i) => String(i / PARALLAX_STEPS - 0.5));
+/** 빛 알갱이 8개: 왼쪽·위(%), 크기(px), 한 번 오르는 시간(s), 미리 지난 시간(s — 처음부터 흩어져 보이게). */
+const MOTES = [
+  [37, 30, 9, 9, 0],
+  [61, 22, 7, 12, 4],
+  [43, 55, 6, 10, 7],
+  [58, 47, 9, 13, 2],
+  [52, 15, 6, 14, 9],
+  [39, 42, 7, 8, 5],
+  [66, 36, 5, 11, 1],
+  [47, 26, 5, 12.5, 6],
+] as const;
+
 const parallaxValue = (t: number) => PARALLAX_VALUES[Math.round(Math.min(1, Math.max(0, t)) * PARALLAX_STEPS)];
 
 /**
- * 데스크톱(정밀 포인터 + 호버)에서만: 포인터 위치를 --cv-px·--cv-py(−0.5~0.5)로 적어 빛 알갱이가 살짝 따라 움직이게 한다
- * (CSS transform). 포인터가 움직인 프레임에만, rAF 한 번으로 적는다. 움직임 줄이기 설정이면 켜지 않는다.
+ * 데스크톱(정밀 포인터 + 호버)에서만: 포인터 위치를 빛 알갱이 층(.cv-motes) 자신의 --cv-px·--cv-py(−0.5~0.5)로 적어
+ * 살짝 따라 움직이게 한다(CSS transform). 그 층에만 적으므로 조립실의 나머지 요소는 다시 스타일을 계산하지 않는다.
+ * 포인터가 움직인 프레임에만, rAF 한 번으로 적는다. 움직임 줄이기 설정이면 켜지 않는다.
  */
 function usePointerParallax(ref: { current: HTMLElement | null }) {
   useEffect(() => {
@@ -134,10 +147,10 @@ export function EntryScreen() {
   /** Bumped by every rejected nickname: restarts the nameplate shake. */
   const [shakes, setShakes] = useState(0);
   const scrollerRef = useRef<HTMLDivElement>(null);
-  const entryRef = useRef<HTMLDivElement>(null);
+  const motesRef = useRef<HTMLDivElement>(null);
   const adminRef = useRef<HTMLDivElement>(null);
   const adminButtonRef = useRef<HTMLButtonElement>(null);
-  usePointerParallax(entryRef);
+  usePointerParallax(motesRef);
 
   // Warm the model cache as soon as the builder opens (the preview and then the world both use character.glb).
   useEffect(() => {
@@ -231,8 +244,9 @@ export function EntryScreen() {
 
   return (
     <div
-      ref={entryRef}
-      className="cv-entry"
+      // CSS uses the classes (is-wide | is-side | is-phone, and is-sheet for both sheet layouts: short selectors);
+      // data-layout stays for tests.
+      className={`cv-entry is-${layout.mode}${layout.mode === "wide" ? "" : " is-sheet"}`}
       data-layout={layout.mode}
       data-art={layout.art}
       data-compact-bar={layout.compactBar ? "" : undefined}
@@ -247,9 +261,12 @@ export function EntryScreen() {
         </picture>
         <div className="cv-stage-spot" />
         <div className="cv-stage-glow" />
-        <div className="cv-motes">
-          {Array.from({ length: 8 }, (_, i) => (
-            <span key={i} />
+        <div className="cv-motes" ref={motesRef}>
+          {MOTES.map(([x, y, size, loop, ahead], i) => (
+            <span
+              key={i}
+              style={{ left: `${x}%`, top: `${y}%`, width: size, height: size, animationDuration: `${loop}s`, animationDelay: `-${ahead}s` }}
+            />
           ))}
         </div>
       </div>
@@ -320,7 +337,7 @@ export function EntryScreen() {
             className="cv-admin-link"
             ref={adminButtonRef}
             aria-expanded={showAdmin}
-            aria-controls="cv-admin-pop"
+            aria-controls={showAdmin ? "cv-admin-pop" : undefined}
             data-has-code={adminCode.trim() ? "" : undefined}
             onClick={() => (showAdmin ? closeAdmin(true) : setShowAdmin(true))}
           >

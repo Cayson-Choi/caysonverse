@@ -180,11 +180,12 @@ describe("stageLayout (Task 7b: the figure stands on the podium)", () => {
     // Short phones keep the 47 % sheet so the figure keeps its room; mid-size ones cap at 56 %.
     expect(stageLayout(320, 568).sheet!.rest).toBe(Math.round(0.47 * 568));
     expect(stageLayout(360, 740).sheet!.rest).toBe(Math.round(0.56 * 740));
-    {
+  });
+
+  it("compacts the top bar on 320 px phones and gives tablets a full-height side sheet", () => {
     expect(stageLayout(320, 568).compactBar).toBe(true);
     expect(stageLayout(375, 812).compactBar).toBe(false);
     expect(stageLayout(820, 1180).sheet).toEqual({ width: 360, rest: 1180, open: 1180 });
-    }
   });
 
   it("keeps a usable nameplate on 900–959 px windows (smaller ⟲ ⟳ there)", () => {

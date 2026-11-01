@@ -228,15 +228,14 @@ export function BuilderPanel({
                 tabRefs.current[s] = el;
               }}
               className="cv-slot-tab"
+              data-len={labelLength(CHARACTER_MANIFEST.slotLabels[s])}
               aria-selected={s === slot}
               aria-controls="cv-slot-panel"
               tabIndex={s === slot ? 0 : -1}
               onClick={() => setSlot(s)}
             >
               <BuilderIcon name={SLOT_ICONS[s]} />
-              <span className="cv-slot-tab-label" data-len={labelLength(CHARACTER_MANIFEST.slotLabels[s])}>
-                {CHARACTER_MANIFEST.slotLabels[s]}
-              </span>
+              <span className="cv-slot-tab-label">{CHARACTER_MANIFEST.slotLabels[s]}</span>
             </button>
           ))}
         </div>
@@ -339,7 +338,7 @@ export function BuilderPanel({
   );
 }
 
-/** 탭 글자 길이 묶음: 고른 탭이 글자를 펼칠 수 있는지 CSS(@container)가 이 길이로 정한다. */
+/** 탭 글자 길이 묶음: 휴대폰에서 고른 탭에 아이콘까지 들어가는지, 글자를 줄일지 CSS(@container)가 이 길이로 정한다. */
 function labelLength(label: string): "s" | "m" | "l" {
   return label.length <= 2 ? "s" : label.length <= 4 ? "m" : "l";
 }
