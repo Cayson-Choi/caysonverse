@@ -5,10 +5,17 @@ import { matchMaker } from "colyseus";
 import { KICK_CLOSE_CODE, MAX_CLIENTS, ROLE_STUDENT, ROLE_TEACHER } from "@caysonverse/shared/constants";
 import { MessageType, type SystemBroadcast } from "@caysonverse/shared/messages";
 import { APPEARANCE_ERROR, DEFAULT_APPEARANCE, pickAppearance } from "@caysonverse/shared/appearance";
-import { CLASS_CLOSED_CODE, CLASS_ROOM, PHASE1_OPEN_ROOMS, PLACE_HUB } from "@caysonverse/shared/escape/constants";
-import { ClassMsg } from "@caysonverse/shared/escape/messages";
+import {
+  CLASS_CLOSED_CODE,
+  CLASS_ROOM,
+  PHASE1_OPEN_ROOMS,
+  PLACE_ESCAPE,
+  PLACE_HUB,
+  TEAM_MAX,
+} from "@caysonverse/shared/escape/constants";
+import { ClassMsg, type NoticePayload } from "@caysonverse/shared/escape/messages";
 import { Team } from "@caysonverse/shared/schema";
-import { HUB_SPAWN, HUB_SPAWN_JITTER } from "@caysonverse/shared/school/hubMap";
+import { HUB_DOORS, HUB_SPAWN, HUB_SPAWN_JITTER, TEAM_ZONE } from "@caysonverse/shared/school/hubMap";
 import type { Tracking } from "../rooms/PlayerRoom";
 import { rooms } from "../rooms";
 import { SPAWN_TOKEN } from "../rooms/spawnToken";
@@ -139,6 +146,9 @@ async function sendTo(room: ClassRoom, client: { send(type: string, payload?: un
 function trackingOf(room: ClassRoom): Map<string, Tracking> {
   return (room as unknown as { tracking: Map<string, Tracking> }).tracking;
 }
+
+/** A test client (only what these tests use). */
+type TestClient = Awaited<ReturnType<typeof enter>>;
 
 describe("ClassRoom creation", () => {
   it("refuses creation without the spawn token; a client cannot create a class via matchmaking", async () => {
@@ -382,7 +392,8 @@ describe("ClassRoom join", () => {
     // Let the team reach every screen before the refresh, as it would in class. (Colyseus 0.17 /
     // schema 4.0.27 race, not ClassRoom's: when a team is created, a client's join ack sends it the
     // full state and the team's slot 0 is then replaced, all inside one patch window, that client
-    // decodes the re-sent ADD at index 0 as an unshift. See the Task 5 report.)
+    // decodes the re-sent ADD at index 0 as an unshift. See the Task 5 report. Since Task 6 ClassRoom
+    // itself rewrites members as clear + push — see the "mid-patch-window" test in `teams`.)
     await flush();
     await flush();
 
@@ -601,3 +612,471 @@ describe("ClassRoom teacher tools", () => {
     expect(room.state.players.has(other.sessionId)).toBe(true);
   });
 });
+
+describe("teams", () => {
+  /** The brief's Korean notices (ClassMsg.Notice). */
+  const TEAM_ERR = {
+    already: "이미 팀에 있어요. 먼저 팀에서 나와 주세요",
+    taken: "이미 있는 팀 이름과 색이에요",
+    full: "팀이 가득 찼어요 (최대 6명)",
+  } as const;
+  /** A spot on the team rug (TEAM_ZONE x -12..-5, z 1..9). */
+  const RUG = { x: -8, z: 5 } as const;
+  const COUNSEL = HUB_DOORS.find((d) => d.room === "counsel")!;
+  const LIBRARY = HUB_DOORS.find((d) => d.room === "library")!;
+  type Door = (typeof HUB_DOORS)[number];
+
+  /** The decoded view a client holds (the SDK's state, read structurally). */
+  interface SeenTeam {
+    members: Iterable<string>;
+    nameIndex: number;
+    colorIndex: number;
+    padDoor: string;
+    padLeaderSid: string;
+    padCount: number;
+  }
+  interface Seen {
+    players: Map<string, { teamId: string }>;
+    teams: Map<string, SeenTeam>;
+  }
+  const seen = (c: TestClient) => c.state as unknown as Seen;
+
+  /** Join and let the join confirmation settle (waitForNextMessage also resolves on it). */
+  async function join(room: ClassRoom, nickname: string, extra: Record<string, unknown> = {}): Promise<TestClient> {
+    const c = await enter(room, nickname, extra);
+    await flush();
+    return c;
+  }
+
+  function playerOf(room: ClassRoom, c: TestClient) {
+    return room.state.players.get(c.sessionId)!;
+  }
+
+  /** Put a player somewhere directly in server state (white box). */
+  function standAt(room: ClassRoom, c: TestClient, x: number, z: number): void {
+    const p = playerOf(room, c);
+    p.x = x;
+    p.z = z;
+  }
+
+  /** Stand at `from` and send one small legal Move to `to`, so the room's move hook runs (brief Step 3). */
+  async function step(room: ClassRoom, c: TestClient, from: { x: number; z: number }, to: { x: number; z: number }) {
+    standAt(room, c, from.x, from.z);
+    trackingOf(room).get(c.sessionId)!.lastAcceptedAt = Date.now() - 200;
+    await sendTo(room, c, MessageType.Move, { x: to.x, z: to.z, yaw: 0 });
+    expect(playerOf(room, c).x).toBeCloseTo(to.x, 4); // the move really was accepted
+    expect(playerOf(room, c).z).toBeCloseTo(to.z, 4);
+  }
+
+  /** On a pad (its centre), and on the corridor side just off it (|z| 0.5; pads start at |z| 0.8). */
+  const onPad = (d: Door) => ({ x: d.x, z: d.returnPoint.z });
+  const offPad = (d: Door) => ({ x: d.x, z: Math.sign(d.returnPoint.z) * 0.5 });
+  const stepOn = (room: ClassRoom, c: TestClient, d: Door) => step(room, c, offPad(d), onPad(d));
+  const stepOff = (room: ClassRoom, c: TestClient, d: Door) => step(room, c, onPad(d), offPad(d));
+
+  function noticesOf(c: TestClient): string[] {
+    const out: string[] = [];
+    c.onMessage(ClassMsg.Notice, (m: NoticePayload) => out.push(m.text));
+    return out;
+  }
+
+  function teamOf(room: ClassRoom, c: TestClient): Team | undefined {
+    const id = playerOf(room, c).teamId;
+    return id === "" ? undefined : room.state.teams.get(id);
+  }
+
+  function padOf(team: { padDoor: string; padLeaderSid: string; padCount: number }) {
+    return { door: team.padDoor, leader: team.padLeaderSid, count: team.padCount };
+  }
+
+  /** Every team's members as the server holds them, and as client `c` decoded them. */
+  function serverMembers(room: ClassRoom): Record<string, string[]> {
+    const out: Record<string, string[]> = {};
+    room.state.teams.forEach((t, id) => (out[id] = [...t.members]));
+    return out;
+  }
+  function clientMembers(c: TestClient): Record<string, string[]> {
+    const out: Record<string, string[]> = {};
+    seen(c).teams.forEach((t, id) => (out[id] = [...t.members]));
+    return out;
+  }
+  const sameMembers = (room: ClassRoom, c: TestClient) =>
+    JSON.stringify(clientMembers(c)) === JSON.stringify(serverMembers(room));
+
+  it("TeamCreate outside TEAM_ZONE is dropped; inside creates the team and sets teamId", async () => {
+    const room = await openClass("TM2CRE");
+    const a = await join(room, "가람");
+    const notes = noticesOf(a);
+
+    // At the spawn (outside the zone): dropped silently.
+    await sendTo(room, a, ClassMsg.TeamCreate, { nameIndex: 0, colorIndex: 5 });
+    expect(room.state.teams.size).toBe(0);
+    expect(playerOf(room, a).teamId).toBe("");
+    // Just beyond the rug's 0.5 m tolerance band: still outside.
+    standAt(room, a, TEAM_ZONE.maxX + 0.7, RUG.z);
+    await sendTo(room, a, ClassMsg.TeamCreate, { nameIndex: 0, colorIndex: 5 });
+    expect(room.state.teams.size).toBe(0);
+
+    // On the rug, malformed payloads are dropped too.
+    standAt(room, a, RUG.x, RUG.z);
+    for (const bad of [
+      null,
+      "0,5",
+      {},
+      { nameIndex: 12, colorIndex: 0 },
+      { nameIndex: 0, colorIndex: 8 },
+      { nameIndex: -1, colorIndex: 0 },
+      { nameIndex: 1.5, colorIndex: 0 },
+      { nameIndex: "0", colorIndex: 5 },
+    ]) {
+      await sendTo(room, a, ClassMsg.TeamCreate, bad);
+    }
+    expect(room.state.teams.size).toBe(0);
+    expect(notes).toEqual([]);
+
+    // A good one: a team of one; the creator's teamId points at it.
+    await sendTo(room, a, ClassMsg.TeamCreate, { nameIndex: 0, colorIndex: 5 });
+    expect(room.state.teams.size).toBe(1);
+    const team = [...room.state.teams.values()][0];
+    expect(playerOf(room, a).teamId).toBe(team.id);
+    expect(team.id).not.toBe("");
+    expect([team.nameIndex, team.colorIndex]).toEqual([0, 5]);
+    expect([...team.members]).toEqual([a.sessionId]);
+    expect(padOf(team)).toEqual({ door: "", leader: "", count: 0 });
+    expect(team.escapeRoomId).toBe("");
+    expect(notes).toEqual([]);
+
+    // The rug's edge band (inTeamZone's default 0.5 m margin) counts as the zone.
+    const b = await join(room, "다온");
+    standAt(room, b, TEAM_ZONE.maxX + 0.3, RUG.z);
+    await sendTo(room, b, ClassMsg.TeamCreate, { nameIndex: 1, colorIndex: 1 });
+    expect(teamOf(room, b)?.members.length).toBe(1);
+
+    // A student inside an escape room (place 1) cannot form teams, even at "zone" coordinates.
+    const c = await join(room, "세온");
+    standAt(room, c, RUG.x, RUG.z);
+    playerOf(room, c).place = PLACE_ESCAPE;
+    await sendTo(room, c, ClassMsg.TeamCreate, { nameIndex: 2, colorIndex: 2 });
+    expect(playerOf(room, c).teamId).toBe("");
+    expect(room.state.teams.size).toBe(2);
+
+    // Everyone's screen agrees.
+    expect(await pollFor(() => seen(c).players.get(a.sessionId)?.teamId === team.id)).toBe(true);
+    const view = seen(c).teams.get(team.id)!;
+    expect([...view.members]).toEqual([a.sessionId]);
+    expect([view.nameIndex, view.colorIndex]).toEqual([0, 5]);
+  });
+
+  it("the 7th TeamJoin gets the full-team notice; leaving the last member deletes the team", async () => {
+    const room = await openClass("TM3FUL");
+    const kids: TestClient[] = [];
+    for (const name of ["가람", "다온", "세온", "하늘", "보라", "누리", "이음"]) {
+      const c = await join(room, name);
+      standAt(room, c, RUG.x, RUG.z);
+      kids.push(c);
+    }
+    const notes = kids.map(noticesOf);
+
+    await sendTo(room, kids[0], ClassMsg.TeamCreate, { nameIndex: 3, colorIndex: 3 });
+    const teamId = playerOf(room, kids[0]).teamId;
+    expect(teamId).not.toBe("");
+    for (let i = 1; i < TEAM_MAX; i++) await sendTo(room, kids[i], ClassMsg.TeamJoin, { teamId });
+    const team = room.state.teams.get(teamId)!;
+    expect([...team.members]).toEqual(kids.slice(0, TEAM_MAX).map((c) => c.sessionId));
+    for (const c of kids.slice(0, TEAM_MAX)) expect(playerOf(room, c).teamId).toBe(teamId);
+
+    // The 7th: the full-team notice, nothing changes.
+    await sendTo(room, kids[6], ClassMsg.TeamJoin, { teamId });
+    expect(notes[6]).toEqual([TEAM_ERR.full]);
+    expect(team.members.length).toBe(TEAM_MAX);
+    expect(playerOf(room, kids[6]).teamId).toBe("");
+
+    // A member cannot join again or start another team; nobody can reuse a (name, colour).
+    await sendTo(room, kids[1], ClassMsg.TeamJoin, { teamId });
+    await sendTo(room, kids[1], ClassMsg.TeamCreate, { nameIndex: 4, colorIndex: 4 });
+    expect(notes[1]).toEqual([TEAM_ERR.already, TEAM_ERR.already]);
+    await sendTo(room, kids[6], ClassMsg.TeamCreate, { nameIndex: 3, colorIndex: 3 });
+    expect(notes[6]).toEqual([TEAM_ERR.full, TEAM_ERR.taken]);
+    // Unknown or malformed team ids are dropped silently.
+    for (const bad of [{ teamId: "nope" }, { teamId: 7 }, {}, null, { teamId: "__proto__" }]) {
+      await sendTo(room, kids[6], ClassMsg.TeamJoin, bad);
+    }
+    expect(notes[6]).toEqual([TEAM_ERR.full, TEAM_ERR.taken]);
+    expect(room.state.teams.size).toBe(1);
+
+    // Leaving keeps the others' order; leaving without a team is dropped.
+    await sendTo(room, kids[2], ClassMsg.TeamLeave, {});
+    expect(playerOf(room, kids[2]).teamId).toBe("");
+    expect([...team.members]).toEqual([0, 1, 3, 4, 5].map((i) => kids[i].sessionId));
+    await sendTo(room, kids[2], ClassMsg.TeamLeave, {});
+    expect(notes[2]).toEqual([]);
+    // Now there is room for the 7th.
+    await sendTo(room, kids[6], ClassMsg.TeamJoin, { teamId });
+    expect([...team.members].at(-1)).toBe(kids[6].sessionId);
+
+    // Everyone leaves; the last one out deletes the team.
+    for (const i of [0, 1, 3, 4, 5]) await sendTo(room, kids[i], ClassMsg.TeamLeave, {});
+    expect([...team.members]).toEqual([kids[6].sessionId]);
+    expect(room.state.teams.has(teamId)).toBe(true);
+    await sendTo(room, kids[6], ClassMsg.TeamLeave, {});
+    expect(room.state.teams.has(teamId)).toBe(false);
+    for (const c of kids) expect(playerOf(room, c).teamId).toBe("");
+    expect(await pollFor(() => !seen(kids[0]).teams.has(teamId))).toBe(true);
+    // The freed (name, colour) can be used again.
+    await sendTo(room, kids[2], ClassMsg.TeamCreate, { nameIndex: 3, colorIndex: 3 });
+    expect(teamOf(room, kids[2])?.nameIndex).toBe(3);
+  });
+
+  it("TeamLeave works only in the zone; a permanent leave from the class also leaves the team", async () => {
+    process.env.CV_RECONNECT_WINDOW_S = "0.3";
+    const room = await openClass("TM4LEV");
+    const [a, b, c] = [await join(room, "가람"), await join(room, "다온"), await join(room, "세온")];
+    for (const k of [a, b, c]) standAt(room, k, RUG.x, RUG.z);
+    await sendTo(room, a, ClassMsg.TeamCreate, { nameIndex: 5, colorIndex: 2 });
+    const teamId = playerOf(room, a).teamId;
+    await sendTo(room, b, ClassMsg.TeamJoin, { teamId });
+    await sendTo(room, c, ClassMsg.TeamJoin, { teamId });
+    const team = room.state.teams.get(teamId)!;
+
+    // Away from the rug (or inside an escape room) TeamLeave is dropped.
+    standAt(room, b, HUB_SPAWN.x, HUB_SPAWN.z);
+    await sendTo(room, b, ClassMsg.TeamLeave, {});
+    expect(playerOf(room, b).teamId).toBe(teamId);
+    standAt(room, b, RUG.x, RUG.z);
+    playerOf(room, b).place = PLACE_ESCAPE;
+    await sendTo(room, b, ClassMsg.TeamLeave, {});
+    expect(playerOf(room, b).teamId).toBe(teamId);
+    playerOf(room, b).place = PLACE_HUB;
+    // On the rug it works.
+    await sendTo(room, b, ClassMsg.TeamLeave, null);
+    expect(playerOf(room, b).teamId).toBe("");
+    expect([...team.members]).toEqual([a.sessionId, c.sessionId]);
+
+    // A consented leave from the class takes the student out of the team.
+    await c.leave(true);
+    expect(await pollFor(() => team.members.length === 1)).toBe(true);
+    expect([...team.members]).toEqual([a.sessionId]);
+
+    // A dropped connection keeps the seat while the reconnection window is open (Review Focus 1)…
+    a.reconnection.enabled = false;
+    a.connection.close(4010, "tab closed");
+    expect(await pollFor(() => room.state.players.get(a.sessionId)?.connected === false)).toBe(true);
+    expect([...team.members]).toEqual([a.sessionId]);
+    // …and when it expires, the last member is gone and so is the team.
+    expect(await pollFor(() => !room.state.teams.has(teamId), 3000)).toBe(true);
+    expect(room.state.players.has(a.sessionId)).toBe(false);
+    expect(await pollFor(() => !seen(b).teams.has(teamId))).toBe(true);
+  });
+
+  it("teachers cannot form teams; teacher TeamAuto applies the plan and syncs teamId", async () => {
+    const room = await openClass("TM5AUT");
+    const teacher = await join(room, "선생님", { teacherPass: passFor("TM5AUT") });
+    standAt(room, teacher, RUG.x, RUG.z);
+    const kids: TestClient[] = [];
+    for (const name of ["가람", "다온", "세온", "하늘", "보라", "누리", "이음"]) kids.push(await join(room, name));
+    standAt(room, kids[0], RUG.x, RUG.z);
+
+    // A teacher on the rug cannot create or join; a student cannot auto-assign.
+    await sendTo(room, teacher, ClassMsg.TeamCreate, { nameIndex: 0, colorIndex: 0 });
+    expect(room.state.teams.size).toBe(0);
+    await sendTo(room, kids[0], ClassMsg.TeamCreate, { nameIndex: 0, colorIndex: 0 });
+    const firstId = playerOf(room, kids[0]).teamId;
+    await sendTo(room, teacher, ClassMsg.TeamJoin, { teamId: firstId });
+    expect([...room.state.teams.get(firstId)!.members]).toEqual([kids[0].sessionId]);
+    await sendTo(room, kids[1], ClassMsg.TeamAuto, { mode: "fill" });
+    expect(room.state.teams.size).toBe(1);
+    // Garbage modes are dropped.
+    for (const bad of [{ mode: "mix" }, {}, null, "fill"]) await sendTo(room, teacher, ClassMsg.TeamAuto, bad);
+    expect(room.state.teams.size).toBe(1);
+
+    // Fill: the 1-member team is topped up to TEAM_TARGET (4), the other 3 make a new team.
+    await sendTo(room, teacher, ClassMsg.TeamAuto, { mode: "fill" });
+    expect(room.state.teams.size).toBe(2);
+    expect([...room.state.teams.get(firstId)!.members]).toEqual(kids.slice(0, 4).map((c) => c.sessionId));
+    const newTeam = [...room.state.teams.values()].find((t) => t.id !== firstId)!;
+    expect([...newTeam.members]).toEqual(kids.slice(4).map((c) => c.sessionId));
+    for (const c of kids.slice(4)) expect(playerOf(room, c).teamId).toBe(newTeam.id);
+    expect(playerOf(room, teacher).teamId).toBe("");
+    expect(await pollFor(() => seen(kids[6]).players.get(kids[5].sessionId)?.teamId === newTeam.id)).toBe(true);
+    expect([...seen(kids[6]).teams.get(newTeam.id)!.members]).toEqual([...newTeam.members]);
+
+    // Shuffle: every team in the hall is redone, 7 students → teams of 4 and 3, all distinct combos.
+    await sendTo(room, teacher, ClassMsg.TeamAuto, { mode: "shuffle" });
+    const teams = [...room.state.teams.values()];
+    expect(teams.map((t) => t.members.length).sort()).toEqual([3, 4]);
+    expect(teams.map((t) => t.id)).not.toContain(firstId);
+    expect(new Set(teams.map((t) => `${t.nameIndex}/${t.colorIndex}`)).size).toBe(2);
+    const placed = teams.flatMap((t) => [...t.members]);
+    expect([...placed].sort()).toEqual(kids.map((c) => c.sessionId).sort());
+    for (const t of teams) for (const sid of t.members) expect(room.state.players.get(sid)!.teamId).toBe(t.id);
+    expect(playerOf(room, teacher).teamId).toBe("");
+    expect(await pollFor(() => sameMembers(room, kids[0]))).toBe(true);
+  });
+
+  it("TeamAuto leaves a team inside an escape room alone", async () => {
+    const room = await openClass("TM6ESC");
+    const teacher = await join(room, "선생님", { teacherPass: passFor("TM6ESC") });
+    const [a, b, c] = [await join(room, "가람"), await join(room, "다온"), await join(room, "세온")];
+    for (const k of [a, b]) standAt(room, k, RUG.x, RUG.z);
+    await sendTo(room, a, ClassMsg.TeamCreate, { nameIndex: 6, colorIndex: 6 });
+    const teamId = playerOf(room, a).teamId;
+    await sendTo(room, b, ClassMsg.TeamJoin, { teamId });
+    room.state.teams.get(teamId)!.escapeRoomId = "escape-room-1"; // (Task 11 sets this on entry)
+
+    // Shuffle with one loose student and only an escape team: nothing to regroup.
+    await sendTo(room, teacher, ClassMsg.TeamAuto, { mode: "shuffle" });
+    expect([...room.state.teams.keys()]).toEqual([teamId]);
+    expect([...room.state.teams.get(teamId)!.members]).toEqual([a.sessionId, b.sessionId]);
+    expect(playerOf(room, c).teamId).toBe("");
+    // Fill does not put the loose student into it either.
+    await sendTo(room, teacher, ClassMsg.TeamAuto, { mode: "fill" });
+    expect(room.state.teams.get(teamId)!.members.length).toBe(2);
+    expect(playerOf(room, c).teamId).toBe("");
+  });
+
+  it("pad status syncs on moves and updates when a member steps off or disconnects", async () => {
+    process.env.CV_RECONNECT_WINDOW_S = "5";
+    const room = await openClass("PA2DSS");
+    const teacher = await join(room, "선생님", { teacherPass: passFor("PA2DSS") });
+    await sendTo(room, teacher, ClassMsg.Command, { cmd: "start" });
+    const [a, b, c] = [await join(room, "가람"), await join(room, "다온"), await join(room, "세온")];
+    const loner = await join(room, "하늘"); // no team: tracked, but no team status to update
+    for (const k of [a, b, c]) standAt(room, k, RUG.x, RUG.z);
+    await sendTo(room, a, ClassMsg.TeamCreate, { nameIndex: 7, colorIndex: 1 });
+    const team = teamOf(room, a)!;
+    await sendTo(room, b, ClassMsg.TeamJoin, { teamId: team.id });
+    await sendTo(room, c, ClassMsg.TeamJoin, { teamId: team.id });
+    expect(padOf(team)).toEqual({ door: "", leader: "", count: 0 });
+
+    // A steps onto the counsel pad, then B: A arrived first and leads.
+    await stepOn(room, a, COUNSEL);
+    expect(doorOf(room, a)).toBe("counsel");
+    expect(padOf(team)).toEqual({ door: "counsel", leader: a.sessionId, count: 1 });
+    await stepOn(room, b, COUNSEL);
+    expect(padOf(team)).toEqual({ door: "counsel", leader: a.sessionId, count: 2 });
+    // C goes to the library pad: counsel still has more.
+    await stepOn(room, c, LIBRARY);
+    expect(padOf(team)).toEqual({ door: "counsel", leader: a.sessionId, count: 2 });
+    // Walking around ON the pad changes nothing.
+    await step(room, a, onPad(COUNSEL), { x: COUNSEL.x + 0.5, z: COUNSEL.returnPoint.z });
+    expect(padOf(team)).toEqual({ door: "counsel", leader: a.sessionId, count: 2 });
+    // A teamless student on a pad touches no team.
+    await stepOn(room, loner, COUNSEL);
+    expect(doorOf(room, loner)).toBe("counsel");
+    expect(padOf(team)).toEqual({ door: "counsel", leader: a.sessionId, count: 2 });
+    // Every client sees it.
+    expect(await pollFor(() => seen(c).teams.get(team.id)?.padCount === 2)).toBe(true);
+    expect(padOf(seen(c).teams.get(team.id)!)).toEqual({ door: "counsel", leader: a.sessionId, count: 2 });
+
+    // A steps off: 1 vs 1 → the door whose first arrival came earlier (B before C) → counsel, B leads.
+    await stepOff(room, a, COUNSEL);
+    expect(doorOf(room, a)).toBeNull();
+    expect(padOf(team)).toEqual({ door: "counsel", leader: b.sessionId, count: 1 });
+    // A comes back: now after B, so B keeps the lead.
+    await stepOn(room, a, COUNSEL);
+    expect(padOf(team)).toEqual({ door: "counsel", leader: b.sessionId, count: 2 });
+
+    // B's connection drops: a ghost is not counted. Counsel (A, back just now) and library (C, there
+    // before A came back) have one each → the tie goes to the earlier arrival: library, C leads.
+    b.reconnection.enabled = false;
+    b.connection.close(4010, "network blip");
+    expect(await pollFor(() => team.padCount === 1)).toBe(true);
+    expect(padOf(team)).toEqual({ door: "library", leader: c.sessionId, count: 1 });
+    // A member inside an escape room is not counted either (Task 11 moves `place`; any recount sees it).
+    playerOf(room, a).place = PLACE_ESCAPE;
+    await stepOff(room, c, LIBRARY);
+    expect(padOf(team)).toEqual({ door: "", leader: "", count: 0 });
+    expect(await pollFor(() => seen(c).teams.get(team.id)?.padCount === 0)).toBe(true);
+    expect(padOf(seen(c).teams.get(team.id)!)).toEqual({ door: "", leader: "", count: 0 });
+  });
+
+  it("a taken-over pad leader stays leader: the new session keeps the ghost's spot, arrival and the lead", async () => {
+    process.env.CV_RECONNECT_WINDOW_S = "5";
+    const room = await openClass("PA3TKV");
+    const teacher = await join(room, "선생님", { teacherPass: passFor("PA3TKV") });
+    await sendTo(room, teacher, ClassMsg.Command, { cmd: "start" });
+    const [a, b] = [await join(room, "Garam"), await join(room, "다온")];
+    for (const k of [a, b]) standAt(room, k, RUG.x, RUG.z);
+    await sendTo(room, a, ClassMsg.TeamCreate, { nameIndex: 8, colorIndex: 3 });
+    const team = teamOf(room, a)!;
+    await sendTo(room, b, ClassMsg.TeamJoin, { teamId: team.id });
+    await stepOn(room, a, COUNSEL);
+    await stepOn(room, b, COUNSEL);
+    expect(padOf(team)).toEqual({ door: "counsel", leader: a.sessionId, count: 2 });
+    const spot = { x: playerOf(room, a).x, z: playerOf(room, a).z };
+
+    // A's tab closes: B leads while A is a ghost.
+    const oldSid = a.sessionId;
+    a.reconnection.enabled = false;
+    a.connection.close(4010, "tab closed");
+    expect(await pollFor(() => team.padLeaderSid === b.sessionId)).toBe(true);
+    expect(padOf(team)).toEqual({ door: "counsel", leader: b.sessionId, count: 1 });
+
+    // A's new tab takes the ghost over: same team slot, same spot on the pad, same arrival → leads again.
+    const fresh = await join(room, "garam");
+    expect(room.state.players.has(oldSid)).toBe(false);
+    expect([...team.members]).toEqual([fresh.sessionId, b.sessionId]);
+    expect(playerOf(room, fresh).teamId).toBe(team.id);
+    expect(playerOf(room, fresh).x).toBeCloseTo(spot.x, 4);
+    expect(playerOf(room, fresh).z).toBeCloseTo(spot.z, 4);
+    expect(doorOf(room, fresh)).toBe("counsel");
+    expect(padOf(team)).toEqual({ door: "counsel", leader: fresh.sessionId, count: 2 });
+    expect(await pollFor(() => seen(b).teams.get(team.id)?.padLeaderSid === fresh.sessionId)).toBe(true);
+    expect([...seen(b).teams.get(team.id)!.members]).toEqual([fresh.sessionId, b.sessionId]);
+    // The pad keeps tracking the new session.
+    await stepOff(room, fresh, COUNSEL);
+    expect(padOf(team)).toEqual({ door: "counsel", leader: b.sessionId, count: 1 });
+  });
+
+  // Colyseus 0.17 / @colyseus/schema 4.0.27: a client that joins inside a patch window receives the
+  // full state (already containing the window's changes) and then the window's patch on top. Array
+  // ops encoded against the window's starting layout (a DELETE by old index, an ADD at an index that
+  // has since moved, an ADD at index 0 = "unshift" on the decoder) would then corrupt its copy.
+  it("a client joining mid-patch-window after team churn decodes the same members as the server", async () => {
+    const room = await openClass("RA2CES");
+    const kids: TestClient[] = [];
+    for (const name of ["가람", "다온", "세온", "하늘", "보라"]) {
+      const k = await join(room, name);
+      standAt(room, k, RUG.x, RUG.z);
+      kids.push(k);
+    }
+    const [a, b, c, e, f] = kids;
+    await sendTo(room, a, ClassMsg.TeamCreate, { nameIndex: 9, colorIndex: 4 });
+    const t1 = playerOf(room, a).teamId;
+    await sendTo(room, b, ClassMsg.TeamJoin, { teamId: t1 });
+    await sendTo(room, c, ClassMsg.TeamJoin, { teamId: t1 });
+    expect(await pollFor(() => sameMembers(room, f))).toBe(true);
+
+    // From here patches go out only when the test says so: one long patch window.
+    room.patchRate = 0;
+    await flush();
+    await sendTo(room, a, ClassMsg.TeamLeave, {}); // [b, c]      (slot 0 removed)
+    await sendTo(room, e, ClassMsg.TeamJoin, { teamId: t1 }); // [b, c, e]
+    await sendTo(room, f, ClassMsg.TeamCreate, { nameIndex: 10, colorIndex: 5 }); // new team [f]
+    const t2 = playerOf(room, f).teamId;
+
+    // D joins now and gets the full state as it is mid-window…
+    const d = await join(room, "누리");
+    expect(await pollFor(() => seen(d).teams?.get(t1) !== undefined && seen(d).teams?.get(t2) !== undefined)).toBe(true);
+    expect(clientMembers(d)).toEqual(serverMembers(room));
+    // …then more churn in the same window, including slot 0 of the new team being replaced.
+    standAt(room, d, RUG.x, RUG.z);
+    await sendTo(room, a, ClassMsg.TeamJoin, { teamId: t1 }); // [b, c, e, a]
+    await sendTo(room, d, ClassMsg.TeamJoin, { teamId: t2 }); // [f, d]
+    await sendTo(room, f, ClassMsg.TeamLeave, {}); // [d]     (slot 0 replaced)
+    await sendTo(room, b, ClassMsg.TeamLeave, {}); // [c, e, a]
+
+    // The window closes: one patch for everyone.
+    room.broadcastPatch();
+    await flush();
+    await flush();
+    const expected = serverMembers(room);
+    expect(expected).toEqual({ [t1]: [c, e, a].map((k) => k.sessionId), [t2]: [d.sessionId] });
+    for (const k of [...kids, d]) expect(clientMembers(k), k.sessionId).toEqual(expected);
+  });
+});
+
+/** The door pad the session is tracked on (white box: ClassRoom's tracking). */
+function doorOf(room: ClassRoom, c: { sessionId: string }): string | null {
+  return (trackingOf(room).get(c.sessionId) as unknown as { padDoor: string | null }).padDoor;
+}
