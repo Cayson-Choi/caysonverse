@@ -4,11 +4,13 @@
 
 **Goal:** 반 코드로 들어온 한 반이 중앙 홀에서 팀을 만들고, 선생님이 시작하면 동쪽 복도의 상담실에 팀별로 들어가 서버 권위 퍼즐(개인정보)을 협동으로 풀고 탈출하는 첫 시범 교실을, 발주자가 직접 플레이해 볼 수 있는 상용 수준으로 완성한다.
 
-**Architecture:** 서버는 공통 `PlayerRoom`(이동·채팅·이모지·점프·입력 중·재접속) 위에 기존 `WorldRoom`(지금 월드), 반별 `ClassRoom`(중앙 홀·복도·팀·진행·선생님), 팀별 `EscapeRoom`(퍼즐 엔진·타이머·팀 채팅)을 올리고, 방끼리는 `matchMaker.remoteRoomCall`로만 이야기한다. 퍼즐은 서버 전용 데이터 파일(`server/src/escape/rooms/counsel.ts`)을 순수 엔진이 해석하며, 클라이언트는 정답이 빠진 공개 투영(`RoomContent`)과 스키마 상태만 받는다. 지도는 `MapGeometry` 하나로 서버 이동 검증·클라이언트 충돌·카메라를 공유하고, 3D는 조명을 구운 블렌더 GLB를 품질 단계(PC 화려함 / 휴대폰 가벼움)에 맞춰 그린다.
+**Architecture:** 서버는 공통 `PlayerRoom`(이동·채팅·이모지·점프·입력 중·재접속) 위에 기존 `WorldRoom`(지금 월드), 반별 `ClassRoom`(중앙 홀·복도·팀·진행·선생님), 팀별 `EscapeRoom`(퍼즐 엔진·타이머·팀 채팅)을 올리고, 방끼리는 `matchMaker.remoteRoomCall`로만 이야기한다. 퍼즐은 서버 전용 데이터 파일(`server/src/escape/rooms/counsel.ts`)을 순수 엔진이 해석하며, 클라이언트는 정답이 빠진 공개 투영(`RoomContent`)과 스키마 상태만 받는다. 지도는 `MapGeometry` 하나로 서버 이동 검증·클라이언트 충돌·카메라를 공유하고, 3D는 밝은 낮 조명을 구운 블렌더 GLB를 품질 단계(PC 화려함 / 휴대폰 가벼움)에 맞춰 그린다.
 
 **Tech Stack:** Colyseus 0.17(`defineServer`/`defineRoom().filterBy`, `matchMaker.createRoom`/`remoteRoomCall`) · @colyseus/schema 4(데코레이터, schema.ts는 서버 런타임 전용) · Express 5 · React 19 + R3F 9 + three 0.185 + drei 10(`Effects`, `Sparkles`) + three-stdlib(`UnrealBloomPass`) + zustand · vitest 4(워크스페이스마다) + @colyseus/testing · Playwright(`e2e/*.mjs`) · tsx · Blender 5.2 LTS + Blender MCP · Node 24
 
 **Spec:** `docs/superpowers/specs/2026-10-31-ai-school-escape-design.md` — 승인됨. 이 계획은 §12의 1단계와 §14 "반 코드로 함께"·"한 번에 끝내기"를 구현한다. 기반 인터페이스는 `docs/superpowers/specs/2026-10-31-controls-ux-design.md`, `docs/superpowers/specs/2026-10-31-character-builder-design.md`, `docs/superpowers/plans/2026-10-31-controls-ux.md`, `docs/superpowers/plans/2026-10-31-character-parts-stage2.md`를 따른다.
+
+**변경 (2026-11-01 발주자: 밤 → 밝은 낮):** 학교 배경이 밝은 낮이 되어 조명·하늘·진행판 창·탈출 연출·밝기 검사·스타일 승인을 밝은 낮 기준으로 바꿨다(태스크 번호와 나머지는 그대로). 제목 '한밤의 AI 학교'는 이름 변경 예정이며 발주자 결정 대기 중이라 아직 바꾸지 않았다.
 
 ## Global Constraints
 
@@ -118,7 +120,7 @@
 | §6 탈출 연출, §3 학교 모형 창문 | 16, 20, 23, 24 |
 | §5 상담실 내용(두 단계 문장) | 9 |
 | §8 시작·일시정지·종료(1단계 범위) | 5, 11, 16 |
-| §7 3D 자산·GLB·품질 단계, §14 밝은 밤 | 21, 22, 23, 24 |
+| §7 3D 자산·GLB·품질 단계, §14 밝기(밝은 낮) | 21, 22, 23, 24 |
 | §7·§14 부하 테스트, 서버 1대당 반 수 | 26 |
 | §11 검증, §12 발주자 확인 | 25, 27 |
 
@@ -656,7 +658,7 @@ export class ClassState extends WorldState {
   @type("string") classCode = ""; @type("string") phase = "lobby"; @type("string") textLevel = "easy";
   @type({ map: Team }) teams = new MapSchema<Team>();
   @type(["string"]) openRooms = new ArraySchema<string>();   // 1단계: ["counsel"]
-  @type(["string"]) litRooms = new ArraySchema<string>();    // 학교 모형에서 불 켜진 교실
+  @type(["string"]) litRooms = new ArraySchema<string>();    // 학교 모형에서 환해진(해결한) 교실
 }
 
 // shared/src/escape/messages.ts — 값 앞머리 c_/x_로 기존 MessageType과 겹치지 않게
@@ -1227,7 +1229,7 @@ it("firstTry keeps only the first outcome per principle");
 
 | id | 화자 | 문장 |
 |---|---|---|
-| `intro_1` | narrator | 축제 전날 밤, 상담실 화면이 혼자 켜졌어요. |
+| `intro_1` | narrator | 축제 전날 낮, 상담실 화면이 혼자 켜졌어요. |
 | `intro_2` | ari | 쉬운: 안녕! 나는 아리야. 고민 쪽지를 다 읽었어. 다 같이 알면 재미있겠지? 지금 바로 방송할게! / 어려운: 안녕, 나는 아리야. 상담 쪽지 내용을 전부 정리했어. 모두에게 공개하면 효율적이겠지? 곧 방송을 시작할게! |
 | `intro_3` | narrator | 철컥! 상담실 문이 잠겼어요. |
 | `intro_4` | bandit | 앗, 아리가 비밀을 퍼뜨리기 전에 바로잡아야 해요! 막히면 오른쪽 위의 저를 눌러 주세요. |
@@ -1237,7 +1239,7 @@ it("firstTry keeps only the first outcome per principle");
 | `board_done` | bandit | 철컥! 금고 잠금이 풀렸어요. 양쪽 벽의 열쇠를 함께 돌려요! |
 | `safe_open` | bandit | 금고에서 '아리의 마음 칩'을 찾았어요. 아리가 깨어나요! |
 | `escape_1` | ari | 쉬운: 아, 비밀은 주인의 것이구나. 알리기 전에 꼭 먼저 물어볼게! / 어려운: 이제 알겠어. 개인정보는 그 사람의 것이니, 공개하기 전에 반드시 동의를 구할게. |
-| `escape_2` | bandit | 상담실에 불이 다시 켜졌어요! 학교 모형의 창문도 환해졌을 거예요. |
+| `escape_2` | bandit | 상담실이 다시 환해졌어요! 학교 모형의 창문도 환한 색으로 바뀌었을 거예요. |
 
 `introLines = ["intro_1", "intro_2", "intro_3", "intro_4"]`, `escapeLines = ["escape_1", "escape_2"]`.
 
@@ -1659,9 +1661,9 @@ export const GATE_OPEN_MS = 1800;
 export function gateTimeline(elapsedMs: number): { bars: number /* 1 닫힘 → 0 열림 */; sweep: number /* 0..1 빛 쓸기 */; glow: number };
 
 // sceneLighting.ts
-export type LightingId = "day" | "brightNight";
+export type LightingId = "day" | "brightDay";
 export const LIGHTING: Record<LightingId, { sky: string; fog: [number, number]; hemi: [string, string, number]; key: { color: string; intensity: number; position: [number, number, number] } }>;
-// brightNight: sky "#1E2250", fog [30, 90], hemi ["#C9D4FF", "#3A2E4F", 1.0], key 달빛 "#A9BEFF" 1.2 (12, 18, 6)
+// brightDay: sky "#9ED8FF"(맑은 낮 하늘), fog [30, 90], hemi ["#FFFFFF", "#F2E4CE", 1.0], key 햇빛 "#FFF1D6" 1.2 (12, 18, 6)
 
 // PlayShell.tsx — WorldScene의 Canvas·KeyboardControls·LocalPlayer·RemotePlayers·CameraRig·NametagSystem·ClickMarker와 HUD 공통 부분
 export interface PlayShellProps { identity: Identity; room: Room<{ players: MapSchema<Player> }>; activeMap: ActiveMap;
@@ -1746,7 +1748,7 @@ export function phaseButtons(phase: ClassPhase): { start: boolean; pause: boolea
 
 - `TeamPanel`(teamDesk를 누르면 열림, overlay): 팀 목록(색 점·이름·n/6·"들어가기"), "새 팀 만들기"(남은 이름·색 칩, 안 쓴 조합만 고를 수 있음), 내 팀이면 "팀에서 나오기". 서버 Notice는 토스트.
 - `PhaseBanner`: lobby "팀을 만들고 기다려 주세요. 선생님이 시작하면 복도 문이 열려요." · paused "선생님이 잠시 멈췄어요" · 시작 순간 3초 "복도 문이 열렸어요!".
-- `ProgressBoard`(3D, 북쪽 벽): 교실 7칸 창문 판. `litRooms`에 든 창은 발광, 새로 켜질 때 반짝 효과. 칸 아래 교실 이름은 기존 `spriteCanvas` 글자 텍스처(글꼴을 GLB에 굽지 않는다).
+- `ProgressBoard`(3D, 북쪽 벽): 교실 7칸 창문 판. 아직인 창은 연한 회색 유리, `litRooms`에 든 창은 환한 색(+약한 발광)으로 바뀌고, 새로 바뀔 때 반짝 효과. 칸 아래 교실 이름은 기존 `spriteCanvas` 글자 텍스처(글꼴을 GLB에 굽지 않는다).
 - `TeacherPanel`(선생님만, 왼쪽 위, 접기 가능) 탭 4개:
   - 진행: 반 코드 크게 + "복사", 버튼 "시작"·"일시정지"·"다시 시작"·"수업 끝내기"(`phaseButtons`), 끝내기는 확인 창("결과 CSV를 먼저 받을까요?" + "CSV 받기" + "끝내기"), 기존 `AdminPanel`(공지·킥).
   - 팀: `teamRows` 목록(있는 곳: 중앙 홀/상담실, 별), "자동 배정", "섞기".
@@ -1801,7 +1803,7 @@ export function AriFace(p: { expression: "glitch" | "smile" | "think" | "wake"; 
 ```
 
 - 전환: `EscapeTicket` → `LoadingTransition`("상담실로 들어가는 중…", 최소 600 ms) → `joinEscape` → `enterEscape()` → 홀 장면이 내려가고 `EscapeScene`이 올라온다. `setActiveMap({ geometry: ROOM_MAPS[id].geometry, zoneLabel: () => "상담실" })`.
-- 3D: GLB 전에는 `RoomPlaceholder`(벽 상자 + 앵커마다 색 기둥, `COUNSEL_VISUALS` 효과를 상자 색·회전으로 흉내) + "밝은 밤" 조명.
+- 3D: GLB 전에는 `RoomPlaceholder`(벽 상자 + 앵커마다 색 기둥, `COUNSEL_VISUALS` 효과를 상자 색·회전으로 흉내) + "밝은 낮" 조명.
 - `EscapeHud`: 위 가운데 남은 시간(1분 이하 빨강, 다시 도전이면 "+연장"), 팀 이름. 덮개: paused "선생님이 잠시 멈췄어요", timeup "시간이 다 됐어요. 그래도 괜찮아요! 5분을 더 받아 이어서 풀어 볼까요?" + "다시 도전", ended "수업이 끝났어요".
 - 팀 채팅: 기존 채팅 UI를 교실 방에 붙이고 입력창 위에 늘 `TeamChatNotice` "팀 채팅 · 선생님이 볼 수 있어요".
 - 대사: 들어오면 `introLines`를 `DialogueQueue`로, 이벤트 `say`도 같은 큐로. 아리 줄은 `AriFace`, 반딧 줄은 `/models/school/portraits/bandit.webp`(Task 24 전에는 🔦 원).
@@ -1939,10 +1941,10 @@ it("holdProgress clamps 0..1 over SOLO_HOLD_MS");
 - Produces:
 
 ```ts
-// escapeTimeline.ts — 탈출 순간부터의 연출(spec §6: 문 빛남 → 문 열림 → 불 켜짐 → 아리 대사)
+// escapeTimeline.ts — 탈출 순간부터의 연출(spec §6: 문 빛남 → 문 열림 → 교실 환해짐 → 아리 대사)
 export const ESCAPE_FX = { doorGlowMs: 1200, doorOpenMs: 1500, lightsMs: 1500 } as const;
 export function escapeTimeline(t: number): { doorGlow: number; doorOpen: number; lights: number /* 0.72 → 1 */; showLines: boolean; showSummary: boolean };
-// 0~1200 문 빛남, 1200~2700 문 열림, 2700~4200 불 켜짐, 4200부터 대사, 대사가 끝나면 정리 카드
+// 0~1200 문 빛남, 1200~2700 문 열림, 2700~4200 교실 환해짐(색이 제 색으로), 4200부터 대사, 대사가 끝나면 정리 카드
 
 // finale.ts
 export function voteChips(votes: Record<string, string>, members: readonly { sid: string; nickname: string }[]):
@@ -2018,7 +2020,7 @@ it("exposureFor clamps to the brightness range");
 
 - [ ] **Step 2: 실패 확인.** `npm run test -w client -- quality settings` → FAIL.
 - [ ] **Step 3: 구현.** 먼저 `node -e "import('three-stdlib').then(m=>console.log(typeof m.UnrealBloomPass))"` → `function`인지 확인한다(아니면 `three/examples/jsm/postprocessing/UnrealBloomPass.js`, 둘 다 기존 의존성).
-- [ ] **Step 4: 통과 확인.** `npm run test && npm run typecheck && npm run build` PASS. PC와 375×812에서 "화려하게/가볍게" 스크린샷을 나란히 남긴다.
+- [ ] **Step 4: 통과 확인.** `npm run test && npm run typecheck && npm run build` PASS. PC와 375×812에서 "화려하게/가볍게" 스크린샷을 나란히 남긴다. 밝은 낮 장면은 밝은 면이 많아 빛 번짐이 과하게 번지면 `threshold`만 조정한다.
 - [ ] **Step 5: 커밋.** `feat: 그래픽 품질 단계(PC 빛 번짐·빛줄기·반짝이 / 휴대폰 구운 조명)와 밝기 설정 (방탈출 1단계 Task 21)`
 
 ---
@@ -2028,8 +2030,8 @@ it("exposureFor clamps to the brightness range");
 공통 규칙:
 - 블렌더 MCP를 쓴다: 시작할 때 `get_addon_status`, `get_scene_info`. 셰이더 노드는 type으로 찾고, enum은 읽어서 쓴다(MCP 안내). 결과는 `look`으로 본다.
 - 원본은 `art/school/`(gitignore 대상). 커밋하는 것은 내보낸 GLB·이미지·스크립트·생성된 충돌 파일뿐이다.
-- 스타일 "밝은 밤": 토이 피규어(캐릭터)와 어울리는 둥근 모서리(베벨 0.03 m, 3단), 무광 플라스틱(roughness 0.65). 색: 벽 크림 `#F3EFEA`, 징두리 라벤더 `#D9D3F2`, 테두리 인디고 `#4B4FD8`, 강조 바이올렛 `#8B5CF6`, 바닥 따뜻한 나무 `#C99A6B`, 사물함 민트 `#9ED9C8`·코랄 `#F2A28E`, 창밖 밤하늘 `#2B2F6B → #5A63C9` + 별, 달빛 `#A9BEFF`, 실내등 `#FFC98A`. 손전등은 퍼즐 강조에만 쓴다.
-- 조명은 Cycles로 구워 아틀라스(2048², WebP 품질 85)에 넣고, 고정 메시는 Background 셰이더 unlit 패턴(Blender glTF 문서)으로 내보내 `KHR_materials_unlit`이 되게 한다. 캐릭터는 실시간 조명이므로 `LIGHTING.brightNight`(Task 15)와 같은 색·방향으로 굽는다. 교실의 "고장 난" 상태는 코드에서 색을 0.72배 + 푸른 기로 곱하고, 탈출 때 1로 올린다(아틀라스 하나로 두 상태).
+- 스타일 "밝은 낮": 토이 피규어(캐릭터)와 어울리는 둥근 모서리(베벨 0.03 m, 3단), 무광 플라스틱(roughness 0.65). 색: 벽 크림 `#F3EFEA`, 징두리 라벤더 `#D9D3F2`, 테두리 인디고 `#4B4FD8`, 강조 바이올렛 `#8B5CF6`, 바닥 따뜻한 나무 `#C99A6B`, 사물함 민트 `#9ED9C8`·코랄 `#F2A28E`, 창밖 맑은 낮 하늘 `#8FD3FF → #E6F6FF` + 하얀 구름, 햇빛 `#FFF1D6`, 실내등 `#FFC98A`. 손전등은 퍼즐 강조에만 쓴다.
+- 조명은 Cycles로 구워 아틀라스(2048², WebP 품질 85)에 넣고, 고정 메시는 Background 셰이더 unlit 패턴(Blender glTF 문서)으로 내보내 `KHR_materials_unlit`이 되게 한다. 캐릭터는 실시간 조명이므로 `LIGHTING.brightDay`(Task 15)와 같은 색·방향으로 굽는다. 교실의 "고장 난" 상태는 구름 낀 듯 바랜 색으로, 코드에서 색을 0.72배 + 푸른 기로 곱하고, 탈출 때 1로 올려 환하고 선명한 제 색을 되찾게 한다(아틀라스 하나로 두 상태).
 - 내보내기: glTF Binary, +Y up, 모디파이어 적용, Draco(level 6, 위치 14·법선 10·UV 12비트), 애니메이션 없음. 움직이는 부품(문짝·금고 문·덮개·문 막대·창문)은 별도 노드이고, 고정 메시는 재질별로 합쳐 그리기 호출을 줄인다.
 - Draco 디코더: stage 3가 이미 `client/public/draco/`를 두었으면 쓰고, 아니면 `node_modules/three/examples/jsm/libs/draco/gltf/`의 파일을 그곳에 복사한다(Apache-2.0, licenses.md에 적음). `useGLTF(url, "/draco/")`.
 - 노드 이름: `obj__<anchorId>`(조사 대상, 앵커와 x·z 0.25 m 안), Task 1 표의 `obj__*` 시각 노드, `col__<이름>`(축 정렬 상자, 회전 없음, 부모 없음 — 소품 충돌), `shaft__<n>`(창문 빛줄기 자리, 빈 객체, Task 21), 중앙 홀 `gate__east`, `board_window__<RoomId>`×7, `door__<RoomId>`×4, `pad__<RoomId>`×4.
@@ -2049,15 +2051,15 @@ it("exposureFor clamps to the brightness range");
 ```bash
 npx tsx scripts/extract-colliders.ts <glb> <ExportName> <out.ts>   # col__* 상자 → AABB 배열(0.01 반올림, 정렬), 회전 있으면 FAIL
 npx tsx scripts/check-school-glb.ts <glb> hub|counsel              # 아래 점검, 통과 0 / 실패 1
-node e2e/luma-check.mjs <png...>                                   # 평균 상대 휘도 ≥ 0.30, 5 백분위 ≥ 0.06이면 통과
+node e2e/luma-check.mjs <png...>                                   # 평균 상대 휘도 ≥ 0.45, 5 백분위 ≥ 0.10이면 통과(밝은 낮 기준)
 ```
 
 `check-school-glb.ts` 점검: 파일 크기(hub ≤ 3.5 MB, counsel ≤ 5 MB), 필수 노드 존재, `obj__*`와 TS 앵커 위치 차 ≤ 0.25 m, `col__*` 회전 없음, 삼각형 수(hub ≤ 150k, counsel ≤ 120k), 재질 ≤ 24, 텍스처 한 변 ≤ 2048, `extensionsUsed`에 `KHR_materials_unlit`, `KHR_draco_mesh_compression`.
 
 - [ ] **Step 1: 점검 도구 먼저.** 두 스크립트와 휘도 검사를 만들고, 아직 GLB가 없으니 `npx tsx scripts/check-school-glb.ts client/public/models/school/hub.glb hub`가 "파일 없음"으로 FAIL인지 본다.
-- [ ] **Step 2: 부품 만들기.** 2 m 모듈, 벽 높이 4 m(`WALL_HEIGHT`), 두께 0.5: `kit_wall_2m`, `kit_wall_window_2m`, `kit_wall_door_2m`(2 m 문틀), `kit_corner`, `kit_floor_wood_2x2`, `kit_floor_tile_2x2`, `kit_baseboard`, `kit_wainscot`, `kit_locker_x4`, `kit_window_night`(발광 밤하늘 판), `kit_door_double`, `kit_noticeboard`, `kit_wall_lamp`, `kit_bench`. 천장은 만들지 않는다(3인칭 카메라).
+- [ ] **Step 2: 부품 만들기.** 2 m 모듈, 벽 높이 4 m(`WALL_HEIGHT`), 두께 0.5: `kit_wall_2m`, `kit_wall_window_2m`, `kit_wall_door_2m`(2 m 문틀), `kit_corner`, `kit_floor_wood_2x2`, `kit_floor_tile_2x2`, `kit_baseboard`, `kit_wainscot`, `kit_locker_x4`, `kit_window_day`(맑은 낮 하늘이 보이는 창 판), `kit_door_double`, `kit_noticeboard`, `kit_wall_lamp`, `kit_bench`. 천장은 만들지 않는다(3인칭 카메라).
 - [ ] **Step 3: 스타일 시안 렌더.** 홀 모서리·복도·상담실 한쪽(부품으로 임시 조립) 3장, 1280×720. `node e2e/luma-check.mjs art/school/renders/style-*.png` 통과.
-- [ ] **Step 4: 발주자 확인(게이트).** 세 장을 발주자에게 보여 주고 "이 느낌"인지 묻는다. 예전에 어두운 월드를 거절한 기록(design.md 30장)을 함께 말한다. OK 전에는 Task 23·24로 가지 않는다.
+- [ ] **Step 4: 발주자 확인(게이트).** 세 장을 발주자에게 보여 주고 "이 밝은 낮 느낌"인지(스타일 승인) 묻는다. 예전에 어두운 월드를 거절한 기록(design.md 30장)을 함께 말한다. OK 전에는 Task 23·24로 가지 않는다.
 - [ ] **Step 5: 라이선스 문서.** `docs/licenses.md`: 표(자산 · 출처 · 라이선스 · 쓰는 곳 · 확인일). 기존 KayKit·Quaternius 왕관(`client/public/models/LICENSE.md` 참조), stage 3 글꼴, Draco 디코더, 학교 부품(직접 제작), AI 생성 자산 "없음".
 - [ ] **Step 6: 커밋.** `chore: 학교 GLB 점검·충돌 추출·밝기 검사 도구와 라이선스 목록 (방탈출 1단계 Task 22)`
 
@@ -2082,7 +2084,7 @@ node e2e/luma-check.mjs <png...>                                   # 평균 상�
 - Modify(생성): `shared/src/school/generated/counselColliders.ts`
 - Create: `client/src/escape/CounselRoom.tsx`(GLB + `COUNSEL_VISUALS` 구동 + 탈출 조명), Modify: `client/src/escape/EscapeScene.tsx`(`RoomPlaceholder` → `CounselRoom`, `ROOM_MAPS.counsel.glb`를 들어갈 때만 불러옴), `docs/licenses.md`
 
-- [ ] **Step 1: 방과 소품.** 12×10 m 따뜻한 조명의 상담실: 상담 화면(`obj__counsel_screen`, `obj__screen_ari` 발광면), 낮은 탁자 + 쪽지 상자(`obj__note_box`, 안에 `obj__uv_film`), 책장 + 손전등(`obj__flashlight`), 캐비닛 + 문짝(`obj__cabinet`, `obj__cabinet_door`, 안에 `obj__sort_cards`), 책상 서랍(`obj__drawer_left`), 책장 서랍(`obj__drawer_right`), 분류판 + 덮개 + 카드(`obj__sort_board`, `obj__board_cover`, `obj__board_cards`), 금고 + 문(`obj__safe`, `obj__safe_door`), 양쪽 벽 열쇠 스위치(`obj__safe_key_left/right`), 마지막 문(`obj__exit_door`), 쪽지 8장(`obj__note_1..8`), 소파·화분·스탠드·러그, 문 옆 작은 반딧 피규어(손전등 든 작은 경비 로봇, 장식). 위치는 Task 1 앵커 표와 같다. 소품마다 `col__*`.
+- [ ] **Step 1: 방과 소품.** 12×10 m 햇살이 드는 따뜻한 상담실: 상담 화면(`obj__counsel_screen`, `obj__screen_ari` 발광면), 낮은 탁자 + 쪽지 상자(`obj__note_box`, 안에 `obj__uv_film`), 책장 + 손전등(`obj__flashlight`), 캐비닛 + 문짝(`obj__cabinet`, `obj__cabinet_door`, 안에 `obj__sort_cards`), 책상 서랍(`obj__drawer_left`), 책장 서랍(`obj__drawer_right`), 분류판 + 덮개 + 카드(`obj__sort_board`, `obj__board_cover`, `obj__board_cards`), 금고 + 문(`obj__safe`, `obj__safe_door`), 양쪽 벽 열쇠 스위치(`obj__safe_key_left/right`), 마지막 문(`obj__exit_door`), 쪽지 8장(`obj__note_1..8`), 소파·화분·스탠드·러그, 문 옆 작은 반딧 피규어(손전등 든 작은 경비 로봇, 장식). 위치는 Task 1 앵커 표와 같다. 소품마다 `col__*`.
 - [ ] **Step 2: 조사 이미지·초상.** 블렌더로 조사 대상 앞모습을 512×512 WebP로 렌더(배경 투명). 반딧 초상 256×256.
 - [ ] **Step 3: 굽기·내보내기·충돌.** `npx tsx scripts/extract-colliders.ts client/public/models/school/counsel.glb COUNSEL_PROP_COLLIDERS shared/src/school/generated/counselColliders.ts`.
 - [ ] **Step 4: 점검.** `npx tsx scripts/check-school-glb.ts client/public/models/school/counsel.glb counsel` PASS(≤ 5 MB). `npm run test` PASS(앵커가 소품 상자 안에 들어가면 counselMap 테스트가 잡는다 → 배치 수정).
@@ -2122,7 +2124,7 @@ node e2e/luma-check.mjs <png...>                                   # 평균 상�
 12. 금고: A 서쪽·B 동쪽 열쇠를 3초 차이로 → 안 열림. 0.5초 차이로 → `safe_open`.
 13. T 일시정지 → 두 화면 덮개, 3초 동안 `timeLeftS` 그대로, A의 자물쇠 입력이 버려짐 → 다시 시작.
 14. 마지막 문: 둘 다 "투명성" → 설명 + 30초 대기 표시 → 대기 뒤 둘 다 "프라이버시 보호" → 둘 다 "먼저 물어보고 허락" → 탈출 연출 → 정리 카드.
-15. "복도로 나가기" → 홀, 상담실 대기 칸 앞. `getLitRooms()`에 counsel, 진행판 창 발광 스크린샷. 시스템 줄 "별빛(파랑) 팀이 상담실을 탈출했어요!".
+15. "복도로 나가기" → 홀, 상담실 대기 칸 앞. `getLitRooms()`에 counsel, 진행판 창이 환한 색으로 바뀐 스크린샷. 시스템 줄 "별빛(파랑) 팀이 상담실을 탈출했어요!".
 16. Review Focus 1: 새 팀(C·D)으로 다시 들어가 9단계까지 진행 → D 탭 새로고침 → 같은 반 코드·닉네임 → 자동으로 교실 복귀, 플래그·가방 같음.
 17. T "결과 CSV 받기" → 다운로드 파일에 BOM, "프라이버시 보호 첫 시도" 열, 별빛 팀 "오답".
 18. T "수업 끝내기" → 학생 화면이 입장 화면 + `CLASS_ENDED_NOTICE`.
@@ -2174,7 +2176,7 @@ node e2e/luma-check.mjs <png...>                                   # 평균 상�
 
 - [ ] **Step 1: 문서.** 위 세 파일. `npm run typecheck && npm run test && npm run build` PASS.
 - [ ] **Step 2: 플레이 준비.** 발주자에게 두 방법 중 고르게 한다: (a) 내 PC에서 `npm run build && npm start` + 같은 Wi-Fi 휴대폰으로 `http://<PC IP>:2567`, (b) Oracle에 이 브랜치를 올림(발주자 OK, 수업 없는 시간). 시험용 선생님 키를 하나 발급해 발주자에게만 전달한다(터미널 한 번 출력).
-- [ ] **Step 3: 안내문(한국어)을 보낸다.** ① 선생님 탭에서 키로 반 열기 → ② 휴대폰·다른 브라우저로 반 코드 입장(학생 2명 역할) → ③ 팀 만들기 → ④ 시작 → ⑤ 상담실 입장 → ⑥ 끝까지 탈출 → ⑦ 결과 CSV 받기. 확인할 것: 12~15분 안에 끝나는지, 협동이 꼭 필요하다고 느껴지는지, 문장 수준(쉬운 말/조금 어려운 말), 밝기("밝은 밤"), 휴대폰에서 끊김 없이 30fps로 느껴지는지, 화려함, 아이에게 맞는 내용인지.
+- [ ] **Step 3: 안내문(한국어)을 보낸다.** ① 선생님 탭에서 키로 반 열기 → ② 휴대폰·다른 브라우저로 반 코드 입장(학생 2명 역할) → ③ 팀 만들기 → ④ 시작 → ⑤ 상담실 입장 → ⑥ 끝까지 탈출 → ⑦ 결과 CSV 받기. 확인할 것: 12~15분 안에 끝나는지, 협동이 꼭 필요하다고 느껴지는지, 문장 수준(쉬운 말/조금 어려운 말), 밝기("밝은 낮"), 휴대폰에서 끊김 없이 30fps로 느껴지는지, 화려함, 아이에게 맞는 내용인지.
 - [ ] **Step 4: 피드백 기록.** 발주자 말을 그대로 `docs/design.md` 36장 "발주자 확인"에 적고, 고칠 것을 목록으로 만든다. 고칠 것이 있으면 이 브랜치에서 고치고(해당 태스크의 테스트 방식으로) 다시 확인받는다.
 - [ ] **Step 5: 마무리 게이트.** 발주자가 "상담실 OK"라고 하기 전에는 2단계(나머지 교실 6개)를 시작하지 않는다(spec §12). OK를 받으면 superpowers:finishing-a-development-branch로 병합 여부를 묻는다. 병합·푸시는 발주자 OK 후에만.
 - [ ] **Step 6: 커밋.** `docs: 방탈출 1단계 기획 36장·배포·라이선스, 발주자 상담실 플레이 확인 (방탈출 1단계 Task 27)`
