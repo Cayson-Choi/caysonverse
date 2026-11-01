@@ -14,6 +14,7 @@ import {
   Skeleton,
   SkinnedMesh,
   Texture,
+  Uint16BufferAttribute,
   Uint8BufferAttribute,
 } from "three";
 import { appearanceFromIds } from "@caysonverse/shared/appearance";
@@ -49,13 +50,35 @@ const xOf = (name: Primitive): number => PRIMITIVES.indexOf(name) + 1;
 /** mat_fixed_white's authored colour, already linear (as GLTFLoader stores baseColorFactor). */
 const STRING_WHITE = new Color().setRGB(0.9, 0.8, 0.7);
 
-/** One triangle, skinned to the two bones with Uint8 joints and Float32 weights, like the GLB. */
+/** The (y, z) of a triangle's three vertices; x identifies the primitive. */
+const CORNERS = [[0, 0], [1, 0], [0, 1]] as const;
+/**
+ * Per-vertex skinning of every fake triangle: four influences per vertex (joint indices may repeat).
+ * Vertex 0's four weights all differ and the joint patterns pin every component, so a merge that
+ * drops, zeroes, swaps or reorders components or vertices is caught.
+ */
+const JOINTS = [[0, 1, 1, 0], [1, 0, 0, 1], [0, 0, 1, 1]] as const;
+const WEIGHTS = [[0.4, 0.3, 0.2, 0.1], [0.7, 0.2, 0.1, 0], [0.25, 0.25, 0.25, 0.25]] as const;
+/** hat__cap stores its skinning as Uint16 joints + normalised Uint8 weights (another exporter's layout). */
+const PACKED: Primitive = "hat__cap";
+const WEIGHT_BYTES = WEIGHTS.map((v) => v.map((w) => Math.round(w * 255)));
+
+/**
+ * One triangle, skinned with Uint8 joints and Float32 weights like the GLB — or, for PACKED, with
+ * Uint16 joints and normalised Uint8 weights, so the merge has to unify the types.
+ */
 function triangle(name: string, x: number, material: Material, skeleton: Skeleton): SkinnedMesh {
   const geometry = new BufferGeometry();
-  geometry.setAttribute("position", new Float32BufferAttribute([x, 0, 0, x, 1, 0, x, 0, 1], 3));
+  geometry.setAttribute("position", new Float32BufferAttribute(CORNERS.flatMap(([y, z]) => [x, y, z]), 3));
   geometry.setAttribute("normal", new Float32BufferAttribute([1, 0, 0, 1, 0, 0, 1, 0, 0], 3));
-  geometry.setAttribute("skinIndex", new Uint8BufferAttribute([0, 1, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0], 4));
-  geometry.setAttribute("skinWeight", new Float32BufferAttribute([0.5, 0.5, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0], 4));
+  const joints = JOINTS.flat();
+  if (name === PACKED) {
+    geometry.setAttribute("skinIndex", new Uint16BufferAttribute(joints, 4));
+    geometry.setAttribute("skinWeight", new Uint8BufferAttribute(WEIGHT_BYTES.flat(), 4, true));
+  } else {
+    geometry.setAttribute("skinIndex", new Uint8BufferAttribute(joints, 4));
+    geometry.setAttribute("skinWeight", new Float32BufferAttribute(WEIGHTS.flat(), 4));
+  }
   geometry.setIndex([0, 1, 2]);
   const mesh = new SkinnedMesh(geometry, material);
   mesh.name = name;
@@ -129,6 +152,13 @@ const HOODIE: AvatarLook = lookFromAppearance(
 );
 const L = CAP_WHITE_TEE;
 const LOOKS = [CAP_WHITE_TEE, HOODIE];
+/** For the deliberately broken scenes: a look no other test uses, so nothing cached can stand in for the merge. */
+const BROKEN_SCENE_LOOK: AvatarLook = lookFromAppearance(
+  appearanceFromIds(
+    { hat: null, hair: null, face: "smile", top: "tee", bottom: "pants", shoes: "sneakers", item: null },
+    { hatColor: 0, hairColor: 0, topColor: 1, bottomColor: 1, shoesColor: 1, itemColor: 0, skin: 1, voice: 0 },
+  ),
+);
 
 // ── helpers ────────────────────────────────────────────────────────────────────
 
@@ -162,6 +192,26 @@ function colorAt(a: BuiltAvatar, part: Primitive): Color {
   expect({ part, vertices: found.length }).toEqual({ part, vertices: 3 });
   for (const c of found) expect(c.equals(found[0])).toBe(true);
   return found[0];
+}
+
+/** The merged joints and weights of `part`'s vertices, in the source vertex order (traced by position). */
+function skinAt(a: BuiltAvatar, part: Primitive): { joints: number[]; weights: number[] }[] {
+  const { geometry } = solidOf(a);
+  const position = geometry.getAttribute("position");
+  const skinIndex = geometry.getAttribute("skinIndex");
+  const skinWeight = geometry.getAttribute("skinWeight");
+  return CORNERS.map(([y, z]) => {
+    const found: number[] = [];
+    for (let i = 0; i < position.count; i++) {
+      if (position.getX(i) === xOf(part) && position.getY(i) === y && position.getZ(i) === z) found.push(i);
+    }
+    expect({ part, y, z, vertices: found.length }).toEqual({ part, y, z, vertices: 1 });
+    const i = found[0];
+    return {
+      joints: [skinIndex.getX(i), skinIndex.getY(i), skinIndex.getZ(i), skinIndex.getW(i)],
+      weights: [skinWeight.getX(i), skinWeight.getY(i), skinWeight.getZ(i), skinWeight.getW(i)],
+    };
+  });
 }
 
 function expectColor(actual: Color, expected: Color): void {
@@ -275,6 +325,21 @@ describe("buildAvatar", () => {
     releaseAvatar(a);
   });
 
+  it("carries every vertex's joints and weights into the merged geometry, whatever their storage type", () => {
+    const a = buildAvatar(assets, CAP_WHITE_TEE);
+    const merged = a.parts.filter((p) => p !== "face__smile") as Primitive[];
+    expect(merged).toContain(PACKED); // the Uint16-joint / normalised-Uint8-weight primitive is in this look
+    for (const part of merged) {
+      skinAt(a, part).forEach(({ joints, weights }, v) => {
+        expect({ part, v, joints }).toEqual({ part, v, joints: [...JOINTS[v]] });
+        // normalised bytes decode to byte / 255; Float32 weights come through unchanged
+        const expected = part === PACKED ? WEIGHT_BYTES[v].map((b) => b / 255) : [...WEIGHTS[v]];
+        weights.forEach((w, c) => expect({ part, v, c, w: +w.toFixed(6) }).toEqual({ part, v, c, w: +expected[c].toFixed(6) }));
+      });
+    }
+    releaseAvatar(a);
+  });
+
   it("lists every material it renders, so ghost opacity reaches all of them", () => {
     const sourceMaterials = new Set<Material>();
     assets.scene.traverse((o) => {
@@ -372,16 +437,25 @@ describe("buildAvatar", () => {
     const broken = fakeScene();
     (broken.getObjectByName("body__hands") as SkinnedMesh).geometry.setIndex(null);
     const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
-    // A look no other test uses, so nothing cached can stand in for the merge.
-    const look = lookFromAppearance(
-      appearanceFromIds(
-        { hat: null, hair: null, face: "smile", top: "tee", bottom: "pants", shoes: "sneakers", item: null },
-        { hatColor: 0, hairColor: 0, topColor: 1, bottomColor: 1, shoesColor: 1, itemColor: 0, skin: 1, voice: 0 },
-      ),
-    );
-    expect(() => buildAvatar({ scene: broken }, look)).toThrow(/body__hands/);
-    expect(solidGeometryRefs(lookKey(look))).toBe(0);
+    expect(() => buildAvatar({ scene: broken }, BROKEN_SCENE_LOOK)).toThrow(/body__hands/);
+    expect(solidGeometryRefs(lookKey(BROKEN_SCENE_LOOK))).toBe(0);
     quiet.mockRestore();
+  });
+
+  it("refuses to merge a part bound with a different bind matrix", () => {
+    const broken = fakeScene();
+    (broken.getObjectByName("body__hands") as SkinnedMesh).bindMatrix.makeTranslation(0, 1, 0);
+    expect(() => buildAvatar({ scene: broken }, BROKEN_SCENE_LOOK)).toThrow(/body__hands.*bind matrix/);
+    expect(solidGeometryRefs(lookKey(BROKEN_SCENE_LOOK))).toBe(0);
+  });
+
+  it("refuses to share one skeleton with a part skinned to other bones", () => {
+    const broken = fakeScene();
+    const hands = broken.getObjectByName("body__hands") as SkinnedMesh;
+    const [rootBone, head] = hands.skeleton.bones;
+    hands.bind(new Skeleton([head, rootBone]), hands.bindMatrix); // same bones, other order: joint 0 means another bone
+    expect(() => buildAvatar({ scene: broken }, BROKEN_SCENE_LOOK)).toThrow(/body__hands.*skeleton/);
+    expect(solidGeometryRefs(lookKey(BROKEN_SCENE_LOOK))).toBe(0);
   });
 });
 

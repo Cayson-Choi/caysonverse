@@ -11,6 +11,8 @@
 // - retainAvatar: 지오메트리 몫 +1(이미 잡았으면 아무것도 안 함). 그사이 캐시에서 빠졌으면 자기 지오메트리를 다시
 //   넣고, 같은 키로 다른 지오메트리가 들어와 있으면 그쪽으로 바꿔 탄다. 아무도 잡지 않은 항목은 이때 캐시에서
 //   뺀다(잡은 아바타가 없었으니 그려진 적도 없어 dispose할 GPU 자원이 없다. 남은 배열은 GC가 치운다).
+//   이 청소는 retainAvatar 안에서만 한다: 커밋되지 않은 렌더가 합친 지오메트리는 다음 retainAvatar까지 캐시에
+//   남는다(CPU 메모리뿐, GPU에는 올라간 적이 없다).
 // - releaseAvatar: 몫 −1(두 번 불러도 한 번만). 0이 되면 지오메트리를 dispose하고 캐시에서 뺀다. 재질과 뼈 텍스처도
 //   dispose한다. three는 dispose한 자원을 다시 그릴 때 다시 올리므로, 다시 retainAvatar한 아바타는 그대로 쓸 수 있다.
 // - releaseAvatarSoon: 마이크로태스크 뒤에 releaseAvatar. 그 전에 retainAvatar가 오면 취소된다. StrictMode의 effect
@@ -121,6 +123,14 @@ function outermostPartNodes(node: Object3D, out: Object3D[] = []): Object3D[] {
   return out;
 }
 
+/** 같은 뼈를 같은 순서로 쓰는가(SkeletonUtils.clone은 메시마다 Skeleton을 새로 만들지만 뼈는 같은 복제본이다). */
+function sameBones(a: Skeleton, b: Skeleton): boolean {
+  if (a === b) return true;
+  if (a.bones.length !== b.bones.length) return false;
+  for (let i = 0; i < a.bones.length; i++) if (a.bones[i] !== b.bones[i]) return false;
+  return true;
+}
+
 function requireAttribute(mesh: Mesh, name: string): BufferAttribute | InterleavedBufferAttribute {
   const attribute = mesh.geometry.getAttribute(name) as BufferAttribute | InterleavedBufferAttribute | undefined;
   if (!attribute) throw new Error(`characterAvatar: ${mesh.name} has no ${name} attribute`);
@@ -228,11 +238,22 @@ export function assembleAvatar(
   const materials: Material[] = [];
   const solids: SkinnedMesh[] = [];
   let skeleton: Skeleton | undefined;
+  let skeletonFrom = "";
   for (const node of kept) {
     node.traverse((o) => {
       const mesh = o as SkinnedMesh;
       if (!mesh.isMesh) return;
-      if (mesh.isSkinnedMesh) skeleton ??= mesh.skeleton;
+      if (mesh.isSkinnedMesh) {
+        if (!skeleton) {
+          skeleton = mesh.skeleton;
+          skeletonFrom = mesh.name;
+        } else if (!sameBones(mesh.skeleton, skeleton)) {
+          // 뼈 인덱스가 다른 뼈를 가리키게 된다: 한 Skeleton으로 묶거나 합치면 몸이 엉뚱하게 움직인다.
+          throw new Error(
+            `characterAvatar: ${mesh.name} is skinned to a different skeleton (bones or their order) than ${skeletonFrom}; every part must share one skin`,
+          );
+        }
+      }
       const source = mesh.material as MeshStandardMaterial;
       if (mesh.isSkinnedMesh && !source.map) {
         solids.push(mesh); // 피부·틴트·고정색 → 합친다
@@ -250,6 +271,14 @@ export function assembleAvatar(
   }
   if (!skeleton || solids.length === 0) {
     throw new Error(`characterAvatar: no untextured skinned part to merge in ${parts.join(", ")}`);
+  }
+  // 합친 메시는 solids[0]의 bind 행렬 하나로 묶인다. 다른 bind 행렬의 부품을 넣으면 그 부품만 어긋나 그려진다.
+  for (const mesh of solids) {
+    if (!mesh.bindMatrix.equals(solids[0].bindMatrix)) {
+      throw new Error(
+        `characterAvatar: ${mesh.name} has a different bind matrix than ${solids[0].name}; it cannot join the merged mesh`,
+      );
+    }
   }
 
   const solidKey = lookKey(look);

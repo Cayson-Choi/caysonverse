@@ -69,7 +69,13 @@ export function useAvatar(
   const key = lookKey(look);
 
   // 렌더 단계: 조립만 하고 잡지 않는다(머리말).
-  const avatar = useMemo(() => assembleAvatar({ scene }, look, decorate), [scene, key]);
+  const avatar = useMemo(
+    () => assembleAvatar({ scene }, look, decorate),
+    // look은 key(lookKey)가 대신한다 — 호출한 쪽이 렌더마다 새 look 객체를 만들어도 같은 외형이면 다시 조립하지
+    // 않는다. decorate는 다시 조립할 때의 값을 쓴다(매 렌더 새 함수여도 무시).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [scene, key],
+  );
 
   useLayoutEffect(() => {
     retainAvatar(avatar);
