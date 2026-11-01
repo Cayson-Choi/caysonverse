@@ -898,6 +898,125 @@ it("voice options are 남자 목소리 / 여자 목소리 at 0 / 1");
   - 휴대폰 화면에 가로 스크롤이 없어야 한다.
 - [ ] **Step 6: 커밋.** `feat: 입장 화면 캐릭터 조립실 — 3D 미리보기·슬롯 칩·색 견본·프리셋 8·랜덤·목소리, 휴대폰 배치 (캐릭터 3단계 Task 7)`
 
+### Task 7b: 조립실 새 디자인 — 밝은 하늘 정원 무대 (2026-11-01 추가)
+
+**왜:**
+- 발주자(2026-11-01): "이 화면이 좀 촌스러워 시중에 진짜 게임 배경과 ui/ux를 적용해봐", 이어서 "밝은게 낫지 않을까?".
+- 그래서 시안을 만들어 보여 줬다. 밝은 하늘 정원 무대 위에 유리 패널을 얹은 화면이고, 배경은 ChatGPT로 만든 A안이다. 이 태스크는 그 시안대로 만든다.
+- 조립실은 caysonverse의 모든 체험이 같이 쓰는 입구다(방탈출 스펙 14장 "기존 월드와 다른 체험"). 그래서 학교 이름이나 학교 장식을 넣지 않는다.
+
+**시안 자료:** 모두 main 체크아웃의 gitignore 폴더 `D:\Codex\cayson-games\caysonverse\art\` 아래에 있다. 워크트리에서는 절대 경로로 읽는다.
+- `builder-concept\design-note.md`: 배치·부품·상태·움직임·클래스 매핑을 적은 글이다. **이 글이 화면 요구사항이다.** 아래 "시안과 다르게 정한 것"만 이 글과 다르다.
+- `builder-concept\mockup-desktop.png`(1280×800)와 `mockup-phone.png`(390×844), 그리고 각각의 `@2x`·`@3x`: 목표 화면이다.
+- `builder-concept\mockup.html` + `mockup.css`: 참고용 정적 구현이다. 가져다 써도 된다. 단 견본은 design-note 매핑 표대로 인라인 `background` + `box-shadow` 링으로 그린다(`--c`·`::before` 방식은 쓰지 않는다).
+- `builder-concept\assets\bg-desktop.{avif,webp}`, `bg-phone.{avif,webp}`: 배포용 배경이다(A안).
+- `builder-concept\tools\render.html`: three.js로 부품 그림을 그린 참고 코드다.
+- `fonts\Jua-Regular.ttf` + `fonts\OFL.txt`: SIL OFL 1.1 글꼴이다(google/fonts).
+
+**Files:**
+- Modify:
+  - `client/src/ui/EntryScreen.tsx`, `BuilderPreview.tsx`, `BuilderPanel.tsx`, `builder.css`, `entry.css`
+  - `client/src/ui/builderOptions.ts`(+ test), `client/index.html`(맞는 배경 한 장·글꼴 preload)
+  - `LICENSE.md`(Jua OFL, 배경 그림 출처)
+  - `docs/superpowers/specs/2026-10-31-character-builder-design.md` 5.3 "입장 화면"(새 배치 요약 3~6줄)
+- Create:
+  - `client/src/ui/builderThumbs.ts`(+ 순수 부분 test), `client/src/ui/BuilderIcons.tsx`(인라인 SVG: 탭 7개·회전·목소리·열쇠)
+  - `client/public/entry/bg-desktop.avif|webp`, `client/public/entry/bg-phone.avif|webp`
+  - `client/public/fonts/jua-builder.woff`, `client/public/fonts/OFL-Jua.txt`
+  - `scripts/subset-builder-font.mjs`, 글꼴 글자 범위 test(파일 이름은 구현자가 정하고 보고서에 적는다)
+
+**Interfaces:**
+- Consumes: Task 7의 모든 것(`BUILDER_COPY`, `PREVIEW_CAMERA`, `partChips`, `colorLabel`, `showSwatches`, `VOICE_OPTIONS`, `BuilderPreview`, `BuilderPanel`), `useAvatar`·`assembleAvatar`·`retainAvatar`·`releaseAvatarSoon`(Task 5), `lookFromAppearance`·`visibleParts`·`lookKey`·`clipFor`(Task 4), `APPEARANCE_PRESETS`·`paletteFor`·`SLOT_COLOR_FIELD`(Task 3), `preloadCharacterAssets`.
+- Produces: Task 7의 이름과 시그니처를 모두 유지한다.
+  - `BUILDER_COPY`에는 키를 더할 수 있다. `PREVIEW_CAMERA` 값은 새 무대에 맞게 바꿀 수 있다.
+  - DEV 훅 `__cvPreview()`(`yaw`, `setYaw`, `setClip`)와 `__cvAvatars().preview`를 유지한다. `PREVIEW_PROBE_ID`도 그대로다.
+  - **design-note "Mapping" 표가 바인딩이다.** Task 7의 클래스 이름·role·aria 속성·글자 노드는 그대로 둔다. Task 10과 기존 E2E가 이것으로 찾는다.
+  - 바뀌는 것은 CSS와 감싸는 요소뿐이다.
+
+**시안과 다르게 정한 것** **[내 결정]**
+1. **부품 그림과 프리셋 얼굴 그림은 실행 중에 그린다.** 빌드 때 미리 굽지 않는다.
+   - 이유
+     - 첫 화면 용량 여유가 약 315 KB뿐이다(투영 8,073,587 B, 한도 8,388,608 B). 미리 구운 그림만 약 235 KB다.
+     - GLB가 바뀌어도 그림이 저절로 맞는다.
+     - 지금 고른 색으로 칠할 수 있다.
+   - 그리는 방법
+     - 미리보기 Canvas의 WebGL 렌더러 하나로 그린다. **두 번째 WebGL 컨텍스트를 만들지 않는다.**
+     - 칩 그림은 부품 하나를 지금 그 슬롯의 색으로 칠한다. 프리셋 그림은 그 프리셋 외형 전체의 상반신이다.
+     - 크기: 칩 128×128(64 CSS px에 2배), 프리셋 160×160.
+   - 캐시와 순서
+     - 칩은 (부품, 색), 프리셋은 프리셋 id로 캐시한다. 같은 키는 다시 그리지 않는다.
+     - 한 프레임에 최대 2장만 그린다. 지금 탭 것부터 그린다.
+   - 그림이 아직 없거나 실패하면 지금처럼 이름만 있는 칩(빈 타일)으로 보인다. 미리보기가 실패해도(PreviewBoundary) 마찬가지다.
+   - 그림은 `alt=""` 또는 `aria-hidden`이다. 버튼의 이름은 그대로 라벨 글자다.
+   - 썸네일 전용 객체는 캐시에 담은 뒤 해제한다. `__cvAvatars()` 항목 수를 늘리면 안 된다(미리보기 1개만).
+2. **글꼴**
+   - Jua는 화면에 고정된 글자에만 쓴다. 제목·탭·칩 이름·프리셋 이름·버튼·안내가 여기에 든다. 닉네임 입력과 오류 문구는 지금 글꼴 그대로다.
+   - `scripts/subset-builder-font.mjs`가 필요한 글자만 뽑는다.
+     - `pyftsubset`(이 PC의 Python fontTools 4.66)을 `--flavor=woff`로 부른다. brotli가 없어 woff2는 못 만든다.
+     - 글자 목록은 manifest labels·slotLabels·프리셋 이름·`BUILDER_COPY`·목소리·버튼 문구에서 모은다.
+     - 원본 경로는 `--font <ttf>`로 받는다. 기본값은 `<repo>/art/fonts/Jua-Regular.ttf`다(`sync-character-assets.mjs`의 `--art`와 같은 방식).
+   - 테스트 하나가 화면 고정 문구의 모든 글자가 subset 글자 목록에 들어 있는지 확인한다. 글자 목록 파일은 스크립트가 같이 쓴다.
+   - 목표 크기는 25 KB 이하다. `@font-face`에 `font-display: swap`을 준다.
+   - 외부 글꼴 주소(Google Fonts 등)는 쓰지 않는다. 학생 접속이 외부로 나가지 않게 하기 위해서다.
+3. **배경**
+   - `<picture>` 또는 `image-set()`으로 기기마다 한 장만 받는다. AVIF를 먼저 쓰고 WebP로 대체한다.
+   - 가로가 세로 이상인 화면은 desktop 그림, 세로 화면은 phone 그림을 쓴다.
+   - 그림이 오기 전에는 크림·라벤더 바탕색과 작은 LQIP를 보인다. `preload`는 맞는 한 장만 한다.
+4. **무대 맞춤**
+   - 인형 발이 배경 받침대 윗면에 놓이게 한다. 윗면 중심은 넓은 그림 (0.500, 0.701), 세로 그림 (0.500, 0.437)이다.
+   - 방법은 자유다. 예를 들어 배경과 무대를 비율이 고정된 상자 하나에 넣을 수 있다.
+   - 확인 화면: 1280×800, 1440×900, 1920×1080, 1024×768, 820×1180, 390×844, 375×812, 360×740, 320×568.
+   - 각 화면에서 발과 받침대 윗면의 차이가 받침대 윗면 두께의 절반 이하이고, 인형이 패널이나 버튼에 가리지 않아야 한다.
+   - 마법사 모자 끝(약 2.73 m)이 잘리지 않아야 한다.
+5. **휴대폰 아래 시트**
+   - 시트 안에서 스크롤한다. 손잡이를 톡 누르거나 위아래로 끌면 높이가 47% ↔ 88%로 바뀐다. `prefers-reduced-motion`이면 움직임 없이 바로 바뀐다.
+   - 입장 버튼은 시트 아래에 고정(sticky)이고, 그 뒤에 페이드를 깐다.
+   - **Ruling S22:** Task 10 모바일 4단계의 "세로 드래그 → `scrollY` 증가"는 이렇게 읽는다. "세로로 끌면 미리보기는 돌지 않고, 조립실의 스크롤 상자(시트나 페이지)가 스크롤된다."
+6. **관리자**: 위쪽 바 오른쪽의 알약 버튼 "관리자이신가요?"다. 누르면 코드 입력이 작은 유리 팝오버로 열린다. 문구와 동작은 지금 그대로다.
+7. **닉네임 이름판**
+   - 인형 아래에 둔다. `input.cv-input`, `maxLength=12`, label은 그대로다.
+   - placeholder는 "이름을 지어 주세요 (2~12자)"다(`NICKNAME_MIN` 2, `NICKNAME_MAX` 12).
+   - 터치 기기에서는 `autoFocus`를 빼서 키보드가 무대를 덮지 않게 한다.
+8. **회전 버튼 ⟲ ⟳**: 누를 때마다 ±π/4만큼 200 ms 동안 부드럽게 돈다. 값은 yaw ref에 쓴다. `aria-label`은 "왼쪽으로 돌리기"·"오른쪽으로 돌리기"다.
+9. **움직임**
+   - design-note "Motion" 절 그대로 하되, transform·opacity만 쓴다. `prefers-reduced-motion`이면 모두 끈다.
+   - 프리셋이나 랜덤을 누르면 인형이 500 ms 동안 한 바퀴 돈다. 점프 클립은 쓰지 않는다(클립 상태를 바꾸지 않기 위해서다).
+10. **Task 7 보류 항목을 같이 고친다**(ledger "Task 7: minor (deferred)")
+    - 데스크톱 첫 화면에서 목소리 줄이 입장 버튼 밑에 반쯤 가려진다. 새 배치(왼쪽 패널 아래)로 없앤다.
+    - `.cv-chips`가 늘 3줄 높이를 차지해 얼굴 탭에 빈칸이 생긴다.
+    - PreviewBoundary가 lookKey가 바뀌어도 다시 시도하지 않는다. lookKey가 바뀌면 리셋한다.
+    - `onPointerMove`에 마우스 `buttons === 0` 가드가 없다.
+    - 목소리 radiogroup에 화살표 키 이동(roving tabindex)이 없다.
+    - `preloadCharacterAssets`를 입장할 때만 부른다. 조립실이 뜰 때 부른다.
+    - `identityCache` 머리 주석이 오래됐다.
+11. **로고**: 위쪽 바 왼쪽의 Cayson 배지와 "캐릭터 조립실"이 조립실 제목이다(설계 3장: 로고는 조립실 제목에만). 다른 곳에는 로고도 학교 이름도 넣지 않는다.
+12. **배경 그림 출처**: `LICENSE.md`에 적는다. "ChatGPT(OpenAI) 이미지 생성, 발주자 계정, 2026-11-01, A안. 데스크톱 그림의 글자 같은 무늬는 손으로 흐리게 지움." 상업 판매 조건 확인은 출시 전에 발주자에게 묻는 항목으로 보고서에 남긴다.
+
+**용량·성능 기준**
+- 첫 화면에 더해지는 용량(배경 한 장 + 글꼴 + 아이콘·CSS)은 데스크톱 AVIF 기준 120 KB 이하다. 실제 바이트를 보고서에 적는다.
+- 1280×800과 375×812(CPU 4배 느리게)에서 모든 탭을 한 번씩 연 뒤, 긴 프레임(> 50 ms) 수와 미리보기 회전 중 평균 프레임 시간을 보고한다.
+
+- [ ] **Step 1: 실패하는 테스트 작성.** 다음을 확인한다.
+  - `builderThumbs`의 순수 부분: 캐시 키, 지금 탭 우선 순서, 프레임당 2장 큐.
+  - 글꼴 글자 범위.
+  - `builderOptions`에 새로 더한 것.
+- [ ] **Step 2: 실패 확인.** `npm run test -w client` → 새 테스트 FAIL
+- [ ] **Step 3: 구현.** 다음 순서로 한다.
+  1. 자산 복사와 글꼴 subset
+  2. 배치와 CSS
+  3. 썸네일
+  4. 움직임
+  5. 보류 항목
+- [ ] **Step 4: 통과 확인.** `npm run test && npm run typecheck && npm run build` PASS
+- [ ] **Step 5: 브라우저 확인.** 설치된 Chrome과 Playwright로 한다. 스크립트는 스크래치 폴더에 두고, 개발 서버는 `npm run dev`(서버 :2567, 클라이언트 :5173)다.
+  - 위 9개 화면 크기의 스크린샷을 찍는다. 1280×800과 390×844는 시안과 나란히 놓은 비교 그림도 만든다.
+  - 프리셋 8개·랜덤·탭 7개·칩·견본·목소리를 모두 눌러 본다. 키보드로 Tab 순서·focus-visible·탭 화살표·목소리 화살표를 확인한다.
+  - 320×568과 375×812에서 가로 스크롤이 없고, 버튼이 모두 44×44 이상이며 서로 겹치지 않는다. 입장 버튼은 화면 안에 있다(Task 10 모바일 3단계).
+  - `prefers-reduced-motion`을 켜고 한 번 더 본다.
+  - 콘솔 오류가 0이고, StrictMode에서 `__cvAvatars` 항목이 새지 않는다.
+  - 회귀: 입장 경로를 쓰는 기존 E2E인 `node e2e/task-char-load.mjs`, `node e2e/task-ux-desktop.mjs`, `node e2e/task-ux-mobile.mjs`가 통과한다.
+- [ ] **Step 6: 커밋.** `feat: 조립실 새 디자인 — 밝은 하늘 정원 무대·유리 패널·부품 그림 카드·이름판·휴대폰 아래 시트 (캐릭터 3단계 Task 7b)`
+
 ### Task 8: AI 조교 NPC — 새 몸 + 안드로이드 옷
 
 **Files:**
