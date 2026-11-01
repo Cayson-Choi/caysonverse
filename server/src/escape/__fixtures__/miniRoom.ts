@@ -5,11 +5,20 @@
  * Flow: pick up a (shelf), then b (drawer, only after a) → combine a + b → ab → digits lock lk_d
  * on the panel (needs ab in the bag, answer "123") → letters lock lk_l on the same panel (after
  * lk_d, wheels 가/나 · 다/라, answer 나라, gives the cards) → sort lock lk_s on the board (needs
- * the cards, c1 → x, c2 → y, sets "ready") → finale.
+ * the cards, c1 → x, c2 → y, sets "ready") → finale: step f1 (privacy, o1 right) → step f2
+ * (no principle, "ask" right) → escaped.
+ *
+ * Task 8, off the main path (so the Task 7 flow above is unchanged):
+ * - coop `co`: switches sw1 + sw2, open once lk_d is solved, done flag `co_done`, onSolve sets
+ *   `box_open` and says `co_open`.
+ * - split drawers: dA (half A, only after `picked:a`) and dB (half B, always).
  */
 
 import { PRINCIPLE_SOURCE } from "@caysonverse/shared/escape/principles";
 import type { RoomDef } from "../types";
+
+/** The locked-half template of every split clue (the counselling room uses the same sentence). */
+const LOCKED_HALF = "글씨가 흐릿해요. 이 쪽지는 {owner}님만 읽을 수 있어요.";
 
 export const miniRoom: RoomDef = {
   id: "counsel",
@@ -74,6 +83,32 @@ export const miniRoom: RoomDef = {
       kind: "door",
       inspect: { title: "마지막 문", body: "굳게 닫힌 문이에요." },
     },
+    {
+      id: "sw1",
+      label: "왼쪽 스위치",
+      kind: "switch",
+      inspect: { title: "왼쪽 스위치", body: "두 사람이 함께 돌려야 하는 스위치예요." },
+    },
+    {
+      id: "sw2",
+      label: "오른쪽 스위치",
+      kind: "switch",
+      inspect: { title: "오른쪽 스위치", body: "두 사람이 함께 돌려야 하는 스위치예요." },
+    },
+    {
+      id: "dA",
+      label: "왼쪽 서랍",
+      kind: "inspect",
+      inspect: { title: "왼쪽 서랍", body: "반쪽짜리 쪽지가 들어 있어요." },
+      split: { group: "A", text: "반쪽 쪽지: 첫째 칸은 둘째 글자", lockedText: LOCKED_HALF, when: { all: ["picked:a"] } },
+    },
+    {
+      id: "dB",
+      label: "오른쪽 서랍",
+      kind: "inspect",
+      inspect: { title: "오른쪽 서랍", body: "반쪽짜리 쪽지가 들어 있어요." },
+      split: { group: "B", text: "반쪽 쪽지: 둘째 칸도 둘째 글자", lockedText: LOCKED_HALF },
+    },
   ],
   items: [
     { id: "a", label: "손전등", icon: "flashlight" },
@@ -124,7 +159,15 @@ export const miniRoom: RoomDef = {
       onSolve: [{ set: "ready" }],
     },
   ],
-  coops: [],
+  coops: [
+    {
+      id: "co",
+      switches: ["sw1", "sw2"],
+      requires: { all: ["solved:lk_d"] },
+      doneFlag: "co_done",
+      onSolve: [{ set: "box_open" }, { say: "co_open" }],
+    },
+  ],
   stages: [
     {
       id: "st_items",
@@ -159,12 +202,22 @@ export const miniRoom: RoomDef = {
         ],
         correct: "o1",
       },
+      {
+        id: "f2",
+        prompt: "아리에게 들려줄 말을 골라요.",
+        options: [
+          { id: "ask", label: "물어보고 올려요" },
+          { id: "tease", label: "재미로 올려요", explain: "재미로 올리면 친구가 마음을 다칠 수 있어요." },
+        ],
+        correct: "ask",
+      },
     ],
   },
   lines: {
     intro1: { speaker: "ari", text: { easy: "안녕! 문을 함께 열어 보자.", hard: "반가워. 함께 이 방을 빠져나가 보자." } },
     made_ab: { speaker: "bandit", text: "손전등이 보랏빛으로 빛나요!" },
     solved_d: { speaker: "narrator", text: "딸깍, 숫자 칸이 열렸어요." },
+    co_open: { speaker: "bandit", text: "철컥! 두 스위치가 함께 돌아갔어요." },
     bye1: { speaker: "ari", text: "잘했어! 다음 방에서 또 만나." },
   },
   introLines: ["intro1"],

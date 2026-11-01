@@ -4,13 +4,14 @@
  * the game time in `ctx.now` (GameClock, so a pause freezes it), keeps no timers, reads no
  * clock and logs nothing (inputs and answers never reach a log).
  *
- * Task 8 adds the coop device (press / hold / membership), the persuasion vote and split clues
- * on top of `applyEffects` and `holds`.
+ * Task 8: the coop device (press / hold / membership), the persuasion vote and split clues live
+ * in coop.ts, on top of `applyEffects` and `holds`; `applyAction` and `inspectView` delegate there.
  */
 
 import { HINT_GAP_MS, LOCK_SUBMIT_GAP_MS, type TextLevel } from "@caysonverse/shared/escape/constants";
 import type { EngineEvent, InspectViewPayload } from "@caysonverse/shared/escape/messages";
 import { resolveText } from "./content";
+import { castVote, holdCheck, holdEnd, holdStart, onMembership, pressSwitch, splitView } from "./coop";
 import type { Cond, Effect, LockDef, RoomDef, StageDef } from "./types";
 
 export type { EngineEvent, InspectViewPayload } from "@caysonverse/shared/escape/messages";
@@ -252,14 +253,19 @@ export function applyAction(def: RoomDef, s: EngineState, a: EngineAction, ctx: 
       return submit(def, s, a.sid, a.lockId, ctx.now);
     case "hint":
       return requestHint(def, s, ctx);
-    // The coop device and the persuasion vote arrive with Task 8.
+    // The coop device and the persuasion vote (coop.ts, Task 8).
     case "press":
+      return pressSwitch(def, s, a.sid, a.objectId, ctx);
     case "holdStart":
+      return holdStart(def, s, a.sid, a.objectId, ctx);
     case "holdEnd":
+      return holdEnd(def, s, a.sid, a.objectId, ctx);
     case "holdCheck":
+      return holdCheck(def, s, ctx);
     case "vote":
+      return castVote(def, s, a.sid, a.optionId, ctx);
     case "membership":
-      return [];
+      return onMembership(def, s, ctx);
   }
 }
 
@@ -267,7 +273,9 @@ export function applyAction(def: RoomDef, s: EngineState, a: EngineAction, ctx: 
  * One object's close-up for one viewer, or null for an unknown object. Does not change state.
  * body = the first state whose `when` holds (else the base body); `reveal` only while the bag
  * holds the reveal item; `canPickup` only while a pickup would work; `lockId` = the object's first
- * lock that is visible (`requires`) and not solved. (`viewer` and `ctx` serve the split clues, Task 8.)
+ * lock that is visible (`requires`) and not solved; `split` only while `split.when` holds: the
+ * half's text if the viewer's share (`splitGroups` of `ctx.connected`) holds that half, else the
+ * locked sentence naming the members who hold it (coop.ts `splitView`).
  */
 export function inspectView(
   def: RoomDef,
@@ -293,5 +301,6 @@ export function inspectView(
   if (p && holds(p.when, s) && !s.flags.has(`picked:${p.item}`)) view.canPickup = p.item;
   const lockId = obj.locks?.find((id) => openLock(def, s, id) !== null);
   if (lockId !== undefined) view.lockId = lockId;
+  if (obj.split && holds(obj.split.when, s)) view.split = splitView(obj.split, viewer, ctx);
   return view;
 }
