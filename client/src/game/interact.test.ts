@@ -5,11 +5,14 @@ import {
   interactionLabel,
   interactionShortLabel,
   interactInputAt,
+  interactNow,
   pickInteraction,
   sameInteraction,
+  shouldClosePanel,
+  type Interaction,
   type InteractInput,
 } from "./interact";
-import { NPCS, NPC_TALK_RADIUS } from "./npc";
+import { NPCS, NPC_CLOSE_RADIUS, NPC_TALK_RADIUS } from "./npc";
 
 const base: InteractInput = { seated: false, seat: null, npc: null, npcPanelOpen: false };
 const free = () => false;
@@ -141,5 +144,58 @@ describe("interactInputAt (world → InteractInput)", () => {
   it("end to end: standing at a chair offers sit, seated offers stand", () => {
     const at = interactInputAt(seat0.x, seat0.z, -1, free, false);
     expect(pickInteraction(at)).toEqual({ kind: "sit", seatIndex: 0 });
+  });
+});
+
+describe("shouldClosePanel — the 조교 chat ends when you walk away from its assistant", () => {
+  const hall = NPCS.find((n) => n.id === "hall")!;
+  const lobby = NPCS.find((n) => n.id === "lobby")!;
+
+  it("never closes anything when no panel is open", () => {
+    expect(shouldClosePanel(null, 500, 500)).toBe(false);
+    expect(shouldClosePanel(null, hall.pos.x, hall.pos.z)).toBe(false);
+  });
+
+  it("stays open up to NPC_CLOSE_RADIUS and closes beyond it (strictly greater)", () => {
+    expect(shouldClosePanel("hall", hall.pos.x, hall.pos.z)).toBe(false);
+    expect(shouldClosePanel("hall", hall.pos.x + NPC_CLOSE_RADIUS - 0.1, hall.pos.z)).toBe(false);
+    expect(shouldClosePanel("hall", hall.pos.x + NPC_CLOSE_RADIUS, hall.pos.z)).toBe(false);
+    expect(shouldClosePanel("hall", hall.pos.x + NPC_CLOSE_RADIUS + 0.1, hall.pos.z)).toBe(true);
+  });
+
+  it("measures from the assistant you are talking to, not the nearest one", () => {
+    // Standing at the lobby assistant while the hall one is open: far from hall → close.
+    expect(shouldClosePanel("hall", lobby.pos.x, lobby.pos.z)).toBe(true);
+    expect(shouldClosePanel("lobby", lobby.pos.x, lobby.pos.z)).toBe(false);
+  });
+});
+
+describe("interactNow — a click acts on the FRESH target, not the one drawn up to 200 ms ago", () => {
+  const sit3: Interaction = { kind: "sit", seatIndex: 3 };
+  const sit4: Interaction = { kind: "sit", seatIndex: 4 };
+
+  it("re-reads the world first and performs what that read says", () => {
+    const calls: string[] = [];
+    // The button was rendered for seat 3; by the click the nearest free seat is seat 4.
+    const refresh = () => {
+      calls.push("refresh");
+      return sit4;
+    };
+    const perform = (it: Interaction) => calls.push("perform:" + JSON.stringify(it));
+    interactNow(refresh, perform);
+    expect(calls).toEqual(["refresh", "perform:" + JSON.stringify(sit4), "refresh"]);
+    expect(calls).not.toContain("perform:" + JSON.stringify(sit3));
+  });
+
+  it("does nothing when the target has gone since the render (walked off, seat taken)", () => {
+    const perform = (_: Interaction) => {
+      throw new Error("must not act on a vanished target");
+    };
+    let reads = 0;
+    interactNow(() => {
+      reads++;
+      return null;
+    }, perform);
+    expect(reads).toBe(2); // still re-read after, so the button disappears this tick
   });
 });

@@ -6,14 +6,15 @@ import { getRemoteSeatIndices } from "../game/remoteStore";
 import { onHotkey } from "../game/hotkeys";
 import {
   interactInputAt,
+  interactNow,
   interactionIcon,
   interactionLabel,
   interactionShortLabel,
   pickInteraction,
   sameInteraction,
+  shouldClosePanel,
   type Interaction,
 } from "../game/interact";
-import { NPC_CLOSE_RADIUS, npcDistance } from "../game/npc";
 import { useChatStore } from "../stores/chatStore";
 import { useNpcStore } from "../stores/npcStore";
 import { isTouchDevice } from "../device";
@@ -81,12 +82,10 @@ export function ActionButton({ pose, seat }: { pose: Pose; seat: SeatState }) {
 
   // One proximity pass: auto-close a far chat panel, then pick the interaction.
   // Reads the live pose / seat refs; allocates only at this cadence.
-  const refresh = useCallback(() => {
+  const refresh = useCallback((): Interaction | null => {
     const npcState = useNpcStore.getState();
     // The conversation ends when you walk away from the assistant you were talking to.
-    if (npcState.activeNpc && npcDistance(npcState.activeNpc, pose.x, pose.z) > NPC_CLOSE_RADIUS) {
-      npcState.closePanel();
-    }
+    if (shouldClosePanel(npcState.activeNpc, pose.x, pose.z)) npcState.closePanel();
     const occupied = new Set(getRemoteSeatIndices());
     const next = pickInteraction(
       interactInputAt(
@@ -101,7 +100,11 @@ export function ActionButton({ pose, seat }: { pose: Pose; seat: SeatState }) {
       current.current = next;
       setInteraction(next);
     }
+    return next;
   }, [pose, seat]);
+
+  // E / F and a click share this: re-read the world, act on THAT target, re-read.
+  const act = useCallback(() => interactNow(refresh, perform), [refresh]);
 
   useEffect(() => {
     refresh();
@@ -119,16 +122,37 @@ export function ActionButton({ pose, seat }: { pose: Pose; seat: SeatState }) {
   useEffect(
     () =>
       onHotkey((action) => {
-        if (action.type !== "interact") return;
-        refresh();
-        if (current.current) perform(current.current);
-        refresh(); // e.g. talk → the panel is open, the button goes away this frame
+        if (action.type === "interact") act(); // e.g. talk → the panel opens, the button goes
       }),
-    [refresh],
+    [act],
   );
 
-  if (!interaction) return null;
+  const label = interaction ? interactionLabel(interaction) : "";
+  return (
+    <>
+      {/* Screen readers: the polite status the old sit / talk hints had. Always mounted, so a
+          change of text is announced (a live region added together with its text is often not).
+          PC only — on a phone the button itself is the control and is read as it appears. */}
+      {!isTouchDevice && (
+        <span className="cv-sr-only" role="status" aria-live="polite">
+          {interaction ? `E 키: ${label}` : ""}
+        </span>
+      )}
+      {interaction && <ActionButtonView interaction={interaction} layout={layout} onAct={act} />}
+    </>
+  );
+}
 
+/** The visible button. Never takes focus; a click acts on a fresh read, like the E key. */
+function ActionButtonView({
+  interaction,
+  layout,
+  onAct,
+}: {
+  interaction: Interaction;
+  layout: ReturnType<typeof useTouchHudLayout>;
+  onAct: () => void;
+}) {
   const label = interactionLabel(interaction);
   return (
     <button
@@ -139,10 +163,7 @@ export function ActionButton({ pose, seat }: { pose: Pose; seat: SeatState }) {
       // would steal the caret from the chat field (Review Focus 2).
       onPointerDown={(e) => e.preventDefault()}
       onMouseDown={(e) => e.preventDefault()}
-      onClick={() => {
-        perform(interaction);
-        refresh();
-      }}
+      onClick={onAct}
       tabIndex={-1}
       aria-label={label}
     >

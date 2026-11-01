@@ -8,7 +8,7 @@
  */
 
 import { SEATS, nearestFreeSeat } from "@caysonverse/shared/worldMap";
-import { NPC_TALK_RADIUS, nearestNpc, npcDistance, type NpcId } from "./npc";
+import { NPC_CLOSE_RADIUS, NPC_TALK_RADIUS, nearestNpc, npcDistance, type NpcId } from "./npc";
 
 export type Interaction =
   | { kind: "sit"; seatIndex: number }
@@ -65,6 +65,30 @@ export function interactionLabel(i: Interaction): string {
 /** Short label for the 60 px round touch button ("조교와 대화" would not fit). */
 export function interactionShortLabel(i: Interaction): string {
   return i.kind === "talk" ? "대화" : interactionLabel(i);
+}
+
+/**
+ * Whether the open 조교 chat panel must close because the player walked away from the
+ * assistant they are talking to (more than NPC_CLOSE_RADIUS, measured from THAT
+ * assistant, not the nearest one). False while no panel is open.
+ */
+export function shouldClosePanel(activeNpc: NpcId | null, x: number, z: number): boolean {
+  return activeNpc !== null && npcDistance(activeNpc, x, z) > NPC_CLOSE_RADIUS;
+}
+
+/**
+ * Do what E / the button would do, on the FRESH world: re-read the target first (the
+ * button's own copy can be ~200 ms old — a chair taken or a step away since the last
+ * proximity pass), act only on what that read says, then re-read so the button reflects
+ * the result (talk → panel open → the button goes). `refresh` returns the current pick.
+ */
+export function interactNow(
+  refresh: () => Interaction | null,
+  perform: (it: Interaction) => void,
+): void {
+  const fresh = refresh();
+  if (fresh) perform(fresh);
+  refresh();
 }
 
 /** Whether two picks are the same action on the same target (null equals null). */
