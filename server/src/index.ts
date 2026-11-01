@@ -6,6 +6,7 @@ import { APP_NAME, DEFAULT_SERVER_PORT, WORLD_ROOM } from "@caysonverse/shared/c
 import { rooms } from "./rooms";
 import { RateWindow } from "./rooms/rateLimit";
 import { resolveClientIp } from "./rooms/clientIp";
+import { mountClassApi } from "./class/classApi";
 import {
   GROQ_URL,
   GROQ_DEFAULT_MODEL,
@@ -158,6 +159,12 @@ const server = defineServer({
         res.status(502).json({ error: "voice synthesis failed" });
       }
     });
+
+    // ── AI 학교 탈출: teacher keys → class + one-time teacherPass; operator status ──
+    // Mounted AFTER the other /api routes: it also installs the /api error middleware,
+    // which answers their body-parser errors (e.g. invalid JSON) with a 400 and NO log
+    // (Node's JSON error messages quote the body). BEFORE the SPA fallback below.
+    mountClassApi(app);
 
     // Serve the built SPA whenever `client/dist` exists — no NODE_ENV gate, so a
     // bare `npm start` (which does NOT set NODE_ENV) serves the app on Railway
