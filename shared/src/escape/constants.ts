@@ -125,7 +125,11 @@ export const INSPECT_REACH = 2.2;
 export const ESCAPE_EMPTY_DISPOSE_MS = 120_000;
 /** The admission ticket for entering an escape room is valid this long. */
 export const TICKET_TTL_MS = 60_000;
-/** Team of 6 plus reconnect headroom. */
-export const ESCAPE_MAX_CLIENTS = 8;
+/**
+ * Seats of one escape room: every member's ghost (a dropped session keeps its reserved seat for the
+ * reconnection window) + their fresh session (a refreshed tab joins with a new ticket) + one spare.
+ * So a whole team refreshing at once never finds the room full.
+ */
+export const ESCAPE_MAX_CLIENTS = 2 * TEAM_MAX + 1;
 /** At most `count` puzzle actions per `windowMs` per client; the rest are dropped. */
 export const ESCAPE_ACTION_RATE = { count: 10, windowMs: 1000 } as const;

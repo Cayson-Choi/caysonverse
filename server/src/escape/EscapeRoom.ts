@@ -72,7 +72,7 @@ export interface EscapeResult {
   teamId: string;
   teamName: string;
   roomId: RoomId;
-  /** Nicknames of the members who came in, in arrival order. */
+  /** Nicknames of the members (students) who came in, in arrival order. */
   members: string[];
   escaped: boolean;
   overtime: boolean;
@@ -202,6 +202,8 @@ interface Slot {
   /** The member's current sessionId (a refreshed tab replaces it). */
   sid: string;
   nickname: string;
+  /** A teacher (ROLE_TEACHER) watches: never a puzzle member, never in the result's member list. */
+  teacher: boolean;
 }
 
 /**
@@ -209,8 +211,8 @@ interface Slot {
  * coop.ts) over the shared player room (PlayerRoom: move, team chat, emoji, jump, typing,
  * reconnection).
  *
- * Created ONLY by server code (ClassRoom, Task 11) with the spawn token; never matchmade (no
- * filterBy: a client reaches it by id with a one-time ticket). ClassRoom `admit`s each member, and
+ * Created ONLY by server code (ClassRoom, Task 11) with the spawn token; never matchmade (private,
+ * no filterBy: a client reaches it by id with a one-time ticket). ClassRoom `admit`s each member, and
  * the escape room reports back by `report` (remoteRoomCall): entered / left / chat / result /
  * disposed.
  *
@@ -312,7 +314,10 @@ export class EscapeRoom extends PlayerRoom<EscapeState, EscapeTracking> {
     projectToSchema(this.es, this.state);
 
     this.autoDispose = false; // lives until ended or empty (armEmptyDispose), not until the last leave
-    this.maxClients = ESCAPE_MAX_CLIENTS;
+    this.maxClients = ESCAPE_MAX_CLIENTS; // every member's ghost + fresh session + one spare
+    // Never matchmade: join / joinOrCreate by name cannot land in a team's room; joinById (with a
+    // ticket) still works.
+    void this.setPrivate(true);
 
     // Move, Chat, Emoji, Jump, Typing (+ the "*" catch-all for stray types).
     this.registerPlayerMessages();
@@ -437,11 +442,13 @@ export class EscapeRoom extends PlayerRoom<EscapeState, EscapeTracking> {
     this.sidByMember.set(auth.memberKey, sid);
     this.memberBySid.set(sid, auth.memberKey);
     const slot = this.slots.find((s) => s.memberKey === auth.memberKey);
+    const teacher = auth.role === ROLE_TEACHER;
     if (slot) {
       slot.sid = sid; // the same place in the arrival order (stable split halves)
       slot.nickname = auth.nickname;
+      slot.teacher = teacher;
     } else {
-      this.slots.push({ memberKey: auth.memberKey, sid, nickname: auth.nickname });
+      this.slots.push({ memberKey: auth.memberKey, sid, nickname: auth.nickname, teacher });
     }
     this.cancelEmptyDispose();
 
@@ -570,13 +577,17 @@ export class EscapeRoom extends PlayerRoom<EscapeState, EscapeTracking> {
 
   // ─────────────────────────────────────────── Membership ───────────────────────────────────────────
 
-  /** Rebuild the connected list (slot order) and the names in step with it; `solo` follows. */
+  /**
+   * Rebuild the connected list (slot order) and the names in step with it; `solo` follows. A teacher
+   * is never a puzzle member (split halves, votes, presses, solo) — ClassRoom admits none, this is
+   * the second guard.
+   */
   private syncMembers(): void {
     this.connected.length = 0;
     this.names.clear();
     for (const slot of this.slots) {
       const p = this.state.players.get(slot.sid);
-      if (p === undefined || !p.connected) continue;
+      if (p === undefined || !p.connected || p.role === ROLE_TEACHER) continue;
       this.connected.push(slot.sid);
       this.names.set(slot.sid, p.nickname);
     }
@@ -772,6 +783,9 @@ export class EscapeRoom extends PlayerRoom<EscapeState, EscapeTracking> {
 
   /** The team escaped: stars, time, the summary at the team's level; told to all, reported once. */
   private escape(lines: StoryLine[]): void {
+    // A hold still running (a coop usable at the last door) ends here; otherwise its check would
+    // re-arm until the room is disposed (the room is no longer live).
+    this.cancelHoldNow();
     const now = this.gameNow();
     const elapsedS = this.elapsedSAt(now);
     const remainingS = this.timeLeftAt(now);
@@ -804,7 +818,7 @@ export class EscapeRoom extends PlayerRoom<EscapeState, EscapeTracking> {
       teamId: this.teamId,
       teamName: this.state.teamName,
       roomId: this.def.id,
-      members: this.slots.map((s) => s.nickname),
+      members: this.slots.filter((s) => !s.teacher).map((s) => s.nickname),
       escaped,
       overtime: this.state.overtime,
       elapsedS,

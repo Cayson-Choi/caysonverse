@@ -30,7 +30,10 @@ function sameList(a: ArrayLike<string>, b: readonly string[]): boolean {
 }
 
 export function projectToSchema(es: EngineState, st: EscapeState): void {
-  for (const flag of es.flags) if (!st.flags.includes(flag)) st.flags.push(flag);
+  // The engine only ever adds flags, so as many synced as it holds means nothing new (O(1) per run).
+  if (st.flags.length < es.flags.size) {
+    for (const flag of es.flags) if (!st.flags.includes(flag)) st.flags.push(flag);
+  }
 
   if (!sameList(st.bag, es.bag)) {
     st.bag.clear();

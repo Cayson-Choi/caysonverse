@@ -6,6 +6,7 @@ import {
   CLASS_END_GRACE_MS,
   CLASS_EMPTY_CLOSE_MS,
   COOP_WINDOW_MS,
+  ESCAPE_MAX_CLIENTS,
   MAX_TEAMS,
   PHASE1_OPEN_ROOMS,
   PLACE_ESCAPE,
@@ -76,6 +77,12 @@ describe("team names, colours and sizes", () => {
     expect(TEAM_MIN).toBeLessThanOrEqual(TEAM_TARGET);
     expect(TEAM_TARGET).toBeLessThanOrEqual(TEAM_MAX);
     expect([TEAM_MIN, TEAM_TARGET, TEAM_MAX]).toEqual([2, 4, 6]);
+  });
+
+  it("an escape room seats a whole team twice over (ghosts + fresh sessions) plus one", () => {
+    // A dropped member's ghost keeps a reserved seat for the reconnection window, so a team that
+    // refreshes at once needs a seat for every ghost and every new session.
+    expect(ESCAPE_MAX_CLIENTS).toBeGreaterThanOrEqual(2 * TEAM_MAX + 1);
   });
 });
 

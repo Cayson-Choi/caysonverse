@@ -185,8 +185,8 @@ function admitTicket(room: EscapeRoom, key: string, extra: { role?: number; appe
 }
 
 /** A member comes in with a fresh ticket (nickname = memberKey). */
-async function enter(room: EscapeRoom, key: string): Promise<Member> {
-  const client = await connect(room, { ticket: admitTicket(room, key) });
+async function enter(room: EscapeRoom, key: string, role = ROLE_STUDENT): Promise<Member> {
+  const client = await connect(room, { ticket: admitTicket(room, key, { role }) });
   const inbox = listen(client);
   await flush();
   return { client, sid: client.sessionId, key, inbox };
@@ -226,6 +226,16 @@ async function act(room: EscapeRoom, m: Member, type: string, payload?: unknown)
 /** White-box: the room's engine state. */
 function engineOf(room: EscapeRoom): EngineState {
   return (room as unknown as { es: EngineState }).es;
+}
+
+/** White-box: the scheduled hold check, if any. */
+function holdTimerOf(room: EscapeRoom): unknown {
+  return (room as unknown as { holdTimer: unknown }).holdTimer;
+}
+
+/** White-box: a membership change still waiting for the room to be live. */
+function membershipPendingOf(room: EscapeRoom): boolean {
+  return (room as unknown as { membershipPending: boolean }).membershipPending;
 }
 
 /** White-box: set puzzle flags (a shortcut past earlier puzzles) and sync them like an action would. */
@@ -344,6 +354,23 @@ describe("EscapeRoom creation and admission", () => {
     expect((room as unknown as { geometry(): unknown }).geometry()).toBe(geometry);
     // The listing carries nothing secret.
     expect(JSON.stringify(await matchMaker.query({ name: ESCAPE_ROOM }))).not.toContain(SPAWN_TOKEN);
+  });
+
+  it("the room is private: a client join(ESCAPE_ROOM) never matches an open team room; joinById with a ticket does", async () => {
+    const { room } = await openEscape();
+    // Matchmaking by name finds no room (an open, unlocked team room is right there).
+    const byName = await refusal(colyseus.sdk.join(ESCAPE_ROOM, {}));
+    expect(byName.code).toBe(521);
+    expect(byName.message).toMatch(/no rooms/i);
+    // joinOrCreate cannot join it either: it tries to create one, which the spawn token stops.
+    expect((await refusal(colyseus.sdk.joinOrCreate(ESCAPE_ROOM, {}))).message).toBe(ERR.spawn);
+    const listing = await matchMaker.query({ name: ESCAPE_ROOM });
+    expect(listing).toHaveLength(1);
+    expect(listing[0].private).toBe(true);
+    expect(room.state.players.size).toBe(0);
+    // The real way in still works: by id, with a ticket.
+    const garam = await enter(room, "가람");
+    expect(room.state.players.get(garam.sid)?.nickname).toBe("가람");
   });
 
   it("a refused client create owns nothing: its onDispose reports nothing to any class", async () => {
@@ -1026,6 +1053,153 @@ describe("EscapeRoom time, pause and the last door", () => {
 });
 
 describe("EscapeRoom membership, rate and class controls", () => {
+  it("a whole team of six refreshing at once all get back in (seats for every ghost and new session)", async () => {
+    process.env.CV_RECONNECT_WINDOW_S = "5";
+    const { room, reports } = await openEscape();
+    const keys = ["가람", "나래", "다온", "라온", "마루", "바다"];
+    const team: Member[] = [];
+    for (const key of keys) team.push(await enter(room, key));
+    startPlay(room);
+    expect(room.state.players.size).toBe(6);
+
+    // Every tab drops at once (a classroom Wi-Fi blip): six ghosts hold their reconnection seats...
+    for (const m of team) {
+      m.client.reconnection.enabled = false;
+      m.client.connection.close(4010, "wifi blip");
+    }
+    expect(await pollFor(() => [...room.state.players.values()].every((p) => !p.connected))).toBe(true);
+
+    // ...and all six come back at the same moment with fresh tickets, inside the window.
+    const tickets = keys.map((key) => admitTicket(room, key));
+    const back = await Promise.all(tickets.map((ticket) => connect(room, { ticket })));
+    await flush();
+    expect(back.map((c) => room.state.players.get(c.sessionId)?.nickname).sort()).toEqual([...keys].sort());
+    expect(room.state.players.size).toBe(6);
+    expect([...room.state.players.values()].every((p) => p.connected)).toBe(true);
+    expect(room.state.solo).toBe(false);
+    // Nobody was reported as gone; everybody was reported in twice.
+    expect(reported(reports, "escapeMemberLeft")).toEqual([]);
+    expect(reported(reports, "escapeMemberEntered")).toHaveLength(12);
+  }, REAL_TIME_TEST_MS);
+
+  it("a teacher in the room never counts as a puzzle member (split clues, votes, solo)", async () => {
+    const { room, reports } = await openEscape();
+    const garam = await enter(room, "가람");
+    const teacher = await enter(room, "선생님", ROLE_TEACHER);
+    expect(room.state.players.size).toBe(2);
+    expect(room.state.solo).toBe(true); // the student is the only member
+    startPlay(room);
+    setFlags(room, "solved:cabinet_lock");
+
+    // The student alone reads both halves; the teacher is told the student holds them.
+    placeAt(room, garam, "drawer_right");
+    await act(room, garam, EscapeMsg.Inspect, { objectId: "drawer_right" });
+    expect(garam.inbox.views.at(-1)?.split).toEqual({ text: "○ 의 ○ 저" });
+    placeAt(room, teacher, "drawer_left");
+    await act(room, teacher, EscapeMsg.Inspect, { objectId: "drawer_left" });
+    expect(teacher.inbox.views.at(-1)?.split).toEqual({ lockedText: LOCKED_HALF("가람") });
+
+    // At the last door the teacher's vote is ignored and the student's alone decides.
+    setFlags(room, "solved:cover_lock", "solved:board_lock", "safe_unlocked", "safe_open", "finale_ready");
+    engineOf(room).phase = "finale"; // shortcut: the coop needs two students
+    await act(room, teacher, EscapeMsg.Vote, { optionId: "transparency" });
+    expect(room.state.votes.size).toBe(0);
+    await act(room, garam, EscapeMsg.Vote, { optionId: "privacy" });
+    expect(room.state.finaleStep).toBe(1);
+    await act(room, garam, EscapeMsg.Vote, { optionId: "ask_first" });
+    expect(room.state.phase).toBe("escaped");
+    // ...and is not listed among the team's members in the result.
+    const [result] = reported(reports, "escapeResult")[0] as [EscapeResult];
+    expect(result.members).toEqual(["가람"]);
+  });
+
+  it("an escape while a lone member holds a switch ends the hold (no hold check left running)", async () => {
+    const { room } = await openEscape();
+    const seon = await enter(room, "세온");
+    startPlay(room);
+    // A last door that opens while a coop is still usable (counsel opens it only after the safe).
+    setFlags(room, "solved:cabinet_lock", "solved:cover_lock", "solved:board_lock", "safe_unlocked", "finale_ready");
+    engineOf(room).phase = "finale";
+    placeAt(room, seon, "safe_key_left");
+    await act(room, seon, EscapeMsg.HoldStart, { objectId: "safe_key_left" });
+    expect(engineOf(room).hold).not.toBeNull();
+    expect(holdTimerOf(room)).not.toBeNull();
+
+    await act(room, seon, EscapeMsg.Vote, { optionId: "privacy" });
+    await act(room, seon, EscapeMsg.Vote, { optionId: "ask_first" });
+    expect(room.state.phase).toBe("escaped");
+    expect(engineOf(room).hold).toBeNull();
+    expect(holdTimerOf(room)).toBeNull();
+    // The team hears the hold end before the escape.
+    const order = seon.inbox.events
+      .filter((e) => e.e === "hold" || e.e === "escaped")
+      .map((e) => (e.e === "hold" ? `hold:${e.on}` : e.e));
+    expect(order).toEqual(["hold:true", "hold:false", "escaped"]);
+  });
+
+  it("kickMember on a ghost closes its reconnection window: gone at once, reported once, no way back", async () => {
+    process.env.CV_RECONNECT_WINDOW_S = "5";
+    const { room, reports } = await openEscape();
+    const garam = await enter(room, "가람");
+    const daon = await enter(room, "다온");
+    startPlay(room);
+    const token = await drop(room, daon);
+
+    const kickedAt = Date.now();
+    room.kickMember("다온");
+    expect(await pollFor(() => !room.state.players.has(daon.sid), 1000)).toBe(true);
+    expect(Date.now() - kickedAt).toBeLessThan(1000); // not the 5 s window running out
+    expect(reported(reports, "escapeMemberLeft")).toEqual([[TEAM.teamId, "다온"]]);
+    await expect(colyseus.sdk.reconnect(token)).rejects.toThrow();
+    expect(room.state.solo).toBe(true);
+    expect(room.state.players.has(garam.sid)).toBe(true);
+  });
+
+  it("a pause before the first join holds the intro until the resume", async () => {
+    process.env.CV_ESCAPE_INTRO_MS = "300";
+    const { room } = await openEscape();
+    room.classCommand("pause");
+    expect(room.state.paused).toBe(true);
+    const garam = await enter(room, "가람");
+    expect(room.state.phase).toBe("intro");
+
+    await sleep(1300); // real ticks after the 300 ms intro would have ended
+    expect(room.state.phase).toBe("intro");
+    expect(room.state.timeLeftS).toBe(ESCAPE_TIME_LIMIT_S);
+    placeAt(room, garam, "flashlight");
+    await act(room, garam, EscapeMsg.Pickup, { objectId: "flashlight" });
+    expect([...room.state.bag]).toEqual([]);
+
+    room.classCommand("resume");
+    expect(await pollFor(() => room.state.phase === "play", 2500)).toBe(true);
+    expect(room.state.timeLeftS).toBe(ESCAPE_TIME_LIMIT_S);
+  }, REAL_TIME_TEST_MS);
+
+  it("a membership change during the intro is applied to the engine when play starts", async () => {
+    process.env.CV_RECONNECT_WINDOW_S = "5";
+    const { room } = await openEscape();
+    const garam = await enter(room, "가람");
+    const daon = await enter(room, "다온");
+    expect(room.state.phase).toBe("intro");
+    // A switch press of daon's in the engine (white-box: the intro itself accepts no press).
+    engineOf(room).presses.set("safe_key_right", { sid: daon.sid, at: 0 });
+
+    await drop(room, daon);
+    expect(room.state.solo).toBe(true); // who is here: at once
+    expect(membershipPendingOf(room)).toBe(true); // what it means for the puzzle: not yet
+    expect(engineOf(room).presses.size).toBe(1);
+    await afterPatch(room); // every earlier `members` event has arrived
+    const membersBefore = eventsOf(garam, "members").length;
+    expect(membersBefore).toBeGreaterThanOrEqual(1);
+
+    room.debugAdvance(ESCAPE_INTRO_MS); // the intro ends: the engine sees the drop
+    expect(room.state.phase).toBe("play");
+    expect(membershipPendingOf(room)).toBe(false);
+    expect(engineOf(room).presses.size).toBe(0);
+    await afterPatch(room);
+    expect(eventsOf(garam, "members").length).toBe(membersBefore + 1);
+  });
+
   it("membership follows every join, drop, reconnect and leave (E13, Review Focus 2)", async () => {
     process.env.CV_RECONNECT_WINDOW_S = "5";
     const { room, reports } = await openEscape();

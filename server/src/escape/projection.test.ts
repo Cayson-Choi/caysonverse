@@ -65,13 +65,16 @@ describe("projectToSchema", () => {
       wrongAttempts: 3,
     });
 
-    // Nothing changed → nothing is written: no flag push, no bag rewrite, no map write.
+    // Nothing changed → nothing is written: no flag push, no bag rewrite, no map write — and the
+    // flags are not even scanned (as many synced as the engine holds: O(1) on every action).
     flagPush.mockClear();
     lockSet.mockClear();
+    const flagScan = vi.spyOn(st.flags, "includes");
     const bagClear = vi.spyOn(st.bag, "clear");
     const boardSet = vi.spyOn(st.board, "set");
     const boardDelete = vi.spyOn(st.board, "delete");
     projectToSchema(es, st);
+    expect(flagScan).not.toHaveBeenCalled();
     expect(flagPush).not.toHaveBeenCalled();
     expect(bagClear).not.toHaveBeenCalled();
     expect(lockSet).not.toHaveBeenCalled();
@@ -95,13 +98,14 @@ describe("projectToSchema", () => {
     expect(decoded.board.toJSON()).toEqual({ lunch: "ok" });
     expect(decoded.votes.toJSON()).toEqual({});
 
-    // Append-only: a flag the engine no longer lists is NOT taken off the synced list (the engine
-    // never removes flags; the projection never rewrites what clients already hold).
-    es.flags.delete("picked:uv_film");
+    // Append-only: a new flag is pushed at the end; the synced ones are never removed or rewritten
+    // (the engine only ever adds flags).
     es.flags.add("made:uv_flashlight");
+    const flagRemoval = [vi.spyOn(st.flags, "clear"), vi.spyOn(st.flags, "splice"), vi.spyOn(st.flags, "pop")];
     projectToSchema(es, st);
     patch();
     expect([...decoded.flags]).toEqual(["picked:flashlight", "picked:uv_film", "made:uv_flashlight"]);
+    for (const spy of flagRemoval) expect(spy).not.toHaveBeenCalled();
 
     // The counters saturate at their wire types instead of wrapping.
     es.wrongAttempts = 70_000;
