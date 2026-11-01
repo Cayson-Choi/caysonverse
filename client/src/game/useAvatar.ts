@@ -22,13 +22,15 @@ export interface AvatarProbeEntry {
   parts: string[];
   drawMeshes: number;
   triangles: number;
+  /** 쉬는 자세에서 가장 높은 곳(m): 머리카락·모자·NPC 헤일로까지. 이름표·말풍선 높이의 근거(BuiltAvatar.topY). */
+  topY: number;
   /** 지금 재생 중인 클립 이름. 보고 전이거나 보고하지 않는 아바타는 null. */
   clip: string | null;
 }
 
 declare global {
   interface Window {
-    /** DEV 전용 E2E 프로브: probeId → 그 아바타의 부품·메시 수·삼각형·클립. 운영 번들에는 없다. */
+    /** DEV 전용 E2E 프로브: probeId → 그 아바타의 부품·메시 수·삼각형·꼭대기 높이·클립. 운영 번들에는 없다. */
     __cvAvatars?: () => Record<string, AvatarProbeEntry>;
   }
 }
@@ -88,6 +90,7 @@ export function useAvatar(
       parts: avatar.parts,
       drawMeshes: avatar.drawMeshes,
       triangles: avatar.triangles,
+      topY: avatar.topY,
       clip: null,
     };
     avatarProbe.set(probeId, entry);

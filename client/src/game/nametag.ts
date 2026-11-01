@@ -42,7 +42,7 @@ export interface Nametag {
   setHeight(heightM: number): void;
   /** 0..1; at or below 0.01 the sprite is hidden outright (no draw call). */
   setOpacity(opacity: number): void;
-  /** Lift the tag by `offsetM` above its resting height (NAMETAG_HEIGHT + offset). */
+  /** Lift the tag by `offsetM` above its resting height (the one it was created with + offset). */
   setOffsetY(offsetM: number): void;
   /** Blue highlight border (somebody just spoke). */
   setHighlight(on: boolean): void;
@@ -234,8 +234,16 @@ export function clearIdleNametagLooks(): void {
 /** Below this opacity the sprite is not drawn at all. */
 const HIDDEN_OPACITY = 0.01;
 
-/** Create a nametag for `text`, positioned above the avatar's head. */
-export function createNametag(text: string, badge: NametagBadge = "none"): Nametag {
+/**
+ * Create a nametag for `text`, positioned above the avatar's head. `restHeightM` is the height of
+ * the sprite's centre above the avatar's group at rest (an avatar passes nametagRestHeight of its
+ * top, so a hat or halo never pokes through the tag); the default is NAMETAG_HEIGHT.
+ */
+export function createNametag(
+  text: string,
+  badge: NametagBadge = "none",
+  restHeightM: number = NAMETAG_HEIGHT,
+): Nametag {
   let highlight = false;
   let typing = false;
   let heightM = NAMETAG_BASE_HEIGHT_M;
@@ -243,7 +251,7 @@ export function createNametag(text: string, badge: NametagBadge = "none"): Namet
   let disposed = false;
 
   const sprite = billboardSprite(entry.texture, entry.aspect, heightM, 999);
-  sprite.position.set(0, NAMETAG_HEIGHT, 0);
+  sprite.position.set(0, restHeightM, 0);
   const material = sprite.material as SpriteMaterial;
 
   /** Show the look for the current flags: take the new texture first, then let go of the old. */
@@ -267,7 +275,7 @@ export function createNametag(text: string, badge: NametagBadge = "none"): Namet
       sprite.visible = opacity > HIDDEN_OPACITY;
     },
     setOffsetY(offsetM) {
-      sprite.position.y = NAMETAG_HEIGHT + offsetM;
+      sprite.position.y = restHeightM + offsetM;
     },
     setHighlight(on) {
       if (on === highlight) return;

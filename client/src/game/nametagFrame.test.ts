@@ -43,9 +43,9 @@ interface FakeTag extends Nametag {
   /** How many times each per-frame setter has been called — a tag the system leaves alone shows no change. */
   calls: { opacity: number; height: number; offset: number; typing: number; highlight: number };
 }
-function fakeTag(aspect = 3): FakeTag {
+function fakeTag(aspect = 3, restY = NAMETAG_HEIGHT): FakeTag {
   const sprite = new Sprite();
-  sprite.position.set(0, NAMETAG_HEIGHT, 0);
+  sprite.position.set(0, restY, 0);
   sprite.scale.set(NAMETAG_BASE_HEIGHT_M * aspect, NAMETAG_BASE_HEIGHT_M, 1);
   const tag: FakeTag = {
     sprite,
@@ -66,7 +66,7 @@ function fakeTag(aspect = 3): FakeTag {
     setOffsetY(o) {
       tag.calls.offset++;
       tag.offsetM = o;
-      sprite.position.y = NAMETAG_HEIGHT + o;
+      sprite.position.y = restY + o;
     },
     setHighlight(on) {
       tag.calls.highlight++;
@@ -112,14 +112,30 @@ interface Avatar {
 
 const avatars: Avatar[] = [];
 
-function addAvatar(id: string, x: number, z: number, pinned = false, y = 0, parent?: Group): Avatar {
+/** `heightM`: the avatar registers its own tag rest height (LabelEntry.heightM); omitted, the NAMETAG_HEIGHT fallback. */
+function addAvatar(
+  id: string,
+  x: number,
+  z: number,
+  pinned = false,
+  y = 0,
+  parent?: Group,
+  heightM?: number,
+): Avatar {
   const group = new Group();
   group.position.set(x, y, z);
   parent?.add(group);
-  const tag = fakeTag();
+  const tag = fakeTag(3, heightM ?? NAMETAG_HEIGHT);
   group.add(tag.sprite);
   const anchor = countingAnchor();
-  const entry: LabelEntry = { id, anchor: group, tag, pinned, bubbleAnchor: anchor };
+  const entry: LabelEntry = {
+    id,
+    anchor: group,
+    tag,
+    pinned,
+    bubbleAnchor: anchor,
+    ...(heightM === undefined ? {} : { heightM }),
+  };
   const avatar: Avatar = { id, group, tag, entry, anchor, unregister: registerLabel(entry) };
   avatars.push(avatar);
   return avatar;
@@ -424,6 +440,108 @@ describe("speech bubble anchor", () => {
     const far = addAvatar("far", 8, -12);
     run(40);
     expect(far.entry.bubbleAnchor.y).toBeGreaterThan(near.entry.bubbleAnchor.y);
+  });
+});
+
+describe("per-avatar tag height (LabelEntry.heightM)", () => {
+  /** The tag's text height in px, measured at the tag's real position. */
+  function textPxOf(a: Avatar): number {
+    const depth = viewDepth(
+      cam.matrixWorld.elements,
+      a.group.position.x,
+      a.group.position.y + a.tag.sprite.position.y,
+      a.group.position.z,
+    );
+    return a.tag.sprite.scale.y * NAMETAG_TEXT_FRACTION * pixelsPerMetre(depth, FOV_RAD, H);
+  }
+
+  /** A camera 12 m up looking down at the avatars: depth changes a lot with the tag's height. */
+  function lookDown(): void {
+    cam.position.set(8, 12, 8);
+    cam.lookAt(8, 2, 2);
+    cam.updateMatrixWorld();
+  }
+
+  it("rests the tag at the registered height and publishes the bubble anchor above THAT tag", () => {
+    const plain = addAvatar("plain", 5, 4);
+    const tall = addAvatar("tall", 11, 4, false, 0, undefined, 3.0);
+    run(40);
+    expect(plain.tag.sprite.position.y).toBe(NAMETAG_HEIGHT);
+    expect(tall.tag.sprite.position.y).toBe(3.0);
+    expect(tall.tag.offsetM).toBeCloseTo(0, 6);
+    for (const a of [plain, tall]) {
+      const top = a.tag.sprite.position.y + a.tag.sprite.scale.y / 2;
+      expect(a.entry.bubbleAnchor.y).toBeCloseTo(top + BUBBLE_GAP_M, 9);
+    }
+    // same distance, same tag size: the bubble sits exactly as much higher as the tag does
+    expect(tall.entry.bubbleAnchor.y - plain.entry.bubbleAnchor.y).toBeCloseTo(3.0 - NAMETAG_HEIGHT, 2);
+    // the DEV probe reports the same numbers
+    expect(nametagProbe.get("tall")?.tagTopM).toBeCloseTo(tall.tag.sprite.position.y + tall.tag.sprite.scale.y / 2, 9);
+    expect(nametagProbe.get("tall")?.bubbleM).toBeCloseTo(tall.entry.bubbleAnchor.y, 9);
+  });
+
+  it("sizes the tag from its depth at the registered height, not at NAMETAG_HEIGHT", () => {
+    lookDown();
+    const plain = addAvatar("plain", 8, 2);
+    const tall = addAvatar("tall", 12, 2, false, 0, undefined, 4.0);
+    run(60);
+    const e = cam.matrixWorld.elements;
+    const wantTall = nametagWorldHeight(viewDepth(e, 12, 4.0, 2), FOV_RAD, H);
+    const atFallback = nametagWorldHeight(viewDepth(e, 12, NAMETAG_HEIGHT, 2), FOV_RAD, H);
+    expect(wantTall).not.toBeCloseTo(atFallback, 3); // the two depths really give different sizes here
+    expect(tall.tag.sprite.scale.y).toBeCloseTo(wantTall, 9);
+    expect(plain.tag.sprite.scale.y).toBeCloseTo(
+      nametagWorldHeight(viewDepth(e, 8, NAMETAG_HEIGHT, 2), FOV_RAD, H),
+      9,
+    );
+    for (const a of [plain, tall]) {
+      expect(textPxOf(a)).toBeGreaterThanOrEqual(NAMETAG_TEXT_PX.min - 0.01);
+      expect(textPxOf(a)).toBeLessThanOrEqual(NAMETAG_TEXT_PX.max + 0.01);
+    }
+  });
+
+  it("declutters by the registered heads: a tall avatar's tag does not stack on a short one standing in line with it", () => {
+    lookDown();
+    addAvatar("short", 8, 2);
+    const tall = addAvatar("tall", 8.05, 2, false, 0, undefined, 3.4); // same spot, head far above the other
+    const same = addAvatar("same", 8.1, 1.95, false, 0, undefined, NAMETAG_HEIGHT); // registers the SAME head height
+    run(120);
+    // the control: a head at the same height as "short" overlaps it and steps up …
+    expect(same.tag.offsetM).toBeGreaterThan(0.05);
+    // … while the head a metre higher needs no lift
+    expect(tall.tag.offsetM).toBeCloseTo(0, 3);
+  });
+
+  it("casts the occlusion ray to the registered head: a tag above the wall top is not dimmed", () => {
+    // the hall/lounge divider (x = 0) is WALL_HEIGHT (4 m) tall; the camera (8, 3, 12) looks across it
+    const low = addAvatar("low", -1, -6); // head at 2.1 m: behind the wall
+    const high = addAvatar("high", -1, -6.2, false, 0, undefined, 7.5); // head over the wall's top edge
+    run(40);
+    expect(nametagProbe.get("low")?.occluded).toBe(true);
+    expect(low.tag.opacity).toBeCloseTo(NAMETAG_OCCLUDED_OPACITY, 5);
+    expect(nametagProbe.get("high")?.occluded).toBe(false);
+    expect(high.tag.opacity).toBeCloseTo(1, 5);
+  });
+
+  it("a hidden speaker's bubble anchor follows the tag it would have at its registered height", () => {
+    const far = addAvatar("far", 8, -25, false, 0, undefined, 3.1); // ~37 m ahead: never selected
+    addStudents(3);
+    run(10);
+    expect(far.tag.sprite.visible).toBe(false);
+    bubbleRegistry.set("far", "hello from afar", now);
+    run(3);
+    const depth = viewDepth(cam.matrixWorld.elements, 8, 3.1, -25);
+    const h = nametagWorldHeight(depth, FOV_RAD, H);
+    expect(far.entry.bubbleAnchor.y).toBeCloseTo(3.1 + h / 2 + BUBBLE_GAP_M, 9);
+  });
+
+  it("a tag that registers no height keeps the NAMETAG_HEIGHT fallback", () => {
+    const a = addAvatar("a", 8, 4);
+    expect(a.entry.heightM).toBeUndefined();
+    run(40);
+    expect(a.tag.sprite.position.y).toBe(NAMETAG_HEIGHT);
+    expect(a.entry.bubbleAnchor.y).toBeCloseTo(NAMETAG_HEIGHT + a.tag.sprite.scale.y / 2 + BUBBLE_GAP_M, 9);
+    expect(nametagProbe.get("a")?.tagTopM).toBeCloseTo(NAMETAG_HEIGHT + a.tag.sprite.scale.y / 2, 9);
   });
 });
 

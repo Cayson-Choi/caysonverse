@@ -38,13 +38,14 @@ import { reportAvatarClip, useAvatar } from "./useAvatar";
 import { BlobShadow } from "./BlobShadow";
 import { createNametag } from "./nametag";
 import { registerLabel } from "./labelRegistry";
+import { bubbleRestHeight, nametagRestHeight } from "./nametagLayout";
 import { isLocalTeacher } from "./ownNametag";
 import { useSpeechBubble } from "./useSpeechBubble";
 import { useEmoji } from "./useEmoji";
 import { normalizeAngle, stepYaw } from "./yaw";
 import { createMoveSender } from "./moveSender";
 import { installDebugHook } from "./debug";
-import { ANIM_FADE, BUBBLE_BASE_HEIGHT, CLIP, MODEL_FACING_OFFSET, TURN_SPEED } from "./constants";
+import { ANIM_FADE, CLIP, MODEL_FACING_OFFSET, TURN_SPEED } from "./constants";
 import type { MoveControl } from "./constants";
 import type { Orbit, Pose, SeatState } from "./types";
 import { getRoom, sendJump, sendMove, sendStand } from "../net/connection";
@@ -123,12 +124,25 @@ export function LocalPlayer({
   const jumpSeqRef = useRef(-1);
   const shadowRef = useRef<Group>(null);
 
+  // Assemble the toy figure from the appearance — ONCE per look via the SAME useAvatar
+  // path remotes, the AI 조교 and the builder preview use, not per frame. The hook owns
+  // the materials and the shared geometry (released on unmount); this component owns
+  // only the animation. The look is fixed for the mount (see the prop), so the clip
+  // names resolved from it below never go stale.
+  const look = useMemo(() => lookFromAppearance(appearance), [appearance]);
+  const { avatar, animations } = useAvatar(look, { probeId: sessionId });
+  const model = avatar.root;
+
+  // The own tag and bubble are anchored to THIS avatar's top (hair, hat, ...), measured once at assembly.
+  const tagHeight = nametagRestHeight(avatar.topY);
+  const bubbleRest = bubbleRestHeight(avatar.topY);
+
   // Own speech bubble: driven by the server broadcast (not a local echo), so
   // self and remotes share one path. Attached above this avatar's group. It rests on
   // `bubbleAnchor`: the NametagSystem raises that to just above the own name tag while
-  // "내 이름표 보기" is on (like a remote's bubble), and it stays at BUBBLE_BASE_HEIGHT
-  // (2.5 m) otherwise, when no tag exists.
-  const bubbleAnchor = useRef({ y: BUBBLE_BASE_HEIGHT }).current;
+  // "내 이름표 보기" is on (like a remote's bubble), and it stays at `bubbleRest`
+  // (just above where the tag would be) otherwise, when no tag exists.
+  const bubbleAnchor = useRef({ y: bubbleRest }).current;
   const bubbleTop = useSpeechBubble(sessionId, groupRef, bubbleAnchor);
 
   // Own name tag — off by default; the player turns it on in the menu. Same create /
@@ -142,7 +156,7 @@ export function LocalPlayer({
     const group = groupRef.current;
     if (!showOwnNametag || !group) return;
     const role = getRoom()?.state?.players?.get?.(sessionId)?.role;
-    const tag = createNametag(nickname, isLocalTeacher(role, isAdmin) ? "teacher" : "none");
+    const tag = createNametag(nickname, isLocalTeacher(role, isAdmin) ? "teacher" : "none", tagHeight);
     tag.setOpacity(0); // fades in under the NametagSystem instead of flashing at full opacity
     group.add(tag.sprite);
     const unregister = registerLabel({
@@ -151,25 +165,17 @@ export function LocalPlayer({
       tag,
       pinned: true,
       bubbleAnchor,
+      heightM: tagHeight,
     });
     return () => {
       unregister();
       group.remove(tag.sprite);
       tag.dispose();
-      bubbleAnchor.y = BUBBLE_BASE_HEIGHT; // no tag any more: the bubble drops back to its default height
+      bubbleAnchor.y = bubbleRest; // no tag any more: the bubble drops back to its rest height
     };
-  }, [showOwnNametag, sessionId, nickname, isAdmin, bubbleAnchor]);
+  }, [showOwnNametag, sessionId, nickname, isAdmin, bubbleAnchor, tagHeight, bubbleRest]);
   // Own emoji reaction: same broadcast-driven, self-included discipline; it starts above the own bubble.
   useEmoji(sessionId, groupRef, bubbleAnchor, bubbleTop);
-
-  // Assemble the toy figure from the appearance — ONCE per look via the SAME useAvatar
-  // path remotes, the AI 조교 and the builder preview use, not per frame. The hook owns
-  // the materials and the shared geometry (released on unmount); this component owns
-  // only the animation. The look is fixed for the mount (see the prop), so the clip
-  // names resolved from it below never go stale.
-  const look = useMemo(() => lookFromAppearance(appearance), [appearance]);
-  const { avatar, animations } = useAvatar(look, { probeId: sessionId });
-  const model = avatar.root;
 
   const { actions } = useAnimations(animations, model);
 

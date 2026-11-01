@@ -60,6 +60,8 @@ describe("npcLook", () => {
   });
 
   it("the four assistants differ by hair as well as accent", () => {
+    // 갤러리 조교는 양갈래: 포니테일은 뒤에서만 보여 앞에서 보면 강의실 조교(짧은 머리)와 같아 보였다
+    expect(NPC_HAIR).toEqual({ hall: "short", lobby: "bob", gallery: "twintails", maze: "curly" });
     expect(new Set(Object.values(NPC_HAIR)).size).toBe(4);
     expect(Object.keys(NPC_HAIR).sort()).toEqual([...NPC_IDS].sort());
     for (const id of NPC_IDS) {

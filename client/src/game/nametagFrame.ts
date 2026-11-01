@@ -95,7 +95,9 @@ interface TagState extends NametagProbe {
   seenSeq: number;
   /** Wall-clock ms until which the highlight border shows. */
   highlightUntil: number;
-  // Head, in world space — the tag's resting position (anchor + NAMETAG_HEIGHT).
+  /** The tag's rest height above its anchor (m): the label's own heightM, else NAMETAG_HEIGHT. Fixed per label. */
+  restY: number;
+  // Head, in world space — the tag's resting position (anchor + restY).
   anchorX: number;
   anchorY: number;
   anchorZ: number;
@@ -190,7 +192,7 @@ export function createNametagFrame(): NametagFrame {
     s.anchorX = wx;
     s.anchorY = wy;
     s.anchorZ = wz;
-    s.headY = wy + NAMETAG_HEIGHT;
+    s.headY = wy + s.restY;
     const dx = wx - camX;
     const dy = s.headY - camY;
     const dz = wz - camZ;
@@ -204,16 +206,18 @@ export function createNametagFrame(): NametagFrame {
     for (const entry of list) {
       let s = byEntry.get(entry);
       if (!s) {
+        const restY = entry.heightM ?? NAMETAG_HEIGHT;
         s = {
           entry,
+          restY,
           selected: false,
           opacity: 0,
           occluded: false,
           highlight: false,
           typing: false,
           liftM: 0,
-          tagTopM: NAMETAG_HEIGHT,
-          bubbleM: NAMETAG_HEIGHT,
+          tagTopM: restY,
+          bubbleM: restY,
           textPx: 0,
           liftPx: 0,
           seenSeq: -1,
@@ -377,7 +381,7 @@ export function createNametagFrame(): NametagFrame {
             // so just keep the bubble's anchor where it would be.
             const depth = viewDepth(view, s.anchorX, s.anchorY + tag.sprite.position.y, s.anchorZ);
             const h = nametagWorldHeight(depth, fov, heightPx);
-            entry.bubbleAnchor.y = NAMETAG_HEIGHT + h / 2 + BUBBLE_GAP_M;
+            entry.bubbleAnchor.y = s.restY + h / 2 + BUBBLE_GAP_M;
             if (import.meta.env.DEV) {
               s.tagTopM = tag.sprite.position.y + h / 2;
               s.bubbleM = entry.bubbleAnchor.y;
@@ -409,7 +413,7 @@ export function createNametagFrame(): NametagFrame {
           tag.setHeight(h);
 
           // The bubble's bottom edge: just above the tag's top edge, wherever it is now.
-          entry.bubbleAnchor.y = NAMETAG_HEIGHT + s.liftM + h / 2 + BUBBLE_GAP_M;
+          entry.bubbleAnchor.y = s.restY + s.liftM + h / 2 + BUBBLE_GAP_M;
           if (import.meta.env.DEV) {
             s.tagTopM = tag.sprite.position.y + h / 2;
             s.bubbleM = entry.bubbleAnchor.y;

@@ -15,10 +15,11 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useAnimations } from "@react-three/drei";
 import type { Group } from "three";
-import { CLIP, BUBBLE_BASE_HEIGHT } from "./constants";
+import { CLIP } from "./constants";
 import { clipFor } from "./characterLook";
 import { createNametag } from "./nametag";
 import { registerLabel } from "./labelRegistry";
+import { bubbleRestHeight, nametagRestHeight } from "./nametagLayout";
 import { NPC_TAG_TEXT, type NpcConfig } from "./npc";
 import { NPC_ACCENTS, attachNpcAccessories, npcLook } from "./npcLook";
 import { reportAvatarClip, useAvatar } from "./useAvatar";
@@ -35,6 +36,11 @@ export function NpcCharacter({ npc }: { npc: NpcConfig }) {
     probeId,
     decorate: (a) => attachNpcAccessories(a.root, NPC_ACCENTS[npc.id], a.materials),
   });
+
+  // The tag floats above THIS avatar's top — which includes the halo (BuiltAvatar.topY) — so the ring
+  // never pokes through it; the bubble rests just above the tag.
+  const tagHeight = nametagRestHeight(avatar.topY);
+  const bubbleRest = bubbleRestHeight(avatar.topY);
 
   // Declared after useAvatar so the avatar probe entry exists when the clip is reported.
   // The clip name goes through clipFor like every avatar's (an `android` bottom has no
@@ -53,7 +59,7 @@ export function NpcCharacter({ npc }: { npc: NpcConfig }) {
   useEffect(() => {
     const group = groupRef.current;
     if (!group) return;
-    const tag = createNametag(NPC_TAG_TEXT, "ai");
+    const tag = createNametag(NPC_TAG_TEXT, "ai", tagHeight);
     tag.setOpacity(0);
     group.add(tag.sprite);
     const unregister = registerLabel({
@@ -61,14 +67,15 @@ export function NpcCharacter({ npc }: { npc: NpcConfig }) {
       anchor: group,
       tag,
       pinned: true,
-      bubbleAnchor: { y: BUBBLE_BASE_HEIGHT },
+      bubbleAnchor: { y: bubbleRest },
+      heightM: tagHeight,
     });
     return () => {
       unregister();
       group.remove(tag.sprite);
       tag.dispose();
     };
-  }, [npc.id]);
+  }, [npc.id, tagHeight, bubbleRest]);
 
   return (
     <group ref={groupRef} position={[npc.pos.x, 0, npc.pos.z]} rotation-y={npc.rotY}>

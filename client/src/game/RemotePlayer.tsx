@@ -8,6 +8,7 @@ import { reportAvatarClip, useAvatar } from "./useAvatar";
 import { BlobShadow } from "./BlobShadow";
 import { createNametag } from "./nametag";
 import { registerLabel } from "./labelRegistry";
+import { bubbleRestHeight, nametagRestHeight } from "./nametagLayout";
 import { useSpeechBubble } from "./useSpeechBubble";
 import { useEmoji } from "./useEmoji";
 import { getRemoteRecord } from "./remoteStore";
@@ -26,7 +27,7 @@ import {
   jumpTimeScale,
 } from "./jump";
 import { ROLE_TEACHER } from "@caysonverse/shared/constants";
-import { ANIM_FADE, CLIP, BUBBLE_BASE_HEIGHT, MODEL_FACING_OFFSET, RENDER_DELAY_MS } from "./constants";
+import { ANIM_FADE, CLIP, MODEL_FACING_OFFSET, RENDER_DELAY_MS } from "./constants";
 
 /** Fallback seconds for a sit/stand clip if its duration can't be read yet. */
 const SIT_CLIP_FALLBACK_SEC = 0.8;
@@ -66,10 +67,21 @@ export function RemotePlayer({
 
   const groupRef = useRef<Group>(null);
 
+  // Assemble the toy figure from the synced appearance ONCE (the same useAvatar path as
+  // the local player). The hook owns its materials and the shared merged geometry and
+  // releases them on unmount; this component owns only its mixer (cleanup below).
+  const look = useMemo(() => lookFromAppearance(appearance), [appearance]);
+  const { avatar, animations } = useAvatar(look, { probeId: sessionId });
+  const mixer = useMemo(() => new AnimationMixer(avatar.root), [avatar]);
+
+  // The tag and the bubble are anchored to THIS avatar's top (hair, hat, ...), measured once at assembly.
+  const tagHeight = nametagRestHeight(avatar.topY);
+
   // Where the bottom edge of this avatar's speech bubble sits (m above the group): the
   // NametagSystem rewrites it every frame so the bubble rests just above the nametag,
-  // wherever that is (stacked, lifted by a jump, grown at distance).
-  const bubbleAnchor = useRef({ y: BUBBLE_BASE_HEIGHT }).current;
+  // wherever that is (stacked, lifted by a jump, grown at distance). Before its first write it
+  // rests just above where this avatar's tag is.
+  const bubbleAnchor = useRef({ y: bubbleRestHeight(avatar.topY) }).current;
 
   // Speech bubble above this avatar, driven by the chat broadcast. Cleaned up
   // with the avatar when it unmounts (leaving player) — no leaked sprites.
@@ -77,13 +89,6 @@ export function RemotePlayer({
   // Emoji reaction above this avatar, driven by the emoji broadcast. Same
   // cleanup-with-avatar discipline as the speech bubble; it starts above the bubble.
   useEmoji(sessionId, groupRef, bubbleAnchor, bubbleTop);
-
-  // Assemble the toy figure from the synced appearance ONCE (the same useAvatar path as
-  // the local player). The hook owns its materials and the shared merged geometry and
-  // releases them on unmount; this component owns only its mixer (cleanup below).
-  const look = useMemo(() => lookFromAppearance(appearance), [appearance]);
-  const { avatar, animations } = useAvatar(look, { probeId: sessionId });
-  const mixer = useMemo(() => new AnimationMixer(avatar.root), [avatar]);
 
   // Per-frame mutable state — refs, never React state.
   const idleAction = useRef<AnimationAction | null>(null);
@@ -189,7 +194,7 @@ export function RemotePlayer({
   useEffect(() => {
     const group = groupRef.current;
     if (!group) return;
-    const tag = createNametag(nickname, isTeacher ? "teacher" : "none");
+    const tag = createNametag(nickname, isTeacher ? "teacher" : "none", tagHeight);
     tag.setOpacity(0);
     group.add(tag.sprite);
     const unregister = registerLabel({
@@ -198,13 +203,14 @@ export function RemotePlayer({
       tag,
       pinned: isTeacher,
       bubbleAnchor,
+      heightM: tagHeight,
     });
     return () => {
       unregister();
       group.remove(tag.sprite);
       tag.dispose();
     };
-  }, [sessionId, nickname, isTeacher, bubbleAnchor]);
+  }, [sessionId, nickname, isTeacher, bubbleAnchor, tagHeight]);
 
   // Release this avatar's mixer on unmount. Its materials and the shared merged
   // geometry belong to useAvatar, which releases them itself (never disposed here).

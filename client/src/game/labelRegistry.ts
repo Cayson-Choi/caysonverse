@@ -22,6 +22,14 @@ export interface LabelEntry {
   /** Drawn whenever on screen and in range, whatever the nearest-15 rule says (teacher, AI assistants). */
   pinned: boolean;
   /**
+   * Height (m above `anchor`) of the tag's CENTRE at rest (before any stacking lift): the avatar's
+   * own, from its top — nametagRestHeight(BuiltAvatar.topY) — so a hat or the AI 조교 halo never
+   * pokes through the tag. The avatar creates the tag with the same rest height (createNametag).
+   * Omitted: NAMETAG_HEIGHT. The NametagSystem measures size, fade, stacking and the wall check
+   * from this height, and puts the speech bubble above it.
+   */
+  heightM?: number;
+  /**
    * Height (m, above `anchor`) of the bottom edge of this owner's speech bubble. The
    * NametagSystem rewrites it every frame so the bubble sits just above the tag; the
    * avatar passes the SAME object to useSpeechBubble.

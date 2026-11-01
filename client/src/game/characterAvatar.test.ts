@@ -19,6 +19,7 @@ import {
 } from "three";
 import { appearanceFromIds } from "@caysonverse/shared/appearance";
 import { lookFromAppearance, lookKey, visibleParts, type AvatarLook } from "./characterLook";
+import { attachNpcAccessories } from "./npcLook";
 import {
   AVATAR_BOUNDS,
   MAX_DRAW_MESHES,
@@ -396,6 +397,7 @@ describe("buildAvatar", () => {
     });
     expect(a.drawMeshes).toBe(3);
     expect(a.triangles).toBe(9);
+    expect(Number.isFinite(a.topY)).toBe(true); // an empty decoration does not turn the measured top into -Infinity
     expect(a.materials).toContain(halo);
     setAvatarOpacity(a, 0.5);
     expect(halo.opacity).toBeCloseTo(0.5);
@@ -553,6 +555,81 @@ describe("avatar ownership", () => {
     const b = buildAvatar(assets, L);
     expect(solidOf(b).geometry).toBe(geometry);
     expect(solidGeometryRefs(lookKey(L))).toBe(2);
+    releaseAvatar(a);
+    releaseAvatar(b);
+  });
+});
+
+// ── top of the avatar (name tag and bubble height) ─────────────────────────────
+
+/**
+ * A fake scene whose parts have different heights: each part's triangle peaks at `heights[part]` (metres)
+ * instead of 1, so the avatar's top depends on which parts are worn.
+ */
+function tallScene(heights: Partial<Record<Primitive, number>>): { scene: Object3D } {
+  const scene = fakeScene();
+  scene.traverse((o) => {
+    const mesh = o as Mesh;
+    const height = heights[o.name as Primitive];
+    if (!mesh.isMesh || height === undefined) return;
+    const position = mesh.geometry.getAttribute("position");
+    for (let i = 0; i < position.count; i++) if (position.getY(i) === 1) position.setY(i, height);
+  });
+  return { scene };
+}
+
+/** Looks nothing else uses (skin 4), so the merged geometry of one test never stands in for another's. */
+const tallLook = (hat: string | null): AvatarLook =>
+  lookFromAppearance(
+    appearanceFromIds(
+      { hat, hair: "short", face: "smile", top: "tee", bottom: "pants", shoes: "sneakers", item: null },
+      { hatColor: 1, hairColor: 1, topColor: 1, bottomColor: 1, shoesColor: 1, itemColor: 1, skin: 4, voice: 0 },
+    ),
+  );
+
+describe("topY", () => {
+  const heights = { body__head: 1.8, hair__short: 2.0, hair__short__hat: 2.0, hat__cap: 3.0 } as const;
+
+  it("is the top of the worn parts: a bare head stops at the hair, a tall hat raises it", () => {
+    const tall = tallScene(heights);
+    const bare = buildAvatar(tall, tallLook(null));
+    expect(bare.topY).toBeCloseTo(2.0, 9); // the hair, not the (taller) hat in the closet
+    const capped = buildAvatar(tall, tallLook("cap"));
+    expect(capped.topY).toBeCloseTo(3.0, 9);
+    expect(capped.topY).toBeGreaterThan(bare.topY);
+    releaseAvatar(bare);
+    releaseAvatar(capped);
+  });
+
+  it("includes what decorate adds: the AI 조교 halo ring rises above the hair", () => {
+    const tall = tallScene(heights);
+    const plain = buildAvatar(tall, tallLook(null));
+    const halo = buildAvatar(tall, tallLook(null), (b) => attachNpcAccessories(b.root, "#e8833a", b.materials));
+    // head bone y 1 + ring at 1.1 above it + the tube's radius 0.025 (the ring lies flat: its thickness is its
+    // height; a 10-sided tube peaks a hair under its radius, hence the 2 digits)
+    expect(halo.topY).toBeCloseTo(1 + 1.1 + 0.025, 2);
+    expect(halo.topY).toBeLessThan(1 + 1.1 + 0.025 + 1e-9);
+    expect(halo.topY).toBeGreaterThan(plain.topY);
+    expect(plain.topY).toBeCloseTo(2.0, 9);
+    releaseAvatar(plain);
+    releaseAvatar(halo);
+  });
+
+  it("a decoration lower than the hair changes nothing, and the source scene stays untouched", () => {
+    const tall = tallScene({ ...heights, hair__short: 5.0 });
+    const before = tall.scene.children.length;
+    const a = buildAvatar(tall, tallLook(null), (b) => attachNpcAccessories(b.root, "#4d8df0", b.materials));
+    expect(a.topY).toBeCloseTo(5.0, 9);
+    expect(tall.scene.children).toHaveLength(before);
+    expect((tall.scene.getObjectByName("head") as Object3D).children).toHaveLength(0); // the halo hangs on the clone only
+    releaseAvatar(a);
+  });
+
+  it("is the same for every avatar of the same look, and finite for the stock fake scene", () => {
+    const a = buildAvatar(assets, L);
+    const b = buildAvatar(assets, L);
+    expect(a.topY).toBe(b.topY);
+    expect(a.topY).toBeCloseTo(1, 9); // every fake triangle peaks at 1 m
     releaseAvatar(a);
     releaseAvatar(b);
   });

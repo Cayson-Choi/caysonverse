@@ -452,6 +452,22 @@ describe("sprite state", () => {
     tag.dispose();
   });
 
+  it("a tag made for a taller avatar rests at its own height and lifts from there", () => {
+    const tall = createNametag("민수", "none", 2.95); // e.g. a wizard hat: rest height from the avatar top
+    expect(tall.sprite.position.y).toBe(2.95);
+    tall.setOffsetY(0.35);
+    expect(tall.sprite.position.y).toBeCloseTo(2.95 + 0.35, 9);
+    tall.setOffsetY(0);
+    expect(tall.sprite.position.y).toBe(2.95);
+    // the default stays NAMETAG_HEIGHT, and one tag never moves another
+    const plain = createNametag("민수");
+    expect(plain.sprite.position.y).toBe(NAMETAG_HEIGHT);
+    tall.setOffsetY(0.5);
+    expect(plain.sprite.position.y).toBe(NAMETAG_HEIGHT);
+    tall.dispose();
+    plain.dispose();
+  });
+
   it("rides the avatar group: a jump lift moves the tag with it, and the offset still applies", () => {
     const tag = createNametag("민수");
     const avatar = new Group();

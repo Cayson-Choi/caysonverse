@@ -456,8 +456,18 @@ export const NAMETAG_TEXT_FRACTION = NAMETAG_FONT_PX / (NAMETAG_FONT_PX + 2 * NA
  * nothing may be anchored to a fixed height above the tag: the NametagSystem publishes
  * each avatar's bubble anchor (LabelEntry.bubbleAnchor) from the tag's real top edge
  * every frame.
+ *
+ * Only the FALLBACK now: an avatar registers its own rest height (LabelEntry.heightM,
+ * from the assembled avatar's top — nametagRestHeight), so a hat or the AI 조교 halo
+ * never pokes through its tag. A label that gives none keeps this.
  */
 export const NAMETAG_HEIGHT = 2.1;
+
+/**
+ * Clear space (m) between the top of an avatar (hair, hat, the AI 조교 halo — see
+ * BuiltAvatar.topY) and the BOTTOM edge of its name tag at the tag's designed size.
+ */
+export const NAMETAG_HEAD_GAP_M = 0.08;
 
 /**
  * World height (m) at which a speech bubble's BOTTOM edge sits when there is no

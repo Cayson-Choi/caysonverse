@@ -1,10 +1,14 @@
 import { describe, it, expect } from "vitest";
 import {
+  BUBBLE_BASE_HEIGHT,
+  BUBBLE_GAP_M,
   NAMETAG_BASE_HEIGHT_M,
   NAMETAG_FADE_END,
   NAMETAG_FADE_RATE,
   NAMETAG_FADE_START,
   NAMETAG_FONT_PX,
+  NAMETAG_HEAD_GAP_M,
+  NAMETAG_HEIGHT,
   NAMETAG_PAD_Y_PX,
   NAMETAG_TEXT_FRACTION,
   NAMETAG_TEXT_PX,
@@ -12,8 +16,10 @@ import {
 import { Matrix4, PerspectiveCamera, Vector3 } from "three";
 import {
   MIN_CAMERA_UP_Y,
+  bubbleRestHeight,
   distanceFade,
   liftMetres,
+  nametagRestHeight,
   nametagWorldHeight,
   pixelsPerMetre,
   projectPoint,
@@ -290,5 +296,34 @@ describe("liftMetres — a stacking lift in screen px, back in world metres", ()
     expect(liftMetres(0, 100, 0.5)).toBe(0);
     expect(liftMetres(30, 0, 1)).toBe(0);
     expect(liftMetres(30, NaN, 1)).toBe(0);
+  });
+});
+
+describe("per-avatar label heights", () => {
+  it("a tag rests a small gap above the avatar's top, its bottom edge clear of it at the designed size", () => {
+    expect(NAMETAG_HEAD_GAP_M).toBe(0.08);
+    const topY = 2.4;
+    const centre = nametagRestHeight(topY);
+    // the tag's centre rests half a designed-size tag plus the gap above the top …
+    expect(centre).toBeCloseTo(topY + NAMETAG_HEAD_GAP_M + NAMETAG_BASE_HEIGHT_M / 2, 9);
+    // … so a tag of NAMETAG_BASE_HEIGHT_M leaves exactly the gap between its bottom edge and the top
+    expect(centre - NAMETAG_BASE_HEIGHT_M / 2 - topY).toBeCloseTo(NAMETAG_HEAD_GAP_M, 9);
+  });
+
+  it("taller avatars get proportionally higher tags and bubbles; the bubble rests just above the tag", () => {
+    expect(nametagRestHeight(2.9)).toBeGreaterThan(nametagRestHeight(2.2));
+    expect(nametagRestHeight(2.9) - nametagRestHeight(2.2)).toBeCloseTo(0.7, 9);
+    expect(bubbleRestHeight(2.9) - bubbleRestHeight(2.2)).toBeCloseTo(0.7, 9);
+    for (const top of [2.16, 2.4, 2.9]) {
+      // the bubble's bottom clears the top edge of a designed-size tag by the bubble gap
+      expect(bubbleRestHeight(top)).toBeCloseTo(nametagRestHeight(top) + NAMETAG_BASE_HEIGHT_M / 2 + BUBBLE_GAP_M, 9);
+    }
+  });
+
+  it("a bare toy head (top 2.16 m) keeps the bubble no lower than its old fixed anchor and lifts the tag clear of the head", () => {
+    expect(bubbleRestHeight(2.16)).toBeGreaterThanOrEqual(BUBBLE_BASE_HEIGHT);
+    // the old fixed 2.1 m centre sat inside the head; the tag's bottom edge is now above it
+    expect(NAMETAG_HEIGHT).toBeLessThan(2.16);
+    expect(nametagRestHeight(2.16) - NAMETAG_BASE_HEIGHT_M / 2).toBeGreaterThan(2.16);
   });
 });

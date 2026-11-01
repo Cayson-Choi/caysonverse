@@ -42,7 +42,7 @@ export const NPC_HAIR_COLOR = "#4A5160";
 export const NPC_HAIR: Record<NpcId, string> = {
   hall: "short",
   lobby: "bob",
-  gallery: "ponytail",
+  gallery: "twintails", // not a ponytail: that only shows from behind, so it read like 짧은 머리 head on
   maze: "curly",
 };
 

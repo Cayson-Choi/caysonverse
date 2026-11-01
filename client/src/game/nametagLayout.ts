@@ -12,10 +12,12 @@
  */
 
 import {
+  BUBBLE_GAP_M,
   NAMETAG_BASE_HEIGHT_M,
   NAMETAG_FADE_END,
   NAMETAG_FADE_RATE,
   NAMETAG_FADE_START,
+  NAMETAG_HEAD_GAP_M,
   NAMETAG_TEXT_FRACTION,
   NAMETAG_TEXT_PX,
 } from "./constants";
@@ -144,4 +146,26 @@ export function projectPoint(
  */
 export function viewDepth(m: ArrayLike<number>, x: number, y: number, z: number): number {
   return -(m[8] * (x - m[12]) + m[9] * (y - m[13]) + m[10] * (z - m[14]));
+}
+
+/**
+ * Height (m above the avatar's group) at which a name tag's CENTRE rests for an avatar whose
+ * highest point is `topY` (BuiltAvatar.topY: hair, hat, the AI 조교 halo). Half a designed-size
+ * tag plus NAMETAG_HEAD_GAP_M above the top, so at the size the tag keeps between roughly
+ * 3 m and 11 m (NAMETAG_BASE_HEIGHT_M) its bottom edge floats exactly the gap above the head;
+ * closer it is smaller (a little higher off the head), farther it grows around its centre.
+ * This is what an avatar passes as LabelEntry.heightM and as createNametag's rest height.
+ */
+export function nametagRestHeight(topY: number): number {
+  return topY + NAMETAG_HEAD_GAP_M + NAMETAG_BASE_HEIGHT_M / 2;
+}
+
+/**
+ * Height (m above the avatar's group) of the bottom edge of the speech bubble's rest position
+ * — where it sits before the NametagSystem has published its anchor, or for an avatar with no
+ * tag (the local player's own tag is off by default): just above where a designed-size tag
+ * of this avatar would end.
+ */
+export function bubbleRestHeight(topY: number): number {
+  return nametagRestHeight(topY) + NAMETAG_BASE_HEIGHT_M / 2 + BUBBLE_GAP_M;
 }

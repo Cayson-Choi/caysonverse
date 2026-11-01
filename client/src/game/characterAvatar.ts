@@ -23,6 +23,7 @@
 // (부품 변환 항등, 스킨 1개, 인덱스 있음, 속성 화이트리스트)에 기댄다.
 
 import {
+  Box3,
   BufferGeometry,
   Color,
   DoubleSide,
@@ -61,6 +62,12 @@ export interface BuiltAvatar {
   drawMeshes: number;
   /** 그 메시들의 삼각형 합. */
   triangles: number;
+  /**
+   * 쉬는 자세(bind pose)에서 보이는 메시의 가장 높은 곳(m, 발 기준): 머리카락·모자와 decorate가 단 것(NPC 헤일로)
+   * 까지 포함한다. 이름표와 말풍선의 높이가 이 값에서 나온다(nametagRestHeight). 조립 때 한 번 재고 프레임마다
+   * 다시 재지 않는다.
+   */
+  topY: number;
 }
 
 /** 아바타 1명이 그려도 되는 메시 수(설계 5.4). */
@@ -199,6 +206,38 @@ function mergeSolids(solids: readonly SkinnedMesh[], look: AvatarLook): BufferGe
   return merged;
 }
 
+const scratchBox = new Box3();
+
+/**
+ * 한 메시의 가장 높은 y. 스킨 메시는 쉬는 자세의 정점 위치가 곧 모델 공간이다(부품 변환은 항등 — Task 2 테스트).
+ * 합친 지오메트리·장식은 캐시된 경계 상자를 쓰고, 공유 원본 지오메트리(얼굴)는 상자를 새기지 않고 정점을 훑는다.
+ * 스킨이 아닌 메시(머리 뼈에 단 장식)는 뼈의 월드 행렬을 거친 상자의 윗면이다. 정점이 없으면 -Infinity.
+ */
+function meshTopY(mesh: Mesh): number {
+  const geometry = mesh.geometry;
+  if ((mesh as SkinnedMesh).isSkinnedMesh) {
+    if (geometry.boundingBox) return geometry.boundingBox.max.y;
+    const position = geometry.getAttribute("position");
+    let top = -Infinity;
+    if (position) for (let i = 0; i < position.count; i++) top = Math.max(top, position.getY(i));
+    return top;
+  }
+  if (geometry.boundingBox === null) geometry.computeBoundingBox();
+  if (!geometry.boundingBox || geometry.boundingBox.isEmpty()) return -Infinity;
+  return scratchBox.copy(geometry.boundingBox).applyMatrix4(mesh.matrixWorld).max.y;
+}
+
+/** 보이는 메시 전체의 가장 높은 y(쉬는 자세). 보이는 메시가 없으면 0. */
+function measureTopY(root: Object3D): number {
+  root.updateWorldMatrix(false, true); // 뼈에 단 장식(헤일로)의 월드 행렬
+  let top = -Infinity;
+  root.traverseVisible((o) => {
+    const mesh = o as Mesh;
+    if (mesh.isMesh) top = Math.max(top, meshTopY(mesh));
+  });
+  return Number.isFinite(top) ? top : 0;
+}
+
 function countDrawn(built: BuiltAvatar): void {
   let drawMeshes = 0;
   let triangles = 0;
@@ -284,7 +323,9 @@ export function assembleAvatar(
   const solidKey = lookKey(look);
   let entry = solidCache.get(solidKey);
   if (!entry) {
-    entry = { geometry: mergeSolids(solids, look), refs: 0 };
+    const geometry = mergeSolids(solids, look);
+    geometry.computeBoundingBox(); // 이 외형을 공유하는 모든 아바타가 같은 상자를 쓴다
+    entry = { geometry, refs: 0 };
     solidCache.set(solidKey, entry);
   }
 
@@ -308,12 +349,13 @@ export function assembleAvatar(
     if (mesh.isSkinnedMesh) mesh.boundingSphere = new Sphere(new Vector3(...AVATAR_BOUNDS.center), AVATAR_BOUNDS.radius);
   });
 
-  const built: BuiltAvatar = { root, materials, parts, solidKey, drawMeshes: 0, triangles: 0 };
+  const built: BuiltAvatar = { root, materials, parts, solidKey, drawMeshes: 0, triangles: 0, topY: 0 };
   decorate?.(built); // NPC 헤일로 등. 재질은 built.materials에 넣는다
   for (const m of built.materials) {
     const base: OpacityBase = { transparent: m.transparent, depthWrite: m.depthWrite, opacity: m.opacity };
     m.userData.base = base;
   }
+  built.topY = measureTopY(root);
   countDrawn(built);
   ownership.set(built, { solid, skeleton, held: false });
   return built;
