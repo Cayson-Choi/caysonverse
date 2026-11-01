@@ -9,6 +9,10 @@
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <!-- 입장 화면(캐릭터 조립실): 화면 모양에 맞는 배경 한 장(AVIF, 미지원 브라우저는 건너뛰고 WebP로)과 제목 글꼴 -->
+    <link rel="preload" as="image" href="/entry/bg-desktop.avif" type="image/avif" media="(min-aspect-ratio: 1/1)" fetchpriority="high" />
+    <link rel="preload" as="image" href="/entry/bg-phone.avif" type="image/avif" media="not all and (min-aspect-ratio: 1/1)" fetchpriority="high" />
+    <link rel="preload" as="font" href="/fonts/jua-builder.woff" type="font/woff" crossorigin />
     <meta name="theme-color" content="#171335" />
     <title>caysonverse</title>
     <meta name="description" content="설치 없이 링크로 입장하는 3D 메타버스. 아바타로 함께 걷고 말풍선으로 대화하며, AI 조교와 이야기하고 AI 갤러리를 감상하세요." />

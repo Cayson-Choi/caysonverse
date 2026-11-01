@@ -1,61 +1,37 @@
-/* 캐릭터 조립실 — the entry screen's character builder (character stage 3).
-   Phone first: one column (preview, then the panel). When the builder itself is
-   ≥ 720 px wide it becomes preview | panel (340 px | 1fr) and the preview sticks
-   while the panel scrolls. Every button is ≥ 44×44 px (the entry screen's touch
-   floor), and nothing here may widen the page: the presets scroll inside their
-   own row on narrow panels, and the swatch grid drops to 5 columns if 6 would
-   not fit. Sizes key off the builder's / panel's own width (container queries),
-   so a phone in landscape gets the two-column layout too. */
+/* 캐릭터 조립실 — the builder on the sky-garden stage (character stage 3, Task 7b).
+   Wide screens (data-layout="wide"): the stage between two glass panels — left: 추천 캐릭터 (🎲 + 8 portrait
+   cards) and 목소리; right: an icon tab rail, the part cards and the colours. Phones ("phone"): one bottom sheet
+   resting at 47 % of the height and opening to 88 % with its grabber, scrolling inside: presets → tabs → colours
+   → part cards → voice. Tablets / landscape phones ("side"): the same sheet as a right-hand panel. Every button is
+   ≥ 44×44 px; nothing may widen the page (rows that do not fit scroll inside themselves). Motion uses transform
+   and opacity only and is off under prefers-reduced-motion (entry.css). */
 
-.cv-builder-section {
-  container: cv-builder / inline-size;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  min-width: 0;
+.cv-icon {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.cv-icon .f {
+  fill: currentColor;
+  stroke: none;
 }
 
-.cv-builder-title {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin: 0;
-  font-size: 17px;
-  font-weight: 800;
-  letter-spacing: 0.01em;
-  color: #f2f0ff;
-}
-.cv-builder-title img {
-  display: block;
-  width: auto;
-  height: 28px;
-  /* The logo is white: keep it crisp, a touch softer than pure white text. */
-  opacity: 0.95;
-}
+/* ── stage (the transparent 3D preview) ── */
 
-.cv-builder {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 16px;
-  align-items: start;
-}
-
-/* ── Preview ── */
-
-/* A cream stage (the stage-1 viewer's backdrop) with a caption strip under it. */
 .cv-builder-preview {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  height: clamp(220px, 38vh, 340px);
-  border-radius: 16px;
-  overflow: hidden;
-  background: #efe6da;
-  box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, 0.35),
-    0 10px 30px rgba(0, 0, 0, 0.35);
-  /* Horizontal drags turn the figure; vertical drags still scroll the page. */
-  touch-action: pan-y;
+  position: absolute;
+  z-index: 1;
+  left: var(--cv-stage-x);
+  top: var(--cv-stage-y);
+  width: var(--cv-stage-w);
+  height: var(--cv-stage-h);
+  /* Drags are ours (BuilderPreview): mouse/touch sideways turns, touch up/down scrolls the sheet. */
+  touch-action: none;
   cursor: grab;
   user-select: none;
   -webkit-user-select: none;
@@ -65,295 +41,504 @@
   cursor: grabbing;
 }
 .cv-builder-stage {
-  position: relative;
-  flex: 1 1 auto;
-  min-height: 0;
+  position: absolute;
+  left: var(--cv-canvas-x);
+  top: var(--cv-canvas-y);
+  width: var(--cv-canvas-w);
+  height: var(--cv-canvas-h);
 }
 .cv-builder-preview canvas {
   display: block;
-  touch-action: pan-y;
+  touch-action: none;
 }
 
+/* Drag hint pill: on the podium rim (wide) or top-left of the stage. */
 .cv-builder-hint {
-  flex: 0 0 auto;
+  position: absolute;
+  left: var(--cv-hint-x);
+  top: var(--cv-hint-y);
+  height: var(--cv-hint-h);
   display: flex;
   align-items: center;
-  justify-content: center;
   gap: 6px;
-  height: 34px;
   margin: 0;
-  padding: 0 12px 4px;
-  color: #6f5a45;
-  font-size: 12.5px;
-  font-weight: 600;
+  padding: 0 14px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.74);
+  border: 1px solid #fff;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  box-shadow: var(--cv-card-shadow);
+  color: var(--cv-ink-2);
+  font-family: var(--cv-display);
+  font-size: 14px;
   white-space: nowrap;
   pointer-events: none;
 }
-.cv-builder-hint::before {
-  content: "↔";
-  font-size: 14px;
-  opacity: 0.8;
+.cv-entry[data-layout="wide"] .cv-builder-hint {
+  translate: -50% 0;
+}
+.cv-entry:not([data-layout="wide"]) .cv-builder-hint {
+  padding: 0 11px;
+  font-size: 13px;
+}
+.cv-builder-hint .cv-icon {
+  width: 16px;
+  height: 16px;
+  color: var(--cv-violet);
 }
 .cv-builder-hint.is-loading {
-  color: #8a7660;
-  font-weight: 500;
+  color: var(--cv-ink-3);
 }
-.cv-builder-hint.is-loading::before,
-.cv-builder-hint.is-failed::before {
-  content: none;
-}
+/* Preview failed: the existing words on a glass card where the figure would stand. */
 .cv-builder-hint.is-failed {
-  flex: 1 1 auto;
+  left: 50%;
+  top: calc(var(--cv-canvas-y) + var(--cv-canvas-h) * 0.5);
   height: auto;
-  padding: 16px;
-  white-space: normal;
+  width: max-content;
+  max-width: calc(var(--cv-stage-w) - 32px);
+  translate: -50% -50%;
+  padding: 14px 18px;
+  border-radius: 18px;
+  font-family: var(--cv-body);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.5;
   text-align: center;
+  white-space: normal;
   word-break: keep-all;
-  color: #6f5a45;
-  font-size: 13.5px;
 }
 
-/* Wide builder (desktop, a phone on its side): preview | panel. The preview
-   sticks while the panel scrolls, and leaves room for the sticky 입장 button. */
-@container cv-builder (min-width: 720px) {
-  .cv-builder {
-    grid-template-columns: 340px minmax(0, 1fr);
-    gap: 24px;
+/* ⟲ ⟳ beside the nameplate: 48 px glass circles (44 on phones). */
+.cv-rotate {
+  position: absolute;
+  top: calc(var(--cv-name-y) - var(--cv-stage-y) + (var(--cv-name-h) - var(--cv-rot-size)) / 2);
+  width: var(--cv-rot-size);
+  height: var(--cv-rot-size);
+  display: grid;
+  place-items: center;
+  margin: 0;
+  padding: 0;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  background: var(--cv-glass-hi);
+  box-shadow: var(--cv-card-shadow);
+  color: var(--cv-indigo);
+  cursor: pointer;
+  transition: transform 0.1s ease;
+}
+.cv-rotate .cv-icon {
+  stroke-width: 2.4;
+}
+.cv-rotate-left {
+  left: calc(var(--cv-feet-x) - var(--cv-stage-x) - var(--cv-plate-w) / 2 - var(--cv-rot-gap) - var(--cv-rot-size));
+}
+.cv-rotate-right {
+  left: calc(var(--cv-feet-x) - var(--cv-stage-x) + var(--cv-plate-w) / 2 + var(--cv-rot-gap));
+}
+@media (hover: hover) {
+  .cv-rotate:hover {
+    transform: translateY(-2px);
   }
-  .cv-builder-preview {
-    position: sticky;
-    top: 12px;
-    height: min(380px, calc(100vh - 100px));
-    height: min(380px, calc(100dvh - 100px));
-    min-height: 240px;
-  }
+}
+.cv-rotate:active {
+  transform: scale(0.94);
 }
 
-/* ── Panel ── */
-
-.cv-builder-panel {
-  container: cv-panel / inline-size;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  min-width: 0;
-}
+/* ── shared pieces ── */
 
 .cv-builder-group {
   display: flex;
   flex-direction: column;
-  gap: 8px;
   min-width: 0;
 }
-
 .cv-builder-group-head {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   justify-content: space-between;
-  gap: 12px;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.cv-builder-group .cv-label {
+  font-family: var(--cv-display);
+  font-size: 20px;
+  letter-spacing: 0.3px;
+  color: var(--cv-ink);
+}
+.cv-sub {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--cv-ink-3);
+  text-align: right;
 }
 
-/* Shared look of the builder's text buttons (presets, tabs, chips, voice). */
+/* Cards: preset, 🎲, part. */
 .cv-preset,
 .cv-random,
-.cv-slot-tab,
-.cv-chip,
-.cv-voice-option {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+.cv-chip {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
   min-width: 44px;
   min-height: 44px;
   margin: 0;
-  border: 1px solid rgba(150, 132, 235, 0.24);
-  background: rgba(9, 8, 24, 0.5);
-  color: #d7d3f5;
+  border: 2px solid #fff;
+  border-radius: 18px;
+  background: var(--cv-glass-hi);
+  box-shadow: var(--cv-card-shadow);
+  color: var(--cv-ink);
   font: inherit;
-  font-size: 13.5px;
-  font-weight: 600;
-  line-height: 1.2;
-  white-space: nowrap;
   cursor: pointer;
-  transition:
-    border-color 0.15s ease,
-    background 0.15s ease,
-    color 0.15s ease,
-    transform 0.08s ease;
-}
-.cv-preset:active,
-.cv-random:active,
-.cv-slot-tab:active,
-.cv-chip:active,
-.cv-voice-option:active {
-  transform: translateY(1px);
+  transition: transform 0.12s ease;
 }
 @media (hover: hover) {
   .cv-preset:hover,
-  .cv-slot-tab:hover,
-  .cv-chip:hover,
-  .cv-voice-option:hover {
-    border-color: rgba(166, 139, 255, 0.55);
-    color: #ffffff;
+  .cv-random:hover,
+  .cv-chip:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 14px 22px -10px rgba(60, 52, 170, 0.5);
   }
+}
+.cv-preset:active,
+.cv-random:active,
+.cv-chip:active,
+.cv-slot-tab:active,
+.cv-voice-option:active {
+  transform: scale(0.96);
+  transition-duration: 0.08s;
 }
 .cv-preset[aria-pressed="true"],
-.cv-chip[aria-pressed="true"],
-.cv-voice-option[aria-checked="true"] {
-  border-color: #a68bff;
-  background: rgba(120, 96, 224, 0.4);
-  color: #ffffff;
-  box-shadow: inset 0 0 0 1px rgba(166, 139, 255, 0.45);
-}
-.cv-preset:focus-visible,
-.cv-random:focus-visible,
-.cv-slot-tab:focus-visible,
-.cv-chip:focus-visible,
-.cv-voice-option:focus-visible,
-.cv-swatch:focus-visible {
-  outline: 2px solid #c9b6ff;
-  outline-offset: 2px;
+.cv-chip[aria-pressed="true"] {
+  border: 2.5px solid var(--cv-indigo);
+  background: var(--cv-sel-soft);
+  box-shadow: 0 0 0 4px rgba(139, 92, 246, 0.22), 0 10px 18px -8px rgba(75, 79, 216, 0.55);
 }
 
-/* Presets: phone → one row that scrolls inside itself, bleeding to the card's
-   edge (its 16 px padding) and fading out there; wider panels → 4 × 2. */
+/* ── 추천 캐릭터: 🎲 + 8 portrait cards ── */
+
 .cv-presets {
-  display: flex;
-  gap: 8px;
-  overflow-x: auto;
-  overscroll-behavior-x: contain;
-  scroll-snap-type: x proximity;
-  scroll-padding-inline: 16px;
-  scrollbar-width: none;
-  /* 3 px of block room for the focus ring, which the scroller would otherwise clip. */
-  padding: 3px 16px;
-  margin: -3px -16px;
-  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
-  mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
 }
-.cv-presets::-webkit-scrollbar {
-  display: none;
-}
-.cv-preset {
-  flex: 0 0 auto;
-  padding: 0 16px;
-  border-radius: 12px;
-  scroll-snap-align: start;
-}
-@container cv-panel (min-width: 352px) {
-  .cv-presets {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    overflow: visible;
-    padding: 0;
-    margin: 0;
-    -webkit-mask-image: none;
-    mask-image: none;
-  }
-  .cv-preset {
-    padding: 0 6px;
-  }
-}
-
+.cv-preset,
 .cv-random {
-  flex: 0 0 auto;
-  gap: 6px;
-  padding: 0 14px;
-  border-radius: 999px;
-  border-color: rgba(255, 179, 230, 0.5);
-  background: linear-gradient(120deg, rgba(255, 140, 200, 0.24), rgba(143, 123, 255, 0.3));
-  color: #ffe9f6;
+  padding: 6px 6px 0;
+  overflow: hidden;
 }
-@media (hover: hover) {
-  .cv-random:hover {
-    border-color: rgba(255, 179, 230, 0.85);
-    background: linear-gradient(120deg, rgba(255, 140, 200, 0.34), rgba(143, 123, 255, 0.42));
-  }
+.cv-preset-portrait {
+  flex: 1 1 auto;
+  min-height: 0;
+  border-radius: 13px;
+  overflow: hidden;
+  background: radial-gradient(90% 80% at 50% 25%, #ffffff 0%, #e6e0ff 70%, #d9d1ff 100%);
+}
+.cv-thumb {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  user-select: none;
+  -webkit-user-drag: none;
+  pointer-events: none;
+  animation: cv-fade-in 0.2s ease-out;
+}
+.cv-preset-portrait .cv-thumb {
+  object-fit: cover;
+  object-position: 50% 0%;
+}
+.cv-preset[aria-pressed="true"] .cv-preset-portrait {
+  animation: cv-pop 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.cv-preset-name,
+.cv-random-text {
+  flex: none;
+  font-family: var(--cv-display);
+  font-size: 16px;
+  line-height: 30px;
+  text-align: center;
+  white-space: nowrap;
+  color: var(--cv-ink);
+}
+/* 🎲 랜덤: the only warm card — sunny yellow with a tilted die. The 🎲 text stays; the die is drawn over it. */
+.cv-random {
+  border-color: #fff3c9;
+  background: linear-gradient(180deg, #fff3c4 0%, #ffd768 100%);
 }
 .cv-random-icon {
-  font-size: 18px;
-  line-height: 1;
+  flex: 1 1 auto;
+  min-height: 0;
+  color: transparent;
+  font-size: 0;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23b9731b' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3.5' y='3.5' width='17' height='17' rx='4.5' fill='%23fff8e1'/%3E%3Cg fill='%23b9731b' stroke='none'%3E%3Ccircle cx='8.3' cy='8.3' r='1.35'/%3E%3Ccircle cx='15.7' cy='8.3' r='1.35'/%3E%3Ccircle cx='12' cy='12' r='1.35'/%3E%3Ccircle cx='8.3' cy='15.7' r='1.35'/%3E%3Ccircle cx='15.7' cy='15.7' r='1.35'/%3E%3C/g%3E%3C/svg%3E")
+    50% 50% / 46px 46px no-repeat;
+  rotate: -12deg;
+  filter: drop-shadow(0 3px 0 rgba(255, 255, 255, 0.8));
+}
+.cv-random-text {
+  color: #8a4f0c;
+}
+.cv-random-icon[data-roll="0"] {
+  animation: cv-roll-a 0.4s ease-out;
+}
+.cv-random-icon[data-roll="1"] {
+  animation: cv-roll-b 0.4s ease-out;
+}
+@keyframes cv-roll-a {
+  0% { transform: rotate(0deg) translateY(0); }
+  45% { transform: rotate(200deg) translateY(-8px); }
+  100% { transform: rotate(360deg) translateY(0); }
+}
+@keyframes cv-roll-b {
+  0% { transform: rotate(0deg) translateY(0); }
+  45% { transform: rotate(200deg) translateY(-8px); }
+  100% { transform: rotate(360deg) translateY(0); }
 }
 
-/* Slot tabs: a segmented bar. Narrow panel → 4 + 3 (손에 드는 것 spans two);
-   a wide one fits all seven on one line. */
-.cv-slot-tabs {
+/* ── voice ── */
+
+.cv-voice-options {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 4px;
-  padding: 4px;
-  border-radius: 14px;
-  background: rgba(9, 8, 24, 0.55);
-  border: 1px solid rgba(150, 132, 235, 0.18);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
 }
-.cv-slot-tab {
-  padding: 0 8px;
-  border-color: transparent;
-  border-radius: 10px;
-  background: transparent;
-  color: #b7b2df;
+.cv-voice-option {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 44px;
+  height: 54px;
+  margin: 0;
+  padding: 0 10px;
+  border-radius: 27px;
+  border: 2px solid #fff;
+  background: var(--cv-glass-hi);
+  box-shadow: var(--cv-card-shadow);
+  color: var(--cv-ink-2);
+  font-family: var(--cv-display);
+  font-size: 16px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: transform 0.12s ease;
 }
-.cv-slot-tab:last-child {
-  grid-column: span 2;
+.cv-voice-option .cv-icon {
+  width: 20px;
+  height: 20px;
 }
-.cv-slot-tab[aria-selected="true"] {
-  background: linear-gradient(92deg, #7d5bff, #a06bff);
-  color: #ffffff;
-  box-shadow: 0 4px 14px rgba(125, 91, 255, 0.35);
-}
-@container cv-panel (min-width: 470px) {
-  .cv-slot-tabs {
-    display: flex;
+@media (hover: hover) {
+  .cv-voice-option:hover {
+    transform: translateY(-2px);
   }
-  .cv-slot-tab {
-    flex: 1 0 auto;
-  }
+}
+.cv-voice-option[aria-checked="true"] {
+  border-color: rgba(255, 255, 255, 0.6);
+  background: var(--cv-sel);
+  color: #fff;
+  box-shadow: 0 8px 18px -6px rgba(75, 79, 216, 0.7), inset 0 2px 0 rgba(255, 255, 255, 0.35);
 }
 
-/* The selected tab's part chips and colours. The chips keep three rows' worth of
-   room, so switching tabs does not make everything below jump. */
-.cv-slot-panel {
+/* ── slot tabs ── */
+
+.cv-slot-tab {
+  position: relative;
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 44px;
+  min-height: 44px;
+  margin: 0;
+  padding: 0 4px;
+  border: 0;
+  border-radius: 18px;
+  background: transparent;
+  color: var(--cv-ink-2);
+  font-family: var(--cv-display);
+  font-size: 13px;
+  letter-spacing: -0.3px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: transform 0.12s ease;
 }
-.cv-chips {
-  display: flex;
-  flex-wrap: wrap;
-  align-content: flex-start;
-  gap: 8px;
-  min-height: calc(44px * 3 + 8px * 2);
+.cv-slot-tab .cv-icon {
+  width: 27px;
+  height: 27px;
 }
-.cv-chip {
-  padding: 0 14px;
-  border-radius: 999px;
+@media (hover: hover) {
+  .cv-slot-tab:hover:not([aria-selected="true"]) {
+    transform: translateY(-2px);
+    background: rgba(255, 255, 255, 0.7);
+  }
+}
+.cv-slot-tab[aria-selected="true"] {
+  background: var(--cv-sel);
+  color: #fff;
+  box-shadow: 0 10px 20px -8px rgba(75, 79, 216, 0.75), inset 0 2px 0 rgba(255, 255, 255, 0.35);
 }
 
-/* Builder swatches: their own 6 × 44 px grid (not the old 8-column one). */
-.cv-builder-swatches {
+/* ── the open tab: heading, part cards, colours ── */
+
+.cv-slot-panel {
+  container: cv-slot / inline-size;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.cv-slot-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 2px 2px 12px;
+}
+.cv-slot-head::before {
+  content: attr(data-slot);
+  font-family: var(--cv-display);
+  font-size: 22px;
+  color: var(--cv-ink);
+}
+.cv-slot-head::after {
+  content: attr(data-picked);
+  padding: 4px 10px;
+  border-radius: 12px;
+  background: rgba(139, 92, 246, 0.12);
+  color: var(--cv-violet);
+  font-size: 12.5px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cv-chips {
   display: grid;
-  grid-template-columns: repeat(6, 44px);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
 }
-@container cv-panel (max-width: 303px) {
-  .cv-builder-swatches {
-    grid-template-columns: repeat(5, 44px);
+@container cv-slot (max-width: 240px) {
+  .cv-chips {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  /* 320 px phones: "머리카락" must still fit a quarter of the tab bar. */
-  .cv-slot-tab {
-    padding: 0 2px;
-    font-size: 12.5px;
-  }
+}
+.cv-chip {
+  align-items: center;
+  padding: 6px 4px;
+  animation: cv-rise 0.22s ease-out backwards;
+  animation-delay: calc(var(--i, 0) * 20ms);
+}
+.cv-chip[aria-pressed="true"] {
+  transform: translateY(-2px);
+}
+.cv-chip-thumb {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  aspect-ratio: 1 / 0.82;
+  border-radius: 12px;
+  overflow: hidden;
+  background: radial-gradient(85% 85% at 50% 35%, #ffffff 0%, #f0edff 65%, #e5e0ff 100%);
+}
+.cv-chip-thumb .cv-thumb {
+  width: 86%;
+  height: 86%;
+  filter: drop-shadow(0 4px 4px rgba(60, 50, 160, 0.2));
+}
+.cv-chip-thumb > .cv-icon {
+  width: 30px;
+  height: 30px;
+  color: var(--cv-ink-3);
+}
+.cv-chip[aria-pressed="true"] .cv-chip-thumb {
+  animation: cv-pop 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.cv-chip-label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.4em;
+  margin-top: 4px;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.4px;
+  text-align: center;
+  word-break: keep-all;
+  color: var(--cv-ink-2);
+}
+.cv-chip[aria-pressed="true"] .cv-chip-label {
+  color: var(--cv-indigo);
+}
+.cv-check {
+  position: absolute;
+  top: -7px;
+  right: -7px;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  background: var(--cv-sel);
+  color: #fff;
+  box-shadow: 0 3px 8px rgba(75, 79, 216, 0.5);
+  animation: cv-pop-in 0.16s 0.12s cubic-bezier(0.34, 1.56, 0.64, 1) backwards;
+}
+.cv-check .cv-icon {
+  width: 14px;
+  height: 14px;
+  stroke-width: 3.2;
+}
+
+/* Colours: 44 px buttons; a 34 px dot (content box) with a white ring (inset shadow in the padding) and gloss.
+   The inline `background` (and `color` for the ✓) stay on the button — tests read them. */
+.cv-swatch-group {
+  margin-top: 16px;
+}
+.cv-swatch-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.cv-swatch-head .cv-label {
+  font-size: 17px;
+}
+.cv-swatch-name::before {
+  content: attr(data-name);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--cv-violet);
+}
+.cv-builder-swatches {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, 44px);
+  justify-content: space-between;
+  gap: 6px 0;
 }
 .cv-swatch {
   position: relative;
   width: 44px;
   height: 44px;
-  padding: 0;
+  margin: 0;
+  padding: 3px;
+  border: 2px solid transparent;
   border-radius: 50%;
-  border: 2px solid rgba(255, 255, 255, 0.16);
+  background-clip: content-box !important;
+  box-shadow: inset 0 0 0 3px #fff, 0 4px 8px -2px rgba(40, 30, 120, 0.35);
   cursor: pointer;
-  transition: transform 0.08s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+  transition: transform 0.12s ease;
+}
+.cv-swatch::before {
+  content: "";
+  position: absolute;
+  inset: 3px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 28%, rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0) 45%);
+  box-shadow: inset 0 -4px 0 rgba(0, 0, 0, 0.08);
+  pointer-events: none;
 }
 @media (hover: hover) {
   .cv-swatch:hover {
@@ -361,8 +546,9 @@
   }
 }
 .cv-swatch[aria-pressed="true"] {
-  border-color: #ffffff;
-  box-shadow: 0 0 0 3px rgba(166, 139, 255, 0.75);
+  border-color: var(--cv-indigo);
+  box-shadow: inset 0 0 0 3px #fff, 0 6px 12px -2px rgba(75, 79, 216, 0.55);
+  animation: cv-pop 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 /* A check mark in the swatch's own contrasting ink (set inline as `color`). */
 .cv-swatch[aria-pressed="true"]::after {
@@ -378,45 +564,360 @@
   transform: translate(-50%, -50%) rotate(45deg);
 }
 
-/* Voice: two equal halves. */
-.cv-voice-options {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-  max-width: 360px;
+@keyframes cv-pop {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.06); }
+  100% { transform: scale(1); }
 }
-.cv-voice-option {
-  padding: 0 12px;
-  border-radius: 12px;
+@keyframes cv-pop-in {
+  from { transform: scale(0); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+@keyframes cv-rise {
+  from { transform: translateY(8px); opacity: 0; }
+}
+@keyframes cv-fade-in {
+  from { opacity: 0; }
 }
 
-/* Phones: a tighter frame so the builder gets the width (≥ 304 px for 6 swatches
-   on a 360 px screen), and no backdrop blur — the long card scrolls over it. */
-@media (max-width: 719px), (max-height: 500px) {
-  .cv-entry {
-    /* The home-indicator inset lifts the sticky 입장 too (see entry.css). */
-    --cv-entry-pad-bottom: max(12px, env(safe-area-inset-bottom, 0px));
-    padding: max(12px, env(safe-area-inset-top, 0px)) max(10px, env(safe-area-inset-right, 0px))
-      var(--cv-entry-pad-bottom) max(10px, env(safe-area-inset-left, 0px));
-  }
-  .cv-card {
-    gap: 16px;
-    /* ≥ the scroller's bottom padding, so the 입장 fade stays inside the card at rest. */
-    padding: 22px 16px max(22px, var(--cv-entry-pad-bottom));
-    border-radius: 18px;
-    backdrop-filter: none;
-    background: rgba(20, 17, 46, 0.86);
-  }
-  .cv-title {
-    font-size: 30px;
-  }
+/* The sheet grabber is a phone thing. */
+.cv-sheet-grabber {
+  display: none;
 }
-/* A phone on its side: a shorter header, so the builder starts sooner. */
-@media (max-height: 500px) {
-  .cv-head {
-    gap: 2px;
-  }
-  .cv-title {
-    font-size: 24px;
-  }
+
+/* ════════════════ wide: two glass panels ════════════════ */
+
+.cv-entry[data-layout="wide"] :is(.cv-builder-panel, .cv-sheet-body) {
+  display: contents;
+}
+.cv-entry[data-layout="wide"] .cv-panel {
+  position: absolute;
+  z-index: 3;
+  top: 88px;
+  bottom: 24px;
+  width: var(--cv-panel-w);
+  background: var(--cv-glass);
+  border: 1.5px solid var(--cv-edge);
+  border-radius: 28px;
+  backdrop-filter: blur(22px) saturate(1.5);
+  -webkit-backdrop-filter: blur(22px) saturate(1.5);
+  box-shadow: var(--cv-panel-shadow);
+}
+.cv-entry[data-layout="wide"] .cv-panel-left {
+  left: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 20px 20px 22px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+.cv-entry[data-layout="wide"] .cv-presets-group {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.cv-entry[data-layout="wide"] .cv-presets {
+  flex: 1 1 auto;
+  min-height: 300px;
+  grid-template-rows: repeat(3, minmax(0, 158px));
+  align-content: start;
+}
+.cv-entry[data-layout="wide"] .cv-voice-group {
+  flex: none;
+}
+.cv-entry[data-layout="wide"] .cv-voice-group .cv-builder-group-head {
+  margin-bottom: 10px;
+}
+.cv-entry[data-layout="wide"] .cv-panel-right {
+  right: 24px;
+  display: grid;
+  grid-template-columns: 80px minmax(0, 1fr);
+  gap: 16px;
+  padding: 16px;
+}
+.cv-entry[data-layout="wide"] .cv-slot-tabs {
+  display: grid;
+  grid-template-rows: repeat(7, minmax(44px, 1fr));
+  gap: 6px;
+  min-height: 0;
+  padding: 6px;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid #fff;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+.cv-entry[data-layout="wide"] .cv-slot-tab {
+  font-size: 12.5px;
+  letter-spacing: -0.6px;
+}
+.cv-entry[data-layout="wide"] .cv-slot-panel {
+  min-height: 0;
+  overflow-y: auto;
+  /* Room for the hover lift, the selected glow and the check badge, which the scroller would otherwise clip. */
+  margin: -10px -10px -10px 0;
+  padding: 10px 10px 10px 0;
+  scrollbar-width: thin;
+}
+
+/* ════════════════ phones and tablets: the sheet ════════════════ */
+
+.cv-entry:not([data-layout="wide"]) .cv-builder-panel {
+  position: fixed;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  background: rgba(255, 255, 255, 0.78);
+  border-top: 1.5px solid #fff;
+  backdrop-filter: blur(24px) saturate(1.5);
+  -webkit-backdrop-filter: blur(24px) saturate(1.5);
+  box-shadow: 0 -18px 40px -20px rgba(48, 40, 150, 0.45);
+}
+.cv-entry[data-layout="phone"] .cv-builder-panel {
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: var(--cv-sheet-open);
+  border-radius: 30px 30px 0 0;
+  /* Always the open height; at rest pushed down so only 47 % shows. Grabber drags set an inline transform. */
+  transform: translateY(calc(var(--cv-sheet-open) - var(--cv-sheet-rest)));
+  transition: transform 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.cv-entry[data-layout="phone"] .cv-builder-panel[data-sheet="open"] {
+  transform: none;
+}
+.cv-entry[data-layout="phone"] .cv-builder-panel.is-dragging {
+  transition: none;
+}
+.cv-entry[data-layout="side"] .cv-builder-panel {
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: var(--cv-sheet-w);
+  padding-top: 12px;
+  border-top: 0;
+  border-left: 1.5px solid #fff;
+  border-radius: 28px 0 0 28px;
+  background: rgba(255, 255, 255, 0.84);
+}
+.cv-entry[data-layout="phone"] .cv-sheet-grabber {
+  flex: none;
+  align-self: center;
+  display: grid;
+  place-items: center;
+  width: 88px;
+  height: 44px;
+  margin: -2px 0 -12px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: grab;
+  touch-action: none;
+}
+.cv-sheet-grabber-bar {
+  width: 44px;
+  height: 5px;
+  border-radius: 3px;
+  background: rgba(79, 76, 124, 0.3);
+}
+.cv-entry:not([data-layout="wide"]) .cv-sheet-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+  padding: 6px 16px var(--cv-cta-room);
+}
+.cv-entry:not([data-layout="wide"]) .cv-sheet-body::-webkit-scrollbar {
+  display: none;
+}
+/* At rest the lowest part of the (open-height) sheet is below the screen: give it as much extra scroll room. */
+.cv-entry[data-layout="phone"] .cv-builder-panel:not([data-sheet="open"]) .cv-sheet-body {
+  padding-bottom: calc(var(--cv-cta-room) + var(--cv-sheet-open) - var(--cv-sheet-rest));
+}
+.cv-entry:not([data-layout="wide"]) :is(.cv-panel-left, .cv-panel-right) {
+  display: contents;
+}
+/* The sheet scrolls as a whole: its rows (some are horizontal scrollers) must never shrink to fit. */
+.cv-entry:not([data-layout="wide"]) :is(.cv-presets-group, .cv-slot-tabs, .cv-slot-panel, .cv-voice-group, .cv-swatch-group, .cv-chips) {
+  flex-shrink: 0;
+}
+.cv-entry:not([data-layout="wide"]) .cv-presets-group {
+  order: 1;
+}
+.cv-entry:not([data-layout="wide"]) .cv-slot-tabs {
+  order: 2;
+}
+.cv-entry:not([data-layout="wide"]) .cv-slot-panel {
+  order: 3;
+}
+.cv-entry:not([data-layout="wide"]) .cv-voice-group {
+  order: 4;
+  margin-top: 4px;
+}
+.cv-entry:not([data-layout="wide"]) .cv-builder-group-head {
+  margin-bottom: 6px;
+}
+.cv-entry:not([data-layout="wide"]) .cv-builder-group .cv-label {
+  font-size: 16px;
+}
+.cv-entry:not([data-layout="wide"]) .cv-sub {
+  font-size: 11.5px;
+}
+
+/* Presets: one row that scrolls inside itself, 🎲 first; the next card peeks at the edge. */
+.cv-entry:not([data-layout="wide"]) .cv-presets {
+  display: flex;
+  gap: 8px;
+  margin: -4px -16px 0;
+  padding: 4px 16px 8px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x proximity;
+  scroll-padding-inline: 16px;
+  scrollbar-width: none;
+}
+.cv-entry:not([data-layout="wide"]) .cv-presets::-webkit-scrollbar {
+  display: none;
+}
+.cv-entry:not([data-layout="wide"]) :is(.cv-preset, .cv-random) {
+  flex: none;
+  width: 72px;
+  height: 80px;
+  padding: 4px 4px 0;
+  border-radius: 16px;
+  scroll-snap-align: start;
+}
+.cv-entry:not([data-layout="wide"]) .cv-preset-portrait {
+  border-radius: 12px;
+}
+.cv-entry:not([data-layout="wide"]) :is(.cv-preset-name, .cv-random-text) {
+  font-size: 13px;
+  line-height: 22px;
+}
+.cv-entry:not([data-layout="wide"]) .cv-random-icon {
+  background-size: 32px 32px;
+}
+
+/* Tabs: a segmented bar of icons; the open tab shows its word (the others keep theirs for screen readers). */
+.cv-entry:not([data-layout="wide"]) .cv-slot-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 26px;
+  background: rgba(255, 255, 255, 0.75);
+  border: 1px solid #fff;
+  box-shadow: var(--cv-card-shadow);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.cv-entry:not([data-layout="wide"]) .cv-slot-tabs::-webkit-scrollbar {
+  display: none;
+}
+.cv-entry:not([data-layout="wide"]) .cv-slot-tab {
+  flex: 1 0 44px;
+  flex-direction: row;
+  gap: 5px;
+  height: 44px;
+  padding: 0;
+  border-radius: 22px;
+  font-size: 15px;
+}
+.cv-entry:not([data-layout="wide"]) .cv-slot-tab .cv-icon {
+  width: 23px;
+  height: 23px;
+}
+.cv-entry:not([data-layout="wide"]) .cv-slot-tab-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.cv-entry:not([data-layout="wide"]) .cv-slot-tab[aria-selected="true"] {
+  flex: 0 0 auto;
+  padding: 0 14px 0 11px;
+}
+.cv-entry:not([data-layout="wide"]) .cv-slot-tab[aria-selected="true"] .cv-slot-tab-label {
+  position: static;
+  width: auto;
+  height: auto;
+  overflow: visible;
+  clip-path: none;
+}
+
+/* The open tab: colours first (one scrolling row), then the part cards in 4 columns. */
+.cv-entry:not([data-layout="wide"]) .cv-slot-head {
+  display: none;
+}
+.cv-entry:not([data-layout="wide"]) .cv-slot-panel {
+  gap: 10px;
+}
+.cv-entry:not([data-layout="wide"]) .cv-swatch-group {
+  order: 1;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  margin: 0 -16px 0 0;
+}
+.cv-entry:not([data-layout="wide"]) .cv-swatch-head {
+  flex: none;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
+  margin: 0 4px 0 2px;
+}
+.cv-entry:not([data-layout="wide"]) .cv-swatch-head .cv-label {
+  font-size: 15px;
+}
+.cv-entry:not([data-layout="wide"]) .cv-swatch-name::before {
+  font-size: 11px;
+}
+.cv-entry:not([data-layout="wide"]) .cv-builder-swatches {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  gap: 2px;
+  padding: 2px 16px 2px 2px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.cv-entry:not([data-layout="wide"]) .cv-builder-swatches::-webkit-scrollbar {
+  display: none;
+}
+.cv-entry:not([data-layout="wide"]) .cv-swatch {
+  flex: none;
+}
+.cv-entry:not([data-layout="wide"]) .cv-chips {
+  order: 2;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.cv-entry[data-layout="side"] .cv-chips {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.cv-entry:not([data-layout="wide"]) .cv-chip {
+  padding: 5px 3px 4px;
+  border-radius: 16px;
+}
+.cv-entry:not([data-layout="wide"]) .cv-chip-thumb {
+  aspect-ratio: 1 / 0.72;
+}
+.cv-entry:not([data-layout="wide"]) .cv-chip-label {
+  font-size: 11.5px;
+  min-height: 2.3em;
+}
+.cv-entry:not([data-layout="wide"]) .cv-check {
+  top: -6px;
+  right: -6px;
+  width: 22px;
+  height: 22px;
+}
+.cv-entry:not([data-layout="wide"]) .cv-voice-option {
+  height: 50px;
+  font-size: 15px;
 }

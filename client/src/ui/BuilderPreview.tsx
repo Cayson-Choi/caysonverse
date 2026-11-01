@@ -1,17 +1,43 @@
-// 조립실 3D 미리보기(설계 5.3): 지금 외형의 토이 피규어가 Idle로 서 있고, 가로로 끌면 돈다.
+// 조립실 3D 미리보기(설계 5.3, Task 7b 무대): 지금 외형의 토이 피규어가 배경 그림의 받침대 위에 Idle로 서 있고,
+// 가로로 끌거나 ⟲ ⟳를 누르면 돈다. 캔버스는 투명하고(배경은 EntryScreen의 그림), 발이 받침대 윗면에 오도록
+// stageLayout이 캔버스 상자를 놓는다(카메라는 PREVIEW_CAMERA 그대로).
 // 인형은 게임과 같은 조립 경로(useAvatar)로 만들고, 클립 이름은 어디서나처럼 clipFor를 거친다.
 // 외형이 바뀌면 PreviewFigure의 key(lookKey)가 바뀌어 새 믹서로 다시 마운트되므로 클립도 새 look으로 다시 정해진다.
 // 회전 각도는 ref에만 있다(React state 금지). 입장하면 EntryScreen과 함께 이 Canvas도 언마운트되어 루프가 멈춘다.
+// 같은 Canvas의 렌더러로 부품·프리셋 카드 그림도 그린다(PreviewThumbs, builderThumbs.ts).
 
-import { Component, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  Component,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+  type RefObject,
+} from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { useAnimations } from "@react-three/drei";
+import { useAnimations, useGLTF } from "@react-three/drei";
+import { Vector3, type Camera } from "three";
 import type { Appearance } from "@caysonverse/shared/appearance";
 import { clipFor, lookFromAppearance, lookKey, type AvatarLook } from "../game/characterLook";
-import { avatarProbe, reportAvatarClip, useAvatar } from "../game/useAvatar";
+import { CHARACTER_MODEL_URL, avatarProbe, reportAvatarClip, useAvatar } from "../game/useAvatar";
 import { BlobShadow } from "../game/BlobShadow";
 import { CLIP } from "../game/constants";
-import { BUILDER_COPY, PREVIEW_CAMERA, PREVIEW_DRAG_SPEED, PREVIEW_START_YAW } from "./builderOptions";
+import {
+  BUILDER_COPY,
+  FIGURE_TOP,
+  PREVIEW_CAMERA,
+  PREVIEW_DRAG_SPEED,
+  PREVIEW_ROTATE_MS,
+  PREVIEW_ROTATE_STEP,
+  PREVIEW_SPIN_MS,
+  PREVIEW_START_YAW,
+  tweenYaw,
+} from "./builderOptions";
+import { ThumbStudio, nextThumbJobs, thumbStore } from "./builderThumbs";
+import { BuilderIcon } from "./BuilderIcons";
 
 /** `__cvAvatars()`에서 미리보기 인형의 키. */
 export const PREVIEW_PROBE_ID = "preview";
@@ -27,9 +53,14 @@ const PREVIEW_CAMERA_OPTIONS = {
   far: 40,
   position: [0, PREVIEW_CAMERA.eyeY, PREVIEW_CAMERA.distance] as [number, number, number],
 };
-/** 1단계 승인 뷰어의 조명. */
-const HEMI_LIGHT: [number, number, number] = [0xfff6ea, 0x9a7a5a, 1.6];
-const SUN_POSITION: [number, number, number] = [3, 7, 5];
+/** 밝은 하늘 정원 무대의 조명: 하늘빛 위 + 라벤더 바닥 반사, 해(앞 오른쪽 위), 보조광, 보라 테두리광. */
+const HEMI_LIGHT: [number, number, number] = [0xfff8ee, 0xb8a6e8, 1.5];
+const SUN_POSITION: [number, number, number] = [3, 7, 6];
+const FILL_POSITION: [number, number, number] = [-5, 3, 4];
+const RIM_POSITION: [number, number, number] = [-3, 4, -6];
+
+/** 터치로 끌 때 이만큼 움직이면 가로(돌리기)·세로(시트 스크롤) 중 하나로 정한다. */
+const AXIS_LOCK_PX = 8;
 
 /** `window.__cvPreview()`가 돌려주는 값(DEV 전용). */
 export interface PreviewProbe {
@@ -45,13 +76,16 @@ export interface PreviewProbe {
   lookKey: string | null;
   /** 인형이 한 번이라도 그려졌는가(로딩 문구 → 끌기 안내). */
   shown: boolean;
+  /** Task 7b: 실제 카메라로 투영한 인형 발(원점)과 마법사 모자 끝 높이(FIGURE_TOP)의 화면 좌표(CSS px). 없으면 null. */
+  feet: { x: number; y: number } | null;
+  top: { x: number; y: number } | null;
 }
 
 /** DEV 손잡이: 미리보기 상태 읽기 + 기본 클립 바꾸기(Task 10이 외형마다 서기·걷기·앉기 시트를 찍는다). */
 export type PreviewKnob = (() => PreviewProbe) & {
   /** `base`(CLIP 값)를 clipFor(base, look)으로 재생한다. 돌려주는 값은 지금 외형에서 재생될 이름이다. */
   setClip: (base: string) => string;
-  /** 회전 각도를 바로 정한다(시트를 같은 각도로 찍을 때). 다음 프레임에 카메라가 옮겨진다. */
+  /** 회전 각도를 바로 정한다(시트를 같은 각도로 찍을 때). 도는 중이면 멈춘다. 다음 프레임에 카메라가 옮겨진다. */
   setYaw: (yaw: number) => void;
 };
 
@@ -70,6 +104,7 @@ interface PreviewLink {
   base: () => string;
   setBase: (base: string) => void;
   shown: () => boolean;
+  project: (heightM: number) => { x: number; y: number } | null;
 }
 let previewLink: PreviewLink | null = null;
 /** 지금 재생 중인 클립(PreviewFigure가 바뀔 때만 적는다. 매 프레임 아님). */
@@ -86,6 +121,8 @@ if (import.meta.env.DEV && typeof window !== "undefined") {
       parts: [...(avatarProbe.get(PREVIEW_PROBE_ID)?.parts ?? [])],
       lookKey: look ? lookKey(look) : null,
       shown: link ? link.shown() : false,
+      feet: link ? link.project(0) : null,
+      top: link ? link.project(FIGURE_TOP.height) : null,
     };
   }) as PreviewKnob;
   knob.setClip = (base: string) => {
@@ -102,11 +139,34 @@ if (import.meta.env.DEV && typeof window !== "undefined") {
   window.__cvPreview = knob;
 }
 
-/** 카메라를 yaw 궤도 위에 두고 인형 가운데 높이를 본다. yaw가 바뀐 프레임에만 옮긴다. */
-function PreviewCamera({ yawRef }: { yawRef: { current: number } }) {
+/** 진행 중인 회전(⟲ ⟳·프리셋 한 바퀴). 끌기·setYaw가 시작되면 멈춘다. */
+interface YawTween {
+  from: number;
+  to: number;
+  start: number;
+  duration: number;
+}
+
+/** 카메라를 yaw 궤도 위에 두고 인형 가운데 높이를 본다. 회전 중이면 각도를 진행시키고, yaw가 바뀐 프레임에만 옮긴다. */
+function PreviewCamera({
+  yawRef,
+  tweenRef,
+  cameraRef,
+}: {
+  yawRef: { current: number };
+  tweenRef: { current: YawTween | null };
+  cameraRef: { current: Camera | null };
+}) {
   const camera = useThree((s) => s.camera);
   const lastYaw = useRef(Number.NaN);
   useFrame(() => {
+    cameraRef.current = camera;
+    const tween = tweenRef.current;
+    if (tween) {
+      const progress = (performance.now() - tween.start) / tween.duration;
+      yawRef.current = tweenYaw(tween.from, tween.to, progress);
+      if (progress >= 1) tweenRef.current = null;
+    }
     const yaw = yawRef.current;
     if (yaw === lastYaw.current) return;
     lastYaw.current = yaw;
@@ -161,28 +221,114 @@ function PreviewFigure({ look, base, onShown }: FigureProps) {
   );
 }
 
-/** WebGL이 없거나 모델을 못 받아도 입장 화면 전체가 무너지지 않게, 미리보기만 대체 문구로 바꾼다. */
-class PreviewBoundary extends Component<{ fallback: ReactNode; children: ReactNode }, { failed: boolean }> {
-  state = { failed: false };
-  static getDerivedStateFromError(): { failed: boolean } {
-    return { failed: true };
+/** 한 프레임에서 그림 찍기에 쓰는 시간: 첫 장을 찍고 이만큼 넘었으면 둘째 장은 다음 프레임으로 미룬다. */
+const THUMB_FRAME_BUDGET_MS = 6;
+/** 일감이 없어진 뒤 촬영용 인형을 놓기까지(색을 연달아 바꿀 때 인형·셰이더를 다시 만들지 않게). */
+const THUMB_RELEASE_IDLE_MS = 1500;
+
+/**
+ * 부품·프리셋 카드 그림을 이 Canvas의 렌더러로 그린다: 프레임마다 아직 없는 그림을 2장까지(지금 탭 먼저, 시간이
+ * 모자라면 1장). 미리보기 렌더(이 useFrame 다음)가 화면 전체를 다시 그리므로 구석에 찍은 그림은 보이지 않는다.
+ * 할 일이 없어지고 잠시 뒤 촬영용 인형을 놓는다.
+ */
+function PreviewThumbs() {
+  const gl = useThree((s) => s.gl);
+  const { scene, animations } = useGLTF(CHARACTER_MODEL_URL);
+  // 만들 때는 GPU 자원을 잡지 않는다(촬영용 인형은 첫 일감에서 만든다): StrictMode가 두 번 만들어도 샐 것이 없다.
+  const studio = useMemo(() => new ThumbStudio({ scene, animations }), [scene, animations]);
+  useEffect(() => () => studio.release(), [studio]);
+  const idleSince = useRef<number | null>(null);
+  useFrame(() => {
+    const jobs = nextThumbJobs(thumbStore.jobs, thumbStore.cache);
+    const now = performance.now();
+    if (jobs.length === 0) {
+      idleSince.current ??= now;
+      if (now - idleSince.current > THUMB_RELEASE_IDLE_MS) studio.release();
+      return;
+    }
+    idleSince.current = null;
+    if (!studio.prepare(gl)) return; // 셰이더를 만드는 중(메인 스레드를 막지 않는다)
+    for (const job of jobs) {
+      if (job !== jobs[0] && performance.now() - now > THUMB_FRAME_BUDGET_MS) break;
+      const { cache } = thumbStore;
+      let shot: Promise<string | null> | null = null;
+      try {
+        shot = studio.shoot(gl, job);
+      } catch (err) {
+        if (import.meta.env.DEV) console.warn("[builder] thumbnail failed", job.key, err);
+      }
+      if (!shot) {
+        cache.set(job.key, null, thumbStore.keys);
+        cache.notify();
+        continue;
+      }
+      cache.begin(job.key);
+      shot.then(
+        (url) => {
+          cache.set(job.key, url, thumbStore.keys);
+          cache.notify();
+        },
+        () => {
+          cache.set(job.key, null, thumbStore.keys);
+          cache.notify();
+        },
+      );
+    }
+  });
+  return null;
+}
+
+/**
+ * WebGL이 없거나 모델을 못 받아도 입장 화면 전체가 무너지지 않게, 미리보기만 대체 문구로 바꾼다.
+ * 외형(resetKey)이 바뀌면 다시 해 본다. 모델을 못 받은 실패였으면 캐시된 오류를 지우고 다시 받는다.
+ */
+class PreviewBoundary extends Component<
+  { fallback: ReactNode; children: ReactNode; resetKey: string },
+  { failed: boolean; loadError: boolean }
+> {
+  state = { failed: false, loadError: false };
+  static getDerivedStateFromError(error: unknown): { failed: boolean; loadError: boolean } {
+    return { failed: true, loadError: String(error).includes(CHARACTER_MODEL_URL) };
+  }
+  componentDidUpdate(prev: { resetKey: string }) {
+    if (!this.state.failed || prev.resetKey === this.props.resetKey) return;
+    if (this.state.loadError) useGLTF.clear(CHARACTER_MODEL_URL);
+    this.setState({ failed: false, loadError: false });
   }
   render() {
     return this.state.failed ? this.props.fallback : this.props.children;
   }
 }
 
-const PREVIEW_FAILED = "미리보기를 불러오지 못했어요. 그래도 입장할 수 있어요.";
+function prefersReducedMotion(): boolean {
+  return typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
 
-/** 조립실 미리보기. 컨테이너는 가로 끌기만 가로채고(touch-action: pan-y) 세로 끌기는 페이지 스크롤로 둔다. */
-export function BuilderPreview({ appearance }: { appearance: Appearance }) {
+/**
+ * 조립실 미리보기(무대). 끌기는 직접 처리한다(touch-action: none): 마우스는 가로만 돌리기, 터치는 처음 움직인
+ * 방향으로 정해 가로면 돌리기, 세로면 시트(scrollerRef)를 스크롤한다(Ruling S22: 세로로 끌면 돌지 않고 스크롤).
+ * spin이 바뀌면(프리셋·🎲) 한 바퀴 돈다. 움직임 줄이기 설정이면 돌지 않고 회전 버튼은 바로 그 각도로 간다.
+ */
+export function BuilderPreview({
+  appearance,
+  spin = 0,
+  scrollerRef,
+}: {
+  appearance: Appearance;
+  spin?: number;
+  scrollerRef?: RefObject<HTMLElement | null>;
+}) {
   const look = useMemo(() => lookFromAppearance(appearance), [appearance]);
   const key = lookKey(look);
   const yawRef = useRef(PREVIEW_START_YAW);
-  const dragRef = useRef<{ id: number; x: number } | null>(null);
+  const tweenRef = useRef<YawTween | null>(null);
+  const cameraRef = useRef<Camera | null>(null);
+  const dragRef = useRef<{ id: number; x: number; y: number; startX: number; startY: number; axis: "x" | "y" | null } | null>(
+    null,
+  );
   const boxRef = useRef<HTMLDivElement>(null);
   const [shown, setShown] = useState(false);
-  // 미리보기가 화면 밖으로 완전히 스크롤되면 렌더 루프를 멈춘다(휴대폰에서 칩·목소리를 고르는 동안).
+  // 미리보기가 화면 밖으로 완전히 나가면 렌더 루프를 멈춘다.
   const [onScreen, setOnScreen] = useState(true);
   useEffect(() => {
     const el = boxRef.current;
@@ -193,6 +339,23 @@ export function BuilderPreview({ appearance }: { appearance: Appearance }) {
   }, []);
   // DEV 손잡이가 고르는 기본 클립. 사용자 화면에서는 바뀌지 않는다(Idle).
   const [base, setBase] = useState<string>(CLIP.idle);
+
+  /** 지금(또는 진행 중인 회전의 끝) 각도에서 delta만큼 duration 동안 돈다. */
+  const turn = useCallback((delta: number, duration: number) => {
+    const target = (tweenRef.current ? tweenRef.current.to : yawRef.current) + delta;
+    if (prefersReducedMotion()) {
+      tweenRef.current = null;
+      yawRef.current = target;
+      return;
+    }
+    tweenRef.current = { from: yawRef.current, to: target, start: performance.now(), duration };
+  }, []);
+
+  // 프리셋·🎲: 한 바퀴(움직임 줄이기면 돌지 않는다 — 각도도 그대로).
+  useEffect(() => {
+    if (spin === 0 || prefersReducedMotion()) return;
+    turn(2 * Math.PI, PREVIEW_SPIN_MS);
+  }, [spin, turn]);
 
   // DEV: 손잡이 연결. 읽는 함수들이 ref를 통해 지금 값을 본다.
   const lookRef = useRef(look);
@@ -206,12 +369,22 @@ export function BuilderPreview({ appearance }: { appearance: Appearance }) {
     const link: PreviewLink = {
       yaw: () => yawRef.current,
       setYaw: (yaw) => {
+        tweenRef.current = null;
         yawRef.current = yaw;
       },
       look: () => lookRef.current,
       base: () => baseRef.current,
       setBase,
       shown: () => shownRef.current,
+      project: (heightM) => {
+        const camera = cameraRef.current;
+        const canvas = boxRef.current?.querySelector("canvas");
+        if (!camera || !canvas) return null;
+        const rect = canvas.getBoundingClientRect();
+        camera.updateMatrixWorld();
+        const p = new Vector3(0, heightM, 0).project(camera);
+        return { x: rect.left + ((p.x + 1) / 2) * rect.width, y: rect.top + ((1 - p.y) / 2) * rect.height };
+      },
     };
     previewLink = link;
     return () => {
@@ -223,16 +396,35 @@ export function BuilderPreview({ appearance }: { appearance: Appearance }) {
   }, []);
 
   function onPointerDown(e: React.PointerEvent<HTMLDivElement>) {
+    if ((e.target as Element).closest("button")) return; // ⟲ ⟳는 끌기가 아니다
     if (e.pointerType === "mouse" && e.button !== 0) return;
-    dragRef.current = { id: e.pointerId, x: e.clientX };
+    const axis = e.pointerType === "mouse" ? "x" : null;
+    dragRef.current = { id: e.pointerId, x: e.clientX, y: e.clientY, startX: e.clientX, startY: e.clientY, axis };
+    tweenRef.current = null; // 도는 중이면 그 자리에서 멈추고 손가락을 따른다
     // 마우스는 상자 밖으로 끌려 나가도 계속 돌게 잡아 둔다(터치는 브라우저가 이미 잡아 준다).
     if (e.pointerType === "mouse") e.currentTarget.setPointerCapture?.(e.pointerId);
   }
   function onPointerMove(e: React.PointerEvent<HTMLDivElement>) {
     const drag = dragRef.current;
     if (!drag || drag.id !== e.pointerId) return;
-    yawRef.current += (e.clientX - drag.x) * PREVIEW_DRAG_SPEED;
+    // 버튼을 뗀 뒤 들어온 마우스 이동(pointerup을 놓친 경우)은 끌기가 아니다.
+    if (e.pointerType === "mouse" && e.buttons === 0) {
+      dragRef.current = null;
+      return;
+    }
+    if (drag.axis === null) {
+      const dx = e.clientX - drag.startX;
+      const dy = e.clientY - drag.startY;
+      if (Math.hypot(dx, dy) < AXIS_LOCK_PX) return;
+      drag.axis = Math.abs(dx) >= Math.abs(dy) ? "x" : "y";
+      // 정하기 전에 움직인 만큼도 넣는다(가로 200 px 끌기 = 2.0 rad).
+      drag.x = drag.startX;
+      drag.y = drag.startY;
+    }
+    if (drag.axis === "x") yawRef.current += (e.clientX - drag.x) * PREVIEW_DRAG_SPEED;
+    else if (scrollerRef?.current) scrollerRef.current.scrollTop -= e.clientY - drag.y;
     drag.x = e.clientX;
+    drag.y = e.clientY;
   }
   function endDrag(e: React.PointerEvent<HTMLDivElement>) {
     if (dragRef.current?.id !== e.pointerId) return;
@@ -252,21 +444,42 @@ export function BuilderPreview({ appearance }: { appearance: Appearance }) {
       onPointerUp={endDrag}
       onPointerCancel={endDrag}
     >
-      <PreviewBoundary fallback={<p className="cv-builder-hint is-failed">{PREVIEW_FAILED}</p>}>
+      <PreviewBoundary resetKey={key} fallback={<p className="cv-builder-hint is-failed">{BUILDER_COPY.failed}</p>}>
         <div className="cv-builder-stage">
           <Canvas dpr={PREVIEW_DPR} frameloop={onScreen ? "always" : "never"} camera={PREVIEW_CAMERA_OPTIONS}>
             <hemisphereLight args={HEMI_LIGHT} />
-            <directionalLight color={0xffffff} intensity={2.4} position={SUN_POSITION} />
-            <PreviewCamera yawRef={yawRef} />
+            <directionalLight color={0xffffff} intensity={2.3} position={SUN_POSITION} />
+            <directionalLight color={0xdfe8ff} intensity={0.6} position={FILL_POSITION} />
+            <directionalLight color={0xd9ccff} intensity={1.4} position={RIM_POSITION} />
+            <PreviewCamera yawRef={yawRef} tweenRef={tweenRef} cameraRef={cameraRef} />
             <Suspense fallback={null}>
               <PreviewFigure key={key} look={look} base={base} onShown={onShown} />
             </Suspense>
+            <Suspense fallback={null}>
+              <PreviewThumbs />
+            </Suspense>
           </Canvas>
         </div>
-        {/* 무대 위가 아니라 아래 띠에 둔다: 인형의 발을 가리지 않는다. */}
         <p className={"cv-builder-hint" + (shown ? "" : " is-loading")} aria-live="polite">
+          {shown && <BuilderIcon name="swap" />}
           {shown ? BUILDER_COPY.dragHint : BUILDER_COPY.loading}
         </p>
+        <button
+          type="button"
+          className="cv-rotate cv-rotate-left"
+          aria-label={BUILDER_COPY.rotateLeft}
+          onClick={() => turn(PREVIEW_ROTATE_STEP, PREVIEW_ROTATE_MS)}
+        >
+          <BuilderIcon name="rotateLeft" />
+        </button>
+        <button
+          type="button"
+          className="cv-rotate cv-rotate-right"
+          aria-label={BUILDER_COPY.rotateRight}
+          onClick={() => turn(-PREVIEW_ROTATE_STEP, PREVIEW_ROTATE_MS)}
+        >
+          <BuilderIcon name="rotateRight" />
+        </button>
       </PreviewBoundary>
     </div>
   );

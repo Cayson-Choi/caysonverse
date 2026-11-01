@@ -1,6 +1,6 @@
 # Model and brand assets
 
-이 폴더(`client/public/models/`)의 캐릭터 모델과, 조립실 제목에 쓰는 로고의 출처와 라이선스입니다.
+이 폴더(`client/public/models/`)의 캐릭터 모델과, 입장 화면 "캐릭터 조립실"이 쓰는 로고·배경 그림·글꼴의 출처와 라이선스입니다.
 
 ## character.glb — Cayson 토이 피규어
 
@@ -18,6 +18,22 @@
 ## 로고 — `../brand/cayson-logo-white.png`
 
 입장 화면 조립실 제목에만 쓰는 흰색 "Cayson" 워드마크입니다. **Fredoka** 700 굵기(SIL Open Font License 1.1)로 만들었습니다. 1단계 텍스처 생성기 `gen.html`의 `meta.font`로 확인했습니다.
+
+## 조립실 배경 그림 — `../entry/bg-desktop.{avif,webp}`, `../entry/bg-phone.{avif,webp}`
+
+입장 화면 "캐릭터 조립실"의 밝은 하늘 정원 무대(받침대가 있는 옥상 정원) 그림입니다. 넓은 화면용(1600×900)과 세로 화면용(720×1280) 두 장이고, 화면마다 한 장만 받습니다.
+
+- 출처: ChatGPT(OpenAI) 이미지 생성, 발주자 계정, 2026-11-01, A안.
+- 손본 것: 데스크톱 그림의 글자 같은 무늬는 손으로 흐리게 지움. 배포용으로 크기를 줄여 AVIF·WebP로 다시 인코딩했습니다.
+- 상업 판매(학교 판매 라이선스)에 써도 되는지는 출시 전에 발주자가 확인할 항목입니다.
+
+## 글꼴 — `../fonts/jua-builder.woff` (Jua)
+
+조립실의 제목·탭·부품 이름·프리셋 이름·버튼·안내에만 쓰는 제목용 글꼴입니다.
+
+- **Jua** — Copyright 2018 The Jua Project Authors (google/fonts). License: **SIL Open Font License 1.1** — 전문은 `../fonts/OFL-Jua.txt`.
+- 조립실 고정 문구에 쓰인 글자만 남긴 부분집합(WOFF)입니다. `scripts/subset-builder-font.mjs`가 원본 `Jua-Regular.ttf`에서 만듭니다. 이름은 OFL의 예약 글꼴 이름이 없어 그대로 둡니다.
+- 외부 글꼴 서버(Google Fonts 등)를 쓰지 않고 이 저장소에서 직접 보냅니다.
 
 ## 가구 — `furniture/`
 

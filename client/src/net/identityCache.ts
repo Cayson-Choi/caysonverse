@@ -1,9 +1,11 @@
 /**
- * Identity cache (localStorage) — the last-used entry selection. Written by the
- * entry screen at join (Task 4) and read by the resilience driver for the silent
- * fresh re-join after a server restart (no DB, so a new avatar at spawn is
- * expected — but the SAME nickname and appearance). All accesses are best-effort
- * (private mode / disabled storage never throws).
+ * Identity cache (localStorage) — the last-used entry selection ("마지막 외형 기억").
+ * Written by the entry screen on 입장 only (never on every builder edit) and read
+ * when the entry screen opens, to prefill the nickname and the builder's look.
+ * The resilience driver's silent fresh re-join after a server restart uses this
+ * tab's in-memory identity (appStore) and falls back to this cache only when
+ * there is none — another tab may have saved a different look meanwhile. All
+ * accesses are best-effort (private mode / disabled storage never throws).
  *
  * Character stage 3: the value is `{ nickname, appearance }` under the same key.
  * A value saved by the pre-builder build (`{ nickname, character, tint }`), or one

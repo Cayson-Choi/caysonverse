@@ -9,7 +9,7 @@
 //
 // What it measures: a brand-new browser context with the HTTP cache disabled (CDP
 // `Network.setCacheDisabled`) opens the page, waits until `button.cv-submit` is visible and the network is
-// idle, types a nickname into `input.cv-input[placeholder="2~12자"]`, presses the submit button, and waits
+// idle, types a nickname into `input.cv-input[placeholder*="2~12자"]` (Task 7b: "이름을 지어 주세요 (2~12자)"), presses the submit button, and waits
 // 10 s + networkidle inside the world. Every `Network.loadingFinished.encodedDataLength` (bytes over the wire,
 // response headers included) is summed, each distinct URL ONCE (see "numbers" below for why). WebSocket frames are
 // not part of it. The entry uses the nickname and `.cv-submit` ONLY (no character / colour clicks: the character picker is replaced in Task 7, and this script is
@@ -185,7 +185,7 @@ try {
   mark("entry screen ready (submit button visible + networkidle)");
 
   // 2. nickname + submit only
-  await page.locator('input.cv-input[placeholder="2~12자"]').fill(NICKNAME);
+  await page.locator('input.cv-input[placeholder*="2~12자"]').fill(NICKNAME);
   await page.locator("button.cv-submit").click();
   await page.locator(".cv-entry").waitFor({ state: "detached", timeout: 90000 });
   await page.locator("canvas").first().waitFor({ state: "visible", timeout: 60000 });

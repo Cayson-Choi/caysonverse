@@ -101,11 +101,11 @@ function watchErrors(page, tag) {
   });
 }
 
-async function enterWorld(page, { nickname, characterLabel, tint }) {
+async function enterWorld(page, { nickname, preset }) {
   await page.locator("input.cv-input").first().waitFor({ state: "visible", timeout: 30000 });
   await page.locator("input.cv-input").first().fill(nickname);
-  await page.locator(".cv-character", { hasText: new RegExp(`^${characterLabel}$`) }).click();
-  await page.getByLabel(`색상 ${tint}`).click();
+  // Character stage 3: the builder replaced the 8 characters + 8 colours — wear a preset card instead.
+  await page.locator(".cv-preset", { hasText: new RegExp(`^${preset}$`) }).click();
   await page.locator(".cv-submit").click();
   await page.waitForFunction(() => typeof window.__cv?.getPos === "function", null, { timeout: 60000 });
   await page.locator("canvas").waitFor({ state: "visible", timeout: 30000 });
@@ -173,12 +173,12 @@ function makeTouch(cdp) {
   return api;
 }
 
-async function joinPc(browser, { tag, nickname, characterLabel, tint }) {
+async function joinPc(browser, { tag, nickname, preset }) {
   const ctx = await browser.newContext({ viewport: PC });
   const page = await ctx.newPage();
   watchErrors(page, tag);
   await page.goto(CLIENT_URL, { waitUntil: "domcontentloaded" });
-  await enterWorld(page, { nickname, characterLabel, tint });
+  await enterWorld(page, { nickname, preset });
   return { tag, ctx, page };
 }
 
@@ -425,11 +425,11 @@ try {
   A = await newPhone(browser, { tag: "A", coachDone: true });
   const pa = A.page;
   const touch = A.touch;
-  await enterWorld(pa, { nickname: NAME.A, characterLabel: "도적", tint: 3 });
+  await enterWorld(pa, { nickname: NAME.A, preset: "해적" });
   // The previous run's players stay in the room as ghosts for the 20 s reconnect window: let them go first.
   const empty = await pollUntil(() => getRemotes(pa), (r) => r.length === 0, 30000, 500);
   check("the room holds no one else yet (previous run's ghosts gone)", empty.length === 0, { others: empty.map((r) => r.nickname) });
-  B = await joinPc(browser, { tag: "B", nickname: NAME.B, characterLabel: "기사", tint: 2 });
+  B = await joinPc(browser, { tag: "B", nickname: NAME.B, preset: "기사" });
   const pb = B.page;
   const sidA = await pollUntil(
     () => pb.evaluate((n) => window.__cv.getRemotes().find((r) => r.nickname === n)?.sessionId ?? null, NAME.A),
@@ -894,7 +894,7 @@ try {
     G = await newPhone(browser, { tag: "G", coachDone: false });
     const pg = G.page;
     const gt = G.touch;
-    await enterWorld(pg, { nickname: NAME.G, characterLabel: "마법사", tint: 5 });
+    await enterWorld(pg, { nickname: NAME.G, preset: "마법사" });
     const card = () =>
       pg.evaluate(() => {
         const el = document.querySelector(".cv-coach");
@@ -932,7 +932,7 @@ try {
 
     // reload: enter again — no guide
     await pg.reload({ waitUntil: "domcontentloaded" });
-    await enterWorld(pg, { nickname: NAME.G + "2", characterLabel: "마법사", tint: 5 });
+    await enterWorld(pg, { nickname: NAME.G + "2", preset: "마법사" });
     await sleep(1500);
     check("after a reload the guide does not come back", (await card()) === null, {});
   });

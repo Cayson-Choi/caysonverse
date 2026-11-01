@@ -124,7 +124,7 @@ function watchWs(page) {
   return counts;
 }
 
-async function joinWorld(browser, { tag, nickname, characterLabel, tint, admin = false }) {
+async function joinWorld(browser, { tag, nickname, preset, admin = false }) {
   const ctx = await browser.newContext({ viewport: VIEW });
   const page = await ctx.newPage();
   watchErrors(page, tag);
@@ -132,8 +132,8 @@ async function joinWorld(browser, { tag, nickname, characterLabel, tint, admin =
   await page.goto(CLIENT_URL, { waitUntil: "domcontentloaded" });
   await page.locator("input.cv-input").first().waitFor({ state: "visible", timeout: 30000 });
   await page.locator("input.cv-input").first().fill(nickname);
-  await page.locator(".cv-character", { hasText: new RegExp(`^${characterLabel}$`) }).click();
-  await page.getByLabel(`색상 ${tint}`).click();
+  // Character stage 3: the builder replaced the 8 characters + 8 colours — wear a preset card instead.
+  await page.locator(".cv-preset", { hasText: new RegExp(`^${preset}$`) }).click();
   if (admin) {
     await page.locator(".cv-admin-link").click();
     await page.getByLabel("관리자 코드").fill(ADMIN_CODE);
@@ -309,12 +309,12 @@ let A, B, C;
 try {
   // ── 0. 입장: A, B (the teacher joins last) ─────────────────────────────────────
   currentStep = "입장";
-  A = await joinWorld(browser, { tag: "A", nickname: NAME.A, characterLabel: "기사", tint: 2 });
+  A = await joinWorld(browser, { tag: "A", nickname: NAME.A, preset: "기사" });
   const pa = A.page;
   // The previous run's players stay in the room as ghosts for the 20 s reconnect window: let them go first.
   const empty = await pollUntil(() => getRemotes(pa), (r) => r.length === 0, 30000, 500);
   check("the room holds no one else yet (previous run's ghosts gone)", empty.length === 0, { others: empty.map((r) => r.nickname) });
-  B = await joinWorld(browser, { tag: "B", nickname: NAME.B, characterLabel: "도적", tint: 4 });
+  B = await joinWorld(browser, { tag: "B", nickname: NAME.B, preset: "해적" });
   const pb = B.page;
 
   const sidA = await pollUntil(
@@ -900,7 +900,7 @@ try {
 
   // ── 10. 선생님 ───────────────────────────────────────────────────────────────────
   await step("10 선생님: adminCode 입장", async () => {
-    C = await joinWorld(browser, { tag: "C", nickname: NAME.C, characterLabel: "마법사", tint: 6, admin: true });
+    C = await joinWorld(browser, { tag: "C", nickname: NAME.C, preset: "마법사", admin: true });
     const remoteC = await pollUntil(
       async () => (await getRemotes(pb)).find((r) => r.nickname === NAME.C) ?? null,
       (r) => r && r.role === ROLE_TEACHER,
