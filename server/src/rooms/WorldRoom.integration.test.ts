@@ -36,6 +36,7 @@ import {
 import { MAZE_GOAL, MAZE_PORTAL, MAZE_RETURN, ESCAPE_COOLDOWN_MS } from "@caysonverse/shared/maze";
 import { rooms, type WorldRoom } from "./index";
 import { CHAT_NOT_NICE } from "./profanity";
+import { STALE_CLIENT_ERROR } from "./joinValidation";
 
 const VALID_JOIN = { nickname: "케이슨", appearance: { ...DEFAULT_APPEARANCE, top: 1, topColor: 2 } };
 const JOIN_A = { nickname: "앨리스", appearance: DEFAULT_APPEARANCE };
@@ -140,10 +141,10 @@ describe("WorldRoom (integration)", () => {
   it("rejects a join without appearance", async () => {
     const room = await colyseus.createRoom<WorldRoom>(WORLD_ROOM);
     await expect(colyseus.connectTo(room, { nickname: "케이슨" })).rejects.toThrow(APPEARANCE_ERROR);
-    // A stale pre-builder bundle ({ character, tint }) is turned away the same way.
+    // A stale pre-builder bundle ({ character, tint }, a tab left open across a deploy) is told to refresh.
     await expect(
       colyseus.connectTo(room, { nickname: "케이슨", character: 1, tint: 2 }),
-    ).rejects.toThrow(APPEARANCE_ERROR);
+    ).rejects.toThrow(STALE_CLIENT_ERROR);
     expect(room.state.players.size).toBe(0);
   });
 

@@ -433,7 +433,8 @@ async function main() {
 
   /** Nickname + the submit button only — nothing about the character picker, which Task 7 replaces. */
   async function enterWorld(page, nickname) {
-    const input = page.locator('input.cv-input[placeholder="2~12자"]');
+    // `*=`: the Task 7b placeholder is "이름을 지어 주세요 (2~12자)" (same match as task-char-load.mjs).
+    const input = page.locator('input.cv-input[placeholder*="2~12자"]');
     await input.waitFor({ state: "visible", timeout: 30000 });
     await input.fill(nickname);
     await page.locator(".cv-submit").click();

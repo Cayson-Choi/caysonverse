@@ -73,7 +73,11 @@ export function paletteFor(field: AppearanceField): readonly PaletteColor[] {
 /** 인덱스 0이 "없음"인 슬롯. 얼굴·웃옷·바지·신발은 항상 하나를 입는다. */
 export const OPTIONAL_SLOTS: readonly CharacterSlot[] = Object.freeze(["hat", "hair", "item"] as const);
 
-/** 슬롯별 선택지. 선택 슬롯은 [null, ...manifest]이고 나머지는 manifest 그대로다. 인덱스가 외형 필드 값이다. */
+/**
+ * 슬롯별 선택지. 선택 슬롯은 [null, ...manifest]이고 나머지는 manifest 그대로다. 인덱스가 외형 필드 값이다.
+ * 이 인덱스는 동기화·서버 재접속 캐시·localStorage["cv.entry"]에 그대로 실리므로 부품은 슬롯 끝에 덧붙이기만 한다
+ * (append only: 끼워 넣기·지우기·순서 바꾸기 금지). appearance.test.ts의 "slot part order" 고정값을 함께 늘린다.
+ */
 export const SLOT_OPTIONS: Record<CharacterSlot, readonly (string | null)[]> = Object.fromEntries(
   CHARACTER_SLOTS.map((slot) => {
     const ids: readonly string[] = CHARACTER_MANIFEST.slots[slot];

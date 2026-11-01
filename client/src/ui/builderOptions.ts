@@ -96,7 +96,14 @@ export const BUILDER_COPY = {
   voiceHint: "채팅을 읽어 줄 목소리",
   dragHint: "끌어서 돌려 보세요",
   loading: "캐릭터를 불러오는 중…",
-  failed: "미리보기를 불러오지 못했어요. 그래도 입장할 수 있어요.",
+  /** 미리보기가 모델 말고 다른 이유(WebGL 등)로 무너졌을 때. */
+  failed: "미리보기를 띄우지 못했어요. 새로고침(F5)해 보세요.",
+  /** character.glb를 못 받아 잠시 뒤 다시 받아 볼 때(MODEL_RETRY_DELAYS_MS). */
+  modelRetrying: "캐릭터를 불러오지 못해 다시 받아 오는 중이에요…",
+  /** 다시 받기를 다 해 봐도 못 받았을 때. 입장하기를 누르면 한 번 더 받아 본다. */
+  modelFailed: "캐릭터를 불러오지 못했어요. 인터넷 연결을 확인한 뒤 입장하기를 눌러 주세요.",
+  /** 입장하기에서 다시 받아 봐도 못 받았을 때(입장하지 않는다). */
+  modelRetry: "캐릭터를 불러오지 못했어요. 잠시 뒤 다시 눌러 주세요",
   nickname: "닉네임",
   nicknamePlaceholder: `이름을 지어 주세요 (${NICKNAME_MIN}~${NICKNAME_MAX}자)`,
   rotateLeft: "왼쪽으로 돌리기",

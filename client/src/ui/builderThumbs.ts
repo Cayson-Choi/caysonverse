@@ -551,8 +551,11 @@ export class ThumbStudio {
     quad.frustumCulled = false;
     this.outScene.add(quad);
 
-    // 셰이더는 렌더 타깃에 그릴 때의 것(톤매핑·sRGB 없음)이 따로 있으므로 그 타깃을 걸어 둔 채 만든다.
+    // 셰이더를 만들기 전에 rig로 걸어 둔다: compile·setRenderTarget이 던지면(컨텍스트 잃음 등) drawThumbFrame이
+    // release()를 부르는데, 그때 위에서 만든 인형·복제 재질·렌더 타깃·출력 패스를 모두 놓을 수 있어야 한다.
     const compiling: Material[] = [];
+    this.rig = { root, nodes, materials: [...clones.values()], skeleton, mixer, sceneTarget, outTarget, output, quad, compiling, ready: false };
+    // 셰이더는 렌더 타깃에 그릴 때의 것(톤매핑·sRGB 없음)이 따로 있으므로 그 타깃을 걸어 둔 채 만든다.
     const target = gl.getRenderTarget();
     try {
       gl.setRenderTarget(sceneTarget);
@@ -562,7 +565,6 @@ export class ThumbStudio {
     } finally {
       gl.setRenderTarget(target);
     }
-    this.rig = { root, nodes, materials: [...clones.values()], skeleton, mixer, sceneTarget, outTarget, output, quad, compiling, ready: false };
     return false;
   }
 

@@ -15,8 +15,14 @@ import { useGLTF } from "@react-three/drei";
 import type { AnimationClip } from "three";
 import { assembleAvatar, releaseAvatarSoon, retainAvatar, type BuiltAvatar } from "./characterAvatar";
 import { lookKey, type AvatarLook } from "./characterLook";
+import { CHARACTER_GLB_HASH } from "@caysonverse/shared/characterManifest";
 
-export const CHARACTER_MODEL_URL = "/models/character.glb";
+/**
+ * 캐릭터 모델 URL. ?v=는 GLB 내용의 해시(sync-character-assets.mjs가 쓴다)라, 새 GLB를 배포하면 URL이 바뀌어
+ * 브라우저·CDN 캐시에 남은 옛 GLB를 새 manifest와 섞어 쓰지 않는다. 미리 받기·조립실 인형·카드 그림·월드가 모두
+ * 이 URL 하나를 쓴다(로더 캐시 키도 이 문자열이다).
+ */
+export const CHARACTER_MODEL_URL = `/models/character.glb?v=${CHARACTER_GLB_HASH}`;
 
 export interface AvatarProbeEntry {
   parts: string[];

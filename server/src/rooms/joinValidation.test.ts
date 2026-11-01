@@ -6,7 +6,7 @@ import {
   DEFAULT_APPEARANCE,
   type Appearance,
 } from "@caysonverse/shared/appearance";
-import { validateJoinOptions, type JoinOptions } from "./joinValidation";
+import { STALE_CLIENT_ERROR, validateJoinOptions, type JoinOptions } from "./joinValidation";
 
 // Narrow the union: assert a success result and return it typed.
 function accepted(options: unknown) {
@@ -121,8 +121,27 @@ describe("validateJoinOptions — appearance", () => {
     );
   });
 
-  it("rejects the pre-builder { character, tint } options (stale client bundle, Review Focus 3)", () =>
-    expect(rejected({ nickname: "test", character: 0, tint: 0 }).error).toBe("외형 선택이 올바르지 않습니다"));
+  it("asks a stale pre-builder bundle ({ character, tint }, no appearance) to refresh", () => {
+    // An old tab left open across a deploy rejoins with the pre-builder options; APPEARANCE_ERROR would
+    // never clear for it, so it is told to reload the page instead (final review Important 1).
+    expect(STALE_CLIENT_ERROR).toBe("새 버전이 나왔어요. 페이지를 새로고침(F5)해 주세요");
+    expect(rejected({ nickname: "test", character: 0, tint: 0 }).error).toBe(STALE_CLIENT_ERROR);
+    expect(rejected({ nickname: "test", character: 3 }).error).toBe(STALE_CLIENT_ERROR);
+    expect(rejected({ nickname: "test", tint: 2 }).error).toBe(STALE_CLIENT_ERROR);
+  });
+
+  it("keeps APPEARANCE_ERROR for a bad appearance even when old keys ride along", () => {
+    // Only a payload WITHOUT appearance is the old bundle; a new client with a broken look is not told to refresh.
+    expect(rejected({ nickname: "test", appearance: null, character: 0, tint: 0 }).error).toBe(APPEARANCE_ERROR);
+    expect(rejected({ nickname: "test", appearance: { ...DEFAULT_APPEARANCE, hat: -1 }, tint: 0 }).error).toBe(
+      APPEARANCE_ERROR,
+    );
+    // character/tint present but undefined (JSON drops them) is no old bundle either.
+    expect(rejected({ nickname: "test", character: undefined, tint: undefined }).error).toBe(APPEARANCE_ERROR);
+  });
+
+  it("still checks the nickname first for a stale bundle", () =>
+    expect(rejected({ nickname: "a", character: 0, tint: 0 }).error).toBe("닉네임은 2~12자의 한글/영문/숫자만 가능합니다"));
 
   it("keeps only the 15 appearance fields (extra keys dropped)", () => {
     const r = accepted({

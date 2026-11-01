@@ -1,7 +1,8 @@
 /**
- * AI 조교 NPC roster + proximity (design 31 + 후속). THREE assistants, one per
- * room, all badged "AI 조교" — their personal names (클로드/챗지피티/제미나이)
- * live in the SERVER persona and are revealed only in conversation. Positions
+ * AI 조교 NPC roster + proximity (design 31 + 후속). FOUR assistants — the hall,
+ * the lobby, the gallery and the maze goal chamber — all badged "AI 조교"; their
+ * personal names (아르티/노바/루미/큐리) live in the SERVER persona
+ * (server/src/npc/groqChat.ts) and are revealed only in conversation. Positions
  * are the SHARED map truth (worldMap.NPC_SPOTS — solid obstacles, design 33);
  * this module adds the client-side render/interaction config.
  */

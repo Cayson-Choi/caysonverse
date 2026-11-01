@@ -11,8 +11,10 @@
  *
  * Height: the bubble's bottom edge sits at `anchor.y` (metres above the avatar's
  * group), re-read every frame — the NametagSystem keeps it just above the avatar's
- * nametag, however tall or lifted that is (Task 14). Without an anchor (the local
- * player, who has no tag) it sits at BUBBLE_BASE_HEIGHT.
+ * nametag, however tall or lifted that is (Task 14). Every caller passes an anchor
+ * that starts at bubbleRestHeight(avatar.topY) (just above where this avatar's tag
+ * would end), which is also where the local player's bubble stays while its own tag
+ * is off. BUBBLE_BASE_HEIGHT is only the fallback for a call without an anchor.
  *
  * Returns a stable ref holding the TOP edge of the bubble that is up right now (m above the
  * group; null when none), rewritten every frame — the avatar's emoji reaction starts above

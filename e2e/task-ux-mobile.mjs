@@ -463,6 +463,7 @@ try {
         runForce: J.STICK_RUN_FORCE,
         doubleTapMs: T.DOUBLE_TAP_MS,
         coachMoveM: C.COACH_MOVE_M,
+        coachPollMs: C.COACH_POLL_MS,
       };
     },
     {
@@ -474,9 +475,15 @@ try {
     },
   );
   const { SEATS, MOVE_SPEED, RUN_SPEED } = shared;
-  CODE = { stickRadius: shared.stickRadius, stickEdge: shared.stickEdge, doubleTapMs: shared.doubleTapMs, coachMoveM: shared.coachMoveM };
+  CODE = {
+    stickRadius: shared.stickRadius,
+    stickEdge: shared.stickEdge,
+    doubleTapMs: shared.doubleTapMs,
+    coachMoveM: shared.coachMoveM,
+    coachPollMs: shared.coachPollMs,
+  };
   // Not a copy of the numbers: only that the modules loaded and the relations the steps rely on hold.
-  check("shared constants loaded from the source modules", MOVE_SPEED > 0 && Math.abs(RUN_SPEED - MOVE_SPEED * shared.RUN_SPEED_MULTIPLIER) < 1e-9 && SEATS.length > 1 && CODE.stickRadius > 0 && CODE.doubleTapMs > 0, {
+  check("shared constants loaded from the source modules", MOVE_SPEED > 0 && Math.abs(RUN_SPEED - MOVE_SPEED * shared.RUN_SPEED_MULTIPLIER) < 1e-9 && SEATS.length > 1 && CODE.stickRadius > 0 && CODE.doubleTapMs > 0 && CODE.coachPollMs > 0, {
     MOVE_SPEED, RUN_SPEED, seats: SEATS.length, ...CODE,
   });
   // The brief's pushes: 20 px up must read as a walk, 60 px up as a run.
@@ -914,13 +921,24 @@ try {
     check("walking 1.5 m with the stick moves on to ② 둘러보기", c2?.step === "look" && c2.title === "② 둘러보기", c2);
     await shot(pg, "m-12-guide-2.png");
 
-    // turn the view 0.6 rad+ with a one-finger drag on the right half (below the card)
+    // turn the view 0.6 rad+ with a one-finger drag on the right half (below the card).
+    // The ② poller takes its baseline on its FIRST tick, COACH_POLL_MS after the card mounts (coach.ts
+    // createCoachPoller — by design: a remount must not count the view reset as a turn), so a drag that starts
+    // before that tick loses its first part: 140 px is 0.70 rad against the 0.6 rad threshold. Wait out the
+    // baseline tick (twice the poll period, for timer slack under load) so the whole drag is measured.
+    await sleep(2 * CODE.coachPollMs);
     await gt.drag(0, 340, 520, 200, 520, { steps: 10 }); // right half (the lower-left quarter would be the stick)
+    const dragEnd = Date.now();
     const c3 = await pollUntil(card, (c) => c?.step === "talk", 3000);
     check("dragging the right half moves on to ③ 말하기", c3?.step === "talk" && c3.title === "③ 말하기", c3);
     await shot(pg, "m-12-guide-3.png");
 
-    // say hello with 💬
+    // say hello with 💬 — not ~0.1 s after the drag. ③ usually appears within 0.1–0.2 s of lifting the finger, and a
+    // tap that close behind the drag's touchEnd sometimes gets no click from Chrome's touch emulation: pointerdown,
+    // touchstart, pointerup and touchend all reach the 💬 button, then no click (2026-11-02: 6 of 24 runs lost the
+    // click at a ~0.1–0.2 s gap, 0 of 9 at ≥ 1.5 s). The field then never focuses and "안녕" goes nowhere. A thumb
+    // reads the card before tapping, so give the gap a human 1.5 s.
+    await sleep(Math.max(0, 1500 - (Date.now() - dragEnd)));
     const cc = await center(pg, ".cv-chat-btn");
     await gt.tap(cc.x, cc.y, 50);
     await pollUntil(() => pg.evaluate(() => document.activeElement?.className ?? ""), (cls) => /cv-chat-field/.test(cls), 3000);

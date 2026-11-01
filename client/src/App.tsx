@@ -3,6 +3,7 @@ import { useAppStore } from "./stores/appStore";
 import { EntryScreen } from "./ui/EntryScreen";
 import { WorldScene } from "./game/WorldScene";
 import { ReconnectingOverlay } from "./ui/ReconnectingOverlay";
+import { AppErrorBoundary } from "./ui/AppErrorBoundary";
 
 /**
  * Suppress the browser context menu on the 3D canvas only (right-drag rotates the
@@ -27,6 +28,9 @@ function useCanvasContextMenuSuppression() {
  * to entry). The WorldScene is keyed by `connectionEpoch` so a reconnect remounts
  * it against the new room (rebinding every scene-level room subscription); the
  * reconnection overlay lives OUTSIDE that key so it survives the remount.
+ * AppErrorBoundary wraps both screens: an uncaught render error (e.g. inside the
+ * 3D scene) shows a refresh prompt instead of React unmounting the root to a blank
+ * page, and leaves any open room.
  */
 export default function App() {
   useCanvasContextMenuSuppression();
@@ -36,11 +40,13 @@ export default function App() {
 
   return (
     <>
-      {screen === "world" && identity ? (
-        <WorldScene key={connectionEpoch} identity={identity} />
-      ) : (
-        <EntryScreen />
-      )}
+      <AppErrorBoundary>
+        {screen === "world" && identity ? (
+          <WorldScene key={connectionEpoch} identity={identity} />
+        ) : (
+          <EntryScreen />
+        )}
+      </AppErrorBoundary>
       <ReconnectingOverlay />
     </>
   );

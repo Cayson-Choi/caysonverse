@@ -3,6 +3,7 @@ import { APP_NAME, NICKNAME_MAX } from "@caysonverse/shared/constants";
 import type { Appearance } from "@caysonverse/shared/appearance";
 import { primeChatAudio } from "../game/chatVoice";
 import { preloadCharacterAssets } from "../game/useAvatar";
+import { characterModel } from "../game/characterModel";
 import { isTouchDevice } from "../device";
 import { NICKNAME_ERROR, validateEntry, validateNickname } from "./validation";
 import { BuilderPreview } from "./BuilderPreview";
@@ -146,6 +147,8 @@ export function EntryScreen() {
   const [spin, setSpin] = useState(0);
   /** Bumped by every rejected nickname: restarts the nameplate shake. */
   const [shakes, setShakes] = useState(0);
+  /** Bumped whenever 입장 re-downloads a failed character model: a broken preview tries again too. */
+  const [modelReloads, setModelReloads] = useState(0);
   const scrollerRef = useRef<HTMLDivElement>(null);
   const motesRef = useRef<HTMLDivElement>(null);
   const adminRef = useRef<HTMLDivElement>(null);
@@ -209,6 +212,20 @@ export function EntryScreen() {
     setError(null);
     clearNotice();
     setSubmitting(true);
+
+    // A failed character.glb download stays cached as that error: entering would make the world's own avatar
+    // rethrow it. So when the model is known to have failed, download it again first, and if that fails too,
+    // stay here with a retry message. Still downloading → enter as before (the world waits for it).
+    if (characterModel.state() === "failed") {
+      const loaded = await characterModel.reload();
+      setModelReloads((n) => n + 1);
+      if (!loaded) {
+        setError(BUILDER_COPY.modelRetry);
+        setSubmitting(false);
+        return;
+      }
+    }
+
     // Remember the last look for the next visit (spec §4 "마지막 외형 기억") — saved
     // here on 입장 only, not on every builder edit.
     saveIdentity(result.value);
@@ -311,7 +328,7 @@ export function EntryScreen() {
             {BUILDER_COPY.title}
           </h2>
           <div className="cv-builder">
-            <BuilderPreview appearance={appearance} spin={spin} scrollerRef={scrollerRef} />
+            <BuilderPreview appearance={appearance} spin={spin} scrollerRef={scrollerRef} modelReloads={modelReloads} />
             <BuilderPanel
               appearance={appearance}
               onChange={changeAppearance}

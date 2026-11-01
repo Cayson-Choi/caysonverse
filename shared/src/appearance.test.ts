@@ -121,6 +121,36 @@ describe("appearance model — palettes", () => {
   });
 });
 
+// The wire / storage contract: a slot field's value is the part's index in SLOT_OPTIONS, which is the manifest
+// slot order (with "없음" = null first for hat/hair/item). Those numbers are synced to every client, kept by the
+// server's reconnect cache and saved in localStorage["cv.entry"], so inserting, removing or reordering a part
+// silently changes what everyone already wears. New parts are APPENDED to the end of their slot only, and this
+// pin is extended at the same time (the art manifest and scripts/sync-character-assets.mjs carry the same note).
+describe("slot part order — append only (wire / storage index)", () => {
+  it("pins every slot's part ids in index order", () => {
+    expect(SLOT_OPTIONS).toEqual({
+      hat: [
+        null, "cap", "beanie", "catband", "crown", "wizard", "tiara", "safari", "knight_helmet", "pirate_hat",
+        "space_helmet", "flower_crown",
+      ],
+      hair: [null, "short", "bob", "ponytail", "curly", "twintails"],
+      face: ["smile", "wink", "glasses", "wow", "calm", "tongue"],
+      top: [
+        "tee", "hoodie", "shirt_tie", "suspenders", "robe", "prince_coat", "gown_top", "explorer_vest", "armor",
+        "pirate_stripe", "spacesuit", "petal_top",
+      ],
+      bottom: ["pants", "shorts", "skirt", "longskirt", "overalls", "space_pants", "petal_skirt"],
+      shoes: ["sneakers", "boots", "dress", "sandals", "tall_boots", "wizard_shoes", "hiking_boots", "space_boots"],
+      item: [
+        null, "book", "flag", "wand", "balloon", "pencil", "mic", "scepter", "rose", "staff", "map", "wooden_sword",
+        "telescope",
+      ],
+    });
+    // The slots themselves, in manifest order (the builder's tab order; APPEARANCE_FIELDS fixes the field order).
+    expect(CHARACTER_SLOTS).toEqual(["hat", "hair", "face", "top", "bottom", "shoes", "item"]);
+  });
+});
+
 describe("validateAppearance", () => {
   it("validateAppearance accepts every field at 0 and at range − 1", () => {
     const low = filled(() => 0);
