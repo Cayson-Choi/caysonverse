@@ -14,6 +14,7 @@ import {
   mountClassApi,
   readRoomStats,
   createProcessStats,
+  CREATION_WAIT_MS,
   type TeacherOpenDeps,
   type StatusDeps,
 } from "./classApi";
@@ -378,6 +379,99 @@ describe("handleTeacherOpen", () => {
     } finally {
       cap.restore();
     }
+  });
+
+  it("a waiter gives up after CREATION_WAIT_MS with 503 instead of hanging (fix round 1)", async () => {
+    expect(CREATION_WAIT_MS).toBe(10_000);
+    vi.useFakeTimers();
+    try {
+      const { deps, registry, created } = setup();
+      let finish: (v: { roomId: string }) => void = () => {};
+      deps.createClassRoom = (o) => {
+        created.push(o);
+        return new Promise((resolve) => {
+          finish = resolve;
+        });
+      };
+      const a = handleTeacherOpen({ teacherKey: KEY, classCode: "AB2CDE" }, IP, deps);
+      let bResult: unknown = null;
+      const b = handleTeacherOpen({ teacherKey: KEY_T2, classCode: "AB2CDE" }, OTHER_IP, deps).then((r) => {
+        bResult = r;
+        return r;
+      });
+      await vi.advanceTimersByTimeAsync(CREATION_WAIT_MS - 1);
+      expect(bResult).toBeNull(); // still waiting for the colleague's room
+      await vi.advanceTimersByTimeAsync(1);
+      expect(await b).toEqual({ status: 503, body: { error: "반을 열지 못했어요. 잠시 뒤에 다시 해 주세요" } });
+      // The slow creation still completes for its own request; a later request gets a pass at once.
+      finish({ roomId: "room-slow" });
+      expect((await a).status).toBe(200);
+      expect(registry.get("AB2CDE")?.roomId).toBe("room-slow");
+      const c = await handleTeacherOpen({ teacherKey: KEY_T2, classCode: "AB2CDE" }, OTHER_IP, deps);
+      expect(c.status).toBe(200);
+      expect(created).toHaveLength(1);
+      // A timed-out wait is not a key failure.
+      expect(deps.limiter.isBlocked(OTHER_IP, deps.now())).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("a finished creation clears only its OWN in-flight marker and fills only its own reservation (fix round 1)", async () => {
+    const { deps, registry, created } = setup();
+    const finishers: ((v: { roomId: string }) => void)[] = [];
+    deps.createClassRoom = (o) => {
+      created.push(o);
+      return new Promise((resolve) => finishers.push(resolve));
+    };
+    const tick = () => new Promise((r) => setTimeout(r, 5));
+
+    // A starts creating AB2CDE …
+    const a = handleTeacherOpen({ teacherKey: KEY, classCode: "AB2CDE" }, IP, deps);
+    await tick();
+    // … its reservation disappears (stand-in for anything freeing it) and C opens the code anew.
+    registry.release("AB2CDE", null);
+    const c = handleTeacherOpen({ teacherKey: KEY_T2, classCode: "AB2CDE" }, IP, deps);
+    await tick();
+    expect(created).toHaveLength(2);
+
+    // A finishes first: it must neither clear C's marker nor attach its room to C's reservation.
+    finishers[0]({ roomId: "room-a" });
+    expect(await a).toEqual({ status: 500, body: { error: "반을 열지 못했어요. 잠시 뒤에 다시 해 주세요" } });
+    expect(registry.get("AB2CDE")?.roomId).toBeNull();
+
+    // D (a colleague) still waits for C's room instead of getting a pass for a room that doesn't exist.
+    let dDone = false;
+    const d = handleTeacherOpen({ teacherKey: KEY, classCode: "AB2CDE" }, IP, deps).then((r) => {
+      dDone = true;
+      return r;
+    });
+    await tick();
+    expect(dDone).toBe(false);
+
+    finishers[1]({ roomId: "room-c" });
+    expect((await c).status).toBe(200);
+    expect((await d).status).toBe(200);
+    expect(registry.get("AB2CDE")?.roomId).toBe("room-c");
+    expect(created).toHaveLength(2);
+  });
+
+  it("lower-case, spaced and dash-less keys open classes; wrong spellings still count toward 429 (fix round 1)", async () => {
+    const { deps, created } = setup();
+    for (const typed of ["k7qx-2mpa-9trw-4hez", "K7QX 2MPA 9TRW 4HEZ", "k7qx2mpa9trw4hez"]) {
+      const res = await handleTeacherOpen({ teacherKey: typed }, IP, deps);
+      expect(res.status).toBe(200);
+    }
+    expect(created.map((o) => o.opener.id)).toEqual(["t1", "t1", "t1"]);
+
+    // Five wrong keys — in any spelling — block the IP; then even the right key is 429.
+    for (const wrong of ["k7qx-2mpa-9trw-4hex", "K7QX 2MPA 9TRW 4HE", "wr0ngkey00000000", "WR0N-GKEY-0000-0000", " w r 0 n "]) {
+      expect((await handleTeacherOpen({ teacherKey: wrong }, IP, deps)).status).toBe(401);
+    }
+    expect(await handleTeacherOpen({ teacherKey: "k7qx2mpa9trw4hez" }, IP, deps)).toEqual({
+      status: 429,
+      body: { error: ERR.tooMany },
+    });
   });
 
   it("no teacher-open outcome logs a key, a pass or a hash", async () => {

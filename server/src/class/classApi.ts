@@ -27,7 +27,13 @@ import { canTeach, loadTeacherKeys, verifyTeacherKey, type TeacherKeyEntry, type
 import { classRegistry, type ClassCreateOptions, type ClassRegistry } from "./classRegistry";
 import { generateClassCode } from "./classCode";
 
-/** Korean messages shown to teachers / the operator. */
+/**
+ * Korean messages shown to teachers / the operator.
+ *
+ * SERVER-ONLY: the client must never import from server/src/class (this module pulls in
+ * the registry, key handling and the matchmaker). Task 13 moves the copy the client needs
+ * into shared/.
+ */
 export const CLASS_API_ERRORS = {
   badRequest: "요청이 올바르지 않아요",
   wrongTeacherKey: "선생님 키가 올바르지 않아요",
@@ -45,6 +51,11 @@ const MAX_SECRET_LENGTH = 256;
 const API_JSON_LIMIT = "4kb";
 /** Memory backstop for the per-client failure limiter (same idea as /api/npc-chat). */
 const LIMITER_MAX_CLIENTS = 5000;
+/**
+ * How long a request waits for someone else's creation of the same class before it gives
+ * up with 503 (a hung matchmaker must not pin teacher requests forever).
+ */
+export const CREATION_WAIT_MS = 10_000;
 
 export interface ApiResult {
   status: number;
@@ -124,6 +135,20 @@ function parseTeacherBody(body: unknown): TeacherOpenRequest | null {
   return { teacherKey: body.teacherKey, classCode, textLevel };
 }
 
+/** True when `p` settles within `ms`; the timer never outlives the wait or holds the process open. */
+async function settlesWithin(p: Promise<void>, ms: number): Promise<boolean> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<false>((resolve) => {
+    timer = setTimeout(() => resolve(false), ms);
+    (timer as { unref?: () => void }).unref?.();
+  });
+  try {
+    return await Promise.race([p.then(() => true as const), timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /** Room creations in flight, per registry: code → settles (never rejects) when done. */
 const creating = new WeakMap<ClassRegistry, Map<string, Promise<void>>>();
 function creationsOf(registry: ClassRegistry): Map<string, Promise<void>> {
@@ -147,6 +172,7 @@ function creationsOf(registry: ClassRegistry): Map<string, Promise<void>> {
  * | wrong key | 401, failure recorded |
  * | 5 failures per IP per minute | 429 |
  * | class cap reached | 503 |
+ * | the class is still being created by another request for > CREATION_WAIT_MS | 503 |
  * | malformed body | 400 |
  *
  * The key is checked before anything about classes is revealed, so without a key nobody
@@ -179,8 +205,9 @@ async function openOrJoin(code: string, key: VerifiedKey, textLevel: TextLevel, 
       const pending = inFlight.get(code);
       if (pending) {
         // Double click or two teachers at once: one room, and the second pass is handed
-        // out only once that room exists (else the client's join could beat it).
-        await pending;
+        // out only once that room exists (else the client's join could beat it) — but
+        // never wait longer than CREATION_WAIT_MS.
+        if (!(await settlesWithin(pending, CREATION_WAIT_MS))) return fail(503, CLASS_API_ERRORS.openFailed);
         continue;
       }
       return { status: 200, body: { classCode: code, pass: deps.registry.issuePass(code, key, deps.now()) } };
@@ -191,22 +218,27 @@ async function openOrJoin(code: string, key: VerifiedKey, textLevel: TextLevel, 
     if (reserved === "full") return fail(503, CLASS_API_ERRORS.classesFull);
     if (reserved === "taken") continue; // not reachable (checked synchronously above); re-evaluate
 
+    // Our reservation (the entry object itself): after the await we only ever touch the entry
+    // if it is still this one — never a newer reservation of the same code.
+    const mine = deps.registry.get(code);
     let settle: () => void = () => {};
-    inFlight.set(code, new Promise<void>((resolve) => (settle = resolve)));
+    const marker = new Promise<void>((resolve) => (settle = resolve));
+    inFlight.set(code, marker);
     let roomId: string;
     try {
       ({ roomId } = await deps.createClassRoom({ spawnToken: SPAWN_TOKEN, classCode: code, textLevel, opener }));
       // The ClassRoom attaches itself in onCreate; this fills the entry when the room factory is
       // a stand-in (tests) and is a no-op otherwise.
-      deps.registry.attach(code, roomId);
+      if (deps.registry.get(code) === mine) deps.registry.attach(code, roomId);
     } catch {
       // Frees our reservation only: if a live room holds the code, its entry is not ours (roomId ≠ null).
-      deps.registry.release(code, null);
+      if (deps.registry.get(code) === mine) deps.registry.release(code, null);
       // Fixed text only: a matchmaker error can carry the create options as JSON.
       console.error("[caysonverse] class room creation failed");
       return fail(500, CLASS_API_ERRORS.openFailed);
     } finally {
-      inFlight.delete(code);
+      // Clear the marker only if it is still ours; a newer creation's marker stays.
+      if (inFlight.get(code) === marker) inFlight.delete(code);
       settle();
     }
     // The room may already have closed again (released) before we answer.

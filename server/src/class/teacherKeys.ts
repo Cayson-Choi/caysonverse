@@ -107,10 +107,35 @@ function parseEntry(raw: unknown): TeacherKeyEntry | null {
 }
 
 /**
+ * The last warning given per key file, as "<problem>@<mtime>:<size>" (or "read:<errno>").
+ * The file is re-read on every request, so without this a broken file would log on every
+ * teacher login; now each distinct problem of each file state warns once.
+ */
+const lastWarning = new Map<string, string>();
+
+function warnOnce(file: string, signature: string, message: string): void {
+  if (lastWarning.get(file) === signature) return;
+  if (lastWarning.size >= 100) lastWarning.clear(); // bounded: only a handful of paths are ever used
+  lastWarning.set(file, signature);
+  console.warn(message);
+}
+
+/** "<mtimeMs>:<size>" of `file`, or "?" — identifies the file's current state for warnOnce. */
+function fileStamp(file: string): string {
+  try {
+    const s = fs.statSync(file);
+    return `${s.mtimeMs}:${s.size}`;
+  } catch {
+    return "?";
+  }
+}
+
+/**
  * Read the teacher-key file (see `resolveKeysFile`). Re-read on every call so keys can be
  * added or revoked without a restart. A missing file is normal (no teachers yet) → [].
  * Malformed or reserved entries (id "operator", group "*") and repeated ids are skipped.
- * Problems are logged as fixed strings only — never the file's content.
+ * Problems are logged as fixed strings only — never the file's content — and only once per
+ * file state (see warnOnce).
  */
 export function loadTeacherKeys(p?: string): TeacherKeyEntry[] {
   const file = resolveKeysFile(p);
@@ -118,9 +143,9 @@ export function loadTeacherKeys(p?: string): TeacherKeyEntry[] {
   try {
     text = fs.readFileSync(file, "utf8");
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
-      console.warn("[caysonverse] teacher key file could not be read — no teacher keys loaded");
-    }
+    const code = (err as NodeJS.ErrnoException).code ?? "unknown";
+    if (code === "ENOENT") lastWarning.delete(file);
+    else warnOnce(file, `read:${code}`, "[caysonverse] teacher key file could not be read — no teacher keys loaded");
     return [];
   }
   let data: unknown;
@@ -128,12 +153,12 @@ export function loadTeacherKeys(p?: string): TeacherKeyEntry[] {
     data = JSON.parse(text);
   } catch {
     // The JSON error message would quote the file — never log it.
-    console.warn("[caysonverse] teacher key file is not valid JSON — no teacher keys loaded");
+    warnOnce(file, `json@${fileStamp(file)}`, "[caysonverse] teacher key file is not valid JSON — no teacher keys loaded");
     return [];
   }
   const list = (data as { keys?: unknown } | null)?.keys;
   if (typeof data !== "object" || data === null || Array.isArray(data) || !Array.isArray(list)) {
-    console.warn('[caysonverse] teacher key file has no "keys" list — no teacher keys loaded');
+    warnOnce(file, `shape@${fileStamp(file)}`, '[caysonverse] teacher key file has no "keys" list — no teacher keys loaded');
     return [];
   }
   const out: TeacherKeyEntry[] = [];
@@ -149,16 +174,39 @@ export function loadTeacherKeys(p?: string): TeacherKeyEntry[] {
     out.push(entry);
   }
   if (skipped > 0) {
-    console.warn(`[caysonverse] teacher key file: skipped ${skipped} malformed or duplicate entr${skipped === 1 ? "y" : "ies"}`);
+    warnOnce(
+      file,
+      `skipped${skipped}@${fileStamp(file)}`,
+      `[caysonverse] teacher key file: skipped ${skipped} malformed or duplicate entr${skipped === 1 ? "y" : "ies"}`,
+    );
+  } else {
+    lastWarning.delete(file); // healthy again: a later problem warns anew
   }
   return out;
 }
 
 // ───────────────────────────────── verification ─────────────────────────────────
 
-/** sha256 hex of the trimmed key (the only form a key is ever stored in). */
+/**
+ * Ignored when a teacher types a key: whitespace (incl. no-break / ideographic spaces), the
+ * invisible soft hyphen / zero-width characters, and every kind of dash a word processor or
+ * an IME may produce. Applied after NFKC, which already folds full-width letters and digits.
+ */
+const KEY_IGNORED = /[\s\u00ad\u200b-\u200d\u2060\ufeff\u2010-\u2015\u2212\ufe58\ufe63\uff0d-]/g;
+
+/**
+ * The canonical form of a typed teacher key: NFKC, all whitespace and dashes removed,
+ * upper-case — so "k7qx 2mpa-9trw4hez" is the key K7QX-2MPA-9TRW-4HEZ. Keys use an
+ * upper-case alphabet without look-alikes, so nothing is lost. scripts/teacher-key.mjs
+ * hashes the same form.
+ */
+export function canonicalKey(key: string): string {
+  return key.normalize("NFKC").replace(KEY_IGNORED, "").toUpperCase();
+}
+
+/** sha256 hex of the canonical key (the only form a key is ever stored in). */
 export function hashKey(key: string): string {
-  return createHash("sha256").update(key.trim(), "utf8").digest("hex");
+  return createHash("sha256").update(canonicalKey(key), "utf8").digest("hex");
 }
 
 /**
@@ -175,10 +223,13 @@ export function verifyTeacherKey(
   const key = provided.trim();
   if (key.length === 0) return null;
 
+  // The operator code is a free-form secret (ADMIN_CODE): exact match after trimming only.
   if (typeof operatorCode === "string" && compareAdminCode(key, operatorCode.trim())) {
     return { ...OPERATOR_KEY };
   }
 
+  // Teacher keys: compared in canonical form (case, spaces and dashes don't matter).
+  if (canonicalKey(key).length === 0) return null;
   const digest = Buffer.from(hashKey(key), "hex");
   let found: TeacherKeyEntry | null = null;
   for (const entry of entries) {

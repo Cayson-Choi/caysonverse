@@ -3,8 +3,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   hashKey,
+  canonicalKey,
   verifyTeacherKey,
   canTeach,
   loadTeacherKeys,
@@ -34,13 +36,33 @@ afterEach(() => {
 });
 
 describe("hashKey", () => {
-  it("is the sha256 hex of the trimmed key", () => {
-    // sha256("abc") — the FIPS 180-2 test vector.
-    const ABC = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
-    expect(hashKey("abc")).toBe(ABC);
-    expect(hashKey("  abc\n")).toBe(ABC);
+  const sha256 = (s: string) => createHash("sha256").update(s, "utf8").digest("hex");
+
+  it("is the sha256 hex of the canonical key (upper-case, no whitespace, no dashes)", () => {
+    // sha256("abc") — the FIPS 180-2 test vector — is what the canonical form of "abc" is NOT:
+    // the key is upper-cased first.
+    expect(sha256("abc")).toBe("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+    expect(hashKey("abc")).toBe(sha256("ABC"));
+    expect(hashKey(KEY)).toBe(sha256("K7QX2MPA9TRW4HEZ"));
     expect(hashKey(KEY)).toMatch(/^[0-9a-f]{64}$/);
     expect(hashKey(KEY)).not.toContain(KEY);
+  });
+
+  it("canonicalKey: upper-case, whitespace and every kind of dash removed, full-width folded", () => {
+    expect(canonicalKey(KEY)).toBe("K7QX2MPA9TRW4HEZ");
+    for (const typed of [
+      "k7qx-2mpa-9trw-4hez",
+      " K7QX 2MPA 9TRW 4HEZ ",
+      "K7QX2MPA9TRW4HEZ",
+      "k7qx\t2mpa\n9trw 4hez",
+      "K7QX\u20132MPA\u20149TRW\u22124HEZ", // en dash, em dash, minus sign (word-processor copies)
+      "Ｋ７ＱＸ－２ＭＰＡ－９ＴＲＷ－４ＨＥＺ", // full-width (Korean IME)
+      "K7QX\u00a02MPA\u30009TRW\u200b4HEZ", // nbsp, ideographic space, zero-width space
+    ]) {
+      expect(canonicalKey(typed)).toBe("K7QX2MPA9TRW4HEZ");
+      expect(hashKey(typed)).toBe(hashKey(KEY));
+    }
+    expect(canonicalKey(" - -  ")).toBe("");
   });
 });
 
@@ -55,11 +77,31 @@ describe("verifyTeacherKey", () => {
     expect(verifyTeacherKey(KEY, ENTRIES, OPERATOR)?.id).toBe("t1");
   });
 
+  it("lower-case, spaced and dash-less spellings of a key all verify (fix round 1)", () => {
+    for (const typed of ["k7qx-2mpa-9trw-4hez", "K7QX 2MPA 9TRW 4HEZ", "k7qx2mpa9trw4hez", " k7Qx-2mPa 9TrW4hEz "]) {
+      expect(verifyTeacherKey(typed, ENTRIES, undefined)).toEqual({
+        id: "t1",
+        label: "새빛초 4-2",
+        group: "saebit",
+        operator: false,
+      });
+    }
+  });
+
+  it("the operator code is NOT canonicalised: it stays case- and dash-exact", () => {
+    const op = "Op-S3cret-Code";
+    expect(verifyTeacherKey(op, [], op)?.operator).toBe(true);
+    expect(verifyTeacherKey(` ${op} `, [], op)?.operator).toBe(true); // trimmed only
+    expect(verifyTeacherKey(op.toLowerCase(), [], op)).toBeNull();
+    expect(verifyTeacherKey(op.replace(/-/g, ""), [], op)).toBeNull();
+  });
+
   it("rejects wrong, empty and non-string keys; an unset operator code never matches", () => {
     expect(verifyTeacherKey("K7QX-2MPA-9TRW-4HEX", ENTRIES, OPERATOR)).toBeNull(); // one symbol off
-    expect(verifyTeacherKey(KEY.toLowerCase(), ENTRIES, OPERATOR)).toBeNull(); // keys are case-exact
+    expect(verifyTeacherKey("k7qx-2mpa-9trw-4he", ENTRIES, OPERATOR)).toBeNull(); // one symbol short
     expect(verifyTeacherKey("", ENTRIES, OPERATOR)).toBeNull();
     expect(verifyTeacherKey("   ", ENTRIES, OPERATOR)).toBeNull();
+    expect(verifyTeacherKey(" - - ", ENTRIES, OPERATOR)).toBeNull(); // canonical form is empty
     for (const notString of [undefined, null, 123, {}, [KEY], { toString: () => KEY }]) {
       expect(verifyTeacherKey(notString, ENTRIES, OPERATOR)).toBeNull();
     }
@@ -195,6 +237,56 @@ describe("loadTeacherKeys", () => {
     process.env.TEACHER_KEYS_FILE = file;
     expect(loadTeacherKeys()).toEqual([GOOD]);
   });
+
+  it("warns once per file state, not on every request (fix round 1)", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const file = write("keys.json", "{ broken");
+    for (let i = 0; i < 5; i++) expect(loadTeacherKeys(file)).toEqual([]);
+    expect(warn).toHaveBeenCalledTimes(1);
+
+    // Edited but still not JSON (same problem, new file state): exactly one new warning.
+    fs.writeFileSync(file, "{ still broken", "utf8");
+    fs.utimesSync(file, new Date(), new Date(Date.now() + 2_000));
+    for (let i = 0; i < 5; i++) expect(loadTeacherKeys(file)).toEqual([]);
+    expect(warn).toHaveBeenCalledTimes(2);
+
+    // A different problem: exactly one new warning.
+    fs.writeFileSync(file, JSON.stringify({ keys: "nope" }), "utf8");
+    fs.utimesSync(file, new Date(), new Date(Date.now() + 5_000));
+    for (let i = 0; i < 5; i++) expect(loadTeacherKeys(file)).toEqual([]);
+    expect(warn).toHaveBeenCalledTimes(3);
+
+    // Skipped entries: once per file state as well.
+    fs.writeFileSync(file, JSON.stringify({ keys: [GOOD, { id: "bad" }] }), "utf8");
+    fs.utimesSync(file, new Date(), new Date(Date.now() + 10_000));
+    for (let i = 0; i < 5; i++) expect(loadTeacherKeys(file)).toEqual([GOOD]);
+    expect(warn).toHaveBeenCalledTimes(4);
+    expect(String(warn.mock.calls[3][0])).toContain("skipped 1");
+
+    // Fixed: silent. Broken again later (a problem seen before): warns again, once.
+    fs.writeFileSync(file, JSON.stringify({ keys: [GOOD] }), "utf8");
+    fs.utimesSync(file, new Date(), new Date(Date.now() + 15_000));
+    expect(loadTeacherKeys(file)).toEqual([GOOD]);
+    expect(warn).toHaveBeenCalledTimes(4);
+    fs.writeFileSync(file, "{ broken", "utf8");
+    fs.utimesSync(file, new Date(), new Date(Date.now() + 20_000));
+    expect(loadTeacherKeys(file)).toEqual([]);
+    expect(loadTeacherKeys(file)).toEqual([]);
+    expect(warn).toHaveBeenCalledTimes(5);
+  });
+
+  it("an unreadable path warns once per distinct error", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    // A directory where the file should be → EISDIR (not ENOENT).
+    const dir = path.join(tmpDir, "keys-dir.json");
+    fs.mkdirSync(dir);
+    for (let i = 0; i < 5; i++) expect(loadTeacherKeys(dir)).toEqual([]);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0][0])).toContain("could not be read");
+    // A missing file stays silent (no keys issued yet is normal).
+    for (let i = 0; i < 3; i++) expect(loadTeacherKeys(path.join(tmpDir, "missing.json"))).toEqual([]);
+    expect(warn).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("key-file path (ruling E7: repo-root relative, never cwd relative)", () => {
@@ -266,13 +358,16 @@ describe("scripts/teacher-key.mjs (plain node, ruling E8)", () => {
     expect(JSON.parse(text)).toEqual({
       keys: [{ id: "t-test", label: "테스트", group: "g1", sha256: hashKey(key) }],
     });
-    // The server accepts exactly that key.
-    expect(verifyTeacherKey(key, loadTeacherKeys(file), undefined)).toEqual({
-      id: "t-test",
-      label: "테스트",
-      group: "g1",
-      operator: false,
-    });
+    // The server accepts exactly that key — however the teacher types it.
+    for (const typed of [key, key.toLowerCase(), key.replace(/-/g, ""), ` ${key.replace(/-/g, " ").toLowerCase()} `]) {
+      expect(verifyTeacherKey(typed, loadTeacherKeys(file), undefined)).toEqual({
+        id: "t-test",
+        label: "테스트",
+        group: "g1",
+        operator: false,
+      });
+    }
+    expect(res.stdout).toContain("대·소문자, 띄어쓰기, '-'는 상관없어요");
 
     // A second key is appended, the first is kept.
     const res2 = run("--id", "t-two", "--label", "둘째", "--file", file);

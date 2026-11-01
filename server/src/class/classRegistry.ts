@@ -7,7 +7,9 @@
  *
  * It also holds the one-time teacher passes (`teacherPass`): the HTTP route verifies the
  * teacher key and hands out a pass; the ClassRoom consumes it on join. The key itself
- * never travels in Colyseus join options.
+ * never travels in Colyseus join options. Passes are kept per class, at most
+ * MAX_PASSES_PER_CLASS each (oldest dropped), so memory stays bounded and no call has to
+ * sweep every pass of every class.
  */
 
 import { randomBytes } from "node:crypto";
@@ -37,6 +39,13 @@ interface PassRecord {
   expiresAt: number;
 }
 
+/**
+ * Outstanding (unused, possibly expired) passes kept per class; issuing one more drops the
+ * oldest. A teacher needs one pass per "반 열기" click, so 20 is far above real use and
+ * only bounds a client that keeps asking.
+ */
+export const MAX_PASSES_PER_CLASS = 20;
+
 /** `CV_MAX_CLASSES` when it is a positive integer, else MAX_CLASSES_DEFAULT. */
 function maxClassesFromEnv(): number {
   const raw = process.env.CV_MAX_CLASSES;
@@ -47,7 +56,10 @@ function maxClassesFromEnv(): number {
 
 export class ClassRegistry {
   private readonly classes = new Map<string, ClassEntry>();
+  /** pass → record, for O(1) lookup on join. */
   private readonly passes = new Map<string, PassRecord>();
+  /** class code → its passes in issue order (a Set keeps insertion order: first = oldest). */
+  private readonly passesByClass = new Map<string, Set<string>>();
   private readonly maxClasses: number;
 
   constructor(maxClasses?: number) {
@@ -96,8 +108,10 @@ export class ClassRegistry {
     const existing = this.classes.get(code);
     if (!existing || existing.roomId !== roomId) return;
     this.classes.delete(code);
-    for (const [pass, rec] of this.passes) {
-      if (rec.code === code) this.passes.delete(pass);
+    const bucket = this.passesByClass.get(code);
+    if (bucket) {
+      for (const pass of bucket) this.passes.delete(pass);
+      this.passesByClass.delete(code);
     }
   }
 
@@ -112,14 +126,35 @@ export class ClassRegistry {
 
   /**
    * A one-time teacher pass for `code`: 32 random bytes (base64url), valid for
-   * TEACHER_PASS_TTL_MS from `now`.
+   * TEACHER_PASS_TTL_MS from `now`. Touches only this class's passes: its expired ones are
+   * dropped, then the oldest until there is room under MAX_PASSES_PER_CLASS — O(passes of
+   * this class) ≤ 20, never a sweep over every class.
    */
   issuePass(code: string, key: VerifiedKey, now: number): string {
-    this.pruneExpired(now);
+    const held = this.passesByClass.get(code);
+    if (held) {
+      for (const old of held) {
+        const rec = this.passes.get(old);
+        if (!rec || now >= rec.expiresAt) this.forgetPass(old, code);
+      }
+      while (held.size >= MAX_PASSES_PER_CLASS) this.forgetPass(held.values().next().value as string, code);
+    }
+    // (Re-)fetch: pruning may have dropped an emptied bucket.
+    let bucket = this.passesByClass.get(code);
+    if (!bucket) {
+      bucket = new Set();
+      this.passesByClass.set(code, bucket);
+    }
     let pass = randomBytes(32).toString("base64url");
     while (this.passes.has(pass)) pass = randomBytes(32).toString("base64url");
     this.passes.set(pass, { code, key: { ...key }, expiresAt: now + TEACHER_PASS_TTL_MS });
+    bucket.add(pass);
     return pass;
+  }
+
+  /** Passes stored for `code` (expired ones are dropped lazily). For tests and diagnostics. */
+  passCount(code: string): number {
+    return this.passesByClass.get(code)?.size ?? 0;
   }
 
   /**
@@ -132,18 +167,21 @@ export class ClassRegistry {
     const rec = this.passes.get(pass);
     if (!rec) return null;
     if (now >= rec.expiresAt) {
-      this.passes.delete(pass);
+      this.forgetPass(pass, rec.code);
       return null;
     }
     if (rec.code !== code) return null;
-    this.passes.delete(pass);
+    this.forgetPass(pass, rec.code);
     return { ...rec.key };
   }
 
-  private pruneExpired(now: number): void {
-    for (const [pass, rec] of this.passes) {
-      if (now >= rec.expiresAt) this.passes.delete(pass);
-    }
+  /** Remove one pass of class `code` from the lookup map and the class's bucket (an emptied bucket goes too). */
+  private forgetPass(pass: string, code: string): void {
+    this.passes.delete(pass);
+    const bucket = this.passesByClass.get(code);
+    if (!bucket) return;
+    bucket.delete(pass);
+    if (bucket.size === 0) this.passesByClass.delete(code);
   }
 }
 

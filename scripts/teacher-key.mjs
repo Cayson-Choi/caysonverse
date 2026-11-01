@@ -58,9 +58,17 @@ function makeKey() {
   return groups.join("-");
 }
 
-/** Must match server hashKey(): sha256 hex of the trimmed key. */
+/**
+ * Must match server canonicalKey()/hashKey() (server/src/class/teacherKeys.ts): NFKC, every
+ * whitespace and dash removed, upper-case — then sha256 hex. Teachers may type the key in
+ * any case, with or without spaces and dashes.
+ */
+const KEY_IGNORED = /[\s\u00ad\u200b-\u200d\u2060\ufeff\u2010-\u2015\u2212\ufe58\ufe63\uff0d-]/g;
+function canonicalKey(key) {
+  return key.normalize("NFKC").replace(KEY_IGNORED, "").toUpperCase();
+}
 function hashKey(key) {
-  return createHash("sha256").update(key.trim(), "utf8").digest("hex");
+  return createHash("sha256").update(canonicalKey(key), "utf8").digest("hex");
 }
 
 let args;
@@ -142,4 +150,5 @@ console.log("");
 console.log(`  키:   ${key}`);
 console.log("");
 console.log("이 키는 다시 볼 수 없어요. 선생님께 안전하게 전달하세요.");
+console.log("(입력할 때 대·소문자, 띄어쓰기, '-'는 상관없어요.)");
 console.log("(서버는 키 파일을 요청마다 다시 읽으므로 다시 시작할 필요가 없어요.)");

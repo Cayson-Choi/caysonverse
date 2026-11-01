@@ -4,7 +4,7 @@ import {
   MAX_CLASSES_DEFAULT,
   TEACHER_PASS_TTL_MS,
 } from "@caysonverse/shared/escape/constants";
-import { ClassRegistry, classRegistry, type ClassEntry } from "./classRegistry";
+import { ClassRegistry, classRegistry, MAX_PASSES_PER_CLASS, type ClassEntry } from "./classRegistry";
 import type { VerifiedKey } from "./teacherKeys";
 
 const key: VerifiedKey = { id: "t1", label: "새빛초 4-2", group: "saebit", operator: false };
@@ -178,5 +178,56 @@ describe("teacher passes", () => {
     reg.release("AB2CDE", null);
     expect(reg.consumePass(pa, "AB2CDE", 1)).toBeNull();
     expect(reg.consumePass(pz, "ZZ3ZZZ", 1)?.id).toBe("t1");
+  });
+});
+
+describe("outstanding-pass cap (fix round 1)", () => {
+  it("keeps at most MAX_PASSES_PER_CLASS passes per class and drops the oldest", () => {
+    expect(MAX_PASSES_PER_CLASS).toBe(20);
+    const reg = new ClassRegistry();
+    const issued: string[] = [];
+    for (let i = 0; i < MAX_PASSES_PER_CLASS + 5; i++) issued.push(reg.issuePass("AB2CDE", key, i));
+    expect(reg.passCount("AB2CDE")).toBe(MAX_PASSES_PER_CLASS);
+    // The five oldest are gone, the newest twenty still work (each once).
+    for (const p of issued.slice(0, 5)) expect(reg.consumePass(p, "AB2CDE", 100)).toBeNull();
+    for (const p of issued.slice(5)) expect(reg.consumePass(p, "AB2CDE", 100)?.id).toBe("t1");
+    expect(reg.passCount("AB2CDE")).toBe(0);
+  });
+
+  it("the cap is per class: another class's passes are neither counted nor dropped", () => {
+    const reg = new ClassRegistry();
+    const a = Array.from({ length: MAX_PASSES_PER_CLASS }, (_, i) => reg.issuePass("AB2CDE", key, i));
+    const z = Array.from({ length: MAX_PASSES_PER_CLASS }, (_, i) => reg.issuePass("ZZ3ZZZ", key, i));
+    expect(reg.passCount("AB2CDE")).toBe(MAX_PASSES_PER_CLASS);
+    expect(reg.passCount("ZZ3ZZZ")).toBe(MAX_PASSES_PER_CLASS);
+    for (const p of a) expect(reg.consumePass(p, "AB2CDE", 50)?.id).toBe("t1");
+    for (const p of z) expect(reg.consumePass(p, "ZZ3ZZZ", 50)?.id).toBe("t1");
+  });
+
+  it("issuing prunes only that class's expired passes (no full sweep per call)", () => {
+    const reg = new ClassRegistry();
+    for (let i = 0; i < 5; i++) reg.issuePass("AB2CDE", key, 0);
+    const oldZ = Array.from({ length: 5 }, () => reg.issuePass("ZZ3ZZZ", key, 0));
+    // Everything above has expired by now; issuing for AB2CDE sweeps AB2CDE's bucket only.
+    const fresh = reg.issuePass("AB2CDE", key, TEACHER_PASS_TTL_MS);
+    expect(reg.passCount("AB2CDE")).toBe(1);
+    expect(reg.passCount("ZZ3ZZZ")).toBe(5);
+    // ZZ3ZZZ's expired passes are still refused, and refusing them drops them.
+    for (const p of oldZ) expect(reg.consumePass(p, "ZZ3ZZZ", TEACHER_PASS_TTL_MS)).toBeNull();
+    expect(reg.passCount("ZZ3ZZZ")).toBe(0);
+    expect(reg.consumePass(fresh, "AB2CDE", TEACHER_PASS_TTL_MS)?.id).toBe("t1");
+  });
+
+  it("a pass shown to the wrong class is kept in its own class's bucket; release empties the bucket", () => {
+    const reg = new ClassRegistry();
+    reg.reserve(entry("AB2CDE"));
+    const p = reg.issuePass("AB2CDE", key, 0);
+    expect(reg.consumePass(p, "ZZ3ZZZ", 1)).toBeNull();
+    expect(reg.passCount("AB2CDE")).toBe(1);
+    expect(reg.passCount("ZZ3ZZZ")).toBe(0);
+    reg.issuePass("AB2CDE", key, 0);
+    reg.release("AB2CDE", null);
+    expect(reg.passCount("AB2CDE")).toBe(0);
+    expect(reg.consumePass(p, "AB2CDE", 1)).toBeNull();
   });
 });

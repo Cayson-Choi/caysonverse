@@ -207,6 +207,10 @@ node scripts/teacher-key.mjs --id saebit-4-2 --label "새빛초 4-2" --group sae
 파일에는 그 키의 **sha256 해시만** 덧붙입니다. 키를 잃어버리면 다시 볼 방법이
 없으니 새 키를 만드세요.
 
+선생님은 키를 **대·소문자, 띄어쓰기, `-`를 신경 쓰지 않고** 입력해도 됩니다
+(`k7qx 2mpa 9trw 4hez`도 `K7QX-2MPA-9TRW-4HEZ`와 같은 키). 서버와 스크립트 모두
+대문자로 바꾸고 띄어쓰기·`-`를 지운 뒤 해시를 비교합니다.
+
 ### 키 파일
 
 - 형식: `{ "keys": [{ "id", "label", "group"?, "sha256" }] }` — 키 원문은 어디에도
@@ -232,12 +236,16 @@ node scripts/teacher-key.mjs --id saebit-4-2 --label "새빛초 4-2" --group sae
 - `POST /api/operator/status`에 `{ "operatorKey": "<ADMIN_CODE>" }`를 보내면 열린
   반(코드·이름·진행 단계·인원·팀·교실 수)과 서버 상태(메모리·CPU·이벤트 루프 지연·
   가동 시간) JSON을 받습니다. 1단계에서는 이 JSON이 운영자 "화면"입니다.
-  셸 기록에 코드가 남지 않게 입력받아 쓰세요.
+  코드가 셸 기록에도, 다른 사용자가 볼 수 있는 프로세스 인자(`ps`)에도 남지 않게,
+  입력받은 값을 `printf`(셸 내장)로 표준 입력에 흘려 보내세요.
 
   ```bash
-  read -rs OPKEY && curl -s -X POST https://<서버 주소>/api/operator/status \
-    -H 'content-type: application/json' -d "{\"operatorKey\":\"$OPKEY\"}"; unset OPKEY
+  read -rs OPKEY && printf '{"operatorKey":"%s"}' "$OPKEY" \
+    | curl -s -X POST https://<서버 주소>/api/operator/status \
+        -H 'content-type: application/json' --data-binary @-; unset OPKEY
   ```
+
+  (권장 형식인 무작위 base64url 코드에는 `"`·`\`가 없어 위 JSON이 그대로 맞습니다.)
 
 ### 보안 규칙
 
@@ -247,6 +255,11 @@ node scripts/teacher-key.mjs --id saebit-4-2 --label "새빛초 4-2" --group sae
 - 틀린 키는 IP당 1분에 5번까지입니다(선생님 키·운영자 키 합산). 넘으면 1분 동안
   "시도가 너무 많아요"(429)로 막힙니다. IP는 관리자 로그인과 같은 코드
   (`resolveClientIp`)로, 프록시가 붙인 `X-Forwarded-For`의 맨 오른쪽 값을 씁니다.
+- **Node 서버는 Caddy(리버스 프록시) 뒤에서만 받게 하세요.** 위 제한은
+  `X-Forwarded-For`를 믿기 때문에, 바깥에서 Node 포트(기본 2567)로 바로 들어오면
+  누구나 그 헤더를 지어내 IP를 바꿔 가며 제한을 피할 수 있습니다. 서버는 지금 모든
+  네트워크 주소에서 듣고 있으므로, 방화벽(Oracle 보안 목록·iptables 등)에서 Node
+  포트를 닫고 80/443(Caddy)만 열어 두세요(또는 Node를 localhost에만 묶으세요).
 - 한 서버가 여는 반 수에는 한도가 있습니다(`CV_MAX_CLASSES`, 기본 10).
 
 ---
