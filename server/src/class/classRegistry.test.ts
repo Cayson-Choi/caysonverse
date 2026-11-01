@@ -32,29 +32,65 @@ describe("ClassRegistry", () => {
     // At the cap an existing code still answers "taken", not "full".
     expect(reg.reserve(entry("AB2CDE"))).toBe("taken");
 
-    reg.attach("AB2CDE", "room-a");
+    expect(reg.attach("AB2CDE", "room-a")).toBe(true);
     expect(reg.get("AB2CDE")?.roomId).toBe("room-a");
     expect(reg.list().map((e) => e.code)).toEqual(["AB2CDE", "ZZ3ZZZ"]);
 
-    reg.release("AB2CDE");
+    reg.release("AB2CDE", "room-a");
     expect(reg.get("AB2CDE")).toBeUndefined();
     expect(reg.list()).toHaveLength(1);
     expect(reg.reserve(entry("QQ4QQQ"))).toBe("ok");
     // Releasing an unknown code is a no-op.
-    reg.release("NOPE22");
+    reg.release("NOPE22", "room-a");
+    reg.release("NOPE22", null);
     expect(reg.list()).toHaveLength(2);
   });
 
   it("attach creates the entry when none was reserved (direct-create test path); without an entry it is a no-op", () => {
     const reg = new ClassRegistry(1);
-    reg.attach("AB2CDE", "room-a", entry("AB2CDE", 7));
+    expect(reg.attach("AB2CDE", "room-a", entry("AB2CDE", 7))).toBe(true);
     expect(reg.get("AB2CDE")).toEqual({ ...entry("AB2CDE", 7), roomId: "room-a" });
-    // An existing entry keeps its data and only gets the room id.
-    reg.attach("AB2CDE", "room-b", { ...entry("AB2CDE", 99), textLevel: "hard" });
-    expect(reg.get("AB2CDE")).toEqual({ ...entry("AB2CDE", 7), roomId: "room-b" });
+    // An existing entry keeps its data; attaching the same room again is fine.
+    expect(reg.attach("AB2CDE", "room-a", { ...entry("AB2CDE", 99), textLevel: "hard" })).toBe(true);
+    expect(reg.get("AB2CDE")).toEqual({ ...entry("AB2CDE", 7), roomId: "room-a" });
     // Unknown code without an entry (e.g. released mid-creation): nothing is created.
-    reg.attach("ZZ3ZZZ", "room-z");
+    expect(reg.attach("ZZ3ZZZ", "room-z")).toBe(false);
     expect(reg.get("ZZ3ZZZ")).toBeUndefined();
+  });
+
+  // Controller ruling (Task 4 registry hardening): Colyseus calls onDispose even on a room whose
+  // onCreate threw, so a room may only ever touch the entry that carries ITS roomId.
+  it("attach only fills an empty roomId or the same one: a second room cannot take over a live code", () => {
+    const reg = new ClassRegistry(3);
+    reg.reserve(entry("AB2CDE"));
+    expect(reg.attach("AB2CDE", "room-a")).toBe(true); // null → room-a
+    expect(reg.attach("AB2CDE", "room-b", entry("AB2CDE", 5))).toBe(false);
+    expect(reg.get("AB2CDE")?.roomId).toBe("room-a");
+  });
+
+  it("release with a wrong roomId is a no-op: the entry and its passes survive", () => {
+    const reg = new ClassRegistry(3);
+    reg.reserve(entry("AB2CDE"));
+    reg.attach("AB2CDE", "room-live");
+    const pass = reg.issuePass("AB2CDE", key, 0);
+
+    reg.release("AB2CDE", "room-orphan"); // e.g. a refused client create's late onDispose
+    reg.release("AB2CDE", null); // e.g. a failed creation that never attached
+    expect(reg.get("AB2CDE")?.roomId).toBe("room-live");
+    expect(reg.consumePass(pass, "AB2CDE", 1)?.id).toBe("t1");
+
+    // A reserved entry (roomId still null) is released by null — the HTTP route's failure path.
+    reg.reserve(entry("ZZ3ZZZ"));
+    reg.release("ZZ3ZZZ", "room-live");
+    expect(reg.get("ZZ3ZZZ")).toBeDefined();
+    reg.release("ZZ3ZZZ", null);
+    expect(reg.get("ZZ3ZZZ")).toBeUndefined();
+
+    // The live room itself releases its class (and the class's passes).
+    const later = reg.issuePass("AB2CDE", key, 0);
+    reg.release("AB2CDE", "room-live");
+    expect(reg.get("AB2CDE")).toBeUndefined();
+    expect(reg.consumePass(later, "AB2CDE", 1)).toBeNull();
   });
 
   it("list() is a snapshot, not the live store", () => {
@@ -139,7 +175,7 @@ describe("teacher passes", () => {
     reg.reserve(entry("ZZ3ZZZ"));
     const pa = reg.issuePass("AB2CDE", key, 0);
     const pz = reg.issuePass("ZZ3ZZZ", key, 0);
-    reg.release("AB2CDE");
+    reg.release("AB2CDE", null);
     expect(reg.consumePass(pa, "AB2CDE", 1)).toBeNull();
     expect(reg.consumePass(pz, "ZZ3ZZZ", 1)?.id).toBe("t1");
   });

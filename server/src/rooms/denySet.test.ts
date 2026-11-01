@@ -1,11 +1,27 @@
 import { describe, it, expect } from "vitest";
 import { DenySet, normalizeNick } from "./denySet";
+import { nicknameKey } from "../class/nickname";
 
 describe("normalizeNick", () => {
   it("trims and lowercases for case/whitespace-insensitive matching", () => {
     expect(normalizeNick("  Bob  ")).toBe("bob");
     expect(normalizeNick("밥이")).toBe("밥이");
     expect(normalizeNick("ALICE")).toBe("alice");
+  });
+
+  // Ruling E14: ONE nickname normaliser for the server — the class's nicknameKey (NFC, trim,
+  // collapse runs of spaces, lower case). Small world change: a kick now also matches the same
+  // name typed with a different inner spacing or Unicode composition.
+  it("is the class nicknameKey: inner spacing and NFD/NFC no longer slip past a kick", () => {
+    for (const raw of ["  Bob  ", "가  람", "가람".normalize("NFD"), "A\tB"]) {
+      expect(normalizeNick(raw), raw).toBe(nicknameKey(raw));
+    }
+    const deny = new DenySet();
+    deny.add({ ip: null, nickname: "가 람" });
+    expect(deny.isDenied({ ip: null, nickname: "가  람" })).toBe(true);
+    expect(deny.isDenied({ ip: null, nickname: "가람" })).toBe(false); // no space is a different name
+    deny.add({ ip: null, nickname: "다온" });
+    expect(deny.isDenied({ ip: null, nickname: "다온".normalize("NFD") })).toBe(true);
   });
 });
 

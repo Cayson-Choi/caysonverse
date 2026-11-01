@@ -193,11 +193,15 @@ async function openOrJoin(code: string, key: VerifiedKey, textLevel: TextLevel, 
 
     let settle: () => void = () => {};
     inFlight.set(code, new Promise<void>((resolve) => (settle = resolve)));
+    let roomId: string;
     try {
-      const { roomId } = await deps.createClassRoom({ spawnToken: SPAWN_TOKEN, classCode: code, textLevel, opener });
+      ({ roomId } = await deps.createClassRoom({ spawnToken: SPAWN_TOKEN, classCode: code, textLevel, opener }));
+      // The ClassRoom attaches itself in onCreate; this fills the entry when the room factory is
+      // a stand-in (tests) and is a no-op otherwise.
       deps.registry.attach(code, roomId);
     } catch {
-      deps.registry.release(code);
+      // Frees our reservation only: if a live room holds the code, its entry is not ours (roomId ≠ null).
+      deps.registry.release(code, null);
       // Fixed text only: a matchmaker error can carry the create options as JSON.
       console.error("[caysonverse] class room creation failed");
       return fail(500, CLASS_API_ERRORS.openFailed);
@@ -206,7 +210,7 @@ async function openOrJoin(code: string, key: VerifiedKey, textLevel: TextLevel, 
       settle();
     }
     // The room may already have closed again (released) before we answer.
-    if (!deps.registry.get(code)) return fail(500, CLASS_API_ERRORS.openFailed);
+    if (deps.registry.get(code)?.roomId !== roomId) return fail(500, CLASS_API_ERRORS.openFailed);
     return { status: 200, body: { classCode: code, pass: deps.registry.issuePass(code, key, deps.now()) } };
   }
   return fail(500, CLASS_API_ERRORS.openFailed);
@@ -309,6 +313,16 @@ export function createProcessStats(): () => ProcessStats {
 
 // ─────────────────────────────────────── Express ───────────────────────────────────────
 
+/**
+ * The production room factory: a ClassRoom through the matchmaker (Task 5). The options carry
+ * the spawn token, so this is the only way a class comes to exist; never log what it throws
+ * (a matchmaker error can quote the options).
+ */
+export async function createClassRoom(opts: ClassCreateOptions): Promise<{ roomId: string }> {
+  const room = await matchMaker.createRoom(CLASS_ROOM, opts);
+  return { roomId: room.roomId };
+}
+
 /** Test seams for `mountClassApi`; production uses the defaults. */
 export type ClassApiOverrides = Partial<
   Pick<TeacherOpenDeps, "registry" | "keys" | "operatorCode" | "createClassRoom" | "now"> &
@@ -352,9 +366,7 @@ export function mountClassApi(app: Application, overrides: ClassApiOverrides = {
   const keys = overrides.keys ?? (() => loadTeacherKeys());
   const operatorCode = overrides.operatorCode ?? (() => process.env.ADMIN_CODE);
   const now = overrides.now ?? Date.now;
-  const createClassRoom =
-    overrides.createClassRoom ??
-    (async (opts: ClassCreateOptions) => ({ roomId: (await matchMaker.createRoom(CLASS_ROOM, opts)).roomId }));
+  const createRoom = overrides.createClassRoom ?? createClassRoom;
   const roomStats = overrides.roomStats ?? ((roomId: string) => readRoomStats(matchMaker.getLocalRoomById(roomId)));
   const processStats = overrides.processStats ?? createProcessStats();
 
@@ -382,7 +394,7 @@ export function mountClassApi(app: Application, overrides: ClassApiOverrides = {
       registry,
       keys,
       operatorCode,
-      createClassRoom,
+      createClassRoom: createRoom,
       limiter: limiterFor(ip),
       now,
     });

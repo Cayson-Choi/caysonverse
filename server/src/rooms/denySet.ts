@@ -2,7 +2,9 @@
  * In-memory kick deny list, pure and per-room-instance (WorldRoom owns one).
  *
  * v1 ban model (final-review F7): a kicked player is keyed ONLY by their
- * normalized nickname (trimmed + lowercased). We deliberately DO NOT key on IP.
+ * normalized nickname (`nicknameKey`: NFC, trimmed, inner runs of spaces collapsed,
+ * lowercased — the server's one nickname normaliser, ruling E14). We deliberately
+ * DO NOT key on IP.
  *
  * Why not IP — the classroom-lockout fix. In production behind Railway's proxy
  * the resolved IP is the client's PUBLIC IP, and a lecture hall of students on
@@ -25,9 +27,15 @@
  * Memory only: a server restart clears it (no persistent bans, per YAGNI).
  */
 
-/** Trim + lowercase so nickname matching ignores case and surrounding spaces. */
+import { nicknameKey } from "../class/nickname";
+
+/**
+ * The deny-list key of a nickname: the class's `nicknameKey` (ruling E14), so matching ignores
+ * case, surrounding spaces, how many spaces sit between words ("가  람" = "가 람") and the Unicode
+ * composition the keyboard produced. (Before E14 this was trim + lowercase only.)
+ */
 export function normalizeNick(nickname: string): string {
-  return nickname.trim().toLowerCase();
+  return nicknameKey(nickname);
 }
 
 interface DenyEntry {

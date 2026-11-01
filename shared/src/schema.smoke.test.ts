@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { Schema, type, Encoder, Decoder } from "@colyseus/schema";
-import { Player } from "./schema";
+import { ClassState, Player, Team } from "./schema";
 import { ROLE_STUDENT, ROLE_TEACHER } from "./constants";
+import { PLACE_ESCAPE, PLACE_HUB } from "./escape/constants";
 import { APPEARANCE_FIELDS, APPEARANCE_RANGES, pickAppearance, type Appearance } from "./appearance";
 
 /**
@@ -93,5 +94,72 @@ describe("@colyseus/schema decorator wiring", () => {
     const appearance = fields.filter((f) => (APPEARANCE_FIELDS as readonly string[]).includes(f.name));
     expect(appearance.map((f) => f.name)).toEqual([...APPEARANCE_FIELDS]);
     expect(appearance.every((f) => f.type === "uint8")).toBe(true);
+  });
+
+  it("ClassState round-trips teams, litRooms and Player.place/teamId", () => {
+    // Defaults: a fresh class is in the lobby at the easy level; a fresh player is in the hub, teamless.
+    const fresh = new ClassState();
+    expect(fresh.phase).toBe("lobby");
+    expect(fresh.textLevel).toBe("easy");
+    expect(fresh.classCode).toBe("");
+    expect(fresh.teams.size).toBe(0);
+    expect(new Player().teamId).toBe("");
+    expect(new Player().place).toBe(PLACE_HUB);
+
+    const state = new ClassState();
+    state.classCode = "AB2CDE";
+    state.phase = "running";
+    state.textLevel = "hard";
+    state.announcement = "공지"; // inherited from WorldState
+    state.openRooms.push("counsel");
+    state.litRooms.push("counsel");
+
+    const team = new Team();
+    team.id = "t1";
+    team.nameIndex = 11; // the largest TEAM_NAMES index
+    team.colorIndex = 7; // the largest TEAM_COLORS index
+    team.members.push("s1", "s2");
+    team.escapeRoomId = "room-x";
+    team.escapeDoor = "counsel";
+    team.escaped.push("counsel");
+    team.stars.set("counsel", 3);
+    team.padDoor = "counsel";
+    team.padLeaderSid = "s2";
+    team.padCount = 2;
+    state.teams.set("t1", team);
+
+    const player = new Player();
+    player.nickname = "가람";
+    player.teamId = "t1";
+    player.place = PLACE_ESCAPE;
+    state.players.set("s1", player);
+
+    const decoded = new ClassState();
+    new Decoder(decoded).decode(new Encoder(state).encodeAll());
+
+    expect(decoded.classCode).toBe("AB2CDE");
+    expect(decoded.phase).toBe("running");
+    expect(decoded.textLevel).toBe("hard");
+    expect(decoded.announcement).toBe("공지");
+    expect([...decoded.openRooms]).toEqual(["counsel"]);
+    expect([...decoded.litRooms]).toEqual(["counsel"]);
+    const t = decoded.teams.get("t1")!;
+    expect(t.toJSON()).toEqual({
+      id: "t1",
+      nameIndex: 11,
+      colorIndex: 7,
+      members: ["s1", "s2"],
+      escapeRoomId: "room-x",
+      escapeDoor: "counsel",
+      escaped: ["counsel"],
+      stars: { counsel: 3 },
+      padDoor: "counsel",
+      padLeaderSid: "s2",
+      padCount: 2,
+    });
+    const p = decoded.players.get("s1")!;
+    expect(p.nickname).toBe("가람");
+    expect(p.teamId).toBe("t1");
+    expect(p.place).toBe(PLACE_ESCAPE);
   });
 });

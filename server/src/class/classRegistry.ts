@@ -2,7 +2,8 @@
  * The class registry (반 등록부): every class open in THIS process (single-server design,
  * spec §14 — session-only, nothing is persisted). The teacher HTTP route reserves a code
  * before it creates the ClassRoom; the ClassRoom attaches its roomId in `onCreate` and
- * releases the code in `onDispose`.
+ * releases the code in `onDispose`. Both lifecycle calls are tied to the room's id, so a
+ * room can only ever fill or free the entry that is its own.
  *
  * It also holds the one-time teacher passes (`teacherPass`): the HTTP route verifies the
  * teacher key and hands out a pass; the ClassRoom consumes it on join. The key itself
@@ -62,22 +63,38 @@ export class ClassRegistry {
   }
 
   /**
-   * Record the live room of `code`. When the code was not reserved (a ClassRoom created
-   * directly, e.g. in tests) and `entry` is given, the class is registered here (no cap:
-   * the cap is enforced where classes are opened, in `reserve`). Without an entry an
-   * unknown code is ignored — it was released while its room was being created.
+   * Record the live room of `code`; true when the entry now carries `roomId`.
+   *
+   * An entry whose roomId is still null (reserved by the HTTP route) is filled; one that
+   * already carries `roomId` stays as it is. An entry held by ANOTHER room is never taken
+   * over (→ false): a code belongs to one live room (Task 4 registry hardening). When the
+   * code was not reserved (a ClassRoom created directly, e.g. in tests) and `entry` is
+   * given, the class is registered here (no cap: the cap is enforced where classes are
+   * opened, in `reserve`). Without an entry an unknown code is ignored (→ false) — it was
+   * released while its room was being created.
    */
-  attach(code: string, roomId: string, entry?: Omit<ClassEntry, "roomId">): void {
+  attach(code: string, roomId: string, entry?: Omit<ClassEntry, "roomId">): boolean {
     const existing = this.classes.get(code);
     if (existing) {
+      if (existing.roomId !== null && existing.roomId !== roomId) return false;
       existing.roomId = roomId;
-      return;
+      return true;
     }
-    if (entry) this.classes.set(code, { ...entry, opener: { ...entry.opener }, code, roomId });
+    if (!entry) return false;
+    this.classes.set(code, { ...entry, opener: { ...entry.opener }, code, roomId });
+    return true;
   }
 
-  /** Forget the class and every pass still outstanding for it. */
-  release(code: string): void {
+  /**
+   * Forget the class and every pass still outstanding for it — but only when the entry
+   * belongs to `roomId` (null: a reservation whose room was never attached, the HTTP
+   * route's failure path). Anything else is a no-op: Colyseus calls `onDispose` even on a
+   * room whose `onCreate` threw, so a refused `create("class", { classCode: <live code> })`
+   * must not evict the live class or kill its passes (Task 4 registry hardening).
+   */
+  release(code: string, roomId: string | null): void {
+    const existing = this.classes.get(code);
+    if (!existing || existing.roomId !== roomId) return;
     this.classes.delete(code);
     for (const [pass, rec] of this.passes) {
       if (rec.code === code) this.passes.delete(pass);
