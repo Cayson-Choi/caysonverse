@@ -7,7 +7,9 @@ import {
   WORLD_BOUNDS,
   PLAYER_RADIUS,
 } from "@caysonverse/shared/constants";
-import { validateMove } from "./movement";
+import { LEGACY_GEOMETRY, SPAWN_POINT, SPAWN_JITTER } from "@caysonverse/shared/worldMap";
+import type { MapGeometry } from "@caysonverse/shared/school/geometry";
+import { validateMove, spawnInDisk } from "./movement";
 
 const ORIGIN = { x: 0, z: 0 };
 
@@ -186,5 +188,113 @@ describe("validateMove — yaw normalization", () => {
     const a = validateMove(ORIGIN, { x: 0, z: 0, yaw: Math.PI / 2 }, 100);
     const b = validateMove(ORIGIN, { x: 0, z: 0, yaw: Math.PI / 2 + 2 * Math.PI }, 100);
     expect(a!.yaw).toBeCloseTo(b!.yaw, 5);
+  });
+});
+
+// escape phase 1, Task 2: the map a player stands in is an argument, so the school hub and
+// the team rooms reuse the same speed/bounds/obstacle rules on their own geometry.
+describe("validateMove — map geometry argument", () => {
+  const BOX: MapGeometry = {
+    id: "counsel",
+    bounds: { minX: -6, maxX: 6, minZ: -5, maxZ: 5 },
+    obstacles: [{ minX: 1, maxX: 2, minZ: -1, maxZ: 1 }],
+    cameraBoxes: [],
+  };
+
+  it("clamps into the given geometry's bounds", () =>
+    expect(validateMove({ x: 5.5, z: 0 }, { x: 5.9, z: 0, yaw: 0 }, 100, BOX)).toEqual({
+      x: 6 - PLAYER_RADIUS,
+      z: 0,
+      yaw: 0,
+    }));
+
+  it("drops a move into the given geometry's obstacle", () =>
+    expect(validateMove({ x: 0.3, z: 0 }, { x: 0.8, z: 0, yaw: 0 }, 100, BOX)).toBeNull());
+
+  it("without geo it is the legacy map (same verdicts as before)", () => {
+    // Moves whose verdict on the legacy world is pinned by the tests above: accepted open
+    // floor, clamped edges, furniture/wall drops. Each must come out the same with no
+    // argument and with LEGACY_GEOMETRY passed explicitly.
+    const cases: Array<[{ x: number; z: number }, unknown, number]> = [
+      [ORIGIN, { x: 0.3, z: 0.2, yaw: 0 }, 100], // open floor
+      [{ x: -0.5, z: 0 }, { x: 0.5, z: 0, yaw: 0 }, 1000], // door gap
+      [{ x: WORLD_BOUNDS.maxX - 0.1, z: 12 }, { x: WORLD_BOUNDS.maxX + 5, z: 12, yaw: 0 }, 2000], // east clamp
+      [{ x: -15, z: WORLD_BOUNDS.minZ + 0.1 }, { x: -15, z: WORLD_BOUNDS.minZ - 5, yaw: 0 }, 10000], // south clamp
+      [{ x: -15, z: 2.4 }, { x: -15, z: 3.5, yaw: 0 }, 1000], // sofa
+      [{ x: 0.7, z: -8 }, { x: 0, z: -8, yaw: 0 }, 1000], // divider wall
+      [{ x: 29, z: 0 }, { x: 29.6, z: 0, yaw: 0 }, 1000], // lecture-hall screen
+      [{ x: WORLD_BOUNDS.minX + PLAYER_RADIUS + 0.2, z: -10 }, { x: WORLD_BOUNDS.minX - 5, z: -10, yaw: 0 }, 10000], // maze west wall
+    ];
+    const defaults = cases.map(([c, p, e]) => validateMove(c, p, e));
+    const explicit = cases.map(([c, p, e]) => validateMove(c, p, e, LEGACY_GEOMETRY));
+    expect(defaults).toEqual(explicit);
+    // Non-vacuous: the set holds both outcomes (4 accepted, 4 dropped)...
+    expect(defaults.filter((r) => r === null)).toHaveLength(4);
+    // ...and the clamps really used the legacy bounds, not some other map's.
+    expect(defaults[2]!.x).toBeCloseTo(WORLD_BOUNDS.maxX - PLAYER_RADIUS, 6);
+    expect(defaults[3]!.z).toBeCloseTo(WORLD_BOUNDS.minZ + PLAYER_RADIUS, 6);
+  });
+
+  it("judges against the given map only (a legacy obstacle is open floor elsewhere)", () => {
+    // The legacy sofa at (-15, 3.5) drops the move on the legacy map; a map whose bounds
+    // contain that point and has no props there accepts the same move.
+    const open: MapGeometry = {
+      id: "hub-open",
+      bounds: { minX: -20, maxX: 20, minZ: -20, maxZ: 20 },
+      obstacles: [],
+      cameraBoxes: [],
+    };
+    expect(validateMove({ x: -15, z: 2.4 }, { x: -15, z: 3.5, yaw: 0 }, 1000)).toBeNull();
+    expect(validateMove({ x: -15, z: 2.4 }, { x: -15, z: 3.5, yaw: 0 }, 1000, open)).toEqual({
+      x: -15,
+      z: 3.5,
+      yaw: 0,
+    });
+  });
+});
+
+// escape phase 1, Task 2: the spawn rule WorldRoom used, with the map as an argument
+// (ClassRoom spawns around HUB_SPAWN on the hub geometry with the same function).
+describe("spawnInDisk", () => {
+  const ROOM: MapGeometry = {
+    id: "counsel",
+    bounds: { minX: -6, maxX: 6, minZ: -5, maxZ: 5 },
+    obstacles: [],
+    cameraBoxes: [],
+  };
+  /** A deterministic Math.random stand-in that returns `values` in order. */
+  const seq = (...values: number[]) => {
+    let i = 0;
+    return () => values[i++];
+  };
+
+  it("draws the radius first, then the angle (uniform over the disk's area)", () => {
+    expect(spawnInDisk(1, 2, 3, ROOM, seq(0, 0.7))).toEqual({ x: 1, z: 2 }); // r = 0 → centre
+    const east = spawnInDisk(1, 2, 3, ROOM, seq(1, 0)); // r = R, angle 0 → +x
+    expect(east.x).toBeCloseTo(4, 9);
+    expect(east.z).toBeCloseTo(2, 9);
+    const south = spawnInDisk(1, 2, 3, ROOM, seq(1, 0.25)); // angle π/2 → +z
+    expect(south.x).toBeCloseTo(1, 9);
+    expect(south.z).toBeCloseTo(5 - PLAYER_RADIUS, 9); // 2 + 3 = 5 → clamped off the wall
+    const half = spawnInDisk(0, 0, 4, ROOM, seq(0.25, 0)); // r = R·√0.25 = R/2
+    expect(half.x).toBeCloseTo(2, 9);
+  });
+
+  it("clamps into the map's bounds inset by the body radius", () => {
+    const corner = spawnInDisk(6, -5, 2, ROOM, seq(0, 0));
+    expect(corner).toEqual({ x: 6 - PLAYER_RADIUS, z: -5 + PLAYER_RADIUS });
+    const west = spawnInDisk(-6, 0, 2, ROOM, seq(1, 0.5)); // angle π → further west
+    expect(west.x).toBe(-6 + PLAYER_RADIUS);
+  });
+
+  it("with Math.random keeps the world spawn inside its jitter disk and the world bounds", () => {
+    for (let i = 0; i < 500; i++) {
+      const p = spawnInDisk(SPAWN_POINT.x, SPAWN_POINT.z, SPAWN_JITTER, LEGACY_GEOMETRY);
+      expect(Math.hypot(p.x - SPAWN_POINT.x, p.z - SPAWN_POINT.z)).toBeLessThanOrEqual(SPAWN_JITTER + 1e-9);
+      expect(p.x).toBeGreaterThanOrEqual(WORLD_BOUNDS.minX + PLAYER_RADIUS);
+      expect(p.x).toBeLessThanOrEqual(WORLD_BOUNDS.maxX - PLAYER_RADIUS);
+      expect(p.z).toBeGreaterThanOrEqual(WORLD_BOUNDS.minZ + PLAYER_RADIUS);
+      expect(p.z).toBeLessThanOrEqual(WORLD_BOUNDS.maxZ - PLAYER_RADIUS);
+    }
   });
 });

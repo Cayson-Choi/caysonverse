@@ -1,4 +1,4 @@
-import { SEATS, SEAT_REACH } from "@caysonverse/shared/worldMap";
+import { SEATS, SEAT_REACH, type Seat } from "@caysonverse/shared/worldMap";
 
 /**
  * Pure, clock-free sit validation (mirrors movement.ts / emoji.ts discipline).
@@ -18,6 +18,10 @@ import { SEATS, SEAT_REACH } from "@caysonverse/shared/worldMap";
  *                      case: a first-come race where the seat was taken by
  *                      someone else between prompt and click.
  *   - `{ seatIndex }`→ ACCEPT. The room snaps the player onto the seat.
+ *
+ * `seats` is the chair list of the map the player stands in. It defaults to the
+ * legacy world's `SEATS`; a map without chairs passes `[]`, so every Sit there
+ * is a silent drop (no index is in range).
  */
 
 /** Personal Korean notice for the occupied-seat race (mirrors ChatRejected). */
@@ -28,19 +32,20 @@ export function validateSit(
   payload: unknown,
   occupancy: ReadonlyMap<number, string>,
   sessionId: string,
+  seats: readonly Seat[] = SEATS,
 ): { seatIndex: number } | { reason: string } | null {
   // 1. shape: an object carrying an integer seatIndex in range → else silent drop.
   if (typeof payload !== "object" || payload === null) return null;
   const seatIndex = (payload as Record<string, unknown>).seatIndex;
   if (typeof seatIndex !== "number" || !Number.isInteger(seatIndex)) return null;
-  if (seatIndex < 0 || seatIndex >= SEATS.length) return null;
+  if (seatIndex < 0 || seatIndex >= seats.length) return null;
 
   // 2. already seated → silent drop (client UI never offers sit while seated).
   if (player.seatIndex >= 0) return null;
 
   // 3. distance gate: honest clients only see the prompt within SEAT_REACH, so a
   //    farther Sit is a tampered client → silent drop (not a user-facing reason).
-  const seat = SEATS[seatIndex];
+  const seat = seats[seatIndex];
   if (Math.hypot(player.x - seat.x, player.z - seat.z) > SEAT_REACH) return null;
 
   // 4. occupancy: taken by SOMEONE ELSE → personal rejection notice (the race).

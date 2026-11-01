@@ -2,11 +2,11 @@ import {
   RUN_SPEED,
   MOVE_SPEED_SLACK,
   MOVE_ELAPSED_FLOOR_MS,
-  WORLD_BOUNDS,
   PLAYER_RADIUS,
 } from "@caysonverse/shared/constants";
-import { OBSTACLES } from "@caysonverse/shared/worldMap";
+import { LEGACY_GEOMETRY } from "@caysonverse/shared/worldMap";
 import { isBlocked } from "@caysonverse/shared/collision";
+import type { MapGeometry } from "@caysonverse/shared/school/geometry";
 import type { MovePayload } from "@caysonverse/shared/messages";
 
 /**
@@ -23,16 +23,20 @@ import type { MovePayload } from "@caysonverse/shared/messages";
  * Pipeline (invalid messages are dropped whole — never partially applied):
  *   1. payload must be an object with finite x, z, yaw
  *   3. displacement from `current` must fit the speed budget for `elapsedMs`
- *   4. clamp target into WORLD_BOUNDS, inset by PLAYER_RADIUS (legal-speed
+ *   4. clamp target into the map's bounds, inset by PLAYER_RADIUS (legal-speed
  *      overshoot is clamped, not dropped)
- *   5. drop the move if the clamped target's body overlaps any OBSTACLE — the
- *      client already slides around obstacles, so this only rejects a modified
- *      client trying to walk into furniture/walls (silent-drop policy)
+ *   5. drop the move if the clamped target's body overlaps any of the map's
+ *      obstacles — the client already slides around obstacles, so this only
+ *      rejects a modified client trying to walk into furniture/walls
+ *      (silent-drop policy)
  *   6. normalize yaw into [-PI, PI]
  * (the per-client rate cap and applying the result live in the room.)
  *
- * Collision is enforced from the SAME `OBSTACLES` the client slides against, so
- * both sides share one source of map/collision truth.
+ * Collision is enforced from the SAME obstacles the client slides against, so
+ * both sides share one source of map/collision truth. `geo` is the map the
+ * player stands in; it defaults to the legacy world (`LEGACY_GEOMETRY`, whose
+ * bounds and obstacles ARE `WORLD_BOUNDS` / `OBSTACLES`), so existing callers
+ * keep their exact verdicts.
  *
  * 기준 속도 = 달리기 속도 (controls-ux §5): the client never reports walk/run, so
  * the speed budget is sized for RUN_SPEED (MOVE_SPEED × 1.6).
@@ -41,6 +45,7 @@ export function validateMove(
   current: { x: number; z: number },
   payload: unknown,
   elapsedMs: number,
+  geo: MapGeometry = LEGACY_GEOMETRY,
 ): MovePayload | null {
   // 1. shape
   if (typeof payload !== "object" || payload === null) return null;
@@ -59,15 +64,41 @@ export function validateMove(
 
   // 4. clamp the player CENTRE into bounds inset by the body radius, so a
   //    clamped edge position rests flush against the boundary wall.
-  const x = clamp(p.x, WORLD_BOUNDS.minX + PLAYER_RADIUS, WORLD_BOUNDS.maxX - PLAYER_RADIUS);
-  const z = clamp(p.z, WORLD_BOUNDS.minZ + PLAYER_RADIUS, WORLD_BOUNDS.maxZ - PLAYER_RADIUS);
+  const { bounds } = geo;
+  const x = clamp(p.x, bounds.minX + PLAYER_RADIUS, bounds.maxX - PLAYER_RADIUS);
+  const z = clamp(p.z, bounds.minZ + PLAYER_RADIUS, bounds.maxZ - PLAYER_RADIUS);
 
   // 5. obstacle overlap → drop (a small epsilon in isBlocked tolerates the
   //    floating-point rounding of a legitimately wall-hugging client).
-  if (isBlocked(x, z, PLAYER_RADIUS, OBSTACLES)) return null;
+  if (isBlocked(x, z, PLAYER_RADIUS, geo.obstacles)) return null;
 
   // 6. normalize yaw.
   return { x, z, yaw: normalizeAngle(p.yaw) };
+}
+
+/**
+ * A spawn point: uniform over the disk of `radius` around (cx, cz), then clamped
+ * into `geo`'s bounds inset by PLAYER_RADIUS (the same clamp as validateMove's
+ * step 4), so joiners don't stack yet always land in-bounds. Obstacles are not
+ * checked — each map keeps its spawn disk clear (the map data tests pin that).
+ *
+ * `random` draws the radius first, then the angle (WorldRoom's original order);
+ * it is Math.random except in tests.
+ */
+export function spawnInDisk(
+  cx: number,
+  cz: number,
+  radius: number,
+  geo: MapGeometry,
+  random: () => number = Math.random,
+): { x: number; z: number } {
+  const r = radius * Math.sqrt(random()); // sqrt → uniform over the area, not the radius
+  const angle = random() * Math.PI * 2;
+  const { bounds } = geo;
+  return {
+    x: clamp(cx + r * Math.cos(angle), bounds.minX + PLAYER_RADIUS, bounds.maxX - PLAYER_RADIUS),
+    z: clamp(cz + r * Math.sin(angle), bounds.minZ + PLAYER_RADIUS, bounds.maxZ - PLAYER_RADIUS),
+  };
 }
 
 function isFiniteNumber(value: unknown): value is number {
