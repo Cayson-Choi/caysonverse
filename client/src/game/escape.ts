@@ -7,8 +7,8 @@
  *   1. a text field outside the 조교 dialogue has the keyboard → it lets go (blur) and
  *      that is all. (The world chat input handles its own Esc, which the hotkey table
  *      already drops as consumed; this covers the admin announce field and the like.)
- *   2. otherwise the topmost open thing closes — 조교 dialogue, roster, menu — or, with
- *      nothing open, the menu opens.
+ *   2. otherwise the topmost open thing closes — the menu (it is on top), then the 조교
+ *      dialogue, then the roster — or, with nothing open, the menu opens.
  *
  * The 조교 dialogue is the exception to rule 1: its own input is part of the dialogue,
  * so one Esc closes the whole dialogue even while you are typing in it (as it always did).
@@ -56,6 +56,18 @@ export function blurTextEntry(el: FocusLike | null | undefined): boolean {
   return true;
 }
 
+/**
+ * Open the menu. It sits on top of everything, so the roster and the 조교 dialogue are
+ * closed as it opens (the ☰ button and Esc both come through here) — they would only
+ * hide behind the dimmed backdrop and be waiting when the menu closes.
+ */
+export function openMenu(): void {
+  if (useNpcStore.getState().activeNpc !== null) useNpcStore.getState().closePanel();
+  const ui = useUiStore.getState();
+  ui.setRosterOpen(false);
+  ui.setMenuOpen(true);
+}
+
 /** Run one Esc press. */
 export function handleEscape(): void {
   const npcOpen = useNpcStore.getState().activeNpc !== null;
@@ -73,7 +85,7 @@ export function handleEscape(): void {
       ui.setMenuOpen(false);
       break;
     case "openMenu":
-      ui.setMenuOpen(true);
+      openMenu();
       break;
   }
 }

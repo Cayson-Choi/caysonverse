@@ -58,6 +58,9 @@ export function ChatLog() {
       <button
         className="cv-chat-toggle"
         type="button"
+        // Like every HUD button: not a Tab stop, so focus can never walk onto it (and from there
+        // into the chat field, which freezes WASD) — the hotkeys cancel Tab, this is the backstop.
+        tabIndex={-1}
         aria-expanded={!collapsed}
         // Never take focus from a press: a focused chat field keeps its caret (and the keyboard).
         onPointerDown={(e) => e.preventDefault()}

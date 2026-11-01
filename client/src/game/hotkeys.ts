@@ -57,8 +57,8 @@ const EMOJI_CODE = /^Digit([1-6])$/;
  * passes the capture rule so the 조교 대화창 can still be closed while typing in it and
  * the menu (which captures the keyboard while open) can be closed again.
  * Ctrl / Cmd / Alt chords are never ours (Ctrl+1..6 switches browser tabs, Ctrl+R
- * reloads, Alt+Tab switches windows, ...), and neither is Shift+Tab (focus walks
- * backwards); Shift on its own is the run key and blocks nothing else.
+ * reloads, Alt+Tab switches windows, ...). Shift on its own is the run key and blocks
+ * nothing — Shift+Tab shows the roster like Tab (a running player holds Shift).
  * keyup only matters for Tab (roster hide) and is deliberately unconditional: the
  * list must never stay stuck open because the chat grabbed focus mid-hold.
  */
@@ -68,7 +68,6 @@ export function resolveHotkey(e: KeyLike, uiCaptured: boolean): HotkeyAction | n
   }
   if (e.defaultPrevented || e.isComposing || e.repeat) return null;
   if (e.ctrlKey || e.metaKey || e.altKey) return null;
-  if (e.shiftKey && e.code === "Tab") return null;
   if (uiCaptured && e.code !== "Escape") return null;
 
   switch (e.code) {
@@ -103,18 +102,19 @@ export type EscapeAction = "closeNpc" | "closeRoster" | "closeMenu" | "openMenu"
 
 /**
  * The ONE place that decides what Esc does: it closes the topmost thing that is open —
- * the 조교 dialogue first, then the player roster, then the menu — and when nothing is
- * open it opens the menu. (A focused text field lets go of the keyboard before any of
- * this: see escape.ts.) Nothing else listens for Esc to close a panel.
+ * the menu first (it sits on top of everything and closes the others as it opens), then
+ * the 조교 dialogue, then the player roster — and when nothing is open it opens the menu.
+ * (A focused text field lets go of the keyboard before any of this: see escape.ts.)
+ * Nothing else listens for Esc to close a panel.
  */
 export function resolveEscape(s: {
   npcOpen: boolean;
   rosterOpen: boolean;
   menuOpen: boolean;
 }): EscapeAction {
+  if (s.menuOpen) return "closeMenu";
   if (s.npcOpen) return "closeNpc";
   if (s.rosterOpen) return "closeRoster";
-  if (s.menuOpen) return "closeMenu";
   return "openMenu";
 }
 
@@ -127,6 +127,26 @@ export function hotkeyPreventsDefault(a: HotkeyAction): boolean {
   return a.type === "jump" || a.type === "openChat" || (a.type === "roster" && a.show);
 }
 
+/**
+ * Whether the browser default of this keydown must be cancelled even though it is not
+ * (or no longer) an action: EVERY plain or Shift Tab press — key-repeats and Shift+Tab
+ * included — while nobody holds the keyboard. resolveHotkey drops a repeat (one action
+ * per press), so without this a held Tab (after ~0.5 s) or Shift+Tab fell through to the
+ * browser, moved focus to the chat toggle / field, froze WASD under the "chat" capture
+ * and typed the next W into the chat. Ctrl / Meta / Alt + Tab belong to the browser and
+ * the OS; while a UI owner holds the keyboard the field's own focus walk is left alone.
+ */
+export function keydownCancelsDefault(e: KeyLike, uiCaptured: boolean): boolean {
+  return (
+    e.type === "keydown" &&
+    e.code === "Tab" &&
+    !uiCaptured &&
+    !e.ctrlKey &&
+    !e.metaKey &&
+    !e.altKey
+  );
+}
+
 type HotkeyListener = (a: HotkeyAction, e: KeyboardEvent) => void;
 
 /** Boxed so subscribing the same function twice yields two independent entries. */
@@ -135,9 +155,14 @@ const subscribers: { fn: HotkeyListener }[] = [];
 /** The single shared window handler (keydown + keyup). */
 function handleKey(e: KeyboardEvent): void {
   // Only keydown / keyup are ever registered here, so `type` is one of the two.
-  const action = resolveHotkey(e as KeyLike, isUiCaptured());
+  const uiCaptured = isUiCaptured();
+  // Resolve BEFORE cancelling: resolveHotkey drops an already-defaultPrevented keydown, and
+  // our own preventDefault must not make the action vanish.
+  const action = resolveHotkey(e as KeyLike, uiCaptured);
+  if ((action && hotkeyPreventsDefault(action)) || keydownCancelsDefault(e as KeyLike, uiCaptured)) {
+    e.preventDefault();
+  }
   if (!action) return;
-  if (hotkeyPreventsDefault(action)) e.preventDefault();
   // Snapshot: a subscriber may unsubscribe (or subscribe) while we fan out.
   for (const s of subscribers.slice()) s.fn(action, e);
 }

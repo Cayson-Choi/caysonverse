@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { blurTextEntry, handleEscape, isTextEntry, type FocusLike } from "./escape";
+import { blurTextEntry, handleEscape, isTextEntry, openMenu, type FocusLike } from "./escape";
 import { useNpcStore } from "../stores/npcStore";
 import { useUiStore } from "../stores/uiStore";
 
@@ -85,25 +85,49 @@ describe("handleEscape", () => {
     expect(useUiStore.getState().menuOpen).toBe(false);
   });
 
-  it("closes the 조교 dialogue before anything else, even while typing in it", () => {
+  it("with the menu open Esc closes the MENU first — it is on top of everything", () => {
+    // Defensive: the menu normally closes the roster / 조교 dialogue as it opens, but if
+    // either is somehow still open under it, Esc still peels the topmost (the menu) first.
     useNpcStore.setState({ activeNpc: "lobby" });
     useUiStore.setState({ menuOpen: true, rosterOpen: true });
+    handleEscape();
+    expect(useUiStore.getState()).toMatchObject({ menuOpen: false, rosterOpen: true });
+    expect(useNpcStore.getState().activeNpc).toBe("lobby");
+  });
+
+  it("with the menu closed: the 조교 dialogue first (even while typing in it), then the roster, then the menu opens", () => {
+    useNpcStore.setState({ activeNpc: "lobby" });
+    useUiStore.setState({ menuOpen: false, rosterOpen: true });
     const field = el({ tagName: "INPUT", type: "text" });
     focus(field);
 
     handleEscape();
     expect(useNpcStore.getState().activeNpc).toBeNull();
     expect(field.blur).not.toHaveBeenCalled(); // the dialogue unmounts with its field
-    expect(useUiStore.getState()).toMatchObject({ menuOpen: true, rosterOpen: true });
-  });
+    expect(useUiStore.getState()).toMatchObject({ menuOpen: false, rosterOpen: true });
 
-  it("then the roster, then the menu — one panel per press", () => {
-    useUiStore.setState({ menuOpen: true, rosterOpen: true });
-    handleEscape();
-    expect(useUiStore.getState()).toMatchObject({ menuOpen: true, rosterOpen: false });
+    focus(null);
     handleEscape();
     expect(useUiStore.getState()).toMatchObject({ menuOpen: false, rosterOpen: false });
     handleEscape();
     expect(useUiStore.getState().menuOpen).toBe(true);
+  });
+});
+
+describe("openMenu — opening the menu clears what sits under it", () => {
+  it("closes the roster and the 조교 dialogue as the menu opens", () => {
+    useNpcStore.setState({ activeNpc: "lobby" });
+    useUiStore.setState({ menuOpen: false, rosterOpen: true });
+    openMenu();
+    expect(useUiStore.getState()).toMatchObject({ menuOpen: true, rosterOpen: false });
+    expect(useNpcStore.getState().activeNpc).toBeNull();
+  });
+
+  it("is what an Esc with nothing else open does, and it is idempotent", () => {
+    handleEscape();
+    expect(useUiStore.getState()).toMatchObject({ menuOpen: true, rosterOpen: false });
+    openMenu();
+    expect(useUiStore.getState().menuOpen).toBe(true);
+    expect(useNpcStore.getState().activeNpc).toBeNull();
   });
 });

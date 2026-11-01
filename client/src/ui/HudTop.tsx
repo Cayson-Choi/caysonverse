@@ -1,5 +1,6 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { zoneLabelAt } from "../game/hud";
+import { openMenu } from "../game/escape";
 import { isTouchDevice } from "../device";
 import { useUiStore } from "../stores/uiStore";
 import type { Pose } from "../game/types";
@@ -50,7 +51,7 @@ function HudInfo({ pose }: { pose: Pose }) {
 /** ☰ — opens the menu (Esc does too). Closing is the menu's own 닫기 / Esc / backdrop. */
 function MenuButton() {
   return (
-    <HudButton label="메뉴 열기" onClick={() => useUiStore.getState().setMenuOpen(true)}>
+    <HudButton label="메뉴 열기" onClick={openMenu}>
       ☰
     </HudButton>
   );

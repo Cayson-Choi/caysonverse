@@ -443,6 +443,86 @@ try {
     await shot(pb, "pc-02-run-B.png");
   });
 
+  // ── 2b. Tab 누수 방지 (최종 검토 반영) ────────────────────────────────────────────
+  // A held Tab (key-repeat after ~0.5 s) and Shift+Tab used to slip past the hotkey table, so the
+  // browser walked focus onto the chat toggle / field: the "chat" capture froze WASD and the next W was
+  // typed into the chat. Playwright's keyboard.down() on a key that is already down sends a real
+  // key-repeat keydown (autoRepeat) through CDP, and Shift is held in the run phase.
+  await step("2b Tab 누수 방지: 걷는 중 Tab 반복 · 달리는 중 Shift+Tab", async () => {
+    // Room to run east: step 1-2 left A near the lounge/hall divider, so start from the west end.
+    await walkTo(pa, -22, 0, { tol: 0.6 });
+    await pa.evaluate(() => {
+      window.__tabLog = [];
+      // Registered AFTER the app's window listener, so it sees defaultPrevented as the app left it.
+      window.addEventListener("keydown", (e) => {
+        if (e.code === "Tab") window.__tabLog.push({ repeat: e.repeat, shift: e.shiftKey, prevented: e.defaultPrevented });
+      });
+    });
+
+    // Phase 1 — walking (W held): Tab pressed, then held past key-repeat.
+    await pa.keyboard.down("w");
+    const w0 = await getPos(pa);
+    await sleep(150);
+    await pa.keyboard.down("Tab");
+    await pa.locator(".cv-roster").waitFor({ state: "visible", timeout: 3000 });
+    for (let i = 0; i < 4; i++) {
+      await pa.keyboard.down("Tab"); // already down → keydown with repeat: true
+      await sleep(60);
+    }
+    const heldFocus = await active(pa);
+    const w1 = await getPos(pa);
+    check("Tab held through key-repeat → roster still visible", await pa.locator(".cv-roster").isVisible(), {});
+    check("…activeElement is still the body (focus never left the canvas)", heldFocus.tag === "BODY", heldFocus);
+    await pa.keyboard.up("Tab");
+    await pa.locator(".cv-roster").waitFor({ state: "detached", timeout: 3000 }).catch(() => {});
+    await sleep(200);
+    const w2 = await getPos(pa);
+    await pa.keyboard.up("w");
+    check("W kept walking while Tab was held (the chat capture never froze it)", dist(w0, w2) > 1.2, { moved: r2(dist(w0, w2)), duringTab: r2(dist(w0, w1)) });
+
+    // Phase 2 — running (Shift+W held): Shift+Tab, then repeats of it.
+    await sleep(300);
+    const s0 = await getPos(pa);
+    await pa.keyboard.down("Shift");
+    await pa.keyboard.down("w");
+    await sleep(150);
+    await pa.keyboard.down("Tab"); // Shift+Tab
+    await pa.locator(".cv-roster").waitFor({ state: "visible", timeout: 3000 });
+    const rosterOnShiftTab = await pa.locator(".cv-roster").isVisible();
+    for (let i = 0; i < 3; i++) {
+      await pa.keyboard.down("Tab");
+      await sleep(60);
+    }
+    const runFocus = await active(pa);
+    await pa.keyboard.up("Tab");
+    await pa.locator(".cv-roster").waitFor({ state: "detached", timeout: 3000 }).catch(() => {});
+    await sleep(200);
+    const s1 = await getPos(pa);
+    await pa.keyboard.up("w");
+    await pa.keyboard.up("Shift");
+    check("Shift+Tab while running shows the roster (Shift is the run key)", rosterOnShiftTab, {});
+    check("…and repeated Shift+Tab leaves activeElement on the body", runFocus.tag === "BODY", runFocus);
+    check("A kept running while Shift+Tab was held", dist(s0, s1) > 2.5, { moved: r2(dist(s0, s1)) });
+
+    const log = await pa.evaluate(() => window.__tabLog);
+    check("every Tab keydown (repeats and Shift+Tab included) was default-prevented", log.length >= 9 && log.every((e) => e.prevented), {
+      n: log.length, repeats: log.filter((e) => e.repeat).length, shift: log.filter((e) => e.shift).length, unprevented: log.filter((e) => !e.prevented).length,
+    });
+    check("…the log really holds key-repeats and Shift+Tab (the test is not vacuous)", log.some((e) => e.repeat) && log.some((e) => e.shift), {});
+
+    // The next W is movement, not text in the chat.
+    await sleep(300);
+    const after = await active(pa);
+    const n0 = await getPos(pa);
+    await holdKeys(pa, ["w"], 500);
+    await sleep(150);
+    const n1 = await getPos(pa);
+    check("afterwards the chat field is not focused and W still moves A", !/cv-chat-field/.test(after.cls) && after.tag === "BODY" && dist(n0, n1) > 0.8, {
+      active: after, moved: r2(dist(n0, n1)),
+    });
+    check("…and nothing was typed into the chat field", (await pa.locator(".cv-chat-field").inputValue().catch(() => "")) === "", {});
+  });
+
   // ── 3. 1인칭 옆걸음 ──────────────────────────────────────────────────────────────
   await step("3 1인칭 옆걸음: V, A 1 s", async () => {
     await pa.keyboard.press("v");

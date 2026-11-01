@@ -3,6 +3,7 @@ import {
   resolveHotkey,
   resolveEscape,
   hotkeyPreventsDefault,
+  keydownCancelsDefault,
   onHotkey,
   type HotkeyAction,
   type KeyLike,
@@ -74,16 +75,18 @@ describe("resolveHotkey — key table", () => {
     expect(resolveHotkey(kd("Escape", { isComposing: true }), true)).toBeNull();
   });
 
-  it("ignores browser/OS chords: Ctrl, Meta or Alt held, and Shift+Tab", () => {
+  it("ignores browser/OS chords: Ctrl, Meta or Alt held", () => {
     // Ctrl/Cmd+1..6 switch browser tabs, Ctrl+R reloads, Ctrl+F finds, Ctrl/Cmd+V pastes,
-    // Alt+Tab switches windows, Shift+Tab walks focus backwards — none may fire an action.
+    // Alt+Tab switches windows — none may fire an action. (Shift+Tab is NOT a chord: Shift is
+    // the run key in-world, so Shift+Tab shows the roster like Tab — see the next test.)
     const chords: [string, Partial<KeyLike>][] = [
       ["KeyR", { ctrlKey: true }],
       ["KeyF", { ctrlKey: true }],
       ["Digit1", { metaKey: true }],
       ["Digit3", { ctrlKey: true }],
       ["Tab", { altKey: true }],
-      ["Tab", { shiftKey: true }],
+      ["Tab", { ctrlKey: true }],
+      ["Tab", { metaKey: true }],
       ["Space", { ctrlKey: true }],
       ["Slash", { ctrlKey: true }],
       ["Enter", { altKey: true }],
@@ -99,12 +102,22 @@ describe("resolveHotkey — key table", () => {
     }
   });
 
-  it("Shift alone does not block a hotkey (only Shift+Tab is excluded)", () => {
-    // Shift is the run key; Shift+/ is `?` on a US layout but still the Slash key.
+  it("Shift alone does not block a hotkey — Shift+Tab shows the roster too", () => {
+    // Shift is the run key; Shift+/ is `?` on a US layout but still the Slash key. A runner
+    // who taps Tab with Shift held (or Shift+Tab) must get the roster, not a focus walk.
     expect(resolveHotkey(kd("Space", { shiftKey: true }), false)).toEqual({ type: "jump" });
     expect(resolveHotkey(kd("Slash", { shiftKey: true }), false)).toEqual({ type: "openChat" });
     expect(resolveHotkey(kd("KeyE", { shiftKey: true }), false)).toEqual({ type: "interact" });
     expect(resolveHotkey(kd("Tab", { shiftKey: false }), false)).toEqual({ type: "roster", show: true });
+    expect(resolveHotkey(kd("Tab", { shiftKey: true }), false)).toEqual({ type: "roster", show: true });
+    // ...but while the UI owns the keyboard Shift+Tab is the field's own focus walk.
+    expect(resolveHotkey(kd("Tab", { shiftKey: true }), true)).toBeNull();
+  });
+
+  it("a repeated Shift+Tab or Shift+Ctrl/Alt+Tab is not an action", () => {
+    expect(resolveHotkey(kd("Tab", { shiftKey: true, repeat: true }), false)).toBeNull();
+    expect(resolveHotkey(kd("Tab", { shiftKey: true, ctrlKey: true }), false)).toBeNull();
+    expect(resolveHotkey(kd("Tab", { shiftKey: true, altKey: true }), false)).toBeNull();
   });
 
   it("an explicit false for every modifier is the same as leaving them out", () => {
@@ -160,6 +173,32 @@ describe("hotkeyPreventsDefault", () => {
       { type: "menu" },
     ];
     for (const a of rest) expect(hotkeyPreventsDefault(a)).toBe(false);
+  });
+});
+
+describe("keydownCancelsDefault — Tab never walks browser focus in-world", () => {
+  it("cancels EVERY plain or Shift Tab keydown while nobody holds the keyboard (repeats and Shift+Tab too)", () => {
+    // A held Tab (key-repeat after ~0.5 s) or Shift+Tab used to slip through resolveHotkey
+    // (null), so the browser moved focus to the chat toggle / field and froze WASD.
+    for (const o of [{}, { repeat: true }, { shiftKey: true }, { shiftKey: true, repeat: true }])
+      expect(keydownCancelsDefault(kd("Tab", o), false), JSON.stringify(o)).toBe(true);
+  });
+
+  it("leaves Tab alone while a UI owner holds the keyboard (the field's own focus walk)", () => {
+    for (const o of [{}, { repeat: true }, { shiftKey: true }])
+      expect(keydownCancelsDefault(kd("Tab", o), true), JSON.stringify(o)).toBe(false);
+  });
+
+  it("leaves Ctrl / Alt / Meta + Tab to the browser and OS, and never cancels a keyup", () => {
+    for (const o of [{ ctrlKey: true }, { altKey: true }, { metaKey: true }])
+      expect(keydownCancelsDefault(kd("Tab", o), false), JSON.stringify(o)).toBe(false);
+    expect(keydownCancelsDefault(ku("Tab"), false)).toBe(false);
+  });
+
+  it("is only about Tab — other keys are decided by their action", () => {
+    expect(keydownCancelsDefault(kd("KeyW"), false)).toBe(false);
+    expect(keydownCancelsDefault(kd("KeyV"), false)).toBe(false);
+    expect(keydownCancelsDefault(kd("Space"), false)).toBe(false);
   });
 });
 
@@ -365,7 +404,7 @@ describe("onHotkey — one shared window listener", () => {
       ["Digit1", { metaKey: true }],
       ["Digit3", { ctrlKey: true }],
       ["Tab", { altKey: true }],
-      ["Tab", { shiftKey: true }],
+      ["Tab", { ctrlKey: true }],
       ["Space", { ctrlKey: true }],
       ["Slash", { ctrlKey: true }],
       ["Enter", { altKey: true }],
@@ -375,6 +414,57 @@ describe("onHotkey — one shared window listener", () => {
     for (const [code, mods] of chords) {
       const ev = press("keydown", code, mods);
       expect(ev.defaultPrevented, `${code} ${JSON.stringify(mods)}`).toBe(false);
+    }
+    expect(fn).not.toHaveBeenCalled();
+  });
+
+  it("a held Tab and Shift+Tab are cancelled (focus never leaves the canvas) and keep the roster shown", () => {
+    // Mirrors the roster subscriber: show on the first press, hide only on keyup.
+    let shown = false;
+    sub((a) => {
+      if (a.type === "roster") shown = a.show;
+    });
+
+    const first = press("keydown", "Tab");
+    expect(first.defaultPrevented).toBe(true);
+    expect(shown).toBe(true);
+
+    // Key-repeat (~0.5 s into the hold): still cancelled, still shown, no hide.
+    for (let i = 0; i < 3; i++) {
+      const rep = press("keydown", "Tab", { repeat: true });
+      expect(rep.defaultPrevented, `repeat ${i}`).toBe(true);
+      expect(shown, `repeat ${i}`).toBe(true);
+    }
+
+    // Shift+Tab (a runner's Tab): cancelled, shows the roster.
+    press("keyup", "Tab");
+    expect(shown).toBe(false);
+    const sh = press("keydown", "Tab", { shiftKey: true });
+    expect(sh.defaultPrevented).toBe(true);
+    expect(shown).toBe(true);
+    const shRep = press("keydown", "Tab", { shiftKey: true, repeat: true });
+    expect(shRep.defaultPrevented).toBe(true);
+    expect(shown).toBe(true);
+    press("keyup", "Tab", { shiftKey: true });
+    expect(shown).toBe(false);
+  });
+
+  it("Tab is left alone while a UI owner holds the keyboard", () => {
+    const fn = vi.fn();
+    sub(fn);
+    acquireUiCapture("chat");
+    for (const o of [{}, { repeat: true }, { shiftKey: true }]) {
+      const ev = press("keydown", "Tab", o);
+      expect(ev.defaultPrevented, JSON.stringify(o)).toBe(false);
+    }
+    expect(fn).not.toHaveBeenCalled();
+  });
+
+  it("Ctrl/Alt/Meta+Tab, repeated or not, is never cancelled", () => {
+    const fn = vi.fn();
+    sub(fn);
+    for (const o of [{ ctrlKey: true }, { altKey: true }, { metaKey: true }, { ctrlKey: true, repeat: true }]) {
+      expect(press("keydown", "Tab", o).defaultPrevented, JSON.stringify(o)).toBe(false);
     }
     expect(fn).not.toHaveBeenCalled();
   });
@@ -444,18 +534,21 @@ describe("onHotkey — one shared window listener", () => {
 describe("resolveEscape — what one Esc press does", () => {
   const state = (npcOpen: boolean, rosterOpen: boolean, menuOpen: boolean) => ({ npcOpen, rosterOpen, menuOpen });
 
-  it("NPC panel first, then roster, then the menu toggle", () => {
-    expect(resolveEscape({ npcOpen: true, rosterOpen: true, menuOpen: true })).toBe("closeNpc");
-    expect(resolveEscape({ npcOpen: false, rosterOpen: true, menuOpen: false })).toBe("closeRoster");
+  it("the menu (on top) first, then the NPC panel, then the roster, then the menu opens", () => {
+    expect(resolveEscape({ npcOpen: true, rosterOpen: true, menuOpen: true })).toBe("closeMenu");
+    expect(resolveEscape({ npcOpen: false, rosterOpen: true, menuOpen: true })).toBe("closeMenu");
+    expect(resolveEscape({ npcOpen: true, rosterOpen: false, menuOpen: true })).toBe("closeMenu");
     expect(resolveEscape({ npcOpen: false, rosterOpen: false, menuOpen: true })).toBe("closeMenu");
+    expect(resolveEscape({ npcOpen: true, rosterOpen: true, menuOpen: false })).toBe("closeNpc");
+    expect(resolveEscape({ npcOpen: false, rosterOpen: true, menuOpen: false })).toBe("closeRoster");
     expect(resolveEscape({ npcOpen: false, rosterOpen: false, menuOpen: false })).toBe("openMenu");
   });
 
-  it("covers every combination: the first open panel in npc → roster → menu order wins", () => {
+  it("covers every combination: the first open panel in menu → npc → roster order wins", () => {
     for (const npc of [false, true])
       for (const roster of [false, true])
         for (const menu of [false, true]) {
-          const want = npc ? "closeNpc" : roster ? "closeRoster" : menu ? "closeMenu" : "openMenu";
+          const want = menu ? "closeMenu" : npc ? "closeNpc" : roster ? "closeRoster" : "openMenu";
           expect(resolveEscape(state(npc, roster, menu)), `${npc}/${roster}/${menu}`).toBe(want);
         }
   });
