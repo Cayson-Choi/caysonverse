@@ -270,11 +270,12 @@ export const NAMETAG_HEIGHT = 2.1;
 export const NAMETAG_HEAD_GAP_M = 0.08;
 
 /**
- * World height (m) at which a speech bubble's BOTTOM edge sits when there is no
- * nametag to sit on: the local player (whose own tag is not drawn) and an avatar
- * before the NametagSystem has published its anchor. Sprites are centre-origin, so
- * the bubble module adds half its own height to the anchor when positioning. With a
- * tag the bubble sits just above the tag's top edge instead (BUBBLE_GAP_M).
+ * Fallback world height (m) of a speech bubble's BOTTOM edge: where a new bubble sprite
+ * starts (bubbleSprite.ts) and where useSpeechBubble puts it when called without an anchor.
+ * Avatars pass an anchor sized to their own height instead — bubbleRestHeight(topY)
+ * (nametagLayout.ts) at rest and with no tag (the local player's own tag is off by
+ * default), raised by the NametagSystem to just above the tag's top edge (BUBBLE_GAP_M).
+ * Sprites are centre-origin, so the bubble module adds half its own height when positioning.
  */
 export const BUBBLE_BASE_HEIGHT = 2.5;
 
