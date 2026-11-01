@@ -87,6 +87,16 @@ html:not(.cv-touch) .cv-coach {
   width: var(--cv-coach-w);
 }
 
+/* A PC window narrower than ~744 px: the card (left 352 + 240 wide = 592) would run over the
+   folded 3 × 2 emoji grid (136 px wide at the right edge, from 744 px down — emoji.css) and the
+   action pill that sits above it. It rides above both instead: 24 (grid offset) + the grid
+   (--cv-pc-emoji-h) + 8 + the 40 px pill + 8. */
+@media (max-width: 743px) {
+  html:not(.cv-touch) .cv-coach {
+    bottom: calc(var(--cv-pc-emoji-h, 88px) + 24px + 8px + 40px + 8px);
+  }
+}
+
 /* ── Phone: inline left / top / width. The skip button is a 48 px touch target; the head
    row is as tall as it, so the title sits centred on it. ── */
 .cv-coach.is-touch {

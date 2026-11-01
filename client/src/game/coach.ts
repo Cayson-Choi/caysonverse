@@ -20,6 +20,7 @@
  */
 
 import { normalizeAngle } from "./yaw";
+import type { ViewMode } from "./viewMode";
 import { MIN_GAP_PX, MIN_TOUCH_PX } from "./settings";
 import {
   HUD_CHIP_H_PX,
@@ -106,6 +107,50 @@ export function detectCoachEvent(
     return p.lookAccum >= COACH_LOOK_RAD - EDGE_EPS ? "looked" : null;
   }
   return null;
+}
+
+/**
+ * A poller for one step: call `poll` every COACH_POLL_MS with the live pose and view yaw.
+ * The FIRST poll only takes the baseline (the spot and view the step is measured from) and
+ * reports nothing — so what happened between the card mounting and its first look at the
+ * world never counts. That gap is real: a reconnect remount builds the guide while the old
+ * first-person state is still up, then the world's reset hands the view back to the orbit
+ * yaw, and a baseline taken at mount would read that as a turn ("둘러봤어요") nobody made.
+ * Make a new poller per step / restart so earlier walking and turning never carry over.
+ */
+export interface CoachPoller {
+  poll(step: CoachStep, x: number, z: number, viewYaw: number): CoachEvent | null;
+}
+
+export function createCoachPoller(): CoachPoller {
+  let progress: CoachProgress | null = null;
+  return {
+    poll(step, x, z, viewYaw) {
+      if (progress === null) {
+        progress = createCoachProgress(x, z, viewYaw);
+        return null;
+      }
+      return detectCoachEvent(step, progress, x, z, viewYaw);
+    },
+  };
+}
+
+/** The bits of the shared view state the guide reads. */
+export interface ViewYawSource {
+  mode: ViewMode;
+  /** The mode to return to when the overview map closes ('tp' | 'fp'). */
+  prevMode: ViewMode;
+  fpYaw: number;
+}
+
+/**
+ * The yaw the player is looking along: the first-person look yaw in FP, the orbit yaw in
+ * third person. The overview map touches neither, so under it the view underneath
+ * (`prevMode`) counts.
+ */
+export function viewYawOf(view: ViewYawSource, orbit: { yaw: number }): number {
+  const mode = view.mode === "ov" ? view.prevMode : view.mode;
+  return mode === "fp" ? view.fpYaw : orbit.yaw;
 }
 
 // ───────────────────────────────────── copy ─────────────────────────────────────

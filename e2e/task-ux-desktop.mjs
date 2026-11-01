@@ -386,6 +386,31 @@ try {
     fpsA: Math.round(fps[0]), fpsB: Math.round(fps[1]),
   });
 
+  // The first-visit guide card must stay clear of the HUD at every PC window width — the emoji row folds
+  // into a 3 × 2 grid under 900 px and the card used to run over it under ~744 px (final review).
+  await step("0b 안내 카드: 좁은 PC 창에서도 이모지·채팅 칸을 가리지 않음", async () => {
+    const box = (sel) =>
+      pa.evaluate((s) => {
+        const el = document.querySelector(s);
+        if (!el) return null;
+        const r = el.getBoundingClientRect();
+        return { l: r.left, t: r.top, r: r.right, b: r.bottom };
+      }, sel);
+    const hit = (a, b) => !!a && !!b && a.l < b.r && b.l < a.r && a.t < b.b && b.t < a.b;
+    for (const width of [1280, 960, 900, 800, 744, 743, 700, 600]) {
+      await pa.setViewportSize({ width, height: VIEW.height });
+      await sleep(350);
+      const card = await box(".cv-coach");
+      const hud = { emoji: await box(".cv-emoji-palette"), chatBar: await box(".cv-chat-input"), chatLog: await box(".cv-chat-log"), action: await box(".cv-action-btn") };
+      const hits = Object.entries(hud).filter(([, r]) => hit(card, r)).map(([name]) => name);
+      check(`${width} px: the guide card is on screen and overlaps no HUD box`, !!card && card.l >= 0 && card.r <= width && hits.length === 0, {
+        card: card && { l: Math.round(card.l), t: Math.round(card.t), r: Math.round(card.r), b: Math.round(card.b) }, hits,
+      });
+    }
+    await pa.setViewportSize(VIEW);
+    await sleep(500);
+  });
+
   // B steps aside (north-west corner of the lounge) so A's way east is never blocked by another
   // solid avatar — both spawn within 2 m of the same point, so this can't be left to chance.
   await walkTo(pb, -24, -10, { tol: 1, timeout: 12000 });

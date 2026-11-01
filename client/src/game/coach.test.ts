@@ -12,10 +12,12 @@ import {
   coachCardWidth,
   coachCopy,
   coachObstacles,
+  createCoachPoller,
   createCoachProgress,
   detectCoachEvent,
   nextCoachStep,
   placeCoachCard,
+  viewYawOf,
   type CoachEvent,
   type CoachStep,
 } from "./coach";
@@ -403,5 +405,58 @@ describe("coachObstacles", () => {
     const admin = obs[obs.length - 1];
     expect(chip.x + chip.w).toBe(l.roster.x + l.roster.w);
     expect(admin.x + admin.w).toBe(l.roster.x + l.roster.w);
+  });
+});
+
+describe("createCoachPoller — the first poll only takes the baseline", () => {
+  it("never reports on its first poll, however far the player is from anywhere", () => {
+    for (const step of ["move", "look"] as const) {
+      const poller = createCoachPoller();
+      expect(poller.poll(step, 40, -25, 2.9), step).toBeNull();
+    }
+  });
+
+  it("measures walking from where the FIRST poll saw the player", () => {
+    const poller = createCoachPoller();
+    expect(poller.poll("move", 10, 10, 0)).toBeNull(); // baseline
+    expect(poller.poll("move", 10 + COACH_MOVE_M - 0.1, 10, 0)).toBeNull();
+    expect(poller.poll("move", 10 + COACH_MOVE_M, 10, 0)).toBe("moved");
+  });
+
+  it("a view that jumps between mount and the first poll (a reconnect remount leaving first person) fakes no turn", () => {
+    // CoachMarks mounts while the old first-person state is still there (look yaw 2.0); the
+    // world's own reset then puts the third-person orbit yaw (0.1) in charge — a 1.9 rad
+    // "turn" nobody made. The old code seeded at mount and would call ② done on the next poll.
+    const poller = createCoachPoller();
+    expect(poller.poll("look", 0, 0, 0.1)).toBeNull(); // first poll: baseline = the settled yaw
+    expect(poller.poll("look", 0, 0, 0.1)).toBeNull();
+    expect(poller.poll("look", 0, 0, 0.1 + COACH_LOOK_RAD - 0.05)).toBeNull();
+    expect(poller.poll("look", 0, 0, 0.1 + COACH_LOOK_RAD + 0.05)).toBe("looked");
+  });
+
+  it("a fresh poller (a restart or the next step) starts over: earlier walking and turning never count", () => {
+    const first = createCoachPoller();
+    first.poll("move", 0, 0, 0);
+    expect(first.poll("move", 5, 0, 0)).toBe("moved");
+    const second = createCoachPoller();
+    expect(second.poll("look", 5, 0, 1)).toBeNull();
+    expect(second.poll("look", 5, 0, 1)).toBeNull();
+  });
+});
+
+describe("viewYawOf — which yaw the player is looking along", () => {
+  const orbit = { yaw: 1.25 };
+
+  it("third person: the orbit yaw", () => {
+    expect(viewYawOf({ mode: "tp", prevMode: "tp", fpYaw: -2 }, orbit)).toBe(1.25);
+  });
+
+  it("first person: the look yaw", () => {
+    expect(viewYawOf({ mode: "fp", prevMode: "tp", fpYaw: -2 }, orbit)).toBe(-2);
+  });
+
+  it("under the overview map the view underneath counts (prevMode), not the map", () => {
+    expect(viewYawOf({ mode: "ov", prevMode: "tp", fpYaw: -2 }, orbit)).toBe(1.25);
+    expect(viewYawOf({ mode: "ov", prevMode: "fp", fpYaw: -2 }, orbit)).toBe(-2);
   });
 });

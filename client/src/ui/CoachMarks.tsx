@@ -4,9 +4,9 @@ import {
   COACH_POLL_MS,
   coachCardWidth,
   coachCopy,
-  createCoachProgress,
-  detectCoachEvent,
+  createCoachPoller,
   placeCoachCard,
+  viewYawOf,
   type CoachStep,
 } from "../game/coach";
 import { viewState } from "../game/viewState";
@@ -18,15 +18,6 @@ import { useUiStore } from "../stores/uiStore";
 import type { Orbit, Pose } from "../game/types";
 import { useTouchHudLayout, useTouchViewport } from "./useTouchHudLayout";
 import "./coach.css";
-
-/**
- * The yaw the player is looking along: the first-person look yaw in FP, the orbit yaw in
- * third person. The overview map does not touch either, so under it the view underneath counts.
- */
-function viewYawOf(orbit: Orbit): number {
-  const mode = viewState.mode === "ov" ? viewState.prevMode : viewState.mode;
-  return mode === "fp" ? viewState.fpYaw : orbit.yaw;
-}
 
 /**
  * The card for one step, near the control it explains. A phone gets its spot from the
@@ -120,7 +111,8 @@ function CoachCard({ step }: { step: Exclude<CoachStep, "done"> }) {
  * Moving and looking are measured here, 5 times a second, from the live `pose` and view yaw
  * (the same refs the camera and the avatar use — no per-frame React state): the player has
  * to walk 1.5 m for ① and turn the view 0.6 rad in total for ②. Each step's measuring starts
- * when the step does, so what was done earlier never counts. ③ is reported by the chat input
+ * with its first tick (not at mount), so what was done earlier — or a view reset while the
+ * world was still settling — never counts. ③ is reported by the chat input
  * when a line is really sent. The step lives in coachStore, which saves `coachDone` when the
  * guide ends so a reload does not show it again; the menu's "조작 안내 다시 보기" restarts it.
  *
@@ -134,9 +126,10 @@ export function CoachMarks({ pose, orbit }: { pose: Pose; orbit: Orbit }) {
 
   useEffect(() => {
     if (step !== "move" && step !== "look") return;
-    const progress = createCoachProgress(pose.x, pose.z, viewYawOf(orbit));
+    // The baseline is taken on the first tick, not now: see createCoachPoller.
+    const poller = createCoachPoller();
     const id = window.setInterval(() => {
-      const ev = detectCoachEvent(step, progress, pose.x, pose.z, viewYawOf(orbit));
+      const ev = poller.poll(step, pose.x, pose.z, viewYawOf(viewState, orbit));
       if (ev) report(ev);
     }, COACH_POLL_MS);
     return () => window.clearInterval(id);
