@@ -174,7 +174,7 @@ export const MAX_CLASSES_DEFAULT = 10;         // Task 26 측정값으로 바꾼
 export const TEACHER_PASS_TTL_MS = 120_000;
 export const CLASS_REJOIN_BUDGET_MS = 60_000;
 export const TEAM_MIN = 2, TEAM_MAX = 6, TEAM_TARGET = 4, MAX_TEAMS = 50;
-export const TEAM_NAMES = ["별빛", "반딧불", "달토끼", "은하수", "무지개", "부엉이", "새벽별", "솜사탕", "도토리", "해바라기", "파도", "구름"] as const;
+export const TEAM_NAMES = ["햇살", "풍선", "새싹", "민들레", "무지개", "바람개비", "꽃잎", "솜사탕", "도토리", "해바라기", "파도", "구름"] as const;
 export const TEAM_COLORS = ["#E85D75", "#F29E4C", "#F1C453", "#5BBF7A", "#3FA7D6", "#4B4FD8", "#8B5CF6", "#D16BA5"] as const;
 export const TEAM_COLOR_LABELS = ["빨강", "주황", "노랑", "초록", "하늘", "파랑", "보라", "분홍"] as const;
 export const ROOM_IDS = ["counsel", "library", "broadcast", "career", "art", "science", "media"] as const;
@@ -199,9 +199,7 @@ export const ESCAPE_EMPTY_DISPOSE_MS = 120_000;
 export const TICKET_TTL_MS = 60_000;
 export const ESCAPE_MAX_CLIENTS = 8;       // 팀 6 + 재접속 여유
 export const ESCAPE_ACTION_RATE = { count: 10, windowMs: 1000 } as const;
-export const APPEARANCE_KEYS = ["hat", "hatColor", "hair", "hairColor", "face", "skin", "top", "topColor",
-  "bottom", "bottomColor", "shoes", "shoesColor", "item", "itemColor", "voice"] as const; // stage 3가 같은 목록을 이미 내보내면 그것을 다시 내보낸다
-export type AppearanceKey = (typeof APPEARANCE_KEYS)[number];
+// (E5) APPEARANCE_KEYS·AppearanceKey는 만들지 않는다. stage 3의 APPEARANCE_FIELDS·AppearanceField(shared/src/appearance.ts)를 쓴다.
 
 // shared/src/escape/principles.ts
 export type PrincipleId = "human_rights" | "privacy" | "diversity" | "no_harm" | "public_good"
@@ -784,7 +782,7 @@ export function autoAssign(teams: readonly TeamRec[], loose: readonly string[], 
 export function freeCombos(teams: readonly TeamRec[]): { nameIndex: number; colorIndex: number }[]; // 안 쓴 (이름, 색) 순서대로
 export interface PadPresence { sid: string; door: RoomId | null; arrivedAt: number }
 export function teamPadStatus(members: readonly PadPresence[]): { door: RoomId | ""; leaderSid: string; count: number };
-export function teamDisplayName(nameIndex: number, colorIndex: number): string; // "별빛(파랑)"
+export function teamDisplayName(nameIndex: number, colorIndex: number): string; // "햇살(파랑)"
 ```
 
 - 오류 문구: "이미 팀에 있어요. 먼저 팀에서 나와 주세요", "이미 있는 팀 이름과 색이에요", "팀이 가득 찼어요 (최대 6명)", "팀을 더 만들 수 없어요".
@@ -1308,7 +1306,7 @@ it("contains none of the reference project's world names", () => {
 - Test: `server/src/escape/projection.test.ts`, `server/src/escape/EscapeRoom.integration.test.ts`
 
 **Interfaces:**
-- Consumes: `PlayerRoom`(2), `checkProfanity`(3), `assertSpawnToken`(4), 엔진·콘텐츠·별·게임 시계(7·8), `ROOM_DEFS`(9), `ROOM_MAPS`(1), `APPEARANCE_KEYS`.
+- Consumes: `PlayerRoom`(2), `checkProfanity`(3), `assertSpawnToken`(4), 엔진·콘텐츠·별·게임 시계(7·8), `ROOM_DEFS`(9), `ROOM_MAPS`(1), `APPEARANCE_FIELDS`(stage 3).
 - Produces:
 
 ```ts
@@ -1342,7 +1340,7 @@ export interface EscapePayloads { /* EscapeMsg 값 → 위 페이로드 타입 *
 export interface EscapeCreateOptions { spawnToken: string; classRoomId: string; teamId: string; teamName: string;
   roomDefId: RoomId; textLevel: TextLevel; timeLimitS: number; maxHintTier: number }
 export interface Admission { ticket: string; memberKey: string; nickname: string; role: number;
-  appearance: Record<AppearanceKey, number> }
+  appearance: Record<AppearanceField, number> }
 export interface EscapeResult { teamId: string; teamName: string; roomId: RoomId; members: string[]; escaped: boolean;
   overtime: boolean; elapsedS: number; remainingS: number; hintsUsed: number; wrongAttempts: number; stars: number;
   firstTry: Record<string, boolean> }
@@ -1362,7 +1360,7 @@ export function projectToSchema(es: EngineState, st: EscapeState): void; // flag
 EscapeRoom 규칙(바인딩):
 - `onCreate`: `assertSpawnToken`, `ROOM_DEFS[roomDefId]`가 없으면 throw. `autoDispose = false`, `maxClients = ESCAPE_MAX_CLIENTS`, 1초 `tick`. 시험 전용 `CV_ESCAPE_INTRO_MS`.
 - `onAuth(client, options)`: `options.ticket`으로 입장 허가를 꺼내 쓴다(1회용, 만료 확인). 없으면 "입장권이 만료됐어요. 문 앞에서 다시 들어가 주세요."
-- `onJoin`: 허가의 닉네임·외형·role로 `Player`(외형은 `APPEARANCE_KEYS` 반복 복사)를 `ROOM_MAPS[roomDefId].spawn` 둘레에 세운다. 같은 `memberKey`의 연결 끊긴 이전 플레이어가 있으면 지우고, `sidByMember`를 새 sid로 바꾼다. 들어온 순서 목록에 넣고, `EscapeMsg.Content`(= `publicContent(def, level)`)를 그 클라이언트에 보낸 뒤 `report("escapeMemberEntered", [teamId, memberKey])`. 첫 입장 때 게임 시계를 시작한다. `membership` 액션을 돌리고 `solo`를 갱신한다.
+- `onJoin`: 허가의 닉네임·외형·role로 `Player`(외형은 `APPEARANCE_FIELDS` 반복 복사)를 `ROOM_MAPS[roomDefId].spawn` 둘레에 세운다. 같은 `memberKey`의 연결 끊긴 이전 플레이어가 있으면 지우고, `sidByMember`를 새 sid로 바꾼다. 들어온 순서 목록에 넣고, `EscapeMsg.Content`(= `publicContent(def, level)`)를 그 클라이언트에 보낸 뒤 `report("escapeMemberEntered", [teamId, memberKey])`. 첫 입장 때 게임 시계를 시작한다. `membership` 액션을 돌리고 `solo`를 갱신한다.
 - `onLeave`: 떠나는 sid가 그 `memberKey`의 현재 sid일 때만 `escapeMemberLeft`를 보고한다(Review Focus 1). 아무도 없으면 `ESCAPE_EMPTY_DISPOSE_MS` 뒤 결과(진행이 있었으면)와 `escapeDisposed`를 보고하고 `disconnect()`.
 - 퍼즐 메시지: `ESCAPE_ACTION_RATE`를 넘으면 버림 → 방 단계가 `play`/`finale`이 아니거나 일시정지·시간 초과면 버림 → `objectId`가 있는 액션(조사·줍기·누르기·길게 누르기)과 그 물건의 자물쇠 입력·제출은 앵커와의 거리 ≤ `anchor.reach ?? INSPECT_REACH`일 때만 → 엔진 → `projectToSchema` → 이벤트 broadcast(`EscapeMsg.Event`). `holdStart` 뒤에는 `clock.setTimeout(holdCheck, SOLO_HOLD_MS + 50)`. 조사(`Inspect`)는 상태를 바꾸지 않고 `inspectView`를 보낸 사람에게만 `EscapeMsg.InspectView`로 보낸다.
 - 방 단계: `ended` > `escaped` > 시간 초과 `timeup` > `intro`(첫 입장 뒤 `ESCAPE_INTRO_MS` 게임 시간 동안) > 엔진 단계. `tick`에서 `timeLeftS = max(0, limit + extra − floor((게임 시간 − 놀이 시작)/1000))`, `cooldownS`를 갱신한다. 0이 되면 `timeup`이 되고 길게 누르기를 취소한다. `Retry`는 `timeup`일 때만 → `extra += ESCAPE_RETRY_EXTRA_S`, `overtime = true`.
@@ -1435,7 +1433,7 @@ export function buildResultsCsv(rows: readonly EscapeResult[]): string;
 - 킥: 대상이 교실 안이면 `remoteRoomCall(id, "kickMember", [memberKey])`도 한다.
 - 홀 채팅 차단(`onChatBlocked`)도 선생님 보기로 넘긴다(teamName "중앙 홀").
 - `ResultsRequest`(선생님만) → `ClassMsg.ResultsCsv { csv: buildResultsCsv(results) }`. 결과는 (팀, 교실)마다 마지막 것을 둔다.
-- 탈출 알림(System): "`${팀 이름}` 팀이 `${교실}`을 탈출했어요!" 예: "별빛(파랑) 팀이 상담실을 탈출했어요!"
+- 탈출 알림(System): "`${팀 이름}` 팀이 `${교실}`을 탈출했어요!" 예: "햇살(파랑) 팀이 상담실을 탈출했어요!"
 
 CSV(바인딩): UTF-8 BOM + CRLF. 머리글 `팀,팀원,교실,결과,걸린 시간(초),남은 시간(초),힌트,틀린 시도,별` 뒤에 결과에 나온 원칙만 `PRINCIPLES` 순서로 `<원칙 이름> 첫 시도`. 팀원은 `·`로 잇는다. 결과 "탈출"/"미탈출", 첫 시도 "정답"/"오답"/"-". 쉼표·따옴표·줄바꿈이 있으면 큰따옴표로 감싸고 안의 따옴표는 두 번. `= + - @`, 탭, CR로 시작하는 칸은 앞에 `'`를 붙인다(수식 주입 방지).
 
@@ -2133,7 +2131,7 @@ node e2e/luma-check.mjs <png...>                                   # 평균 상�
 1. A가 없는 반 코드 "ZZZZZZ" → `CLASS_NOT_FOUND_NOTICE`.
 2. T: 선생님 탭 → 키 → 반 열기 → 선생님 패널에 6자리 코드.
 3. A "가람", B "나래"가 그 코드로 입장. B가 "가람"으로 먼저 시도하면 같은 닉네임 안내.
-4. A가 팀 칸으로 클릭 이동 → E → 별빛·파랑 팀 만들기, B가 들어가기 → 둘의 `teamId` 같음.
+4. A가 팀 칸으로 클릭 이동 → E → 햇살·파랑 팀 만들기, B가 들어가기 → 둘의 `teamId` 같음.
 5. 시작 전 A가 동쪽 문으로 → 막힘(x < 14). T "시작" → 문 열림 스크린샷.
 6. A가 먼저, B가 나중에 상담실 대기 칸 → A만 "입장 (팀원 2명)", B는 안내 줄. A가 E → 둘 다 5초 안에 `getScreen() === "escape"`.
 7. 소개 대사 → `timeLeftS`가 줄어듦.
@@ -2144,9 +2142,9 @@ node e2e/luma-check.mjs <png...>                                   # 평균 상�
 12. 금고: A 서쪽·B 동쪽 열쇠를 3초 차이로 → 안 열림. 0.5초 차이로 → `safe_open`.
 13. T 일시정지 → 두 화면 덮개, 3초 동안 `timeLeftS` 그대로, A의 자물쇠 입력이 버려짐 → 다시 시작.
 14. 마지막 문: 둘 다 "투명성" → 설명 + 30초 대기 표시 → 대기 뒤 둘 다 "프라이버시 보호" → 둘 다 "먼저 물어보고 허락" → 탈출 연출 → 정리 카드.
-15. "복도로 나가기" → 홀, 상담실 대기 칸 앞. `getLitRooms()`에 counsel, 진행판 창이 환한 색으로 바뀐 스크린샷. 시스템 줄 "별빛(파랑) 팀이 상담실을 탈출했어요!".
+15. "복도로 나가기" → 홀, 상담실 대기 칸 앞. `getLitRooms()`에 counsel, 진행판 창이 환한 색으로 바뀐 스크린샷. 시스템 줄 "햇살(파랑) 팀이 상담실을 탈출했어요!".
 16. Review Focus 1: 새 팀(C·D)으로 다시 들어가 9단계까지 진행 → D 탭 새로고침 → 같은 반 코드·닉네임 → 자동으로 교실 복귀, 플래그·가방 같음.
-17. T "결과 CSV 받기" → 다운로드 파일에 BOM, "프라이버시 보호 첫 시도" 열, 별빛 팀 "오답".
+17. T "결과 CSV 받기" → 다운로드 파일에 BOM, "프라이버시 보호 첫 시도" 열, 햇살 팀 "오답".
 18. T "수업 끝내기" → 학생 화면이 입장 화면 + `CLASS_ENDED_NOTICE`.
 
 모바일(375×812, `hasTouch`, `isMobile`, 학생 E는 모바일·F는 데스크톱, 같은 팀):
@@ -2167,7 +2165,7 @@ node e2e/luma-check.mjs <png...>                                   # 평균 상�
 - Modify: `loadtest/run.mjs`(`--scenario world|school`, school은 `school.ts`를 한 프로세스로 실행), `server/src/class/classRegistry.ts`·`shared/src/escape/constants.ts`(`MAX_CLASSES_DEFAULT`를 측정값으로), `docs/loadtest.md`(새 절 "방탈출 1단계 — 반·교실 부하 (Oracle Micro)")
 
 **Interfaces:**
-- Consumes: `/api/class/teacher`, `/api/operator/status`(4), `ClassMsg`·`EscapeMsg`, `HUB_DOORS`·`hubGeometry`·`ROOM_MAPS`, `resolveCollision`, `APPEARANCE_KEYS`(모두 0 = 기본 외형).
+- Consumes: `/api/class/teacher`, `/api/operator/status`(4), `ClassMsg`·`EscapeMsg`, `HUB_DOORS`·`hubGeometry`·`ROOM_MAPS`, `resolveCollision`, `APPEARANCE_FIELDS`(모두 0 = 기본 외형).
 - 실행: `npm run loadtest -- --scenario school --endpoint <URL> --classes 4 --perClass 25 --escapeTeams 30 --duration 630`. 환경변수 `CV_LT_TEACHER_KEY`(시험용 선생님 키), `CV_LT_OPERATOR_KEY`(운영자 키). 둘 다 출력·파일에 남기지 않는다.
 
 봇 행동(바인딩):
