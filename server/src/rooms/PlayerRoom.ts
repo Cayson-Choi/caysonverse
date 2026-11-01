@@ -18,6 +18,7 @@ import { sanitizeChat } from "./chat";
 import { validateEmojiIndex } from "./emoji";
 import { validateTypingPayload } from "./typing";
 import { RateWindow } from "./rateLimit";
+import { CHAT_NOT_NICE, checkProfanity as checkChatLine, type ProfanityResult } from "./profanity";
 
 // Re-exported so every room built on this base finds its spawn helper here.
 export { spawnInDisk } from "./movement";
@@ -76,14 +77,16 @@ export function baseTracking(now: number): Tracking {
  * Typing — with their rate caps and pure validators, the per-client tracking,
  * and the reconnection lifecycle (onDrop / onReconnect / onLeave). A subclass
  * supplies the map (`geometry`), the spawn rule and the tracking factory, may
- * override the hooks (`canMove`, `afterMove`, `deliverChat`), and keeps its own
- * joins and room-specific messages. Its `onCreate` must call
- * `registerPlayerMessages()`; its `onJoin` builds the Player and calls
- * `seatPlayer`; a custom `onLeave` must end in `unseatPlayer` (or `super.onLeave`).
+ * override the hooks (`canMove`, `afterMove`, `deliverChat`, `checkProfanity`,
+ * `onChatBlocked`), and keeps its own joins and room-specific messages. Its
+ * `onCreate` must call `registerPlayerMessages()`; its `onJoin` builds the Player
+ * and calls `seatPlayer`; a custom `onLeave` must end in `unseatPlayer` (or
+ * `super.onLeave`).
  *
  * Rejection policy (binding, unchanged from the world): invalid player messages
- * are DROPPED silently — never partially applied, never a disconnect. The one
- * personal notice is the chat rate notice. A message type nobody registered is
+ * are DROPPED silently — never partially applied, never a disconnect. The only
+ * personal notices are the chat ones: the rate notice and, for a line the
+ * profanity filter held back, CHAT_NOT_NICE. A message type nobody registered is
  * dropped the same way (see registerPlayerMessages).
  */
 export abstract class PlayerRoom<S extends PlayersState, T extends Tracking = Tracking> extends Room<{
@@ -163,6 +166,23 @@ export abstract class PlayerRoom<S extends PlayersState, T extends Tracking = Tr
   protected deliverChat(client: Client, player: Player, text: string): void {
     this.broadcast(MessageType.Chat, { sid: client.sessionId, name: player.nickname, text });
   }
+
+  /**
+   * May this sanitized chat line go out? Default: the Korean profanity filter, in EVERY room on
+   * this base — the legacy world included, because the same children use it (ruling E21). A room
+   * that must opt out overrides this with `return { ok: true }`; nothing else needs to change.
+   */
+  protected checkProfanity(text: string): ProfanityResult {
+    return checkChatLine(text);
+  }
+
+  /**
+   * A chat line was held back by `checkProfanity`. The sender has already been told
+   * (CHAT_NOT_NICE) and nobody else hears the line. `masked` is the line with each offending
+   * word replaced by ● — the original text is deliberately NOT passed on, so it cannot be stored
+   * or logged by accident. Default: nothing. ClassRoom and EscapeRoom forward it to the teacher.
+   */
+  protected onChatBlocked(_client: Client, _player: Player, _masked: string): void {}
 
   /**
    * Reconnection grace window in seconds. Production is RECONNECT_WINDOW_S (20);
@@ -266,8 +286,10 @@ export abstract class PlayerRoom<S extends PlayersState, T extends Tracking = Tr
   /**
    * Chat pipeline (binding order): sender must have a seat → per-client rate cap
    * (3 per 5s; exceeded → drop + personal Korean notice) → pure sanitize (garbage
-   * → drop SILENTLY, no notice) → deliverChat (default: everyone, as a transient
-   * event). Chat never touches synced schema state.
+   * → drop SILENTLY, no notice) → checkProfanity (blocked → personal CHAT_NOT_NICE
+   * notice to the sender only + onChatBlocked, never broadcast) → deliverChat
+   * (default: everyone, as a transient event). Chat never touches synced schema
+   * state.
    */
   private handleChat(client: Client, payload: unknown): void {
     const player = this.state.players.get(client.sessionId);
@@ -284,9 +306,17 @@ export abstract class PlayerRoom<S extends PlayersState, T extends Tracking = Tr
     const text = sanitizeChat((payload as { text?: unknown } | null | undefined)?.text);
     if (text === null) return; // empty/oversized/garbage → silent drop
 
-    this.deliverChat(client, player, text);
-    // An accepted chat ends the typing state; receivers clear their own "…" on
-    // Chat (no separate OFF is sent), so a late OFF from this client is dropped.
+    const verdict = this.checkProfanity(text);
+    if (verdict.ok) {
+      this.deliverChat(client, player, text);
+    } else {
+      // Held back: only the sender hears about it, and nothing is broadcast. The line itself is
+      // never logged or stored — the hook gets the masked version only.
+      client.send(MessageType.ChatRejected, { reason: CHAT_NOT_NICE });
+      this.onChatBlocked(client, player, verdict.masked);
+    }
+    // A chat — accepted or blocked — ends the typing state; receivers clear their own "…" on
+    // Chat (the client sends its OFF before the line), so a late OFF from this client is dropped.
     track.typing = false;
   }
 

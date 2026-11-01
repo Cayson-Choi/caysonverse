@@ -35,6 +35,7 @@ import {
 } from "@caysonverse/shared/appearance";
 import { MAZE_GOAL, MAZE_PORTAL, MAZE_RETURN, ESCAPE_COOLDOWN_MS } from "@caysonverse/shared/maze";
 import { rooms, type WorldRoom } from "./index";
+import { CHAT_NOT_NICE } from "./profanity";
 
 const VALID_JOIN = { nickname: "케이슨", appearance: { ...DEFAULT_APPEARANCE, top: 1, topColor: 2 } };
 const JOIN_A = { nickname: "앨리스", appearance: DEFAULT_APPEARANCE };
@@ -303,6 +304,43 @@ describe("WorldRoom (integration)", () => {
     expect(aRejected).toHaveLength(1);
     expect(aRejected[0].reason).toContain("너무 빨라요");
     expect(bRejected).toHaveLength(0);
+  });
+
+  // Escape phase 1, Task 3 (ruling E21): the filter lives in the shared PlayerRoom chat path, so
+  // the existing world chat is covered too — children use it. A blocked line is shown to nobody
+  // but earns the sender a personal "say it kindly" notice.
+  it("a profane chat is not broadcast; the sender gets CHAT_NOT_NICE", async () => {
+    const room = await colyseus.createRoom<WorldRoom>(WORLD_ROOM);
+    const alice = await colyseus.connectTo(room, JOIN_A);
+    const bob = await colyseus.connectTo(room, JOIN_B);
+
+    const aChats: ChatBroadcast[] = [];
+    const bChats: ChatBroadcast[] = [];
+    const aRejected: ChatRejectedPayload[] = [];
+    const bRejected: ChatRejectedPayload[] = [];
+    alice.onMessage(MessageType.Chat, (m: ChatBroadcast) => aChats.push(m));
+    bob.onMessage(MessageType.Chat, (m: ChatBroadcast) => bChats.push(m));
+    alice.onMessage(MessageType.ChatRejected, (m: ChatRejectedPayload) => aRejected.push(m));
+    bob.onMessage(MessageType.ChatRejected, (m: ChatRejectedPayload) => bRejected.push(m));
+
+    alice.send(MessageType.Chat, { text: "너 진짜 시발 왜 그래" });
+    await room.waitForNextMessage();
+    await flush();
+
+    // Nobody — not even the sender — sees the line; only the sender is told why.
+    expect(aChats).toEqual([]);
+    expect(bChats).toEqual([]);
+    expect(aRejected).toEqual([{ reason: CHAT_NOT_NICE }]);
+    expect(bRejected).toEqual([]);
+
+    // The connection is unharmed: a kind line right after goes out to both as usual.
+    alice.send(MessageType.Chat, { text: "미안해요, 다시 말할게요" });
+    await room.waitForNextMessage();
+    await flush();
+    const kind = { sid: alice.sessionId, name: JOIN_A.nickname, text: "미안해요, 다시 말할게요" };
+    expect(aChats).toEqual([kind]);
+    expect(bChats).toEqual([kind]);
+    expect(aRejected).toHaveLength(1);
   });
 
   it("relays an emoji reaction to every client tagged with the sender's sid", async () => {

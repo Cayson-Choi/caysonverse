@@ -2,17 +2,19 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import { boot, type ColyseusTestServer } from "@colyseus/testing";
 import config from "@colyseus/tools";
 import { defineRoom, type Client } from "colyseus";
-import { WORLD_ROOM, PLAYER_RADIUS } from "@caysonverse/shared/constants";
+import { WORLD_ROOM, PLAYER_RADIUS, CHAT_MAX_LENGTH } from "@caysonverse/shared/constants";
 import { MessageType } from "@caysonverse/shared/messages";
 import type {
   ChatBroadcast,
   ChatRejectedPayload,
   JumpBroadcast,
+  TypingBroadcast,
 } from "@caysonverse/shared/messages";
 import { DEFAULT_APPEARANCE } from "@caysonverse/shared/appearance";
 import { Player, WorldState } from "@caysonverse/shared/schema";
 import type { MapGeometry } from "@caysonverse/shared/school/geometry";
 import { PlayerRoom, baseTracking, type Tracking } from "./PlayerRoom";
+import { CHAT_NOT_NICE, type ProfanityResult } from "./profanity";
 import { rooms, type WorldRoom } from "./index";
 
 /**
@@ -38,6 +40,7 @@ const PROBE_GEO: MapGeometry = {
   cameraBoxes: [],
 };
 const PROBE_ROOM = "probe";
+const GUARD_ROOM = "guard";
 
 /** The room widens the per-client bookkeeping (ruling E14), like WorldRoom's lastEscapeAt. */
 interface ProbeTracking extends Tracking {
@@ -93,6 +96,26 @@ class ProbeRoom extends PlayerRoom<WorldState, ProbeTracking> {
   }
 }
 
+/**
+ * What a ClassRoom / EscapeRoom will look like for the profanity hooks (Task 3): it learns of
+ * every blocked line through onChatBlocked, and a room may opt out of the filter by overriding
+ * checkProfanity (the one line the world would need).
+ */
+class GuardRoom extends ProbeRoom {
+  /** false → this room opts out of the filter entirely. */
+  filterOn = true;
+  /** Every onChatBlocked call, in order. */
+  readonly blocked: Array<{ sid: string; nickname: string; masked: string }> = [];
+
+  protected checkProfanity(text: string): ProfanityResult {
+    return this.filterOn ? super.checkProfanity(text) : { ok: true };
+  }
+
+  protected onChatBlocked(client: Client, player: Player, masked: string): void {
+    this.blocked.push({ sid: client.sessionId, nickname: player.nickname, masked });
+  }
+}
+
 /** White-box handle on the base's per-session bookkeeping. */
 function trackingOf(room: ProbeRoom): Map<string, ProbeTracking> {
   return (room as unknown as { tracking: Map<string, ProbeTracking> }).tracking;
@@ -101,7 +124,8 @@ function trackingOf(room: ProbeRoom): Map<string, ProbeTracking> {
 let colyseus: ColyseusTestServer;
 
 beforeAll(async () => {
-  colyseus = await boot(config({ rooms: { ...rooms, [PROBE_ROOM]: defineRoom(ProbeRoom) } }), PORT);
+  const extraRooms = { [PROBE_ROOM]: defineRoom(ProbeRoom), [GUARD_ROOM]: defineRoom(GuardRoom) };
+  colyseus = await boot(config({ rooms: { ...rooms, ...extraRooms } }), PORT);
 });
 
 afterAll(async () => {
@@ -285,5 +309,139 @@ describe("PlayerRoom hooks (a room built on the base)", () => {
     await flush();
     expect(room.state.players.has(sid)).toBe(false);
     expect(trackingOf(room).has(sid)).toBe(false);
+  });
+});
+
+// Escape phase 1, Task 3: the Korean profanity filter sits in the base's chat path, after the
+// rate cap and the sanitizer and before deliverChat. Two hooks: onChatBlocked (a room learns of a
+// blocked line, masked) and checkProfanity (a room may opt out).
+describe("PlayerRoom profanity filter (a room built on the base)", () => {
+  const SWEAR = "너 진짜 시발 왜 그래";
+  const SWEAR_MASKED = "너 진짜 ●● 왜 그래";
+
+  async function chatPair(roomName: string = GUARD_ROOM) {
+    const room = await colyseus.createRoom<GuardRoom>(roomName);
+    const alice = await colyseus.connectTo(room, { nickname: "앨리스" });
+    const bob = await colyseus.connectTo(room, { nickname: "밥이" });
+    const seen = {
+      aChats: [] as ChatBroadcast[],
+      bChats: [] as ChatBroadcast[],
+      aRejected: [] as ChatRejectedPayload[],
+      bRejected: [] as ChatRejectedPayload[],
+      bTyping: [] as TypingBroadcast[],
+    };
+    alice.onMessage(MessageType.Chat, (m: ChatBroadcast) => seen.aChats.push(m));
+    bob.onMessage(MessageType.Chat, (m: ChatBroadcast) => seen.bChats.push(m));
+    alice.onMessage(MessageType.ChatRejected, (m: ChatRejectedPayload) => seen.aRejected.push(m));
+    bob.onMessage(MessageType.ChatRejected, (m: ChatRejectedPayload) => seen.bRejected.push(m));
+    bob.onMessage(MessageType.Typing, (m: TypingBroadcast) => seen.bTyping.push(m));
+    const say = async (who: typeof alice, text: string) => {
+      who.send(MessageType.Chat, { text });
+      await room.waitForNextMessage();
+      await flush();
+    };
+    return { room, alice, bob, seen, say };
+  }
+
+  it("holds a blocked line back: nobody hears it, only the sender is told, the hook gets the masked line", async () => {
+    const { room, alice, seen, say } = await chatPair();
+
+    await say(alice, SWEAR);
+
+    expect(seen.aChats).toEqual([]);
+    expect(seen.bChats).toEqual([]);
+    expect(seen.aRejected).toEqual([{ reason: CHAT_NOT_NICE }]);
+    expect(seen.bRejected).toEqual([]);
+    expect(room.blocked).toEqual([{ sid: alice.sessionId, nickname: "앨리스", masked: SWEAR_MASKED }]);
+    // What reaches the hook (a teacher's screen later) never carries the swear itself.
+    expect(JSON.stringify(room.blocked)).not.toContain("시발");
+  });
+
+  it("lets a clean line through to deliverChat and never calls onChatBlocked", async () => {
+    const { room, alice, seen, say } = await chatPair();
+
+    await say(alice, "안녕, 같이 풀어 보자");
+
+    const line = { sid: alice.sessionId, name: "앨리스", text: "안녕, 같이 풀어 보자" };
+    expect(seen.aChats).toEqual([line]);
+    expect(seen.bChats).toEqual([line]);
+    expect(seen.aRejected).toEqual([]);
+    expect(room.blocked).toEqual([]);
+  });
+
+  it("filters AFTER the rate cap: a blocked line spends a slot, and the 4th gets the rate notice, not the filter's", async () => {
+    const { room, alice, seen, say } = await chatPair();
+
+    await say(alice, SWEAR); // slot 1
+    await say(alice, "ㅅㅂ"); // slot 2
+    await say(alice, "병신"); // slot 3
+    await say(alice, SWEAR); // 4th inside the window → rate notice; the filter never sees it
+
+    expect(seen.aRejected.map((m) => m.reason)).toEqual([
+      CHAT_NOT_NICE,
+      CHAT_NOT_NICE,
+      CHAT_NOT_NICE,
+      expect.stringContaining("너무 빨라요"),
+    ]);
+    expect(room.blocked.map((b) => b.masked)).toEqual([SWEAR_MASKED, "●●", "●●"]);
+    expect(seen.bChats).toEqual([]);
+  });
+
+  it("filters AFTER the sanitizer: garbage and oversized lines are dropped silently, even if they swear", async () => {
+    const { room, alice, seen, say } = await chatPair();
+
+    await say(alice, `시발 ${"가".repeat(CHAT_MAX_LENGTH)}`); // oversized → silent drop, no notice
+    await say(alice, "  ​  "); // blank after the strip → silent drop
+
+    expect(seen.aRejected).toEqual([]);
+    expect(seen.aChats).toEqual([]);
+    expect(seen.bChats).toEqual([]);
+    expect(room.blocked).toEqual([]);
+  });
+
+  it("a blocked line ends the sender's typing state, like an accepted one", async () => {
+    const { room, alice, seen, say } = await chatPair();
+    const track = () => trackingOf(room).get(alice.sessionId)!;
+
+    alice.send(MessageType.Typing, { on: true });
+    await room.waitForNextMessage();
+    await flush();
+    expect(track().typing).toBe(true);
+    expect(seen.bTyping).toEqual([{ sid: alice.sessionId, on: true }]);
+
+    await say(alice, SWEAR);
+    expect(track().typing).toBe(false);
+
+    // The client's late OFF is dropped, exactly as after an accepted chat.
+    alice.send(MessageType.Typing, { on: false });
+    await room.waitForNextMessage();
+    await flush();
+    expect(seen.bTyping).toEqual([{ sid: alice.sessionId, on: true }]);
+  });
+
+  it("a room opts out of the filter with one checkProfanity override", async () => {
+    const { room, alice, seen, say } = await chatPair();
+    room.filterOn = false;
+
+    await say(alice, SWEAR);
+
+    const line = { sid: alice.sessionId, name: "앨리스", text: SWEAR };
+    expect(seen.aChats).toEqual([line]);
+    expect(seen.bChats).toEqual([line]);
+    expect(seen.aRejected).toEqual([]);
+    expect(room.blocked).toEqual([]);
+  });
+
+  it("a room that overrides nothing still filters, and its default onChatBlocked is harmless", async () => {
+    const { room, alice, seen, say } = await chatPair(PROBE_ROOM);
+
+    await say(alice, SWEAR);
+    expect(seen.aChats).toEqual([]);
+    expect(seen.bChats).toEqual([]);
+    expect(seen.aRejected).toEqual([{ reason: CHAT_NOT_NICE }]);
+
+    await say(alice, "고마워요");
+    expect(seen.bChats.map((m) => m.text)).toEqual(["고마워요"]);
+    expect(room.clients.getById(alice.sessionId)).toBeDefined(); // not thrown out
   });
 });
