@@ -1,14 +1,10 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
-import { useGLTF } from "@react-three/drei";
-import {
-  AnimationMixer,
-  Group,
-  LoopOnce,
-  type AnimationAction,
-  type Material,
-} from "three";
-import { cloneTinted } from "./avatar";
+import { AnimationMixer, Group, LoopOnce, type AnimationAction } from "three";
+import { DEFAULT_APPEARANCE } from "@caysonverse/shared/appearance";
+import { setAvatarOpacity } from "./characterAvatar";
+import { clipFor, lookFromAppearance } from "./characterLook";
+import { reportAvatarClip, useAvatar } from "./useAvatar";
 import { BlobShadow } from "./BlobShadow";
 import { createNametag } from "./nametag";
 import { registerLabel } from "./labelRegistry";
@@ -30,15 +26,7 @@ import {
   jumpTimeScale,
 } from "./jump";
 import { ROLE_TEACHER } from "@caysonverse/shared/constants";
-import {
-  ANIM_FADE,
-  CHARACTERS,
-  CLIP,
-  BUBBLE_BASE_HEIGHT,
-  CROWN_MODEL,
-  MODEL_FACING_OFFSET,
-  RENDER_DELAY_MS,
-} from "./constants";
+import { ANIM_FADE, CLIP, BUBBLE_BASE_HEIGHT, MODEL_FACING_OFFSET, RENDER_DELAY_MS } from "./constants";
 
 /** Fallback seconds for a sit/stand clip if its duration can't be read yet. */
 const SIT_CLIP_FALLBACK_SEC = 0.8;
@@ -53,22 +41,12 @@ function playOnce(action: AnimationAction | null): number {
   return action.getClip().duration || SIT_CLIP_FALLBACK_SEC;
 }
 
-/** Set opacity across an avatar's cloned materials (only when it changes). */
-function applyOpacity(materials: Material[], opacity: number): void {
-  const translucent = opacity < 1;
-  for (const material of materials) {
-    material.transparent = translucent;
-    material.opacity = opacity;
-    material.depthWrite = !translucent;
-    material.needsUpdate = true;
-  }
-}
-
 /**
- * One remote avatar. Identity (character/tint/nickname) is fixed for the mount;
- * position/yaw/locomotion are read from the store's snapshot buffer every frame
- * and written straight to the Object3D — never through React state. Mounted and
- * unmounted by the roster in RemotePlayers.
+ * One remote avatar. Identity (appearance/nickname/role) is fixed for the mount —
+ * the server writes it once at join, and the WorldScene remounts per connection
+ * epoch; position/yaw/locomotion are read from the store's snapshot buffer every
+ * frame and written straight to the Object3D — never through React state. Mounted
+ * and unmounted by the roster in RemotePlayers.
  */
 export function RemotePlayer({
   sessionId,
@@ -81,17 +59,10 @@ export function RemotePlayer({
   // Identity is captured once at mount (the record exists — the roster derives
   // from the same map). Snapshots are read live in useFrame, not here.
   const record = getRemoteRecord(sessionId);
-  const character = record?.character ?? 0;
-  const tint = record?.tint ?? 0;
+  const appearance = record?.appearance ?? DEFAULT_APPEARANCE;
   const nickname = record?.nickname ?? "";
   // The server writes the role once at join (Task 3); everyone sees the teacher's 👑.
   const isTeacher = record?.role === ROLE_TEACHER;
-
-  const preset = CHARACTERS[character];
-  const { scene, animations } = useGLTF(preset.model);
-  // Crown GLB is loaded (once, cached by drei) for every avatar so the hook order
-  // is stable; it is only attached when this preset is a royal (preset.crown).
-  const { scene: crownScene } = useGLTF(CROWN_MODEL);
 
   const groupRef = useRef<Group>(null);
 
@@ -107,18 +78,11 @@ export function RemotePlayer({
   // cleanup-with-avatar discipline as the speech bubble; it starts above the bubble.
   useEmoji(sessionId, groupRef, bubbleAnchor, bubbleTop);
 
-  // Build heavy resources ONCE. Disposed on unmount (see the cleanup effect). The
-  // crown's cloned materials ride along in avatar.materials, so the existing
-  // opacity + disposal paths cover them; its shared geometry is never disposed.
-  const avatar = useMemo(
-    () =>
-      cloneTinted(scene, tint, {
-        hideNodes: preset.hideNodes,
-        crown: preset.crown,
-        crownScene,
-      }),
-    [scene, tint, preset, crownScene],
-  );
+  // Assemble the toy figure from the synced appearance ONCE (the same useAvatar path as
+  // the local player). The hook owns its materials and the shared merged geometry and
+  // releases them on unmount; this component owns only its mixer (cleanup below).
+  const look = useMemo(() => lookFromAppearance(appearance), [appearance]);
+  const { avatar, animations } = useAvatar(look, { probeId: sessionId });
   const mixer = useMemo(() => new AnimationMixer(avatar.root), [avatar]);
 
   // Per-frame mutable state — refs, never React state.
@@ -147,9 +111,14 @@ export function RemotePlayer({
   // Bind idle/walk/sit actions and settle the resting pose (mixer stays paused
   // afterward — an idle/seated avatar is a frozen pose, per the v1 mixer rules).
   // A remote that is ALREADY seated when we join settles straight into the held
-  // seated pose (no replayed sit-down animation).
+  // seated pose (no replayed sit-down animation). Every clip is bound by the name
+  // clipFor resolves for this look, so a long-skirt remote walks, runs and jumps
+  // with the `*_LongSkirt` variants (Review Focus 7); the state machine below keeps
+  // working on these refs, never on clip names. Declared after useAvatar, so the
+  // avatar probe entry exists when the resting clip is reported.
   useEffect(() => {
-    const bind = (name: string): AnimationAction | null => {
+    const bind = (base: string): AnimationAction | null => {
+      const name = clipFor(base, look);
       const clip = animations.find((c) => c.name === name);
       return clip ? mixer.clipAction(clip) : null;
     };
@@ -162,18 +131,15 @@ export function RemotePlayer({
     jumpAction.current = bind(CLIP.jump);
 
     const startedSeated = (getRemoteRecord(sessionId)?.seatIndex ?? -1) >= 0;
-    if (startedSeated) {
-      sitIdleAction.current?.reset().fadeIn(0).play();
-      seatModeRef.current = "seated";
-    } else {
-      idleAction.current?.reset().fadeIn(0).play();
-      seatModeRef.current = "up";
-    }
+    const rest = startedSeated ? sitIdleAction.current : idleAction.current;
+    rest?.reset().fadeIn(0).play();
+    seatModeRef.current = startedSeated ? "seated" : "up";
+    if (import.meta.env.DEV && rest) reportAvatarClip(sessionId, rest.getClip().name);
     mixer.update(0); // apply frame 0 so we don't render the bind/T-pose
     return () => {
       mixer.stopAllAction();
     };
-  }, [mixer, animations, sessionId]);
+  }, [mixer, animations, look, sessionId]);
 
   // DEV-only E2E probe (window.__cv.getRemoteGaits): publish this avatar's gait,
   // and drop the entry when it leaves. Dead code in production builds.
@@ -193,6 +159,15 @@ export function RemotePlayer({
   const setGait = (g: Gait): void => {
     gaitRef.current = g;
     if (import.meta.env.DEV) remoteGaitProbe.set(sessionId, g);
+  };
+
+  /**
+   * DEV avatar probe (`__cvAvatars()[sid].clip`): the clip `action` (already resolved
+   * through clipFor at bind time) now owns the body. Called on each transition only —
+   * never per frame.
+   */
+  const reportClip = (action: AnimationAction | null): void => {
+    if (import.meta.env.DEV && action) reportAvatarClip(sessionId, action.getClip().name);
   };
 
   // A leaving avatar takes its pending hop and its typing "…" with it, so a reused sid
@@ -231,14 +206,13 @@ export function RemotePlayer({
     };
   }, [sessionId, nickname, isTeacher, bubbleAnchor]);
 
-  // Dispose per-avatar GPU resources on unmount. Cloned geometry/textures stay
-  // shared with the cached GLTF and are intentionally NOT disposed here.
+  // Release this avatar's mixer on unmount. Its materials and the shared merged
+  // geometry belong to useAvatar, which releases them itself (never disposed here).
   useEffect(() => {
     const root = avatar.root;
     return () => {
       mixer.stopAllAction();
       mixer.uncacheRoot(root);
-      for (const material of avatar.materials) material.dispose();
     };
   }, [avatar, mixer]);
 
@@ -267,11 +241,13 @@ export function RemotePlayer({
       gaitAction(gaitRef.current)?.fadeOut(ANIM_FADE);
       setGait("idle");
       seatTimerRef.current = playOnce(sitDownAction.current);
+      reportClip(sitDownAction.current);
       seatModeRef.current = "sitting";
     } else if (!seated && (seatModeRef.current === "seated" || seatModeRef.current === "sitting")) {
       sitIdleAction.current?.fadeOut(ANIM_FADE);
       sitDownAction.current?.fadeOut(ANIM_FADE);
       seatTimerRef.current = playOnce(sitStandAction.current);
+      reportClip(sitStandAction.current);
       seatModeRef.current = "standing";
     }
 
@@ -281,6 +257,7 @@ export function RemotePlayer({
       if (seatTimerRef.current <= 0) {
         sitDownAction.current?.fadeOut(ANIM_FADE);
         sitIdleAction.current?.reset().fadeIn(ANIM_FADE).play();
+        reportClip(sitIdleAction.current);
         seatModeRef.current = "seated";
         fadeRef.current = ANIM_FADE;
       }
@@ -289,6 +266,7 @@ export function RemotePlayer({
       if (seatTimerRef.current <= 0) {
         sitStandAction.current?.fadeOut(ANIM_FADE);
         idleAction.current?.reset().fadeIn(ANIM_FADE).play();
+        reportClip(idleAction.current);
         setGait("idle");
         seatModeRef.current = "up";
         fadeRef.current = ANIM_FADE;
@@ -318,6 +296,7 @@ export function RemotePlayer({
             jump.setLoop(LoopOnce, 1);
             jump.clampWhenFinished = true;
             jump.fadeIn(JUMP_FADE_IN_S).play();
+            reportClip(jump);
           }
         }
         lift = jumpOffsetY(nowMs - hop.startedAt);
@@ -328,7 +307,9 @@ export function RemotePlayer({
           if (phase === "landed") {
             // Landed: resume the gait loop; step 4 re-syncs it next frame if the
             // avatar started or stopped moving meanwhile.
-            gaitAction(gaitRef.current)?.reset().fadeIn(ANIM_FADE).play();
+            const loop = gaitAction(gaitRef.current);
+            loop?.reset().fadeIn(ANIM_FADE).play();
+            reportClip(loop);
             landed = true;
           }
           fadeRef.current = ANIM_FADE; // keep the mixer ticking through the crossfade
@@ -348,15 +329,18 @@ export function RemotePlayer({
       const gait = nextGait(gaitRef.current, speed);
       if (gait !== gaitRef.current) {
         gaitAction(gaitRef.current)?.fadeOut(ANIM_FADE);
-        gaitAction(gait)?.reset().fadeIn(ANIM_FADE).play();
+        const loop = gaitAction(gait);
+        loop?.reset().fadeIn(ANIM_FADE).play();
+        reportClip(loop);
         setGait(gait);
         fadeRef.current = ANIM_FADE;
       }
     }
 
-    // 5) Connected → opacity, applied only on transition (not every frame).
+    // 5) Connected → opacity, applied only on transition (not every frame). Restoring 1
+    //    returns each material to its authored state (the BLEND face stays blended).
     if (rec.connected !== prevConnectedRef.current) {
-      applyOpacity(avatar.materials, rec.connected ? 1 : 0.5);
+      setAvatarOpacity(avatar, rec.connected ? 1 : 0.5);
       prevConnectedRef.current = rec.connected;
     }
 

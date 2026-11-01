@@ -1,5 +1,11 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { CHARACTER_COUNT, TINT_COUNT } from "@caysonverse/shared/constants";
+import {
+  APPEARANCE_FIELDS,
+  APPEARANCE_PRESETS,
+  APPEARANCE_RANGES,
+  DEFAULT_APPEARANCE,
+  applyPreset,
+} from "@caysonverse/shared/appearance";
 import { loadIdentity, saveIdentity } from "./identityCache";
 
 // In-memory Storage (client vitest runs in the `node` env — no real localStorage).
@@ -24,50 +30,64 @@ beforeEach(() => {
 });
 
 describe("loadIdentity", () => {
-  it("returns the empty default when nothing is stored", () => {
-    expect(loadIdentity()).toEqual({ nickname: "", character: 0, tint: 0 });
+  it("returns { nickname: '', appearance: DEFAULT_APPEARANCE } when nothing is stored", () => {
+    expect(loadIdentity()).toEqual({ nickname: "", appearance: DEFAULT_APPEARANCE });
   });
 
-  it("round-trips a valid saved identity", () => {
-    saveIdentity({ nickname: "케이슨", character: 5, tint: 3 });
-    expect(loadIdentity()).toEqual({ nickname: "케이슨", character: 5, tint: 3 });
+  it("round-trips a saved appearance", () => {
+    const princess = applyPreset(DEFAULT_APPEARANCE, APPEARANCE_PRESETS[1]);
+    const look = { ...princess, voice: 1 };
+    saveIdentity({ nickname: "케이슨", appearance: look });
+    expect(loadIdentity()).toEqual({ nickname: "케이슨", appearance: look });
+    // Stored under the same key the pre-builder build used, as { nickname, appearance }.
+    expect(JSON.parse(localStorage.getItem(KEY)!)).toEqual({ nickname: "케이슨", appearance: look });
   });
 
-  it("accepts every in-range character index (0..CHARACTER_COUNT-1)", () => {
-    for (let c = 0; c < CHARACTER_COUNT; c++) {
-      localStorage.setItem(KEY, JSON.stringify({ nickname: "a", character: c, tint: 0 }));
-      expect(loadIdentity().character).toBe(c);
+  it("migrates a pre-builder { character, tint } identity to DEFAULT_APPEARANCE, keeping the nickname (spec §5.2)", () => {
+    localStorage.setItem(KEY, JSON.stringify({ nickname: "케이슨", character: 5, tint: 3 }));
+    expect(loadIdentity()).toEqual({ nickname: "케이슨", appearance: DEFAULT_APPEARANCE });
+  });
+
+  it("replaces a corrupt or out-of-range appearance with DEFAULT_APPEARANCE as a whole", () => {
+    const valid = { ...DEFAULT_APPEARANCE, top: 1, topColor: 2 };
+    const corrupt: unknown[] = [
+      { ...valid, hat: APPEARANCE_RANGES.hat }, // one field out of range
+      { ...valid, skin: -1 },
+      { ...valid, hairColor: 1.5 },
+      { ...valid, voice: "1" },
+      (() => {
+        const missing: Record<string, number> = { ...valid };
+        delete missing.itemColor;
+        return missing;
+      })(),
+      null,
+      "princess",
+      [1, 2, 3],
+    ];
+    for (const appearance of corrupt) {
+      localStorage.setItem(KEY, JSON.stringify({ nickname: "케이슨", appearance }));
+      const loaded = loadIdentity();
+      expect(loaded.nickname).toBe("케이슨");
+      // As a whole: the valid fields (top/topColor) are NOT kept either.
+      expect(loaded.appearance, JSON.stringify(appearance)).toEqual(DEFAULT_APPEARANCE);
     }
   });
 
-  it("falls back to 0 for an out-of-range saved character (old/corrupt session)", () => {
-    // A session saved before the roster grew, or a tampered value, must never
-    // yield an index the CHARACTERS table can't render.
-    localStorage.setItem(KEY, JSON.stringify({ nickname: "a", character: CHARACTER_COUNT, tint: 0 }));
-    expect(loadIdentity().character).toBe(0);
-    localStorage.setItem(KEY, JSON.stringify({ nickname: "a", character: 99, tint: 0 }));
-    expect(loadIdentity().character).toBe(0);
-    localStorage.setItem(KEY, JSON.stringify({ nickname: "a", character: -1, tint: 0 }));
-    expect(loadIdentity().character).toBe(0);
-  });
-
-  it("falls back to 0 for a non-integer or missing character", () => {
-    localStorage.setItem(KEY, JSON.stringify({ nickname: "a", character: 2.5, tint: 0 }));
-    expect(loadIdentity().character).toBe(0);
-    localStorage.setItem(KEY, JSON.stringify({ nickname: "a", tint: 0 }));
-    expect(loadIdentity().character).toBe(0);
-  });
-
-  it("clamps an out-of-range tint the same way", () => {
-    localStorage.setItem(KEY, JSON.stringify({ nickname: "a", character: 0, tint: TINT_COUNT }));
-    expect(loadIdentity().tint).toBe(0);
-    localStorage.setItem(KEY, JSON.stringify({ nickname: "a", character: 0, tint: -1 }));
-    expect(loadIdentity().tint).toBe(0);
+  it("returns a fresh appearance object the caller may change", () => {
+    const loaded = loadIdentity();
+    expect(Object.isFrozen(loaded.appearance)).toBe(false);
+    loaded.appearance.top = 1;
+    expect(DEFAULT_APPEARANCE.top).not.toBe(1);
+    expect(Object.keys(loaded.appearance).sort()).toEqual([...APPEARANCE_FIELDS].sort());
   });
 
   it("never throws on malformed JSON", () => {
     localStorage.setItem(KEY, "{not json");
     expect(() => loadIdentity()).not.toThrow();
-    expect(loadIdentity()).toEqual({ nickname: "", character: 0, tint: 0 });
+    expect(loadIdentity()).toEqual({ nickname: "", appearance: DEFAULT_APPEARANCE });
+    localStorage.setItem(KEY, "null");
+    expect(loadIdentity()).toEqual({ nickname: "", appearance: DEFAULT_APPEARANCE });
+    localStorage.setItem(KEY, JSON.stringify({ nickname: 7, appearance: DEFAULT_APPEARANCE }));
+    expect(loadIdentity()).toEqual({ nickname: "", appearance: DEFAULT_APPEARANCE });
   });
 });

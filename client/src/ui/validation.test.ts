@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { CHARACTER_COUNT, TINT_COUNT } from "@caysonverse/shared/constants";
+import {
+  APPEARANCE_FIELDS,
+  APPEARANCE_RANGES,
+  DEFAULT_APPEARANCE,
+  type Appearance,
+} from "@caysonverse/shared/appearance";
 import { validateNickname, validateEntry } from "./validation";
 
 describe("validateNickname", () => {
@@ -35,41 +40,47 @@ describe("validateNickname", () => {
 });
 
 describe("validateEntry", () => {
-  it("accepts valid selections and returns the trimmed nickname", () => {
-    const r = validateEntry({ nickname: "  테스터 ", character: 2, tint: 5 });
+  it("accepts a valid nickname + appearance and trims the nickname", () => {
+    const look = { ...DEFAULT_APPEARANCE, hat: 1, top: 2, voice: 1 };
+    const r = validateEntry({ nickname: "  테스터 ", appearance: look });
     expect(r.ok).toBe(true);
-    if (r.ok) expect(r.value).toEqual({ nickname: "테스터", character: 2, tint: 5 });
+    if (r.ok) expect(r.value).toEqual({ nickname: "테스터", appearance: look });
+
+    // Every field at its top value is still valid.
+    const max = {} as Appearance;
+    for (const field of APPEARANCE_FIELDS) max[field] = APPEARANCE_RANGES[field] - 1;
+    expect(validateEntry({ nickname: "테스터", appearance: max }).ok).toBe(true);
   });
 
   it("rejects a bad nickname", () => {
-    const r = validateEntry({ nickname: "a", character: 0, tint: 0 });
+    const r = validateEntry({ nickname: "a", appearance: DEFAULT_APPEARANCE });
     expect(r.ok).toBe(false);
   });
 
-  it("rejects an out-of-range character index", () => {
-    expect(validateEntry({ nickname: "테스터", character: -1, tint: 0 }).ok).toBe(false);
-    // The roster now has 8 presets (0..7); CHARACTER_COUNT is the first invalid one.
-    expect(validateEntry({ nickname: "테스터", character: CHARACTER_COUNT, tint: 0 }).ok).toBe(false);
-    expect(validateEntry({ nickname: "테스터", character: 1.5, tint: 0 }).ok).toBe(false);
+  it("rejects an invalid appearance with \"외형 선택이 올바르지 않습니다\"", () => {
+    const bad: Appearance[] = [
+      { ...DEFAULT_APPEARANCE, hat: APPEARANCE_RANGES.hat },
+      { ...DEFAULT_APPEARANCE, skin: -1 },
+      { ...DEFAULT_APPEARANCE, voice: 1.5 },
+      { ...DEFAULT_APPEARANCE, topColor: NaN },
+    ];
+    for (const appearance of bad) {
+      const r = validateEntry({ nickname: "테스터", appearance });
+      expect(r).toEqual({ ok: false, error: "외형 선택이 올바르지 않습니다" });
+    }
+    // A missing field too (a stale or hand-edited cache).
+    const missing: Partial<Appearance> = { ...DEFAULT_APPEARANCE };
+    delete missing.shoes;
+    expect(validateEntry({ nickname: "테스터", appearance: missing as Appearance })).toEqual({
+      ok: false,
+      error: "외형 선택이 올바르지 않습니다",
+    });
   });
 
-  it("accepts the four new royal indices (4..7)", () => {
-    for (let c = 4; c < CHARACTER_COUNT; c++) {
-      expect(validateEntry({ nickname: "테스터", character: c, tint: 0 }).ok).toBe(true);
-    }
-  });
-
-  it("rejects an out-of-range tint index", () => {
-    expect(validateEntry({ nickname: "테스터", character: 0, tint: 8 }).ok).toBe(false);
-    expect(validateEntry({ nickname: "테스터", character: 0, tint: -1 }).ok).toBe(false);
-  });
-
-  it("accepts every in-range character and tint index", () => {
-    for (let c = 0; c < CHARACTER_COUNT; c++) {
-      expect(validateEntry({ nickname: "테스터", character: c, tint: 0 }).ok).toBe(true);
-    }
-    for (let t = 0; t < TINT_COUNT; t++) {
-      expect(validateEntry({ nickname: "테스터", character: 0, tint: t }).ok).toBe(true);
-    }
+  it("sends only the 15 appearance fields (extra keys dropped)", () => {
+    const withExtra = { ...DEFAULT_APPEARANCE, character: 3, tint: 2 } as Appearance;
+    const r = validateEntry({ nickname: "테스터", appearance: withExtra });
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(Object.keys(r.value.appearance).sort()).toEqual([...APPEARANCE_FIELDS].sort());
   });
 });

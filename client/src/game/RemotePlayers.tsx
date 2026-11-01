@@ -1,10 +1,9 @@
 import { Suspense, useEffect, useSyncExternalStore } from "react";
-import { useGLTF } from "@react-three/drei";
 import { getRoom } from "../net/connection";
 import { startRemoteSync } from "./remoteSync";
 import { getRoster, subscribeRoster } from "./remoteStore";
 import { RemotePlayer } from "./RemotePlayer";
-import { CHARACTERS } from "./constants";
+import { preloadCharacterAssets } from "./useAvatar";
 import type { Pose, SeatState } from "./types";
 
 /**
@@ -30,11 +29,10 @@ export function RemotePlayers({
   useEffect(() => {
     const room = getRoom();
     if (!room) return;
-    // Warm the loader cache for every character now that we're in-world, so a
-    // joining remote of any preset appears without a hitch (dedupes with the
-    // local player's already-loaded model). Not done at module load — that would
-    // fetch every GLB on the entry screen before the user even joins.
-    for (const preset of CHARACTERS) useGLTF.preload(preset.model);
+    // Warm the loader cache now that we're in-world, so a joining remote appears
+    // without a hitch: one character.glb assembles every look (it dedupes with the
+    // entry screen's preload and the local player's already-loaded model).
+    preloadCharacterAssets();
     return startRemoteSync(room, () => performance.now(), selfPose, selfSeat);
   }, [selfPose, selfSeat]);
 

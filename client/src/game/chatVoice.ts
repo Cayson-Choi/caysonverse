@@ -1,18 +1,23 @@
 /**
- * Neural chat voices (design 34 후속 — 발주자: 캐릭터 대화도 Edge TTS로, 남자
- * 캐릭터는 남성·여자 캐릭터는 여성 목소리). Chat messages are synthesized by
- * the same server endpoint as the NPC voice (/api/npc-voice) with the SENDER
- * character's gender, then played through one serial queue: one message at a
+ * Neural chat voices (design 34 후속 — 발주자: 캐릭터 대화도 Edge TTS로). Chat
+ * messages are synthesized by the same server endpoint as the NPC voice
+ * (/api/npc-voice) with the gender of the SENDER's chosen voice — the synced
+ * appearance field `voice`, mapped by `voiceGender` (character stage 3: the
+ * student picks the voice in the builder; it no longer follows a preset
+ * character). The server's `male` / `female` contract is unchanged. Lines are
+ * played through one serial queue: one message at a
  * time, a small pending cap (oldest dropped), distance-attenuated volume — the
  * exact gating/volume model the old Web Speech queue used (tts.ts constants).
  * Failures skip silently: Edge TTS or nothing (발주자: 다른 목소리 금지).
  */
 
 import { speechOnlyText } from "@caysonverse/shared/speech";
+import type { VoiceGender } from "@caysonverse/shared/appearance";
 import { SERVER_URL } from "../net/endpoint";
 import { TTS_MAX_PENDING, TTS_RADIUS_M, chatVolume, clipForSpeech } from "./tts";
 
-export type ChatVoiceGender = "male" | "female";
+/** The Edge voice a chat line is read in — the appearance module's VOICE_GENDERS (male / female). */
+export type ChatVoiceGender = VoiceGender;
 
 interface QueueItem {
   text: string;

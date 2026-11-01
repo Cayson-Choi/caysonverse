@@ -54,10 +54,9 @@ import {
   RUN_SPEED,
   WORLD_BOUNDS,
   PLAYER_RADIUS,
-  CHARACTER_COUNT,
-  TINT_COUNT,
   EMOJIS,
 } from "@caysonverse/shared/constants";
+import { randomAppearance } from "@caysonverse/shared/appearance";
 import { OBSTACLES, DOOR_HALF_WIDTH, ZONES } from "@caysonverse/shared/worldMap";
 import { resolveCollision } from "@caysonverse/shared/collision";
 
@@ -240,8 +239,9 @@ function botNickname(clientId: number): string {
 async function main(options: Options): Promise<void> {
   const nickname = botNickname(options.clientId);
   const botIndex = BOT_OFFSET + options.clientId;
-  const character = randomInt(CHARACTER_COUNT);
-  const tint = randomInt(TINT_COUNT);
+  // A random look over all 15 appearance fields (every value in range, so the
+  // server's validateAppearance always accepts it).
+  const appearance = randomAppearance(Math.random);
 
   const client = new Client(options.endpoint);
   let room: Room<WorldState>;
@@ -251,7 +251,7 @@ async function main(options: Options): Promise<void> {
     // singleton-world topology note in the brief. Joining a not-yet-created or
     // full room throws; that failure is counted and logged, not retried (a
     // bot's job is to add load, not to exercise the client's retry policy).
-    room = await client.join<WorldState>(WORLD_ROOM, { nickname, character, tint });
+    room = await client.join<WorldState>(WORLD_ROOM, { nickname, appearance });
   } catch (err) {
     stats.joinFailures++;
     const message = err instanceof Error ? err.message : String(err);

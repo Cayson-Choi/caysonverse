@@ -1,9 +1,10 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { useAppStore } from "./appStore";
+import { DEFAULT_APPEARANCE } from "@caysonverse/shared/appearance";
 
 const enterAsAdmin = () =>
   useAppStore.getState().enterWorld(
-    { nickname: "강사", character: 0, tint: 0, sessionId: "s0" },
+    { nickname: "강사", appearance: DEFAULT_APPEARANCE, sessionId: "s0" },
     true,
   );
 
@@ -45,7 +46,7 @@ describe("appStore.reconnected — admin status on reconnect (F5)", () => {
 
   it("does not grant admin to a non-admin on a fresh join", () => {
     useAppStore.getState().enterWorld(
-      { nickname: "학생", character: 0, tint: 0, sessionId: "s0" },
+      { nickname: "학생", appearance: DEFAULT_APPEARANCE, sessionId: "s0" },
       false,
     );
     useAppStore.getState().reconnected("s4", false);

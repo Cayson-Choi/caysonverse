@@ -16,11 +16,11 @@ import type { WorldState } from "@caysonverse/shared/schema";
 import { MessageType } from "@caysonverse/shared/messages";
 import type { ChatBroadcast, ChatRejectedPayload, SystemBroadcast } from "@caysonverse/shared/messages";
 import { EMOJIS } from "@caysonverse/shared/constants";
+import { DEFAULT_APPEARANCE, voiceGender } from "@caysonverse/shared/appearance";
 import { bubbleRegistry } from "../game/bubbleRegistry";
 import { emojiRegistry } from "../game/emojiRegistry";
 import { speakChatNeural, stopChatVoice, type ChatVoiceGender } from "../game/chatVoice";
 import { stopNpcVoice } from "../game/npcVoice";
-import { CHARACTERS } from "../game/constants";
 import { useChatStore } from "../stores/chatStore";
 import { useSoundStore } from "../stores/soundStore";
 
@@ -35,11 +35,12 @@ export function startChatSync(room: Room<WorldState>): () => void {
     // authoritative schema positions — the 10 Hz patch lag is acceptable for
     // an audibility gate. My own message is distance 0 (always spoken); a
     // sender missing from the state (join/leave race) yields NaN, skipped.
-    // The SENDER's character picks the male/female Edge voice.
+    // The SENDER's synced appearance `voice` picks the male/female Edge voice (a
+    // sender missing from the state falls back to the default look's voice).
     const muted = useSoundStore.getState().muted;
     const players = room.state?.players;
     const sender = players?.get?.(m.sid);
-    const gender: ChatVoiceGender = CHARACTERS[sender?.character ?? 0]?.voice ?? "male";
+    const gender: ChatVoiceGender = voiceGender(sender?.voice ?? DEFAULT_APPEARANCE.voice);
     if (m.sid === room.sessionId) {
       speakChatNeural(m.text, 0, gender, muted);
     } else {

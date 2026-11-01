@@ -1,3 +1,4 @@
+import type { Appearance } from "@caysonverse/shared/appearance";
 import type { Orbit, Pose } from "./types";
 import { getRemotes } from "./remoteStore";
 import { getRoom, sendSit, sendStand } from "../net/connection";
@@ -22,8 +23,8 @@ export interface PoseView extends Pose {
 export interface RemoteView {
   sessionId: string;
   nickname: string;
-  /** Character preset index (0..7; 4..7 = royals) — lets E2E assert royal remotes. */
-  character: number;
+  /** The 15 synced appearance fields — lets E2E assert that every client sees the same look. */
+  appearance: Appearance;
   x: number;
   z: number;
   yaw: number;
@@ -84,6 +85,11 @@ declare global {
   interface Window {
     /** Dev-only E2E hook (see installDebugHook). Absent in production builds. */
     __cv?: {
+      /**
+       * The local player's own session id (the key of its `__cvAvatars()` entry, and what
+       * other clients see in `getRemotes()`). Changes only with a new connection.
+       */
+      getSessionId: () => string;
       /** The local player's live pose + server-confirmed seatIndex. */
       getPos: () => PoseView;
       /** The live third-person camera orbit (yaw/pitch/distance). */
@@ -156,7 +162,8 @@ declare global {
 
 /**
  * Dev-only E2E hook. Under `import.meta.env.DEV`, exposes `window.__cv` with the
- * local pose (`getPos`) and remote players (`getRemotes`). The whole body sits
+ * own session id (`getSessionId`), the local pose (`getPos`) and remote players
+ * (`getRemotes`). The whole body sits
  * behind the DEV guard, so production evaluates `import.meta.env.DEV` to `false`
  * and tree-shakes the hook away. Returns a cleanup that removes the global.
  */
@@ -166,9 +173,11 @@ export function installDebugHook(
   getSeatIndex: () => number,
   getSelfVisible: () => boolean,
   getGait: () => Gait,
+  getSessionId: () => string,
 ): () => void {
   if (!import.meta.env.DEV) return () => {};
   window.__cv = {
+    getSessionId: () => getSessionId(),
     getPos: () => ({ ...getPose(), seatIndex: getSeatIndex() }),
     getOrbit: () => ({ ...getOrbit() }),
     getSelfVisible: () => getSelfVisible(),

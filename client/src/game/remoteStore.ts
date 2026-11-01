@@ -6,6 +6,7 @@
  * leave alone — never on movement. Positions never pass through React state.
  */
 
+import type { Appearance } from "@caysonverse/shared/appearance";
 import { pushSnapshot, type Snapshot } from "./interpolation";
 
 /** Everything the renderer needs about one remote player. */
@@ -13,8 +14,11 @@ export interface RemotePlayerRecord {
   sessionId: string;
   /** Identity — set at add; `connected` may flip (Task 11 reconnection). */
   nickname: string;
-  character: number;
-  tint: number;
+  /**
+   * The 15 synced appearance fields (`pickAppearance(player)` at add). The server
+   * writes them once at join, so — like `role` — there is no setter and no listener.
+   */
+  appearance: Appearance;
   connected: boolean;
   /** Seat (v2 Task 1): -1 = standing; >= 0 = the seat this remote occupies. */
   seatIndex: number;
@@ -130,35 +134,29 @@ export function forEachRemotePosition(
   }
 }
 
-/** Dev/E2E view: each remote's newest known position + ghost flag + seat + role. */
-export function getRemotes(): Array<{
+/** One remote as the dev/E2E view reports it (see `getRemotes`). */
+export interface RemoteSummary {
   sessionId: string;
   nickname: string;
-  character: number;
+  /** A copy of the record's appearance — the caller cannot reach into the live record. */
+  appearance: Appearance;
   x: number;
   z: number;
   yaw: number;
   connected: boolean;
   seatIndex: number;
   role: number;
-}> {
-  const out: Array<{
-    sessionId: string;
-    nickname: string;
-    character: number;
-    x: number;
-    z: number;
-    yaw: number;
-    connected: boolean;
-    seatIndex: number;
-    role: number;
-  }> = [];
+}
+
+/** Dev/E2E view: each remote's appearance, newest known position + ghost flag + seat + role. */
+export function getRemotes(): RemoteSummary[] {
+  const out: RemoteSummary[] = [];
   for (const record of records.values()) {
     const last = record.snapshots[record.snapshots.length - 1];
     out.push({
       sessionId: record.sessionId,
       nickname: record.nickname,
-      character: record.character,
+      appearance: { ...record.appearance },
       x: last?.x ?? 0,
       z: last?.z ?? 0,
       yaw: last?.yaw ?? 0,

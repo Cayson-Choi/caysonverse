@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import type { Appearance } from "@caysonverse/shared/appearance";
 
 /**
  * UI/screen state only. Per-frame game data (position, input, camera) lives in
@@ -11,8 +12,8 @@ export type Screen = "entry" | "world";
 /** Who the local player is, established at join. */
 export interface Identity {
   nickname: string;
-  character: number;
-  tint: number;
+  /** The 15 appearance fields this player joined with (fixed for the connection). */
+  appearance: Appearance;
   sessionId: string;
 }
 

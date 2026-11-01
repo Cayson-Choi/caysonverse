@@ -25,19 +25,27 @@ import type {
   TypingBroadcast,
 } from "@caysonverse/shared/messages";
 import { SEATS } from "@caysonverse/shared/worldMap";
+import {
+  APPEARANCE_ERROR,
+  APPEARANCE_FIELDS,
+  APPEARANCE_RANGES,
+  DEFAULT_APPEARANCE,
+  pickAppearance,
+  type Appearance,
+} from "@caysonverse/shared/appearance";
 import { MAZE_GOAL, MAZE_PORTAL, MAZE_RETURN, ESCAPE_COOLDOWN_MS } from "@caysonverse/shared/maze";
 import { rooms, type WorldRoom } from "./index";
 
-const VALID_JOIN = { nickname: "케이슨", character: 1, tint: 2 };
-const JOIN_A = { nickname: "앨리스", character: 0, tint: 0 };
-const JOIN_B = { nickname: "밥이", character: 1, tint: 1 };
+const VALID_JOIN = { nickname: "케이슨", appearance: { ...DEFAULT_APPEARANCE, top: 1, topColor: 2 } };
+const JOIN_A = { nickname: "앨리스", appearance: DEFAULT_APPEARANCE };
+const JOIN_B = { nickname: "밥이", appearance: DEFAULT_APPEARANCE };
 
 /** Let broadcast/personal messages propagate to the in-process test clients. */
 const flush = () => new Promise((r) => setTimeout(r, 60));
 
 // Task 9 admin fixtures.
 const ADMIN_CODE = "관리자-s3cret-9";
-const ADMIN_JOIN = { nickname: "선생님", character: 0, tint: 0 };
+const ADMIN_JOIN = { nickname: "선생님", appearance: DEFAULT_APPEARANCE };
 const ANNOUNCE_TEXT = "오늘 수업은 8시 시작!";
 
 /** Poll a getter until it is truthy (or timeout), then return its value. */
@@ -95,8 +103,7 @@ describe("WorldRoom (integration)", () => {
     const player = room.state.players.get(client.sessionId);
     expect(player).toBeDefined();
     expect(player!.nickname).toBe("케이슨");
-    expect(player!.character).toBe(1);
-    expect(player!.tint).toBe(2);
+    expect(pickAppearance(player!)).toEqual(VALID_JOIN.appearance);
     expect(player!.x).toBeGreaterThanOrEqual(WORLD_BOUNDS.minX);
     expect(player!.x).toBeLessThanOrEqual(WORLD_BOUNDS.maxX);
     expect(player!.z).toBeGreaterThanOrEqual(WORLD_BOUNDS.minZ);
@@ -106,8 +113,36 @@ describe("WorldRoom (integration)", () => {
   it("rejects a join with an invalid nickname", async () => {
     const room = await colyseus.createRoom<WorldRoom>(WORLD_ROOM);
     await expect(
-      colyseus.connectTo(room, { nickname: "a", character: 0, tint: 0 }),
+      colyseus.connectTo(room, { nickname: "a", appearance: DEFAULT_APPEARANCE }),
     ).rejects.toThrow("닉네임");
+    expect(room.state.players.size).toBe(0);
+  });
+
+  it("syncs all 15 appearance fields to other clients", async () => {
+    const room = await colyseus.createRoom<WorldRoom>(WORLD_ROOM);
+    // Every field at its top value: a field the schema forgot, or one written from the
+    // wrong option, would come through as 0 (or its default) instead.
+    const look = {} as Appearance;
+    for (const field of APPEARANCE_FIELDS) look[field] = APPEARANCE_RANGES[field] - 1;
+    const alice = await colyseus.connectTo(room, { nickname: "앨리스", appearance: look });
+    const bob = await colyseus.connectTo(room, JOIN_B);
+
+    // Server truth, then what the OTHER client decoded.
+    expect(pickAppearance(room.state.players.get(alice.sessionId)!)).toEqual(look);
+    expect(await pollFor(() => bob.state?.players?.get(alice.sessionId))).toBeDefined();
+    expect(pickAppearance(bob.state.players.get(alice.sessionId)!)).toEqual(look);
+    // And the reverse direction carries bob's (default) look.
+    expect(await pollFor(() => alice.state?.players?.get(bob.sessionId))).toBeDefined();
+    expect(pickAppearance(alice.state.players.get(bob.sessionId)!)).toEqual(DEFAULT_APPEARANCE);
+  });
+
+  it("rejects a join without appearance", async () => {
+    const room = await colyseus.createRoom<WorldRoom>(WORLD_ROOM);
+    await expect(colyseus.connectTo(room, { nickname: "케이슨" })).rejects.toThrow(APPEARANCE_ERROR);
+    // A stale pre-builder bundle ({ character, tint }) is turned away the same way.
+    await expect(
+      colyseus.connectTo(room, { nickname: "케이슨", character: 1, tint: 2 }),
+    ).rejects.toThrow(APPEARANCE_ERROR);
     expect(room.state.players.size).toBe(0);
   });
 

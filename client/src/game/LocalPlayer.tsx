@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
-import { useAnimations, useGLTF, useKeyboardControls } from "@react-three/drei";
+import { useAnimations, useKeyboardControls } from "@react-three/drei";
 import { Group, LoopOnce } from "three";
 import { WORLD_BOUNDS } from "@caysonverse/shared/constants";
+import type { Appearance } from "@caysonverse/shared/appearance";
 import { PLAYER_RADIUS, SEATS } from "@caysonverse/shared/worldMap";
 import { resolveCollision } from "@caysonverse/shared/collision";
 import { collectObstacles } from "./playerObstacles";
@@ -32,7 +33,8 @@ import {
 } from "./jump";
 import { beginSeatCamera, endSeatCamera, viewState } from "./viewState";
 import { HIDE_BLEND, OV_VIS_BLEND } from "./viewMode";
-import { cloneTinted } from "./avatar";
+import { clipFor, lookFromAppearance } from "./characterLook";
+import { reportAvatarClip, useAvatar } from "./useAvatar";
 import { BlobShadow } from "./BlobShadow";
 import { createNametag } from "./nametag";
 import { registerLabel } from "./labelRegistry";
@@ -42,15 +44,7 @@ import { useEmoji } from "./useEmoji";
 import { normalizeAngle, stepYaw } from "./yaw";
 import { createMoveSender } from "./moveSender";
 import { installDebugHook } from "./debug";
-import {
-  ANIM_FADE,
-  BUBBLE_BASE_HEIGHT,
-  CHARACTERS,
-  CLIP,
-  CROWN_MODEL,
-  MODEL_FACING_OFFSET,
-  TURN_SPEED,
-} from "./constants";
+import { ANIM_FADE, BUBBLE_BASE_HEIGHT, CLIP, MODEL_FACING_OFFSET, TURN_SPEED } from "./constants";
 import type { MoveControl } from "./constants";
 import type { Orbit, Pose, SeatState } from "./types";
 import { getRoom, sendJump, sendMove, sendStand } from "../net/connection";
@@ -61,13 +55,27 @@ import { useSettingsStore } from "../stores/settingsStore";
 /** Fallback seconds for a sit/stand clip if its duration can't be read yet. */
 const SIT_CLIP_FALLBACK_SEC = 0.8;
 
+/** Every base clip this avatar plays (each resolved through clipFor before it reaches the mixer). */
+const LOOK_CLIPS: readonly string[] = [
+  CLIP.idle,
+  CLIP.walk,
+  CLIP.run,
+  CLIP.sitDown,
+  CLIP.sitIdle,
+  CLIP.sitStand,
+  CLIP.jump,
+];
+
 interface LocalPlayerProps {
   /** Own session id — keys this player's speech bubble in the broadcast. */
   sessionId: string;
   /** Own nickname — what the optional own name tag ("내 이름표 보기") says. */
   nickname: string;
-  character: number;
-  tint: number;
+  /**
+   * The 15 appearance fields this player joined with. Immutable for the mount: the
+   * WorldScene remounts per connection epoch, so a different look is a new LocalPlayer.
+   */
+  appearance: Appearance;
   /** Shared mutable pose (mutated per frame — never React state). */
   pose: Pose;
   /** Shared mutable camera orbit (read for camera-relative movement). */
@@ -93,19 +101,13 @@ function clamp(value: number, min: number, max: number): number {
 export function LocalPlayer({
   sessionId,
   nickname,
-  character,
-  tint,
+  appearance,
   pose,
   orbit,
   seat,
   moveInput,
   blobShadow,
 }: LocalPlayerProps) {
-  const preset = CHARACTERS[character];
-  const { scene, animations } = useGLTF(preset.model);
-  // Crown GLB is loaded (once, cached) for every character to keep hook order
-  // stable; attached only when this preset is a royal (preset.crown).
-  const { scene: crownScene } = useGLTF(CROWN_MODEL);
   const [, getKeys] = useKeyboardControls<MoveControl>();
   const groupRef = useRef<Group>(null);
   // The gait the idle/walk/run crossfade last settled on (loco state only).
@@ -160,48 +162,53 @@ export function LocalPlayer({
   // Own emoji reaction: same broadcast-driven, self-included discipline; it starts above the own bubble.
   useEmoji(sessionId, groupRef, bubbleAnchor, bubbleTop);
 
-  // Clone the skinned hierarchy (independent skeleton), tint cloned materials, and
-  // (for royals) hide accessories + attach the crown — ONCE per character/tint via
-  // the SAME assembly path remotes use, not per frame.
-  const avatar = useMemo(
-    () => cloneTinted(scene, tint, { hideNodes: preset.hideNodes, crown: preset.crown, crownScene }),
-    [scene, tint, preset, crownScene],
-  );
+  // Assemble the toy figure from the appearance — ONCE per look via the SAME useAvatar
+  // path remotes, the AI 조교 and the builder preview use, not per frame. The hook owns
+  // the materials and the shared geometry (released on unmount); this component owns
+  // only the animation. The look is fixed for the mount (see the prop), so the clip
+  // names resolved from it below never go stale.
+  const look = useMemo(() => lookFromAppearance(appearance), [appearance]);
+  const { avatar, animations } = useAvatar(look, { probeId: sessionId });
   const model = avatar.root;
-
-  // Dispose this avatar's cloned materials (body + crown) on unmount; shared
-  // geometry/textures stay with the cache and are intentionally not disposed.
-  useEffect(() => {
-    return () => {
-      for (const material of avatar.materials) material.dispose();
-    };
-  }, [avatar]);
 
   const { actions } = useAnimations(animations, model);
 
+  // The clip the mixer is on right now, as last reported to the DEV avatar probe
+  // (`__cvAvatars()[sid].clip`): reported once per change, never per frame.
+  const reportedClipRef = useRef<string | null>(null);
+  /**
+   * Note that `name` (a clipFor-resolved clip) now owns the body. Only on a change —
+   * the gait / jump / seat transitions below are edge-triggered already.
+   */
+  function reportClip(name: string): void {
+    if (!import.meta.env.DEV || reportedClipRef.current === name) return;
+    reportedClipRef.current = name;
+    reportAvatarClip(sessionId, name);
+  }
+
   // Start idle; expose the E2E pose hook (with live seatIndex) for this lifetime.
+  // Declared after useAvatar, so the avatar probe entry exists when idle is reported.
   useEffect(() => {
-    const idle = actions[CLIP.idle];
-    idle?.reset().fadeIn(0).play();
+    const idleName = clipFor(CLIP.idle, look);
+    actions[idleName]?.reset().fadeIn(0).play();
+    // Unconditional: a (StrictMode) effect replay re-creates the probe entry with no clip.
+    reportedClipRef.current = idleName;
+    reportAvatarClip(sessionId, idleName);
     const removeHook = installDebugHook(
       () => pose,
       () => orbit,
       () => seat.index,
       () => groupRef.current?.visible ?? true,
       () => gaitRef.current,
+      () => sessionId,
     );
     return () => {
       removeHook();
-      actions[CLIP.idle]?.stop();
-      actions[CLIP.walk]?.stop();
-      actions[CLIP.run]?.stop();
-      actions[CLIP.sitDown]?.stop();
-      actions[CLIP.sitIdle]?.stop();
-      actions[CLIP.sitStand]?.stop();
-      actions[CLIP.jump]?.stop();
+      // Stop the clips this look actually plays (the resolved names, e.g. *_LongSkirt).
+      for (const base of LOOK_CLIPS) actions[clipFor(base, look)]?.stop();
     };
     // actions identity changes when the (memoized) model does — safe to depend on.
-  }, [actions, pose, orbit, seat]);
+  }, [actions, look, pose, orbit, seat, sessionId]);
 
   const sender = useRef(createMoveSender(sendMove)).current;
 
@@ -231,15 +238,34 @@ export function LocalPlayer({
     };
   }, [sessionId]);
 
-  /** Play a one-shot clip (clamped on its last frame); returns its duration (s). */
-  function playOnce(name: string): number {
-    const action = actions[name];
-    if (!action) return SIT_CLIP_FALLBACK_SEC;
-    action.reset();
-    action.setLoop(LoopOnce, 1);
-    action.clampWhenFinished = true;
-    action.fadeIn(ANIM_FADE).play();
-    return action.getClip().duration || SIT_CLIP_FALLBACK_SEC;
+  /**
+   * The action that plays `base` (a `CLIP.*` name) for this look. Every clip the mixer
+   * gets goes through here, so a long-skirt look walks / runs / jumps with the
+   * `*_LongSkirt` variants (Review Focus 7). State decisions and `gaitRef` stay on the
+   * base names; only the name handed to the mixer is resolved. Allocation-free.
+   */
+  function action(base: string) {
+    return actions[clipFor(base, look)];
+  }
+
+  /** Start the loop of gait `g` (fading in) and report its clip. */
+  function playGait(g: Gait): void {
+    const loop = action(gaitClip(g));
+    if (!loop) return;
+    loop.reset().fadeIn(ANIM_FADE).play();
+    reportClip(loop.getClip().name);
+  }
+
+  /** Play the one-shot clip `base` (clamped on its last frame); returns its duration (s). */
+  function playOnce(base: string): number {
+    const once = action(base);
+    if (!once) return SIT_CLIP_FALLBACK_SEC;
+    once.reset();
+    once.setLoop(LoopOnce, 1);
+    once.clampWhenFinished = true;
+    once.fadeIn(ANIM_FADE).play();
+    reportClip(once.getClip().name);
+    return once.getClip().duration || SIT_CLIP_FALLBACK_SEC;
   }
 
   /**
@@ -252,7 +278,7 @@ export function LocalPlayer({
    * registry without allocating (per-frame path).
    */
   function stepJump(now: number, canJump: boolean, gait: Gait): number {
-    const jump = actions[CLIP.jump];
+    const jump = action(CLIP.jump);
     const entry = currentJump(sessionId, canJump, now);
     const phase = jumpPhase(entry, canJump, jumpSeqRef.current);
 
@@ -261,12 +287,13 @@ export function LocalPlayer({
       if (phase === "takeoff") {
         jumpSeqRef.current = hop.seq;
         if (jump) {
-          actions[gaitClip(gaitRef.current)]?.fadeOut(JUMP_FADE_IN_S);
+          action(gaitClip(gaitRef.current))?.fadeOut(JUMP_FADE_IN_S);
           jump.timeScale = jumpTimeScale(jump.getClip().duration);
           jump.reset();
           jump.setLoop(LoopOnce, 1);
           jump.clampWhenFinished = true;
           jump.fadeIn(JUMP_FADE_IN_S).play();
+          reportClip(jump.getClip().name);
         }
       }
       return jumpOffsetY(now - hop.startedAt);
@@ -278,7 +305,7 @@ export function LocalPlayer({
         jump.fadeOut(ANIM_FADE);
         if (phase === "landed") {
           // Landed: resume the loop for whatever the player is doing right now.
-          actions[gaitClip(gait)]?.reset().fadeIn(ANIM_FADE).play();
+          playGait(gait);
           gaitRef.current = gait;
         }
       }
@@ -382,7 +409,7 @@ export function LocalPlayer({
       pose.x = s.x;
       pose.z = s.z;
       pose.yaw = s.yaw;
-      actions[gaitClip(gaitRef.current)]?.fadeOut(ANIM_FADE);
+      action(gaitClip(gaitRef.current))?.fadeOut(ANIM_FADE);
       gaitRef.current = "idle";
       standRequestedRef.current = false;
       animTimerRef.current = playOnce(CLIP.sitDown);
@@ -397,8 +424,8 @@ export function LocalPlayer({
         pose.z = me.z;
         pose.yaw = me.yaw;
       }
-      actions[CLIP.sitIdle]?.fadeOut(ANIM_FADE);
-      actions[CLIP.sitDown]?.fadeOut(ANIM_FADE);
+      action(CLIP.sitIdle)?.fadeOut(ANIM_FADE);
+      action(CLIP.sitDown)?.fadeOut(ANIM_FADE);
       animTimerRef.current = playOnce(CLIP.sitStand);
       animStateRef.current = "standUp";
       // ...and back to the view the player had before sitting down.
@@ -411,14 +438,18 @@ export function LocalPlayer({
     if (animStateRef.current === "sitDown") {
       animTimerRef.current -= delta;
       if (animTimerRef.current <= 0) {
-        actions[CLIP.sitDown]?.fadeOut(ANIM_FADE);
-        actions[CLIP.sitIdle]?.reset().fadeIn(ANIM_FADE).play();
+        action(CLIP.sitDown)?.fadeOut(ANIM_FADE);
+        const hold = action(CLIP.sitIdle);
+        if (hold) {
+          hold.reset().fadeIn(ANIM_FADE).play();
+          reportClip(hold.getClip().name);
+        }
         animStateRef.current = "sitIdle";
       }
     } else if (animStateRef.current === "standUp") {
       animTimerRef.current -= delta;
       if (animTimerRef.current <= 0) {
-        actions[CLIP.sitStand]?.fadeOut(ANIM_FADE);
+        action(CLIP.sitStand)?.fadeOut(ANIM_FADE);
         animStateRef.current = "loco";
         gaitRef.current = gait === "idle" ? "walk" : "idle"; // force the loco crossfade to re-sync next frame
       }
@@ -478,8 +509,8 @@ export function LocalPlayer({
     // StandUp one-shot and an airborne hop own the body until they finish (a landing
     // resumes the gait loop itself).
     if (animStateRef.current === "loco" && jumpSeqRef.current === -1 && gait !== gaitRef.current) {
-      actions[gaitClip(gaitRef.current)]?.fadeOut(ANIM_FADE);
-      actions[gaitClip(gait)]?.reset().fadeIn(ANIM_FADE).play();
+      action(gaitClip(gaitRef.current))?.fadeOut(ANIM_FADE);
+      playGait(gait);
       gaitRef.current = gait;
     }
 

@@ -20,6 +20,7 @@ import {
   ROLE_TEACHER,
 } from "@caysonverse/shared/constants";
 import { SEATS } from "@caysonverse/shared/worldMap";
+import { APPEARANCE_FIELDS } from "@caysonverse/shared/appearance";
 import {
   MAZE_RETURN,
   canUsePortal,
@@ -218,8 +219,9 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     const spawn = this.spawnPosition();
     const player = new Player();
     player.nickname = result.nickname;
-    player.character = result.character;
-    player.tint = result.tint;
+    // Appearance (character stage 3): all 15 fields, written once here and never
+    // again — no client message changes them, so every client reads them once.
+    for (const field of APPEARANCE_FIELDS) player[field] = result.appearance[field];
     player.x = spawn.x;
     player.z = spawn.z;
     player.yaw = 0;

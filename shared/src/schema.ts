@@ -23,11 +23,32 @@ import { Schema, type, MapSchema } from "@colyseus/schema";
  * - No admin marker: the `isAdmin` marker is server-only (WorldRoom's
  *   per-connection userData). The only thing published is `role`, which the
  *   server derives from it once at join (controls-ux §5).
+ * - Appearance (character stage 3, design 5.2): 15 uint8 fields, declared in
+ *   APPEARANCE_FIELDS order (shared/src/appearance.ts — the single source of
+ *   their ranges, palettes and validation). WorldRoom.onJoin writes all 15 once,
+ *   from the validated join options, so they are fixed for the whole session and
+ *   clients read them once (`pickAppearance(player)`). Slot fields are part
+ *   indices, colour fields palette indices, `voice` a VOICE_GENDERS index. They
+ *   replace the pre-builder `character` / `tint` preset pair.
  */
 export class Player extends Schema {
   @type("string") nickname = ""; // set once at join
-  @type("uint8") character = 0; // 0..7 preset index (4..7 = royals)
-  @type("uint8") tint = 0; // 0..7 palette index
+  // ── appearance (APPEARANCE_FIELDS order) ──
+  @type("uint8") hat = 0;
+  @type("uint8") hatColor = 0;
+  @type("uint8") hair = 0;
+  @type("uint8") hairColor = 0;
+  @type("uint8") face = 0;
+  @type("uint8") skin = 0;
+  @type("uint8") top = 0;
+  @type("uint8") topColor = 0;
+  @type("uint8") bottom = 0;
+  @type("uint8") bottomColor = 0;
+  @type("uint8") shoes = 0;
+  @type("uint8") shoesColor = 0;
+  @type("uint8") item = 0;
+  @type("uint8") itemColor = 0;
+  @type("uint8") voice = 0;
   @type("float32") x = 0;
   @type("float32") z = 0;
   @type("float32") yaw = 0; // radians, normalized to [-PI, PI]

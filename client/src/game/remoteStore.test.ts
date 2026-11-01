@@ -1,5 +1,10 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import {
+  APPEARANCE_PRESETS,
+  DEFAULT_APPEARANCE,
+  applyPreset,
+} from "@caysonverse/shared/appearance";
+import {
   addRemote,
   removeRemote,
   clearRemotes,
@@ -13,8 +18,7 @@ function rec(sessionId: string, over: Partial<RemotePlayerRecord> = {}): RemoteP
   return {
     sessionId,
     nickname: sessionId,
-    character: 0,
-    tint: 0,
+    appearance: { ...DEFAULT_APPEARANCE },
     connected: true,
     seatIndex: -1,
     role: 0,
@@ -84,5 +88,29 @@ describe("remoteStore role", () => {
     const remotes = getRemotes();
     expect(remotes.find((r) => r.sessionId === "student")?.role).toBe(0);
     expect(remotes.find((r) => r.sessionId === "teacher")?.role).toBe(1);
+  });
+});
+
+describe("remoteStore appearance", () => {
+  beforeEach(() => clearRemotes());
+
+  it("keeps the synced appearance on the record and in getRemotes()", () => {
+    const princess = applyPreset(DEFAULT_APPEARANCE, APPEARANCE_PRESETS[1]);
+    addRemote(rec("plain"));
+    addRemote(rec("princess", { appearance: { ...princess, voice: 1 } }));
+
+    expect(getRemoteRecord("plain")?.appearance).toEqual(DEFAULT_APPEARANCE);
+    expect(getRemoteRecord("princess")?.appearance).toEqual({ ...princess, voice: 1 });
+
+    const remotes = getRemotes();
+    expect(remotes.find((r) => r.sessionId === "plain")?.appearance).toEqual(DEFAULT_APPEARANCE);
+    const view = remotes.find((r) => r.sessionId === "princess")!;
+    expect(view.appearance).toEqual({ ...princess, voice: 1 });
+    // The dev view is a copy: an E2E caller cannot reach into the live record.
+    view.appearance.top = 0;
+    expect(getRemoteRecord("princess")?.appearance.top).toBe(princess.top);
+    // The pre-builder fields are gone from the view.
+    expect(view).not.toHaveProperty("character");
+    expect(view).not.toHaveProperty("tint");
   });
 });

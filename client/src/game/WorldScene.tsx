@@ -164,15 +164,14 @@ export function WorldScene({ identity }: { identity: Identity }) {
             <LocalPlayer
               sessionId={identity.sessionId}
               nickname={identity.nickname}
-              character={identity.character}
-              tint={identity.tint}
+              appearance={identity.appearance}
               pose={pose}
               orbit={orbit}
               seat={seat}
               moveInput={moveInput}
               blobShadow={profile.blobShadows}
             />
-            {/* Other connected players: snapshot-interpolated, tinted, nametagged.
+            {/* Other connected players: snapshot-interpolated, assembled from their synced appearance, nametagged.
                 Mounts/unmounts on roster changes only; poses stream via the store. */}
             <RemotePlayers selfPose={pose} selfSeat={seat} blobShadow={profile.blobShadows} />
             {/* Overview-only self marker (design 20) — hidden outside overview. */}

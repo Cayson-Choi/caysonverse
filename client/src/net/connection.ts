@@ -5,6 +5,7 @@ import type { WorldState } from "@caysonverse/shared/schema";
 import { WORLD_ROOM, CHAT_MAX_LENGTH } from "@caysonverse/shared/constants";
 import { MessageType } from "@caysonverse/shared/messages";
 import type { MovePayload } from "@caysonverse/shared/messages";
+import type { Appearance } from "@caysonverse/shared/appearance";
 import { SERVER_URL } from "./endpoint";
 import { joinErrorNotice, isCapacityError } from "./reconnectPolicy";
 import { retryWhile } from "./joinRetry";
@@ -26,8 +27,8 @@ const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms
 /** Options sent to the server's `onJoin` (validated there against the contract). */
 export interface JoinParams {
   nickname: string;
-  character: number;
-  tint: number;
+  /** The 15 appearance fields (server rejects anything else with APPEARANCE_ERROR). */
+  appearance: Appearance;
   /**
    * Optional admin code (instructor). Sent verbatim to the server, which is the
    * ONLY place it is compared — it is never checked or stored in the client. An

@@ -9,6 +9,7 @@
 import { getStateCallbacks, type Room } from "@colyseus/sdk";
 // TYPE-ONLY: schema decorators must never enter the browser bundle.
 import type { WorldState } from "@caysonverse/shared/schema";
+import { pickAppearance } from "@caysonverse/shared/appearance";
 import type { Pose, SeatState } from "./types";
 import { exceedsSnapDistance } from "./interpolation";
 import {
@@ -70,8 +71,8 @@ export function startRemoteSync(
     addRemote({
       sessionId,
       nickname: player.nickname,
-      character: player.character,
-      tint: player.tint,
+      // Fixed for the session by the server (written once at join): read once, no listener.
+      appearance: pickAppearance(player),
       connected: player.connected,
       seatIndex: player.seatIndex,
       role: player.role, // fixed for the session by the server: read once, no listener

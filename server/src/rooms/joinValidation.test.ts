@@ -1,12 +1,18 @@
 import { describe, it, expect } from "vitest";
-import { CHARACTER_COUNT, TINT_COUNT } from "@caysonverse/shared/constants";
-import { validateJoinOptions } from "./joinValidation";
+import {
+  APPEARANCE_ERROR,
+  APPEARANCE_FIELDS,
+  APPEARANCE_RANGES,
+  DEFAULT_APPEARANCE,
+  type Appearance,
+} from "@caysonverse/shared/appearance";
+import { validateJoinOptions, type JoinOptions } from "./joinValidation";
 
 // Narrow the union: assert a success result and return it typed.
 function accepted(options: unknown) {
   const result = validateJoinOptions(options);
   expect(result).not.toHaveProperty("error");
-  return result as { nickname: string; character: number; tint: number };
+  return result as JoinOptions;
 }
 
 function rejected(options: unknown) {
@@ -15,7 +21,14 @@ function rejected(options: unknown) {
   return result as { error: string };
 }
 
-const base = { character: 0, tint: 0 };
+const base = { appearance: DEFAULT_APPEARANCE };
+
+/** The largest legal value in every appearance field. */
+function maxLook(): Appearance {
+  const look = {} as Appearance;
+  for (const field of APPEARANCE_FIELDS) look[field] = APPEARANCE_RANGES[field] - 1;
+  return look;
+}
 
 describe("validateJoinOptions — nickname", () => {
   it("accepts Korean, English, digits, space, underscore, hyphen", () => {
@@ -72,28 +85,61 @@ describe("validateJoinOptions — nickname", () => {
   });
 });
 
-describe("validateJoinOptions — character / tint", () => {
-  it("accepts in-range integer indices", () => {
-    const r = accepted({ nickname: "test", character: CHARACTER_COUNT - 1, tint: TINT_COUNT - 1 });
-    expect(r.character).toBe(CHARACTER_COUNT - 1);
-    expect(r.tint).toBe(TINT_COUNT - 1);
+describe("validateJoinOptions — appearance", () => {
+  it("accepts DEFAULT_APPEARANCE and every field at range − 1", () => {
+    expect(accepted({ nickname: "test", appearance: DEFAULT_APPEARANCE }).appearance).toEqual(DEFAULT_APPEARANCE);
+    const max = maxLook();
+    expect(accepted({ nickname: "test", appearance: max }).appearance).toEqual(max);
+    // One field at a time at its top value (the rest default), so no field's range is off by one.
+    for (const field of APPEARANCE_FIELDS) {
+      const look = { ...DEFAULT_APPEARANCE, [field]: APPEARANCE_RANGES[field] - 1 };
+      expect(accepted({ nickname: "test", appearance: look }).appearance[field], field).toBe(
+        APPEARANCE_RANGES[field] - 1,
+      );
+    }
   });
 
-  it("rejects character out of range", () => {
-    rejected({ nickname: "test", character: -1, tint: 0 });
-    rejected({ nickname: "test", character: CHARACTER_COUNT, tint: 0 });
+  it("rejects each field at −1, at its range, as 1.5, as \"0\" and as NaN with APPEARANCE_ERROR", () => {
+    for (const field of APPEARANCE_FIELDS) {
+      for (const bad of [-1, APPEARANCE_RANGES[field], 1.5, "0", NaN]) {
+        const appearance = { ...DEFAULT_APPEARANCE, [field]: bad };
+        expect(rejected({ nickname: "test", appearance }).error, `${field}=${String(bad)}`).toBe(APPEARANCE_ERROR);
+      }
+    }
   });
 
-  it("rejects tint out of range", () => {
-    rejected({ nickname: "test", character: 0, tint: -1 });
-    rejected({ nickname: "test", character: 0, tint: TINT_COUNT });
+  it("rejects a missing field, and a missing, null or array appearance", () => {
+    for (const field of APPEARANCE_FIELDS) {
+      const appearance: Record<string, number> = { ...DEFAULT_APPEARANCE };
+      delete appearance[field];
+      expect(rejected({ nickname: "test", appearance }).error, field).toBe(APPEARANCE_ERROR);
+    }
+    expect(rejected({ nickname: "test" }).error).toBe(APPEARANCE_ERROR);
+    expect(rejected({ nickname: "test", appearance: null }).error).toBe(APPEARANCE_ERROR);
+    expect(rejected({ nickname: "test", appearance: Object.values(DEFAULT_APPEARANCE) }).error).toBe(
+      APPEARANCE_ERROR,
+    );
   });
 
-  it("rejects non-integer character / tint", () => {
-    rejected({ nickname: "test", character: 1.5, tint: 0 });
-    rejected({ nickname: "test", character: 0, tint: 2.7 });
-    rejected({ nickname: "test", character: "0", tint: 0 });
-    rejected({ nickname: "test", character: NaN, tint: 0 });
+  it("rejects the pre-builder { character, tint } options (stale client bundle, Review Focus 3)", () =>
+    expect(rejected({ nickname: "test", character: 0, tint: 0 }).error).toBe("외형 선택이 올바르지 않습니다"));
+
+  it("keeps only the 15 appearance fields (extra keys dropped)", () => {
+    const r = accepted({
+      nickname: "test",
+      appearance: { ...DEFAULT_APPEARANCE, character: 3, tint: 2, __proto_x: 1, role: 1 },
+    });
+    expect(Object.keys(r.appearance).sort()).toEqual([...APPEARANCE_FIELDS].sort());
+    expect(r.appearance).toEqual(DEFAULT_APPEARANCE);
+    // Only nickname + appearance come back: no stray top-level option survives either.
+    expect(Object.keys(accepted({ nickname: "test", appearance: DEFAULT_APPEARANCE, role: 1, x: 5 })).sort()).toEqual([
+      "appearance",
+      "nickname",
+    ]);
+  });
+
+  it("checks the nickname before the appearance", () => {
+    expect(rejected({ nickname: "a", appearance: null }).error).toBe("닉네임은 2~12자의 한글/영문/숫자만 가능합니다");
   });
 });
 

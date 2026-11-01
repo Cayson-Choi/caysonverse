@@ -1,8 +1,7 @@
 import { useState } from "react";
-import { useGLTF } from "@react-three/drei";
-import { APP_NAME, TINT_COLORS } from "@caysonverse/shared/constants";
-import { CHARACTERS, CROWN_MODEL } from "../game/constants";
+import { APP_NAME } from "@caysonverse/shared/constants";
 import { primeChatAudio } from "../game/chatVoice";
+import { preloadCharacterAssets } from "../game/useAvatar";
 import { validateEntry } from "./validation";
 import { joinWorld } from "../net/connection";
 import { clearKicked } from "../net/kickSeam";
@@ -11,6 +10,11 @@ import { loadIdentity, saveIdentity } from "../net/identityCache";
 import { useAppStore } from "../stores/appStore";
 import "./entry.css";
 
+/**
+ * Entry screen. TEMPORARY state (character stage 3, Task 6): the saved appearance
+ * (or the default look) is sent as-is — the character builder replaces this form's
+ * body in Task 7. The old preset grid, tint swatches and royal notice are gone.
+ */
 export function EntryScreen() {
   const enterWorld = useAppStore((s) => s.enterWorld);
   const notice = useAppStore((s) => s.notice);
@@ -18,8 +22,9 @@ export function EntryScreen() {
 
   const [saved] = useState(loadIdentity);
   const [nickname, setNickname] = useState(saved.nickname);
-  const [character, setCharacter] = useState(saved.character);
-  const [tint, setTint] = useState(saved.tint);
+  // The look this entry sends: the cached one, or DEFAULT_APPEARANCE (loadIdentity
+  // migrates a pre-builder or corrupt cache). Task 7's builder edits it.
+  const [appearance] = useState(saved.appearance);
   const [showAdmin, setShowAdmin] = useState(false);
   const [adminCode, setAdminCode] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -31,11 +36,6 @@ export function EntryScreen() {
     if (notice) clearNotice();
   }
 
-  // Royals wear a FIXED palette (v2 Task 13) — the tint never touches them, so
-  // the swatches are disabled with a notice. The tint value itself stays valid
-  // (server schema unchanged); it simply has no visual effect on a royal.
-  const royalSelected = CHARACTERS[character].crown?.royal !== undefined;
-
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     if (submitting) return;
@@ -46,7 +46,7 @@ export function EntryScreen() {
     // is absent, and idempotent across repeated (e.g. failed-validation) clicks.
     primeChatAudio();
 
-    const result = validateEntry({ nickname, character, tint });
+    const result = validateEntry({ nickname, appearance });
     if (!result.ok) {
       setError(result.error);
       return;
@@ -55,7 +55,7 @@ export function EntryScreen() {
     clearNotice();
     setSubmitting(true);
     // Cache the identity so a reconnect after a server restart can silently
-    // re-join with the same nickname/character/tint.
+    // re-join with the same nickname and appearance.
     saveIdentity(result.value);
 
     // A deliberate manual entry clears any prior kick block (Task 11 seam).
@@ -69,10 +69,9 @@ export function EntryScreen() {
     const params = asAdmin ? { ...result.value, adminCode: trimmedCode } : result.value;
 
     try {
-      // Warm the model cache so the world scene has no load stall. Royals also
-      // need the crown GLB (attached to the head bone); it is tiny and cached once.
-      useGLTF.preload(CHARACTERS[character].model);
-      if (CHARACTERS[character].crown) useGLTF.preload(CROWN_MODEL);
+      // Warm the model cache so the world scene has no load stall: one character.glb
+      // assembles every look (own and remote).
+      preloadCharacterAssets();
       const room = await joinWorld(params);
       // A join that supplied a code AND succeeded proves the code was correct, so
       // remember it (module memory only) to re-authenticate on a Phase-2 fresh
@@ -112,52 +111,6 @@ export function EntryScreen() {
             }}
           />
         </label>
-
-        <fieldset className="cv-field cv-fieldset">
-          <legend className="cv-label">캐릭터</legend>
-          <div className="cv-characters">
-            {CHARACTERS.map((preset, index) => (
-              <button
-                type="button"
-                key={preset.id}
-                className={"cv-character" + (index === character ? " is-selected" : "")}
-                aria-pressed={index === character}
-                onClick={() => {
-                  setCharacter(index);
-                  dismissMessages();
-                }}
-              >
-                {preset.label}
-              </button>
-            ))}
-          </div>
-        </fieldset>
-
-        <fieldset className="cv-field cv-fieldset">
-          <legend className="cv-label">색상</legend>
-          <div className="cv-swatches">
-            {TINT_COLORS.map((color, index) => (
-              <button
-                type="button"
-                key={color}
-                className={
-                  "cv-swatch" + (index === tint && !royalSelected ? " is-selected" : "")
-                }
-                style={{ background: color }}
-                aria-label={`색상 ${index + 1}`}
-                aria-pressed={index === tint && !royalSelected}
-                disabled={royalSelected}
-                onClick={() => {
-                  setTint(index);
-                  dismissMessages();
-                }}
-              />
-            ))}
-          </div>
-          {royalSelected && (
-            <p className="cv-swatch-note">왕실 의상은 고정 색상입니다</p>
-          )}
-        </fieldset>
 
         <div className="cv-admin-toggle">
           {showAdmin ? (

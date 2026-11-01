@@ -270,8 +270,7 @@ async function phaseFreshJoin(): Promise<FreshJoinOutcome> {
   const identity = loadIdentity();
   const baseParams = {
     nickname: identity.nickname,
-    character: identity.character,
-    tint: identity.tint,
+    appearance: identity.appearance,
   };
 
   // Whether the room we finally adopt is an authenticated admin join. A join that

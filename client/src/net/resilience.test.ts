@@ -39,6 +39,7 @@ vi.mock("./backoff", () => ({ reconnectBackoffMs: () => [0, 0, 0, 0] }));
 import { attachResilience } from "./resilience";
 import { rememberAdminCode, forgetAdminCode, getAdminCode } from "./adminSession";
 import { useAppStore } from "../stores/appStore";
+import { DEFAULT_APPEARANCE } from "@caysonverse/shared/appearance";
 
 // ── in-memory storage stubs (loadToken / loadIdentity / kickSeam) ──
 function memStorage(): Storage {
@@ -104,7 +105,7 @@ beforeEach(() => {
   forgetAdminCode();
   useAppStore.setState({
     screen: "world",
-    identity: { nickname: "u", character: 0, tint: 0, sessionId: "R0" },
+    identity: { nickname: "u", appearance: DEFAULT_APPEARANCE, sessionId: "R0" },
     isAdmin: false,
     notice: null,
     reconnecting: false,
@@ -139,6 +140,21 @@ describe("F4 — a drop during the confirm wait must not strand a zombie world",
     expect(s.reconnecting).toBe(false);
     expect(s.connectionEpoch).toBe(1);
     expect(s.screen).toBe("world"); // never fell back to entry
+  });
+});
+
+describe("fresh re-join carries the cached appearance (character stage 3)", () => {
+  it("joins with the cached nickname + appearance, never the pre-builder character/tint", async () => {
+    const look = { ...DEFAULT_APPEARANCE, top: 3, topColor: 5, voice: 1 };
+    localStorage.setItem("cv.entry", JSON.stringify({ nickname: "케이슨", appearance: look }));
+    h.joinRoom.mockResolvedValueOnce(fakeRoom("A"));
+    h.waitForSelf.mockResolvedValue(undefined);
+
+    dropInitialRoom(); // no token → straight to Phase-2 fresh join
+    await flush();
+
+    expect(h.joinRoom).toHaveBeenCalledTimes(1);
+    expect(h.joinRoom.mock.calls[0][0]).toEqual({ nickname: "케이슨", appearance: look });
   });
 });
 
