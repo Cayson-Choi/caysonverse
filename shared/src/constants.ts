@@ -185,6 +185,13 @@ export const TINT_COLORS = [
 ] as const;
 
 /**
+ * Player appearance (15 uint8 fields) lives in appearance.ts — the single source
+ * for field order and ranges. Re-exported here so the server schema and the client
+ * can keep reading their limits from `constants`; there is still ONE definition.
+ */
+export { APPEARANCE_FIELDS, APPEARANCE_RANGES } from "./appearance";
+
+/**
  * Map geometry lives in worldMap.ts (the single source of truth for bounds,
  * spawn, furniture and collision). Re-exported here so existing importers of
  * `@caysonverse/shared/constants` keep working; there is still ONE definition.
