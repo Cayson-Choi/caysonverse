@@ -75,7 +75,7 @@ loadtest의 `cli()`는 console.warn을 가로채 **계속 자라는 TUI 로그 �
 ## 4. 결과 (100봇, 630초 실행 — 부하 구간 615초)
 
 - 실행 구성: 100봇 / 4샤드 / 630초, 서버는 프로덕션 번들(NODE_ENV=production), 같은 머신 loopback.
-- 측정 원본: `.superpowers/sdd/evidence/task-12/measure.csv` (5초 간격 125샘플). 커밋에는 포함하지 않음.
+- 측정 원본(5초 간격 125샘플 CSV)은 저장소에 없다 — `measure.mjs --out`이 쓴 파일을 따로 보관했을 뿐이고, 같은 절차로 다시 만들 수 있다.
 - 아래 CPU/RSS는 부하 구간(15–630초, 116샘플) 기준. 전체 구간 요약(평균 4.3% / p95 11.5% / 최대 RSS 133.8MB)과 사실상 같다.
 
 ### 서버 리소스 vs 설계 게이트
@@ -139,7 +139,7 @@ loadtest의 `cli()`는 console.warn을 가로채 **계속 자라는 TUI 로그 �
 
 ### 6.2 100봇 × 630초 (월드 전체) — 2026-07-14와 나란히
 
-실행: 5절과 같은 절차(`npm run build` → `NODE_ENV=production node server/dist/index.cjs` → `measure.mjs --duration 660 --interval 5` → `npm run loadtest -- --numClients 100 --duration 630`). 서버 PID는 `netstat -ano`의 2567 LISTENING 줄로 확인. 같은 PC(Ryzen 7 6800H 8코어/16스레드, RAM 15.2GB; OS는 Windows 11 Pro 10.0.26300, Node v24.19.0 — 7월은 10.0.26200, v24.14.0). CPU·RSS는 부하 구간(15~630초, 115샘플). 원본 CSV는 `.superpowers/sdd/evidence/task-19/measure.csv`(커밋하지 않음).
+실행: 5절과 같은 절차(`npm run build` → `NODE_ENV=production node server/dist/index.cjs` → `measure.mjs --duration 660 --interval 5` → `npm run loadtest -- --numClients 100 --duration 630`). 서버 PID는 `netstat -ano`의 2567 LISTENING 줄로 확인. 같은 PC(Ryzen 7 6800H 8코어/16스레드, RAM 15.2GB; OS는 Windows 11 Pro 10.0.26300, Node v24.19.0 — 7월은 10.0.26200, v24.14.0). CPU·RSS는 부하 구간(15~630초, 115샘플). 원본 CSV(115샘플)는 저장소에 없다(`measure.mjs --out`으로 다시 만들 수 있다).
 
 | 지표 | 2026-07-14 | 2026-11-01 (조작 개편) | 게이트 | 판정 |
 |---|---|---|---|---|
@@ -156,7 +156,7 @@ loadtest의 `cli()`는 console.warn을 가로채 **계속 자라는 TUI 로그 �
 | 전송 — 점프 | — | 1,784 | — | — |
 | 전송 — 입력 중 (켜기+끄기) | — | 2,154 | — | — |
 
-- 수신 합계 297.1MB ÷ 100클라이언트 ÷ 630초. 7월보다 낮게 나온 다운스트림(6.3 → 4.8KB/s)의 원인은 따로 조사하지 않았다(6.1절 프로브로 봇의 이동 모양 차이는 아님을 확인; 게이트에는 6배 가까운 여유).
+- 수신 합계 297.1MB ÷ 100클라이언트 ÷ 630초. 7월(6.3KB/s)보다 낮게 나온 이번 다운스트림(4.8KB/s)의 원인은 따로 조사하지 않았다(6.1절 프로브로 봇의 이동 모양 차이는 아님을 확인; 게이트에는 6배 가까운 여유).
 - RSS는 시작 72MB → 5분 즈음 약 105MB → 9분쯤 132MB로 한 단계 올라간 뒤 평탄(7월 133.8MB와 같은 수준). 30분 게이트에서 다시 볼 것.
 - 달리기·점프·입력 중을 같은 비율로 넣은 뒤에도 서버 CPU는 7월보다 낮다(이동 검증 예산이 바뀌었을 뿐 규칙은 같고, 점프·입력 중은 broadcast 한 건이다).
 

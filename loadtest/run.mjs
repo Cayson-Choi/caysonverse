@@ -12,7 +12,8 @@
  *     --endpoint http://localhost:2567 --statusDir <dir> [--zone lectureHall]
  *
  * `--zone lounge|lectureHall` confines every bot's wander targets to that room
- * (CV_BOT_ZONE, 교실 100명 장면 — bot.ts 참고). 생략하면 월드 전체.
+ * (CV_BOT_ZONE, 교실 100명 장면 — bot.ts 참고). --zone을 생략하면 셸에 이미 있는
+ * CV_BOT_ZONE을 그대로 쓰고, 그것도 없으면 월드 전체.
  *
  * 각 샤드는 CV_BOT_OFFSET으로 닉네임 번호를 이어받고(봇001…봇100), 자기 통계를
  * <statusDir>/shard-<n>.json 하트비트로 남긴다. duration이 지나면 샤드 프로세스
@@ -46,9 +47,14 @@ const shards = Number(argv.shards ?? 4);
 const durationSec = Number(argv.duration ?? 600);
 const endpoint = argv.endpoint ?? "http://localhost:2567";
 const statusDir = argv.statusDir ?? join(HERE, "status");
-const zone = argv.zone ?? "";
+// --zone wins; without it an outer CV_BOT_ZONE (set by the operator's shell) is kept as it is
+// instead of being blanked for the bots.
+const zoneFromFlag = argv.zone !== undefined;
+const zone = zoneFromFlag ? argv.zone : (process.env.CV_BOT_ZONE ?? "").trim();
 if (zone !== "" && zone !== "lounge" && zone !== "lectureHall") {
-  console.error(`--zone 값이 올바르지 않아요: "${zone}" (가능: lounge, lectureHall)`);
+  console.error(
+    `${zoneFromFlag ? "--zone" : "CV_BOT_ZONE"} 값이 올바르지 않아요: "${zone}" (가능: lounge, lectureHall)`,
+  );
   process.exit(1);
 }
 

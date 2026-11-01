@@ -31,7 +31,9 @@
 //
 // Knobs: CV_PERF_MS (sample length per scenario, default 20000), CV_PERF_THROTTLE (CPU slowdown, default 4;
 // 1 = none, for the native baseline), CV_PERF_ONLY (comma list of scenario ids to run, default all four, e.g.
-// "portrait-nearby,portrait-all"), CV_CLIENT_URL, CV_CHROME_PATH, CV_E2E_RENDER=software.
+// "portrait-nearby,portrait-all" — it must include "portrait-nearby", the only gating scenario: without it the
+// script exits 2 at once, since a run that checked no gate must not look like a pass), CV_CLIENT_URL,
+// CV_CHROME_PATH, CV_E2E_RENDER=software (SwiftShader on purpose: the hardware-GPU check is skipped, not failed).
 //
 // Evidence → .superpowers/sdd/evidence/task-ux/ (perf-*.png, assertions-perf.json, perf-raw.json).
 // Exit code 0 = the gate passed (sampled AND per-frame mean < 1.0 ms and p95 < 2.0 ms) and no console/page error.
@@ -74,6 +76,18 @@ if (SCENARIOS.length === 0) {
   console.error("CV_PERF_ONLY names no known scenario:", ONLY.join(","));
   process.exit(2);
 }
+// Only "portrait-nearby" gates; the other scenarios are reference measurements that can neither pass
+// nor fail the run. A selection without it would end with exit 0 and no gate checked, which reads as
+// "performance OK" while saying nothing — so refuse it, loudly, before anything is launched.
+if (!SCENARIOS.some((sc) => sc.gate)) {
+  console.error(
+    "CV_PERF_ONLY=" + ONLY.join(",") + " leaves out the gating scenario: add \"portrait-nearby\" (the only scenario with a pass/fail gate; the others are reference numbers). Nothing was run.",
+  );
+  process.exit(2);
+}
+// CV_E2E_RENDER=software forces SwiftShader on purpose (the frame numbers are then a reference only):
+// the "hardware GPU" check cannot hold by design in that mode, so it is skipped rather than failed.
+const SOFTWARE_RENDER = process.env.CV_E2E_RENDER === "software";
 const MODE_LABEL = { nearby: "가까운 사람만", all: "모두", off: "끄기" };
 
 // ───────────────────────────── tiny harness ─────────────────────────────
@@ -297,7 +311,11 @@ try {
       return { gpu: ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : null, cores: navigator.hardwareConcurrency };
     });
     console.log("renderer:", JSON.stringify(report.renderer));
-    check("a hardware GPU renderer (not SwiftShader)", !/swiftshader|software/i.test(String(report.renderer.gpu)), report.renderer);
+    if (SOFTWARE_RENDER) {
+      check("hardware GPU check skipped: CV_E2E_RENDER=software asked for the software renderer (frame numbers are a reference only)", true, report.renderer);
+    } else {
+      check("a hardware GPU renderer (not SwiftShader)", !/swiftshader|software/i.test(String(report.renderer.gpu)), report.renderer);
+    }
 
     await cdp.send("Emulation.setCPUThrottlingRate", { rate: THROTTLE });
     check(`CPU throttled ${THROTTLE}x`, true, { rate: THROTTLE });
