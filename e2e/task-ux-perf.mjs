@@ -30,12 +30,13 @@
 // Headless fps is a REFERENCE only (the 30 fps goal on a real phone is the owner's call).
 //
 // Knobs: CV_PERF_MS (sample length per scenario, default 20000), CV_PERF_THROTTLE (CPU slowdown, default 4;
-// 1 = none, for the native baseline), CV_CLIENT_URL, CV_CHROME_PATH, CV_E2E_RENDER=software.
+// 1 = none, for the native baseline), CV_PERF_ONLY (comma list of scenario ids to run, default all four, e.g.
+// "portrait-nearby,portrait-all"), CV_CLIENT_URL, CV_CHROME_PATH, CV_E2E_RENDER=software.
 //
 // Evidence → .superpowers/sdd/evidence/task-ux/ (perf-*.png, assertions-perf.json, perf-raw.json).
 // Exit code 0 = the gate passed (sampled AND per-frame mean < 1.0 ms and p95 < 2.0 ms) and no console/page error.
-// The gate is the brief's and is NOT loosened: at the time of writing it fails on the per-frame p95
-// (see docs/loadtest.md 6.3).
+// The gate is the brief's and was never loosened: it first failed on the per-frame p95 (docs/loadtest.md 6.3)
+// and passes after the name tag perf fix (docs/loadtest.md 6.3.1).
 
 import { chromium } from "playwright";
 import { fileURLToPath } from "node:url";
@@ -61,12 +62,18 @@ const GATE = { meanMs: 1.0, p95Ms: 2.0 };
 const HALL_SPOT = { x: 12, z: 0 }; // the z = 0 aisle, mid-hall: clear of desks
 const MIN_BOTS = 90;
 
-const SCENARIOS = [
+const ALL_SCENARIOS = [
   { id: "portrait-nearby", label: "세로 · 가까운 사람만", mode: "nearby", size: PORTRAIT, gate: true },
   { id: "portrait-all", label: "세로 · 모두", mode: "all", size: PORTRAIT },
   { id: "portrait-off", label: "세로 · 끄기", mode: "off", size: PORTRAIT },
   { id: "landscape-all", label: "가로 · 모두", mode: "all", size: LANDSCAPE },
 ];
+const ONLY = (process.env.CV_PERF_ONLY || "").split(",").map((x) => x.trim()).filter(Boolean);
+const SCENARIOS = ONLY.length ? ALL_SCENARIOS.filter((sc) => ONLY.includes(sc.id)) : ALL_SCENARIOS;
+if (SCENARIOS.length === 0) {
+  console.error("CV_PERF_ONLY names no known scenario:", ONLY.join(","));
+  process.exit(2);
+}
 const MODE_LABEL = { nearby: "가까운 사람만", all: "모두", off: "끄기" };
 
 // ───────────────────────────── tiny harness ─────────────────────────────

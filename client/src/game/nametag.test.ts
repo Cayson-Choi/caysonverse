@@ -7,10 +7,13 @@ import {
   NAMETAG_PAD_Y_PX,
 } from "./constants";
 import {
+  clearIdleNametagLooks,
   createNametag,
   nametagCacheKey,
   nametagCacheSize,
+  nametagIdleSize,
   nametagLabel,
+  NAMETAG_IDLE_LOOKS,
   type Nametag,
 } from "./nametag";
 
@@ -73,6 +76,7 @@ function fakeCanvas(): FakeCanvas {
 
 beforeEach(() => {
   canvases.length = 0;
+  clearIdleNametagLooks(); // the parked looks are module state: start every test from none
   vi.stubGlobal("document", { createElement: () => fakeCanvas() });
 });
 afterEach(() => {
@@ -246,9 +250,91 @@ describe("texture cache", () => {
     expect(nametagCacheSize()).toBe(1);
 
     tag.setTyping(false);
-    expect(mapOf(tag)).not.toBe(typing); // re-rasterized: the typing look had no other owner
+    expect(mapOf(tag)).not.toBe(typing); // back on the plain look, not the one it just left
     tag.dispose();
     expect(nametagCacheSize()).toBe(0);
+  });
+
+  it("a look let go of is parked: switching back reuses its canvas and texture instead of rasterizing again", () => {
+    const tag = createNametag("민수");
+    const plain = mapOf(tag);
+    tag.setTyping(true);
+    const typing = mapOf(tag);
+    expect(drawn()).toHaveLength(2);
+    expect(nametagIdleSize()).toBe(1); // the plain look, GPU copy freed but canvas kept
+    expect(nametagCacheSize()).toBe(1);
+
+    tag.setTyping(false); // → plain again
+    tag.setTyping(true); //  → typing again
+    tag.setHighlight(true);
+    tag.setHighlight(false);
+    expect(mapOf(tag)).toBe(typing);
+    expect(drawn()).toHaveLength(3); // plain, typing, typing + highlight: one canvas per look, ever
+    tag.setTyping(false);
+    expect(mapOf(tag)).toBe(plain);
+    expect(drawn()).toHaveLength(3);
+    tag.dispose();
+    expect(nametagCacheSize()).toBe(0);
+    expect(nametagIdleSize()).toBe(3);
+  });
+
+  it("a parked texture is disposed when it is parked, so its GPU copy is freed", () => {
+    const tag = createNametag("민수");
+    const plain = mapOf(tag);
+    const disposed = vi.fn();
+    plain.addEventListener("dispose", disposed);
+    tag.setTyping(true);
+    expect(disposed).toHaveBeenCalledTimes(1);
+    tag.setTyping(false); // reuse: it is shown again…
+    expect(mapOf(tag)).toBe(plain);
+    expect(disposed).toHaveBeenCalledTimes(1);
+    tag.setTyping(true); // …and freed again when it is let go
+    expect(disposed).toHaveBeenCalledTimes(2);
+    tag.dispose();
+  });
+
+  it("another tag with the same name reuses a parked look", () => {
+    const a = createNametag("민수");
+    const plain = mapOf(a);
+    a.dispose(); // the player leaves…
+    expect(nametagCacheSize()).toBe(0);
+    const b = createNametag("민수"); // …and comes back
+    expect(mapOf(b)).toBe(plain);
+    expect(drawn()).toHaveLength(1);
+    expect(nametagIdleSize()).toBe(0);
+    b.dispose();
+  });
+
+  it("keeps at most NAMETAG_IDLE_LOOKS parked looks, the oldest dropped first", () => {
+    const tags = Array.from({ length: NAMETAG_IDLE_LOOKS + 5 }, (_, i) => createNametag(`학생${i}`));
+    const first = mapOf(tags[0]);
+    tags.forEach((t) => t.dispose());
+    expect(nametagCacheSize()).toBe(0);
+    expect(nametagIdleSize()).toBe(NAMETAG_IDLE_LOOKS);
+    // The five oldest were dropped: a new tag with the first name needs a new canvas…
+    const before = drawn().length;
+    const again = createNametag("학생0");
+    expect(drawn()).toHaveLength(before + 1);
+    expect(mapOf(again)).not.toBe(first);
+    // …while the newest is still parked.
+    const newest = createNametag(`학생${NAMETAG_IDLE_LOOKS + 4}`);
+    expect(drawn()).toHaveLength(before + 1);
+    again.dispose();
+    newest.dispose();
+  });
+
+  it("clearIdleNametagLooks drops the parked looks but never one a tag still shows", () => {
+    const shown = createNametag("민수");
+    const other = createNametag("영희");
+    other.dispose();
+    expect(nametagIdleSize()).toBe(1);
+    clearIdleNametagLooks();
+    expect(nametagIdleSize()).toBe(0);
+    expect(nametagCacheSize()).toBe(1);
+    const same = createNametag("민수");
+    expect(mapOf(same)).toBe(mapOf(shown));
+    shown.dispose();
+    same.dispose();
   });
 
   it("a look still shown by another tag survives a switch away", () => {

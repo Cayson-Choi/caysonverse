@@ -7,10 +7,17 @@
  * Each distinct look — keyed `badge|highlight|typing|text` — is rasterized onto a
  * canvas + GPU texture the FIRST time it is needed and shared by every avatar that
  * shows it, through a reference-counted module cache: roster churn never re-rasterizes,
- * and a texture is disposed only when its last owner lets go. A tag can switch looks
- * at any time (setHighlight / setTyping) and always releases the one it leaves. Each
- * tag still owns its own SpriteMaterial (disposed with it) so opacity never bleeds
- * between avatars.
+ * and a texture's GPU copy is freed (`dispose`) as soon as its last owner lets go. A tag
+ * can switch looks at any time (setHighlight / setTyping) and always releases the one it
+ * leaves. Each tag still owns its own SpriteMaterial (disposed with it) so opacity never
+ * bleeds between avatars.
+ *
+ * A released look is not thrown away: its canvas stays in a bounded pool of idle looks
+ * (NAMETAG_IDLE_LOOKS, oldest dropped first), so a tag that types, speaks and goes quiet
+ * again — three look switches per chat line — gets its old look back without
+ * rasterizing a new canvas each time (measured: that was ~1 ms per switch on a throttled
+ * phone-class CPU, and the largest part of the name tags' frame cost). three re-uploads
+ * a disposed texture by itself when it is drawn again.
  *
  * The per-frame setters (setHeight / setOpacity / setOffsetY, and setHighlight /
  * setTyping while unchanged) allocate nothing and touch no React state.
@@ -162,7 +169,17 @@ interface CachedTag {
   refs: number;
 }
 
+/** Every cached look, shown or idle. */
 const cache = new Map<string, CachedTag>();
+/**
+ * The looks nobody shows right now (refs === 0), least recently released first — a Map
+ * keeps insertion order, so the first key is the oldest. Their textures are already
+ * disposed (GPU copy gone); only the canvas is kept.
+ */
+const idle = new Map<string, CachedTag>();
+
+/** How many released looks are kept for reuse (≈ 96 × 90 KB of canvas). Covers ~30 chatty players' variants. */
+export const NAMETAG_IDLE_LOOKS = 96;
 
 function acquire(text: string, badge: NametagBadge, highlight: boolean, typing: boolean): CachedTag {
   const key = nametagCacheKey(text, badge, highlight, typing);
@@ -176,23 +193,40 @@ function acquire(text: string, badge: NametagBadge, highlight: boolean, typing: 
     texture.minFilter = LinearMipmapLinearFilter;
     entry = { key, texture, aspect, refs: 0 };
     cache.set(key, entry);
+  } else if (entry.refs === 0) {
+    idle.delete(key); // back in use
   }
   entry.refs += 1;
   return entry;
 }
 
-/** Let go of one reference; the last owner disposes the texture. */
+/** Let go of one reference; the last owner frees the GPU copy and parks the canvas in the idle pool. */
 function release(entry: CachedTag): void {
   entry.refs -= 1;
   if (entry.refs > 0) return;
   entry.texture.dispose();
-  // A newer entry may have taken the key since this one was last released — leave it be.
-  if (cache.get(entry.key) === entry) cache.delete(entry.key);
+  idle.set(entry.key, entry);
+  while (idle.size > NAMETAG_IDLE_LOOKS) {
+    const [oldestKey, oldest] = idle.entries().next().value as [string, CachedTag];
+    idle.delete(oldestKey);
+    if (cache.get(oldestKey) === oldest) cache.delete(oldestKey);
+  }
 }
 
-/** How many textures are cached right now — for tests. */
+/** How many looks are shown by some tag right now — for tests. */
 export function nametagCacheSize(): number {
-  return cache.size;
+  return cache.size - idle.size;
+}
+
+/** How many released looks are parked for reuse — for tests. */
+export function nametagIdleSize(): number {
+  return idle.size;
+}
+
+/** Drop every parked look (tests; a fresh world). Looks that a tag still shows are untouched. */
+export function clearIdleNametagLooks(): void {
+  for (const key of idle.keys()) cache.delete(key);
+  idle.clear();
 }
 
 // ── the tag ───────────────────────────────────────────────────────────────────

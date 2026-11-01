@@ -58,6 +58,22 @@ export class BubbleRegistry {
     return entry;
   }
 
+  /**
+   * Every bubble `get` would return at `now`, written into `out` (caller-owned, emptied
+   * first) so a per-frame caller allocates nothing; returns how many. One pass instead of
+   * a `get` per player — the NametagSystem hands these to the tags once a frame.
+   */
+  visibleInto(out: BubbleEntry[], now: number): number {
+    out.length = 0;
+    this.prune(now);
+    if (this.entries.size === 0) return 0;
+    const all = this.entries.size <= MAX_VISIBLE_BUBBLES;
+    for (const entry of this.entries.values()) {
+      if (all || this.isVisible(entry)) out.push(entry);
+    }
+    return out.length;
+  }
+
   /** Dev/E2E view: every currently-visible bubble at `now`. */
   snapshot(now: number): BubbleEntry[] {
     this.prune(now);

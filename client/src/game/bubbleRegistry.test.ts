@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { SPEECH_BUBBLE_MS, MAX_VISIBLE_BUBBLES } from "@caysonverse/shared/constants";
-import { BubbleRegistry } from "./bubbleRegistry";
+import { BubbleRegistry, type BubbleEntry } from "./bubbleRegistry";
 
 describe("BubbleRegistry", () => {
   it("stores and returns a visible bubble for a session", () => {
@@ -80,5 +80,45 @@ describe("BubbleRegistry", () => {
     reg.clear();
     expect(reg.get("a", 0)).toBeNull();
     expect(reg.get("b", 0)).toBeNull();
+  });
+
+  describe("visibleInto", () => {
+    it("writes nothing for an empty registry, and empties the caller's array first", () => {
+      const reg = new BubbleRegistry();
+      const out: BubbleEntry[] = [{ sid: "stale", text: "x", expiresAt: 1, seq: 1 }];
+      expect(reg.visibleInto(out, 0)).toBe(0);
+      expect(out).toEqual([]);
+    });
+
+    it("lists exactly the bubbles get() would return, and drops expired ones", () => {
+      const reg = new BubbleRegistry();
+      reg.set("a", "one", 0);
+      reg.set("b", "two", 3000);
+      const out: BubbleEntry[] = [];
+      expect(reg.visibleInto(out, 3000)).toBe(2);
+      expect(out.map((e) => e.sid).sort()).toEqual(["a", "b"]);
+      expect(out.find((e) => e.sid === "a")).toBe(reg.get("a", 3000));
+      // "a" expires at SPEECH_BUBBLE_MS; "b" is still up.
+      expect(reg.visibleInto(out, SPEECH_BUBBLE_MS)).toBe(1);
+      expect(out[0].sid).toBe("b");
+      expect(reg.visibleInto(out, 3000 + SPEECH_BUBBLE_MS)).toBe(0);
+    });
+
+    it("hides the oldest beyond MAX_VISIBLE_BUBBLES, like get() and snapshot()", () => {
+      const reg = new BubbleRegistry();
+      const total = MAX_VISIBLE_BUBBLES + 3;
+      for (let i = 0; i < total; i++) reg.set(`s${i}`, `m${i}`, i);
+      const out: BubbleEntry[] = [];
+      expect(reg.visibleInto(out, total)).toBe(MAX_VISIBLE_BUBBLES);
+      const ids = out.map((e) => e.sid).sort();
+      expect(ids).toEqual(
+        reg
+          .snapshot(total)
+          .map((e) => e.sid)
+          .sort(),
+      );
+      for (let i = 0; i < 3; i++) expect(ids).not.toContain(`s${i}`);
+      for (const e of out) expect(reg.get(e.sid, total)).toBe(e);
+    });
   });
 });

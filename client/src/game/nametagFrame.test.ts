@@ -25,7 +25,7 @@ import {
 } from "./labelRegistry";
 import type { Nametag } from "./nametag";
 import { createNametagFrame, type NametagFrame } from "./nametagFrame";
-import { distanceFade, pixelsPerMetre, viewDepth } from "./nametagLayout";
+import { distanceFade, nametagWorldHeight, pixelsPerMetre, viewDepth } from "./nametagLayout";
 import { typingRegistry } from "./typing";
 
 const W = 1280;
@@ -39,6 +39,8 @@ interface FakeTag extends Nametag {
   highlight: boolean;
   typing: boolean;
   offsetM: number;
+  /** How many times each per-frame setter has been called — a tag the system leaves alone shows no change. */
+  calls: { opacity: number; height: number; offset: number; typing: number; highlight: number };
 }
 function fakeTag(aspect = 3): FakeTag {
   const sprite = new Sprite();
@@ -50,21 +52,27 @@ function fakeTag(aspect = 3): FakeTag {
     highlight: false,
     typing: false,
     offsetM: 0,
+    calls: { opacity: 0, height: 0, offset: 0, typing: 0, highlight: 0 },
     setHeight(h) {
+      tag.calls.height++;
       sprite.scale.set(h * aspect, h, 1);
     },
     setOpacity(o) {
+      tag.calls.opacity++;
       tag.opacity = o;
       sprite.visible = o > 0.01;
     },
     setOffsetY(o) {
+      tag.calls.offset++;
       tag.offsetM = o;
       sprite.position.y = NAMETAG_HEIGHT + o;
     },
     setHighlight(on) {
+      tag.calls.highlight++;
       tag.highlight = on;
     },
     setTyping(on) {
+      tag.calls.typing++;
       tag.typing = on;
     },
     dispose() {},
@@ -72,25 +80,55 @@ function fakeTag(aspect = 3): FakeTag {
   return tag;
 }
 
+/** A speech bubble anchor that counts how often the system writes it. */
+interface CountingAnchor {
+  y: number;
+  writes: number;
+}
+function countingAnchor(): CountingAnchor {
+  let y = 2.5;
+  const anchor: CountingAnchor = {
+    writes: 0,
+    get y() {
+      return y;
+    },
+    set y(v: number) {
+      y = v;
+      anchor.writes++;
+    },
+  };
+  return anchor;
+}
+
 interface Avatar {
   id: string;
   group: Group;
   tag: FakeTag;
   entry: LabelEntry;
+  anchor: CountingAnchor;
   unregister: () => void;
 }
 
 const avatars: Avatar[] = [];
 
-function addAvatar(id: string, x: number, z: number, pinned = false, y = 0): Avatar {
+function addAvatar(id: string, x: number, z: number, pinned = false, y = 0, parent?: Group): Avatar {
   const group = new Group();
   group.position.set(x, y, z);
+  parent?.add(group);
   const tag = fakeTag();
   group.add(tag.sprite);
-  const entry: LabelEntry = { id, anchor: group, tag, pinned, bubbleAnchor: { y: 2.5 } };
-  const avatar: Avatar = { id, group, tag, entry, unregister: registerLabel(entry) };
+  const anchor = countingAnchor();
+  const entry: LabelEntry = { id, anchor: group, tag, pinned, bubbleAnchor: anchor };
+  const avatar: Avatar = { id, group, tag, entry, anchor, unregister: registerLabel(entry) };
   avatars.push(avatar);
   return avatar;
+}
+
+const NO_CALLS = { opacity: 0, height: 0, offset: 0, typing: 0, highlight: 0 };
+
+/** Zero a tag's setter call counters. */
+function resetCalls(tag: FakeTag): void {
+  tag.calls = { ...NO_CALLS };
 }
 
 /** Camera in the lecture hall (east of the x = 0 divider), looking north (-z), at eye height 3 m. */
@@ -365,7 +403,7 @@ describe("typing and highlight", () => {
     run(2);
     expect(a.tag.typing).toBe(true);
     now += TYPING_TTL_MS;
-    run(1);
+    run(2); // the jump can land on a selection pass, which leaves look changes to the next frame
     expect(a.tag.typing).toBe(false);
   });
 
@@ -411,6 +449,208 @@ describe("typing and highlight", () => {
     run(30);
     expect(far.tag.typing).toBe(false);
     expect(far.tag.highlight).toBe(false);
+  });
+});
+
+describe("dormant tags", () => {
+  it("a tag that is hidden and at rest is not touched frame after frame", () => {
+    const students = addStudents(40);
+    run(40); // the nearest 15 are up; the other 25 never were
+    const shown = students.slice(0, NAMETAG_CAP);
+    const dormant = students.slice(NAMETAG_CAP);
+    [...shown, ...dormant].forEach((a) => {
+      resetCalls(a.tag);
+      a.anchor.writes = 0;
+    });
+    run(30);
+    for (const a of dormant) {
+      expect(a.tag.calls).toEqual(NO_CALLS);
+      expect(a.anchor.writes).toBe(0); // not even the bubble anchor: nobody is speaking
+    }
+    for (const a of shown) {
+      expect(a.tag.calls.opacity).toBe(30);
+      expect(a.tag.calls.height).toBe(30);
+      expect(a.anchor.writes).toBe(30);
+    }
+  });
+
+  it("with the tags off, nothing is touched once they have faded away", () => {
+    const students = addStudents(30, 6, 0.4);
+    run(30);
+    setNametagMode("off");
+    run(60); // the next selection pass drops everyone, then they dissolve
+    expect(students.every((a) => !a.tag.sprite.visible)).toBe(true);
+    students.forEach((a) => {
+      resetCalls(a.tag);
+      a.anchor.writes = 0;
+    });
+    run(30);
+    for (const a of students) {
+      expect(a.tag.calls).toEqual(NO_CALLS);
+      expect(a.anchor.writes).toBe(0);
+    }
+  });
+
+  it("a dormant tag wakes at the next selection pass, and sleeps again after it fades", () => {
+    const students = addStudents(30, 6, 0.4);
+    setNametagMode("off");
+    run(40);
+    const far = students[29];
+    resetCalls(far.tag);
+    run(10);
+    expect(far.tag.calls.opacity).toBe(0);
+    setNametagMode("all");
+    run(30);
+    expect(far.tag.opacity).toBeCloseTo(1, 5);
+    expect(far.tag.calls.opacity).toBeGreaterThan(10);
+    setNametagMode("off");
+    run(60);
+    expect(far.tag.sprite.visible).toBe(false);
+    resetCalls(far.tag);
+    run(20);
+    expect(far.tag.calls.opacity).toBe(0);
+  });
+
+  it("selection still sees where a dormant tag has moved to", () => {
+    const students = addStudents(40);
+    run(40);
+    const walker = students[39]; // 20 m out: dormant
+    expect(walker.tag.sprite.visible).toBe(false);
+    walker.group.position.set(8, 0, 9); // now the nearest of all
+    run(40);
+    expect(nametagProbe.get(walker.id)?.selected).toBe(true);
+    expect(walker.tag.opacity).toBeCloseTo(1, 5);
+    expect(students.filter((a) => a.tag.opacity > 0.01).length).toBe(NAMETAG_CAP);
+  });
+
+  it("a hidden speaker's bubble anchor still follows the tag it would have", () => {
+    const far = addAvatar("far", 8, -25); // ~37 m ahead: never selected
+    addStudents(3);
+    run(10);
+    expect(far.tag.sprite.visible).toBe(false);
+    bubbleRegistry.set("far", "hello from afar", now);
+    run(3);
+    const expectAnchor = (z: number): number => {
+      const depth = viewDepth(cam.matrixWorld.elements, 8, NAMETAG_HEIGHT, z);
+      const h = nametagWorldHeight(depth, FOV_RAD, H);
+      return NAMETAG_HEIGHT + h / 2 + BUBBLE_GAP_M;
+    };
+    expect(far.entry.bubbleAnchor.y).toBeCloseTo(expectAnchor(-25), 9);
+    far.group.position.set(8, 0, -40); // walks off: the tag would grow to keep its text readable
+    run(3);
+    expect(far.entry.bubbleAnchor.y).toBeCloseTo(expectAnchor(-40), 9);
+    expect(far.entry.bubbleAnchor.y).toBeGreaterThan(expectAnchor(-25));
+    expect(far.tag.sprite.visible).toBe(false);
+    expect(nametagProbe.get("far")?.selected).toBe(false);
+  });
+
+  it("a lifted tag returns exactly to rest, and then needs no more updates", () => {
+    addAvatar("nearer", 8, 2);
+    const farther = addAvatar("farther", 8.1, 1.6);
+    run(80);
+    expect(farther.tag.offsetM).toBeGreaterThan(0.05);
+    farther.group.position.set(20, 0, 2); // clear of the other tag
+    run(80);
+    expect(farther.tag.offsetM).toBe(0);
+    expect(farther.tag.sprite.position.y).toBe(NAMETAG_HEIGHT);
+    setNametagMode("off");
+    run(60);
+    resetCalls(farther.tag);
+    run(10);
+    expect(farther.tag.calls.offset).toBe(0);
+  });
+
+  it("every tag still gets its wall check, hidden ones too (8 a frame, round-robin)", () => {
+    const behind = Array.from({ length: 20 }, (_, i) => addAvatar(`w${i}`, -4 - (i % 5), 8 - i * 0.3));
+    setNametagMode("off"); // nobody is shown, so every tag is dormant
+    run(3);
+    expect(behind.every((a) => nametagProbe.get(a.id)?.occluded)).toBe(true);
+    behind.forEach((a, i) => a.group.position.set(4 + (i % 5), 0, 6)); // the hall side of the divider
+    run(3);
+    expect(behind.every((a) => !nametagProbe.get(a.id)?.occluded)).toBe(true);
+  });
+});
+
+describe("heads under a parent group", () => {
+  it("uses the parent's world transform, the same frame the parent moves", () => {
+    const parent = new Group();
+    const kid = addAvatar("kid", 8, -5, false, 0, parent);
+    addAvatar("other", 8.5, 3);
+    run(40);
+    expect(kid.tag.opacity).toBeCloseTo(1, 5);
+    parent.position.set(0, 0, -40); // world z = -45: ~57 m from the camera
+    run(40);
+    expect(nametagProbe.get("kid")?.selected).toBe(false);
+    expect(kid.tag.sprite.visible).toBe(false);
+    parent.position.set(0, 0, 0);
+    parent.rotation.y = Math.PI; // the local (8, -5) now lands at (-8, 5): well off to the left of the view
+    run(40);
+    expect(nametagProbe.get("kid")?.selected).toBe(false);
+    expect(kid.tag.sprite.visible).toBe(false);
+    parent.rotation.y = 0;
+    run(40);
+    expect(nametagProbe.get("kid")?.selected).toBe(true);
+    expect(kid.tag.opacity).toBeCloseTo(1, 5);
+  });
+
+  it("a nested parent chain works, and the occlusion check uses the world position", () => {
+    const outer = new Group();
+    outer.position.set(-10, 0, 0);
+    const inner = new Group();
+    inner.position.set(9, 0, -6); // world (-1, 0, -6): the lounge, behind the divider wall
+    outer.add(inner);
+    const kid = addAvatar("kid", 0, 0, false, 0, inner);
+    run(40);
+    expect(nametagProbe.get("kid")?.occluded).toBe(true);
+    expect(kid.tag.opacity).toBeCloseTo(NAMETAG_OCCLUDED_OPACITY, 5);
+  });
+
+  it("an anchor whose matrix is set by hand is read through three's own world position", () => {
+    const hand = addAvatar("hand", 0, 0);
+    hand.group.matrixAutoUpdate = false;
+    hand.group.matrix.makeTranslation(8, 0, 4);
+    hand.group.matrixWorld.copy(hand.group.matrix);
+    addAvatar("other", 9, 3);
+    run(40);
+    expect(nametagProbe.get("hand")?.selected).toBe(true);
+    expect(hand.tag.opacity).toBeCloseTo(1, 5);
+  });
+});
+
+describe("look changes and the selection pass", () => {
+  it("the typing '…' shows within two frames whatever the frame the selection pass falls on", () => {
+    for (let phase = 0; phase < 13; phase++) {
+      const a = addAvatar(`t${phase}`, 8 + (phase - 6) * 0.6, 4);
+      run(30 + phase);
+      expect(a.tag.typing).toBe(false);
+      typingRegistry.set(a.id, now);
+      run(2);
+      expect(a.tag.typing).toBe(true);
+    }
+  });
+
+  it("a look change waits out the frame that runs the selection pass", () => {
+    const a = addAvatar("a", 8, 4);
+    typingRegistry.set("a", now);
+    run(1); // the very first frame runs a selection pass: the tag comes up, its look waits
+    expect(a.tag.opacity).toBeGreaterThan(0.01);
+    expect(a.tag.typing).toBe(false);
+    run(1);
+    expect(a.tag.typing).toBe(true);
+  });
+
+  it("a very low frame rate cannot starve look changes: with every frame a selection pass they still land", () => {
+    const a = addAvatar("a", 8, 4);
+    const slowFrame = (): void => {
+      now += 500;
+      frame.update(cam, W, H, 0.5, now);
+    };
+    for (let i = 0; i < 5; i++) slowFrame();
+    expect(a.tag.typing).toBe(false);
+    typingRegistry.set("a", now);
+    slowFrame();
+    slowFrame();
+    expect(a.tag.typing).toBe(true);
   });
 });
 
