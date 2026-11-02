@@ -15,6 +15,7 @@ import { useEscapeInteractions } from "./useEscapeInteractions";
 import { BagPanel } from "./ui/BagPanel";
 import { EscapeHud } from "./ui/EscapeHud";
 import { EscapeToast } from "./ui/EscapeToast";
+import { HoldRing } from "./ui/HoldRing";
 import { InspectOverlay } from "./ui/InspectOverlay";
 import { TeamChatNotice } from "./ui/TeamChatNotice";
 import { resetOverlays } from "../ui/overlayStack";
@@ -36,7 +37,8 @@ import "./escape.css";
  *
  * Investigation (Task 18): the room's objects are the context button's targets (useEscapeInteractions);
  * pressing one asks the server for the close-up, which opens the InspectOverlay (on the overlay stack:
- * Esc closes it, the keyboard is held while it is up). The team bag (BagPanel) and the toast sit with it.
+ * Esc closes it, the keyboard is held while it is up); a lock on the object shows its plate there (Task 19). The team
+ * bag (BagPanel), the lone member's hold ring (HoldRing) and the toast sit with it.
  */
 
 /** A room's ActiveMap, made once per room — `setActiveMap` ignores the SAME object, so it must be stable. */
@@ -138,6 +140,7 @@ export function EscapeScene({ identity }: { identity: Identity }) {
           <EscapeHud queue={queue} onLeave={LEAVE} />
           <TeamChatNotice />
           <BagPanel />
+          <HoldRing />
           <InspectOverlay />
           <EscapeToast />
         </>

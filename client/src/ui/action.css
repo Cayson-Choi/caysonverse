@@ -93,6 +93,17 @@
   background: rgba(120, 96, 200, 0.9);
 }
 
+/* A hold target ("3초 길게 누르기"): the finger / mouse stays down on it, so the browser must not scroll,
+   zoom, select or open a menu from the long press. */
+.cv-action-btn.is-hold {
+  touch-action: none;
+  -webkit-touch-callout: none;
+}
+.cv-action-btn.is-hold:active {
+  background: rgba(139, 92, 246, 0.85);
+  border-color: rgba(220, 205, 255, 0.9);
+}
+
 .cv-action-icon {
   font-size: 22px;
   line-height: 1;

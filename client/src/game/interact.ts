@@ -147,6 +147,16 @@ export function sameInteraction(a: Interaction | null, b: Interaction | null): b
 }
 
 /**
+ * Whether a held target must be let go of now (Task 19): it is no longer the pick, or it is no longer a
+ * hold (a teammate arrived, so the switch became a two-person press). The ~5 Hz proximity pass asks this,
+ * which is how walking out of reach, an overlay opening or a pause end a hold on this side too.
+ */
+export function holdEnded(held: InteractTarget | null, next: Interaction | null): boolean {
+  if (held === null) return false;
+  return !(next !== null && next.kind === "target" && next.target.id === held.id && next.target.hold === true);
+}
+
+/**
  * Read the world around `(x, z)` into an `InteractInput`. `seatIndex` is the local
  * player's own server-confirmed seat (-1 standing); `isOccupied` reports seats taken
  * by ANY player (self + remotes); `targets` is what the active scene offers (interactTargets.ts).

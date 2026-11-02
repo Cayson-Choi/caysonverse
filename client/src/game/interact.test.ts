@@ -5,6 +5,7 @@ import {
   interactionLabel,
   interactionShortLabel,
   interactInputAt,
+  holdEnded,
   interactNow,
   pickInteraction,
   sameInteraction,
@@ -276,5 +277,33 @@ describe("interactNow — a click acts on the FRESH target, not the one drawn up
       return null;
     }, perform);
     expect(reads).toBe(2); // still re-read after, so the button disappears this tick
+  });
+});
+
+describe("holdEnded — a held target lets go when it is no longer the pick (Task 19)", () => {
+  const key = (over: Partial<InteractTarget> = {}): InteractTarget =>
+    t({ kind: "object", id: "safe_key_left", icon: "🔑", label: "3초 길게 누르기", hold: true, ...over });
+  const pick = (target: InteractTarget): Interaction => ({ kind: "target", target });
+
+  it("keeps holding while the same hold target is still the pick (its distance changes every step)", () => {
+    expect(holdEnded(key(), pick(key({ dist: 1.7 })))).toBe(false);
+  });
+
+  it("lets go when the pick is nothing (walked out of reach, an overlay opened, the room paused)", () => {
+    expect(holdEnded(key(), null)).toBe(true);
+  });
+
+  it("lets go when something else is nearer", () => {
+    expect(holdEnded(key(), pick(key({ id: "safe_key_right" })))).toBe(true);
+    expect(holdEnded(key(), { kind: "sit", seatIndex: 2 })).toBe(true);
+  });
+
+  it("lets go when the switch stopped being a hold (a teammate arrived: it is a two-person press now)", () => {
+    expect(holdEnded(key(), pick(key({ hold: undefined, label: "열쇠 돌리기" })))).toBe(true);
+  });
+
+  it("with nothing held there is nothing to let go", () => {
+    expect(holdEnded(null, null)).toBe(false);
+    expect(holdEnded(null, pick(key()))).toBe(false);
   });
 });

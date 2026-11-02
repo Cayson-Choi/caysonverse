@@ -8,6 +8,7 @@ import { popOverlay, pushOverlay } from "../../ui/overlayStack";
 import { objectKindOf } from "../escapeTargets";
 import { noteInspectRequest } from "../inspectRequests";
 import { flipped, inspectImageUrl, noteNumber, pickupDone, tiltFromDrag, tiltTransform, uvMaskStyle } from "./inspectCard";
+import { LockPanel } from "./LockPanel";
 import "../escape.css";
 
 /** The overlay's id on the overlay stack (Esc closes the top one). */
@@ -78,8 +79,8 @@ function CardImage({ objectId, kind }: { objectId: string; kind: ObjectKind | nu
  * "뒤집기" turns it over when it has a back; "자외선 비추기" (only while the team bag holds the UV light —
  * the server sends `reveal` then) darkens the card and shows the hidden writing inside a circle that
  * follows the finger / mouse; "가방에 넣기" puts the object's item in the team bag. A split clue shows
- * this player's half, or a faded line saying whose it is. The lock plate (`lockId`) plugs in here in
- * Task 19. Esc, the ✕ and a tap outside close it.
+ * this player's half, or a faded line saying whose it is. When the server names a lock (`lockId`) its plate
+ * (LockPanel: number wheels, letter wheels or the sorting board) sits under the card. Esc, the ✕ and a tap outside close it.
  *
  * Everything shown comes from the server's payload and the room's public content — nothing is worked
  * out here. While it is open the room's flags / bag / members changing asks for the close-up again, so
@@ -109,12 +110,23 @@ function InspectCard({ view }: { view: InspectViewPayload }) {
   const hasReveal = view.reveal !== undefined && view.reveal !== "";
   const uvOn = uv && hasReveal;
 
+  // The lock the server offers on this object right now (its plate comes from the room's public content).
+  const lock = useEscapeStore((s) => (view.lockId === undefined ? null : s.content?.locks.find((l) => l.id === view.lockId) ?? null));
+
   // On the overlay stack for as long as it is open: Esc closes the top one, the keyboard belongs to it.
   useEffect(() => {
     pushOverlay(INSPECT_OVERLAY_ID, closeInspect);
-    dialogRef.current?.focus({ preventScroll: true });
     return () => popOverlay(INSPECT_OVERLAY_ID);
   }, []);
+
+  // The keyboard goes to the lock's wheels / board when there is one, else to the card itself — on opening, and
+  // again when the lock changes (the sort board's cover opens and its cards come next) or goes.
+  const lockId = lock?.id;
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    (dialog.querySelector<HTMLElement>("[data-lock-focus]") ?? dialog).focus({ preventScroll: true });
+  }, [lockId]);
 
   // The team's state moved (a flag, the bag, who is here): ask for this close-up again.
   const stateKey = useEscapeStore((s) => {
@@ -259,7 +271,7 @@ function InspectCard({ view }: { view: InspectViewPayload }) {
   return (
     <div
       ref={dialogRef}
-      className={"cv-escui cv-insp" + (uvOn ? " is-uv" : "")}
+      className={"cv-escui cv-insp" + (uvOn ? " is-uv" : "") + (lock ? " has-lock" : "")}
       role="dialog"
       aria-modal="true"
       aria-labelledby="cv-insp-title"
@@ -318,9 +330,13 @@ function InspectCard({ view }: { view: InspectViewPayload }) {
           </div>
         </div>
 
-        <p className="cv-insp-hint" aria-hidden="true">
-          {uvOn ? "카드 위로 불빛을 움직여 봐요" : "끌어서 카드를 기울여 봐요"}
-        </p>
+        {lock && <LockPanel key={lock.id} lock={lock} />}
+
+        {!lock && (
+          <p className="cv-insp-hint" aria-hidden="true">
+            {uvOn ? "카드 위로 불빛을 움직여 봐요" : "끌어서 카드를 기울여 봐요"}
+          </p>
+        )}
 
         <div className="cv-insp-actions">
           {view.back !== undefined && (
@@ -343,7 +359,6 @@ function InspectCard({ view }: { view: InspectViewPayload }) {
               가방에 넣기
             </button>
           )}
-          {/* Task 19: the lock plate for `view.lockId` plugs in here. */}
         </div>
       </div>
     </div>

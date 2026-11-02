@@ -7,6 +7,7 @@ import { getActiveMap } from "../game/activeMap";
 import { onHotkey } from "../game/hotkeys";
 import { fireTarget, getTargets } from "../game/interactTargets";
 import {
+  holdEnded,
   interactInputAt,
   interactNow,
   interactionIcon,
@@ -15,6 +16,7 @@ import {
   pickInteraction,
   sameInteraction,
   shouldClosePanel,
+  type InteractTarget,
   type Interaction,
 } from "../game/interact";
 import { useChatStore } from "../stores/chatStore";
@@ -27,8 +29,21 @@ import "./action.css";
 /** How often the proximity check runs (ms). ~5 Hz — off the per-frame path. */
 const PROXIMITY_INTERVAL_MS = 200;
 
+/**
+ * What holds a hold target down: the E / F key, a finger or mouse on the button, or a plain click (a tap that
+ * landed on a button drawn before the target turned into a hold — it is let go of at once). Each way of
+ * letting go ends only its own hold.
+ */
+type HoldBy = "key" | "pointer" | "click";
+
+/** The hold target being held right now, and what holds it. */
+interface Held {
+  target: InteractTarget;
+  by: HoldBy;
+}
+
 /** Do what the button says. The server stays authoritative for sit / stand. */
-function perform(it: Interaction): void {
+function perform(it: Interaction, startHold: (target: InteractTarget) => void): void {
   switch (it.kind) {
     case "sit":
       sendSit(it.seatIndex);
@@ -41,8 +56,9 @@ function perform(it: Interaction): void {
       break;
     case "target":
       // The scene decides what its target does (the hall: the team panel, "enter"). A tap is a press;
-      // the release half belongs to hold targets (a classroom's hold switch, Task 19).
+      // a hold target (a lone member's coop switch) is pressed now and released when the finger / key lets go.
       fireTarget(it.target, "press");
+      if (it.target.hold) startHold(it.target);
       break;
   }
 }
@@ -63,6 +79,13 @@ function perform(it: Interaction): void {
  *  - closing the 조교 chat panel when you walk past NPC_CLOSE_RADIUS of it, and
  *  - the personal SitRejected notice → a dimmed chat-log system row.
  *
+ * A scene's HOLD target (a lone member's coop switch, "3초 길게 누르기") is pressed when the finger / mouse
+ * goes down on the button or E / F goes down, and RELEASED when it comes up — and on every other way out:
+ * the pointer being cancelled, the window losing focus or going to the background, the page being hidden,
+ * the target no longer being the pick (walked out of reach, an overlay opened, paused) and this button
+ * unmounting. The server finishes a hold by itself after the full time, so a release that never gets
+ * sent would let a tap count as a full hold.
+ *
  * Server-authoritative: this only SENDS Sit / Stand (the same path LocalPlayer's
  * seat camera listens to); the seated state itself flips when the schema
  * `seatIndex` syncs. The button never takes keyboard focus (pointerdown is
@@ -74,6 +97,8 @@ export function ActionButton({ pose, seat }: { pose: Pose; seat: SeatState }) {
   const [interaction, setInteraction] = useState<Interaction | null>(null);
   // Mirrors the state so the key handler never acts on a stale render.
   const current = useRef<Interaction | null>(null);
+  // The hold target being held (not state: nothing is drawn from it; the ring is the scene's).
+  const held = useRef<Held | null>(null);
   // Re-evaluate at once when a chat panel opens or closes (F → button gone).
   const panelOpen = useNpcStore((s) => s.activeNpc !== null);
   const layout = useTouchHudLayout();
@@ -86,6 +111,14 @@ export function ActionButton({ pose, seat }: { pose: Pose; seat: SeatState }) {
     return room.onMessage(MessageType.SitRejected, (m: SitRejectedPayload) => {
       useChatStore.getState().pushSystem(m.reason);
     });
+  }, []);
+
+  /** Let go of the hold (only the one `by` started, when given): tell the scene. */
+  const releaseHold = useCallback((by?: HoldBy): void => {
+    const h = held.current;
+    if (h === null || (by !== undefined && h.by !== by)) return;
+    held.current = null;
+    fireTarget(h.target, "release");
   }, []);
 
   // One proximity pass: auto-close a far chat panel, then pick the interaction.
@@ -117,11 +150,27 @@ export function ActionButton({ pose, seat }: { pose: Pose; seat: SeatState }) {
       current.current = next;
       setInteraction(next);
     }
+    // A held target that is no longer the pick (out of reach, an overlay, a pause) is let go of.
+    if (held.current !== null && holdEnded(held.current.target, next)) releaseHold();
     return next;
-  }, [pose, seat]);
+  }, [pose, seat, releaseHold]);
 
-  // E / F and a click share this: re-read the world, act on THAT target, re-read.
-  const act = useCallback(() => interactNow(refresh, perform), [refresh]);
+  // E / F and a press or click share this: re-read the world, act on THAT target, re-read.
+  // A hold that is already going is not started a second time (the other way of pressing waits its turn).
+  const act = useCallback(
+    (by: HoldBy) => {
+      if (held.current !== null) return;
+      interactNow(refresh, (it) => perform(it, (target) => void (held.current = { target, by })));
+    },
+    [refresh],
+  );
+  // A tap on a button drawn before its target became a hold: the finger is already up, so it is a press and a release.
+  const actClick = useCallback(() => {
+    act("click");
+    releaseHold("click");
+  }, [act, releaseHold]);
+  const holdDown = useCallback(() => act("pointer"), [act]);
+  const holdUp = useCallback(() => releaseHold("pointer"), [releaseHold]);
 
   useEffect(() => {
     refresh();
@@ -136,13 +185,33 @@ export function ActionButton({ pose, seat }: { pose: Pose; seat: SeatState }) {
   // E / F: the shared hotkey table already drops auto-repeat, IME composition and
   // keys typed into a focused field (typing "e" in the chat never sits). Re-read
   // the world first so a key pressed right after walking up sees the current target.
+  // E / F going up ends the hold the key started (the keyup passes even while an overlay holds the keyboard).
   useEffect(
     () =>
       onHotkey((action) => {
-        if (action.type === "interact") act(); // e.g. talk → the panel opens, the button goes
+        if (action.type === "interact") act("key"); // e.g. talk → the panel opens, the button goes
+        else if (action.type === "interactUp") releaseHold("key");
       }),
-    [act],
+    [act, releaseHold],
   );
+
+  // Every other way out of a hold: the window loses focus, goes to the background or the page is hidden (a
+  // finger lifted somewhere we never hear of), and this button going away.
+  useEffect(() => {
+    const letGo = (): void => releaseHold();
+    const onVisibility = (): void => {
+      if (document.visibilityState === "hidden") releaseHold();
+    };
+    window.addEventListener("blur", letGo);
+    window.addEventListener("pagehide", letGo);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("blur", letGo);
+      window.removeEventListener("pagehide", letGo);
+      document.removeEventListener("visibilitychange", onVisibility);
+      releaseHold();
+    };
+  }, [releaseHold]);
 
   const label = interaction ? interactionLabel(interaction) : "";
   return (
@@ -155,32 +224,62 @@ export function ActionButton({ pose, seat }: { pose: Pose; seat: SeatState }) {
           {interaction ? `E 키: ${label}` : ""}
         </span>
       )}
-      {interaction && <ActionButtonView interaction={interaction} layout={layout} onAct={act} />}
+      {interaction && (
+        <ActionButtonView
+          interaction={interaction}
+          layout={layout}
+          onClick={actClick}
+          onHoldDown={holdDown}
+          onHoldUp={holdUp}
+        />
+      )}
     </>
   );
 }
 
-/** The visible button. Never takes focus; a click acts on a fresh read, like the E key. */
+/**
+ * The visible button. Never takes focus; a click acts on a fresh read, like the E key. A hold target acts
+ * when the pointer goes DOWN and is let go of when it comes up or is cancelled (the pointer is captured, so
+ * it can come up anywhere), and the click that follows is ignored.
+ */
 function ActionButtonView({
   interaction,
   layout,
-  onAct,
+  onClick,
+  onHoldDown,
+  onHoldUp,
 }: {
   interaction: Interaction;
   layout: ReturnType<typeof useTouchHudLayout>;
-  onAct: () => void;
+  onClick: () => void;
+  onHoldDown: () => void;
+  onHoldUp: () => void;
 }) {
   const label = interactionLabel(interaction);
+  const isHold = interaction.kind === "target" && interaction.target.hold === true;
   return (
     <button
       type="button"
-      className={"cv-action-btn" + (isTouchDevice ? " is-touch" : "")}
+      className={"cv-action-btn" + (isTouchDevice ? " is-touch" : "") + (isHold ? " is-hold" : "")}
       style={isTouchDevice ? rectStyle(layout.action) : undefined}
       // Never take focus: a focused button would be re-pressed by Space / Enter and
       // would steal the caret from the chat field (Review Focus 2).
-      onPointerDown={(e) => e.preventDefault()}
+      onPointerDown={(e) => {
+        e.preventDefault();
+        if (!isHold || (e.pointerType === "mouse" && e.button !== 0)) return;
+        try {
+          e.currentTarget.setPointerCapture(e.pointerId);
+        } catch {
+          // a pointer that is already gone: the up / cancel below still ends the hold
+        }
+        onHoldDown();
+      }}
+      onPointerUp={isHold ? onHoldUp : undefined}
+      onPointerCancel={isHold ? onHoldUp : undefined}
+      onLostPointerCapture={isHold ? onHoldUp : undefined}
       onMouseDown={(e) => e.preventDefault()}
-      onClick={onAct}
+      onContextMenu={isHold ? (e) => e.preventDefault() : undefined}
+      onClick={isHold ? undefined : onClick}
       tabIndex={-1}
       aria-label={label}
     >
