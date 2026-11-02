@@ -51,7 +51,7 @@
 import type { Room } from "@colyseus/sdk";
 import type { ClassState, WorldState } from "@caysonverse/shared/schema";
 import { RECONNECT_WINDOW_S } from "@caysonverse/shared/constants";
-import { CLASS_REJOIN_BUDGET_MS } from "@caysonverse/shared/escape/constants";
+import { CLASS_CLOSED_CODE, CLASS_REJOIN_BUDGET_MS } from "@caysonverse/shared/escape/constants";
 import {
   client,
   getRoom,
@@ -80,6 +80,7 @@ import {
 import { loadIdentity } from "./identityCache";
 import { getAdminCode, forgetAdminCode } from "./adminSession";
 import { getTeacher, forgetTeacher } from "./teacherSession";
+import { forgetTeacherClass } from "./teacherClassCache";
 import { bindClassSync, unbindClassSync } from "./classSync";
 import { wasKicked, markKicked } from "./kickSeam";
 import { useAppStore } from "../stores/appStore";
@@ -191,6 +192,8 @@ function handleLeave(leftRoom: Room<WorldState>, code: number, mode: ResilienceM
     forgetAdminCode(); // leaving the world drops the session admin secret
     if (mode === "class") {
       clearToken(); // the class session is over: its token can only fail
+      // The class ended: stop prefilling its code in the teacher form (it can only be refused now).
+      if (code === CLASS_CLOSED_CODE) forgetTeacherClass();
       endClassSession();
     }
     setRoom(null);

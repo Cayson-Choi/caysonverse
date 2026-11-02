@@ -5,7 +5,9 @@ import {
   CLASS_CLOSED_CODE,
   CLASS_END_GRACE_MS,
   CLASS_EMPTY_CLOSE_MS,
+  CLASS_RECONNECT_WINDOW_S,
   COOP_WINDOW_MS,
+  ESCAPE_EMPTY_DISPOSE_MS,
   ESCAPE_MAX_CLIENTS,
   MAX_TEAMS,
   PHASE1_OPEN_ROOMS,
@@ -111,6 +113,10 @@ describe("timing constants", () => {
 
   it("a simultaneous press window is shorter than the solo long-press", () => {
     expect(COOP_WINDOW_MS).toBeLessThan(SOLO_HOLD_MS);
+  });
+
+  it("an empty escape room outlives the reconnection window (a whole team's phones may sleep at once)", () => {
+    expect(ESCAPE_EMPTY_DISPOSE_MS).toBeGreaterThan(CLASS_RECONNECT_WINDOW_S * 1000);
   });
 });
 

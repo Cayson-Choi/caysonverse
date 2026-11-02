@@ -129,8 +129,11 @@ export const HINT_GAP_MS = 30_000;
 export const LOCK_SUBMIT_GAP_MS = 1500;
 /** How close (m, on the ground plane) a player must stand to inspect/use an object. */
 export const INSPECT_REACH = 2.2;
-/** An empty escape room is disposed after this long. */
-export const ESCAPE_EMPTY_DISPOSE_MS = 120_000;
+/**
+ * An empty escape room is disposed after this long. Longer than the class/escape reconnection
+ * window (180 s), so a team whose phones all sleep at once still finds its room on return.
+ */
+export const ESCAPE_EMPTY_DISPOSE_MS = 240_000;
 /** The admission ticket for entering an escape room is valid this long. */
 export const TICKET_TTL_MS = 60_000;
 /**
