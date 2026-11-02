@@ -595,8 +595,8 @@
   align-items: center;
   justify-content: center;
   gap: 6px;
-  min-width: 44px;
-  min-height: 44px;
+  min-width: 48px;
+  min-height: 48px;
   padding: 0 12px;
   font: inherit;
   font-size: 16px;
@@ -957,7 +957,7 @@
   bottom: 0;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
   width: max-content;
   min-width: 168px;
   max-width: min(240px, calc(100vw - 96px));
@@ -1250,7 +1250,7 @@
 .cv-sort-cards {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 8px;
 }
 .cv-sort-empty {
   font-size: 13px;
