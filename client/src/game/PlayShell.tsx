@@ -13,6 +13,8 @@ import { OverviewMarker } from "./OverviewMarker";
 import { ClickMarker } from "./ClickMarker";
 import { NametagSystem } from "./NametagSystem";
 import { RenderStatsProbe } from "./RenderStatsProbe";
+import { QualityEffects, ShadowFloor, useQualityTier } from "./QualityEffects";
+import { QUALITY, exposureFor, skyBeforeToneMap } from "./quality";
 import { setActiveMap, type ActiveMap } from "./activeMap";
 import { LIGHTING, type LightingId } from "./sceneLighting";
 import type { PlayersRoom } from "./remoteSync";
@@ -62,7 +64,10 @@ export interface PlayShellProps {
   /** Set as THE active map while this scene is up (collision, camera, click-move, HUD). */
   activeMap: ActiveMap;
   lighting: LightingId;
-  /** Post effects for the school scenes (Task 21 attaches them; nothing yet). */
+  /**
+   * The school scenes' look (Task 21): the player's graphics tier (bloom, soft shadows or the light budget,
+   * its dpr) and brightness. The hall and the classrooms turn it on; off = the old render budget, no post effects.
+   */
   effects: boolean;
   /** The scene's own 3D content, inside the Canvas. */
   world3d: ShellSlot;
@@ -143,8 +148,27 @@ export function PlayShell(p: PlayShellProps) {
     [room, identity.sessionId],
   );
 
-  // One render budget source (ruling E17): dpr cap, real vs blob shadows.
-  const profile = getRenderProfile(isTouchDevice);
+  // The graphics tier (the player's setting; "auto" = the device) and brightness, for the school scenes.
+  const tier = useQualityTier();
+  const brightness = useSettingsStore((s) => s.settings.brightness);
+  // One render budget source (ruling E17): dpr cap, real vs blob shadows. A tier drives it; no tier = the old matrix.
+  const profile = getRenderProfile(isTouchDevice, p.effects ? tier : undefined);
+  // On the rich tier the bloom chain tone-maps the WHOLE frame, clear colour included, which would wash the sky
+  // out to a dull grey-blue next to the light tier's (a renderer does not tone-map its clear colour). So there
+  // the clear colour is the one that tone-maps back into the sky (quality.ts); once per sky and brightness.
+  const toneMappedFrame = p.effects && QUALITY[tier].bloom;
+  const skyClear = useMemo<[number, number, number] | null>(
+    () => (toneMappedFrame ? skyBeforeToneMap(LIGHTING[p.lighting].sky, exposureFor(brightness)) : null),
+    [toneMappedFrame, p.lighting, brightness],
+  );
+  // The light tier's flat panels (quality.css) hang on this mark on <html>.
+  useEffect(() => {
+    if (!p.effects) return;
+    document.documentElement.dataset.gfx = tier;
+    return () => {
+      delete document.documentElement.dataset.gfx;
+    };
+  }, [p.effects, tier]);
 
   // The sun aims at the middle of the map, and its shadow box covers the whole map.
   const light = LIGHTING[p.lighting];
@@ -168,10 +192,12 @@ export function PlayShell(p: PlayShellProps) {
       <Canvas
         className="cv-canvas"
         dpr={profile.dpr}
-        shadows={profile.shadows}
+        // "percentage" is the shadow map three 0.185 really draws for the old "soft" one (PCFSoftShadowMap is deprecated
+        // there and falls back to it with a console warning on every context).
+        shadows={profile.shadows ? "percentage" : false}
         camera={{ fov: 55, near: 0.1, far: CAMERA_FAR, position: [pose.x, 3, pose.z + 8] }}
       >
-        <color attach="background" args={[light.sky]} />
+        <color attach="background" args={skyClear ?? [light.sky]} />
         <fog attach="fog" args={[light.sky, light.fog[0], light.fog[1]]} />
         <hemisphereLight args={[light.hemi[0], light.hemi[1], light.hemi[2]]} />
         <primitive object={sunTarget} />
@@ -210,6 +236,8 @@ export function PlayShell(p: PlayShellProps) {
           <CameraRig pose={pose} orbit={orbit} seat={seat} fogRange={light.fog} />
         </KeyboardControls>
         <NametagSystem />
+        {p.effects && <QualityEffects tier={tier} brightness={brightness} />}
+        {p.effects && profile.shadows && <ShadowFloor bounds={b} />}
         {import.meta.env.DEV && <RenderStatsProbe />}
       </Canvas>
       <LoadingOverlay />
@@ -228,6 +256,7 @@ export function PlayShell(p: PlayShellProps) {
       <CoachMarks pose={pose} orbit={orbit} />
       {renderSlot(p.hud, frame)}
       <MenuPanel
+        graphics={p.effects}
         onToggleView={toggleViewUnlessMap}
         onShowGuide={() => useCoachStore.getState().report("restart")}
       />

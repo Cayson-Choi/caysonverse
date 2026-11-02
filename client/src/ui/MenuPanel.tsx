@@ -4,6 +4,7 @@ import { blurTextEntry, handleEscape, type FocusLike } from "../game/escape";
 import { clearClickTarget } from "../game/clickMove";
 import { acquireUiCapture, releaseUiCapture } from "../game/uiCapture";
 import { SENSITIVITY, type ButtonSize } from "../game/settings";
+import { BRIGHTNESS, type GraphicsSetting } from "../game/quality";
 import type { NametagMode } from "../game/nametagSelect";
 import { useSettingsStore } from "../stores/settingsStore";
 import { useUiStore } from "../stores/uiStore";
@@ -12,6 +13,8 @@ import { FOCUSABLE_SELECTOR, tabWrapTarget } from "./focusTrap";
 import "./menu.css";
 
 interface MenuPanelProps {
+  /** Show the school scenes' "그래픽" and "밝기" rows (the legacy world draws as it always did, so it hides them). */
+  graphics?: boolean;
   /** Toggle first-person / third-person (the same switch V and the zoom-through use). */
   onToggleView: () => void;
   /** Replay the first-visit guide from ① ("조작 안내 다시 보기"); the menu closes first. */
@@ -24,6 +27,12 @@ const BUTTON_SIZE_OPTIONS: readonly { value: ButtonSize; label: string }[] = [
   { value: "large", label: "크게" },
 ];
 
+const GRAPHICS_OPTIONS: readonly { value: GraphicsSetting; label: string }[] = [
+  { value: "auto", label: "자동" },
+  { value: "high", label: "화려하게" },
+  { value: "low", label: "가볍게" },
+];
+
 const NAMETAG_OPTIONS: readonly { value: NametagMode; label: string }[] = [
   { value: "all", label: "모두" },
   { value: "nearby", label: "가까운 사람만" },
@@ -33,6 +42,11 @@ const NAMETAG_OPTIONS: readonly { value: NametagMode; label: string }[] = [
 /** "1배", "1.25배" — the slider's current value, without trailing zeros. */
 function formatSensitivity(v: number): string {
   return `${Number(v.toFixed(2))}배`;
+}
+
+/** "1.0", "1.2" — the brightness slider's current value. */
+function formatBrightness(v: number): string {
+  return v.toFixed(1);
 }
 
 /** A button that never takes keyboard focus from a press (the pointer path only; Tab still reaches it). */
@@ -120,7 +134,7 @@ function Switch({
  * focusin guard pulls back any focus that lands outside), so focus can never walk into
  * the chat field behind it.
  */
-export function MenuPanel({ onToggleView, onShowGuide }: MenuPanelProps) {
+export function MenuPanel({ graphics = false, onToggleView, onShowGuide }: MenuPanelProps) {
   const open = useUiStore((s) => s.menuOpen);
   const settings = useSettingsStore((s) => s.settings);
   const update = useSettingsStore((s) => s.update);
@@ -303,6 +317,43 @@ export function MenuPanel({ onToggleView, onShowGuide }: MenuPanelProps) {
             </span>
             <Switch labelledBy="cv-menu-first-person" on={isFp} onChange={() => onToggleView()} />
           </div>
+
+          {graphics && (
+            <>
+              <div className="cv-menu-row">
+                <span id="cv-menu-graphics" className="cv-menu-label">
+                  그래픽
+                </span>
+                <Segmented
+                  labelledBy="cv-menu-graphics"
+                  value={settings.graphics}
+                  options={GRAPHICS_OPTIONS}
+                  onChange={(graphics) => update({ graphics })}
+                />
+              </div>
+
+              <div className="cv-menu-row">
+                <label htmlFor="cv-menu-brightness" className="cv-menu-label">
+                  밝기
+                </label>
+                <div className="cv-menu-slider">
+                  <input
+                    id="cv-menu-brightness"
+                    type="range"
+                    min={BRIGHTNESS.min}
+                    max={BRIGHTNESS.max}
+                    step={BRIGHTNESS.step}
+                    value={settings.brightness}
+                    aria-valuetext={formatBrightness(settings.brightness)}
+                    onChange={(e) => update({ brightness: Number(e.target.value) })}
+                  />
+                  <span className="cv-menu-value" aria-hidden="true">
+                    {formatBrightness(settings.brightness)}
+                  </span>
+                </div>
+              </div>
+            </>
+          )}
         </section>
 
         <section className="cv-menu-section" aria-labelledby="cv-menu-sec-help">

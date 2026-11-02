@@ -1380,6 +1380,12 @@
   pointer-events: none; /* never sits on a close-up's buttons */
   animation: cv-esc-in 0.3s cubic-bezier(0.2, 0.9, 0.3, 1.15);
 }
+/* A PC, with a close-up open: the card is centred and tall (about 530 px), so the toast would sit on its lower half.
+   It hops up to the top edge instead, in the gap above the card. (Before the phone rule below, which puts it back.) */
+.cv-insp ~ .cv-esc-toast {
+  top: 8px;
+  bottom: auto;
+}
 .cv-esc-toast-icon {
   flex: none;
   display: grid;
@@ -1392,6 +1398,7 @@
 }
 /* A phone: the story box is up in the top stack, so the toast sits low and centred above the chat button. */
 .cv-touch .cv-esc-toast {
+  top: auto;
   bottom: calc(max(env(safe-area-inset-bottom, 0px), 0px) + 92px);
   max-width: min(420px, calc(100vw - 168px));
   padding: 8px 12px 8px 8px;

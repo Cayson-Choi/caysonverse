@@ -1,0 +1,14 @@
+/* Light tier ("가볍게", Task 21). PlayShell marks <html data-gfx="low"|"high"> while a school scene is up.
+
+   On the light tier the glass panels over the live canvas lose their backdrop blur: a blurred backdrop is
+   re-filtered every frame the 3D behind it changes, which is a steady cost on a phone GPU for no gain here
+   (the panels are 62-95 % opaque, the full-screen scrims 22-58 %). What replaces the blur is the panel's own
+   background, which is already a flat scrim; only the most see-through one is made a little denser so its
+   text stays easy to read over a bright room. */
+:root[data-gfx="low"] * {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+:root[data-gfx="low"] .cv-chat-rows {
+  background: rgba(14, 11, 30, 0.76);
+}

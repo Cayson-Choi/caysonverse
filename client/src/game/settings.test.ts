@@ -24,6 +24,8 @@ describe("DEFAULT_SETTINGS and constants", () => {
       nametagMode: "nearby",
       showOwnNametag: false,
       coachDone: false,
+      graphics: "auto",
+      brightness: 1,
     });
     expect(SENSITIVITY).toEqual({ min: 0.5, max: 2, step: 0.25 });
     expect(BUTTON_SCALE).toEqual({ small: 0.85, medium: 1, large: 1.25 });
@@ -69,8 +71,13 @@ describe("parseSettings", () => {
       nametagMode: "all",
       showOwnNametag: true,
       coachDone: true,
+      graphics: "low",
+      brightness: 1.3,
     };
     expect(parseSettings(JSON.stringify(all))).toEqual(all);
+    for (const g of ["auto", "high", "low"] as const) {
+      expect(parseSettings(JSON.stringify({ graphics: g })).graphics).toBe(g);
+    }
     for (const mode of ["all", "nearby", "off"] as const) {
       expect(parseSettings(JSON.stringify({ nametagMode: mode })).nametagMode).toBe(mode);
     }
@@ -103,6 +110,8 @@ describe("parseSettings", () => {
         nametagMode: null,
         showOwnNametag: 1,
         coachDone: "yes",
+        graphics: 2,
+        brightness: "1.2",
       }),
     );
     expect(parsed).toEqual(DEFAULT_SETTINGS);
@@ -113,6 +122,46 @@ describe("parseSettings", () => {
     const parsed = parseSettings(JSON.stringify({ leftHanded: true, theme: "neon" }));
     expect(parsed).toEqual({ ...DEFAULT_SETTINGS, leftHanded: true });
     expect(Object.keys(parsed).sort()).toEqual(Object.keys(DEFAULT_SETTINGS).sort());
+  });
+});
+
+describe("graphics and brightness (Task 21)", () => {
+  it("parseSettings keeps old saves valid and fixes graphics/brightness", () => {
+    // A save from before Task 21 has neither field: both come back as their defaults, the rest is kept.
+    const old = parseSettings(JSON.stringify({ leftHanded: true }));
+    expect(old.graphics).toBe("auto");
+    expect(old.brightness).toBe(1);
+    expect(old.leftHanded).toBe(true);
+    expect(parseSettings(JSON.stringify({ brightness: 3 })).brightness).toBe(1.4);
+    expect(parseSettings(JSON.stringify({ graphics: "ultra" })).graphics).toBe("auto");
+  });
+
+  it("clamps the brightness to 0.8..1.4 and snaps it to tenths, without float dust", () => {
+    const bright = (v: unknown) => parseSettings(JSON.stringify({ brightness: v })).brightness;
+    expect(bright(0)).toBe(0.8);
+    expect(bright(-2)).toBe(0.8);
+    expect(bright(0.8)).toBe(0.8);
+    expect(bright(1.4)).toBe(1.4);
+    expect(bright(9)).toBe(1.4);
+    expect(bright(1.04)).toBe(1);
+    expect(bright(1.06)).toBe(1.1);
+    expect(bright(null)).toBe(1);
+    expect(bright("1.2")).toBe(1);
+    // Every slider stop survives unchanged (0.9 must not come back as 0.9000000000000001).
+    for (let i = 0; i <= 6; i++) {
+      const v = Math.round((0.8 + i * 0.1) * 10) / 10;
+      expect(bright(v)).toBe(v);
+    }
+  });
+
+  it("a patch merged over the settings is validated the same way", () => {
+    expect(normalizeSettings({ ...DEFAULT_SETTINGS, brightness: Number.NaN }).brightness).toBe(1);
+    expect(normalizeSettings({ ...DEFAULT_SETTINGS, graphics: "ultra" }).graphics).toBe("auto");
+    expect(normalizeSettings({ ...DEFAULT_SETTINGS, graphics: "high", brightness: 1.2 })).toEqual({
+      ...DEFAULT_SETTINGS,
+      graphics: "high",
+      brightness: 1.2,
+    });
   });
 });
 

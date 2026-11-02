@@ -12,6 +12,7 @@
  */
 
 import type { NametagMode } from "./nametagSelect";
+import { BRIGHTNESS, type GraphicsSetting } from "./quality";
 
 export type ButtonSize = "small" | "medium" | "large";
 
@@ -28,6 +29,10 @@ export interface Settings {
   showOwnNametag: boolean;
   /** The first-visit guide has been seen (coachStore saves it when the guide ends; a restart leaves it). */
   coachDone: boolean;
+  /** Graphics quality of the school scenes: "auto" (touch → light), "high" (화려하게) or "low" (가볍게). */
+  graphics: GraphicsSetting;
+  /** The school scenes' exposure (BRIGHTNESS.min .. max, in steps). */
+  brightness: number;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -37,6 +42,8 @@ export const DEFAULT_SETTINGS: Settings = {
   nametagMode: "nearby",
   showOwnNametag: false,
   coachDone: false,
+  graphics: "auto",
+  brightness: BRIGHTNESS.default,
 };
 
 /** The look-sensitivity slider: 0.5x .. 2x in quarter steps. */
@@ -59,6 +66,7 @@ export const SETTINGS_STORAGE_KEY = "cv-settings-v1";
 
 const BUTTON_SIZES: readonly ButtonSize[] = ["small", "medium", "large"];
 const NAMETAG_MODES: readonly NametagMode[] = ["all", "nearby", "off"];
+const GRAPHICS_SETTINGS: readonly GraphicsSetting[] = ["auto", "high", "low"];
 
 /** A button's size in px for the chosen setting: `base x scale`, rounded, never under MIN_TOUCH_PX. */
 export function buttonPx(basePx: number, size: ButtonSize): number {
@@ -71,6 +79,15 @@ function sensitivityOf(v: unknown): number {
   const { min, max, step } = SENSITIVITY;
   const clamped = Math.min(max, Math.max(min, v));
   const snapped = min + Math.round((clamped - min) / step) * step;
+  return Math.min(max, Math.max(min, snapped));
+}
+
+/** Clamp to the brightness range and snap to its step (rounded, so 0.9 never comes back as 0.9000000000000001); a non-number is the default. */
+function brightnessOf(v: unknown): number {
+  if (typeof v !== "number" || !Number.isFinite(v)) return DEFAULT_SETTINGS.brightness;
+  const { min, max, step } = BRIGHTNESS;
+  const clamped = Math.min(max, Math.max(min, v));
+  const snapped = Number((min + Math.round((clamped - min) / step) * step).toFixed(2));
   return Math.min(max, Math.max(min, snapped));
 }
 
@@ -90,6 +107,7 @@ export function normalizeSettings(value: unknown): Settings {
   const v = value as Record<string, unknown>;
   const size = v.buttonSize;
   const mode = v.nametagMode;
+  const graphics = v.graphics;
   return {
     buttonSize: BUTTON_SIZES.includes(size as ButtonSize)
       ? (size as ButtonSize)
@@ -101,6 +119,10 @@ export function normalizeSettings(value: unknown): Settings {
       : DEFAULT_SETTINGS.nametagMode,
     showOwnNametag: booleanOf(v.showOwnNametag, DEFAULT_SETTINGS.showOwnNametag),
     coachDone: booleanOf(v.coachDone, DEFAULT_SETTINGS.coachDone),
+    graphics: GRAPHICS_SETTINGS.includes(graphics as GraphicsSetting)
+      ? (graphics as GraphicsSetting)
+      : DEFAULT_SETTINGS.graphics,
+    brightness: brightnessOf(v.brightness),
   };
 }
 
