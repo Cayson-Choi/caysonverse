@@ -11,8 +11,6 @@
  * Returns a teardown that unregisters the handlers and clears all sinks.
  */
 
-import type { Room } from "@colyseus/sdk";
-import type { WorldState } from "@caysonverse/shared/schema";
 import { MessageType } from "@caysonverse/shared/messages";
 import type { ChatBroadcast, ChatRejectedPayload, SystemBroadcast } from "@caysonverse/shared/messages";
 import { EMOJIS } from "@caysonverse/shared/constants";
@@ -27,7 +25,25 @@ import { useSoundStore } from "../stores/soundStore";
 /** 🎉 index in EMOJIS — the local self-celebration when MY escape is announced. */
 const CELEBRATE_EMOJI_INDEX = EMOJIS.indexOf("\u{1F389}");
 
-export function startChatSync(room: Room<WorldState>): () => void {
+/**
+ * What the chat sync reads of a room — structural, so any player room fits: the world, a class's hall
+ * and a team's classroom (whose chat is the team chat). Room's own generic is invariant, hence a
+ * shape instead of Room<WorldState>. The sender's voice and the positions come from the synced
+ * players map.
+ */
+export interface ChatRoom {
+  readonly sessionId: string;
+  readonly state:
+    | {
+        readonly players?: {
+          get?(sid: string): { voice: number; x: number; z: number } | undefined;
+        };
+      }
+    | undefined;
+  onMessage<T = unknown>(type: string, callback: (message: T) => void): () => void;
+}
+
+export function startChatSync(room: ChatRoom): () => void {
   const offChat = room.onMessage(MessageType.Chat, (m: ChatBroadcast) => {
     bubbleRegistry.set(m.sid, m.text, performance.now());
     useChatStore.getState().pushMessage(m.name, m.text);

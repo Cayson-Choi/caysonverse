@@ -9,6 +9,9 @@ import { typingRegistry } from "./typing";
 import { viewState, type ViewState } from "./viewState";
 import { remoteGaitProbe, type Gait } from "./gait";
 import { getNametagCostMs, getNametagMode, nametagProbe, overviewLabelProbe } from "./labelRegistry";
+import { useAppStore, type Screen } from "../stores/appStore";
+import { useClassStore } from "../stores/classStore";
+import { useEscapeStore, type EscapeView } from "../stores/escapeStore";
 
 /** Non-consented close code (MAY_TRY_RECONNECT) used by the dev drop hook. */
 const DEV_DROP_CODE = 4010;
@@ -79,6 +82,16 @@ export interface JumpView {
   seq: number;
   /** Milliseconds since take-off (0 .. JUMP_DURATION_MS). */
   elapsedMs: number;
+}
+
+/** The class (AI 학교 탈출) as the dev/E2E hook shows it: the store's data fields, no functions. */
+export interface ClassView {
+  phase: string;
+  classCode: string;
+  textLevel: string;
+  openRooms: string[];
+  litRooms: string[];
+  teams: { id: string; name: string; mine: boolean; escapeDoor: string; escapeRoomId: string; members: { sid: string; nickname: string; inEscape: boolean }[] }[];
 }
 
 declare global {
@@ -156,6 +169,12 @@ declare global {
       sit: (seatIndex: number) => void;
       /** Send a Stand request (dev/E2E only). */
       stand: () => void;
+      /** Which screen the app shows: "entry" | "world" | "hub" | "escape" (AI 학교 탈출). */
+      getScreen: () => Screen;
+      /** The team classroom as the UI reads it (clock, phase, paused, flags …), or null outside one. */
+      getEscape: () => EscapeView | null;
+      /** The class (phase, code, open rooms, teams and who is inside a classroom), or null outside a class. */
+      getClass: () => ClassView | null;
     };
   }
 }
@@ -222,6 +241,30 @@ export function installDebugHook(
     },
     sit: (seatIndex: number) => sendSit(seatIndex),
     stand: () => sendStand(),
+    getScreen: () => useAppStore.getState().screen,
+    getEscape: () => {
+      const v = useEscapeStore.getState().view;
+      return v === null ? null : structuredClone(v);
+    },
+    getClass: () => {
+      const c = useClassStore.getState();
+      if (c.classCode === "") return null;
+      return {
+        phase: c.phase,
+        classCode: c.classCode,
+        textLevel: c.textLevel,
+        openRooms: [...c.openRooms],
+        litRooms: [...c.litRooms],
+        teams: c.teams.map((t) => ({
+          id: t.id,
+          name: t.name,
+          mine: t.mine,
+          escapeDoor: t.escapeDoor,
+          escapeRoomId: t.escapeRoomId,
+          members: t.members.map((m) => ({ ...m })),
+        })),
+      };
+    },
   };
   return () => {
     delete window.__cv;

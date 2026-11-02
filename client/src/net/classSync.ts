@@ -23,7 +23,13 @@
 import type { Room } from "@colyseus/sdk";
 // TYPE-ONLY: schema decorators must never enter the browser bundle.
 import type { ClassState, Player, Team } from "@caysonverse/shared/schema";
-import { PLACE_ESCAPE, PLACE_HUB } from "@caysonverse/shared/escape/constants";
+import {
+  PLACE_ESCAPE,
+  PLACE_HUB,
+  ROOM_IDS,
+  ROOM_LABELS,
+  type RoomId,
+} from "@caysonverse/shared/escape/constants";
 import {
   ClassMsg,
   type EscapeTicketPayload,
@@ -37,6 +43,8 @@ import { FAILED_NOTICE } from "./reconnectPolicy";
 import { downloadCsv, resultsFilename } from "./download";
 import { useClassStore } from "../stores/classStore";
 import { useAppStore } from "../stores/appStore";
+import { enteringText } from "../escape/format";
+import { useEnterTransition } from "../escape/enterTransition";
 
 // ───────────────────────────── Snap back into the hall (place 1 → 0) ─────────────────────────────
 
@@ -104,22 +112,49 @@ function walkers(fp: Fingerprint): Walkers {
 
 // ─────────────────────────────────────────── Sync ───────────────────────────────────────────
 
-/** Join the classroom a ticket admits us to, then show it (or say why not). */
+/**
+ * The card's line for the team's classroom ("상담실로 들어가는 중…"): the door the team's classroom is behind
+ * (`escapeDoor`), else the door the team stands at (`padDoor` — the ticket can come before the state
+ * patch that names the classroom), else the one open room of this phase; "교실" when none is known.
+ */
+function enteringLabel(): string {
+  const st = useClassStore.getState();
+  const mine = st.teams.find((t) => t.mine);
+  const known = (v: string | undefined): v is RoomId => (ROOM_IDS as readonly string[]).includes(v ?? "");
+  const door = known(mine?.escapeDoor)
+    ? mine.escapeDoor
+    : known(mine?.padDoor)
+      ? mine.padDoor
+      : st.openRooms.length === 1
+        ? st.openRooms[0]
+        : null;
+  return enteringText(door ? ROOM_LABELS[door] : "");
+}
+
+/**
+ * Join the classroom a ticket admits us to, then show it (or say why not). The "…로 들어가는 중" card
+ * (LoadingTransition) covers the hall from the ticket until the classroom scene is up and its minimum
+ * time has passed (Task 17); a refused ticket drops it at once.
+ */
 async function admitTicket(payload: EscapeTicketPayload | undefined): Promise<void> {
   if (typeof payload?.roomId !== "string" || typeof payload.ticket !== "string") return;
+  useEnterTransition.getState().begin(enteringLabel(), performance.now());
   try {
     await joinEscape(payload.roomId, payload.ticket);
   } catch (err) {
+    useEnterTransition.getState().end();
     useClassStore.getState().showToast(err instanceof Error && err.message ? err.message : FAILED_NOTICE);
     return;
   }
   // The class session may have ended while we were joining: do not stay in a classroom alone.
   const screen = useAppStore.getState().screen;
   if (screen !== "hub" && screen !== "escape") {
+    useEnterTransition.getState().end();
     void leaveEscape();
     return;
   }
   useAppStore.getState().enterEscape();
+  useEnterTransition.getState().ready();
 }
 
 /**

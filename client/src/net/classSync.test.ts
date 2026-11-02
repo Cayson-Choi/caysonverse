@@ -25,6 +25,7 @@ import { bindClassSync, startClassSync, takeHubSnap, unbindClassSync } from "./c
 import { resultsFilename } from "./download";
 import { useClassStore } from "../stores/classStore";
 import { useAppStore } from "../stores/appStore";
+import { useEnterTransition } from "../escape/enterTransition";
 
 interface P {
   nickname: string;
@@ -250,5 +251,83 @@ describe("bindClassSync / unbindClassSync", () => {
     expect(b.listening()).toBe(0);
     expect(useClassStore.getState().mirror).toEqual({});
     expect(useClassStore.getState().teams).toEqual([]);
+  });
+});
+
+describe("the entering card (Task 17)", () => {
+  beforeEach(() => {
+    useEnterTransition.getState().end();
+  });
+
+  it("a ticket raises the card named after the room, and a joined classroom marks it ready", async () => {
+    const f = fakeClassRoom();
+    const stop = startClassSync(f.room as never);
+    let release: (v: unknown) => void = () => undefined;
+    h.joinEscape.mockReturnValueOnce(new Promise((r) => (release = r)));
+    f.send(ClassMsg.EscapeTicket, { roomId: "esc-1", ticket: "t".repeat(24) });
+    await flush();
+    // The join is still running: the card is up, in the hall, named after the one open room.
+    expect(useEnterTransition.getState()).toMatchObject({ phase: "joining", label: "상담실로 들어가는 중…" });
+    expect(useAppStore.getState().screen).toBe("hub");
+    release({});
+    await flush();
+    expect(useAppStore.getState().screen).toBe("escape");
+    expect(useEnterTransition.getState().phase).toBe("ready");
+    stop();
+  });
+
+  it("names the room by the team's door pad when several rooms are open", async () => {
+    const f = fakeClassRoom();
+    f.state.openRooms = ["counsel", "library"];
+    f.state.teams.get("team-1")!.padDoor = "library";
+    const stop = startClassSync(f.room as never);
+    h.joinEscape.mockResolvedValueOnce({});
+    f.send(ClassMsg.EscapeTicket, { roomId: "esc-1", ticket: "t".repeat(24) });
+    await flush();
+    expect(useEnterTransition.getState().label).toBe("도서관으로 들어가는 중…");
+    stop();
+  });
+
+  it("says 교실 when no room can be told", async () => {
+    const f = fakeClassRoom();
+    f.state.openRooms = ["counsel", "library"];
+    const stop = startClassSync(f.room as never);
+    h.joinEscape.mockResolvedValueOnce({});
+    f.send(ClassMsg.EscapeTicket, { roomId: "esc-1", ticket: "t".repeat(24) });
+    await flush();
+    expect(useEnterTransition.getState().label).toBe("교실로 들어가는 중…");
+    stop();
+  });
+
+  it("a refused ticket drops the card at once", async () => {
+    const f = fakeClassRoom();
+    const stop = startClassSync(f.room as never);
+    h.joinEscape.mockRejectedValueOnce(new Error("입장권이 만료됐어요. 문 앞에서 다시 들어가 주세요."));
+    f.send(ClassMsg.EscapeTicket, { roomId: "esc-1", ticket: "t".repeat(24) });
+    await flush();
+    expect(useEnterTransition.getState().phase).toBe("idle");
+    expect(useAppStore.getState().screen).toBe("hub");
+    stop();
+  });
+
+  it("a ticket that lands after the class was left drops the card and the classroom", async () => {
+    const f = fakeClassRoom();
+    const stop = startClassSync(f.room as never);
+    h.joinEscape.mockResolvedValueOnce({});
+    f.send(ClassMsg.EscapeTicket, { roomId: "esc-1", ticket: "u".repeat(24) });
+    useAppStore.getState().leaveToEntry("수업이 끝났어요. 함께해 줘서 고마워요!");
+    await flush();
+    expect(useEnterTransition.getState().phase).toBe("idle");
+    expect(h.leaveEscape).toHaveBeenCalledTimes(1);
+    stop();
+  });
+
+  it("a malformed ticket raises no card", async () => {
+    const f = fakeClassRoom();
+    const stop = startClassSync(f.room as never);
+    f.send(ClassMsg.EscapeTicket, { roomId: 5 });
+    await flush();
+    expect(useEnterTransition.getState().phase).toBe("idle");
+    stop();
   });
 });
