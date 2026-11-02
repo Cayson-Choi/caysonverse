@@ -30,7 +30,8 @@ export interface ShaftPoint {
 /** The cone, in metres: it starts at the window (radius TOP), widens to RADIUS_BOTTOM over LENGTH and leans TILT toward the room. */
 const SHAFT = { length: 4.2, top: 0.3, bottom: 1.0, tilt: (35 * Math.PI) / 180, segments: 20 } as const;
 const SHAFT_COLOR = "#FFF1D6";
-const SHAFT_OPACITY = 0.2;
+/** Fainter than Task 21's 0.2: over the baked sun patches (which already carry the light) a stronger cone read as a second, hazy beam. */
+const SHAFT_OPACITY = 0.13;
 /** Slow shimmer: opacity swings by this fraction of itself, once every ~10 s. */
 const SHIMMER = { depth: 0.18, speed: 0.6 } as const;
 /** The sparkles live in the cone's middle, in a box this big (m). */

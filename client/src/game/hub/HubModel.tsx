@@ -37,6 +37,8 @@ export function HubShafts() {
 }
 
 export function HubModel({ children }: { children?: ReactNode }) {
+  // Both files download at once: the light map's request starts before the model's read suspends this component.
+  useTexture.preload(HUB_LIGHTMAP_URL);
   const gltf = useGLTF(HUB_MODEL_URL, DRACO_PATH);
   const lightmap = useTexture(HUB_LIGHTMAP_URL);
   const nodes = useMemo(() => prepareHub(gltf.scene, lightmap), [gltf, lightmap]);

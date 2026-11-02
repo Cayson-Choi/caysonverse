@@ -1,5 +1,6 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+import "./game/dracoPath";
 import App from "./App";
 import { isTouchDevice } from "./device";
 import "./index.css";

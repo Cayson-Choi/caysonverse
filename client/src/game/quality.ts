@@ -40,8 +40,15 @@ export const QUALITY: Record<QualityTier, QualitySpec> = {
   low: { bloom: false, shafts: false, sparkles: 0, shadows: "blob", dpr: [1, 1] },
 };
 
-/** The rich tier's bloom: strength / radius are the brief's; the threshold sits above the (tone-map-compensated) sky and the floor, so only real highlights glow. */
-export const BLOOM = { strength: 0.6, radius: 0.4, threshold: 1.3 } as const;
+/**
+ * The rich tier's bloom: strength / radius are the brief's; the threshold sits above the (tone-map-compensated) sky, the floor
+ * and the BAKED sun patches, so only real highlights glow. The rooms' light maps carry HDR sun patches: a lit white surface
+ * comes out at up to 1.6 x its albedo (lightMapIntensity 1.6π on a map that stores L / 2, clipped at 1), about 1.4 on cream
+ * plaster and wood. At 1.3 (Task 21's value, tuned on plain boxes) those patches, the lockers and the window-lit walls
+ * bloomed into a haze; at 1.6 nothing baked glows, while what is pushed past 1 on purpose (the glowing board, Ari's screen, the
+ * last door: counselModelPrep's GLOW_ADD up to ~2.5) and the escape's additive light still do.
+ */
+export const BLOOM = { strength: 0.6, radius: 0.4, threshold: 1.6 } as const;
 
 /** The brightness slider: the renderer's tone-mapping exposure, 0.8 (softer) .. 1.4 (brighter). */
 export const BRIGHTNESS = { min: 0.8, max: 1.4, step: 0.1, default: 1.0 } as const;

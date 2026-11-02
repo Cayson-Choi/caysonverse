@@ -19,8 +19,9 @@ import "./quality.css";
  *  - High tier: the scene is drawn into a half-float target and a bloom pass lets the bright things glow
  *    (windows, the sun's patch, sparkles), then OutputPass tone-maps and converts to sRGB like the renderer
  *    does itself. The bloom's strength and radius are the brief's (0.6 / 0.4). Its threshold is raised from the
- *    brief's 0.85 to 1.3 for a scene as bright as ours: at 0.85 the whole floor and the (tone-map-compensated)
- *    sky glow and the frame turns into a blue-white haze; at 1.3 only real highlights bloom.
+ *    brief's 0.85 to 1.6 for a scene as bright as ours: at 0.85 the whole floor and the (tone-map-compensated)
+ *    sky glow and the frame turns into a blue-white haze; the baked sun patches reach about 1.4, so 1.3 hazed them too (Task 24);
+ *    at 1.6 only real highlights bloom.
  *  - Low tier: nothing — no extra pass, so no extra fill-rate on a phone.
  *
  * No per-frame work lives here: the composer runs on drei's frame callback, the rest is set on change.

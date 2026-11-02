@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
-import { AdditiveBlending, CanvasTexture, MeshBasicMaterial, type Mesh } from "three";
+import { AdditiveBlending, CanvasTexture, Color, MeshBasicMaterial, type Mesh } from "three";
 import { ROOM_IDS, type RoomId } from "@caysonverse/shared/escape/constants";
 import { canvas2d, canvasTexture } from "../spriteCanvas";
 import { useClassStore } from "../../stores/classStore";
@@ -64,13 +64,17 @@ interface BoardParts {
   halos: Record<RoomId, MeshBasicMaterial>;
   glow: CanvasTexture;
   states: Record<RoomId, WindowState>;
+  /** Each room's lit colour as a `Color`, made once: the sparkle loop copies it (`Color.set(hex string)` allocates). */
+  colors: Record<RoomId, Color>;
 }
 
 function makeParts(): BoardParts {
   const glow = glowTexture();
   const halos = {} as Record<RoomId, MeshBasicMaterial>;
   const states = {} as Record<RoomId, WindowState>;
+  const colors = {} as Record<RoomId, Color>;
   for (const room of ROOM_IDS) {
+    colors[room] = new Color(WINDOW_COLORS[room]);
     halos[room] = new MeshBasicMaterial({
       map: glow,
       color: WINDOW_COLORS[room],
@@ -81,7 +85,7 @@ function makeParts(): BoardParts {
     });
     states[room] = { lit: false, flashAt: Number.NaN };
   }
-  return { halos, glow, states };
+  return { halos, glow, states, colors };
 }
 
 function disposeParts(p: BoardParts): void {
@@ -147,7 +151,7 @@ export function ProgressBoard() {
       if (Number.isNaN(st.flashAt) || !w) continue;
       const elapsed = now - st.flashAt;
       boardFlash(elapsed, flash);
-      w.material.color.set(WINDOW_COLORS[room]).multiplyScalar(LIT_BASE + GLOW_GAIN * flash.glow);
+      w.material.color.copy(parts.colors[room]).multiplyScalar(LIT_BASE + GLOW_GAIN * flash.glow);
       parts.halos[room].opacity = flash.halo;
       haloMeshes.current[room]?.scale.setScalar(flash.haloScale);
       w.mesh.scale.setScalar(flash.pop);

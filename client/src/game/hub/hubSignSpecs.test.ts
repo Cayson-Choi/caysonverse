@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { EAST_CORRIDOR, HALL, HUB_DOORS, TEAM_ZONE, WEST_SEAL } from "@caysonverse/shared/school/hubMap";
 import { HUB_PROP_COLLIDERS } from "@caysonverse/shared/school/generated/hubColliders";
-import { ROOM_LABELS } from "@caysonverse/shared/escape/constants";
+import { ROOM_IDS, ROOM_LABELS } from "@caysonverse/shared/escape/constants";
 import {
+  BOARD_PLATE,
+  BOARD_WINDOW_X,
   HUB_SIGNS,
   LABEL_GAP,
   LABEL_PX_PER_M,
@@ -19,9 +21,12 @@ const sign = (id: string): SignSpec => HUB_SIGNS.find((s) => s.id === id)!;
 const facing = (s: SignSpec): [number, number] => [Math.sin(s.rotY), Math.cos(s.rotY)];
 
 describe("HUB_SIGNS", () => {
-  it("has a title, a sign for each of the four doors, both faces of the team sign, and the seal", () => {
+  it("has a title, a sign for each of the four doors, a name under each of the board's seven windows, both faces of the team sign, and the seal", () => {
     expect(HUB_SIGNS.map((s) => s.id).sort()).toEqual(
-      ["door-broadcast", "door-career", "door-counsel", "door-library", "seal", "team-back", "team-front", "title"].sort(),
+      [
+        "door-broadcast", "door-career", "door-counsel", "door-library", "seal", "team-back", "team-front", "title",
+        ...ROOM_IDS.map((r) => `board-${r}`),
+      ].sort(),
     );
     expect(new Set(HUB_SIGNS.map((s) => s.id)).size).toBe(HUB_SIGNS.length);
   });
@@ -48,6 +53,30 @@ describe("HUB_SIGNS", () => {
       expect(Math.abs(facing(s)[0]), d.room).toBeLessThan(1e-9);
       expect(s.y).toBeCloseTo(3.5, 9);
     }
+  });
+
+  it("names every room under its window on the progress board: the room's own word, centred on its window, on the building's front, looking south", () => {
+    expect(ROOM_IDS.map((r) => `board-${r}`).every((id) => HUB_SIGNS.some((s) => s.id === id))).toBe(true);
+    const xs = ROOM_IDS.map((r) => BOARD_WINDOW_X[r]).sort((a, b) => a - b);
+    for (const room of ROOM_IDS) {
+      const s = sign(`board-${room}`);
+      expect(s.lines, room).toEqual([ROOM_LABELS[room]]);
+      expect(Math.abs(s.x - BOARD_WINDOW_X[room]), room).toBeLessThanOrEqual(0.1); // under its window (the two outermost nudged off the corner bushes)
+      expect(facing(s)[1], room).toBe(1);
+      expect(s.y, room).toBeLessThan(1.18); // under the window frame (it ends at 1.18)
+      expect(s.y - s.h / 2, room).toBeGreaterThanOrEqual(0.95); // above the hedge strip
+      expect(s.z, room).toBeGreaterThan(HALL.minZ);
+      expect(s.z, room).toBeLessThan(-11.3); // against the board's wall, not floating in the hall
+    }
+    // Neighbouring plates never overlap (the windows are 0.6 m apart, a plate is 0.52 m wide, even after the nudges).
+    const plateXs = ROOM_IDS.map((r) => sign(`board-${r}`).x).sort((a, b) => a - b);
+    for (let i = 1; i < plateXs.length; i++) {
+      const gap = plateXs[i]! - plateXs[i - 1]!;
+      if (gap < 2) expect(gap, `${plateXs[i - 1]} -> ${plateXs[i]}`).toBeGreaterThanOrEqual(BOARD_PLATE.w);
+    }
+    expect(xs).toHaveLength(7);
+    // The widest word ("미디어실", four syllables) still fits a plate at a readable size: 0.52 m wide leaves a syllable 0.11 m.
+    expect(Math.max(...ROOM_IDS.map((r) => ROOM_LABELS[r].length))).toBeLessThanOrEqual(4);
   });
 
   it("hangs the title in the hall in front of the progress board's pill, looking south into the hall", () => {

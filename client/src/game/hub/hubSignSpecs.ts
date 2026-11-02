@@ -1,5 +1,5 @@
 import { HUB_DOORS } from "@caysonverse/shared/school/hubMap";
-import { ROOM_LABELS } from "@caysonverse/shared/escape/constants";
+import { ROOM_IDS, ROOM_LABELS, type RoomId } from "@caysonverse/shared/escape/constants";
 
 /**
  * The hall's text plates (AI 학교 탈출, Task 23). hub.glb ships the plates BLANK (the model never holds text, so a
@@ -14,7 +14,11 @@ import { ROOM_LABELS } from "@caysonverse/shared/escape/constants";
  *  - the team sign (props_b.team_sign): a round double-sided sign at (-4.35, 5.0), centre height 2.15, its white
  *    inner disc 0.8 m across and 0.075 m to each side of the centre plane;
  *  - the west seal's plate (props_b.west_seal): 2.0 x 0.5 m at height 3.0, 0.24 m out of the sealed doorway
- *    (x = -13.76), looking east.
+ *    (x = -13.76), looking east;
+ *  - a small name plate under each of the progress board's seven windows (Task 24; the model has no slot for text, and
+ *    the windows are 0.6 m apart, so without it a room was told apart by colour and place only): the window frames
+ *    (props_b.progress_board) are 0.62 m wide, centred at height 1.55 and end at 1.18; below them the school building's front
+ *    face (z = -11.38) runs down to the hedge strip (top at 0.95), which leaves a 0.18 m band for the name.
  * A label hangs `LABEL_GAP` in front of its plate's face (polygon offset does the rest).
  */
 
@@ -52,6 +56,27 @@ const DOOR_WALL_Z = 3;
 const TEAM_SIGN = { x: -4.35, z: 5.0 } as const;
 const TEAM_DISC_HALF_DEPTH = 0.075;
 const SEAL_FACE_X = -13.76;
+/** x of each room's window on the progress board (props_b.ROOM_WINDOWS: west rooms on the left wing, east rooms on the right). */
+export const BOARD_WINDOW_X: Readonly<Record<RoomId, number>> = {
+  media: -2.85,
+  science: -2.2,
+  art: -1.55,
+  counsel: 1.15,
+  library: 1.75,
+  broadcast: 2.35,
+  career: 2.95,
+};
+/**
+ * The name plates under the windows: on the building's front face, a hair narrower than the 0.6 m between windows, just above
+ * the hedge strip (its top is 0.95 m and it stands 0.13 m in front of the face, so from the default camera it hides the
+ * face's bottom few centimetres) and clear of the window frame (which ends at 1.18).
+ */
+export const BOARD_PLATE = { y: 1.09, z: -11.38 + LABEL_GAP, w: 0.52, h: 0.16 } as const;
+/**
+ * The plate's x where it is not its window's: the two outermost windows sit by the building's corner bushes (spheres standing
+ * 0.2 m in front of the face at x -3.6..-3.3 and 3.35..3.65, props_b.progress_board), which would hide the rim of their word.
+ */
+const BOARD_PLATE_X: Partial<Record<RoomId, number>> = { media: -2.8, career: 2.88 };
 
 export const TITLE_TEXT = "AI 학교 탈출";
 export const TEAM_SIGN_LINES: readonly string[] = ["팀", "만들기"];
@@ -97,6 +122,20 @@ export const HUB_SIGNS: readonly SignSpec[] = [
       rotY: side === 1 ? 0 : Math.PI,
       w: 0.8,
       h: 0.8,
+      ...ON_WHITE,
+    }),
+  ),
+  // The progress board's room names, one under each window.
+  ...ROOM_IDS.map(
+    (room): SignSpec => ({
+      id: `board-${room}`,
+      lines: [ROOM_LABELS[room]],
+      x: BOARD_PLATE_X[room] ?? BOARD_WINDOW_X[room],
+      y: BOARD_PLATE.y,
+      z: BOARD_PLATE.z,
+      rotY: 0,
+      w: BOARD_PLATE.w,
+      h: BOARD_PLATE.h,
       ...ON_WHITE,
     }),
   ),
