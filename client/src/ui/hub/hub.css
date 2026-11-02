@@ -36,7 +36,8 @@
   left: 50%;
   top: 72px;
   transform: translateX(-50%);
-  z-index: 21;
+  /* Above the dialogs' veil (60): a notice about a refused team move shows over the open panel. */
+  z-index: 70;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -77,6 +78,10 @@
   width: 24px;
   height: 24px;
   font-size: 13px;
+}
+/* The "AI 학교 탈출 · 반" chip sits in the same band as the stack on a phone; the stack's lines win. (Not the dialogs' own .cv-hub-title headings.) */
+html.cv-touch .cv-hud-zone.cv-hub-title {
+  display: none;
 }
 .cv-touch .cv-hub-stack.has-announce {
   top: calc(var(--cv-hud-top-end, 56px) + 8px + 72px);
@@ -616,7 +621,7 @@
   position: relative;
   flex: 0 1 auto;
   min-height: 44px;
-  width: min(344px, calc(100vw - 24px));
+  width: min(300px, calc(100vw - 24px)); /* = HUD_COLUMN_MAX_W_PX (game/hud.ts) */
   display: flex;
   flex-direction: column;
   background: var(--hub-glass);

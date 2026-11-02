@@ -77,6 +77,9 @@ function EndConfirm({ onClose }: { onClose: () => void }) {
     return () => {
       window.removeEventListener("keydown", onKey, true);
       releaseUiCapture("teacher-end");
+      // The dialog's own focus must not leave the panel's hold behind: a focused element that is
+      // removed fires no blur, so release it here — the teacher's WASD / E work again at once.
+      releaseUiCapture(CAPTURE_OWNER);
     };
   }, [onClose]);
 
@@ -88,6 +91,10 @@ function EndConfirm({ onClose }: { onClose: () => void }) {
       onPointerDown={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
+      // React bubbles a portal's focus events to the panel it was rendered from, which would
+      // re-take the panel's keyboard hold every time focus moves inside the dialog.
+      onFocus={(e) => e.stopPropagation()}
+      onBlur={(e) => e.stopPropagation()}
     >
       <div className="cv-hub-sheet is-confirm" role="alertdialog" aria-modal="true" aria-labelledby="cv-hub-end-title" ref={ref} tabIndex={-1}>
         <header className="cv-hub-head">

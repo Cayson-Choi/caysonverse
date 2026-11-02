@@ -45,6 +45,8 @@ export const HUB_INFO = {
   needTeammates: `팀원이 ${TEAM_MIN}명 이상 모이면 입장할 수 있어요`,
   /** My team's pad status points at another door. */
   otherDoor: "팀원들이 모인 문으로 가 주세요",
+  /** My team's classroom is behind another door (the server's own words). */
+  teamElsewhere: "팀이 다른 교실에 있어요",
   paused: "선생님이 잠시 멈췄어요",
   ended: "수업이 끝났어요",
 } as const;
@@ -96,6 +98,8 @@ export function hubTargets(i: HubTargetInput): HubTargetResult {
   if (i.phase === "paused") return say(HUB_INFO.paused);
   if (i.phase === "ended") return say(HUB_INFO.ended);
   if (!i.openRooms.includes(room)) return say(HUB_INFO.notOpen);
+  // The team's classroom is behind ANOTHER door (rule 1 did not match): the server refuses "enter" here.
+  if (team && team.escapeRoomId !== "") return say(HUB_INFO.teamElsewhere);
   if (!team) return say(HUB_INFO.noTeam);
   if (team.escaped.includes(room)) return say(hubInfo.escaped(team.stars[room]));
   // 3. The team's pad rule: the first to arrive presses, and enough members stand on the pad.

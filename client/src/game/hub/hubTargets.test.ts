@@ -138,6 +138,21 @@ describe("hubTargets — a door pad", () => {
     expect(r.info).toBe("팀원들이 모인 문으로 가 주세요");
   });
 
+  it("my team's classroom is behind ANOTHER door: a line, not the leader's 입장", () => {
+    const behindCounsel = team({
+      padDoor: "library",
+      padLeaderSid: "me",
+      padCount: 2,
+      escapeDoor: "counsel",
+      escapeRoomId: "esc-7",
+    });
+    const r = hubTargets(input({ ...onLibrary, openRooms: ["counsel", "library"], myTeam: behindCounsel }));
+    expect(r.targets).toEqual([]);
+    expect(r.info).toBe("팀이 다른 교실에 있어요");
+    // At the door the classroom IS behind, it is still 팀에게 가기.
+    expect(hubTargets(input({ myTeam: behindCounsel })).targets.map((x) => x.label)).toEqual(["팀에게 가기"]);
+  });
+
   it("a step onto the pad the server has not counted yet says nothing (no flash of a wrong line)", () => {
     expect(hubTargets(input({ myTeam: team({ padDoor: "", padLeaderSid: "", padCount: 0 }) }))).toEqual({
       targets: [],

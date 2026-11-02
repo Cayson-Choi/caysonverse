@@ -33,6 +33,17 @@ export function phaseBannerText(i: PhaseBannerInput): string | null {
   return null;
 }
 
+/**
+ * The stack under the notice toast holds ONE line: the phase banner, or — when there is no banner —
+ * the pad's guidance line. The pad lines for the lobby and for a paused class say what the banner
+ * already says, so while the banner shows the pad line stays out (a phone has room for two lines at
+ * most: the toast and this one).
+ */
+export function pickStackLine(banner: string | null, hint: string | null): "banner" | "hint" | null {
+  if (banner !== null) return "banner";
+  return hint !== null ? "hint" : null;
+}
+
 /** A start this screen saw happen: the phase went from the lobby to running (not a resume, not a late join). */
 export function openedNow(prev: ClassPhase, next: ClassPhase): boolean {
   return prev === "lobby" && next === "running";
