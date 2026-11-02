@@ -300,10 +300,13 @@ describe("tallColliders (the camera boxes among the props)", () => {
     const g = baseGltf([cubeNode("col__b", [5, 1.1, 5], [2, 2.2, 2]), cubeNode("col__a", [1, 1.1, 3], [2, 2.2, 2])]);
     const { colliders } = extractColliders(g);
     expect(tallColliders(g, colliders).map((t) => t.name)).toEqual(colliders.map((c) => c.name));
-    const glb = path.join(REPO_ROOT, "client", "public", "models", "school", "counsel.glb");
-    if (!fs.existsSync(glb)) return;
-    const real = extractColliders(parseGlb(fs.readFileSync(glb)).gltf).colliders.map((c) => c.name.slice("col__".length));
-    for (const name of Object.keys(KNOWN_PROP_HEIGHTS.counsel)) expect(real, name).toContain(name);
+    // Both models: a renamed prop (a hall plant or sign as much as a counselling-room cabinet) must fail here, not silently lose its camera box.
+    for (const room of ["hub", "counsel"] as const) {
+      const glb = path.join(REPO_ROOT, "client", "public", "models", "school", `${room}.glb`);
+      if (!fs.existsSync(glb)) continue;
+      const real = extractColliders(parseGlb(fs.readFileSync(glb)).gltf).colliders.map((c) => c.name.slice("col__".length));
+      for (const name of Object.keys(KNOWN_PROP_HEIGHTS[room])) expect(real, `${room}: ${name}`).toContain(name);
+    }
   });
 });
 

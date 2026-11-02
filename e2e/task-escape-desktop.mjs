@@ -144,7 +144,7 @@ try {
     await A.page.locator(".cv-dest-error").waitFor({ state: "visible", timeout: 8000 });
     const want = await A.page.evaluate(async () => (await window.__imp("/src/net/reconnectPolicy.ts")).CLASS_NOT_FOUND_NOTICE);
     check("A: no class has that code → CLASS_NOT_FOUND_NOTICE on the sheet", (await dest(A)) === want && want.length > 10, await dest(A));
-    check("A: still on the entry screen", (await screenOf(A)) !== "hub");
+    check("A: still on the entry screen", (await screenOf(A)) === "entry", await screenOf(A));
     await run.shot(A, "01-wrong-code.png");
   });
 
@@ -221,7 +221,7 @@ try {
     await walkTo(A, 22, -1.7);
     await sleep(7000);
     const blocked = await pos(A);
-    check("A: walking east before the start stops short of the gate (x < 14)", blocked.x < 14, { x: r2(blocked.x), z: r2(blocked.z) });
+    check("A: walking east before the start stops short of the gate (11 ≤ x < 14: it walked, and was stopped)", blocked.x >= 11 && blocked.x < 14, { x: r2(blocked.x), z: r2(blocked.z) });
     await turnCameraTo(A, 20, -1.7);
     await sceneShot(A, "05a-gate-closed.png");
     await teacherStart(T);
@@ -588,6 +588,7 @@ try {
     await T.page.getByRole("button", { name: "수업 끝내기" }).click();
     await T.page.getByRole("button", { name: "끝내기", exact: true }).click();
     const want = await A.page.evaluate(async () => (await window.__imp("/src/net/reconnectPolicy.ts")).CLASS_ENDED_NOTICE);
+    check("CLASS_ENDED_NOTICE is a real sentence (an empty one would match any screen)", typeof want === "string" && want.length > 10, want);
     const t0 = Date.now();
     // The class keeps its connections open for a grace (CLASS_END_GRACE_MS, 30 s: time to download the results), then closes them all
     // with CLASS_CLOSED_CODE. A student inside a classroom first sees the classroom's own "수업이 끝났어요" card.
@@ -598,7 +599,7 @@ try {
       [[A, "A (hall)"], [B, "B (hall)"], [D, "D (classroom)"]].map(async ([p, who]) => {
         // The entry screen itself must show the sentence: the hall's chat log carries the same words as a system line.
         const at = await p.page
-          .waitForFunction((w) => (document.querySelector(".cv-entry")?.innerText ?? "").includes(w), want, { timeout: 60000 })
+          .waitForFunction((w) => w.length > 10 && (document.querySelector(".cv-entry")?.innerText ?? "").includes(w), want, { timeout: 60000 })
           .then(() => (Date.now() - t0) / 1000, () => -1);
         return { who, p, at };
       }),
@@ -618,6 +619,9 @@ try {
       check(`luma ${f}`, passes(s), { mean: +s.mean.toFixed(3), p5: +s.p5.toFixed(3) });
     }
   });
+} catch (e) {
+  // A throw outside run.step (a launch, a page that never opened) must exit non-zero, not pass on the checks seen so far.
+  run.check("script ran to the end", false, String(e?.stack ?? e).slice(0, 900));
 } finally {
   const exit = run.finish({ splitHolder, schoolAssets });
   await browser.close();

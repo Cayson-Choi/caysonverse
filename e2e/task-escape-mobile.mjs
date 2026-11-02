@@ -319,6 +319,9 @@ try {
       check(`luma ${f}`, passes(s), { mean: +s.mean.toFixed(3), p5: +s.p5.toFixed(3) });
     }
   });
+} catch (e) {
+  // A throw outside run.step (a launch, a page that never opened) must exit non-zero, not pass on the checks seen so far.
+  run.check("script ran to the end", false, String(e?.stack ?? e).slice(0, 900));
 } finally {
   const exit = run.finish({ layouts });
   await browser.close();

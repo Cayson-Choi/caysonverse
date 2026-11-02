@@ -66,6 +66,7 @@ describe("counselling room: shell", () => {
     expect(heightAt(-4.44, 2.5)).toBeGreaterThanOrEqual(1.9); // the cabinet
     expect(heightAt(-2.6, -3.82)).toBeGreaterThanOrEqual(2); // the sort board
     expect(heightAt(0, -3.865)).toBeGreaterThanOrEqual(2); // the counselling screen
+    expect(heightAt(-5.35, 4.4)).toBe(1.8); // the floor lamp (a slim prop: its box is only 0.5 m wide, so it is easy to lose)
     // Low furniture is looked over, not through.
     expect(heightAt(-3.96, -1.1)).toBeUndefined(); // the desk
     expect(heightAt(0, 0.9)).toBeUndefined(); // the low table

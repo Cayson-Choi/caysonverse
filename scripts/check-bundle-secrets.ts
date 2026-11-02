@@ -15,7 +15,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { bundleNeedles } from "../server/src/escape/content";
+import { bundleNeedles, publicStrings, secretStrings } from "../server/src/escape/content";
 import { ROOM_DEFS } from "../server/src/escape/rooms";
 
 const REPO_ROOT = path.resolve(__dirname, "..");
@@ -73,6 +73,37 @@ export function roomNeedles(): Needle[] {
   return out;
 }
 
+/** A secret becomes a bare text needle only when it has Hangul and this many characters (mirrors server/src/escape/content.ts). */
+const HANGUL = /[ᄀ-ᇿ㄰-㆏가-힣]/;
+const MIN_NEEDLE_CHARS = 4;
+
+export interface RoomReport {
+  roomId: string;
+  /** Patterns the room contributes (0 would mean the scan checks nothing for it). */
+  needles: number;
+  /** Secret strings that could become a text pattern (Hangul, long enough). */
+  candidates: number;
+  /** Of those, how many also stand in the public content (either level) and so were dropped (rule E9). */
+  droppedAsPublic: number;
+}
+
+/** Per room: how many patterns it gives and how many secrets were left out because the client shows them anyway. */
+export function roomReports(): RoomReport[] {
+  const out: RoomReport[] = [];
+  for (const [roomId, def] of Object.entries(ROOM_DEFS)) {
+    if (!def) continue;
+    const pub = publicStrings(def);
+    const candidates = secretStrings(def).filter((x) => HANGUL.test(x) && [...x].length >= MIN_NEEDLE_CHARS);
+    out.push({
+      roomId,
+      needles: bundleNeedles(def).length,
+      candidates: candidates.length,
+      droppedAsPublic: candidates.filter((x) => pub.some((p) => p.includes(x))).length,
+    });
+  }
+  return out;
+}
+
 /** The sha256 strings of the teacher key files that exist (a case-insensitive literal each). */
 export function keyHashNeedles(files: readonly string[] = KEY_FILES): Needle[] {
   const out: Needle[] = [];
@@ -126,12 +157,29 @@ export function main(argv: string[]): number {
     console.error(`FAIL: 검사할 폴더가 없어요: ${dist} (먼저 npm run build -w client)`);
     return 1;
   }
+  const reports = roomReports();
+  if (reports.length === 0) {
+    console.error("FAIL: 검사할 방이 하나도 없어요(ROOM_DEFS가 비었어요) — 아무것도 찾지 않으면 통과가 아니에요");
+    return 1;
+  }
+  const empty = reports.filter((r) => r.needles === 0);
+  if (empty.length > 0) {
+    console.error(`FAIL: 찾을 패턴이 0개인 방이 있어요: ${empty.map((r) => r.roomId).join(", ")} — 아무것도 찾지 않으면 통과가 아니에요`);
+    return 1;
+  }
   const rooms = roomNeedles();
   const keys = keyHashNeedles();
   const result = scanFiles(dist, [...rooms, ...keys]);
   if (result.files === 0) {
     console.error(`FAIL: ${dist} 안에 검사할 파일이 없어요`);
     return 1;
+  }
+  const indexHtml = path.join(dist, "index.html");
+  console.log(
+    `index.html 수정 시각: ${fs.existsSync(indexHtml) ? fs.statSync(indexHtml).mtime.toISOString() : "없음"} (옛 빌드를 검사하고 있지 않은지 확인하세요)`,
+  );
+  for (const r of reports) {
+    console.log(`방 ${r.roomId}: 패턴 ${r.needles}개, 글자 비밀 ${r.candidates}개 중 클라이언트에도 나오는 공개 문구라서 뺀 것 ${r.droppedAsPublic}개`);
   }
   console.log(`${dist}: ${result.files}개 파일, ${(result.bytes / 1024 / 1024).toFixed(2)} MB — 방 ${Object.keys(ROOM_DEFS).length}개의 패턴 ${rooms.length}개, 키 해시 ${keys.length}개`);
   if (result.hits.length > 0) {
