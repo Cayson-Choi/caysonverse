@@ -6,21 +6,19 @@ import { trackKbdInset } from "./kbdInset";
 import { BuilderIcon } from "./BuilderIcons";
 import { BUILDER_COPY } from "./builderOptions";
 import {
-  CLASS_CODE_ERROR,
   ENTRY_COPY,
-  TEACHER_KEY_ERROR,
   TEXT_LEVEL_OPTIONS,
+  sheetPressAllowed,
   type Destination,
   type DestinationId,
+  type SchoolRole,
 } from "./entryForm";
 
-/** The two ways into AI 학교 탈출 (EntryMode without "legacy"). */
-export type SchoolRole = "student" | "teacher";
-
-/** A message in the sheet, shown in the card it belongs to. */
+/** A message in the sheet, shown in the card it belongs to; `field` = the input at fault (focus + aria-invalid). */
 export interface DestinationError {
   dest: DestinationId;
   text: string;
+  field?: "code" | "key";
 }
 
 export interface DestinationSheetProps {
@@ -120,6 +118,8 @@ export function DestinationSheet(p: DestinationSheetProps) {
   const goRef = useRef<HTMLButtonElement>(null);
   /** The current press started on the veil (outside the sheet). */
   const pressOnVeil = useRef(false);
+  /** When the sheet opened (performance.now()): presses right after it are ignored (sheetPressAllowed). */
+  const openedAt = useRef(0);
   const busy = p.pending !== null;
   const student = p.role === "student";
 
@@ -130,6 +130,7 @@ export function DestinationSheet(p: DestinationSheetProps) {
     const dialog = dialogRef.current;
     if (!dialog) return;
     if (!dialog.open) dialog.showModal();
+    openedAt.current = performance.now();
     if (isTouchDevice) titleRef.current?.focus();
     else if (!student) keyRef.current?.focus();
     else if (normalizeClassCode(p.classCode) !== null) goRef.current?.focus();
@@ -143,16 +144,16 @@ export function DestinationSheet(p: DestinationSheetProps) {
   // Phones: lift the bottom sheet above the on-screen keyboard (--cv-kbd-inset).
   useEffect(() => (isTouchDevice ? trackKbdInset() : undefined), []);
 
-  // A refused try puts the caret where the fix goes.
+  // A refused try (the form's check or the server's) puts the caret where the fix goes.
   useEffect(() => {
     if (p.errorSeq === 0 || !p.error) return;
-    if (p.error.text === CLASS_CODE_ERROR) codeRef.current?.focus();
-    else if (p.error.text === TEACHER_KEY_ERROR) keyRef.current?.focus();
+    if (p.error.field === "code") codeRef.current?.focus();
+    else if (p.error.field === "key") keyRef.current?.focus();
     // Only a new refusal moves focus.
   }, [p.errorSeq]);
 
-  const codeInvalid = p.error?.dest === "escape" && p.error.text === CLASS_CODE_ERROR;
-  const keyInvalid = p.error?.dest === "escape" && p.error.text === TEACHER_KEY_ERROR;
+  const codeInvalid = p.error?.dest === "escape" && p.error.field === "code";
+  const keyInvalid = p.error?.dest === "escape" && p.error.field === "key";
   const shake = p.errorSeq % 2;
 
   function errorFor(dest: DestinationId) {
@@ -181,7 +182,15 @@ export function DestinationSheet(p: DestinationSheetProps) {
       // A press on the veil around the sheet (the dialog box itself; the sheet fills it) closes it too —
       // only when it also started there (a text selection dragged out of a field must not close it).
       onPointerDown={(e) => {
-        pressOnVeil.current = e.target === dialogRef.current;
+        pressOnVeil.current = e.target === dialogRef.current && sheetPressAllowed(openedAt.current, performance.now());
+      }}
+      // The second half of a double click / tap on the builder's 입장하기 must not press anything in the
+      // sheet it just opened (the veil, 선생님이신가요?, 입장하기): swallow clicks for a moment after opening.
+      onClickCapture={(e) => {
+        if (sheetPressAllowed(openedAt.current, performance.now())) return;
+        e.preventDefault();
+        e.stopPropagation();
+        pressOnVeil.current = false;
       }}
       onClick={(e) => {
         const onVeil = pressOnVeil.current && e.target === dialogRef.current;

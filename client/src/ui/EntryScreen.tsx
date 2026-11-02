@@ -14,17 +14,22 @@ import { BuilderIcon } from "./BuilderIcons";
 import { BUILDER_COPY } from "./builderOptions";
 import { ENTRY_ART, stageLayout, type StageLayout } from "./stageLayout";
 import {
+  CLASS_CODE_ERROR,
   ENTRY_COPY,
+  TEACHER_KEY_ERROR,
   entryDestinations,
   entryModeFromUrl,
   enterClassAsStudent,
   enterClassAsTeacher,
   validateStudentEntry,
   validateTeacherEntry,
+  refusalField,
+  teacherFieldsAfter,
   type ClassEntryDeps,
   type DestinationId,
+  type TeacherFields,
 } from "./entryForm";
-import { DestinationSheet, type DestinationError, type SchoolRole } from "./DestinationSheet";
+import { DestinationSheet, type DestinationError } from "./DestinationSheet";
 import { joinClass, joinWorld, requestTeacherPass } from "../net/connection";
 import { clearKicked } from "../net/kickSeam";
 import { rememberAdminCode, forgetAdminCode } from "../net/adminSession";
@@ -179,11 +184,17 @@ export function EntryScreen() {
 
   // ── "어디로 갈까요?" (school entry only) ──
   const [destOpen, setDestOpen] = useState(false);
-  const [role, setRole] = useState<SchoolRole>(entryMode === "teacher" ? "teacher" : "student");
+  /**
+   * The sheet's role and the teacher key — a credential: in this screen's state only, never stored or
+   * prefilled, and forgotten whenever the sheet closes or switches back to 학생 (teacherFieldsAfter).
+   */
+  const [teacherFields, setTeacherFields] = useState<TeacherFields>(() => ({
+    role: entryMode === "teacher" ? "teacher" : "student",
+    teacherKey: "",
+  }));
+  const { role, teacherKey } = teacherFields;
   /** The last class code entered is prefilled (identity cache); the teacher key never is. */
   const [classCode, setClassCode] = useState(() => sanitizeCodeInput(saved.classCode ?? ""));
-  /** A credential: lives in this screen's state only — never stored, never prefilled. */
-  const [teacherKey, setTeacherKey] = useState("");
   const [textLevel, setTextLevel] = useState<TextLevel>("easy");
   const [destError, setDestError] = useState<DestinationError | null>(null);
   /** Bumped by every refused try in the sheet (re-focus + shake the field at fault). */
@@ -328,8 +339,8 @@ export function EntryScreen() {
   }
 
   /** Show words in the sheet's card (and re-focus / shake the field at fault). */
-  function refuseInSheet(dest: DestinationId, text: string) {
-    setDestError({ dest, text });
+  function refuseInSheet(dest: DestinationId, text: string, field?: "code" | "key") {
+    setDestError(field ? { dest, text, field } : { dest, text });
     setDestErrorSeq((n) => n + 1);
   }
 
@@ -340,7 +351,10 @@ export function EntryScreen() {
 
     const check =
       role === "student" ? validateStudentEntry({ classCode, nickname }) : validateTeacherEntry({ teacherKey, nickname });
-    if (!check.ok) return refuseInSheet("escape", check.error);
+    if (!check.ok) {
+      const field = check.error === CLASS_CODE_ERROR ? "code" : check.error === TEACHER_KEY_ERROR ? "key" : undefined;
+      return refuseInSheet("escape", check.error, field);
+    }
     const look = validateEntry({ nickname, appearance });
     if (!look.ok) return refuseInSheet("escape", look.error);
 
@@ -354,7 +368,11 @@ export function EntryScreen() {
       // In the hall now: this screen unmounts; do not touch state afterwards.
     } catch (err) {
       // The server's / connection layer's Korean words, as they come.
-      refuseInSheet("escape", err instanceof Error && err.message ? err.message : ENTRY_COPY.failed);
+      refuseInSheet(
+        "escape",
+        err instanceof Error && err.message ? err.message : ENTRY_COPY.failed,
+        refusalField(role, err) ?? undefined,
+      );
       setSubmitting(false);
       setPending(null);
     }
@@ -381,6 +399,7 @@ export function EntryScreen() {
   function closeDestinations(focus: "submit" | "nickname" = "submit") {
     refocusRef.current = focus === "nickname" ? nicknameRef.current : submitRef.current;
     setDestOpen(false);
+    setTeacherFields((f) => teacherFieldsAfter(f, "close"));
   }
   useEffect(() => {
     if (destOpen) return;
@@ -551,7 +570,7 @@ export function EntryScreen() {
           phone={layout.mode === "phone"}
           role={role}
           onRole={(next) => {
-            setRole(next);
+            setTeacherFields((f) => teacherFieldsAfter(f, next));
             setDestError(null);
           }}
           nickname={nickname}
@@ -562,7 +581,7 @@ export function EntryScreen() {
           }}
           teacherKey={teacherKey}
           onTeacherKey={(key) => {
-            setTeacherKey(key);
+            setTeacherFields((f) => ({ ...f, teacherKey: key }));
             if (destError) setDestError(null);
           }}
           textLevel={textLevel}

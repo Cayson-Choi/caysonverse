@@ -1305,6 +1305,13 @@
 .cv-dest.is-phone .cv-dest-line {
   font-size: 13px;
 }
+/* 반 코드 on a phone: the field is only ~W − 68 px wide (252 px at 320), so the symbols, their spacing and the
+   side room for the n/6 counter shrink with the screen — six of the widest symbols (MWMWMW) still fit at 320. */
+.cv-dest.is-phone .cv-dest-code-input:not(:placeholder-shown) {
+  padding: 0 40px 0 calc(40px + 0.18em);
+  font-size: clamp(20px, 6.6vw, 27px);
+  letter-spacing: 0.18em;
+}
 
 /* In-canvas loading fallback overlay (the world scene). */
 .cv-loading {

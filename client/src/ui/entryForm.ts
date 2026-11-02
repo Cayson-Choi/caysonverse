@@ -36,6 +36,48 @@ export function entryModeFromUrl(search: string): EntryMode {
   return new URLSearchParams(search).get("world") === "legacy" ? "legacy" : "student";
 }
 
+// ───────────────────────────────────── the sheet ─────────────────────────────────────
+
+/** The two ways into AI 학교 탈출 (EntryMode without "legacy"). */
+export type SchoolRole = "student" | "teacher";
+
+/** The sheet's role and the teacher key typed in it. */
+export interface TeacherFields {
+  role: SchoolRole;
+  teacherKey: string;
+}
+
+/**
+ * The key lives only while the teacher view of the open sheet does: closing the sheet (✕ / Esc / the
+ * veil / 바꾸기) or switching back to 학생 returns to 학생 with the key forgotten. A refused key is not
+ * an event here — it stays, so a typo can be fixed.
+ */
+export function teacherFieldsAfter(fields: TeacherFields, event: "close" | SchoolRole): TeacherFields {
+  if (event === "teacher") return { role: "teacher", teacherKey: fields.teacherKey };
+  return { role: "student", teacherKey: "" };
+}
+
+/**
+ * Presses this soon after the sheet opened are ignored: the second half of a double click / tap on
+ * the builder's 입장하기 would otherwise land on the sheet it just opened (the veil, or a button).
+ */
+export const SHEET_PRESS_GUARD_MS = 350;
+
+export function sheetPressAllowed(openedAt: number, now: number): boolean {
+  return now - openedAt >= SHEET_PRESS_GUARD_MS;
+}
+
+/**
+ * The field a server refusal points at (focus + aria-invalid): a student's refused join → the class
+ * code; a teacher's refused pass request (HTTP 4xx, `requestTeacherPass`'s TeacherPassError) → the key.
+ * No answer, a server fault or a failed class join after a good pass point at nothing.
+ */
+export function refusalField(role: SchoolRole, err: unknown): "code" | "key" | null {
+  if (role === "student") return "code";
+  const status = (err as { status?: unknown } | null)?.status;
+  return typeof status === "number" && status >= 400 && status < 500 ? "key" : null;
+}
+
 // ─────────────────────────────────────── words ───────────────────────────────────────
 
 export const CLASS_CODE_ERROR = "반 코드 6자리를 넣어 주세요";

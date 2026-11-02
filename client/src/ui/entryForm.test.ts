@@ -6,6 +6,7 @@ import {
   CLASS_CODE_ERROR,
   DESTINATION_FONT_TEXT,
   ENTRY_COPY,
+  SHEET_PRESS_GUARD_MS,
   SHOW_WORLD_ON_ENTRY,
   TEACHER_KEY_ERROR,
   TEXT_LEVEL_OPTIONS,
@@ -15,7 +16,11 @@ import {
   enterClassAsTeacher,
   validateStudentEntry,
   validateTeacherEntry,
+  refusalField,
+  sheetPressAllowed,
+  teacherFieldsAfter,
   type ClassEntryDeps,
+  type TeacherFields,
 } from "./entryForm";
 
 describe("entryModeFromUrl", () => {
@@ -224,5 +229,53 @@ describe("enterClassAsTeacher", () => {
     const { deps, names } = fakeDeps({ join: () => Promise.reject(new Error("연결에 실패했습니다. 잠시 후 다시 시도해주세요.")) });
     await expect(enterClassAsTeacher(deps, TEACHER)).rejects.toThrow("연결에 실패했습니다");
     expect(names()).toEqual(["requestTeacherPass", "rememberTeacher", "saveIdentity", "clearKicked", "joinClass", "forgetTeacher"]);
+  });
+});
+
+// ─────────────────────────────── Fix round 1 ───────────────────────────────
+
+describe("teacherFieldsAfter — the teacher key never outlives the open sheet", () => {
+  const typed: TeacherFields = { role: "teacher", teacherKey: "ABCD-EFGH" };
+
+  it("closing the sheet (✕ / Esc / veil / 바꾸기) goes back to 학생 and forgets the key", () => {
+    expect(teacherFieldsAfter(typed, "close")).toEqual({ role: "student", teacherKey: "" });
+  });
+
+  it("switching back to 학생 forgets the key; switching to 선생님 starts empty", () => {
+    expect(teacherFieldsAfter(typed, "student")).toEqual({ role: "student", teacherKey: "" });
+    expect(teacherFieldsAfter({ role: "student", teacherKey: "" }, "teacher")).toEqual({ role: "teacher", teacherKey: "" });
+  });
+
+  it("a refused key is kept for fixing a typo (a refusal is not one of the events)", () => {
+    // EntryScreen applies only these three events to the key; a refusal just shows words.
+    expect(typed.teacherKey).toBe("ABCD-EFGH");
+    expect(teacherFieldsAfter(typed, "teacher")).toEqual(typed);
+  });
+});
+
+describe("sheetPressAllowed — a double click / tap on 입장하기 must not land on the sheet it opened", () => {
+  it("ignores presses for SHEET_PRESS_GUARD_MS after the sheet opened", () => {
+    expect(SHEET_PRESS_GUARD_MS).toBe(350);
+    expect(sheetPressAllowed(1000, 1000)).toBe(false);
+    expect(sheetPressAllowed(1000, 1120)).toBe(false); // a typical double click's second press
+    expect(sheetPressAllowed(1000, 1349.9)).toBe(false);
+    expect(sheetPressAllowed(1000, 1350)).toBe(true);
+    expect(sheetPressAllowed(1000, 5000)).toBe(true);
+  });
+});
+
+describe("refusalField — the field a server refusal points at", () => {
+  it("a student's refused join points at the class code", () => {
+    expect(refusalField("student", new Error("반 코드를 확인해 주세요. 수업이 끝났거나 반이 가득 찼을 수도 있어요."))).toBe("code");
+  });
+
+  it("a teacher's refused key (HTTP 4xx from the pass request) points at the key; other failures at nothing", () => {
+    const refused = Object.assign(new Error("선생님 키가 올바르지 않아요"), { status: 401 });
+    expect(refusalField("teacher", refused)).toBe("key");
+    expect(refusalField("teacher", Object.assign(new Error("잠시 후"), { status: 429 }))).toBe("key");
+    // No answer (status 0), a server fault, or the class join after a good pass: the key is not at fault.
+    expect(refusalField("teacher", Object.assign(new Error("연결에 실패했습니다."), { status: 0 }))).toBeNull();
+    expect(refusalField("teacher", Object.assign(new Error("서버 오류"), { status: 500 }))).toBeNull();
+    expect(refusalField("teacher", new Error("연결에 실패했습니다."))).toBeNull();
   });
 });
