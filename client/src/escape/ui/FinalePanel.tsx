@@ -118,14 +118,19 @@ function FinaleCard() {
 
   // A disabled card (the cooldown, a pause, the wrong card after a vote) takes focus with it, and key events
   // then never reach this dialog. Bring focus back to the dialog when it has been lost, so 1-9, the arrows and
-  // the Tab trap keep working. A focus that is on a live control inside the dialog is left alone.
+  // the Tab trap keep working: focus is reclaimed only when it is on the body (or nowhere), or on a disabled
+  // element inside the dialog. A focus on a live control, or on something that floats above the finale (Bandit's
+  // hint confirm), is left alone. It also runs when the step advances, so focus comes back for the next question.
   useEffect(() => {
     const dialog = dialogRef.current;
     if (!dialog) return;
     const active = document.activeElement;
-    const lost = !active || !dialog.contains(active) || (active as HTMLButtonElement).disabled === true;
+    const lost =
+      !active ||
+      active === document.body ||
+      (dialog.contains(active) && (active as HTMLButtonElement).disabled === true);
     if (lost) dialog.focus({ preventScroll: true });
-  }, [locked, wrongNow]);
+  }, [locked, wrongNow, stepIndex]);
 
   // A step got right: say so for a moment (the next question is already up).
   useEffect(() => {

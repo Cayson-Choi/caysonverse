@@ -37,7 +37,7 @@ export interface QualitySpec {
 
 export const QUALITY: Record<QualityTier, QualitySpec> = {
   high: { bloom: true, shafts: true, sparkles: 60, shadows: "soft", dpr: [1, 2] },
-  low: { bloom: false, shafts: false, sparkles: 0, shadows: "blob", dpr: [1, 1.5] },
+  low: { bloom: false, shafts: false, sparkles: 0, shadows: "blob", dpr: [1, 1] },
 };
 
 /** The rich tier's bloom: strength / radius are the brief's; the threshold sits above the (tone-map-compensated) sky and the floor, so only real highlights glow. */
