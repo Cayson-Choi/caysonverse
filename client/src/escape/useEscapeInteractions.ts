@@ -8,6 +8,7 @@ import { getEscapeRoom, sendEscape } from "../net/connection";
 import { useEscapeStore } from "../stores/escapeStore";
 import { topOverlay } from "../ui/overlayStack";
 import { escapeActionsLive, escapeTargets, objectKindOf } from "./escapeTargets";
+import { openFinale } from "./finaleStore";
 import { holdConfirmed, holdPress, holdRelease, holdStopped, resetHold } from "./holdSession";
 import { noteInspectRequest } from "./inspectRequests";
 import { coopEventText } from "./ui/lockInput";
@@ -58,6 +59,8 @@ function pressSwitch(target: InteractTarget, phase: TargetPhase): void {
  * hold — `HoldStart` on the press, `HoldEnd` on the release, the ring (HoldRing) drawn from the server's
  * `hold` event until its `coopDone`.
  *
+ * The last door ("door" kind) opens the FinalePanel while the team is in its last-door phase (Task 20).
+ *
  * It also turns the room's events into what the player sees here: that toast, the ring starting and
  * stopping, and "자물쇠가 열렸어요!" when any lock opens.
  */
@@ -79,6 +82,12 @@ export function useEscapeInteractions(roomId: RoomId | null): void {
         return;
       }
       if (phase !== "press") return;
+      // The last door, once it is ready: the team's vote on Ari (FinalePanel) instead of a plain close-up.
+      // Before that the door is a close-up like any other ("아리가 문을 잠그고 있어요.").
+      if (kind === "door" && useEscapeStore.getState().view?.phase === "finale") {
+        openFinale();
+        return;
+      }
       noteInspectRequest(target.id); // the close-up that comes back is wanted (inspectRequests.ts)
       sendEscape(EscapeMsg.Inspect, { objectId: target.id });
     });

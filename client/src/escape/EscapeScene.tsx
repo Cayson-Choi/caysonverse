@@ -9,14 +9,20 @@ import { useEscapeStore } from "../stores/escapeStore";
 import type { Identity } from "../stores/appStore";
 import { DialogueQueue } from "./dialogue";
 import { FEED_START, feedDialogue } from "./dialogueFeed";
+import { EscapeFx } from "./EscapeFx";
 import { leaveToHall } from "./leave";
 import { RoomPlaceholder } from "./RoomPlaceholder";
+import { useEscapeFinish } from "./useEscapeFinish";
 import { useEscapeInteractions } from "./useEscapeInteractions";
 import { BagPanel } from "./ui/BagPanel";
 import { EscapeHud } from "./ui/EscapeHud";
 import { EscapeToast } from "./ui/EscapeToast";
+import { EscapeVeil } from "./ui/EscapeVeil";
+import { FinalePanel } from "./ui/FinalePanel";
+import { HintPanel } from "./ui/HintPanel";
 import { HoldRing } from "./ui/HoldRing";
 import { InspectOverlay } from "./ui/InspectOverlay";
+import { SummaryCard } from "./ui/SummaryCard";
 import { TeamChatNotice } from "./ui/TeamChatNotice";
 import { resetOverlays } from "../ui/overlayStack";
 import "./escape.css";
@@ -33,12 +39,18 @@ import "./escape.css";
  * `escapeEpoch`, so a classroom reconnect remounts it (chat, emoji and every room binding rebind).
  *
  * Story lines: when the room's content arrives its intro lines go into the scene's DialogueQueue,
- * and so does every later `say` event. Task 20 pushes the escape lines into the same queue.
+ * and so does every later `say` event and every hint (Bandit says it). The escape lines go into the same
+ * queue (useEscapeFinish).
  *
  * Investigation (Task 18): the room's objects are the context button's targets (useEscapeInteractions);
  * pressing one asks the server for the close-up, which opens the InspectOverlay (on the overlay stack:
  * Esc closes it, the keyboard is held while it is up); a lock on the object shows its plate there (Task 19). The team
  * bag (BagPanel), the lone member's hold ring (HoldRing) and the toast sit with it.
+ *
+ * The end (Task 20): Bandit's hint button (HintPanel, top right), the last door (FinalePanel — opens for the whole
+ * team when the door is ready; unanimous vote on the answer cards) and the escape itself — useEscapeFinish runs the
+ * show's clock (the door, EscapeFx's sun and sparkles, the veil's haze lifting), then Ari's lines, then the
+ * SummaryCard with its way back to the hall.
  */
 
 /** A room's ActiveMap, made once per room — `setActiveMap` ignores the SAME object, so it must be stable. */
@@ -114,6 +126,7 @@ export function EscapeScene({ identity }: { identity: Identity }) {
   const [queue] = useState(() => new DialogueQueue());
   useEscapeDialogue(queue);
   useEscapeInteractions(roomId);
+  const finish = useEscapeFinish(queue);
 
   // A fresh scene starts with no close-up open (the store survives a reconnect, the close-up may be stale)
   // and leaves no overlay behind.
@@ -134,15 +147,24 @@ export function EscapeScene({ identity }: { identity: Identity }) {
       lighting="brightDay"
       effects
       adminPanel={false}
-      world3d={<RoomPlaceholder roomId={roomId} />}
+      world3d={
+        <>
+          <RoomPlaceholder roomId={roomId} />
+          <EscapeFx roomId={roomId} />
+        </>
+      }
       hud={
         <>
+          <EscapeVeil mode={finish.mode} />
           <EscapeHud queue={queue} onLeave={LEAVE} />
+          <HintPanel />
           <TeamChatNotice />
           <BagPanel />
           <HoldRing />
           <InspectOverlay />
+          <FinalePanel queue={queue} />
           <EscapeToast />
+          {finish.card && <SummaryCard summary={finish.summary} replay={finish.mode === "replay"} onLeave={LEAVE} />}
         </>
       }
     />

@@ -12,7 +12,8 @@ const TICK_MS = 150;
 /** Once the portrait failed to load it is not asked for again this session (one miss, not one per line). */
 let banditPortraitMissing = false;
 
-function BanditAvatar() {
+/** Bandit's face: the portrait, or the 🔦 circle once the file has failed to load (the hint button wears it too). */
+export function BanditAvatar() {
   const [missing, setMissing] = useState(banditPortraitMissing);
   if (missing) {
     return (

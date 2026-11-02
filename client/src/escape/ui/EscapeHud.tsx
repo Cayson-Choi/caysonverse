@@ -8,6 +8,7 @@ import { useEscapeStore, type EscapeView } from "../../stores/escapeStore";
 import { useSettingsStore } from "../../stores/settingsStore";
 import type { DialogueQueue } from "../dialogue";
 import { escapeOverlay, formatTime, isLowTime, timeupText, type Overlay } from "../format";
+import { useFinaleStore } from "../finaleStore";
 import { DialogueBox } from "./DialogueBox";
 import "../escape.css";
 
@@ -123,6 +124,8 @@ export function EscapeHud({ queue, onLeave }: { queue: DialogueQueue; onLeave: (
 
   const overlay = view ? escapeOverlay(view) : null;
   const covering = overlay === "paused" || overlay === "timeup" || overlay === "ended";
+  // The last-door panel covers the story box: lines wait (and keep their full time) until it is closed.
+  const finaleOpen = useFinaleStore((s) => s.open);
 
   // Its own owner ("cover"): the overlay stack (ui/overlayStack.ts) holds "overlay", and a cover coming or going
   // while a close-up is open must not free the other's hold.
@@ -147,7 +150,7 @@ export function EscapeHud({ queue, onLeave }: { queue: DialogueQueue; onLeave: (
             곧 시작해요! 이야기를 들어 보세요
           </div>
         )}
-        <DialogueBox queue={queue} frozen={covering} />
+        <DialogueBox queue={queue} frozen={covering || finaleOpen} />
       </div>
       {covering && (
         <div className="cv-escui">

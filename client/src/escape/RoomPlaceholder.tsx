@@ -1,9 +1,12 @@
-import { memo, useMemo, useState } from "react";
+import { memo, useMemo, useRef, useState } from "react";
+import { useFrame } from "@react-three/fiber";
+import type { Group, Mesh, MeshBasicMaterial, MeshStandardMaterial } from "three";
 import { ROOM_MAPS } from "@caysonverse/shared/school/roomMaps";
 import type { ObjectKind } from "@caysonverse/shared/escape/messages";
 import type { RoomId } from "@caysonverse/shared/escape/constants";
 import { MapBoxes, collidersDebugOn } from "../game/MapBoxes";
 import { useEscapeStore } from "../stores/escapeStore";
+import { easeInOut, escapeClock, escapeTimeline, type EscapeFrame } from "./escapeTimeline";
 import { bindingFx, markerSlots } from "./placeholderFx";
 
 /**
@@ -15,8 +18,12 @@ import { bindingFx, markerSlots } from "./placeholderFx";
  * one lights up. The bindings and anchors are the room's real layout contract, so when the model
  * replaces this file nothing else in the scene changes.
  *
+ * The last door is the exception: it is a real door leaf in a frame (ExitDoor) that follows the escape
+ * show's clock (escapeTimeline.ts) — it glows, then swings open on its hinge, with the sunlit doorway
+ * showing behind it. (The sun, the floor light and the sparkles are EscapeFx, which outlives this file.)
+ *
  * Flags change a few times per game, so this re-renders on a flag change only (the selector returns a
- * joined string) — never per frame, never for the clock.
+ * joined string) — never per frame, never for the clock. The door animates in its own frame callback.
  */
 
 const PILLAR_WIDTH = 0.38;
@@ -41,6 +48,82 @@ const GLOW_COLOR = "#FFF27A";
 const GROUND = { margin: 40, color: "#D9D2C6" } as const;
 const FLOOR_COLOR = "#E8D5B5";
 
+/** The bound node the exit door's flag swings; ExitDoor draws it instead of a marker. */
+const EXIT_DOOR_NODE = "obj__exit_door";
+const EXIT_ANCHOR_ID = "exit_door";
+/** The door leaf, its frame and the doorway, in metres; the door stands just inside the south wall. */
+const DOOR = { w: 1.5, h: 2.3, t: 0.08, post: 0.12, wallGap: 0.1 } as const;
+const DOOR_COLORS = { leaf: "#B08A5E", frame: "#8A6A44", glow: "#FFD36B", doorway: "#FFF4CC" } as const;
+
+/**
+ * The last door: a leaf hinged at its left edge, in a frame, in front of the south wall. It glows while the
+ * show's `doorGlow` rises, swings open by the binding's angle with `doorOpen`, and shows a sunlit doorway
+ * behind it. Driven by the show's clock; a classroom that is already escaped without a clock (the first frame
+ * of a replay) shows it open. Writes into existing objects only — no React state, no allocation per frame.
+ */
+function ExitDoor({ x, zWall, angle, escapedFlag }: { x: number; zWall: number; angle: number; escapedFlag: boolean }) {
+  const hinge = useRef<Group>(null);
+  const leafMat = useRef<MeshStandardMaterial>(null);
+  const doorway = useRef<Mesh>(null);
+  const doorwayMat = useRef<MeshBasicMaterial>(null);
+  const frame = useMemo<EscapeFrame>(() => ({ doorGlow: 0, doorOpen: 0, lights: 0, showLines: false, showSummary: false }), []);
+
+  useFrame(() => {
+    const g = hinge.current;
+    const m = leafMat.current;
+    const d = doorway.current;
+    const dm = doorwayMat.current;
+    if (!g || !m || !d || !dm) return;
+    let glow = 0;
+    let open = 0;
+    if (escapeClock.running()) {
+      escapeTimeline(escapeClock.elapsed(performance.now()), false, frame);
+      glow = frame.doorGlow;
+      open = frame.doorOpen;
+    } else if (escapedFlag) {
+      glow = 1;
+      open = 1;
+    }
+    g.rotation.y = easeInOut(open) * angle;
+    m.emissiveIntensity = 0.9 * glow * (1 - 0.7 * open);
+    d.visible = glow > 0;
+    dm.opacity = glow;
+  });
+
+  const left = x - DOOR.w / 2;
+  return (
+    <group position={[left, 0, zWall]}>
+      <mesh ref={doorway} position={[DOOR.w / 2, DOOR.h / 2, DOOR.wallGap - 0.03]} visible={false}>
+        <planeGeometry args={[DOOR.w, DOOR.h]} />
+        <meshBasicMaterial ref={doorwayMat} color={DOOR_COLORS.doorway} transparent opacity={0} depthWrite={false} />
+      </mesh>
+      <group ref={hinge}>
+        <mesh position={[DOOR.w / 2, DOOR.h / 2, 0]} castShadow>
+          <boxGeometry args={[DOOR.w, DOOR.h, DOOR.t]} />
+          <meshStandardMaterial ref={leafMat} color={DOOR_COLORS.leaf} emissive={DOOR_COLORS.glow} emissiveIntensity={0} roughness={0.7} />
+        </mesh>
+        <mesh position={[DOOR.w - 0.18, DOOR.h * 0.45, DOOR.t / 2 + 0.03]}>
+          <sphereGeometry args={[0.05, 12, 8]} />
+          <meshStandardMaterial color="#F2D58B" roughness={0.35} metalness={0.4} />
+        </mesh>
+      </group>
+      {/* the frame stays where it is */}
+      <mesh position={[-DOOR.post / 2, DOOR.h / 2, 0]} castShadow>
+        <boxGeometry args={[DOOR.post, DOOR.h + DOOR.post, DOOR.t + 0.06]} />
+        <meshStandardMaterial color={DOOR_COLORS.frame} roughness={0.8} />
+      </mesh>
+      <mesh position={[DOOR.w + DOOR.post / 2, DOOR.h / 2, 0]} castShadow>
+        <boxGeometry args={[DOOR.post, DOOR.h + DOOR.post, DOOR.t + 0.06]} />
+        <meshStandardMaterial color={DOOR_COLORS.frame} roughness={0.8} />
+      </mesh>
+      <mesh position={[DOOR.w / 2, DOOR.h + DOOR.post / 2, 0]} castShadow>
+        <boxGeometry args={[DOOR.w + 2 * DOOR.post, DOOR.post, DOOR.t + 0.06]} />
+        <meshStandardMaterial color={DOOR_COLORS.frame} roughness={0.8} />
+      </mesh>
+    </group>
+  );
+}
+
 export const RoomPlaceholder = memo(function RoomPlaceholder({ roomId }: { roomId: RoomId }) {
   const map = ROOM_MAPS[roomId];
   // One string for all flags: a new flag array every second (the clock) must not re-render this.
@@ -62,6 +145,8 @@ export const RoomPlaceholder = memo(function RoomPlaceholder({ roomId }: { roomI
   const cx = (b.minX + b.maxX) / 2;
   const cz = (b.minZ + b.maxZ) / 2;
   const anchorById = new Map(map.anchors.map((a) => [a.id, a]));
+  const exit = anchorById.get(EXIT_ANCHOR_ID);
+  const exitAngle = map.visuals.find((v) => v.node === EXIT_DOOR_NODE && v.effect === "open")?.angle ?? 1.6;
 
   return (
     <group>
@@ -91,9 +176,14 @@ export const RoomPlaceholder = memo(function RoomPlaceholder({ roomId }: { roomI
         );
       })}
 
+      {exit && (
+        <ExitDoor x={exit.x} zWall={b.maxZ - DOOR.wallGap} angle={exitAngle} escapedFlag={flags.has("escaped")} />
+      )}
+
       {slots.map(({ binding, anchorId, slot }) => {
         const a = anchorById.get(anchorId);
         if (!a) return null;
+        if (exit && binding.node === EXIT_DOOR_NODE) return null; // the door leaf above
         const fx = bindingFx(binding, flags);
         if (!fx.visible) return null;
         const y = Math.max(a.y, 0.3) + MARKER_SIZE / 2 + 0.05 + slot * MARKER_GAP;

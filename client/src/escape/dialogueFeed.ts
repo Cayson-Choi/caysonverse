@@ -5,7 +5,9 @@
  *  - The intro lines play once, and only for a team that is really in its intro phase: a refresh or a
  *    reconnect in the middle of the game must not replay the opening story. (The state decides once
  *    both the room's content and the team's view are here — that moment spends the intro either way.)
- *  - Each `say` event queues the line it names, once; every other event is ignored (and consumed).
+ *  - Each `say` event queues the line it names, once. A `hint` event queues Bandit saying it (Task 20) — unless
+ *    the team has escaped or the class has ended: a hint that was still on its way (the AI polish step) comes too
+ *    late to be told. Every other event is ignored (and consumed).
  */
 
 import type { EscapePhase } from "@caysonverse/shared/escape/constants";
@@ -52,6 +54,8 @@ export function feedDialogue(prev: FeedState, i: FeedInput): FeedResult {
     if (ev !== null && ev.e === "say" && i.content !== null) {
       const line = sayLine(i.content, ev.lineId);
       if (line) lines.push(line);
+    } else if (ev !== null && ev.e === "hint" && i.phase !== "escaped" && i.phase !== "ended") {
+      if (typeof ev.text === "string" && ev.text !== "") lines.push({ speaker: "bandit", text: ev.text });
     }
   }
 

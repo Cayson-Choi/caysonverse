@@ -90,3 +90,36 @@ describe("feedDialogue", () => {
     expect(r.lines).toEqual([]);
   });
 });
+
+describe("feedDialogue: Bandit's hints", () => {
+  const hint = (text: string): EscapeEventPayload => ({ e: "hint", stageId: "uv", tier: 1, text });
+
+  it("a hint becomes a line Bandit says, once per event", () => {
+    const start = feedDialogue(FEED_START, input({ phase: "play" })).next;
+    const r = feedDialogue(start, input({ phase: "play", eventSeq: 1, lastEvent: hint("손전등과 필름을 합쳐 봐요!") }));
+    expect(r.lines).toEqual([{ speaker: "bandit", text: "손전등과 필름을 합쳐 봐요!" }]);
+    expect(feedDialogue(r.next, input({ phase: "play", eventSeq: 1, lastEvent: hint("손전등과 필름을 합쳐 봐요!") })).lines).toEqual([]);
+  });
+
+  it("is told in the finale and in the intro too", () => {
+    for (const phase of ["finale", "intro"] as const) {
+      const start = feedDialogue(FEED_START, input({ phase })).next;
+      const r = feedDialogue(start, input({ phase, eventSeq: 1, lastEvent: hint("생각해 봐요") }));
+      expect(r.lines, phase).toHaveLength(1);
+    }
+  });
+
+  it("a hint that arrives after the escape or the end of the class is not told (it is still consumed)", () => {
+    for (const phase of ["escaped", "ended"] as const) {
+      const start = feedDialogue(FEED_START, input({ phase })).next;
+      const r = feedDialogue(start, input({ phase, eventSeq: 1, lastEvent: hint("너무 늦은 힌트") }));
+      expect(r.lines, phase).toEqual([]);
+      expect(r.next.seenEvent, phase).toBe(1);
+    }
+  });
+
+  it("ignores an empty hint", () => {
+    const start = feedDialogue(FEED_START, input({ phase: "play" })).next;
+    expect(feedDialogue(start, input({ phase: "play", eventSeq: 1, lastEvent: hint("") })).lines).toEqual([]);
+  });
+});
