@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { isBlocked } from "../collision";
+import type { AABB } from "../collision";
 import { ROOM_IDS } from "../escape/constants";
 import { PLAYER_RADIUS } from "../worldMap";
 import {
@@ -22,9 +23,26 @@ import {
   inTeamZone,
 } from "./hubMap";
 import { HUB_PROP_COLLIDERS } from "./generated/hubColliders";
+import { makeGeometry } from "./geometry";
+import type { MapGeometry } from "./geometry";
 import { centre, hasNear, inside, overlaps, reachable } from "./reachTestUtil";
 
 const EPS = 1e-9;
+
+/** True when the spawn disk (spawn + jitter + body) touches an obstacle of `geo`. */
+function spawnDiskBlocked(geo: MapGeometry): boolean {
+  return isBlocked(HUB_SPAWN.x, HUB_SPAWN.z, HUB_SPAWN_JITTER + PLAYER_RADIUS, geo.obstacles, 0);
+}
+
+/** The obstacles of `geo` that overlap the team rug (none may). */
+function teamZoneIntruders(geo: MapGeometry): AABB[] {
+  return geo.obstacles.filter((o) => overlaps(o, TEAM_ZONE));
+}
+
+/** The real hub (open gate) plus one extra prop box: used to prove the invariants really fail. */
+function hubWithExtraProp(extra: AABB): MapGeometry {
+  return makeGeometry("hub-open", HUB_BOUNDS, [...HUB_WALLS, WEST_SEAL], [PROGRESS_BOARD, ...HUB_PROP_COLLIDERS, extra]);
+}
 
 describe("hub reachability", () => {
   it("gated: from the spawn nothing outside the hall is reachable", () => {
@@ -112,9 +130,37 @@ describe("door pads", () => {
 describe("spawn and team zone", () => {
   it("spawn disk and TEAM_ZONE are clear in both geometries", () => {
     for (const geo of [HUB_GEOMETRY_OPEN, HUB_GEOMETRY_GATED]) {
-      expect(isBlocked(HUB_SPAWN.x, HUB_SPAWN.z, HUB_SPAWN_JITTER + PLAYER_RADIUS, geo.obstacles, 0), geo.id).toBe(false);
-      for (const o of geo.obstacles) expect(overlaps(o, TEAM_ZONE), `${geo.id} ${JSON.stringify(o)}`).toBe(false);
+      expect(spawnDiskBlocked(geo), geo.id).toBe(false);
+      expect(teamZoneIntruders(geo), geo.id).toEqual([]);
     }
+  });
+
+  it("a prop box that intrudes makes those invariants fail (they are not vacuous)", () => {
+    // Inside the team rug.
+    const onRug = hubWithExtraProp({ minX: -9, maxX: -8, minZ: 4, maxZ: 5 });
+    expect(teamZoneIntruders(onRug)).toHaveLength(1);
+    // Overlapping the rug by 5 cm at its edge is still an intrusion; touching it exactly is not.
+    expect(teamZoneIntruders(hubWithExtraProp({ minX: -5.05, maxX: -4.5, minZ: 3, maxZ: 4 }))).toHaveLength(1);
+    expect(teamZoneIntruders(hubWithExtraProp({ minX: -5, maxX: -4.5, minZ: 3, maxZ: 4 }))).toHaveLength(0);
+    // On the spawn disk (0, 6) with radius HUB_SPAWN_JITTER + PLAYER_RADIUS: a crate 2.2 m from the centre is inside it.
+    const onSpawn = hubWithExtraProp({ minX: 1.8, maxX: 2.4, minZ: 5.7, maxZ: 6.3 });
+    expect(spawnDiskBlocked(onSpawn)).toBe(true);
+    // The same box well outside the disk does not trip it.
+    expect(spawnDiskBlocked(hubWithExtraProp({ minX: 4, maxX: 4.6, minZ: 5.7, maxZ: 6.3 }))).toBe(false);
+    // And the real hub is clean, so the checks above distinguish the two cases.
+    expect(spawnDiskBlocked(HUB_GEOMETRY_OPEN)).toBe(false);
+    expect(teamZoneIntruders(HUB_GEOMETRY_OPEN)).toHaveLength(0);
+  });
+
+  it("a prop that walls a door pad off makes the pad unreachable (the reach check is not vacuous)", () => {
+    const counsel = HUB_DOORS.find((d) => d.room === "counsel")!;
+    // A full-width plug across the corridor just west of the counsel pad cuts the corridor in two.
+    const plug = hubWithExtraProp({ minX: 19, maxX: 19.5, minZ: -3, maxZ: 3 });
+    const r = reachable(plug, HUB_SPAWN);
+    expect(hasNear(r, centre(counsel.pad), 0.25)).toBe(false);
+    expect(r.some((p) => inside(EAST_CORRIDOR, p) && p.x > 20)).toBe(false);
+    // Without the plug the same pad is reachable.
+    expect(hasNear(reachable(HUB_GEOMETRY_OPEN, HUB_SPAWN), centre(counsel.pad), 0.25)).toBe(true);
   });
 
   it("the spawn and the team zone are inside the hall", () => {

@@ -1,14 +1,6 @@
 import { useEffect, useState } from "react";
 import { useFrame } from "@react-three/fiber";
-import {
-  EAST_CORRIDOR,
-  EAST_GATE,
-  HALL,
-  PROGRESS_BOARD,
-  TEAM_ZONE,
-  hubGeometry,
-} from "@caysonverse/shared/school/hubMap";
-import type { AABB } from "@caysonverse/shared/collision";
+import { HALL, hubGeometry } from "@caysonverse/shared/school/hubMap";
 import { ROOM_IDS } from "@caysonverse/shared/escape/constants";
 import { ClassMsg } from "@caysonverse/shared/escape/messages";
 import { PlayShell } from "./PlayShell";
@@ -16,6 +8,8 @@ import { MapBoxes, collidersDebugOn } from "./MapBoxes";
 import { Gate } from "./hub/Gate";
 import { DoorPads } from "./hub/DoorPads";
 import { ProgressBoard } from "./hub/ProgressBoard";
+import { HubModel, HubShafts } from "./hub/HubModel";
+import { HubSigns } from "./hub/HubSigns";
 import { hubTargets } from "./hub/hubTargets";
 import { hubActiveMap } from "./activeMap";
 import { clearClickTarget } from "./clickMove";
@@ -33,11 +27,13 @@ import { useHubUi } from "../ui/hub/hubUi";
 
 /**
  * The school hub — the central hall (중앙 홀) and the east corridor (동쪽 복도) of a class
- * (AI 학교 탈출, Task 15). A `PlayShell` on the hub map — `hubGeometry(open)`, the east gate
- * shut until the teacher starts the class (the server's rule: open while running or paused) —
- * under the bright-day lighting, with the hub's own 3D parts: for now TEMPORARY boxes for the
- * walls and props (`MapBoxes`; the hub model replaces them in Task 23), the floors, the east
- * `Gate` and the corridor's `DoorPads`.
+ * (AI 학교 탈출, Task 15; the real model since Task 23). A `PlayShell` on the hub map — `hubGeometry(open)`, the east
+ * gate shut until the teacher starts the class (the server's rule: open while running or paused) — under the
+ * bright-day lighting, with the hub model (`hub.glb`, see HubModel): the hall, the corridor, the campus backdrop,
+ * and the parts the scene drives from the model's nodes — the east `Gate`, the `ProgressBoard`'s windows and the
+ * corridor's `DoorPads` — plus the text on the model's blank plates (`HubSigns`) and, on the rich tier, the light
+ * shafts through the sunny windows. The collision boxes are the model's `col__*` boxes (generated into shared/);
+ * with `?debug=colliders` they are drawn as wireframe over the model to check the two against each other.
  *
  * Task 16 adds the hall's life: the progress board on the north wall, the targets the context button
  * offers (the team rug's "팀 만들기", a door pad's "입장" / "팀에게 가기" — hubTargets.ts, plugged in through
@@ -52,26 +48,6 @@ import { useHubUi } from "../ui/hub/hubUi";
  * room binding rebind to the new class room).
  */
 
-const FLOOR_Y = 0;
-
-/** A flat rectangle on the floor. */
-function FloorRect({ box, color, y = FLOOR_Y, opacity }: { box: AABB; color: string; y?: number; opacity?: number }) {
-  return (
-    <mesh position={[(box.minX + box.maxX) / 2, y, (box.minZ + box.maxZ) / 2]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-      <planeGeometry args={[box.maxX - box.minX, box.maxZ - box.minZ]} />
-      <meshStandardMaterial
-        color={color}
-        roughness={0.9}
-        transparent={opacity !== undefined}
-        opacity={opacity ?? 1}
-      />
-    </mesh>
-  );
-}
-
-/** The school grounds around the building. */
-const GROUNDS: AABB = { minX: -80, maxX: 110, minZ: -80, maxZ: 80 };
-
 /** Every frame: back from a classroom (place 1 → 0), jump to where the server put us. */
 function HubSnap({ pose }: { pose: Pose }) {
   useFrame(() => {
@@ -80,21 +56,25 @@ function HubSnap({ pose }: { pose: Pose }) {
   return null;
 }
 
+/**
+ * The sun's shadow box, half-size (m): about the hall (28 x 24 m) around the player, instead of one box over the whole
+ * map (hall + 34 m corridor = 70 m of shadow map, 7 cm per texel). It follows the player (PlayShell), so the corridor
+ * gets the same crisp shadows. 16 m is 3 cm per texel.
+ */
+const SHADOW_HALF = Math.max(HALL.maxX - HALL.minX, HALL.maxZ - HALL.minZ) / 2 + 2;
+
 function HubWorld({ pose, gateOpen, debugColliders }: { pose: Pose; gateOpen: boolean; debugColliders: boolean }) {
   const geometry = hubGeometry(gateOpen);
   return (
     <>
-      <FloorRect box={GROUNDS} color="#CFE3B4" y={-0.02} />
-      <FloorRect box={HALL} color="#E3CFAE" />
-      <FloorRect box={EAST_CORRIDOR} color="#D9D2C6" />
-      {/* The team-building rug (no collider: anyone may step on it). */}
-      <FloorRect box={TEAM_ZONE} color="#B9A8F5" y={0.01} opacity={0.75} />
-      {/* The progress board is drawn by ProgressBoard on its footprint, the gate by Gate. */}
-      <MapBoxes geometry={geometry} skip={[EAST_GATE, PROGRESS_BOARD]} />
+      <HubModel>
+        <Gate open={gateOpen} />
+        <DoorPads />
+        <ProgressBoard />
+        <HubSigns />
+        <HubShafts />
+      </HubModel>
       {debugColliders && <MapBoxes geometry={geometry} variant="wire" />}
-      <Gate open={gateOpen} />
-      <DoorPads />
-      <ProgressBoard />
       <HubSnap pose={pose} />
     </>
   );
@@ -177,6 +157,7 @@ export function HubScene({ identity }: { identity: Identity }) {
       activeMap={hubActiveMap(gateOpen)}
       lighting="brightDay"
       effects
+      shadowFollowHalf={SHADOW_HALF}
       world3d={({ pose }) => <HubWorld pose={pose} gateOpen={gateOpen} debugColliders={debugColliders} />}
       hud={<HubHud isTeacher={isTeacher} />}
       adminPanel={false}

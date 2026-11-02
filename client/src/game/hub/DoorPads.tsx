@@ -1,30 +1,30 @@
-import { useEffect, useMemo } from "react";
-import { MeshBasicMaterial, MeshStandardMaterial, type CanvasTexture } from "three";
-import { HUB_DOORS, EAST_CORRIDOR, type HubDoor } from "@caysonverse/shared/school/hubMap";
-import { ROOM_LABELS, type RoomId } from "@caysonverse/shared/escape/constants";
+import { useEffect, useLayoutEffect, useMemo } from "react";
+import { MeshBasicMaterial, type CanvasTexture } from "three";
+import { HUB_DOORS } from "@caysonverse/shared/school/hubMap";
 import { canvas2d, canvasTexture, roundRect } from "../spriteCanvas";
 import { FONT_FAMILY } from "../nametag";
 import { useClassStore } from "../../stores/classStore";
+import { useHubNodes } from "./HubModel";
 
 /**
- * The corridor's room doors and the waiting pads in front of them (AI 학교 탈출, Task 15).
- * Per door (HUB_DOORS): a door leaf on the corridor wall with the room's name above it, and
- * the pad on the floor where a team gathers to go in.
- *  - The pad where MY team has gathered (`padDoor`, at least one member on it) is filled with
- *    my team's colour.
- *  - A door whose room is not open (`openRooms`) is greyed and carries a "준비 중" plate.
+ * The corridor's room doors and the waiting pads in front of them (AI 학교 탈출, Task 15, driven from the model in
+ * Task 23). hub.glb holds, per door (HUB_DOORS): the double door `door__<room>` and the pad mat `pad__<room>`; the
+ * room's name over the door is a runtime label (HubSigns).
+ *  - The pad where MY team has gathered (`padDoor`, at least one member on it) is tinted with my team's colour
+ *    (the pad's own material, so the other pads keep their look).
+ *  - A door whose room is not open (`openRooms`) is greyed (the door's own material) and carries a "준비 중" sticker.
  *
- * Reads only discrete class state (classStore, re-rendered on change), nothing per frame.
- * The name / "준비 중" plates are canvas textures made once per mount and released with it.
+ * Reads only discrete class state (classStore, re-rendered on change), nothing per frame. The sticker is a canvas
+ * texture made once per mount and released with it.
  */
 
-const DOOR_W = 2;
-const DOOR_H = 2.6;
-const PAD_Y = 0.015;
-const PAD_IDLE = "#F3EFEA";
-const PAD_EDGE = "#4B4FD8";
-const DOOR_OPEN = "#B98A5A";
-const DOOR_CLOSED = "#B9B4AD";
+const PAD_IDLE = "#FFFFFF";
+const DOOR_OPEN = "#FFFFFF";
+const DOOR_CLOSED = "#9C9CA8";
+/** The sticker on a closed door: a hair in front of the leaf face, below the portholes. */
+const STICKER_Y = 1.05;
+const STICKER_H = 0.34;
+const STICKER_OUT = 0.012;
 
 /** Draw a short label on a rounded plate. Returns the texture and its aspect (w / h). */
 function plateTexture(text: string, bg: string, fg: string): { texture: CanvasTexture; aspect: number } {
@@ -43,106 +43,51 @@ function plateTexture(text: string, bg: string, fg: string): { texture: CanvasTe
   return { texture: canvasTexture(canvas), aspect: canvas.width / canvas.height };
 }
 
-/** The wall face a door sits on (z) and which way it faces (+1 = toward +z). */
-function doorFace(d: HubDoor): { z: number; facing: 1 | -1 } {
-  return d.side === "n" ? { z: EAST_CORRIDOR.minZ, facing: 1 } : { z: EAST_CORRIDOR.maxZ, facing: -1 };
-}
-
-function DoorPad({
-  door,
-  open,
-  teamColor,
-  names,
-  soon,
-}: {
-  door: HubDoor;
-  open: boolean;
-  /** My team's colour when my team has gathered on this pad, else null. */
-  teamColor: string | null;
-  names: Map<RoomId, { material: MeshBasicMaterial; aspect: number }>;
-  soon: { material: MeshBasicMaterial; aspect: number };
-}) {
-  const { z, facing } = doorFace(door);
-  const rotY = facing === 1 ? 0 : Math.PI;
-  const pad = door.pad;
-  const name = names.get(door.room)!;
-  const padMat = useMemo(
-    () => new MeshStandardMaterial({ color: PAD_IDLE, roughness: 0.9, transparent: true, opacity: 0.95 }),
-    [],
-  );
-  useEffect(() => () => padMat.dispose(), [padMat]);
-  padMat.color.set(teamColor ?? PAD_IDLE);
-
-  return (
-    <group>
-      {/* The door leaf on the wall, a hair in front of it. */}
-      <mesh position={[door.x, DOOR_H / 2, z + facing * 0.04]} rotation={[0, rotY, 0]}>
-        <boxGeometry args={[DOOR_W, DOOR_H, 0.08]} />
-        <meshStandardMaterial color={open ? DOOR_OPEN : DOOR_CLOSED} roughness={0.7} />
-      </mesh>
-      {/* The room's name above the door. */}
-      <mesh position={[door.x, DOOR_H + 0.45, z + facing * 0.09]} rotation={[0, rotY, 0]} material={name.material}>
-        <planeGeometry args={[0.5 * name.aspect, 0.5]} />
-      </mesh>
-      {!open && (
-        <mesh position={[door.x, 1.5, z + facing * 0.1]} rotation={[0, rotY, 0]} material={soon.material}>
-          <planeGeometry args={[0.42 * soon.aspect, 0.42]} />
-        </mesh>
-      )}
-      {/* The waiting pad: an edge, then the fill (team colour when my team has gathered). */}
-      <mesh position={[door.x, PAD_Y, (pad.minZ + pad.maxZ) / 2]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-        <planeGeometry args={[pad.maxX - pad.minX, pad.maxZ - pad.minZ]} />
-        <meshStandardMaterial color={PAD_EDGE} roughness={0.9} />
-      </mesh>
-      <mesh
-        position={[door.x, PAD_Y + 0.005, (pad.minZ + pad.maxZ) / 2]}
-        rotation={[-Math.PI / 2, 0, 0]}
-        material={padMat}
-        receiveShadow
-      >
-        <planeGeometry args={[pad.maxX - pad.minX - 0.16, pad.maxZ - pad.minZ - 0.16]} />
-      </mesh>
-    </group>
-  );
-}
-
 export function DoorPads() {
+  const { pads, doors } = useHubNodes();
   const openRooms = useClassStore((s) => s.openRooms);
   const myTeam = useClassStore((s) => s.teams.find((t) => t.mine) ?? null);
 
-  // Plates: one per room name, one "준비 중" — made once per mount, released with it.
-  const plates = useMemo(() => {
-    const names = new Map<RoomId, { material: MeshBasicMaterial; aspect: number }>();
-    for (const d of HUB_DOORS) {
-      const { texture, aspect } = plateTexture(ROOM_LABELS[d.room], "#4B4FD8", "#FFFFFF");
-      names.set(d.room, { material: new MeshBasicMaterial({ map: texture, transparent: true }), aspect });
-    }
+  // The "준비 중" sticker: made once per mount, released with it.
+  const soon = useMemo(() => {
     const s = plateTexture("준비 중", "#FFF7E0", "#7A5A12");
-    return { names, soon: { material: new MeshBasicMaterial({ map: s.texture, transparent: true }), aspect: s.aspect } };
+    return { material: new MeshBasicMaterial({ map: s.texture, transparent: true, fog: false }), aspect: s.aspect };
   }, []);
   useEffect(
     () => () => {
-      for (const p of [...plates.names.values(), plates.soon]) {
-        p.material.map?.dispose();
-        p.material.dispose();
-      }
+      soon.material.map?.dispose();
+      soon.material.dispose();
     },
-    [plates],
+    [soon],
   );
 
+  // The pad where my team has gathered takes its colour; closed doors go grey. Before the first frame (layout effect).
   const gatheredAt = myTeam && myTeam.padCount > 0 ? myTeam.padDoor : "";
+  const teamColor = myTeam?.color ?? null;
+  useLayoutEffect(() => {
+    for (const d of HUB_DOORS) {
+      pads[d.room]?.material.color.set(gatheredAt === d.room && teamColor ? teamColor : PAD_IDLE);
+      doors[d.room]?.material.color.set(openRooms.includes(d.room) ? DOOR_OPEN : DOOR_CLOSED);
+    }
+  }, [pads, doors, openRooms, gatheredAt, teamColor]);
+
   return (
     <group>
-      {HUB_DOORS.map((d) => (
-        <DoorPad
-          key={d.room}
-          door={d}
-          open={openRooms.includes(d.room)}
-          teamColor={gatheredAt === d.room ? myTeam!.color : null}
-          names={plates.names}
-          soon={plates.soon}
-        />
-      ))}
+      {HUB_DOORS.map((d) => {
+        const node = doors[d.room];
+        if (!node || openRooms.includes(d.room)) return null;
+        return (
+          <mesh
+            key={d.room}
+            position={[d.x, STICKER_Y, node.frontZ + node.facing * STICKER_OUT]}
+            rotation={[0, node.facing === 1 ? 0 : Math.PI, 0]}
+            material={soon.material}
+            renderOrder={2}
+          >
+            <planeGeometry args={[STICKER_H * soon.aspect, STICKER_H]} />
+          </mesh>
+        );
+      })}
     </group>
   );
 }

@@ -1,7 +1,7 @@
-import { Suspense, useEffect, useMemo, useState, type ReactNode } from "react";
-import { Canvas } from "@react-three/fiber";
+import { Suspense, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
+import { Canvas, useFrame } from "@react-three/fiber";
 import { KeyboardControls, useProgress } from "@react-three/drei";
-import { Object3D } from "three";
+import { Object3D, type DirectionalLight } from "three";
 import type { Room } from "@colyseus/sdk";
 // TYPE-ONLY: schema decorators must never enter the browser bundle.
 import type { WorldState } from "@caysonverse/shared/schema";
@@ -80,6 +80,37 @@ export interface PlayShellProps {
    * it inside its teacher panel instead (`hudColumn`), so it passes false.
    */
   adminPanel?: boolean;
+  /**
+   * Half-size (m) of the sun's shadow box when it should FOLLOW the local player instead of covering the whole map
+   * (default: the whole map). A long map (the hub: hall + a 34 m corridor) would stretch one shadow map over 70 m
+   * and blur every shadow; a box this big around the player keeps the texels small wherever they walk.
+   */
+  shadowFollowHalf?: number;
+}
+
+/**
+ * Keeps the sun's shadow box centred on the local player: every frame the light and its target slide by the
+ * player's position (the light keeps its offset `key` from the target, so the direction never changes). Plain
+ * number writes, nothing allocated.
+ */
+function SunFollow({
+  sun,
+  target,
+  pose,
+  key3,
+}: {
+  sun: RefObject<DirectionalLight | null>;
+  target: Object3D;
+  pose: Pose;
+  key3: readonly [number, number, number];
+}) {
+  useFrame(() => {
+    const light = sun.current;
+    if (!light) return;
+    target.position.set(pose.x, 0, pose.z);
+    light.position.set(pose.x + key3[0], key3[1], pose.z + key3[2]);
+  });
+  return null;
 }
 
 function renderSlot(slot: ShellSlot, shell: ShellFrame): ReactNode {
@@ -175,7 +206,8 @@ export function PlayShell(p: PlayShellProps) {
   const b = p.activeMap.geometry.bounds;
   const cx = (b.minX + b.maxX) / 2;
   const cz = (b.minZ + b.maxZ) / 2;
-  const half = Math.max(b.maxX - b.minX, b.maxZ - b.minZ) / 2 + 4;
+  const half = p.shadowFollowHalf ?? Math.max(b.maxX - b.minX, b.maxZ - b.minZ) / 2 + 4;
+  const sunRef = useRef<DirectionalLight>(null);
   const [kx, ky, kz] = light.key.position;
   const sunTarget = useMemo(() => {
     const o = new Object3D();
@@ -202,6 +234,7 @@ export function PlayShell(p: PlayShellProps) {
         <hemisphereLight args={[light.hemi[0], light.hemi[1], light.hemi[2]]} />
         <primitive object={sunTarget} />
         <directionalLight
+          ref={sunRef}
           castShadow={profile.shadows}
           color={light.key.color}
           intensity={light.key.intensity}
@@ -215,6 +248,9 @@ export function PlayShell(p: PlayShellProps) {
           shadow-camera-top={half}
           shadow-camera-bottom={-half}
         />
+        {p.shadowFollowHalf !== undefined && profile.shadows && (
+          <SunFollow sun={sunRef} target={sunTarget} pose={pose} key3={light.key.position} />
+        )}
 
         <KeyboardControls map={MOVE_KEYS}>
           <Suspense fallback={null}>
