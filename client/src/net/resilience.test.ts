@@ -236,7 +236,7 @@ describe("F5 — admin status is reconciled with what the server actually grante
 
 describe("D2 — deterministic rejections surface the real reason immediately", () => {
   it("does NOT retry a server-authored (Hangul) rejection and shows it verbatim", async () => {
-    // denySet kick in the lost-4001 race: every attempt is refused with the same
+    // denySet kick in the lost-kick-close race: every attempt is refused with the same
     // Korean reason. It must terminate on the FIRST attempt, not after ~31s.
     h.joinRoom.mockRejectedValue(new Error("입장이 제한되었습니다")); // 입장이 제한되었습니다
 

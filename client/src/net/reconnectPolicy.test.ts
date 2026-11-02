@@ -12,7 +12,8 @@ import {
 } from "./reconnectPolicy";
 
 describe("decideLeave (leave-code → action table)", () => {
-  it("maps the kick code (4001) to entry + kick notice + no reconnect", () => {
+  it("maps the kick code (4101) to entry + kick notice + no reconnect", () => {
+    expect(KICK_CLOSE_CODE).toBe(4101);
     expect(decideLeave(KICK_CLOSE_CODE, false)).toEqual({
       action: "entry",
       notice: KICKED_NOTICE,
@@ -41,10 +42,21 @@ describe("decideLeave (leave-code → action table)", () => {
     }
   });
 
-  it("only the exact kick code (4001) — not its neighbours — blocks reconnection", () => {
+  it("only the exact kick code (4101) — not its neighbours — blocks reconnection", () => {
     expect(decideLeave(KICK_CLOSE_CODE, false).action).toBe("entry");
     expect(decideLeave(KICK_CLOSE_CODE + 1, false).action).toBe("reconnect");
-    expect(decideLeave(KICK_CLOSE_CODE - 1, false).action).toBe("entry"); // 4000 = consented
+    expect(decideLeave(KICK_CLOSE_CODE - 1, false).action).toBe("reconnect");
+  });
+
+  it("a server shutdown (Colyseus SERVER_SHUTDOWN 4001) reconnects; only 4101 is a kick (ruling E3)", () => {
+    // A production restart/deploy closes every client with 4001. That must look like
+    // a dropped connection (reconnect → same code back in), never like a kick.
+    expect(decideLeave(4001, false)).toEqual({ action: "reconnect" });
+    expect(decideLeave(4101, false)).toEqual({
+      action: "entry",
+      notice: KICKED_NOTICE,
+      kick: true,
+    });
   });
 });
 
@@ -112,7 +124,7 @@ describe("fresh-join retry policy (D2 — don't hammer deterministic rejections)
   });
 
   it("surfaces the real Korean reason for a terminal deterministic rejection", () => {
-    // The kicked-user-in-lost-4001-race path: show the denySet reason immediately.
+    // The kicked-user-in-lost-kick-close-race path: show the denySet reason immediately.
     expect(joinErrorNotice(KICK_DENY)).toBe("입장이 제한되었습니다"); // 입장이 제한되었습니다
     expect(joinErrorNotice(NICK_RULE)).toBe("닉네임은 2~12자여야 합니다"); // verbatim
   });

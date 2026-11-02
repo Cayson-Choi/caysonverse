@@ -8,7 +8,7 @@
 //      [공지 보내기] → the top banner appears in BOTH tabs (schema state, not a
 //      broadcast). Screenshot tab B with the banner.
 //   3. A clicks [공지 지우기] → the banner disappears in BOTH tabs.
-//   4. A clicks [강퇴] on 밥이's row then [확인] → tab B is closed with code 4001
+//   4. A clicks [강퇴] on 밥이's row then [확인] → tab B is closed with code 4101 (KICK_CLOSE_CODE)
 //      and lands on the entry screen showing `관리자에 의해 퇴장되었습니다`.
 //      Screenshot tab B's entry.
 //   5. B re-fills 밥이 and submits again → the join is REJECTED with
@@ -214,7 +214,7 @@ async function main() {
     console.error("\nE2E FAILED:\n- " + failures.join("\n- "));
     process.exit(1);
   }
-  console.log("\nE2E PASSED — banner shown to both tabs + cleared, 밥이 kicked (4001), same-name rejoin denied.");
+  console.log("\nE2E PASSED — banner shown to both tabs + cleared, 밥이 kicked (4101), same-name rejoin denied.");
 }
 
 main();

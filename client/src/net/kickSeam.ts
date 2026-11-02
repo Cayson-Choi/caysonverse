@@ -1,7 +1,7 @@
 /**
  * Kick reconnection SEAM for Task 11.
  *
- * When this client is kicked (room leave code 4001), we persist a
+ * When this client is kicked (room leave code KICK_CLOSE_CODE = 4101), we persist a
  * session-scoped flag. Task 11 will add auto-reconnection; its logic MUST check
  * `wasKicked()` and REFUSE to auto-reconnect a kicked session (a kick is not a
  * transient network drop). The flag is cleared when the user deliberately
@@ -15,7 +15,7 @@
 
 const KICK_FLAG = "cv.kicked";
 
-/** Mark this session as kicked (called from the leave handler on code 4001). */
+/** Mark this session as kicked (called from the leave handler on KICK_CLOSE_CODE). */
 export function markKicked(): void {
   try {
     sessionStorage.setItem(KICK_FLAG, "1");

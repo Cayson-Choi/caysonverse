@@ -140,14 +140,19 @@ export const ANNOUNCE_MAX_LENGTH = 300;
  * `room.onLeave(code)`. The client maps exactly this code to the kicked UX
  * (entry screen + Korean notice + no auto-reconnect); every other code is an
  * ordinary disconnect. Shared so client and server agree on one value.
+ *
+ * Deliberately OUTSIDE the codes Colyseus sends itself (CONSENTED 4000,
+ * SERVER_SHUTDOWN 4001, WITH_ERROR 4002, FAILED_TO_RECONNECT 4003, MAY_TRY_RECONNECT
+ * 4010): it used to be 4001, so a server restart (every client closed with 4001)
+ * looked like a kick and nobody reconnected (ruling E3).
  */
-export const KICK_CLOSE_CODE = 4001;
+export const KICK_CLOSE_CODE = 4101;
 
 /**
  * Reconnection grace window in SECONDS. On an unexpected drop the server marks
  * the player `connected = false` and calls `allowReconnection(client, this)`;
  * the client has this long to re-establish the SAME session (same avatar and
- * position) before the server removes the player permanently. Kicks (4001) and
+ * position) before the server removes the player permanently. Kicks (KICK_CLOSE_CODE) and
  * consented leaves bypass this window entirely (immediate removal). Shared so the
  * server window and the client's transient-reconnect budget agree on one value.
  */

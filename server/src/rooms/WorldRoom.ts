@@ -249,7 +249,7 @@ export class WorldRoom extends PlayerRoom<WorldState, WorldTracking> {
   }
 
   /**
-   * Permanent departure: a consented leave, a kick (4001), or a reconnection
+   * Permanent departure: a consented leave, a kick (KICK_CLOSE_CODE), or a reconnection
    * window that expired. (onDrop / onReconnect come from PlayerRoom unchanged:
    * a kick opens no window, any other drop leaves a ghost for the window.)
    */
@@ -327,7 +327,7 @@ export class WorldRoom extends PlayerRoom<WorldState, WorldTracking> {
    * Kick pipeline: sender MUST be admin (else silent drop). The target must
    * exist and must not be the admin themselves. On kick, add the target to the
    * denySet by NORMALIZED NICKNAME ONLY so a same-name rejoin is blocked, then
-   * close the target's connection with KICK_CLOSE_CODE (4001) — the client maps
+   * close the target's connection with KICK_CLOSE_CODE (4101) — the client maps
    * exactly that code to the kicked UX.
    *
    * We deliberately do NOT ban the IP (final-review F7): behind Railway the IP is

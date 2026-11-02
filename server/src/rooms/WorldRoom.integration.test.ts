@@ -13,6 +13,7 @@ import {
   JUMP_RATE,
   ROLE_STUDENT,
   ROLE_TEACHER,
+  KICK_CLOSE_CODE,
 } from "@caysonverse/shared/constants";
 import { MessageType } from "@caysonverse/shared/messages";
 import type {
@@ -555,7 +556,7 @@ describe("WorldRoom admin (integration)", () => {
     expect(room.state.announcement).toBe("");
   });
 
-  it("kicks a target: closes with 4001 and blocks a same-nickname rejoin", async () => {
+  it("kicks a target: closes with KICK_CLOSE_CODE (4101) and blocks a same-nickname rejoin", async () => {
     process.env.ADMIN_CODE = ADMIN_CODE;
     const room = await colyseus.createRoom<WorldRoom>(WORLD_ROOM);
     const admin = await colyseus.connectTo(room, { ...ADMIN_JOIN, adminCode: ADMIN_CODE });
@@ -570,7 +571,8 @@ describe("WorldRoom admin (integration)", () => {
     await room.waitForNextMessage();
 
     expect(await pollFor(() => leaveCode !== null)).toBe(true);
-    expect(leaveCode).toBe(4001);
+    expect(leaveCode).toBe(KICK_CLOSE_CODE);
+    expect(leaveCode).not.toBe(4001); // 4001 is Colyseus SERVER_SHUTDOWN (ruling E3)
     await flush();
     expect(room.state.players.has(bob.sessionId)).toBe(false);
 

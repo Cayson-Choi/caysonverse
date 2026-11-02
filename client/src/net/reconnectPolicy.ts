@@ -7,11 +7,11 @@
  *
  * Close-code semantics observed in the installed Colyseus 0.17 SDK
  * (see @colyseus/shared-types CloseCode + colyseus.js Room):
- * - 4001 (KICK_CLOSE_CODE): admin kick → entry + kick notice, NO auto-reconnect.
+ * - 4101 (KICK_CLOSE_CODE): admin kick → entry + kick notice, NO auto-reconnect.
  * - 4000 (CONSENTED) / 1000 (NORMAL_CLOSURE): deliberate/clean close → entry.
  * - 1001/1005/1006/4010 (GOING_AWAY/NO_STATUS/ABNORMAL/MAY_TRY_RECONNECT) and any
- *   other code (e.g. 4002 WITH_ERROR, 4003 FAILED_TO_RECONNECT): unexpected →
- *   run the reconnect flow.
+ *   other code (e.g. 4001 SERVER_SHUTDOWN — a server restart/deploy, 4002 WITH_ERROR,
+ *   4003 FAILED_TO_RECONNECT): unexpected → run the reconnect flow.
  */
 
 import { KICK_CLOSE_CODE } from "@caysonverse/shared/constants";
