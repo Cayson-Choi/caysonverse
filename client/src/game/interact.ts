@@ -10,10 +10,28 @@
 import { SEATS, nearestFreeSeat } from "@caysonverse/shared/worldMap";
 import { NPC_CLOSE_RADIUS, NPC_TALK_RADIUS, nearestNpc, npcDistance, type NpcId } from "./npc";
 
+/**
+ * Something a scene offers besides the world's chairs and 조교 (AI 학교 탈출, Task 16): the team
+ * rug in the hall, a door pad in the corridor, and — in a classroom — the objects. A scene plugs
+ * its list in through interactTargets.ts; `dist` is metres from the player to the target.
+ */
+export interface InteractTarget {
+  kind: "teamDesk" | "door" | "object";
+  id: string;
+  dist: number;
+  icon: string;
+  label: string;
+  /** The word for the 60 px round touch button, when `label` is too long for it. */
+  short?: string;
+  /** Pressed and held (a lone member's coop switch) instead of tapped. */
+  hold?: boolean;
+}
+
 export type Interaction =
   | { kind: "sit"; seatIndex: number }
   | { kind: "stand" }
-  | { kind: "talk"; npc: NpcId };
+  | { kind: "talk"; npc: NpcId }
+  | { kind: "target"; target: InteractTarget };
 
 /** What is within reach right now. `dist` is metres from the player to the target. */
 export interface InteractInput {
@@ -24,29 +42,45 @@ export interface InteractInput {
   npc: { id: NpcId; dist: number } | null;
   /** An NPC chat panel is already open. */
   npcPanelOpen: boolean;
+  /** What the active scene offers (hub, classroom). Absent in the world. */
+  targets?: readonly InteractTarget[];
 }
 
 /**
  * The one thing E / F / the button would do now, or null.
  *  - Seated → stand, whatever is nearby (the seat is the only thing you can do).
- *  - Seat and 조교 both in reach → the nearer one; an exact tie goes to sit.
+ *  - Seat, 조교 and scene targets in reach → the nearest; an exact tie goes seat > 조교 > target
+ *    (and between two targets, to the earlier one in the list).
  *  - While a chat panel is open, "talk" is not offered (you are already talking).
  */
 export function pickInteraction(i: InteractInput): Interaction | null {
   if (i.seated) return { kind: "stand" };
   const npc = i.npcPanelOpen ? null : i.npc;
-  if (i.seat && npc) {
-    return npc.dist < i.seat.dist
-      ? { kind: "talk", npc: npc.id }
-      : { kind: "sit", seatIndex: i.seat.index };
+  let best: Interaction | null = null;
+  let bestDist = Infinity;
+  // Strict `<`: of equal distances the one considered first wins.
+  if (i.seat) {
+    best = { kind: "sit", seatIndex: i.seat.index };
+    bestDist = i.seat.dist;
   }
-  if (i.seat) return { kind: "sit", seatIndex: i.seat.index };
-  if (npc) return { kind: "talk", npc: npc.id };
-  return null;
+  if (npc && npc.dist < bestDist) {
+    best = { kind: "talk", npc: npc.id };
+    bestDist = npc.dist;
+  }
+  const targets = i.targets;
+  if (targets) {
+    let nearest: InteractTarget | null = null;
+    for (let k = 0; k < targets.length; k++) {
+      if (nearest === null || targets[k].dist < nearest.dist) nearest = targets[k];
+    }
+    if (nearest !== null && nearest.dist < bestDist) best = { kind: "target", target: nearest };
+  }
+  return best;
 }
 
-/** Icon for the button: the chair for sit/stand, a speech bubble for the 조교. */
-export function interactionIcon(i: Interaction): "🪑" | "💬" {
+/** Icon for the button: the chair for sit/stand, a speech bubble for the 조교, the target's own otherwise. */
+export function interactionIcon(i: Interaction): string {
+  if (i.kind === "target") return i.target.icon;
   return i.kind === "talk" ? "💬" : "🪑";
 }
 
@@ -59,11 +93,14 @@ export function interactionLabel(i: Interaction): string {
       return "일어서기";
     case "talk":
       return "조교와 대화";
+    case "target":
+      return i.target.label;
   }
 }
 
 /** Short label for the 60 px round touch button ("조교와 대화" would not fit). */
 export function interactionShortLabel(i: Interaction): string {
+  if (i.kind === "target") return i.target.short ?? i.target.label;
   return i.kind === "talk" ? "대화" : interactionLabel(i);
 }
 
@@ -91,20 +128,29 @@ export function interactNow(
   refresh();
 }
 
-/** Whether two picks are the same action on the same target (null equals null). */
+/**
+ * Whether two picks are the same action on the same target (null equals null). A scene target
+ * counts as the same while the button would look and do the same — its id, icon and words — not
+ * its distance, which changes with every step.
+ */
 export function sameInteraction(a: Interaction | null, b: Interaction | null): boolean {
   if (a === b) return true;
   if (!a || !b || a.kind !== b.kind) return false;
   if (a.kind === "sit" && b.kind === "sit") return a.seatIndex === b.seatIndex;
   if (a.kind === "talk" && b.kind === "talk") return a.npc === b.npc;
+  if (a.kind === "target" && b.kind === "target") {
+    const x = a.target;
+    const y = b.target;
+    return x.kind === y.kind && x.id === y.id && x.icon === y.icon && x.label === y.label && x.short === y.short && x.hold === y.hold;
+  }
   return true; // stand === stand
 }
 
 /**
  * Read the world around `(x, z)` into an `InteractInput`. `seatIndex` is the local
  * player's own server-confirmed seat (-1 standing); `isOccupied` reports seats taken
- * by ANY player (self + remotes). Allocates one small object — call it at the
- * ~5 Hz UI cadence or on a key press, never per frame.
+ * by ANY player (self + remotes); `targets` is what the active scene offers (interactTargets.ts).
+ * Allocates one small object — call it at the ~5 Hz UI cadence or on a key press, never per frame.
  */
 export function interactInputAt(
   x: number,
@@ -112,6 +158,7 @@ export function interactInputAt(
   seatIndex: number,
   isOccupied: (index: number) => boolean,
   npcPanelOpen: boolean,
+  targets?: readonly InteractTarget[],
 ): InteractInput {
   const seated = seatIndex >= 0;
   let seat: InteractInput["seat"] = null;
@@ -123,5 +170,5 @@ export function interactInputAt(
   }
   const near = nearestNpc(x, z, NPC_TALK_RADIUS);
   const npc = near ? { id: near.id, dist: npcDistance(near.id, x, z) } : null;
-  return { seated, seat, npc, npcPanelOpen };
+  return { seated, seat, npc, npcPanelOpen, targets };
 }

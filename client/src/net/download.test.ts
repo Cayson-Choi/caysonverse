@@ -58,7 +58,26 @@ describe("downloadCsv", () => {
     }
   });
 
-  it("does not add a second BOM: the server's CSV already starts with one", async () => {
+  it("puts the BOM back when the transport dropped it (the browser's decoder strips a leading U+FEFF)", async () => {
+    let saved: Blob | null = null;
+    vi.stubGlobal("document", {
+      createElement: () => ({ href: "", download: "", style: {}, click() {}, remove() {} }),
+      body: { appendChild() {} },
+    });
+    vi.stubGlobal("URL", {
+      createObjectURL: (b: Blob) => {
+        saved = b;
+        return "blob:x";
+      },
+      revokeObjectURL() {},
+    });
+    downloadCsv("a.csv", "팀,교실" + String.fromCharCode(13, 10));
+    const bytes = new Uint8Array(await saved!.arrayBuffer());
+    // EF BB BF, then "팀" (ED 8C 80).
+    expect([...bytes.slice(0, 6)]).toEqual([0xef, 0xbb, 0xbf, 0xed, 0x8c, 0x80]);
+  });
+
+  it("does not add a second BOM: a CSV that still starts with one is saved as is", async () => {
     let saved: Blob | null = null;
     vi.stubGlobal("document", {
       createElement: () => ({ href: "", download: "", style: {}, click() {}, remove() {} }),

@@ -29,11 +29,11 @@ interface Row {
  * input uses (uiCapture.ts), so typing an announcement never walks the avatar.
  * On focus leaving the panel entirely the flag is released.
  */
-export function AdminPanel() {
+export function AdminPanel({ defaultOpen = !isTouchDevice }: { defaultOpen?: boolean } = {}) {
   const identity = useAppStore((s) => s.identity);
   const roster = useSyncExternalStore(subscribeRoster, getRoster, getRoster);
 
-  const [open, setOpen] = useState(!isTouchDevice);
+  const [open, setOpen] = useState(defaultOpen);
   const [text, setText] = useState("");
   const [confirmSid, setConfirmSid] = useState<string | null>(null);
 

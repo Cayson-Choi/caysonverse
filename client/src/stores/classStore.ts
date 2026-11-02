@@ -36,6 +36,9 @@ export interface TeamRow {
   id: string;
   /** The display name everybody reads, e.g. "햇살(파랑)". */
   name: string;
+  /** Indices into TEAM_NAMES / TEAM_COLORS — the team panel works out which pairs are still free from them (`freeCombos`). */
+  nameIndex: number;
+  colorIndex: number;
   color: string;
   members: TeamMemberRow[];
   escaped: RoomId[];
@@ -94,6 +97,8 @@ export function teamRows(state: ClassState, selfSid: string): TeamRow[] {
     rows.push({
       id,
       name: teamDisplayName(team.nameIndex, team.colorIndex),
+      nameIndex: team.nameIndex,
+      colorIndex: team.colorIndex,
       color: TEAM_COLORS[team.colorIndex] ?? UNKNOWN_TEAM_COLOR,
       members,
       escaped: roomIdsOf(team.escaped),

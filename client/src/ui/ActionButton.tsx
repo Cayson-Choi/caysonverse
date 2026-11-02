@@ -5,6 +5,7 @@ import { getRoom, sendSit, sendStand } from "../net/connection";
 import { getRemoteSeatIndices } from "../game/remoteStore";
 import { getActiveMap } from "../game/activeMap";
 import { onHotkey } from "../game/hotkeys";
+import { fireTarget, getTargets } from "../game/interactTargets";
 import {
   interactInputAt,
   interactNow,
@@ -38,13 +39,19 @@ function perform(it: Interaction): void {
     case "talk":
       useNpcStore.getState().openPanel(it.npc);
       break;
+    case "target":
+      // The scene decides what its target does (the hall: the team panel, "enter"). A tap is a press;
+      // the release half belongs to hold targets (a classroom's hold switch, Task 19).
+      fireTarget(it.target, "press");
+      break;
   }
 }
 
 /**
  * The one context button (DOM overlay above the canvas) and the E / F key behind it:
- * sit on a nearby free chair, stand up, or talk to a nearby AI 조교 — whichever is
- * nearest (interact.ts decides). Renders nothing when there is nothing to do.
+ * sit on a nearby free chair, stand up, talk to a nearby AI 조교, or use what the active scene
+ * offers (the hall's team rug and door pads, a classroom's objects — interactTargets.ts) —
+ * whichever is nearest (interact.ts decides). Renders nothing when there is nothing to do.
  *
  *  - Touch: a 60 px round button right above the 72 px JumpButton (icon + short label),
  *    pinned to the rectangle game/hud.ts `touchHudLayout` gives it.
@@ -87,24 +94,25 @@ export function ActionButton({ pose, seat }: { pose: Pose; seat: SeatState }) {
     const npcState = useNpcStore.getState();
     // The conversation ends when you walk away from the assistant you were talking to.
     if (shouldClosePanel(npcState.activeNpc, pose.x, pose.z)) npcState.closePanel();
-    // Seats and AI 조교 exist in the legacy world only (ruling E6): elsewhere nothing is offered.
-    if (!getActiveMap().seatsAndNpcs) {
-      if (current.current !== null) {
-        current.current = null;
-        setInteraction(null);
-      }
-      return null;
+    // What the active scene offers (the school maps: the hall's rug and pads; empty in the world).
+    const targets = getTargets(pose);
+    let next: Interaction | null;
+    if (getActiveMap().seatsAndNpcs) {
+      const occupied = new Set(getRemoteSeatIndices());
+      next = pickInteraction(
+        interactInputAt(
+          pose.x,
+          pose.z,
+          seat.index,
+          (i) => occupied.has(i),
+          useNpcStore.getState().activeNpc !== null,
+          targets,
+        ),
+      );
+    } else {
+      // Seats and AI 조교 exist in the legacy world only (ruling E6): a school map offers its targets and nothing else.
+      next = pickInteraction({ seated: false, seat: null, npc: null, npcPanelOpen: false, targets });
     }
-    const occupied = new Set(getRemoteSeatIndices());
-    const next = pickInteraction(
-      interactInputAt(
-        pose.x,
-        pose.z,
-        seat.index,
-        (i) => occupied.has(i),
-        useNpcStore.getState().activeNpc !== null,
-      ),
-    );
     if (!sameInteraction(next, current.current)) {
       current.current = next;
       setInteraction(next);

@@ -96,6 +96,8 @@ describe("teamRows", () => {
     expect(pungseon).toEqual({
       id: "team-1",
       name: "풍선(빨강)",
+      nameIndex: 1,
+      colorIndex: 0,
       color: TEAM_COLORS[0],
       members: [
         { sid: "s1", nickname: "가람", inEscape: false },

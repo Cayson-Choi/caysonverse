@@ -11,11 +11,22 @@ import {
   shouldClosePanel,
   type Interaction,
   type InteractInput,
+  type InteractTarget,
 } from "./interact";
 import { NPCS, NPC_CLOSE_RADIUS, NPC_TALK_RADIUS } from "./npc";
 
 const base: InteractInput = { seated: false, seat: null, npc: null, npcPanelOpen: false };
 const free = () => false;
+
+/** A hub target (Task 16); `over` changes whatever a test cares about. */
+const t = (over: Partial<InteractTarget> = {}): InteractTarget => ({
+  kind: "teamDesk",
+  id: "teamDesk",
+  dist: 1,
+  icon: "👥",
+  label: "팀 만들기",
+  ...over,
+});
 
 describe("pickInteraction", () => {
   it("seated → stand, whatever is nearby", () => {
@@ -70,6 +81,74 @@ describe("pickInteraction", () => {
     ).toEqual({ kind: "sit", seatIndex: 5 });
     expect(pickInteraction(base)).toBeNull();
     expect(pickInteraction({ ...base, npcPanelOpen: true })).toBeNull();
+  });
+});
+
+describe("pickInteraction with hub targets (Task 16)", () => {
+  it("pickInteraction: a nearer target beats a farther NPC; seated still stands", () => {
+    expect(pickInteraction({ ...base, npc: { id: "hall", dist: 2 }, targets: [t({ dist: 1 })] })).toEqual({
+      kind: "target",
+      target: t({ dist: 1 }),
+    });
+    // The NPC is nearer → the NPC.
+    expect(pickInteraction({ ...base, npc: { id: "hall", dist: 0.5 }, targets: [t({ dist: 1 })] })).toEqual({
+      kind: "talk",
+      npc: "hall",
+    });
+    // Seated: stand, whatever targets are around.
+    expect(pickInteraction({ ...base, seated: true, targets: [t({ dist: 0.1 })] })).toEqual({ kind: "stand" });
+  });
+
+  it("a tie goes seat > 조교 > target", () => {
+    const seat = { index: 2, dist: 1 };
+    const npc = { id: "hall" as const, dist: 1 };
+    expect(pickInteraction({ ...base, seat, npc, targets: [t({ dist: 1 })] })).toEqual({ kind: "sit", seatIndex: 2 });
+    expect(pickInteraction({ ...base, npc, targets: [t({ dist: 1 })] })).toEqual({ kind: "talk", npc: "hall" });
+    expect(pickInteraction({ ...base, targets: [t({ dist: 1 })] })).toEqual({ kind: "target", target: t({ dist: 1 }) });
+  });
+
+  it("the nearest of several targets wins; the first of equals", () => {
+    const far = t({ id: "far", kind: "door", dist: 3 });
+    const near = t({ id: "near", kind: "door", dist: 0.4 });
+    const twin = t({ id: "twin", kind: "door", dist: 0.4 });
+    expect(pickInteraction({ ...base, targets: [far, near, twin] })).toEqual({ kind: "target", target: near });
+    expect(pickInteraction({ ...base, targets: [far] })).toEqual({ kind: "target", target: far });
+  });
+
+  it("an open 조교 panel hides the 조교 but not a target; no targets → as before", () => {
+    expect(
+      pickInteraction({ ...base, npc: { id: "hall", dist: 0.2 }, npcPanelOpen: true, targets: [t({ dist: 2 })] }),
+    ).toEqual({ kind: "target", target: t({ dist: 2 }) });
+    expect(pickInteraction({ ...base, targets: [] })).toBeNull();
+    expect(pickInteraction({ ...base, targets: undefined })).toBeNull();
+  });
+
+  it("a target brings its own icon and label; the touch button uses `short` when there is one", () => {
+    const enter = t({ kind: "door", id: "counsel", icon: "🚪", label: "입장 (팀원 2명)", short: "입장" });
+    const it1: Interaction = { kind: "target", target: enter };
+    expect(interactionIcon(it1)).toBe("🚪");
+    expect(interactionLabel(it1)).toBe("입장 (팀원 2명)");
+    expect(interactionShortLabel(it1)).toBe("입장");
+    const desk: Interaction = { kind: "target", target: t() };
+    expect(interactionShortLabel(desk)).toBe("팀 만들기");
+  });
+
+  it("sameInteraction tells targets apart by id and by what the button says", () => {
+    const a: Interaction = { kind: "target", target: t({ kind: "door", id: "counsel", label: "입장 (팀원 2명)" }) };
+    const same: Interaction = { kind: "target", target: t({ kind: "door", id: "counsel", label: "입장 (팀원 2명)", dist: 2 }) };
+    const moreMembers: Interaction = { kind: "target", target: t({ kind: "door", id: "counsel", label: "입장 (팀원 3명)" }) };
+    const other: Interaction = { kind: "target", target: t({ kind: "door", id: "library", label: "입장 (팀원 2명)" }) };
+    expect(sameInteraction(a, same)).toBe(true); // the distance changes every step; the button does not
+    expect(sameInteraction(a, moreMembers)).toBe(false);
+    expect(sameInteraction(a, other)).toBe(false);
+    expect(sameInteraction(a, { kind: "stand" })).toBe(false);
+    expect(sameInteraction(a, null)).toBe(false);
+  });
+
+  it("interactInputAt carries the targets it is given", () => {
+    const targets = [t()];
+    expect(interactInputAt(500, 500, -1, free, false, targets).targets).toBe(targets);
+    expect(interactInputAt(500, 500, -1, free, false).targets).toBeUndefined();
   });
 });
 

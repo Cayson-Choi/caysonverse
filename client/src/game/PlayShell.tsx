@@ -70,6 +70,11 @@ export interface PlayShellProps {
   hud: ShellSlot;
   /** Extra rows under the top-left 👥 column (after the touch chat log and the admin panel). */
   hudColumn?: ReactNode;
+  /**
+   * Whether the teacher's own admin panel hangs in the top-left column (default true). The hall hosts
+   * it inside its teacher panel instead (`hudColumn`), so it passes false.
+   */
+  adminPanel?: boolean;
 }
 
 function renderSlot(slot: ShellSlot, shell: ShellFrame): ReactNode {
@@ -213,10 +218,10 @@ export function PlayShell(p: PlayShellProps) {
       {isTouchDevice ? <EmojiFan /> : <EmojiPalette />}
       <HudTop pose={pose} onToggleView={toggleViewUnlessMap} onToggleOverview={() => toggleOverview()}>
         {isTouchDevice && <ChatLog />}
-        {isAdmin && <AdminPanel />}
+        {isAdmin && p.adminPanel !== false && <AdminPanel />}
         {p.hudColumn}
       </HudTop>
-      {/* E / F and the context button (on the school maps nothing yet: no seats, no 조교 — E6). */}
+      {/* E / F and the context button (on the school maps: the scene's own targets only, no seats, no 조교 — E6). */}
       <ActionButton pose={pose} seat={seat} />
       {isTouchDevice && <JumpButton sessionId={identity.sessionId} />}
       {isTouchDevice && <TouchJoystick moveInput={moveInput} leftHanded={leftHanded} />}

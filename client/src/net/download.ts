@@ -1,7 +1,10 @@
 /**
  * The teacher's results CSV: its file name and the browser save. The server builds the CSV
- * (`ClassMsg.ResultsCsv`, nicknames only, already starting with a UTF-8 BOM so Excel reads the
- * Hangul); the client only names it and hands it to the browser.
+ * (`ClassMsg.ResultsCsv`, nicknames only, starting with a UTF-8 BOM so Excel reads the Hangul); the
+ * client names it and hands it to the browser. The BOM does not survive the trip — the browser's
+ * message decoder reads the text as UTF-8 and drops a leading U+FEFF (seen in the Task 16 browser
+ * check: the received string starts at the first header cell) — so `downloadCsv` makes sure the
+ * saved file starts with exactly one.
  */
 
 const two = (n: number): string => String(n).padStart(2, "0");
@@ -21,9 +24,11 @@ export function resultsFilename(code: string, d: Date): string {
 /** How long the temporary object URL lives after the click (the save has started by then). */
 const REVOKE_AFTER_MS = 1000;
 
-/** Save `csv` as `filename` through a temporary a[download] link. The text is saved as is (no extra BOM). */
+const BOM = "\uFEFF";
+
+/** Save `csv` as `filename` through a temporary a[download] link, starting with exactly one UTF-8 BOM. */
 export function downloadCsv(filename: string, csv: string): void {
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const blob = new Blob([csv.startsWith(BOM) ? csv : BOM + csv], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;

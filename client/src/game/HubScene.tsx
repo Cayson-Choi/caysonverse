@@ -1,19 +1,35 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useFrame } from "@react-three/fiber";
-import { EAST_CORRIDOR, EAST_GATE, HALL, TEAM_ZONE, hubGeometry } from "@caysonverse/shared/school/hubMap";
+import {
+  EAST_CORRIDOR,
+  EAST_GATE,
+  HALL,
+  PROGRESS_BOARD,
+  TEAM_ZONE,
+  hubGeometry,
+} from "@caysonverse/shared/school/hubMap";
 import type { AABB } from "@caysonverse/shared/collision";
+import { ROOM_IDS } from "@caysonverse/shared/escape/constants";
+import { ClassMsg } from "@caysonverse/shared/escape/messages";
 import { PlayShell } from "./PlayShell";
 import { MapBoxes, collidersDebugOn } from "./MapBoxes";
 import { Gate } from "./hub/Gate";
 import { DoorPads } from "./hub/DoorPads";
+import { ProgressBoard } from "./hub/ProgressBoard";
+import { hubTargets } from "./hub/hubTargets";
 import { hubActiveMap } from "./activeMap";
 import { clearClickTarget } from "./clickMove";
+import { setTargetHandler, setTargetSource } from "./interactTargets";
 import type { PlayersRoom } from "./remoteSync";
 import type { Pose } from "./types";
-import { getRoom } from "../net/connection";
+import { getRoom, sendClass } from "../net/connection";
 import { takeHubSnap } from "../net/classSync";
+import { useAppStore } from "../stores/appStore";
 import { useClassStore } from "../stores/classStore";
 import type { Identity } from "../stores/appStore";
+import { HubHud } from "../ui/hub/HubHud";
+import { TeacherPanel } from "../ui/hub/TeacherPanelView";
+import { useHubUi } from "../ui/hub/hubUi";
 
 /**
  * The school hub — the central hall (중앙 홀) and the east corridor (동쪽 복도) of a class
@@ -22,6 +38,11 @@ import type { Identity } from "../stores/appStore";
  * under the bright-day lighting, with the hub's own 3D parts: for now TEMPORARY boxes for the
  * walls and props (`MapBoxes`; the hub model replaces them in Task 23), the floors, the east
  * `Gate` and the corridor's `DoorPads`.
+ *
+ * Task 16 adds the hall's life: the progress board on the north wall, the targets the context button
+ * offers (the team rug's "팀 만들기", a door pad's "입장" / "팀에게 가기" — hubTargets.ts, plugged in through
+ * interactTargets.ts) and the hall's DOM (team panel, phase banner, notice toast, and for the teacher the
+ * teacher panel in the top-left column).
  *
  * Class sync is NOT started here: the connection layer binds it for the whole class session
  * (classSync.ts). This scene reads the class store (discrete state) and, every frame, takes the
@@ -68,10 +89,12 @@ function HubWorld({ pose, gateOpen, debugColliders }: { pose: Pose; gateOpen: bo
       <FloorRect box={EAST_CORRIDOR} color="#D9D2C6" />
       {/* The team-building rug (no collider: anyone may step on it). */}
       <FloorRect box={TEAM_ZONE} color="#B9A8F5" y={0.01} opacity={0.75} />
-      <MapBoxes geometry={geometry} skip={[EAST_GATE]} />
+      {/* The progress board is drawn by ProgressBoard on its footprint, the gate by Gate. */}
+      <MapBoxes geometry={geometry} skip={[EAST_GATE, PROGRESS_BOARD]} />
       {debugColliders && <MapBoxes geometry={geometry} variant="wire" />}
       <Gate open={gateOpen} />
       <DoorPads />
+      <ProgressBoard />
       <HubSnap pose={pose} />
     </>
   );
@@ -95,8 +118,51 @@ function HubTitle() {
   );
 }
 
+/**
+ * Plug the hall's targets into the context button (interactTargets.ts) for this scene's lifetime.
+ * The source runs at the button's ~5 Hz pass: it reads the class store once, asks `hubTargets`, files
+ * the guidance line for the floor and returns the targets. Pressing one opens the team panel (the rug)
+ * or sends "enter" (a door pad: the leader's 입장, a latecomer's 팀에게 가기 — the same message, the
+ * server tells them apart).
+ */
+function useHubInteractions(selfSid: string, isTeacher: boolean): void {
+  useEffect(() => {
+    setTargetSource((pose) => {
+      const st = useClassStore.getState();
+      const r = hubTargets({
+        x: pose.x,
+        z: pose.z,
+        selfSid,
+        isTeacher,
+        phase: st.phase,
+        openRooms: st.openRooms,
+        myTeam: st.teams.find((t) => t.mine) ?? null,
+      });
+      useHubUi.getState().setInfo(r.info);
+      return r.targets;
+    });
+    setTargetHandler((target, phase) => {
+      if (phase !== "press") return;
+      if (target.kind === "teamDesk") {
+        useHubUi.getState().openTeamPanel();
+      } else if (target.kind === "door") {
+        const room = ROOM_IDS.find((id) => id === target.id);
+        if (room) sendClass(ClassMsg.EnterRoom, { room });
+      }
+    });
+    return () => {
+      setTargetSource(null);
+      setTargetHandler(null);
+      useHubUi.getState().reset();
+    };
+  }, [selfSid, isTeacher]);
+}
+
 export function HubScene({ identity }: { identity: Identity }) {
   const phase = useClassStore((s) => s.phase);
+  // In a class `isAdmin` is the teacher flag (appStore.enterHub).
+  const isTeacher = useAppStore((s) => s.isAdmin);
+  useHubInteractions(identity.sessionId, isTeacher);
   // The server's rule (ClassRoom.geometry): the gate is open while the class runs or is paused.
   const gateOpen = phase === "running" || phase === "paused";
   const [debugColliders] = useState(() => collidersDebugOn());
@@ -112,8 +178,14 @@ export function HubScene({ identity }: { identity: Identity }) {
       lighting="brightDay"
       effects
       world3d={({ pose }) => <HubWorld pose={pose} gateOpen={gateOpen} debugColliders={debugColliders} />}
-      hud={null}
-      hudColumn={<HubTitle />}
+      hud={<HubHud isTeacher={isTeacher} />}
+      adminPanel={false}
+      hudColumn={
+        <>
+          <HubTitle />
+          {isTeacher && <TeacherPanel />}
+        </>
+      }
     />
   );
 }
