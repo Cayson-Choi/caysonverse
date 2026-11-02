@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest";
 import { INSPECT_REACH } from "@caysonverse/shared/escape/constants";
 import type { ObjectKind, RoomContent } from "@caysonverse/shared/escape/messages";
 import { COUNSEL_ANCHORS, COUNSEL_VISUALS, type ObjectAnchor, type VisualBinding } from "@caysonverse/shared/school/counselMap";
-import { escapeActionsLive, escapeTargets, objectKindOf } from "./escapeTargets";
+import { COUNSEL_GEOMETRY } from "@caysonverse/shared/school/counselMap";
+import { isBlocked } from "@caysonverse/shared/collision";
+import { PLAYER_RADIUS } from "@caysonverse/shared/worldMap";
+import { pickInteraction } from "../game/interact";
+import { COOP_PRIORITY, escapeActionsLive, escapeTargets, objectKindOf } from "./escapeTargets";
 
 const OBJECTS: { id: string; label: string; kind: ObjectKind }[] = [
   { id: "counsel_screen", label: "상담 화면", kind: "screen" },
@@ -39,6 +43,47 @@ describe("escapeTargets", () => {
     expect(pair.hold).toBeUndefined();
     const [alone] = near(-4.6, 0, [], true).filter((t) => t.id === "safe_key_left");
     expect(alone).toMatchObject({ kind: "object", icon: "🔑", label: "3초 길게 누르기", hold: true });
+  });
+
+  it("a coop key switch outranks the notes and drawers around it: standing anywhere in reach of a key, E / the button picks the key", () => {
+    const withDrawers = content([
+      ...OBJECTS,
+      { id: "drawer_left", label: "서랍", kind: "inspect" },
+      { id: "drawer_right", label: "서랍", kind: "inspect" },
+      { id: "note_4", label: "쪽지 4", kind: "inspect" },
+    ]);
+    for (const [key, xs] of [
+      ["safe_key_left", [-5.75, -3.0]],
+      ["safe_key_right", [3.0, 5.75]],
+    ] as const) {
+      let withRivals = 0;
+      let spots = 0;
+      for (let x = xs[0]; x <= xs[1]; x += 0.125) {
+        for (let z = -2.5; z <= 2.5; z += 0.125) {
+          if (isBlocked(x, z, PLAYER_RADIUS, COUNSEL_GEOMETRY.obstacles, 0)) continue; // a spot a player can really stand on
+          const ts = near(x, z, [], false, withDrawers);
+          if (!ts.some((t) => t.id === key)) continue;
+          spots++;
+          const pick = pickInteraction({ seated: false, seat: null, npc: null, npcPanelOpen: false, targets: ts });
+          expect(pick, `${key} at (${x}, ${z})`).toMatchObject({ kind: "target", target: { id: key } });
+          if (ts.length > 1) withRivals++;
+          // alone it is the same key, as a hold
+          const solo = near(x, z, [], true, withDrawers);
+          expect(pickInteraction({ seated: false, seat: null, npc: null, npcPanelOpen: false, targets: solo })).toMatchObject({
+            kind: "target",
+            target: { id: key, hold: true },
+          });
+        }
+      }
+      expect(spots, key).toBeGreaterThan(20);
+      expect(withRivals, `${key}: spots where a note or drawer was in reach as well`).toBeGreaterThan(5); // the case that mattered
+    }
+    // Only the switches carry the priority; the nearest plain target still wins among the others.
+    const [flash] = near(3.9, -2.0);
+    expect(flash!.priority).toBeUndefined();
+    expect(near(-4.6, 0).find((x) => x.id === "safe_key_left")!.priority).toBe(COOP_PRIORITY);
+    const noteAndDrawer = near(-3.9, -0.9, [], false, withDrawers).filter((x) => x.kind === "object" && x.id !== "safe_key_left");
+    expect(noteAndDrawer.length).toBeGreaterThan(0);
   });
 
   it("icons and labels by kind: inspect 🔍, screen 📺, door 🚪, switch 🔑", () => {

@@ -17,7 +17,7 @@
 
 import type { AABB } from "../collision";
 import type { RoomId } from "../escape/constants";
-import { HUB_PROP_COLLIDERS } from "./generated/hubColliders";
+import { HUB_PROP_CAMERA_BOXES, HUB_PROP_COLLIDERS } from "./generated/hubColliders";
 import { makeGeometry, wallsAround } from "./geometry";
 import type { Bounds, MapGeometry } from "./geometry";
 
@@ -98,12 +98,16 @@ export const HUB_WALLS: readonly AABB[] = [
   ...wallsAround(EAST_CORRIDOR, [{ side: "w", from: -3, to: 3 }]),
 ];
 
-/** Walls, the west seal, the progress board and the generated prop boxes; the east gate is open. */
+/**
+ * Walls, the west seal, the progress board and the generated prop boxes; the east gate is open. The camera
+ * boxes are the walls and seal plus the tall props (the corridor's 2.2 m locker banks, each with its height).
+ */
 export const HUB_GEOMETRY_OPEN: MapGeometry = makeGeometry(
   "hub-open",
   HUB_BOUNDS,
   [...HUB_WALLS, WEST_SEAL],
   [PROGRESS_BOARD, ...HUB_PROP_COLLIDERS],
+  HUB_PROP_CAMERA_BOXES,
 );
 
 /** The open geometry plus the shut east gate (before the teacher starts the class). */
@@ -112,6 +116,7 @@ export const HUB_GEOMETRY_GATED: MapGeometry = makeGeometry(
   HUB_BOUNDS,
   [...HUB_WALLS, WEST_SEAL, EAST_GATE],
   [PROGRESS_BOARD, ...HUB_PROP_COLLIDERS],
+  HUB_PROP_CAMERA_BOXES,
 );
 
 /** The hub geometry for the gate's state. Returns one of two prebuilt objects (no allocation). */

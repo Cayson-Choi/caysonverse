@@ -11,7 +11,8 @@ import { DialogueQueue } from "./dialogue";
 import { FEED_START, feedDialogue } from "./dialogueFeed";
 import { EscapeFx } from "./EscapeFx";
 import { leaveToHall } from "./leave";
-import { RoomPlaceholder } from "./RoomPlaceholder";
+import { ROOM_START_ORBIT } from "./roomCamera";
+import { CounselRoom } from "./CounselRoom";
 import { useEscapeFinish } from "./useEscapeFinish";
 import { useEscapeInteractions } from "./useEscapeInteractions";
 import { BagPanel } from "./ui/BagPanel";
@@ -31,7 +32,7 @@ import "./escape.css";
  * A team's classroom (AI 학교 탈출, Task 17) — the scene the player sees after the entering
  * transition. A `PlayShell` on the room's own map (collision, camera, click-move and the HUD's room
  * name all read it through `setActiveMap`), under the same bright-day lighting as the hall, with the
- * room's 3D parts (a placeholder until counsel.glb, Task 24), the classroom HUD (clock, covers, story
+ * room's 3D model (CounselRoom: counsel.glb, loaded only now), the classroom HUD (clock, covers, story
  * box) and the always-on team-chat line above the chat bar.
  *
  * The chat bar is the shell's own; it binds to the ACTIVE room, which is this classroom while it is
@@ -146,10 +147,11 @@ export function EscapeScene({ identity }: { identity: Identity }) {
       activeMap={active}
       lighting="brightDay"
       effects
+      startOrbit={ROOM_START_ORBIT}
       adminPanel={false}
       world3d={
         <>
-          <RoomPlaceholder roomId={roomId} />
+          <CounselRoom roomId={roomId} />
           <EscapeFx roomId={roomId} />
         </>
       }

@@ -17,7 +17,7 @@ caysonverse가 배포하는 그림·모델·글꼴·디코더의 출처와 라�
 | "Cayson" 흰색 워드마크 | Fredoka 700 굵기로 만든 로고 | SIL Open Font License 1.1 (글꼴), 로고는 직접 제작 | `client/public/brand/cayson-logo-white.png` (조립실 제목) | 2026-11-02 |
 | Kenney Furniture Kit 2.0 중 9개 모델 | Kenney, https://kenney.nl/assets/furniture-kit | CC0 1.0 Universal | `client/public/models/furniture/` (기존 월드의 가구. 방탈출은 쓰지 않음) | 2026-11-02 |
 | three.js Draco 디코더 (`draco_decoder.js`, `draco_decoder.wasm`, `draco_wasm_wrapper.js`) | 설치된 three 0.185.1 패키지의 `examples/jsm/libs/draco/gltf/` (Google Draco). 내려받지 않고 `node_modules`에서 복사해 우리 서버에서 직접 보냄 | Apache License 2.0 | `client/public/draco/` (`hub.glb` 읽기: drei `useGLTF(url, "/draco/")`가 `DRACOLoader`를 이 경로로 연다). Task 23이 2026-11-02에 설치된 three에서 그대로 복사함. 같은 폴더의 `README.md`가 Apache-2.0 고지와 출처를 함께 싣는다 | 2026-11-02 |
-| 학교 부품 세트(벽·창·문·바닥·사물함·벤치·게시판 등 15개), 중앙 홀+복도 `hub.glb`, 상담실 `counsel.glb`, 라이트맵, 타일 텍스처 | 이 프로젝트에서 Blender로 직접 제작. 메시·텍스처는 `art/school/tools/`의 스크립트가 만들었다. 내려받은 모델·텍스처 없음 | 직접 제작 (이 프로젝트 소유) | `client/public/models/school/` (`hub.glb`와 `hub_lightmap.webp`는 Task 23이 `art/school/export/`에서 복사함. `counsel.glb`와 그 라이트맵은 Task 24가 복사. 원본 `art/`는 저장소에 올리지 않음) | 2026-11-02 |
+| 학교 부품 세트(벽·창·문·바닥·사물함·벤치·게시판 등 15개), 중앙 홀+복도 `hub.glb`, 상담실 `counsel.glb`, 라이트맵, 타일 텍스처 | 이 프로젝트에서 Blender로 직접 제작. 메시·텍스처는 `art/school/tools/`의 스크립트가 만들었다. 내려받은 모델·텍스처 없음 | 직접 제작 (이 프로젝트 소유) | `client/public/models/school/` (`hub.glb`와 `hub_lightmap.webp`는 Task 23이 `art/school/export/`에서 복사함. `counsel.glb`(1.86 MB, Draco 없음)와 `counsel_lightmap.webp`는 Task 24가 2026-11-02에 복사. 원본 `art/`는 저장소에 올리지 않음) | 2026-11-02 |
 | 살펴보기 그림 11장(상담 화면·쪽지 상자·손전등·캐비닛·서랍 둘·분류판·금고·열쇠 스위치 둘·출구 문), 쪽지 앞면 1장, 반딧 초상화 | 위와 같은 스크립트로 만든 그림. 반딧은 이 프로젝트의 오리지널 작은 경비 로봇이다. 글자는 그림에 넣지 않음 | 직접 제작 (이 프로젝트 소유) | `client/public/models/school/inspect/`, `client/public/models/school/portraits/` | 2026-11-02 |
 | 조립실 배경 그림 두 장(넓은 화면 1600x900, 세로 화면 720x1280)의 AVIF·WebP | ChatGPT(OpenAI) 이미지 생성, 발주자 계정, 2026-11-01, A안. 데스크톱 그림의 글자 같은 무늬는 손으로 흐리게 지우고 배포용으로 다시 인코딩함 | OpenAI 이용약관(2026-01-01 시행분)을 따름. 아래 "ChatGPT 생성 그림" 참고 | `client/public/entry/bg-desktop.{avif,webp}`, `bg-phone.{avif,webp}` (입장 화면 "캐릭터 조립실") | 2026-11-02 |
 
@@ -43,4 +43,4 @@ caysonverse가 배포하는 그림·모델·글꼴·디코더의 출처와 라�
 3. AI가 만든 것이면 "AI 생성 자산" 절에도 적습니다.
 4. 폴더 안 상세 기록(`LICENSE.md`)이 따로 있으면 그쪽도 맞춥니다.
 
-마지막 갱신: 2026-11-02 (Task 23: Draco 디코더와 `hub.glb`·`hub_lightmap.webp` 복사). Task 24가 `counsel.glb`를 복사할 때 쓰는 곳 칸을 확정하고, Task 27이 마지막에 확인일을 맞춥니다.
+마지막 갱신: 2026-11-02 (Task 24: `counsel.glb`·`counsel_lightmap.webp` 복사, 살펴보기 그림·반딧 초상화는 Task 18에서 들어와 있음). Task 27이 마지막에 확인일을 맞춥니다.

@@ -13,6 +13,26 @@ import type { SchoolKind, SchoolSpec } from "./schoolGlb";
 /** Bars in the east gate (client/src/game/hub/Gate.tsx BAR_COUNT). */
 const GATE_BARS = 8;
 
+/**
+ * Props whose `col__` box is a plain 1 m cube in the GLB although the prop stands taller (the art kept every
+ * counselling-room box 1 m high; the hub's lockers state their 2.2 m in their node). Name (without `col__`) -> height (m),
+ * read off the model's baked geometry (the highest vertex over the box's footprint, 2026-11-02, counsel.glb), rounded down
+ * to 0.05. Only the ones the camera could end up inside matter (>= 1.6 m): the extraction keeps these as camera boxes.
+ */
+export const KNOWN_PROP_HEIGHTS: Readonly<Record<SchoolKind, Readonly<Record<string, number>>>> = {
+  hub: {},
+  counsel: {
+    east_bookcase: 2.1,
+    cabinet: 1.95,
+    sort_board: 2.1,
+    counsel_screen: 2.4,
+    exit_door: 2.8,
+    plant_50: 1.85,
+    plant_51: 1.8,
+    plant_52: 1.85,
+  },
+};
+
 function counselSpec(): SchoolSpec {
   const anchorNodes = COUNSEL_ANCHORS.map((a) => `obj__${a.id}`);
   const visualNodes = COUNSEL_VISUALS.map((v) => v.node);

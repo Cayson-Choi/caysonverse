@@ -20,7 +20,7 @@ import type { DialogueLine } from "./dialogue";
 export const ESCAPE_FX = { doorGlowMs: 1200, doorOpenMs: 1500, lightsMs: 1500 } as const;
 
 /** The room before it is set right: 72 % of its colour and light. */
-const LIGHTS_FROM = 0.72;
+export const LIGHTS_FROM = 0.72;
 const OPEN_AT_MS = ESCAPE_FX.doorGlowMs;
 const LIGHTS_AT_MS = OPEN_AT_MS + ESCAPE_FX.doorOpenMs;
 /** When the lights are full and Ari starts to speak. */

@@ -8,13 +8,14 @@
  * in to just in front of the wall. It snaps IN at once (never show the far side of a
  * wall) and eases back OUT at `SPRING.returnRate` m/s once the way is clear.
  *
- * Only walls count (room walls + maze walls, floor to WALL_HEIGHT): furniture is low
- * enough to look over. Everything here is pure and allocation-free — the raycast
+ * Walls count (room walls + maze walls, floor to WALL_HEIGHT), and so does a prop that states
+ * a `height` of its own (a locker bank, a bookcase: tall enough that the camera, low or close,
+ * would end up inside it). Furniture lower than that is looked over. Everything here is pure and allocation-free — the raycast
  * runs every frame, against ~120 boxes, so it first rejects boxes whose XZ footprint
  * the segment cannot reach.
  */
 
-import type { AABB } from "@caysonverse/shared/collision";
+import type { AABB, CameraBox } from "@caysonverse/shared/collision";
 import { LEGACY_GEOMETRY, WALL_HEIGHT } from "@caysonverse/shared/worldMap";
 import { getActiveMap } from "./activeMap";
 
@@ -26,7 +27,7 @@ import { getActiveMap } from "./activeMap";
 export const CAMERA_BOXES: readonly AABB[] = LEGACY_GEOMETRY.cameraBoxes;
 
 /** The camera boxes of the map the player stands in now (activeMap.ts): what every cast uses. */
-export function cameraBoxes(): readonly AABB[] {
+export function cameraBoxes(): readonly CameraBox[] {
   return getActiveMap().geometry.cameraBoxes;
 }
 
@@ -45,7 +46,8 @@ export const ARM_FREE = 64;
 
 /**
  * Where, along the segment A → B, it first enters one of `boxes` (each spanning
- * y = 0..`height`): a fraction t in [0, 1), or 1 when nothing blocks it.
+ * y = 0..its own `height`, or `height` when it states none): a fraction t in [0, 1), or 1 when
+ * nothing blocks it.
  *
  * Per box this is the usual slab test on x, y and z. A box that already contains A
  * is skipped — a head hugging a wall must not fold the camera to zero — and so is
@@ -64,7 +66,7 @@ export function segmentHitFraction(
   bx: number,
   by: number,
   bz: number,
-  boxes: readonly AABB[] = cameraBoxes(),
+  boxes: readonly CameraBox[] = cameraBoxes(),
   height: number = WALL_HEIGHT,
   margin: number = 0,
 ): number {
@@ -80,12 +82,13 @@ export function segmentHitFraction(
   let best = 1;
   for (let i = 0; i < boxes.length; i++) {
     const b = boxes[i];
+    const top = b.height ?? height;
     let minX = b.minX - margin;
     let maxX = b.maxX + margin;
     let minZ = b.minZ - margin;
     let maxZ = b.maxZ + margin;
     if (maxX < loX || minX > hiX || maxZ < loZ || minZ > hiZ) continue;
-    if (ay >= 0 && ay <= height && ax >= minX && ax <= maxX && az >= minZ && az <= maxZ) {
+    if (ay >= 0 && ay <= top && ax >= minX && ax <= maxX && az >= minZ && az <= maxZ) {
       // The start is inside the (inflated) box: judge it against the raw one instead…
       minX = b.minX;
       maxX = b.maxX;
@@ -112,10 +115,10 @@ export function segmentHitFraction(
       if (enter > exit) continue;
     }
     if (dy === 0) {
-      if (ay < 0 || ay > height) continue;
+      if (ay < 0 || ay > top) continue;
     } else {
       let t1 = (0 - ay) / dy;
-      let t2 = (height - ay) / dy;
+      let t2 = (top - ay) / dy;
       if (t1 > t2) {
         const swap = t1;
         t1 = t2;
@@ -162,7 +165,7 @@ export function springArmDistance(
   camY: number,
   camZ: number,
   desired: number,
-  boxes: readonly AABB[] = cameraBoxes(),
+  boxes: readonly CameraBox[] = cameraBoxes(),
 ): number {
   const t = segmentHitFraction(headX, headY, headZ, camX, camY, camZ, boxes, WALL_HEIGHT, SPRING.pad);
   if (t >= 1) return desired;

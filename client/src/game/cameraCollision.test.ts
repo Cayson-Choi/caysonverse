@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
-import type { AABB } from "@caysonverse/shared/collision";
+import type { AABB, CameraBox } from "@caysonverse/shared/collision";
+import { COUNSEL_GEOMETRY } from "@caysonverse/shared/school/counselMap";
+import { HUB_GEOMETRY_OPEN } from "@caysonverse/shared/school/hubMap";
 import { MAZE_WALLS } from "@caysonverse/shared/maze";
 import { PLAYER_RADIUS, WALLS, WALL_HEIGHT } from "@caysonverse/shared/worldMap";
 import {
@@ -138,6 +140,54 @@ describe("segmentHitFraction", () => {
     const t = segmentHitFraction(cx, 1.4, cz - 5, cx, 1.4, cz + 5);
     expect(t).toBeGreaterThanOrEqual(0);
     expect(t).toBeLessThanOrEqual(0.5 - depth / 20 + 1e-9);
+  });
+});
+
+describe("segmentHitFraction — tall props (a box that states its own height)", () => {
+  // A 2.2 m locker bank: z -3..-2.36 along the corridor's north wall (the real hub box, x 15..19).
+  const LOCKERS: CameraBox = { minX: 15, maxX: 19, minZ: -3, maxZ: -2.36, height: 2.2 };
+
+  it("a box's own height replaces the default: a segment above the locker top passes over, below it is a hit", () => {
+    // From the player at (17, 1.7, 0) to a camera north of the lockers at z = -6: the segment is at y = 1.7 + (h - 1.7)·t.
+    // The locker face (z = -2.36) is at t = 2.36 / 6; a camera at y = 6 is at ~3.4 there (over the 2.2 top), one at y = 1.7 is inside the band.
+    expect(segmentHitFraction(17, 1.7, 0, 17, 6, -6, [LOCKERS])).toBe(1);
+    expect(segmentHitFraction(17, 1.7, 0, 17, 1.7, -6, [LOCKERS])).toBeCloseTo(2.36 / 6, 6);
+    // The same footprint as a wall (no height) is 4 m tall, so the high segment would have been stopped.
+    const asWall: AABB = { minX: 15, maxX: 19, minZ: -3, maxZ: -2.36 };
+    expect(segmentHitFraction(17, 1.7, 0, 17, 6, -6, [asWall])).toBeLessThan(1);
+  });
+
+  it("a wall and a tall prop in one list each use their own height", () => {
+    const wall: AABB = { minX: -5, maxX: 5, minZ: 4, maxZ: 4.3 }; // 4 m (the default)
+    const low: CameraBox = { minX: -5, maxX: 5, minZ: -4.3, maxZ: -4, height: 2 };
+    // At y = 3 the 2 m box is looked over, the 4 m wall is not.
+    expect(segmentHitFraction(0, 3, 0, 0, 3, -10, [wall, low])).toBe(1);
+    expect(segmentHitFraction(0, 3, 0, 0, 3, 10, [wall, low])).toBeCloseTo(0.4, 6);
+  });
+
+  it("a start point inside a tall box's footprint but above its top is not contained", () => {
+    expect(segmentHitFraction(17, 2.5, -2.6, 17, 2.5, 5, [LOCKERS])).toBe(1);
+  });
+
+  it("the spring arm stops 0.2 m in front of a locker bank when the camera would end inside it (hub corridor)", () => {
+    // The Task 23 case: camera on the north side, low (a recentre while looking south): the head at (17, 1.9, 1) and the
+    // wanted camera spot 5 m behind it, north, at the same height — the corridor's north wall alone left it inside the lockers.
+    const lockers = HUB_GEOMETRY_OPEN.cameraBoxes;
+    const arm = springArmDistance(17, 1.9, 1, 17, 1.9, -4, 5, lockers);
+    expect(arm).toBeCloseTo(1 + 2.36 - SPRING.pad, 6); // stops at z = -2.36 + 0.2 = -2.16: 3.16 m out
+    // Over the lockers (camera well above 2.2 m at the face) nothing stops it.
+    expect(springArmDistance(17, 1.9, 1, 17, 7.5, -4, 5, lockers)).toBe(5);
+  });
+
+  it("the counselling room's bookcase and cabinet stop the camera; the desk and the low table do not", () => {
+    const boxes = COUNSEL_GEOMETRY.cameraBoxes;
+    // Looking west past the east bookcase (x 3.98..4.5, 2.1 m): head at (2.5, 1.9, -2.5), camera east of it at the same height.
+    const east = segmentHitFraction(2.5, 1.9, -2.5, 5.2, 1.9, -2.5, boxes, WALL_HEIGHT, SPRING.pad);
+    expect(east).toBeLessThan(1);
+    // The desk (x -4.38..-3.54, 1.24 m) is looked over by a camera at 1.9 m.
+    expect(segmentHitFraction(-2.5, 1.9, -1.1, -5.2, 1.9, -1.1, boxes, WALL_HEIGHT, SPRING.pad)).toBe(1);
+    // The low table (0.66 m) the same.
+    expect(segmentHitFraction(-2, 1.9, 0.9, 2, 1.9, 0.9, boxes, WALL_HEIGHT, SPRING.pad)).toBe(1);
   });
 });
 

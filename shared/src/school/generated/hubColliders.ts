@@ -2,7 +2,7 @@
 // hub.glb의 col__* 노드에서 뽑은 충돌 상자(바닥 평면, 0.01 단위, minX·minZ 순 정렬).
 // 모델을 고치면 `npx tsx --tsconfig server/tsconfig.json scripts/extract-colliders.ts`로 다시 만든다.
 
-import type { AABB } from "../../collision";
+import type { AABB, CameraBox } from "../../collision";
 
 export const HUB_PROP_COLLIDERS: readonly AABB[] = [
   { minX: -13.37, maxX: -12.42, minZ: 10.42, maxZ: 11.37 }, // col__plant_23
@@ -28,4 +28,12 @@ export const HUB_PROP_COLLIDERS: readonly AABB[] = [
   { minX: 41, maxX: 45, minZ: -3, maxZ: -2.36 }, // col__lockers_4
   { minX: 46.56, maxX: 47.44, minZ: -2.74, maxZ: -1.86 }, // col__plant_40
   { minX: 46.56, maxX: 47.44, minZ: 1.86, maxZ: 2.74 }, // col__plant_41
+];
+
+// 위 상자 가운데 1.6 m 이상 큰 소품(사물함·책장…): 카메라가 뚫고 보면 안 되는 상자(높이 포함).
+export const HUB_PROP_CAMERA_BOXES: readonly CameraBox[] = [
+  { minX: 15, maxX: 19, minZ: -3, maxZ: -2.36, height: 2.2 }, // col__lockers
+  { minX: 25, maxX: 29, minZ: -3, maxZ: -2.36, height: 2.2 }, // col__lockers_2
+  { minX: 31, maxX: 35, minZ: -3, maxZ: -2.36, height: 2.2 }, // col__lockers_3
+  { minX: 41, maxX: 45, minZ: -3, maxZ: -2.36, height: 2.2 }, // col__lockers_4
 ];

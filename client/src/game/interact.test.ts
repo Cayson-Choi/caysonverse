@@ -116,6 +116,23 @@ describe("pickInteraction with hub targets (Task 16)", () => {
     expect(pickInteraction({ ...base, targets: [far] })).toEqual({ kind: "target", target: far });
   });
 
+  it("a higher priority wins over a nearer target; among equals the nearest wins, then the first", () => {
+    const note = t({ id: "note_1", kind: "object", dist: 1.0 });
+    const key = t({ id: "safe_key_left", kind: "object", dist: 1.15, priority: 1 });
+    const drawer = t({ id: "drawer_left", kind: "object", dist: 1.1 });
+    expect(pickInteraction({ ...base, targets: [note, key, drawer] })).toEqual({ kind: "target", target: key });
+    expect(pickInteraction({ ...base, targets: [key, note, drawer] })).toEqual({ kind: "target", target: key });
+    // Two prioritised targets: the nearer; equal distances: the first.
+    const key2 = t({ id: "safe_key_right", kind: "object", dist: 1.4, priority: 1 });
+    expect(pickInteraction({ ...base, targets: [key2, note, key] })).toEqual({ kind: "target", target: key });
+    const twin = t({ id: "twin", kind: "object", dist: 1.15, priority: 1 });
+    expect(pickInteraction({ ...base, targets: [key, twin] })).toEqual({ kind: "target", target: key });
+    // Without priorities nothing changed: the nearest wins.
+    expect(pickInteraction({ ...base, targets: [drawer, note] })).toEqual({ kind: "target", target: note });
+    // A priority does not beat a nearer seat or 조교 (those exist only in the legacy world).
+    expect(pickInteraction({ ...base, npc: { id: "hall", dist: 0.5 }, targets: [key] })).toEqual({ kind: "talk", npc: "hall" });
+  });
+
   it("an open 조교 panel hides the 조교 but not a target; no targets → as before", () => {
     expect(
       pickInteraction({ ...base, npc: { id: "hall", dist: 0.2 }, npcPanelOpen: true, targets: [t({ dist: 2 })] }),

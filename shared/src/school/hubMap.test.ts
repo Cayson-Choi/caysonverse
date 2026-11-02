@@ -22,7 +22,7 @@ import {
   hubZoneLabel,
   inTeamZone,
 } from "./hubMap";
-import { HUB_PROP_COLLIDERS } from "./generated/hubColliders";
+import { HUB_PROP_CAMERA_BOXES, HUB_PROP_COLLIDERS } from "./generated/hubColliders";
 import { makeGeometry } from "./geometry";
 import type { MapGeometry } from "./geometry";
 import { centre, hasNear, inside, overlaps, reachable } from "./reachTestUtil";
@@ -233,16 +233,30 @@ describe("geometry objects", () => {
     expect(PROGRESS_BOARD.maxX).toBeLessThanOrEqual(HALL.maxX);
   });
 
-  it("every generated prop collider is both a collision obstacle and kept out of the camera boxes", () => {
-    // Open = walls + west seal (camera boxes) and + progress board + generated props (obstacles).
-    expect(HUB_GEOMETRY_OPEN.cameraBoxes).toHaveLength(HUB_WALLS.length + 1);
+  it("every generated prop collider is a collision obstacle; only the tall ones (the locker banks) are camera boxes too", () => {
+    // Open = walls + west seal + the tall props (camera boxes) and + progress board + generated props (obstacles).
+    expect(HUB_PROP_CAMERA_BOXES.length).toBeGreaterThanOrEqual(4);
+    expect(HUB_GEOMETRY_OPEN.cameraBoxes).toHaveLength(HUB_WALLS.length + 1 + HUB_PROP_CAMERA_BOXES.length);
     expect(HUB_GEOMETRY_OPEN.obstacles).toHaveLength(HUB_WALLS.length + 1 + 1 + HUB_PROP_COLLIDERS.length);
+    const sameFootprint = (a: AABB, b: AABB) => a.minX === b.minX && a.maxX === b.maxX && a.minZ === b.minZ && a.maxZ === b.maxZ;
     for (const geo of [HUB_GEOMETRY_OPEN, HUB_GEOMETRY_GATED]) {
       for (const c of HUB_PROP_COLLIDERS) {
         expect(geo.obstacles, geo.id).toContainEqual(c);
-        expect(geo.cameraBoxes, geo.id).not.toContainEqual(c);
+        const tall = HUB_PROP_CAMERA_BOXES.some((t) => sameFootprint(t, c));
+        expect(geo.cameraBoxes.some((b) => b.height !== undefined && sameFootprint(b, c)), `${geo.id} ${JSON.stringify(c)}`).toBe(tall);
+      }
+      for (const t of HUB_PROP_CAMERA_BOXES) {
+        expect(t.height, JSON.stringify(t)).toBeGreaterThanOrEqual(1.6);
+        expect(geo.cameraBoxes, geo.id).toContainEqual(t);
       }
     }
+  });
+
+  it("the corridor's lockers are camera boxes 2.2 m high; benches, plants and the podium are looked over", () => {
+    const lockersAt = (x: number) => HUB_GEOMETRY_OPEN.cameraBoxes.find((b) => x >= b.minX && x <= b.maxX && b.height !== undefined);
+    for (const x of [17, 27, 33, 43]) expect(lockersAt(x)?.height, `lockers at x=${x}`).toBe(2.2);
+    expect(lockersAt(30)).toBeUndefined(); // the bench's span
+    expect(HUB_GEOMETRY_OPEN.cameraBoxes.filter((b) => b.height !== undefined)).toHaveLength(4);
   });
 });
 

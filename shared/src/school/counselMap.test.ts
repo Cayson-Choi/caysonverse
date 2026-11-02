@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { isBlocked } from "../collision";
+import type { AABB } from "../collision";
 import { INSPECT_REACH, PHASE1_OPEN_ROOMS, ROOM_LABELS } from "../escape/constants";
 import { PLAYER_RADIUS } from "../worldMap";
 import {
@@ -11,7 +12,7 @@ import {
   COUNSEL_VISUALS,
   anchorById,
 } from "./counselMap";
-import { COUNSEL_PROP_COLLIDERS } from "./generated/counselColliders";
+import { COUNSEL_PROP_CAMERA_BOXES, COUNSEL_PROP_COLLIDERS } from "./generated/counselColliders";
 import { inside, reachable } from "./reachTestUtil";
 import { ROOM_MAPS } from "./roomMaps";
 
@@ -40,13 +41,35 @@ describe("counselling room: shell", () => {
     expect(COUNSEL_GEOMETRY.bounds).toEqual(COUNSEL_ROOM);
   });
 
-  it("walls surround the room and every generated prop collider is an obstacle but not a camera box", () => {
-    expect(COUNSEL_GEOMETRY.cameraBoxes.length).toBeGreaterThanOrEqual(4);
-    expect(COUNSEL_GEOMETRY.obstacles).toHaveLength(COUNSEL_GEOMETRY.cameraBoxes.length + COUNSEL_PROP_COLLIDERS.length);
+  it("walls surround the room and every generated prop collider is an obstacle; only the tall props are camera boxes too", () => {
+    const walls = COUNSEL_GEOMETRY.cameraBoxes.length - COUNSEL_PROP_CAMERA_BOXES.length;
+    expect(walls).toBeGreaterThanOrEqual(4);
+    expect(COUNSEL_GEOMETRY.obstacles).toHaveLength(walls + COUNSEL_PROP_COLLIDERS.length);
+    const sameFootprint = (a: AABB, b: AABB) => a.minX === b.minX && a.maxX === b.maxX && a.minZ === b.minZ && a.maxZ === b.maxZ;
     for (const c of COUNSEL_PROP_COLLIDERS) {
       expect(COUNSEL_GEOMETRY.obstacles).toContainEqual(c);
-      expect(COUNSEL_GEOMETRY.cameraBoxes).not.toContainEqual(c);
+      // A camera box with a prop's footprint exists exactly for the tall props.
+      const cam = COUNSEL_PROP_CAMERA_BOXES.find((t) => sameFootprint(t, c));
+      expect(COUNSEL_GEOMETRY.cameraBoxes.some((b) => b.height !== undefined && sameFootprint(b, c))).toBe(cam !== undefined);
     }
+  });
+
+  it("the tall props the camera must not see through: the bookcase, the cabinet, the board and the screen, each >= 1.6 m", () => {
+    expect(COUNSEL_PROP_CAMERA_BOXES.length).toBeGreaterThanOrEqual(4);
+    for (const t of COUNSEL_PROP_CAMERA_BOXES) {
+      expect(t.height, JSON.stringify(t)).toBeGreaterThanOrEqual(1.6);
+      expect(COUNSEL_GEOMETRY.cameraBoxes).toContainEqual(t);
+    }
+    const heightAt = (x: number, z: number) =>
+      COUNSEL_GEOMETRY.cameraBoxes.find((b) => b.height !== undefined && x >= b.minX && x <= b.maxX && z >= b.minZ && z <= b.maxZ)?.height;
+    expect(heightAt(4.24, -2.5)).toBeGreaterThanOrEqual(2); // the east bookcase
+    expect(heightAt(-4.44, 2.5)).toBeGreaterThanOrEqual(1.9); // the cabinet
+    expect(heightAt(-2.6, -3.82)).toBeGreaterThanOrEqual(2); // the sort board
+    expect(heightAt(0, -3.865)).toBeGreaterThanOrEqual(2); // the counselling screen
+    // Low furniture is looked over, not through.
+    expect(heightAt(-3.96, -1.1)).toBeUndefined(); // the desk
+    expect(heightAt(0, 0.9)).toBeUndefined(); // the low table
+    expect(heightAt(-3.5, 4.525)).toBeUndefined(); // the sofa
   });
 });
 

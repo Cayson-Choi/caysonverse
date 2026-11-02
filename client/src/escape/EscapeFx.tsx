@@ -28,7 +28,7 @@ import { prefersReducedMotion } from "./reducedMotion";
  *  - a patch of light on the floor that grows from the door into the room,
  *  - a few dozen sparkles drifting out of the door and twinkling away.
  * The room's colours coming back is the DOM veil (ui/EscapeVeil); the door leaf is the room model's own part
- * (RoomPlaceholder now, counsel.glb in Task 24) — this effect works with either, from the room's `exit_door`
+ * (CounselRoom: the `obj__exit_door` node of counsel.glb) — this effect works from the room's `exit_door`
  * anchor and the south wall.
  *
  * Nothing is allocated per frame: every buffer, material and output object is made once on mount, the frame

@@ -21,6 +21,12 @@ import type { InteractTarget } from "../game/interact";
 
 const NODE_PREFIX = "obj__";
 
+/**
+ * A coop key switch outranks a plain inspect target in the context button's pick (InteractTarget.priority): its standing
+ * spot is about as far from the anchor as a note's or a drawer's is, so "nearest wins" often offered the note instead of the key.
+ */
+export const COOP_PRIORITY = 1;
+
 /** One shared empty answer: the common case (nothing within reach) allocates nothing. */
 const NONE: InteractTarget[] = [];
 
@@ -63,8 +69,8 @@ function targetFor(kind: ObjectKind, id: string, dist: number, solo: boolean): I
       return { kind: "object", id, dist, icon: "🚪", label: "마지막 문", short: "문" };
     case "switch":
       return solo
-        ? { kind: "object", id, dist, icon: "🔑", label: "3초 길게 누르기", short: "길게", hold: true }
-        : { kind: "object", id, dist, icon: "🔑", label: "열쇠 돌리기", short: "열쇠" };
+        ? { kind: "object", id, dist, icon: "🔑", label: "3초 길게 누르기", short: "길게", hold: true, priority: COOP_PRIORITY }
+        : { kind: "object", id, dist, icon: "🔑", label: "열쇠 돌리기", short: "열쇠", priority: COOP_PRIORITY };
     case "inspect":
       return { kind: "object", id, dist, icon: "🔍", label: "조사하기", short: "조사" };
   }

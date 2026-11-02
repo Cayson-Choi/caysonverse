@@ -9,7 +9,7 @@
  * render geometry, and every box is an axis-aligned rectangle on the ground plane.
  */
 
-import type { AABB } from "../collision";
+import type { AABB, CameraBox } from "../collision";
 
 /** Playable rectangle of a map (the server clamps moves to it). Same shape as `AABB`. */
 export interface Bounds {
@@ -26,8 +26,8 @@ export interface MapGeometry {
   bounds: Bounds;
   /** Everything a player body collides with: walls, then props. */
   obstacles: readonly AABB[];
-  /** The tall boxes the third-person camera must not see through: the walls only. */
-  cameraBoxes: readonly AABB[];
+  /** The boxes the third-person camera must not see through: the walls, and the props taller than the camera can look over (each states its `height`). */
+  cameraBoxes: readonly CameraBox[];
 }
 
 /**
@@ -97,8 +97,10 @@ export function wallsAround(
 }
 
 /**
- * Bundle a map: `obstacles` = walls then props, `cameraBoxes` = the walls only (low props
- * are looked over, not through). Both arrays are fresh copies, so later changes to the
+ * Bundle a map: `obstacles` = walls then props, `cameraBoxes` = the walls, then the `tallProps`
+ * (low props are looked over, not through; a tall one — a locker bank, a bookcase — is a camera
+ * box that states its own height). `tallProps` are boxes the caller also lists in `props`: they
+ * are NOT added to the obstacles twice. All arrays are fresh copies, so later changes to the
  * caller's arrays cannot alter a finished geometry.
  */
 export function makeGeometry(
@@ -106,6 +108,7 @@ export function makeGeometry(
   bounds: Bounds,
   walls: readonly AABB[],
   props: readonly AABB[],
+  tallProps: readonly CameraBox[] = [],
 ): MapGeometry {
-  return { id, bounds, obstacles: [...walls, ...props], cameraBoxes: [...walls] };
+  return { id, bounds, obstacles: [...walls, ...props], cameraBoxes: [...walls, ...tallProps] };
 }

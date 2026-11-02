@@ -22,6 +22,15 @@ export interface AABB {
 }
 
 /**
+ * A box the third-person camera must not see through: an `AABB` plus how tall it stands (m). A box without
+ * `height` is as tall as a wall (the camera's default); a tall prop (a locker bank, a bookcase) states its own,
+ * so the camera can look over what is lower than the camera and not through what is higher.
+ */
+export interface CameraBox extends AABB {
+  height?: number;
+}
+
+/**
  * Tolerance (m) the server allows before calling a target "inside" an obstacle.
  * A client that slid flush against a wall reports a point ~exactly `r` from the
  * face; floating-point rounding can nudge that a hair inside. This slack keeps

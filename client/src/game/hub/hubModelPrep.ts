@@ -44,9 +44,9 @@ export const LIGHTMAP_INTENSITY = 1.6 * Math.PI;
 /** The light map sits on the second UV set (`uv1`). */
 export const LIGHTMAP_CHANNEL = 1;
 
-const COLLIDER_PREFIX = "col__";
-const LIGHTMAP_MATERIAL_PREFIX = "LM_";
-const CLOUD_MATERIAL = "M_cloud";
+export const COLLIDER_PREFIX = "col__";
+export const LIGHTMAP_MATERIAL_PREFIX = "LM_";
+export const CLOUD_MATERIAL = "M_cloud";
 const GLOW_MATERIAL = "M_glow";
 const SHAFT_PREFIX = "shaft__";
 
@@ -105,12 +105,12 @@ export interface HubNodes {
   own: Material[];
 }
 
-function isMesh(o: Object3D): o is Mesh {
+export function isMesh(o: Object3D): o is Mesh {
   return (o as Mesh).isMesh === true;
 }
 
 /** Every material of a mesh as an array (a mesh may hold one or several). */
-function materialsOf(mesh: Mesh): Material[] {
+export function materialsOf(mesh: Mesh): Material[] {
   return Array.isArray(mesh.material) ? mesh.material : [mesh.material];
 }
 
@@ -126,7 +126,7 @@ export function configureLightmap(texture: Texture): Texture {
 }
 
 /** Put the light map on one material (the `LM_*` rule). The same material twice is harmless. */
-function lightmapMaterial(material: Material, lightmap: Texture): void {
+export function lightmapMaterial(material: Material, lightmap: Texture): void {
   const m = material as MeshBasicMaterial;
   if (m.lightMap === lightmap && m.lightMapIntensity === LIGHTMAP_INTENSITY) return;
   m.lightMap = lightmap;

@@ -25,6 +25,12 @@ export interface InteractTarget {
   short?: string;
   /** Pressed and held (a lone member's coop switch) instead of tapped. */
   hold?: boolean;
+  /**
+   * Which target wins when several are in reach: the higher number first, the nearer one among equals (default 0).
+   * A classroom's coop key switch sits about as far from its anchor's standing spot as a note or a drawer does, so
+   * "nearest wins" would often offer the note while the player is trying to reach the key.
+   */
+  priority?: number;
 }
 
 export type Interaction =
@@ -49,8 +55,8 @@ export interface InteractInput {
 /**
  * The one thing E / F / the button would do now, or null.
  *  - Seated → stand, whatever is nearby (the seat is the only thing you can do).
- *  - Seat, 조교 and scene targets in reach → the nearest; an exact tie goes seat > 조교 > target
- *    (and between two targets, to the earlier one in the list).
+ *  - Seat, 조교 and scene targets in reach → the nearest; an exact tie goes seat > 조교 > target.
+ *    Among scene targets the higher `priority` wins, then the nearer one, then the earlier one in the list.
  *  - While a chat panel is open, "talk" is not offered (you are already talking).
  */
 export function pickInteraction(i: InteractInput): Interaction | null {
@@ -71,7 +77,14 @@ export function pickInteraction(i: InteractInput): Interaction | null {
   if (targets) {
     let nearest: InteractTarget | null = null;
     for (let k = 0; k < targets.length; k++) {
-      if (nearest === null || targets[k].dist < nearest.dist) nearest = targets[k];
+      const c = targets[k];
+      if (nearest === null) {
+        nearest = c;
+        continue;
+      }
+      const cp = c.priority ?? 0;
+      const np = nearest.priority ?? 0;
+      if (cp > np || (cp === np && c.dist < nearest.dist)) nearest = c;
     }
     if (nearest !== null && nearest.dist < bestDist) best = { kind: "target", target: nearest };
   }

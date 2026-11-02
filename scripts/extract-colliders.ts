@@ -9,12 +9,15 @@
  * `col__*` 노드는 정육면체 하나에 translation과 scale만 있는 상자다. 바닥 평면의 상자는 translation ± scale/2 (x, z)이고,
  * 0.01로 반올림하고 minX, minZ, maxX, maxZ 순으로 정렬한다. 회전·matrix·부모가 있거나 크기가 0이면 FAIL(종료 코드 1)이고
  * 파일을 쓰지 않는다. `col__*`가 하나도 없어도 FAIL이다. 같은 입력이면 출력은 바이트 단위로 같다.
+ * 같은 파일에 카메라 상자도 쓴다(`<이름>_CAMERA_BOXES`): 높이가 1.6 m 이상인 소품의 상자(사물함·책장…)와 그 높이. 높이는 노드의 위쪽 끝
+ * (translation.y + scale.y / 2)이거나, 아트가 상자를 1 m 정육면체로 둔 방(상담실)은 schoolSpec.ts의 KNOWN_PROP_HEIGHTS다.
  * 의존성 없음. 순수 부분: scripts/lib/schoolGlb.ts (테스트: server/src/tools/schoolGlb.test.ts).
  */
 
 import fs from "node:fs";
 import path from "node:path";
-import { extractColliders, parseGlb, renderColliderModule } from "./lib/schoolGlb";
+import { CAMERA_BOX_MIN_HEIGHT, extractColliders, parseGlb, renderColliderModule, tallColliders } from "./lib/schoolGlb";
+import { KNOWN_PROP_HEIGHTS } from "./lib/schoolSpec";
 
 const REPO = path.resolve(__dirname, "..");
 const USAGE = "usage: npx tsx --tsconfig server/tsconfig.json scripts/extract-colliders.ts <glb> <ExportName> <out.ts>";
@@ -25,6 +28,11 @@ function collisionImportFrom(outFile: string): string {
   // Another drive (or an absolute result): the file is not inside the repo, so use the standard generated location's path.
   if (path.isAbsolute(rel)) return "../../collision";
   return rel.startsWith(".") ? rel : `./${rel}`;
+}
+
+/** HUB_PROP_COLLIDERS -> HUB_PROP_CAMERA_BOXES (the tall props' export, next to the collider list). */
+export function cameraExportName(exportName: string): string {
+  return /COLLIDERS$/.test(exportName) ? exportName.replace(/COLLIDERS$/, "CAMERA_BOXES") : `${exportName}_CAMERA_BOXES`;
 }
 
 export function main(argv: string[]): number {
@@ -38,8 +46,13 @@ export function main(argv: string[]): number {
     return 1;
   }
   let extraction;
+  let tall;
   try {
-    extraction = extractColliders(parseGlb(fs.readFileSync(glbPath)).gltf);
+    const gltf = parseGlb(fs.readFileSync(glbPath)).gltf;
+    extraction = extractColliders(gltf);
+    const room = path.basename(glbPath, ".glb");
+    const known = room === "hub" || room === "counsel" ? KNOWN_PROP_HEIGHTS[room] : {};
+    tall = tallColliders(gltf, extraction.colliders, known);
   } catch (err) {
     console.error(`FAIL: ${glbPath}를 읽지 못했어요: ${(err as Error).message}`);
     return 1;
@@ -58,6 +71,7 @@ export function main(argv: string[]): number {
       source: path.basename(glbPath),
       colliders,
       collisionImport: collisionImportFrom(outFile),
+      tall: { exportName: cameraExportName(exportName), boxes: tall },
     });
   } catch (err) {
     console.error(`FAIL: ${(err as Error).message}`);
@@ -65,7 +79,9 @@ export function main(argv: string[]): number {
   }
   fs.mkdirSync(path.dirname(path.resolve(outFile)), { recursive: true });
   fs.writeFileSync(outFile, text, "utf8");
-  console.log(`PASS: col__* ${colliders.length}개 → ${outFile} (${exportName})`);
+  console.log(
+    `PASS: col__* ${colliders.length}개 → ${outFile} (${exportName}), 카메라 상자(≥ ${CAMERA_BOX_MIN_HEIGHT} m) ${tall.length}개 (${cameraExportName(exportName)})`,
+  );
   return 0;
 }
 

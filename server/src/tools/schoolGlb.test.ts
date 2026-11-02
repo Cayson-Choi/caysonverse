@@ -12,6 +12,7 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import {
   BUDGETS,
+  CAMERA_BOX_MIN_HEIGHT,
   MAX_MATERIALS,
   MAX_TEXTURE_SIDE,
   OBJ_ANCHOR_TOLERANCE,
@@ -22,10 +23,12 @@ import {
   parseGlb,
   renderColliderModule,
   roundToHundredth,
+  tallColliders,
   worldTranslation,
 } from "../../../scripts/lib/schoolGlb";
 import type { Gltf, GltfNode, SchoolSpec } from "../../../scripts/lib/schoolGlb";
-import { schoolSpec } from "../../../scripts/lib/schoolSpec";
+import { KNOWN_PROP_HEIGHTS, schoolSpec } from "../../../scripts/lib/schoolSpec";
+import { cameraExportName } from "../../../scripts/extract-colliders";
 import { COUNSEL_ANCHORS, COUNSEL_VISUALS } from "../../../shared/src/school/counselMap";
 import { HUB_DOORS } from "../../../shared/src/school/hubMap";
 import { ROOM_IDS } from "../../../shared/src/escape/constants";
@@ -261,6 +264,57 @@ describe("extractColliders", () => {
   });
 });
 
+describe("tallColliders (the camera boxes among the props)", () => {
+  it("a box is tall from CAMERA_BOX_MIN_HEIGHT up, by the top of its node (translation.y + scale.y / 2)", () => {
+    expect(CAMERA_BOX_MIN_HEIGHT).toBe(1.6);
+    const g = baseGltf([
+      cubeNode("col__lockers", [17, 1.1, -2.68], [4, 2.2, 0.64]), // 2.2 m: the hub's locker bank
+      cubeNode("col__edge", [0, 0.8, 0], [1, 1.6, 1]), // exactly 1.6 m
+      cubeNode("col__bench", [9, 0.5, 11], [1.84, 1, 0.54]), // 1 m
+      cubeNode("col__almost", [0, 0.795, 0], [1, 1.59, 1]), // 1.59 m
+    ]);
+    const { colliders } = extractColliders(g);
+    const tall = tallColliders(g, colliders);
+    expect(tall.map((t) => [t.name, t.height]).sort()).toEqual([
+      ["col__edge", 1.6],
+      ["col__lockers", 2.2],
+    ]);
+    expect(tall.find((t) => t.name === "col__lockers")!.box).toEqual({ minX: 15, maxX: 19, minZ: -3, maxZ: -2.36 });
+  });
+
+  it("a 1 m cube whose prop is taller takes the height the room's spec gives for its name (without col__)", () => {
+    const g = baseGltf([
+      cubeNode("col__east_bookcase", [4.24, 0.5, -2.5], [0.52, 1, 1.84]),
+      cubeNode("col__desk", [-4, 0.5, -1], [0.84, 1, 1.64]),
+    ]);
+    const { colliders } = extractColliders(g);
+    expect(tallColliders(g, colliders).map((t) => t.name)).toEqual([]); // nothing tall without the spec
+    const tall = tallColliders(g, colliders, { east_bookcase: 2.1, desk: 1.24 });
+    expect(tall.map((t) => [t.name, t.height])).toEqual([["col__east_bookcase", 2.1]]);
+    // A spec height never LOWERS a node that already states a taller one.
+    const lockers = baseGltf([cubeNode("col__lockers", [0, 1.1, 0], [4, 2.2, 1])]);
+    expect(tallColliders(lockers, extractColliders(lockers).colliders, { lockers: 1.7 })[0]!.height).toBe(2.2);
+  });
+
+  it("keeps the colliders' order, and the real counselling-room list names are all real col__ boxes of counsel.glb", () => {
+    const g = baseGltf([cubeNode("col__b", [5, 1.1, 5], [2, 2.2, 2]), cubeNode("col__a", [1, 1.1, 3], [2, 2.2, 2])]);
+    const { colliders } = extractColliders(g);
+    expect(tallColliders(g, colliders).map((t) => t.name)).toEqual(colliders.map((c) => c.name));
+    const glb = path.join(REPO_ROOT, "client", "public", "models", "school", "counsel.glb");
+    if (!fs.existsSync(glb)) return;
+    const real = extractColliders(parseGlb(fs.readFileSync(glb)).gltf).colliders.map((c) => c.name.slice("col__".length));
+    for (const name of Object.keys(KNOWN_PROP_HEIGHTS.counsel)) expect(real, name).toContain(name);
+  });
+});
+
+describe("cameraExportName", () => {
+  it("HUB_PROP_COLLIDERS -> HUB_PROP_CAMERA_BOXES; a name without the suffix gets one", () => {
+    expect(cameraExportName("HUB_PROP_COLLIDERS")).toBe("HUB_PROP_CAMERA_BOXES");
+    expect(cameraExportName("COUNSEL_PROP_COLLIDERS")).toBe("COUNSEL_PROP_CAMERA_BOXES");
+    expect(cameraExportName("ROOM_BOXES")).toBe("ROOM_BOXES_CAMERA_BOXES");
+  });
+});
+
 describe("renderColliderModule", () => {
   const colliders = [
     { name: "col__b", box: { minX: 0, maxX: 2, minZ: -1.5, maxZ: 0 } },
@@ -297,6 +351,27 @@ describe("renderColliderModule", () => {
 
   it("rejects an export name that is not an identifier", () => {
     expect(() => renderColliderModule({ exportName: "bad name", source: "x.glb", colliders, collisionImport: "../collision" })).toThrow();
+  });
+
+  it("writes the tall props as a second export with their heights (and imports CameraBox only then)", () => {
+    const tall = [{ name: "col__a", box: { minX: 3, maxX: 4.25, minZ: 1, maxZ: 2 }, height: 2.2 }];
+    const text = renderColliderModule({
+      exportName: "X_COLLIDERS",
+      source: "x.glb",
+      colliders,
+      collisionImport: "../collision",
+      tall: { exportName: "X_CAMERA_BOXES", boxes: tall },
+    });
+    expect(text).toContain('import type { AABB, CameraBox } from "../collision";');
+    expect(text).toContain("export const X_CAMERA_BOXES: readonly CameraBox[] = [");
+    expect(text).toContain("  { minX: 3, maxX: 4.25, minZ: 1, maxZ: 2, height: 2.2 }, // col__a");
+    expect(text.indexOf("X_COLLIDERS")).toBeLessThan(text.indexOf("X_CAMERA_BOXES"));
+    const none = renderColliderModule({ exportName: "X_COLLIDERS", source: "x.glb", colliders, collisionImport: "../collision", tall: { exportName: "X_CAMERA_BOXES", boxes: [] } });
+    expect(none).toContain("X_CAMERA_BOXES: readonly CameraBox[] = [];");
+    expect(renderColliderModule({ exportName: "X", source: "x.glb", colliders, collisionImport: "../collision" })).not.toContain("CameraBox");
+    expect(() =>
+      renderColliderModule({ exportName: "X", source: "x.glb", colliders, collisionImport: "../collision", tall: { exportName: "X", boxes: [] } }),
+    ).toThrow();
   });
 });
 
@@ -678,6 +753,8 @@ describe("CLIs", () => {
     expect(text).toContain("export const ROOM_PROP_COLLIDERS: readonly AABB[] = [");
     expect(text.indexOf("col__a")).toBeLessThan(text.indexOf("col__b"));
     expect(text).toContain("{ minX: 0, maxX: 2, minZ: 0, maxZ: 2 }, // col__a");
+    // ...with no tall props here (1 m cubes) the camera-box export is empty.
+    expect(text).toContain("export const ROOM_PROP_CAMERA_BOXES: readonly CameraBox[] = [];");
 
     const out2 = path.join(tmp, "gen", "bad.ts");
     const s = Math.SQRT1_2;

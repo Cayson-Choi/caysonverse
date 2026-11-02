@@ -10,15 +10,20 @@
  */
 
 import type { AABB } from "../collision";
-import { COUNSEL_PROP_COLLIDERS } from "./generated/counselColliders";
+import { COUNSEL_PROP_CAMERA_BOXES, COUNSEL_PROP_COLLIDERS } from "./generated/counselColliders";
 import { makeGeometry, wallsAround } from "./geometry";
 import type { MapGeometry } from "./geometry";
 
 /** The floor of the room; the walls sit just outside it. */
 export const COUNSEL_ROOM: AABB = { minX: -6, maxX: 6, minZ: -5, maxZ: 5 };
 
-/** Where a team appears (plus a random offset of up to `COUNSEL_SPAWN_JITTER` m). */
-export const COUNSEL_SPAWN = { x: 0, z: 2.8 } as const;
+/**
+ * Where a team appears (plus a random offset of up to `COUNSEL_SPAWN_JITTER` m): the middle of the room, in front of the
+ * low table (its disk, jitter + body, must stay clear of it). The follow camera starts behind the players, to the south, and
+ * stands about 5.6 m back: from the old spot near the south wall (z 2.8, 2.2 m from it) the wall pulled it in to 1.6 m
+ * and the first picture was the back of a head. From here the camera stays in the room, over the 5 m deep floor.
+ */
+export const COUNSEL_SPAWN = { x: 0, z: -1.2 } as const;
 export const COUNSEL_SPAWN_JITTER = 1;
 
 /**
@@ -83,12 +88,16 @@ export const COUNSEL_VISUALS: readonly VisualBinding[] = [
   { node: "obj__exit_door", flag: "escaped", effect: "open", angle: 1.6 },
 ];
 
-/** Walls around the room (no openings: the room is sealed), plus the generated prop boxes. */
+/**
+ * Walls around the room (no openings: the room is sealed), plus the generated prop boxes. The camera boxes are the
+ * walls and the tall props (bookcase, cabinet, sort board, screen, door, plants), each with its height.
+ */
 export const COUNSEL_GEOMETRY: MapGeometry = makeGeometry(
   "counsel",
   COUNSEL_ROOM,
   wallsAround(COUNSEL_ROOM),
   COUNSEL_PROP_COLLIDERS,
+  COUNSEL_PROP_CAMERA_BOXES,
 );
 
 const ANCHORS_BY_ID: ReadonlyMap<string, ObjectAnchor> = new Map(COUNSEL_ANCHORS.map((a) => [a.id, a]));
