@@ -1,15 +1,27 @@
 import { Client, Room } from "@colyseus/sdk";
 // TYPE-ONLY: schema.ts runs @colyseus/schema decorators and must never enter the
-// browser bundle. We only borrow WorldState's shape for typing the room state.
-import type { WorldState } from "@caysonverse/shared/schema";
+// browser bundle. We only borrow the states' shapes for typing the rooms.
+import type { ClassState, EscapeState, WorldState } from "@caysonverse/shared/schema";
 import { WORLD_ROOM, CHAT_MAX_LENGTH } from "@caysonverse/shared/constants";
 import { MessageType } from "@caysonverse/shared/messages";
 import type { MovePayload } from "@caysonverse/shared/messages";
 import type { Appearance } from "@caysonverse/shared/appearance";
+import { CLASS_ROOM, type TextLevel } from "@caysonverse/shared/escape/constants";
+import { normalizeClassCode } from "@caysonverse/shared/escape/classCode";
+import type { ClassPayloads, EscapePayloads } from "@caysonverse/shared/escape/messages";
 import { SERVER_URL } from "./endpoint";
-import { joinErrorNotice, isCapacityError } from "./reconnectPolicy";
+import {
+  joinErrorNotice,
+  isCapacityError,
+  classJoinErrorNotice,
+  serverNoticeOr,
+  CLASS_NOT_FOUND_NOTICE,
+  FAILED_NOTICE,
+} from "./reconnectPolicy";
 import { retryWhile } from "./joinRetry";
 import { attachResilience } from "./resilience";
+import { attachEscapeResilience, cancelEscapeRecovery } from "./escapeResilience";
+import { bindEscapeSync, unbindEscapeSync } from "./escapeSync";
 
 /**
  * Bounded retry for the INITIAL join only (named in one place). A 521 "no rooms
@@ -37,20 +49,66 @@ export interface JoinParams {
   adminCode?: string;
 }
 
+/**
+ * Options of a class (반) join (ruling E5): the stage-3 join contract — nickname + NESTED
+ * appearance, exactly as `JoinParams` — plus the class code and, for a teacher, the one-time
+ * pass from `requestTeacherPass` (used once, never stored).
+ */
+export interface ClassJoinParams extends Omit<JoinParams, "adminCode"> {
+  classCode: string;
+  teacherPass?: string;
+}
+
 /** The one SDK client. Shared with the resilience driver (reconnect/re-join). */
 export const client = new Client(SERVER_URL);
 
-// Module-level room handle — NOT React state. The scene reads it via getRoom().
+// Module-level room handles — NOT React state. Scenes read them via getRoom() / getEscapeRoom().
+// `room` is the MAIN connection: the legacy world or a class. A class room is held through the
+// world type (ClassState extends WorldState; Room's generic is invariant, hence the casts where
+// one is stored). `escapeRoom` is the team classroom, open ON TOP of the class connection.
 let room: Room<WorldState> | null = null;
+/** Which kind of main connection this tab has (set by joinWorld / joinClass). */
+let roomMode: "world" | "class" = "world";
+let escapeRoom: Room<EscapeState> | null = null;
+/** Classroom joins in flight (escapeResilience waits for one instead of giving up mid-join). */
+let escapeJoins = 0;
 
-/** The currently joined world room, or null when not connected/reconnecting. */
+/** The main room (world or class), or null when not connected/reconnecting. */
 export function getRoom(): Room<WorldState> | null {
   return room;
 }
 
-/** Swap the active room handle (used by the resilience driver on reconnect). */
+/** Swap the main room handle (used by the resilience driver on reconnect). */
 export function setRoom(next: Room<WorldState> | null): void {
   room = next;
+}
+
+/** The team classroom room, or null (in the hall, in the world). */
+export function getEscapeRoom(): Room<EscapeState> | null {
+  return escapeRoom;
+}
+
+/** Swap the classroom handle (a plain setter; `adoptEscapeRoom` also arms and syncs it). */
+export function setEscapeRoom(next: Room<EscapeState> | null): void {
+  escapeRoom = next;
+}
+
+/**
+ * The room the player is IN — the classroom while one is open, else the main room. Player
+ * messages (move, chat, emoji, jump, typing) go here, and the chat / emoji UI binds here
+ * (ruling E13: hall chat in the hub, team chat in a classroom).
+ *
+ * Typed as the world room on purpose: its users (chat / typing / emoji sync) touch only the
+ * player messages and `state.players`, which every player room (world, class, classroom) has —
+ * a classroom's state has no `announcement`, so never read that through this handle.
+ */
+export function getActiveRoom(): Room<WorldState> | null {
+  return (escapeRoom as unknown as Room<WorldState> | null) ?? room;
+}
+
+/** True while a classroom join is in flight. */
+export function escapeJoinPending(): boolean {
+  return escapeJoins > 0;
 }
 
 /**
@@ -93,52 +151,242 @@ export async function joinWorld(params: JoinParams): Promise<Room<WorldState>> {
   }
 
   setRoom(joined);
+  roomMode = "world";
   attachResilience(joined);
   await waitForSelf(joined);
   return joined;
 }
 
-/** Send a throttled position update. No-op if not connected. */
-export function sendMove(payload: MovePayload): void {
-  room?.send(MessageType.Move, payload);
+// ─────────────────────────────── Classes (AI 학교 탈출, Task 13) ───────────────────────────────
+
+/**
+ * A teacher-route failure: the server's Korean text (or FAILED_NOTICE) and the HTTP status
+ * (0 = no answer). The status is deliberately NOT `code`: a proxy's HTTP 521/522 must never read
+ * as the matchmaker's "no room" (reconnectPolicy.isCapacityError).
+ */
+export class TeacherPassError extends Error {
+  readonly status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "TeacherPassError";
+    this.status = status;
+  }
 }
 
 /**
- * Send a chat line. Pre-trimmed to CHAT_MAX_LENGTH (the server re-validates and
- * is authoritative). No-op if not connected or the trimmed text is empty.
+ * `POST /api/class/teacher`: verify the teacher key and open a class (no `classCode`) or get a
+ * pass for the class with that code (re-opening it after a server restart). Resolves
+ * `{ classCode, pass }`; the pass goes into ONE class join. Rejects with a TeacherPassError whose
+ * message is the server's Korean reason, else FAILED_NOTICE. The key travels only in this body —
+ * it is never logged, stored, or put in a join option.
+ */
+export async function requestTeacherPass(body: {
+  teacherKey: string;
+  classCode?: string;
+  textLevel?: TextLevel;
+}): Promise<{ classCode: string; pass: string }> {
+  const payload: { teacherKey: string; classCode?: string; textLevel?: TextLevel } = { teacherKey: body.teacherKey };
+  const code = body.classCode?.trim() ?? "";
+  if (code !== "") payload.classCode = normalizeClassCode(code) ?? code; // a bad code: the server says why
+  if (body.textLevel !== undefined) payload.textLevel = body.textLevel;
+
+  let res: Response;
+  try {
+    res = await fetch(`${SERVER_URL}/api/class/teacher`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+      cache: "no-store",
+    });
+  } catch {
+    throw new TeacherPassError(FAILED_NOTICE, 0);
+  }
+  const json = (await res.json().catch(() => null)) as { classCode?: unknown; pass?: unknown; error?: unknown } | null;
+  if (res.ok) {
+    const classCode = normalizeClassCode(json?.classCode);
+    const pass = json?.pass;
+    if (classCode !== null && typeof pass === "string" && pass !== "") return { classCode, pass };
+    throw new TeacherPassError(FAILED_NOTICE, 500); // a 200 without the fields: a server fault
+  }
+  throw new TeacherPassError(serverNoticeOr(json?.error, FAILED_NOTICE), res.status);
+}
+
+/** A class's join options: canonical code, nickname, nested appearance, the pass only when given. */
+function classJoinOptions(p: ClassJoinParams): ClassJoinParams {
+  const classCode = normalizeClassCode(p.classCode);
+  // The server's filter is exact: a code that can never match is refused here (no request).
+  if (classCode === null) throw new Error(CLASS_NOT_FOUND_NOTICE);
+  const options: ClassJoinParams = { classCode, nickname: p.nickname, appearance: p.appearance };
+  if (p.teacherPass) options.teacherPass = p.teacherPass;
+  return options;
+}
+
+/**
+ * Raw class join (join-existing-only: a class exists only once the teacher route opened it).
+ * Throws the SDK's native error (callers map it). Used by joinClass and by the resilience
+ * driver's Phase-2 rejoin.
+ */
+export async function joinClassRoom(p: ClassJoinParams): Promise<Room<ClassState>> {
+  return client.join<ClassState>(CLASS_ROOM, classJoinOptions(p));
+}
+
+/**
+ * Join a class from the entry screen: `client.join(CLASS_ROOM, …)` → adopt (setRoom) → arm the
+ * class resilience, which also starts the class sync (before any await: a takeover's ticket can
+ * follow the join at once) → wait for our own player. Rejects with a user-facing Korean Error
+ * (classJoinErrorNotice): no class with that code → CLASS_NOT_FOUND_NOTICE, the room's own
+ * refusal as is. No 521 retry here: a wrong code should answer at once.
+ */
+export async function joinClass(p: ClassJoinParams): Promise<Room<ClassState>> {
+  let joined: Room<ClassState>;
+  try {
+    joined = await joinClassRoom(p);
+  } catch (err) {
+    throw new Error(classJoinErrorNotice(err));
+  }
+  const asWorld = joined as unknown as Room<WorldState>;
+  setRoom(asWorld);
+  roomMode = "class";
+  attachResilience(asWorld, "class");
+  await waitForSelf(joined);
+  return joined;
+}
+
+/** How long a consented leave is waited for: a room whose connection already closed never answers. */
+const LEAVE_WAIT_MS = 3000;
+
+/**
+ * A consented leave that never throws and never hangs: it resolves when the server has closed
+ * the connection, or after LEAVE_WAIT_MS (the SDK's promise never settles for a dead connection).
+ */
+function quietLeave(r: { leave(consented?: boolean): Promise<unknown> } | null): Promise<void> {
+  if (!r) return Promise.resolve();
+  let left: Promise<unknown>;
+  try {
+    left = r.leave(true);
+  } catch {
+    return Promise.resolve();
+  }
+  return new Promise<void>((resolve) => {
+    const timer = setTimeout(resolve, LEAVE_WAIT_MS);
+    left.then(
+      () => {
+        clearTimeout(timer);
+        resolve();
+      },
+      () => {
+        clearTimeout(timer);
+        resolve();
+      },
+    );
+  });
+}
+
+/**
+ * Make `next` THE classroom connection: adopt, arm its resilience (SDK auto-reconnect off, our
+ * onLeave), start its sync — all before any await (the server sends Content right after a join).
+ * A previous classroom session is left (consented); its late close is ignored (no longer current).
+ */
+export function adoptEscapeRoom(next: Room<EscapeState>): void {
+  const previous = escapeRoom;
+  escapeRoom = next;
+  attachEscapeResilience(next);
+  bindEscapeSync(next);
+  if (previous !== null && previous !== next) void quietLeave(previous);
+}
+
+/**
+ * Join the team classroom with a one-time ticket — ONLY by id (the escape room is private:
+ * `joinById(roomId, { ticket })`, never matchmade by name). Rejects with a Korean Error: the
+ * room's refusal as is ("입장권이 만료됐어요…"), anything else FAILED_NOTICE.
+ */
+export async function joinEscape(roomId: string, ticket: string): Promise<Room<EscapeState>> {
+  escapeJoins++;
+  try {
+    let joined: Room<EscapeState>;
+    try {
+      joined = await client.joinById<EscapeState>(roomId, { ticket });
+    } catch (err) {
+      throw new Error(serverNoticeOr((err as { message?: unknown } | null)?.message, FAILED_NOTICE));
+    }
+    cancelEscapeRecovery(); // a new session supersedes any recovery of the old one
+    adoptEscapeRoom(joined);
+    await waitForSelf(joined);
+    return joined;
+  } finally {
+    escapeJoins--;
+  }
+}
+
+/**
+ * Leave the team classroom (consented: the server reports it at once and puts the player back at
+ * the door) and forget it. The caller moves the screen (`exitEscape`); the class connection stays.
+ */
+export async function leaveEscape(): Promise<void> {
+  cancelEscapeRecovery();
+  const r = escapeRoom;
+  escapeRoom = null;
+  unbindEscapeSync();
+  await quietLeave(r);
+}
+
+/** Send a class message (team, phase, door, rejoin, results). No-op unless this tab is in a class. */
+export function sendClass<K extends keyof ClassPayloads>(type: K, payload: ClassPayloads[K]): void {
+  if (roomMode !== "class") return;
+  room?.send(type, payload);
+}
+
+/** Send a classroom (puzzle) message. No-op unless a classroom connection is open. */
+export function sendEscape<K extends keyof EscapePayloads>(type: K, payload: EscapePayloads[K]): void {
+  escapeRoom?.send(type, payload);
+}
+
+// ─────────────────────────── Player messages: the ACTIVE room ───────────────────────────
+
+/** Send a throttled position update to the active room. No-op if not connected. */
+export function sendMove(payload: MovePayload): void {
+  getActiveRoom()?.send(MessageType.Move, payload);
+}
+
+/**
+ * Send a chat line to the active room (hall chat in the hub, team chat in a classroom).
+ * Pre-trimmed to CHAT_MAX_LENGTH (the server re-validates and is authoritative). No-op if not
+ * connected or the trimmed text is empty.
  */
 export function sendChat(text: string): void {
   const trimmed = text.trim().slice(0, CHAT_MAX_LENGTH);
   if (trimmed.length === 0) return;
-  room?.send(MessageType.Chat, { text: trimmed });
+  getActiveRoom()?.send(MessageType.Chat, { text: trimmed });
 }
 
 /**
- * Send an emoji reaction (index into EMOJIS). No-op if not connected; the
+ * Send an emoji reaction (index into EMOJIS) to the active room. No-op if not connected; the
  * server re-validates the index and is authoritative on the rate cap.
  */
 export function sendEmoji(index: number): void {
-  room?.send(MessageType.Emoji, { index });
+  getActiveRoom()?.send(MessageType.Emoji, { index });
 }
 
 /**
- * Tell the server this client jumped (a broadcast EVENT, not state — y is
+ * Tell the active room this client jumped (a broadcast EVENT, not state — y is
  * server-fixed). No-op if not connected. The server drops it when the sender is
  * seated or over the JUMP_RATE cap, so callers gate with `localJump` first.
  */
 export function sendJump(): void {
-  room?.send(MessageType.Jump, {});
+  getActiveRoom()?.send(MessageType.Jump, {});
 }
 
 /**
- * Tell the server this client started (`on: true`) or stopped (`on: false`) typing a
+ * Tell the active room this client started (`on: true`) or stopped (`on: false`) typing a
  * chat line (a broadcast EVENT, not state). No-op if not connected. The server drops
  * an ON over the TYPING_RATE cap and an OFF that has no ON before it, so callers go
  * through `createTypingSender`, which already follows both rules.
  */
 export function sendTyping(on: boolean): void {
-  room?.send(MessageType.Typing, { on });
+  getActiveRoom()?.send(MessageType.Typing, { on });
 }
+
+// ───────────────────────── World-only and instructor messages (main room) ─────────────────────────
 
 /**
  * Request to sit on `seatIndex`. No-op if not connected; the server is
@@ -164,20 +412,32 @@ export function sendPortalReturn(): void {
 }
 
 /**
- * Admin: set (or clear) the announcement banner. An empty/whitespace `text`
- * clears it — that is intentional and handled server-side. No-op if not
- * connected; the server drops the message unless this connection is admin.
+ * Admin / teacher: set (or clear) the announcement banner — always on the main room (in a
+ * class: the class, never a classroom). An empty/whitespace `text` clears it — that is
+ * intentional and handled server-side. No-op if not connected; the server drops the message
+ * unless this connection is admin / teacher.
  */
 export function sendAnnounce(text: string): void {
   room?.send(MessageType.Announce, { text });
 }
 
 /**
- * Admin: kick the player owning `sid`. No-op if not connected; the server drops
- * the message unless this connection is admin, and refuses self-kicks.
+ * Admin / teacher: kick the player owning `sid` — always on the main room. No-op if not
+ * connected; the server drops the message unless this connection is admin / teacher, and
+ * refuses self-kicks.
  */
 export function sendKick(sid: string): void {
   room?.send(MessageType.Kick, { sid });
+}
+
+/**
+ * What `waitForSelf` needs of a room — any player room (world, class, classroom) fits it
+ * (Room's own generic is invariant, so a structural shape instead of Room<…>).
+ */
+interface SelfWaitable {
+  sessionId: string;
+  readonly state: { players?: { get?(sid: string): unknown } } | undefined;
+  onStateChange: ((cb: () => void) => unknown) & { remove(cb: () => void): void };
 }
 
 /**
@@ -185,16 +445,16 @@ export function sendKick(sid: string): void {
  * `joinOrCreate` can resolve before the reflection-decoded `state.players`
  * MapSchema exists, so we must not assume the shape is ready yet.
  */
-function hasSelf(r: Room<WorldState>): boolean {
+function hasSelf(r: SelfWaitable): boolean {
   return r.state?.players?.get?.(r.sessionId) !== undefined;
 }
 
 /**
  * `joinOrCreate`/`reconnect` can resolve a tick before the first state patch
  * arrives. Wait (briefly) for our player so the caller reads the real spawn, not
- * a default. Exported so the resilience driver reuses the exact same gate.
+ * a default. Exported so the resilience drivers reuse the exact same gate.
  */
-export function waitForSelf(r: Room<WorldState>): Promise<void> {
+export function waitForSelf(r: SelfWaitable): Promise<void> {
   if (hasSelf(r)) return Promise.resolve();
   return new Promise((resolve) => {
     const done = () => {
@@ -212,12 +472,21 @@ export function waitForSelf(r: Room<WorldState>): Promise<void> {
   });
 }
 
-// Best-effort CONSENTED leave on a deliberate tab close / navigation, so the
-// server removes the player immediately instead of holding a 20s ghost window.
-// `pagehide` (not `beforeunload`) fires on mobile too; the send is best-effort.
+/**
+ * Tab close / navigation (`pagehide`, which fires on mobile too).
+ * - World: a best-effort CONSENTED leave, so the server removes the player at once instead of
+ *   holding a 20 s ghost window (unchanged).
+ * - Class (ruling, Task 13): NO leave of either room. A refresh or a closed tab must leave
+ *   GHOSTS (Review Focus 1): the class ghost keeps its team and its `place`, so the same nickname
+ *   coming back takes it over and is sent straight back into the same classroom. Teammates still
+ *   see the change at once: the escape room recounts membership / solo on the drop (Task 10).
+ *   The cost: a tab closed for good lingers as a ghost until the reconnection window ends.
+ */
+export function handlePageHide(): void {
+  if (roomMode === "class") return;
+  void room?.leave(true);
+}
+
 if (typeof window !== "undefined") {
-  window.addEventListener("pagehide", () => {
-    // Consented leave → server `onLeave` removes at once (no reconnection window).
-    void room?.leave(true);
-  });
+  window.addEventListener("pagehide", handlePageHide);
 }

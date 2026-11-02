@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { EMOJIS, EMOJI_RATE } from "@caysonverse/shared/constants";
-import { getRoom, sendEmoji } from "../net/connection";
+import { getActiveRoom, sendEmoji } from "../net/connection";
 import { startEmojiSync } from "../net/emojiSync";
 import { onHotkey } from "../game/hotkeys";
 import "./emoji.css";
@@ -11,7 +11,8 @@ const PULSE_MS = 200;
 /**
  * Everything an emoji control needs, shared by the PC palette and the touch fan (mount
  * ONE of them — this registers the room's emoji broadcast and the 1–6 keys):
- *  - wires the emoji broadcast into the module registry for the caller's lifetime (mirrors
+ *  - wires the ACTIVE room's emoji broadcast (the classroom while inside one, where sendEmoji
+ *    goes too) into the module registry for the caller's lifetime (mirrors
  *    Chat.tsx's startChatSync wiring); the float-up sprites live in the 3D scene (useEmoji),
  *  - the 1–6 shortcut from the shared hotkey table (hotkeys.ts), which honours the SAME
  *    capture rule the chat input sets (uiCapture.ts) so digits never leak into a reaction
@@ -22,7 +23,7 @@ const PULSE_MS = 200;
  */
 export function useEmojiFire(): { fire: (index: number) => void; pulseIndex: number | null } {
   useEffect(() => {
-    const room = getRoom();
+    const room = getActiveRoom();
     if (!room) return;
     return startEmojiSync(room);
   }, []);

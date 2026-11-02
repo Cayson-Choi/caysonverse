@@ -12,15 +12,23 @@
  * whose appearance is corrupt or out of range (an older/newer manifest, a
  * hand-edited store), keeps its nickname and gets DEFAULT_APPEARANCE as a whole
  * (spec §5.2) — never a half-valid mix, never a crash on the entry screen.
+ *
+ * AI 학교 탈출 (Task 13): a class entry also remembers its class code (반 코드), so the entry
+ * screen can prefill it and a class connection's Phase-2 rejoin finds the class again. The
+ * field is OPTIONAL (ruling E14): a world identity has none. Only the canonical form
+ * (`normalizeClassCode`) is ever written; a stored value that is not one loads as "" (no code).
  */
 
 import { DEFAULT_APPEARANCE, validateAppearance, type Appearance } from "@caysonverse/shared/appearance";
+import { normalizeClassCode } from "@caysonverse/shared/escape/classCode";
 
 const STORAGE_KEY = "cv.entry";
 
 export interface CachedIdentity {
   nickname: string;
   appearance: Appearance;
+  /** The last class code entered (canonical), "" when the stored one was not valid; absent for the world. */
+  classCode?: string;
 }
 
 /** A fresh, mutable copy of the default look (DEFAULT_APPEARANCE itself is frozen). */
@@ -35,11 +43,13 @@ export function loadIdentity(): CachedIdentity {
     if (raw) {
       const parsed: unknown = JSON.parse(raw);
       if (typeof parsed === "object" && parsed !== null) {
-        const stored = parsed as { nickname?: unknown; appearance?: unknown };
-        return {
+        const stored = parsed as { nickname?: unknown; appearance?: unknown; classCode?: unknown };
+        const identity: CachedIdentity = {
           nickname: typeof stored.nickname === "string" ? stored.nickname : "",
           appearance: validateAppearance(stored.appearance) ?? defaultAppearance(),
         };
+        if ("classCode" in stored) identity.classCode = normalizeClassCode(stored.classCode) ?? "";
+        return identity;
       }
     }
   } catch {
@@ -51,9 +61,14 @@ export function loadIdentity(): CachedIdentity {
 /** Persist the selection so a later session/reconnect reuses it. Never throws. */
 export function saveIdentity(identity: CachedIdentity): void {
   try {
+    const classCode = normalizeClassCode(identity.classCode);
     localStorage.setItem(
       STORAGE_KEY,
-      JSON.stringify({ nickname: identity.nickname, appearance: identity.appearance }),
+      JSON.stringify({
+        nickname: identity.nickname,
+        appearance: identity.appearance,
+        ...(classCode !== null ? { classCode } : {}),
+      }),
     );
   } catch {
     // storage may be unavailable (private mode); non-fatal

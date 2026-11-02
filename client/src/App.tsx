@@ -21,6 +21,9 @@ function useCanvasContextMenuSuppression() {
   }, []);
 }
 
+/** The temporary hub / classroom panel (Tasks 15 and 17 replace it with the scenes). */
+const PENDING_STYLE = { display: "grid", placeItems: "center", minHeight: "100vh", fontSize: "1.5rem" } as const;
+
 /**
  * Top-level screen router. `screen` and `identity` are UI state (zustand), not
  * per-frame data. Entry -> (join success) -> world; an unexpected room leave is
@@ -31,6 +34,10 @@ function useCanvasContextMenuSuppression() {
  * AppErrorBoundary wraps both screens: an uncaught render error (e.g. inside the
  * 3D scene) shows a refresh prompt instead of React unmounting the root to a blank
  * page, and leaves any open room.
+ *
+ * AI 학교 탈출 (Task 13): `hub` (a class's hall) and `escape` (a team classroom) are
+ * screens of the state machine already; their scenes come in Tasks 15 and 17. Until
+ * then they show a plain "준비 중" panel.
  */
 export default function App() {
   useCanvasContextMenuSuppression();
@@ -43,6 +50,10 @@ export default function App() {
       <AppErrorBoundary>
         {screen === "world" && identity ? (
           <WorldScene key={connectionEpoch} identity={identity} />
+        ) : (screen === "hub" || screen === "escape") && identity ? (
+          <div className="cv-pending" role="status" style={PENDING_STYLE}>
+            준비 중
+          </div>
         ) : (
           <EntryScreen />
         )}
