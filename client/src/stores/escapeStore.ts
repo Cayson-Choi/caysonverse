@@ -9,6 +9,7 @@ import type {
   InspectViewPayload,
   RoomContent,
 } from "@caysonverse/shared/escape/messages";
+import { dropInspectRequests } from "../escape/inspectRequests";
 import type { Toast } from "./classStore";
 
 /**
@@ -129,7 +130,11 @@ export const useEscapeStore = create<EscapeStoreState>((set) => ({
 
   setView: (view) => set({ view }),
   setContent: (content) => set({ content }),
-  setInspect: (inspect) => set({ inspect }),
+  setInspect: (inspect) => {
+    // Closing the card makes every reply still on its way stale (a late one must not reopen it).
+    if (inspect === null) dropInspectRequests();
+    set({ inspect });
+  },
   pushEvent: (ev) =>
     set((s) => ({
       lastEvent: ev,
@@ -138,5 +143,8 @@ export const useEscapeStore = create<EscapeStoreState>((set) => ({
     })),
   showToast: (text) => set({ toast: { id: nextToastId++, text } }),
   clearToast: (id) => set((s) => (s.toast !== null && (id === undefined || s.toast.id === id) ? { toast: null } : s)),
-  reset: () => set({ view: null, content: null, inspect: null, lastEvent: null, summary: null, toast: null }),
+  reset: () => {
+    dropInspectRequests();
+    set({ view: null, content: null, inspect: null, lastEvent: null, summary: null, toast: null });
+  },
 }));

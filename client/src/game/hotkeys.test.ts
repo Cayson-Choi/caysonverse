@@ -28,6 +28,7 @@ describe("resolveHotkey — key table", () => {
     expect(resolveHotkey(kd("KeyR"), false)).toEqual({ type: "recenter" });
     expect(resolveHotkey(kd("KeyV"), false)).toEqual({ type: "toggleView" });
     expect(resolveHotkey(kd("KeyM"), false)).toEqual({ type: "toggleMap" });
+    expect(resolveHotkey(kd("KeyB"), false)).toEqual({ type: "bag" }); // the classroom team bag (Task 18 review)
     expect(resolveHotkey(kd("Escape"), false)).toEqual({ type: "menu" });
     expect(resolveHotkey(kd("Enter"), false)).toEqual({ type: "openChat" });
     expect(resolveHotkey(kd("NumpadEnter"), false)).toEqual({ type: "openChat" });
@@ -49,7 +50,7 @@ describe("resolveHotkey — key table", () => {
   });
 
   it("returns null for every key except Escape while the UI owns the keyboard (Review Focus 1)", () => {
-    for (const code of ["Space", "KeyE", "KeyF", "KeyR", "KeyV", "KeyM", "Enter", "NumpadEnter", "Slash", "Digit1", "Digit6", "Tab"])
+    for (const code of ["Space", "KeyE", "KeyF", "KeyR", "KeyV", "KeyM", "KeyB", "Enter", "NumpadEnter", "Slash", "Digit1", "Digit6", "Tab"])
       expect(resolveHotkey(kd(code), true)).toBeNull();
     // Esc still reaches the menu action so it can close the 조교 대화창 while typing.
     expect(resolveHotkey(kd("Escape"), true)).toEqual({ type: "menu" });

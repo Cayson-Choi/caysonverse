@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { EscapeMsg, type EscapedEvent } from "@caysonverse/shared/escape/messages";
 import { bindEscapeSync, startEscapeSync, unbindEscapeSync } from "./escapeSync";
+import { noteInspectRequest } from "../escape/inspectRequests";
 import { useEscapeStore } from "../stores/escapeStore";
 
 /** A fake classroom room: plain Maps / Arrays for the schema collections, patches fired by hand. */
@@ -94,6 +95,7 @@ describe("startEscapeSync", () => {
     const f = fakeEscapeRoom();
     const stop = startEscapeSync(f.room as never);
     f.send(EscapeMsg.Content, { roomId: "counsel", title: "상담실" });
+    noteInspectRequest("drawer"); // the player asked for it (an unasked view opens nothing)
     f.send(EscapeMsg.InspectView, { objectId: "drawer", title: "서랍", body: "..." });
     f.send(EscapeMsg.Event, { e: "solved", lockId: "cover_lock", by: "a" });
     f.send(EscapeMsg.Notice, { text: "조금 더 가까이 가 보세요" });
@@ -118,6 +120,25 @@ describe("startEscapeSync", () => {
     f.send(EscapeMsg.Event, null);
     f.send(EscapeMsg.Event, { no: "e" });
     expect(useEscapeStore.getState().eventSeq).toBe(seq);
+    stop();
+  });
+
+  it("a close-up nobody asked for, or one that lands after the card was closed, opens nothing", () => {
+    const f = fakeEscapeRoom();
+    const stop = startEscapeSync(f.room as never);
+    const view = { objectId: "cabinet", title: "캐비닛", body: "..." };
+
+    f.send(EscapeMsg.InspectView, view); // never asked
+    expect(useEscapeStore.getState().inspect).toBeNull();
+
+    noteInspectRequest("cabinet");
+    f.send(EscapeMsg.InspectView, view);
+    expect(useEscapeStore.getState().inspect?.objectId).toBe("cabinet");
+
+    noteInspectRequest("cabinet"); // the open card refreshes itself...
+    useEscapeStore.getState().setInspect(null); // ...and the player closes it with Esc first
+    f.send(EscapeMsg.InspectView, view); // the late answer
+    expect(useEscapeStore.getState().inspect).toBeNull();
     stop();
   });
 

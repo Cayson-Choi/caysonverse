@@ -18,7 +18,7 @@ import {
   getClickTarget,
   resetClickMove,
 } from "./clickMove";
-import { guardMoveKeys, isUiCaptured } from "./uiCapture";
+import { guardMoveInput, guardMoveKeys, isUiCaptured } from "./uiCapture";
 import { onHotkey } from "./hotkeys";
 import {
   JUMP_FADE_IN_S,
@@ -353,7 +353,10 @@ export function LocalPlayer({
     // movement keys are zeroed so nothing walks the avatar. We don't touch drei's
     // key listeners, so nothing can get stuck on blur (see uiCapture.ts).
     const suspended = isInputSuspended();
-    const keys = guardMoveKeys(getKeys(), isUiCaptured() || suspended);
+    const captured = isUiCaptured() || suspended;
+    const keys = guardMoveKeys(getKeys(), captured);
+    // The joystick obeys the same freeze (a held stick must not steer behind a close-up / the menu).
+    const stick = guardMoveInput(moveInput, captured);
     const keyIntent = readIntent(keys);
     // Combine keyboard + joystick into ONE camera-relative intent. worldDirection
     // normalizes, so a blended push still moves at the constant gait speed. While
@@ -361,8 +364,8 @@ export function LocalPlayer({
     const intent: Intent = suspended
       ? { forward: 0, right: 0 }
       : {
-          forward: keyIntent.forward + moveInput.forward,
-          right: keyIntent.right + moveInput.right,
+          forward: keyIntent.forward + stick.forward,
+          right: keyIntent.right + stick.right,
         };
 
     // Movement stays camera-relative off the ACTIVE view yaw: the TP orbit yaw in
@@ -404,7 +407,7 @@ export function LocalPlayer({
     // Run intent: Shift (zeroed by the guard while a field owns the keyboard) or the
     // touch run flag, dropped while suspended. It also applies to click-move: the
     // auto-move target is walked at whichever speed the player is holding right now.
-    const run = !suspended && (keys.run || moveInput.run);
+    const run = !suspended && (keys.run || stick.run);
     const gait = gaitFor(moving, run);
 
     if (seated && !wasSeated) {

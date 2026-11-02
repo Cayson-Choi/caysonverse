@@ -905,6 +905,26 @@
 .cv-esc-bag-btn.is-open {
   border-color: rgba(139, 92, 246, 0.6);
 }
+/* The B hint on a PC (the keyboard way to the tray). */
+.cv-esc-bag-key {
+  position: absolute;
+  left: -4px;
+  bottom: -4px;
+  min-width: 18px;
+  padding: 1px 5px;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.3;
+  text-align: center;
+  color: var(--esc-ink-3);
+  background: #efeafc;
+  border: 1px solid var(--esc-line);
+  border-radius: 6px;
+}
+.cv-esc-bag-tray:focus {
+  outline: none;
+}
 .cv-esc-bag-count {
   position: absolute;
   top: -4px;

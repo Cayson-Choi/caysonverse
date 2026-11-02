@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import {
   acquireUiCapture,
   captureReleaseEffect,
+  guardMoveInput,
   guardMoveKeys,
   isUiCaptured,
   releaseAllUiCapture,
@@ -152,5 +153,22 @@ describe("captureReleaseEffect (unmount cleanup)", () => {
     dispose();
     dispose();
     expect(isUiCaptured()).toBe(false);
+  });
+});
+
+describe("guardMoveInput — the phone joystick obeys the same freeze as the keys", () => {
+  it("drops a held joystick (and its run flag) while the UI is captured — a close-up must not let the avatar walk away", () => {
+    expect(guardMoveInput({ forward: 1, right: -0.5, run: true }, true)).toEqual({ forward: 0, right: 0, run: false });
+  });
+
+  it("passes the joystick through untouched when the UI is not captured (the very same object: no allocation)", () => {
+    const stick = { forward: 1, right: -0.5, run: true };
+    expect(guardMoveInput(stick, false)).toBe(stick);
+  });
+
+  it("holds no latched state — the stick that is still down moves the avatar again the moment the UI lets go", () => {
+    const stick = { forward: 0.7, right: 0, run: false };
+    expect(guardMoveInput(stick, true).forward).toBe(0);
+    expect(guardMoveInput(stick, false).forward).toBe(0.7);
   });
 });

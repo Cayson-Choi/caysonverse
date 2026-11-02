@@ -4,6 +4,7 @@ import {
   flipped,
   inspectImageUrl,
   noteNumber,
+  pickupDone,
   tiltFromDrag,
   tiltTransform,
   uvMaskStyle,
@@ -98,5 +99,28 @@ describe("inspectImageUrl / noteNumber", () => {
   it("an id that could climb out of the inspect folder gets no picture at all", () => {
     for (const id of ["../secret", "a/b", "a\\b", "a b", "", "x?y", "x#y", "%2e%2e"])
       expect(inspectImageUrl(id), id).toBeNull();
+  });
+});
+
+describe("pickupDone — the card closes when MY pickup is confirmed, not when the button is pressed", () => {
+  const picked = { e: "picked", item: "flashlight", by: "me" } as const;
+
+  it("my own `picked` event for the item on offer closes it", () => {
+    expect(pickupDone(picked, "flashlight", "me")).toBe(true);
+  });
+
+  it("a teammate taking it first does not close my card (its refresh shows what changed)", () => {
+    expect(pickupDone({ ...picked, by: "other" }, "flashlight", "me")).toBe(false);
+  });
+
+  it("another item, another kind of event, or nothing on offer does not close it", () => {
+    expect(pickupDone({ ...picked, item: "uv_film" }, "flashlight", "me")).toBe(false);
+    expect(pickupDone({ e: "members" }, "flashlight", "me")).toBe(false);
+    expect(pickupDone(picked, undefined, "me")).toBe(false);
+    expect(pickupDone(null, "flashlight", "me")).toBe(false);
+  });
+
+  it("a session id that is not known yet never matches", () => {
+    expect(pickupDone({ ...picked, by: "" }, "flashlight", "")).toBe(false);
   });
 });

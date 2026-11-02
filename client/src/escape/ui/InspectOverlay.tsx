@@ -1,16 +1,21 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { EscapeMsg, type InspectViewPayload, type ObjectKind } from "@caysonverse/shared/escape/messages";
 import { isTouchDevice } from "../../device";
-import { sendEscape } from "../../net/connection";
+import { getEscapeRoom, sendEscape } from "../../net/connection";
 import { useEscapeStore } from "../../stores/escapeStore";
 import { FOCUSABLE_SELECTOR, tabWrapTarget } from "../../ui/focusTrap";
 import { popOverlay, pushOverlay } from "../../ui/overlayStack";
 import { objectKindOf } from "../escapeTargets";
-import { flipped, inspectImageUrl, noteNumber, tiltFromDrag, tiltTransform, uvMaskStyle } from "./inspectCard";
+import { noteInspectRequest } from "../inspectRequests";
+import { flipped, inspectImageUrl, noteNumber, pickupDone, tiltFromDrag, tiltTransform, uvMaskStyle } from "./inspectCard";
 import "../escape.css";
 
 /** The overlay's id on the overlay stack (Esc closes the top one). */
 export const INSPECT_OVERLAY_ID = "inspect";
+
+/** The server never answers a refused pickup (out of reach, a teammate was first). After this long without a result the button comes back. */
+const PICKUP_WAIT_MS = 2000;
+const PICKUP_FAILED_TEXT = "가방에 넣지 못했어요. 가까이 가서 다시 눌러 봐요";
 
 /** The UV light's circle, in the card's own pixels. */
 const UV_RADIUS_PX = 84;
@@ -117,12 +122,30 @@ function InspectCard({ view }: { view: InspectViewPayload }) {
     return v ? `${v.flags.join("|")}#${v.bag.join("|")}#${v.members.map((m) => m.sid).join("|")}` : "";
   });
   const lastKey = useRef(stateKey);
+  const pickTimer = useRef(0);
   useEffect(() => {
     if (lastKey.current === stateKey) return;
     lastKey.current = stateKey;
+    window.clearTimeout(pickTimer.current); // the state moved: the pickup (or a teammate's) has had its answer
     setSent(false);
+    noteInspectRequest(view.objectId);
     sendEscape(EscapeMsg.Inspect, { objectId: view.objectId });
   }, [stateKey, view.objectId]);
+
+  // My pickup is confirmed by the server's `picked` event — only then does the card close.
+  const canPickup = view.canPickup;
+  useEffect(() => {
+    let seen = useEscapeStore.getState().eventSeq;
+    return useEscapeStore.subscribe((s) => {
+      if (s.eventSeq === seen) return;
+      seen = s.eventSeq;
+      if (pickupDone(s.lastEvent, canPickup, getEscapeRoom()?.sessionId ?? "")) {
+        window.clearTimeout(pickTimer.current);
+        closeInspect();
+      }
+    });
+  }, [canPickup]);
+  useEffect(() => () => window.clearTimeout(pickTimer.current), []);
 
   useEffect(
     () => () => {
@@ -223,8 +246,13 @@ function InspectCard({ view }: { view: InspectViewPayload }) {
     if (sent || !view.canPickup) return;
     setSent(true);
     sendEscape(EscapeMsg.Pickup, { objectId: view.objectId });
-    // The team's toast says who took what; the bag chip shows the rest. Back to the room.
-    closeInspect();
+    // The card stays until the server says it is in the bag (the `picked` event closes it; the team's toast
+    // says who took what). A refused pickup says nothing: the button comes back with a notice.
+    window.clearTimeout(pickTimer.current);
+    pickTimer.current = window.setTimeout(() => {
+      setSent(false);
+      useEscapeStore.getState().showToast(PICKUP_FAILED_TEXT);
+    }, PICKUP_WAIT_MS);
   };
 
   const split = view.split;

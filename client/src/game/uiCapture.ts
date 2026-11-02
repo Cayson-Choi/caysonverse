@@ -19,7 +19,7 @@
  * after blur can never leave it "stuck" and focusing never fabricates a press.
  */
 
-import type { MoveKeys } from "./input";
+import type { MoveInput, MoveKeys } from "./input";
 
 /**
  * Who holds the keyboard right now ("chat", "npc", "admin", "menu"; in a classroom also "overlay" — every
@@ -63,6 +63,18 @@ const NO_KEYS: Readonly<MoveKeys> = Object.freeze({
 export function guardMoveKeys(keys: MoveKeys, uiCaptured: boolean): MoveKeys {
   if (!uiCaptured) return keys;
   return NO_KEYS;
+}
+
+/** The all-released phone joystick returned while captured — shared and frozen so the per-frame guard never allocates. */
+const NO_MOVE: Readonly<MoveInput> = Object.freeze({ forward: 0, right: 0, run: false });
+
+/**
+ * The phone joystick the controller should act on: nothing while the UI is captured, like `guardMoveKeys` for
+ * the keys. A held stick would otherwise keep steering behind an open close-up (the avatar walks out of reach
+ * of what it is looking at). Pure and stateless: the stick still held when the UI lets go moves the avatar again.
+ */
+export function guardMoveInput(input: MoveInput, uiCaptured: boolean): MoveInput {
+  return uiCaptured ? NO_MOVE : input;
 }
 
 /**

@@ -20,6 +20,7 @@ import {
   type NoticePayload,
   type RoomContent,
 } from "@caysonverse/shared/escape/messages";
+import { acceptInspectReply } from "../escape/inspectRequests";
 import { Fingerprint } from "./fingerprint";
 import { toEscapeView, useEscapeStore } from "../stores/escapeStore";
 
@@ -96,7 +97,8 @@ export function startEscapeSync(room: Room<EscapeState>): () => void {
       if (typeof c === "object" && c !== null) useEscapeStore.getState().setContent(c);
     }),
     room.onMessage(EscapeMsg.InspectView, (v: InspectViewPayload) => {
-      if (typeof v === "object" && v !== null) useEscapeStore.getState().setInspect(v);
+      // Only an answer to a look the player asked for since the card was last closed opens it.
+      if (typeof v === "object" && v !== null && acceptInspectReply(v.objectId)) useEscapeStore.getState().setInspect(v);
     }),
     room.onMessage(EscapeMsg.Event, (ev: EscapeEventPayload) => {
       if (typeof ev === "object" && ev !== null && typeof ev.e === "string") useEscapeStore.getState().pushEvent(ev);

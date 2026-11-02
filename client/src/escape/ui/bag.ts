@@ -13,9 +13,15 @@ export interface BagSelection {
 /**
  * One tap on an item. Nothing selected → it becomes the first. A different item while one is selected →
  * ask the server to combine the two (and the selection is cleared: the answer is an event, not a
- * second tap). The same item again → deselect.
+ * second tap). The same item again → deselect. While the room is not live (`live` false: paused, time up,
+ * not started) nothing is selected and nothing is asked — the server would refuse it anyway.
  */
-export function selectItem(sel: BagSelection, item: string): { sel: BagSelection; combine: [string, string] | null } {
+export function selectItem(
+  sel: BagSelection,
+  item: string,
+  live = true,
+): { sel: BagSelection; combine: [string, string] | null } {
+  if (!live) return { sel: { first: null }, combine: null };
   if (sel.first === null) return { sel: { first: item }, combine: null };
   if (sel.first === item) return { sel: { first: null }, combine: null };
   return { sel: { first: null }, combine: [sel.first, item] };
@@ -44,7 +50,7 @@ const HANGUL_FIRST = 0xac00;
 const HANGUL_LAST = 0xd7a3;
 
 /** The object particle for a word: 을 after a final consonant, 를 after a vowel (or a letter that is not Hangul). */
-function eulReul(word: string): "을" | "를" {
+export function eulReul(word: string): "을" | "를" {
   const code = word.charCodeAt(word.length - 1);
   if (code < HANGUL_FIRST || code > HANGUL_LAST) return "를";
   return (code - HANGUL_FIRST) % 28 === 0 ? "를" : "을";

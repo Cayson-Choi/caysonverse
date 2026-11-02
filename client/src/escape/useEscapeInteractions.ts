@@ -8,6 +8,7 @@ import { sendEscape } from "../net/connection";
 import { useEscapeStore } from "../stores/escapeStore";
 import { topOverlay } from "../ui/overlayStack";
 import { escapeActionsLive, escapeTargets, objectKindOf } from "./escapeTargets";
+import { noteInspectRequest } from "./inspectRequests";
 
 /** The shared empty answer (nothing offered): the ~5 Hz source allocates nothing when it has nothing to say. */
 const NO_TARGETS: readonly InteractTarget[] = Object.freeze([]);
@@ -35,6 +36,7 @@ export function useEscapeInteractions(roomId: RoomId | null): void {
       if (phase !== "press") return;
       const kind = objectKindOf(useEscapeStore.getState().content, target.id);
       if (kind === null || kind === "switch") return; // Task 19: Press / HoldStart / HoldEnd
+      noteInspectRequest(target.id); // the close-up that comes back is wanted (inspectRequests.ts)
       sendEscape(EscapeMsg.Inspect, { objectId: target.id });
     });
     return () => {

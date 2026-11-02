@@ -102,3 +102,18 @@ describe("bagEventText", () => {
     for (const ev of others) expect(text(ev), ev.e).toBeNull();
   });
 });
+
+describe("selectItem while the room is not live (paused / time up / not started)", () => {
+  it("never asks for a combine, and drops the selection", () => {
+    const first = selectItem({ first: null }, "flashlight");
+    expect(selectItem(first.sel, "uv_film", false)).toEqual({ sel: { first: null }, combine: null });
+  });
+
+  it("a first tap while not live selects nothing", () => {
+    expect(selectItem({ first: null }, "flashlight", false)).toEqual({ sel: { first: null }, combine: null });
+  });
+
+  it("live by default (the earlier calls keep working)", () => {
+    expect(selectItem({ first: "flashlight" }, "uv_film", true).combine).toEqual(["flashlight", "uv_film"]);
+  });
+});

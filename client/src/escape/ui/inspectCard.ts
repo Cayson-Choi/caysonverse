@@ -1,3 +1,5 @@
+import type { EscapeEventPayload } from "@caysonverse/shared/escape/messages";
+
 /**
  * The close-up card's pure maths and words (AI 학교 탈출, Task 18): how far a drag tips the card, which
  * side faces us, the circular "UV light" mask that follows the pointer, and where the picture lives.
@@ -78,4 +80,14 @@ export function inspectImageUrl(objectId: string): string | null {
   if (noteNumber(objectId) !== null) return `${INSPECT_IMAGE_DIR}note-front.webp`;
   if (!SAFE_ID.test(objectId)) return null;
   return `${INSPECT_IMAGE_DIR}${objectId}-front.webp`;
+}
+
+/**
+ * Whether this event is MY pickup of the item the card offers coming true — then (and only then) the card
+ * closes. Pressing "가방에 넣기" sends a request the server may refuse (out of reach, a teammate was first);
+ * the card waits for the answer instead of closing on a hope. `mySid` is my classroom session id; an
+ * empty one (not known yet) matches nothing.
+ */
+export function pickupDone(ev: EscapeEventPayload | null, canPickup: string | undefined, mySid: string): boolean {
+  return ev !== null && ev.e === "picked" && canPickup !== undefined && ev.item === canPickup && mySid !== "" && ev.by === mySid;
 }

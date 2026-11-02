@@ -27,6 +27,8 @@ export type HotkeyAction =
   | { type: "recenter" }
   | { type: "toggleView" }
   | { type: "toggleMap" }
+  /** B: open / close the classroom's team bag (a no-op where there is no bag — the legacy world). */
+  | { type: "bag" }
   | { type: "menu" }
   | { type: "openChat" }
   | { type: "emoji"; index: number }
@@ -87,6 +89,8 @@ export function resolveHotkey(e: KeyLike, uiCaptured: boolean): HotkeyAction | n
       return { type: "toggleView" };
     case "KeyM":
       return { type: "toggleMap" };
+    case "KeyB":
+      return { type: "bag" };
     case "Escape":
       return { type: "menu" };
     case "Enter":
