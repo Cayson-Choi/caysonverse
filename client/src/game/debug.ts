@@ -12,6 +12,8 @@ import { getNametagCostMs, getNametagMode, nametagProbe, overviewLabelProbe } fr
 import { useAppStore, type Screen } from "../stores/appStore";
 import { useClassStore } from "../stores/classStore";
 import { useEscapeStore, type EscapeView } from "../stores/escapeStore";
+import type { InspectViewPayload } from "@caysonverse/shared/escape/messages";
+import { ensureFrameSampler, type FrameStats } from "./frameStats";
 
 /** Non-consented close code (MAY_TRY_RECONNECT) used by the dev drop hook. */
 const DEV_DROP_CODE = 4010;
@@ -175,6 +177,15 @@ declare global {
       getEscape: () => EscapeView | null;
       /** The class (phase, code, open rooms, teams and who is inside a classroom), or null outside a class. */
       getClass: () => ClassView | null;
+      /** The close-up the player has open (the server's `InspectView` payload: title, body, back, reveal, split …), or null. */
+      getInspect: () => InspectViewPayload | null;
+      /** The rooms whose progress-board window is lit (rooms a team of this class has escaped). */
+      getLitRooms: () => string[];
+      /**
+       * rAF interval statistics over the last `windowMs` (default 20 s): frames, mean, p95 and max in ms. A rolling
+       * page-wide sampler, so a hall → classroom switch does not reset it. Headless reference for the perf E2E.
+       */
+      getFrameStats: (windowMs?: number) => FrameStats;
     };
   }
 }
@@ -195,6 +206,7 @@ export function installDebugHook(
   getSessionId: () => string,
 ): () => void {
   if (!import.meta.env.DEV) return () => {};
+  ensureFrameSampler(); // starts the rolling rAF sampler behind getFrameStats (kept for the whole session)
   window.__cv = {
     getSessionId: () => getSessionId(),
     getPos: () => ({ ...getPose(), seatIndex: getSeatIndex() }),
@@ -246,6 +258,12 @@ export function installDebugHook(
       const v = useEscapeStore.getState().view;
       return v === null ? null : structuredClone(v);
     },
+    getInspect: () => {
+      const v = useEscapeStore.getState().inspect;
+      return v === null ? null : structuredClone(v);
+    },
+    getLitRooms: () => [...useClassStore.getState().litRooms],
+    getFrameStats: (windowMs = 20000) => ensureFrameSampler().stats(windowMs, performance.now()),
     getClass: () => {
       const c = useClassStore.getState();
       if (c.classCode === "") return null;
