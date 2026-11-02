@@ -15,6 +15,13 @@
  * (CV_BOT_ZONE, 교실 100명 장면 — bot.ts 참고). --zone을 생략하면 셸에 이미 있는
  * CV_BOT_ZONE을 그대로 쓰고, 그것도 없으면 월드 전체.
  *
+ * `--scenario school` (방탈출 1단계, Task 26): 월드 봇 대신 school.ts를 **한 프로세스**로 실행한다 — 반 N개 × 학생 M명 +
+ * 교실 팀(`--classes`, `--perClass`, `--escapeTeams`, 기본 4 / 25 / 30). 선생님 키·운영자 키는 환경변수
+ * CV_LT_TEACHER_KEY / CV_LT_OPERATOR_KEY로만 넘긴다(명령줄·파일에 남기지 않는다).
+ *   node run.mjs --scenario school --endpoint http://localhost:2567 --classes 4 --perClass 25 --escapeTeams 30 --duration 630 --statusDir <dir>
+ * school.ts가 5초마다 `/api/operator/status`를 <statusDir>/measure-school.csv에 쌓고, 끝에 게이트를 판정해 종료 코드로 알린다
+ * (통과 0, 실패 1). `--scenario world`(기본)는 위 설명 그대로다.
+ *
  * 각 샤드는 CV_BOT_OFFSET으로 닉네임 번호를 이어받고(봇001…봇100), 자기 통계를
  * <statusDir>/shard-<n>.json 하트비트로 남긴다. duration이 지나면 샤드 프로세스
  * 트리를 종료하고 하트비트들을 합산해 요약을 출력한다.
@@ -40,6 +47,46 @@ function parseArgs(argv) {
 }
 
 const argv = parseArgs(process.argv.slice(2));
+
+const scenario = argv.scenario ?? "world";
+if (scenario !== "world" && scenario !== "school") {
+  console.error(`--scenario 값이 올바르지 않아요: "${scenario}" (가능: world, school)`);
+  process.exit(1);
+}
+if (scenario === "school") {
+  // school.ts runs every bot in ONE process and judges its own gates; this launcher only passes the arguments through.
+  const schoolDuration = Number(argv.duration ?? 630);
+  const schoolArgs = [
+    "--endpoint", argv.endpoint ?? "http://localhost:2567",
+    "--classes", argv.classes ?? "4",
+    "--perClass", argv.perClass ?? "25",
+    "--escapeTeams", argv.escapeTeams ?? "30",
+    "--duration", String(schoolDuration),
+    "--statusDir", argv.statusDir ?? join(HERE, "status"),
+  ];
+  const schoolCli = join(HERE, "..", "node_modules", "tsx", "dist", "cli.mjs");
+  const school = spawn(process.execPath, [schoolCli, join(HERE, "school.ts"), ...schoolArgs], {
+    cwd: HERE,
+    env: process.env, // CV_LT_TEACHER_KEY / CV_LT_OPERATOR_KEY travel here, never on the command line
+    stdio: "inherit",
+  });
+  school.on("error", (e) => {
+    console.error(`school.ts 실행 실패: ${e.message}`);
+    process.exit(1);
+  });
+  // school.ts ends itself a few seconds after the duration; this is only a backstop against a hang.
+  const backstop = setTimeout(() => {
+    console.error("school.ts가 제때 끝나지 않아 강제 종료해요.");
+    if (process.platform === "win32") spawnSync("taskkill", ["/T", "/F", "/PID", String(school.pid)], { stdio: "ignore" });
+    else school.kill("SIGTERM");
+    process.exit(1);
+  }, (schoolDuration + 120) * 1000);
+  school.on("exit", (code) => {
+    clearTimeout(backstop);
+    process.exit(code ?? 1);
+  });
+  await new Promise(() => {}); // the exit handlers above end the process
+}
 const numClients = Number(argv.numClients ?? 100);
 // Post-fix a single process handles 100 bots at ~8% of a core (see header);
 // 4 shards is pure safety margin, not a requirement.
