@@ -109,6 +109,13 @@ caysonverse(웹 3D 메타버스)의 배포·운영 방법입니다. DevOps 경�
 
    `--scope`를 빼면 "Not authorized"로 실패한 적이 있습니다.
 
+   막히면 배포 폴더로 이동해서 `vercel deploy --prod --yes --scope caysons-projects-75ebc440`를 실행하세요(2026-11-02 배포에서 `--cwd` 형태가 실패하고 이 형태가 됐습니다).
+
+   ```powershell
+   cd <배포 폴더>
+   vercel deploy --prod --yes --scope caysons-projects-75ebc440
+   ```
+
 5. **확인합니다.** 운영 주소의 `index.html`이 새로 만든 `assets/index-*.js`를 가리키는지 봅니다.
 
 ### 0.4 서버와 클라이언트는 연달아 올립니다
@@ -286,9 +293,10 @@ Railway는 **사용량 기반 과금**입니다. 특히 이 프로젝트처럼 W
 - Colyseus 0.17에서 클라이언트 IP는 **소켓이 아니라 프록시 헤더**
   (`x-forwarded-for` / `x-client-ip` / `x-real-ip`)로만 얻을 수 있습니다.
   서버는 `onAuth`에서 `context.ip`를 이 헤더들로부터 해석합니다.
-  근거(코드): `server/src/rooms/WorldRoom.ts`의 `onAuth` →
-  `resolveClientIp(context)` (약 126–136행, 408–420행). `resolveClientIp`은
-  `context.ip`를 읽어 `x-forwarded-for`의 맨 앞(원 클라이언트) IP를 사용합니다.
+  근거(코드): 각 방의 `onAuth`(`WorldRoom`·`ClassRoom`)와 HTTP 경로(`/api/class/teacher` 등)가 모두
+  `server/src/rooms/clientIp.ts`의 `resolveClientIp`를 씁니다. `resolveClientIp`은
+  `context.ip`를 읽어 `x-forwarded-for`의 **맨 오른쪽** 값(바로 앞 프록시 Caddy가 붙인 실제 접속 IP)을
+  사용합니다. 맨 앞(왼쪽) 값은 클라이언트가 마음대로 넣을 수 있어 믿지 않습니다(8장 "보안 규칙"과 같은 규칙).
 - **프록시가 없는 로컬 환경**에서는 이 헤더가 없어 IP를 얻지 못하므로, 시도
   제한이 **전역 카운터**로 동작합니다(설계상 알려진 한계).
 - **Railway(예전)와 Oracle(지금, Caddy)은 모두 프록시 뒤에서 동작**하므로 실제 배포에서는 `x-forwarded-for`가

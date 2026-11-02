@@ -144,7 +144,14 @@ try {
     await A.page.locator(".cv-dest-error").waitFor({ state: "visible", timeout: 8000 });
     const want = await A.page.evaluate(async () => (await window.__imp("/src/net/reconnectPolicy.ts")).CLASS_NOT_FOUND_NOTICE);
     check("A: no class has that code → CLASS_NOT_FOUND_NOTICE on the sheet", (await dest(A)) === want && want.length > 10, await dest(A));
-    check("A: still on the entry screen", (await screenOf(A)) === "entry", await screenOf(A));
+    // window.__cv (getScreen) exists only once a scene has mounted (LocalPlayer installs it), so on this first visit the
+    // entry screen is checked in the page itself; a screen name, if there is one, must still say "entry".
+    const screenA = await screenOf(A);
+    check(
+      "A: still on the entry screen",
+      (await vis(A, ".cv-entry", 3000)) && (await vis(A, "dialog.cv-dest[open]", 3000)) && (screenA === undefined || screenA === "entry"),
+      screenA ?? "entry (no scene mounted yet)",
+    );
     await run.shot(A, "01-wrong-code.png");
   });
 

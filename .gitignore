@@ -19,3 +19,6 @@ teacher-keys*.json
 # 갤러리 원본 사진/그림 (웹용 변환본만 client/public/gallery에 커밋)
 mypictures/
 art/
+
+# 부하 시험 결과(봇의 하트비트·CSV·요약·반 코드). --statusDir 기본값이 여기다.
+loadtest/status/

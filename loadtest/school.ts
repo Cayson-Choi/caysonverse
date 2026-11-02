@@ -460,6 +460,15 @@ function planClasses(): ClassCtx[] {
 const classes = planClasses();
 const PLANNED_ESCAPE_TEAMS = classes.reduce((sum, c) => sum + c.escapePairs, 0);
 const PLANNED_ESCAPE_BOTS = PLANNED_ESCAPE_TEAMS * 2;
+/**
+ * The classroom-entry gate's target: what was ASKED for (`--escapeTeams × 2`), never the capped plan —
+ * a run whose classes are too small for its escape teams fails the gate instead of passing on less.
+ */
+const WANTED_ESCAPE_BOTS = ESCAPE_TEAMS * 2;
+/** Status samples a whole run should produce (one per STATUS_INTERVAL_MS). */
+const EXPECTED_STATUS_SAMPLES = Math.floor((DURATION_S * 1000) / STATUS_INTERVAL_MS);
+/** The server-metric gates count only when at least this share of the expected samples came in. */
+const STATUS_COVERAGE_MIN = 0.9;
 const PLANNED_CLASS_JOINS = CLASSES * (PER_CLASS + 1);
 
 // ── Per-bot records (for the downstream average and the entry times) ──
@@ -1128,6 +1137,8 @@ interface StatusSample {
 const samples: StatusSample[] = [];
 const CSV_FILE = path.join(STATUS_DIR, "measure-school.csv");
 let pollingOff = OPERATOR_KEY === "";
+/** Set when the polling stopped during the run (a 401 / 429): the server metrics are then incomplete. */
+let pollingStopped = false;
 let pollBusy = false;
 
 async function pollStatus(): Promise<void> {
@@ -1145,6 +1156,7 @@ async function pollStatus(): Promise<void> {
     if (res.status === 401 || res.status === 429) {
       // Never keep knocking: the failure limiter is shared with the teacher route.
       pollingOff = true;
+      pollingStopped = true;
       logLine("운영자 상태", `HTTP ${res.status} — 운영자 키를 확인해 주세요. 더는 읽지 않아요.`);
       return;
     }
@@ -1183,6 +1195,20 @@ interface GateRow {
   value: string;
   limit: string;
   pass: boolean;
+}
+
+/**
+ * The server-metric coverage (Task 26 review I2): the CPU / RSS / event-loop gates must not pass on
+ * whatever samples survived — no failed read, the polling never stopped (nor was it off), and at least
+ * STATUS_COVERAGE_MIN of the samples a run of DURATION_S should give.
+ */
+function statusCoverageOk(): boolean {
+  return (
+    OPERATOR_KEY !== "" &&
+    !pollingStopped &&
+    stats.statusErrors === 0 &&
+    samples.length >= STATUS_COVERAGE_MIN * EXPECTED_STATUS_SAMPLES
+  );
 }
 
 function buildSummary() {
@@ -1230,12 +1256,20 @@ function buildSummary() {
     },
     {
       name: "교실 입장",
-      value: `${stats.escapeJoined} / ${PLANNED_ESCAPE_BOTS}`,
-      limit: "100%",
-      pass: stats.escapeJoined === PLANNED_ESCAPE_BOTS,
+      value:
+        `${stats.escapeJoined} / ${WANTED_ESCAPE_BOTS}` +
+        (PLANNED_ESCAPE_BOTS < WANTED_ESCAPE_BOTS ? ` (반이 작아 ${PLANNED_ESCAPE_BOTS}명까지만 보낼 수 있어요)` : ""),
+      limit: "100% (--escapeTeams × 2)",
+      pass: stats.escapeJoined === WANTED_ESCAPE_BOTS,
     },
     { name: "끊김", value: String(stats.disconnects), limit: "0", pass: stats.disconnects === 0 },
     { name: "오류", value: String(errors), limit: "0", pass: errors === 0 },
+    {
+      name: "서버 지표 수집",
+      value: `표본 ${samples.length} / ${EXPECTED_STATUS_SAMPLES}, 읽기 실패 ${stats.statusErrors}${pollingStopped || OPERATOR_KEY === "" ? ", 읽기 꺼짐" : ""}`,
+      limit: `실패 0, 꺼지지 않음, 표본 ≥ ${Math.round(STATUS_COVERAGE_MIN * 100)}%`,
+      pass: statusCoverageOk(),
+    },
     {
       name: "이벤트 루프 p95",
       value: loops.length ? `${percentile(loops, 0.95).toFixed(1)} ms (최대 ${loops[loops.length - 1].toFixed(1)})` : "측정 없음",
@@ -1303,7 +1337,9 @@ function printSummary(summary: ReturnType<typeof buildSummary>): void {
   );
   console.log(`선생님 열기 ${s.teachersOpened}/${CLASSES} (실패 ${s.openFailures}), 반 입장 ${s.classJoined}/${PLANNED_CLASS_JOINS} (학생 ${s.studentsJoined}, 실패 ${s.classJoinFailures})`);
   console.log(`팀 만들기 성공 ${s.teamsFormed}명 / 실패 ${s.teamFailures}명`);
-  console.log(`교실 입장 ${s.escapeJoined}/${PLANNED_ESCAPE_BOTS} (실패 ${s.escapeJoinFailures}, Content 못 받음 ${s.contentMissing})`);
+  console.log(
+    `교실 입장 ${s.escapeJoined}/${WANTED_ESCAPE_BOTS} (보낼 수 있는 봇 ${PLANNED_ESCAPE_BOTS}, 실패 ${s.escapeJoinFailures}, Content 못 받음 ${s.contentMissing})`,
+  );
   console.log(`서버 동시 최대: 반 ${summary.peak.classes}, 접속(반) ${summary.peak.players}, 교실 ${summary.peak.escapeRooms}`);
   console.log(`끊김 ${s.disconnects}, 순단/재접속 ${s.drops}/${s.reconnects}, 방 오류 ${s.roomErrors}, 처리 안 된 예외 ${s.uncaught}, 전송 오류 ${s.sendErrors}`);
   console.log(`서버 알림(Notice): ${s.notices}`);
@@ -1394,4 +1430,8 @@ async function main(): Promise<void> {
   process.exit(summary.pass ? 0 : 1);
 }
 
-void main();
+// A failure before or around the run (an unwritable --statusDir, …) must not exit 0: the exit code is the gate channel.
+main().catch((err: unknown) => {
+  process.stderr.write(`부하 시험을 시작하지 못했어요: ${errText(err)}\n`);
+  process.exit(1);
+});
