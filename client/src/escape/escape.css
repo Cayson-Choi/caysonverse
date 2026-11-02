@@ -67,6 +67,16 @@
   left: 12px;
   right: 96px;
 }
+/* Bandit's hint button (finale.css) is pinned at the stack's outer edge on the clock card's own line (the story box
+   below it is clear of it): the clock card stops short of the button, whatever the screen width. Only the clock
+   moves in, so the story box keeps the full width of the stack. Left-handed: the button is on the left. */
+.cv-touch .cv-esc-top > .cv-esc-timer {
+  margin-right: calc(var(--esc-hint-inset, 12px) - 12px);
+}
+.cv-touch .cv-esc-top.is-mirrored > .cv-esc-timer {
+  margin-right: 0;
+  margin-left: calc(var(--esc-hint-inset, 12px) - 12px);
+}
 
 .cv-esc-timer {
   display: flex;

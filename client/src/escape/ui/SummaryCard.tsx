@@ -162,9 +162,11 @@ export function SummaryCard({
           </>
         )}
 
-        <button ref={leaveRef} type="button" className="cv-esc-btn cv-sum-leave" onClick={onLeave}>
-          복도로 나가기
-        </button>
+        <div className="cv-sum-foot">
+          <button ref={leaveRef} type="button" className="cv-esc-btn cv-sum-leave" onClick={onLeave}>
+            복도로 나가기
+          </button>
+        </div>
       </div>
     </div>
   );

@@ -116,6 +116,17 @@ function FinaleCard() {
     return () => popOverlay(FINALE_OVERLAY_ID);
   }, []);
 
+  // A disabled card (the cooldown, a pause, the wrong card after a vote) takes focus with it, and key events
+  // then never reach this dialog. Bring focus back to the dialog when it has been lost, so 1-9, the arrows and
+  // the Tab trap keep working. A focus that is on a live control inside the dialog is left alone.
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    const active = document.activeElement;
+    const lost = !active || !dialog.contains(active) || (active as HTMLButtonElement).disabled === true;
+    if (lost) dialog.focus({ preventScroll: true });
+  }, [locked, wrongNow]);
+
   // A step got right: say so for a moment (the next question is already up).
   useEffect(() => {
     if (rightSeq === 0) return;
@@ -152,6 +163,8 @@ function FinaleCard() {
       const option = step.options[Number(e.key) - 1];
       if (option) {
         e.preventDefault();
+        // A held key repeats: one press is one vote.
+        if (e.repeat) return;
         choose(option.id);
       }
       return;

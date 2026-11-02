@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { EscapeView } from "../stores/escapeStore";
-import { enteringText, escapeOverlay, formatTime, isLowTime, timeupText } from "./format";
+import { enteringText, escapeOverlay, formatTime, hintInsetPx, isLowTime, timeupText } from "./format";
 
 /** An EscapeView in play, with `over` laid on top. */
 function view(over: Partial<EscapeView> = {}): EscapeView {
@@ -79,6 +79,17 @@ describe("escapeOverlay", () => {
   it("shows nothing while the team plays the finale or after it escaped", () => {
     expect(escapeOverlay(view({ phase: "finale" }))).toBeNull();
     expect(escapeOverlay(view({ phase: "escaped" }))).toBeNull();
+  });
+});
+
+describe("hintInsetPx", () => {
+  it("is the screen margin, the button and the gap to it", () => {
+    expect(hintInsetPx(48)).toBe(68);
+    expect(hintInsetPx(60)).toBe(80);
+  });
+
+  it("grows one for one with the button, so a bigger HUD button keeps the clock clear of it", () => {
+    expect(hintInsetPx(72) - hintInsetPx(48)).toBe(24);
   });
 });
 

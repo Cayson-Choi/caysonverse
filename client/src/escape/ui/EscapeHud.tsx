@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { EscapeMsg } from "@caysonverse/shared/escape/messages";
 import { isTouchDevice } from "../../device";
 import { acquireUiCapture, releaseUiCapture } from "../../game/uiCapture";
@@ -7,8 +7,9 @@ import { useAnnounceStore } from "../../stores/announceStore";
 import { useEscapeStore, type EscapeView } from "../../stores/escapeStore";
 import { useSettingsStore } from "../../stores/settingsStore";
 import type { DialogueQueue } from "../dialogue";
-import { escapeOverlay, formatTime, isLowTime, timeupText, type Overlay } from "../format";
+import { escapeOverlay, formatTime, hintInsetPx, isLowTime, timeupText, type Overlay } from "../format";
 import { useFinaleStore } from "../finaleStore";
+import { useTouchHudLayout } from "../../ui/useTouchHudLayout";
 import { DialogueBox } from "./DialogueBox";
 import "../escape.css";
 
@@ -122,6 +123,12 @@ export function EscapeHud({ queue, onLeave }: { queue: DialogueQueue; onLeave: (
   // Left-handed on a phone: the HUD columns swap sides, so does the stack.
   const mirrored = useSettingsStore((s) => s.settings.leftHanded) && isTouchDevice;
 
+  // A phone: Bandit's hint button sits at the stack's outer edge, so the clock card stops short of it (escape.css).
+  const hudLayout = useTouchHudLayout();
+  const stackStyle = isTouchDevice
+    ? ({ "--esc-hint-inset": `${hintInsetPx(hudLayout.topPx)}px` } as CSSProperties)
+    : undefined;
+
   const overlay = view ? escapeOverlay(view) : null;
   const covering = overlay === "paused" || overlay === "timeup" || overlay === "ended";
   // The last-door panel covers the story box: lines wait (and keep their full time) until it is closed.
@@ -143,7 +150,7 @@ export function EscapeHud({ queue, onLeave }: { queue: DialogueQueue; onLeave: (
   if (!view) return null;
   return (
     <>
-      <div className={"cv-escui cv-esc-top" + (announced ? " has-announce" : "") + (mirrored ? " is-mirrored" : "")}>
+      <div className={"cv-escui cv-esc-top" + (announced ? " has-announce" : "") + (mirrored ? " is-mirrored" : "")} style={stackStyle}>
         <TimerCard view={view} />
         {overlay === "intro" && (
           <div className="cv-esc-intro" role="status">

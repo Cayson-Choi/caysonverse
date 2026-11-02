@@ -17,6 +17,15 @@ export function formatTime(s: number): string {
 /** The clock turns red at this many seconds left, and under. */
 export const LOW_TIME_S = 60;
 
+/**
+ * How far in from the screen edge the phone's clock card must stop on the side of Bandit's hint button
+ * (HintPanel): the 12 px screen margin, the button (as wide as the HUD's top buttons) and the 8 px gap HintPanel
+ * leaves between them. Without it, on a narrow screen the centred clock card runs under the button.
+ */
+export function hintInsetPx(buttonPx: number): number {
+  return 12 + buttonPx + 8;
+}
+
 export function isLowTime(timeLeftS: number): boolean {
   return timeLeftS <= LOW_TIME_S;
 }
