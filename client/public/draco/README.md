@@ -16,7 +16,8 @@ Copied unchanged from the installed `three` 0.185.1 package, `examples/jsm/libs/
 
 ## License
 
-Apache License 2.0 — Copyright Google LLC / The Draco authors. The full license text:
-https://www.apache.org/licenses/LICENSE-2.0 (also https://github.com/google/draco/blob/master/LICENSE).
-The decoder files are redistributed here unmodified; this note travels with them. The project's own
-asset list is `docs/licenses.md`.
+Apache License 2.0 — Copyright Google LLC / The Draco authors. The full license text ships next to the
+decoder in this folder: [`LICENSE.txt`](LICENSE.txt) (served as `/draco/LICENSE.txt`; the same text as
+https://www.apache.org/licenses/LICENSE-2.0 and https://github.com/google/draco/blob/master/LICENSE).
+The decoder files are redistributed here unmodified; this note and the license text travel with them.
+The project's own asset list is `docs/licenses.md`.

@@ -772,8 +772,10 @@ export class EscapeRoom extends PlayerRoom<EscapeState, EscapeTracking> {
   /**
    * A hint is kept (`state.hints`, for late joiners) and told to the team. Off (the default): at
    * once, as authored. On (Task 12): the engine has already counted it; the sentence goes out once
-   * 반딧 has said it again — or, after the polish step's timeout or on any doubt, as authored. This
-   * never waits for the model itself (the message loop goes on), and hints keep their order.
+   * 반딧 has said it again — or, after the polish step's timeout or on any doubt, as authored. A polish
+   * step that throws, rejects or answers with no text gives the authored sentence too (final fix B5):
+   * a hint the engine counted always reaches the team. This never waits for the model itself (the
+   * message loop goes on), and hints keep their order.
    */
   private deliverHint(ev: Extract<EngineEvent, { e: "hint" }>): void {
     const send = (text: string): void => {
@@ -785,7 +787,16 @@ export class EscapeRoom extends PlayerRoom<EscapeState, EscapeTracking> {
       send(ev.text);
       return;
     }
-    const polished = this.bandit.rephrase(ev.text, this.hintSecrets); // never rejects, never later than its timeout
+    let polished: Promise<string>;
+    try {
+      // (rephraseHint itself never rejects and never answers later than its timeout; this guards any polish step.)
+      polished = Promise.resolve(this.bandit.rephrase(ev.text, this.hintSecrets)).then(
+        (text) => (typeof text === "string" && text.trim() !== "" ? text : ev.text),
+        () => ev.text,
+      );
+    } catch {
+      polished = Promise.resolve(ev.text);
+    }
     this.hintTail = Promise.all([this.hintTail, polished])
       .then(([, text]) => send(text))
       .catch(() => {

@@ -6,6 +6,7 @@ import { KICK_CLOSE_CODE, MAX_CLIENTS, ROLE_STUDENT, ROLE_TEACHER } from "@cayso
 import { MessageType, type SystemBroadcast } from "@caysonverse/shared/messages";
 import { APPEARANCE_ERROR, DEFAULT_APPEARANCE, pickAppearance } from "@caysonverse/shared/appearance";
 import {
+  CLASS_ACTION_RATE,
   CLASS_CLOSED_CODE,
   CLASS_ROOM,
   PHASE1_OPEN_ROOMS,
@@ -787,6 +788,42 @@ describe("teams", () => {
   const sameMembers = (room: ClassRoom, c: TestClient) =>
     JSON.stringify(clientMembers(c)) === JSON.stringify(serverMembers(room));
 
+  it("team and door messages are capped per client (CLASS_ACTION_RATE): a burst is cut, other clients are not, the window refills (final fix B1)", async () => {
+    expect(CLASS_ACTION_RATE).toEqual({ count: 10, windowMs: 1000 }); // the puzzle actions' cap (ESCAPE_ACTION_RATE)
+    const room = await openClass("RT2LMT");
+    const a = await join(room, "가람");
+    const b = await join(room, "다온");
+    const c = await join(room, "세온");
+    for (const k of [a, b]) standAt(room, k, RUG.x, RUG.z);
+    const noticesOf = (k: TestClient) => {
+      const out: string[] = [];
+      k.onMessage(ClassMsg.Notice, (m: NoticePayload) => out.push(m.text));
+      return out;
+    };
+    const [na, nb, nc] = [noticesOf(a), noticesOf(b), noticesOf(c)];
+    await sendTo(room, a, ClassMsg.TeamCreate, { nameIndex: 0, colorIndex: 5 });
+    expect(playerOf(room, a).teamId).not.toBe("");
+
+    // B floods TeamCreate with A's combo: each one handled answers "taken"; past the cap they are dropped unseen.
+    for (let i = 0; i < 25; i++) b.send(ClassMsg.TeamCreate, { nameIndex: 0, colorIndex: 5 });
+    // C floods the door in the lobby: each one handled answers "not started".
+    for (let i = 0; i < 25; i++) c.send(ClassMsg.EnterRoom, { room: "counsel" });
+    await sleep(400);
+    expect(nb).toEqual(Array(CLASS_ACTION_RATE.count).fill(TEAM_ERR.taken));
+    expect(nc).toEqual(Array(CLASS_ACTION_RATE.count).fill("선생님이 아직 시작하지 않았어요"));
+    expect(na).toEqual([]); // another client's flood costs A nothing
+    // B's capped flood made nothing either: still teamless, one team in the class.
+    expect(playerOf(room, b).teamId).toBe("");
+    expect(room.state.teams.size).toBe(1);
+
+    // A second later the window has room again.
+    await sleep(CLASS_ACTION_RATE.windowMs + 50);
+    await sendTo(room, c, ClassMsg.EnterRoom, { room: "counsel" });
+    expect(nc).toHaveLength(CLASS_ACTION_RATE.count + 1);
+    await sendTo(room, b, ClassMsg.TeamJoin, { teamId: playerOf(room, a).teamId });
+    expect(playerOf(room, b).teamId).toBe(playerOf(room, a).teamId);
+  });
+
   it("TeamCreate outside TEAM_ZONE is dropped; inside creates the team and sets teamId", async () => {
     const room = await openClass("TM2CRE");
     const a = await join(room, "가람");
@@ -818,6 +855,8 @@ describe("teams", () => {
     expect(room.state.teams.size).toBe(0);
     expect(notes).toEqual([]);
 
+    // (Those ten went out within a second: they used up A's CLASS_ACTION_RATE window. Let it refill.)
+    await sleep(CLASS_ACTION_RATE.windowMs + 50);
     // A good one: a team of one; the creator's teamId points at it.
     await sendTo(room, a, ClassMsg.TeamCreate, { nameIndex: 0, colorIndex: 5 });
     expect(room.state.teams.size).toBe(1);

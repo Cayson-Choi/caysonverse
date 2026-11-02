@@ -89,8 +89,10 @@ export function hubTargets(i: HubTargetInput): HubTargetResult {
   const team = i.myTeam;
   const say = (info: string): HubTargetResult => ({ targets: NO_TARGETS, info });
 
-  // 1. The team's classroom already runs behind THIS door: walk in after them.
+  // 1. The team's classroom already runs behind THIS door: walk in after them — unless the team has
+  //    escaped from it (the room stays open until it is empty; the server refuses the way back in).
   if (team && team.escapeRoomId !== "" && team.escapeDoor === room) {
+    if (team.escaped.includes(room)) return say(hubInfo.escaped(team.stars[room]));
     return { targets: [doorTarget(room, dist, "팀에게 가기", "팀에게")], info: null };
   }
   // 2. Nothing can be entered right now.

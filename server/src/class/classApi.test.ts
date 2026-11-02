@@ -15,6 +15,7 @@ import {
   readRoomStats,
   createProcessStats,
   CREATION_WAIT_MS,
+  CREATION_TIMEOUT_MS,
   type TeacherOpenDeps,
   type StatusDeps,
 } from "./classApi";
@@ -467,6 +468,70 @@ describe("handleTeacherOpen", () => {
       // A timed-out wait is not a key failure.
       expect(deps.limiter.isBlocked(OTHER_IP, deps.now())).toBe(false);
     } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("a creation that never settles gives up after CREATION_TIMEOUT_MS: 500, and its reservation and class slot are freed (final fix B2)", async () => {
+    expect(CREATION_TIMEOUT_MS).toBe(20_000);
+    expect(CREATION_TIMEOUT_MS).toBeGreaterThan(CREATION_WAIT_MS); // a waiting colleague gives up first
+    vi.useFakeTimers();
+    const cap = captureConsole();
+    try {
+      const { deps, registry, created } = setup({ cap: 1 });
+      deps.createClassRoom = (o) => {
+        created.push(o);
+        return new Promise(() => {}); // a matchmaker that hangs
+      };
+      let result: unknown = null;
+      const a = handleTeacherOpen({ teacherKey: KEY }, IP, deps).then((r) => {
+        result = r;
+        return r;
+      });
+      await vi.advanceTimersByTimeAsync(CREATION_TIMEOUT_MS - 1);
+      expect(result).toBeNull();
+      expect(registry.list()).toHaveLength(1); // the reservation holds the only slot meanwhile
+      await vi.advanceTimersByTimeAsync(1);
+      expect(await a).toEqual({ status: 500, body: { error: "반을 열지 못했어요. 잠시 뒤에 다시 해 주세요" } });
+      // The reservation is gone, so the slot is free again: the next teacher can open a class.
+      expect(registry.list()).toHaveLength(0);
+      deps.createClassRoom = async (o) => {
+        created.push(o);
+        return { roomId: "room-next" };
+      };
+      expect((await handleTeacherOpen({ teacherKey: KEY }, IP, deps)).status).toBe(200);
+      expect(created).toHaveLength(2);
+      // One fixed log line, no secret in it.
+      expect(cap.text()).toContain("class room creation failed");
+      for (const secret of ALL_SECRETS) expect(cap.text()).not.toContain(secret);
+    } finally {
+      cap.restore();
+      vi.useRealTimers();
+    }
+  });
+
+  it("a creation that settles after its timeout does not take back a code someone else holds now (final fix B2)", async () => {
+    vi.useFakeTimers();
+    const cap = captureConsole();
+    try {
+      const { deps, registry } = setup();
+      let finish: (v: { roomId: string }) => void = () => {};
+      deps.createClassRoom = () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        });
+      const a = handleTeacherOpen({ teacherKey: KEY, classCode: "AB2CDE", reopen: true }, IP, deps);
+      await vi.advanceTimersByTimeAsync(CREATION_TIMEOUT_MS);
+      expect((await a).status).toBe(500);
+      expect(registry.get("AB2CDE")).toBeUndefined();
+      // Another request opens the code meanwhile; the late room's answer changes nothing of it.
+      deps.createClassRoom = async () => ({ roomId: "room-b" });
+      expect((await handleTeacherOpen({ teacherKey: KEY, classCode: "AB2CDE", reopen: true }, IP, deps)).status).toBe(200);
+      finish({ roomId: "room-late" });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(registry.get("AB2CDE")?.roomId).toBe("room-b");
+    } finally {
+      cap.restore();
       vi.useRealTimers();
     }
   });

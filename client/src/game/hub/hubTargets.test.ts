@@ -116,6 +116,20 @@ describe("hubTargets — a door pad", () => {
     expect(elsewhere.targets.map((x) => x.label)).not.toContain("팀에게 가기");
   });
 
+  it("a room the team already escaped from offers no way back in, even while its classroom still runs (final fix B4)", () => {
+    // The classroom stays open for a while after the escape (the empty room closes after 2 minutes).
+    const justEscaped = team({
+      padDoor: "counsel",
+      padLeaderSid: "mate",
+      padCount: 1,
+      escapeDoor: "counsel",
+      escapeRoomId: "esc-7",
+      escaped: ["counsel"],
+      stars: { counsel: 2 },
+    });
+    expect(hubTargets(input({ myTeam: justEscaped }))).toEqual({ targets: [], info: "이미 탈출했어요 ⭐×2" });
+  });
+
   it("hubTargets: teachers never get teamDesk or door targets", () => {
     for (const at of [onRug, onCounsel, onLibrary, inMiddleOfHall]) {
       expect(hubTargets(input({ ...at, isTeacher: true, myTeam: null }))).toEqual({ targets: [], info: null });

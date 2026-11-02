@@ -141,3 +141,9 @@ export const TICKET_TTL_MS = 60_000;
 export const ESCAPE_MAX_CLIENTS = 2 * TEAM_MAX + 1;
 /** At most `count` puzzle actions per `windowMs` per client; the rest are dropped. */
 export const ESCAPE_ACTION_RATE = { count: 10, windowMs: 1000 } as const;
+/**
+ * A class's own actions — team create / join / leave / auto, the door (EnterRoom), EscapeRejoin and the
+ * results request — share one cap per client, the same as the puzzle actions: past it they are dropped
+ * silently (a flood costs the server nothing and the sender no state).
+ */
+export const CLASS_ACTION_RATE = ESCAPE_ACTION_RATE;

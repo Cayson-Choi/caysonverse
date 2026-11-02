@@ -11,6 +11,7 @@ import {
 } from "@caysonverse/shared/constants";
 import { APPEARANCE_FIELDS, pickAppearance } from "@caysonverse/shared/appearance";
 import {
+  CLASS_ACTION_RATE,
   CLASS_CLOSED_CODE,
   CLASS_EMPTY_CLOSE_MS,
   CLASS_END_GRACE_MS,
@@ -44,6 +45,7 @@ import { PlayerRoom, baseTracking, spawnInDisk, type Tracking } from "../rooms/P
 import { validateJoinOptions } from "../rooms/joinValidation";
 import { sanitizeAnnounce } from "../rooms/announce";
 import { DenySet } from "../rooms/denySet";
+import { RateWindow } from "../rooms/rateLimit";
 import { resolveClientIp } from "../rooms/clientIp";
 import { AdminAttemptLimiter } from "../rooms/adminAuth";
 import { checkProfanity as checkWords } from "../rooms/profanity";
@@ -177,6 +179,8 @@ interface ClassTracking extends Tracking {
   padSince: number;
   /** When (ms) this session was last sent an escape-room ticket (0 = never). */
   ticketAt: number;
+  /** The cap on this client's class actions (team, door, rejoin, results): CLASS_ACTION_RATE. */
+  actionRate: RateWindow;
 }
 
 /** What a session that takes a ghost over inherits from it (Review Focus 1). */
@@ -325,27 +329,29 @@ export class ClassRoom extends PlayerRoom<ClassState, ClassTracking> {
     this.onMessage(MessageType.Kick, (client, payload) => {
       this.handleKick(client, payload);
     });
+    // Team, door, rejoin and results messages: each client's are capped first (CLASS_ACTION_RATE).
     this.onMessage(ClassMsg.TeamCreate, (client, payload) => {
-      this.handleTeamCreate(client, payload);
+      if (this.actionAllowed(client)) this.handleTeamCreate(client, payload);
     });
     this.onMessage(ClassMsg.TeamJoin, (client, payload) => {
-      this.handleTeamJoin(client, payload);
+      if (this.actionAllowed(client)) this.handleTeamJoin(client, payload);
     });
     this.onMessage(ClassMsg.TeamLeave, (client) => {
-      this.handleTeamLeave(client);
+      if (this.actionAllowed(client)) this.handleTeamLeave(client);
     });
     this.onMessage(ClassMsg.TeamAuto, (client, payload) => {
-      this.handleTeamAuto(client, payload);
+      if (this.actionAllowed(client)) this.handleTeamAuto(client, payload);
     });
     this.onMessage(ClassMsg.EnterRoom, (client, payload) => {
+      if (!this.actionAllowed(client)) return;
       // Async and not awaited by Colyseus: a rejection must never reach the process (it would end it).
       this.handleEnterRoom(client, payload).catch(() => console.error(LOG_ENTER_FAILED));
     });
     this.onMessage(ClassMsg.EscapeRejoin, (client) => {
-      this.handleEscapeRejoin(client);
+      if (this.actionAllowed(client)) this.handleEscapeRejoin(client);
     });
     this.onMessage(ClassMsg.ResultsRequest, (client) => {
-      this.handleResultsRequest(client);
+      if (this.actionAllowed(client)) this.handleResultsRequest(client);
     });
 
     // A class nobody ever enters closes like one everybody left.
@@ -486,7 +492,23 @@ export class ClassRoom extends PlayerRoom<ClassState, ClassTracking> {
   }
 
   protected createTracking(now: number): ClassTracking {
-    return { ...baseTracking(now), padDoor: null, padSince: 0, ticketAt: 0 };
+    return {
+      ...baseTracking(now),
+      padDoor: null,
+      padSince: 0,
+      ticketAt: 0,
+      actionRate: new RateWindow(CLASS_ACTION_RATE.count, CLASS_ACTION_RATE.windowMs),
+    };
+  }
+
+  /**
+   * May this client's class action (team, door, rejoin, results) go on? It needs a seat, and fits its
+   * per-client cap (final fix B1); past the cap it is dropped silently and does not count — the same rule
+   * as the base's move cap and the classroom's puzzle actions.
+   */
+  private actionAllowed(client: Client): boolean {
+    const track = this.tracking.get(client.sessionId);
+    return track !== undefined && track.actionRate.tryAccept(this.now());
   }
 
   /** A member inside a classroom is not in the hub: its class Move and Jump are dropped (one compare). */
@@ -940,7 +962,7 @@ export class ClassRoom extends PlayerRoom<ClassState, ClassTracking> {
   /**
    * `{ room }` — "입장" at a door. Binding order (the brief's rules 1–6):
    *  1. the team already has that door's classroom → a member on that pad goes in alone (a teammate
-   *     who came later); anything else is ignored;
+   *     who came later) — unless the team has escaped from it (→ why not); anything else is ignored;
    *  2. lobby / paused → why not; ended → ignored;
    *  3. a door not open in this phase → why not;
    *  4. the team is in another classroom, or already escaped from this one → why not;
@@ -960,9 +982,13 @@ export class ClassRoom extends PlayerRoom<ClassState, ClassTracking> {
     const team = player.teamId !== "" ? this.state.teams.get(player.teamId) : undefined;
 
     // 1. A teammate who arrives later at the door the team went through. (Not while the pad's
-    //    tickets are still being handed out: that member may be next in line for one.)
+    //    tickets are still being handed out: that member may be next in line for one.) Once the team
+    //    has escaped from that room nobody goes back in, though the classroom stays open until it is
+    //    empty (final fix B4).
     if (team && team.escapeRoomId !== "" && team.escapeDoor === room) {
-      if (track.padDoor === room && !this.creating.has(team.id) && !this.ticketedJustNow(track)) {
+      if (track.padDoor !== room) return;
+      if (team.escaped.includes(room)) return this.notice(client, ENTER_ERRORS.alreadyEscaped);
+      if (!this.creating.has(team.id) && !this.ticketedJustNow(track)) {
         await this.sendTicket(client, player, team.escapeRoomId);
       }
       return;

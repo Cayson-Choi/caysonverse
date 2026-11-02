@@ -60,6 +60,13 @@ const LIMITER_MAX_CLIENTS = 5000;
  * up with 503 (a hung matchmaker must not pin teacher requests forever).
  */
 export const CREATION_WAIT_MS = 10_000;
+/**
+ * How long the request that creates a class waits for its room before it gives up with 500 and frees
+ * its reservation — and with it a CV_MAX_CLASSES slot: a creation that never settles must hold
+ * neither forever (final fix B2). Longer than CREATION_WAIT_MS, so a colleague waiting on the same
+ * creation gives up first.
+ */
+export const CREATION_TIMEOUT_MS = 2 * CREATION_WAIT_MS;
 
 export interface ApiResult {
   status: number;
@@ -73,6 +80,27 @@ export interface TeacherOpenDeps {
   createClassRoom: (opts: ClassCreateOptions) => Promise<{ roomId: string }>;
   limiter: AdminAttemptLimiter;
   now: () => number;
+}
+
+/** Thrown (and caught right away) when a class room creation outlives CREATION_TIMEOUT_MS. */
+const CREATION_TIMED_OUT = "class room creation timed out";
+
+/**
+ * `p`, or a rejection after `ms`. The timer never outlives the wait or holds the process open. A late
+ * settlement of `p` is ignored here (its own rejection is caught, so it never goes unhandled).
+ */
+async function withinMs<T>(p: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => reject(new Error(CREATION_TIMED_OUT)), ms);
+    (timer as { unref?: () => void }).unref?.();
+  });
+  p.catch(() => {}); // a creation that fails after the timeout is not an unhandled rejection
+  try {
+    return await Promise.race([p, timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 export interface RoomStats {
@@ -183,6 +211,7 @@ function creationsOf(registry: ClassRegistry): Map<string, Promise<void>> {
  * | 5 failures per IP per minute | 429 |
  * | class cap reached | 503 |
  * | the class is still being created by another request for > CREATION_WAIT_MS | 503 |
+ * | the room creation fails, or does not finish within CREATION_TIMEOUT_MS | 500, the code and the slot freed |
  * | malformed body | 400 |
  *
  * The key is checked before anything about classes is revealed, so without a key nobody
@@ -253,12 +282,17 @@ async function openOrJoin(
     inFlight.set(code, marker);
     let roomId: string;
     try {
-      ({ roomId } = await deps.createClassRoom({ spawnToken: SPAWN_TOKEN, classCode: code, textLevel, opener }));
+      ({ roomId } = await withinMs(
+        deps.createClassRoom({ spawnToken: SPAWN_TOKEN, classCode: code, textLevel, opener }),
+        CREATION_TIMEOUT_MS,
+      ));
       // The ClassRoom attaches itself in onCreate; this fills the entry when the room factory is
       // a stand-in (tests) and is a no-op otherwise.
       if (deps.registry.get(code) === mine) deps.registry.attach(code, roomId);
     } catch {
-      // Frees our reservation only: if a live room holds the code, its entry is not ours (roomId ≠ null).
+      // A failure or a timeout. Frees our reservation only: if a live room holds the code, its entry is
+      // not ours (roomId ≠ null). (A room that still appears after a timeout registers itself and, with
+      // nobody in it, closes after CLASS_EMPTY_CLOSE_MS like any empty class.)
       if (deps.registry.get(code) === mine) deps.registry.release(code, null);
       // Fixed text only: a matchmaker error can carry the create options as JSON.
       console.error("[caysonverse] class room creation failed");

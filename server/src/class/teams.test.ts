@@ -171,6 +171,20 @@ describe("autoAssign — shuffle", () => {
     const plan = autoAssign([rec("D", 4, true)], ["s1"], "shuffle", seeded(5));
     expect(plan).toEqual({ joins: [], creates: [], dissolve: [] });
   });
+
+  it("a pool smaller than TEAM_MIN is left as it is: a lone team is never dissolved into a teamless student (final fix B3)", () => {
+    const empty = { joins: [], creates: [], dissolve: [] };
+    // One team of one, nobody loose: the shuffle would dissolve it and could place nobody.
+    expect(autoAssign([rec("A", 1)], [], "shuffle", seeded(3))).toEqual(empty);
+    // The same next to a team inside a classroom (never touched anyway).
+    expect(autoAssign([rec("A", 1), rec("D", 4, true)], [], "shuffle", seeded(3))).toEqual(empty);
+    // Nobody at all.
+    expect(autoAssign([], [], "shuffle", seeded(3))).toEqual(empty);
+    // TEAM_MIN (2) is enough to regroup: one new team of both.
+    const two = autoAssign([rec("A", 1)], ["s1"], "shuffle", seeded(3));
+    expect(two.dissolve).toEqual(["A"]);
+    expect(two.creates.map((c) => [...c.members].sort())).toEqual([["A1", "s1"]]);
+  });
 });
 
 describe("createTeam / joinTeam / leaveTeam", () => {

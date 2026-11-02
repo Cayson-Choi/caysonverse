@@ -152,7 +152,9 @@ function placeRest(rest: readonly string[], slots: Slot[], kept: readonly TeamRe
  *   (ties: the earlier team); the rest form new teams of `partitionSizes`; a single one left over
  *   goes to the smallest hub team below TEAM_MAX, or stays loose.
  * - shuffle: every hub team is dissolved; its members and the loose students are shuffled with
- *   `rng` (Fisher–Yates) and regrouped into `partitionSizes` teams with free combos.
+ *   `rng` (Fisher–Yates) and regrouped into `partitionSizes` teams with free combos. Fewer than
+ *   TEAM_MIN students in that pool cannot form any team, so then nothing changes (an empty plan):
+ *   dissolving a lone team would only leave its student teamless (final fix B3).
  */
 export function autoAssign(
   teams: readonly TeamRec[],
@@ -171,6 +173,7 @@ export function autoAssign(
       pool.push(...t.members);
     }
     pool.push(...loose);
+    if (pool.length < TEAM_MIN) return { joins: [], creates: [], dissolve: [] };
     for (let i = pool.length - 1; i > 0; i--) {
       const j = Math.min(i, Math.floor(rng() * (i + 1)));
       const tmp = pool[i];

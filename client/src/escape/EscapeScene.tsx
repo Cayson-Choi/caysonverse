@@ -13,6 +13,7 @@ import { EscapeFx } from "./EscapeFx";
 import { leaveToHall } from "./leave";
 import { ROOM_START_ORBIT } from "./roomCamera";
 import { CounselRoom } from "./CounselRoom";
+import { holdCounselFiles } from "./counselRelease";
 import { useEscapeFinish } from "./useEscapeFinish";
 import { useEscapeInteractions } from "./useEscapeInteractions";
 import { BagPanel } from "./ui/BagPanel";
@@ -119,6 +120,10 @@ export function EscapeScene({ identity }: { identity: Identity }) {
   // would re-render the scene (and rebuild its slots) once a second.
   const hasView = useEscapeStore((s) => s.view !== null);
   const roomId = useEscapeStore((s) => s.view?.roomDefId ?? null);
+  // The room's model files are released when this scene goes, also when the model never finished loading
+  // (its own release runs only once it has mounted).
+  const glb = roomId ? ROOM_MAPS[roomId]?.glb : undefined;
+  useEffect(() => (glb ? holdCounselFiles(glb) : undefined), [glb]);
   // The classroom connection (read once per mount: a reconnect remounts this scene).
   const [room] = useState(() => getEscapeRoom() as unknown as PlayersRoom | null);
   // Who I am IN THIS ROOM: team chat and emoji carry the classroom's session id, not the class's (the

@@ -196,6 +196,41 @@ describe("EscapeRoom with the 반딧 hint polish", () => {
     expect(hintEvents(garam).map((e) => e.text)).toEqual([HINTS[0], HINTS[1]]);
   });
 
+  it("falls back to the authored hint when the polish step throws or rejects, and logs nothing (final fix B5)", async () => {
+    const spies = (["log", "info", "warn", "error", "debug"] as const).map((m) => vi.spyOn(console, m).mockImplementation(() => {}));
+    const { room } = await openEscape();
+    // A polish step that throws before it returns a promise…
+    room.debugUseBanditAi({
+      rephrase: () => {
+        throw new Error("boom");
+      },
+    });
+    const garam = await startPlaying(room);
+    await askHint(room, garam);
+    expect(await pollFor(() => room.state.hints.length)).toBe(1);
+    expect([...room.state.hints]).toEqual([HINTS[0]]);
+    expect(await pollFor(() => hintEvents(garam).length)).toBe(1);
+    expect(hintEvents(garam)).toEqual([{ e: "hint", stageId: "uv", tier: 1, text: HINTS[0] }]);
+
+    // …and one whose promise rejects: the team still gets the hint the engine counted, as authored.
+    room.debugUseBanditAi({ rephrase: () => Promise.reject(new Error("model down")) });
+    room.debugAdvance(HINT_GAP_MS);
+    await askHint(room, garam);
+    expect(await pollFor(() => room.state.hints.length > 1)).toBe(true);
+    expect([...room.state.hints]).toEqual([HINTS[0], HINTS[1]]);
+    expect(await pollFor(() => hintEvents(garam).length > 1)).toBe(true);
+    expect(hintEvents(garam).map((e) => e.text)).toEqual([HINTS[0], HINTS[1]]);
+    expect(room.state.hintsUsed).toBe(2);
+
+    // A good answer after them still goes out (the chain was not broken).
+    install(room, fakeGroq(POLISHED_2));
+    room.debugAdvance(HINT_GAP_MS);
+    await askHint(room, garam);
+    expect(await pollFor(() => room.state.hints.length > 2)).toBe(true);
+    expect([...room.state.hints]).toEqual([HINTS[0], HINTS[1], POLISHED_2]);
+    for (const spy of spies) expect(spy).not.toHaveBeenCalled();
+  });
+
   it("does not hold up the room while the model thinks: the hint is counted and the next request answered at once", async () => {
     const { room } = await openEscape();
     const held = heldGroq([POLISHED], new Set([0]));

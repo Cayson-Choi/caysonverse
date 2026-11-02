@@ -582,6 +582,33 @@ describe("entering a team classroom", () => {
     expect(team.escapeRoomId).toBe(roomId);
   });
 
+  it("after the escape, while the escaped classroom still runs, nobody of the team is let back in: alreadyEscaped (final fix B4)", async () => {
+    const { room, kids, team } = await classWithTeam("RE2NTR", ["가람", "다온", "세온"]);
+    const [a, b, c] = kids;
+    const roomId = await padAndEnter(room, [a, b]);
+    const [ia, ib] = [await goIn(a.tickets[0]), await goIn(b.tickets[0])];
+    const esc = escapeRoomById(roomId);
+    await escapeTogether(esc, ia, ib);
+    expect(await pollFor(() => team.escaped.includes("counsel"))).toBe(true);
+    expect(team.escapeRoomId).toBe(roomId); // the classroom is still open (it closes when empty)
+
+    // A teammate who never went in walks onto the pad and presses 입장: refused, no ticket.
+    await stepOn(room, c, COUNSEL);
+    await enterRoom(room, c);
+    expect(await pollFor(() => c.notices.length === 1)).toBe(true);
+    expect(c.notices).toEqual([ENTER.escaped]);
+    expect(c.tickets).toEqual([]);
+
+    // A member who came out (back on the counsel pad) presses again: refused too.
+    await ia.client.leave(true);
+    expect(await pollFor(() => playerOf(room, a).place === PLACE_HUB)).toBe(true);
+    await enterRoom(room, a);
+    expect(await pollFor(() => a.notices.length === 1)).toBe(true);
+    expect(a.notices).toEqual([ENTER.escaped]);
+    expect(a.tickets).toHaveLength(1); // only the ticket of the first entry
+    expect(esc.state.players.has(ia.sid)).toBe(false);
+  });
+
   it("never tickets a teacher: not on the pad, not in a team, not by EnterRoom or EscapeRejoin (controller ruling)", async () => {
     const { room, teacher, kids, team } = await classWithTeam("TE2ACH");
     const [a, b] = kids;

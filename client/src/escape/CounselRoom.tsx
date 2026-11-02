@@ -7,6 +7,7 @@ import { ROOM_MAPS, type RoomMap } from "@caysonverse/shared/school/roomMaps";
 import { LightShafts } from "../game/LightShafts";
 import { MapBoxes, collidersDebugOn } from "../game/MapBoxes";
 import { useEscapeStore } from "../stores/escapeStore";
+import { clearCounselCaches } from "./counselRelease";
 import {
   COUNSEL_LIGHTMAP_URL,
   disposeCounsel,
@@ -35,6 +36,8 @@ import { prefersReducedMotion } from "./reducedMotion";
  *
  * Loading: the model is read (suspends) only when this component mounts, i.e. when a team is in the room — the entry
  * screen and the hall never fetch it. Leaving the room releases it for good (loader cache cleared, GPU resources freed).
+ * Leaving while it is still loading (this component suspended, so its effects never ran) is covered by the classroom
+ * scene, which holds the files while it shows the room and clears the caches when it goes (counselRelease.ts).
  *
  * Flags change a few times per game, so this re-renders on a flag change only (a joined string selector), never per frame and
  * never for the clock. The frame callback writes numbers into existing objects and does nothing at all while the room is at rest
@@ -55,8 +58,7 @@ function scheduleRelease(url: string, scene: Object3D, lightmap: Texture): void 
   cancelRelease();
   releaseTimer = setTimeout(() => {
     releaseTimer = null;
-    useGLTF.clear(url);
-    useTexture.clear(COUNSEL_LIGHTMAP_URL);
+    clearCounselCaches(url);
     disposeModel(scene);
     lightmap.dispose();
   }, 0);

@@ -30,9 +30,15 @@ const WIRE = new MeshBasicMaterial({
   fog: false,
 });
 
-/** True when the page was opened with `?debug=colliders`. */
-export function collidersDebugOn(search: string = typeof window === "undefined" ? "" : window.location.search): boolean {
-  return new URLSearchParams(search).get("debug") === "colliders";
+/**
+ * True when the page was opened with `?debug=colliders` — in a development build only (`dev` =
+ * `import.meta.env.DEV`): a production build never turns a debug switch on from the address.
+ */
+export function collidersDebugOn(
+  search: string = typeof window === "undefined" ? "" : window.location.search,
+  dev: boolean = import.meta.env.DEV,
+): boolean {
+  return dev && new URLSearchParams(search).get("debug") === "colliders";
 }
 
 interface MapBoxesProps {
