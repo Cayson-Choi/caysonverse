@@ -1,5 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { OBSTACLES, PLAYER_RADIUS } from "@caysonverse/shared/worldMap";
+import { EAST_GATE, HUB_GEOMETRY_GATED, HUB_GEOMETRY_OPEN, hubZoneLabel } from "@caysonverse/shared/school/hubMap";
+import { LEGACY_ACTIVE_MAP, getActiveMap, setActiveMap } from "./activeMap";
 import { collectObstacles, remoteBlocks } from "./playerObstacles";
 
 type RemoteTriple = [x: number, z: number, connected: boolean];
@@ -59,5 +61,41 @@ describe("collectObstacles (design 33 — solid remote players)", () => {
     const second = collectObstacles(0, 0, forEachOf([]));
     expect(second).toHaveLength(OBSTACLES.length);
     for (let i = 0; i < OBSTACLES.length; i++) expect(second[i]).toEqual(OBSTACLES[i]);
+  });
+});
+
+describe("collectObstacles — the active map (Task 15)", () => {
+  afterEach(() => setActiveMap(LEGACY_ACTIVE_MAP));
+
+  it("collectObstacles uses the active map's obstacles after a switch and rebuilds only then", () => {
+    // Legacy first: the world's static list, and the same array frame after frame.
+    const legacyA = collectObstacles(0, 0, forEachOf([]));
+    const legacyB = collectObstacles(0, 0, forEachOf([[5, 5, true]]));
+    expect(legacyB).toBe(legacyA); // no rebuild without a switch
+    expect(legacyB).toHaveLength(OBSTACLES.length + 1);
+
+    // Switch to the gated hub: the hub's static prefix (walls, seal, gate, board, props).
+    setActiveMap({ geometry: HUB_GEOMETRY_GATED, zoneLabel: hubZoneLabel });
+    const hubA = collectObstacles(0, 0, forEachOf([[3, 0, true]]));
+    expect(hubA).not.toBe(legacyA); // rebuilt once, for the new map
+    expect(hubA).toHaveLength(HUB_GEOMETRY_GATED.obstacles.length + 1);
+    for (let i = 0; i < HUB_GEOMETRY_GATED.obstacles.length; i++) {
+      expect(hubA[i]).toBe(HUB_GEOMETRY_GATED.obstacles[i]);
+    }
+    expect(hubA).toContain(EAST_GATE);
+    const hubB = collectObstacles(0, 0, forEachOf([]));
+    expect(hubB).toBe(hubA); // …and not again while the map stays
+    expect(hubB).toHaveLength(HUB_GEOMETRY_GATED.obstacles.length);
+
+    // The gate opens: the open geometry has no gate box.
+    setActiveMap({ geometry: HUB_GEOMETRY_OPEN, zoneLabel: hubZoneLabel });
+    const open = collectObstacles(0, 0, forEachOf([]));
+    expect(open).not.toBe(hubA);
+    expect(open).toHaveLength(HUB_GEOMETRY_OPEN.obstacles.length);
+    expect(open).not.toContain(EAST_GATE);
+
+    // Setting the SAME map object again is not a switch.
+    setActiveMap(getActiveMap());
+    expect(collectObstacles(0, 0, forEachOf([]))).toBe(open);
   });
 });

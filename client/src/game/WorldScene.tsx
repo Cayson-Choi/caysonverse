@@ -34,6 +34,7 @@ import { getRenderProfile } from "./renderProfile";
 import { releaseAllUiCapture } from "./uiCapture";
 import { resetViewMode, toggleViewMode, toggleOverview, viewState } from "./viewState";
 import { bindNametagMode } from "./settingsBridge";
+import { LEGACY_ACTIVE_MAP, setActiveMap } from "./activeMap";
 import { useAppStore } from "../stores/appStore";
 import { useCoachStore } from "../stores/coachStore";
 import { useSettingsStore } from "../stores/settingsStore";
@@ -71,6 +72,9 @@ function useApplySettings(): void {
 }
 
 export function WorldScene({ identity }: { identity: Identity }) {
+  // The legacy world is the active map for collision / camera / click-move / HUD (activeMap.ts).
+  // Set while rendering — before any child reads it — and idempotent (the same object is ignored).
+  setActiveMap(LEGACY_ACTIVE_MAP);
   // Local-only: gates the admin panel. Never derived from schema state.
   const isAdmin = useAppStore((s) => s.isAdmin);
   // The ONE source of the left-handed layout: the stick half here, the look half in

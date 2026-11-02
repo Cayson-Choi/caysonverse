@@ -10,6 +10,7 @@ import { getStateCallbacks, type Room } from "@colyseus/sdk";
 // TYPE-ONLY: schema decorators must never enter the browser bundle.
 import type { WorldState } from "@caysonverse/shared/schema";
 import { pickAppearance } from "@caysonverse/shared/appearance";
+import { placeTransition, showsInHub } from "./placeFilter";
 import type { Pose, SeatState } from "./types";
 import { exceedsSnapDistance } from "./interpolation";
 import {
@@ -22,14 +23,25 @@ import {
 } from "./remoteStore";
 
 /**
+ * Any room whose state has the synced players map — the legacy world, a class (its hall) or a
+ * team classroom. (Room's generic is invariant, so callers holding a narrower handle cast.)
+ */
+export type PlayersRoom = Room<{ players: WorldState["players"] }>;
+
+/**
  * Start syncing remote players from `room` into the store. `nowMs` is the
  * injected local clock stamped onto every snapshot (no server-clock sync).
  * `selfPose` is the local player's live pose, corrected on large server
  * divergence. Returns a teardown that detaches every listener and clears the
  * store (call on unmount / room leave).
+ *
+ * Place (AI 학교 탈출, Task 15): a remote whose `place` is not the hall (inside a team
+ * classroom) has no avatar here — it is taken out of the store when it goes in and put back,
+ * at its current position, when it comes out (placeFilter.ts). In the world every place is
+ * the hall, so nothing changes there.
  */
 export function startRemoteSync(
-  room: Room<WorldState>,
+  room: PlayersRoom,
   nowMs: () => number,
   selfPose: Pose,
   selfSeat: SeatState,
@@ -68,20 +80,35 @@ export function startRemoteSync(
       return;
     }
 
-    addRemote({
-      sessionId,
-      nickname: player.nickname,
-      // Fixed for the session by the server (written once at join): read once, no listener.
-      appearance: pickAppearance(player),
-      connected: player.connected,
-      seatIndex: player.seatIndex,
-      role: player.role, // fixed for the session by the server: read once, no listener
-      snapshots: [],
-    });
-    // Seed with the current position so the avatar shows up immediately.
-    pushRemoteSnapshot(sessionId, { t: nowMs(), x: player.x, z: player.z, yaw: player.yaw });
+    // (Re)add the avatar from the player's CURRENT fields — on join, and when it comes back
+    // into the hall from a classroom.
+    const show = (): void => {
+      addRemote({
+        sessionId,
+        nickname: player.nickname,
+        // Fixed for the session by the server (written once at join): read once, no listener.
+        appearance: pickAppearance(player),
+        connected: player.connected,
+        seatIndex: player.seatIndex,
+        role: player.role, // fixed for the session by the server: read once, no listener
+        snapshots: [],
+      });
+      // Seed with the current position so the avatar shows up immediately.
+      pushRemoteSnapshot(sessionId, { t: nowMs(), x: player.x, z: player.z, yaw: player.yaw });
+    };
+    let shown = showsInHub(player.place);
+    if (shown) show();
 
-    // onChange fires once per decode batch → exactly one snapshot per patch.
+    // In / out of a team classroom (the immediate first call changes nothing).
+    const offPlace = $(player).listen("place", (value: number) => {
+      const change = placeTransition(shown, value);
+      if (change === "add") show();
+      else if (change === "remove") removeRemote(sessionId);
+      if (change !== null) shown = change === "add";
+    });
+
+    // onChange fires once per decode batch → exactly one snapshot per patch (a no-op for a
+    // remote not on screen: the store drops snapshots of unknown ids).
     const offChange = $(player).onChange(() => {
       pushRemoteSnapshot(sessionId, { t: nowMs(), x: player.x, z: player.z, yaw: player.yaw });
     });
@@ -91,7 +118,7 @@ export function startRemoteSync(
     const offSeat = $(player).listen("seatIndex", (value: number) => {
       setRemoteSeat(sessionId, value);
     });
-    perPlayer.set(sessionId, [offChange, offConnected, offSeat]);
+    perPlayer.set(sessionId, [offPlace, offChange, offConnected, offSeat]);
   }, true); // immediate → replay players already present when we joined
 
   const offRemove = $(room.state).players.onRemove((_player, sessionId: string) => {

@@ -16,6 +16,7 @@
 
 import type { AABB } from "@caysonverse/shared/collision";
 import { LEGACY_GEOMETRY, WALL_HEIGHT } from "@caysonverse/shared/worldMap";
+import { getActiveMap } from "./activeMap";
 
 /**
  * Every box the camera can be blocked by in the legacy world: the room walls and the maze walls
@@ -23,6 +24,11 @@ import { LEGACY_GEOMETRY, WALL_HEIGHT } from "@caysonverse/shared/worldMap";
  * geometries also carry — so there is no second copy of this geometry to drift.
  */
 export const CAMERA_BOXES: readonly AABB[] = LEGACY_GEOMETRY.cameraBoxes;
+
+/** The camera boxes of the map the player stands in now (activeMap.ts): what every cast uses. */
+export function cameraBoxes(): readonly AABB[] {
+  return getActiveMap().geometry.cameraBoxes;
+}
 
 /**
  * Spring arm tuning: the arm never gets shorter than `minDist` (m), stops `pad` (m)
@@ -58,7 +64,7 @@ export function segmentHitFraction(
   bx: number,
   by: number,
   bz: number,
-  boxes: readonly AABB[] = CAMERA_BOXES,
+  boxes: readonly AABB[] = cameraBoxes(),
   height: number = WALL_HEIGHT,
   margin: number = 0,
 ): number {
@@ -156,7 +162,7 @@ export function springArmDistance(
   camY: number,
   camZ: number,
   desired: number,
-  boxes: readonly AABB[] = CAMERA_BOXES,
+  boxes: readonly AABB[] = cameraBoxes(),
 ): number {
   const t = segmentHitFraction(headX, headY, headZ, camX, camY, camZ, boxes, WALL_HEIGHT, SPRING.pad);
   if (t >= 1) return desired;

@@ -38,7 +38,7 @@
 import { Matrix4, Vector3, type Object3D, type PerspectiveCamera } from "three";
 import { SPEECH_BUBBLE_MS } from "@caysonverse/shared/constants";
 import { bubbleRegistry, type BubbleEntry } from "./bubbleRegistry";
-import { CAMERA_BOXES, segmentHitFraction } from "./cameraCollision";
+import { cameraBoxes, segmentHitFraction } from "./cameraCollision";
 import { smoothToward } from "./cameraControls";
 import {
   BUBBLE_GAP_M,
@@ -364,7 +364,7 @@ export function createNametagFrame(): NametagFrame {
           const s = states[rrIndices[k]];
           if (s.headFrame !== frameNo) refreshHead(s, camX, camY, camZ);
           s.occluded =
-            segmentHitFraction(camX, camY, camZ, s.anchorX, s.headY, s.anchorZ, CAMERA_BOXES) < 1;
+            segmentHitFraction(camX, camY, camZ, s.anchorX, s.headY, s.anchorZ, cameraBoxes()) < 1;
         }
         rrCursor = (rrCursor + count) % n;
 

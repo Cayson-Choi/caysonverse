@@ -22,9 +22,9 @@
  * shared workspace stays read-only.
  */
 
-import { WORLD_BOUNDS } from "@caysonverse/shared/constants";
 import { PLAYER_RADIUS } from "@caysonverse/shared/worldMap";
 import type { GroundVec, Intent } from "./input";
+import { getActiveMap } from "./activeMap";
 
 /**
  * Sign applied by CameraRig to BOTH axes of the look-drag deltas (TP orbit and
@@ -119,15 +119,16 @@ function clamp(value: number, min: number, max: number): number {
 /**
  * Set (or REPLACE — a re-click mid-move is the instant direction change design
  * 29 mandates) the auto-move target. The point is clamped into the reachable
- * band (WORLD_BOUNDS − PLAYER_RADIUS, the same clamp LocalPlayer applies to the
+ * band (the active map's bounds − PLAYER_RADIUS, the same clamp LocalPlayer applies to the
  * body) so an out-of-bounds click still ARRIVES at the wall instead of grinding
  * the stuck detector against an unreachable point. Each new target restarts the
  * no-progress window with a fresh budget.
  */
 export function setClickTarget(x: number, z: number): void {
+  const b = getActiveMap().geometry.bounds;
   state.target = {
-    x: clamp(x, WORLD_BOUNDS.minX + PLAYER_RADIUS, WORLD_BOUNDS.maxX - PLAYER_RADIUS),
-    z: clamp(z, WORLD_BOUNDS.minZ + PLAYER_RADIUS, WORLD_BOUNDS.maxZ - PLAYER_RADIUS),
+    x: clamp(x, b.minX + PLAYER_RADIUS, b.maxX - PLAYER_RADIUS),
+    z: clamp(z, b.minZ + PLAYER_RADIUS, b.maxZ - PLAYER_RADIUS),
   };
   state.anchored = false;
   state.windowSec = 0;

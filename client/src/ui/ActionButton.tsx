@@ -3,6 +3,7 @@ import { MessageType } from "@caysonverse/shared/messages";
 import type { SitRejectedPayload } from "@caysonverse/shared/messages";
 import { getRoom, sendSit, sendStand } from "../net/connection";
 import { getRemoteSeatIndices } from "../game/remoteStore";
+import { getActiveMap } from "../game/activeMap";
 import { onHotkey } from "../game/hotkeys";
 import {
   interactInputAt,
@@ -86,6 +87,14 @@ export function ActionButton({ pose, seat }: { pose: Pose; seat: SeatState }) {
     const npcState = useNpcStore.getState();
     // The conversation ends when you walk away from the assistant you were talking to.
     if (shouldClosePanel(npcState.activeNpc, pose.x, pose.z)) npcState.closePanel();
+    // Seats and AI 조교 exist in the legacy world only (ruling E6): elsewhere nothing is offered.
+    if (!getActiveMap().seatsAndNpcs) {
+      if (current.current !== null) {
+        current.current = null;
+        setInteraction(null);
+      }
+      return null;
+    }
     const occupied = new Set(getRemoteSeatIndices());
     const next = pickInteraction(
       interactInputAt(

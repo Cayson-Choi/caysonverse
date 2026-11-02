@@ -1,6 +1,7 @@
 /**
  * Solid players + NPC (design 33): the local slide resolves against the STATIC
- * map OBSTACLES (which already include the NPC's box, shared with the server)
+ * obstacles of the ACTIVE map (activeMap.ts — in the world they already include the NPC's
+ * box, shared with the server)
  * PLUS a per-frame dynamic box for every connected remote player, so other
  * characters block movement exactly like desks and sofas.
  *
@@ -18,8 +19,9 @@
  * otherwise be rejected, leaving both players permanently stuck.
  */
 
-import { OBSTACLES, PLAYER_RADIUS, type AABB } from "@caysonverse/shared/worldMap";
+import { PLAYER_RADIUS, type AABB } from "@caysonverse/shared/worldMap";
 import { forEachRemotePosition } from "./remoteStore";
+import { activeMapVersion, getActiveMap } from "./activeMap";
 
 interface MutableAABB {
   minX: number;
@@ -29,7 +31,13 @@ interface MutableAABB {
 }
 
 const boxPool: MutableAABB[] = [];
-const combined: AABB[] = [...OBSTACLES];
+/**
+ * The active map's static obstacles followed by this frame's remote boxes. Rebuilt only when
+ * the active map changes (`activeMapVersion`) — the one allocation, once per switch.
+ */
+let combined: AABB[] = [];
+let staticCount = 0;
+let builtFor = -1;
 
 /**
  * Pure escape-rule predicate: does the remote at (rx, rz) block the local
@@ -50,7 +58,7 @@ export function remoteBlocks(
 }
 
 /**
- * The obstacle list for THIS frame: static map obstacles + one player-sized box
+ * The obstacle list for THIS frame: the active map's static obstacles + one player-sized box
  * per connected, non-overlapped remote. The returned array is reused between
  * calls — consume it synchronously (resolveCollision does), never store it.
  * `forEach` is injectable for tests; production uses the remote store.
@@ -60,8 +68,13 @@ export function collectObstacles(
   selfZ: number,
   forEach: typeof forEachRemotePosition = forEachRemotePosition,
 ): readonly AABB[] {
+  if (builtFor !== activeMapVersion()) {
+    builtFor = activeMapVersion();
+    combined = [...getActiveMap().geometry.obstacles];
+    staticCount = combined.length;
+  }
   const list = combined as MutableAABB[];
-  list.length = OBSTACLES.length;
+  list.length = staticCount;
   let used = 0;
   forEach((x, z, connected) => {
     // Ghosts (disconnected, 50% opacity) are not really there — walk through.

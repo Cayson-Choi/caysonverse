@@ -1,5 +1,5 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
-import { zoneLabelAt } from "../game/hud";
+import { getActiveMap } from "../game/activeMap";
 import { openMenu } from "../game/escape";
 import { isTouchDevice } from "../device";
 import { useUiStore } from "../stores/uiStore";
@@ -14,12 +14,12 @@ import { useTouchHudLayout } from "./useTouchHudLayout";
 /** How often the room name is re-read from the pose (ms) — off the frame path. */
 const ZONE_POLL_MS = 250;
 
-/** The name of the room the local player stands in, "" outside every room. */
+/** The name of the room the local player stands in (on the ACTIVE map), "" outside every room. */
 function useZoneLabel(pose: Pose): string {
-  const [label, setLabel] = useState(() => zoneLabelAt(pose.x, pose.z));
+  const [label, setLabel] = useState(() => getActiveMap().zoneLabel(pose.x, pose.z));
   useEffect(() => {
     const id = window.setInterval(() => {
-      const next = zoneLabelAt(pose.x, pose.z);
+      const next = getActiveMap().zoneLabel(pose.x, pose.z);
       setLabel((prev) => (prev === next ? prev : next));
     }, ZONE_POLL_MS);
     return () => window.clearInterval(id);

@@ -2,11 +2,11 @@ import { useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import { useAnimations, useKeyboardControls } from "@react-three/drei";
 import { Group, LoopOnce } from "three";
-import { WORLD_BOUNDS } from "@caysonverse/shared/constants";
 import type { Appearance } from "@caysonverse/shared/appearance";
 import { PLAYER_RADIUS, SEATS } from "@caysonverse/shared/worldMap";
 import { resolveCollision } from "@caysonverse/shared/collision";
 import { collectObstacles } from "./playerObstacles";
+import { getActiveMap } from "./activeMap";
 import { readIntent, worldDirection } from "./input";
 import type { Intent, MoveInput } from "./input";
 import { gaitClip, gaitFor, moveSpeed } from "./gait";
@@ -482,7 +482,7 @@ export function LocalPlayer({
       // Slide the body (circle-vs-AABB) along walls/furniture from the SAME
       // static OBSTACLES the server validates against — plus a dynamic box per
       // connected remote player (design 33: characters are solid) — then keep
-      // the centre a radius inside WORLD_BOUNDS as a backstop.
+      // the centre a radius inside the ACTIVE map's bounds as a backstop.
       const next = resolveCollision(
         pose.x,
         pose.z,
@@ -491,8 +491,9 @@ export function LocalPlayer({
         PLAYER_RADIUS,
         collectObstacles(pose.x, pose.z),
       );
-      pose.x = clamp(next.x, WORLD_BOUNDS.minX + PLAYER_RADIUS, WORLD_BOUNDS.maxX - PLAYER_RADIUS);
-      pose.z = clamp(next.z, WORLD_BOUNDS.minZ + PLAYER_RADIUS, WORLD_BOUNDS.maxZ - PLAYER_RADIUS);
+      const bounds = getActiveMap().geometry.bounds;
+      pose.x = clamp(next.x, bounds.minX + PLAYER_RADIUS, bounds.maxX - PLAYER_RADIUS);
+      pose.z = clamp(next.z, bounds.minZ + PLAYER_RADIUS, bounds.maxZ - PLAYER_RADIUS);
       if (!inFp) {
         // TP + overview: the (visible) body turns smoothly toward the movement dir.
         // FP never turns the view for movement — A/D strafe, S backs up, and the

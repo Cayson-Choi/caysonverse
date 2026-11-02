@@ -1,6 +1,8 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { WORLD_BOUNDS } from "@caysonverse/shared/constants";
 import { PLAYER_RADIUS } from "@caysonverse/shared/worldMap";
+import { hubGeometry, hubZoneLabel } from "@caysonverse/shared/school/hubMap";
+import { LEGACY_ACTIVE_MAP, setActiveMap } from "./activeMap";
 import {
   DRAG_SIGN,
   CLICK_MAX_PX,
@@ -205,5 +207,22 @@ describe("clickMove — stuck detection (net displacement window)", () => {
     expect(getClickTarget()).toEqual({ x: -10, z: 0 });
     run(STUCK_WINDOW_SEC, () => ({ x: 0, z: 0 })); // …but a full window kills it
     expect(getClickTarget()).toBeNull();
+  });
+});
+
+describe("clickMove — the active map (Task 15)", () => {
+  afterEach(() => setActiveMap(LEGACY_ACTIVE_MAP));
+
+  it("setClickTarget clamps into the active map's bounds", () => {
+    setActiveMap({ geometry: hubGeometry(true), zoneLabel: hubZoneLabel });
+    setClickTarget(100, 0);
+    expect(getClickTarget()!.x).toBeCloseTo(48 - PLAYER_RADIUS, 6);
+    // The hub's other edges clamp too (HUB_BOUNDS x -14..48, z -12..12) — not the world's.
+    setClickTarget(-100, -100);
+    expect(getClickTarget()).toEqual({ x: -14 + PLAYER_RADIUS, z: -12 + PLAYER_RADIUS });
+    // Back in the legacy world the world's own bounds apply again.
+    setActiveMap(LEGACY_ACTIVE_MAP);
+    setClickTarget(100, 0);
+    expect(getClickTarget()!.x).toBeCloseTo(WORLD_BOUNDS.maxX - PLAYER_RADIUS, 6);
   });
 });

@@ -1,6 +1,6 @@
 import { Suspense, useEffect, useSyncExternalStore } from "react";
 import { getRoom } from "../net/connection";
-import { startRemoteSync } from "./remoteSync";
+import { startRemoteSync, type PlayersRoom } from "./remoteSync";
 import { getRoster, subscribeRoster } from "./remoteStore";
 import { RemotePlayer } from "./RemotePlayer";
 import { preloadCharacterAssets } from "./useAvatar";
@@ -19,22 +19,25 @@ export function RemotePlayers({
   selfPose,
   selfSeat,
   blobShadow,
+  room: roomProp,
 }: {
   selfPose: Pose;
   /** The local player's server-confirmed seat (written by the schema sync). */
   selfSeat: SeatState;
   /** Draw blob shadows under remote avatars (low-spec/touch profile). */
   blobShadow: boolean;
+  /** The room whose players to show (a PlayShell scene passes its own); default: the main room. */
+  room?: PlayersRoom;
 }) {
   useEffect(() => {
-    const room = getRoom();
+    const room: PlayersRoom | null = roomProp ?? (getRoom() as unknown as PlayersRoom | null);
     if (!room) return;
     // Warm the loader cache now that we're in-world, so a joining remote appears
     // without a hitch: one character.glb assembles every look (it dedupes with the
     // entry screen's preload and the local player's already-loaded model).
     preloadCharacterAssets();
     return startRemoteSync(room, () => performance.now(), selfPose, selfSeat);
-  }, [selfPose, selfSeat]);
+  }, [selfPose, selfSeat, roomProp]);
 
   const roster = useSyncExternalStore(subscribeRoster, getRoster, getRoster);
 

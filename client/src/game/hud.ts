@@ -33,7 +33,10 @@ export const ZONE_LABELS: Record<ZoneKey, string> = {
 /** Lookup order: the rooms share edges (lounge | hall at x = 0, lounge | gallery at z = -18) — first match wins. */
 const ZONE_ORDER: readonly ZoneKey[] = ["gallery", "maze", "lectureHall", "lounge"];
 
-/** The room (x, z) is in, or "" outside every room. Edges are inside. */
+/**
+ * The legacy world's room (x, z) is in, or "" outside every room. Edges are inside. The HUD
+ * reads the ACTIVE map's `zoneLabel` (activeMap.ts); this is the legacy map's one.
+ */
 export function zoneLabelAt(x: number, z: number): string {
   for (const key of ZONE_ORDER) {
     const b = ZONES[key];

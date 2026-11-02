@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { useAppStore } from "./stores/appStore";
 import { EntryScreen } from "./ui/EntryScreen";
 import { WorldScene } from "./game/WorldScene";
+import { HubScene } from "./game/HubScene";
 import { ReconnectingOverlay } from "./ui/ReconnectingOverlay";
 import { AppErrorBoundary } from "./ui/AppErrorBoundary";
 
@@ -21,7 +22,7 @@ function useCanvasContextMenuSuppression() {
   }, []);
 }
 
-/** The temporary hub / classroom panel (Tasks 15 and 17 replace it with the scenes). */
+/** The temporary classroom panel (Task 17 replaces it with the classroom scene). */
 const PENDING_STYLE = { display: "grid", placeItems: "center", minHeight: "100vh", fontSize: "1.5rem" } as const;
 
 /**
@@ -35,9 +36,9 @@ const PENDING_STYLE = { display: "grid", placeItems: "center", minHeight: "100vh
  * 3D scene) shows a refresh prompt instead of React unmounting the root to a blank
  * page, and leaves any open room.
  *
- * AI 학교 탈출 (Task 13): `hub` (a class's hall) and `escape` (a team classroom) are
- * screens of the state machine already; their scenes come in Tasks 15 and 17. Until
- * then they show a plain "준비 중" panel.
+ * AI 학교 탈출: `hub` is a class's hall and corridor (HubScene, Task 15), keyed by
+ * `connectionEpoch` like the world. `escape` (a team classroom) shows a plain "준비 중" panel
+ * until its scene arrives (Task 17).
  */
 export default function App() {
   useCanvasContextMenuSuppression();
@@ -50,7 +51,9 @@ export default function App() {
       <AppErrorBoundary>
         {screen === "world" && identity ? (
           <WorldScene key={connectionEpoch} identity={identity} />
-        ) : (screen === "hub" || screen === "escape") && identity ? (
+        ) : screen === "hub" && identity ? (
+          <HubScene key={connectionEpoch} identity={identity} />
+        ) : screen === "escape" && identity ? (
           <div className="cv-pending" role="status" style={PENDING_STYLE}>
             준비 중
           </div>

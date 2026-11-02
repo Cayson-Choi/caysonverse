@@ -3,7 +3,6 @@ import { useFrame, useThree } from "@react-three/fiber";
 import { useKeyboardControls } from "@react-three/drei";
 import { Raycaster, Vector2 } from "three";
 import type { Fog, PerspectiveCamera } from "three";
-import { WORLD_BOUNDS } from "@caysonverse/shared/constants";
 import { CAMERA, CAMERA_FAR, FOG_FAR, FOG_NEAR, FP_EYE_HEIGHT, HEAD_HEIGHT } from "./constants";
 import type { MoveControl } from "./constants";
 import { normalizeAngle } from "./yaw";
@@ -62,6 +61,7 @@ import {
   stepArmLimit,
 } from "./cameraCollision";
 import { cameraProbe } from "./cameraProbe";
+import { getActiveMap } from "./activeMap";
 import { getLocalLift } from "./jump";
 import { useSettingsStore } from "../stores/settingsStore";
 import type { Orbit, Pose, SeatState } from "./types";
@@ -71,7 +71,14 @@ interface CameraRigProps {
   orbit: Orbit;
   /** The local player's server-confirmed seat (read, never written): a held-back tap-walk checks it. */
   seat: SeatState;
+  /**
+   * The scene's fog band [near, far] (m): where the overview's fog push-out starts from and
+   * returns to. Defaults to the legacy world's FOG_NEAR / FOG_FAR.
+   */
+  fogRange?: readonly [number, number];
 }
+
+const LEGACY_FOG: readonly [number, number] = [FOG_NEAR, FOG_FAR];
 
 /** Longest frame (s) a held Z / C may turn the view for — a stalled tab can't spin it. */
 const MAX_KEY_TURN_DT = 0.1;
@@ -84,12 +91,6 @@ const MAX_KEY_TURN_DT = 0.1;
  * overview inside the maze" feature would flip to re-apply the cap there.
  */
 export const OVERVIEW_ALLOWED_IN_MAZE = true;
-
-/** Whole-map framing constants, derived once from WORLD_BOUNDS (no hardcode). */
-const MAP_W = WORLD_BOUNDS.maxX - WORLD_BOUNDS.minX;
-const MAP_D = WORLD_BOUNDS.maxZ - WORLD_BOUNDS.minZ;
-const MAP_CX = (WORLD_BOUNDS.minX + WORLD_BOUNDS.maxX) / 2;
-const MAP_CZ = (WORLD_BOUNDS.minZ + WORLD_BOUNDS.maxZ) / 2;
 
 function clamp(value: number, min: number, max: number): number {
   return value < min ? min : value > max ? max : value;
@@ -147,7 +148,7 @@ function spread(pointers: Map<number, { x: number; y: number }>): number {
  * term below, so at full FP (blend 1, TP weight 0) they are inert by construction —
  * the FP eye ignores follow distance entirely and sits well under the maze walls.
  */
-export function CameraRig({ pose, orbit, seat }: CameraRigProps) {
+export function CameraRig({ pose, orbit, seat, fogRange = LEGACY_FOG }: CameraRigProps) {
   const camera = useThree((s) => s.camera);
   const gl = useThree((s) => s.gl);
   // Maze anti-peek cap engagement (0 = off, 1 = fully capped). Lerped in useFrame
@@ -286,7 +287,7 @@ export function CameraRig({ pose, orbit, seat }: CameraRigProps) {
         const c = clampOverviewCenter(
           viewState.ovCenterX + pan.dx,
           viewState.ovCenterZ + pan.dz,
-          WORLD_BOUNDS,
+          getActiveMap().geometry.bounds,
         );
         viewState.ovCenterX = c.x;
         viewState.ovCenterZ = c.z;
@@ -450,13 +451,20 @@ export function CameraRig({ pose, orbit, seat }: CameraRigProps) {
     // Whole-map fit height for the current aspect — seeds the overview and bounds
     // its zoom-out. Recomputed each frame so a viewport resize keeps the ceiling
     // honest (design 20 — nothing hardcoded).
-    fitHeight.current = overviewFitHeight(MAP_W, MAP_D, (cam.fov * Math.PI) / 180, aspect);
+    // The whole map is the ACTIVE map (activeMap.ts): its bounds, read as plain numbers.
+    const mapBounds = getActiveMap().geometry.bounds;
+    fitHeight.current = overviewFitHeight(
+      mapBounds.maxX - mapBounds.minX,
+      mapBounds.maxZ - mapBounds.minZ,
+      (cam.fov * Math.PI) / 180,
+      aspect,
+    );
 
     // On the EDGE into overview, frame the whole map: centre it and seed the fit
     // height. Re-entering re-centres (a fresh overview each time — YAGNI-simple).
     if (lastFrameMode.current !== "ov" && viewState.mode === "ov") {
-      viewState.ovCenterX = MAP_CX;
-      viewState.ovCenterZ = MAP_CZ;
+      viewState.ovCenterX = (mapBounds.minX + mapBounds.maxX) / 2;
+      viewState.ovCenterZ = (mapBounds.minZ + mapBounds.maxZ) / 2;
       viewState.ovHeight = fitHeight.current;
     }
     lastFrameMode.current = viewState.mode;
@@ -561,8 +569,10 @@ export function CameraRig({ pose, orbit, seat }: CameraRigProps) {
     const fog = state.scene.fog as Fog | null;
     if (fog && (fog as { isFog?: boolean }).isFog) {
       const h = viewState.ovHeight;
-      fog.near = lerp(FOG_NEAR, Math.max(FOG_NEAR, h * 0.6), ovT);
-      fog.far = lerp(FOG_FAR, Math.max(FOG_FAR, h * 2.2), ovT);
+      const fogNear = fogRange[0]; // index reads, not destructuring: nothing allocated per frame
+      const fogFar = fogRange[1];
+      fog.near = lerp(fogNear, Math.max(fogNear, h * 0.6), ovT);
+      fog.far = lerp(fogFar, Math.max(fogFar, h * 2.2), ovT);
     }
 
     // The far plane rides with the overview too: the whole-map fit height is width-limited
