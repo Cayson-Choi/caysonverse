@@ -26,6 +26,8 @@ import { dirname, join } from "node:path";
 import { mkdirSync, writeFileSync } from "node:fs";
 
 const CLIENT_URL = process.env.CV_CLIENT_URL || "http://localhost:5173";
+// Task 14 (AI 학교 탈출): "/" opens the school entry now; the world is entered through its legacy link.
+const ENTRY_URL = new URL("/?world=legacy", CLIENT_URL).href;
 const BOB = "밥이";
 const ALICE = "앨리스";
 // EMOJIS = ["👍","❤️","😂","👏","🎉","🙋"] — 👏 is index 3, 😂 (shortcut "3") is index 2.
@@ -51,7 +53,7 @@ function watchErrors(page, tag) {
 }
 
 async function joinAs(page, { nickname, characterLabel, tintIndex }) {
-  await page.goto(CLIENT_URL, { waitUntil: "domcontentloaded" });
+  await page.goto(ENTRY_URL, { waitUntil: "domcontentloaded" });
   await page.locator("input.cv-input").waitFor({ state: "visible", timeout: 20000 });
   await page.locator("input.cv-input").fill(nickname);
   await page.locator(".cv-character", { hasText: characterLabel }).click();

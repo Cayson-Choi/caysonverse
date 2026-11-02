@@ -29,6 +29,9 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { mkdirSync, writeFileSync, existsSync } from "node:fs";
 
+// Task 14 (AI 학교 탈출): "/" opens the school entry now; the world is entered through its legacy link.
+const ENTRY_PATH = "/?world=legacy";
+
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = join(HERE, "..");
 const SERVER_ENTRY = join(REPO, "server", "dist", "index.cjs");
@@ -106,7 +109,7 @@ function watchErrors(page, tag) {
 }
 
 async function joinAs(page, origin, { nickname, characterLabel, tintIndex }) {
-  await page.goto(origin + "/", { waitUntil: "domcontentloaded" });
+  await page.goto(origin + ENTRY_PATH, { waitUntil: "domcontentloaded" });
   await page.locator("input.cv-input").first().waitFor({ state: "visible", timeout: 20000 });
   await page.locator("input.cv-input").first().fill(nickname);
   await page.locator(".cv-character", { hasText: characterLabel }).click();
@@ -191,7 +194,7 @@ async function main() {
     errs.push(watchErrors(pageB, "tabB"));
 
     // Entry screen renders from the server-served SPA (before joining).
-    await pageA.goto(ORIGIN1 + "/", { waitUntil: "domcontentloaded" });
+    await pageA.goto(ORIGIN1 + ENTRY_PATH, { waitUntil: "domcontentloaded" });
     await pageA.locator("input.cv-input").first().waitFor({ state: "visible", timeout: 20000 });
     await shot(pageA, "01-entry-screen.png");
 
@@ -246,7 +249,7 @@ async function main() {
       failures.push(`:8080 HTTP assertions threw: ${e.message}`);
     }
     const pageC = await (await browser.newContext({ viewport: { width: 1280, height: 800 } })).newPage();
-    await pageC.goto(ORIGIN2 + "/", { waitUntil: "domcontentloaded" });
+    await pageC.goto(ORIGIN2 + ENTRY_PATH, { waitUntil: "domcontentloaded" });
     await pageC.locator("input.cv-input").first().waitFor({ state: "visible", timeout: 20000 });
     await shot(pageC, "06-port8080-entry-screen.png");
   } catch (err) {

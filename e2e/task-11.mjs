@@ -26,6 +26,8 @@ import { dirname, join } from "node:path";
 import { mkdirSync, writeFileSync } from "node:fs";
 
 const CLIENT_URL = process.env.CV_CLIENT_URL || "http://localhost:5173";
+// Task 14 (AI 학교 탈출): "/" opens the school entry now; the world is entered through its legacy link.
+const ENTRY_URL = new URL("/?world=legacy", CLIENT_URL).href;
 const SERVER_PORT = Number(process.env.CV_SERVER_PORT || 2567);
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = join(HERE, "..");
@@ -115,7 +117,7 @@ async function fillEntry(page, { nickname, characterLabel, tintIndex }) {
 }
 
 async function joinAs(page, opts) {
-  await page.goto(CLIENT_URL, { waitUntil: "domcontentloaded" });
+  await page.goto(ENTRY_URL, { waitUntil: "domcontentloaded" });
   await fillEntry(page, opts);
   await page.waitForFunction(() => typeof window.__cv?.getPos === "function", null, {
     timeout: 45000,

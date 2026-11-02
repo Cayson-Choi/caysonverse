@@ -23,6 +23,8 @@ import { dirname, join, resolve } from "node:path";
 import { mkdirSync, writeFileSync } from "node:fs";
 
 const CLIENT_URL = process.env.CV_CLIENT_URL || "http://localhost:5173";
+// Task 14 (AI 학교 탈출): "/" opens the school entry now; the world is entered through its legacy link.
+const ENTRY_URL = new URL("/?world=legacy", CLIENT_URL).href;
 const ADMIN_CODE = process.env.CV_ADMIN_CODE || "e2e-teacher";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, "..");
@@ -129,7 +131,7 @@ async function joinWorld(browser, { tag, nickname, preset, admin = false }) {
   const page = await ctx.newPage();
   watchErrors(page, tag);
   const ws = watchWs(page);
-  await page.goto(CLIENT_URL, { waitUntil: "domcontentloaded" });
+  await page.goto(ENTRY_URL, { waitUntil: "domcontentloaded" });
   await page.locator("input.cv-input").first().waitFor({ state: "visible", timeout: 30000 });
   await page.locator("input.cv-input").first().fill(nickname);
   // Character stage 3: the builder replaced the 8 characters + 8 colours — wear a preset card instead.

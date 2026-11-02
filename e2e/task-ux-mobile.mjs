@@ -20,6 +20,8 @@ import { dirname, join, resolve } from "node:path";
 import { mkdirSync, writeFileSync } from "node:fs";
 
 const CLIENT_URL = process.env.CV_CLIENT_URL || "http://localhost:5173";
+// Task 14 (AI 학교 탈출): "/" opens the school entry now; the world is entered through its legacy link.
+const ENTRY_URL = new URL("/?world=legacy", CLIENT_URL).href;
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, "..");
 const EVIDENCE = join(REPO, ".superpowers", "sdd", "evidence", "task-ux");
@@ -126,7 +128,7 @@ async function newPhone(browser, { tag, coachDone = true }) {
   }
   const page = await ctx.newPage();
   watchErrors(page, tag);
-  await page.goto(CLIENT_URL, { waitUntil: "domcontentloaded" });
+  await page.goto(ENTRY_URL, { waitUntil: "domcontentloaded" });
   const cdp = await ctx.newCDPSession(page);
   return { tag, ctx, page, touch: makeTouch(cdp) };
 }
@@ -177,7 +179,7 @@ async function joinPc(browser, { tag, nickname, preset }) {
   const ctx = await browser.newContext({ viewport: PC });
   const page = await ctx.newPage();
   watchErrors(page, tag);
-  await page.goto(CLIENT_URL, { waitUntil: "domcontentloaded" });
+  await page.goto(ENTRY_URL, { waitUntil: "domcontentloaded" });
   await enterWorld(page, { nickname, preset });
   return { tag, ctx, page };
 }

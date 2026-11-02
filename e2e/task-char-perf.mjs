@@ -56,6 +56,8 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 const BASELINE = process.argv.includes("--baseline");
 const LABEL = BASELINE ? "kaykit" : "toy";
 const CLIENT_URL = process.env.CV_CLIENT_URL || "http://localhost:5173";
+// Task 14 (AI 학교 탈출): "/" opens the school entry now; the world is entered through its legacy link.
+const ENTRY_URL = new URL("/?world=legacy", CLIENT_URL).href;
 const CLIENT_ORIGIN = new URL(CLIENT_URL).origin;
 const SAMPLE_MS = Number(process.env.CV_PERF_MS || 20000);
 const THROTTLE = Number(process.env.CV_PERF_THROTTLE || 4);
@@ -470,7 +472,7 @@ async function main() {
       watchErrors(page);
       const cdp = await ctx.newCDPSession(page);
 
-      await page.goto(CLIENT_URL, { waitUntil: "domcontentloaded" });
+      await page.goto(ENTRY_URL, { waitUntil: "domcontentloaded" });
       await enterWorld(page, NICKNAME);
       check("DEV render probe is installed (window.__cvRenderInfo)", await pollUntil(() => page.evaluate(() => typeof window.__cvRenderInfo === "function"), (v) => v, 10000));
 

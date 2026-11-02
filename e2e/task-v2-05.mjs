@@ -29,6 +29,8 @@ import { dirname, join } from "node:path";
 import { mkdirSync, writeFileSync } from "node:fs";
 
 const CLIENT_URL = process.env.CV_CLIENT_URL || "http://localhost:5173";
+// Task 14 (AI 학교 탈출): "/" opens the school entry now; the world is entered through its legacy link.
+const ENTRY_URL = new URL("/?world=legacy", CLIENT_URL).href;
 const KING_CHAR = 4; // CHARACTERS index for 왕
 const HERE = dirname(fileURLToPath(import.meta.url));
 const EVIDENCE = join(HERE, "..", ".superpowers", "sdd", "evidence", "task-v2-05");
@@ -66,7 +68,7 @@ function watchErrors(page, tag) {
 }
 
 async function joinAs(page, { nickname, characterLabel, tintIndex }) {
-  await page.goto(CLIENT_URL, { waitUntil: "domcontentloaded" });
+  await page.goto(ENTRY_URL, { waitUntil: "domcontentloaded" });
   await page.locator("input.cv-input").first().waitFor({ state: "visible", timeout: 20000 });
   await page.locator("input.cv-input").first().fill(nickname);
   // Exact-match the label so 왕 does not also match 왕비 / 왕자.

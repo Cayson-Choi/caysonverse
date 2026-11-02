@@ -37,6 +37,8 @@ import { mkdirSync, writeFileSync } from "node:fs";
 const BASELINE = process.argv.includes("--baseline");
 const LABEL = BASELINE ? "kaykit" : "toy";
 const CLIENT_URL = process.env.CV_CLIENT_URL || "http://localhost:2567";
+// Task 14 (AI 학교 탈출): "/" opens the school entry now; the world is entered through its legacy link.
+const ENTRY_URL = new URL("/?world=legacy", CLIENT_URL).href;
 const CLIENT_ORIGIN = new URL(CLIENT_URL).origin;
 const IN_WORLD_WAIT_MS = Number(process.env.CV_IDLE_WAIT_MS || 10000);
 const NICKNAME = "용량측정";
@@ -179,7 +181,7 @@ try {
   });
 
   // 1. open the page -> entry screen ready and quiet
-  await page.goto(CLIENT_URL, { waitUntil: "domcontentloaded" });
+  await page.goto(ENTRY_URL, { waitUntil: "domcontentloaded" });
   await page.locator("button.cv-submit").waitFor({ state: "visible", timeout: 60000 });
   await page.waitForLoadState("networkidle", { timeout: 60000 });
   mark("entry screen ready (submit button visible + networkidle)");

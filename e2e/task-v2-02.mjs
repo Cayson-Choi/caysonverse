@@ -22,6 +22,8 @@ import { dirname, join } from "node:path";
 import { mkdirSync, writeFileSync } from "node:fs";
 
 const CLIENT_URL = process.env.CV_CLIENT_URL || "http://localhost:5173";
+// Task 14 (AI 학교 탈출): "/" opens the school entry now; the world is entered through its legacy link.
+const ENTRY_URL = new URL("/?world=legacy", CLIENT_URL).href;
 const KING = "왕앨리스";
 const PRINCE = "왕자밥";
 const KING_CHAR = 4; // CHARACTERS index for 왕
@@ -75,7 +77,7 @@ function watchErrors(page, tag) {
 }
 
 async function joinAs(page, { nickname, characterLabel, tintIndex }) {
-  await page.goto(CLIENT_URL, { waitUntil: "domcontentloaded" });
+  await page.goto(ENTRY_URL, { waitUntil: "domcontentloaded" });
   await page.locator("input.cv-input").waitFor({ state: "visible", timeout: 20000 });
   await page.locator("input.cv-input").fill(nickname);
   await page.locator(".cv-character", { hasText: new RegExp(`^${characterLabel}$`) }).click();
@@ -178,7 +180,7 @@ async function main() {
     // ── Step 0: mobile-width entry screen — 8 buttons, each ≥44px tall. ──
     const mobileCtx = await browser.newContext({ viewport: { width: 390, height: 844 } });
     const mobile = await mobileCtx.newPage();
-    await mobile.goto(CLIENT_URL, { waitUntil: "domcontentloaded" });
+    await mobile.goto(ENTRY_URL, { waitUntil: "domcontentloaded" });
     await mobile.locator("input.cv-input").waitFor({ state: "visible", timeout: 20000 });
     const btns = mobile.locator(".cv-character");
     await btns.first().waitFor({ state: "visible" });

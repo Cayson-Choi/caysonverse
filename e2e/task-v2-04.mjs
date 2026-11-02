@@ -21,6 +21,8 @@ import { dirname, join } from "node:path";
 import { mkdirSync, writeFileSync } from "node:fs";
 
 const CLIENT_URL = process.env.CV_CLIENT_URL || "http://localhost:5175";
+// Task 14 (AI 학교 탈출): "/" opens the school entry now; the world is entered through its legacy link.
+const ENTRY_URL = new URL("/?world=legacy", CLIENT_URL).href;
 
 // SEATS[17] (derived in shared/worldMap): row x=19 (front, nearest the screen),
 // column z=-3. Chair at (17.7, -3), dismount at (16.8, -3), seated facing +X ⇒
@@ -48,7 +50,7 @@ function watchErrors(page, tag) {
 }
 
 async function joinAs(page, { nickname }) {
-  await page.goto(CLIENT_URL, { waitUntil: "domcontentloaded" });
+  await page.goto(ENTRY_URL, { waitUntil: "domcontentloaded" });
   await page.locator("input.cv-input").first().waitFor({ state: "visible", timeout: 20000 });
   await page.locator("input.cv-input").first().fill(nickname);
   await page.locator(".cv-character").first().click(); // pick by index (label-agnostic)

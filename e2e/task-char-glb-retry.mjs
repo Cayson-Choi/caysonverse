@@ -30,6 +30,8 @@ import { dirname, join, resolve } from "node:path";
 import { mkdirSync, writeFileSync } from "node:fs";
 
 const CLIENT_URL = process.env.CV_CLIENT_URL || "http://localhost:5173";
+// Task 14 (AI 학교 탈출): "/" opens the school entry now; the world is entered through its legacy link.
+const ENTRY_URL = new URL("/?world=legacy", CLIENT_URL).href;
 const CLIENT_ORIGIN = new URL(CLIENT_URL).origin;
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, "..");
@@ -195,14 +197,14 @@ try {
 
   await step("0 observer enters", async () => {
     O = await openTab(browser, "O", { mode: "pass" });
-    await O.page.goto(CLIENT_URL, { waitUntil: "domcontentloaded" });
+    await O.page.goto(ENTRY_URL, { waitUntil: "domcontentloaded" });
     const sid = await enter(O.page, NAME.O);
     check("observer O is in the world", !!sid, sid);
   });
 
   await step("1 preview retries a failed download", async () => {
     A = await openTab(browser, "A", gateA, { expectGlbFailures: true });
-    await A.page.goto(CLIENT_URL, { waitUntil: "domcontentloaded" });
+    await A.page.goto(ENTRY_URL, { waitUntil: "domcontentloaded" });
     await A.page.locator('.cv-builder-hint.is-failed[data-failure="modelRetrying"]').waitFor({ timeout: 30000 });
     const s = await screenOf(A.page);
     check("the preview shows the retrying card (not a blank page)", s.entry && !s.crash && s.cardText === COPY.retrying, s);
@@ -256,7 +258,7 @@ try {
   await step("5 a failure inside the world shows the error screen and leaves the room", async () => {
     const gateC = { mode: "slowFail" };
     const C = await openTab(browser, "C", gateC, { expectGlbFailures: true });
-    await C.page.goto(CLIENT_URL, { waitUntil: "domcontentloaded" });
+    await C.page.goto(ENTRY_URL, { waitUntil: "domcontentloaded" });
     await C.page.locator("input.cv-input").first().fill(NAME.C);
     await C.page.locator(".cv-submit").click();
     // The model is still downloading (4 s), so 입장 joins; O watches C arrive.

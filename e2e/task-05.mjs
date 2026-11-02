@@ -16,6 +16,8 @@ import { dirname, join } from "node:path";
 import { mkdirSync } from "node:fs";
 
 const CLIENT_URL = process.env.CV_CLIENT_URL || "http://localhost:5173";
+// Task 14 (AI 학교 탈출): "/" opens the school entry now; the world is entered through its legacy link.
+const ENTRY_URL = new URL("/?world=legacy", CLIENT_URL).href;
 // The brief names the second player 밥, but the app's NICKNAME_MIN is 2 chars and
 // 밥 is a single Hangul syllable (length 1), rejected client- AND server-side.
 // Use a valid 2-char name that keeps the same 밥 identity.
@@ -39,7 +41,7 @@ function watchErrors(page, tag) {
 
 /** Fill the entry form and enter the world; resolves once window.__cv exists. */
 async function joinAs(page, { nickname, characterLabel, tintIndex }) {
-  await page.goto(CLIENT_URL, { waitUntil: "domcontentloaded" });
+  await page.goto(ENTRY_URL, { waitUntil: "domcontentloaded" });
   await page.locator("input.cv-input").waitFor({ state: "visible", timeout: 20000 });
   await page.locator("input.cv-input").fill(nickname);
   await page.locator(".cv-character", { hasText: characterLabel }).click();

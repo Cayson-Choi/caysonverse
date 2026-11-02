@@ -727,6 +727,585 @@
   left: calc(100% - var(--cv-sheet-w));
 }
 
+/* ── "어디로 갈까요?" — the destination step after 입장하기 (AI 학교 탈출, Task 14) ──
+   A native modal <dialog> (DestinationSheet.tsx) in the builder's language: a glass sheet, white cards,
+   indigo→violet actions, Jua titles, 44 px targets. Centred on wide screens and tablets; a bottom sheet on phones
+   that rides above the on-screen keyboard (--cv-kbd-inset). It is a DOM child of .cv-entry, so the --cv-* tokens,
+   the focus rings and the reduced-motion switch below all apply inside the top layer too. */
+
+.cv-dest {
+  /* <dialog> reset: the sheet inside draws everything. */
+  width: min(468px, calc(100% - 32px));
+  max-width: none;
+  height: fit-content;
+  max-height: calc(100% - 32px);
+  margin: auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--cv-ink);
+  overflow: visible;
+}
+.cv-dest[open] {
+  display: flex;
+  flex-direction: column;
+  animation: cv-dest-in 0.32s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+/* A light lavender veil (not a dark scrim): the stage stays bright, softly out of focus. */
+.cv-dest::backdrop {
+  background: rgba(232, 226, 255, 0.5);
+  backdrop-filter: blur(6px) saturate(1.2);
+  -webkit-backdrop-filter: blur(6px) saturate(1.2);
+  animation: cv-dest-fade 0.25s ease-out;
+}
+@keyframes cv-dest-in {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(0.98);
+  }
+}
+@keyframes cv-dest-up {
+  from {
+    transform: translateY(100%);
+  }
+}
+@keyframes cv-dest-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+.cv-dest-sheet {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  padding: 20px 22px 24px;
+  border-radius: 30px;
+  background: rgba(255, 255, 255, 0.66);
+  border: 1.5px solid var(--cv-edge);
+  backdrop-filter: blur(24px) saturate(1.5);
+  -webkit-backdrop-filter: blur(24px) saturate(1.5);
+  box-shadow: var(--cv-panel-shadow);
+}
+
+.cv-dest-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.cv-dest-title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  padding-left: 4px;
+  font-family: var(--cv-display);
+  font-weight: 400;
+  font-size: 28px;
+  letter-spacing: 0.3px;
+  color: var(--cv-ink);
+  text-shadow: 0 2px 0 #fff;
+  outline: none; /* focused on touch screens only to start reading there */
+}
+.cv-dest-close {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  margin: 0;
+  padding: 0;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  background: var(--cv-glass-hi);
+  box-shadow: var(--cv-card-shadow);
+  color: var(--cv-ink-2);
+  cursor: pointer;
+  transition: transform 0.12s ease;
+}
+.cv-dest-close .cv-icon {
+  width: 20px;
+  height: 20px;
+  stroke-width: 2.4;
+}
+
+/* The experiences: a list (one card today). */
+.cv-dest-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.cv-dest-card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 18px 18px 12px;
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.9);
+  border: 2px solid #fff;
+  box-shadow: 0 18px 32px -20px rgba(48, 40, 150, 0.55), inset 0 -3px 0 rgba(139, 92, 246, 0.08);
+}
+.cv-dest-card[data-dest="world"] {
+  padding-bottom: 18px;
+}
+.cv-dest-card-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.cv-dest-emblem {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 18px;
+  background: var(--cv-sel);
+  color: #fff;
+  box-shadow: 0 10px 18px -8px rgba(75, 79, 216, 0.7), inset 0 2px 0 rgba(255, 255, 255, 0.35);
+}
+.cv-dest-card[data-dest="world"] .cv-dest-emblem {
+  background: linear-gradient(135deg, #5cc6f2 0%, #4b4fd8 100%);
+}
+.cv-dest-emblem .cv-icon {
+  width: 30px;
+  height: 30px;
+  stroke-width: 1.9;
+}
+.cv-dest-card-text {
+  min-width: 0;
+}
+.cv-dest-name {
+  margin: 0;
+  font-family: var(--cv-display);
+  font-weight: 400;
+  font-size: 23px;
+  line-height: 1.2;
+  color: var(--cv-ink);
+}
+.cv-dest-line {
+  margin: 4px 0 0;
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--cv-ink-2);
+  word-break: keep-all;
+}
+
+/* ── the class form ── */
+
+.cv-dest-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0;
+}
+.cv-dest-field {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.cv-dest-label {
+  padding: 0 0 0 4px;
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--cv-ink);
+}
+/* A legend is not a flex item: it keeps its own gap to the pills. */
+.cv-dest-levels > legend {
+  margin-bottom: 7px;
+}
+.cv-dest-input-wrap {
+  position: relative;
+  display: flex;
+}
+.cv-dest-input {
+  width: 100%;
+  min-width: 0;
+  height: 56px;
+  margin: 0;
+  padding: 0 16px;
+  border-radius: 16px;
+  border: 2px solid rgba(139, 92, 246, 0.28);
+  background: #fff;
+  color: var(--cv-ink);
+  font-family: var(--cv-body);
+  font-size: 18px;
+  font-weight: 700;
+  outline: none;
+  box-shadow: inset 0 2px 4px rgba(48, 40, 150, 0.06);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.cv-dest-input:focus {
+  border-color: var(--cv-violet);
+  box-shadow: 0 0 0 4px rgba(139, 92, 246, 0.22);
+}
+.cv-entry .cv-dest-input:focus-visible {
+  outline: none; /* the field's own ring (above) */
+}
+.cv-dest-input[aria-invalid="true"] {
+  border-color: #ff8fa3;
+  box-shadow: 0 0 0 4px rgba(239, 68, 104, 0.2);
+}
+.cv-dest-input[readonly] {
+  color: var(--cv-ink-3);
+}
+/* 반 코드: six big, evenly spaced symbols (the trailing letter-spacing is balanced by the left padding). */
+.cv-dest-code-input {
+  height: 62px;
+  padding: 0 58px 0 calc(58px + 0.32em);
+  text-align: center;
+  font-size: 27px;
+  font-weight: 800;
+  letter-spacing: 0.32em;
+  font-variant-numeric: tabular-nums;
+}
+.cv-dest-code-input::placeholder {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0;
+  color: var(--cv-ink-3);
+}
+/* Empty: the field itself takes the placeholder's size, so the placeholder sits in the middle. */
+.cv-dest-code-input:placeholder-shown {
+  padding: 0 16px;
+  font-size: 15px;
+  letter-spacing: 0;
+}
+.cv-dest-count {
+  position: absolute;
+  right: 16px;
+  top: 50%;
+  translate: 0 -50%;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--cv-ink-3);
+  pointer-events: none;
+}
+.cv-dest-count.is-full {
+  color: var(--cv-violet-ink);
+}
+.cv-dest-code-input:placeholder-shown + .cv-dest-count {
+  display: none;
+}
+.cv-dest-key-input {
+  letter-spacing: 0.12em;
+}
+.cv-dest-input-wrap[data-shake="0"] {
+  animation: cv-shake-a 0.2s ease;
+}
+.cv-dest-input-wrap[data-shake="1"] {
+  animation: cv-shake-b 0.2s ease;
+}
+
+/* 글 수준: two pills (native radios over them, so arrows / Space work as usual). */
+.cv-dest-level-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.cv-dest-level {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 50px;
+  padding: 0 10px;
+  border-radius: 25px;
+  border: 2px solid #fff;
+  background: var(--cv-glass-hi);
+  box-shadow: var(--cv-card-shadow);
+  color: var(--cv-ink-2);
+  font-size: 15px;
+  font-weight: 800;
+  text-align: center;
+  word-break: keep-all;
+  transition: transform 0.12s ease;
+}
+.cv-dest-level input {
+  appearance: none;
+  -webkit-appearance: none;
+  position: absolute;
+  inset: -2px;
+  margin: 0;
+  border-radius: inherit;
+  cursor: pointer;
+}
+.cv-dest-level span {
+  position: relative;
+  pointer-events: none;
+}
+.cv-dest-level:has(input:checked) {
+  border-color: rgba(255, 255, 255, 0.6);
+  background: var(--cv-sel);
+  color: #fff;
+  box-shadow: 0 8px 18px -6px rgba(75, 79, 216, 0.7), inset 0 2px 0 rgba(255, 255, 255, 0.35);
+}
+.cv-dest-levels:disabled .cv-dest-level input {
+  cursor: default;
+}
+
+/* Who is entering: the plate's nickname, with 바꾸기 (back to the plate). */
+.cv-dest-who {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  padding: 0 4px 0 7px;
+  border-radius: 26px;
+  background: var(--cv-sel-soft);
+  border: 1.5px solid #fff;
+}
+.cv-dest-who-tag {
+  flex: none;
+  display: grid;
+  place-items: center;
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: var(--cv-sel);
+  color: #fff;
+  font-family: var(--cv-display);
+  font-size: 14px;
+  letter-spacing: 0.3px;
+}
+.cv-dest-who-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--cv-ink);
+}
+.cv-dest-who-edit {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 44px;
+  height: 44px;
+  margin: 0;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 22px;
+  background: transparent;
+  color: var(--cv-violet-ink);
+  font-family: var(--cv-body);
+  font-size: 13.5px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.cv-dest-who-edit .cv-icon {
+  width: 15px;
+  height: 15px;
+}
+.cv-dest-note {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: -4px 0 0;
+  padding-left: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--cv-ink-2);
+}
+.cv-dest-note .cv-icon {
+  width: 16px;
+  height: 16px;
+  color: var(--cv-violet);
+}
+
+/* Refused / server words, in the card (role=alert). */
+.cv-dest-error {
+  margin: 0;
+  padding: 10px 14px 10px 36px;
+  border-radius: 14px;
+  background: #fff1f4 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23e0335d' stroke-width='2.2' stroke-linecap='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M12 7.5v5.5M12 16.5v.01'/%3E%3C/svg%3E") 11px 50% / 18px 18px no-repeat;
+  border: 1.5px solid #ffc2cf;
+  color: #b4234a;
+  font-size: 13.5px;
+  font-weight: 700;
+  line-height: 1.4;
+  word-break: keep-all;
+  animation: cv-dest-fade 0.2s ease-out;
+}
+
+/* The go button: 입장하기 / 반 열기 — the builder's 입장 look at card size. */
+.cv-dest-go {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  width: 100%;
+  height: 58px;
+  margin: 2px 0 6px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 999px;
+  overflow: hidden;
+  background: linear-gradient(180deg, #a07bff 0%, #7c5cf6 45%, #4b4fd8 100%);
+  box-shadow:
+    0 6px 0 #3a37a8,
+    0 16px 26px -10px rgba(75, 79, 216, 0.75),
+    inset 0 2px 0 rgba(255, 255, 255, 0.45);
+  color: #fff;
+  font-family: var(--cv-display);
+  font-size: 23px;
+  letter-spacing: 1px;
+  text-shadow: 0 2px 0 rgba(40, 30, 140, 0.45);
+  cursor: pointer;
+  transition: transform 0.12s ease;
+}
+.cv-dest-go::before {
+  content: "";
+  position: absolute;
+  left: 7%;
+  right: 7%;
+  top: 4px;
+  height: 36%;
+  border-radius: 30px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.34), rgba(255, 255, 255, 0));
+  pointer-events: none;
+}
+.cv-dest-go-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.25);
+}
+.cv-dest-go-icon .cv-icon {
+  width: 20px;
+  height: 20px;
+  stroke-width: 2.8;
+}
+.cv-dest-go:active:not(:disabled) {
+  transform: translateY(4px);
+  box-shadow:
+    0 2px 0 #3a37a8,
+    0 8px 16px -8px rgba(75, 79, 216, 0.75),
+    inset 0 2px 0 rgba(255, 255, 255, 0.45);
+}
+.cv-dest-go:disabled {
+  background: linear-gradient(180deg, #d6ccfb 0%, #bfb3f3 100%);
+  box-shadow:
+    0 5px 0 #a69ad9,
+    inset 0 2px 0 rgba(255, 255, 255, 0.45);
+  text-shadow: none;
+  cursor: default;
+}
+
+/* 선생님이신가요? / 학생이신가요?: a quiet switch under the go button. */
+.cv-dest-role {
+  align-self: center;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  margin: 0;
+  padding: 0 16px 0 13px;
+  border: 0;
+  border-radius: 22px;
+  background: transparent;
+  color: var(--cv-ink-2);
+  font-family: var(--cv-display);
+  font-size: 15px;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+.cv-dest-role .cv-icon {
+  width: 18px;
+  height: 18px;
+  color: var(--cv-violet);
+}
+.cv-dest-role:disabled,
+.cv-dest-who-edit:disabled,
+.cv-dest-close:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+@media (hover: hover) {
+  .cv-dest-close:hover:not(:disabled),
+  .cv-dest-go:hover:not(:disabled),
+  .cv-dest-level:hover {
+    transform: translateY(-2px);
+  }
+  .cv-dest-role:hover:not(:disabled),
+  .cv-dest-who-edit:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.85);
+  }
+}
+
+/* Phones: a bottom sheet with a grabber, above the keyboard when it is up. */
+.cv-dest.is-phone {
+  inset: auto 0 var(--cv-kbd-inset, 0px);
+  width: 100%;
+  max-height: calc(100% - 36px - var(--cv-kbd-inset, 0px));
+  margin: 0;
+}
+.cv-dest.is-phone[open] {
+  animation-name: cv-dest-up;
+  animation-duration: 0.3s;
+}
+.cv-dest.is-phone .cv-dest-sheet {
+  gap: 12px;
+  padding: 4px 16px max(18px, env(safe-area-inset-bottom, 0px));
+  border-radius: 30px 30px 0 0;
+  border-width: 1.5px 0 0;
+  background: rgba(255, 255, 255, 0.8);
+  box-shadow: 0 -18px 40px -20px rgba(48, 40, 150, 0.45);
+}
+.cv-dest-grabber {
+  flex: none;
+  align-self: center;
+  width: 44px;
+  height: 5px;
+  margin: 6px 0 0;
+  border-radius: 3px;
+  background: rgba(79, 76, 124, 0.3);
+}
+.cv-dest.is-phone .cv-dest-title {
+  font-size: 23px;
+}
+.cv-dest.is-phone .cv-dest-card {
+  gap: 14px;
+  padding: 16px 14px 8px;
+  border-radius: 22px;
+}
+.cv-dest.is-phone .cv-dest-emblem {
+  width: 50px;
+  height: 50px;
+  border-radius: 16px;
+}
+.cv-dest.is-phone .cv-dest-emblem .cv-icon {
+  width: 27px;
+  height: 27px;
+}
+.cv-dest.is-phone .cv-dest-name {
+  font-size: 21px;
+}
+.cv-dest.is-phone .cv-dest-line {
+  font-size: 13px;
+}
+
 /* In-canvas loading fallback overlay (the world scene). */
 .cv-loading {
   position: fixed;
@@ -746,7 +1325,8 @@
 @media (prefers-reduced-motion: reduce) {
   .cv-entry *,
   .cv-entry *::before,
-  .cv-entry *::after {
+  .cv-entry *::after,
+  .cv-entry .cv-dest::backdrop {
     animation: none !important;
     transition: none !important;
   }

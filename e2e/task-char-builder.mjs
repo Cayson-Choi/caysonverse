@@ -56,6 +56,8 @@ import { dirname, join, resolve } from "node:path";
 import { mkdirSync, writeFileSync } from "node:fs";
 
 const CLIENT_URL = process.env.CV_CLIENT_URL || "http://localhost:5173";
+// Task 14 (AI 학교 탈출): "/" opens the school entry now; the world is entered through its legacy link.
+const ENTRY_URL = new URL("/?world=legacy", CLIENT_URL).href;
 const CLIENT_ORIGIN = new URL(CLIENT_URL).origin;
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, "..");
@@ -173,7 +175,7 @@ async function openPlayer(browser, { tag, phone = false, oldCache = false }) {
   );
   const page = await ctx.newPage();
   watchErrors(page, tag);
-  await page.goto(CLIENT_URL, { waitUntil: "domcontentloaded" });
+  await page.goto(ENTRY_URL, { waitUntil: "domcontentloaded" });
   return { tag, ctx, page };
 }
 

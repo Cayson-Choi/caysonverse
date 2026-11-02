@@ -25,6 +25,8 @@ import { dirname, join } from "node:path";
 import { mkdirSync, writeFileSync } from "node:fs";
 
 const CLIENT_URL = process.env.CV_CLIENT_URL || "http://localhost:5173";
+// Task 14 (AI 학교 탈출): "/" opens the school entry now; the world is entered through its legacy link.
+const ENTRY_URL = new URL("/?world=legacy", CLIENT_URL).href;
 const HERE = dirname(fileURLToPath(import.meta.url));
 const EVIDENCE = join(HERE, "..", ".superpowers", "sdd", "evidence", "task-10");
 mkdirSync(EVIDENCE, { recursive: true });
@@ -55,7 +57,7 @@ async function fillEntry(page, { nickname, characterLabel, tintIndex }) {
 
 /** Navigate + join, waiting until in-world (the dev hook + canvas are present). */
 async function joinAs(page, opts) {
-  await page.goto(CLIENT_URL, { waitUntil: "domcontentloaded" });
+  await page.goto(ENTRY_URL, { waitUntil: "domcontentloaded" });
   await fillEntry(page, opts);
   await page.waitForFunction(() => typeof window.__cv?.getPos === "function", null, {
     timeout: 45000,
@@ -150,7 +152,7 @@ async function main() {
     allErrors.push(watchErrors(mPage, "mobile"));
 
     // Step 1: entry screen at phone size → screenshot → join.
-    await mPage.goto(CLIENT_URL, { waitUntil: "domcontentloaded" });
+    await mPage.goto(ENTRY_URL, { waitUntil: "domcontentloaded" });
     await mPage.locator(".cv-entry").waitFor({ state: "visible", timeout: 20000 });
     log.mobileViewport = mPage.viewportSize();
     log.maxTouchPoints = await mPage.evaluate(() => navigator.maxTouchPoints);
