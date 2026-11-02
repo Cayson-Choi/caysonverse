@@ -19,6 +19,15 @@ describe("leaveAfterCrash", () => {
     expect(leaveAfterCrash(null)).toBe(false);
   });
 
+  it("in a class it does NOT leave: a consented leave would lose the team; the reconnection window keeps it (final review I3)", () => {
+    const leave = vi.fn(() => Promise.resolve(1000));
+    expect(leaveAfterCrash({ leave }, true)).toBe(false);
+    expect(leave).not.toHaveBeenCalled();
+    // The world is unchanged: still a consented leave.
+    expect(leaveAfterCrash({ leave }, false)).toBe(true);
+    expect(leave).toHaveBeenCalledExactlyOnceWith(true);
+  });
+
   it("never throws, even when leaving fails or rejects (the crash screen must still render)", async () => {
     expect(
       leaveAfterCrash({

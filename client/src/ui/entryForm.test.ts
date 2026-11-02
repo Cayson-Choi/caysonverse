@@ -19,6 +19,7 @@ import {
   refusalField,
   sheetPressAllowed,
   teacherFieldsAfter,
+  teacherGoLabels,
   type ClassEntryDeps,
   type TeacherFields,
 } from "./entryForm";
@@ -156,6 +157,8 @@ function fakeDeps(opts: { join?: () => Promise<{ sessionId: string }>; pass?: ()
     },
     rememberTeacher: (t) => void calls.push(["rememberTeacher", t]),
     forgetTeacher: () => void calls.push(["forgetTeacher"]),
+    saveTeacherClass: (code) => void calls.push(["saveTeacherClass", code]),
+    forgetTeacherClass: () => void calls.push(["forgetTeacherClass"]),
     saveIdentity: (identity) => void calls.push(["saveIdentity", identity]),
     clearKicked: () => void calls.push(["clearKicked"]),
     enterHub: (identity, isTeacher) => void calls.push(["enterHub", identity, isTeacher]),
@@ -200,12 +203,13 @@ describe("enterClassAsTeacher", () => {
     const { deps, calls, names } = fakeDeps();
     await enterClassAsTeacher(deps, TEACHER);
 
-    expect(names()).toEqual(["requestTeacherPass", "rememberTeacher", "saveIdentity", "clearKicked", "joinClass", "enterHub"]);
-    expect(calls[0][1]).toEqual({ teacherKey: "abcd-efgh-jkmn-pqrs", textLevel: "hard" });
+    expect(names()).toEqual(["requestTeacherPass", "rememberTeacher", "saveTeacherClass", "saveIdentity", "clearKicked", "joinClass", "enterHub"]);
+    expect(calls[0][1]).toEqual({ teacherKey: "abcd-efgh-jkmn-pqrs", textLevel: "hard" }); // no code: a new class
     expect(calls[1][1]).toEqual({ key: "abcd-efgh-jkmn-pqrs", classCode: "H4TQ9W", textLevel: "hard" });
-    expect(calls[2][1]).toEqual({ nickname: "김쌤", appearance: LOOK, classCode: "H4TQ9W" });
-    expect(calls[4][1]).toEqual({ classCode: "H4TQ9W", nickname: "김쌤", appearance: LOOK, teacherPass: "pass-123" });
-    expect(calls[5]).toEqual(["enterHub", { nickname: "김쌤", appearance: LOOK, sessionId: "sid-1", classCode: "H4TQ9W" }, true]);
+    expect(calls[2][1]).toBe("H4TQ9W");
+    expect(calls[3][1]).toEqual({ nickname: "김쌤", appearance: LOOK, classCode: "H4TQ9W" });
+    expect(calls[5][1]).toEqual({ classCode: "H4TQ9W", nickname: "김쌤", appearance: LOOK, teacherPass: "pass-123" });
+    expect(calls[6]).toEqual(["enterHub", { nickname: "김쌤", appearance: LOOK, sessionId: "sid-1", classCode: "H4TQ9W" }, true]);
   });
 
   it("never stores or hands on the key or the pass beyond the pass request, the teacher session and the one join", async () => {
@@ -228,7 +232,70 @@ describe("enterClassAsTeacher", () => {
   it("forgets the teacher again when the class join fails after the pass", async () => {
     const { deps, names } = fakeDeps({ join: () => Promise.reject(new Error("연결에 실패했습니다. 잠시 후 다시 시도해주세요.")) });
     await expect(enterClassAsTeacher(deps, TEACHER)).rejects.toThrow("연결에 실패했습니다");
-    expect(names()).toEqual(["requestTeacherPass", "rememberTeacher", "saveIdentity", "clearKicked", "joinClass", "forgetTeacher"]);
+    // (The class code stays remembered: that class exists, so the next try can go back into it.)
+    expect(names()).toEqual(["requestTeacherPass", "rememberTeacher", "saveTeacherClass", "saveIdentity", "clearKicked", "joinClass", "forgetTeacher"]);
+  });
+
+  it("a typed class code re-enters THAT class: the pass request carries the canonical code (final review I2)", async () => {
+    const { deps, calls, names } = fakeDeps({ pass: () => Promise.resolve({ classCode: "K7Q2XM", pass: "pass-9" }) });
+    await enterClassAsTeacher(deps, { ...TEACHER, classCode: " k7q2xm " });
+    expect(calls[0]).toEqual(["requestTeacherPass", { teacherKey: "abcd-efgh-jkmn-pqrs", textLevel: "hard", classCode: "K7Q2XM" }]);
+    expect(names()).toEqual(["requestTeacherPass", "rememberTeacher", "saveTeacherClass", "saveIdentity", "clearKicked", "joinClass", "enterHub"]);
+    expect(calls[2]).toEqual(["saveTeacherClass", "K7Q2XM"]);
+    expect(calls[5][1]).toEqual({ classCode: "K7Q2XM", nickname: "김쌤", appearance: LOOK, teacherPass: "pass-9" });
+  });
+
+  it("an empty or blank class code opens a new class (no classCode in the request)", async () => {
+    for (const classCode of ["", "   "]) {
+      const { deps, calls } = fakeDeps();
+      await enterClassAsTeacher(deps, { ...TEACHER, classCode });
+      expect(calls[0]).toEqual(["requestTeacherPass", { teacherKey: "abcd-efgh-jkmn-pqrs", textLevel: "hard" }]);
+    }
+  });
+
+  it("a typed code that is not 6 symbols is refused without asking the server", async () => {
+    const { deps, names } = fakeDeps();
+    await expect(enterClassAsTeacher(deps, { ...TEACHER, classCode: "K7Q" })).rejects.toThrow(CLASS_CODE_ERROR);
+    expect(names()).toEqual([]);
+  });
+
+  it("a code the server says is not open (404) is forgotten, so it is not prefilled again; other refusals keep it", async () => {
+    const notOpen = Object.assign(new Error("그 반 코드는 지금 열려 있지 않아요. 새 반을 열려면 반 코드를 비워 주세요"), { status: 404 });
+    const a = fakeDeps({ pass: () => Promise.reject(notOpen) });
+    await expect(enterClassAsTeacher(a.deps, { ...TEACHER, classCode: "K7Q2XM" })).rejects.toBe(notOpen);
+    expect(a.names()).toEqual(["requestTeacherPass", "forgetTeacherClass"]);
+
+    const wrongKey = Object.assign(new Error("선생님 키가 올바르지 않아요"), { status: 401 });
+    const b = fakeDeps({ pass: () => Promise.reject(wrongKey) });
+    await expect(enterClassAsTeacher(b.deps, { ...TEACHER, classCode: "K7Q2XM" })).rejects.toBe(wrongKey);
+    expect(b.names()).toEqual(["requestTeacherPass"]);
+  });
+});
+
+describe("the teacher's class-code field (final review I2)", () => {
+  it("is optional: empty or a whole code passes; a part of a code is refused with the code error", () => {
+    const base = { teacherKey: "ABCD-EFGH", nickname: "김쌤" };
+    expect(validateTeacherEntry(base)).toEqual({ ok: true });
+    expect(validateTeacherEntry({ ...base, classCode: "" })).toEqual({ ok: true });
+    expect(validateTeacherEntry({ ...base, classCode: "k7q2xm" })).toEqual({ ok: true });
+    expect(validateTeacherEntry({ ...base, classCode: "K7Q" })).toEqual({ ok: false, error: CLASS_CODE_ERROR });
+    // The key is still checked first.
+    expect(validateTeacherEntry({ ...base, teacherKey: " ", classCode: "K7Q" })).toEqual({ ok: false, error: TEACHER_KEY_ERROR });
+  });
+
+  it("the go button reads 입장하기 with a code (re-enter) and 반 열기 without one — both already in the Jua subset", () => {
+    expect(teacherGoLabels("K7Q2XM")).toEqual({ label: "입장하기", busyLabel: "입장 중…" });
+    expect(teacherGoLabels("")).toEqual({ label: "반 열기", busyLabel: "반 여는 중…" });
+    expect(teacherGoLabels("  ")).toEqual({ label: "반 열기", busyLabel: "반 여는 중…" });
+    for (const word of [...Object.values(teacherGoLabels("K7Q2XM")), ...Object.values(teacherGoLabels(""))]) {
+      expect(DESTINATION_FONT_TEXT).toContain(word);
+    }
+  });
+
+  it("its words say what an empty field does, in the ~요 tone", () => {
+    expect(ENTRY_COPY.teacherClassCode).toBe("이어서 들어갈 반 코드");
+    expect(ENTRY_COPY.teacherClassCodePlaceholder).toBe("비워 두면 새 반을 열어요");
+    expect(ENTRY_COPY.teacherClassCodeNote).toBe("이미 연 반에 다시 들어갈 때만 넣어 주세요.");
   });
 });
 
@@ -277,5 +344,10 @@ describe("refusalField — the field a server refusal points at", () => {
     expect(refusalField("teacher", Object.assign(new Error("연결에 실패했습니다."), { status: 0 }))).toBeNull();
     expect(refusalField("teacher", Object.assign(new Error("서버 오류"), { status: 500 }))).toBeNull();
     expect(refusalField("teacher", new Error("연결에 실패했습니다."))).toBeNull();
+  });
+
+  it("a teacher's refused class code (404 not open, 409 another teacher's) points at the class-code field", () => {
+    expect(refusalField("teacher", Object.assign(new Error("그 반 코드는 지금 열려 있지 않아요"), { status: 404 }))).toBe("code");
+    expect(refusalField("teacher", Object.assign(new Error("이 반 코드는 다른 선생님이 쓰고 있어요"), { status: 409 }))).toBe("code");
   });
 });

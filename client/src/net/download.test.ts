@@ -4,6 +4,11 @@ import { downloadCsv, resultsFilename } from "./download";
 describe("resultsFilename", () => {
   it("resultsFilename", () => expect(resultsFilename("AB2CDE", new Date(2026, 9, 31, 14, 5))).toBe("AI학교탈출_AB2CDE_20261031-1405.csv"));
 
+  it("the end-of-class copy says 최종 (final review I1)", () => {
+    expect(resultsFilename("AB2CDE", new Date(2026, 9, 31, 14, 5), true)).toBe("AI학교탈출_AB2CDE_20261031-1405_최종.csv");
+    expect(resultsFilename("AB2CDE", new Date(2026, 9, 31, 14, 5), false)).toBe("AI학교탈출_AB2CDE_20261031-1405.csv");
+  });
+
   it("pads every part to two digits and uses local time", () => {
     expect(resultsFilename("K7Q2XM", new Date(2027, 0, 2, 3, 4))).toBe("AI학교탈출_K7Q2XM_20270102-0304.csv");
   });

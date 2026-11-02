@@ -369,8 +369,8 @@ async function phaseFreshJoin(): Promise<FreshJoinOutcome> {
 
 /**
  * Phase 2 for a class connection (Review Focus 5): rejoin the class this tab was in, by
- * `classRejoinPlan` — a teacher first asks for a new pass for THE SAME code (the teacher route
- * re-opens a class the restart removed) and joins with it; a student joins by the code and keeps
+ * `classRejoinPlan` — a teacher first asks for a new pass for THE SAME code (`reopen: true`: the
+ * teacher route re-opens a class the restart removed) and joins with it; a student joins by the code and keeps
  * retrying a 521 (the class is not re-opened yet) for CLASS_REJOIN_BUDGET_MS. A Korean refusal,
  * or a teacher-route 4xx, is terminal at once (`shouldRetryClassRejoin`).
  *
@@ -392,7 +392,14 @@ async function phaseFreshClassJoin(): Promise<FreshJoinOutcome> {
       attempt: async () => {
         const teacherPass =
           plan.kind === "teacher"
-            ? (await requestTeacherPass({ teacherKey: plan.key, classCode: plan.classCode, textLevel: plan.textLevel })).pass
+            ? (
+                await requestTeacherPass({
+                  teacherKey: plan.key,
+                  classCode: plan.classCode,
+                  textLevel: plan.textLevel,
+                  reopen: true,
+                })
+              ).pass
             : undefined;
         const joined = await joinClassRoom({
           classCode: plan.classCode,

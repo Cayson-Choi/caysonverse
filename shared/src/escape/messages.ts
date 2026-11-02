@@ -67,6 +67,11 @@ export interface TeamChatMirrorPayload {
 }
 export interface ResultsCsvPayload {
   csv: string;
+  /**
+   * True only on the copy the server pushes to every teacher once the class has ended and every
+   * classroom has reported (unfinished teams included): the client saves it once, as "…_최종.csv".
+   */
+  final?: boolean;
 }
 
 /** A message that carries no data. */

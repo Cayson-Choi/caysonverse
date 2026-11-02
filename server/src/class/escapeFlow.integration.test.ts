@@ -134,17 +134,34 @@ interface Kid {
   chats: ChatBroadcast[];
   mirrors: TeamChatMirrorPayload[];
   csvs: string[];
+  /** In step with `csvs`: whether that CSV was the end-of-class copy the server pushed (`final`). */
+  finals: boolean[];
   closed: number[];
 }
 
 /** Join the class and listen (handlers registered before any await). */
 async function join(room: ClassRoom, nickname: string, extra: Record<string, unknown> = {}): Promise<Kid> {
   const client = await connectClass(room, nickname, extra);
-  const kid: Kid = { client, sid: client.sessionId, name: nickname, tickets: [], notices: [], systems: [], chats: [], mirrors: [], csvs: [], closed: [] };
+  const kid: Kid = {
+    client,
+    sid: client.sessionId,
+    name: nickname,
+    tickets: [],
+    notices: [],
+    systems: [],
+    chats: [],
+    mirrors: [],
+    csvs: [],
+    finals: [],
+    closed: [],
+  };
   client.onMessage(ClassMsg.EscapeTicket, (m: EscapeTicketPayload) => kid.tickets.push(m));
   client.onMessage(ClassMsg.Notice, (m: NoticePayload) => kid.notices.push(m.text));
   client.onMessage(ClassMsg.TeamChatMirror, (m: TeamChatMirrorPayload) => kid.mirrors.push(m));
-  client.onMessage(ClassMsg.ResultsCsv, (m: ResultsCsvPayload) => kid.csvs.push(m.csv));
+  client.onMessage(ClassMsg.ResultsCsv, (m: ResultsCsvPayload) => {
+    kid.csvs.push(m.csv);
+    kid.finals.push(m.final === true);
+  });
   client.onMessage(MessageType.System, (m: SystemBroadcast) => kid.systems.push(m.text));
   client.onMessage(MessageType.Chat, (m: ChatBroadcast) => kid.chats.push(m));
   client.onMessage(MessageType.ChatRejected, () => {});
@@ -822,11 +839,13 @@ describe("the teacher's view and controls", () => {
       expect(await pollFor(() => !e1.state.paused && !e2.state.paused)).toBe(true);
       expect(room.state.phase).toBe("running");
 
-      // End: both instances end and report their unfinished results before the class's grace.
+      // End: both instances end and report their unfinished results before the class's grace, and the
+      // teacher is sent that final CSV by itself (final review I1) — no ResultsRequest needed.
       await sendTo(room, teacher.client, ClassMsg.Command, { cmd: "end" });
       expect(await pollFor(() => e1.state.phase === "ended" && e2.state.phase === "ended")).toBe(true);
-      await sendTo(room, teacher.client, ClassMsg.ResultsRequest, {});
       expect(await pollFor(() => teacher.csvs.length === 1)).toBe(true);
+      expect(teacher.finals).toEqual([true]);
+      for (const k of [a, b, c, d]) expect(k.csvs).toEqual([]);
       const csv = teacher.csvs[0];
       expect(csv).toContain("햇살(파랑),가람·다온,상담실,미탈출,");
       expect(csv).toContain("풍선(빨강),세온·하늘,상담실,미탈출,");
@@ -843,6 +862,42 @@ describe("the teacher's view and controls", () => {
       expect(await pollFor(() => everyone.every((k) => k.closed.length === 1), 5000)).toBe(true);
       for (const k of everyone) expect(k.closed).toEqual([CLASS_CLOSED_CODE]);
       expect(await pollFor(() => matchMaker.getLocalRoomById(room.roomId) === undefined)).toBe(true);
+    },
+    REAL_TIME_TEST_MS,
+  );
+
+  it(
+    "end with one team escaped and one still inside: every teacher gets the final CSV by itself, the unfinished team's row included (final review I1)",
+    async () => {
+      process.env.CV_ESCAPE_END_GRACE_MS = "300";
+      process.env.CV_CLASS_END_GRACE_MS = "1500";
+      const { room, teacher, kids } = await classWithTeam("FN2CSV");
+      const [a, b] = kids;
+      const coTeacher = await join(room, "보조쌤", { teacherPass: classRegistry.issuePass("FN2CSV", T1, Date.now()) });
+      const [c, d] = [await join(room, "세온"), await join(room, "하늘")];
+      await makeTeam(room, [c, d], BALLOON);
+      const id1 = await padAndEnter(room, [a, b]);
+      const id2 = await padAndEnter(room, [c, d]);
+      const [ia, ib] = [await goIn(a.tickets[0]), await goIn(b.tickets[0])];
+      await goIn(c.tickets[0]);
+      await goIn(d.tickets[0]);
+      // Team 1 escapes; team 2 is still at it when the time is up.
+      await escapeTogether(escapeRoomById(id1), ia, ib);
+      expect(await pollFor(() => room.state.litRooms.includes("counsel"))).toBe(true);
+      escapeRoomById(id2).debugAdvance(ESCAPE_INTRO_MS);
+
+      // The teacher presses 끝내기 without asking for the CSV first.
+      await sendTo(room, teacher.client, ClassMsg.Command, { cmd: "end" });
+      expect(await pollFor(() => teacher.csvs.length === 1 && coTeacher.csvs.length === 1)).toBe(true);
+      expect(teacher.finals).toEqual([true]);
+      expect(coTeacher.csvs).toEqual(teacher.csvs);
+      const rows = teacher.csvs[0].split("\r\n");
+      expect(rows.some((r) => r.startsWith("풍선(빨강),세온·하늘,상담실,미탈출,"))).toBe(true);
+      expect(rows.some((r) => r.startsWith("햇살(파랑),가람·다온,상담실,탈출,"))).toBe(true);
+      // Students never get it; and it comes once, not again later in the grace.
+      await sleep(400);
+      expect(teacher.csvs).toHaveLength(1);
+      for (const k of [a, b, c, d]) expect(k.csvs).toEqual([]);
     },
     REAL_TIME_TEST_MS,
   );

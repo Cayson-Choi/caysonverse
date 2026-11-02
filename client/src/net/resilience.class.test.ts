@@ -224,7 +224,7 @@ describe("Phase 2 after a server restart (Review Focus 5)", () => {
     h.joinClassRoom.mockResolvedValueOnce(fresh);
     restart(r0);
     await flush();
-    expect(h.requestTeacherPass).toHaveBeenCalledWith({ teacherKey: "TKEY", classCode: "AB2CDE", textLevel: "hard" });
+    expect(h.requestTeacherPass).toHaveBeenCalledWith({ teacherKey: "TKEY", classCode: "AB2CDE", textLevel: "hard", reopen: true });
     expect(h.joinClassRoom).toHaveBeenCalledWith({
       classCode: "AB2CDE",
       nickname: "가람",

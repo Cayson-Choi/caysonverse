@@ -12,13 +12,15 @@ const two = (n: number): string => String(n).padStart(2, "0");
 /**
  * "AI학교탈출_<CODE>_<YYYYMMDD-HHMM>.csv" in local time, e.g.
  * resultsFilename("AB2CDE", new Date(2026, 9, 31, 14, 5)) → "AI학교탈출_AB2CDE_20261031-1405.csv".
- * Only letters and digits of the code are kept, so the name can never carry a path.
+ * The end-of-class copy (`final`, every team in it) ends in "_최종": "…_20261031-1405_최종.csv", so it
+ * is never mistaken for a file saved earlier in the lesson. Only letters and digits of the code are
+ * kept, so the name can never carry a path.
  */
-export function resultsFilename(code: string, d: Date): string {
+export function resultsFilename(code: string, d: Date, final = false): string {
   const safeCode = code.toUpperCase().replace(/[^A-Z0-9]/g, "");
   const day = `${d.getFullYear()}${two(d.getMonth() + 1)}${two(d.getDate())}`;
   const time = `${two(d.getHours())}${two(d.getMinutes())}`;
-  return `AI학교탈출_${safeCode}_${day}-${time}.csv`;
+  return `AI학교탈출_${safeCode}_${day}-${time}${final ? "_최종" : ""}.csv`;
 }
 
 /** How long the temporary object URL lives after the click (the save has started by then). */

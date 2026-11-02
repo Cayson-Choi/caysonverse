@@ -78,6 +78,11 @@ export function getRoom(): Room<WorldState> | null {
   return room;
 }
 
+/** Which kind of main connection this tab has (the world unless a class was joined). */
+export function getRoomMode(): "world" | "class" {
+  return roomMode;
+}
+
 /** Swap the main room handle (used by the resilience driver on reconnect). */
 export function setRoom(next: Room<WorldState> | null): void {
   room = next;
@@ -173,22 +178,39 @@ export class TeacherPassError extends Error {
   }
 }
 
+/** A teacher-pass request that has not been answered after this long fails like no answer at all. */
+export const TEACHER_PASS_TIMEOUT_MS = 10_000;
+
+/** An abort signal that fires after `ms` (AbortSignal.timeout where the browser has it). */
+function timeoutSignal(ms: number): AbortSignal {
+  if (typeof AbortSignal.timeout === "function") return AbortSignal.timeout(ms);
+  const controller = new AbortController();
+  setTimeout(() => controller.abort(), ms);
+  return controller.signal;
+}
+
 /**
- * `POST /api/class/teacher`: verify the teacher key and open a class (no `classCode`) or get a
- * pass for the class with that code (re-opening it after a server restart). Resolves
- * `{ classCode, pass }`; the pass goes into ONE class join. Rejects with a TeacherPassError whose
- * message is the server's Korean reason, else FAILED_NOTICE. The key travels only in this body —
- * it is never logged, stored, or put in a join option.
+ * `POST /api/class/teacher`: verify the teacher key and open a new class (no `classCode`) or get a
+ * pass for the LIVE class with that code (a teacher coming back after a reload, a co-teacher; the
+ * server refuses a code with no live class). `reopen: true` is the restart recovery's own ask: it
+ * re-opens the code when the server restarted. Resolves `{ classCode, pass }`; the pass goes into
+ * ONE class join. Rejects with a TeacherPassError whose message is the server's Korean reason, else
+ * FAILED_NOTICE (also when nothing answers within TEACHER_PASS_TIMEOUT_MS: status 0). The key
+ * travels only in this body — it is never logged, stored, or put in a join option.
  */
 export async function requestTeacherPass(body: {
   teacherKey: string;
   classCode?: string;
   textLevel?: TextLevel;
+  reopen?: boolean;
 }): Promise<{ classCode: string; pass: string }> {
-  const payload: { teacherKey: string; classCode?: string; textLevel?: TextLevel } = { teacherKey: body.teacherKey };
+  const payload: { teacherKey: string; classCode?: string; textLevel?: TextLevel; reopen?: true } = {
+    teacherKey: body.teacherKey,
+  };
   const code = body.classCode?.trim() ?? "";
   if (code !== "") payload.classCode = normalizeClassCode(code) ?? code; // a bad code: the server says why
   if (body.textLevel !== undefined) payload.textLevel = body.textLevel;
+  if (body.reopen === true && code !== "") payload.reopen = true;
 
   let res: Response;
   try {
@@ -197,9 +219,10 @@ export async function requestTeacherPass(body: {
       headers: { "content-type": "application/json" },
       body: JSON.stringify(payload),
       cache: "no-store",
+      signal: timeoutSignal(TEACHER_PASS_TIMEOUT_MS),
     });
   } catch {
-    throw new TeacherPassError(FAILED_NOTICE, 0);
+    throw new TeacherPassError(FAILED_NOTICE, 0); // no answer, or none in time
   }
   const json = (await res.json().catch(() => null)) as { classCode?: unknown; pass?: unknown; error?: unknown } | null;
   if (res.ok) {

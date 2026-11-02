@@ -1,10 +1,12 @@
 /**
  * HTTP API for classes (반) — server-only.
  *
- *  - `POST /api/class/teacher` `{ teacherKey, classCode?, textLevel? }`: verify the teacher
- *    key, open a class (or find / re-open the one named by `classCode`) and answer
- *    `{ classCode, pass }`. The pass is the one-time `teacherPass` the client then puts in
- *    its Colyseus join options — the key itself never travels over the WebSocket.
+ *  - `POST /api/class/teacher` `{ teacherKey, classCode?, textLevel?, reopen? }`: verify the
+ *    teacher key, open a new class (no `classCode`) or hand out a pass for the LIVE class named
+ *    by `classCode` (a teacher coming back after a reload, a co-teacher), and answer
+ *    `{ classCode, pass }`. Only `reopen: true` (the client's own restart recovery) may re-open
+ *    a code the server no longer has. The pass is the one-time `teacherPass` the client then
+ *    puts in its Colyseus join options — the key itself never travels over the WebSocket.
  *  - `POST /api/operator/status` `{ operatorKey }`: the operator's live view (phase 1 has
  *    no screen; this JSON is it, and the Task 26 load test polls it).
  *
@@ -38,6 +40,8 @@ export const CLASS_API_ERRORS = {
   badRequest: "요청이 올바르지 않아요",
   wrongTeacherKey: "선생님 키가 올바르지 않아요",
   otherTeacher: "이 반 코드는 다른 선생님이 쓰고 있어요",
+  /** A class code to re-enter that names no live class (never opened, ended, or gone). */
+  classNotOpen: "그 반 코드는 지금 열려 있지 않아요. 새 반을 열려면 반 코드를 비워 주세요",
   tooManyAttempts: "시도가 너무 많아요. 1분 뒤에 다시 해 주세요",
   classesFull: "지금은 반을 더 열 수 없어요. 잠시 뒤에 다시 해 주세요",
   openFailed: "반을 열지 못했어요. 잠시 뒤에 다시 해 주세요",
@@ -113,6 +117,8 @@ interface TeacherOpenRequest {
   teacherKey: string;
   classCode: string | null;
   textLevel: TextLevel;
+  /** The client's restart recovery: re-open `classCode` if the server no longer has it. */
+  reopen: boolean;
 }
 
 /** The validated body, or null when it is malformed (→ 400, not a key failure). */
@@ -132,7 +138,10 @@ function parseTeacherBody(body: unknown): TeacherOpenRequest | null {
     if (rawLevel !== "easy" && rawLevel !== "hard") return null;
     textLevel = rawLevel;
   }
-  return { teacherKey: body.teacherKey, classCode, textLevel };
+
+  const rawReopen = body.reopen;
+  if (rawReopen !== undefined && rawReopen !== null && typeof rawReopen !== "boolean") return null;
+  return { teacherKey: body.teacherKey, classCode, textLevel, reopen: rawReopen === true };
 }
 
 /** True when `p` settles within `ms`; the timer never outlives the wait or holds the process open. */
@@ -166,8 +175,9 @@ function creationsOf(registry: ClassRegistry): Map<string, Promise<void>> {
  * | case | answer |
  * |---|---|
  * | right key, no `classCode` | new class → 200 `{ classCode, pass }` |
- * | `classCode`'s class exists and `canTeach` | pass for that class → 200 |
- * | `classCode`'s class does not exist (server restarted) | re-open that code → 200 |
+ * | `classCode`'s class is live and `canTeach` (the opener, a colleague of the group, the operator) | pass for THAT class → 200, no new room |
+ * | `classCode` names no live class (never opened, ended, gone) | 404, nothing opened |
+ * | the same with `reopen: true` and the code unknown (the server restarted mid-lesson) | re-open that code → 200 |
  * | the class belongs to another teacher/group | 409 |
  * | wrong key | 401, failure recorded |
  * | 5 failures per IP per minute | 429 |
@@ -190,17 +200,32 @@ export async function handleTeacherOpen(body: unknown, ip: string, deps: Teacher
     return fail(401, CLASS_API_ERRORS.wrongTeacherKey);
   }
 
-  const code = request.classCode ?? generateClassCode((c) => deps.registry.get(c) !== undefined);
-  return openOrJoin(code, key, request.textLevel, deps);
+  if (request.classCode === null) {
+    const code = generateClassCode((c) => deps.registry.get(c) !== undefined);
+    return openOrJoin(code, key, request.textLevel, true, deps);
+  }
+  return openOrJoin(request.classCode, key, request.textLevel, request.reopen, deps);
 }
 
-async function openOrJoin(code: string, key: VerifiedKey, textLevel: TextLevel, deps: TeacherOpenDeps): Promise<ApiResult> {
+/**
+ * A pass for the class `code`. `mayCreate`: open it when the server does not have it (a new
+ * class, or the restart recovery's re-open); otherwise a code with no live class is refused (404).
+ * A class that has ended is never re-entered.
+ */
+async function openOrJoin(
+  code: string,
+  key: VerifiedKey,
+  textLevel: TextLevel,
+  mayCreate: boolean,
+  deps: TeacherOpenDeps,
+): Promise<ApiResult> {
   const inFlight = creationsOf(deps.registry);
   // A few rounds: waiting on someone else's creation can end in that creation failing,
   // after which this request re-opens the class itself.
   for (let round = 0; round < 3; round++) {
     const existing = deps.registry.get(code);
     if (existing) {
+      if (existing.ended) return fail(404, CLASS_API_ERRORS.classNotOpen);
       if (!canTeach(key, existing.opener)) return fail(409, CLASS_API_ERRORS.otherTeacher);
       const pending = inFlight.get(code);
       if (pending) {
@@ -212,6 +237,8 @@ async function openOrJoin(code: string, key: VerifiedKey, textLevel: TextLevel, 
       }
       return { status: 200, body: { classCode: code, pass: deps.registry.issuePass(code, key, deps.now()) } };
     }
+    // Re-entering by code must never open a class silently (a typo, yesterday's code).
+    if (!mayCreate) return fail(404, CLASS_API_ERRORS.classNotOpen);
 
     const opener = { id: key.id, group: key.group, label: key.label };
     const reserved = deps.registry.reserve({ code, opener, textLevel, openedAt: deps.now() });

@@ -39,6 +39,8 @@ import {
   joinWorld,
   leaveEscape,
   requestTeacherPass,
+  TEACHER_PASS_TIMEOUT_MS,
+  getRoomMode,
   sendAnnounce,
   sendChat,
   sendClass,
@@ -351,6 +353,30 @@ describe("requestTeacherPass", () => {
     stubFetch(async () => Promise.reject(new TypeError("fetch failed")));
     await expect(requestTeacherPass({ teacherKey: "k" })).rejects.toMatchObject({ message: FAILED_NOTICE, status: 0 });
   });
+
+  it("re-entering by code sends no reopen; only the restart recovery's reopen: true (with a code) goes out (final review I2)", async () => {
+    const fetchMock = stubFetch(async () => response(200, { classCode: "AB2CDE", pass: "p" }));
+    await requestTeacherPass({ teacherKey: "K", classCode: "AB2CDE" });
+    await requestTeacherPass({ teacherKey: "K", classCode: "AB2CDE", reopen: true });
+    await requestTeacherPass({ teacherKey: "K", reopen: true }); // no code: nothing to re-open
+    const bodies = fetchMock.mock.calls.map((c) => JSON.parse(c[1].body as string));
+    expect(bodies).toEqual([
+      { teacherKey: "K", classCode: "AB2CDE" },
+      { teacherKey: "K", classCode: "AB2CDE", reopen: true },
+      { teacherKey: "K" },
+    ]);
+  });
+
+  it("asks with a 10 s timeout signal; a timed-out request fails with the network-error words, status 0", async () => {
+    expect(TEACHER_PASS_TIMEOUT_MS).toBe(10_000);
+    const timeout = vi.spyOn(AbortSignal, "timeout");
+    const fetchMock = stubFetch(async () =>
+      Promise.reject(new DOMException("The operation was aborted due to timeout", "TimeoutError")),
+    );
+    await expect(requestTeacherPass({ teacherKey: "k" })).rejects.toMatchObject({ message: FAILED_NOTICE, status: 0 });
+    expect(timeout).toHaveBeenCalledWith(TEACHER_PASS_TIMEOUT_MS);
+    expect(fetchMock.mock.calls[0][1].signal).toBe(timeout.mock.results[0].value);
+  });
 });
 
 describe("pagehide (ruling: class mode keeps both ghosts — Review Focus 1)", () => {
@@ -368,12 +394,15 @@ describe("pagehide (ruling: class mode keeps both ghosts — Review Focus 1)", (
     for (const fn of h.listeners.pagehide) fn();
     expect(cls.leave).not.toHaveBeenCalled();
     expect(esc.leave).not.toHaveBeenCalled();
+    // The crash screen reads the same mode (AppErrorBoundary: no consented leave in a class).
+    expect(getRoomMode()).toBe("class");
   });
 
   it("world mode is unchanged: pagehide is a consented leave of the world room", async () => {
     const world = fakeRoom();
     h.join.mockResolvedValueOnce(world);
     await joinWorld({ nickname: "가람", appearance: LOOK });
+    expect(getRoomMode()).toBe("world");
     for (const fn of h.listeners.pagehide) fn();
     expect(world.leave).toHaveBeenCalledWith(true);
   });

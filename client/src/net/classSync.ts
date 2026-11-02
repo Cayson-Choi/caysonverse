@@ -3,7 +3,8 @@
  * store, and its personal messages into their sinks —
  *  - `ClassMsg.EscapeTicket` → join the team classroom (`joinEscape`) → the escape screen;
  *  - `ClassMsg.Notice` → a toast; `ClassMsg.TeamChatMirror` → the teacher's chat mirror;
- *  - `ClassMsg.ResultsCsv` → the browser saves "AI학교탈출_<CODE>_<시각>.csv".
+ *  - `ClassMsg.ResultsCsv` → the browser saves "AI학교탈출_<CODE>_<시각>.csv" — and, once per class,
+ *    the copy the server pushes when the class ends (every team in it) as "…_최종.csv".
  * Chat lines and System notices stay with chatSync (the chat UI binds to the active room).
  *
  * Lifetime: the WHOLE class connection, not a scene. The connection layer binds it
@@ -49,6 +50,9 @@ import { useEnterTransition } from "../escape/enterTransition";
 // ───────────────────────────── Snap back into the hall (place 1 → 0) ─────────────────────────────
 
 const snap = { pending: false, x: 0, z: 0, yaw: 0 };
+
+/** Class codes whose end-of-class CSV this tab has already saved (one "_최종" file per class). */
+const finalSaved = new Set<string>();
 
 /**
  * If the server has just moved the local player out of a classroom (place 1 → 0), copy its
@@ -205,7 +209,13 @@ export function startClassSync(room: Room<ClassState>): () => void {
     room.onMessage(ClassMsg.ResultsCsv, (p: ResultsCsvPayload) => {
       if (typeof p?.csv !== "string") return;
       const code = room.state?.classCode || useClassStore.getState().classCode;
-      downloadCsv(resultsFilename(code, new Date()), p.csv);
+      const final = p.final === true;
+      // The end-of-class copy is saved once per class, whatever arrives after it.
+      if (final) {
+        if (finalSaved.has(code)) return;
+        finalSaved.add(code);
+      }
+      downloadCsv(resultsFilename(code, new Date(), final), p.csv);
     }),
   ];
 

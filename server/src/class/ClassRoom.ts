@@ -14,6 +14,7 @@ import {
   CLASS_CLOSED_CODE,
   CLASS_EMPTY_CLOSE_MS,
   CLASS_END_GRACE_MS,
+  CLASS_RECONNECT_WINDOW_S,
   ESCAPE_ROOM,
   ESCAPE_TIME_LIMIT_S,
   PHASE1_OPEN_ROOMS,
@@ -466,6 +467,15 @@ export class ClassRoom extends PlayerRoom<ClassState, ClassTracking> {
     return window;
   }
 
+  /**
+   * A dropped student keeps its team for CLASS_RECONNECT_WINDOW_S (180 s), not the world's 20 s:
+   * a phone that locks for half a minute comes back to the same team (and the same classroom).
+   * Teammates see a ghost meanwhile; only the expiry (onLeave) takes the player out of its team.
+   */
+  protected defaultReconnectWindowSeconds(): number {
+    return CLASS_RECONNECT_WINDOW_S;
+  }
+
   /** The hub: the east gate stays shut until the class starts (and shuts again at the end). */
   protected geometry(): MapGeometry {
     return hubGeometry(this.state.phase === "running" || this.state.phase === "paused");
@@ -823,18 +833,38 @@ export class ClassRoom extends PlayerRoom<ClassState, ClassTracking> {
   }
 
   /**
-   * The class is over: no new joins (lock → the matchmaker refuses); every running classroom ends
-   * and reports its result — an unfinished one too — and the class waits for that (at most
-   * END_RESULTS_WAIT_MS) so the CSV has every team; then, after the grace (time to download the
-   * results), everyone is closed with CLASS_CLOSED_CODE and the room disposes.
+   * The class is over: no new joins (lock → the matchmaker refuses; the registry refuses a teacher
+   * pass for it); every running classroom ends and reports its result — an unfinished one too — and
+   * the class waits for that (at most END_RESULTS_WAIT_MS) so the CSV has every team. That final
+   * CSV is pushed to every connected teacher at once (final review I1: the teacher would otherwise
+   * have to think of asking for it within the grace). Then, after the grace, everyone is closed
+   * with CLASS_CLOSED_CODE and the room disposes.
    */
   private async endClass(): Promise<void> {
     this.cancelEmptyClose();
     void this.lock();
+    classRegistry.markEnded(this.classCode, this.roomId);
     await this.settleWithin(this.commandEscapeRooms("end"), END_RESULTS_WAIT_MS);
+    this.sendFinalResults();
     this.clock.setTimeout(() => {
       void this.disconnect(CLASS_CLOSED_CODE);
     }, testOverrideMs("CV_CLASS_END_GRACE_MS", CLASS_END_GRACE_MS));
+  }
+
+  /** The results as CSV (the last one per team and room); `final` marks the end-of-class copy. */
+  private resultsPayload(final: boolean): ResultsCsvPayload {
+    const csv = buildResultsCsv([...this.results.values()]);
+    return final ? { csv, final: true } : { csv };
+  }
+
+  /** The end-of-class CSV, once, to every teacher connected now (one CSV built for all of them). */
+  private sendFinalResults(): void {
+    let payload: ResultsCsvPayload | null = null;
+    for (const c of this.clients) {
+      if (!this.isTeacher(c)) continue;
+      payload ??= this.resultsPayload(true);
+      c.send(ClassMsg.ResultsCsv, payload);
+    }
   }
 
   /** Resolves when every call has settled (they never reject), or after `ms`, whichever comes first. */
@@ -1085,8 +1115,7 @@ export class ClassRoom extends PlayerRoom<ClassState, ClassTracking> {
   /** Teacher only: the results so far as CSV (the last one per team and room). */
   private handleResultsRequest(client: Client): void {
     if (!this.isTeacher(client)) return; // silent drop
-    const payload: ResultsCsvPayload = { csv: buildResultsCsv([...this.results.values()]) };
-    client.send(ClassMsg.ResultsCsv, payload);
+    client.send(ClassMsg.ResultsCsv, this.resultsPayload(false));
   }
 
   private mirrorToTeachers(m: TeamChatMirrorPayload): void {

@@ -35,6 +35,7 @@ import { clearKicked } from "../net/kickSeam";
 import { rememberAdminCode, forgetAdminCode } from "../net/adminSession";
 import { forgetTeacher, rememberTeacher } from "../net/teacherSession";
 import { loadIdentity, saveIdentity } from "../net/identityCache";
+import { forgetTeacherClass, loadTeacherClass, saveTeacherClass } from "../net/teacherClassCache";
 import { useAppStore } from "../stores/appStore";
 import "./entry.css";
 import "./builder.css";
@@ -45,6 +46,8 @@ const CLASS_DEPS: ClassEntryDeps = {
   requestTeacherPass,
   rememberTeacher,
   forgetTeacher,
+  saveTeacherClass: (classCode) => saveTeacherClass(classCode),
+  forgetTeacherClass,
   saveIdentity,
   clearKicked,
   enterHub: (identity, isTeacher) => useAppStore.getState().enterHub(identity, isTeacher),
@@ -195,6 +198,12 @@ export function EntryScreen() {
   const { role, teacherKey } = teacherFields;
   /** The last class code entered is prefilled (identity cache); the teacher key never is. */
   const [classCode, setClassCode] = useState(() => sanitizeCodeInput(saved.classCode ?? ""));
+  /**
+   * The teacher's optional class code: prefilled with the class this browser last opened as a teacher
+   * (teacherClassCache, a few hours at most), so a reloaded teacher tab goes back into its running class;
+   * empty opens a new class.
+   */
+  const [teacherClassCode, setTeacherClassCode] = useState(() => loadTeacherClass());
   const [textLevel, setTextLevel] = useState<TextLevel>("easy");
   const [destError, setDestError] = useState<DestinationError | null>(null);
   /** Bumped by every refused try in the sheet (re-focus + shake the field at fault). */
@@ -350,7 +359,9 @@ export function EntryScreen() {
     primeChatAudio(); // inside the press's user gesture (see handleSubmit)
 
     const check =
-      role === "student" ? validateStudentEntry({ classCode, nickname }) : validateTeacherEntry({ teacherKey, nickname });
+      role === "student"
+        ? validateStudentEntry({ classCode, nickname })
+        : validateTeacherEntry({ teacherKey, nickname, classCode: teacherClassCode });
     if (!check.ok) {
       const field = check.error === CLASS_CODE_ERROR ? "code" : check.error === TEACHER_KEY_ERROR ? "key" : undefined;
       return refuseInSheet("escape", check.error, field);
@@ -364,7 +375,7 @@ export function EntryScreen() {
     try {
       if (!(await characterModelReady())) throw new Error(BUILDER_COPY.modelRetry);
       if (role === "student") await enterClassAsStudent(CLASS_DEPS, { ...look.value, classCode });
-      else await enterClassAsTeacher(CLASS_DEPS, { ...look.value, teacherKey, textLevel });
+      else await enterClassAsTeacher(CLASS_DEPS, { ...look.value, teacherKey, textLevel, classCode: teacherClassCode });
       // In the hall now: this screen unmounts; do not touch state afterwards.
     } catch (err) {
       // The server's / connection layer's Korean words, as they come.
@@ -582,6 +593,11 @@ export function EntryScreen() {
           teacherKey={teacherKey}
           onTeacherKey={(key) => {
             setTeacherFields((f) => ({ ...f, teacherKey: key }));
+            if (destError) setDestError(null);
+          }}
+          teacherClassCode={teacherClassCode}
+          onTeacherClassCode={(code) => {
+            setTeacherClassCode(code);
             if (destError) setDestError(null);
           }}
           textLevel={textLevel}

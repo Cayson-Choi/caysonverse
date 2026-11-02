@@ -38,6 +38,7 @@ const ERR = {
   bad: "요청이 올바르지 않아요",
   wrongKey: "선생님 키가 올바르지 않아요",
   otherGroup: "이 반 코드는 다른 선생님이 쓰고 있어요",
+  notOpen: "그 반 코드는 지금 열려 있지 않아요. 새 반을 열려면 반 코드를 비워 주세요",
   tooMany: "시도가 너무 많아요. 1분 뒤에 다시 해 주세요",
   full: "지금은 반을 더 열 수 없어요. 잠시 뒤에 다시 해 주세요",
   wrongOperator: "운영자 키가 올바르지 않아요",
@@ -171,10 +172,16 @@ describe("handleTeacherOpen", () => {
     expect(typed.body.classCode).toBe(code);
     expect(created).toHaveLength(1);
 
-    // Server restart: the registry is empty, so the same code is opened again (progress starts over).
+    // Server restart: the registry is empty. Re-entering by code is refused (404, nothing opened) …
     const restarted = setup();
+    expect(await handleTeacherOpen({ teacherKey: KEY_T2, classCode: code }, IP, restarted.deps)).toEqual({
+      status: 404,
+      body: { error: ERR.notOpen },
+    });
+    expect(restarted.created).toEqual([]);
+    // … only the client's restart recovery (`reopen: true`) opens the same code again (progress starts over).
     const reopened = await handleTeacherOpen(
-      { teacherKey: KEY_T2, classCode: code, textLevel: "hard" },
+      { teacherKey: KEY_T2, classCode: code, textLevel: "hard", reopen: true },
       IP,
       restarted.deps,
     );
@@ -190,6 +197,51 @@ describe("handleTeacherOpen", () => {
     ]);
     expect(restarted.registry.get(code)?.roomId).toBe("room-1");
     expect(restarted.registry.consumePass(reopened.body.pass, code, restarted.at())?.id).toBe("t2");
+  });
+
+  it("re-entering a LIVE class by its code hands out a pass for THAT class and opens nothing new (final review I2)", async () => {
+    const { deps, registry, created, at } = setup();
+    const first = await handleTeacherOpen({ teacherKey: KEY }, IP, deps);
+    const code = first.body.classCode as string;
+    expect(created).toHaveLength(1);
+    // The opener after a reload (no reopen flag: the entry form's "이어서 들어갈 반 코드").
+    for (let i = 0; i < 3; i++) {
+      const again = await handleTeacherOpen({ teacherKey: KEY, classCode: code }, IP, deps);
+      expect(again.status).toBe(200);
+      expect(again.body.classCode).toBe(code);
+      expect(registry.consumePass(again.body.pass, code, at())?.id).toBe("t1");
+    }
+    expect(created).toHaveLength(1);
+    expect(registry.list()).toHaveLength(1);
+  });
+
+  it("a code with no live class is refused in Korean (404) and never opens one: unknown, typo, ended", async () => {
+    const { deps, registry, created } = setup();
+    // Never opened (a typo, yesterday's code).
+    expect(await handleTeacherOpen({ teacherKey: KEY, classCode: "ZZ2ZZZ" }, IP, deps)).toEqual({
+      status: 404,
+      body: { error: ERR.notOpen },
+    });
+    expect(registry.get("ZZ2ZZZ")).toBeUndefined();
+    expect(created).toEqual([]);
+    // A refused code is not a failed key attempt.
+    for (let i = 0; i < 6; i++) await handleTeacherOpen({ teacherKey: KEY, classCode: "ZZ2ZZZ" }, IP, deps);
+    expect(deps.limiter.isBlocked(IP, deps.now())).toBe(false);
+
+    // Ended (the class waits out its grace): refused, with or without reopen; the code stays taken.
+    const opened = await handleTeacherOpen({ teacherKey: KEY }, IP, deps);
+    const code = opened.body.classCode as string;
+    registry.markEnded(code, registry.get(code)!.roomId!);
+    for (const body of [
+      { teacherKey: KEY, classCode: code },
+      { teacherKey: KEY, classCode: code, reopen: true },
+    ]) {
+      expect(await handleTeacherOpen(body, IP, deps)).toEqual({ status: 404, body: { error: ERR.notOpen } });
+    }
+    expect(created).toHaveLength(1);
+    expect(registry.get(code)?.ended).toBe(true);
+    // The words are in the friendly ~요 tone and tell the teacher what to do.
+    expect(ERR.notOpen.endsWith("주세요")).toBe(true);
   });
 
   it("409 other group, 401 wrong key, 429 after 5 failures per IP per minute, 503 at the cap", async () => {
@@ -257,7 +309,7 @@ describe("handleTeacherOpen", () => {
         status: 503,
         body: { error: ERR.full },
       });
-      expect(await handleTeacherOpen({ teacherKey: KEY, classCode: "ZZ3ZZZ" }, IP, deps)).toEqual({
+      expect(await handleTeacherOpen({ teacherKey: KEY, classCode: "ZZ3ZZZ", reopen: true }, IP, deps)).toEqual({
         status: 503,
         body: { error: ERR.full },
       });
@@ -288,12 +340,14 @@ describe("handleTeacherOpen", () => {
       { teacherKey: KEY, classCode: 123456 },
       { teacherKey: KEY, textLevel: "medium" },
       { teacherKey: KEY, textLevel: 1 },
+      { teacherKey: KEY, classCode: "AB2CDE", reopen: "yes" },
+      { teacherKey: KEY, classCode: "AB2CDE", reopen: 1 },
     ];
     for (const body of bodies) {
       expect(await handleTeacherOpen(body, IP, deps)).toEqual({ status: 400, body: { error: ERR.bad } });
     }
     expect(created).toHaveLength(0);
-    // 16 malformed requests, yet the IP is not blocked.
+    // 18 malformed requests, yet the IP is not blocked.
     expect((await handleTeacherOpen({ teacherKey: KEY }, IP, deps)).status).toBe(200);
     // An empty classCode / null textLevel mean "not given".
     expect((await handleTeacherOpen({ teacherKey: KEY, classCode: "" }, IP, deps)).status).toBe(200);
@@ -309,7 +363,7 @@ describe("handleTeacherOpen", () => {
       throw new Error(`room "class" failed with ${JSON.stringify(o)} key=${KEY}`);
     };
     const cap = captureConsole();
-    const res = await handleTeacherOpen({ teacherKey: KEY, classCode: "AB2CDE" }, IP, deps).finally(cap.restore);
+    const res = await handleTeacherOpen({ teacherKey: KEY, classCode: "AB2CDE", reopen: true }, IP, deps).finally(cap.restore);
     expect(res.status).toBe(500);
     expect(res.body).toEqual({ error: "반을 열지 못했어요. 잠시 뒤에 다시 해 주세요" });
     expect(registry.get("AB2CDE")).toBeUndefined();
@@ -320,7 +374,7 @@ describe("handleTeacherOpen", () => {
 
     // The code is free again: the next attempt opens it.
     deps.createClassRoom = async () => ({ roomId: "room-ok" });
-    expect((await handleTeacherOpen({ teacherKey: KEY, classCode: "AB2CDE" }, IP, deps)).status).toBe(200);
+    expect((await handleTeacherOpen({ teacherKey: KEY, classCode: "AB2CDE", reopen: true }, IP, deps)).status).toBe(200);
     expect(registry.get("AB2CDE")?.roomId).toBe("room-ok");
   });
 
@@ -333,9 +387,9 @@ describe("handleTeacherOpen", () => {
         finish = resolve;
       });
     };
-    const a = handleTeacherOpen({ teacherKey: KEY, classCode: "AB2CDE" }, IP, deps);
-    const b = handleTeacherOpen({ teacherKey: KEY_T2, classCode: "AB2CDE" }, OTHER_IP, deps);
-    const c = handleTeacherOpen({ teacherKey: KEY_T3, classCode: "AB2CDE" }, OTHER_IP, deps);
+    const a = handleTeacherOpen({ teacherKey: KEY, classCode: "AB2CDE", reopen: true }, IP, deps);
+    const b = handleTeacherOpen({ teacherKey: KEY_T2, classCode: "AB2CDE", reopen: true }, OTHER_IP, deps);
+    const c = handleTeacherOpen({ teacherKey: KEY_T3, classCode: "AB2CDE", reopen: true }, OTHER_IP, deps);
     await new Promise((r) => setTimeout(r, 10));
     expect(created).toHaveLength(1);
     // The colleague's pass waits for the room instead of racing ahead of it.
@@ -366,8 +420,8 @@ describe("handleTeacherOpen", () => {
     };
     const cap = captureConsole();
     try {
-      const a = handleTeacherOpen({ teacherKey: KEY, classCode: "AB2CDE" }, IP, deps);
-      const b = handleTeacherOpen({ teacherKey: KEY_T2, classCode: "AB2CDE" }, IP, deps);
+      const a = handleTeacherOpen({ teacherKey: KEY, classCode: "AB2CDE", reopen: true }, IP, deps);
+      const b = handleTeacherOpen({ teacherKey: KEY_T2, classCode: "AB2CDE", reopen: true }, IP, deps);
       await new Promise((r) => setTimeout(r, 10));
       fail(new Error("boom"));
       const [ra, rb] = await Promise.all([a, b]);
@@ -393,9 +447,9 @@ describe("handleTeacherOpen", () => {
           finish = resolve;
         });
       };
-      const a = handleTeacherOpen({ teacherKey: KEY, classCode: "AB2CDE" }, IP, deps);
+      const a = handleTeacherOpen({ teacherKey: KEY, classCode: "AB2CDE", reopen: true }, IP, deps);
       let bResult: unknown = null;
-      const b = handleTeacherOpen({ teacherKey: KEY_T2, classCode: "AB2CDE" }, OTHER_IP, deps).then((r) => {
+      const b = handleTeacherOpen({ teacherKey: KEY_T2, classCode: "AB2CDE", reopen: true }, OTHER_IP, deps).then((r) => {
         bResult = r;
         return r;
       });
@@ -407,7 +461,7 @@ describe("handleTeacherOpen", () => {
       finish({ roomId: "room-slow" });
       expect((await a).status).toBe(200);
       expect(registry.get("AB2CDE")?.roomId).toBe("room-slow");
-      const c = await handleTeacherOpen({ teacherKey: KEY_T2, classCode: "AB2CDE" }, OTHER_IP, deps);
+      const c = await handleTeacherOpen({ teacherKey: KEY_T2, classCode: "AB2CDE", reopen: true }, OTHER_IP, deps);
       expect(c.status).toBe(200);
       expect(created).toHaveLength(1);
       // A timed-out wait is not a key failure.
@@ -427,11 +481,11 @@ describe("handleTeacherOpen", () => {
     const tick = () => new Promise((r) => setTimeout(r, 5));
 
     // A starts creating AB2CDE …
-    const a = handleTeacherOpen({ teacherKey: KEY, classCode: "AB2CDE" }, IP, deps);
+    const a = handleTeacherOpen({ teacherKey: KEY, classCode: "AB2CDE", reopen: true }, IP, deps);
     await tick();
     // … its reservation disappears (stand-in for anything freeing it) and C opens the code anew.
     registry.release("AB2CDE", null);
-    const c = handleTeacherOpen({ teacherKey: KEY_T2, classCode: "AB2CDE" }, IP, deps);
+    const c = handleTeacherOpen({ teacherKey: KEY_T2, classCode: "AB2CDE", reopen: true }, IP, deps);
     await tick();
     expect(created).toHaveLength(2);
 
@@ -442,7 +496,7 @@ describe("handleTeacherOpen", () => {
 
     // D (a colleague) still waits for C's room instead of getting a pass for a room that doesn't exist.
     let dDone = false;
-    const d = handleTeacherOpen({ teacherKey: KEY, classCode: "AB2CDE" }, IP, deps).then((r) => {
+    const d = handleTeacherOpen({ teacherKey: KEY, classCode: "AB2CDE", reopen: true }, IP, deps).then((r) => {
       dDone = true;
       return r;
     });

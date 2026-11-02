@@ -4,6 +4,7 @@ import { KICK_CLOSE_CODE, PATCH_RATE_MS, ROLE_STUDENT, ROLE_TEACHER } from "@cay
 import { APPEARANCE_FIELDS, validateAppearance, type AppearanceField } from "@caysonverse/shared/appearance";
 import {
   CLASS_CLOSED_CODE,
+  CLASS_RECONNECT_WINDOW_S,
   ESCAPE_ACTION_RATE,
   ESCAPE_EMPTY_DISPOSE_MS,
   ESCAPE_INTRO_MS,
@@ -513,6 +514,16 @@ export class EscapeRoom extends PlayerRoom<EscapeState, EscapeTracking> {
       this.reconnectWindows.set(previousClient.sessionId, window);
     }
     return window;
+  }
+
+  /**
+   * The class's window (CLASS_RECONNECT_WINDOW_S, 180 s), not the world's 20 s: a member whose phone
+   * locked keeps its slot (split halves, arrival order) and comes back into the same room. Meanwhile
+   * the team sees the member away (a ghost: not connected, so the puzzle's membership — solo, holds,
+   * votes — already counts without it); only the expiry (onLeave) reports the member gone.
+   */
+  protected defaultReconnectWindowSeconds(): number {
+    return CLASS_RECONNECT_WINDOW_S;
   }
 
   protected geometry(): MapGeometry {

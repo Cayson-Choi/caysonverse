@@ -198,6 +198,30 @@ describe("startClassSync — messages", () => {
     stop();
   });
 
+  it("the end-of-class CSV the server pushes is saved by itself, once, as …_최종.csv (final review I1)", () => {
+    h.downloadCsv.mockClear();
+    const f = fakeClassRoom();
+    f.room.state.classCode = "FN2LCS";
+    const stop = startClassSync(f.room as never);
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date(2026, 10, 2, 10, 40));
+      // A copy the teacher asked for during the lesson: the usual name.
+      f.send(ClassMsg.ResultsCsv, { csv: "팀,교실,중간" });
+      // The end: the final copy, with every team — a second, more complete file named 최종.
+      f.send(ClassMsg.ResultsCsv, { csv: "팀,교실,최종", final: true });
+      // A repeat of the final copy (another binding, a resend) is not saved again.
+      f.send(ClassMsg.ResultsCsv, { csv: "팀,교실,최종", final: true });
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(h.downloadCsv.mock.calls).toEqual([
+      ["AI학교탈출_FN2LCS_20261102-1040.csv", "팀,교실,중간"],
+      ["AI학교탈출_FN2LCS_20261102-1040_최종.csv", "팀,교실,최종"],
+    ]);
+    stop();
+  });
+
   it("EscapeTicket → joinEscape(roomId, ticket) → the classroom screen", async () => {
     const f = fakeClassRoom();
     const stop = startClassSync(f.room as never);

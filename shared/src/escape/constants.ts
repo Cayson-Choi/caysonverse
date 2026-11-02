@@ -41,6 +41,14 @@ export const MAX_CLASSES_DEFAULT = 10;
 export const TEACHER_PASS_TTL_MS = 120_000;
 /** A student rejoining a class keeps retrying for at most this long. */
 export const CLASS_REJOIN_BUDGET_MS = 60_000;
+/**
+ * Reconnection window (SECONDS) of a class and of its team classrooms (ClassRoom, EscapeRoom). A
+ * dropped player stays a ghost this long, keeping its team, its place and its seat in the team's
+ * classroom; only when the window runs out does it leave the team. Longer than the world's
+ * RECONNECT_WINDOW_S (20 s, unchanged for the world) because a phone that locks or switches apps
+ * for half a minute must not lose its team (final review I3).
+ */
+export const CLASS_RECONNECT_WINDOW_S = 180;
 
 // ─────────────────────────────────────── Teams ───────────────────────────────────────
 

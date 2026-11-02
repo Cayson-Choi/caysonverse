@@ -9,6 +9,7 @@ import {
   ENTRY_COPY,
   TEXT_LEVEL_OPTIONS,
   sheetPressAllowed,
+  teacherGoLabels,
   type Destination,
   type DestinationId,
   type SchoolRole,
@@ -33,6 +34,9 @@ export interface DestinationSheetProps {
   onClassCode: (code: string) => void;
   teacherKey: string;
   onTeacherKey: (key: string) => void;
+  /** The teacher's optional class code (re-enter that running class; empty = a new class). */
+  teacherClassCode: string;
+  onTeacherClassCode: (code: string) => void;
   textLevel: TextLevel;
   onTextLevel: (level: TextLevel) => void;
   error: DestinationError | null;
@@ -298,6 +302,37 @@ export function DestinationSheet(p: DestinationSheetProps) {
                           />
                         </span>
                       </label>
+                      <label className="cv-dest-field">
+                        <span className="cv-dest-label">{ENTRY_COPY.teacherClassCode}</span>
+                        <span className="cv-dest-input-wrap" data-shake={codeInvalid ? shake : undefined}>
+                          <input
+                            ref={codeRef}
+                            className="cv-dest-input cv-dest-code-input cv-dest-teacher-code-input"
+                            type="text"
+                            name="teacherClassCode"
+                            value={p.teacherClassCode}
+                            placeholder={ENTRY_COPY.teacherClassCodePlaceholder}
+                            autoComplete="off"
+                            autoCapitalize="characters"
+                            autoCorrect="off"
+                            spellCheck={false}
+                            enterKeyHint="go"
+                            readOnly={busy}
+                            aria-invalid={codeInvalid || undefined}
+                            aria-describedby={codeInvalid ? "cv-dest-error-escape" : "cv-dest-teacher-code-note"}
+                            onChange={(e) => p.onTeacherClassCode(sanitizeCodeInput(e.target.value))}
+                          />
+                          <span
+                            className={"cv-dest-count" + (p.teacherClassCode.length === CLASS_CODE_LENGTH ? " is-full" : "")}
+                            aria-hidden="true"
+                          >
+                            {p.teacherClassCode.length}/{CLASS_CODE_LENGTH}
+                          </span>
+                        </span>
+                        <span className="cv-dest-hint" id="cv-dest-teacher-code-note">
+                          {ENTRY_COPY.teacherClassCodeNote}
+                        </span>
+                      </label>
                       <fieldset className="cv-dest-field cv-dest-levels" disabled={busy}>
                         <legend className="cv-dest-label">{ENTRY_COPY.textLevel}</legend>
                         <div className="cv-dest-level-row">
@@ -342,8 +377,8 @@ export function DestinationSheet(p: DestinationSheetProps) {
                   {errorFor("escape")}
 
                   <GoButton
-                    label={student ? ENTRY_COPY.enter : ENTRY_COPY.openClass}
-                    busyLabel={student ? ENTRY_COPY.entering : ENTRY_COPY.opening}
+                    label={student ? ENTRY_COPY.enter : teacherGoLabels(p.teacherClassCode).label}
+                    busyLabel={student ? ENTRY_COPY.entering : teacherGoLabels(p.teacherClassCode).busyLabel}
                     busy={p.pending === "escape"}
                     disabled={busy}
                     buttonRef={goRef}

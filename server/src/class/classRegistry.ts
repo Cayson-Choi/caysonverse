@@ -31,6 +31,12 @@ export interface ClassEntry {
   opener: { id: string; group: string; label: string };
   textLevel: TextLevel;
   openedAt: number;
+  /**
+   * Set by the class's own room when its teacher ended it (`markEnded`): the class only waits out
+   * its grace now, so the teacher route hands out no pass for it (a teacher re-entering by code is
+   * refused instead of joining a class that is closing).
+   */
+  ended?: boolean;
 }
 
 interface PassRecord {
@@ -113,6 +119,16 @@ export class ClassRegistry {
       for (const pass of bucket) this.passes.delete(pass);
       this.passesByClass.delete(code);
     }
+  }
+
+  /**
+   * The class of `code` has ended (its teacher pressed 수업 끝내기). Only the room that holds the
+   * entry may say so (same identity rule as `release`); anything else is a no-op. The entry stays
+   * until the room disposes, so the code is not handed to a new class during the grace.
+   */
+  markEnded(code: string, roomId: string): void {
+    const existing = this.classes.get(code);
+    if (existing && existing.roomId === roomId) existing.ended = true;
   }
 
   get(code: string): ClassEntry | undefined {

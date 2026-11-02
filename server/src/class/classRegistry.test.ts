@@ -93,6 +93,22 @@ describe("ClassRegistry", () => {
     expect(reg.consumePass(later, "AB2CDE", 1)).toBeNull();
   });
 
+  it("markEnded flags only the entry of that room; the entry stays until the room releases it (final review I2)", () => {
+    const reg = new ClassRegistry(2);
+    reg.reserve(entry("AB2CDE"));
+    reg.markEnded("AB2CDE", "room-1"); // still a reservation (roomId null): not this room's
+    expect(reg.get("AB2CDE")?.ended).toBeUndefined();
+    reg.attach("AB2CDE", "room-1");
+    reg.markEnded("AB2CDE", "room-other"); // another room never flags it
+    expect(reg.get("AB2CDE")?.ended).toBeUndefined();
+    reg.markEnded("AB2CDE", "room-1");
+    expect(reg.get("AB2CDE")?.ended).toBe(true);
+    reg.markEnded("NO2SUC", "room-1"); // unknown code: no-op
+    expect(reg.get("NO2SUC")).toBeUndefined();
+    reg.release("AB2CDE", "room-1");
+    expect(reg.get("AB2CDE")).toBeUndefined();
+  });
+
   it("list() is a snapshot, not the live store", () => {
     const reg = new ClassRegistry(3);
     reg.reserve(entry("AB2CDE"));

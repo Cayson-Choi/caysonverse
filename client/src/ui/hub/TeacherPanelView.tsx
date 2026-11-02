@@ -62,7 +62,11 @@ async function copyText(text: string): Promise<boolean> {
 
 // ───────────────────────────────────── 진행 ─────────────────────────────────────
 
-/** The end-of-class question: "결과 CSV를 먼저 받을까요?" — take the CSV first, end, or keep going. */
+/**
+ * The end-of-class question: end, take the CSV so far, or keep going. Ending saves the final CSV by
+ * itself (the server pushes it once every classroom has reported, unfinished teams included —
+ * classSync saves it as "…_최종.csv"), so "CSV 받기" here is only for a copy before the end.
+ */
 function EndConfirm({ onClose }: { onClose: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -106,7 +110,7 @@ function EndConfirm({ onClose }: { onClose: () => void }) {
           </h2>
         </header>
         <div className="cv-hub-body">
-          <p className="cv-hub-lead">결과 CSV를 먼저 받을까요?</p>
+          <p className="cv-hub-lead">끝내면 모든 팀의 최종 결과 CSV를 자동으로 받아요.</p>
           <p className="cv-hub-note">끝내면 학생들은 입장 화면으로 돌아가요.</p>
         </div>
         <footer className="cv-hub-foot is-split">
@@ -320,7 +324,7 @@ function ResultsTab() {
 /**
  * The teacher's panel (AI 학교 탈출, Task 16) — top-left, foldable, four tabs:
  *  - 진행: the class code (big, with 복사), the phase buttons that apply now (시작 · 일시정지 · 다시 시작 ·
- *    수업 끝내기 — which asks "결과 CSV를 먼저 받을까요?" first) and the existing 공지·강퇴 panel;
+ *    수업 끝내기 — which asks first and then saves the final CSV by itself) and the existing 공지·강퇴 panel;
  *  - 팀: every team with where it is (중앙 홀 / the room), its n/6 and stars, 자동 배정 and 섞기;
  *  - 채팅: the team-chat mirror, a chip per team; a held-back line reads "⚠ 걸러진 말: ●●";
  *  - 결과: 결과 CSV 받기 (the file is saved when the server's answer arrives — classSync.ts).

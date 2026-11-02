@@ -185,22 +185,31 @@ export abstract class PlayerRoom<S extends PlayersState, T extends Tracking = Tr
   protected onChatBlocked(_client: Client, _player: Player, _masked: string): void {}
 
   /**
-   * Reconnection grace window in seconds. Production is RECONNECT_WINDOW_S (20);
-   * `CV_RECONNECT_WINDOW_S` is a TEST-ONLY override so an integration test can
-   * force a sub-second expiry without waiting 20 real seconds or touching the
-   * production constant.
+   * This room class's production reconnection window in seconds. The base (the world) keeps
+   * RECONNECT_WINDOW_S (20); a room whose players must survive a longer gap (a class and its team
+   * classrooms: a phone that locks for half a minute) overrides it.
+   */
+  protected defaultReconnectWindowSeconds(): number {
+    return RECONNECT_WINDOW_S;
+  }
+
+  /**
+   * Reconnection grace window in seconds: `defaultReconnectWindowSeconds()` in production;
+   * `CV_RECONNECT_WINDOW_S` is a TEST-ONLY override (every room class) so an integration test can
+   * force a sub-second expiry without waiting real seconds or touching the production constants.
    */
   protected reconnectWindowSeconds(): number {
     const raw = process.env.CV_RECONNECT_WINDOW_S;
     const seconds = raw !== undefined ? Number(raw) : NaN;
-    return Number.isFinite(seconds) && seconds > 0 ? seconds : RECONNECT_WINDOW_S;
+    return Number.isFinite(seconds) && seconds > 0 ? seconds : this.defaultReconnectWindowSeconds();
   }
 
   /**
    * Unexpected disconnect (Colyseus 0.17 lifecycle). Fires for any non-consented
    * close. We keep the player in state but mark `connected = false` (drives the
    * client's 50%-opacity ghost) and open a reconnection window with
-   * `allowReconnection(client, reconnectWindowSeconds())`. The framework tracks
+   * `allowReconnection(client, reconnectWindowSeconds())` (20 s in the world, longer in a class —
+   * see `defaultReconnectWindowSeconds`). The framework tracks
    * that deferred: on a successful reconnect it calls `onReconnect`; on window
    * expiry it calls `onLeave` (permanent removal). We deliberately do NOT await it
    * here (the idiomatic 0.17 onDrop pattern — the framework owns the deferred).

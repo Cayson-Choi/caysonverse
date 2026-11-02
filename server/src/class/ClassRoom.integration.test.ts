@@ -13,7 +13,7 @@ import {
   PLACE_HUB,
   TEAM_MAX,
 } from "@caysonverse/shared/escape/constants";
-import { ClassMsg, type NoticePayload } from "@caysonverse/shared/escape/messages";
+import { ClassMsg, type NoticePayload, type ResultsCsvPayload } from "@caysonverse/shared/escape/messages";
 import { Team } from "@caysonverse/shared/schema";
 import { HUB_DOORS, HUB_SPAWN, HUB_SPAWN_JITTER, TEAM_ZONE } from "@caysonverse/shared/school/hubMap";
 import type { Tracking } from "../rooms/PlayerRoom";
@@ -142,6 +142,21 @@ async function sendTo(room: ClassRoom, client: { send(type: string, payload?: un
   await flush();
 }
 
+/** POST /api/class/teacher over HTTP: the status and the JSON answer (httpie rejects a 4xx; both come back here). */
+async function postTeacher(body: Record<string, unknown>): Promise<{ statusCode: number; data: Record<string, unknown> }> {
+  try {
+    const res = await colyseus.http.post("/api/class/teacher", {
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    return { statusCode: res.statusCode as number, data: res.data as Record<string, unknown> };
+  } catch (e) {
+    const err = e as { statusCode?: number; data?: Record<string, unknown> };
+    if (typeof err.statusCode !== "number") throw e;
+    return { statusCode: err.statusCode, data: err.data ?? {} };
+  }
+}
+
 /** White-box handle on the base's per-session bookkeeping. */
 function trackingOf(room: ClassRoom): Map<string, Tracking> {
   return (room as unknown as { tracking: Map<string, Tracking> }).tracking;
@@ -227,7 +242,8 @@ describe("ClassRoom creation", () => {
   it("the teacher HTTP route opens a real ClassRoom and its pass admits the teacher", async () => {
     const res = await colyseus.http.post("/api/class/teacher", {
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ teacherKey: HTTP_KEY, classCode: "HT2PPP", textLevel: "hard" }),
+      // A chosen code: the restart recovery's re-open (a new class from the entry form has no code).
+      body: JSON.stringify({ teacherKey: HTTP_KEY, classCode: "HT2PPP", textLevel: "hard", reopen: true }),
     });
     expect(res.statusCode).toBe(200);
     const body = res.data as { classCode: string; pass: string };
@@ -245,6 +261,66 @@ describe("ClassRoom creation", () => {
     expect(teacher.roomId).toBe(roomId);
     await flush();
     expect(room.state.players.get(teacher.sessionId)?.role).toBe(ROLE_TEACHER);
+  });
+
+  it(
+    "a teacher whose tab reloaded re-enters THEIR class by its code: a pass for that class, no new room, the ghost taken over (final review I2)",
+    async () => {
+      process.env.CV_RECONNECT_WINDOW_S = "5";
+      const opened = await postTeacher({ teacherKey: HTTP_KEY }); // 반 열기 from the entry form: a new class
+      expect(opened.statusCode).toBe(200);
+      const code = opened.data.classCode as string;
+      const roomId = classRegistry.get(code)!.roomId!;
+      const room = colyseus.getRoomById(roomId) as ClassRoom;
+      const first = await colyseus.sdk.join(CLASS_ROOM, joinOpts(code, "김쌤", { teacherPass: opened.data.pass }));
+      await flush();
+      expect(room.state.players.get(first.sessionId)?.role).toBe(ROLE_TEACHER);
+
+      // F5: the connection drops (no consent) and the teacher is a ghost in the class.
+      first.reconnection.enabled = false;
+      first.connection.close(4010, "reload");
+      expect(await pollFor(() => room.state.players.get(first.sessionId)?.connected === false)).toBe(true);
+
+      // The entry form sends the cached code (any case): a pass for the SAME class, nothing new opened.
+      const classes = classRegistry.list().length;
+      const again = await postTeacher({ teacherKey: HTTP_KEY, classCode: code.toLowerCase() });
+      expect(again.statusCode).toBe(200);
+      expect(again.data.classCode).toBe(code);
+      expect(classRegistry.list().length).toBe(classes);
+      expect(classRegistry.get(code)?.roomId).toBe(roomId);
+
+      // Same nickname: the new session takes the teacher's ghost over, as the teacher.
+      const back = await colyseus.sdk.join(CLASS_ROOM, joinOpts(code, "김쌤", { teacherPass: again.data.pass }));
+      expect(back.roomId).toBe(roomId);
+      await flush();
+      expect(room.state.players.get(back.sessionId)?.role).toBe(ROLE_TEACHER);
+      expect(room.state.players.has(first.sessionId)).toBe(false);
+      expect(room.state.players.size).toBe(1);
+      // And can run the class again.
+      await sendTo(room, back, ClassMsg.Command, { cmd: "start" });
+      expect(room.state.phase).toBe("running");
+    },
+    10_000,
+  );
+
+  it("a class code with no live class is refused in Korean and opens nothing: unknown, then ended (final review I2)", async () => {
+    process.env.CV_CLASS_END_GRACE_MS = "3000";
+    const unknown = await postTeacher({ teacherKey: HTTP_KEY, classCode: "ZZ2ZZZ" });
+    expect(unknown.statusCode).toBe(404);
+    expect(unknown.data).toEqual({ error: "그 반 코드는 지금 열려 있지 않아요. 새 반을 열려면 반 코드를 비워 주세요" });
+    expect(classRegistry.get("ZZ2ZZZ")).toBeUndefined();
+
+    // A class its teacher ended (waiting out its grace) is not entered again.
+    const opened = await postTeacher({ teacherKey: HTTP_KEY });
+    const code = opened.data.classCode as string;
+    const room = colyseus.getRoomById(classRegistry.get(code)!.roomId!) as ClassRoom;
+    const teacher = await colyseus.sdk.join(CLASS_ROOM, joinOpts(code, "김쌤", { teacherPass: opened.data.pass }));
+    teacher.onMessage(ClassMsg.ResultsCsv, () => {});
+    await sendTo(room, teacher, ClassMsg.Command, { cmd: "end" });
+    expect(room.state.phase).toBe("ended");
+    const ended = await postTeacher({ teacherKey: HTTP_KEY, classCode: code });
+    expect(ended.statusCode).toBe(404);
+    expect(classRegistry.get(code)?.roomId).toBe(room.roomId); // still that class, closing
   });
 });
 
@@ -529,11 +605,19 @@ describe("ClassRoom phases", () => {
     }
     const systems: SystemBroadcast[] = [];
     student.onMessage(MessageType.System, (m: SystemBroadcast) => systems.push(m));
+    const csvs: { who: string; payload: ResultsCsvPayload }[] = [];
+    teacher.onMessage(ClassMsg.ResultsCsv, (m: ResultsCsvPayload) => csvs.push({ who: "teacher", payload: m }));
+    student.onMessage(ClassMsg.ResultsCsv, (m: ResultsCsvPayload) => csvs.push({ who: "student", payload: m }));
 
     await sendTo(room, teacher, ClassMsg.Command, { cmd: "end" });
     expect(room.state.phase).toBe("ended");
     expect(room.locked).toBe(true);
     expect(systems).toEqual([{ text: NOTICE.end }]);
+    // The final results go to the teacher by themselves (final review I1), once; never to a student.
+    expect(await pollFor(() => csvs.length === 1)).toBe(true);
+    expect(csvs[0].who).toBe("teacher");
+    expect(csvs[0].payload.final).toBe(true);
+    expect(csvs[0].payload.csv.startsWith("\uFEFF팀,팀원,교실,결과")).toBe(true);
 
     // During the grace (time to download the results): still connected and registered; a second
     // end does nothing.
