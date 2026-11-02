@@ -7,7 +7,8 @@ import type { PlayersRoom } from "../game/remoteSync";
 import { getEscapeRoom } from "../net/connection";
 import { useEscapeStore } from "../stores/escapeStore";
 import type { Identity } from "../stores/appStore";
-import { DialogueQueue, introLines, sayLine } from "./dialogue";
+import { DialogueQueue } from "./dialogue";
+import { FEED_START, feedDialogue } from "./dialogueFeed";
 import { leaveToHall } from "./leave";
 import { RoomPlaceholder } from "./RoomPlaceholder";
 import { EscapeHud } from "./ui/EscapeHud";
@@ -44,30 +45,24 @@ export function roomActiveMap(id: RoomId): ActiveMap | null {
 }
 
 /**
- * Feed the queue from the escape store while the scene is up: the intro lines once (when the room's
- * content is here and the team is not already done), then each new `say` event's line. A refresh
- * mid-game replays the intro too — a tap skips it.
+ * Feed the queue from the escape store while the scene is up (dialogueFeed.ts decides what goes in):
+ * the intro lines once — only if the team really starts in its intro, so a refresh mid-game does not
+ * replay them — then each new `say` event's line.
  */
 function useEscapeDialogue(queue: DialogueQueue): void {
   useEffect(() => {
     queue.clear();
-    let introPushed = false;
-    let seenEvent = useEscapeStore.getState().eventSeq;
+    let feed = { ...FEED_START, seenEvent: useEscapeStore.getState().eventSeq };
 
     const sync = (s: ReturnType<typeof useEscapeStore.getState>): void => {
-      if (!introPushed && s.content !== null && s.view !== null) {
-        introPushed = true;
-        // A team that already escaped (or whose class ended) has no use for the opening story.
-        if (s.view.phase !== "escaped" && s.view.phase !== "ended") queue.push(introLines(s.content));
-      }
-      if (s.eventSeq !== seenEvent) {
-        seenEvent = s.eventSeq;
-        const ev = s.lastEvent;
-        if (ev !== null && ev.e === "say" && s.content !== null) {
-          const line = sayLine(s.content, ev.lineId);
-          if (line) queue.push([line]);
-        }
-      }
+      const r = feedDialogue(feed, {
+        content: s.content,
+        phase: s.view ? s.view.phase : null,
+        eventSeq: s.eventSeq,
+        lastEvent: s.lastEvent,
+      });
+      feed = r.next;
+      if (r.lines.length > 0) queue.push(r.lines);
     };
 
     sync(useEscapeStore.getState());
@@ -96,20 +91,25 @@ function Waiting({ text, leavable }: { text: string; leavable: boolean }) {
 const LEAVE = () => leaveToHall();
 
 export function EscapeScene({ identity }: { identity: Identity }) {
-  const view = useEscapeStore((s) => s.view);
+  // Primitives only: escapeSync rewrites the whole view every second (the clock), and a subscription to it
+  // would re-render the scene (and rebuild its slots) once a second.
+  const hasView = useEscapeStore((s) => s.view !== null);
+  const roomId = useEscapeStore((s) => s.view?.roomDefId ?? null);
   // The classroom connection (read once per mount: a reconnect remounts this scene).
   const [room] = useState(() => getEscapeRoom() as unknown as PlayersRoom | null);
+  // Who I am IN THIS ROOM: team chat and emoji carry the classroom's session id, not the class's (the
+  // identity App hands over is the hall's), so my own bubble and emoji match only under this one.
+  const [self] = useState<Identity>(() => (room ? { ...identity, sessionId: room.sessionId } : identity));
   const [queue] = useState(() => new DialogueQueue());
   useEscapeDialogue(queue);
 
-  if (!room || !view) return <Waiting text="불러오는 중…" leavable={false} />;
-  const roomId = view.roomDefId;
+  if (!room || !hasView) return <Waiting text="불러오는 중…" leavable={false} />;
   const active = roomId ? roomActiveMap(roomId) : null;
   if (!roomId || !active) return <Waiting text="이 교실은 아직 준비 중이에요." leavable />;
 
   return (
     <PlayShell
-      identity={identity}
+      identity={self}
       room={room}
       activeMap={active}
       lighting="brightDay"

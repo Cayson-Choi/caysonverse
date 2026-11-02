@@ -143,7 +143,7 @@ export function EscapeHud({ queue, onLeave }: { queue: DialogueQueue; onLeave: (
             곧 시작해요! 이야기를 들어 보세요
           </div>
         )}
-        <DialogueBox queue={queue} />
+        <DialogueBox queue={queue} frozen={covering} />
       </div>
       {covering && (
         <div className="cv-escui">

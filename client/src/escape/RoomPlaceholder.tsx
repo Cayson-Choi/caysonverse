@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { memo, useMemo, useState } from "react";
 import { ROOM_MAPS } from "@caysonverse/shared/school/roomMaps";
 import type { ObjectKind } from "@caysonverse/shared/escape/messages";
 import type { RoomId } from "@caysonverse/shared/escape/constants";
@@ -41,7 +41,7 @@ const GLOW_COLOR = "#FFF27A";
 const GROUND = { margin: 40, color: "#D9D2C6" } as const;
 const FLOOR_COLOR = "#E8D5B5";
 
-export function RoomPlaceholder({ roomId }: { roomId: RoomId }) {
+export const RoomPlaceholder = memo(function RoomPlaceholder({ roomId }: { roomId: RoomId }) {
   const map = ROOM_MAPS[roomId];
   // One string for all flags: a new flag array every second (the clock) must not re-render this.
   const flagKey = useEscapeStore((s) => (s.view ? s.view.flags.join("|") : ""));
@@ -122,4 +122,4 @@ export function RoomPlaceholder({ roomId }: { roomId: RoomId }) {
       })}
     </group>
   );
-}
+});

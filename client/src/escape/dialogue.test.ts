@@ -114,6 +114,26 @@ describe("DialogueQueue", () => {
     expect(q.current()?.text).toBe(`줄 ${flood.length - (MAX_QUEUED - 1)}`);
   });
 
+  it("restartClock gives the showing line its full time again (the clock stood still behind a cover)", () => {
+    const q = new DialogueQueue();
+    const line = ari("가".repeat(10)); // 2500 ms
+    q.push([line, bandit("다음")]);
+    q.tick(1000); // the line came up at 1000
+    // A cover held the room for a minute: nobody ticked. Without a restart the next tick would expire it.
+    q.restartClock();
+    q.tick(61_000);
+    expect(q.current()).toBe(line);
+    q.tick(61_000 + 2499);
+    expect(q.current()).toBe(line);
+    q.tick(61_000 + 2500);
+    expect(q.current()?.text).toBe("다음");
+    // Nothing queued: restarting is harmless, and it changes no version.
+    const empty = new DialogueQueue();
+    const v = empty.version();
+    empty.restartClock();
+    expect(empty.version()).toBe(v);
+  });
+
   it("an empty push changes nothing", () => {
     const q = new DialogueQueue();
     const v = q.version();

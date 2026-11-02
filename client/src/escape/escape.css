@@ -178,6 +178,8 @@
   pointer-events: auto;
   user-select: none;
   -webkit-tap-highlight-color: transparent;
+  /* A quick second tap (the next line) must not zoom the page. */
+  touch-action: manipulation;
   animation: cv-esc-rise 0.28s cubic-bezier(0.2, 0.9, 0.3, 1.1);
 }
 .cv-esc-dialogue.is-ari {
@@ -321,6 +323,7 @@
   background: rgba(30, 26, 77, 0.46);
   backdrop-filter: blur(3px);
   pointer-events: auto; /* nothing behind a cover takes a tap */
+  touch-action: manipulation; /* a double tap on the card must not zoom the page */
   animation: cv-esc-fade 0.25s ease-out;
 }
 .cv-esc-card {

@@ -69,19 +69,24 @@ const SPEAKER_NAMES: Record<DialogueLine["speaker"], string> = { ari: "아리", 
  * the keyboard or blocks the room: only the box itself catches a tap.
  *
  * The queue is plain mutable data; this component ticks it at ~7 Hz and re-renders only when its
- * version changed.
+ * version changed. While `frozen` (a cover — paused, time up, class ended — holds the room) it does not
+ * tick, so a line is not spent unseen behind the card; the showing line gets its full time again when
+ * the cover goes.
  */
-export function DialogueBox({ queue }: { queue: DialogueQueue }) {
+export function DialogueBox({ queue, frozen = false }: { queue: DialogueQueue; frozen?: boolean }) {
   // The queue is not React state: its version is, so a change re-renders and the render reads the queue.
   const [, setVersion] = useState(() => queue.version());
 
   useEffect(() => {
+    if (frozen) return;
+    // Back from a frozen stretch (or the first run): the showing line's clock starts over.
+    queue.restartClock();
     const id = window.setInterval(() => {
       queue.tick(performance.now());
       setVersion(queue.version()); // the same number again re-renders nothing
     }, TICK_MS);
     return () => window.clearInterval(id);
-  }, [queue]);
+  }, [queue, frozen]);
 
   const line = queue.current();
   if (!line) return null;

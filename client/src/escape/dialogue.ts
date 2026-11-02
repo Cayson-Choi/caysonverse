@@ -87,6 +87,15 @@ export class DialogueQueue {
     this.ver++;
   }
 
+  /**
+   * The showing line gets its full time again, counted from the next tick. For a view that stopped
+   * ticking (a cover held the room still): without it the first tick afterwards would find the line
+   * "up for a minute" and drop it unseen. Changes nothing a view renders, so no version bump.
+   */
+  restartClock(): void {
+    this.shownAt = null;
+  }
+
   /** Drop everything (a new scene starts quiet). */
   clear(): void {
     if (this.lines.length === 0) return;
