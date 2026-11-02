@@ -32,8 +32,20 @@ export const HUB_PROP_COLLIDERS: readonly AABB[] = [
 
 // 위 상자 가운데 1.6 m 이상 큰 소품(사물함·책장…): 카메라가 뚫고 보면 안 되는 상자(높이 포함).
 export const HUB_PROP_CAMERA_BOXES: readonly CameraBox[] = [
+  { minX: -13.37, maxX: -12.42, minZ: 10.42, maxZ: 11.37, height: 2.25 }, // col__plant_23
+  { minX: -13.36, maxX: -12.44, minZ: -11.36, maxZ: -10.44, height: 2.15 }, // col__plant_21
+  { minX: -10.1, maxX: -7.9, minZ: -9.9, maxZ: -9.3, height: 2.75 }, // col__leaderboard
+  { minX: -6.02, maxX: -5.18, minZ: -11.52, maxZ: -10.68, height: 1.95 }, // col__plant_25
+  { minX: -4.65, maxX: -4.05, minZ: 4.7, maxZ: 5.3, height: 2.65 }, // col__team_sign
+  { minX: -3.45, maxX: -2.65, minZ: 10.75, maxZ: 11.55, height: 1.85 }, // col__plant_27
+  { minX: 2.65, maxX: 3.45, minZ: 10.75, maxZ: 11.55, height: 1.85 }, // col__plant_26
+  { minX: 5.18, maxX: 6.02, minZ: -11.52, maxZ: -10.68, height: 1.95 }, // col__plant_24
+  { minX: 12.42, maxX: 13.37, minZ: -11.37, maxZ: -10.42, height: 2.25 }, // col__plant_20
+  { minX: 12.44, maxX: 13.36, minZ: 10.44, maxZ: 11.36, height: 2.15 }, // col__plant_22
   { minX: 15, maxX: 19, minZ: -3, maxZ: -2.36, height: 2.2 }, // col__lockers
   { minX: 25, maxX: 29, minZ: -3, maxZ: -2.36, height: 2.2 }, // col__lockers_2
   { minX: 31, maxX: 35, minZ: -3, maxZ: -2.36, height: 2.2 }, // col__lockers_3
   { minX: 41, maxX: 45, minZ: -3, maxZ: -2.36, height: 2.2 }, // col__lockers_4
+  { minX: 46.56, maxX: 47.44, minZ: -2.74, maxZ: -1.86, height: 2.05 }, // col__plant_40
+  { minX: 46.56, maxX: 47.44, minZ: 1.86, maxZ: 2.74, height: 2.05 }, // col__plant_41
 ];

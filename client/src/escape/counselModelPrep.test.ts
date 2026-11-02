@@ -151,6 +151,50 @@ describe("prepareCounsel: dressing the model", () => {
     expect(part(nodes, "obj__safe_door").glow).toBeNull();
   });
 
+  it("the last door as a group of two meshes (palette frame + glowing heart): one private copy per source material, so the heart keeps its glow look", () => {
+    const f = fixture();
+    const old = f.scene.getObjectByName("obj__exit_door")!;
+    const door = new Object3D();
+    door.name = "obj__exit_door";
+    door.position.copy(old.position);
+    const frame = new Mesh(new BoxGeometry(1, 1, 1), f.mats.palette);
+    frame.name = "door_frame";
+    const heart = new Mesh(new BoxGeometry(1, 1, 1), f.mats.glow);
+    heart.name = "door_heart";
+    door.add(frame, heart);
+    old.removeFromParent();
+    f.scene.add(door);
+    const { nodes } = prep(f);
+    const d = nodes.door!;
+    const frameMat = (nodes.root.getObjectByName("door_frame") as Mesh).material as MeshBasicMaterial;
+    const heartMat = (nodes.root.getObjectByName("door_heart") as Mesh).material as MeshBasicMaterial;
+    // two different copies, each made from its own source (the heart did not get the palette's material)
+    expect(heartMat).not.toBe(frameMat);
+    expect(frameMat.name).toBe("LM_palette");
+    expect(heartMat.name).toBe("M_glow");
+    expect(frameMat).not.toBe(f.mats.palette);
+    expect(heartMat).not.toBe(f.mats.glow);
+    // the door's own, not the room-wide ones; every private copy is released with the scene
+    expect(nodes.tinted).not.toContain(frameMat);
+    expect(nodes.tinted).not.toContain(heartMat);
+    for (const m of [frameMat, heartMat]) expect(nodes.own).toContain(m);
+    // the light map is the baked surface's only
+    expect(frameMat.lightMap).not.toBeNull();
+    expect(heartMat.lightMap).toBeNull();
+    expect(d.material).toBe(frameMat);
+    expect(d.copies.map((c) => [c.material, c.tinted])).toEqual([[frameMat, true], [heartMat, false]]);
+    // painting: the frame wears tint x door glow, the heart only the door glow
+    paintCounsel(nodes, 0.72, 1);
+    expect(frameMat.color.r).toBeCloseTo(BROKEN_TINT.r * (1 + DOOR_GLOW_ADD.r), 5);
+    expect(heartMat.color.r).toBeCloseTo(1 + DOOR_GLOW_ADD.r, 5);
+    paintCounsel(nodes, 1, 0);
+    expect(frameMat.color.r).toBeCloseTo(1, 5);
+    expect(heartMat.color.r).toBeCloseTo(1, 5);
+    // the source scene still uses the cached originals
+    expect((f.scene.getObjectByName("door_heart") as Mesh).material).toBe(f.mats.glow);
+    expect((f.scene.getObjectByName("door_frame") as Mesh).material).toBe(f.mats.palette);
+  });
+
   it("reads the five sunny windows as shaft points (position and the yaw of the inward direction)", () => {
     const { nodes } = prep();
     expect(nodes.shafts).toHaveLength(2);

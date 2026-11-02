@@ -252,11 +252,19 @@ describe("geometry objects", () => {
     }
   });
 
-  it("the corridor's lockers are camera boxes 2.2 m high; benches, plants and the podium are looked over", () => {
+  it("the corridor's lockers are camera boxes 2.2 m high; the tall plants, the team sign and the leaderboard are too; benches and the podium are looked over", () => {
     const lockersAt = (x: number) => HUB_GEOMETRY_OPEN.cameraBoxes.find((b) => x >= b.minX && x <= b.maxX && b.height !== undefined);
     for (const x of [17, 27, 33, 43]) expect(lockersAt(x)?.height, `lockers at x=${x}`).toBe(2.2);
     expect(lockersAt(30)).toBeUndefined(); // the bench's span
-    expect(HUB_GEOMETRY_OPEN.cameraBoxes.filter((b) => b.height !== undefined)).toHaveLength(4);
+    const tall = HUB_GEOMETRY_OPEN.cameraBoxes.filter((b) => b.height !== undefined);
+    expect(tall).toHaveLength(16); // 4 lockers + 10 plants + the team sign + the leaderboard
+    const at = (x: number, z: number) => tall.find((b) => x >= b.minX && x <= b.maxX && z >= b.minZ && z <= b.maxZ);
+    expect(at(-4.35, 5)?.height, "team sign").toBe(2.65);
+    expect(at(-9, -9.6)?.height, "leaderboard").toBe(2.75);
+    // the ten plants: 1.85 m (scale 1.05) to 2.25 m (scale 1.25) — a camera behind one cannot sit inside its crown
+    for (const [x, z, h] of [[12.9, -10.9, 2.25], [-12.9, -10.9, 2.15], [5.6, -11.1, 1.95], [3.05, 11.15, 1.85], [47, -2.3, 2.05], [47, 2.3, 2.05]] as const)
+      expect(at(x, z)?.height, `plant at (${x}, ${z})`).toBe(h);
+    expect(tall.filter((b) => ![2.2, 2.65, 2.75].includes(b.height!)).map((b) => b.height!).sort()).toEqual([1.85, 1.85, 1.95, 1.95, 2.05, 2.05, 2.15, 2.15, 2.25, 2.25]); // the ten plants
   });
 });
 

@@ -20,13 +20,31 @@ const GATE_BARS = 8;
  * to 0.05. Only the ones the camera could end up inside matter (>= 1.6 m): the extraction keeps these as camera boxes.
  */
 export const KNOWN_PROP_HEIGHTS: Readonly<Record<SchoolKind, Readonly<Record<string, number>>>> = {
-  hub: {},
+  // The hub's `col__` boxes are 1 m cubes too (only the lockers state their height in the node). The plants are the art's
+  // `plant` builder (art/school/tools/props.py): its tallest leaf blob tops out at 1.8 x scale, and `props_b.plant` sizes the
+  // box as 0.76 x scale, so scale = box width / 0.76 (hub_layout.py: 1.05 to 1.25) -> 1.85 to 2.25 m, rounded down to 0.05.
+  // The two signs are the art's stated heights (2.65 m team sign on its post, 2.75 m leaderboard).
+  hub: {
+    team_sign: 2.65,
+    leaderboard: 2.75,
+    plant_20: 2.25, // box 0.95 -> scale 1.25
+    plant_23: 2.25,
+    plant_21: 2.15, // 0.912 -> 1.2
+    plant_22: 2.15,
+    plant_24: 1.95, // 0.836 -> 1.1
+    plant_25: 1.95,
+    plant_26: 1.85, // 0.798 -> 1.05
+    plant_27: 1.85,
+    plant_40: 2.05, // 0.874 -> 1.15
+    plant_41: 2.05,
+  },
   counsel: {
     east_bookcase: 2.1,
     cabinet: 1.95,
     sort_board: 2.1,
     counsel_screen: 2.4,
     exit_door: 2.8,
+    floor_lamp: 1.8,
     plant_50: 1.85,
     plant_51: 1.8,
     plant_52: 1.85,

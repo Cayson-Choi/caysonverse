@@ -24,8 +24,18 @@ const NODE_PREFIX = "obj__";
 /**
  * A coop key switch outranks a plain inspect target in the context button's pick (InteractTarget.priority): its standing
  * spot is about as far from the anchor as a note's or a drawer's is, so "nearest wins" often offered the note instead of the key.
+ * Only while the keys are live (`safeKeysLive`): at any other time a note or a drawer next to a key must still be reachable.
  */
 export const COOP_PRIORITY = 1;
+
+/** The flags that make the safe's key switches the thing to press: the board is solved and the safe has not opened yet. */
+const SAFE_UNLOCKED_FLAG = "safe_unlocked";
+const SAFE_OPEN_FLAG = "safe_open";
+
+/** Whether the safe's key switches are live (`safe_unlocked` set, `safe_open` not yet). */
+export function safeKeysLive(flags: readonly string[]): boolean {
+  return flags.includes(SAFE_UNLOCKED_FLAG) && !flags.includes(SAFE_OPEN_FLAG);
+}
 
 /** One shared empty answer: the common case (nothing within reach) allocates nothing. */
 const NONE: InteractTarget[] = [];
@@ -61,7 +71,7 @@ export function escapeActionsLive(v: { phase: EscapePhase; paused: boolean }): b
   return !v.paused && (v.phase === "play" || v.phase === "finale");
 }
 
-function targetFor(kind: ObjectKind, id: string, dist: number, solo: boolean): InteractTarget {
+function targetFor(kind: ObjectKind, id: string, dist: number, solo: boolean, keysLive: boolean): InteractTarget {
   switch (kind) {
     case "screen":
       return { kind: "object", id, dist, icon: "📺", label: "화면 보기", short: "화면" };
@@ -69,8 +79,8 @@ function targetFor(kind: ObjectKind, id: string, dist: number, solo: boolean): I
       return { kind: "object", id, dist, icon: "🚪", label: "마지막 문", short: "문" };
     case "switch":
       return solo
-        ? { kind: "object", id, dist, icon: "🔑", label: "3초 길게 누르기", short: "길게", hold: true, priority: COOP_PRIORITY }
-        : { kind: "object", id, dist, icon: "🔑", label: "열쇠 돌리기", short: "열쇠", priority: COOP_PRIORITY };
+        ? { kind: "object", id, dist, icon: "🔑", label: "3초 길게 누르기", short: "길게", hold: true, ...(keysLive ? { priority: COOP_PRIORITY } : {}) }
+        : { kind: "object", id, dist, icon: "🔑", label: "열쇠 돌리기", short: "열쇠", ...(keysLive ? { priority: COOP_PRIORITY } : {}) };
     case "inspect":
       return { kind: "object", id, dist, icon: "🔍", label: "조사하기", short: "조사" };
   }
@@ -86,6 +96,7 @@ export function escapeTargets(
   solo: boolean,
 ): InteractTarget[] {
   let out: InteractTarget[] = NONE;
+  const keysLive = safeKeysLive(flags);
   for (let i = 0; i < anchors.length; i++) {
     const a = anchors[i];
     const reach = a.reach ?? INSPECT_REACH;
@@ -96,7 +107,7 @@ export function escapeTargets(
     const kind = objectKindOf(content, a.id);
     if (kind === null || isHidden(a.id, flags, visuals)) continue;
     if (out === NONE) out = [];
-    out.push(targetFor(kind, a.id, Math.sqrt(d2), solo));
+    out.push(targetFor(kind, a.id, Math.sqrt(d2), solo, keysLive));
   }
   return out;
 }

@@ -26,6 +26,8 @@ function content(objects = OBJECTS): RoomContent {
 const near = (x: number, z: number, flags: string[] = [], solo = false, c = content()) =>
   escapeTargets(x, z, COUNSEL_ANCHORS, c, flags, COUNSEL_VISUALS, solo);
 const ids = (ts: { id: string }[]) => ts.map((t) => t.id).sort();
+/** The safe's key switches are live (the board is solved, the safe is not open yet): only then do they outrank what is around them. */
+const SAFE_LIVE = ["safe_unlocked"];
 
 describe("escapeTargets", () => {
   it("escapeTargets: only anchors in reach; picked objects hidden; switch becomes a 3 s hold when solo", () => {
@@ -61,14 +63,14 @@ describe("escapeTargets", () => {
       for (let x = xs[0]; x <= xs[1]; x += 0.125) {
         for (let z = -2.5; z <= 2.5; z += 0.125) {
           if (isBlocked(x, z, PLAYER_RADIUS, COUNSEL_GEOMETRY.obstacles, 0)) continue; // a spot a player can really stand on
-          const ts = near(x, z, [], false, withDrawers);
+          const ts = near(x, z, SAFE_LIVE, false, withDrawers);
           if (!ts.some((t) => t.id === key)) continue;
           spots++;
           const pick = pickInteraction({ seated: false, seat: null, npc: null, npcPanelOpen: false, targets: ts });
           expect(pick, `${key} at (${x}, ${z})`).toMatchObject({ kind: "target", target: { id: key } });
           if (ts.length > 1) withRivals++;
           // alone it is the same key, as a hold
-          const solo = near(x, z, [], true, withDrawers);
+          const solo = near(x, z, SAFE_LIVE, true, withDrawers);
           expect(pickInteraction({ seated: false, seat: null, npc: null, npcPanelOpen: false, targets: solo })).toMatchObject({
             kind: "target",
             target: { id: key, hold: true },
@@ -81,9 +83,29 @@ describe("escapeTargets", () => {
     // Only the switches carry the priority; the nearest plain target still wins among the others.
     const [flash] = near(3.9, -2.0);
     expect(flash!.priority).toBeUndefined();
-    expect(near(-4.6, 0).find((x) => x.id === "safe_key_left")!.priority).toBe(COOP_PRIORITY);
-    const noteAndDrawer = near(-3.9, -0.9, [], false, withDrawers).filter((x) => x.kind === "object" && x.id !== "safe_key_left");
+    expect(near(-4.6, 0, SAFE_LIVE).find((x) => x.id === "safe_key_left")!.priority).toBe(COOP_PRIORITY);
+    const noteAndDrawer = near(-3.9, -0.9, SAFE_LIVE, false, withDrawers).filter((x) => x.kind === "object" && x.id !== "safe_key_left");
     expect(noteAndDrawer.length).toBeGreaterThan(0);
+  });
+
+  it("the key's priority holds only while the safe is unlocked and not yet open (flags safe_unlocked and not safe_open)", () => {
+    const priorityOf = (flags: string[], solo = false) => near(-4.4, 0.6, flags, solo).find((x) => x.id === "safe_key_left")!.priority;
+    // Not live yet / already open: the key is an ordinary target, so the nearest thing (note 1, 0.6 m away) is what E picks.
+    for (const flags of [[], ["solved:cabinet_lock"], ["safe_unlocked", "safe_open"], ["safe_open"]]) {
+      expect(priorityOf(flags), flags.join()).toBeUndefined();
+      expect(priorityOf(flags, true), flags.join() + " solo").toBeUndefined();
+      const pick = pickInteraction({ seated: false, seat: null, npc: null, npcPanelOpen: false, targets: near(-4.4, 0.6, flags) });
+      expect(pick, flags.join()).toMatchObject({ kind: "target", target: { id: "note_1" } });
+    }
+    // Live: the key outranks the note, as a tap for two and as the long press alone.
+    expect(priorityOf(SAFE_LIVE)).toBe(COOP_PRIORITY);
+    expect(priorityOf(SAFE_LIVE, true)).toBe(COOP_PRIORITY);
+    expect(pickInteraction({ seated: false, seat: null, npc: null, npcPanelOpen: false, targets: near(-4.4, 0.6, SAFE_LIVE) })).toMatchObject({
+      kind: "target",
+      target: { id: "safe_key_left" },
+    });
+    // The hold label does not depend on it.
+    expect(near(-4.4, 0.6, [], true).find((x) => x.id === "safe_key_left")).toMatchObject({ label: "3초 길게 누르기", hold: true });
   });
 
   it("icons and labels by kind: inspect 🔍, screen 📺, door 🚪, switch 🔑", () => {

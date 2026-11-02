@@ -296,7 +296,7 @@ describe("tallColliders (the camera boxes among the props)", () => {
     expect(tallColliders(lockers, extractColliders(lockers).colliders, { lockers: 1.7 })[0]!.height).toBe(2.2);
   });
 
-  it("keeps the colliders' order, and the real counselling-room list names are all real col__ boxes of counsel.glb", () => {
+  it("keeps the colliders' order, and the real hall and counselling-room list names are all real col__ boxes of hub.glb / counsel.glb", () => {
     const g = baseGltf([cubeNode("col__b", [5, 1.1, 5], [2, 2.2, 2]), cubeNode("col__a", [1, 1.1, 3], [2, 2.2, 2])]);
     const { colliders } = extractColliders(g);
     expect(tallColliders(g, colliders).map((t) => t.name)).toEqual(colliders.map((c) => c.name));

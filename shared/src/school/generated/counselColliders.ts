@@ -27,6 +27,7 @@ export const COUNSEL_PROP_COLLIDERS: readonly AABB[] = [
 // 위 상자 가운데 1.6 m 이상 큰 소품(사물함·책장…): 카메라가 뚫고 보면 안 되는 상자(높이 포함).
 export const COUNSEL_PROP_CAMERA_BOXES: readonly CameraBox[] = [
   { minX: -5.68, maxX: -4.92, minZ: -4.78, maxZ: -4.02, height: 1.8 }, // col__plant_51
+  { minX: -5.6, maxX: -5.1, minZ: 4.15, maxZ: 4.65, height: 1.8 }, // col__floor_lamp
   { minX: -4.8, maxX: -4.08, minZ: 1.76, maxZ: 3.24, height: 1.95 }, // col__cabinet
   { minX: -3.42, maxX: -1.78, minZ: -4.12, maxZ: -3.52, height: 2.1 }, // col__sort_board
   { minX: -1.32, maxX: 1.32, minZ: -4.15, maxZ: -3.58, height: 2.4 }, // col__counsel_screen

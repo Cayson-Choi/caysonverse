@@ -81,8 +81,13 @@ export interface DoorPart {
   baseRotY: number;
   /** Radians the door swings when fully open (the binding's angle). */
   angle: number;
-  /** The door's own material: tinted and glowing. */
+  /** The door's palette (`LM_*`) copy, or its first copy: tinted and glowing (one of `copies`). */
   material: MeshBasicMaterial;
+  /**
+   * Every private copy the door's meshes use, one per distinct source material (the real door is a group of a palette mesh and
+   * a glowing heart). Painted with the door glow; the `LM_*` ones also wear the broken-room tint, the heart's own does not.
+   */
+  copies: GlowPart[];
 }
 
 export interface CounselNodes {
@@ -109,16 +114,30 @@ function meshesOf(o: Object3D, out: Mesh[] = []): Mesh[] {
   return out;
 }
 
-/** A private copy of `material` for one node (every mesh of the node uses it); registered in `own`. */
-function ownCopy(node: Object3D, own: Material[]): MeshBasicMaterial | null {
-  const meshes = meshesOf(node);
-  const first = meshes[0] ? (materialsOf(meshes[0])[0] as MeshBasicMaterial | undefined) : undefined;
-  if (!first) return null;
-  const copy = first.clone();
-  own.push(copy);
-  for (const m of meshes) m.material = copy;
-  return copy;
+/**
+ * Private copies of the materials a node's meshes use: ONE clone per distinct source material (a node can be a group of a
+ * palette mesh and a glowing one, and both must keep their own look), every mesh slot pointed at the clone of its source, all
+ * registered in `own`. In first-use order, so the first copy is the first mesh's first material's. Empty when there is no mesh.
+ */
+function ownCopies(node: Object3D, own: Material[]): MeshBasicMaterial[] {
+  const copies = new Map<Material, MeshBasicMaterial>();
+  for (const mesh of meshesOf(node)) {
+    const dressed = materialsOf(mesh).map((source) => {
+      let copy = copies.get(source);
+      if (!copy) {
+        copy = source.clone() as MeshBasicMaterial;
+        copies.set(source, copy);
+        own.push(copy);
+      }
+      return copy;
+    });
+    mesh.material = Array.isArray(mesh.material) ? dressed : dressed[0]!;
+  }
+  return [...copies.values()];
 }
+
+/** Whether a material is a baked light-mapped surface (the broken-room tint applies to it). */
+const isBaked = (m: Material): boolean => m.name.startsWith(LIGHTMAP_MATERIAL_PREFIX);
 
 /**
  * Dress a clone of the room model (see the file header) and collect the nodes the scene drives. `bindings` is the room's
@@ -161,15 +180,18 @@ export function prepareCounsel(source: Object3D, lightmap: Texture, bindings: re
     const node = root.getObjectByName(binding.node);
     if (!node) continue;
     if (binding.node === EXIT_DOOR_NODE) {
-      const material = ownCopy(node, own);
-      // The door's copy is painted on its own (it glows), not with the room-wide tint list.
-      if (material) door = { node, baseRotY: node.rotation.y, angle: binding.angle ?? 0, material };
+      // The door's copies are painted on their own (they glow), not with the room-wide tint list. One per distinct source
+      // material: the palette copy is tinted and light-mapped (cloned from the room's dressed LM_ copy), the heart's glow
+      // copy keeps its own look and gets only the door glow.
+      const copies = ownCopies(node, own);
+      const first = copies.find(isBaked) ?? copies[0];
+      if (first) door = { node, baseRotY: node.rotation.y, angle: binding.angle ?? 0, material: first, copies: copies.map((material) => ({ material, tinted: isBaked(material) })) };
       continue;
     }
     let glow: GlowPart | null = null;
     if (binding.effect === "glow") {
-      const material = ownCopy(node, own);
-      if (material) glow = { material, tinted: material.name.startsWith(LIGHTMAP_MATERIAL_PREFIX) };
+      const [material] = ownCopies(node, own);
+      if (material) glow = { material, tinted: isBaked(material) };
     }
     parts.push({ binding, node, value: 0, target: 0, baseRotY: node.rotation.y, glow });
   }
@@ -261,7 +283,15 @@ export function paintCounsel(nodes: CounselNodes, lights: number, doorGlow: numb
     g.material.color.setRGB(r, gr, b);
   }
   const d = nodes.door;
-  if (d) d.material.color.setRGB(k.r * (1 + DOOR_GLOW_ADD.r * doorGlow), k.g * (1 + DOOR_GLOW_ADD.g * doorGlow), k.b * (1 + DOOR_GLOW_ADD.b * doorGlow));
+  if (d) {
+    const dr = 1 + DOOR_GLOW_ADD.r * doorGlow;
+    const dg = 1 + DOOR_GLOW_ADD.g * doorGlow;
+    const db = 1 + DOOR_GLOW_ADD.b * doorGlow;
+    for (let i = 0; i < d.copies.length; i++) {
+      const c = d.copies[i]!;
+      c.material.color.setRGB((c.tinted ? k.r : 1) * dr, (c.tinted ? k.g : 1) * dg, (c.tinted ? k.b : 1) * db);
+    }
+  }
 }
 
 /** Release what `prepareCounsel` made (the shared model geometry and textures stay with the loader's cache until `disposeModel`). */
