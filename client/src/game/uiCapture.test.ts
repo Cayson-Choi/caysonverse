@@ -66,6 +66,25 @@ describe("uiCaptured — owner-based hold", () => {
     expect(isUiCaptured()).toBe(false);
   });
 
+  it("isUiCaptured is chat OR overlay; blurring chat keeps an open overlay captured", () => {
+    expect(isUiCaptured()).toBe(false);
+    acquireUiCapture("overlay");
+    expect(isUiCaptured()).toBe(true); // an overlay alone captures
+    acquireUiCapture("chat");
+    releaseUiCapture("chat"); // the chat input blurs behind the open overlay
+    expect(isUiCaptured()).toBe(true);
+    releaseUiCapture("overlay");
+    expect(isUiCaptured()).toBe(false);
+
+    // And the other way round: the overlay closing leaves a focused chat captured.
+    acquireUiCapture("chat");
+    acquireUiCapture("overlay");
+    releaseUiCapture("overlay");
+    expect(isUiCaptured()).toBe(true);
+    releaseUiCapture("chat");
+    expect(isUiCaptured()).toBe(false);
+  });
+
   it("acquiring twice is still one hold (one release frees it)", () => {
     acquireUiCapture("chat");
     acquireUiCapture("chat");

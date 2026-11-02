@@ -11,8 +11,13 @@ import { DialogueQueue } from "./dialogue";
 import { FEED_START, feedDialogue } from "./dialogueFeed";
 import { leaveToHall } from "./leave";
 import { RoomPlaceholder } from "./RoomPlaceholder";
+import { useEscapeInteractions } from "./useEscapeInteractions";
+import { BagPanel } from "./ui/BagPanel";
 import { EscapeHud } from "./ui/EscapeHud";
+import { EscapeToast } from "./ui/EscapeToast";
+import { InspectOverlay } from "./ui/InspectOverlay";
 import { TeamChatNotice } from "./ui/TeamChatNotice";
+import { resetOverlays } from "../ui/overlayStack";
 import "./escape.css";
 
 /**
@@ -28,6 +33,10 @@ import "./escape.css";
  *
  * Story lines: when the room's content arrives its intro lines go into the scene's DialogueQueue,
  * and so does every later `say` event. Task 20 pushes the escape lines into the same queue.
+ *
+ * Investigation (Task 18): the room's objects are the context button's targets (useEscapeInteractions);
+ * pressing one asks the server for the close-up, which opens the InspectOverlay (on the overlay stack:
+ * Esc closes it, the keyboard is held while it is up). The team bag (BagPanel) and the toast sit with it.
  */
 
 /** A room's ActiveMap, made once per room — `setActiveMap` ignores the SAME object, so it must be stable. */
@@ -102,6 +111,14 @@ export function EscapeScene({ identity }: { identity: Identity }) {
   const [self] = useState<Identity>(() => (room ? { ...identity, sessionId: room.sessionId } : identity));
   const [queue] = useState(() => new DialogueQueue());
   useEscapeDialogue(queue);
+  useEscapeInteractions(roomId);
+
+  // A fresh scene starts with no close-up open (the store survives a reconnect, the close-up may be stale)
+  // and leaves no overlay behind.
+  useEffect(() => {
+    useEscapeStore.getState().setInspect(null);
+    return resetOverlays;
+  }, []);
 
   if (!room || !hasView) return <Waiting text="불러오는 중…" leavable={false} />;
   const active = roomId ? roomActiveMap(roomId) : null;
@@ -120,6 +137,9 @@ export function EscapeScene({ identity }: { identity: Identity }) {
         <>
           <EscapeHud queue={queue} onLeave={LEAVE} />
           <TeamChatNotice />
+          <BagPanel />
+          <InspectOverlay />
+          <EscapeToast />
         </>
       }
     />

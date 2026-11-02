@@ -7,15 +7,17 @@
  *   1. a text field outside the 조교 dialogue has the keyboard → it lets go (blur) and
  *      that is all. (The world chat input handles its own Esc, which the hotkey table
  *      already drops as consumed; this covers the admin announce field and the like.)
- *   2. otherwise the topmost open thing closes — the menu (it is on top), then the 조교
+ *   2. otherwise the topmost open thing closes — a classroom overlay (the close-up, a lock plate, ...;
+ *      the top one of ui/overlayStack.ts), then the menu (it is on top), then the 조교
  *      dialogue, then the roster — or, with nothing open, the menu opens.
  *
- * The 조교 dialogue is the exception to rule 1: its own input is part of the dialogue,
- * so one Esc closes the whole dialogue even while you are typing in it (as it always did).
+ * The 조교 dialogue and an overlay are the exception to rule 1: their own fields are part of them,
+ * so one Esc closes the whole dialogue / overlay even while you are typing in it.
  */
 
 import { useNpcStore } from "../stores/npcStore";
 import { useUiStore } from "../stores/uiStore";
+import { topOverlay } from "../ui/overlayStack";
 import { resolveEscape } from "./hotkeys";
 
 /** The bits of a DOM element `isTextEntry` reads — lets tests pass plain objects. */
@@ -70,11 +72,15 @@ export function openMenu(): void {
 
 /** Run one Esc press. */
 export function handleEscape(): void {
+  const overlay = topOverlay();
   const npcOpen = useNpcStore.getState().activeNpc !== null;
-  if (!npcOpen && blurTextEntry(document.activeElement as FocusLike | null)) return;
+  if (!npcOpen && overlay === null && blurTextEntry(document.activeElement as FocusLike | null)) return;
 
   const ui = useUiStore.getState();
-  switch (resolveEscape({ npcOpen, rosterOpen: ui.rosterOpen, menuOpen: ui.menuOpen })) {
+  switch (resolveEscape({ overlayOpen: overlay !== null, npcOpen, rosterOpen: ui.rosterOpen, menuOpen: ui.menuOpen })) {
+    case "closeOverlay":
+      overlay?.close();
+      break;
     case "closeNpc":
       useNpcStore.getState().closePanel();
       break;

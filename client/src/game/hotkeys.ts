@@ -22,6 +22,8 @@ import { isUiCaptured } from "./uiCapture";
 export type HotkeyAction =
   | { type: "jump" }
   | { type: "interact" }
+  /** E / F released — ends a held interaction (a lone member's 3 s coop switch). Passes while captured, like Tab's keyup. */
+  | { type: "interactUp" }
   | { type: "recenter" }
   | { type: "toggleView" }
   | { type: "toggleMap" }
@@ -59,12 +61,15 @@ const EMOJI_CODE = /^Digit([1-6])$/;
  * Ctrl / Cmd / Alt chords are never ours (Ctrl+1..6 switches browser tabs, Ctrl+R
  * reloads, Alt+Tab switches windows, ...). Shift on its own is the run key and blocks
  * nothing — Shift+Tab shows the roster like Tab (a running player holds Shift).
- * keyup only matters for Tab (roster hide) and is deliberately unconditional: the
- * list must never stay stuck open because the chat grabbed focus mid-hold.
+ * keyup only matters for Tab (roster hide) and E / F (interactUp: the end of a held interaction) and is
+ * deliberately unconditional: the list must never stay stuck open because the chat grabbed focus
+ * mid-hold, and a hold must be able to end after an overlay took the keyboard.
  */
 export function resolveHotkey(e: KeyLike, uiCaptured: boolean): HotkeyAction | null {
   if (e.type === "keyup") {
-    return e.code === "Tab" ? { type: "roster", show: false } : null;
+    if (e.code === "Tab") return { type: "roster", show: false };
+    if (e.code === "KeyE" || e.code === "KeyF") return { type: "interactUp" };
+    return null;
   }
   if (e.defaultPrevented || e.isComposing || e.repeat) return null;
   if (e.ctrlKey || e.metaKey || e.altKey) return null;
@@ -97,21 +102,24 @@ export function resolveHotkey(e: KeyLike, uiCaptured: boolean): HotkeyAction | n
   }
 }
 
-/** What one Esc press does (controls-ux Task 15). */
-export type EscapeAction = "closeNpc" | "closeRoster" | "closeMenu" | "openMenu";
+/** What one Esc press does (controls-ux Task 15; overlays: AI 학교 탈출 Task 18). */
+export type EscapeAction = "closeOverlay" | "closeNpc" | "closeRoster" | "closeMenu" | "openMenu";
 
 /**
  * The ONE place that decides what Esc does: it closes the topmost thing that is open —
- * the menu first (it sits on top of everything and closes the others as it opens), then
+ * a classroom overlay first (the close-up, a lock plate, ... — the top one of ui/overlayStack.ts, one
+ * per press), then the menu (it sits on top of everything and closes the others as it opens), then
  * the 조교 dialogue, then the player roster — and when nothing is open it opens the menu.
  * (A focused text field lets go of the keyboard before any of this: see escape.ts.)
  * Nothing else listens for Esc to close a panel.
  */
 export function resolveEscape(s: {
+  overlayOpen: boolean;
   npcOpen: boolean;
   rosterOpen: boolean;
   menuOpen: boolean;
 }): EscapeAction {
+  if (s.overlayOpen) return "closeOverlay";
   if (s.menuOpen) return "closeMenu";
   if (s.npcOpen) return "closeNpc";
   if (s.rosterOpen) return "closeRoster";

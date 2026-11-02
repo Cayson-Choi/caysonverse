@@ -21,7 +21,10 @@
 
 import type { MoveKeys } from "./input";
 
-/** Who holds the keyboard right now ("chat", "npc", "admin", "menu"). */
+/**
+ * Who holds the keyboard right now ("chat", "npc", "admin", "menu"; in a classroom also "overlay" — every
+ * open overlay together, ui/overlayStack.ts — and "cover" — the paused / time-up / class-ended card).
+ */
 const owners = new Set<string>();
 
 /** `owner` takes the keyboard (idempotent: acquiring twice is still one hold). */

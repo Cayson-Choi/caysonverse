@@ -146,10 +146,29 @@ describe("resolveHotkey — key table", () => {
   });
 
   it("keyup of every other key is null", () => {
-    for (const code of ["Space", "KeyE", "KeyF", "KeyR", "KeyV", "KeyM", "Escape", "Enter", "Slash", "Digit1"]) {
+    for (const code of ["Space", "KeyR", "KeyV", "KeyM", "Escape", "Enter", "Slash", "Digit1"]) {
       expect(resolveHotkey(ku(code), false)).toBeNull();
       expect(resolveHotkey(ku(code), true)).toBeNull();
     }
+  });
+
+  it("KeyE keyup resolves to interactUp even while captured (a hold must be able to end)", () => {
+    for (const code of ["KeyE", "KeyF"]) {
+      expect(resolveHotkey(ku(code), false), code).toEqual({ type: "interactUp" });
+      // The UI grabbing the keyboard mid-hold (an overlay opening) must not strand the release.
+      expect(resolveHotkey(ku(code), true), code).toEqual({ type: "interactUp" });
+      // ...nor a stale defaultPrevented flag, nor modifiers released in another order.
+      expect(resolveHotkey(ku(code, { defaultPrevented: true }), true), code).toEqual({ type: "interactUp" });
+      for (const mods of [{ altKey: true }, { ctrlKey: true }, { metaKey: true }, { shiftKey: true }])
+        expect(resolveHotkey(ku(code, mods), true), `${code} ${JSON.stringify(mods)}`).toEqual({ type: "interactUp" });
+    }
+    // The press itself is still just "interact", and still dropped while captured.
+    expect(resolveHotkey(kd("KeyE"), false)).toEqual({ type: "interact" });
+    expect(resolveHotkey(kd("KeyE"), true)).toBeNull();
+  });
+
+  it("interactUp has no browser default to cancel", () => {
+    expect(hotkeyPreventsDefault({ type: "interactUp" })).toBe(false);
   });
 });
 
@@ -479,6 +498,20 @@ describe("onHotkey — one shared window listener", () => {
     expect(fn.mock.calls[0][0]).toEqual({ type: "roster", show: false });
   });
 
+  it("KeyE keyup reaches subscribers as interactUp even while a UI owner holds the keyboard", () => {
+    const fn = vi.fn();
+    sub(fn);
+    acquireUiCapture("overlay");
+
+    const down = press("keydown", "KeyE");
+    expect(fn).not.toHaveBeenCalled(); // the press is dropped while captured
+    expect(down.defaultPrevented).toBe(false);
+    press("keyup", "KeyE");
+
+    expect(fn).toHaveBeenCalledTimes(1);
+    expect(fn.mock.calls[0][0]).toEqual({ type: "interactUp" });
+  });
+
   it("ignores auto-repeat for subscribers", () => {
     const fn = vi.fn();
     const off = sub(fn);
@@ -532,25 +565,39 @@ describe("onHotkey — one shared window listener", () => {
 });
 
 describe("resolveEscape — what one Esc press does", () => {
-  const state = (npcOpen: boolean, rosterOpen: boolean, menuOpen: boolean) => ({ npcOpen, rosterOpen, menuOpen });
-
-  it("the menu (on top) first, then the NPC panel, then the roster, then the menu opens", () => {
-    expect(resolveEscape({ npcOpen: true, rosterOpen: true, menuOpen: true })).toBe("closeMenu");
-    expect(resolveEscape({ npcOpen: false, rosterOpen: true, menuOpen: true })).toBe("closeMenu");
-    expect(resolveEscape({ npcOpen: true, rosterOpen: false, menuOpen: true })).toBe("closeMenu");
-    expect(resolveEscape({ npcOpen: false, rosterOpen: false, menuOpen: true })).toBe("closeMenu");
-    expect(resolveEscape({ npcOpen: true, rosterOpen: true, menuOpen: false })).toBe("closeNpc");
-    expect(resolveEscape({ npcOpen: false, rosterOpen: true, menuOpen: false })).toBe("closeRoster");
-    expect(resolveEscape({ npcOpen: false, rosterOpen: false, menuOpen: false })).toBe("openMenu");
+  const state = (npcOpen: boolean, rosterOpen: boolean, menuOpen: boolean, overlayOpen = false) => ({
+    overlayOpen,
+    npcOpen,
+    rosterOpen,
+    menuOpen,
   });
 
-  it("covers every combination: the first open panel in menu → npc → roster order wins", () => {
-    for (const npc of [false, true])
-      for (const roster of [false, true])
-        for (const menu of [false, true]) {
-          const want = menu ? "closeMenu" : npc ? "closeNpc" : roster ? "closeRoster" : "openMenu";
-          expect(resolveEscape(state(npc, roster, menu)), `${npc}/${roster}/${menu}`).toBe(want);
-        }
+  it("the menu (on top) first, then the NPC panel, then the roster, then the menu opens", () => {
+    expect(resolveEscape(state(true, true, true))).toBe("closeMenu");
+    expect(resolveEscape(state(false, true, true))).toBe("closeMenu");
+    expect(resolveEscape(state(true, false, true))).toBe("closeMenu");
+    expect(resolveEscape(state(false, false, true))).toBe("closeMenu");
+    expect(resolveEscape(state(true, true, false))).toBe("closeNpc");
+    expect(resolveEscape(state(false, true, false))).toBe("closeRoster");
+    expect(resolveEscape(state(false, false, false))).toBe("openMenu");
+  });
+
+  it("resolveEscape closes an overlay first — before the menu, the 조교 dialogue and the roster", () => {
+    expect(resolveEscape(state(false, false, false, true))).toBe("closeOverlay");
+    expect(resolveEscape(state(true, true, true, true))).toBe("closeOverlay");
+    expect(resolveEscape(state(false, true, false, true))).toBe("closeOverlay");
+    expect(resolveEscape(state(true, false, false, true))).toBe("closeOverlay");
+    expect(resolveEscape(state(false, false, true, true))).toBe("closeOverlay");
+  });
+
+  it("covers every combination: overlay → menu → npc → roster order, else the menu opens", () => {
+    for (const overlay of [false, true])
+      for (const npc of [false, true])
+        for (const roster of [false, true])
+          for (const menu of [false, true]) {
+            const want = overlay ? "closeOverlay" : menu ? "closeMenu" : npc ? "closeNpc" : roster ? "closeRoster" : "openMenu";
+            expect(resolveEscape(state(npc, roster, menu, overlay)), `${overlay}/${npc}/${roster}/${menu}`).toBe(want);
+          }
   });
 
   it("Esc reaches the menu action while the keyboard is captured, so an open menu can be closed", () => {

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { blurTextEntry, handleEscape, isTextEntry, openMenu, type FocusLike } from "./escape";
 import { useNpcStore } from "../stores/npcStore";
 import { useUiStore } from "../stores/uiStore";
+import { popOverlay, pushOverlay, resetOverlays, topOverlay } from "../ui/overlayStack";
 
 /** A fake focused element with a blur spy. */
 const el = (o: Partial<FocusLike>) => {
@@ -15,11 +16,13 @@ const focus = (focused: FocusLike | null) => vi.stubGlobal("document", { activeE
 beforeEach(() => {
   useNpcStore.setState({ activeNpc: null, sending: false, histories: {} });
   useUiStore.setState({ menuOpen: false, rosterOpen: false });
+  resetOverlays();
   focus(null);
 });
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  resetOverlays();
 });
 
 describe("isTextEntry", () => {
@@ -111,6 +114,63 @@ describe("handleEscape", () => {
     expect(useUiStore.getState()).toMatchObject({ menuOpen: false, rosterOpen: false });
     handleEscape();
     expect(useUiStore.getState().menuOpen).toBe(true);
+  });
+});
+
+describe("handleEscape — overlays (investigation, locks, team panel, last door)", () => {
+  it("an open overlay closes first, whatever else is open — and nothing else changes", () => {
+    const close = vi.fn<() => void>();
+    pushOverlay("inspect", close);
+    useNpcStore.setState({ activeNpc: "lobby" });
+    useUiStore.setState({ menuOpen: true, rosterOpen: true });
+
+    handleEscape();
+
+    expect(close).toHaveBeenCalledTimes(1);
+    expect(useUiStore.getState()).toMatchObject({ menuOpen: true, rosterOpen: true });
+    expect(useNpcStore.getState().activeNpc).toBe("lobby");
+  });
+
+  it("with nothing but an overlay open Esc closes it and does not open the menu", () => {
+    let open = true;
+    pushOverlay("inspect", () => {
+      open = false;
+      popOverlay("inspect");
+    });
+    handleEscape();
+    expect(open).toBe(false);
+    expect(useUiStore.getState().menuOpen).toBe(false);
+    // The overlay is gone, so the next Esc is the ordinary one.
+    handleEscape();
+    expect(useUiStore.getState().menuOpen).toBe(true);
+  });
+
+  it("stacked overlays close one Esc at a time, the top one first", () => {
+    const order: string[] = [];
+    pushOverlay("inspect", () => {
+      order.push("inspect");
+      popOverlay("inspect");
+    });
+    pushOverlay("lock", () => {
+      order.push("lock");
+      popOverlay("lock");
+    });
+    handleEscape();
+    expect(order).toEqual(["lock"]);
+    expect(topOverlay()?.id).toBe("inspect");
+    handleEscape();
+    expect(order).toEqual(["lock", "inspect"]);
+    expect(topOverlay()).toBeNull();
+  });
+
+  it("a focused field inside an overlay does not hold Esc back: one press closes the overlay", () => {
+    const close = vi.fn<() => void>();
+    pushOverlay("lock", close);
+    const field = el({ tagName: "INPUT", type: "text" });
+    focus(field);
+    handleEscape();
+    expect(close).toHaveBeenCalledTimes(1);
+    expect(field.blur).not.toHaveBeenCalled();
   });
 });
 

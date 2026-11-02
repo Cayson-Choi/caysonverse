@@ -13,6 +13,8 @@ import "../escape.css";
 
 /** The "수업이 끝났어요" card shows this long, then the player is walked back to the hall (the server closes the room at 5 s). */
 export const ENDED_AUTO_LEAVE_MS = 3500;
+/** The keyboard owner of the paused / time-up / class-ended cover. */
+const COVER_CAPTURE_OWNER = "cover";
 /** A "다시 도전" that has not turned the phase around after this long may be pressed again (a lost message). */
 const RETRY_AGAIN_MS = 2500;
 
@@ -107,7 +109,7 @@ function Cover({ overlay, onLeave }: { overlay: Exclude<Overlay, "intro" | null>
  * The classroom's own DOM (AI 학교 탈출, Task 17), after the shared HUD: the clock and team name top
  * centre (red at one minute, "+연장" after a retry), the story box, and the covers — paused / time up /
  * class ended (escapeOverlay's priority). While a cover is up it holds the keyboard too (owner
- * "overlay"), so a key cannot walk the avatar behind it. The intro cover is only a soft line: the
+ * "cover"), so a key cannot walk the avatar behind it. The intro cover is only a soft line: the
  * story box plays and the room waits a few seconds.
  *
  * The clock reads the server's whole seconds from the escape store; there is no local countdown to drift.
@@ -122,14 +124,16 @@ export function EscapeHud({ queue, onLeave }: { queue: DialogueQueue; onLeave: (
   const overlay = view ? escapeOverlay(view) : null;
   const covering = overlay === "paused" || overlay === "timeup" || overlay === "ended";
 
+  // Its own owner ("cover"): the overlay stack (ui/overlayStack.ts) holds "overlay", and a cover coming or going
+  // while a close-up is open must not free the other's hold.
   useEffect(() => {
     if (!covering) return;
-    acquireUiCapture("overlay");
+    acquireUiCapture(COVER_CAPTURE_OWNER);
     // PlayShell lets go of every hold in its own mount effect, which runs after this child's: hold again once it has.
-    const id = window.setTimeout(() => acquireUiCapture("overlay"), 0);
+    const id = window.setTimeout(() => acquireUiCapture(COVER_CAPTURE_OWNER), 0);
     return () => {
       window.clearTimeout(id);
-      releaseUiCapture("overlay");
+      releaseUiCapture(COVER_CAPTURE_OWNER);
     };
   }, [covering]);
 
