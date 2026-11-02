@@ -352,6 +352,16 @@ describe("countTriangles", () => {
     expect(countTriangles(g)).toBe(12);
   });
 
+  it("throws on a dangling accessor index instead of counting 0", () => {
+    const g = baseGltf([{ name: "n", mesh: 1 }]);
+    g.meshes![1]!.primitives[0]!.indices = 42;
+    expect(() => countTriangles(g)).toThrow(/accessor 42/);
+    const h = baseGltf([{ name: "n", mesh: 1 }]);
+    h.meshes![1]!.primitives[0]!.attributes = { POSITION: 17 };
+    delete (h.meshes![1]!.primitives[0] as { indices?: number }).indices;
+    expect(() => countTriangles(h)).toThrow(/accessor 17/);
+  });
+
   it("walks children and does not loop on a cycle", () => {
     const g = baseGltf([{ name: "root", children: [1] }, { name: "child", mesh: 1, children: [0] }]);
     g.scenes = [{ nodes: [0] }];
@@ -528,6 +538,28 @@ describe("checkSchoolGlb", () => {
     expect(failed(run(g, { lightmap: { path: "hub_lightmap.webp", width: 4096, height: 4096 } })).map((r) => r.label).join()).toMatch(/라이트맵/);
   });
 
+  it("fails a light map whose size could not be read (0x0 or one side 0) instead of letting it pass as 'fits'", () => {
+    const g = goodGltf();
+    g.materials = [{ name: "LM_palette", extensions: { KHR_materials_unlit: {} } }];
+    for (const [width, height] of [[0, 0], [2048, 0], [0, 2048]] as const) {
+      const f = failed(run(g, { lightmap: { path: "hub_lightmap.webp", width, height } }));
+      expect(f.map((r) => r.label).join(), `${width}x${height}`).toMatch(/라이트맵/);
+      expect(f.map((r) => r.detail).join("\n"), `${width}x${height}`).toMatch(/읽을 수 없어요/);
+    }
+  });
+
+  it("fails a primitive that points at an accessor that does not exist (it must not count as 0 triangles)", () => {
+    const g = goodGltf();
+    g.meshes![1]!.primitives[0]!.indices = 99; // dangling
+    const f = failed(run(g));
+    expect(f.map((r) => r.label).join()).toMatch(/삼각형 수/);
+    expect(f.map((r) => r.detail).join("\n")).toMatch(/accessor 99/);
+    const noPos = goodGltf();
+    delete (noPos.meshes![1]!.primitives[0] as { indices?: number }).indices;
+    (noPos.meshes![1]!.primitives[0] as { attributes: Record<string, number> }).attributes = {};
+    expect(failed(run(noPos)).map((r) => r.label).join()).toMatch(/삼각형 수/);
+  });
+
   it("fails a light-mapped primitive that has no TEXCOORD_1", () => {
     const g = goodGltf();
     g.materials = [{ name: "LM_wood", extensions: { KHR_materials_unlit: {} } }];
@@ -608,6 +640,29 @@ describe("CLIs", () => {
     expect(res.status).toBe(1);
     expect(res.stdout).toContain("gate__east");
     expect(res.stdout).toContain("FAIL");
+  });
+
+  it("check-school-glb: a malformed glTF is one 'FAIL: ...' line and exit 1, never a stack trace", () => {
+    const file = path.join(tmp, "hub.glb");
+    // A null material makes the light-map check throw a TypeError.
+    const g = baseGltf([{ name: "x" }]);
+    (g as unknown as { materials: unknown[] }).materials = [null];
+    fs.writeFileSync(file, makeGlb(g));
+    const res = runTs("check-school-glb.ts", file, "hub");
+    expect(res.status).toBe(1);
+    expect(res.stderr).toMatch(/FAIL: .*hub\.glb/);
+    expect(res.stderr + res.stdout).not.toMatch(/\n\s+at /);
+  });
+
+  it("check-school-glb: a malformed %-escape in an image uri is a texture FAIL (exit 1), not a crash", () => {
+    const file = path.join(tmp, "hub.glb");
+    const g = baseGltf([{ name: "x" }]);
+    g.images = [{ uri: "%E0%A4%A.png" }];
+    fs.writeFileSync(file, makeGlb(g));
+    const res = runTs("check-school-glb.ts", file, "hub");
+    expect(res.status).toBe(1);
+    expect(res.stdout).toMatch(/FAIL\s+텍스처 크기/);
+    expect(res.stderr + res.stdout).not.toMatch(/URIError|\n\s+at /);
   });
 
   it("extract-colliders: writes the sorted module; a rotated col__ node is a FAIL that writes nothing", () => {

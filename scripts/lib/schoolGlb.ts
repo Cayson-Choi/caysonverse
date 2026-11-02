@@ -369,15 +369,25 @@ function rootNodes(gltf: Gltf): number[] {
   return (gltf.nodes ?? []).map((_, i) => i).filter((i) => !parent.has(i));
 }
 
+/** The accessor a primitive's triangle count comes from. A reference to an accessor that is not there throws (a broken file must FAIL, not count as 0). */
+function countAccessor(gltf: Gltf, meshIndex: number, primIndex: number, what: string, index: number | undefined): number {
+  if (index === undefined) throw new Error(`메시 ${meshIndex}의 primitive ${primIndex}에 ${what}가 없어요`);
+  const accessor = gltf.accessors?.[index];
+  if (!accessor) throw new Error(`메시 ${meshIndex}의 primitive ${primIndex}가 없는 accessor ${index}(${what})를 가리켜요`);
+  return accessor.count;
+}
+
 function meshTriangles(gltf: Gltf, meshIndex: number): number {
   let sum = 0;
-  for (const prim of gltf.meshes?.[meshIndex]?.primitives ?? []) {
-    const accessor = prim.indices !== undefined ? gltf.accessors?.[prim.indices] : gltf.accessors?.[prim.attributes.POSITION ?? -1];
-    const count = accessor?.count ?? 0;
+  (gltf.meshes?.[meshIndex]?.primitives ?? []).forEach((prim, primIndex) => {
+    const count =
+      prim.indices !== undefined
+        ? countAccessor(gltf, meshIndex, primIndex, "indices", prim.indices)
+        : countAccessor(gltf, meshIndex, primIndex, "POSITION", prim.attributes.POSITION);
     const mode = prim.mode ?? 4;
     if (mode === 4) sum += Math.floor(count / 3);
     else if (mode === 5 || mode === 6) sum += Math.max(0, count - 2);
-  }
+  });
   return sum;
 }
 
@@ -524,8 +534,12 @@ export function checkSchoolGlb(input: CheckInput): CheckResult[] {
     );
   }
 
-  const triangles = countTriangles(gltf);
-  out.push(result(triangles <= budget.maxTriangles, "삼각형 수", `${triangles}개 (col__ 상자 제외), 한도 ${budget.maxTriangles}개`));
+  try {
+    const triangles = countTriangles(gltf);
+    out.push(result(triangles <= budget.maxTriangles, "삼각형 수", `${triangles}개 (col__ 상자 제외), 한도 ${budget.maxTriangles}개`));
+  } catch (err) {
+    out.push(result(false, "삼각형 수", `셀 수 없어요: ${(err as Error).message}`));
+  }
 
   const materials = gltf.materials ?? [];
   out.push(result(materials.length <= MAX_MATERIALS, "재질 수", `${materials.length}개, 한도 ${MAX_MATERIALS}개`));
@@ -612,12 +626,16 @@ function checkLightmap(input: CheckInput): CheckResult[] {
   if (!lm) {
     out.push(result(false, "라이트맵 파일", `LM_ 재질이 ${lmIndexes.size}개 있는데 GLB 옆에서 <방>_lightmap.webp를 찾지 못했어요`));
   } else {
-    const fits = lm.width <= MAX_TEXTURE_SIDE && lm.height <= MAX_TEXTURE_SIDE;
+    // A size that could not be read (0x0) is a failure too: it must not pass as "fits".
+    const readable = lm.width > 0 && lm.height > 0;
+    const fits = readable && lm.width <= MAX_TEXTURE_SIDE && lm.height <= MAX_TEXTURE_SIDE;
     out.push(
       result(
         fits,
         "라이트맵 파일",
-        `${lm.path} ${lm.width}x${lm.height}${fits ? "" : ` (한 변 한도 ${MAX_TEXTURE_SIDE}px)`}`,
+        !readable
+          ? `${lm.path}의 크기를 읽을 수 없어요 (${lm.width}x${lm.height})`
+          : `${lm.path} ${lm.width}x${lm.height}${fits ? "" : ` (한 변 한도 ${MAX_TEXTURE_SIDE}px)`}`,
       ),
     );
   }

@@ -3,9 +3,10 @@
  *
  *   node e2e/luma-check.mjs <png...>        (예: node e2e/luma-check.mjs "art/school/renders/style-*.png")
  *
- * PNG마다 픽셀의 상대 휘도(WCAG / Rec.709: sRGB를 선형 빛으로 바꾼 뒤 Y = 0.2126 R + 0.7152 G + 0.0722 B)를 구해
+ * PNG마다 화면 전체 픽셀의 감마 루마(sRGB 바이트 그대로: Y = (0.2126 R + 0.7152 G + 0.0722 B) / 255)를 구해
  *   평균 ≥ 0.45  그리고  5 백분위 ≥ 0.10   이면 PASS, 아니면 FAIL이다. 하나라도 FAIL이거나 읽지 못하면 종료 코드 1.
- * 5 백분위는 numpy.percentile처럼 선형 보간한다. 알파는 무시한다(art/school/tools/luma_check.py와 같은 값이 나온다).
+ * 이것이 Task 21에서 쓰고 받아들인 기준(구속력 있는 정의)이다. 선형 상대 휘도(WCAG)는 참고 열(lin=)로만 찍고 판정에 쓰지 않는다.
+ * 5 백분위는 numpy.percentile처럼 선형 보간한다. 알파는 무시한다.
  *
  * 의존성 없음: PNG는 node:zlib로 직접 푼다(비인터레이스, 색 유형 0·2·3·4·6, 비트 깊이 1·2·4·8·16).
  * 따옴표로 감싼 `*`·`?` 패턴은 이 스크립트가 펼친다(PowerShell은 펼쳐 주지 않는다).
@@ -34,9 +35,14 @@ export function srgbToLinear(v8) {
   return LINEAR[v8];
 }
 
-/** WCAG relative luminance of an 8-bit sRGB colour (0 black .. 1 white). */
+/** WCAG relative luminance of an 8-bit sRGB colour (0 black .. 1 white), on LINEAR light. Reference only: the pass rule uses `gammaLuma`. */
 export function relativeLuminance(r, g, b) {
   return 0.2126 * LINEAR[r] + 0.7152 * LINEAR[g] + 0.0722 * LINEAR[b];
+}
+
+/** Gamma luma of an 8-bit sRGB colour (0 black .. 1 white): Rec.709 weights on the sRGB-encoded bytes. This is what the pass rule measures. */
+export function gammaLuma(r, g, b) {
+  return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
 }
 
 /** The p-th percentile (0..100) of an ascending list, linearly interpolated (numpy's default). */
@@ -49,18 +55,35 @@ export function percentile(sortedAscending, p) {
   return sortedAscending[lo] + (index - lo) * (sortedAscending[hi] - sortedAscending[lo]);
 }
 
-/** Mean and 5th percentile of the relative luminance of RGBA pixels (alpha ignored). */
+/**
+ * Mean and 5th percentile of the GAMMA luma of RGBA pixels (alpha ignored): `mean` / `p5`, which the pass rule uses.
+ * `linearMean` / `linearP5` are the same two numbers on linear relative luminance, for reference only.
+ */
 export function lumaStats(rgba) {
   const count = Math.floor(rgba.length / 4);
   const ys = new Float64Array(count);
+  const lin = new Float64Array(count);
   let sum = 0;
+  let linSum = 0;
   for (let i = 0; i < count; i += 1) {
-    const y = relativeLuminance(rgba[i * 4], rgba[i * 4 + 1], rgba[i * 4 + 2]);
+    const r = rgba[i * 4];
+    const g = rgba[i * 4 + 1];
+    const b = rgba[i * 4 + 2];
+    const y = gammaLuma(r, g, b);
+    const l = relativeLuminance(r, g, b);
     ys[i] = y;
+    lin[i] = l;
     sum += y;
+    linSum += l;
   }
   ys.sort();
-  return { mean: count ? sum / count : 0, p5: percentile(ys, 5) };
+  lin.sort();
+  return {
+    mean: count ? sum / count : 0,
+    p5: percentile(ys, 5),
+    linearMean: count ? linSum / count : 0,
+    linearP5: percentile(lin, 5),
+  };
 }
 
 export function passes(stats) {
@@ -230,7 +253,8 @@ export function main(argv) {
       const good = passes(stats);
       ok = ok && good;
       console.log(
-        `${good ? "PASS" : "FAIL"}  ${file}  mean=${stats.mean.toFixed(3)} (>= ${MEAN_MIN})  p5=${stats.p5.toFixed(3)} (>= ${P5_MIN})`,
+        `${good ? "PASS" : "FAIL"}  ${file}  mean=${stats.mean.toFixed(3)} (>= ${MEAN_MIN})  p5=${stats.p5.toFixed(3)} (>= ${P5_MIN})` +
+          `  [linear ref: mean=${stats.linearMean.toFixed(3)} p5=${stats.linearP5.toFixed(3)}]`,
       );
     } catch (err) {
       ok = false;

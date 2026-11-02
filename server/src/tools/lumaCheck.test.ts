@@ -1,6 +1,6 @@
 /**
- * Tests for e2e/luma-check.mjs (plain node, no dependencies): the PNG decoder, the relative-luminance math and
- * the pass rule (mean >= 0.45, 5th percentile >= 0.10). The script is loaded with a dynamic import and also run
+ * Tests for e2e/luma-check.mjs (plain node, no dependencies): the PNG decoder, the gamma-luma math (the binding
+ * definition: Rec.709 weights on the sRGB bytes, as Task 21 measured) and the pass rule (mean >= 0.45, 5th percentile >= 0.10). The script is loaded with a dynamic import and also run
  * as a CLI on generated PNG files.
  */
 
@@ -20,9 +20,10 @@ interface LumaModule {
   P5_MIN: number;
   srgbToLinear(v8: number): number;
   relativeLuminance(r: number, g: number, b: number): number;
+  gammaLuma(r: number, g: number, b: number): number;
   percentile(sortedAscending: ArrayLike<number>, p: number): number;
   decodePng(buf: Uint8Array): { width: number; height: number; rgba: Uint8Array };
-  lumaStats(rgba: Uint8Array): { mean: number; p5: number };
+  lumaStats(rgba: Uint8Array): { mean: number; p5: number; linearMean: number; linearP5: number };
   passes(stats: { mean: number; p5: number }): boolean;
   expandArg(arg: string): string[];
 }
@@ -131,7 +132,17 @@ describe("luminance math", () => {
     expect(luma.srgbToLinear(10)).toBeCloseTo(10 / 255 / 12.92, 9); // the linear toe
   });
 
-  it("is Rec.709 relative luminance of linearised sRGB", () => {
+  it("gamma luma is Rec.709 weights on the sRGB bytes (the pass rule's measure)", () => {
+    expect(luma.gammaLuma(255, 255, 255)).toBeCloseTo(1, 12);
+    expect(luma.gammaLuma(0, 0, 0)).toBe(0);
+    expect(luma.gammaLuma(255, 0, 0)).toBeCloseTo(0.2126, 9);
+    expect(luma.gammaLuma(0, 255, 0)).toBeCloseTo(0.7152, 9);
+    expect(luma.gammaLuma(0, 0, 255)).toBeCloseTo(0.0722, 9);
+    expect(luma.gammaLuma(128, 128, 128)).toBeCloseTo(128 / 255, 12); // mid grey is mid, not 0.216
+    expect(luma.gammaLuma(204, 153, 51)).toBeCloseTo((0.2126 * 204 + 0.7152 * 153 + 0.0722 * 51) / 255, 12);
+  });
+
+  it("linear relative luminance stays available as a reference (Rec.709 of linearised sRGB)", () => {
     expect(luma.relativeLuminance(255, 255, 255)).toBeCloseTo(1, 12);
     expect(luma.relativeLuminance(0, 0, 0)).toBe(0);
     expect(luma.relativeLuminance(255, 0, 0)).toBeCloseTo(0.2126, 6);
@@ -147,6 +158,20 @@ describe("luminance math", () => {
     expect(luma.percentile(v, 50)).toBe(20);
     expect(luma.percentile(v, 5)).toBeCloseTo(2, 12); // index 0.2 -> 0 + 0.2 * 10
     expect(luma.percentile([7], 5)).toBe(7);
+  });
+
+  it("lumaStats measures gamma luma (mean and p5) and reports the linear numbers beside it", () => {
+    // A uniform mid grey (128): gamma luma 128/255 = 0.502, linear relative luminance 0.216.
+    const grey = new Uint8Array(50 * 4);
+    for (let i = 0; i < 50; i += 1) grey.set([128, 128, 128, 255], i * 4);
+    const s = luma.lumaStats(grey);
+    expect(s.mean).toBeCloseTo(128 / 255, 9);
+    expect(s.p5).toBeCloseTo(128 / 255, 9);
+    expect(s.linearMean).toBeCloseTo(0.2158605, 6);
+    expect(s.linearP5).toBeCloseTo(0.2158605, 6);
+    // The same picture passes the pass rule only because the rule is gamma luma.
+    expect(luma.passes(s)).toBe(true);
+    expect(luma.passes({ mean: s.linearMean, p5: s.linearP5 })).toBe(false);
   });
 
   it("computes the mean and the 5th percentile over the pixels (alpha is ignored)", () => {
@@ -256,6 +281,23 @@ describe("e2e/luma-check.mjs CLI", () => {
     expect(res.stdout).toMatch(/PASS/);
     expect(res.stdout).toMatch(/mean=0\.\d{3}/);
     expect(res.stdout).toMatch(/p5=0\.\d{3}/);
+    expect(res.stdout).toMatch(/linear ref: mean=0\.\d{3} p5=0\.\d{3}/);
+  });
+
+  it("judges by gamma luma: a mid-grey screenshot (128) passes although its linear luminance is 0.216", () => {
+    const file = path.join(tmp, "grey.png");
+    fs.writeFileSync(file, solidPng(128, 128, 128, 16, 16));
+    const res = run(file);
+    expect(res.status).toBe(0);
+    expect(res.stdout).toMatch(/PASS.*mean=0\.502.*p5=0\.502/);
+    expect(res.stdout).toMatch(/linear ref: mean=0\.216 p5=0\.216/);
+    // A dark grey just under the gamma threshold fails: 0.45 * 255 = 114.75, so 114 fails and 115 passes.
+    const dark = path.join(tmp, "dark114.png");
+    fs.writeFileSync(dark, solidPng(114, 114, 114, 16, 16));
+    expect(run(dark).status).toBe(1);
+    const ok = path.join(tmp, "ok115.png");
+    fs.writeFileSync(ok, solidPng(115, 115, 115, 16, 16));
+    expect(run(ok).status).toBe(0);
   });
 
   it("fails a dark image (exit 1), and fails as soon as one of several images fails", () => {

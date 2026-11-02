@@ -55,18 +55,31 @@ export function main(argv: string[]): number {
     return 1;
   }
   const dir = path.dirname(path.resolve(glbPath));
-  const results = checkSchoolGlb({
-    kind,
-    fileBytes: data.length,
-    gltf: parsed.gltf,
-    bin: parsed.bin,
-    spec: schoolSpec(kind),
-    lightmap: findLightmap(glbPath, kind),
-    readUri: (uri) => {
-      const file = path.resolve(dir, decodeURIComponent(uri));
-      return file.startsWith(dir) && fs.existsSync(file) ? fs.readFileSync(file) : null;
-    },
-  });
+  let results;
+  try {
+    results = checkSchoolGlb({
+      kind,
+      fileBytes: data.length,
+      gltf: parsed.gltf,
+      bin: parsed.bin,
+      spec: schoolSpec(kind),
+      lightmap: findLightmap(glbPath, kind),
+      readUri: (uri) => {
+        let decoded: string;
+        try {
+          decoded = decodeURIComponent(uri);
+        } catch {
+          return null; // a malformed %-escape: the image cannot be read, which the texture check reports as a FAIL
+        }
+        const file = path.resolve(dir, decoded);
+        return file.startsWith(dir + path.sep) && fs.existsSync(file) ? fs.readFileSync(file) : null;
+      },
+    });
+  } catch (err) {
+    // A glTF that is malformed in a way the checks cannot get past: say so in one line, no stack trace.
+    console.error(`FAIL: ${glbPath}를 점검하지 못했어요: ${(err as Error).message}`);
+    return 1;
+  }
   console.log(`${glbPath} (${kind})`);
   let failed = 0;
   for (const r of results) {
