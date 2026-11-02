@@ -1151,6 +1151,8 @@ it("firstTry keeps only the first outcome per principle");
 
 ### Task 9: 상담실 콘텐츠(개인정보) — 전부 작성
 
+> 2026-11-02 메모: 구현된 문구는 2026-08-24 「대한민국 인공지능 윤리원칙」(과기정통부·KISDI, 3대 가치·7대 원칙)을 따른다. 최종 문구의 원본은 코드(`server/src/escape/rooms/counsel.ts`, 원칙 이름은 `shared/src/escape/principles.ts`)다.
+
 **Files:**
 - Create: `server/src/escape/rooms/counsel.ts`, `server/src/escape/rooms/index.ts`(`ROOM_DEFS: Partial<Record<RoomId, RoomDef>> = { counsel }`)
 - Test: `server/src/escape/rooms/counsel.test.ts`
@@ -1609,6 +1611,8 @@ it("toEscapeView copies schema collections into plain arrays/records");
 - [ ] **Step 5: 커밋.** `feat: 반·교실 연결 계층 — 선생님 입장권, 활성 방 라우팅, 반 코드 재접속, 교실 복구 (방탈출 1단계 Task 13)`
 
 ### Task 14: 입장 화면 — 학생 / 선생님 / 기존 월드
+
+> 2026-11-02 메모: 발주자가 `SHOW_WORLD_ON_ENTRY = false`로 정했다 — 입장 화면의 "어디로 갈까요?"에는 AI 학교 탈출만 보이고 지금 월드는 `?world=legacy`로만 들어간다(`client/src/ui/entryForm.ts`).
 
 **Files:**
 - Create: `client/src/ui/entryForm.ts`, Test: `client/src/ui/entryForm.test.ts`

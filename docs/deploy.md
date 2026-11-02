@@ -1,15 +1,125 @@
-# Railway 배포 가이드
+# 배포 가이드
 
-caysonverse(웹 3D 메타버스)를 Railway에 배포하는 방법입니다. DevOps 경험이
-없어도 따라 할 수 있도록 단계별로 정리했습니다. 이 문서는 **배포 준비**만
-다루며, 실제 배포는 여러분의 Railway 계정에서 진행합니다.
+caysonverse(웹 3D 메타버스)의 배포·운영 방법입니다. DevOps 경험이 없어도 따라 할 수 있도록
+단계별로 정리했습니다. **지금 운영은 Oracle Micro VM(서버) + Vercel(클라이언트)이고, 0장이 그
+절차입니다.** 처음에 쓰던 Railway 방식은 1·2·4·6장에 "(예전 방식)"으로 남겨 두었습니다.
+3·5·7·8장은 어느 쪽에나 해당합니다.
 
-배포 설정은 저장소 루트의 `railway.toml`에 코드로 들어 있습니다. 대시보드에서
+(예전 방식) Railway의 배포 설정은 저장소 루트 `railway.toml`에 코드로 들어 있습니다. 대시보드에서
 따로 만질 필요가 거의 없고, 있는 경우 이 파일의 값이 대시보드보다 우선합니다.
 
 ---
 
-## 1. 사전 준비
+## 0. 지금 운영 구성 (Oracle + Vercel)
+
+운영은 **서버 = Oracle Cloud Micro VM, 클라이언트 = Vercel**로 나뉘어 있습니다. 서버를 올리는 일과 클라이언트를 올리는 일이 따로이고, 둘 다 사람이 손으로 합니다. 이 장의 값 중 비밀은 **변수 이름만** 적었습니다(값은 서버의 `/etc/caysonverse.env`에만 있고, 어디에도 출력하거나 붙여 넣지 않습니다).
+
+| 부분 | 어디에 | 비고 |
+|---|---|---|
+| 서버 (Colyseus 방 + `/api/*`) | Oracle Micro VM, systemd 서비스 `caysonverse`, 체크아웃 `/opt/caysonverse` | `npm start`와 같은 `server/dist/index.cjs`를 실행 |
+| 앞단 | Caddy 리버스 프록시 (자동 HTTPS) | `https://152-69-238-178.sslip.io` → Node `:2567` |
+| 클라이언트 (정적 SPA) | Vercel | 빌드할 때 `VITE_SERVER_URL`로 서버 주소를 구워 넣음 |
+
+- **Node가 듣는 곳**: 서버는 `PORT` 환경변수(없으면 2567)로 듣습니다. 코드는 `server.listen(PORT)`처럼 **포트만** 넘기고 호스트(`HOST`·localhost)를 지정하는 설정이 없어서, 별도로 막지 않으면 모든 네트워크 주소에서 받습니다(`server/src/index.ts`). 그래서 2567은 방화벽(Oracle 보안 목록·iptables)에서 바깥으로 닫고 80/443(Caddy)만 열어 두세요. 이유는 8장 "보안 규칙"(시도 제한이 `X-Forwarded-For`를 믿기 때문)입니다.
+- **Caddy**: 80/443에서 받아 인증서를 알아서 발급·갱신하고(자동 HTTPS) 같은 주소의 HTTP·WebSocket을 모두 Node `:2567`로 넘깁니다. sslip.io는 주소 속 IP를 그대로 이름으로 풀어 주는 무료 DNS라 도메인을 따로 사지 않아도 인증서가 나옵니다.
+- **서버는 화면(SPA)을 주지 않습니다.** 서버 체크아웃에서는 클라이언트를 빌드하지 않으므로 `client/dist`가 없고(서버는 그 폴더가 있을 때만 SPA를 줍니다), 화면은 Vercel이 줍니다. 서버는 API·WebSocket만 맡습니다.
+
+### 0.1 환경변수 (이름만)
+
+서버가 읽는 변수입니다. 값은 `/etc/caysonverse.env`에 있고, 바꾸려면 `sudo`로 그 파일을 편집한 뒤 서비스를 다시 시작합니다(파일을 `cat`으로 화면에 찍지 마세요).
+
+| 변수 | 뜻 | 없으면 |
+|---|---|---|
+| `ADMIN_CODE` | 관리자(강사) 로그인 코드이자 **운영자 키**(`POST /api/operator/status`, 선생님 키 칸) | 관리자·운영자 기능이 꺼짐 |
+| `TEACHER_KEYS_FILE` | 선생님 키 파일(sha256만 든 JSON)의 절대 경로 또는 저장소 루트 기준 경로. 8장 참고 | `server/teacher-keys.json` |
+| `GROQ_API_KEY` | AI 조교(`/api/npc-chat`)와 반딧 힌트 다듬기가 쓰는 Groq 키 | 조교 대화 요청이 503으로 막히고, 반딧 AI 다듬기는 켤 수 없음 |
+| `GROQ_MODEL` (선택) | Groq 모델 이름 바꾸기 | 코드의 기본 모델 |
+| `NPC_VOICE` (선택) | AI 조교(여성) 낭독 음성 바꾸기 | 코드의 기본 음성 |
+| `BANDIT_AI` | 반딧 힌트 AI 다듬기. 정확히 `1`일 때만 켜짐 | 꺼짐 |
+| `CV_MAX_CLASSES` (선택) | 서버 하나가 동시에 여는 반 수 한도 | 10 (`MAX_CLASSES_DEFAULT`) |
+| `PORT` | Node가 듣는 포트 | 2567 |
+
+- **시험 전용 변수는 운영에서 설정하지 않습니다**: `CV_MAX_CLIENTS`, `CV_RECONNECT_WINDOW_S`, `CV_CLASS_END_GRACE_MS`, `CV_CLASS_EMPTY_CLOSE_MS`, `CV_ESCAPE_INTRO_MS`, `CV_ESCAPE_EMPTY_DISPOSE_MS`, `CV_ESCAPE_END_GRACE_MS`는 테스트가 시간 규칙을 짧게 바꾸려고 쓰는 덮어쓰기입니다.
+- **`BANDIT_AI`는 기본이 꺼짐**입니다(`.env.example`의 `BANDIT_AI=0`). 켜면(`BANDIT_AI=1`이고 `GROQ_API_KEY`도 있을 때만) 반딧 힌트를 Groq가 같은 뜻의 다정한 한 문장으로 **다시 말해 줍니다.** 힌트의 내용은 늘 정해진 문구가 기준이고, Groq에는 그 정해진 힌트 문장 한 개만 보냅니다(닉네임·채팅·학생 정보는 보내지 않습니다). 1.5초 안에 답이 없거나, 120자를 넘거나, 한글이 없거나, 정답·다른 힌트가 섞였으면 정해진 문구를 그대로 씁니다. 그러니 켜도 힌트마다 최대 1.5초가 더 걸릴 수 있고 Groq 요청이 한 번씩 나갈 뿐입니다. 판매 전에는 정식 상용 계약이나 대체 수단을 정합니다(기획 §10).
+- **`DEBUG=colyseus:*`는 운영에서 절대 켜지 마세요.** Colyseus의 디버그 로그에는 입장 요청과 입장권이 찍힙니다.
+
+### 0.2 서버 올리기 (Oracle)
+
+서버에 SSH로 접속해서 합니다. `/opt/caysonverse`는 **얕은 복제(shallow clone)**라서 `git merge`·`git pull`이 "unrelated histories"로 실패합니다. 아래처럼 받아서 맞추세요.
+
+1. **접속자가 없는지 먼저 봅니다.** 서비스를 다시 시작하면 모든 연결이 끊기고 열려 있던 반·교실이 사라집니다(5장).
+
+   ```bash
+   ss -Htn state established '( sport = :2567 )' | wc -l
+   ```
+
+   0이면 아무도 없는 것입니다(HTTP 요청이 지나가는 순간에는 1~2가 잠깐 보일 수 있으니 몇 초 뒤 다시 확인합니다). 계속 0이 아니면 사람이 있다는 뜻이니 수업 중인지 확인하고, 수업 중이면 기다립니다.
+
+2. **코드를 맞추고 다시 만들고 다시 시작합니다.**
+
+   ```bash
+   cd /opt/caysonverse
+   git fetch --depth 1 origin main && git reset --hard FETCH_HEAD
+   npm ci --workspace=server --no-audit --no-fund
+   npm run build -w server
+   sudo systemctl restart caysonverse
+   ```
+
+   `git reset --hard`는 커밋되지 않는 파일(선생님 키 파일, 환경 파일)을 건드리지 않습니다. `git clean -x`는 쓰지 마세요(키 파일이 지워집니다).
+
+3. **확인합니다.**
+
+   ```bash
+   sudo systemctl status caysonverse --no-pager
+   curl -s https://152-69-238-178.sslip.io/healthz      # {"ok":true}
+   sudo journalctl -u caysonverse -n 50 --no-pager      # [caysonverse] listening on ... 한 줄이 보여야 함
+   ```
+
+### 0.3 클라이언트 올리기 (Vercel)
+
+저장소 루트에서 합니다. 클라이언트는 빌드할 때 서버 주소를 번들에 굽습니다.
+
+1. **빌드합니다.**
+
+   ```bash
+   VITE_SERVER_URL=https://152-69-238-178.sslip.io npm run build -w client
+   ```
+
+   (PowerShell이면 `$env:VITE_SERVER_URL = "https://152-69-238-178.sslip.io"; npm run build -w client`)
+
+2. **번들에 정답이 새지 않았는지 검사합니다.** 종료 코드가 0이어야 올립니다.
+
+   ```bash
+   npx tsx --tsconfig server/tsconfig.json scripts/check-bundle-secrets.ts
+   ```
+
+3. **`client/dist`를 배포 폴더에 거울처럼 복사합니다.** 배포 폴더는 Vercel 프로젝트가 연결된 폴더입니다. `.vercel`(프로젝트 연결 정보)과 `vercel.json`은 지키고 나머지를 `client/dist`와 똑같이 맞춥니다.
+
+   ```powershell
+   robocopy client\dist <배포 폴더> /MIR /XD .vercel /XF vercel.json
+   ```
+
+   `/MIR`은 원본에 없는 파일을 지우므로 배포 폴더의 `.gitignore`(내용 한 줄: `.vercel`)도 지워집니다. 복사한 뒤 다시 만드세요.
+
+4. **배포합니다.**
+
+   ```powershell
+   vercel deploy --prod --yes --scope caysons-projects-75ebc440 --cwd <배포 폴더>
+   ```
+
+   `--scope`를 빼면 "Not authorized"로 실패한 적이 있습니다.
+
+5. **확인합니다.** 운영 주소의 `index.html`이 새로 만든 `assets/index-*.js`를 가리키는지 봅니다.
+
+### 0.4 서버와 클라이언트는 연달아 올립니다
+
+- 둘 사이에 틈을 두지 마세요. 서버만 새것이면 옛 번들 탭이 옛 형식으로 입장을 요청하고, 서버는 이를 거절하며 "새 버전이 나왔어요. 페이지를 새로고침(F5)해 주세요"라고 안내합니다(5장). 열어 둔 탭은 이 "새 버전" 안내가 뜨면 F5로 새로고침하면 됩니다.
+- 코드가 바뀐 배포는 **수업이 없을 때** 합니다. 서버를 다시 시작하면 열려 있던 반과 교실이 모두 사라지고, 선생님은 반을 다시 열어야 합니다(진행은 처음부터입니다).
+- 학교 GLB·라이트맵 주소에는 내용 해시(`?v=`)가 없어서(캐릭터 GLB에는 있습니다) GLB와 충돌 목록이 어긋난 채로 오래 두지 않도록 이 둘을 같은 시간에 올립니다.
+
+---
+
+## 1. 사전 준비 (예전 방식)
 
 1. **GitHub 저장소**: 이 프로젝트를 GitHub 저장소에 푸시합니다.
    ```bash
@@ -21,7 +131,7 @@ caysonverse(웹 3D 메타버스)를 Railway에 배포하는 방법입니다. Dev
 
 ---
 
-## 2. 배포 절차
+## 2. 배포 절차 (예전 방식)
 
 1. Railway 대시보드에서 **New Project → Deploy from GitHub repo** 를 선택하고
    이 저장소를 고릅니다.
@@ -120,7 +230,9 @@ npm start         # 빌드된 서버 실행 (환경변수 없이 그대로)
 
 ---
 
-## 4. 로그 보는 법
+## 4. 로그 보는 법 (예전 방식)
+
+> 지금 운영(Oracle)의 로그는 0.2절의 `journalctl -u caysonverse`로 봅니다.
 
 - Railway 대시보드에서 서비스를 열고 **Deployments** 탭 → 해당 배포의
   **View Logs** (또는 **Observability**)에서 빌드 로그와 런타임 로그를 볼 수
@@ -151,7 +263,7 @@ npm start         # 빌드된 서버 실행 (환경변수 없이 그대로)
 
 ---
 
-## 6. 사용량·비용 관리
+## 6. 사용량·비용 관리 (예전 방식)
 
 Railway는 **사용량 기반 과금**입니다. 특히 이 프로젝트처럼 WebSocket으로
 실시간 트래픽이 오가는 서비스는 **egress(하위 전송) 요금**(대략 GB당 $0.05)에
@@ -179,12 +291,12 @@ Railway는 **사용량 기반 과금**입니다. 특히 이 프로젝트처럼 W
   `context.ip`를 읽어 `x-forwarded-for`의 맨 앞(원 클라이언트) IP를 사용합니다.
 - **프록시가 없는 로컬 환경**에서는 이 헤더가 없어 IP를 얻지 못하므로, 시도
   제한이 **전역 카운터**로 동작합니다(설계상 알려진 한계).
-- **Railway는 프록시 뒤에서 동작**하므로 실제 배포에서는 `x-forwarded-for`가
+- **Railway(예전)와 Oracle(지금, Caddy)은 모두 프록시 뒤에서 동작**하므로 실제 배포에서는 `x-forwarded-for`가
   전달되고, 따라서 `context.ip`가 채워져 **IP별 제한이 정상 작동**합니다. 즉
   운영 환경에서는 이 방어가 의도대로 동작합니다.
 
 > 로컬 프로덕션 검증(3장) 시에는 프록시가 없으므로 `context.ip`가 비어 전역
-> 카운터로 동작하는 것이 정상입니다. IP별 동작은 프록시(=Railway)가 있어야
+> 카운터로 동작하는 것이 정상입니다. IP별 동작은 프록시(=Caddy 또는 Railway)가 있어야
 > 관측됩니다.
 
 ---
@@ -272,6 +384,6 @@ node scripts/teacher-key.mjs --id saebit-4-2 --label "새빛초 4-2" --group sae
 
 ## 참고
 
-- 배포 설정 파일: 저장소 루트 `railway.toml`
+- 배포 설정 파일(예전 방식, Railway): 저장소 루트 `railway.toml`
 - 환경변수 예시: 저장소 루트 `.env.example`
 - 설계 문서: `docs/design.md` (8장 보안, 9장 안정성)
