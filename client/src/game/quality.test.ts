@@ -1,6 +1,17 @@
 import { describe, it, expect } from "vitest";
 import { LIGHTING } from "./sceneLighting";
-import { BLOOM, BRIGHTNESS, QUALITY, acesFilmic, exposureFor, resolveQuality, skyBeforeToneMap, sparklesPerPoint } from "./quality";
+import {
+  BLOOM,
+  BRIGHTNESS,
+  QUALITY,
+  acesFilmic,
+  exposureFor,
+  inverseNeutralToneMap,
+  neutralToneMap,
+  resolveQuality,
+  skyBeforeToneMap,
+  sparklesPerPoint,
+} from "./quality";
 import { getRenderProfile } from "./renderProfile";
 
 describe("resolveQuality", () => {
@@ -137,5 +148,49 @@ describe("skyBeforeToneMap", () => {
         expect(v).toBeGreaterThanOrEqual(0);
       }
     }
+  });
+});
+
+describe("the neutral tone curve (케이슨 마을) and its inverse", () => {
+  it("passes colours under the 0.76 knee almost as they are (only the toe's 0.04 offset), and compresses highlights below 1", () => {
+    const mid = neutralToneMap([0.3, 0.4, 0.5], 1);
+    expect(mid[0]).toBeCloseTo(0.26, 6);
+    expect(mid[2]).toBeCloseTo(0.46, 6);
+    expect(neutralToneMap([0.5, 0.5, 0.5], 2)[0]).toBeLessThan(1);
+    expect(neutralToneMap([0.5, 0.5, 0.5], 2)[0]).toBeGreaterThan(0.76);
+    // Dark colours are not crushed as ACES's toe does: a dark wood stays visible.
+    const wood = [0.04, 0.025, 0.015];
+    expect(neutralToneMap(wood, 1.5)[0]).toBeGreaterThan(acesFilmic(wood, 1.15)[0]);
+  });
+
+  it("the inverse gives the colour back, under the knee, over it and in the toe", () => {
+    for (const exposure of [0.8, 1, 1.5]) {
+      for (const c of [
+        [0.02, 0.03, 0.05],
+        [0.03, 0.2, 0.25],
+        [0.35, 0.45, 0.6],
+        [0.6, 0.7, 0.85],
+        [0.9, 0.88, 0.86],
+      ]) {
+        const back = neutralToneMap(inverseNeutralToneMap(c, exposure), exposure);
+        for (let k = 0; k < 3; k++) expect(back[k], `${c} @ ${exposure}`).toBeCloseTo(c[k]!, 4);
+      }
+    }
+    for (const v of inverseNeutralToneMap([2, -1, 0.5], 1.5)) {
+      expect(Number.isFinite(v)).toBe(true);
+      expect(v).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it("skyBeforeToneMap takes the scene's curve", () => {
+    const hex = LIGHTING.village.sky;
+    const lin = skyBeforeToneMap(hex, 1.5, "neutral");
+    const shown = neutralToneMap(lin, 1.5);
+    const target = [1, 3, 5].map((i) => {
+      const c = parseInt(hex.slice(i, i + 2), 16) / 255;
+      return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+    });
+    for (let k = 0; k < 3; k++) expect(shown[k]).toBeCloseTo(target[k]!, 4);
+    expect(skyBeforeToneMap(hex, 1.5)).toEqual(skyBeforeToneMap(hex, 1.5, "aces"));
   });
 });

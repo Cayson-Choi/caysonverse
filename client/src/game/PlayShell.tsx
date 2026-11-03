@@ -98,6 +98,11 @@ export interface PlayShellProps {
    * viewer's own area are mounted — areaFilter.ts). Absent in every other scene: nobody has an area there.
    */
   areas?: AreaGate;
+  /**
+   * The camera's near and far planes (m), where they differ from the school's 0.1 / CAMERA_FAR: 케이슨 마을 draws a
+   * sky dome 1.4 km out (VillageScene). Read when the Canvas is made; the far plane is the camera rig's base.
+   */
+  cameraPlanes?: { near: number; far: number };
 }
 
 /**
@@ -124,6 +129,9 @@ function SunFollow({
   });
   return null;
 }
+
+/** The school scenes' camera planes. */
+const DEFAULT_PLANES = { near: 0.1, far: CAMERA_FAR } as const;
 
 function renderSlot(slot: ShellSlot, shell: ShellFrame): ReactNode {
   return typeof slot === "function" ? slot(shell) : slot;
@@ -205,7 +213,14 @@ export function PlayShell(p: PlayShellProps) {
   // the clear colour is the one that tone-maps back into the sky (quality.ts); once per sky and brightness.
   const toneMappedFrame = p.effects && QUALITY[tier].bloom;
   const skyClear = useMemo<[number, number, number] | null>(
-    () => (toneMappedFrame ? skyBeforeToneMap(LIGHTING[p.lighting].sky, exposureFor(brightness)) : null),
+    () =>
+      toneMappedFrame
+        ? skyBeforeToneMap(
+            LIGHTING[p.lighting].sky,
+            exposureFor(brightness) * (LIGHTING[p.lighting].exposure ?? 1),
+            LIGHTING[p.lighting].toneCurve,
+          )
+        : null,
     [toneMappedFrame, p.lighting, brightness],
   );
   // The light tier's flat panels (quality.css) hang on this mark on <html>.
@@ -220,6 +235,7 @@ export function PlayShell(p: PlayShellProps) {
   // The sun aims at the middle of the map, and its shadow box covers the whole map. "The map" is the part the
   // local player is in (the village scene: the village OR the hall's room — activeMap.ts `mapBounds`).
   const light = LIGHTING[p.lighting];
+  const planes = p.cameraPlanes ?? DEFAULT_PLANES;
   const b = mapBounds(p.activeMap);
   const cx = (b.minX + b.maxX) / 2;
   const cz = (b.minZ + b.maxZ) / 2;
@@ -244,7 +260,7 @@ export function PlayShell(p: PlayShellProps) {
         // "percentage" is the shadow map three 0.185 really draws for the old "soft" one (PCFSoftShadowMap is deprecated
         // there and falls back to it with a console warning on every context).
         shadows={profile.shadows ? "percentage" : false}
-        camera={{ fov: 55, near: 0.1, far: CAMERA_FAR, position: [pose.x, 3, pose.z + 8] }}
+        camera={{ fov: 55, near: planes.near, far: planes.far, position: [pose.x, 3, pose.z + 8] }}
       >
         <color attach="background" args={skyClear ?? [light.sky]} />
         <fog attach="fog" args={[light.sky, light.fog[0], light.fog[1]]} />
@@ -286,10 +302,10 @@ export function PlayShell(p: PlayShellProps) {
             <OverviewMarker pose={pose} />
             <ClickMarker />
           </Suspense>
-          <CameraRig pose={pose} orbit={orbit} seat={seat} fogRange={light.fog} />
+          <CameraRig pose={pose} orbit={orbit} seat={seat} fogRange={light.fog} far={planes.far} />
         </KeyboardControls>
         <NametagSystem />
-        {p.effects && <QualityEffects tier={tier} brightness={brightness} />}
+        {p.effects && <QualityEffects tier={tier} brightness={brightness} exposure={light.exposure} toneCurve={light.toneCurve} />}
         {p.effects && profile.shadows && <ShadowFloor bounds={b} />}
         {import.meta.env.DEV && <RenderStatsProbe />}
       </Canvas>

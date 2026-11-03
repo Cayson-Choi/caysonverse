@@ -256,10 +256,13 @@ describe("VillageRoom door (integration)", () => {
         if (dist <= 4) return;
       }
     };
-    // Round the fountain on its east side (3 m off its box), north along the plaza, then up to the door in the building's recess.
-    const around = FOUNTAIN_EDGE + 3;
-    await walkTo({ x: around, z: FOUNTAIN_EDGE + 3 });
-    await walkTo({ x: around, z: OUT_PAD.centre.z + 12 });
+    // Round the fountain on its east side, 2.5 m off its box (inside the ring of benches at 11 m: the model's bench
+    // boxes stay 1 m away), back to the plaza's north axis, then up the lane to the door in the building's recess.
+    const around = FOUNTAIN_EDGE + 2.5;
+    await walkTo({ x: 0, z: around });
+    await walkTo({ x: around, z: around });
+    await walkTo({ x: around, z: -around });
+    await walkTo({ x: 0, z: -around });
     await walkTo({ x: OUT_PAD.centre.x, z: OUT_PAD.centre.z });
     expect(player.area).toBe("village");
 

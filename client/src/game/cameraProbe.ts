@@ -23,6 +23,8 @@ export const cameraProbe = {
   fpYaw: 0,
   /** Overview transition factor (0 = normal view, 1 = fully top-down). */
   ovBlend: 0,
+  /** The camera's far plane (m) this frame (the scene's, raised with the overview). */
+  far: 0,
 };
 
 declare global {
@@ -42,6 +44,7 @@ declare global {
       blend: number;
       fpYaw: number;
       ovBlend: number;
+      far: number;
     };
   }
 }

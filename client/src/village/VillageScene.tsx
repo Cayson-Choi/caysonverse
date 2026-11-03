@@ -9,18 +9,24 @@ import { getRoom, sendUseDoor } from "../net/connection";
 import type { Identity } from "../stores/appStore";
 import { DoorFade } from "./DoorFade";
 import { doorFade } from "./doorFadeModel";
-import { VillageGround } from "./VillageGround";
+import { useQualityTier } from "../game/QualityEffects";
+import { VILLAGE_LAYOUT, type AreaId } from "@caysonverse/shared/village/villageLayout";
+import { PlotMarkers } from "./PlotMarkers";
+import { DoorPad, HallRoom } from "./VillageHall";
+import { VillageModel } from "./VillageModel";
+import { VILLAGE_CAMERA_PLANES, type VillageTier } from "./villageModelPrep";
 import { areaGate, localArea, readSelfArea, releaseLocalArea, seedLocalArea, useLocalArea } from "./villageArea";
 import { villageTargets } from "./villageTargets";
 
 /**
  * 케이슨 마을 — the village scene (Task 4). A `PlayShell` on the village map under the village's afternoon
- * light, with a GREYBOX of the place (VillageGround: ground, boxes, creek, the plots' glowing markers and signs;
- * the Blender model replaces it in Task 7) and the memorial hall's door.
+ * light: outside, the Blender model (Task 7: VillageModel — the plaza, houses, creek, plots, the far mountains and
+ * the sky dome, with its far plane past the dome) with the words on the plots' signs and the memorial's door pad;
+ * inside, the hall's plain room until Task 9 (VillageHall).
  *
  * Two areas share this room: the open village and the memorial hall's interior (`Player.area`). The scene follows
  * the LOCAL player's area (villageArea.ts, written by the sync as the server flips it) and shows only that one:
- *  - the ground and boxes of that area (the other one is not mounted at all);
+ *  - the model or the room of that area (the other one is not mounted at all);
  *  - the map's bounds of that area (`villageActiveMap`, so the sun's shadow box, the overview and the click-move
  *    clamp frame the right place, not the rectangle spanning both);
  *  - the players of that area (the remote sync is given the area gate: a player in the other area has no avatar,
@@ -44,6 +50,18 @@ const SHADOW_HALF = 40;
  * is where the live pose is). Pressing it draws the curtain; once that has closed the door is used (`UseDoor`),
  * provided the player is still within reach of it, so the server's answer lands on a black screen.
  */
+/** What the local player's area draws: the village model and its signs and door pad, or the hall's room. */
+function VillageArea({ area, tier }: { area: AreaId; tier: VillageTier }) {
+  if (area === "hall") return <HallRoom />;
+  return (
+    <>
+      <VillageModel tier={tier} />
+      <PlotMarkers />
+      <DoorPad pad={VILLAGE_LAYOUT.memorial.exterior.doorPad} y={0.06} />
+    </>
+  );
+}
+
 function VillageDoors({ pose }: { pose: Pose }) {
   useEffect(() => {
     setTargetSource((p) => villageTargets(localArea(), p.x, p.z));
@@ -84,6 +102,7 @@ export function VillageScene({ identity }: { identity: Identity }) {
   const live = useLocalArea();
   // Until the seed is published the store may still hold the previous scene's area: draw from the seed itself.
   const area = published ? live : boot.area;
+  const tier = useQualityTier();
   if (!room) return null;
 
   return (
@@ -95,9 +114,10 @@ export function VillageScene({ identity }: { identity: Identity }) {
       effects
       shadowFollowHalf={SHADOW_HALF}
       areas={areaGate}
+      cameraPlanes={VILLAGE_CAMERA_PLANES}
       world3d={({ pose }) => (
         <>
-          <VillageGround area={area} />
+          <VillageArea area={area} tier={tier} />
           <VillageDoors pose={pose} />
         </>
       )}

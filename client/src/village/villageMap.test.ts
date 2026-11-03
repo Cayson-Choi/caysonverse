@@ -16,6 +16,7 @@ import {
 } from "../game/activeMap";
 import { getClickTarget, resetClickMove, setClickTarget } from "../game/clickMove";
 import { LIGHTING } from "../game/sceneLighting";
+import { VILLAGE_CAMERA_PLANES } from "./villageModelPrep";
 
 afterEach(() => {
   setActiveMap(LEGACY_ACTIVE_MAP);
@@ -80,9 +81,13 @@ describe("the village's two maps (one geometry, the bounds of the area the playe
 });
 
 describe("the village's lighting (data, so the clock can drive it later)", () => {
-  it("is an afternoon preset with a 60 to 220 m fog", () => {
+  it("is an afternoon preset whose light fog fits the model: barely any inside the village, none past the far plane", () => {
     const v = LIGHTING.village;
-    expect(v.fog).toEqual([60, 220]);
+    expect(v.fog).toEqual([120, 900]);
+    // The farthest corner of the walk bounds seen from the opposite one is ~270 m: the village's own ground fades
+    // only a little, so it meets the fog-free backdrop (haze baked in) without a seam.
+    expect(v.fog[0]).toBeGreaterThan(Math.hypot(95, 95) - 20);
+    expect(v.fog[1]).toBeLessThan(VILLAGE_CAMERA_PLANES.far);
     expect(v.sky).toMatch(/^#[0-9a-f]{6}$/i);
     expect(v.key.position[1]).toBeGreaterThan(0);
     // A sun that is up but not overhead: the shadows are long but never lie flat.
@@ -90,6 +95,14 @@ describe("the village's lighting (data, so the clock can drive it later)", () =>
     const elevation = Math.atan2(y, Math.hypot(x, z));
     expect(elevation).toBeGreaterThan((25 * Math.PI) / 180);
     expect(elevation).toBeLessThan((65 * Math.PI) / 180);
+    // From the baked sun's side (Task 6: azimuth 70° clockwise from north), so the live shadows of the players fall
+    // the same way as the baked ones.
+    const azimuth = (Math.atan2(x, -z) * 180) / Math.PI;
+    expect(azimuth).toBeCloseTo(70, 0);
+    // Its own tone curve and exposure (the unlit, light-mapped model under the curve; the brightness gate, Task 7).
+    expect(v.toneCurve).toBe("neutral");
+    expect(v.exposure).toBeGreaterThan(1);
+    expect(v.exposure).toBeLessThan(2);
   });
 });
 

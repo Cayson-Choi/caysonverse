@@ -6,9 +6,12 @@ import type { Bounds, MapGeometry } from "../school/geometry";
 import { centre, hasNear, inside, overlaps, reachable } from "../school/reachTestUtil";
 import { MOVE_ELAPSED_CEIL_MS, MOVE_SPEED_SLACK, RUN_SPEED } from "../constants";
 import { PLAYER_RADIUS } from "../worldMap";
+import { VILLAGE_CAMERA_BOXES, VILLAGE_COLLIDERS } from "./generated/villageColliders";
 import {
   HALL_APRON,
+  SCENERY_SIZES,
   VILLAGE_LAYOUT,
+  VILLAGE_MODEL_COLLIDERS,
   areaGapBlockers,
   boxAt,
   buildVillageGeometry,
@@ -296,14 +299,21 @@ describe("layout values (brief + rulings + owner changes)", () => {
     expect(inn.spawn.yaw).toBeCloseTo(Math.PI, 12); // facing -z
   });
 
-  it("five small coloured houses and a café, each with a colour and a door side; none enterable", () => {
+  it("ten small coloured houses, a café and its flower kiosk, each with a colour and a door side; none enterable", () => {
     const houses = L.sceneryHouses.filter((h) => h.kind === "house");
     const cafes = L.sceneryHouses.filter((h) => h.kind === "cafe");
-    expect(houses).toHaveLength(5);
+    const kiosks = L.sceneryHouses.filter((h) => h.kind === "kiosk");
+    expect(houses).toHaveLength(10);
     expect(cafes).toHaveLength(1);
-    expect(houses.map((h) => h.colour).sort()).toEqual(["mint", "pink", "skyblue", "white", "yellow"]);
+    expect(kiosks).toHaveLength(1);
+    // Every pastel twice (houses 6-10 came with the model, Task 6).
+    expect(houses.map((h) => h.colour).sort()).toEqual(
+      ["mint", "mint", "pink", "pink", "skyblue", "skyblue", "white", "white", "yellow", "yellow"],
+    );
     expect(cafes[0].colour).toBe("wood");
-    expect(new Set(L.sceneryHouses.map((h) => h.id)).size).toBe(6);
+    expect(kiosks[0].colour).toBe("wood");
+    expect(kiosks[0].size).toEqual({ x: 4, z: 3 });
+    expect(new Set(L.sceneryHouses.map((h) => h.id)).size).toBe(12);
     for (const h of L.sceneryHouses) {
       expect(h.enterable, h.id).toBe(false);
       expect(["n", "s", "e", "w"], h.id).toContain(h.doorSide);
@@ -403,8 +413,9 @@ describe("layout sanity (nothing is built on the water, the road or each other)"
       expect(distToBox({ x: 0, z: 0 }, b), `${h.id} nearest`).toBeGreaterThanOrEqual(SIDEWALK_OUTER);
       expect(h.doorSide, h.id).toBe(sideTowardPlaza(h.centre));
       for (const [pid, pb] of plotBoxes) expect(overlaps(b, pb), `${h.id} / ${pid}`).toBe(false);
-      // Closer to the plaza than the plot ring's middle: between the road and the plots.
-      expect(Math.hypot(h.centre.x, h.centre.z), h.id).toBeLessThan(plot("plot_n").centre.z * -1);
+      // Its near side closer to the plaza than the plot ring's middle: between the road and the plots.
+      expect(distToBox({ x: 0, z: 0 }, b), h.id).toBeLessThan(plot("plot_n").centre.z * -1);
+      expect(h.size, h.id).toEqual(SCENERY_SIZES[h.kind]);
     }
   });
 
@@ -510,7 +521,8 @@ describe("village colliders are built from the layout", () => {
     expect(ids).not.toContain("plaza_trunk");
     expect(ids).not.toContain("plaza_deck");
     expect(ids.filter((i) => i.startsWith("memorial_"))).toHaveLength(3);
-    expect(ids.filter((i) => i.startsWith("house_"))).toHaveLength(5);
+    expect(ids.filter((i) => i.startsWith("house_"))).toHaveLength(10);
+    expect(ids).toContain("kiosk");
     // One box per creek segment, the gap segment in two.
     expect(ids.filter((i) => i.startsWith("stream_bank_"))).toHaveLength(STREAM.segments.length + 1);
     for (const c of colliders) expect(colliderNode(c.id)).toBe(`col__${c.id}`);
@@ -550,31 +562,82 @@ describe("village colliders are built from the layout", () => {
     expect(box("pavilion")).toEqual({ minX: -18.5, maxX: -13.5, minZ: 59.5, maxZ: 64.5 });
   });
 
-  it("buildVillageGeometry takes any collider list (Task 7 swaps in the generated one)", () => {
+  it("buildVillageGeometry takes a named collider list or the extractor's { obstacles, cameraBoxes }", () => {
     const fixed = hallWalls(L).length + areaGapBlockers(L).length + hallSurroundBlockers(L).length;
     const bare = buildVillageGeometry(L, []);
     expect(bare.obstacles).toHaveLength(fixed);
-    const one = buildVillageGeometry(L, [{ id: "x", box: { minX: 0, maxX: 1, minZ: 0, maxZ: 1 }, camera: false }]);
+    expect(bare.cameraBoxes).toEqual(hallWalls(L));
+    const box = { minX: 0, maxX: 1, minZ: 0, maxZ: 1 };
+    const one = buildVillageGeometry(L, [{ id: "x", box, camera: false }]);
     expect(one.obstacles).toHaveLength(fixed + 1);
+    expect(one.cameraBoxes).toHaveLength(hallWalls(L).length);
+    const tall = { ...box, height: 3 };
+    const generated = buildVillageGeometry(L, { obstacles: [box], cameraBoxes: [tall] });
+    expect(generated.obstacles).toHaveLength(fixed + 1);
+    expect(generated.obstacles.at(-1)).toEqual(box);
+    expect(generated.cameraBoxes).toEqual([...hallWalls(L), tall]); // the height is kept
+    expect(generated.bounds).toEqual(bare.bounds);
   });
 
-  it("villageGeometry is that build: id 'village', bounds spanning both areas, the hall's walls as camera boxes", () => {
-    expect(villageGeometry.id).toBe("village");
-    expect(villageGeometry.bounds).toEqual(villageBounds(L));
-    expect(villageGeometry.bounds).toEqual({ minX: -95, maxX: 310, minZ: -95, maxZ: 95 }); // the hall's walls plus a 5 m apron
-    for (const w of hallWalls(L)) expect(villageGeometry.cameraBoxes).toContainEqual(w);
+  it("the greybox build: the colliders flagged camera are the buildings (houses, café, kiosk, bus, memorial)", () => {
+    const geo = buildVillageGeometry(L, colliders);
     for (const c of colliders) {
-      expect(villageGeometry.obstacles, c.id).toContainEqual(c.box);
-      expect(villageGeometry.cameraBoxes.some((b) => sameBox(b, c.box)), c.id).toBe(c.camera);
+      expect(geo.obstacles, c.id).toContainEqual(c.box);
+      expect(geo.cameraBoxes.some((b) => sameBox(b, c.box)), c.id).toBe(c.camera);
     }
     expect(colliders.filter((c) => c.camera).map((c) => c.id.split("_")[0]).sort()).toEqual(
-      ["bus", "cafe", "house", "house", "house", "house", "house", "memorial", "memorial", "memorial"].sort(),
+      ["bus", "cafe", "kiosk", ...Array<string>(10).fill("house"), "memorial", "memorial", "memorial"].sort(),
     );
   });
 });
 
-/** Every geometry the village invariants must hold for: the greybox now; Task 7 adds the generated one. */
-const GEOMETRIES: Array<[string, MapGeometry]> = [["greybox", villageGeometry]];
+describe("villageGeometry plays on the colliders generated from village.glb (Task 7)", () => {
+  const colliders = greyboxColliders(L);
+
+  it("id 'village', bounds spanning both areas, the hall's walls as camera boxes, then the generated boxes", () => {
+    expect(villageGeometry.id).toBe("village");
+    expect(villageGeometry.bounds).toEqual(villageBounds(L));
+    expect(villageGeometry.bounds).toEqual({ minX: -95, maxX: 310, minZ: -95, maxZ: 95 }); // the hall's walls plus a 5 m apron
+    for (const w of hallWalls(L)) expect(villageGeometry.cameraBoxes).toContainEqual(w);
+    expect(villageGeometry).toEqual(buildVillageGeometry(L, VILLAGE_MODEL_COLLIDERS));
+    expect(VILLAGE_MODEL_COLLIDERS.obstacles).toBe(VILLAGE_COLLIDERS);
+    expect(VILLAGE_MODEL_COLLIDERS.cameraBoxes).toBe(VILLAGE_CAMERA_BOXES);
+    for (const b of VILLAGE_COLLIDERS) expect(villageGeometry.obstacles).toContainEqual(b);
+    for (const b of VILLAGE_CAMERA_BOXES) expect(villageGeometry.cameraBoxes).toContainEqual(b);
+  });
+
+  it("the model holds every layout box at its exact rectangle, a camera box exactly where the layout says camera", () => {
+    for (const c of colliders) {
+      expect(VILLAGE_COLLIDERS.some((b) => sameBox(b, c.box)), c.id).toBe(true);
+      expect(VILLAGE_CAMERA_BOXES.some((b) => sameBox(b, c.box)), c.id).toBe(c.camera);
+    }
+  });
+
+  it("the generated list is the model's: far more boxes than the layout's, every camera box among them and taller than 1.6 m", () => {
+    expect(VILLAGE_COLLIDERS.length).toBeGreaterThan(colliders.length + 100); // benches, planters, walls, gardens, trunks...
+    for (const b of VILLAGE_CAMERA_BOXES) {
+      expect(VILLAGE_COLLIDERS.some((o) => sameBox(o, b)), JSON.stringify(b)).toBe(true);
+      expect(b.height ?? 0).toBeGreaterThanOrEqual(1.6);
+    }
+    for (const b of VILLAGE_COLLIDERS) {
+      expect(b.minX).toBeLessThan(b.maxX);
+      expect(b.minZ).toBeLessThan(b.maxZ);
+      expect(b.minX).toBeGreaterThanOrEqual(L.walkBounds.minX);
+      expect(b.maxX).toBeLessThanOrEqual(L.walkBounds.maxX);
+      expect(b.minZ).toBeGreaterThanOrEqual(L.walkBounds.minZ);
+      expect(b.maxZ).toBeLessThanOrEqual(L.walkBounds.maxZ);
+    }
+  });
+});
+
+/** The layout's own list built into a map (the greybox the game played on before the model). */
+const GREYBOX_GEOMETRY: MapGeometry = buildVillageGeometry(L, greyboxColliders(L));
+
+/** Every geometry the village invariants must hold for: the layout's greybox, and the one generated from the model. */
+const GEOMETRIES: Array<[string, MapGeometry]> = [
+  ["greybox", GREYBOX_GEOMETRY],
+  ["generated from village.glb", villageGeometry],
+];
 
 describe.each(GEOMETRIES)("village geometry invariants: %s", (_name, geo) => {
   const obstacles = geo.obstacles;
@@ -971,7 +1034,7 @@ describe.each(GEOMETRIES)("village geometry invariants: %s", (_name, geo) => {
     });
 
     it("the pieces tile the footprint apart from a pad-wide recess at the door (greybox)", () => {
-      if (obstacles !== villageGeometry.obstacles) return; // the generated list has its own shape
+      if (geo !== GREYBOX_GEOMETRY) return; // the layout's pieces (the generated list holds the same three boxes, see above)
       for (const p of pieces) {
         expect(p.box.minX, p.id).toBeGreaterThanOrEqual(fp.minX - EPS);
         expect(p.box.maxX, p.id).toBeLessThanOrEqual(fp.maxX + EPS);
@@ -1008,7 +1071,7 @@ describe("export for the Blender scripts", () => {
     expect(out.memorial).toHaveProperty("exterior");
     expect(out.memorial).toHaveProperty("interior");
     expect(out.plots).toHaveLength(6);
-    expect(out.sceneryHouses).toHaveLength(6);
+    expect(out.sceneryHouses).toHaveLength(12);
     expect(out.areas).toEqual({ village: L.areas.village, hall: L.areas.hall });
   });
 

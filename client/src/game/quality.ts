@@ -101,6 +101,55 @@ export function acesFilmic(rgb: readonly number[], exposure: number): RGB {
   ];
 }
 
+/**
+ * A scene's tone curve: "aces" (three's ACES filmic: the school's rooms) or "neutral" (Khronos PBR Neutral, three's
+ * NeutralToneMapping: colours below the 0.76 knee pass almost as they are, only highlights are compressed;
+ * 케이슨 마을's unlit, light-mapped model, whose dark woods and shadows the ACES toe would crush).
+ */
+export type ToneCurve = "aces" | "neutral";
+
+const NEUTRAL_KNEE = 0.8 - 0.04;
+const NEUTRAL_DESATURATION = 0.15;
+
+/** What a pixel becomes under three's NeutralToneMapping at `exposure`, in linear light. Mirrors the shader. */
+export function neutralToneMap(rgb: readonly number[], exposure: number): RGB {
+  let c: RGB = [rgb[0] * exposure, rgb[1] * exposure, rgb[2] * exposure];
+  const x = Math.min(c[0], c[1], c[2]);
+  const offset = x < 0.08 ? x - 6.25 * x * x : 0.04;
+  c = [c[0] - offset, c[1] - offset, c[2] - offset];
+  const peak = Math.max(c[0], c[1], c[2]);
+  if (peak < NEUTRAL_KNEE) return c;
+  const d = 1 - NEUTRAL_KNEE;
+  const newPeak = 1 - (d * d) / (peak + d - NEUTRAL_KNEE);
+  c = [(c[0] * newPeak) / peak, (c[1] * newPeak) / peak, (c[2] * newPeak) / peak];
+  const g = 1 - 1 / (NEUTRAL_DESATURATION * (peak - newPeak) + 1);
+  return [c[0] + (newPeak - c[0]) * g, c[1] + (newPeak - c[1]) * g, c[2] + (newPeak - c[2]) * g];
+}
+
+/** Targets are held under this (the neutral curve reaches 1 only at infinity). */
+const NEUTRAL_INVERSE_MAX = 0.96;
+
+/**
+ * The linear colour that three's NeutralToneMapping at `exposure` turns into `rgb` (linear): exact, in closed form
+ * (the knee's compression, its desaturation and the toe's offset undone in turn). Out-of-range input is clamped to
+ * [0, 0.96]; the result is never negative.
+ */
+export function inverseNeutralToneMap(rgb: readonly number[], exposure: number): RGB {
+  let c: RGB = [0, 1, 2].map((k) => Math.min(NEUTRAL_INVERSE_MAX, Math.max(0, rgb[k] ?? 0))) as RGB;
+  const top = Math.max(c[0], c[1], c[2]);
+  if (top >= NEUTRAL_KNEE) {
+    const d = 1 - NEUTRAL_KNEE;
+    const peak = (d * d) / (1 - top) - d + NEUTRAL_KNEE;
+    const g = 1 - 1 / (NEUTRAL_DESATURATION * (peak - top) + 1);
+    c = c.map((v) => (((v - g * top) / (1 - g)) * peak) / top) as RGB;
+  }
+  const m = Math.max(0, Math.min(c[0], c[1], c[2]));
+  // The toe: below 0.08 the curve subtracted x - 6.25 x², which leaves 6.25 x² of the darkest channel.
+  const offset = m >= 0.04 ? 0.04 : Math.sqrt(m / 6.25) - m;
+  const e = Math.max(1e-3, exposure);
+  return [Math.max(0, (c[0] + offset) / e), Math.max(0, (c[1] + offset) / e), Math.max(0, (c[2] + offset) / e)];
+}
+
 /** sRGB "#RRGGBB" -> linear light. */
 function srgbHexToLinear(hex: string): RGB {
   const channel = (i: number): number => {
@@ -115,10 +164,11 @@ const SKY_TARGET_MAX = 0.985;
 
 /**
  * The linear clear colour that comes out as `skyHex` after the rich tier tone-maps it at `exposure` (Newton's
- * method on `acesFilmic`, a handful of steps, run once per sky / brightness — not per frame). Best effort for a
- * colour the curve cannot reach; always finite and never negative.
+ * method on `acesFilmic`, a handful of steps, run once per sky / brightness — not per frame; the neutral curve is
+ * inverted in closed form). Best effort for a colour the curve cannot reach; always finite and never negative.
  */
-export function skyBeforeToneMap(skyHex: string, exposure: number): RGB {
+export function skyBeforeToneMap(skyHex: string, exposure: number, curve: ToneCurve = "aces"): RGB {
+  if (curve === "neutral") return inverseNeutralToneMap(srgbHexToLinear(skyHex), exposure);
   const target = srgbHexToLinear(skyHex).map((v) => Math.min(SKY_TARGET_MAX, v)) as RGB;
   const err = (x: RGB): RGB => {
     const f = acesFilmic(x, exposure);

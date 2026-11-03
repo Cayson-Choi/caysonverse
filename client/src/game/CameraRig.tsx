@@ -81,6 +81,11 @@ interface CameraRigProps {
    * returns to. Defaults to the legacy world's FOG_NEAR / FOG_FAR.
    */
   fogRange?: readonly [number, number];
+  /**
+   * The scene's far plane (m) outside the overview (default CAMERA_FAR). 케이슨 마을 draws its sky dome and far
+   * mountains out to 1.4 km and passes a far plane past them (VillageScene).
+   */
+  far?: number;
 }
 
 const LEGACY_FOG: readonly [number, number] = [FOG_NEAR, FOG_FAR];
@@ -162,7 +167,7 @@ function spread(pointers: Map<number, { x: number; y: number }>): number {
  * term below, so at full FP (blend 1, TP weight 0) they are inert by construction —
  * the FP eye ignores follow distance entirely and sits well under the maze walls.
  */
-export function CameraRig({ pose, orbit, seat, fogRange = LEGACY_FOG }: CameraRigProps) {
+export function CameraRig({ pose, orbit, seat, fogRange = LEGACY_FOG, far: baseFar = CAMERA_FAR }: CameraRigProps) {
   const camera = useThree((s) => s.camera);
   const gl = useThree((s) => s.gl);
   // Camera-limit engagement (0 = off, 1 = fully limited): the maze's anti-peek cap, or a building's ceiling limit.
@@ -639,8 +644,8 @@ export function CameraRig({ pose, orbit, seat, fogRange = LEGACY_FOG }: CameraRi
 
     // The far plane rides with the overview too: the whole-map fit height is width-limited
     // on a tall phone (209 m at 375×812), past CAMERA_FAR, and the map would be clipped
-    // away entirely. Continuous in ovT, and restored exactly to CAMERA_FAR at 0.
-    const far = overviewFar(CAMERA_FAR, viewState.ovHeight, ovT);
+    // away entirely. Continuous in ovT, and restored exactly to the scene's far plane at 0.
+    const far = overviewFar(baseFar, viewState.ovHeight, ovT);
     if (cam.far !== far) {
       cam.far = far;
       cam.updateProjectionMatrix();
@@ -655,6 +660,7 @@ export function CameraRig({ pose, orbit, seat, fogRange = LEGACY_FOG }: CameraRi
     cameraProbe.blend = viewState.blend;
     cameraProbe.fpYaw = viewState.fpYaw;
     cameraProbe.ovBlend = viewState.ovBlend;
+    cameraProbe.far = cam.far;
   });
 
   return null;

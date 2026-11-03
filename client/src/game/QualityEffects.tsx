@@ -1,12 +1,12 @@
 import { useEffect, useMemo } from "react";
 import { useThree } from "@react-three/fiber";
 import { Effects } from "@react-three/drei";
-import { Vector2 } from "three";
+import { ACESFilmicToneMapping, NeutralToneMapping, Vector2 } from "three";
 import { UnrealBloomPass } from "three-stdlib";
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 import { isTouchDevice } from "../device";
 import { useSettingsStore } from "../stores/settingsStore";
-import { BLOOM, QUALITY, exposureFor, resolveQuality, type QualityTier } from "./quality";
+import { BLOOM, QUALITY, exposureFor, resolveQuality, type QualityTier, type ToneCurve } from "./quality";
 import "./quality.css";
 
 /**
@@ -78,13 +78,36 @@ export function ShadowFloor({ bounds }: { bounds: { minX: number; maxX: number; 
   );
 }
 
-export function QualityEffects({ tier, brightness }: { tier: QualityTier; brightness: number }) {
+/**
+ * `exposure` and `toneCurve`: the scene's own (sceneLighting.ts `Lighting`; defaults 1 and ACES, the school's). The
+ * exposure is multiplied with the player's brightness; the curve is the renderer's tone mapping, which the rich
+ * tier's OutputPass follows too. 케이슨 마을's unlit, light-mapped model uses the neutral curve at 1.4: under ACES its
+ * dark woods and shadows sank to black while its pale plaza went white. Both are given back on unmount.
+ */
+export function QualityEffects({
+  tier,
+  brightness,
+  exposure = 1,
+  toneCurve = "aces",
+}: {
+  tier: QualityTier;
+  brightness: number;
+  exposure?: number;
+  toneCurve?: ToneCurve;
+}) {
   const gl = useThree((s) => s.gl);
   useEffect(() => {
-    gl.toneMappingExposure = exposureFor(brightness);
+    gl.toneMappingExposure = exposureFor(brightness) * exposure;
     return () => {
       gl.toneMappingExposure = 1;
     };
-  }, [gl, brightness]);
+  }, [gl, brightness, exposure]);
+  useEffect(() => {
+    if (toneCurve === "aces") return;
+    gl.toneMapping = NeutralToneMapping;
+    return () => {
+      gl.toneMapping = ACESFilmicToneMapping;
+    };
+  }, [gl, toneCurve]);
   return QUALITY[tier].bloom ? <BloomChain /> : null;
 }

@@ -22,13 +22,15 @@
  * hall's own walls seal the room.
  *
  * The layout VALUES (positions, sizes) are separate from the collider LIST: `greyboxColliders(layout)` builds
- * axis-aligned boxes from the values for now, and `buildVillageGeometry(layout, colliders)` takes any list —
- * Task 7 passes the colliders generated from the Blender GLB instead. `VILLAGE_LAYOUT` is deeply frozen and
+ * axis-aligned boxes from the values, and `buildVillageGeometry(layout, colliders)` takes any list — the game
+ * plays on the colliders generated from the Blender GLB (Task 7: `villageGeometry`), which contain every
+ * greybox box exactly plus the model's own (benches, planters, trunks, garden fences...). `VILLAGE_LAYOUT` is deeply frozen and
  * shares no object between two fields.
  */
 
-import type { AABB } from "../collision";
+import type { AABB, CameraBox } from "../collision";
 import { DEFAULT_WALL_THICKNESS, makeGeometry, wallsAround } from "../school/geometry";
+import { VILLAGE_CAMERA_BOXES, VILLAGE_COLLIDERS } from "./generated/villageColliders";
 import type { Bounds, MapGeometry } from "../school/geometry";
 
 export interface Point2 {
@@ -74,13 +76,19 @@ export interface VillagePlot {
   signPost: (Point2 & { facing: Side }) | null;
 }
 
-/** Wall colours of the scenery houses (a café is "wood"). */
+/** Wall colours of the scenery houses (the café and the flower kiosk are "wood"). */
 export type HouseColour = "pink" | "skyblue" | "yellow" | "white" | "mint" | "wood";
 
-/** A small colourful house, or the café with striped awnings, for the scenery. Its door is closed for good. */
+/** The footprint of each kind of scenery building (x by z, m). */
+export const SCENERY_SIZES = { house: { x: 8, z: 6 }, cafe: { x: 12, z: 9 }, kiosk: { x: 4, z: 3 } } as const;
+
+/**
+ * A small colourful house, the café with striped awnings, or the café's timber flower kiosk, for the scenery.
+ * Its door is closed for good.
+ */
 export interface SceneryHouse {
   id: string;
-  kind: "house" | "cafe";
+  kind: keyof typeof SCENERY_SIZES;
   centre: Point2;
   size: Size2;
   enterable: false;
@@ -261,7 +269,8 @@ function house(
   doorSide: Side,
   kind: SceneryHouse["kind"] = "house",
 ): SceneryHouse {
-  return { id, kind, centre, size: kind === "cafe" ? sz(12, 9) : sz(8, 6), enterable: false, colour, doorSide };
+  const size = SCENERY_SIZES[kind];
+  return { id, kind, centre, size: sz(size.x, size.z), enterable: false, colour, doorSide };
 }
 
 function makeVillageLayout(): VillageLayout {
@@ -336,14 +345,22 @@ function makeVillageLayout(): VillageLayout {
         spawn: { x: 300, z: 3.6, yaw: FACING_NORTH },
       },
     },
-    // Between the ring road's sidewalk (r 39) and the plots, one per gap between plots, doors toward the road.
+    // Between the ring road's sidewalk (r 39) and the plots, doors toward the road. Houses 6-10 and the kiosk were
+    // added with the Blender model (Task 6, validated there against lanes, plots, the road and the creek); the model's
+    // col__<id> boxes sit exactly on these rectangles.
     sceneryHouses: [
       house("house_1", pt(21, -42), "pink", "s"),
       house("house_2", pt(-21, -42), "skyblue", "s"),
       house("house_3", pt(29, 37), "yellow", "n"),
       house("house_4", pt(-28, 38), "white", "n"),
       house("house_5", pt(-46, -8), "mint", "e"),
+      house("house_6", pt(15, -52), "yellow", "s"),
+      house("house_7", pt(31, -50), "mint", "s"),
+      house("house_8", pt(-15, -52), "skyblue", "s"),
+      house("house_9", pt(-31, -50), "pink", "s"),
+      house("house_10", pt(-40, 28), "white", "e"),
       house("cafe", pt(46, -12), "wood", "w", "cafe"),
+      house("kiosk", pt(46, -3), "wood", "w", "kiosk"),
     ],
     backdrop: {
       waterfall: { centre: pt(-118, -78), size: sz(28, 14), height: 36, facing: "e" },
@@ -489,21 +506,43 @@ export function hallSurroundBlockers(layout: VillageLayout): AABB[] {
 }
 
 /**
- * The village map from a layout and a village collider list: the hall's walls (also camera boxes), then the
- * gap blocker, the hall surround and the colliders as obstacles; the colliders flagged `camera` are camera boxes too.
+ * The village area's colliders as scripts/extract-colliders.ts writes them from the GLB's `col__*` boxes
+ * (shared/src/village/generated/villageColliders.ts): every box, unnamed, and apart from them the boxes 1.6 m or
+ * taller, with their height, that the camera must not see through.
  */
-export function buildVillageGeometry(layout: VillageLayout, colliders: readonly VillageCollider[]): MapGeometry {
+export interface GeneratedColliders {
+  obstacles: readonly AABB[];
+  cameraBoxes: readonly CameraBox[];
+}
+
+/**
+ * The village map from a layout and the village area's colliders: the hall's walls (also camera boxes), then the
+ * gap blocker, the hall surround and the colliders as obstacles. The colliders come either as a named list (the
+ * greybox: the ones flagged `camera` are camera boxes too) or as the generated `{ obstacles, cameraBoxes }`.
+ */
+export function buildVillageGeometry(layout: VillageLayout, colliders: readonly VillageCollider[] | GeneratedColliders): MapGeometry {
+  const village: GeneratedColliders =
+    "obstacles" in colliders
+      ? colliders
+      : { obstacles: colliders.map((c) => c.box), cameraBoxes: colliders.filter((c) => c.camera).map((c) => c.box) };
   return makeGeometry(
     "village",
     villageBounds(layout),
     hallWalls(layout),
-    [...areaGapBlockers(layout), ...hallSurroundBlockers(layout), ...colliders.map((c) => c.box)],
-    colliders.filter((c) => c.camera).map((c) => c.box),
+    [...areaGapBlockers(layout), ...hallSurroundBlockers(layout), ...village.obstacles],
+    village.cameraBoxes,
   );
 }
 
-/** The village map for now: greybox colliders built from `VILLAGE_LAYOUT` (Task 7 swaps in the generated ones). */
-export const villageGeometry: MapGeometry = buildVillageGeometry(VILLAGE_LAYOUT, greyboxColliders(VILLAGE_LAYOUT));
+/** The village area's colliders generated from village.glb (Task 7): the layout's boxes plus the model's own. */
+export const VILLAGE_MODEL_COLLIDERS: GeneratedColliders = { obstacles: VILLAGE_COLLIDERS, cameraBoxes: VILLAGE_CAMERA_BOXES };
+
+/**
+ * The village map the server and the client play on: the colliders generated from the Blender model (Task 7) for
+ * the village area, the hall's walls and the blockers around it. `greyboxColliders(VILLAGE_LAYOUT)` stays the
+ * layout's own list (the model must contain each of its boxes exactly: scripts/check-school-glb.ts).
+ */
+export const villageGeometry: MapGeometry = buildVillageGeometry(VILLAGE_LAYOUT, VILLAGE_MODEL_COLLIDERS);
 
 /**
  * Everything a Blender script needs, as plain JSON-able data (scripts/export-village-layout.ts writes it to
