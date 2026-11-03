@@ -15,6 +15,8 @@ import type { AABB } from "../../shared/src/collision";
 export interface GltfNode {
   name?: string;
   mesh?: number;
+  /** EXT_mesh_gpu_instancing: { attributes: { TRANSLATION?, ROTATION?, SCALE? } } (accessor indices). */
+  extensions?: Record<string, unknown>;
   children?: number[];
   translation?: number[];
   rotation?: number[];
@@ -387,12 +389,42 @@ export function imageSize(b: Uint8Array): ImageSize | null {
   return null;
 }
 
+const GPU_INSTANCING = "EXT_mesh_gpu_instancing";
+
 /**
- * Triangles drawn: each mesh primitive counted once per node that uses it, for nodes reachable from the
- * default scene (or all scenes / all nodes when the document has none). TRIANGLES, STRIP and FAN modes count;
- * points and lines do not. `col__*` boxes (and anything under them) are not counted: the game hides them at load.
+ * How many times a node's mesh is drawn: 1, or the instance count of its EXT_mesh_gpu_instancing attributes
+ * (the count of the TRANSLATION / ROTATION / SCALE accessor; a reference to a missing accessor throws).
+ */
+export function instanceCount(gltf: Gltf, n: GltfNode): number {
+  const ext = n.extensions?.[GPU_INSTANCING] as { attributes?: Record<string, number> } | undefined;
+  if (!ext) return 1;
+  const attrs = ext.attributes ?? {};
+  for (const key of ["TRANSLATION", "ROTATION", "SCALE"]) {
+    const index = attrs[key];
+    if (index === undefined) continue;
+    const accessor = gltf.accessors?.[index];
+    if (!accessor) throw new Error(`${n.name ?? "노드"}의 ${GPU_INSTANCING} ${key}가 없는 accessor ${index}를 가리켜요`);
+    return accessor.count;
+  }
+  return 1;
+}
+
+/** Triangles stored in the file: each mesh counted once per node that uses it (instancing not multiplied). */
+export function countFileTriangles(gltf: Gltf): number {
+  return countTrianglesWith(gltf, () => 1);
+}
+
+/**
+ * Triangles drawn: each mesh primitive counted once per node that uses it — times the node's GPU instance count
+ * (EXT_mesh_gpu_instancing) — for nodes reachable from the default scene (or all scenes / all nodes when the
+ * document has none). TRIANGLES, STRIP and FAN modes count; points and lines do not. `col__*` boxes (and anything
+ * under them) are not counted: the game hides them at load.
  */
 export function countTriangles(gltf: Gltf): number {
+  return countTrianglesWith(gltf, (n) => instanceCount(gltf, n));
+}
+
+function countTrianglesWith(gltf: Gltf, times: (n: GltfNode) => number): number {
   const nodes = gltf.nodes ?? [];
   const roots = rootNodes(gltf);
   let total = 0;
@@ -400,7 +432,7 @@ export function countTriangles(gltf: Gltf): number {
     if (path.has(index)) return;
     const n = nodes[index];
     if (!n || (n.name ?? "").startsWith(COLLIDER_PREFIX)) return;
-    if (n.mesh !== undefined) total += meshTriangles(gltf, n.mesh);
+    if (n.mesh !== undefined) total += meshTriangles(gltf, n.mesh) * times(n);
     path.add(index);
     for (const c of n.children ?? []) visit(c, path);
     path.delete(index);
@@ -444,7 +476,7 @@ function meshTriangles(gltf: Gltf, meshIndex: number): number {
 // ---------------------------------------------------------------------------------------------------------
 // The budget checks.
 
-export type SchoolKind = "hub" | "counsel";
+export type SchoolKind = "hub" | "counsel" | "village";
 export type Level = "ok" | "fail" | "warn";
 
 export interface CheckResult {
@@ -454,11 +486,17 @@ export interface CheckResult {
 }
 
 const MB = 1024 * 1024;
-/** Plan Global Constraints: hub (hall + corridor) <= 3.5 MB, classroom <= 5 MB; triangles from Task 22. */
+/**
+ * Plan Global Constraints: hub (hall + corridor) <= 3.5 MB, classroom <= 5 MB; triangles from Task 22.
+ * 케이슨 마을 (village plan, Global Constraints): village.glb <= 8 MB and <= 260k triangles.
+ */
 export const BUDGETS: Record<SchoolKind, { maxBytes: number; maxTriangles: number }> = {
   hub: { maxBytes: 3.5 * MB, maxTriangles: 150_000 },
   counsel: { maxBytes: 5 * MB, maxTriangles: 120_000 },
+  village: { maxBytes: 8 * MB, maxTriangles: 260_000 },
 };
+/** A required col__ box may differ from its layout box by at most this much on each side (m; boxes are read at 0.01). */
+export const BOX_TOLERANCE = 0.011;
 export const MAX_MATERIALS = 24;
 export const MAX_TEXTURE_SIDE = 2048;
 /** An obj__ node's origin may differ from the TS anchor by at most this much (m, on the ground plane). */
@@ -478,6 +516,11 @@ export interface SchoolSpec {
   placements: Array<{ node: string; x: number; z: number }>;
   /** Nodes with these prefixes must have no rotation (the code animates them from the authored pose). */
   identityRotationPrefixes: string[];
+  /**
+   * col__ boxes that must exist with exactly this rectangle on the ground plane (within BOX_TOLERANCE per side):
+   * the village's layout colliders (shared/src/village/villageLayout.ts), which the game's colliders are generated from.
+   */
+  requiredBoxes?: Array<{ node: string; box: AABB }>;
 }
 
 export interface LightmapFile {
@@ -570,6 +613,7 @@ export function checkSchoolGlb(input: CheckInput): CheckResult[] {
       colliders.problems.length === 0 ? `${colliders.colliders.length}개, 회전·부모 없음` : colliders.problems.join("; "),
     ),
   );
+  if (spec.requiredBoxes && spec.requiredBoxes.length > 0) out.push(checkRequiredBoxes(spec.requiredBoxes, colliders.colliders));
 
   const rotated = nodes
     .filter((n) => spec.identityRotationPrefixes.some((p) => (n.name ?? "").startsWith(p)) && !hasNoRotation(n))
@@ -586,7 +630,11 @@ export function checkSchoolGlb(input: CheckInput): CheckResult[] {
 
   try {
     const triangles = countTriangles(gltf);
-    out.push(result(triangles <= budget.maxTriangles, "삼각형 수", `${triangles}개 (col__ 상자 제외), 한도 ${budget.maxTriangles}개`));
+    const stored = countFileTriangles(gltf);
+    const instanced = stored === triangles ? "" : `, GPU 인스턴스 포함 (파일에 든 것 ${stored}개)`;
+    out.push(
+      result(triangles <= budget.maxTriangles, "삼각형 수", `${triangles}개 (col__ 상자 제외${instanced}), 한도 ${budget.maxTriangles}개`),
+    );
   } catch (err) {
     out.push(result(false, "삼각형 수", `셀 수 없어요: ${(err as Error).message}`));
   }
@@ -613,6 +661,29 @@ export function checkSchoolGlb(input: CheckInput): CheckResult[] {
 
   out.push(...checkLightmap(input));
   return out;
+}
+
+/** Every required col__ box exists (as a valid box) with the layout's rectangle. Missing nodes are reported by "필수 노드". */
+function checkRequiredBoxes(required: ReadonlyArray<{ node: string; box: AABB }>, found: readonly NamedBox[]): CheckResult {
+  const byName = new Map(found.map((c) => [c.name, c.box]));
+  const problems: string[] = [];
+  let checked = 0;
+  for (const r of required) {
+    const b = byName.get(r.node);
+    if (!b) continue;
+    checked += 1;
+    const sides = [b.minX - r.box.minX, b.maxX - r.box.maxX, b.minZ - r.box.minZ, b.maxZ - r.box.maxZ];
+    if (sides.some((d) => Math.abs(d) > BOX_TOLERANCE)) {
+      problems.push(
+        `${r.node} (${b.minX}..${b.maxX}, ${b.minZ}..${b.maxZ}) ≠ 배치 (${r.box.minX}..${r.box.maxX}, ${r.box.minZ}..${r.box.maxZ})`,
+      );
+    }
+  }
+  return result(
+    problems.length === 0,
+    "col__ 상자 크기",
+    problems.length === 0 ? `배치 자료의 상자 ${checked}개가 위치·크기 그대로예요` : problems.join("; "),
+  );
 }
 
 function imageBytes(input: CheckInput, index: number): Uint8Array | null {
@@ -674,7 +745,7 @@ function checkLightmap(input: CheckInput): CheckResult[] {
   const out: CheckResult[] = [];
   const lm = input.lightmap;
   if (!lm) {
-    out.push(result(false, "라이트맵 파일", `LM_ 재질이 ${lmIndexes.size}개 있는데 GLB 옆에서 <방>_lightmap.webp를 찾지 못했어요`));
+    out.push(result(false, "라이트맵 파일", `LM_ 재질이 ${lmIndexes.size}개 있는데 GLB 옆에서 <방>_lightmap.webp(또는 <방>_lm.webp)를 찾지 못했어요`));
   } else {
     // A size that could not be read (0x0) is a failure too: it must not pass as "fits".
     const readable = lm.width > 0 && lm.height > 0;

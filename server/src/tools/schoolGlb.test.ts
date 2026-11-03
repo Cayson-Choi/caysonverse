@@ -11,12 +11,14 @@ import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import {
+  BOX_TOLERANCE,
   BUDGETS,
   CAMERA_BOX_MIN_HEIGHT,
   MAX_MATERIALS,
   MAX_TEXTURE_SIDE,
   OBJ_ANCHOR_TOLERANCE,
   checkSchoolGlb,
+  countFileTriangles,
   countTriangles,
   extractColliders,
   imageSize,
@@ -32,6 +34,7 @@ import { cameraExportName } from "../../../scripts/extract-colliders";
 import { COUNSEL_ANCHORS, COUNSEL_VISUALS } from "../../../shared/src/school/counselMap";
 import { HUB_DOORS } from "../../../shared/src/school/hubMap";
 import { ROOM_IDS } from "../../../shared/src/escape/constants";
+import { VILLAGE_LAYOUT, colliderNode, greyboxColliders } from "../../../shared/src/village/villageLayout";
 
 const REPO_ROOT = path.resolve(__dirname, "..", "..", "..");
 
@@ -405,6 +408,18 @@ describe("countTriangles", () => {
     expect(countTriangles(g)).toBe(2);
   });
 
+  it("multiplies a GPU-instanced node (EXT_mesh_gpu_instancing) by its instance count; the file count does not", () => {
+    const g = baseGltf([{ name: "trees", mesh: 1, extensions: { EXT_mesh_gpu_instancing: { attributes: { TRANSLATION: 4 } } } }]);
+    g.accessors!.push({ count: 25, componentType: 5126, type: "VEC3" });
+    expect(countTriangles(g)).toBe(50); // 25 instances x 2 triangles
+    expect(countFileTriangles(g)).toBe(2);
+    // ROTATION / SCALE alone also give the count; a dangling instancing accessor throws instead of counting 1
+    g.nodes![0]!.extensions = { EXT_mesh_gpu_instancing: { attributes: { SCALE: 4 } } };
+    expect(countTriangles(g)).toBe(50);
+    g.nodes![0]!.extensions = { EXT_mesh_gpu_instancing: { attributes: { TRANSLATION: 99 } } };
+    expect(() => countTriangles(g)).toThrow(/accessor 99/);
+  });
+
   it("does not count col__ boxes (the game hides them), nor anything under one", () => {
     const g = baseGltf([cubeNode("col__box", [0, 0, 0], [1, 1, 1], { children: [1] }), { name: "inside", mesh: 1 }, { name: "visible", mesh: 1 }]);
     g.scenes = [{ nodes: [0, 2] }];
@@ -510,6 +525,8 @@ describe("checkSchoolGlb", () => {
   it("pins the budgets from the plan", () => {
     expect(BUDGETS.hub).toEqual({ maxBytes: 3.5 * 1024 * 1024, maxTriangles: 150_000 });
     expect(BUDGETS.counsel).toEqual({ maxBytes: 5 * 1024 * 1024, maxTriangles: 120_000 });
+    expect(BUDGETS.village).toEqual({ maxBytes: 8 * 1024 * 1024, maxTriangles: 260_000 });
+    expect(BOX_TOLERANCE).toBeCloseTo(0.011, 6);
     expect(MAX_MATERIALS).toBe(24);
     expect(MAX_TEXTURE_SIDE).toBe(2048);
     expect(OBJ_ANCHOR_TOLERANCE).toBe(0.25);
@@ -649,7 +666,48 @@ describe("checkSchoolGlb", () => {
   });
 });
 
+describe("checkSchoolGlb: required col__ boxes (village)", () => {
+  const boxSpec = (box: { minX: number; maxX: number; minZ: number; maxZ: number }) =>
+    tinySpec({ requiredNodes: ["col__wall"], placements: [], requiredBoxes: [{ node: "col__wall", box }] });
+
+  it("passes when the box matches the layout rectangle (within 0.01 m on each side)", () => {
+    const res = run(goodGltf(), { spec: boxSpec({ minX: -1, maxX: 1, minZ: -1, maxZ: 1 }) });
+    expect(failed(res)).toEqual([]);
+    expect(res.find((r) => r.label === "col__ 상자 크기")?.detail).toMatch(/1개/);
+    expect(failed(run(goodGltf(), { spec: boxSpec({ minX: -1.01, maxX: 1, minZ: -1, maxZ: 1.01 }) }))).toEqual([]);
+  });
+
+  it("fails a moved or resized box and names it", () => {
+    for (const box of [{ minX: -0.5, maxX: 1.5, minZ: -1, maxZ: 1 }, { minX: -1, maxX: 1, minZ: -1, maxZ: 1.5 }]) {
+      const f = failed(run(goodGltf(), { spec: boxSpec(box) }));
+      expect(f.map((r) => r.label)).toContain("col__ 상자 크기");
+      expect(f.map((r) => r.detail).join("\n")).toContain("col__wall");
+    }
+  });
+
+  it("a missing required box is reported once, by the required-node check", () => {
+    const spec = tinySpec({ requiredNodes: ["col__gone"], placements: [], requiredBoxes: [{ node: "col__gone", box: { minX: 0, maxX: 1, minZ: 0, maxZ: 1 } }] });
+    const f = failed(run(goodGltf(), { spec }));
+    expect(f.map((r) => r.label)).toEqual(["필수 노드"]);
+  });
+});
+
 describe("schoolSpec", () => {
+  it("village: every layout collider is a required col__ node with its exact layout box, and light__ points exist", () => {
+    const spec = schoolSpec("village");
+    const colliders = greyboxColliders(VILLAGE_LAYOUT);
+    expect(spec.kind).toBe("village");
+    expect(spec.requiredNodes).toEqual(colliders.map((c) => colliderNode(c.id)));
+    expect(spec.requiredBoxes).toEqual(colliders.map((c) => ({ node: colliderNode(c.id), box: c.box })));
+    expect(spec.requiredNodes).toContain("col__plaza_fountain");
+    expect(spec.requiredNodes).toContain("col__memorial_back");
+    expect(spec.requiredPrefixes).toEqual([
+      { prefix: "col__", min: colliders.length },
+      { prefix: "light__", min: 1 },
+    ]);
+    expect(KNOWN_PROP_HEIGHTS.village).toEqual({});
+  });
+
   it("counsel: every anchor and every visual node is required, and the placements are the TS anchors", () => {
     const spec = schoolSpec("counsel");
     for (const a of COUNSEL_ANCHORS) expect(spec.requiredNodes).toContain(`obj__${a.id}`);
@@ -709,6 +767,32 @@ describe("CLIs", () => {
     const badKind = runTs("check-school-glb.ts", path.join(tmp, "nope.glb"), "library");
     expect(badKind.status).toBe(1);
     expect(badKind.stderr + badKind.stdout).toMatch(/hub\|counsel/);
+  });
+
+  it("check-school-glb village: the layout's boxes, light points and village_lm.webp next to the GLB -> PASS (exit 0)", () => {
+    const colliders = greyboxColliders(VILLAGE_LAYOUT);
+    const nodes: GltfNode[] = colliders.map((c) =>
+      cubeNode(colliderNode(c.id), [(c.box.minX + c.box.maxX) / 2, 0.5, (c.box.minZ + c.box.maxZ) / 2], [c.box.maxX - c.box.minX, 1, c.box.maxZ - c.box.minZ]),
+    );
+    nodes.push({ name: "light__lamp_1", translation: [0, 4, 0] }, { name: "village_lm_11", mesh: 1 });
+    const g = baseGltf(nodes);
+    g.materials = [{ name: "LM_plaza", extensions: { KHR_materials_unlit: {} } }];
+    g.meshes![1]!.primitives[0]!.material = 0;
+    g.meshes![1]!.primitives[0]!.attributes.TEXCOORD_1 = 2;
+    g.extensionsUsed = ["KHR_materials_unlit"];
+    const file = path.join(tmp, "village.glb");
+    fs.writeFileSync(file, makeGlb(g));
+    fs.writeFileSync(path.join(tmp, "village_lm.webp"), webpVp8x(2048, 2048));
+    const ok = runTs("check-school-glb.ts", file, "village");
+    expect(ok.stdout + ok.stderr).toContain("PASS");
+    expect(ok.status).toBe(0);
+    expect(ok.stdout).toMatch(/OK\s+col__ 상자 크기/);
+    // one layout box moved by 0.5 m: FAIL, exit 1
+    nodes[0]!.translation = [nodes[0]!.translation![0]! + 0.5, 0.5, nodes[0]!.translation![2]!];
+    fs.writeFileSync(file, makeGlb(baseGltf(nodes)));
+    const bad = runTs("check-school-glb.ts", file, "village");
+    expect(bad.status).toBe(1);
+    expect(bad.stdout).toMatch(/FAIL\s+col__ 상자 크기/);
   });
 
   it("check-school-glb: an empty glTF fails the hub checks with exit 1", () => {

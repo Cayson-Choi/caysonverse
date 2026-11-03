@@ -21,11 +21,25 @@ caysonverse가 배포하는 그림·모델·글꼴·디코더의 출처와 라�
 | 살펴보기 그림 11장(상담 화면·쪽지 상자·손전등·캐비닛·서랍 둘·분류판·금고·열쇠 스위치 둘·출구 문), 쪽지 앞면 1장, 반딧 초상화 | 위와 같은 스크립트로 만든 그림. 반딧은 이 프로젝트의 오리지널 작은 경비 로봇이다. 글자는 그림에 넣지 않음 | 직접 제작 (이 프로젝트 소유) | `client/public/models/school/inspect/`, `client/public/models/school/portraits/` | 2026-11-02 |
 | 조립실 배경 그림 두 장(넓은 화면 1600x900, 세로 화면 720x1280)의 AVIF·WebP | ChatGPT(OpenAI) 이미지 생성, 발주자 계정, 2026-11-01, A안. 데스크톱 그림의 글자 같은 무늬는 손으로 흐리게 지우고 배포용으로 다시 인코딩함 | OpenAI 이용약관(2026-01-01 시행분)을 따름. 아래 "ChatGPT 생성 그림" 참고 | `client/public/entry/bg-desktop.{avif,webp}`, `bg-phone.{avif,webp}` (입장 화면 "캐릭터 조립실") | 2026-11-02 |
 | AI 갤러리 그림 9점 (`art-1.jpg`~`art-9.jpg`) | 발주자가 제공한 AI 그림(`docs/design.md` 34장). 어떤 AI 서비스로 만들었는지 이 저장소에는 기록이 없다. 원본은 저장소 밖 `art/`에 있고 웹용 변환본만 커밋함 | 발주자 제공물. **상업 이용 조건은 확인한 기록이 없음 — 발주자 확인 필요** | `client/public/gallery/` (기존 월드의 AI 갤러리. 방탈출은 쓰지 않음) | 2026-11-02 (기록 없음을 확인) |
+| Poly Haven `leafy_grass` 텍스처(색) | Poly Haven, https://polyhaven.com/a/leafy_grass (API https://api.polyhaven.com) | CC0 1.0 Universal | `client/public/models/village/village.glb` 안의 텍스처: 잔디 `T_grass`, 광장 바닥 그림 `T_plaza`의 풀 부분, 부지 잔디 `T_lawn` (색을 잔디 녹색으로 다시 맞춤) | 2026-11-03 |
+| Poly Haven `rock_boulder_dry` 텍스처(색) | Poly Haven, https://polyhaven.com/a/rock_boulder_dry (API https://api.polyhaven.com) | CC0 1.0 Universal | `client/public/models/village/village.glb` 안의 텍스처: 화강암 `T_stone`, 바위 `T_rock`, 광장 판석 `T_plaza`, 폭포 절벽(배경 텍스처 `T_backdrop`에 구워 넣음) | 2026-11-03 |
+| Poly Haven `clean_asphalt` 텍스처(색) | Poly Haven, https://polyhaven.com/a/clean_asphalt (API https://api.polyhaven.com) | CC0 1.0 Universal | `client/public/models/village/village.glb` 안의 텍스처: 순환 도로 아스팔트 (`T_plaza`) | 2026-11-03 |
+| Poly Haven `concrete_pavers` 텍스처(색) | Poly Haven, https://polyhaven.com/a/concrete_pavers (API https://api.polyhaven.com) | CC0 1.0 Universal | `client/public/models/village/village.glb` 안의 텍스처: 보도 블록 (`T_plaza`) | 2026-11-03 |
+| Poly Haven `asphalt_04` 텍스처(색) | Poly Haven, https://polyhaven.com/a/asphalt_04 (API https://api.polyhaven.com) | CC0 1.0 Universal | `client/public/models/village/village.glb` 안의 텍스처: 마을 길 콘크리트 `T_concrete` | 2026-11-03 |
+| Poly Haven `white_plaster_02` 텍스처(색) | Poly Haven, https://polyhaven.com/a/white_plaster_02 (API https://api.polyhaven.com) | CC0 1.0 Universal | `client/public/models/village/village.glb` 안의 텍스처: 집·추모관 벽 `T_render` | 2026-11-03 |
+| Poly Haven `wood_planks` 텍스처(색) | Poly Haven, https://polyhaven.com/a/wood_planks (API https://api.polyhaven.com) | CC0 1.0 Universal | `client/public/models/village/village.glb` 안의 텍스처: 나무 `T_wood` (데크·다리·벤치·카페·추모관 루버) | 2026-11-03 |
+| Poly Haven `roof_slates_02` 텍스처(색) | Poly Haven, https://polyhaven.com/a/roof_slates_02 (API https://api.polyhaven.com) | CC0 1.0 Universal | `client/public/models/village/village.glb` 안의 텍스처: 지붕 `T_roof` | 2026-11-03 |
+| Poly Haven `granite_wall` 텍스처(색) | Poly Haven, https://polyhaven.com/a/granite_wall (API https://api.polyhaven.com) | CC0 1.0 Universal | `client/public/models/village/village.glb` 안의 텍스처: 돌담 `T_wall` | 2026-11-03 |
+| Poly Haven `sakura_bark` 텍스처(색) | Poly Haven, https://polyhaven.com/a/sakura_bark (API https://api.polyhaven.com) | CC0 1.0 Universal | `client/public/models/village/village.glb` 안의 텍스처: 벚나무 껍질 (`T_bark` 왼쪽 절반) | 2026-11-03 |
+| Poly Haven `japanese_zelkova_bark` 텍스처(색) | Poly Haven, https://polyhaven.com/a/japanese_zelkova_bark (API https://api.polyhaven.com) | CC0 1.0 Universal | `client/public/models/village/village.glb` 안의 텍스처: 느티나무·나무 껍질 (`T_bark` 오른쪽 절반) | 2026-11-03 |
+| Poly Haven `island_tree_01` 모델의 잎 텍스처(`leaves_diff`, `leaves_alpha`) | Poly Haven, https://polyhaven.com/a/island_tree_01 (API https://api.polyhaven.com) | CC0 1.0 Universal | `client/public/models/village/village.glb` 안의 텍스처: 잎 한 장씩 잘라 낸 그림으로 잎 뭉치 카드 `T_leaf_green`, 벚꽃 카드 `T_leaf_cherry`의 잎, 꽃밭 카드 `T_flora`의 잎을 만듦 (모델은 쓰지 않음) | 2026-11-03 |
+| Poly Haven `kloppenheim_06_puresky` HDRI (2k) | Poly Haven, https://polyhaven.com/a/kloppenheim_06_puresky (API https://api.polyhaven.com) | CC0 1.0 Universal | `client/public/models/village/village.glb` 안의 텍스처: 노을 무렵 하늘빛(굽기와 Cycles 비교 그림의 조명), 하늘 돔 텍스처 `T_sky` | 2026-11-03 |
+| 케이슨 마을 모델 `village.glb`, 라이트맵 `village_lm.webp`, 직접 그린 텍스처(광장 판석·도로 무늬 `T_plaza`, 벚꽃·꽃·갈대·꽃잎 카드, 창·유리·버스·차양·현수막 그림 `T_atlas`·`T_glow`, 물·폭포 `T_water`·`T_falls`) | 이 프로젝트에서 Blender와 스크립트로 직접 제작(`art/village/tools/`의 `make_textures.py`, `build_village.py`, `bake_village.py`). 위 Poly Haven CC0 텍스처를 재료로 씀. AI 생성 모델·텍스처 없음 | 직접 제작 (이 프로젝트 소유) + 위 CC0 | `client/public/models/village/` (케이슨 마을 1단계 Task 6이 `art/village/export/`에서 복사. 원본 `art/`는 저장소에 올리지 않음) | 2026-11-03 |
 
 ## AI 생성 자산
 
 - **AI 이미지: 방탈출(학교)이 쓰는 것은 두 건.** 위 표의 조립실 배경 그림 두 장(넓은 화면용·세로 화면용, ChatGPT)입니다. 기존 월드의 AI 갤러리 그림 9점은 발주자가 제공한 AI 그림이며 방탈출은 쓰지 않습니다(출처 기록 없음, 위 표). 그 밖의 그림·텍스처·모델은 모두 직접 만들었거나 CC0입니다.
-- **AI 3D 생성: 없음.** `generate_3d` 같은 AI 3D 생성은 1단계에서 쓰지 않았습니다(스펙 10·14장). 학교 모델은 Blender로 직접 만들었습니다.
+- **AI 3D 생성: 없음.** `generate_3d` 같은 AI 3D 생성은 1단계에서 쓰지 않았습니다(스펙 10·14장). 학교 모델과 케이슨 마을 모델은 Blender로 직접 만들었습니다(마을 텍스처는 직접 그린 것과 Poly Haven CC0뿐).
 - "AI 생성 자산 없음"이라고 통틀어 쓰지 않습니다. 위 두 건이 있기 때문입니다.
 
 ### ChatGPT 생성 그림 (조립실 배경)
@@ -44,4 +58,4 @@ caysonverse가 배포하는 그림·모델·글꼴·디코더의 출처와 라�
 3. AI가 만든 것이면 "AI 생성 자산" 절에도 적습니다.
 4. 폴더 안 상세 기록(`LICENSE.md`)이 따로 있으면 그쪽도 맞춥니다.
 
-마지막 갱신: 2026-11-02 (Task 24: `counsel.glb`·`counsel_lightmap.webp` 복사, 살펴보기 그림·반딧 초상화는 Task 18에서 들어와 있음). **최종 확인일: 2026-11-02** (Task 27) — 표의 파일 위치·크기를 그날 저장소와 맞춰 보았고, 표에 빠져 있던 AI 갤러리 그림 9점을 더했습니다.
+마지막 갱신: 2026-11-03 (케이슨 마을 1단계 Task 6: `village.glb`·`village_lm.webp`와 Poly Haven CC0 텍스처·HDRI 13건). 그 전: 2026-11-02 (Task 24: `counsel.glb`·`counsel_lightmap.webp` 복사, 살펴보기 그림·반딧 초상화는 Task 18에서 들어와 있음). **최종 확인일: 2026-11-02** (Task 27) — 표의 파일 위치·크기를 그날 저장소와 맞춰 보았고, 표에 빠져 있던 AI 갤러리 그림 9점을 더했습니다.

@@ -1,12 +1,14 @@
 /**
- * scripts/lib/schoolSpec.ts — what hub.glb / counsel.glb must contain, read from the TS layout data
+ * scripts/lib/schoolSpec.ts — what hub.glb / counsel.glb / village.glb must contain, read from the TS layout data
  * (the single source of truth for positions): the counselling room's anchors and visual bindings
- * (shared/src/school/counselMap.ts) and the hub's corridor doors (hubMap.ts). Used by check-school-glb.ts.
+ * (shared/src/school/counselMap.ts), the hub's corridor doors (hubMap.ts) and the village's colliders
+ * (shared/src/village/villageLayout.ts). Used by check-school-glb.ts.
  */
 
 import { ROOM_IDS } from "../../shared/src/escape/constants";
 import { COUNSEL_ANCHORS, COUNSEL_VISUALS } from "../../shared/src/school/counselMap";
 import { EAST_CORRIDOR, HUB_DOORS } from "../../shared/src/school/hubMap";
+import { VILLAGE_LAYOUT, colliderNode, greyboxColliders } from "../../shared/src/village/villageLayout";
 import { roundToHundredth } from "./schoolGlb";
 import type { SchoolKind, SchoolSpec } from "./schoolGlb";
 
@@ -38,6 +40,8 @@ export const KNOWN_PROP_HEIGHTS: Readonly<Record<SchoolKind, Readonly<Record<str
     plant_40: 2.05, // 0.874 -> 1.15
     plant_41: 2.05,
   },
+  // The village's col__ boxes state their height in the node (translation.y + scale.y / 2).
+  village: {},
   counsel: {
     east_bookcase: 2.1,
     cabinet: 1.95,
@@ -83,6 +87,25 @@ function hubSpec(): SchoolSpec {
   };
 }
 
+/**
+ * 케이슨 마을: every layout collider exists as its `col__<id>` box with the layout's exact rectangle (Task 7 generates
+ * the game's colliders from these boxes), and the night-bake light points (`light__*` empties) are there.
+ */
+function villageSpec(): SchoolSpec {
+  const colliders = greyboxColliders(VILLAGE_LAYOUT);
+  return {
+    kind: "village",
+    requiredNodes: colliders.map((c) => colliderNode(c.id)),
+    requiredPrefixes: [
+      { prefix: "col__", min: colliders.length },
+      { prefix: "light__", min: 1 },
+    ],
+    placements: [],
+    identityRotationPrefixes: [],
+    requiredBoxes: colliders.map((c) => ({ node: colliderNode(c.id), box: c.box })),
+  };
+}
+
 export function schoolSpec(kind: SchoolKind): SchoolSpec {
-  return kind === "hub" ? hubSpec() : counselSpec();
+  return kind === "hub" ? hubSpec() : kind === "village" ? villageSpec() : counselSpec();
 }
