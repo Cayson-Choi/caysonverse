@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { useAppStore } from "./stores/appStore";
 import { EntryScreen } from "./ui/EntryScreen";
-import { VillageScene } from "./game/VillageScene";
+import { VillageScene } from "./village/VillageScene";
 import { WorldScene } from "./game/WorldScene";
 import { HubScene } from "./game/HubScene";
 import { EscapeScene } from "./escape/EscapeScene";

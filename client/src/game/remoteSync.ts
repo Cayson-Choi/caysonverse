@@ -10,7 +10,8 @@ import { getStateCallbacks, type Room } from "@colyseus/sdk";
 // TYPE-ONLY: schema decorators must never enter the browser bundle.
 import type { WorldState } from "@caysonverse/shared/schema";
 import { pickAppearance } from "@caysonverse/shared/appearance";
-import { placeTransition, showsInHub } from "./placeFilter";
+import { visibilityChange, showsInHub } from "./placeFilter";
+import { normalizeArea, showsInArea, type AreaGate } from "./areaFilter";
 import type { Pose, SeatState } from "./types";
 import { exceedsSnapDistance } from "./interpolation";
 import {
@@ -39,12 +40,18 @@ export type PlayersRoom = Room<{ players: WorldState["players"] }>;
  * classroom) has no avatar here — it is taken out of the store when it goes in and put back,
  * at its current position, when it comes out (placeFilter.ts). In the world every place is
  * the hall, so nothing changes there.
+ *
+ * Area (케이슨 마을, Task 4): with an `areas` gate (the village scene passes one) a remote in the OTHER area
+ * than the local player's is treated the same way (areaFilter.ts) — not in the store, so not mounted. The
+ * local player's own `area` is read from the synced state into the gate, and when it changes (a door) every
+ * remote is judged again. Without a gate nothing about areas is read.
  */
 export function startRemoteSync(
   room: PlayersRoom,
   nowMs: () => number,
   selfPose: Pose,
   selfSeat: SeatState,
+  areas?: AreaGate,
 ): () => void {
   const $ = getStateCallbacks(room);
   const selfId = room.sessionId;
@@ -76,7 +83,11 @@ export function startRemoteSync(
       const offSeat = $(player).listen("seatIndex", (value: number) => {
         selfSeat.index = value;
       });
-      perPlayer.set(sessionId, [off, offSeat]);
+      const offs = [off, offSeat];
+      // Which area I am in (the village scene's maps, bounds, lighting and filter follow it). Seeds the
+      // current value immediately, then follows every door.
+      if (areas) offs.push($(player).listen("area", (value: string) => areas.setLocal(normalizeArea(value))));
+      perPlayer.set(sessionId, offs);
       return;
     }
 
@@ -96,16 +107,23 @@ export function startRemoteSync(
       // Seed with the current position so the avatar shows up immediately.
       pushRemoteSnapshot(sessionId, { t: nowMs(), x: player.x, z: player.z, yaw: player.yaw });
     };
-    let shown = showsInHub(player.place);
+    // Shown = in the hall (not inside a classroom) AND, in the village, in my area. Every field that decides it
+    // goes through `reconcile`, which reads them live, so no change can be judged on a stale copy.
+    const wanted = (): boolean => showsInHub(player.place) && (!areas || showsInArea(player.area, areas.local()));
+    let shown = wanted();
     if (shown) show();
-
-    // In / out of a team classroom (the immediate first call changes nothing).
-    const offPlace = $(player).listen("place", (value: number) => {
-      const change = placeTransition(shown, value);
+    const reconcile = (): void => {
+      const want = wanted();
+      const change = visibilityChange(shown, want);
       if (change === "add") show();
       else if (change === "remove") removeRemote(sessionId);
-      if (change !== null) shown = change === "add";
-    });
+      shown = want;
+    };
+
+    // In / out of a team classroom (the immediate first call changes nothing).
+    const offPlace = $(player).listen("place", reconcile);
+    // Through the village's door (theirs), or my own going through it (the gate): in / out of my area.
+    const offArea = areas ? [$(player).listen("area", reconcile), areas.subscribe(reconcile)] : [];
 
     // onChange fires once per decode batch → exactly one snapshot per patch (a no-op for a
     // remote not on screen: the store drops snapshots of unknown ids).
@@ -118,7 +136,7 @@ export function startRemoteSync(
     const offSeat = $(player).listen("seatIndex", (value: number) => {
       setRemoteSeat(sessionId, value);
     });
-    perPlayer.set(sessionId, [offPlace, offChange, offConnected, offSeat]);
+    perPlayer.set(sessionId, [offPlace, ...offArea, offChange, offConnected, offSeat]);
   }, true); // immediate → replay players already present when we joined
 
   const offRemove = $(room.state).players.onRemove((_player, sessionId: string) => {

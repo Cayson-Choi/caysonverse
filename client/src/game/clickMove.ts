@@ -24,7 +24,7 @@
 
 import { PLAYER_RADIUS } from "@caysonverse/shared/worldMap";
 import type { GroundVec, Intent } from "./input";
-import { getActiveMap } from "./activeMap";
+import { activeBounds } from "./activeMap";
 
 /**
  * Sign applied by CameraRig to BOTH axes of the look-drag deltas (TP orbit and
@@ -125,7 +125,7 @@ function clamp(value: number, min: number, max: number): number {
  * no-progress window with a fresh budget.
  */
 export function setClickTarget(x: number, z: number): void {
-  const b = getActiveMap().geometry.bounds;
+  const b = activeBounds();
   state.target = {
     x: clamp(x, b.minX + PLAYER_RADIUS, b.maxX - PLAYER_RADIUS),
     z: clamp(z, b.minZ + PLAYER_RADIUS, b.maxZ - PLAYER_RADIUS),

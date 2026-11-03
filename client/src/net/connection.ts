@@ -9,6 +9,7 @@ import type { Appearance } from "@caysonverse/shared/appearance";
 import { CLASS_ROOM, type TextLevel } from "@caysonverse/shared/escape/constants";
 import { normalizeClassCode } from "@caysonverse/shared/escape/classCode";
 import type { ClassPayloads, EscapePayloads } from "@caysonverse/shared/escape/messages";
+import { VillageMsg } from "@caysonverse/shared/village/messages";
 import { SERVER_URL } from "./endpoint";
 import {
   joinErrorNotice,
@@ -405,6 +406,16 @@ export async function leaveEscape(): Promise<void> {
 export function sendClass<K extends keyof ClassPayloads>(type: K, payload: ClassPayloads[K]): void {
   if (roomMode !== "class") return;
   room?.send(type, payload);
+}
+
+/**
+ * Use the door at hand in 케이슨 마을: the memorial hall's front door, or the way out from inside. The message
+ * carries no data; the server checks the distance to the door and a 1-per-second cap and silently drops anything
+ * else. No-op unless this tab is in the village.
+ */
+export function sendUseDoor(): void {
+  if (roomMode !== "village") return;
+  room?.send(VillageMsg.UseDoor, {});
 }
 
 /** Send a classroom (puzzle) message. No-op unless a classroom connection is open. */

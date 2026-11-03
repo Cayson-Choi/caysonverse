@@ -13,12 +13,20 @@
 
 import { LEGACY_GEOMETRY } from "@caysonverse/shared/worldMap";
 import { hubGeometry, hubZoneLabel } from "@caysonverse/shared/school/hubMap";
-import { villageGeometry } from "@caysonverse/shared/village/villageLayout";
-import type { MapGeometry } from "@caysonverse/shared/school/geometry";
+import { VILLAGE_LAYOUT, villageGeometry, type AreaId } from "@caysonverse/shared/village/villageLayout";
+import type { Bounds, MapGeometry } from "@caysonverse/shared/school/geometry";
 import { zoneLabelAt } from "./hud";
 
 export interface ActiveMap {
   geometry: MapGeometry;
+  /**
+   * The rectangle this map's player can be in, where it is smaller than `geometry.bounds`. 케이슨 마을 is ONE
+   * geometry spanning the village AND the memorial hall's interior hundreds of metres away (the server's
+   * collision needs both), but a player is in one of the two: the village scene sets the bounds of the area
+   * the local player is in. Everything that frames "the map" — the sun's shadow box, the shadow floor, the
+   * overview camera, the click-move clamp, the spawn fallback — reads `mapBounds(map)`, never `geometry.bounds`.
+   */
+  bounds?: Bounds;
   /** HUD room name at a position ("" outside every named place). */
   zoneLabel(x: number, z: number): string;
   /**
@@ -36,11 +44,34 @@ export const LEGACY_ACTIVE_MAP: ActiveMap = Object.freeze({
   seatsAndNpcs: true,
 });
 
-/** 케이슨 마을 (the default 입장하기). The area-aware room names come with the village scene; for now one name. */
+/** The rectangle `m`'s player is in: its own `bounds`, else the geometry's. */
+export function mapBounds(m: ActiveMap): Bounds {
+  return m.bounds ?? m.geometry.bounds;
+}
+
+/** The bounds of the map the local player stands in right now (`getActiveMap()`). */
+export function activeBounds(): Bounds {
+  return mapBounds(current);
+}
+
+/** 케이슨 마을, the open village (the default 입장하기): the village area's rectangle of the shared geometry. */
 export const VILLAGE_ACTIVE_MAP: ActiveMap = Object.freeze({
   geometry: villageGeometry,
+  bounds: VILLAGE_LAYOUT.areas.village,
   zoneLabel: () => "케이슨 마을",
 });
+
+/** 케이슨 마을, inside the memorial hall: the same geometry (one collision truth), the hall's own rectangle. */
+export const HALL_ACTIVE_MAP: ActiveMap = Object.freeze({
+  geometry: villageGeometry,
+  bounds: VILLAGE_LAYOUT.areas.hall,
+  zoneLabel: () => "추모관",
+});
+
+/** The village map for the area the local player is in: one of two prebuilt maps, so a re-render is never a switch. */
+export function villageActiveMap(area: AreaId): ActiveMap {
+  return area === "hall" ? HALL_ACTIVE_MAP : VILLAGE_ACTIVE_MAP;
+}
 
 const HUB_GATED: ActiveMap = Object.freeze({ geometry: hubGeometry(false), zoneLabel: hubZoneLabel });
 const HUB_OPEN: ActiveMap = Object.freeze({ geometry: hubGeometry(true), zoneLabel: hubZoneLabel });

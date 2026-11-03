@@ -1,5 +1,6 @@
 import { useEffect, useState, type CSSProperties } from "react";
 import { EMOJIS } from "@caysonverse/shared/constants";
+import { useQuiet } from "../game/quiet";
 import { useNpcStore } from "../stores/npcStore";
 import { useUiStore } from "../stores/uiStore";
 import { useEmojiFire } from "./EmojiPalette";
@@ -27,11 +28,12 @@ export function EmojiFan() {
   const [open, setOpen] = useState(false);
   const menuOpen = useUiStore((s) => s.menuOpen);
   const npcOpen = useNpcStore((s) => s.activeNpc !== null);
+  const quiet = useQuiet();
 
-  // Something else took the screen: fold up.
+  // Something else took the screen (or the place went quiet): fold up.
   useEffect(() => {
-    if (menuOpen || npcOpen) setOpen(false);
-  }, [menuOpen, npcOpen]);
+    if (menuOpen || npcOpen || quiet) setOpen(false);
+  }, [menuOpen, npcOpen, quiet]);
 
   // While open: hide the corner buttons, and close on any press that is not on the fan.
   useEffect(() => {
@@ -48,6 +50,7 @@ export function EmojiFan() {
     };
   }, [open]);
 
+  if (quiet) return null; // no reactions in the quiet hall (quiet.ts)
   return (
     <div className="cv-emoji-fan" role="group" aria-label="이모지 리액션">
       {open &&

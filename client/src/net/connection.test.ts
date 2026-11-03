@@ -30,6 +30,7 @@ import { CLASS_ROOM, ESCAPE_ROOM } from "@caysonverse/shared/escape/constants";
 import { VILLAGE_ROOM, WORLD_ROOM } from "@caysonverse/shared/constants";
 import { ClassMsg, EscapeMsg } from "@caysonverse/shared/escape/messages";
 import { MessageType } from "@caysonverse/shared/messages";
+import { VillageMsg } from "@caysonverse/shared/village/messages";
 import { DEFAULT_APPEARANCE, APPEARANCE_FIELDS } from "@caysonverse/shared/appearance";
 import {
   getActiveRoom,
@@ -53,6 +54,7 @@ import {
   sendKick,
   sendMove,
   sendTyping,
+  sendUseDoor,
   setEscapeRoom,
   setRoom,
 } from "./connection";
@@ -236,6 +238,21 @@ describe("joinVillage (케이슨 마을)", () => {
     // Class messages never reach it.
     sendClass(ClassMsg.TeamLeave, {});
     expect(room.send).toHaveBeenCalledTimes(2);
+  });
+
+  it("sendUseDoor sends the village's UseDoor (no data) to the village room, and is a no-op in any other mode", async () => {
+    const world = fakeRoom();
+    h.join.mockResolvedValueOnce(world);
+    await joinWorld({ nickname: "가람", appearance: LOOK });
+    sendUseDoor();
+    expect(world.send).not.toHaveBeenCalled(); // the world has no doors
+
+    const village = fakeRoom();
+    h.joinOrCreate.mockResolvedValueOnce(village);
+    await joinVillage({ nickname: "가람", appearance: LOOK });
+    sendUseDoor();
+    expect(village.send).toHaveBeenCalledTimes(1);
+    expect(village.send).toHaveBeenCalledWith(VillageMsg.UseDoor, {});
   });
 
   it("a drop after a server restart rejoins by joinOrCreate(VILLAGE_ROOM) — never the world's join — and stays in village mode", async () => {

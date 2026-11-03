@@ -12,6 +12,7 @@
  */
 
 import { JUMP_DURATION_MS, JUMP_RATE } from "@caysonverse/shared/constants";
+import { isQuiet } from "./quiet";
 
 /** Apex of the hop (m above the floor), reached at the midpoint. Display only. */
 export const JUMP_HEIGHT_M = 1.0;
@@ -184,7 +185,8 @@ export function localJump(sid: string, blocked: boolean, now: number, send: () =
  * they can never disagree: `localJump` gated by the blocked flag LocalPlayer publishes.
  */
 export function pressJump(sid: string, now: number, send: () => void): boolean {
-  return localJump(sid, jumpBlocked, now, send);
+  // The memorial hall is quiet: the server drops a jump there, so none is played here (quiet.ts).
+  return localJump(sid, jumpBlocked || isQuiet(), now, send);
 }
 
 /** Forget the cooldown, the lift and the blocked flag — LocalPlayer calls this on mount and unmount (new world). */

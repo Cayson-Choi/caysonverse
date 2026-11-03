@@ -61,7 +61,7 @@ import {
   stepArmLimit,
 } from "./cameraCollision";
 import { cameraProbe } from "./cameraProbe";
-import { getActiveMap } from "./activeMap";
+import { activeBounds } from "./activeMap";
 import { getLocalLift } from "./jump";
 import { useSettingsStore } from "../stores/settingsStore";
 import type { Orbit, Pose, SeatState } from "./types";
@@ -160,6 +160,8 @@ export function CameraRig({ pose, orbit, seat, fogRange = LEGACY_FOG }: CameraRi
   // Previous frame's mode, to detect the EDGE into overview and seed its camera
   // (distinct from viewState.prevMode, which is the mode overview will restore).
   const lastFrameMode = useRef(viewState.mode);
+  // The rectangle the overview was last framed for: a different one (a door in 케이슨 마을) re-frames an open overview.
+  const lastBounds = useRef(activeBounds());
   // Z / C are registered in the shared KeyboardControls map; read their live state.
   const [, getKeys] = useKeyboardControls<MoveControl>();
   // Smoothed TP follow point (trails the body) and smoothed follow distance (glides
@@ -287,7 +289,7 @@ export function CameraRig({ pose, orbit, seat, fogRange = LEGACY_FOG }: CameraRi
         const c = clampOverviewCenter(
           viewState.ovCenterX + pan.dx,
           viewState.ovCenterZ + pan.dz,
-          getActiveMap().geometry.bounds,
+          activeBounds(),
         );
         viewState.ovCenterX = c.x;
         viewState.ovCenterZ = c.z;
@@ -451,8 +453,9 @@ export function CameraRig({ pose, orbit, seat, fogRange = LEGACY_FOG }: CameraRi
     // Whole-map fit height for the current aspect — seeds the overview and bounds
     // its zoom-out. Recomputed each frame so a viewport resize keeps the ceiling
     // honest (design 20 — nothing hardcoded).
-    // The whole map is the ACTIVE map (activeMap.ts): its bounds, read as plain numbers.
-    const mapBounds = getActiveMap().geometry.bounds;
+    // The whole map is the ACTIVE map (activeMap.ts): its bounds (the area the player is in, in 케이슨 마을), read
+    // as plain numbers.
+    const mapBounds = activeBounds();
     fitHeight.current = overviewFitHeight(
       mapBounds.maxX - mapBounds.minX,
       mapBounds.maxZ - mapBounds.minZ,
@@ -462,7 +465,11 @@ export function CameraRig({ pose, orbit, seat, fogRange = LEGACY_FOG }: CameraRi
 
     // On the EDGE into overview, frame the whole map: centre it and seed the fit
     // height. Re-entering re-centres (a fresh overview each time — YAGNI-simple).
-    if (lastFrameMode.current !== "ov" && viewState.mode === "ov") {
+    const prev = lastBounds.current;
+    const mapChanged =
+      prev.minX !== mapBounds.minX || prev.maxX !== mapBounds.maxX || prev.minZ !== mapBounds.minZ || prev.maxZ !== mapBounds.maxZ;
+    lastBounds.current = mapBounds;
+    if ((lastFrameMode.current !== "ov" || mapChanged) && viewState.mode === "ov") {
       viewState.ovCenterX = (mapBounds.minX + mapBounds.maxX) / 2;
       viewState.ovCenterZ = (mapBounds.minZ + mapBounds.maxZ) / 2;
       viewState.ovHeight = fitHeight.current;

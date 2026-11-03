@@ -1,4 +1,5 @@
 import { pressJump } from "../game/jump";
+import { useQuiet } from "../game/quiet";
 import { sendJump } from "../net/connection";
 import { rectStyle, useTouchHudLayout } from "./useTouchHudLayout";
 import "./action.css";
@@ -23,6 +24,8 @@ import "./action.css";
  */
 export function JumpButton({ sessionId }: { sessionId: string }) {
   const layout = useTouchHudLayout();
+  const quiet = useQuiet();
+  if (quiet) return null; // no jumping in the quiet hall (quiet.ts): the server drops it
   return (
     <button
       type="button"

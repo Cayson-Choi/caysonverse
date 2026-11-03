@@ -15,7 +15,8 @@ import { NametagSystem } from "./NametagSystem";
 import { RenderStatsProbe } from "./RenderStatsProbe";
 import { QualityEffects, ShadowFloor, useQualityTier } from "./QualityEffects";
 import { QUALITY, exposureFor, skyBeforeToneMap } from "./quality";
-import { setActiveMap, type ActiveMap } from "./activeMap";
+import { mapBounds, setActiveMap, type ActiveMap } from "./activeMap";
+import type { AreaGate } from "./areaFilter";
 import { LIGHTING, type LightingId } from "./sceneLighting";
 import type { PlayersRoom } from "./remoteSync";
 import { Chat } from "../ui/Chat";
@@ -91,6 +92,11 @@ export interface PlayShellProps {
    * and blur every shadow; a box this big around the player keeps the texels small wherever they walk.
    */
   shadowFollowHalf?: number;
+  /**
+   * 케이슨 마을: the local player's area. Given, the remote players are filtered by it (only the avatars of the
+   * viewer's own area are mounted — areaFilter.ts). Absent in every other scene: nobody has an area there.
+   */
+  areas?: AreaGate;
 }
 
 /**
@@ -132,7 +138,7 @@ function LoadingOverlay() {
 /** The local player's synced spawn, else the middle of the map (the server places us before we mount). */
 function readSpawn(room: PlayersRoom, map: ActiveMap): Pose {
   const me = room.state?.players?.get?.(room.sessionId);
-  const b = map.geometry.bounds;
+  const b = mapBounds(map);
   return {
     x: me?.x ?? (b.minX + b.maxX) / 2,
     z: me?.z ?? (b.minZ + b.maxZ) / 2,
@@ -210,9 +216,10 @@ export function PlayShell(p: PlayShellProps) {
     };
   }, [p.effects, tier]);
 
-  // The sun aims at the middle of the map, and its shadow box covers the whole map.
+  // The sun aims at the middle of the map, and its shadow box covers the whole map. "The map" is the part the
+  // local player is in (the village scene: the village OR the hall's room — activeMap.ts `mapBounds`).
   const light = LIGHTING[p.lighting];
-  const b = p.activeMap.geometry.bounds;
+  const b = mapBounds(p.activeMap);
   const cx = (b.minX + b.maxX) / 2;
   const cz = (b.minZ + b.maxZ) / 2;
   const half = p.shadowFollowHalf ?? Math.max(b.maxX - b.minX, b.maxZ - b.minZ) / 2 + 4;
@@ -274,7 +281,7 @@ export function PlayShell(p: PlayShellProps) {
               moveInput={moveInput}
               blobShadow={profile.blobShadows}
             />
-            <RemotePlayers room={room} selfPose={pose} selfSeat={seat} blobShadow={profile.blobShadows} />
+            <RemotePlayers room={room} selfPose={pose} selfSeat={seat} blobShadow={profile.blobShadows} areas={p.areas} />
             <OverviewMarker pose={pose} />
             <ClickMarker />
           </Suspense>

@@ -3,7 +3,16 @@ import { EMOJIS, EMOJI_RATE } from "@caysonverse/shared/constants";
 import { getActiveRoom, sendEmoji } from "../net/connection";
 import { startEmojiSync } from "../net/emojiSync";
 import { onHotkey } from "../game/hotkeys";
+import { isQuiet, useQuiet } from "../game/quiet";
 import "./emoji.css";
+
+/**
+ * Whether a reaction may be sent now: not in a quiet place (the memorial hall: the server drops it there, so it is
+ * not played here either — quiet.ts) and not inside the client mirror of the server's rate cap.
+ */
+export function emojiMayFire(now: number, lastSentAt: number, quiet: boolean): boolean {
+  return !quiet && now - lastSentAt >= EMOJI_RATE.windowMs;
+}
 
 /** How long the click/press pulse feedback lingers (ms). */
 const PULSE_MS = 200;
@@ -33,7 +42,7 @@ export function useEmojiFire(): { fire: (index: number) => void; pulseIndex: num
 
   function fire(index: number) {
     const now = performance.now();
-    if (now - lastSentAt.current < EMOJI_RATE.windowMs) return;
+    if (!emojiMayFire(now, lastSentAt.current, isQuiet())) return;
     lastSentAt.current = now;
     sendEmoji(index);
     setPulseIndex(index);
@@ -58,6 +67,8 @@ export function useEmojiFire(): { fire: (index: number) => void; pulseIndex: num
  */
 export function EmojiPalette() {
   const { fire, pulseIndex } = useEmojiFire();
+  const quiet = useQuiet();
+  if (quiet) return null; // no reactions in the quiet hall
   return (
     <div className="cv-emoji-palette" role="group" aria-label="이모지 리액션">
       {EMOJIS.map((emoji, index) => (

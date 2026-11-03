@@ -16,13 +16,21 @@ export function showsInHub(place: number): boolean {
 }
 
 /**
+ * What a change of "should this avatar be on screen" means for one that is (`shown`) or is not on screen:
+ * "add" when a hidden player should now show, "remove" when a shown one should not, null when nothing changes
+ * (also for a listener's immediate first call). The one rule behind every filter (place, and in 케이슨 마을 the area).
+ */
+export function visibilityChange(shown: boolean, wanted: boolean): "add" | "remove" | null {
+  if (wanted && !shown) return "add";
+  if (!wanted && shown) return "remove";
+  return null;
+}
+
+/**
  * What a `place` change means for an avatar that is (`shown`) or is not on screen: "add" when
  * a hidden player is back in the hall, "remove" when a shown one went into a classroom, null
  * when nothing changes (also for the listener's immediate first call).
  */
 export function placeTransition(shown: boolean, place: number): "add" | "remove" | null {
-  const inHall = showsInHub(place);
-  if (inHall && !shown) return "add";
-  if (!inHall && shown) return "remove";
-  return null;
+  return visibilityChange(shown, showsInHub(place));
 }
