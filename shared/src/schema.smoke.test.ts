@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { Schema, type, Encoder, Decoder } from "@colyseus/schema";
-import { ClassState, EscapeState, Player, Team } from "./schema";
+import { ClassState, EscapeState, Player, Team, WorldState } from "./schema";
 import { ROLE_STUDENT, ROLE_TEACHER } from "./constants";
 import { PLACE_ESCAPE, PLACE_HUB } from "./escape/constants";
 import { APPEARANCE_FIELDS, APPEARANCE_RANGES, pickAppearance, type Appearance } from "./appearance";
@@ -94,6 +94,26 @@ describe("@colyseus/schema decorator wiring", () => {
     const appearance = fields.filter((f) => (APPEARANCE_FIELDS as readonly string[]).includes(f.name));
     expect(appearance.map((f) => f.name)).toEqual([...APPEARANCE_FIELDS]);
     expect(appearance.every((f) => f.type === "uint8")).toBe(true);
+  });
+
+  it("Player.area defaults to the village (legacy world and class rooms never set it) and round-trips the hall", () => {
+    expect(new Player().area).toBe("village");
+
+    const state = new WorldState();
+    const player = new Player();
+    player.nickname = "방문객";
+    state.players.set("s1", player);
+    state.players.set("s2", new Player()); // never set: stays at the default
+    state.players.get("s2")!.nickname = "마을사람";
+    state.players.get("s1")!.area = "hall";
+
+    const decoded = new WorldState();
+    new Decoder(decoded).decode(new Encoder(state).encodeAll());
+    expect(decoded.players.get("s1")!.area).toBe("hall");
+    expect(decoded.players.get("s2")!.area).toBe("village");
+    // The new field did not disturb its neighbours.
+    expect(decoded.players.get("s1")!.nickname).toBe("방문객");
+    expect(decoded.players.get("s1")!.seatIndex).toBe(-1);
   });
 
   it("ClassState round-trips teams, litRooms and Player.place/teamId", () => {

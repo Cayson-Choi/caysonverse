@@ -13,6 +13,15 @@ export const WORLD_ROOM = "world";
 /** Max clients allowed in the world room (100 target + reconnection headroom). */
 export const MAX_CLIENTS = 110;
 
+/**
+ * Matchmaking name of 케이슨 마을 (the open countryside village). Unlike the world, the village is NOT a
+ * pre-created singleton: clients `joinOrCreate` it and a full room spills into a new shard.
+ */
+export const VILLAGE_ROOM = "village";
+
+/** Max clients in one village room (a shard): the 31st visitor gets a new room. */
+export const VILLAGE_MAX_CLIENTS = 30;
+
 /** State broadcast interval in milliseconds (10Hz). */
 export const PATCH_RATE_MS = 100;
 

@@ -1,5 +1,6 @@
 import { Schema, type, MapSchema, ArraySchema } from "@colyseus/schema";
 import type { ClassPhase, EscapePhase, TextLevel } from "./escape/constants";
+import type { AreaId } from "./village/villageLayout";
 
 /**
  * Root room state, synchronized from the server to every connected client.
@@ -69,6 +70,10 @@ export class Player extends Schema {
   // PLACE_HUB (0, the hall/corridor) or PLACE_ESCAPE (1, inside their team's escape room).
   @type("string") teamId = "";
   @type("uint8") place = 0;
+  // 케이슨 마을 (VillageRoom only; the legacy world and the class rooms never set it and leave the default):
+  // which area the player is in — "village" (the open village) or "hall" (inside the memorial hall,
+  // where the room is quiet: no emoji, no jumping). Written by VillageRoom at join and on every door use.
+  @type("string") area: AreaId = "village";
 }
 
 export class WorldState extends Schema {

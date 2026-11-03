@@ -156,6 +156,15 @@ export abstract class PlayerRoom<S extends PlayersState, T extends Tracking = Tr
     return true;
   }
 
+  /**
+   * Is this player where the room must stay quiet? true → Emoji and Jump are dropped SILENTLY (nothing
+   * is broadcast, no notice is sent); Move, Chat and Typing are unaffected. Default: never quiet, so the
+   * world, the class and the escape rooms behave exactly as before. VillageRoom: inside the memorial hall.
+   */
+  protected isQuiet(_player: Player): boolean {
+    return false;
+  }
+
   /** Runs after each ACCEPTED move, with the new position applied (default: nothing). */
   protected afterMove(_client: Client, _player: Player, _track: T, _now: number): void {}
 
@@ -332,7 +341,8 @@ export abstract class PlayerRoom<S extends PlayersState, T extends Tracking = Tr
   }
 
   /**
-   * Emoji pipeline (binding order): sender must have a seat → per-client rate
+   * Emoji pipeline (binding order): sender must have a seat → a quiet place
+   * (`isQuiet`) drops it silently → per-client rate
    * cap (1 per 500ms; exceeded → drop, SILENTLY — it's a button, not typed
    * effort, so unlike chat there is no personal notice) → pure index validate
    * (garbage → drop silently) → broadcast to everyone as a transient event.
@@ -342,6 +352,8 @@ export abstract class PlayerRoom<S extends PlayersState, T extends Tracking = Tr
     const player = this.state.players.get(client.sessionId);
     const track = this.tracking.get(client.sessionId);
     if (!player || !track) return; // no seat yet / already left → drop
+
+    if (this.isQuiet(player)) return; // quiet place → silent drop (before the cap: it uses no slot)
 
     if (!track.emojiRate.tryAccept(this.now())) return; // flood → silent drop
 
@@ -354,7 +366,8 @@ export abstract class PlayerRoom<S extends PlayersState, T extends Tracking = Tr
   /**
    * Jump pipeline (binding order): sender must be in the room's state → a sender
    * that may not move (`canMove` false — WorldRoom: seated, a server-positioned
-   * avatar cannot jump) is dropped silently → per-client rate cap (1 per
+   * avatar cannot jump) is dropped silently → a quiet place (`isQuiet`) is
+   * dropped silently too → per-client rate cap (1 per
    * JUMP_RATE.windowMs = 800 ms; exceeded → drop silently, it's a key press) →
    * broadcast `{ sid }` to everyone EXCEPT the sender as a transient event (the
    * sender already hopped locally the instant it pressed). The payload is never
@@ -367,6 +380,8 @@ export abstract class PlayerRoom<S extends PlayersState, T extends Tracking = Tr
     if (!player || !track) return; // no seat yet / already left → drop
 
     if (!this.canMove(player)) return; // held in place → silent drop
+
+    if (this.isQuiet(player)) return; // quiet place → silent drop (before the cap: it uses no slot)
 
     if (!track.jumpRate.tryAccept(this.now())) return; // flood → silent drop
 
