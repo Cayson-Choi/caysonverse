@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import {
   viewState,
   enterFp,
@@ -14,7 +14,10 @@ import {
   cancelOrbitGoal,
   beginSeatCamera,
   endSeatCamera,
+  dropOverview,
+  exitOverview,
 } from "./viewState";
+import { HALL_ACTIVE_MAP, LEGACY_ACTIVE_MAP, VILLAGE_ACTIVE_MAP, setActiveMap } from "./activeMap";
 import { recenterYaw, stepOrbitToward } from "./cameraControls";
 import { SEAT_CAM } from "./constants";
 import { worldDirection } from "./input";
@@ -532,5 +535,70 @@ describe("viewState — seat camera (sit → behind the seat facing the screen, 
     expect(viewState.orbitGoal).not.toBeNull();
     toggleViewMode(o); // entering FP afterwards drops it, by design
     expect(viewState.orbitGoal).toBeNull();
+  });
+});
+
+describe("viewState — no overview inside a building (케이슨 마을 Task 5)", () => {
+  afterEach(() => setActiveMap(LEGACY_ACTIVE_MAP));
+
+  it("the toggle (M key and the map button) is refused in the memorial hall: nothing changes", () => {
+    setActiveMap(HALL_ACTIVE_MAP);
+    toggleOverview();
+    expect(viewState.mode).toBe("tp");
+    expect(useViewStore.getState().isOv).toBe(false);
+    enterOverview();
+    expect(viewState.mode).toBe("tp");
+    expect(viewState.ovBlend).toBe(0);
+    stepOvBlend(OV_BLEND_SEC);
+    expect(viewState.ovBlend).toBe(0);
+  });
+
+  it("a refused enter from first-person leaves first-person alone, with nothing remembered", () => {
+    setActiveMap(HALL_ACTIVE_MAP);
+    toggleViewMode(orbit()); // → FP
+    toggleOverview();
+    expect(viewState.mode).toBe("fp");
+    expect(useViewStore.getState().isFp).toBe(true);
+    expect(useViewStore.getState().isOv).toBe(false);
+  });
+
+  it("the village (no camera limit), the legacy world and the maze keep their overview", () => {
+    for (const map of [VILLAGE_ACTIVE_MAP, LEGACY_ACTIVE_MAP]) {
+      setActiveMap(map);
+      toggleOverview();
+      expect(viewState.mode).toBe("ov");
+      toggleOverview();
+      expect(viewState.mode).toBe("tp");
+    }
+  });
+
+  it("walking in through the door while the map is open: dropOverview leaves it AT ONCE (no blend left to swoop)", () => {
+    setActiveMap(VILLAGE_ACTIVE_MAP);
+    toggleViewMode(orbit()); // → FP
+    toggleOverview(); // open the map from FP
+    stepOvBlend(OV_BLEND_SEC / 2);
+    expect(viewState.ovBlend).toBeGreaterThan(0);
+    setActiveMap(HALL_ACTIVE_MAP); // the door
+    dropOverview();
+    expect(viewState.mode).toBe("fp"); // back to what the map was opened from
+    expect(viewState.ovBlend).toBe(0);
+    expect(useViewStore.getState().isOv).toBe(false);
+    expect(useViewStore.getState().isFp).toBe(true);
+  });
+
+  it("dropOverview also clears a blend that is still easing out after a normal exit", () => {
+    toggleOverview();
+    stepOvBlend(OV_BLEND_SEC);
+    exitOverview();
+    stepOvBlend(OV_BLEND_SEC / 4);
+    expect(viewState.ovBlend).toBeGreaterThan(0);
+    dropOverview();
+    expect(viewState.ovBlend).toBe(0);
+  });
+
+  it("dropOverview with no overview open does nothing", () => {
+    dropOverview();
+    expect(viewState.mode).toBe("tp");
+    expect(viewState.ovBlend).toBe(0);
   });
 });

@@ -13,15 +13,27 @@
  * Distance keeps the camera close; the Y clamp guarantees it stays below the
  * wall top even at max pitch. Both are lerped by the same 0..1 engagement so the
  * transition is smooth in both directions.
+ *
+ * The clamp itself lives in indoorCamera.ts, where a building's camera limit uses it too (Task 5): the maze is
+ * the same rule with the numbers below (`MAZE_CAMERA_LIMIT`), so its results are unchanged; the helpers here
+ * hand the maze's limit to it.
  */
 
 import { ZONES, WALL_HEIGHT } from "@caysonverse/shared/worldMap";
+import { limitedDistance, limitedY, type CameraLimit } from "./indoorCamera";
 
 /** Max effective follow distance (m) while the cap is fully engaged. */
 export const MAZE_CAM_MAX_DISTANCE = 6;
 
 /** Max final camera height (m) while capped — below the 4 m wall top so no peek. */
 export const MAZE_CAM_MAX_Y = WALL_HEIGHT - 0.5; // 3.5
+
+/** The maze's cap as a camera limit. The overview is allowed in the maze (design 20: easy escape wins). */
+export const MAZE_CAMERA_LIMIT: CameraLimit = Object.freeze({
+  maxY: MAZE_CAM_MAX_Y,
+  maxDistance: MAZE_CAM_MAX_DISTANCE,
+  overview: true,
+});
 
 /** Seconds to fully engage / release the cap (smooth, no snap jolt). */
 export const MAZE_CAP_ENGAGE_SEC = 0.3;
@@ -45,11 +57,6 @@ export function stepMazeCapEngage(engage: number, inside: boolean, delta: number
   return engage;
 }
 
-/** Linear interpolation from `a` to `b` by `t` (t already clamped to [0,1]). */
-function lerp(a: number, b: number, t: number): number {
-  return a + (b - a) * t;
-}
-
 /**
  * Effective follow distance with the cap applied by `engage`. At engage 0 the
  * user's distance passes through untouched; at engage 1 it is clamped to
@@ -58,10 +65,25 @@ function lerp(a: number, b: number, t: number): number {
  * back distance is still capped inside the maze.
  */
 export function cappedFollowDistance(distance: number, engage: number): number {
-  return lerp(distance, Math.min(distance, MAZE_CAM_MAX_DISTANCE), engage);
+  return limitedDistance(distance, MAZE_CAMERA_LIMIT, engage);
 }
 
 /** Final camera Y with the height cap applied by `engage` (≤ MAZE_CAM_MAX_Y at 1). */
 export function cappedCameraY(y: number, engage: number): number {
-  return lerp(y, Math.min(y, MAZE_CAM_MAX_Y), engage);
+  return limitedY(y, MAZE_CAMERA_LIMIT, engage);
+}
+
+/**
+ * The camera limit in force for a player at (x, z) on `map`: the map's own (a building's ceiling limit), else the
+ * maze's cap while the player stands in the maze — a zone of the LEGACY world only. The village (and every other
+ * map) has its own coordinates, and the maze's rectangle (x -66..-30, z -18..18) overlaps the open village's, so
+ * the zone test alone must not decide: a stroll past the west houses must not cap the village camera at 6 m.
+ */
+export function cameraLimitAt(
+  map: { cameraLimit?: CameraLimit; geometry: { id: string } },
+  x: number,
+  z: number,
+): CameraLimit | undefined {
+  if (map.cameraLimit) return map.cameraLimit;
+  return map.geometry.id === "legacy" && isInMaze(x, z) ? MAZE_CAMERA_LIMIT : undefined;
 }

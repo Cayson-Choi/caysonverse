@@ -46,8 +46,8 @@ export const ARM_FREE = 64;
 
 /**
  * Where, along the segment A → B, it first enters one of `boxes` (each spanning
- * y = 0..its own `height`, or `height` when it states none): a fraction t in [0, 1), or 1 when
- * nothing blocks it.
+ * y = `minY`..its own `height` — `minY` is 0 unless the box is a ceiling slab — or `height` when it
+ * states none): a fraction t in [0, 1), or 1 when nothing blocks it.
  *
  * Per box this is the usual slab test on x, y and z. A box that already contains A
  * is skipped — a head hugging a wall must not fold the camera to zero — and so is
@@ -57,7 +57,8 @@ export const ARM_FREE = 64;
  * then where the segment comes within `margin` of the wall, measured ACROSS the wall,
  * however shallow the angle. A start inside the inflated box but outside the raw one
  * (closer than `margin` to a wall) is tested against the raw box instead, so it never
- * folds to zero either.
+ * folds to zero either. A ceiling slab's underside is padded the same way (it is lowered
+ * by `margin`), so the arm stops `margin` below the roof; its top is not inflated.
  */
 export function segmentHitFraction(
   ax: number,
@@ -83,19 +84,23 @@ export function segmentHitFraction(
   for (let i = 0; i < boxes.length; i++) {
     const b = boxes[i];
     const top = b.height ?? height;
+    // A ceiling slab hangs from `minY`; the margin pads it DOWNWARD too, so the arm stops `margin` under the underside.
+    const rawBottom = b.minY ?? 0;
+    let bottom = rawBottom > 0 ? rawBottom - margin : 0;
     let minX = b.minX - margin;
     let maxX = b.maxX + margin;
     let minZ = b.minZ - margin;
     let maxZ = b.maxZ + margin;
     if (maxX < loX || minX > hiX || maxZ < loZ || minZ > hiZ) continue;
-    if (ay >= 0 && ay <= top && ax >= minX && ax <= maxX && az >= minZ && az <= maxZ) {
+    if (ay >= bottom && ay <= top && ax >= minX && ax <= maxX && az >= minZ && az <= maxZ) {
       // The start is inside the (inflated) box: judge it against the raw one instead…
       minX = b.minX;
       maxX = b.maxX;
       minZ = b.minZ;
       maxZ = b.maxZ;
+      bottom = rawBottom;
       // …and skip the box altogether if the start is inside that too.
-      if (ax >= minX && ax <= maxX && az >= minZ && az <= maxZ) continue;
+      if (ay >= bottom && ax >= minX && ax <= maxX && az >= minZ && az <= maxZ) continue;
     }
 
     let enter = 0;
@@ -115,9 +120,9 @@ export function segmentHitFraction(
       if (enter > exit) continue;
     }
     if (dy === 0) {
-      if (ay < 0 || ay > top) continue;
+      if (ay < bottom || ay > top) continue;
     } else {
-      let t1 = (0 - ay) / dy;
+      let t1 = (bottom - ay) / dy;
       let t2 = (top - ay) / dy;
       if (t1 > t2) {
         const swap = t1;

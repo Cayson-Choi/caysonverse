@@ -17,6 +17,8 @@
 import { normalizeAngle } from "./yaw";
 import { recenterYaw, type OrbitGoal } from "./cameraControls";
 import { SEAT_CAM } from "./constants";
+import { getActiveMap } from "./activeMap";
+import { overviewAllowed } from "./indoorCamera";
 import { stepBlend, stepZoomMode, OV_BLEND_SEC, type ViewMode, type ZoomBand } from "./viewMode";
 import { useViewStore } from "../stores/viewStore";
 import type { Orbit } from "./types";
@@ -125,9 +127,13 @@ export function applyZoom(orbit: Orbit, delta: number, band: ZoomBand): void {
  * (M-spam) can never overwrite `prevMode` with 'ov' and strand the machine. The
  * overview pan-centre / height are seeded by CameraRig on the first overview
  * frame (it owns the camera fov/aspect the fit calculation needs).
+ *
+ * Refused where the active map's camera limit says no overview (inside a building, 케이슨 마을 Task 5): a
+ * top-down view of a room would show it from above its roof. Every way in (the M key, the map button) lands here.
  */
 export function enterOverview(): void {
   if (viewState.mode === "ov") return;
+  if (!overviewAllowed(getActiveMap().cameraLimit)) return;
   viewState.prevMode = viewState.mode; // 'tp' or 'fp'
   viewState.mode = "ov";
   syncButton();
@@ -138,6 +144,16 @@ export function exitOverview(): void {
   if (viewState.mode !== "ov") return;
   viewState.mode = viewState.prevMode;
   syncButton();
+}
+
+/**
+ * Leave the overview AT ONCE, with no blend left to ease out: back to the mode it was opened from, `ovBlend` 0. For
+ * a place that has no overview (walking into a building with the map open): an eased exit would fly the camera
+ * from the map's height over the other area to the player. Does nothing when no overview is showing.
+ */
+export function dropOverview(): void {
+  exitOverview();
+  viewState.ovBlend = 0;
 }
 
 /**

@@ -8,6 +8,7 @@ import {
   VILLAGE_ACTIVE_MAP,
   activeBounds,
   activeMapVersion,
+  getActiveMap,
   hubActiveMap,
   mapBounds,
   setActiveMap,
@@ -89,5 +90,26 @@ describe("the village's lighting (data, so the clock can drive it later)", () =>
     const elevation = Math.atan2(y, Math.hypot(x, z));
     expect(elevation).toBeGreaterThan((25 * Math.PI) / 180);
     expect(elevation).toBeLessThan((65 * Math.PI) / 180);
+  });
+});
+
+describe("the camera limit of each map (케이슨 마을 Task 5: a building's camera stays under its ceiling)", () => {
+  it("inside the memorial hall: 3.1 m high, 3.6 m away, no overview — under its 3.4 m ceiling", () => {
+    expect({ ...HALL_ACTIVE_MAP.cameraLimit }).toEqual({ maxY: 3.1, maxDistance: 3.6, overview: false });
+    expect(HALL_ACTIVE_MAP.cameraLimit!.maxY).toBeLessThan(VILLAGE_LAYOUT.memorial.interior.ceilingHeight);
+  });
+
+  it("the open village, the legacy world and the hub have no limit (their camera is as before)", () => {
+    expect(VILLAGE_ACTIVE_MAP.cameraLimit).toBeUndefined();
+    expect(LEGACY_ACTIVE_MAP.cameraLimit).toBeUndefined();
+    expect(hubActiveMap(false).cameraLimit).toBeUndefined();
+    expect(hubActiveMap(true).cameraLimit).toBeUndefined();
+  });
+
+  it("the limit follows the area through the door", () => {
+    setActiveMap(villageActiveMap("hall"));
+    expect(getActiveMap().cameraLimit).toBe(HALL_ACTIVE_MAP.cameraLimit);
+    setActiveMap(villageActiveMap("village"));
+    expect(getActiveMap().cameraLimit).toBeUndefined();
   });
 });

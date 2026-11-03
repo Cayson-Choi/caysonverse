@@ -105,8 +105,8 @@ function makeGate(start: AreaId = "village") {
 let room: InstanceType<typeof h.FakeRoom>;
 let stop: (() => void) | null = null;
 
-function start(gate?: AreaGate): void {
-  stop = startRemoteSync(room as unknown as PlayersRoom, () => 0, { x: 0, z: 0, yaw: 0 }, { index: -1 }, gate);
+function start(gate?: AreaGate, self: { x: number; z: number; yaw: number } = { x: 0, z: 0, yaw: 0 }): void {
+  stop = startRemoteSync(room as unknown as PlayersRoom, () => 0, self, { index: -1 }, gate);
 }
 function join(sid: string, p: TestPlayer): TestPlayer {
   room.players.set(sid, p);
@@ -181,6 +181,34 @@ describe("startRemoteSync with an area gate (케이슨 마을)", () => {
     start(gate);
     expect(gate.local()).toBe("hall");
     expect(getRoster()).toEqual(["b"]);
+  });
+
+  it("through the door I am put down facing the way the server says (the camera swings behind that), not before", () => {
+    const gate = makeGate("village");
+    const me = player({ area: "village", x: 0, z: -51, yaw: 3.1 });
+    room.players.set("me", me);
+    const self = { x: 0, z: -51, yaw: 1.2 };
+    start(gate, self);
+    expect(self.yaw).toBe(1.2); // joining seeds the area; it does not turn me
+
+    h.patch(me, { area: "hall", x: 300, z: 3.6, yaw: Math.PI }); // used the door
+    expect(self.yaw).toBe(Math.PI);
+    expect([self.x, self.z]).toEqual([300, 3.6]); // the position snap is the existing one
+
+    h.patch(me, { yaw: 0.4 }); // an ordinary echo of my own facing is not a door
+    expect(self.yaw).toBe(Math.PI);
+
+    h.patch(me, { area: "village", x: 0, z: -49.4, yaw: 0 }); // and out again
+    expect(self.yaw).toBe(0);
+  });
+
+  it("without a gate nothing about my facing is touched (a kick-back in the legacy world)", () => {
+    const me = player({ area: "village", yaw: 2 });
+    room.players.set("me", me);
+    const self = { x: 0, z: 0, yaw: 1.2 };
+    start(undefined, self);
+    h.patch(me, { area: "hall", x: 300, z: 3.6, yaw: Math.PI });
+    expect(self.yaw).toBe(1.2);
   });
 
   it("the classroom rule still applies on top (a remote inside a classroom is not shown even in my area)", () => {

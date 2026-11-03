@@ -86,7 +86,19 @@ export function startRemoteSync(
       const offs = [off, offSeat];
       // Which area I am in (the village scene's maps, bounds, lighting and filter follow it). Seeds the
       // current value immediately, then follows every door.
-      if (areas) offs.push($(player).listen("area", (value: string) => areas.setLocal(normalizeArea(value))));
+      if (areas) {
+        let seenArea: string | undefined;
+        offs.push(
+          $(player).listen("area", (value: string) => {
+            // A door puts me down FACING the way the server says (into the room / away from the building). The
+            // position is snapped just above; the facing comes with it, so the camera that swings behind me
+            // (CameraRig) looks the way I do. The first call is the seed (join, reconnect), not a door.
+            if (seenArea !== undefined && seenArea !== value) selfPose.yaw = player.yaw;
+            seenArea = value;
+            areas.setLocal(normalizeArea(value));
+          }),
+        );
+      }
       perPlayer.set(sessionId, offs);
       return;
     }

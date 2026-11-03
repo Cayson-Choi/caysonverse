@@ -64,6 +64,8 @@ interface HudTopProps {
   onToggleView: () => void;
   /** 🗺 — the overview map. */
   onToggleOverview: () => void;
+  /** The overview is not available here (inside a building): the 🗺 chip is dimmed and does nothing. */
+  overviewDisabled?: boolean;
   /** Rows under the 👥 / roster, in order: the touch chat-log toggle, the admin panel. */
   children?: ReactNode;
 }
@@ -80,7 +82,7 @@ interface HudTopProps {
  * the column hangs from (swapped when left-handed) and the button size. Also owns the Tab
  * key for the roster.
  */
-export function HudTop({ pose, onToggleView, onToggleOverview, children }: HudTopProps) {
+export function HudTop({ pose, onToggleView, onToggleOverview, overviewDisabled, children }: HudTopProps) {
   useRosterHotkey();
   const layout = useTouchHudLayout();
 
@@ -125,7 +127,7 @@ export function HudTop({ pose, onToggleView, onToggleOverview, children }: HudTo
         style={groupStyle}
       >
         <ViewToggle onToggle={onToggleView} />
-        <OverviewToggle onToggle={onToggleOverview} />
+        <OverviewToggle onToggle={onToggleOverview} disabled={overviewDisabled} />
         <SoundToggle />
         <MenuButton />
       </div>

@@ -9,6 +9,8 @@ interface HudButtonProps {
   pressed?: boolean;
   /** Draw the chip highlighted (`is-on`). Defaults to `pressed`; 🔊 is "pressed" by default but not highlighted. */
   highlight?: boolean;
+  /** The button does nothing here and is drawn dimmed (the 🗺 map inside a building). Its place in the row stays. */
+  disabled?: boolean;
   /** Extra classes after `cv-hud-btn` (position / shape variants). */
   className?: string;
   style?: CSSProperties;
@@ -31,6 +33,7 @@ export function HudButton({
   onClick,
   pressed,
   highlight = pressed,
+  disabled,
   className,
   style,
   children,
@@ -41,6 +44,7 @@ export function HudButton({
       className={"cv-hud-btn" + (highlight ? " is-on" : "") + (className ? " " + className : "")}
       aria-label={label}
       aria-pressed={pressed}
+      disabled={disabled}
       tabIndex={-1}
       style={style}
       onPointerDown={(e) => e.preventDefault()}

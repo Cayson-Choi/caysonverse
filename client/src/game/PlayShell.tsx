@@ -16,6 +16,7 @@ import { RenderStatsProbe } from "./RenderStatsProbe";
 import { QualityEffects, ShadowFloor, useQualityTier } from "./QualityEffects";
 import { QUALITY, exposureFor, skyBeforeToneMap } from "./quality";
 import { mapBounds, setActiveMap, type ActiveMap } from "./activeMap";
+import { overviewAllowed } from "./indoorCamera";
 import type { AreaGate } from "./areaFilter";
 import { LIGHTING, type LightingId } from "./sceneLighting";
 import type { PlayersRoom } from "./remoteSync";
@@ -296,7 +297,12 @@ export function PlayShell(p: PlayShellProps) {
       <Banner />
       <Chat />
       {isTouchDevice ? <EmojiFan /> : <EmojiPalette />}
-      <HudTop pose={pose} onToggleView={toggleViewUnlessMap} onToggleOverview={() => toggleOverview()}>
+      <HudTop
+        pose={pose}
+        onToggleView={toggleViewUnlessMap}
+        onToggleOverview={() => toggleOverview()}
+        overviewDisabled={!overviewAllowed(p.activeMap.cameraLimit)}
+      >
         {isTouchDevice && <ChatLog />}
         {isAdmin && p.adminPanel !== false && <AdminPanel />}
         {p.hudColumn}

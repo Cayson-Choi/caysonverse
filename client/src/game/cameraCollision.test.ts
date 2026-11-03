@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { AABB, CameraBox } from "@caysonverse/shared/collision";
+import { wallsAround } from "@caysonverse/shared/school/geometry";
 import { COUNSEL_GEOMETRY } from "@caysonverse/shared/school/counselMap";
 import { HUB_GEOMETRY_OPEN } from "@caysonverse/shared/school/hubMap";
 import { MAZE_WALLS } from "@caysonverse/shared/maze";
@@ -357,5 +358,68 @@ describe("seated arm shaping (row-0 seats: the pulled-in camera must still see t
       expect(v).toBeGreaterThanOrEqual(prev);
       prev = v;
     }
+  });
+});
+
+describe("ceiling slabs (a box with `minY`: it spans minY..height, not floor..height)", () => {
+  // A synthetic 9 x 12 m room: its four walls and a ceiling slab over the whole room, 3.3..3.5 m up (the shape the
+  // memorial hall's ceiling boxes take in Task 9).
+  const room: AABB = { minX: -4.5, maxX: 4.5, minZ: -6, maxZ: 6 };
+  const CEILING: CameraBox = { minX: -5, maxX: 5, minZ: -6.5, maxZ: 6.5, minY: 3.3, height: 3.5 };
+  const walls: CameraBox[] = wallsAround(room);
+  const boxes: CameraBox[] = [...walls, CEILING];
+  const HEAD = 1.4;
+
+  it("a segment from a head under the slab rising into it is a hit at the slab's underside (the head is not 'inside' it)", () => {
+    // Straight up from y = 1.4 to 6: the underside (y = 3.3) is at t = 1.9 / 4.6.
+    expect(segmentHitFraction(0, HEAD, 0, 0, 6, 0, boxes)).toBeCloseTo(1.9 / 4.6, 9);
+  });
+
+  it("a segment that stays under the slab is clear, and one that stays above it passes over", () => {
+    expect(segmentHitFraction(0, HEAD, 0, 0, 3.2, 3, [CEILING])).toBe(1);
+    expect(segmentHitFraction(0, 4, 0, 0, 6, 3, [CEILING])).toBe(1);
+  });
+
+  it("a segment beside the slab (outside its footprint) climbs past it", () => {
+    expect(segmentHitFraction(8, HEAD, 0, 8, 6, 0, [CEILING])).toBe(1);
+  });
+
+  it("a slab without `minY` still starts at the floor (no change for every other box)", () => {
+    const wall: CameraBox = { minX: -5, maxX: 5, minZ: -6.5, maxZ: 6.5, height: 3.5 };
+    // From outside the footprint at the same height the old way: a wall from the floor is hit at its face.
+    expect(segmentHitFraction(0, HEAD, 8, 0, HEAD, 0, [wall])).toBeCloseTo(1.5 / 8, 9);
+  });
+
+  it("the spring arm stops under the slab with the pad below it: 3.3 - 0.2 = 3.1 m, the hall's camera ceiling", () => {
+    const desired = 4.6; // straight up to y = 6
+    const arm = springArmDistance(0, HEAD, 0, 0, 6, 0, desired, boxes);
+    expect(HEAD + arm).toBeCloseTo(3.1, 9);
+    expect(HEAD + arm).toBeLessThan(CEILING.minY!);
+  });
+
+  it("whatever the pitch and zoom, the arm's end stays under the slab and inside the walls", () => {
+    let swept = 0;
+    for (let pitch = 0; pitch <= 1.2 + 1e-9; pitch += 0.1) {
+      for (let zoom = 2.5; zoom <= 18; zoom += 0.5) {
+        for (const yaw of [0, 1, 2, 3.1, -1.7]) {
+          const horiz = zoom * Math.cos(pitch);
+          const offY = zoom * Math.sin(pitch);
+          const cx = horiz * Math.sin(yaw);
+          const cz = horiz * Math.cos(yaw);
+          const reach = Math.hypot(horiz, offY);
+          const arm = springArmDistance(0, HEAD, 0, cx, HEAD + offY, cz, reach, boxes);
+          const k = arm / reach;
+          expect(HEAD + offY * k).toBeLessThanOrEqual(CEILING.minY! - SPRING.pad + 1e-9);
+          expect(Math.abs(cx * k)).toBeLessThanOrEqual(room.maxX + 1e-9);
+          expect(Math.abs(cz * k)).toBeLessThanOrEqual(room.maxZ + 1e-9);
+          swept++;
+        }
+      }
+    }
+    expect(swept).toBeGreaterThan(500);
+  });
+
+  it("a head AT or above the slab's underside is not trapped by it (an already-contained start is skipped)", () => {
+    expect(segmentHitFraction(0, 3.4, 0, 0, 3.4, 3, [CEILING])).toBe(1);
   });
 });

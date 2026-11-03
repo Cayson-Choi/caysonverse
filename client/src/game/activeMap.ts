@@ -16,6 +16,7 @@ import { hubGeometry, hubZoneLabel } from "@caysonverse/shared/school/hubMap";
 import { VILLAGE_LAYOUT, villageGeometry, type AreaId } from "@caysonverse/shared/village/villageLayout";
 import type { Bounds, MapGeometry } from "@caysonverse/shared/school/geometry";
 import { zoneLabelAt } from "./hud";
+import { HALL_CAMERA_LIMIT, type CameraLimit } from "./indoorCamera";
 
 export interface ActiveMap {
   geometry: MapGeometry;
@@ -27,6 +28,12 @@ export interface ActiveMap {
    * overview camera, the click-move clamp, the spawn fallback — reads `mapBounds(map)`, never `geometry.bounds`.
    */
   bounds?: Bounds;
+  /**
+   * How far the third-person camera may go here — set by a place with a ROOF (the memorial hall's interior), absent
+   * everywhere else (the open village, the legacy world, the hub: no clamp). The camera stays under the ceiling
+   * (`maxY`, `maxDistance`), and the top-down overview is refused where `overview` is false (indoorCamera.ts).
+   */
+  cameraLimit?: CameraLimit;
   /** HUD room name at a position ("" outside every named place). */
   zoneLabel(x: number, z: number): string;
   /**
@@ -65,6 +72,7 @@ export const VILLAGE_ACTIVE_MAP: ActiveMap = Object.freeze({
 export const HALL_ACTIVE_MAP: ActiveMap = Object.freeze({
   geometry: villageGeometry,
   bounds: VILLAGE_LAYOUT.areas.hall,
+  cameraLimit: HALL_CAMERA_LIMIT, // a roof: the camera stays under the ceiling, no overview
   zoneLabel: () => "추모관",
 });
 

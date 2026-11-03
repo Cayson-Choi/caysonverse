@@ -1,11 +1,15 @@
 import { describe, it, expect } from "vitest";
 import { ZONES } from "@caysonverse/shared/worldMap";
+import { HALL_ACTIVE_MAP, LEGACY_ACTIVE_MAP, VILLAGE_ACTIVE_MAP, hubActiveMap } from "./activeMap";
+import { HALL_CAMERA_LIMIT } from "./indoorCamera";
 import {
+  MAZE_CAMERA_LIMIT,
   MAZE_CAM_MAX_DISTANCE,
   MAZE_CAM_MAX_Y,
   MAZE_CAP_ENGAGE_SEC,
   isInMaze,
   stepMazeCapEngage,
+  cameraLimitAt,
   cappedFollowDistance,
   cappedCameraY,
 } from "./mazeCamera";
@@ -79,5 +83,29 @@ describe("mazeCamera — camera-height cap", () => {
   it("leaves a low camera untouched and lerps a high one", () => {
     expect(cappedCameraY(2, 1)).toBe(2);
     expect(cappedCameraY(10, 0.5)).toBeCloseTo((10 + MAZE_CAM_MAX_Y) / 2, 6);
+  });
+});
+
+describe("mazeCamera — which limit is in force (cameraLimitAt)", () => {
+  const inMaze = { x: (ZONES.maze.minX + ZONES.maze.maxX) / 2, z: 0 };
+
+  it("in the legacy world the maze's cap applies inside the maze zone and nowhere else", () => {
+    expect(cameraLimitAt(LEGACY_ACTIVE_MAP, inMaze.x, inMaze.z)).toBe(MAZE_CAMERA_LIMIT);
+    expect(cameraLimitAt(LEGACY_ACTIVE_MAP, -15, 0)).toBeUndefined();
+    expect(cameraLimitAt(LEGACY_ACTIVE_MAP, 15, 0)).toBeUndefined();
+  });
+
+  it("a building's own limit wins wherever the player is", () => {
+    expect(cameraLimitAt(HALL_ACTIVE_MAP, 300, 3.6)).toBe(HALL_CAMERA_LIMIT);
+  });
+
+  it("the open village is never capped, even on the ground that overlaps the maze zone's rectangle", () => {
+    expect(cameraLimitAt(VILLAGE_ACTIVE_MAP, inMaze.x, inMaze.z)).toBeUndefined();
+    expect(cameraLimitAt(VILLAGE_ACTIVE_MAP, -46, -8)).toBeUndefined();
+  });
+
+  it("the hub has no maze, so no cap", () => {
+    expect(cameraLimitAt(hubActiveMap(true), inMaze.x, inMaze.z)).toBeUndefined();
+    expect(cameraLimitAt(hubActiveMap(false), 0, 0)).toBeUndefined();
   });
 });

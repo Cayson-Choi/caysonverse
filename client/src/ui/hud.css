@@ -46,6 +46,17 @@
   border-color: rgba(170, 150, 255, 0.7);
 }
 
+/* Unavailable here (the 🗺 map inside a building): the chip stays where it is, dimmed, and does nothing. */
+.cv-hud-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.cv-hud-btn:disabled:hover {
+  background: rgba(18, 14, 36, 0.72);
+  border-color: rgba(150, 130, 220, 0.35);
+}
+
 /* Muted 🔇: a dimmed chip (the glyph is the main signal). */
 .cv-hud-btn.is-muted {
   color: rgba(210, 202, 240, 0.55);

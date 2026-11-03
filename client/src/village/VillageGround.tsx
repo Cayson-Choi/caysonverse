@@ -33,6 +33,7 @@ const COLOUR = {
   water: "#6FB8E8",
   bridge: "#9A7B55",
   room: "#E9E1D2",
+  ceiling: "#F2ECE0",
   doorPad: "#6D70F0",
 } as const;
 
@@ -167,12 +168,20 @@ function VillageGreybox() {
 }
 
 function HallRoom() {
-  const room = layout.memorial.interior.room;
+  const { room, ceilingHeight } = layout.memorial.interior;
+  const cx = (room.minX + room.maxX) / 2;
+  const cz = (room.minZ + room.maxZ) / 2;
   return (
     <group>
-      <Flat cx={(room.minX + room.maxX) / 2} cz={(room.minZ + room.maxZ) / 2} sx={room.maxX - room.minX} sz={room.maxZ - room.minZ} y={-0.01} color={COLOUR.room} />
+      <Flat cx={cx} cz={cz} sx={room.maxX - room.minX} sz={room.maxZ - room.minZ} y={-0.01} color={COLOUR.room} />
       <DoorPad pad={layout.memorial.interior.doorPad} />
       <MapBoxes geometry={HALL_DRAW} />
+      {/* The ceiling (Task 5): the roof seen from inside. The camera is held under it (indoorCamera.ts), so the
+          player never sees the sky or the village through it. A plain slab until Task 9 dresses the room. */}
+      <mesh position={[cx, ceilingHeight + 0.05, cz]}>
+        <boxGeometry args={[room.maxX - room.minX + 1, 0.1, room.maxZ - room.minZ + 1]} />
+        <meshStandardMaterial color={COLOUR.ceiling} emissive={COLOUR.ceiling} emissiveIntensity={0.35} roughness={1} />
+      </mesh>
     </group>
   );
 }

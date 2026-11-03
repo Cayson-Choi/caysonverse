@@ -14,6 +14,7 @@ import {
   stepOvBlend,
   toggleViewMode,
   toggleOverview,
+  dropOverview,
   requestRecenter,
   cancelOrbitGoal,
 } from "./viewState";
@@ -30,6 +31,7 @@ import {
   CAMERA_LOOK_LIFT,
   ZOOM_BAND,
   pinchZoomDelta,
+  recenterYaw,
   smoothToward,
   stepFollow,
   stepKeyYaw,
@@ -46,12 +48,15 @@ import {
   clearClickTarget,
 } from "./clickMove";
 import { aspectDistanceScale } from "./aspectFraming";
+import { MAZE_CAMERA_LIMIT, cameraLimitAt, stepMazeCapEngage } from "./mazeCamera";
 import {
-  isInMaze,
-  stepMazeCapEngage,
-  cappedFollowDistance,
-  cappedCameraY,
-} from "./mazeCamera";
+  indoorCameraClamp,
+  limitedDistance,
+  limitsDiffer,
+  overviewAllowed,
+  type CameraLimit,
+  type Vec3,
+} from "./indoorCamera";
 import {
   ARM_FREE,
   SEAT_ARM,
@@ -61,7 +66,7 @@ import {
   stepArmLimit,
 } from "./cameraCollision";
 import { cameraProbe } from "./cameraProbe";
-import { activeBounds } from "./activeMap";
+import { activeBounds, getActiveMap } from "./activeMap";
 import { getLocalLift } from "./jump";
 import { useSettingsStore } from "../stores/settingsStore";
 import type { Orbit, Pose, SeatState } from "./types";
@@ -91,6 +96,15 @@ const MAX_KEY_TURN_DT = 0.1;
  * overview inside the maze" feature would flip to re-apply the cap there.
  */
 export const OVERVIEW_ALLOWED_IN_MAZE = true;
+
+/**
+ * Scratch points for the camera limit (indoorCamera.ts), made once and rewritten every frame — the clamp
+ * allocates nothing. `wantedSpot` is where the camera would sit with no limit, `headSpot` the player's head,
+ * `limitedSpot` what the limit leaves of it.
+ */
+const wantedSpot: Vec3 = { x: 0, y: 0, z: 0 };
+const headSpot: Vec3 = { x: 0, y: 0, z: 0 };
+const limitedSpot: Vec3 = { x: 0, y: 0, z: 0 };
 
 function clamp(value: number, min: number, max: number): number {
   return value < min ? min : value > max ? max : value;
@@ -151,9 +165,16 @@ function spread(pointers: Map<number, { x: number; y: number }>): number {
 export function CameraRig({ pose, orbit, seat, fogRange = LEGACY_FOG }: CameraRigProps) {
   const camera = useThree((s) => s.camera);
   const gl = useThree((s) => s.gl);
-  // Maze anti-peek cap engagement (0 = off, 1 = fully capped). Lerped in useFrame
-  // so entering/leaving the maze eases the cap in/out with no snap. Ref, not state.
-  const capEngage = useRef(0);
+  // Camera-limit engagement (0 = off, 1 = fully limited): the maze's anti-peek cap, or a building's ceiling limit.
+  // Lerped in useFrame so entering/leaving the maze eases the cap in/out with no snap; a building's limit is
+  // engaged at once (the door's curtain hides the cut). A scene that mounts inside a building starts engaged.
+  // Ref, not state.
+  const capEngage = useRef(getActiveMap().cameraLimit ? 1 : 0);
+  // The limit capEngage is blending: the building's, or the maze's. Kept after the player leaves the maze, so the
+  // cap eases OUT with the same numbers it eased in with.
+  const limitRef = useRef<CameraLimit>(getActiveMap().cameraLimit ?? MAZE_CAMERA_LIMIT);
+  // The map's camera limit as of the last frame: a different one is a door into or out of a building.
+  const lastAreaLimit = useRef(getActiveMap().cameraLimit);
   // Live whole-map fit height (aspect-dependent) — recomputed each frame, read by
   // the overview wheel/pinch handlers for the zoom ceiling. Ref, not state.
   const fitHeight = useRef(0);
@@ -415,6 +436,25 @@ export function CameraRig({ pose, orbit, seat, fogRange = LEGACY_FOG }: CameraRi
   }, [gl, orbit, camera, pose, seat]);
 
   useFrame((state, delta) => {
+    // ── A door into or out of a building (케이슨 마을, indoorCamera.ts) ── the player was just put somewhere else, so
+    // the camera does not glide there (it would fly through walls, or over a roof): it is re-seated at once at its
+    // limited spot behind the player. The follow point, the zoom glide and the spring arm start fresh, the limit is
+    // fully engaged (or released), and the view turns to look the way the player faces. The door's curtain covers it.
+    const areaLimit = getActiveMap().cameraLimit;
+    if (limitsDiffer(lastAreaLimit.current, areaLimit)) {
+      lastAreaLimit.current = areaLimit;
+      follow.current.x = pose.x;
+      follow.current.z = pose.z;
+      renderDist.current = orbit.distance;
+      armLimit.current = ARM_FREE;
+      capEngage.current = areaLimit ? 1 : 0;
+      orbit.yaw = recenterYaw(pose.yaw);
+      viewState.fpYaw = orbit.yaw; // the same view in first person (as when a seat turns it)
+      cancelOrbitGoal();
+    }
+    // No overview where the map says so (inside a building): an open one is dropped at once, not eased out.
+    if (!overviewAllowed(areaLimit) && (viewState.mode === "ov" || viewState.ovBlend > 0)) dropOverview();
+
     // ── Who turns the view? Only the player (drag, Z / C) and an orbit goal. ──
     // Z / C turn the active view while held — the TP orbit, or the FP look yaw — but
     // never while a text field owns the keyboard (typing "zc" must not spin the
@@ -477,18 +517,33 @@ export function CameraRig({ pose, orbit, seat, fogRange = LEGACY_FOG }: CameraRi
     lastFrameMode.current = viewState.mode;
 
     // ── Third-person pose ── `orbit.distance` stays the user's zoom intent; the
-    // portrait pull-back and the maze cap apply ONLY here, so they never touch the
-    // FP eye. Maze cap: ease engagement toward 1 inside the zone, then clamp both
-    // the effective distance and the final height so no pitch/aspect lifts the
-    // camera over the walls.
-    const engage = stepMazeCapEngage(capEngage.current, isInMaze(pose.x, pose.z), delta);
+    // portrait pull-back and the camera limit apply ONLY here, so they never touch the
+    // FP eye. The limit is a building's ceiling limit (the active map's) or, in the legacy
+    // world, the maze's anti-peek cap: ease engagement toward 1 inside, then clamp both
+    // the effective distance and the final height (indoorCameraClamp) so no pitch/aspect
+    // lifts the camera over the walls or through the roof.
+    const limitNow = cameraLimitAt(getActiveMap(), pose.x, pose.z);
+    if (limitNow) limitRef.current = limitNow;
+    const engage = stepMazeCapEngage(capEngage.current, limitNow !== undefined, delta);
     capEngage.current = engage;
-    const distance = cappedFollowDistance(renderDist.current * aspectDistanceScale(aspect), engage);
-    const horiz = distance * Math.cos(orbit.pitch);
-    const height = distance * Math.sin(orbit.pitch);
-    let tpX = followX + horiz * Math.sin(orbit.yaw);
-    let tpY = cappedCameraY(HEAD_HEIGHT + height, engage);
-    let tpZ = followZ + horiz * Math.cos(orbit.yaw);
+    const wantedDistance = renderDist.current * aspectDistanceScale(aspect);
+    const distance = limitedDistance(wantedDistance, limitRef.current, engage);
+    const wantedHoriz = wantedDistance * Math.cos(orbit.pitch);
+    let tpX = followX + wantedHoriz * Math.sin(orbit.yaw);
+    let tpY = HEAD_HEIGHT + wantedDistance * Math.sin(orbit.pitch);
+    let tpZ = followZ + wantedHoriz * Math.cos(orbit.yaw);
+    if (engage > 0) {
+      wantedSpot.x = tpX;
+      wantedSpot.y = tpY;
+      wantedSpot.z = tpZ;
+      headSpot.x = followX;
+      headSpot.y = HEAD_HEIGHT;
+      headSpot.z = followZ;
+      indoorCameraClamp(wantedSpot, headSpot, limitRef.current, engage, limitedSpot);
+      tpX = limitedSpot.x;
+      tpY = limitedSpot.y;
+      tpZ = limitedSpot.z;
+    }
 
     // Spring arm: cast head → wanted camera spot against the walls and, when one is
     // in the way, shorten the arm (scale the offset from the head) to just in front of

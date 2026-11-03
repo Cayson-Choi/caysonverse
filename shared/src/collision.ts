@@ -25,9 +25,14 @@ export interface AABB {
  * A box the third-person camera must not see through: an `AABB` plus how tall it stands (m). A box without
  * `height` is as tall as a wall (the camera's default); a tall prop (a locker bank, a bookcase) states its own,
  * so the camera can look over what is lower than the camera and not through what is higher.
+ *
+ * `minY` lifts the bottom: the box then spans `minY..height` instead of `0..height`. That is a CEILING slab (the
+ * roof of a building seen from inside): a camera under it is stopped short of the underside, so the view never
+ * pokes through the roof. Absent (every wall and prop) the box starts at the floor, as before.
  */
 export interface CameraBox extends AABB {
   height?: number;
+  minY?: number;
 }
 
 /**
