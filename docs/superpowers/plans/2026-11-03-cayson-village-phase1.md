@@ -215,6 +215,13 @@
 **Interfaces:**
 - Consumes: the `LM_*` lightmap recipe and Draco path from `hubModelPrep.ts`, and the lazy `useGLTF` pattern from `HubModel.tsx`.
 
+**Also in Task 7 (from the Task 6 review):**
+- **Far plane:** `village_sky` (radius 1,400 m) and the backdrop (±1,100 m) exceed `CAMERA_FAR` 200 (`client/src/game/constants.ts`) and the fog range of 35..100. Use a per-scene far plane of about 1,600 for the village, or draw the dome and backdrop camera-relative at ≤190 m with `depthWrite` off. Test that the dome is never clipped.
+- **Loading:** `EXT_mesh_gpu_instancing` must load; the leaves use MASK with double sides; `M_water`/`M_waterfall` use BLEND; `M_sky` has no fog and `toneMapped: false`.
+- **Look:**
+  - `M_water` uses a real water look at runtime: a normal-map ripple, sky reflection (environment) and Fresnel. Flat turquoise is not acceptable.
+  - Bring exposure, fog and tone mapping to the luma bar.
+
 - [ ] **Step 1: Failing tests.** The prep hides `col__*`, applies the lightmap to `LM_*`, makes the plot outline material emissive, and keeps backdrop materials fog-free. The Task 1 invariants pass with the generated colliders.
 - [ ] **Step 2: FAIL. Step 3: Implement. Step 4: PASS**, then `node e2e/luma-check.mjs` on 4 in-game frames (both tiers) → PASS.
 - [ ] **Step 5: Commit** `feat: 케이슨 마을 모델을 게임에 — 라이트맵·충돌 상자 (케이슨 마을 1단계 Task 7)`.
