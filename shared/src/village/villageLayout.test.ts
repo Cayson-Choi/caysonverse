@@ -71,7 +71,7 @@ describe("layout values (the brief, verbatim)", () => {
     expect(L.plaza.centre).toEqual({ x: 0, z: 0 });
     expect(L.plaza.fountain).toEqual({ centre: { x: 0, z: 0 }, basinDiameter: 12, collider: { x: 9, z: 9 } });
     expect(L.plaza.paving).toEqual({ centre: { x: 0, z: 0 }, radius: 17 });
-    expect(L.plaza.zelkova).toEqual({ centre: { x: -12, z: -10 }, collider: { x: 5, z: 5 } });
+    expect(L.plaza.zelkova).toEqual({ centre: { x: -10, z: -8 }, collider: { x: 5, z: 5 } });
     // The brief's centre tree trunk and 7 x 7 centre deck are gone.
     expect(L.plaza).not.toHaveProperty("trunk");
     expect(L.plaza).not.toHaveProperty("deck");
@@ -117,7 +117,9 @@ describe("layout values (the brief, verbatim)", () => {
     expect(inn.ceilingHeight).toBe(3.4);
     expect(inn.doorPad).toEqual({ centre: { x: 300, z: 5.2 }, radius: 1.4 });
     expect(inn.spawn.x).toBe(300);
-    expect(inn.spawn.z).toBe(4.2);
+    expect(inn.spawn.z).toBe(3.6);
+    // A new arrival is not standing inside the inside door pad.
+    expect(Math.hypot(inn.spawn.x - inn.doorPad.centre.x, inn.spawn.z - inn.doorPad.centre.z)).toBeGreaterThan(inn.doorPad.radius);
     expect(inn.spawn.yaw).toBeCloseTo(Math.PI, 12); // facing -z
   });
 
@@ -220,6 +222,10 @@ describe("layout sanity (nothing is built on the water, the road or each other)"
     expect(distFromPlaza).toBeLessThan(L.plaza.paving.radius);
     expect(overlaps(boxAt(f.centre, f.collider), boxAt(z.centre, z.collider))).toBe(false);
     expect(distFromPlaza - z.collider.x / 2).toBeGreaterThan(f.basinDiameter / 2); // the round deck clears the basin
+    // ...and the deck's farthest corner stays inside the ring road's inner edge (17.5 m): the deck does not overlap the road.
+    const deck = boxAt(z.centre, z.collider);
+    const farCorner = Math.hypot(Math.max(Math.abs(deck.minX), Math.abs(deck.maxX)), Math.max(Math.abs(deck.minZ), Math.abs(deck.maxZ)));
+    expect(farCorner).toBeLessThan(ringInner);
   });
 });
 
@@ -237,10 +243,10 @@ describe("village colliders are built from the layout", () => {
     expect(colliders).toHaveLength(13);
   });
 
-  it("plaza colliders: 9 x 9 fountain centred on the plaza, 5 x 5 zelkova deck at (-12, -10)", () => {
+  it("plaza colliders: 9 x 9 fountain centred on the plaza, 5 x 5 zelkova deck at (-10, -8)", () => {
     const box = (id: string) => colliders.find((c) => c.id === id)!.box;
     expect(box("plaza_fountain")).toEqual({ minX: -4.5, maxX: 4.5, minZ: -4.5, maxZ: 4.5 });
-    expect(box("plaza_zelkova")).toEqual({ minX: -14.5, maxX: -9.5, minZ: -12.5, maxZ: -7.5 });
+    expect(box("plaza_zelkova")).toEqual({ minX: -12.5, maxX: -7.5, minZ: -10.5, maxZ: -5.5 });
   });
 
   it("the stream is walled off along its full length except the bridge gap", () => {
@@ -419,7 +425,7 @@ describe("village reachability (0.5 m grid flood fill over isBlocked)", () => {
     expect(r.some((p) => inside(z, p))).toBe(false);
   });
 
-  it("the ring road can be walked all the way round along its centre line (the zelkova's deck pokes into its inner edge)", () => {
+  it("the ring road can be walked all the way round along its centre line (the zelkova's deck stays inside its inner edge)", () => {
     const { centre: c, radius } = L.ringRoad;
     for (let deg = 0; deg < 360; deg += 5) {
       const a = (deg * Math.PI) / 180;
@@ -589,8 +595,8 @@ describe("export for the Blender scripts", () => {
     });
     expect(out.plaza.paving).toEqual({ centre: { x: 0, z: 0 }, radius: 17 });
     expect(out.plaza.zelkova).toEqual({
-      centre: { x: -12, z: -10 },
-      collider: { size: { x: 5, z: 5 }, bounds: { minX: -14.5, maxX: -9.5, minZ: -12.5, maxZ: -7.5 } },
+      centre: { x: -10, z: -8 },
+      collider: { size: { x: 5, z: 5 }, bounds: { minX: -12.5, maxX: -7.5, minZ: -10.5, maxZ: -5.5 } },
     });
     expect(out.plaza).not.toHaveProperty("trunk");
     expect(out.plaza).not.toHaveProperty("deck");

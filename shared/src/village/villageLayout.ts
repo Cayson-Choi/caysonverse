@@ -156,7 +156,7 @@ export const VILLAGE_LAYOUT: VillageLayout = {
     centre: { x: 0, z: 0 },
     fountain: { centre: { x: 0, z: 0 }, basinDiameter: 12, collider: { x: 9, z: 9 } },
     paving: { centre: { x: 0, z: 0 }, radius: 17 },
-    zelkova: { centre: { x: -12, z: -10 }, collider: { x: 5, z: 5 } },
+    zelkova: { centre: { x: -10, z: -8 }, collider: { x: 5, z: 5 } },
   },
   ringRoad: { centre: { x: 0, z: 0 }, radius: 20, width: 5 },
   stream: { z: 30, minX: -60, maxX: 60, width: 6, bridgeGap: { minX: -2, maxX: 2 } },
@@ -183,7 +183,8 @@ export const VILLAGE_LAYOUT: VillageLayout = {
       room: HALL_ROOM,
       ceilingHeight: 3.4,
       doorPad: { centre: { x: 300, z: 5.2 }, radius: 1.4 },
-      spawn: { x: 300, z: 4.2, yaw: FACING_NORTH },
+      // 0.6 m clear of the 1.4 m door pad's edge (pad centre z = 5.2, spawn z = 3.6, distance 1.6), so a new arrival is not standing on the door.
+      spawn: { x: 300, z: 3.6, yaw: FACING_NORTH },
     },
   },
   sceneryHouses: [
