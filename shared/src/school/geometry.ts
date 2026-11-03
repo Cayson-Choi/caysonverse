@@ -19,7 +19,7 @@ export interface Bounds {
   maxZ: number;
 }
 
-export type GeometryId = "legacy" | "hub-open" | "hub-gated" | "counsel";
+export type GeometryId = "legacy" | "hub-open" | "hub-gated" | "counsel" | "village";
 
 export interface MapGeometry {
   id: GeometryId;
