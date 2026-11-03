@@ -65,8 +65,8 @@
 **Interfaces:**
 - Produces: the type `VillageLayout` and the constant `VILLAGE_LAYOUT` with these exact values:
   - `walkBounds`: x −60..60, z −60..60
-  - `spawn`: (0, 52), facing north (−z), jitter 2.5
-  - `plaza`: centre (0, 0); tree trunk collider 1.6 × 1.6; round deck collider 7 × 7 centred
+  - `spawn` (owner 2026-11-03, start at the central fountain plaza): (0, 9), facing north toward the fountain (−z), jitter 2.5
+  - `plaza` (owner 2026-11-03, a big fountain plaza at the centre): `fountain` centre (0, 0), round basin of 12 m outer diameter, collider 9 × 9; `paving` disk of radius 17 (visual only); `zelkova` with a round deck at (−12, −10), collider 5 × 5
   - `ringRoad`: radius 20, width 5 (visual only)
   - `stream`: runs along z = 30 from x = −60 to 60, water width 6, bank colliders on both sides except the bridge gap x −2..2
   - `bridge`: x −2..2, z 27..33, walkable
@@ -122,6 +122,14 @@
 - Modify: `client/src/ui/entryForm.ts` (`entryModeFromUrl` adds `"escape"` for `?experience=escape`; the default mode becomes `"village"`), `client/src/ui/EntryScreen.tsx` (in village mode, 입장하기 joins the village directly without opening the destination sheet), `client/src/stores/appStore.ts` (`Screen` adds `"village"`, plus `enterVillage`), `client/src/App.tsx`, `client/src/net/connection.ts` (`joinVillage` uses `joinOrCreate(VILLAGE_ROOM)`; the room mode adds `"village"`), `client/src/net/resilience.ts` (mode `"village"`; the fresh rejoin uses `joinOrCreate`), the related tests (`entryForm.test.ts` and others)
 - Modify: `scripts/subset-builder-font.mjs` input text, if any new Korean title uses the Jua subset font. Re-run it.
 
+**Voice removal (owner 2026-11-03: "음성은 빼버려 음성이 너무 기계음 같아서 안좋아"):**
+- The builder's 목소리 section (남자/여자 목소리) is removed from `BuilderPanel` and `builderOptions`.
+- Chat is never read aloud. `chatVoice.ts` / `tts.ts` / `chatSync.ts` stop speaking, behind one flag, `CHAT_VOICE_ENABLED = false`.
+- The sound toggle no longer mentions voice.
+- The appearance field for voice stays in the schema (the server and old saves still send it) but is ignored.
+- Legacy-world NPC voices (`npcVoice.ts`) are out of scope; the world stays untouched.
+- Tests: the builder renders no 목소리 section, and an incoming chat line triggers no speech call.
+
 **Interfaces:**
 - Produces: `joinVillage(opts): Promise<Room<WorldState>>`, `useAppStore.enterVillage()`, screen `"village"`.
 - Consumes: Task 2's room name and join options.
@@ -170,7 +178,7 @@
 
 **Content (all positions from `art/village/layout.json`):**
 - Flat walkable ground: grass, dirt and concrete village lanes, the ring road (asphalt with worn edges).
-- Plaza: a big old zelkova (느티나무), a round wooden deck around it, a small stone water basin (물확), benches.
+- Plaza: a big round fountain at the centre: a stone basin 12 m across with a tiered centrepiece and water jets, plus wide stone paving (radius 17) and benches. At the edge, one big old zelkova (느티나무) with a round wooden deck.
 - Stone walls (돌담) along two lanes.
 - Stream: smooth granite rocks (너럭바위), water surface with subtle normal map, reeds, a flat wooden bridge with rails.
 - 정자: a traditional pavilion with a tiled roof and red-brown pillars.
