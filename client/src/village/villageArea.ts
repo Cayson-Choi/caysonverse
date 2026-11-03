@@ -50,6 +50,28 @@ export function resetLocalArea(): void {
   setLocalArea("village");
 }
 
+/** Counts the scenes that have seeded the area: a scene may only reset what it seeded itself. */
+let generation = 0;
+
+/**
+ * A scene mounting seeds the area from its room's own state (`readSelfArea`): a reconnect into the hall must start
+ * in the hall. Returns the scene's token for `releaseLocalArea`. Call it from a layout effect, never during render
+ * (it notifies, and a render must not update other components).
+ */
+export function seedLocalArea(next: AreaId): number {
+  setLocalArea(next);
+  return ++generation;
+}
+
+/**
+ * The scene that took `token` is going away: back to the village — unless a newer scene has seeded since. A
+ * reconnect remounts the scene: the new one seeds the area it finds (the hall), and the old one's unmount must not
+ * throw that away (a one-render "village" blip inside the hall).
+ */
+export function releaseLocalArea(token: number): void {
+  if (token === generation) resetLocalArea();
+}
+
 /** Our own `area` in `room`'s synced state; "village" when our player is not in it yet. */
 export function readSelfArea(room: PlayersRoom | null): AreaId {
   return normalizeArea(room?.state?.players?.get?.(room.sessionId)?.area);

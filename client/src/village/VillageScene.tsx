@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 import { PlayShell } from "../game/PlayShell";
 import { villageActiveMap } from "../game/activeMap";
 import { clearClickTarget } from "../game/clickMove";
@@ -10,7 +10,7 @@ import type { Identity } from "../stores/appStore";
 import { DoorFade } from "./DoorFade";
 import { doorFade } from "./doorFadeModel";
 import { VillageGround } from "./VillageGround";
-import { areaGate, localArea, readSelfArea, resetLocalArea, setLocalArea, useLocalArea } from "./villageArea";
+import { areaGate, localArea, readSelfArea, releaseLocalArea, seedLocalArea, useLocalArea } from "./villageArea";
 import { villageTargets } from "./villageTargets";
 
 /**
@@ -65,15 +65,25 @@ function VillageDoors({ pose }: { pose: Pose }) {
 }
 
 export function VillageScene({ identity }: { identity: Identity }) {
-  // The village connection (read once per mount: a reconnect remounts this scene). The local area is seeded
-  // from the room's own state, so a reconnect into the hall starts in the hall and a fresh join in the village.
-  const [room] = useState(() => {
+  // The village connection and the area its state puts us in (read once per mount: a reconnect remounts this
+  // scene). The area is seeded from the room's own state, so a reconnect into the hall starts in the hall and a
+  // fresh join in the village. Reading the room during render is pure; PUBLISHING the area (it notifies the
+  // components that watch it) happens in a layout effect, before paint, with a token so that the unmount of an
+  // older scene (a reconnect remounts) cannot reset what this one has seeded.
+  const [boot] = useState(() => {
     const r = getRoom() as unknown as PlayersRoom | null;
-    setLocalArea(readSelfArea(r));
-    return r;
+    return { room: r, area: readSelfArea(r) };
   });
-  const area = useLocalArea();
-  useEffect(() => () => resetLocalArea(), []);
+  const { room } = boot;
+  const [published, setPublished] = useState(false);
+  useLayoutEffect(() => {
+    const token = seedLocalArea(boot.area);
+    setPublished(true);
+    return () => releaseLocalArea(token);
+  }, [boot]);
+  const live = useLocalArea();
+  // Until the seed is published the store may still hold the previous scene's area: draw from the seed itself.
+  const area = published ? live : boot.area;
   if (!room) return null;
 
   return (

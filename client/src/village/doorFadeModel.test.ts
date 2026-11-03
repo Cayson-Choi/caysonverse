@@ -1,5 +1,14 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
-import { CLOSE_GRACE_MS, FADE_IN_MS, FADE_OUT_MS, FAIL_SAFE_MS, createDoorFade, type FadeClock } from "./doorFadeModel";
+import {
+  CLOSE_GRACE_MS,
+  DOOR_COOLDOWN_MS,
+  FADE_IN_MS,
+  FADE_OUT_MS,
+  FAIL_SAFE_MS,
+  createDoorFade,
+  type FadeClock,
+} from "./doorFadeModel";
 
 /** A clock the test winds by hand: timers fire in order when the time reaches them. */
 function manualClock(): FadeClock & { advance(ms: number): void } {
@@ -158,5 +167,116 @@ describe("doorFade — the curtain over a door", () => {
     off();
     fade.begin(sends());
     expect(seen).toEqual([true, false]);
+  });
+});
+
+describe("doorFade — the cool-down after a request (the server allows one door use per second)", () => {
+  it("is the server's DOOR_RATE window, read from the server's own file", () => {
+    const src = readFileSync(new URL("../../../server/src/rooms/villageDoor.ts", import.meta.url), "utf8");
+    const windowMs = Number(src.match(/export const DOOR_RATE = \{[^}]*windowMs: (\d+)/)?.[1]);
+    expect(windowMs).toBeGreaterThan(0);
+    expect(DOOR_COOLDOWN_MS).toBe(windowMs);
+  });
+
+  /** Press, let the request go out, let the server answer: the cover is open again. Returns when the request was sent. */
+  function useOnce(clock: ReturnType<typeof manualClock>, fade: ReturnType<typeof createDoorFade>): number {
+    fade.begin(sends());
+    clock.advance(FADE_IN_MS);
+    fade.closed();
+    const sentAt = clock.now();
+    clock.advance(80);
+    fade.arrived();
+    clock.advance(0);
+    expect(fade.covered()).toBe(false);
+    return sentAt;
+  }
+
+  it("a press inside the second after the last request is ignored: no curtain, nothing sent, no notice", () => {
+    const clock = manualClock();
+    const fade = createDoorFade(clock);
+    useOnce(clock, fade);
+    let changes = 0;
+    fade.subscribe(() => changes++);
+    const again = sends();
+    clock.advance(300);
+    fade.begin(again);
+    expect(fade.covered()).toBe(false);
+    clock.advance(FAIL_SAFE_MS * 2);
+    expect(again).not.toHaveBeenCalled();
+    expect(changes).toBe(0);
+  });
+
+  it("a press once the second has passed (counted from the SEND) works again", () => {
+    const clock = manualClock();
+    const fade = createDoorFade(clock);
+    const sentAt = useOnce(clock, fade);
+    clock.advance(sentAt + DOOR_COOLDOWN_MS - 1 - clock.now());
+    fade.begin(sends());
+    expect(fade.covered()).toBe(false); // 1 ms early
+    clock.advance(1);
+    const ok = sends();
+    fade.begin(ok);
+    expect(fade.covered()).toBe(true);
+    clock.advance(FADE_IN_MS);
+    fade.closed();
+    expect(ok).toHaveBeenCalledTimes(1);
+  });
+
+  it("a request that did not go out (nothing to ask) starts no cool-down", () => {
+    const clock = manualClock();
+    const fade = createDoorFade(clock);
+    fade.begin(() => false);
+    clock.advance(FADE_IN_MS);
+    fade.closed();
+    expect(fade.covered()).toBe(false);
+    fade.begin(sends()); // at once
+    expect(fade.covered()).toBe(true);
+  });
+
+  it("reset (a new scene, a new connection) forgets the cool-down", () => {
+    const clock = manualClock();
+    const fade = createDoorFade(clock);
+    useOnce(clock, fade);
+    fade.reset();
+    fade.begin(sends());
+    expect(fade.covered()).toBe(true);
+  });
+});
+
+describe("doorFade — a request that throws cannot leave the screen black", () => {
+  it("the cover opens at once and the error still surfaces (closed() reported by the curtain)", () => {
+    const clock = manualClock();
+    const fade = createDoorFade(clock);
+    fade.begin(() => {
+      throw new Error("send failed");
+    });
+    clock.advance(FADE_IN_MS);
+    expect(fade.covered()).toBe(true);
+    expect(() => fade.closed()).toThrow("send failed");
+    expect(fade.covered()).toBe(false);
+    clock.advance(FAIL_SAFE_MS * 2); // and no timer is left to fire later
+    expect(fade.covered()).toBe(false);
+  });
+
+  it("the same when it is the grace timer that sends", () => {
+    const clock = manualClock();
+    const fade = createDoorFade(clock);
+    fade.begin(() => {
+      throw new Error("send failed");
+    });
+    expect(() => clock.advance(FADE_IN_MS + CLOSE_GRACE_MS)).toThrow("send failed");
+    expect(fade.covered()).toBe(false);
+  });
+
+  it("a throw is not a request sent: no cool-down, the next press works", () => {
+    const clock = manualClock();
+    const fade = createDoorFade(clock);
+    fade.begin(() => {
+      throw new Error("send failed");
+    });
+    clock.advance(FADE_IN_MS);
+    expect(() => fade.closed()).toThrow();
+    fade.begin(sends());
+    expect(fade.covered()).toBe(true);
   });
 });

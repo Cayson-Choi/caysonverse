@@ -1,3 +1,4 @@
+import { readdirSync, readFileSync } from "node:fs";
 import { afterEach, describe, expect, it } from "vitest";
 import { LEGACY_GEOMETRY } from "@caysonverse/shared/worldMap";
 import { HUB_GEOMETRY_GATED, HUB_GEOMETRY_OPEN, hubGeometry, hubZoneLabel } from "@caysonverse/shared/school/hubMap";
@@ -62,5 +63,25 @@ describe("activeMap (Task 15 — the map seam)", () => {
     expect(cameraBoxes()).toBe(HUB_GEOMETRY_GATED.cameraBoxes);
     setActiveMap(hubActiveMap(true));
     expect(cameraBoxes()).toBe(HUB_GEOMETRY_OPEN.cameraBoxes);
+  });
+});
+
+describe("the map's bounds are read through activeMap.ts only (케이슨 마을 Task 4 fix)", () => {
+  it("no scene or frame code outside activeMap.ts reads geometry.bounds: the village's geometry spans BOTH areas", () => {
+    // The village is one geometry reaching from the village to the hall 300 m away, so a clamp to `geometry.bounds`
+    // lets the body walk anywhere in between; `activeBounds()` / `mapBounds(map)` give the area the player is in.
+    const dirs = [new URL("./", import.meta.url), new URL("../village/", import.meta.url)];
+    const offenders: string[] = [];
+    for (const dir of dirs) {
+      for (const name of readdirSync(dir)) {
+        if (!/\.tsx?$/.test(name) || /\.test\./.test(name) || name === "activeMap.ts") continue;
+        if (/geometry\.bounds\b/.test(readFileSync(new URL(name, dir), "utf8"))) offenders.push(name);
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it("the guard does catch the old read", () => {
+    expect(/geometry\.bounds\b/.test("const bounds = getActiveMap().geometry.bounds;")).toBe(true);
   });
 });

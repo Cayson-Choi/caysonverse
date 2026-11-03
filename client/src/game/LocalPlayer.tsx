@@ -6,7 +6,7 @@ import type { Appearance } from "@caysonverse/shared/appearance";
 import { PLAYER_RADIUS, SEATS } from "@caysonverse/shared/worldMap";
 import { resolveCollision } from "@caysonverse/shared/collision";
 import { collectObstacles } from "./playerObstacles";
-import { getActiveMap } from "./activeMap";
+import { activeBounds } from "./activeMap";
 import { readIntent, worldDirection } from "./input";
 import type { Intent, MoveInput } from "./input";
 import { gaitClip, gaitFor, moveSpeed } from "./gait";
@@ -494,7 +494,7 @@ export function LocalPlayer({
         PLAYER_RADIUS,
         collectObstacles(pose.x, pose.z),
       );
-      const bounds = getActiveMap().geometry.bounds;
+      const bounds = activeBounds(); // the area the player is in (케이슨 마을: not the rectangle spanning both areas)
       pose.x = clamp(next.x, bounds.minX + PLAYER_RADIUS, bounds.maxX - PLAYER_RADIUS);
       pose.z = clamp(next.z, bounds.minZ + PLAYER_RADIUS, bounds.maxZ - PLAYER_RADIUS);
       if (!inFp) {
