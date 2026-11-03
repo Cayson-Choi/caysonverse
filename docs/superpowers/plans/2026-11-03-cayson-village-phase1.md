@@ -35,7 +35,7 @@
   - `memorial.glb` ≤ 6 MB, ≤ 200k triangles before instancing (cubby props are instanced at runtime, not baked into the GLB).
   - First entry into the village downloads ≤ 15 MB in total on a phone, character included.
   - Phone tier at 4× CPU throttle: mean frame ≤ 33 ms with 30 players in the village, and ≤ 33 ms in the hall.
-  - Brightness: `e2e/luma-check.mjs`, mean ≥ 0.45 and p5 ≥ 0.10 on scene frames.
+  - Brightness: `e2e/luma-check.mjs`, mean ≥ 0.45 and p5 ≥ 0.10 on daytime scene frames; night frames follow Task 7A's bar.
 - **Quiet hall:** inside the memorial hall, emoji and jump are refused server-side, and chat stays on.
 - **UI copy:** Korean, friendly "~요" tone, gentle and respectful in the memorial. No exclamation marks in memorial copy.
 - **Repo rules:**
@@ -218,6 +218,38 @@
 - [ ] **Step 1: Failing tests.** The prep hides `col__*`, applies the lightmap to `LM_*`, makes the plot outline material emissive, and keeps backdrop materials fog-free. The Task 1 invariants pass with the generated colliders.
 - [ ] **Step 2: FAIL. Step 3: Implement. Step 4: PASS**, then `node e2e/luma-check.mjs` on 4 in-game frames (both tiers) → PASS.
 - [ ] **Step 5: Commit** `feat: 케이슨 마을 모델을 게임에 — 라이트맵·충돌 상자 (케이슨 마을 1단계 Task 7)`.
+
+### Task 7A: Day and night on real Korean time (owner 2026-11-03)
+
+The owner's words: "시간에 따라서 해가 떴다가 지고 야간에는 가로등과 건물에 불이 켜지고" and "실제 한국 시간과 같게 해야지".
+
+**Files:**
+- Create: `shared/src/village/sunClock.ts` (+ test), `client/src/village/DayNight.tsx`, `client/src/village/dayNightBlend.ts` (+ test)
+- Create: `art/village/tools/bake_village.py --night` (night bake reusing the Task 6 script) → `client/public/models/village/village_lm_night.webp`
+- Modify: `client/src/village/villageModelPrep.ts` (two lightmaps, a blend uniform), `client/src/game/sceneLighting.ts` (the village lighting follows the clock), server join payload (`serverTimeMs`, so a client's wrong clock can't change the time of day)
+
+**Interfaces:**
+- Produces:
+  - `sunAt(utcMs: number): { elevationDeg: number; azimuthDeg: number }` for the village latitude/longitude 36.5° N, 127.8° E (central Korea), using a standard solar-position formula. The date matters, so sunrise and sunset move with the seasons. Times are evaluated in Asia/Seoul.
+  - `phaseAt(elevationDeg): { day: number; night: number }` gives the blend weights:
+    - day = 1 above +8°, night = 1 below −8°, with a smooth ramp between (dawn and dusk);
+    - golden-hour tint between −2° and +12°.
+- Behaviour:
+  - The sun light direction, sky colour, fog colour and exposure follow the clock, updated every 10 s with smooth easing.
+  - The baked lightmap blends between day and night.
+  - When night > 0.3, `M_lamp`, `M_window` and the fountain lights turn on (emissive, plus bloom on the high tier).
+  - Inside the memorial hall it is always warm indoor light; its windows show the outdoor sky for the current time.
+  - The time comes from the server: the client stores the offset to `serverTimeMs` and uses it.
+- Consumes: Task 6 materials (`M_lamp`, `M_window`, `light__*` empties) and Task 7 prep.
+
+- [ ] **Step 1: Failing tests.**
+  - `sunAt` matches published sunrise and sunset for Seoul on 2026-06-21 and 2026-12-21 within ±10 minutes (elevation crosses 0). Store the expected times in the test with their source.
+  - Midday elevation is higher in June than in December.
+  - The `phaseAt` ramps behave as specified.
+  - The blend weights are fed to the material.
+  - A client clock that is 3 h wrong still shows the server's time of day.
+- [ ] **Step 2: FAIL. Step 3:** Bake the night lightmap (moonlight, lamps and windows on) with the Task 6 script's night flag, and implement. **Step 4:** Tests + luma check: day frames pass the usual bar. Night frames get their own bar: mean ≥ 0.18 and lanes readable (p50 of the walkable area ≥ 0.15). Document it.
+- [ ] **Step 5: Commit** `feat: 케이슨 마을 낮과 밤 — 실제 한국 시간, 밤에는 가로등·창문 불빛 (케이슨 마을 1단계 Task 7A)`.
 
 ### Task 8: Memorial hall interior art
 
