@@ -87,9 +87,13 @@ function hubSpec(): SchoolSpec {
   };
 }
 
+/** Materials the village game code drives itself (never light-mapped): windows, lamps, water, the plot outlines. */
+export const VILLAGE_NON_LIGHTMAPPED = ["M_window", "M_lamp", "M_water", "M_glow_plot"] as const;
+
 /**
- * 케이슨 마을: every layout collider exists as its `col__<id>` box with the layout's exact rectangle (Task 7 generates
- * the game's colliders from these boxes), and the night-bake light points (`light__*` empties) are there.
+ * 케이슨 마을: every layout collider exists as its `col__<id>` box with the layout's exact rectangle and a height that
+ * matches its camera flag (Task 7 generates the game's colliders and camera boxes from these boxes), the night-bake light
+ * points (`light__*` empties) are there, and the materials the game drives itself exist and are not light-mapped.
  */
 function villageSpec(): SchoolSpec {
   const colliders = greyboxColliders(VILLAGE_LAYOUT);
@@ -102,7 +106,8 @@ function villageSpec(): SchoolSpec {
     ],
     placements: [],
     identityRotationPrefixes: [],
-    requiredBoxes: colliders.map((c) => ({ node: colliderNode(c.id), box: c.box })),
+    requiredBoxes: colliders.map((c) => ({ node: colliderNode(c.id), box: c.box, camera: c.camera })),
+    requiredMaterials: [...VILLAGE_NON_LIGHTMAPPED],
   };
 }
 

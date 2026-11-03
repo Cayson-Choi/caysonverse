@@ -4,7 +4,7 @@ caysonverse가 배포하는 그림·모델·글꼴·디코더의 출처와 라�
 
 규칙(방탈출 1단계 계획 전역 제약): 자산은 **직접 만든 것이거나 CC0**만 쓰고, 글꼴은 **OFL**, 코드 라이브러리는 **MIT/Apache-2.0**만 허용합니다. 외부 파일을 내려받기 전에는 파일명·출처·크기를 말하고 발주자 OK를 받습니다.
 
-확인일은 이 문서의 한 줄을 저장소 안 기록(위 두 `LICENSE.md`, 폰트 `OFL-Jua.txt`, 설치된 three 패키지의 `README.md`)과 맞춰 본 날입니다. 원본 사이트를 다시 열어 본 날이 아닙니다(ChatGPT 줄만 약관 원문을 직접 확인했습니다).
+확인일은 이 문서의 한 줄을 저장소 안 기록(위 두 `LICENSE.md`와 케이슨 마을의 `client/public/models/village/LICENSE.md`, 폰트 `OFL-Jua.txt`, 설치된 three 패키지의 `README.md`)과 맞춰 본 날입니다. 원본 사이트를 다시 열어 본 날이 아닙니다(ChatGPT 줄만 약관 원문을 직접 확인했습니다). 케이슨 마을의 Poly Haven 줄들은 2026-11-03에 Poly Haven API(https://api.polyhaven.com)로 자산 이름과 CC0를 확인하고 내려받은 날이며, 같은 날 `client/public/models/village/LICENSE.md`에도 적었습니다.
 
 ## 표
 
@@ -29,7 +29,7 @@ caysonverse가 배포하는 그림·모델·글꼴·디코더의 출처와 라�
 | Poly Haven `white_plaster_02` 텍스처(색) | Poly Haven, https://polyhaven.com/a/white_plaster_02 (API https://api.polyhaven.com) | CC0 1.0 Universal | `client/public/models/village/village.glb` 안의 텍스처: 집·추모관 벽 `T_render` | 2026-11-03 |
 | Poly Haven `wood_planks` 텍스처(색) | Poly Haven, https://polyhaven.com/a/wood_planks (API https://api.polyhaven.com) | CC0 1.0 Universal | `client/public/models/village/village.glb` 안의 텍스처: 나무 `T_wood` (데크·다리·벤치·카페·추모관 루버) | 2026-11-03 |
 | Poly Haven `roof_slates_02` 텍스처(색) | Poly Haven, https://polyhaven.com/a/roof_slates_02 (API https://api.polyhaven.com) | CC0 1.0 Universal | `client/public/models/village/village.glb` 안의 텍스처: 지붕 `T_roof` | 2026-11-03 |
-| Poly Haven `granite_wall` 텍스처(색) | Poly Haven, https://polyhaven.com/a/granite_wall (API https://api.polyhaven.com) | CC0 1.0 Universal | `client/public/models/village/village.glb` 안의 텍스처: 돌담 `T_wall` | 2026-11-03 |
+| Poly Haven `stone_wall` 텍스처(색) | Poly Haven, https://polyhaven.com/a/stone_wall (API https://api.polyhaven.com) | CC0 1.0 Universal | `client/public/models/village/village.glb` 안의 텍스처: 돌담 `T_wall` (둥근 막돌을 쌓은 담) | 2026-11-03 |
 | Poly Haven `sakura_bark` 텍스처(색) | Poly Haven, https://polyhaven.com/a/sakura_bark (API https://api.polyhaven.com) | CC0 1.0 Universal | `client/public/models/village/village.glb` 안의 텍스처: 벚나무 껍질 (`T_bark` 왼쪽 절반) | 2026-11-03 |
 | Poly Haven `japanese_zelkova_bark` 텍스처(색) | Poly Haven, https://polyhaven.com/a/japanese_zelkova_bark (API https://api.polyhaven.com) | CC0 1.0 Universal | `client/public/models/village/village.glb` 안의 텍스처: 느티나무·나무 껍질 (`T_bark` 오른쪽 절반) | 2026-11-03 |
 | Poly Haven `island_tree_01` 모델의 잎 텍스처(`leaves_diff`, `leaves_alpha`) | Poly Haven, https://polyhaven.com/a/island_tree_01 (API https://api.polyhaven.com) | CC0 1.0 Universal | `client/public/models/village/village.glb` 안의 텍스처: 잎 한 장씩 잘라 낸 그림으로 잎 뭉치 카드 `T_leaf_green`, 벚꽃 카드 `T_leaf_cherry`의 잎, 꽃밭 카드 `T_flora`의 잎을 만듦 (모델은 쓰지 않음) | 2026-11-03 |
@@ -58,4 +58,4 @@ caysonverse가 배포하는 그림·모델·글꼴·디코더의 출처와 라�
 3. AI가 만든 것이면 "AI 생성 자산" 절에도 적습니다.
 4. 폴더 안 상세 기록(`LICENSE.md`)이 따로 있으면 그쪽도 맞춥니다.
 
-마지막 갱신: 2026-11-03 (케이슨 마을 1단계 Task 6: `village.glb`·`village_lm.webp`와 Poly Haven CC0 텍스처·HDRI 13건). 그 전: 2026-11-02 (Task 24: `counsel.glb`·`counsel_lightmap.webp` 복사, 살펴보기 그림·반딧 초상화는 Task 18에서 들어와 있음). **최종 확인일: 2026-11-02** (Task 27) — 표의 파일 위치·크기를 그날 저장소와 맞춰 보았고, 표에 빠져 있던 AI 갤러리 그림 9점을 더했습니다.
+마지막 갱신: 2026-11-03 (케이슨 마을 1단계 Task 6과 그 수정: `village.glb`·`village_lm.webp`, 폴더 기록 `client/public/models/village/LICENSE.md`, Poly Haven CC0 텍스처·HDRI 13건 — 돌담은 `granite_wall` 대신 `stone_wall`). 그 전: 2026-11-02 (Task 24: `counsel.glb`·`counsel_lightmap.webp` 복사, 살펴보기 그림·반딧 초상화는 Task 18에서 들어와 있음). **최종 확인일: 2026-11-03** (케이슨 마을 Task 6 수정; 그 전 2026-11-02 Task 27) — 표의 파일 위치·크기를 그날 저장소와 맞춰 보았고, 표에 빠져 있던 AI 갤러리 그림 9점을 더했습니다.

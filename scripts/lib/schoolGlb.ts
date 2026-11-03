@@ -519,8 +519,12 @@ export interface SchoolSpec {
   /**
    * col__ boxes that must exist with exactly this rectangle on the ground plane (within BOX_TOLERANCE per side):
    * the village's layout colliders (shared/src/village/villageLayout.ts), which the game's colliders are generated from.
+   * `camera`: the layout's camera flag. The collider extraction makes a box a camera box when its node's top
+   * (translation.y + scale.y / 2) is CAMERA_BOX_MIN_HEIGHT or more, so that must agree with the flag.
    */
-  requiredBoxes?: Array<{ node: string; box: AABB }>;
+  requiredBoxes?: Array<{ node: string; box: AABB; camera: boolean }>;
+  /** Materials that must exist by exact name and must not be light-mapped (not LM_*): the game drives them itself. */
+  requiredMaterials?: string[];
 }
 
 export interface LightmapFile {
@@ -613,7 +617,10 @@ export function checkSchoolGlb(input: CheckInput): CheckResult[] {
       colliders.problems.length === 0 ? `${colliders.colliders.length}개, 회전·부모 없음` : colliders.problems.join("; "),
     ),
   );
-  if (spec.requiredBoxes && spec.requiredBoxes.length > 0) out.push(checkRequiredBoxes(spec.requiredBoxes, colliders.colliders));
+  if (spec.requiredBoxes && spec.requiredBoxes.length > 0) out.push(checkRequiredBoxes(gltf, spec.requiredBoxes, colliders.colliders));
+  if (spec.requiredMaterials && spec.requiredMaterials.length > 0) out.push(checkRequiredMaterials(gltf, spec.requiredMaterials));
+  const instancing = checkInstancing(gltf);
+  if (instancing) out.push(instancing);
 
   const rotated = nodes
     .filter((n) => spec.identityRotationPrefixes.some((p) => (n.name ?? "").startsWith(p)) && !hasNoRotation(n))
@@ -663,9 +670,17 @@ export function checkSchoolGlb(input: CheckInput): CheckResult[] {
   return out;
 }
 
-/** Every required col__ box exists (as a valid box) with the layout's rectangle. Missing nodes are reported by "필수 노드". */
-function checkRequiredBoxes(required: ReadonlyArray<{ node: string; box: AABB }>, found: readonly NamedBox[]): CheckResult {
+/**
+ * Every required col__ box exists (as a valid box) with the layout's rectangle, and its height agrees with the layout's
+ * camera flag (top >= CAMERA_BOX_MIN_HEIGHT exactly when camera). Missing nodes are reported by "필수 노드".
+ */
+function checkRequiredBoxes(
+  gltf: Gltf,
+  required: ReadonlyArray<{ node: string; box: AABB; camera: boolean }>,
+  found: readonly NamedBox[],
+): CheckResult {
   const byName = new Map(found.map((c) => [c.name, c.box]));
+  const nodes = gltf.nodes ?? [];
   const problems: string[] = [];
   let checked = 0;
   for (const r of required) {
@@ -678,11 +693,70 @@ function checkRequiredBoxes(required: ReadonlyArray<{ node: string; box: AABB }>
         `${r.node} (${b.minX}..${b.maxX}, ${b.minZ}..${b.maxZ}) ≠ 배치 (${r.box.minX}..${r.box.maxX}, ${r.box.minZ}..${r.box.maxZ})`,
       );
     }
+    const n = nodes.find((x) => x.name === r.node);
+    const top = roundToHundredth((n?.translation?.[1] ?? 0) + Math.abs(n?.scale?.[1] ?? 1) / 2);
+    if (top >= CAMERA_BOX_MIN_HEIGHT !== r.camera) {
+      problems.push(
+        r.camera
+          ? `${r.node} 높이 ${top} m: 배치 자료는 카메라 상자인데 ${CAMERA_BOX_MIN_HEIGHT} m보다 낮아요`
+          : `${r.node} 높이 ${top} m: 배치 자료는 카메라가 넘어보는 상자인데 ${CAMERA_BOX_MIN_HEIGHT} m 이상이에요`,
+      );
+    }
   }
   return result(
     problems.length === 0,
     "col__ 상자 크기",
-    problems.length === 0 ? `배치 자료의 상자 ${checked}개가 위치·크기 그대로예요` : problems.join("; "),
+    problems.length === 0
+      ? `배치 자료의 상자 ${checked} / ${required.length}개가 위치·크기·카메라 높이 그대로예요`
+      : `${problems.join("; ")} (찾은 상자 ${checked} / ${required.length}개)`,
+  );
+}
+
+/** Required materials exist by exact name and none of them is a light-mapped LM_* material. */
+function checkRequiredMaterials(gltf: Gltf, required: readonly string[]): CheckResult {
+  const names = new Set((gltf.materials ?? []).map((m) => m.name ?? ""));
+  const missing = required.filter((n) => !names.has(n));
+  const lm = required.filter((n) => n.startsWith(LIGHTMAP_MATERIAL_PREFIX));
+  const ok = missing.length === 0 && lm.length === 0;
+  return result(
+    ok,
+    "필수 재질",
+    ok
+      ? `${required.length} / ${required.length}개가 있고 라이트맵을 쓰지 않아요 (${required.join(", ")})`
+      : [missing.length ? `없는 재질: ${missing.join(", ")}` : "", lm.length ? `LM_ 이름이면 안 돼요: ${lm.join(", ")}` : ""]
+          .filter(Boolean)
+          .join("; "),
+  );
+}
+
+/**
+ * EXT_mesh_gpu_instancing: when a node uses it, the extension is in extensionsUsed (or three draws one copy) and the
+ * TRANSLATION / ROTATION / SCALE accessors it names have the same count. null when no node is instanced.
+ */
+function checkInstancing(gltf: Gltf): CheckResult | null {
+  const nodes = (gltf.nodes ?? []).filter((n) => n.extensions?.[GPU_INSTANCING] !== undefined);
+  if (nodes.length === 0) return null;
+  const problems: string[] = [];
+  if (!(gltf.extensionsUsed ?? []).includes(GPU_INSTANCING)) problems.push(`extensionsUsed에 ${GPU_INSTANCING}이 없어요`);
+  let total = 0;
+  for (const n of nodes) {
+    const attrs = (n.extensions?.[GPU_INSTANCING] as { attributes?: Record<string, number> }).attributes ?? {};
+    const counts = Object.entries(attrs)
+      .filter(([k]) => k === "TRANSLATION" || k === "ROTATION" || k === "SCALE")
+      .map(([k, i]) => [k, gltf.accessors?.[i]?.count] as const);
+    if (counts.length === 0 || counts.some(([, c]) => c === undefined)) {
+      problems.push(`${n.name ?? "노드"}: 인스턴스 속성 accessor가 없어요`);
+      continue;
+    }
+    if (new Set(counts.map(([, c]) => c)).size > 1) {
+      problems.push(`${n.name ?? "노드"}: 인스턴스 수가 달라요 (${counts.map(([k, c]) => `${k} ${c}`).join(", ")})`);
+    }
+    total += counts[0]![1]!;
+  }
+  return result(
+    problems.length === 0,
+    "GPU 인스턴스",
+    problems.length === 0 ? `노드 ${nodes.length}개, 인스턴스 ${total}개, TRANSLATION·ROTATION·SCALE 수가 같아요` : problems.join("; "),
   );
 }
 

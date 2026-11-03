@@ -10,7 +10,8 @@
  *   - 앵커 위치: counsel의 obj__<앵커> 노드, hub의 door__·pad__ 노드가 TS 앵커에서 0.25 m 이내
  *   - col__* 노드에 회전·부모가 없다, counsel의 obj__* 노드에 회전이 없다
  *   - village: 배치 자료(shared/src/village/villageLayout.ts)의 col__ 상자가 모두 있고 위치·크기가 같다(0.01 m),
- *     밤 굽기용 light__ 노드가 있다
+ *     카메라 상자 높이가 배치 자료의 camera 표시와 맞는다(1.6 m), 밤 굽기용 light__ 노드가 있다, M_window·M_lamp·M_water·M_glow_plot 재질이
+ *     있고 LM_이 아니다, GPU 인스턴스 노드는 확장이 extensionsUsed에 있고 TRANSLATION·ROTATION·SCALE 수가 같다
  *   - 삼각형 수: hub ≤ 150k, counsel ≤ 120k, village ≤ 260k (EXT_mesh_gpu_instancing 인스턴스 수만큼 곱한다).
  *     Draco GLB도 읽는다: 풀지 않고, 확장이 JSON에 남기는 accessor count로 센다
  *   - 재질 ≤ 24, 텍스처(GLB 안 이미지) 한 변 ≤ 2048

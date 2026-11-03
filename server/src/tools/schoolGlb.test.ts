@@ -29,7 +29,7 @@ import {
   worldTranslation,
 } from "../../../scripts/lib/schoolGlb";
 import type { Gltf, GltfNode, SchoolSpec } from "../../../scripts/lib/schoolGlb";
-import { KNOWN_PROP_HEIGHTS, schoolSpec } from "../../../scripts/lib/schoolSpec";
+import { KNOWN_PROP_HEIGHTS, VILLAGE_NON_LIGHTMAPPED, schoolSpec } from "../../../scripts/lib/schoolSpec";
 import { cameraExportName } from "../../../scripts/extract-colliders";
 import { COUNSEL_ANCHORS, COUNSEL_VISUALS } from "../../../shared/src/school/counselMap";
 import { HUB_DOORS } from "../../../shared/src/school/hubMap";
@@ -668,12 +668,12 @@ describe("checkSchoolGlb", () => {
 
 describe("checkSchoolGlb: required col__ boxes (village)", () => {
   const boxSpec = (box: { minX: number; maxX: number; minZ: number; maxZ: number }) =>
-    tinySpec({ requiredNodes: ["col__wall"], placements: [], requiredBoxes: [{ node: "col__wall", box }] });
+    tinySpec({ requiredNodes: ["col__wall"], placements: [], requiredBoxes: [{ node: "col__wall", box, camera: false }] });
 
   it("passes when the box matches the layout rectangle (within 0.01 m on each side)", () => {
     const res = run(goodGltf(), { spec: boxSpec({ minX: -1, maxX: 1, minZ: -1, maxZ: 1 }) });
     expect(failed(res)).toEqual([]);
-    expect(res.find((r) => r.label === "col__ 상자 크기")?.detail).toMatch(/1개/);
+    expect(res.find((r) => r.label === "col__ 상자 크기")?.detail).toMatch(/1 \/ 1개/);
     expect(failed(run(goodGltf(), { spec: boxSpec({ minX: -1.01, maxX: 1, minZ: -1, maxZ: 1.01 }) }))).toEqual([]);
   });
 
@@ -686,9 +686,97 @@ describe("checkSchoolGlb: required col__ boxes (village)", () => {
   });
 
   it("a missing required box is reported once, by the required-node check", () => {
-    const spec = tinySpec({ requiredNodes: ["col__gone"], placements: [], requiredBoxes: [{ node: "col__gone", box: { minX: 0, maxX: 1, minZ: 0, maxZ: 1 } }] });
+    const spec = tinySpec({
+      requiredNodes: ["col__gone"],
+      placements: [],
+      requiredBoxes: [{ node: "col__gone", box: { minX: 0, maxX: 1, minZ: 0, maxZ: 1 }, camera: false }],
+    });
     const f = failed(run(goodGltf(), { spec }));
     expect(f.map((r) => r.label)).toEqual(["필수 노드"]);
+    // ...and the found count says "0 / 1" rather than looking like success
+    expect(run(goodGltf(), { spec }).find((r) => r.label === "col__ 상자 크기")?.detail).toMatch(/0 \/ 1개/);
+  });
+
+  it("a box's height must match the layout's camera flag, both ways (top >= 1.6 m <=> camera box)", () => {
+    const box = { minX: -1, maxX: 1, minZ: -1, maxZ: 1 };
+    const spec = (camera: boolean) =>
+      tinySpec({ requiredNodes: ["col__wall"], placements: [], requiredBoxes: [{ node: "col__wall", box, camera }] });
+    // the 1 m cube (top 0.5): fine as a looked-over box, wrong as a camera box
+    expect(failed(run(goodGltf(), { spec: spec(false) }))).toEqual([]);
+    const low = failed(run(goodGltf(), { spec: spec(true) }));
+    expect(low.map((r) => r.label)).toEqual(["col__ 상자 크기"]);
+    expect(low[0]!.detail).toMatch(/카메라 상자인데/);
+    // a 2 m tall box (top 2.0, like the old fountain box): wrong when the layout says the camera looks over it
+    const tall = goodGltf();
+    tall.nodes![2] = cubeNode("col__wall", [0, 1, 0], [2, 2, 2]);
+    const high = failed(run(tall, { spec: spec(false) }));
+    expect(high.map((r) => r.label)).toEqual(["col__ 상자 크기"]);
+    expect(high[0]!.detail).toMatch(/넘어보는/);
+    expect(failed(run(tall, { spec: spec(true) }))).toEqual([]);
+    // exactly 1.6 counts as a camera box (the extractor's threshold), 1.59 does not
+    tall.nodes![2] = cubeNode("col__wall", [0, 0.8, 0], [2, 1.6, 2]);
+    expect(failed(run(tall, { spec: spec(true) }))).toEqual([]);
+    tall.nodes![2] = cubeNode("col__wall", [0, 0.795, 0], [2, 1.59, 2]);
+    expect(failed(run(tall, { spec: spec(false) }))).toEqual([]);
+  });
+});
+
+describe("checkSchoolGlb: required materials and GPU instancing (village)", () => {
+  it("required non-light-mapped materials must exist by name, and must not be LM_*", () => {
+    const g = goodGltf();
+    g.materials = [{ name: "M_window", extensions: { KHR_materials_unlit: {} } }, { name: "M_lamp", extensions: { KHR_materials_unlit: {} } }];
+    const ok = run(g, { spec: tinySpec({ requiredMaterials: ["M_window", "M_lamp"] }) });
+    expect(failed(ok)).toEqual([]);
+    expect(ok.find((r) => r.label === "필수 재질")?.detail).toMatch(/2 \/ 2개/);
+    const missing = failed(run(g, { spec: tinySpec({ requiredMaterials: ["M_window", "M_water"] }) }));
+    expect(missing.map((r) => r.label)).toEqual(["필수 재질"]);
+    expect(missing[0]!.detail).toContain("M_water");
+    g.materials.push({ name: "LM_window", extensions: { KHR_materials_unlit: {} } });
+    const lm = failed(run(g, { spec: tinySpec({ requiredMaterials: ["LM_window"] }) }));
+    expect(lm.map((r) => r.detail).join("\n")).toMatch(/LM_ 이름이면 안 돼요/);
+  });
+
+  const instanced = (n: number, counts: { T?: number; R?: number; S?: number } = {}) => {
+    const g = goodGltf();
+    g.extensionsUsed = ["KHR_materials_unlit", "EXT_mesh_gpu_instancing"];
+    const base = g.accessors!.length;
+    g.accessors!.push(
+      { count: counts.T ?? n, componentType: 5126, type: "VEC3" },
+      { count: counts.R ?? n, componentType: 5126, type: "VEC4" },
+      { count: counts.S ?? n, componentType: 5126, type: "VEC3" },
+    );
+    g.nodes!.push({
+      name: "inst__trees",
+      mesh: 1,
+      extensions: { EXT_mesh_gpu_instancing: { attributes: { TRANSLATION: base, ROTATION: base + 1, SCALE: base + 2 } } },
+    });
+    g.scenes![0]!.nodes!.push(g.nodes!.length - 1);
+    return g;
+  };
+
+  it("an instanced node needs the extension in extensionsUsed and equal TRANSLATION/ROTATION/SCALE counts", () => {
+    const good = run(instanced(10));
+    expect(failed(good)).toEqual([]);
+    expect(good.find((r) => r.label === "GPU 인스턴스")?.detail).toMatch(/인스턴스 10개/);
+    const noExt = instanced(10);
+    noExt.extensionsUsed = ["KHR_materials_unlit"];
+    expect(failed(run(noExt)).map((r) => r.label)).toEqual(["GPU 인스턴스"]);
+    const uneven = failed(run(instanced(10, { R: 9 })));
+    expect(uneven.map((r) => r.label)).toEqual(["GPU 인스턴스"]);
+    expect(uneven[0]!.detail).toMatch(/ROTATION 9/);
+    // no instanced node: no instancing line at all
+    expect(run(goodGltf()).some((r) => r.label === "GPU 인스턴스")).toBe(false);
+  });
+
+  it("the triangle budget counts the drawn instances: under budget stored, over budget drawn -> FAIL", () => {
+    // counsel budget 120k; the instanced quad (2 triangles) x 60,001 instances = 120,002 drawn, while the file stores 4
+    const g = instanced(60_001);
+    const res = run(g);
+    const tri = res.find((r) => r.label === "삼각형 수")!;
+    expect(tri.level).toBe("fail");
+    expect(tri.detail).toMatch(/GPU 인스턴스 포함 \(파일에 든 것 4개\)/);
+    expect(countFileTriangles(g)).toBe(4);
+    expect(failed(run(instanced(50_000)))).toEqual([]);
   });
 });
 
@@ -698,7 +786,11 @@ describe("schoolSpec", () => {
     const colliders = greyboxColliders(VILLAGE_LAYOUT);
     expect(spec.kind).toBe("village");
     expect(spec.requiredNodes).toEqual(colliders.map((c) => colliderNode(c.id)));
-    expect(spec.requiredBoxes).toEqual(colliders.map((c) => ({ node: colliderNode(c.id), box: c.box })));
+    expect(spec.requiredBoxes).toEqual(colliders.map((c) => ({ node: colliderNode(c.id), box: c.box, camera: c.camera })));
+    expect(spec.requiredBoxes!.filter((b) => !b.camera).map((b) => b.node)).toContain("col__plaza_fountain");
+    expect(spec.requiredBoxes!.filter((b) => !b.camera).map((b) => b.node)).toContain("col__pavilion");
+    expect(spec.requiredMaterials).toEqual(["M_window", "M_lamp", "M_water", "M_glow_plot"]);
+    expect(VILLAGE_NON_LIGHTMAPPED.every((m) => !m.startsWith("LM_"))).toBe(true);
     expect(spec.requiredNodes).toContain("col__plaza_fountain");
     expect(spec.requiredNodes).toContain("col__memorial_back");
     expect(spec.requiredPrefixes).toEqual([
@@ -771,12 +863,16 @@ describe("CLIs", () => {
 
   it("check-school-glb village: the layout's boxes, light points and village_lm.webp next to the GLB -> PASS (exit 0)", () => {
     const colliders = greyboxColliders(VILLAGE_LAYOUT);
-    const nodes: GltfNode[] = colliders.map((c) =>
-      cubeNode(colliderNode(c.id), [(c.box.minX + c.box.maxX) / 2, 0.5, (c.box.minZ + c.box.maxZ) / 2], [c.box.maxX - c.box.minX, 1, c.box.maxZ - c.box.minZ]),
-    );
+    const nodes: GltfNode[] = colliders.map((c) => {
+      const h = c.camera ? 4 : 1; // camera boxes stand >= 1.6 m, looked-over boxes stay low
+      return cubeNode(colliderNode(c.id), [(c.box.minX + c.box.maxX) / 2, h / 2, (c.box.minZ + c.box.maxZ) / 2], [c.box.maxX - c.box.minX, h, c.box.maxZ - c.box.minZ]);
+    });
     nodes.push({ name: "light__lamp_1", translation: [0, 4, 0] }, { name: "village_lm_11", mesh: 1 });
     const g = baseGltf(nodes);
-    g.materials = [{ name: "LM_plaza", extensions: { KHR_materials_unlit: {} } }];
+    g.materials = [
+      { name: "LM_plaza", extensions: { KHR_materials_unlit: {} } },
+      ...VILLAGE_NON_LIGHTMAPPED.map((name) => ({ name, extensions: { KHR_materials_unlit: {} } })),
+    ];
     g.meshes![1]!.primitives[0]!.material = 0;
     g.meshes![1]!.primitives[0]!.attributes.TEXCOORD_1 = 2;
     g.extensionsUsed = ["KHR_materials_unlit"];
