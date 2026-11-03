@@ -238,6 +238,27 @@ describe("joinVillage (케이슨 마을)", () => {
     expect(room.send).toHaveBeenCalledTimes(2);
   });
 
+  it("a drop after a server restart rejoins by joinOrCreate(VILLAGE_ROOM) — never the world's join — and stays in village mode", async () => {
+    // This is the only test that runs the REAL resilience against joinVillage: if joinVillage armed it in the default
+    // "world" mode, the fresh rejoin would call client.join(WORLD_ROOM) and these assertions would fail.
+    const first = fakeRoom();
+    const second = fakeRoom();
+    h.joinOrCreate.mockResolvedValueOnce(first).mockResolvedValueOnce(second);
+    h.reconnect.mockRejectedValue({ code: 4212, message: "reconnection token invalid or expired" });
+    await joinVillage({ nickname: "가람", appearance: LOOK });
+    expect(getRoomMode()).toBe("village");
+
+    first.fireLeave(1006);
+    for (let i = 0; i < 40 && h.joinOrCreate.mock.calls.length < 2; i++) await new Promise((r) => setTimeout(r, 0));
+
+    expect(h.reconnect).toHaveBeenCalled(); // phase 1 tried the token first and was refused
+    expect(h.joinOrCreate).toHaveBeenCalledTimes(2);
+    expect(h.joinOrCreate.mock.calls[1][0]).toBe(VILLAGE_ROOM);
+    expect(h.join).not.toHaveBeenCalled();
+    expect(getRoomMode()).toBe("village");
+    expect(getRoom()).toBe(second);
+  });
+
   it("a refusal shows the server's Korean words; anything else is the generic notice; nothing is adopted; no retry", async () => {
     h.joinOrCreate.mockRejectedValueOnce(new Error("닉네임은 한글·영문·숫자 2~12자로 입력하세요."));
     await expect(joinVillage({ nickname: "x", appearance: LOOK })).rejects.toThrow("닉네임은 한글·영문·숫자 2~12자로 입력하세요.");

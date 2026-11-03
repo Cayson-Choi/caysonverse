@@ -185,8 +185,12 @@ export async function openPlayer(browser, run, { tag, device = DESKTOP, settings
 /** `click` on a desktop tab, `tap` on a touch tab. */
 export const press = (p, locator) => (p.touch ? locator.tap() : locator.click());
 
-/** Open the entry screen and wait until the nickname box and the builder are ready. */
-export async function toEntry(p, url = CLIENT_URL + "/") {
+/**
+ * Open the escape entry screen and wait until the nickname box and the builder are ready.
+ * The bare address enters the village at once (no sheet), so the escape scripts open `?experience=escape`;
+ * a village script passes `CLIENT_URL + "/"` explicitly. A reload keeps the query.
+ */
+export async function toEntry(p, url = CLIENT_URL + "/?experience=escape") {
   await p.page.goto(url, { waitUntil: "domcontentloaded" });
   await entryReady(p);
 }

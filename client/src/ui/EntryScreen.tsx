@@ -59,7 +59,11 @@ const CLASS_DEPS: ClassEntryDeps = {
 /** The real app behind the village entry (entryForm.ts `enterVillageDirectly`; its tests pass fakes). */
 const VILLAGE_DEPS: VillageEntryDeps = {
   joinVillage,
-  saveIdentity,
+  // A village visit rewrites the cached identity; keep the class code already there so the escape sheet still prefills it.
+  saveIdentity: (identity) => {
+    const classCode = loadIdentity().classCode;
+    saveIdentity(classCode ? { ...identity, classCode } : identity);
+  },
   clearKicked,
   enterVillage: (identity) => useAppStore.getState().enterVillage(identity),
 };

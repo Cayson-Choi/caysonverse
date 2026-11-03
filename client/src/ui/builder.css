@@ -602,7 +602,8 @@
   flex: 1 1 auto;
   min-height: 300px;
   grid-template-rows: repeat(3, minmax(0, 158px));
-  align-content: start;
+  /* The voice block that used to fill the rest of this panel is gone: centre the rows instead of leaving the blank at the bottom. */
+  align-content: center;
 }
 .cv-entry.is-wide .cv-slot-tabs {
   grid-column: 3;
