@@ -176,6 +176,15 @@
 - Copy to: `client/public/models/village/village.glb`, `client/public/models/village/village_lm.webp`
 - Modify: `scripts/lib/schoolSpec.ts` → add a `village` kind to `scripts/check-school-glb.ts` with the budgets in Global Constraints, `docs/licenses.md`
 
+**Style target (owner, 2026-11-03):** `art/village/refs/owner_village_style.webp` comes first; the Korean countryside refs supply natural detail only. That means:
+- the fountain plaza with a polished **crescent-moon sculpture**, flower-bed rings, cherry blossoms, street lamps and banner poles;
+- a ring road with sidewalks, a bus stop and a parked village bus;
+- small colourful houses and a café with awnings as non-enterable scenery;
+- the next plot (도서관) dressed **under construction** (scaffold + yellow crane);
+- a wooden arched footbridge over a rocky creek with small cascades;
+- a waterfall cliff and a lake with a pavilion in the backdrop;
+- golden-hour sun, low at the back right.
+
 **Content (all positions from `art/village/layout.json`):**
 - Flat walkable ground: grass, dirt and concrete village lanes, the ring road (asphalt with worn edges).
 - Plaza: a big round fountain at the centre: a stone basin 12 m across with a tiered centrepiece and water jets, plus wide stone paving (radius 17) and benches. At the edge, one big old zelkova (느티나무) with a round wooden deck.
@@ -251,6 +260,32 @@
   - Server: `LightCandle` far from a cubby is refused; it is rate-limited; it is broadcast only to hall players.
 - [ ] **Step 2: FAIL. Step 3: Implement.** Loading `memorial.glb` happens on entering the hall, and release happens on leaving (the `counselRelease` pattern). **Step 4: PASS** + luma check on 3 hall frames.
 - [ ] **Step 5: Commit** `feat: 추모관 안 — 예시 칸 소품·가까이 보기·촛불 켜기 (케이슨 마을 1단계 Task 9)`.
+
+### Task 9A: Guide NPCs with natural voice (owner 2026-11-03)
+
+The owner's words: "채팅 읽어주기에서는 빼고 그냥 어느 건물 또는 npc에게 문의할 때만 음성이 나오도록 하자 진짜 사람이 말하는 것 같은 음성이 나오도록."
+
+**Files:**
+- Create: `shared/src/village/guides.ts` (+ test), `client/src/village/GuideNpc.tsx`, `client/src/village/GuideDialog.tsx`, `client/public/village/voice/*.m4a`
+- Create: `art/village/voice/make_voice.*` (offline generation script, git-ignored like `art/`)
+- Modify: `docs/licenses.md` (voice engine and licence)
+
+**Interfaces:**
+- Produces: `GUIDES`, two guides.
+  - `plaza_guide` (마을 안내원) stands at (5, 12) facing the spawn.
+  - `hall_desk` (추모관 안내 데스크) stands inside the hall at (302.8, 4.0) facing −x.
+  - Each guide has 3–4 fixed questions and answers in Korean ("~요" tone, gentle in the hall). Each answer has a `voice` file id.
+- Behaviour:
+  - Walk within 2.2 m → action button "문의하기" → a question list.
+  - Choosing a question shows the answer text and plays its voice clip. A second press skips the clip; the sound toggle mutes it.
+  - Only the asking player hears it.
+  - NPCs use the existing toy figure with a fixed appearance and a name tag "안내원".
+- Consumes: Task 4 targets, Task 9 hall.
+
+- [ ] **Step 1:** The controller checks the commercial licence of the candidate engines and picks one, recording the ruling in the ledger. The candidates are VoxCPM2 on the owner's PC and cloud TTS (CLOVA Voice, ElevenLabs, OpenAI).
+- [ ] **Step 2:** Write failing tests: guide data (ids unique, each answer has a voice id, and that file exists in `client/public/village/voice/`), dialog behaviour (one clip at a time, skip, muted when the sound is off), and no voice on chat.
+- [ ] **Step 3:** Generate the clips offline (24 kHz mono AAC, ≤ 60 KB each) and listen-check them. Then implement and run the tests to PASS.
+- [ ] **Step 4: Commit** `feat: 마을 안내원·추모관 안내 데스크 — 문의하면 자연스러운 음성 (케이슨 마을 1단계 Task 9A)`.
 
 ### Task 10: Performance and download budget
 
