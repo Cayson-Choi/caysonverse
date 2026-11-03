@@ -1,7 +1,7 @@
 /* 캐릭터 조립실 — the builder on the sky-garden stage (character stage 3, Task 7b).
-   The DOM order is the phone's visual order: presets → tabs → colours → part cards → voice.
+   The DOM order is the phone's visual order: presets → tabs → colours → part cards.
    Wide screens (.is-wide): a grid puts them in two glass panels around the stage — left: 추천 캐릭터
-   (🎲 + 8 portrait cards) and 목소리; right: an icon tab rail, the part cards and the colours. Phones ("phone"):
+   (🎲 + 8 portrait cards); right: an icon tab rail, the part cards and the colours. Phones ("phone"):
    one bottom sheet (rest height from stageLayout, opening to 88 % with its grabber), scrolling inside, in DOM
    order. Tablets / landscape phones ("side"): the same sheet as a right-hand panel. Every button is
    ≥ 44×44 px; nothing may widen the page (rows that do not fit scroll inside themselves). Motion uses transform
@@ -206,8 +206,7 @@
 .cv-preset:active,
 .cv-random:active,
 .cv-chip:active,
-.cv-slot-tab:active,
-.cv-voice-option:active {
+.cv-slot-tab:active {
   transform: scale(0.96);
   transition-duration: 0.08s;
 }
@@ -297,49 +296,6 @@
   0% { transform: rotate(0deg) translateY(0); }
   45% { transform: rotate(200deg) translateY(-8px); }
   100% { transform: rotate(360deg) translateY(0); }
-}
-
-/* ── voice ── */
-
-.cv-voice-options {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-}
-.cv-voice-option {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  min-width: 44px;
-  height: 54px;
-  margin: 0;
-  padding: 0 10px;
-  border-radius: 27px;
-  border: 2px solid #fff;
-  background: var(--cv-glass-hi);
-  box-shadow: var(--cv-card-shadow);
-  color: var(--cv-ink-2);
-  font-family: var(--cv-display);
-  font-size: 16px;
-  white-space: nowrap;
-  cursor: pointer;
-  transition: transform 0.12s ease;
-}
-.cv-voice-option .cv-icon {
-  width: 20px;
-  height: 20px;
-}
-@media (hover: hover) {
-  .cv-voice-option:hover {
-    transform: translateY(-2px);
-  }
-}
-.cv-voice-option[aria-checked="true"] {
-  border-color: rgba(255, 255, 255, 0.6);
-  background: var(--cv-sel);
-  color: #fff;
-  box-shadow: 0 8px 18px -6px rgba(75, 79, 216, 0.7), inset 0 2px 0 rgba(255, 255, 255, 0.35);
 }
 
 /* ── slot tabs ── */
@@ -593,8 +549,8 @@
 }
 
 /* ════════════════ wide: two glass panels ════════════════
-   The builder's rows stay in DOM order (presets → tabs → colours/cards → voice). One grid over the screen
-   (inset like the panels) places them: column 1 = left panel (presets on top, voice at the bottom), column 2 =
+   The builder's rows stay in DOM order (presets → tabs → colours/cards). One grid over the screen
+   (inset like the panels) places them: column 1 = left panel (the presets, filling it), column 2 =
    the stage (empty, lets drags through), columns 3–4 = right panel (tab rail | the open tab). The two glass
    panels are the grid's ::before / ::after. */
 
@@ -638,7 +594,7 @@
 .cv-entry.is-wide .cv-presets-group {
   grid-column: 1;
   grid-row: 1;
-  padding: 20px 20px 0;
+  padding: 20px;
   overflow: hidden auto;
   scrollbar-width: thin;
 }
@@ -647,14 +603,6 @@
   min-height: 300px;
   grid-template-rows: repeat(3, minmax(0, 158px));
   align-content: start;
-}
-.cv-entry.is-wide .cv-voice-group {
-  grid-column: 1;
-  grid-row: 2;
-  padding: 18px 20px 22px;
-}
-.cv-entry.is-wide .cv-voice-group .cv-builder-group-head {
-  margin-bottom: 10px;
 }
 .cv-entry.is-wide .cv-slot-tabs {
   grid-column: 3;
@@ -773,11 +721,8 @@
   padding-bottom: calc(var(--cv-cta-room) + var(--cv-sheet-open) - var(--cv-sheet-rest));
 }
 /* The sheet scrolls as a whole: its rows (some are horizontal scrollers) must never shrink to fit. */
-.cv-entry.is-sheet :is(.cv-presets-group, .cv-slot-tabs, .cv-slot-panel, .cv-voice-group, .cv-swatch-group, .cv-chips) {
+.cv-entry.is-sheet :is(.cv-presets-group, .cv-slot-tabs, .cv-slot-panel, .cv-swatch-group, .cv-chips) {
   flex-shrink: 0;
-}
-.cv-entry.is-sheet .cv-voice-group {
-  margin-top: 4px;
 }
 .cv-entry.is-sheet .cv-builder-group-head {
   margin-bottom: 4px;
@@ -993,8 +938,4 @@
   right: -6px;
   width: 22px;
   height: 22px;
-}
-.cv-entry.is-sheet .cv-voice-option {
-  height: 50px;
-  font-size: 15px;
 }

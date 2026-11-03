@@ -33,6 +33,10 @@
  * then bumps the connection epoch so the scene REMOUNTS and rebinds (remote store
  * rebuilt clean — no duplicate avatars).
  *
+ * Village mode (케이슨 마을 — `attachResilience(room, "village")`): the same driver, with a village room's
+ * differences: it is NOT a singleton, so Phase 2 rejoins with `joinOrCreate` (`joinVillageRoom` — a new
+ * shard when none is left, never a 521 "no rooms found"), and there is no admin to carry over.
+ *
  * Class mode (AI 학교 탈출, Task 13 — `attachResilience(room, "class")`): the same driver for
  * a class (반) connection, with these differences:
  *   - arming a class room also binds its class sync (classSync.ts) — before any await, so a
@@ -57,6 +61,7 @@ import {
   getRoom,
   setRoom,
   joinRoom,
+  joinVillageRoom,
   waitForSelf,
   joinClassRoom,
   requestTeacherPass,
@@ -86,8 +91,8 @@ import { wasKicked, markKicked } from "./kickSeam";
 import { useAppStore } from "../stores/appStore";
 import { useClassStore } from "../stores/classStore";
 
-/** Which kind of main connection a room is (see the class-mode notes above). */
-export type ResilienceMode = "world" | "class";
+/** Which kind of main connection a room is (see the village and class-mode notes above). */
+export type ResilienceMode = "world" | "class" | "village";
 
 /** sessionStorage key for the room reconnection token (scoped to this tab). */
 const TOKEN_KEY = "cv.reconnectToken";
@@ -215,7 +220,7 @@ async function startReconnect(mode: ResilienceMode): Promise<void> {
     // Phase 1 — same avatar within the window.
     if (await phaseTokenReconnect(mode)) return;
     // Phase 2 — fresh avatar (server restarted / window expired).
-    const outcome = mode === "class" ? await phaseFreshClassJoin() : await phaseFreshJoin();
+    const outcome = mode === "class" ? await phaseFreshClassJoin() : await phaseFreshJoin(mode);
     if (outcome.status === "connected") return;
     // Terminal → entry with the chosen notice (capacity if genuinely full, the
     // real Korean reason for a deterministic rejection, else generic failure).
@@ -307,8 +312,11 @@ type FreshJoinOutcome = { status: "connected" } | { status: "terminal"; notice: 
  * memory and re-sent so a server restart preserves the instructor's powers. A
  * REJECTED code (server restarted with a different/unset ADMIN_CODE) falls back
  * to a normal-user join — it must not fail recovery.
+ *
+ * Village: the same loop with `joinVillageRoom` (joinOrCreate) for the join and no admin step —
+ * the village has no admin, so any code held from an earlier world session is never sent to it.
  */
-async function phaseFreshJoin(): Promise<FreshJoinOutcome> {
+async function phaseFreshJoin(mode: "world" | "village"): Promise<FreshJoinOutcome> {
   // Rejoin as the identity THIS tab entered with (in memory), not the shared
   // localStorage cache: another tab's character builder may have saved a different
   // look (or nickname) since, and re-joining with that would desync the server from
@@ -319,6 +327,9 @@ async function phaseFreshJoin(): Promise<FreshJoinOutcome> {
     appearance: identity.appearance,
   };
 
+  const village = mode === "village";
+  const join = village ? joinVillageRoom : joinRoom;
+
   // Whether the room we finally adopt is an authenticated admin join. A join that
   // SUPPLIED a code and SUCCEEDED proves the code was correct (a wrong code is
   // rejected server-side), mirroring the entry-screen inference.
@@ -328,12 +339,12 @@ async function phaseFreshJoin(): Promise<FreshJoinOutcome> {
   try {
     const room = await retryWhile<Room<WorldState>>({
       attempt: async () => {
-        const code = getAdminCode();
+        const code = village ? null : getAdminCode();
         if (code !== null && !adminFellBack) {
           try {
             const r = await joinRoom({ ...baseParams, adminCode: code });
             grantedAdmin = true;
-            await adoptAndConfirm(r);
+            await adoptAndConfirm(r, mode);
             return r;
           } catch (err) {
             // A transient/capacity failure: retry the whole attempt (still as
@@ -348,9 +359,9 @@ async function phaseFreshJoin(): Promise<FreshJoinOutcome> {
             grantedAdmin = false;
           }
         }
-        const r = await joinRoom(baseParams);
+        const r = await join(baseParams);
         grantedAdmin = false;
-        await adoptAndConfirm(r);
+        await adoptAndConfirm(r, mode);
         return r;
       },
       shouldRetry: shouldRetryFreshJoin,

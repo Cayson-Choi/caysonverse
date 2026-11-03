@@ -1,4 +1,4 @@
-// 조립실 아이콘(Task 7b): 탭 7개·회전·목소리·열쇠와 작은 표시들. 인라인 SVG라 따로 받을 파일이 없다.
+// 조립실 아이콘(Task 7b): 탭 7개·회전·열쇠와 작은 표시들. 인라인 SVG라 따로 받을 파일이 없다.
 // 모두 장식이다(aria-hidden): 버튼의 이름은 늘 그 버튼의 글자나 aria-label이다. 선은 currentColor를 따른다.
 
 import type { ReactNode } from "react";
@@ -57,13 +57,6 @@ const PATHS = {
     <>
       <path d="M19.5 12.5a7.5 7.5 0 1 1-2.2-5.3" />
       <path d="M19.5 3.8v4.6h-4.6" />
-    </>
-  ),
-  voice: (
-    <>
-      <path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" />
-      <path d="M15.5 9a4 4 0 0 1 0 6" />
-      <path d="M18 6.5a7.5 7.5 0 0 1 0 11" />
     </>
   ),
   key: (

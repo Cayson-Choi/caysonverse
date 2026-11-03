@@ -4,7 +4,8 @@
  *    loop — outside React state),
  *  - the zustand CHAT-LOG store (the collapsible panel — discrete UI events), and
  *  - the TTS queue (design 23): chat only — never System/ChatRejected — gated by
- *    sender distance read from the authoritative schema positions.
+ *    sender distance read from the authoritative schema positions. SWITCHED OFF:
+ *    CHAT_VOICE_ENABLED is false (owner decision 2026-11-03), so no line is spoken.
  *
  * Both self and remote bubbles come from the broadcast here (never a local
  * echo). ChatRejected is a personal notice → a local-only dimmed system row.
@@ -18,6 +19,7 @@ import { DEFAULT_APPEARANCE, voiceGender } from "@caysonverse/shared/appearance"
 import { bubbleRegistry } from "../game/bubbleRegistry";
 import { emojiRegistry } from "../game/emojiRegistry";
 import { speakChatNeural, stopChatVoice, type ChatVoiceGender } from "../game/chatVoice";
+import { CHAT_VOICE_ENABLED } from "../game/tts";
 import { stopNpcVoice } from "../game/npcVoice";
 import { useChatStore } from "../stores/chatStore";
 import { useSoundStore } from "../stores/soundStore";
@@ -47,6 +49,10 @@ export function startChatSync(room: ChatRoom): () => void {
   const offChat = room.onMessage(MessageType.Chat, (m: ChatBroadcast) => {
     bubbleRegistry.set(m.sid, m.text, performance.now());
     useChatStore.getState().pushMessage(m.name, m.text);
+    // Chat is never read aloud (CHAT_VOICE_ENABLED = false, owner decision 2026-11-03). The block below is
+    // what runs if the flag is ever turned back on; with it off nothing here reads the sound store, the
+    // players map or the Audio API.
+    if (!CHAT_VOICE_ENABLED) return;
     // Neural TTS (design 23 gate + design 34 후속 voices): distance from the
     // authoritative schema positions — the 10 Hz patch lag is acceptable for
     // an audibility gate. My own message is distance 0 (always spoken); a
@@ -89,7 +95,7 @@ export function startChatSync(room: ChatRoom): () => void {
     useChatStore.getState().clear();
     // Stop any in-flight reading and flush both neural channels — a reconnect
     // remounts this sync, and a stale line must not talk over the new world.
-    // (Web Speech is fully unwired — Edge TTS is the ONLY voice, 발주자 요청.)
+    // (Web Speech is fully unwired. The chat channel is off; the NPC channel is the legacy world's.)
     stopChatVoice();
     stopNpcVoice();
   };

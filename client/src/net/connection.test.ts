@@ -14,18 +14,20 @@ const h = vi.hoisted(() => {
       (listeners[type] ??= []).push(fn);
     },
   };
-  return { join: vi.fn(), joinById: vi.fn(), reconnect: vi.fn(), listeners };
+  return { join: vi.fn(), joinOrCreate: vi.fn(), joinById: vi.fn(), reconnect: vi.fn(), listeners };
 });
 
 vi.mock("@colyseus/sdk", () => ({
   Client: class {
     join = h.join;
+    joinOrCreate = h.joinOrCreate;
     joinById = h.joinById;
     reconnect = h.reconnect;
   },
 }));
 
 import { CLASS_ROOM, ESCAPE_ROOM } from "@caysonverse/shared/escape/constants";
+import { VILLAGE_ROOM, WORLD_ROOM } from "@caysonverse/shared/constants";
 import { ClassMsg, EscapeMsg } from "@caysonverse/shared/escape/messages";
 import { MessageType } from "@caysonverse/shared/messages";
 import { DEFAULT_APPEARANCE, APPEARANCE_FIELDS } from "@caysonverse/shared/appearance";
@@ -36,6 +38,7 @@ import {
   handlePageHide,
   joinClass,
   joinEscape,
+  joinVillage,
   joinWorld,
   leaveEscape,
   requestTeacherPass,
@@ -121,6 +124,7 @@ beforeEach(() => {
   vi.stubGlobal("sessionStorage", memStorage());
   vi.stubGlobal("localStorage", memStorage());
   h.join.mockReset();
+  h.joinOrCreate.mockReset();
   h.joinById.mockReset();
   h.reconnect.mockReset();
   setEscapeRoom(null);
@@ -190,6 +194,59 @@ describe("active-room routing", () => {
     await joinWorld({ nickname: "가람", appearance: LOOK });
     sendClass(ClassMsg.TeamLeave, {});
     expect(world.send).not.toHaveBeenCalled();
+  });
+});
+
+describe("joinVillage (케이슨 마을)", () => {
+  it("joinOrCreates the village room with exactly nickname + the NESTED appearance — never the world's join, never an admin code", async () => {
+    const room = fakeRoom();
+    h.joinOrCreate.mockResolvedValueOnce(room);
+    const joined = await joinVillage({ nickname: "가람", appearance: LOOK });
+
+    expect(joined).toBe(room);
+    expect(h.joinOrCreate).toHaveBeenCalledTimes(1);
+    const [name, options] = h.joinOrCreate.mock.calls[0];
+    expect(name).toBe(VILLAGE_ROOM);
+    expect(options).toEqual({ nickname: "가람", appearance: LOOK });
+    for (const field of APPEARANCE_FIELDS) expect(options).not.toHaveProperty(field); // never flat
+    expect(options).not.toHaveProperty("adminCode");
+    // The world's join-existing-only call is not used (the village is not a singleton).
+    expect(h.join).not.toHaveBeenCalled();
+    expect(h.join).not.toHaveBeenCalledWith(WORLD_ROOM, expect.anything());
+  });
+
+  it("drops any extra field a caller passes (the join options are fixed)", async () => {
+    h.joinOrCreate.mockResolvedValueOnce(fakeRoom());
+    await joinVillage({ nickname: "가람", appearance: LOOK, adminCode: "secret" } as never);
+    expect(h.joinOrCreate.mock.calls[0][1]).toEqual({ nickname: "가람", appearance: LOOK });
+  });
+
+  it("adopts the room, arms the resilience (SDK reconnect off) and marks the connection as the village", async () => {
+    const room = fakeRoom();
+    h.joinOrCreate.mockResolvedValueOnce(room);
+    await joinVillage({ nickname: "가람", appearance: LOOK });
+
+    expect(getRoom()).toBe(room);
+    expect(getRoomMode()).toBe("village");
+    expect(room.reconnection.enabled).toBe(false);
+    // Village chat and moves go to the village room (the active room).
+    sendChat("안녕하세요");
+    sendMove({ x: 1, z: 2, yaw: 0 } as never);
+    expect(room.send.mock.calls.map((c) => c[0])).toEqual([MessageType.Chat, MessageType.Move]);
+    // Class messages never reach it.
+    sendClass(ClassMsg.TeamLeave, {});
+    expect(room.send).toHaveBeenCalledTimes(2);
+  });
+
+  it("a refusal shows the server's Korean words; anything else is the generic notice; nothing is adopted; no retry", async () => {
+    h.joinOrCreate.mockRejectedValueOnce(new Error("닉네임은 한글·영문·숫자 2~12자로 입력하세요."));
+    await expect(joinVillage({ nickname: "x", appearance: LOOK })).rejects.toThrow("닉네임은 한글·영문·숫자 2~12자로 입력하세요.");
+    expect(getRoom()).toBeNull();
+
+    h.joinOrCreate.mockRejectedValueOnce(new Error("Failed to fetch"));
+    await expect(joinVillage({ nickname: "가람", appearance: LOOK })).rejects.toThrow("서버에 연결하지 못했습니다. 잠시 후 다시 시도해주세요.");
+    expect(h.joinOrCreate).toHaveBeenCalledTimes(2); // one try each: joinOrCreate has no "no rooms found" to ride out
+    expect(getRoom()).toBeNull();
   });
 });
 
@@ -396,6 +453,15 @@ describe("pagehide (ruling: class mode keeps both ghosts — Review Focus 1)", (
     expect(esc.leave).not.toHaveBeenCalled();
     // The crash screen reads the same mode (AppErrorBoundary: no consented leave in a class).
     expect(getRoomMode()).toBe("class");
+  });
+
+  it("village mode leaves like the world: pagehide is a consented leave of the village room", async () => {
+    const village = fakeRoom();
+    h.joinOrCreate.mockResolvedValueOnce(village);
+    await joinVillage({ nickname: "가람", appearance: LOOK });
+    expect(getRoomMode()).toBe("village");
+    for (const fn of h.listeners.pagehide) fn();
+    expect(village.leave).toHaveBeenCalledWith(true);
   });
 
   it("world mode is unchanged: pagehide is a consented leave of the world room", async () => {

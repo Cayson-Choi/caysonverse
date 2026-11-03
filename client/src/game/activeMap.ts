@@ -1,7 +1,7 @@
 /**
  * The map the local player stands in right now — the seam between the scenes and the
- * per-frame code (AI 학교 탈출, Task 15). The legacy world, the school hub (gate shut or
- * open) and a team classroom all reach collision, the camera spring arm, click-move,
+ * per-frame code (AI 학교 탈출, Task 15). 케이슨 마을, the legacy world, the school hub (gate
+ * shut or open) and a team classroom all reach collision, the camera spring arm, click-move,
  * name-tag occlusion, the overview framing and the HUD room name through here, so those
  * keep ONE code path whatever the map.
  *
@@ -13,6 +13,7 @@
 
 import { LEGACY_GEOMETRY } from "@caysonverse/shared/worldMap";
 import { hubGeometry, hubZoneLabel } from "@caysonverse/shared/school/hubMap";
+import { villageGeometry } from "@caysonverse/shared/village/villageLayout";
 import type { MapGeometry } from "@caysonverse/shared/school/geometry";
 import { zoneLabelAt } from "./hud";
 
@@ -33,6 +34,12 @@ export const LEGACY_ACTIVE_MAP: ActiveMap = Object.freeze({
   geometry: LEGACY_GEOMETRY,
   zoneLabel: zoneLabelAt,
   seatsAndNpcs: true,
+});
+
+/** 케이슨 마을 (the default 입장하기). The area-aware room names come with the village scene; for now one name. */
+export const VILLAGE_ACTIVE_MAP: ActiveMap = Object.freeze({
+  geometry: villageGeometry,
+  zoneLabel: () => "케이슨 마을",
 });
 
 const HUB_GATED: ActiveMap = Object.freeze({ geometry: hubGeometry(false), zoneLabel: hubZoneLabel });

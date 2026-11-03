@@ -1,4 +1,4 @@
-// 입장 화면 "캐릭터 조립실"의 순수 데이터(설계 4장·5.3): 슬롯 칩 이름, 색 라벨, 견본을 보일지, 목소리 선택지,
+// 입장 화면 "캐릭터 조립실"의 순수 데이터(설계 4장·5.3): 슬롯 칩 이름, 색 라벨, 견본을 보일지,
 // 화면 문구, 미리보기 카메라·조명·움직임, Jua 글꼴에 남길 글자. 무대 배치는 stageLayout.ts에 있다.
 // React·three를 import 하지 않으므로 DOM 없이 단위 테스트한다.
 
@@ -16,7 +16,7 @@ import { NICKNAME_MAX, NICKNAME_MIN } from "@caysonverse/shared/constants";
 import { DESTINATION_FONT_TEXT } from "./entryForm";
 
 export interface ChipOption {
-  /** 외형 필드 값(부품 인덱스 또는 목소리 인덱스). */
+  /** 외형 필드 값(부품 인덱스). */
   index: number;
   /** 칩에 보이는 한국어 이름. */
   label: string;
@@ -81,20 +81,12 @@ export function swatchInk(hex: string): string {
   return luminance > LIGHT_SWATCH_LUMINANCE ? "#1b1640" : "#ffffff";
 }
 
-/** 목소리 선택지. 인덱스는 VOICE_GENDERS(0 = male, 1 = female)와 같다. */
-export const VOICE_OPTIONS: readonly ChipOption[] = Object.freeze([
-  Object.freeze({ index: 0, label: "남자 목소리" }),
-  Object.freeze({ index: 1, label: "여자 목소리" }),
-]);
-
 /** 조립실 화면 문구. Jua로 그리는 것은 BUILDER_FONT_TEXT에 모은다. */
 export const BUILDER_COPY = {
   title: "캐릭터 조립실",
   presets: "추천 캐릭터",
   presetsHint: "누르면 한 번에 갈아입어요",
   random: "🎲 랜덤",
-  voice: "목소리",
-  voiceHint: "채팅을 읽어 줄 목소리",
   dragHint: "끌어서 돌려 보세요",
   loading: "캐릭터를 불러오는 중…",
   /** 미리보기가 모델 말고 다른 이유(WebGL 등)로 무너졌을 때. */
@@ -132,7 +124,6 @@ export const BUILDER_FONT_TEXT: string = [
   BUILDER_COPY.title,
   BUILDER_COPY.presets,
   RANDOM_TEXT,
-  BUILDER_COPY.voice,
   BUILDER_COPY.dragHint,
   BUILDER_COPY.loading,
   BUILDER_COPY.nickname,
@@ -143,7 +134,6 @@ export const BUILDER_FONT_TEXT: string = [
   ...CHARACTER_SLOTS.map((slot) => CHARACTER_MANIFEST.slotLabels[slot]),
   ...CHARACTER_SLOTS.map((slot) => colorLabel(slot)),
   ...APPEARANCE_PRESETS.map((preset) => preset.label),
-  ...VOICE_OPTIONS.map((option) => option.label),
   DESTINATION_FONT_TEXT,
 ].join(" ");
 
@@ -155,11 +145,11 @@ export function slotPickedLabel(a: Appearance, slot: CharacterSlot): string {
   return color ? `${part} · ${color}` : part;
 }
 
-/** 화살표 키를 받는 방향: 가로 탭 막대(←/→), 세로 탭 레일(↑/↓), 라디오 묶음(네 방향 모두). */
+/** 화살표 키를 받는 방향: 가로 탭 막대(←/→), 세로 탭 레일(↑/↓), 그 밖의 묶음(네 방향 모두). */
 export type ArrowAxis = "horizontal" | "vertical" | "both";
 
 /**
- * 목록의 화살표 키(탭·목소리 라디오, WAI-ARIA 패턴): 다음 칸의 인덱스, 해당 키가 아니면 -1.
+ * 목록의 화살표 키(탭, WAI-ARIA 패턴): 다음 칸의 인덱스, 해당 키가 아니면 -1.
  * 오른쪽·아래 = 다음, 왼쪽·위 = 앞(양 끝에서 돌아간다), Home·End = 처음·끝. axis가 가로면 ←/→만,
  * 세로면 ↑/↓만 받는다(aria-orientation과 같게).
  */

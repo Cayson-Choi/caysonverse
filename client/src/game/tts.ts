@@ -16,6 +16,11 @@
  * mock; the module-level speakChat/primeTts/stopTts wrap one lazy singleton
  * bound to the real window.speechSynthesis.
  *
+ * CHAT_VOICE_ENABLED (owner decision 2026-11-03, "음성은 빼버려 음성이 너무 기계음 같아서 안좋아"): chat is
+ * NEVER read aloud now. The one flag below gates every speaking entry point of the chat-voice stack
+ * (this module's `speakChat`, chatVoice.ts' `speakChatNeural`, and the chatSync hook that calls them);
+ * the machinery stays so the flag can bring it back, nothing else would have to change.
+ *
  * Known device limits (documented, not fixable client-side):
  *  - iOS: the hardware silent switch mutes SpeechSynthesis output entirely,
  *  - voice availability varies per device/OS — no Korean voice installed means
@@ -24,6 +29,13 @@
  *  - mobile autoplay: the engine must be primed inside a user gesture — the
  *    entry screen's join click calls primeTts() (one silent utterance).
  */
+
+/**
+ * Whether chat lines are read aloud at all. `false`, ever (owner decision, 2026-11-03: the voice sounded too
+ * mechanical). The ONE switch for the whole chat-voice stack — see the module notes above. The legacy world's
+ * AI 조교 voices (npcVoice.ts) are a separate thing and are not behind it.
+ */
+export const CHAT_VOICE_ENABLED = false;
 
 /** The slice of SpeechSynthesisVoice the policy needs (mockable). */
 export interface TtsVoiceLike {
@@ -277,6 +289,7 @@ function getChatTts(): ChatTts {
 
 /** Read a chat message aloud (see ChatTts.speak). Called from chatSync only. */
 export function speakChat(text: string, distance: number, opts?: { muted?: boolean }): void {
+  if (!CHAT_VOICE_ENABLED) return;
   getChatTts().speak(text, distance, opts);
 }
 

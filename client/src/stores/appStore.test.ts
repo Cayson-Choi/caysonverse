@@ -125,3 +125,55 @@ describe("appStore — class screens (AI 학교 탈출, Task 13)", () => {
     expect([s.reconnecting, s.mainReconnecting, s.escapeReconnecting]).toEqual([false, false, false]);
   });
 });
+
+describe("appStore — 케이슨 마을", () => {
+  const me = { nickname: "가람", appearance: DEFAULT_APPEARANCE, sessionId: "v1" };
+
+  beforeEach(() => {
+    useAppStore.setState({
+      screen: "entry",
+      identity: null,
+      isAdmin: true, // a stale flag from an earlier session must not leak in
+      notice: "이전 안내",
+      reconnecting: true,
+      mainReconnecting: true,
+      escapeReconnecting: false,
+      connectionEpoch: 0,
+      escapeEpoch: 0,
+    });
+  });
+
+  it("enterVillage shows the village for the joined identity, never as an admin, with the notice and overlay cleared", () => {
+    useAppStore.getState().enterVillage(me);
+    const s = useAppStore.getState();
+    expect(s.screen).toBe("village");
+    expect(s.identity).toEqual(me);
+    expect(s.isAdmin).toBe(false);
+    expect(s.notice).toBeNull();
+    expect(s.reconnecting).toBe(false);
+    expect(s.mainReconnecting).toBe(false);
+  });
+
+  it("a reconnect keeps the village screen and bumps the epoch; leaving returns to the entry with a notice", () => {
+    useAppStore.getState().enterVillage(me);
+    useAppStore.getState().reconnected("v2", false);
+    let s = useAppStore.getState();
+    expect(s.screen).toBe("village");
+    expect(s.identity?.sessionId).toBe("v2");
+    expect(s.connectionEpoch).toBe(1);
+
+    useAppStore.getState().leaveToEntry("연결이 끊겼어요");
+    s = useAppStore.getState();
+    expect(s.screen).toBe("entry");
+    expect(s.identity).toBeNull();
+    expect(s.notice).toBe("연결이 끊겼어요");
+  });
+
+  it("the classroom transitions ignore the village (enterEscape only works from a class)", () => {
+    useAppStore.getState().enterVillage(me);
+    useAppStore.getState().enterEscape();
+    expect(useAppStore.getState().screen).toBe("village");
+    useAppStore.getState().exitEscape();
+    expect(useAppStore.getState().screen).toBe("village");
+  });
+});

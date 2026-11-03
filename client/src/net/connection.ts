@@ -2,7 +2,7 @@ import { Client, Room } from "@colyseus/sdk";
 // TYPE-ONLY: schema.ts runs @colyseus/schema decorators and must never enter the
 // browser bundle. We only borrow the states' shapes for typing the rooms.
 import type { ClassState, EscapeState, WorldState } from "@caysonverse/shared/schema";
-import { WORLD_ROOM, CHAT_MAX_LENGTH } from "@caysonverse/shared/constants";
+import { WORLD_ROOM, VILLAGE_ROOM, CHAT_MAX_LENGTH } from "@caysonverse/shared/constants";
 import { MessageType } from "@caysonverse/shared/messages";
 import type { MovePayload } from "@caysonverse/shared/messages";
 import type { Appearance } from "@caysonverse/shared/appearance";
@@ -50,6 +50,12 @@ export interface JoinParams {
 }
 
 /**
+ * Options of a village (케이슨 마을) join: the world's `nickname` + `appearance`, no admin code (the
+ * village has no admin; VillageRoom validates the same contract and ignores nothing else).
+ */
+export type VillageJoinParams = Pick<JoinParams, "nickname" | "appearance">;
+
+/**
  * Options of a class (반) join (ruling E5): the stage-3 join contract — nickname + NESTED
  * appearance, exactly as `JoinParams` — plus the class code and, for a teacher, the one-time
  * pass from `requestTeacherPass` (used once, never stored).
@@ -59,16 +65,19 @@ export interface ClassJoinParams extends Omit<JoinParams, "adminCode"> {
   teacherPass?: string;
 }
 
+/** The kinds of main connection: 케이슨 마을, the legacy world, or a class (AI 학교 탈출). */
+export type RoomMode = "village" | "world" | "class";
+
 /** The one SDK client. Shared with the resilience driver (reconnect/re-join). */
 export const client = new Client(SERVER_URL);
 
 // Module-level room handles — NOT React state. Scenes read them via getRoom() / getEscapeRoom().
-// `room` is the MAIN connection: the legacy world or a class. A class room is held through the
+// `room` is the MAIN connection: the village, the legacy world or a class. A class room is held through the
 // world type (ClassState extends WorldState; Room's generic is invariant, hence the casts where
 // one is stored). `escapeRoom` is the team classroom, open ON TOP of the class connection.
 let room: Room<WorldState> | null = null;
-/** Which kind of main connection this tab has (set by joinWorld / joinClass). */
-let roomMode: "world" | "class" = "world";
+/** Which kind of main connection this tab has (set by joinVillage / joinWorld / joinClass). */
+let roomMode: RoomMode = "world";
 let escapeRoom: Room<EscapeState> | null = null;
 /** Classroom joins in flight (escapeResilience waits for one instead of giving up mid-join). */
 let escapeJoins = 0;
@@ -78,8 +87,8 @@ export function getRoom(): Room<WorldState> | null {
   return room;
 }
 
-/** Which kind of main connection this tab has (the world unless a class was joined). */
-export function getRoomMode(): "world" | "class" {
+/** Which kind of main connection this tab has (the world unless the village or a class was joined). */
+export function getRoomMode(): RoomMode {
   return roomMode;
 }
 
@@ -158,6 +167,45 @@ export async function joinWorld(params: JoinParams): Promise<Room<WorldState>> {
   setRoom(joined);
   roomMode = "world";
   attachResilience(joined);
+  await waitForSelf(joined);
+  return joined;
+}
+
+// ───────────────────────────────── 케이슨 마을 (the village) ─────────────────────────────────
+
+/** The options the village's `onJoin` reads: exactly nickname and appearance (never an admin code). */
+function villageJoinOptions(p: VillageJoinParams): VillageJoinParams {
+  return { nickname: p.nickname, appearance: p.appearance };
+}
+
+/**
+ * Raw join of a village room: `joinOrCreate` — the village is NOT a singleton. Rooms are created on
+ * demand (30 per room, VILLAGE_MAX_CLIENTS) and a full room is locked, so the next visitor lands in
+ * a new one; there is no "world is full" refusal to retry. Throws the SDK's native error (the
+ * caller maps it). Used by joinVillage and by the resilience driver's Phase-2 rejoin.
+ */
+export function joinVillageRoom(params: VillageJoinParams): Promise<Room<WorldState>> {
+  return client.joinOrCreate<WorldState>(VILLAGE_ROOM, villageJoinOptions(params));
+}
+
+/**
+ * Join 케이슨 마을 from the entry screen (the default 입장하기). Same shape as `joinWorld`: adopt the
+ * room, arm the resilience BEFORE the join-wait (a drop during it is then recovered, not stranded),
+ * resolve once our own player exists in the synced state. Rejects with an Error whose message is
+ * user-facing Korean (the server's rejection string — e.g. the nickname rule — else the generic
+ * connection-failure notice). No 521 retry: `joinOrCreate` makes a room instead of reporting none.
+ */
+export async function joinVillage(params: VillageJoinParams): Promise<Room<WorldState>> {
+  let joined: Room<WorldState>;
+  try {
+    joined = await joinVillageRoom(params);
+  } catch (err) {
+    throw new Error(joinErrorNotice(err));
+  }
+
+  setRoom(joined);
+  roomMode = "village";
+  attachResilience(joined, "village");
   await waitForSelf(joined);
   return joined;
 }
@@ -497,8 +545,8 @@ export function waitForSelf(r: SelfWaitable): Promise<void> {
 
 /**
  * Tab close / navigation (`pagehide`, which fires on mobile too).
- * - World: a best-effort CONSENTED leave, so the server removes the player at once instead of
- *   holding a 20 s ghost window (unchanged).
+ * - World and village: a best-effort CONSENTED leave, so the server removes the player at once instead
+ *   of holding a 20 s ghost window (unchanged for the world).
  * - Class (ruling, Task 13): NO leave of either room. A refresh or a closed tab must leave
  *   GHOSTS (Review Focus 1): the class ghost keeps its team and its `place`, so the same nickname
  *   coming back takes it over and is sent straight back into the same classroom. Teammates still

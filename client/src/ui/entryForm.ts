@@ -1,15 +1,17 @@
 /**
- * The entry's destination step — "어디로 갈까요?" (AI 학교 탈출, Task 14). Pure: no React, no DOM, no
- * network. EntryScreen renders it and passes the real connection functions into the class flows
- * (`ClassEntryDeps`), so the order of the calls and what is (never) stored are unit-tested here.
+ * The entry's routing and its destination step — "어디로 갈까요?" (AI 학교 탈출, Task 14). Pure: no React, no
+ * DOM, no network. EntryScreen renders it and passes the real connection functions into the flows
+ * (`ClassEntryDeps`, `VillageEntryDeps`), so the order of the calls and what is (never) stored are
+ * unit-tested here.
  *
  * The character builder is Caysonverse's shared entrance and carries no school chrome (spec §14):
- * the look and the nickname are made there as before, and 입장하기 opens the destination step,
- * a list of experiences. Today it lists one, AI 학교 탈출 — a student enters with a class code
- * (반 코드), a teacher opens a class with a teacher key (선생님 키). The current world is not on the
- * entry (owner decision, 2026-11-02): it is reached only through the `?world=legacy` link, whose
- * entry is exactly the old one (builder → 입장하기 → world, with the admin pill). Flipping
- * SHOW_WORLD_ON_ENTRY lists it as a second card in the step instead.
+ * the look and the nickname are made there as before. Where 입장하기 goes depends on the address
+ * (owner decision, 2026-11-03; `entryModeFromUrl` / `entryRoute`):
+ *   - no parameter → 케이슨 마을, straight in: no code, no destination step (`enterVillageDirectly`);
+ *   - `?experience=escape` → the destination step, today one card, AI 학교 탈출 — a student enters
+ *     with a class code (반 코드), a teacher opens a class with a teacher key (선생님 키);
+ *   - `?world=legacy` → the old world exactly as it was (builder → 입장하기 → world, with the admin
+ *     pill). Flipping SHOW_WORLD_ON_ENTRY lists it as a second card in the step instead.
  */
 
 import type { Appearance } from "@caysonverse/shared/appearance";
@@ -23,22 +25,40 @@ import type { Identity } from "../stores/appStore";
 import { validateNickname } from "./validation";
 
 /**
- * Which entry the page opens with. `student` / `teacher` are the two ways into AI 학교 탈출 (the
- * sheet starts as a student; "선생님이신가요?" switches it); `legacy` is the old world entry.
+ * Which entry the page opens with. `village` (the default) goes straight into 케이슨 마을; `escape` is
+ * AI 학교 탈출 (the destination sheet starts as a student; "선생님이신가요?" switches it); `legacy` is
+ * the old world entry.
  */
-export type EntryMode = "student" | "teacher" | "legacy";
+export type EntryMode = "village" | "escape" | "legacy";
 
 /** Owner decision (2026-11-02): the current world is not shown on the entry (only `?world=legacy`). */
 export const SHOW_WORLD_ON_ENTRY = false;
 
-/** `?world=legacy` (exactly) → the old world entry; any other address → the school entry. */
+/**
+ * Owner decision (2026-11-03): `?world=legacy` (exactly) → the old world entry; `?experience=escape`
+ * (exactly) → AI 학교 탈출's destination step; any other address → 케이슨 마을. The world link wins
+ * when both are given (it is the older, fully separate entry).
+ */
 export function entryModeFromUrl(search: string): EntryMode {
-  return new URLSearchParams(search).get("world") === "legacy" ? "legacy" : "student";
+  const params = new URLSearchParams(search);
+  if (params.get("world") === "legacy") return "legacy";
+  return params.get("experience") === "escape" ? "escape" : "village";
+}
+
+/** What 입장하기 does once the nickname and look are checked. */
+export type EntryRoute = "village" | "destinations" | "world";
+
+/**
+ * Where a checked 입장하기 leads: the village joins at once (no sheet, no code), AI 학교 탈출 opens the
+ * destination step, and the legacy link joins the old world.
+ */
+export function entryRoute(mode: EntryMode): EntryRoute {
+  return mode === "village" ? "village" : mode === "escape" ? "destinations" : "world";
 }
 
 // ───────────────────────────────────── the sheet ─────────────────────────────────────
 
-/** The two ways into AI 학교 탈출 (EntryMode without "legacy"). */
+/** The two ways into AI 학교 탈출 (the destination sheet's role switch). */
 export type SchoolRole = "student" | "teacher";
 
 /** The sheet's role and the teacher key typed in it. */
@@ -284,4 +304,28 @@ export async function enterClassAsTeacher(
     throw err;
   }
   deps.enterHub({ nickname: v.nickname, appearance: v.appearance, sessionId: room.sessionId, classCode }, true);
+}
+
+// ───────────────────────────────────── the village ─────────────────────────────────────
+
+/** What entering 케이슨 마을 needs from the app (EntryScreen passes the real functions). */
+export interface VillageEntryDeps {
+  /** Joins (or creates) a village room; rejects with Korean words (connection.joinVillage maps them). */
+  joinVillage(p: { nickname: string; appearance: Appearance }): Promise<{ sessionId: string }>;
+  saveIdentity(identity: CachedIdentity): void;
+  clearKicked(): void;
+  enterVillage(identity: Identity): void;
+}
+
+/**
+ * 입장하기 in the default mode: straight into 케이슨 마을 — no class code, no destination step. The
+ * look is remembered first (a later visit prefills it) and a deliberate entry clears an earlier kick;
+ * then the village is joined and the screen moves. A rejected join leaves the screen where it is
+ * (nothing is entered) and rejects with the join's Korean words.
+ */
+export async function enterVillageDirectly(deps: VillageEntryDeps, v: Who): Promise<void> {
+  deps.saveIdentity({ nickname: v.nickname, appearance: v.appearance });
+  deps.clearKicked();
+  const room = await deps.joinVillage({ nickname: v.nickname, appearance: v.appearance });
+  deps.enterVillage({ nickname: v.nickname, appearance: v.appearance, sessionId: room.sessionId });
 }

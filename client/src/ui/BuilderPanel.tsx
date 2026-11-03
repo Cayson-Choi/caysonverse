@@ -1,8 +1,10 @@
-// 조립실 패널(설계 4장·5.3, Task 7b 배치): 추천 캐릭터 8개 + 🎲 랜덤, 슬롯 탭 7개, 지금 탭의 부품 카드와 색 견본, 목소리.
+// 조립실 패널(설계 4장·5.3, Task 7b 배치): 추천 캐릭터 8개 + 🎲 랜덤, 슬롯 탭 7개, 지금 탭의 부품 카드와 색 견본.
 // 외형을 직접 들고 있지 않고 onChange로 새 외형만 올린다(EntryScreen이 상태와 저장을 맡는다).
 //
-// DOM 순서는 휴대폰에서 보이는 순서다: 추천 캐릭터(🎲 먼저) → 탭 → 색 → 부품 카드 → 목소리.
-// 넓은 화면: CSS grid로 왼쪽 유리 패널(추천 캐릭터·목소리)과 오른쪽 유리 패널(세로 아이콘 탭 레일·부품 카드·색)에 놓는다
+// 목소리 고르기는 없다(발주자 2026-11-03: 채팅을 읽어 주지 않는다). 외형의 voice 값은 그대로 들고 다니되 아무도 쓰지 않는다.
+//
+// DOM 순서는 휴대폰에서 보이는 순서다: 추천 캐릭터(🎲 먼저) → 탭 → 색 → 부품 카드.
+// 넓은 화면: CSS grid로 왼쪽 유리 패널(추천 캐릭터)과 오른쪽 유리 패널(세로 아이콘 탭 레일·부품 카드·색)에 놓는다
 // (부품 카드가 색보다 위에 보이는 것만 DOM과 다르다). 휴대폰: 아래 시트 하나(손잡이로 펼치기, 안에서 스크롤).
 // 클래스·role·aria·글자 노드는 Task 7 그대로이고(E2E가 이것으로 찾는다), 감싸는 요소와 장식(그림·아이콘)만 더했다.
 
@@ -22,7 +24,6 @@ import {
   BUILDER_COPY,
   RANDOM_ICON,
   RANDOM_TEXT,
-  VOICE_OPTIONS,
   arrowIndex,
   colorLabel,
   partChips,
@@ -36,8 +37,10 @@ import { BuilderIcon, SLOT_ICONS } from "./BuilderIcons";
 
 /** 그림 하나(캐시에 들어오면 그때 나타난다). 없거나 실패하면 아무것도 그리지 않는다(빈 타일 + 이름). */
 function ThumbImg({ thumbKey }: { thumbKey: string | null }) {
-  const url = useSyncExternalStore(thumbStore.cache.subscribe, () =>
-    thumbKey === null ? null : (thumbStore.cache.get(thumbKey) ?? null),
+  const url = useSyncExternalStore(
+    thumbStore.cache.subscribe,
+    () => (thumbKey === null ? null : (thumbStore.cache.get(thumbKey) ?? null)),
+    () => null, // no server snapshot of a canvas-drawn picture (also lets the panel render to static markup in tests)
   );
   return url ? <img className="cv-thumb" src={url} alt="" draggable={false} /> : null;
 }
@@ -69,7 +72,6 @@ export function BuilderPanel({
   const [rolls, setRolls] = useState(0);
   const tabRefs = useRef<Partial<Record<CharacterSlot, HTMLButtonElement | null>>>({});
   const tabListRef = useRef<HTMLDivElement>(null);
-  const voiceRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const panelRef = useRef<HTMLDivElement>(null);
   const grabRef = useRef<{ id: number; y: number; base: number; moved: boolean } | null>(null);
   /** 끌기로 끝난 누름 뒤에 오는 click은 열고 닫기로 치지 않는다. */
@@ -104,16 +106,6 @@ export function BuilderPanel({
     const target = CHARACTER_SLOTS[next];
     setSlot(target);
     tabRefs.current[target]?.focus();
-  }
-
-  /** 목소리 라디오의 화살표(WAI-ARIA 라디오 패턴): 고르고 초점을 옮긴다. */
-  function onVoiceKey(e: React.KeyboardEvent<HTMLDivElement>) {
-    const at = VOICE_OPTIONS.findIndex((o) => o.index === appearance.voice);
-    const next = arrowIndex(e.key, Math.max(0, at), VOICE_OPTIONS.length);
-    if (next < 0) return;
-    e.preventDefault();
-    onChange({ ...appearance, voice: VOICE_OPTIONS[next].index });
-    voiceRefs.current[next]?.focus();
   }
 
   // ── 아래 시트 손잡이: 톡(또는 Enter·Space) = 열고 닫기, 끌기 = 손가락을 따라가다 가까운 쪽으로 붙는다.
@@ -166,7 +158,7 @@ export function BuilderPanel({
         <span className="cv-sheet-grabber-bar" aria-hidden="true" />
       </button>
 
-      {/* DOM 순서 = 휴대폰에서 보이는 순서(추천 캐릭터 → 탭 → 색 → 부품 카드 → 목소리). 넓은 화면은 grid로 두 패널에 놓는다. */}
+      {/* DOM 순서 = 휴대폰에서 보이는 순서(추천 캐릭터 → 탭 → 색 → 부품 카드). 넓은 화면은 grid로 두 패널에 놓는다. */}
       <div className="cv-sheet-body" ref={scrollerRef}>
         <div className="cv-builder-group cv-presets-group">
           <div className="cv-builder-group-head">
@@ -303,34 +295,6 @@ export function BuilderPanel({
                 </button>
               );
             })}
-          </div>
-        </div>
-
-        <div className="cv-builder-group cv-voice-group">
-          <div className="cv-builder-group-head">
-            <span className="cv-label" id="cv-voice-label">
-              {BUILDER_COPY.voice}
-            </span>
-            <span className="cv-sub">{BUILDER_COPY.voiceHint}</span>
-          </div>
-          <div className="cv-voice-options" role="radiogroup" aria-labelledby="cv-voice-label" onKeyDown={onVoiceKey}>
-            {VOICE_OPTIONS.map((option, i) => (
-              <button
-                type="button"
-                key={option.index}
-                ref={(el) => {
-                  voiceRefs.current[i] = el;
-                }}
-                role="radio"
-                className="cv-voice-option"
-                aria-checked={appearance.voice === option.index}
-                tabIndex={appearance.voice === option.index ? 0 : -1}
-                onClick={() => onChange({ ...appearance, voice: option.index })}
-              >
-                <BuilderIcon name="voice" />
-                {option.label}
-              </button>
-            ))}
           </div>
         </div>
       </div>

@@ -1,11 +1,12 @@
 import { create } from "zustand";
 
 /**
- * TTS mute state (design 23) — drives the 🔊/🔇 toggle button and gates
- * speakChat at the chat-broadcast hook (chatSync). Discrete UI state, so
- * zustand is fine here (this is not per-frame data). Persisted to localStorage
- * so the choice survives reloads; default is ON (reading enabled) — the value
- * only exists once the user has toggled at least once.
+ * Sound mute state — drives the 🔊/🔇 toggle button. Today it gates the legacy world's AI 조교
+ * voices (npcStore); chat is never read aloud (CHAT_VOICE_ENABLED, owner decision 2026-11-03).
+ * Discrete UI state, so zustand is fine here (this is not per-frame data). Persisted to
+ * localStorage so the choice survives reloads; default is ON (not muted) — the value only
+ * exists once the user has toggled at least once. The storage key keeps its old name
+ * ("cv-tts-muted") so a choice made before the rename still applies.
  */
 
 const STORAGE_KEY = "cv-tts-muted";
@@ -28,7 +29,7 @@ function saveMuted(muted: boolean): void {
 }
 
 interface SoundStore {
-  /** True = 낭독 꺼짐 (🔇). Read by chatSync on every chat broadcast. */
+  /** True = 소리 꺼짐 (🔇). */
   muted: boolean;
   toggleMuted: () => void;
 }

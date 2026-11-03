@@ -12,8 +12,10 @@ import {
   TEXT_LEVEL_OPTIONS,
   entryDestinations,
   entryModeFromUrl,
+  entryRoute,
   enterClassAsStudent,
   enterClassAsTeacher,
+  enterVillageDirectly,
   validateStudentEntry,
   validateTeacherEntry,
   refusalField,
@@ -22,22 +24,54 @@ import {
   teacherGoLabels,
   type ClassEntryDeps,
   type TeacherFields,
+  type VillageEntryDeps,
 } from "./entryForm";
 
 describe("entryModeFromUrl", () => {
-  it("entryModeFromUrl", () => {
-    expect(entryModeFromUrl("?world=legacy")).toBe("legacy");
-    expect(entryModeFromUrl("")).toBe("student");
+  it("opens the village by default (owner decision 2026-11-03: 입장하기 goes straight to 케이슨 마을)", () => {
+    expect(entryModeFromUrl("")).toBe("village");
+    expect(entryModeFromUrl("?")).toBe("village");
+    expect(entryModeFromUrl("?debug=1")).toBe("village");
   });
 
-  it("only the exact ?world=legacy link opens the current world's entry", () => {
+  it("only the exact ?experience=escape link opens AI 학교 탈출's destination step", () => {
+    expect(entryModeFromUrl("?experience=escape")).toBe("escape");
+    expect(entryModeFromUrl("?debug=1&experience=escape")).toBe("escape");
+    expect(entryModeFromUrl("experience=escape")).toBe("escape");
+    expect(entryModeFromUrl("?experience=")).toBe("village");
+    expect(entryModeFromUrl("?experience=school")).toBe("village");
+    expect(entryModeFromUrl("?experience=Escape")).toBe("village");
+    expect(entryModeFromUrl("?escape")).toBe("village");
+    expect(entryModeFromUrl("?%E0%A4%A")).toBe("village"); // a malformed escape never throws
+  });
+
+  it("only the exact ?world=legacy link opens the current world's entry (unchanged)", () => {
+    expect(entryModeFromUrl("?world=legacy")).toBe("legacy");
     expect(entryModeFromUrl("?debug=1&world=legacy")).toBe("legacy");
     expect(entryModeFromUrl("world=legacy")).toBe("legacy");
-    expect(entryModeFromUrl("?world=")).toBe("student");
-    expect(entryModeFromUrl("?world=new")).toBe("student");
-    expect(entryModeFromUrl("?world=Legacy")).toBe("student");
-    expect(entryModeFromUrl("?legacy")).toBe("student");
-    expect(entryModeFromUrl("?%E0%A4%A")).toBe("student"); // a malformed escape never throws
+    expect(entryModeFromUrl("?world=")).toBe("village");
+    expect(entryModeFromUrl("?world=new")).toBe("village");
+    expect(entryModeFromUrl("?world=Legacy")).toBe("village");
+    expect(entryModeFromUrl("?legacy")).toBe("village");
+  });
+
+  it("the legacy link wins when both are given", () => {
+    expect(entryModeFromUrl("?world=legacy&experience=escape")).toBe("legacy");
+    expect(entryModeFromUrl("?experience=escape&world=legacy")).toBe("legacy");
+  });
+});
+
+describe("entryRoute — where 입장하기 leads", () => {
+  it("village joins at once (no destination sheet); escape opens the sheet; legacy joins the old world", () => {
+    expect(entryRoute("village")).toBe("village");
+    expect(entryRoute("escape")).toBe("destinations");
+    expect(entryRoute("legacy")).toBe("world");
+  });
+
+  it("a plain address never reaches the destination sheet; only ?experience=escape does", () => {
+    expect(entryRoute(entryModeFromUrl(""))).toBe("village");
+    expect(entryRoute(entryModeFromUrl("?experience=escape"))).toBe("destinations");
+    expect(entryRoute(entryModeFromUrl("?world=legacy"))).toBe("world");
   });
 });
 
@@ -349,5 +383,42 @@ describe("refusalField — the field a server refusal points at", () => {
   it("a teacher's refused class code (404 not open, 409 another teacher's) points at the class-code field", () => {
     expect(refusalField("teacher", Object.assign(new Error("그 반 코드는 지금 열려 있지 않아요"), { status: 404 }))).toBe("code");
     expect(refusalField("teacher", Object.assign(new Error("이 반 코드는 다른 선생님이 쓰고 있어요"), { status: 409 }))).toBe("code");
+  });
+});
+
+// ─────────────────────────────── the village entry flow (fake app) ───────────────────────────────
+
+function fakeVillageDeps(join: () => Promise<{ sessionId: string }> = () => Promise.resolve({ sessionId: "v-sid-1" })) {
+  const calls: Call[] = [];
+  const deps: VillageEntryDeps = {
+    joinVillage: (p) => {
+      calls.push(["joinVillage", p]);
+      return join();
+    },
+    saveIdentity: (identity) => void calls.push(["saveIdentity", identity]),
+    clearKicked: () => void calls.push(["clearKicked"]),
+    enterVillage: (identity) => void calls.push(["enterVillage", identity]),
+  };
+  return { deps, calls, names: () => calls.map((c) => c[0]) };
+}
+
+describe("enterVillageDirectly — 입장하기 in the default mode", () => {
+  it("remembers the look, clears a kick, joins the village and enters it — nothing else (no code, no sheet, no teacher)", async () => {
+    const { deps, calls, names } = fakeVillageDeps();
+    await enterVillageDirectly(deps, { nickname: "하늘별", appearance: LOOK });
+
+    expect(names()).toEqual(["saveIdentity", "clearKicked", "joinVillage", "enterVillage"]);
+    expect(calls[0][1]).toEqual({ nickname: "하늘별", appearance: LOOK });
+    expect(calls[2][1]).toEqual({ nickname: "하늘별", appearance: LOOK }); // exactly the village's join options
+    expect(calls[3][1]).toEqual({ nickname: "하늘별", appearance: LOOK, sessionId: "v-sid-1" });
+    expect(calls[3][1]).not.toHaveProperty("classCode");
+  });
+
+  it("stays on the entry with the join's own words when the village refuses", async () => {
+    const words = "연결에 실패했습니다. 잠시 후 다시 시도해주세요.";
+    const { deps, names } = fakeVillageDeps(() => Promise.reject(new Error(words)));
+    await expect(enterVillageDirectly(deps, { nickname: "하늘별", appearance: LOOK })).rejects.toThrow(words);
+    expect(names()).toEqual(["saveIdentity", "clearKicked", "joinVillage"]);
+    expect(names()).not.toContain("enterVillage");
   });
 });

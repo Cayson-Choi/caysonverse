@@ -9,10 +9,11 @@ import { useClassStore } from "./classStore";
  */
 
 /**
- * `world` = the legacy world; `hub` = a class's hall and corridor (AI 학교 탈출); `escape` =
- * inside the team's classroom (the class connection stays open underneath).
+ * `village` = 케이슨 마을 (where 입장하기 leads by default); `world` = the legacy world; `hub` = a
+ * class's hall and corridor (AI 학교 탈출); `escape` = inside the team's classroom (the class
+ * connection stays open underneath).
  */
-export type Screen = "entry" | "world" | "hub" | "escape";
+export type Screen = "entry" | "village" | "world" | "hub" | "escape";
 
 /** Who the local player is, established at join. */
 export interface Identity {
@@ -28,7 +29,7 @@ interface AppState {
   screen: Screen;
   identity: Identity | null;
   /**
-   * Whether the local player is the admin (instructor). Inferred client-side:
+   * Whether the local player is the admin (instructor); always false in the village. Inferred client-side:
    * a join that supplied an admin code AND succeeded proves the code was correct
    * (a wrong code is rejected server-side). NEVER derived from schema — no other
    * client can learn who is admin. Gates rendering of the admin panel only.
@@ -51,7 +52,7 @@ interface AppState {
   escapeReconnecting: boolean;
   /**
    * Monotonic connection generation. Bumped on every successful (re)connection
-   * so the WorldScene, keyed by it, REMOUNTS against the new room — every
+   * so the main scene (village, world or hall), keyed by it, REMOUNTS against the new room — every
    * scene-level `getRoom()` binding (remote sync, banner, chat) rebinds and the
    * remote store is rebuilt clean. The first join uses generation 0.
    */
@@ -62,6 +63,8 @@ interface AppState {
    */
   escapeEpoch: number;
 
+  /** Enter 케이슨 마을 after a successful village join (the village has no admin). */
+  enterVillage: (identity: Identity) => void;
   /** Enter the world after a successful join. `isAdmin` gates the admin panel. */
   enterWorld: (identity: Identity, isAdmin?: boolean) => void;
   /** Enter a class's hall after a successful class join. `isTeacher` = joined with a teacher pass. */
@@ -104,6 +107,8 @@ export const useAppStore = create<AppState>((set) => ({
   connectionEpoch: 0,
   escapeEpoch: 0,
 
+  enterVillage: (identity) =>
+    set({ screen: "village", identity, isAdmin: false, notice: null, ...NOT_RECONNECTING }),
   enterWorld: (identity, isAdmin = false) =>
     set({ screen: "world", identity, isAdmin, notice: null, ...NOT_RECONNECTING }),
   enterHub: (identity, isTeacher = false) =>

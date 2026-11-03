@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useAppStore } from "./stores/appStore";
 import { EntryScreen } from "./ui/EntryScreen";
+import { VillageScene } from "./game/VillageScene";
 import { WorldScene } from "./game/WorldScene";
 import { HubScene } from "./game/HubScene";
 import { EscapeScene } from "./escape/EscapeScene";
@@ -26,10 +27,11 @@ function useCanvasContextMenuSuppression() {
 
 /**
  * Top-level screen router. `screen` and `identity` are UI state (zustand), not
- * per-frame data. Entry -> (join success) -> world; an unexpected room leave is
- * handled by the resilience driver (reconnect behind the overlay, or fall back
- * to entry). The WorldScene is keyed by `connectionEpoch` so a reconnect remounts
- * it against the new room (rebinding every scene-level room subscription); the
+ * per-frame data. Entry -> (join success) -> village (the default 입장하기) or the
+ * world (`?world=legacy`); an unexpected room leave is handled by the resilience
+ * driver (reconnect behind the overlay, or fall back to entry). The VillageScene
+ * and the WorldScene are keyed by `connectionEpoch` so a reconnect remounts
+ * them against the new room (rebinding every scene-level room subscription); the
  * reconnection overlay lives OUTSIDE that key so it survives the remount.
  * AppErrorBoundary wraps both screens: an uncaught render error (e.g. inside the
  * 3D scene) shows a refresh prompt instead of React unmounting the root to a blank
@@ -51,7 +53,9 @@ export default function App() {
   return (
     <>
       <AppErrorBoundary>
-        {screen === "world" && identity ? (
+        {screen === "village" && identity ? (
+          <VillageScene key={connectionEpoch} identity={identity} />
+        ) : screen === "world" && identity ? (
           <WorldScene key={connectionEpoch} identity={identity} />
         ) : screen === "hub" && identity ? (
           <HubScene key={connectionEpoch} identity={identity} />

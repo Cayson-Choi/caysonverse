@@ -19,8 +19,10 @@ import {
   TEACHER_KEY_ERROR,
   entryDestinations,
   entryModeFromUrl,
+  entryRoute,
   enterClassAsStudent,
   enterClassAsTeacher,
+  enterVillageDirectly,
   validateStudentEntry,
   validateTeacherEntry,
   refusalField,
@@ -28,9 +30,10 @@ import {
   type ClassEntryDeps,
   type DestinationId,
   type TeacherFields,
+  type VillageEntryDeps,
 } from "./entryForm";
 import { DestinationSheet, type DestinationError } from "./DestinationSheet";
-import { joinClass, joinWorld, requestTeacherPass } from "../net/connection";
+import { joinClass, joinVillage, joinWorld, requestTeacherPass } from "../net/connection";
 import { clearKicked } from "../net/kickSeam";
 import { rememberAdminCode, forgetAdminCode } from "../net/adminSession";
 import { forgetTeacher, rememberTeacher } from "../net/teacherSession";
@@ -51,6 +54,14 @@ const CLASS_DEPS: ClassEntryDeps = {
   saveIdentity,
   clearKicked,
   enterHub: (identity, isTeacher) => useAppStore.getState().enterHub(identity, isTeacher),
+};
+
+/** The real app behind the village entry (entryForm.ts `enterVillageDirectly`; its tests pass fakes). */
+const VILLAGE_DEPS: VillageEntryDeps = {
+  joinVillage,
+  saveIdentity,
+  clearKicked,
+  enterVillage: (identity) => useAppStore.getState().enterVillage(identity),
 };
 
 const px = (n: number) => `${Math.round(n * 10) / 10}px`;
@@ -162,11 +173,12 @@ function usePointerParallax(ref: { current: HTMLElement | null }) {
  * stageLayout() via CSS variables. The last look (localStorage "cv.entry") is loaded on open and saved only on
  * 입장 — never on every edit. Entering the world unmounts this screen, and with it the preview's WebGL canvas.
  *
- * AI 학교 탈출 (Task 14): the builder is Caysonverse's shared entrance, with no school chrome. By default its
- * 입장하기 checks the nickname and look, then opens "어디로 갈까요?" (DestinationSheet) — the experiences, today
- * AI 학교 탈출: a student's 반 코드 entry, or a teacher's 반 열기 — and a class join lands in the hall (`hub`).
- * The admin pill belongs to the world and is not shown there. `?world=legacy` keeps the old entry exactly:
- * builder → 입장하기 → the world, admin pill included (entryModeFromUrl).
+ * Where 입장하기 leads (owner decision 2026-11-03; entryModeFromUrl / entryRoute): by default it checks the
+ * nickname and look and joins 케이슨 마을 at once — no code, no sheet. `?experience=escape` opens
+ * "어디로 갈까요?" (DestinationSheet, AI 학교 탈출 Task 14): a student's 반 코드 entry, or a teacher's 반 열기 — and
+ * a class join lands in the hall (`hub`). The builder is Caysonverse's shared entrance, with no school chrome.
+ * The admin pill belongs to the world and is not shown in either. `?world=legacy` keeps the old entry exactly:
+ * builder → 입장하기 → the world, admin pill included.
  */
 export function EntryScreen() {
   const enterWorld = useAppStore((s) => s.enterWorld);
@@ -174,7 +186,10 @@ export function EntryScreen() {
   const clearNotice = useAppStore((s) => s.clearNotice);
 
   const [entryMode] = useState(() => entryModeFromUrl(window.location.search));
-  const legacy = entryMode === "legacy";
+  const route = entryRoute(entryMode);
+  const legacy = route === "world";
+  /** The destination step ("어디로 갈까요?") belongs to the AI 학교 탈출 entry only. */
+  const school = route === "destinations";
   const [saved] = useState(loadIdentity);
   const [nickname, setNickname] = useState(saved.nickname);
   // The look being built: starts from the cached one, or DEFAULT_APPEARANCE
@@ -185,16 +200,13 @@ export function EntryScreen() {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  // ── "어디로 갈까요?" (school entry only) ──
+  // ── "어디로 갈까요?" (`?experience=escape` only) ──
   const [destOpen, setDestOpen] = useState(false);
   /**
    * The sheet's role and the teacher key — a credential: in this screen's state only, never stored or
    * prefilled, and forgotten whenever the sheet closes or switches back to 학생 (teacherFieldsAfter).
    */
-  const [teacherFields, setTeacherFields] = useState<TeacherFields>(() => ({
-    role: entryMode === "teacher" ? "teacher" : "student",
-    teacherKey: "",
-  }));
+  const [teacherFields, setTeacherFields] = useState<TeacherFields>(() => ({ role: "student", teacherKey: "" }));
   const { role, teacherKey } = teacherFields;
   /** The last class code entered is prefilled (identity cache); the teacher key never is. */
   const [classCode, setClassCode] = useState(() => sanitizeCodeInput(saved.classCode ?? ""));
@@ -259,7 +271,7 @@ export function EntryScreen() {
     if (notice) clearNotice();
   }
 
-  // Every builder edit (preset, 🎲, chip, swatch, voice) replaces the whole look.
+  // Every builder edit (preset, 🎲, chip, swatch) replaces the whole look.
   function changeAppearance(next: Appearance) {
     setAppearance(next);
     dismissMessages();
@@ -275,6 +287,21 @@ export function EntryScreen() {
     const loaded = await characterModel.reload();
     setModelReloads((n) => n + 1);
     return loaded;
+  }
+
+  /**
+   * Join 케이슨 마을 with a checked look (the default entry). Resolves with the words to show, or null once
+   * in (this screen unmounts then). The flow itself (what is saved, in which order) is `enterVillageDirectly`.
+   */
+  async function joinTheVillage(value: EntryInput): Promise<string | null> {
+    if (!(await characterModelReady())) return BUILDER_COPY.modelRetry;
+    try {
+      await enterVillageDirectly(VILLAGE_DEPS, value);
+      // On success this component unmounts; do not touch state afterwards.
+      return null;
+    } catch (err) {
+      return err instanceof Error && err.message ? err.message : ENTRY_COPY.failed;
+    }
   }
 
   /**
@@ -313,16 +340,16 @@ export function EntryScreen() {
     }
   }
 
-  /** The builder's 입장하기: the world (`?world=legacy`), else the destination step. */
+  /** The builder's 입장하기: the village (default), the destination step (`?experience=escape`) or the world (`?world=legacy`). */
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     if (submitting) return;
 
-    // Mobile autoplay policy: prime the speech engine (one silent utterance,
-    // design 23) HERE, synchronously inside the click's user gesture — after an
-    // await the gesture may no longer count. Safe no-op where SpeechSynthesis
-    // is absent, and idempotent across repeated (e.g. failed-validation) clicks.
-    primeChatAudio();
+    // Mobile autoplay policy: unlock audio playback (one silent clip) HERE, synchronously inside the
+    // click's user gesture — after an await the gesture may no longer count. Chat is never read aloud
+    // any more; only the legacy world still has voices (its AI 조교 replies), so only its entry primes.
+    // Safe no-op where Audio is absent, and idempotent across repeated (e.g. failed-validation) clicks.
+    if (legacy) primeChatAudio();
 
     const result = validateEntry({ nickname, appearance });
     if (!result.ok) {
@@ -333,14 +360,14 @@ export function EntryScreen() {
     setError(null);
     clearNotice();
 
-    if (!legacy) {
+    if (school) {
       setDestError(null);
       setDestOpen(true);
       return;
     }
 
     setSubmitting(true);
-    const failed = await joinTheWorld(result.value, adminCode);
+    const failed = legacy ? await joinTheWorld(result.value, adminCode) : await joinTheVillage(result.value);
     if (failed !== null) {
       setError(failed);
       setSubmitting(false);
@@ -356,7 +383,6 @@ export function EntryScreen() {
   /** AI 학교 탈출's 입장하기 (student, 반 코드) / 반 열기 (teacher, 선생님 키). */
   async function enterSchool() {
     if (submitting) return;
-    primeChatAudio(); // inside the press's user gesture (see handleSubmit)
 
     const check =
       role === "student"
@@ -392,7 +418,7 @@ export function EntryScreen() {
   /** The current world's card (only listed when SHOW_WORLD_ON_ENTRY): a plain world join. */
   async function enterWorldFromSheet() {
     if (submitting) return;
-    primeChatAudio();
+    primeChatAudio(); // the world's AI 조교 still speak: inside the press's user gesture (see handleSubmit)
     const look = validateEntry({ nickname, appearance });
     if (!look.ok) return refuseInSheet("world", look.error);
     setDestError(null);
@@ -563,8 +589,8 @@ export function EntryScreen() {
           className={"cv-submit" + (validateNickname(nickname) === null ? " is-ready" : "")}
           type="submit"
           disabled={submitting}
-          // School entry: it opens the destination step (a dialog).
-          aria-haspopup={legacy ? undefined : "dialog"}
+          // AI 학교 탈출 entry: it opens the destination step (a dialog).
+          aria-haspopup={school ? "dialog" : undefined}
         >
           {submitting ? BUILDER_COPY.submitting : BUILDER_COPY.submit}
           {/* Hover brightening and the press flash: an opacity layer (no filter animation). */}
@@ -575,7 +601,7 @@ export function EntryScreen() {
         </button>
       </form>
 
-      {!legacy && destOpen && (
+      {school && destOpen && (
         <DestinationSheet
           destinations={entryDestinations()}
           phone={layout.mode === "phone"}

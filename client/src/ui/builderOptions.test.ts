@@ -8,7 +8,6 @@ import {
   SLOT_OPTIONS,
   applyPreset,
   paletteFor,
-  voiceGender,
 } from "@caysonverse/shared/appearance";
 import { CHARACTER_MANIFEST, CHARACTER_SLOTS } from "@caysonverse/shared/characterManifest";
 import {
@@ -24,7 +23,6 @@ import {
   RANDOM_TEXT,
   THUMB_LIGHTS,
   THUMB_RIM_LIGHT,
-  VOICE_OPTIONS,
   arrowIndex,
   colorLabel,
   partChips,
@@ -108,14 +106,14 @@ describe("builderOptions — presets and swatch ink", () => {
   });
 });
 
-describe("builderOptions — voice and copy", () => {
-  it("voice options are 남자 목소리 / 여자 목소리 at 0 / 1", () => {
-    expect(VOICE_OPTIONS).toEqual([
-      { index: 0, label: "남자 목소리" },
-      { index: 1, label: "여자 목소리" },
-    ]);
-    expect(voiceGender(VOICE_OPTIONS[0].index)).toBe("male");
-    expect(voiceGender(VOICE_OPTIONS[1].index)).toBe("female");
+describe("builderOptions — copy (no voice: chat is never read aloud, owner 2026-11-03)", () => {
+  it("has no voice words in the copy or the Jua text", () => {
+    expect(Object.keys(BUILDER_COPY)).not.toContain("voice");
+    expect(Object.keys(BUILDER_COPY)).not.toContain("voiceHint");
+    for (const word of ["목소리", "남자", "여자", "읽어"]) {
+      expect(BUILDER_FONT_TEXT).not.toContain(word);
+      expect(Object.values(BUILDER_COPY).join(" ")).not.toContain(word);
+    }
   });
 
   it("keeps the builder copy (Task 7b adds the new screen's words) and the preview camera", () => {
@@ -124,8 +122,6 @@ describe("builderOptions — voice and copy", () => {
       presets: "추천 캐릭터",
       presetsHint: "누르면 한 번에 갈아입어요",
       random: "🎲 랜덤",
-      voice: "목소리",
-      voiceHint: "채팅을 읽어 줄 목소리",
       dragHint: "끌어서 돌려 보세요",
       loading: "캐릭터를 불러오는 중…",
       // No promise that 입장 still works (final review Important 2): a failed model download blocks 입장 now.
@@ -149,15 +145,14 @@ describe("builderOptions — voice and copy", () => {
     expect(PREVIEW_CAMERA).toEqual({ fov: 30, distance: 6.3, eyeY: 1.8, targetY: 1.3 });
   });
 
-  it("collects every Jua word: title, tabs, presets, voices, buttons, hints — not the part names, never 🎲", () => {
+  it("collects every Jua word: title, tabs, presets, buttons, hints — not the part names, never 🎲", () => {
     const words = BUILDER_FONT_TEXT.split(" ");
     for (const slot of CHARACTER_SLOTS) expect(BUILDER_FONT_TEXT).toContain(CHARACTER_MANIFEST.slotLabels[slot]);
     // Part cards use the bold body font (as in the concept): their 61 names would push Jua past 25 KB.
     expect(BUILDER_FONT_TEXT).not.toContain("고양이 귀 머리띠");
     expect(BUILDER_FONT_TEXT).not.toContain("망원경");
     for (const preset of APPEARANCE_PRESETS) expect(words).toContain(preset.label);
-    for (const option of VOICE_OPTIONS) expect(BUILDER_FONT_TEXT).toContain(option.label);
-    for (const copy of ["캐릭터 조립실", "추천 캐릭터", "랜덤", "목소리", "끌어서", "캐릭터를 불러오는 중…", "닉네임", "관리자이신가요?", "관리자 코드", "입장하기", "입장 중…", "피부색"]) {
+    for (const copy of ["캐릭터 조립실", "추천 캐릭터", "랜덤", "끌어서", "캐릭터를 불러오는 중…", "닉네임", "관리자이신가요?", "관리자 코드", "입장하기", "입장 중…", "피부색"]) {
       expect(BUILDER_FONT_TEXT).toContain(copy);
     }
     expect(BUILDER_FONT_TEXT).not.toContain("🎲");

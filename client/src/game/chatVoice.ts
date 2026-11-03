@@ -1,5 +1,9 @@
 /**
- * Neural chat voices (design 34 후속 — 발주자: 캐릭터 대화도 Edge TTS로). Chat
+ * Neural chat voices — SWITCHED OFF (owner decision 2026-11-03: "음성은 빼버려 음성이 너무 기계음 같아서 안좋아").
+ * `CHAT_VOICE_ENABLED` (tts.ts) is `false`, so `speakChatNeural` returns before it queues or fetches anything
+ * and no chat line is read aloud. The notes below describe what the stack does when the flag is on.
+ *
+ * (design 34 후속 — 발주자: 캐릭터 대화도 Edge TTS로). Chat
  * messages are synthesized by the same server endpoint as the NPC voice
  * (/api/npc-voice) with the gender of the SENDER's chosen voice — the synced
  * appearance field `voice`, mapped by `voiceGender` (character stage 3: the
@@ -14,7 +18,7 @@
 import { speechOnlyText } from "@caysonverse/shared/speech";
 import type { VoiceGender } from "@caysonverse/shared/appearance";
 import { SERVER_URL } from "../net/endpoint";
-import { TTS_MAX_PENDING, TTS_RADIUS_M, chatVolume, clipForSpeech } from "./tts";
+import { CHAT_VOICE_ENABLED, TTS_MAX_PENDING, TTS_RADIUS_M, chatVolume, clipForSpeech } from "./tts";
 
 /** The Edge voice a chat line is read in — the appearance module's VOICE_GENDERS (male / female). */
 export type ChatVoiceGender = VoiceGender;
@@ -84,6 +88,7 @@ export function speakChatNeural(
   gender: ChatVoiceGender,
   muted: boolean,
 ): void {
+  if (!CHAT_VOICE_ENABLED) return;
   if (muted) return;
   if (typeof Audio === "undefined") return; // window-less test env
   if (!Number.isFinite(distance) || distance > TTS_RADIUS_M) return;
@@ -107,8 +112,9 @@ const SILENT_WAV =
 
 /**
  * Unlock audio playback inside a user gesture (the entry screen's join click)
- * so later PROGRAMMATIC Audio.play() calls — chat lines arriving, NPC replies
- * — pass mobile autoplay policies. Replaces the old Web Speech primeTts().
+ * so later PROGRAMMATIC Audio.play() calls pass mobile autoplay policies. Plays
+ * one silent clip and speaks nothing. Chat is never read aloud now
+ * (CHAT_VOICE_ENABLED), so only the legacy world's AI 조교 replies still need it.
  */
 export function primeChatAudio(): void {
   if (typeof Audio === "undefined") return;
