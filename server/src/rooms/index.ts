@@ -19,7 +19,9 @@ import { EscapeRoom } from "../escape/EscapeRoom";
  * The village (케이슨 마을) is NOT a singleton and is never pre-created at boot: clients `joinOrCreate`
  * it. VillageRoom.maxClients (30) makes a full room lock, so the next visitor creates a new room (a shard);
  * `sortBy({ clients: -1 })` sends a visitor to the fullest room that still has a seat, so shards fill up
- * one at a time instead of spreading everyone thin. No filter: every shard is the same village.
+ * one at a time instead of spreading everyone thin. The `clients` sort key is the room listing's own count of
+ * seats taken (kept by the matchmaker), which wins over any client-supplied metadata or create option:
+ * nothing a client sends can fake a fuller or emptier room. No filter: every shard is the same village.
  *
  * A team's escape room is never matchmade: ClassRoom creates it (spawn token) and its members
  * join it by id with a one-time ticket, so it has no filter (nothing about it is listed).

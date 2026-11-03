@@ -1,5 +1,7 @@
 import type { Client } from "colyseus";
 import { Player, WorldState } from "@caysonverse/shared/schema";
+import { MessageType } from "@caysonverse/shared/messages";
+import type { ChatBroadcast } from "@caysonverse/shared/messages";
 import { PATCH_RATE_MS, ROLE_STUDENT, VILLAGE_MAX_CLIENTS } from "@caysonverse/shared/constants";
 import { APPEARANCE_FIELDS } from "@caysonverse/shared/appearance";
 import type { MapGeometry } from "@caysonverse/shared/school/geometry";
@@ -24,7 +26,10 @@ interface VillageTracking extends Tracking {
  * and the memorial hall's interior in ONE coordinate space), the spawn, and what only the village has:
  *  - join: `{ nickname, appearance }`, validated like the world's (no admin code, no kick, no seats);
  *  - `VillageMsg.UseDoor`: the memorial hall's door is a validated teleport (see `handleUseDoor`);
- *  - the hall is a quiet place (`isQuiet`): Emoji and Jump are dropped there, chat still goes through.
+ *  - the hall is a quiet place (`isQuiet`): Emoji and Jump are dropped there, chat still goes through;
+ *  - chat is scoped by area (`deliverChat`): a line is heard only by the clients in the sender's area, so what is
+ *    said inside the hall stays in the hall and the plaza's talk does not carry in. Emoji, Jump and Typing stay
+ *    unscoped (they are the world's, relayed to everyone).
  *
  * Topology — NOT a singleton like the world: the room is not pre-created, clients `joinOrCreate` it, and
  * `maxClients` (VILLAGE_MAX_CLIENTS = 30) makes Colyseus lock a full room, so the next visitor lands in
@@ -84,6 +89,25 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
   /** The base bookkeeping plus the door-use cap. */
   protected createTracking(now: number): VillageTracking {
     return { ...baseTracking(now), doorRate: new RateWindow(DOOR_RATE.count, DOOR_RATE.windowMs) };
+  }
+
+  /** Clients to skip for one chat line (those in another area); reused so a line costs no allocation. */
+  private readonly otherArea: Client[] = [];
+
+  /**
+   * Chat is scoped by area (ruling): the line goes only to the clients in the sender's area, the sender
+   * included. One broadcast (encoded once) with the other area's clients as `except`, like ClassRoom's hall
+   * chat. A client with no seat yet counts as elsewhere.
+   */
+  protected deliverChat(client: Client, player: Player, text: string): void {
+    const skip = this.otherArea;
+    skip.length = 0;
+    for (const c of this.clients) {
+      if (this.state.players.get(c.sessionId)?.area !== player.area) skip.push(c);
+    }
+    const line: ChatBroadcast = { sid: client.sessionId, name: player.nickname, text };
+    this.broadcast(MessageType.Chat, line, skip.length > 0 ? { except: skip } : undefined);
+    skip.length = 0;
   }
 
   /** The memorial hall is quiet: no emoji, no jumping there (chat and walking are fine). */

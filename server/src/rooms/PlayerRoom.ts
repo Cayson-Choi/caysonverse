@@ -71,7 +71,8 @@ export function baseTracking(now: number): Tracking {
 
 /**
  * The common room for anything where avatars walk around together: the legacy
- * world (WorldRoom), a class's hub (ClassRoom) and a team's classroom (EscapeRoom).
+ * world (WorldRoom), the open village (VillageRoom), a class's hub (ClassRoom)
+ * and a team's classroom (EscapeRoom).
  *
  * It owns the player messages every such room shares — Move, Chat, Emoji, Jump,
  * Typing — with their rate caps and pure validators, the per-client tracking,

@@ -10,6 +10,7 @@ import {
   RECONNECT_WINDOW_S,
   ROLE_STUDENT,
   PLAYER_RADIUS,
+  TYPING_RATE,
 } from "@caysonverse/shared/constants";
 import { MessageType } from "@caysonverse/shared/messages";
 import type { ChatBroadcast, EmojiBroadcast, JumpBroadcast } from "@caysonverse/shared/messages";
@@ -34,6 +35,7 @@ const PORT = 2575;
 
 const JOIN = { nickname: "케이슨", appearance: DEFAULT_APPEARANCE };
 const JOIN_BOB = { nickname: "밥이", appearance: DEFAULT_APPEARANCE };
+const JOIN_CAROL = { nickname: "캐럴", appearance: DEFAULT_APPEARANCE };
 
 const L = VILLAGE_LAYOUT;
 const OUT_PAD = L.memorial.exterior.doorPad;
@@ -71,6 +73,59 @@ async function pollForAsync(read: () => Promise<boolean>, timeoutMs = 3000, step
 }
 
 let colyseus: ColyseusTestServer;
+
+/** What these tests use of a connected client (the SDK's room handle, whichever room it is typed for). */
+interface Visitor {
+  sessionId: string;
+  roomId: string;
+  send(type: string | number, message?: unknown): void;
+  onMessage(type: string, callback: (payload: any) => void): () => void; // eslint-disable-line @typescript-eslint/no-explicit-any
+  leave(consented?: boolean): Promise<number>;
+}
+
+/** Wait for a message of `type` that `match` accepts, with a deadline: a lost message fails the test instead of hanging it. */
+function waitForMessage<P>(client: Visitor, type: string, match: (payload: P) => boolean, timeoutMs = 3000): Promise<P> {
+  return new Promise<P>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      off();
+      reject(new Error(`no "${type}" message within ${timeoutMs} ms`));
+    }, timeoutMs);
+    const off = client.onMessage(type, (payload: P) => {
+      if (!match(payload)) return;
+      clearTimeout(timer);
+      off();
+      resolve(payload);
+    });
+  });
+}
+
+let sentinelCount = 0;
+/**
+ * A sentinel round trip for a NEGATIVE assertion about the server's state or its personal replies: the client sends
+ * itself a chat line (the village scopes chat by area, so a sender always hears its own) and waits for the echo.
+ * One client's messages are handled in order, so once the echo is back everything it sent before has been handled
+ * and answered; unlike a fixed sleep it cannot pass before the server has looked at the message.
+ */
+async function settle(client: Visitor): Promise<void> {
+  const text = `확인 ${(sentinelCount += 1)}`;
+  const echo = waitForMessage<ChatBroadcast>(client, MessageType.Chat, (m) => m.sid === client.sessionId && m.text === text);
+  client.send(MessageType.Chat, { text });
+  await echo;
+}
+
+/**
+ * The same for what `from` makes the server send to `to`: `from` types (a typing event goes to everyone but the typist,
+ * in every area, on the same wire as chat, emoji and jump) and `to` waits for it. Anything `from` caused before that,
+ * and addressed to `to`, was queued ahead of it, so it is already here. `clock` (the room's test clock) is moved past the
+ * 1-per-3-s typing cap when the sentinel is used again by the same client; leave it out to keep the clock still.
+ */
+async function roundTrip(from: Visitor, to: Visitor, clock?: { t: number }): Promise<void> {
+  if (clock) clock.t += TYPING_RATE.windowMs + 1;
+  const seen = waitForMessage<{ sid: string; on: boolean }>(to, MessageType.Typing, (m) => m.sid === from.sessionId && m.on);
+  from.send(MessageType.Typing, { on: true });
+  await seen;
+  from.send(MessageType.Typing, { on: false }); // tidy: the next sentinel starts from "not typing"
+}
 
 beforeAll(async () => {
   colyseus = await boot(config({ rooms }), PORT);
@@ -173,7 +228,7 @@ describe("VillageRoom setup (integration)", () => {
     });
     alice.send(MessageType.Announce, { text: "공지" });
     alice.send(MessageType.Kick, { sid: bob.sessionId });
-    await flush();
+    await roundTrip(alice, bob); // both were handled (and dropped) before this typing event went out
     expect(room.state.announcement).toBe("");
     expect(room.state.players.has(bob.sessionId)).toBe(true);
     expect(leaveCode).toBeNull();
@@ -243,7 +298,7 @@ describe("VillageRoom door (integration)", () => {
     // Too far; a payload that CLAIMS to stand at the door and to be anywhere is never read.
     client.send(VillageMsg.UseDoor, {});
     client.send(VillageMsg.UseDoor, { x: OUT_PAD.centre.x, z: OUT_PAD.centre.z, area: "village", to: "hall" });
-    await flush();
+    await settle(client);
     expect(player.area).toBe("village");
     expect(player.x).toBe(OUT_PAD.centre.x);
     expect(player.z).toBe(OUT_PAD.centre.z + 5);
@@ -251,7 +306,7 @@ describe("VillageRoom door (integration)", () => {
     // The same visitor from where they spawned: also far.
     placeAt(player, L.spawn.x, L.spawn.z);
     client.send(VillageMsg.UseDoor, {});
-    await flush();
+    await settle(client);
     expect(player.area).toBe("village");
 
     // Having been refused, they step up to the door and use it at once, on the same clock reading.
@@ -267,7 +322,7 @@ describe("VillageRoom door (integration)", () => {
 
     placeAt(player, OUT_PAD.centre.x, OUT_PAD.centre.z + reach + 0.05);
     client.send(VillageMsg.UseDoor, {});
-    await flush();
+    await settle(client);
     expect(player.area).toBe("village");
 
     placeAt(player, OUT_PAD.centre.x, OUT_PAD.centre.z + reach - 0.05);
@@ -284,8 +339,7 @@ describe("VillageRoom door (integration)", () => {
     // request by distance and only the rate cap stops it from sending the visitor straight back out.
     client.send(VillageMsg.UseDoor, {});
     client.send(VillageMsg.UseDoor, {});
-    await flush();
-    await flush();
+    await settle(client);
     expect(player.area).toBe("hall");
     expect(player.x).toBe(HALL_SPAWN.x);
     expect(player.z).toBe(HALL_SPAWN.z);
@@ -301,7 +355,7 @@ describe("VillageRoom door (integration)", () => {
 
     clock.t += 999;
     client.send(VillageMsg.UseDoor, {});
-    await flush();
+    await settle(client);
     expect(player.area).toBe("hall"); // still inside: refused
 
     clock.t += 2; // +1001 ms since the accepted use
@@ -340,7 +394,7 @@ describe("VillageRoom door (integration)", () => {
     clock.t += 100;
     client.send(MessageType.Move, { x: OUT_PAD.centre.x, z: OUT_PAD.centre.z, yaw: 0 });
     client.send(MessageType.Move, { x: HALL_SPAWN.x, z: 0, yaw: 0 }); // 3.6 m inside the hall: 100 ms allows ~1 m, not 3.6
-    await flush();
+    await settle(client);
     expect(player.x).toBe(HALL_SPAWN.x);
     expect(player.z).toBe(HALL_SPAWN.z);
     expect(player.area).toBe("hall");
@@ -359,7 +413,7 @@ describe("VillageRoom door (integration)", () => {
 
     clock.t += 500;
     client.send(MessageType.Move, { x: FOUNTAIN_EDGE - 1.5, z: 0, yaw: -Math.PI / 2 }); // inside the box: dropped
-    await flush();
+    await settle(client);
     expect(player.x).toBe(start);
 
     const beside = FOUNTAIN_EDGE + PLAYER_RADIUS + 0.3; // 0.3 m of body clearance from the edge
@@ -370,53 +424,74 @@ describe("VillageRoom door (integration)", () => {
 });
 
 describe("VillageRoom quiet hall (integration)", () => {
-  it("in the village emoji and jump go out; inside the hall they are refused silently while chat is delivered", async () => {
+  it("in the village emoji and jump go out; inside the hall they are refused silently, and chat stays in the hall", async () => {
     const room = await colyseus.createRoom<VillageRoom>(VILLAGE_ROOM);
+    const clock = useClock(room);
     const alice = await colyseus.connectTo(room, JOIN);
     const bob = await colyseus.connectTo(room, JOIN_BOB);
+    const carol = await colyseus.connectTo(room, JOIN_CAROL);
     const a = room.state.players.get(alice.sessionId)!;
-    const emojis: EmojiBroadcast[] = [];
-    const jumps: JumpBroadcast[] = [];
-    const chats: ChatBroadcast[] = [];
-    const aliceChats: ChatBroadcast[] = [];
+    const c = room.state.players.get(carol.sessionId)!;
+    const emojis = { bob: [] as EmojiBroadcast[], carol: [] as EmojiBroadcast[] };
+    const jumps = { bob: [] as JumpBroadcast[], carol: [] as JumpBroadcast[] };
+    const chats = { alice: [] as ChatBroadcast[], bob: [] as ChatBroadcast[], carol: [] as ChatBroadcast[] };
     const aliceNotices: unknown[] = [];
-    bob.onMessage(MessageType.Emoji, (m: EmojiBroadcast) => emojis.push(m));
-    bob.onMessage(MessageType.Jump, (m: JumpBroadcast) => jumps.push(m));
-    bob.onMessage(MessageType.Chat, (m: ChatBroadcast) => chats.push(m));
-    alice.onMessage(MessageType.Chat, (m: ChatBroadcast) => aliceChats.push(m));
-    alice.onMessage(MessageType.ChatRejected, (m: unknown) => aliceNotices.push(m));
-
-    // Control: outside, both reach the other visitor.
-    alice.send(MessageType.Emoji, { index: 1 });
-    await flush();
-    alice.send(MessageType.Jump, {});
-    await flush();
-    expect(emojis).toEqual([{ sid: alice.sessionId, index: 1 }]);
-    expect(jumps).toEqual([{ sid: alice.sessionId }]);
-
-    // Alice goes in. (Door cap is in real time here: she walks up to the pad and presses it.)
-    placeAt(a, OUT_PAD.centre.x, OUT_PAD.centre.z);
-    alice.send(VillageMsg.UseDoor, {});
-    expect(await pollFor(() => a.area === "hall")).toBe(true);
-    // Past both the emoji cap (500 ms) and the jump cap (800 ms) of the control sends above.
-    await sleep(900);
-
     const personal: unknown[] = [];
+    bob.onMessage(MessageType.Emoji, (m: EmojiBroadcast) => emojis.bob.push(m));
+    carol.onMessage(MessageType.Emoji, (m: EmojiBroadcast) => emojis.carol.push(m));
+    bob.onMessage(MessageType.Jump, (m: JumpBroadcast) => jumps.bob.push(m));
+    carol.onMessage(MessageType.Jump, (m: JumpBroadcast) => jumps.carol.push(m));
+    alice.onMessage(MessageType.Chat, (m: ChatBroadcast) => chats.alice.push(m));
+    bob.onMessage(MessageType.Chat, (m: ChatBroadcast) => chats.bob.push(m));
+    carol.onMessage(MessageType.Chat, (m: ChatBroadcast) => chats.carol.push(m));
+    alice.onMessage(MessageType.ChatRejected, (m: unknown) => aliceNotices.push(m));
     alice.onMessage(MessageType.SitRejected, (m: unknown) => personal.push(m));
+
+    // Control: in the village everyone is together, and emoji and jump reach the others.
+    alice.send(MessageType.Emoji, { index: 1 });
+    alice.send(MessageType.Jump, {});
+    expect(await pollFor(() => emojis.bob.length === 1 && jumps.bob.length === 1 && emojis.carol.length === 1 && jumps.carol.length === 1)).toBe(true);
+    expect(emojis.bob).toEqual([{ sid: alice.sessionId, index: 1 }]);
+    expect(jumps.bob).toEqual([{ sid: alice.sessionId }]);
+
+    // Alice and carol go into the hall; bob stays on the plaza.
+    for (const [client, p] of [[alice, a], [carol, c]] as const) {
+      placeAt(p, OUT_PAD.centre.x, OUT_PAD.centre.z);
+      client.send(VillageMsg.UseDoor, {});
+    }
+    expect(await pollFor(() => a.area === "hall" && c.area === "hall")).toBe(true);
+    clock.t += 1000; // past the emoji cap (500 ms) and the jump cap (800 ms) of the control sends
+
+    // Quiet: both are refused silently. The sentinel (typing is unscoped, so it reaches the village and the hall) proves
+    // the server handled them and had nothing to send to bob or carol.
     alice.send(MessageType.Emoji, { index: 2 });
     alice.send(MessageType.Jump, {});
-    await flush();
-    await flush();
-    expect(emojis).toHaveLength(1); // nothing new went out
-    expect(jumps).toHaveLength(1);
+    await roundTrip(alice, bob, clock);
+    await roundTrip(alice, carol, clock);
+    expect(emojis.bob).toHaveLength(1); // nothing new went out
+    expect(jumps.bob).toHaveLength(1);
+    expect(emojis.carol).toHaveLength(1);
+    expect(jumps.carol).toHaveLength(1);
     expect(aliceNotices).toEqual([]); // and the refusal said nothing to her either
     expect(personal).toEqual([]);
 
+    // Chat is scoped by area. Alice speaks in the hall: she and carol hear it, bob on the plaza does not.
     alice.send(MessageType.Chat, { text: "조용히 인사해요" });
-    await room.waitForNextMessage();
-    await flush();
-    expect(chats).toEqual([{ sid: alice.sessionId, name: "케이슨", text: "조용히 인사해요" }]);
-    expect(aliceChats).toEqual(chats);
+    const line: ChatBroadcast = { sid: alice.sessionId, name: "케이슨", text: "조용히 인사해요" };
+    expect(await pollFor(() => chats.alice.length === 1 && chats.carol.length === 1)).toBe(true);
+    expect(chats.carol).toEqual([line]);
+    expect(chats.alice).toEqual([line]);
+    await roundTrip(alice, bob, clock); // had the line gone to bob it would have arrived before this
+    expect(chats.bob).toEqual([]);
+
+    // And the other way: bob speaks on the plaza, and nobody in the hall hears it.
+    bob.send(MessageType.Chat, { text: "광장에서 안녕" });
+    expect(await pollFor(() => chats.bob.length === 1)).toBe(true);
+    expect(chats.bob[0]).toEqual({ sid: bob.sessionId, name: "밥이", text: "광장에서 안녕" });
+    await roundTrip(bob, alice, clock);
+    await roundTrip(bob, carol, clock);
+    expect(chats.alice).toEqual([line]);
+    expect(chats.carol).toEqual([line]);
 
     // She can still walk in the hall: 0.3 m north in a fresh step.
     alice.send(MessageType.Move, { x: a.x, z: a.z - 0.3, yaw: Math.PI });
@@ -438,21 +513,20 @@ describe("VillageRoom quiet hall (integration)", () => {
     placeAt(a, IN_PAD.centre.x, IN_PAD.centre.z);
     alice.send(MessageType.Emoji, { index: 0 });
     alice.send(MessageType.Jump, {});
-    await flush();
+    await roundTrip(alice, bob); // the clock stays still: the first typing event is inside its cap
     expect(emojis).toEqual([]);
     expect(jumps).toEqual([]);
 
-    clock.t += 1000;
-    alice.send(VillageMsg.UseDoor, {});
+    alice.send(VillageMsg.UseDoor, {}); // her first door use: no cap to wait out, so the clock does not move
     expect(await pollFor(() => a.area === "village")).toBe(true);
 
-    // The clock has not moved since the refused ones: had they used a slot, these would be rate-dropped.
+    // The clock has not moved since the refused ones: had they used a cap slot, these would be rate-dropped.
     alice.send(MessageType.Emoji, { index: 0 });
     alice.send(MessageType.Jump, {});
-    await flush();
-    await flush();
+    expect(await pollFor(() => emojis.length === 1 && jumps.length === 1)).toBe(true);
     expect(emojis).toEqual([{ sid: alice.sessionId, index: 0 }]);
     expect(jumps).toEqual([{ sid: alice.sessionId }]);
+    expect(clock.t).toBeGreaterThan(0);
   });
 
   it("the quiet is the village's own: the legacy world still relays emoji and jump whatever the area field says", async () => {
@@ -469,8 +543,7 @@ describe("VillageRoom quiet hall (integration)", () => {
 
     alice.send(MessageType.Emoji, { index: 3 });
     alice.send(MessageType.Jump, {});
-    await flush();
-    await flush();
+    expect(await pollFor(() => emojis.length === 1 && jumps.length === 1)).toBe(true);
     expect(emojis).toEqual([{ sid: alice.sessionId, index: 3 }]);
     expect(jumps).toEqual([{ sid: alice.sessionId }]);
   });
@@ -505,7 +578,7 @@ describe("VillageRoom reconnection (integration)", () => {
     const emojis: EmojiBroadcast[] = [];
     bob.onMessage(MessageType.Emoji, (m: EmojiBroadcast) => emojis.push(m));
     back.send(MessageType.Emoji, { index: 0 });
-    await flush();
+    await roundTrip(back, bob);
     expect(emojis).toEqual([]);
   });
 
@@ -524,61 +597,89 @@ describe("VillageRoom reconnection (integration)", () => {
 });
 
 describe("VillageRoom sharding (integration)", () => {
-  const join = (i: number) => colyseus.sdk.joinOrCreate(VILLAGE_ROOM, { nickname: `방문객${i}`, appearance: DEFAULT_APPEARANCE });
+  const join = (i: number) => colyseus.sdk.joinOrCreate(VILLAGE_ROOM, { nickname: `방문객${i}`, appearance: DEFAULT_APPEARANCE }) as unknown as Promise<Visitor>;
+  /**
+   * Every client still connected leaves, whether the test passed or failed (a failed one must not leave 31 sockets behind).
+   * Each leave is raced against a short timer, so a client that is already gone cannot hang the clean-up.
+   */
+  const leaveAll = (clients: readonly Visitor[]) =>
+    Promise.allSettled(clients.map((c) => Promise.race([c.leave(true), new Promise((r) => setTimeout(r, 1500))])));
 
   it("fills a room to 30 and the 31st visitor gets a second room", async () => {
-    const joined = [];
-    for (let i = 0; i < 31; i += 1) joined.push(await join(i));
+    const joined: Visitor[] = [];
+    try {
+      for (let i = 0; i < 31; i += 1) joined.push(await join(i));
 
-    const listing = await matchMaker.query({ name: VILLAGE_ROOM });
-    expect(listing).toHaveLength(2);
-    const byFill = [...listing].sort((a, b) => b.clients - a.clients);
-    expect(byFill.map((r) => r.clients)).toEqual([30, 1]);
-    expect(byFill[0].maxClients).toBe(30);
-    expect(byFill[0].locked).toBe(true); // full: matchmaking skips it
-    expect(byFill[1].locked).toBe(false);
+      const listing = await matchMaker.query({ name: VILLAGE_ROOM });
+      expect(listing).toHaveLength(2);
+      const byFill = [...listing].sort((a, b) => b.clients - a.clients);
+      expect(byFill.map((r) => r.clients)).toEqual([30, 1]);
+      expect(byFill[0].maxClients).toBe(30);
+      expect(byFill[0].locked).toBe(true); // full: matchmaking skips it
+      expect(byFill[1].locked).toBe(false);
 
-    // The first 30 share one room, the 31st is alone in the other.
-    const roomIds = joined.map((c) => c.roomId);
-    expect(new Set(roomIds).size).toBe(2);
-    expect(roomIds.slice(0, 30).every((id) => id === roomIds[0])).toBe(true);
-    expect(roomIds[30]).not.toBe(roomIds[0]);
-    expect(roomIds[30]).toBe(byFill[1].roomId);
+      // The first 30 share one room, the 31st is alone in the other.
+      const roomIds = joined.map((c) => c.roomId);
+      expect(new Set(roomIds).size).toBe(2);
+      expect(roomIds.slice(0, 30).every((id) => id === roomIds[0])).toBe(true);
+      expect(roomIds[30]).not.toBe(roomIds[0]);
+      expect(roomIds[30]).toBe(byFill[1].roomId);
+    } finally {
+      await leaveAll(joined);
+    }
   }, 30_000);
 
   it("31 visitors arriving at once also end up as 30 + 1, never 31 in one room", async () => {
-    const joined = await Promise.all(Array.from({ length: 31 }, (_, i) => join(i)));
-    const listing = await matchMaker.query({ name: VILLAGE_ROOM });
-    expect(listing).toHaveLength(2);
-    expect(listing.map((r) => r.clients).sort((a, b) => b - a)).toEqual([30, 1]);
-    expect(new Set(joined.map((c) => c.roomId)).size).toBe(2);
+    const joined: Visitor[] = [];
+    try {
+      joined.push(...(await Promise.all(Array.from({ length: 31 }, (_, i) => join(i)))));
+      const listing = await matchMaker.query({ name: VILLAGE_ROOM });
+      expect(listing).toHaveLength(2);
+      expect(listing.map((r) => r.clients).sort((a, b) => b - a)).toEqual([30, 1]);
+      expect(new Set(joined.map((c) => c.roomId)).size).toBe(2);
+    } finally {
+      await leaveAll(joined);
+    }
   }, 30_000);
 
   it("a visitor goes to the fullest room that still has a seat, not the first one found", async () => {
-    // The emptier room is created FIRST, so a matchmaker without the sort would hand it the visitor.
-    const sparse = await join(0);
-    const busy = await colyseus.createRoom<VillageRoom>(VILLAGE_ROOM);
-    for (let i = 1; i <= 24; i += 1) await colyseus.connectTo(busy, { nickname: `방문객${i}`, appearance: DEFAULT_APPEARANCE });
-    expect(sparse.roomId).not.toBe(busy.roomId);
+    const joined: Visitor[] = [];
+    try {
+      // The emptier room is created FIRST, so a matchmaker without the sort would hand it the visitor.
+      const sparse = await join(0);
+      joined.push(sparse);
+      const busy = await colyseus.createRoom<VillageRoom>(VILLAGE_ROOM);
+      for (let i = 1; i <= 24; i += 1) joined.push(await colyseus.connectTo(busy, { nickname: `방문객${i}`, appearance: DEFAULT_APPEARANCE }));
+      expect(sparse.roomId).not.toBe(busy.roomId);
 
-    const next = await join(99);
-    expect(next.roomId).toBe(busy.roomId);
-    expect(busy.clients.length).toBe(25);
+      const next = await join(99);
+      joined.push(next);
+      expect(next.roomId).toBe(busy.roomId);
+      expect(busy.clients.length).toBe(25);
+    } finally {
+      await leaveAll(joined);
+    }
   }, 30_000);
 
   it("when a seat frees up in a full room, the room opens again and the next visitor fills it", async () => {
-    const joined = [];
-    for (let i = 0; i < 31; i += 1) joined.push(await join(i));
-    const firstId = joined[0].roomId;
-    const secondId = joined[30].roomId;
-    expect((await matchMaker.query({ roomId: firstId }))[0].locked).toBe(true);
+    const joined: Visitor[] = [];
+    try {
+      for (let i = 0; i < 31; i += 1) joined.push(await join(i));
+      const firstId = joined[0].roomId;
+      const secondId = joined[30].roomId;
+      expect((await matchMaker.query({ roomId: firstId }))[0].locked).toBe(true);
 
-    // One leaves the full room: it has 29 and is open; the other has 1. The next visitor fills the 29.
-    await joined[0].leave(true);
-    expect(await pollForAsync(async () => (await matchMaker.query({ roomId: firstId }))[0]?.locked === false)).toBe(true);
-    const next = await join(99);
-    expect(next.roomId).toBe(firstId);
-    expect(next.roomId).not.toBe(secondId);
-    expect((await matchMaker.query({ roomId: firstId }))[0].clients).toBe(30);
+      // One leaves the full room: it has 29 and is open; the other has 1. The next visitor fills the 29.
+      const left = joined.shift()!; // already gone: not part of the clean-up
+      await left.leave(true);
+      expect(await pollForAsync(async () => (await matchMaker.query({ roomId: firstId }))[0]?.locked === false)).toBe(true);
+      const next = await join(99);
+      joined.push(next);
+      expect(next.roomId).toBe(firstId);
+      expect(next.roomId).not.toBe(secondId);
+      expect((await matchMaker.query({ roomId: firstId }))[0].clients).toBe(30);
+    } finally {
+      await leaveAll(joined);
+    }
   }, 30_000);
 });
