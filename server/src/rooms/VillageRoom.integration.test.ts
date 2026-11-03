@@ -39,8 +39,10 @@ const L = VILLAGE_LAYOUT;
 const OUT_PAD = L.memorial.exterior.doorPad;
 const IN_PAD = L.memorial.interior.doorPad;
 const HALL_SPAWN = L.memorial.interior.spawn;
-/** 2.2 m south of the memorial door pad's centre: where the way out puts a visitor. */
-const OUTSIDE_ARRIVAL = { x: OUT_PAD.centre.x, z: OUT_PAD.centre.z + 2.2 };
+/** Where the way out puts a visitor: the layout's exterior arrival (south of the memorial door pad, facing away from the building). */
+const OUTSIDE_ARRIVAL = L.memorial.exterior.arrival;
+/** Half the fountain collider's side: its edge's distance from the plaza centre (the fountain stands at the centre). */
+const FOUNTAIN_EDGE = L.plaza.fountain.collider.x / 2;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 /** Let broadcast/personal messages propagate to the in-process test clients. */
@@ -144,7 +146,7 @@ describe("VillageRoom setup (integration)", () => {
     expect(p.role).toBe(ROLE_STUDENT);
     expect(p.connected).toBe(true);
     expect(p.seatIndex).toBe(-1);
-    // Within the layout's jitter of the spawn point (0, 9), clear of the fountain's collider.
+    // Within the layout's jitter of the spawn point, clear of the fountain's collider.
     expect(Math.hypot(p.x - L.spawn.x, p.z - L.spawn.z)).toBeLessThanOrEqual(L.spawn.jitter + 1e-6);
     expect(p.z).toBeGreaterThan(L.plaza.fountain.collider.z / 2 + PLAYER_RADIUS);
     expect(p.yaw).toBeCloseTo(Math.PI, 6); // facing north, toward the fountain
@@ -179,7 +181,7 @@ describe("VillageRoom setup (integration)", () => {
 });
 
 describe("VillageRoom door (integration)", () => {
-  it("a visitor walks legally from the plaza to the memorial's door pad, uses the door and is inside the hall at (300, 3.6)", async () => {
+  it("a visitor walks legally from the plaza to the memorial's door pad, uses the door and is inside the hall at the layout's inside spawn", async () => {
     const { room, client, player } = await visitor();
     const clock = useClock(room);
 
@@ -199,9 +201,10 @@ describe("VillageRoom door (integration)", () => {
         if (dist <= 4) return;
       }
     };
-    // Round the fountain on its east side, north along the plaza, then up to the door in the building's recess.
-    await walkTo({ x: 6, z: 8 });
-    await walkTo({ x: 6, z: -20 });
+    // Round the fountain on its east side (3 m off its box), north along the plaza, then up to the door in the building's recess.
+    const around = FOUNTAIN_EDGE + 3;
+    await walkTo({ x: around, z: FOUNTAIN_EDGE + 3 });
+    await walkTo({ x: around, z: OUT_PAD.centre.z + 12 });
     await walkTo({ x: OUT_PAD.centre.x, z: OUT_PAD.centre.z });
     expect(player.area).toBe("village");
 
@@ -209,17 +212,16 @@ describe("VillageRoom door (integration)", () => {
     client.send(VillageMsg.UseDoor, {});
     expect(await pollFor(() => player.area === "hall")).toBe(true);
     expect(player.x).toBe(HALL_SPAWN.x);
-    expect(player.x).toBe(300);
-    expect(player.z).toBe(3.6);
+    expect(player.z).toBe(HALL_SPAWN.z);
     expect(player.yaw).toBeCloseTo(Math.PI, 6); // faces -z, into the room
 
     // And the client hears it through the state sync.
     expect(await pollFor(() => client.state?.players?.get(client.sessionId)?.area === "hall")).toBe(true);
-    expect(client.state.players.get(client.sessionId)!.x).toBeCloseTo(300, 3);
-    expect(client.state.players.get(client.sessionId)!.z).toBeCloseTo(3.6, 3);
+    expect(client.state.players.get(client.sessionId)!.x).toBeCloseTo(HALL_SPAWN.x, 3);
+    expect(client.state.players.get(client.sessionId)!.z).toBeCloseTo(HALL_SPAWN.z, 3);
   });
 
-  it("the way out puts the visitor 2.2 m south of the door pad at (0, -33.4), facing south, away from the building", async () => {
+  it("the way out puts the visitor at the layout's exterior arrival, 2.2 m south of the door pad, facing south, away from the building", async () => {
     const { room, client, player } = await visitor();
     const clock = useClock(room);
     player.area = "hall";
@@ -229,9 +231,9 @@ describe("VillageRoom door (integration)", () => {
     client.send(VillageMsg.UseDoor, {});
     expect(await pollFor(() => player.area === "village")).toBe(true);
     expect(player.x).toBeCloseTo(OUTSIDE_ARRIVAL.x, 9);
-    expect(player.x).toBeCloseTo(0, 9);
-    expect(player.z).toBeCloseTo(-33.4, 6);
-    expect(player.yaw).toBe(0); // +z: away from the building to its north
+    expect(player.z).toBeCloseTo(OUTSIDE_ARRIVAL.z, 6);
+    expect(player.z).toBeCloseTo(OUT_PAD.centre.z + 2.2, 6);
+    expect(player.yaw).toBe(OUTSIDE_ARRIVAL.yaw); // +z: away from the building to its north
   });
 
   it("refuses the door from 5 m away: nothing changes, and the refusal uses up no door slot", async () => {
@@ -285,8 +287,8 @@ describe("VillageRoom door (integration)", () => {
     await flush();
     await flush();
     expect(player.area).toBe("hall");
-    expect(player.x).toBe(300);
-    expect(player.z).toBe(3.6);
+    expect(player.x).toBe(HALL_SPAWN.x);
+    expect(player.z).toBe(HALL_SPAWN.z);
   });
 
   it("the door cap is exactly one use per second: refused at +999 ms, allowed at +1001 ms", async () => {
@@ -305,7 +307,7 @@ describe("VillageRoom door (integration)", () => {
     clock.t += 2; // +1001 ms since the accepted use
     client.send(VillageMsg.UseDoor, {});
     expect(await pollFor(() => player.area === "village")).toBe(true);
-    expect(player.z).toBeCloseTo(-33.4, 6);
+    expect(player.z).toBeCloseTo(OUTSIDE_ARRIVAL.z, 6);
   });
 
   it("the door is per client: another visitor's use does not eat my slot", async () => {
@@ -337,30 +339,33 @@ describe("VillageRoom door (integration)", () => {
     // The speed exploit: ask to be back at the village spot (or anywhere far) — dropped whole.
     clock.t += 100;
     client.send(MessageType.Move, { x: OUT_PAD.centre.x, z: OUT_PAD.centre.z, yaw: 0 });
-    client.send(MessageType.Move, { x: 300, z: 0, yaw: 0 }); // 3.6 m inside the hall: 100 ms allows ~1 m, not 3.6
+    client.send(MessageType.Move, { x: HALL_SPAWN.x, z: 0, yaw: 0 }); // 3.6 m inside the hall: 100 ms allows ~1 m, not 3.6
     await flush();
-    expect(player.x).toBe(300);
-    expect(player.z).toBe(3.6);
+    expect(player.x).toBe(HALL_SPAWN.x);
+    expect(player.z).toBe(HALL_SPAWN.z);
     expect(player.area).toBe("hall");
 
     // An ordinary step from the new place (0.5 m in 100 ms: inside the 0.96 m budget) is accepted.
-    client.send(MessageType.Move, { x: 300, z: 3.1, yaw: Math.PI });
-    expect(await pollFor(() => player.z === 3.1)).toBe(true);
+    const stepZ = HALL_SPAWN.z - 0.5;
+    client.send(MessageType.Move, { x: HALL_SPAWN.x, z: stepZ, yaw: Math.PI });
+    expect(await pollFor(() => player.z === stepZ)).toBe(true);
   });
 
   it("moves are judged on the village map: the fountain's box stops a step into it, a step beside it is accepted", async () => {
     const { room, client, player } = await visitor();
     const clock = useClock(room);
-    placeAt(player, 6, 0); // east of the fountain's 9 x 9 box (its edge is x = 4.5)
+    const start = FOUNTAIN_EDGE + 2; // east of the fountain's box
+    placeAt(player, start, 0);
 
     clock.t += 500;
-    client.send(MessageType.Move, { x: 3, z: 0, yaw: -Math.PI / 2 }); // inside the box: dropped
+    client.send(MessageType.Move, { x: FOUNTAIN_EDGE - 1.5, z: 0, yaw: -Math.PI / 2 }); // inside the box: dropped
     await flush();
-    expect(player.x).toBe(6);
+    expect(player.x).toBe(start);
 
+    const beside = FOUNTAIN_EDGE + PLAYER_RADIUS + 0.3; // 0.3 m of body clearance from the edge
     clock.t += 500;
-    client.send(MessageType.Move, { x: 5.2, z: 0, yaw: -Math.PI / 2 }); // 0.35 m body clear of the edge: accepted
-    expect(await pollFor(() => player.x === 5.2)).toBe(true);
+    client.send(MessageType.Move, { x: beside, z: 0, yaw: -Math.PI / 2 }); // accepted
+    expect(await pollFor(() => player.x === beside)).toBe(true);
   });
 });
 
@@ -415,7 +420,7 @@ describe("VillageRoom quiet hall (integration)", () => {
 
     // She can still walk in the hall: 0.3 m north in a fresh step.
     alice.send(MessageType.Move, { x: a.x, z: a.z - 0.3, yaw: Math.PI });
-    expect(await pollFor(() => Math.abs(a.z - 3.3) < 1e-6)).toBe(true);
+    expect(await pollFor(() => Math.abs(a.z - (HALL_SPAWN.z - 0.3)) < 1e-6)).toBe(true);
   });
 
   it("coming back out ends the quiet: emoji and jump work again at once, and the refused ones used no cap slot", async () => {
@@ -493,8 +498,8 @@ describe("VillageRoom reconnection (integration)", () => {
     expect(back.sessionId).toBe(sid);
     expect(await pollFor(() => room.state.players.get(sid)?.connected === true)).toBe(true);
     expect(room.state.players.get(sid)!.area).toBe("hall");
-    expect(room.state.players.get(sid)!.x).toBe(300);
-    expect(room.state.players.get(sid)!.z).toBe(3.6);
+    expect(room.state.players.get(sid)!.x).toBe(HALL_SPAWN.x);
+    expect(room.state.players.get(sid)!.z).toBe(HALL_SPAWN.z);
 
     // Still the quiet hall after the reconnect.
     const emojis: EmojiBroadcast[] = [];

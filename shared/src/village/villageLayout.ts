@@ -1,21 +1,30 @@
 /**
  * 케이슨 마을 (Cayson Village): the open countryside village, as data. Single source of truth for the
- * village map — walk bounds, spawn, plaza, ring road, stream and bridge, pavilion (정자), the six building
- * plots, the pet memorial hall (추모관) outside and inside, and the scenery houses — read by the server
- * (spawn, door pads, collision), the client (scene, plot markers, camera) and the Blender scripts (through
- * `art/village/layout.json`, written by scripts/export-village-layout.ts).
+ * village map — walk bounds, spawn, the big fountain plaza, ring road with its sidewalk and bus stop, the
+ * lanes, a curving creek with a footbridge, the pavilion (정자), the six building plots, the pet memorial hall
+ * (추모관) outside and inside, the scenery houses and café, and the backdrop (waterfall, lake) — read by the
+ * server (spawn, door arrivals, collision), the client (scene, plot markers, camera) and the Blender scripts
+ * (through `art/village/layout.json`, written by scripts/export-village-layout.ts).
  *
  * Browser-safe and data-driven: plain numbers plus the shared collision types. North is -z, metres, ground y = 0.
  * Yaw follows the game's `atan2(dirX, dirZ)` convention (0 faces +z), so facing north (-z) is PI.
  *
- * Two areas live in ONE coordinate space, far apart: the village (x -60..60) and the memorial hall's interior
+ * Layout v2 (owner, 2026-11-03): a much bigger plaza so many people can gather, in the style of
+ * art/village/refs/owner_village_style.webp. From the plaza centre outwards: fountain (basin 16 m) inside
+ * a paved disk (r 30), the ring road (r 31..37) with a 2 m sidewalk outside it, small colourful houses and
+ * a café, then the six 18 x 18 plots on a ring of r ~58, and the creek beyond the southern plots. The
+ * waterfall and the lake are backdrop outside the walk bounds (visual only).
+ *
+ * Two areas live in ONE coordinate space, far apart: the village (x -95..95) and the memorial hall's interior
  * (around x = 300). A validated door message teleports a player between them; nobody can WALK between them.
  * `makeGeometry` takes a single bounds rectangle, so `villageGeometry` uses the rectangle that spans both areas
- * and a blocking box fills the gap between them (`areaGapBlockers`). The hall's own walls seal the room.
+ * and blocking boxes fill the space between and around them (`areaGapBlockers`, `hallSurroundBlockers`). The
+ * hall's own walls seal the room.
  *
  * The layout VALUES (positions, sizes) are separate from the collider LIST: `greyboxColliders(layout)` builds
  * axis-aligned boxes from the values for now, and `buildVillageGeometry(layout, colliders)` takes any list —
- * Task 7 passes the colliders generated from the Blender GLB instead.
+ * Task 7 passes the colliders generated from the Blender GLB instead. `VILLAGE_LAYOUT` is deeply frozen and
+ * shares no object between two fields.
  */
 
 import type { AABB } from "../collision";
@@ -39,6 +48,9 @@ export interface Disc {
   radius: number;
 }
 
+/** A compass side: north is -z, east is +x. */
+export type Side = "n" | "s" | "e" | "w";
+
 /** The two places a player can be: the open village, or inside the memorial hall. */
 export type AreaId = "village" | "hall";
 
@@ -56,44 +68,81 @@ export interface VillagePlot {
   label: string;
   /** Sign text for an empty plot, or null for a built one. */
   sign: string | null;
+  /** True while a building is going up here (Task 6 dresses it with scaffold and a crane). */
+  underConstruction: boolean;
+  /** Where the sign post stands (inside the plot, at the edge facing the plaza) and the way it faces; null for a built plot. */
+  signPost: (Point2 & { facing: Side }) | null;
 }
 
-/** A rural house for the scenery. Its door is closed for good. */
+/** Wall colours of the scenery houses (a café is "wood"). */
+export type HouseColour = "pink" | "skyblue" | "yellow" | "white" | "mint" | "wood";
+
+/** A small colourful house, or the café with striped awnings, for the scenery. Its door is closed for good. */
 export interface SceneryHouse {
   id: string;
+  kind: "house" | "cafe";
   centre: Point2;
   size: Size2;
   enterable: false;
+  colour: HouseColour;
+  /** The side the (closed) door is on; it faces the ring road. */
+  doorSide: Side;
 }
 
-export interface VillageStream {
-  /** Centre line of the water (it runs along x). */
-  z: number;
+/** One stretch of the creek: its centre line runs at `z` from `minX` to `maxX` (the water is `width` wide). */
+export interface StreamSegment {
   minX: number;
   maxX: number;
+  z: number;
+}
+
+/**
+ * The creek: a gentle curve approximated by axis-aligned segments, west to east, each starting where the
+ * previous ends. Collision is 2D boxes covering the whole water band of every segment; the only break is the
+ * bridge gap, which lies inside one segment.
+ */
+export interface VillageStream {
   /** Width of the water (m); the bridge spans exactly this. */
   width: number;
-  /** The one place the stream can be crossed: no bank collider here. */
+  /**
+   * Width of the bank on each side of the water (m), solid in the collision: the creek's boxes cover the water
+   * plus this much on both sides, so the barrier is `width + 2 * bankWidth` thick and one legal step (up to 4.8 m)
+   * cannot hop it, not even across the corner where two segments meet.
+   */
+  bankWidth: number;
+  segments: readonly StreamSegment[];
+  /** The one place the creek can be crossed: no collider here (4 m wide). */
   bridgeGap: { minX: number; maxX: number };
+}
+
+/** A visual lane: a polyline `width` wide (not a collider). */
+export interface VillageLane {
+  id: string;
+  width: number;
+  points: readonly Point2[];
 }
 
 export interface MemorialExterior {
   centre: Point2;
-  /** Building footprint (x by z). */
+  /** Building footprint (x by z), centred on plot_n. */
   size: Size2;
   /** The side of the building the door is on ("s": the south face, toward the plaza). */
   doorSide: "s";
-  /** Standing here and using the door goes inside. The pad reaches into the footprint (a recess at the door). */
+  /** Standing here and using the door goes inside. 0.4 m outside the façade; the pad reaches into the footprint (a recess at the door). */
   doorPad: Disc;
+  /** Where the way out puts a visitor: the pad centre 2.2 m south, facing +z, away from the building. */
+  arrival: Point2 & { yaw: number };
 }
 
 export interface MemorialInterior {
   /** Centre of the room; the area sits far from the village in the same coordinate space. */
   origin: Point2;
   size: Size2;
-  /** The room's floor, `size` centred on `origin`. The walls sit just outside it. */
+  /** The floor of the room, `size` centred on `origin`. The walls sit just outside it. */
   room: AABB;
   ceilingHeight: number;
+  /** The wall the way out is on (the south wall, like the outside door). */
+  doorSide: "s";
   /** Standing here and using the door goes back outside. */
   doorPad: Disc;
   /** Where a visitor appears when they come in (yaw faces into the room). */
@@ -103,9 +152,9 @@ export interface MemorialInterior {
 export interface VillageLayout {
   /** Where the village's walkable ground ends (the server clamps players into the bounds). */
   walkBounds: Bounds;
-  /** Where players appear (plus a random offset of up to `jitter` m). */
+  /** Where players appear (plus a random offset of up to `jitter` m): on the plaza, facing the fountain. */
   spawn: Point2 & { yaw: number; jitter: number };
-  /** A big fountain plaza (중앙에 커다란 분수 광장); the ring road runs around it. */
+  /** The big fountain plaza; the ring road runs around it. */
   plaza: {
     centre: Point2;
     /** The fountain in the middle: a round basin (visual) inside a box collider. */
@@ -113,17 +162,30 @@ export interface VillageLayout {
     /** The paved disk of the plaza, inside the ring road (visual only). */
     paving: { centre: Point2; radius: number };
     /** One big zelkova (느티나무) with a round wooden deck at the plaza's edge; the trunk is inside the deck. */
-    zelkova: { centre: Point2; collider: Size2 };
+    zelkova: { centre: Point2; deck: { shape: "round"; diameter: number }; collider: Size2 };
+    /** Benches round the fountain, facing it (visual only). */
+    benches: readonly (Point2 & { yaw: number })[];
+    /** Lamp posts on the paving's rim (visual only). */
+    lamps: readonly Point2[];
   };
-  /** Visual only: no collider. */
-  ringRoad: { centre: Point2; radius: number; width: number };
+  /** Visual only: no collider. The sidewalk runs along the outer edge. */
+  ringRoad: { centre: Point2; radius: number; width: number; sidewalk: { width: number; side: "outer" } };
+  /** A bus stop on the ring road's outer side: the shelter is visual, the parked bus is a collider. */
+  busStop: { shelter: { centre: Point2; size: Size2 }; bus: { centre: Point2; size: Size2 } };
   stream: VillageStream;
-  /** Walkable. Spans the water exactly: x = the stream's bridge gap, z = the water band. */
+  /** Walkable. Spans the water exactly: x = the stream's bridge gap, z = the water band of the segment it crosses. */
   bridge: AABB;
   pavilion: { centre: Point2; size: Size2 };
+  /** Visual lanes: plaza to each plot, plaza to the bridge, the bus stop. */
+  lanes: readonly VillageLane[];
   plots: readonly VillagePlot[];
   memorial: { exterior: MemorialExterior; interior: MemorialInterior };
   sceneryHouses: readonly SceneryHouse[];
+  /** Outside the walk bounds, visual only: the waterfall on a cliff (back left) and the lake with a pavilion (right). */
+  backdrop: {
+    waterfall: { centre: Point2; size: Size2; height: number; facing: Side };
+    lake: { centre: Point2; size: Size2; pavilion: { centre: Point2; size: Size2 } };
+  };
   areas: Record<AreaId, Bounds>;
 }
 
@@ -137,76 +199,203 @@ export function boxAt(centre: Point2, size: Size2): AABB {
   };
 }
 
+/** The Blender collider node of a collider id: `col__<id>`. */
+export function colliderNode(id: string): string {
+  return `col__${id}`;
+}
+
+/** Freeze `value` and everything reachable from it. */
+function deepFreeze<T>(value: T): T {
+  if (value !== null && typeof value === "object" && !Object.isFrozen(value)) {
+    Object.freeze(value);
+    for (const v of Object.values(value as object)) deepFreeze(v);
+  }
+  return value;
+}
+
 /** Yaw that faces north (-z): atan2(dirX, dirZ) with dir = (0, -1). */
 const FACING_NORTH = Math.atan2(0, -1);
+/** Yaw that faces south (+z): atan2(0, 1). */
+const FACING_SOUTH = Math.atan2(0, 1);
 
-const WALK_BOUNDS: Bounds = { minX: -60, maxX: 60, minZ: -60, maxZ: 60 };
-const HALL_ORIGIN: Point2 = { x: 300, z: 0 };
-const HALL_SIZE: Size2 = { x: 9, z: 12 };
-const HALL_ROOM: AABB = boxAt(HALL_ORIGIN, HALL_SIZE);
 const SIGN_COMING_SOON = "곧 지어져요";
-const PLOT_SIZE: Size2 = { x: 16, z: 16 };
-const HOUSE_SIZE: Size2 = { x: 9, z: 7 };
+const round = (v: number, places: number) => Math.round(v * 10 ** places) / 10 ** places;
+const pt = (x: number, z: number): Point2 => ({ x, z });
+const sz = (x: number, z: number): Size2 => ({ x, z });
 
-export const VILLAGE_LAYOUT: VillageLayout = {
-  walkBounds: WALK_BOUNDS,
-  // First arrival: on the fountain plaza, just south of the fountain, facing it (north, -z).
-  spawn: { x: 0, z: 9, yaw: FACING_NORTH, jitter: 2.5 },
-  plaza: {
-    centre: { x: 0, z: 0 },
-    fountain: { centre: { x: 0, z: 0 }, basinDiameter: 12, collider: { x: 9, z: 9 } },
-    paving: { centre: { x: 0, z: 0 }, radius: 17 },
-    zelkova: { centre: { x: -10, z: -8 }, collider: { x: 5, z: 5 } },
-  },
-  ringRoad: { centre: { x: 0, z: 0 }, radius: 20, width: 5 },
-  stream: { z: 30, minX: -60, maxX: 60, width: 6, bridgeGap: { minX: -2, maxX: 2 } },
-  bridge: { minX: -2, maxX: 2, minZ: 27, maxZ: 33 },
-  pavilion: { centre: { x: -14, z: 36 }, size: { x: 5, z: 5 } },
-  plots: [
-    { id: "plot_n", centre: { x: 0, z: -40 }, size: PLOT_SIZE, label: "추모관", sign: null },
-    { id: "plot_ne", centre: { x: 36, z: -22 }, size: PLOT_SIZE, label: "성당", sign: SIGN_COMING_SOON },
-    { id: "plot_e", centre: { x: 40, z: 10 }, size: PLOT_SIZE, label: "학교", sign: SIGN_COMING_SOON },
-    { id: "plot_w", centre: { x: -40, z: 10 }, size: PLOT_SIZE, label: "도서관", sign: SIGN_COMING_SOON },
-    { id: "plot_nw", centre: { x: -36, z: -22 }, size: PLOT_SIZE, label: "절", sign: SIGN_COMING_SOON },
-    { id: "plot_s", centre: { x: 30, z: 44 }, size: PLOT_SIZE, label: "교회", sign: SIGN_COMING_SOON },
-  ],
-  memorial: {
-    exterior: {
-      centre: { x: 0, z: -42 },
-      size: { x: 14, z: 12 },
-      doorSide: "s",
-      doorPad: { centre: { x: 0, z: -35.6 }, radius: 1.6 },
+/** A point at compass `azimuthDeg` (clockwise from north) and `radius` from the origin, rounded to 1 cm. */
+function onCircle(azimuthDeg: number, radius: number): Point2 {
+  const a = (azimuthDeg * Math.PI) / 180;
+  return pt(round(radius * Math.sin(a), 2), round(-radius * Math.cos(a), 2));
+}
+
+/** Benches round the fountain at 11 m, one per 45 degrees, facing the fountain. */
+function fountainBenches(): (Point2 & { yaw: number })[] {
+  return [22.5, 67.5, 112.5, 157.5, 202.5, 247.5, 292.5, 337.5].map((azimuth) => {
+    const p = onCircle(azimuth, 11);
+    return { ...p, yaw: round(Math.atan2(-p.x, -p.z), 4) };
+  });
+}
+
+function plot(
+  id: PlotId,
+  centre: Point2,
+  label: string,
+  rest: { signPost: (Point2 & { facing: Side }) | null; underConstruction?: boolean },
+): VillagePlot {
+  return {
+    id,
+    centre,
+    size: sz(18, 18),
+    label,
+    sign: rest.signPost === null ? null : SIGN_COMING_SOON,
+    underConstruction: rest.underConstruction ?? false,
+    signPost: rest.signPost,
+  };
+}
+
+function house(
+  id: string,
+  centre: Point2,
+  colour: HouseColour,
+  doorSide: Side,
+  kind: SceneryHouse["kind"] = "house",
+): SceneryHouse {
+  return { id, kind, centre, size: kind === "cafe" ? sz(12, 9) : sz(8, 6), enterable: false, colour, doorSide };
+}
+
+function makeVillageLayout(): VillageLayout {
+  return {
+    walkBounds: { minX: -95, maxX: 95, minZ: -95, maxZ: 95 },
+    spawn: { x: 0, z: 14, yaw: FACING_NORTH, jitter: 3 },
+    plaza: {
+      centre: pt(0, 0),
+      fountain: { centre: pt(0, 0), basinDiameter: 16, collider: sz(12, 12) },
+      paving: { centre: pt(0, 0), radius: 30 },
+      zelkova: { centre: pt(-25, -5), deck: { shape: "round", diameter: 5 }, collider: sz(5, 5) },
+      benches: fountainBenches(),
+      lamps: [27.5, 80, 142.5, 217.5, 332.5].map((azimuth) => onCircle(azimuth, 28)),
     },
-    interior: {
-      origin: HALL_ORIGIN,
-      size: HALL_SIZE,
-      room: HALL_ROOM,
-      ceilingHeight: 3.4,
-      doorPad: { centre: { x: 300, z: 5.2 }, radius: 1.4 },
-      // 0.6 m clear of the 1.4 m door pad's edge (pad centre z = 5.2, spawn z = 3.6, distance 1.6), so a new arrival is not standing on the door.
-      spawn: { x: 300, z: 3.6, yaw: FACING_NORTH },
+    ringRoad: { centre: pt(0, 0), radius: 34, width: 6, sidewalk: { width: 2, side: "outer" } },
+    // Parked on the outer lane at the east (x 33.1..35.6 stays inside the road's 31..37 band along its whole 8 m).
+    busStop: {
+      shelter: { centre: pt(38, -6), size: sz(1.6, 4) },
+      bus: { centre: pt(34.35, -6), size: sz(2.5, 8) },
     },
-  },
-  sceneryHouses: [
-    { id: "house_1", centre: { x: -46, z: 40 }, size: HOUSE_SIZE, enterable: false },
-    { id: "house_2", centre: { x: -30, z: 50 }, size: HOUSE_SIZE, enterable: false },
-    { id: "house_3", centre: { x: 46, z: -46 }, size: HOUSE_SIZE, enterable: false },
-    // The plan put this one at (52, 30), inside the stream (z 27..33); moved south of the water.
-    { id: "house_4", centre: { x: 52, z: 40 }, size: HOUSE_SIZE, enterable: false },
-    { id: "house_5", centre: { x: -52, z: -44 }, size: HOUSE_SIZE, enterable: false },
-  ],
-  areas: { village: WALK_BOUNDS, hall: HALL_ROOM },
-};
+    // A gentle bow to the south beyond plot_s (z 49..67); every segment is 6 m of water with 3 m of bank on each side,
+    // and the centre line moves at most 3 m from one segment to the next.
+    stream: {
+      width: 6,
+      bankWidth: 3,
+      segments: [
+        { minX: -95, maxX: -70, z: 70 },
+        { minX: -70, maxX: -46, z: 72 },
+        { minX: -46, maxX: -4, z: 75 },
+        { minX: -4, maxX: 24, z: 78 },
+        { minX: 24, maxX: 52, z: 76 },
+        { minX: 52, maxX: 95, z: 73 },
+      ],
+      bridgeGap: { minX: -26, maxX: -22 },
+    },
+    bridge: { minX: -26, maxX: -22, minZ: 72, maxZ: 78 },
+    pavilion: { centre: pt(-16, 62), size: sz(5, 5) },
+    lanes: [
+      { id: "lane_plot_n", width: 3, points: [pt(0, -30), pt(0, -51.6)] },
+      { id: "lane_plot_ne", width: 3, points: [pt(24.72, -16.99), pt(38.5, -33)] },
+      { id: "lane_plot_e", width: 3, points: [pt(28.98, 7.76), pt(47.5, 15)] },
+      { id: "lane_plot_s", width: 3, points: [pt(0, 30), pt(0, 49)] },
+      { id: "lane_plot_w", width: 3, points: [pt(-28.98, 7.76), pt(-47.5, 15)] },
+      { id: "lane_plot_nw", width: 3, points: [pt(-24.72, -16.99), pt(-38.5, -33)] },
+      { id: "lane_bridge", width: 3, points: [pt(-11, 27.91), pt(-24, 46), pt(-24, 72)] },
+      { id: "lane_bus", width: 2.5, points: [pt(30, 1), pt(38.5, 1), pt(38.5, -6)] },
+    ],
+    plots: [
+      plot("plot_n", pt(0, -58), "추모관", { signPost: null }),
+      plot("plot_ne", pt(48, -33), "성당", { signPost: { x: 40, z: -33, facing: "w" } }),
+      plot("plot_e", pt(56, 15), "학교", { signPost: { x: 48, z: 15, facing: "w" } }),
+      plot("plot_w", pt(-56, 15), "도서관", { signPost: { x: -48, z: 15, facing: "e" }, underConstruction: true }),
+      plot("plot_nw", pt(-48, -33), "절", { signPost: { x: -40, z: -33, facing: "e" } }),
+      plot("plot_s", pt(0, 58), "교회", { signPost: { x: 0, z: 50, facing: "n" } }),
+    ],
+    memorial: {
+      exterior: {
+        centre: pt(0, -58),
+        size: sz(14, 12),
+        doorSide: "s",
+        doorPad: { centre: pt(0, -51.6), radius: 1.6 },
+        arrival: { x: 0, z: -49.4, yaw: FACING_SOUTH },
+      },
+      interior: {
+        origin: pt(300, 0),
+        size: sz(9, 12),
+        room: boxAt(pt(300, 0), sz(9, 12)),
+        ceilingHeight: 3.4,
+        doorSide: "s",
+        doorPad: { centre: pt(300, 5.2), radius: 1.4 },
+        // 0.2 m outside the 1.4 m door pad's edge (pad centre z = 5.2, spawn z = 3.6, distance 1.6), so a new arrival is not standing on the door.
+        spawn: { x: 300, z: 3.6, yaw: FACING_NORTH },
+      },
+    },
+    // Between the ring road's sidewalk (r 39) and the plots, one per gap between plots, doors toward the road.
+    sceneryHouses: [
+      house("house_1", pt(21, -42), "pink", "s"),
+      house("house_2", pt(-21, -42), "skyblue", "s"),
+      house("house_3", pt(29, 37), "yellow", "n"),
+      house("house_4", pt(-28, 38), "white", "n"),
+      house("house_5", pt(-46, -8), "mint", "e"),
+      house("cafe", pt(46, -12), "wood", "w", "cafe"),
+    ],
+    backdrop: {
+      waterfall: { centre: pt(-118, -78), size: sz(28, 14), height: 36, facing: "e" },
+      lake: { centre: pt(130, -15), size: sz(60, 90), pavilion: { centre: pt(108, -12), size: sz(6, 6) } },
+    },
+    areas: { village: { minX: -95, maxX: 95, minZ: -95, maxZ: 95 }, hall: boxAt(pt(300, 0), sz(9, 12)) },
+  };
+}
+
+export const VILLAGE_LAYOUT: VillageLayout = deepFreeze(makeVillageLayout());
 
 /**
  * One solid thing on the walkable ground. `id` is the name the Blender collider node gets (`col__<id>`),
  * so a generated list and this greybox list line up. `camera`: a building the third-person camera must
- * not see through (it is a camera box as tall as a wall); fountain, zelkova deck and banks are looked over.
+ * not see through (it is a camera box as tall as a wall); fountain, zelkova deck, banks and the pavilion are looked over.
  */
 export interface VillageCollider {
   id: string;
   box: AABB;
   camera: boolean;
+}
+
+/** The water band `[minZ, maxZ]` of a creek segment. */
+export function segmentBand(stream: VillageStream, segment: StreamSegment): { minZ: number; maxZ: number } {
+  return { minZ: segment.z - stream.width / 2, maxZ: segment.z + stream.width / 2 };
+}
+
+/** The water band plus the bank on both sides: the z extent of the segment's collider. */
+export function segmentBank(stream: VillageStream, segment: StreamSegment): { minZ: number; maxZ: number } {
+  const band = segmentBand(stream, segment);
+  return { minZ: band.minZ - stream.bankWidth, maxZ: band.maxZ + stream.bankWidth };
+}
+
+/**
+ * The creek's colliders: every segment's water band and its banks (so nobody steps into the water, not even
+ * off the bridge's sides, and no single step hops across), the one holding the bridge gap in two boxes (west
+ * and east of it; the gap column stays free over the whole bank, so the bridge has an approach on each end).
+ */
+function streamColliders(stream: VillageStream): VillageCollider[] {
+  const gap = stream.bridgeGap;
+  const out: VillageCollider[] = [];
+  stream.segments.forEach((seg, i) => {
+    const { minZ, maxZ } = segmentBank(stream, seg);
+    const name = `stream_bank_${i + 1}`;
+    if (gap.minX >= seg.minX && gap.maxX <= seg.maxX) {
+      if (gap.minX > seg.minX) out.push({ id: `${name}_w`, box: { minX: seg.minX, maxX: gap.minX, minZ, maxZ }, camera: false });
+      if (gap.maxX < seg.maxX) out.push({ id: `${name}_e`, box: { minX: gap.maxX, maxX: seg.maxX, minZ, maxZ }, camera: false });
+    } else {
+      out.push({ id: name, box: { minX: seg.minX, maxX: seg.maxX, minZ, maxZ }, camera: false });
+    }
+  });
+  return out;
 }
 
 /**
@@ -228,21 +417,18 @@ function memorialColliders(ex: MemorialExterior): VillageCollider[] {
 }
 
 /**
- * Greybox colliders of the village area, built from the layout values: the plaza fountain and the zelkova's deck, the stream
- * (its full water band, west and east of the bridge gap, so nobody steps into the water, not even off the
- * bridge's sides), the pavilion, the memorial footprint and the scenery houses. Plots, the ring road and
- * the bridge have none.
+ * Greybox colliders of the village area, built from the layout values: the plaza fountain and the zelkova's
+ * deck, the creek, the pavilion, the parked bus, the memorial footprint and the scenery houses and café.
+ * Plots, lanes, the ring road, the sidewalk and the bridge have none.
  */
 export function greyboxColliders(layout: VillageLayout): VillageCollider[] {
-  const { plaza, stream, pavilion, memorial, sceneryHouses } = layout;
-  const minZ = stream.z - stream.width / 2;
-  const maxZ = stream.z + stream.width / 2;
+  const { plaza, stream, pavilion, busStop, memorial, sceneryHouses } = layout;
   return [
     { id: "plaza_fountain", box: boxAt(plaza.fountain.centre, plaza.fountain.collider), camera: false },
     { id: "plaza_zelkova", box: boxAt(plaza.zelkova.centre, plaza.zelkova.collider), camera: false },
-    { id: "stream_bank_w", box: { minX: stream.minX, maxX: stream.bridgeGap.minX, minZ, maxZ }, camera: false },
-    { id: "stream_bank_e", box: { minX: stream.bridgeGap.maxX, maxX: stream.maxX, minZ, maxZ }, camera: false },
+    ...streamColliders(stream),
     { id: "pavilion", box: boxAt(pavilion.centre, pavilion.size), camera: false },
+    { id: "bus", box: boxAt(busStop.bus.centre, busStop.bus.size), camera: true },
     ...memorialColliders(memorial.exterior),
     ...sceneryHouses.map((h): VillageCollider => ({ id: h.id, box: boxAt(h.centre, h.size), camera: true })),
   ];
@@ -253,16 +439,22 @@ export function hallWalls(layout: VillageLayout): AABB[] {
   return wallsAround(layout.areas.hall);
 }
 
-/** The rectangle `villageGeometry` uses as its bounds: spans the village and the hall (walls included). */
+/**
+ * Solid ground around the hall's walls, at least this thick (m). One legal step is up to 4.8 m (`RUN_SPEED` x 0.5 s
+ * x 1.5) and the server judges only where a step LANDS, so a 0.5 m wall alone is not a seal.
+ */
+export const HALL_APRON = 5;
+
+/** The rectangle `villageGeometry` uses as its bounds: spans the village and the hall (walls and apron included). */
 export function villageBounds(layout: VillageLayout): Bounds {
   const v = layout.areas.village;
   const h = layout.areas.hall;
-  const t = DEFAULT_WALL_THICKNESS;
+  const margin = DEFAULT_WALL_THICKNESS + HALL_APRON;
   return {
-    minX: Math.min(v.minX, h.minX - t),
-    maxX: Math.max(v.maxX, h.maxX + t),
-    minZ: Math.min(v.minZ, h.minZ - t),
-    maxZ: Math.max(v.maxZ, h.maxZ + t),
+    minX: Math.min(v.minX, h.minX - margin),
+    maxX: Math.max(v.maxX, h.maxX + margin),
+    minZ: Math.min(v.minZ, h.minZ - margin),
+    maxZ: Math.max(v.maxZ, h.maxZ + margin),
   };
 }
 
@@ -279,15 +471,33 @@ export function areaGapBlockers(layout: VillageLayout): AABB[] {
 }
 
 /**
+ * Solid ground over ALL the free space around the hall's walls inside the bounds: the strips north and south
+ * (from the walls' west face to the bounds' east edge) and the strip east of the walls. West of the walls the
+ * gap blocker is adjacent. Every one is at least `HALL_APRON` (5 m) thick, so a legal step through a wall ends
+ * inside a blocker and is dropped. `hallWalls` stay the render and camera geometry; these boxes are invisible.
+ */
+export function hallSurroundBlockers(layout: VillageLayout): AABB[] {
+  const bounds = villageBounds(layout);
+  const hall = layout.areas.hall;
+  const t = DEFAULT_WALL_THICKNESS;
+  const walls: AABB = { minX: hall.minX - t, maxX: hall.maxX + t, minZ: hall.minZ - t, maxZ: hall.maxZ + t };
+  const out: AABB[] = [];
+  if (bounds.minZ < walls.minZ) out.push({ minX: walls.minX, maxX: bounds.maxX, minZ: bounds.minZ, maxZ: walls.minZ });
+  if (walls.maxZ < bounds.maxZ) out.push({ minX: walls.minX, maxX: bounds.maxX, minZ: walls.maxZ, maxZ: bounds.maxZ });
+  if (walls.maxX < bounds.maxX) out.push({ minX: walls.maxX, maxX: bounds.maxX, minZ: walls.minZ, maxZ: walls.maxZ });
+  return out;
+}
+
+/**
  * The village map from a layout and a village collider list: the hall's walls (also camera boxes), then the
- * gap blocker and the colliders as obstacles; the colliders flagged `camera` are camera boxes too.
+ * gap blocker, the hall surround and the colliders as obstacles; the colliders flagged `camera` are camera boxes too.
  */
 export function buildVillageGeometry(layout: VillageLayout, colliders: readonly VillageCollider[]): MapGeometry {
   return makeGeometry(
     "village",
     villageBounds(layout),
     hallWalls(layout),
-    [...areaGapBlockers(layout), ...colliders.map((c) => c.box)],
+    [...areaGapBlockers(layout), ...hallSurroundBlockers(layout), ...colliders.map((c) => c.box)],
     colliders.filter((c) => c.camera).map((c) => c.box),
   );
 }
@@ -298,40 +508,61 @@ export const villageGeometry: MapGeometry = buildVillageGeometry(VILLAGE_LAYOUT,
 /**
  * Everything a Blender script needs, as plain JSON-able data (scripts/export-village-layout.ts writes it to
  * art/village/layout.json): the layout values, a ready-made rectangle (`bounds`) next to every centre and
- * size, the greybox colliders by id, the hall walls and the gap blocker.
+ * size, the greybox colliders by id with their `col__<id>` node names, the lanes, the plots' sign posts, the
+ * houses' doors and colours, the backdrop, the hall walls and the blockers.
  */
 export function exportVillageLayout(layout: VillageLayout = VILLAGE_LAYOUT) {
   const colliders = greyboxColliders(layout);
   const bounded = <T extends { centre: Point2; size: Size2 }>(o: T) => ({ ...o, bounds: boxAt(o.centre, o.size) });
-  const collider = (c: VillageCollider) => ({ id: c.id, ...c.box, camera: c.camera });
-  const { stream, memorial } = layout;
+  const collider = (c: VillageCollider) => ({ id: c.id, node: colliderNode(c.id), ...c.box, camera: c.camera });
+  const colliderBox = (id: string, centre: Point2, size: Size2) => ({
+    centre,
+    size,
+    bounds: boxAt(centre, size),
+    node: colliderNode(id),
+  });
+  const { stream, memorial, plaza, busStop } = layout;
   return {
     format: "caysonverse-village-layout",
-    version: 1,
+    version: 2,
     axes: "metres; x east, z south (north is -z), ground at y = 0; yaw 0 faces +z, PI faces north",
     walkBounds: layout.walkBounds,
     spawn: layout.spawn,
     plaza: {
-      centre: layout.plaza.centre,
+      centre: plaza.centre,
       fountain: {
-        centre: layout.plaza.fountain.centre,
-        basinDiameter: layout.plaza.fountain.basinDiameter,
-        collider: { size: layout.plaza.fountain.collider, bounds: boxAt(layout.plaza.fountain.centre, layout.plaza.fountain.collider) },
+        centre: plaza.fountain.centre,
+        basinDiameter: plaza.fountain.basinDiameter,
+        collider: { size: plaza.fountain.collider, bounds: boxAt(plaza.fountain.centre, plaza.fountain.collider), node: colliderNode("plaza_fountain") },
       },
-      paving: layout.plaza.paving,
+      paving: plaza.paving,
       zelkova: {
-        centre: layout.plaza.zelkova.centre,
-        collider: { size: layout.plaza.zelkova.collider, bounds: boxAt(layout.plaza.zelkova.centre, layout.plaza.zelkova.collider) },
+        centre: plaza.zelkova.centre,
+        deck: plaza.zelkova.deck,
+        collider: { size: plaza.zelkova.collider, bounds: boxAt(plaza.zelkova.centre, plaza.zelkova.collider), node: colliderNode("plaza_zelkova") },
       },
+      benches: plaza.benches,
+      lamps: plaza.lamps,
     },
     ringRoad: layout.ringRoad,
+    busStop: {
+      shelter: bounded(busStop.shelter),
+      bus: colliderBox("bus", busStop.bus.centre, busStop.bus.size),
+    },
     stream: {
-      ...stream,
-      water: { minX: stream.minX, maxX: stream.maxX, minZ: stream.z - stream.width / 2, maxZ: stream.z + stream.width / 2 },
+      width: stream.width,
+      bankWidth: stream.bankWidth,
+      segments: stream.segments.map((s) => ({
+        ...s,
+        water: { minX: s.minX, maxX: s.maxX, ...segmentBand(stream, s) },
+        bank: { minX: s.minX, maxX: s.maxX, ...segmentBank(stream, s) },
+      })),
+      bridgeGap: stream.bridgeGap,
       banks: colliders.filter((c) => c.id.startsWith("stream_bank_")).map(collider),
     },
     bridge: layout.bridge,
-    pavilion: bounded(layout.pavilion),
+    pavilion: { ...bounded(layout.pavilion), node: colliderNode("pavilion") },
+    lanes: layout.lanes,
     plots: layout.plots.map(bounded),
     memorial: {
       exterior: {
@@ -339,9 +570,13 @@ export function exportVillageLayout(layout: VillageLayout = VILLAGE_LAYOUT) {
         footprint: boxAt(memorial.exterior.centre, memorial.exterior.size),
         colliders: colliders.filter((c) => c.id.startsWith("memorial_")).map(collider),
       },
-      interior: { ...memorial.interior, walls: hallWalls(layout) },
+      interior: { ...memorial.interior, walls: hallWalls(layout), blockers: hallSurroundBlockers(layout) },
     },
-    sceneryHouses: layout.sceneryHouses.map(bounded),
+    sceneryHouses: layout.sceneryHouses.map((h) => ({ ...bounded(h), node: colliderNode(h.id) })),
+    backdrop: {
+      waterfall: bounded(layout.backdrop.waterfall),
+      lake: { ...bounded(layout.backdrop.lake), pavilion: bounded(layout.backdrop.lake.pavilion) },
+    },
     areas: layout.areas,
     colliders: colliders.map(collider),
     areaGapBlockers: areaGapBlockers(layout),

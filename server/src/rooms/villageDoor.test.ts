@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { PLAYER_RADIUS } from "@caysonverse/shared/constants";
 import { isBlocked } from "@caysonverse/shared/collision";
 import { VILLAGE_LAYOUT, villageGeometry } from "@caysonverse/shared/village/villageLayout";
-import { DOOR_RATE, DOOR_REACH_M, OUTSIDE_ARRIVAL_GAP_M, arrivalAfter, useDoor } from "./villageDoor";
+import { DOOR_RATE, DOOR_REACH_M, arrivalAfter, useDoor } from "./villageDoor";
 
 const L = VILLAGE_LAYOUT;
 const outPad = L.memorial.exterior.doorPad;
@@ -12,25 +12,23 @@ describe("door constants", () => {
   it("reach is 0.9 m past the pad's edge and a client may use a door once a second", () => {
     expect(DOOR_REACH_M).toBe(0.9);
     expect(DOOR_RATE).toEqual({ count: 1, windowMs: 1000 });
-    expect(OUTSIDE_ARRIVAL_GAP_M).toBe(0.6);
   });
 });
 
 describe("arrivalAfter", () => {
-  it("village -> hall: the inside spawn (300, 3.6), facing -z into the room", () => {
+  it("village -> hall: the layout's inside spawn, facing -z into the room", () => {
     const a = arrivalAfter("village");
     expect(a.area).toBe("hall");
-    expect(a.x).toBe(300);
-    expect(a.z).toBe(3.6);
+    expect(a.x).toBe(L.memorial.interior.spawn.x);
+    expect(a.z).toBe(L.memorial.interior.spawn.z);
     expect(a.yaw).toBeCloseTo(Math.PI, 12); // atan2(0, -1): north
     expect(a).toMatchObject({ x: L.memorial.interior.spawn.x, z: L.memorial.interior.spawn.z, yaw: L.memorial.interior.spawn.yaw });
   });
 
-  it("hall -> village: 2.2 m south of the memorial door pad's centre, (0, -33.4), facing +z away from the building", () => {
+  it("hall -> village: the layout's exterior arrival (2.2 m south of the memorial door pad's centre), facing +z away from the building", () => {
     const a = arrivalAfter("hall");
-    expect(a.area).toBe("village");
-    expect(a.x).toBe(0);
-    expect(a.z).toBeCloseTo(-33.4, 9);
+    const { arrival } = L.memorial.exterior;
+    expect(a).toEqual({ area: "village", x: arrival.x, z: arrival.z, yaw: arrival.yaw });
     expect(a.z).toBeCloseTo(outPad.centre.z + 2.2, 9); // pad centre + 2.2 m south
     expect(a.yaw).toBe(0); // atan2(dirX, dirZ) with dir = (0, 1): +z (south)
     // South of the building's south face, so the building is behind the player.

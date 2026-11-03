@@ -17,12 +17,6 @@ export const DOOR_REACH_M = 0.9;
 /** Per-client door-use cap: at most `count` accepted uses per `windowMs`. */
 export const DOOR_RATE = { count: 1, windowMs: 1000 } as const;
 
-/** Where the outside arrival is put, beyond the pad's edge (m): pad centre + radius + this, south of the door. */
-export const OUTSIDE_ARRIVAL_GAP_M = 0.6;
-
-/** Yaw that faces south (+z), away from the memorial building's south door: atan2(0, 1) = 0. */
-const FACING_SOUTH = Math.atan2(0, 1);
-
 /** The new place of a player who used a door. Yaw follows the game's `atan2(dirX, dirZ)` convention. */
 export interface DoorArrival {
   area: AreaId;
@@ -33,21 +27,16 @@ export interface DoorArrival {
 
 /**
  * Village → hall: the inside spawn, facing into the room (the layout's `interior.spawn`).
- * Hall → village: just outside the memorial's door pad (south of it, its centre + radius + 0.6 m, so
- * (0, -33.4) in the current layout), facing south (+z), away from the building.
+ * Hall → village: the layout's `memorial.exterior.arrival` — south of the door pad, outside the building,
+ * facing south (+z), away from it. Both places belong to the layout, not to this file.
  */
 export function arrivalAfter(from: AreaId, layout: VillageLayout = VILLAGE_LAYOUT): DoorArrival {
   if (from === "village") {
     const { spawn } = layout.memorial.interior;
     return { area: "hall", x: spawn.x, z: spawn.z, yaw: spawn.yaw };
   }
-  const pad = layout.memorial.exterior.doorPad;
-  return {
-    area: "village",
-    x: pad.centre.x,
-    z: pad.centre.z + pad.radius + OUTSIDE_ARRIVAL_GAP_M,
-    yaw: FACING_SOUTH,
-  };
+  const { arrival } = layout.memorial.exterior;
+  return { area: "village", x: arrival.x, z: arrival.z, yaw: arrival.yaw };
 }
 
 /** The door pad a player in `area` uses: the building's front door outside, the way out inside. */
