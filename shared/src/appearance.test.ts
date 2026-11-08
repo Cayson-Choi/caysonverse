@@ -416,12 +416,13 @@ describe("presets", () => {
     expect(new Set(APPEARANCE_PRESETS.map((p) => p.id)).size).toBe(APPEARANCE_PRESETS.length);
   });
 
-  it("applyPreset keeps skin and voice, and every preset id resolves to a valid appearance", () => {
+  it("applyPreset resets skin to the default, keeps voice, and every preset id resolves to a valid appearance", () => {
     const mine: Appearance = { ...DEFAULT_APPEARANCE, skin: 3, voice: 1, hat: 5, topColor: 2 };
     for (const p of APPEARANCE_PRESETS) {
       const out = applyPreset(mine, p);
       expect(validateAppearance(out)).toEqual(out);
-      expect(out.skin).toBe(3);
+      // 프리셋은 그 캐릭터의 원래 모습이다: 🎲으로 바뀐 피부색도 기본으로 돌아간다(발주자 2026-11-09).
+      expect(out.skin).toBe(DEFAULT_APPEARANCE.skin);
       expect(out.voice).toBe(1);
       // 부품 인덱스는 id로 다시 풀면 프리셋의 id가 된다.
       for (const s of CHARACTER_SLOTS) expect(SLOT_OPTIONS[s][out[s]]).toBe(p.parts[s]);

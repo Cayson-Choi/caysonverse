@@ -85,13 +85,15 @@ describe("builderOptions — swatches", () => {
 });
 
 describe("builderOptions — presets and swatch ink", () => {
-  it("marks a preset as worn whatever the skin and voice, until any of its parts or colours changes", () => {
+  it("marks a preset as worn whatever the voice, until any of its parts, colours or the skin changes", () => {
     const knight = APPEARANCE_PRESETS.find((p) => p.id === "knight")!;
-    const worn = { ...applyPreset(DEFAULT_APPEARANCE, knight), skin: 3, voice: 1 };
+    const worn = { ...applyPreset({ ...DEFAULT_APPEARANCE, skin: 3 }, knight), voice: 1 };
+    expect(worn.skin).toBe(DEFAULT_APPEARANCE.skin);
     expect(presetWorn(worn, knight)).toBe(true);
     expect(APPEARANCE_PRESETS.filter((p) => presetWorn(worn, p)).map((p) => p.id)).toEqual(["knight"]);
     expect(presetWorn({ ...worn, item: 0 }, knight)).toBe(false);
     expect(presetWorn({ ...worn, topColor: (worn.topColor + 1) % 12 }, knight)).toBe(false);
+    expect(presetWorn({ ...worn, skin: 3 }, knight)).toBe(false);
     expect(APPEARANCE_PRESETS.some((p) => presetWorn(DEFAULT_APPEARANCE, p))).toBe(false);
   });
 

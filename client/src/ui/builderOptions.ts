@@ -4,6 +4,7 @@
 
 import {
   APPEARANCE_PRESETS,
+  DEFAULT_APPEARANCE,
   SLOT_COLOR_FIELD,
   SLOT_OPTIONS,
   paletteFor,
@@ -56,10 +57,11 @@ export function showSwatches(a: Appearance, slot: CharacterSlot): boolean {
 }
 
 /**
- * 지금 외형이 그 프리셋 차림 그대로인가(프리셋 버튼의 aria-pressed). 프리셋은 skin·voice를 바꾸지 않으므로
- * 그 둘은 보지 않는다. 부품 하나나 색 하나라도 바꾸면 false다.
+ * 지금 외형이 그 프리셋 차림 그대로인가(프리셋 버튼의 aria-pressed). 프리셋은 skin을 기본값으로 되돌리므로
+ * 피부색도 본다(voice는 바꾸지 않으니 보지 않는다). 부품·색·피부색 하나라도 바꾸면 false다.
  */
 export function presetWorn(a: Appearance, preset: AppearancePreset): boolean {
+  if (a.skin !== DEFAULT_APPEARANCE.skin) return false;
   for (const slot of CHARACTER_SLOTS) if (SLOT_OPTIONS[slot][a[slot]] !== preset.parts[slot]) return false;
   for (const [field, value] of Object.entries(preset.colors)) if (a[field as AppearanceField] !== value) return false;
   return true;

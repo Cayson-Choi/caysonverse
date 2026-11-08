@@ -225,7 +225,7 @@ function freezePreset(p: AppearancePreset): AppearancePreset {
 
 /**
  * 프리셋 캐릭터 8개(설계 4장). 모두 동화·모험 주인공이고 모자·머리·얼굴·웃옷·바지·신발·소품을 다 갖춘다.
- * 색은 CLOTHES·HAIR 팔레트 인덱스다. 프리셋은 skin과 voice를 바꾸지 않는다.
+ * 색은 CLOTHES·HAIR 팔레트 인덱스다. 프리셋은 skin을 기본값으로 되돌리고 voice는 바꾸지 않는다.
  */
 export const APPEARANCE_PRESETS: readonly AppearancePreset[] = Object.freeze([
   {
@@ -270,9 +270,12 @@ export const APPEARANCE_PRESETS: readonly AppearancePreset[] = Object.freeze([
   },
 ].map(freezePreset));
 
-/** 프리셋의 부품과 색으로 바꾼 새 외형. skin과 voice는 a의 값을 유지한다. */
+/**
+ * 프리셋의 부품과 색으로 바꾼 새 외형. 프리셋은 그 캐릭터의 원래 모습이라 skin은 기본값으로 돌아가고
+ * (🎲 뒤에 프리셋을 눌러도 랜덤 피부색이 남지 않는다, 발주자 2026-11-09), voice만 a의 값을 유지한다.
+ */
 export function applyPreset(a: Appearance, p: AppearancePreset): Appearance {
-  return appearanceFromIds(p.parts, { ...p.colors, skin: a.skin, voice: a.voice });
+  return appearanceFromIds(p.parts, { ...p.colors, skin: DEFAULT_APPEARANCE.skin, voice: a.voice });
 }
 
 // 모듈이 뜰 때 프리셋이 모두 풀리는지 확인한다: manifest에서 부품이 빠지면 학생이 프리셋을
