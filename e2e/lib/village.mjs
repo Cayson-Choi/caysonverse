@@ -139,7 +139,10 @@ export const audioState = (p) =>
     };
   });
 
-/** The filled cubby the hall scenario visits: eye-level card (row 3, else 2/4), on the back wall east of the bench or on the east wall. */
+/**
+ * The filled cubby the hall scenario visits: eye-level card (row 3, else 2/4), on the back wall east of the bench or on the east
+ * wall, in a column that also has an empty row (step 9 visits it; T11 review minor 3).
+ */
 export const pickCubby = (p) =>
   p.page.evaluate(async () => {
     const s = await window.__imp("/src/village/sampleCubbies.ts");
@@ -151,6 +154,7 @@ export const pickCubby = (p) =>
         const row = c.defaultRow(column.key);
         const a = column.rows[row];
         if (row !== want || !s.SAMPLE_BY_ID.has(a.id)) continue;
+        if (!column.rows.some((r) => !s.SAMPLE_BY_ID.has(r.id))) continue;
         const fx = Math.sin(a.yaw);
         const fz = Math.cos(a.yaw);
         return { key: column.key, row, id: a.id, x: a.x, y: a.y, z: a.z, standX: a.x + fx * 0.85, standZ: a.z + fz * 0.85, sample: s.SAMPLE_BY_ID.get(a.id) };
@@ -193,6 +197,48 @@ export const ceilingShare = (p) =>
     }
     return { y: camera.position.y, share: Math.round((inFrame / total) * 100) / 100 };
   });
+
+/**
+ * The hall's ceiling as a mesh (T11 review minor 1): rays straight up from three points of the room (above head height, so no
+ * avatar is hit) must first meet a shown mesh 3.2..3.7 m up whose material shows its face from below (double-sided, or a front
+ * face looking down).
+ */
+export const ceilingHits = (p) =>
+  p.page.evaluate(async () => {
+    const THREE = await window.__imp("/deps/three.js");
+    const { scene } = window.__cvThree();
+    const lay = await window.__imp("/village/villageLayout.ts");
+    const room = lay.VILLAGE_LAYOUT.memorial.interior.room;
+    const shown = (o) => {
+      for (let e = o; e; e = e.parent) if (!e.visible) return false;
+      return true;
+    };
+    const rc = new THREE.Raycaster();
+    const out = [];
+    for (const [fx, fz] of [[0.3, 0.35], [0.5, 0.55], [0.7, 0.4]]) {
+      const x = room.minX + (room.maxX - room.minX) * fx;
+      const z = room.minZ + (room.maxZ - room.minZ) * fz;
+      rc.set(new THREE.Vector3(x, 2.6, z), new THREE.Vector3(0, 1, 0));
+      const hit = rc.intersectObject(scene, true).find((h) => h.object.isMesh && shown(h.object) && !h.object.name.startsWith("col__"));
+      if (!hit) {
+        out.push({ x, z, hit: null });
+        continue;
+      }
+      const mats = Array.isArray(hit.object.material) ? hit.object.material : [hit.object.material];
+      const mat = mats[hit.face?.materialIndex ?? 0] ?? mats[0];
+      const n = hit.face ? hit.face.normal.clone().transformDirection(hit.object.matrixWorld) : new THREE.Vector3(0, -1, 0);
+      const faceSeen = mat.side === THREE.DoubleSide || (mat.side === THREE.FrontSide && n.y < 0) || (mat.side === THREE.BackSide && n.y > 0);
+      out.push({ x: Math.round(x * 10) / 10, z: Math.round(z * 10) / 10, y: Math.round(hit.point.y * 100) / 100, mesh: hit.object.name, material: mat.name, side: mat.side, faceSeen, ok: hit.point.y >= 3.2 && hit.point.y <= 3.7 && faceSeen && mat.visible !== false });
+    }
+    return out;
+  });
+
+/** A walk whose end matters: walk, then assert we got there (T11 review minor 5: walkAndWait itself never throws on a miss). */
+export async function walkChecked(run, p, x, z, label, tol = 0.8, ms = 40000) {
+  await walkAndWait(p, x, z, ms, tol);
+  const at = await pos(p);
+  run.check(`walked to ${label} (${x}, ${z})`, Math.hypot(at.x - x, at.z - z) <= tol * 2, at);
+}
 
 /** The visible buttons (scope = a selector, or the whole page) and the touch-layout verdict over them. */
 export async function layoutOf(p, scope) {
@@ -249,7 +295,8 @@ export async function runVillageScenario({ name, device }) {
       if (phone) await A.page.touchscreen.tap(300, 300);
       else await A.page.mouse.click(640, 300);
       await B.page.mouse.click(640, 300);
-      await sleep(2200);
+      // wait for the fade-in to reach its level instead of a fixed sleep (T11 review minor 7)
+      await A.page.waitForFunction(() => { const b = window.__cvBgm; return b && !b.element()?.paused && Math.abs(b.level() - 0.35) < 0.02; }, null, { timeout: 8000 }).catch(() => {});
       const before = await audioState(A);
       run.check("the music is playing through its GainNode at 0.35", before.music && !before.music.paused && Math.abs(before.music.level - 0.35) < 0.02, before.music);
       await standAtPlazaGuide(A);
@@ -261,7 +308,7 @@ export async function runVillageScenario({ name, device }) {
       await sleep(500);
       run.check("the dialog is the 마을 안내원's, with 4 questions", (await A.page.locator(".cv-guide").getAttribute("data-guide")) === "plaza_guide" && (await A.page.locator(".cv-guide-questions button").count()) === 4);
       await press(A, question(A, 0));
-      await sleep(700);
+      await A.page.waitForFunction(() => { const b = window.__cvBgm; return window.__cvGuideVoice?.state().playing && b && Math.abs(b.level() - 0.105) < 0.01; }, null, { timeout: 5000 }).catch(() => {});
       const s = await audioState(A);
       const sb = await audioState(B);
       summary.guide = s;
@@ -272,7 +319,7 @@ export async function runVillageScenario({ name, device }) {
       run.check("the other player hears nothing: no clip, music not ducked", sb.voice.playing === null && Math.abs(sb.music.duck - 1) < 0.001, sb);
       await run.shot(A, "guide-plaza-answer.png");
       await press(A, A.page.locator(".cv-guide-skip"));
-      await sleep(1000);
+      await A.page.waitForFunction(() => window.__cvGuideVoice?.state().playing === null && Math.abs((window.__cvBgm?.duckLevel() ?? 0) - 1) < 0.01, null, { timeout: 5000 }).catch(() => {});
       const k = await audioState(A);
       run.check("건너뛰기 stops the clip and the music is back", k.voice.playing === null && Math.abs(k.music.duck - 1) < 0.01, k);
       await press(A, A.page.locator(".cv-guide-close"));
@@ -330,12 +377,18 @@ export async function runVillageScenario({ name, device }) {
       const ts = await A.page.evaluate(async () => (await window.__imp("/src/game/interactTargets.ts")).getTargets(window.__cv.getPos()).map((t) => ({ id: t.id, label: t.label })));
       run.check("추모관 들어가기 is offered at the door", ts.some((t) => t.id === "memorial_door" && t.label === "추모관 들어가기"), ts);
       await act(A);
-      // the curtain: a veil element with some opacity while the hall loads, then gone
-      const veil = await A.page.waitForFunction(() => [...document.querySelectorAll("*")].some((e) => /fade|veil|curtain/i.test(String(e.className)) && parseFloat(getComputedStyle(e).opacity) > 0.05), null, { timeout: 8000 }).then(() => true, () => false);
-      run.check("the fade curtain showed", veil);
+      // the door's curtain (DoorFade.tsx, .cv-door-fade only: T11 review I2) closes while the hall loads, then opens
+      const curtain = () => {
+        const e = document.querySelector(".cv-door-fade");
+        return e ? parseFloat(getComputedStyle(e).opacity) : -1;
+      };
+      const veil = await A.page.waitForFunction(() => { const e = document.querySelector(".cv-door-fade"); return !!e && parseFloat(getComputedStyle(e).opacity) > 0.05; }, null, { timeout: 8000 }).then(() => true, () => false);
+      run.check("the door curtain (.cv-door-fade) showed", veil);
       await A.page.waitForFunction(async () => (await window.__imp("/src/village/villageArea.ts")).localArea() === "hall", null, { timeout: 15000 });
       await A.page.waitForFunction(() => !!window.__cvHall, null, { timeout: 60000 });
-      await A.page.waitForFunction(() => ![...document.querySelectorAll("*")].some((e) => /fade|veil|curtain/i.test(String(e.className)) && parseFloat(getComputedStyle(e).opacity) > 0.05), null, { timeout: 20000 }).catch(() => {});
+      // the curtain must open again: a timeout is a failure, not swallowed (T11 review I1)
+      const gone = await A.page.waitForFunction(() => { const e = document.querySelector(".cv-door-fade"); return !!e && parseFloat(getComputedStyle(e).opacity) <= 0.05; }, null, { timeout: 20000 }).then(() => true, () => false);
+      run.check("the door curtain opened again inside the hall", gone, await A.page.evaluate(curtain));
       await sleep(2000);
       run.check("A is in the hall", (await areaOf(A)) === "hall");
       const at = await pos(A);
@@ -346,7 +399,7 @@ export async function runVillageScenario({ name, device }) {
     });
 
     await run.step("6. inside: camera y <= 3.0 at full orbit pitch; the ceiling is seen from inside", async () => {
-      await walkAndWait(A, 301.4, 2.0, 15000, 0.5);
+      await walkChecked(run, A, 301.4, 2.0, "the middle of the hall", 0.5, 15000);
       await turnCameraTo(A, 301.0, -5);
       await setOrbit(A, phone ? null : 3.6, 1.2);
       await sleep(1200);
@@ -366,6 +419,9 @@ export async function runVillageScenario({ name, device }) {
       const level = await ceilingShare(A);
       summary.levelPitch = { ...level, orbit: await A.page.evaluate(() => window.__cv.getOrbit()) };
       run.check("the ceiling is in the frame when the view is level (some of it inside the picture)", level.share > 0.05, summary.levelPitch);
+      const hits = await ceilingHits(A);
+      summary.ceilingHits = hits;
+      run.check("the ceiling is a shown mesh 3.2..3.7 m up, its face seen from below (rays up from 3 points; 2 of 3 at least)", hits.filter((h) => h.ok).length >= 2, hits);
       await hideHud(A);
       await run.shot(A, "hall-ceiling-view-frame.png");
       await showHud(A);
@@ -444,9 +500,8 @@ export async function runVillageScenario({ name, device }) {
         const t = await window.__imp("/src/village/villageTargets.ts");
         return t.cubbyColumn(key).rows.findIndex((a) => !s.SAMPLE_BY_ID.has(a.id));
       }, [pick.key]);
-      if (empty < 0) {
-        run.check("(this column is full: the empty line is unit-tested)", true);
-      } else {
+      run.check("the picked column has an empty row", empty >= 0, { key: pick.key, empty });
+      if (empty >= 0) {
         const at = await A.page.evaluate(async () => (await window.__imp("/src/village/cubbyCard.ts")).cubbyCardState().row);
         const steps = empty - at;
         for (let i = 0; i < Math.abs(steps); i++) await press(A, A.page.getByRole("button", { name: steps > 0 ? "위 칸" : "아래 칸", exact: true }));
@@ -478,7 +533,7 @@ export async function runVillageScenario({ name, device }) {
       await run.shot(A, "village-layout.png");
       if (phone) {
         run.check("village HUD: >= 48 px, gaps >= 8 px, inside the screen", lay.report.ok && lay.report.count >= 4, lay.report);
-        for (const [x, z] of [[0, -33], [-14, -20], [-20, 5]]) await walkAndWait(A, x, z, 40000, 1.5); // round the fountain
+        for (const [x, z] of [[0, -33], [-14, -20], [-20, 5]]) await walkChecked(run, A, x, z, "round the fountain", 1.5); // round the fountain
         await standAtPlazaGuide(A);
         await act(A);
         await A.page.locator(".cv-guide").waitFor({ state: "visible", timeout: 5000 });
@@ -490,11 +545,21 @@ export async function runVillageScenario({ name, device }) {
         await press(A, A.page.locator(".cv-guide-close"));
       } else {
         run.check("PC HUD: every button inside the screen", lay.report.outside.length === 0, lay.report);
+        const overlaps = [];
+        for (let i = 0; i < lay.els.length; i++)
+          for (let j = i + 1; j < lay.els.length; j++) {
+            const a = lay.els[i], b = lay.els[j];
+            if (a.x < b.x + b.w - 0.5 && b.x < a.x + a.w - 0.5 && a.y < b.y + b.h - 0.5 && b.y < a.y + a.h - 0.5) overlaps.push(`${a.name} | ${b.name}`);
+          }
+        run.check("PC HUD: no two buttons overlap", overlaps.length === 0, overlaps);
       }
     });
 
     await A.ctx.close();
     await B.ctx.close();
+  } catch (e) {
+    // an error outside a step (openPlayer, pickCubby, ...) still ends in run.finish, so the assertions JSON is written (T11 review minor 6)
+    run.check("the scenario ran to the end", false, String(e?.stack ?? e));
   } finally {
     await browser.close();
   }
