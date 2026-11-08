@@ -139,8 +139,10 @@ try {
   });
 
   await run.step("the hall, wide: from the arrival, looking into the room", async () => {
-    await walkAndWait(A, 301.4, 2.0, 15000, 0.5);
-    await turnCameraTo(A, 301.0, -5);
+    // west of the middle line: the desk guide (moved to (302.8, 3.0) in the final fix) stays out of the frame, so its navy
+    // clothes close to the camera do not stand in for the room's light in the luma bar
+    await walkAndWait(A, 299.8, 1.6, 15000, 0.5);
+    await turnCameraTo(A, 300.6, -5);
     await setOrbit(A, 3.6, 0.3);
     await shoot(A, "hall-wide");
   });

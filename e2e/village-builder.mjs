@@ -10,7 +10,12 @@
  *   node e2e/village-builder.mjs [--out=<폴더>]
  */
 import { mkdirSync } from "node:fs";
-import { CLIENT_URL, DESKTOP, createRun, entryReady, launchBrowser, openPlayer, sleep } from "./lib/escape.mjs";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
+import { CLIENT_URL, DESKTOP, REPO, createRun, entryReady, launchBrowser, openPlayer, sleep } from "./lib/escape.mjs";
+
+/** A shared-package source file as the dev server serves it (the app imports these through the workspace alias). */
+const fsUrl = (rel) => "/@fs/" + pathToFileURL(join(REPO, rel)).pathname.replace(/^\//, "");
 
 const run = createRun("village-builder");
 const args = process.argv.slice(2);
@@ -40,11 +45,11 @@ const lookKeyOf = (page) => page.evaluate(() => window.__cvPreview().lookKey);
 
 /** The source modules' own answer for a look key: which parts must be drawn, and the default look. */
 async function ensureMods(page) {
-  await page.evaluate(async () => {
+  await page.evaluate(async (urls) => {
     if (window.__vb) return;
     const CL = await window.__imp("/src/game/characterLook.ts");
-    const AP = await window.__imp("/appearance.ts");
-    const CM = await window.__imp("/characterManifest.ts");
+    const AP = await import(urls.ap);
+    const CM = await import(urls.cm);
     const slots = CM.CHARACTER_SLOTS;
     const partsFromKey = (key) => {
       const ids = key.split("|")[0].split(",");
@@ -57,7 +62,7 @@ async function ensureMods(page) {
       defaultVisible: CL.visibleParts(CL.lookFromAppearance(AP.DEFAULT_APPEARANCE).parts),
       defaultKey: CL.lookKey(CL.lookFromAppearance(AP.DEFAULT_APPEARANCE)),
     };
-  });
+  }, { ap: fsUrl("shared/src/appearance.ts"), cm: fsUrl("shared/src/characterManifest.ts") });
 }
 
 /** The preview figure shows the current look: { key, parts }. */

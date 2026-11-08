@@ -206,7 +206,7 @@ export const ceilingShare = (p) =>
 export const ceilingHits = (p) =>
   p.page.evaluate(async () => {
     const THREE = await window.__imp("/deps/three.js");
-    const { scene } = window.__cvThree();
+    const { scene, camera } = window.__cvThree();
     const lay = await window.__imp("/village/villageLayout.ts");
     const room = lay.VILLAGE_LAYOUT.memorial.interior.room;
     const shown = (o) => {
@@ -214,6 +214,7 @@ export const ceilingHits = (p) =>
       return true;
     };
     const rc = new THREE.Raycaster();
+    rc.camera = camera; // sprites (name cards) need it
     const out = [];
     for (const [fx, fz] of [[0.3, 0.35], [0.5, 0.55], [0.7, 0.4]]) {
       const x = room.minX + (room.maxX - room.minX) * fx;
