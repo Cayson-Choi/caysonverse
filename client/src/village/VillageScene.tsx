@@ -15,6 +15,7 @@ import { PlotMarkers } from "./PlotMarkers";
 import { DoorPad, HallRoom } from "./VillageHall";
 import { DayNight } from "./DayNight";
 import { VillageModel } from "./VillageModel";
+import { VillageBgmButton } from "./VillageBgmButton";
 import { VILLAGE_CAMERA_PLANES, VILLAGE_GROUND_DECAL, type VillageTier } from "./villageModelPrep";
 import { holdVillageFiles } from "./villageRelease";
 import { areaGate, localArea, readSelfArea, releaseLocalArea, seedLocalArea, useLocalArea } from "./villageArea";
@@ -128,6 +129,7 @@ export function VillageScene({ identity }: { identity: Identity }) {
           <VillageDoors pose={pose} />
         </>
       )}
+      hudColumn={<VillageBgmButton />}
       hud={<DoorFade />}
     />
   );
