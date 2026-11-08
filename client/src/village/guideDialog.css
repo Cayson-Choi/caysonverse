@@ -74,7 +74,7 @@
 }
 .cv-guide-skip {
   margin-top: 8px;
-  min-height: 32px;
+  min-height: 48px;
   padding: 0 12px;
   border: 1px solid #ddd2c4;
   border-radius: 16px;
@@ -95,11 +95,11 @@
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
 .cv-guide-questions button {
   width: 100%;
-  min-height: 42px;
+  min-height: 48px;
   padding: 8px 12px;
   text-align: left;
   border: 1px solid #ddd2c4;
@@ -117,7 +117,7 @@
 .cv-guide-close {
   align-self: center;
   min-width: 120px;
-  min-height: 40px;
+  min-height: 48px;
   border: none;
   border-radius: 20px;
   background: #4b4fd8;
