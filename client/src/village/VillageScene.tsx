@@ -22,7 +22,10 @@ import { VillageBgmButton } from "./VillageBgmButton";
 import { VILLAGE_CAMERA_PLANES, VILLAGE_GROUND_DECAL, type VillageTier } from "./villageModelPrep";
 import { holdVillageFiles } from "./villageRelease";
 import { areaGate, localArea, readSelfArea, releaseLocalArea, seedLocalArea, useLocalArea } from "./villageArea";
-import { CUBBY_TARGET_PREFIX, villageAndHallTargets, villageTargets } from "./villageTargets";
+import { CUBBY_TARGET_PREFIX, GUIDE_TARGET_PREFIX, villageAndHallTargets, villageTargets } from "./villageTargets";
+import { GuideNpcs } from "./GuideNpc";
+import { GuideDialog } from "./GuideDialog";
+import { openGuideDialog } from "./guideDialogStore";
 
 /**
  * 케이슨 마을 — the village scene (Task 4). A `PlayShell` on the village map under the village's afternoon
@@ -41,7 +44,9 @@ import { CUBBY_TARGET_PREFIX, villageAndHallTargets, villageTargets } from "./vi
  *    context button and E (interactTargets.ts). Pressing it draws the curtain (DoorFade) and then sends `UseDoor`;
  *  - the quiet hall: while inside, jumping and emoji are off (quiet.ts), as on the server;
  *  - the cubbies (Task 9): inside, within 1.2 m of a cubby column, "가까이 보기" (context button and E) opens the
- *    close-up card (CubbyView), where "촛불 켜기" lights a candle everyone in the hall sees for 60 s.
+ *    close-up card (CubbyView), where "촛불 켜기" lights a candle everyone in the hall sees for 60 s;
+ *  - the guides (Task 9A): the plaza's 마을 안내원 and the hall's 안내 데스크 (GuideNpc), "문의하기" within 2.2 m opens
+ *    their questions (GuideDialog); an answer plays its voice clip for this player only, ducking the music.
  *
  * App mounts it keyed by `connectionEpoch`, so a reconnect remounts it against the new room.
  */
@@ -75,6 +80,11 @@ function VillageDoors({ pose }: { pose: Pose }) {
     setTargetSource((p) => villageAndHallTargets(localArea(), p.x, p.z));
     setTargetHandler((target, phase) => {
       if (phase !== "press") return;
+      if (target.kind === "object" && target.id.startsWith(GUIDE_TARGET_PREFIX)) {
+        clearClickTarget(); // stand still in front of the guide while the questions are open
+        openGuideDialog(target.id);
+        return;
+      }
       if (target.kind === "object" && target.id.startsWith(CUBBY_TARGET_PREFIX)) {
         clearClickTarget(); // stand still in front of the cubby while the card is open
         openCubbyCard(target.id);
@@ -137,6 +147,7 @@ export function VillageScene({ identity }: { identity: Identity }) {
         <>
           <DayNight area={area} tier={tier} />
           <VillageArea area={area} tier={tier} />
+          <GuideNpcs area={area} />
           <VillageDoors pose={pose} />
         </>
       )}
@@ -145,6 +156,7 @@ export function VillageScene({ identity }: { identity: Identity }) {
         <>
           <DoorFade />
           <CubbyView />
+          <GuideDialog />
         </>
       }
     />

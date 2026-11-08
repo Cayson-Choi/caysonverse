@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { BGM_SRC, BGM_STORAGE_KEY, VillageBgm, type BgmAudio } from "./villageBgm";
+import { BGM_SRC, BGM_STORAGE_KEY, VillageBgm, activeVillageBgm, mountVillageBgm, type BgmAudio } from "./villageBgm";
+import type { GainSink } from "./villageAudio";
 
 class FakeAudio implements BgmAudio {
   src = "";
@@ -12,9 +13,19 @@ class FakeAudio implements BgmAudio {
   playCalls = 0;
   rejectPlay = false;
   released = false;
+  /** Hold play() pending until `resolvePending()` (a browser still loading or deciding). */
+  deferPlay = false;
+  resolvePending: (() => void) | null = null;
   play() {
     this.playCalls++;
     if (this.rejectPlay) return Promise.reject(new Error("NotAllowedError"));
+    if (this.deferPlay)
+      return new Promise<void>((res) => {
+        this.resolvePending = () => {
+          this.paused = false;
+          res();
+        };
+      });
     this.paused = false;
     return Promise.resolve();
   }
@@ -29,13 +40,28 @@ class FakeAudio implements BgmAudio {
   }
 }
 
-function setup(opts: { stored?: string | null; storageThrows?: boolean } = {}) {
+class FakeGain implements GainSink {
+  level = -1;
+  sets: number[] = [];
+  disposed = false;
+  set(v: number) {
+    this.level = v;
+    this.sets.push(v);
+  }
+  dispose() {
+    this.disposed = true;
+  }
+}
+
+function setup(opts: { stored?: string | null; storageThrows?: boolean; route?: "gain" | "none" | "throws" } = {}) {
   let t = 0;
   const audios: FakeAudio[] = [];
   const handlers = new Map<string, Set<() => void>>();
   const store = new Map<string, string>();
   if (opts.stored != null) store.set(BGM_STORAGE_KEY, opts.stored);
   let ticking = 0;
+  const gains: FakeGain[] = [];
+  let resumes = 0;
   const make = () =>
     new VillageBgm({
       createAudio: () => {
@@ -58,6 +84,18 @@ function setup(opts: { stored?: string | null; storageThrows?: boolean } = {}) {
         if (opts.storageThrows) throw new Error("blocked");
         return { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => void store.set(k, v) };
       },
+      ...(opts.route
+        ? {
+            route: () => {
+              if (opts.route === "throws") throw new Error("no AudioContext");
+              if (opts.route === "none") return null;
+              const g = new FakeGain();
+              gains.push(g);
+              return g;
+            },
+            resume: () => void resumes++,
+          }
+        : {}),
     });
   const gesture = (type = "pointerdown") => [...(handlers.get(type) ?? [])].forEach((f) => f());
   const advance = (ms: number, bgm: VillageBgm) => {
@@ -65,7 +103,7 @@ function setup(opts: { stored?: string | null; storageThrows?: boolean } = {}) {
     bgm.tick();
   };
   const listenerCount = () => [...handlers.values()].reduce((n, s) => n + s.size, 0);
-  return { make, audios, gesture, advance, store, listenerCount, ticking: () => ticking };
+  return { make, audios, gains, gesture, advance, store, listenerCount, ticking: () => ticking, resumes: () => resumes };
 }
 
 const flush = () => new Promise((r) => setTimeout(r, 0));
@@ -171,7 +209,7 @@ describe("VillageBgm", () => {
     expect(a.volume).toBeCloseTo(0.35, 3);
   });
 
-  it("a tab hidden before any gesture does not start, and a hidden tab stays silent when music is off", async () => {
+  it("a tab hidden before any gesture does not start, and showing it again does not start it either", async () => {
     const s = setup();
     const bgm = s.make();
     bgm.arm();
@@ -181,6 +219,57 @@ describe("VillageBgm", () => {
     expect(s.audios[0]!.playCalls).toBe(0);
     bgm.setVisible(true);
     expect(s.audios[0]!.playCalls).toBe(0);
+  });
+
+  it("a hidden tab stays silent when music is off: switched off while hidden, showing the tab plays nothing", async () => {
+    const s = setup();
+    const bgm = s.make();
+    bgm.arm();
+    s.gesture();
+    await flush();
+    const a = s.audios[0]!;
+    expect(a.playCalls).toBe(1);
+    bgm.setVisible(false);
+    bgm.setEnabled(false);
+    bgm.setVisible(true);
+    s.gesture(); // a gesture while off plays nothing either
+    await flush();
+    expect(a.playCalls).toBe(1);
+    expect(a.paused).toBe(true);
+  });
+
+  it("switched off while play() is still pending: the late resolve pauses it again (music review minor 1)", async () => {
+    const s = setup();
+    const bgm = s.make();
+    bgm.arm();
+    const a = s.audios[0]!;
+    a.deferPlay = true;
+    s.gesture();
+    expect(a.playCalls).toBe(1);
+    bgm.setEnabled(false); // halt(): pause() and re-arm, while play() has not settled
+    a.resolvePending!(); // this browser still resolves it
+    await flush();
+    expect(a.paused).toBe(true);
+    expect(bgm.isEnabled()).toBe(false);
+    expect(s.ticking()).toBe(0);
+  });
+
+  it("hidden while play() is pending: stays paused, and resumes when the tab is shown", async () => {
+    const s = setup();
+    const bgm = s.make();
+    bgm.arm();
+    const a = s.audios[0]!;
+    a.deferPlay = true;
+    s.gesture();
+    bgm.setVisible(false);
+    a.resolvePending!();
+    await flush();
+    expect(a.paused).toBe(true);
+    a.deferPlay = false;
+    bgm.setVisible(true);
+    await flush();
+    expect(a.paused).toBe(false);
+    expect(a.playCalls).toBe(2);
   });
 
   it("fades out over the last 2 s of the loop and fades in at the restart", async () => {
@@ -279,5 +368,120 @@ describe("VillageBgm", () => {
     await flush();
     expect(s.audios[0]!.playCalls).toBe(0);
     expect(s.audios[1]!.paused).toBe(false);
+  });
+
+  it("routes the level through a GainNode when one is given: the element stays at volume 1 (iOS ignores it)", async () => {
+    const s = setup({ route: "gain" });
+    const bgm = s.make();
+    expect(bgm.isRouted()).toBe(true);
+    const a = s.audios[0]!;
+    const g = s.gains[0]!;
+    expect(a.volume).toBe(1);
+    expect(g.level).toBe(0);
+    bgm.arm();
+    s.gesture();
+    await flush();
+    expect(s.resumes()).toBe(1); // the context is resumed inside the gesture
+    s.advance(750, bgm);
+    expect(g.level).toBeCloseTo(0.175, 3); // the fade-in on the gain
+    s.advance(750, bgm);
+    expect(g.level).toBeCloseTo(0.35, 3);
+    bgm.setHall(true);
+    s.advance(1000, bgm);
+    expect(g.level).toBeCloseTo(0.15, 3); // the hall duck on the gain
+    bgm.duck(0.3, 200);
+    s.advance(200, bgm);
+    expect(g.level).toBeCloseTo(0.045, 3); // the voice duck on the gain
+    expect(bgm.level()).toBeCloseTo(0.045, 3);
+    expect(bgm.duckLevel()).toBeCloseTo(0.3, 3);
+    bgm.unduck(200);
+    s.advance(200, bgm);
+    expect(g.level).toBeCloseTo(0.15, 3);
+    expect(a.volume).toBe(1); // never touched
+    bgm.dispose();
+    expect(g.disposed).toBe(true);
+  });
+
+  it("falls back to element.volume when there is no AudioContext (route gives null or throws)", async () => {
+    for (const route of ["none", "throws"] as const) {
+      const s = setup({ route });
+      const bgm = s.make();
+      expect(bgm.isRouted()).toBe(false);
+      bgm.arm();
+      s.gesture();
+      await flush();
+      s.advance(1500, bgm);
+      expect(s.audios[0]!.volume).toBeCloseTo(0.35, 3);
+      expect(bgm.level()).toBeCloseTo(0.35, 3);
+    }
+  });
+});
+
+/** VillageBgmButton's effect (mountVillageBgm) run the way React StrictMode runs it: mount, cleanup, mount. */
+describe("VillageBgmButton mount effect under StrictMode", () => {
+  function env(s: ReturnType<typeof setup>) {
+    const docListeners = new Set<() => void>();
+    const doc = {
+      visibilityState: "visible",
+      addEventListener: (_: "visibilitychange", fn: () => void) => void docListeners.add(fn),
+      removeEventListener: (_: "visibilitychange", fn: () => void) => void docListeners.delete(fn),
+    };
+    const bgmStates: (VillageBgm | null)[] = [];
+    const onStates: boolean[] = [];
+    const probe: { __cvBgm?: VillageBgm } = {};
+    const e = {
+      create: s.make,
+      doc,
+      setBgm: (b: VillageBgm | null) => void bgmStates.push(b),
+      setOn: (on: boolean) => void onStates.push(on),
+      probe,
+    };
+    return { e, doc, docListeners, bgmStates, onStates, probe };
+  }
+
+  it("mount, cleanup, mount leaves one live controller, one element, one set of listeners and the probe on the live one", async () => {
+    const s = setup();
+    const t = env(s);
+    const cleanup1 = mountVillageBgm(t.e); // StrictMode: mount ...
+    cleanup1(); // ... cleanup ...
+    const cleanup2 = mountVillageBgm(t.e); // ... mount again
+    const live = t.bgmStates.at(-1)!;
+    expect(t.bgmStates).toEqual([expect.any(VillageBgm), null, live]);
+    expect(t.bgmStates[0]).not.toBe(live);
+    expect(t.probe.__cvBgm).toBe(live);
+    expect(activeVillageBgm()).toBe(live);
+    expect(s.audios.filter((a) => !a.released && a.src !== "").length).toBe(1);
+    expect(s.listenerCount()).toBe(3); // the live controller's gesture listeners only
+    expect(t.docListeners.size).toBe(1);
+    expect(t.onStates.at(-1)).toBe(true);
+    s.gesture();
+    await flush();
+    expect(s.audios[0]!.playCalls).toBe(0); // the disposed one never plays
+    expect(s.audios[1]!.paused).toBe(false);
+    // the hall effect (setHall on the live controller) still works after the double mount
+    live.setHall(true);
+    s.advance(1500, live);
+    expect(s.audios[1]!.volume).toBeCloseTo(0.15, 3);
+    // the visibility listener drives the live controller
+    t.doc.visibilityState = "hidden";
+    for (const fn of t.docListeners) fn();
+    expect(s.audios[1]!.paused).toBe(true);
+    cleanup2();
+    expect(t.bgmStates.at(-1)).toBeNull();
+    expect(t.probe.__cvBgm).toBeUndefined();
+    expect(activeVillageBgm()).toBeNull();
+    expect(t.docListeners.size).toBe(0);
+    expect(s.listenerCount()).toBe(0);
+    expect(s.audios[1]!.released).toBe(true);
+  });
+
+  it("the on/off chip follows the stored choice and the toggle", () => {
+    const s = setup({ stored: "0" });
+    const t = env(s);
+    const cleanup = mountVillageBgm(t.e);
+    expect(t.onStates.at(-1)).toBe(false);
+    t.bgmStates.at(-1)!.toggle();
+    expect(t.onStates.at(-1)).toBe(true);
+    cleanup();
   });
 });

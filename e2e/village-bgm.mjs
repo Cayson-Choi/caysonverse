@@ -15,7 +15,8 @@ const p = await openPlayer(browser, run, { tag: "bgm", device: DESKTOP });
 const state = () =>
   p.page.evaluate(() => {
     const a = window.__cvBgm?.element();
-    return a ? { paused: a.paused, volume: Math.round(a.volume * 1000) / 1000, src: a.src, loop: a.loop, preload: a.preload } : null;
+    // Task 9A: the level is on a Web Audio GainNode (iOS ignores element.volume); level() reads it (or the volume, unrouted).
+    return a ? { paused: a.paused, volume: Math.round(window.__cvBgm.level() * 1000) / 1000, routed: window.__cvBgm.isRouted(), src: a.src, loop: a.loop, preload: a.preload } : null;
   });
 const fails = [];
 const check = (name, ok, got) => {

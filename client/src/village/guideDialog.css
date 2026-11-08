@@ -1,0 +1,129 @@
+/* A guide's questions (케이슨 마을 Task 9A): the same quiet, warm card as the cubby close-up, readable on a phone. */
+.cv-guide {
+  position: fixed;
+  inset: 0;
+  z-index: 35; /* above the HUD (20-30), below the covers (40) and the menu (60) */
+  display: grid;
+  place-items: end center;
+  padding: 16px 16px 96px;
+  touch-action: manipulation;
+  animation: cv-guide-fade 0.2s ease-out;
+}
+@keyframes cv-guide-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.cv-guide-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(36, 30, 26, 0.18);
+}
+.cv-guide-panel {
+  position: relative;
+  width: min(380px, 100%);
+  max-height: calc(100% - 8px);
+  overflow-y: auto;
+  box-sizing: border-box;
+  padding: 16px 16px 14px;
+  border-radius: 18px;
+  background: #f7f3ec;
+  color: #3b322b;
+  box-shadow: 0 18px 48px rgba(40, 30, 20, 0.28);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.cv-guide-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.cv-guide-name {
+  font-size: 17px;
+  font-weight: 700;
+}
+.cv-guide-ai {
+  font-size: 11px;
+  line-height: 1;
+  padding: 4px 7px;
+  border-radius: 9px;
+  background: #ece6dc;
+  color: #7a6a5c;
+  letter-spacing: 0.02em;
+}
+.cv-guide-hint {
+  margin: 0;
+  font-size: 14px;
+  color: #7a6a5c;
+}
+.cv-guide-answer {
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: #fffdf9;
+  border: 1px solid #e6ddd0;
+}
+.cv-guide-answer p {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.55;
+  color: #4a3f36;
+}
+.cv-guide-skip {
+  margin-top: 8px;
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid #ddd2c4;
+  border-radius: 16px;
+  background: #f7f3ec;
+  color: #5b4e43;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.cv-guide-muted {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #8a7a6b;
+}
+.cv-guide-questions {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.cv-guide-questions button {
+  width: 100%;
+  min-height: 42px;
+  padding: 8px 12px;
+  text-align: left;
+  border: 1px solid #ddd2c4;
+  border-radius: 12px;
+  background: #fffdf9;
+  color: #3b322b;
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+.cv-guide-questions button.is-asked {
+  border-color: #4b4fd8;
+  box-shadow: inset 0 0 0 1px #4b4fd8;
+}
+.cv-guide-close {
+  align-self: center;
+  min-width: 120px;
+  min-height: 40px;
+  border: none;
+  border-radius: 20px;
+  background: #4b4fd8;
+  color: #fff;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}

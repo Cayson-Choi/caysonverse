@@ -11,7 +11,10 @@
  *  - Hidden tab: paused; visible again: resumed with a fade-in.
  *  - The on/off choice persists (localStorage, try/catch, default on).
  *  - `dispose()` pauses and releases the element.
+ *  - Task 9A: the level goes to a Web Audio GainNode when `route` gives one (villageAudio.ts; iOS Safari ignores
+ *    `element.volume`), else to `element.volume`. A guide's clip ducks the music through `duck` / `unduck`.
  */
+import { resumeVillageAudio, routeThroughGain, type GainSink } from "./villageAudio";
 
 export const BGM_SRC = "/audio/village/village_bgm1.mp3";
 export const BGM_STORAGE_KEY = "cv-village-bgm";
@@ -49,6 +52,10 @@ export interface BgmDeps {
     removeEventListener(type: string, fn: () => void): void;
   };
   storage?: () => Pick<Storage, "getItem" | "setItem">;
+  /** Route the element through a GainNode (villageAudio.ts); null/absent falls back to `element.volume`. */
+  route?: (audio: BgmAudio) => GainSink | null;
+  /** Resume the shared AudioContext; called inside the gesture that starts the music. */
+  resume?: () => void;
 }
 
 /** A value that glides linearly to a target. */
@@ -81,7 +88,7 @@ const clamp01 = (n: number): number => Math.min(1, Math.max(0, n));
 
 export class VillageBgm {
   private audio: BgmAudio | null;
-  private readonly level = new Ramp(BGM_LEVEL_OUTSIDE);
+  private readonly areaLevel = new Ramp(BGM_LEVEL_OUTSIDE);
   private readonly duckFactor = new Ramp(1);
   private readonly fade = new Ramp(0);
   private enabled: boolean;
@@ -91,6 +98,7 @@ export class VillageBgm {
   private cancelTick: (() => void) | null = null;
   private lastTime = 0;
   private listeners = new Set<() => void>();
+  private gain: GainSink | null = null;
 
   constructor(private readonly deps: BgmDeps) {
     const a = deps.createAudio();
@@ -99,7 +107,31 @@ export class VillageBgm {
     a.preload = "none";
     a.volume = 0;
     this.audio = a;
+    try {
+      this.gain = deps.route?.(a) ?? null;
+    } catch {
+      this.gain = null;
+    }
+    if (this.gain) {
+      a.volume = 1; // the gain does the level
+      this.gain.set(0);
+    }
     this.enabled = this.loadEnabled();
+  }
+
+  /** True when the level goes through a Web Audio GainNode (not `element.volume`). */
+  isRouted(): boolean {
+    return this.gain !== null;
+  }
+
+  /** The level the music plays at now (the gain's, or the element's volume). */
+  level(): number {
+    return this.gain ? this.gain.level : (this.audio?.volume ?? 0);
+  }
+
+  /** The speech duck factor now (1 = not ducked), for the dev probe. */
+  duckLevel(): number {
+    return this.duckFactor.value(this.deps.now());
   }
 
   /** Listen for the first user gesture (call once after construction). */
@@ -150,7 +182,7 @@ export class VillageBgm {
 
   /** In the memorial hall the music goes quiet. */
   setHall(inHall: boolean): void {
-    this.level.go(inHall ? BGM_LEVEL_HALL : BGM_LEVEL_OUTSIDE, BGM_HALL_MS, this.deps.now());
+    this.areaLevel.go(inHall ? BGM_LEVEL_HALL : BGM_LEVEL_OUTSIDE, BGM_HALL_MS, this.deps.now());
     this.apply();
   }
 
@@ -181,6 +213,8 @@ export class VillageBgm {
     this.disarm();
     this.stopTick();
     this.listeners.clear();
+    this.gain?.dispose();
+    this.gain = null;
     const a = this.audio;
     if (!a) return;
     this.audio = null;
@@ -198,6 +232,11 @@ export class VillageBgm {
   private tryPlay(): void {
     const a = this.audio;
     if (!a || !this.enabled || !this.visible) return;
+    try {
+      this.deps.resume?.();
+    } catch {
+      // best effort
+    }
     this.fade.jump(0);
     this.fade.go(1, BGM_FADE_IN_MS, this.deps.now());
     this.apply();
@@ -209,8 +248,19 @@ export class VillageBgm {
     }
     const accepted = () => {
       if (this.audio !== a) return;
+      // Switched off while play() was pending (halt() paused and re-armed): a browser that still resolves must not
+      // leave the music playing with the toggle showing off (music review minor 1).
+      if (!this.enabled) {
+        this.pauseQuietly(a);
+        return;
+      }
       this.started = true;
       this.disarm();
+      // Hidden while pending: stay paused; becoming visible resumes it.
+      if (!this.visible) {
+        this.pauseQuietly(a);
+        return;
+      }
       this.startTick();
     };
     if (result && typeof (result as Promise<void>).then === "function") {
@@ -218,6 +268,14 @@ export class VillageBgm {
         // Autoplay refused: stay armed, try on the next gesture.
       });
     } else accepted();
+  }
+
+  private pauseQuietly(a: BgmAudio): void {
+    try {
+      a.pause();
+    } catch {
+      // ignore
+    }
   }
 
   /** Pause now. `keepStarted`: a hidden tab resumes by itself when it is visible again. */
@@ -262,7 +320,9 @@ export class VillageBgm {
       }
     }
     this.lastTime = t;
-    a.volume = clamp01(this.level.value(now) * this.duckFactor.value(now) * this.fade.value(now) * loopGain);
+    const v = clamp01(this.areaLevel.value(now) * this.duckFactor.value(now) * this.fade.value(now) * loopGain);
+    if (this.gain) this.gain.set(v);
+    else a.volume = v;
   }
 
   private loadEnabled(): boolean {
@@ -282,9 +342,11 @@ export class VillageBgm {
   }
 }
 
-/** The real browser wiring. */
+/** The real browser wiring: the element goes through a GainNode where Web Audio exists. */
 export function createBrowserBgm(): VillageBgm {
   return new VillageBgm({
+    route: (a) => routeThroughGain(a as unknown as HTMLMediaElement),
+    resume: resumeVillageAudio,
     createAudio: () => new Audio() as unknown as BgmAudio,
     now: () => performance.now(),
     schedule: (fn, ms) => {
@@ -294,4 +356,59 @@ export function createBrowserBgm(): VillageBgm {
     gestureTarget: window,
     storage: () => localStorage,
   });
+}
+
+declare global {
+  interface Window {
+    /** Dev only: the village music controller, for the e2e checks. */
+    __cvBgm?: VillageBgm;
+  }
+}
+
+/** What VillageBgmButton's mount effect touches, injected so the effect is tested without a DOM. */
+export interface BgmMountEnv {
+  create: () => VillageBgm;
+  doc: {
+    readonly visibilityState: string;
+    addEventListener(type: "visibilitychange", fn: () => void): void;
+    removeEventListener(type: "visibilitychange", fn: () => void): void;
+  };
+  setBgm: (bgm: VillageBgm | null) => void;
+  setOn: (on: boolean) => void;
+  /** Dev only: where `__cvBgm` is published (null in production). */
+  probe: { __cvBgm?: VillageBgm } | null;
+}
+
+/**
+ * VillageBgmButton's mount effect: create and arm the controller, follow the tab's visibility, publish it; the
+ * returned cleanup disposes it. Under StrictMode React runs mount, cleanup, mount: the first controller is disposed
+ * before the second exists, so one element stays live (villageBgm.test.ts).
+ */
+let active: VillageBgm | null = null;
+
+/** The village's live music controller (the guides' voice ducks it), or null outside the village. */
+export function activeVillageBgm(): VillageBgm | null {
+  return active;
+}
+
+export function mountVillageBgm(env: BgmMountEnv): () => void {
+  const c = env.create();
+  active = c;
+  c.arm();
+  const sync = () => env.setOn(c.isEnabled());
+  const unsub = c.subscribe(sync);
+  const onVisibility = () => c.setVisible(env.doc.visibilityState !== "hidden");
+  env.doc.addEventListener("visibilitychange", onVisibility);
+  onVisibility();
+  sync();
+  env.setBgm(c);
+  if (env.probe) env.probe.__cvBgm = c;
+  return () => {
+    env.doc.removeEventListener("visibilitychange", onVisibility);
+    unsub();
+    c.dispose();
+    if (env.probe && env.probe.__cvBgm === c) delete env.probe.__cvBgm;
+    if (active === c) active = null;
+    env.setBgm(null);
+  };
 }

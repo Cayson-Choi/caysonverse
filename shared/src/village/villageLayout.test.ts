@@ -8,6 +8,7 @@ import { MOVE_ELAPSED_CEIL_MS, MOVE_SPEED_SLACK, RUN_SPEED } from "../constants"
 import { PLAYER_RADIUS } from "../worldMap";
 import { VILLAGE_CAMERA_BOXES, VILLAGE_COLLIDERS } from "./generated/villageColliders";
 import { MEMORIAL_CAMERA_BOXES, MEMORIAL_COLLIDERS } from "./generated/memorialColliders";
+import { guideColliders } from "./guides";
 import {
   HALL_APRON,
   HALL_CEILING_DROP,
@@ -681,7 +682,7 @@ describe("villageGeometry plays on the colliders generated from village.glb (Tas
     expect(villageGeometry.bounds).toEqual(villageBounds(L));
     expect(villageGeometry.bounds).toEqual({ minX: -95, maxX: 310, minZ: -95, maxZ: 95 }); // the hall's walls plus a 5 m apron
     for (const w of hallWalls(L)) expect(villageGeometry.cameraBoxes).toContainEqual(w);
-    expect(villageGeometry).toEqual(buildVillageGeometry(L, VILLAGE_MODEL_COLLIDERS, HALL_MODEL_COLLIDERS));
+    expect(villageGeometry).toEqual(buildVillageGeometry(L, VILLAGE_MODEL_COLLIDERS, HALL_MODEL_COLLIDERS, guideColliders())); // + the guides (Task 9A)
     expect(VILLAGE_MODEL_COLLIDERS.obstacles).toBe(VILLAGE_COLLIDERS);
     expect(VILLAGE_MODEL_COLLIDERS.cameraBoxes).toBe(VILLAGE_CAMERA_BOXES);
     for (const b of VILLAGE_COLLIDERS) expect(villageGeometry.obstacles).toContainEqual(b);

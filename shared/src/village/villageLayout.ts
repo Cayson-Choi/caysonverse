@@ -32,6 +32,7 @@ import type { AABB, CameraBox } from "../collision";
 import { DEFAULT_WALL_THICKNESS, makeGeometry, wallsAround } from "../school/geometry";
 import { VILLAGE_CAMERA_BOXES, VILLAGE_COLLIDERS } from "./generated/villageColliders";
 import { MEMORIAL_CAMERA_BOXES, MEMORIAL_COLLIDERS } from "./generated/memorialColliders";
+import { guideColliders } from "./guides";
 import type { Bounds, MapGeometry } from "../school/geometry";
 
 export interface Point2 {
@@ -684,6 +685,8 @@ export function buildVillageGeometry(
   layout: VillageLayout,
   colliders: readonly VillageCollider[] | GeneratedColliders,
   hall?: GeneratedColliders,
+  /** Small solid things that are not in a model (Task 9A: the guides' colliders). */
+  extra: readonly AABB[] = [],
 ): MapGeometry {
   const village: GeneratedColliders =
     "obstacles" in colliders
@@ -693,7 +696,7 @@ export function buildVillageGeometry(
     "village",
     villageBounds(layout),
     hallWalls(layout),
-    [...areaGapBlockers(layout), ...hallSurroundBlockers(layout), ...village.obstacles, ...(hall?.obstacles ?? [])],
+    [...areaGapBlockers(layout), ...hallSurroundBlockers(layout), ...village.obstacles, ...(hall?.obstacles ?? []), ...extra],
     [...village.cameraBoxes, ...(hall?.cameraBoxes ?? [])],
   );
 }
@@ -709,7 +712,13 @@ export const HALL_MODEL_COLLIDERS: GeneratedColliders = hallInteriorColliders(VI
  * village area; Task 9: the hall's interior), the hall's walls and the blockers around it. `greyboxColliders(VILLAGE_LAYOUT)` stays the
  * layout's own list (the model must contain each of its boxes exactly: scripts/check-school-glb.ts).
  */
-export const villageGeometry: MapGeometry = buildVillageGeometry(VILLAGE_LAYOUT, VILLAGE_MODEL_COLLIDERS, HALL_MODEL_COLLIDERS);
+export const villageGeometry: MapGeometry = buildVillageGeometry(
+  VILLAGE_LAYOUT,
+  VILLAGE_MODEL_COLLIDERS,
+  HALL_MODEL_COLLIDERS,
+  // Task 9A: the two guides (plaza and hall desk) stand on a small collider each, so nobody walks through them.
+  guideColliders(),
+);
 
 /**
  * Everything a Blender script needs, as plain JSON-able data (scripts/export-village-layout.ts writes it to

@@ -1,4 +1,5 @@
 import { VILLAGE_LAYOUT, cubbyAnchors, type AreaId, type CubbyAnchor, type Disc, type VillageLayout } from "@caysonverse/shared/village/villageLayout";
+import { GUIDE_ASK_LABEL, nearestGuide } from "@caysonverse/shared/village/guides";
 import type { InteractTarget } from "../game/interact";
 
 /**
@@ -98,22 +99,41 @@ export function nearestCubbyColumn(x: number, z: number, columns: readonly Cubby
   return best;
 }
 
+/** The target id prefix of a guide (Task 9A): `guide:<id>`. */
+export const GUIDE_TARGET_PREFIX = "guide:";
+export const GUIDE_SHORT = "문의";
+
+/** The guide of the player's area within `GUIDE_REACH_M` (2.2 m): "문의하기" opens its questions (GuideDialog). */
+export function guideTarget(area: AreaId, x: number, z: number): InteractTarget | null {
+  const near = nearestGuide(area, x, z);
+  if (!near) return null;
+  return { kind: "object", id: `${GUIDE_TARGET_PREFIX}${near.guide.id}`, dist: near.dist, icon: "💬", label: GUIDE_ASK_LABEL, short: GUIDE_SHORT };
+}
+
 /**
- * Everything the village offers at a spot: the door (`villageTargets`), and inside the hall the nearest cubby column's
- * close-up. The door comes first (priority 1).
+ * Everything the village offers at a spot: the door (`villageTargets`), the guide within reach (Task 9A: "문의하기"),
+ * and inside the hall the nearest cubby column's close-up. The door comes first (priority 1) over a cubby; a guide in
+ * reach of a door gets the door's priority, so the nearer of the two wins; a guide and a cubby go by distance.
  */
 export function villageAndHallTargets(area: AreaId, x: number, z: number): readonly InteractTarget[] {
   const doors = villageTargets(area, x, z);
-  if (area !== "hall") return doors;
-  const near = nearestCubbyColumn(x, z);
-  if (!near) return doors;
-  const cubby: InteractTarget = {
-    kind: "object",
-    id: `${CUBBY_TARGET_PREFIX}${near.column.key}`,
-    dist: near.dist,
-    icon: "🕯️",
-    label: CUBBY_LABEL,
-    short: CUBBY_SHORT,
-  };
-  return doors.length === 0 ? [cubby] : [{ ...doors[0]!, priority: 1 }, cubby];
+  const out: InteractTarget[] = doors.map((d) => ({ ...d, priority: 1 }));
+  const guide = guideTarget(area, x, z);
+  // The hall desk's reach meets the way out's (pad r 1.4 + 0.7) between the arrival point and the desk: there the
+  // nearer of the two wins (same priority as the door), so E at the desk asks the desk instead of leaving the hall.
+  if (guide) out.push(doors.length > 0 ? { ...guide, priority: 1 } : guide);
+  const near = area === "hall" ? nearestCubbyColumn(x, z) : null;
+  if (near)
+    out.push({
+      kind: "object",
+      id: `${CUBBY_TARGET_PREFIX}${near.column.key}`,
+      dist: near.dist,
+      icon: "🕯️",
+      label: CUBBY_LABEL,
+      short: CUBBY_SHORT,
+    });
+  if (out.length === 0) return NONE;
+  // A door alone keeps its plain shape (no priority), as before.
+  if (out.length === 1 && doors.length === 1) return doors;
+  return out;
 }

@@ -1,14 +1,7 @@
 import { useEffect, useState } from "react";
 import { HudButton } from "../ui/HudButton";
-import { createBrowserBgm, type VillageBgm } from "./villageBgm";
+import { createBrowserBgm, mountVillageBgm, type VillageBgm } from "./villageBgm";
 import { useLocalArea } from "./villageArea";
-
-declare global {
-  interface Window {
-    /** Dev only: the village music controller, for the e2e checks. */
-    __cvBgm?: VillageBgm;
-  }
-}
 
 /**
  * The village's music: owns the controller for as long as the village scene is mounted (the effect creates and
@@ -21,25 +14,17 @@ export function VillageBgmButton() {
   const [bgm, setBgm] = useState<VillageBgm | null>(null);
   const [on, setOn] = useState(true);
 
-  useEffect(() => {
-    const c = createBrowserBgm();
-    c.arm();
-    const sync = () => setOn(c.isEnabled());
-    const unsub = c.subscribe(sync);
-    const onVisibility = () => c.setVisible(document.visibilityState !== "hidden");
-    document.addEventListener("visibilitychange", onVisibility);
-    onVisibility();
-    sync();
-    setBgm(c);
-    if (import.meta.env.DEV) window.__cvBgm = c;
-    return () => {
-      document.removeEventListener("visibilitychange", onVisibility);
-      unsub();
-      c.dispose();
-      if (window.__cvBgm === c) delete window.__cvBgm;
-      setBgm(null);
-    };
-  }, []);
+  useEffect(
+    () =>
+      mountVillageBgm({
+        create: createBrowserBgm,
+        doc: document,
+        setBgm,
+        setOn,
+        probe: import.meta.env.DEV ? window : null,
+      }),
+    [],
+  );
 
   useEffect(() => {
     bgm?.setHall(area === "hall");

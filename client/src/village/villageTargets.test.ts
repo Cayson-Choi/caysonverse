@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { pickInteraction } from "../game/interact";
 import { readFileSync } from "node:fs";
 import { VILLAGE_LAYOUT, type AreaId } from "@caysonverse/shared/village/villageLayout";
 import { CANDLE_REACH_M } from "@caysonverse/shared/village/messages";
@@ -14,6 +15,9 @@ import {
   cubbyColumns,
   doorPadFor,
   nearestCubbyColumn,
+  GUIDE_SHORT,
+  GUIDE_TARGET_PREFIX,
+  guideTarget,
   villageAndHallTargets,
   villageTargets,
 } from "./villageTargets";
@@ -139,5 +143,43 @@ describe("villageAndHallTargets — the cubbies' close-up inside the hall (Task 
 
   it("the client's reach is inside the server's candle reach (1.5 m)", () => {
     expect(CUBBY_REACH_M).toBeLessThan(CANDLE_REACH_M);
+  });
+});
+
+describe("villageAndHallTargets — the guides' 문의하기 (Task 9A)", () => {
+  it("within 2.2 m of the plaza guide: 문의하기 on that guide; past it, or from the hall, nothing", () => {
+    const t = villageAndHallTargets("village", 5, 12 + 1.5);
+    expect(t).toHaveLength(1);
+    expect(t[0]).toMatchObject({ kind: "object", id: `${GUIDE_TARGET_PREFIX}plaza_guide`, label: "문의하기", short: GUIDE_SHORT });
+    expect(t[0]!.dist).toBeCloseTo(1.5, 6);
+    expect(villageAndHallTargets("village", 5, 12 + 2.3)).toHaveLength(0);
+    expect(villageAndHallTargets("hall", 5, 13.5)).toHaveLength(0);
+    expect(guideTarget("village", 5, 13.5)?.id).toBe("guide:plaza_guide");
+  });
+
+  it("the hall desk offers 문의하기 inside the hall, not at the arrival point and not at the way out", () => {
+    const t = villageAndHallTargets("hall", 301.2, 4.0);
+    expect(t.map((x) => x.id)).toContain("guide:hall_desk");
+    expect(villageAndHallTargets("hall", inside.spawn.x, inside.spawn.z).map((x) => x.id)).not.toContain("guide:hall_desk");
+    const pad = inside.doorPad;
+    expect(villageAndHallTargets("hall", pad.centre.x, pad.centre.z).map((t) => t.kind)).toEqual(["door"]);
+  });
+
+  it("the plaza spawn offers nothing (the guide stands outside the spawn's reach)", () => {
+    const s = VILLAGE_LAYOUT.spawn;
+    expect(villageAndHallTargets("village", s.x, s.z)).toHaveLength(0);
+  });
+});
+
+describe("the hall desk and the way out (Task 9A)", () => {
+  it("where both are in reach the nearer one wins (E at the desk asks the desk, at the door it leaves)", () => {
+    const pick = (x: number, z: number) =>
+      pickInteraction({ seated: false, seat: null, npc: null, npcPanelOpen: false, targets: villageAndHallTargets("hall", x, z) });
+    const atDesk = pick(301.3, 4.0); // 1.5 m from the desk, 1.92 m from the pad's centre
+    expect(atDesk).toMatchObject({ kind: "target", target: { id: "guide:hall_desk" } });
+    const atDoor = pick(300.6, 4.6); // 0.85 m from the pad, 2.25 m from the desk (out of its reach)
+    expect(atDoor).toMatchObject({ kind: "target", target: { id: MEMORIAL_DOOR_ID } });
+    const between = pick(300.9, 4.8); // 0.98 m from the pad, 1.98 m from the desk: the door is nearer
+    expect(between).toMatchObject({ kind: "target", target: { id: MEMORIAL_DOOR_ID } });
   });
 });
