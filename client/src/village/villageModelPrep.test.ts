@@ -414,6 +414,15 @@ describe("prepareVillage: the model dressed for the game", () => {
     bitmap.image = { width: 4096, height: 4096, close: () => void (closed = true) };
     expect(capTextureSize(bitmap, LIGHT_TIER_MAX_TEXTURE, canvas)).toBe(true);
     expect(closed).toBe(true);
+    // A texture already on the GPU (the graphics setting changed mid-visit) keeps its image: its storage is immutable.
+    const uploaded = big();
+    expect(capTextureSize(uploaded, LIGHT_TIER_MAX_TEXTURE, canvas, () => true)).toBe(false);
+    expect((uploaded.image as { width: number }).width).toBe(2048);
+    expect(capTextureSize(uploaded, LIGHT_TIER_MAX_TEXTURE, canvas, () => false)).toBe(true);
+    const onGpu = big();
+    const root2 = new Object3D();
+    root2.add(new Mesh(new BoxGeometry(), new MeshBasicMaterial({ map: onGpu })));
+    expect(capModelTextures(root2, LIGHT_TIER_MAX_TEXTURE, canvas, (t) => t === onGpu)).toBe(0);
     // The model: every material map once (shared maps counted once), the light map never.
     const root = new Object3D();
     const shared = big();

@@ -1,5 +1,5 @@
 import { Suspense, useEffect, useLayoutEffect, useMemo } from "react";
-import { useFrame } from "@react-three/fiber";
+import { useFrame, useThree } from "@react-three/fiber";
 import { useGLTF, useTexture } from "@react-three/drei";
 import { DRACO_PATH } from "../game/hub/hubModelPrep";
 import { LIGHTING } from "../game/sceneLighting";
@@ -49,9 +49,11 @@ export function VillageModel({ tier }: { tier: VillageTier }) {
   useTexture.preload(VILLAGE_LIGHTMAP_URL);
   const gltf = useGLTF(VILLAGE_MODEL_URL, DRACO_PATH);
   const lightmap = useTexture(VILLAGE_LIGHTMAP_URL);
+  const gl = useThree((s) => s.gl);
   const nodes = useMemo(
-    () => prepareVillage(gltf.scene, lightmap, tier, LIGHTING.village.toneCurve),
-    [gltf, lightmap, tier],
+    // A texture already on the GPU (a rich-to-light switch mid-visit) is never capped: its storage is immutable.
+    () => prepareVillage(gltf.scene, lightmap, tier, LIGHTING.village.toneCurve, undefined, (t) => gl.properties.has(t)),
+    [gltf, lightmap, tier, gl],
   );
   const night = useNightMapWanted();
   useEffect(() => {

@@ -17,8 +17,9 @@
  *    listeners include `touchend`, `pointerup` and `click`. Every gesture and every AudioContext `statechange` resumes
  *    the context whenever it is not "running" ("interrupted" after a call or a screen lock included), and the
  *    listeners stay armed until the context really runs. A routed element plays into a stopped graph otherwise, so
- *    if the context still is not running `BGM_FALLBACK_MS` after an accepted play, the next gesture swaps to a plain,
- *    unrouted element and plays that (`isFallback()`).
+ *    if the context stays not running for `BGM_FALLBACK_MS` counted from the first gesture or play attempt since it
+ *    stopped (a lock or a call long ago does not count), the next gesture swaps to a plain, unrouted element and plays
+ *    that (`isFallback()`).
  *  - The game's sound toggle (`setMuted`) silences the music too (final review m4), without changing the music choice.
  *  - A remount (a reconnect re-keys the scene) carries "the music had started" over, so it plays again without a new
  *    tap where the browser allows it (final review m3).
@@ -116,7 +117,8 @@ export class VillageBgm {
   private enabled: boolean;
   private visible = true;
   private started = false; // a play() has been accepted
-  private startedAt = 0;
+  /** When the current wait for a running context began (the first gesture / play since it stopped), or null. */
+  private notRunningSince: number | null = null;
   private pending = false; // a play() has not settled yet
   private muted = false; // the game's sound toggle
   private fallback = false; // swapped to a plain, unrouted element
@@ -202,12 +204,17 @@ export class VillageBgm {
       this.disarm();
       return;
     }
-    if (this.gain && this.deps.now() - this.startedAt >= BGM_FALLBACK_MS) this.unroute();
+    if (!this.gain) return;
+    const now = this.deps.now();
+    if (this.notRunningSince === null) this.notRunningSince = now; // the first tap since it stopped: give resume() time
+    else if (now - this.notRunningSince >= BGM_FALLBACK_MS) this.unroute();
   };
 
   /** The AudioContext changed state: running -> stop listening; anything else -> try to resume and listen again. */
   private readonly onAudioState = (): void => {
     if (!this.audio || !this.gain) return;
+    // Running, or it just stopped (a lock, a call): either way the next wait starts at the next gesture.
+    this.notRunningSince = null;
     if (this.ctxRunning()) {
       if (this.started) this.disarm();
       return;
@@ -368,6 +375,7 @@ export class VillageBgm {
   private tryPlay(): void {
     const a = this.audio;
     if (!a || !this.enabled || !this.visible || this.muted) return;
+    this.notRunningSince = this.ctxRunning() ? null : this.deps.now(); // a play attempt starts the wait afresh
     this.resumeCtx();
     this.fade.jump(0);
     this.fade.go(1, BGM_FADE_IN_MS, this.deps.now());
@@ -387,7 +395,6 @@ export class VillageBgm {
         this.pauseQuietly(a);
         return;
       }
-      if (!this.started) this.startedAt = this.deps.now();
       this.started = true;
       // Keep listening until the routed context really runs (iOS: a touchstart play into a suspended graph).
       if (this.ctxRunning()) this.disarm();

@@ -601,6 +601,41 @@ describe("VillageBgm on iOS (AudioContext not running)", () => {
     expect(plain.volume).toBeCloseTo(0.35, 3);
   });
 
+  it("interrupted after long playback: the first tap's resume keeps the route (no fallback from the old start time)", async () => {
+    const s = setup({ route: "gain" });
+    const bgm = s.make();
+    bgm.arm();
+    s.gesture("click");
+    await flush();
+    s.advance(60000, bgm); // a minute of music
+    s.setCtx("interrupted"); // a call or a lock
+    s.advance(30000, bgm); // the phone stays locked a while
+    s.gesture("touchend"); // the first tap after unlocking: resume() is async, the state still reads "interrupted"
+    s.gesture("click");
+    expect(s.audios.length).toBe(1);
+    expect(bgm.isFallback()).toBe(false);
+    s.setCtx("running");
+    expect(bgm.isRouted()).toBe(true);
+    expect(s.listenerCount()).toBe(0);
+  });
+
+  it("the fallback waits for BGM_FALLBACK_MS of non-running time from the first gesture after it stopped", async () => {
+    const s = setup({ route: "gain" });
+    const bgm = s.make();
+    bgm.arm();
+    s.gesture("click");
+    await flush();
+    s.setCtx("suspended");
+    s.advance(10000, bgm);
+    s.gesture("touchend"); // starts the wait
+    s.advance(BGM_FALLBACK_MS - 100, bgm);
+    s.gesture("touchend");
+    expect(bgm.isFallback()).toBe(false);
+    s.advance(200, bgm);
+    s.gesture("touchend");
+    expect(bgm.isFallback()).toBe(true);
+  });
+
   it("dispose drops the statechange listener", () => {
     const s = setup({ route: "gain" });
     const bgm = s.make();

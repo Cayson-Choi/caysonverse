@@ -205,7 +205,15 @@ const browserCanvas = (): CanvasLike | null =>
  * once per texture, before its first upload. Returns true when it shrank it. Never throws: a texture it cannot draw
  * stays as it is.
  */
-export function capTextureSize(texture: Texture, max: number, makeCanvas: () => CanvasLike | null = browserCanvas): boolean {
+export function capTextureSize(
+  texture: Texture,
+  max: number,
+  makeCanvas: () => CanvasLike | null = browserCanvas,
+  isUploaded: (t: Texture) => boolean = () => false,
+): boolean {
+  // Already on the GPU (the graphics setting changed mid-visit): its storage is immutable, a smaller image would show
+  // as a quarter of the texture. Only a texture with no GPU copy yet is capped (re-review N2).
+  if (isUploaded(texture)) return false;
   const img = texture.image as { width?: number; height?: number; close?: () => void } | null | undefined;
   if (!img || !img.width || !img.height || (img.width <= max && img.height <= max)) return false;
   if (texture.userData.villageCapped) return false;
@@ -238,7 +246,12 @@ export function capTextureSize(texture: Texture, max: number, makeCanvas: () => 
 const COLOUR_MAPS = ["map", "alphaMap", "emissiveMap", "normalMap", "roughnessMap", "metalnessMap", "aoMap", "bumpMap"] as const;
 
 /** Cap every texture of the model's materials (not the light maps) at `max` px. Returns how many it shrank. */
-export function capModelTextures(root: Object3D, max: number, makeCanvas?: () => CanvasLike | null): number {
+export function capModelTextures(
+  root: Object3D,
+  max: number,
+  makeCanvas?: () => CanvasLike | null,
+  isUploaded?: (t: Texture) => boolean,
+): number {
   const seen = new Set<Texture>();
   let n = 0;
   root.traverse((o) => {
@@ -248,7 +261,7 @@ export function capModelTextures(root: Object3D, max: number, makeCanvas?: () =>
         const t = (m as unknown as Record<string, Texture | null | undefined>)[key];
         if (!t || seen.has(t)) continue;
         seen.add(t);
-        if (capTextureSize(t, max, makeCanvas)) n++;
+        if (capTextureSize(t, max, makeCanvas, isUploaded)) n++;
       }
     }
   });
@@ -529,6 +542,7 @@ export function prepareVillage(
   tier: VillageTier,
   curve: ToneCurve = "neutral",
   nightLightmap?: Texture | null,
+  isUploaded?: (t: Texture) => boolean,
 ): VillageNodes {
   const root = source.clone(true);
   configureLightmap(lightmap);
@@ -536,7 +550,7 @@ export function prepareVillage(
   // left out, the current one stays; null clears it.
   if (nightLightmap !== undefined) setNightLightmap(nightLightmap);
   // The light (phone) tier caps the model's colour textures at 1024 px (final review I2): a quarter of the memory.
-  if (tier === "low") capModelTextures(source, LIGHT_TIER_MAX_TEXTURE);
+  if (tier === "low") capModelTextures(source, LIGHT_TIER_MAX_TEXTURE, undefined, isUploaded);
   const own: VillageNodes["own"] = [];
   const hazed: MeshBasicMaterial[] = [];
   const graded: VillageNodes["graded"] = [];
