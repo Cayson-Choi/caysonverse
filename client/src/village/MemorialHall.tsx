@@ -21,7 +21,8 @@ import { DRACO_PATH } from "../game/hub/hubModelPrep";
 import { buildCubbyPropMeshes, layoutCubbyProps, makePhotoMaterial, placementMatrix } from "./cubbyProps";
 import { burningCandles, candleClock, clearCandles, pruneCandles, showInstances } from "./hallCandles";
 import { MEMORIAL_LIGHTMAP_URL, MEMORIAL_MODEL_URL, MEMORIAL_PROPS_URL, disposeMemorial, prepareMemorial } from "./memorialModelPrep";
-import { holdMemorialFiles, noteMemorialRequested } from "./memorialRelease";
+import { clearMemorialCaches, holdMemorialFiles, noteMemorialRequested } from "./memorialRelease";
+import { LoadBoundary } from "./LoadBoundary";
 import { HALL_CUBBY_ANCHORS, SAMPLE_CUBBIES, SAMPLE_PHOTO_ATLAS } from "./sampleCubbies";
 import { DoorPad, HallRoom } from "./VillageHall";
 
@@ -235,9 +236,11 @@ export function HallArea() {
   useEffect(() => () => clearCandles(), []);
   return (
     <>
-      <Suspense fallback={<HallRoom withPad={false} />}>
-        <MemorialHall />
-      </Suspense>
+      <LoadBoundary fallback={<HallRoom withPad={false} />} onReset={clearMemorialCaches} notice="추모관을 불러오지 못했어요. 잠시 뒤 다시 불러올게요.">
+        <Suspense fallback={<HallRoom withPad={false} />}>
+          <MemorialHall />
+        </Suspense>
+      </LoadBoundary>
       <DoorPad pad={VILLAGE_LAYOUT.memorial.interior.doorPad} />
     </>
   );

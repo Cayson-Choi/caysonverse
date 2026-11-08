@@ -87,3 +87,12 @@ export function cameraLimitAt(
   if (map.cameraLimit) return map.cameraLimit;
   return map.geometry.id === "legacy" && isInMaze(x, z) ? MAZE_CAMERA_LIMIT : undefined;
 }
+
+/**
+ * Whether the camera arm takes its indoor shape (keeps its height, the look rises over the head: Task 9): only under
+ * a building's own ceiling limit (the map's `cameraLimit`), never for the legacy maze's cap, whose arm behaves as it
+ * always did (final review m1: the legacy world gets no other change).
+ */
+export function indoorArmAt(map: { cameraLimit?: CameraLimit }, limitNow: CameraLimit | undefined): boolean {
+  return limitNow !== undefined && map.cameraLimit !== undefined;
+}

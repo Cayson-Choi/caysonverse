@@ -109,3 +109,14 @@ describe("mazeCamera — which limit is in force (cameraLimitAt)", () => {
     expect(cameraLimitAt(hubActiveMap(false), 0, 0)).toBeUndefined();
   });
 });
+
+describe("indoorArmAt — the indoor arm shape only under a building's ceiling (final review m1)", () => {
+  it("a building's limit: indoor; the legacy maze's cap or no limit: not", async () => {
+    const { indoorArmAt, MAZE_CAMERA_LIMIT } = await import("./mazeCamera");
+    const building = { cameraLimit: MAZE_CAMERA_LIMIT };
+    expect(indoorArmAt(building, MAZE_CAMERA_LIMIT)).toBe(true);
+    expect(indoorArmAt({}, MAZE_CAMERA_LIMIT)).toBe(false); // the legacy maze: the map has no limit of its own
+    expect(indoorArmAt(building, undefined)).toBe(false);
+    expect(indoorArmAt({}, undefined)).toBe(false);
+  });
+});

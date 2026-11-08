@@ -48,7 +48,7 @@ import {
   clearClickTarget,
 } from "./clickMove";
 import { aspectDistanceScale } from "./aspectFraming";
-import { MAZE_CAMERA_LIMIT, cameraLimitAt, stepMazeCapEngage } from "./mazeCamera";
+import { MAZE_CAMERA_LIMIT, cameraLimitAt, indoorArmAt, stepMazeCapEngage } from "./mazeCamera";
 import {
   indoorCameraClamp,
   limitedDistance,
@@ -579,7 +579,7 @@ export function CameraRig({ pose, orbit, seat, fogRange = LEGACY_FOG, far: baseF
           const k = armLimit.current / reach;
           tpX = followX + offX * k;
           // Seated — or indoors, under a ceiling (Task 9) — the arm keeps its height and the look rises over the head.
-          const indoor = limitNow !== undefined;
+          const indoor = indoorArmAt(getActiveMap(), limitNow);
           tpY = HEAD_HEIGHT + offY * armHeightScaleAt(k, seatBlend.current, indoor);
           tpZ = followZ + offZ * k;
           tpLookLift = armLookLiftAt(k, seatBlend.current, indoor);

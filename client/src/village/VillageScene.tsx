@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useState } from "react";
+import { Suspense, useEffect, useLayoutEffect, useState } from "react";
 import { PlayShell } from "../game/PlayShell";
 import { villageActiveMap } from "../game/activeMap";
 import { clearClickTarget } from "../game/clickMove";
@@ -20,7 +20,8 @@ import { DayNight } from "./DayNight";
 import { VillageModel } from "./VillageModel";
 import { VillageBgmButton } from "./VillageBgmButton";
 import { VILLAGE_CAMERA_PLANES, VILLAGE_GROUND_DECAL, type VillageTier } from "./villageModelPrep";
-import { holdVillageFiles, holdsVillageFiles } from "./villageRelease";
+import { clearVillageCaches, holdVillageFiles, holdsVillageFiles } from "./villageRelease";
+import { LoadBoundary } from "./LoadBoundary";
 import { areaGate, localArea, readSelfArea, releaseLocalArea, seedLocalArea, useLocalArea } from "./villageArea";
 import { CUBBY_TARGET_PREFIX, GUIDE_TARGET_PREFIX, villageAndHallTargets, villageTargets } from "./villageTargets";
 import { GuideNpcs } from "./GuideNpc";
@@ -63,12 +64,28 @@ const SHADOW_HALF = 40;
  * is where the live pose is). Pressing it draws the curtain; once that has closed the door is used (`UseDoor`),
  * provided the player is still within reach of it, so the server's answer lands on a black screen.
  */
+/** The village's stand-in while its model is missing: a plain lawn under the walk area. */
+function PlainGround() {
+  const b = VILLAGE_LAYOUT.walkBounds;
+  return (
+    <mesh rotation-x={-Math.PI / 2} position={[(b.minX + b.maxX) / 2, 0, (b.minZ + b.maxZ) / 2]}>
+      <planeGeometry args={[b.maxX - b.minX, b.maxZ - b.minZ]} />
+      <meshBasicMaterial color="#7d9a5a" />
+    </mesh>
+  );
+}
+
 /** What the local player's area draws: the village model and its signs and door pad, or the hall's room. */
 function VillageArea({ area, tier }: { area: AreaId; tier: VillageTier }) {
   if (area === "hall") return <HallArea />;
   return (
     <>
-      <VillageModel tier={tier} />
+      {/* A failed download shows a plain ground and tries again, instead of the crash screen (final review m2). */}
+      <LoadBoundary fallback={<PlainGround />} onReset={clearVillageCaches} notice="마을 풍경을 불러오지 못했어요. 잠시 뒤 다시 불러올게요.">
+        <Suspense fallback={null}>
+          <VillageModel tier={tier} />
+        </Suspense>
+      </LoadBoundary>
       <PlotMarkers />
       <DoorPad pad={VILLAGE_LAYOUT.memorial.exterior.doorPad} y={0.06} />
     </>
