@@ -20,6 +20,7 @@ import { overviewAllowed } from "./indoorCamera";
 import type { AreaGate } from "./areaFilter";
 import { LIGHTING, type LightingId } from "./sceneLighting";
 import { LightRigContext, type LightRig } from "./lightRig";
+import { GroundDecalContext, type GroundDecal } from "./groundDecal";
 import type { PlayersRoom } from "./remoteSync";
 import { Chat } from "../ui/Chat";
 import { ChatLog } from "../ui/ChatLog";
@@ -104,6 +105,11 @@ export interface PlayShellProps {
    * sky dome 1.4 km out (VillageScene). Read when the Canvas is made; the far plane is the camera rig's base.
    */
   cameraPlanes?: { near: number; far: number };
+  /**
+   * Where the ground decals lie (the avatars' blob shadows, the rich tier's shadow floor): height and polygon offset.
+   * Default: 3 cm, no offset (every scene but 케이슨 마을, whose ground layers carry offsets of their own).
+   */
+  groundDecal?: GroundDecal;
 }
 
 /**
@@ -293,28 +299,30 @@ export function PlayShell(p: PlayShellProps) {
 
         <KeyboardControls map={MOVE_KEYS}>
           <LightRigContext.Provider value={rig}>
-            <Suspense fallback={null}>
-              {renderSlot(p.world3d, frame)}
-              <LocalPlayer
-                sessionId={identity.sessionId}
-                nickname={identity.nickname}
-                appearance={identity.appearance}
-                pose={pose}
-                orbit={orbit}
-                seat={seat}
-                moveInput={moveInput}
-                blobShadow={profile.blobShadows}
-              />
-              <RemotePlayers room={room} selfPose={pose} selfSeat={seat} blobShadow={profile.blobShadows} areas={p.areas} />
-              <OverviewMarker pose={pose} />
-              <ClickMarker />
-            </Suspense>
+            <GroundDecalContext.Provider value={p.groundDecal ?? null}>
+              <Suspense fallback={null}>
+                {renderSlot(p.world3d, frame)}
+                <LocalPlayer
+                  sessionId={identity.sessionId}
+                  nickname={identity.nickname}
+                  appearance={identity.appearance}
+                  pose={pose}
+                  orbit={orbit}
+                  seat={seat}
+                  moveInput={moveInput}
+                  blobShadow={profile.blobShadows}
+                />
+                <RemotePlayers room={room} selfPose={pose} selfSeat={seat} blobShadow={profile.blobShadows} areas={p.areas} />
+                <OverviewMarker pose={pose} />
+                <ClickMarker />
+              </Suspense>
+            </GroundDecalContext.Provider>
           </LightRigContext.Provider>
           <CameraRig pose={pose} orbit={orbit} seat={seat} fogRange={light.fog} far={planes.far} />
         </KeyboardControls>
         <NametagSystem />
         {p.effects && <QualityEffects tier={tier} brightness={brightness} exposure={light.exposure} toneCurve={light.toneCurve} />}
-        {p.effects && profile.shadows && <ShadowFloor bounds={b} />}
+        {p.effects && profile.shadows && <ShadowFloor bounds={b} decal={p.groundDecal ?? null} />}
         {import.meta.env.DEV && <RenderStatsProbe />}
       </Canvas>
       <LoadingOverlay />

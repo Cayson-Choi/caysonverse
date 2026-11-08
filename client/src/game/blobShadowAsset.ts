@@ -8,6 +8,7 @@
  */
 
 import { CanvasTexture, DoubleSide, MeshBasicMaterial, PlaneGeometry } from "three";
+import { DEFAULT_DECAL_Y, applyDecalOffset, type GroundDecal } from "./groundDecal";
 
 /** Texture resolution (px) of the soft round gradient. */
 const BLOB_TEXTURE_SIZE = 128;
@@ -16,10 +17,27 @@ const BLOB_TEXTURE_SIZE = 128;
 export const BLOB_SHADOW_RADIUS = 0.55;
 
 /** Height (m) above the floor grid (which sits at y=0.02) — avoids z-fighting. */
-export const BLOB_SHADOW_Y = 0.03;
+export const BLOB_SHADOW_Y = DEFAULT_DECAL_Y;
 
 let geometry: PlaneGeometry | null = null;
 let material: MeshBasicMaterial | null = null;
+/** The base material with a scene's polygon offset (케이슨 마을), one per placement, sharing the base's texture. */
+const offsetCopies = new Map<string, MeshBasicMaterial>();
+
+/**
+ * The blob material for a scene's decal placement: the base itself without one (every scene but the village), else
+ * a cached copy with the offset (never disposed, like the base; the texture is the base's).
+ */
+export function blobMaterialFor(base: MeshBasicMaterial, decal: GroundDecal | null | undefined): MeshBasicMaterial {
+  if (!decal) return base;
+  const key = `${decal.polygonOffsetFactor}/${decal.polygonOffsetUnits}`;
+  let m = offsetCopies.get(key);
+  if (!m) {
+    m = applyDecalOffset(base.clone(), decal);
+    offsetCopies.set(key, m);
+  }
+  return m;
+}
 
 /** Paint a black-core → transparent-edge radial gradient once. */
 function createTexture(): CanvasTexture {
@@ -40,9 +58,10 @@ function createTexture(): CanvasTexture {
 
 /**
  * The ONE shared blob-shadow geometry + material for every avatar. Lazily built
- * on first call (needs the DOM/canvas + a three context); never disposed.
+ * on first call (needs the DOM/canvas + a three context); never disposed. A scene
+ * with its own decal placement (`decal`, 케이슨 마을) gets the offset copy.
  */
-export function getBlobShadow(): { geometry: PlaneGeometry; material: MeshBasicMaterial } {
+export function getBlobShadow(decal: GroundDecal | null = null): { geometry: PlaneGeometry; material: MeshBasicMaterial } {
   if (!geometry) {
     geometry = new PlaneGeometry(BLOB_SHADOW_RADIUS * 2, BLOB_SHADOW_RADIUS * 2);
   }
@@ -54,5 +73,5 @@ export function getBlobShadow(): { geometry: PlaneGeometry; material: MeshBasicM
       side: DoubleSide,
     });
   }
-  return { geometry, material };
+  return { geometry, material: blobMaterialFor(material, decal) };
 }

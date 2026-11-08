@@ -7,12 +7,13 @@ import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 import { isTouchDevice } from "../device";
 import { useSettingsStore } from "../stores/settingsStore";
 import { BLOOM, QUALITY, exposureFor, resolveQuality, type QualityTier, type ToneCurve } from "./quality";
+import { DEFAULT_DECAL_Y, decalY, type GroundDecal } from "./groundDecal";
 import "./quality.css";
 
 /**
  * The look of the school scenes' rendering (AI 학교 탈출, Task 21): the quality tier's post effects and
- * the brightness. Mounted by `PlayShell` inside the Canvas, only for the hall and the classrooms
- * (`effects`); the legacy world never sees it.
+ * the brightness. Mounted by `PlayShell` inside the Canvas for the scenes that ask for it (`effects`: the hall,
+ * the classrooms and 케이슨 마을); the legacy world never sees it.
  *
  *  - Brightness: the renderer's `toneMappingExposure`, whatever the tier (a tone-mapped frame is the same
  *    on both tiers: the rich tier tone-maps in its final pass instead of in the renderer).
@@ -59,21 +60,37 @@ function BloomChain() {
 }
 
 /** Just above the rug (0.01) and the door pads (0.015-0.02), so the shadow is never under them; 3 cm is not seen. */
-const SHADOW_Y = 0.03;
+const SHADOW_Y = DEFAULT_DECAL_Y;
 const SHADOW_OPACITY = 0.3;
 const SHADOW_COLOR = "#2b2a55";
 
 /**
  * The high tier's ground for the characters' real-time shadows: a see-through plane over the whole map that
  * shows only the shadow (ShadowMaterial). The room models arrive with baked, unlit floors that cannot take a
- * shadow themselves (Task 23); this plane is what lets the live characters still stand on the floor.
+ * shadow themselves (Task 23); this plane is what lets the live characters still stand on the floor. `decal`: the
+ * scene's own height and polygon offset (groundDecal.ts; 케이슨 마을's offset ground layers need it), else 3 cm.
  */
-export function ShadowFloor({ bounds }: { bounds: { minX: number; maxX: number; minZ: number; maxZ: number } }) {
+export function ShadowFloor({
+  bounds,
+  decal = null,
+}: {
+  bounds: { minX: number; maxX: number; minZ: number; maxZ: number };
+  decal?: GroundDecal | null;
+}) {
   const { minX, maxX, minZ, maxZ } = bounds;
+  const y = decal ? decalY(decal) : SHADOW_Y;
   return (
-    <mesh position={[(minX + maxX) / 2, SHADOW_Y, (minZ + maxZ) / 2]} rotation-x={-Math.PI / 2} renderOrder={2} receiveShadow>
+    <mesh position={[(minX + maxX) / 2, y, (minZ + maxZ) / 2]} rotation-x={-Math.PI / 2} renderOrder={2} receiveShadow>
       <planeGeometry args={[maxX - minX, maxZ - minZ]} />
-      <shadowMaterial transparent opacity={SHADOW_OPACITY} color={SHADOW_COLOR} depthWrite={false} />
+      <shadowMaterial
+        transparent
+        opacity={SHADOW_OPACITY}
+        color={SHADOW_COLOR}
+        depthWrite={false}
+        polygonOffset={!!decal}
+        polygonOffsetFactor={decal ? decal.polygonOffsetFactor : 0}
+        polygonOffsetUnits={decal ? decal.polygonOffsetUnits : 0}
+      />
     </mesh>
   );
 }

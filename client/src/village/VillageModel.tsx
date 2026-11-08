@@ -15,6 +15,7 @@ import {
   type VillageTier,
 } from "./villageModelPrep";
 import { dayNight } from "./dayNightDriver";
+import { noteVillageLoaded } from "./villageRelease";
 
 declare global {
   interface Window {
@@ -32,7 +33,8 @@ declare global {
  *
  * Read (suspends) only when the village area mounts: the entry screen never loads it. The loader's cache keeps the
  * parsed model while the player is in the memorial hall, so coming back out is instant; this clone's own
- * materials are released with the component.
+ * materials and instance buffers are released with the component. The files themselves go when the village scene
+ * does (villageRelease.ts, held by VillageScene).
  */
 export function VillageModel({ tier }: { tier: VillageTier }) {
   // All the files download at once: the light maps' requests start before the model's read suspends this component.
@@ -43,6 +45,7 @@ export function VillageModel({ tier }: { tier: VillageTier }) {
     () => prepareVillage(gltf.scene, lightmap, tier, LIGHTING.village.toneCurve, nightLightmap),
     [gltf, lightmap, nightLightmap, tier],
   );
+  useEffect(() => noteVillageLoaded(gltf.scene, [lightmap, nightLightmap]), [gltf, lightmap, nightLightmap]);
   useEffect(() => {
     // Dev/E2E probe: the dressed model (draw-call and material checks). Tree-shaken in production.
     if (import.meta.env.DEV) window.__cvVillage = () => nodes;

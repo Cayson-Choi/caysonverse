@@ -38,6 +38,14 @@ export function cameraBoxes(): readonly CameraBox[] {
 export const SPRING = { minDist: 0.6, pad: 0.2, returnRate: 6 } as const;
 
 /**
+ * The pad of the map the player stands in now: its own (`ActiveMap.cameraPad`, 케이슨 마을's 0.3, wider than its 0.2 near
+ * plane) or `SPRING.pad`.
+ */
+export function cameraPad(): number {
+  return getActiveMap().cameraPad ?? SPRING.pad;
+}
+
+/**
  * Value of the eased arm limit while nothing is in the way. Larger than any arm the
  * camera can ask for (maxDistance 18 m × the portrait pull-back 1.6), so a free limit
  * never shortens the arm and never has to "grow back" when the player zooms out.
@@ -154,8 +162,9 @@ export function segmentHitFraction(
 
 /**
  * How long the arm may be: `desired` (m) when the segment from the head to the
- * camera spot is clear, otherwise the distance at which it comes within `SPRING.pad`
- * of a wall — never under `SPRING.minDist`. `desired` is the length of that segment.
+ * camera spot is clear, otherwise the distance at which it comes within `pad` (the map's,
+ * `cameraPad()`; `SPRING.pad` by default) of a wall — never under `SPRING.minDist`.
+ * `desired` is the length of that segment.
  *
  * The pad is applied by inflating the walls for the cast (see `segmentHitFraction`),
  * so it is `SPRING.pad` ACROSS the wall at any angle. Subtracting it along the ray
@@ -171,8 +180,9 @@ export function springArmDistance(
   camZ: number,
   desired: number,
   boxes: readonly CameraBox[] = cameraBoxes(),
+  pad: number = cameraPad(),
 ): number {
-  const t = segmentHitFraction(headX, headY, headZ, camX, camY, camZ, boxes, WALL_HEIGHT, SPRING.pad);
+  const t = segmentHitFraction(headX, headY, headZ, camX, camY, camZ, boxes, WALL_HEIGHT, pad);
   if (t >= 1) return desired;
   return Math.max(SPRING.minDist, t * desired);
 }

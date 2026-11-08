@@ -15,7 +15,8 @@ import { PlotMarkers } from "./PlotMarkers";
 import { DoorPad, HallRoom } from "./VillageHall";
 import { DayNight } from "./DayNight";
 import { VillageModel } from "./VillageModel";
-import { VILLAGE_CAMERA_PLANES, type VillageTier } from "./villageModelPrep";
+import { VILLAGE_CAMERA_PLANES, VILLAGE_GROUND_DECAL, type VillageTier } from "./villageModelPrep";
+import { holdVillageFiles } from "./villageRelease";
 import { areaGate, localArea, readSelfArea, releaseLocalArea, seedLocalArea, useLocalArea } from "./villageArea";
 import { villageTargets } from "./villageTargets";
 
@@ -100,6 +101,9 @@ export function VillageScene({ identity }: { identity: Identity }) {
     setPublished(true);
     return () => releaseLocalArea(token);
   }, [boot]);
+  // The village's files (model, light maps) stay cached while this scene shows, through every hall visit, and go
+  // one tick after it unmounts (Task 7 review I1).
+  useEffect(() => holdVillageFiles(), []);
   const live = useLocalArea();
   // Until the seed is published the store may still hold the previous scene's area: draw from the seed itself.
   const area = published ? live : boot.area;
@@ -116,6 +120,7 @@ export function VillageScene({ identity }: { identity: Identity }) {
       shadowFollowHalf={SHADOW_HALF}
       areas={areaGate}
       cameraPlanes={VILLAGE_CAMERA_PLANES}
+      groundDecal={VILLAGE_GROUND_DECAL}
       world3d={({ pose }) => (
         <>
           <DayNight area={area} tier={tier} />

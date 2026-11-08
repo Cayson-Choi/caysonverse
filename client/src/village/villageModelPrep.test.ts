@@ -9,6 +9,7 @@ import {
   Object3D,
   PlaneGeometry,
   SRGBColorSpace,
+  ShaderLib,
   ShaderMaterial,
   SphereGeometry,
   Texture,
@@ -30,9 +31,11 @@ import {
   STAR_COUNT,
   STAR_RADIUS,
   VILLAGE_CAMERA_PLANES,
+  VILLAGE_GROUND_DECAL,
   applyDayNight,
   dayTintUniform,
   disposeVillage,
+  disposeVillageSource,
   foliageTintUniform,
   drawCallBudget,
   fallsDown,
@@ -49,6 +52,8 @@ import {
 } from "./villageModelPrep";
 import { DAY_LIFT, NIGHT_LOOK, dayNightAt, indoorState, type DayNightState } from "./dayNightBlend";
 import { parseKstTime } from "@caysonverse/shared/village/sunClock";
+import { HALL_ACTIVE_MAP, VILLAGE_ACTIVE_MAP, VILLAGE_CAMERA_PAD } from "../game/activeMap";
+import { DEFAULT_DECAL_Y } from "../game/groundDecal";
 
 /**
  * A node tree with the names and materials the village.glb contract promises (Task 6 report): the same shape the
@@ -205,6 +210,13 @@ describe("prepareVillage: the model dressed for the game", () => {
     expect(GROUND_GRADE.LM_grass![1]).toBeGreaterThan(1);
     expect(GROUND_GRADE.LM_plaza![0]).toBeLessThan(1);
     expect(f.mats.LM_wood.color.toArray()).toEqual([1, 1, 1]);
+  });
+
+  it("the plaza's grade is about 0.7: under exposure 1.4 its pale paving stays below the neutral curve's shoulder, so a live shadow reads (T7 review m8)", () => {
+    for (const c of GROUND_GRADE.LM_plaza!) {
+      expect(c).toBeGreaterThanOrEqual(0.65);
+      expect(c).toBeLessThanOrEqual(0.72);
+    }
   });
 
   it("the plot outlines glow: a copy pushed past white (×GLOW_BOOST) and seen through the fog; the shared one is untouched", () => {
@@ -433,6 +445,48 @@ describe("prepareVillage: the model dressed for the game", () => {
     for (const r of shared) expect(disposed.has(r), (r as { name?: string }).name).toBe(false);
   });
 
+  it("disposeVillage frees the clone's own instance buffers (InstancedMesh.dispose), never the loader's (T7 review I1)", () => {
+    const f = fixture();
+    const instanced = (root: Object3D) => {
+      const out: InstancedMesh[] = [];
+      root.traverse((o) => {
+        if ((o as InstancedMesh).isInstancedMesh) out.push(o as InstancedMesh);
+      });
+      return out;
+    };
+    const source = instanced(f.root);
+    const nodes = prepareVillage(f.root, new Texture(), "low");
+    const clone = instanced(nodes.root);
+    expect(clone).toHaveLength(2);
+    for (const m of clone) expect(source).not.toContain(m);
+    // The clone's instanceMatrix is its own buffer (InstancedMesh.copy), the one the renderer frees on "dispose".
+    for (let i = 0; i < clone.length; i++) expect(clone[i]!.instanceMatrix).not.toBe(source[i]!.instanceMatrix);
+    const disposed = new Set<unknown>();
+    for (const m of [...clone, ...source]) m.addEventListener("dispose", () => disposed.add(m));
+    disposeVillage(nodes);
+    for (const m of clone) expect(disposed.has(m)).toBe(true);
+    for (const m of source) expect(disposed.has(m)).toBe(false);
+  });
+
+  it("disposeVillageSource frees the loaded model itself: geometry, materials, their maps and light maps, instance buffers (once each)", () => {
+    const f = fixture();
+    const lightmap = new Texture();
+    prepareVillage(f.root, lightmap, "low");
+    const seen = new Map<unknown, number>();
+    const watch = (r: { addEventListener(t: "dispose", l: () => void): void }) =>
+      r.addEventListener("dispose", () => seen.set(r, (seen.get(r) ?? 0) + 1));
+    const all: Array<{ addEventListener(t: "dispose", l: () => void): void }> = [lightmap, ...Object.values(f.mats), ...Object.values(f.textures)];
+    f.root.traverse((o) => {
+      const m = o as Mesh;
+      if (m.isMesh) all.push(m.geometry);
+      if ((o as InstancedMesh).isInstancedMesh) all.push(o as InstancedMesh);
+    });
+    const unique = [...new Set(all)];
+    for (const r of unique) watch(r);
+    disposeVillageSource(f.root);
+    for (const r of unique) expect(seen.get(r), (r as { name?: string }).name ?? String(r)).toBe(1);
+  });
+
   it("an InstancedMesh is one draw call whatever its count (the 7,000 far cards are one call)", () => {
     const nodes = prepareVillage(fixture().root, new Texture(), "low");
     const b = drawCallBudget(nodes.root);
@@ -503,6 +557,24 @@ describe("the far plane (the dome is 1.4 km out, the school's CAMERA_FAR is 200 
   it("the near plane is still close enough for a camera pulled in front of a wall (spring arm) and a first-person eye", () => {
     expect(VILLAGE_CAMERA_PLANES.near).toBeLessThanOrEqual(0.25);
     expect(VILLAGE_CAMERA_PLANES.near).toBeGreaterThan(0.1);
+  });
+
+  it("the village's spring arm stops 0.3 m in front of a wall: wider than the near plane, in the village and in the hall (T7 review m5)", () => {
+    expect(VILLAGE_CAMERA_PAD).toBe(0.3);
+    expect(VILLAGE_CAMERA_PAD).toBeGreaterThan(VILLAGE_CAMERA_PLANES.near);
+    expect(VILLAGE_ACTIVE_MAP.cameraPad).toBe(VILLAGE_CAMERA_PAD);
+    expect(HALL_ACTIVE_MAP.cameraPad).toBe(VILLAGE_CAMERA_PAD);
+  });
+
+  it("the ground decals lie above every offset ground layer: 5 cm up (the forecourt's top is 3 cm) and a stronger offset (T7 review I2)", () => {
+    expect(VILLAGE_GROUND_DECAL.y).toBeCloseTo(0.05, 6);
+    expect(VILLAGE_GROUND_DECAL.y).toBeGreaterThan(0.03);
+    expect(VILLAGE_GROUND_DECAL.y).toBeGreaterThan(DEFAULT_DECAL_Y);
+    expect(VILLAGE_GROUND_DECAL.polygonOffsetFactor).toBe(-2);
+    expect(VILLAGE_GROUND_DECAL.polygonOffsetUnits).toBe(-8);
+    // More negative than every ground layer, on both terms (the ground's factor is -1).
+    for (const units of Object.values(GROUND_LAYER_OFFSET)) expect(VILLAGE_GROUND_DECAL.polygonOffsetUnits).toBeLessThan(units);
+    expect(VILLAGE_GROUND_DECAL.polygonOffsetFactor).toBeLessThan(-1);
   });
 });
 
@@ -606,3 +678,66 @@ describe("applyDayNight: the clock's numbers into the model (Task 7A)", () => {
   });
 });
 
+
+describe("the shader patches against three's own MeshBasicMaterial shader (T7 review m1)", () => {
+  const BASIC = ShaderLib.basic.fragmentShader;
+  const count = (text: string, sub: string) => text.split(sub).length - 1;
+  const compile = (m: MeshBasicMaterial) => {
+    const shader = { uniforms: {} as Record<string, unknown>, fragmentShader: BASIC, vertexShader: ShaderLib.basic.vertexShader };
+    m.onBeforeCompile(shader as never, null as never);
+    return shader.fragmentShader;
+  };
+
+  it("every anchor the patches replace occurs exactly once in three's basic fragment shader", () => {
+    for (const anchor of [
+      "void main() {",
+      "#include <color_fragment>",
+      "#include <aomap_fragment>",
+      "#include <map_fragment>",
+      "#include <tonemapping_fragment>",
+      "vec4 lightMapTexel = texture2D( lightMap, vLightMapUv );",
+    ]) {
+      expect(count(BASIC, anchor), anchor).toBe(1);
+    }
+  });
+
+  it("the light (lift, day/night light maps, tints): every replacement lands in the real shader", () => {
+    const f = fixture();
+    prepareVillage(f.root, new Texture(), "low", "neutral", new Texture());
+    const fs = compile(f.mats.LM_grass);
+    expect(count(fs, "uniform float uVillageLift;")).toBe(1);
+    expect(count(fs, "uniform sampler2D uVillageNightMap;")).toBe(1);
+    expect(count(fs, "void main() {")).toBe(1);
+    expect(fs).not.toContain("vec4 lightMapTexel = texture2D( lightMap, vLightMapUv );");
+    expect(count(fs, "texture2D( uVillageNightMap, vLightMapUv )")).toBe(1);
+    expect(count(fs, "vec3 villageAlbedo = diffuseColor.rgb;")).toBe(1);
+    expect(fs.indexOf("vec3 villageAlbedo = diffuseColor.rgb;")).toBeLessThan(fs.indexOf("#include <color_fragment>"));
+    expect(count(fs, "reflectedLight.indirectDiffuse += uVillageLift * uVillageLiftTint;")).toBe(1);
+    expect(fs.indexOf("uVillageLift * uVillageLiftTint")).toBeLessThan(fs.indexOf("#include <aomap_fragment>"));
+    // The night map is blended where three reads the light map, before it is added to the light.
+    expect(fs.indexOf("lightMapTexel.rgb += villageNightLight * uVillageNight;")).toBeLessThan(
+      fs.indexOf("reflectedLight.indirectDiffuse += lightMapTexel.rgb * lightMapIntensity"),
+    );
+  });
+
+  it("the windows' and lamps' glow lands after the texture is read", () => {
+    const f = fixture();
+    const nodes = prepareVillage(f.root, new Texture(), "low");
+    const lit = nodes.own.filter((r): r is MeshBasicMaterial => (r as MeshBasicMaterial).isMeshBasicMaterial && (r as MeshBasicMaterial).customProgramCacheKey() === "village-lit");
+    expect(lit.length).toBe(2);
+    for (const m of lit) {
+      const fs = compile(m);
+      expect(count(fs, "uniform float uVillageLit;")).toBe(1);
+      expect(count(fs, "float villageGlowLuma")).toBe(1);
+      expect(fs.indexOf("#include <map_fragment>")).toBeLessThan(fs.indexOf("float villageGlowLuma"));
+    }
+  });
+
+  it("the dome's inverse tone curve lands right before three's tone mapping (rich tier)", () => {
+    const nodes = prepareVillage(fixture().root, new Texture(), "high", "neutral");
+    const fs = compile(nodes.sky!);
+    expect(count(fs, "gl_FragColor.rgb = villageInverseTone( gl_FragColor.rgb );\n#include <tonemapping_fragment>")).toBe(1);
+    expect(fs).toContain("#define VILLAGE_INVERSE_NEUTRAL");
+    expect(count(fs, "void main() {")).toBe(1);
+  });
+});

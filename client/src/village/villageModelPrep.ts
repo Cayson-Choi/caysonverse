@@ -79,7 +79,8 @@ export const VILLAGE_NIGHT_LIGHTMAP_URL = "/models/village/village_lm_night.webp
 /**
  * The village camera's planes (m): the sky dome is 1.4 km out (and the far range 1.1 km), so the far plane is past
  * it. The near plane is twice the school's 0.1: the ground's 1-2 cm layers then keep their depth order twice as far
- * (the depth buffer's resolution goes with the near plane, not the far one), and no camera gets that close to a wall.
+ * (the depth buffer's resolution goes with the near plane, not the far one). The village's spring arm stops the camera
+ * 0.3 m in front of a wall (activeMap.ts `VILLAGE_CAMERA_PAD`), so a camera pressed into a corner keeps clear of it.
  */
 export const VILLAGE_CAMERA_PLANES = { near: 0.2, far: 1600 } as const;
 
@@ -112,6 +113,14 @@ export const GROUND_LAYER_OFFSET: Readonly<Record<string, number>> = {
 };
 
 /**
+ * Where the village's ground decals lie (the avatars' blob shadows, the rich tier's shadow floor; game/groundDecal.ts):
+ * 5 cm up, over the memorial forecourt's top (3 cm), with a polygon offset stronger than every ground layer's on both
+ * terms (factor -2 against -1, units -8 against -1/-2), as the plot markers do. At the default 3 cm without an offset
+ * they drew under the offset layers and the avatars lost their shadows on the forecourt (Task 7 review I2).
+ */
+export const VILLAGE_GROUND_DECAL = { y: 0.05, polygonOffsetFactor: -2, polygonOffsetUnits: -8 } as const;
+
+/**
  * The bake's ambient lift, raised at runtime (light units: 1 = the albedo as it is). The light map stores light from
  * Cycles with a +0.10 lift (Task 6) and the foliage its light in COLOR_0; under the tone curve the shadowed sides,
  * the dark woods and the leaf undersides fell near black (luma p5 0.00-0.04 in the Task 6 frames). This adds the same
@@ -123,12 +132,14 @@ export const LIGHT_LIFT = 0.2;
 /**
  * A colour grade on the ground (× the material's colour, linear). The lawns brighter and sunnier, toward the owner's
  * style picture (art/village/refs/owner_village_style.webp): the ground holds most of every frame, so they carry the
- * frame's brightness. The pale granite plaza a little darker, so its paving pattern holds under the exposure.
+ * frame's brightness. The pale granite plaza darker (0.7), so its paving pattern holds under the exposure and stays
+ * below the neutral curve's shoulder, where a live 0.7x shadow still reads (Task 7 review m8; at 0.86 the rich tier's
+ * shoulder wiped the avatars' shadows off the paving).
  */
 export const GROUND_GRADE: Readonly<Record<string, readonly [number, number, number]>> = {
   LM_grass: [1.4, 1.34, 1.05],
   LM_lawn: [1.4, 1.34, 1.05],
-  LM_plaza: [0.86, 0.86, 0.86],
+  LM_plaza: [0.7, 0.7, 0.7],
 };
 
 /**
@@ -682,6 +693,35 @@ export function tickVillage(nodes: VillageNodes, seconds: number, exposure: numb
 /** Release what `prepareVillage` made (the shared model materials, geometry and textures stay with the loader's cache). */
 export function disposeVillage(nodes: VillageNodes): void {
   for (const r of nodes.own) r.dispose();
+  // The clone's InstancedMeshes own their instance buffers (InstancedMesh.copy makes new ones): the renderer frees
+  // them on the mesh's "dispose" (Task 7 review I1). The geometry stays: it is the loader's.
+  nodes.root.traverse((o) => {
+    if ((o as InstancedMesh).isInstancedMesh) (o as InstancedMesh).dispose();
+  });
+}
+
+/**
+ * Free the GPU side of the LOADED model itself (the loader's cached scene): its geometry, materials, their maps and
+ * light maps, and its instance buffers, each once. Only when the village is left for good and the loader's cache entry
+ * is cleared (villageRelease.ts), after every clone is gone.
+ */
+export function disposeVillageSource(scene: Object3D): void {
+  const done = new Set<{ dispose(): void }>();
+  const free = (r: { dispose(): void } | null | undefined): void => {
+    if (!r || done.has(r)) return;
+    done.add(r);
+    r.dispose();
+  };
+  scene.traverse((o) => {
+    if (!isMesh(o)) return;
+    free(o.geometry);
+    for (const m of materialsOf(o)) {
+      free((m as MeshBasicMaterial).map);
+      free((m as MeshBasicMaterial).lightMap);
+      free(m);
+    }
+    if ((o as InstancedMesh).isInstancedMesh) free(o as InstancedMesh);
+  });
 }
 
 /** The number of draw calls the model's meshes cost at most (an InstancedMesh counts once, whatever its count). */

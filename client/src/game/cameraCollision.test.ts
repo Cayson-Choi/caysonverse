@@ -12,11 +12,13 @@ import {
   SPRING,
   armHeightScale,
   armLookLift,
+  cameraPad,
   segmentHitFraction,
   springArmDistance,
   stepArmLimit,
   stepSpringDistance,
 } from "./cameraCollision";
+import { LEGACY_ACTIVE_MAP, VILLAGE_ACTIVE_MAP, VILLAGE_CAMERA_PAD, getActiveMap, setActiveMap } from "./activeMap";
 
 // A long wall across the +Z side of the origin: 0.3 m thick, face at z = 4.
 const WALL: AABB = { minX: -5, maxX: 5, minZ: 4, maxZ: 4.3 };
@@ -421,5 +423,44 @@ describe("ceiling slabs (a box with `minY`: it spans minY..height, not floor..he
 
   it("a head AT or above the slab's underside is not trapped by it (an already-contained start is skipped)", () => {
     expect(segmentHitFraction(0, 3.4, 0, 0, 3.4, 3, [CEILING])).toBe(1);
+  });
+});
+
+describe("the map's own pad (케이슨 마을: 0.3 m, wider than its 0.2 m near plane; T7 review m5)", () => {
+  // A concave corner: WALL's face at z = 4 and a side wall whose face is at x = 2.
+  const SIDE: AABB = { minX: 2, maxX: 2.3, minZ: -5, maxZ: 4.3 };
+  const VILLAGE_NEAR = 0.2;
+
+  it("cameraPad() is the active map's pad, SPRING.pad where the map names none", () => {
+    const before = getActiveMap();
+    try {
+      setActiveMap(LEGACY_ACTIVE_MAP);
+      expect(cameraPad()).toBe(SPRING.pad);
+      setActiveMap(VILLAGE_ACTIVE_MAP);
+      expect(cameraPad()).toBe(VILLAGE_CAMERA_PAD);
+    } finally {
+      setActiveMap(before);
+    }
+  });
+
+  it("a camera pushed into a concave corner stays at least the pad from both walls, clear of the near plane", () => {
+    const head = { x: 1, y: 1.4, z: 3 };
+    for (const [cx, cz] of [
+      [3, 5],
+      [4, 4.5],
+      [2.6, 6],
+      [1.9, 5.5],
+    ] as const) {
+      const cam = { x: cx, y: 2, z: cz };
+      const desired = Math.hypot(cam.x - head.x, cam.y - head.y, cam.z - head.z);
+      const d = springArmDistance(head.x, head.y, head.z, cam.x, cam.y, cam.z, desired, [WALL, SIDE], VILLAGE_CAMERA_PAD);
+      const k = d / desired;
+      const x = head.x + (cam.x - head.x) * k;
+      const z = head.z + (cam.z - head.z) * k;
+      const toSide = SIDE.minX - x;
+      const toWall = WALL.minZ - z;
+      expect(Math.min(toSide, toWall), `camera toward ${cx}, ${cz}`).toBeGreaterThanOrEqual(VILLAGE_CAMERA_PAD - 1e-6);
+      expect(Math.min(toSide, toWall)).toBeGreaterThan(VILLAGE_NEAR);
+    }
   });
 });

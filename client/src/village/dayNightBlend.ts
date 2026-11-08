@@ -131,7 +131,7 @@ export const NIGHT_LOOK = {
   moonIntensity: 1.1,
   exposure: 1.95,
   /** The runtime ambient on the light-mapped materials at night, and its colour (the bake has no lift at night). */
-  lift: 0.105,
+  lift: 0.14,
   liftTint: [0.5, 0.68, 1.0] as Rgb,
   /** × the foliage's day vertex light (the trees at night) — no light map has them. */
   foliageTint: [0.075, 0.1, 0.2] as Rgb,

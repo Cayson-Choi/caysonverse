@@ -42,7 +42,15 @@ export interface ActiveMap {
    * button never offers a world seat or 조교 there.
    */
   seatsAndNpcs?: boolean;
+  /**
+   * How far in front of a wall the spring arm stops the camera here (m): absent = `SPRING.pad` (0.2). 케이슨 마을 sets
+   * `VILLAGE_CAMERA_PAD`: its near plane is 0.2 (VILLAGE_CAMERA_PLANES), so a pad of 0.2 left no slack in a corner.
+   */
+  cameraPad?: number;
 }
+
+/** 케이슨 마을's spring-arm pad: wider than its 0.2 m near plane (Task 7 review m5). */
+export const VILLAGE_CAMERA_PAD = 0.3;
 
 /** The legacy world (the `?world=legacy` deep link). */
 export const LEGACY_ACTIVE_MAP: ActiveMap = Object.freeze({
@@ -65,6 +73,7 @@ export function activeBounds(): Bounds {
 export const VILLAGE_ACTIVE_MAP: ActiveMap = Object.freeze({
   geometry: villageGeometry,
   bounds: VILLAGE_LAYOUT.areas.village,
+  cameraPad: VILLAGE_CAMERA_PAD,
   zoneLabel: () => "케이슨 마을",
 });
 
@@ -73,6 +82,7 @@ export const HALL_ACTIVE_MAP: ActiveMap = Object.freeze({
   geometry: villageGeometry,
   bounds: VILLAGE_LAYOUT.areas.hall,
   cameraLimit: HALL_CAMERA_LIMIT, // a roof: the camera stays under the ceiling, no overview
+  cameraPad: VILLAGE_CAMERA_PAD, // the same scene, the same near plane
   zoneLabel: () => "추모관",
 });
 
