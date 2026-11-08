@@ -1,5 +1,5 @@
 /**
- * scripts/lib/schoolSpec.ts — what hub.glb / counsel.glb / village.glb must contain, read from the TS layout data
+ * scripts/lib/schoolSpec.ts — what hub.glb / counsel.glb / village.glb / memorial.glb must contain, read from the TS layout data
  * (the single source of truth for positions): the counselling room's anchors and visual bindings
  * (shared/src/school/counselMap.ts), the hub's corridor doors (hubMap.ts) and the village's colliders
  * (shared/src/village/villageLayout.ts). Used by check-school-glb.ts.
@@ -8,7 +8,16 @@
 import { ROOM_IDS } from "../../shared/src/escape/constants";
 import { COUNSEL_ANCHORS, COUNSEL_VISUALS } from "../../shared/src/school/counselMap";
 import { EAST_CORRIDOR, HUB_DOORS } from "../../shared/src/school/hubMap";
-import { VILLAGE_LAYOUT, colliderNode, greyboxColliders } from "../../shared/src/village/villageLayout";
+import { PLAYER_RADIUS } from "../../shared/src/worldMap";
+import {
+  VILLAGE_LAYOUT,
+  colliderNode,
+  cubbyAnchorNode,
+  cubbyAnchors,
+  cubbyWallBox,
+  greyboxColliders,
+  hallWalls,
+} from "../../shared/src/village/villageLayout";
 import { roundToHundredth } from "./schoolGlb";
 import type { SchoolKind, SchoolSpec } from "./schoolGlb";
 
@@ -42,6 +51,8 @@ export const KNOWN_PROP_HEIGHTS: Readonly<Record<SchoolKind, Readonly<Record<str
   },
   // The village's col__ boxes state their height in the node (translation.y + scale.y / 2).
   village: {},
+  // So do the memorial hall's (memorial.glb).
+  memorial: {},
   counsel: {
     east_bookcase: 2.1,
     cabinet: 1.95,
@@ -111,6 +122,56 @@ function villageSpec(): SchoolSpec {
   };
 }
 
+/** Materials the memorial hall's game code drives itself: the lights (LED strips, downlights, candles) and the garden card. */
+export const MEMORIAL_NON_LIGHTMAPPED = ["M_lamp", "M_garden"] as const;
+
+/** How close (m) a cubby anchor must sit to the layout's opening centre (the cubbies are 0.425 m apart). */
+export const CUBBY_ANCHOR_TOLERANCE = 0.02;
+
+/** The hall's walls in hallWalls order (wallsAround: north, south, east, west) by their col__ ids. */
+export const HALL_WALL_IDS = ["hall_wall_n", "hall_wall_s", "hall_wall_e", "hall_wall_w"] as const;
+
+/**
+ * 추모관 안 (memorial.glb, Task 8): an `anchor__cubby_<id>` empty at every cubby's opening centre (within 2 cm, facing
+ * into the room), the hall's four walls and the two cubby units as camera-height col__ boxes on the layout's rectangles,
+ * no col__ box on the inside door pad or where visitors arrive, the `ceil__hall` slab under the roof, and the
+ * materials the game drives itself.
+ */
+function memorialSpec(): SchoolSpec {
+  const inn = VILLAGE_LAYOUT.memorial.interior;
+  const anchors = cubbyAnchors(VILLAGE_LAYOUT);
+  const [back, east] = inn.cubbyWalls;
+  const walls = hallWalls(VILLAGE_LAYOUT);
+  const wallNodes = HALL_WALL_IDS.map((id) => colliderNode(id));
+  const boxes = [
+    ...HALL_WALL_IDS.map((id, i) => ({ node: colliderNode(id), box: walls[i]!, camera: true })),
+    // the back unit's box runs wall to wall: its filler at the west end, the dead corner behind the east unit
+    { node: colliderNode("cubby_n"), box: { ...cubbyWallBox(back!), minX: inn.room.minX, maxX: inn.room.maxX }, camera: true },
+    { node: colliderNode("cubby_e"), box: cubbyWallBox(east!), camera: true },
+  ];
+  return {
+    kind: "memorial",
+    requiredNodes: [...anchors.map((a) => cubbyAnchorNode(a.id)), ...boxes.map((b) => b.node), "ceil__hall"],
+    requiredPrefixes: [
+      { prefix: "anchor__cubby_", min: anchors.length },
+      { prefix: "col__", min: boxes.length },
+    ],
+    placements: anchors.map((a) => ({ node: cubbyAnchorNode(a.id), x: a.x, y: a.y, z: a.z, yaw: a.yaw, tolerance: CUBBY_ANCHOR_TOLERANCE })),
+    identityRotationPrefixes: [],
+    requiredBoxes: boxes,
+    requiredMaterials: [...MEMORIAL_NON_LIGHTMAPPED],
+    clearDiscs: [
+      // the pad lies against the south wall (it reaches 0.6 m past it): the room's walls do not count
+      { name: "안쪽 문 발판", x: inn.doorPad.centre.x, z: inn.doorPad.centre.z, radius: inn.doorPad.radius, ignore: wallNodes },
+      { name: "들어온 자리", x: inn.spawn.x, z: inn.spawn.z, radius: PLAYER_RADIUS, ignore: wallNodes },
+    ],
+    ceiling: { node: "ceil__hall", y: inn.ceilingHeight, room: inn.room },
+  };
+}
+
 export function schoolSpec(kind: SchoolKind): SchoolSpec {
-  return kind === "hub" ? hubSpec() : kind === "village" ? villageSpec() : counselSpec();
+  if (kind === "hub") return hubSpec();
+  if (kind === "village") return villageSpec();
+  if (kind === "memorial") return memorialSpec();
+  return counselSpec();
 }

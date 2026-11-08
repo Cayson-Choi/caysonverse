@@ -27,14 +27,29 @@ import {
   roundToHundredth,
   tallColliders,
   worldTranslation,
+  yawError,
 } from "../../../scripts/lib/schoolGlb";
 import type { Gltf, GltfNode, SchoolSpec } from "../../../scripts/lib/schoolGlb";
-import { KNOWN_PROP_HEIGHTS, VILLAGE_NON_LIGHTMAPPED, schoolSpec } from "../../../scripts/lib/schoolSpec";
+import {
+  CUBBY_ANCHOR_TOLERANCE,
+  HALL_WALL_IDS,
+  KNOWN_PROP_HEIGHTS,
+  MEMORIAL_NON_LIGHTMAPPED,
+  VILLAGE_NON_LIGHTMAPPED,
+  schoolSpec,
+} from "../../../scripts/lib/schoolSpec";
 import { cameraExportName } from "../../../scripts/extract-colliders";
 import { COUNSEL_ANCHORS, COUNSEL_VISUALS } from "../../../shared/src/school/counselMap";
 import { HUB_DOORS } from "../../../shared/src/school/hubMap";
 import { ROOM_IDS } from "../../../shared/src/escape/constants";
-import { VILLAGE_LAYOUT, colliderNode, greyboxColliders } from "../../../shared/src/village/villageLayout";
+import {
+  VILLAGE_LAYOUT,
+  colliderNode,
+  cubbyAnchorNode,
+  cubbyAnchors,
+  greyboxColliders,
+  hallWalls,
+} from "../../../shared/src/village/villageLayout";
 
 const REPO_ROOT = path.resolve(__dirname, "..", "..", "..");
 
@@ -526,6 +541,7 @@ describe("checkSchoolGlb", () => {
     expect(BUDGETS.hub).toEqual({ maxBytes: 3.5 * 1024 * 1024, maxTriangles: 150_000 });
     expect(BUDGETS.counsel).toEqual({ maxBytes: 5 * 1024 * 1024, maxTriangles: 120_000 });
     expect(BUDGETS.village).toEqual({ maxBytes: 8 * 1024 * 1024, maxTriangles: 260_000 });
+    expect(BUDGETS.memorial).toEqual({ maxBytes: 6 * 1024 * 1024, maxTriangles: 200_000 });
     expect(BOX_TOLERANCE).toBeCloseTo(0.011, 6);
     expect(MAX_MATERIALS).toBe(24);
     expect(MAX_TEXTURE_SIDE).toBe(2048);
@@ -780,7 +796,80 @@ describe("checkSchoolGlb: required materials and GPU instancing (village)", () =
   });
 });
 
+describe("checkSchoolGlb: anchors with height and facing, clear discs, the ceiling slab (memorial)", () => {
+  const yawQuat = (yaw: number) => [0, Math.sin(yaw / 2), 0, Math.cos(yaw / 2)];
+
+  it("yawError: 0 for the right turn about +y (either quaternion sign), large for another facing or a tilt", () => {
+    expect(yawError({ rotation: yawQuat(-Math.PI / 2) }, -Math.PI / 2)).toBeLessThan(1e-9);
+    expect(yawError({ rotation: yawQuat(-Math.PI / 2).map((v) => -v) }, -Math.PI / 2)).toBeLessThan(1e-9);
+    expect(yawError({}, 0)).toBe(0);
+    expect(yawError({}, -Math.PI / 2)).toBeCloseTo(Math.PI / 2, 9);
+    const s = Math.SQRT1_2;
+    expect(yawError({ rotation: [s, 0, 0, s] }, 0)).toBeGreaterThan(1); // tipped over about x
+  });
+
+  it("a placement with y, yaw and a tolerance: within 2 cm and facing right passes; off in height or facing fails", () => {
+    const spec = (y: number, yaw: number) =>
+      tinySpec({ placements: [{ node: "obj__a", x: 1.1, y, z: 2.1, yaw, tolerance: 0.02 }], identityRotationPrefixes: [] });
+    const g = goodGltf();
+    g.nodes![0]!.translation = [1.1, 0.345, 2.1];
+    g.nodes![0]!.rotation = yawQuat(-Math.PI / 2);
+    expect(failed(run(g, { spec: spec(0.36, -Math.PI / 2) }))).toEqual([]);
+    expect(failed(run(g, { spec: spec(0.4, -Math.PI / 2) })).map((r) => r.label)).toEqual(["앵커 위치"]);
+    const turned = failed(run(g, { spec: spec(0.345, 0) }));
+    expect(turned.map((r) => r.label)).toEqual(["앵커 위치"]);
+    expect(turned[0]!.detail).toMatch(/방향/);
+  });
+
+  it("clear discs: a col__ box reaching into the door pad fails and is named; one beside it passes", () => {
+    const spec = (x: number) => tinySpec({ clearDiscs: [{ name: "문 발판", x, z: 0, radius: 1 }] });
+    expect(failed(run(goodGltf(), { spec: spec(2.1) }))).toEqual([]); // the 2 m box ends at x = 1
+    const f = failed(run(goodGltf(), { spec: spec(1.5) }));
+    expect(f.map((r) => r.label)).toEqual(["비워 둘 자리"]);
+    expect(f[0]!.detail).toContain("col__wall");
+    // ...unless that box is one the disc ignores (a room wall the door pad lies against)
+    const ignoring = tinySpec({ clearDiscs: [{ name: "문 발판", x: 1.5, z: 0, radius: 1, ignore: ["col__wall"] }] });
+    expect(failed(run(goodGltf(), { spec: ignoring }))).toEqual([]);
+  });
+
+  it("ceiling: the slab's underside at the ceiling height and covering the room passes; low, small or missing fails", () => {
+    const room = { minX: -4.5, maxX: 4.5, minZ: -6, maxZ: 6 };
+    const spec = tinySpec({ ceiling: { node: "ceil__hall", y: 3.4, room } });
+    const g = goodGltf();
+    g.nodes!.push({ name: "ceil__hall", translation: [0, 3.45, 0], scale: [9, 0.1, 12] });
+    expect(failed(run(g, { spec }))).toEqual([]);
+    g.nodes![3]!.translation = [0, 3.3, 0];
+    expect(failed(run(g, { spec })).map((r) => r.label)).toEqual(["천장"]);
+    g.nodes![3] = { name: "ceil__hall", translation: [0, 3.45, 0], scale: [8, 0.1, 12] };
+    expect(failed(run(g, { spec }))[0]!.detail).toMatch(/덮지/);
+    g.nodes!.pop();
+    expect(failed(run(g, { spec })).map((r) => r.label)).toEqual(["천장"]);
+  });
+});
+
 describe("schoolSpec", () => {
+  it("memorial: an anchor per cubby (2 cm, facing), the hall walls and both cubby units as camera boxes, clear door pad and arrival, the ceiling", () => {
+    const spec = schoolSpec("memorial");
+    const anchors = cubbyAnchors(VILLAGE_LAYOUT);
+    const inn = VILLAGE_LAYOUT.memorial.interior;
+    expect(spec.kind).toBe("memorial");
+    expect(anchors).toHaveLength(266);
+    for (const a of anchors) expect(spec.requiredNodes).toContain(cubbyAnchorNode(a.id));
+    expect(spec.placements).toHaveLength(266);
+    expect(spec.placements[0]).toEqual({ node: "anchor__cubby_n_0_0", x: anchors[0]!.x, y: anchors[0]!.y, z: anchors[0]!.z, yaw: 0, tolerance: CUBBY_ANCHOR_TOLERANCE });
+    expect(CUBBY_ANCHOR_TOLERANCE).toBe(0.02);
+    expect(spec.requiredBoxes!.slice(0, 4)).toEqual(HALL_WALL_IDS.map((id, i) => ({ node: `col__${id}`, box: hallWalls(VILLAGE_LAYOUT)[i], camera: true })));
+    expect(spec.requiredBoxes!.find((b) => b.node === "col__cubby_n")!.box).toEqual({ minX: 295.5, maxX: 304.5, minZ: -6, maxZ: -5.61 });
+    expect(spec.requiredBoxes!.find((b) => b.node === "col__cubby_e")!.box).toEqual({ minX: 304.11, maxX: 304.5, minZ: -5.61, maxZ: 2.065 });
+    expect(spec.requiredBoxes!.every((b) => b.camera)).toBe(true);
+    expect(spec.requiredMaterials).toEqual([...MEMORIAL_NON_LIGHTMAPPED]);
+    expect(spec.clearDiscs!.map((d) => [d.x, d.z])).toEqual([[300, 5.2], [inn.spawn.x, inn.spawn.z]]);
+    expect(spec.clearDiscs![0]!.ignore).toEqual(HALL_WALL_IDS.map((id) => `col__${id}`));
+    expect(spec.ceiling).toEqual({ node: "ceil__hall", y: 3.4, room: inn.room });
+    expect(spec.requiredNodes).toContain("ceil__hall");
+    expect(KNOWN_PROP_HEIGHTS.memorial).toEqual({});
+  });
+
   it("village: every layout collider is a required col__ node with its exact layout box, and light__ points exist", () => {
     const spec = schoolSpec("village");
     const colliders = greyboxColliders(VILLAGE_LAYOUT);
@@ -889,6 +978,36 @@ describe("CLIs", () => {
     const bad = runTs("check-school-glb.ts", file, "village");
     expect(bad.status).toBe(1);
     expect(bad.stdout).toMatch(/FAIL\s+col__ 상자 크기/);
+  });
+
+  it("check-school-glb memorial: anchors, walls, cubby units, the ceiling and memorial_lm.webp -> PASS; one anchor 5 cm off -> FAIL", () => {
+    const spec = schoolSpec("memorial");
+    const nodes: GltfNode[] = spec.requiredBoxes!.map((b) =>
+      cubeNode(b.node, [(b.box.minX + b.box.maxX) / 2, 1.75, (b.box.minZ + b.box.maxZ) / 2], [b.box.maxX - b.box.minX, 3.5, b.box.maxZ - b.box.minZ]),
+    );
+    for (const p of spec.placements) nodes.push({ name: p.node, translation: [p.x, p.y!, p.z], rotation: [0, Math.sin(p.yaw! / 2), 0, Math.cos(p.yaw! / 2)] });
+    nodes.push({ name: "ceil__hall", translation: [300, 3.45, 0], scale: [9, 0.1, 12] }, { name: "hall_lm", mesh: 1 });
+    const g = baseGltf(nodes);
+    g.materials = [
+      { name: "LM_floor", extensions: { KHR_materials_unlit: {} } },
+      ...MEMORIAL_NON_LIGHTMAPPED.map((name) => ({ name, extensions: { KHR_materials_unlit: {} } })),
+    ];
+    g.meshes![1]!.primitives[0]!.material = 0;
+    g.meshes![1]!.primitives[0]!.attributes.TEXCOORD_1 = 2;
+    g.extensionsUsed = ["KHR_materials_unlit"];
+    const file = path.join(tmp, "memorial.glb");
+    fs.writeFileSync(file, makeGlb(g));
+    fs.writeFileSync(path.join(tmp, "memorial_lm.webp"), webpVp8x(2048, 2048));
+    const ok = runTs("check-school-glb.ts", file, "memorial");
+    expect(ok.stdout + ok.stderr).toContain("PASS");
+    expect(ok.status).toBe(0);
+    expect(ok.stdout).toMatch(/OK\s+앵커 위치: 266개/);
+    const k = nodes.findIndex((n) => n.name === "anchor__cubby_e_3_7");
+    nodes[k]!.translation = [nodes[k]!.translation![0]! - 0.05, nodes[k]!.translation![1]!, nodes[k]!.translation![2]!];
+    fs.writeFileSync(file, makeGlb(g));
+    const bad = runTs("check-school-glb.ts", file, "memorial");
+    expect(bad.status).toBe(1);
+    expect(bad.stdout).toMatch(/FAIL\s+앵커 위치: .*anchor__cubby_e_3_7/);
   });
 
   it("check-school-glb: an empty glTF fails the hub checks with exit 1", () => {

@@ -1,8 +1,8 @@
 /**
  * scripts/check-school-glb.ts — 학교 GLB(중앙 홀+복도 hub, 상담실 counsel) 점검 (방탈출 1단계 Task 22),
- * 케이슨 마을 GLB(village) 점검 (케이슨 마을 1단계 Task 6).
+ * 케이슨 마을 GLB(village) 점검 (케이슨 마을 1단계 Task 6), 추모관 실내 GLB(memorial) 점검 (Task 8).
  *
- *   npx tsx --tsconfig server/tsconfig.json scripts/check-school-glb.ts <glb> hub|counsel|village
+ *   npx tsx --tsconfig server/tsconfig.json scripts/check-school-glb.ts <glb> hub|counsel|village|memorial
  *
  * 확인하는 것 (하나라도 어긋나면 종료 코드 1, 모두 통과하면 0):
  *   - 파일 크기: hub ≤ 3.5 MB, counsel ≤ 5 MB, village ≤ 8 MB (1 MB = 1024², 캐릭터 점검과 같다)
@@ -12,6 +12,10 @@
  *   - village: 배치 자료(shared/src/village/villageLayout.ts)의 col__ 상자가 모두 있고 위치·크기가 같다(0.01 m),
  *     카메라 상자 높이가 배치 자료의 camera 표시와 맞는다(1.6 m), 밤 굽기용 light__ 노드가 있다, M_window·M_lamp·M_water·M_glow_plot 재질이
  *     있고 LM_이 아니다, GPU 인스턴스 노드는 확장이 extensionsUsed에 있고 TRANSLATION·ROTATION·SCALE 수가 같다
+ *   - memorial: 칸마다 anchor__cubby_<벽>_<줄>_<칸> 노드가 배치 자료(cubbyAnchors)의 입구 가운데에서 2 cm 안에 있고 방 안쪽을 본다,
+ *     방 벽 넷(col__hall_wall_n·s·e·w)과 칸 벽 둘(col__cubby_n·e)이 배치 자료 상자 그대로(카메라 높이), 안쪽 문 발판과
+ *     들어온 자리에 col__ 상자가 없다, ceil__hall 판의 아랫면이 천장(3.4 m)이고 방을 다 덮는다, M_lamp·M_garden이 있고 LM_이 아니다.
+ *     크기 ≤ 6 MB, 삼각형 ≤ 200k
  *   - 삼각형 수: hub ≤ 150k, counsel ≤ 120k, village ≤ 260k (EXT_mesh_gpu_instancing 인스턴스 수만큼 곱한다).
  *     Draco GLB도 읽는다: 풀지 않고, 확장이 JSON에 남기는 accessor count로 센다
  *   - 재질 ≤ 24, 텍스처(GLB 안 이미지) 한 변 ≤ 2048
@@ -27,8 +31,8 @@ import { checkSchoolGlb, imageSize, parseGlb } from "./lib/schoolGlb";
 import type { LightmapFile, SchoolKind } from "./lib/schoolGlb";
 import { schoolSpec } from "./lib/schoolSpec";
 
-const USAGE = "usage: npx tsx --tsconfig server/tsconfig.json scripts/check-school-glb.ts <glb> hub|counsel|village";
-const KINDS: readonly SchoolKind[] = ["hub", "counsel", "village"];
+const USAGE = "usage: npx tsx --tsconfig server/tsconfig.json scripts/check-school-glb.ts <glb> hub|counsel|village|memorial";
+const KINDS: readonly SchoolKind[] = ["hub", "counsel", "village", "memorial"];
 
 /** The light-map WebP that belongs to this room: next to the GLB, or in a `lightmaps/` folder next to it. */
 function findLightmap(glbPath: string, kind: SchoolKind): LightmapFile | null {

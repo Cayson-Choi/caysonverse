@@ -142,6 +142,51 @@ export interface MemorialExterior {
   arrival: Point2 & { yaw: number };
 }
 
+/**
+ * One wall of cubbies (봉안함 칸) in the memorial hall: `rows` x `cols` square cubbies of `cell` m with `frame` m boards
+ * between and around them, on a plinth, open toward the room. The model (memorial.glb, Task 8) builds the wall from
+ * these values and puts an `anchor__cubby_<wall>_<row>_<col>` empty at every cubby's opening centre (`cubbyAnchors`).
+ */
+export interface CubbyWall {
+  /** The wall it stands against: "n" the back (north) wall, "e" the east wall. */
+  wall: "n" | "e";
+  /** White lacquer (the back wall) or light oak (the east wall). */
+  finish: "lacquer" | "oak";
+  rows: number;
+  cols: number;
+  /** Inner width and height of one cubby (m). */
+  cell: number;
+  /** Board thickness between and around the cubbies (m). */
+  frame: number;
+  /** From the opening to the back panel (m). Back panel and the gap to the wall make the unit `unitDepth` deep. */
+  depth: number;
+  /** The whole unit's depth, opening plane to the wall (m). */
+  unitDepth: number;
+  /** Height of the plinth under the bottom board (m). */
+  plinth: number;
+  /** The run's start on the opening plane: the outer edge of column 0's frame (floor level). */
+  start: Point2;
+  /** Unit vector along the run on the ground plane: columns count this way. */
+  along: Point2;
+  /** Yaw the cubbies face, into the room (game yaw: 0 faces +z). */
+  yaw: number;
+}
+
+/** A cubby's opening centre, where the runtime puts what a family placed in it (Task 9). */
+export interface CubbyAnchor {
+  /** `<wall>_<row>_<col>`; row 0 is the bottom row, column 0 the run's start. */
+  id: string;
+  wall: CubbyWall["wall"];
+  row: number;
+  col: number;
+  x: number;
+  /** Height of the opening centre (m); the cubby's floor is `cell / 2` lower. */
+  y: number;
+  z: number;
+  /** Facing out of the cubby, into the room. */
+  yaw: number;
+}
+
 export interface MemorialInterior {
   /** Centre of the room; the area sits far from the village in the same coordinate space. */
   origin: Point2;
@@ -155,6 +200,8 @@ export interface MemorialInterior {
   doorPad: Disc;
   /** Where a visitor appears when they come in (yaw faces into the room). */
   spawn: Point2 & { yaw: number };
+  /** The cubby walls: the back wall (white lacquer, 20 x 7) and the east wall (light oak, 18 x 7), meeting in the north-east corner. */
+  cubbyWalls: readonly CubbyWall[];
 }
 
 export interface VillageLayout {
@@ -225,6 +272,8 @@ function deepFreeze<T>(value: T): T {
 const FACING_NORTH = Math.atan2(0, -1);
 /** Yaw that faces south (+z): atan2(0, 1). */
 const FACING_SOUTH = Math.atan2(0, 1);
+/** Yaw that faces west (-x): atan2(-1, 0). */
+const FACING_WEST = Math.atan2(-1, 0);
 
 const SIGN_COMING_SOON = "곧 지어져요";
 const round = (v: number, places: number) => Math.round(v * 10 ** places) / 10 ** places;
@@ -271,6 +320,24 @@ function house(
 ): SceneryHouse {
   const size = SCENERY_SIZES[kind];
   return { id, kind, centre, size: sz(size.x, size.z), enterable: false, colour, doorSide };
+}
+
+/** Cubby size (inner, m), board thickness, depth to the back panel and the unit's full depth (the approved concept, 2026-11-03). */
+const CUBBY = { cell: 0.4, frame: 0.025, depth: 0.36, unitDepth: 0.39, plinth: 0.12, rows: 7 } as const;
+
+/**
+ * The hall's two cubby walls (room x 295.5..304.5, z -6..6). The east unit runs from the back unit's front face
+ * (z = -6 + 0.39) toward the door, 18 columns (7.675 m, to z = 2.065); the back unit runs west from the east unit's
+ * front face (x = 304.5 - 0.39), 20 columns (8.525 m, to x = 295.585; a filler closes the 8.5 cm to the west wall).
+ */
+function hallCubbyWalls(): CubbyWall[] {
+  const run = (cols: number) => cols * (CUBBY.cell + CUBBY.frame) + CUBBY.frame;
+  const eastFront = 304.5 - CUBBY.unitDepth;
+  const backFront = -6 + CUBBY.unitDepth;
+  return [
+    { wall: "n", finish: "lacquer", ...CUBBY, cols: 20, start: pt(round(eastFront - run(20), 6), backFront), along: pt(1, 0), yaw: FACING_SOUTH },
+    { wall: "e", finish: "oak", ...CUBBY, cols: 18, start: pt(eastFront, backFront), along: pt(0, 1), yaw: FACING_WEST },
+  ];
 }
 
 function makeVillageLayout(): VillageLayout {
@@ -343,6 +410,7 @@ function makeVillageLayout(): VillageLayout {
         doorPad: { centre: pt(300, 5.2), radius: 1.4 },
         // 0.2 m outside the 1.4 m door pad's edge (pad centre z = 5.2, spawn z = 3.6, distance 1.6), so a new arrival is not standing on the door.
         spawn: { x: 300, z: 3.6, yaw: FACING_NORTH },
+        cubbyWalls: hallCubbyWalls(),
       },
     },
     // Between the ring road's sidewalk (r 39) and the plots, doors toward the road. Houses 6-10 and the kiosk were
@@ -449,6 +517,51 @@ export function greyboxColliders(layout: VillageLayout): VillageCollider[] {
     ...memorialColliders(memorial.exterior),
     ...sceneryHouses.map((h): VillageCollider => ({ id: h.id, box: boxAt(h.centre, h.size), camera: true })),
   ];
+}
+
+/** The model's node name of a cubby anchor: `anchor__cubby_<id>`. */
+export function cubbyAnchorNode(id: string): string {
+  return `anchor__cubby_${id}`;
+}
+
+/** Every cubby's opening centre, wall by wall, row by row (bottom first), column by column. */
+export function cubbyAnchors(layout: VillageLayout): CubbyAnchor[] {
+  const out: CubbyAnchor[] = [];
+  for (const w of layout.memorial.interior.cubbyWalls) {
+    const pitch = w.cell + w.frame;
+    for (let row = 0; row < w.rows; row += 1) {
+      for (let col = 0; col < w.cols; col += 1) {
+        const u = w.frame + col * pitch + w.cell / 2;
+        out.push({
+          id: `${w.wall}_${row}_${col}`,
+          wall: w.wall,
+          row,
+          col,
+          x: round(w.start.x + w.along.x * u, 6),
+          y: round(w.plinth + w.frame + row * pitch + w.cell / 2, 6),
+          z: round(w.start.z + w.along.z * u, 6),
+          yaw: w.yaw,
+        });
+      }
+    }
+  }
+  return out;
+}
+
+/** A cubby wall's footprint: from its opening plane back to the room wall, along its whole run. */
+export function cubbyWallBox(w: CubbyWall): AABB {
+  const len = w.cols * (w.cell + w.frame) + w.frame;
+  const end = { x: w.start.x + w.along.x * len, z: w.start.z + w.along.z * len };
+  // the unit lies behind the opening plane: opposite to where the cubbies face
+  const back = { x: -Math.sin(w.yaw) * w.unitDepth, z: -Math.cos(w.yaw) * w.unitDepth };
+  const xs = [w.start.x, end.x, w.start.x + back.x, end.x + back.x];
+  const zs = [w.start.z, end.z, w.start.z + back.z, end.z + back.z];
+  return {
+    minX: round(Math.min(...xs), 6),
+    maxX: round(Math.max(...xs), 6),
+    minZ: round(Math.min(...zs), 6),
+    maxZ: round(Math.max(...zs), 6),
+  };
 }
 
 /** The memorial hall's four walls: just outside the room, no openings (the door is a teleport pad). */
@@ -609,7 +722,13 @@ export function exportVillageLayout(layout: VillageLayout = VILLAGE_LAYOUT) {
         footprint: boxAt(memorial.exterior.centre, memorial.exterior.size),
         colliders: colliders.filter((c) => c.id.startsWith("memorial_")).map(collider),
       },
-      interior: { ...memorial.interior, walls: hallWalls(layout), blockers: hallSurroundBlockers(layout) },
+      interior: {
+        ...memorial.interior,
+        walls: hallWalls(layout),
+        blockers: hallSurroundBlockers(layout),
+        cubbyWalls: memorial.interior.cubbyWalls.map((w) => ({ ...w, footprint: cubbyWallBox(w) })),
+        cubbyAnchors: cubbyAnchors(layout).map((a) => ({ ...a, node: cubbyAnchorNode(a.id) })),
+      },
     },
     sceneryHouses: layout.sceneryHouses.map((h) => ({ ...bounded(h), node: colliderNode(h.id) })),
     backdrop: {

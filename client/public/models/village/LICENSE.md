@@ -21,3 +21,18 @@
 | kloppenheim_06_puresky (HDRI 2k) | https://polyhaven.com/a/kloppenheim_06_puresky | 굽기 조명(하늘빛), 하늘 돔 `T_sky` |
 
 그 밖의 그림(광장 판석 무늬, 벚꽃·꽃·갈대·꽃잎 카드, 창·유리·실내·버스·차양·현수막, 물·폭포)은 `make_textures.py`가 직접 그렸습니다.
+
+## 추모관 실내 (`memorial.glb`, `memorial_lm.webp`, `memorial_props.glb`) — 케이슨 마을 1단계 Task 8
+
+세 파일 모두 이 프로젝트에서 Blender와 스크립트로 직접 만든 것입니다(`art/village/tools/build_memorial.py`, `bake_memorial.py`,
+`build_props.py`, `render_garden.py`, `make_memorial_textures.py`, 저장소에는 올리지 않음). AI로 만든 모델·텍스처는 없습니다.
+바닥·참나무·흰 래커·패브릭·작은 부품 색 텍스처와 칸 소품 텍스처는 스크립트가 직접 그렸고(절차적), 외부 재료는 위 표와 같은
+Poly Haven CC0 1.0 자산만 썼습니다.
+
+| Poly Haven 자산 | 주소 | 쓰는 곳 |
+| --- | --- | --- |
+| white_plaster_02 | https://polyhaven.com/a/white_plaster_02 | 흰 벽·천장 `T_m_plaster`의 결 |
+| kloppenheim_06_puresky (HDRI 2k) | https://polyhaven.com/a/kloppenheim_06_puresky | 창으로 드는 하늘빛(라이트맵 굽기), 창밖 정원 그림의 하늘 |
+| leafy_grass | https://polyhaven.com/a/leafy_grass | 창밖 정원 그림 `T_m_garden`의 잔디 |
+| precast_stone_paving | https://polyhaven.com/a/precast_stone_paving | 창밖 정원 그림의 돌길 |
+| island_tree_01 (잎 텍스처만), japanese_zelkova_bark, sakura_bark | 위 표 | 창밖 정원 그림의 나무(마을과 같은 잎·껍질 텍스처) |

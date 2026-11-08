@@ -476,7 +476,7 @@ function meshTriangles(gltf: Gltf, meshIndex: number): number {
 // ---------------------------------------------------------------------------------------------------------
 // The budget checks.
 
-export type SchoolKind = "hub" | "counsel" | "village";
+export type SchoolKind = "hub" | "counsel" | "village" | "memorial";
 export type Level = "ok" | "fail" | "warn";
 
 export interface CheckResult {
@@ -488,12 +488,14 @@ export interface CheckResult {
 const MB = 1024 * 1024;
 /**
  * Plan Global Constraints: hub (hall + corridor) <= 3.5 MB, classroom <= 5 MB; triangles from Task 22.
- * 케이슨 마을 (village plan, Global Constraints): village.glb <= 8 MB and <= 260k triangles.
+ * 케이슨 마을 (village plan, Global Constraints): village.glb <= 8 MB and <= 260k triangles; memorial.glb (the hall's
+ * interior, Task 8) <= 6 MB and <= 200k triangles.
  */
 export const BUDGETS: Record<SchoolKind, { maxBytes: number; maxTriangles: number }> = {
   hub: { maxBytes: 3.5 * MB, maxTriangles: 150_000 },
   counsel: { maxBytes: 5 * MB, maxTriangles: 120_000 },
   village: { maxBytes: 8 * MB, maxTriangles: 260_000 },
+  memorial: { maxBytes: 6 * MB, maxTriangles: 200_000 },
 };
 /** A required col__ box may differ from its layout box by at most this much on each side (m; boxes are read at 0.01). */
 export const BOX_TOLERANCE = 0.011;
@@ -512,8 +514,11 @@ export interface SchoolSpec {
   requiredNodes: string[];
   /** At least `min` nodes whose name starts with `prefix` (col__ boxes, shaft__ points). */
   requiredPrefixes: Array<{ prefix: string; min: number }>;
-  /** The node's world position (x, z) must be within OBJ_ANCHOR_TOLERANCE of this point. */
-  placements: Array<{ node: string; x: number; z: number }>;
+  /**
+   * The node's world position (x, z) must be within `tolerance` (default OBJ_ANCHOR_TOLERANCE) of this point; with `y`
+   * its height counts too, and with `yaw` its rotation must be that turn about +y (game yaw: 0 faces +z).
+   */
+  placements: Array<{ node: string; x: number; z: number; y?: number; yaw?: number; tolerance?: number }>;
   /** Nodes with these prefixes must have no rotation (the code animates them from the authored pose). */
   identityRotationPrefixes: string[];
   /**
@@ -525,6 +530,16 @@ export interface SchoolSpec {
   requiredBoxes?: Array<{ node: string; box: AABB; camera: boolean }>;
   /** Materials that must exist by exact name and must not be light-mapped (not LM_*): the game drives them itself. */
   requiredMaterials?: string[];
+  /**
+   * Discs on the ground no col__ box may reach into (the door pad, the arrival spot), apart from the boxes in `ignore`
+   * (the room's own walls: a door pad lies against its wall by design).
+   */
+  clearDiscs?: Array<{ name: string; x: number; z: number; radius: number; ignore?: readonly string[] }>;
+  /**
+   * A slab node (a 1 m cube's translation and scale, no rotation, like col__) whose underside is the room's ceiling at
+   * `y` and whose x/z extent covers `room` (within BOX_TOLERANCE): the indoor camera's ceiling (memorial `ceil__hall`).
+   */
+  ceiling?: { node: string; y: number; room: AABB };
 }
 
 export interface LightmapFile {
@@ -588,24 +603,35 @@ export function checkSchoolGlb(input: CheckInput): CheckResult[] {
   const placementProblems: string[] = [];
   let maxDist = 0;
   let checked = 0;
+  const firstIndex = new Map<string, number>();
+  nodes.forEach((n, i) => {
+    if (n.name !== undefined && !firstIndex.has(n.name)) firstIndex.set(n.name, i);
+  });
+  const tolerances = new Set<number>();
   for (const p of spec.placements) {
-    const index = nodes.findIndex((n) => n.name === p.node);
-    if (index < 0) continue; // already reported as missing
-    const [x, , z] = worldTranslation(gltf, index);
-    const dist = Math.hypot(x - p.x, z - p.z);
+    const index = firstIndex.get(p.node);
+    if (index === undefined) continue; // already reported as missing
+    const tol = p.tolerance ?? OBJ_ANCHOR_TOLERANCE;
+    tolerances.add(tol);
+    const [x, y, z] = worldTranslation(gltf, index);
+    const dist = Math.hypot(x - p.x, z - p.z, p.y === undefined ? 0 : y - p.y);
     checked += 1;
     maxDist = Math.max(maxDist, dist);
-    if (dist > OBJ_ANCHOR_TOLERANCE + 1e-9) {
-      placementProblems.push(`${p.node} 위치 (${x.toFixed(2)}, ${z.toFixed(2)}) 이 앵커 (${p.x}, ${p.z})에서 ${dist.toFixed(2)} m`);
+    if (dist > tol + 1e-9) {
+      const where = p.y === undefined ? `(${x.toFixed(2)}, ${z.toFixed(2)})` : `(${x.toFixed(2)}, ${y.toFixed(2)}, ${z.toFixed(2)})`;
+      const want = p.y === undefined ? `(${p.x}, ${p.z})` : `(${p.x}, ${p.y}, ${p.z})`;
+      placementProblems.push(`${p.node} 위치 ${where} 이 앵커 ${want}에서 ${dist.toFixed(2)} m (한도 ${tol} m)`);
+    }
+    if (p.yaw !== undefined && yawError(nodes[index]!, p.yaw) > 0.02) {
+      placementProblems.push(`${p.node} 방향이 앵커(yaw ${p.yaw.toFixed(3)})와 달라요`);
     }
   }
+  const tolText = tolerances.size > 0 ? [...tolerances].sort((a, b) => a - b).join(" / ") : String(OBJ_ANCHOR_TOLERANCE);
   out.push(
     result(
       placementProblems.length === 0,
       "앵커 위치",
-      placementProblems.length === 0
-        ? `${checked}개, 가장 먼 것 ${maxDist.toFixed(2)} m (한도 ${OBJ_ANCHOR_TOLERANCE} m)`
-        : `${placementProblems.join("; ")} (한도 ${OBJ_ANCHOR_TOLERANCE} m)`,
+      placementProblems.length === 0 ? `${checked}개, 가장 먼 것 ${maxDist.toFixed(2)} m (한도 ${tolText} m)` : nameList(placementProblems, 6),
     ),
   );
 
@@ -619,6 +645,8 @@ export function checkSchoolGlb(input: CheckInput): CheckResult[] {
   );
   if (spec.requiredBoxes && spec.requiredBoxes.length > 0) out.push(checkRequiredBoxes(gltf, spec.requiredBoxes, colliders.colliders));
   if (spec.requiredMaterials && spec.requiredMaterials.length > 0) out.push(checkRequiredMaterials(gltf, spec.requiredMaterials));
+  if (spec.clearDiscs && spec.clearDiscs.length > 0) out.push(checkClearDiscs(spec.clearDiscs, colliders.colliders));
+  if (spec.ceiling) out.push(checkCeiling(gltf, spec.ceiling));
   const instancing = checkInstancing(gltf);
   if (instancing) out.push(instancing);
 
@@ -709,6 +737,62 @@ function checkRequiredBoxes(
     problems.length === 0
       ? `배치 자료의 상자 ${checked} / ${required.length}개가 위치·크기·카메라 높이 그대로예요`
       : `${problems.join("; ")} (찾은 상자 ${checked} / ${required.length}개)`,
+  );
+}
+
+/**
+ * How far (radians) a node's rotation is from a pure turn by `yaw` about +y (game yaw: 0 faces +z): the larger of the
+ * angle between where its +z points and the wanted facing, and the tilt of its +y away from up. No rotation is yaw 0.
+ */
+export function yawError(n: GltfNode, yaw: number): number {
+  const [qx, qy, qz, qw] = n.rotation ?? [0, 0, 0, 1];
+  const fz = [2 * (qx! * qz! + qw! * qy!), 2 * (qy! * qz! - qw! * qx!), 1 - 2 * (qx! * qx! + qy! * qy!)];
+  const upY = 1 - 2 * (qx! * qx! + qz! * qz!);
+  const dot = fz[0]! * Math.sin(yaw) + fz[2]! * Math.cos(yaw);
+  const clamp = (v: number) => Math.max(-1, Math.min(1, v));
+  return Math.max(Math.acos(clamp(dot)), Math.acos(clamp(upY)));
+}
+
+/** No col__ box reaches into any of the discs (door pads, arrival spots). */
+function checkClearDiscs(
+  discs: ReadonlyArray<{ name: string; x: number; z: number; radius: number; ignore?: readonly string[] }>,
+  boxes: readonly NamedBox[],
+): CheckResult {
+  const problems: string[] = [];
+  for (const d of discs) {
+    for (const b of boxes) {
+      if (d.ignore?.includes(b.name)) continue;
+      const dx = Math.max(b.box.minX - d.x, 0, d.x - b.box.maxX);
+      const dz = Math.max(b.box.minZ - d.z, 0, d.z - b.box.maxZ);
+      if (Math.hypot(dx, dz) < d.radius - 1e-9) problems.push(`${b.name}이(가) ${d.name} 안으로 들어와요`);
+    }
+  }
+  return result(
+    problems.length === 0,
+    "비워 둘 자리",
+    problems.length === 0 ? `${discs.map((d) => d.name).join(", ")}에 col__ 상자가 없어요` : problems.join("; "),
+  );
+}
+
+/** The ceiling slab node: no rotation, its underside at `y`, its extent covering the room (BOX_TOLERANCE). */
+function checkCeiling(gltf: Gltf, c: { node: string; y: number; room: AABB }): CheckResult {
+  const n = (gltf.nodes ?? []).find((x) => x.name === c.node);
+  if (!n) return result(false, "천장", `${c.node} 노드가 없어요`);
+  const [tx, ty, tz] = n.translation ?? [0, 0, 0];
+  const [sx, sy, sz] = (n.scale ?? [1, 1, 1]).map((v) => Math.abs(v));
+  const problems: string[] = [];
+  if (!hasNoRotation(n) || n.matrix) problems.push("회전이나 matrix가 있어요");
+  const bottom = ty! - sy! / 2;
+  if (Math.abs(bottom - c.y) > BOX_TOLERANCE) problems.push(`아랫면 높이 ${bottom.toFixed(3)} m ≠ ${c.y} m`);
+  const box = { minX: tx! - sx! / 2, maxX: tx! + sx! / 2, minZ: tz! - sz! / 2, maxZ: tz! + sz! / 2 };
+  const t = BOX_TOLERANCE;
+  if (box.minX > c.room.minX + t || box.maxX < c.room.maxX - t || box.minZ > c.room.minZ + t || box.maxZ < c.room.maxZ - t) {
+    problems.push(`방을 다 덮지 않아요 (${box.minX.toFixed(2)}..${box.maxX.toFixed(2)}, ${box.minZ.toFixed(2)}..${box.maxZ.toFixed(2)})`);
+  }
+  return result(
+    problems.length === 0,
+    "천장",
+    problems.length === 0 ? `${c.node}: 아랫면 ${c.y} m, 방 전체를 덮어요` : `${c.node}: ${problems.join("; ")}`,
   );
 }
 
