@@ -1,5 +1,6 @@
 import { CANDLE_REACH_M } from "@caysonverse/shared/village/messages";
 import { VILLAGE_LAYOUT, cubbyAnchors, type CubbyAnchor, type VillageLayout } from "@caysonverse/shared/village/villageLayout";
+import { SAMPLE_FILLED_IDS, sampleFilledIds } from "@caysonverse/shared/village/sampleFill";
 
 /**
  * Pure candle rule of the memorial hall (케이슨 마을 Task 9; clock-free and room-free like villageDoor.ts): may a player
@@ -8,6 +9,9 @@ import { VILLAGE_LAYOUT, cubbyAnchors, type CubbyAnchor, type VillageLayout } fr
  * The distance is measured on the ground plane, from the player to the cubby's anchor (its opening centre): the seven
  * rows of a column share one spot on the floor, and a visitor stands in front of the column, not at the height of the
  * cubby. Nothing is stored: a candle is a broadcast, and each client lets it burn out by itself.
+ *
+ * Only a FILLED cubby takes a candle (final fix, T9 review): an empty one shows "곧 이 자리에 …" and has nobody to light
+ * it for. Which cubbies are filled is the shared seed-stable choice (shared/village/sampleFill.ts).
  */
 
 /** Every cubby's anchor by id, built once. */
@@ -18,9 +22,15 @@ function anchorsOf(layout: VillageLayout): ReadonlyMap<string, CubbyAnchor> {
   return layout === VILLAGE_LAYOUT ? ANCHORS : new Map(cubbyAnchors(layout).map((a) => [a.id, a]));
 }
 
+/** The filled cubbies of another layout (tests), else the shared one. */
+function filledOf(layout: VillageLayout): ReadonlySet<string> {
+  return layout === VILLAGE_LAYOUT ? SAMPLE_FILLED_IDS : sampleFilledIds(cubbyAnchors(layout));
+}
+
 /**
  * The cubby's anchor when the candle may be lit, else `null`: the player is not in the hall, the position is not finite,
- * `cubby` is not a string naming one of the hall's cubbies, or the player is farther than `CANDLE_REACH_M` from it.
+ * `cubby` is not a string naming one of the hall's cubbies, the cubby is empty (no sample memorial), or the player is
+ * farther than `CANDLE_REACH_M` from it.
  */
 export function candleCubby(
   area: string,
@@ -34,6 +44,7 @@ export function candleCubby(
   if (typeof cubby !== "string") return null;
   const anchor = anchorsOf(layout).get(cubby);
   if (!anchor) return null;
+  if (!filledOf(layout).has(cubby)) return null;
   if (Math.hypot(x - anchor.x, z - anchor.z) > CANDLE_REACH_M) return null;
   return anchor;
 }

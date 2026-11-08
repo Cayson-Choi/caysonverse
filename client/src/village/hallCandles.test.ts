@@ -47,3 +47,20 @@ describe("hallCandles — a lit candle burns 60 s on every client in the hall (T
     expect(handlers.size).toBe(0);
   });
 });
+
+describe("showInstances — candle meshes with nothing burning are hidden (final fix)", () => {
+  it("count 0 hides the mesh and uploads nothing; a candle shows it; going out uploads once more", async () => {
+    const { showInstances } = await import("./hallCandles");
+    const m = { count: 0, visible: true, instanceMatrix: { needsUpdate: false } };
+    showInstances(m, 0);
+    expect(m).toEqual({ count: 0, visible: false, instanceMatrix: { needsUpdate: false } });
+    showInstances(m, 2);
+    expect(m.visible).toBe(true);
+    expect(m.count).toBe(2);
+    expect(m.instanceMatrix.needsUpdate).toBe(true);
+    m.instanceMatrix.needsUpdate = false;
+    showInstances(m, 0);
+    expect(m.visible).toBe(false);
+    expect(m.instanceMatrix.needsUpdate).toBe(true);
+  });
+});

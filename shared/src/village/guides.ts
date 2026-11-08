@@ -8,9 +8,10 @@
  * (`guideColliders`, part of the village geometry), so nobody walks through them.
  *
  *  - plaza_guide (마을 안내원) stands on the plaza at (5, 12), clear of the spawn disc (0, 14) r 3, facing the spawn.
- *  - hall_desk (추모관 안내 데스크) stands inside the hall at (302.8, 4.0) facing -x: clear of the furnished hall's
- *    col__ boxes (the east cubby unit ends at z 2.07, the south wall starts at z 6), 3.05 m from the door pad's
- *    centre (300, 5.2; pad r 1.4) and 2.83 m from the inside spawn (300, 3.6). The layout test pins all of this.
+ *  - hall_desk (추모관 안내 데스크) stands inside the hall at (302.8, 3.0) facing -x (final fix: moved 1 m north from
+ *    (302.8, 4.0) so its reach meets the way out's less): clear of the furnished hall's col__ boxes (the east cubby
+ *    unit ends at z 2.07, the south wall starts at z 6), 3.56 m from the door pad's centre (300, 5.2; pad r 1.4) and
+ *    2.86 m from the inside spawn (300, 3.6). The layout test pins all of this.
  */
 import type { Appearance } from "../appearance";
 import { appearanceFromIds } from "../appearance";
@@ -107,7 +108,7 @@ export const GUIDES: readonly Guide[] = deepFreeze([
     name: "추모관 안내 데스크",
     tag: "안내원",
     area: "hall",
-    pos: { x: 302.8, z: 4.0 },
+    pos: { x: 302.8, z: 3.0 },
     yaw: -Math.PI / 2, // faces -x
     appearance: appearanceFromIds(
       { hat: null, hair: "bob", face: "calm", top: "shirt_tie", bottom: "longskirt", shoes: "dress", item: null },

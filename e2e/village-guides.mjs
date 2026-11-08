@@ -163,7 +163,7 @@ try {
     run.check("CHAT_VOICE_ENABLED is false", chat === false, chat);
   });
 
-  await run.step("into the hall: the desk guide at (302.8, 4.0), 문의하기, a gentle answer, the hall music ducked", async () => {
+  await run.step("into the hall: the desk guide at (302.8, 3.0), 문의하기, a gentle answer, the hall music ducked", async () => {
     for (const [x, z] of [[-20, 5], [-14, -20], [0, -33], [0, -50.8]]) await walkAndWait(A, x, z, 40000, 1.2);
     await A.page.keyboard.press("KeyE");
     await A.page.waitForFunction(async () => (await window.__imp("/src/village/villageArea.ts")).localArea() === "hall", null, { timeout: 15000 });
@@ -171,9 +171,9 @@ try {
     await sleep(2500);
     const arrive = await targetsAt(A);
     run.check("at the arrival point the desk is not offered yet", !arrive.some((t) => t.id === "guide:hall_desk"), arrive);
-    await walkAndWait(A, 301.6, 3.4, 15000, 0.3); // 1.3 m from the desk, out of the way out's reach (2.1 m from the pad)
+    await walkAndWait(A, 301.6, 3.0, 15000, 0.3); // 1.2 m from the desk, out of the way out's reach (2.1 m from the pad)
     summary.deskStand = await A.page.evaluate(() => window.__cv.getPos());
-    await turnCameraTo(A, 302.8, 4.0);
+    await turnCameraTo(A, 302.8, 3.0);
     await sleep(800);
     const ts = await targetsAt(A);
     run.check("문의하기 is offered at the desk", ts.some((t) => t.id === "guide:hall_desk" && t.label === "문의하기"), ts);

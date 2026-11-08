@@ -85,3 +85,21 @@ export function bindHallCandles(room: CandleRoom): () => void {
     if (m && typeof m.cubby === "string" && m.cubby.length > 0) noteCandleLit(m.cubby, typeof m.by === "string" ? m.by : "");
   });
 }
+
+/** The slice of an InstancedMesh `showInstances` touches. */
+export interface CountedMesh {
+  count: number;
+  visible: boolean;
+  instanceMatrix: { needsUpdate: boolean };
+}
+
+/**
+ * Draw the first `n` instances of a candle mesh; with none it is hidden (`visible = false`, final fix: a count-0 mesh
+ * still costs a scene-graph pass and a program switch), and its matrices are only re-uploaded while some burn.
+ */
+export function showInstances(mesh: CountedMesh, n: number): void {
+  const was = mesh.count;
+  mesh.count = n;
+  mesh.visible = n > 0;
+  if (n > 0 || was > 0) mesh.instanceMatrix.needsUpdate = true;
+}

@@ -113,25 +113,34 @@ export function guideTarget(area: AreaId, x: number, z: number): InteractTarget 
 /**
  * Everything the village offers at a spot: the door (`villageTargets`), the guide within reach (Task 9A: "문의하기"),
  * and inside the hall the nearest cubby column's close-up. The door comes first (priority 1) over a cubby; a guide in
- * reach of a door gets the door's priority, so the nearer of the two wins; a guide and a cubby go by distance.
+ * reach of a door gets the door's priority, so the nearer of the two wins. A guide and a cubby always go by distance,
+ * the guide winning a tie (final fix: the cubby takes the guide's priority, so a door in reach no longer makes a
+ * farther guide beat a nearer cubby).
+ *
+ * `panelOpen`: the cubby card or a guide's questions are open, so nothing is offered and the E / action button is gone
+ * (final fix: pressing it there would act on the world behind the panel).
  */
-export function villageAndHallTargets(area: AreaId, x: number, z: number): readonly InteractTarget[] {
+export function villageAndHallTargets(area: AreaId, x: number, z: number, panelOpen = false): readonly InteractTarget[] {
+  if (panelOpen) return NONE;
   const doors = villageTargets(area, x, z);
   const out: InteractTarget[] = doors.map((d) => ({ ...d, priority: 1 }));
-  const guide = guideTarget(area, x, z);
+  const raw = guideTarget(area, x, z);
   // The hall desk's reach meets the way out's (pad r 1.4 + 0.7) between the arrival point and the desk: there the
   // nearer of the two wins (same priority as the door), so E at the desk asks the desk instead of leaving the hall.
-  if (guide) out.push(doors.length > 0 ? { ...guide, priority: 1 } : guide);
+  const guide = raw && doors.length > 0 ? { ...raw, priority: 1 } : raw;
+  if (guide) out.push(guide); // before the cubby: an exact tie goes to the guide
   const near = area === "hall" ? nearestCubbyColumn(x, z) : null;
-  if (near)
-    out.push({
+  if (near) {
+    const cubby: InteractTarget = {
       kind: "object",
       id: `${CUBBY_TARGET_PREFIX}${near.column.key}`,
       dist: near.dist,
       icon: "🕯️",
       label: CUBBY_LABEL,
       short: CUBBY_SHORT,
-    });
+    };
+    out.push(guide?.priority !== undefined ? { ...cubby, priority: guide.priority } : cubby);
+  }
   if (out.length === 0) return NONE;
   // A door alone keeps its plain shape (no priority), as before.
   if (out.length === 1 && doors.length === 1) return doors;

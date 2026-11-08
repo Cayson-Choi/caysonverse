@@ -158,7 +158,7 @@ describe("villageAndHallTargets — the guides' 문의하기 (Task 9A)", () => {
   });
 
   it("the hall desk offers 문의하기 inside the hall, not at the arrival point and not at the way out", () => {
-    const t = villageAndHallTargets("hall", 301.2, 4.0);
+    const t = villageAndHallTargets("hall", 301.2, 3.0);
     expect(t.map((x) => x.id)).toContain("guide:hall_desk");
     expect(villageAndHallTargets("hall", inside.spawn.x, inside.spawn.z).map((x) => x.id)).not.toContain("guide:hall_desk");
     const pad = inside.doorPad;
@@ -175,11 +175,35 @@ describe("the hall desk and the way out (Task 9A)", () => {
   it("where both are in reach the nearer one wins (E at the desk asks the desk, at the door it leaves)", () => {
     const pick = (x: number, z: number) =>
       pickInteraction({ seated: false, seat: null, npc: null, npcPanelOpen: false, targets: villageAndHallTargets("hall", x, z) });
-    const atDesk = pick(301.3, 4.0); // 1.5 m from the desk, 1.92 m from the pad's centre
+    // the desk stands at (302.8, 3.0) (final fix: 1 m north of where it was, so the two reaches overlap less)
+    const atDesk = pick(301.4, 3.8); // 1.61 m from the desk, 1.98 m from the pad's centre
     expect(atDesk).toMatchObject({ kind: "target", target: { id: "guide:hall_desk" } });
-    const atDoor = pick(300.6, 4.6); // 0.85 m from the pad, 2.25 m from the desk (out of its reach)
+    const atDoor = pick(300.6, 4.6); // 0.85 m from the pad, 2.72 m from the desk (out of its reach)
     expect(atDoor).toMatchObject({ kind: "target", target: { id: MEMORIAL_DOOR_ID } });
-    const between = pick(300.9, 4.8); // 0.98 m from the pad, 1.98 m from the desk: the door is nearer
+    const between = pick(301.1, 4.2); // 1.49 m from the pad, 2.08 m from the desk: the door is nearer
     expect(between).toMatchObject({ kind: "target", target: { id: MEMORIAL_DOOR_ID } });
+  });
+
+  it("a guide and a cubby in reach: the nearer wins, the guide on a tie, whatever the door does (final fix)", () => {
+    let both = 0;
+    for (let x = 296; x <= 305; x += 0.1)
+      for (let z = -6; z <= 6; z += 0.1) {
+        const t = villageAndHallTargets("hall", x, z);
+        const g = t.find((v) => v.id === "guide:hall_desk");
+        const c = t.find((v) => v.id.startsWith("cubby:"));
+        if (!g || !c) continue;
+        both += 1;
+        expect(g.priority ?? 0, `${x},${z}`).toBe(c.priority ?? 0);
+        const pick = pickInteraction({ seated: false, seat: null, npc: null, npcPanelOpen: false, targets: t });
+        const want = t.find((v) => (v.priority ?? 0) > (g.priority ?? 0)) ? null : c.dist < g.dist ? c.id : g.id;
+        if (want) expect(pick, `${x},${z}`).toMatchObject({ target: { id: want } });
+      }
+    expect(both).toBeGreaterThan(0);
+  });
+
+  it("nothing is offered while the cubby card or a guide's questions are open (the action button hides)", () => {
+    expect(villageAndHallTargets("hall", 301.4, 3.8).length).toBeGreaterThan(0);
+    expect(villageAndHallTargets("hall", 301.4, 3.8, true)).toHaveLength(0);
+    expect(villageAndHallTargets("village", 5, 13.5, true)).toHaveLength(0);
   });
 });

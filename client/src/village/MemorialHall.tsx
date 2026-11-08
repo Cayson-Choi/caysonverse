@@ -19,7 +19,7 @@ import {
 import { VILLAGE_LAYOUT, type CubbyAnchor } from "@caysonverse/shared/village/villageLayout";
 import { DRACO_PATH } from "../game/hub/hubModelPrep";
 import { buildCubbyPropMeshes, layoutCubbyProps, makePhotoMaterial, placementMatrix } from "./cubbyProps";
-import { burningCandles, candleClock, clearCandles, pruneCandles } from "./hallCandles";
+import { burningCandles, candleClock, clearCandles, pruneCandles, showInstances } from "./hallCandles";
 import { MEMORIAL_LIGHTMAP_URL, MEMORIAL_MODEL_URL, MEMORIAL_PROPS_URL, disposeMemorial, prepareMemorial } from "./memorialModelPrep";
 import { holdMemorialFiles, noteMemorialRequested } from "./memorialRelease";
 import { HALL_CUBBY_ANCHORS, SAMPLE_CUBBIES, SAMPLE_PHOTO_ATLAS } from "./sampleCubbies";
@@ -106,6 +106,7 @@ function makeCandles(propsScene: Object3D) {
       const mesh = new InstancedMesh(m.geometry, material, MAX_CANDLES);
       mesh.name = `inst__candle_${material.name}`;
       mesh.count = 0;
+      mesh.visible = false;
       mesh.frustumCulled = false;
       own.push(mesh);
       parts.push({ mesh, local: new Matrix4().multiplyMatrices(inv, m.matrixWorld) });
@@ -119,6 +120,7 @@ function makeCandles(propsScene: Object3D) {
     const mesh = new InstancedMesh(geometry, material, MAX_CANDLES);
     mesh.name = `inst__${name}`;
     mesh.count = 0;
+    mesh.visible = false;
     mesh.frustumCulled = false;
     mesh.renderOrder = order;
     group.add(mesh);
@@ -209,14 +211,8 @@ function MemorialHall() {
       for (const g of candles.glows) g.setMatrixAt(i, tmpGlow.compose(glowPos, glowQuat, glowScale));
       i += 1;
     }
-    for (const p of candles.parts) {
-      p.mesh.count = i;
-      p.mesh.instanceMatrix.needsUpdate = true;
-    }
-    for (const g of candles.glows) {
-      g.count = i;
-      g.instanceMatrix.needsUpdate = true;
-    }
+    for (const p of candles.parts) showInstances(p.mesh, i);
+    for (const g of candles.glows) showInstances(g, i);
   });
 
   return (

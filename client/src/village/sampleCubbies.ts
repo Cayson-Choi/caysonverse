@@ -1,4 +1,8 @@
 import { VILLAGE_LAYOUT, cubbyAnchors, type CubbyAnchor } from "@caysonverse/shared/village/villageLayout";
+import { SAMPLE_FILL, hashId, sampleFilledIds } from "@caysonverse/shared/village/sampleFill";
+
+// The choice of WHICH cubbies are filled lives in the shared package: the server lights candles only on those.
+export { SAMPLE_FILL, hashId };
 
 /**
  * The memorial hall's example cubbies (케이슨 마을 Task 9): until families can place their own, 60 % of the 266 cubbies
@@ -16,9 +20,6 @@ import { VILLAGE_LAYOUT, cubbyAnchors, type CubbyAnchor } from "@caysonverse/sha
 
 /** The placeholder portraits: one atlas of 4 x 4 tiles (128 x 160 px each), drawn by scripts/make-sample-photos.mjs. */
 export const SAMPLE_PHOTO_ATLAS = { url: "/village/sample-photos/atlas.webp", cols: 4, rows: 4, count: 16 } as const;
-
-/** How many of the hall's cubbies hold a sample (brief: 60 %). */
-export const SAMPLE_FILL = 0.6;
 
 /** The nine props of memorial_props.glb (`prop__<kind>`). */
 export type PropKind =
@@ -90,16 +91,6 @@ export const SAMPLE_LINES: readonly string[] = [
 /** Where the latest sample years end (the hall opened in 2026). */
 const LAST_YEAR = 2026;
 
-/** FNV-1a hash of a string (32-bit): the seed of a cubby's choices. */
-export function hashId(id: string): number {
-  let h = 0x811c9dc5;
-  for (let i = 0; i < id.length; i += 1) {
-    h ^= id.charCodeAt(i);
-    h = Math.imul(h, 0x01000193);
-  }
-  return h >>> 0;
-}
-
 /** A small seeded generator (mulberry32): the same seed always gives the same numbers in [0, 1). */
 export function seeded(seed: number): () => number {
   let a = seed >>> 0;
@@ -135,13 +126,7 @@ function propsFor(rnd: () => number): PropPlacement[] {
  * portrait. In the order of `anchors`.
  */
 export function makeSampleCubbies(anchors: readonly CubbyAnchor[], fill: number = SAMPLE_FILL): SampleCubby[] {
-  const want = Math.round(anchors.length * fill);
-  const chosen = new Set(
-    [...anchors]
-      .sort((a, b) => hashId(`fill:${a.id}`) - hashId(`fill:${b.id}`) || (a.id < b.id ? -1 : 1))
-      .slice(0, want)
-      .map((a) => a.id),
-  );
+  const chosen = sampleFilledIds(anchors, fill);
   const out: SampleCubby[] = [];
   for (const a of anchors) {
     if (!chosen.has(a.id)) continue;

@@ -22,6 +22,7 @@ import {
   type ServerTimePayload,
 } from "@caysonverse/shared/village/messages";
 import { VILLAGE_LAYOUT, cubbyAnchors } from "@caysonverse/shared/village/villageLayout";
+import { SAMPLE_FILLED_IDS } from "@caysonverse/shared/village/sampleFill";
 import { APPEARANCE_FIELDS, APPEARANCE_RANGES, DEFAULT_APPEARANCE, pickAppearance, type Appearance } from "@caysonverse/shared/appearance";
 import type { Player } from "@caysonverse/shared/schema";
 import { rooms, type VillageRoom, type WorldRoom } from "./index";
@@ -744,8 +745,15 @@ describe("VillageRoom sharding (integration)", () => {
 });
 
 describe("VillageRoom candles (integration, Task 9)", () => {
-  /** A cubby on the back wall and the spot 0.8 m in front of it (inside the 1.5 m reach, clear of the unit). */
-  const CUBBY = cubbyAnchors(L).find((a) => a.id === "n_3_10")!;
+  /**
+   * A filled cubby on the back wall (row 3; only a filled cubby takes a candle, final fix), an empty one on the same
+   * row, and the spots 0.8 m in front of them (inside the 1.5 m reach, clear of the unit).
+   */
+  const NORTH = cubbyAnchors(L).filter((a) => a.id.startsWith("n_3_"));
+  const CUBBY = NORTH.find((a) => SAMPLE_FILLED_IDS.has(a.id))!;
+  const EMPTY = NORTH.find((a) => !SAMPLE_FILLED_IDS.has(a.id))!;
+  /** Another filled row of CUBBY's column (the same spot on the floor). */
+  const SECOND = cubbyAnchors(L).find((a) => a.id !== CUBBY.id && a.id.startsWith("n_") && a.id.endsWith(`_${CUBBY.id.split("_")[2]}`) && SAMPLE_FILLED_IDS.has(a.id))!;
   const FRONT = { x: CUBBY.x, z: CUBBY.z + 0.8 };
 
   /** Alice and carol in the hall (alice in front of the cubby), bob on the plaza; every CandleLit each one hears. */
@@ -778,11 +786,15 @@ describe("VillageRoom candles (integration, Task 9)", () => {
     expect(heard.bob).toEqual([]);
   });
 
-  it("far from the cubby (the spawn, 9 m away), an unknown cubby or a bad payload: refused silently, and no slot is used", async () => {
+  it("far from the cubby (the spawn, 9 m away), an empty or unknown cubby or a bad payload: refused silently, and no slot is used", async () => {
     const { clock, alice, carol, a, heard } = await hallParty();
     placeAt(a, HALL_SPAWN.x, HALL_SPAWN.z);
     alice.send(VillageMsg.LightCandle, { cubby: CUBBY.id });
     await settle(alice); // handled (and dropped) from the spawn before she steps up
+    placeAt(a, FRONT.x, FRONT.z);
+    placeAt(a, EMPTY.x, EMPTY.z + 0.8);
+    alice.send(VillageMsg.LightCandle, { cubby: EMPTY.id }); // right in front of it, but nobody rests there
+    await settle(alice);
     placeAt(a, FRONT.x, FRONT.z);
     alice.send(VillageMsg.LightCandle, { cubby: "n_9_99" });
     alice.send(VillageMsg.LightCandle, { cubby: 7 });
@@ -801,13 +813,13 @@ describe("VillageRoom candles (integration, Task 9)", () => {
     alice.send(VillageMsg.LightCandle, { cubby: CUBBY.id });
     expect(await pollFor(() => heard.carol.length === 1)).toBe(true);
     clock.t += 4000;
-    alice.send(VillageMsg.LightCandle, { cubby: "n_4_10" });
+    alice.send(VillageMsg.LightCandle, { cubby: SECOND.id });
     await roundTrip(alice, carol); // the clock stays still: the typing sentinel is not needed twice
     expect(heard.carol).toHaveLength(1);
     clock.t += 1001;
-    alice.send(VillageMsg.LightCandle, { cubby: "n_4_10" });
+    alice.send(VillageMsg.LightCandle, { cubby: SECOND.id });
     expect(await pollFor(() => heard.carol.length === 2)).toBe(true);
-    expect(heard.carol[1]).toEqual({ cubby: "n_4_10", by: "케이슨" });
+    expect(heard.carol[1]).toEqual({ cubby: SECOND.id, by: "케이슨" });
   });
 
   it("from the village (even standing at the right x, z) the candle is refused", async () => {

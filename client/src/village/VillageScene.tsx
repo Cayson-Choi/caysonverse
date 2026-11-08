@@ -15,7 +15,7 @@ import { PlotMarkers } from "./PlotMarkers";
 import { DoorPad } from "./VillageHall";
 import { HallArea } from "./MemorialHall";
 import { CubbyView } from "./CubbyView";
-import { openCubbyCard } from "./cubbyCard";
+import { cubbyCardState, openCubbyCard } from "./cubbyCard";
 import { DayNight } from "./DayNight";
 import { VillageModel } from "./VillageModel";
 import { VillageBgmButton } from "./VillageBgmButton";
@@ -25,7 +25,7 @@ import { areaGate, localArea, readSelfArea, releaseLocalArea, seedLocalArea, use
 import { CUBBY_TARGET_PREFIX, GUIDE_TARGET_PREFIX, villageAndHallTargets, villageTargets } from "./villageTargets";
 import { GuideNpcs } from "./GuideNpc";
 import { GuideDialog } from "./GuideDialog";
-import { openGuideDialog } from "./guideDialogStore";
+import { guideDialogOpen, openGuideDialog } from "./guideDialogStore";
 
 /**
  * 케이슨 마을 — the village scene (Task 4). A `PlayShell` on the village map under the village's afternoon
@@ -77,7 +77,8 @@ function VillageArea({ area, tier }: { area: AreaId; tier: VillageTier }) {
 
 function VillageDoors({ pose }: { pose: Pose }) {
   useEffect(() => {
-    setTargetSource((p) => villageAndHallTargets(localArea(), p.x, p.z));
+    // Nothing is offered while the cubby card or a guide's questions are open (the E / action button hides).
+    setTargetSource((p) => villageAndHallTargets(localArea(), p.x, p.z, cubbyCardState() !== null || guideDialogOpen() !== null));
     setTargetHandler((target, phase) => {
       if (phase !== "press") return;
       if (target.kind === "object" && target.id.startsWith(GUIDE_TARGET_PREFIX)) {
