@@ -20,7 +20,7 @@ import { DayNight } from "./DayNight";
 import { VillageModel } from "./VillageModel";
 import { VillageBgmButton } from "./VillageBgmButton";
 import { VILLAGE_CAMERA_PLANES, VILLAGE_GROUND_DECAL, type VillageTier } from "./villageModelPrep";
-import { holdVillageFiles } from "./villageRelease";
+import { holdVillageFiles, holdsVillageFiles } from "./villageRelease";
 import { areaGate, localArea, readSelfArea, releaseLocalArea, seedLocalArea, useLocalArea } from "./villageArea";
 import { CUBBY_TARGET_PREFIX, GUIDE_TARGET_PREFIX, villageAndHallTargets, villageTargets } from "./villageTargets";
 import { GuideNpcs } from "./GuideNpc";
@@ -123,13 +123,15 @@ export function VillageScene({ identity }: { identity: Identity }) {
     setPublished(true);
     return () => releaseLocalArea(token);
   }, [boot]);
-  // The village's files (model, light maps) stay cached while this scene shows, through every hall visit, and go
-  // one tick after it unmounts (Task 7 review I1).
-  useEffect(() => holdVillageFiles(), []);
   const live = useLocalArea();
   // Until the seed is published the store may still hold the previous scene's area: draw from the seed itself.
   const area = published ? live : boot.area;
   const tier = useQualityTier();
+  // The village's files (model, light maps) stay cached while this scene shows and go one tick after it unmounts
+  // (Task 7 review I1). On the light (phone) tier they go while the player is in the hall too, and load again on the
+  // way out (final review I2: the village's textures are not resident next to the hall's).
+  const holdFiles = holdsVillageFiles(tier, area);
+  useEffect(() => (holdFiles ? holdVillageFiles() : undefined), [holdFiles]);
   if (!room) return null;
 
   return (

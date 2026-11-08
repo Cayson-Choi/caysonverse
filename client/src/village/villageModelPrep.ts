@@ -178,8 +178,93 @@ export const MOON_TINT: readonly [number, number, number] = [0.55, 0.75, 1.2];
 export const moonTintUniform = { value: new Vector3(...MOON_TINT) };
 /** The night light map's weight: 0 = the day map alone, 1 = the night map alone. */
 export const nightBlendUniform = { value: 0 };
-/** The night light map (the same UV set as the day one); set by `prepareVillage`. */
+/** The night light map (the same UV set as the day one), or null until it is loaded (`setNightLightmap`). */
 export const nightMapUniform: { value: Texture | null } = { value: null };
+
+/** Lay the night light map on every patched material (configured like the day one), or take it away (null). */
+export function setNightLightmap(texture: Texture | null): void {
+  if (texture) configureLightmap(texture);
+  nightMapUniform.value = texture;
+}
+
+/** The light tier's largest texture side (final review I2). The light maps keep their 2048 (soft shadows show it). */
+export const LIGHT_TIER_MAX_TEXTURE = 1024;
+
+/** The slice of a canvas `capTextureSize` draws into. */
+export interface CanvasLike {
+  width: number;
+  height: number;
+  getContext(type: "2d"): { drawImage(image: never, x: number, y: number, w: number, h: number): void } | null;
+}
+
+const browserCanvas = (): CanvasLike | null =>
+  typeof document === "undefined" ? null : (document.createElement("canvas") as unknown as CanvasLike);
+
+/**
+ * Shrink a texture's image so its longest side is at most `max` (a canvas copy; the decoded original is closed). Done
+ * once per texture, before its first upload. Returns true when it shrank it. Never throws: a texture it cannot draw
+ * stays as it is.
+ */
+export function capTextureSize(texture: Texture, max: number, makeCanvas: () => CanvasLike | null = browserCanvas): boolean {
+  const img = texture.image as { width?: number; height?: number; close?: () => void } | null | undefined;
+  if (!img || !img.width || !img.height || (img.width <= max && img.height <= max)) return false;
+  if (texture.userData.villageCapped) return false;
+  const scale = max / Math.max(img.width, img.height);
+  const w = Math.max(1, Math.round(img.width * scale));
+  const h = Math.max(1, Math.round(img.height * scale));
+  let canvas: CanvasLike | null;
+  try {
+    canvas = makeCanvas();
+    if (!canvas) return false;
+    canvas.width = w;
+    canvas.height = h;
+    const g = canvas.getContext("2d");
+    if (!g) return false;
+    g.drawImage(img as never, 0, 0, w, h);
+  } catch {
+    return false;
+  }
+  try {
+    img.close?.(); // an ImageBitmap: free the decoded original now
+  } catch {
+    // ignore
+  }
+  texture.image = canvas;
+  texture.needsUpdate = true;
+  texture.userData.villageCapped = true;
+  return true;
+}
+
+const COLOUR_MAPS = ["map", "alphaMap", "emissiveMap", "normalMap", "roughnessMap", "metalnessMap", "aoMap", "bumpMap"] as const;
+
+/** Cap every texture of the model's materials (not the light maps) at `max` px. Returns how many it shrank. */
+export function capModelTextures(root: Object3D, max: number, makeCanvas?: () => CanvasLike | null): number {
+  const seen = new Set<Texture>();
+  let n = 0;
+  root.traverse((o) => {
+    if (!isMesh(o)) return;
+    for (const m of materialsOf(o)) {
+      for (const key of COLOUR_MAPS) {
+        const t = (m as unknown as Record<string, Texture | null | undefined>)[key];
+        if (!t || seen.has(t)) continue;
+        seen.add(t);
+        if (capTextureSize(t, max, makeCanvas)) n++;
+      }
+    }
+  });
+  return n;
+}
+
+/** Free a texture on the GPU and close its decoded bitmap (Safari keeps a decoded copy otherwise). */
+export function freeTexture(t: Texture): void {
+  t.dispose();
+  const img = t.image as { close?: () => void } | null | undefined;
+  try {
+    img?.close?.();
+  } catch {
+    // ignore
+  }
+}
 const lifted = new WeakSet<Material>();
 
 const LIFT_PARS = /* glsl */ `uniform float uVillageLift;
@@ -443,12 +528,15 @@ export function prepareVillage(
   lightmap: Texture,
   tier: VillageTier,
   curve: ToneCurve = "neutral",
-  nightLightmap: Texture | null = null,
+  nightLightmap?: Texture | null,
 ): VillageNodes {
   const root = source.clone(true);
   configureLightmap(lightmap);
-  if (nightLightmap) configureLightmap(nightLightmap);
-  nightMapUniform.value = nightLightmap;
+  // The night light map is loaded on its own when night is near (VillageModel's NightLightmap, final fix I2b):
+  // left out, the current one stays; null clears it.
+  if (nightLightmap !== undefined) setNightLightmap(nightLightmap);
+  // The light (phone) tier caps the model's colour textures at 1024 px (final review I2): a quarter of the memory.
+  if (tier === "low") capModelTextures(source, LIGHT_TIER_MAX_TEXTURE);
   const own: VillageNodes["own"] = [];
   const hazed: MeshBasicMaterial[] = [];
   const graded: VillageNodes["graded"] = [];
@@ -663,7 +751,8 @@ export function applyDayNight(nodes: VillageNodes, s: DayNightState): void {
   dayTintUniform.value.set(s.dayTint[0], s.dayTint[1], s.dayTint[2]);
   foliageTintUniform.value.set(s.foliageTint[0], s.foliageTint[1], s.foliageTint[2]);
   cherryTintUniform.value.set(s.cherryTint[0], s.cherryTint[1], s.cherryTint[2]);
-  nightBlendUniform.value = s.night;
+  // No night map yet (it loads when night is near, final fix I2b): the day map alone, never a black blend.
+  nightBlendUniform.value = nightMapUniform.value ? s.night : 0;
   litUniform.value = s.lights;
   nodes.sky?.color.setRGB(s.domeTint[0], s.domeTint[1], s.domeTint[2]);
   for (const m of nodes.hazed) m.color.setRGB(s.hazeTint[0], s.hazeTint[1], s.hazeTint[2]);
@@ -715,13 +804,14 @@ export function disposeVillageSource(scene: Object3D): void {
   const free = (r: { dispose(): void } | null | undefined): void => {
     if (!r || done.has(r)) return;
     done.add(r);
-    r.dispose();
+    if ((r as Texture).isTexture) freeTexture(r as Texture);
+    else r.dispose();
   };
   scene.traverse((o) => {
     if (!isMesh(o)) return;
     free(o.geometry);
     for (const m of materialsOf(o)) {
-      free((m as MeshBasicMaterial).map);
+      for (const key of COLOUR_MAPS) free((m as unknown as Record<string, Texture | null | undefined>)[key]);
       free((m as MeshBasicMaterial).lightMap);
       free(m);
     }

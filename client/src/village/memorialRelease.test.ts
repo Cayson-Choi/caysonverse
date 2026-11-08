@@ -1,19 +1,55 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BoxGeometry, Group, InstancedMesh, Mesh, MeshBasicMaterial, Object3D, Texture } from "three";
 
-const h = vi.hoisted(() => ({ gltfClear: vi.fn(), textureClear: vi.fn() }));
-vi.mock("@react-three/drei", () => ({
-  useGLTF: { clear: h.gltfClear },
-  useTexture: { clear: h.textureClear },
-}));
+/** A stand-in for the loaders' cache, keyed like r3f: one entry per url, or per url list. */
+const h = vi.hoisted(() => {
+  type Entry = { state: "ready"; value: unknown } | { state: "loading"; promise: Promise<void> };
+  const cache = new Map<string, Entry>();
+  const key = (input: string | readonly string[]) => (Array.isArray(input) ? input.join("|") : (input as string));
+  const read = (input: string | readonly string[]) => {
+    const e = cache.get(key(input));
+    if (!e) throw new Error(`read of an entry that was never requested: ${key(input)}`);
+    if (e.state === "loading") throw e.promise;
+    return e.value;
+  };
+  const cleared: string[] = [];
+  const clear = (input: string | readonly string[]) => {
+    cleared.push(key(input));
+    cache.delete(key(input));
+  };
+  const loading = (k: string) => {
+    let resolve!: (v: unknown) => void;
+    const promise = new Promise<void>((res) => {
+      resolve = (v) => {
+        cache.set(k, { state: "ready", value: v });
+        res();
+      };
+    });
+    cache.set(k, { state: "loading", promise });
+    return resolve;
+  };
+  return { cache, key, read, clear, cleared, loading };
+});
+
+vi.mock("@react-three/drei", () => {
+  const useGLTF = (url: string) => h.read(url);
+  useGLTF.clear = (url: string) => h.clear(url);
+  return { useGLTF, useTexture: { clear: () => {} } };
+});
+vi.mock("@react-three/fiber", () => {
+  const useLoader = (_: unknown, input: string | string[]) => h.read(input);
+  useLoader.clear = (_: unknown, input: string | string[]) => h.clear(input);
+  return { useLoader };
+});
 
 import { MEMORIAL_LIGHTMAP_URL, MEMORIAL_MODEL_URL, MEMORIAL_PROPS_URL, disposeMemorial, prepareMemorial } from "./memorialModelPrep";
-import { MEMORIAL_FILES, clearMemorialCaches, holdMemorialFiles, noteMemorialLoaded } from "./memorialRelease";
+import { MEMORIAL_FILES, clearMemorialCaches, holdMemorialFiles, noteMemorialRequested } from "./memorialRelease";
 import { SAMPLE_PHOTO_ATLAS } from "./sampleCubbies";
 
 type Disposable = { addEventListener(type: "dispose", listener: () => void): void };
+const TEXTURES = h.key([MEMORIAL_LIGHTMAP_URL, SAMPLE_PHOTO_ATLAS.url]);
 
-function loadedHall() {
+function hallFiles() {
   const scene = new Object3D();
   const material = new MeshBasicMaterial();
   const geometry = new BoxGeometry(1, 1, 1);
@@ -26,13 +62,21 @@ function loadedHall() {
   const parts = [material, geometry, propMaterial, lm, atlas];
   const disposed = new Set<unknown>();
   for (const r of parts as unknown as Disposable[]) r.addEventListener("dispose", () => disposed.add(r));
-  return { scenes: [scene, props], textures: [lm, atlas], parts, disposed };
+  return { hall: { scene }, props: { scene: props }, textures: [lm, atlas], parts, disposed };
+}
+
+function loaded() {
+  const m = hallFiles();
+  h.cache.set(MEMORIAL_MODEL_URL, { state: "ready", value: m.hall });
+  h.cache.set(MEMORIAL_PROPS_URL, { state: "ready", value: m.props });
+  h.cache.set(TEXTURES, { state: "ready", value: m.textures });
+  return m;
 }
 
 beforeEach(() => {
   vi.useFakeTimers();
-  h.gltfClear.mockReset();
-  h.textureClear.mockReset();
+  h.cache.clear();
+  h.cleared.length = 0;
 });
 
 afterEach(() => {
@@ -40,49 +84,68 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+const flush = async () => {
+  for (let i = 0; i < 4; i++) await Promise.resolve();
+};
+
 describe("memorialRelease — the hall's files load on entering and go on leaving (Task 9, the counselRelease pattern)", () => {
   it("the files are the hall, its light map, the props and the portrait atlas", () => {
     expect(MEMORIAL_FILES.gltf).toEqual([MEMORIAL_MODEL_URL, MEMORIAL_PROPS_URL]);
     expect(MEMORIAL_FILES.textures).toEqual([MEMORIAL_LIGHTMAP_URL, SAMPLE_PHOTO_ATLAS.url]);
   });
 
-  it("leaving clears every cache entry one tick later and frees what was loaded", () => {
-    const m = loadedHall();
+  it("leaving clears every cache entry one tick later (the textures by their list, as they were read) and frees them", () => {
+    const m = loaded();
     const release = holdMemorialFiles();
-    noteMemorialLoaded(m.scenes, m.textures);
+    noteMemorialRequested();
     release();
-    expect(h.gltfClear).not.toHaveBeenCalled();
+    expect(h.cleared).toEqual([]);
     vi.advanceTimersByTime(0);
-    expect(h.gltfClear).toHaveBeenCalledWith(MEMORIAL_MODEL_URL);
-    expect(h.gltfClear).toHaveBeenCalledWith(MEMORIAL_PROPS_URL);
-    expect(h.textureClear).toHaveBeenCalledWith(MEMORIAL_LIGHTMAP_URL);
-    expect(h.textureClear).toHaveBeenCalledWith(SAMPLE_PHOTO_ATLAS.url);
+    expect(h.cleared).toEqual(expect.arrayContaining([MEMORIAL_MODEL_URL, MEMORIAL_PROPS_URL, TEXTURES]));
+    expect(h.cache.size).toBe(0);
     for (const r of m.parts) expect(m.disposed.has(r)).toBe(true);
   });
 
   it("a remount in the same tick keeps the files; the later release frees them once", () => {
-    const m = loadedHall();
+    const m = loaded();
     const first = holdMemorialFiles();
-    noteMemorialLoaded(m.scenes, m.textures);
+    noteMemorialRequested();
     first();
     const second = holdMemorialFiles();
     vi.advanceTimersByTime(10);
-    expect(h.gltfClear).not.toHaveBeenCalled();
+    expect(h.cleared).toEqual([]);
     expect(m.disposed.size).toBe(0);
     second();
     vi.advanceTimersByTime(0);
-    expect(h.gltfClear).toHaveBeenCalledTimes(2);
+    expect(h.cleared).toHaveLength(3);
     expect(m.disposed.size).toBe(m.parts.length);
   });
 
-  it("leaving before anything arrived clears the caches and frees nothing; clearing is safe to repeat", () => {
+  it("leaving while the files still load frees them when they arrive (T9 review: late textures)", async () => {
+    const resolvers = [MEMORIAL_MODEL_URL, MEMORIAL_PROPS_URL, TEXTURES].map((k) => h.loading(k));
+    const release = holdMemorialFiles();
+    noteMemorialRequested();
+    release();
+    vi.advanceTimersByTime(0);
+    expect(h.cleared).toEqual([]);
+    const m = hallFiles();
+    resolvers[0]!(m.hall);
+    resolvers[1]!(m.props);
+    resolvers[2]!(m.textures);
+    await flush();
+    expect(h.cache.size).toBe(0);
+    for (const r of m.parts) expect(m.disposed.has(r)).toBe(true);
+  });
+
+  it("leaving before anything was requested reads nothing; clearing is safe to repeat", () => {
     const release = holdMemorialFiles();
     release();
     release();
-    vi.advanceTimersByTime(0);
-    expect(h.gltfClear).toHaveBeenCalledTimes(2);
+    expect(() => vi.advanceTimersByTime(0)).not.toThrow();
+    expect(h.cleared).toEqual([]);
     clearMemorialCaches();
-    expect(h.gltfClear).toHaveBeenCalledTimes(4);
+    clearMemorialCaches();
+    expect(h.cleared).toHaveLength(6);
   });
 });
 

@@ -1,39 +1,76 @@
-import { useGLTF, useTexture } from "@react-three/drei";
-import type { Object3D, Texture } from "three";
+import { useLoader } from "@react-three/fiber";
+import { useGLTF } from "@react-three/drei";
+import { TextureLoader, type Texture } from "three";
+import type { GLTF } from "three-stdlib";
+import { DRACO_PATH } from "../game/hub/hubModelPrep";
+import type { AreaId } from "@caysonverse/shared/village/villageLayout";
+import type { QualityTier } from "../game/quality";
+import { type CachedFile, releaseCachedFile } from "./loaderRelease";
 import {
   VILLAGE_LIGHTMAP_URL,
   VILLAGE_MODEL_URL,
   VILLAGE_NIGHT_LIGHTMAP_URL,
   disposeVillageSource,
+  freeTexture,
   nightMapUniform,
 } from "./villageModelPrep";
 
 /**
- * Releasing 케이슨 마을's files when the player leaves the village scene (Task 7 review I1), in the counselling room's
- * pattern (escape/counselRelease.ts).
+ * Releasing 케이슨 마을's files (Task 7 review I1; final review I2 for phones), in the counselling room's pattern
+ * (escape/counselRelease.ts).
  *
  * `VillageModel` unmounts on every hop into the memorial hall and back, so it only releases its own clone
- * (`disposeVillage`); the loaders' caches keep `village.glb` and both light maps so coming back out is instant. The
- * village SCENE (which always mounts while the player is in the village or the hall) holds the files instead, and its
- * release clears the caches one tick after it unmounts — a remount in the same tick (React StrictMode in dev, a
- * reconnect's new scene) holds them again first. If the model was ever loaded, its GPU side (geometry, materials,
- * textures, instance buffers) is freed too: nobody will use that cache entry again. On a phone that is about 100 MB of
- * decoded bitmaps plus the parsed geometry.
+ * (`disposeVillage`). The village SCENE holds the files (`holdVillageFiles`) and its release clears the loaders' caches
+ * one tick after it lets go — a re-hold in the same tick (React StrictMode in dev, a reconnect's new scene) keeps
+ * them. What was loaded is freed on the GPU too (geometry, materials, textures, instance buffers; decoded bitmaps
+ * closed). A file still loading when the release fires is freed when it arrives (loaderRelease.ts).
+ *
+ *  - Rich tier: the scene holds the files through every hall visit, so coming back out is instant.
+ *  - Light (phone) tier: the scene lets go while the player is in the hall (`holdsVillageFiles`), so the village's
+ *    ~140 MB of decoded textures are not resident next to the hall's; coming back out reloads them (an HTTP-cache hit
+ *    and a re-decode).
+ *  - The night light map has its own hold (`holdNightLightmap`, VillageModel's NightLightmap): it is loaded only when
+ *    night is near (nightLightmap.ts) and goes when it is not wanted any more.
  */
 
-let loaded: { scene: Object3D; textures: Texture[] } | null = null;
+// `useLoader` / `useGLTF` here are plain cache reads (no React hooks inside them), not hook calls.
+const readCache = useLoader;
+
+let held = false;
+let requested = false;
 let timer: ReturnType<typeof setTimeout> | null = null;
 
-/** The model has been read (VillageModel): what the release must free if it fires. The same files again are fine. */
-export function noteVillageLoaded(scene: Object3D, textures: Texture[]): void {
-  loaded = { scene, textures };
+/** The model and its day light map are being read (VillageModel renders): a release must free them. */
+export function noteVillageRequested(): void {
+  requested = true;
 }
 
-/** Forget the model and both light maps in the loaders' caches (safe to call more than once). */
-export function clearVillageCaches(): void {
-  useGLTF.clear(VILLAGE_MODEL_URL);
-  useTexture.clear(VILLAGE_LIGHTMAP_URL);
-  useTexture.clear(VILLAGE_NIGHT_LIGHTMAP_URL);
+/** The village's two cache entries (the night light map has its own, below). */
+export const VILLAGE_CACHE: readonly CachedFile[] = [
+  {
+    id: VILLAGE_MODEL_URL,
+    read: () => useGLTF(VILLAGE_MODEL_URL, DRACO_PATH),
+    clear: () => useGLTF.clear(VILLAGE_MODEL_URL),
+    free: (g) => disposeVillageSource((g as GLTF).scene),
+  } satisfies CachedFile,
+  {
+    id: VILLAGE_LIGHTMAP_URL,
+    read: () => readCache(TextureLoader, VILLAGE_LIGHTMAP_URL),
+    clear: () => readCache.clear(TextureLoader, VILLAGE_LIGHTMAP_URL),
+    free: (t) => freeTexture(t as Texture),
+  } satisfies CachedFile,
+];
+
+export const NIGHT_LIGHTMAP_CACHE: CachedFile = {
+  id: VILLAGE_NIGHT_LIGHTMAP_URL,
+  read: () => readCache(TextureLoader, VILLAGE_NIGHT_LIGHTMAP_URL),
+  clear: () => readCache.clear(TextureLoader, VILLAGE_NIGHT_LIGHTMAP_URL),
+  free: (t) => freeTexture(t as Texture),
+};
+
+/** Whether the village scene holds the files in `area` on `tier` (the light tier lets go in the hall: final I2). */
+export function holdsVillageFiles(tier: QualityTier, area: AreaId): boolean {
+  return !(tier === "low" && area === "hall");
 }
 
 function cancel(): void {
@@ -43,21 +80,21 @@ function cancel(): void {
 }
 
 function releaseNow(): void {
-  clearVillageCaches();
-  if (loaded) {
-    disposeVillageSource(loaded.scene);
-    for (const t of loaded.textures) t.dispose();
-    loaded = null;
+  held = false;
+  releaseNight();
+  if (requested) {
+    requested = false;
+    for (const f of VILLAGE_CACHE) releaseCachedFile(f, () => held);
   }
-  nightMapUniform.value = null;
 }
 
 /**
- * Hold the village's files while the village scene shows (cancels a release still pending). Returns the release: the
- * caches are cleared and the loaded model freed one tick later, unless something holds them again first.
+ * Hold the village's files while the village scene wants them (cancels a release still pending). Returns the
+ * release: the caches are cleared and the loaded model freed one tick later, unless something holds them again first.
  */
 export function holdVillageFiles(): () => void {
   cancel();
+  held = true;
   return () => {
     cancel();
     timer = setTimeout(() => {
@@ -65,4 +102,49 @@ export function holdVillageFiles(): () => void {
       releaseNow();
     }, 0);
   };
+}
+
+// ── the night light map ──
+
+let nightHeld = false;
+let nightRequested = false;
+let nightTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** The night light map is being read (NightLightmap renders). */
+export function noteNightRequested(): void {
+  nightRequested = true;
+}
+
+function releaseNight(): void {
+  if (nightTimer !== null) {
+    clearTimeout(nightTimer);
+    nightTimer = null;
+  }
+  nightHeld = false;
+  nightMapUniform.value = null;
+  if (!nightRequested) return;
+  nightRequested = false;
+  releaseCachedFile(NIGHT_LIGHTMAP_CACHE, () => nightHeld);
+}
+
+/** Hold the night light map (NightLightmap mounts); the release frees it one tick later unless held again. */
+export function holdNightLightmap(): () => void {
+  if (nightTimer !== null) {
+    clearTimeout(nightTimer);
+    nightTimer = null;
+  }
+  nightHeld = true;
+  return () => {
+    if (nightTimer !== null) clearTimeout(nightTimer);
+    nightTimer = setTimeout(() => {
+      nightTimer = null;
+      releaseNight();
+    }, 0);
+  };
+}
+
+/** Forget every village entry in the loaders' caches (safe to call more than once; frees nothing). */
+export function clearVillageCaches(): void {
+  for (const f of VILLAGE_CACHE) f.clear();
+  NIGHT_LIGHTMAP_CACHE.clear();
 }

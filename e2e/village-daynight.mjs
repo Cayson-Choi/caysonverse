@@ -290,6 +290,14 @@ try {
     for (const phase of WANT) {
       await run.step(`${tier}: ${phase} (${DATE}T${PHASES[phase]} KST)`, async () => {
         await joinVillage(P, PHASES[phase]);
+        // The night light map loads only when night is near (final fix I2b): at night it must be on the model before the shot;
+        // at noon it must not have been fetched at all.
+        const nightMapOn = () => P.page.evaluate(async () => !!(await window.__imp("/src/village/villageModelPrep.ts")).nightMapUniform.value);
+        if (phase === "noon") run.check(`${tier}: noon: the night light map is not loaded`, !(await nightMapOn()));
+        else {
+          const on = await P.page.waitForFunction(async () => !!(await window.__imp("/src/village/villageModelPrep.ts")).nightMapUniform.value, null, { timeout: 30000 }).then(() => true, () => false);
+          run.check(`${tier}: ${phase}: the night light map is loaded`, on);
+        }
         await setOrbit(P, 6, 0.35);
         await sleep(600);
         await shoot(P, tier, phase, "plaza");

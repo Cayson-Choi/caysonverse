@@ -21,7 +21,7 @@ import { DRACO_PATH } from "../game/hub/hubModelPrep";
 import { buildCubbyPropMeshes, layoutCubbyProps, makePhotoMaterial, placementMatrix } from "./cubbyProps";
 import { burningCandles, candleClock, clearCandles, pruneCandles } from "./hallCandles";
 import { MEMORIAL_LIGHTMAP_URL, MEMORIAL_MODEL_URL, MEMORIAL_PROPS_URL, disposeMemorial, prepareMemorial } from "./memorialModelPrep";
-import { holdMemorialFiles, noteMemorialLoaded } from "./memorialRelease";
+import { holdMemorialFiles, noteMemorialRequested } from "./memorialRelease";
 import { HALL_CUBBY_ANCHORS, SAMPLE_CUBBIES, SAMPLE_PHOTO_ATLAS } from "./sampleCubbies";
 import { DoorPad, HallRoom } from "./VillageHall";
 
@@ -140,6 +140,8 @@ const placePos = new Vector3();
 
 /** The dressed hall: the model with its light map, the sample props as instances, and the candles. Suspends while loading. */
 function MemorialHall() {
+  // A release from now on must free what this reads, even if it is still loading (memorialRelease.ts).
+  noteMemorialRequested();
   // Every file downloads at once: the textures' requests start before the models' reads suspend this component.
   useTexture.preload([MEMORIAL_LIGHTMAP_URL, SAMPLE_PHOTO_ATLAS.url]);
   useGLTF.preload(MEMORIAL_PROPS_URL, DRACO_PATH);
@@ -160,7 +162,6 @@ function MemorialHall() {
   );
   const candles = useMemo(() => makeCandles(props.scene), [props]);
 
-  useEffect(() => noteMemorialLoaded([hall.scene, props.scene], [lightmap, atlas]), [hall, props, lightmap, atlas]);
   useEffect(() => () => disposeMemorial(nodes), [nodes]);
   useEffect(() => () => photoMaterial.dispose(), [photoMaterial]);
   useEffect(() => () => cubbyProps.own.forEach((r) => r.dispose()), [cubbyProps]);

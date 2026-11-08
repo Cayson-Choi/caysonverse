@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   BoxGeometry,
   BufferGeometry,
@@ -50,7 +50,12 @@ import {
   nightBlendUniform,
   nightMapUniform,
   prepareVillage,
+  setNightLightmap,
   tickVillage,
+  LIGHT_TIER_MAX_TEXTURE,
+  capModelTextures,
+  capTextureSize,
+  type CanvasLike,
 } from "./villageModelPrep";
 import { DAY_LIFT, NIGHT_LOOK, dayNightAt, indoorState, type DayNightState } from "./dayNightBlend";
 import { parseKstTime } from "@caysonverse/shared/village/sunClock";
@@ -360,8 +365,64 @@ describe("prepareVillage: the model dressed for the game", () => {
     expect(night.flipY).toBe(false);
     expect(night.colorSpace).toBe(SRGBColorSpace);
     for (const m of [f.mats.LM_plaza, f.mats.LM_grass, f.mats.LM_wood]) expect(m.lightMap, m.name).toBe(day);
+    // Left out (the night map loads on its own when night is near, final fix I2b): the current one stays.
     prepareVillage(f.root, day, "low");
+    expect(nightMapUniform.value).toBe(night);
+    prepareVillage(f.root, day, "low", "neutral", null);
     expect(nightMapUniform.value).toBeNull();
+  });
+
+  it("no night map yet: the night blend stays 0 (the day map alone, never a black lightmap); with it, the clock's weight", () => {
+    const nodes = prepareVillage(fixture().root, new Texture(), "low");
+    const night = dayNightAt(parseKstTime("2026-11-03T23:30")!);
+    expect(night.night).toBeGreaterThan(0.9);
+    setNightLightmap(null);
+    applyDayNight(nodes, night);
+    expect(nightBlendUniform.value).toBe(0);
+    setNightLightmap(new Texture());
+    applyDayNight(nodes, night);
+    expect(nightBlendUniform.value).toBeCloseTo(night.night, 6);
+    setNightLightmap(null);
+  });
+
+  it("the light tier caps the model's textures at 1024 px (final review I2); the rich tier leaves them", () => {
+    const big = () => {
+      const t = new Texture();
+      t.image = { width: 2048, height: 1024 };
+      return t;
+    };
+    const drawn: Array<[number, number]> = [];
+    const canvas = (): CanvasLike => ({
+      width: 0,
+      height: 0,
+      getContext: () => ({ drawImage: (_i: never, _x: number, _y: number, w: number, h: number) => void drawn.push([w, h]) }),
+    });
+    const t = big();
+    const v0 = t.version;
+    expect(capTextureSize(t, LIGHT_TIER_MAX_TEXTURE, canvas)).toBe(true);
+    expect(drawn).toEqual([[1024, 512]]);
+    expect((t.image as CanvasLike).width).toBe(1024);
+    expect((t.image as CanvasLike).height).toBe(512);
+    expect(t.version).toBeGreaterThan(v0);
+    expect(capTextureSize(t, LIGHT_TIER_MAX_TEXTURE, canvas)).toBe(false); // once
+    const small = new Texture();
+    small.image = { width: 1024, height: 1024 };
+    expect(capTextureSize(small, LIGHT_TIER_MAX_TEXTURE, canvas)).toBe(false);
+    expect(capTextureSize(big(), LIGHT_TIER_MAX_TEXTURE, () => null)).toBe(false); // no canvas: left as it is
+    let closed = false;
+    const bitmap = new Texture();
+    bitmap.image = { width: 4096, height: 4096, close: () => void (closed = true) };
+    expect(capTextureSize(bitmap, LIGHT_TIER_MAX_TEXTURE, canvas)).toBe(true);
+    expect(closed).toBe(true);
+    // The model: every material map once (shared maps counted once), the light map never.
+    const root = new Object3D();
+    const shared = big();
+    const lm = big();
+    const m1 = new MeshBasicMaterial({ map: shared });
+    m1.lightMap = lm;
+    root.add(new Mesh(new BoxGeometry(), m1), new Mesh(new BoxGeometry(), new MeshBasicMaterial({ map: shared })));
+    expect(capModelTextures(root, LIGHT_TIER_MAX_TEXTURE, canvas)).toBe(1);
+    expect((lm.image as { width: number }).width).toBe(2048);
   });
 
   it("the water: one runtime water material on every M_water surface, reflecting the dome as it is laid on the sky", () => {
@@ -598,6 +659,9 @@ describe("the far plane (the dome is 1.4 km out, the school's CAMERA_FAR is 200 
 });
 
 describe("applyDayNight: the clock's numbers into the model (Task 7A)", () => {
+  // The night light map is loaded (it loads when night is near; without it the blend stays 0, tested above).
+  beforeEach(() => setNightLightmap(new Texture()));
+  afterEach(() => setNightLightmap(null));
   const at = (kst: string): DayNightState => dayNightAt(parseKstTime(kst)!);
 
   it("noon: the day light map alone, nothing lit, no tint, the day's lift; the water and the stars at rest", () => {
