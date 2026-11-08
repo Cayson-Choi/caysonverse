@@ -117,7 +117,8 @@ function drawWelcomeSlide(): HTMLCanvasElement {
 
 const MODEL_IDS = Object.keys(FURNITURE_MODELS) as (keyof typeof FURNITURE_MODELS)[];
 const MODEL_URLS = MODEL_IDS.map((id) => `${FURNITURE_URL_BASE}${id}.glb`);
-useGLTF.preload(MODEL_URLS);
+// No module-level `useGLTF.preload(MODEL_URLS)` (removed in 케이슨 마을 Task 10): it ran at bundle start for every entry and put the
+// legacy world's furniture (~125 KB) into the village's first load. `useGLTF(MODEL_URLS)` below fetches all of them in parallel anyway.
 
 /** Centre + size (X,Z) of an AABB, for placing a box mesh over it. */
 function boxOf(a: AABB) {

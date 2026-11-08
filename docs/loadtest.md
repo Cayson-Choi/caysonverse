@@ -597,3 +597,38 @@ CV_LT_TEACHER_KEY=<시험용 선생님 키> CV_LT_OPERATOR_KEY=<운영자 키> \
 - 다운스트림은 봇이 반·교실 두 연결의 raw WebSocket 수신 바이트를 합산해 봇마다 (접속 시간)으로 나눈 평균이다.
 - 봇이 합법적으로 걷도록 고친 것: 서버 위치는 float32라서 장애물 면에 딱 붙은 봇이 면 안쪽으로 1e-7 들어간 값으로 읽혀, `resolveCollision`이 그대로 장애물 쪽으로 걷게 하고 서버가 그 이동을 매 틱 버리는 일이 있었다(첫 소규모 실행에서 봇 4명이 팀 간판에 붙어 팀이 만들어지지 않았다). `moveStep`이 서버와 같은 `isBlocked`로 이동을 확인하고 막히면 z만/x만 걷도록 바꿨다. 월드 봇(`bot.ts`)은 손대지 않았다.
 - 4반 × 25명은 `MAX_CLASSES_DEFAULT`(10) 안이다. 반 10개 이상은 이 측정으로 모른다.
+
+## 10. 케이슨 마을 1단계 — 성능·다운로드 예산 (2026-11-09, 로컬 측정)
+
+- 실행: 브랜치 `feature/cayson-village`, 같은 PC(Ryzen 7 6800H, AMD Radeon 내장 GPU, Windows 11, Node v24.19.0, headless Chrome ANGLE/D3D11). 서버는 프로덕션 번들(`NODE_ENV=production node server/dist/index.cjs`, :2567), 화면 측정 클라이언트는 DEV(:5173, 프레임·렌더 통계 훅이 DEV에만 있다). Oracle 서버는 건드리지 않았다.
+- 게이트(계획 Global Constraints): `village.glb` ≤ 8 MB·≤ 260k 삼각형·텍스처 ≤ 2048², `memorial.glb` ≤ 6 MB·≤ 200k 삼각형(인스턴싱 전)·텍스처 ≤ 2048², 첫 접속 ≤ 15 MB(휴대폰, 캐릭터 포함), 휴대폰 4배 스로틀 평균 프레임 ≤ 33 ms(마을 30명, 추모관).
+
+### 10.1 어떻게 재나
+
+```bash
+npm run build
+NODE_ENV=production node server/dist/index.cjs                  # :2567
+npm run dev -w client                                           # :5173 (화면 측정 전용)
+node e2e/village-perf.mjs --mode assets                         # 파일 크기·삼각형(인스턴스 포함)·텍스처 한도 (정적)
+node e2e/village-perf.mjs --mode load                           # 첫 접속 바이트 (프로덕션 번들, 휴대폰 375x812, 캐시 끔)
+# 마을 30명: 봇 29명 + 측정 탭이 30번째 사람 (VILLAGE_MAX_CLIENTS = 30). 봇 시간이 측정보다 길어야 한다.
+npm run loadtest -- --scenario village --numClients 29 --duration 150 --doorShare 0 --statusDir <절대경로>
+node e2e/village-perf.mjs --mode village                        # 휴대폰, 4배 스로틀, low, 20초
+# 추모관: 봇 29명이 전부 문으로 들어가 안에 머문다
+npm run loadtest -- --scenario village --numClients 29 --duration 200 --doorShare 1 --hallStayMs 0 --statusDir <절대경로>
+node e2e/village-perf.mjs --mode hall
+```
+
+- `loadtest/village.ts`(`--scenario village`): 한 프로세스, `joinOrCreate`, 10 Hz 걷기(공유 `villageGeometry` + `resolveCollision`), 채팅 20 %·이모지 30 %·점프 20 %·달리기 30 %(bot.ts와 같은 비율), `--doorShare`(기본 0.15)의 봇은 추모관 정문까지 걸어가 `UseDoor`로 들어갔다가 `--hallStayMs`(기본 25 s) 뒤 나가는 문으로 돌아온다(`--hallStayMs 0`이면 안에 머문다). 안에서는 이모지·점프를 보내지 않는다(서버가 버린다). 끝에 입장 100 %·끊김 0·방 오류 0을 판정해 종료 코드로 알린다.
+- 뒤 실행을 앞 실행의 유령 자리(재접속 창 20초)와 겹치면 측정 탭이 다른 샤드로 가서 `remotes`가 0이 된다. 스크립트는 `remotes`를 기록하고 "마을 30명 / 추모관에 사람 있음"을 검사한다. 실행 사이에 봇이 끝나기를 기다린다.
+- `load` 모드의 추모관 단계: 프로덕션 번들에는 걷기용 시험 훅이 없어서, 같은 페이지에서 추모관이 여는 파일 4개를 URL로 받아 센다(목록은 DEV `--mode hall`의 "fetched by this tab" 출력으로 확인: `memorial.glb`, `memorial_lm.webp`, `memorial_props.glb`, 사진 아틀라스). 해설 음성 8개(각 약 30~44 KB)는 해설 문을 열 때만 받으므로 흐름에 들어가지 않는다(최악 +약 0.27 MB).
+- 로컬 서버(express.static)는 압축 없이 보낸다. 배포(Vercel)는 텍스트 유형(js, css, wasm)을 압축해 보낸다. 스크립트는 둘을 모두 적는다: 압축 없음(참고)과 텍스트 유형을 gzip -9로 바꾼 값(배포 모양, 판정 기준).
+
+### 10.2 결과
+
+(자세한 표는 `.superpowers/sdd/2026-11-03-cayson-village-phase1/task-10-report.md`. 요약만 적는다.)
+
+- 정적 한도: `village.glb` 5,411,144 B·삼각형 250,634(인스턴스 7,244개 포함, 인스턴스 곱 전 176,276)·텍스처 최대 2048², `memorial.glb` 345,792 B·17,102 삼각형·최대 2048² — 전부 통과.
+- 프레임(4배 스로틀, 헤드리스 참고값, 수직동기 60fps 한계에 붙어 있다): 마을 30명 평균 16.7 ms ×3회, 추모관(29명과 함께) 평균 16.9~17.2 ms ×3회 — 게이트 33 ms 통과. 추모관은 메인 스레드가 한 프레임의 약 85~88 %를 쓴다(마을은 약 74 %): 여유는 약 2배이지 큰 폭이 아니다.
+- 첫 접속(배포 모양, BGM 포함): 14,907,681 B(14.22 MiB, 14.9 MB). 압축 없는 로컬 서버로는 16.38 MB(15.62 MiB)라 15 MiB를 넘는다. BGM 2.67 MB를 빼면 압축 없이도 13.71 MB(13.08 MiB).
+- 고친 것: `WorldMap.tsx`의 모듈 수준 `useGLTF.preload`(옛 월드 가구 9개, 약 129 KB)가 모든 입장의 첫 접속에 끼어 있어 지웠다. 촛불 InstancedMesh `count 0`은 three 0.185가 이미 그리지 않아서(`renderInstances`가 `primcount === 0`이면 돌아온다) 고칠 것이 없었다.

@@ -49,9 +49,24 @@ function parseArgs(argv) {
 const argv = parseArgs(process.argv.slice(2));
 
 const scenario = argv.scenario ?? "world";
-if (scenario !== "world" && scenario !== "school") {
-  console.error(`--scenario 값이 올바르지 않아요: "${scenario}" (가능: world, school)`);
+if (scenario !== "world" && scenario !== "school" && scenario !== "village") {
+  console.error(`--scenario 값이 올바르지 않아요: "${scenario}" (가능: world, school, village)`);
   process.exit(1);
+}
+if (scenario === "village") {
+  // village.ts runs every bot in ONE process and judges its own gates (exit 0 = pass); this launcher passes the arguments through.
+  const villageArgs = [];
+  for (const k of ["endpoint", "numClients", "duration", "statusDir", "doorShare", "hallStayMs", "offset"]) {
+    if (argv[k] !== undefined) villageArgs.push(`--${k}`, argv[k]);
+  }
+  const villageCli = join(HERE, "..", "node_modules", "tsx", "dist", "cli.mjs");
+  const village = spawn(process.execPath, [villageCli, join(HERE, "village.ts"), ...villageArgs], { cwd: HERE, env: process.env, stdio: "inherit" });
+  village.on("error", (e) => {
+    console.error(`village.ts 실행 실패: ${e.message}`);
+    process.exit(1);
+  });
+  village.on("exit", (code) => process.exit(code ?? 1));
+  await new Promise(() => {});
 }
 if (scenario === "school") {
   // school.ts runs every bot in ONE process and judges its own gates; this launcher only passes the arguments through.
