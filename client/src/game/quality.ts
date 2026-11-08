@@ -132,22 +132,32 @@ const NEUTRAL_INVERSE_MAX = 0.96;
 /**
  * The linear colour that three's NeutralToneMapping at `exposure` turns into `rgb` (linear): exact, in closed form
  * (the knee's compression, its desaturation and the toe's offset undone in turn). Out-of-range input is clamped to
- * [0, 0.96]; the result is never negative.
+ * [0, 0.96]; the result is never negative. `into`: write the result there instead of a new array (no allocation: the
+ * village's day and night call it every frame, Task 7A review m-b).
  */
-export function inverseNeutralToneMap(rgb: readonly number[], exposure: number): RGB {
-  let c: RGB = [0, 1, 2].map((k) => Math.min(NEUTRAL_INVERSE_MAX, Math.max(0, rgb[k] ?? 0))) as RGB;
-  const top = Math.max(c[0], c[1], c[2]);
+export function inverseNeutralToneMap(rgb: readonly number[], exposure: number, into?: RGB): RGB {
+  let c0 = Math.min(NEUTRAL_INVERSE_MAX, Math.max(0, rgb[0] ?? 0));
+  let c1 = Math.min(NEUTRAL_INVERSE_MAX, Math.max(0, rgb[1] ?? 0));
+  let c2 = Math.min(NEUTRAL_INVERSE_MAX, Math.max(0, rgb[2] ?? 0));
+  const top = Math.max(c0, c1, c2);
   if (top >= NEUTRAL_KNEE) {
     const d = 1 - NEUTRAL_KNEE;
     const peak = (d * d) / (1 - top) - d + NEUTRAL_KNEE;
     const g = 1 - 1 / (NEUTRAL_DESATURATION * (peak - top) + 1);
-    c = c.map((v) => (((v - g * top) / (1 - g)) * peak) / top) as RGB;
+    const k = peak / ((1 - g) * top);
+    c0 = (c0 - g * top) * k;
+    c1 = (c1 - g * top) * k;
+    c2 = (c2 - g * top) * k;
   }
-  const m = Math.max(0, Math.min(c[0], c[1], c[2]));
+  const m = Math.max(0, Math.min(c0, c1, c2));
   // The toe: below 0.08 the curve subtracted x - 6.25 x², which leaves 6.25 x² of the darkest channel.
   const offset = m >= 0.04 ? 0.04 : Math.sqrt(m / 6.25) - m;
   const e = Math.max(1e-3, exposure);
-  return [Math.max(0, (c[0] + offset) / e), Math.max(0, (c[1] + offset) / e), Math.max(0, (c[2] + offset) / e)];
+  const out: RGB = into ?? [0, 0, 0];
+  out[0] = Math.max(0, (c0 + offset) / e);
+  out[1] = Math.max(0, (c1 + offset) / e);
+  out[2] = Math.max(0, (c2 + offset) / e);
+  return out;
 }
 
 /** sRGB "#RRGGBB" -> linear light. */

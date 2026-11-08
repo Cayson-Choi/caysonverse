@@ -74,3 +74,23 @@ export function createDayNightDriver(clock: Pick<VillageClock, "nowMs" | "jumps"
 
 /** The game's one driver: the village's clock. */
 export const dayNight: DayNightDriver = createDayNightDriver();
+
+/** The slice of `document` the visibility reset uses (a test passes a fake). */
+export interface VisibilitySource {
+  readonly visibilityState: DocumentVisibilityState;
+  addEventListener(type: "visibilitychange", listener: () => void): void;
+  removeEventListener(type: "visibilitychange", listener: () => void): void;
+}
+
+/**
+ * Snap to the clock when the tab comes back (Task 7A review m-e). A hidden tab gets no frames, and the scene clamps
+ * a frame's step to 1 s, so after a long absence the driver would read the clock only ~10 frames later and then glide
+ * for seconds from a stale look. Resetting makes the next step a snap. Returns the unbind.
+ */
+export function resetOnVisible(doc: VisibilitySource, driver: Pick<DayNightDriver, "reset"> = dayNight): () => void {
+  const onChange = (): void => {
+    if (doc.visibilityState === "visible") driver.reset();
+  };
+  doc.addEventListener("visibilitychange", onChange);
+  return () => doc.removeEventListener("visibilitychange", onChange);
+}

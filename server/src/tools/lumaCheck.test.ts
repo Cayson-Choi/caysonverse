@@ -347,3 +347,73 @@ describe("e2e/luma-check.mjs CLI", () => {
     expect(run().status).toBe(1);
   });
 });
+
+// ---------------------------------------------------------------------------------------------------------
+// The night bar (케이슨 마을, Task 7A review I1): whole-frame mean >= 0.18 and walkable p50 >= 0.15.
+
+interface NightModule {
+  NIGHT_MEAN_MIN: number;
+  NIGHT_WALK_P50_MIN: number;
+  nightStats(
+    frame: { width: number; height: number; rgba: Uint8Array },
+    mask: { width: number; height: number; rgba: Uint8Array },
+  ): { mean: number; p5: number; walkShare: number; walkP50: number | null; walkMean: number | null };
+  passesNight(stats: { mean: number; walkP50: number | null }): boolean;
+  maskPathFor(frame: string): string;
+}
+
+/** An RGB image whose top rows are `top` grey and the rest `bottom` grey. */
+function splitPng(top: number, bottom: number, w: number, h: number, topRows: number): Buffer {
+  const row = (v: number) => Buffer.alloc(w * 3, v);
+  return encodePng({ width: w, height: h, colorType: 2, rows: Array.from({ length: h }, (_, y) => row(y < topRows ? top : bottom)) });
+}
+
+describe("the night bar (--night)", () => {
+  const night = () => luma as unknown as NightModule;
+  const run = (...args: string[]) => spawnSync(process.execPath, [SCRIPT, ...args], { encoding: "utf8" });
+
+  it("pins the night thresholds and the mask's name rule", () => {
+    expect(night().NIGHT_MEAN_MIN).toBe(0.18);
+    expect(night().NIGHT_WALK_P50_MIN).toBe(0.15);
+    expect(night().maskPathFor("a/high-night-plaza-frame.png")).toBe("a/high-night-plaza-walk.png");
+    expect(night().maskPathFor("a/shot.png")).toBe("a/shot-walk.png");
+  });
+
+  it("measures the walkable pixels through the mask (resampled to the frame by nearest neighbour)", () => {
+    // Frame 16x16: the top 8 rows dark (20), the bottom 8 rows the ground (64). Mask 8x8: its bottom half white.
+    const frame = luma.decodePng(splitPng(20, 64, 16, 16, 8));
+    const mask = luma.decodePng(splitPng(0, 255, 8, 8, 4));
+    const s = night().nightStats(frame, mask);
+    expect(s.walkShare).toBeCloseTo(0.5, 9);
+    expect(s.walkP50).toBeCloseTo(64 / 255, 9);
+    expect(s.mean).toBeCloseTo((20 + 64) / 2 / 255, 9);
+    expect(night().passesNight(s)).toBe(false); // the lane reads (p50 0.251) but the frame is too dark: mean 0.165 < 0.18
+  });
+
+  it("passes only when both hold: the frame's mean and the walkable median", () => {
+    const P = night().passesNight;
+    expect(P({ mean: 0.18, walkP50: 0.15 })).toBe(true);
+    expect(P({ mean: 0.179, walkP50: 0.3 })).toBe(false);
+    expect(P({ mean: 0.3, walkP50: 0.149 })).toBe(false);
+    expect(P({ mean: 0.3, walkP50: null })).toBe(false); // nothing walkable in view: not a valid night frame
+  });
+
+  it("CLI: --night with the name rule and with frame=mask; a dark lane fails; exit codes", () => {
+    const frame = path.join(tmp, "n-frame.png");
+    const walk = path.join(tmp, "n-walk.png");
+    fs.writeFileSync(frame, splitPng(40, 70, 16, 16, 8)); // mean 0.216, walkable p50 0.275
+    fs.writeFileSync(walk, splitPng(0, 255, 16, 16, 8));
+    const ok = run("--night", frame);
+    expect(ok.status).toBe(0);
+    expect(ok.stdout).toMatch(/PASS.*night: mean=0\.216.*walk p50=0\.275/);
+    const other = path.join(tmp, "custom-mask.png");
+    fs.writeFileSync(other, splitPng(255, 0, 16, 16, 8)); // the dark top half is the "walkable" one: p50 0.157 still passes
+    expect(run("--night", `${frame}=${other}`).stdout).toMatch(/walk p50=0\.157/);
+    const dark = path.join(tmp, "d-frame.png");
+    fs.writeFileSync(dark, splitPng(90, 30, 16, 16, 8)); // mean 0.235 but the lane's median 0.118
+    fs.writeFileSync(path.join(tmp, "d-walk.png"), splitPng(0, 255, 16, 16, 8));
+    expect(run("--night", dark).status).toBe(1);
+    expect(run("--night", path.join(tmp, "missing-frame.png")).status).toBe(1);
+    expect(run("--night").status).toBe(1);
+  });
+});

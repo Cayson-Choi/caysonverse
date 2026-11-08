@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { TARGET_SECONDS, dayNightAt, indoorState } from "./dayNightBlend";
-import { createDayNightDriver } from "./dayNightDriver";
+import { createDayNightDriver, resetOnVisible, type VisibilitySource } from "./dayNightDriver";
 import { createVillageClock } from "./villageClock";
 
 /** The time of day, stepped (Task 7A): the clock read every 10 s, the look eased every frame, the hall apart. */
@@ -116,5 +116,52 @@ describe("a device clock that is 3 hours wrong still shows the server's time of 
     device += 3 * HOUR; // time goes on
     for (let i = 0; i < 400; i++) driver.step(0.05, false);
     expect(driver.target.night).toBeCloseTo(dayNightAt(NOON + 3 * HOUR).night, 9); // the server's 15:30, not the phone's
+  });
+});
+
+describe("resetOnVisible (Task 7A review m-e)", () => {
+  function fakeDocument() {
+    const listeners = new Set<() => void>();
+    const doc = {
+      visibilityState: "visible" as DocumentVisibilityState,
+      addEventListener: (_: "visibilitychange", l: () => void) => void listeners.add(l),
+      removeEventListener: (_: "visibilitychange", l: () => void) => void listeners.delete(l),
+    } satisfies VisibilitySource;
+    const fire = (state: DocumentVisibilityState) => {
+      doc.visibilityState = state;
+      for (const l of [...listeners]) l();
+    };
+    return { doc, fire, listeners };
+  }
+
+  it("a tab that comes back after hours snaps to the clock on its next frame instead of gliding from the stale look", () => {
+    const { driver, set } = setup(NOON);
+    const { doc, fire } = fakeDocument();
+    const unbind = resetOnVisible(doc, driver);
+    driver.step(1 / 60, false);
+    expect(driver.applied.night).toBe(0);
+    fire("hidden");
+    set(MIDNIGHT); // hours pass with no frames
+    fire("visible");
+    driver.step(1, false); // the first frame back (the scene clamps it to 1 s)
+    expect(driver.applied.night).toBeCloseTo(dayNightAt(MIDNIGHT).night, 9);
+    unbind();
+  });
+
+  it("hiding does not reset; without the binding the look would still be easing from noon", () => {
+    const { driver, set } = setup(NOON);
+    driver.step(1 / 60, false);
+    set(MIDNIGHT);
+    driver.step(1, false);
+    expect(driver.applied.night).toBeLessThan(0.5); // the stale glide the reset avoids
+    let resets = 0;
+    const { doc, fire, listeners } = fakeDocument();
+    const unbind = resetOnVisible(doc, { reset: () => resets++ });
+    fire("hidden");
+    expect(resets).toBe(0);
+    fire("visible");
+    expect(resets).toBe(1);
+    unbind();
+    expect(listeners.size).toBe(0);
   });
 });

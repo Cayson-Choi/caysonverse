@@ -166,6 +166,10 @@ export const liftTintUniform = { value: new Vector3(1, 1, 1) };
 export const dayTintUniform = { value: new Vector3(1, 1, 1) };
 /** × the foliage's vertex light (warm at dusk, dark blue at night). */
 export const foliageTintUniform = { value: new Vector3(1, 1, 1) };
+/** The same for the cherry blossoms (`M_leaf_cherry`), darker at night (Task 7A review m-g). */
+export const cherryTintUniform = { value: new Vector3(1, 1, 1) };
+/** The cherry blossoms' material: its foliage tint is `cherryTintUniform`. */
+export const CHERRY_MATERIAL = "M_leaf_cherry";
 /**
  * The cool cast of moonlight on the night light map's dim texels (× linear): what the moon alone lights is bluish and
  * a little darker, while the lamps' and windows' pools (bright texels) keep their warm colour.
@@ -222,7 +226,7 @@ export function liftMaterial(material: Material): void {
     shader.uniforms.uVillageLift = liftUniform;
     shader.uniforms.uVillageLiftTint = liftTintUniform;
     shader.uniforms.uVillageDayTint = dayTintUniform;
-    shader.uniforms.uVillageFoliageTint = foliageTintUniform;
+    shader.uniforms.uVillageFoliageTint = material.name === CHERRY_MATERIAL ? cherryTintUniform : foliageTintUniform;
     shader.uniforms.uVillageNight = nightBlendUniform;
     shader.uniforms.uVillageNightMap = nightMapUniform;
     shader.uniforms.uVillageMoonTint = moonTintUniform;
@@ -658,6 +662,7 @@ export function applyDayNight(nodes: VillageNodes, s: DayNightState): void {
   liftTintUniform.value.set(s.liftTint[0], s.liftTint[1], s.liftTint[2]);
   dayTintUniform.value.set(s.dayTint[0], s.dayTint[1], s.dayTint[2]);
   foliageTintUniform.value.set(s.foliageTint[0], s.foliageTint[1], s.foliageTint[2]);
+  cherryTintUniform.value.set(s.cherryTint[0], s.cherryTint[1], s.cherryTint[2]);
   nightBlendUniform.value = s.night;
   litUniform.value = s.lights;
   nodes.sky?.color.setRGB(s.domeTint[0], s.domeTint[1], s.domeTint[2]);

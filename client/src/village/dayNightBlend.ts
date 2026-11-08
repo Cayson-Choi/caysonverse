@@ -20,6 +20,12 @@
  *
  * Inside the memorial hall it is always the same warm indoor light (`indoorState`): the hall never gets the outdoor
  * night blend.
+ *
+ * The baked day shadows are a FIXED AFTERNOON: the day light map was baked once with the sun at azimuth 70°, 28° up
+ * (`DAY_SUN_DIRECTION`), while the live key light follows the real sun. By day the baked shadows of buildings and
+ * trees and the avatars' live shadows therefore point the same way only near the baked hour (at a June noon the
+ * live sun is almost overhead); the golden tint hides most of the difference at dusk. That is by design (one day
+ * bake), not a bug (Task 7A review m-a).
  */
 
 import { phaseAt, smoothstep, sunAt } from "@caysonverse/shared/village/sunClock";
@@ -58,6 +64,8 @@ export interface DayNightState {
   dayTint: Rgb;
   /** × the foliage's vertex light, which has no light map to blend (warm at dusk, dark blue at night). */
   foliageTint: Rgb;
+  /** The same for the cherry blossoms (`M_leaf_cherry`): darker at night, or their pale pink reads bright lavender. */
+  cherryTint: Rgb;
   /** × the sky dome, the far hills and forest, the waterfall. */
   domeTint: Rgb;
   hazeTint: Rgb;
@@ -135,6 +143,8 @@ export const NIGHT_LOOK = {
   liftTint: [0.5, 0.68, 1.0] as Rgb,
   /** × the foliage's day vertex light (the trees at night) — no light map has them. */
   foliageTint: [0.075, 0.1, 0.2] as Rgb,
+  /** × the cherry blossoms' day vertex light at night: darker than the green leaves (Task 7A review m-g). */
+  cherryTint: [0.05, 0.07, 0.15] as Rgb,
   domeTint: [0.03, 0.05, 0.12] as Rgb,
   hazeTint: [0.075, 0.1, 0.19] as Rgb,
   waterTint: [0.12, 0.2, 0.42] as Rgb,
@@ -243,6 +253,7 @@ export function stateFor(elevationDeg: number, azimuthDeg: number): DayNightStat
     liftTint: dayMix(WHITE, NIGHT_LOOK.liftTint),
     dayTint: mixRgb(WHITE, GOLDEN_LOOK.dayTint, g),
     foliageTint: dayMix(mixRgb(WHITE, GOLDEN_LOOK.dayTint, g), NIGHT_LOOK.foliageTint),
+    cherryTint: dayMix(mixRgb(WHITE, GOLDEN_LOOK.dayTint, g), NIGHT_LOOK.cherryTint),
     domeTint: dayMix(mixRgb(WHITE, GOLDEN_LOOK.domeTint, g), NIGHT_LOOK.domeTint),
     hazeTint: dayMix(mixRgb(WHITE, GOLDEN_LOOK.hazeTint, g), NIGHT_LOOK.hazeTint),
     waterTint: dayMix(mixRgb(WHITE, GOLDEN_LOOK.waterTint, g), NIGHT_LOOK.waterTint),
@@ -281,6 +292,7 @@ export function cloneState(s: DayNightState): DayNightState {
     liftTint: [...s.liftTint],
     dayTint: [...s.dayTint],
     foliageTint: [...s.foliageTint],
+    cherryTint: [...s.cherryTint],
     domeTint: [...s.domeTint],
     hazeTint: [...s.hazeTint],
     waterTint: [...s.waterTint],

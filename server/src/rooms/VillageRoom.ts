@@ -30,7 +30,7 @@ interface VillageTracking extends Tracking {
  *  - chat is scoped by area (`deliverChat`): a line is heard only by the clients in the sender's area, so what is
  *    said inside the hall stays in the hall and the plaza's talk does not carry in. Emoji, Jump and Typing stay
  *    unscoped (they are the world's, relayed to everyone);
- *  - the server's clock (Task 7A, `VillageServerMsg.ServerTime`): sent to each visitor on join and to everyone every
+ *  - the server's clock (Task 7A, `VillageServerMsg.ServerTime`): sent to each visitor on join and on reconnect, and to everyone every
  *    5 minutes. The village's sun follows real Korean time, and the client reads the time of day from this clock
  *    (plus its own offset), not from the device's, which may be wrong.
  *
@@ -93,6 +93,16 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     player.role = ROLE_STUDENT; // the village has no admin
     player.area = "village";
     this.seatPlayer(client, player); // state + tracking (createTracking below)
+    client.send(VillageServerMsg.ServerTime, this.serverTime());
+  }
+
+  /**
+   * A dropped visitor is back (same session): besides clearing the ghost flag (PlayerRoom), re-send the server's
+   * clock. `onJoin` does not run on a reconnect, and the client binds its clock handler to the room again, so
+   * without this a device that was never synced would wait up to 5 minutes for the next broadcast (Task 7A review m-c).
+   */
+  override onReconnect(client: Client): void {
+    super.onReconnect(client);
     client.send(VillageServerMsg.ServerTime, this.serverTime());
   }
 

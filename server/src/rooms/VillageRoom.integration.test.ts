@@ -617,6 +617,24 @@ describe("VillageRoom reconnection (integration)", () => {
     expect(emojis).toEqual([]);
   });
 
+  it("a reconnect hears the server's clock again (onJoin does not run on a reconnect; Task 7A review m-c)", async () => {
+    process.env.CV_RECONNECT_WINDOW_S = "5";
+    const room = await colyseus.createRoom<VillageRoom>(VILLAGE_ROOM);
+    const skew = 2 * 3_600_000;
+    (room as unknown as { wallClock: () => number }).wallClock = () => Date.now() + skew;
+    const client = await colyseus.connectTo(room, JOIN);
+    await waitForMessage<ServerTimePayload>(client, VillageServerMsg.ServerTime, () => true);
+    const sid = client.sessionId;
+    const token = client.reconnectionToken;
+    client.reconnection.enabled = false;
+    client.connection.close(4010, "test drop");
+    expect(await pollFor(() => room.state.players.get(sid)?.connected === false)).toBe(true);
+    const back = (await colyseus.sdk.reconnect(token)) as unknown as Visitor;
+    // Armed as the reconnect resolves, as the game's client does (resilience.ts binds on every new room).
+    const got = await waitForMessage<ServerTimePayload>(back, VillageServerMsg.ServerTime, () => true);
+    expect(Math.abs(got.serverTimeMs - (Date.now() + skew))).toBeLessThan(2000);
+  });
+
   it("a window that runs out removes the visitor, and with them the shard disposes when it was the last one", async () => {
     process.env.CV_RECONNECT_WINDOW_S = "0.2";
     const room = await colyseus.createRoom<VillageRoom>(VILLAGE_ROOM);

@@ -6,7 +6,7 @@ import { useLightRig } from "../game/lightRig";
 import { QUALITY, exposureFor, inverseNeutralToneMap, type QualityTier } from "../game/quality";
 import { useSettingsStore } from "../stores/settingsStore";
 import { keyOffset } from "./dayNightBlend";
-import { dayNight } from "./dayNightDriver";
+import { dayNight, resetOnVisible } from "./dayNightDriver";
 import { villageClock } from "./villageClock";
 
 declare global {
@@ -31,12 +31,18 @@ declare global {
  * tone-maps back into the haze (the same compensation as `PlayShell`'s `skyClear`, here per frame); the fog's colour
  * is the haze itself on both tiers.
  */
+/** The rich tier's clear colour, written in place every frame (no allocation). */
+const SKY_CLEAR: [number, number, number] = [0, 0, 0];
+
 export function DayNight({ area, tier }: { area: AreaId; tier: QualityTier }) {
   const rig = useLightRig();
   const scene = useThree((s) => s.scene);
   const gl = useThree((s) => s.gl);
   const get = useThree((s) => s.get);
   const toneMappedFrame = QUALITY[tier].bloom;
+
+  // Back from a hidden tab: snap to the clock instead of gliding from the look the tab was hidden with.
+  useEffect(() => (typeof document !== "undefined" ? resetOnVisible(document) : undefined), []);
 
   useEffect(() => {
     dayNight.reset(); // a new scene starts from the clock itself
@@ -72,7 +78,7 @@ export function DayNight({ area, tier }: { area: AreaId; tier: QualityTier }) {
     if (scene.fog) scene.fog.color.setRGB(s.sky[0], s.sky[1], s.sky[2]);
     if (scene.background instanceof Color) {
       if (toneMappedFrame) {
-        const c = inverseNeutralToneMap(s.sky, exposure);
+        const c = inverseNeutralToneMap(s.sky, exposure, SKY_CLEAR);
         scene.background.setRGB(c[0], c[1], c[2]);
       } else {
         scene.background.setRGB(s.sky[0], s.sky[1], s.sky[2]);

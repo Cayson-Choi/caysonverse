@@ -77,6 +77,7 @@ describe("a summer noon, a winter noon, a midnight", () => {
     expect(s.lift).toBe(DAY_LIFT);
     expect(s.dayTint).toEqual([1, 1, 1]);
     expect(s.foliageTint).toEqual([1, 1, 1]);
+    expect(s.cherryTint).toEqual([1, 1, 1]);
     expect(s.keyIntensity).toBeCloseTo(DAY_LOOK.keyIntensity, 6);
     expect(s.keyDir[1]).toBeGreaterThan(0.9); // 77 degrees up
     expect(s.keyDir[2]).toBeGreaterThan(0); // south is +z
@@ -100,6 +101,9 @@ describe("a summer noon, a winter noon, a midnight", () => {
     expect(s.exposure).toBe(NIGHT_LOOK.exposure);
     expect(s.exposure).toBeGreaterThan(noon.exposure);
     expect(s.lift).toBeCloseTo(NIGHT_LOOK.lift, 9);
+    // The cherry blossoms are darker than the green leaves at night (Task 7A review m-g).
+    expect(s.cherryTint).toEqual([0.05, 0.07, 0.15].map((v) => expect.closeTo(v, 9)));
+    expect(linearLuma(s.cherryTint)).toBeLessThan(linearLuma(s.foliageTint));
     const moon = directionFrom(NIGHT_MOON.azimuthDeg, NIGHT_MOON.elevationDeg);
     for (let i = 0; i < 3; i++) expect(s.keyDir[i]).toBeCloseTo(moon[i]!, 9);
     expect(s.keyColor[2]).toBeGreaterThan(s.keyColor[0]); // the moon is blue-white

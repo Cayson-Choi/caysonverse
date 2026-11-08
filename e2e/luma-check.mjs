@@ -2,11 +2,21 @@
  * e2e/luma-check.mjs — 밝은 낮 밝기 검사 (방탈출 1단계 Task 22).
  *
  *   node e2e/luma-check.mjs <png...>        (예: node e2e/luma-check.mjs "art/school/renders/style-*.png")
+ *   node e2e/luma-check.mjs --night <frame.png[=mask.png]...>   (케이슨 마을의 밤 장면, Task 7A)
  *
  * PNG마다 화면 전체 픽셀의 감마 루마(sRGB 바이트 그대로: Y = (0.2126 R + 0.7152 G + 0.0722 B) / 255)를 구해
  *   평균 ≥ 0.45  그리고  5 백분위 ≥ 0.10   이면 PASS, 아니면 FAIL이다. 하나라도 FAIL이거나 읽지 못하면 종료 코드 1.
  * 이것이 Task 21에서 쓰고 받아들인 기준(구속력 있는 정의)이다. 선형 상대 휘도(WCAG)는 참고 열(lin=)로만 찍고 판정에 쓰지 않는다.
  * 5 백분위는 numpy.percentile처럼 선형 보간한다. 알파는 무시한다.
+ *
+ *
+ * 밤 기준(--night, 케이슨 마을 Task 7A): 밤 장면은 어두워야 하므로 낮 기준을 쓰지 않는다. 대신
+ *   화면 전체의 감마 루마 평균 ≥ 0.18  그리고  걸을 수 있는 바닥 픽셀의 감마 루마 중앙값(p50) ≥ 0.15  이면 PASS.
+ * 걸을 수 있는 바닥은 장면마다 다르니 마스크 PNG(흰색 = 걷는 바닥, 검은색 = 나머지)로 받는다: `frame.png=mask.png`, 또는
+ * 이름 규칙 `<이름>-frame.png` → `<이름>-walk.png` (그 밖에는 `<이름>.png` → `<이름>-walk.png`). 마스크 크기가 화면과 다르면
+ * 가장 가까운 픽셀로 맞춘다. 마스크는 e2e/village-daynight.mjs가 같은 시점의 장면을 다시 그려 만든다: 바닥 재질(LM_grass,
+ * LM_lawn, LM_plaza, LM_concrete, LM_stone)만 흰색, 나머지(하늘, 물, 건물, 나무, 아바타)는 검은색으로 그린 뒤, 그 픽셀의
+ * 시선이 y = 0 바닥과 120 m 안, 걷기 범위 안에서 만나는 곳만 남긴다.
  *
  * 의존성 없음: PNG는 node:zlib로 직접 푼다(비인터레이스, 색 유형 0·2·3·4·6, 비트 깊이 1·2·4·8·16).
  * 따옴표로 감싼 `*`·`?` 패턴은 이 스크립트가 펼친다(PowerShell은 펼쳐 주지 않는다).
@@ -88,6 +98,56 @@ export function lumaStats(rgba) {
 
 export function passes(stats) {
   return stats.mean >= MEAN_MIN && stats.p5 >= P5_MIN;
+}
+
+// ---------------------------------------------------------------------------------------------------------
+// The night bar (케이슨 마을, Task 7A).
+
+export const NIGHT_MEAN_MIN = 0.18;
+export const NIGHT_WALK_P50_MIN = 0.15;
+
+/**
+ * Night numbers of a frame: the whole frame's gamma-luma mean and p5, and over the WALKABLE pixels (mask white, i.e. its
+ * red byte >= 128; the mask is resampled to the frame by nearest neighbour) their share of the frame, median and mean.
+ * `walkP50` is null when no pixel is walkable.
+ */
+export function nightStats(frame, mask) {
+  const { width: W, height: H, rgba } = frame;
+  const ys = new Float64Array(W * H);
+  let sum = 0;
+  for (let k = 0; k < W * H; k += 1) {
+    const y = gammaLuma(rgba[k * 4], rgba[k * 4 + 1], rgba[k * 4 + 2]);
+    ys[k] = y;
+    sum += y;
+  }
+  const walk = [];
+  for (let j = 0; j < H; j += 1) {
+    const mj = Math.min(mask.height - 1, Math.floor(((j + 0.5) / H) * mask.height));
+    for (let i = 0; i < W; i += 1) {
+      const mi = Math.min(mask.width - 1, Math.floor(((i + 0.5) / W) * mask.width));
+      if (mask.rgba[(mj * mask.width + mi) * 4] >= 128) walk.push(ys[j * W + i]);
+    }
+  }
+  const sorted = Float64Array.from(ys).sort();
+  walk.sort((a, b) => a - b);
+  const n = W * H;
+  return {
+    mean: n ? sum / n : 0,
+    p5: percentile(sorted, 5),
+    walkShare: n ? walk.length / n : 0,
+    walkP50: walk.length ? percentile(walk, 50) : null,
+    walkMean: walk.length ? walk.reduce((a, b) => a + b, 0) / walk.length : null,
+  };
+}
+
+export function passesNight(stats) {
+  return stats.mean >= NIGHT_MEAN_MIN && stats.walkP50 !== null && stats.walkP50 >= NIGHT_WALK_P50_MIN;
+}
+
+/** The walkable mask's file for a frame: `x-frame.png` -> `x-walk.png`, else `x.png` -> `x-walk.png`. */
+export function maskPathFor(framePath) {
+  if (/-frame\.png$/i.test(framePath)) return framePath.replace(/-frame\.png$/i, "-walk.png");
+  return framePath.replace(/\.png$/i, "") + "-walk.png";
 }
 
 // ---------------------------------------------------------------------------------------------------------
@@ -241,8 +301,9 @@ export function expandArg(arg) {
 }
 
 export function main(argv) {
+  if (argv[0] === "--night") return mainNight(argv.slice(1));
   if (argv.length === 0) {
-    console.error("usage: node e2e/luma-check.mjs <png...>");
+    console.error("usage: node e2e/luma-check.mjs <png...>  |  --night <frame.png[=mask.png]...>");
     return 1;
   }
   let ok = true;
@@ -255,6 +316,38 @@ export function main(argv) {
       console.log(
         `${good ? "PASS" : "FAIL"}  ${file}  mean=${stats.mean.toFixed(3)} (>= ${MEAN_MIN})  p5=${stats.p5.toFixed(3)} (>= ${P5_MIN})` +
           `  [linear ref: mean=${stats.linearMean.toFixed(3)} p5=${stats.linearP5.toFixed(3)}]`,
+      );
+    } catch (err) {
+      ok = false;
+      console.log(`FAIL  ${file}  ${err.message}`);
+    }
+  }
+  return ok ? 0 : 1;
+}
+
+/** `--night`: every frame against the night bar, with its walkable mask (`frame=mask`, or the name rule). */
+export function mainNight(argv) {
+  if (argv.length === 0) {
+    console.error("usage: node e2e/luma-check.mjs --night <frame.png[=mask.png]...>");
+    return 1;
+  }
+  let ok = true;
+  const items = argv.flatMap((arg) => {
+    const eq = arg.indexOf("=");
+    if (eq > 0) return [[arg.slice(0, eq), arg.slice(eq + 1)]];
+    return expandArg(arg)
+      .filter((f) => !/-walk\.png$/i.test(f))
+      .map((f) => [f, maskPathFor(f)]);
+  });
+  for (const [file, maskFile] of items) {
+    try {
+      const stats = nightStats(decodePng(fs.readFileSync(file)), decodePng(fs.readFileSync(maskFile)));
+      const good = passesNight(stats);
+      ok = ok && good;
+      const p50 = stats.walkP50 === null ? "none" : stats.walkP50.toFixed(3);
+      console.log(
+        `${good ? "PASS" : "FAIL"}  ${file}  night: mean=${stats.mean.toFixed(3)} (>= ${NIGHT_MEAN_MIN})  walk p50=${p50} (>= ${NIGHT_WALK_P50_MIN})` +
+          `  [p5=${stats.p5.toFixed(3)} walkable ${(stats.walkShare * 100).toFixed(1)}% of the frame, mask ${maskFile}]`,
       );
     } catch (err) {
       ok = false;

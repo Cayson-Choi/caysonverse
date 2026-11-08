@@ -33,6 +33,8 @@ import {
   VILLAGE_CAMERA_PLANES,
   VILLAGE_GROUND_DECAL,
   applyDayNight,
+  cherryTintUniform,
+  liftMaterial,
   dayTintUniform,
   disposeVillage,
   disposeVillageSource,
@@ -330,6 +332,23 @@ describe("prepareVillage: the model dressed for the game", () => {
     expect(f.mats.LM_grass.onBeforeCompile).toBe(hook);
   });
 
+  it("the cherry blossoms take their own foliage tint (darker at night); every other foliage the shared one; noon is white for both", () => {
+    const cherry = mat("M_leaf_cherry");
+    const green = mat("M_leaf_green");
+    liftMaterial(cherry);
+    liftMaterial(green);
+    const hook = (m: MeshBasicMaterial) => {
+      const shader = { uniforms: {} as Record<string, unknown>, fragmentShader: "void main() {}", vertexShader: "" };
+      m.onBeforeCompile(shader as never, null as never);
+      return shader.uniforms;
+    };
+    expect(hook(cherry).uVillageFoliageTint).toBe(cherryTintUniform);
+    expect(hook(green).uVillageFoliageTint).toBe(foliageTintUniform);
+    const nodes = prepareVillage(fixture().root, new Texture(), "low");
+    applyDayNight(nodes, dayNightAt(parseKstTime("2026-06-21T12:30")!));
+    expect(cherryTintUniform.value.toArray()).toEqual([1, 1, 1]);
+  });
+
   it("the night light map: configured like the day one (same UV set), shared with every patched material; none = no map", () => {
     const f = fixture();
     const day = new Texture();
@@ -607,6 +626,9 @@ describe("applyDayNight: the clock's numbers into the model (Task 7A)", () => {
     expect(litUniform.value).toBe(1);
     expect(liftUniform.value).toBeCloseTo(NIGHT_LOOK.lift, 9);
     expect(foliageTintUniform.value.toArray()).toEqual([...NIGHT_LOOK.foliageTint].map((v) => expect.closeTo(v, 5)));
+    // The cherry blossoms darker still (Task 7A review m-g).
+    expect(cherryTintUniform.value.toArray()).toEqual([0.05, 0.07, 0.15].map((v) => expect.closeTo(v, 5)));
+    for (let k = 0; k < 3; k++) expect(NIGHT_LOOK.cherryTint[k]).toBeLessThan(NIGHT_LOOK.foliageTint[k]!);
     expect(dayTintUniform.value.toArray()).toEqual([1, 1, 1]); // the day light map has no weight at night: no extra darkening
     expect(nodes.sky!.color.toArray()).toEqual([...NIGHT_LOOK.domeTint].map((v) => expect.closeTo(v, 5)));
     expect(nodes.sky!.color.b).toBeGreaterThan(nodes.sky!.color.r); // blue

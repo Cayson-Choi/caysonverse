@@ -182,6 +182,18 @@ describe("the neutral tone curve (케이슨 마을) and its inverse", () => {
     }
   });
 
+  it("inverseNeutralToneMap writes into an out-parameter when given one (no allocation per frame), with the same numbers", () => {
+    const out: [number, number, number] = [9, 9, 9];
+    for (const c of [
+      [0.03, 0.2, 0.25],
+      [0.9, 0.88, 0.86],
+    ]) {
+      const r = inverseNeutralToneMap(c, 1.4, out);
+      expect(r).toBe(out);
+      expect([...out]).toEqual(inverseNeutralToneMap(c, 1.4));
+    }
+  });
+
   it("skyBeforeToneMap takes the scene's curve", () => {
     const hex = LIGHTING.village.sky;
     const lin = skyBeforeToneMap(hex, 1.5, "neutral");
