@@ -368,7 +368,7 @@ async function frameMode() {
   if (args.mode === "hall") {
     // HALL_FILES drift (T10 review minor): the hall's own files are exactly the list the load flow fetches by URL. The light tier
     // also reloads the village's files on the way out, never inside the hall; voice clips load only when a guide is asked.
-    const hallNew = [...fetched.keys()].filter((u) => !beforeHall.has(u) && !/\/village\/voice\//.test(u)).sort();
+    const hallNew = [...fetched.keys()].filter((u) => !beforeHall.has(u) && !/\/village\/voice\/|^\/audio\//.test(u)).sort(); // the BGM streams in range requests at any time
     check(`the hall fetched exactly HALL_FILES (${hallNew.join(", ")})`, JSON.stringify(hallNew) === JSON.stringify([...HALL_FILES].sort()), hallNew);
   }
   await S.page.screenshot({ path: join(EVID, `${args.mode}-${args.label}.png`) }).catch(() => {});
