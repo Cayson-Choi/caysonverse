@@ -21,6 +21,7 @@
 
 import { ZONES, WALL_HEIGHT } from "@caysonverse/shared/worldMap";
 import { limitedDistance, limitedY, type CameraLimit } from "./indoorCamera";
+import type { GeometryId } from "@caysonverse/shared/school/geometry";
 
 /** Max effective follow distance (m) while the cap is fully engaged. */
 export const MAZE_CAM_MAX_DISTANCE = 6;
@@ -80,7 +81,7 @@ export function cappedCameraY(y: number, engage: number): number {
  * the zone test alone must not decide: a stroll past the west houses must not cap the village camera at 6 m.
  */
 export function cameraLimitAt(
-  map: { cameraLimit?: CameraLimit; geometry: { id: string } },
+  map: { cameraLimit?: CameraLimit; geometry: { id: GeometryId } },
   x: number,
   z: number,
 ): CameraLimit | undefined {

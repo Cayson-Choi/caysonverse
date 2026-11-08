@@ -55,7 +55,6 @@ const FOUNTAIN_EDGE = L.plaza.fountain.collider.x / 2;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 /** Let broadcast/personal messages propagate to the in-process test clients. */
-const flush = () => sleep(60);
 
 /** Poll a getter until it is truthy (or timeout), then return its value. */
 async function pollFor<T>(read: () => T, timeoutMs = 2000, stepMs = 20): Promise<T> {

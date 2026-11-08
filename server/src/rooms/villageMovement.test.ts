@@ -47,10 +47,11 @@ describe("a legal step through the hall's walls is dropped", () => {
   // One start 0.45 m in front of each wall — in front of the cubby units on the north and east walls, clear of the plant
   // on the west one (Task 9 furnished the room) — and a 3 m step straight through it.
   const N = HALL.minZ + CUBBY_UNIT_DEPTH + 0.45;
+  const CX = (HALL.minX + HALL.maxX) / 2; // the room's middle line (x = 300 today), read from the layout
   const E = HALL.maxX - CUBBY_UNIT_DEPTH - 0.45;
   const cases: Array<[string, { x: number; z: number }, { x: number; z: number }]> = [
-    ["north", { x: 300, z: N }, { x: 300, z: N - 3 }],
-    ["south", { x: 300, z: HALL.maxZ - 0.45 }, { x: 300, z: HALL.maxZ - 0.45 + 3 }],
+    ["north", { x: CX, z: N }, { x: CX, z: N - 3 }],
+    ["south", { x: CX, z: HALL.maxZ - 0.45 }, { x: CX, z: HALL.maxZ - 0.45 + 3 }],
     ["west", { x: HALL.minX + 0.45, z: -2 }, { x: HALL.minX + 0.45 - 3, z: -2 }],
     ["east", { x: E, z: 0 }, { x: E + 3, z: 0 }],
   ];

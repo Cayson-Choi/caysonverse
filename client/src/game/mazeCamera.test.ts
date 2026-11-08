@@ -120,3 +120,19 @@ describe("indoorArmAt — the indoor arm shape only under a building's ceiling (
     expect(indoorArmAt({}, undefined)).toBe(false);
   });
 });
+
+describe("the hub never meets the legacy maze's camera cap (T5 review, final fix)", () => {
+  it("no spot of either hub geometry overlaps the maze rectangle, and none gets a camera limit", async () => {
+    const { cameraLimitAt, isInMaze } = await import("./mazeCamera");
+    const { mapBounds } = await import("./activeMap");
+    for (const gate of [true, false]) {
+      const map = hubActiveMap(gate);
+      const b = mapBounds(map);
+      for (let x = b.minX; x <= b.maxX; x += 1)
+        for (let z = b.minZ; z <= b.maxZ; z += 1) {
+          expect(isInMaze(x, z), `${gate} ${x},${z} in the maze rectangle`).toBe(false);
+          expect(cameraLimitAt(map, x, z), `${gate} ${x},${z}`).toBeUndefined();
+        }
+    }
+  });
+});
