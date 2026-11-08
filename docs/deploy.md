@@ -124,6 +124,21 @@ caysonverse(웹 3D 메타버스)의 배포·운영 방법입니다. DevOps 경�
 - 코드가 바뀐 배포는 **수업이 없을 때** 합니다. 서버를 다시 시작하면 열려 있던 반과 교실이 모두 사라지고, 선생님은 반을 다시 열어야 합니다(진행은 처음부터입니다).
 - 학교 GLB·라이트맵 주소에는 내용 해시(`?v=`)가 없어서(캐릭터 GLB에는 있습니다) GLB와 충돌 목록이 어긋난 채로 오래 두지 않도록 이 둘을 같은 시간에 올립니다.
 
+### 0.5 케이슨 마을 (VillageRoom)
+
+케이슨 마을 1단계(`docs/design.md` 38장)를 올릴 때 알아 둘 것입니다. 올리는 순서는 0.2~0.4와 같습니다: ① Oracle 얕은 복제 갱신 후 서버 다시 시작(0.2), ② 클라이언트 빌드(0.3), ③ Vercel 운영 배포(`D:/Codex/cayson-games/deploy/caysonverse`에서 `vercel deploy --prod --yes --scope caysons-projects-75ebc440`). 환경변수는 새로 필요한 것이 없습니다.
+
+- **VillageRoom**: Colyseus 방 이름 `village`(`VILLAGE_ROOM`). 입장 때 반 코드가 없고, 마을 광장과 추모관이 **같은 방**(구역만 다름)입니다.
+- **샤드 크기 30**: 한 방은 최대 30명(`VILLAGE_MAX_CLIENTS = 30`)이고, 가득 차면 새 방(샤드)이 열립니다. 가장 많이 찬 방부터 채우며, 31번째부터는 다음 방으로 갑니다. 방은 미리 만들어 두지 않고 첫 입장 때 열리며 비면 사라집니다. 재접속 창은 20초입니다.
+- **서버 시각 동기**: 마을의 낮과 밤은 실제 한국 시간을 따릅니다. 서버가 입장 때와 5분마다(`SERVER_TIME_INTERVAL_MS`), 재접속 때도 현재 시각을 보내고 클라이언트는 그 차이로 자기 시계를 맞춥니다. 그래서 **서버 시계(Oracle의 NTP)가 맞아야** 합니다. 확인은 `timedatectl`에서 `System clock synchronized: yes`입니다.
+- **새 정적 자산**(모두 `client/dist`에 들어가 Vercel이 줍니다, 서버는 주지 않습니다):
+  - `models/village/`: `village.glb`(5.41 MB), `memorial.glb`, `memorial_props.glb`, 라이트맵 `village_lm.webp`·`village_lm_night.webp`·`memorial_lm.webp`
+  - `audio/village/village_bgm1.mp3`(96 kbps, 약 2.16 MB, 첫 터치 뒤에 받음)
+  - `village/voice/*.m4a`(안내원 음성 8개, 각 30~44 KB, 문의할 때만 받음)
+  - 추모관 파일은 추모관에 들어갈 때만 받습니다. 마을 GLB 주소에는 내용 해시(`?v=`)가 없으므로 0.4처럼 서버와 클라이언트를 연달아 올립니다.
+- **예산**(`e2e/village-perf.mjs`가 판정, 값은 `docs/loadtest.md` 10장): 첫 접속(배포 모양, gzip, BGM 포함) ≤ 15,000,000 B(측정 14,152,333~14,400,461 B, 최악 14,678,471 B), `village.glb` ≤ 8 MB·≤ 260k 삼각형, 메인 스레드 바쁜 시간 ≤ 33 ms/프레임. 에셋을 바꾸면 이 값을 다시 잽니다.
+- **선생님 링크는 `?experience=escape`를 붙입니다.** 루트 주소는 이제 케이슨 마을을 엽니다. "AI 학교 탈출"로 들어가는 링크는 `https://caysonverse.vercel.app/?experience=escape`이고, 예전 월드는 `?world=legacy`입니다. 배포 전에 선생님들께 드린 옛 링크(루트)가 있으면 새 링크로 바꿔 알려 주세요.
+
 ---
 
 ## 1. 사전 준비 (예전 방식)

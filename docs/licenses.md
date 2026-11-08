@@ -36,12 +36,16 @@ caysonverse가 배포하는 그림·모델·글꼴·디코더의 출처와 라�
 | Poly Haven `kloppenheim_06_puresky` HDRI (2k) | Poly Haven, https://polyhaven.com/a/kloppenheim_06_puresky (API https://api.polyhaven.com) | CC0 1.0 Universal | `client/public/models/village/village.glb` 안의 텍스처: 노을 무렵 하늘빛(굽기와 Cycles 비교 그림의 조명), 하늘 돔 텍스처 `T_sky` | 2026-11-03 |
 | 케이슨 마을 모델 `village.glb`, 라이트맵 `village_lm.webp`, 직접 그린 텍스처(광장 판석·도로 무늬 `T_plaza`, 벚꽃·꽃·갈대·꽃잎 카드, 창·유리·버스·차양·현수막 그림 `T_atlas`·`T_glow`, 물·폭포 `T_water`·`T_falls`) | 이 프로젝트에서 Blender와 스크립트로 직접 제작(`art/village/tools/`의 `make_textures.py`, `build_village.py`, `bake_village.py`). 위 Poly Haven CC0 텍스처를 재료로 씀. AI 생성 모델·텍스처 없음 | 직접 제작 (이 프로젝트 소유) + 위 CC0 | `client/public/models/village/` (케이슨 마을 1단계 Task 6이 `art/village/export/`에서 복사. 원본 `art/`는 저장소에 올리지 않음) | 2026-11-03 |
 | 케이슨 마을 안내원 음성 8개 (`plaza_guide_1~4.m4a` 마을 안내원, `hall_desk_1~4.m4a` 추모관 안내 데스크; 24 kHz 모노 AAC, 각 30~44 KB) | VoxCPM2(OpenBMB, https://github.com/OpenBMB/VoxCPM, 가중치 https://huggingface.co/openbmb/VoxCPM2)로 발주자 PC에서 오프라인 생성. 로컬 VoiceStudio 앱 + capcut-editor 스킬의 `narrate.py`, 생성 스크립트 `art/village/voice/make_voice.py`(저장소에 올리지 않음). **글로 적은 설명으로 새로 디자인한 목소리**이며 실제 사람의 목소리를 복제하지 않음 | 엔진 코드(`voxcpm` 2.0.3 패키지, License-Expression: Apache-2.0)와 모델 가중치(모델 카드 `license: apache-2.0`) 모두 **Apache License 2.0, "free for commercial use"**. 생성된 음성은 이 프로젝트의 결과물. 모델 카드의 사칭·사기·허위 정보 금지 규칙을 지킴(사람 목소리 복제 없음, 대화창에 "AI 음성" 표시). 아래 "VoxCPM2 음성" 참고 | `client/public/village/voice/` (케이슨 마을 1단계 Task 9A: 안내원에게 문의하면 그 사람에게만 재생. 채팅은 읽지 않음) | 2026-11-08 |
+| 케이슨 마을 추모관 모델 `memorial.glb`, 라이트맵 `memorial_lm.webp`, 칸 소품 `memorial_props.glb`, 직접 그린 텍스처(바닥·참나무·흰 래커·패브릭·창밖 정원 그림 `T_m_garden`·소품) | 이 프로젝트에서 Blender와 스크립트로 직접 제작(`art/village/tools/`의 `build_memorial.py`, `bake_memorial.py`, `build_props.py`, `render_garden.py`, `make_memorial_textures.py`). 외부 재료는 Poly Haven CC0뿐(`white_plaster_02`, `kloppenheim_06_puresky`, `leafy_grass`, `island_tree_01` 잎, 두 나무 껍질, 위 표와 같은 항목). AI 생성 모델·텍스처 없음 | 직접 제작 (이 프로젝트 소유) + 위 CC0 | `client/public/models/village/` (케이슨 마을 1단계 Task 8). 폴더 기록 `client/public/models/village/LICENSE.md` | 2026-11-09 |
+| Poly Haven `precast_stone_paving` 텍스처(색) | Poly Haven, https://polyhaven.com/a/precast_stone_paving (API https://api.polyhaven.com) | CC0 1.0 Universal | `client/public/models/village/memorial.glb`의 창밖 정원 그림 `T_m_garden` 속 돌길 | 2026-11-09 |
+| 케이슨 마을 배경음악 `village_bgm1.mp3` (96 kbps mp3로 다시 인코딩) | **발주자(Cayson)의 오리지널 곡.** 발주자가 Suno로 만들었고 상업 이용 권리를 확인함(2026-11-08, `client/public/audio/LICENSE.md`) | 직접 제작(발주자 소유). 외부 음원·샘플 없음 | `client/public/audio/village/village_bgm1.mp3` (케이슨 마을 BGM, 마을에서만 재생) | 2026-11-09 |
 
 ## AI 생성 자산
 
 - **AI 이미지: 방탈출(학교)이 쓰는 것은 두 건.** 위 표의 조립실 배경 그림 두 장(넓은 화면용·세로 화면용, ChatGPT)입니다. 기존 월드의 AI 갤러리 그림 9점은 발주자가 제공한 AI 그림이며 방탈출은 쓰지 않습니다(출처 기록 없음, 위 표). 그 밖의 그림·텍스처·모델은 모두 직접 만들었거나 CC0입니다.
 - **AI 3D 생성: 없음.** `generate_3d` 같은 AI 3D 생성은 1단계에서 쓰지 않았습니다(스펙 10·14장). 학교 모델과 케이슨 마을 모델은 Blender로 직접 만들었습니다(마을 텍스처는 직접 그린 것과 Poly Haven CC0뿐).
 - **AI 음성: 케이슨 마을 안내원 음성 8개**(VoxCPM2, 위 표). 방탈출(학교)은 쓰지 않습니다.
+- **AI 음악: 케이슨 마을 배경음악 1곡**(발주자가 Suno로 만든 오리지널 곡, 위 표). 발주자가 상업 이용 권리를 확인했습니다. Suno 약관이 바뀌면 다시 확인합니다.
 - "AI 생성 자산 없음"이라고 통틀어 쓰지 않습니다. 위 자산들이 있기 때문입니다.
 
 ### ChatGPT 생성 그림 (조립실 배경)
@@ -68,4 +72,4 @@ caysonverse가 배포하는 그림·모델·글꼴·디코더의 출처와 라�
 3. AI가 만든 것이면 "AI 생성 자산" 절에도 적습니다.
 4. 폴더 안 상세 기록(`LICENSE.md`)이 따로 있으면 그쪽도 맞춥니다.
 
-마지막 갱신: 2026-11-08 (케이슨 마을 1단계 Task 9A: 안내원 음성 8개, VoxCPM2 Apache-2.0). 그 전: 2026-11-03 (케이슨 마을 1단계 Task 6과 그 수정: `village.glb`·`village_lm.webp`, 폴더 기록 `client/public/models/village/LICENSE.md`, Poly Haven CC0 텍스처·HDRI 13건 — 돌담은 `granite_wall` 대신 `stone_wall`). 그 전: 2026-11-02 (Task 24: `counsel.glb`·`counsel_lightmap.webp` 복사, 살펴보기 그림·반딧 초상화는 Task 18에서 들어와 있음). **최종 확인일: 2026-11-03** (케이슨 마을 Task 6 수정; 그 전 2026-11-02 Task 27) — 표의 파일 위치·크기를 그날 저장소와 맞춰 보았고, 표에 빠져 있던 AI 갤러리 그림 9점을 더했습니다.
+마지막 갱신: 2026-11-09 (케이슨 마을 1단계 Task 12: 배경음악 줄 추가, 마을 자산 전체 재확인). 그 전: 2026-11-08 (케이슨 마을 1단계 Task 9A: 안내원 음성 8개, VoxCPM2 Apache-2.0). 그 전: 2026-11-03 (케이슨 마을 1단계 Task 6과 그 수정: `village.glb`·`village_lm.webp`, 폴더 기록 `client/public/models/village/LICENSE.md`, Poly Haven CC0 텍스처·HDRI 13건). 그 전: 2026-11-02 (Task 24). **최종 확인일: 2026-11-09** — 케이슨 마을 배포 자산(모델 `village.glb`·`memorial.glb`·`memorial_props.glb`, 라이트맵 3개, 음성 8개, BGM)이 모두 표에 있는지 `client/public`의 파일 목록과 맞춰 보았습니다. 추모관 모델·라이트맵·소품과 `precast_stone_paving` CC0 한 건도 표에 더했고, Poly Haven CC0 재료는 `client/public/models/village/LICENSE.md`와 맞춰 보았습니다. 글꼴은 기존 Jua(OFL) 외에 새로 넣은 것이 없습니다.
