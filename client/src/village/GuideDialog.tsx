@@ -53,6 +53,13 @@ export function GuideDialog() {
   const guide = openId ? guideById(openId) : null;
   const open = guide !== null && guide.area === area;
 
+  // A hidden tab stops the clip.
+  useEffect(() => {
+    if (!voice) return;
+    const onVisibility = () => voice.setVisible(document.visibilityState !== "hidden");
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, [voice]);
   // The 🔊 toggle: muting stops the clip.
   useEffect(() => {
     voice?.setMuted(muted);

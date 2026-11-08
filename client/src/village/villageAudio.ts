@@ -8,7 +8,9 @@
  * null and the caller falls back to `element.volume`.
  *
  * The context starts "suspended" until a user gesture; `resumeVillageAudio()` is called from the gestures that start
- * the music or a guide's clip.
+ * the music or a guide's clip. iOS also parks it in "interrupted" after a call or a screen lock (final review I1), so
+ * it resumes from any state other than "running" (and "closed"). `onVillageAudioState` reports every state change so
+ * the music can re-arm its gesture listeners until the context really runs.
  */
 
 /** A level for one routed element. */
@@ -48,10 +50,11 @@ export function villageAudioContext(): AudioContext | null {
   return ctx;
 }
 
-/** Resume the context inside a user gesture (best effort, never throws). */
+/** Resume the context inside a user gesture (best effort, never throws): any state but "running"/"closed". */
 export function resumeVillageAudio(): void {
   const c = ctx;
-  if (!c || c.state !== "suspended") return;
+  const state = c?.state as string | undefined;
+  if (!c || state === "running" || state === "closed") return;
   try {
     void c.resume().catch(() => {});
   } catch {
@@ -59,9 +62,27 @@ export function resumeVillageAudio(): void {
   }
 }
 
-/** The context's state for the dev probe ("running", "suspended", or "none"). */
+/** The context's state ("running", "suspended", "interrupted", "closed", or "none" without a context). */
 export function villageAudioState(): string {
   return ctx ? ctx.state : "none";
+}
+
+/** Call `fn` on every state change of the shared context; returns the unsubscribe (a no-op without a context). */
+export function onVillageAudioState(fn: () => void): () => void {
+  const c = ctx;
+  if (!c || typeof c.addEventListener !== "function") return () => {};
+  try {
+    c.addEventListener("statechange", fn);
+  } catch {
+    return () => {};
+  }
+  return () => {
+    try {
+      c.removeEventListener("statechange", fn);
+    } catch {
+      // ignore
+    }
+  };
 }
 
 /**

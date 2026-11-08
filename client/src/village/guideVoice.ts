@@ -5,6 +5,7 @@
  *
  *  - One clip at a time: asking another question stops the clip that is playing.
  *  - A second press of the same question while it plays skips it (`press`); `skip()` does the same.
+ *  - A hidden tab stops the clip (`setVisible`).
  *  - The game's sound toggle (🔊, soundStore `muted`) mutes it: while muted nothing plays, and muting stops the clip.
  *  - While a clip plays the village music is ducked (`VillageBgm.duck`) and restored when it ends, is skipped, fails
  *    or the controller is disposed.
@@ -167,6 +168,11 @@ export class GuideVoice {
   /** The sound toggle changed: muting stops the clip. */
   setMuted(muted: boolean): void {
     if (muted) this.skip();
+  }
+
+  /** The tab was hidden (T9A minor): stop the clip so it does not talk to an empty room; the answer text stays. */
+  setVisible(visible: boolean): void {
+    if (!visible) this.skip();
   }
 
   /** The dialog closed: stop, and forget the selection. */

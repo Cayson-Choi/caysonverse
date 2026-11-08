@@ -155,6 +155,18 @@ describe("GuideVoice (Task 9A)", () => {
     expect(s.music.level).toBe(1);
   });
 
+  it("a hidden tab stops the clip and gives the music back; showing it again plays nothing by itself", () => {
+    const s = setup();
+    s.v.press("hall_desk_2");
+    const a = s.audios[0]!;
+    s.v.setVisible(false);
+    expect(a.paused).toBe(true);
+    expect(s.v.state()).toEqual({ playing: null, asked: "hall_desk_2" });
+    expect(s.music.level).toBe(1);
+    s.v.setVisible(true);
+    expect(a.paused).toBe(true);
+  });
+
   it("muted while play() is pending: the late resolve stops it", async () => {
     const s = setup();
     s.v.press("plaza_guide_1");

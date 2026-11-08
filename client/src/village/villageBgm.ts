@@ -13,8 +13,23 @@
  *  - `dispose()` pauses and releases the element.
  *  - Task 9A: the level goes to a Web Audio GainNode when `route` gives one (villageAudio.ts; iOS Safari ignores
  *    `element.volume`), else to `element.volume`. A guide's clip ducks the music through `duck` / `unduck`.
+ *  - iOS (final review I1): `touchstart` and a touch `pointerdown` do not count as a user activation, so the gesture
+ *    listeners include `touchend`, `pointerup` and `click`. Every gesture and every AudioContext `statechange` resumes
+ *    the context whenever it is not "running" ("interrupted" after a call or a screen lock included), and the
+ *    listeners stay armed until the context really runs. A routed element plays into a stopped graph otherwise, so
+ *    if the context still is not running `BGM_FALLBACK_MS` after an accepted play, the next gesture swaps to a plain,
+ *    unrouted element and plays that (`isFallback()`).
+ *  - The game's sound toggle (`setMuted`) silences the music too (final review m4), without changing the music choice.
+ *  - A remount (a reconnect re-keys the scene) carries "the music had started" over, so it plays again without a new
+ *    tap where the browser allows it (final review m3).
  */
-import { resumeVillageAudio, routeThroughGain, type GainSink } from "./villageAudio";
+import {
+  onVillageAudioState,
+  resumeVillageAudio,
+  routeThroughGain,
+  villageAudioState,
+  type GainSink,
+} from "./villageAudio";
 
 export const BGM_SRC = "/audio/village/village_bgm1.mp3";
 export const BGM_STORAGE_KEY = "cv-village-bgm";
@@ -24,7 +39,10 @@ export const BGM_FADE_IN_MS = 1500;
 export const BGM_HALL_MS = 1000;
 export const BGM_LOOP_FADE_S = 2;
 const TICK_MS = 100;
-const GESTURES = ["pointerdown", "keydown", "touchstart"] as const;
+/** If the AudioContext is still not running this long after an accepted play, a gesture swaps to plain playback. */
+export const BGM_FALLBACK_MS = 2500;
+/** The first-gesture events. iOS only counts touchend / pointerup / click / keydown as a user activation. */
+export const BGM_GESTURES = ["pointerdown", "pointerup", "touchstart", "touchend", "click", "keydown"] as const;
 
 /** The slice of HTMLAudioElement the controller uses. */
 export interface BgmAudio {
@@ -54,8 +72,12 @@ export interface BgmDeps {
   storage?: () => Pick<Storage, "getItem" | "setItem">;
   /** Route the element through a GainNode (villageAudio.ts); null/absent falls back to `element.volume`. */
   route?: (audio: BgmAudio) => GainSink | null;
-  /** Resume the shared AudioContext; called inside the gesture that starts the music. */
+  /** Resume the shared AudioContext; called inside every gesture until it runs. */
   resume?: () => void;
+  /** The shared AudioContext's state ("running", "suspended", "interrupted", "none"); absent = treated as running. */
+  audioState?: () => string;
+  /** Subscribe to the AudioContext's state changes; returns the unsubscribe. */
+  onAudioState?: (fn: () => void) => () => void;
 }
 
 /** A value that glides linearly to a target. */
@@ -94,6 +116,11 @@ export class VillageBgm {
   private enabled: boolean;
   private visible = true;
   private started = false; // a play() has been accepted
+  private startedAt = 0;
+  private pending = false; // a play() has not settled yet
+  private muted = false; // the game's sound toggle
+  private fallback = false; // swapped to a plain, unrouted element
+  private offState: (() => void) | null = null;
   private armed = false; // gesture listeners attached
   private cancelTick: (() => void) | null = null;
   private lastTime = 0;
@@ -115,8 +142,23 @@ export class VillageBgm {
     if (this.gain) {
       a.volume = 1; // the gain does the level
       this.gain.set(0);
+      try {
+        this.offState = deps.onAudioState?.(this.onAudioState) ?? null;
+      } catch {
+        this.offState = null;
+      }
     }
     this.enabled = this.loadEnabled();
+  }
+
+  /** True once the music swapped to a plain element because the AudioContext never ran. */
+  isFallback(): boolean {
+    return this.fallback;
+  }
+
+  /** True once a play() was accepted (and not switched off since). */
+  hasStarted(): boolean {
+    return this.started;
   }
 
   /** True when the level goes through a Web Audio GainNode (not `element.volume`). */
@@ -138,18 +180,97 @@ export class VillageBgm {
   arm(): void {
     if (this.armed || !this.audio) return;
     this.armed = true;
-    for (const t of GESTURES) this.deps.gestureTarget.addEventListener(t, this.onGesture, { passive: true });
+    for (const t of BGM_GESTURES) this.deps.gestureTarget.addEventListener(t, this.onGesture, { passive: true });
   }
 
   private disarm(): void {
     if (!this.armed) return;
     this.armed = false;
-    for (const t of GESTURES) this.deps.gestureTarget.removeEventListener(t, this.onGesture);
+    for (const t of BGM_GESTURES) this.deps.gestureTarget.removeEventListener(t, this.onGesture);
   }
 
   private readonly onGesture = (): void => {
-    this.tryPlay();
+    if (!this.audio) return;
+    if (!this.started) {
+      if (!this.pending) this.tryPlay();
+      else this.resumeCtx();
+      return;
+    }
+    // Playing, but the routed graph is not running (an iOS touchstart, or "interrupted" after a lock).
+    this.resumeCtx();
+    if (this.ctxRunning()) {
+      this.disarm();
+      return;
+    }
+    if (this.gain && this.deps.now() - this.startedAt >= BGM_FALLBACK_MS) this.unroute();
   };
+
+  /** The AudioContext changed state: running -> stop listening; anything else -> try to resume and listen again. */
+  private readonly onAudioState = (): void => {
+    if (!this.audio || !this.gain) return;
+    if (this.ctxRunning()) {
+      if (this.started) this.disarm();
+      return;
+    }
+    this.resumeCtx();
+    if (this.started) this.arm();
+  };
+
+  /** True when the music is audible as far as the context goes: not routed, or the context runs. */
+  private ctxRunning(): boolean {
+    if (!this.gain) return true;
+    const st = this.deps.audioState?.() ?? "running";
+    return st === "running" || st === "none";
+  }
+
+  private resumeCtx(): void {
+    try {
+      this.deps.resume?.();
+    } catch {
+      // best effort
+    }
+  }
+
+  /**
+   * The context never ran: drop the GainNode route and play a plain element instead (inside this gesture). On iOS its
+   * volume is fixed, so it plays at full level; still better than silence.
+   */
+  private unroute(): void {
+    const old = this.audio;
+    if (!old) return;
+    let at = 0;
+    try {
+      at = old.currentTime;
+    } catch {
+      at = 0;
+    }
+    this.offState?.();
+    this.offState = null;
+    this.gain?.dispose();
+    this.gain = null;
+    this.stopTick();
+    try {
+      old.pause();
+      old.removeAttribute("src");
+      old.load();
+    } catch {
+      // best effort
+    }
+    const a = this.deps.createAudio();
+    a.src = BGM_SRC;
+    a.loop = true;
+    a.preload = "auto";
+    a.volume = 0;
+    try {
+      a.currentTime = at;
+    } catch {
+      // not seekable yet
+    }
+    this.audio = a;
+    this.fallback = true;
+    this.started = false;
+    this.tryPlay();
+  }
 
   /** The audio element (dev probes and the e2e check read its state). */
   element(): BgmAudio | null {
@@ -204,6 +325,19 @@ export class VillageBgm {
     else if (this.started) this.tryPlay();
   }
 
+  /** The game's sound toggle: muted pauses the music (the music choice is kept); unmuting (a click) plays it again. */
+  setMuted(muted: boolean): void {
+    if (muted === this.muted) return;
+    this.muted = muted;
+    if (muted) this.halt(true);
+    else this.tryPlay();
+  }
+
+  /** Play now if the browser allows it (a remount after a reconnect); a refusal leaves it waiting for a gesture. */
+  resumeAfterRemount(): void {
+    if (!this.started) this.tryPlay();
+  }
+
   /** Advance the ramps and the loop fade; the scheduler calls it, and tests call it by hand. */
   tick(): void {
     this.apply();
@@ -211,6 +345,8 @@ export class VillageBgm {
 
   dispose(): void {
     this.disarm();
+    this.offState?.();
+    this.offState = null;
     this.stopTick();
     this.listeners.clear();
     this.gain?.dispose();
@@ -231,12 +367,8 @@ export class VillageBgm {
 
   private tryPlay(): void {
     const a = this.audio;
-    if (!a || !this.enabled || !this.visible) return;
-    try {
-      this.deps.resume?.();
-    } catch {
-      // best effort
-    }
+    if (!a || !this.enabled || !this.visible || this.muted) return;
+    this.resumeCtx();
     this.fade.jump(0);
     this.fade.go(1, BGM_FADE_IN_MS, this.deps.now());
     this.apply();
@@ -247,6 +379,7 @@ export class VillageBgm {
       return; // refused synchronously: the next gesture tries again
     }
     const accepted = () => {
+      this.pending = false;
       if (this.audio !== a) return;
       // Switched off while play() was pending (halt() paused and re-armed): a browser that still resolves must not
       // leave the music playing with the toggle showing off (music review minor 1).
@@ -254,17 +387,22 @@ export class VillageBgm {
         this.pauseQuietly(a);
         return;
       }
+      if (!this.started) this.startedAt = this.deps.now();
       this.started = true;
-      this.disarm();
-      // Hidden while pending: stay paused; becoming visible resumes it.
-      if (!this.visible) {
+      // Keep listening until the routed context really runs (iOS: a touchstart play into a suspended graph).
+      if (this.ctxRunning()) this.disarm();
+      else this.resumeCtx();
+      // Hidden or muted while pending: stay paused; becoming visible / unmuted resumes it.
+      if (!this.visible || this.muted) {
         this.pauseQuietly(a);
         return;
       }
       this.startTick();
     };
     if (result && typeof (result as Promise<void>).then === "function") {
+      this.pending = true;
       (result as Promise<void>).then(accepted, () => {
+        this.pending = false;
         // Autoplay refused: stay armed, try on the next gesture.
       });
     } else accepted();
@@ -347,6 +485,8 @@ export function createBrowserBgm(): VillageBgm {
   return new VillageBgm({
     route: (a) => routeThroughGain(a as unknown as HTMLMediaElement),
     resume: resumeVillageAudio,
+    audioState: villageAudioState,
+    onAudioState: onVillageAudioState,
     createAudio: () => new Audio() as unknown as BgmAudio,
     now: () => performance.now(),
     schedule: (fn, ms) => {
@@ -385,6 +525,13 @@ export interface BgmMountEnv {
  * before the second exists, so one element stays live (villageBgm.test.ts).
  */
 let active: VillageBgm | null = null;
+/** The last controller had started its music when it was disposed (a reconnect remount): the next one resumes. */
+let carryStarted = false;
+
+/** Forget the carried "started" (tests). */
+export function resetVillageBgmCarry(): void {
+  carryStarted = false;
+}
 
 /** The village's live music controller (the guides' voice ducks it), or null outside the village. */
 export function activeVillageBgm(): VillageBgm | null {
@@ -395,17 +542,21 @@ export function mountVillageBgm(env: BgmMountEnv): () => void {
   const c = env.create();
   active = c;
   c.arm();
+  const carry = carryStarted;
+  carryStarted = false;
   const sync = () => env.setOn(c.isEnabled());
   const unsub = c.subscribe(sync);
   const onVisibility = () => c.setVisible(env.doc.visibilityState !== "hidden");
   env.doc.addEventListener("visibilitychange", onVisibility);
   onVisibility();
   sync();
+  if (carry) c.resumeAfterRemount();
   env.setBgm(c);
   if (env.probe) env.probe.__cvBgm = c;
   return () => {
     env.doc.removeEventListener("visibilitychange", onVisibility);
     unsub();
+    carryStarted = (c.hasStarted() || carry) && c.isEnabled();
     c.dispose();
     if (env.probe && env.probe.__cvBgm === c) delete env.probe.__cvBgm;
     if (active === c) active = null;

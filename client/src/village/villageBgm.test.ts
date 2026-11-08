@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { BGM_SRC, BGM_STORAGE_KEY, VillageBgm, activeVillageBgm, mountVillageBgm, type BgmAudio } from "./villageBgm";
+import { beforeEach, describe, expect, it } from "vitest";
+import { BGM_FALLBACK_MS, BGM_GESTURES, BGM_SRC, BGM_STORAGE_KEY, VillageBgm, activeVillageBgm, mountVillageBgm, resetVillageBgmCarry, type BgmAudio } from "./villageBgm";
 import type { GainSink } from "./villageAudio";
 
 class FakeAudio implements BgmAudio {
@@ -53,7 +53,15 @@ class FakeGain implements GainSink {
   }
 }
 
-function setup(opts: { stored?: string | null; storageThrows?: boolean; route?: "gain" | "none" | "throws" } = {}) {
+function setup(
+  opts: { stored?: string | null; storageThrows?: boolean; route?: "gain" | "none" | "throws"; ctxState?: string } = {},
+) {
+  /** The shared AudioContext's state as the routed controller sees it; `setCtx` fires a statechange. */
+  const ctx = { state: opts.ctxState ?? "running", fns: new Set<() => void>() };
+  const setCtx = (state: string) => {
+    ctx.state = state;
+    for (const f of [...ctx.fns]) f();
+  };
   let t = 0;
   const audios: FakeAudio[] = [];
   const handlers = new Map<string, Set<() => void>>();
@@ -94,6 +102,11 @@ function setup(opts: { stored?: string | null; storageThrows?: boolean; route?: 
               return g;
             },
             resume: () => void resumes++,
+            audioState: () => ctx.state,
+            onAudioState: (fn: () => void) => {
+              ctx.fns.add(fn);
+              return () => void ctx.fns.delete(fn);
+            },
           }
         : {}),
     });
@@ -103,7 +116,19 @@ function setup(opts: { stored?: string | null; storageThrows?: boolean; route?: 
     bgm.tick();
   };
   const listenerCount = () => [...handlers.values()].reduce((n, s) => n + s.size, 0);
-  return { make, audios, gains, gesture, advance, store, listenerCount, ticking: () => ticking, resumes: () => resumes };
+  return {
+    make,
+    audios,
+    gains,
+    gesture,
+    advance,
+    store,
+    listenerCount,
+    setCtx,
+    ctxListeners: () => ctx.fns.size,
+    ticking: () => ticking,
+    resumes: () => resumes,
+  };
 }
 
 const flush = () => new Promise((r) => setTimeout(r, 0));
@@ -363,7 +388,7 @@ describe("VillageBgm", () => {
     const second = s.make();
     second.arm();
     expect(s.audios.filter((a) => !a.released && a.src !== "").length).toBe(1);
-    expect(s.listenerCount()).toBe(3);
+    expect(s.listenerCount()).toBe(BGM_GESTURES.length);
     s.gesture();
     await flush();
     expect(s.audios[0]!.playCalls).toBe(0);
@@ -451,7 +476,7 @@ describe("VillageBgmButton mount effect under StrictMode", () => {
     expect(t.probe.__cvBgm).toBe(live);
     expect(activeVillageBgm()).toBe(live);
     expect(s.audios.filter((a) => !a.released && a.src !== "").length).toBe(1);
-    expect(s.listenerCount()).toBe(3); // the live controller's gesture listeners only
+    expect(s.listenerCount()).toBe(BGM_GESTURES.length); // the live controller's gesture listeners only
     expect(t.docListeners.size).toBe(1);
     expect(t.onStates.at(-1)).toBe(true);
     s.gesture();
@@ -483,5 +508,182 @@ describe("VillageBgmButton mount effect under StrictMode", () => {
     t.bgmStates.at(-1)!.toggle();
     expect(t.onStates.at(-1)).toBe(true);
     cleanup();
+  });
+});
+
+/** Final review I1: iOS gestures, a suspended or interrupted AudioContext, and the plain-element fallback. */
+describe("VillageBgm on iOS (AudioContext not running)", () => {
+  it("listens for touchend, pointerup, click and keydown, which iOS counts as a user activation", () => {
+    for (const t of ["touchend", "pointerup", "click", "keydown"]) expect(BGM_GESTURES).toContain(t);
+    const s = setup();
+    const bgm = s.make();
+    bgm.arm();
+    expect(s.listenerCount()).toBe(BGM_GESTURES.length);
+  });
+
+  it("one tap fires several gesture events: a pending play() is not started again", async () => {
+    const s = setup();
+    const bgm = s.make();
+    bgm.arm();
+    const a = s.audios[0]!;
+    a.deferPlay = true;
+    s.gesture("pointerdown");
+    s.gesture("pointerup");
+    s.gesture("touchend");
+    s.gesture("click");
+    expect(a.playCalls).toBe(1);
+    a.resolvePending!();
+    await flush();
+    expect(a.paused).toBe(false);
+  });
+
+  it("suspended: a play accepted into a suspended context keeps listening and resumes on every gesture until it runs", async () => {
+    const s = setup({ route: "gain", ctxState: "suspended" });
+    const bgm = s.make();
+    bgm.arm();
+    s.gesture("touchstart"); // iOS: play() accepted, resume() refused
+    await flush();
+    const a = s.audios[0]!;
+    expect(a.paused).toBe(false);
+    expect(bgm.hasStarted()).toBe(true);
+    expect(s.listenerCount()).toBe(BGM_GESTURES.length); // not disarmed
+    const before = s.resumes();
+    s.gesture("touchend");
+    expect(s.resumes()).toBe(before + 1);
+    expect(a.playCalls).toBe(1); // the element is not played again
+    s.setCtx("running"); // the touchend's resume() took effect
+    expect(s.listenerCount()).toBe(0);
+    expect(bgm.isFallback()).toBe(false);
+  });
+
+  it("interrupted (a call or a screen lock): the statechange resumes and re-arms, and the next gesture resumes it", async () => {
+    const s = setup({ route: "gain" });
+    const bgm = s.make();
+    bgm.arm();
+    s.gesture("click");
+    await flush();
+    expect(s.listenerCount()).toBe(0);
+    const before = s.resumes();
+    s.setCtx("interrupted");
+    expect(s.resumes()).toBe(before + 1);
+    expect(s.listenerCount()).toBe(BGM_GESTURES.length);
+    s.gesture("touchend");
+    expect(s.resumes()).toBe(before + 2);
+    s.setCtx("running");
+    expect(s.listenerCount()).toBe(0);
+    expect(s.audios.length).toBe(1);
+  });
+
+  it("the context never runs: after BGM_FALLBACK_MS a gesture swaps to a plain, unrouted element and plays it", async () => {
+    const s = setup({ route: "gain", ctxState: "suspended" });
+    const bgm = s.make();
+    bgm.arm();
+    s.gesture("touchend");
+    await flush();
+    s.advance(1000, bgm);
+    s.gesture("touchend"); // too early: still waiting for the context
+    expect(s.audios.length).toBe(1);
+    s.advance(BGM_FALLBACK_MS, bgm);
+    s.gesture("touchend");
+    expect(s.audios.length).toBe(2);
+    expect(s.gains[0]!.disposed).toBe(true);
+    expect(s.audios[0]!.released).toBe(true);
+    expect(s.ctxListeners()).toBe(0);
+    await flush();
+    const plain = s.audios[1]!;
+    expect(plain.src).toBe(BGM_SRC);
+    expect(plain.loop).toBe(true);
+    expect(plain.paused).toBe(false);
+    expect(bgm.isFallback()).toBe(true);
+    expect(bgm.isRouted()).toBe(false);
+    expect(s.listenerCount()).toBe(0);
+    s.advance(1500, bgm);
+    expect(plain.volume).toBeCloseTo(0.35, 3);
+  });
+
+  it("dispose drops the statechange listener", () => {
+    const s = setup({ route: "gain" });
+    const bgm = s.make();
+    expect(s.ctxListeners()).toBe(1);
+    bgm.dispose();
+    expect(s.ctxListeners()).toBe(0);
+  });
+});
+
+describe("VillageBgm and the game's sound toggle (final review m4)", () => {
+  it("muting pauses the music without changing the stored choice; unmuting plays it again", async () => {
+    const s = setup();
+    const bgm = s.make();
+    bgm.arm();
+    s.gesture();
+    await flush();
+    const a = s.audios[0]!;
+    bgm.setMuted(true);
+    expect(a.paused).toBe(true);
+    expect(bgm.isEnabled()).toBe(true);
+    expect(s.store.get(BGM_STORAGE_KEY)).toBeUndefined();
+    s.gesture();
+    await flush();
+    expect(a.paused).toBe(true);
+    bgm.setMuted(false);
+    await flush();
+    expect(a.paused).toBe(false);
+  });
+
+  it("muted from the start: gestures play nothing until it is unmuted", async () => {
+    const s = setup();
+    const bgm = s.make();
+    bgm.setMuted(true);
+    bgm.arm();
+    s.gesture();
+    await flush();
+    expect(s.audios[0]!.playCalls).toBe(0);
+    bgm.setMuted(false);
+    await flush();
+    expect(s.audios[0]!.paused).toBe(false);
+  });
+});
+
+describe("VillageBgm across a reconnect remount (final review m3)", () => {
+  beforeEach(() => resetVillageBgmCarry());
+  const doc = () => ({
+    visibilityState: "visible",
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  });
+
+  it("music that had started plays again on the next mount without a new gesture", async () => {
+    const s = setup();
+    const e = { create: s.make, doc: doc(), setBgm: () => {}, setOn: () => {}, probe: null };
+    const c1 = mountVillageBgm(e);
+    s.gesture();
+    await flush();
+    c1();
+    const c2 = mountVillageBgm(e);
+    await flush();
+    expect(s.audios[1]!.playCalls).toBe(1);
+    expect(s.audios[1]!.paused).toBe(false);
+    c2();
+    const c3 = mountVillageBgm(e); // c2's music had started too
+    await flush();
+    expect(s.audios[2]!.paused).toBe(false);
+    c3();
+  });
+
+  it("music that never started (or was switched off) does not start on the next mount", async () => {
+    const s = setup();
+    const e = { create: s.make, doc: doc(), setBgm: () => {}, setOn: () => {}, probe: null };
+    mountVillageBgm(e)();
+    const c2 = mountVillageBgm(e);
+    await flush();
+    expect(s.audios[1]!.playCalls).toBe(0);
+    s.gesture();
+    await flush();
+    activeVillageBgm()!.setEnabled(false);
+    c2();
+    const c3 = mountVillageBgm(e);
+    await flush();
+    expect(s.audios[2]!.playCalls).toBe(0);
+    c3();
   });
 });
