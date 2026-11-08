@@ -1,7 +1,7 @@
 import { Suspense, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { KeyboardControls, useProgress } from "@react-three/drei";
-import { Object3D, type DirectionalLight } from "three";
+import { Object3D, type DirectionalLight, type HemisphereLight } from "three";
 import type { Room } from "@colyseus/sdk";
 // TYPE-ONLY: schema decorators must never enter the browser bundle.
 import type { WorldState } from "@caysonverse/shared/schema";
@@ -19,6 +19,7 @@ import { mapBounds, setActiveMap, type ActiveMap } from "./activeMap";
 import { overviewAllowed } from "./indoorCamera";
 import type { AreaGate } from "./areaFilter";
 import { LIGHTING, type LightingId } from "./sceneLighting";
+import { LightRigContext, type LightRig } from "./lightRig";
 import type { PlayersRoom } from "./remoteSync";
 import { Chat } from "../ui/Chat";
 import { ChatLog } from "../ui/ChatLog";
@@ -107,8 +108,9 @@ export interface PlayShellProps {
 
 /**
  * Keeps the sun's shadow box centred on the local player: every frame the light and its target slide by the
- * player's position (the light keeps its offset `key` from the target, so the direction never changes). Plain
- * number writes, nothing allocated.
+ * player's position (the light keeps its offset `key` from the target, so the direction never changes — unless the
+ * scene moves the sun itself by writing the offset in place, 케이슨 마을's day and night). Plain number writes,
+ * nothing allocated.
  */
 function SunFollow({
   sun,
@@ -241,7 +243,11 @@ export function PlayShell(p: PlayShellProps) {
   const cz = (b.minZ + b.maxZ) / 2;
   const half = p.shadowFollowHalf ?? Math.max(b.maxX - b.minX, b.maxZ - b.minZ) / 2 + 4;
   const sunRef = useRef<DirectionalLight>(null);
+  const hemiRef = useRef<HemisphereLight>(null);
   const [kx, ky, kz] = light.key.position;
+  // The sun's offset from its target: this scene's own (the day and night move it by writing it in place).
+  const [keyOffset] = useState<[number, number, number]>(() => [kx, ky, kz]);
+  const rig = useMemo<LightRig>(() => ({ sun: sunRef, hemi: hemiRef, keyOffset }), [keyOffset]);
   const sunTarget = useMemo(() => {
     const o = new Object3D();
     o.position.set(cx, 0, cz);
@@ -264,7 +270,7 @@ export function PlayShell(p: PlayShellProps) {
       >
         <color attach="background" args={skyClear ?? [light.sky]} />
         <fog attach="fog" args={[light.sky, light.fog[0], light.fog[1]]} />
-        <hemisphereLight args={[light.hemi[0], light.hemi[1], light.hemi[2]]} />
+        <hemisphereLight ref={hemiRef} args={[light.hemi[0], light.hemi[1], light.hemi[2]]} />
         <primitive object={sunTarget} />
         <directionalLight
           ref={sunRef}
@@ -282,26 +288,28 @@ export function PlayShell(p: PlayShellProps) {
           shadow-camera-bottom={-half}
         />
         {p.shadowFollowHalf !== undefined && profile.shadows && (
-          <SunFollow sun={sunRef} target={sunTarget} pose={pose} key3={light.key.position} />
+          <SunFollow sun={sunRef} target={sunTarget} pose={pose} key3={keyOffset} />
         )}
 
         <KeyboardControls map={MOVE_KEYS}>
-          <Suspense fallback={null}>
-            {renderSlot(p.world3d, frame)}
-            <LocalPlayer
-              sessionId={identity.sessionId}
-              nickname={identity.nickname}
-              appearance={identity.appearance}
-              pose={pose}
-              orbit={orbit}
-              seat={seat}
-              moveInput={moveInput}
-              blobShadow={profile.blobShadows}
-            />
-            <RemotePlayers room={room} selfPose={pose} selfSeat={seat} blobShadow={profile.blobShadows} areas={p.areas} />
-            <OverviewMarker pose={pose} />
-            <ClickMarker />
-          </Suspense>
+          <LightRigContext.Provider value={rig}>
+            <Suspense fallback={null}>
+              {renderSlot(p.world3d, frame)}
+              <LocalPlayer
+                sessionId={identity.sessionId}
+                nickname={identity.nickname}
+                appearance={identity.appearance}
+                pose={pose}
+                orbit={orbit}
+                seat={seat}
+                moveInput={moveInput}
+                blobShadow={profile.blobShadows}
+              />
+              <RemotePlayers room={room} selfPose={pose} selfSeat={seat} blobShadow={profile.blobShadows} areas={p.areas} />
+              <OverviewMarker pose={pose} />
+              <ClickMarker />
+            </Suspense>
+          </LightRigContext.Provider>
           <CameraRig pose={pose} orbit={orbit} seat={seat} fogRange={light.fog} far={planes.far} />
         </KeyboardControls>
         <NametagSystem />

@@ -11,8 +11,11 @@
  *    sun where the bake has it (east-north-east), the haze of the model's sky dome as the fog and clear colour,
  *    and a light fog from 120 to 900 m (the village's own ground barely fades and meets the backdrop, whose haze
  *    is baked in, without a seam; the far plane is 1.6 km, VillageScene). The unlit, light-mapped model reads
- *    through the neutral tone curve at exposure 1.4 (the brightness gate, Task 7). It is one preset of DATA — the
- *    village's day and night (Task 7A) will drive these values from the clock instead of switching presets.
+ *    through the neutral tone curve at exposure 1.4 (the brightness gate, Task 7). It is the DAY look and the memorial
+ *    hall's warm indoor light. The village's day and night (Task 7A) move every one of these values with the clock
+ *    instead of switching presets: village/dayNightBlend.ts blends this look with a golden hour and a night, and
+ *    village/DayNight.tsx writes the result into the scene's lights, fog, clear colour and exposure every frame
+ *    (the preset stays the value the scene is made with and the one the hall shows).
  *
  * `fog` is [near, far] in metres; `hemi` is [sky colour, ground colour, intensity]; `key` is
  * the directional "sun" — its `position` is relative to the map's centre (PlayShell aims it

@@ -13,6 +13,7 @@ import { useQualityTier } from "../game/QualityEffects";
 import { VILLAGE_LAYOUT, type AreaId } from "@caysonverse/shared/village/villageLayout";
 import { PlotMarkers } from "./PlotMarkers";
 import { DoorPad, HallRoom } from "./VillageHall";
+import { DayNight } from "./DayNight";
 import { VillageModel } from "./VillageModel";
 import { VILLAGE_CAMERA_PLANES, type VillageTier } from "./villageModelPrep";
 import { areaGate, localArea, readSelfArea, releaseLocalArea, seedLocalArea, useLocalArea } from "./villageArea";
@@ -117,6 +118,7 @@ export function VillageScene({ identity }: { identity: Identity }) {
       cameraPlanes={VILLAGE_CAMERA_PLANES}
       world3d={({ pose }) => (
         <>
+          <DayNight area={area} tier={tier} />
           <VillageArea area={area} tier={tier} />
           <VillageDoors pose={pose} />
         </>

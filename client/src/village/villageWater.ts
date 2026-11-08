@@ -234,6 +234,8 @@ export const WATER = {
   foamFlow: 0.35,
   /** The sun's glint (rich tier): colour and tightness. */
   sunGlint: { color: "#ffe2bc", power: 220, strength: 2.2 },
+  /** The fountain's underwater lights at night (Task 7A): their colour and reach (m) around the fountain's centre. */
+  fountainGlow: { color: "#8cc4ff", radius: 4.5 },
 } as const;
 
 /** Toward the baked sun (Task 6: azimuth 70° clockwise from north, elevation 20°). */
@@ -278,6 +280,9 @@ uniform float uFoamFlow;
 uniform vec3 uSunDir;
 uniform vec3 uSunColor;
 uniform vec2 uSunGlint;
+uniform vec3 uTint;
+uniform vec4 uFountain;
+uniform vec3 uFountainColor;
 #include <common>
 #include <fog_pars_fragment>
 varying vec2 vUv;
@@ -329,6 +334,12 @@ void main() {
   col = mix( col, foamTex.rgb, foam );
   alpha = mix( alpha, foamTex.a, foam );
 
+  // The time of day (Task 7A): the whole surface follows the light (dark blue at night), and at night the fountain's
+  // underwater lights glow in its pool and jets (x, z, radius, strength), the foam the most.
+  col *= uTint;
+  float fd = length( vWorldPos.xz - uFountain.xy ) / max( uFountain.z, 1e-3 );
+  col += uFountainColor * ( uFountain.w * exp( -fd * fd ) * ( 0.45 + 0.55 * foam ) );
+
   gl_FragColor = vec4( col, alpha );
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
@@ -351,6 +362,7 @@ export interface WaterOptions {
 /** The village's water surface (a ShaderMaterial with the scene's fog, tone mapping and colour space). */
 export function createWaterMaterial(o: WaterOptions): ShaderMaterial {
   const sun = new Color(WATER.sunGlint.color);
+  const fountain = new Color(WATER.fountainGlow.color);
   const m = new ShaderMaterial({
     name: "M_water (runtime)",
     uniforms: UniformsUtils.merge([
@@ -373,6 +385,10 @@ export function createWaterMaterial(o: WaterOptions): ShaderMaterial {
         uSunDir: { value: VILLAGE_SUN_DIR.clone() },
         uSunColor: { value: new Vector3(sun.r, sun.g, sun.b) },
         uSunGlint: { value: [WATER.sunGlint.power, WATER.sunGlint.strength] },
+        // The clock's (Task 7A, dayNightBlend.ts): the light's tint, the fountain's night glow (off by day).
+        uTint: { value: new Vector3(1, 1, 1) },
+        uFountain: { value: new Vector4(0, 0, WATER.fountainGlow.radius, 0) },
+        uFountainColor: { value: new Vector3(fountain.r, fountain.g, fountain.b) },
       },
     ]),
     vertexShader: WATER_VERTEX,

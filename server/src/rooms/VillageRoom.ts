@@ -5,7 +5,7 @@ import type { ChatBroadcast } from "@caysonverse/shared/messages";
 import { PATCH_RATE_MS, ROLE_STUDENT, VILLAGE_MAX_CLIENTS } from "@caysonverse/shared/constants";
 import { APPEARANCE_FIELDS } from "@caysonverse/shared/appearance";
 import type { MapGeometry } from "@caysonverse/shared/school/geometry";
-import { VillageMsg } from "@caysonverse/shared/village/messages";
+import { SERVER_TIME_INTERVAL_MS, VillageMsg, VillageServerMsg, type ServerTimePayload } from "@caysonverse/shared/village/messages";
 import { VILLAGE_LAYOUT, villageGeometry } from "@caysonverse/shared/village/villageLayout";
 import { PlayerRoom, baseTracking, spawnInDisk, type Tracking } from "./PlayerRoom";
 import { validateJoinOptions } from "./joinValidation";
@@ -29,7 +29,10 @@ interface VillageTracking extends Tracking {
  *  - the hall is a quiet place (`isQuiet`): Emoji and Jump are dropped there, chat still goes through;
  *  - chat is scoped by area (`deliverChat`): a line is heard only by the clients in the sender's area, so what is
  *    said inside the hall stays in the hall and the plaza's talk does not carry in. Emoji, Jump and Typing stay
- *    unscoped (they are the world's, relayed to everyone).
+ *    unscoped (they are the world's, relayed to everyone);
+ *  - the server's clock (Task 7A, `VillageServerMsg.ServerTime`): sent to each visitor on join and to everyone every
+ *    5 minutes. The village's sun follows real Korean time, and the client reads the time of day from this clock
+ *    (plus its own offset), not from the device's, which may be wrong.
  *
  * Topology — NOT a singleton like the world: the room is not pre-created, clients `joinOrCreate` it, and
  * `maxClients` (VILLAGE_MAX_CLIENTS = 30) makes Colyseus lock a full room, so the next visitor lands in
@@ -52,6 +55,23 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     this.onMessage(VillageMsg.UseDoor, (client) => {
       this.handleUseDoor(client);
     });
+    // The time of day: everyone's clock offset is refreshed every 5 minutes (drift, a device clock changed meanwhile).
+    this.clock.setInterval(() => this.broadcastServerTime(), SERVER_TIME_INTERVAL_MS);
+  }
+
+  /** The server's wall clock (Unix epoch ms, UTC). A seam for tests; the door and move caps use `now()`. */
+  protected wallClock(): number {
+    return Date.now();
+  }
+
+  /** The server's clock for one visitor (on join; queued until their join completes) or for everyone. */
+  private serverTime(): ServerTimePayload {
+    return { serverTimeMs: this.wallClock() };
+  }
+
+  /** Re-send the server's clock to every client in the room. */
+  broadcastServerTime(): void {
+    this.broadcast(VillageServerMsg.ServerTime, this.serverTime());
   }
 
   onJoin(client: Client, options: unknown): void {
@@ -73,6 +93,7 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     player.role = ROLE_STUDENT; // the village has no admin
     player.area = "village";
     this.seatPlayer(client, player); // state + tracking (createTracking below)
+    client.send(VillageServerMsg.ServerTime, this.serverTime());
   }
 
   /** The village map: the open village plus the memorial hall's sealed interior. */

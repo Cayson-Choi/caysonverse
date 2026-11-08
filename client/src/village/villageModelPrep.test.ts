@@ -20,19 +20,35 @@ import { LIGHTMAP_CHANNEL, LIGHTMAP_INTENSITY } from "../game/hub/hubModelPrep";
 import { overviewFar } from "../game/overview";
 import {
   FALLS_SPEED,
+  FOUNTAIN_GLOW_STRENGTH,
   GLOW_BOOST,
   GROUND_GRADE,
+  GROUND_GRADE_NIGHT,
   GROUND_LAYER_OFFSET,
   LIGHT_LIFT,
+  LIT,
+  STAR_COUNT,
+  STAR_RADIUS,
   VILLAGE_CAMERA_PLANES,
+  applyDayNight,
+  dayTintUniform,
   disposeVillage,
+  foliageTintUniform,
   drawCallBudget,
   fallsDown,
   fitSkyMapping,
+  liftTintUniform,
   liftUniform,
+  litUniform,
+  makeStars,
+  moonTintUniform,
+  nightBlendUniform,
+  nightMapUniform,
   prepareVillage,
   tickVillage,
 } from "./villageModelPrep";
+import { DAY_LIFT, NIGHT_LOOK, dayNightAt, indoorState, type DayNightState } from "./dayNightBlend";
+import { parseKstTime } from "@caysonverse/shared/village/sunClock";
 
 /**
  * A node tree with the names and materials the village.glb contract promises (Task 6 report): the same shape the
@@ -251,31 +267,70 @@ describe("prepareVillage: the model dressed for the game", () => {
     expect(aces.key).toBe("village-sky-inverse-aces");
   });
 
-  it("lifts the light of the light-mapped materials and of the village's own foliage (one shared uniform), not the backdrop's", () => {
+  it("gives the light-mapped materials and the village's own foliage the time of day's light (shared uniforms), not the backdrop", () => {
     const f = fixture();
     const nodes = prepareVillage(f.root, new Texture(), "low");
-    const patched = (m: MeshBasicMaterial) => m.customProgramCacheKey() === "village-lift";
+    const patched = (m: MeshBasicMaterial) => m.customProgramCacheKey() === "village-light";
     for (const m of [f.mats.LM_plaza, f.mats.LM_grass, f.mats.LM_wood, f.mats.M_leaf_green]) expect(patched(m), m.name).toBe(true);
     for (const m of [f.mats.M_window, f.mats.M_lamp, f.mats.M_glass, f.mats.M_backdrop]) expect(patched(m), m.name).toBe(false);
     expect(patched(materialOf(nodes.root, "inst__far_0_0"))).toBe(false);
     expect(liftUniform.value).toBe(LIGHT_LIFT);
+    expect(LIGHT_LIFT).toBe(DAY_LIFT);
     expect(LIGHT_LIFT).toBeGreaterThan(0);
-    // Light-mapped: the lift joins the light map's light; vertex-lit: COLOR_0's light. Both before the albedo multiplies.
+    // The hook (fed a minimal fragment shader of three's shape): the light map's texel is the day map x the dusk tint
+    // blended with the night map; the lift joins the light before the albedo multiplies; vertex-lit: COLOR_0 x tint + lift.
     const shader = {
       uniforms: {} as Record<string, unknown>,
-      fragmentShader: "void main() {\n#include <color_fragment>\n#include <aomap_fragment>\nreflectedLight.indirectDiffuse *= diffuseColor.rgb;\n}",
+      fragmentShader: [
+        "void main() {",
+        "#include <color_fragment>",
+        "#ifdef USE_LIGHTMAP",
+        "  vec4 lightMapTexel = texture2D( lightMap, vLightMapUv );",
+        "  reflectedLight.indirectDiffuse += lightMapTexel.rgb * lightMapIntensity * RECIPROCAL_PI;",
+        "#endif",
+        "#include <aomap_fragment>",
+        "reflectedLight.indirectDiffuse *= diffuseColor.rgb;",
+        "}",
+      ].join("\n"),
       vertexShader: "",
     };
     f.mats.LM_grass.onBeforeCompile(shader as never, null as never);
     expect(shader.uniforms.uVillageLift).toBe(liftUniform);
+    expect(shader.uniforms.uVillageLiftTint).toBe(liftTintUniform);
+    expect(shader.uniforms.uVillageDayTint).toBe(dayTintUniform);
+    expect(shader.uniforms.uVillageFoliageTint).toBe(foliageTintUniform);
+    expect(shader.uniforms.uVillageNight).toBe(nightBlendUniform);
+    expect(shader.uniforms.uVillageNightMap).toBe(nightMapUniform);
     const fs = shader.fragmentShader;
+    expect(fs).toContain("uniform sampler2D uVillageNightMap;");
     expect(fs.indexOf("vec3 villageAlbedo = diffuseColor.rgb;")).toBeLessThan(fs.indexOf("#include <color_fragment>"));
-    expect(fs.indexOf("indirectDiffuse += vec3( uVillageLift )")).toBeLessThan(fs.indexOf("indirectDiffuse *= diffuseColor.rgb"));
-    expect(fs).toContain("diffuseColor.rgb += villageAlbedo * uVillageLift;");
+    // Both maps are read only while they count.
+    expect(fs).toContain("if ( uVillageNight < 0.999 ) lightMapTexel.rgb = texture2D( lightMap, vLightMapUv ).rgb * uVillageDayTint * ( 1.0 - uVillageNight );");
+    expect(fs).toContain("vec3 villageNightLight = texture2D( uVillageNightMap, vLightMapUv ).rgb;");
+    expect(fs).toContain("lightMapTexel.rgb += villageNightLight * uVillageNight;");
+    expect(shader.uniforms.uVillageMoonTint).toBe(moonTintUniform);
+    expect(fs).not.toContain("vec4 lightMapTexel = texture2D( lightMap, vLightMapUv );");
+    expect(fs.indexOf("indirectDiffuse += uVillageLift * uVillageLiftTint")).toBeLessThan(fs.indexOf("indirectDiffuse *= diffuseColor.rgb"));
+    expect(fs).toContain("diffuseColor.rgb = ( diffuseColor.rgb + villageAlbedo * uVillageLift ) * uVillageFoliageTint;");
     // Patched once: a second dressing keeps the same hook.
     const hook = f.mats.LM_grass.onBeforeCompile;
     prepareVillage(f.root, new Texture(), "high");
     expect(f.mats.LM_grass.onBeforeCompile).toBe(hook);
+  });
+
+  it("the night light map: configured like the day one (same UV set), shared with every patched material; none = no map", () => {
+    const f = fixture();
+    const day = new Texture();
+    const night = new Texture();
+    night.flipY = true;
+    prepareVillage(f.root, day, "low", "neutral", night);
+    expect(nightMapUniform.value).toBe(night);
+    expect(night.channel).toBe(LIGHTMAP_CHANNEL);
+    expect(night.flipY).toBe(false);
+    expect(night.colorSpace).toBe(SRGBColorSpace);
+    for (const m of [f.mats.LM_plaza, f.mats.LM_grass, f.mats.LM_wood]) expect(m.lightMap, m.name).toBe(day);
+    prepareVillage(f.root, day, "low");
+    expect(nightMapUniform.value).toBeNull();
   });
 
   it("the water: one runtime water material on every M_water surface, reflecting the dome as it is laid on the sky", () => {
@@ -328,13 +383,42 @@ describe("prepareVillage: the model dressed for the game", () => {
     expect(nodes.sky!.userData.inverseTone.uExposure.value).toBe(1.3);
   });
 
-  it("windows, lamps and glass stay as the model has them (Task 7A drives them at night)", () => {
+  it("windows and lamps are copies that glow warm and past white once lit; the glass stays as the model has it (not emissive)", () => {
     const f = fixture();
     const nodes = prepareVillage(f.root, new Texture(), "high");
-    expect(materialOf(nodes.root, "village_fx_12")).toBe(f.mats.M_window);
-    expect(materialOf(nodes.root, "village_fx_10")).toBe(f.mats.M_lamp);
+    const window = materialOf(nodes.root, "village_fx_12");
+    const lamp = materialOf(nodes.root, "village_fx_10");
+    expect(window).not.toBe(f.mats.M_window);
+    expect(lamp).not.toBe(f.mats.M_lamp);
+    expect(window.name).toBe("M_window");
+    expect(lamp.name).toBe("M_lamp");
+    expect(nodes.own).toContain(window);
+    expect(nodes.own).toContain(lamp);
     expect(materialOf(nodes.root, "village_glass")).toBe(f.mats.M_glass);
     expect(f.mats.M_glass.toneMapped).toBe(true);
+    expect(f.mats.M_glass.customProgramCacheKey()).not.toBe("village-lit");
+    // The hook: map_fragment is followed by the glow, mixed by the shared lit weight.
+    const compile = (m: MeshBasicMaterial) => {
+      const shader = {
+        uniforms: {} as Record<string, { value: unknown }>,
+        fragmentShader: "void main() {\n#include <map_fragment>\n#include <color_fragment>\n}",
+        vertexShader: "",
+      };
+      m.onBeforeCompile(shader as never, null as never);
+      return shader;
+    };
+    const w = compile(window);
+    expect(w.uniforms.uVillageLit).toBe(litUniform);
+    expect((w.uniforms.uVillageLitBoost!.value as number)).toBe(LIT.window.boost);
+    expect((w.uniforms.uVillageLitColor!.value as Vector3).toArray()).toEqual([...LIT.window.color]);
+    expect(w.fragmentShader).toMatch(/#include <map_fragment>\nfloat villageGlowLuma/);
+    expect(w.fragmentShader).toContain("uniform float uVillageLit;");
+    expect(w.fragmentShader.indexOf("villageGlowLuma")).toBeLessThan(w.fragmentShader.indexOf("#include <color_fragment>"));
+    expect((compile(lamp).uniforms.uVillageLitBoost!.value as number)).toBe(LIT.lamp.boost);
+    expect(window.customProgramCacheKey()).toBe("village-lit");
+    // Glowing means past white: the boosted glow colour exceeds 1, so the rich tier's bloom (threshold 1.6) takes it.
+    expect(Math.max(...LIT.window.color) * LIT.window.boost).toBeGreaterThan(1.6);
+    expect(Math.max(...LIT.lamp.color) * LIT.lamp.boost).toBeGreaterThan(1.6);
   });
 
   it("disposeVillage releases its own copies and nothing of the loader's cache", () => {
@@ -421,3 +505,104 @@ describe("the far plane (the dome is 1.4 km out, the school's CAMERA_FAR is 200 
     expect(VILLAGE_CAMERA_PLANES.near).toBeGreaterThan(0.1);
   });
 });
+
+describe("applyDayNight: the clock's numbers into the model (Task 7A)", () => {
+  const at = (kst: string): DayNightState => dayNightAt(parseKstTime(kst)!);
+
+  it("noon: the day light map alone, nothing lit, no tint, the day's lift; the water and the stars at rest", () => {
+    const f = fixture();
+    const nodes = prepareVillage(f.root, new Texture(), "high");
+    applyDayNight(nodes, at("2026-06-21T12:30"));
+    for (const [name, rgb] of Object.entries(GROUND_GRADE)) expect((f.mats as Record<string, MeshBasicMaterial>)[name]!.color.toArray(), name).toEqual([...rgb]);
+    expect(nightBlendUniform.value).toBe(0);
+    expect(litUniform.value).toBe(0);
+    expect(liftUniform.value).toBeCloseTo(DAY_LIFT, 9);
+    expect(dayTintUniform.value.toArray()).toEqual([1, 1, 1]);
+    expect(foliageTintUniform.value.toArray()).toEqual([1, 1, 1]);
+    expect(liftTintUniform.value.toArray()).toEqual([1, 1, 1]);
+    expect(nodes.sky!.color.toArray()).toEqual([1, 1, 1]);
+    for (const m of nodes.hazed) expect(m.color.toArray(), m.name).toEqual([1, 1, 1]);
+    expect(nodes.water!.uniforms.uTint!.value.toArray()).toEqual([1, 1, 1]);
+    expect(nodes.water!.uniforms.uFountain!.value.w).toBe(0);
+    expect(nodes.stars!.visible).toBe(false);
+  });
+
+  it("midnight: the night light map alone, windows, lamps and the fountain lit, the foliage, sky and hills dark blue, the stars out", () => {
+    const f = fixture();
+    const nodes = prepareVillage(f.root, new Texture(), "high");
+    applyDayNight(nodes, at("2026-06-21T23:30"));
+    expect(nightBlendUniform.value).toBe(1);
+    expect(litUniform.value).toBe(1);
+    expect(liftUniform.value).toBeCloseTo(NIGHT_LOOK.lift, 9);
+    expect(foliageTintUniform.value.toArray()).toEqual([...NIGHT_LOOK.foliageTint].map((v) => expect.closeTo(v, 5)));
+    expect(dayTintUniform.value.toArray()).toEqual([1, 1, 1]); // the day light map has no weight at night: no extra darkening
+    expect(nodes.sky!.color.toArray()).toEqual([...NIGHT_LOOK.domeTint].map((v) => expect.closeTo(v, 5)));
+    expect(nodes.sky!.color.b).toBeGreaterThan(nodes.sky!.color.r); // blue
+    // The far hills' shared material, the forest copies' and the falls' copy: all in the haze tint.
+    expect(nodes.hazed.length).toBeGreaterThanOrEqual(3);
+    expect(nodes.hazed).toContain(f.mats.M_backdrop);
+    for (const m of nodes.hazed) expect(m.color.b, m.name).toBeCloseTo(NIGHT_LOOK.hazeTint[2], 5);
+    expect((nodes.water!.uniforms.uTint!.value.z as number)).toBeLessThan(0.5);
+    expect(nodes.water!.uniforms.uFountain!.value.w).toBe(FOUNTAIN_GLOW_STRENGTH);
+    expect(nodes.stars!.visible).toBe(true);
+    expect((nodes.stars!.material as { opacity: number }).opacity).toBe(1);
+    // The lawns move to the night's grade (cool, dark); the neutral plaza keeps its own.
+    for (const [name, rgb] of Object.entries(GROUND_GRADE_NIGHT)) {
+      expect(nodes.graded.some((g) => g.material.name === name), name).toBe(true);
+      const c = (f.mats as Record<string, MeshBasicMaterial>)[name]!.color;
+      expect(c.toArray(), name).toEqual([...rgb].map((v) => expect.closeTo(v, 6)));
+      expect(c.b).toBeGreaterThan(c.r);
+    }
+    expect(f.mats.LM_plaza.color.toArray()).toEqual([...GROUND_GRADE.LM_plaza!]);
+  });
+
+  it("the weights follow the sun through dusk: the night map's weight rises, the lamps come on past 0.3, the golden hour tints the day side", () => {
+    const nodes = prepareVillage(fixture().root, new Texture(), "low");
+    const seen: Array<{ night: number; lit: number; r: number; b: number }> = [];
+    for (const t of ["19:00", "19:30", "19:40", "19:44", "19:47", "19:50", "20:10", "20:30", "21:00"]) {
+      applyDayNight(nodes, at(`2026-06-21T${t}`));
+      seen.push({ night: nightBlendUniform.value, lit: litUniform.value, r: dayTintUniform.value.x, b: dayTintUniform.value.z });
+    }
+    for (let i = 1; i < seen.length; i++) expect(seen[i]!.night).toBeGreaterThanOrEqual(seen[i - 1]!.night);
+    expect(seen[0]!.night).toBeLessThan(0.1); // 19:00 is still day
+    expect(seen[seen.length - 1]!.night).toBeGreaterThan(0.99); // 21:00 is night
+    for (const v of seen) expect(v.lit === 0 || v.night > 0.3, JSON.stringify(v)).toBe(true); // never lit before night 0.3
+    expect(seen.some((v) => v.lit > 0 && v.lit < 1)).toBe(true); // a ramp, not a cliff
+    expect(seen.some((v) => v.r > 1.0 && v.b < 1.0)).toBe(true); // the warm tint of the golden hour (red up, blue down)
+  });
+
+  it("every night/day number of every frame is finite (no NaN reaches a uniform)", () => {
+    const nodes = prepareVillage(fixture().root, new Texture(), "high");
+    for (let h = 0; h < 24; h += 0.5) {
+      applyDayNight(nodes, at(`2026-12-21T${String(Math.floor(h)).padStart(2, "0")}:${h % 1 ? "30" : "00"}`));
+      for (const v of [nightBlendUniform.value, litUniform.value, liftUniform.value, ...dayTintUniform.value.toArray(), ...nodes.sky!.color.toArray()]) {
+        expect(Number.isFinite(v)).toBe(true);
+      }
+    }
+  });
+
+  it("the hall's indoor state never lights the night: no night weight, day light map, nothing lit", () => {
+    const nodes = prepareVillage(fixture().root, new Texture(), "low");
+    applyDayNight(nodes, indoorState());
+    expect(nightBlendUniform.value).toBe(0);
+    expect(litUniform.value).toBe(0);
+  });
+
+  it("the stars: a seeded sky above the horizon, inside the dome, dark until the night fades them in", () => {
+    const a = makeStars();
+    const b = makeStars();
+    expect(a.geometry.getAttribute("position").array).toEqual(b.geometry.getAttribute("position").array);
+    const pos = a.geometry.getAttribute("position");
+    expect(pos.count).toBe(STAR_COUNT);
+    const p = new Vector3();
+    for (let i = 0; i < pos.count; i++) {
+      p.fromBufferAttribute(pos, i);
+      p.y += 60; // from the dome's centre
+      expect(p.length()).toBeCloseTo(STAR_RADIUS, 2);
+      expect(p.y).toBeGreaterThan(0.1 * STAR_RADIUS - 1); // 8 degrees up at least (sin 8 = 0.139)
+    }
+    expect(STAR_RADIUS).toBeLessThan(1400); // in front of the dome
+    expect(a.visible).toBe(false);
+  });
+});
+

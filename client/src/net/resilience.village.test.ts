@@ -34,6 +34,7 @@ vi.mock("./backoff", () => ({ reconnectBackoffMs: () => [0, 0, 0] }));
 import { DEFAULT_APPEARANCE } from "@caysonverse/shared/appearance";
 import { KICK_CLOSE_CODE } from "@caysonverse/shared/constants";
 import { attachResilience } from "./resilience";
+import { villageClock } from "../village/villageClock";
 import { forgetAdminCode, rememberAdminCode } from "./adminSession";
 import { KICKED_NOTICE } from "./reconnectPolicy";
 import { useAppStore } from "../stores/appStore";
@@ -58,12 +59,21 @@ interface FakeRoom {
   reconnection: { enabled: boolean };
   onLeave: (cb: (code: number) => void) => void;
   fireLeave: (code: number) => void;
+  /** The room's message handlers by type (a village room is armed with the server's clock, Task 7A). */
+  handlers: Map<string, (message: unknown) => void>;
+  onMessage: (type: string, cb: (message: never) => void) => () => void;
   state: unknown;
 }
 
 function fakeRoom(sessionId: string): FakeRoom {
   const cbs: Array<(code: number) => void> = [];
+  const handlers = new Map<string, (message: unknown) => void>();
   return {
+    handlers,
+    onMessage: (type, cb) => {
+      handlers.set(type, cb as (message: unknown) => void);
+      return () => void handlers.delete(type);
+    },
     sessionId,
     reconnectionToken: `tok-${sessionId}`,
     reconnection: { enabled: true },
@@ -117,6 +127,26 @@ describe("arming a village connection", () => {
   it("turns the SDK's own reconnect off", () => {
     const r0 = joinedVillage();
     expect(r0.reconnection.enabled).toBe(false);
+  });
+
+  it("listens for the server's clock (ServerTime) before anything awaits, on the first room and on every reconnect's", async () => {
+    const r0 = joinedVillage();
+    expect(r0.handlers.has("ServerTime")).toBe(true);
+    const r1 = fakeRoom("V0");
+    h.reconnect.mockResolvedValueOnce(r1);
+    r0.fireLeave(1006);
+    await flush();
+    expect(h.getRoom()).toBe(r1);
+    expect(r1.handlers.has("ServerTime")).toBe(true);
+  });
+
+  it("feeds the village's clock: a device clock 3 h wrong still reads the server's time", () => {
+    const offsetBefore = villageClock.offsetMs();
+    const r0 = joinedVillage();
+    const serverNow = Date.now() + 3 * 3_600_000; // the device is 3 h behind the server
+    r0.handlers.get("ServerTime")!({ serverTimeMs: serverNow });
+    expect(Math.abs(villageClock.nowMs() - serverNow)).toBeLessThan(2000);
+    villageClock.sync(Date.now() + offsetBefore, Date.now()); // put the module's clock back
   });
 });
 

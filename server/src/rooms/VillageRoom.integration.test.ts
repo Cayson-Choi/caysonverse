@@ -14,7 +14,7 @@ import {
 } from "@caysonverse/shared/constants";
 import { MessageType } from "@caysonverse/shared/messages";
 import type { ChatBroadcast, EmojiBroadcast, JumpBroadcast } from "@caysonverse/shared/messages";
-import { VillageMsg } from "@caysonverse/shared/village/messages";
+import { SERVER_TIME_INTERVAL_MS, VillageMsg, VillageServerMsg, type ServerTimePayload } from "@caysonverse/shared/village/messages";
 import { VILLAGE_LAYOUT } from "@caysonverse/shared/village/villageLayout";
 import { APPEARANCE_FIELDS, APPEARANCE_RANGES, DEFAULT_APPEARANCE, pickAppearance, type Appearance } from "@caysonverse/shared/appearance";
 import type { Player } from "@caysonverse/shared/schema";
@@ -232,6 +232,38 @@ describe("VillageRoom setup (integration)", () => {
     expect(room.state.announcement).toBe("");
     expect(room.state.players.has(bob.sessionId)).toBe(true);
     expect(leaveCode).toBeNull();
+  });
+});
+
+describe("VillageRoom server time (integration, Task 7A)", () => {
+  it("a visitor hears the server's clock right after joining (the client's handler is armed as the join resolves)", async () => {
+    const room = await colyseus.createRoom<VillageRoom>(VILLAGE_ROOM);
+    const before = Date.now();
+    const client = await colyseus.connectTo(room, JOIN);
+    // Armed synchronously after the join resolves, as the game's client does (resilience.ts): the server queues its
+    // personal message until the join is acknowledged, so it cannot arrive before this handler exists.
+    const got = await waitForMessage<ServerTimePayload>(client, VillageServerMsg.ServerTime, () => true);
+    const after = Date.now();
+    expect(typeof got.serverTimeMs).toBe("number");
+    expect(got.serverTimeMs).toBeGreaterThanOrEqual(before);
+    expect(got.serverTimeMs).toBeLessThanOrEqual(after);
+  });
+
+  it("the clock is the server's own: a room whose wall clock reads 3 h ahead sends that, and re-sends it to everyone", async () => {
+    const room = await colyseus.createRoom<VillageRoom>(VILLAGE_ROOM);
+    const skew = 3 * 3_600_000;
+    (room as unknown as { wallClock: () => number }).wallClock = () => Date.now() + skew;
+    const alice = await colyseus.connectTo(room, JOIN);
+    const first = await waitForMessage<ServerTimePayload>(alice, VillageServerMsg.ServerTime, () => true);
+    expect(Math.abs(first.serverTimeMs - (Date.now() + skew))).toBeLessThan(2000);
+    const bob = await colyseus.connectTo(room, JOIN_BOB);
+    await waitForMessage<ServerTimePayload>(bob, VillageServerMsg.ServerTime, () => true);
+    // The periodic refresh (every SERVER_TIME_INTERVAL_MS) reaches every client in the room.
+    const toAlice = waitForMessage<ServerTimePayload>(alice, VillageServerMsg.ServerTime, () => true);
+    const toBob = waitForMessage<ServerTimePayload>(bob, VillageServerMsg.ServerTime, () => true);
+    room.broadcastServerTime();
+    for (const m of await Promise.all([toAlice, toBob])) expect(Math.abs(m.serverTimeMs - (Date.now() + skew))).toBeLessThan(2000);
+    expect(SERVER_TIME_INTERVAL_MS).toBe(5 * 60 * 1000);
   });
 });
 

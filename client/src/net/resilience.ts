@@ -87,6 +87,7 @@ import { getAdminCode, forgetAdminCode } from "./adminSession";
 import { getTeacher, forgetTeacher } from "./teacherSession";
 import { forgetTeacherClass } from "./teacherClassCache";
 import { bindClassSync, unbindClassSync } from "./classSync";
+import { bindVillageClock } from "../village/villageClock";
 import { wasKicked, markKicked } from "./kickSeam";
 import { useAppStore } from "../stores/appStore";
 import { useClassStore } from "../stores/classStore";
@@ -158,6 +159,10 @@ export function attachResilience(room: Room<WorldState>, mode: ResilienceMode = 
   room.onLeave((code: number) => handleLeave(room, code, mode));
   // ClassState extends WorldState; the class room is held through the world type (Room is invariant).
   if (mode === "class") bindClassSync(room as unknown as Room<ClassState>);
+  // The village's clock: the server sends its time right after the join (and every 5 minutes), so the handler must
+  // exist before anything awaits (the SDK drops a message nobody listens for). Bound again on every reconnect: it is
+  // the new room's. Leaves with the room.
+  if (mode === "village") bindVillageClock(room);
 }
 
 /**

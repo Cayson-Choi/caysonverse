@@ -1,11 +1,15 @@
 import {
   Box3,
   BufferGeometry,
+  Float32BufferAttribute,
   InstancedMesh,
   Matrix3,
   Matrix4,
   MeshBasicMaterial,
+  Points,
+  PointsMaterial,
   Vector3,
+  Vector4,
   type Material,
   type Mesh,
   type Object3D,
@@ -21,6 +25,7 @@ import {
   materialsOf,
 } from "../game/hub/hubModelPrep";
 import {
+  WATER,
   ACES_IN_INV,
   ACES_OUT_INV,
   FLAT_SKY_MAPPING,
@@ -30,6 +35,8 @@ import {
   type SkyMapping,
 } from "./villageWater";
 import type { ToneCurve } from "../game/quality";
+import { VILLAGE_LAYOUT } from "@caysonverse/shared/village/villageLayout";
+import type { DayNightState } from "./dayNightBlend";
 
 /**
  * The village model (`village.glb`, 케이슨 마을 Task 6) dressed for the game (Task 7) — the pure part, unit-tested
@@ -47,7 +54,11 @@ import type { ToneCurve } from "../game/quality";
  *  - `M_water` gets the runtime water (villageWater.ts); `M_waterfall` scrolls down its sheet.
  *  - `M_glow_plot` (the plots' outline strips) glows: its colour is pushed past white (the rich tier blooms it) and
  *    it shows through the fog.
- *  - `M_window`, `M_lamp` and `M_glass` stay as they are (Task 7A drives the windows and lamps at night).
+ *  - Day and night (Task 7A, dayNightBlend.ts): every `LM_*` blends the day light map with the night one (`village_lm_night.webp`,
+ *    the same UV set: the moon, and the lamps' and windows' pools) by one shared weight; the foliage's vertex light and
+ *    the far hills, forest and falls take the time of day's tint; `M_window` and `M_lamp` (copies) glow warm and past
+ *    white at night (the rich tier's bloom picks them up); the fountain's lights glow in the water. `M_glass` stays
+ *    as it is: not emissive.
  *  - `col__*` are the collision boxes (shared/…/generated/villageColliders.ts is generated from them): hidden.
  *  - The ground's flat layers lie 1-3 cm above each other (plaza and road +0.01, plot lawns +0.02, lanes +0.018,
  *    forecourt +0.03); with the far plane at 1.6 km their materials get a polygon offset, the upper layer winning.
@@ -62,6 +73,8 @@ import type { ToneCurve } from "../game/quality";
 
 export const VILLAGE_MODEL_URL = "/models/village/village.glb";
 export const VILLAGE_LIGHTMAP_URL = "/models/village/village_lm.webp";
+/** The night light map: baked on the same UV set as the day one (art/village/tools/bake_village.py --night). */
+export const VILLAGE_NIGHT_LIGHTMAP_URL = "/models/village/village_lm_night.webp";
 
 /**
  * The village camera's planes (m): the sky dome is 1.4 km out (and the far range 1.1 km), so the far plane is past
@@ -118,42 +131,137 @@ export const GROUND_GRADE: Readonly<Record<string, readonly [number, number, num
   LM_plaza: [0.86, 0.86, 0.86],
 };
 
+/**
+ * The same grade at night (× the light-mapped light): the day's sunny lime would stay vivid under the moon, so the lawns
+ * move toward a cool dark green with the night weight (Task 7A). The plaza's grade is neutral and stays.
+ */
+export const GROUND_GRADE_NIGHT: Readonly<Record<string, readonly [number, number, number]>> = {
+  LM_grass: [0.85, 1.0, 1.3],
+  LM_lawn: [0.85, 1.0, 1.3],
+};
+
 /** The village's own foliage and trunks: their light is in COLOR_0 (no light map). */
 export const FOLIAGE_MATERIALS: readonly string[] = ["M_leaf_green", "M_leaf_cherry", "M_leaf_flora", "M_bark"];
 
-/** The lift's uniform: one for every patched material, so a later change reaches them all. */
+/**
+ * The time of day's shared uniforms (Task 7A): ONE object each for every patched material, so one write reaches them
+ * all (`applyDayNight` writes them from the clock's state, every frame). Their starting values are the afternoon the
+ * model was baked in (the day look: lift 0.2, no tint, the day light map alone).
+ */
 export const liftUniform = { value: LIGHT_LIFT };
+/** The colour the lift carries (white by day, moonlit blue at night). */
+export const liftTintUniform = { value: new Vector3(1, 1, 1) };
+/** × the day light map's light (the golden hour's warm cast). */
+export const dayTintUniform = { value: new Vector3(1, 1, 1) };
+/** × the foliage's vertex light (warm at dusk, dark blue at night). */
+export const foliageTintUniform = { value: new Vector3(1, 1, 1) };
+/**
+ * The cool cast of moonlight on the night light map's dim texels (× linear): what the moon alone lights is bluish and
+ * a little darker, while the lamps' and windows' pools (bright texels) keep their warm colour.
+ */
+export const MOON_TINT: readonly [number, number, number] = [0.55, 0.75, 1.2];
+export const moonTintUniform = { value: new Vector3(...MOON_TINT) };
+/** The night light map's weight: 0 = the day map alone, 1 = the night map alone. */
+export const nightBlendUniform = { value: 0 };
+/** The night light map (the same UV set as the day one); set by `prepareVillage`. */
+export const nightMapUniform: { value: Texture | null } = { value: null };
 const lifted = new WeakSet<Material>();
 
 const LIFT_PARS = /* glsl */ `uniform float uVillageLift;
+uniform vec3 uVillageLiftTint;
+uniform vec3 uVillageDayTint;
+uniform vec3 uVillageFoliageTint;
+#ifdef USE_LIGHTMAP
+uniform float uVillageNight;
+uniform sampler2D uVillageNightMap;
+uniform vec3 uVillageMoonTint;
+#endif
 void main() {`;
 /** The albedo before COLOR_0 (which is the light on the foliage, a tint on the light-mapped materials). */
 const LIFT_ALBEDO = /* glsl */ `vec3 villageAlbedo = diffuseColor.rgb;
 #include <color_fragment>`;
+/**
+ * The light map's texel: the day map (× the dusk tint) and the night map, blended by the clock's weight. Each map is
+ * read only while it counts (the weight is a uniform: the branch is coherent), so a daytime frame costs one fetch.
+ */
+const LIGHTMAP_TEXEL_FROM = "vec4 lightMapTexel = texture2D( lightMap, vLightMapUv );";
+const LIGHTMAP_TEXEL_TO = /* glsl */ `vec4 lightMapTexel = vec4( 0.0, 0.0, 0.0, 1.0 );
+	if ( uVillageNight < 0.999 ) lightMapTexel.rgb = texture2D( lightMap, vLightMapUv ).rgb * uVillageDayTint * ( 1.0 - uVillageNight );
+	if ( uVillageNight > 0.001 ) {
+		vec3 villageNightLight = texture2D( uVillageNightMap, vLightMapUv ).rgb;
+		villageNightLight *= mix( uVillageMoonTint, vec3( 1.0 ), smoothstep( 0.04, 0.22, dot( villageNightLight, vec3( 0.2126, 0.7152, 0.0722 ) ) ) );
+		lightMapTexel.rgb += villageNightLight * uVillageNight;
+	}`;
 const LIFT_LIGHT = /* glsl */ `#ifdef USE_LIGHTMAP
-  reflectedLight.indirectDiffuse += vec3( uVillageLift );
+  reflectedLight.indirectDiffuse += uVillageLift * uVillageLiftTint;
 #else
-  diffuseColor.rgb += villageAlbedo * uVillageLift;
+  diffuseColor.rgb = ( diffuseColor.rgb + villageAlbedo * uVillageLift ) * uVillageFoliageTint;
 #endif
 #include <aomap_fragment>`;
 
 /**
- * Add the lift to a material's light (idempotent): light-mapped, `light map + lift`; vertex-lit (no light map),
- * `COLOR_0 + lift`. Both times multiplied by the albedo, as the light is.
+ * Give a material the time of day's light (idempotent). Light-mapped: `day map × golden tint` blended with the night
+ * map, plus the lift; vertex-lit (no light map): `(COLOR_0 + lift) × foliage tint`. Both times multiplied by the albedo, as the
+ * light is. The shared uniforms above drive it.
  */
 export function liftMaterial(material: Material): void {
   if (lifted.has(material)) return;
   lifted.add(material);
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uVillageLift = liftUniform;
+    shader.uniforms.uVillageLiftTint = liftTintUniform;
+    shader.uniforms.uVillageDayTint = dayTintUniform;
+    shader.uniforms.uVillageFoliageTint = foliageTintUniform;
+    shader.uniforms.uVillageNight = nightBlendUniform;
+    shader.uniforms.uVillageNightMap = nightMapUniform;
+    shader.uniforms.uVillageMoonTint = moonTintUniform;
     shader.fragmentShader = shader.fragmentShader
       .replace("void main() {", LIFT_PARS)
+      .replace(LIGHTMAP_TEXEL_FROM, LIGHTMAP_TEXEL_TO)
       .replace("#include <color_fragment>", LIFT_ALBEDO)
       .replace("#include <aomap_fragment>", LIFT_LIGHT);
   };
-  material.customProgramCacheKey = () => "village-lift";
+  material.customProgramCacheKey = () => "village-light";
   material.needsUpdate = true;
 }
+
+/**
+ * The night lights: `M_window` and `M_lamp` (copies) glow warm and past white once the clock turns them on
+ * (`DayNightState.lights`, from night 0.3). The texture stays as the detail (mullions, curtains, the lamp's metal),
+ * pulled toward the glow colour; the rich tier's bloom (threshold 1.6) lets the lit ones shine.
+ */
+export const LIT = {
+  window: { color: [1.0, 0.76, 0.46], boost: 2.1 },
+  lamp: { color: [1.0, 0.8, 0.5], boost: 3.4 },
+} as const;
+/** How lit the windows and lamps are (0..1), shared by their copies. */
+export const litUniform = { value: 0 };
+const LIT_PARS = /* glsl */ `uniform float uVillageLit;
+uniform vec3 uVillageLitColor;
+uniform float uVillageLitBoost;
+void main() {`;
+const LIT_GLOW = /* glsl */ `#include <map_fragment>
+float villageGlowLuma = dot( diffuseColor.rgb, vec3( 0.2126, 0.7152, 0.0722 ) );
+diffuseColor.rgb = mix( diffuseColor.rgb, uVillageLitColor * ( 0.4 + 0.9 * villageGlowLuma ) * uVillageLitBoost, uVillageLit );`;
+
+/** A copy of a window or lamp material that glows with `litUniform`. */
+export function litMaterial(source: Material, kind: keyof typeof LIT): MeshBasicMaterial {
+  const m = (source as MeshBasicMaterial).clone();
+  const uniforms = {
+    uVillageLit: litUniform,
+    uVillageLitColor: { value: new Vector3(...LIT[kind].color) },
+    uVillageLitBoost: { value: LIT[kind].boost },
+  };
+  m.onBeforeCompile = (shader) => {
+    Object.assign(shader.uniforms, uniforms);
+    shader.fragmentShader = shader.fragmentShader.replace("void main() {", LIT_PARS).replace("#include <map_fragment>", LIT_GLOW);
+  };
+  m.customProgramCacheKey = () => "village-lit";
+  return m;
+}
+
+/** The fountain's lights in the water at night: how hard they glow (the water shader's `uFountain.w`). */
+export const FOUNTAIN_GLOW_STRENGTH = 1.5;
 
 /** The waterfall's sheet slides down this many texture lengths per second. */
 export const FALLS_SPEED = 0.45;
@@ -168,8 +276,14 @@ export interface VillageNodes {
   sky: MeshBasicMaterial | null;
   /** The sky dome's mapping, for the water's reflection. */
   skyMapping: SkyMapping;
-  /** Materials and textures this call made (and nothing else): dispose them with the scene. */
-  own: Array<Material | Texture>;
+  /** The far hills, the forest on them and the falls: x the time of day's haze tint (the hills' material is shared). */
+  hazed: MeshBasicMaterial[];
+  /** The graded ground materials (shared): the day's grade moves to the night's with the night weight. */
+  graded: Array<{ material: MeshBasicMaterial; day: readonly [number, number, number]; night: readonly [number, number, number] }>;
+  /** The stars (a layer of points just inside the dome), fading in with the night; null when none. */
+  stars: Points | null;
+  /** Materials, textures and geometries this call made (and nothing else): dispose them with the scene. */
+  own: Array<Material | Texture | BufferGeometry>;
 }
 
 /** The light tier draws cheaper water and the dome untone-mapped; the rich tier, two ripple layers and a pre-distorted dome. */
@@ -309,10 +423,20 @@ function skyMaterial(source: MeshBasicMaterial, tier: VillageTier, curve: ToneCu
  * Dress a clone of the village model for the game (see the file header). Safe to call again on the same source
  * scene (the shared materials are changed idempotently); every call makes its own copies of what it changes more.
  */
-export function prepareVillage(source: Object3D, lightmap: Texture, tier: VillageTier, curve: ToneCurve = "neutral"): VillageNodes {
+export function prepareVillage(
+  source: Object3D,
+  lightmap: Texture,
+  tier: VillageTier,
+  curve: ToneCurve = "neutral",
+  nightLightmap: Texture | null = null,
+): VillageNodes {
   const root = source.clone(true);
   configureLightmap(lightmap);
+  if (nightLightmap) configureLightmap(nightLightmap);
+  nightMapUniform.value = nightLightmap;
   const own: VillageNodes["own"] = [];
+  const hazed: MeshBasicMaterial[] = [];
+  const graded: VillageNodes["graded"] = [];
   const found = new Map<string, Material>();
 
   root.traverse((o) => {
@@ -329,7 +453,11 @@ export function prepareVillage(source: Object3D, lightmap: Texture, tier: Villag
       if (m.name.startsWith(LIGHTMAP_MATERIAL_PREFIX)) {
         lightmapMaterial(m, lightmap);
         const grade = GROUND_GRADE[m.name];
-        if (grade) (m as MeshBasicMaterial).color.setRGB(grade[0], grade[1], grade[2]);
+        if (grade) {
+          (m as MeshBasicMaterial).color.setRGB(grade[0], grade[1], grade[2]);
+          const night = GROUND_GRADE_NIGHT[m.name];
+          if (night && !graded.some((g) => g.material === m)) graded.push({ material: m as MeshBasicMaterial, day: grade, night });
+        }
         const offset = GROUND_LAYER_OFFSET[m.name];
         if (offset !== undefined && (!m.polygonOffset || m.polygonOffsetUnits !== offset)) {
           m.polygonOffset = true;
@@ -337,9 +465,12 @@ export function prepareVillage(source: Object3D, lightmap: Texture, tier: Villag
           m.polygonOffsetUnits = offset;
           m.needsUpdate = true;
         }
-      } else if (m.name === MATERIAL.backdrop && (m as MeshBasicMaterial).fog) {
-        (m as MeshBasicMaterial).fog = false;
-        m.needsUpdate = true;
+      } else if (m.name === MATERIAL.backdrop) {
+        if ((m as MeshBasicMaterial).fog) {
+          (m as MeshBasicMaterial).fog = false;
+          m.needsUpdate = true;
+        }
+        if (!hazed.includes(m as MeshBasicMaterial)) hazed.push(m as MeshBasicMaterial);
       }
     }
   });
@@ -367,6 +498,7 @@ export function prepareVillage(source: Object3D, lightmap: Texture, tier: Villag
         const c = (m as MeshBasicMaterial).clone();
         c.fog = false;
         own.push(c);
+        hazed.push(c);
         forestCopies.set(m, c);
         copy = c;
       }
@@ -374,6 +506,18 @@ export function prepareVillage(source: Object3D, lightmap: Texture, tier: Villag
     };
     o.material = Array.isArray(o.material) ? o.material.map(swap) : swap(o.material);
   });
+
+  // The windows and lamps: copies that glow at night (M_glass, the lanterns' and windows' panes, stays as it is).
+  for (const [name, kind] of [
+    [MATERIAL.window, "window"],
+    [MATERIAL.lamp, "lamp"],
+  ] as const) {
+    const source = found.get(name);
+    if (!source) continue;
+    const lit = litMaterial(source, kind);
+    own.push(lit);
+    swapMaterial(root, name, lit);
+  }
 
   // The plots' outlines glow.
   const glowSource = found.get(MATERIAL.glowPlot) as MeshBasicMaterial | undefined;
@@ -415,11 +559,116 @@ export function prepareVillage(source: Object3D, lightmap: Texture, tier: Villag
     const map = fallsSource.map.clone();
     material.map = map;
     own.push(material, map);
+    hazed.push(material);
     swapMaterial(root, MATERIAL.waterfall, material);
     falls = { map, down: fallsDown(sheets) };
   }
 
-  return { root, water, falls, sky, skyMapping, own };
+  // The fountain's lights: where the water glows at night.
+  if (water) {
+    const f = VILLAGE_LAYOUT.plaza.fountain.centre;
+    (water.uniforms.uFountain!.value as Vector4).set(f.x, f.z, WATER.fountainGlow.radius, 0);
+  }
+
+  // The stars, just inside the dome.
+  let stars: Points | null = null;
+  if (skySource) {
+    stars = makeStars();
+    own.push(stars.geometry, stars.material as PointsMaterial);
+    root.add(stars);
+  }
+
+  return { root, water, falls, sky, skyMapping, hazed, graded, stars, own };
+}
+
+/** The stars: this many, between 8 and 90 degrees above the horizon, `STAR_RADIUS` m from the dome's centre (inside the dome). */
+export const STAR_COUNT = 520;
+export const STAR_RADIUS = 1300;
+
+/** A seeded generator (mulberry32): the same sky every time. */
+function rng(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/** The night sky's stars (points of mixed brightness, never in the fog, never lit). Invisible until the night fades them in. */
+export function makeStars(count = STAR_COUNT): Points {
+  const rand = rng(20261103);
+  const pos = new Float32Array(count * 3);
+  const col = new Float32Array(count * 3);
+  const sin8 = Math.sin((8 * Math.PI) / 180);
+  for (let i = 0; i < count; i++) {
+    // Uniform over the sky above 8 degrees: sin(elevation) is uniform between sin 8 and 1.
+    const sinEl = sin8 + rand() * (1 - sin8);
+    const cosEl = Math.sqrt(1 - sinEl * sinEl);
+    const az = rand() * Math.PI * 2;
+    pos[i * 3] = STAR_RADIUS * cosEl * Math.sin(az);
+    pos[i * 3 + 1] = STAR_RADIUS * sinEl - 60; // the dome's centre is 60 m below the ground
+    pos[i * 3 + 2] = -STAR_RADIUS * cosEl * Math.cos(az);
+    const b = 0.35 + 0.65 * rand() ** 2;
+    col[i * 3] = b * (0.85 + 0.15 * rand());
+    col[i * 3 + 1] = b * 0.95;
+    col[i * 3 + 2] = b;
+  }
+  const g = new BufferGeometry();
+  g.setAttribute("position", new Float32BufferAttribute(pos, 3));
+  g.setAttribute("color", new Float32BufferAttribute(col, 3));
+  const m = new PointsMaterial({
+    size: 2.2,
+    sizeAttenuation: false,
+    vertexColors: true,
+    transparent: true,
+    opacity: 0,
+    depthWrite: false,
+    fog: false,
+    toneMapped: false,
+  });
+  const stars = new Points(g, m);
+  stars.name = "village_stars";
+  stars.frustumCulled = false;
+  stars.visible = false;
+  stars.renderOrder = -1; // behind the transparent surfaces (water, falls), in front of the dome by depth
+  return stars;
+}
+
+/**
+ * Per frame: the time of day's numbers into the model (plain number writes, no shader change): the shared light
+ * uniforms (the light maps' blend, the dusk tint, the lift), the lamps' and windows' glow, the tints of the dome,
+ * hills and falls, the water's tint, glint and the fountain's lights, the stars.
+ */
+export function applyDayNight(nodes: VillageNodes, s: DayNightState): void {
+  liftUniform.value = s.lift;
+  liftTintUniform.value.set(s.liftTint[0], s.liftTint[1], s.liftTint[2]);
+  dayTintUniform.value.set(s.dayTint[0], s.dayTint[1], s.dayTint[2]);
+  foliageTintUniform.value.set(s.foliageTint[0], s.foliageTint[1], s.foliageTint[2]);
+  nightBlendUniform.value = s.night;
+  litUniform.value = s.lights;
+  nodes.sky?.color.setRGB(s.domeTint[0], s.domeTint[1], s.domeTint[2]);
+  for (const m of nodes.hazed) m.color.setRGB(s.hazeTint[0], s.hazeTint[1], s.hazeTint[2]);
+  for (const g of nodes.graded) {
+    const n = s.night;
+    g.material.color.setRGB(g.day[0] + (g.night[0] - g.day[0]) * n, g.day[1] + (g.night[1] - g.day[1]) * n, g.day[2] + (g.night[2] - g.day[2]) * n);
+  }
+  const w = nodes.water;
+  if (w) {
+    (w.uniforms.uTint!.value as Vector3).set(s.waterTint[0], s.waterTint[1], s.waterTint[2]);
+    (w.uniforms.uFountain!.value as Vector4).w = s.lights * FOUNTAIN_GLOW_STRENGTH;
+    // The glint is the live key light's: the sun, or the moon at night.
+    (w.uniforms.uSunDir!.value as Vector3).set(s.keyDir[0], s.keyDir[1], s.keyDir[2]);
+    const level = Math.min(1, s.keyIntensity / 2.4);
+    (w.uniforms.uSunColor!.value as Vector3).set(s.keyColor[0] * level, s.keyColor[1] * level, s.keyColor[2] * level);
+  }
+  const stars = nodes.stars;
+  if (stars) {
+    stars.visible = s.stars > 0.01;
+    (stars.material as PointsMaterial).opacity = s.stars;
+  }
 }
 
 /** Per frame: the water's clock, the falls' slide and the dome's exposure (plain number writes). */
