@@ -22,6 +22,11 @@
  * school.ts가 5초마다 `/api/operator/status`를 <statusDir>/measure-school.csv에 쌓고, 끝에 게이트를 판정해 종료 코드로 알린다
  * (통과 0, 실패 1). `--scenario world`(기본)는 위 설명 그대로다.
  *
+ * `--scenario village` (케이슨 마을 1단계, Task 10): village.ts를 **한 프로세스**로 실행한다 — 봇이 `village` 방에 들어가
+ * 돌아다니고, 일부는 추모관 문을 드나든다. 넘기는 인자: `--numClients`, `--duration`, `--statusDir`, `--doorShare`(0..1, 문을
+ * 쓰는 봇 비율), `--hallStayMs`(추모관에 머무는 시간, 0 = 계속), `--offset`(닉네임 번호). 자세한 조합은 docs/loadtest.md 10절.
+ *   node run.mjs --scenario village --endpoint http://localhost:2567 --numClients 29 --duration 150 --doorShare 0 --statusDir <dir>
+ *
  * 각 샤드는 CV_BOT_OFFSET으로 닉네임 번호를 이어받고(봇001…봇100), 자기 통계를
  * <statusDir>/shard-<n>.json 하트비트로 남긴다. duration이 지나면 샤드 프로세스
  * 트리를 종료하고 하트비트들을 합산해 요약을 출력한다.

@@ -13,14 +13,17 @@
 //
 // 게이트(계획 Global Constraints 그대로):
 //   village.glb <= 8 MB, <= 260k 삼각형, 텍스처 <= 2048^2 | memorial.glb <= 6 MB, <= 200k 삼각형(인스턴싱 전), 텍스처 <= 2048^2
-//   첫 접속(휴대폰, 캐릭터 포함) 총 <= 15 MB | 휴대폰 4x 스로틀 평균 프레임 <= 33 ms (마을 30명, 추모관)
+//   첫 접속(휴대폰, 캐릭터 포함) 총 <= 15 MB (십진 15,000,000 B) | 휴대폰 4x 스로틀 프레임당 메인 스레드 바쁜 시간 <= 33 ms
+//   (마을 30명, 추모관). 헤드리스 크롬은 60 fps(16.7 ms)에 묶여 평균 프레임 시간은 33 ms를 넘을 수 없으므로(T10 리뷰 I1),
+//   판정은 프레임당 바쁜 시간(TaskDuration / 프레임 수)으로 하고 평균 프레임 시간은 기록만 한다.
 //   헤드리스 수치는 참고용이다(진짜 휴대폰 판정은 발주자 몫): 이 PC의 GPU와 CPU 스로틀 4배로 잰다.
+//   village/hall 모드의 프레임·힙·드로콜은 DEV 클라이언트(:5173) 수치다(DEV 전용 훅). 프로덕션보다 보수적이다.
 //
 // 노브: --ms / CV_PERF_MS (창, 기본 20000), --throttle / CV_PERF_THROTTLE (기본 4), --graphics (low|high, 기본 low),
 //       --label (증거 파일 이름 꼬리), CV_CLIENT_URL (village/hall: http://localhost:5173, load: http://localhost:2567).
 // 증거 -> .superpowers/sdd/evidence/task-village-perf/ (<mode>-<label>.json).
 
-import { readFileSync, writeFileSync, mkdirSync, statSync, existsSync } from "node:fs";
+import { readFileSync, readdirSync, writeFileSync, mkdirSync, statSync, existsSync } from "node:fs";
 import { gzipSync, brotliCompressSync, constants as zc } from "node:zlib";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
@@ -38,12 +41,19 @@ const THROTTLE = Number(args.throttle ?? process.env.CV_PERF_THROTTLE ?? 4);
 const EVID = join(REPO, ".superpowers", "sdd", "evidence", "task-village-perf");
 mkdirSync(EVID, { recursive: true });
 const MIB = 1048576;
+const MB = 1_000_000;
 const GATE = {
   village: { bytes: 8 * MIB, tris: 260_000, tex: 2048 },
   memorial: { bytes: 6 * MIB, tris: 200_000, tex: 2048 },
-  firstLoadBytes: 15 * MIB,
-  meanFrameMs: 33,
+  /** The plan's "15 MB", decimal (T10 review I2). */
+  firstLoadBytes: 15 * MB,
+  /** Main-thread busy ms per frame (T10 review I1): the mean frame time is capped at 16.7 ms headless and cannot fail. */
+  busyMsPerFrame: 33,
 };
+/** The hall's files (the load flow fetches them by URL; the hall frame run checks this list against what the hall really fetched). */
+const HALL_FILES = ["/models/village/memorial.glb", "/models/village/memorial_lm.webp", "/models/village/memorial_props.glb", "/village/sample-photos/atlas.webp"];
+/** The light tier's texture cap (client/src/village/villageModelPrep.ts LIGHT_TIER_MAX_TEXTURE). */
+const LIGHT_TIER_MAX_TEXTURE = 1024;
 const run = createRun(`village-perf-${args.mode}`);
 run.evidence = EVID;
 const { check } = run;
@@ -142,6 +152,28 @@ if (args.mode === "assets") {
     out[f] = { bytes: statSync(p).size, ...size };
     check(`${f} <= 2048 per side (${size?.w}x${size?.h})`, size && Math.max(size.w, size.h) <= 2048);
   }
+  // GPU texture memory, estimated (RGBA8 + mips = w*h*4*4/3; no KTX2): the resident set per place, before and after the final fix.
+  const atlasSize = imageSize(readFileSync(join(REPO, "client", "public", "village", "sample-photos", "atlas.webp")), "image/webp");
+  const decoded = (w, h, cap = Infinity) => {
+    const s = Math.min(1, cap / Math.max(w, h));
+    return Math.round(Math.round(w * s) * Math.round(h * s) * 4 * (4 / 3));
+  };
+  const glbTex = (g, cap) => g.textures.reduce((a, t) => a + (t.w && t.h ? decoded(t.w, t.h, cap) : 0), 0);
+  const lm = (f) => decoded(out[f].w, out[f].h);
+  const v = { full: glbTex(out.village), capped: glbTex(out.village, LIGHT_TIER_MAX_TEXTURE) };
+  const hallSet = glbTex(out.memorial) + glbTex(out["memorial_props.glb"]) + lm("memorial_lm.webp") + (atlasSize ? decoded(atlasSize.w, atlasSize.h) : 0);
+  const dayLm = lm("village_lm.webp");
+  const nightLm = lm("village_lm_night.webp");
+  const mb = (n) => Math.round(n / 1e5) / 10;
+  const gpu = {
+    note: "estimated decoded texture bytes resident on the GPU (MB = 1e6), RGBA8 with mips; character, shadow map and render targets not included",
+    before: { villageDay: mb(v.full + dayLm + nightLm), villageNight: mb(v.full + dayLm + nightLm), hall: mb(v.full + dayLm + nightLm + hallSet) },
+    afterRich: { villageDay: mb(v.full + dayLm), villageNight: mb(v.full + dayLm + nightLm), hall: mb(v.full + dayLm + hallSet) },
+    afterLight: { villageDay: mb(v.capped + dayLm), villageNight: mb(v.capped + dayLm + nightLm), hall: mb(hallSet) },
+    parts: { villageGlb: mb(v.full), villageGlbCapped1024: mb(v.capped), villageLmDay: mb(dayLm), villageLmNight: mb(nightLm), hallSet: mb(hallSet) },
+  };
+  out.gpuEstimateMB = gpu;
+  console.log("   GPU texture memory estimate (MB): " + JSON.stringify(gpu));
   writeFileSync(join(EVID, `assets-${args.label}.json`), JSON.stringify(out, null, 2));
   process.exit(run.finish({ out }));
 }
@@ -222,13 +254,13 @@ async function loadMode() {
   mark("in the village after the first gesture (BGM fetched)");
   await ctxP.page.screenshot({ path: join(EVID, "load-village.png") }).catch(() => {});
   // The hall: the production page has no test hooks to walk with, so the files the hall mounts are fetched by URL in the same page
-  // (cache off, counted like the rest). The list is what a DEV run of --mode hall fetched after the village (see its "fetched by this tab" line).
-  const HALL_FILES = ["/models/village/memorial.glb", "/models/village/memorial_lm.webp", "/models/village/memorial_props.glb", "/village/sample-photos/atlas.webp"];
+  // (cache off, counted like the rest). HALL_FILES (top) is what --mode hall really fetches; that run checks it (drift).
   await ctxP.page.evaluate((urls) => Promise.all(urls.map((u) => fetch(u, { cache: "no-store" }).then((r) => r.arrayBuffer()))), HALL_FILES);
   mark("hall files fetched by URL");
   await ctxP.page.screenshot({ path: join(EVID, "load-hall.png") }).catch(() => {});
 
   const list = bytes.list();
+  const nightLmFetched = list.some((it) => /village_lm_night/.test(it.url));
   const groups = {};
   for (const it of list) groups[groupOf(it.url)] = (groups[groupOf(it.url)] ?? 0) + it.bytes;
   const total = bytes.total();
@@ -252,11 +284,22 @@ async function loadMode() {
     compressed.push({ url: it.url, raw: it.bytes, gzip: g, brotli: b });
   }
   console.log(`   as deployed (text types compressed): gzip ${fmt(gz)} B (${(gz / MIB).toFixed(2)} MiB), brotli ${fmt(br)} B (${(br / MIB).toFixed(2)} MiB); without BGM gzip ${fmt(gz - bgm)} B (${((gz - bgm) / MIB).toFixed(2)} MiB)`);
-  check(`first visit (entry -> village -> hall, phone, character + BGM included; as deployed: gzip on text types) <= 15 MiB (${(gz / MIB).toFixed(2)} MiB)`, gz <= GATE.firstLoadBytes);
+  check(`first visit (entry -> village -> hall, phone, character + BGM included; as deployed: gzip on text types) <= 15,000,000 B (${fmt(gz)} B)`, gz <= GATE.firstLoadBytes);
   // Reference only: the local express server sends everything uncompressed; the gate above is the deployed shape (Vercel compresses text types).
-  console.log(`   reference (uncompressed local server): ${(total / MIB).toFixed(2)} MiB with BGM, ${((total - bgm) / MIB).toFixed(2)} MiB without; 15 MiB gate ${total <= GATE.firstLoadBytes ? "met" : "NOT met"} without compression`);
+  console.log(`   reference (uncompressed local server): ${fmt(total)} B with BGM, ${fmt(total - bgm)} B without; 15 MB gate ${total <= GATE.firstLoadBytes ? "met" : "NOT met"} without compression`);
   check(`BGM was part of the measured flow? (${bgm ? "yes" : "no"})`, true, bgm);
-  writeFileSync(join(EVID, `load-${args.label}.json`), JSON.stringify({ gate: GATE.firstLoadBytes, gzipTotal: gz, brotliTotal: br, compressed, total, totalMiB: r2(total / MIB), bgm, withoutBgm: total - bgm, marks, groups, list }, null, 2));
+  // The night light map loads only when night is near (production follows the real clock): the day and night first visits, and the
+  // worst case (night + every guide's voice clip asked; T10 review minor).
+  const nightLmBytes = statSync(join(REPO, "client", "public", "models", "village", "village_lm_night.webp")).size;
+  const voiceDir = join(REPO, "client", "public", "village", "voice");
+  const voiceBytes = existsSync(voiceDir) ? readdirSync(voiceDir).reduce((a, f) => a + statSync(join(voiceDir, f)).size, 0) : 0;
+  const day = nightLmFetched ? gz - nightLmBytes : gz;
+  const night = nightLmFetched ? gz : gz + nightLmBytes;
+  const worst = night + voiceBytes;
+  console.log(`   night light map ${nightLmFetched ? "was" : "was not"} fetched (real clock); day visit ${fmt(day)} B, night visit ${fmt(night)} B, worst case (night + all ${fmt(voiceBytes)} B of voice clips) ${fmt(worst)} B`);
+  check(`night first visit (+ the night light map) <= 15,000,000 B (${fmt(night)} B)`, night <= GATE.firstLoadBytes);
+  console.log(`   worst case ${worst <= GATE.firstLoadBytes ? "within" : "OVER"} 15,000,000 B (reference: the clips load only when a guide is asked)`);
+  writeFileSync(join(EVID, `load-${args.label}.json`), JSON.stringify({ gate: GATE.firstLoadBytes, gzipTotal: gz, brotliTotal: br, nightLmFetched, dayVisit: day, nightVisit: night, voiceBytes, worstCase: worst, compressed, total, totalMiB: r2(total / MIB), bgm, withoutBgm: total - bgm, marks, groups, list }, null, 2));
 }
 
 // ───────────────────────────── village / hall: frame time under a 4x CPU throttle ─────────────────────────────
@@ -281,8 +324,11 @@ async function frameMode() {
   await sleep(2500);
 
   const areaOf = () => S.page.evaluate(async () => (await window.__imp("/src/village/villageArea.ts")).localArea());
+  let beforeHall = new Set();
   if (args.mode === "hall") {
     for (const [x, z] of [[-20, 5], [-14, -20], [0, -33], [0, -50.8]]) await walkAndWait(S, x, z, 40000, 1.2);
+    await sleep(1500);
+    beforeHall = new Set(fetched.keys()); // the village's files and the BGM (the walk's first key started it)
     await S.page.keyboard.press("KeyE");
     await S.page.waitForFunction(async () => (await window.__imp("/src/village/villageArea.ts")).localArea() === "hall", null, { timeout: 15000 });
     await S.page.waitForFunction(() => !!window.__cvHall, null, { timeout: 60000 });
@@ -319,6 +365,12 @@ async function frameMode() {
   const area = await areaOf();
   const fetchedList = [...fetched].map(([url, bytes]) => ({ url, bytes }));
   console.log("   fetched by this tab: " + JSON.stringify(fetchedList));
+  if (args.mode === "hall") {
+    // HALL_FILES drift (T10 review minor): the hall's own files are exactly the list the load flow fetches by URL. The light tier
+    // also reloads the village's files on the way out, never inside the hall; voice clips load only when a guide is asked.
+    const hallNew = [...fetched.keys()].filter((u) => !beforeHall.has(u) && !/\/village\/voice\//.test(u)).sort();
+    check(`the hall fetched exactly HALL_FILES (${hallNew.join(", ")})`, JSON.stringify(hallNew) === JSON.stringify([...HALL_FILES].sort()), hallNew);
+  }
   await S.page.screenshot({ path: join(EVID, `${args.mode}-${args.label}.png`) }).catch(() => {});
   await S.page.keyboard.up("KeyZ");
   await session.send("Emulation.setCPUThrottlingRate", { rate: 1 });
@@ -333,10 +385,10 @@ async function frameMode() {
     jsHeapMiB: r2(avg(heaps) / MIB), jsHeapMaxMiB: r2(Math.max(0, ...heaps) / MIB), fetched: fetchedList,
   };
   console.log(JSON.stringify(numbers));
-  check(`mean frame <= ${GATE.meanFrameMs} ms at ${THROTTLE}x throttle (${numbers.meanMs} ms = ${numbers.fps} fps, p95 ${numbers.p95Ms}, max ${numbers.maxMs})`, numbers.meanMs <= GATE.meanFrameMs && numbers.frames > 20);
-  if (args.mode === "village") check(`30 players in the village (remotes ${remotes}, + the measured tab)`, remotes >= 28, remotes);
-  else check(`the hall had company (remotes ${remotes})`, remotes >= 1, remotes);
-  writeFileSync(join(EVID, `${args.mode}-${args.label}.json`), JSON.stringify({ gate: GATE.meanFrameMs, numbers }, null, 2));
+  check(`main-thread busy per frame <= ${GATE.busyMsPerFrame} ms at ${THROTTLE}x throttle (${numbers.busyMsPerFrame} ms; mean frame ${numbers.meanMs} ms = ${numbers.fps} fps, p95 ${numbers.p95Ms}, max ${numbers.maxMs})`, numbers.busyMsPerFrame <= GATE.busyMsPerFrame && numbers.frames > 20, numbers.busyMsPerFrame);
+  if (args.mode === "village") check(`30 players in the village (remotes ${remotes} + the measured tab)`, remotes >= 29, remotes);
+  else check(`the hall was full (remotes ${remotes} >= 28 + the measured tab)`, remotes >= 28, remotes);
+  writeFileSync(join(EVID, `${args.mode}-${args.label}.json`), JSON.stringify({ gate: { busyMsPerFrame: GATE.busyMsPerFrame }, numbers }, null, 2));
 }
 
 try {
