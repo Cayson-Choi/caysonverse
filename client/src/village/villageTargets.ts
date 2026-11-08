@@ -1,4 +1,4 @@
-import { VILLAGE_LAYOUT, type AreaId, type Disc, type VillageLayout } from "@caysonverse/shared/village/villageLayout";
+import { VILLAGE_LAYOUT, cubbyAnchors, type AreaId, type CubbyAnchor, type Disc, type VillageLayout } from "@caysonverse/shared/village/villageLayout";
 import type { InteractTarget } from "../game/interact";
 
 /**
@@ -13,6 +13,10 @@ import type { InteractTarget } from "../game/interact";
  * arrival points (the way out lands 2.2 m from the outside pad's centre, the way in 1.6 m from the inside one)
  * are still inside, so the button comes back after a door — a second press is possible once the server's
  * one-per-second cap has passed, which is fine.
+ *
+ * Inside the hall (Task 9) the cubbies are offered too: within `CUBBY_REACH_M` of a cubby column (the seven cubbies of a
+ * column share one spot on the floor), "가까이 보기" opens the close-up card on that column (CubbyView). The nearest
+ * column wins; the door outranks a cubby (priority), though the two are never within reach of the same spot.
  */
 
 export const DOOR_LABEL: Readonly<Record<AreaId, string>> = { village: "추모관 들어가기", hall: "밖으로 나가기" };
@@ -41,4 +45,75 @@ export function villageTargets(
   const dist = Math.hypot(x - pad.centre.x, z - pad.centre.z);
   if (!(dist <= pad.radius + DOOR_OFFER_REACH_M)) return NONE; // also false for NaN
   return [{ kind: "door", id: MEMORIAL_DOOR_ID, dist, icon: "🚪", label: DOOR_LABEL[area], short: DOOR_SHORT[area] }];
+}
+
+/** How near (m, on the ground) to a cubby column its close-up is offered (brief: 1.2 m). The server lets a candle be lit from 1.5 m. */
+export const CUBBY_REACH_M = 1.2;
+/** The target id prefix of a cubby column: `cubby:<wall>_<col>`. */
+export const CUBBY_TARGET_PREFIX = "cubby:";
+export const CUBBY_LABEL = "가까이 보기";
+export const CUBBY_SHORT = "보기";
+
+/** A column of cubbies: its wall and column, where it stands on the floor (the anchors' x, z) and its rows' anchors (bottom first). */
+export interface CubbyColumn {
+  key: string;
+  wall: CubbyAnchor["wall"];
+  col: number;
+  x: number;
+  z: number;
+  rows: readonly CubbyAnchor[];
+}
+
+/** The hall's cubby columns (`<wall>_<col>`), built from the layout's anchors. */
+export function cubbyColumns(layout: VillageLayout = VILLAGE_LAYOUT): CubbyColumn[] {
+  const byKey = new Map<string, CubbyAnchor[]>();
+  for (const a of cubbyAnchors(layout)) {
+    const key = `${a.wall}_${a.col}`;
+    let list = byKey.get(key);
+    if (!list) byKey.set(key, (list = []));
+    list.push(a);
+  }
+  return [...byKey.entries()].map(([key, rows]) => {
+    rows.sort((a, b) => a.row - b.row);
+    return { key, wall: rows[0]!.wall, col: rows[0]!.col, x: rows[0]!.x, z: rows[0]!.z, rows };
+  });
+}
+
+const COLUMNS: readonly CubbyColumn[] = cubbyColumns();
+const COLUMN_BY_KEY: ReadonlyMap<string, CubbyColumn> = new Map(COLUMNS.map((c) => [c.key, c]));
+
+/** The column of a key (`n_10`) or a target id (`cubby:n_10`), or null. */
+export function cubbyColumn(keyOrId: string): CubbyColumn | null {
+  const key = keyOrId.startsWith(CUBBY_TARGET_PREFIX) ? keyOrId.slice(CUBBY_TARGET_PREFIX.length) : keyOrId;
+  return COLUMN_BY_KEY.get(key) ?? null;
+}
+
+/** The nearest cubby column within `CUBBY_REACH_M` of (x, z), and how far it is; null when none is. */
+export function nearestCubbyColumn(x: number, z: number, columns: readonly CubbyColumn[] = COLUMNS): { column: CubbyColumn; dist: number } | null {
+  let best: { column: CubbyColumn; dist: number } | null = null;
+  for (const c of columns) {
+    const d = Math.hypot(x - c.x, z - c.z);
+    if (d <= CUBBY_REACH_M && (best === null || d < best.dist)) best = { column: c, dist: d };
+  }
+  return best;
+}
+
+/**
+ * Everything the village offers at a spot: the door (`villageTargets`), and inside the hall the nearest cubby column's
+ * close-up. The door comes first (priority 1).
+ */
+export function villageAndHallTargets(area: AreaId, x: number, z: number): readonly InteractTarget[] {
+  const doors = villageTargets(area, x, z);
+  if (area !== "hall") return doors;
+  const near = nearestCubbyColumn(x, z);
+  if (!near) return doors;
+  const cubby: InteractTarget = {
+    kind: "object",
+    id: `${CUBBY_TARGET_PREFIX}${near.column.key}`,
+    dist: near.dist,
+    icon: "🕯️",
+    label: CUBBY_LABEL,
+    short: CUBBY_SHORT,
+  };
+  return doors.length === 0 ? [cubby] : [{ ...doors[0]!, priority: 1 }, cubby];
 }

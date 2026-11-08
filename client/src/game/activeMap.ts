@@ -16,7 +16,7 @@ import { hubGeometry, hubZoneLabel } from "@caysonverse/shared/school/hubMap";
 import { VILLAGE_LAYOUT, villageGeometry, type AreaId } from "@caysonverse/shared/village/villageLayout";
 import type { Bounds, MapGeometry } from "@caysonverse/shared/school/geometry";
 import { zoneLabelAt } from "./hud";
-import { HALL_CAMERA_LIMIT, type CameraLimit } from "./indoorCamera";
+import { HALL_CAMERA_LIMIT, VILLAGE_CAMERA_PAD, type CameraLimit } from "./indoorCamera";
 
 export interface ActiveMap {
   geometry: MapGeometry;
@@ -49,8 +49,8 @@ export interface ActiveMap {
   cameraPad?: number;
 }
 
-/** 케이슨 마을's spring-arm pad: wider than its 0.2 m near plane (Task 7 review m5). */
-export const VILLAGE_CAMERA_PAD = 0.3;
+/** 케이슨 마을's spring-arm pad: wider than its 0.2 m near plane (Task 7 review m5). Lives in indoorCamera.ts (the hall's limit derives from it). */
+export { VILLAGE_CAMERA_PAD };
 
 /** The legacy world (the `?world=legacy` deep link). */
 export const LEGACY_ACTIVE_MAP: ActiveMap = Object.freeze({

@@ -31,6 +31,7 @@
 import type { AABB, CameraBox } from "../collision";
 import { DEFAULT_WALL_THICKNESS, makeGeometry, wallsAround } from "../school/geometry";
 import { VILLAGE_CAMERA_BOXES, VILLAGE_COLLIDERS } from "./generated/villageColliders";
+import { MEMORIAL_CAMERA_BOXES, MEMORIAL_COLLIDERS } from "./generated/memorialColliders";
 import type { Bounds, MapGeometry } from "../school/geometry";
 
 export interface Point2 {
@@ -629,11 +630,61 @@ export interface GeneratedColliders {
 }
 
 /**
+ * How far under the hall's ceiling (`ceilingHeight`) the ceiling's camera box starts (m): the slab spans
+ * `ceilingHeight - HALL_CEILING_DROP .. ceilingHeight + HALL_CEILING_DROP`, so with the 3.4 m ceiling its underside is 3.3 (Task 9).
+ * The drawn ceiling stays at 3.4; the 10 cm under it keep the spring arm's padded stop clear of the plaster.
+ */
+export const HALL_CEILING_DROP = 0.1;
+
+/**
+ * The memorial hall's ceiling as a camera box (Task 9; Task 5 review m3): over the room and its walls, from
+ * `ceilingHeight - HALL_CEILING_DROP` (3.3) up to `ceilingHeight + HALL_CEILING_DROP`. The third-person camera's spring arm
+ * stops under it, so the view never pokes through the roof even where the clamp alone would let it.
+ */
+export function hallCeilingSlab(layout: VillageLayout): CameraBox {
+  const { room, ceilingHeight } = layout.memorial.interior;
+  const t = DEFAULT_WALL_THICKNESS;
+  return {
+    minX: room.minX - t,
+    maxX: room.maxX + t,
+    minZ: room.minZ - t,
+    maxZ: room.maxZ + t,
+    minY: round(ceilingHeight - HALL_CEILING_DROP, 6),
+    height: round(ceilingHeight + HALL_CEILING_DROP, 6),
+  };
+}
+
+const sameAabb = (a: AABB, b: AABB) => a.minX === b.minX && a.maxX === b.maxX && a.minZ === b.minZ && a.maxZ === b.maxZ;
+
+/**
+ * The hall's interior colliders as `buildVillageGeometry` takes them: the generated boxes (memorial.glb, Task 8) without the
+ * four walls (`hallWalls` already are the geometry's walls; the model holds them exactly), the generated camera boxes
+ * without the walls, plus the ceiling slab (`hallCeilingSlab`).
+ */
+export function hallInteriorColliders(
+  layout: VillageLayout,
+  generated: GeneratedColliders = { obstacles: MEMORIAL_COLLIDERS, cameraBoxes: MEMORIAL_CAMERA_BOXES },
+): GeneratedColliders {
+  const walls = hallWalls(layout);
+  const isWall = (b: AABB) => walls.some((w) => sameAabb(w, b));
+  return {
+    obstacles: generated.obstacles.filter((b) => !isWall(b)),
+    cameraBoxes: [...generated.cameraBoxes.filter((b) => !isWall(b)), hallCeilingSlab(layout)],
+  };
+}
+
+/**
  * The village map from a layout and the village area's colliders: the hall's walls (also camera boxes), then the
  * gap blocker, the hall surround and the colliders as obstacles. The colliders come either as a named list (the
  * greybox: the ones flagged `camera` are camera boxes too) or as the generated `{ obstacles, cameraBoxes }`.
+ * `hall` is the hall's interior (`hallInteriorColliders`: furniture, the cubby units, the ceiling slab); absent, the
+ * room is empty (the greybox).
  */
-export function buildVillageGeometry(layout: VillageLayout, colliders: readonly VillageCollider[] | GeneratedColliders): MapGeometry {
+export function buildVillageGeometry(
+  layout: VillageLayout,
+  colliders: readonly VillageCollider[] | GeneratedColliders,
+  hall?: GeneratedColliders,
+): MapGeometry {
   const village: GeneratedColliders =
     "obstacles" in colliders
       ? colliders
@@ -642,20 +693,23 @@ export function buildVillageGeometry(layout: VillageLayout, colliders: readonly 
     "village",
     villageBounds(layout),
     hallWalls(layout),
-    [...areaGapBlockers(layout), ...hallSurroundBlockers(layout), ...village.obstacles],
-    village.cameraBoxes,
+    [...areaGapBlockers(layout), ...hallSurroundBlockers(layout), ...village.obstacles, ...(hall?.obstacles ?? [])],
+    [...village.cameraBoxes, ...(hall?.cameraBoxes ?? [])],
   );
 }
 
 /** The village area's colliders generated from village.glb (Task 7): the layout's boxes plus the model's own. */
 export const VILLAGE_MODEL_COLLIDERS: GeneratedColliders = { obstacles: VILLAGE_COLLIDERS, cameraBoxes: VILLAGE_CAMERA_BOXES };
 
+/** The hall's interior generated from memorial.glb (Task 8), wired in Task 9: furniture, cubby units, the ceiling slab. */
+export const HALL_MODEL_COLLIDERS: GeneratedColliders = hallInteriorColliders(VILLAGE_LAYOUT);
+
 /**
- * The village map the server and the client play on: the colliders generated from the Blender model (Task 7) for
- * the village area, the hall's walls and the blockers around it. `greyboxColliders(VILLAGE_LAYOUT)` stays the
+ * The village map the server and the client play on: the colliders generated from the Blender models (Task 7: the
+ * village area; Task 9: the hall's interior), the hall's walls and the blockers around it. `greyboxColliders(VILLAGE_LAYOUT)` stays the
  * layout's own list (the model must contain each of its boxes exactly: scripts/check-school-glb.ts).
  */
-export const villageGeometry: MapGeometry = buildVillageGeometry(VILLAGE_LAYOUT, VILLAGE_MODEL_COLLIDERS);
+export const villageGeometry: MapGeometry = buildVillageGeometry(VILLAGE_LAYOUT, VILLAGE_MODEL_COLLIDERS, HALL_MODEL_COLLIDERS);
 
 /**
  * Everything a Blender script needs, as plain JSON-able data (scripts/export-village-layout.ts writes it to

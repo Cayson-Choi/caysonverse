@@ -5,17 +5,27 @@ import type { ChatBroadcast } from "@caysonverse/shared/messages";
 import { PATCH_RATE_MS, ROLE_STUDENT, VILLAGE_MAX_CLIENTS } from "@caysonverse/shared/constants";
 import { APPEARANCE_FIELDS } from "@caysonverse/shared/appearance";
 import type { MapGeometry } from "@caysonverse/shared/school/geometry";
-import { SERVER_TIME_INTERVAL_MS, VillageMsg, VillageServerMsg, type ServerTimePayload } from "@caysonverse/shared/village/messages";
+import {
+  CANDLE_RATE,
+  SERVER_TIME_INTERVAL_MS,
+  VillageMsg,
+  VillageServerMsg,
+  type CandleLitPayload,
+  type ServerTimePayload,
+} from "@caysonverse/shared/village/messages";
 import { VILLAGE_LAYOUT, villageGeometry } from "@caysonverse/shared/village/villageLayout";
 import { PlayerRoom, baseTracking, spawnInDisk, type Tracking } from "./PlayerRoom";
 import { validateJoinOptions } from "./joinValidation";
 import { RateWindow } from "./rateLimit";
 import { DOOR_RATE, useDoor } from "./villageDoor";
+import { candleCubby } from "./villageCandle";
 
 /** Per-client bookkeeping (not part of synced state): the base's, plus the door-use cap. */
 interface VillageTracking extends Tracking {
   /** Sliding-window rate cap for door uses (1 per second). */
   doorRate: RateWindow;
+  /** Sliding-window rate cap for lighting candles (1 per 5 seconds, Task 9). */
+  candleRate: RateWindow;
 }
 
 /**
@@ -26,6 +36,7 @@ interface VillageTracking extends Tracking {
  * and the memorial hall's interior in ONE coordinate space), the spawn, and what only the village has:
  *  - join: `{ nickname, appearance }`, validated like the world's (no admin code, no kick, no seats);
  *  - `VillageMsg.UseDoor`: the memorial hall's door is a validated teleport (see `handleUseDoor`);
+ *  - `VillageMsg.LightCandle` (Task 9): a candle in a cubby, told to everyone in the hall (see `handleLightCandle`);
  *  - the hall is a quiet place (`isQuiet`): Emoji and Jump are dropped there, chat still goes through;
  *  - chat is scoped by area (`deliverChat`): a line is heard only by the clients in the sender's area, so what is
  *    said inside the hall stays in the hall and the plaza's talk does not carry in. Emoji, Jump and Typing stay
@@ -54,6 +65,9 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     this.registerPlayerMessages();
     this.onMessage(VillageMsg.UseDoor, (client) => {
       this.handleUseDoor(client);
+    });
+    this.onMessage(VillageMsg.LightCandle, (client, payload: unknown) => {
+      this.handleLightCandle(client, payload);
     });
     // The time of day: everyone's clock offset is refreshed every 5 minutes (drift, a device clock changed meanwhile).
     this.clock.setInterval(() => this.broadcastServerTime(), SERVER_TIME_INTERVAL_MS);
@@ -119,11 +133,26 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
 
   /** The base bookkeeping plus the door-use cap. */
   protected createTracking(now: number): VillageTracking {
-    return { ...baseTracking(now), doorRate: new RateWindow(DOOR_RATE.count, DOOR_RATE.windowMs) };
+    return {
+      ...baseTracking(now),
+      doorRate: new RateWindow(DOOR_RATE.count, DOOR_RATE.windowMs),
+      candleRate: new RateWindow(CANDLE_RATE.count, CANDLE_RATE.windowMs),
+    };
   }
 
-  /** Clients to skip for one chat line (those in another area); reused so a line costs no allocation. */
+  /** Clients to skip for one chat line or candle (those in another area); reused so a message costs no allocation. */
   private readonly otherArea: Client[] = [];
+
+  /** Broadcast to the clients whose player is in `area` (one encode; the others are the `except` list). */
+  private broadcastToArea(area: string, type: string, message: unknown): void {
+    const skip = this.otherArea;
+    skip.length = 0;
+    for (const c of this.clients) {
+      if (this.state.players.get(c.sessionId)?.area !== area) skip.push(c);
+    }
+    this.broadcast(type, message, skip.length > 0 ? { except: skip } : undefined);
+    skip.length = 0;
+  }
 
   /**
    * Chat is scoped by area (ruling): the line goes only to the clients in the sender's area, the sender
@@ -131,14 +160,8 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
    * chat. A client with no seat yet counts as elsewhere.
    */
   protected deliverChat(client: Client, player: Player, text: string): void {
-    const skip = this.otherArea;
-    skip.length = 0;
-    for (const c of this.clients) {
-      if (this.state.players.get(c.sessionId)?.area !== player.area) skip.push(c);
-    }
     const line: ChatBroadcast = { sid: client.sessionId, name: player.nickname, text };
-    this.broadcast(MessageType.Chat, line, skip.length > 0 ? { except: skip } : undefined);
-    skip.length = 0;
+    this.broadcastToArea(player.area, MessageType.Chat, line);
   }
 
   /** The memorial hall is quiet: no emoji, no jumping there (chat and walking are fine). */
@@ -174,5 +197,23 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     player.yaw = arrival.yaw;
     player.area = arrival.area;
     track.lastAcceptedAt = now;
+  }
+
+  /**
+   * Candle pipeline (Task 9): sender must have a seat → the pure rule `candleCubby` decides from the player's
+   * AUTHORITATIVE area and position and the named cubby (in the hall, within 1.5 m of its anchor on the ground) → SILENT
+   * drop otherwise → per-client rate cap (1 per 5 seconds; after the distance, like the door) → `CandleLit` to every
+   * client in the hall, the lighter included. Nothing is stored: each client burns the candle for 60 s itself.
+   */
+  private handleLightCandle(client: Client, payload: unknown): void {
+    const player = this.state.players.get(client.sessionId);
+    const track = this.tracking.get(client.sessionId);
+    if (!player || !track) return;
+    const cubby = payload !== null && typeof payload === "object" ? (payload as { cubby?: unknown }).cubby : undefined;
+    const anchor = candleCubby(player.area, player.x, player.z, cubby);
+    if (anchor === null) return;
+    if (!track.candleRate.tryAccept(this.now())) return;
+    const lit: CandleLitPayload = { cubby: anchor.id, by: player.nickname };
+    this.broadcastToArea("hall", VillageServerMsg.CandleLit, lit);
   }
 }

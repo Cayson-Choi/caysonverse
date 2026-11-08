@@ -1,11 +1,13 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { VILLAGE_LAYOUT } from "@caysonverse/shared/village/villageLayout";
-import { villageGeometry } from "@caysonverse/shared/village/villageLayout";
+import { hallCeilingSlab, villageGeometry } from "@caysonverse/shared/village/villageLayout";
+import { SPRING } from "../game/cameraCollision";
 import { PLAYER_RADIUS } from "@caysonverse/shared/worldMap";
 import {
   HALL_ACTIVE_MAP,
   LEGACY_ACTIVE_MAP,
   VILLAGE_ACTIVE_MAP,
+  VILLAGE_CAMERA_PAD,
   activeBounds,
   activeMapVersion,
   getActiveMap,
@@ -107,9 +109,22 @@ describe("the village's lighting (data, so the clock can drive it later)", () =>
 });
 
 describe("the camera limit of each map (케이슨 마을 Task 5: a building's camera stays under its ceiling)", () => {
-  it("inside the memorial hall: 3.1 m high, 3.6 m away, no overview — under its 3.4 m ceiling", () => {
-    expect({ ...HALL_ACTIVE_MAP.cameraLimit }).toEqual({ maxY: 3.1, maxDistance: 3.6, overview: false });
+  it("inside the memorial hall: 3.0 m high, 3.6 m away, no overview — under its 3.4 m ceiling", () => {
+    expect({ ...HALL_ACTIVE_MAP.cameraLimit }).toEqual({ maxY: 3, maxDistance: 3.6, overview: false });
     expect(HALL_ACTIVE_MAP.cameraLimit!.maxY).toBeLessThan(VILLAGE_LAYOUT.memorial.interior.ceilingHeight);
+  });
+
+  it("the hall's height limit plus its spring-arm pad stays under the ceiling slab (Task 5 review m3, Task 9)", () => {
+    const slab = villageGeometry.cameraBoxes.find((b) => b.minY !== undefined && b.minX <= VILLAGE_LAYOUT.areas.hall.minX)!;
+    expect(slab).toEqual(hallCeilingSlab(VILLAGE_LAYOUT));
+    expect(slab.minY).toBe(3.3);
+    const pad = HALL_ACTIVE_MAP.cameraPad ?? SPRING.pad;
+    expect(pad).toBe(VILLAGE_CAMERA_PAD);
+    expect(HALL_ACTIVE_MAP.cameraLimit!.maxY + pad).toBeLessThanOrEqual(slab.minY! + 1e-9);
+    // and the pad the Task 5 review asked about (SPRING.pad) holds too
+    expect(HALL_ACTIVE_MAP.cameraLimit!.maxY + SPRING.pad).toBeLessThanOrEqual(slab.minY! + 1e-9);
+    // the slab follows the ceiling: derived from ceilingHeight
+    expect(slab.minY).toBeCloseTo(VILLAGE_LAYOUT.memorial.interior.ceilingHeight - 0.1, 9);
   });
 
   it("the open village, the legacy world and the hub have no limit (their camera is as before)", () => {

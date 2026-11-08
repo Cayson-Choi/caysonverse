@@ -40,13 +40,19 @@ const wallsOnly = makeGeometry(
   [...areaGapBlockers(L), ...greyboxColliders(L).map((c) => c.box)],
 );
 
+/** The cubby units stand this deep against the north and east walls (the layout's `unitDepth`, Task 8). */
+const CUBBY_UNIT_DEPTH = VILLAGE_LAYOUT.memorial.interior.cubbyWalls[0]!.unitDepth;
+
 describe("a legal step through the hall's walls is dropped", () => {
-  // One start 0.45 m inside each wall, and a 3 m step straight through it.
+  // One start 0.45 m in front of each wall — in front of the cubby units on the north and east walls, clear of the plant
+  // on the west one (Task 9 furnished the room) — and a 3 m step straight through it.
+  const N = HALL.minZ + CUBBY_UNIT_DEPTH + 0.45;
+  const E = HALL.maxX - CUBBY_UNIT_DEPTH - 0.45;
   const cases: Array<[string, { x: number; z: number }, { x: number; z: number }]> = [
-    ["north", { x: 300, z: HALL.minZ + 0.45 }, { x: 300, z: HALL.minZ + 0.45 - 3 }],
+    ["north", { x: 300, z: N }, { x: 300, z: N - 3 }],
     ["south", { x: 300, z: HALL.maxZ - 0.45 }, { x: 300, z: HALL.maxZ - 0.45 + 3 }],
-    ["west", { x: HALL.minX + 0.45, z: 0 }, { x: HALL.minX + 0.45 - 3, z: 0 }],
-    ["east", { x: HALL.maxX - 0.45, z: 0 }, { x: HALL.maxX - 0.45 + 3, z: 0 }],
+    ["west", { x: HALL.minX + 0.45, z: -2 }, { x: HALL.minX + 0.45 - 3, z: -2 }],
+    ["east", { x: E, z: 0 }, { x: E + 3, z: 0 }],
   ];
 
   it.each(cases)("a 3 m Move through the %s wall is dropped (and the same step inside the room is accepted)", (_side, from, to) => {

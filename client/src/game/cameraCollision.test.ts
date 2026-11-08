@@ -11,7 +11,10 @@ import {
   SEAT_ARM,
   SPRING,
   armHeightScale,
+  armHeightScaleAt,
+  INDOOR_ARM,
   armLookLift,
+  armLookLiftAt,
   cameraPad,
   segmentHitFraction,
   springArmDistance,
@@ -462,5 +465,37 @@ describe("the map's own pad (케이슨 마을: 0.3 m, wider than its 0.2 m near 
       expect(Math.min(toSide, toWall), `camera toward ${cx}, ${cz}`).toBeGreaterThanOrEqual(VILLAGE_CAMERA_PAD - 1e-6);
       expect(Math.min(toSide, toWall)).toBeGreaterThan(VILLAGE_NEAR);
     }
+  });
+});
+
+describe("indoor arm shaping (케이슨 마을 Task 9: the 9 x 12 m hall must not fill the screen with the own head)", () => {
+  it("indoors a shortened arm keeps its height and the look rises, like the seated arm", () => {
+    expect(INDOOR_ARM).toEqual({ lookLift: 1.3 });
+    expect(armHeightScaleAt(0.2, 0, true)).toBe(1);
+    expect(armLookLiftAt(0.2, 0, true)).toBeCloseTo(0.8 * INDOOR_ARM.lookLift, 9);
+  });
+
+  it("outdoors nothing changes: the standing and the seated rules as before", () => {
+    for (const [k, seat] of [
+      [0.2, 0],
+      [0.5, 1],
+      [0.4, 0.5],
+    ] as const) {
+      expect(armHeightScaleAt(k, seat, false)).toBe(armHeightScale(k, seat));
+      expect(armLookLiftAt(k, seat, false)).toBe(armLookLift(k, seat));
+    }
+  });
+
+  it("seated indoors keeps the larger seated lift; a full arm changes nothing", () => {
+    expect(armLookLiftAt(0.5, 1, true)).toBeCloseTo(armLookLift(0.5, 1), 9);
+    expect(armHeightScaleAt(1, 0, true)).toBe(1);
+    expect(armLookLiftAt(1, 0, true)).toBe(0);
+  });
+
+  it("at the 0.6 m floor of a 3.6 m arm the camera stays up: the head no longer fills the view from head height", () => {
+    const k = SPRING.minDist / 3.6;
+    const wanted = 3.6 * Math.sin(0.35); // the height offset of the default pitch
+    expect(wanted * armHeightScaleAt(k, 0, true)).toBeCloseTo(wanted, 9); // indoors: about 1.2 m over the head
+    expect(wanted * armHeightScaleAt(k, 0, false)).toBeLessThan(0.25); // standing outdoors: about head height
   });
 });

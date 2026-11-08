@@ -5,7 +5,7 @@ import { makeGeometry, type MapGeometry } from "@caysonverse/shared/school/geome
 import { MapBoxes } from "../game/MapBoxes";
 
 /**
- * The memorial hall's room (추모관 inside) until Task 9 dresses it: a floor, the four walls (the colliders, drawn by
+ * The memorial hall's plain room: since Task 9 the stand-in while memorial.glb loads (MemorialHall.tsx). A floor, the four walls (the colliders, drawn by
  * MapBoxes), the ceiling slab the indoor camera stays under (Task 5), and the glowing door pad of the way out. Also
  * the door pad outside, in front of the hall's glass entrance (the village model has no pad of its own).
  */
@@ -28,7 +28,7 @@ export function DoorPad({ pad, y = 0.05 }: { pad: Disc; y?: number }) {
   );
 }
 
-export function HallRoom() {
+export function HallRoom({ withPad = true }: { withPad?: boolean }) {
   const { room, ceilingHeight, doorPad } = VILLAGE_LAYOUT.memorial.interior;
   const cx = (room.minX + room.maxX) / 2;
   const cz = (room.minZ + room.maxZ) / 2;
@@ -38,7 +38,7 @@ export function HallRoom() {
         <boxGeometry args={[room.maxX - room.minX, 0.02, room.maxZ - room.minZ]} />
         <meshStandardMaterial color={COLOUR.room} roughness={0.95} />
       </mesh>
-      <DoorPad pad={doorPad} />
+      {withPad ? <DoorPad pad={doorPad} /> : null}
       <MapBoxes geometry={HALL_DRAW} />
       {/* The ceiling (Task 5): the roof seen from inside. The camera is held under it (indoorCamera.ts), so the
           player never sees the sky or the village through it. A plain slab until Task 9 dresses the room. */}

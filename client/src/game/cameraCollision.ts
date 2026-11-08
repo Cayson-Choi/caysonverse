@@ -237,3 +237,24 @@ export function armHeightScale(k: number, seat: number): number {
 export function armLookLift(k: number, seat: number): number {
   return (1 - k) * seat * SEAT_ARM.lookLift;
 }
+
+/**
+ * Indoor arm shaping (케이슨 마을 Task 9; Task 5 review Q6): in a place with a camera limit — a room under a ceiling, the
+ * 9 x 12 m memorial hall — the wanted 3.6 m arm is often cut short by a wall behind the player, and a standing arm that
+ * shrinks as a whole drops the camera to head height: the back of the head fills the screen. Indoors a shortened arm
+ * therefore behaves like the seated one: it keeps its height (still under the limit's ceiling, which already capped it)
+ * and slides in horizontally, and the look target rises by `(1 − k) × lookLift`, so the view looks over the head into the
+ * room instead of at it.
+ */
+export const INDOOR_ARM = { lookLift: 1.3 } as const;
+
+/** `armHeightScale` with the indoor rule: in a limited place (`indoor`) the height is kept whole, as when seated. */
+export function armHeightScaleAt(k: number, seat: number, indoor: boolean): number {
+  return armHeightScale(k, indoor ? 1 : seat);
+}
+
+/** `armLookLift` with the indoor rule: in a limited place at least `(1 − k) × INDOOR_ARM.lookLift`. */
+export function armLookLiftAt(k: number, seat: number, indoor: boolean): number {
+  const seated = armLookLift(k, seat);
+  return indoor ? Math.max(seated, (1 - k) * INDOOR_ARM.lookLift) : seated;
+}

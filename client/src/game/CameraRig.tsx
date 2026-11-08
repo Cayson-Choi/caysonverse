@@ -60,8 +60,8 @@ import {
 import {
   ARM_FREE,
   SEAT_ARM,
-  armHeightScale,
-  armLookLift,
+  armHeightScaleAt,
+  armLookLiftAt,
   springArmDistance,
   stepArmLimit,
 } from "./cameraCollision";
@@ -455,6 +455,9 @@ export function CameraRig({ pose, orbit, seat, fogRange = LEGACY_FOG, far: baseF
       capEngage.current = areaLimit ? 1 : 0;
       orbit.yaw = recenterYaw(pose.yaw);
       viewState.fpYaw = orbit.yaw; // the same view in first person (as when a seat turns it)
+      // Into a building the view starts at the default tilt (Task 5 review m2): a steep pitch carried in from outside
+      // would look straight down on the head under the low ceiling. The zoom is left alone (the limit clamps it).
+      if (areaLimit) orbit.pitch = CAMERA.pitch;
       cancelOrbitGoal();
     }
     // No overview where the map says so (inside a building): an open one is dropped at once, not eased out.
@@ -575,9 +578,11 @@ export function CameraRig({ pose, orbit, seat, fogRange = LEGACY_FOG, far: baseF
         if (armLimit.current < reach) {
           const k = armLimit.current / reach;
           tpX = followX + offX * k;
-          tpY = HEAD_HEIGHT + offY * armHeightScale(k, seatBlend.current);
+          // Seated — or indoors, under a ceiling (Task 9) — the arm keeps its height and the look rises over the head.
+          const indoor = limitNow !== undefined;
+          tpY = HEAD_HEIGHT + offY * armHeightScaleAt(k, seatBlend.current, indoor);
           tpZ = followZ + offZ * k;
-          tpLookLift = armLookLift(k, seatBlend.current);
+          tpLookLift = armLookLiftAt(k, seatBlend.current, indoor);
         }
       }
     } else {

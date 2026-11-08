@@ -1,7 +1,22 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { VILLAGE_LAYOUT, type AreaId } from "@caysonverse/shared/village/villageLayout";
-import { DOOR_LABEL, DOOR_OFFER_REACH_M, DOOR_SHORT, MEMORIAL_DOOR_ID, doorPadFor, villageTargets } from "./villageTargets";
+import { CANDLE_REACH_M } from "@caysonverse/shared/village/messages";
+import {
+  CUBBY_LABEL,
+  CUBBY_REACH_M,
+  CUBBY_SHORT,
+  DOOR_LABEL,
+  DOOR_OFFER_REACH_M,
+  DOOR_SHORT,
+  MEMORIAL_DOOR_ID,
+  cubbyColumn,
+  cubbyColumns,
+  doorPadFor,
+  nearestCubbyColumn,
+  villageAndHallTargets,
+  villageTargets,
+} from "./villageTargets";
 
 const outside = VILLAGE_LAYOUT.memorial.exterior;
 const inside = VILLAGE_LAYOUT.memorial.interior;
@@ -69,5 +84,60 @@ describe("villageTargets — the memorial hall's door", () => {
     const sp = inside.spawn;
     expect(villageTargets("village", out.x, out.z)).toHaveLength(1); // the way out lands 2.2 m from the front door's centre
     expect(villageTargets("hall", sp.x, sp.z)).toHaveLength(1); // the way in lands 1.6 m from the way out's centre
+  });
+});
+
+describe("villageAndHallTargets — the cubbies' close-up inside the hall (Task 9)", () => {
+  const cols = cubbyColumns();
+  const front = (key: string, d: number) => {
+    const c = cubbyColumn(key)!;
+    const a = c.rows[0]!;
+    // d metres in front of the column, along its facing
+    return { x: c.x + Math.sin(a.yaw) * d, z: c.z + Math.cos(a.yaw) * d };
+  };
+
+  it("38 columns (20 on the back wall, 18 on the east), each with its 7 rows bottom first", () => {
+    expect(cols).toHaveLength(38);
+    for (const c of cols) {
+      expect(c.rows.map((r) => r.row)).toEqual([0, 1, 2, 3, 4, 5, 6]);
+      expect(cubbyColumn(`cubby:${c.key}`)).toBe(cubbyColumn(c.key));
+    }
+    expect(cubbyColumn("n_99")).toBeNull();
+  });
+
+  it("in front of a column: the close-up of that column, labelled 가까이 보기", () => {
+    const p = front("n_10", 0.7);
+    const t = villageAndHallTargets("hall", p.x, p.z);
+    expect(t).toHaveLength(1);
+    expect(t[0]).toMatchObject({ kind: "object", id: "cubby:n_10", label: CUBBY_LABEL, short: CUBBY_SHORT });
+    expect(t[0]!.dist).toBeCloseTo(0.7, 6);
+    expect(CUBBY_LABEL).toBe("가까이 보기");
+  });
+
+  it("offered within 1.2 m, not past it; never outside the hall", () => {
+    expect(CUBBY_REACH_M).toBe(1.2);
+    const near = front("e_4", CUBBY_REACH_M - 0.01);
+    const far = front("e_4", CUBBY_REACH_M + 0.01);
+    expect(villageAndHallTargets("hall", near.x, near.z)).toHaveLength(1);
+    expect(villageAndHallTargets("hall", far.x, far.z)).toHaveLength(0);
+    expect(villageAndHallTargets("village", near.x, near.z)).toHaveLength(0);
+  });
+
+  it("the nearest column wins (columns are 0.425 m apart)", () => {
+    const a = cubbyColumn("n_10")!;
+    const b = cubbyColumn("n_11")!;
+    const mid = (a.x + b.x) / 2;
+    expect(nearestCubbyColumn(mid - 0.05, a.z + 0.6)!.column.key).toBe("n_10");
+    expect(nearestCubbyColumn(mid + 0.05, a.z + 0.6)!.column.key).toBe("n_11");
+  });
+
+  it("the door still comes alone at the way out (no column near it), and the spawn and the room's middle offer no cubby", () => {
+    const pad = inside.doorPad;
+    expect(villageAndHallTargets("hall", pad.centre.x, pad.centre.z).map((t) => t.kind)).toEqual(["door"]);
+    expect(villageAndHallTargets("hall", inside.origin.x, inside.origin.z)).toHaveLength(0);
+  });
+
+  it("the client's reach is inside the server's candle reach (1.5 m)", () => {
+    expect(CUBBY_REACH_M).toBeLessThan(CANDLE_REACH_M);
   });
 });

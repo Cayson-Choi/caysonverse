@@ -418,6 +418,16 @@ export function sendUseDoor(): void {
   room?.send(VillageMsg.UseDoor, {});
 }
 
+/**
+ * 케이슨 마을 (Task 9): light a candle in a memorial cubby. The server checks that we are in the hall within 1.5 m of
+ * it and a 1-per-5-seconds cap, then tells everyone in the hall (`CandleLit`); anything else is dropped silently.
+ * No-op unless this tab is in the village.
+ */
+export function sendLightCandle(cubby: string): void {
+  if (roomMode !== "village") return;
+  room?.send(VillageMsg.LightCandle, { cubby });
+}
+
 /** Send a classroom (puzzle) message. No-op unless a classroom connection is open. */
 export function sendEscape<K extends keyof EscapePayloads>(type: K, payload: EscapePayloads[K]): void {
   escapeRoom?.send(type, payload);

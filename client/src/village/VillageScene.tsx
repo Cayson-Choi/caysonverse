@@ -12,20 +12,23 @@ import { doorFade } from "./doorFadeModel";
 import { useQualityTier } from "../game/QualityEffects";
 import { VILLAGE_LAYOUT, type AreaId } from "@caysonverse/shared/village/villageLayout";
 import { PlotMarkers } from "./PlotMarkers";
-import { DoorPad, HallRoom } from "./VillageHall";
+import { DoorPad } from "./VillageHall";
+import { HallArea } from "./MemorialHall";
+import { CubbyView } from "./CubbyView";
+import { openCubbyCard } from "./cubbyCard";
 import { DayNight } from "./DayNight";
 import { VillageModel } from "./VillageModel";
 import { VillageBgmButton } from "./VillageBgmButton";
 import { VILLAGE_CAMERA_PLANES, VILLAGE_GROUND_DECAL, type VillageTier } from "./villageModelPrep";
 import { holdVillageFiles } from "./villageRelease";
 import { areaGate, localArea, readSelfArea, releaseLocalArea, seedLocalArea, useLocalArea } from "./villageArea";
-import { villageTargets } from "./villageTargets";
+import { CUBBY_TARGET_PREFIX, villageAndHallTargets, villageTargets } from "./villageTargets";
 
 /**
  * 케이슨 마을 — the village scene (Task 4). A `PlayShell` on the village map under the village's afternoon
  * light: outside, the Blender model (Task 7: VillageModel — the plaza, houses, creek, plots, the far mountains and
  * the sky dome, with its far plane past the dome) with the words on the plots' signs and the memorial's door pad;
- * inside, the hall's plain room until Task 9 (VillageHall).
+ * inside, the memorial hall (Task 9: MemorialHall — the Task 8 model, the sample cubbies' props, the candles).
  *
  * Two areas share this room: the open village and the memorial hall's interior (`Player.area`). The scene follows
  * the LOCAL player's area (villageArea.ts, written by the sync as the server flips it) and shows only that one:
@@ -36,7 +39,9 @@ import { villageTargets } from "./villageTargets";
  *    nametag or bubble here);
  *  - the door: "추모관 들어가기" outside and "밖으로 나가기" inside, offered within reach of the pad through the
  *    context button and E (interactTargets.ts). Pressing it draws the curtain (DoorFade) and then sends `UseDoor`;
- *  - the quiet hall: while inside, jumping and emoji are off (quiet.ts), as on the server.
+ *  - the quiet hall: while inside, jumping and emoji are off (quiet.ts), as on the server;
+ *  - the cubbies (Task 9): inside, within 1.2 m of a cubby column, "가까이 보기" (context button and E) opens the
+ *    close-up card (CubbyView), where "촛불 켜기" lights a candle everyone in the hall sees for 60 s.
  *
  * App mounts it keyed by `connectionEpoch`, so a reconnect remounts it against the new room.
  */
@@ -55,7 +60,7 @@ const SHADOW_HALF = 40;
  */
 /** What the local player's area draws: the village model and its signs and door pad, or the hall's room. */
 function VillageArea({ area, tier }: { area: AreaId; tier: VillageTier }) {
-  if (area === "hall") return <HallRoom />;
+  if (area === "hall") return <HallArea />;
   return (
     <>
       <VillageModel tier={tier} />
@@ -67,9 +72,15 @@ function VillageArea({ area, tier }: { area: AreaId; tier: VillageTier }) {
 
 function VillageDoors({ pose }: { pose: Pose }) {
   useEffect(() => {
-    setTargetSource((p) => villageTargets(localArea(), p.x, p.z));
+    setTargetSource((p) => villageAndHallTargets(localArea(), p.x, p.z));
     setTargetHandler((target, phase) => {
-      if (phase !== "press" || target.kind !== "door") return;
+      if (phase !== "press") return;
+      if (target.kind === "object" && target.id.startsWith(CUBBY_TARGET_PREFIX)) {
+        clearClickTarget(); // stand still in front of the cubby while the card is open
+        openCubbyCard(target.id);
+        return;
+      }
+      if (target.kind !== "door") return;
       clearClickTarget(); // a click-move in progress must not walk on after the teleport
       doorFade.begin(() => {
         if (villageTargets(localArea(), pose.x, pose.z).length === 0) return false; // walked away while it closed
@@ -130,7 +141,12 @@ export function VillageScene({ identity }: { identity: Identity }) {
         </>
       )}
       hudColumn={<VillageBgmButton />}
-      hud={<DoorFade />}
+      hud={
+        <>
+          <DoorFade />
+          <CubbyView />
+        </>
+      }
     />
   );
 }

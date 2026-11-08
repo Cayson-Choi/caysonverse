@@ -489,13 +489,14 @@ const MB = 1024 * 1024;
 /**
  * Plan Global Constraints: hub (hall + corridor) <= 3.5 MB, classroom <= 5 MB; triangles from Task 22.
  * 케이슨 마을 (village plan, Global Constraints): village.glb <= 8 MB and <= 260k triangles; memorial.glb (the hall's
- * interior, Task 8) <= 6 MB and <= 200k triangles.
+ * interior, Task 8) was planned at <= 6 MB and <= 200k triangles, and is held to 1.5 MB and 60k since Task 9 (Task 8
+ * review m5: the file is 0.33 MB and 17k triangles, so the plan's ceiling would not catch a regression).
  */
 export const BUDGETS: Record<SchoolKind, { maxBytes: number; maxTriangles: number }> = {
   hub: { maxBytes: 3.5 * MB, maxTriangles: 150_000 },
   counsel: { maxBytes: 5 * MB, maxTriangles: 120_000 },
   village: { maxBytes: 8 * MB, maxTriangles: 260_000 },
-  memorial: { maxBytes: 6 * MB, maxTriangles: 200_000 },
+  memorial: { maxBytes: 1.5 * MB, maxTriangles: 60_000 },
 };
 /** A required col__ box may differ from its layout box by at most this much on each side (m; boxes are read at 0.01). */
 export const BOX_TOLERANCE = 0.011;
@@ -935,5 +936,90 @@ function checkLightmap(input: CheckInput): CheckResult[] {
       uniqueNoUv.length === 0 ? "LM_ 재질을 쓰는 모든 primitive에 TEXCOORD_1이 있어요" : `TEXCOORD_1이 없는 라이트맵 메시: ${nameList(uniqueNoUv)}`,
     ),
   );
+  return out;
+}
+
+// ---------------------------------------------------------------------------------------------------------
+// memorial_props.glb (Task 8 props, read by Task 9's instancing; Task 8 review m1).
+
+/** The nine props of the memorial cubbies, one mesh each, in the file's `prop__<name>` nodes. */
+export const MEMORIAL_PROP_NAMES = [
+  "flowers",
+  "house_frame",
+  "name_card",
+  "photo_frame",
+  "plush_bear",
+  "stone_jar",
+  "tealight",
+  "urn_ceramic",
+  "urn_wood",
+] as const;
+
+/** memorial_props.glb's budget: its own file (0.18 MB, 7.7k triangles at Task 8). */
+export const MEMORIAL_PROPS_BUDGET = { maxBytes: 0.5 * MB, maxTriangles: 20_000 } as const;
+
+/**
+ * Check memorial_props.glb: the nine `prop__*` nodes with one mesh each, the picture (`M_photo`, on prop__photo_frame) and
+ * the name (`M_name`, on prop__name_card) in their own primitives (the runtime gives them per-instance content), neither
+ * light-mapped (`LM_`) nor shared with another prop, every material unlit, and the file and triangle budget.
+ */
+export function checkMemorialProps(gltf: Gltf, byteLength: number): CheckResult[] {
+  const out: CheckResult[] = [];
+  const nodes = gltf.nodes ?? [];
+  const materials = gltf.materials ?? [];
+  const props = nodes.filter((n) => (n.name ?? "").startsWith("prop__"));
+  const names = props.map((n) => (n.name ?? "").slice("prop__".length)).sort();
+  const want = [...MEMORIAL_PROP_NAMES].sort();
+  const sameNames = names.length === want.length && names.every((n, i) => n === want[i]);
+  out.push({
+    level: sameNames ? "ok" : "fail",
+    label: "소품 노드",
+    detail: sameNames ? `prop__ ${props.length}개가 모두 있어요` : `있는 것: ${names.join(", ") || "없음"} / 있어야 하는 것: ${want.join(", ")}`,
+  });
+  const meshless = props.filter((n) => n.mesh === undefined || !gltf.meshes?.[n.mesh]);
+  out.push({
+    level: meshless.length === 0 ? "ok" : "fail",
+    label: "소품 메시",
+    detail: meshless.length === 0 ? "소품마다 메시가 하나씩 있어요" : `메시가 없어요: ${meshless.map((n) => n.name).join(", ")}`,
+  });
+  const materialName = (i: number | undefined) => (i === undefined ? "" : (materials[i]?.name ?? ""));
+  const slotOwners = (mat: string) =>
+    props.filter((n) => n.mesh !== undefined && (gltf.meshes?.[n.mesh]?.primitives ?? []).some((p) => materialName(p.material) === mat)).map((n) => n.name);
+  for (const [mat, owner] of [
+    ["M_photo", "prop__photo_frame"],
+    ["M_name", "prop__name_card"],
+  ] as const) {
+    const owners = slotOwners(mat);
+    const node = props.find((n) => n.name === owner);
+    const prims = node?.mesh !== undefined ? (gltf.meshes?.[node.mesh]?.primitives ?? []) : [];
+    const own = prims.length >= 2 && prims.filter((p) => materialName(p.material) === mat).length === 1;
+    const ok = owners.length === 1 && owners[0] === owner && own;
+    out.push({
+      level: ok ? "ok" : "fail",
+      label: `${mat} 자리`,
+      detail: ok ? `${owner}에만 있고 따로 된 primitive예요` : `${mat}을 쓰는 소품: ${owners.join(", ") || "없음"} (${owner}에 따로 된 primitive 하나가 있어야 해요)`,
+    });
+  }
+  const lightmapped = materials.filter((m) => (m.name ?? "").startsWith(LIGHTMAP_MATERIAL_PREFIX)).map((m) => m.name);
+  const lit = materials.filter((m) => !m.extensions?.[UNLIT]).map((m) => m.name);
+  out.push({
+    level: lightmapped.length === 0 && lit.length === 0 ? "ok" : "fail",
+    label: "소품 재질",
+    detail:
+      lightmapped.length === 0 && lit.length === 0
+        ? `${materials.length}개 모두 KHR_materials_unlit, 라이트맵 없음`
+        : `라이트맵 재질: ${lightmapped.join(", ") || "없음"} / unlit 아닌 재질: ${lit.join(", ") || "없음"}`,
+  });
+  out.push({
+    level: byteLength <= MEMORIAL_PROPS_BUDGET.maxBytes ? "ok" : "fail",
+    label: "소품 파일 크기",
+    detail: `${(byteLength / MB).toFixed(2)} MB, 한도 ${(MEMORIAL_PROPS_BUDGET.maxBytes / MB).toFixed(2)} MB`,
+  });
+  const tris = countTriangles(gltf);
+  out.push({
+    level: tris <= MEMORIAL_PROPS_BUDGET.maxTriangles ? "ok" : "fail",
+    label: "소품 삼각형 수",
+    detail: `${tris}개, 한도 ${MEMORIAL_PROPS_BUDGET.maxTriangles}개`,
+  });
   return out;
 }

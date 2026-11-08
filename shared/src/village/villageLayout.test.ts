@@ -10,6 +10,8 @@ import { VILLAGE_CAMERA_BOXES, VILLAGE_COLLIDERS } from "./generated/villageColl
 import { MEMORIAL_CAMERA_BOXES, MEMORIAL_COLLIDERS } from "./generated/memorialColliders";
 import {
   HALL_APRON,
+  HALL_CEILING_DROP,
+  HALL_MODEL_COLLIDERS,
   SCENERY_SIZES,
   VILLAGE_LAYOUT,
   VILLAGE_MODEL_COLLIDERS,
@@ -22,6 +24,8 @@ import {
   cubbyWallBox,
   exportVillageLayout,
   greyboxColliders,
+  hallCeilingSlab,
+  hallInteriorColliders,
   hallSurroundBlockers,
   hallWalls,
   segmentBand,
@@ -677,7 +681,7 @@ describe("villageGeometry plays on the colliders generated from village.glb (Tas
     expect(villageGeometry.bounds).toEqual(villageBounds(L));
     expect(villageGeometry.bounds).toEqual({ minX: -95, maxX: 310, minZ: -95, maxZ: 95 }); // the hall's walls plus a 5 m apron
     for (const w of hallWalls(L)) expect(villageGeometry.cameraBoxes).toContainEqual(w);
-    expect(villageGeometry).toEqual(buildVillageGeometry(L, VILLAGE_MODEL_COLLIDERS));
+    expect(villageGeometry).toEqual(buildVillageGeometry(L, VILLAGE_MODEL_COLLIDERS, HALL_MODEL_COLLIDERS));
     expect(VILLAGE_MODEL_COLLIDERS.obstacles).toBe(VILLAGE_COLLIDERS);
     expect(VILLAGE_MODEL_COLLIDERS.cameraBoxes).toBe(VILLAGE_CAMERA_BOXES);
     for (const b of VILLAGE_COLLIDERS) expect(villageGeometry.obstacles).toContainEqual(b);
@@ -705,6 +709,58 @@ describe("villageGeometry plays on the colliders generated from village.glb (Tas
       expect(b.minZ).toBeGreaterThanOrEqual(L.walkBounds.minZ);
       expect(b.maxZ).toBeLessThanOrEqual(L.walkBounds.maxZ);
     }
+  });
+});
+
+describe("the hall's interior plays on the colliders generated from memorial.glb (Task 9)", () => {
+  const isHallWall = (b: AABB) => hallWalls(L).some((w) => sameBox(w, b));
+
+  it("every generated box is an obstacle of the walk geometry (the four walls once, as the geometry's walls)", () => {
+    for (const b of MEMORIAL_COLLIDERS) expect(villageGeometry.obstacles).toContainEqual(b);
+    const inside = MEMORIAL_COLLIDERS.filter((b) => !isHallWall(b));
+    expect(HALL_MODEL_COLLIDERS.obstacles).toEqual(inside);
+    for (const w of hallWalls(L)) expect(villageGeometry.obstacles.filter((o) => sameBox(o, w))).toHaveLength(1);
+    // the furniture really is there: the sofa, the bench, the memorial table, both cubby units
+    expect(inside.length).toBe(MEMORIAL_COLLIDERS.length - 4);
+    expect(isBlocked(300.6, -1.6, PLAYER_RADIUS, villageGeometry.obstacles)).toBe(true); // the bench
+    expect(isBlocked(304.3, 0, PLAYER_RADIUS, villageGeometry.obstacles)).toBe(true); // the east cubby unit
+  });
+
+  it("every generated camera box is a camera box of the geometry, plus the ceiling slab", () => {
+    // the walls are the geometry's own walls (camera boxes as tall as a wall); everything else comes as generated
+    for (const b of MEMORIAL_CAMERA_BOXES.filter((c) => !isHallWall(c))) expect(villageGeometry.cameraBoxes).toContainEqual(b);
+    for (const w of hallWalls(L)) expect(villageGeometry.cameraBoxes).toContainEqual(w);
+    expect(villageGeometry.cameraBoxes).toContainEqual(hallCeilingSlab(L));
+    expect(hallInteriorColliders(L).cameraBoxes.at(-1)).toEqual(hallCeilingSlab(L));
+  });
+
+  it("the ceiling slab is derived from ceilingHeight: underside 3.3 (brief), over the room and its walls", () => {
+    const slab = hallCeilingSlab(L);
+    const { ceilingHeight, room } = L.memorial.interior;
+    expect(slab.minY).toBeCloseTo(ceilingHeight - HALL_CEILING_DROP, 9);
+    expect(slab.minY).toBe(3.3);
+    expect(slab.height).toBeCloseTo(ceilingHeight + HALL_CEILING_DROP, 9);
+    for (const w of hallWalls(L)) {
+      expect(slab.minX).toBeLessThanOrEqual(w.minX);
+      expect(slab.maxX).toBeGreaterThanOrEqual(w.maxX);
+      expect(slab.minZ).toBeLessThanOrEqual(w.minZ);
+      expect(slab.maxZ).toBeGreaterThanOrEqual(w.maxZ);
+    }
+    expect(slab.minX).toBeLessThan(room.minX);
+    // a lower ceiling moves the slab with it
+    const low = { ...L, memorial: { ...L.memorial, interior: { ...L.memorial.interior, ceilingHeight: 3 } } };
+    expect(hallCeilingSlab(low).minY).toBeCloseTo(2.9, 9);
+  });
+
+  it("the slab is a camera box only: a body under it is not blocked", () => {
+    expect(villageGeometry.obstacles.some((o) => sameBox(o, hallCeilingSlab(L)))).toBe(false);
+    expect(isBlocked(L.memorial.interior.spawn.x, L.memorial.interior.spawn.z, PLAYER_RADIUS, villageGeometry.obstacles)).toBe(false);
+  });
+
+  it("without a hall list the room is empty (the greybox): the furniture comes only from the model", () => {
+    const grey = buildVillageGeometry(L, greyboxColliders(L));
+    expect(grey.obstacles.some((o) => inside(HALL, centre(o)))).toBe(false);
+    expect(villageGeometry.obstacles.some((o) => inside(HALL, centre(o)))).toBe(true);
   });
 });
 
@@ -1023,7 +1079,7 @@ describe.each(GEOMETRIES)("village geometry invariants: %s", (_name, geo) => {
 
     it("interior: the inside spawn and the inside door pad are reachable, and the hall is a sealed room", () => {
       const r = reachable(geo, HALL_SPAWN, GRID, 1.5);
-      expect(r.length).toBeGreaterThan(300); // the room really was walked
+      expect(r.length).toBeGreaterThan(250); // the room really was walked (Task 9: around the furniture)
       expect(r.every((p) => inside(HALL, p))).toBe(true); // sealed: not a single cell outside the room, even with a 1.5 m margin
       const doorPad = L.memorial.interior.doorPad;
       expect(hasNear(r, doorPad.centre, GRID)).toBe(true);
@@ -1042,9 +1098,9 @@ describe.each(GEOMETRIES)("village geometry invariants: %s", (_name, geo) => {
       expect(reachable(geo, HALL_SPAWN, GRID, 1.5).some((p) => p.x < HALL.minX)).toBe(false);
     });
 
-    it("the hall walls are outside the room (the room itself stays completely free)", () => {
+    it("the hall walls are outside the room (a body fits right into the room's free south-west corner)", () => {
       for (const w of hallWalls(L)) expect(overlaps(w, HALL), JSON.stringify(w)).toBe(false);
-      expect(isBlocked(HALL.minX + 0.4, HALL.minZ + 0.4, PLAYER_RADIUS, obstacles)).toBe(false);
+      expect(isBlocked(HALL.minX + 0.4, HALL.maxZ - 0.4, PLAYER_RADIUS, obstacles)).toBe(false);
     });
 
     it("a hop over a wall lands in a blocker: every spot outside the room, around it and across the gap, is blocked", () => {

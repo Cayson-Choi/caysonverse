@@ -88,6 +88,7 @@ import { getTeacher, forgetTeacher } from "./teacherSession";
 import { forgetTeacherClass } from "./teacherClassCache";
 import { bindClassSync, unbindClassSync } from "./classSync";
 import { bindVillageClock } from "../village/villageClock";
+import { bindHallCandles } from "../village/hallCandles";
 import { wasKicked, markKicked } from "./kickSeam";
 import { useAppStore } from "../stores/appStore";
 import { useClassStore } from "../stores/classStore";
@@ -162,7 +163,10 @@ export function attachResilience(room: Room<WorldState>, mode: ResilienceMode = 
   // The village's clock: the server sends its time right after the join (and every 5 minutes), so the handler must
   // exist before anything awaits (the SDK drops a message nobody listens for). Bound again on every reconnect: it is
   // the new room's. Leaves with the room.
-  if (mode === "village") bindVillageClock(room);
+  if (mode === "village") {
+    bindVillageClock(room);
+    bindHallCandles(room); // the memorial hall's candles (Task 9): CandleLit can come any time while in the hall
+  }
 }
 
 /**

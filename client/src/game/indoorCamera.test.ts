@@ -25,8 +25,8 @@ function wanted(distance: number, pitch: number, yaw: number, fx: number, fz: nu
 }
 
 describe("HALL_CAMERA_LIMIT", () => {
-  it("is the memorial hall's limit from the brief: 3.1 m high, 3.6 m away, no overview", () => {
-    expect({ ...HALL_CAMERA_LIMIT }).toEqual({ maxY: 3.1, maxDistance: 3.6, overview: false });
+  it("is the memorial hall's limit: 3.0 m high (Task 9: under the 3.3 m slab less the 0.3 m pad), 3.6 m away, no overview", () => {
+    expect({ ...HALL_CAMERA_LIMIT }).toEqual({ maxY: 3, maxDistance: 3.6, overview: false });
   });
 
   it("keeps the camera under the hall's ceiling", () => {
@@ -35,7 +35,7 @@ describe("HALL_CAMERA_LIMIT", () => {
 });
 
 describe("indoorCameraClamp — the hall never lets the camera reach the ceiling", () => {
-  it("every pitch 0..1.2 and zoom 2.5..18 (and the 1.6x portrait pull-back) stays at y <= 3.1 and within 3.6 m", () => {
+  it("every pitch 0..1.2 and zoom 2.5..18 (and the 1.6x portrait pull-back) stays at y <= maxY and within 3.6 m", () => {
     const yaws = [0, 0.7, Math.PI / 2, 2.4, Math.PI, -1.3];
     let swept = 0;
     for (let pitch = 0; pitch <= CAMERA.maxPitch + 1e-9; pitch += 0.05) {
@@ -58,7 +58,7 @@ describe("indoorCameraClamp — the hall never lets the camera reach the ceiling
     const { desired, target } = wanted(CAMERA.maxDistance, CAMERA.maxPitch, 0, 300, 0);
     expect(desired.y).toBeGreaterThan(10); // unclamped, it is far above the 3.4 m ceiling
     const c = indoorCameraClamp(desired, target, HALL_CAMERA_LIMIT);
-    expect(c.y).toBeCloseTo(3.1, 9);
+    expect(c.y).toBeCloseTo(HALL_CAMERA_LIMIT.maxY, 9);
     expect(c.z).toBeGreaterThan(target.z); // still behind the player (yaw 0 -> +z), never over the head
   });
 

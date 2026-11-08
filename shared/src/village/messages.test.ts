@@ -1,11 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { MessageType } from "../messages";
 import { ClassMsg, EscapeMsg } from "../escape/messages";
-import { SERVER_TIME_INTERVAL_MS, VillageMsg, VillageServerMsg } from "./messages";
+import { CANDLE_BURN_MS, CANDLE_RATE, CANDLE_REACH_M, SERVER_TIME_INTERVAL_MS, VillageMsg, VillageServerMsg } from "./messages";
 
 describe("VillageMsg", () => {
-  it("the wire name is UseDoor (brief value, verbatim) and collides with no other message family", () => {
-    expect(VillageMsg).toEqual({ UseDoor: "UseDoor" });
+  it("the wire names are UseDoor and LightCandle (brief values, verbatim) and collide with no other message family", () => {
+    expect(VillageMsg).toEqual({ UseDoor: "UseDoor", LightCandle: "LightCandle" });
     const values = Object.values(VillageMsg);
     expect(new Set(values).size).toBe(values.length);
     // A village client also hears the world messages (VillageRoom is a PlayerRoom).
@@ -14,14 +14,20 @@ describe("VillageMsg", () => {
   });
 
   it("the server's clock goes out as ServerTime (server → client), a name no other family uses, every 5 minutes", () => {
-    expect(VillageServerMsg).toEqual({ ServerTime: "ServerTime" });
+    expect(VillageServerMsg).toEqual({ ServerTime: "ServerTime", CandleLit: "CandleLit" });
     const others = new Set<string>([
       ...Object.values(MessageType),
       ...Object.values(ClassMsg),
       ...Object.values(EscapeMsg),
       ...Object.values(VillageMsg),
     ]);
-    expect(others.has(VillageServerMsg.ServerTime)).toBe(false);
+    for (const v of Object.values(VillageServerMsg)) expect(others.has(v), v).toBe(false);
     expect(SERVER_TIME_INTERVAL_MS).toBe(300_000);
+  });
+
+  it("candles (Task 9): 1.5 m from the cubby, one per 5 seconds, burning 60 seconds", () => {
+    expect(CANDLE_REACH_M).toBe(1.5);
+    expect(CANDLE_RATE).toEqual({ count: 1, windowMs: 5000 });
+    expect(CANDLE_BURN_MS).toBe(60_000);
   });
 });

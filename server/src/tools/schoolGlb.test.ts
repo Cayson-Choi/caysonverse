@@ -541,7 +541,7 @@ describe("checkSchoolGlb", () => {
     expect(BUDGETS.hub).toEqual({ maxBytes: 3.5 * 1024 * 1024, maxTriangles: 150_000 });
     expect(BUDGETS.counsel).toEqual({ maxBytes: 5 * 1024 * 1024, maxTriangles: 120_000 });
     expect(BUDGETS.village).toEqual({ maxBytes: 8 * 1024 * 1024, maxTriangles: 260_000 });
-    expect(BUDGETS.memorial).toEqual({ maxBytes: 6 * 1024 * 1024, maxTriangles: 200_000 });
+    expect(BUDGETS.memorial).toEqual({ maxBytes: 1.5 * 1024 * 1024, maxTriangles: 60_000 }); // Task 9: actual 0.33 MB, 17k
     expect(BOX_TOLERANCE).toBeCloseTo(0.011, 6);
     expect(MAX_MATERIALS).toBe(24);
     expect(MAX_TEXTURE_SIDE).toBe(2048);

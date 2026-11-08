@@ -18,6 +18,8 @@
  * Pure and allocation-free (the caller passes `out`): CameraRig calls it every frame.
  */
 
+import { VILLAGE_LAYOUT, hallCeilingSlab } from "@caysonverse/shared/village/villageLayout";
+
 /** How far a place lets the third-person camera go. */
 export interface CameraLimit {
   /** Highest the camera may be (m): under the ceiling. */
@@ -36,10 +38,22 @@ export interface Vec3 {
 }
 
 /**
- * Inside the memorial hall (ceiling 3.4 m): the camera stays at or under 3.1 m and within 3.6 m of the player's
- * head, and there is no overview. 3.1 m is the ceiling slab's underside (3.3) less the spring arm's 0.2 m pad.
+ * 케이슨 마을's spring-arm pad (Task 7 review m5): wider than its 0.2 m near plane, so a corner leaves slack. The village
+ * and the memorial hall share it (activeMap.ts re-exports it); the hall's height limit is derived from it below.
  */
-export const HALL_CAMERA_LIMIT: CameraLimit = Object.freeze({ maxY: 3.1, maxDistance: 3.6, overview: false });
+export const VILLAGE_CAMERA_PAD = 0.3;
+
+/**
+ * Inside the memorial hall (ceiling 3.4 m): the camera stays within 3.6 m of the player's head, no overview, and at or
+ * under the ceiling slab's underside (`hallCeilingSlab`: `ceilingHeight - 0.1` = 3.3) less the hall's spring-arm pad
+ * (0.3): 3.0 m. Derived, not typed in (Task 5 review m3): the clamped spot then sits exactly at the slab's padded
+ * underside, so the arm never has to fold under the slab in the normal case. (Task 5 had 3.1 with the old 0.2 pad.)
+ */
+export const HALL_CAMERA_LIMIT: CameraLimit = Object.freeze({
+  maxY: Math.round((hallCeilingSlab(VILLAGE_LAYOUT).minY! - VILLAGE_CAMERA_PAD) * 1e6) / 1e6,
+  maxDistance: 3.6,
+  overview: false,
+});
 
 /** Linear interpolation from `a` to `b` by `t` (t already clamped to [0,1]). */
 function lerp(a: number, b: number, t: number): number {

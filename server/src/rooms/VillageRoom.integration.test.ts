@@ -14,8 +14,14 @@ import {
 } from "@caysonverse/shared/constants";
 import { MessageType } from "@caysonverse/shared/messages";
 import type { ChatBroadcast, EmojiBroadcast, JumpBroadcast } from "@caysonverse/shared/messages";
-import { SERVER_TIME_INTERVAL_MS, VillageMsg, VillageServerMsg, type ServerTimePayload } from "@caysonverse/shared/village/messages";
-import { VILLAGE_LAYOUT } from "@caysonverse/shared/village/villageLayout";
+import {
+  SERVER_TIME_INTERVAL_MS,
+  VillageMsg,
+  VillageServerMsg,
+  type CandleLitPayload,
+  type ServerTimePayload,
+} from "@caysonverse/shared/village/messages";
+import { VILLAGE_LAYOUT, cubbyAnchors } from "@caysonverse/shared/village/villageLayout";
 import { APPEARANCE_FIELDS, APPEARANCE_RANGES, DEFAULT_APPEARANCE, pickAppearance, type Appearance } from "@caysonverse/shared/appearance";
 import type { Player } from "@caysonverse/shared/schema";
 import { rooms, type VillageRoom, type WorldRoom } from "./index";
@@ -735,4 +741,81 @@ describe("VillageRoom sharding (integration)", () => {
       await leaveAll(joined);
     }
   }, 30_000);
+});
+
+describe("VillageRoom candles (integration, Task 9)", () => {
+  /** A cubby on the back wall and the spot 0.8 m in front of it (inside the 1.5 m reach, clear of the unit). */
+  const CUBBY = cubbyAnchors(L).find((a) => a.id === "n_3_10")!;
+  const FRONT = { x: CUBBY.x, z: CUBBY.z + 0.8 };
+
+  /** Alice and carol in the hall (alice in front of the cubby), bob on the plaza; every CandleLit each one hears. */
+  async function hallParty() {
+    const room = await colyseus.createRoom<VillageRoom>(VILLAGE_ROOM);
+    const clock = useClock(room);
+    const alice = await colyseus.connectTo(room, JOIN);
+    const bob = await colyseus.connectTo(room, JOIN_BOB);
+    const carol = await colyseus.connectTo(room, JOIN_CAROL);
+    const a = room.state.players.get(alice.sessionId)!;
+    const c = room.state.players.get(carol.sessionId)!;
+    a.area = "hall";
+    c.area = "hall";
+    placeAt(a, FRONT.x, FRONT.z);
+    placeAt(c, HALL_SPAWN.x, HALL_SPAWN.z);
+    const heard = { alice: [] as CandleLitPayload[], bob: [] as CandleLitPayload[], carol: [] as CandleLitPayload[] };
+    alice.onMessage(VillageServerMsg.CandleLit, (m: CandleLitPayload) => heard.alice.push(m));
+    bob.onMessage(VillageServerMsg.CandleLit, (m: CandleLitPayload) => heard.bob.push(m));
+    carol.onMessage(VillageServerMsg.CandleLit, (m: CandleLitPayload) => heard.carol.push(m));
+    return { room, clock, alice, bob, carol, a, heard };
+  }
+
+  it("in front of the cubby: everyone in the hall hears CandleLit { cubby, by } (the lighter too), nobody on the plaza", async () => {
+    const { alice, bob, heard } = await hallParty();
+    alice.send(VillageMsg.LightCandle, { cubby: CUBBY.id });
+    expect(await pollFor(() => heard.alice.length === 1 && heard.carol.length === 1)).toBe(true);
+    expect(heard.carol).toEqual([{ cubby: CUBBY.id, by: "케이슨" }]);
+    expect(heard.alice).toEqual([{ cubby: CUBBY.id, by: "케이슨" }]);
+    await roundTrip(alice, bob); // had it gone to bob it would have arrived before this
+    expect(heard.bob).toEqual([]);
+  });
+
+  it("far from the cubby (the spawn, 9 m away), an unknown cubby or a bad payload: refused silently, and no slot is used", async () => {
+    const { clock, alice, carol, a, heard } = await hallParty();
+    placeAt(a, HALL_SPAWN.x, HALL_SPAWN.z);
+    alice.send(VillageMsg.LightCandle, { cubby: CUBBY.id });
+    await settle(alice); // handled (and dropped) from the spawn before she steps up
+    placeAt(a, FRONT.x, FRONT.z);
+    alice.send(VillageMsg.LightCandle, { cubby: "n_9_99" });
+    alice.send(VillageMsg.LightCandle, { cubby: 7 });
+    alice.send(VillageMsg.LightCandle, "n_3_10");
+    alice.send(VillageMsg.LightCandle);
+    await roundTrip(alice, carol, clock);
+    expect(heard.carol).toEqual([]);
+    expect(heard.alice).toEqual([]);
+    // the refusals used up nothing: right away, from the right spot, it goes through
+    alice.send(VillageMsg.LightCandle, { cubby: CUBBY.id });
+    expect(await pollFor(() => heard.carol.length === 1)).toBe(true);
+  });
+
+  it("is rate-limited to one per 5 seconds", async () => {
+    const { clock, alice, carol, heard } = await hallParty();
+    alice.send(VillageMsg.LightCandle, { cubby: CUBBY.id });
+    expect(await pollFor(() => heard.carol.length === 1)).toBe(true);
+    clock.t += 4000;
+    alice.send(VillageMsg.LightCandle, { cubby: "n_4_10" });
+    await roundTrip(alice, carol); // the clock stays still: the typing sentinel is not needed twice
+    expect(heard.carol).toHaveLength(1);
+    clock.t += 1001;
+    alice.send(VillageMsg.LightCandle, { cubby: "n_4_10" });
+    expect(await pollFor(() => heard.carol.length === 2)).toBe(true);
+    expect(heard.carol[1]).toEqual({ cubby: "n_4_10", by: "케이슨" });
+  });
+
+  it("from the village (even standing at the right x, z) the candle is refused", async () => {
+    const { alice, carol, a, heard } = await hallParty();
+    a.area = "village";
+    alice.send(VillageMsg.LightCandle, { cubby: CUBBY.id });
+    await roundTrip(alice, carol);
+    expect(heard.carol).toEqual([]);
+    expect(heard.alice).toEqual([]);
+  });
 });
