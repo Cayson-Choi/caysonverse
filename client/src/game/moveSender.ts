@@ -15,9 +15,18 @@ import type { MovePayload } from "@caysonverse/shared/messages";
  *   immediately so movement starts syncing without a full interval of lag)
  * - on the moving -> idle transition: exactly one final message carrying the
  *   resting pose, so the server converges on the exact stop position
+ * - every message carries `t`: the `nowMs` of the frame it was sent from (whole ms,
+ *   at least 1), i.e. WHEN the player stood at that pose. The server echoes it as
+ *   `Player.moveT` and the other clients replay the walk at those times (playout.ts),
+ *   so the walk looks the same on their screens whatever the network did to it.
  */
 export interface MoveSender {
   update(nowMs: number, moving: boolean, pose: MovePayload): void;
+}
+
+/** The pose stamped with the sender's clock (`MovePayload.t`, whole ms >= 1). */
+function stamped(pose: MovePayload, nowMs: number): MovePayload {
+  return { x: pose.x, z: pose.z, yaw: pose.yaw, t: Math.max(1, Math.round(nowMs)) };
 }
 
 export function createMoveSender(
@@ -31,7 +40,7 @@ export function createMoveSender(
     update(nowMs, moving, pose) {
       if (moving) {
         if (nowMs - lastSentAt >= intervalMs) {
-          send(pose);
+          send(stamped(pose, nowMs));
           lastSentAt = nowMs;
         }
         wasMoving = true;
@@ -39,7 +48,7 @@ export function createMoveSender(
       }
       // Not moving. Emit exactly one final message on the stop transition.
       if (wasMoving) {
-        send(pose);
+        send(stamped(pose, nowMs));
         lastSentAt = nowMs;
         wasMoving = false;
       }

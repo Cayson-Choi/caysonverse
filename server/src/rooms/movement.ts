@@ -30,7 +30,9 @@ import type { MovePayload } from "@caysonverse/shared/messages";
  *      rejects a modified client trying to walk into furniture/walls
  *      (silent-drop policy)
  *   6. normalize yaw into [-PI, PI]
- * (the per-client rate cap and applying the result live in the room.)
+ *   7. pass the sender's clock reading `t` through when it is a whole number of ms in uint32 range (the
+ *      `Player.moveT` the viewers time the walk by); anything else is left out, never a reason to drop
+ * (the per-client rate cap, the move budget and applying the result live in the room.)
  *
  * Collision is enforced from the SAME obstacles the client slides against, so
  * both sides share one source of map/collision truth. `geo` is the map the
@@ -72,8 +74,38 @@ export function validateMove(
   //    floating-point rounding of a legitimately wall-hugging client).
   if (isBlocked(x, z, PLAYER_RADIUS, geo.obstacles)) return null;
 
-  // 6. normalize yaw.
-  return { x, z, yaw: normalizeAngle(p.yaw) };
+  // 6. normalize yaw. 7. the sender's clock, if it is a usable one.
+  const yaw = normalizeAngle(p.yaw);
+  return isMoveClock(p.t) ? { x, z, yaw, t: p.t } : { x, z, yaw };
+}
+
+/** Largest `MovePayload.t` the uint32 `Player.moveT` can carry. */
+const MOVE_T_MAX = 0xffffffff;
+
+/** A usable sender clock reading: a whole number of ms in 1..uint32 max (0 means "unknown"). */
+function isMoveClock(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= MOVE_T_MAX;
+}
+
+/**
+ * The move budget after an ACCEPTED step (pure; the room stores the result as `lastAcceptedAt`).
+ *
+ * The budget is `min(now - lastAcceptedAt, MOVE_ELAPSED_CEIL_MS)` ms of RUN_SPEED × slack travel. The step
+ * spends only what it used: `stepM / (RUN_SPEED × slack)` seconds of it, and the rest is kept by moving the
+ * baseline to `now - (budgetMs - spent)` instead of to `now`. Why (fix/remote-move-snapback): moves are sent
+ * at 10 Hz, but a phone's link delivers them bunched — a late frame, then the ones queued behind it a few
+ * ms apart. Resetting the baseline to `now` on every accepted move gave each of those queued moves a ~0
+ * budget, so the server dropped them all, fell metres behind, and the mover was yanked back by its own
+ * large-divergence snap (and everyone else saw the mover freeze, then jump). Kept budget absorbs the burst.
+ *
+ * Nothing gets looser: one step is still at most `MOVE_ELAPSED_CEIL_MS` worth (4.8 m — the wall thickness
+ * the maps are built for), and over any stretch of time the accepted travel is still at most RUN_SPEED ×
+ * slack × (that time + MOVE_ELAPSED_CEIL_MS). A step longer than the budget (only reached through the
+ * elapsed floor) leaves nothing, exactly as before; a teleport/reconnect still sets the baseline to now.
+ */
+export function moveBaselineAfter(nowMs: number, budgetMs: number, stepM: number): number {
+  const spentMs = (stepM / (RUN_SPEED * MOVE_SPEED_SLACK)) * 1000;
+  return nowMs - Math.max(0, budgetMs - spentMs);
 }
 
 /**

@@ -1,16 +1,21 @@
 /**
  * Snapshot interpolation (pure). Remote players are rendered from a buffered
- * history of `{t, x, z, yaw}` snapshots, sampled RENDER_DELAY_MS in the past so
- * there is always a bracketing pair to interpolate between — hiding network
- * jitter and loss. No server-clock sync: `t` is the LOCAL receive time, injected
- * by the caller, so this module reads no clock and is exhaustively unit-testable.
+ * history of `{t, x, z, yaw}` snapshots, sampled at a render time that trails the
+ * newest data (playout.ts decides it), so there is a bracketing pair to
+ * interpolate between. `t` is on the remote's timeline — the mover's own clock
+ * when the server echoes it, else the local receive time — injected by the caller,
+ * so this module reads no clock and is exhaustively unit-testable.
+ *
+ * There is NO extrapolation: past the newest snapshot the avatar holds the newest
+ * (authoritative) pose. Dead-reckoning past it is what made remote players run
+ * ahead on every stop and late patch and then slide back (fix/remote-move-snapback).
  */
 
-import { RUN_SPEED } from "@caysonverse/shared/constants";
-import { normalizeAngle, lerpAngle } from "./yaw";
+import { MOVE_SPEED } from "@caysonverse/shared/constants";
+import { lerpAngle } from "./yaw";
 import {
-  EXTRAPOLATE_MAX_MS,
-  EXTRAPOLATE_SETTLE_MS,
+  RESTING_SPAN_MS,
+  RESTING_SPEED,
   SNAPSHOT_CAPACITY,
   SNAP_DISTANCE,
   SPEED_LONG_MIN_MS,
@@ -18,7 +23,7 @@ import {
   SPEED_WINDOW_MS,
 } from "./constants";
 
-/** One received position sample. `t` is a local (client) receive timestamp. */
+/** One received position sample. `t` is on the remote's timeline (see the module header). */
 export interface Snapshot {
   t: number;
   x: number;
@@ -52,14 +57,36 @@ export function pushSnapshot(
 }
 
 /**
- * Sample the buffer at `renderT` (already = now - RENDER_DELAY_MS; the caller
- * applies the delay). Returns null only for an empty buffer.
+ * Whether two consecutive snapshots are a RESTING stretch (a stop and the next start,
+ * or a join and the first move) rather than continuous motion: slower than
+ * RESTING_SPEED, or further apart than RESTING_SPAN_MS on the timeline.
+ */
+export function isResting(a: Snapshot, b: Snapshot): boolean {
+  const span = b.t - a.t;
+  if (span <= 0) return false;
+  return span > RESTING_SPAN_MS || (Math.hypot(b.x - a.x, b.z - a.z) / span) * 1000 < RESTING_SPEED;
+}
+
+/**
+ * When the motion between two consecutive snapshots starts (timeline ms). A moving
+ * pair moves the whole way: `a.t`. A resting pair (`isResting`) stood still at `a` and
+ * stepped off at MOVE_SPEED just in time to reach `b`: `b.t - |ab| / MOVE_SPEED`
+ * (never before `a.t`: a long hop simply moves the whole way).
+ */
+export function restTailStart(a: Snapshot, b: Snapshot): number {
+  if (!isResting(a, b)) return a.t;
+  return Math.max(a.t, b.t - (Math.hypot(b.x - a.x, b.z - a.z) / MOVE_SPEED) * 1000);
+}
+
+/**
+ * Sample the buffer at `renderT` (the playout clock's render time). Returns null
+ * only for an empty buffer.
  *
  * - renderT before the oldest snapshot → clamp to the oldest (idle).
- * - renderT between two snapshots → linear x/z, shortest-arc yaw.
- * - renderT past the newest → extrapolate at the last segment's velocity (clamped
- *   to RUN_SPEED) for at most EXTRAPOLATE_MAX_MS, then ease back to `newest` (the
- *   authoritative rest pose) over EXTRAPOLATE_SETTLE_MS and hold (speed 0 → idle).
+ * - renderT between two snapshots → linear x/z, shortest-arc yaw (a resting pair's
+ *   x/z: the first pose, then linear over its step-off — see `restTailStart`).
+ * - renderT at/past the newest → hold the newest pose (speed 0). Never beyond it:
+ *   the drawn avatar only ever stands where the server has already put it.
  */
 export function sample(snapshots: readonly Snapshot[], renderT: number): Sample | null {
   const n = snapshots.length;
@@ -72,7 +99,7 @@ export function sample(snapshots: readonly Snapshot[], renderT: number): Sample 
 
   const newest = snapshots[n - 1];
   if (renderT >= newest.t) {
-    return extrapolate(snapshots, renderT, newest);
+    return { x: newest.x, z: newest.z, yaw: newest.yaw, speed: 0 };
   }
 
   // Find the bracketing pair (searching from the newest end — the common case).
@@ -80,11 +107,15 @@ export function sample(snapshots: readonly Snapshot[], renderT: number): Sample 
     const a = snapshots[i - 1];
     const b = snapshots[i];
     if (renderT >= a.t && renderT <= b.t) {
-      const span = b.t - a.t;
-      const f = span > 0 ? (renderT - a.t) / span : 0;
+      // Facing turns across the whole pair (a turn on the spot, e.g. pushing against a wall, stays smooth);
+      // the position moves from the step-off on (the whole pair unless it is a resting one).
+      const yaw = lerpAngle(a.yaw, b.yaw, b.t > a.t ? (renderT - a.t) / (b.t - a.t) : 0);
+      const from = restTailStart(a, b);
+      if (renderT <= from && from > a.t) return { x: a.x, z: a.z, yaw, speed: 0 };
+      const span = b.t - from;
+      const f = span > 0 ? (renderT - from) / span : 0;
       const x = a.x + (b.x - a.x) * f;
       const z = a.z + (b.z - a.z) * f;
-      const yaw = lerpAngle(a.yaw, b.yaw, f);
       const speed = span > 0 ? Math.hypot(b.x - a.x, b.z - a.z) / (span / 1000) : 0;
       return { x, z, yaw, speed };
     }
@@ -92,66 +123,6 @@ export function sample(snapshots: readonly Snapshot[], renderT: number): Sample 
 
   // Unreachable given the guards above, but stay defined rather than throw.
   return { x: newest.x, z: newest.z, yaw: newest.yaw, speed: 0 };
-}
-
-/**
- * Dead-reckon past the newest snapshot using the last segment's velocity, then
- * converge back to the authoritative rest pose:
- *   - velocity is CLAMPED to RUN_SPEED — the fastest a player can really move
- *     (a runner; capping at the walk speed would dead-reckon every runner 37%
- *     slow). Any faster segment is receive-time jitter (a delayed-then-burst
- *     patch pair), not real motion, and must not fling the avatar (potentially
- *     through walls/furniture);
- *   - within EXTRAPOLATE_MAX_MS we dead-reckon forward (still "moving");
- *   - after the window, since a stopped remote emits no further patches, we EASE
- *     from the overshoot back to `newest` over EXTRAPOLATE_SETTLE_MS and hold —
- *     so idle avatars settle onto their server position instead of freezing ~1m
- *     past the true stop.
- * A single snapshot (or a zero-length segment) simply holds position.
- */
-function extrapolate(snapshots: readonly Snapshot[], renderT: number, newest: Snapshot): Sample {
-  if (snapshots.length < 2) {
-    return { x: newest.x, z: newest.z, yaw: newest.yaw, speed: 0 };
-  }
-  const prev = snapshots[snapshots.length - 2];
-  const span = newest.t - prev.t;
-  if (span <= 0) {
-    return { x: newest.x, z: newest.z, yaw: newest.yaw, speed: 0 };
-  }
-
-  const ahead = renderT - newest.t; // > 0 by the caller's guard
-
-  // Last-segment velocity (m per ms), clamped in MAGNITUDE to RUN_SPEED.
-  let vx = (newest.x - prev.x) / span;
-  let vz = (newest.z - prev.z) / span;
-  const speedMs = Math.hypot(vx, vz); // m per ms
-  const maxMs = RUN_SPEED / 1000; // RUN_SPEED m/s → m per ms
-  if (speedMs > maxMs) {
-    const k = maxMs / speedMs;
-    vx *= k;
-    vz *= k;
-  }
-  const wYaw = normalizeAngle(newest.yaw - prev.yaw) / span; // rad per ms
-
-  // The overshoot pose at the end of the dead-reckon window (the clamped reach).
-  const capped = Math.min(ahead, EXTRAPOLATE_MAX_MS);
-  const overX = newest.x + vx * capped;
-  const overZ = newest.z + vz * capped;
-  const overYaw = normalizeAngle(newest.yaw + wYaw * capped);
-
-  // Phase A — still within the window: dead-reckon forward, reads as moving.
-  if (ahead <= EXTRAPOLATE_MAX_MS) {
-    return { x: overX, z: overZ, yaw: overYaw, speed: Math.hypot(vx, vz) * 1000 };
-  }
-
-  // Phase B/C — past the window: ease the overshoot back to the authoritative
-  // rest pose and hold. e goes 0→1 across the settle; at e=1 we are exactly at
-  // `newest`. A settling correction reads as idle (speed 0), not a walk cycle.
-  const e = Math.min((ahead - EXTRAPOLATE_MAX_MS) / EXTRAPOLATE_SETTLE_MS, 1);
-  const x = overX + (newest.x - overX) * e;
-  const z = overZ + (newest.z - overZ) * e;
-  const yaw = lerpAngle(overYaw, newest.yaw, e);
-  return { x, z, yaw, speed: 0 };
 }
 
 /**
@@ -177,11 +148,11 @@ export function exceedsSnapDistance(
  *
  * Path length rather than net displacement, so a runner circling at full speed
  * still reads as running. Only the buffered span counts: both ends of the window
- * are clipped to [oldest.t, newest.t], so the dead-reckon overshoot and the
- * settle-back past the newest snapshot (which would read as motion backwards)
- * never contribute. Dividing by the full window makes the reading ramp up over it
- * at the start of a move and decay to 0 over it after a stop. Allocates nothing.
- * The pose (`sample`) is unaffected - this only feeds the gait.
+ * are clipped to [oldest.t, newest.t], so time past the newest snapshot (the
+ * avatar holding its last pose) contributes nothing. Dividing by the full window
+ * makes the reading ramp up over it at the start of a move and decay to 0 over it
+ * after a stop. Allocates nothing. The pose (`sample`) is unaffected - this only
+ * feeds the gait.
  */
 export function windowedSpeed(
   snapshots: readonly Snapshot[],

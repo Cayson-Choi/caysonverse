@@ -1,6 +1,6 @@
 import type { Appearance } from "@caysonverse/shared/appearance";
 import type { Orbit, Pose } from "./types";
-import { getRemotes } from "./remoteStore";
+import { getRemotes, remoteDrawnProbe, type DrawnPose } from "./remoteStore";
 import { getRoom, sendSit, sendStand } from "../net/connection";
 import { bubbleRegistry } from "./bubbleRegistry";
 import { emojiRegistry } from "./emojiRegistry";
@@ -136,6 +136,12 @@ declare global {
       getView: () => ViewState;
       /** Every OTHER connected player's newest known position + seatIndex. */
       getRemotes: () => RemoteView[];
+      /**
+       * Where each mounted remote avatar was DRAWN on its latest frame (frame time + pose), keyed by
+       * session id — what this viewer sees, not the newest snapshot. Lets the remote-move E2E sample the
+       * rendered path every frame.
+       */
+      getRemoteDrawn: () => Record<string, DrawnPose>;
       /** Every currently-visible speech bubble (sid + text). */
       getBubbles: () => BubbleView[];
       /** Every currently-active emoji reaction (sid + EMOJIS index). */
@@ -216,6 +222,7 @@ export function installDebugHook(
     getRemoteGaits: () => Object.fromEntries(remoteGaitProbe),
     getView: () => ({ ...viewState }),
     getRemotes: () => getRemotes(),
+    getRemoteDrawn: () => Object.fromEntries(Array.from(remoteDrawnProbe, ([sid, d]) => [sid, { ...d }])),
     getBubbles: () =>
       bubbleRegistry.snapshot(performance.now()).map((b) => ({ sid: b.sid, text: b.text })),
     getEmojis: () =>

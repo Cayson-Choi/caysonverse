@@ -13,7 +13,7 @@ import {
   RECONNECT_WINDOW_S,
 } from "@caysonverse/shared/constants";
 import type { MapGeometry } from "@caysonverse/shared/school/geometry";
-import { validateMove } from "./movement";
+import { moveBaselineAfter, validateMove } from "./movement";
 import { sanitizeChat } from "./chat";
 import { validateEmojiIndex } from "./emoji";
 import { validateTypingPayload } from "./typing";
@@ -37,7 +37,12 @@ export interface PlayersState {
  * `T` parameter of `PlayerRoom` and builds it in `createTracking`.
  */
 export interface Tracking {
-  /** ms timestamp of this client's last accepted move (seeded at join). */
+  /**
+   * Baseline of this client's move budget (ms; seeded at join): the next Move may travel
+   * `min(now - lastAcceptedAt, MOVE_ELAPSED_CEIL_MS)` ms worth of RUN_SPEED × slack. An accepted move
+   * advances it only by the budget it used (`moveBaselineAfter`), so a burst of queued moves is not
+   * dropped; a server-placed pose (teleport, seat, reconnect) sets it to now (empty budget).
+   */
   lastAcceptedAt: number;
   /** Sliding-window rate cap for move messages. */
   rate: RateWindow;
@@ -290,13 +295,22 @@ export abstract class PlayerRoom<S extends PlayersState, T extends Tracking = Tr
     // world-spanning one-shot displacement budget. The validator then floors it.
     const elapsed = Math.min(now - track.lastAcceptedAt, MOVE_ELAPSED_CEIL_MS);
     const next = validateMove({ x: player.x, z: player.z }, payload, elapsed, this.geometry());
-    if (next === null) return; // invalid → drop whole message
+    if (next === null) {
+      // Invalid → drop the whole message. The echoed clock is cleared: the server's pose is no longer the
+      // sender's last move, so its client judges the divergence against where it stands now (it may have
+      // run on past what the server will take) instead of trusting the stamp.
+      player.moveT = 0;
+      return;
+    }
 
-    // Step 6: apply.
+    // Step 6: apply. Spend only the budget this step used (a bunched burst of queued moves gets the rest),
+    // and echo the mover's clock so viewers replay the walk at its real timing (0 = the client sent none).
+    const step = Math.hypot(next.x - player.x, next.z - player.z);
     player.x = next.x;
     player.z = next.z;
     player.yaw = next.yaw;
-    track.lastAcceptedAt = now;
+    player.moveT = next.t ?? 0;
+    track.lastAcceptedAt = moveBaselineAfter(now, elapsed, step);
 
     // Room-specific judgment on the ACCEPTED position only (server-authoritative).
     this.afterMove(client, player, track, now);

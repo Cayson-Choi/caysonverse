@@ -54,6 +54,9 @@ export class Player extends Schema {
   @type("float32") x = 0;
   @type("float32") z = 0;
   @type("float32") yaw = 0; // radians, normalized to [-PI, PI]
+  // The mover's own clock (ms) at the pose above — `MovePayload.t` of the last accepted Move, 0 = unknown (an
+  // older client, or a pose the server placed). Viewers time the remote walk by it (client playout.ts).
+  @type("uint32") moveT = 0;
   @type("boolean") connected = true; // used by reconnection (Task 11)
   // Seating (v2 Task 1): -1 = standing; 0..SEATS.length-1 = the occupied seat.
   // The first legitimate discrete synced state — a seated player is fully

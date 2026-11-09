@@ -13,6 +13,7 @@ import {
   getRemotes,
   type RemotePlayerRecord,
 } from "./remoteStore";
+import { createPlayout } from "./playout";
 
 function rec(sessionId: string, over: Partial<RemotePlayerRecord> = {}): RemotePlayerRecord {
   return {
@@ -23,6 +24,7 @@ function rec(sessionId: string, over: Partial<RemotePlayerRecord> = {}): RemoteP
     seatIndex: -1,
     role: 0,
     snapshots: [],
+    playout: createPlayout(),
     ...over,
   };
 }

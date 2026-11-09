@@ -218,6 +218,47 @@ describe("PlayerRoom hooks (a room built on the base)", () => {
     expect(player.x).toBeCloseTo(6 - PLAYER_RADIUS, 5);
   });
 
+  it("a burst of moves queued behind a late frame is absorbed, and the sender's clock reaches the others as moveT", async () => {
+    // fix/remote-move-snapback: the old rule reset the budget on every accepted move, so the moves queued
+    // behind a late frame (arriving ~0 ms apart) were all dropped: the server fell metres behind the mover,
+    // who was then yanked back by its own large-divergence snap, and everyone else saw it freeze and jump.
+    const room = await colyseus.createRoom<ProbeRoom>(PROBE_ROOM);
+    const alice = await colyseus.connectTo(room, { nickname: "앨리스" });
+    const bob = await colyseus.connectTo(room, { nickname: "밥이" });
+    const player = room.state.players.get(alice.sessionId)!;
+    const track = trackingOf(room).get(alice.sessionId)!;
+    player.x = -5.5;
+    track.lastAcceptedAt = Date.now() - 500; // the link froze for half a second...
+    for (let k = 1; k <= 8; k++) {
+      // ...then eight 100 ms walk steps arrive back to back, each stamped with the sender's clock
+      alice.send(MessageType.Move, { x: -5.5 + 0.4 * k, z: 0, yaw: 0, t: 90_000 + 100 * k });
+    }
+    for (let k = 0; k < 8; k++) await room.waitForNextMessage();
+    await flush();
+    expect(player.x).toBeCloseTo(-5.5 + 3.2, 4); // all eight (3.2 m of a 4.8 m budget) — not just the first
+    expect(player.moveT).toBe(90_800);
+    expect(room.afterMoves).toHaveLength(8);
+    // Bob (any viewer) gets the clock with the pose, in the same patch.
+    for (let k = 0; k < 20 && bob.state.players.get(alice.sessionId)?.moveT !== 90_800; k++) await flush();
+    expect(bob.state.players.get(alice.sessionId)!.moveT).toBe(90_800);
+    expect(bob.state.players.get(alice.sessionId)!.x).toBeCloseTo(-5.5 + 3.2, 4);
+
+    // A refused move (here: far beyond the budget) is dropped whole, and clears the echoed clock, so the
+    // sender's client judges the divergence from where it stands instead of trusting the stamp.
+    alice.send(MessageType.Move, { x: 5, z: 0, yaw: 0, t: 90_900 });
+    await room.waitForNextMessage();
+    await flush();
+    expect(player.x).toBeCloseTo(-5.5 + 3.2, 4);
+    expect(player.moveT).toBe(0);
+
+    // A move with no clock (an older client) is still accepted, and says "no clock" (0).
+    alice.send(MessageType.Move, { x: -2.1, z: 0, yaw: 0 });
+    await room.waitForNextMessage();
+    await flush();
+    expect(player.x).toBeCloseTo(-2.1, 4);
+    expect(player.moveT).toBe(0);
+  });
+
   it("canMove() false drops Move and Jump silently; true lets them through", async () => {
     const room = await colyseus.createRoom<ProbeRoom>(PROBE_ROOM);
     const alice = await colyseus.connectTo(room, { nickname: "앨리스" });

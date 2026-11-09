@@ -125,31 +125,76 @@ export const CAMERA_FAR = 200;
  * RemotePlayer component all reference them so a change never drifts.
  */
 
-/**
- * Render remote players this many ms in the past. We always draw from a time
- * behind the newest received snapshot so there are two snapshots to interpolate
- * BETWEEN, hiding jitter/loss. Buffered latency, deliberately traded for smooth.
+/*
+ * ── Remote playout clock (playout.ts; fix/remote-move-snapback) ──
+ * Each remote is drawn at its own render time, which trails its newest data by an
+ * adaptive lag and never passes it (no dead reckoning, so no run-ahead-then-back).
  */
-export const RENDER_DELAY_MS = 150;
 
 /**
- * When the render time runs past the newest snapshot (a dropped/late patch), we
- * dead-reckon at the last segment's velocity for at most this long, then ease
- * back to the authoritative rest pose (see EXTRAPOLATE_SETTLE_MS).
+ * Buffer (ms) behind the fastest arrival while fewer than PLAYOUT_WARMUP moving pairs
+ * have been measured (it is the floor then): a guess that covers a typical phone link,
+ * so the first walk after joining does not stutter while the lag is still learning.
  */
-export const EXTRAPOLATE_MAX_MS = 250;
+export const PLAYOUT_DEFAULT_BUFFER_MS = 250;
+export const PLAYOUT_WARMUP = 10;
+
+/** Bounds (ms) of the buffer the measured "lag needed" samples may ask for. */
+export const PLAYOUT_MIN_BUFFER_MS = 50;
+export const PLAYOUT_MAX_BUFFER_MS = 1000;
 
 /**
- * After the extrapolation window closes, the avatar EASES from the overshot
- * dead-reckon position back to `newest` (the last authoritative pose) over this
- * long, then holds there. A remote that stopped walking emits no further patches,
- * so extrapolation must be a transient loss-hiding measure that CONVERGES to the
- * server position — never a permanent standing offset ~1m past the true stop.
+ * Added on top of the largest recent "lag needed" sample: PLAYOUT_MARGIN_MS (frame
+ * timing slack) plus PLAYOUT_SPREAD_MARGIN of the samples' spread (max - min), so a
+ * jittery link — whose next sample may well beat the largest so far — keeps headroom.
  */
-export const EXTRAPOLATE_SETTLE_MS = 150;
+export const PLAYOUT_MARGIN_MS = 20;
+export const PLAYOUT_SPREAD_MARGIN = 0.25;
 
-/** Per-remote-player snapshot ring buffer capacity (oldest evicted). */
-export const SNAPSHOT_CAPACITY = 10;
+/** How many recent samples (offsets, lag needed) are kept: about 4 s of walking. */
+export const PLAYOUT_HISTORY = 40;
+
+/**
+ * A pair of snapshots slower than RESTING_SPEED (m/s) or further apart than
+ * RESTING_SPAN_MS on the timeline is a RESTING stretch: a stop, then the next start (or
+ * a join, then the first move). It is drawn as standing still and then stepping off at
+ * MOVE_SPEED just in time to reach the second pose (`restTailStart`) — a straight line
+ * across it would creep through the whole pause and, when the render time skips ahead,
+ * jump. It asks for no lag, and the render time may skip its standing part at once.
+ * The speed is well under the 4 m/s walk and well over a stop-start pair (one frame of
+ * motion over the pause, ~0.2 m/s); the span is well over the 100-117 ms between two
+ * moves, even when the patch grouping merges two of them.
+ */
+export const RESTING_SPEED = 0.5;
+export const RESTING_SPAN_MS = 400;
+
+/**
+ * How the render time follows its target: err / PLAYOUT_WARP_MS is the playback
+ * speed change, at most +PLAYOUT_MAX_SPEEDUP (catching up) and -PLAYOUT_MAX_SLOWDOWN
+ * (building up buffer) — a 10-20% time-warp is not noticeable, a jump is.
+ */
+export const PLAYOUT_WARP_MS = 1000;
+export const PLAYOUT_MAX_SPEEDUP = 0.1;
+export const PLAYOUT_MAX_SLOWDOWN = 0.2;
+
+/**
+ * The arrival-time fallback (a remote with no mover clock) spaces consecutive snapshots
+ * at least this share of PATCH_RATE_MS apart on its timeline, so a bunched burst of
+ * patches is replayed at about the patch rate instead of as a one-frame lurch.
+ */
+export const PLAYOUT_ARRIVAL_SPACING = 0.8;
+
+/** Further behind the target than this (ms: a long outage) and the render time joins it in one go. */
+export const PLAYOUT_RESYNC_MS = 1000;
+
+/** Held on its newest pose this long (ms) and a remote shows idle (it has stopped on screen). */
+export const PLAYOUT_HOLD_IDLE_MS = 100;
+
+/**
+ * Per-remote-player snapshot ring buffer capacity (oldest evicted). Covers the
+ * largest playout buffer plus the gait's 600 ms window at 10 Hz.
+ */
+export const SNAPSHOT_CAPACITY = 24;
 
 /**
  * If a freshly sampled target is farther than this (m) from where the avatar is
@@ -157,6 +202,15 @@ export const SNAPSHOT_CAPACITY = 10;
  * move (kick-back) or the player respawned. Also the self kick-back threshold.
  */
 export const SNAP_DISTANCE = 3;
+
+/**
+ * The self-correction's threshold (m) once the server has REFUSED my Move (its echoed
+ * `moveT` went from a stamp of mine to 0). Its speed budget refills faster than anyone
+ * runs, but only up to 4.8 m: a runner already more than ~1.6 m past the server's pose
+ * would stay out of its reach for good (every later Move refused, nothing synced, the
+ * others seeing a frozen avatar). So a refused runner this far ahead resyncs at once.
+ */
+export const REFUSED_SNAP_DISTANCE = 1.5;
 
 /**
  * Locomotion hysteresis (m/s): begin the walk cycle above ON, end it below OFF.

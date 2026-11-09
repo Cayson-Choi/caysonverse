@@ -13,15 +13,25 @@ import { pickAppearance } from "@caysonverse/shared/appearance";
 import { visibilityChange, showsInHub } from "./placeFilter";
 import { normalizeArea, showsInArea, type AreaGate } from "./areaFilter";
 import type { Pose, SeatState } from "./types";
-import { exceedsSnapDistance } from "./interpolation";
+import { createPlayout } from "./playout";
+import { selfDiverged } from "./sentMoves";
 import {
   addRemote,
   clearRemotes,
-  pushRemoteSnapshot,
+  receiveRemotePose,
   removeRemote,
   setRemoteConnected,
   setRemoteSeat,
 } from "./remoteStore";
+
+/**
+ * The mover's clock at its synced pose (`Player.moveT`), 0 when there is none — including a server that predates
+ * the field (the decoded player simply lacks it), so a new client still works against an old server.
+ */
+function moverClock(player: { moveT?: number }): number {
+  const t = player.moveT;
+  return typeof t === "number" && Number.isFinite(t) ? t : 0;
+}
 
 /**
  * Any room whose state has the synced players map — the legacy world, a class (its hall) or a
@@ -31,7 +41,9 @@ export type PlayersRoom = Room<{ players: WorldState["players"] }>;
 
 /**
  * Start syncing remote players from `room` into the store. `nowMs` is the
- * injected local clock stamped onto every snapshot (no server-clock sync).
+ * injected local clock: every received pose is stamped with its arrival, and with
+ * the mover's own clock (`Player.moveT`) when the server echoes one — playout.ts
+ * times the walk by the latter (see there).
  * `selfPose` is the local player's live pose, corrected on large server
  * divergence. Returns a teardown that detaches every listener and clears the
  * store (call on unmount / room leave).
@@ -69,9 +81,15 @@ export function startRemoteSync(
   const offAdd = $(room.state).players.onAdd((player, sessionId: string) => {
     if (sessionId === selfId) {
       // My own player: ignore normal echoes (client prediction wins), but snap
-      // to the server value on a large divergence (it clamped/rejected a move).
+      // to the server value on a large divergence (it placed me, or refused my moves).
+      // Judged against where I was at the Move the server last accepted (its echoed
+      // moveT), not where I am now — so a late echo is never mistaken for one (sentMoves.ts).
+      let sawClock = false;
       const off = $(player).onChange(() => {
-        if (exceedsSnapDistance(selfPose.x, selfPose.z, player.x, player.z)) {
+        const echoed = moverClock(player);
+        const refused = sawClock && echoed === 0; // it echoed my stamps before: 0 now = a refused Move
+        if (echoed > 0) sawClock = true;
+        if (selfDiverged(selfPose, player, echoed, refused)) {
           selfPose.x = player.x;
           selfPose.z = player.z;
         }
@@ -115,9 +133,11 @@ export function startRemoteSync(
         seatIndex: player.seatIndex,
         role: player.role, // fixed for the session by the server: read once, no listener
         snapshots: [],
+        // The current moveT times a move we never saw (they may have stopped long ago): only a newer one counts.
+        playout: createPlayout(moverClock(player)),
       });
-      // Seed with the current position so the avatar shows up immediately.
-      pushRemoteSnapshot(sessionId, { t: nowMs(), x: player.x, z: player.z, yaw: player.yaw });
+      // Seed with the current position so the avatar shows up immediately (no clock: it is a standing pose).
+      receiveRemotePose(sessionId, nowMs(), 0, player.x, player.z, player.yaw);
     };
     // Shown = in the hall (not inside a classroom) AND, in the village, in my area. Every field that decides it
     // goes through `reconcile`, which reads them live, so no change can be judged on a stale copy.
@@ -137,10 +157,10 @@ export function startRemoteSync(
     // Through the village's door (theirs), or my own going through it (the gate): in / out of my area.
     const offArea = areas ? [$(player).listen("area", reconcile), areas.subscribe(reconcile)] : [];
 
-    // onChange fires once per decode batch → exactly one snapshot per patch (a no-op for a
-    // remote not on screen: the store drops snapshots of unknown ids).
+    // onChange fires once per decode batch → at most one snapshot per patch (a no-op for a remote not on
+    // screen: the store drops poses of unknown ids; and a patch that changed no pose stores nothing).
     const offChange = $(player).onChange(() => {
-      pushRemoteSnapshot(sessionId, { t: nowMs(), x: player.x, z: player.z, yaw: player.yaw });
+      receiveRemotePose(sessionId, nowMs(), moverClock(player), player.x, player.z, player.yaw);
     });
     const offConnected = $(player).listen("connected", (value: boolean) => {
       setRemoteConnected(sessionId, value);

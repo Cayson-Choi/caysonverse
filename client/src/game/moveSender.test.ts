@@ -54,7 +54,7 @@ describe("createMoveSender", () => {
     s.update(50, true, pose(2, 1)); // throttled, no send
     s.update(60, false, pose(2, 1)); // stop -> exactly one final send
     expect(sent).toHaveLength(2);
-    expect(sent[1]).toEqual(pose(2, 1)); // final send is the resting pose
+    expect(sent[1]).toEqual({ ...pose(2, 1), t: 60 }); // final send is the resting pose, stamped with its frame
     // Subsequent idle frames send nothing.
     s.update(500, false, pose(2, 1));
     s.update(9999, false, pose(2, 1));
@@ -70,7 +70,7 @@ describe("createMoveSender", () => {
     // Resume well after the interval -> immediate send.
     s.update(1000, true, pose(1, 0)); // send #3
     expect(sent).toHaveLength(3);
-    expect(sent[2]).toEqual(pose(1, 0));
+    expect(sent[2]).toEqual({ ...pose(1, 0), t: 1000 });
   });
 
   it("does not send a duplicate throttled message before the interval elapses", () => {
@@ -81,5 +81,17 @@ describe("createMoveSender", () => {
     expect(sent).toHaveLength(1);
     s.update(100, true, pose(0.4, 0)); // interval reached -> send
     expect(sent).toHaveLength(2);
+  });
+
+  it("stamps every message with the sender's clock (whole ms, >= 1): when the player stood at that pose", () => {
+    const { send, sent } = makeSpy();
+    const s = createMoveSender(send, 100);
+    s.update(0.2, true, pose(0, 0)); // a clock this close to 0 still yields a usable stamp (0 means "unknown")
+    s.update(116.66, true, pose(0.47, 0));
+    s.update(233.4, true, pose(0.93, 0));
+    s.update(250.1, false, pose(1.0, 0)); // the stop
+    expect(sent.map((p) => p.t)).toEqual([1, 117, 233, 250]);
+    // ...and the stamps follow the real timing even though the messages are 117, 116 and 17 ms apart.
+    expect(sent.map((p) => p.x)).toEqual([0, 0.47, 0.93, 1.0]);
   });
 });
