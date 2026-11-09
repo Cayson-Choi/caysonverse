@@ -3,8 +3,9 @@
  * plus the discrete toggle mutations. Read every frame by CameraRig (camera pose)
  * and LocalPlayer (own-avatar hiding + camera-relative movement yaw); mutated only
  * by the four toggle paths (V key / wheel / pinch / 👁 button), the camera-goal
- * requests (R / double tap → `orbitGoal`; sitting / standing → the seat camera) and
- * the reconnect remount reset. The pure math lives in viewMode.ts and
+ * requests the player makes (R / double tap → `orbitGoal`) and the reconnect remount
+ * reset. Sitting and standing no longer move the camera (owner 2026-11-10; see
+ * `beginSeatCamera`). The pure math lives in viewMode.ts and
  * cameraControls.ts; the UI button flag lives in the zustand viewStore.
  *
  * Yaw continuity (design 19): on ENTER, the FP look yaw seeds from the current TP
@@ -16,7 +17,6 @@
 
 import { normalizeAngle } from "./yaw";
 import { recenterYaw, type OrbitGoal } from "./cameraControls";
-import { SEAT_CAM } from "./constants";
 import { getActiveMap } from "./activeMap";
 import { overviewAllowed } from "./indoorCamera";
 import { stepBlend, stepZoomMode, OV_BLEND_SEC, type ViewMode, type ZoomBand } from "./viewMode";
@@ -43,13 +43,11 @@ export interface ViewState {
   /** Overview camera height (m) — the zoom level. 0 until CameraRig seeds a fit. */
   ovHeight: number;
   /**
-   * Where the TP orbit should glide to (R, double tap, sitting down), or null.
-   * CameraRig steps it every frame and drops it on arrival; a drag, wheel, pinch,
-   * Z / C or entering first-person cancels it.
+   * Where the TP orbit should glide to because the player asked (R, double tap), or
+   * null. CameraRig steps it every frame and drops it on arrival; a drag, wheel, pinch,
+   * Z / C, entering first-person or a door cancels it.
    */
   orbitGoal: OrbitGoal | null;
-  /** The orbit to restore after the seat camera lets go (null when nothing is saved). */
-  savedOrbit: Orbit | null;
 }
 
 /** The single shared view state — mutated in place, read per frame. */
@@ -64,15 +62,7 @@ export const viewState: ViewState = {
   ovCenterZ: 0,
   ovHeight: 0,
   orbitGoal: null,
-  savedOrbit: null,
 };
-
-/**
- * The goal object `endSeatCamera` handed to `orbitGoal` (the glide back to the pre-sit
- * orbit), kept by identity so a quick sit-down can tell that glide is still running.
- * Not part of `viewState`: nothing reads it per frame.
- */
-let seatRestoreGoal: Orbit | null = null;
 
 /** Mirror the active mode into the UI button flags (one React render, off-frame). */
 function syncButton(): void {
@@ -184,55 +174,19 @@ export function cancelOrbitGoal(): void {
 }
 
 /**
- * The seat is confirmed: show the lecture-hall screen from behind the chair.
- *
- * Third-person: remember the orbit (only if nothing is saved yet, so a second call
- * never overwrites the view from before sitting) and glide to the view from behind
- * the seat — the same yaw R would pick for a body facing `seatYaw`, at `SEAT_CAM`'s
- * pitch and distance. First-person: the look snaps onto the screen.
- * Under the overview the mode underneath decides, since that is what the map hides.
- *
- * Sitting down again while the stand-up glide back home is still running saves that
- * glide's destination (the real pre-sit orbit), not the half-turned orbit it has
- * reached. A glide that has arrived, or that the player cancelled or replaced, is no
- * longer "running": the current orbit is what the player left, so that is saved.
- *
- * Call it AFTER any enter/leave of first-person in the same transition: `enterFp`
- * drops a pending `orbitGoal`.
+ * The seat is confirmed. The camera stays exactly as the player has it (owner
+ * 2026-11-10: "자동으로 바뀌니까 헷갈려") — it used to swing behind the chair at a preset
+ * tilt and distance (third person) or snap the look onto the screen (first person), and
+ * glide back on standing up. Kept as the sit flow's camera hook (LocalPlayer calls it on
+ * every confirmed sit), deliberately empty: neither the orbit nor the view state changes.
  */
-export function beginSeatCamera(orbit: Orbit, seatYaw: number): void {
-  if (viewState.savedOrbit === null) {
-    const home =
-      seatRestoreGoal !== null && viewState.orbitGoal === seatRestoreGoal ? seatRestoreGoal : orbit;
-    viewState.savedOrbit = { yaw: home.yaw, pitch: home.pitch, distance: home.distance };
-  }
-  seatRestoreGoal = null;
-  const yaw = recenterYaw(seatYaw);
-  if (underlyingMode() === "fp") viewState.fpYaw = yaw;
-  else viewState.orbitGoal = { yaw, ...SEAT_CAM };
+export function beginSeatCamera(_orbit: Orbit, _seatYaw: number): void {
+  // Nothing: sitting down does not move the camera.
 }
 
-/**
- * The player stood up: glide back to the orbit saved when they sat (third-person) and
- * forget it. The saved orbit is always dropped. In first-person there is no orbit on
- * screen to glide, so — when the caller hands over the live `orbit` — its zoom
- * (pitch, distance) is put back directly; the yaw stays, because leaving first-person
- * seeds it from the look anyway.
- */
-export function endSeatCamera(orbit?: Orbit): void {
-  const saved = viewState.savedOrbit;
-  viewState.savedOrbit = null;
-  seatRestoreGoal = null;
-  if (saved === null) return;
-  if (underlyingMode() === "fp") {
-    if (orbit) {
-      orbit.pitch = saved.pitch;
-      orbit.distance = saved.distance;
-    }
-    return;
-  }
-  viewState.orbitGoal = saved;
-  seatRestoreGoal = saved;
+/** The player stood up: the camera stays as it is, like on sitting down (see `beginSeatCamera`). */
+export function endSeatCamera(_orbit?: Orbit): void {
+  // Nothing: standing up does not move the camera.
 }
 
 /**
@@ -274,7 +228,5 @@ export function resetViewMode(): void {
   viewState.ovCenterZ = 0;
   viewState.ovHeight = 0;
   viewState.orbitGoal = null;
-  viewState.savedOrbit = null;
-  seatRestoreGoal = null;
   syncButton();
 }

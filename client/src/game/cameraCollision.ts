@@ -214,47 +214,26 @@ export function stepArmLimit(limit: number, reach: number, desired: number, dt: 
 }
 
 /**
- * Seated camera shaping for a SHORTENED arm (a seat close to a wall, e.g. the front
- * row behind the divider). Scaling the whole offset toward the head would drop the
- * camera to head height and fill the view with the avatar's head; seated, the height
- * offset is kept instead and the look target is raised so the screen stays in view.
- * `lookLift` (m) is the raise for a fully pulled-in arm (k → 0); `blendRate` (1/s) is
- * how fast the seated factor eases in and out when sitting down / standing up.
- */
-export const SEAT_ARM = { lookLift: 1.6, blendRate: 8 } as const;
-
-/**
- * Factor on the camera's height offset when the arm is shortened to the fraction `k`
- * (0..1) of the wanted length. `seat` is the eased 0..1 seated factor: standing
- * (0) the height shrinks with the arm like the rest of the offset (`k`); seated (1)
- * it is kept whole (1).
- */
-export function armHeightScale(k: number, seat: number): number {
-  return k + (1 - k) * seat;
-}
-
-/** How far (m) the look target rises for a shortened arm `k`, scaled by the seated factor. */
-export function armLookLift(k: number, seat: number): number {
-  return (1 - k) * seat * SEAT_ARM.lookLift;
-}
-
-/**
- * Indoor arm shaping (케이슨 마을 Task 9; Task 5 review Q6): in a place with a camera limit — a room under a ceiling, the
- * 9 x 12 m memorial hall — the wanted 3.6 m arm is often cut short by a wall behind the player, and a standing arm that
- * shrinks as a whole drops the camera to head height: the back of the head fills the screen. Indoors a shortened arm
- * therefore behaves like the seated one: it keeps its height (still under the limit's ceiling, which already capped it)
- * and slides in horizontally, and the look target rises by `(1 − k) × lookLift`, so the view looks over the head into the
- * room instead of at it.
+ * The shape of a SHORTENED arm. Outdoors it shrinks as a whole: the camera slides along its own line toward the head,
+ * so the player's angle is kept and only the distance gives way to the wall. Sitting down changes nothing here (owner
+ * 2026-11-10: the camera must not change by itself on sitting or standing; the seated shaping — keep the height, lift
+ * the look — is gone).
+ *
+ * Indoor arm shaping (케이슨 마을 Task 9; Task 5 review Q6): under a building's ceiling limit — the 9 x 12 m memorial
+ * hall — the arm is often cut short by a wall behind the player, and an arm that shrinks as a whole drops the camera to
+ * head height: the back of the head fills the screen. Indoors a shortened arm therefore keeps its height (still under
+ * the limit's ceiling, which already capped it) and slides in horizontally, and the look target rises by
+ * `(1 − k) × lookLift`, so the view looks over the head into the room instead of at it. Like every arm change it lasts
+ * only while the wall is in the way (k < 1) and never writes the player's orbit.
  */
 export const INDOOR_ARM = { lookLift: 1.3 } as const;
 
-/** `armHeightScale` with the indoor rule: in a limited place (`indoor`) the height is kept whole, as when seated. */
-export function armHeightScaleAt(k: number, seat: number, indoor: boolean): number {
-  return armHeightScale(k, indoor ? 1 : seat);
+/** Factor on the camera's height offset for an arm shortened to the fraction `k` (0..1): `k` outdoors, whole (1) indoors. */
+export function armHeightScaleAt(k: number, indoor: boolean): number {
+  return indoor ? 1 : k;
 }
 
-/** `armLookLift` with the indoor rule: in a limited place at least `(1 − k) × INDOOR_ARM.lookLift`. */
-export function armLookLiftAt(k: number, seat: number, indoor: boolean): number {
-  const seated = armLookLift(k, seat);
-  return indoor ? Math.max(seated, (1 - k) * INDOOR_ARM.lookLift) : seated;
+/** How far (m) the look target rises for an arm shortened to `k`: nothing outdoors, `(1 − k) × INDOOR_ARM.lookLift` indoors. */
+export function armLookLiftAt(k: number, indoor: boolean): number {
+  return indoor ? (1 - k) * INDOOR_ARM.lookLift : 0;
 }

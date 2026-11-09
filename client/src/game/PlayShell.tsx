@@ -73,11 +73,6 @@ export interface PlayShellProps {
    * its dpr) and brightness. The hall and the classrooms turn it on; off = the old render budget, no post effects.
    */
   effects: boolean;
-  /**
-   * Where the follow camera starts, where it differs from the world's default `CAMERA` (a classroom starts a little
-   * higher, so its first picture is the room; roomCamera.ts). The player can orbit and zoom from there as always.
-   */
-  startOrbit?: Partial<Orbit>;
   /** The scene's own 3D content, inside the Canvas. */
   world3d: ShellSlot;
   /** The scene's own DOM overlay, after the shared HUD. */
@@ -186,13 +181,12 @@ export function PlayShell(p: PlayShellProps) {
   const leftHanded = useSettingsStore((s) => s.settings.leftHanded);
   useEffect(() => bindNametagMode(), []);
 
+  // The orbit starts at the world's default; CameraRig puts the player's remembered zoom and tilt on it before its first
+  // frame (cameraMemory.ts), so every scene — the village, the hall, the hub, a classroom — starts where the player left
+  // the camera. No scene has a camera preset of its own (owner 2026-11-10).
   const [frame] = useState<ShellFrame>(() => ({
     pose: readSpawn(room, p.activeMap),
-    orbit: {
-      yaw: p.startOrbit?.yaw ?? CAMERA.yaw,
-      pitch: p.startOrbit?.pitch ?? CAMERA.pitch,
-      distance: p.startOrbit?.distance ?? CAMERA.distance,
-    },
+    orbit: { yaw: CAMERA.yaw, pitch: CAMERA.pitch, distance: CAMERA.distance },
     seat: { index: -1 },
   }));
   const { pose, orbit, seat } = frame;

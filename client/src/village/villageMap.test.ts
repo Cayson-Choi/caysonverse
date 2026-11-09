@@ -109,8 +109,8 @@ describe("the village's lighting (data, so the clock can drive it later)", () =>
 });
 
 describe("the camera limit of each map (케이슨 마을 Task 5: a building's camera stays under its ceiling)", () => {
-  it("inside the memorial hall: 3.0 m high, 3.6 m away, no overview — under its 3.4 m ceiling", () => {
-    expect({ ...HALL_ACTIVE_MAP.cameraLimit }).toEqual({ maxY: 3, maxDistance: 3.6, overview: false });
+  it("inside the memorial hall: 3.0 m high, no overview, no distance cap (the zoom holds) — under its 3.4 m ceiling", () => {
+    expect({ ...HALL_ACTIVE_MAP.cameraLimit }).toEqual({ maxY: 3, overview: false });
     expect(HALL_ACTIVE_MAP.cameraLimit!.maxY).toBeLessThan(VILLAGE_LAYOUT.memorial.interior.ceilingHeight);
   });
 

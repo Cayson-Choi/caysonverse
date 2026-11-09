@@ -1,21 +1,26 @@
 /**
  * Camera control math (pure — no three.js, no React, no module state).
  *
- * The camera never turns on its own: the orbit yaw changes only by a drag, the
- * Z / C keys, or an `orbitGoal` (R, a double tap on the right half, sitting down).
+ * The camera never turns or zooms on its own (owner 2026-11-10): the orbit yaw changes
+ * only by a drag, the Z / C keys, or an `orbitGoal` the player asks for (R, a double tap
+ * on the right half); the pitch only by a drag; the distance only by the wheel or a pinch.
  * These are the tested building blocks CameraRig wires together each frame:
  *
  *   - held-key turning (`stepKeyYaw`) and the recenter target (`recenterYaw`),
  *   - the glide toward a goal (`stepOrbitToward`),
- *   - the smoothed follow position and zoom distance (`stepFollow`, `smoothToward`),
+ *   - the smoothed zoom distance (`smoothToward`: a wheel notch glides, then holds exactly),
  *   - the pinch → zoom delta (`pinchZoomDelta`).
+ *
+ * The follow point is NOT smoothed: the camera rides rigidly with the body, so its distance
+ * to the avatar is the player's zoom while walking, running, stopping and turning alike
+ * (a trailing follow point used to stretch the view while moving and settle after a stop).
  *
  * Every "rate" is a per-second exponential rate: one step of `dt` seconds closes
  * the fraction 1 − e^(−rate·dt) of the remaining gap, so the result is the same
  * whatever the frame rate and it never overshoots.
  */
 
-import { CAMERA, SNAP_DISTANCE } from "./constants";
+import { CAMERA } from "./constants";
 import { normalizeAngle } from "./yaw";
 import type { ZoomBand } from "./viewMode";
 import type { Orbit } from "./types";
@@ -42,9 +47,6 @@ const ORBIT_TAIL = 0.4;
 
 /** The follow distance is smoothed toward the zoom intent at this rate (1/s). */
 export const ZOOM_SMOOTH_RATE = 12;
-
-/** The third-person follow point trails the body at this rate (1/s). */
-export const FOLLOW_SMOOTH_RATE = 14;
 
 /** The camera looks this far (m) above the head, so the avatar sits a bit below the middle. */
 export const CAMERA_LOOK_LIFT = 0.25;
@@ -150,28 +152,6 @@ export function smoothToward(
 }
 
 /**
- * Move the third-person follow point `cur` toward the body at (tx, tz), in place,
- * with exponential smoothing — the camera glides after the avatar instead of
- * being rigidly bolted to every footstep. A gap wider than SNAP_DISTANCE (a
- * teleport, a server kick-back, sitting down) is not glided: the point jumps
- * straight onto the body, like the avatar itself does.
- */
-export function stepFollow(
-  cur: { x: number; z: number },
-  tx: number,
-  tz: number,
-  dt: number,
-): void {
-  if (Math.hypot(tx - cur.x, tz - cur.z) > SNAP_DISTANCE) {
-    cur.x = tx;
-    cur.z = tz;
-    return;
-  }
-  cur.x = smoothToward(cur.x, tx, dt, FOLLOW_SMOOTH_RATE);
-  cur.z = smoothToward(cur.z, tz, dt, FOLLOW_SMOOTH_RATE);
-}
-
-/**
  * Follow-distance change (m) for one pinch step: fingers together (spread
  * shrinking) is positive → zoom out; fingers apart is negative → zoom in.
  */
@@ -179,7 +159,11 @@ export function pinchZoomDelta(prevSpreadPx: number, currSpreadPx: number): numb
   return (prevSpreadPx - currSpreadPx) * CAMERA.pinchSpeed;
 }
 
-/** Third-person camera height kept above the floor (CAMERA.minY), so a low angle never looks up from under the ground. */
+/**
+ * Third-person camera height kept above the floor (CAMERA.minY), so a low angle never looks up from under the ground.
+ * It shapes one frame's camera spot only — the orbit (the player's zoom and tilt) is never written, so the moment the
+ * wanted spot is above the floor again the camera is exactly where the player put it.
+ */
 export function aboveGroundY(y: number): number {
   return Math.max(CAMERA.minY, y);
 }

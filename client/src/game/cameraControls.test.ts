@@ -1,19 +1,17 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { SNAP_DISTANCE, CAMERA } from "./constants";
+import { CAMERA } from "./constants";
 import { worldDirection } from "./input";
 import { applyZoom, resetViewMode, viewState } from "./viewState";
 import {
   aboveGroundY,
   CAMERA_KEY_YAW_RATE,
   CAMERA_LOOK_LIFT,
-  FOLLOW_SMOOTH_RATE,
   ORBIT_EASE,
   ZOOM_BAND,
   ZOOM_SMOOTH_RATE,
   pinchZoomDelta,
   recenterYaw,
   smoothToward,
-  stepFollow,
   stepKeyYaw,
   stepOrbitToward,
 } from "./cameraControls";
@@ -34,7 +32,6 @@ describe("cameraControls — constants (verbatim from the brief)", () => {
     expect(CAMERA_KEY_YAW_RATE).toBe(2.2);
     expect(ORBIT_EASE).toEqual({ yawRate: 10, pitchRate: 2, distRate: 12, eps: 1e-3 });
     expect(ZOOM_SMOOTH_RATE).toBe(12);
-    expect(FOLLOW_SMOOTH_RATE).toBe(14);
     expect(CAMERA_LOOK_LIFT).toBe(0.25);
   });
 
@@ -215,56 +212,6 @@ describe("smoothToward", () => {
     const whole = smoothToward(9, 1, 0.032);
     const halves = smoothToward(smoothToward(9, 1, 0.016), 1, 0.016);
     expect(halves).toBeCloseTo(whole, 9);
-  });
-});
-
-describe("stepFollow", () => {
-  it("lags smoothly toward a moving target and does not overshoot", () => {
-    const cur = { x: 0, z: 0 };
-    stepFollow(cur, 1, 0, DT);
-    expect(cur.x).toBeCloseTo(1 - Math.exp(-FOLLOW_SMOOTH_RATE * DT), 9);
-    expect(cur.z).toBe(0);
-    let prev = cur.x;
-    for (let i = 0; i < 200; i++) {
-      stepFollow(cur, 1, 0, DT);
-      expect(cur.x).toBeGreaterThanOrEqual(prev);
-      expect(cur.x).toBeLessThanOrEqual(1);
-      prev = cur.x;
-    }
-    expect(cur.x).toBeCloseTo(1, 4);
-  });
-
-  it("trails a steadily walking target by a constant, small gap (no lurch)", () => {
-    const cur = { x: 0, z: 0 };
-    const speed = 4; // m/s (MOVE_SPEED)
-    let target = 0;
-    for (let i = 0; i < 240; i++) {
-      target += speed * DT;
-      stepFollow(cur, target, 0, DT);
-    }
-    const gap = target - cur.x;
-    expect(gap).toBeGreaterThan(0.1);
-    expect(gap).toBeLessThan(SNAP_DISTANCE); // never reaches the snap threshold
-    expect(gap).toBeCloseTo(speed / FOLLOW_SMOOTH_RATE, 1); // steady-state lag v / rate
-  });
-
-  it("snaps on a jump larger than SNAP_DISTANCE (teleport / kick-back / seat)", () => {
-    const cur = { x: 0, z: 0 };
-    stepFollow(cur, SNAP_DISTANCE + 0.01, 0, DT);
-    expect(cur).toEqual({ x: SNAP_DISTANCE + 0.01, z: 0 });
-    const diag = { x: 10, z: 10 };
-    stepFollow(diag, 10 + 3, 10 + 3, 0); // ~4.24 m diagonal → snap even at dt = 0
-    expect(diag).toEqual({ x: 13, z: 13 });
-  });
-
-  it("does not snap at exactly SNAP_DISTANCE, and holds at dt = 0", () => {
-    const cur = { x: 0, z: 0 };
-    stepFollow(cur, SNAP_DISTANCE, 0, DT);
-    expect(cur.x).toBeGreaterThan(0);
-    expect(cur.x).toBeLessThan(SNAP_DISTANCE);
-    const still = { x: 1, z: 2 };
-    stepFollow(still, 2, 3, 0);
-    expect(still).toEqual({ x: 1, z: 2 });
   });
 });
 
