@@ -32,9 +32,18 @@
   /* Scroll room under the sheet content for the floating 입장 (58 + 18 + air). */
   --cv-cta-room: 100px;
 
+  /* Pinned to the top at the height the layout was built for (--cv-vh, entryViewport.ts): where a phone keyboard
+     shrinks the viewport itself (KakaoTalk / Android WebView) the stage keeps its shape and the keyboard covers
+     its bottom, as in Chrome. The transform is always there so the fixed parts inside (sheet, 입장, fade, alert)
+     sit in this box rather than the shrunken viewport; --cv-lift raises it only when the keyboard would cover the
+     focused field. Clip, not a scroll container: the resting phone sheet hangs below this box, and a focus or
+     scrollIntoView must never scroll the whole stage up to reach it (hidden is the fallback for old engines). */
   position: fixed;
-  inset: 0;
+  inset: 0 0 auto;
+  height: var(--cv-vh, 100%);
+  transform: translateY(calc(var(--cv-lift, 0px) * -1));
   overflow: hidden;
+  overflow: clip;
   color-scheme: light;
   /* Cream → lavender, shown until the art arrives (and under any part of a sheet it does not reach). */
   background: linear-gradient(180deg, #e3e9ff 0%, #f3efea 55%, #ece6fa 100%);

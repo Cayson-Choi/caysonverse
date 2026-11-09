@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { APP_NAME, NICKNAME_MAX } from "@caysonverse/shared/constants";
 import type { Appearance } from "@caysonverse/shared/appearance";
 import type { TextLevel } from "@caysonverse/shared/escape/constants";
@@ -13,6 +13,7 @@ import { BuilderPanel } from "./BuilderPanel";
 import { BuilderIcon } from "./BuilderIcons";
 import { BUILDER_COPY } from "./builderOptions";
 import { ENTRY_ART, stageLayout, type StageLayout } from "./stageLayout";
+import { useEntryViewport } from "./entryViewport";
 import {
   CLASS_CODE_ERROR,
   ENTRY_COPY,
@@ -70,9 +71,13 @@ const VILLAGE_DEPS: VillageEntryDeps = {
 
 const px = (n: number) => `${Math.round(n * 10) / 10}px`;
 
-/** 배치(stageLayout) → .cv-entry의 CSS 변수. 무대 안 요소는 무대 상자(.cv-builder-preview) 기준 좌표를 쓴다. */
-function layoutStyle(L: StageLayout): CSSProperties {
+/**
+ * 배치(stageLayout) → .cv-entry의 CSS 변수. 무대 안 요소는 무대 상자(.cv-builder-preview) 기준 좌표를 쓴다.
+ * --cv-vh는 배치를 잡은 화면 높이: 키보드가 화면을 줄여도 .cv-entry는 이 높이를 지킨다(entryViewport.ts).
+ */
+function layoutStyle(L: StageLayout, height: number): CSSProperties {
   const vars: Record<string, string> = {
+    "--cv-vh": px(height),
     "--cv-topbar": px(L.topBar),
     "--cv-bg-x": px(L.bg.x),
     "--cv-bg-y": px(L.bg.y),
@@ -115,10 +120,6 @@ function layoutStyle(L: StageLayout): CSSProperties {
     vars["--cv-sheet-open"] = px(L.sheet.open);
   }
   return vars as CSSProperties;
-}
-
-function viewportLayout(): StageLayout {
-  return stageLayout(window.innerWidth, window.innerHeight);
 }
 
 /** 포인터 시차의 값(−0.5~0.5를 40칸으로): 미리 만든 문자열이라 움직일 때마다 새 문자열을 만들지 않는다. */
@@ -230,7 +231,10 @@ export function EntryScreen() {
   const nicknameRef = useRef<HTMLInputElement>(null);
   /** Where focus goes once the sheet has closed (the sheet's modal dialog makes the rest inert until then). */
   const refocusRef = useRef<HTMLElement | null>(null);
-  const [layout, setLayout] = useState(viewportLayout);
+  const rootRef = useRef<HTMLDivElement>(null);
+  /** The screen size the layout is built for: a phone keyboard that shrinks the viewport does not change it. */
+  const view = useEntryViewport(rootRef);
+  const layout = useMemo(() => stageLayout(view.width, view.height), [view.width, view.height]);
   /** Bumped by a preset / 🎲 press: the preview figure spins once. */
   const [spin, setSpin] = useState(0);
   /** Bumped by every rejected nickname: restarts the nameplate shake. */
@@ -246,12 +250,6 @@ export function EntryScreen() {
   // Warm the model cache as soon as the builder opens (the preview and then the world both use character.glb).
   useEffect(() => {
     preloadCharacterAssets();
-  }, []);
-
-  useEffect(() => {
-    const onResize = () => setLayout(viewportLayout());
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
   }, []);
 
   // The admin code popover closes on Esc / the toggle (focus back to the toggle) and on any press outside it.
@@ -455,13 +453,14 @@ export function EntryScreen() {
 
   return (
     <div
+      ref={rootRef}
       // CSS uses the classes (is-wide | is-side | is-phone, and is-sheet for both sheet layouts: short selectors);
       // data-layout stays for tests.
       className={`cv-entry is-${layout.mode}${layout.mode === "wide" ? "" : " is-sheet"}`}
       data-layout={layout.mode}
       data-art={layout.art}
       data-compact-bar={layout.compactBar ? "" : undefined}
-      style={layoutStyle(layout)}
+      style={layoutStyle(layout, view.height)}
     >
       {/* The sky-garden stage: art (one image per device, AVIF first), its LQIP, the podium glow and light motes. */}
       <div className="cv-entry-bg" aria-hidden="true">
