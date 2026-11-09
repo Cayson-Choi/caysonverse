@@ -30,7 +30,13 @@ interface Gltf {
   meshes: { primitives: GltfPrimitive[] }[];
   materials: GltfMaterial[];
   skins?: unknown[];
-  animations?: { name: string }[];
+  animations?: {
+    name: string;
+    channels: { sampler: number; target: { node: number; path: string } }[];
+    samplers: { input: number; output: number }[];
+  }[];
+  accessors: { bufferView: number; byteOffset?: number; componentType: number; count: number; type: string }[];
+  bufferViews: { byteOffset?: number; byteStride?: number }[];
   extensionsUsed?: string[];
 }
 
@@ -41,7 +47,22 @@ function readGltfJson(buf: Buffer): Gltf {
   return JSON.parse(buf.subarray(20, 20 + jsonLength).toString("utf8")) as Gltf;
 }
 
-const gltf = readGltfJson(readFileSync(GLB));
+const glbBuf = readFileSync(GLB);
+const gltf = readGltfJson(glbBuf);
+/** BIN 청크 내용(JSON 청크 바로 뒤, 8바이트 머리 다음). */
+const binChunk = glbBuf.subarray(20 + glbBuf.readUInt32LE(12) + 8);
+/** float 접근자 하나를 숫자 배열로 읽는다(애니메이션 키값 검사용). */
+function readFloats(index: number): number[] {
+  const a = gltf.accessors[index];
+  const view = gltf.bufferViews[a.bufferView];
+  const width = { SCALAR: 1, VEC2: 2, VEC3: 3, VEC4: 4 }[a.type] ?? 1;
+  expect(a.componentType).toBe(5126);
+  const start = (view.byteOffset ?? 0) + (a.byteOffset ?? 0);
+  const stride = view.byteStride ?? width * 4;
+  const out: number[] = [];
+  for (let i = 0; i < a.count; i += 1) for (let k = 0; k < width; k += 1) out.push(binChunk.readFloatLE(start + i * stride + k * 4));
+  return out;
+}
 const meshNodes = gltf.nodes.filter((n) => n.mesh !== undefined);
 const meshNodeNames = new Set(meshNodes.map((n) => n.name));
 
@@ -87,6 +108,24 @@ describe("character manifest ↔ character.glb", () => {
     expect(manifestClips).toEqual(expect.arrayContaining(BASE_CLIPS));
     expect(new Set(manifestClips).size).toBe(manifestClips.length);
     expect((gltf.animations ?? []).map((a) => a.name).sort()).toEqual([...manifestClips].sort());
+  });
+
+  it("actually animates: every base clip turns the leg and arm bones (no clip baked in the rest pose)", () => {
+    // 2026-11-09: a re-export with the armature left in REST pose shipped every clip frozen (T-pose sliding).
+    for (const clip of BASE_CLIPS) {
+      const anim = gltf.animations?.find((a) => a.name === clip);
+      expect(anim, clip).toBeDefined();
+      let moving = 0;
+      for (const ch of anim!.channels) {
+        const bone = gltf.nodes[ch.target.node].name ?? "";
+        if (ch.target.path !== "rotation" || !/^(upperleg|lowerleg|upperarm|lowerarm)\./.test(bone)) continue;
+        const v = readFloats(anim!.samplers[ch.sampler].output);
+        let spread = 0;
+        for (let i = 4; i < v.length; i += 1) spread = Math.max(spread, Math.abs(v[i] - v[i % 4]));
+        if (spread > 0.01) moving += 1;
+      }
+      expect(moving, `${clip}: limb bones that rotate`).toBeGreaterThanOrEqual(2);
+    }
   });
 
   it("clipVariants only names real bottom parts and real clips", () => {
