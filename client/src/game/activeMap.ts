@@ -11,9 +11,10 @@
  * (the obstacle list) rebuild once — and only then.
  */
 
-import { LEGACY_GEOMETRY } from "@caysonverse/shared/worldMap";
+import { LEGACY_GEOMETRY, SEATS, type Seat } from "@caysonverse/shared/worldMap";
 import { hubGeometry, hubZoneLabel } from "@caysonverse/shared/school/hubMap";
 import { VILLAGE_LAYOUT, villageGeometry, type AreaId } from "@caysonverse/shared/village/villageLayout";
+import { VILLAGE_SEATS } from "@caysonverse/shared/village/benchSeats";
 import type { Bounds, MapGeometry } from "@caysonverse/shared/school/geometry";
 import { zoneLabelAt } from "./hud";
 import { HALL_CAMERA_LIMIT, VILLAGE_CAMERA_PAD, type CameraLimit } from "./indoorCamera";
@@ -43,6 +44,12 @@ export interface ActiveMap {
    */
   seatsAndNpcs?: boolean;
   /**
+   * The seats of this map, indexed by `Player.seatIndex` as the room's server indexes them: the legacy world's
+   * chairs (`SEATS`), 케이슨 마을's benches (`VILLAGE_SEATS`, one list for both areas). Absent: nowhere to sit
+   * (the hub, the classrooms). The sit prompt, the seated avatar and its camera all look a seat up here.
+   */
+  seats?: readonly Seat[];
+  /**
    * How far in front of a wall the spring arm stops the camera here (m): absent = `SPRING.pad` (0.2). 케이슨 마을 sets
    * `VILLAGE_CAMERA_PAD`: its near plane is 0.2 (VILLAGE_CAMERA_PLANES), so a pad of 0.2 left no slack in a corner.
    */
@@ -57,6 +64,7 @@ export const LEGACY_ACTIVE_MAP: ActiveMap = Object.freeze({
   geometry: LEGACY_GEOMETRY,
   zoneLabel: zoneLabelAt,
   seatsAndNpcs: true,
+  seats: SEATS,
 });
 
 /** The rectangle `m`'s player is in: its own `bounds`, else the geometry's. */
@@ -75,6 +83,7 @@ export const VILLAGE_ACTIVE_MAP: ActiveMap = Object.freeze({
   bounds: VILLAGE_LAYOUT.areas.village,
   cameraPad: VILLAGE_CAMERA_PAD,
   zoneLabel: () => "케이슨 마을",
+  seats: VILLAGE_SEATS, // every bench of the village (the hall's are out of reach from here)
 });
 
 /** 케이슨 마을, inside the memorial hall: the same geometry (one collision truth), the hall's own rectangle. */
@@ -84,6 +93,7 @@ export const HALL_ACTIVE_MAP: ActiveMap = Object.freeze({
   cameraLimit: HALL_CAMERA_LIMIT, // a roof: the camera stays under the ceiling, no overview
   cameraPad: VILLAGE_CAMERA_PAD, // the same scene, the same near plane
   zoneLabel: () => "추모관",
+  seats: VILLAGE_SEATS, // the same list (the server indexes one), so a seat index means the same bench in both areas
 });
 
 /** The village map for the area the local player is in: one of two prebuilt maps, so a re-render is never a switch. */
@@ -111,6 +121,13 @@ export function setActiveMap(m: ActiveMap): void {
 
 export function getActiveMap(): ActiveMap {
   return current;
+}
+
+const NO_SEATS: readonly Seat[] = Object.freeze([]);
+
+/** The seats of the map the local player stands in (empty where there is nowhere to sit). */
+export function activeSeats(): readonly Seat[] {
+  return current.seats ?? NO_SEATS;
 }
 
 /** Bumped on every switch: per-frame caches compare it to rebuild once per map. */

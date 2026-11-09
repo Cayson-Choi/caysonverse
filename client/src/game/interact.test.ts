@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { SEATS, SEAT_REACH } from "@caysonverse/shared/worldMap";
+import { VILLAGE_SEATS } from "@caysonverse/shared/village/benchSeats";
 import {
   interactionIcon,
   interactionLabel,
@@ -241,6 +242,35 @@ describe("interactInputAt (world → InteractInput)", () => {
   it("end to end: standing at a chair offers sit, seated offers stand", () => {
     const at = interactInputAt(seat0.x, seat0.z, -1, free, false);
     expect(pickInteraction(at)).toEqual({ kind: "sit", seatIndex: 0 });
+  });
+});
+
+describe("interactInputAt on 케이슨 마을's benches (the map's own seats, no AI 조교)", () => {
+  const village = { seats: VILLAGE_SEATS, npcs: false };
+  const s = VILLAGE_SEATS[6]!; // plaza_4
+  const f = { x: Math.sin(s.yaw), z: Math.cos(s.yaw) };
+
+  it("in front of a bench: sit on its nearest free seat (the village's index), the neighbour seat when it is taken", () => {
+    const at = interactInputAt(s.standX, s.standZ, -1, free, false, undefined, village);
+    expect(pickInteraction(at)).toEqual({ kind: "sit", seatIndex: 6 });
+    expect(at.seat?.dist).toBeCloseTo(Math.hypot(s.standX - s.x, s.standZ - s.z), 6);
+    const n = VILLAGE_SEATS[7]!;
+    const mid = { x: (s.x + n.x) / 2 + f.x * 0.5, z: (s.z + n.z) / 2 + f.z * 0.5 };
+    expect(interactInputAt(mid.x, mid.z, -1, (i) => i === 6, false, undefined, village).seat?.index).toBe(7);
+  });
+
+  it("behind the backrest, within reach: nothing to sit on (a bench is sat on from the front)", () => {
+    const behind = interactInputAt(s.x - f.x * 1.2, s.z - f.z * 1.2, -1, free, false, undefined, village);
+    expect(behind.seat).toBeNull();
+  });
+
+  it("the legacy world's 조교 are not looked for in the village, even at their spot", () => {
+    const hall = NPCS.find((n) => n.id === "hall")!;
+    expect(interactInputAt(hall.pos.x, hall.pos.z, -1, free, false, undefined, village).npc).toBeNull();
+  });
+
+  it("seated on a bench: stand up", () => {
+    expect(pickInteraction(interactInputAt(s.x, s.z, 6, free, false, undefined, village))).toEqual({ kind: "stand" });
   });
 });
 

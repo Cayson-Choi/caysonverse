@@ -7,7 +7,7 @@
  * 큐리 panel's own button (design 34), so E can never teleport anyone.
  */
 
-import { SEATS, nearestFreeSeat } from "@caysonverse/shared/worldMap";
+import { SEATS, SEAT_REACH, nearestFreeSeat, type Seat } from "@caysonverse/shared/worldMap";
 import { NPC_CLOSE_RADIUS, NPC_TALK_RADIUS, nearestNpc, npcDistance, type NpcId } from "./npc";
 
 /**
@@ -169,10 +169,21 @@ export function holdEnded(held: InteractTarget | null, next: Interaction | null)
   return !(next !== null && next.kind === "target" && next.target.id === held.id && next.target.hold === true);
 }
 
+/** Which seats and whether the legacy world's AI 조교 are around (`interactInputAt`). Default: the legacy world. */
+export interface InteractWorld {
+  /** The active map's seats (activeMap's `seats`). */
+  seats: readonly Seat[];
+  /** The legacy world's AI 조교 are here (only there: the village's guides are scene targets). */
+  npcs: boolean;
+}
+
+const LEGACY_WORLD: InteractWorld = { seats: SEATS, npcs: true };
+
 /**
  * Read the world around `(x, z)` into an `InteractInput`. `seatIndex` is the local
  * player's own server-confirmed seat (-1 standing); `isOccupied` reports seats taken
- * by ANY player (self + remotes); `targets` is what the active scene offers (interactTargets.ts).
+ * by ANY player (self + remotes); `targets` is what the active scene offers (interactTargets.ts);
+ * `world` names the seats of the map (default: the legacy world's chairs and its 조교).
  * Allocates one small object — call it at the ~5 Hz UI cadence or on a key press, never per frame.
  */
 export function interactInputAt(
@@ -182,16 +193,17 @@ export function interactInputAt(
   isOccupied: (index: number) => boolean,
   npcPanelOpen: boolean,
   targets?: readonly InteractTarget[],
+  world: InteractWorld = LEGACY_WORLD,
 ): InteractInput {
   const seated = seatIndex >= 0;
   let seat: InteractInput["seat"] = null;
   if (!seated) {
-    const index = nearestFreeSeat(x, z, isOccupied);
+    const index = nearestFreeSeat(x, z, isOccupied, SEAT_REACH, world.seats);
     if (index !== null) {
-      seat = { index, dist: Math.hypot(x - SEATS[index].x, z - SEATS[index].z) };
+      seat = { index, dist: Math.hypot(x - world.seats[index].x, z - world.seats[index].z) };
     }
   }
-  const near = nearestNpc(x, z, NPC_TALK_RADIUS);
+  const near = world.npcs ? nearestNpc(x, z, NPC_TALK_RADIUS) : null;
   const npc = near ? { id: near.id, dist: npcDistance(near.id, x, z) } : null;
   return { seated, seat, npc, npcPanelOpen, targets };
 }
