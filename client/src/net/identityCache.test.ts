@@ -81,6 +81,13 @@ describe("loadIdentity", () => {
     expect(Object.keys(loaded.appearance).sort()).toEqual([...APPEARANCE_FIELDS].sort());
   });
 
+  it("cuts a name saved under the old 12-character rule to NICKNAME_MAX (5), so a reconnect is not refused", () => {
+    localStorage.setItem(KEY, JSON.stringify({ nickname: "  케이슨마을주민  ", appearance: DEFAULT_APPEARANCE }));
+    expect(loadIdentity().nickname).toBe("케이슨마을");
+    localStorage.setItem(KEY, JSON.stringify({ nickname: "가람", appearance: DEFAULT_APPEARANCE }));
+    expect(loadIdentity().nickname).toBe("가람");
+  });
+
   it("never throws on malformed JSON", () => {
     localStorage.setItem(KEY, "{not json");
     expect(() => loadIdentity()).not.toThrow();

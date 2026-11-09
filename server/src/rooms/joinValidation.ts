@@ -15,7 +15,7 @@ export interface JoinError {
 
 // User-facing messages are Korean; identifiers/comments stay English.
 // The appearance message is APPEARANCE_ERROR, shared with the entry screen.
-const NICKNAME_ERROR = "닉네임은 2~12자의 한글/영문/숫자만 가능합니다";
+const NICKNAME_ERROR = `닉네임은 ${NICKNAME_MIN}~${NICKNAME_MAX}자의 한글/영문/숫자만 가능합니다`;
 
 /**
  * Sent to a stale pre-builder bundle: a tab left open across a deploy rejoins with

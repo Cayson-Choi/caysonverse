@@ -11,9 +11,9 @@ describe("validateNickname", () => {
   it("accepts Korean, English, digits, and the allowed separators", () => {
     expect(validateNickname("테스터")).toBeNull();
     expect(validateNickname("ab")).toBeNull(); // exactly the minimum
-    expect(validateNickname("Player_1")).toBeNull();
-    expect(validateNickname("a b-c_d")).toBeNull();
-    expect(validateNickname("열두글자로만든이름끝")).toBeNull(); // within 12
+    expect(validateNickname("Pla_1")).toBeNull();
+    expect(validateNickname("a b-c")).toBeNull();
+    expect(validateNickname("다섯글자임")).toBeNull(); // exactly the maximum (5)
   });
 
   it("trims before measuring length", () => {
@@ -24,7 +24,8 @@ describe("validateNickname", () => {
   it("rejects out-of-range lengths", () => {
     expect(validateNickname("a")).not.toBeNull();
     expect(validateNickname("")).not.toBeNull();
-    expect(validateNickname("a".repeat(13))).not.toBeNull();
+    expect(validateNickname("a".repeat(6))).not.toBeNull(); // 발주자 2026-11-10: 이름은 5글자까지만
+    expect(validateNickname("여섯글자이름")).not.toBeNull();
   });
 
   it("rejects disallowed characters (emoji, punctuation, symbols)", () => {

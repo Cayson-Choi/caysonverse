@@ -135,7 +135,7 @@ describe("builderOptions — copy (no voice: chat is never read aloud, owner 202
       modelFailed: "캐릭터를 불러오지 못했어요. 인터넷 연결을 확인한 뒤 입장하기를 눌러 주세요.",
       modelRetry: "캐릭터를 불러오지 못했어요. 잠시 뒤 다시 눌러 주세요",
       nickname: "닉네임",
-      nicknamePlaceholder: "이름을 지어 주세요 (2~12자)",
+      nicknamePlaceholder: "이름을 지어 주세요 (2~5자)",
       rotateLeft: "왼쪽으로 돌리기",
       rotateRight: "오른쪽으로 돌리기",
       sheetOpen: "꾸미기 창 크게 보기",
