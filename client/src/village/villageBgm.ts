@@ -20,6 +20,14 @@
  *    if the context stays not running for `BGM_FALLBACK_MS` counted from the first gesture or play attempt since it
  *    stopped (a lock or a call long ago does not count), the next gesture swaps to a plain, unrouted element and plays
  *    that (`isFallback()`).
+ *  - Samsung Internet (owner report 2026-11-10: silent there, fine in Chrome and KakaoTalk): a touch's `pointerdown`
+ *    and `touchstart` are not a user activation (HTML; Chromium marks the activation at the touch's `pointerup`).
+ *    Chrome still plays a `pointerdown` play() because a past tap is enough there (sticky activation); a stricter
+ *    engine refuses it. Refused at once (KakaoTalk's WebView), the same tap's `pointerup` retried; refused late, the
+ *    pending first play() kept the rest of the tap from retrying, on every tap. Now the first activation event of the
+ *    tap (`BGM_ACTIVATION_GESTURES`) plays again while the fast-path play() is still pending; a refused fast-path play()
+ *    turns the fast path off, so later taps start at `pointerup`; and a play() that the browser pauses again before the
+ *    music has really played `BGM_CONFIRM_S` re-arms the listeners for the next tap.
  *  - The game's sound toggle (`setMuted`) silences the music too (final review m4), without changing the music choice.
  *  - A remount (a reconnect re-keys the scene) carries "the music had started" over, so it plays again without a new
  *    tap where the browser allows it (final review m3).
@@ -44,6 +52,16 @@ const TICK_MS = 100;
 export const BGM_FALLBACK_MS = 2500;
 /** The first-gesture events. iOS only counts touchend / pointerup / click / keydown as a user activation. */
 export const BGM_GESTURES = ["pointerdown", "pointerup", "touchstart", "touchend", "click", "keydown"] as const;
+/**
+ * The gestures every engine treats as a user activation (or, for click, runs inside one). A touch's pointerdown and
+ * touchstart are not: a play() there (the fast path) only works where an earlier tap is enough, as in Chrome.
+ */
+export const BGM_ACTIVATION_GESTURES: readonly string[] = ["pointerup", "touchend", "click", "keydown"];
+/** Seconds of real playback after which a pause is someone else's choice (a call, another app), not a refusal. */
+export const BGM_CONFIRM_S = 1;
+
+/** Where a play() was asked from: a fast-path gesture, an activation gesture, or no gesture (a toggle, a remount). */
+type PlaySource = "fast" | "activation" | "other";
 
 /** The slice of HTMLAudioElement the controller uses. */
 export interface BgmAudio {
@@ -124,6 +142,21 @@ export class VillageBgm {
   private fallback = false; // swapped to a plain, unrouted element
   private offState: (() => void) | null = null;
   private armed = false; // gesture listeners attached
+  /** A play() outside an activation event is still worth trying (off once this browser refused one). */
+  private fastPath = true;
+  /** The pending start already played again inside an activation event (once per start). */
+  private retried = false;
+  /** The id of the latest play() call: an older call's late refusal must not cancel a newer one. */
+  private attempt = 0;
+  /** Each tryPlay() is one start; its play() calls (the fast path and the replay) are accepted once. */
+  private startId = 0;
+  private acceptedStart = 0;
+  /** The accepted start included a play() inside an activation event. */
+  private startedInActivation = false;
+  /** The music has really played BGM_CONFIRM_S since it was accepted; `startPos` is where it was accepted. */
+  private confirmed = false;
+  private startPos = 0;
+  private readonly gestureFns = BGM_GESTURES.map((type) => [type, () => this.onGesture(type)] as const);
   private cancelTick: (() => void) | null = null;
   private lastTime = 0;
   private listeners = new Set<() => void>();
@@ -182,20 +215,27 @@ export class VillageBgm {
   arm(): void {
     if (this.armed || !this.audio) return;
     this.armed = true;
-    for (const t of BGM_GESTURES) this.deps.gestureTarget.addEventListener(t, this.onGesture, { passive: true });
+    for (const [t, fn] of this.gestureFns) this.deps.gestureTarget.addEventListener(t, fn, { passive: true });
   }
 
   private disarm(): void {
     if (!this.armed) return;
     this.armed = false;
-    for (const t of BGM_GESTURES) this.deps.gestureTarget.removeEventListener(t, this.onGesture);
+    for (const [t, fn] of this.gestureFns) this.deps.gestureTarget.removeEventListener(t, fn);
   }
 
-  private readonly onGesture = (): void => {
+  private onGesture(type: string): void {
     if (!this.audio) return;
+    const activation = BGM_ACTIVATION_GESTURES.includes(type);
+    this.watch(); // the browser paused it again before it got going: this gesture starts it afresh
     if (!this.started) {
-      if (!this.pending) this.tryPlay();
-      else this.resumeCtx();
+      if (this.pending) {
+        this.resumeCtx();
+        // The fast-path play() of this tap has not settled: a browser that refuses it late would leave the whole tap
+        // silent, so play again inside the tap's first activation event (a second play() only joins the first).
+        if (activation && !this.retried) this.replay();
+      } else if (activation || this.fastPath) this.tryPlay(activation ? "activation" : "fast");
+      else this.resumeCtx(); // this browser refuses a play() before the finger lifts: wait for pointerup / touchend
       return;
     }
     // Playing, but the routed graph is not running (an iOS touchstart, or "interrupted" after a lock).
@@ -207,8 +247,9 @@ export class VillageBgm {
     if (!this.gain) return;
     const now = this.deps.now();
     if (this.notRunningSince === null) this.notRunningSince = now; // the first tap since it stopped: give resume() time
-    else if (now - this.notRunningSince >= BGM_FALLBACK_MS) this.unroute();
-  };
+    else if (now - this.notRunningSince >= BGM_FALLBACK_MS && (activation || this.fastPath))
+      this.unroute(activation ? "activation" : "fast");
+  }
 
   /** The AudioContext changed state: running -> stop listening; anything else -> try to resume and listen again. */
   private readonly onAudioState = (): void => {
@@ -242,7 +283,7 @@ export class VillageBgm {
    * The context never ran: drop the GainNode route and play a plain element instead (inside this gesture). On iOS its
    * volume is fixed, so it plays at full level; still better than silence.
    */
-  private unroute(): void {
+  private unroute(source: PlaySource): void {
     const old = this.audio;
     if (!old) return;
     let at = 0;
@@ -276,7 +317,7 @@ export class VillageBgm {
     this.audio = a;
     this.fallback = true;
     this.started = false;
-    this.tryPlay();
+    this.tryPlay(source);
   }
 
   /** The audio element (dev probes and the e2e check read its state). */
@@ -347,6 +388,7 @@ export class VillageBgm {
 
   /** Advance the ramps and the loop fade; the scheduler calls it, and tests call it by hand. */
   tick(): void {
+    this.watch();
     this.apply();
   }
 
@@ -372,7 +414,7 @@ export class VillageBgm {
 
   // ── internals ──
 
-  private tryPlay(): void {
+  private tryPlay(source: PlaySource = "other"): void {
     const a = this.audio;
     if (!a || !this.enabled || !this.visible || this.muted) return;
     this.notRunningSince = this.ctxRunning() ? null : this.deps.now(); // a play attempt starts the wait afresh
@@ -380,39 +422,95 @@ export class VillageBgm {
     this.fade.jump(0);
     this.fade.go(1, BGM_FADE_IN_MS, this.deps.now());
     this.apply();
+    this.retried = source === "activation";
+    this.issue(a, source, ++this.startId);
+  }
+
+  /** The tap's fast-path play() is still pending: play again inside this activation event (the fade goes on). */
+  private replay(): void {
+    const a = this.audio;
+    if (!a || !this.enabled || !this.visible || this.muted) return;
+    this.retried = true;
+    this.issue(a, "activation", this.startId);
+  }
+
+  /** Call play() once and settle it: accepted starts the music, refused leaves the listeners armed. */
+  private issue(a: BgmAudio, source: PlaySource, start: number): void {
+    const id = ++this.attempt;
     let result: Promise<void> | void;
     try {
       result = a.play();
     } catch {
+      if (source === "fast") this.fastPath = false;
       return; // refused synchronously: the next gesture tries again
     }
-    const accepted = () => {
-      this.pending = false;
-      if (this.audio !== a) return;
-      // Switched off while play() was pending (halt() paused and re-armed): a browser that still resolves must not
-      // leave the music playing with the toggle showing off (music review minor 1).
-      if (!this.enabled) {
-        this.pauseQuietly(a);
-        return;
-      }
-      this.started = true;
-      // Keep listening until the routed context really runs (iOS: a touchstart play into a suspended graph).
-      if (this.ctxRunning()) this.disarm();
-      else this.resumeCtx();
-      // Hidden or muted while pending: stay paused; becoming visible / unmuted resumes it.
-      if (!this.visible || this.muted) {
-        this.pauseQuietly(a);
-        return;
-      }
-      this.startTick();
-    };
     if (result && typeof (result as Promise<void>).then === "function") {
       this.pending = true;
-      (result as Promise<void>).then(accepted, () => {
-        this.pending = false;
-        // Autoplay refused: stay armed, try on the next gesture.
-      });
-    } else accepted();
+      (result as Promise<void>).then(
+        () => this.accepted(a, start),
+        () => this.refused(a, id, source),
+      );
+    } else this.accepted(a, start);
+  }
+
+  private accepted(a: BgmAudio, start: number): void {
+    this.pending = false;
+    if (this.audio !== a) return;
+    // Switched off while play() was pending (halt() paused and re-armed): a browser that still resolves must not
+    // leave the music playing with the toggle showing off (music review minor 1).
+    if (!this.enabled) {
+      this.pauseQuietly(a);
+      return;
+    }
+    if (start === this.acceptedStart) return; // the tap's second play() resolving with the first
+    this.acceptedStart = start;
+    this.started = true;
+    this.startedInActivation = this.retried;
+    this.confirmed = false;
+    this.startPos = this.position(a);
+    // Keep listening until the routed context really runs (iOS: a touchstart play into a suspended graph).
+    if (this.ctxRunning()) this.disarm();
+    else this.resumeCtx();
+    // Hidden or muted while pending: stay paused; becoming visible / unmuted resumes it.
+    if (!this.visible || this.muted) {
+      this.pauseQuietly(a);
+      return;
+    }
+    this.startTick();
+  }
+
+  private refused(a: BgmAudio, id: number, source: PlaySource): void {
+    // This browser wants a real activation: later taps play at pointerup / touchend, not at pointerdown.
+    if (source === "fast") this.fastPath = false;
+    if (this.audio !== a || id !== this.attempt) return; // a newer play() (inside an activation event) still counts
+    this.pending = false; // autoplay refused: stay armed, try on the next gesture
+  }
+
+  /**
+   * Accepted, but the browser paused it again before it really played (a refusal that came after the promise): forget
+   * the start and listen again, so the next tap plays it inside an activation event. Once it has played BGM_CONFIRM_S,
+   * a pause is someone else's (a call, another app) and is left alone, as before.
+   */
+  private watch(): void {
+    const a = this.audio;
+    if (!a || !this.started || this.confirmed || this.pending) return;
+    if (!a.paused) {
+      if (this.position(a) - this.startPos >= BGM_CONFIRM_S) this.confirmed = true;
+      return;
+    }
+    if (!this.enabled || !this.visible || this.muted) return; // paused by us
+    if (!this.startedInActivation) this.fastPath = false;
+    this.started = false;
+    this.stopTick();
+    this.arm();
+  }
+
+  private position(a: BgmAudio): number {
+    try {
+      return Number.isFinite(a.currentTime) ? a.currentTime : 0;
+    } catch {
+      return 0;
+    }
   }
 
   private pauseQuietly(a: BgmAudio): void {

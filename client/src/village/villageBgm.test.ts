@@ -1,5 +1,18 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { BGM_FALLBACK_MS, BGM_GESTURES, BGM_SRC, BGM_STORAGE_KEY, VillageBgm, activeVillageBgm, mountVillageBgm, resetVillageBgmCarry, type BgmAudio } from "./villageBgm";
+import {
+  BGM_ACTIVATION_GESTURES,
+  BGM_CONFIRM_S,
+  BGM_FADE_IN_MS,
+  BGM_FALLBACK_MS,
+  BGM_GESTURES,
+  BGM_SRC,
+  BGM_STORAGE_KEY,
+  VillageBgm,
+  activeVillageBgm,
+  mountVillageBgm,
+  resetVillageBgmCarry,
+  type BgmAudio,
+} from "./villageBgm";
 import type { GainSink } from "./villageAudio";
 
 class FakeAudio implements BgmAudio {
@@ -16,15 +29,19 @@ class FakeAudio implements BgmAudio {
   /** Hold play() pending until `resolvePending()` (a browser still loading or deciding). */
   deferPlay = false;
   resolvePending: (() => void) | null = null;
+  /** Every deferred play() call in order, to settle each one on its own (a late refusal of the first, ...). */
+  pendings: { resolve: () => void; reject: () => void }[] = [];
   play() {
     this.playCalls++;
     if (this.rejectPlay) return Promise.reject(new Error("NotAllowedError"));
     if (this.deferPlay)
-      return new Promise<void>((res) => {
-        this.resolvePending = () => {
+      return new Promise<void>((res, rej) => {
+        const resolve = () => {
           this.paused = false;
           res();
         };
+        this.resolvePending = resolve;
+        this.pendings.push({ resolve, reject: () => rej(new Error("NotAllowedError")) });
       });
     this.paused = false;
     return Promise.resolve();
@@ -64,6 +81,8 @@ function setup(
   };
   let t = 0;
   const audios: FakeAudio[] = [];
+  /** Applied to every element created from now on (the plain fallback element is created inside a gesture). */
+  const newAudio = { deferPlay: false };
   const handlers = new Map<string, Set<() => void>>();
   const store = new Map<string, string>();
   if (opts.stored != null) store.set(BGM_STORAGE_KEY, opts.stored);
@@ -74,6 +93,7 @@ function setup(
     new VillageBgm({
       createAudio: () => {
         const a = new FakeAudio();
+        a.deferPlay = newAudio.deferPlay;
         audios.push(a);
         return a;
       },
@@ -119,6 +139,7 @@ function setup(
   return {
     make,
     audios,
+    newAudio,
     gains,
     gesture,
     advance,
@@ -169,12 +190,32 @@ describe("VillageBgm", () => {
     bgm.arm();
     const a = s.audios[0]!;
     a.rejectPlay = true;
-    expect(() => s.gesture()).not.toThrow();
+    expect(() => s.gesture("click")).not.toThrow();
     await flush();
     expect(a.paused).toBe(true);
     expect(s.listenerCount()).toBeGreaterThan(0);
     a.rejectPlay = false;
-    s.gesture();
+    s.gesture("click");
+    await flush();
+    expect(a.paused).toBe(false);
+    expect(s.listenerCount()).toBe(0);
+  });
+
+  it("a refused pointerdown play() turns the fast path off: the next gesture that plays is an activation event", async () => {
+    const s = setup();
+    const bgm = s.make();
+    bgm.arm();
+    const a = s.audios[0]!;
+    a.rejectPlay = true;
+    s.gesture("pointerdown");
+    await flush();
+    expect(a.playCalls).toBe(1);
+    a.rejectPlay = false;
+    s.gesture("pointerdown"); // the next tap: no play() before the finger lifts
+    s.gesture("touchstart");
+    expect(a.playCalls).toBe(1);
+    s.gesture("pointerup");
+    expect(a.playCalls).toBe(2);
     await flush();
     expect(a.paused).toBe(false);
     expect(s.listenerCount()).toBe(0);
@@ -521,20 +562,28 @@ describe("VillageBgm on iOS (AudioContext not running)", () => {
     expect(s.listenerCount()).toBe(BGM_GESTURES.length);
   });
 
-  it("one tap fires several gesture events: a pending play() is not started again", async () => {
+  it("one tap fires several gesture events: a pending fast-path play() is played again once, in pointerup, and the fade goes on", async () => {
     const s = setup();
     const bgm = s.make();
     bgm.arm();
     const a = s.audios[0]!;
     a.deferPlay = true;
     s.gesture("pointerdown");
+    s.gesture("touchstart");
+    expect(a.playCalls).toBe(1);
+    s.advance(750, bgm);
     s.gesture("pointerup");
     s.gesture("touchend");
     s.gesture("click");
-    expect(a.playCalls).toBe(1);
-    a.resolvePending!();
+    expect(a.playCalls).toBe(2);
+    expect(a.volume).toBeCloseTo(0.175, 3); // the replay does not restart the fade
+    for (const p of a.pendings) p.resolve(); // both calls resolve together
     await flush();
     expect(a.paused).toBe(false);
+    expect(s.ticking()).toBe(1);
+    expect(s.listenerCount()).toBe(0);
+    s.advance(750, bgm);
+    expect(a.volume).toBeCloseTo(0.35, 3);
   });
 
   it("suspended: a play accepted into a suspended context keeps listening and resumes on every gesture until it runs", async () => {
@@ -642,6 +691,167 @@ describe("VillageBgm on iOS (AudioContext not running)", () => {
     expect(s.ctxListeners()).toBe(1);
     bgm.dispose();
     expect(s.ctxListeners()).toBe(0);
+  });
+});
+
+/** Owner report 2026-11-10: silent in Samsung Internet, fine in Chrome and KakaoTalk. */
+describe("VillageBgm in a browser that only plays inside an activation event (Samsung Internet)", () => {
+  /** One finger tap, in the order Chromium dispatches it. */
+  const TAP = ["pointerdown", "touchstart", "pointerup", "touchend", "click"] as const;
+
+  it("the activation events are pointerup, touchend, click and keydown, and all of them are listened to", () => {
+    expect([...BGM_ACTIVATION_GESTURES].sort()).toEqual(["click", "keydown", "pointerup", "touchend"]);
+    for (const t of BGM_ACTIVATION_GESTURES) expect(BGM_GESTURES).toContain(t);
+    expect(BGM_ACTIVATION_GESTURES).not.toContain("pointerdown");
+    expect(BGM_ACTIVATION_GESTURES).not.toContain("touchstart");
+  });
+
+  it("the fast-path play() refused LATE: the same tap's pointerup plays again and the music starts", async () => {
+    const s = setup();
+    const bgm = s.make();
+    bgm.arm();
+    const a = s.audios[0]!;
+    a.deferPlay = true;
+    for (const t of TAP) s.gesture(t);
+    expect(a.playCalls).toBe(2); // pointerdown (fast path), pointerup (the activation)
+    a.pendings[0]!.reject(); // the browser refuses the pointerdown play() after the tap is over
+    await flush();
+    expect(bgm.hasStarted()).toBe(false);
+    a.pendings[1]!.resolve(); // the pointerup play() is accepted
+    await flush();
+    expect(a.paused).toBe(false);
+    expect(bgm.hasStarted()).toBe(true);
+    expect(s.listenerCount()).toBe(0);
+    s.advance(BGM_FADE_IN_MS, bgm);
+    expect(a.volume).toBeCloseTo(0.35, 3);
+  });
+
+  it("before the fix this stayed silent on every tap: each tap now plays inside its activation event", async () => {
+    // A browser that refuses every play() outside an activation event, late: only the pointerup call can succeed.
+    const s = setup();
+    const bgm = s.make();
+    bgm.arm();
+    const a = s.audios[0]!;
+    a.deferPlay = true;
+    for (const t of TAP) s.gesture(t);
+    a.pendings[0]!.reject();
+    a.pendings[1]!.reject(); // this tap's both calls refused (a pause aborts every pending play())
+    await flush();
+    expect(bgm.hasStarted()).toBe(false);
+    expect(s.listenerCount()).toBe(BGM_GESTURES.length);
+    a.deferPlay = false;
+    s.gesture("pointerdown"); // the next tap: the fast path is off now
+    s.gesture("touchstart");
+    expect(a.playCalls).toBe(2);
+    s.gesture("pointerup");
+    expect(a.playCalls).toBe(3);
+    await flush();
+    expect(a.paused).toBe(false);
+    expect(bgm.hasStarted()).toBe(true);
+  });
+
+  it("a refusal at once (KakaoTalk's WebView) still plays on the same tap's pointerup", async () => {
+    const s = setup();
+    const bgm = s.make();
+    bgm.arm();
+    const a = s.audios[0]!;
+    a.rejectPlay = true;
+    s.gesture("pointerdown");
+    await flush(); // the rejection settles before the finger lifts
+    s.gesture("touchstart");
+    a.rejectPlay = false;
+    s.gesture("pointerup");
+    s.gesture("touchend");
+    s.gesture("click");
+    expect(a.playCalls).toBe(2);
+    await flush();
+    expect(a.paused).toBe(false);
+  });
+
+  it("accepted, then paused by the browser before it really played: it listens again and the next tap plays it in pointerup", async () => {
+    const s = setup();
+    const bgm = s.make();
+    bgm.arm();
+    const a = s.audios[0]!;
+    s.gesture("pointerdown");
+    await flush();
+    expect(bgm.hasStarted()).toBe(true);
+    expect(s.listenerCount()).toBe(0);
+    a.paused = true; // the browser stopped it
+    s.advance(100, bgm);
+    expect(bgm.hasStarted()).toBe(false);
+    expect(s.ticking()).toBe(0);
+    expect(s.listenerCount()).toBe(BGM_GESTURES.length);
+    s.gesture("pointerdown"); // the fast path is off: that start did not hold
+    expect(a.playCalls).toBe(1);
+    s.gesture("pointerup");
+    expect(a.playCalls).toBe(2);
+    await flush();
+    expect(a.paused).toBe(false);
+    expect(bgm.hasStarted()).toBe(true);
+    expect(s.listenerCount()).toBe(0);
+  });
+
+  it("after BGM_CONFIRM_S of real playback, an outside pause (a call, another app) is left alone as before", async () => {
+    const s = setup();
+    const bgm = s.make();
+    bgm.arm();
+    const a = s.audios[0]!;
+    s.gesture("click");
+    await flush();
+    a.currentTime = BGM_CONFIRM_S + 0.1;
+    s.advance(100, bgm);
+    a.paused = true;
+    s.advance(100, bgm);
+    expect(bgm.hasStarted()).toBe(true);
+    expect(s.listenerCount()).toBe(0);
+    expect(a.playCalls).toBe(1);
+  });
+
+  it("with the fast path off, the swap to the plain element waits for the tap's pointerup", async () => {
+    const s = setup({ route: "gain", ctxState: "suspended" });
+    const bgm = s.make();
+    bgm.arm();
+    const a = s.audios[0]!;
+    a.rejectPlay = true;
+    s.gesture("pointerdown"); // refused: the fast path goes off
+    await flush();
+    a.rejectPlay = false;
+    s.gesture("pointerup"); // accepted into a context that never runs
+    await flush();
+    expect(bgm.hasStarted()).toBe(true);
+    s.advance(BGM_FALLBACK_MS, bgm);
+    s.gesture("pointerdown");
+    s.gesture("touchstart");
+    expect(bgm.isFallback()).toBe(false);
+    s.gesture("pointerup");
+    expect(bgm.isFallback()).toBe(true);
+    await flush();
+    expect(s.audios[1]!.paused).toBe(false);
+  });
+
+  it("the plain fallback element played at a pointerdown and refused late is played again in the same tap's pointerup", async () => {
+    const s = setup({ route: "gain", ctxState: "suspended" });
+    const bgm = s.make();
+    bgm.arm();
+    s.gesture("touchend"); // accepted into a context that never runs
+    await flush();
+    s.advance(BGM_FALLBACK_MS, bgm);
+    s.newAudio.deferPlay = true; // this browser holds the plain element's play() pending to refuse it late
+    s.gesture("pointerdown"); // swaps to the plain element and plays it
+    expect(bgm.isFallback()).toBe(true);
+    const plain = s.audios[1]!;
+    expect(plain.playCalls).toBe(1);
+    s.gesture("touchstart");
+    s.gesture("pointerup");
+    s.gesture("touchend");
+    expect(plain.playCalls).toBe(2);
+    plain.pendings[0]!.reject();
+    plain.pendings[1]!.resolve();
+    await flush();
+    expect(plain.paused).toBe(false);
+    expect(bgm.hasStarted()).toBe(true);
+    expect(s.listenerCount()).toBe(0);
   });
 });
 
