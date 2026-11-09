@@ -1,14 +1,14 @@
 import { describe, it, expect } from "vitest";
 import { nextGait, nextWalking } from "./locomotion";
 import {
-  RENDER_DELAY_MS,
   RUN_OFF_SPEED,
   RUN_ON_SPEED,
   WALK_OFF_SPEED,
   WALK_ON_SPEED,
 } from "./constants";
-import { pushSnapshot, remoteGaitSpeed } from "./interpolation";
+import { sample } from "./interpolation";
 import type { Snapshot } from "./interpolation";
+import { advancePlayout, createPlayout, playoutGaitSpeed, receivePose } from "./playout";
 import type { Gait } from "./gait";
 
 describe("nextWalking (hysteresis)", () => {
@@ -138,27 +138,32 @@ interface Frame {
   now: number;
   speed: number;
   gait: Gait;
+  /** Where the avatar is drawn (x) on this frame. */
+  x: number;
 }
 
 /**
- * Drive the REAL remote pipeline the way RemotePlayer's frame does - sample the
- * buffer RENDER_DELAY_MS in the past, `remoteGaitSpeed`, `nextGait` - at 60 fps,
- * and return every frame (from the first patch on).
+ * Drive the REAL remote pipeline the way RemotePlayer's frame does - receivePose on
+ * each arrival, advancePlayout, sample, playoutGaitSpeed, nextGait - at 60 fps, and
+ * return every frame (from the first patch on). These patches carry no mover clock:
+ * this is the arrival-time fallback, the harder case for the gait (bursts stay in it).
  */
 function simulate(patches: readonly Arrival[], endMs: number): Frame[] {
   const buf: Snapshot[] = [];
+  const pl = createPlayout();
   const frames: Frame[] = [];
   let next = 0;
   let gait: Gait = "idle";
   for (let now = 0; now <= endMs; now += 1000 / 60) {
     while (next < patches.length && patches[next].recv <= now) {
-      pushSnapshot(buf, { t: patches[next].recv, x: patches[next].x, z: 0, yaw: 0 });
+      receivePose(pl, buf, patches[next].recv, 0, patches[next].x, 0, 0);
       next++;
     }
     if (buf.length === 0) continue;
-    const speed = remoteGaitSpeed(buf, now - RENDER_DELAY_MS);
+    const renderT = advancePlayout(pl, buf, now);
+    const speed = playoutGaitSpeed(pl, buf);
     gait = nextGait(gait, speed);
-    frames.push({ now, speed, gait });
+    frames.push({ now, speed, gait, x: sample(buf, renderT)!.x });
   }
   return frames;
 }
@@ -213,18 +218,19 @@ describe("remote gait end to end (interpolation windows + hysteresis)", () => {
     leaveMs: number;
   } {
     const patches = arrivals(6.4, delays, 60);
-    const last = patches[patches.length - 1].recv;
-    const frames = simulate(patches, last + 1500);
-    const moveStart = patches[0].recv + RENDER_DELAY_MS; // the first patch is on screen
+    const endX = patches[patches.length - 1].x;
+    const frames = simulate(patches, patches[patches.length - 1].recv + 1500);
+    const moveStart = frames.find((f) => f.x > 0)!.now; // the avatar starts moving on screen
+    const stopped = frames.find((f) => f.x >= endX)!.now; // ...and reaches the stop on screen
     const firstRun = frames.find((f) => f.gait === "run");
     expect(firstRun).toBeDefined();
-    const whileRunning = frames.filter((f) => f.now >= firstRun!.now && f.now <= last + RENDER_DELAY_MS);
-    const left = frames.find((f) => f.now > last && f.gait !== "run");
+    const whileRunning = frames.filter((f) => f.now >= firstRun!.now && f.now <= stopped);
+    const left = frames.find((f) => f.now > stopped && f.gait !== "run");
     expect(left).toBeDefined();
     return {
       enterMs: firstRun!.now - moveStart,
       fraction: whileRunning.filter((f) => f.gait === "run").length / whileRunning.length,
-      leaveMs: left!.now - last,
+      leaveMs: left!.now - stopped,
     };
   }
 
@@ -250,8 +256,8 @@ describe("remote gait end to end (interpolation windows + hysteresis)", () => {
     ["clean", [0]],
     ["[0,30,0,50,10,0,40]", HEAVY_JITTER],
     ["[0,15,0,25,0,10]", LIGHT_JITTER],
-  ])("a runner who stops (%s) leaves run within 500 ms of its last patch", (_name, delays) => {
-    expect(runnerOutcome(delays).leaveMs).toBeLessThanOrEqual(500);
+  ])("a runner who stops (%s) leaves run within 150 ms of stopping on screen", (_name, delays) => {
+    expect(runnerOutcome(delays).leaveMs).toBeLessThanOrEqual(150);
   });
 
   it("a runner who stops comes to idle: run, then walk, then idle (no skipping, no re-entry)", () => {

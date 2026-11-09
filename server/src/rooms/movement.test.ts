@@ -3,13 +3,14 @@ import {
   MOVE_SPEED,
   RUN_SPEED,
   MOVE_SPEED_SLACK,
+  MOVE_ELAPSED_CEIL_MS,
   MOVE_ELAPSED_FLOOR_MS,
   WORLD_BOUNDS,
   PLAYER_RADIUS,
 } from "@caysonverse/shared/constants";
 import { LEGACY_GEOMETRY, SPAWN_POINT, SPAWN_JITTER } from "@caysonverse/shared/worldMap";
 import type { MapGeometry } from "@caysonverse/shared/school/geometry";
-import { validateMove, spawnInDisk } from "./movement";
+import { validateMove, spawnInDisk, moveBaselineAfter } from "./movement";
 
 const ORIGIN = { x: 0, z: 0 };
 
@@ -45,6 +46,80 @@ describe("validateMove — payload shape", () => {
     expect(validateMove(ORIGIN, { x: 0, z: 0, yaw: -Infinity }, 100)).toBeNull();
     expect(validateMove(ORIGIN, { x: "1", z: 0, yaw: 0 }, 100)).toBeNull();
     expect(validateMove(ORIGIN, { x: 0, z: 0, yaw: null }, 100)).toBeNull();
+  });
+});
+
+describe("validateMove — the sender's clock (MovePayload.t → Player.moveT)", () => {
+  it("passes a whole-ms uint32 clock reading through", () => {
+    expect(validateMove(ORIGIN, { x: 0.3, z: 0, yaw: 0, t: 734512 }, 100)).toEqual({ x: 0.3, z: 0, yaw: 0, t: 734512 });
+    expect(validateMove(ORIGIN, { x: 0.3, z: 0, yaw: 0, t: 1 }, 100)!.t).toBe(1);
+    expect(validateMove(ORIGIN, { x: 0.3, z: 0, yaw: 0, t: 0xffffffff }, 100)!.t).toBe(0xffffffff);
+  });
+
+  it("leaves out a missing or unusable clock — never a reason to drop the move", () => {
+    for (const t of [undefined, 0, -5, 1.5, 2 ** 32, NaN, Infinity, "123", null, {}]) {
+      const r = validateMove(ORIGIN, { x: 0.3, z: 0, yaw: 0, t }, 100);
+      expect(r).toEqual({ x: 0.3, z: 0, yaw: 0 });
+    }
+  });
+});
+
+describe("moveBaselineAfter — a step spends only the budget it used (fix/remote-move-snapback)", () => {
+  const perMs = (RUN_SPEED * MOVE_SPEED_SLACK) / 1000; // metres of budget per ms
+
+  it("keeps the unused part: a 0.45 m step out of a 500 ms budget leaves 500 - 0.45/perMs ms", () => {
+    const now = 10_000;
+    const next = moveBaselineAfter(now, 500, 0.45);
+    expect(now - next).toBeCloseTo(500 - 0.45 / perMs, 9);
+  });
+
+  it("a step that used all of it (or more, via the floor) leaves nothing — the old behaviour", () => {
+    expect(moveBaselineAfter(10_000, 100, 100 * perMs)).toBe(10_000);
+    expect(moveBaselineAfter(10_000, 3, 0.096)).toBe(10_000);
+    expect(moveBaselineAfter(10_000, 0, 0)).toBe(10_000);
+  });
+
+  it("a burst of queued walk steps 1 ms apart is accepted while the kept budget lasts — then dropped as before", () => {
+    // A late frame, then the moves queued behind it, 1 ms apart. Resetting the baseline to `now` on each
+    // accepted move (the old rule) left the second one a 1 ms (floored to 10 ms = 0.096 m) budget: dropped.
+    expect(validateMove({ x: 0.45, z: 0 }, { x: 0.9, z: 0, yaw: 0 }, 1)).toBeNull(); // the old rule's 2nd step
+    let current = { x: 0, z: 0 };
+    let now = 50_000;
+    let baseline = now - MOVE_ELAPSED_CEIL_MS; // the link froze for half a second
+    let accepted = 0;
+    for (let k = 1; k <= 14; k++) {
+      const budget = Math.min(now - baseline, MOVE_ELAPSED_CEIL_MS);
+      const next = validateMove(current, { x: 0.45 * k, z: 0, yaw: 0 }, budget);
+      if (next === null) break;
+      baseline = moveBaselineAfter(now, budget, Math.hypot(next.x - current.x, next.z - current.z));
+      current = next;
+      accepted += 1;
+      now += 1;
+    }
+    // The kept budget (4.8 m + 1 ms per step) carries 10 steps of 0.45 m; the 11th would pass 4.8 m: dropped.
+    expect(accepted).toBe(10);
+    expect(current.x).toBeCloseTo(4.5, 9);
+  });
+
+  it("nothing gets looser: over any stretch the accepted travel is at most RUN_SPEED x slack x (time + the 500 ms ceiling)", () => {
+    // A cheater hammering 1 m steps at 30 messages/s for 3 s from a full budget.
+    let current = { x: 0, z: 0 };
+    let now = 0;
+    let baseline = -MOVE_ELAPSED_CEIL_MS;
+    let travelled = 0;
+    for (let k = 0; k < 90; k++, now += 1000 / 30) {
+      const budget = Math.min(now - baseline, MOVE_ELAPSED_CEIL_MS);
+      const next = validateMove(current, { x: current.x + 1, z: 0, yaw: 0 }, budget, {
+        ...LEGACY_GEOMETRY,
+        bounds: { minX: -1e6, maxX: 1e6, minZ: -1e6, maxZ: 1e6 },
+        obstacles: [],
+      });
+      if (next === null) continue;
+      travelled += next.x - current.x;
+      baseline = moveBaselineAfter(now, budget, next.x - current.x);
+      current = next;
+    }
+    expect(travelled).toBeLessThanOrEqual(RUN_SPEED * MOVE_SPEED_SLACK * ((now + MOVE_ELAPSED_CEIL_MS) / 1000) + 1e-9);
   });
 });
 

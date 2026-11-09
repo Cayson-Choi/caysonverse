@@ -5,6 +5,7 @@ import type { ClassState, EscapeState, WorldState } from "@caysonverse/shared/sc
 import { WORLD_ROOM, VILLAGE_ROOM, CHAT_MAX_LENGTH } from "@caysonverse/shared/constants";
 import { MessageType } from "@caysonverse/shared/messages";
 import type { MovePayload } from "@caysonverse/shared/messages";
+import { recordSentMove } from "../game/sentMoves";
 import type { Appearance } from "@caysonverse/shared/appearance";
 import { CLASS_ROOM, type TextLevel } from "@caysonverse/shared/escape/constants";
 import { normalizeClassCode } from "@caysonverse/shared/escape/classCode";
@@ -435,9 +436,15 @@ export function sendEscape<K extends keyof EscapePayloads>(type: K, payload: Esc
 
 // ─────────────────────────── Player messages: the ACTIVE room ───────────────────────────
 
-/** Send a throttled position update to the active room. No-op if not connected. */
+/**
+ * Send a throttled position update to the active room. No-op if not connected. Each sent pose is remembered by
+ * its stamp, so the self-correction can compare the server's echo with where I was then (game/sentMoves.ts).
+ */
 export function sendMove(payload: MovePayload): void {
-  getActiveRoom()?.send(MessageType.Move, payload);
+  const active = getActiveRoom();
+  if (!active) return;
+  recordSentMove(payload);
+  active.send(MessageType.Move, payload);
 }
 
 /**

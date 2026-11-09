@@ -1,16 +1,16 @@
 import { describe, it, expect } from "vitest";
+import { MOVE_SPEED } from "@caysonverse/shared/constants";
 import {
+  isResting,
   pushSnapshot,
   remoteGaitSpeed,
+  restTailStart,
   sample,
   exceedsSnapDistance,
   windowedSpeed,
   type Snapshot,
 } from "./interpolation";
-import { RUN_SPEED } from "@caysonverse/shared/constants";
 import {
-  EXTRAPOLATE_MAX_MS,
-  EXTRAPOLATE_SETTLE_MS,
   RUN_ON_SPEED,
   SNAPSHOT_CAPACITY,
   SNAP_DISTANCE,
@@ -77,60 +77,41 @@ describe("sample — clamp to oldest", () => {
   });
 });
 
-describe("sample — extrapolation (loss-hiding that converges to the rest pose)", () => {
-  it("extrapolates at a real (sub-RUN_SPEED) segment velocity within the cap", () => {
-    // 0.3m in x over 100ms => 3 m/s, BELOW RUN_SPEED (6.4) => passes through unclamped.
-    const buf = [snap(0, 0, 0), snap(100, 0.3, 0)];
-    // 100ms past the newest, inside the 250ms cap.
-    const s = sample(buf, 200)!;
-    expect(s.x).toBeCloseTo(0.6, 6); // 0.3 + 0.003 m/ms * 100ms
-    expect(s.speed).toBeCloseTo(3, 4);
+describe("sample — never past the newest snapshot (no dead reckoning: fix/remote-move-snapback)", () => {
+  it("holds the newest pose once renderT reaches it — a stopped walker does not run on and slide back", () => {
+    // A 4 m/s walker's last two patches: the stop pose is x = 0.4. The old code dead-reckoned to x = 1.4
+    // over the next 250 ms (4 m/s) and then eased back to 0.4: the reported "goes ahead, comes back".
+    const buf = [snap(1000, 0, 0, 0.3), snap(1100, 0.4, 0, 0.5)];
+    for (const renderT of [1100, 1101, 1150, 1250, 1350, 1500, 5000]) {
+      const s = sample(buf, renderT)!;
+      expect(s.x).toBe(0.4);
+      expect(s.z).toBe(0);
+      expect(s.yaw).toBe(0.5);
+      expect(s.speed).toBe(0);
+    }
   });
 
-  it("dead-reckons a running remote at its real speed — a RUN_SPEED segment is NOT clamped to the walk speed", () => {
-    // 0.6m in x over 100ms => 6 m/s: a runner (above the 4 m/s walk speed, below RUN_SPEED).
-    const buf = [snap(0, 0, 0), snap(100, 0.6, 0)];
-    const s = sample(buf, 200)!;
-    expect(s.x).toBeCloseTo(0.6 + 0.006 * 100, 6); // 1.2 — NOT 0.6 + 0.004*100 = 1.0
-    expect(s.speed).toBeCloseTo(6, 4); // still reads above RUN_ON_SPEED (5.6) → run cycle
+  it("a runner's drawn x is non-decreasing frame by frame and never exceeds the newest server x", () => {
+    // 6.4 m/s on x, a patch every 100 ms, then a stop: sample every 16 ms well past the end.
+    const buf = Array.from({ length: 8 }, (_, k) => snap(100 * k, 0.64 * k, 0));
+    let prev = -Infinity;
+    for (let renderT = 0; renderT <= 1500; renderT += 16) {
+      const x = sample(buf, renderT)!.x;
+      expect(x).toBeGreaterThanOrEqual(prev);
+      expect(x).toBeLessThanOrEqual(buf[buf.length - 1].x);
+      prev = x;
+    }
+    expect(prev).toBeCloseTo(0.64 * 7, 9); // ends exactly on the server's stop
   });
 
-  it("clamps a jitter-inflated segment velocity to RUN_SPEED (never flings through walls)", () => {
-    // 0.4m received over 20ms READS as 20 m/s — receive-time burst, not real motion.
-    const buf = [snap(0, 0, 0), snap(20, 0.4, 0)];
-    // 100ms past the newest: clamped v = RUN_SPEED (6.4 m/s) = 0.0064 m/ms.
-    const s = sample(buf, 120)!;
-    expect(s.x).toBeCloseTo(0.4 + 0.0064 * 100, 6); // 1.04 — NOT 0.4 + 0.02*100 = 2.4
-    expect(s.speed).toBeCloseTo(RUN_SPEED, 4);
-    // Overshoot at the cap is bounded by RUN_SPEED * cap, not the inflated speed.
-    const atCap = sample(buf, 20 + EXTRAPOLATE_MAX_MS)!;
-    expect(atCap.x).toBeCloseTo(0.4 + (RUN_SPEED / 1000) * EXTRAPOLATE_MAX_MS, 6); // 2.0
-  });
-
-  it("eases back to the newest authoritative pose after the cap, then holds there", () => {
-    const buf = [snap(0, 0, 0), snap(100, 1, 0)]; // 10 m/s => clamped to RUN_SPEED (6.4)
-    const vClampMs = RUN_SPEED / 1000; // 0.0064 m/ms
-    const overshootX = 1 + vClampMs * EXTRAPOLATE_MAX_MS; // 1 + 1.6 = 2.6 at the cap
-    // Midway through the settle: partway back from the overshoot toward newest.x=1.
-    const mid = sample(buf, 100 + EXTRAPOLATE_MAX_MS + EXTRAPOLATE_SETTLE_MS / 2)!;
-    expect(mid.x).toBeCloseTo(overshootX + (1 - overshootX) * 0.5, 5);
-    expect(mid.x).toBeGreaterThan(1); // still past, but heading home
-    expect(mid.x).toBeLessThan(overshootX);
-    expect(mid.speed).toBe(0); // a settling correction reads as idle, not a walk
-    // After the settle completes: converged EXACTLY to the authoritative rest x=1.
-    const settled = sample(buf, 100 + EXTRAPOLATE_MAX_MS + EXTRAPOLATE_SETTLE_MS + 500)!;
-    expect(settled.x).toBeCloseTo(1, 6);
-    expect(settled.z).toBeCloseTo(0, 6);
-    expect(settled.speed).toBe(0);
-  });
-
-  it("converges an idle remote to its true stop point instead of freezing ~1m past it", () => {
-    // The finding's trace: S1(1000,0), S2(1100,0.4 rest). The old code froze at x=1.4.
-    const buf = [snap(1000, 0, 0), snap(1100, 0.4, 0)];
-    // Long after the last patch (idle): must sit AT the authoritative rest x=0.4.
-    const s = sample(buf, 1100 + EXTRAPOLATE_MAX_MS + EXTRAPOLATE_SETTLE_MS + 1000)!;
-    expect(s.x).toBeCloseTo(0.4, 6);
-    expect(s.speed).toBe(0);
+  it("a late patch makes the avatar wait on the newest pose, then continue from there (no overshoot, no step back)", () => {
+    const buf = [snap(0, 0, 0), snap(100, 0.4, 0)];
+    const waiting = sample(buf, 180)!; // the next patch is late: hold
+    expect(waiting.x).toBe(0.4);
+    buf.push(snap(260, 0.8, 0)); // it arrives
+    const after = sample(buf, 181)!;
+    expect(after.x).toBeGreaterThanOrEqual(waiting.x); // forward from where it waited
+    expect(after.x).toBeLessThan(0.8);
   });
 
   it("holds still (speed 0) when only one snapshot exists", () => {
@@ -140,6 +121,31 @@ describe("sample — extrapolation (loss-hiding that converges to the rest pose)
     expect(s.z).toBe(4);
     expect(s.yaw).toBeCloseTo(0.5, 6);
     expect(s.speed).toBe(0);
+  });
+});
+
+describe("sample — a resting pair (a stop and the next start, or a join and the first move)", () => {
+  it("stands on the first pose, then steps off at MOVE_SPEED just in time to reach the second", () => {
+    // 0.4 m after a 1 s pause: a straight line would creep through the whole pause.
+    const buf = [snap(0, 0, 0, 0), snap(1000, 0.4, 0, 1)];
+    const stepOff = 1000 - (0.4 / MOVE_SPEED) * 1000; // 900
+    expect(restTailStart(buf[0], buf[1])).toBeCloseTo(stepOff, 9);
+    expect(sample(buf, 500)!.x).toBe(0);
+    expect(sample(buf, stepOff)!.x).toBe(0);
+    expect(sample(buf, 950)!.x).toBeCloseTo(0.2, 9);
+    expect(sample(buf, 950)!.speed).toBeCloseTo(MOVE_SPEED, 9);
+    expect(sample(buf, 1000)!.x).toBe(0.4);
+    expect(sample(buf, 500)!.yaw).toBeCloseTo(0.5, 9); // the facing still turns across the whole pair
+  });
+
+  it("is resting when slow or long; a moving pair - merged patches included - is a straight line", () => {
+    expect(isResting(snap(0, 0, 0), snap(300, 0.1, 0))).toBe(true); // 0.33 m/s
+    expect(isResting(snap(0, 0, 0), snap(1200, 0.75, 0))).toBe(true); // a join, then a run's first patch
+    expect(isResting(snap(0, 0, 0), snap(117, 0.47, 0))).toBe(false); // a walk step
+    expect(isResting(snap(0, 0, 0), snap(234, 1.5, 0))).toBe(false); // two run steps merged into one patch
+    expect(restTailStart(snap(0, 0, 0), snap(117, 0.47, 0))).toBe(0);
+    expect(isResting(snap(0, 0, 0), snap(1000, 6, 0))).toBe(true); // long...
+    expect(restTailStart(snap(0, 0, 0), snap(1000, 6, 0))).toBe(0); // ...but a long hop moves the whole way
   });
 });
 
@@ -171,8 +177,8 @@ describe("windowedSpeed (path length over a trailing window)", () => {
     expect(windowedSpeed(buf, 1250, 300)).toBeCloseTo((4 * 0.05) / 0.3, 6);
     expect(windowedSpeed(buf, 1300, 300)).toBe(0);
     expect(windowedSpeed(buf, 5000, 300)).toBe(0);
-    // ...although the POSE keeps dead-reckoning past the newest snapshot (unchanged path):
-    expect(sample(buf, 1100)!.x).toBeGreaterThan(buf[10].x);
+    // ...and the POSE holds the newest snapshot meanwhile (no dead reckoning past it):
+    expect(sample(buf, 1100)!.x).toBe(buf[10].x);
   });
 
   it("counts path length, not net displacement - a runner circling at 6.4 m/s still reads as running", () => {

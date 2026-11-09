@@ -11,8 +11,9 @@ import { registerLabel } from "./labelRegistry";
 import { bubbleRestHeight, nametagRestHeight } from "./nametagLayout";
 import { useSpeechBubble } from "./useSpeechBubble";
 import { useEmoji } from "./useEmoji";
-import { getRemoteRecord } from "./remoteStore";
-import { sample, exceedsSnapDistance, remoteGaitSpeed } from "./interpolation";
+import { getRemoteRecord, remoteDrawnProbe } from "./remoteStore";
+import { sample, exceedsSnapDistance } from "./interpolation";
+import { advancePlayout, playoutGaitSpeed } from "./playout";
 import { nextGait } from "./locomotion";
 import { remoteGaitProbe } from "./gait";
 import type { Gait } from "./gait";
@@ -28,7 +29,7 @@ import {
 } from "./jump";
 import { ROLE_TEACHER } from "@caysonverse/shared/constants";
 import { liftForSeatY } from "@caysonverse/shared/sitPose";
-import { ANIM_FADE, CLIP, MODEL_FACING_OFFSET, RENDER_DELAY_MS } from "./constants";
+import { ANIM_FADE, CLIP, MODEL_FACING_OFFSET } from "./constants";
 import { activeSeats } from "./activeMap";
 import { SIT_GLIDE, STAND_GLIDE, sitDownLift, standUpLift, windowProgress } from "./seatMotion";
 import { benchClipPlanes, clipAvatar, enableBenchClipping } from "./benchClip";
@@ -172,6 +173,7 @@ export function RemotePlayer({
     remoteGaitProbe.set(sessionId, "idle");
     return () => {
       remoteGaitProbe.delete(sessionId);
+      remoteDrawnProbe.delete(sessionId);
     };
   }, [sessionId]);
 
@@ -261,17 +263,27 @@ export function RemotePlayer({
     const rec = getRemoteRecord(sessionId);
     if (!group || !rec) return;
 
-    // 1) Sample the snapshot buffer RENDER_DELAY_MS in the past and write pose.
-    //    Seated players emit no moves, so their buffer converges on the seat
-    //    position/yaw — interpolation naturally settles them onto the chair.
+    // 1) Advance this remote's playout clock (it trails the newest data by an adaptive lag and never
+    //    passes it — playout.ts), sample the snapshot buffer there and write the pose. Seated players
+    //    emit no moves, so the buffer ends on the seat position/yaw — the avatar settles onto the chair.
     const nowMs = performance.now();
-    const renderT = nowMs - RENDER_DELAY_MS;
+    const renderT = advancePlayout(rec.playout, rec.snapshots, nowMs);
     const target = sample(rec.snapshots, renderT);
     let snapped = false;
     if (target) {
       snapped = exceedsSnapDistance(group.position.x, group.position.z, target.x, target.z);
       group.position.set(target.x, 0, target.z);
       group.rotation.y = target.yaw + MODEL_FACING_OFFSET;
+      if (import.meta.env.DEV) {
+        // E2E probe (window.__cv.getRemoteDrawn): what this viewer sees, frame by frame. Mutated in place.
+        const drawn = remoteDrawnProbe.get(sessionId);
+        if (drawn) {
+          drawn.t = nowMs;
+          drawn.x = target.x;
+          drawn.z = target.z;
+          drawn.yaw = target.yaw;
+        } else remoteDrawnProbe.set(sessionId, { t: nowMs, x: target.x, z: target.z, yaw: target.yaw });
+      }
     }
 
     // 2) Seat transitions (server-authoritative seatIndex). Sitting/standing are
@@ -404,8 +416,9 @@ export function RemotePlayer({
     //    and not mid-hop (the hop owns the body; landing resumes the loop above).
     if (target && seatModeRef.current === "up" && jumpSeqRef.current === -1 && !landed) {
       // Gait speed is a windowed path length (not the noisy per-segment speed), so
-      // receive-time bursts and jitter cannot flip walk <-> run; see remoteGaitSpeed.
-      const speed = snapped ? 0 : remoteGaitSpeed(rec.snapshots, renderT);
+      // bursts and jitter cannot flip walk <-> run; held on its newest pose, the avatar
+      // goes idle (see playoutGaitSpeed / remoteGaitSpeed).
+      const speed = snapped ? 0 : playoutGaitSpeed(rec.playout, rec.snapshots);
       const gait = nextGait(gaitRef.current, speed);
       if (gait !== gaitRef.current) {
         gaitAction(gaitRef.current)?.fadeOut(ANIM_FADE);

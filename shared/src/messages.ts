@@ -53,6 +53,13 @@ export interface MovePayload {
   x: number;
   z: number;
   yaw: number;
+  /**
+   * The sender's own clock (whole ms, `performance.now()`) on the frame it stood at this pose. The server
+   * echoes it to everyone as `Player.moveT`, so the other clients replay the walk at the times it really
+   * happened instead of at the times the patches reached them (network jitter, 10 Hz patch grouping).
+   * Optional: an older client sends none and is drawn by arrival time.
+   */
+  t?: number;
 }
 
 /** Client -> server: a chat line the sender typed (validated server-side). */

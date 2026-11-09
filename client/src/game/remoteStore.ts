@@ -7,7 +7,8 @@
  */
 
 import type { Appearance } from "@caysonverse/shared/appearance";
-import { pushSnapshot, type Snapshot } from "./interpolation";
+import type { Snapshot } from "./interpolation";
+import { receivePose, type Playout } from "./playout";
 
 /** Everything the renderer needs about one remote player. */
 export interface RemotePlayerRecord {
@@ -28,8 +29,10 @@ export interface RemotePlayerRecord {
    * setter and no listener.
    */
   role: number;
-  /** Position history ring buffer, sampled by the interpolation layer. */
+  /** Position history ring buffer (on the remote's timeline), sampled by the interpolation layer. */
   snapshots: Snapshot[];
+  /** When along `snapshots` this remote is drawn (playout.ts): its timeline, render time and lag. */
+  playout: Playout;
 }
 
 const records = new Map<string, RemotePlayerRecord>();
@@ -101,10 +104,20 @@ export function getRemoteSeatIndices(): number[] {
   return out;
 }
 
-/** Append a position snapshot to a remote player's ring buffer. */
-export function pushRemoteSnapshot(sessionId: string, snapshot: Snapshot): void {
+/**
+ * Take a received pose of a remote into its buffer: `arrivalMs` is the local receive time, `moverT` the synced
+ * `Player.moveT` (the mover's clock at that pose; 0 = none). A no-op for an id not in the store.
+ */
+export function receiveRemotePose(
+  sessionId: string,
+  arrivalMs: number,
+  moverT: number,
+  x: number,
+  z: number,
+  yaw: number,
+): void {
   const record = records.get(sessionId);
-  if (record) pushSnapshot(record.snapshots, snapshot);
+  if (record) receivePose(record.playout, record.snapshots, arrivalMs, moverT, x, z, yaw);
 }
 
 /**
@@ -167,3 +180,20 @@ export function getRemotes(): RemoteSummary[] {
   }
   return out;
 }
+
+/** One remote avatar as it was last DRAWN (DEV/E2E only): the render time and the pose written to the scene. */
+export interface DrawnPose {
+  /** `performance.now()` of the frame that drew it. */
+  t: number;
+  x: number;
+  z: number;
+  yaw: number;
+}
+
+/**
+ * DEV-only E2E probe: the pose each remote avatar was drawn at on its latest frame, keyed by session id —
+ * what the viewer actually SEES, as opposed to `getRemotes` (the newest received snapshot). RemotePlayer
+ * writes it only under `import.meta.env.DEV` (and removes its entry on unmount); `window.__cv.getRemoteDrawn()`
+ * reads it. Always empty in production, where the DEV guard is dead-code-eliminated.
+ */
+export const remoteDrawnProbe = new Map<string, DrawnPose>();
