@@ -537,7 +537,8 @@ class Student {
     private readonly i: number,
   ) {
     this.botIndex = botSeq++;
-    this.nickname = `봇${cls.index + 1}-${String(i + 1).padStart(2, "0")}`;
+    // ≤ 5 characters (NICKNAME_MAX since 2026-11-10): 봇 + class in base 36 + 2-digit student, e.g. 봇101, 봇a07.
+    this.nickname = `봇${(cls.index + 1).toString(36)}${String(i + 1).padStart(2, "0")}`;
     this.leftover = cls.pairs > 0 && i >= cls.pairs * 2;
     this.pair = this.leftover ? cls.pairs - 1 : Math.floor(i / 2);
     this.joiner = this.leftover || i % 2 === 1;

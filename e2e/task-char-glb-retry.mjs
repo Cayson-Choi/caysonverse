@@ -41,7 +41,7 @@ mkdirSync(EVIDENCE, { recursive: true });
 const VIEW = { width: 1280, height: 800 };
 /** Per-run nicknames: a tab of an earlier run may still hold its seat for the 20 s reconnection window. */
 const RUN = String(Date.now() % 10000).padStart(4, "0");
-const NAME = { O: `관찰자${RUN}`, A: `재시도A${RUN}`, C: `재시도C${RUN}` };
+const NAME = { O: `O${RUN}`, A: `A${RUN}`, C: `C${RUN}` }; // ≤ 5 characters (NICKNAME_MAX since 2026-11-10)
 const GLB = /\/models\/character\.glb(\?|$)/;
 const COPY = {
   retrying: "캐릭터를 불러오지 못해 다시 받아 오는 중이에요…",

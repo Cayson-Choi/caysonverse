@@ -12,6 +12,7 @@ import {
   armHeightScaleAt,
   INDOOR_ARM,
   armLookLiftAt,
+  indoorArmShape,
   cameraPad,
   segmentHitFraction,
   springArmDistance,
@@ -445,9 +446,25 @@ describe("the map's own pad (케이슨 마을: 0.3 m, wider than its 0.2 m near 
 
 describe("indoor arm shaping (케이슨 마을 Task 9: the 9 x 12 m hall must not fill the screen with the own head)", () => {
   it("indoors a shortened arm keeps its height and the look rises by (1 − k) × lookLift", () => {
-    expect(INDOOR_ARM).toEqual({ lookLift: 1.3 });
+    expect(INDOOR_ARM).toEqual({ lookLift: 1.3, refReach: 3.6 });
     expect(armHeightScaleAt(0.2, true)).toBe(1);
     expect(armLookLiftAt(0.2, true)).toBeCloseTo(0.8 * INDOOR_ARM.lookLift, 9);
+  });
+
+  it("against a wall a long zoom is shaped like the old 3.6 m reference: same height and look lift as a 3.6 m arm", () => {
+    // Review 2026-11-10: the zoom is no longer capped indoors, so the shaping must not depend on the uncapped length.
+    const pitch = 0.35;
+    const capped = indoorArmShape(2.1, 3.6, 3.6 * Math.sin(pitch), pitch);
+    for (const reach of [6, 10, 18, 28.8]) {
+      const offY = Math.min(reach * Math.sin(pitch), 1.85); // the ceiling clamp may flatten the wanted spot
+      const s = indoorArmShape(2.1, reach, offY, pitch);
+      expect(s.lookLift, `reach ${reach}`).toBeCloseTo(capped.lookLift, 9);
+      expect(s.offY, `reach ${reach}`).toBeCloseTo(Math.min(offY, capped.offY), 9);
+    }
+    // Continuous as the arm clears: at the full reach the whole wanted height and no lift.
+    const full = indoorArmShape(9.999999, 10, 1.85, pitch);
+    expect(full.offY).toBeCloseTo(1.85, 5);
+    expect(full.lookLift).toBe(0);
   });
 
   it("a full arm changes nothing indoors either: the shaping lasts only while a wall is in the way", () => {

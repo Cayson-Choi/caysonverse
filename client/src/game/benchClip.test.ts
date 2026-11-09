@@ -44,11 +44,13 @@ describe("clipAvatar — on and off, recompiling only on a change", () => {
     clipAvatar(avatar, planes);
     expect(a.clippingPlanes).toBe(planes);
     expect(b.clipIntersection).toBe(true);
+    expect(a.clipShadows).toBe(true); // the hidden cloth casts no shadow either
     expect(a.version).toBe(v0 + 1);
     clipAvatar(avatar, planes); // the same: nothing to do
     expect(a.version).toBe(v0 + 1);
     clipAvatar(avatar, null);
     expect(a.clippingPlanes).toBeNull();
     expect(b.clipIntersection).toBe(false);
+    expect(b.clipShadows).toBe(false);
   });
 });

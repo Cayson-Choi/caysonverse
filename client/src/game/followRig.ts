@@ -26,7 +26,7 @@ import { aboveGroundY, smoothToward } from "./cameraControls";
 import { aspectDistanceScale } from "./aspectFraming";
 import { MAZE_CAMERA_LIMIT, cameraLimitAt, indoorArmAt, stepMazeCapEngage } from "./mazeCamera";
 import { indoorCameraClamp, limitedDistance, limitsDiffer, type CameraLimit, type Vec3 } from "./indoorCamera";
-import { ARM_FREE, armHeightScaleAt, armLookLiftAt, springArmDistance, stepArmLimit } from "./cameraCollision";
+import { ARM_FREE, armHeightScaleAt, armLookLiftAt, indoorArmShape, springArmDistance, stepArmLimit } from "./cameraCollision";
 import { getActiveMap } from "./activeMap";
 import type { Orbit } from "./types";
 
@@ -155,9 +155,16 @@ export function stepFollowRig(
         const k = rig.armLimit / reach;
         const indoor = indoorArmAt(map, limitNow);
         tpX = x + offX * k;
-        tpY = HEAD_HEIGHT + offY * armHeightScaleAt(k, indoor);
         tpZ = z + offZ * k;
-        out.lookLift = armLookLiftAt(k, indoor);
+        if (indoor) {
+          // Shaped against the old 3.6 m reference, not the (now uncapped) wanted arm: see indoorArmShape.
+          const shape = indoorArmShape(rig.armLimit, reach, offY, orbit.pitch);
+          tpY = HEAD_HEIGHT + shape.offY;
+          out.lookLift = shape.lookLift;
+        } else {
+          tpY = HEAD_HEIGHT + offY * armHeightScaleAt(k, indoor);
+          out.lookLift = armLookLiftAt(k, indoor);
+        }
       }
     }
   } else {

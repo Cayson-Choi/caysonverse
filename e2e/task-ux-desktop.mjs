@@ -692,13 +692,16 @@ try {
       return b ? { kbd: b.querySelector("kbd")?.textContent ?? null, text: b.querySelector(".cv-action-text")?.textContent ?? null } : null;
     });
     check('the action pill reads "E 앉기" beside the free chair', btn && btn.kbd === "E" && btn.text === "앉기", btn);
+    const orbitBeforeSit = await getOrbit(pa);
     await pa.keyboard.press("e");
     const sat = await pollUntil(() => getPos(pa), (p) => p.seatIndex === 1, 6000);
     check("E → seatIndex === 1", sat.seatIndex === 1, { seatIndex: sat.seatIndex });
     await sleep(1000);
-    const seatYaw = (await getOrbit(pa)).yaw;
-    check(`1 s later orbit.yaw ≈ recenterYaw(SEAT_YAW) ±0.1`, Math.abs(norm(seatYaw - recenterYaw(SEAT_YAW))) <= 0.1, {
-      yaw: r2(seatYaw), want: r2(recenterYaw(SEAT_YAW)),
+    // 2026-11-10 (fix/camera-keep-zoom): sitting no longer swings the camera behind the chair; the orbit stays as set.
+    const seatOrbit = await getOrbit(pa);
+    check("1 s later the orbit (yaw, pitch, zoom) is unchanged by sitting", Math.abs(norm(seatOrbit.yaw - orbitBeforeSit.yaw)) <= 1e-6 &&
+      Math.abs(seatOrbit.pitch - orbitBeforeSit.pitch) <= 1e-6 && Math.abs(seatOrbit.distance - orbitBeforeSit.distance) <= 1e-6, {
+      before: orbitBeforeSit, after: seatOrbit,
     });
     await shot(pa, "pc-05-seated-A.png");
 

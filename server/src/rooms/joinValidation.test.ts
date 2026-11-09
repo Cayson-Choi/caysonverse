@@ -59,6 +59,16 @@ describe("validateJoinOptions — nickname", () => {
   it("rejects longer than 5 characters (after trim) — 발주자 2026-11-10: 이름은 5글자까지만", () => {
     rejected({ ...base, nickname: "abcdef" }); // 6
     rejected({ ...base, nickname: "케이슨마을주" }); // 6
+    rejected({ ...base, nickname: "abcdefghijklm" }); // 13
+  });
+
+  it("a 6..12-character name (legal before the 5-character rule) asks an old tab to refresh instead of locking it out", () => {
+    // Review 2026-11-10: a tab on the old bundle keeps its long name in memory and silently rejoins after the server
+    // restart; a nickname error there is final, a refresh loads the new bundle, which cuts the saved name to 5.
+    expect(rejected({ ...base, nickname: "케이슨마을주민" }).error).toBe(STALE_CLIENT_ERROR);
+    expect(rejected({ ...base, nickname: "  abcdefghijkl  " }).error).toBe(STALE_CLIENT_ERROR); // 12 after trim
+    expect(rejected({ ...base, nickname: "abcdefghijklm" }).error).toBe("닉네임은 2~5자의 한글/영문/숫자만 가능합니다"); // 13
+    expect(rejected({ ...base, nickname: "abcdef!" }).error).toBe("닉네임은 2~5자의 한글/영문/숫자만 가능합니다"); // bad charset
   });
 
   it("rejects control characters", () => {

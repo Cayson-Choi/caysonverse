@@ -8,8 +8,8 @@
  * front drape hang IN FRONT of the edge and stay whole.
  *
  * Two world-space planes with `clipIntersection` (three clips only where a point is behind BOTH): below `seatY`, and
- * behind the front edge (the seat point minus `frontEdge` along the facing). Shadows follow (three's shadow pass
- * copies a material's planes). The renderer needs `localClippingEnabled` (`enableBenchClipping`).
+ * behind the front edge (the seat point minus `frontEdge` along the facing). Shadows follow because `clipShadows` is
+ * set with the planes (three's shadow pass clips only then). The renderer needs `localClippingEnabled` (`enableBenchClipping`).
  */
 
 import { Plane, Vector3, type WebGLRenderer } from "three";
@@ -35,6 +35,9 @@ export function clipAvatar(avatar: BuiltAvatar, planes: Plane[] | null): void {
     if (m.clippingPlanes === planes) continue;
     m.clippingPlanes = planes;
     m.clipIntersection = planes !== null;
+    // Review 2026-11-10: three's shadow pass clips only when clipShadows is set, so without it the hidden cloth
+    // (a long skirt's back panel inside the bench) still cast its shadow on the ground.
+    m.clipShadows = planes !== null;
     m.needsUpdate = true;
   }
 }

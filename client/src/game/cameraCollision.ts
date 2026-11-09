@@ -226,7 +226,31 @@ export function stepArmLimit(limit: number, reach: number, desired: number, dt: 
  * `(1 − k) × lookLift`, so the view looks over the head into the room instead of at it. Like every arm change it lasts
  * only while the wall is in the way (k < 1) and never writes the player's orbit.
  */
-export const INDOOR_ARM = { lookLift: 1.3 } as const;
+export const INDOOR_ARM = { lookLift: 1.3, refReach: 3.6 } as const;
+
+/**
+ * Indoors, the arm against a wall is shaped as it was tuned with the hall's old 3.6 m cap (`INDOOR_ARM.refReach`),
+ * now that the player's zoom is no longer capped (review 2026-11-10: k = clearance / the uncapped wanted arm lifted the
+ * look so far at a long zoom that the avatar slid off the bottom of the screen).
+ * `armLimit`: the clear part of the arm (m, < reach); `reach`: the wanted arm (m); `offY`: the wanted spot's height over
+ * the head (m, after the ceiling clamp); `pitch`: the player's tilt (rad). The kept height is what an arm of
+ * max(reference, clear part) would have at that tilt — the old cap's height while the wall is close, growing back
+ * continuously to the whole wanted height as the arm clears — and never more than `offY` (so never through the ceiling).
+ * The look rises by `(1 − armLimit / reference) × INDOOR_ARM.lookLift`, 0 once the clear arm passes the reference.
+ */
+export function indoorArmShape(
+  armLimit: number,
+  reach: number,
+  offY: number,
+  pitch: number,
+): { offY: number; lookLift: number } {
+  const ref = Math.min(reach, INDOOR_ARM.refReach);
+  const kept = Math.max(ref, armLimit) * Math.sin(pitch);
+  return {
+    offY: offY >= 0 ? Math.min(offY, Math.max(0, kept)) : Math.max(offY, Math.min(0, kept)),
+    lookLift: (1 - Math.min(1, armLimit / ref)) * INDOOR_ARM.lookLift,
+  };
+}
 
 /** Factor on the camera's height offset for an arm shortened to the fraction `k` (0..1): `k` outdoors, whole (1) indoors. */
 export function armHeightScaleAt(k: number, indoor: boolean): number {

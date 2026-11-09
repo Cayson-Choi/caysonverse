@@ -25,6 +25,9 @@ const NICKNAME_ERROR = `닉네임은 ${NICKNAME_MIN}~${NICKNAME_MAX}자의 한�
  */
 export const STALE_CLIENT_ERROR = "새 버전이 나왔어요. 페이지를 새로고침(F5)해 주세요";
 
+/** The nickname limit before 2026-11-10 (2..12): a longer legal-looking name now means an old bundle. */
+const LEGACY_NICKNAME_MAX = 12;
+
 // Allowed nickname characters: Unicode letters (Korean included), Unicode
 // digits, ASCII space, underscore, hyphen. Control characters, emoji and other
 // symbols are excluded because they match none of these classes.
@@ -51,6 +54,13 @@ export function validateJoinOptions(options: unknown): JoinOptions | JoinError {
   // nickname
   if (typeof o.nickname !== "string") return { error: NICKNAME_ERROR };
   const nickname = o.nickname.trim();
+  // Names of 6..12 characters were legal before the 5-character rule (2026-11-10). Today's bundle can never send one
+  // (input maxLength, validateNickname, identityCache cuts saved names), so it comes from a tab still on the old
+  // bundle — typically its silent rejoin after the server restart. Telling it to refresh (a final, Korean message)
+  // lets the new bundle load and shorten the name, instead of locking the player out with a nickname error.
+  if (nickname.length > NICKNAME_MAX && nickname.length <= LEGACY_NICKNAME_MAX && NICKNAME_PATTERN.test(nickname)) {
+    return { error: STALE_CLIENT_ERROR };
+  }
   if (nickname.length < NICKNAME_MIN || nickname.length > NICKNAME_MAX) {
     return { error: NICKNAME_ERROR };
   }

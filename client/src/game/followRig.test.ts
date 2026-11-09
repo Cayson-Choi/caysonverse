@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { VILLAGE_LAYOUT } from "@caysonverse/shared/village/villageLayout";
 import { CAMERA, HEAD_HEIGHT } from "./constants";
-import { ZOOM_BAND } from "./cameraControls";
+import { CAMERA_LOOK_LIFT, ZOOM_BAND } from "./cameraControls";
 import { HALL_ACTIVE_MAP, LEGACY_ACTIVE_MAP, VILLAGE_ACTIVE_MAP, setActiveMap } from "./activeMap";
 import { HALL_CAMERA_LIMIT } from "./indoorCamera";
 import { createFollowRig, createFollowSpot, noteAreaLimit, stepFollowRig, type FollowRig, type FollowSpot } from "./followRig";
@@ -167,6 +167,32 @@ describe("follow rig — doors into and out of a building", () => {
     walk(rig, orbit, body, spot, 1, 0, 0, 0);
     expect(spot.y).toBeLessThanOrEqual(HALL_CAMERA_LIMIT.maxY);
     expectAtChosenSpot(spot, orbit, body.x, body.z, "hall, clear");
+  });
+
+  it("at the hall's door, facing the near wall, the player's own head stays well inside the view at any zoom, tilt or screen", () => {
+    // Review 2026-11-10: with the 3.6 m cap gone, the indoor arm shaping (keep the height, lift the look by (1 − k) ×
+    // 1.3 m) used k = clearance / the uncapped wanted arm, so a long zoom near a wall raised the look so far that the
+    // avatar slid off the bottom of the screen (31° below centre at zoom 18; the vertical half-fov is 27.5°).
+    // Against a wall the arm is now shaped as with the old 3.6 m reference (main: 17.3°).
+    setActiveMap(HALL_ACTIVE_MAP);
+    const body = { x: HALL.spawn.x, z: HALL.spawn.z };
+    for (const distance of [6, 10, 18]) {
+      for (const pitch of [0.35, 0.55]) {
+        for (const aspect of [DESKTOP, 0.46]) {
+          const orbit = frozen({ yaw: 0, pitch, distance }); // looking at the south wall, as right after the door
+          const rig = createFollowRig(orbit);
+          const spot = createFollowSpot();
+          for (let i = 0; i < 90; i += 1) stepFollowRig(rig, orbit, body.x, body.z, aspect, DT, true, spot);
+          const lookY = HEAD_HEIGHT + CAMERA_LOOK_LIFT + spot.lookLift;
+          const v = [body.x - spot.x, lookY - spot.y, body.z - spot.z];
+          const h = [body.x - spot.x, HEAD_HEIGHT - spot.y, body.z - spot.z];
+          const cos = (v[0] * h[0] + v[1] * h[1] + v[2] * h[2]) / (Math.hypot(v[0], v[1], v[2]) * Math.hypot(h[0], h[1], h[2]));
+          const below = (Math.acos(Math.min(1, cos)) * 180) / Math.PI;
+          expect(below, `zoom ${distance}, tilt ${pitch}, aspect ${aspect.toFixed(2)}`).toBeLessThan(20);
+          expect(spot.y).toBeLessThanOrEqual(HALL_CAMERA_LIMIT.maxY + 1e-9);
+        }
+      }
+    }
   });
 
   it("noteAreaLimit is not a crossing when the limit stays the same (a re-render, a hub gate): nothing is reset", () => {
