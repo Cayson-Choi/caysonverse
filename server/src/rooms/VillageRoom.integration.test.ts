@@ -13,7 +13,7 @@ import {
   TYPING_RATE,
 } from "@caysonverse/shared/constants";
 import { MessageType } from "@caysonverse/shared/messages";
-import type { ChatBroadcast, EmojiBroadcast, JumpBroadcast } from "@caysonverse/shared/messages";
+import type { ChatBroadcast, EmojiBroadcast, JumpBroadcast, SitRejectedPayload } from "@caysonverse/shared/messages";
 import {
   SERVER_TIME_INTERVAL_MS,
   VillageMsg,
@@ -21,7 +21,10 @@ import {
   type CandleLitPayload,
   type ServerTimePayload,
 } from "@caysonverse/shared/village/messages";
-import { VILLAGE_LAYOUT, cubbyAnchors } from "@caysonverse/shared/village/villageLayout";
+import { VILLAGE_LAYOUT, cubbyAnchors, villageGeometry } from "@caysonverse/shared/village/villageLayout";
+import { VILLAGE_SEATS } from "@caysonverse/shared/village/benchSeats";
+import { isBlocked } from "@caysonverse/shared/collision";
+import { SEAT_OCCUPIED } from "./seating";
 import { SAMPLE_FILLED_IDS } from "@caysonverse/shared/village/sampleFill";
 import { APPEARANCE_FIELDS, APPEARANCE_RANGES, DEFAULT_APPEARANCE, pickAppearance, type Appearance } from "@caysonverse/shared/appearance";
 import type { Player } from "@caysonverse/shared/schema";
@@ -828,5 +831,176 @@ describe("VillageRoom candles (integration, Task 9)", () => {
     await roundTrip(alice, carol);
     expect(heard.carol).toEqual([]);
     expect(heard.alice).toEqual([]);
+  });
+});
+
+describe("VillageRoom benches (integration)", () => {
+  /** The two seats of the first plaza bench, and a seat of the hall's bench. */
+  const PLAZA_A = 0;
+  const PLAZA_B = 1;
+  const HALL_SEAT = VILLAGE_SEATS.findIndex((s) => s.area === "hall");
+
+  /** Stand a visitor in front of seat `i` (on its dismount spot: within reach, in front of the bench). */
+  const inFrontOf = (player: Player, i: number): void => {
+    const s = VILLAGE_SEATS[i]!;
+    player.area = s.area;
+    placeAt(player, s.standX, s.standZ);
+  };
+  /** How far (m) a point is in front of a seat, along the way its sitter faces. */
+  const aheadOf = (i: number, x: number, z: number): number => {
+    const s = VILLAGE_SEATS[i]!;
+    return (x - s.x) * Math.sin(s.yaw) + (z - s.z) * Math.cos(s.yaw);
+  };
+
+  it("sitting on a plaza bench puts the visitor on the seat, facing the fountain; getting up puts them clear, in front of it", async () => {
+    const { room, client, player } = await visitor();
+    const clock = useClock(room);
+    inFrontOf(player, PLAZA_A);
+    const seat = VILLAGE_SEATS[PLAZA_A]!;
+
+    client.send(MessageType.Sit, { seatIndex: PLAZA_A });
+    expect(await pollFor(() => player.seatIndex === PLAZA_A)).toBe(true);
+    expect(player.x).toBe(seat.x);
+    expect(player.z).toBe(seat.z);
+    expect(player.yaw).toBe(seat.yaw);
+    const towardFountain = Math.atan2(-seat.x, -seat.z);
+    expect(Math.abs(Math.atan2(Math.sin(seat.yaw - towardFountain), Math.cos(seat.yaw - towardFountain)))).toBeLessThan(0.15);
+    // ...and the clients hear it through the state sync (remote players see the sitter seated).
+    expect(await pollFor(() => client.state?.players?.get(client.sessionId)?.seatIndex === PLAZA_A)).toBe(true);
+
+    // Seated: a Move is dropped, the player is held on the bench.
+    clock.t += 500;
+    client.send(MessageType.Move, { x: seat.x + 1, z: seat.z, yaw: 0 });
+    await settle(client);
+    expect(player.x).toBe(seat.x);
+    expect(player.seatIndex).toBe(PLAZA_A);
+
+    client.send(MessageType.Stand, {});
+    expect(await pollFor(() => player.seatIndex === -1)).toBe(true);
+    expect(player.x).toBe(seat.standX);
+    expect(player.z).toBe(seat.standZ);
+    expect(isBlocked(player.x, player.z, PLAYER_RADIUS, villageGeometry.obstacles)).toBe(false);
+    expect(aheadOf(PLAZA_A, player.x, player.z)).toBeGreaterThan(0); // in front of the bench, not behind it
+
+    // Standing again: a step from the dismount spot is accepted.
+    clock.t += 500;
+    client.send(MessageType.Move, { x: player.x + Math.sin(seat.yaw), z: player.z + Math.cos(seat.yaw), yaw: seat.yaw });
+    expect(await pollFor(() => Math.hypot(player.x - seat.standX, player.z - seat.standZ) > 0.9)).toBe(true);
+  });
+
+  it("one sitter per seat: the second asker hears the Korean notice; two share a bench on its two seats, 1.16 m apart", async () => {
+    const room = await colyseus.createRoom<VillageRoom>(VILLAGE_ROOM);
+    const alice = await colyseus.connectTo(room, JOIN);
+    const bob = await colyseus.connectTo(room, JOIN_BOB);
+    const a = room.state.players.get(alice.sessionId)!;
+    const b = room.state.players.get(bob.sessionId)!;
+    inFrontOf(a, PLAZA_A);
+    inFrontOf(b, PLAZA_A);
+    const rejected: SitRejectedPayload[] = [];
+    bob.onMessage(MessageType.SitRejected, (m: SitRejectedPayload) => rejected.push(m));
+
+    alice.send(MessageType.Sit, { seatIndex: PLAZA_A });
+    expect(await pollFor(() => a.seatIndex === PLAZA_A)).toBe(true);
+    bob.send(MessageType.Sit, { seatIndex: PLAZA_A });
+    expect(await pollFor(() => rejected.length === 1)).toBe(true);
+    expect(rejected[0]).toEqual({ reason: SEAT_OCCUPIED });
+    expect(b.seatIndex).toBe(-1);
+
+    // The other seat of the same bench is free.
+    inFrontOf(b, PLAZA_B);
+    bob.send(MessageType.Sit, { seatIndex: PLAZA_B });
+    expect(await pollFor(() => b.seatIndex === PLAZA_B)).toBe(true);
+    expect(VILLAGE_SEATS[PLAZA_A]!.bench).toBe(VILLAGE_SEATS[PLAZA_B]!.bench);
+    expect(Math.hypot(a.x - b.x, a.z - b.z)).toBeCloseTo(1.16, 2);
+
+    // Alice gets up: her seat is free again, but Bob (seated) cannot take a second one.
+    alice.send(MessageType.Stand, {});
+    expect(await pollFor(() => a.seatIndex === -1)).toBe(true);
+    bob.send(MessageType.Sit, { seatIndex: PLAZA_A });
+    await settle(bob);
+    expect(b.seatIndex).toBe(PLAZA_B);
+  });
+
+  it("out of reach, a bad index or a bench of the other area: refused silently", async () => {
+    const { client, player } = await visitor();
+    const rejected: SitRejectedPayload[] = [];
+    client.onMessage(MessageType.SitRejected, (m: SitRejectedPayload) => rejected.push(m));
+    const seat = VILLAGE_SEATS[PLAZA_A]!;
+    placeAt(player, seat.x + 5 * Math.sin(seat.yaw), seat.z + 5 * Math.cos(seat.yaw)); // 5 m in front
+
+    client.send(MessageType.Sit, { seatIndex: PLAZA_A });
+    client.send(MessageType.Sit, { seatIndex: VILLAGE_SEATS.length });
+    client.send(MessageType.Sit, { seatIndex: "0" });
+    // On the hall bench's dismount spot, but in the village (white-box: nobody can walk there).
+    const hall = VILLAGE_SEATS[HALL_SEAT]!;
+    placeAt(player, hall.standX, hall.standZ);
+    client.send(MessageType.Sit, { seatIndex: HALL_SEAT });
+    await settle(client);
+    expect(player.seatIndex).toBe(-1);
+    expect(rejected).toEqual([]);
+  });
+
+  it("inside the hall a visitor sits on the oak bench, facing the memorial table (north), and gets up clear of it", async () => {
+    const { client, player } = await visitor();
+    inFrontOf(player, HALL_SEAT);
+    client.send(MessageType.Sit, { seatIndex: HALL_SEAT });
+    expect(await pollFor(() => player.seatIndex === HALL_SEAT)).toBe(true);
+    expect(player.yaw).toBeCloseTo(Math.PI, 6);
+    client.send(MessageType.Stand, {});
+    expect(await pollFor(() => player.seatIndex === -1)).toBe(true);
+    expect(player.area).toBe("hall");
+    expect(isBlocked(player.x, player.z, PLAYER_RADIUS, villageGeometry.obstacles)).toBe(false);
+    expect(aheadOf(HALL_SEAT, player.x, player.z)).toBeGreaterThan(0);
+  });
+
+  it("a seated visitor cannot use the door (even placed on the pad) until they stand up", async () => {
+    const { room, client, player } = await visitor();
+    const clock = useClock(room);
+    inFrontOf(player, PLAZA_A);
+    client.send(MessageType.Sit, { seatIndex: PLAZA_A });
+    expect(await pollFor(() => player.seatIndex === PLAZA_A)).toBe(true);
+    placeAt(player, OUT_PAD.centre.x, OUT_PAD.centre.z); // white-box: a seated player on the pad
+    clock.t += 1000;
+    client.send(VillageMsg.UseDoor, {});
+    await settle(client);
+    expect(player.area).toBe("village");
+    expect(player.seatIndex).toBe(PLAZA_A);
+  });
+
+  it("a consented leave frees the seat; a drop keeps it through the window, and the window's end frees it", async () => {
+    process.env.CV_RECONNECT_WINDOW_S = "0.3";
+    const room = await colyseus.createRoom<VillageRoom>(VILLAGE_ROOM);
+    const alice = await colyseus.connectTo(room, JOIN);
+    const bob = await colyseus.connectTo(room, JOIN_BOB);
+    const carol = await colyseus.connectTo(room, JOIN_CAROL);
+    const a = room.state.players.get(alice.sessionId)!;
+    const b = room.state.players.get(bob.sessionId)!;
+    const c = room.state.players.get(carol.sessionId)!;
+    inFrontOf(a, PLAZA_A);
+    inFrontOf(b, PLAZA_B);
+    inFrontOf(c, PLAZA_A);
+    alice.send(MessageType.Sit, { seatIndex: PLAZA_A });
+    bob.send(MessageType.Sit, { seatIndex: PLAZA_B });
+    expect(await pollFor(() => a.seatIndex === PLAZA_A && b.seatIndex === PLAZA_B)).toBe(true);
+
+    // Alice leaves for good: Carol may sit there.
+    await alice.leave(true);
+    expect(await pollFor(() => !room.state.players.has(alice.sessionId))).toBe(true);
+    carol.send(MessageType.Sit, { seatIndex: PLAZA_A });
+    expect(await pollFor(() => c.seatIndex === PLAZA_A)).toBe(true);
+
+    // Bob drops: his ghost keeps the seat while the window is open...
+    const bobSid = bob.sessionId;
+    bob.reconnection.enabled = false;
+    bob.connection.close(4010, "test drop");
+    expect(await pollFor(() => room.state.players.get(bobSid)?.connected === false)).toBe(true);
+    expect(room.state.players.get(bobSid)!.seatIndex).toBe(PLAZA_B);
+    // ...and loses it when the window runs out.
+    expect(await pollFor(() => !room.state.players.has(bobSid), 3000)).toBe(true);
+    carol.send(MessageType.Stand, {});
+    expect(await pollFor(() => c.seatIndex === -1)).toBe(true);
+    inFrontOf(c, PLAZA_B);
+    carol.send(MessageType.Sit, { seatIndex: PLAZA_B });
+    expect(await pollFor(() => c.seatIndex === PLAZA_B)).toBe(true);
   });
 });

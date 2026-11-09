@@ -1,12 +1,23 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import { useAnimations, useKeyboardControls } from "@react-three/drei";
-import { Group, LoopOnce } from "three";
+import { Group, LoopOnce, type Plane } from "three";
 import type { Appearance } from "@caysonverse/shared/appearance";
-import { PLAYER_RADIUS, SEATS } from "@caysonverse/shared/worldMap";
+import { PLAYER_RADIUS } from "@caysonverse/shared/worldMap";
+import { liftForSeatY } from "@caysonverse/shared/sitPose";
 import { resolveCollision } from "@caysonverse/shared/collision";
 import { collectObstacles } from "./playerObstacles";
-import { activeBounds } from "./activeMap";
+import { activeBounds, activeSeats } from "./activeMap";
+import {
+  SIT_GLIDE,
+  STAND_GLIDE,
+  glideAt,
+  glideDone,
+  sitDownLift,
+  standUpLift,
+  type Glide,
+} from "./seatMotion";
+import { benchClipPlanes, clipAvatar, enableBenchClipping } from "./benchClip";
 import { readIntent, worldDirection } from "./input";
 import type { Intent, MoveInput } from "./input";
 import { gaitClip, gaitFor, moveSpeed } from "./gait";
@@ -119,6 +130,19 @@ export function LocalPlayer({
   const animTimerRef = useRef(0); // seconds left in the current transient clip
   const prevSeatRef = useRef(-1); // previous confirmed seatIndex (transition edge)
   const standRequestedRef = useRef(false); // debounce: one Stand per seated episode
+  // A seat the sitter rests ON (a village bench, `seatY`): the lift of the seat in use, the seconds spent in the
+  // current sit / stand clip and its length, and the glide onto the seat or off it (seatMotion.ts). A legacy chair
+  // leaves all of it at rest (lift 0, no glide): it keeps its snap.
+  // `clip`: the planes that hide what hangs inside the bench (benchClip.ts), applied once the avatar is on the seat.
+  const seatMotionRef = useRef<{
+    bench: boolean;
+    lift: number;
+    elapsed: number;
+    duration: number;
+    glide: Glide | null;
+    clip: Plane[] | null;
+    clipped: boolean;
+  }>({ bench: false, lift: 0, elapsed: 0, duration: 0, glide: null, clip: null, clipped: false });
   // Jump (Task 11): seq of the registry hop currently animating (-1 = none), and the
   // wrapper that keeps the blob shadow on the floor while the avatar is in the air.
   const jumpSeqRef = useRef(-1);
@@ -325,14 +349,59 @@ export function LocalPlayer({
    * the lift (the first-person eye rises with it) and the "a press may not jump now"
    * flag shared by Space and the touch button (seated, sit / stand-up clip, reconnecting).
    */
-  function placeGroup(group: Group, canJump: boolean, gait: Gait, suspended: boolean): void {
+  function placeGroup(group: Group, canJump: boolean, gait: Gait, suspended: boolean, seatLift = 0): void {
     const lift = stepJump(performance.now(), canJump, gait);
-    group.position.set(pose.x, lift, pose.z);
-    if (shadowRef.current) shadowRef.current.position.y = -lift;
+    // `seatLift` raises the sitter onto a bench's surface (0 everywhere else); the shadow stays on the floor.
+    group.position.set(pose.x, lift + seatLift, pose.z);
+    if (shadowRef.current) shadowRef.current.position.y = -(lift + seatLift);
     publishLocalJump(lift, !canJump || suspended);
   }
 
-  useFrame((_state, delta) => {
+  /** The bench lift for this frame: eased in while sitting down, held while seated, eased out while getting up. */
+  function currentSeatLift(): number {
+    const m = seatMotionRef.current;
+    if (m.lift === 0) return 0;
+    switch (animStateRef.current) {
+      case "sitDown":
+        return sitDownLift(m.lift, m.elapsed, m.duration);
+      case "sitIdle":
+        return m.lift;
+      case "standUp":
+        return standUpLift(m.lift, m.elapsed, m.duration);
+      default:
+        return 0;
+    }
+  }
+
+  /**
+   * Advance the glide onto or off a bench (if any) and write the pose from it. Returns whether it is still going —
+   * while it is, the body is carried by the clip, so input waits (getting up) and nothing is sent.
+   */
+  function stepGlide(): boolean {
+    const m = seatMotionRef.current;
+    const g = m.glide;
+    if (!g) return false;
+    if (glideDone(g, m.elapsed, m.duration)) {
+      pose.x = g.toX;
+      pose.z = g.toZ;
+      pose.yaw = g.toYaw;
+      m.glide = null;
+      return false;
+    }
+    glideAt(g, m.elapsed, m.duration, pose);
+    return true;
+  }
+
+  // A remount may get the same assembled avatar back (useAvatar's cache): never hand it on clipped.
+  useEffect(
+    () => () => {
+      clipAvatar(avatar, null);
+      seatMotionRef.current.clipped = false;
+    },
+    [avatar],
+  );
+
+  useFrame((state, delta) => {
     const group = groupRef.current;
     if (!group) return;
 
@@ -390,9 +459,12 @@ export function LocalPlayer({
     // 불가(벽) 해제는 stepClickMove가 스스로 판정하고, 착석 중에는 조향하지
     // 않는다(착석 분기가 "이동 입력=기립"으로 위임 — 아래).
     const manual = intent.forward !== 0 || intent.right !== 0;
+    // Getting up from a bench: the stand-up clip carries the body to the dismount spot (stepGlide below); a click
+    // target set meanwhile is steered toward once it is there.
+    const gliding = seatMotionRef.current.glide !== null;
     if (manual) {
       clearClickTarget();
-    } else if (!suspended && !seated && !isUiCaptured()) {
+    } else if (!suspended && !seated && !gliding && !isUiCaptured()) {
       // ui-capture gate (review v2-14 M1): while the chat input owns the keyboard
       // the KEYS are frozen above — a pre-set click target must freeze too, or the
       // avatar keeps walking while the user types (asymmetric input freeze).
@@ -410,25 +482,41 @@ export function LocalPlayer({
     const run = !suspended && (keys.run || stick.run);
     const gait = gaitFor(moving, run);
 
+    const motion = seatMotionRef.current;
     if (seated && !wasSeated) {
-      // Sit confirmed: snap onto the seat, stop locomotion, play Down → hold Idle.
+      // Sit confirmed: onto the seat, stop locomotion, play Down → hold Idle. A chair: snap onto it. A bench
+      // (`seatY`): walk onto its spot while the clip starts, and rise to its surface as the body sits (seatMotion).
       // 진행 중이던 클릭 자동 이동도 여기서 해제된다 (design 29 (e) 착석 완료).
       clearClickTarget();
-      const s = SEATS[seatIndex];
-      pose.x = s.x;
-      pose.z = s.z;
-      pose.yaw = s.yaw;
+      const s = activeSeats()[seatIndex];
+      motion.bench = s !== undefined && s.seatY !== undefined;
+      motion.lift = liftForSeatY(s?.seatY);
+      motion.clip = benchClipPlanes(s);
+      motion.glide = null;
+      if (s && motion.bench) {
+        motion.glide = { fromX: pose.x, fromZ: pose.z, fromYaw: pose.yaw, toX: s.x, toZ: s.z, toYaw: s.yaw, window: SIT_GLIDE };
+      } else if (s) {
+        pose.x = s.x;
+        pose.z = s.z;
+        pose.yaw = s.yaw;
+      }
       action(gaitClip(gaitRef.current))?.fadeOut(ANIM_FADE);
       gaitRef.current = "idle";
       standRequestedRef.current = false;
       animTimerRef.current = playOnce(CLIP.sitDown);
+      motion.elapsed = 0;
+      motion.duration = animTimerRef.current;
       animStateRef.current = "sitDown";
       // The camera swings behind the chair toward the screen (FP: the look snaps to it).
-      beginSeatCamera(orbit, s.yaw);
+      if (s) beginSeatCamera(orbit, s.yaw);
     } else if (!seated && wasSeated) {
-      // Stand confirmed: snap to the server's dismount pose, play StandUp → loco.
+      // Stand confirmed: to the server's dismount pose, play StandUp → loco. A chair: snap there. A bench: the
+      // clip carries the body from the seat to it (the dismount spot is just in front of the bench).
       const me = getRoom()?.state?.players?.get?.(sessionId);
-      if (me) {
+      motion.glide = null;
+      if (me && motion.bench) {
+        motion.glide = { fromX: pose.x, fromZ: pose.z, fromYaw: pose.yaw, toX: me.x, toZ: me.z, toYaw: pose.yaw, window: STAND_GLIDE };
+      } else if (me) {
         pose.x = me.x;
         pose.z = me.z;
         pose.yaw = me.yaw;
@@ -436,11 +524,17 @@ export function LocalPlayer({
       action(CLIP.sitIdle)?.fadeOut(ANIM_FADE);
       action(CLIP.sitDown)?.fadeOut(ANIM_FADE);
       animTimerRef.current = playOnce(CLIP.sitStand);
+      motion.elapsed = 0;
+      motion.duration = animTimerRef.current;
       animStateRef.current = "standUp";
       // ...and back to the view the player had before sitting down.
       endSeatCamera(orbit);
     }
     prevSeatRef.current = seatIndex;
+
+    // The sit / stand clip's own clock (the lift and the glides follow it).
+    if (animStateRef.current === "sitDown" || animStateRef.current === "standUp") motion.elapsed += delta;
+    const stillGliding = stepGlide();
 
     // Advance the one-shot sit/stand clips off a timer (the mixer is auto-ticked
     // by drei's useAnimations, so the clips play regardless of this branch).
@@ -461,7 +555,23 @@ export function LocalPlayer({
         action(CLIP.sitStand)?.fadeOut(ANIM_FADE);
         animStateRef.current = "loco";
         gaitRef.current = gait === "idle" ? "walk" : "idle"; // force the loco crossfade to re-sync next frame
+        motion.bench = false;
+        motion.lift = 0;
+        motion.clip = null;
       }
+    }
+
+    // Hide what hangs inside the bench while on it: from the moment the avatar stands on the seat's spot (the
+    // walk onto it is over) until the stand-up clip has carried it off (benchClip.ts).
+    const onBench =
+      motion.clip !== null &&
+      (animStateRef.current === "sitIdle" ||
+        animStateRef.current === "standUp" ||
+        (animStateRef.current === "sitDown" && motion.elapsed >= motion.duration * SIT_GLIDE.to));
+    if (onBench !== motion.clipped) {
+      if (onBench) enableBenchClipping(state.gl);
+      clipAvatar(avatar, onBench ? motion.clip : null);
+      motion.clipped = onBench;
     }
 
     // Seated → fully server-positioned: no integration, no moveSender. Standing up
@@ -474,7 +584,16 @@ export function LocalPlayer({
         sendStand();
         standRequestedRef.current = true;
       }
-      placeGroup(group, false, gait, suspended);
+      placeGroup(group, false, gait, suspended, currentSeatLift());
+      group.rotation.y = pose.yaw + MODEL_FACING_OFFSET;
+      return;
+    }
+
+    // Getting up from a bench: the stand-up clip carries the body from the seat to the dismount spot the server
+    // already put us on. Nothing moves the avatar meanwhile and nothing is sent (the pose ends exactly there); held
+    // keys and a click target take over once it is there.
+    if (stillGliding) {
+      placeGroup(group, false, gait, suspended, currentSeatLift());
       group.rotation.y = pose.yaw + MODEL_FACING_OFFSET;
       return;
     }
@@ -512,7 +631,7 @@ export function LocalPlayer({
     // standing sends nothing.
     if (inFp) pose.yaw = normalizeAngle(viewState.fpYaw);
 
-    placeGroup(group, animStateRef.current === "loco", gait, suspended);
+    placeGroup(group, animStateRef.current === "loco", gait, suspended, currentSeatLift());
     group.rotation.y = pose.yaw + MODEL_FACING_OFFSET;
 
     // Crossfade idle <-> walk <-> run on gait changes — but only in pure loco; the

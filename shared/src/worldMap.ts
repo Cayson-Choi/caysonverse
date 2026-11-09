@@ -390,6 +390,18 @@ export interface Seat {
   standX: number;
   /** Dismount Z (same row as the chair). */
   standZ: number;
+  /**
+   * Height (m) of the seat surface, for a seat whose sitter rests ON it (케이슨 마을's benches): the client lifts the
+   * avatar so the sit pose meets it (`liftForSeatY`, sitPose.ts) and getting up steps from the seat to the dismount
+   * point. Absent for the legacy chairs above: their pose is drawn as authored.
+   */
+  seatY?: number;
+  /**
+   * Distance (m) from the seat point back to the seat's front edge, along the facing. A seat that has it is sat on
+   * from the FRONT only: the sit prompt is offered to a player standing in front of that edge, never behind a bench's
+   * backrest. Absent for the legacy chairs (any side within reach).
+   */
+  frontEdge?: number;
 }
 
 /**
@@ -423,22 +435,36 @@ function deriveSeats(): Seat[] {
 export const SEATS: readonly Seat[] = deriveSeats();
 
 /**
+ * Whether a player at `(x, z)` may be offered `seat` from where they stand: always for a chair, and for a seat with
+ * a `frontEdge` (a bench) only in front of that edge (the side the sitter faces).
+ */
+export function approachesSeat(seat: Seat, x: number, z: number): boolean {
+  if (seat.frontEdge === undefined) return true;
+  const ahead = (x - seat.x) * Math.sin(seat.yaw) + (z - seat.z) * Math.cos(seat.yaw);
+  return ahead >= -seat.frontEdge;
+}
+
+/**
  * Pure client proximity pick: the index of the nearest FREE seat within `reach`
  * of `(x, z)`, or null. `isOccupied(i)` reports seats taken by ANY player
  * (self + remotes, read from the schema-synced `seatIndex`). No allocation, so
- * the throttled prompt loop can call it directly.
+ * the throttled prompt loop can call it directly. `seats` is the chair list of the
+ * map the player stands in (default: this world's `SEATS`); a bench is offered only
+ * from its front (`approachesSeat`).
  */
 export function nearestFreeSeat(
   x: number,
   z: number,
   isOccupied: (index: number) => boolean,
   reach: number = SEAT_REACH,
+  seats: readonly Seat[] = SEATS,
 ): number | null {
   let best = -1;
   let bestDist = reach;
-  for (let i = 0; i < SEATS.length; i++) {
+  for (let i = 0; i < seats.length; i++) {
     if (isOccupied(i)) continue;
-    const s = SEATS[i];
+    const s = seats[i];
+    if (!approachesSeat(s, x, z)) continue;
     const d = Math.hypot(x - s.x, z - s.z);
     if (d <= bestDist) {
       bestDist = d;

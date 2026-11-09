@@ -1,13 +1,16 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { afterEach, describe, expect, it } from "vitest";
-import { LEGACY_GEOMETRY } from "@caysonverse/shared/worldMap";
+import { LEGACY_GEOMETRY, SEATS } from "@caysonverse/shared/worldMap";
 import { HUB_GEOMETRY_GATED, HUB_GEOMETRY_OPEN, hubGeometry, hubZoneLabel } from "@caysonverse/shared/school/hubMap";
+import { VILLAGE_SEATS } from "@caysonverse/shared/village/benchSeats";
 import {
   LEGACY_ACTIVE_MAP,
   activeMapVersion,
+  activeSeats,
   getActiveMap,
   hubActiveMap,
   setActiveMap,
+  villageActiveMap,
   type ActiveMap,
 } from "./activeMap";
 import { CAMERA_BOXES, cameraBoxes } from "./cameraCollision";
@@ -55,6 +58,19 @@ describe("activeMap (Task 15 — the map seam)", () => {
     expect(LEGACY_ACTIVE_MAP.seatsAndNpcs).toBe(true);
     expect(hubActiveMap(false).seatsAndNpcs).toBeFalsy();
     expect(hubActiveMap(true).seatsAndNpcs).toBeFalsy();
+  });
+
+  it("each map names its seats: the world's chairs, the village's benches in both areas (one list), none in the hub", () => {
+    expect(LEGACY_ACTIVE_MAP.seats).toBe(SEATS);
+    expect(villageActiveMap("village").seats).toBe(VILLAGE_SEATS);
+    expect(villageActiveMap("hall").seats).toBe(VILLAGE_SEATS);
+    expect(villageActiveMap("village").seatsAndNpcs).toBeFalsy(); // benches, but no 조교 and no world chairs
+    expect(hubActiveMap(false).seats).toBeUndefined();
+    expect(activeSeats()).toBe(SEATS);
+    setActiveMap(villageActiveMap("hall"));
+    expect(activeSeats()).toBe(VILLAGE_SEATS);
+    setActiveMap(hubActiveMap(true));
+    expect(activeSeats()).toEqual([]);
   });
 
   it("cameraBoxes() follows the active map", () => {

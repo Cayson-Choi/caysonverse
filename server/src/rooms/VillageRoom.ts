@@ -14,11 +14,13 @@ import {
   type ServerTimePayload,
 } from "@caysonverse/shared/village/messages";
 import { VILLAGE_LAYOUT, villageGeometry } from "@caysonverse/shared/village/villageLayout";
+import { VILLAGE_SEATS } from "@caysonverse/shared/village/benchSeats";
 import { PlayerRoom, baseTracking, spawnInDisk, type Tracking } from "./PlayerRoom";
 import { validateJoinOptions } from "./joinValidation";
 import { RateWindow } from "./rateLimit";
 import { DOOR_RATE, useDoor } from "./villageDoor";
 import { candleCubby } from "./villageCandle";
+import { validateSit } from "./seating";
 
 /** Per-client bookkeeping (not part of synced state): the base's, plus the door-use cap. */
 interface VillageTracking extends Tracking {
@@ -34,7 +36,10 @@ interface VillageTracking extends Tracking {
  * The base owns Move, Chat, Emoji, Jump and Typing, their caps, the "*" catch-all and the reconnection
  * lifecycle (the default 20 s window). This room supplies the village map (`villageGeometry`: the village
  * and the memorial hall's interior in ONE coordinate space), the spawn, and what only the village has:
- *  - join: `{ nickname, appearance }`, validated like the world's (no admin code, no kick, no seats);
+ *  - join: `{ nickname, appearance }`, validated like the world's (no admin code, no kick);
+ *  - the benches (`MessageType.Sit` / `Stand`, the world's seat messages): `VILLAGE_SEATS`, two per bench, with the
+ *    world's rules — the pure `validateSit`, one sitter per seat, a seated player held in place (no Move, no Jump,
+ *    no door), the seat freed on Stand and on every permanent leave but kept through a reconnection window;
  *  - `VillageMsg.UseDoor`: the memorial hall's door is a validated teleport (see `handleUseDoor`);
  *  - `VillageMsg.LightCandle` (Task 9): a candle in a cubby, told to everyone in the hall (see `handleLightCandle`);
  *  - the hall is a quiet place (`isQuiet`): Emoji and Jump are dropped there, chat still goes through;
@@ -60,9 +65,21 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
   // room. Nothing sets the announcement here (no admin), so it stays empty.
   state = new WorldState();
 
+  /**
+   * Bench occupancy: seatIndex (into VILLAGE_SEATS) → the sessionId sitting there. Server memory only (the player's
+   * `seatIndex` is the synced mirror); freed through the single `releaseSeat` helper on every removal path.
+   */
+  private readonly occupancy = new Map<number, string>();
+
   onCreate(): void {
     // Move, Chat, Emoji, Jump, Typing (+ the "*" catch-all for stray types).
     this.registerPlayerMessages();
+    this.onMessage(MessageType.Sit, (client, payload) => {
+      this.handleSit(client, payload);
+    });
+    this.onMessage(MessageType.Stand, (client) => {
+      this.handleStand(client);
+    });
     this.onMessage(VillageMsg.UseDoor, (client) => {
       this.handleUseDoor(client);
     });
@@ -169,6 +186,88 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     return player.area === "hall";
   }
 
+  /** Seated on a bench → Move and Jump are dropped silently: getting up is an explicit Stand. */
+  protected canMove(player: Player): boolean {
+    return player.seatIndex < 0;
+  }
+
+  /**
+   * Permanent departure (a consented leave or an expired reconnection window): free the bench seat FIRST, then the
+   * base removes the player. A transient drop does not come here (the base's onDrop opens a window), so a ghost keeps
+   * its seat until it is back or gone.
+   */
+  onLeave(client: Client): void {
+    this.releaseSeat(client.sessionId);
+    super.onLeave(client);
+  }
+
+  /**
+   * Sit pipeline (the world's, on the village's benches): sender must have a seat in state → the pure `validateSit`
+   * on VILLAGE_SEATS (garbage / already seated / beyond SEAT_REACH → SILENT drop; taken by someone else → personal
+   * Korean notice). On success, claim the seat, put the player on it (its spot and facing) and reset the move-clock
+   * baseline so the seated span cannot later be spent as a one-shot displacement budget (D1). The client sees itself
+   * seated once `seatIndex` syncs.
+   */
+  private handleSit(client: Client, payload: unknown): void {
+    const player = this.state.players.get(client.sessionId);
+    const track = this.tracking.get(client.sessionId);
+    if (!player || !track) return; // no seat yet / already left → drop
+
+    const result = validateSit(
+      { x: player.x, z: player.z, seatIndex: player.seatIndex },
+      payload,
+      this.occupancy,
+      client.sessionId,
+      VILLAGE_SEATS,
+    );
+    if (result === null) return; // malformed / already seated / out of reach → silent
+    if ("reason" in result) {
+      client.send(MessageType.SitRejected, { reason: result.reason }); // first come, first seated
+      return;
+    }
+
+    const seat = VILLAGE_SEATS[result.seatIndex];
+    // The distance gate already keeps a bench in the other area out of reach (the hall is hundreds of metres away);
+    // the area check states it.
+    if (seat.area !== player.area) return;
+    this.occupancy.set(result.seatIndex, client.sessionId);
+    player.seatIndex = result.seatIndex;
+    player.x = seat.x;
+    player.z = seat.z;
+    player.yaw = seat.yaw;
+    track.lastAcceptedAt = this.now();
+  }
+
+  /**
+   * Stand pipeline: only a SEATED sender is served (else silent drop). The player is put on the seat's dismount spot
+   * (clear of every collider, in front of the bench), the seat is freed, and the move-clock baseline is reset.
+   */
+  private handleStand(client: Client): void {
+    const player = this.state.players.get(client.sessionId);
+    const track = this.tracking.get(client.sessionId);
+    if (!player || !track) return;
+    if (player.seatIndex < 0) return; // not seated → silent drop
+
+    const seat = VILLAGE_SEATS[player.seatIndex];
+    if (seat) {
+      player.x = seat.standX;
+      player.z = seat.standZ;
+    }
+    this.releaseSeat(client.sessionId);
+    track.lastAcceptedAt = this.now();
+  }
+
+  /**
+   * The ONE place a bench seat is freed: the occupancy entry (only if this session still owns it) and the synced
+   * `seatIndex`. From Stand and onLeave — never from onDrop. A standing player is a no-op.
+   */
+  private releaseSeat(sessionId: string): void {
+    const player = this.state.players.get(sessionId);
+    if (!player || player.seatIndex < 0) return;
+    if (this.occupancy.get(player.seatIndex) === sessionId) this.occupancy.delete(player.seatIndex);
+    player.seatIndex = -1;
+  }
+
   /**
    * Door pipeline (binding order): sender must have a seat → the pure rule `useDoor` decides from the
    * player's AUTHORITATIVE area and position (the payload is never read: a client cannot name a place or
@@ -185,6 +284,7 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     const player = this.state.players.get(client.sessionId);
     const track = this.tracking.get(client.sessionId);
     if (!player || !track) return; // no seat yet / already left → drop
+    if (player.seatIndex >= 0) return; // sitting on a bench: stand up first (silent drop)
 
     const arrival = useDoor(player.area, player.x, player.z);
     if (arrival === null) return; // no door within reach → silent drop

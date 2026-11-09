@@ -129,8 +129,9 @@ export function ActionButton({ pose, seat }: { pose: Pose; seat: SeatState }) {
     if (shouldClosePanel(npcState.activeNpc, pose.x, pose.z)) npcState.closePanel();
     // What the active scene offers (the school maps: the hall's rug and pads; empty in the world).
     const targets = getTargets(pose);
+    const map = getActiveMap();
     let next: Interaction | null;
-    if (getActiveMap().seatsAndNpcs) {
+    if (map.seatsAndNpcs) {
       const occupied = new Set(getRemoteSeatIndices());
       next = pickInteraction(
         interactInputAt(
@@ -142,8 +143,14 @@ export function ActionButton({ pose, seat }: { pose: Pose; seat: SeatState }) {
           targets,
         ),
       );
+    } else if (map.seats && map.seats.length > 0) {
+      // 케이슨 마을: its benches (from the front) and the scene's targets; no AI 조교 (the guides are targets).
+      const occupied = new Set(getRemoteSeatIndices());
+      next = pickInteraction(
+        interactInputAt(pose.x, pose.z, seat.index, (i) => occupied.has(i), false, targets, { seats: map.seats, npcs: false }),
+      );
     } else {
-      // Seats and AI 조교 exist in the legacy world only (ruling E6): a school map offers its targets and nothing else.
+      // The school maps have no seats and no AI 조교 (ruling E6): a school map offers its targets and nothing else.
       next = pickInteraction({ seated: false, seat: null, npc: null, npcPanelOpen: false, targets });
     }
     if (!sameInteraction(next, current.current)) {
