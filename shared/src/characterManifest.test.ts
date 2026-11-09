@@ -20,6 +20,7 @@ interface GltfNode {
 interface GltfPrimitive {
   attributes: Record<string, number>;
   indices?: number;
+  material?: number;
 }
 interface GltfMaterial {
   name?: string;
@@ -125,6 +126,29 @@ describe("character manifest ↔ character.glb", () => {
         if (spread > 0.01) moving += 1;
       }
       expect(moving, `${clip}: limb bones that rotate`).toBeGreaterThanOrEqual(2);
+    }
+  });
+
+  it("keeps the bare legs under every short bottom identical (cloth fitting must never move skin)", () => {
+    // 2026-11-10: the bottoms refit (clothfix v7) projected the shorts' own skin legs (mat_skin) as if they were cloth,
+    // up to 14.5 cm, so every look with bare legs under shorts showed torn skin flaps (발주자 신고). The shorts, skirts
+    // and petal skirt all carry the same bare-leg mesh (the skirts' copies are identical; the shorts' copy was tuned
+    // by up to 8.5 mm at the calf long before), so each skin primitive must stay within 1 cm of the skirt's legs.
+    const skinMat = gltf.materials.findIndex((m) => m.name === "mat_skin");
+    expect(skinMat).toBeGreaterThanOrEqual(0);
+    const legs = new Map<string, number[]>();
+    for (const node of meshNodes) {
+      if (!node.name?.startsWith("bottom__")) continue;
+      const prim = gltf.meshes[node.mesh!].primitives.find((p) => p.material === skinMat);
+      if (prim) legs.set(node.name, readFloats(prim.attributes.POSITION));
+    }
+    expect([...legs.keys()].sort()).toEqual(["bottom__longskirt", "bottom__petal_skirt", "bottom__shorts", "bottom__skirt"]);
+    const ref = legs.get("bottom__skirt")!;
+    for (const [name, pos] of legs) {
+      expect(pos.length, name).toBe(ref.length);
+      let worst = 0;
+      for (let i = 0; i < ref.length; i += 1) worst = Math.max(worst, Math.abs(pos[i] - ref[i]));
+      expect(worst, `${name}: bare-leg vertices moved (m)`).toBeLessThan(0.01);
     }
   });
 

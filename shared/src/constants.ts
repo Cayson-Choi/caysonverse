@@ -64,9 +64,9 @@ export const MOVE_ELAPSED_FLOOR_MS = 10;
  */
 export const MOVE_ELAPSED_CEIL_MS = 500;
 
-/** Nickname length bounds, counted after trimming. */
+/** Nickname length bounds, counted after trimming. 발주자(2026-11-10): 이름은 5글자까지만. */
 export const NICKNAME_MIN = 2;
-export const NICKNAME_MAX = 12;
+export const NICKNAME_MAX = 5;
 
 // ── Chat (Task 7) — one auditable place for every chat limit. ──
 

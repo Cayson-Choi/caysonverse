@@ -21,6 +21,7 @@
 
 import { DEFAULT_APPEARANCE, validateAppearance, type Appearance } from "@caysonverse/shared/appearance";
 import { normalizeClassCode } from "@caysonverse/shared/escape/classCode";
+import { NICKNAME_MAX } from "@caysonverse/shared/constants";
 
 const STORAGE_KEY = "cv.entry";
 
@@ -45,7 +46,9 @@ export function loadIdentity(): CachedIdentity {
       if (typeof parsed === "object" && parsed !== null) {
         const stored = parsed as { nickname?: unknown; appearance?: unknown; classCode?: unknown };
         const identity: CachedIdentity = {
-          nickname: typeof stored.nickname === "string" ? stored.nickname : "",
+          // A name saved under the old 12-character rule is cut to today's limit, so the entry form and a reconnect
+          // send a name the server accepts (발주자 2026-11-10: 이름은 5글자까지만).
+          nickname: typeof stored.nickname === "string" ? stored.nickname.trim().slice(0, NICKNAME_MAX) : "",
           appearance: validateAppearance(stored.appearance) ?? defaultAppearance(),
         };
         if ("classCode" in stored) identity.classCode = normalizeClassCode(stored.classCode) ?? "";

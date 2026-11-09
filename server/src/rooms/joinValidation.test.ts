@@ -33,8 +33,9 @@ function maxLook(): Appearance {
 describe("validateJoinOptions — nickname", () => {
   it("accepts Korean, English, digits, space, underscore, hyphen", () => {
     expect(accepted({ ...base, nickname: "케이슨" }).nickname).toBe("케이슨");
-    expect(accepted({ ...base, nickname: "Cayson" }).nickname).toBe("Cayson");
-    expect(accepted({ ...base, nickname: "AI 강사_01-x" }).nickname).toBe("AI 강사_01-x");
+    expect(accepted({ ...base, nickname: "Bob12" }).nickname).toBe("Bob12");
+    expect(accepted({ ...base, nickname: "A 강_x" }).nickname).toBe("A 강_x");
+    expect(accepted({ ...base, nickname: "케이슨마을" }).nickname).toBe("케이슨마을"); // exactly the maximum (5)
     expect(accepted({ ...base, nickname: "12" }).nickname).toBe("12");
   });
 
@@ -45,8 +46,8 @@ describe("validateJoinOptions — nickname", () => {
   it("counts length after trimming", () => {
     // " a " trims to "a" (length 1) -> too short.
     rejected({ ...base, nickname: " a " });
-    // A 12-char name padded with spaces still trims to 12 -> accepted.
-    expect(accepted({ ...base, nickname: "  abcdefghijkl  " }).nickname).toBe("abcdefghijkl");
+    // A 5-char name padded with spaces still trims to 5 -> accepted.
+    expect(accepted({ ...base, nickname: "  abcde  " }).nickname).toBe("abcde");
   });
 
   it("rejects shorter than 2 characters (after trim)", () => {
@@ -55,8 +56,9 @@ describe("validateJoinOptions — nickname", () => {
     rejected({ ...base, nickname: "   " });
   });
 
-  it("rejects longer than 12 characters (after trim)", () => {
-    rejected({ ...base, nickname: "abcdefghijklm" }); // 13
+  it("rejects longer than 5 characters (after trim) — 발주자 2026-11-10: 이름은 5글자까지만", () => {
+    rejected({ ...base, nickname: "abcdef" }); // 6
+    rejected({ ...base, nickname: "케이슨마을주" }); // 6
   });
 
   it("rejects control characters", () => {
@@ -80,7 +82,7 @@ describe("validateJoinOptions — nickname", () => {
 
   it("uses the specified Korean error message for bad nicknames", () => {
     expect(rejected({ ...base, nickname: "a" }).error).toBe(
-      "닉네임은 2~12자의 한글/영문/숫자만 가능합니다",
+      "닉네임은 2~5자의 한글/영문/숫자만 가능합니다",
     );
   });
 });
@@ -141,7 +143,7 @@ describe("validateJoinOptions — appearance", () => {
   });
 
   it("still checks the nickname first for a stale bundle", () =>
-    expect(rejected({ nickname: "a", character: 0, tint: 0 }).error).toBe("닉네임은 2~12자의 한글/영문/숫자만 가능합니다"));
+    expect(rejected({ nickname: "a", character: 0, tint: 0 }).error).toBe("닉네임은 2~5자의 한글/영문/숫자만 가능합니다"));
 
   it("keeps only the 15 appearance fields (extra keys dropped)", () => {
     const r = accepted({
@@ -158,7 +160,7 @@ describe("validateJoinOptions — appearance", () => {
   });
 
   it("checks the nickname before the appearance", () => {
-    expect(rejected({ nickname: "a", appearance: null }).error).toBe("닉네임은 2~12자의 한글/영문/숫자만 가능합니다");
+    expect(rejected({ nickname: "a", appearance: null }).error).toBe("닉네임은 2~5자의 한글/영문/숫자만 가능합니다");
   });
 });
 

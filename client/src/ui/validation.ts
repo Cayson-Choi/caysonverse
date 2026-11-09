@@ -10,7 +10,7 @@ import { APPEARANCE_ERROR, validateAppearance, type Appearance } from "@caysonve
  */
 
 // User-facing strings are Korean (identifiers/comments stay English).
-export const NICKNAME_ERROR = "닉네임은 2~12자의 한글/영문/숫자만 가능합니다";
+export const NICKNAME_ERROR = `닉네임은 ${NICKNAME_MIN}~${NICKNAME_MAX}자의 한글/영문/숫자만 가능합니다`;
 
 // Same class set as the server: Unicode letters/digits, ASCII space, `_`, `-`.
 const NICKNAME_PATTERN = /^[\p{L}\p{N} _-]+$/u;

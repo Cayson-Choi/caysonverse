@@ -231,7 +231,7 @@ function nextWaypoint(
 /** Shard nickname offset so parallel bot processes get distinct numbers. */
 const BOT_OFFSET = Number(process.env.CV_BOT_OFFSET ?? 0) || 0;
 
-/** Zero-padded Korean bot nickname, e.g. `봇001` — always 2-12 chars, always legal. */
+/** Zero-padded Korean bot nickname, e.g. `봇001` — always 2-5 chars (NICKNAME_MAX), always legal. */
 function botNickname(clientId: number): string {
   return `봇${String(BOT_OFFSET + clientId + 1).padStart(3, "0")}`;
 }
