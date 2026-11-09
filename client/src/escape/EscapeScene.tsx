@@ -11,7 +11,6 @@ import { DialogueQueue } from "./dialogue";
 import { FEED_START, feedDialogue } from "./dialogueFeed";
 import { EscapeFx } from "./EscapeFx";
 import { leaveToHall } from "./leave";
-import { ROOM_START_ORBIT } from "./roomCamera";
 import { CounselRoom } from "./CounselRoom";
 import { holdCounselFiles } from "./counselRelease";
 import { useEscapeFinish } from "./useEscapeFinish";
@@ -152,7 +151,6 @@ export function EscapeScene({ identity }: { identity: Identity }) {
       activeMap={active}
       lighting="brightDay"
       effects
-      startOrbit={ROOM_START_ORBIT}
       adminPanel={false}
       world3d={
         <>

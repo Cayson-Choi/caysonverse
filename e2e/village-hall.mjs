@@ -135,7 +135,7 @@ try {
     });
     run.check("160 sample cubbies (60 % of 266)", hall.samples === 160, hall.samples);
     const orbit = await A.page.evaluate(() => window.__cv.getOrbit());
-    run.check("entering reset the pitch to the default (0.35)", Math.abs(orbit.pitch - 0.35) < 0.02, orbit);
+    run.check("the pitch came through the door unchanged (still the first-visit 0.35)", Math.abs(orbit.pitch - 0.35) < 0.02, orbit);
   });
 
   await run.step("the hall, wide: from the arrival, looking into the room", async () => {

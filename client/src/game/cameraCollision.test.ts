@@ -8,12 +8,9 @@ import { PLAYER_RADIUS, WALLS, WALL_HEIGHT } from "@caysonverse/shared/worldMap"
 import {
   ARM_FREE,
   CAMERA_BOXES,
-  SEAT_ARM,
   SPRING,
-  armHeightScale,
   armHeightScaleAt,
   INDOOR_ARM,
-  armLookLift,
   armLookLiftAt,
   cameraPad,
   segmentHitFraction,
@@ -331,38 +328,16 @@ describe("stepArmLimit — the eased limit behind the spring arm", () => {
   });
 });
 
-describe("seated arm shaping (row-0 seats: the pulled-in camera must still see the screen)", () => {
-  it("keeps the tuned values", () => {
-    // lookLift tuned on the row-0 screenshot (the front row sits behind the divider wall).
-    expect(SEAT_ARM).toEqual({ lookLift: 1.6, blendRate: 8 });
+describe("outdoor arm shaping (the angle is kept: the arm shrinks along the camera's own line)", () => {
+  it("a shortened arm scales the height offset with it, and nothing is lifted", () => {
+    expect(armHeightScaleAt(0.5, false)).toBe(0.5);
+    expect(armHeightScaleAt(0.25, false)).toBe(0.25);
+    expect(armLookLiftAt(0.5, false)).toBe(0);
   });
 
-  it("standing: the height offset shrinks with the arm (uniform scale), nothing is lifted", () => {
-    expect(armHeightScale(0.5, 0)).toBe(0.5);
-    expect(armLookLift(0.5, 0)).toBe(0);
-  });
-
-  it("seated: the height offset is kept whole and the look target rises by (1 − k) × lookLift", () => {
-    expect(armHeightScale(0.5, 1)).toBe(1);
-    expect(armLookLift(0.5, 1)).toBeCloseTo(0.5 * SEAT_ARM.lookLift, 9);
-    expect(armLookLift(0.25, 1)).toBeCloseTo(0.75 * SEAT_ARM.lookLift, 9);
-  });
-
-  it("an unshortened arm (k = 1) changes nothing, seated or not", () => {
-    expect(armHeightScale(1, 0)).toBe(1);
-    expect(armHeightScale(1, 1)).toBe(1);
-    expect(armLookLift(1, 1)).toBe(0);
-  });
-
-  it("blends linearly with the eased seat factor, so sitting down and standing up never jump", () => {
-    expect(armHeightScale(0.4, 0.5)).toBeCloseTo(0.7, 9);
-    expect(armLookLift(0.4, 0.5)).toBeCloseTo(0.5 * 0.6 * SEAT_ARM.lookLift, 9);
-    let prev = armHeightScale(0.4, 0);
-    for (let b = 0.1; b <= 1.0001; b += 0.1) {
-      const v = armHeightScale(0.4, b);
-      expect(v).toBeGreaterThanOrEqual(prev);
-      prev = v;
-    }
+  it("an unshortened arm (k = 1) changes nothing", () => {
+    expect(armHeightScaleAt(1, false)).toBe(1);
+    expect(armLookLiftAt(1, false)).toBe(0);
   });
 });
 
@@ -469,33 +444,21 @@ describe("the map's own pad (케이슨 마을: 0.3 m, wider than its 0.2 m near 
 });
 
 describe("indoor arm shaping (케이슨 마을 Task 9: the 9 x 12 m hall must not fill the screen with the own head)", () => {
-  it("indoors a shortened arm keeps its height and the look rises, like the seated arm", () => {
+  it("indoors a shortened arm keeps its height and the look rises by (1 − k) × lookLift", () => {
     expect(INDOOR_ARM).toEqual({ lookLift: 1.3 });
-    expect(armHeightScaleAt(0.2, 0, true)).toBe(1);
-    expect(armLookLiftAt(0.2, 0, true)).toBeCloseTo(0.8 * INDOOR_ARM.lookLift, 9);
+    expect(armHeightScaleAt(0.2, true)).toBe(1);
+    expect(armLookLiftAt(0.2, true)).toBeCloseTo(0.8 * INDOOR_ARM.lookLift, 9);
   });
 
-  it("outdoors nothing changes: the standing and the seated rules as before", () => {
-    for (const [k, seat] of [
-      [0.2, 0],
-      [0.5, 1],
-      [0.4, 0.5],
-    ] as const) {
-      expect(armHeightScaleAt(k, seat, false)).toBe(armHeightScale(k, seat));
-      expect(armLookLiftAt(k, seat, false)).toBe(armLookLift(k, seat));
-    }
-  });
-
-  it("seated indoors keeps the larger seated lift; a full arm changes nothing", () => {
-    expect(armLookLiftAt(0.5, 1, true)).toBeCloseTo(armLookLift(0.5, 1), 9);
-    expect(armHeightScaleAt(1, 0, true)).toBe(1);
-    expect(armLookLiftAt(1, 0, true)).toBe(0);
+  it("a full arm changes nothing indoors either: the shaping lasts only while a wall is in the way", () => {
+    expect(armHeightScaleAt(1, true)).toBe(1);
+    expect(armLookLiftAt(1, true)).toBe(0);
   });
 
   it("at the 0.6 m floor of a 3.6 m arm the camera stays up: the head no longer fills the view from head height", () => {
     const k = SPRING.minDist / 3.6;
     const wanted = 3.6 * Math.sin(0.35); // the height offset of the default pitch
-    expect(wanted * armHeightScaleAt(k, 0, true)).toBeCloseTo(wanted, 9); // indoors: about 1.2 m over the head
-    expect(wanted * armHeightScaleAt(k, 0, false)).toBeLessThan(0.25); // standing outdoors: about head height
+    expect(wanted * armHeightScaleAt(k, true)).toBeCloseTo(wanted, 9); // indoors: about 1.2 m over the head
+    expect(wanted * armHeightScaleAt(k, false)).toBeLessThan(0.25); // outdoors: about head height
   });
 });

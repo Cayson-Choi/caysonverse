@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import { useKeyboardControls } from "@react-three/drei";
 import { Raycaster, Vector2 } from "three";
@@ -27,17 +27,7 @@ import {
 } from "./overview";
 import { onHotkey } from "./hotkeys";
 import { isUiCaptured } from "./uiCapture";
-import {
-  CAMERA_LOOK_LIFT,
-  aboveGroundY,
-  ZOOM_BAND,
-  pinchZoomDelta,
-  recenterYaw,
-  smoothToward,
-  stepFollow,
-  stepKeyYaw,
-  stepOrbitToward,
-} from "./cameraControls";
+import { CAMERA_LOOK_LIFT, ZOOM_BAND, pinchZoomDelta, stepKeyYaw, stepOrbitToward } from "./cameraControls";
 import { DOUBLE_TAP_MS, canTapWalk, isDoubleTap, isLookHalf } from "./tapGesture";
 import type { TapRecord } from "./tapGesture";
 import {
@@ -48,24 +38,9 @@ import {
   getClickTarget,
   clearClickTarget,
 } from "./clickMove";
-import { aspectDistanceScale } from "./aspectFraming";
-import { MAZE_CAMERA_LIMIT, cameraLimitAt, indoorArmAt, stepMazeCapEngage } from "./mazeCamera";
-import {
-  indoorCameraClamp,
-  limitedDistance,
-  limitsDiffer,
-  overviewAllowed,
-  type CameraLimit,
-  type Vec3,
-} from "./indoorCamera";
-import {
-  ARM_FREE,
-  SEAT_ARM,
-  armHeightScaleAt,
-  armLookLiftAt,
-  springArmDistance,
-  stepArmLimit,
-} from "./cameraCollision";
+import { overviewAllowed } from "./indoorCamera";
+import { createFollowRig, createFollowSpot, noteAreaLimit, stepFollowRig } from "./followRig";
+import { rememberOrbit, restoreOrbit } from "./cameraMemory";
 import { cameraProbe } from "./cameraProbe";
 import { activeBounds, getActiveMap } from "./activeMap";
 import { getLocalLift } from "./jump";
@@ -102,15 +77,6 @@ const MAX_KEY_TURN_DT = 0.1;
  * overview inside the maze" feature would flip to re-apply the cap there.
  */
 export const OVERVIEW_ALLOWED_IN_MAZE = true;
-
-/**
- * Scratch points for the camera limit (indoorCamera.ts), made once and rewritten every frame — the clamp
- * allocates nothing. `wantedSpot` is where the camera would sit with no limit, `headSpot` the player's head,
- * `limitedSpot` what the limit leaves of it.
- */
-const wantedSpot: Vec3 = { x: 0, y: 0, z: 0 };
-const headSpot: Vec3 = { x: 0, y: 0, z: 0 };
-const limitedSpot: Vec3 = { x: 0, y: 0, z: 0 };
 
 function clamp(value: number, min: number, max: number): number {
   return value < min ? min : value > max ? max : value;
@@ -150,37 +116,38 @@ function spread(pointers: Map<number, { x: number; y: number }>): number {
  * walks there, two taps swing the camera back behind the body (requestRecenter).
  * Mouse clicks and taps on the stick half walk at once.
  *
- * The camera never turns by itself. The TP orbit yaw changes only by a drag, the
- * held Z / C keys, or `viewState.orbitGoal` (R, double tap, sitting down, standing
- * up) — which any drag / wheel / pinch / Z / C cancels. The view also eases: the TP
- * follow point trails the body (stepFollow) and the follow DISTANCE glides to the
- * zoom intent (smoothToward), so footsteps and wheel notches never jolt the picture.
+ * The camera never moves by itself (owner 2026-11-10: "자동으로 바뀌니까 헷갈려"). The TP
+ * orbit yaw changes only by a drag, the held Z / C keys, or `viewState.orbitGoal` (R,
+ * double tap — the player asking for it), which any drag / wheel / pinch / Z / C cancels;
+ * the pitch only by a drag; the zoom only by the wheel or a pinch. Walking, running,
+ * stopping, turning, doors, sitting, standing, interactions, closing a card or a respawn
+ * change none of them. The zoom and tilt the player chose are remembered for the visit
+ * and across reloads (cameraMemory.ts): restored when the rig mounts — a new scene, a
+ * reconnect, a reload, another experience — and written back after each wheel notch and
+ * at the end of each drag or pinch. (A new scene's yaw starts as the scene sets it: a
+ * direction on one map means nothing on another.)
  *
- * Spring arm: a wall between the head and the wanted TP camera spot pulls the camera
- * in front of it (cameraCollision) — at once on the way in, eased on the way out.
- * Like the portrait pull-back and the maze cap it shapes ONLY the TP pose term.
+ * The TP pose is the follow rig's (followRig.ts): the camera rides rigidly with the body,
+ * the follow DISTANCE glides to a new zoom and then holds it, and the place's ceiling
+ * limit, the spring arm (a wall in the way pulls the camera in front of it while it is
+ * in the way) and the floor stop shape one frame's spot without ever writing the orbit.
+ * All of it shapes ONLY the TP pose term, so at full FP (blend 1, TP weight 0) it is
+ * inert by construction — the FP eye ignores follow distance entirely.
  *
- * All per-frame state lives in the shared `orbit` object and the module `viewState`
- * (both mutated in place) — never React state.
- *
- * On portrait viewports the TP follow distance is scaled up (aspectFraming); the
- * maze zone caps the TP height/distance (mazeCamera). BOTH act only on the TP pose
- * term below, so at full FP (blend 1, TP weight 0) they are inert by construction —
- * the FP eye ignores follow distance entirely and sits well under the maze walls.
+ * All per-frame state lives in the shared `orbit` object, the rig and the module
+ * `viewState` (all mutated in place) — never React state.
  */
 export function CameraRig({ pose, orbit, seat, fogRange = LEGACY_FOG, far: baseFar = CAMERA_FAR }: CameraRigProps) {
   const camera = useThree((s) => s.camera);
   const gl = useThree((s) => s.gl);
-  // Camera-limit engagement (0 = off, 1 = fully limited): the maze's anti-peek cap, or a building's ceiling limit.
-  // Lerped in useFrame so entering/leaving the maze eases the cap in/out with no snap; a building's limit is
-  // engaged at once (the door's curtain hides the cut). A scene that mounts inside a building starts engaged.
-  // Ref, not state.
-  const capEngage = useRef(getActiveMap().cameraLimit ? 1 : 0);
-  // The limit capEngage is blending: the building's, or the maze's. Kept after the player leaves the maze, so the
-  // cap eases OUT with the same numbers it eased in with.
-  const limitRef = useRef<CameraLimit>(getActiveMap().cameraLimit ?? MAZE_CAMERA_LIMIT);
-  // The map's camera limit as of the last frame: a different one is a door into or out of a building.
-  const lastAreaLimit = useRef(getActiveMap().cameraLimit);
+  // The follow rig (followRig.ts) and the spot it writes each frame — made once per mount, mutated in place. The
+  // player's remembered zoom and tilt (cameraMemory.ts) go onto the fresh orbit first, before anything reads it, so a
+  // new scene, a reconnect or a reload starts exactly where the player left the camera (no glide from a default).
+  const [rig] = useState(() => {
+    restoreOrbit(orbit);
+    return createFollowRig(orbit);
+  });
+  const [tpSpot] = useState(createFollowSpot);
   // Live whole-map fit height (aspect-dependent) — recomputed each frame, read by
   // the overview wheel/pinch handlers for the zoom ceiling. Ref, not state.
   const fitHeight = useRef(0);
@@ -191,15 +158,6 @@ export function CameraRig({ pose, orbit, seat, fogRange = LEGACY_FOG, far: baseF
   const lastBounds = useRef(activeBounds());
   // Z / C are registered in the shared KeyboardControls map; read their live state.
   const [, getKeys] = useKeyboardControls<MoveControl>();
-  // Smoothed TP follow point (trails the body) and smoothed follow distance (glides
-  // to the zoom intent). Refs, mutated in place per frame — never React state.
-  const follow = useRef({ x: pose.x, z: pose.z });
-  const renderDist = useRef(orbit.distance);
-  // Spring-arm limit (m): snaps in when a wall is in the way, eases back out at
-  // SPRING.returnRate, and sits at ARM_FREE (no limit) in the open.
-  const armLimit = useRef(ARM_FREE);
-  // Eased 0..1 "seated" factor for the shortened-arm shaping below (0 standing, 1 seated).
-  const seatBlend = useRef(0);
 
   // Dev/E2E only: expose the live camera (the maze cap is not reflected in
   // orbit.distance, and the FP look yaw lives outside orbit). Tree-shaken in prod.
@@ -326,7 +284,7 @@ export function CameraRig({ pose, orbit, seat, fogRange = LEGACY_FOG, far: baseF
         viewState.fpYaw = normalizeAngle(viewState.fpYaw - DRAG_SIGN * dx * gain);
         viewState.fpPitch = clampFpPitch(viewState.fpPitch + DRAG_SIGN * dy * gain);
       } else {
-        cancelOrbitGoal(); // a drag takes the camera back from any recenter / seat glide
+        cancelOrbitGoal(); // a drag takes the camera back from any recenter glide
         const gain = dragSpeed();
         orbit.yaw = normalizeAngle(orbit.yaw - DRAG_SIGN * dx * gain);
         orbit.pitch = clamp(
@@ -394,6 +352,8 @@ export function CameraRig({ pose, orbit, seat, fogRange = LEGACY_FOG, far: baseF
       } catch {
         // pointer may already be released; ignore
       }
+      // The end of a drag (tilt) or a pinch (zoom): keep what the player chose (stored only if it changed).
+      rememberOrbit(orbit);
     };
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
@@ -409,6 +369,7 @@ export function CameraRig({ pose, orbit, seat, fogRange = LEGACY_FOG, far: baseF
       // deltaY > 0 = zoom out (an outward notch in FP returns to TP).
       cancelOrbitGoal(); // the player took the camera back
       applyZoom(orbit, e.deltaY * CAMERA.zoomSpeed, ZOOM_BAND);
+      rememberOrbit(orbit); // the zoom the player just set is the one kept (cameraMemory.ts)
     };
     // V / M / R / Esc come from the shared hotkey table (hotkeys.ts), which already
     // drops auto-repeat, IME composition and keys typed into a focused chat field.
@@ -438,29 +399,17 @@ export function CameraRig({ pose, orbit, seat, fogRange = LEGACY_FOG, far: baseF
       el.removeEventListener("wheel", onWheel);
       offHotkey();
       clearPendingWalk();
+      rememberOrbit(orbit); // a scene ending mid-drag still hands its camera to the next one
     };
   }, [gl, orbit, camera, pose, seat]);
 
   useFrame((state, delta) => {
-    // ── A door into or out of a building (케이슨 마을, indoorCamera.ts) ── the player was just put somewhere else, so
-    // the camera does not glide there (it would fly through walls, or over a roof): it is re-seated at once at its
-    // limited spot behind the player. The follow point, the zoom glide and the spring arm start fresh, the limit is
-    // fully engaged (or released), and the view turns to look the way the player faces. The door's curtain covers it.
+    // ── A door into or out of a building (케이슨 마을, indoorCamera.ts) ── the player was just put somewhere else: the
+    // rig's own easing starts fresh there (followRig.ts `noteAreaLimit`), behind the door's curtain. The view keeps the
+    // player's yaw, pitch and zoom — it no longer swings behind the body or resets the tilt (owner 2026-11-10). A
+    // recenter the player asked for just before the door is dropped: it was aimed for the other side.
     const areaLimit = getActiveMap().cameraLimit;
-    if (limitsDiffer(lastAreaLimit.current, areaLimit)) {
-      lastAreaLimit.current = areaLimit;
-      follow.current.x = pose.x;
-      follow.current.z = pose.z;
-      renderDist.current = orbit.distance;
-      armLimit.current = ARM_FREE;
-      capEngage.current = areaLimit ? 1 : 0;
-      orbit.yaw = recenterYaw(pose.yaw);
-      viewState.fpYaw = orbit.yaw; // the same view in first person (as when a seat turns it)
-      // Into a building the view starts at the default tilt (Task 5 review m2): a steep pitch carried in from outside
-      // would look straight down on the head under the low ceiling. The zoom is left alone (the limit clamps it).
-      if (areaLimit) orbit.pitch = CAMERA.pitch;
-      cancelOrbitGoal();
-    }
+    if (noteAreaLimit(rig, orbit, areaLimit)) cancelOrbitGoal();
     // No overview where the map says so (inside a building): an open one is dropped at once, not eased out.
     if (!overviewAllowed(areaLimit) && (viewState.mode === "ov" || viewState.ovBlend > 0)) dropOverview();
 
@@ -480,17 +429,13 @@ export function CameraRig({ pose, orbit, seat, fogRange = LEGACY_FOG, far: baseF
         }
       }
     }
-    // A pending goal (R, double tap, sitting down) glides the orbit; done → dropped.
+    // A pending goal the player asked for (R, double tap) glides the orbit; done → dropped.
     const goal = viewState.orbitGoal;
     if (goal && stepOrbitToward(orbit, goal, delta)) viewState.orbitGoal = null;
 
-    // The follow point trails the body; the follow distance glides to the zoom
-    // intent. FP ignores both (its eye sits on the pose), but they keep tracking so
-    // leaving FP never jumps.
-    stepFollow(follow.current, pose.x, pose.z, delta);
-    renderDist.current = smoothToward(renderDist.current, orbit.distance, delta);
-    const followX = follow.current.x;
-    const followZ = follow.current.z;
+    // The TP camera follows the body itself (no trailing point), so its distance to the avatar is the zoom.
+    const followX = pose.x;
+    const followZ = pose.z;
 
     // Advance BOTH blend machines, then ease them. `t` = TP<->FP weight (the pose
     // UNDER the overview), `ovT` = overview weight on top.
@@ -525,72 +470,15 @@ export function CameraRig({ pose, orbit, seat, fogRange = LEGACY_FOG, far: baseF
     }
     lastFrameMode.current = viewState.mode;
 
-    // ── Third-person pose ── `orbit.distance` stays the user's zoom intent; the
-    // portrait pull-back and the camera limit apply ONLY here, so they never touch the
-    // FP eye. The limit is a building's ceiling limit (the active map's) or, in the legacy
-    // world, the maze's anti-peek cap: ease engagement toward 1 inside, then clamp both
-    // the effective distance and the final height (indoorCameraClamp) so no pitch/aspect
-    // lifts the camera over the walls or through the roof.
-    const limitNow = cameraLimitAt(getActiveMap(), pose.x, pose.z);
-    if (limitNow) limitRef.current = limitNow;
-    const engage = stepMazeCapEngage(capEngage.current, limitNow !== undefined, delta);
-    capEngage.current = engage;
-    const wantedDistance = renderDist.current * aspectDistanceScale(aspect);
-    const distance = limitedDistance(wantedDistance, limitRef.current, engage);
-    const wantedHoriz = wantedDistance * Math.cos(orbit.pitch);
-    let tpX = followX + wantedHoriz * Math.sin(orbit.yaw);
-    let tpY = HEAD_HEIGHT + wantedDistance * Math.sin(orbit.pitch);
-    let tpZ = followZ + wantedHoriz * Math.cos(orbit.yaw);
-    if (engage > 0) {
-      wantedSpot.x = tpX;
-      wantedSpot.y = tpY;
-      wantedSpot.z = tpZ;
-      headSpot.x = followX;
-      headSpot.y = HEAD_HEIGHT;
-      headSpot.z = followZ;
-      indoorCameraClamp(wantedSpot, headSpot, limitRef.current, engage, limitedSpot);
-      tpX = limitedSpot.x;
-      tpY = limitedSpot.y;
-      tpZ = limitedSpot.z;
-    }
-
-    // Spring arm: cast head → wanted camera spot against the walls and, when one is
-    // in the way, shorten the arm (scale the offset from the head) to just in front of
-    // it. Seated, only the horizontal offset shrinks: the camera keeps its height and
-    // the look target rises (armLookLift), so a seat close to a wall — the front row —
-    // still shows the screen instead of the back of the head. Skipped at full FP
-    // weight, where the TP term is not drawn; the limit is reset there so coming back
-    // out of FP starts with a free arm.
-    let tpLookLift = 0;
-    seatBlend.current = smoothToward(
-      seatBlend.current,
-      seat.index >= 0 ? 1 : 0,
-      delta,
-      SEAT_ARM.blendRate,
-    );
-    if (t < 1) {
-      const offX = tpX - followX;
-      const offY = tpY - HEAD_HEIGHT;
-      const offZ = tpZ - followZ;
-      const reach = Math.sqrt(offX * offX + offY * offY + offZ * offZ);
-      if (reach > 1e-6) {
-        const clear = springArmDistance(followX, HEAD_HEIGHT, followZ, tpX, tpY, tpZ, reach);
-        armLimit.current = stepArmLimit(armLimit.current, clear, reach, delta);
-        if (armLimit.current < reach) {
-          const k = armLimit.current / reach;
-          tpX = followX + offX * k;
-          // Seated — or indoors, under a ceiling (Task 9) — the arm keeps its height and the look rises over the head.
-          const indoor = indoorArmAt(getActiveMap(), limitNow);
-          tpY = HEAD_HEIGHT + offY * armHeightScaleAt(k, seatBlend.current, indoor);
-          tpZ = followZ + offZ * k;
-          tpLookLift = armLookLiftAt(k, seatBlend.current, indoor);
-        }
-      }
-    } else {
-      armLimit.current = ARM_FREE;
-    }
-    // Never under the floor: a low pitch at a long zoom would otherwise look up at the ground's underside.
-    tpY = aboveGroundY(tpY);
+    // ── Third-person pose ── the follow rig's (followRig.ts): the player's orbit, read and never written, shaped for
+    // this frame only by the zoom glide, the portrait pull-back, the place's ceiling limit, the spring arm and the
+    // floor stop. It acts ONLY on the TP term, so it never touches the FP eye. The walls are not cast against at full
+    // FP weight, where the TP term is not drawn.
+    stepFollowRig(rig, orbit, followX, followZ, aspect, delta, t < 1, tpSpot);
+    const tpX = tpSpot.x;
+    const tpY = tpSpot.y;
+    const tpZ = tpSpot.z;
+    const tpLookLift = tpSpot.lookLift;
 
     // ── First-person pose ── camera at the eye; look along the fp yaw/pitch. The
     // horizontal forward (-sin, -cos) matches worldDirection's convention, so
@@ -663,7 +551,7 @@ export function CameraRig({ pose, orbit, seat, fogRange = LEGACY_FOG, far: baseF
     cameraProbe.x = camera.position.x;
     cameraProbe.y = camera.position.y;
     cameraProbe.z = camera.position.z;
-    cameraProbe.distance = distance;
+    cameraProbe.distance = tpSpot.distance;
     cameraProbe.mode = viewState.mode;
     cameraProbe.blend = viewState.blend;
     cameraProbe.fpYaw = viewState.fpYaw;

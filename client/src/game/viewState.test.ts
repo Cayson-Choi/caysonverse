@@ -18,9 +18,7 @@ import {
   exitOverview,
 } from "./viewState";
 import { HALL_ACTIVE_MAP, LEGACY_ACTIVE_MAP, VILLAGE_ACTIVE_MAP, setActiveMap } from "./activeMap";
-import { recenterYaw, stepOrbitToward } from "./cameraControls";
-import { SEAT_CAM } from "./constants";
-import { worldDirection } from "./input";
+import { recenterYaw } from "./cameraControls";
 import { SEAT_YAW } from "@caysonverse/shared/worldMap";
 import { normalizeAngle } from "./yaw";
 import { useViewStore } from "../stores/viewStore";
@@ -47,7 +45,6 @@ describe("viewState — reset", () => {
     viewState.ovCenterZ = 4;
     viewState.ovHeight = 60;
     viewState.orbitGoal = { yaw: 1, pitch: 0.4 };
-    viewState.savedOrbit = { yaw: 0.2, pitch: 0.3, distance: 8 };
     useViewStore.getState().setFp(true);
     useViewStore.getState().setOv(true);
 
@@ -64,7 +61,6 @@ describe("viewState — reset", () => {
       ovCenterZ: 0,
       ovHeight: 0,
       orbitGoal: null,
-      savedOrbit: null,
     });
     expect(useViewStore.getState().isFp).toBe(false);
     expect(useViewStore.getState().isOv).toBe(false);
@@ -277,7 +273,7 @@ describe("viewState — camera goals (R recenter, double-tap, seat camera)", () 
     expect(viewState.orbitGoal).toBeNull();
   });
 
-  it("cancelOrbitGoal clears it; resetViewMode clears orbitGoal and savedOrbit", () => {
+  it("cancelOrbitGoal clears it; resetViewMode clears orbitGoal", () => {
     requestRecenter(1);
     expect(viewState.orbitGoal).not.toBeNull();
     cancelOrbitGoal();
@@ -286,10 +282,8 @@ describe("viewState — camera goals (R recenter, double-tap, seat camera)", () 
     expect(viewState.orbitGoal).toBeNull();
 
     viewState.orbitGoal = { yaw: 2, distance: 4 };
-    viewState.savedOrbit = { yaw: 0.1, pitch: 0.2, distance: 7 };
     resetViewMode();
     expect(viewState.orbitGoal).toBeNull();
-    expect(viewState.savedOrbit).toBeNull();
   });
 
   it("entering first-person drops a pending TP goal (it must not turn the orbit behind FP)", () => {
@@ -309,232 +303,58 @@ describe("viewState — camera goals (R recenter, double-tap, seat camera)", () 
   });
 });
 
-describe("viewState — seat camera (sit → behind the seat facing the screen, stand → back)", () => {
-  it("SEAT_CAM keeps the tuned values (pitch 0.32 rad, 4.2 m behind — see constants.ts)", () => {
-    expect(SEAT_CAM).toEqual({ pitch: 0.32, distance: 4.2 });
+describe("viewState — sitting and standing leave the camera alone (owner 2026-11-10)", () => {
+  /** Everything the camera reads from the view state, as a plain copy. */
+  const snapshot = () => JSON.parse(JSON.stringify(viewState));
+
+  it("third person: sitting down and standing up change neither the orbit nor the view state", () => {
+    const o = orbit({ yaw: 0.9, pitch: 0.5, distance: 9.5 });
+    const before = snapshot();
+    beginSeatCamera(o, SEAT_YAW);
+    expect(o).toEqual({ yaw: 0.9, pitch: 0.5, distance: 9.5 });
+    expect(snapshot()).toEqual(before);
+    expect(viewState.orbitGoal).toBeNull(); // no glide behind the chair
+    endSeatCamera(o);
+    expect(o).toEqual({ yaw: 0.9, pitch: 0.5, distance: 9.5 });
+    expect(snapshot()).toEqual(before);
+    endSeatCamera(); // the call without an orbit is just as inert
+    expect(snapshot()).toEqual(before);
   });
 
-  it("beginSeatCamera saves the orbit once and aims the TP goal behind the seat at SEAT_CAM", () => {
-    const o = orbit({ yaw: 0.9, pitch: 0.5, distance: 8 });
+  it("first person: sitting does not snap the look onto the screen", () => {
+    const o = orbit({ yaw: 0.4 });
+    enterFp(0.4);
+    viewState.fpYaw = 1.1;
+    viewState.fpPitch = 0.3;
     beginSeatCamera(o, SEAT_YAW);
-
-    expect(viewState.savedOrbit).toEqual({ yaw: 0.9, pitch: 0.5, distance: 8 });
-    expect(viewState.savedOrbit).not.toBe(o); // a copy, not the live orbit
-    expect(viewState.orbitGoal).toEqual({
-      yaw: recenterYaw(SEAT_YAW),
-      pitch: SEAT_CAM.pitch,
-      distance: SEAT_CAM.distance,
-    });
-    expect(o).toEqual({ yaw: 0.9, pitch: 0.5, distance: 8 }); // the glide is CameraRig's job
-
-    // Sitting down again (a second call before standing) keeps the FIRST saved orbit.
-    o.yaw = -1;
-    o.pitch = SEAT_CAM.pitch;
-    o.distance = SEAT_CAM.distance;
-    beginSeatCamera(o, SEAT_YAW);
-    expect(viewState.savedOrbit).toEqual({ yaw: 0.9, pitch: 0.5, distance: 8 });
+    expect(viewState.fpYaw).toBe(1.1);
+    expect(viewState.fpPitch).toBe(0.3);
+    expect(viewState.mode).toBe("fp");
+    endSeatCamera(o);
+    expect(viewState.fpYaw).toBe(1.1);
+    expect(o).toEqual({ yaw: 0.4, pitch: 0.35, distance: 6 });
   });
 
-  it("beginSeatCamera replaces a goal that was already running (R pressed just before sitting)", () => {
+  it("a recenter the player asked for just before sitting keeps going (sitting neither replaces nor drops it)", () => {
     const o = orbit();
     requestRecenter(2);
-    beginSeatCamera(o, SEAT_YAW);
-    expect(viewState.orbitGoal).toEqual({
-      yaw: recenterYaw(SEAT_YAW),
-      pitch: SEAT_CAM.pitch,
-      distance: SEAT_CAM.distance,
-    });
-  });
-
-  it("the TP goal glides the orbit until the camera sits behind the seat looking at the screen (+X)", () => {
-    const o = orbit({ yaw: 2.4, pitch: 0.6, distance: 9 });
-    beginSeatCamera(o, SEAT_YAW);
-    let frames = 0;
-    while (viewState.orbitGoal && !stepOrbitToward(o, viewState.orbitGoal, 1 / 60) && frames < 600) frames++;
-    expect(frames).toBeLessThan(600);
-    expect(o.pitch).toBeCloseTo(SEAT_CAM.pitch, 6);
-    expect(o.distance).toBeCloseTo(SEAT_CAM.distance, 6);
-    // "Forward" on the screen is where the camera looks: from behind the seat that is the screen side (+X).
-    const look = worldDirection({ forward: 1, right: 0 }, o.yaw);
-    expect(look.x).toBeCloseTo(1, 6);
-    expect(look.z).toBeCloseTo(0, 6);
-  });
-
-  it("endSeatCamera makes the saved orbit the goal and clears it", () => {
-    const o = orbit({ yaw: 0.9, pitch: 0.5, distance: 8 });
-    beginSeatCamera(o, SEAT_YAW);
-    o.yaw = recenterYaw(SEAT_YAW); // pretend the seat glide finished
-    o.pitch = SEAT_CAM.pitch;
-    o.distance = SEAT_CAM.distance;
-    viewState.orbitGoal = null;
-
-    endSeatCamera();
-    expect(viewState.orbitGoal).toEqual({ yaw: 0.9, pitch: 0.5, distance: 8 });
-    expect(viewState.savedOrbit).toBeNull();
-
-    // The goal really brings the orbit home.
-    let frames = 0;
-    while (viewState.orbitGoal && !stepOrbitToward(o, viewState.orbitGoal, 1 / 60) && frames < 600) frames++;
-    expect(o.yaw).toBeCloseTo(0.9, 6);
-    expect(o.pitch).toBeCloseTo(0.5, 6);
-    expect(o.distance).toBeCloseTo(8, 6);
-
-    // And the goal is its own copy: nothing links it to the live orbit.
-    expect(viewState.savedOrbit).toBeNull();
-  });
-
-  it("endSeatCamera with nothing saved changes nothing (a stand that never had a seat camera)", () => {
-    requestRecenter(1); // an unrelated goal must survive
     const goal = viewState.orbitGoal;
-    endSeatCamera();
-    expect(viewState.orbitGoal).toEqual(goal);
-    expect(viewState.savedOrbit).toBeNull();
-  });
-
-  it("in FP, sitting snaps the look to the screen (+X)", () => {
-    const o = orbit({ yaw: 0.4 });
-    enterFp(0);
     beginSeatCamera(o, SEAT_YAW);
-    const look = worldDirection({ forward: 1, right: 0 }, viewState.fpYaw);
-    expect(look.x).toBeCloseTo(1, 6);
-    expect(look.z).toBeCloseTo(0, 6);
-    expect(viewState.fpYaw).toBeCloseTo(recenterYaw(SEAT_YAW), 6);
-    // FP has no TP orbit to glide: no goal, and the orbit is left alone.
-    expect(viewState.orbitGoal).toBeNull();
-    expect(o).toEqual({ yaw: 0.4, pitch: 0.35, distance: 6 });
-    expect(viewState.mode).toBe("fp");
-    // The orbit is still saved, so standing up can put its zoom back.
-    expect(viewState.savedOrbit).toEqual({ yaw: 0.4, pitch: 0.35, distance: 6 });
-  });
-
-  it("standing up in FP clears the saved orbit without a goal, and puts the TP zoom back", () => {
-    const o = orbit({ yaw: 0.4, pitch: 0.5, distance: 7 });
-    beginSeatCamera(o, SEAT_YAW); // sat in TP: goal toward the seat view
-    o.pitch = SEAT_CAM.pitch; // ...which finished
-    o.distance = SEAT_CAM.distance;
-    viewState.orbitGoal = null;
-    toggleViewMode(o); // V → FP while seated (look seeded from the seat view)
-    expect(viewState.orbitGoal).toBeNull();
-
+    expect(viewState.orbitGoal).toBe(goal);
     endSeatCamera(o);
-    expect(viewState.orbitGoal).toBeNull(); // no TP glide behind the FP view
-    expect(viewState.savedOrbit).toBeNull();
-    expect(o.pitch).toBe(0.5); // the zoom the player had before sitting
-    expect(o.distance).toBe(7);
-
-    // Back in TP later: same zoom as before sitting, looking where FP looked.
-    toggleViewMode(o);
-    expect(viewState.mode).toBe("tp");
-    expect(o.distance).toBe(7);
+    expect(viewState.orbitGoal).toBe(goal);
   });
 
-  it("over the overview the seat camera follows the mode underneath", () => {
-    // Overview opened from TP: the orbit goal still glides behind the map.
-    const o = orbit({ yaw: 1 });
-    toggleOverview();
-    beginSeatCamera(o, SEAT_YAW);
-    expect(viewState.orbitGoal).toEqual({
-      yaw: recenterYaw(SEAT_YAW),
-      pitch: SEAT_CAM.pitch,
-      distance: SEAT_CAM.distance,
-    });
-    endSeatCamera();
-    expect(viewState.orbitGoal).toEqual({ yaw: 1, pitch: 0.35, distance: 6 });
-
-    // Overview opened from FP: the FP look snaps, no TP goal.
-    resetViewMode();
-    const p = orbit({ yaw: 1 });
-    toggleViewMode(p); // FP
-    toggleOverview(); // overview over FP
-    beginSeatCamera(p, SEAT_YAW);
-    expect(viewState.orbitGoal).toBeNull();
-    expect(viewState.fpYaw).toBeCloseTo(recenterYaw(SEAT_YAW), 6);
-    endSeatCamera(p);
-    expect(viewState.orbitGoal).toBeNull();
-    expect(viewState.savedOrbit).toBeNull();
-  });
-
-  it("sitting again while the stand-up restore glide is still running keeps the ORIGINAL orbit", () => {
-    const o = orbit({ yaw: 0.9, pitch: 0.5, distance: 8 });
-    const home = { yaw: 0.9, pitch: 0.5, distance: 8 };
-    beginSeatCamera(o, SEAT_YAW);
-    // The seat glide finishes…
-    while (viewState.orbitGoal && !stepOrbitToward(o, viewState.orbitGoal, 1 / 60)) {
-      /* glide */
+  it("a wheel zoom set before sitting is the zoom after standing up, over any number of sit / stand rounds", () => {
+    const o = orbit({ distance: 6 });
+    applyZoom(o, 3.5, BAND); // one wheel gesture out: 9.5 m
+    expect(o.distance).toBeCloseTo(9.5, 9);
+    for (let i = 0; i < 5; i++) {
+      beginSeatCamera(o, SEAT_YAW);
+      endSeatCamera(o);
     }
-    viewState.orbitGoal = null;
-    // …the player stands, and the restore glide gets only part of the way home…
-    endSeatCamera();
-    const restore = viewState.orbitGoal;
-    expect(restore).not.toBeNull();
-    for (let i = 0; i < 4; i++) stepOrbitToward(o, restore ?? {}, 1 / 60);
-    expect(viewState.orbitGoal).toBe(restore); // still running (nothing has dropped it)
-    expect(o).not.toEqual(home); // mid-glide
-    // …and they sit down again at once: the saved orbit is the one being restored, not the mid-glide one.
-    beginSeatCamera(o, SEAT_YAW);
-    expect(viewState.savedOrbit).toEqual(home);
-    expect(viewState.orbitGoal).toEqual({
-      yaw: recenterYaw(SEAT_YAW),
-      pitch: SEAT_CAM.pitch,
-      distance: SEAT_CAM.distance,
-    });
-    // Standing up once more still goes all the way home.
-    endSeatCamera();
-    expect(viewState.orbitGoal).toEqual(home);
-  });
-
-  it("a finished, cancelled or replaced restore glide is not mistaken for a running one", () => {
-    const home = { yaw: 0.9, pitch: 0.5, distance: 8 };
-    // Finished (CameraRig drops the goal on arrival): the orbit IS home, so the current orbit is saved.
-    let o = orbit({ ...home });
-    beginSeatCamera(o, SEAT_YAW);
-    endSeatCamera();
-    viewState.orbitGoal = null; // arrived
-    o.yaw = 0.2; // (the player has since turned the camera)
-    beginSeatCamera(o, SEAT_YAW);
-    expect(viewState.savedOrbit).toEqual({ yaw: 0.2, pitch: 0.5, distance: 8 });
-
-    // Cancelled by a drag: the player took the camera, so what they left is what gets saved.
-    resetViewMode();
-    o = orbit({ ...home });
-    beginSeatCamera(o, SEAT_YAW);
-    endSeatCamera();
-    cancelOrbitGoal();
-    o.yaw = -0.4;
-    beginSeatCamera(o, SEAT_YAW);
-    expect(viewState.savedOrbit).toEqual({ yaw: -0.4, pitch: 0.5, distance: 8 });
-
-    // Replaced by R: a different goal, so the current orbit is saved.
-    resetViewMode();
-    o = orbit({ ...home });
-    beginSeatCamera(o, SEAT_YAW);
-    endSeatCamera();
-    requestRecenter(1);
-    o.yaw = 0.1;
-    beginSeatCamera(o, SEAT_YAW);
-    expect(viewState.savedOrbit).toEqual({ yaw: 0.1, pitch: 0.5, distance: 8 });
-
-    // A reset forgets the restore goal too.
-    resetViewMode();
-    o = orbit({ ...home });
-    beginSeatCamera(o, SEAT_YAW);
-    endSeatCamera();
-    const staleGoal = viewState.orbitGoal;
-    resetViewMode();
-    viewState.orbitGoal = staleGoal; // even if that very goal object turns up again, it is not a running restore
-    o.yaw = 1.5;
-    beginSeatCamera(o, SEAT_YAW);
-    expect(viewState.savedOrbit).toEqual({ yaw: 1.5, pitch: 0.5, distance: 8 });
-  });
-
-  it("the order matters: FP entry clears a goal, so the seat goal is set after it", () => {
-    const o = orbit();
-    toggleViewMode(o); // → FP
-    toggleViewMode(o); // → TP again
-    beginSeatCamera(o, SEAT_YAW); // goal set after the toggles → survives
-    expect(viewState.orbitGoal).not.toBeNull();
-    toggleViewMode(o); // entering FP afterwards drops it, by design
-    expect(viewState.orbitGoal).toBeNull();
+    expect(o.distance).toBeCloseTo(9.5, 9);
+    expect(o.pitch).toBe(0.35);
   });
 });
 

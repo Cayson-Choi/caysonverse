@@ -25,8 +25,9 @@ function wanted(distance: number, pitch: number, yaw: number, fx: number, fz: nu
 }
 
 describe("HALL_CAMERA_LIMIT", () => {
-  it("is the memorial hall's limit: 3.0 m high (Task 9: under the 3.3 m slab less the 0.3 m pad), 3.6 m away, no overview", () => {
-    expect({ ...HALL_CAMERA_LIMIT }).toEqual({ maxY: 3, maxDistance: 3.6, overview: false });
+  it("is the memorial hall's limit: 3.0 m high (Task 9: under the 3.3 m slab less the 0.3 m pad), no overview, no distance cap", () => {
+    expect({ ...HALL_CAMERA_LIMIT }).toEqual({ maxY: 3, overview: false });
+    expect(HALL_CAMERA_LIMIT.maxDistance).toBeUndefined();
   });
 
   it("keeps the camera under the hall's ceiling", () => {
@@ -35,7 +36,7 @@ describe("HALL_CAMERA_LIMIT", () => {
 });
 
 describe("indoorCameraClamp — the hall never lets the camera reach the ceiling", () => {
-  it("every pitch 0..1.2 and zoom 2.5..18 (and the 1.6x portrait pull-back) stays at y <= maxY and within 3.6 m", () => {
+  it("every pitch 0..1.2 and zoom 2.5..18 (and the 1.6x portrait pull-back) stays at y <= maxY, never farther than asked", () => {
     const yaws = [0, 0.7, Math.PI / 2, 2.4, Math.PI, -1.3];
     let swept = 0;
     for (let pitch = 0; pitch <= CAMERA.maxPitch + 1e-9; pitch += 0.05) {
@@ -44,14 +45,21 @@ describe("indoorCameraClamp — the hall never lets the camera reach the ceiling
           const { desired, target } = wanted(zoom, pitch, yaw, 300, 2);
           const c = indoorCameraClamp(desired, target, HALL_CAMERA_LIMIT);
           expect(c.y).toBeLessThanOrEqual(HALL_CAMERA_LIMIT.maxY + EPS);
-          expect(Math.hypot(c.x - target.x, c.y - target.y, c.z - target.z)).toBeLessThanOrEqual(
-            HALL_CAMERA_LIMIT.maxDistance + EPS,
-          );
+          expect(Math.hypot(c.x - target.x, c.y - target.y, c.z - target.z)).toBeLessThanOrEqual(zoom + EPS);
           swept++;
         }
       }
     }
     expect(swept).toBeGreaterThan(1000);
+  });
+
+  it("no zoom-in at the door: the hall keeps the player's horizontal reach for every zoom (only the height is capped)", () => {
+    for (const zoom of [CAMERA.minDistance, 6, 9.5, CAMERA.maxDistance]) {
+      const { desired, target } = wanted(zoom, 0.35, 0.7, 300, 2);
+      const c = indoorCameraClamp(desired, target, HALL_CAMERA_LIMIT);
+      expect(Math.hypot(c.x - target.x, c.z - target.z)).toBeCloseTo(zoom * Math.cos(0.35), 9);
+      expect(limitedDistance(zoom, HALL_CAMERA_LIMIT)).toBe(zoom);
+    }
   });
 
   it("the extremes: max pitch at max zoom-out is pinned under the ceiling, in front of the player's back", () => {

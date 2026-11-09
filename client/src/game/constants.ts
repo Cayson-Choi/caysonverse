@@ -69,12 +69,12 @@ export const MOVE_KEYS: KeyboardControlsEntry<MoveControl>[] = [
 
 /** Third-person orbit camera tuning. */
 export const CAMERA = {
-  distance: 6, // initial follow distance (m)
+  distance: 6, // first-visit follow distance (m); after that the player's own zoom is kept (cameraMemory.ts)
   minDistance: 2.5,
   // 18m + pitch 0.35 puts the camera ~7.8m up — above the 4m walls, so max
   // zoom-out reads as a bird's-eye overview of the room instead of a wall face.
   maxDistance: 18,
-  pitch: 0.35, // initial elevation (rad)
+  pitch: 0.35, // first-visit elevation (rad); after that the player's own tilt is kept (cameraMemory.ts)
   minPitch: -0.1,
   maxPitch: 1.2,
   // Lowest third-person camera height (m above the y=0 floor). A low pitch at a long zoom (1.4 + 18·sin(-0.1) ≈ -0.4)
@@ -90,15 +90,6 @@ export const CAMERA = {
   ovZoomSpeed: 0.08, // m of height per wheel delta unit
   ovPinchSpeed: 0.15, // m of height per pixel of pinch spread change
 } as const;
-
-/**
- * The third-person view that takes over while seated: a camera right behind the
- * chair, high and far enough to look over the avatar's head at the lecture-hall
- * screen. Tuned by screenshot — the plan's first guess (0.22 rad, 3.2 m) left the big
- * chibi head covering half of the screen. Applied as an orbit goal (the yaw comes from
- * the seat), and given back when the player stands.
- */
-export const SEAT_CAM = { pitch: 0.32, distance: 4.2 } as const;
 
 /**
  * Scene palette — bright daylight sky (design 30: the world reads as a lit real
