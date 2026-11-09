@@ -77,6 +77,9 @@ export const CAMERA = {
   pitch: 0.35, // initial elevation (rad)
   minPitch: -0.1,
   maxPitch: 1.2,
+  // Lowest third-person camera height (m above the y=0 floor). A low pitch at a long zoom (1.4 + 18·sin(-0.1) ≈ -0.4)
+  // used to put the camera under the ground and show its underside (owner 2026-11-09); the arm now stops here.
+  minY: 0.6,
   yaw: 0, // initial azimuth (rad) — camera starts behind the +Z-facing model
   dragSpeed: 0.005, // rad per pixel of pointer drag (mouse + one-finger touch)
   zoomSpeed: 0.01, // m per wheel delta unit (desktop wheel zoom)

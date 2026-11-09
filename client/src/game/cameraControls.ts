@@ -178,3 +178,8 @@ export function stepFollow(
 export function pinchZoomDelta(prevSpreadPx: number, currSpreadPx: number): number {
   return (prevSpreadPx - currSpreadPx) * CAMERA.pinchSpeed;
 }
+
+/** Third-person camera height kept above the floor (CAMERA.minY), so a low angle never looks up from under the ground. */
+export function aboveGroundY(y: number): number {
+  return Math.max(CAMERA.minY, y);
+}

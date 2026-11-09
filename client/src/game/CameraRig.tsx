@@ -29,6 +29,7 @@ import { onHotkey } from "./hotkeys";
 import { isUiCaptured } from "./uiCapture";
 import {
   CAMERA_LOOK_LIFT,
+  aboveGroundY,
   ZOOM_BAND,
   pinchZoomDelta,
   recenterYaw,
@@ -588,6 +589,8 @@ export function CameraRig({ pose, orbit, seat, fogRange = LEGACY_FOG, far: baseF
     } else {
       armLimit.current = ARM_FREE;
     }
+    // Never under the floor: a low pitch at a long zoom would otherwise look up at the ground's underside.
+    tpY = aboveGroundY(tpY);
 
     // ── First-person pose ── camera at the eye; look along the fp yaw/pitch. The
     // horizontal forward (-sin, -cos) matches worldDirection's convention, so

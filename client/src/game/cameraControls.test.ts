@@ -3,6 +3,7 @@ import { SNAP_DISTANCE, CAMERA } from "./constants";
 import { worldDirection } from "./input";
 import { applyZoom, resetViewMode, viewState } from "./viewState";
 import {
+  aboveGroundY,
   CAMERA_KEY_YAW_RATE,
   CAMERA_LOOK_LIFT,
   FOLLOW_SMOOTH_RATE,
@@ -285,5 +286,15 @@ describe("pinchZoomDelta", () => {
     for (let i = 0; i < 200; i++) applyZoom(o, pinchZoomDelta(260, 200), BAND);
     expect(viewState.mode).toBe("tp");
     expect(o.distance).toBe(CAMERA.maxDistance);
+  });
+});
+
+describe("aboveGroundY", () => {
+  it("keeps the camera above the floor at the lowest pitch and longest zoom", () => {
+    const lowest = 1.4 + CAMERA.maxDistance * Math.sin(CAMERA.minPitch);
+    expect(lowest).toBeLessThan(0); // without the floor stop the camera would sit under the ground
+    expect(aboveGroundY(lowest)).toBe(CAMERA.minY);
+    expect(CAMERA.minY).toBeGreaterThan(0);
+    expect(aboveGroundY(3.2)).toBe(3.2); // higher camera heights are untouched
   });
 });
