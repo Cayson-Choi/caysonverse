@@ -1,4 +1,5 @@
 import type { KeyboardControlsEntry } from "@react-three/drei";
+import { MOVE_ELAPSED_CEIL_MS, PATCH_RATE_MS } from "@caysonverse/shared/constants";
 
 /** Name of the head joint accessories (e.g. the AI 조교 halo) are parented to in character.glb. */
 export const HEAD_BONE_NAME = "head";
@@ -202,6 +203,18 @@ export const SNAP_DISTANCE = 3;
  * others seeing a frozen avatar). So a refused runner this far ahead resyncs at once.
  */
 export const REFUSED_SNAP_DISTANCE = 1.5;
+
+/**
+ * How long (ms) the server's echo of my clock must have stayed 0 (it refused my Move and has
+ * taken none since) before the self-correction treats the refusal as one it will not heal.
+ * While it refuses, the server's speed budget keeps filling — up to MOVE_ELAPSED_CEIL_MS of
+ * running — so a short uplink stall (the queued moves arrive bunched, the last ones over the
+ * budget) is absorbed within ~0.3 s: the next moves are taken and the echo carries a stamp
+ * again. Snapping at the first 0 yanked the mover back 1.8-3.4 m (and the others saw it jump
+ * back) for a refusal the server was about to heal. Past the full budget plus one patch, the
+ * server cannot catch up any more. (fix: refused-move snap)
+ */
+export const REFUSAL_HEAL_MS = MOVE_ELAPSED_CEIL_MS + PATCH_RATE_MS;
 
 /**
  * Locomotion hysteresis (m/s): begin the walk cycle above ON, end it below OFF.

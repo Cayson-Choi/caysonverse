@@ -11,7 +11,7 @@ import { registerLabel } from "./labelRegistry";
 import { bubbleRestHeight, nametagRestHeight } from "./nametagLayout";
 import { useSpeechBubble } from "./useSpeechBubble";
 import { useEmoji } from "./useEmoji";
-import { getRemoteRecord, remoteDrawnProbe } from "./remoteStore";
+import { getRemoteRecord, noteRemoteDrawn, remoteDrawnProbe } from "./remoteStore";
 import { sample, exceedsSnapDistance } from "./interpolation";
 import { advancePlayout, playoutGaitSpeed } from "./playout";
 import { nextGait } from "./locomotion";
@@ -28,10 +28,18 @@ import {
   jumpTimeScale,
 } from "./jump";
 import { ROLE_TEACHER } from "@caysonverse/shared/constants";
-import { liftForSeatY } from "@caysonverse/shared/sitPose";
 import { ANIM_FADE, CLIP, MODEL_FACING_OFFSET } from "./constants";
 import { activeSeats } from "./activeMap";
-import { SIT_GLIDE, STAND_GLIDE, sitDownLift, standUpLift, windowProgress } from "./seatMotion";
+import {
+  createSeatLine,
+  createSeatMotion,
+  onBenchNow,
+  seatLift,
+  stepSeatMotion,
+  type GroundPose,
+  type SeatMotion,
+  type SeatTransition,
+} from "./remoteSeat";
 import { benchClipPlanes, clipAvatar, enableBenchClipping } from "./benchClip";
 
 /** Fallback seconds for a sit/stand clip if its duration can't be read yet. */
@@ -110,23 +118,15 @@ export function RemotePlayer({
   // Current gait (idle / walk / run), derived from interpolated speed only.
   const gaitRef = useRef<Gait>("idle");
   const fadeRef = useRef(0); // remaining crossfade time (s); mixer ticks while > 0
-  // Seating anim state machine: `up` = normal loco; `sitting`/`standing` are the
-  // one-shot transient clips; `seated` is the held Sit_Chair_Idle pose.
-  const seatModeRef = useRef<"up" | "sitting" | "seated" | "standing">("up");
-  const seatTimerRef = useRef(0); // seconds left in the current transient clip
-  // A bench (a seat with `seatY`, seatMotion.ts): its lift, the seat's spot (where getting up starts from), the
-  // seconds spent in the current sit / stand clip and its length. A legacy chair leaves `lift` 0 and `bench` false.
+  // Seating (remoteSeat.ts): `up` = normal loco; `sitting`/`standing` are the one-shot transient clips; `seated` is
+  // the held Sit_Chair_Idle pose. The avatar sits down / gets up when its render time reaches the seat change (not
+  // when the patch arrives), gliding onto / off a bench from where it is drawn, snapping onto / off a legacy chair.
+  // Created at bind time (below) from the seat the avatar is drawn on.
+  const seatRef = useRef<SeatMotion | null>(null);
+  // The ground pose drawn on the latest frame (x, z, facing): the glides start from it.
+  const drawnRef = useRef<GroundPose>({ x: 0, z: 0, yaw: 0 });
   // `clip`: the planes that hide what hangs inside the bench (benchClip.ts); `clipped`: applied right now.
-  const benchRef = useRef({
-    bench: false,
-    lift: 0,
-    seatX: 0,
-    seatZ: 0,
-    elapsed: 0,
-    duration: 0,
-    clip: null as Plane[] | null,
-    clipped: false,
-  });
+  const benchClipRef = useRef({ clip: null as Plane[] | null, clipped: false });
   const framesSinceRef = useRef(0); // frames since last mixer.update
   const accDeltaRef = useRef(0); // accumulated delta (s) since last mixer.update
   const prevConnectedRef = useRef(true);
@@ -153,12 +153,21 @@ export function RemotePlayer({
     sitStandAction.current = bind(CLIP.sitStand);
     jumpAction.current = bind(CLIP.jump);
 
-    const startedIndex = getRemoteRecord(sessionId)?.seatIndex ?? -1;
+    // The seat the avatar is DRAWN on (a change still on its way is replayed when the render time gets there).
+    const rec = getRemoteRecord(sessionId);
+    const startedIndex = rec ? (rec.seatLine ?? createSeatLine(rec.seatIndex)).drawn : -1;
     const startedSeated = startedIndex >= 0;
     const rest = startedSeated ? sitIdleAction.current : idleAction.current;
     rest?.reset().fadeIn(0).play();
-    seatModeRef.current = startedSeated ? "seated" : "up";
-    if (startedSeated) noteSeat(startedIndex); // already on a bench: on its surface from the first frame
+    const newest = rec?.snapshots[rec.snapshots.length - 1];
+    if (newest) {
+      drawnRef.current.x = newest.x;
+      drawnRef.current.z = newest.z;
+      drawnRef.current.yaw = newest.yaw;
+    }
+    // Already on a bench: on its surface from the first frame.
+    seatRef.current = createSeatMotion(startedIndex, activeSeats(), drawnRef.current);
+    benchClipRef.current.clip = startedSeated ? benchClipPlanes(activeSeats()[startedIndex]) : null;
     if (import.meta.env.DEV && rest) reportAvatarClip(sessionId, rest.getClip().name);
     mixer.update(0); // apply frame 0 so we don't render the bind/T-pose
     return () => {
@@ -176,18 +185,6 @@ export function RemotePlayer({
       remoteDrawnProbe.delete(sessionId);
     };
   }, [sessionId]);
-
-  /** Remember the seat this avatar sits on: a bench's lift and spot, or nothing for a chair (benchRef). */
-  function noteSeat(index: number): void {
-    const s = activeSeats()[index];
-    const b = benchRef.current;
-    b.bench = s !== undefined && s.seatY !== undefined;
-    b.lift = liftForSeatY(s?.seatY);
-    b.seatX = s?.x ?? 0;
-    b.seatZ = s?.z ?? 0;
-    b.clip = benchClipPlanes(s);
-    b.elapsed = 0;
-  }
 
   /** The looping action that belongs to a gait (null if the clip is missing). */
   const gaitAction = (g: Gait): AnimationAction | null =>
@@ -254,103 +251,84 @@ export function RemotePlayer({
       mixer.uncacheRoot(root);
       // A remount may get the same assembled avatar back (useAvatar's cache): never hand it on clipped.
       clipAvatar(avatar, null);
-      benchRef.current.clipped = false;
+      benchClipRef.current.clipped = false;
     };
   }, [avatar, mixer]);
 
-  useFrame((state, delta) => {
-    const group = groupRef.current;
-    const rec = getRemoteRecord(sessionId);
-    if (!group || !rec) return;
-
-    // 1) Advance this remote's playout clock (it trails the newest data by an adaptive lag and never
-    //    passes it — playout.ts), sample the snapshot buffer there and write the pose. Seated players
-    //    emit no moves, so the buffer ends on the seat position/yaw — the avatar settles onto the chair.
-    const nowMs = performance.now();
-    const renderT = advancePlayout(rec.playout, rec.snapshots, nowMs);
-    const target = sample(rec.snapshots, renderT);
-    let snapped = false;
-    if (target) {
-      snapped = exceedsSnapDistance(group.position.x, group.position.z, target.x, target.z);
-      group.position.set(target.x, 0, target.z);
-      group.rotation.y = target.yaw + MODEL_FACING_OFFSET;
-      if (import.meta.env.DEV) {
-        // E2E probe (window.__cv.getRemoteDrawn): what this viewer sees, frame by frame. Mutated in place.
-        const drawn = remoteDrawnProbe.get(sessionId);
-        if (drawn) {
-          drawn.t = nowMs;
-          drawn.x = target.x;
-          drawn.z = target.z;
-          drawn.yaw = target.yaw;
-        } else remoteDrawnProbe.set(sessionId, { t: nowMs, x: target.x, z: target.z, yaw: target.yaw });
+  /**
+   * The clips of the seat motion (remoteSeat.ts calls this as a change starts or a clip ends): sitting down / getting
+   * up play their one-shot clip and return its length (s); the end of one hands over to the held seated pose or to
+   * idle. Never per frame.
+   */
+  const seatTransition = (what: SeatTransition): number => {
+    switch (what) {
+      case "sit": {
+        gaitAction(gaitRef.current)?.fadeOut(ANIM_FADE);
+        setGait("idle");
+        sitIdleAction.current?.fadeOut(ANIM_FADE);
+        sitStandAction.current?.fadeOut(ANIM_FADE);
+        const seat = seatRef.current;
+        benchClipRef.current.clip = seat ? benchClipPlanes(activeSeats()[seat.seat]) : null;
+        reportClip(sitDownAction.current);
+        return playOnce(sitDownAction.current);
       }
-    }
-
-    // 2) Seat transitions (server-authoritative seatIndex). Sitting/standing are
-    //    one-shot clips; the walk/idle machine is frozen while not `up`.
-    const seated = rec.seatIndex >= 0;
-    const bench = benchRef.current;
-    if (seated && seatModeRef.current === "up") {
-      gaitAction(gaitRef.current)?.fadeOut(ANIM_FADE);
-      setGait("idle");
-      seatTimerRef.current = playOnce(sitDownAction.current);
-      noteSeat(rec.seatIndex);
-      bench.duration = seatTimerRef.current;
-      reportClip(sitDownAction.current);
-      seatModeRef.current = "sitting";
-    } else if (!seated && (seatModeRef.current === "seated" || seatModeRef.current === "sitting")) {
-      sitIdleAction.current?.fadeOut(ANIM_FADE);
-      sitDownAction.current?.fadeOut(ANIM_FADE);
-      seatTimerRef.current = playOnce(sitStandAction.current);
-      bench.elapsed = 0;
-      bench.duration = seatTimerRef.current;
-      reportClip(sitStandAction.current);
-      seatModeRef.current = "standing";
-    }
-    if (seatModeRef.current === "sitting" || seatModeRef.current === "standing") bench.elapsed += delta;
-    // Getting up from a bench: the stand-up clip carries the body from the seat to where the server put it (the
-    // snapshot buffer jumps there at once: the seated span left no samples in between).
-    if (bench.bench && seatModeRef.current === "standing" && target) {
-      const k = windowProgress(bench.elapsed, bench.duration, STAND_GLIDE);
-      group.position.x = bench.seatX + (target.x - bench.seatX) * k;
-      group.position.z = bench.seatZ + (target.z - bench.seatZ) * k;
-    }
-
-    // 3) Advance the transient sit/stand clips off a timer, then hand off.
-    if (seatModeRef.current === "sitting") {
-      seatTimerRef.current -= delta;
-      if (seatTimerRef.current <= 0) {
+      case "stand":
+        sitIdleAction.current?.fadeOut(ANIM_FADE);
+        sitDownAction.current?.fadeOut(ANIM_FADE);
+        reportClip(sitStandAction.current);
+        return playOnce(sitStandAction.current);
+      case "seated":
         sitDownAction.current?.fadeOut(ANIM_FADE);
         sitIdleAction.current?.reset().fadeIn(ANIM_FADE).play();
         reportClip(sitIdleAction.current);
-        seatModeRef.current = "seated";
         fadeRef.current = ANIM_FADE;
-      }
-    } else if (seatModeRef.current === "standing") {
-      seatTimerRef.current -= delta;
-      if (seatTimerRef.current <= 0) {
+        return 0;
+      case "up":
         sitStandAction.current?.fadeOut(ANIM_FADE);
         idleAction.current?.reset().fadeIn(ANIM_FADE).play();
         reportClip(idleAction.current);
         setGait("idle");
-        seatModeRef.current = "up";
         fadeRef.current = ANIM_FADE;
-        bench.bench = false;
-        bench.lift = 0;
-        bench.clip = null;
-      }
+        benchClipRef.current.clip = null;
+        return 0;
+    }
+  };
+
+  useFrame((state, delta) => {
+    const group = groupRef.current;
+    const rec = getRemoteRecord(sessionId);
+    const seat = seatRef.current;
+    if (!group || !rec || !seat) return;
+
+    // 1) Advance this remote's playout clock (it trails the newest data by an adaptive lag and never
+    //    passes it — playout.ts) and sample the snapshot buffer there. Seated players emit no moves, so the
+    //    buffer ends on the seat position/yaw.
+    const nowMs = performance.now();
+    const renderT = advancePlayout(rec.playout, rec.snapshots, nowMs);
+    const target = sample(rec.snapshots, renderT);
+    const drawn = drawnRef.current;
+    let snapped = false;
+    if (target) {
+      snapped = exceedsSnapDistance(drawn.x, drawn.z, target.x, target.z);
+      // 2) Seat changes (server-authoritative seatIndex) are drawn when the render time reaches them: the sit /
+      //    stand clips start there, and the seat motion decides the pose — the sampled one while up, a glide onto
+      //    / off a bench from the drawn pose, a snap onto / off a legacy chair (remoteSeat.ts).
+      const line = (rec.seatLine ??= createSeatLine(rec.seatIndex));
+      stepSeatMotion(seat, line, renderT, target, delta, activeSeats(), drawn, seatTransition);
+      group.position.x = drawn.x;
+      group.position.z = drawn.z;
+      group.rotation.y = drawn.yaw + MODEL_FACING_OFFSET;
+      // The body the local player collides with is the one drawn here (remoteStore.forEachRemotePosition).
+      noteRemoteDrawn(rec, drawn.x, drawn.z);
     }
 
     // Hide what hangs inside the bench while the avatar is on it (benchClip.ts), as for the local player.
-    const onBench =
-      bench.clip !== null &&
-      (seatModeRef.current === "seated" ||
-        seatModeRef.current === "standing" ||
-        (seatModeRef.current === "sitting" && bench.elapsed >= bench.duration * SIT_GLIDE.to));
-    if (onBench !== bench.clipped) {
+    const benchClip = benchClipRef.current;
+    const onBench = benchClip.clip !== null && onBenchNow(seat);
+    if (onBench !== benchClip.clipped) {
       if (onBench) enableBenchClipping(state.gl);
-      clipAvatar(avatar, onBench ? bench.clip : null);
-      bench.clipped = onBench;
+      clipAvatar(avatar, onBench ? benchClip.clip : null);
+      benchClip.clipped = onBench;
     }
 
     // 3b) Jump (Task 11): a broadcast hop lifts the group (display only — the server
@@ -361,7 +339,7 @@ export function RemotePlayer({
     let lift = 0;
     let landed = false;
     {
-      const canJump = seatModeRef.current === "up";
+      const canJump = seat.mode === "up";
       const entry = currentJump(sessionId, canJump, nowMs);
       const phase = jumpPhase(entry, canJump, jumpSeqRef.current);
       const jump = jumpAction.current;
@@ -396,25 +374,36 @@ export function RemotePlayer({
         }
       }
       // A bench raises its sitter onto the seat surface (eased in / out with the clips); the shadow stays down.
-      const mode = seatModeRef.current;
-      const seatLift =
-        bench.lift === 0
-          ? 0
-          : mode === "sitting"
-            ? sitDownLift(bench.lift, bench.elapsed, bench.duration)
-            : mode === "seated"
-              ? bench.lift
-              : mode === "standing"
-                ? standUpLift(bench.lift, bench.elapsed, bench.duration)
-                : 0;
-      group.position.y = lift + seatLift;
-      if (shadowRef.current) shadowRef.current.position.y = -(lift + seatLift);
+      const raise = lift + seatLift(seat);
+      group.position.y = raise;
+      if (shadowRef.current) shadowRef.current.position.y = -raise;
+    }
+    if (import.meta.env.DEV && target) {
+      // E2E probe (window.__cv.getRemoteDrawn): what this viewer sees, frame by frame. Mutated in place.
+      const probe = remoteDrawnProbe.get(sessionId);
+      if (probe) {
+        probe.t = nowMs;
+        probe.x = group.position.x;
+        probe.z = group.position.z;
+        probe.yaw = drawn.yaw;
+        probe.y = group.position.y;
+        probe.mode = seat.mode;
+      } else {
+        remoteDrawnProbe.set(sessionId, {
+          t: nowMs,
+          x: group.position.x,
+          z: group.position.z,
+          yaw: drawn.yaw,
+          y: group.position.y,
+          mode: seat.mode,
+        });
+      }
     }
 
     // 4) Locomotion from interpolated speed — ONLY while standing (a seated avatar
     //    must never show the walk or run cycle, even if a stray snapshot implies speed)
     //    and not mid-hop (the hop owns the body; landing resumes the loop above).
-    if (target && seatModeRef.current === "up" && jumpSeqRef.current === -1 && !landed) {
+    if (target && seat.mode === "up" && jumpSeqRef.current === -1 && !landed) {
       // Gait speed is a windowed path length (not the noisy per-segment speed), so
       // bursts and jitter cannot flip walk <-> run; held on its newest pose, the avatar
       // goes idle (see playoutGaitSpeed / remoteGaitSpeed).
@@ -443,10 +432,7 @@ export function RemotePlayer({
 
     // 7) Mixer discipline: paused while idle/seated-settled; every-frame during a
     //    crossfade OR a one-shot sit/stand/jump clip; distance-throttled while walking/running.
-    const transient =
-      seatModeRef.current === "sitting" ||
-      seatModeRef.current === "standing" ||
-      jumpSeqRef.current !== -1;
+    const transient = seat.mode === "sitting" || seat.mode === "standing" || jumpSeqRef.current !== -1;
     const active = gaitRef.current !== "idle" || fadeRef.current > 0 || transient;
     if (active) {
       accDeltaRef.current += delta;

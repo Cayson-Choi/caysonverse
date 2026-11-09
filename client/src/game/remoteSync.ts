@@ -14,14 +14,13 @@ import { visibilityChange, showsInHub } from "./placeFilter";
 import { normalizeArea, showsInArea, type AreaGate } from "./areaFilter";
 import type { Pose, SeatState } from "./types";
 import { createPlayout } from "./playout";
-import { selfDiverged } from "./sentMoves";
+import { createEchoWatch, healDeadline, noteEcho, selfDiverged } from "./sentMoves";
 import {
   addRemote,
   clearRemotes,
   receiveRemotePose,
   removeRemote,
   setRemoteConnected,
-  setRemoteSeat,
 } from "./remoteStore";
 
 /**
@@ -84,16 +83,42 @@ export function startRemoteSync(
       // to the server value on a large divergence (it placed me, or refused my moves).
       // Judged against where I was at the Move the server last accepted (its echoed
       // moveT), not where I am now — so a late echo is never mistaken for one (sentMoves.ts).
-      let sawClock = false;
-      const off = $(player).onChange(() => {
+      // A refused Move (the echo went from my stamps to 0) is left alone while the server
+      // may still heal it, and judged once it has stayed refused for REFUSAL_HEAL_MS — no
+      // patch need come then (the server's pose does not change while it refuses), so a
+      // timer looks again at the deadline.
+      const watch = createEchoWatch();
+      let recheck: ReturnType<typeof setTimeout> | undefined;
+      const correct = (): void => {
         const echoed = moverClock(player);
-        const refused = sawClock && echoed === 0; // it echoed my stamps before: 0 now = a refused Move
-        if (echoed > 0) sawClock = true;
-        if (selfDiverged(selfPose, player, echoed, refused)) {
+        const verdict = noteEcho(watch, echoed, nowMs());
+        if (verdict === "healing") {
+          if (recheck === undefined) {
+            recheck = setTimeout(
+              () => {
+                recheck = undefined;
+                correct();
+              },
+              Math.max(0, healDeadline(watch) - nowMs()),
+            );
+          }
+          return;
+        }
+        if (recheck !== undefined) {
+          clearTimeout(recheck);
+          recheck = undefined;
+        }
+        if (selfDiverged(selfPose, player, echoed, verdict === "refused")) {
           selfPose.x = player.x;
           selfPose.z = player.z;
         }
-      });
+      };
+      const offCorrect = $(player).onChange(correct);
+      const off = (): void => {
+        offCorrect();
+        if (recheck !== undefined) clearTimeout(recheck);
+        recheck = undefined;
+      };
       // Seat is server-authoritative: mirror my own seatIndex into the shared
       // SeatState so LocalPlayer confirms sit/stand from the schema, never
       // optimistically. Seeds the current value immediately.
@@ -158,16 +183,18 @@ export function startRemoteSync(
     const offArea = areas ? [$(player).listen("area", reconcile), areas.subscribe(reconcile)] : [];
 
     // onChange fires once per decode batch → at most one snapshot per patch (a no-op for a remote not on
-    // screen: the store drops poses of unknown ids; and a patch that changed no pose stores nothing).
-    const offChange = $(player).onChange(() => {
-      receiveRemotePose(sessionId, nowMs(), moverClock(player), player.x, player.z, player.yaw);
-    });
+    // screen: the store drops poses of unknown ids; and a patch that changed no pose stores nothing). The seat goes
+    // with the pose: a patch that changes it also put the player on the seat or its dismount spot, and the store
+    // stamps the change with that pose's time (remoteSeat.ts). The seat listener takes the same path, so whichever
+    // of the two callbacks the decoder runs first handles the patch, and the other finds nothing new.
+    const take = (): void => {
+      receiveRemotePose(sessionId, nowMs(), moverClock(player), player.x, player.z, player.yaw, player.seatIndex);
+    };
+    const offChange = $(player).onChange(take);
     const offConnected = $(player).listen("connected", (value: boolean) => {
       setRemoteConnected(sessionId, value);
     });
-    const offSeat = $(player).listen("seatIndex", (value: number) => {
-      setRemoteSeat(sessionId, value);
-    });
+    const offSeat = $(player).listen("seatIndex", take);
     perPlayer.set(sessionId, [offPlace, ...offArea, offChange, offConnected, offSeat]);
   }, true); // immediate → replay players already present when we joined
 

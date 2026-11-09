@@ -4,16 +4,25 @@ import {
   DEFAULT_APPEARANCE,
   applyPreset,
 } from "@caysonverse/shared/appearance";
+import { RUN_SPEED } from "@caysonverse/shared/constants";
+import { SEATS } from "@caysonverse/shared/worldMap";
 import {
   addRemote,
   removeRemote,
   clearRemotes,
+  forEachRemotePosition,
   getRoster,
   getRemoteRecord,
   getRemotes,
+  noteRemoteDrawn,
+  receiveRemotePose,
   type RemotePlayerRecord,
 } from "./remoteStore";
-import { createPlayout } from "./playout";
+import { advancePlayout, createPlayout } from "./playout";
+import { sample } from "./interpolation";
+import { createSeatMotion, stepSeatMotion } from "./remoteSeat";
+import { collectObstacles } from "./playerObstacles";
+import { LEGACY_ACTIVE_MAP, setActiveMap } from "./activeMap";
 
 function rec(sessionId: string, over: Partial<RemotePlayerRecord> = {}): RemotePlayerRecord {
   return {
@@ -114,5 +123,51 @@ describe("remoteStore appearance", () => {
     // The pre-builder fields are gone from the view.
     expect(view).not.toHaveProperty("character");
     expect(view).not.toHaveProperty("tint");
+  });
+});
+
+describe("remoteStore — the solid body is the one on screen (fix: collision on the drawn pose)", () => {
+  beforeEach(() => clearRemotes());
+
+  it("forEachRemotePosition reports the drawn pose once RemotePlayer drew one, the newest snapshot before that", () => {
+    addRemote(rec("a"));
+    receiveRemotePose("a", 1000, 0, 5, 6, 0);
+    const seen: Array<[number, number]> = [];
+    forEachRemotePosition((x, z) => seen.push([x, z]));
+    expect(seen).toEqual([[5, 6]]);
+    noteRemoteDrawn(getRemoteRecord("a")!, 4.2, 6);
+    seen.length = 0;
+    forEachRemotePosition((x, z) => seen.push([x, z]));
+    expect(seen).toEqual([[4.2, 6]]);
+  });
+
+  it("a running remote blocks where it is drawn, not a playout lag ahead of it on empty floor", () => {
+    setActiveMap(LEGACY_ACTIVE_MAP);
+    addRemote(rec("runner"));
+    const record = getRemoteRecord("runner")!;
+    receiveRemotePose("runner", 0, 0, 0, 0, Math.PI / 2);
+    const drawn = { x: 0, z: 0, yaw: 0 };
+    const motion = createSeatMotion(-1, SEATS, drawn);
+    // Running along +x at RUN_SPEED, a stamped Move every 100 ms arriving 60 ms later; the viewer draws at 60 fps.
+    let k = 1;
+    for (let now = 0; now <= 2000; now += 1000 / 60) {
+      while (100 * k + 60 <= now) {
+        receiveRemotePose("runner", 100 * k + 60, 5000 + 100 * k, RUN_SPEED * 0.1 * k, 0, Math.PI / 2);
+        k++;
+      }
+      const renderT = advancePlayout(record.playout, record.snapshots, now);
+      const target = sample(record.snapshots, renderT)!;
+      stepSeatMotion(motion, record.seatLine!, renderT, target, 1 / 60, SEATS, drawn, () => 0.8);
+      noteRemoteDrawn(record, drawn.x, drawn.z);
+    }
+    const newest = record.snapshots[record.snapshots.length - 1];
+    expect(newest.x - drawn.x).toBeGreaterThan(1.2); // the newest data is well ahead of the body on screen
+    // The local player stands just ahead of the drawn body, on the floor the newest snapshot occupies.
+    const list = collectObstacles(drawn.x + 1.0, 0.0);
+    const box = list[list.length - 1];
+    expect((box.minX + box.maxX) / 2).toBeCloseTo(drawn.x, 9);
+    // (The old code put the box on the newest snapshot: the local player at drawn.x + 1 would have been blocked by
+    // nothing visible, and could walk into the body it saw.)
+    expect(Math.abs((box.minX + box.maxX) / 2 - newest.x)).toBeGreaterThan(1.2);
   });
 });

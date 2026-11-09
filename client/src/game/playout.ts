@@ -28,7 +28,7 @@
  */
 
 import { PATCH_RATE_MS } from "@caysonverse/shared/constants";
-import { isResting, pushSnapshot, remoteGaitSpeed, restTailStart, type Snapshot } from "./interpolation";
+import { isResting, motionStart, pushSnapshot, remoteGaitSpeed, type Snapshot } from "./interpolation";
 import {
   PLAYOUT_ARRIVAL_SPACING,
   PLAYOUT_DEFAULT_BUFFER_MS,
@@ -103,7 +103,11 @@ function maxOf(ring: readonly number[]): number {
  * Take one received pose of the remote into its buffer, stamped on its timeline. `moverT` is the synced
  * `Player.moveT` (0 / not newer than the last reading = no usable clock: a pose the server placed, or a sender
  * without one). Returns false (and stores nothing) when nothing about the pose changed — the patch was about
- * another field (connected, seat, area …), and a duplicate would only stretch the timeline.
+ * another field (connected, area …), and a duplicate would only stretch the timeline.
+ *
+ * `placed`: the patch also changed the remote's seat, so the server put it here (a seat, a seat's dismount spot) —
+ * the snapshot is marked so that nothing walks the avatar to it (see `Snapshot.placed`), and it is stored even when
+ * the pose did not change: its time is when the seat change is drawn (remoteSeat.ts).
  */
 export function receivePose(
   pl: Playout,
@@ -113,10 +117,11 @@ export function receivePose(
   x: number,
   z: number,
   yaw: number,
+  placed = false,
 ): boolean {
   const fresh = Number.isFinite(moverT) && moverT > pl.lastMoverT;
   let newest = buf[buf.length - 1];
-  if (newest && !fresh && newest.x === x && newest.z === z && newest.yaw === yaw) return false;
+  if (newest && !fresh && !placed && newest.x === x && newest.z === z && newest.yaw === yaw) return false;
 
   if (fresh && !pl.moverClock) {
     // The first clock-stamped pose: move the timeline onto the mover's clock. What we already hold (arrival
@@ -125,6 +130,15 @@ export function receivePose(
     for (const s of buf) s.t -= o;
     pl.renderT -= o;
     pl.moverClock = true;
+    pl.offsets.length = 0;
+    pl.needs.length = 0;
+  } else if (fresh && pl.offsets.length > 0 && arrivalMs - moverT > minOf(pl.offsets) + PLAYOUT_MAX_BUFFER_MS) {
+    // A clock discontinuity: this pose is stamped further behind its arrival than the fastest one by more than the
+    // largest buffer the playout ever keeps. The mover's clock stood still while ours ran on (a phone's screen locked
+    // for a while within the reconnect window: its monotonic clock can pause), so everything measured on the old
+    // offsets is stale — kept, they would put the target that far ahead of the data, and the avatar would be drawn
+    // on its newest pose all the time (step-sliding) until the ring forgets them, ~4 s. Re-anchor: learn the lag
+    // anew from this pose on. (The timeline itself still only moves forward, below.)
     pl.offsets.length = 0;
     pl.needs.length = 0;
   }
@@ -142,7 +156,7 @@ export function receivePose(
 
   // A moving pair (not the gap between a stop and the next start) tells how far behind the data renderT must
   // stay: this pose arrived `arrival - newest.t` after the time the pair starts at.
-  const snapshot = { t, x, z, yaw };
+  const snapshot: Snapshot = placed ? { t, x, z, yaw, placed } : { t, x, z, yaw };
   if (newest && !isResting(newest, snapshot)) pushRing(pl.needs, arrivalMs - newest.t);
 
   pushSnapshot(buf, snapshot);
@@ -163,9 +177,9 @@ export function targetLag(pl: Playout): number {
 }
 
 /**
- * Until when (timeline ms) the avatar stands still from `t` on: the step-off time of the resting stretch `t`
- * lies in (`restTailStart`), or the first snapshot's time before it. NaN when `t` is where it moves (a moving
- * segment, a step-off) or at/after the newest snapshot.
+ * Until when (timeline ms) the avatar stands still from `t` on: when the resting stretch `t` lies in starts to turn
+ * or step off (`motionStart`), or the first snapshot's time before it. NaN when `t` is where it moves (a moving
+ * segment, a turn, a step-off) or at/after the newest snapshot.
  */
 function restingUntil(buf: readonly Snapshot[], t: number): number {
   const n = buf.length;
@@ -175,7 +189,7 @@ function restingUntil(buf: readonly Snapshot[], t: number): number {
     const a = buf[i - 1];
     const b = buf[i];
     if (t >= a.t && t < b.t) {
-      const from = restTailStart(a, b);
+      const from = motionStart(a, b);
       return t < from ? from : Number.NaN;
     }
   }

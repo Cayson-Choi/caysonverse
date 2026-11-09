@@ -12,7 +12,7 @@
  */
 
 import { MOVE_SPEED } from "@caysonverse/shared/constants";
-import { lerpAngle } from "./yaw";
+import { lerpAngle, normalizeAngle } from "./yaw";
 import {
   RESTING_SPAN_MS,
   RESTING_SPEED,
@@ -21,6 +21,7 @@ import {
   SPEED_LONG_MIN_MS,
   SPEED_LONG_WINDOW_MS,
   SPEED_WINDOW_MS,
+  TURN_SPEED,
 } from "./constants";
 
 /** One received position sample. `t` is on the remote's timeline (see the module header). */
@@ -29,6 +30,12 @@ export interface Snapshot {
   x: number;
   z: number;
   yaw: number;
+  /**
+   * The server PUT the avatar here (a seat, a seat's dismount spot) instead of it walking here: the avatar is not
+   * walked to it. It holds the previous pose (position and facing) until the render time reaches this one, and the
+   * seat motion (remoteSeat.ts) carries it on from there — a glide onto a bench, a snap onto a legacy chair.
+   */
+  placed?: boolean;
 }
 
 /** Result of sampling the buffer at a render time. */
@@ -64,6 +71,7 @@ export function pushSnapshot(
 export function isResting(a: Snapshot, b: Snapshot): boolean {
   const span = b.t - a.t;
   if (span <= 0) return false;
+  if (b.placed) return true; // nothing walks to a placed pose: the avatar stands on `a` until it
   return span > RESTING_SPAN_MS || (Math.hypot(b.x - a.x, b.z - a.z) / span) * 1000 < RESTING_SPEED;
 }
 
@@ -71,11 +79,34 @@ export function isResting(a: Snapshot, b: Snapshot): boolean {
  * When the motion between two consecutive snapshots starts (timeline ms). A moving
  * pair moves the whole way: `a.t`. A resting pair (`isResting`) stood still at `a` and
  * stepped off at MOVE_SPEED just in time to reach `b`: `b.t - |ab| / MOVE_SPEED`
- * (never before `a.t`: a long hop simply moves the whole way).
+ * (never before `a.t`: a long hop simply moves the whole way). A placed `b` is not
+ * walked to at all: `b.t`.
  */
 export function restTailStart(a: Snapshot, b: Snapshot): number {
   if (!isResting(a, b)) return a.t;
+  if (b.placed) return b.t;
   return Math.max(a.t, b.t - (Math.hypot(b.x - a.x, b.z - a.z) / MOVE_SPEED) * 1000);
+}
+
+/**
+ * When the facing starts to turn between two consecutive snapshots (timeline ms). A pair of consecutive moves (one
+ * send interval apart) turns across the whole pair, so a turn on the spot (pushing against a wall) stays smooth. A
+ * PAUSE (a pair further apart than RESTING_SPAN_MS: a stop, then the next start) stood still facing `a.yaw` and
+ * turns only before it steps off: over its step-off, or at TURN_SPEED (the rate the mover's own body turns at) if
+ * the turn takes longer than that — never across the whole pause, which turned a resting avatar most of the way
+ * round in the one frame the render time skipped the pause. A placed `b` holds `a.yaw` up to it.
+ */
+export function turnStart(a: Snapshot, b: Snapshot): number {
+  if (!isResting(a, b)) return a.t;
+  if (b.placed) return b.t;
+  if (b.t - a.t <= RESTING_SPAN_MS) return a.t;
+  const turnMs = (Math.abs(normalizeAngle(b.yaw - a.yaw)) / TURN_SPEED) * 1000;
+  return Math.max(a.t, Math.min(restTailStart(a, b), b.t - turnMs));
+}
+
+/** From when on anything about the avatar (position or facing) changes between two consecutive snapshots. */
+export function motionStart(a: Snapshot, b: Snapshot): number {
+  return Math.min(restTailStart(a, b), turnStart(a, b));
 }
 
 /**
@@ -83,8 +114,9 @@ export function restTailStart(a: Snapshot, b: Snapshot): number {
  * only for an empty buffer.
  *
  * - renderT before the oldest snapshot → clamp to the oldest (idle).
- * - renderT between two snapshots → linear x/z, shortest-arc yaw (a resting pair's
- *   x/z: the first pose, then linear over its step-off — see `restTailStart`).
+ * - renderT between two snapshots → linear x/z, shortest-arc yaw (a resting pair:
+ *   the first pose, then a turn and linear x/z over its step-off — see `restTailStart`
+ *   and `turnStart`; a placed second pose: the first pose up to it).
  * - renderT at/past the newest → hold the newest pose (speed 0). Never beyond it:
  *   the drawn avatar only ever stands where the server has already put it.
  */
@@ -107,9 +139,12 @@ export function sample(snapshots: readonly Snapshot[], renderT: number): Sample 
     const a = snapshots[i - 1];
     const b = snapshots[i];
     if (renderT >= a.t && renderT <= b.t) {
-      // Facing turns across the whole pair (a turn on the spot, e.g. pushing against a wall, stays smooth);
+      // A placed pose is not walked to: the previous pose holds up to it.
+      if (b.placed) return renderT < b.t ? { x: a.x, z: a.z, yaw: a.yaw, speed: 0 } : { x: b.x, z: b.z, yaw: b.yaw, speed: 0 };
+      // Facing turns across the whole of a moving pair, and only before the step-off of a resting one (turnStart);
       // the position moves from the step-off on (the whole pair unless it is a resting one).
-      const yaw = lerpAngle(a.yaw, b.yaw, b.t > a.t ? (renderT - a.t) / (b.t - a.t) : 0);
+      const turn = turnStart(a, b);
+      const yaw = renderT <= turn ? a.yaw : lerpAngle(a.yaw, b.yaw, (renderT - turn) / (b.t - turn));
       const from = restTailStart(a, b);
       if (renderT <= from && from > a.t) return { x: a.x, z: a.z, yaw, speed: 0 };
       const span = b.t - from;
@@ -174,7 +209,7 @@ export function windowedSpeed(
     const a = snapshots[i - 1];
     const b = snapshots[i];
     const span = b.t - a.t;
-    if (span <= 0 || b.t <= from || a.t >= to) continue;
+    if (span <= 0 || b.t <= from || a.t >= to || b.placed) continue; // a placed pose is not walked to
     const lo = a.t > from ? a.t : from;
     const hi = b.t < to ? b.t : to;
     length += Math.hypot(b.x - a.x, b.z - a.z) * ((hi - lo) / span);

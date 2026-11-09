@@ -285,3 +285,116 @@ describe("playout — stops, starts and holds", () => {
     expect(targetLag(createPlayout())).toBe(PLAYOUT_DEFAULT_BUFFER_MS);
   });
 });
+
+describe("playout — a mover clock that stood still (fix: clock discontinuity)", () => {
+  /**
+   * A mover walks, stops, and its phone's screen is locked for `lockMs` within the reconnect window: the page is
+   * suspended (nothing is sent) and its monotonic clock stands still, while the viewer's runs on. After the unlock
+   * it walks again. Returns the viewer's frames over the second walk: drawn x and whether it was held on its newest
+   * pose (waiting for data) — a held frame mid-walk is the step-slide.
+   */
+  function lockedPhone(lockMs: number, net = { base: 40, jitter: 60, seed: 5 }) {
+    const random = prng(net.seed);
+    const up = leg(net.base, net.jitter, random);
+    const down = leg(net.base, net.jitter, random);
+    const lock: [number, number] = [2600, 2600 + lockMs];
+    const walks: Array<[number, number]> = [
+      [200, 2200],
+      [lock[1] + 500, lock[1] + 4500],
+    ];
+    const clock = (t: number) => 734_512.25 + (t < lock[1] ? t : t - lockMs); // stands still while locked
+    const frame = 1000 / 60;
+    const end = lock[1] + 6000;
+    const sent: Array<{ at: number; x: number; t: number }> = [];
+    let x = 0;
+    let simT = 0;
+    const sender = createMoveSender((p) => sent.push({ at: simT, x: p.x, t: p.t! }));
+    for (simT = 0; simT <= end; simT += frame) {
+      if (simT >= lock[0] && simT < lock[1]) continue; // suspended
+      const moving = walks.some(([a, b]) => simT >= a && simT < b);
+      if (moving) x += MOVE_SPEED * (frame / 1000);
+      sender.update(clock(simT), moving, { x, z: 0, yaw: 0 });
+    }
+    const arrivals = sent.map((m) => ({ ...m, atServer: up(m.at) }));
+    const patches: Array<{ at: number; x: number; t: number }> = [];
+    let applied: { x: number; t: number } | null = null;
+    let lastPatched: { x: number; t: number } | null = null;
+    let i = 0;
+    for (let p = 7; p <= end + 1000; p += PATCH_RATE_MS) {
+      while (i < arrivals.length && arrivals[i].atServer <= p) applied = arrivals[i++];
+      if (applied && applied !== lastPatched) {
+        patches.push({ at: down(p), x: applied.x, t: applied.t });
+        lastPatched = applied;
+      }
+    }
+    const VIEWER_ORIGIN = 81_037.5;
+    const buf: Snapshot[] = [];
+    const pl = createPlayout();
+    receivePose(pl, buf, VIEWER_ORIGIN - 500, 0, 0, 0, 0);
+    const frames: Array<{ now: number; x: number; held: boolean }> = [];
+    let j = 0;
+    for (let v = 0; v <= end + 1000; v += frame) {
+      while (j < patches.length && patches[j].at <= v) {
+        const pt = patches[j++];
+        receivePose(pl, buf, VIEWER_ORIGIN + pt.at, pt.t, pt.x, 0, 0);
+      }
+      const r = advancePlayout(pl, buf, VIEWER_ORIGIN + v);
+      frames.push({ now: v, x: sample(buf, r)!.x, held: pl.holdMs > 0 });
+    }
+    const firstStop = MOVE_SPEED * 2;
+    const startOnScreen = frames.find((f) => f.x > firstStop + 0.05)!.now;
+    const stopOnScreen = frames.find((f) => f.x >= x - 1e-9)!.now;
+    return frames.filter((f) => f.now >= startOnScreen && f.now < stopOnScreen - 150);
+  }
+
+  it.each([5000, 10000, 15000])("after a %i ms lock the walk is smooth again within ~0.5 s (it step-slid for ~4 s)", (lockMs) => {
+    const walk = lockedPhone(lockMs);
+    expect(walk.length).toBeGreaterThan(150);
+    const held = walk.filter((f) => f.held);
+    const heldMs = held.length * (1000 / 60);
+    expect(heldMs).toBeLessThan(500);
+    if (held.length > 0) expect(held[held.length - 1].now - walk[0].now).toBeLessThan(600);
+    // ...and never a step back.
+    for (let k = 1; k < walk.length; k++) expect(walk[k].x).toBeGreaterThanOrEqual(walk[k - 1].x);
+  });
+
+  it("re-anchors on a stamp more than PLAYOUT_MAX_BUFFER_MS further behind its arrival than the fastest one", () => {
+    const pl = createPlayout();
+    const buf: Snapshot[] = [];
+    for (let k = 0; k < 12; k++) receivePose(pl, buf, 5000 + 100 * k + 60, 1000 + 100 * k, 0.4 * k, 0, 0);
+    expect(Math.min(...pl.offsets)).toBe(4060);
+    // 8 s later on our clock, but only 0.1 s later on the mover's (its clock stood still).
+    receivePose(pl, buf, 5000 + 100 * 12 + 60 + 8000, 1000 + 100 * 12, 4.8, 0, 0);
+    expect(pl.offsets).toEqual([4060 + 8000]); // the old offsets are gone...
+    expect(pl.needs).toEqual([4060 + 8000 + 100]); // ...and so are the old needs: only this pair's, on the new base
+    expect(targetLag(pl) - Math.min(...pl.offsets)).toBe(PLAYOUT_DEFAULT_BUFFER_MS); // learning anew
+    // A merely late patch (within the largest buffer) is not a discontinuity.
+    const pl2 = createPlayout();
+    const buf2: Snapshot[] = [];
+    for (let k = 0; k < 12; k++) receivePose(pl2, buf2, 5000 + 100 * k + 60, 1000 + 100 * k, 0.4 * k, 0, 0);
+    receivePose(pl2, buf2, 5000 + 100 * 12 + 60 + PLAYOUT_MAX_BUFFER_MS - 50, 1000 + 100 * 12, 4.8, 0, 0);
+    expect(pl2.offsets.length).toBe(13);
+  });
+
+  it("a long network stall (no clock change) still never steps back", () => {
+    for (const stamped of [true, false]) {
+      const run = pipeline(RUN, { ...CLEAN, stall: [700, 2300] as [number, number] }, stamped);
+      const { back, over } = backAndOver(run);
+      expect(back).toBeLessThanOrEqual(1e-9);
+      expect(over).toBeLessThanOrEqual(1e-9);
+    }
+  });
+});
+
+describe("playout — a placed pose (seat change)", () => {
+  it("is stored even when the pose did not change, marked placed, after the newest on the timeline", () => {
+    const pl = createPlayout(300);
+    const buf: Snapshot[] = [];
+    receivePose(pl, buf, 1000, 0, 1, 2, 0.5);
+    expect(receivePose(pl, buf, 1100, 300, 1, 2, 0.5, true)).toBe(true);
+    expect(buf).toHaveLength(2);
+    expect(buf[1].placed).toBe(true);
+    expect(buf[1].t).toBeGreaterThan(buf[0].t);
+    expect(buf[0].placed).toBeUndefined();
+  });
+});

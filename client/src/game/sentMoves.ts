@@ -11,7 +11,7 @@
 
 import type { MovePayload } from "@caysonverse/shared/messages";
 import { exceedsSnapDistance } from "./interpolation";
-import { REFUSED_SNAP_DISTANCE, SNAP_DISTANCE } from "./constants";
+import { REFUSAL_HEAL_MS, REFUSED_SNAP_DISTANCE, SNAP_DISTANCE } from "./constants";
 
 /** How many sent poses are kept: ~6 s of walking at 10 Hz — longer than any echo is late. */
 const SENT_HISTORY = 64;
@@ -54,4 +54,40 @@ export function selfDiverged(
   const mine = echoedT > 0 ? sentAt(echoedT) : undefined;
   if (mine) return exceedsSnapDistance(mine.x, mine.z, server.x, server.z);
   return exceedsSnapDistance(current.x, current.z, server.x, server.z, refused ? REFUSED_SNAP_DISTANCE : SNAP_DISTANCE);
+}
+
+/** How the server is echoing my clock (`noteEcho`): whether it ever did, and since when it echoes 0. */
+export interface EchoWatch {
+  /** The server has echoed a stamp of mine: an echoed 0 from then on means it refused a Move. */
+  sawClock: boolean;
+  /** Local time (ms) the echo went to 0 after a stamp of mine; NaN while the server takes my moves. */
+  refusedAt: number;
+}
+
+export function createEchoWatch(): EchoWatch {
+  return { sawClock: false, refusedAt: Number.NaN };
+}
+
+/**
+ * What the self-correction should make of my echoed `moveT` at local time `nowMs`:
+ *  - "ok": a stamp of mine (or a server that never echoes one) — judge the divergence as usual (`selfDiverged`);
+ *  - "healing": the server refused a Move less than REFUSAL_HEAL_MS ago and has taken none since. Its budget is
+ *    still filling and it may well take the next ones (a short uplink stall): leave my pose alone and look again
+ *    at the deadline (`healDeadline`);
+ *  - "refused": it has refused for REFUSAL_HEAL_MS — it will not catch up by itself: judge with `refused` true.
+ */
+export function noteEcho(w: EchoWatch, echoedT: number, nowMs: number): "ok" | "healing" | "refused" {
+  if (echoedT > 0) {
+    w.sawClock = true;
+    w.refusedAt = Number.NaN;
+    return "ok";
+  }
+  if (!w.sawClock) return "ok";
+  if (Number.isNaN(w.refusedAt)) w.refusedAt = nowMs;
+  return nowMs - w.refusedAt >= REFUSAL_HEAL_MS ? "refused" : "healing";
+}
+
+/** When (local ms) a refusal still "healing" counts as one that will not heal. */
+export function healDeadline(w: EchoWatch): number {
+  return w.refusedAt + REFUSAL_HEAL_MS;
 }

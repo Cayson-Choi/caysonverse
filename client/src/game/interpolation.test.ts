@@ -2,15 +2,18 @@ import { describe, it, expect } from "vitest";
 import { MOVE_SPEED } from "@caysonverse/shared/constants";
 import {
   isResting,
+  motionStart,
   pushSnapshot,
   remoteGaitSpeed,
   restTailStart,
   sample,
   exceedsSnapDistance,
+  turnStart,
   windowedSpeed,
   type Snapshot,
 } from "./interpolation";
 import {
+  TURN_SPEED,
   RUN_ON_SPEED,
   SNAPSHOT_CAPACITY,
   SNAP_DISTANCE,
@@ -135,7 +138,11 @@ describe("sample — a resting pair (a stop and the next start, or a join and th
     expect(sample(buf, 950)!.x).toBeCloseTo(0.2, 9);
     expect(sample(buf, 950)!.speed).toBeCloseTo(MOVE_SPEED, 9);
     expect(sample(buf, 1000)!.x).toBe(0.4);
-    expect(sample(buf, 500)!.yaw).toBeCloseTo(0.5, 9); // the facing still turns across the whole pair
+    // The facing turns with the step-off, not across the whole pause (it used to be half-way round at 500 ms).
+    expect(sample(buf, 500)!.yaw).toBe(0);
+    expect(sample(buf, stepOff)!.yaw).toBe(0);
+    expect(sample(buf, 950)!.yaw).toBeCloseTo(0.5, 9);
+    expect(sample(buf, 1000)!.yaw).toBe(1);
   });
 
   it("is resting when slow or long; a moving pair - merged patches included - is a straight line", () => {
@@ -146,6 +153,54 @@ describe("sample — a resting pair (a stop and the next start, or a join and th
     expect(restTailStart(snap(0, 0, 0), snap(117, 0.47, 0))).toBe(0);
     expect(isResting(snap(0, 0, 0), snap(1000, 6, 0))).toBe(true); // long...
     expect(restTailStart(snap(0, 0, 0), snap(1000, 6, 0))).toBe(0); // ...but a long hop moves the whole way
+  });
+});
+
+describe("sample — the facing across a pause turns with the step-off (fix: remote sit/stand)", () => {
+  it("stands still facing the old way, then turns at most at TURN_SPEED just before it steps off", () => {
+    // Stood still 3 s facing +x (yaw PI/2), then a first walk step 0.4 m along -x (yaw -PI/2): a 180° turn.
+    const a = snap(0, 0, 0, PI / 2);
+    const b = snap(3000, -0.4, 0, -PI / 2);
+    const turnMs = (PI / TURN_SPEED) * 1000; // 262 ms: longer than the 100 ms step-off
+    expect(turnStart(a, b)).toBeCloseTo(3000 - turnMs, 6);
+    expect(motionStart(a, b)).toBeCloseTo(3000 - turnMs, 6);
+    // The old sample turned across the whole 3 s pause: at 2750 ms (where a skipping render time lands) it already
+    // faced 165° round — the one-frame spin viewers saw.
+    expect(Math.abs(sample([a, b], 2700)!.yaw - PI / 2)).toBeLessThan(1e-9);
+    // Over the turn, never faster than TURN_SPEED.
+    let prev = sample([a, b], 2700)!.yaw;
+    for (let t = 2700 + 1000 / 60; t <= 3000; t += 1000 / 60) {
+      const yaw = sample([a, b], t)!.yaw;
+      expect(Math.abs(Math.atan2(Math.sin(yaw - prev), Math.cos(yaw - prev)))).toBeLessThanOrEqual((TURN_SPEED * 1000) / 60 / 1000 + 1e-9);
+      prev = yaw;
+    }
+    expect(sample([a, b], 3000)!.yaw).toBeCloseTo(-PI / 2, 9);
+  });
+
+  it("consecutive moves (a turn on the spot, e.g. pushing against a wall) still turn across the whole pair", () => {
+    const a = snap(0, 0, 0, 0);
+    const b = snap(100, 0, 0, 0.6);
+    expect(isResting(a, b)).toBe(true); // no ground speed...
+    expect(turnStart(a, b)).toBe(0); // ...but one send interval apart: a smooth turn
+    expect(sample([a, b], 50)!.yaw).toBeCloseTo(0.3, 9);
+  });
+});
+
+describe("sample — a placed pose (the server put the avatar on a seat / its dismount spot)", () => {
+  it("is not walked to: the previous pose (position and facing) holds up to it, then it is there", () => {
+    const a = snap(0, 1, 2, 0.5);
+    const b: Snapshot = { t: 300, x: 2.2, z: 2, yaw: -2.6, placed: true };
+    expect(isResting(a, b)).toBe(true);
+    expect(restTailStart(a, b)).toBe(300);
+    expect(turnStart(a, b)).toBe(300);
+    for (const t of [0, 100, 250, 299.9]) expect(sample([a, b], t)).toEqual({ x: 1, z: 2, yaw: 0.5, speed: 0 });
+    expect(sample([a, b], 300)).toEqual({ x: 2.2, z: 2, yaw: -2.6, speed: 0 });
+    // (The old sample walked the 1.2 m from the step-off on: through a legacy chair's back.)
+  });
+
+  it("counts for no ground speed (the gait does not walk the avatar onto a seat)", () => {
+    const buf: Snapshot[] = [snap(0, 0, 0), snap(100, 0.4, 0), { t: 150, x: 1.6, z: 0, yaw: 0, placed: true }];
+    expect(windowedSpeed(buf, 150, 150)).toBeCloseTo(0.4 / 0.15, 9); // only the real step
   });
 });
 

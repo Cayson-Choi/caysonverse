@@ -9,6 +9,7 @@
 import type { Appearance } from "@caysonverse/shared/appearance";
 import type { Snapshot } from "./interpolation";
 import { receivePose, type Playout } from "./playout";
+import { createSeatLine, pushSeatChange, type SeatLine } from "./remoteSeat";
 
 /** Everything the renderer needs about one remote player. */
 export interface RemotePlayerRecord {
@@ -21,7 +22,11 @@ export interface RemotePlayerRecord {
    */
   appearance: Appearance;
   connected: boolean;
-  /** Seat (v2 Task 1): -1 = standing; >= 0 = the seat this remote occupies. */
+  /**
+   * Seat (v2 Task 1): -1 = standing; >= 0 = the seat this remote occupies. Taken the moment the patch arrives (the
+   * sit prompts and the occupancy need it now); the avatar sits down / gets up when its render time reaches the
+   * change (`seatLine`).
+   */
   seatIndex: number;
   /**
    * Synced `Player.role` (0 = student / 1 = teacher; ROLE_* in shared constants).
@@ -33,6 +38,17 @@ export interface RemotePlayerRecord {
   snapshots: Snapshot[];
   /** When along `snapshots` this remote is drawn (playout.ts): its timeline, render time and lag. */
   playout: Playout;
+  /**
+   * The seat changes stamped on the remote's timeline, for the avatar to replay when its render time gets there
+   * (remoteSeat.ts). Optional for a record built without one (tests): `addRemote` fills it in.
+   */
+  seatLine?: SeatLine;
+  /**
+   * Where RemotePlayer DREW this avatar on its latest frame (x, z), or null before its first frame. The body the
+   * local player collides with (`forEachRemotePosition`) is the one on screen, not the newest snapshot (which is a
+   * playout lag ahead of it). Mutated in place by RemotePlayer.
+   */
+  drawn?: { x: number; z: number } | null;
 }
 
 const records = new Map<string, RemotePlayerRecord>();
@@ -70,6 +86,8 @@ export function getRemoteRecord(sessionId: string): RemotePlayerRecord | undefin
 
 /** Add (or replace) a remote player and notify the roster. */
 export function addRemote(record: RemotePlayerRecord): void {
+  record.seatLine ??= createSeatLine(record.seatIndex);
+  record.drawn ??= null;
   records.set(record.sessionId, record);
   refreshRoster();
 }
@@ -85,11 +103,6 @@ export function setRemoteConnected(sessionId: string, connected: boolean): void 
   if (record) record.connected = connected;
 }
 
-/** Update a remote's seat (drives seated rendering + client-side occupancy). */
-export function setRemoteSeat(sessionId: string, seatIndex: number): void {
-  const record = records.get(sessionId);
-  if (record) record.seatIndex = seatIndex;
-}
 
 /**
  * Seats currently occupied by REMOTE players. Read by the throttled sit-prompt
@@ -107,6 +120,11 @@ export function getRemoteSeatIndices(): number[] {
 /**
  * Take a received pose of a remote into its buffer: `arrivalMs` is the local receive time, `moverT` the synced
  * `Player.moveT` (the mover's clock at that pose; 0 = none). A no-op for an id not in the store.
+ *
+ * `seatIndex` (when given) is the remote's synced seat from the same patch. If it changed, the server put the
+ * remote where this pose is (on the seat, or on its dismount spot): the pose is stored as placed, the record's
+ * `seatIndex` changes at once, and the change is stamped with the pose's timeline time for the avatar to replay
+ * when it is drawn there (remoteSeat.ts).
  */
 export function receiveRemotePose(
   sessionId: string,
@@ -115,9 +133,16 @@ export function receiveRemotePose(
   x: number,
   z: number,
   yaw: number,
+  seatIndex?: number,
 ): void {
   const record = records.get(sessionId);
-  if (record) receivePose(record.playout, record.snapshots, arrivalMs, moverT, x, z, yaw);
+  if (!record) return;
+  const seatChanged = seatIndex !== undefined && seatIndex !== record.seatIndex;
+  receivePose(record.playout, record.snapshots, arrivalMs, moverT, x, z, yaw, seatChanged);
+  if (!seatChanged) return;
+  record.seatIndex = seatIndex;
+  const placed = record.snapshots[record.snapshots.length - 1];
+  pushSeatChange((record.seatLine ??= createSeatLine(-1)), placed.t, seatIndex);
 }
 
 /**
@@ -133,15 +158,32 @@ export function clearRemotes(): void {
   refreshRoster();
 }
 
+/** Note where a remote's avatar was drawn this frame (RemotePlayer, every frame; allocates only the first time). */
+export function noteRemoteDrawn(record: RemotePlayerRecord, x: number, z: number): void {
+  if (record.drawn) {
+    record.drawn.x = x;
+    record.drawn.z = z;
+  } else record.drawn = { x, z };
+}
+
 /**
- * Allocation-free per-frame iteration over each remote's NEWEST known position
- * (design 33 — remote players are solid): the collision layer builds its
- * dynamic obstacle list from this every frame, so no arrays are created here.
+ * Allocation-free per-frame iteration over where each remote's body IS on screen
+ * (design 33 — remote players are solid): the pose RemotePlayer drew it at on its
+ * latest frame, or its newest known position before its first frame. The
+ * collision layer builds its dynamic obstacle list from this every frame, so no
+ * arrays are created here. (The newest snapshot is a playout lag AHEAD of the
+ * drawn body: colliding with it blocked the local player on empty floor in front
+ * of a walking remote and let it walk into the body it could see.)
  */
 export function forEachRemotePosition(
   fn: (x: number, z: number, connected: boolean) => void,
 ): void {
   for (const record of records.values()) {
+    const drawn = record.drawn;
+    if (drawn) {
+      fn(drawn.x, drawn.z, record.connected);
+      continue;
+    }
     const last = record.snapshots[record.snapshots.length - 1];
     if (last) fn(last.x, last.z, record.connected);
   }
@@ -188,6 +230,10 @@ export interface DrawnPose {
   x: number;
   z: number;
   yaw: number;
+  /** Height of the avatar group above the floor (a bench's lift, a hop). */
+  y?: number;
+  /** The seat motion's state (remoteSeat.ts): up / sitting / seated / standing. */
+  mode?: string;
 }
 
 /**
