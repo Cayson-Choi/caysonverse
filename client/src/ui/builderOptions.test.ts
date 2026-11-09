@@ -6,6 +6,7 @@ import {
   SKIN_PALETTE,
   SLOT_COLOR_FIELD,
   SLOT_OPTIONS,
+  isRetiredPart,
   applyPreset,
   paletteFor,
 } from "@caysonverse/shared/appearance";
@@ -48,10 +49,12 @@ describe("builderOptions — slot chips", () => {
     expect(SKIN_PALETTE).toHaveLength(5);
   });
 
-  it("gives every slot one chip per SLOT_OPTIONS entry, in order, named from the manifest", () => {
+  it("gives every slot one chip per offered SLOT_OPTIONS entry (retired parts left out), in order, named from the manifest", () => {
     for (const slot of CHARACTER_SLOTS) {
       const chips = partChips(slot);
-      expect(chips.map((c) => c.index)).toEqual(SLOT_OPTIONS[slot].map((_, i) => i));
+      expect(chips.map((c) => c.index)).toEqual(
+        SLOT_OPTIONS[slot].map((_, i) => i).filter((i) => !isRetiredPart(slot, i)),
+      );
       chips.forEach((chip) => {
         const id = SLOT_OPTIONS[slot][chip.index];
         const labels: Record<string, string> = CHARACTER_MANIFEST.labels[slot];
@@ -214,5 +217,13 @@ describe("builderOptions — slot head and keys (Task 7b)", () => {
     expect(b).toBeGreaterThan(0.75); // slow finish
     expect(PREVIEW_ROTATE_STEP).toBeCloseTo(Math.PI / 4, 12);
     expect([PREVIEW_ROTATE_MS, PREVIEW_SPIN_MS]).toEqual([200, 500]);
+  });
+});
+
+describe("builderOptions — retired parts", () => {
+  it("does not offer the overalls card", () => {
+    const labels = partChips("bottom").map((c) => c.label);
+    expect(labels).not.toContain("멜빵바지");
+    expect(partChips("bottom").map((c) => c.index)).not.toContain(SLOT_OPTIONS.bottom.indexOf("overalls"));
   });
 });

@@ -17,6 +17,8 @@ import {
   paletteFor,
   pickAppearance,
   randomAppearance,
+  retireParts,
+  isRetiredPart,
   validateAppearance,
   voiceGender,
   withPart,
@@ -465,4 +467,25 @@ describe("single source", () => {
     expect(ConstantsRanges).toBe(APPEARANCE_RANGES));
 
   it("constants re-exports the very same field list", () => expect(ConstantsFields).toBe(APPEARANCE_FIELDS));
+});
+
+describe("retired parts (owner 2026-11-09: overalls removed)", () => {
+  const overalls = SLOT_OPTIONS.bottom.indexOf("overalls");
+  it("keeps the overalls index in place (saved indices must not shift) but marks it retired", () => {
+    expect(overalls).toBeGreaterThan(0);
+    expect(isRetiredPart("bottom", overalls)).toBe(true);
+    expect(isRetiredPart("bottom", DEFAULT_APPEARANCE.bottom)).toBe(false);
+  });
+  it("turns a saved or incoming overalls look into the default bottom, leaving the rest alone", () => {
+    const saved = { ...DEFAULT_APPEARANCE, bottom: overalls, bottomColor: 5, top: 3 };
+    expect(validateAppearance(saved)).toEqual({ ...saved, bottom: DEFAULT_APPEARANCE.bottom });
+    expect(retireParts(DEFAULT_APPEARANCE)).toBe(DEFAULT_APPEARANCE);
+  });
+  it("never rolls a retired part", () => {
+    const range = SLOT_OPTIONS.bottom.length;
+    for (let i = 0; i < range; i += 1) {
+      const out = randomAppearance(() => (i + 0.5) / range);
+      expect(isRetiredPart("bottom", out.bottom)).toBe(false);
+    }
+  });
 });

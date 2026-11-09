@@ -7,6 +7,7 @@ import {
   DEFAULT_APPEARANCE,
   SLOT_COLOR_FIELD,
   SLOT_OPTIONS,
+  isRetiredPart,
   paletteFor,
   type Appearance,
   type AppearanceField,
@@ -34,14 +35,16 @@ const CHIPS: Readonly<Record<CharacterSlot, readonly ChipOption[]>> = Object.fro
   CHARACTER_SLOTS.map((slot) => [
     slot,
     Object.freeze(
-      SLOT_OPTIONS[slot].map((id, index) =>
-        Object.freeze({ index, label: id === null ? (NONE[slot] ?? "없음") : (PART_LABELS[slot]?.[id] ?? id) }),
-      ),
+      SLOT_OPTIONS[slot]
+        .map((id, index) =>
+          Object.freeze({ index, label: id === null ? (NONE[slot] ?? "없음") : (PART_LABELS[slot]?.[id] ?? id) }),
+        )
+        .filter((chip) => !isRetiredPart(slot, chip.index)), // 은퇴한 부품(멜빵바지)은 카드를 보이지 않는다
     ),
   ]),
 ) as Record<CharacterSlot, readonly ChipOption[]>;
 
-/** 슬롯의 부품 칩: SLOT_OPTIONS 순서(인덱스 = 외형 값), 이름은 manifest labels(없음은 NONE_LABELS). */
+/** 슬롯의 부품 칩: SLOT_OPTIONS 순서(인덱스 = 외형 값, 은퇴한 부품은 빠진다), 이름은 manifest labels(없음은 NONE_LABELS). */
 export function partChips(slot: CharacterSlot): ChipOption[] {
   return CHIPS[slot] as ChipOption[];
 }

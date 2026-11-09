@@ -139,6 +139,29 @@ export function validateAppearance(value: unknown): Appearance | null {
     if (typeof v !== "number" || !Number.isInteger(v) || v < 0 || v >= APPEARANCE_RANGES[field]) return null;
     out[field] = v === 0 ? 0 : v;
   }
+  return retireParts(out);
+}
+
+/**
+ * 더 이상 고를 수 없는 부품(발주자 2026-11-09: 멜빵바지 없앰). 부품 순서는 인덱스로 저장되므로 manifest·GLB에서
+ * 지우지 않고(지우면 뒤 부품 번호가 밀린다), 조립실 카드와 🎲에서만 빼고, 저장돼 있거나 들어온 외형은 기본 부품으로 바꾼다.
+ */
+export const RETIRED_PARTS: Readonly<Partial<Record<CharacterSlot, readonly string[]>>> = Object.freeze({
+  bottom: Object.freeze(["overalls"]),
+});
+
+/** 그 슬롯의 index 부품이 은퇴한 부품인가. */
+export function isRetiredPart(slot: CharacterSlot, index: number): boolean {
+  const id = SLOT_OPTIONS[slot][index];
+  return id != null && (RETIRED_PARTS[slot]?.includes(id) ?? false);
+}
+
+/** 은퇴한 부품을 입고 있으면 그 슬롯만 기본 외형의 부품으로 바꾼 새 외형(없으면 a 그대로). */
+export function retireParts(a: Appearance): Appearance {
+  let out = a;
+  for (const slot of Object.keys(RETIRED_PARTS) as CharacterSlot[]) {
+    if (isRetiredPart(slot, a[slot])) out = { ...out, [slot]: DEFAULT_APPEARANCE[slot] };
+  }
   return out;
 }
 
@@ -186,6 +209,11 @@ export function randomAppearance(rand: () => number): Appearance {
   for (const field of APPEARANCE_FIELDS) {
     const range = APPEARANCE_RANGES[field];
     out[field] = Math.min(range - 1, Math.floor(rand() * range));
+  }
+  // 은퇴한 부품은 뽑지 않는다: 그 슬롯의 다음 부품으로 넘긴다(고를 수 있는 부품이 늘 있다).
+  for (const slot of Object.keys(RETIRED_PARTS) as CharacterSlot[]) {
+    const range = APPEARANCE_RANGES[slot];
+    while (isRetiredPart(slot, out[slot])) out[slot] = (out[slot] + 1) % range;
   }
   return out;
 }
