@@ -11,15 +11,23 @@
  * `prewarmEmojiTextures` uploads them all in idle time when a scene starts, so even the first reaction uploads
  * nothing. Each reaction still owns its material (its opacity fades on its own), released by `dispose()` when it is
  * replaced or its avatar leaves; the shared texture stays.
+ *
+ * Sharpness (fix/crisp-labels): drawn after the rich tier's post chain at full resolution with the other labels
+ * (spriteCanvas.ts). The glyph is a picture whose size follows the distance smoothly, so it is not pixel-snapped like the
+ * text: it is rasterized at 256 px (the 128 px one was magnified on a dpr-2 screen up close) with mipmaps, sampled half a
+ * mip level sharper than three's default (LOD bias -0.5: no shimmer as it shrinks with distance, no blur at its usual
+ * 1.5-3x minification).
  */
 
-import { Sprite, SpriteMaterial, type CanvasTexture, type WebGLRenderer } from "three";
+import { LinearFilter, LinearMipmapLinearFilter, Sprite, SpriteMaterial, type CanvasTexture, type WebGLRenderer } from "three";
 import { EMOJIS } from "@caysonverse/shared/constants";
 import { billboardSprite, canvas2d, canvasTexture } from "./spriteCanvas";
 import { EMOJI_BASE_HEIGHT, EMOJI_SPRITE_HEIGHT } from "./constants";
 
 /** Square canvas resolution (px) the glyph is rasterized onto. */
-const CANVAS_PX = 128;
+const CANVAS_PX = 256;
+/** The glyph's map is sampled this many mip levels sharper than the default (see the header). */
+export const EMOJI_LOD_BIAS = -0.5;
 const FONT = `${Math.round(CANVAS_PX * 0.78)}px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif`;
 
 export interface EmojiSpriteHandle {
@@ -53,6 +61,9 @@ export function emojiTexture(glyph: string): CanvasTexture {
   let texture = textures.get(glyph);
   if (!texture) {
     texture = canvasTexture(renderCanvas(glyph));
+    texture.generateMipmaps = true;
+    texture.minFilter = LinearMipmapLinearFilter;
+    texture.magFilter = LinearFilter;
     textures.set(glyph, texture);
   }
   return texture;
@@ -81,7 +92,7 @@ export function prewarmEmojiTextures(gl: Pick<WebGLRenderer, "initTexture">, gly
 /** Build an emoji sprite for `glyph`, initially positioned at EMOJI_BASE_HEIGHT. */
 export function createEmojiSprite(glyph: string): EmojiSpriteHandle {
   const texture = emojiTexture(glyph);
-  const sprite = billboardSprite(texture, 1, EMOJI_SPRITE_HEIGHT, 1001);
+  const sprite = billboardSprite(texture, 1, EMOJI_SPRITE_HEIGHT, 1001, { lodBias: EMOJI_LOD_BIAS });
   sprite.position.set(0, EMOJI_BASE_HEIGHT, 0);
   const material = sprite.material as SpriteMaterial;
 

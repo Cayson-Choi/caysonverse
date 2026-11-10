@@ -40,6 +40,8 @@ interface FakeTag extends Nametag {
   highlight: boolean;
   typing: boolean;
   offsetM: number;
+  /** The last text height (device px) the system asked the tag to rasterize at (NaN: never). */
+  textDevicePx: number;
   /** How many times each per-frame setter has been called — a tag the system leaves alone shows no change. */
   calls: { opacity: number; height: number; offset: number; typing: number; highlight: number };
 }
@@ -53,6 +55,7 @@ function fakeTag(aspect = 3, restY = NAMETAG_HEIGHT): FakeTag {
     highlight: false,
     typing: false,
     offsetM: 0,
+    textDevicePx: Number.NaN,
     calls: { opacity: 0, height: 0, offset: 0, typing: 0, highlight: 0 },
     setHeight(h) {
       tag.calls.height++;
@@ -75,6 +78,9 @@ function fakeTag(aspect = 3, restY = NAMETAG_HEIGHT): FakeTag {
     setTyping(on) {
       tag.calls.typing++;
       tag.typing = on;
+    },
+    setTextDevicePx(px) {
+      tag.textDevicePx = px;
     },
     dispose() {},
   };
@@ -336,6 +342,27 @@ describe("size", () => {
     expect(at20.tag.opacity).toBeCloseTo(1, 5);
     expect(at27.tag.opacity).toBeGreaterThan(0.4);
     expect(at27.tag.opacity).toBeLessThan(0.8);
+  });
+
+  it("tells a shown tag its text's on-screen height in DEVICE px (text px × dpr), the size it is rasterized at", () => {
+    const a = addAvatar("npc:near", 8, 4, true);
+    for (const dpr of [1, 1.5, 2]) {
+      for (let i = 0; i < 30; i++) {
+        now += DT * 1000;
+        frame.update(cam, W, H, DT, now, dpr);
+      }
+      expect(a.tag.textDevicePx).toBeCloseTo(textPx(a) * dpr, 5);
+    }
+    // a frame that does not pass a dpr is a dpr-1 canvas
+    run(30);
+    expect(a.tag.textDevicePx).toBeCloseTo(textPx(a), 5);
+  });
+
+  it("a hidden tag is not told any size (it would rasterize a look nobody sees)", () => {
+    const far = addAvatar("s-far", 8, -40); // past the 30 m fade: never shown
+    run(30);
+    expect(far.tag.opacity).toBe(0);
+    expect(far.tag.textDevicePx).toBeNaN();
   });
 
   it("measures at the tag's actual height: a tag lifted by stacking still reads 12–16 px", () => {
