@@ -25,7 +25,11 @@ export interface TapRecord {
 /**
  * Whether `next` completes a double tap that began with `prev`: no later than
  * DOUBLE_TAP_MS after it and no farther than DOUBLE_TAP_PX from it (both limits
- * inclusive). With no previous tap it is never a double.
+ * inclusive). With no previous tap it is never a double. CameraRig gives `prev` the
+ * first tap's lift and `next` the second one's touch-down (the events' own times) —
+ * the gap a phone's own double-tap rule measures (Android: first up to second down),
+ * so neither the second press's own length nor a busy page's late handling counts
+ * against it (round 4 review: a loaded phone's double tap ran past the window).
  */
 export function isDoubleTap(prev: TapRecord | null, next: TapRecord): boolean {
   if (!prev) return false;

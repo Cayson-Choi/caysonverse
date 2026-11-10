@@ -4,9 +4,10 @@
  * A short primary-button press on the canvas (under CLICK_MAX_PX of travel — TAP_MAX_PX for a finger — and
  * CLICK_MAX_MS of hold; anything longer/farther is the existing look-drag) becomes the auto-move target. Where it
  * goes is decided from the surface actually under the cursor (clickPick.ts → clickPlan.ts, owner 2026-11-10): ground
- * walks there, anything else (a wall, a bench, a body, the sky, past the area) does nothing, and a walk something
- * stops on the way targets where it will stop — so the destination ring (ClickMarker) is never shown where the avatar
- * will not go; and a walk whose ring the player would not see (under a crown, off the screen) is no walk at all. LocalPlayer's per-frame controller then composes the unit direction toward it
+ * walks there (round what is in the way when it must: the target's `via` corners), anything else (a wall, a bench,
+ * another body, the sky) does nothing, and a walk that cannot get there targets where it will stop — so the
+ * destination ring (ClickMarker) is never shown where the avatar will not go; and a walk whose ring the player would
+ * not see (under a crown, off the screen) is no walk at all. LocalPlayer's per-frame controller then composes the unit direction toward it
  * into the NORMAL movement intent (dirToIntent → worldDirection → collision →
  * moveSender), so auto-move is not a forked movement path — same speed, same
  * collision slide, same network validation as a key press.
@@ -52,6 +53,9 @@ export const CLICK_MAX_MS = 400;
 /** Arrival radius (m): inside this of the target, auto-move stops and clears. */
 export const ARRIVE_DIST = 0.35;
 
+/** A way round's corner (ClickTarget.via) counts as passed this close (m): the steer turns to the next one. */
+export const VIA_REACH = 0.2;
+
 /** No-progress window (s): net displacement is measured over spans this long. */
 export const STUCK_WINDOW_SEC = 0.8;
 
@@ -75,11 +79,22 @@ export const STUCK_STEP_MAX_SEC = STUCK_WINDOW_SEC / 4;
 /** An auto-move destination: the ground point, and the height of the surface clicked there (where the ring lies). */
 export interface ClickTarget extends GroundVec {
   y: number;
+  /** A way round (clickPlan.ts findDetour): the corners walked by, in order, before the destination. */
+  via?: readonly GroundVec[];
 }
 
 /** The auto-move state: target + the no-progress measurement window. */
 interface ClickMoveState {
   target: ClickTarget | null;
+  /** The next of the target's `via` corners not yet passed. */
+  viaIndex: number;
+  /**
+   * Counts every walk set or dropped by the player's own hand (setClickTarget, clearClickTarget — a key, the stick,
+   * Esc, a sit, another click), not the walk's own end (arrival, no progress). A tap held back for its double-tap
+   * wait reads it at the tap and again when the wait ends: changed, the player took over meanwhile (round 4 review:
+   * a tap with no ring showing used to walk over a newer click or a key press).
+   */
+  generation: number;
   /**
    * A touch tap on the look half waits DOUBLE_TAP_MS for a second tap before it walks (CameraRig); its ring shows at
    * once meanwhile, so the finger sees where it is going. Never walked to — the walk is `target`.
@@ -95,6 +110,8 @@ interface ClickMoveState {
 
 const state: ClickMoveState = {
   target: null,
+  viaIndex: 0,
+  generation: 0,
   pending: null,
   anchorX: 0,
   anchorZ: 0,
@@ -143,18 +160,26 @@ function clamp(value: number, min: number, max: number): number {
  * already checked by clickPlan.ts (inside the area, clear of the colliders, reached by the walk); the clamp into the
  * active map's bounds − PLAYER_RADIUS (the same clamp LocalPlayer applies to the body) stays as the backstop for
  * targets set directly (dev hooks, the E2E). Each new target restarts the no-progress window with a fresh budget
- * and takes over from a pending tap ring.
+ * and takes over from a pending tap ring. `via`: a way round's corners (clickPlan.ts findDetour), walked by in order.
  */
-export function setClickTarget(x: number, z: number, y = 0): void {
+export function setClickTarget(x: number, z: number, y = 0, via?: readonly GroundVec[]): void {
   const b = activeBounds();
   state.target = {
     x: clamp(x, b.minX + PLAYER_RADIUS, b.maxX - PLAYER_RADIUS),
     z: clamp(z, b.minZ + PLAYER_RADIUS, b.maxZ - PLAYER_RADIUS),
     y,
+    ...(via && via.length > 0 ? { via } : {}),
   };
+  state.viaIndex = 0;
+  state.generation++;
   state.pending = null;
   state.anchored = false;
   state.windowSec = 0;
+}
+
+/** See ClickMoveState.generation: read at a held-back tap and again when its wait ends. */
+export function clickGeneration(): number {
+  return state.generation;
 }
 
 /** The live target (a copy), or null while auto-move is idle. */
@@ -203,6 +228,7 @@ export function peekClickRing(): Readonly<ClickTarget> | null {
 /** Drop the walk's target only (it arrived, or made no progress): a tap waiting out its double-tap wait keeps its ring. */
 function endWalk(): void {
   state.target = null;
+  state.viaIndex = 0;
   state.anchored = false;
   state.windowSec = 0;
 }
@@ -210,6 +236,7 @@ function endWalk(): void {
 /** Drop the target and any pending tap ring (manual-input yield / sit-confirm / Esc — design 29 (b)/(e)). */
 export function clearClickTarget(): void {
   endWalk();
+  state.generation++;
   state.pending = null;
 }
 
@@ -278,8 +305,15 @@ export function stepClickMove(px: number, pz: number, dt: number): GroundVec | n
     state.windowSec = 0;
   }
 
-  const dx = target.x - px;
-  const dz = target.z - pz;
-  const len = Math.hypot(dx, dz); // ≥ ARRIVE_DIST here, never 0
+  // A way round: toward its next corner not yet passed (within VIA_REACH), then the target (clickPlan.ts simulateWalk
+  // walks the same rule).
+  const via = target.via;
+  while (via && state.viaIndex < via.length && Math.hypot(via[state.viaIndex].x - px, via[state.viaIndex].z - pz) < VIA_REACH) {
+    state.viaIndex++;
+  }
+  const aim = via && state.viaIndex < via.length ? via[state.viaIndex] : target;
+  const dx = aim.x - px;
+  const dz = aim.z - pz;
+  const len = Math.hypot(dx, dz); // ≥ VIA_REACH or ARRIVE_DIST here, never 0
   return { x: dx / len, z: dz / len };
 }

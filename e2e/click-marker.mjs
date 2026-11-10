@@ -34,7 +34,8 @@
 //    the ring's own band (the ring lies IN it: a step, a planter; round 3 review). Where a sample looks through leaves its
 //    whole share is uncertain (one pixel cannot say how much of its sector they cover).
 //  - and the player must see the ring (the spec: a walk whose ring nobody sees is the "동그라미가 안 나타남" itself, round
-//    3 review): a ring on the click at least SEEN_AT_CLICK of it drawn (a body in front excused: it moves off it), a
+//    3 review): a ring on the click at least SEEN_AT_CLICK of it drawn (round 4: a body in front is no excuse, the app
+//    draws the ring through what covers it; the player's own avatar is looked through by the click and the oracle), a
 //    ring moved off the click (out of a margin, or where the walk stops) at least SEEN_MOVED and its centre on the
 //    screen. A click the app refuses as "unseen" is checked from the player's side too: the ring it would have drawn on
 //    the click (rays from the camera, leaves checked on the GPU), or for a stopped walk, where the avatar really stops
@@ -184,6 +185,14 @@ async function installProbe(p) {
       for (let a = o; a; a = a.parent) if (a.isSkinnedMesh || a.userData?.clickPick === "block") return true;
       return false;
     }
+    /**
+     * The player's own avatar where the app looks through it (round 4: a click on it is a click on what lies behind it,
+     * the ring drawn through the body): its subtree is tagged "ignore". On main it is not tagged, and stays a body.
+     */
+    function isOwnLookedThrough(o) {
+      for (let a = o; a; a = a.parent) if (a.userData?.clickPick === "ignore") return true;
+      return false;
+    }
     function upNormal(h, dir) {
       if (!h.face) return 0;
       m4.copy(h.object.matrixWorld);
@@ -214,7 +223,7 @@ async function installProbe(p) {
       lastGaps = [];
       const drawn = new Map();
       for (const h of ray.intersectObjects(st().scene.children, true)) {
-        if (!shown(h.object) || inMarker(h.object)) continue;
+        if (!shown(h.object) || inMarker(h.object) || isOwnLookedThrough(h.object)) continue;
         const mat = matOf(h);
         const tints = glass && mat && mat.visible !== false && mat.transparent && mat.opacity > 0.05 && !mat.isShadowMaterial && !h.object.isSprite && !h.object.isPoints && h.point.y > 0.15;
         if (!tints && seeThrough(h.object, mat)) continue;
@@ -290,7 +299,7 @@ async function installProbe(p) {
       // a pixel 2 px away on a body (or off it) makes it a coin toss, fair either way.
       if (kind !== "avatar" && kind !== "nothing") {
         const bodies = [];
-        st().scene.traverse((m) => m.isSkinnedMesh && shown(m) && bodies.push(m));
+        st().scene.traverse((m) => m.isSkinnedMesh && shown(m) && !isOwnLookedThrough(m) && bodies.push(m));
         for (const [dx, dy] of [[-2, 0], [2, 0], [0, -2], [0, 2]]) {
           ray.setFromCamera(new THREE.Vector2(((sx + dx - r.left) / r.width) * 2 - 1, -(((sy + dy - r.top) / r.height) * 2 - 1)), camera);
           const b = ray.intersectObjects(bodies, false)[0];
@@ -441,7 +450,11 @@ async function installProbe(p) {
       return { minX, minY, maxX, maxY, cx: r.left + ((v.x + 1) / 2) * r.width, cy: r.top + ((1 - v.y) / 2) * r.height, behind, vw: r.width, vh: r.height };
     }
     const saved = new Map();
-    /** "normal" | "ontop" (no depth test, drawn last) | "hidden"; the pulse is held at 1 while probing. */
+    /**
+     * "normal" | "ontop" (no depth test, drawn last) | "hidden"; the pulse is held at 1 while probing. The ring's
+     * see-through pass (round 4: where something nearer covers the ring, it is drawn fainter through it — the branch's
+     * ClickMarker `ringGhost` meshes) is part of what the player sees ("normal"), not of the reference on top.
+     */
     function markerMode(mode) {
       const mk = markerParts();
       if (!mk) return false;
@@ -456,9 +469,10 @@ async function installProbe(p) {
       for (const mesh of mk.meshes) {
         if (!saved.has(mesh)) saved.set(mesh, { ro: mesh.renderOrder, dt: mesh.material.depthTest, vis: mesh.material.visible });
         const s0 = saved.get(mesh);
+        const ghost = !!mesh.userData?.ringGhost;
         mesh.renderOrder = mode === "ontop" ? 10000 : s0.ro;
         mesh.material.depthTest = mode === "ontop" ? false : s0.dt;
-        mesh.material.visible = mode === "hidden" ? false : s0.vis;
+        mesh.material.visible = mode === "hidden" || (ghost && mode === "ontop") ? false : s0.vis;
       }
       return true;
     }
@@ -482,14 +496,16 @@ async function installProbe(p) {
     }
     // A look-half tap's walk starts from a 300 ms timer (CameraRig, the double-tap wait). Wrap the next such timer so
     // the avatar is held in the same task that sets its target: no frame walks it before the ring is measured (a ring
-    // half a metre from the avatar was otherwise reached, and gone, before the probe could hold it).
+    // half a metre from the avatar was otherwise reached, and gone, before the probe could hold it). The tap's pick
+    // runs from a timer of its own just before, whose source holds the walk timer's: that one (it calls pickAt) is
+    // not the walk.
     const uiCap = await window.__imp("/src/game/uiCapture.ts");
     const hold = { armed: false, fired: false };
     if (!window.__cmTimerWrapped) {
       window.__cmTimerWrapped = true;
       const orig = window.setTimeout.bind(window);
       window.setTimeout = (fn, ms, ...rest) => {
-        if (window.__cmHold?.armed && typeof fn === "function" && /canTapWalk/.test(String(fn))) {
+        if (window.__cmHold?.armed && typeof fn === "function" && /canTapWalk/.test(String(fn)) && !/pickAt\(/.test(String(fn))) {
           const h = window.__cmHold;
           h.armed = false;
           return orig(() => {
@@ -571,7 +587,15 @@ async function installProbe(p) {
         }
       return null;
     }
-    window.__cm = { analyze, ring, ringOracle, ringRect, markerMode, camInfo, screenOf, freeze, clearTarget, topAt, faceAt, holdNextWalk, walkFired, findLeafGap, findPinhole, wouldSee, wouldSeeFromClick, snapCamera };
+    /** Whether the app looks through the player's own avatar (a skinned body under a subtree tagged "ignore"). */
+    function ownLookedThrough() {
+      let found = false;
+      st().scene.traverse((m) => {
+        if (!found && m.isSkinnedMesh && isOwnLookedThrough(m)) found = true;
+      });
+      return found;
+    }
+    window.__cm = { analyze, ring, ringOracle, ringRect, markerMode, camInfo, screenOf, freeze, clearTarget, topAt, faceAt, holdNextWalk, walkFired, findLeafGap, findPinhole, wouldSee, wouldSeeFromClick, snapCamera, ownLookedThrough };
   });
 }
 
@@ -783,8 +807,10 @@ function judge(row) {
       if ((hidden && o.sunk > 0.05) || (row.lift != null && row.lift < -0.001)) fails.push("sunk");
       if (row.lift != null && row.lift > 0.1) fails.push("floating"); // drawn in the air above the clicked surface
       if (hidden) fails.push("hidden");
-      // the player must see it: the drawn fraction is what reaches the screen (leaves included); a body moves off it
-      if (v.visibleFrac + (o.body ?? 0) < (moved ? SEEN_MOVED : SEEN_AT_CLICK) - VIS_SLACK) fails.push("unseen");
+      // The player must see it: the drawn fraction is what reaches the screen (leaves included). A body in front is no
+      // excuse any more (round 4 review: walking toward a ring 2.6 m ahead, the avatar's own back hid it the whole way,
+      // 1-20 % drawn): the app draws the ring through what covers it.
+      if (v.visibleFrac < (moved ? SEEN_MOVED : SEEN_AT_CLICK) - VIS_SLACK) fails.push("unseen");
       if (v.tall < TINY_PX) fails.push("tiny");
       row.expected = r2(expected);
     }
@@ -971,6 +997,7 @@ async function villageCases(p) {
           : aim;
     let s = null;
     let seen = null;
+    const lookThrough = id === "own_avatar" && (await p.page.evaluate(() => window.__cm.ownLookedThrough()));
     const tries = [];
     for (const dp of [0, 0.35]) for (const dy of [0, 0.5, -0.5, 1, -1]) tries.push([dy, dp]);
     for (const [dy, dp] of world ? tries : []) {
@@ -981,6 +1008,11 @@ async function villageCases(p) {
       const a = await p.page.evaluate(([x, y]) => window.__cm.analyze(x, y), [Math.round(s.x), Math.round(s.y)]);
       const cam = await p.page.evaluate(() => window.__cm.camInfo());
       const tol = Math.max(0.6, 0.03 * Math.hypot(world[0] - cam.x, world[2] - cam.z));
+      // the own body, where the app looks through it (round 4): the click lands on whatever lies behind it
+      if (lookThrough && a.hit) {
+        seen = dy;
+        break;
+      }
       if (a.hit && Math.hypot(a.hit.x - world[0], a.hit.y - world[1], a.hit.z - world[2]) < tol) {
         seen = dy;
         break;
@@ -1061,6 +1093,15 @@ async function villageCases(p) {
       await sitOn(8, [[30, 24], [0, 28], [-2.7, 13]]);
       await caseAt("seated_behind", [-4.6, 0.01, 13.6], null, Math.PI, 0.45, 6);
     }
+    // round 4 review: the paving right behind the bench (the review's taps) did nothing — up, round the bench's end
+    for (const [id, x, z] of [
+      ["seated_behind_near", -3.63, 11.24],
+      ["seated_behind_side", -5.79, 10.86],
+    ]) {
+      if (!wantCase(id)) continue;
+      await sitOn(8, [[30, 24], [0, 28], [-2.7, 13]]);
+      await caseAt(id, [x, 0.01, z], null, Math.PI, 0.45, 6);
+    }
     // Getting up: a click from the seat stands the body up, and a second click while the stand-up clip still carries
     // it off the bench (behind the bench) must be planned from where that glide lands (round 2 review): a ring the
     // avatar then reaches, or none.
@@ -1096,6 +1137,8 @@ async function villageCases(p) {
     // the creek (z 72-78 at x = -6, its collider z 69-81) from its north bank
     await caseAt("creek_bed", ["top", -6, 77], [[0, 28], [-6, 50], [-6, 66]], Math.PI, 0.6, 5);
     await caseAt("far_bank", ["top", -6, 85], [[-6, 66]], Math.PI);
+    // round 4 review: the grass band at the water (inside the creek's collider) did nothing; the walk goes to the bank
+    await caseAt("creek_nearband", ["top", -6, 69.5], [[-6, 66]], Math.PI, 0.5);
     await caseAt("beyond_bounds", ["top", -6, 105], [[-6, 66]], Math.PI, 0.25);
     // the bridge (x -26..-22, z 72..78): its deck's crown is 13-15 cm up — the creek's only crossing must take a click
     await caseAt("bridge_deck", ["top", -24, 75], [[-12, 64], [-24, 46], [-24, 66]], Math.PI, 0.5, 6);
@@ -1262,6 +1305,42 @@ async function retapWhileWalking(p) {
 }
 
 /**
+ * A phone tap on the look half at the avatar's own feet while it walks means "stop" (round 4 review: the tap's wait
+ * planned it again 300 ms later, 0.6 m on, and walked the avatar back to the tap). The tap lands on the feet through
+ * the body (the app looks through the own avatar).
+ */
+async function stopAtFeet(p) {
+  await run.step("phone: a tap at the own feet while walking stops the walk there", async () => {
+    await walkAndWait(p, 0, 18, 30000, 0.6);
+    await setOrbitGoal(p, 0, 0.35, 6);
+    await p.page.evaluate(async () => (await window.__imp("/src/game/clickMove.ts")).setClickTarget(0, 8)); // 10 m on
+    await sleep(600); // walking
+    const vp = p.page.viewportSize();
+    const me = await pos(p);
+    const s = await p.page.evaluate(([x, z]) => window.__cm.screenOf(x, 0.02, z), [me.x, me.z]);
+    const sx = Math.max(Math.round(s.x), Math.ceil(vp.width / 2) + 1); // the look half (the body stands at its edge)
+    await pressAt(p, sx, Math.round(s.y));
+    await sleep(120);
+    const pick = await appPick(p);
+    const tapAt = { x: me.x, z: me.z };
+    await sleep(900); // past the 300 ms wait
+    const tgt = await target(p);
+    const a = await pos(p);
+    await sleep(400);
+    const b = await pos(p);
+    const row = {
+      place: "feet", pose: "stop_at_feet", device: "phone", reason: pick?.plan?.reason ?? null, target: tgt,
+      endFromTap: r2(Math.hypot(b.x - tapAt.x, b.z - tapAt.z)), still: r2(Math.hypot(b.x - a.x, b.z - a.z)),
+    };
+    // stopped where the wait ended (on past the tap, never back to it), and still
+    row.ok = row.reason === "here" && !tgt && row.still < 0.05 && row.endFromTap > 0.3;
+    row.fails = row.ok ? [] : ["no-stop"];
+    run.check("a look-half tap at the own feet while walking: planned as 'here', the walk stops, nothing walks back to the tap", row.ok, row);
+    all.push(row);
+  });
+}
+
+/**
  * A phone tap on the look half while the walk it interrupts arrives inside the tap's 300 ms double-tap wait: the new
  * tap's ring must stay on the screen the whole time (round 3 review: the arrival dropped it and it came back 300 ms on).
  */
@@ -1341,6 +1420,7 @@ for (const device of DEVICES) {
       if (PLACES.includes("walk")) await walkIn(p);
       if (PLACES.includes("walk") && phone) await retapWhileWalking(p);
       if (PLACES.includes("walk") && phone) await retapWhileArriving(p);
+      if (PLACES.includes("walk") && phone) await stopAtFeet(p);
       if (PLACES.includes("walk") && !phone) await firstPersonFar(p);
       if (PLACES.includes("village")) await villageSweep(p, phone);
       if (PLACES.includes("cases") && !phone) await villageCases(p);

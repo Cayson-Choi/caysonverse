@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import { useKeyboardControls } from "@react-three/drei";
-import { Raycaster, Vector2 } from "three";
-import type { Fog, PerspectiveCamera } from "three";
+import { PerspectiveCamera, Raycaster, Vector2 } from "three";
+import type { Fog } from "three";
 import { CAMERA, CAMERA_FAR, FOG_FAR, FOG_NEAR, FP_EYE_HEIGHT, HEAD_HEIGHT } from "./constants";
 import type { MoveControl } from "./constants";
 import { normalizeAngle } from "./yaw";
@@ -42,6 +42,7 @@ import {
   setPendingClick,
   peekPendingClick,
   clearPendingClick,
+  clickGeneration,
 } from "./clickMove";
 import { asSurface, faceIsTall, pickSurface, ringView, surfaceHeightAt, warmPick, type ScenePick } from "./clickPick";
 import {
@@ -116,6 +117,11 @@ let lastClickPick: { pick: ScenePick | null; plan: ClickPlan; view: RingView | n
 
 function lerp(a: number, b: number, t: number): number {
   return a + (b - a) * t;
+}
+
+/** When an input event happened (ms, performance.now()'s clock): its own time stamp, else now. */
+function eventTime(e: Event): number {
+  return e.timeStamp > 0 ? e.timeStamp : performance.now();
 }
 
 /** Pixel distance between the first two active pointers (0 if fewer than two). */
@@ -229,8 +235,14 @@ export function CameraRig({ pose, orbit, seat, fogRange = LEGACY_FOG, far: baseF
     // tap turns it into a recenter. The timer is cleared on a double tap, a pinch
     // and unmount.
     let lastTap: TapRecord | null = null;
+    // A look-half tap's pick, run just after its event (see onUp), and its held-back walk.
+    let pendingPick: ReturnType<typeof setTimeout> | null = null;
     let pendingWalk: ReturnType<typeof setTimeout> | null = null;
     const clearPendingWalk = () => {
+      if (pendingPick !== null) {
+        clearTimeout(pendingPick);
+        pendingPick = null;
+      }
       if (pendingWalk !== null) {
         clearTimeout(pendingWalk);
         pendingWalk = null;
@@ -238,13 +250,12 @@ export function CameraRig({ pose, orbit, seat, fogRange = LEGACY_FOG, far: baseF
       }
     };
     /** What a click at a screen point lands on: the first visible surface under it (clickPick.ts). Once per click. */
-    const pickAt = (clientX: number, clientY: number): ScenePick | null => {
+    const pickAt = (clientX: number, clientY: number, cam = camera as PerspectiveCamera): ScenePick | null => {
       const rect = el.getBoundingClientRect();
       ndc.set(
         ((clientX - rect.left) / rect.width) * 2 - 1,
         -(((clientY - rect.top) / rect.height) * 2 - 1),
       );
-      const cam = camera as PerspectiveCamera;
       raycaster.setFromCamera(ndc, cam);
       raycaster.near = cam.near; // nearer than the near plane is not drawn: nothing to click
       raycaster.far = cam.far;
@@ -255,8 +266,9 @@ export function CameraRig({ pose, orbit, seat, fogRange = LEGACY_FOG, far: baseF
      * Where a click on `pick` sends the avatar (clickPlan.ts) — or why it sends it nowhere — planned from where its
      * walk starts: where it stands, or, seated, the spot it gets up onto (the seat's dismount point), or, getting up,
      * where the stand-up glide lands. `t0`: when the click's pick began (the dev hook times pick + plan together).
+     * `snap`: the camera as it was at the tap (a copy), for a pick run after its event; the live camera otherwise.
      */
-    const planFor = (pick: ScenePick | null, t0 = performance.now()): ClickPlan => {
+    const planFor = (pick: ScenePick | null, t0 = performance.now(), snap: PerspectiveCamera | null = null): ClickPlan => {
       const s = seat.index >= 0 ? activeSeats()[seat.index] : undefined;
       const g = localGlide.current;
       const from = walkStart(pose.x, pose.z, s, g && { x: g.toX, z: g.toZ });
@@ -272,8 +284,8 @@ export function CameraRig({ pose, orbit, seat, fogRange = LEGACY_FOG, far: baseF
       let view: RingView | null = null;
       let unseen: ClickPlan | null = null;
       if (plan.ok) {
-        const cam = camera as PerspectiveCamera;
-        cam.updateMatrixWorld();
+        const cam = snap ?? (camera as PerspectiveCamera);
+        if (!snap) cam.updateMatrixWorld();
         const y = plan.y + ringLift(decal);
         const dist = Math.hypot(cam.position.x - plan.x, cam.position.y - y, cam.position.z - plan.z);
         const scale = cam.isPerspectiveCamera ? ringScreenScale(dist, (cam.position.y - y) / Math.max(dist, 1e-4), cam.fov, el.clientHeight || 1) : 1;
@@ -295,7 +307,7 @@ export function CameraRig({ pose, orbit, seat, fogRange = LEGACY_FOG, far: baseF
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       clickStart =
         e.button === 0 && pointers.size === 1
-          ? { id: e.pointerId, x: e.clientX, y: e.clientY, t: performance.now(), travel: 0 }
+          ? { id: e.pointerId, x: e.clientX, y: e.clientY, t: eventTime(e), travel: 0 }
           : null;
       try {
         el.setPointerCapture(e.pointerId);
@@ -385,13 +397,16 @@ export function CameraRig({ pose, orbit, seat, fogRange = LEGACY_FOG, far: baseF
       if (clickStart && clickStart.id === e.pointerId) {
         const start = clickStart;
         clickStart = null;
+        // Timed by the events' own times, not by when this handler got to run: on a busy page a 60 ms tap's lift
+        // was handled 459 ms after its press and dropped as a long press (round 4 review).
+        const upAt = eventTime(e);
         if (
           e.type === "pointerup" && // a pointercancel is never a click
           viewState.mode !== "ov" &&
           isClick(
             pressTravel(start.travel, e.clientX - start.x, e.clientY - start.y),
             0,
-            performance.now() - start.t,
+            upAt - start.t,
             e.pointerType === "touch" ? TAP_MAX_PX : CLICK_MAX_PX,
           )
         ) {
@@ -400,51 +415,66 @@ export function CameraRig({ pose, orbit, seat, fogRange = LEGACY_FOG, far: baseF
           // the look half can never overlap or leave a gap.
           const leftHanded = useSettingsStore.getState().settings.leftHanded;
           const lookTap = e.pointerType === "touch" && isLookHalf(e.clientX, window.innerWidth, leftHanded);
-          // A look-half tap is timed by its lift (the event's own time), before any pick: a busy page must not
-          // push a second tap past the double-tap window by the time the first one's pick took (round 3
-          // merge test: a phone under load lost its double tap — a walk instead of a recenter).
-          const tap: TapRecord | null = lookTap ? { t: e.timeStamp > 0 ? e.timeStamp : performance.now(), x: e.clientX, y: e.clientY } : null;
-          if (tap && isDoubleTap(lastTap, tap)) {
-            // The second tap of a double tap: the camera swings back behind the body — no pick, no walk.
+          if (lookTap && isDoubleTap(lastTap, { t: start.t, x: e.clientX, y: e.clientY })) {
+            // The second tap of a double tap (it went down within DOUBLE_TAP_MS of the first one's lift): the camera
+            // swings back behind the body — no pick, no walk.
             clearPendingWalk();
             lastTap = null;
             requestRecenter(pose.yaw);
+          } else if (lookTap) {
+            // Look half: wait for a possible second tap. Two taps recenter the camera; one tap walks after
+            // DOUBLE_TAP_MS (planned on what the finger actually touched, not wherever the camera is by then), its
+            // ring showing from the tap on. The world can change during that wait, so the walk is re-checked when
+            // it fires (overview opened, chat took the keyboard, the player sat down or took over meanwhile — see
+            // canTapWalk).
+            clearPendingWalk();
+            lastTap = { t: upAt, x: e.clientX, y: e.clientY };
+            // The pick runs just after this event, on a copy of the camera as it is now: the page answers the finger
+            // first, so a second tap is not held up behind the first one's pick (round 3 merge test, round 4 review:
+            // a phone under load lost its double tap — a walk instead of a recenter).
+            const cam = camera as PerspectiveCamera;
+            cam.updateMatrixWorld();
+            const snap = new PerspectiveCamera().copy(cam, false);
+            const at = { x: e.clientX, y: e.clientY };
+            const tappedAt = performance.now();
+            const seatedAtTap = seat.index >= 0;
+            const generation = clickGeneration(); // a walk set or dropped by hand meanwhile: the player took over
+            pendingPick = setTimeout(() => {
+              pendingPick = null;
+              const t0 = performance.now();
+              const pick = pickAt(at.x, at.y, snap);
+              const plan = planFor(pick, t0, snap);
+              const intent = clickIntent(plan); // walk there / stop here (own feet) / nothing (a wall, a body, the sky...)
+              if (intent === "ignore") return;
+              // the ring at once (a menu open: no walk follows)
+              const shown = plan.ok && !isUiCaptured() ? setPendingClick(plan.x, plan.z, plan.y) : null;
+              pendingWalk = setTimeout(() => {
+                pendingWalk = null;
+                // a key, the stick, Esc, a sit or another click meanwhile: the player took over — no walk
+                const dropped = clickGeneration() !== generation || (shown !== null && peekPendingClick() !== shown);
+                if (!canTapWalk(viewState.mode, isUiCaptured(), seatedAtTap, seat.index >= 0, dropped)) {
+                  if (!dropped) clearPendingClick();
+                  return;
+                }
+                // A tap at the own feet means stop, whatever the walk in progress did meanwhile (round 4 review: planned
+                // again 300 ms later, 0.6 m on, it walked back to the tap instead).
+                if (intent === "stop") {
+                  clearClickTarget();
+                  return;
+                }
+                // The same surface, planned again from where the avatar is now (a walk in progress moved it).
+                const now = planFor(pick);
+                if (now.ok) setClickTarget(now.x, now.z, now.y, now.via);
+                else if (clickIntent(now) === "stop") clearClickTarget(); // it is at the avatar's feet now: stop
+                else clearPendingClick();
+              }, Math.max(0, DOUBLE_TAP_MS - (performance.now() - tappedAt)));
+            }, 0);
           } else {
             const t0 = performance.now();
-            const pick = pickAt(e.clientX, e.clientY);
-            const plan = planFor(pick, t0);
-            const intent = clickIntent(plan); // walk there / stop here (own feet) / nothing (a wall, a body, the sky...)
-            if (tap) {
-              // Look half: wait for a possible second tap. Two taps recenter the
-              // camera; one tap walks after DOUBLE_TAP_MS (planned on what the
-              // finger actually touched, not wherever the camera is by then), its
-              // ring showing from the tap on. The world can change during that
-              // wait, so the walk is re-checked when it fires (overview opened, chat
-              // took the keyboard, the player sat down meanwhile — see canTapWalk).
-              clearPendingWalk();
-              lastTap = tap;
-              if (intent !== "ignore") {
-                const seatedAtTap = seat.index >= 0;
-                // the ring at once (a menu open: no walk follows)
-                const shown = plan.ok && !isUiCaptured() ? setPendingClick(plan.x, plan.z, plan.y) : null;
-                pendingWalk = setTimeout(() => {
-                  pendingWalk = null;
-                  // its ring dropped meanwhile (a key, the stick, Esc, a sit): the player took over — no walk
-                  const dropped = shown !== null && peekPendingClick() !== shown;
-                  if (!canTapWalk(viewState.mode, isUiCaptured(), seatedAtTap, seat.index >= 0, dropped)) {
-                    if (!dropped) clearPendingClick();
-                    return;
-                  }
-                  // The same surface, planned again from where the avatar is now (a walk in progress moved it).
-                  const now = planFor(pick);
-                  if (now.ok) setClickTarget(now.x, now.z, now.y);
-                  else if (clickIntent(now) === "stop") clearClickTarget(); // a tap at the own feet: stop
-                  else clearPendingClick();
-                }, DOUBLE_TAP_MS);
-              }
-            } else if (plan.ok) {
-              setClickTarget(plan.x, plan.z, plan.y); // 벽·사람·하늘·갈 수 없는 곳은 무시 (clickPlan.ts)
-            } else if (intent === "stop") {
+            const plan = planFor(pickAt(e.clientX, e.clientY), t0);
+            if (plan.ok) {
+              setClickTarget(plan.x, plan.z, plan.y, plan.via); // 벽·사람·하늘·갈 수 없는 곳은 무시 (clickPlan.ts)
+            } else if (clickIntent(plan) === "stop") {
               clearClickTarget(); // 내 발밑: 그 자리에 멈춤
             }
           }

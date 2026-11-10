@@ -2,19 +2,23 @@ import { describe, it, expect } from "vitest";
 import { PLAYER_RADIUS } from "@caysonverse/shared/worldMap";
 import type { AABB } from "@caysonverse/shared/collision";
 import { VILLAGE_LAYOUT, villageGeometry } from "@caysonverse/shared/village/villageLayout";
+import { VILLAGE_SEATS } from "@caysonverse/shared/village/benchSeats";
 import {
+  DETOUR_MAX_RATIO,
   MAX_PUSH,
   RAISED_MAX_Y,
   RING_SEEN_AT_CLICK,
   RING_SEEN_MOVED,
   WALKABLE_MAX_Y,
   WALKABLE_MIN_NY,
+  findDetour,
   isFreeSpot,
   clickIntent,
   isWalkableSurface,
   nearestFreeSpot,
   planClickMove,
   requireSeen,
+  segmentClear,
   simulateWalk,
   surfaceKind,
   walkStart,
@@ -25,6 +29,8 @@ const R = PLAYER_RADIUS;
 const BOUNDS = { minX: -20, maxX: 20, minZ: -20, maxZ: 20 };
 /** A 2 x 2 m box at the origin (a bench, a fountain, a house corner). */
 const BOX: AABB = { minX: -1, maxX: 1, minZ: -1, maxZ: 1 };
+/** A wall across the whole area: no way round it. */
+const WALL: AABB = { minX: -21, maxX: 21, minZ: -1, maxZ: 1 };
 const ground = (x: number, z: number, y = 0.01) => ({ x, y, z, ny: 1 });
 
 describe("clickPlan — what is ground (rule 1)", () => {
@@ -82,14 +88,26 @@ describe("clickPlan — where a body can stand (rule 2)", () => {
     expect(p.z).toBeLessThan(1 + R + 0.05);
   });
 
-  it("a point deep in a collider (the creek, the fountain basin) is refused, not slid somewhere else", () => {
+  it("a point deep in a collider (the creek, the fountain basin): no spot there — the walk goes toward it and stops at the collider (round 4 review)", () => {
     const big: AABB = { minX: -6, maxX: 6, minZ: -6, maxZ: 6 };
     expect(nearestFreeSpot(0, 0, [big], BOUNDS)).toBeNull();
-    expect(planClickMove(0, 12, ground(0, 0), [big], BOUNDS)).toEqual({ ok: false, reason: "blocked" });
+    const plan = planClickMove(0, 12, ground(0, 0), [big], BOUNDS);
+    expect(plan.ok && plan.adjusted).toBe("stopped");
+    if (!plan.ok) return;
+    expect(plan.x).toBeCloseTo(0, 6);
+    expect(plan.z).toBeCloseTo(6 + R, 6); // at the collider's grown face, on the line to the click
+    expect(plan.via).toBeUndefined();
+    // already against it: nowhere to go
+    expect(planClickMove(0, 6 + R + 0.1, ground(0, 0), [big], BOUNDS)).toEqual({ ok: false, reason: "unreachable" });
   });
 
-  it("past the bounds is refused unless it is within MAX_PUSH of the edge (no more sliding along the edge)", () => {
-    expect(planClickMove(0, 0, ground(35, 4), [], BOUNDS)).toEqual({ ok: false, reason: "blocked" });
+  it("past the bounds: toward it, up to the edge, on the line to the click (no sliding along the edge); within MAX_PUSH of the edge, pushed in", () => {
+    const past = planClickMove(0, 0, ground(35, 4), [], BOUNDS);
+    expect(past.ok && past.adjusted).toBe("stopped");
+    if (past.ok) {
+      expect(past.x).toBeCloseTo(20 - R, 6);
+      expect(past.z).toBeCloseTo((4 * (20 - R)) / 35, 1);
+    }
     const edge = planClickMove(0, 0, ground(20 - R + 0.2, 4), [], BOUNDS);
     expect(edge.ok).toBe(true);
     if (edge.ok) {
@@ -118,7 +136,7 @@ describe("clickPlan — the walk (rule 3)", () => {
     expect(plan).toEqual({ ok: false, reason: "here" });
     expect(clickIntent(plan)).toBe("stop");
     expect(clickIntent(planClickMove(2, 2, ground(8, 2), [], BOUNDS))).toBe("walk");
-    for (const reason of ["not-ground", "blocked", "unreachable"] as const) expect(clickIntent({ ok: false, reason })).toBe("ignore");
+    for (const reason of ["not-ground", "unreachable", "unseen"] as const) expect(clickIntent({ ok: false, reason })).toBe("ignore");
   });
 
   it("a collider off the line is slid round, as the game walks it: the ring stays on the click", () => {
@@ -128,18 +146,45 @@ describe("clickPlan — the walk (rule 3)", () => {
     expect(simulateWalk(0.6, 6, 2.2, -6, [BOX], BOUNDS).arrived).toBe(true);
   });
 
-  it("a collider square in the way: the ring goes where the avatar stops, and the walk there arrives", () => {
+  it("a collider square in the way: the walk goes round it (via its corners) and the ring stays on the click (round 4 review)", () => {
+    expect(simulateWalk(0, 6, 0, -6, [BOX], BOUNDS).arrived).toBe(false); // straight, it is pinned on the box's face
     const plan = planClickMove(0, 6, ground(0, -6), [BOX], BOUNDS);
+    expect(plan).toMatchObject({ ok: true, x: 0, z: -6, adjusted: "none" });
+    if (!plan.ok) return;
+    expect(plan.via!.length).toBeGreaterThan(0);
+    for (const p of plan.via!) expect(isFreeSpot(p.x, p.z, [BOX], BOUNDS)).toBe(true);
+    const walk = simulateWalk(0, 6, plan.x, plan.z, [BOX], BOUNDS, R, plan.via);
+    expect(walk.arrived).toBe(true);
+    // and a body pressed against it already goes round too
+    const pressed = planClickMove(0, 1 + R + 0.05, ground(0, -6), [BOX], BOUNDS);
+    expect(pressed.ok && !!pressed.via).toBe(true);
+  });
+
+  it("a wall with no way round: the ring goes where the avatar stops, and the walk there arrives; pressed against it, no ring", () => {
+    const plan = planClickMove(0, 6, ground(0, -6), [WALL], BOUNDS);
     expect(plan.ok).toBe(true);
     if (!plan.ok) return;
     expect(plan.adjusted).toBe("stopped");
+    expect(plan.via).toBeUndefined();
     expect(plan.x).toBeCloseTo(0, 6);
-    expect(plan.z).toBeCloseTo(1 + R, 2); // in front of the box's near face
-    expect(simulateWalk(0, 6, plan.x, plan.z, [BOX], BOUNDS).arrived).toBe(true);
+    expect(plan.z).toBeCloseTo(1 + R, 2); // in front of the wall's near face
+    expect(simulateWalk(0, 6, plan.x, plan.z, [WALL], BOUNDS).arrived).toBe(true);
+    expect(planClickMove(0, 1 + R + 0.05, ground(0, -6), [WALL], BOUNDS)).toEqual({ ok: false, reason: "unreachable" });
   });
 
-  it("pressed against that collider already: the walk cannot get going, so no ring", () => {
-    expect(planClickMove(0, 1 + R + 0.05, ground(0, -6), [BOX], BOUNDS)).toEqual({ ok: false, reason: "unreachable" });
+  it("a way round much longer than the straight line is not taken (DETOUR_MAX_RATIO): the walk stops at the obstacle", () => {
+    // a 30 m wall 1 m in front, its ends 15 m off: a 31 m way for a 2 m step
+    const wall: AABB = { minX: -15, maxX: 15, minZ: -0.5, maxZ: 0.5 };
+    expect(findDetour(0, 1.5, 0, -1.5, [wall], BOUNDS)).toBeNull();
+    const plan = planClickMove(0, 2, ground(0, -2), [wall], BOUNDS);
+    expect(plan.ok && plan.adjusted).toBe("stopped");
+    if (plan.ok) expect(plan.z).toBeCloseTo(0.5 + R, 6);
+    // the same wall, 5 m long: a short way round its end
+    const short: AABB = { minX: -2.5, maxX: 2.5, minZ: -0.5, maxZ: 0.5 };
+    const via = findDetour(0, 1.5, 0, -1.5, [short], BOUNDS)!;
+    expect(via).not.toBeNull();
+    expect(simulateWalk(0, 1.5, 0, -1.5, [short], BOUNDS, R, via).arrived).toBe(true);
+    expect(DETOUR_MAX_RATIO).toBeGreaterThan(1);
   });
 
   it("seated, the walk starts from the seat's dismount point (where getting up puts the body), not the seat", () => {
@@ -157,12 +202,32 @@ describe("clickPlan — the walk (rule 3)", () => {
     expect(walkStart(3, 4, undefined, null)).toEqual({ x: 3, z: 4 });
     expect(walkStart(3, 4, { standX: 3, standZ: 5.2 }, { x: 9, z: 9 })).toEqual({ x: 3, z: 5.2 }); // seated: the seat's
     // from inside the bench's collider the slide lets the simulated walk through it ("arrived" behind the bench) —
-    // planned from the landing, the bench stops it and the ring goes where the avatar really stops
+    // planned from the landing, the bench is in the way: the walk goes round it, never through it
     const bench: AABB = { minX: -1, maxX: 1, minZ: -0.3, maxZ: 0.3 };
     const from = walkStart(0, 0.1, undefined, { x: 0, z: 1.6 });
+    expect(simulateWalk(from.x, from.z, 0, -6, [bench], BOUNDS).arrived).toBe(false);
     const plan = planClickMove(from.x, from.z, ground(0, -6), [bench], BOUNDS);
-    expect(plan.ok && plan.adjusted).toBe("stopped");
-    if (plan.ok) expect(plan.z).toBeGreaterThan(0.3 + R - 0.01);
+    expect(plan).toMatchObject({ ok: true, x: 0, z: -6, adjusted: "none" });
+    if (!plan.ok) return;
+    const legs = [from, ...plan.via!, { x: plan.x, z: plan.z }];
+    for (let i = 1; i < legs.length; i++) expect(segmentClear(legs[i - 1].x, legs[i - 1].z, legs[i].x, legs[i].z, [bench])).toBe(true);
+  });
+
+  it("seated, the paving right behind the bench: up, round the bench's end, to the click (round 4 review: it did nothing)", () => {
+    // plaza_5's seat 8 (the review's taps): planned from its dismount point, in front of the bench
+    const s = VILLAGE_SEATS[8];
+    const obstacles = villageGeometry.obstacles;
+    const village = VILLAGE_LAYOUT.areas.village;
+    for (const [x, z] of [
+      [-3.63, 11.24],
+      [-5.79, 10.86],
+    ]) {
+      expect(simulateWalk(s.standX, s.standZ, x, z, obstacles, village).arrived).toBe(false);
+      const plan = planClickMove(s.standX, s.standZ, ground(x, z), obstacles, village, true);
+      expect(plan).toMatchObject({ ok: true, x, z, adjusted: "none" });
+      if (!plan.ok) continue;
+      expect(simulateWalk(s.standX, s.standZ, x, z, obstacles, village, R, plan.via).arrived).toBe(true);
+    }
   });
 
   it("seated, the ground at the dismount point itself still means: get up and stand there (standing, it means stop)", () => {
@@ -184,31 +249,68 @@ describe("clickPlan — 케이슨 마을's real colliders", () => {
   const village = VILLAGE_LAYOUT.areas.village;
   const hall = VILLAGE_LAYOUT.areas.hall;
 
-  it("the fountain's water (the middle of its collider) is refused from the plaza", () => {
-    expect(planClickMove(0, 16, ground(2, 3, 0.1), obstacles, village)).toEqual({ ok: false, reason: "blocked" });
-  });
-
-  it("the far creek bank: the avatar stops at the near bank, and that is where the ring goes", () => {
-    const plan = planClickMove(-12, 64, ground(-12, 84, 0.001), obstacles, village);
-    expect(plan.ok).toBe(true);
+  it("the fountain's water (the middle of its collider): the walk goes toward it and stops at the rim's foot", () => {
+    const plan = planClickMove(0, 16, ground(2, 3, 0.1), obstacles, village);
+    expect(plan.ok && plan.adjusted).toBe("stopped");
     if (!plan.ok) return;
-    expect(plan.adjusted).toBe("stopped");
-    expect(plan.z).toBeCloseTo(69 - R, 1); // the creek's collider starts at z = 69
-    expect(plan.x).toBeCloseTo(-12, 1);
+    expect(isFreeSpot(plan.x, plan.z, obstacles, village)).toBe(true);
+    expect(Math.hypot(plan.x - 2, plan.z - 3)).toBeLessThan(Math.hypot(0 - 2, 16 - 3)); // on its way to the click
+    expect(simulateWalk(0, 16, plan.x, plan.z, obstacles, village).arrived).toBe(true);
   });
 
-  it("past the village's edge (a far hill, the lake) is refused", () => {
-    expect(planClickMove(-12, 64, ground(-12, 130, 0), obstacles, village)).toEqual({ ok: false, reason: "blocked" });
-    expect(planClickMove(-12, 64, ground(-42, 430, 0), obstacles, village)).toEqual({ ok: false, reason: "blocked" });
+  it("the far creek bank: over the bridge, the ring on the click (round 4 review: it sat 2.6 m ahead, behind the avatar's back)", () => {
+    for (const [from, to] of [
+      [
+        { x: -12, z: 64 },
+        { x: -12, z: 84 },
+      ],
+      [
+        { x: -6, z: 65.7 },
+        { x: -6, z: 85 },
+      ], // the review's case
+    ]) {
+      const plan = planClickMove(from.x, from.z, ground(to.x, to.z, 0.001), obstacles, village);
+      expect(plan).toMatchObject({ ok: true, x: to.x, z: to.z, adjusted: "none" });
+      if (!plan.ok) continue;
+      // the way crosses at the bridge (its gap in the creek's collider, x -26..-22)
+      expect(plan.via!.some((p) => p.x > -26 + R && p.x < -22 - R)).toBe(true);
+      expect(simulateWalk(from.x, from.z, to.x, to.z, obstacles, village, R, plan.via).arrived).toBe(true);
+    }
   });
 
-  it("the hall: floor beyond the central bench puts the ring at the bench, where the walk ends", () => {
+  it("the grass band at the water and the water itself (inside the creek's collider): toward them, the ring at the bank (round 4 review)", () => {
+    for (const z of [69.5, 76]) {
+      const plan = planClickMove(-6, 66, ground(-6, z, 0.01), obstacles, village);
+      expect(plan).toMatchObject({ ok: true, adjusted: "stopped" });
+      if (!plan.ok) continue;
+      expect(plan.x).toBeCloseTo(-6, 6);
+      expect(plan.z).toBeCloseTo(69 - R, 6); // the creek's collider starts at z = 69
+    }
+  });
+
+  it("past the village's edge (a far hill, the lake): toward it, up to what is first in the way (the creek)", () => {
+    for (const [x, z] of [
+      [-12, 130],
+      [-42, 430],
+    ]) {
+      const plan = planClickMove(-12, 64, ground(x, z, 0), obstacles, village);
+      expect(plan).toMatchObject({ ok: true, adjusted: "stopped" });
+      if (plan.ok) expect(plan.z).toBeCloseTo(69 - R, 6);
+    }
+  });
+
+  it("the hall: floor beyond the central bench is walked to round the bench", () => {
+    expect(simulateWalk(300.6, 1.5, 300.6, -4, obstacles, hall).arrived).toBe(false);
     const plan = planClickMove(300.6, 1.5, ground(300.6, -4, 0), obstacles, hall);
-    expect(plan.ok).toBe(true);
+    expect(plan).toMatchObject({ ok: true, x: 300.6, z: -4, adjusted: "none" });
     if (!plan.ok) return;
-    expect(plan.adjusted).toBe("stopped");
-    expect(plan.z).toBeCloseTo(-1.39 + R, 1); // the bench's collider ends at z = -1.39
-    expect(simulateWalk(300.6, 1.5, plan.x, plan.z, obstacles, hall).arrived).toBe(true);
+    expect(simulateWalk(300.6, 1.5, plan.x, plan.z, obstacles, hall, R, plan.via).arrived).toBe(true);
+  });
+
+  it("a clear click across the whole village arrives (round 4 review: a 90 s cap stopped a 2 m/s walk after 180 m)", () => {
+    const walk = simulateWalk(-90, -90, 90, 90, [], village);
+    expect(walk.arrived).toBe(true);
+    expect(planClickMove(-90, -90, ground(90, 90), [], village)).toMatchObject({ ok: true, x: 90, z: 90, adjusted: "none" });
   });
 
   it("the bridge's deck (its crown 0.13-0.15 m up) is walked to as clicked, the creek's only crossing", () => {
@@ -259,14 +361,14 @@ describe("clickPlan — a walk needs a ring the player can see (round 3 review: 
 
   it("an unseen ring is no walk at all (not a stop either); a refusal passes through unchanged", () => {
     expect(clickIntent({ ok: false, reason: "unseen" })).toBe("ignore");
-    const refused = { ok: false as const, reason: "blocked" as const };
+    const refused = { ok: false as const, reason: "unreachable" as const };
     expect(requireSeen(refused, { onScreen: false, seen: 0 })).toBe(refused);
   });
 });
 
 describe("clickPlan — a walk that cannot arrive stops where it meets the obstacle, toward the click (round 3 review: the creek)", () => {
   it("a long wall crossed at a slant: the ring is where the straight walk meets it, not 15 m along it where the slide ends", () => {
-    const wall: AABB = { minX: -19, maxX: 19, minZ: -3, maxZ: -2.5 };
+    const wall: AABB = { minX: -21, maxX: 21, minZ: -3, maxZ: -2.5 }; // across the whole area: no way round
     const raw = simulateWalk(0, 0, 16, -8, [wall], BOUNDS);
     expect(raw.arrived).toBe(false);
     expect(raw.x).toBeGreaterThan(12); // the slide along the wall's face ends near the click's x
@@ -285,7 +387,7 @@ describe("clickPlan — a walk that cannot arrive stops where it meets the obsta
     expect(c.z).toBeCloseTo(1 + R, 6);
   });
 
-  it("the real creek: the lawn across it seen from the bridge's head puts the ring on the near bank toward it, not 18 m along it", () => {
+  it("the real creek: the lawn across it seen from the bridge's head is walked to over the bridge, not 18 m along the bank", () => {
     const obstacles = villageGeometry.obstacles;
     const village = VILLAGE_LAYOUT.areas.village;
     const from = { x: -24, z: 66 };
@@ -293,14 +395,32 @@ describe("clickPlan — a walk that cannot arrive stops where it meets the obsta
     const raw = simulateWalk(from.x, from.z, click.x, click.z, obstacles, village);
     expect(Math.hypot(raw.x - from.x, raw.z - from.z)).toBeGreaterThan(15); // where the slide along the bank ends
     const plan = planClickMove(from.x, from.z, click, obstacles, village);
+    expect(plan).toMatchObject({ ok: true, x: click.x, z: click.z, adjusted: "none" });
+    if (!plan.ok) return;
+    expect(simulateWalk(from.x, from.z, click.x, click.z, obstacles, village, R, plan.via).arrived).toBe(true);
+  });
+
+  it("with no way round, a slanted walk at the creek stops on the near bank toward the click, not along it", () => {
+    // a creek with no bridge, across the whole area: the stop is where the straight walk meets its collider
+    const creek: AABB = { minX: -200, maxX: 200, minZ: 69, maxZ: 81 };
+    const village = VILLAGE_LAYOUT.areas.village;
+    const from = { x: -24, z: 66 };
+    const click = ground(-30, 92.8, 0.001);
+    const plan = planClickMove(from.x, from.z, click, [creek], village);
     expect(plan.ok && plan.adjusted).toBe("stopped");
     if (!plan.ok) return;
-    expect(plan.z).toBeLessThan(69); // the near bank (the creek's collider starts at z = 69)
-    expect(Math.hypot(plan.x - from.x, plan.z - from.z)).toBeLessThan(4);
-    // on the line toward the click: the sideways offset from it is a step at most
+    expect(plan.z).toBeCloseTo(69 - R, 6);
     const ux = click.x - from.x;
     const uz = click.z - from.z;
     const off = Math.abs((plan.x - from.x) * uz - (plan.z - from.z) * ux) / Math.hypot(ux, uz);
-    expect(off).toBeLessThan(0.1);
+    expect(off).toBeLessThan(0.1); // on the line toward the click
+  });
+
+  it("segmentClear: a walk along a grown face or touching its corner is clear; one through the inside is not", () => {
+    expect(segmentClear(-5, 1 + R, 5, 1 + R, [BOX])).toBe(true); // along the grown face
+    expect(segmentClear(-5, 1 + R - 0.01, 5, 1 + R - 0.01, [BOX])).toBe(false);
+    expect(segmentClear(1 + R, 3, 1 + R + 2, 1 + R, [BOX])).toBe(true); // a corner touched from outside
+    expect(segmentClear(0, 5, 0, -5, [BOX])).toBe(false);
+    expect(segmentClear(-5, 5, 5, 5, [BOX])).toBe(true);
   });
 });

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
-import { MeshBasicMaterial } from "three";
+import { GreaterDepth, LessEqualDepth, MeshBasicMaterial } from "three";
 import type { Group, PerspectiveCamera } from "three";
 import { peekClickRing } from "./clickMove";
 import { CLICK_PICK_KEY } from "./clickPick";
@@ -24,13 +24,31 @@ const DOT_COLOR = "#ffffff";
 /** The click pick passes through the ring (clickPick.ts): a click on it is a click on the ground under it. */
 const IGNORED_BY_PICK = { [CLICK_PICK_KEY]: "ignore" };
 
-/** The ring's two materials: the depth that sees over the ground around it (clickRing.ts) and the decals' offset. */
-function ringMaterial(color: string, uniforms: Record<string, { value: number }>): MeshBasicMaterial {
+/**
+ * The ring's opacity where something stands in front of it (its see-through pass, below): fainter than the ring
+ * itself (0.9), so it reads as behind, yet plain (round 4 review: walking to a ring 2.6 m ahead, the avatar's own back
+ * hid it the whole way — 1-20 % of it drawn; and the last metres of every walk away from the camera).
+ */
+export const RING_GHOST_OPACITY = 0.6;
+
+/** Marks the see-through pass's meshes (`userData`): the E2E's ring probe tells them from the ring itself. */
+export const RING_GHOST_KEY = "ringGhost";
+const GHOST = { [RING_GHOST_KEY]: true };
+
+/**
+ * The ring's materials: the depth that sees over the ground around it (clickRing.ts) and the decals' offset. `ghost`:
+ * the see-through pass — the same ring drawn only where its depth test FAILS (GreaterDepth: something nearer covers
+ * it there — the avatar's own body, another avatar, a bench, leaves), at RING_GHOST_OPACITY. Every pixel of the ring is
+ * drawn by exactly one of the two passes (the same fragment depth, complementary tests): plain where it is in view,
+ * fainter where it is covered, never cut.
+ */
+function ringMaterial(color: string, uniforms: Record<string, { value: number }>, ghost = false): MeshBasicMaterial {
   const m = new MeshBasicMaterial({
     color,
     transparent: true,
-    opacity: 0.9,
+    opacity: ghost ? RING_GHOST_OPACITY : 0.9,
     depthWrite: false,
+    depthFunc: ghost ? GreaterDepth : LessEqualDepth,
     polygonOffset: true,
     polygonOffsetFactor: RING_POLYGON_OFFSET.factor,
     polygonOffsetUnits: RING_POLYGON_OFFSET.units,
@@ -52,7 +70,9 @@ function ringMaterial(color: string, uniforms: Record<string, { value: number }>
  *
  * It lies on the surface that was clicked (the target's `y`) plus the scene's decal lift, with a polygon offset that
  * beats every ground layer, drawn after the shadow floor, its depth taken a little up its view ray so a curb or a
- * step edge around it never cuts it, and grown on the screen when it is far or seen edge-on (clickRing.ts).
+ * step edge around it never cuts it, and grown on the screen when it is far or seen edge-on (clickRing.ts). What still
+ * stands in front of it (the avatar walking toward it, another body, a bench) does not hide it: a second, fainter pass
+ * draws the ring exactly where the first one's depth test fails (ringMaterial `ghost`).
  *
  * Per-frame work touches the groups and the shared uniforms only — no React state, no allocation: the target is read
  * with peekClickRing (the live object, not a copy). The outer group places and sizes it, the inner one breathes.
@@ -65,13 +85,20 @@ export function ClickMarker() {
     () => ({ uRingSeeOver: { value: RING_SEE_OVER }, uRingBiasCap: { value: 2 * RING_OUTER }, uRingNear: { value: 0.1 } }),
     [],
   );
-  const [ringMat, dotMat] = useMemo(() => [ringMaterial(RING_COLOR, uniforms), ringMaterial(DOT_COLOR, uniforms)], [uniforms]);
+  const mats = useMemo(
+    () => ({
+      ring: ringMaterial(RING_COLOR, uniforms),
+      dot: ringMaterial(DOT_COLOR, uniforms),
+      ringGhost: ringMaterial(RING_COLOR, uniforms, true),
+      dotGhost: ringMaterial(DOT_COLOR, uniforms, true),
+    }),
+    [uniforms],
+  );
   useEffect(
     () => () => {
-      ringMat.dispose();
-      dotMat.dispose();
+      for (const m of Object.values(mats)) m.dispose();
     },
-    [ringMat, dotMat],
+    [mats],
   );
 
   useFrame(({ clock, camera, size }) => {
@@ -104,10 +131,17 @@ export function ClickMarker() {
   return (
     <group ref={placeRef} visible={false} userData={IGNORED_BY_PICK}>
       <group ref={pulseRef}>
-        <mesh rotation={[-Math.PI / 2, 0, 0]} renderOrder={RING_RENDER_ORDER} material={ringMat}>
+        <mesh rotation={[-Math.PI / 2, 0, 0]} renderOrder={RING_RENDER_ORDER} material={mats.ring}>
           <ringGeometry args={[RING_INNER, RING_OUTER, 40]} />
         </mesh>
-        <mesh rotation={[-Math.PI / 2, 0, 0]} renderOrder={RING_RENDER_ORDER} material={dotMat}>
+        <mesh rotation={[-Math.PI / 2, 0, 0]} renderOrder={RING_RENDER_ORDER} material={mats.dot}>
+          <circleGeometry args={[0.08, 20]} />
+        </mesh>
+        {/* the see-through pass: where something nearer covers the ring (ringMaterial `ghost`) */}
+        <mesh rotation={[-Math.PI / 2, 0, 0]} renderOrder={RING_RENDER_ORDER} material={mats.ringGhost} userData={GHOST}>
+          <ringGeometry args={[RING_INNER, RING_OUTER, 40]} />
+        </mesh>
+        <mesh rotation={[-Math.PI / 2, 0, 0]} renderOrder={RING_RENDER_ORDER} material={mats.dotGhost} userData={GHOST}>
           <circleGeometry args={[0.08, 20]} />
         </mesh>
       </group>

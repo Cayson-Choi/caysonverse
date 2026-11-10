@@ -25,6 +25,8 @@ import {
   clearClickTarget,
   resetClickMove,
   stepClickMove,
+  clickGeneration,
+  VIA_REACH,
 } from "./clickMove";
 import { worldDirection } from "./input";
 
@@ -309,5 +311,51 @@ describe("clickMove — round 3 review", () => {
     clearClickTarget();
     expect(peekPendingClick()).toBeNull();
     expect(peekClickRing()).toBeNull();
+  });
+});
+
+describe("clickMove — round 4 review", () => {
+  it("a way round (via): the steer heads for each corner in turn, then the target; arrival only at the target", () => {
+    setClickTarget(4, 4, 0, [
+      { x: 0, z: 4 },
+      { x: 2, z: 6 },
+    ]);
+    // first toward the first corner, straight up
+    const d0 = stepClickMove(0, 0, 1 / 60)!;
+    expect(d0.x).toBeCloseTo(0, 9);
+    expect(d0.z).toBeCloseTo(1, 9);
+    // within VIA_REACH of it: on to the next corner
+    const d1 = stepClickMove(0, 4 - VIA_REACH / 2, 1 / 60)!;
+    expect(d1.x).toBeGreaterThan(0.6);
+    expect(d1.z).toBeGreaterThan(0.6);
+    // past both: the target (its own arrival radius)
+    const d2 = stepClickMove(2, 6 - VIA_REACH / 2, 1 / 60)!;
+    expect(Math.atan2(d2.z, d2.x)).toBeCloseTo(Math.atan2(4 - (6 - VIA_REACH / 2), 2), 6);
+    expect(stepClickMove(4, 4 + ARRIVE_DIST / 2, 1 / 60)).toBeNull();
+    expect(getClickTarget()).toBeNull();
+  });
+
+  it("a target with no via (or an empty one) steers straight; a new target starts its via from the first corner", () => {
+    setClickTarget(5, 0, 0, []);
+    expect(getClickTarget()!.via).toBeUndefined();
+    setClickTarget(5, 0, 0, [{ x: 0, z: 5 }]);
+    stepClickMove(0, 5 - VIA_REACH / 2, 1 / 60); // passes the corner
+    setClickTarget(5, 0, 0, [{ x: 0, z: 5 }]); // a re-click with the same way: from its first corner again
+    const d = stepClickMove(0, 0, 1 / 60)!;
+    expect(d.z).toBeCloseTo(1, 9);
+  });
+
+  it("clickGeneration changes when a walk is set or dropped by hand, not when it ends by itself (a waiting tap tells the player took over)", () => {
+    const g0 = clickGeneration();
+    setClickTarget(1, 0, 0);
+    const g1 = clickGeneration();
+    expect(g1).not.toBe(g0);
+    setPendingClick(3, 3, 0); // a tap's own ring: not the player taking over
+    expect(clickGeneration()).toBe(g1);
+    stepClickMove(1, 0, 1 / 60); // arrival
+    expect(getClickTarget()).toBeNull();
+    expect(clickGeneration()).toBe(g1);
+    clearClickTarget(); // a key (LocalPlayer clears on any manual input, every frame of it), the stick, Esc, a sit
+    expect(clickGeneration()).not.toBe(g1);
   });
 });

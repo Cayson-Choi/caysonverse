@@ -324,10 +324,8 @@ async function pc(browser) {
     await A.page.keyboard.press("Enter");
     await until(() => state(A), (s) => s.focused);
     const vp = A.page.viewportSize();
-    // the ground a little ahead of the avatar, to its right: a normal click-move, as without the chat. Not 60 px right
-    // at 0.62 of the height: that is the avatar's own arm or hip (fix/click-marker: a click on a body takes no walk and
-    // no ring; 4 of 5 fresh joins hit "avatar__solid" there) — 160 px right at 0.66 is the plaza paving ~1.5 m off.
-    await A.page.mouse.click(vp.width / 2 + 160, vp.height * 0.66);
+    // the ground a little ahead of the avatar: a normal click-move, as without the chat
+    await A.page.mouse.click(vp.width / 2 + 60, vp.height * 0.62);
     const s1 = await until(() => state(A), (s) => !s.focused, 1500);
     check("a click on the 3D view takes the caret out of the field", !s1.focused && !s1.captured, s1);
     const moved = await until(() => A.page.evaluate(() => window.__cvClickTarget()), (t) => t !== null, 1500, 30);

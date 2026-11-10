@@ -11,9 +11,12 @@ import { RING_INNER, RING_OUTER, ringDepthBias } from "./clickRing";
  *
  * The scene is walked by hand (not `intersectObjects`) so a hidden subtree is skipped whole and each hit knows what it
  * belongs to:
- *  - `userData.clickPick = "ignore"` drops a subtree (the destination ring itself);
- *  - `userData.clickPick = "block"` marks one whose surfaces are never ground (the avatars and the NPCs: a click on
- *    a body is no walk, not a walk to the floor behind it);
+ *  - `userData.clickPick = "ignore"` drops a subtree (the destination ring itself; the player's own avatar — a click on
+ *    it is a click on what lies behind it, as before this pick: round 4 review, the phone's camera right behind the
+ *    head in the memorial hall left the lower half of the screen dead; the ring there is drawn through the body,
+ *    ClickMarker's see-through pass);
+ *  - `userData.clickPick = "block"` marks one whose surfaces are never ground (the other avatars and the NPCs: a click
+ *    on a body is no walk, not a walk to the floor behind it);
  *  - what draws nothing solid is see-through: sprites, points and lines (name tags, bubbles, stars), colliders
  *    (`col__*`), shadow catchers, and materials that write no depth while blending (blob shadows, the ground decals,
  *    the plot markers, the door pads, water, light shafts) — the click goes on to what is under them; so are leaves
@@ -43,8 +46,11 @@ export type ClickPickTag = "ignore" | "block";
  */
 export const NEAR_FADE_KEY = "nearFade";
 
-/** `userData` of a body's root group (the local avatar, the remote ones, the NPCs): its surfaces are never ground. */
+/** `userData` of a body's root group (the remote avatars, the NPCs): its surfaces are never ground. */
 export const PICK_AS_BODY: Record<string, ClickPickTag> = { [CLICK_PICK_KEY]: "block" };
+
+/** `userData` of the local avatar's root group: looked through (see above). */
+export const PICK_AS_SELF: Record<string, ClickPickTag> = { [CLICK_PICK_KEY]: "ignore" };
 
 /** The first surface under a click: where, how upright, and whether it belongs to a body. */
 export interface ScenePick extends SurfacePoint {
