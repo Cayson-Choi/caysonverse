@@ -48,10 +48,12 @@ export const STUCK_WINDOW_SEC = 0.8;
 
 /**
  * Minimum net displacement (m) per STUCK_WINDOW_SEC to count as progress. Free
- * walking covers MOVE_SPEED×window ≈ 1.6 m and even a shallow wall-slide well
- * over this; pinned against a wall/corner it is ~0 → the target is released.
+ * walking covers MOVE_SPEED×window ≈ 1.6 m; pinned against a wall/corner it is
+ * ~0 → the target is released. Halved with the walk (4 → 2 m/s, 2026-11-10) so a
+ * wall-slide counts as progress down to the same ~4.5° off the wall's normal as
+ * before (1.6·sin 4.5° ≈ 0.125), instead of being dropped below ~9°.
  */
-export const STUCK_MIN_DIST = 0.25;
+export const STUCK_MIN_DIST = 0.125;
 
 /** The auto-move state: target + the no-progress measurement window. */
 interface ClickMoveState {
