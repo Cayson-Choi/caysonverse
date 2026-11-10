@@ -49,8 +49,9 @@ describe("stageLayout — the camera's view of the stage (Task 7b)", () => {
     expect(entryArtFor(1280, 800)).toBe("desktop");
     expect(entryArtFor(800, 800)).toBe("desktop");
     expect(entryArtFor(820, 1180)).toBe("phone");
+    // 2026-11-10 village-plaza art: anchors measured by matching the old podium into the new art (scratch align.py).
     expect(ENTRY_ART.desktop).toMatchObject({ width: 1600, height: 900, podiumX: 0.5, podiumY: 0.701 });
-    expect(ENTRY_ART.phone).toMatchObject({ width: 720, height: 1280, podiumX: 0.5, podiumY: 0.437 });
+    expect(ENTRY_ART.phone).toMatchObject({ width: 720, height: 1280, podiumX: 0.5, podiumY: 0.4414 });
     expect(SHEET_REST).toBe(0.47);
     expect(SHEET_OPEN).toBe(0.88);
     expect(SHEET_FIRST_ROW).toBeGreaterThan(0.47 * 844); // the 47 % floor alone hides the first card row (the concept rests ~53 %)
