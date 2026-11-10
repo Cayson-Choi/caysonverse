@@ -29,7 +29,7 @@ const IGNORED_BY_PICK = { [CLICK_PICK_KEY]: "ignore" };
  * itself (0.9), so it reads as behind, yet plain (round 4 review: walking to a ring 2.6 m ahead, the avatar's own back
  * hid it the whole way — 1-20 % of it drawn; and the last metres of every walk away from the camera).
  */
-export const RING_GHOST_OPACITY = 0.6;
+export const RING_GHOST_OPACITY = 0.7;
 
 /** Marks the see-through pass's meshes (`userData`): the E2E's ring probe tells them from the ring itself. */
 export const RING_GHOST_KEY = "ringGhost";

@@ -7,8 +7,6 @@ import {
   DETOUR_MAX_RATIO,
   MAX_PUSH,
   RAISED_MAX_Y,
-  RING_SEEN_AT_CLICK,
-  RING_SEEN_MOVED,
   WALKABLE_MAX_Y,
   WALKABLE_MIN_NY,
   findDetour,
@@ -339,23 +337,21 @@ describe("clickPlan — a curb's side is a face no higher than a curb (round 3 r
   });
 });
 
-describe("clickPlan — a walk needs a ring the player can see (round 3 review: walks under a crown, off the screen)", () => {
+describe("clickPlan — a walk needs its ring on the screen (round 3 review: a stop off the screen)", () => {
   const atClick = { ok: true as const, x: 1, z: 2, y: 0.01, adjusted: "none" as const };
   const stopped = { ok: true as const, x: 1, z: 2, y: 0.01, adjusted: "stopped" as const };
   const pushed = { ok: true as const, x: 1, z: 2, y: 0.01, adjusted: "pushed" as const };
 
-  it("a ring on the click itself needs RING_SEEN_AT_CLICK of it to reach the screen (a gap in a crown is a click on the crown)", () => {
-    expect(requireSeen(atClick, { onScreen: true, seen: RING_SEEN_AT_CLICK })).toBe(atClick);
-    expect(requireSeen(atClick, { onScreen: true, seen: RING_SEEN_AT_CLICK - 0.01 })).toEqual({ ok: false, reason: "unseen" });
+  it("a ring whose centre is off the screen (or behind the camera) is no walk: no ring, no walk", () => {
+    for (const plan of [atClick, stopped, pushed]) {
+      expect(requireSeen(plan, { onScreen: false, seen: 1 })).toEqual({ ok: false, reason: "unseen" });
+    }
   });
 
-  it("a ring moved off the click (where the walk stops, out of a margin) needs RING_SEEN_MOVED of it, and its centre on the screen", () => {
-    expect(RING_SEEN_MOVED).toBeGreaterThan(RING_SEEN_AT_CLICK);
-    for (const plan of [stopped, pushed]) {
-      expect(requireSeen(plan, { onScreen: true, seen: RING_SEEN_MOVED })).toBe(plan);
-      expect(requireSeen(plan, { onScreen: true, seen: RING_SEEN_MOVED - 0.01 })).toEqual({ ok: false, reason: "unseen" });
-      // the stop 18-25 m off along the creek bank, off the screen: no ring, no walk
-      expect(requireSeen(plan, { onScreen: false, seen: 1 })).toEqual({ ok: false, reason: "unseen" });
+  it("covered in part or most (a crown, a bench's back, a body), a ring on the screen still walks: it is drawn through what covers it (round 4 review)", () => {
+    for (const plan of [atClick, stopped, pushed]) {
+      expect(requireSeen(plan, { onScreen: true, seen: 0.22 })).toBe(plan); // the paving behind a bench, from its seat
+      expect(requireSeen(plan, { onScreen: true, seen: 0 })).toBe(plan);
     }
   });
 

@@ -46,8 +46,6 @@ import {
 } from "./clickMove";
 import { asSurface, faceIsTall, pickSurface, ringView, surfaceHeightAt, warmPick, type ScenePick } from "./clickPick";
 import {
-  RING_SEEN_AT_CLICK,
-  RING_SEEN_MOVED,
   WALKABLE_MAX_Y,
   WALKABLE_MIN_NY,
   clickIntent,
@@ -280,7 +278,8 @@ export function CameraRig({ pose, orbit, seat, fogRange = LEGACY_FOG, far: baseF
       let plan = planClickMove(from.x, from.z, surface, getActiveMap().geometry.obstacles, activeBounds(), !!s);
       // A destination moved off the click lies on the ground found there (a lane, a lawn, the forecourt).
       if (plan.ok && plan.adjusted !== "none") plan.y = surfaceHeightAt(raycaster, scene, plan.x, plan.z, plan.y);
-      // Rule 4: only a ring the player will see takes a walk — as ClickMarker will draw it: its lift, its screen size.
+      // Rule 4: only a ring on the screen takes a walk — as ClickMarker will draw it: its lift, its screen size. (What
+      // covers part of it, the ring is drawn through; in DEV the dev hook gets the share in plain view too.)
       let view: RingView | null = null;
       let unseen: ClickPlan | null = null;
       if (plan.ok) {
@@ -289,7 +288,7 @@ export function CameraRig({ pose, orbit, seat, fogRange = LEGACY_FOG, far: baseF
         const y = plan.y + ringLift(decal);
         const dist = Math.hypot(cam.position.x - plan.x, cam.position.y - y, cam.position.z - plan.z);
         const scale = cam.isPerspectiveCamera ? ringScreenScale(dist, (cam.position.y - y) / Math.max(dist, 1e-4), cam.fov, el.clientHeight || 1) : 1;
-        view = ringView(raycaster, scene, cam, plan.x, y, plan.z, scale, plan.adjusted === "none" ? RING_SEEN_AT_CLICK : RING_SEEN_MOVED);
+        view = ringView(raycaster, scene, cam, plan.x, y, plan.z, scale, import.meta.env.DEV ? undefined : 0);
         const seen = requireSeen(plan, view);
         if (!seen.ok) unseen = plan;
         plan = seen;

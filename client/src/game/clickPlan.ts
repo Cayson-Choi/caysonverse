@@ -32,11 +32,13 @@
  *     17.7 m away from where the player was looking (round 3 review). The walk to that spot is checked to arrive too.
  *     One that cannot get going (MIN_TRIP: already against the obstacle) is refused. So the ring is never shown where
  *     the avatar will not go.
- *  4. And the player must see the ring (requireSeen; round 3 review: the stop under a cherry's crown, the stop off the
- *     screen, the lawn seen through a pinhole in a crown — each walked with a ring nobody could see, the very
- *     "동그라미가 안 나타남" this is about). The CameraRig measures how much of the ring would reach the screen from the
- *     camera (clickPick.ts ringView); too little, or its centre off the screen, and the click does nothing at all: no
- *     ring and no walk, as for a click on a wall.
+ *  4. And the ring must be on the screen (requireSeen): its centre in front of the camera and inside the screen, or
+ *     the click does nothing at all — no ring and no walk, as for a click on a wall (round 3 review: a stop off the
+ *     screen walked with a ring nobody could see, the very "동그라미가 안 나타남" this is about). What covers part of
+ *     it no longer hides it: ClickMarker draws the covered part through what is in front, fainter (a crown, a bench's
+ *     back, the avatar's own body). Round 3 also asked 30 % of a ring on the click and 50 % of a moved one to be in
+ *     plain view; with the see-through pass that refused rings the player does see whole (round 4 review: the paving
+ *     right behind a bench, tapped from its seat, 22 % in plain view behind the bench's back — the tap did nothing).
  *
  * Other players are not in the simulation (they move): one in the way still stops the walk early, and the
  * no-progress rule releases it as before.
@@ -613,31 +615,20 @@ export function planClickMove(
   return { ok: true, x: stop.x, z: stop.z, y: surface.y, adjusted: "stopped" };
 }
 
-/**
- * Rule 4: the share of a ring on the click itself (its drawn area on the screen) that must reach the screen. Less is
- * ground seen through a pinhole — a gap between a crown's leaves, the ring hidden by the crown all round it: a click on
- * the crown (round 3 review: 2-17 % of the ring drawn, the avatar walking under the tree). Leaves the camera sits in
- * (a crown around the lens, faded but dithered) leave a third of the ring and more: still a walk.
- */
-export const RING_SEEN_AT_CLICK = 0.3;
-
-/**
- * ...and of a ring moved off the click (out of a margin, or to where the walk stops): the player did not pick that
- * spot, so the ring must show it plainly — and its centre must be on the screen.
- */
-export const RING_SEEN_MOVED = 0.5;
-
 /** How a ring at a plan's spot would look from the camera (clickPick.ts ringView). */
 export interface RingView {
   /** Its centre projects inside the screen (in front of the camera). */
   onScreen: boolean;
-  /** The share of its on-screen area that reaches the screen past what stands in front (0..1; bodies do not count: they move off it, and ClickMarker draws the ring through them). */
+  /**
+   * The share of its on-screen area that reaches the screen past what stands in front (0..1; bodies do not count) —
+   * measured only as far as a `need` asked of ringView. Not a condition any more (rule 4): what covers the ring, the
+   * ring is drawn through.
+   */
   seen: number;
 }
 
-/** Rule 4: `plan` when its ring would be seen enough (RING_SEEN_AT_CLICK / RING_SEEN_MOVED), else "unseen". */
+/** Rule 4: `plan` when its ring would be on the screen, else "unseen". */
 export function requireSeen(plan: ClickPlan, view: RingView): ClickPlan {
   if (!plan.ok) return plan;
-  const need = plan.adjusted === "none" ? RING_SEEN_AT_CLICK : RING_SEEN_MOVED;
-  return view.onScreen && view.seen >= need - 1e-9 ? plan : { ok: false, reason: "unseen" };
+  return view.onScreen ? plan : { ok: false, reason: "unseen" };
 }

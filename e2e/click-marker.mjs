@@ -631,7 +631,10 @@ async function ringVisibility(p, label, keep) {
     const dBC = diff(B, C, i);
     if (dBC < 60) continue;
     mask++;
-    if (diff(A, B, i) < dBC / 2) vis++;
+    // Drawn: the pixel shows at least 40 % of the ring's own contrast there. The see-through pass (round 4: the part
+    // something covers, drawn through it at 0.7 against the ring's 0.9) is drawn — over a bright arm its sRGB contrast
+    // falls just short of half the reference's; a part nothing draws shows none of it.
+    if (diff(A, C, i) >= 0.4 * dBC) vis++;
   }
   if (keep && label) {
     // the strip: as drawn | forced on top | hidden, three times larger (in device pixels: a phone's are 2 per CSS px)
@@ -1138,7 +1141,7 @@ async function villageCases(p) {
     await caseAt("creek_bed", ["top", -6, 77], [[0, 28], [-6, 50], [-6, 66]], Math.PI, 0.6, 5);
     await caseAt("far_bank", ["top", -6, 85], [[-6, 66]], Math.PI);
     // round 4 review: the grass band at the water (inside the creek's collider) did nothing; the walk goes to the bank
-    await caseAt("creek_nearband", ["top", -6, 69.5], [[-6, 66]], Math.PI, 0.5);
+    await caseAt("creek_nearband", ["low", -6, 69.5], [[-6, 66]], Math.PI, 0.5);
     await caseAt("beyond_bounds", ["top", -6, 105], [[-6, 66]], Math.PI, 0.25);
     // the bridge (x -26..-22, z 72..78): its deck's crown is 13-15 cm up — the creek's only crossing must take a click
     await caseAt("bridge_deck", ["top", -24, 75], [[-12, 64], [-24, 46], [-24, 66]], Math.PI, 0.5, 6);
