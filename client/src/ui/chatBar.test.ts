@@ -3,11 +3,21 @@ import { CHAT_RATE } from "@caysonverse/shared/constants";
 import {
   CHAT_PACE_SLACK_MS,
   IME_ENTER_TAIL_MS,
+  KBD_DOWN_MAX_PX,
+  KBD_FOLD_SETTLE_MS,
+  KBD_UP_MIN_PX,
   LEAVE_TAP_CLICK_MS,
   LEAVE_TAP_DRAG_PX,
   LEAVE_TAP_HOLD_MAX_MS,
   chatKeyAction,
+  draftKey,
+  kbdWatchStart,
+  kbdWatchStep,
   leaveTapStep,
+  pressNearAny,
+  takeBackDraft,
+  undoDraft,
+  type KbdSample,
   type LeaveTap,
   chatPaceAllows,
   chatPaceWaitMs,
@@ -291,7 +301,7 @@ describe("leaveTapStep — the HUD keeps its chat layout until the tap that left
   const up: LeaveTap = { ...down, up: true };
 
   it("the press that leaves starts it (a long fallback while the finger is down, in case its pointerup is never seen)", () => {
-    expect(leaveTapStep(null, { type: "press", pointerId: 7, x: 300, y: 200 })).toEqual({ tap: down, timerMs: LEAVE_TAP_HOLD_MAX_MS });
+    expect(leaveTapStep(null, { type: "press", pointerId: 7, x: 300, y: 200, near: true })).toEqual({ tap: down, timerMs: LEAVE_TAP_HOLD_MAX_MS });
     expect(LEAVE_TAP_HOLD_MAX_MS).toBeGreaterThanOrEqual(3000); // a drag of the view may go on for a while
   });
 
@@ -362,15 +372,177 @@ describe("leaveTapStep — the HUD keeps its chat layout until the tap that left
   });
 
   it("a whole tap: press → lift → click → (0 ms) over; a drag: press → lift → (no click) fallback → over", () => {
-    let t = leaveTapStep(null, { type: "press", pointerId: 3, x: 10, y: 10 }).tap;
+    let t = leaveTapStep(null, { type: "press", pointerId: 3, x: 10, y: 10, near: true }).tap;
     t = leaveTapStep(t, { type: "pointerup", pointerId: 3 }).tap;
     const c = leaveTapStep(t, { type: "click" });
     expect(c.tap).not.toBeNull(); // still in the chat layout while the click is being dispatched
     expect(c.timerMs).toBe(0);
     expect(leaveTapStep(c.tap, { type: "timeout" }).tap).toBeNull();
-    let d = leaveTapStep(null, { type: "press", pointerId: 4, x: 10, y: 10 }).tap;
+    let d = leaveTapStep(null, { type: "press", pointerId: 4, x: 10, y: 10, near: true }).tap;
     d = leaveTapStep(d, { type: "pointerup", pointerId: 4 }).tap;
     expect(d).toEqual({ pointerId: 4, x: 10, y: 10, up: true });
     expect(leaveTapStep(d, { type: "timeout" }).tap).toBeNull();
+  });
+});
+
+// Review round 5 (phones): a joystick walk at a normal pace (the thumb 8–50 px from where it went down) that left the
+// chat kept the jump / action / emoji buttons and 💬 hidden until the thumb lifted — up to 5 s. The buttons that come
+// back are all on the other half of the screen, so that press's click could never land on one. The layout is held only
+// for a press that went down near one of them (LEAVE_TAP_DRAG_PX: past every browser's tap slop).
+describe("pressNearAny / a leave press far from every control that comes back", () => {
+  const jump = { x: 302, y: 722, w: 72, h: 72, round: true };
+  const chat = { x: 238, y: 738, w: 56, h: 56, round: true };
+
+  it("on a control, or within LEAVE_TAP_DRAG_PX of its box: near", () => {
+    expect(pressNearAny(338, 758, [jump])).toBe(true); // its centre
+    expect(pressNearAny(302 - LEAVE_TAP_DRAG_PX, 758, [jump])).toBe(true); // just within reach, left of it
+    expect(pressNearAny(338, 722 - 30, [chat, jump])).toBe(true); // 30 px above the jump
+    expect(pressNearAny(266, 766, [jump, chat])).toBe(true); // on the second one
+  });
+
+  it("further from every one of them (the stick on the other half, the view up high), or none at all: not near", () => {
+    expect(pressNearAny(98, 608, [jump, chat])).toBe(false); // the stick, lower left
+    expect(pressNearAny(281, 278, [jump, chat])).toBe(false); // the look half, up high
+    expect(pressNearAny(302 - LEAVE_TAP_DRAG_PX - 1, 758, [jump])).toBe(false);
+    expect(pressNearAny(338, 758, [])).toBe(false);
+  });
+
+  it("a press that is not near: no layout to hold — over at once (no timer); near: held as before", () => {
+    expect(leaveTapStep(null, { type: "press", pointerId: 7, x: 98, y: 608, near: false })).toEqual({ tap: null, timerMs: null });
+    const held = { pointerId: 7, x: 300, y: 200, up: false };
+    expect(leaveTapStep(null, { type: "press", pointerId: 7, x: 300, y: 200, near: true })).toEqual({ tap: held, timerMs: LEAVE_TAP_HOLD_MAX_MS });
+    // a far press while an earlier one is still being held (a second finger): the earlier one goes on
+    expect(leaveTapStep(held, { type: "press", pointerId: 8, x: 98, y: 608, near: false })).toEqual({ tap: held });
+  });
+});
+
+// Review round 5 (major, PC): a quick look at the map (M, 0.8 s, M) read as a slow ㅡㅡ — the map closed, the chat opened
+// with "mm", and the W that followed typed "mmw" while the avatar stood still. The chat a take-back opened (hotkeys.ts
+// typeToChat `tentative`) is only a guess until the player types on: a walk key, Escape or a press elsewhere puts the
+// field back as it was (and the walk key walks).
+describe("takeBackDraft / draftKey / undoDraft — the guess a take-back makes", () => {
+  it("the draft remembers the field before, and the field once the key that opened it typed its own letter", () => {
+    expect(takeBackDraft("", { value: "m", caret: 1 }, "m", 200)).toEqual({ before: "", typed: "mm" });
+    expect(takeBackDraft("안녕", { value: "안녕m", caret: 3 }, "e", 200)).toEqual({ before: "안녕", typed: "안녕me" });
+    // at the caret, not at the end
+    expect(takeBackDraft("ab", { value: "amb", caret: 2 }, "y", 200)).toEqual({ before: "ab", typed: "amyb" });
+    // a key that types no single character, or a full field: only the prefix
+    expect(takeBackDraft("", { value: "m", caret: 1 }, "Process", 200)).toEqual({ before: "", typed: "m" });
+    expect(takeBackDraft("x".repeat(198), { value: "x".repeat(198) + "m", caret: 199 }, "m", 199)).toEqual({ before: "x".repeat(198), typed: "x".repeat(198) + "m" });
+  });
+
+  it("the walk keys and a plain Escape undo it — in either input mode (by code: in 한글 mode W arrives as Process / 229)", () => {
+    for (const code of ["KeyW", "KeyA", "KeyS", "KeyD", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"]) {
+      expect(draftKey({ code, key: code.startsWith("Key") ? code.slice(3).toLowerCase() : code }), code).toBe("undo");
+      expect(draftKey({ code, key: "Process", keyCode: 229 }), `${code} 229`).toBe("undo");
+    }
+    expect(draftKey({ code: "Escape", key: "Escape", keyCode: 27 })).toBe("undo");
+  });
+
+  it("a bare modifier or a mode key keeps it; anything else is typing on (the guess was right) — it ends", () => {
+    for (const [code, key] of [
+      ["ShiftLeft", "Shift"],
+      ["ShiftRight", "Shift"],
+      ["ControlLeft", "Control"],
+      ["AltRight", "Alt"],
+      ["MetaLeft", "Meta"],
+      ["CapsLock", "CapsLock"],
+      ["Lang1", "HangulMode"],
+      ["AltRight", "HangulMode"],
+    ])
+      expect(draftKey({ code, key }), `${code} ${key}`).toBe("keep");
+    for (const e of [
+      { code: "Space", key: " " },
+      { code: "Enter", key: "Enter" },
+      { code: "Backspace", key: "Backspace" },
+      { code: "KeyZ", key: "Process", keyCode: 229 }, // ㅋ: ㅡㅡㅋ
+      { code: "KeyT", key: "t" },
+      { code: "Semicolon", key: ";" },
+      { code: "KeyM", key: "m" },
+      { code: "Escape", key: "Escape", keyCode: 229 }, // the IME's own Escape (Safari): it only drops a syllable
+      { code: "KeyW", key: "w", ctrlKey: true }, // a chord is editing, not walking
+      { code: "KeyA", key: "a", metaKey: true },
+      { code: "KeyW", key: "Process", keyCode: 229, isComposing: true },
+    ])
+      expect(draftKey(e), JSON.stringify(e)).toBe("typing");
+  });
+
+  it("undo puts the field back only while it holds exactly what the take-back typed", () => {
+    const d = { before: "안녕", typed: "안녕mm" };
+    expect(undoDraft("안녕mm", d)).toBe("안녕");
+    expect(undoDraft("안녕mmx", d)).toBeNull(); // more was typed (or pasted)
+    expect(undoDraft("안녕m", d)).toBeNull();
+    expect(undoDraft("", { before: "", typed: "" })).toBe("");
+    expect(undoDraft("mm", null)).toBeNull();
+  });
+});
+
+// Review round 5 (phones, Android): the system back key (or the keyboard's own fold key) hides the soft keyboard without
+// a blur — the field keeps the caret, and the HUD stayed in its chat layout (jump / action / emoji hidden, no 💬) until
+// a tap. Now that Enter keeps the caret, that happens after every line. The keyboard folding while the field still has
+// the caret is told from the viewport: the visual viewport's inset (iOS, Android resizes-visual) or the layout height
+// growing back (resizes-content, many in-app browsers).
+describe("kbdWatchStep — the soft keyboard folded away while the field kept the caret", () => {
+  const S = (o: Partial<KbdSample> = {}): KbdSample => ({ w: 412, h: 860, inset: 0, scale: 1, ...o });
+
+  it("the numbers: a soft keyboard is far taller than KBD_UP_MIN_PX; folded is ~0 (a hardware keyboard's strip stays under KBD_DOWN_MAX_PX)", () => {
+    expect(KBD_UP_MIN_PX).toBeGreaterThanOrEqual(100);
+    expect(KBD_UP_MIN_PX).toBeLessThanOrEqual(160);
+    expect(KBD_DOWN_MAX_PX).toBeGreaterThanOrEqual(40);
+    expect(KBD_DOWN_MAX_PX).toBeLessThan(KBD_UP_MIN_PX);
+    expect(KBD_FOLD_SETTLE_MS).toBeGreaterThanOrEqual(100);
+    expect(KBD_FOLD_SETTLE_MS).toBeLessThanOrEqual(300);
+  });
+
+  it("visual viewport (iOS, Android Chrome): the inset went up, then back to ~0 — folded (once)", () => {
+    let w = kbdWatchStart(S());
+    let r = kbdWatchStep(w, S({ inset: 120 }));
+    expect(r.folded).toBe(false);
+    r = kbdWatchStep(r.watch, S({ inset: 300 }));
+    expect(r).toMatchObject({ folded: false, kbd: 300 });
+    r = kbdWatchStep(r.watch, S({ inset: 0 }));
+    expect(r).toMatchObject({ folded: true, kbd: 0 });
+    // told once: the next sample at 0 is no second fold, until the keyboard has been up again
+    w = r.watch;
+    expect(kbdWatchStep(w, S({ inset: 0 })).folded).toBe(false);
+    r = kbdWatchStep(kbdWatchStep(w, S({ inset: 280 })).watch, S({ inset: 10 }));
+    expect(r.folded).toBe(true);
+  });
+
+  it("resizes-content (in-app browsers): the layout height shrank by the keyboard, then grew back — folded", () => {
+    const w = kbdWatchStart(S({ h: 860 }));
+    const up = kbdWatchStep(w, S({ h: 560 }));
+    expect(up).toMatchObject({ folded: false, kbd: 300 });
+    expect(kbdWatchStep(up.watch, S({ h: 860 }))).toMatchObject({ folded: true, kbd: 0 });
+  });
+
+  it("the keyboard changing height (another keyboard, the emoji pad, a suggestion bar) is no fold", () => {
+    let r = kbdWatchStep(kbdWatchStart(S()), S({ inset: 300 }));
+    for (const inset of [340, 260, 300, 120, KBD_DOWN_MAX_PX + 1]) {
+      r = kbdWatchStep(r.watch, S({ inset }));
+      expect(r.folded, String(inset)).toBe(false);
+    }
+  });
+
+  it("never up (a hardware keyboard, a floating keyboard): nothing to fold", () => {
+    let r = kbdWatchStep(kbdWatchStart(S()), S({ inset: 50 }));
+    r = kbdWatchStep(r.watch, S({ inset: 0 }));
+    expect(r.folded).toBe(false);
+  });
+
+  it("turning the phone starts afresh (the heights are another screen's): no fold from the turn itself", () => {
+    // focused in landscape, keyboard up; turned to portrait with the keyboard still up — the layout grew, no fold
+    let r = kbdWatchStep(kbdWatchStart(S({ w: 860, h: 412 })), S({ w: 860, h: 212 }));
+    expect(r.kbd).toBe(200);
+    r = kbdWatchStep(r.watch, S({ w: 412, h: 560 }));
+    expect(r.folded).toBe(false);
+    r = kbdWatchStep(r.watch, S({ w: 412, h: 560, inset: 0 }));
+    expect(r.folded).toBe(false);
+  });
+
+  it("zoomed in (pinch): the viewport numbers are the zoom's, not a keyboard's — unknown, never a fold", () => {
+    let r = kbdWatchStep(kbdWatchStart(S()), S({ inset: 300 }));
+    r = kbdWatchStep(r.watch, S({ inset: 0, scale: 1.6 }));
+    expect(r).toMatchObject({ folded: false, kbd: null });
   });
 });

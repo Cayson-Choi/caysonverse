@@ -116,6 +116,20 @@
   pointer-events: none; /* the button is the target, never its glyph */
 }
 
+/* The held line's words for a screen reader (ChatInput.tsx): a live region that is always in the bar, out of sight and
+   out of the flex row (absolute), so the bar's layout is the same with or without it. */
+.cv-chat-live {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
 /* The note right above the bar while a quick line is held back (ChatInput.tsx: the server's own
    "too fast" words). It rides with the bar — on a phone, on the keyboard, where the folded log
    cannot be seen. Warm text on the bar's dark glass; it nudges each time a press is refused.

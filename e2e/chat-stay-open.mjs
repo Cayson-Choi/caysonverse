@@ -15,6 +15,10 @@
 // Review round 4: the take-back never re-opens a map the 🗺 button closed (pc-matrix), W held + M is the map (not "mwww"),
 // a press that leaves the chat and becomes a joystick drag gets the HUD back at once (phones, step 6), and in a classroom
 // the bag is never toggled back and the "too fast" note clears the team-chat line (part classroom: teacher + 2 students).
+// Review round 5: a quick look at the map (M, a look, M) no longer leaves the player typing — the W after it walks
+// (pc-matrix 5차); the village has no bag, so B is a letter there (a slow ㅠㅠ / "bye" keeps every b); on a phone a press
+// that leaves the chat far from every button (the joystick) gets the HUD back at once (step 6), Android's back key that
+// folds the keyboard lets go of the field (step 7), and the "too fast" words reach a screen reader (a live region).
 //
 // Plain Playwright against a dev stack, in the style of the other e2e scripts:
 //   server:  PORT=2681 TEACHER_KEYS_FILE=e2e/fixtures/teacher-keys.e2e.json npx tsx src/index.ts   (in server/; the path is from the repo root)
@@ -161,9 +165,12 @@ const noteInfo = (p) =>
     const cs = getComputedStyle(n);
     // what is drawn at the note's centre: the note itself (nothing covers it)
     const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    const lv = document.querySelector(".cv-chat-live");
     return {
       text: n.textContent,
       role: n.getAttribute("role"),
+      ariaHidden: n.getAttribute("aria-hidden"),
+      live: lv ? { role: lv.getAttribute("role"), text: lv.textContent, inBar: bar.contains(lv) } : null,
       visible: r.width > 0 && r.height > 0 && cs.visibility !== "hidden" && Number(cs.opacity) > 0 && Number(getComputedStyle(bar).opacity) > 0,
       aboveBar: r.bottom <= br.top + 0.5,
       onScreen: r.left >= -0.5 && r.right <= vw + 0.5 && r.top >= -0.5 && r.bottom <= vh + 0.5,
@@ -201,6 +208,16 @@ const stackInfo = (p) =>
     };
   });
 
+/** The screen reader's live region in the bar (always there, review round 5): its role and words (null: none). */
+const liveInfo = (p) =>
+  p.page.evaluate(() => {
+    const lv = document.querySelector(".cv-chat-live");
+    return lv ? { role: lv.getAttribute("role"), live: lv.getAttribute("aria-live"), text: lv.textContent } : null;
+  });
+
+/** Whether the Esc menu is open. */
+const menuOpen = (p) => p.page.evaluate(async () => (await window.__imp("/src/stores/uiStore.ts")).useUiStore.getState().menuOpen);
+
 /** Screenshot of the bar only (padded), plus the full screen. */
 async function shots(p, name) {
   let box = await p.page.locator(BAR).boundingBox();
@@ -222,6 +239,7 @@ async function shots(p, name) {
 }
 
 const dist = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
+const vp0 = (p) => p.page.viewportSize();
 
 // ───────────────────────────────────────────────────────────── PC ─────────────────────────────────────────────────────────────
 
@@ -766,6 +784,8 @@ async function pc(browser) {
     const sys0 = (await systemLines(A)).length;
     await A.page.keyboard.press("Enter");
     await until(() => state(A), (s) => s.focused);
+    const live0 = await liveInfo(A);
+    check("a screen reader's live region (role status) is in the bar before any line is held — empty", live0?.role === "status" && live0.live === "polite" && live0.text === "", live0);
     const t0 = Date.now();
     for (const line of ["빠른1", "빠른2", "빠른3", "빠른4"]) {
       await A.page.keyboard.type(line, { delay: 10 });
@@ -780,7 +800,8 @@ async function pc(browser) {
     check("the 4th is held back: NOT sent, still in the field, the caret stays", count(lines, "빠른4") === 0 && s1.value === "빠른4" && s1.focused, s1);
     check("…with the rate notice, once", sys1.length === 1 && sys1[0].includes("너무 빨라요"), sys1);
     const n1 = await noteInfo(A);
-    check("…and a note right above the bar says why (on screen, on top, not covering the bar)", n1?.visible && n1.text.includes("너무 빨라요") && n1.aboveBar && n1.onScreen && n1.onTop && n1.role === "status", n1);
+    check("…and a note right above the bar says why (on screen, on top, not covering the bar)", n1?.visible && n1.text.includes("너무 빨라요") && n1.aboveBar && n1.onScreen && n1.onTop, n1);
+    check("…the same words in the live region that was already there (the note itself is aria-hidden: read once)", n1?.live?.role === "status" && n1.live.inBar && n1.live.text.includes("너무 빨라요") && n1.role === null && n1.ariaHidden === "true", n1);
     const b1 = await sendInfo(A);
     check("…while the send button is dimmed", b1?.dim === true && b1.opacity < 1, b1);
     await shots(A, "pc-held");
@@ -798,6 +819,8 @@ async function pc(browser) {
     const n2 = await until(() => noteInfo(A), (n) => n === null, 7000, 100);
     const b2 = await sendInfo(A);
     check("when the line may go: the note is gone and the send button is lit again", n2 === null && b2?.dim === false, { note: n2, button: b2, afterMs: Date.now() - t0 });
+    const live2 = await liveInfo(A);
+    check("…and the live region is empty again (still there for the next hold)", live2?.role === "status" && live2.text === "", live2);
     await A.page.keyboard.press("Enter");
     check('…and a moment later Enter sends "빠른4" exactly once', (await sentOnce(A, "빠른4")) === 1, await myLines(A));
     const s2 = await state(A);
@@ -914,7 +937,21 @@ async function phone(browser, label, device) {
     // avatar away: every tap below that lands on the 3D view is a click-move)
     const atGuide = async (first = false) => {
       let n = await P.page.locator(".cv-action-btn").count();
+      // The taps on the scene up high (steps 2, 3) click-move the avatar into the fountain, and it may slide round to its
+      // side or its north face; the walks below go in straight lines and stick on the basin (its collider is x, z −6…6).
+      // So: stop any click-move, and come round the fountain on the near side first (x ±8: between it and the benches).
+      const roundFountain = async () => {
+        await P.page.evaluate(async () => (await window.__imp("/src/game/clickMove.ts")).clearClickTarget());
+        await sleep(300);
+        const h = await pos(P);
+        console.log(`   [${label}] to the guide from (${h.x.toFixed(1)}, ${h.z.toFixed(1)})`);
+        if (h.z > 6.2) return; // south of the basin (its south face is z 6, the avatar 0.4 m round): a straight walk is clear
+        const side = h.x >= 0 ? 8 : -8;
+        await walkAndWait(P, side, h.z < -5.5 ? Math.min(h.z, -7) : h.z, 20000, 0.8);
+        await walkAndWait(P, side, 12, 20000, 0.8);
+      };
       for (let attempt = 0; attempt < 3 && n !== 1; attempt++) {
+        await roundFountain();
         if (first && attempt === 0) await standAtPlazaGuide(P);
         else {
           await walkAndWait(P, 5, 13.7, 15000, 0.3);
@@ -1098,10 +1135,11 @@ async function phone(browser, label, device) {
   });
 
   // Review round 4: a press that left the chat and turned into a DRAG (the joystick walking) kept the HUD in its chat
-  // layout until the thumb lifted (up to 5 s): jump / action hidden while walking. A drag makes no click, so the HUD comes
-  // back once the finger has gone further than any tap may move (48 px) — the other thumb can jump at once. A finger that
-  // only wobbles (a tap moving a little) still keeps the layout until the tap is over (its click may still come).
-  await run.step(`${label} 6. 채팅에서 조이스틱을 끌며 나옴 — 끄는 동안 버튼이 바로 돌아오고 다른 손가락으로 점프, 살짝 흔들린 탭은 그대로`, async () => {
+  // layout until the thumb lifted (up to 5 s). Review round 5: at a normal walking pace (the thumb 8–50 px out) it still
+  // did. Only a press that went down NEAR a control that comes back (within 48 px of where 💬 / emoji / action / jump sit)
+  // can have its click land on one — the HUD keeps its chat layout for such a tap only. The stick (the other half) and the
+  // view up high get the HUD back at once, while the finger is still down.
+  await run.step(`${label} 6. 채팅 중 조이스틱·먼 곳 누름으로 나옴 — 버튼이 바로 돌아오고 다른 손가락으로 점프, 버튼 근처 탭만 그 탭 동안 유지`, async () => {
     // an open spot facing north (the fountain is a few metres ahead): the stick walk below has room
     await walkAndWait(P, 0, 16.8, 20000, 0.5);
     await turnCameraTo(P, 0, 0);
@@ -1119,40 +1157,41 @@ async function phone(browser, label, device) {
           jump: r && getComputedStyle(j).display !== "none" && r.width > 0 ? { x: r.x + r.width / 2, y: r.y + r.height / 2 } : null,
         };
       });
+    const emojiBox = await P.page.evaluate(() => {
+      const e = document.querySelector(".cv-emoji-toggle");
+      const r = e ? e.getBoundingClientRect() : null;
+      return r && r.width > 0 ? { x: r.x, y: r.y, w: r.width, h: r.height } : null;
+    });
     await press(P, P.page.locator(".cv-chat-btn"));
     const s0 = await until(() => state(P), (s) => s.focused, 2000);
-    check("a tap on 💬 opens the chat (the keyboard down: the stick zone is free, as after Android's back key)", s0.focused && s0.focusClass, s0);
+    check("a tap on 💬 opens the chat (the keyboard down: the stick zone is free, as on a tablet with a keyboard)", s0.focused && s0.focusClass, s0);
     await sleep(300);
     await P.page.evaluate(() => window.__tapProbe?.reset());
     const p0 = await pos(P);
     const sx = Math.round(vp.width * 0.25);
     const sy = Math.round(vp.height * 0.72);
     await touch("touchStart", [{ x: sx, y: sy, id: 1 }]);
-    // 30 px: still a tap that may make a click — the chat layout holds
+    await sleep(80);
+    const hDown = await hud();
+    const sDown = await state(P);
+    // a normal walking pace: the thumb 10 – 30 px out (force 0.2 – 0.55 of the 56 px stick)
     for (let d = 10; d <= 30; d += 10) {
       await touch("touchMove", [{ x: sx, y: sy - d, id: 1 }]);
       await sleep(30);
     }
-    const hWobble = await hud();
-    // on to 80 px: a drag (the stick walks)
-    for (let d = 40; d <= 80; d += 10) {
-      await touch("touchMove", [{ x: sx, y: sy - d, id: 1 }]);
-      await sleep(30);
-    }
-    await sleep(120);
-    const hDrag = await hud();
-    const sDrag = await state(P);
-    check("the thumb on the stick, 30 px from where it went down: the chat is left, the HUD keeps its chat layout (a tap may still click)", !sDrag.focused && hWobble.focusClass && hWobble.chatBtn === 0, { hWobble, sDrag });
-    check("…80 px (a drag, no click can come): the HUD is back while the thumb is still down (💬, jump)", !hDrag.focusClass && hDrag.chatBtn === 1 && !!hDrag.jump, hDrag);
+    await sleep(150);
+    const hWalk = await hud();
+    check("the thumb on the stick (far from every button): the chat is left and the HUD is back at once — the thumb down, not moved yet (💬, jump)", !sDown.focused && !hDown.focusClass && hDown.chatBtn === 1 && !!hDown.jump, { hDown, sDown });
+    check("…walking at a normal pace (the thumb 30 px out): the HUD stays back", !hWalk.focusClass && hWalk.chatBtn === 1 && !!hWalk.jump, hWalk);
     // the other thumb on jump, while still walking
-    if (hDrag.jump) {
-      const jx = Math.round(hDrag.jump.x);
-      const jy = Math.round(hDrag.jump.y);
-      await touch("touchStart", [{ x: sx, y: sy - 80, id: 1 }, { x: jx, y: jy, id: 2 }]);
+    if (hWalk.jump) {
+      const jx = Math.round(hWalk.jump.x);
+      const jy = Math.round(hWalk.jump.y);
+      await touch("touchStart", [{ x: sx, y: sy - 30, id: 1 }, { x: jx, y: jy, id: 2 }]);
       await sleep(80);
-      await touch("touchEnd", [{ x: sx, y: sy - 80, id: 1 }]);
+      await touch("touchEnd", [{ x: sx, y: sy - 30, id: 1 }]);
     }
-    await sleep(500);
+    await sleep(600);
     await touch("touchEnd", []);
     await sleep(700);
     const p1 = await pos(P);
@@ -1165,23 +1204,120 @@ async function phone(browser, label, device) {
     );
     await shots(P, `${label}-drag-left`);
 
-    // a tap that wobbles 20 px with the finger down 0.3 s: the HUD keeps its chat layout until the tap is over
+    // a tap far from every control (the look half, up high), finger down 0.3 s: back while the finger is still down, and
+    // its click lands on the view (no button)
     await press(P, P.page.locator(".cv-chat-btn"));
     await until(() => state(P), (s) => s.focused, 2000);
     await sleep(300);
-    const wx = Math.round(vp.width * 0.72);
-    const wy = Math.round(vp.height * 0.33);
-    await touch("touchStart", [{ x: wx, y: wy, id: 1 }]);
-    await sleep(100);
-    await touch("touchMove", [{ x: wx + 12, y: wy + 16, id: 1 }]);
-    await sleep(200);
-    const hHold = await hud();
+    await P.page.evaluate(() => window.__tapProbe?.reset());
+    const fx = Math.round(vp.width * 0.72);
+    const fy = Math.round(vp.height * 0.33);
+    await touch("touchStart", [{ x: fx, y: fy, id: 1 }]);
+    await sleep(150);
+    const hFar = await hud();
+    await sleep(150);
     await touch("touchEnd", []);
-    await sleep(900);
-    const hAfter = await hud();
-    const s2 = await state(P);
-    check("a tap that wobbles 20 px, finger down 0.3 s: the chat layout holds while it is down, the HUD is back after it, the chat left", hHold.focusClass && hHold.chatBtn === 0 && !hAfter.focusClass && hAfter.chatBtn === 1 && !s2.focused, { hHold, hAfter, ...s2 });
+    await sleep(800);
+    const prFar = await P.page.evaluate(() => window.__tapProbe?.read());
+    const sFar = await state(P);
+    check(
+      "a tap up high, far from every button, finger down 0.3 s: the HUD is back while the finger is down; nothing fired (no HUD click, no jump, no focus again)",
+      !hFar.focusClass && hFar.chatBtn === 1 && !sFar.focused && !!prFar && prFar.hudClicks.length === 0 && !prFar.jumped && prFar.focusins === 0 && !prFar.npc && !prFar.fan,
+      { hFar, probe: prFar, ...sFar },
+    );
+
+    // a tap NEAR a control (24 px above the emoji button) that wobbles 12 px, finger down 0.3 s: its click may still come
+    // there, so the chat layout holds while it is down — and the HUD is back after it, nothing fired
+    if (emojiBox) {
+      await press(P, P.page.locator(".cv-chat-btn"));
+      await until(() => state(P), (s) => s.focused, 2000);
+      await sleep(300);
+      await P.page.evaluate(() => window.__tapProbe?.reset());
+      const wx = Math.round(emojiBox.x + emojiBox.w / 2);
+      const wy = Math.round(emojiBox.y - 24);
+      await touch("touchStart", [{ x: wx, y: wy, id: 1 }]);
+      await sleep(100);
+      await touch("touchMove", [{ x: wx - 7, y: wy + 9, id: 1 }]);
+      await sleep(200);
+      const hHold = await hud();
+      await touch("touchEnd", []);
+      await sleep(900);
+      const hAfter = await hud();
+      const prNear = await P.page.evaluate(() => window.__tapProbe?.read());
+      const s2 = await state(P);
+      check(
+        "a tap 24 px above the emoji button that wobbles 12 px, finger down 0.3 s: the chat layout holds while it is down, the HUD is back after it, nothing fired",
+        hHold.focusClass && hHold.chatBtn === 0 && !hAfter.focusClass && hAfter.chatBtn === 1 && !s2.focused && !!prNear && prNear.hudClicks.length === 0 && prNear.focusins === 0 && !prNear.fan,
+        { at: { x: wx, y: wy }, hHold, hAfter, probe: prNear, ...s2 },
+      );
+    } else check("the emoji button is there before chatting (so a spot near it can be tapped)", false, { emojiBox });
     await cdpD.detach().catch(() => {});
+    await sleep(500);
+  });
+
+  // Review round 5 (Android): the back key (or the keyboard's own fold key) hides the soft keyboard WITHOUT a blur; the
+  // field kept the caret and the HUD stayed in its chat layout (jump / action / emoji hidden, no 💬) until a tap — after
+  // every line, now that Enter keeps the caret. The soft keyboard is mocked as in step 4 (visualViewport 300 px shorter).
+  await run.step(`${label} 7. 키보드만 내리면(안드로이드 뒤로 키) 채팅에서 나오고 HUD가 돌아옴 — 키보드 바꾸기·하드웨어 키보드는 그대로`, async () => {
+    const kbdTo = (px) =>
+      P.page.evaluate((px) => {
+        const proto = Object.getPrototypeOf(window.visualViewport);
+        window.__vvOrig = window.__vvOrig ?? Object.getOwnPropertyDescriptor(proto, "height");
+        Object.defineProperty(proto, "height", { configurable: true, get: () => window.innerHeight - px });
+        window.visualViewport.dispatchEvent(new Event("resize"));
+      }, px);
+    const kbdDown = () =>
+      P.page.evaluate(() => {
+        if (!window.__vvOrig) return;
+        Object.defineProperty(Object.getPrototypeOf(window.visualViewport), "height", window.__vvOrig);
+        window.visualViewport.dispatchEvent(new Event("resize"));
+      });
+    const hudBack = () =>
+      P.page.evaluate(() => {
+        const j = document.querySelector(".cv-jump-btn");
+        return {
+          focusClass: document.documentElement.classList.contains("cv-chat-focus"),
+          chatBtn: document.querySelectorAll(".cv-chat-btn").length,
+          jump: !!j && getComputedStyle(j).display !== "none",
+        };
+      });
+    await sleep(5800); // the chat window: start fresh
+    await press(P, P.page.locator(".cv-chat-btn"));
+    await until(() => state(P), (s) => s.focused, 2000);
+    await kbdTo(300);
+    await sleep(300);
+    await P.page.keyboard.type("뒤로 키", { delay: 25 });
+    await P.page.keyboard.press("Enter");
+    const sent = await sentOnce(P, "뒤로 키");
+    const s0 = await state(P);
+    check('"뒤로 키" sent once, the caret (and the keyboard) stays', sent === 1 && s0.focused && s0.value === "", { sent, ...s0 });
+    // another keyboard / the emoji pad: its height changes, it is still up — the chat stays
+    await kbdTo(340);
+    await sleep(500);
+    await kbdTo(260);
+    await sleep(500);
+    const s1 = await state(P);
+    check("the keyboard changing height (300 → 340 → 260 px): still chatting", s1.focused && s1.focusClass, s1);
+    // the back key: the keyboard folds, no blur from the browser
+    const tDown = Date.now();
+    await kbdDown();
+    const s2 = await until(() => state(P), (s) => !s.focused, 1500, 20);
+    const foldMs = Date.now() - tDown;
+    const h2 = await hudBack();
+    check("the keyboard folded away (the back key): the field lets go within 0.6 s — bar folded, keys free", !s2.focused && s2.collapsed && !s2.captured && foldMs <= 600, { ...s2, foldMs });
+    check("…and the HUD is back (💬, jump; no chat layout)", !h2.focusClass && h2.chatBtn === 1 && h2.jump, h2);
+    await shots(P, `${label}-kbd-folded`);
+    // never up (a hardware keyboard, a floating keyboard): the field keeps the caret
+    await press(P, P.page.locator(".cv-chat-btn"));
+    await until(() => state(P), (s) => s.focused, 2000);
+    await kbdTo(40);
+    await sleep(300);
+    await kbdDown();
+    await sleep(800);
+    const s3 = await state(P);
+    check("with no soft keyboard (only a 40 px strip, then none): the chat stays open", s3.focused && s3.focusClass, s3);
+    await P.page.touchscreen.tap(Math.round(vp0(P).width * 0.72), Math.round(vp0(P).height * 0.33));
+    await until(() => state(P), (s) => !s.focused, 1500);
     await sleep(500);
   });
   await P.ctx.close();
@@ -1269,10 +1405,13 @@ async function pcMatrix(browser) {
     ["ㅡㅡ", [..."mm"], "mm"],
     ["안녕하세요", [..."dkssudgktpdy"], "kssudgktpdy"],
     ["그래 알겠어", [..."rmfo dkfrpTdj"], "mfo dkfrpTdj"], // ㅆ = T (Shift)
+    // review round 5: the village has no bag — B is a letter there, at any pace
+    ["ㅠㅠ", [..."bb"], "bb"],
+    ["bye", [..."bye"], "bye"],
   ];
   const summary = [];
   for (const gap of [300, 600, 900, 1200]) {
-    await run.step(`PC-M ${gap} ms/키 — 그래 · 음 · 즈 · ㅡㅡ · 안녕하세요 · 그래 알겠어 (채팅창 클릭 없이)`, async () => {
+    await run.step(`PC-M ${gap} ms/키 — 그래 · 음 · 즈 · ㅡㅡ · 안녕하세요 · 그래 알겠어 · ㅠㅠ · bye (채팅창 클릭 없이)`, async () => {
       for (const [label, keys, want] of LINES) {
         let s, m, w, kg;
         for (let attempt = 1; ; attempt++) {
@@ -1470,6 +1609,174 @@ async function pcMatrix(browser) {
     const sys = await systemLines(A);
     check("no rate-limit notice (round 4 step)", sys.length === 0, sys);
   });
+
+  // Review round 5.
+  //  - (major) a quick look at the map — M, look 0.8 s (or 1.3 s), M — read as a slow ㅡㅡ: the map closed, but the chat
+  //    opened with "mm" and the W after it typed "mmw" while the avatar stood still. That chat is a guess now: a walk key
+  //    (in 한글 mode too, where W reaches the field as Process / 229), Escape or a click on the view puts the field back
+  //    and leaves; the walk key walks. Typing on (Space, Enter) keeps the line as it was.
+  //  - (major) the village has no bag: a slow "ㅠㅠ" (0.9 / 1.2 s a key) was lost and Enter sent nothing; "bye" lost its b.
+  await run.step("PC-M 5차 — 지도 잠깐 보기(M · 0.8/1.3초 · M) 뒤 W는 걷기·Esc·클릭은 깨끗이, 계속 치면 그대로, 마을의 느린 ㅠㅠ·bye", async () => {
+    const cdp = await A.page.context().newCDPSession(A.page);
+    await walkAndWait(A, 0, 16.8, 20000, 0.5);
+    await turnCameraTo(A, 0, 0);
+    await sleep(LOOK_MS);
+    /** M, the map opens, a look of `look` ms from the first press, M again: what the chat holds right after. */
+    const peek = async (look) => {
+      const t0 = Date.now();
+      await A.page.keyboard.down("m");
+      await sleep(50);
+      await A.page.keyboard.up("m");
+      const ov = await until(mode, (m) => m === "ov", 1500, 20);
+      const wait = t0 + look - Date.now();
+      if (wait > 0) await sleep(wait);
+      await A.page.keyboard.down("m");
+      await sleep(50);
+      await A.page.keyboard.up("m");
+      const closed = await until(mode, (m) => m !== "ov", 1500, 20);
+      const s = await until(() => state(A), (v) => v.focused && v.value.endsWith("mm"), 800, 20);
+      return { opened: ov === "ov", closed: closed !== "ov", s, secondMAfter: Date.now() - t0 };
+    };
+    /** Hold a walk key `ms` ms — `ime`: as the Korean IME hands it to a focused field (key Process, keyCode 229). */
+    const walkKey = async (code, ms, ime = false) => {
+      if (ime) {
+        await cdp.send("Input.dispatchKeyEvent", { type: "rawKeyDown", key: "Process", code, windowsVirtualKeyCode: 229, nativeVirtualKeyCode: 229 });
+        await sleep(ms);
+        const vk = { KeyW: 87, KeyS: 83 }[code];
+        await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", key: code.slice(3).toLowerCase(), code, windowsVirtualKeyCode: vk, nativeVirtualKeyCode: vk });
+      } else {
+        await A.page.keyboard.down(code);
+        await sleep(ms);
+        await A.page.keyboard.up(code);
+      }
+    };
+    for (const [look, code, ime, name] of [
+      [800, "KeyW", false, "W"],
+      [1300, "KeyS", false, "S"],
+      [800, "KeyW", true, "한글 mode W (Process / 229)"],
+    ]) {
+      await watchMap();
+      const p0 = await pos(A);
+      const pk = await peek(look);
+      await walkKey(code, 700, ime);
+      await sleep(300);
+      const p1 = await pos(A);
+      const s1 = await state(A);
+      const m1 = await mode();
+      const w1 = await mapWatched();
+      check(
+        `M, a look of ${look} ms, M: the map closes; the chat that opens holds the guess "mm" (a slow ㅡㅡ would be in it)`,
+        pk.opened && pk.closed && pk.s.focused && pk.s.value === "mm",
+        pk,
+      );
+      check(
+        `…then ${name} held 0.7 s: the guess is undone (chat left, field empty, nothing typed), the avatar walks, the map stays closed`,
+        !s1.focused && !s1.captured && s1.value === "" && dist(p0, p1) > 0.3 && m1 !== "ov" && w1.longest <= TAKE_BACK_MS,
+        { ...s1, mode: m1, watch: w1, moved: Math.round(dist(p0, p1) * 100) / 100 },
+      );
+      if (name === "W") await shots(A, "pc-r5-peek-then-w");
+      await sleep(LOOK_MS);
+    }
+    // Escape, and a click on the view: the guess goes the same way — no menu, no "mm" left behind in the field
+    {
+      const pk = await peek(800);
+      await A.page.keyboard.press("Escape");
+      await sleep(300);
+      const s1 = await state(A);
+      const menu = await menuOpen(A);
+      check("M, 0.8 s, M, then Escape: the chat is left with the field empty, and the menu does NOT open", pk.s.value === "mm" && !s1.focused && s1.value === "" && !menu, { peek: pk, ...s1, menu });
+      if (menu) await A.page.keyboard.press("Escape");
+      await sleep(LOOK_MS);
+      const pk2 = await peek(800);
+      const vp = A.page.viewportSize();
+      await A.page.mouse.click(Math.round(vp.width / 2), Math.round(vp.height * 0.3));
+      await sleep(300);
+      const s2 = await state(A);
+      check("M, 0.8 s, M, then a click on the 3D view: the chat is left with the field empty", pk2.s.value === "mm" && !s2.focused && s2.value === "", { peek: pk2, ...s2 });
+      await sleep(LOOK_MS);
+    }
+    // an unsent line already in the field (left with Escape): the guess goes, the line stays
+    {
+      await A.page.keyboard.press("Enter");
+      await until(() => state(A), (v) => v.focused);
+      await A.page.locator(FIELD).fill("안녕");
+      await A.page.keyboard.press("Escape");
+      await until(() => state(A), (v) => !v.focused);
+      await sleep(LOOK_MS);
+      const p0 = await pos(A);
+      const pk = await peek(800);
+      await walkKey("KeyS", 600);
+      await sleep(300);
+      const p1 = await pos(A);
+      const s1 = await state(A);
+      check('an unsent "안녕" in the field, M, 0.8 s, M ("안녕mm"), then S: back to "안녕", the chat left, the avatar walks', pk.s.value === "안녕mm" && !s1.focused && s1.value === "안녕" && dist(p0, p1) > 0.3, { peek: pk, ...s1, moved: Math.round(dist(p0, p1) * 100) / 100 });
+      await A.page.locator(FIELD).fill("");
+      await sleep(LOOK_MS);
+    }
+    // a slow ㅡㅡ that goes on (Space, then W) is a line: W types into it; and a slow ㅡㅡ then Enter sends "mm" once
+    {
+      await watchMap();
+      await plain([..."mm "], 1200);
+      await sleep(200);
+      const p0 = await pos(A);
+      await A.page.keyboard.press("KeyW");
+      await sleep(300);
+      const p1 = await pos(A);
+      const s1 = await until(() => state(A), (v) => v.value === "mm w", 1000);
+      const w1 = await mapWatched();
+      check('a slow ㅡㅡ (1.2 s a key), a space, then W: "mm w" — the line goes on, W types (no walk), the map closed', s1.focused && s1.value === "mm w" && dist(p0, p1) < 0.05 && (await mode()) !== "ov" && w1.longest <= TAKE_BACK_MS, { ...s1, watch: w1 });
+      await leave();
+      await sleep(5000); // the chat window: start fresh
+      await plain([..."mm"], 1200);
+      await sleep(300);
+      await A.page.keyboard.press("Enter");
+      const sent = await sentOnce(A, "mm");
+      const s2 = await state(A);
+      check('a slow ㅡㅡ (1.2 s a key) then Enter: "mm" sent once, the caret stays', sent === 1 && s2.focused && s2.value === "", { sent, ...s2 });
+      await A.page.keyboard.press("Escape");
+      await until(() => state(A), (v) => !v.focused);
+      await sleep(LOOK_MS);
+    }
+    // the village has no bag: B is a letter — a slow ㅠㅠ is in the chat and Enter sends it; "bye" keeps its b
+    for (const gap of [900, 1200]) {
+      await sleep(5000); // the chat window: start fresh
+      await watchMap();
+      await plain([..."bb"], gap);
+      await sleep(400);
+      const s1 = await until(() => state(A), (v) => v.value === "bb", 1500);
+      if (gap === 1200) await shots(A, "pc-r5-slow-bb");
+      const before = count(await myLines(A), "bb"); // the 900 ms round sent one already
+      await A.page.keyboard.press("Enter");
+      const sent = (await sentOnce(A, "bb")) - before;
+      const w1 = await mapWatched();
+      check(`village: "ㅠㅠ" at ${gap} ms a key (b b, no click) is in the chat ("bb"), and Enter sends it once`, s1.focused && s1.value === "bb" && sent === 1 && !w1.seen, { ...s1, sent, watch: w1 });
+      await A.page.keyboard.press("Escape");
+      await until(() => state(A), (v) => !v.focused);
+      await sleep(700);
+    }
+    await plain([..."bye"], 900);
+    await sleep(300);
+    const sBye = await until(() => state(A), (v) => v.value === "bye", 1500);
+    check('village: "bye" at 900 ms a key: "bye" in the chat (the b is not lost to a bag that is not there)', sBye.focused && sBye.value === "bye", sBye);
+    await leave();
+    // the declared cost (review round 5, minor — kept): a short W step and M 0.7 s later reads as "즈" (W M), as a slow
+    // typist's 즈 at 1.2 s a key must — the chat opens with "m" instead of the map. Recorded, not counted.
+    {
+      await sleep(LOOK_MS);
+      await A.page.keyboard.down("KeyW");
+      await sleep(250);
+      await A.page.keyboard.up("KeyW");
+      await sleep(700);
+      await A.page.keyboard.press("KeyM");
+      await sleep(TAKE_BACK_MS);
+      const s1 = await state(A);
+      run.check("[cost, documented — not counted] a 250 ms W step, then M 0.7 s later: read as 즈 (the chat \"m\"), not the map", true, { ...s1, mode: await mode() });
+      await leave();
+    }
+    await cdp.detach().catch(() => {});
+    const sys = await systemLines(A);
+    check("no rate-limit notice (round 5 step)", sys.length === 0, sys);
+  });
   await A.ctx.close();
 }
 
@@ -1498,6 +1805,15 @@ async function legacy(browser) {
     await L.page.mouse.click(vp.width / 2, vp.height * 0.3);
     const s2 = await until(() => state(L), (s) => !s.focused, 1500);
     check("legacy: a click on the 3D view leaves the chat", !s2.focused && !s2.captured, s2);
+    // review round 5: no bag in the legacy world either — B (ㅠ) is a letter, at once
+    await sleep(1700);
+    await L.page.keyboard.down("b");
+    await sleep(50);
+    await L.page.keyboard.up("b");
+    const s3 = await until(() => state(L), (s) => s.value === "b", 1200);
+    check('legacy: a lone B (no bag here) opens the chat with "b" at once', s3.focused && s3.value === "b", s3);
+    await L.page.locator(FIELD).fill("");
+    await L.page.keyboard.press("Escape");
   });
   offShadow();
   await L.ctx.close();
@@ -1618,6 +1934,12 @@ async function classroom(browser) {
 
   await run.step("교실 4. 폰 — '팀 채팅' 줄은 열린 바 바로 위, 빠른 네 번째 줄 안내와 안 겹침, 나오는 탭 동안 접힌 바 위에 떠 있지 않음", async () => {
     await sleep(5800);
+    const emojiNear = await B.page.evaluate(() => {
+      const e = document.querySelector(".cv-emoji-toggle");
+      const r = e ? e.getBoundingClientRect() : null;
+      return r && r.width > 0 ? { x: Math.round(r.x + r.width / 2), y: Math.round(r.y - 24) } : null;
+    });
+    check("phone classroom: the emoji button is there before chatting (a spot near it is where the leave tap goes)", !!emojiNear, { emojiNear });
     await press(B, B.page.locator(".cv-chat-btn"));
     await until(() => state(B), (s) => s.focused, 2000);
     await sleep(300);
@@ -1638,10 +1960,11 @@ async function classroom(browser) {
     await until(() => noteInfo(B), (x) => x === null, 7000, 100);
     await press(B, B.page.locator(SEND));
     check('"폰교실4" then goes, once', (await sentOnce(B, "폰교실4")) === 1, await myLines(B));
-    // the tap that leaves, finger down 0.3 s: the HUD holds its chat layout meanwhile, but the line goes with the bar
+    // the tap that leaves, finger down 0.3 s, near a control (24 px above where the emoji button comes back — a tap
+    // there may click it, review round 5): the HUD holds its chat layout meanwhile, but the line goes with the bar
     const cdpR = await B.page.context().newCDPSession(B.page);
-    const vp = B.page.viewportSize();
-    await cdpR.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: Math.round(vp.width * 0.72), y: Math.round(vp.height * 0.33) }] });
+    const near = emojiNear ?? { x: Math.round(B.page.viewportSize().width * 0.72), y: Math.round(B.page.viewportSize().height * 0.33) };
+    await cdpR.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [near] });
     await sleep(200);
     const mid = await B.page.evaluate(() => ({
       focusClass: document.documentElement.classList.contains("cv-chat-focus"),
@@ -1653,7 +1976,7 @@ async function classroom(browser) {
     await cdpR.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
     await sleep(900);
     const s2 = await state(B);
-    check("phone classroom: during the tap that leaves (finger still down) the HUD keeps its chat layout, but the bar is folded and the team-chat line went with it", mid.focusClass && !mid.openClass && mid.collapsed && mid.line === "none", mid);
+    check("phone classroom: during the tap that leaves near a button (finger still down) the HUD keeps its chat layout, but the bar is folded and the team-chat line went with it", mid.focusClass && !mid.openClass && mid.collapsed && mid.line === "none", { ...mid, at: near });
     check("…and after the tap the chat is left", !s2.focused && s2.collapsed && !s2.focusClass, s2);
     await cdpR.detach().catch(() => {});
   });

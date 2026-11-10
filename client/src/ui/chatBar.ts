@@ -9,6 +9,7 @@
  */
 
 import { CHAT_RATE } from "@caysonverse/shared/constants";
+import type { Rect } from "../game/hud";
 
 /**
  * What a keydown inside the focused chat field does. "sendAfterIme": an Enter the IME handled after it had already
@@ -202,7 +203,8 @@ export interface LeaveTap {
 
 /** What happens around a leave tap (ChatInput listens on the window, capture phase). */
 export type LeaveTapEvent =
-  | { type: "press"; pointerId: number; x: number; y: number }
+  /** `near`: it went down within LEAVE_TAP_DRAG_PX of a control that comes back with the HUD (pressNearAny). */
+  | { type: "press"; pointerId: number; x: number; y: number; near: boolean }
   | { type: "pointermove"; pointerId: number; x: number; y: number }
   | { type: "pointerup"; pointerId: number }
   | { type: "pointercancel"; pointerId: number }
@@ -219,6 +221,12 @@ export interface LeaveTapStep {
 /**
  * The HUD keeps its chat layout (the 💬 button away, the emoji fan / action / jump buttons hidden: cv-chat-focus) until
  * the tap that left the chat is over (pure; ChatInput keeps the state and the timer).
+ *
+ * Only a press that went down NEAR such a control (`near`: within LEAVE_TAP_DRAG_PX of the 💬 / jump / action / emoji
+ * buttons, an open emoji fan's buttons or the guide card — pressNearAny) can have its click land on one: a tap's click is aimed within a tap's slop
+ * of where it went down. Any other press (the joystick on the other half, the view away from the cluster) ends the chat
+ * layout at once — review round 5: a joystick walk at a normal pace (the thumb 8–50 px out) that left the chat kept the
+ * jump / action buttons hidden until the thumb lifted, up to LEAVE_TAP_HOLD_MAX_MS.
  *
  * Why (review round 3, phones): the tap that leaves blurs the field at its pointerdown — the keyboard must go, and the
  * tap still does what it does on the 3D view (click-to-move, the camera) — and the HUD used to come back right then,
@@ -237,7 +245,10 @@ export interface LeaveTapStep {
  * Other fingers, and a click before the finger lifted, change nothing.
  */
 export function leaveTapStep(tap: LeaveTap | null, ev: LeaveTapEvent): LeaveTapStep {
-  if (ev.type === "press") return { tap: { pointerId: ev.pointerId, x: ev.x, y: ev.y, up: false }, timerMs: LEAVE_TAP_HOLD_MAX_MS };
+  if (ev.type === "press") {
+    if (ev.near) return { tap: { pointerId: ev.pointerId, x: ev.x, y: ev.y, up: false }, timerMs: LEAVE_TAP_HOLD_MAX_MS };
+    return tap === null ? { tap: null, timerMs: null } : { tap }; // nothing it could land on: no layout to hold
+  }
   if (ev.type === "timeout" || ev.type === "focus") return { tap: null, timerMs: null };
   if (tap === null) return { tap: null };
   switch (ev.type) {
@@ -252,4 +263,134 @@ export function leaveTapStep(tap: LeaveTap | null, ev: LeaveTapEvent): LeaveTapS
     case "click":
       return tap.up ? { tap, timerMs: 0 } : { tap };
   }
+}
+
+/**
+ * Whether a press at (x, y) went down within `margin` px of any of `rects` (their boxes; a round button's box holds its
+ * circle, so this errs on the side of holding the layout). The controls that come back with the HUD (ChatInput): only a
+ * press near one of them can produce a click on one — a tap's click is aimed within its slop of where it went down, and
+ * LEAVE_TAP_DRAG_PX is past every browser's.
+ */
+export function pressNearAny(x: number, y: number, rects: readonly Rect[], margin: number = LEAVE_TAP_DRAG_PX): boolean {
+  for (const r of rects) {
+    const dx = Math.max(r.x - x, 0, x - (r.x + r.w));
+    const dy = Math.max(r.y - y, 0, y - (r.y + r.h));
+    if (Math.hypot(dx, dy) <= margin) return true;
+  }
+  return false;
+}
+
+// ──────────────────────────── a chat a take-back opened: only a guess until the player types on ────────────────────────────
+
+/**
+ * The chat a take-back opened (hotkeys.ts typeToChat `tentative`: an M had already opened the map when the next key took
+ * it back). Review round 5: a quick look at the map — M, a look, M — reads exactly like a slow ㅡㅡ; the map closed, the
+ * chat opened with "mm" and the W that followed typed "mmw" while the avatar stood still. So the chat opens (the slow
+ * typist's line is in it at once, and Enter sends it), but while the field holds exactly what the take-back typed, a walk
+ * key, Escape or a press elsewhere puts the field back as it was and leaves.
+ */
+export interface TakeBackDraft {
+  /** The field's text before the take-back put its letter(s) in. */
+  before: string;
+  /** The field's text once the key that opened it has typed its own letter too: while it holds exactly this, nothing more was typed. */
+  typed: string;
+}
+
+/**
+ * The draft for a take-back: `inserted` is what insertPrefix made of the field (the held letter at the caret); `key` is
+ * what the opening key types (KeyboardEvent.key) — it lands at the caret after the keydown, unless the field is full.
+ */
+export function takeBackDraft(before: string, inserted: { value: string; caret: number }, key: string | undefined, maxLength: number): TakeBackDraft {
+  const ch = key !== undefined && [...key].length === 1 ? key : "";
+  const fits = ch !== "" && inserted.value.length + ch.length <= maxLength;
+  return { before, typed: fits ? inserted.value.slice(0, inserted.caret) + ch + inserted.value.slice(inserted.caret) : inserted.value };
+}
+
+/** The keys that walk (MOVE_KEYS without Shift and the Z / C camera turn: ㅋ ㅊ go on a line — ㅡㅡㅋ). */
+const DRAFT_WALK_CODES: ReadonlySet<string> = new Set([
+  "KeyW", "KeyA", "KeyS", "KeyD",
+  "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight",
+]);
+
+/**
+ * What a keydown in the field does to a take-back draft: "undo" (a walk key — by `code`, so in 한글 mode too, where W
+ * reaches the field as Process / 229 — or a plain Escape), "keep" (a bare modifier, Caps Lock, the 한/영 / 한자 keys) or
+ * "typing" (anything else: the guess was right, the draft is over — Space, Enter, Backspace, ㅋ, a chord, the IME's own
+ * Escape, a key during a composition).
+ */
+export function draftKey(e: {
+  code: string;
+  key: string;
+  keyCode?: number;
+  isComposing?: boolean;
+  ctrlKey?: boolean;
+  metaKey?: boolean;
+  altKey?: boolean;
+}): "undo" | "keep" | "typing" {
+  if (
+    /^(Shift|Control|Alt|Meta)(Left|Right)$/.test(e.code) ||
+    e.code === "CapsLock" ||
+    e.code === "Lang1" ||
+    e.code === "Lang2" ||
+    e.key === "HangulMode" ||
+    e.key === "HanjaMode"
+  )
+    return "keep";
+  if (e.isComposing || e.ctrlKey || e.metaKey || e.altKey) return "typing";
+  if (e.key === "Escape") return e.keyCode === 229 ? "typing" : "undo";
+  return DRAFT_WALK_CODES.has(e.code) ? "undo" : "typing";
+}
+
+/** The text to put back when a draft is undone — null when there is none, or something more was typed (or pasted) since. */
+export function undoDraft(value: string, d: TakeBackDraft | null): string | null {
+  return d !== null && value === d.typed ? d.before : null;
+}
+
+// ────────────────────────────── the soft keyboard folded away, the caret still in the field ──────────────────────────────
+
+/** A keyboard at least this tall (px) was up (soft keyboards are 180–350 px; a hardware keyboard's strip ~40–55 px). */
+export const KBD_UP_MIN_PX = 120;
+/** At most this (px) left of it: folded (a hardware keyboard's suggestion strip, a rounding of the viewport). */
+export const KBD_DOWN_MAX_PX = 60;
+/** How long (ms) a fold must last before the field lets go — a turn of the phone or a keyboard switch passes through. */
+export const KBD_FOLD_SETTLE_MS = 200;
+/** A visual viewport zoomed further than this off 1 (pinch): its numbers are the zoom's, not a keyboard's. */
+const KBD_ZOOM_EPS = 0.02;
+
+/** One look at the viewport: innerWidth / innerHeight, the keyboard inset of the visual viewport (kbdInset.ts), its scale. */
+export interface KbdSample {
+  w: number;
+  h: number;
+  inset: number;
+  scale: number;
+}
+
+/** What the watch remembers since the field took the caret: the screen's width, its tallest layout height, the tallest keyboard. */
+export interface KbdWatch {
+  w: number;
+  base: number;
+  peak: number;
+}
+
+/** The watch as the field takes the caret. */
+export function kbdWatchStart(s: KbdSample): KbdWatch {
+  return { w: s.w, base: s.h, peak: Math.abs(s.scale - 1) > KBD_ZOOM_EPS ? 0 : s.inset };
+}
+
+/**
+ * One more look (pure; ChatInput samples on every viewport resize while a touch field has the caret). Review round 5
+ * (Android): the back key — or the keyboard's own fold key — hides the soft keyboard WITHOUT a blur: the field kept the
+ * caret and the HUD stayed in its chat layout (jump / action / emoji hidden, no 💬) until a tap; with Enter keeping the
+ * caret, that came after every line. The keyboard's height is the visual viewport's inset (iOS, Android resizes-visual)
+ * or how far the layout viewport shrank (resizes-content: many in-app browsers); `folded` once it had been up
+ * (KBD_UP_MIN_PX) and is back to ~0 (KBD_DOWN_MAX_PX) — told once, until it is up again. A new width (the phone turned)
+ * starts afresh; a zoomed viewport says nothing (`kbd` null).
+ */
+export function kbdWatchStep(w: KbdWatch, s: KbdSample): { watch: KbdWatch; kbd: number | null; folded: boolean } {
+  if (Math.abs(s.scale - 1) > KBD_ZOOM_EPS) return { watch: w, kbd: null, folded: false };
+  if (s.w !== w.w) return { watch: { w: s.w, base: s.h, peak: s.inset }, kbd: s.inset, folded: false };
+  const base = Math.max(w.base, s.h);
+  const kbd = Math.max(s.inset, base - s.h);
+  const folded = w.peak >= KBD_UP_MIN_PX && kbd <= KBD_DOWN_MAX_PX;
+  return { watch: { w: w.w, base, peak: folded ? 0 : Math.max(w.peak, kbd) }, kbd, folded };
 }

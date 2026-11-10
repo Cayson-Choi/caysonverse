@@ -3,6 +3,7 @@ import { EMOJIS } from "@caysonverse/shared/constants";
 import { useQuiet } from "../game/quiet";
 import { useNpcStore } from "../stores/npcStore";
 import { useUiStore } from "../stores/uiStore";
+import { addChatLayoutTargets } from "./chatLayoutTargets";
 import { useEmojiFire } from "./EmojiPalette";
 import { HudButton } from "./HudButton";
 import { rectStyle, useTouchHudLayout } from "./useTouchHudLayout";
@@ -34,6 +35,10 @@ export function EmojiFan() {
   useEffect(() => {
     if (menuOpen || npcOpen || quiet) setOpen(false);
   }, [menuOpen, npcOpen, quiet]);
+
+  // While open, the six buttons are where a chat on a phone gives them back (hidden under cv-chat-focus): a tap that
+  // leaves the chat there keeps the chat layout until it is over (ChatInput, chatLayoutTargets.ts).
+  useEffect(() => (open ? addChatLayoutTargets(() => layout.fan) : undefined), [open, layout]);
 
   // While open: hide the corner buttons, and close on any press that is not on the fan.
   useEffect(() => {
