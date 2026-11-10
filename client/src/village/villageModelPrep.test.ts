@@ -6,6 +6,7 @@ import {
   InstancedMesh,
   Mesh,
   MeshBasicMaterial,
+  MeshStandardMaterial,
   Object3D,
   PlaneGeometry,
   PointsMaterial,
@@ -29,6 +30,9 @@ import {
   GROUND_LAYER_OFFSET,
   LIGHT_LIFT,
   LIT,
+  MOON_LOOK,
+  moonMaterial,
+  moonUplightUniform,
   STAR_COUNT,
   STAR_RADIUS,
   STAR_SIZE,
@@ -120,6 +124,8 @@ interface Fixture {
   root: Object3D;
   mats: Record<string, MeshBasicMaterial>;
   textures: Record<string, Texture>;
+  /** The fountain's crescent: the one lit (MeshStandardMaterial) surface, as GLTFLoader makes it for `M_moon`. */
+  moon: MeshStandardMaterial;
 }
 
 function fixture(): Fixture {
@@ -161,7 +167,11 @@ function fixture(): Fixture {
   street.name = "inst__street_green_1";
   root.add(far, street);
   root.add(mesh("col__house_1", mats.LM_wood), mesh("col__tree_1", mats.LM_wood), mesh("col__stream_bank_1", mats.LM_wood));
-  return { root, mats, textures };
+  const moon = new MeshStandardMaterial({ name: "M_moon", map: new Texture(), roughness: 0.32, metalness: 0 });
+  const moonMesh = new Mesh(new SphereGeometry(1, 8, 6), moon);
+  moonMesh.name = "fountain_moon";
+  root.add(moonMesh);
+  return { root, mats, textures, moon };
 }
 
 const named = (root: Object3D, name: string) => root.getObjectByName(name) as Mesh;
@@ -525,6 +535,18 @@ describe("prepareVillage: the model dressed for the game", () => {
     expect(Math.max(...LIT.lamp.color) * LIT.lamp.boost).toBeGreaterThan(1.6);
   });
 
+  it("the fountain's crescent (M_moon) is lit live: glazed and lit from below at night, never light-mapped or lifted", () => {
+    const f = fixture();
+    prepareVillage(f.root, new Texture(), "high");
+    expect(f.moon.lightMap).toBeNull();
+    expect(f.moon.customProgramCacheKey()).toBe("village-moon");
+    expect(f.moon.flatShading).toBe(false);
+    const patch = f.moon.onBeforeCompile;
+    prepareVillage(f.root, new Texture(), "low"); // a second dressing (another tier) patches it once
+    expect(f.moon.onBeforeCompile).toBe(patch);
+    expect(named(f.root, "fountain_moon").material).toBe(f.moon); // the shared material, not a copy
+  });
+
   it("disposeVillage releases its own copies and nothing of the loader's cache", () => {
     const f = fixture();
     const nodes = prepareVillage(f.root, new Texture(), "high");
@@ -751,6 +773,16 @@ describe("applyDayNight: the clock's numbers into the model (Task 7A)", () => {
     expect(f.mats.LM_plaza.color.toArray()).toEqual([...GROUND_GRADE.LM_plaza!]);
   });
 
+  it("the crescent's night lights come on with the lamps: none at noon, full strength at midnight", () => {
+    const nodes = prepareVillage(fixture().root, new Texture(), "high");
+    applyDayNight(nodes, at("2026-06-21T12:30"));
+    expect(moonUplightUniform.value).toBe(0);
+    applyDayNight(nodes, at("2026-06-21T23:30"));
+    expect(moonUplightUniform.value).toBe(MOON_LOOK.uplight.strength);
+    applyDayNight(nodes, indoorState());
+    expect(moonUplightUniform.value).toBe(0);
+  });
+
   it("the weights follow the sun through dusk: the night map's weight rises, the lamps come on past 0.3, the golden hour tints the day side", () => {
     const nodes = prepareVillage(fixture().root, new Texture(), "low");
     const seen: Array<{ night: number; lit: number; r: number; b: number }> = [];
@@ -871,6 +903,36 @@ describe("the shader patches against three's own MeshBasicMaterial shader (T7 re
       expect(count(fs, "float villageGlowLuma")).toBe(1);
       expect(fs.indexOf("#include <map_fragment>")).toBeLessThan(fs.indexOf("float villageGlowLuma"));
     }
+  });
+
+  it("the crescent's glaze and night lights land in three's own MeshStandardMaterial shader, after the scene's lights", () => {
+    const PHYS = ShaderLib.physical;
+    for (const [text, anchor] of [
+      [PHYS.vertexShader, "void main() {"],
+      [PHYS.vertexShader, "#include <project_vertex>"],
+      [PHYS.fragmentShader, "void main() {"],
+      [PHYS.fragmentShader, "#include <lights_fragment_end>"],
+    ] as const) {
+      expect(count(text, anchor), anchor).toBe(1);
+    }
+    const m = new MeshStandardMaterial({ name: "M_moon" });
+    moonMaterial(m);
+    const shader = { uniforms: {} as Record<string, unknown>, fragmentShader: PHYS.fragmentShader, vertexShader: PHYS.vertexShader };
+    m.onBeforeCompile(shader as never, null as never);
+    const vs = shader.vertexShader;
+    const fs = shader.fragmentShader;
+    expect(count(vs, "varying vec3 vMoonWorld;")).toBe(1);
+    expect(vs.indexOf("#include <project_vertex>")).toBeLessThan(vs.indexOf("vMoonWorld = ( modelMatrix"));
+    expect(count(fs, "varying vec3 vMoonWorld;")).toBe(1);
+    expect(count(fs, "uniform float uMoonUplight;")).toBe(1);
+    expect(count(fs, "void main() {")).toBe(1);
+    // after every light has been added (the sky light's colours are read there), before the light is summed up
+    const glaze = fs.indexOf("reflectedLight.indirectSpecular += moonSky");
+    expect(fs.indexOf("#include <lights_fragment_end>")).toBeLessThan(glaze);
+    expect(glaze).toBeLessThan(fs.indexOf("vec3 totalDiffuse"));
+    expect(fs.indexOf("reflectedLight.directDiffuse += moonLit")).toBeLessThan(fs.indexOf("vec3 totalDiffuse"));
+    expect(shader.uniforms.uMoonUplight).toBe(moonUplightUniform);
+    expect(fs).toContain(`#define MOON_UPLIGHTS ${MOON_LOOK.uplight.count}`);
   });
 
   it("the dome's inverse tone curve lands right before three's tone mapping (rich tier)", () => {
