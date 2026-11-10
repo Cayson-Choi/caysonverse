@@ -318,6 +318,7 @@ try {
     await A.page.keyboard.press("Enter");
     await A.page.locator(".cv-chat-field").fill("동 먼");
     await A.page.locator(".cv-chat-field").press("Enter");
+    await A.page.keyboard.press("Escape"); // a sent line keeps the caret in the field (2026-11-10): leave the chat
     await sleep(1200);
     check("B sees A's team-chat line '동 먼'", (await bubbles(B)).includes("동 먼"), await bubbles(B));
     await T.page.getByRole("tab", { name: "채팅" }).click();
@@ -327,6 +328,7 @@ try {
     await B.page.keyboard.press("Enter");
     await B.page.locator(".cv-chat-field").fill("시1발");
     await B.page.locator(".cv-chat-field").press("Enter");
+    await B.page.keyboard.press("Escape"); // leave the chat (the caret stays in the field after a send)
     await sleep(1500);
     const bLog = await chatLog(B);
     check("B is answered with CHAT_NOT_NICE", bLog.some((l) => l.kind === "system" && l.text === CHAT_NOT_NICE), bLog.slice(-3));

@@ -787,8 +787,13 @@ try {
     check("A's own speech bubble shows the line", mine.includes("안녕하세요 폰이에요"), { bubbles: mine });
     const onB = await pollUntil(() => pb.evaluate((sid) => window.__cv.getBubbles().filter((b) => b.sid === sid).map((b) => b.text), sidA), (l) => l.includes("안녕하세요 폰이에요"), 4000);
     check("B sees the bubble too", onB.includes("안녕하세요 폰이에요"), { bubbles: onB });
+    // 2026-11-10 (owner's ask): a sent line keeps the caret — and the keyboard — in the field for the next one;
+    // Enter on the now empty field folds the chat away.
     const after = await pa.evaluate(() => document.activeElement?.className ?? "");
-    check("sending folds the chat input again", !/cv-chat-field/.test(after), { active: after });
+    check("sending keeps the chat input open for the next line", /cv-chat-field/.test(after), { active: after });
+    await pa.keyboard.press("Enter");
+    const folded = await pollUntil(() => pa.evaluate(() => document.activeElement?.className ?? ""), (cls) => !/cv-chat-field/.test(cls), 2000);
+    check("Enter on the empty field folds the chat input again", !/cv-chat-field/.test(folded), { active: folded });
     await sleep(500);
   });
 

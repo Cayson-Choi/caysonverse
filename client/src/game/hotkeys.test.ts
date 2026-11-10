@@ -5,6 +5,9 @@ import {
   hotkeyPreventsDefault,
   keydownCancelsDefault,
   onHotkey,
+  inputModeOf,
+  noteTypedKey,
+  forgetTypedMode,
   type HotkeyAction,
   type KeyLike,
 } from "./hotkeys";
@@ -170,6 +173,229 @@ describe("resolveHotkey — key table", () => {
 
   it("interactUp has no browser default to cancel", () => {
     expect(hotkeyPreventsDefault({ type: "interactUp" })).toBe(false);
+  });
+});
+
+// Owner's report (2026-11-10): "채팅창에 클릭 하지 말을 하는 경우에 지도를 누른 걸로 넘어가버리던데" — talking without
+// clicking the chat bar first opened the map (Hangul ㅡ is the M key). A key a player TYPES must end up in the chat.
+describe("resolveHotkey — type to chat (a typed key that is not a game key opens the chat with it)", () => {
+  /** A keydown as a real KeyboardEvent carries it: `code` (the physical key) AND `key` (what it types). */
+  const typed = (code: string, key: string, o: Partial<KeyLike> = {}) => kd(code, { key, ...o });
+  /** The Korean IME in 한글 mode: Chrome on Windows reports key "Process" (keyCode 229), macOS the jamo itself. */
+  const hangul = (code: string, jamo: string) => [
+    typed(code, "Process", { keyCode: 229 }),
+    typed(code, jamo),
+  ];
+
+  it("a letter, digit or sign that is no game key opens the chat (and is typed into it)", () => {
+    for (const [code, key] of [
+      ["KeyH", "h"],
+      ["KeyQ", "q"],
+      ["KeyT", "T"],
+      ["KeyL", "l"],
+      ["KeyO", "o"],
+      ["KeyN", "n"],
+      ["Digit7", "7"],
+      ["Digit0", "0"],
+      ["Numpad1", "1"],
+      ["Period", "."],
+      ["Comma", ","],
+      ["Minus", "-"],
+      ["Quote", "'"],
+    ])
+      expect(resolveHotkey(typed(code, key), false), code).toEqual({ type: "typeToChat" });
+  });
+
+  it("Shift + a letter (a capital) types too — Shift is no chord", () => {
+    expect(resolveHotkey(typed("KeyH", "H", { shiftKey: true }), false)).toEqual({ type: "typeToChat" });
+  });
+
+  it("한글 mode: ㄱ ㅍ ㅡ ㅠ (R V M B) are typing, not recenter / view / MAP / bag", () => {
+    for (const [code, jamo] of [
+      ["KeyR", "ㄱ"],
+      ["KeyV", "ㅍ"],
+      ["KeyM", "ㅡ"],
+      ["KeyB", "ㅠ"],
+    ])
+      for (const e of hangul(code, jamo)) expect(resolveHotkey(e, false), `${code} ${e.key}`).toEqual({ type: "typeToChat" });
+  });
+
+  it("한글 mode: every other letter that is no game key types too (ㅎ ㅗ ㅓ ㅏ ㅣ ㅅ ㅂ ...)", () => {
+    for (const [code, jamo] of [
+      ["KeyG", "ㅎ"],
+      ["KeyH", "ㅗ"],
+      ["KeyJ", "ㅓ"],
+      ["KeyK", "ㅏ"],
+      ["KeyL", "ㅣ"],
+      ["KeyT", "ㅅ"],
+      ["KeyQ", "ㅂ"],
+      ["KeyX", "ㅌ"],
+    ])
+      for (const e of hangul(code, jamo)) expect(resolveHotkey(e, false), `${code} ${e.key}`).toEqual({ type: "typeToChat" });
+  });
+
+  it("English mode: R V M B stay the recenter / view / map / bag hotkeys (the 🗺 button opens the map in either mode)", () => {
+    expect(resolveHotkey(typed("KeyR", "r"), false)).toEqual({ type: "recenter" });
+    expect(resolveHotkey(typed("KeyV", "v"), false)).toEqual({ type: "toggleView" });
+    expect(resolveHotkey(typed("KeyM", "m"), false)).toEqual({ type: "toggleMap" });
+    expect(resolveHotkey(typed("KeyM", "M", { shiftKey: true }), false)).toEqual({ type: "toggleMap" });
+    expect(resolveHotkey(typed("KeyB", "b"), false)).toEqual({ type: "bag" });
+  });
+
+  it("movement and the camera turn (WASD, arrows, Shift, Z / C) are never typing — in English or 한글 mode", () => {
+    for (const [code, key, jamo] of [
+      ["KeyW", "w", "ㅈ"],
+      ["KeyA", "a", "ㅁ"],
+      ["KeyS", "s", "ㄴ"],
+      ["KeyD", "d", "ㅇ"],
+      ["KeyZ", "z", "ㅋ"],
+      ["KeyC", "c", "ㅊ"],
+    ]) {
+      expect(resolveHotkey(typed(code, key), false), code).toBeNull();
+      for (const e of hangul(code, jamo)) expect(resolveHotkey(e, false), `${code} ${e.key}`).toBeNull();
+    }
+    for (const [code, key] of [
+      ["ArrowUp", "ArrowUp"],
+      ["ArrowLeft", "ArrowLeft"],
+      ["ShiftLeft", "Shift"],
+      ["ShiftRight", "Shift"],
+    ])
+      expect(resolveHotkey(typed(code, key), false), code).toBeNull();
+  });
+
+  it("E / F interact, Space jumps, 1–6 send emoji, Tab / Enter / / / Esc keep their jobs — in 한글 mode too", () => {
+    for (const e of hangul("KeyE", "ㄷ")) expect(resolveHotkey(e, false)).toEqual({ type: "interact" });
+    for (const e of hangul("KeyF", "ㄹ")) expect(resolveHotkey(e, false)).toEqual({ type: "interact" });
+    expect(resolveHotkey(typed("Space", " "), false)).toEqual({ type: "jump" });
+    expect(resolveHotkey(typed("Digit1", "1"), false)).toEqual({ type: "emoji", index: 0 });
+    expect(resolveHotkey(typed("Digit6", "6"), false)).toEqual({ type: "emoji", index: 5 });
+    expect(resolveHotkey(typed("Tab", "Tab"), false)).toEqual({ type: "roster", show: true });
+    expect(resolveHotkey(typed("Enter", "Enter"), false)).toEqual({ type: "openChat" });
+    expect(resolveHotkey(typed("Slash", "/"), false)).toEqual({ type: "openChat" });
+    expect(resolveHotkey(typed("Slash", "?", { shiftKey: true }), false)).toEqual({ type: "openChat" });
+    expect(resolveHotkey(typed("Escape", "Escape"), false)).toEqual({ type: "menu" });
+  });
+
+  it("keys that type nothing never open the chat (F-keys, Backspace, Dead, Unidentified, a bare modifier)", () => {
+    for (const [code, key] of [
+      ["F5", "F5"],
+      ["Backspace", "Backspace"],
+      ["Delete", "Delete"],
+      ["Home", "Home"],
+      ["Quote", "Dead"],
+      ["", "Unidentified"],
+      ["ControlLeft", "Control"],
+      ["AltLeft", "Alt"],
+      ["MetaLeft", "Meta"],
+      ["CapsLock", "CapsLock"],
+      ["HangulMode", "HangulMode"],
+    ])
+      expect(resolveHotkey(typed(code, key), false), `${code} ${key}`).toBeNull();
+  });
+
+  it("a key with no `key` at all (a synthetic event) is not typing", () => {
+    expect(resolveHotkey(kd("KeyH"), false)).toBeNull();
+    expect(resolveHotkey(kd("KeyM"), false)).toEqual({ type: "toggleMap" });
+  });
+
+  it("never while a field / overlay / the menu holds the keyboard — the field gets the key itself", () => {
+    expect(resolveHotkey(typed("KeyH", "h"), true)).toBeNull();
+    for (const e of hangul("KeyM", "ㅡ")) expect(resolveHotkey(e, true)).toBeNull();
+    // the first keystroke of a Hangul composition inside the focused chat field: no hotkey at all
+    expect(resolveHotkey(typed("KeyM", "Process", { keyCode: 229, isComposing: true }), true)).toBeNull();
+    expect(resolveHotkey(typed("KeyM", "Process", { keyCode: 229 }), true)).toBeNull();
+  });
+
+  it("never on a chord, an auto-repeat, a composing key or a key another handler consumed", () => {
+    for (const o of [{ ctrlKey: true }, { metaKey: true }, { altKey: true }, { repeat: true }, { isComposing: true }, { defaultPrevented: true }])
+      expect(resolveHotkey(typed("KeyH", "h", o), false), JSON.stringify(o)).toBeNull();
+  });
+
+  it("has no browser default to cancel: the typed character must land in the field it opened", () => {
+    expect(hotkeyPreventsDefault({ type: "typeToChat" })).toBe(false);
+  });
+});
+
+// Chrome on Windows (and Linux) switches the IME OFF while no text field has the caret (Chromium tsf_bridge.cc: the
+// TEXT_INPUT_TYPE_NONE document gets GUID_COMPARTMENT_KEYBOARD_DISABLED). So outside the chat, a key pressed in 한글
+// mode arrives as the plain latin letter — ㅡ is just "m" — and cannot be told from English mode. What CAN be seen is
+// the mode the player was in the last time they typed into a field (there the IME is on): remembered here.
+describe("inputModeOf — what a key typed into a field says about the input mode", () => {
+  const typed = (code: string, key: string, o: Partial<KeyLike> = {}) => kd(code, { key, ...o });
+
+  it("a letter the IME handles (key Process / keyCode 229, or a Hangul jamo) → hangul", () => {
+    expect(inputModeOf(typed("KeyM", "Process", { keyCode: 229 }))).toBe("hangul");
+    expect(inputModeOf(typed("KeyR", "Unidentified", { keyCode: 229 }))).toBe("hangul");
+    expect(inputModeOf(typed("KeyM", "ㅡ"))).toBe("hangul");
+  });
+
+  it("a plain latin letter → latin (upper or lower case)", () => {
+    expect(inputModeOf(typed("KeyM", "m"))).toBe("latin");
+    expect(inputModeOf(typed("KeyH", "H", { shiftKey: true }))).toBe("latin");
+  });
+
+  it("anything that is not a letter key says nothing (digits, Space, Enter, Backspace, arrows, chords)", () => {
+    for (const [code, key] of [
+      ["Digit7", "7"],
+      ["Space", " "],
+      ["Enter", "Enter"],
+      ["Backspace", "Backspace"],
+      ["ArrowLeft", "ArrowLeft"],
+      ["Enter", "Process"],
+      ["", "Unidentified"],
+    ])
+      expect(inputModeOf(typed(code, key)), `${code} ${key}`).toBeNull();
+    expect(inputModeOf(typed("KeyC", "c", { ctrlKey: true }))).toBeNull();
+    expect(inputModeOf(typed("KeyV", "v", { metaKey: true }))).toBeNull();
+    expect(inputModeOf(kd("KeyM"))).toBeNull(); // no key at all
+  });
+});
+
+describe("resolveHotkey — the remembered 한글 mode (Windows: no IME outside a field)", () => {
+  const typed = (code: string, key: string, o: Partial<KeyLike> = {}) => kd(code, { key, ...o });
+
+  it("last typed in 한글: plain r v m b are ㄱ ㅍ ㅡ ㅠ — typing, not recenter / view / MAP / bag", () => {
+    for (const [code, key] of [
+      ["KeyR", "r"],
+      ["KeyV", "v"],
+      ["KeyM", "m"],
+      ["KeyB", "b"],
+      ["KeyM", "M"],
+    ])
+      expect(resolveHotkey(typed(code, key, { shiftKey: key === "M" }), false, true), `${code} ${key}`).toEqual({ type: "typeToChat" });
+  });
+
+  it("last typed in English (or never typed): r v m b stay the hotkeys", () => {
+    expect(resolveHotkey(typed("KeyM", "m"), false, false)).toEqual({ type: "toggleMap" });
+    expect(resolveHotkey(typed("KeyR", "r"), false, false)).toEqual({ type: "recenter" });
+    expect(resolveHotkey(typed("KeyV", "v"), false)).toEqual({ type: "toggleView" });
+    expect(resolveHotkey(typed("KeyB", "b"), false)).toEqual({ type: "bag" });
+  });
+
+  it("the positional game keys keep their job in 한글 mode too: WASD / Z / C, E / F, Space, digits, Enter, /, Esc, Tab", () => {
+    for (const [code, key] of [
+      ["KeyW", "w"],
+      ["KeyA", "a"],
+      ["KeyS", "s"],
+      ["KeyD", "d"],
+      ["KeyZ", "z"],
+      ["KeyC", "c"],
+    ])
+      expect(resolveHotkey(typed(code, key), false, true), code).toBeNull();
+    expect(resolveHotkey(typed("KeyE", "e"), false, true)).toEqual({ type: "interact" });
+    expect(resolveHotkey(typed("KeyF", "f"), false, true)).toEqual({ type: "interact" });
+    expect(resolveHotkey(typed("Space", " "), false, true)).toEqual({ type: "jump" });
+    expect(resolveHotkey(typed("Digit1", "1"), false, true)).toEqual({ type: "emoji", index: 0 });
+    expect(resolveHotkey(typed("Enter", "Enter"), false, true)).toEqual({ type: "openChat" });
+    expect(resolveHotkey(typed("Slash", "/"), false, true)).toEqual({ type: "openChat" });
+    expect(resolveHotkey(typed("Escape", "Escape"), false, true)).toEqual({ type: "menu" });
+    expect(resolveHotkey(typed("Tab", "Tab"), false, true)).toEqual({ type: "roster", show: true });
+  });
+
+  it("never while something holds the keyboard, never on a chord, never a synthetic key with no `key`", () => {
+    expect(resolveHotkey(typed("KeyM", "m"), true, true)).toBeNull();
+    expect(resolveHotkey(typed("KeyM", "m", { ctrlKey: true }), false, true)).toBeNull();
+    expect(resolveHotkey(kd("KeyM"), false, true)).toEqual({ type: "toggleMap" });
   });
 });
 
@@ -562,6 +788,47 @@ describe("onHotkey — one shared window listener", () => {
     off();
     offB();
     offC();
+  });
+
+  it("a typed key reaches subscribers as typeToChat WITHOUT preventDefault (so the character lands in the chat)", () => {
+    const fn = vi.fn();
+    sub(fn);
+    const ev = Object.assign(new Event("keydown", { cancelable: true }), {
+      code: "KeyM",
+      key: "Process",
+      keyCode: 229,
+      repeat: false,
+      isComposing: false,
+    });
+    win.dispatchEvent(ev);
+    expect(fn).toHaveBeenCalledTimes(1);
+    expect(fn.mock.calls[0][0]).toEqual({ type: "typeToChat" });
+    expect(ev.defaultPrevented).toBe(false);
+  });
+
+  it("remembers the mode of the last letter typed into a field: 한글 → a plain m opens the chat, English → the map again", () => {
+    const fn = vi.fn();
+    sub(fn);
+    const m = () => {
+      const ev = Object.assign(new Event("keydown", { cancelable: true }), { code: "KeyM", key: "m", keyCode: 77, repeat: false, isComposing: false });
+      win.dispatchEvent(ev);
+      return ev;
+    };
+    try {
+      forgetTypedMode();
+      m();
+      expect(fn.mock.calls.at(-1)?.[0]).toEqual({ type: "toggleMap" }); // nothing typed yet: M is the map
+      noteTypedKey(kd("KeyH", { key: "Process", keyCode: 229 })); // typed 한글 into the chat
+      noteTypedKey(kd("Enter", { key: "Enter", keyCode: 13 })); // (Enter says nothing about the mode)
+      const ev = m();
+      expect(fn.mock.calls.at(-1)?.[0]).toEqual({ type: "typeToChat" });
+      expect(ev.defaultPrevented).toBe(false);
+      noteTypedKey(kd("KeyO", { key: "o", keyCode: 79 })); // then typed English
+      m();
+      expect(fn.mock.calls.at(-1)?.[0]).toEqual({ type: "toggleMap" });
+    } finally {
+      forgetTypedMode();
+    }
   });
 });
 

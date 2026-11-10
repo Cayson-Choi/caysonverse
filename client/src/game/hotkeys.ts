@@ -17,6 +17,7 @@
  * in constants.ts) still owns it, and orbit (Z/C, drag) lives in CameraRig.
  */
 
+import { MOVE_KEYS } from "./constants";
 import { isUiCaptured } from "./uiCapture";
 
 export type HotkeyAction =
@@ -32,7 +33,12 @@ export type HotkeyAction =
   | { type: "menu" }
   | { type: "openChat" }
   | { type: "emoji"; index: number }
-  | { type: "roster"; show: boolean };
+  | { type: "roster"; show: boolean }
+  /**
+   * A key that TYPES something and is no game key, pressed while nothing holds the keyboard: the chat bar takes the
+   * caret DURING this keydown (no preventDefault), so the character — or the Hangul composition — lands in the field.
+   */
+  | { type: "typeToChat" };
 
 /** The bits of a KeyboardEvent the table reads — lets tests pass plain objects. */
 export interface KeyLike {
@@ -41,6 +47,13 @@ export interface KeyLike {
   repeat: boolean;
   isComposing: boolean;
   defaultPrevented: boolean;
+  /**
+   * What the key types (`KeyboardEvent.key`): "h", "ㅡ", "Process" (an IME such as the Korean one is handling it),
+   * "ArrowUp", ... Optional so plain test objects stay valid; without it a key never counts as typing.
+   */
+  key?: string;
+  /** 229 while an IME handles the key (Chrome on Windows in 한글 mode) — the legacy twin of key "Process". */
+  keyCode?: number;
   /** Modifier state — optional so plain test objects stay valid; a real KeyboardEvent has all four. */
   ctrlKey?: boolean;
   metaKey?: boolean;
@@ -50,6 +63,78 @@ export interface KeyLike {
 
 /** `Digit1`..`Digit6` (the six-emoji palette); capture group = the digit. */
 const EMOJI_CODE = /^Digit([1-6])$/;
+
+/** The held game keys drei's KeyboardControls owns (WASD, arrows, Shift, Z / C) — never typing, in any input mode. */
+const MOVE_CODES: ReadonlySet<string> = new Set(MOVE_KEYS.flatMap((k) => k.keys));
+
+/**
+ * The letter hotkeys that are mnemonics of an English word (Recenter, View, Map, Bag). In 한글 mode the same keys
+ * are ㄱ ㅍ ㅡ ㅠ — some of the commonest letters of a Korean sentence — so there they are typing (owner's report
+ * 2026-11-10: talking without clicking the bar first opened the map). The positional keys keep their job in every mode:
+ * WASD / arrows / Z / C (MOVE_CODES), E / F interact, Space, the digits, Tab, Enter, `/`, Esc.
+ */
+const IME_TYPING_CODES: ReadonlySet<string> = new Set(["KeyR", "KeyV", "KeyM", "KeyB"]);
+
+/** Hangul jamo / compatibility jamo / syllables — what `key` reads on macOS in 한글 mode (e.g. "ㅡ" for M). */
+const HANGUL = /[\u1100-\u11ff\u3130-\u318f\ua960-\ua97f\uac00-\ud7ff]/;
+
+/**
+ * Whether an IME is turning this key into text: key "Process" / keyCode 229 (the Korean IME in 한글 mode, wherever it
+ * is on — always inside a text field) or a Hangul letter as the key itself (macOS, also outside a field).
+ */
+export function isImeKey(e: Pick<KeyLike, "key" | "keyCode">): boolean {
+  return e.key === "Process" || e.keyCode === 229 || (e.key !== undefined && HANGUL.test(e.key));
+}
+
+/**
+ * Whether the key types a character: one printable character as its `key` ("h", "7", ".", "ㅡ"), or an IME at work
+ * ("Process"). Named keys ("Backspace", "F5", "Shift", "Dead", "Unidentified", "HangulMode", ...) type nothing.
+ */
+function typesText(e: Pick<KeyLike, "key" | "keyCode">): boolean {
+  if (e.key === undefined) return false;
+  return isImeKey(e) || [...e.key].length === 1;
+}
+
+/** A letter key (by position). */
+const LETTER_CODE = /^Key[A-Z]$/;
+/** A plain latin letter as the typed `key`. */
+const LATIN_LETTER = /^[a-zA-Z]$/;
+
+/**
+ * What a letter typed INTO a text field says about the keyboard's input mode: "hangul" when the Korean IME handles it
+ * (key "Process" / keyCode 229, or a jamo as the key), "latin" for a plain a–z, null for anything else (not a letter,
+ * a chord, no `key`). Only a key typed into a field tells: there the IME is on.
+ */
+export function inputModeOf(
+  e: Pick<KeyLike, "code" | "key" | "keyCode" | "ctrlKey" | "metaKey" | "altKey">,
+): "hangul" | "latin" | null {
+  if (!LETTER_CODE.test(e.code) || e.key === undefined) return null;
+  if (e.ctrlKey || e.metaKey || e.altKey) return null;
+  if (isImeKey(e)) return "hangul";
+  return LATIN_LETTER.test(e.key) ? "latin" : null;
+}
+
+/**
+ * Whether the last letter the player typed into a field (the chat bar, the 조교 field) was 한글.
+ *
+ * Why remember it: Chrome on Windows (and Linux) switches the IME OFF while no text field has the caret (Chromium
+ * ui/base/ime/win/tsf_bridge.cc gives the TEXT_INPUT_TYPE_NONE document GUID_COMPARTMENT_KEYBOARD_DISABLED), so out in
+ * the world a key pressed in 한글 mode arrives as the plain latin letter — ㅡ is just "m", the map — and cannot be told
+ * from English mode. The 한/영 mode itself stays as it was, so the mode last seen in a field is the best guess.
+ * Page-lifetime module state, like uiCapture.ts; nothing is stored.
+ */
+let typedHangul = false;
+
+/** A keydown inside a text field: remember the input mode it shows (letters only — see inputModeOf). */
+export function noteTypedKey(e: Pick<KeyLike, "code" | "key" | "keyCode" | "ctrlKey" | "metaKey" | "altKey">): void {
+  const mode = inputModeOf(e);
+  if (mode !== null) typedHangul = mode === "hangul";
+}
+
+/** Forget the remembered input mode (tests). */
+export function forgetTypedMode(): void {
+  typedHangul = false;
+}
 
 /**
  * Map one key event to a hotkey action, or null when it is not (or must not be
@@ -63,11 +148,17 @@ const EMOJI_CODE = /^Digit([1-6])$/;
  * Ctrl / Cmd / Alt chords are never ours (Ctrl+1..6 switches browser tabs, Ctrl+R
  * reloads, Alt+Tab switches windows, ...). Shift on its own is the run key and blocks
  * nothing — Shift+Tab shows the roster like Tab (a running player holds Shift).
+ * Type to chat: a key that types a character and is no game key (H, Q, 7, ".", and in 한글 mode also ㄱ ㅍ ㅡ ㅠ —
+ * R V M B, see IME_TYPING_CODES) resolves to `typeToChat`, so a player who just starts talking ends up in the chat
+ * instead of opening the map. WASD / arrows / Shift / Z / C (movement and the camera turn, by `code`) and E / F stay
+ * game keys in every input mode. 한글 mode is the key itself saying so (key "Process" / 229, or a jamo — macOS) or,
+ * where the browser hands a plain latin letter outside a field (Windows), `hangulMode`: the last letter typed into
+ * a field was 한글 (noteTypedKey; the shared listener passes it).
  * keyup only matters for Tab (roster hide) and E / F (interactUp: the end of a held interaction) and is
  * deliberately unconditional: the list must never stay stuck open because the chat grabbed focus
  * mid-hold, and a hold must be able to end after an overlay took the keyboard.
  */
-export function resolveHotkey(e: KeyLike, uiCaptured: boolean): HotkeyAction | null {
+export function resolveHotkey(e: KeyLike, uiCaptured: boolean, hangulMode = false): HotkeyAction | null {
   if (e.type === "keyup") {
     if (e.code === "Tab") return { type: "roster", show: false };
     if (e.code === "KeyE" || e.code === "KeyF") return { type: "interactUp" };
@@ -76,6 +167,8 @@ export function resolveHotkey(e: KeyLike, uiCaptured: boolean): HotkeyAction | n
   if (e.defaultPrevented || e.isComposing || e.repeat) return null;
   if (e.ctrlKey || e.metaKey || e.altKey) return null;
   if (uiCaptured && e.code !== "Escape") return null;
+  // 한글 mode: ㄱ ㅍ ㅡ ㅠ are letters of the sentence being typed, not recenter / view / map / bag.
+  if (IME_TYPING_CODES.has(e.code) && (isImeKey(e) || (hangulMode && typesText(e)))) return { type: "typeToChat" };
 
   switch (e.code) {
     case "Space":
@@ -101,7 +194,8 @@ export function resolveHotkey(e: KeyLike, uiCaptured: boolean): HotkeyAction | n
       return { type: "roster", show: true };
     default: {
       const m = EMOJI_CODE.exec(e.code);
-      return m ? { type: "emoji", index: Number(m[1]) - 1 } : null; // 1 → EMOJIS[0]
+      if (m) return { type: "emoji", index: Number(m[1]) - 1 }; // 1 → EMOJIS[0]
+      return !MOVE_CODES.has(e.code) && typesText(e) ? { type: "typeToChat" } : null;
     }
   }
 }
@@ -170,7 +264,7 @@ function handleKey(e: KeyboardEvent): void {
   const uiCaptured = isUiCaptured();
   // Resolve BEFORE cancelling: resolveHotkey drops an already-defaultPrevented keydown, and
   // our own preventDefault must not make the action vanish.
-  const action = resolveHotkey(e as KeyLike, uiCaptured);
+  const action = resolveHotkey(e as KeyLike, uiCaptured, typedHangul);
   if ((action && hotkeyPreventsDefault(action)) || keydownCancelsDefault(e as KeyLike, uiCaptured)) {
     e.preventDefault();
   }
