@@ -576,6 +576,31 @@ describe("prepareVillage: the model dressed for the game", () => {
     for (const r of unique) expect(seen.get(r), (r as { name?: string }).name ?? String(r)).toBe(1);
   });
 
+  it("the dressed village is frozen in place: no node's matrix is recomputed per frame, and each keeps its world matrix", () => {
+    const f = fixture();
+    const placed = f.root.getObjectByName("village_lm_11")!;
+    placed.position.set(3, 1, -7);
+    placed.updateMatrix();
+    const nodes = prepareVillage(f.root, new Texture(), "high");
+    let n = 0;
+    nodes.root.traverse((o) => {
+      n++;
+      expect(o.matrixAutoUpdate, o.name).toBe(false);
+      expect(o.matrixWorldAutoUpdate, o.name).toBe(false);
+    });
+    expect(n).toBeGreaterThan(5);
+    const mesh = nodes.root.getObjectByName("village_lm_11")!;
+    expect(new Vector3().setFromMatrixPosition(mesh.matrixWorld).toArray()).toEqual([3, 1, -7]);
+    // a scene's per-frame matrix walk leaves it where it is (the root sits at the origin)
+    const scene = new Object3D();
+    scene.add(nodes.root);
+    mesh.position.set(100, 100, 100); // even a stray write is not picked up
+    scene.updateMatrixWorld();
+    expect(new Vector3().setFromMatrixPosition(mesh.matrixWorld).toArray()).toEqual([3, 1, -7]);
+    // the source (the loader's cached scene) is left as it was
+    expect(f.root.getObjectByName("village_lm_11")!.matrixAutoUpdate).toBe(true);
+  });
+
   it("an InstancedMesh is one draw call whatever its count (the 7,000 far cards are one call)", () => {
     const nodes = prepareVillage(fixture().root, new Texture(), "low");
     const b = drawCallBudget(nodes.root);

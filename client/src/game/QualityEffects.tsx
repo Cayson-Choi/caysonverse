@@ -1,13 +1,13 @@
-import { useEffect, useMemo } from "react";
-import { useThree } from "@react-three/fiber";
-import { Effects } from "@react-three/drei";
+import { useEffect, useMemo, useRef } from "react";
+import { useFrame, useThree } from "@react-three/fiber";
 import { ACESFilmicToneMapping, NeutralToneMapping, Vector2 } from "three";
-import { UnrealBloomPass } from "three-stdlib";
-import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 import { isTouchDevice } from "../device";
 import { useSettingsStore } from "../stores/settingsStore";
-import { BLOOM, QUALITY, exposureFor, resolveQuality, type QualityTier, type ToneCurve } from "./quality";
+import { BLOOM, QUALITY, exposureFor, resolveQuality, type GraphicsSetting, type QualityTier, type ToneCurve } from "./quality";
 import { DEFAULT_DECAL_Y, decalY, type GroundDecal } from "./groundDecal";
+import { PostChain } from "./postChain";
+import { FrameGovernor, budgetDpr, budgetSteps, startLevel, useRenderBudget } from "./renderBudget";
+import { softwareGl } from "./gpuProbe";
 import "./quality.css";
 
 /**
@@ -18,45 +18,125 @@ import "./quality.css";
  *  - Brightness: the renderer's `toneMappingExposure`, whatever the tier (a tone-mapped frame is the same
  *    on both tiers: the rich tier tone-maps in its final pass instead of in the renderer).
  *  - High tier: the scene is drawn into a half-float target and a bloom pass lets the bright things glow
- *    (windows, the sun's patch, sparkles), then OutputPass tone-maps and converts to sRGB like the renderer
- *    does itself. The bloom's strength and radius are the brief's (0.6 / 0.4). Its threshold is raised from the
+ *    (windows, the sun's patch, sparkles), then one final pass tone-maps and converts to sRGB like the renderer
+ *    does itself, and smooths the edges (postChain.ts: no MSAA target, no second full-screen blend — the old chain
+ *    kept a laptop's GPU at 30-46 fps, perf/interaction-latency). A frame governor (renderBudget.ts) lowers the
+ *    dpr while the GPU cannot keep up.
+ *    The bloom's strength and radius are the brief's (0.6 / 0.4). Its threshold is raised from the
  *    brief's 0.85 to 1.6 for a scene as bright as ours: at 0.85 the whole floor and the (tone-map-compensated)
  *    sky glow and the frame turns into a blue-white haze; the baked sun patches reach about 1.4, so 1.3 hazed them too (Task 24);
  *    at 1.6 only real highlights bloom.
  *  - Low tier: nothing — no extra pass, so no extra fill-rate on a phone.
  *
- * No per-frame work lives here: the composer runs on drei's frame callback, the rest is set on change.
+ * Per frame: only the post chain and the governor's sample (number writes; the chain resizes on a change only). The
+ * rest is set on change.
  */
 
-/** MSAA samples of the half-float target (the canvas' own antialiasing does not reach a render target). */
-const MSAA_SAMPLES = 4;
-
-/** The tier in force: the player's graphics setting, or the device's call for "auto". */
+/** The tier in force: the player's graphics setting, or the device's call for "auto" (touch or software WebGL → light). */
 export function useQualityTier(): QualityTier {
   const graphics = useSettingsStore((s) => s.settings.graphics);
-  return resolveQuality(graphics, isTouchDevice);
+  return resolveQuality(graphics, isTouchDevice, graphics === "auto" && softwareGl());
 }
 
-/** The rich tier's post chain: bloom, then tone mapping and colour space (replaces the renderer's own output). */
-function BloomChain() {
-  const bloom = useMemo(
-    () => new UnrealBloomPass(new Vector2(256, 256), BLOOM.strength, BLOOM.radius, BLOOM.threshold),
-    [],
-  );
-  const output = useMemo(() => new OutputPass(), []);
-  useEffect(
-    () => () => {
-      bloom.dispose();
-      output.dispose();
-    },
-    [bloom, output],
-  );
-  return (
-    <Effects disableGamma multisamping={MSAA_SAMPLES}>
-      <primitive object={bloom} />
-      <primitive object={output} />
-    </Effects>
-  );
+/** The post chain drawing the frame right now (null on the light tier): SceneWarmUp compiles for its target. */
+let activeChain: PostChain | null = null;
+export function activePostChain(): PostChain | null {
+  return activeChain;
+}
+
+/** Frame start marks for the governor: the first frame callback of every frame (before any scene work). */
+const FIRST = -1_000_000;
+
+/** A press or a release: the governor does not step right after one (renderBudget.ts `inputQuietMs`). */
+const INPUT_EVENTS = ["pointerdown", "pointerup", "keydown", "keyup"] as const;
+
+/**
+ * The rich tier's post chain (postChain.ts), drawn on the frame callback at priority 1 (which also tells
+ * react-three-fiber not to draw the frame itself), and the frame governor that steps its budget (renderBudget.ts).
+ */
+function PostEffects({ setting }: { setting: GraphicsSetting }) {
+  const setDpr = useThree((s) => s.setDpr);
+  const chain = useMemo(() => new PostChain(BLOOM), []);
+  useEffect(() => {
+    activeChain = chain;
+    return () => {
+      if (activeChain === chain) activeChain = null;
+      chain.dispose();
+    };
+  }, [chain]);
+  const deviceDpr = typeof window === "undefined" ? 1 : window.devicePixelRatio || 1;
+  const steps = budgetSteps(QUALITY.high.dpr, deviceDpr);
+  const lastInput = useRef(-Infinity);
+  useEffect(() => {
+    const mark = (e: Event) => {
+      if (!(e as KeyboardEvent).repeat) lastInput.current = performance.now();
+    };
+    const opts = { capture: true, passive: true } as const;
+    for (const t of INPUT_EVENTS) window.addEventListener(t, mark, opts);
+    return () => {
+      for (const t of INPUT_EVENTS) window.removeEventListener(t, mark, opts);
+    };
+  }, []);
+
+  const governor = useRef<FrameGovernor | null>(null);
+  useEffect(() => {
+    governor.current = new FrameGovernor(steps.length, startLevel(setting), performance.now());
+    return () => {
+      governor.current = null;
+    };
+  }, [setting, steps.length]);
+  // When the main thread is free again after a frame: a message posted at the end of the frame's callbacks is handled
+  // only after the browser's own work for that frame (style, layout, paint, the commit to the compositor) and any task
+  // queued before it (input, network, React) — on a slow CPU all of that is CPU time too, not a wait on the GPU.
+  const frame = useRef({ ts: 0, prevTs: 0, start: 0, prevStart: 0, freeAt: 0 });
+  const channel = useRef<MessageChannel | null>(null);
+  useEffect(() => {
+    if (typeof MessageChannel === "undefined") return;
+    const c = new MessageChannel();
+    c.port1.onmessage = () => {
+      frame.current.freeAt = performance.now();
+    };
+    channel.current = c;
+    return () => {
+      channel.current = null;
+      c.port1.onmessage = null;
+      c.port1.close();
+      c.port2.close();
+    };
+  }, []);
+  const size = useMemo(() => new Vector2(), []);
+  useFrame(() => {
+    const f = frame.current;
+    f.prevStart = f.start;
+    f.start = performance.now();
+    // The frame's own time (the rAF timestamp: whole display refreshes apart), not when its callback happened to start.
+    const t = typeof document === "undefined" ? null : document.timeline?.currentTime;
+    f.prevTs = f.ts;
+    f.ts = typeof t === "number" ? t : f.start;
+  }, FIRST);
+  useFrame(({ gl, scene, camera }) => {
+    gl.getDrawingBufferSize(size);
+    chain.setSize(size.x, size.y);
+    chain.render(gl, scene, camera);
+    const g = governor.current;
+    const f = frame.current;
+    const now = performance.now();
+    // The main thread's idle time before this frame began: from when it was free after the previous frame (none seen:
+    // it was busy all along) to this frame's first callback. The rest of the interval was CPU work.
+    const interval = f.ts - f.prevTs;
+    const idle = f.freeAt > f.prevStart ? Math.max(0, f.start - f.freeAt) : 0;
+    f.freeAt = 0;
+    const c = channel.current;
+    c?.port2.postMessage(0);
+    if (!g || f.prevTs === 0 || !c) return;
+    const next = g.sample(now, interval, Math.max(0, interval - idle), lastInput.current);
+    if (next === null) return;
+    // The step itself, here: react-three-fiber resizes the canvas. PlayShell is not re-rendered for it (it reads the
+    // level whenever it renders for another reason, budgetDpr): re-rendering the whole scene blocked the main thread.
+    useRenderBudget.getState().setLevel(setting, next);
+    setDpr(budgetDpr(QUALITY.high.dpr, deviceDpr, next));
+  }, 1);
+  return null;
 }
 
 /** Just above the rug (0.01) and the door pads (0.015-0.02), so the shadow is never under them; 3 cm is not seen. */
@@ -98,7 +178,7 @@ export function ShadowFloor({
 /**
  * `exposure` and `toneCurve`: the scene's own (sceneLighting.ts `Lighting`; defaults 1 and ACES, the school's). The
  * exposure is multiplied with the player's brightness; the curve is the renderer's tone mapping, which the rich
- * tier's OutputPass follows too. 케이슨 마을's unlit, light-mapped model uses the neutral curve at 1.4: under ACES its
+ * tier's final pass follows too. 케이슨 마을's unlit, light-mapped model uses the neutral curve at 1.4: under ACES its
  * dark woods and shadows sank to black while its pale plaza went white. Both are given back on unmount.
  */
 export function QualityEffects({
@@ -126,5 +206,6 @@ export function QualityEffects({
       gl.toneMapping = ACESFilmicToneMapping;
     };
   }, [gl, toneCurve]);
-  return QUALITY[tier].bloom ? <BloomChain /> : null;
+  const setting = useSettingsStore((s) => s.settings.graphics);
+  return QUALITY[tier].bloom ? <PostEffects setting={setting} /> : null;
 }

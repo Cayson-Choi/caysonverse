@@ -20,6 +20,13 @@ describe("resolveQuality", () => {
     expect(resolveQuality("auto", false)).toBe("high");
   });
 
+  it("auto picks the light tier where WebGL is drawn in software (a blocked driver: the rich tier ran at 0.5 fps)", () => {
+    expect(resolveQuality("auto", false, true)).toBe("low");
+    expect(resolveQuality("auto", false, false)).toBe("high");
+    // An explicit choice is still honoured.
+    expect(resolveQuality("high", false, true)).toBe("high");
+  });
+
   it("an explicit choice wins over the device", () => {
     expect(resolveQuality("high", true)).toBe("high");
     expect(resolveQuality("high", false)).toBe("high");
@@ -30,14 +37,14 @@ describe("resolveQuality", () => {
 
 describe("QUALITY", () => {
   it("high is bloom + shafts + 60 sparkles + soft shadows; low is none of them with blob shadows", () => {
-    expect(QUALITY.high).toEqual({ bloom: true, shafts: true, sparkles: 60, shadows: "soft", dpr: [1, 2] });
+    expect(QUALITY.high).toEqual({ bloom: true, shafts: true, sparkles: 60, shadows: "soft", dpr: [1, 1.5] });
     expect(QUALITY.low).toEqual({ bloom: false, shafts: false, sparkles: 0, shadows: "blob", dpr: [1, 1] });
   });
 });
 
 describe("renderProfile drives the tier's budget (ruling E17: one dpr source)", () => {
   it("a tier gives its dpr and shadow kind through getRenderProfile", () => {
-    expect(getRenderProfile(false, "high")).toEqual({ dpr: [1, 2], shadows: true, blobShadows: false });
+    expect(getRenderProfile(false, "high")).toEqual({ dpr: [1, 1.5], shadows: true, blobShadows: false });
     expect(getRenderProfile(true, "low")).toEqual({ dpr: [1, 1], shadows: false, blobShadows: true });
     // The tier decides, not the device: a phone that chose "화려하게" is rich, a PC that chose "가볍게" is light.
     expect(getRenderProfile(true, "high")).toEqual(getRenderProfile(false, "high"));

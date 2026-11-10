@@ -26,7 +26,7 @@ import {
  *    and every steep surface draw as foam, a little scrolling, so the fountain's jets stay white and readable.
  *    The light tier draws one ripple sample and no sun glint.
  *  - `M_sky` (the dome, display-referred) must reach the screen as it is. The light tier draws it untone-mapped.
- *    The rich tier tone-maps the WHOLE frame in its last pass (QualityEffects' OutputPass), so there the dome is
+ *    The rich tier tone-maps the WHOLE frame in its last pass (postChain.ts's final pass), so there the dome is
  *    pre-distorted by the inverse of that curve (the scene's: neutral or ACES), the same idea as `skyBeforeToneMap`.
  *
  * Everything that can be checked without a GPU (the ripple data, the inverse curve, the material's set-up) is a

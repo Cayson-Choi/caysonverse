@@ -6,8 +6,10 @@
  *  - `high` ("화려하게"): bloom, light shafts through the windows, sparkles in them, soft real-time shadows
  *    for the characters.
  *  - `low` ("가볍게"): no post-processing, the baked lighting of the model and cheap blob shadows.
- * The setting is "auto" / "high" / "low"; "auto" picks `low` on a touch device and `high` otherwise, and
- * the choice can be changed in the menu at any time.
+ * The setting is "auto" / "high" / "low"; "auto" picks `low` on a touch device or where WebGL is drawn in software
+ * (gpuProbe.ts: a blocked graphics driver, a VM) and `high` otherwise, and the choice can be changed in the menu at any
+ * time. While the rich tier runs, a frame governor (renderBudget.ts) lowers its dpr when the GPU cannot keep
+ * up (the effects stay).
  *
  * The dpr cap and the shadow kind of a tier are NOT applied from here: `getRenderProfile(isTouch, tier)`
  * (renderProfile.ts) reads this table and is the one place a Canvas gets its render budget from (ruling E17).
@@ -16,14 +18,14 @@
 export type GraphicsSetting = "auto" | "high" | "low";
 export type QualityTier = "high" | "low";
 
-/** "auto" is the device's call (touch → light); an explicit choice is taken as it is. */
-export function resolveQuality(setting: GraphicsSetting, touch: boolean): QualityTier {
-  if (setting === "auto") return touch ? "low" : "high";
+/** "auto" is the device's call (touch or software WebGL → light); an explicit choice is taken as it is. */
+export function resolveQuality(setting: GraphicsSetting, touch: boolean, softwareGl = false): QualityTier {
+  if (setting === "auto") return touch || softwareGl ? "low" : "high";
   return setting;
 }
 
 export interface QualitySpec {
-  /** Bloom (an UnrealBloomPass in an EffectComposer). Costs an extra full-screen pass or more. */
+  /** Bloom (postChain.ts: UnrealBloomPass's bloom, added in the final pass). Costs a half-float target and the bloom's passes. */
   bloom: boolean;
   /** Additive light cones from the model's `shaft__*` nodes. */
   shafts: boolean;
@@ -31,12 +33,16 @@ export interface QualitySpec {
   sparkles: number;
   /** "soft": a real-time shadow map for the characters. "blob": a flat radial-gradient under each one. */
   shadows: "soft" | "blob";
-  /** react-three-fiber dpr clamp `[min, max]`. */
+  /**
+   * react-three-fiber dpr clamp `[min, max]`. The rich tier stops at 1.5 (perf/interaction-latency): at 2 a 2560-wide
+   * laptop panel at 150 % would be drawn at 3414 px, 1.8x the pixels of 1.5 for little a viewer can see, and the frame
+   * governor (renderBudget.ts) steps it lower still on a GPU that cannot keep up.
+   */
   dpr: [number, number];
 }
 
 export const QUALITY: Record<QualityTier, QualitySpec> = {
-  high: { bloom: true, shafts: true, sparkles: 60, shadows: "soft", dpr: [1, 2] },
+  high: { bloom: true, shafts: true, sparkles: 60, shadows: "soft", dpr: [1, 1.5] },
   low: { bloom: false, shafts: false, sparkles: 0, shadows: "blob", dpr: [1, 1] },
 };
 
@@ -77,7 +83,7 @@ export function sparklesPerPoint(budget: number, shafts: number): number {
 
 type RGB = [number, number, number];
 
-/** What a pixel becomes under three's ACESFilmicToneMapping (OutputPass / the renderer) at `exposure`, in linear light. Mirrors the shader. */
+/** What a pixel becomes under three's ACESFilmicToneMapping (the rich tier's final pass / the renderer) at `exposure`, in linear light. Mirrors the shader. */
 export function acesFilmic(rgb: readonly number[], exposure: number): RGB {
   const s = exposure / 0.6;
   const r = rgb[0] * s;

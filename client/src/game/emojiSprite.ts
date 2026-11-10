@@ -6,12 +6,15 @@
  * mutates the sprite's position and material opacity (no per-frame canvas work,
  * no per-frame allocation).
  *
- * Owns its own texture + material (unique per active reaction — no caching,
- * mirroring bubbleSprite.ts) and exposes `dispose()` for the owner to call when
- * replaced or its avatar leaves.
+ * The glyph's texture is made once per glyph and shared (perf/interaction-latency: there are six glyphs, and drawing
+ * one onto a fresh canvas and uploading it on every reaction cost 6-9 ms of the click's frame, 20+ ms on a slow CPU);
+ * `prewarmEmojiTextures` uploads them all in idle time when a scene starts, so even the first reaction uploads
+ * nothing. Each reaction still owns its material (its opacity fades on its own), released by `dispose()` when it is
+ * replaced or its avatar leaves; the shared texture stays.
  */
 
-import { Sprite, SpriteMaterial } from "three";
+import { Sprite, SpriteMaterial, type CanvasTexture, type WebGLRenderer } from "three";
+import { EMOJIS } from "@caysonverse/shared/constants";
 import { billboardSprite, canvas2d, canvasTexture } from "./spriteCanvas";
 import { EMOJI_BASE_HEIGHT, EMOJI_SPRITE_HEIGHT } from "./constants";
 
@@ -43,9 +46,41 @@ function renderCanvas(glyph: string): HTMLCanvasElement {
   return canvas;
 }
 
+const textures = new Map<string, CanvasTexture>();
+
+/** The shared texture of `glyph` (drawn the first time it is asked for). */
+export function emojiTexture(glyph: string): CanvasTexture {
+  let texture = textures.get(glyph);
+  if (!texture) {
+    texture = canvasTexture(renderCanvas(glyph));
+    textures.set(glyph, texture);
+  }
+  return texture;
+}
+
+/**
+ * Draw and upload every reaction glyph ahead of time, one per idle slot (each is a canvas draw and a texture upload), so
+ * no reaction's frame does it. Returns a cancel.
+ */
+export function prewarmEmojiTextures(gl: Pick<WebGLRenderer, "initTexture">, glyphs: readonly string[] = EMOJIS): () => void {
+  let i = 0;
+  let cancelled = false;
+  const idle: (cb: () => void) => void =
+    typeof requestIdleCallback === "function" ? (cb) => requestIdleCallback(cb, { timeout: 2000 }) : (cb) => setTimeout(cb, 50);
+  const next = () => {
+    if (cancelled || i >= glyphs.length) return;
+    gl.initTexture(emojiTexture(glyphs[i++]!));
+    idle(next);
+  };
+  idle(next);
+  return () => {
+    cancelled = true;
+  };
+}
+
 /** Build an emoji sprite for `glyph`, initially positioned at EMOJI_BASE_HEIGHT. */
 export function createEmojiSprite(glyph: string): EmojiSpriteHandle {
-  const texture = canvasTexture(renderCanvas(glyph));
+  const texture = emojiTexture(glyph);
   const sprite = billboardSprite(texture, 1, EMOJI_SPRITE_HEIGHT, 1001);
   sprite.position.set(0, EMOJI_BASE_HEIGHT, 0);
   const material = sprite.material as SpriteMaterial;
@@ -57,7 +92,7 @@ export function createEmojiSprite(glyph: string): EmojiSpriteHandle {
       material.opacity = opacity;
     },
     dispose() {
-      texture.dispose();
+      // The texture is the glyph's, shared by every reaction with it (emojiTexture).
       material.dispose();
     },
   };

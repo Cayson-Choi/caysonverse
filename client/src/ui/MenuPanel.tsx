@@ -160,7 +160,11 @@ export function MenuPanel({ graphics = false, onToggleView, onShowGuide }: MenuP
     blurTextEntry(document.activeElement as FocusLike | null);
     clearClickTarget();
     acquireUiCapture("menu");
-    panelRef.current?.focus({ preventScroll: true });
+    // Focus the card on the next frame, not in the click's own task: focusing a card React has just mounted forces a
+    // synchronous style and layout of it inside the input handler (most of the menu's 36-95 ms handler,
+    // perf/interaction-latency). On the next frame the browser lays it out anyway. The keyboard is already held above,
+    // and the focusin guard below is in place from now on.
+    const focusFrame = requestAnimationFrame(() => panelRef.current?.focus({ preventScroll: true }));
     // Safety net for the Tab trap: whatever moves focus outside the card (a click on a
     // HUD control behind it, a programmatic focus) is pulled back to the card.
     const onFocusIn = (e: FocusEvent) => {
@@ -171,6 +175,7 @@ export function MenuPanel({ graphics = false, onToggleView, onShowGuide }: MenuP
     };
     document.addEventListener("focusin", onFocusIn);
     return () => {
+      cancelAnimationFrame(focusFrame);
       document.removeEventListener("focusin", onFocusIn);
       releaseUiCapture("menu");
     };

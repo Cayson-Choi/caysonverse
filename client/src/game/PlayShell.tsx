@@ -14,6 +14,8 @@ import { ClickMarker } from "./ClickMarker";
 import { NametagSystem } from "./NametagSystem";
 import { RenderStatsProbe } from "./RenderStatsProbe";
 import { QualityEffects, ShadowFloor, useQualityTier } from "./QualityEffects";
+import { SceneWarmUp } from "./SceneWarmUp";
+import { budgetDpr, startLevel } from "./renderBudget";
 import { QUALITY, exposureFor, skyBeforeToneMap } from "./quality";
 import { mapBounds, setActiveMap, type ActiveMap } from "./activeMap";
 import { overviewAllowed } from "./indoorCamera";
@@ -214,6 +216,11 @@ export function PlayShell(p: PlayShellProps) {
   // out to a dull grey-blue next to the light tier's (a renderer does not tone-map its clear colour). So there
   // the clear colour is the one that tone-maps back into the sky (quality.ts); once per sky and brightness.
   const toneMappedFrame = p.effects && QUALITY[tier].bloom;
+  // The rich tier's frame governor (renderBudget.ts) may have stepped the dpr down: the Canvas draws at that step. The
+  // governor applies a step itself; read here (not subscribed to), so the Canvas's prop agrees with it whenever this
+  // renders for another reason, without a re-render of the whole scene for every step.
+  const graphics = useSettingsStore((s) => s.settings.graphics);
+  const dpr = toneMappedFrame ? budgetDpr(profile.dpr, window.devicePixelRatio || 1, startLevel(graphics)) : profile.dpr;
   const skyClear = useMemo<[number, number, number] | null>(
     () =>
       toneMappedFrame
@@ -262,7 +269,7 @@ export function PlayShell(p: PlayShellProps) {
     <>
       <Canvas
         className="cv-canvas"
-        dpr={profile.dpr}
+        dpr={dpr}
         // "percentage" is the shadow map three 0.185 really draws for the old "soft" one (PCFSoftShadowMap is deprecated
         // there and falls back to it with a console warning on every context).
         shadows={profile.shadows ? "percentage" : false}
@@ -309,6 +316,7 @@ export function PlayShell(p: PlayShellProps) {
                 <RemotePlayers room={room} selfPose={pose} selfSeat={seat} blobShadow={profile.blobShadows} areas={p.areas} />
                 <OverviewMarker pose={pose} />
                 <ClickMarker />
+                <SceneWarmUp />
               </Suspense>
             </GroundDecalContext.Provider>
           </LightRigContext.Provider>

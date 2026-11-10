@@ -28,7 +28,9 @@
   border: 1px solid rgba(150, 130, 220, 0.45);
   border-radius: 16px;
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
-  backdrop-filter: blur(8px);
+  /* No backdrop blur (perf/interaction-latency): through a 94 % opaque card it could not be seen, but over the live
+     canvas it was re-filtered every frame and its first raster made the first "메뉴" click take 250-320 ms instead of
+     about 150 (the light tier dropped it already, quality.css). */
   user-select: none;
   -webkit-user-select: none;
   outline: none;

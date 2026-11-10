@@ -695,7 +695,22 @@ export function prepareVillage(
     root.add(stars);
   }
 
+  freezeStatic(root);
   return { root, water, falls, sky, skyMapping, hazed, graded, stars, own };
+}
+
+/**
+ * The village never moves (perf/interaction-latency): its ~550 nodes keep the matrices computed here once. Without this,
+ * three recomposes every node's matrix and multiplies it into its world matrix on every frame (8 % of a frame's
+ * JavaScript on a slow CPU). Only the day and night's visibility and materials change after this, never a transform.
+ * The root is drawn at the scene's origin (VillageModel's primitive), so its world matrices are its own.
+ */
+export function freezeStatic(root: Object3D): void {
+  root.updateMatrixWorld(true);
+  root.traverse((o) => {
+    o.matrixAutoUpdate = false;
+    o.matrixWorldAutoUpdate = false;
+  });
 }
 
 /** The stars: this many, between 8 and 90 degrees above the horizon, `STAR_RADIUS` m from the dome's centre (inside the dome). */
