@@ -5,9 +5,11 @@ import {
   hotkeyPreventsDefault,
   keydownCancelsDefault,
   onHotkey,
-  inputModeOf,
-  noteTypedKey,
-  forgetTypedMode,
+  followsConsonant,
+  trackKey,
+  WORD_GAP_MS,
+  ROLLOVER_MS,
+  type PrevKey,
   type HotkeyAction,
   type KeyLike,
 } from "./hotkeys";
@@ -317,62 +319,92 @@ describe("resolveHotkey — type to chat (a typed key that is not a game key ope
 });
 
 // Chrome on Windows (and Linux) switches the IME OFF while no text field has the caret (Chromium tsf_bridge.cc: the
-// TEXT_INPUT_TYPE_NONE document gets GUID_COMPARTMENT_KEYBOARD_DISABLED). So outside the chat, a key pressed in 한글
-// mode arrives as the plain latin letter — ㅡ is just "m" — and cannot be told from English mode. What CAN be seen is
-// the mode the player was in the last time they typed into a field (there the IME is on): remembered here.
-describe("inputModeOf — what a key typed into a field says about the input mode", () => {
-  const typed = (code: string, key: string, o: Partial<KeyLike> = {}) => kd(code, { key, ...o });
+// TEXT_INPUT_TYPE_NONE document gets GUID_COMPARTMENT_KEYBOARD_DISABLED). So outside the chat a key pressed in 한글 mode
+// arrives as the plain latin letter — ㅡ is just "m" — and that ONE key cannot be told from English mode. Its place in
+// the sequence can: ㅡ (M) and ㅠ (B) are VOWELS, and a Korean syllable never starts with a vowel key — it follows a
+// consonant (그 = R M, 응 = D M D, 는 = S M S, 듀 = E B). An M / B right after a consonant key is a word being typed;
+// an M / B on its own is the map / the bag, in either mode.
+describe("followsConsonant — is this key the vowel of a word being typed?", () => {
+  const prev = (code: string, at: number, o: Partial<PrevKey> = {}): PrevKey => ({ code, at, plain: true, released: true, ...o });
 
-  it("a letter the IME handles (key Process / keyCode 229, or a Hangul jamo) → hangul", () => {
-    expect(inputModeOf(typed("KeyM", "Process", { keyCode: 229 }))).toBe("hangul");
-    expect(inputModeOf(typed("KeyR", "Unidentified", { keyCode: 229 }))).toBe("hangul");
-    expect(inputModeOf(typed("KeyM", "ㅡ"))).toBe("hangul");
+  it("right after a consonant key (ㄱ ㅇ ㄴ ㅈ ㅁ ㄷ ㄹ ㅋ ㅊ ㅂ ㅅ ㅎ ㅌ — Q W E R T A S D F G Z X C)", () => {
+    for (const code of ["KeyQ", "KeyW", "KeyE", "KeyR", "KeyT", "KeyA", "KeyS", "KeyD", "KeyF", "KeyG", "KeyZ", "KeyX", "KeyC"])
+      expect(followsConsonant(prev(code, 1000), 1120), code).toBe(true);
   });
 
-  it("a plain latin letter → latin (upper or lower case)", () => {
-    expect(inputModeOf(typed("KeyM", "m"))).toBe("latin");
-    expect(inputModeOf(typed("KeyH", "H", { shiftKey: true }))).toBe("latin");
+  it("but not after V (ㅍ): V then M — switch the view, then open the map — is a real combo, and 프 / 퓨 rarely start a line", () => {
+    expect(followsConsonant(prev("KeyV", 1000), 1120)).toBe(false);
+    expect(followsConsonant(prev("KeyV", 1000), 1300)).toBe(false);
   });
 
-  it("anything that is not a letter key says nothing (digits, Space, Enter, Backspace, arrows, chords)", () => {
-    for (const [code, key] of [
-      ["Digit7", "7"],
-      ["Space", " "],
-      ["Enter", "Enter"],
-      ["Backspace", "Backspace"],
-      ["ArrowLeft", "ArrowLeft"],
-      ["Enter", "Process"],
-      ["", "Unidentified"],
-    ])
-      expect(inputModeOf(typed(code, key)), `${code} ${key}`).toBeNull();
-    expect(inputModeOf(typed("KeyC", "c", { ctrlKey: true }))).toBeNull();
-    expect(inputModeOf(typed("KeyV", "v", { metaKey: true }))).toBeNull();
-    expect(inputModeOf(kd("KeyM"))).toBeNull(); // no key at all
+  it("a slow typist too, up to WORD_GAP_MS — not after that (a key pressed later is a key on its own)", () => {
+    expect(WORD_GAP_MS).toBeGreaterThanOrEqual(500);
+    expect(followsConsonant(prev("KeyR", 1000), 1000 + WORD_GAP_MS)).toBe(true);
+    expect(followsConsonant(prev("KeyR", 1000), 1000 + WORD_GAP_MS + 1)).toBe(false);
+  });
+
+  it("not after a vowel key, a digit, Space, an arrow, Enter, Escape, Shift — or nothing at all", () => {
+    for (const code of ["KeyM", "KeyB", "KeyH", "KeyK", "KeyO", "Digit1", "Space", "ArrowUp", "Enter", "Escape", "ShiftLeft", "Tab"])
+      expect(followsConsonant(prev(code, 1000), 1100), code).toBe(false);
+    expect(followsConsonant(null, 1100)).toBe(false);
+  });
+
+  it("a consonant key still HELD is walking / turning, not a word — unless the vowel came within a typist's roll-over", () => {
+    // fast typists press the next key a moment before letting go of the last one
+    expect(followsConsonant(prev("KeyD", 1000, { released: false }), 1000 + ROLLOVER_MS)).toBe(true);
+    // holding W to walk and pressing M for the map
+    expect(followsConsonant(prev("KeyW", 1000, { released: false }), 1000 + ROLLOVER_MS + 1)).toBe(false);
+    expect(followsConsonant(prev("KeyW", 1000, { released: false }), 1400)).toBe(false);
+  });
+
+  it("not after an auto-repeat (a held key) or a Ctrl / Alt / Meta chord", () => {
+    expect(followsConsonant(prev("KeyW", 1000, { plain: false }), 1050)).toBe(false);
   });
 });
 
-describe("resolveHotkey — the remembered 한글 mode (Windows: no IME outside a field)", () => {
+describe("trackKey — what the shared listener remembers of the last key pressed out in the world", () => {
+  it("a keydown out in the world: its code and time, not yet released, plain unless a repeat or a chord", () => {
+    expect(trackKey(null, kd("KeyR", { key: "r" }), false, 500)).toEqual({ code: "KeyR", at: 500, plain: true, released: false });
+    expect(trackKey(null, kd("KeyR", { key: "R", shiftKey: true }), false, 500)?.plain).toBe(true); // ㄲ is Shift + R
+    expect(trackKey(null, kd("KeyW", { key: "w", repeat: true }), false, 500)?.plain).toBe(false);
+    for (const o of [{ ctrlKey: true }, { altKey: true }, { metaKey: true }])
+      expect(trackKey(null, kd("KeyR", { key: "r", ...o }), false, 500)?.plain, JSON.stringify(o)).toBe(false);
+  });
+
+  it("its keyup marks it released (another key's keyup changes nothing)", () => {
+    const r = trackKey(null, kd("KeyR", { key: "r" }), false, 500);
+    expect(trackKey(r, ku("KeyR"), false, 560)).toEqual({ code: "KeyR", at: 500, plain: true, released: true });
+    expect(trackKey(r, ku("KeyW"), false, 560)).toEqual(r);
+    expect(trackKey(null, ku("KeyR"), false, 560)).toBeNull();
+  });
+
+  it("a key typed while a field holds the keyboard forgets it: that is no word started out in the world", () => {
+    const r = trackKey(null, kd("KeyR", { key: "r" }), false, 500);
+    expect(trackKey(r, kd("KeyR", { key: "Process", keyCode: 229 }), true, 560)).toBeNull();
+  });
+});
+
+describe("resolveHotkey — M / B right after a consonant (Windows 한글 mode: ㅡ ㅠ arrive as plain m / b)", () => {
   const typed = (code: string, key: string, o: Partial<KeyLike> = {}) => kd(code, { key, ...o });
 
-  it("last typed in 한글: plain r v m b are ㄱ ㅍ ㅡ ㅠ — typing, not recenter / view / MAP / bag", () => {
-    for (const [code, key] of [
-      ["KeyR", "r"],
-      ["KeyV", "v"],
-      ["KeyM", "m"],
-      ["KeyB", "b"],
-      ["KeyM", "M"],
-    ])
-      expect(resolveHotkey(typed(code, key, { shiftKey: key === "M" }), false, true), `${code} ${key}`).toEqual({ type: "typeToChat" });
+  it("after a consonant: plain m / b are ㅡ / ㅠ — typing, not the MAP / the bag", () => {
+    expect(resolveHotkey(typed("KeyM", "m"), false, true)).toEqual({ type: "typeToChat" });
+    expect(resolveHotkey(typed("KeyB", "b"), false, true)).toEqual({ type: "typeToChat" });
+    expect(resolveHotkey(typed("KeyM", "M", { shiftKey: true }), false, true)).toEqual({ type: "typeToChat" });
   });
 
-  it("last typed in English (or never typed): r v m b stay the hotkeys", () => {
+  it("on their own, m / b stay the map / the bag (a Korean line never starts with ㅡ / ㅠ)", () => {
     expect(resolveHotkey(typed("KeyM", "m"), false, false)).toEqual({ type: "toggleMap" });
-    expect(resolveHotkey(typed("KeyR", "r"), false, false)).toEqual({ type: "recenter" });
-    expect(resolveHotkey(typed("KeyV", "v"), false)).toEqual({ type: "toggleView" });
-    expect(resolveHotkey(typed("KeyB", "b"), false)).toEqual({ type: "bag" });
+    expect(resolveHotkey(typed("KeyB", "b"), false, false)).toEqual({ type: "bag" });
+    expect(resolveHotkey(typed("KeyM", "m"), false)).toEqual({ type: "toggleMap" });
   });
 
-  it("the positional game keys keep their job in 한글 mode too: WASD / Z / C, E / F, Space, digits, Enter, /, Esc, Tab", () => {
+  it("R / V are consonants (ㄱ ㅍ): a plain r / v stays recenter / view even after another key", () => {
+    expect(resolveHotkey(typed("KeyR", "r"), false, true)).toEqual({ type: "recenter" });
+    expect(resolveHotkey(typed("KeyV", "v"), false, true)).toEqual({ type: "toggleView" });
+  });
+
+  it("the positional game keys keep their job after a consonant too: WASD / Z / C, E / F, Space, digits, Enter, /, Esc, Tab", () => {
     for (const [code, key] of [
       ["KeyW", "w"],
       ["KeyA", "a"],
@@ -806,28 +838,104 @@ describe("onHotkey — one shared window listener", () => {
     expect(ev.defaultPrevented).toBe(false);
   });
 
-  it("remembers the mode of the last letter typed into a field: 한글 → a plain m opens the chat, English → the map again", () => {
+  /** A plain latin key as Windows Chrome hands it outside a field (IME off): key "m", keyCode 77. */
+  function latin(type: "keydown" | "keyup", code: string, key: string, o: Partial<KeyLike> = {}): Event {
+    const ev = Object.assign(new Event(type, { cancelable: true }), {
+      code,
+      key,
+      keyCode: key.toUpperCase().charCodeAt(0),
+      repeat: false,
+      isComposing: false,
+      ...o,
+    });
+    win.dispatchEvent(ev);
+    return ev;
+  }
+
+  it('Windows 한글 "그래" typed without clicking (r m f o): R recenters, but M is typing — the map never opens', () => {
+    const now = vi.spyOn(performance, "now");
     const fn = vi.fn();
     sub(fn);
-    const m = () => {
-      const ev = Object.assign(new Event("keydown", { cancelable: true }), { code: "KeyM", key: "m", keyCode: 77, repeat: false, isComposing: false });
-      win.dispatchEvent(ev);
-      return ev;
-    };
     try {
-      forgetTypedMode();
-      m();
-      expect(fn.mock.calls.at(-1)?.[0]).toEqual({ type: "toggleMap" }); // nothing typed yet: M is the map
-      noteTypedKey(kd("KeyH", { key: "Process", keyCode: 229 })); // typed 한글 into the chat
-      noteTypedKey(kd("Enter", { key: "Enter", keyCode: 13 })); // (Enter says nothing about the mode)
-      const ev = m();
-      expect(fn.mock.calls.at(-1)?.[0]).toEqual({ type: "typeToChat" });
-      expect(ev.defaultPrevented).toBe(false);
-      noteTypedKey(kd("KeyO", { key: "o", keyCode: 79 })); // then typed English
-      m();
+      now.mockReturnValue(1000);
+      latin("keydown", "KeyR", "r");
+      now.mockReturnValue(1080);
+      latin("keyup", "KeyR", "r");
+      now.mockReturnValue(1190);
+      const m = latin("keydown", "KeyM", "m");
+      expect(fn.mock.calls.map((c) => c[0])).toEqual([{ type: "recenter" }, { type: "typeToChat" }]);
+      expect(m.defaultPrevented).toBe(false); // the "m" lands in the field the chat opened
+    } finally {
+      now.mockRestore();
+    }
+  });
+
+  it("M on its own is the map; after a pause longer than WORD_GAP_MS, too; and right after V", () => {
+    const now = vi.spyOn(performance, "now");
+    const fn = vi.fn();
+    sub(fn);
+    try {
+      now.mockReturnValue(1000);
+      latin("keydown", "KeyM", "m");
+      expect(fn.mock.calls.at(-1)?.[0]).toEqual({ type: "toggleMap" });
+      latin("keyup", "KeyM", "m");
+      now.mockReturnValue(5000);
+      latin("keydown", "KeyR", "r");
+      latin("keyup", "KeyR", "r");
+      now.mockReturnValue(5000 + WORD_GAP_MS + 50);
+      latin("keydown", "KeyM", "m");
+      expect(fn.mock.calls.at(-1)?.[0]).toEqual({ type: "toggleMap" });
+      latin("keyup", "KeyM", "m");
+      // V (third person), the view settles (~0.3 s), then M: the map, from that view
+      now.mockReturnValue(9000);
+      latin("keydown", "KeyV", "v");
+      latin("keyup", "KeyV", "v");
+      now.mockReturnValue(9300);
+      latin("keydown", "KeyM", "m");
+      expect(fn.mock.calls.slice(-2).map((c) => c[0])).toEqual([{ type: "toggleView" }, { type: "toggleMap" }]);
+    } finally {
+      now.mockRestore();
+    }
+  });
+
+  it("walking (W held — its auto-repeats, or just held down) and then M opens the map, not the chat", () => {
+    const now = vi.spyOn(performance, "now");
+    const fn = vi.fn();
+    sub(fn);
+    try {
+      now.mockReturnValue(1000);
+      latin("keydown", "KeyW", "w");
+      now.mockReturnValue(1300); // still held, no repeat yet
+      latin("keydown", "KeyM", "m");
+      expect(fn.mock.calls.at(-1)?.[0]).toEqual({ type: "toggleMap" });
+      latin("keyup", "KeyM", "m");
+      now.mockReturnValue(2000);
+      latin("keydown", "KeyW", "w", { repeat: true }); // the held W's auto-repeat
+      now.mockReturnValue(2030);
+      latin("keyup", "KeyW", "w");
+      now.mockReturnValue(2100);
+      latin("keydown", "KeyM", "m");
       expect(fn.mock.calls.at(-1)?.[0]).toEqual({ type: "toggleMap" });
     } finally {
-      forgetTypedMode();
+      now.mockRestore();
+    }
+  });
+
+  it("a consonant typed INTO a field does not make the next key out in the world a word (the click that left the chat)", () => {
+    const now = vi.spyOn(performance, "now");
+    const fn = vi.fn();
+    sub(fn);
+    try {
+      acquireUiCapture("chat");
+      now.mockReturnValue(1000);
+      latin("keydown", "KeyR", "Process", { keyCode: 229 });
+      latin("keyup", "KeyR", "ㄱ");
+      releaseAllUiCapture(); // the press outside took the caret out
+      now.mockReturnValue(1200);
+      latin("keydown", "KeyM", "m");
+      expect(fn.mock.calls.at(-1)?.[0]).toEqual({ type: "toggleMap" });
+    } finally {
+      now.mockRestore();
     }
   });
 });

@@ -3,13 +3,16 @@
 // bar takes the caret out, so WASD walks again at once. Hangul typed through an IME is never lost or sent twice.
 // And the owner's second report — talking WITHOUT clicking the bar first opened the map (Hangul ㅡ is the M key):
 // a typed key that is no game key now opens the chat with it (type to chat), in English and in 한글 mode — including
-// Windows, where Chrome turns the IME off outside a field and ㅡ arrives as a plain "m" (the mode last typed is remembered).
+// Windows, where Chrome turns the IME off outside a field and ㅡ arrives as a plain "m": an M / B right after a consonant
+// key is the vowel of a word (그 = R M), so it is typing; on its own M is still the map. Review fixes (2026-11-10):
+// a held Enter never throws the player out of the chat, and a 4th quick line stays in the field instead of being lost.
 //
 // Plain Playwright against a dev stack, in the style of the other e2e scripts:
 //   server:  PORT=2681 TEACHER_KEYS_FILE=e2e/fixtures/teacher-keys.e2e.json npx tsx src/index.ts   (in server/; the path is from the repo root)
 //   client:  VITE_SERVER_URL=http://localhost:2681 npx vite --port 5281 --strictPort (in client/)
 //   CV_CLIENT_URL=http://localhost:5281 node e2e/chat-stay-open.mjs
 // CV_CHAT_EVIDENCE=<dir> puts the screenshots + assertions there (default: .superpowers/sdd/evidence/task-escape/chat-stay-open).
+// CV_CHAT_ONLY=<parts> (comma list of pc, iphone13, kakao-android, legacy, hall) runs only those parts.
 //
 // The IME is driven through CDP (Input.imeSetComposition / Input.insertText): Blink then holds a REAL composition
 // (compositionstart/update/end, isComposing on the keydowns), which is what a Hangul IME does to the page.
@@ -239,7 +242,7 @@ async function pc(browser) {
   });
 
   await run.step("PC 6. 한글 IME 조합 중 Enter / 보내기 버튼 — 마지막 글자 안 빠지고, 두 번 안 감", async () => {
-    await sleep(5200); // the server's chat window (3 lines / 5 s): start fresh
+    await sleep(5800); // the chat window (3 lines / 5 s, + the bar's 0.5 s of slack): start fresh
     const cdp = await A.page.context().newCDPSession(A.page);
     await A.page.keyboard.press("Enter");
     await until(() => state(A), (s) => s.focused);
@@ -292,7 +295,7 @@ async function pc(browser) {
   });
 
   await run.step("PC 7. 채팅창 클릭 없이 바로 말하기 → 채팅창으로 (지도·단축키 안 눌림)", async () => {
-    await sleep(5200); // the server's chat window (3 lines / 5 s): start fresh
+    await sleep(5800); // the chat window (3 lines / 5 s, + the bar's 0.5 s of slack): start fresh
     const cdp = await A.page.context().newCDPSession(A.page);
     const mode = () => A.page.evaluate(() => window.__cv.getView().mode);
     /** One key as the Korean IME in 한글 mode hands it to Chrome on Windows: key "Process", keyCode 229, the real code. */
@@ -383,35 +386,149 @@ async function pc(browser) {
     const sW = await state(A);
     check("한글 ㅈ (W) still walks (moved > 0.8 m) and does not open the chat", dist(w0, w1) > 0.8 && !sW.focused && sW.value === "", { moved: Math.round(dist(w0, w1) * 100) / 100, ...sW });
 
-    // Windows: Chrome turns the IME off outside a field, so ㅡ arrives as a plain "m" (key "m", keyCode 77). The last
-    // thing typed into the chat was 한글 ("그래" above), so a plain M is typing too — not the map.
-    await sleep(300);
+    // Windows: Chrome turns the IME off outside a field, so in 한글 mode every key arrives as the plain latin letter
+    // (key "m", keyCode 77 for ㅡ) — on a FRESH page too, nothing typed before. "그래" is r m f o: R (ㄱ) is a consonant
+    // and recenters, but the M (ㅡ) right after it is the vowel of a word: typing — the chat opens, never the map.
+    const leave = async () => {
+      await A.page.locator(FIELD).fill("");
+      await A.page.keyboard.press("Escape");
+      await until(() => state(A), (s) => !s.focused);
+      await sleep(700); // past WORD_GAP_MS: the next key starts afresh
+    };
+    await sleep(700);
+    const g0 = await pos(A);
+    await A.page.keyboard.type("rmfo", { delay: 90 });
+    const sG = await until(() => state(A), (s) => s.value === "mfo", 1500);
+    const mG = await mode();
+    check('Windows 한글 "그래" (plain r m f o, nothing typed before): the map stays closed, the chat took the keys from M on', mG !== "ov" && sG.focused && sG.value === "mfo", { ...sG, mode: mG });
+    const g1 = await pos(A);
+    check("…and F (ㄹ), typed into the field, never interacted or moved the avatar", dist(g0, g1) < 0.05, { moved: Math.round(dist(g0, g1) * 1000) / 1000 });
+    await leave();
+    // "응" is d m d: D (ㅇ) is a movement key (a short step), the M after it is typing.
+    await A.page.keyboard.type("dmd", { delay: 90 });
+    const sU = await until(() => state(A), (s) => s.value === "md", 1500);
+    const mU = await mode();
+    check('Windows 한글 "응" (plain d m d): the map stays closed, "md" is in the field', mU !== "ov" && sU.focused && sU.value === "md", { ...sU, mode: mU });
+    await leave();
+    // "뉴" is s b (ㅠ = B, the bag): the same.
+    await A.page.keyboard.type("sb", { delay: 90 });
+    const sD = await until(() => state(A), (s) => s.value === "b", 1500);
+    check('Windows 한글 "뉴" (plain s b): B after a consonant is typing, not the bag', sD.focused && sD.value === "b", sD);
+    await leave();
+
+    // M on its own is the map — in English mode, and in 한글 mode on Windows (a Korean line never starts with ㅡ).
     await A.page.keyboard.press("KeyM");
-    const sP = await until(() => state(A), (s) => s.focused, 1500);
-    const mP = await mode();
-    check("last typed 한글 → a plain M (Windows: no IME outside the field) opens the chat, not the map", sP.focused && sP.value === "m" && mP !== "ov", { ...sP, mode: mP });
-    // Typing English into the chat switches it back: M is the map again.
-    await A.page.locator(FIELD).fill("");
-    await A.page.keyboard.type("ok", { delay: 40 });
-    await A.page.locator(FIELD).fill("");
-    await A.page.keyboard.press("Escape");
-    await until(() => state(A), (s) => !s.focused);
-    await A.page.keyboard.press("KeyM");
-    const ovE = await until(mode, (m) => m === "ov", 2000);
-    const sE = await state(A);
-    check("after typing English into the chat, M opens the map again (chat untouched)", ovE === "ov" && !sE.focused && sE.value === "", { mode: ovE, ...sE });
+    const ovL = await until(mode, (m) => m === "ov", 2000);
+    const sL = await state(A);
+    check("a lone M still opens the map (chat untouched)", ovL === "ov" && !sL.focused && sL.value === "", { mode: ovL, ...sL });
     await A.page.keyboard.press("KeyM");
     await until(mode, (m) => m !== "ov", 2000);
+    await sleep(700);
+    // Walking (W held down) and pressing M on the way: the map, not the chat.
+    await A.page.keyboard.down("KeyW");
+    await sleep(350);
+    await A.page.keyboard.press("KeyM");
+    const ovW = await until(mode, (m) => m === "ov", 2000);
+    await A.page.keyboard.up("KeyW");
+    const sWM = await state(A);
+    check("walking with W held, then M: the map opens (no chat)", ovW === "ov" && !sWM.focused && sWM.value === "", { mode: ovW, ...sWM });
+    await A.page.keyboard.press("KeyM");
+    await until(mode, (m) => m !== "ov", 2000);
+    // A consonant, then a pause, then M: the map (the M is a key on its own).
+    await sleep(700);
+    await A.page.keyboard.press("KeyR");
+    await sleep(900);
+    await A.page.keyboard.press("KeyM");
+    const ovP = await until(mode, (m) => m === "ov", 2000);
+    check("R, a pause, then M: the map opens", ovP === "ov" && !(await state(A)).focused, { mode: ovP });
+    await A.page.keyboard.press("KeyM");
+    await until(mode, (m) => m !== "ov", 2000);
+    await sleep(700);
+    // V (switch the view), the view settles (~0.3 s), then M: the map — V is left out of the rule on purpose.
+    const v0 = await mode();
+    await A.page.keyboard.press("KeyV");
+    const v1 = await until(mode, (m) => m !== v0, 1500);
+    await sleep(150);
+    await A.page.keyboard.press("KeyM");
+    const ovV = await until(mode, (m) => m === "ov", 2000);
+    check("V, then M 0.3 s later: the view switches and the map opens (no chat)", v1 !== v0 && ovV === "ov" && !(await state(A)).focused, { before: v0, afterV: v1, mode: ovV });
+    await A.page.keyboard.press("KeyM");
+    await until(mode, (m) => m !== "ov", 2000);
+    await sleep(700);
+    await A.page.keyboard.press("KeyV"); // back to the view it had
+    await until(mode, (m) => m === v0, 1500);
     await sleep(600);
     await cdp.detach().catch(() => {});
     const sys = await systemLines(A);
     check("no rate-limit notice", sys.length === 0, sys);
   });
 
+  await run.step("PC 7b. Enter를 길게 눌러도 채팅에서 안 나감 (자동 반복)", async () => {
+    await sleep(5800); // the chat window: start fresh
+    const cdp = await A.page.context().newCDPSession(A.page);
+    /** Enter as a held key sends it: the press, then the OS's auto-repeat keydowns, then one keyup. */
+    const holdEnter = async (repeats) => {
+      await cdp.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Enter", code: "Enter", text: "\r", unmodifiedText: "\r", windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13 });
+      await sleep(500); // the OS repeat delay
+      for (let i = 0; i < repeats; i++) {
+        await cdp.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Enter", code: "Enter", text: "\r", unmodifiedText: "\r", windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13, autoRepeat: true });
+        await sleep(33);
+      }
+      await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", key: "Enter", code: "Enter", windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13 });
+    };
+    const s0 = await state(A);
+    check("start: not chatting", !s0.focused, s0);
+    await holdEnter(6);
+    await sleep(200);
+    const s1 = await state(A);
+    check("a long Enter press opens the chat and it STAYS open (the repeats do not close it)", s1.focused && s1.captured && s1.value === "", s1);
+    await A.page.keyboard.type("길게 엔터", { delay: 20 });
+    await holdEnter(6);
+    check('Enter held after typing: "길게 엔터" sent exactly once', (await sentOnce(A, "길게 엔터")) === 1, await myLines(A));
+    const s2 = await state(A);
+    check("…and the caret is still in the (empty) field — the repeats on the emptied field did not leave", s2.focused && s2.value === "", s2);
+    await A.page.keyboard.press("Enter"); // a single empty Enter still leaves
+    const s3 = await until(() => state(A), (s) => !s.focused);
+    check("a short Enter on the empty field still leaves the chat", !s3.focused && !s3.captured, s3);
+    await cdp.detach().catch(() => {});
+    const sys = await systemLines(A);
+    check("no rate-limit notice", sys.length === 0, sys);
+  });
+
+  await run.step("PC 7c. 빠르게 네 줄 → 네 번째 줄은 지워지지 않고 남았다가 나감", async () => {
+    await sleep(5800); // the chat window: start fresh
+    const sys0 = (await systemLines(A)).length;
+    await A.page.keyboard.press("Enter");
+    await until(() => state(A), (s) => s.focused);
+    const t0 = Date.now();
+    for (const line of ["빠른1", "빠른2", "빠른3", "빠른4"]) {
+      await A.page.keyboard.type(line, { delay: 10 });
+      await A.page.keyboard.press("Enter");
+      await sleep(150);
+    }
+    await sleep(800);
+    const lines = await myLines(A);
+    const s1 = await state(A);
+    const sys1 = (await systemLines(A)).slice(sys0);
+    check("three quick lines go out", ["빠른1", "빠른2", "빠른3"].every((l) => count(lines, l) === 1), lines);
+    check("the 4th is held back: NOT sent, still in the field, the caret stays", count(lines, "빠른4") === 0 && s1.value === "빠른4" && s1.focused, s1);
+    check("…with the rate notice, once", sys1.length === 1 && sys1[0].includes("너무 빨라요"), sys1);
+    // after the window (5 s + the slack, from the first line), Enter sends it
+    await sleep(Math.max(0, 5700 - (Date.now() - t0)));
+    await A.page.keyboard.press("Enter");
+    check('…and a moment later Enter sends "빠른4" exactly once', (await sentOnce(A, "빠른4")) === 1, await myLines(A));
+    const s2 = await state(A);
+    check("…the field is empty, the caret still there", s2.focused && s2.value === "", s2);
+    const sys2 = (await systemLines(A)).slice(sys0);
+    check("no notice from the server (it never dropped a line)", sys2.length === 1, sys2);
+    await A.page.keyboard.press("Escape");
+    await until(() => state(A), (s) => !s.focused);
+  });
+
   await run.step("PC 8. 내 줄은 각각 한 번씩만 (전체 로그)", async () => {
     const lines = await myLines(A);
-    const want = ["첫 번째 줄", "두 번째 줄", "버튼으로 보냄", "안녕하세요", "반가워요", "hi", "그래"];
-    check("my log is exactly these seven lines, in order", JSON.stringify(lines) === JSON.stringify(want), lines);
+    const want = ["첫 번째 줄", "두 번째 줄", "버튼으로 보냄", "안녕하세요", "반가워요", "hi", "그래", "길게 엔터", "빠른1", "빠른2", "빠른3", "빠른4"];
+    check("my log is exactly these twelve lines, in order", JSON.stringify(lines) === JSON.stringify(want), lines);
   });
   await A.ctx.close();
 }
@@ -522,12 +639,15 @@ async function hall(browser) {
 // Real Chrome with the GPU, as on the owner's PC (ANGLE / D3D11 on Windows).
 const GPU_ARGS = process.platform === "win32" ? ["--use-angle=d3d11", "--enable-gpu", "--ignore-gpu-blocklist"] : ["--enable-gpu", "--ignore-gpu-blocklist"];
 const browser = await chromium.launch({ headless: true, channel: "chrome", args: GPU_ARGS });
+// CV_CHAT_ONLY=pc,iphone13,kakao-android,legacy,hall runs only those parts (default: all of them).
+const ONLY = process.env.CV_CHAT_ONLY ? new Set(process.env.CV_CHAT_ONLY.split(",").map((t) => t.trim())) : null;
+const want = (part) => !ONLY || ONLY.has(part);
 try {
-  await pc(browser);
-  await phone(browser, "iphone13", IPHONE_13);
-  await phone(browser, "kakao-android", KAKAO_ANDROID);
-  await legacy(browser);
-  await hall(browser);
+  if (want("pc")) await pc(browser);
+  if (want("iphone13")) await phone(browser, "iphone13", IPHONE_13);
+  if (want("kakao-android")) await phone(browser, "kakao-android", KAKAO_ANDROID);
+  if (want("legacy")) await legacy(browser);
+  if (want("hall")) await hall(browser);
 } finally {
   await browser.close();
 }

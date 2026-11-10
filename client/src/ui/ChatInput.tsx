@@ -1,14 +1,15 @@
 import { useEffect, useRef, useState } from "react";
-import { CHAT_MAX_LENGTH } from "@caysonverse/shared/constants";
+import { CHAT_MAX_LENGTH, CHAT_RATE, CHAT_TOO_FAST } from "@caysonverse/shared/constants";
 import { acquireUiCapture, releaseUiCapture, captureReleaseEffect } from "../game/uiCapture";
-import { noteTypedKey, onHotkey } from "../game/hotkeys";
+import { onHotkey } from "../game/hotkeys";
 import { isTextEntry, type FocusLike } from "../game/escape";
 import { createTypingSender } from "../game/typing";
 import { sendChat, sendTyping } from "../net/connection";
 import { isTouchDevice } from "../device";
+import { useChatStore } from "../stores/chatStore";
 import { useCoachStore } from "../stores/coachStore";
 import { useNpcStore } from "../stores/npcStore";
-import { chatKeyAction, hasChatText, pressLeavesChat, typeToChatAllowed } from "./chatBar";
+import { chatKeyAction, chatPaceAllows, hasChatText, pressLeavesChat, typeToChatAllowed } from "./chatBar";
 import { HudButton } from "./HudButton";
 import { KBD_INSET_VAR, trackKbdInset } from "./kbdInset";
 import { rectStyle, useTouchHudLayout } from "./useTouchHudLayout";
@@ -41,26 +42,34 @@ const keepCaret = (e: { preventDefault(): void }) => e.preventDefault();
  *    button does exactly the same. Its press never takes the focus (pointerdown / mousedown
  *    cancelled), so a phone keyboard never drops. Dimmed — and a no-op — while the field is blank.
  *  - Leaving: Enter on an empty / blank field (the keyboard's way back to walking, decided in
- *    chatBar.ts), Escape, or a press ANYWHERE outside the bar — the 3D view, a HUD button, a menu
- *    (a capture-phase pointerdown listener, so even HUD buttons that cancel their own press to keep
- *    a caret let go of it). That press otherwise does what it always does (a click-move, a camera
- *    drag, the button's action). WASD / the arrows walk again at once.
+ *    chatBar.ts — never its auto-repeat: a held Enter sends once and stays), Escape, or a press
+ *    ANYWHERE outside the bar — the 3D view, a HUD button, a menu (a capture-phase pointerdown
+ *    listener, so even HUD buttons that cancel their own press to keep a caret let go of it).
+ *    That press otherwise does what it always does (a click-move, a camera drag, the button's
+ *    action). WASD / the arrows walk again at once.
  *  - Enter or `/` (unfocused) focuses the input. So does a key that TYPES something and is no game
  *    key (the hotkey table's typeToChat: H, 7, "." — and in 한글 mode also ㄱ ㅍ ㅡ ㅠ, which would
  *    otherwise be recenter / view / map / bag): the field takes the caret during that keydown and
  *    the browser types the character — or starts the Hangul composition — into it. Not while the
- *    조교 dialogue is open or another field has the caret (chatBar.ts typeToChatAllowed). Every key
- *    typed here tells the hotkey table which mode (한글 / English) the keyboard is in (noteTypedKey):
- *    Chrome on Windows turns the IME off outside a field, so out there ㅡ arrives as a plain "m".
- *    WASD / Z / C and E / F stay game keys in both modes, so a line that STARTS with ㅈ ㅁ ㄴ ㅇ ㅋ ㅊ
- *    ㄷ ㄹ walks / turns / interacts on that first key — Enter (or a click on the bar) first is the
- *    sure way in, and once in, the chat stays open.
+ *    조교 dialogue is open or another field has the caret (chatBar.ts typeToChatAllowed). Chrome on
+ *    Windows turns the IME off outside a field, so out there ㅡ arrives as a plain "m": an M / B
+ *    right after a consonant key is read as ㅡ / ㅠ of a word (hotkeys.ts followsConsonant), so a
+ *    Korean line never opens the map or the bag; on its own M is still the map. The keys pressed
+ *    before the chat took the caret were game keys, and that first key arrives as a latin letter,
+ *    so the first syllable may need fixing — WASD / Z / C and E / F stay game keys in both modes, so
+ *    a line that STARTS with ㅈ ㅁ ㄴ ㅇ ㅋ ㅊ ㄷ ㄹ walks / turns / interacts on that first key, and
+ *    ㄱ ㅍ (R V) recenter / switch the view. Enter (or a click on the bar) first is the sure way in,
+ *    and once in, the chat stays open.
  *  - While focused, the "chat" capture tells the movement system and the hotkey table to ignore
  *    keys (see uiCapture.ts), so typing never walks the avatar or fires a hotkey.
  *  - IME-safe: Enter never acts during a composition (e.g. Hangul) — the IME finishes the syllable
  *    first. A send reads the line from the field itself (a syllable still being composed when the
  *    button is pressed is already in it) and clears it, so the last syllable is never dropped and
  *    never sent twice.
+ *  - Pacing: the server drops a line over its cap (CHAT_RATE: 3 lines / 5 s) — after the field was
+ *    cleared, so the line was lost. Now that the chat stays open that cap is easy to reach, so the
+ *    bar holds such a line back itself (chatBar.ts chatPaceAllows): it stays in the field with the
+ *    server's own notice, and Enter sends it a moment later.
  *  - A sent line is the guide's ③ "말하기": a send reports `talked` (coachStore) — only for a
  *    line that really goes out, never an empty or blank one.
  *  - Typing indicator (Task 12): every change tells the typing sender whether the
@@ -75,6 +84,8 @@ export function ChatInput() {
   // One sender per mount (it remembers the last ON it sent, for the server's rate
   // window) — useState, not useMemo, so React can never silently rebuild it.
   const [typing] = useState(() => createTypingSender(sendTyping));
+  /** When this bar's last lines went out (performance.now()), newest last — for chatPaceAllows. */
+  const sentAt = useRef<number[]>([]);
   const layout = useTouchHudLayout();
 
   // Soft-keyboard handling (touch only): while focused, mark <html> with
@@ -156,6 +167,13 @@ export function ChatInput() {
     // The field itself is the truth: it already holds a syllable an IME is still composing.
     const line = input ? input.value : value;
     if (!hasChatText(line)) return; // a blank line goes nowhere (the dimmed button)
+    const now = performance.now();
+    if (!chatPaceAllows(sentAt.current, now)) {
+      // The server would drop it: keep the line in the field (and the "…" on) and say why, as the server would.
+      useChatStore.getState().pushSystem(CHAT_TOO_FAST);
+      return;
+    }
+    sentAt.current = [...sentAt.current, now].slice(-CHAT_RATE.count);
     typing.stop(); // OFF first, so the receivers drop the "…" before the bubble lands
     sendChat(line); // trims; server is authoritative
     useCoachStore.getState().report("talked"); // ③ of the first-visit guide
@@ -218,9 +236,9 @@ export function ChatInput() {
             typing.onInput(performance.now(), next.trim().length > 0);
           }}
           onKeyDown={(e) => {
-            noteTypedKey(e.nativeEvent); // 한글 or English: what a key typed out in the world will mean (hotkeys.ts)
             const act = chatKeyAction(
-              { key: e.key, isComposing: e.nativeEvent.isComposing, keyCode: e.keyCode }, // the IME finishes first
+              // the IME finishes first; a held key acts once
+              { key: e.key, isComposing: e.nativeEvent.isComposing, keyCode: e.keyCode, repeat: e.repeat },
               e.currentTarget.value,
             );
             if (act === null) return;

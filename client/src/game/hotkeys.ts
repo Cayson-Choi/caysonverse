@@ -71,7 +71,9 @@ const MOVE_CODES: ReadonlySet<string> = new Set(MOVE_KEYS.flatMap((k) => k.keys)
  * The letter hotkeys that are mnemonics of an English word (Recenter, View, Map, Bag). In 한글 mode the same keys
  * are ㄱ ㅍ ㅡ ㅠ — some of the commonest letters of a Korean sentence — so there they are typing (owner's report
  * 2026-11-10: talking without clicking the bar first opened the map). The positional keys keep their job in every mode:
- * WASD / arrows / Z / C (MOVE_CODES), E / F interact, Space, the digits, Tab, Enter, `/`, Esc.
+ * WASD / arrows / Z / C (MOVE_CODES), E / F interact, Space, the digits, Tab, Enter, `/`, Esc. Where the key arrives as
+ * a plain latin letter outside a field (Chrome on Windows), only the vowels ㅡ ㅠ can be told — by the consonant
+ * before them (followsConsonant); a lone M / B / R / V there is the hotkey.
  */
 const IME_TYPING_CODES: ReadonlySet<string> = new Set(["KeyR", "KeyV", "KeyM", "KeyB"]);
 
@@ -95,45 +97,70 @@ function typesText(e: Pick<KeyLike, "key" | "keyCode">): boolean {
   return isImeKey(e) || [...e.key].length === 1;
 }
 
-/** A letter key (by position). */
-const LETTER_CODE = /^Key[A-Z]$/;
-/** A plain latin letter as the typed `key`. */
-const LATIN_LETTER = /^[a-zA-Z]$/;
+/**
+ * The consonant keys of the standard Korean layout (두벌식) that make the next M / B a vowel: ㅂ ㅈ ㄷ ㄱ ㅅ / ㅁ ㄴ ㅇ ㄹ ㅎ /
+ * ㅋ ㅌ ㅊ. Every other letter key is a vowel (ㅛ ㅕ ㅑ ㅐ ㅔ / ㅗ ㅓ ㅏ ㅣ / ㅠ ㅜ ㅡ) — except V (ㅍ), left out on purpose:
+ * V then M (switch to third person, then look at the map) is a real combo, while 프 / 퓨 rarely start a line.
+ */
+const CONSONANT_CODES: ReadonlySet<string> = new Set([
+  "KeyQ", "KeyW", "KeyE", "KeyR", "KeyT",
+  "KeyA", "KeyS", "KeyD", "KeyF", "KeyG",
+  "KeyZ", "KeyX", "KeyC",
+]);
+
+/** The letter hotkeys that are VOWELS in 한글 mode: M = ㅡ (the map), B = ㅠ (the bag). */
+const VOWEL_HOTKEY_CODES: ReadonlySet<string> = new Set(["KeyM", "KeyB"]);
 
 /**
- * What a letter typed INTO a text field says about the keyboard's input mode: "hangul" when the Korean IME handles it
- * (key "Process" / keyCode 229, or a jamo as the key), "latin" for a plain a–z, null for anything else (not a letter,
- * a chord, no `key`). Only a key typed into a field tells: there the IME is on.
+ * How long (ms) after a consonant key a vowel key still reads as the same word being typed — slow typists included
+ * (100 타/분 is 600 ms a key). A key pressed later than this is a key on its own.
  */
-export function inputModeOf(
-  e: Pick<KeyLike, "code" | "key" | "keyCode" | "ctrlKey" | "metaKey" | "altKey">,
-): "hangul" | "latin" | null {
-  if (!LETTER_CODE.test(e.code) || e.key === undefined) return null;
-  if (e.ctrlKey || e.metaKey || e.altKey) return null;
-  if (isImeKey(e)) return "hangul";
-  return LATIN_LETTER.test(e.key) ? "latin" : null;
+export const WORD_GAP_MS = 600;
+
+/**
+ * A consonant key still held when the next key goes down is a held game key (walking with W, turning with Z) — unless
+ * the next key came within this many ms: a fast typist presses the next key a moment before letting go of the last.
+ */
+export const ROLLOVER_MS = 150;
+
+/** What the shared listener remembers of the last key pressed out in the world (while nothing held the keyboard). */
+export interface PrevKey {
+  code: string;
+  /** keydown time, ms (performance.now()). */
+  at: number;
+  /** Pressed by itself: not an auto-repeat (a held key) and no Ctrl / Alt / Meta. Shift is fine (ㄲ ㄸ ㅃ ㅆ ㅉ). */
+  plain: boolean;
+  /** Its keyup has been seen. */
+  released: boolean;
 }
 
 /**
- * Whether the last letter the player typed into a field (the chat bar, the 조교 field) was 한글.
+ * The remembered key after one more event (pure): a keydown out in the world replaces it; its own keyup marks it
+ * released; a keydown while a field (or an overlay) holds the keyboard forgets it — a letter typed into the chat is no
+ * word started out in the world, so the click that left the chat and the M after it open the map as usual.
+ */
+export function trackKey(prev: PrevKey | null, e: KeyLike, uiCaptured: boolean, now: number): PrevKey | null {
+  if (e.type === "keyup") return prev !== null && prev.code === e.code ? { ...prev, released: true } : prev;
+  if (uiCaptured) return null;
+  return { code: e.code, at: now, plain: !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey, released: false };
+}
+
+/**
+ * Whether a key pressed at `now` comes right after a consonant key, the way a vowel does in a word being typed:
+ * the consonant was pressed by itself, at most WORD_GAP_MS before, and has been let go (or the two overlapped by no
+ * more than ROLLOVER_MS — a fast typist's roll-over; longer, it is a game key being held).
  *
- * Why remember it: Chrome on Windows (and Linux) switches the IME OFF while no text field has the caret (Chromium
+ * Why: Chrome on Windows (and Linux) switches the IME OFF while no text field has the caret (Chromium
  * ui/base/ime/win/tsf_bridge.cc gives the TEXT_INPUT_TYPE_NONE document GUID_COMPARTMENT_KEYBOARD_DISABLED), so out in
- * the world a key pressed in 한글 mode arrives as the plain latin letter — ㅡ is just "m", the map — and cannot be told
- * from English mode. The 한/영 mode itself stays as it was, so the mode last seen in a field is the best guess.
- * Page-lifetime module state, like uiCapture.ts; nothing is stored.
+ * the world a key pressed in 한글 mode arrives as the plain latin letter — ㅡ is just "m", the map — and that one key
+ * cannot be told from English mode. Its place in the sequence can: ㅡ and ㅠ are vowels, and a Korean syllable never
+ * starts with a vowel key (그 = R M, 응 = D M D, 는 = S M S, 듀 = E B). Nothing is remembered beyond the last key, and
+ * a reload changes nothing: it works on the first line typed on a fresh page.
  */
-let typedHangul = false;
-
-/** A keydown inside a text field: remember the input mode it shows (letters only — see inputModeOf). */
-export function noteTypedKey(e: Pick<KeyLike, "code" | "key" | "keyCode" | "ctrlKey" | "metaKey" | "altKey">): void {
-  const mode = inputModeOf(e);
-  if (mode !== null) typedHangul = mode === "hangul";
-}
-
-/** Forget the remembered input mode (tests). */
-export function forgetTypedMode(): void {
-  typedHangul = false;
+export function followsConsonant(prev: PrevKey | null, now: number): boolean {
+  if (prev === null || !prev.plain || !CONSONANT_CODES.has(prev.code)) return false;
+  const gap = now - prev.at;
+  return gap >= 0 && gap <= WORD_GAP_MS && (prev.released || gap <= ROLLOVER_MS);
 }
 
 /**
@@ -151,14 +178,15 @@ export function forgetTypedMode(): void {
  * Type to chat: a key that types a character and is no game key (H, Q, 7, ".", and in 한글 mode also ㄱ ㅍ ㅡ ㅠ —
  * R V M B, see IME_TYPING_CODES) resolves to `typeToChat`, so a player who just starts talking ends up in the chat
  * instead of opening the map. WASD / arrows / Shift / Z / C (movement and the camera turn, by `code`) and E / F stay
- * game keys in every input mode. 한글 mode is the key itself saying so (key "Process" / 229, or a jamo — macOS) or,
- * where the browser hands a plain latin letter outside a field (Windows), `hangulMode`: the last letter typed into
- * a field was 한글 (noteTypedKey; the shared listener passes it).
+ * game keys in every input mode. 한글 mode is the key itself saying so (key "Process" / 229, or a jamo — macOS). Where
+ * the browser hands a plain latin letter outside a field (Windows: the IME is off there), M / B are typing when
+ * `afterConsonant` — the key right before was a consonant key, as in 그 (R M) or 응 (D M D); see followsConsonant.
+ * On its own, M is the map and B the bag, in either mode (a Korean line never starts with ㅡ / ㅠ).
  * keyup only matters for Tab (roster hide) and E / F (interactUp: the end of a held interaction) and is
  * deliberately unconditional: the list must never stay stuck open because the chat grabbed focus
  * mid-hold, and a hold must be able to end after an overlay took the keyboard.
  */
-export function resolveHotkey(e: KeyLike, uiCaptured: boolean, hangulMode = false): HotkeyAction | null {
+export function resolveHotkey(e: KeyLike, uiCaptured: boolean, afterConsonant = false): HotkeyAction | null {
   if (e.type === "keyup") {
     if (e.code === "Tab") return { type: "roster", show: false };
     if (e.code === "KeyE" || e.code === "KeyF") return { type: "interactUp" };
@@ -167,8 +195,10 @@ export function resolveHotkey(e: KeyLike, uiCaptured: boolean, hangulMode = fals
   if (e.defaultPrevented || e.isComposing || e.repeat) return null;
   if (e.ctrlKey || e.metaKey || e.altKey) return null;
   if (uiCaptured && e.code !== "Escape") return null;
-  // 한글 mode: ㄱ ㅍ ㅡ ㅠ are letters of the sentence being typed, not recenter / view / map / bag.
-  if (IME_TYPING_CODES.has(e.code) && (isImeKey(e) || (hangulMode && typesText(e)))) return { type: "typeToChat" };
+  // 한글 mode: ㄱ ㅍ ㅡ ㅠ are letters of the sentence being typed, not recenter / view / map / bag. On Windows only
+  // the vowels can be told (by the consonant before them): ㅡ ㅠ after ㄱ ㅇ ㄴ ... are typing, never the map / bag.
+  if (IME_TYPING_CODES.has(e.code) && (isImeKey(e) || (afterConsonant && VOWEL_HOTKEY_CODES.has(e.code) && typesText(e))))
+    return { type: "typeToChat" };
 
   switch (e.code) {
     case "Space":
@@ -258,13 +288,18 @@ type HotkeyListener = (a: HotkeyAction, e: KeyboardEvent) => void;
 /** Boxed so subscribing the same function twice yields two independent entries. */
 const subscribers: { fn: HotkeyListener }[] = [];
 
+/** The last key pressed out in the world (trackKey) — reset when the listener is installed. */
+let prevKey: PrevKey | null = null;
+
 /** The single shared window handler (keydown + keyup). */
 function handleKey(e: KeyboardEvent): void {
   // Only keydown / keyup are ever registered here, so `type` is one of the two.
   const uiCaptured = isUiCaptured();
+  const now = performance.now();
   // Resolve BEFORE cancelling: resolveHotkey drops an already-defaultPrevented keydown, and
   // our own preventDefault must not make the action vanish.
-  const action = resolveHotkey(e as KeyLike, uiCaptured, typedHangul);
+  const action = resolveHotkey(e as KeyLike, uiCaptured, followsConsonant(prevKey, now));
+  prevKey = trackKey(prevKey, e as KeyLike, uiCaptured, now);
   if ((action && hotkeyPreventsDefault(action)) || keydownCancelsDefault(e as KeyLike, uiCaptured)) {
     e.preventDefault();
   }
@@ -281,6 +316,7 @@ function handleKey(e: KeyboardEvent): void {
 export function onHotkey(fn: HotkeyListener): () => void {
   const entry = { fn };
   if (subscribers.length === 0) {
+    prevKey = null;
     window.addEventListener("keydown", handleKey);
     window.addEventListener("keyup", handleKey);
   }

@@ -12,7 +12,6 @@ import { useEffect, useRef, useState } from "react";
 import { NPC_LABEL } from "../game/npc";
 import { sendPortalReturn } from "../net/connection";
 import { acquireUiCapture, releaseUiCapture, captureReleaseEffect } from "../game/uiCapture";
-import { noteTypedKey } from "../game/hotkeys";
 import { isTouchDevice } from "../device";
 import { trackKbdInset } from "./kbdInset";
 import { NPC_INPUT_MAX, useNpcStore } from "../stores/npcStore";
@@ -117,8 +116,6 @@ export function NpcChatPanel() {
           maxLength={NPC_INPUT_MAX}
           placeholder="조교에게 물어보세요"
           onChange={(e) => setDraft(e.target.value)}
-          // 한글 or English: what a key typed out in the world will mean (hotkeys.ts noteTypedKey). Reads only.
-          onKeyDown={(e) => noteTypedKey(e.nativeEvent)}
           onFocus={() => {
             acquireUiCapture("npc");
             setTyping(true);

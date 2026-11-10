@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { chatKeyAction, hasChatText, pressLeavesChat, typeToChatAllowed } from "./chatBar";
+import { CHAT_RATE } from "@caysonverse/shared/constants";
+import { CHAT_PACE_SLACK_MS, chatKeyAction, chatPaceAllows, hasChatText, pressLeavesChat, typeToChatAllowed } from "./chatBar";
 
 const key = (k: string, isComposing = false) => ({ key: k, isComposing });
 
@@ -33,6 +34,18 @@ describe("chatKeyAction", () => {
     expect(chatKeyAction({ key: "Escape", isComposing: false, keyCode: 229 }, "안")).toBeNull();
     // the real Enter that follows (keyCode 13) sends
     expect(chatKeyAction({ key: "Enter", isComposing: false, keyCode: 13 }, "안녕하세요")).toBe("send");
+  });
+
+  // Review (2026-11-10): Enter held a little too long after sending threw the player out — the key's auto-repeat hit
+  // the field just emptied by the send and read as "Enter on an empty field = leave". One action per physical press.
+  it("an auto-repeat (a held Enter / Escape) does nothing: no second send, and never a leave", () => {
+    expect(chatKeyAction({ key: "Enter", isComposing: false, keyCode: 13, repeat: true }, "")).toBeNull();
+    expect(chatKeyAction({ key: "Enter", isComposing: false, keyCode: 13, repeat: true }, "   ")).toBeNull();
+    expect(chatKeyAction({ key: "Enter", isComposing: false, keyCode: 13, repeat: true }, "hello")).toBeNull();
+    expect(chatKeyAction({ key: "Escape", isComposing: false, keyCode: 27, repeat: true }, "")).toBeNull();
+    // the press itself (repeat false) still sends / leaves
+    expect(chatKeyAction({ key: "Enter", isComposing: false, keyCode: 13, repeat: false }, "hello")).toBe("send");
+    expect(chatKeyAction({ key: "Enter", isComposing: false, keyCode: 13, repeat: false }, "")).toBe("leave");
   });
 
   it("every other key is the field's own (typing, WASD letters, arrows, Tab)", () => {
@@ -85,5 +98,39 @@ describe("typeToChatAllowed", () => {
 
   it("not while another text field has the caret (it gets its own keys)", () => {
     expect(typeToChatAllowed({ npcOpen: false, otherFieldFocused: true })).toBe(false);
+  });
+});
+
+// The server keeps CHAT_RATE.count lines per CHAT_RATE.windowMs and DROPS the next one. Now that the chat stays open,
+// quick back-and-forth hits that: the dropped line had already been cleared from the field — lost. The client holds it.
+describe("chatPaceAllows — the client keeps a line the server would drop", () => {
+  const W = CHAT_RATE.windowMs + CHAT_PACE_SLACK_MS;
+
+  it("the server's cap is what it mirrors (3 lines per 5 s), plus a little slack for the network", () => {
+    expect(CHAT_RATE).toEqual({ count: 3, windowMs: 5000 });
+    expect(CHAT_PACE_SLACK_MS).toBeGreaterThan(0);
+    expect(CHAT_PACE_SLACK_MS).toBeLessThanOrEqual(1000);
+  });
+
+  it("up to three lines go out at once", () => {
+    expect(chatPaceAllows([], 1000)).toBe(true);
+    expect(chatPaceAllows([1000], 1150)).toBe(true);
+    expect(chatPaceAllows([1000, 1150], 1300)).toBe(true);
+  });
+
+  it("a fourth line inside the window is held back (it stays in the field)", () => {
+    expect(chatPaceAllows([1000, 1150, 1300], 1450)).toBe(false);
+    expect(chatPaceAllows([1000, 1150, 1300], 1000 + CHAT_RATE.windowMs)).toBe(false); // the server would still count the first
+    expect(chatPaceAllows([1000, 1150, 1300], 1000 + W)).toBe(false); // exactly at the edge: still counted
+  });
+
+  it("…and goes once the oldest line has left the window (with the slack)", () => {
+    expect(chatPaceAllows([1000, 1150, 1300], 1000 + W + 1)).toBe(true);
+    expect(chatPaceAllows([1000, 1150, 1300], 1300 + W + 1)).toBe(true);
+  });
+
+  it("only the recent lines count, in any order", () => {
+    expect(chatPaceAllows([0, 100, 200, 9000, 9100], 9200)).toBe(true);
+    expect(chatPaceAllows([9100, 0, 9000, 9050], 9200)).toBe(false);
   });
 });
