@@ -1697,6 +1697,12 @@ async function pcMatrix(browser) {
     }
     // an unsent line already in the field (left with Escape): the guess goes, the line stays
     {
+      // From a standing avatar, like the cases above. The click on the view just before also click-moved the avatar
+      // toward the point it hit (~20 m off, by design): that walk pauses while the chat has the keyboard and goes on
+      // after the Escape and under the map, and S then walked back over it — p0 → p1 read 0.04–0.29 m although S walked
+      // its full 1.2 m (traced 2026-11-10: 1.64 m forward under the peek, 1.20 m back on S). Walking to the start ends it.
+      await walkAndWait(A, 0, 16.8, 20000, 0.5);
+      await turnCameraTo(A, 0, 0);
       await A.page.keyboard.press("Enter");
       await until(() => state(A), (v) => v.focused);
       await A.page.locator(FIELD).fill("안녕");
@@ -1705,11 +1711,18 @@ async function pcMatrix(browser) {
       await sleep(LOOK_MS);
       const p0 = await pos(A);
       const pk = await peek(800);
+      const pS = await pos(A);
       await walkKey("KeyS", 600);
       await sleep(300);
       const p1 = await pos(A);
       const s1 = await state(A);
-      check('an unsent "안녕" in the field, M, 0.8 s, M ("안녕mm"), then S: back to "안녕", the chat left, the avatar walks', pk.s.value === "안녕mm" && !s1.focused && s1.value === "안녕" && dist(p0, p1) > 0.3, { peek: pk, ...s1, moved: Math.round(dist(p0, p1) * 100) / 100 });
+      const r2 = (n) => Math.round(n * 100) / 100;
+      // still through the peek (nothing else walks it), then S's own walk
+      check(
+        'an unsent "안녕" in the field, M, 0.8 s, M ("안녕mm"), then S: back to "안녕", the chat left, the avatar walks',
+        pk.s.value === "안녕mm" && !s1.focused && s1.value === "안녕" && dist(p0, pS) < 0.05 && dist(pS, p1) > 0.3,
+        { peek: pk, ...s1, stillBefore: r2(dist(p0, pS)), moved: r2(dist(pS, p1)) },
+      );
       await A.page.locator(FIELD).fill("");
       await sleep(LOOK_MS);
     }
