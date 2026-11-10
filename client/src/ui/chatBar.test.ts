@@ -4,6 +4,7 @@ import {
   CHAT_PACE_SLACK_MS,
   IME_ENTER_TAIL_MS,
   LEAVE_TAP_CLICK_MS,
+  LEAVE_TAP_DRAG_PX,
   LEAVE_TAP_HOLD_MAX_MS,
   chatKeyAction,
   leaveTapStep,
@@ -286,11 +287,11 @@ describe("insertPrefix — the held letter goes in at the caret", () => {
 // chat and went straight back in (the keyboard popped up again), the emoji fan opened, the action fired. Now the HUD
 // keeps its chat layout until that tap is over: its click, or a moment after the finger lifts when no click comes.
 describe("leaveTapStep — the HUD keeps its chat layout until the tap that left the chat is over", () => {
-  const down: LeaveTap = { pointerId: 7, up: false };
-  const up: LeaveTap = { pointerId: 7, up: true };
+  const down: LeaveTap = { pointerId: 7, x: 300, y: 200, up: false };
+  const up: LeaveTap = { ...down, up: true };
 
   it("the press that leaves starts it (a long fallback while the finger is down, in case its pointerup is never seen)", () => {
-    expect(leaveTapStep(null, { type: "press", pointerId: 7 })).toEqual({ tap: down, timerMs: LEAVE_TAP_HOLD_MAX_MS });
+    expect(leaveTapStep(null, { type: "press", pointerId: 7, x: 300, y: 200 })).toEqual({ tap: down, timerMs: LEAVE_TAP_HOLD_MAX_MS });
     expect(LEAVE_TAP_HOLD_MAX_MS).toBeGreaterThanOrEqual(3000); // a drag of the view may go on for a while
   });
 
@@ -329,6 +330,7 @@ describe("leaveTapStep — the HUD keeps its chat layout until the tap that left
     for (const ev of [
       { type: "pointerup", pointerId: 7 },
       { type: "pointercancel", pointerId: 7 },
+      { type: "pointermove", pointerId: 7, x: 0, y: 0 },
       { type: "click" },
       { type: "timeout" },
       { type: "focus" },
@@ -336,16 +338,39 @@ describe("leaveTapStep — the HUD keeps its chat layout until the tap that left
       expect(leaveTapStep(null, ev), ev.type).toEqual(ev.type === "timeout" || ev.type === "focus" ? { tap: null, timerMs: null } : { tap: null });
   });
 
+  // Review round 4: a press that left the chat and turned into a DRAG (the joystick walking, the camera turning) kept the
+  // HUD in its chat layout until the finger lifted — up to LEAVE_TAP_HOLD_MAX_MS — so the jump / action buttons stayed
+  // hidden while walking. A drag never produces a click, so once it has travelled further than any browser lets a tap
+  // move, nothing can land on a button that comes back: over at once.
+  it("a press that becomes a drag (further than any tap may move) is over at once: the HUD comes back while the finger is still down", () => {
+    // Chrome cancels a tap's click past its touch slop (8 dp Android, 15 px elsewhere); UIKit's tap is the most lenient
+    // (about 45 pt). The HUD's own touch minimum (48 px) is past all of them.
+    expect(LEAVE_TAP_DRAG_PX).toBeGreaterThanOrEqual(45);
+    expect(LEAVE_TAP_DRAG_PX).toBeLessThanOrEqual(64);
+    expect(leaveTapStep(down, { type: "pointermove", pointerId: 7, x: 300 + LEAVE_TAP_DRAG_PX + 1, y: 200 })).toEqual({ tap: null, timerMs: null });
+    expect(leaveTapStep(down, { type: "pointermove", pointerId: 7, x: 300 - 40, y: 200 - 40 })).toEqual({ tap: null, timerMs: null });
+  });
+
+  it("a finger that only wobbles (a tap moves a little) keeps it — its click may still come", () => {
+    expect(leaveTapStep(down, { type: "pointermove", pointerId: 7, x: 312, y: 208 })).toEqual({ tap: down });
+    expect(leaveTapStep(down, { type: "pointermove", pointerId: 7, x: 300 + LEAVE_TAP_DRAG_PX, y: 200 })).toEqual({ tap: down });
+  });
+
+  it("another finger moving (the other thumb on the stick), or a mouse moving after its button came up, changes nothing", () => {
+    expect(leaveTapStep(down, { type: "pointermove", pointerId: 8, x: 900, y: 900 })).toEqual({ tap: down });
+    expect(leaveTapStep(up, { type: "pointermove", pointerId: 7, x: 900, y: 900 })).toEqual({ tap: up });
+  });
+
   it("a whole tap: press → lift → click → (0 ms) over; a drag: press → lift → (no click) fallback → over", () => {
-    let t = leaveTapStep(null, { type: "press", pointerId: 3 }).tap;
+    let t = leaveTapStep(null, { type: "press", pointerId: 3, x: 10, y: 10 }).tap;
     t = leaveTapStep(t, { type: "pointerup", pointerId: 3 }).tap;
     const c = leaveTapStep(t, { type: "click" });
     expect(c.tap).not.toBeNull(); // still in the chat layout while the click is being dispatched
     expect(c.timerMs).toBe(0);
     expect(leaveTapStep(c.tap, { type: "timeout" }).tap).toBeNull();
-    let d = leaveTapStep(null, { type: "press", pointerId: 4 }).tap;
+    let d = leaveTapStep(null, { type: "press", pointerId: 4, x: 10, y: 10 }).tap;
     d = leaveTapStep(d, { type: "pointerup", pointerId: 4 }).tap;
-    expect(d).toEqual({ pointerId: 4, up: true });
+    expect(d).toEqual({ pointerId: 4, x: 10, y: 10, up: true });
     expect(leaveTapStep(d, { type: "timeout" }).tap).toBeNull();
   });
 });

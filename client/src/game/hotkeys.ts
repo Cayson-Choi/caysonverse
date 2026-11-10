@@ -126,25 +126,21 @@ const VOWEL_HOTKEY_CODES: ReadonlySet<string> = new Set(["KeyM", "KeyB"]);
 export const WORD_GAP_MS = 1500;
 
 /**
- * A consonant key still held when the next key goes down is a held game key (walking with W, turning with Z) — unless
- * the next key came within this many ms: a typist presses the next key a moment before letting go of the last. Review
- * round 3: "그" typed with ㄱ still down 200 ms opened the map at 150 ms; slow typists overlap 200–250 ms. Walking with
- * W held and pressing M a moment later is still the map (the e2e presses it 350 ms into the walk).
- */
-export const ROLLOVER_MS = 250;
-
-/**
  * A consonant held longer than this (ms) before it was let go was a game key being held — a step, a turn of the camera
  * — not a letter: a typed press lasts about 0.1 s (slow typists ~0.25 s). Real Chrome marks a longer hold by its
  * auto-repeat too (`plain` false), but only after the repeat delay (0.25–1 s; Windows 0.5 s), and a synthetic key never
  * repeats — without this, walking 0.9 s with W and pressing M 0.3 s after letting go read as "즈".
+ * The same line decides a consonant that is still DOWN when M comes (rollingConsonant): a typist's roll-over (그 with
+ * ㄱ still down as ㅡ goes down — review round 3: slow typists overlap 200–250 ms) or a player walking with W held. Its
+ * keyup tells: let go within this, a letter; still down past it, a held key. Review round 4: the old fixed 250 ms
+ * roll-over window read W held + M 200 ms into the walk as "즈" — the chat opened and W's auto-repeat typed into it.
  */
 export const TYPED_PRESS_MAX_MS = 400;
 
 /** What the shared listener remembers of the last key pressed out in the world (while nothing held the keyboard). */
 export interface PrevKey {
   code: string;
-  /** keydown time, ms (performance.now()). */
+  /** keydown time, ms (eventTime: the performance.now() clock). */
   at: number;
   /** Pressed by itself: not an auto-repeat (a held key) and no Ctrl / Alt / Meta. Shift is fine (ㄲ ㄸ ㅃ ㅆ ㅉ). */
   plain: boolean;
@@ -168,8 +164,7 @@ export function trackKey(prev: PrevKey | null, e: KeyLike, uiCaptured: boolean, 
 /**
  * Whether a key pressed at `now` comes right after a consonant key, the way a vowel does in a word being typed:
  * the consonant was pressed by itself, at most WORD_GAP_MS before, and has been let go after a typed press (no longer
- * than TYPED_PRESS_MAX_MS) — or the two overlapped by no more than ROLLOVER_MS (a typist's roll-over; longer, it is a
- * game key being held).
+ * than TYPED_PRESS_MAX_MS). A consonant still DOWN is not told yet: see rollingConsonant.
  *
  * Why: Chrome on Windows (and Linux) switches the IME OFF while no text field has the caret (Chromium
  * ui/base/ime/win/tsf_bridge.cc gives the TEXT_INPUT_TYPE_NONE document GUID_COMPARTMENT_KEYBOARD_DISABLED), so out in
@@ -179,11 +174,46 @@ export function trackKey(prev: PrevKey | null, e: KeyLike, uiCaptured: boolean, 
  * a reload changes nothing: it works on the first line typed on a fresh page.
  */
 export function followsConsonant(prev: PrevKey | null, now: number): boolean {
-  if (prev === null || !prev.plain || !CONSONANT_CODES.has(prev.code)) return false;
+  if (prev === null || !prev.plain || !CONSONANT_CODES.has(prev.code) || !prev.released) return false;
   const gap = now - prev.at;
   if (gap < 0 || gap > WORD_GAP_MS) return false;
-  if (!prev.released) return gap <= ROLLOVER_MS;
   return prev.upAt === undefined || prev.upAt - prev.at <= TYPED_PRESS_MAX_MS;
+}
+
+/** A consonant still down when a held M / B went down (rollingConsonant): its code, and when its press turns into a hold. */
+export interface RollingKey {
+  code: string;
+  /** ms: its keydown + TYPED_PRESS_MAX_MS. Let go by then, it was a letter. */
+  until: number;
+}
+
+/**
+ * The consonant key that is still DOWN at `now`, pressed by itself less than TYPED_PRESS_MAX_MS before — so it may yet
+ * turn out a letter (a typist rolling over: 그 with ㄱ still down as ㅡ goes down) or a held game key (walking with W,
+ * turning with Z). The M / B pressed now waits for that consonant's keyup (stepHeld): up by `until`, the M / B is ㅡ / ㅠ
+ * of the word; still down then, the map / the bag. Null: no such key (released keys are followsConsonant's).
+ */
+export function rollingConsonant(prev: PrevKey | null, now: number): RollingKey | null {
+  if (prev === null || !prev.plain || !CONSONANT_CODES.has(prev.code) || prev.released) return null;
+  const gap = now - prev.at;
+  if (gap < 0 || gap >= TYPED_PRESS_MAX_MS) return null;
+  return { code: prev.code, until: prev.at + TYPED_PRESS_MAX_MS };
+}
+
+/**
+ * How stale (ms) a key event's own timeStamp may be next to the listener's clock and still be trusted (eventTime). A long
+ * task of the page delays a listener by up to a few hundred ms; anything older is not a timestamp on this clock.
+ */
+export const EVENT_LAG_MAX_MS = 1000;
+
+/**
+ * When a key really went down / up, ms on the performance.now() clock: the event's own `timeStamp` (when the browser
+ * got it from the OS) when it is a sane one — on this clock, not ahead of `now`, at most EVENT_LAG_MAX_MS behind —
+ * else `now`, the listener's clock. Review round 4: the gaps used to be measured when the listener RAN; the map's first
+ * frames are long tasks (50–170 ms) and stretched a slow typist's gap past the take-back.
+ */
+export function eventTime(timeStamp: number | undefined, now: number): number {
+  return typeof timeStamp === "number" && timeStamp > 0 && timeStamp <= now && now - timeStamp <= EVENT_LAG_MAX_MS ? timeStamp : now;
 }
 
 /**
@@ -269,6 +299,8 @@ export const VOWEL_HOLD_MS = 300;
  * open. The same span as WORD_GAP_MS — the slowest typist's next key (1.2 s) plus a hesitation — so the map never
  * stands open longer than this because of typing. The price: an M that closes the map sooner than this after it opened
  * reads as ㅡㅡ — the map closes all the same, and the chat opens with "mm". Later, M just closes it.
+ * Only the map is ever taken back, and only while the map that M opened is still open (review round 4): closed meanwhile
+ * (the 🗺 button), the M was the map and the next key is a key on its own; the bag, once it acted, is final.
  */
 export const TAKE_BACK_MS = WORD_GAP_MS;
 
@@ -290,11 +322,28 @@ export interface HeldKey {
   char: string;
   at: number;
   /**
-   * The wait ran out and the action was taken (the map is opening). Until TAKE_BACK_MS after `at`, a key that goes on
-   * typing (goesOnTyping) still makes the M the start of a word: the action is taken again (a toggle: the map closes)
-   * and the chat opens with the letter.
+   * The wait ran out and the map's toggle was handed out. Until TAKE_BACK_MS after `at`, a key that goes on typing
+   * (goesOnTyping) still makes the M the start of a word: the map is toggled back (when it is still the map M opened —
+   * `opened` and still open) and the chat opens with the letter. Only the map stays held this way; the bag never does.
    */
   acted?: boolean;
+  /** When it acted: the map really opened (false: refused — no map inside a building — so there is nothing to take back). */
+  opened?: boolean;
+  /** It went down while this consonant was still down (rollingConsonant): that key's keyup tells whether it was a word. */
+  rolling?: RollingKey;
+}
+
+/** How long a held key waits before it acts: until the consonant it rolled over would be a held key, else heldKeyWaitMs. */
+export function holdWaitMs(h: HeldKey): number {
+  return h.rolling ? Math.max(0, h.rolling.until - h.at) : heldKeyWaitMs(h.action);
+}
+
+/** What stepHeld needs to know of the world around the key: whether the map is open, and a consonant still down. */
+export interface HeldWorld {
+  /** The overview map is open (viewState.mode "ov"). */
+  mapOpen?: boolean;
+  /** A consonant still down as this key went down (rollingConsonant). */
+  rolling?: RollingKey | null;
 }
 
 /** One key through the hold: what to remember, and the actions to hand the subscribers now, in order. */
@@ -363,23 +412,45 @@ function isHeldVowel(e: KeyLike, action: HotkeyAction | null): boolean {
 }
 
 /**
+ * The held key after the time that passed and what the world did meanwhile: null once it is over — an action taken
+ * longer than TAKE_BACK_MS ago (the next key is a key on its own), a bag that acted (final: opening it takes the
+ * keyboard, so a take-back could only re-open a tray B just closed — review round 4), a map that M opened and something
+ * else closed meanwhile (the 🗺 button: the M was the map, done — toggling it again opened it under the chat).
+ */
+function settleHeld(held: HeldKey | null, now: number, mapOpen: boolean): HeldKey | null {
+  if (!held?.acted) return held;
+  if (now - held.at > TAKE_BACK_MS || held.action.type !== "toggleMap") return null;
+  return held.opened && !mapOpen ? null : held;
+}
+
+/** What taking a held key back hands out first: the map's toggle once more — only while the map that M opened is still open. */
+function takeBack(held: HeldKey, mapOpen: boolean): HotkeyAction[] {
+  return held.acted && held.opened && mapOpen && held.action.type === "toggleMap" ? [held.action] : [];
+}
+
+/**
  * The shared listener's hold on a lone M / B (pure; the timer lives in handleKey): given what is held, one key event and
  * the action resolveHotkey found for it, what to hold now and which actions to hand out at once.
- *  - A lone plain M / B is held — nothing happens yet; it acts when its wait runs out (heldKeyWaitMs, handleKey). Not an
+ *  - A lone plain M / B is held — nothing happens yet; it acts when its wait runs out (holdWaitMs, handleKey). Not an
  *    M while the map is OPEN (`mapOpen`): there M is the map's own close key and acts at once — nobody types ㅡ while
  *    looking at the map, and walking on the map with a short step and then M must close it (not read as "즈").
+ *  - An M / B that went down while a consonant was still down (`rolling`): its wait lasts until that consonant has been
+ *    down for TYPED_PRESS_MAX_MS. Its keyup before then (그: ㄱ up after ㅡ went down) makes the M / B a word — the chat
+ *    opens with it; still down then (walking with W held), it acts: the map / the bag.
  *  - The next key goes on TYPING (goesOnTyping) — another M / B (ㅡㅡ, ㅠㅠ), any typed key that is no game key
  *    (ㅡㅅㅡ, ㅡ.ㅡ, "my"), and the letter hotkeys E F R V Z C and the digits too ("me too") — so the M / B started a
  *    word: one typeToChat carrying the held letter (`prefix`); the map / bag never open, the key's own job is not done.
  *  - Any other key (WASD, the arrows, Space, Enter, /, Esc, Tab, an auto-repeat, a chord): M was the map after all — it
  *    acts AT ONCE, then that key does its own job. So M-then-walk never waits.
  *  - After the wait ran out (`acted`: the map is opening), up to TAKE_BACK_MS after the press: a key that goes on typing
- *    (a slow ㅡㅡ, "me too", ㅡㄹ) takes the map back — the toggle once more — and opens the chat with the letter; any
- *    other key just does its own job (the map stays: walking on it, Enter to chat on it). Later than that, the M is long
- *    done and the key is a key on its own. So the map never stands open longer than TAKE_BACK_MS because of typing.
+ *    (a slow ㅡㅡ, "me too", ㅡㄹ) takes the map back — the toggle once more, only while that map is still open — and
+ *    opens the chat with the letter; any other key just does its own job (the map stays: walking on it, Enter to chat
+ *    on it). Later than that, the M is long done and the key is a key on its own. So the map never stands open longer
+ *    than TAKE_BACK_MS because of typing. The map closed meanwhile by something else (the 🗺 button), or a bag that
+ *    acted: over (settleHeld) — the key is a key on its own.
  *  - A bare modifier / 한영 key changes nothing; a key while something took the keyboard meanwhile (a click into a
  *    field) drops the held action — no map opening under the chat, nothing taken back.
- * Keyups pass straight through.
+ * Keyups pass straight through — but the one of a consonant a held M / B rolled over (above).
  */
 export function stepHeld(
   held: HeldKey | null,
@@ -387,23 +458,31 @@ export function stepHeld(
   action: HotkeyAction | null,
   uiCaptured: boolean,
   now: number,
-  mapOpen = false,
+  world: HeldWorld = {},
 ): HeldStep {
+  const mapOpen = world.mapOpen ?? false;
   const own = action ? [action] : [];
-  if (e.type === "keyup") return { held, out: own };
-  if (held?.acted && now - held.at > TAKE_BACK_MS) held = null; // long done: this key is a key on its own
+  held = settleHeld(held, now, mapOpen);
+  if (e.type === "keyup") {
+    // The consonant this M / B rolled over comes up within a typed press: it was a letter, and so is the M / B.
+    if (held?.rolling && e.code === held.rolling.code && now <= held.rolling.until) {
+      if (uiCaptured) return { held: null, out: own };
+      return { held: null, out: [...takeBack(held, mapOpen), { type: "typeToChat", prefix: held.char }, ...own] };
+    }
+    return { held, out: own };
+  }
   const out: HotkeyAction[] = [];
   if (held !== null) {
     if (isNeutralKey(e)) return { held, out: own };
     if (uiCaptured) return { held: null, out: own };
-    if (goesOnTyping(e)) {
-      const chat: HotkeyAction = { type: "typeToChat", prefix: held.char };
-      return { held: null, out: held.acted ? [held.action, chat] : [chat] };
-    }
+    if (goesOnTyping(e)) return { held: null, out: [...takeBack(held, mapOpen), { type: "typeToChat", prefix: held.char }] };
     if (!held.acted) out.push(held.action);
   }
-  if (action !== null && !uiCaptured && isHeldVowel(e, action) && !(mapOpen && action.type === "toggleMap"))
-    return { held: { action, char: e.key as string, at: now }, out };
+  if (action !== null && !uiCaptured && isHeldVowel(e, action) && !(mapOpen && action.type === "toggleMap")) {
+    const next: HeldKey = { action, char: e.key as string, at: now };
+    if (world.rolling) next.rolling = world.rolling;
+    return { held: next, out };
+  }
   return { held: null, out: [...out, ...own] };
 }
 
@@ -487,9 +566,10 @@ function dropHeld(): void {
 }
 
 /**
- * Hold `next` (from this keydown `e`) until its wait runs out (heldKeyWaitMs) — then it acts, unless something took the
- * keyboard meanwhile (a click into the chat: no map under it), and stays remembered as `acted` until TAKE_BACK_MS (a
- * slow second key can still take it back, stepHeld).
+ * Hold `next` (from this keydown `e`) until its wait runs out (holdWaitMs) — then it acts, unless something took the
+ * keyboard meanwhile (a click into the chat: no map under it) or the map is open already (the 🗺 button meanwhile: the
+ * toggle would close it). The map's toggle stays remembered as `acted` (and whether the map really `opened`) until
+ * TAKE_BACK_MS: a slow second key can still take it back (stepHeld). The bag's is final.
  */
 function holdKey(next: HeldKey, e: KeyboardEvent): void {
   dropHeld();
@@ -500,23 +580,27 @@ function holdKey(next: HeldKey, e: KeyboardEvent): void {
     const ev = heldEvent;
     dropHeld();
     if (!h || !ev || isUiCaptured()) return;
+    const isMap = h.action.type === "toggleMap";
+    if (isMap && viewState.mode === "ov") return;
     fanOut(h.action, ev);
-    if (subscribers.length > 0) held = { ...h, acted: true };
-  }, heldKeyWaitMs(next.action));
+    if (isMap && subscribers.length > 0) held = { ...h, acted: true, opened: viewState.mode === "ov" };
+  }, holdWaitMs(next));
 }
 
 /** The single shared window handler (keydown + keyup). */
 function handleKey(e: KeyboardEvent): void {
   // Only keydown / keyup are ever registered here, so `type` is one of the two.
   const uiCaptured = isUiCaptured();
-  const now = performance.now();
+  // When the key really went down / up — not when this listener got to run (a long task can delay it).
+  const now = eventTime(e.timeStamp, performance.now());
   // The map is open (the overview): M is its close key — never the ㅡ of a word, and never held (stepHeld).
   const mapOpen = viewState.mode === "ov";
   // Resolve BEFORE cancelling: resolveHotkey drops an already-defaultPrevented keydown, and
   // our own preventDefault must not make the action vanish.
   const action = resolveHotkey(e as KeyLike, uiCaptured, !mapOpen && followsConsonant(prevKey, now));
+  const rolling = e.type === "keydown" && !mapOpen ? rollingConsonant(prevKey, now) : null;
   prevKey = trackKey(prevKey, e as KeyLike, uiCaptured, now);
-  const step = stepHeld(held, e as KeyLike, action, uiCaptured, now, mapOpen);
+  const step = stepHeld(held, e as KeyLike, action, uiCaptured, now, { mapOpen, rolling });
   if (step.held !== held) {
     if (step.held === null) dropHeld();
     else holdKey(step.held, e);

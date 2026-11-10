@@ -179,19 +179,31 @@ export function paceSend(sentAt: readonly number[], now: number, heldUntil: numb
 export const LEAVE_TAP_CLICK_MS = 400;
 
 /** The longest (ms) a press that left the chat keeps the HUD in its chat layout while its finger is still down — a
- *  pointerup that never came (the window lost focus mid-press). A drag of the view may well go on for a few seconds. */
+ *  pointerup that never came (the window lost focus mid-press), a finger that stays put. */
 export const LEAVE_TAP_HOLD_MAX_MS = 5000;
+
+/**
+ * How far (px) the finger of a press that left the chat may travel and still be a tap that produces a click. Further, it
+ * is a drag (the joystick walking, the camera turning) — no browser fires a click for it: Chrome drops a tap past its
+ * touch slop (8 dp on Android, 15 px elsewhere), and UIKit's tap, the most lenient, allows about 45 pt. 48 px (the HUD's
+ * own touch minimum) is past them all, so once a press has gone this far nothing can land on a button that comes back.
+ */
+export const LEAVE_TAP_DRAG_PX = 48;
 
 /** The press (pointerdown outside the bar) that took the caret out of the chat, until it is over. */
 export interface LeaveTap {
   pointerId: number;
+  /** Where it went down (client px). */
+  x: number;
+  y: number;
   /** Its finger (button) has lifted: what remains is the click it may still produce. */
   up: boolean;
 }
 
 /** What happens around a leave tap (ChatInput listens on the window, capture phase). */
 export type LeaveTapEvent =
-  | { type: "press"; pointerId: number }
+  | { type: "press"; pointerId: number; x: number; y: number }
+  | { type: "pointermove"; pointerId: number; x: number; y: number }
   | { type: "pointerup"; pointerId: number }
   | { type: "pointercancel"; pointerId: number }
   | { type: "click" }
@@ -215,6 +227,9 @@ export interface LeaveTapStep {
  * where the emoji fan / the action button sit, they fired. Holding the layout until the click has gone to what was
  * under the finger (or a moment after the lift when no click comes, or a cancel) means nothing appears under a finger.
  *  - press: the tap starts; the field blurs right after (ChatInput), and the bar folds away at once (it cannot be hit).
+ *  - pointermove of that finger, further than LEAVE_TAP_DRAG_PX from where it went down: a drag, which produces no
+ *    click — over at once, while the finger is still down (review round 4: a joystick walk that left the chat kept the
+ *    jump / action buttons hidden until the thumb lifted, up to LEAVE_TAP_HOLD_MAX_MS).
  *  - pointerup of that finger: wait LEAVE_TAP_CLICK_MS for its click.
  *  - click: over right AFTER it (a 0 ms timer) — the click has gone to what was there in the chat layout.
  *  - pointercancel of that finger (a scroll, a system gesture: no click will come), the timer, the chat taking the caret
@@ -222,10 +237,14 @@ export interface LeaveTapStep {
  * Other fingers, and a click before the finger lifted, change nothing.
  */
 export function leaveTapStep(tap: LeaveTap | null, ev: LeaveTapEvent): LeaveTapStep {
-  if (ev.type === "press") return { tap: { pointerId: ev.pointerId, up: false }, timerMs: LEAVE_TAP_HOLD_MAX_MS };
+  if (ev.type === "press") return { tap: { pointerId: ev.pointerId, x: ev.x, y: ev.y, up: false }, timerMs: LEAVE_TAP_HOLD_MAX_MS };
   if (ev.type === "timeout" || ev.type === "focus") return { tap: null, timerMs: null };
   if (tap === null) return { tap: null };
   switch (ev.type) {
+    case "pointermove":
+      return ev.pointerId === tap.pointerId && !tap.up && Math.hypot(ev.x - tap.x, ev.y - tap.y) > LEAVE_TAP_DRAG_PX
+        ? { tap: null, timerMs: null }
+        : { tap };
     case "pointerup":
       return ev.pointerId === tap.pointerId && !tap.up ? { tap: { ...tap, up: true }, timerMs: LEAVE_TAP_CLICK_MS } : { tap };
     case "pointercancel":

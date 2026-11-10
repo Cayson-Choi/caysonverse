@@ -118,11 +118,13 @@
 
 /* The note right above the bar while a quick line is held back (ChatInput.tsx: the server's own
    "too fast" words). It rides with the bar — on a phone, on the keyboard, where the folded log
-   cannot be seen. Warm text on the bar's dark glass; it nudges each time a press is refused. */
+   cannot be seen. Warm text on the bar's dark glass; it nudges each time a press is refused.
+   --cv-chat-note-lift: a line that already sits right above the bar (the classroom's team-chat line,
+   TeamChatNotice.tsx) lifts the note over itself, so neither hides the other. */
 .cv-chat-note {
   position: absolute;
   left: 50%;
-  bottom: calc(100% + 8px);
+  bottom: calc(100% + 8px + var(--cv-chat-note-lift, 0px));
   width: max-content;
   max-width: 100%;
   box-sizing: border-box;

@@ -35,6 +35,13 @@ const COUNTER_LEAD = 20;
  */
 const FOCUS_CLASS = "cv-chat-focus";
 
+/**
+ * <html> class while the field itself has the caret on a touch device — the bar is up. Unlike FOCUS_CLASS it does not
+ * outlast the tap that leaves: what rides on the open bar (the classroom's team-chat line, escape.css) folds away with
+ * it, instead of floating over the folded bar until the tap is over (review round 4).
+ */
+const OPEN_CLASS = "cv-chat-open";
+
 /** A press that must not take the caret out of the field (the send button, the bar around the field). */
 const keepCaret = (e: { preventDefault(): void }) => e.preventDefault();
 
@@ -58,9 +65,11 @@ const keepCaret = (e: { preventDefault(): void }) => e.preventDefault();
  *    That press otherwise does what it always does (a click-move, a camera drag, the button's
  *    action). WASD / the arrows walk again at once. On a phone the keyboard goes with that press
  *    (the blur) and the bar folds away, but the rest of the HUD keeps its chat layout until the
- *    tap is over — its click, or a moment after the finger lifts (chatBar.ts leaveTapStep): the
- *    browser aims a tap's click when the finger lifts, and it used to land on the 💬 / emoji /
- *    action button that had just come back under the finger (review round 3).
+ *    tap is over — its click, or a moment after the finger lifts, or as soon as the finger has
+ *    travelled far enough to be a drag (chatBar.ts leaveTapStep): the browser aims a tap's click
+ *    when the finger lifts, and it used to land on the 💬 / emoji / action button that had just
+ *    come back under the finger (review round 3); a drag makes no click, so a joystick walk that
+ *    left the chat gets the jump / action buttons back at once (review round 4).
  *  - Enter or `/` (unfocused) focuses the input. So does a key that TYPES something and is no game
  *    key (the hotkey table's typeToChat: H, 7, "." — and in 한글 mode also ㄱ ㅍ ㅡ ㅠ, which would
  *    otherwise be recenter / view / map / bag): the field takes the caret during that keydown and
@@ -150,6 +159,12 @@ export function ChatInput() {
     root.classList.add(FOCUS_CLASS);
     return () => root.classList.remove(FOCUS_CLASS);
   }, [chatLayout]);
+  useEffect(() => {
+    if (!focused || !isTouchDevice) return;
+    const root = document.documentElement;
+    root.classList.add(OPEN_CLASS);
+    return () => root.classList.remove(OPEN_CLASS);
+  }, [focused]);
 
   // Soft-keyboard handling (touch only): while focused, track the
   // keyboard inset from visualViewport. Browser behaviours differ:
@@ -210,24 +225,32 @@ export function ChatInput() {
   // document, so it runs before (and whatever) the pressed element does: the canvas, a HUD
   // button that cancels its own press to keep a caret, a menu. The press itself goes on as usual.
   // The HUD keeps its chat layout until that press is over (leaveTapStep): its pointerup, its click
-  // (capture phase on the window too — whatever the target does with it), a cancel.
+  // (capture phase on the window too — whatever the target does with it), a cancel, or its finger
+  // travelling far enough to be a drag (a drag produces no click).
   useEffect(() => {
     const onDown = (e: PointerEvent) => {
       const input = inputRef.current;
       if (!input || document.activeElement !== input) return;
       if (!pressLeavesChat(e.target, barRef.current)) return;
-      leaveEvent({ type: "press", pointerId: e.pointerId }); // first: the blur's render already keeps the layout
+      // first: the blur's render already keeps the layout
+      leaveEvent({ type: "press", pointerId: e.pointerId, x: e.clientX, y: e.clientY });
       input.blur();
+    };
+    const onMove = (e: PointerEvent) => {
+      if (leaveTap.current === null) return; // the common case: no leave tap going on, no work per move
+      leaveEvent({ type: "pointermove", pointerId: e.pointerId, x: e.clientX, y: e.clientY });
     };
     const onUp = (e: PointerEvent) => leaveEvent({ type: "pointerup", pointerId: e.pointerId });
     const onCancel = (e: PointerEvent) => leaveEvent({ type: "pointercancel", pointerId: e.pointerId });
     const onClick = () => leaveEvent({ type: "click" });
     document.addEventListener("pointerdown", onDown, true);
+    window.addEventListener("pointermove", onMove, true);
     window.addEventListener("pointerup", onUp, true);
     window.addEventListener("pointercancel", onCancel, true);
     window.addEventListener("click", onClick, true);
     return () => {
       document.removeEventListener("pointerdown", onDown, true);
+      window.removeEventListener("pointermove", onMove, true);
       window.removeEventListener("pointerup", onUp, true);
       window.removeEventListener("pointercancel", onCancel, true);
       window.removeEventListener("click", onClick, true);
