@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { EscapeMsg, type PublicItem } from "@caysonverse/shared/escape/messages";
 import { isTouchDevice } from "../../device";
-import { onHotkey } from "../../game/hotkeys";
+import { offerBag, onHotkey } from "../../game/hotkeys";
 import { sendEscape } from "../../net/connection";
 import { useEscapeStore } from "../../stores/escapeStore";
 import { useSettingsStore } from "../../stores/settingsStore";
@@ -73,7 +73,9 @@ export function BagPanel() {
     setByKey(false);
   }, []);
 
-  // B toggles the tray. (The hotkey table drops the key while a field or an overlay holds the keyboard.)
+  // B toggles the tray. (The hotkey table drops the key while a field or an overlay holds the keyboard.) The bag being on
+  // screen is what makes B a hotkey at all (offerBag): elsewhere — the village — B is a letter that opens the chat.
+  useEffect(() => offerBag(), []);
   useEffect(
     () =>
       onHotkey((action) => {

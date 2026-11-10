@@ -29,7 +29,10 @@ export type HotkeyAction =
   | { type: "recenter" }
   | { type: "toggleView" }
   | { type: "toggleMap" }
-  /** B: open / close the classroom's team bag (a no-op where there is no bag — the legacy world). */
+  /**
+   * B: open / close the classroom's team bag — only while a bag is on screen (offerBag). Where there is none (the village,
+   * the legacy world) B is no hotkey at all: a letter (b / ㅠ) that opens the chat like H.
+   */
   | { type: "bag" }
   | { type: "menu" }
   | { type: "openChat" }
@@ -40,8 +43,13 @@ export type HotkeyAction =
    * caret DURING this keydown (no preventDefault), so the character — or the Hangul composition — lands in the field.
    * `prefix`: what a held key before it typed (a lone M / B that turned out to start a word, see stepHeld) — the chat
    * puts it in first, so "ㅡㅡ" / "my" lose nothing to the hold.
+   * `tentative`: the M had already acted — the map was opening (or refused) — when this key took it back, so the player
+   * may just have been LOOKING at the map (M, a look, M: review round 5) rather than typing a slow ㅡㅡ. The two cannot be
+   * told by timing; the chat opens all the same (a slow typist's line is in it at once), but only as a guess: until
+   * something more is typed, a walk key, Escape or a press elsewhere puts the field back as it was (ChatInput, chatBar.ts
+   * draftKey) — and the walk key walks.
    */
-  | { type: "typeToChat"; prefix?: string };
+  | { type: "typeToChat"; prefix?: string; tentative?: true };
 
 /** The bits of a KeyboardEvent the table reads — lets tests pass plain objects. */
 export interface KeyLike {
@@ -236,11 +244,14 @@ export function eventTime(timeStamp: number | undefined, now: number): number {
  * `afterConsonant` — the key right before was a consonant key, as in 그 (R M) or 응 (D M D); see followsConsonant.
  * Otherwise this says toggleMap / bag — and the shared listener holds that a moment (stepHeld): a line CAN start with
  * ㅡ / ㅠ (ㅡㅡ, ㅠㅠ), and the key after it tells.
+ * `bag`: a bag is on screen (offerBag; true by default, as in a classroom). Without one (the village, the legacy world)
+ * B has no job, so it is never the bag nor held: a letter, typeToChat at once (review round 5: in the village a slow ㅠㅠ
+ * waited for a bag that was not there, did nothing, and both letters were lost).
  * keyup only matters for Tab (roster hide) and E / F (interactUp: the end of a held interaction) and is
  * deliberately unconditional: the list must never stay stuck open because the chat grabbed focus
  * mid-hold, and a hold must be able to end after an overlay took the keyboard.
  */
-export function resolveHotkey(e: KeyLike, uiCaptured: boolean, afterConsonant = false): HotkeyAction | null {
+export function resolveHotkey(e: KeyLike, uiCaptured: boolean, afterConsonant = false, bag = true): HotkeyAction | null {
   if (e.type === "keyup") {
     if (e.code === "Tab") return { type: "roster", show: false };
     if (e.code === "KeyE" || e.code === "KeyF") return { type: "interactUp" };
@@ -253,6 +264,8 @@ export function resolveHotkey(e: KeyLike, uiCaptured: boolean, afterConsonant = 
   // the vowels can be told (by the consonant before them): ㅡ ㅠ after ㄱ ㅇ ㄴ ... are typing, never the map / bag.
   if (IME_TYPING_CODES.has(e.code) && (isImeKey(e) || (afterConsonant && VOWEL_HOTKEY_CODES.has(e.code) && typesText(e))))
     return { type: "typeToChat" };
+  // No bag here: B is just the letter it types.
+  if (e.code === "KeyB" && !bag) return typesText(e) ? { type: "typeToChat" } : null;
 
   switch (e.code) {
     case "Space":
@@ -305,9 +318,9 @@ export const VOWEL_HOLD_MS = 300;
 export const TAKE_BACK_MS = WORD_GAP_MS;
 
 /**
- * How long (ms) a lone B waits: longer than the map's wait, because in a classroom the bag takes the keyboard as it opens
- * (an overlay, the first chip focused), so a second ㅠ could never reach the table to close it again; elsewhere B does
- * nothing anyway. 0.6 s (100 타/분) — the bag still answers B in well under a second.
+ * How long (ms) a lone B waits where there is a bag (a classroom): longer than the map's wait, because the bag takes the
+ * keyboard as it opens (an overlay, the first chip focused), so a second ㅠ could never reach the table to close it again.
+ * 0.6 s (100 타/분) — the bag still answers B in well under a second. Where there is no bag, B never waits (resolveHotkey).
  */
 export const BAG_HOLD_MS = 600;
 
@@ -429,6 +442,14 @@ function takeBack(held: HeldKey, mapOpen: boolean): HotkeyAction[] {
 }
 
 /**
+ * The chat a held M / B turned out to start, with its letter first. `tentative` when the M had already acted (its wait ran
+ * out: the map was opening, or refused): the player may have been looking at the map — see HotkeyAction typeToChat.
+ */
+function wordChat(held: HeldKey): HotkeyAction {
+  return held.acted ? { type: "typeToChat", prefix: held.char, tentative: true } : { type: "typeToChat", prefix: held.char };
+}
+
+/**
  * The shared listener's hold on a lone M / B (pure; the timer lives in handleKey): given what is held, one key event and
  * the action resolveHotkey found for it, what to hold now and which actions to hand out at once.
  *  - A lone plain M / B is held — nothing happens yet; it acts when its wait runs out (holdWaitMs, handleKey). Not an
@@ -444,7 +465,8 @@ function takeBack(held: HeldKey, mapOpen: boolean): HotkeyAction[] {
  *    acts AT ONCE, then that key does its own job. So M-then-walk never waits.
  *  - After the wait ran out (`acted`: the map is opening), up to TAKE_BACK_MS after the press: a key that goes on typing
  *    (a slow ㅡㅡ, "me too", ㅡㄹ) takes the map back — the toggle once more, only while that map is still open — and
- *    opens the chat with the letter; any other key just does its own job (the map stays: walking on it, Enter to chat
+ *    opens the chat with the letter, as a guess (`tentative`: a player who only looked at the map can walk on at once —
+ *    ChatInput undoes it); any other key just does its own job (the map stays: walking on it, Enter to chat
  *    on it). Later than that, the M is long done and the key is a key on its own. So the map never stands open longer
  *    than TAKE_BACK_MS because of typing. The map closed meanwhile by something else (the 🗺 button), or a bag that
  *    acted: over (settleHeld) — the key is a key on its own.
@@ -467,7 +489,7 @@ export function stepHeld(
     // The consonant this M / B rolled over comes up within a typed press: it was a letter, and so is the M / B.
     if (held?.rolling && e.code === held.rolling.code && now <= held.rolling.until) {
       if (uiCaptured) return { held: null, out: own };
-      return { held: null, out: [...takeBack(held, mapOpen), { type: "typeToChat", prefix: held.char }, ...own] };
+      return { held: null, out: [...takeBack(held, mapOpen), wordChat(held), ...own] };
     }
     return { held, out: own };
   }
@@ -475,7 +497,7 @@ export function stepHeld(
   if (held !== null) {
     if (isNeutralKey(e)) return { held, out: own };
     if (uiCaptured) return { held: null, out: own };
-    if (goesOnTyping(e)) return { held: null, out: [...takeBack(held, mapOpen), { type: "typeToChat", prefix: held.char }] };
+    if (goesOnTyping(e)) return { held: null, out: [...takeBack(held, mapOpen), wordChat(held)] };
     if (!held.acted) out.push(held.action);
   }
   if (action !== null && !uiCaptured && isHeldVowel(e, action) && !(mapOpen && action.type === "toggleMap")) {
@@ -547,6 +569,26 @@ const subscribers: { fn: HotkeyListener }[] = [];
 /** The last key pressed out in the world (trackKey) — reset when the listener is installed. */
 let prevKey: PrevKey | null = null;
 
+/**
+ * How many bags are on screen (offerBag) — a classroom's BagPanel. While none is, B is a letter (resolveHotkey `bag`).
+ */
+let bags = 0;
+
+/**
+ * A bag is on screen (the classroom's BagPanel, for as long as it is mounted): B is its key — held a moment (BAG_HOLD_MS),
+ * then the bag. Returns the disposer (calling it twice is harmless). Without any, B is just a letter: in the village a lone
+ * B used to wait for a bag that was not there and then do nothing — a slow "ㅠㅠ" or "bye" lost its b's (review round 5).
+ */
+export function offerBag(): () => void {
+  bags++;
+  let done = false;
+  return () => {
+    if (done) return;
+    done = true;
+    bags--;
+  };
+}
+
 /** The lone M / B being held (stepHeld), the keydown that started it, and the timer that lets it act. */
 let held: HeldKey | null = null;
 let heldEvent: KeyboardEvent | null = null;
@@ -597,7 +639,7 @@ function handleKey(e: KeyboardEvent): void {
   const mapOpen = viewState.mode === "ov";
   // Resolve BEFORE cancelling: resolveHotkey drops an already-defaultPrevented keydown, and
   // our own preventDefault must not make the action vanish.
-  const action = resolveHotkey(e as KeyLike, uiCaptured, !mapOpen && followsConsonant(prevKey, now));
+  const action = resolveHotkey(e as KeyLike, uiCaptured, !mapOpen && followsConsonant(prevKey, now), bags > 0);
   const rolling = e.type === "keydown" && !mapOpen ? rollingConsonant(prevKey, now) : null;
   prevKey = trackKey(prevKey, e as KeyLike, uiCaptured, now);
   const step = stepHeld(held, e as KeyLike, action, uiCaptured, now, { mapOpen, rolling });

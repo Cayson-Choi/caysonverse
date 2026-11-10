@@ -16,6 +16,7 @@ import { useCoachStore } from "../stores/coachStore";
 import { useSettingsStore } from "../stores/settingsStore";
 import { useUiStore } from "../stores/uiStore";
 import type { Orbit, Pose } from "../game/types";
+import { addChatLayoutTargets } from "./chatLayoutTargets";
 import { useTouchHudLayout, useTouchViewport } from "./useTouchHudLayout";
 import "./coach.css";
 
@@ -74,6 +75,9 @@ function CoachCard({ step }: { step: Exclude<CoachStep, "done"> }) {
   const style: CSSProperties | undefined = spot
     ? { left: spot.x, top: spot.y, width: spot.w }
     : undefined;
+  // Hidden while a phone's chat has the caret (coach.css), back with the HUD: the tap that leaves the chat must not land
+  // on its 건너뛰기 (ChatInput holds the chat layout for a tap that went down near the card — chatLayoutTargets.ts).
+  useEffect(() => (spot ? addChatLayoutTargets(() => [spot]) : undefined), [spot]);
   const { title, body } = coachCopy(step, isTouchDevice, leftHanded);
 
   return (

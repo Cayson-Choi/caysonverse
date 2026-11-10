@@ -13,11 +13,15 @@
 
 export const KBD_INSET_VAR = "--cv-kbd-inset";
 
+/** The strip (px) of the layout viewport's bottom the on-screen keyboard covers right now (0 without a visual viewport). */
+export function kbdInsetPx(): number {
+  const vv = window.visualViewport;
+  return vv ? Math.max(0, window.innerHeight - vv.height - vv.offsetTop) : 0;
+}
+
 /** Recompute and publish the current keyboard inset (px). */
 export function updateKbdInset(): void {
-  const vv = window.visualViewport;
-  const inset = vv ? Math.max(0, window.innerHeight - vv.height - vv.offsetTop) : 0;
-  document.documentElement.style.setProperty(KBD_INSET_VAR, `${Math.round(inset)}px`);
+  document.documentElement.style.setProperty(KBD_INSET_VAR, `${Math.round(kbdInsetPx())}px`);
 }
 
 /**
