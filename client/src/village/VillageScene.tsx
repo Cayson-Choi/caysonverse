@@ -86,8 +86,9 @@ function VillageArea({ area, tier }: { area: AreaId; tier: VillageTier }) {
       <LoadBoundary fallback={<PlainGround />} onReset={clearVillageCaches} notice="마을 풍경을 불러오지 못했어요. 잠시 뒤 다시 불러올게요.">
         <Suspense fallback={null}>
           <VillageModel tier={tier} />
-          {/* The bus at the stop loads beside the model (one wait, one warm-up); a failed bus never takes the village down. */}
-          <LoadBoundary fallback={null} onReset={clearBusCache} notice="마을버스를 불러오지 못했어요. 잠시 뒤 다시 불러올게요.">
+          {/* The bus at the stop loads beside the model (one wait, one warm-up); a failed bus never takes the village down,
+              and its retries wait in their own Suspense (the village stays on screen while the bus downloads again). */}
+          <LoadBoundary fallback={null} onReset={clearBusCache} notice="마을버스를 불러오지 못했어요. 잠시 뒤 다시 불러올게요." isolateRetries>
             <VillageBus tier={tier} />
           </LoadBoundary>
           {/* Its materials compiled ahead once the model is in (night-only and out-of-view ones included). */}

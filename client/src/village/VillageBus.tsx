@@ -15,7 +15,7 @@ declare global {
 }
 
 /**
- * The village bus parked at the stop (villageBusPrep.ts): loads `village_bus.glb` (Draco, ~0.36 MB) beside the village
+ * The village bus parked at the stop (villageBusPrep.ts): loads `village_bus.glb` (Draco, ~0.35 MB, 4 draw calls) beside the village
  * model — inside the village's Suspense, so both arrive and are warmed up together — and dresses a clone of it for the
  * tier. The time of day is written into its materials every frame (number writes only). The file is released with the
  * village's (villageRelease.ts).

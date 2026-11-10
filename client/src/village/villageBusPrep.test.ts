@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BoxGeometry, Group, Mesh, MeshPhysicalMaterial, MeshStandardMaterial, ShaderLib, Texture, type WebGLProgramParametersWithUniforms } from "three";
+import { BoxGeometry, DoubleSide, Group, Mesh, MeshBasicMaterial, MeshPhysicalMaterial, MeshStandardMaterial, ShaderLib, Texture, type WebGLProgramParametersWithUniforms } from "three";
 import { VILLAGE_LAYOUT } from "@caysonverse/shared/village/villageLayout";
 import { LIGHTING } from "../game/sceneLighting";
 import { stateFor } from "./dayNightBlend";
@@ -14,21 +14,23 @@ import {
   prepareBus,
 } from "./villageBusPrep";
 
-/** A stand-in for village_bus.glb as GLTFLoader gives it: a node with one mesh per material (three primitives). */
+/** A stand-in for village_bus.glb as GLTFLoader gives it: a node with one mesh per material (four primitives). */
 function busFile() {
   const orm = new Texture();
   const body = new MeshStandardMaterial({ name: BUS_MATERIAL.body, map: new Texture(), roughnessMap: orm, metalnessMap: orm, emissiveMap: new Texture() });
   body.vertexColors = true;
   const glass = new MeshStandardMaterial({ name: BUS_MATERIAL.glass, transparent: true, opacity: 0.45 });
   const led = new MeshStandardMaterial({ name: BUS_MATERIAL.led, emissiveMap: new Texture() });
+  const shadow = new Texture();
+  const ground = new MeshStandardMaterial({ name: BUS_MATERIAL.ground, map: shadow, transparent: true });
   const g = new BoxGeometry(1, 1, 1);
   const node = new Group();
   node.name = "village_bus";
-  const meshes = [new Mesh(g, body), new Mesh(g, glass), new Mesh(g, led)];
+  const meshes = [new Mesh(g, body), new Mesh(g, glass), new Mesh(g, led), new Mesh(g, ground)];
   node.add(...meshes);
   const scene = new Group();
   scene.add(node);
-  return { scene, body, glass, led, orm, meshes };
+  return { scene, body, glass, led, ground, shadow, orm, meshes };
 }
 
 /** Run a material's onBeforeCompile on three's own physical shader (what the renderer would compile). */
@@ -81,32 +83,71 @@ describe("the village bus (village_bus.glb) dressed for the game", () => {
     expect(n.glass!.opacity).toBe(BUS_LOOK.glassOpacity);
     expect(n.glass!.depthWrite).toBe(false);
     expect(n.led!.emissiveIntensity).toBe(BUS_LOOK.ledDay);
-    expect(n.own).toHaveLength(3);
-    for (const m of [f.body, f.glass, f.led]) expect(n.own).not.toContain(m);
+    expect(n.own).toHaveLength(4);
+    for (const m of [f.body, f.glass, f.led, f.ground]) expect(n.own).not.toContain(m);
     expect(f.body.emissiveIntensity).toBe(1);
     expect(f.glass.opacity).toBe(0.45);
     expect(f.body.onBeforeCompile).not.toBe(body.onBeforeCompile);
   });
 
-  it("the paint and glass reflect the analytic sky: added to the indirect specular (and the clear coat's), each with its own strength", () => {
+  it("the paint reflects the analytic sky through the indirect specular (and the clear coat's)", () => {
     const n = prepareBus(busFile().scene, "high");
-    for (const [m, strength] of [
-      [n.body!, n.bodySky],
-      [n.glass!, n.glassSky],
-    ] as const) {
-      const s = compiled(m);
-      expect(s.fragmentShader).toContain("vec3 busSky(");
-      expect(s.fragmentShader).toContain("radiance += busSky( geometryViewDir, geometryNormal, material.roughness );");
-      expect(s.fragmentShader).toContain("clearcoatRadiance += busSky(");
-      // after three's own IBL (empty without an environment map), before the lights are summed up
-      expect(s.fragmentShader.indexOf("radiance += busSky(")).toBeGreaterThan(s.fragmentShader.indexOf("#include <lights_fragment_maps>"));
-      expect(s.fragmentShader.indexOf("radiance += busSky(")).toBeLessThan(s.fragmentShader.indexOf("#include <lights_fragment_end>"));
-      expect(s.uniforms.uBusSky).toBe(strength);
-      expect(s.uniforms.uBusZenith).toBeDefined();
-      expect(m.customProgramCacheKey()).toBe("village-bus-sky");
-    }
+    const s = compiled(n.body!);
+    expect(s.fragmentShader).toContain("vec3 busSky(");
+    expect(s.fragmentShader).toContain("uBusTreeline"); // the tree tops above the horizon
+    expect(s.fragmentShader).toContain("radiance += busSky( geometryViewDir, geometryNormal, material.roughness );");
+    expect(s.fragmentShader).toContain("clearcoatRadiance += busSky(");
+    // after three's own IBL (empty without an environment map), before the lights are summed up
+    expect(s.fragmentShader.indexOf("radiance += busSky(")).toBeGreaterThan(s.fragmentShader.indexOf("#include <lights_fragment_maps>"));
+    expect(s.fragmentShader.indexOf("radiance += busSky(")).toBeLessThan(s.fragmentShader.indexOf("#include <lights_fragment_end>"));
+    expect(s.fragmentShader).not.toContain("busF");
+    expect(s.uniforms.uBusSky).toBe(n.bodySky);
+    expect(s.uniforms.uBusZenith).toBeDefined();
+    expect(n.body!.customProgramCacheKey()).toBe("village-bus-sky-paint");
     // the signs do not reflect it
     expect(compiled(n.led!).fragmentShader).not.toContain("busSky");
+  });
+
+  it("the glass mirrors the sky by its own Fresnel over the tint and the cabin, in one pass", () => {
+    const n = prepareBus(busFile().scene, "high");
+    const s = compiled(n.glass!);
+    expect(s.fragmentShader).toContain("vec3 busSky(");
+    expect(s.fragmentShader).not.toContain("radiance += busSky(");
+    // the mix happens on the lit colour, just before it is written out (alpha raised toward 1 at grazing angles)
+    const at = s.fragmentShader.indexOf("float busF = uBusGlassF0");
+    expect(at).toBeGreaterThan(s.fragmentShader.indexOf("#include <lights_fragment_end>"));
+    expect(at).toBeLessThan(s.fragmentShader.indexOf("#include <opaque_fragment>"));
+    expect(s.fragmentShader).toContain("diffuseColor.a = busA;");
+    expect(s.uniforms.uBusSky).toBe(n.glassSky);
+    expect((s.uniforms.uBusGlassF0 as { value: number }).value).toBe(BUS_LOOK.glassF0);
+    expect(n.glass!.customProgramCacheKey()).toBe("village-bus-sky-glass");
+    // double-sided (the far windows) but drawn once, not back faces then front faces
+    expect(n.glass!.side).toBe(DoubleSide);
+    expect(n.glass!.forceSinglePass).toBe(true);
+  });
+
+  it("the contact shadow: black through the baked darkness, over the road, under the glass", () => {
+    const f = busFile();
+    for (const tier of ["high", "low"] as const) {
+      const n = prepareBus(f.scene, tier);
+      const g = n.ground!;
+      expect(g).toBeInstanceOf(MeshBasicMaterial);
+      expect(g.color.getHex()).toBe(0x000000);
+      expect(g.alphaMap).toBe(f.shadow);
+      expect(g.map).toBeNull();
+      expect(g.transparent).toBe(true);
+      expect(g.depthWrite).toBe(false);
+      expect(g.opacity).toBe(BUS_LOOK.groundShadow);
+      expect(g.polygonOffset).toBe(true);
+      let mesh: Mesh | null = null;
+      n.root.traverse((o) => {
+        if ((o as Mesh).isMesh && (o as Mesh).material === g) mesh = o as Mesh;
+      });
+      expect(mesh).not.toBeNull();
+      expect(mesh!.renderOrder).toBe(-1);
+      expect(mesh!.receiveShadow).toBe(false);
+      expect(mesh!.castShadow).toBe(false);
+    }
   });
 
   it("light tier: plain standard paint (no clear coat); shadows: none cast (the bake has its shadow), the avatars' taken on the rich tier only", () => {
@@ -122,7 +163,7 @@ describe("the village bus (village_bus.glb) dressed for the game", () => {
       n.root.traverse((o) => {
         if (!(o as Mesh).isMesh) return;
         expect(o.castShadow).toBe(false);
-        expect(o.receiveShadow).toBe(receive);
+        expect(o.receiveShadow).toBe(receive && (o as Mesh).material !== n.ground);
       });
     }
   });
@@ -149,9 +190,9 @@ describe("the village bus (village_bus.glb) dressed for the game", () => {
     const f = busFile();
     const n = prepareBus(f.scene, "low");
     const disposed = new Set<unknown>();
-    for (const m of [...n.own, f.body, f.glass, f.led]) m.addEventListener("dispose", () => disposed.add(m));
+    for (const m of [...n.own, f.body, f.glass, f.led, f.ground]) m.addEventListener("dispose", () => disposed.add(m));
     disposeBus(n);
     for (const m of n.own) expect(disposed.has(m)).toBe(true);
-    for (const m of [f.body, f.glass, f.led]) expect(disposed.has(m)).toBe(false);
+    for (const m of [f.body, f.glass, f.led, f.ground]) expect(disposed.has(m)).toBe(false);
   });
 });

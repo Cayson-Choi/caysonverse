@@ -1023,3 +1023,91 @@ export function checkMemorialProps(gltf: Gltf, byteLength: number): CheckResult[
   });
   return out;
 }
+
+// ---------------------------------------------------------------------------------------------------------
+// The village bus (village_bus.glb): its own file, always drawn with the village (bus review: nothing counted it).
+
+/**
+ * village_bus.glb's budget (the bus task: <= 40k triangles, <= 1.5 MB), its textures' side (one 1024 atlas and smaller
+ * maps) and its draw calls: one node, one primitive per material, the four materials the game dresses
+ * (client/src/village/villageBusPrep.ts BUS_MATERIAL).
+ */
+export const VILLAGE_BUS_BUDGET = { maxBytes: 1.5 * MB, maxTriangles: 40_000, maxTextureSide: 1024 } as const;
+export const VILLAGE_BUS_MATERIALS = ["M_bus", "M_bus_glass", "M_bus_led", "M_bus_ground"] as const;
+/**
+ * What the village scene draws of its two always-loaded models together: the village plan's 260k for village.glb plus
+ * the bus's own 40k (the bus is part of the village from the first frame).
+ */
+export const VILLAGE_SCENE_MAX_TRIANGLES = BUDGETS.village.maxTriangles + VILLAGE_BUS_BUDGET.maxTriangles;
+
+/** Check village_bus.glb: the node and its four materials (one primitive each), not light-mapped, budgets, texture sides. */
+export function checkVillageBus(gltf: Gltf, byteLength: number, bin: Uint8Array | null): CheckResult[] {
+  const out: CheckResult[] = [];
+  const nodes = gltf.nodes ?? [];
+  const materials = gltf.materials ?? [];
+  const meshNodes = nodes.filter((n) => n.mesh !== undefined);
+  const node = meshNodes.length === 1 && meshNodes[0]!.name === "village_bus" ? meshNodes[0]! : null;
+  out.push(
+    result(
+      node !== null,
+      "버스 노드",
+      node ? "메시가 있는 노드는 village_bus 하나예요" : `메시가 있는 노드: ${meshNodes.map((n) => n.name ?? "?").join(", ") || "없음"}`,
+    ),
+  );
+  const prims = node ? (gltf.meshes?.[node.mesh!]?.primitives ?? []) : [];
+  const used = prims.map((p) => (p.material === undefined ? "" : (materials[p.material]?.name ?? "")));
+  const want = [...VILLAGE_BUS_MATERIALS];
+  const sameSet = used.length === want.length && want.every((m) => used.filter((u) => u === m).length === 1);
+  out.push(
+    result(
+      sameSet,
+      "버스 재질·그리기",
+      sameSet ? `${want.join(", ")}: 재질마다 primitive 하나 (그리기 ${prims.length}번)` : `primitive 재질: ${used.join(", ") || "없음"} / 있어야 하는 것: ${want.join(", ")}`,
+    ),
+  );
+  const lightmapped = materials.filter((m) => (m.name ?? "").startsWith(LIGHTMAP_MATERIAL_PREFIX)).map((m) => m.name);
+  out.push(result(lightmapped.length === 0, "버스 라이트맵 없음", lightmapped.length === 0 ? "실시간 조명 재질이에요" : `LM_ 재질: ${lightmapped.join(", ")}`));
+  out.push(
+    result(
+      byteLength <= VILLAGE_BUS_BUDGET.maxBytes,
+      "버스 파일 크기",
+      `${fmtMB(byteLength)} (${byteLength} 바이트), 한도 ${fmtMB(VILLAGE_BUS_BUDGET.maxBytes)}`,
+    ),
+  );
+  const tris = countTriangles(gltf);
+  out.push(result(tris <= VILLAGE_BUS_BUDGET.maxTriangles, "버스 삼각형 수", `${tris}개, 한도 ${VILLAGE_BUS_BUDGET.maxTriangles}개`));
+  const sides: string[] = [];
+  let biggest = 0;
+  let unreadable = 0;
+  (gltf.images ?? []).forEach((image, i) => {
+    const view = image.bufferView !== undefined ? gltf.bufferViews?.[image.bufferView] : undefined;
+    const start = view?.byteOffset ?? 0;
+    const bytes = view && bin && start + view.byteLength <= bin.length ? bin.subarray(start, start + view.byteLength) : null;
+    const size = bytes ? imageSize(bytes) : null;
+    if (!size) {
+      unreadable += 1;
+      return;
+    }
+    biggest = Math.max(biggest, size.width, size.height);
+    sides.push(`${size.width}x${size.height}`);
+  });
+  out.push(
+    result(
+      unreadable === 0 && biggest <= VILLAGE_BUS_BUDGET.maxTextureSide,
+      "버스 텍스처 크기",
+      `${sides.join(", ") || "없음"}${unreadable ? `, 읽지 못한 이미지 ${unreadable}장` : ""} (한 변 한도 ${VILLAGE_BUS_BUDGET.maxTextureSide}px)`,
+    ),
+  );
+  return out;
+}
+
+/** The village scene's two always-drawn models together (village.glb + village_bus.glb) against VILLAGE_SCENE_MAX_TRIANGLES. */
+export function checkVillageSceneTriangles(village: Gltf, bus: Gltf): CheckResult {
+  const v = countTriangles(village);
+  const b = countTriangles(bus);
+  return result(
+    v + b <= VILLAGE_SCENE_MAX_TRIANGLES,
+    "마을 장면 삼각형 수 (마을 + 버스)",
+    `${v + b}개 = 마을 ${v} + 버스 ${b}, 한도 ${VILLAGE_SCENE_MAX_TRIANGLES}개 (마을 ${BUDGETS.village.maxTriangles} + 버스 ${VILLAGE_BUS_BUDGET.maxTriangles})`,
+  );
+}
