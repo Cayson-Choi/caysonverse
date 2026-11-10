@@ -6,6 +6,7 @@ import {
   MOVE_MAX_MSGS_PER_SEC,
   MOVE_ELAPSED_CEIL_MS,
   CHAT_RATE,
+  CHAT_TOO_FAST,
   EMOJI_RATE,
   JUMP_RATE,
   TYPING_RATE,
@@ -22,9 +23,6 @@ import { CHAT_NOT_NICE, checkProfanity as checkChatLine, type ProfanityResult } 
 
 // Re-exported so every room built on this base finds its spawn helper here.
 export { spawnInDisk } from "./movement";
-
-/** Korean notice sent to a sender whose chat was dropped for exceeding the rate. */
-const CHAT_TOO_FAST = "메시지가 너무 빨라요. 잠시 후 다시 시도해주세요.";
 
 /** The part of a room's synced state this base reads and writes. */
 export interface PlayersState {

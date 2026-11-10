@@ -6,7 +6,10 @@
             focuses it, then rides on the keyboard. The log's toggle hangs in the top-left
             column (HudTop) and its rows open as a bottom sheet. */
 
-/* ── Input bar (bottom centre) ── */
+/* ── Input bar (bottom centre) ──
+   ONE rounded bar (the look the field used to have on its own) holding the field, the length
+   counter near the limit, and at its end the send button (보내기, ChatInput.tsx). The field is
+   transparent inside it; the bar lights up while the field has the caret (:focus-within). */
 .cv-chat-input {
   position: fixed;
   left: 50%;
@@ -15,42 +18,165 @@
   z-index: 20;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 6px;
   /* Leaves room for the PC emoji row on the right (6 × 40 + 5 × 8 = 280, 16 from the edge):
      the bar narrows with the window instead of running under it. */
   width: clamp(240px, calc(100vw - 640px), 560px);
+  box-sizing: border-box;
+  padding: 3px;
+  background: rgba(18, 14, 36, 0.72);
+  border: 1px solid rgba(150, 130, 220, 0.35);
+  border-radius: 12px;
+  backdrop-filter: blur(6px);
+  cursor: text;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.cv-chat-input:focus-within {
+  border-color: rgba(170, 150, 255, 0.85);
+  background: rgba(24, 18, 48, 0.9);
 }
 
 .cv-chat-field {
   flex: 1;
   min-width: 0;
-  padding: 12px 16px;
+  height: 36px;
+  box-sizing: border-box;
+  padding: 0 4px 0 13px;
   font-size: 15px;
   color: #f2eeff;
-  background: rgba(18, 14, 36, 0.72);
-  border: 1px solid rgba(150, 130, 220, 0.35);
-  border-radius: 12px;
+  background: transparent;
+  border: 0;
   outline: none;
-  backdrop-filter: blur(6px);
-  transition: border-color 0.15s ease, background 0.15s ease;
 }
 
 .cv-chat-field::placeholder {
   color: rgba(210, 202, 240, 0.5);
 }
 
-.cv-chat-field:focus {
-  border-color: rgba(170, 150, 255, 0.85);
-  background: rgba(24, 18, 48, 0.9);
-}
-
 .cv-chat-counter {
   flex: none;
-  min-width: 58px;
+  min-width: 52px;
   font-size: 12px;
   font-variant-numeric: tabular-nums;
   text-align: right;
   color: rgba(210, 202, 240, 0.7);
+  cursor: default;
+}
+
+/* The send button: the HUD's purple accent (hud.css .is-on) in a rounded square whose corners
+   follow the bar's (12 px outside, 3 px padding → 9 px). Dimmed while the field is blank
+   (aria-disabled: it still swallows the press, so the caret stays in the field). */
+.cv-chat-send {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  color: #ffffff;
+  background: rgba(124, 98, 236, 0.92);
+  border: 1px solid rgba(196, 180, 255, 0.55);
+  border-radius: 9px;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  transition: background 0.15s ease, opacity 0.15s ease, transform 0.1s ease;
+}
+
+.cv-chat-send:hover {
+  background: rgba(142, 116, 252, 0.96);
+}
+
+.cv-chat-send:active {
+  transform: scale(0.94);
+}
+
+.cv-chat-send[aria-disabled="true"] {
+  opacity: 0.45;
+  color: rgba(236, 230, 255, 0.9);
+  background: rgba(96, 74, 166, 0.35);
+  border-color: rgba(150, 130, 220, 0.3);
+  cursor: default;
+}
+
+.cv-chat-send[aria-disabled="true"]:active {
+  transform: none;
+}
+
+.cv-chat-send svg {
+  width: 18px;
+  height: 18px;
+  margin-left: 2px; /* the plane's tip points right: optically centred */
+  fill: currentColor;
+  pointer-events: none; /* the button is the target, never its glyph */
+}
+
+/* The held line's words for a screen reader (ChatInput.tsx): a live region that is always in the bar, out of sight and
+   out of the flex row (absolute), so the bar's layout is the same with or without it. */
+.cv-chat-live {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* The note right above the bar while a quick line is held back (ChatInput.tsx: the server's own
+   "too fast" words). It rides with the bar — on a phone, on the keyboard, where the folded log
+   cannot be seen. Warm text on the bar's dark glass; it nudges each time a press is refused.
+   --cv-chat-note-lift: a line that already sits right above the bar (the classroom's team-chat line,
+   TeamChatNotice.tsx) lifts the note over itself, so neither hides the other. */
+.cv-chat-note {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 8px + var(--cv-chat-note-lift, 0px));
+  width: max-content;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 6px 12px;
+  font-size: 13px;
+  line-height: 1.35;
+  text-align: center;
+  color: #ffe1ad;
+  background: rgba(18, 14, 36, 0.9);
+  border: 1px solid rgba(255, 196, 120, 0.45);
+  border-radius: 10px;
+  backdrop-filter: blur(6px);
+  cursor: default;
+  transform: translateX(-50%);
+  animation: cv-chat-nudge 0.32s ease-out;
+}
+
+@keyframes cv-chat-nudge {
+  0% {
+    opacity: 0.35;
+    transform: translateX(-50%) translateY(4px);
+  }
+  35% {
+    opacity: 1;
+    transform: translateX(calc(-50% - 5px));
+  }
+  65% {
+    transform: translateX(calc(-50% + 4px));
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cv-chat-note {
+    animation: none;
+  }
 }
 
 /* ── Chat log (PC: bottom-left, above the input bar; collapsible) ──
@@ -156,14 +282,27 @@
 }
 
 .cv-touch .cv-chat-field {
-  padding: 13px 16px;
+  height: 42px;
   font-size: 16px;
   touch-action: manipulation;
 }
 
+/* A thumb-sized send button on a phone: the project's 48 px touch minimum (game/settings.ts MIN_TOUCH_PX). The bar
+   grows to 48 + 2 × 3 padding + 2 × 1 border = 56 px; at 320 px wide the field keeps ~180 px beside the counter. */
+.cv-touch .cv-chat-send {
+  width: 48px;
+  height: 48px;
+}
+
+.cv-touch .cv-chat-send svg {
+  width: 20px;
+  height: 20px;
+}
+
 /* The 💬 button: a round HudButton (hud.css) whose rectangle comes from game/hud.ts. It is
-   unmounted while the field has focus (the bar took its place); the rest of the cluster
-   hides under cv-chat-focus (action.css / emoji.css). */
+   unmounted while the field has focus (the bar took its place) and until the tap that took the
+   caret out is over (ChatInput.tsx: that tap's click must not land on it); the rest of the
+   cluster hides under cv-chat-focus (action.css / emoji.css) for as long. */
 .cv-chat-btn .cv-hud-glyph {
   font-size: 26px;
 }

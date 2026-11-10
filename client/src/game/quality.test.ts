@@ -20,6 +20,13 @@ describe("resolveQuality", () => {
     expect(resolveQuality("auto", false)).toBe("high");
   });
 
+  it("auto picks the light tier where WebGL is drawn in software (a blocked driver: the rich tier ran at 0.5 fps)", () => {
+    expect(resolveQuality("auto", false, true)).toBe("low");
+    expect(resolveQuality("auto", false, false)).toBe("high");
+    // An explicit choice is still honoured.
+    expect(resolveQuality("high", false, true)).toBe("high");
+  });
+
   it("an explicit choice wins over the device", () => {
     expect(resolveQuality("high", true)).toBe("high");
     expect(resolveQuality("high", false)).toBe("high");

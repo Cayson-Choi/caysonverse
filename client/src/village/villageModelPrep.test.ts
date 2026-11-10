@@ -8,6 +8,7 @@ import {
   MeshBasicMaterial,
   Object3D,
   PlaneGeometry,
+  PointsMaterial,
   SRGBColorSpace,
   ShaderLib,
   ShaderMaterial,
@@ -30,6 +31,7 @@ import {
   LIT,
   STAR_COUNT,
   STAR_RADIUS,
+  STAR_SIZE,
   VILLAGE_CAMERA_PLANES,
   VILLAGE_GROUND_DECAL,
   applyDayNight,
@@ -64,6 +66,7 @@ import { DAY_LIFT, NIGHT_LOOK, dayNightAt, indoorState, type DayNightState } fro
 import { parseKstTime } from "@caysonverse/shared/village/sunClock";
 import { HALL_ACTIVE_MAP, VILLAGE_ACTIVE_MAP, VILLAGE_CAMERA_PAD } from "../game/activeMap";
 import { DEFAULT_DECAL_Y } from "../game/groundDecal";
+import { setRenderScale } from "../game/renderScale";
 
 /**
  * A node tree with the names and materials the village.glb contract promises (Task 6 report): the same shape the
@@ -605,6 +608,31 @@ describe("prepareVillage: the model dressed for the game", () => {
     for (const r of unique) expect(seen.get(r), (r as { name?: string }).name ?? String(r)).toBe(1);
   });
 
+  it("the dressed village is frozen in place: no node's matrix is recomputed per frame, and each keeps its world matrix", () => {
+    const f = fixture();
+    const placed = f.root.getObjectByName("village_lm_11")!;
+    placed.position.set(3, 1, -7);
+    placed.updateMatrix();
+    const nodes = prepareVillage(f.root, new Texture(), "high");
+    let n = 0;
+    nodes.root.traverse((o) => {
+      n++;
+      expect(o.matrixAutoUpdate, o.name).toBe(false);
+      expect(o.matrixWorldAutoUpdate, o.name).toBe(false);
+    });
+    expect(n).toBeGreaterThan(5);
+    const mesh = nodes.root.getObjectByName("village_lm_11")!;
+    expect(new Vector3().setFromMatrixPosition(mesh.matrixWorld).toArray()).toEqual([3, 1, -7]);
+    // a scene's per-frame matrix walk leaves it where it is (the root sits at the origin)
+    const scene = new Object3D();
+    scene.add(nodes.root);
+    mesh.position.set(100, 100, 100); // even a stray write is not picked up
+    scene.updateMatrixWorld();
+    expect(new Vector3().setFromMatrixPosition(mesh.matrixWorld).toArray()).toEqual([3, 1, -7]);
+    // the source (the loader's cached scene) is left as it was
+    expect(f.root.getObjectByName("village_lm_11")!.matrixAutoUpdate).toBe(true);
+  });
+
   it("an InstancedMesh is one draw call whatever its count (the 7,000 far cards are one call)", () => {
     const nodes = prepareVillage(fixture().root, new Texture(), "low");
     const b = drawCallBudget(nodes.root);
@@ -799,6 +827,23 @@ describe("applyDayNight: the clock's numbers into the model (Task 7A)", () => {
     }
     expect(STAR_RADIUS).toBeLessThan(1400); // in front of the dome
     expect(a.visible).toBe(false);
+  });
+
+  it("a star keeps its size on screen when the scene is drawn at a lower render scale and stretched (renderScale.ts)", () => {
+    const stars = makeStars(4);
+    const m = stars.material as PointsMaterial;
+    const draw = () => stars.onBeforeRender(null as never, null as never, null as never, null as never, m, null as never);
+    draw();
+    expect(m.size).toBe(STAR_SIZE);
+    setRenderScale(1 / 1.5);
+    try {
+      draw();
+      expect(m.size).toBeCloseTo(STAR_SIZE / 1.5, 12);
+    } finally {
+      setRenderScale(1);
+    }
+    draw();
+    expect(m.size).toBe(STAR_SIZE);
   });
 });
 

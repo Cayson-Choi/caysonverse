@@ -18,6 +18,18 @@ import { advancePlayout, playoutGaitSpeed } from "./playout";
 import { nextGait } from "./locomotion";
 import { remoteGaitProbe } from "./gait";
 import type { Gait } from "./gait";
+import {
+  REMOTE_SPEED_SMOOTH_S,
+  alongFacing,
+  createLoopDriver,
+  handoverTime,
+  lookStride,
+  loopFade,
+  loopSpeed,
+  loopTimeScale,
+  stepFacing,
+  stepLoop,
+} from "./stride";
 import { decideMixerTick } from "./mixerThrottle";
 import { typingRegistry } from "./typing";
 import {
@@ -85,6 +97,7 @@ export function RemotePlayer({
   // the local player). The hook owns its materials and the shared merged geometry and
   // releases them on unmount; this component owns only its mixer (cleanup below).
   const look = useMemo(() => lookFromAppearance(appearance), [appearance]);
+  const stride = useMemo(() => lookStride(look), [look]);
   const { avatar, animations } = useAvatar(look, { probeId: sessionId });
   const mixer = useMemo(() => new AnimationMixer(avatar.root), [avatar]);
 
@@ -118,6 +131,17 @@ export function RemotePlayer({
   const shadowRef = useRef<Group>(null);
   // Current gait (idle / walk / run), derived from interpolated speed only.
   const gaitRef = useRef<Gait>("idle");
+  // The locomotion loop on the body (stride.ts): picked by the speed the avatar is DRAWN at while it moves (the gait
+  // above, or any drawn motion) and played at the rate that keeps the foot on the ground still. Null while a one-shot
+  // (sit / stand / jump) owns the body; the locomotion step puts a loop back on.
+  const loopRef = useRef<Gait | null>("idle");
+  const driveRef = useRef(createLoopDriver());
+  // The walk / run loop fading out after a walk <-> run switch, and how long (s) it still shows: it keeps following
+  // the drawn speed while it does (a stop freezes it instead, and a one-shot leaves it be).
+  const fadingRef = useRef<{ loop: Gait; left: number } | null>(null);
+  // False until the first frame after the bind: that frame moves the drawn pose from where the bind seeded it (the
+  // newest snapshot) to the render time's, behind it — a jump, not a step (it read 12-24 m/s and started the run cycle).
+  const primedRef = useRef(false);
   const fadeRef = useRef(0); // remaining crossfade time (s); mixer ticks while > 0
   // Seating (remoteSeat.ts): `up` = normal loco; `sitting`/`standing` are the one-shot transient clips; `seated` is
   // the held Sit_Chair_Idle pose. The avatar sits down / gets up when its render time reaches the seat change (not
@@ -160,6 +184,9 @@ export function RemotePlayer({
     const startedSeated = startedIndex >= 0;
     const rest = startedSeated ? sitIdleAction.current : idleAction.current;
     rest?.reset().fadeIn(0).play();
+    loopRef.current = startedSeated ? null : "idle";
+    fadingRef.current = null;
+    primedRef.current = false;
     const newest = rec?.snapshots[rec.snapshots.length - 1];
     if (newest) {
       drawnRef.current.x = newest.x;
@@ -187,9 +214,48 @@ export function RemotePlayer({
     };
   }, [sessionId]);
 
-  /** The looping action that belongs to a gait (null if the clip is missing). */
-  const gaitAction = (g: Gait): AnimationAction | null =>
-    g === "run" ? runAction.current : g === "walk" ? walkAction.current : idleAction.current;
+  /** The looping action of a loop (null if the clip is missing). */
+  const loopAction = (l: Gait): AnimationAction | null =>
+    l === "run" ? runAction.current : l === "walk" ? walkAction.current : idleAction.current;
+
+  /**
+   * Hand the body from the loop on it (fading out; none while a one-shot had it) to loop `to` (fading in) at drawn
+   * speed `speed` (m/s), and keep the mixer ticking through the crossfade. As for the local player (LocalPlayer
+   * switchLoop): a walk / run loop starts on the outgoing loop's step (or, from standing, with its left foot planted)
+   * at the rate that keeps that foot still, and stopping freezes the outgoing loop's feet while they fade out.
+   */
+  const switchLoop = (to: Gait, speed: number): void => {
+    const from = loopRef.current;
+    const fade = loopFade(from, to);
+    const out = from === null ? null : loopAction(from);
+    if (out) {
+      out.fadeOut(fade);
+      if (to === "idle") out.timeScale = 0;
+    }
+    fadingRef.current = out && from !== "idle" && to !== "idle" ? { loop: from as Gait, left: fade } : null;
+    loopRef.current = to;
+    fadeRef.current = Math.max(fadeRef.current, fade);
+    const loop = loopAction(to);
+    if (!loop) return;
+    loop.reset();
+    if (to === "idle") {
+      loop.timeScale = 1;
+    } else {
+      const handFrom = out && (from === "walk" || from === "run") ? stride[from] : null;
+      const outDuration = out?.getClip().duration ?? 0;
+      loop.time = handoverTime(handFrom, out?.time ?? 0, outDuration, stride[to], loop.getClip().duration);
+      loop.timeScale = loopTimeScale(to, speed, stride, loop.time, loop.getClip().duration);
+    }
+    loop.fadeIn(fade).play();
+    reportClip(loop);
+  };
+
+  /** Fade out the loop on the body (a one-shot takes it over) — it is off the body from now on. */
+  const releaseLoop = (fade: number): void => {
+    if (loopRef.current !== null) loopAction(loopRef.current)?.fadeOut(fade);
+    loopRef.current = null;
+    fadingRef.current = null;
+  };
 
   /** Settle on a gait (the caller owns the crossfade) and mirror it to the DEV probe. */
   const setGait = (g: Gait): void => {
@@ -264,7 +330,7 @@ export function RemotePlayer({
   const seatTransition = (what: SeatTransition): number => {
     switch (what) {
       case "sit": {
-        gaitAction(gaitRef.current)?.fadeOut(ANIM_FADE);
+        releaseLoop(ANIM_FADE);
         setGait("idle");
         sitIdleAction.current?.fadeOut(ANIM_FADE);
         sitStandAction.current?.fadeOut(ANIM_FADE);
@@ -287,6 +353,7 @@ export function RemotePlayer({
       case "up":
         sitStandAction.current?.fadeOut(ANIM_FADE);
         idleAction.current?.reset().fadeIn(ANIM_FADE).play();
+        loopRef.current = "idle";
         reportClip(idleAction.current);
         setGait("idle");
         fadeRef.current = ANIM_FADE;
@@ -308,6 +375,8 @@ export function RemotePlayer({
     const renderT = advancePlayout(rec.playout, rec.snapshots, nowMs);
     const target = sample(rec.snapshots, renderT);
     const drawn = drawnRef.current;
+    const fromX = drawn.x;
+    const fromZ = drawn.z;
     let snapped = false;
     if (target) {
       snapped = exceedsSnapDistance(drawn.x, drawn.z, target.x, target.z);
@@ -322,6 +391,15 @@ export function RemotePlayer({
       // The body the local player collides with is the one drawn here (remoteStore.forEachRemotePosition).
       noteRemoteDrawn(rec, drawn.x, drawn.z);
     }
+    // The speed (m/s) this avatar is drawn going at this frame — what the viewer sees, playout warp included — which
+    // the loop on its body follows (stride.ts). A snap is a teleport, not a step; seat glides are the clips' own; the
+    // first frame after the bind moves the drawn pose off where the bind seeded it.
+    const primed = primedRef.current;
+    primedRef.current = true;
+    const drawnDx = drawn.x - fromX;
+    const drawnDz = drawn.z - fromZ;
+    const drawnSpeed =
+      primed && target && !snapped && seat.mode === "up" && delta > 0 ? Math.hypot(drawnDx, drawnDz) / delta : 0;
 
     // Hide what hangs inside the bench while the avatar is on it (benchClip.ts), as for the local player.
     const benchClip = benchClipRef.current;
@@ -338,7 +416,6 @@ export function RemotePlayer({
     //    one drops the hop (no late replay), and a hop in the air when the seat is
     //    confirmed just fades out. Registry reads allocate nothing.
     let lift = 0;
-    let landed = false;
     {
       const canJump = seat.mode === "up";
       const entry = currentJump(sessionId, canJump, nowMs);
@@ -349,7 +426,7 @@ export function RemotePlayer({
         if (phase === "takeoff") {
           jumpSeqRef.current = hop.seq;
           if (jump) {
-            gaitAction(gaitRef.current)?.fadeOut(JUMP_FADE_IN_S);
+            releaseLoop(JUMP_FADE_IN_S);
             jump.timeScale = jumpTimeScale(jump.getClip().duration);
             jump.reset();
             jump.setLoop(LoopOnce, 1);
@@ -362,15 +439,9 @@ export function RemotePlayer({
       } else if (phase === "landed" || phase === "dropped") {
         jumpSeqRef.current = -1;
         if (jump) {
+          // The take-off took the loop off the body: on landing step 4 (this same frame) puts on the one for the gait
+          // at the speed the avatar is drawn at.
           jump.fadeOut(ANIM_FADE);
-          if (phase === "landed") {
-            // Landed: resume the gait loop; step 4 re-syncs it next frame if the
-            // avatar started or stopped moving meanwhile.
-            const loop = gaitAction(gaitRef.current);
-            loop?.reset().fadeIn(ANIM_FADE).play();
-            reportClip(loop);
-            landed = true;
-          }
           fadeRef.current = ANIM_FADE; // keep the mixer ticking through the crossfade
         }
       }
@@ -403,20 +474,39 @@ export function RemotePlayer({
 
     // 4) Locomotion from interpolated speed — ONLY while standing (a seated avatar
     //    must never show the walk or run cycle, even if a stray snapshot implies speed)
-    //    and not mid-hop (the hop owns the body; landing resumes the loop above).
-    if (target && seat.mode === "up" && jumpSeqRef.current === -1 && !landed) {
+    //    and not mid-hop (the hop owns the body; on landing this puts the loop back on).
+    if (target && seat.mode === "up" && jumpSeqRef.current === -1) {
       // Gait speed is a windowed path length (not the noisy per-segment speed), so
       // bursts and jitter cannot flip walk <-> run; held on its newest pose, the avatar
       // goes idle (see playoutGaitSpeed / remoteGaitSpeed).
       const speed = snapped ? 0 : playoutGaitSpeed(rec.playout, rec.snapshots);
       const gait = nextGait(gaitRef.current, speed);
-      if (gait !== gaitRef.current) {
-        gaitAction(gaitRef.current)?.fadeOut(ANIM_FADE);
-        const loop = gaitAction(gait);
-        loop?.reset().fadeIn(ANIM_FADE).play();
-        reportClip(loop);
-        setGait(gait);
-        fadeRef.current = ANIM_FADE;
+      if (gait !== gaitRef.current) setGait(gait);
+      // The loop on the body: the one its drawn speed calls for while it moves (Idle while it is held still), played
+      // every frame at the rate that keeps the planted foot still. It steps off as soon as it is DRAWN moving — the
+      // windowed gait speed ramps over SPEED_WINDOW_MS, and Idle's feet would slide along with the body until then —
+      // on the walk cycle (stepLoop: a few jerky frames of a walker just mounted are no run), and a remote that starts
+      // running is not stuck on a too-slow loop while the gait catches up: its smoothed drawn speed takes it on.
+      // Backward while it is drawn backing up (a first-person player's S), and a loop still fading out after a walk
+      // <-> run switch follows the speed too.
+      const drive = driveRef.current;
+      const moving = gait !== "idle" || drawnSpeed > 0;
+      const loop = stepLoop(drive, loopRef.current ?? "idle", moving, drawnSpeed, delta, REMOTE_SPEED_SMOOTH_S);
+      stepFacing(drive, drawnSpeed > 0 ? alongFacing(drawnDx, drawnDz, drawn.yaw) : Number.NaN, delta);
+      const loopSpeedNow = loopSpeed(drive);
+      if (loop !== loopRef.current) switchLoop(loop, loopSpeedNow);
+      else if (loop !== "idle") {
+        const playing = loopAction(loop);
+        if (playing) {
+          playing.timeScale = loopTimeScale(loop, loopSpeedNow, stride, playing.time, playing.getClip().duration);
+        }
+      }
+      const fading = fadingRef.current;
+      if (fading) {
+        const out = loopAction(fading.loop);
+        if (out) out.timeScale = loopTimeScale(fading.loop, loopSpeedNow, stride, out.time, out.getClip().duration);
+        fading.left -= delta;
+        if (fading.left <= 0) fadingRef.current = null;
       }
     }
 
@@ -434,7 +524,7 @@ export function RemotePlayer({
     // 7) Mixer discipline: paused while idle/seated-settled; every-frame during a
     //    crossfade OR a one-shot sit/stand/jump clip; distance-throttled while walking/running.
     const transient = seat.mode === "sitting" || seat.mode === "standing" || jumpSeqRef.current !== -1;
-    const active = gaitRef.current !== "idle" || fadeRef.current > 0 || transient;
+    const active = (loopRef.current !== null && loopRef.current !== "idle") || fadeRef.current > 0 || transient;
     if (active) {
       accDeltaRef.current += delta;
       framesSinceRef.current += 1;

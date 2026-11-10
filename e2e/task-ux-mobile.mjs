@@ -458,7 +458,6 @@ try {
         SEATS: W.SEATS,
         MOVE_SPEED: K.MOVE_SPEED,
         RUN_SPEED: K.RUN_SPEED,
-        RUN_SPEED_MULTIPLIER: K.RUN_SPEED_MULTIPLIER,
         stickRadius: J.STICK_RADIUS_PX,
         stickEdge: J.STICK_EDGE_PX,
         deadZone: J.JOYSTICK_DEAD_ZONE,
@@ -485,7 +484,7 @@ try {
     coachPollMs: shared.coachPollMs,
   };
   // Not a copy of the numbers: only that the modules loaded and the relations the steps rely on hold.
-  check("shared constants loaded from the source modules", MOVE_SPEED > 0 && Math.abs(RUN_SPEED - MOVE_SPEED * shared.RUN_SPEED_MULTIPLIER) < 1e-9 && SEATS.length > 1 && CODE.stickRadius > 0 && CODE.doubleTapMs > 0 && CODE.coachPollMs > 0, {
+  check("shared constants loaded from the source modules", MOVE_SPEED > 0 && RUN_SPEED > 2 * MOVE_SPEED && SEATS.length > 1 && CODE.stickRadius > 0 && CODE.doubleTapMs > 0 && CODE.coachPollMs > 0, {
     MOVE_SPEED, RUN_SPEED, seats: SEATS.length, ...CODE,
   });
   // The brief's pushes: 20 px up must read as a walk, 60 px up as a run.
@@ -621,7 +620,7 @@ try {
     const sp = speedOf(rowsDrag, tAfterDrag, Date.now(), 100);
     const st = await stickState(pa);
     check("the right-half drag turned the camera (orbit.yaw changed)", Math.abs(norm(yaw1 - yaw0)) > 0.3, { yaw0: r2(yaw0), yaw1: r2(yaw1) });
-    check("…while the avatar kept walking on the stick", sp > MOVE_SPEED * 0.7 && dist(posA, await getPos(pa)) > 1.5 && st.active, { speed: r2(sp), stickActive: st.active });
+    check("…while the avatar kept walking on the stick", sp > MOVE_SPEED * 0.7 && dist(posA, await getPos(pa)) > MOVE_SPEED * 0.6 && st.active, { speed: r2(sp), stickActive: st.active });
     check("…and the drag set no click target", (await getTarget(pa)) === null, {});
 
     // finger 3: pressing the stick zone while finger 1 owns the stick is ignored
@@ -787,8 +786,13 @@ try {
     check("A's own speech bubble shows the line", mine.includes("안녕하세요 폰이에요"), { bubbles: mine });
     const onB = await pollUntil(() => pb.evaluate((sid) => window.__cv.getBubbles().filter((b) => b.sid === sid).map((b) => b.text), sidA), (l) => l.includes("안녕하세요 폰이에요"), 4000);
     check("B sees the bubble too", onB.includes("안녕하세요 폰이에요"), { bubbles: onB });
+    // 2026-11-10 (owner's ask): a sent line keeps the caret — and the keyboard — in the field for the next one;
+    // Enter on the now empty field folds the chat away.
     const after = await pa.evaluate(() => document.activeElement?.className ?? "");
-    check("sending folds the chat input again", !/cv-chat-field/.test(after), { active: after });
+    check("sending keeps the chat input open for the next line", /cv-chat-field/.test(after), { active: after });
+    await pa.keyboard.press("Enter");
+    const folded = await pollUntil(() => pa.evaluate(() => document.activeElement?.className ?? ""), (cls) => !/cv-chat-field/.test(cls), 2000);
+    check("Enter on the empty field folds the chat input again", !/cv-chat-field/.test(folded), { active: folded });
     await sleep(500);
   });
 

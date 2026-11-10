@@ -131,17 +131,18 @@ describe("sample — a resting pair (a stop and the next start, or a join and th
   it("stands on the first pose, then steps off at MOVE_SPEED just in time to reach the second", () => {
     // 0.4 m after a 1 s pause: a straight line would creep through the whole pause.
     const buf = [snap(0, 0, 0, 0), snap(1000, 0.4, 0, 1)];
-    const stepOff = 1000 - (0.4 / MOVE_SPEED) * 1000; // 900
+    const stepOff = 1000 - (0.4 / MOVE_SPEED) * 1000; // 800 at the 2 m/s walk
+    const halfway = (stepOff + 1000) / 2;
     expect(restTailStart(buf[0], buf[1])).toBeCloseTo(stepOff, 9);
     expect(sample(buf, 500)!.x).toBe(0);
     expect(sample(buf, stepOff)!.x).toBe(0);
-    expect(sample(buf, 950)!.x).toBeCloseTo(0.2, 9);
-    expect(sample(buf, 950)!.speed).toBeCloseTo(MOVE_SPEED, 9);
+    expect(sample(buf, halfway)!.x).toBeCloseTo(0.2, 9);
+    expect(sample(buf, halfway)!.speed).toBeCloseTo(MOVE_SPEED, 9);
     expect(sample(buf, 1000)!.x).toBe(0.4);
     // The facing turns with the step-off, not across the whole pause (it used to be half-way round at 500 ms).
     expect(sample(buf, 500)!.yaw).toBe(0);
     expect(sample(buf, stepOff)!.yaw).toBe(0);
-    expect(sample(buf, 950)!.yaw).toBeCloseTo(0.5, 9);
+    expect(sample(buf, halfway)!.yaw).toBeCloseTo(0.5, 9);
     expect(sample(buf, 1000)!.yaw).toBe(1);
   });
 
@@ -285,25 +286,27 @@ describe("remoteGaitSpeed (smaller of the short and long windows)", () => {
   });
 
   it("is not fooled by a stall-then-catch-up burst that the short window alone reads as a sprint", () => {
-    // A 4 m/s walker whose patch was 320 ms late, then three patches queued behind it
-    // arrived 10-30 ms apart: 0.4 m steps at 400 ms of wall-clock per 1.6 m.
+    // A MOVE_SPEED walker whose patch was 320 ms late, then three patches queued behind it
+    // arrived 10-30 ms apart: MOVE_SPEED x 0.1 s steps, four of them in 400 ms of wall-clock.
+    const k = MOVE_SPEED / 4; // the positions below are a 4 m/s walker's (0.4 m steps), scaled to the walk
     const buf = [
-      snap(720, 2.4, 0),
-      snap(730, 2.8, 0),
-      snap(1050, 3.2, 0),
-      snap(1150, 3.6, 0),
-      snap(1160, 4.0, 0),
-      snap(1170, 4.4, 0),
-      snap(1200, 4.8, 0),
-      snap(1300, 5.2, 0),
-      snap(1400, 5.6, 0),
+      snap(720, 2.4 * k, 0),
+      snap(730, 2.8 * k, 0),
+      snap(1050, 3.2 * k, 0),
+      snap(1150, 3.6 * k, 0),
+      snap(1160, 4.0 * k, 0),
+      snap(1170, 4.4 * k, 0),
+      snap(1200, 4.8 * k, 0),
+      snap(1300, 5.2 * k, 0),
+      snap(1400, 5.6 * k, 0),
     ];
     const renderT = 1333;
     const short = windowedSpeed(buf, renderT, SPEED_WINDOW_MS);
     const long = windowedSpeed(buf, renderT, SPEED_LONG_WINDOW_MS, SPEED_LONG_MIN_MS);
-    expect(short).toBeGreaterThan(RUN_ON_SPEED); // would promote a walker to run
-    expect(long).toBeLessThan(RUN_ON_SPEED); // the long window contains the whole stall
+    expect(short).toBeGreaterThan(1.7 * MOVE_SPEED); // a burst: nearly twice the walk (at the old 4 m/s walk, over RUN_ON)
+    expect(long).toBeLessThan(1.1 * MOVE_SPEED); // the long window contains the whole stall
     expect(remoteGaitSpeed(buf, renderT)).toBeCloseTo(long, 9);
+    expect(remoteGaitSpeed(buf, renderT)).toBeLessThan(RUN_ON_SPEED);
   });
 
   it("still ramps and decays on the short window (the long reading must not delay stopping)", () => {
