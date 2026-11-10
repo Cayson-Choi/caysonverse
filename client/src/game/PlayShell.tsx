@@ -14,6 +14,7 @@ import { ClickMarker } from "./ClickMarker";
 import { NametagSystem } from "./NametagSystem";
 import { RenderStatsProbe } from "./RenderStatsProbe";
 import { QualityEffects, ShadowFloor, useQualityTier } from "./QualityEffects";
+import { SceneWarmUp } from "./SceneWarmUp";
 import { QUALITY, exposureFor, skyBeforeToneMap } from "./quality";
 import { mapBounds, setActiveMap, type ActiveMap } from "./activeMap";
 import { overviewAllowed } from "./indoorCamera";
@@ -309,6 +310,7 @@ export function PlayShell(p: PlayShellProps) {
                 <RemotePlayers room={room} selfPose={pose} selfSeat={seat} blobShadow={profile.blobShadows} areas={p.areas} />
                 <OverviewMarker pose={pose} />
                 <ClickMarker />
+                <SceneWarmUp key={tier} emoji />
               </Suspense>
             </GroundDecalContext.Provider>
           </LightRigContext.Provider>

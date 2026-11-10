@@ -35,6 +35,7 @@ import {
   type SkyMapping,
 } from "./villageWater";
 import type { ToneCurve } from "../game/quality";
+import { renderScale } from "../game/renderScale";
 import { VILLAGE_LAYOUT } from "@caysonverse/shared/village/villageLayout";
 import type { DayNightState } from "./dayNightBlend";
 
@@ -695,7 +696,22 @@ export function prepareVillage(
     root.add(stars);
   }
 
+  freezeStatic(root);
   return { root, water, falls, sky, skyMapping, hazed, graded, stars, own };
+}
+
+/**
+ * The village never moves (perf/interaction-latency): its ~550 nodes keep the matrices computed here once. Without this,
+ * three recomposes every node's matrix and multiplies it into its world matrix on every frame (8 % of a frame's
+ * JavaScript on a slow CPU). Only the day and night's visibility and materials change after this, never a transform.
+ * The root is drawn at the scene's origin (VillageModel's primitive), so its world matrices are its own.
+ */
+export function freezeStatic(root: Object3D): void {
+  root.updateMatrixWorld(true);
+  root.traverse((o) => {
+    o.matrixAutoUpdate = false;
+    o.matrixWorldAutoUpdate = false;
+  });
 }
 
 /** The stars: this many, between 8 and 90 degrees above the horizon, `STAR_RADIUS` m from the dome's centre (inside the dome). */
@@ -713,6 +729,9 @@ function rng(seed: number): () => number {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
 }
+
+/** A star's size on screen (px at the canvas's dpr). */
+export const STAR_SIZE = 2.2;
 
 /** The night sky's stars (points of mixed brightness, never in the fog, never lit). Invisible until the night fades them in. */
 export function makeStars(count = STAR_COUNT): Points {
@@ -737,7 +756,7 @@ export function makeStars(count = STAR_COUNT): Points {
   g.setAttribute("position", new Float32BufferAttribute(pos, 3));
   g.setAttribute("color", new Float32BufferAttribute(col, 3));
   const m = new PointsMaterial({
-    size: 2.2,
+    size: STAR_SIZE,
     sizeAttenuation: false,
     vertexColors: true,
     transparent: true,
@@ -747,6 +766,11 @@ export function makeStars(count = STAR_COUNT): Points {
     toneMapped: false,
   });
   const stars = new Points(g, m);
+  // The size is in screen pixels: drawn at a lower render scale and stretched over the screen (renderScale.ts), a star
+  // shrinks by the same share so it comes out the same size.
+  stars.onBeforeRender = () => {
+    m.size = STAR_SIZE * renderScale();
+  };
   stars.name = "village_stars";
   stars.frustumCulled = false;
   stars.visible = false;

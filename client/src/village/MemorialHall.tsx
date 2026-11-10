@@ -18,6 +18,7 @@ import {
 } from "three";
 import { VILLAGE_LAYOUT, type CubbyAnchor } from "@caysonverse/shared/village/villageLayout";
 import { DRACO_PATH } from "../game/hub/hubModelPrep";
+import { SceneWarmUp } from "../game/SceneWarmUp";
 import { buildCubbyPropMeshes, layoutCubbyProps, makePhotoMaterial, placementMatrix } from "./cubbyProps";
 import { burningCandles, candleClock, clearCandles, pruneCandles, showInstances } from "./hallCandles";
 import { MEMORIAL_LIGHTMAP_URL, MEMORIAL_MODEL_URL, MEMORIAL_PROPS_URL, disposeMemorial, prepareMemorial } from "./memorialModelPrep";
@@ -239,6 +240,7 @@ export function HallArea() {
       <LoadBoundary fallback={<HallRoom withPad={false} />} onReset={clearMemorialCaches} notice="추모관을 불러오지 못했어요. 잠시 뒤 다시 불러올게요.">
         <Suspense fallback={<HallRoom withPad={false} />}>
           <MemorialHall />
+          <SceneWarmUp />
         </Suspense>
       </LoadBoundary>
       <DoorPad pad={VILLAGE_LAYOUT.memorial.interior.doorPad} />
