@@ -3,7 +3,8 @@
 // A sweep of real clicks (a mouse on a PC, CDP finger taps on a phone) over the canvas in 케이슨 마을 (the plaza, the
 // lane and forecourt, a plot lawn, the creek), the memorial hall's interior, the legacy world and the escape hall, plus
 // named cases (the fountain, the own avatar, a house wall, the memorial, a lane, the forecourt, a plot lawn, clicks from a
-// bench seat, the creek, past the creek, past the area) and a long walk toward a far ring.
+// bench seat, the creek, past the creek, past the area, a stop under a crown, a stop off the screen, a step's riser, a
+// pinhole in a crown, a drag that came back), a long walk toward a far ring and a phone tap while a walk arrives.
 //
 //   server/: TEACHER_KEYS_FILE=e2e/fixtures/teacher-keys.e2e.json PORT=2697 npx tsx src/index.ts   (the path is the repo root's)
 //   client/: VITE_SERVER_URL=http://localhost:2697 npx vite --port 5297 --strictPort
@@ -18,21 +19,32 @@
 //    the lawn seen between leaves). The surface is "ground" — what a body can stand on, the walk rule of the spec —
 //    when it is low ground (facing up, n.y >= 0.8, no higher than 12 cm) inside the area and clear of every collider
 //    grown by the player's radius, or out in the open (no collider) a raised flat up to a step's 46 cm (the bridge's
-//    deck, the memorial's steps) or a curb's side (a face no higher than 12 cm). Otherwise it is an avatar, a solid
-//    thing (a wall, a bench, a roof, leaves), low ground in a collider or past the area, or nothing. Two cases may go
-//    either way and are never "missing": leaves the camera's near fade dithers ("leafy": the dither follows the screen
-//    pixel), ground seen through a gap right at a leaf's edge ("ground-leafedge": a neighbouring pixel shows it), and
-//    a click right at a body's outline ("avatar-edge": a body 2 px away; the idle pose moves it between look and click).
+//    deck, the memorial's steps) or a curb's side (a face that ENDS no higher than 12 cm: measured straight down just
+//    behind the face — a step's riser clicked low is a solid face, round 3 review). Otherwise it is an avatar, a solid
+//    thing (a wall, a bench, a roof, leaves), low ground in a collider or past the area, or nothing. Some cases may go
+//    either way: leaves the camera's near fade dithers ("leafy": the dither follows the screen pixel), ground seen
+//    through a gap right at a leaf's edge ("ground-leafedge": a neighbouring pixel shows it), a click right at a body's
+//    outline ("avatar-edge": a body 2 px away, or ground 2 px off a body; the idle pose moves it between look and
+//    click) and right at a solid thing's edge ("solid-edge": ground 2 px away).
 //  - the ring: where it is (its centre against the surface under the cursor, its size as drawn) and how much of it
 //    reaches the screen. Three renders of the same frame (as drawn / the ring forced on top / the ring hidden) give the
-//    drawn fraction; rays from the camera to 17 points of the ring (weighted by their area on the screen) give the
-//    fraction a solid thing above 15 cm may hide (a bench, a wall, an avatar, leaves; where a sample looks through
-//    leaves its whole share, since one pixel cannot say how much of its sector they cover). Ground or a curb in front of
-//    the ring never excuses a hidden ring.
-// Fails: a clean ground click with no ring (missing); a ring drawn less than the oracle allows (hidden; "sunk" too when
-// ground or a curb is what covers it, or the ring lies under the clicked surface); a ring off the screen or too small
-// to read (tiny: under 6 px tall); a ring away from the click or on a non-ground click that the avatar then does not
-// reach (misleading); a ring that is lost while the avatar walks to it (pop-in).
+//    drawn fraction; rays from the camera to 17 points of the ring (weighted by their area on the screen) sort what may
+//    cover it: a body (it moves), a solid thing in front rising more than the ring sees over (15 cm above the ring's
+//    plane: a bench, a wall, leaves), or — never an excuse — ground or a curb lower than that, or anything raised inside
+//    the ring's own band (the ring lies IN it: a step, a planter; round 3 review). Where a sample looks through leaves its
+//    whole share is uncertain (one pixel cannot say how much of its sector they cover).
+//  - and the player must see the ring (the spec: a walk whose ring nobody sees is the "동그라미가 안 나타남" itself, round
+//    3 review): a ring on the click at least SEEN_AT_CLICK of it drawn (a body in front excused: it moves off it), a
+//    ring moved off the click (out of a margin, or where the walk stops) at least SEEN_MOVED and its centre on the
+//    screen. A click the app refuses as "unseen" is checked from the player's side too: the ring it would have drawn on
+//    the click (rays from the camera, leaves checked on the GPU), or for a stopped walk, where the avatar really stops
+//    when sent there without the planner, seen from the camera of the click — fair when that ring could not be seen.
+// Fails: a clean ground click with no ring (missing); a ring on what is not ground (nonground-ring); a ring drawn less
+// than the oracle allows (hidden; "sunk" too when ground, a curb or a raised thing inside the band covers it, or the ring
+// lies under the clicked surface); a ring the player cannot see (unseen); a ring off the screen or too small to read
+// (tiny: under 4 px tall); a ring away from the click or on a non-ground click that the avatar then does not reach
+// (misleading); a ring that is lost while the avatar walks to it (pop-in) or while a tap waits out its double-tap
+// window (gap); a drag that walks (drag-walked).
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -62,6 +74,11 @@ const AT_CLICK_M = 0.15;
 const ARRIVE_M = 0.45;
 /** A ring drawn less than this tall on the screen (CSS px) cannot be read (a far ring is a thin ellipse). */
 const TINY_PX = 4;
+/** The share of a ring the player must see (the spec, round 3): on the click, and moved off it (its centre on screen). */
+const SEEN_AT_CLICK = 0.3;
+const SEEN_MOVED = 0.5;
+/** A refusal as "unseen" is unfair only when the ring would plainly have been seen: this far past the share needed. */
+const SEEN_MARGIN = 0.15;
 
 const r2 = (n) => (n == null ? n : Math.round(n * 100) / 100);
 const all = [];
@@ -75,6 +92,12 @@ async function installProbe(p) {
     const am = await window.__imp("/src/game/activeMap.ts");
     // the village's foliage thins out near the camera (a screen-door dither between these view depths; main has none)
     const fadeBand = (await window.__imp("/src/village/villageModelPrep.ts").catch(() => null))?.FOLIAGE_NEAR_FADE ?? null;
+    const SEEN_CLEAR = 0.6;
+    // how the ring is drawn (its size on the screen, how far over the ground in front of it it sees): main has none
+    // (asked only where the app has them: a missing module's 404 would be a console error of the probe's own)
+    const branch = typeof (await window.__imp("/src/game/clickMove.ts")).peekClickRing === "function";
+    const cr = branch ? await window.__imp("/src/game/clickRing.ts") : null;
+    const SEE_OVER = cr?.RING_SEE_OVER ?? 0.15;
     const canvas = document.querySelector(".cv-canvas canvas");
     const root = f._roots.get(canvas) ?? [...f._roots.values()].pop();
     const st = () => root.store.getState();
@@ -201,7 +224,7 @@ async function installProbe(p) {
         if (fading && h.distance < fadeBand[0]) continue;
         if (fading && h.distance < fadeBand[1]) {
           lastLeafy = true;
-          return { x: h.point.x, y: h.point.y, z: h.point.z, dist: h.distance, ny: upNormal(h, dir), name: h.object.name || h.object.type, mat: mat?.name || mat?.type, avatar: false, fadeBand: true };
+          return { x: h.point.x, y: h.point.y, z: h.point.z, dist: h.distance, ny: upNormal(h, dir), nx: n.x, nz: n.z, name: h.object.name || h.object.type, mat: mat?.name || mat?.type, avatar: false, fadeBand: true };
         }
         if (cutout(mat)) lastLeafy = true;
         if (fromCamera && cutout(mat)) {
@@ -212,9 +235,16 @@ async function installProbe(p) {
           }
           if (!drawn.get(h.object)) continue; // nothing of it at this pixel: the gap between the leaves
         }
-        return { x: h.point.x, y: h.point.y, z: h.point.z, dist: h.distance, ny: upNormal(h, dir), name: h.object.name || h.object.type, mat: mat?.name || mat?.type, avatar: isAvatar(h.object) };
+        return { x: h.point.x, y: h.point.y, z: h.point.z, dist: h.distance, ny: upNormal(h, dir), nx: n.x, nz: n.z, name: h.object.name || h.object.type, mat: mat?.name || mat?.type, avatar: isAvatar(h.object) };
       }
       return null;
+    }
+    /** Where an upright face ends: the first visible surface straight down from 1 m, 5 cm behind the face. */
+    function faceTop(hit) {
+      const l = Math.hypot(hit.nx ?? 0, hit.nz ?? 0);
+      if (l < 1e-6) return null;
+      const h = first(new THREE.Vector3(hit.x - (hit.nx / l) * 0.05, 1.0, hit.z - (hit.nz / l) * 0.05), new THREE.Vector3(0, -1, 0), 0, 1.5);
+      return h ? h.y : null;
     }
     function classify(hit) {
       if (!hit) return "nothing";
@@ -223,8 +253,10 @@ async function installProbe(p) {
       const outside = hit.x < b.minX + R || hit.x > b.maxX - R || hit.z < b.minZ + R || hit.z > b.maxZ - R;
       const inCollider = am.getActiveMap().geometry.obstacles.some((o) => hit.x > o.minX - R && hit.x < o.maxX + R && hit.z > o.minZ - R && hit.z < o.maxZ + R);
       const low = hit.ny >= 0.8 && hit.y <= 0.12;
-      // out in the open, a body stands on a raised flat up to a step (the bridge's deck, the memorial's steps) and on a curb's side
-      const open = (hit.ny >= 0.8 && hit.y <= 0.46) || (hit.y > 0 && hit.y <= 0.12);
+      // out in the open, a body stands on a raised flat up to a step (the bridge's deck, the memorial's steps) and on a
+      // curb's side: a face that ends no higher than a curb (12 cm) — not the low part of a step's riser
+      const curbSide = hit.ny < 0.8 && hit.y > 0 && hit.y <= 0.12 && (faceTop(hit) ?? 0) <= 0.125;
+      const open = (hit.ny >= 0.8 && hit.y <= 0.46) || curbSide;
       if (!low && !(open && !outside && !inCollider)) return "solid";
       if (outside) return "ground-outside";
       if (inCollider) return "ground-in-collider";
@@ -268,6 +300,18 @@ async function installProbe(p) {
         const near8 = [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1]];
         if (lastGaps.some((obj) => near8.some(([dx, dy]) => drawnAt(obj, cx + dx, cy + dy)))) kind = "ground-leafedge";
       }
+      // On a body or a solid thing, ground 2 px away makes the click a coin toss too (a body's outline, a curb's top
+      // edge, a leaf's edge): either outcome is fair there; anything else must take no ring (nonground-ring).
+      if (kind === "avatar" || kind === "solid") {
+        for (const [dx, dy] of [[-2, 0], [2, 0], [0, -2], [0, 2]]) {
+          ray.setFromCamera(new THREE.Vector2(((sx + dx - r.left) / r.width) * 2 - 1, -(((sy + dy - r.top) / r.height) * 2 - 1)), camera);
+          const nk = classify(first(ray.ray.origin.clone(), ray.ray.direction.clone(), camera.near, camera.far, false, true));
+          if (nk === "ground" || nk === "ground-here") {
+            kind = kind === "avatar" ? "avatar-edge" : "solid-edge";
+            break;
+          }
+        }
+      }
       return { hit: round(hit), kind };
     }
     /** The ring as drawn: its centre and its size (the world scale of its mesh: 1 = 0.42 m outer radius; the pulse is held at 1 while probing). */
@@ -283,11 +327,13 @@ async function installProbe(p) {
      * What may hide the ring: a ray from the camera to the middle of each of 16 sectors of the band and to the dot,
      * each weighted by its area on the screen (a far ring is a thin ellipse whose ends hold most of its pixels).
      */
-    function ringOracle() {
-      const rg = ring();
+    function ringOracle(over = null, camOver = null) {
+      const rg = over ?? ring();
       if (!rg) return null;
-      const { camera, gl } = st();
-      const cam = camera.position.clone();
+      const { gl } = st();
+      const camera = camOver ?? st().camera;
+      const gpu = !camOver; // a leaf's pixel is asked of the GPU for the live camera only
+      const cam = new THREE.Vector3().setFromMatrixPosition(camera.matrixWorld);
       const rect = gl.domElement.getBoundingClientRect();
       const px = (x, z) => {
         const v = new THREE.Vector3(x, rg.y, z).project(camera);
@@ -313,24 +359,58 @@ async function installProbe(p) {
       const dd = 0.07 * rg.s;
       const dot = area([px(rg.x - dd, rg.z - dd), px(rg.x + dd, rg.z - dd), px(rg.x + dd, rg.z + dd), px(rg.x - dd, rg.z + dd)]);
       samples.push([rg.x, rg.z, dot]);
-      let legit = 0, sunk = 0, leafy = 0, total = 0;
+      let legit = 0, body = 0, sunkLow = 0, sunkIn = 0, leafy = 0, total = 0;
       const what = {};
       for (const [x, z, w] of samples) {
         total += w;
         const dir = new THREE.Vector3(x, rg.y, z).sub(cam);
         const dist = dir.length();
         dir.normalize();
-        const h = first(cam, dir, camera.near, dist + 0.2, true, true);
+        const h = first(cam, dir, camera.near, dist + 0.2, true, gpu);
         // a line of sight through leaves: one pixel per sector cannot say how much of the sector they cover
         if (lastLeafy && (!h || h.dist < dist - 0.03 || h.fadeBand)) leafy += w;
         if (!h || h.dist >= dist - 0.03) continue;
-        if (h.y > 0.15 || h.avatar) legit += w; // a solid thing (or an avatar's feet, or glass) in front of the ring
-        else sunk += w; // ground or a curb in front of the ring: the ring is under it
+        const above = h.y - rg.y; // against the ring's plane, not y = 0
+        const inBand = Math.hypot(h.x - rg.x, h.z - rg.z) <= 0.36 * rg.s; // reaching into the ring's band
+        if (h.avatar) body += w; // a body moves off it
+        else if (above > SEE_OVER && !(inBand && above < 0.6)) legit += w; // a solid thing (or glass) in front of the ring
+        else if (above > SEE_OVER) sunkIn += w; // raised inside the ring's own band (a step, a planter): the ring lies in it
+        else sunkLow += w; // ground or a curb in front of the ring: the ring is under it
         what[h.mat] = (what[h.mat] ?? 0) + 1;
       }
-      if (!total) return { legit: 0, sunk: 0, leafy: 0, what };
-      return { legit: +(legit / total).toFixed(3), sunk: +(sunk / total).toFixed(3), leafy: +(leafy / total).toFixed(3), what };
+      const f = (v) => (total ? +(v / total).toFixed(3) : 0);
+      return { legit: f(legit), body: f(body), sunk: f(sunkLow + sunkIn), sunkIn: f(sunkIn), leafy: f(leafy), what };
     }
+    /** The ring the app draws for a click on `hit` (its lift, its size on the screen), seen from `camOver` or the live camera. */
+    function wouldRing(hit, camOver = null) {
+      const camera = camOver ?? st().camera;
+      const lift = window.__cv.getScreen?.() === "village" ? 0.05 : 0.03;
+      const y = hit.y + lift;
+      const c = new THREE.Vector3().setFromMatrixPosition(camera.matrixWorld);
+      const dist = Math.hypot(c.x - hit.x, c.y - y, c.z - hit.z);
+      const vh = st().gl.domElement.getBoundingClientRect().height;
+      const s = cr ? cr.ringScreenScale(dist, (c.y - y) / Math.max(dist, 1e-4), camera.fov, vh) : 1;
+      return { x: hit.x, y, z: hit.z, s };
+    }
+    /**
+     * How much of that ring the player would see, at worst: leaves checked on the GPU (the live camera) less the share
+     * whose line of sight crosses leaves, or (another camera) every leaf taken as solid.
+     */
+    function wouldSee(hit, camOver = null) {
+      const camera = camOver ?? st().camera;
+      const rg = wouldRing(hit, camOver);
+      const v = new THREE.Vector3(rg.x, rg.y, rg.z).project(camera);
+      if (v.z > 1 || Math.abs(v.x) > 1 || Math.abs(v.y) > 1) return { onScreen: false, worst: 0, ring: rg };
+      const o = ringOracle(rg, camOver);
+      const seen = 1 - o.legit - o.sunkIn;
+      return { onScreen: true, worst: +Math.max(0, camOver ? seen : seen - o.leafy).toFixed(3), ring: rg, o };
+    }
+    /** The camera of the click, kept while the avatar is sent somewhere (the camera follows it). */
+    function snapCamera() {
+      window.__cmCam = st().camera.clone();
+      window.__cmCam.updateMatrixWorld(true);
+    }
+    const wouldSeeFromClick = (hit) => wouldSee(hit, window.__cmCam);
     /** The ring's screen rectangle (client px) and centre. */
     function ringRect(rad) {
       const rg = ring();
@@ -443,11 +523,45 @@ async function installProbe(p) {
           const raw = first(o, d, camera.near, camera.far, false, false);
           if (!raw || !/^M_leaf/.test(raw.mat ?? "")) continue;
           const seen = first(o, d, camera.near, camera.far, false, true);
-          if (seen && classify(seen) === "ground" && seen.dist > raw.dist + 0.5) return { x: r.left + sx, y: r.top + sy, leaf: raw.mat, ground: round(seen) };
+          if (!seen || classify(seen) !== "ground" || seen.dist < raw.dist + 0.5) continue;
+          // a gap the ring is plainly seen through (not a pinhole, which is crown_pinhole's): a walk must follow
+          if (wouldSee(seen).worst >= SEEN_CLEAR) return { x: r.left + sx, y: r.top + sy, leaf: raw.mat, ground: round(seen) };
         }
       return null;
     }
-    window.__cm = { analyze, ring, ringOracle, ringRect, markerMode, camInfo, screenOf, freeze, clearTarget, topAt, faceAt, holdNextWalk, walkFired, findLeafGap };
+    /**
+     * A pinhole in a crown: a pixel where the ground shows through a gap between the leaves (asked of the GPU) but the
+     * ring drawn there would be hidden all round by the crown (round 3 review: 2-17 % of it drawn, the avatar walking
+     * under the tree). Scans the screen; null when there is none.
+     */
+    async function findPinhole() {
+      const { gl, camera, scene } = st();
+      const r = gl.domElement.getBoundingClientRect();
+      // Where the app's own pick sees the ground through the leaves (only to FIND such a pixel: the verdict is the
+      // oracle's); main has no such pick — there the GPU says where the ground shows through.
+      const cp = branch ? await window.__imp("/src/game/clickPick.ts") : null;
+      for (let gy = 0.12; gy < 0.92; gy += 0.012)
+        for (let gx = 0.02; gx < 0.98; gx += 0.012) {
+          const sx = Math.round(r.width * gx), sy = Math.round(r.height * gy);
+          ray.setFromCamera(new THREE.Vector2((sx / r.width) * 2 - 1, -((sy / r.height) * 2 - 1)), camera);
+          const o = ray.ray.origin.clone(), d = ray.ray.direction.clone();
+          const raw = first(o, d, camera.near, camera.far, false, false);
+          if (!raw || !/^M_leaf/.test(raw.mat ?? "")) continue;
+          let seen = null;
+          if (cp) {
+            ray.near = camera.near;
+            ray.far = camera.far;
+            const ap = cp.pickSurface(ray, scene, { area: am.activeBounds() });
+            if (ap && !ap.blocker && ap.ny >= 0.8) seen = first(o, d, ap.distance - 0.05, camera.far, false, false);
+            ray.set(o, d);
+          } else seen = first(o, d, camera.near, camera.far, false, true);
+          if (!seen || classify(seen) !== "ground" || seen.dist < raw.dist + 0.5) continue;
+          const w = wouldSee(seen);
+          if (w.onScreen && w.worst < 0.15 && 1 - w.o.legit - w.o.sunkIn < 0.15) return { x: r.left + sx, y: r.top + sy, leaf: raw.mat, ground: round(seen), would: w.worst };
+        }
+      return null;
+    }
+    window.__cm = { analyze, ring, ringOracle, ringRect, markerMode, camInfo, screenOf, freeze, clearTarget, topAt, faceAt, holdNextWalk, walkFired, findLeafGap, findPinhole, wouldSee, wouldSeeFromClick, snapCamera };
   });
 }
 
@@ -523,7 +637,7 @@ async function pressAt(p, sx, sy) {
  * how much of the ring is drawn, then the target is dropped. `walk`: instead of dropping it, let the avatar walk and
  * record where it ends.
  */
-async function probe(p, sx, sy, ctx, { walk = false, label = null } = {}) {
+async function probe(p, sx, sy, ctx, { walk = false, label = null, home = null } = {}) {
   const over = await p.page.evaluate(([x, y]) => {
     const e = document.elementFromPoint(x, y);
     return e ? `${e.tagName}.${e.className?.baseVal ?? e.className ?? ""}` : null;
@@ -588,9 +702,44 @@ async function probe(p, sx, sy, ctx, { walk = false, label = null } = {}) {
     await p.page.evaluate(() => window.__cm.clearTarget());
     await p.page.evaluate(() => window.__cm.freeze(false));
   }
+  if (!tgt && row.kind === "ground" && row.pick?.plan?.reason === "unseen") await checkUnseen(p, row, a.hit, start, home);
   await sleep(60);
   judge(row);
   return row;
+}
+
+/**
+ * The app refused a ground click as "unseen" (its ring would not be seen). Fair when, from the player's side, it would
+ * not: on the click, the ring it would draw there; for a walk the app says stops on the way, where the avatar really
+ * stops when sent to the click without the planner, seen from the camera of the click. `home`: where to go back to.
+ */
+async function checkUnseen(p, row, hit, start, home) {
+  const moved = row.pick?.unseen && row.pick.unseen.adjusted !== "none";
+  if (!moved) {
+    row.would = await p.page.evaluate((h) => window.__cm.wouldSee(h), hit);
+    delete row.would.o;
+    row.fairUnseen = !row.would.onScreen || row.would.worst < SEEN_AT_CLICK + SEEN_MARGIN;
+    return;
+  }
+  await p.page.evaluate(() => window.__cm.snapCamera());
+  await p.page.evaluate(async ([x, z]) => (await window.__imp("/src/game/clickMove.ts")).setClickTarget(x, z), [hit.x, hit.z]);
+  const t0 = Date.now();
+  while (Date.now() - t0 < 30000 && (await target(p))) await sleep(150);
+  await p.page.evaluate(() => window.__cm.clearTarget());
+  const end = await pos(p);
+  const arrived = Math.hypot(end.x - hit.x, end.z - hit.z) < ARRIVE_M;
+  const ground = arrived ? hit : await p.page.evaluate(([x, z]) => {
+    const t = window.__cm.topAt(x, z, 0.5);
+    return { x, y: t ? t[1] : 0, z };
+  }, [end.x, end.z]);
+  row.rawWalk = { moved: r2(Math.hypot(end.x - start.x, end.z - start.z)), end: { x: r2(end.x), z: r2(end.z) }, arrived };
+  row.would = await p.page.evaluate((h) => window.__cm.wouldSeeFromClick(h), ground);
+  delete row.would.o;
+  row.fairUnseen = !row.would.onScreen || row.would.worst < (arrived ? SEEN_AT_CLICK : SEEN_MOVED) + SEEN_MARGIN;
+  if (home) {
+    await walkAndWait(p, home.spot[0], home.spot[1], 30000, 0.6);
+    await setOrbitGoal(p, ...home.orbit);
+  }
 }
 
 /**
@@ -601,23 +750,28 @@ function judge(row) {
   const fails = [];
   const ringShown = !!(row.target && row.ring);
   if (!ringShown) {
-    if (row.kind === "ground" && !row.fairRefusal) fails.push("missing");
+    if (row.kind === "ground" && !row.fairRefusal && !row.fairUnseen) fails.push("missing");
     row.outcome = "no ring";
   } else {
+    // a ring on a body, a wall, leaves, the sky: never (its edge cases are "avatar-edge" / "solid-edge")
+    if (row.kind === "avatar" || row.kind === "solid" || row.kind === "nothing") fails.push("nonground-ring");
+    const moved = row.fromClick === null || row.fromClick > AT_CLICK_M || row.kind !== "ground";
     const v = row.vis;
     if (!v?.onScreen) fails.push("offscreen");
     else {
-      const expected = 1 - (row.oracle?.legit ?? 0);
+      const o = row.oracle ?? { legit: 0, body: 0, sunk: 0, leafy: 0 };
+      const expected = 1 - o.legit - (o.body ?? 0);
       // behind leaves the 17 samples cannot measure the cover: their share may be hidden too
-      const hidden = v.visibleFrac < expected - (row.oracle?.leafy ?? 0) - VIS_SLACK;
-      // ground or a curb in front of the ring (the oracle's sunk share) is never an excuse: then it is a sunk ring
-      if ((hidden && row.oracle && row.oracle.sunk > 0.05) || (row.lift != null && row.lift < -0.001)) fails.push("sunk");
+      const hidden = v.visibleFrac < expected - o.leafy - VIS_SLACK;
+      // ground, a curb or a raised thing inside the band (the oracle's sunk share) is never an excuse: a sunk ring
+      if ((hidden && o.sunk > 0.05) || (row.lift != null && row.lift < -0.001)) fails.push("sunk");
       if (row.lift != null && row.lift > 0.1) fails.push("floating"); // drawn in the air above the clicked surface
       if (hidden) fails.push("hidden");
+      // the player must see it: the drawn fraction is what reaches the screen (leaves included); a body moves off it
+      if (v.visibleFrac + (o.body ?? 0) < (moved ? SEEN_MOVED : SEEN_AT_CLICK) - VIS_SLACK) fails.push("unseen");
       if (v.tall < TINY_PX) fails.push("tiny");
       row.expected = r2(expected);
     }
-    const moved = row.fromClick === null || row.fromClick > AT_CLICK_M || row.kind !== "ground";
     row.outcome = moved ? "ring moved/off-ground" : "ring at click";
     if (row.endToTarget != null && row.endToTarget > ARRIVE_M) fails.push("misleading");
     if (moved && row.endToTarget == null) row.needsWalk = true;
@@ -632,7 +786,7 @@ function logRow(row) {
   const v = row.vis;
   const tail = row.target
     ? `ring (${row.target.x},${row.target.z}) y=${row.ring?.y} s=${row.ring?.s} d=${row.fromClick} vis=${v?.onScreen ? v.visibleFrac : v?.reason}${v?.onScreen ? ` ${v.wide}x${v.tall}px` : ""} exp=${row.expected ?? "-"}${row.oracle?.sunk ? ` sunk=${row.oracle.sunk}` : ""}${row.endToTarget != null ? ` end=${row.endToTarget}` : ""}`
-    : `no ring${row.pick?.plan && !row.pick.plan.ok ? ` (${row.pick.plan.reason})` : ""}`;
+    : `no ring${row.pick?.plan && !row.pick.plan.ok ? ` (${row.pick.plan.reason})` : ""}${row.would ? ` would=${row.would.onScreen ? row.would.worst : "offscreen"}${row.rawWalk ? ` stop=(${row.rawWalk.end.x},${row.rawWalk.end.z})` : ""} fair=${row.fairUnseen}` : ""}`;
   const line = `${row.ok ? "  ok " : "  BAD"} ${row.place}/${row.pose} (${row.screen.x},${row.screen.y}) ${row.kind}${h ? ` ${h.mat}@${h.y} d${h.dist}` : ""} -> ${tail}${row.fails.length ? "  [" + row.fails.join(",") + "]" : ""}`;
   if (!row.ok || process.env.CM_VERBOSE) console.log(line);
 }
@@ -679,8 +833,9 @@ async function sweepPose(p, place, spot, [yaw, pitch, dist], pts, walkMax = 2) {
   const dev = p.touch ? "phone" : "desk";
   await p.page.screenshot({ path: join(run.evidence, `view_${dev}_${place}_${poseTag}.png`) });
   const rows = [];
+  const home = spot ? { spot, orbit: [yaw, pitch, dist] } : null;
   for (const [sx, sy] of pts) {
-    const row = await probe(p, sx, sy, { place, pose: poseTag }, { label: `${dev}_${place}_${poseTag}_${sx}_${sy}` });
+    const row = await probe(p, sx, sy, { place, pose: poseTag }, { label: `${dev}_${place}_${poseTag}_${sx}_${sy}`, home });
     rows.push(row);
     all.push(row);
     logRow(row);
@@ -820,6 +975,7 @@ async function villageCases(p) {
       seen === null
         ? { place: "case", pose: id, device: p.touch ? "phone" : "desktop", ok: false, fails: ["aim"], kind: "unseen" }
         : await probe(p, Math.round(s.x), Math.round(s.y), { place: "case", pose: id }, { walk: true, label: `case_${p.touch ? "phone" : "desk"}_${id}` });
+    if (row.would) console.log(`    ${id}: refused as unseen; from the player's side the ring would be ${row.would.onScreen ? `${row.would.worst} seen` : "off the screen"}${row.rawWalk ? ` at the real stop (${row.rawWalk.end.x},${row.rawWalk.end.z})` : ""}`);
     row.id = id;
     row.aimed = world && world.map((v) => r2(v));
     all.push(row);
@@ -844,6 +1000,8 @@ async function villageCases(p) {
     await caseAt("memorial_wall", ["face", 3, -49, 3, -60, 2.0], [[0, -49.4]], -0.3, 0.25, 3);
     // the memorial's step in front of its door (a free spot, 30 cm up): walked to as clicked
     await caseAt("memorial_stairs", ["low", 0, -52.3], [[0, -49.4]], 0, 0.5, 3);
+    // ...and its 30 cm riser clicked low (round 3 review: taken for a curb's side, the ring's far half sank into the step)
+    await caseAt("step_riser", ["face", 0.2, -49, 0.2, -60, 0.09], [[0, -46], [-1.6, -48.5]], 0, 0.75, 4);
     // the ring road's 11 cm curb (z -30.7..-30.9 at x = 2.6): rings on the road beyond it and on the paving before it
     await caseAt("curb_road", [2.6, 0.01, -31.15], [[0, -40], [0, -33], [2.6, -28.5]], 0, 0.5, 7);
     await caseAt("curb_walk", [2.6, 0.01, -30.55], [[2.6, -28.5]], 0, 0.5, 7);
@@ -925,6 +1083,65 @@ async function villageCases(p) {
     await caseAt("beyond_bounds", ["top", -6, 105], [[-6, 66]], Math.PI, 0.25);
     // the bridge (x -26..-22, z 72..78): its deck's crown is 13-15 cm up — the creek's only crossing must take a click
     await caseAt("bridge_deck", ["top", -24, 75], [[-12, 64], [-24, 46], [-24, 66]], Math.PI, 0.5, 6);
+    // Round 3 review: walks whose ring nobody saw. The lawn past the bridge path's low stone wall: the walk stops at the
+    // wall under a cherry's crown (ring 0 % drawn). The lawn across the creek seen from the bridge's head: the walk slides
+    // 18 m along the bank to a stop off the screen. A ring the player sees where the avatar stops, or none.
+    await caseAt("stop_under_crown", [-32.9, 0.0, 63.2], [[-24, 66]], 2.5, 0.8, 11);
+    await caseAt("stop_offscreen", [-43.6, 0.0, 92.8], [[-24, 66]], Math.PI, 0.35, 6);
+    // a pinhole in a crown seen from above the plaza: the ground shows through it, a ring there would be hidden all round
+    if (wantCase("crown_pinhole")) {
+      let gap = null;
+      const looks = [
+        [[[-24, 66], [-24, 46], [-11, 28], [0, 28], [9, 12]], 1.9, 1.15, 18],
+        [[[9, 12]], 1.6, 1.0, 16],
+        [[[0, 28], [30, 24], [44, 15]], -1.57, 0.9, 14],
+      ];
+      for (const [route, yaw, pitch, d] of looks) {
+        await walkRoute(p, route);
+        await setOrbitGoal(p, yaw, pitch, d);
+        gap = await p.page.evaluate(async () => await window.__cm.findPinhole());
+        if (gap) break;
+      }
+      if (gap) {
+        const row = await probe(p, gap.x, gap.y, { place: "case", pose: "crown_pinhole" }, { walk: true, label: "case_desk_crown_pinhole" });
+        row.id = "crown_pinhole";
+        row.gap = gap;
+        all.push(row);
+        out.push(row);
+        console.log(`  ${row.ok ? "ok " : "BAD"} case crown_pinhole: through ${gap.leaf} at (${gap.x},${gap.y}), would ${gap.would} -> ${row.target ? `ring (${row.target.x},${row.target.z}) vis=${row.vis?.visibleFrac} end=${row.endToTarget}` : `no ring${row.pick?.plan && !row.pick.plan.ok ? ` (${row.pick.plan.reason})` : ""}`}${row.fails?.length ? " [" + row.fails.join(",") + "]" : ""}`);
+      } else console.log("  -- case crown_pinhole: no pinhole on these screens (not judged)");
+    }
+    // a quick drag that comes back to where it went down turns the camera; it is no click (round 3 review: it walked)
+    if (wantCase("drag_back")) {
+      const at = await pos(p);
+      await walkRoute(p, at.x > 25 ? [[30, 24], [0, 28], [0, 18]] : at.z > 40 ? [[-24, 66], [-24, 46], [-11, 28], [0, 28], [0, 18]] : [[0, 28], [0, 18]]);
+      await setOrbitGoal(p, 0, 0.35, 6);
+      // a plaza point a few metres off the avatar (a click there walks — the drag must not)
+      const vp = p.page.viewportSize();
+      const me = await pos(p);
+      let sx = 0, sy = 0, a = null;
+      for (const [fx, fy] of [[0.3, 0.62], [0.7, 0.62], [0.3, 0.55], [0.7, 0.55], [0.5, 0.55]]) {
+        [sx, sy] = [Math.round(vp.width * fx), Math.round(vp.height * fy)];
+        a = await p.page.evaluate(([x, y]) => window.__cm.analyze(x, y), [sx, sy]);
+        if (a.kind === "ground" && Math.hypot(a.hit.x - me.x, a.hit.z - me.z) > 2) break;
+      }
+      await p.page.evaluate(() => window.__cm.clearTarget());
+      await p.page.mouse.move(sx, sy);
+      await p.page.mouse.down();
+      for (const dx of [14, 28, 40, 26, 12, 1]) {
+        await p.page.mouse.move(sx + dx, sy);
+        await sleep(10);
+      }
+      await p.page.mouse.up();
+      await sleep(150);
+      const tgt = await target(p);
+      const row = { place: "case", pose: "drag_back", id: "drag_back", device: "desktop", kind: a.kind, hit: a.hit, target: tgt && { x: r2(tgt.x), z: r2(tgt.z) }, fails: tgt ? ["drag-walked"] : [] };
+      row.ok = row.fails.length === 0;
+      await p.page.evaluate(() => window.__cm.clearTarget());
+      all.push(row);
+      out.push(row);
+      console.log(`  ${row.ok ? "ok " : "BAD"} case drag_back: a 40 px drag back to its start over ${a.kind} -> ${tgt ? `walk to (${row.target.x},${row.target.z})` : "no walk"}${row.fails.length ? " [" + row.fails.join(",") + "]" : ""}`);
+    }
     for (const r of out) run.check(`case ${r.id}: ${r.target ? "ring where the avatar stops" : "no ring"}`, r.ok, { kind: r.kind, target: r.target, endToTarget: r.endToTarget, fails: r.fails });
   });
 }
@@ -959,7 +1176,7 @@ async function walkIn(p) {
       const oracle = await p.page.evaluate(() => window.__cm.ringOracle());
       const v = await ringVisibility(p, k % 4 === 0 ? `walkin_${p.touch ? "phone" : "desk"}_${k}` : null, k % 4 === 0);
       const at = await pos(p);
-      series.push({ k, dist: r2(Math.hypot(at.x - tgt.x, at.z - tgt.z)), vis: v.onScreen ? v.visibleFrac : v.reason, expected: oracle ? r2(1 - oracle.legit) : null, leafy: oracle?.leafy ?? 0 });
+      series.push({ k, dist: r2(Math.hypot(at.x - tgt.x, at.z - tgt.z)), vis: v.onScreen ? v.visibleFrac : v.reason, expected: oracle ? r2(1 - oracle.legit - (oracle.body ?? 0)) : null, leafy: oracle?.leafy ?? 0 });
       await p.page.evaluate(() => window.__cm.freeze(false));
       await sleep(450);
     }
@@ -1024,6 +1241,48 @@ async function retapWhileWalking(p) {
   });
 }
 
+/**
+ * A phone tap on the look half while the walk it interrupts arrives inside the tap's 300 ms double-tap wait: the new
+ * tap's ring must stay on the screen the whole time (round 3 review: the arrival dropped it and it came back 300 ms on).
+ */
+async function retapWhileArriving(p) {
+  await run.step("phone: a tap's ring stays while the walk before it arrives", async () => {
+    await walkAndWait(p, 0, 18, 30000, 0.4);
+    await setOrbitGoal(p, 0, 0.35, 6);
+    const vp = p.page.viewportSize();
+    const me = await pos(p);
+    let a = null, b = null;
+    for (let y = Math.round(vp.height * 0.4); y < vp.height * 0.95 && !(a && b); y += 8)
+      for (const fx of [0.55, 0.65, 0.8, 0.92]) {
+        const x = Math.round(vp.width * fx);
+        const h = await p.page.evaluate(([x, y]) => window.__cm.analyze(x, y), [x, y]);
+        if (h.kind !== "ground") continue;
+        const d = Math.hypot(h.hit.x - me.x, h.hit.z - me.z);
+        if (!a && d > 0.8 && d < 1.3) a = [x, y];
+        else if (!b && d > 6) b = [x, y];
+      }
+    if (!run.check("a near and a far plaza point on the look half", !!(a && b && Math.hypot(a[0] - b[0], a[1] - b[1]) > 40), { a, b })) return;
+    await pressAt(p, ...a);
+    await p.page.waitForFunction(() => !!window.__cvClickTarget?.(), null, { timeout: 2000, polling: 10 }).catch(() => {});
+    await pressAt(p, ...b); // A's walk (about 1 m) ends inside B's wait
+    const samples = [];
+    const t0 = Date.now();
+    while (Date.now() - t0 < 600) {
+      const s = await p.page.evaluate(() => ({ ring: window.__cm.ring(), target: window.__cvClickTarget?.() ?? null }));
+      samples.push({ t: Date.now() - t0, ring: !!s.ring, walking: !!s.target });
+      await sleep(15);
+    }
+    const plan = (await appPick(p))?.plan;
+    const gaps = samples.filter((s) => !s.ring);
+    const ok = gaps.length === 0 && !!plan?.ok;
+    console.log(`  retap-arrive: ${samples.length} samples, ring missing in ${gaps.length}${gaps.length ? ` (t ${gaps[0].t}-${gaps[gaps.length - 1].t} ms)` : ""}; B ${plan?.ok ? "walks" : plan?.reason}`);
+    run.check("the new tap's ring never drops while the walk before it arrives", ok, { gaps: gaps.length, first: gaps[0], plan });
+    all.push({ place: "retap-arrive", device: "phone", ok, fails: ok ? [] : ["gap"], target: plan });
+    await sleep(600);
+    await p.page.evaluate(() => window.__cm.clearTarget());
+  });
+}
+
 function summarizeCheck(label, rows) {
   const used = rows.filter((r) => !r.skipped);
   const bad = used.filter((r) => !r.ok);
@@ -1061,6 +1320,7 @@ for (const device of DEVICES) {
       });
       if (PLACES.includes("walk")) await walkIn(p);
       if (PLACES.includes("walk") && phone) await retapWhileWalking(p);
+      if (PLACES.includes("walk") && phone) await retapWhileArriving(p);
       if (PLACES.includes("walk") && !phone) await firstPersonFar(p);
       if (PLACES.includes("village")) await villageSweep(p, phone);
       if (PLACES.includes("cases") && !phone) await villageCases(p);

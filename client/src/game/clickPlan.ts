@@ -21,6 +21,11 @@
  *     LocalPlayer + stepClickMove. Arriving, the ring goes on the click. Stopped on the way (a bench, a wall, the creek
  *     bank in between), the ring goes where the avatar will stop — the walk to that spot is checked to arrive too. One
  *     that cannot get going (MIN_TRIP) is refused. So the ring is never shown where the avatar will not go.
+ *  4. And the player must see the ring (requireSeen; round 3 review: the stop under a cherry's crown, the stop 18-25 m
+ *     along the creek bank off the screen, the lawn seen through a pinhole in a crown — each walked with a ring nobody
+ *     could see, the very "동그라미가 안 나타남" this is about). The CameraRig measures how much of the ring would reach
+ *     the screen from the camera (clickPick.ts ringView); too little, or its centre off the screen, and the click does
+ *     nothing at all.
  *
  * Other players are not in the simulation (they move): one in the way still stops the walk early, and the
  * no-progress rule releases it as before.
@@ -72,6 +77,11 @@ export interface SurfacePoint {
   z: number;
   /** World normal's y, flipped toward the camera (1 = flat ground seen from above). */
   ny: number;
+  /**
+   * For an upright face clicked low: whether the face rises past WALKABLE_MAX_Y (a step's riser, a planter's side —
+   * clickPick.ts faceIsTall), so it is no curb's side. Unmeasured (undefined): taken as a curb's.
+   */
+  faceTall?: boolean;
 }
 
 /** Low ground (rule 1): facing up and no higher than WALKABLE_MAX_Y — walked to, or pushed out of a collider's margin. */
@@ -83,11 +93,13 @@ export function isWalkableSurface(s: { y: number; ny: number }): boolean {
  * What a clicked surface is to the walk (rule 1): "ground" (low ground, may be pushed out of a collider's margin);
  * "open" (out in the open: a raised surface facing up no higher than RAISED_MAX_Y, or a face no higher than
  * WALKABLE_MAX_Y above the ground — a curb's side; walked to exactly as clicked); "none" (nothing to walk to).
+ * A face is a curb's side only where the face itself ends below WALKABLE_MAX_Y (`faceTall` false): the low part of the
+ * memorial step's 30 cm riser put the ring's centre on the riser and its far half inside the step (round 3 review).
  */
 export function surfaceKind(s: SurfacePoint, obstacles: readonly AABB[], bounds: Bounds): "ground" | "open" | "none" {
   if (isWalkableSurface(s)) return "ground";
   const raised = s.ny >= WALKABLE_MIN_NY && s.y <= RAISED_MAX_Y;
-  const curbSide = s.y > 0 && s.y <= WALKABLE_MAX_Y;
+  const curbSide = s.y > 0 && s.y <= WALKABLE_MAX_Y && !s.faceTall;
   if (!raised && !curbSide) return "none";
   return isFreeSpot(s.x, s.z, obstacles, bounds) ? "open" : "none";
 }
@@ -213,9 +225,10 @@ export function simulateWalk(
 
 /**
  * Why a click takes no walk (for the dev hook and the tests). "here": the ground at the avatar's own feet — that one
- * still means something: stop (it used to set a target the avatar had already reached).
+ * still means something: stop (it used to set a target the avatar had already reached). "unseen": the ring would not
+ * be seen (rule 4).
  */
-export type RefuseReason = "not-ground" | "blocked" | "here" | "unreachable";
+export type RefuseReason = "not-ground" | "blocked" | "here" | "unreachable" | "unseen";
 
 /** The outcome of a click: where the avatar goes (and the ring with it), or why nothing happens. */
 export type ClickPlan =
@@ -284,4 +297,33 @@ export function planClickMove(
   const again = simulateWalk(fromX, fromZ, walk.x, walk.z, obstacles, bounds);
   if (!again.arrived) return { ok: false, reason: "unreachable" };
   return { ok: true, x: walk.x, z: walk.z, y: surface.y, adjusted: "stopped" };
+}
+
+/**
+ * Rule 4: the share of a ring on the click itself (its drawn area on the screen) that must reach the screen. Less is
+ * ground seen through a pinhole — a gap between a crown's leaves, the ring hidden by the crown all round it: a click on
+ * the crown (round 3 review: 2-17 % of the ring drawn, the avatar walking under the tree). Leaves the camera sits in
+ * (a crown around the lens, faded but dithered) leave a third of the ring and more: still a walk.
+ */
+export const RING_SEEN_AT_CLICK = 0.3;
+
+/**
+ * ...and of a ring moved off the click (out of a margin, or to where the walk stops): the player did not pick that
+ * spot, so the ring must show it plainly — and its centre must be on the screen.
+ */
+export const RING_SEEN_MOVED = 0.5;
+
+/** How a ring at a plan's spot would look from the camera (clickPick.ts ringView). */
+export interface RingView {
+  /** Its centre projects inside the screen (in front of the camera). */
+  onScreen: boolean;
+  /** The share of its on-screen area that reaches the screen past what stands in front (0..1; bodies do not count). */
+  seen: number;
+}
+
+/** Rule 4: `plan` when its ring would be seen enough (RING_SEEN_AT_CLICK / RING_SEEN_MOVED), else "unseen". */
+export function requireSeen(plan: ClickPlan, view: RingView): ClickPlan {
+  if (!plan.ok) return plan;
+  const need = plan.adjusted === "none" ? RING_SEEN_AT_CLICK : RING_SEEN_MOVED;
+  return view.onScreen && view.seen >= need - 1e-9 ? plan : { ok: false, reason: "unseen" };
 }

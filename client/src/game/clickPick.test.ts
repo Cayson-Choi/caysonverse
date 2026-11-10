@@ -9,6 +9,7 @@ import {
   Matrix4,
   Mesh,
   MeshBasicMaterial,
+  PerspectiveCamera,
   PlaneGeometry,
   Raycaster,
   Scene,
@@ -23,7 +24,18 @@ import {
   type Intersection,
   type Material,
 } from "three";
-import { CLICK_PICK_KEY, NEAR_FADE_KEY, asSurface, isCutAway, isSeeThrough, pickSurface, surfaceHeightAt, warmPick } from "./clickPick";
+import {
+  CLICK_PICK_KEY,
+  NEAR_FADE_KEY,
+  asSurface,
+  faceIsTall,
+  isCutAway,
+  isSeeThrough,
+  pickSurface,
+  ringView,
+  surfaceHeightAt,
+  warmPick,
+} from "./clickPick";
 import { isWalkableSurface } from "./clickPlan";
 
 /** A flat floor of `size` m at height `y` (a ground layer). */
@@ -420,5 +432,115 @@ describe("clickPick — a large mesh is raycast cell by cell (round 2 review: th
     while (!warmPick(s, 0) && rounds < 10) rounds++;
     expect(rounds).toBeGreaterThan(0); // a zero budget does one thing a call
     expect(warmPick(s, 0)).toBe(true);
+  });
+});
+
+/** A camera at `at` looking at `look` (55 degrees, 16:10, the village's near plane). */
+function cameraAt(at: [number, number, number], look: [number, number, number]) {
+  const c = new PerspectiveCamera(55, 1.6, 0.2, 500);
+  c.position.set(...at);
+  c.lookAt(...look);
+  c.updateMatrixWorld(true);
+  c.updateProjectionMatrix();
+  return c;
+}
+
+describe("clickPick — the near fade is the shader's view depth, not the ray's length (round 3 review)", () => {
+  it("a faded leaf off the screen's middle (ray 1.85 m, view depth 1.4 m) is clicked through, as the GPU dithers it away", () => {
+    const leaves = new MeshBasicMaterial();
+    leaves.userData[NEAR_FADE_KEY] = 1.8;
+    const crown = box(0, 0, -1.45, 8, 4, 0.1); // its face toward the camera at view depth 1.4
+    crown.material = leaves;
+    const s = scene(crown, box(0, 0, -6, 20, 20, 0.2));
+    const cam = cameraAt([0, 0, 0], [0, 0, -1]);
+    const cos = 1.4 / 1.85;
+    const r = new Raycaster(new Vector3(0, 0, 0), new Vector3(Math.sqrt(1 - cos * cos), 0, -cos));
+    r.camera = cam;
+    const pick = pickSurface(r, s)!;
+    expect(pick.z).toBeCloseTo(-5.9, 3); // the wall behind, not the leaves
+    // without the camera (a column ray) the length is all there is: the same leaf is hit
+    const bare = new Raycaster(new Vector3(0, 0, 0), new Vector3(Math.sqrt(1 - cos * cos), 0, -cos));
+    expect(pickSurface(bare, s)!.z).toBeCloseTo(-1.4, 3);
+  });
+});
+
+describe("clickPick — a face that rises past a curb (round 3 review: the memorial step's riser)", () => {
+  it("faceIsTall: a 30 cm step's riser clicked low is tall; an 11 cm curb's side is not", () => {
+    const step = box(0, 0.15, -2, 2, 0.3, 1); // its riser at z = -1.5
+    const curb = box(5, 0.055, -2, 2, 0.11, 0.2); // its face at z = -1.9
+    const s = scene(floor(0), step, curb);
+    const riser = pickSurface(rayAt([0, 1.6, 2], [0, 0.047, -1.5]), s)!;
+    expect(Math.abs(riser.ny)).toBeLessThan(0.01);
+    expect(riser.y).toBeCloseTo(0.047, 3);
+    const r = new Raycaster();
+    expect(faceIsTall(r, s, riser)).toBe(true);
+    const side = pickSurface(rayAt([5, 1.6, 2], [5, 0.05, -1.9]), s)!;
+    expect(side.y).toBeCloseTo(0.05, 3);
+    expect(faceIsTall(r, s, side)).toBe(false);
+  });
+});
+
+describe("clickPick — how much of a ring reaches the screen (round 3 review: walks whose ring nobody saw)", () => {
+  const cam = () => cameraAt([0, 3, 6], [0, 0, 0]);
+
+  it("a ring on open ground is seen whole", () => {
+    const v = ringView(new Raycaster(), scene(floor(0)), cam(), 0, 0.05, 0, 1);
+    expect(v.onScreen).toBe(true);
+    expect(v.seen).toBeCloseTo(1, 6);
+  });
+
+  it("a ring under a crown (a slab between it and the camera) is not seen; one half behind a wall is half seen", () => {
+    expect(ringView(new Raycaster(), scene(floor(0), box(0, 1.5, 1.5, 4, 0.3, 4)), cam(), 0, 0.05, 0, 1).seen).toBe(0);
+    // a wall's edge on the ring's centre line, between the camera and the ring: its left half is hidden
+    const half = ringView(new Raycaster(), scene(floor(0), box(-2, 1, 2, 4, 2, 0.2)), cam(), 0, 0.05, 0, 1).seen;
+    expect(half).toBeGreaterThan(0.35);
+    expect(half).toBeLessThan(0.65);
+  });
+
+  it("a ring behind the camera or off the side of the screen is not on the screen", () => {
+    expect(ringView(new Raycaster(), scene(floor(0)), cam(), 0, 0.05, 12, 1).onScreen).toBe(false);
+    expect(ringView(new Raycaster(), scene(floor(0)), cam(), 30, 0.05, 0, 1).onScreen).toBe(false);
+  });
+
+  it("bodies do not count (they move off it), nor ground or a curb lower than the ring sees over, nor faded leaves", () => {
+    const low = cameraAt([0, 1, 8], [0, 0, 0]); // a grazing view: an 11 cm curb in front reaches the ring's sight lines
+    const avatar = new Group();
+    avatar.userData[CLICK_PICK_KEY] = "block";
+    avatar.add(box(0, 0.9, 4, 0.6, 1.8, 0.6));
+    const curb = box(0, 0.055, 0.7, 3, 0.11, 0.2); // right in front of the ring
+    const leaves = new MeshBasicMaterial();
+    leaves.userData[NEAR_FADE_KEY] = 1.8;
+    const near = box(0, 1, 7.4, 4, 2, 0.05); // leaves 0.6 m before the lens (faded out there)
+    near.material = leaves;
+    expect(ringView(new Raycaster(), scene(floor(0), avatar, curb, near), low, 0, 0.05, 0, 1).seen).toBeGreaterThan(0.98);
+    // the same curb 25 cm taller is a real thing in front: it hides the ring's near part
+    const wall = box(0, 0.18, 0.7, 3, 0.36, 0.2);
+    expect(ringView(new Raycaster(), scene(floor(0), wall), low, 0, 0.05, 0, 1).seen).toBeLessThan(0.9);
+  });
+
+  it("asked for a share it needs, it stops as soon as that is decided — the same verdict (round 3: a click pays a few rays)", () => {
+    const open = scene(floor(0));
+    const roofed = scene(floor(0), box(0, 1.5, 1.5, 4, 0.3, 4));
+    const halfWall = scene(floor(0), box(-2, 1, 2, 4, 2, 0.2));
+    expect(ringView(new Raycaster(), open, cam(), 0, 0.05, 0, 1, 0.3).seen).toBeGreaterThanOrEqual(0.3);
+    expect(ringView(new Raycaster(), roofed, cam(), 0, 0.05, 0, 1, 0.3).seen).toBeLessThan(0.3);
+    expect(ringView(new Raycaster(), halfWall, cam(), 0, 0.05, 0, 1, 0.3).seen).toBeGreaterThanOrEqual(0.3);
+    expect(ringView(new Raycaster(), halfWall, cam(), 0, 0.05, 0, 1, 0.75).seen).toBeLessThan(0.75);
+    // fewer rays than without: a thin pole beside the sight lines is looked at once a ray
+    const poled = scene(floor(0), box(0.4, 1.5, 3, 0.02, 3, 0.02));
+    const r = new Raycaster();
+    const spy = vi.spyOn(r.ray, "intersectBox");
+    expect(ringView(r, poled, cam(), 0, 0.05, 0, 1).seen).toBeCloseTo(1, 6);
+    const all = spy.mock.calls.length;
+    spy.mockClear();
+    ringView(r, poled, cam(), 0, 0.05, 0, 1, 0.3);
+    expect(all).toBeGreaterThan(8);
+    expect(spy.mock.calls.length).toBeLessThan(all / 2);
+  });
+
+  it("gives the caller's ray back as it found it", () => {
+    const r = new Raycaster(new Vector3(1, 2, 3), new Vector3(0, -1, 0), 0.2, 500);
+    ringView(r, scene(floor(0)), cam(), 0, 0.05, 0, 1);
+    expect([r.ray.origin.toArray(), r.ray.direction.toArray(), r.near, r.far]).toEqual([[1, 2, 3], [0, -1, 0], 0.2, 500]);
   });
 });

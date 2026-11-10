@@ -35,14 +35,29 @@ import {
   CLICK_MAX_PX,
   TAP_MAX_PX,
   isClick,
+  pressTravel,
   setClickTarget,
   getClickTarget,
   clearClickTarget,
   setPendingClick,
+  peekPendingClick,
   clearPendingClick,
 } from "./clickMove";
-import { asSurface, pickSurface, surfaceHeightAt, warmPick, type ScenePick } from "./clickPick";
-import { clickIntent, planClickMove, walkStart, type ClickPlan } from "./clickPlan";
+import { asSurface, faceIsTall, pickSurface, ringView, surfaceHeightAt, warmPick, type ScenePick } from "./clickPick";
+import {
+  RING_SEEN_AT_CLICK,
+  RING_SEEN_MOVED,
+  WALKABLE_MAX_Y,
+  WALKABLE_MIN_NY,
+  clickIntent,
+  planClickMove,
+  requireSeen,
+  walkStart,
+  type ClickPlan,
+  type RingView,
+} from "./clickPlan";
+import { ringLift, ringScreenScale } from "./clickRing";
+import type { GroundDecal } from "./groundDecal";
 import { overviewAllowed } from "./indoorCamera";
 import { createFollowRig, createFollowSpot, noteAreaLimit, stepFollowRig } from "./followRig";
 import { rememberOrbit, restoreOrbit } from "./cameraMemory";
@@ -68,6 +83,11 @@ interface CameraRigProps {
    * mountains out to 1.4 km and passes a far plane past them (VillageScene).
    */
   far?: number;
+  /**
+   * The scene's ground decals (PlayShell's; null: the defaults): the destination ring lies at their height above the
+   * clicked surface (ClickMarker), so a click's ring is judged for being seen there (clickPlan.ts rule 4).
+   */
+  decal?: GroundDecal | null;
 }
 
 const LEGACY_FOG: readonly [number, number] = [FOG_NEAR, FOG_FAR];
@@ -88,8 +108,11 @@ function clamp(value: number, min: number, max: number): number {
   return value < min ? min : value > max ? max : value;
 }
 
-/** Dev/E2E only: the last click's pick and plan (`window.__cvClickPick`). */
-let lastClickPick: { pick: ScenePick | null; plan: ClickPlan; ms: number } | null = null;
+/**
+ * Dev/E2E only (`window.__cvClickPick`): the last click — what it landed on, the plan made of it, how its ring would look (`view`; and `unseen`, the
+ * plan rule 4 refused) and the ms the pick and the plan took together.
+ */
+let lastClickPick: { pick: ScenePick | null; plan: ClickPlan; view: RingView | null; unseen: ClickPlan | null; ms: number } | null = null;
 
 function lerp(a: number, b: number, t: number): number {
   return a + (b - a) * t;
@@ -149,7 +172,7 @@ function spread(pointers: Map<number, { x: number; y: number }>): number {
  * All per-frame state lives in the shared `orbit` object, the rig and the module
  * `viewState` (all mutated in place) — never React state.
  */
-export function CameraRig({ pose, orbit, seat, fogRange = LEGACY_FOG, far: baseFar = CAMERA_FAR }: CameraRigProps) {
+export function CameraRig({ pose, orbit, seat, fogRange = LEGACY_FOG, far: baseFar = CAMERA_FAR, decal = null }: CameraRigProps) {
   const camera = useThree((s) => s.camera);
   const gl = useThree((s) => s.gl);
   const scene = useThree((s) => s.scene);
@@ -196,7 +219,8 @@ export function CameraRig({ pose, orbit, seat, fogRange = LEGACY_FOG, far: baseF
     // button press on the canvas. A second pointer (pinch) or a non-primary
     // button voids it; on release, only a press that passes isClick (< ~6px,
     // < ~400ms) becomes a floor click — anything longer stays a pure look-drag.
-    let clickStart: { id: number; x: number; y: number; t: number } | null = null;
+    // `travel`: the farthest it has gone from the down point (pressTravel) — a drag that came back is still a drag.
+    let clickStart: { id: number; x: number; y: number; t: number; travel: number } | null = null;
     // Reused per mount for the click's scene raycast (never per event — no GC churn).
     const raycaster = new Raycaster();
     const ndc = new Vector2();
@@ -236,10 +260,29 @@ export function CameraRig({ pose, orbit, seat, fogRange = LEGACY_FOG, far: baseF
       const s = seat.index >= 0 ? activeSeats()[seat.index] : undefined;
       const g = localGlide.current;
       const from = walkStart(pose.x, pose.z, s, g && { x: g.toX, z: g.toZ });
-      const plan = planClickMove(from.x, from.z, asSurface(pick), getActiveMap().geometry.obstacles, activeBounds(), !!s);
+      const surface = asSurface(pick);
+      // An upright face clicked low is a curb's side only if it ends there (not a step's riser): measured once.
+      if (pick && surface && pick.ny < WALKABLE_MIN_NY && pick.y > 0 && pick.y <= WALKABLE_MAX_Y && pick.faceTall === undefined) {
+        pick.faceTall = faceIsTall(raycaster, scene, pick);
+      }
+      let plan = planClickMove(from.x, from.z, surface, getActiveMap().geometry.obstacles, activeBounds(), !!s);
       // A destination moved off the click lies on the ground found there (a lane, a lawn, the forecourt).
       if (plan.ok && plan.adjusted !== "none") plan.y = surfaceHeightAt(raycaster, scene, plan.x, plan.z, plan.y);
-      if (import.meta.env.DEV) lastClickPick = { pick, plan, ms: performance.now() - t0 };
+      // Rule 4: only a ring the player will see takes a walk — as ClickMarker will draw it: its lift, its screen size.
+      let view: RingView | null = null;
+      let unseen: ClickPlan | null = null;
+      if (plan.ok) {
+        const cam = camera as PerspectiveCamera;
+        cam.updateMatrixWorld();
+        const y = plan.y + ringLift(decal);
+        const dist = Math.hypot(cam.position.x - plan.x, cam.position.y - y, cam.position.z - plan.z);
+        const scale = cam.isPerspectiveCamera ? ringScreenScale(dist, (cam.position.y - y) / Math.max(dist, 1e-4), cam.fov, el.clientHeight || 1) : 1;
+        view = ringView(raycaster, scene, cam, plan.x, y, plan.z, scale, plan.adjusted === "none" ? RING_SEEN_AT_CLICK : RING_SEEN_MOVED);
+        const seen = requireSeen(plan, view);
+        if (!seen.ok) unseen = plan;
+        plan = seen;
+      }
+      if (import.meta.env.DEV) lastClickPick = { pick, plan, view, unseen, ms: performance.now() - t0 };
       return plan;
     };
 
@@ -252,7 +295,7 @@ export function CameraRig({ pose, orbit, seat, fogRange = LEGACY_FOG, far: baseF
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       clickStart =
         e.button === 0 && pointers.size === 1
-          ? { id: e.pointerId, x: e.clientX, y: e.clientY, t: performance.now() }
+          ? { id: e.pointerId, x: e.clientX, y: e.clientY, t: performance.now(), travel: 0 }
           : null;
       try {
         el.setPointerCapture(e.pointerId);
@@ -269,6 +312,9 @@ export function CameraRig({ pose, orbit, seat, fogRange = LEGACY_FOG, far: baseF
     const onMove = (e: PointerEvent) => {
       const p = pointers.get(e.pointerId);
       if (!p) return; // a move with no prior down (e.g. hovering) — ignore
+      if (clickStart && clickStart.id === e.pointerId) {
+        clickStart.travel = pressTravel(clickStart.travel, e.clientX - clickStart.x, e.clientY - clickStart.y);
+      }
       const dx = e.clientX - p.x;
       const dy = e.clientY - p.y;
       p.x = e.clientX;
@@ -343,8 +389,8 @@ export function CameraRig({ pose, orbit, seat, fogRange = LEGACY_FOG, far: baseF
           e.type === "pointerup" && // a pointercancel is never a click
           viewState.mode !== "ov" &&
           isClick(
-            e.clientX - start.x,
-            e.clientY - start.y,
+            pressTravel(start.travel, e.clientX - start.x, e.clientY - start.y),
+            0,
             performance.now() - start.t,
             e.pointerType === "touch" ? TAP_MAX_PX : CLICK_MAX_PX,
           )
@@ -374,11 +420,13 @@ export function CameraRig({ pose, orbit, seat, fogRange = LEGACY_FOG, far: baseF
               if (intent !== "ignore") {
                 const seatedAtTap = seat.index >= 0;
                 // the ring at once (a menu open: no walk follows)
-                if (plan.ok && !isUiCaptured()) setPendingClick(plan.x, plan.z, plan.y);
+                const shown = plan.ok && !isUiCaptured() ? setPendingClick(plan.x, plan.z, plan.y) : null;
                 pendingWalk = setTimeout(() => {
                   pendingWalk = null;
-                  if (!canTapWalk(viewState.mode, isUiCaptured(), seatedAtTap, seat.index >= 0)) {
-                    clearPendingClick();
+                  // its ring dropped meanwhile (a key, the stick, Esc, a sit): the player took over — no walk
+                  const dropped = shown !== null && peekPendingClick() !== shown;
+                  if (!canTapWalk(viewState.mode, isUiCaptured(), seatedAtTap, seat.index >= 0, dropped)) {
+                    if (!dropped) clearPendingClick();
                     return;
                   }
                   // The same surface, planned again from where the avatar is now (a walk in progress moved it).
@@ -452,7 +500,7 @@ export function CameraRig({ pose, orbit, seat, fogRange = LEGACY_FOG, far: baseF
       clearPendingWalk();
       rememberOrbit(orbit); // a scene ending mid-drag still hands its camera to the next one
     };
-  }, [gl, orbit, camera, scene, pose, seat]);
+  }, [gl, orbit, camera, scene, pose, seat, decal]);
 
   // The click pick's one-time preparation (clickPick.ts warmPick: the cells of the large meshes, the leaves' texels),
   // a few ms at a time while the page is idle, so no click pays for it — and again as the scene changes (a model that

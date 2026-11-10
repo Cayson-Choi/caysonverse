@@ -12,12 +12,14 @@ import {
   STUCK_WINDOW_SEC,
   STUCK_MIN_DIST,
   isClick,
+  pressTravel,
   hasArrived,
   dirToIntent,
   setClickTarget,
   getClickTarget,
   peekClickTarget,
   peekClickRing,
+  peekPendingClick,
   setPendingClick,
   clearPendingClick,
   clearClickTarget,
@@ -265,5 +267,47 @@ describe("clickMove — the active map (Task 15)", () => {
     setActiveMap(LEGACY_ACTIVE_MAP);
     setClickTarget(100, 0);
     expect(getClickTarget()!.x).toBeCloseTo(WORLD_BOUNDS.maxX - PLAYER_RADIUS, 6);
+  });
+});
+
+describe("clickMove — round 3 review", () => {
+  it("a press dragged out and back to where it went down is a drag (the camera turned), not a click", () => {
+    let travel = 0;
+    travel = pressTravel(travel, 20, 0);
+    travel = pressTravel(travel, 40, 3); // 40 px out...
+    travel = pressTravel(travel, 1, 0); // ...and back within 1 px
+    expect(travel).toBeCloseTo(Math.hypot(40, 3), 9);
+    expect(isClick(travel, 0, 100)).toBe(false);
+    // a still press stays a click
+    expect(isClick(pressTravel(pressTravel(0, 1, 1), 2, 0), 0, 100)).toBe(true);
+  });
+
+  it("the walk arriving while a tap waits out its double-tap window keeps the tap's ring (it walks there next)", () => {
+    setClickTarget(1, 0, 0); // walking to A, nearly there
+    const tap = setPendingClick(5, 5, 0.02); // tap B on the look half
+    let x = 0;
+    for (let t = 0; t < 0.3; t += 1 / 60) {
+      const dir = stepClickMove(x, 0, 1 / 60);
+      if (dir) x += dir.x * (4 / 60);
+      expect(peekClickRing()).toBe(tap); // B's ring the whole 300 ms
+    }
+    expect(getClickTarget()).toBeNull(); // A is reached
+    expect(peekPendingClick()).toBe(tap);
+  });
+
+  it("the walk released by the no-progress rule keeps a waiting tap's ring too", () => {
+    setClickTarget(10, 0, 0);
+    const tap = setPendingClick(-5, 5, 0);
+    for (let t = 0; t < STUCK_WINDOW_SEC + 0.1; t += 1 / 60) stepClickMove(0, 0, 1 / 60); // pinned
+    expect(getClickTarget()).toBeNull();
+    expect(peekClickRing()).toBe(tap);
+  });
+
+  it("a key, the stick, Esc or sitting down (clearClickTarget) still drops the waiting tap: it is then not walked", () => {
+    setClickTarget(10, 0, 0);
+    setPendingClick(-5, 5, 0);
+    clearClickTarget();
+    expect(peekPendingClick()).toBeNull();
+    expect(peekClickRing()).toBeNull();
   });
 });

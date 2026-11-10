@@ -5,6 +5,8 @@ import { VILLAGE_LAYOUT, villageGeometry } from "@caysonverse/shared/village/vil
 import {
   MAX_PUSH,
   RAISED_MAX_Y,
+  RING_SEEN_AT_CLICK,
+  RING_SEEN_MOVED,
   WALKABLE_MAX_Y,
   WALKABLE_MIN_NY,
   isFreeSpot,
@@ -12,6 +14,7 @@ import {
   isWalkableSurface,
   nearestFreeSpot,
   planClickMove,
+  requireSeen,
   simulateWalk,
   surfaceKind,
   walkStart,
@@ -219,5 +222,44 @@ describe("clickPlan — 케이슨 마을's real colliders", () => {
 
   it("the hall: open floor is walked to as clicked", () => {
     expect(planClickMove(300, 1.5, ground(302.6, -3.6, 0), obstacles, hall)).toMatchObject({ ok: true, x: 302.6, z: -3.6, adjusted: "none" });
+  });
+});
+
+describe("clickPlan — a curb's side is a face no higher than a curb (round 3 review: the memorial step's riser)", () => {
+  it("the low part of a face that rises past WALKABLE_MAX_Y (a step's riser, 30 cm) is no curb: nothing — its ring sank into the step", () => {
+    const riser = { x: 0, y: 0.047, z: 5, ny: 0, faceTall: true };
+    expect(surfaceKind(riser, [BOX], BOUNDS)).toBe("none");
+    expect(planClickMove(0, 10, riser, [BOX], BOUNDS)).toEqual({ ok: false, reason: "not-ground" });
+    // a real curb's side (its face ends at 11 cm) is still walked to as clicked
+    expect(surfaceKind({ ...riser, faceTall: false }, [BOX], BOUNDS)).toBe("open");
+    // a face whose height was not measured keeps the old reading (the low side of a curb)
+    expect(surfaceKind({ x: 0, y: 0.047, z: 5, ny: 0 }, [BOX], BOUNDS)).toBe("open");
+  });
+});
+
+describe("clickPlan — a walk needs a ring the player can see (round 3 review: walks under a crown, off the screen)", () => {
+  const atClick = { ok: true as const, x: 1, z: 2, y: 0.01, adjusted: "none" as const };
+  const stopped = { ok: true as const, x: 1, z: 2, y: 0.01, adjusted: "stopped" as const };
+  const pushed = { ok: true as const, x: 1, z: 2, y: 0.01, adjusted: "pushed" as const };
+
+  it("a ring on the click itself needs RING_SEEN_AT_CLICK of it to reach the screen (a gap in a crown is a click on the crown)", () => {
+    expect(requireSeen(atClick, { onScreen: true, seen: RING_SEEN_AT_CLICK })).toBe(atClick);
+    expect(requireSeen(atClick, { onScreen: true, seen: RING_SEEN_AT_CLICK - 0.01 })).toEqual({ ok: false, reason: "unseen" });
+  });
+
+  it("a ring moved off the click (where the walk stops, out of a margin) needs RING_SEEN_MOVED of it, and its centre on the screen", () => {
+    expect(RING_SEEN_MOVED).toBeGreaterThan(RING_SEEN_AT_CLICK);
+    for (const plan of [stopped, pushed]) {
+      expect(requireSeen(plan, { onScreen: true, seen: RING_SEEN_MOVED })).toBe(plan);
+      expect(requireSeen(plan, { onScreen: true, seen: RING_SEEN_MOVED - 0.01 })).toEqual({ ok: false, reason: "unseen" });
+      // the stop 18-25 m off along the creek bank, off the screen: no ring, no walk
+      expect(requireSeen(plan, { onScreen: false, seen: 1 })).toEqual({ ok: false, reason: "unseen" });
+    }
+  });
+
+  it("an unseen ring is no walk at all (not a stop either); a refusal passes through unchanged", () => {
+    expect(clickIntent({ ok: false, reason: "unseen" })).toBe("ignore");
+    const refused = { ok: false as const, reason: "blocked" as const };
+    expect(requireSeen(refused, { onScreen: false, seen: 0 })).toBe(refused);
   });
 });

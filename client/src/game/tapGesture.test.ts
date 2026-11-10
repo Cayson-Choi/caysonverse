@@ -110,3 +110,11 @@ describe("canTapWalk — re-checked when the held-back single-tap walk fires", (
     expect(canTapWalk("tp", false, true, false)).toBe(true);
   });
 });
+
+describe("canTapWalk — a tap dropped while it waited (round 3 review)", () => {
+  it("does not walk once its ring was dropped meanwhile (a key, the stick, Esc, a sit): no ring that comes back later", () => {
+    expect(canTapWalk("tp", false, false, false, true)).toBe(false);
+    expect(canTapWalk("tp", false, true, false, true)).toBe(false);
+    expect(canTapWalk("tp", false, false, false, false)).toBe(true);
+  });
+});

@@ -1,7 +1,8 @@
 import { Box3, BufferAttribute, BufferGeometry, Matrix3, Matrix4, Mesh, Ray, Sphere, Vector2, Vector3 } from "three";
-import type { InstancedMesh, Intersection, Material, Object3D, Raycaster, SkinnedMesh, Texture } from "three";
+import type { Camera, InstancedMesh, Intersection, Material, Object3D, Raycaster, SkinnedMesh, Texture } from "three";
 import type { Bounds } from "@caysonverse/shared/school/geometry";
-import { MAX_PUSH, RAISED_MAX_Y, WALKABLE_MIN_NY, type SurfacePoint } from "./clickPlan";
+import { MAX_PUSH, RAISED_MAX_Y, WALKABLE_MAX_Y, WALKABLE_MIN_NY, type RingView, type SurfacePoint } from "./clickPlan";
+import { RING_INNER, RING_OUTER, ringDepthBias } from "./clickRing";
 
 /**
  * What a click lands on: the first VISIBLE surface along the click ray (owner 2026-11-10 — the old target was the ray's
@@ -16,7 +17,8 @@ import { MAX_PUSH, RAISED_MAX_Y, WALKABLE_MIN_NY, type SurfacePoint } from "./cl
  *  - what draws nothing solid is see-through: sprites, points and lines (name tags, bubbles, stars), colliders
  *    (`col__*`), shadow catchers, and materials that write no depth while blending (blob shadows, the ground decals,
  *    the plot markers, the door pads, water, light shafts) — the click goes on to what is under them; so are leaves
- *    nearer the camera than their fade (`NEAR_FADE_KEY`), and every texel an alpha-tested material cuts away (the
+ *    nearer the camera than their fade (`NEAR_FADE_KEY`, in view depth as the shader fades them: along the camera's
+ *    axis, not along the ray — round 3 review), and every texel an alpha-tested material cuts away (the
  *    gaps between a leaf card's leaves: three's raycast ignores the texture, round 2 review — a click on the lawn seen
  *    between a crown's leaves was refused as "a leaf").
  *
@@ -46,6 +48,9 @@ export const PICK_AS_BODY: Record<string, ClickPickTag> = { [CLICK_PICK_KEY]: "b
 
 /** The first surface under a click: where, how upright, and whether it belongs to a body. */
 export interface ScenePick extends SurfacePoint {
+  /** The camera-facing world normal's x and z (with `ny`; 0 for a body). */
+  nx: number;
+  nz: number;
   /** Distance from the ray's origin (m). */
   distance: number;
   /** Part of a subtree tagged "block" (an avatar, an NPC). */
@@ -474,6 +479,8 @@ interface Candidate {
   entry: number;
   far: number;
   blocker: boolean;
+  /** An instanced mesh's instances that can matter (ringView's, near its sight lines); all of them when absent. */
+  instances?: readonly number[];
 }
 
 const box = new Box3();
@@ -537,7 +544,7 @@ function collect(o: Object3D, ray: Raycaster, span: Span | null, out: Candidate[
   const tag = o.userData?.[CLICK_PICK_KEY] as ClickPickTag | undefined;
   if (tag === "ignore") return;
   const block = blocker || tag === "block";
-  if ((o as { isMesh?: boolean }).isMesh && o.layers.test(ray.layers) && !o.name.startsWith("col__")) {
+  if ((o as { isMesh?: boolean }).isMesh && o.layers.test(ray.layers) && !o.name.startsWith("col__") && !drawsNothing(o as Mesh)) {
     const local = localBox(o as Mesh);
     if (local && !local.isEmpty()) {
       box.copy(local).applyMatrix4(o.matrixWorld);
@@ -552,6 +559,12 @@ function collect(o: Object3D, ray: Raycaster, span: Span | null, out: Candidate[
   }
   for (const child of o.children) collect(child, ray, span, out, block);
 }
+/** Every material of the mesh is see-through (water, a decal, a shadow catcher): no hit on it can count — not raycast. */
+function drawsNothing(mesh: Mesh): boolean {
+  const m = mesh.material;
+  return Array.isArray(m) ? m.every(isSeeThrough) : isSeeThrough(m);
+}
+
 /** A skinned mesh's geometry box is its bind pose: grown by this much (m) for the limbs that move since. */
 const SKINNED_SLACK = 0.6;
 
@@ -566,9 +579,9 @@ const instance = new Matrix4();
 const normalMatrix = new Matrix3();
 const normal = new Vector3();
 
-/** The hit's world normal's y, turned toward the ray's origin (the side the camera sees). */
-function upright(hit: Intersection, dir: Vector3): number {
-  if (!hit.face) return 0;
+/** The hit's world normal, turned toward the ray's origin (the side the camera sees): module scratch, read at once. */
+function upright(hit: Intersection, dir: Vector3): Vector3 {
+  if (!hit.face) return normal.set(0, 0, 0);
   m4.copy(hit.object.matrixWorld);
   const inst = hit.object as { isInstancedMesh?: boolean; getMatrixAt?: (i: number, m: Matrix4) => void };
   if (inst.isInstancedMesh && hit.instanceId !== undefined && inst.getMatrixAt) {
@@ -578,7 +591,35 @@ function upright(hit: Intersection, dir: Vector3): number {
   normalMatrix.getNormalMatrix(m4);
   normal.copy(hit.face.normal).applyMatrix3(normalMatrix).normalize();
   if (normal.dot(dir) > 0) normal.negate();
-  return normal.y;
+  return normal;
+}
+
+/**
+ * The camera a search is made for (`raycaster.camera`): where it is and which way it looks, so a faded leaf is judged
+ * by its view depth — `1 / gl_FragCoord.w` in the shader (villageModelPrep.ts), the distance along the camera's axis.
+ * Toward the screen's edges a ray is longer than that depth (round 3 review: a leaf 1.4 m deep, 83 % dithered away,
+ * lay 1.82 m along the ray and was taken as solid). Without a camera, the ray's length stands in for it.
+ */
+const view = { on: false, px: 0, py: 0, pz: 0, fx: 0, fy: 0, fz: -1 };
+function setView(camera: Camera | null | undefined): void {
+  if (!camera?.matrixWorld) {
+    view.on = false;
+    return;
+  }
+  const e = camera.matrixWorld.elements;
+  const len = Math.hypot(e[8], e[9], e[10]) || 1;
+  view.on = true;
+  view.px = e[12];
+  view.py = e[13];
+  view.pz = e[14];
+  view.fx = -e[8] / len;
+  view.fy = -e[9] / len;
+  view.fz = -e[10] / len;
+}
+function viewDepth(hit: Intersection): number {
+  if (!view.on) return hit.distance;
+  const p = hit.point;
+  return (p.x - view.px) * view.fx + (p.y - view.py) * view.fy + (p.z - view.pz) * view.fz;
 }
 
 /** The best hit of one pickSurface call (module scratch: a click is one call at a time, never re-entered). */
@@ -592,7 +633,7 @@ function consider(hit: Intersection, limit: number, blocker: boolean): void {
   if (isSeeThrough(material)) return;
   // Leaves fading out near the camera (villageModelPrep.ts FOLIAGE_NEAR_FADE) are not there to click.
   const fade = material?.userData?.[NEAR_FADE_KEY];
-  if (typeof fade === "number" && hit.distance < fade) return;
+  if (typeof fade === "number" && viewDepth(hit) < fade) return;
   if (isCutAway(hit, material)) return;
   best.hit = hit;
   best.distance = hit.distance;
@@ -604,13 +645,15 @@ const sphere = new Sphere();
 const toCentre = new Vector3();
 
 /** An instanced mesh, instance by instance: each one's bounding sphere first, none that starts past `limit` or the best hit. */
-function raycastInstances(inst: InstancedMesh, raycaster: Raycaster, limit: number, blocker: boolean): void {
+function raycastInstances(inst: InstancedMesh, raycaster: Raycaster, limit: number, blocker: boolean, only?: readonly number[]): void {
   const geometry = inst.geometry;
   if (geometry.boundingSphere === null) geometry.computeBoundingSphere();
   instanceMesh.geometry = geometry;
   instanceMesh.material = inst.material;
   const ray = raycaster.ray;
-  for (let i = 0; i < inst.count; i++) {
+  const n = only ? only.length : inst.count;
+  for (let k = 0; k < n; k++) {
+    const i = only ? only[k] : k;
     inst.getMatrixAt(i, instance);
     instanceMesh.matrixWorld.multiplyMatrices(inst.matrixWorld, instance);
     sphere.copy(geometry.boundingSphere!).applyMatrix4(instanceMesh.matrixWorld);
@@ -641,7 +684,13 @@ export function pickSurface(raycaster: Raycaster, root: Object3D, options: PickO
   if (options.area && !span) return null;
   const candidates: Candidate[] = [];
   collect(root, raycaster, span, candidates, false);
+  return search(raycaster, candidates, span, options);
+}
+
+/** The nearest drawn surface among `candidates` (meshes whose box the ray enters, with where it enters them). */
+function search(raycaster: Raycaster, candidates: Candidate[], span: Span | null, options: PickOptions): ScenePick | null {
   candidates.sort((a, b) => a.entry - b.entry);
+  setView(raycaster.camera);
   best.hit = null;
   best.distance = Infinity;
   best.blocker = false;
@@ -657,7 +706,7 @@ export function pickSurface(raycaster: Raycaster, root: Object3D, options: PickO
       continue;
     }
     if ((c.mesh as unknown as InstancedMesh).isInstancedMesh) {
-      raycastInstances(c.mesh as unknown as InstancedMesh, raycaster, c.far, c.blocker);
+      raycastInstances(c.mesh as unknown as InstancedMesh, raycaster, c.far, c.blocker, c.instances);
       continue;
     }
     const cells = c.mesh.geometry ? cellsOf(c.mesh.geometry) : null;
@@ -670,15 +719,18 @@ export function pickSurface(raycaster: Raycaster, root: Object3D, options: PickO
     for (const hit of hits) consider(hit, c.far, c.blocker);
   }
   if (body && body.distance < best.distance) {
-    return { x: body.point.x, y: body.point.y, z: body.point.z, ny: 0, distance: body.distance, blocker: true, name: body.name };
+    return { x: body.point.x, y: body.point.y, z: body.point.z, nx: 0, ny: 0, nz: 0, distance: body.distance, blocker: true, name: body.name };
   }
   const hit = best.hit as Intersection | null; // set by consider() (TS narrows the reset above to null)
   if (!hit) return null;
+  const n = upright(hit, raycaster.ray.direction);
   return {
     x: hit.point.x,
     y: hit.point.y,
     z: hit.point.z,
-    ny: upright(hit, raycaster.ray.direction),
+    nx: n.x,
+    ny: n.y,
+    nz: n.z,
     distance: hit.distance,
     blocker: best.blocker,
     name: hit.object.name || hit.object.type,
@@ -720,4 +772,233 @@ export function surfaceHeightAt(raycaster: Raycaster, root: Object3D, x: number,
   raycaster.near = near;
   raycaster.far = far;
   return found;
+}
+
+// ───────────────────────────── a face's height, a ring's view ─────────────────────────────
+
+/** Where the level probe of faceIsTall starts in front of the face, and how far past it it looks (m). */
+const FACE_PROBE_BACK = 0.1;
+const FACE_PROBE_IN = 0.1;
+const probeDir = new Vector3();
+
+/** The caller's ray, saved while a helper casts its own (and given back after). */
+const keep = { origin: new Vector3(), direction: new Vector3(), near: 0, far: Infinity, camera: null as Camera | null };
+function saveRay(r: Raycaster): void {
+  keep.origin.copy(r.ray.origin);
+  keep.direction.copy(r.ray.direction);
+  keep.near = r.near;
+  keep.far = r.far;
+  keep.camera = r.camera ?? null;
+}
+function restoreRay(r: Raycaster): void {
+  r.ray.origin.copy(keep.origin);
+  r.ray.direction.copy(keep.direction);
+  r.near = keep.near;
+  r.far = keep.far;
+  (r as { camera: Camera | null }).camera = keep.camera;
+}
+
+/**
+ * Whether an upright face clicked low goes on up past `above` (WALKABLE_MAX_Y): a level ray just above that height,
+ * from FACE_PROBE_BACK in front of the face into it, meets something within FACE_PROBE_IN past it. A curb's side (11 cm)
+ * does not — the probe passes over its top; a step's riser (30 cm), a planter's or a wall's side does (round 3 review:
+ * the ring put on the memorial step's riser had its far half inside the step).
+ */
+export function faceIsTall(raycaster: Raycaster, root: Object3D, pick: ScenePick, above = WALKABLE_MAX_Y): boolean {
+  const len = Math.hypot(pick.nx, pick.nz);
+  if (len < 1e-6) return false;
+  probeDir.set(-pick.nx / len, 0, -pick.nz / len); // into the face
+  saveRay(raycaster);
+  raycaster.ray.origin.set(pick.x - probeDir.x * FACE_PROBE_BACK, above + 0.01, pick.z - probeDir.z * FACE_PROBE_BACK);
+  raycaster.ray.direction.copy(probeDir);
+  raycaster.near = 0;
+  raycaster.far = FACE_PROBE_BACK + FACE_PROBE_IN;
+  const hit = pickSurface(raycaster, root, { skipBlockers: true });
+  restoreRay(raycaster);
+  return hit !== null;
+}
+
+/** A mesh near a ring's sight lines, its world box measured once for all of them (and an instanced one's instances there). */
+interface Near {
+  mesh: Mesh;
+  box: Box3;
+  instances?: number[];
+}
+
+/**
+ * The meshes (bodies left out) whose world box meets `within` — one walk over the scene for all of a ring's rays — and
+ * of an instanced mesh only the instances whose sphere does (the backdrop's 7,000 forest cards ring the whole village:
+ * every ray went through all of them).
+ */
+function gather(o: Object3D, raycaster: Raycaster, within: Box3, out: Near[]): void {
+  if (!o.visible) return;
+  const tag = o.userData?.[CLICK_PICK_KEY] as ClickPickTag | undefined;
+  if (tag === "ignore" || tag === "block") return; // a body moves off a ring; the ring itself is no cover
+  const mesh = o as Mesh;
+  if (mesh.isMesh && o.layers.test(raycaster.layers) && !o.name.startsWith("col__") && !(o as unknown as SkinnedMesh).isSkinnedMesh && !drawsNothing(mesh)) {
+    const local = localBox(mesh);
+    if (local && !local.isEmpty()) {
+      const b = local.clone().applyMatrix4(o.matrixWorld);
+      if (b.intersectsBox(within)) {
+        const inst = o as unknown as InstancedMesh;
+        if (!inst.isInstancedMesh) out.push({ mesh, box: b });
+        else {
+          const geometry = inst.geometry;
+          if (geometry.boundingSphere === null) geometry.computeBoundingSphere();
+          const instances: number[] = [];
+          for (let i = 0; i < inst.count; i++) {
+            inst.getMatrixAt(i, instance);
+            instanceMesh.matrixWorld.multiplyMatrices(inst.matrixWorld, instance);
+            sphere.copy(geometry.boundingSphere!).applyMatrix4(instanceMesh.matrixWorld);
+            if (within.intersectsSphere(sphere)) instances.push(i);
+          }
+          if (instances.length > 0) out.push({ mesh, box: b, instances });
+        }
+      }
+    }
+  }
+  for (const child of o.children) gather(child, raycaster, within, out);
+}
+
+/** A ring's sample points: the middle of each of RING_SECTORS sectors of its band, and its dot. */
+const RING_SECTORS = 12;
+const camPos = new Vector3();
+const sample = new Vector3();
+const ndc = new Vector3();
+const corner = new Vector3();
+const sightBox = new Box3();
+const quad: Array<[number, number]> = [
+  [0, 0],
+  [0, 0],
+  [0, 0],
+  [0, 0],
+];
+
+/** The screen area (NDC units) of the quad of world points `pts` on the plane y; null when a corner is behind the camera. */
+function screenArea(camera: Camera, pts: ReadonlyArray<readonly [number, number]>, y: number): number | null {
+  for (let i = 0; i < 4; i++) {
+    corner.set(pts[i][0], y, pts[i][1]).project(camera);
+    if (corner.z > 1 || corner.z < -1) return null;
+    quad[i][0] = corner.x;
+    quad[i][1] = corner.y;
+  }
+  let a = 0;
+  for (let i = 0; i < 4; i++) {
+    const [x1, y1] = quad[i];
+    const [x2, y2] = quad[(i + 1) % 4];
+    a += x1 * y2 - x2 * y1;
+  }
+  return Math.abs(a) / 2;
+}
+
+/**
+ * How a destination ring centred at (x, y, z) — `y` its plane: the surface plus the lift — drawn at `scale` would look
+ * from `camera` (rule 4 of clickPlan.ts; round 3 review: walks whose ring nobody saw — under a cherry's crown, off the
+ * screen along the creek bank, through a pinhole in a crown). Whether its centre is on the screen, and the share of its
+ * on-screen area seen past what stands in front: a ray from the camera to the middle of each sector of its band and to
+ * its dot, each weighted by its area on the screen (a far ring is a thin ellipse whose ends hold most of it), each
+ * ending where the ring's own depth test does (clickRing.ts ringDepthBias: ground or a curb lower than RING_SEE_OVER in
+ * front never covers it). What the pick sees through, the ring is seen through (faded leaves, the gaps of a leaf card,
+ * glass, shadows); bodies do not count — they move off it. One walk over the scene for all the rays; the caller's ray
+ * is given back as it was.
+ *
+ * `need` (the share a plan needs): the rays are cast largest sector first and stop once the share is known to be at
+ * least `need` or below it — the share returned is then exact only that far. Most clicks are decided in a few rays.
+ */
+export function ringView(
+  raycaster: Raycaster,
+  root: Object3D,
+  camera: Camera,
+  x: number,
+  y: number,
+  z: number,
+  scale: number,
+  need?: number,
+): RingView {
+  ndc.set(x, y, z).project(camera);
+  if (!(ndc.z < 1 && ndc.z > -1 && Math.abs(ndc.x) <= 1 && Math.abs(ndc.y) <= 1)) return { onScreen: false, seen: 0 };
+  const near = (camera as { near?: number }).near ?? 0.1;
+  camPos.setFromMatrixPosition(camera.matrixWorld);
+  const ri = RING_INNER * scale;
+  const ro = RING_OUTER * scale;
+  const rm = (ri + ro) / 2;
+  // the samples: the sectors' middles and the dot, each with its area on the screen (off the screen: not part of it)
+  const samples: Array<{ x: number; z: number; w: number }> = [];
+  const add = (sx: number, sz: number, area: number | null) => {
+    if (area === null) return;
+    ndc.set(sx, y, sz).project(camera);
+    if (ndc.z < 1 && Math.abs(ndc.x) <= 1 && Math.abs(ndc.y) <= 1) samples.push({ x: sx, z: sz, w: Math.max(area, 1e-9) });
+  };
+  for (let k = 0; k < RING_SECTORS; k++) {
+    const a0 = (k / RING_SECTORS) * Math.PI * 2;
+    const a1 = ((k + 1) / RING_SECTORS) * Math.PI * 2;
+    const am = (a0 + a1) / 2;
+    const c0 = Math.cos(a0);
+    const s0 = Math.sin(a0);
+    const c1 = Math.cos(a1);
+    const s1 = Math.sin(a1);
+    const area = screenArea(
+      camera,
+      [
+        [x + c0 * ri, z + s0 * ri],
+        [x + c0 * ro, z + s0 * ro],
+        [x + c1 * ro, z + s1 * ro],
+        [x + c1 * ri, z + s1 * ri],
+      ],
+      y,
+    );
+    add(x + Math.cos(am) * rm, z + Math.sin(am) * rm, area);
+  }
+  const d = 0.07 * scale;
+  add(
+    x,
+    z,
+    screenArea(
+      camera,
+      [
+        [x - d, z - d],
+        [x + d, z - d],
+        [x + d, z + d],
+        [x - d, z + d],
+      ],
+      y,
+    ),
+  );
+  let total = 0;
+  for (const smp of samples) total += smp.w;
+  if (!(total > 0)) return { onScreen: true, seen: 0 };
+  samples.sort((a, b) => b.w - a.w);
+
+  sightBox.makeEmpty().expandByPoint(camPos);
+  sightBox.expandByPoint(sample.set(x - ro, y, z - ro)).expandByPoint(sample.set(x + ro, y, z + ro));
+  const nearby: Near[] = [];
+  gather(root, raycaster, sightBox, nearby);
+  saveRay(raycaster);
+  (raycaster as { camera: Camera | null }).camera = camera;
+  let seen = 0;
+  let left = total;
+  for (const smp of samples) {
+    if (need !== undefined && (seen >= need * total || seen + left < need * total)) break; // decided
+    left -= smp.w;
+    sample.set(smp.x, y, smp.z);
+    const dist = sample.distanceTo(camPos);
+    const far = dist - ringDepthBias(dist, (camPos.y - y) / Math.max(dist, 1e-6), scale, near) - 0.01;
+    if (far <= near) {
+      seen += smp.w;
+      continue;
+    }
+    raycaster.ray.origin.copy(camPos);
+    raycaster.ray.direction.copy(sample).sub(camPos).normalize();
+    raycaster.near = near;
+    raycaster.far = far;
+    const candidates: Candidate[] = [];
+    for (const n of nearby) {
+      let at = 0;
+      if (!n.box.containsPoint(camPos)) at = raycaster.ray.intersectBox(n.box, entryPoint) ? entryPoint.distanceTo(camPos) : Infinity;
+      if (at <= far) candidates.push({ mesh: n.mesh, entry: at, far, blocker: false, instances: n.instances });
+    }
+    if (!search(raycaster, candidates, null, { skipBlockers: true })) seen += smp.w;
+  }
+  restoreRay(raycaster);
+  return { onScreen: true, seen: seen / total };
 }

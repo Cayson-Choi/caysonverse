@@ -6,7 +6,7 @@
  * goes is decided from the surface actually under the cursor (clickPick.ts → clickPlan.ts, owner 2026-11-10): ground
  * walks there, anything else (a wall, a bench, a body, the sky, past the area) does nothing, and a walk something
  * stops on the way targets where it will stop — so the destination ring (ClickMarker) is never shown where the avatar
- * will not go. LocalPlayer's per-frame controller then composes the unit direction toward it
+ * will not go; and a walk whose ring the player would not see (under a crown, off the screen) is no walk at all. LocalPlayer's per-frame controller then composes the unit direction toward it
  * into the NORMAL movement intent (dirToIntent → worldDirection → collision →
  * moveSender), so auto-move is not a forked movement path — same speed, same
  * collision slide, same network validation as a key press.
@@ -122,6 +122,15 @@ export function isClick(dxPx: number, dyPx: number, elapsedMs: number, maxPx: nu
   return Math.hypot(dxPx, dyPx) < maxPx && elapsedMs < CLICK_MAX_MS;
 }
 
+/**
+ * The farthest a press has travelled from where it went down (screen px), given the farthest so far and where it is
+ * now: CameraRig feeds every move of the press through it and asks isClick of the result, not of the release point
+ * alone (round 3 review: a quick 40 px drag that came back to its start turned the camera AND walked).
+ */
+export function pressTravel(farthest: number, dxPx: number, dyPx: number): number {
+  return Math.max(farthest, Math.hypot(dxPx, dyPx));
+}
+
 function clamp(value: number, min: number, max: number): number {
   return value < min ? min : value > max ? max : value;
 }
@@ -159,9 +168,20 @@ export function peekClickTarget(): Readonly<ClickTarget> | null {
   return state.target;
 }
 
-/** Show a held-back tap's ring at (x, z) on a surface at `y` without walking (see `pending`). */
-export function setPendingClick(x: number, z: number, y: number): void {
-  state.pending = { x, z, y };
+/**
+ * Show a held-back tap's ring at (x, z) on a surface at `y` without walking (see `pending`). Returns it: the tap's
+ * timer checks that it is still the pending ring when the wait ends (peekPendingClick) — a key, the stick, Esc or a
+ * sit dropped it meanwhile, and then the tap is not walked (tapGesture.ts canTapWalk).
+ */
+export function setPendingClick(x: number, z: number, y: number): Readonly<ClickTarget> {
+  const ring = { x, z, y };
+  state.pending = ring;
+  return ring;
+}
+
+/** The held-back tap's ring (the live object), or null. */
+export function peekPendingClick(): Readonly<ClickTarget> | null {
+  return state.pending;
 }
 
 /** Drop a held-back tap's ring (a double tap, a pinch, the walk refused when the wait ends). */
@@ -178,12 +198,17 @@ export function peekClickRing(): Readonly<ClickTarget> | null {
   return state.pending ?? state.target;
 }
 
-/** Drop the target and any pending tap ring (manual-input yield / sit-confirm / Esc — design 29 (b)/(e)). */
-export function clearClickTarget(): void {
+/** Drop the walk's target only (it arrived, or made no progress): a tap waiting out its double-tap wait keeps its ring. */
+function endWalk(): void {
   state.target = null;
-  state.pending = null;
   state.anchored = false;
   state.windowSec = 0;
+}
+
+/** Drop the target and any pending tap ring (manual-input yield / sit-confirm / Esc — design 29 (b)/(e)). */
+export function clearClickTarget(): void {
+  endWalk();
+  state.pending = null;
 }
 
 /** Full reset — LocalPlayer mount/unmount (fresh join AND reconnect remount). */
@@ -225,8 +250,10 @@ export function stepClickMove(px: number, pz: number, dt: number): GroundVec | n
   const target = state.target;
   if (!target) return null;
 
+  // Arrival and the no-progress release end this walk only: a tap made meanwhile is still waiting out its
+  // double-tap window, its ring showing (round 3 review: the ring vanished at the arrival and came back 300 ms later).
   if (hasArrived(px, pz, target.x, target.z)) {
-    clearClickTarget();
+    endWalk();
     return null;
   }
 
@@ -241,7 +268,7 @@ export function stepClickMove(px: number, pz: number, dt: number): GroundVec | n
   state.windowSec += Math.min(dt, STUCK_STEP_MAX_SEC);
   if (state.windowSec >= STUCK_WINDOW_SEC) {
     if (Math.hypot(px - state.anchorX, pz - state.anchorZ) < STUCK_MIN_DIST) {
-      clearClickTarget(); // blocked (wall/corner) — stop instead of grinding
+      endWalk(); // blocked (wall/corner) — stop instead of grinding
       return null;
     }
     state.anchorX = px;

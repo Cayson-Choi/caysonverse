@@ -51,6 +51,8 @@ export function isLookHalf(x: number, vw: number, leftHanded: boolean = false): 
  *   - chat / a panel took the keyboard (`uiCaptured`; the Esc menu captures it while open),
  *   - the player SAT DOWN meanwhile (`seatedNow` but not `seatedAtTap`): a walk target
  *     would stand them straight back up.
+ *   - its ring was DROPPED meanwhile (`dropped`: a key, the stick, Esc or a sit cleared it — the player took over):
+ *     walking then would bring back a ring that had already gone (round 3 review).
  * A tap made while already seated keeps its meaning — "stand up and go there" — like
  * a mouse click does.
  */
@@ -59,7 +61,8 @@ export function canTapWalk(
   uiCaptured: boolean,
   seatedAtTap: boolean,
   seatedNow: boolean,
+  dropped = false,
 ): boolean {
-  if (mode === "ov" || uiCaptured) return false;
+  if (mode === "ov" || uiCaptured || dropped) return false;
   return seatedAtTap || !seatedNow;
 }
