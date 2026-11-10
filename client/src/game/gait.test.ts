@@ -5,10 +5,10 @@ import { gaitClip, gaitFor, moveSpeed, remoteGaitProbe } from "./gait";
 import type { Gait } from "./gait";
 
 describe("moveSpeed", () => {
-  it("walks at MOVE_SPEED and runs at RUN_SPEED (MOVE_SPEED x 1.6)", () => {
+  it("walks at MOVE_SPEED (2 m/s) and runs at RUN_SPEED (6.4 m/s)", () => {
     expect(moveSpeed(false)).toBe(MOVE_SPEED);
-    expect(moveSpeed(true)).toBeCloseTo(RUN_SPEED, 9);
-    expect(moveSpeed(true)).toBeCloseTo(MOVE_SPEED * 1.6, 9);
+    expect(moveSpeed(true)).toBe(RUN_SPEED);
+    expect([moveSpeed(false), moveSpeed(true)]).toEqual([2, 6.4]);
   });
 });
 

@@ -117,9 +117,10 @@ declare global {
        */
       getSelfVisible: () => boolean;
       /**
-       * The LOCAL avatar's current gait (idle / walk / run) — the animation the
-       * loco crossfade last settled on. Lets the run E2E assert the Running_A
-       * cycle without reading the three mixer.
+       * The LOCAL avatar's current gait (idle / walk / run) — what the player's
+       * input last asked for in loco. The loop on the body follows the speed the
+       * body actually goes at (stride.ts: Idle while pushed into a wall) and shows
+       * in `__cvAvatars()[sid].clip`.
        */
       getGait: () => Gait;
       /**

@@ -41,7 +41,8 @@ import type { MovePayload } from "@caysonverse/shared/messages";
  * keep their exact verdicts.
  *
  * 기준 속도 = 달리기 속도 (controls-ux §5): the client never reports walk/run, so
- * the speed budget is sized for RUN_SPEED (MOVE_SPEED × 1.6).
+ * the speed budget is sized for RUN_SPEED (6.4 m/s; the walk is MOVE_SPEED, 2 m/s since 2026-11-10 — a tab still
+ * walking at the old 4 m/s is well inside it).
  */
 export function validateMove(
   current: { x: number; z: number },

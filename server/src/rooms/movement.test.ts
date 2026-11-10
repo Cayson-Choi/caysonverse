@@ -146,13 +146,24 @@ describe("validateMove — displacement / speed", () => {
 });
 
 describe("validateMove — run speed (controls-ux §5)", () => {
-  it("pins the run multiplier at 1.6", () => {
-    expect(RUN_SPEED).toBeCloseTo(MOVE_SPEED * 1.6, 9);
+  it("pins the run speed at 6.4 m/s: slowing the walk to 2 m/s (2026-11-10) did not slow the run", () => {
+    expect(RUN_SPEED).toBe(6.4);
+    expect(MOVE_SPEED).toBe(2);
   });
 
-  it("accepts a run step the old walk budget dropped", () => {
-    const d = MOVE_SPEED * 0.1 * MOVE_SPEED_SLACK + 0.1; // > 0.6 m (old cap)
+  it("accepts a run step a walk-speed budget would drop", () => {
+    const d = MOVE_SPEED * 0.1 * MOVE_SPEED_SLACK + 0.1; // > 0.3 m (a walk-sized cap)
     expect(validateMove(ORIGIN, { x: d, z: 0, yaw: 0 }, 100)).not.toBeNull();
+  });
+
+  it("still takes every step of a tab opened before the walk slowed down (walking at the old 4 m/s)", () => {
+    let at = { x: 0, z: 0 };
+    for (let k = 1; k <= 10; k++) {
+      const next = validateMove(at, { x: at.x + 4 * 0.1, z: 0, yaw: Math.PI / 2 }, 100);
+      expect(next).not.toBeNull();
+      at = next!;
+    }
+    expect(at.x).toBeCloseTo(4, 9);
   });
 
   it("drops a step just beyond RUN_SPEED × elapsed × slack", () => {

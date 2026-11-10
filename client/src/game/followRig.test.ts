@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { MOVE_SPEED, RUN_SPEED } from "@caysonverse/shared/constants";
 import { VILLAGE_LAYOUT } from "@caysonverse/shared/village/villageLayout";
 import { CAMERA, HEAD_HEIGHT } from "./constants";
 import { CAMERA_LOOK_LIFT, ZOOM_BAND } from "./cameraControls";
@@ -89,11 +90,11 @@ describe("follow rig — the zoom set with the wheel holds while the player move
       expect(armLength(s, b.x, b.z)).toBeCloseTo(9.5, EPS_DIGITS);
       expectAtChosenSpot(s, orbit, b.x, b.z);
     };
-    walk(rig, orbit, body, spot, 2, 4, 0, -1, check); // walk north (MOVE_SPEED)
-    walk(rig, orbit, body, spot, 1, 6.4, 1, -1, check); // run, turning north-east (RUN_SPEED)
+    walk(rig, orbit, body, spot, 2, MOVE_SPEED, 0, -1, check); // walk north
+    walk(rig, orbit, body, spot, 1, RUN_SPEED, 1, -1, check); // run, turning north-east
     walk(rig, orbit, body, spot, 1, 0, 0, 0, check); // stop: nothing settles, nothing drifts
-    walk(rig, orbit, body, spot, 1.5, 6.4, -1, 0.3, check); // turn back west at a run
-    walk(rig, orbit, body, spot, 0.5, 4, 0, 1, check); // and south toward the camera
+    walk(rig, orbit, body, spot, 1.5, RUN_SPEED, -1, 0.3, check); // turn back west at a run
+    walk(rig, orbit, body, spot, 0.5, MOVE_SPEED, 0, 1, check); // and south toward the camera
     expect(live.distance).toBeCloseTo(9.5, 12); // the zoom value itself is what the wheel set
   });
 

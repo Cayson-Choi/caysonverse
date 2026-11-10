@@ -340,7 +340,6 @@ try {
         SEAT_YAW: W.SEAT_YAW,
         MOVE_SPEED: K.MOVE_SPEED,
         RUN_SPEED: K.RUN_SPEED,
-        RUN_SPEED_MULTIPLIER: K.RUN_SPEED_MULTIPLIER,
         ROLE_TEACHER: K.ROLE_TEACHER,
         TYPING_WINDOW_MS: K.TYPING_RATE.windowMs,
         KEY_YAW_RATE: C.CAMERA_KEY_YAW_RATE,
@@ -352,7 +351,7 @@ try {
   const { SEATS, SEAT_YAW, MOVE_SPEED, RUN_SPEED, ROLE_TEACHER } = shared;
   CODE = { keyYawRate: shared.KEY_YAW_RATE, jumpCooldownMs: shared.JUMP_COOLDOWN_MS, typingWindowMs: shared.TYPING_WINDOW_MS };
   // Not a copy of the numbers: only that the modules loaded and the relations the steps rely on hold.
-  check("shared constants loaded from the source modules", MOVE_SPEED > 0 && Math.abs(RUN_SPEED - MOVE_SPEED * shared.RUN_SPEED_MULTIPLIER) < 1e-9 && SEATS.length > 1 && CODE.keyYawRate > 0 && CODE.jumpCooldownMs > 0, {
+  check("shared constants loaded from the source modules", MOVE_SPEED > 0 && RUN_SPEED > 2 * MOVE_SPEED && SEATS.length > 1 && CODE.keyYawRate > 0 && CODE.jumpCooldownMs > 0, {
     MOVE_SPEED, RUN_SPEED, seats: SEATS.length, SEAT_YAW, ...CODE,
   });
 
@@ -440,7 +439,7 @@ try {
     const gaitsB = [...new Set(rowsB.map((r) => r.gait))];
     check("(extra) B shows A's walk as a walk, never as the run gait", gaitsB.includes("walk") && !gaitsB.includes("run"), { gaitsOnB: gaitsB });
     const p1 = await getPos(pa);
-    check("A moved east about one stride", p1.x - p0.x > 2.8, { dx: r2(p1.x - p0.x) });
+    check("A moved east about MOVE_SPEED x 1 s", p1.x - p0.x > MOVE_SPEED * 0.7, { dx: r2(p1.x - p0.x) });
     await shot(pa, "pc-01-walk-A.png");
     await sleep(500);
   });
@@ -505,7 +504,8 @@ try {
     await sleep(200);
     const w2 = await getPos(pa);
     await pa.keyboard.up("w");
-    check("W kept walking while Tab was held (the chat capture never froze it)", dist(w0, w2) > 1.2, { moved: r2(dist(w0, w2)), duringTab: r2(dist(w0, w1)) });
+    // W is held ≥ ~0.6 s from w0 (150 ms + the repeats + 200 ms); frozen at the Tab press it would stop after 150 ms.
+    check("W kept walking while Tab was held (the chat capture never froze it)", dist(w0, w2) > MOVE_SPEED * 0.45, { moved: r2(dist(w0, w2)), duringTab: r2(dist(w0, w1)), MOVE_SPEED });
 
     // Phase 2 — running (Shift+W held): Shift+Tab, then repeats of it.
     await sleep(300);
@@ -544,7 +544,7 @@ try {
     await holdKeys(pa, ["w"], 500);
     await sleep(150);
     const n1 = await getPos(pa);
-    check("afterwards the chat field is not focused and W still moves A", !/cv-chat-field/.test(after.cls) && after.tag === "BODY" && dist(n0, n1) > 0.8, {
+    check("afterwards the chat field is not focused and W still moves A", !/cv-chat-field/.test(after.cls) && after.tag === "BODY" && dist(n0, n1) > MOVE_SPEED * 0.3, {
       active: after, moved: r2(dist(n0, n1)),
     });
     check("…and nothing was typed into the chat field", (await pa.locator(".cv-chat-field").inputValue().catch(() => "")) === "", {});
@@ -566,7 +566,7 @@ try {
     const look = { x: -Math.sin(fp0), z: -Math.cos(fp0) };
     const dot = len > 0 ? (dir.x * look.x + dir.z * look.z) / len : 1;
     check("fpYaw changed by < 0.01 while strafing", Math.abs(norm(fp1 - fp0)) < 0.01, { fp0: r2(fp0), fp1: r2(fp1), d: Math.abs(norm(fp1 - fp0)) });
-    check("moved ≥ 2.5 m", len > 2.5, { len: r2(len) });
+    check(`moved ≥ ${r2(MOVE_SPEED * 0.7)} m (A held 1 s at MOVE_SPEED, -30%)`, len > MOVE_SPEED * 0.7, { len: r2(len), MOVE_SPEED });
     check("movement is perpendicular to the look direction", Math.abs(dot) < 0.15, { cos: r2(dot), dir: [r2(dir.x), r2(dir.z)], look: [r2(look.x), r2(look.z)] });
     // Screen-right of a view with yaw φ is R = (cos φ, −sin φ) (input.ts worldDirection); the A key goes the other way.
     const right = { x: Math.cos(fp0), z: -Math.sin(fp0) };
