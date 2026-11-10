@@ -9,13 +9,16 @@
 // Review round 2: a line that STARTS with ㅡ / ㅠ (ㅡㅡ, ㅠㅠ — m m / b b on Windows) goes into the chat too (a lone M / B
 // waits a moment for the next key; a slower second key takes back the map that opened), Safari's 229 Enter sends on one
 // press, and a held 4th line shows a note right above the bar (phones: the log is folded) with ONE notice in the log.
+// Review round 3: slower typists (0.3 – 1.2 s a key) never leave the map open — the slow-typing matrix records the map
+// every 10 ms (part pc-matrix); the tap that leaves the chat on a phone never lands on the 💬 / emoji / action / jump
+// button that comes back under the finger; Safari's 229 Escape only cancels the syllable; the phone send button is 48 px.
 //
 // Plain Playwright against a dev stack, in the style of the other e2e scripts:
 //   server:  PORT=2681 TEACHER_KEYS_FILE=e2e/fixtures/teacher-keys.e2e.json npx tsx src/index.ts   (in server/; the path is from the repo root)
 //   client:  VITE_SERVER_URL=http://localhost:2681 npx vite --port 5281 --strictPort (in client/)
 //   CV_CLIENT_URL=http://localhost:5281 node e2e/chat-stay-open.mjs
 // CV_CHAT_EVIDENCE=<dir> puts the screenshots + assertions there (default: .superpowers/sdd/evidence/task-escape/chat-stay-open).
-// CV_CHAT_ONLY=<parts> (comma list of pc, iphone13, kakao-android, legacy, hall) runs only those parts.
+// CV_CHAT_ONLY=<parts> (comma list of pc, pc-matrix, iphone13, kakao-android, legacy, hall) runs only those parts.
 //
 // The IME is driven through CDP (Input.imeSetComposition / Input.insertText): Blink then holds a REAL composition
 // (compositionstart/update/end, isComposing on the keydowns), which is what a Hangul IME does to the page.
@@ -25,8 +28,8 @@
 import { chromium, devices } from "playwright";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { CLIENT_URL, DESKTOP, createRun, entryReady, joinAsTeacher, openPlayer, pos, press, sleep, waitIdle } from "./lib/escape.mjs";
-import { joinVillage } from "./lib/village.mjs";
+import { CLIENT_URL, DESKTOP, createRun, entryReady, joinAsTeacher, openPlayer, pos, press, sleep, turnCameraTo, waitIdle, walkAndWait } from "./lib/escape.mjs";
+import { joinVillage, standAtPlazaGuide } from "./lib/village.mjs";
 
 const run = createRun("chat-stay-open");
 if (process.env.CV_CHAT_EVIDENCE) run.evidence = process.env.CV_CHAT_EVIDENCE;
@@ -47,6 +50,13 @@ const { defaultBrowserType: _ignored, ...IPHONE_13 } = devices["iPhone 13"];
 const FIELD = ".cv-chat-field";
 const SEND = ".cv-chat-send";
 const BAR = ".cv-chat-input";
+
+/** hotkeys.ts TAKE_BACK_MS / WORD_GAP_MS (1.5 s): a second M sooner than this after the first reads as ㅡㅡ. */
+const TAKE_BACK_MS = 1500;
+/** A person looking at the map before closing it again: past the take-back, so the M is the map's close key. */
+const LOOK_MS = TAKE_BACK_MS + 200;
+/** game/settings.ts MIN_TOUCH_PX: the project's smallest touch target. */
+const MIN_TOUCH_PX = 48;
 
 /** What has the keyboard: the focused element's class (or tag) and the field's text. */
 const state = (p) =>
@@ -166,6 +176,13 @@ async function pc(browser) {
   await run.step("PC 1. 마을 입장", async () => {
     const { nick } = await joinVillage(A, "챗");
     check("joined the village", !!nick, { nick });
+    // The spawn is jittered 3 m around (0, 14): start every run from the same open spot south of the fountain, facing it,
+    // so the W walks below have room (one spawn landed beside the plaza guide, and W walked into a bench).
+    await walkAndWait(A, 0, 16.8, 20000, 0.5);
+    await turnCameraTo(A, 0, 0);
+    await sleep(400);
+    const at = await pos(A);
+    check("standing south of the fountain, facing it", Math.hypot(at.x, at.z - 16.8) < 1, at);
   });
 
   await run.step("PC 2. Enter → 두 줄 연속으로 보내도 채팅창에 그대로", async () => {
@@ -342,6 +359,24 @@ async function pc(browser) {
     await sleep(500);
     const s5 = await state(A);
     check("a 229 Enter after a non-Hangul commit (Japanese conversion) sends nothing, keeps the line and the caret", (await myLines(A)).length === n1 && s5.value === "漢字" && s5.focused, s5);
+    // Review round 3: Safari cancels a syllable with an Escape it reports as keyCode 229, isComposing false. It only
+    // drops the syllable: the chat stays (the window's hotkeys never take it for the menu key), no menu. A second,
+    // plain Escape leaves as always.
+    await A.page.locator(FIELD).fill("");
+    await cdp.send("Input.insertText", { text: "그래" });
+    // the IME has already dropped the syllable when the keydown comes (Safari): no composition open, keyCode 229
+    await cdp.send("Input.dispatchKeyEvent", { type: "rawKeyDown", key: "Escape", code: "Escape", windowsVirtualKeyCode: 229, nativeVirtualKeyCode: 229 });
+    await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27, nativeVirtualKeyCode: 27 });
+    await sleep(400);
+    const sE1 = await state(A);
+    const menuE1 = await A.page.locator(".cv-menu").count();
+    check("a 229 Escape (Safari: the IME dropped the syllable) keeps the chat: caret, line and keyboard capture stay, no menu", sE1.focused && sE1.captured && sE1.value === "그래" && menuE1 === 0, { ...sE1, menu: menuE1 });
+    await A.page.keyboard.press("Escape");
+    const sE2 = await until(() => state(A), (s) => !s.focused);
+    const menuE2 = await A.page.locator(".cv-menu").count();
+    check("…and the next, plain Escape leaves the chat (no menu)", !sE2.focused && !sE2.captured && menuE2 === 0, { ...sE2, menu: menuE2 });
+    await A.page.keyboard.press("Enter");
+    await until(() => state(A), (s) => s.focused);
     await A.page.locator(FIELD).fill("");
     await A.page.keyboard.press("Escape");
     await cdp.detach().catch(() => {});
@@ -377,7 +412,7 @@ async function pc(browser) {
     await A.page.keyboard.press("KeyM");
     const ov = await until(mode, (m) => m === "ov", 2000);
     check("English-mode M still opens the map", ov === "ov", { mode: ov });
-    await sleep(500); // a person sees the map before closing it (a second M sooner than TAKE_BACK_MS is the second ㅡ of a word)
+    await sleep(LOOK_MS); // a person sees the map before closing it (a second M sooner than TAKE_BACK_MS is the second ㅡ of a word)
     await A.page.keyboard.press("KeyM");
     const back = await until(mode, (m) => m !== "ov", 2000);
     check("…and closes it", back !== "ov" && !(await state(A)).focused, { mode: back });
@@ -449,7 +484,7 @@ async function pc(browser) {
       await A.page.locator(FIELD).fill("");
       await A.page.keyboard.press("Escape");
       await until(() => state(A), (s) => !s.focused);
-      await sleep(700); // past WORD_GAP_MS: the next key starts afresh
+      await sleep(700); // the Escape inside the chat already made the next key start afresh; a beat more
     };
     await sleep(700);
     const g0 = await pos(A);
@@ -537,9 +572,11 @@ async function pc(browser) {
     const sL = await state(A);
     check("a lone M still opens the map (chat untouched)", ovL === "ov" && !sL.focused && sL.value === "", { mode: ovL, ...sL });
     check("…after its short wait only (≤ 500 ms from the key)", waitedM <= 500, { waitedMs: waitedM });
-    await sleep(500); // a person sees the map before closing it (a second M sooner than TAKE_BACK_MS is the second ㅡ of a word)
+    await sleep(LOOK_MS); // a person sees the map before closing it (a second M sooner than TAKE_BACK_MS is the second ㅡ of a word)
+    const tClose = Date.now();
     await A.page.keyboard.press("KeyM");
-    await until(mode, (m) => m !== "ov", 2000);
+    const closedM = await until(mode, (m) => m !== "ov", 2000, 10);
+    check("…and M on the open map closes it AT ONCE (no wait: the open map's own key)", closedM !== "ov" && Date.now() - tClose <= 200, { closeMs: Date.now() - tClose });
     await sleep(700);
     // M, then walking straight away (before the wait is over): the map opens AT ONCE with the W, and the avatar walks.
     const mw0 = await pos(A);
@@ -556,15 +593,15 @@ async function pc(browser) {
     await A.page.keyboard.press("KeyM");
     await until(mode, (m) => m !== "ov", 2000);
     await sleep(700);
-    // M, a look at the map, M a second later: the map just closes again (no chat).
+    // M, a look at the map, M again: the map just closes again (no chat).
     await A.page.keyboard.press("KeyM");
     await until(mode, (m) => m === "ov", 2000);
-    await sleep(1000);
+    await sleep(LOOK_MS);
     await A.page.keyboard.press("KeyM");
     const backMM = await until(mode, (m) => m !== "ov", 2000);
     await sleep(300);
     const sMM2 = await state(A);
-    check("M, a second on the map, M again: the map closes, no chat", backMM !== "ov" && !sMM2.focused && sMM2.value === "", { mode: backMM, ...sMM2 });
+    check("M, a look at the map (past the take-back), M again: the map closes, no chat", backMM !== "ov" && !sMM2.focused && sMM2.value === "", { mode: backMM, ...sMM2 });
     await sleep(700);
     // Walking (W held down) and pressing M on the way: the map, not the chat.
     await A.page.keyboard.down("KeyW");
@@ -574,17 +611,17 @@ async function pc(browser) {
     await A.page.keyboard.up("KeyW");
     const sWM = await state(A);
     check("walking with W held, then M: the map opens (no chat)", ovW === "ov" && !sWM.focused && sWM.value === "", { mode: ovW, ...sWM });
-    await sleep(500); // a person sees the map before closing it (a second M sooner than TAKE_BACK_MS is the second ㅡ of a word)
+    await sleep(LOOK_MS); // a person sees the map before closing it (a second M sooner than TAKE_BACK_MS is the second ㅡ of a word)
     await A.page.keyboard.press("KeyM");
     await until(mode, (m) => m !== "ov", 2000);
-    // A consonant, then a pause, then M: the map (the M is a key on its own).
+    // A consonant, then a pause longer than a slow typist's (WORD_GAP_MS, 1.5 s), then M: the map (a key on its own).
     await sleep(700);
     await A.page.keyboard.press("KeyR");
-    await sleep(900);
+    await sleep(LOOK_MS);
     await A.page.keyboard.press("KeyM");
     const ovP = await until(mode, (m) => m === "ov", 2000);
-    check("R, a pause, then M: the map opens", ovP === "ov" && !(await state(A)).focused, { mode: ovP });
-    await sleep(500); // a person sees the map before closing it (a second M sooner than TAKE_BACK_MS is the second ㅡ of a word)
+    check("R, a pause past the word gap (1.7 s), then M: the map opens", ovP === "ov" && !(await state(A)).focused, { mode: ovP });
+    await sleep(LOOK_MS); // a person sees the map before closing it (a second M sooner than TAKE_BACK_MS is the second ㅡ of a word)
     await A.page.keyboard.press("KeyM");
     await until(mode, (m) => m !== "ov", 2000);
     await sleep(700);
@@ -596,13 +633,43 @@ async function pc(browser) {
     await A.page.keyboard.press("KeyM");
     const ovV = await until(mode, (m) => m === "ov", 2000);
     check("V, then M 0.3 s later: the view switches and the map opens (no chat)", v1 !== v0 && ovV === "ov" && !(await state(A)).focused, { before: v0, afterV: v1, mode: ovV });
-    await sleep(500); // a person sees the map before closing it (a second M sooner than TAKE_BACK_MS is the second ㅡ of a word)
+    await sleep(LOOK_MS); // a person sees the map before closing it (a second M sooner than TAKE_BACK_MS is the second ㅡ of a word)
     await A.page.keyboard.press("KeyM");
     await until(mode, (m) => m !== "ov", 2000);
     await sleep(700);
     await A.page.keyboard.press("KeyV"); // back to the view it had
     await until(mode, (m) => m === v0, 1500);
     await sleep(600);
+
+    // Walking on the open map (review round 3: WASD on the map must still walk): M, the map, then W held 0.7 s while the
+    // take-back is still running — the avatar walks, the map stays open, no chat. Then a short step (a W tap — a
+    // consonant key!) and M right after: the open map's close key, at once — never read as "즈".
+    // The walks above went north toward the fountain: back to the open start spot first, so this W has room. The camera
+    // turn ends with a short Z / C tap (a consonant), so wait past the word gap before the M.
+    await walkAndWait(A, 0, 16.8, 20000, 0.5);
+    await turnCameraTo(A, 0, 0);
+    await sleep(LOOK_MS);
+    const om0 = await pos(A);
+    await A.page.keyboard.press("KeyM");
+    await until(mode, (m) => m === "ov", 2000);
+    await sleep(150);
+    await A.page.keyboard.down("KeyW");
+    await sleep(700);
+    await A.page.keyboard.up("KeyW");
+    await sleep(300);
+    const om1 = await pos(A);
+    const sOM = await state(A);
+    const mOM = await mode();
+    check("the map open (inside the take-back): W walks the avatar (> 0.3 m), the map stays open, no chat", mOM === "ov" && dist(om0, om1) > 0.3 && !sOM.focused && sOM.value === "", { mode: mOM, moved: Math.round(dist(om0, om1) * 100) / 100, ...sOM });
+    await A.page.keyboard.press("KeyW"); // a short step (a tap)
+    await sleep(200);
+    const tOM = Date.now();
+    await A.page.keyboard.press("KeyM");
+    const mOM2 = await until(mode, (m) => m !== "ov", 2000, 10);
+    await sleep(400);
+    const sOM2 = await state(A);
+    check("…a short step, then M 0.2 s later: the map closes at once, and no chat opened (not \"즈\")", mOM2 !== "ov" && Date.now() - tOM < 1000 && !sOM2.focused && sOM2.value === "", { mode: mOM2, ...sOM2 });
+    await sleep(700);
     await cdp.detach().catch(() => {});
     const sys = await systemLines(A);
     check("no rate-limit notice", sys.length === 0, sys);
@@ -712,7 +779,7 @@ async function phone(browser, label, device) {
     check("💬 focuses the field and unfolds the bar", s1.focused && !s1.collapsed && s1.focusClass, s1);
     const info0 = await sendInfo(P);
     check('send button "보내기" at the end of the bar, dimmed while empty', info0?.name === "보내기" && info0.inside && info0.atEnd && info0.dim, info0);
-    check("…big enough to hit with a thumb (≥ 36 px)", info0 && info0.box.w >= 36 && info0.box.h >= 36, info0?.box);
+    check(`…big enough to hit with a thumb (≥ ${MIN_TOUCH_PX} px, the project's touch minimum)`, info0 && info0.box.w >= MIN_TOUCH_PX - 0.5 && info0.box.h >= MIN_TOUCH_PX - 0.5, info0?.box);
     await shots(P, `${label}-empty`);
 
     await P.page.keyboard.type("폰에서 버튼", { delay: 25 });
@@ -728,11 +795,15 @@ async function phone(browser, label, device) {
     const s3 = await state(P);
     check("after Enter the field keeps focus too", s3.focused && !s3.collapsed, s3);
 
-    // a tap on the scene (the look half, upper right) folds the chat away
+    // a tap on the scene (the look half, upper right) folds the chat away. The rest of the HUD keeps its chat layout
+    // until that tap is over (its click, or 0.4 s after the finger lifts — ChatInput leaveTapStep), then comes back.
     const vp = P.page.viewportSize();
+    const tTap = Date.now();
     await P.page.touchscreen.tap(Math.round(vp.width * 0.72), Math.round(vp.height * 0.33));
-    const s4 = await until(() => state(P), (s) => !s.focused, 1500);
+    const s4 = await until(() => state(P), (s) => !s.focused && !s.focusClass, 1500, 20);
+    const hudBackMs = Date.now() - tTap;
     check("a tap on the scene leaves the chat: field blurred, bar folded, keyboard capture released", !s4.focused && s4.collapsed && !s4.captured && !s4.focusClass, s4);
+    check("…and the HUD's chat layout ends with that tap (≤ 0.6 s)", hudBackMs <= 600, { hudBackMs });
     const btn = await until(() => P.page.locator(".cv-chat-btn").count(), (n) => n === 1, 1500);
     check("…and 💬 is back", btn === 1, { count: btn });
     await shots(P, `${label}-after-tap`);
@@ -769,8 +840,352 @@ async function phone(browser, label, device) {
     check("when the line may go: the note is gone, the button lit", n2 === null && b2?.dim === false, { note: n2, button: b2 });
     await press(P, P.page.locator(SEND));
     check('then a tap sends "폰4" exactly once, the keyboard stays (focused)', (await sentOnce(P, "폰4")) === 1 && (await state(P)).focused, await myLines(P));
+    const vp = P.page.viewportSize();
+    await P.page.touchscreen.tap(Math.round(vp.width * 0.72), Math.round(vp.height * 0.33)); // leave the chat
+    await until(() => state(P), (s) => !s.focused && !s.focusClass, 1500);
+  });
+
+  // Review round 3: the tap that leaves the chat blurred the field at its pointerdown and the HUD came back before the
+  // finger lifted; the browser aims a tap's click when the finger LIFTS, so that same tap's click landed on a button that
+  // had just come back. Tap exactly where 💬, the emoji fan button, the action button and the jump button come back:
+  // nothing may fire, the chat must stay closed, the keyboard must not come back (no focus on the field again).
+  //  - "keyboard up": the soft keyboard is mocked (visualViewport 300 px shorter), so the bar rides above the keyboard
+  //    and every button's centre is free — the tap lands exactly on it.
+  //  - "keyboard down" (Android's back key folds the keyboard, the field keeps the caret; a tablet with a keyboard): the
+  //    bar sits at the bottom; the tap lands on the part of the button the bar does not cover (skipped when none).
+  //  - "finger 0.3 s": the same exact spots with the finger down 0.3 s, as people often tap — long enough for the action
+  //    button, which comes back with the next interaction poll, to be there before the finger lifts.
+  await run.step(`${label} 4. 채팅에서 나오는 탭 — 새로 나타나는 💬·이모지·행동·점프 버튼이 눌리지 않음`, async () => {
+    // the action button (말 걸기) shows next to the plaza guide — walk there (again when a tap on the scene walked the
+    // avatar away: every tap below that lands on the 3D view is a click-move)
+    const atGuide = async (first = false) => {
+      let n = await P.page.locator(".cv-action-btn").count();
+      for (let attempt = 0; attempt < 3 && n !== 1; attempt++) {
+        if (first && attempt === 0) await standAtPlazaGuide(P);
+        else {
+          await walkAndWait(P, 5, 13.7, 15000, 0.3);
+          await turnCameraTo(P, 5, 12);
+        }
+        n = await until(() => P.page.locator(".cv-action-btn").count(), (c) => c === 1, 4000, 150);
+      }
+      return n;
+    };
+    const nAct = await atGuide(true);
+    check("next to the plaza guide the action button shows (so its place can be tapped)", nAct === 1, { count: nAct, at: await pos(P) });
+    const rects = await P.page.evaluate(() => {
+      const r = (sel) => {
+        const e = document.querySelector(sel);
+        if (!e) return null;
+        const b = e.getBoundingClientRect();
+        return b.width > 0 ? { x: b.x, y: b.y, w: b.width, h: b.height } : null;
+      };
+      return { action: r(".cv-action-btn"), "💬": r(".cv-chat-btn"), emoji: r(".cv-emoji-toggle"), jump: r(".cv-jump-btn") };
+    });
+    check("all four buttons are on screen before chatting", Object.values(rects).every((v) => v !== null), rects);
+    await P.page.evaluate(async () => {
+      const { useNpcStore } = await window.__imp("/src/stores/npcStore.ts");
+      const sid = window.__cv.getSessionId();
+      const HUD = ".cv-chat-btn, .cv-emoji-toggle, .cv-emoji-fan-btn, .cv-action-btn, .cv-jump-btn";
+      const pr = { focusins: 0, clicks: [], hudClicks: [], jumped: false, npc: false, fan: false, timer: 0 };
+      window.__tapProbe = pr;
+      document.addEventListener("focusin", (e) => {
+        if (e.target === document.querySelector(".cv-chat-field")) pr.focusins++;
+      }, true);
+      document.addEventListener("click", (e) => {
+        const t = e.target instanceof Element ? e.target : null;
+        const hud = t?.closest(HUD);
+        pr.clicks.push(hud ? hud.className : t ? (typeof t.className === "string" && t.className ? t.className : t.tagName) : null);
+        if (hud) pr.hudClicks.push(hud.className);
+      }, true);
+      pr.reset = () => {
+        pr.focusins = 0;
+        pr.clicks = [];
+        pr.hudClicks = [];
+        pr.jumped = false;
+        pr.npc = false;
+        pr.fan = false;
+        clearInterval(pr.timer);
+        // what the tap may set off, sampled every 20 ms: an own jump in the air, the 조교 dialogue, the emoji fan
+        pr.timer = setInterval(() => {
+          if (window.__cv.getJumps().some((j) => j.sid === sid)) pr.jumped = true;
+          if (useNpcStore.getState().activeNpc !== null) pr.npc = true;
+          if (document.documentElement.classList.contains("cv-fan-open")) pr.fan = true;
+        }, 20);
+      };
+      pr.read = () => {
+        clearInterval(pr.timer);
+        const { reset, read, timer, ...rest } = pr;
+        return JSON.parse(JSON.stringify(rest));
+      };
+    });
+    const kbdUp = () =>
+      P.page.evaluate(() => {
+        const proto = Object.getPrototypeOf(window.visualViewport);
+        window.__vvOrig = window.__vvOrig ?? Object.getOwnPropertyDescriptor(proto, "height");
+        Object.defineProperty(proto, "height", { configurable: true, get: () => window.innerHeight - 300 });
+        window.visualViewport.dispatchEvent(new Event("resize"));
+      });
+    const kbdDown = () =>
+      P.page.evaluate(() => {
+        if (!window.__vvOrig) return;
+        Object.defineProperty(Object.getPrototypeOf(window.visualViewport), "height", window.__vvOrig);
+        window.visualViewport.dispatchEvent(new Event("resize"));
+      });
+    /** Where to tap: the button's centre — or, with the keyboard down, the highest-up point on its vertical centre line the bar does not cover. */
+    const spot = (r, exact) =>
+      P.page.evaluate(
+        ([r, exact]) => {
+          const bar = document.querySelector(".cv-chat-input");
+          const cx = r.x + r.w / 2;
+          const cy = r.y + r.h / 2;
+          const free = (x, y) => {
+            const el = document.elementFromPoint(x, y);
+            return !!el && !bar.contains(el);
+          };
+          if (exact) return { x: cx, y: cy, free: free(cx, cy) };
+          for (let y = cy; y >= r.y + 6; y -= 3) if (free(cx, y)) return { x: cx, y, free: true };
+          return null;
+        },
+        [r, exact],
+      );
+    const cdpT = await P.page.context().newCDPSession(P.page);
+    /** A tap with the finger down `ms` (raw touch events: Playwright's own tap lifts at once). */
+    const slowTap = async (x, y, ms) => {
+      await cdpT.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y }] });
+      await sleep(ms);
+      await cdpT.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    };
+    for (const [keyboard, fingerMs] of [["up", 0], ["down", 0], ["up, finger 0.3 s", 300]]) {
+      for (const [name, r] of Object.entries(rects)) {
+        if (!r) continue;
+        if (name === "action") {
+          const n = await atGuide();
+          check(`[keyboard ${keyboard}] before the chat: the action button is there (next to the guide)`, n === 1, { count: n, at: await pos(P) });
+        }
+        await press(P, P.page.locator(".cv-chat-btn"));
+        const s0 = await until(() => state(P), (s) => s.focused, 2000);
+        check(`[keyboard ${keyboard}] a real tap ON 💬 (not chatting) opens the chat with the keyboard (focused)`, s0.focused && s0.focusClass, s0);
+        if (keyboard !== "down") await kbdUp();
+        await sleep(250);
+        const at = await spot(r, keyboard !== "down");
+        if (!at || !at.free) {
+          check(`[keyboard ${keyboard}] ${name}: the bar covers the whole spot — nothing to tap there (skipped)`, true, { rect: r, at });
+          await kbdDown();
+          await P.page.touchscreen.tap(Math.round(P.page.viewportSize().width * 0.72), Math.round(P.page.viewportSize().height * 0.33));
+          await until(() => state(P), (s) => !s.focused && !s.focusClass, 1500);
+          await sleep(500);
+          continue;
+        }
+        if (keyboard === "up" && name === "action") await shots(P, `${label}-tap-${name}-before`);
+        await P.page.evaluate(() => window.__tapProbe.reset());
+        if (fingerMs > 0) await slowTap(Math.round(at.x), Math.round(at.y), fingerMs);
+        else await P.page.touchscreen.tap(Math.round(at.x), Math.round(at.y));
+        await sleep(900);
+        const s1 = await state(P);
+        const pr = await P.page.evaluate(() => window.__tapProbe.read());
+        const back = await P.page.locator(".cv-chat-btn").count();
+        check(
+          `[keyboard ${keyboard}] tap where ${name} comes back: the chat is left (blurred, folded, keys free) and the keyboard does NOT come back`,
+          !s1.focused && s1.collapsed && !s1.captured && pr.focusins === 0,
+          { at: { x: Math.round(at.x), y: Math.round(at.y) }, ...s1, focusins: pr.focusins },
+        );
+        check(
+          `[keyboard ${keyboard}] …nothing fired: no click on a HUD button, no jump, no 조교 dialogue, no emoji fan`,
+          pr.hudClicks.length === 0 && !pr.jumped && !pr.npc && !pr.fan,
+          pr,
+        );
+        check(`[keyboard ${keyboard}] …and once the tap is over the HUD is back (💬 there, chat layout gone)`, back === 1 && !s1.focusClass, { chatBtn: back, focusClass: s1.focusClass });
+        if (keyboard === "up" && name === "action") await shots(P, `${label}-tap-${name}-after`);
+        await kbdDown();
+        // whatever did fire is put back, so the next round starts the same
+        await P.page.evaluate(async () => {
+          const { useNpcStore } = await window.__imp("/src/stores/npcStore.ts");
+          if (useNpcStore.getState().activeNpc !== null) useNpcStore.getState().closePanel();
+          if (document.documentElement.classList.contains("cv-fan-open")) document.querySelector(".cv-emoji-toggle")?.click();
+          if (document.activeElement === document.querySelector(".cv-chat-field")) document.activeElement.blur();
+        });
+        await sleep(600);
+      }
+    }
+    await cdpT.detach().catch(() => {});
+  });
+
+  // The 48 px send button still fits a 320 px phone with the length counter showing.
+  await run.step(`${label} 5. 320 px 폭: 48 px 보내기 버튼과 글자 수가 바 안에`, async () => {
+    const vp0 = P.page.viewportSize();
+    await P.page.setViewportSize({ width: 320, height: 640 });
+    await sleep(600);
+    await press(P, P.page.locator(".cv-chat-btn"));
+    await until(() => state(P), (s) => s.focused);
+    await P.page.locator(FIELD).fill("가".repeat(195));
+    await sleep(300);
+    const info = await sendInfo(P);
+    const geo = await P.page.evaluate(() => {
+      const box = (sel) => {
+        const e = document.querySelector(sel);
+        if (!e) return null;
+        const r = e.getBoundingClientRect();
+        return { left: r.left, right: r.right, top: r.top, bottom: r.bottom, w: r.width, h: r.height };
+      };
+      return { bar: box(".cv-chat-input"), field: box(".cv-chat-field"), counter: box(".cv-chat-counter"), text: document.querySelector(".cv-chat-counter")?.textContent, vw: innerWidth };
+    });
+    const inBar = (b) => !!b && b.left >= geo.bar.left - 0.5 && b.right <= geo.bar.right + 0.5;
+    check(
+      "320 px: the send button is 48 × 48, at the end, inside the bar — the counter (195/200) inside too, the field still usable (≥ 120 px)",
+      info && info.box.w >= MIN_TOUCH_PX - 0.5 && info.box.h >= MIN_TOUCH_PX - 0.5 && info.inside && info.atEnd && inBar(geo.counter) && geo.text === "195/200" && geo.field.w >= 120 && geo.bar.left >= 0 && geo.bar.right <= geo.vw,
+      { send: info?.box, ...geo },
+    );
+    await shots(P, `${label}-320`);
+    await P.page.locator(FIELD).fill("");
+    await P.page.touchscreen.tap(Math.round(320 * 0.72), Math.round(640 * 0.33));
+    await until(() => state(P), (s) => !s.focused, 1500);
+    await P.page.setViewportSize(vp0);
+    await sleep(500);
   });
   await P.ctx.close();
+}
+
+// ─────────────────────────────────────────────── PC: the slow-typing matrix ───────────────────────────────────────────────
+// Review round 3: a slower typist (about 0.6 s a key or slower) still got the map — "그래" (r m f o) left it open with
+// only "o" in the chat on top, "음" (d m a) and "즈" (w m) opened it. Every line is typed as Windows Chrome hands it
+// outside a field in 한글 mode (plain latin keys, each held 50 ms) at 0.3 / 0.6 / 0.9 / 1.2 s a key, with nothing clicked
+// first; a sampler in the page records every 10 ms whether the map (the overview) is open. The map must never end open
+// and never stand open longer than the take-back (1.5 s); the line from its first letter on is in the chat.
+
+async function pcMatrix(browser) {
+  const A = await openPlayer(browser, run, { tag: "pc-matrix", device: DESKTOP });
+  await run.step("PC-M 1. 마을 입장", async () => {
+    const { nick } = await joinVillage(A, "느림");
+    check("joined the village", !!nick, { nick });
+  });
+  const mode = () => A.page.evaluate(() => window.__cv.getView().mode);
+  const watchMap = () =>
+    A.page.evaluate(() => {
+      const w = { seen: false, ovMs: 0, longest: 0, run: 0 };
+      const t = setInterval(() => {
+        if (window.__cv.getView().mode === "ov") {
+          w.seen = true;
+          w.ovMs += 10;
+          w.run += 10;
+          w.longest = Math.max(w.longest, w.run);
+        } else w.run = 0;
+      }, 10);
+      window.__mapWatchStop = () => {
+        clearInterval(t);
+        const { run: _r, ...rest } = w;
+        return rest;
+      };
+    });
+  const mapWatched = () => A.page.evaluate(() => window.__mapWatchStop());
+  /** Plain latin keys: `gap` ms from one keydown to the next, each held `hold` ms. */
+  const plain = async (keys, gap, hold = 50) => {
+    for (const ch of keys) {
+      const k = ch === " " ? "Space" : ch;
+      const t = Date.now();
+      await A.page.keyboard.down(k);
+      await sleep(hold);
+      await A.page.keyboard.up(k);
+      await sleep(Math.max(0, gap - (Date.now() - t)));
+    }
+  };
+  const leave = async () => {
+    await A.page.locator(FIELD).fill("");
+    await A.page.keyboard.press("Escape");
+    await until(() => state(A), (s) => !s.focused);
+    if ((await mode()) === "ov") {
+      // a map left open by a failed case: close it, so the next case starts the same
+      await sleep(LOOK_MS);
+      await A.page.keyboard.press("KeyM");
+      await until(mode, (m) => m !== "ov", 2000);
+    }
+    await sleep(700);
+  };
+  const LINES = [
+    ["그래", [..."rmfo"], "mfo"],
+    ["음", [..."dma"], "ma"],
+    ["즈", [..."wm"], "m"],
+    ["ㅡㅡ", [..."mm"], "mm"],
+    ["안녕하세요", [..."dkssudgktpdy"], "kssudgktpdy"],
+    ["그래 알겠어", [..."rmfo dkfrpTdj"], "mfo dkfrpTdj"], // ㅆ = T (Shift)
+  ];
+  const summary = [];
+  for (const gap of [300, 600, 900, 1200]) {
+    await run.step(`PC-M ${gap} ms/키 — 그래 · 음 · 즈 · ㅡㅡ · 안녕하세요 · 그래 알겠어 (채팅창 클릭 없이)`, async () => {
+      for (const [label, keys, want] of LINES) {
+        await watchMap();
+        await plain(keys, gap);
+        await sleep(TAKE_BACK_MS + 300); // every hold and take-back is over: a map that stayed would show now
+        const s = await until(() => state(A), (v) => v.value === want, 1500);
+        const m = await mode();
+        const w = await mapWatched();
+        summary.push({ gap, label, value: s.value, mapEnd: m, ...w });
+        check(`${gap} ms/key "${label}" (${keys.join("")}): "${want}" in the chat (focused), the map closed at the end`, s.focused && s.value === want && m !== "ov", { ...s, mode: m, watch: w });
+        check(`…${gap} ms/key "${label}": the map never stood open longer than the take-back (${TAKE_BACK_MS} ms)`, w.longest <= TAKE_BACK_MS && w.ovMs <= TAKE_BACK_MS, w);
+        if (label !== "ㅡㅡ") check(`…${gap} ms/key "${label}": the map never opened at all (the M followed a consonant: typing at once)`, !w.seen, w);
+        // the slowest pace: what the player sees once the line is typed (the chat holding it, the map closed)
+        if (gap === 1200 && label === "ㅡㅡ") await shots(A, "pc-matrix-1200-mm");
+        if (gap === 1200 && label === "그래 알겠어") await shots(A, "pc-matrix-1200-line");
+        await leave();
+      }
+    });
+  }
+
+  await run.step("PC-M 그 밖 — me too, ㅡ 뒤 F·Z, ㄱ 누른 채 ㅡ (그), 오래 걷고 M", async () => {
+    // English "me too", fast and slow: the E is a letter of the line, not the interact key (no map left behind)
+    for (const gap of [90, 600]) {
+      await watchMap();
+      await plain([..."me too"], gap);
+      await sleep(TAKE_BACK_MS + 300);
+      const s = await until(() => state(A), (v) => v.value === "me too", 1500);
+      const m = await mode();
+      const w = await mapWatched();
+      check(`"me too" at ${gap} ms/key: the whole line in the chat, the map closed (open ≤ take-back)`, s.focused && s.value === "me too" && m !== "ov" && w.longest <= TAKE_BACK_MS, { ...s, mode: m, watch: w });
+      await leave();
+    }
+    // ㅡ then an interact / camera letter, slowly (0.9 s): the map that began to open is taken back, the chat has both
+    for (const k of ["f", "z", "e", "r"]) {
+      const o0 = await A.page.evaluate(() => window.__cv.getOrbit().yaw);
+      await watchMap();
+      await plain(["m", k], 900);
+      await sleep(TAKE_BACK_MS + 300);
+      const s = await until(() => state(A), (v) => v.value === "m" + k, 1500);
+      const m = await mode();
+      const w = await mapWatched();
+      const o1 = await A.page.evaluate(() => window.__cv.getOrbit().yaw);
+      check(`m, 0.9 s, ${k}: "m${k}" in the chat, the map taken back (open ≤ take-back), the camera did not turn`, s.focused && s.value === "m" + k && m !== "ov" && w.longest <= TAKE_BACK_MS && Math.abs(o1 - o0) < 0.05, { ...s, mode: m, watch: w, yaw: [o0, o1] });
+      await leave();
+    }
+    // "그" typed with ㄱ still held 200 ms (a slow typist's roll-over): the chat, never the map
+    await watchMap();
+    await A.page.keyboard.down("r");
+    await sleep(200);
+    await A.page.keyboard.down("m");
+    await sleep(40);
+    await A.page.keyboard.up("r");
+    await sleep(40);
+    await A.page.keyboard.up("m");
+    await sleep(TAKE_BACK_MS);
+    const sG = await until(() => state(A), (v) => v.value === "m", 1500);
+    const wG = await mapWatched();
+    check('"그" with ㄱ (R) still held 200 ms when ㅡ (M) went down: "m" in the chat, the map never opened', sG.focused && sG.value === "m" && !wG.seen, { ...sG, watch: wG });
+    await leave();
+    // walking 0.9 s with W, letting go, M 0.3 s later: the map (a held W is no letter)
+    await A.page.keyboard.down("KeyW");
+    await sleep(900);
+    await A.page.keyboard.up("KeyW");
+    await sleep(300);
+    await A.page.keyboard.press("KeyM");
+    const ovW = await until(mode, (m) => m === "ov", 2000);
+    const sW = await state(A);
+    check("walking 0.9 s with W, then M 0.3 s after letting go: the map opens (no chat)", ovW === "ov" && !sW.focused && sW.value === "", { mode: ovW, ...sW });
+    await sleep(LOOK_MS);
+    await A.page.keyboard.press("KeyM");
+    await until(mode, (m) => m !== "ov", 2000);
+    const sys = await systemLines(A);
+    check("no rate-limit notice", sys.length === 0, sys);
+    run.check("slow-typing matrix summary", true, summary);
+  });
+  await A.ctx.close();
 }
 
 // ─────────────────────────────────────────────────────── legacy world ───────────────────────────────────────────────────────
@@ -834,11 +1249,12 @@ async function hall(browser) {
 // Real Chrome with the GPU, as on the owner's PC (ANGLE / D3D11 on Windows).
 const GPU_ARGS = process.platform === "win32" ? ["--use-angle=d3d11", "--enable-gpu", "--ignore-gpu-blocklist"] : ["--enable-gpu", "--ignore-gpu-blocklist"];
 const browser = await chromium.launch({ headless: true, channel: "chrome", args: GPU_ARGS });
-// CV_CHAT_ONLY=pc,iphone13,kakao-android,legacy,hall runs only those parts (default: all of them).
+// CV_CHAT_ONLY=pc,pc-matrix,iphone13,kakao-android,legacy,hall runs only those parts (default: all of them).
 const ONLY = process.env.CV_CHAT_ONLY ? new Set(process.env.CV_CHAT_ONLY.split(",").map((t) => t.trim())) : null;
 const want = (part) => !ONLY || ONLY.has(part);
 try {
   if (want("pc")) await pc(browser);
+  if (want("pc-matrix")) await pcMatrix(browser);
   if (want("iphone13")) await phone(browser, "iphone13", IPHONE_13);
   if (want("kakao-android")) await phone(browser, "kakao-android", KAKAO_ANDROID);
   if (want("legacy")) await legacy(browser);

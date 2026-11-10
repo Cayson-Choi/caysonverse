@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { CHAT_MAX_LENGTH, CHAT_RATE, CHAT_TOO_FAST } from "@caysonverse/shared/constants";
 import { acquireUiCapture, releaseUiCapture, captureReleaseEffect } from "../game/uiCapture";
 import { onHotkey } from "../game/hotkeys";
@@ -9,7 +9,17 @@ import { isTouchDevice } from "../device";
 import { useChatStore } from "../stores/chatStore";
 import { useCoachStore } from "../stores/coachStore";
 import { useNpcStore } from "../stores/npcStore";
-import { chatKeyAction, hasChatText, insertPrefix, paceSend, pressLeavesChat, typeToChatAllowed } from "./chatBar";
+import {
+  chatKeyAction,
+  hasChatText,
+  insertPrefix,
+  leaveTapStep,
+  paceSend,
+  pressLeavesChat,
+  typeToChatAllowed,
+  type LeaveTap,
+  type LeaveTapEvent,
+} from "./chatBar";
 import { HudButton } from "./HudButton";
 import { KBD_INSET_VAR, trackKbdInset } from "./kbdInset";
 import { rectStyle, useTouchHudLayout } from "./useTouchHudLayout";
@@ -19,9 +29,9 @@ const PLACEHOLDER = "메시지를 입력하세요 (Enter)";
 const COUNTER_LEAD = 20;
 
 /**
- * <html> class while the chat input is focused on a touch device. The other
- * bottom-cluster overlays (the emoji fan, action and jump buttons, the 💬 button) key off
- * it to hide, so the keyboard-lifted input bar can never land on them (design 22).
+ * <html> class while the chat input is focused on a touch device — and until the tap that took the caret out is over
+ * (chatBar.ts leaveTapStep). The other bottom-cluster overlays (the emoji fan, action and jump buttons, the 💬 button)
+ * key off it to hide, so the keyboard-lifted input bar can never land on them (design 22).
  */
 const FOCUS_CLASS = "cv-chat-focus";
 
@@ -46,7 +56,11 @@ const keepCaret = (e: { preventDefault(): void }) => e.preventDefault();
  *    ANYWHERE outside the bar — the 3D view, a HUD button, a menu (a capture-phase pointerdown
  *    listener, so even HUD buttons that cancel their own press to keep a caret let go of it).
  *    That press otherwise does what it always does (a click-move, a camera drag, the button's
- *    action). WASD / the arrows walk again at once.
+ *    action). WASD / the arrows walk again at once. On a phone the keyboard goes with that press
+ *    (the blur) and the bar folds away, but the rest of the HUD keeps its chat layout until the
+ *    tap is over — its click, or a moment after the finger lifts (chatBar.ts leaveTapStep): the
+ *    browser aims a tap's click when the finger lifts, and it used to land on the 💬 / emoji /
+ *    action button that had just come back under the finger (review round 3).
  *  - Enter or `/` (unfocused) focuses the input. So does a key that TYPES something and is no game
  *    key (the hotkey table's typeToChat: H, 7, "." — and in 한글 mode also ㄱ ㅍ ㅡ ㅠ, which would
  *    otherwise be recenter / view / map / bag): the field takes the caret during that keydown and
@@ -71,6 +85,8 @@ const keepCaret = (e: { preventDefault(): void }) => e.preventDefault();
  *    never sent twice. Safari ends the composition BEFORE the Enter's keydown (keyCode 229,
  *    isComposing false): that Enter sends right after the event, once the syllable is in (one
  *    press, as elsewhere), and a second keydown of the same press does nothing (chatBar.ts).
+ *    Safari's Escape that drops a syllable (229) stays the IME's: consumed here, so the window's
+ *    hotkey table never takes it for the menu key (which would blur the chat); a second Escape leaves.
  *  - Pacing: the server drops a line over its cap (CHAT_RATE: 3 lines / 5 s) — after the field was
  *    cleared, so the line was lost. Now that the chat stays open that cap is easy to reach, so the
  *    bar holds such a line back itself (chatBar.ts paceSend): it stays in the field, a note right
@@ -88,6 +104,10 @@ export function ChatInput() {
   const barRef = useRef<HTMLDivElement>(null);
   const [value, setValue] = useState("");
   const [focused, setFocused] = useState(false);
+  /** The tap that took the caret out is not over yet (chatBar.ts leaveTapStep): the HUD keeps its chat layout. */
+  const [leaving, setLeaving] = useState(false);
+  const leaveTap = useRef<LeaveTap | null>(null);
+  const leaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // One sender per mount (it remembers the last ON it sent, for the server's rate
   // window) — useState, not useMemo, so React can never silently rebuild it.
   const [typing] = useState(() => createTypingSender(sendTyping));
@@ -108,8 +128,30 @@ export function ChatInput() {
   const lastCommit = useRef<string | null>(null);
   const layout = useTouchHudLayout();
 
-  // Soft-keyboard handling (touch only): while focused, mark <html> with
-  // FOCUS_CLASS (the emoji fan, 💬, action and jump buttons hide via CSS) and track the
+  /** One event around a leave tap: the new tap, its fallback timer, and whether the HUD stays in its chat layout. */
+  const leaveEvent = useCallback((ev: LeaveTapEvent) => {
+    const step = leaveTapStep(leaveTap.current, ev);
+    leaveTap.current = step.tap;
+    if (step.timerMs !== undefined) {
+      if (leaveTimer.current !== null) clearTimeout(leaveTimer.current);
+      leaveTimer.current = step.timerMs === null ? null : setTimeout(() => leaveEvent({ type: "timeout" }), step.timerMs);
+    }
+    setLeaving(step.tap !== null);
+  }, []);
+
+  /** The HUD's chat layout: while the field has the caret, and until the tap that took it out is over. */
+  const chatLayout = focused || leaving;
+
+  // Touch only: while in the chat layout, mark <html> with FOCUS_CLASS (the emoji fan, action and jump buttons hide via
+  // CSS; the 💬 button is unmounted below).
+  useEffect(() => {
+    if (!chatLayout || !isTouchDevice) return;
+    const root = document.documentElement;
+    root.classList.add(FOCUS_CLASS);
+    return () => root.classList.remove(FOCUS_CLASS);
+  }, [chatLayout]);
+
+  // Soft-keyboard handling (touch only): while focused, track the
   // keyboard inset from visualViewport. Browser behaviours differ:
   //  - iOS Safari: the keyboard NEVER resizes the layout viewport — a fixed
   //    bottom bar stays anchored where the keyboard now is. The VISUAL viewport
@@ -124,13 +166,10 @@ export function ChatInput() {
   // mocking visualViewport.height + firing its resize event.
   useEffect(() => {
     if (!focused || !isTouchDevice) return;
-    const root = document.documentElement;
-    root.classList.add(FOCUS_CLASS);
     const stop = trackKbdInset();
     return () => {
       stop();
-      root.classList.remove(FOCUS_CLASS);
-      root.style.setProperty(KBD_INSET_VAR, "0px");
+      document.documentElement.style.setProperty(KBD_INSET_VAR, "0px");
     };
   }, [focused]);
 
@@ -170,15 +209,33 @@ export function ChatInput() {
   // A press anywhere outside the bar takes the caret out of the field. Capture phase on the
   // document, so it runs before (and whatever) the pressed element does: the canvas, a HUD
   // button that cancels its own press to keep a caret, a menu. The press itself goes on as usual.
+  // The HUD keeps its chat layout until that press is over (leaveTapStep): its pointerup, its click
+  // (capture phase on the window too — whatever the target does with it), a cancel.
   useEffect(() => {
     const onDown = (e: PointerEvent) => {
       const input = inputRef.current;
       if (!input || document.activeElement !== input) return;
-      if (pressLeavesChat(e.target, barRef.current)) input.blur();
+      if (!pressLeavesChat(e.target, barRef.current)) return;
+      leaveEvent({ type: "press", pointerId: e.pointerId }); // first: the blur's render already keeps the layout
+      input.blur();
     };
+    const onUp = (e: PointerEvent) => leaveEvent({ type: "pointerup", pointerId: e.pointerId });
+    const onCancel = (e: PointerEvent) => leaveEvent({ type: "pointercancel", pointerId: e.pointerId });
+    const onClick = () => leaveEvent({ type: "click" });
     document.addEventListener("pointerdown", onDown, true);
-    return () => document.removeEventListener("pointerdown", onDown, true);
-  }, []);
+    window.addEventListener("pointerup", onUp, true);
+    window.addEventListener("pointercancel", onCancel, true);
+    window.addEventListener("click", onClick, true);
+    return () => {
+      document.removeEventListener("pointerdown", onDown, true);
+      window.removeEventListener("pointerup", onUp, true);
+      window.removeEventListener("pointercancel", onCancel, true);
+      window.removeEventListener("click", onClick, true);
+      if (leaveTimer.current !== null) clearTimeout(leaveTimer.current);
+      leaveTimer.current = null;
+      leaveTap.current = null;
+    };
+  }, [leaveEvent]);
 
   // Release the UI-capture flag if this input unmounts WHILE focused. A reconnect
   // (epoch bump → WorldScene remount) or a kick removes the focused field from
@@ -252,7 +309,7 @@ export function ChatInput() {
 
   return (
     <>
-      {isTouchDevice && !focused && (
+      {isTouchDevice && !chatLayout && (
         <HudButton
           label="채팅 입력"
           className="is-round cv-chat-btn"
@@ -296,6 +353,7 @@ export function ChatInput() {
           onFocus={() => {
             acquireUiCapture("chat");
             setFocused(true);
+            leaveEvent({ type: "focus" }); // back in the chat: no leave tap pending any more
           }}
           onBlur={() => {
             releaseUiCapture("chat");
@@ -338,6 +396,10 @@ export function ChatInput() {
             lastCommit.current = null; // it speaks for the one key right after the commit only
             if (act === null) return;
             e.preventDefault(); // consumed: the hotkey table must not also open the chat / the menu
+            if (act === "consume") {
+              e.stopPropagation(); // the IME's own Escape: it never reaches the window (the menu key), the chat stays
+              return;
+            }
             if (act === "send") send();
             else if (act === "sendAfterIme") {
               // Safari: the syllable was committed before this keydown — send once the IME's input event is in.

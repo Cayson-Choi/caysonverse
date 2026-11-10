@@ -318,7 +318,8 @@
 .cv-touch.cv-chat-focus .cv-esc-chatnote,
 .cv-chat-focus .cv-esc-chatnote {
   display: inline-flex;
-  bottom: calc(max(env(safe-area-inset-bottom, 0px) + 12px, var(--cv-kbd-inset, 0px) + 12px) + 52px);
+  /* the phone bar is 56 px tall (its 48 px send button, chat.css) — the line sits 4 px above it */
+  bottom: calc(max(env(safe-area-inset-bottom, 0px) + 12px, var(--cv-kbd-inset, 0px) + 12px) + 60px);
 }
 
 /* ───────────────────────────────────────── covers ───────────────────────────────────────── */

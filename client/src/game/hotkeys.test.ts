@@ -10,8 +10,10 @@ import {
   stepHeld,
   WORD_GAP_MS,
   ROLLOVER_MS,
+  TYPED_PRESS_MAX_MS,
   VOWEL_HOLD_MS,
   TAKE_BACK_MS,
+  BAG_HOLD_MS,
   heldKeyWaitMs,
   type HeldKey,
   type PrevKey,
@@ -19,6 +21,7 @@ import {
   type KeyLike,
 } from "./hotkeys";
 import { acquireUiCapture, releaseAllUiCapture } from "./uiCapture";
+import { viewState } from "./viewState";
 
 const kd = (code: string, o: Partial<KeyLike> = {}): KeyLike => ({
   type: "keydown",
@@ -343,9 +346,24 @@ describe("followsConsonant — is this key the vowel of a word being typed?", ()
   });
 
   it("a slow typist too, up to WORD_GAP_MS — not after that (a key pressed later is a key on its own)", () => {
-    expect(WORD_GAP_MS).toBeGreaterThanOrEqual(500);
+    // Review round 3: a slow typist (0.6 – 1.2 s a key: a child hunting for each key, ~50 타/분) still got the map with
+    // 그래 / 음 / 즈. The gap covers 1.2 s a key with room for a hesitation, and no more than that.
+    expect(WORD_GAP_MS).toBeGreaterThanOrEqual(1200 + 200);
+    expect(WORD_GAP_MS).toBeLessThanOrEqual(1600);
+    for (const gap of [300, 600, 900, 1200]) expect(followsConsonant(prev("KeyR", 1000), 1000 + gap), `${gap}`).toBe(true);
     expect(followsConsonant(prev("KeyR", 1000), 1000 + WORD_GAP_MS)).toBe(true);
     expect(followsConsonant(prev("KeyR", 1000), 1000 + WORD_GAP_MS + 1)).toBe(false);
+  });
+
+  it("a consonant that was HELD before it was let go (a step, a turn of the camera) is a game key, not a letter", () => {
+    // a typed press lasts about 0.1 s (slow typists ~0.25 s); real Chrome marks a longer hold by its auto-repeat too,
+    // but a hold shorter than the repeat delay (or a synthetic key) never repeats
+    expect(TYPED_PRESS_MAX_MS).toBeGreaterThanOrEqual(300);
+    expect(TYPED_PRESS_MAX_MS).toBeLessThanOrEqual(500);
+    expect(followsConsonant(prev("KeyD", 1000, { upAt: 1000 + TYPED_PRESS_MAX_MS }), 1000 + TYPED_PRESS_MAX_MS + 300)).toBe(true);
+    // walking with W for 0.9 s, letting go, and pressing M for the map 0.3 s later
+    expect(followsConsonant(prev("KeyW", 1000, { upAt: 1900 }), 2200)).toBe(false);
+    expect(followsConsonant(prev("KeyW", 1000, { upAt: 1000 + TYPED_PRESS_MAX_MS + 1 }), 1000 + TYPED_PRESS_MAX_MS + 100)).toBe(false);
   });
 
   it("not after a vowel key, a digit, Space, an arrow, Enter, Escape, Shift — or nothing at all", () => {
@@ -355,7 +373,11 @@ describe("followsConsonant — is this key the vowel of a word being typed?", ()
   });
 
   it("a consonant key still HELD is walking / turning, not a word — unless the vowel came within a typist's roll-over", () => {
-    // fast typists press the next key a moment before letting go of the last one
+    // fast typists press the next key a moment before letting go of the last one — up to a quarter second
+    // (review round 3: "그" with ㄱ still held 200 ms opened the map)
+    expect(ROLLOVER_MS).toBeGreaterThanOrEqual(250);
+    expect(ROLLOVER_MS).toBeLessThan(300); // walking with W held, then M, stays the map (e2e: M 350 ms into the walk)
+    for (const gap of [150, 200, 240]) expect(followsConsonant(prev("KeyR", 1000, { released: false }), 1000 + gap), `${gap}`).toBe(true);
     expect(followsConsonant(prev("KeyD", 1000, { released: false }), 1000 + ROLLOVER_MS)).toBe(true);
     // holding W to walk and pressing M for the map
     expect(followsConsonant(prev("KeyW", 1000, { released: false }), 1000 + ROLLOVER_MS + 1)).toBe(false);
@@ -378,7 +400,7 @@ describe("trackKey — what the shared listener remembers of the last key presse
 
   it("its keyup marks it released (another key's keyup changes nothing)", () => {
     const r = trackKey(null, kd("KeyR", { key: "r" }), false, 500);
-    expect(trackKey(r, ku("KeyR"), false, 560)).toEqual({ code: "KeyR", at: 500, plain: true, released: true });
+    expect(trackKey(r, ku("KeyR"), false, 560)).toEqual({ code: "KeyR", at: 500, plain: true, released: true, upAt: 560 });
     expect(trackKey(r, ku("KeyW"), false, 560)).toEqual(r);
     expect(trackKey(null, ku("KeyR"), false, 560)).toBeNull();
   });
@@ -483,17 +505,42 @@ describe("stepHeld — a lone M / B waits a moment for the next key (Windows: �
 
   it("a game key after it: the M WAS the map — it acts at once, then that key does its own job", () => {
     expect(step(heldM, typed("KeyW", "w"), 1100)).toEqual({ held: null, out: [{ type: "toggleMap" }] });
+    expect(step(heldM, typed("KeyD", "d"), 1100)).toEqual({ held: null, out: [{ type: "toggleMap" }] });
     expect(step(heldM, typed("ArrowUp", "ArrowUp"), 1100)).toEqual({ held: null, out: [{ type: "toggleMap" }] });
     expect(step(heldM, typed("Space", " "), 1100)).toEqual({ held: null, out: [{ type: "toggleMap" }, { type: "jump" }] });
-    expect(step(heldM, typed("KeyE", "e"), 1100)).toEqual({ held: null, out: [{ type: "toggleMap" }, { type: "interact" }] });
-    expect(step(heldM, typed("KeyR", "r"), 1100)).toEqual({ held: null, out: [{ type: "toggleMap" }, { type: "recenter" }] });
     expect(step(heldM, typed("Enter", "Enter"), 1100)).toEqual({ held: null, out: [{ type: "toggleMap" }, { type: "openChat" }] });
-    expect(step(heldM, typed("Digit2", "2"), 1100)).toEqual({ held: null, out: [{ type: "toggleMap" }, { type: "emoji", index: 1 }] });
+    expect(step(heldM, typed("Slash", "/"), 1100)).toEqual({ held: null, out: [{ type: "toggleMap" }, { type: "openChat" }] });
+    expect(step(heldM, typed("Tab", "Tab"), 1100)).toEqual({ held: null, out: [{ type: "toggleMap" }, { type: "roster", show: true }] });
     expect(step(heldB, typed("Escape", "Escape"), 1100)).toEqual({ held: null, out: [{ type: "bag" }, { type: "menu" }] });
     // a held key's auto-repeat (walking with W) — the player is playing
     expect(step(heldM, typed("KeyW", "w", { repeat: true }), 1100)).toEqual({ held: null, out: [{ type: "toggleMap" }] });
     // a chord (Ctrl+R reload, ...)
     expect(step(heldM, typed("KeyR", "r", { ctrlKey: true }), 1100)).toEqual({ held: null, out: [{ type: "toggleMap" }] });
+  });
+
+  // Review round 3: the interact / camera letters inside such a line kept the map open ("me too": the map, then E
+  // interacted). After a lone m every key that TYPES something and is no walking / jumping / Enter / / / Esc / Tab key is a
+  // letter of the line: E F (interact), R (recenter), V (view), Z C (the camera turn), the digits (emoji) too.
+  it("the letter hotkeys and the digits after it are letters of the line too (me, ㅡㄹ, ㅡㄱ, ㅡㅍ, ㅡㅋ, ㅡㅊ, ㅡ1): the chat, never their own job", () => {
+    for (const [code, key] of [
+      ["KeyE", "e"],
+      ["KeyF", "f"],
+      ["KeyR", "r"],
+      ["KeyV", "v"],
+      ["KeyZ", "z"],
+      ["KeyC", "c"],
+      ["Digit2", "2"],
+      ["KeyQ", "q"],
+      ["KeyX", "x"],
+    ]) {
+      expect(step(heldM, typed(code, key), 1100), code).toEqual({ held: null, out: [{ type: "typeToChat", prefix: "m" }] });
+      expect(step(heldB, typed(code, key), 1100), code).toEqual({ held: null, out: [{ type: "typeToChat", prefix: "b" }] });
+    }
+    // but not a repeat, a chord, a key another handler consumed, or a named key that types nothing
+    expect(step(heldM, typed("KeyE", "e", { repeat: true }), 1100)).toEqual({ held: null, out: [{ type: "toggleMap" }] });
+    expect(step(heldM, typed("KeyE", "e", { altKey: true }), 1100)).toEqual({ held: null, out: [{ type: "toggleMap" }] });
+    expect(step(heldM, typed("KeyE", "e", { defaultPrevented: true }), 1100)).toEqual({ held: null, out: [{ type: "toggleMap" }] });
+    expect(step(heldM, typed("F5", "F5"), 1100)).toEqual({ held: null, out: [{ type: "toggleMap" }] });
   });
 
   it("a bare Shift / Ctrl / Alt / 한영 key leaves the hold as it is (ㅡ_ㅡ, a capital next)", () => {
@@ -542,20 +589,42 @@ describe("stepHeld — a lone M / B waits a moment for the next key (Windows: �
   describe("after the hold ran out and the map opened (acted), a moment more can still take it back", () => {
     const actedM: HeldKey = { ...heldM, acted: true };
 
-    it("a slow ㅡㅡ (the second m 350 ms after the first): the map is toggled back, the chat opens with the first m", () => {
+    it("a slow ㅡㅡ (the second m 0.35 – 1.2 s after the first): the map is toggled back, the chat opens with the first m", () => {
       const back = { held: null, out: [{ type: "toggleMap" }, { type: "typeToChat", prefix: "m" }] };
-      expect(step(actedM, typed("KeyM", "m"), 1350)).toEqual(back);
+      for (const gap of [350, 600, 900, 1200]) expect(step(actedM, typed("KeyM", "m"), 1000 + gap), `${gap}`).toEqual(back);
       // English "my", slowly: the same
       expect(step(actedM, typed("KeyY", "y"), 1450)).toEqual(back);
       // up to TAKE_BACK_MS after the first press, inclusive
       expect(step(actedM, typed("KeyM", "m"), 1000 + TAKE_BACK_MS)).toEqual(back);
     });
 
+    it("the letter hotkeys and the digits take it back too — the map never stays open under a line being typed (me, ㅡㄹ, ㅡㅋ)", () => {
+      const back = { held: null, out: [{ type: "toggleMap" }, { type: "typeToChat", prefix: "m" }] };
+      for (const [code, key] of [
+        ["KeyE", "e"],
+        ["KeyF", "f"],
+        ["KeyR", "r"],
+        ["KeyV", "v"],
+        ["KeyZ", "z"],
+        ["KeyC", "c"],
+        ["Digit1", "1"],
+        ["Period", "."],
+      ])
+        for (const gap of [600, 900, 1200]) expect(step(actedM, typed(code, key), 1000 + gap), `${code} ${gap}`).toEqual(back);
+    });
+
     it("a game key then does only its own job — the map stays open (M, then walk / jump / chat on the map)", () => {
-      expect(step(actedM, typed("KeyW", "w"), 1400)).toEqual({ held: null, out: [] });
-      expect(step(actedM, typed("Space", " "), 1400)).toEqual({ held: null, out: [{ type: "jump" }] });
-      expect(step(actedM, typed("Enter", "Enter"), 1400)).toEqual({ held: null, out: [{ type: "openChat" }] });
-      expect(step(actedM, typed("Escape", "Escape"), 1400)).toEqual({ held: null, out: [{ type: "menu" }] });
+      for (const at of [1400, 1900, 2200]) {
+        expect(step(actedM, typed("KeyW", "w"), at)).toEqual({ held: null, out: [] });
+        expect(step(actedM, typed("KeyA", "a"), at)).toEqual({ held: null, out: [] });
+        expect(step(actedM, typed("ArrowLeft", "ArrowLeft"), at)).toEqual({ held: null, out: [] });
+        expect(step(actedM, typed("Space", " "), at)).toEqual({ held: null, out: [{ type: "jump" }] });
+        expect(step(actedM, typed("Enter", "Enter"), at)).toEqual({ held: null, out: [{ type: "openChat" }] });
+        expect(step(actedM, typed("Slash", "/"), at)).toEqual({ held: null, out: [{ type: "openChat" }] });
+        expect(step(actedM, typed("Escape", "Escape"), at)).toEqual({ held: null, out: [{ type: "menu" }] });
+        // a held key's repeat is the player playing, too
+        expect(step(actedM, typed("KeyE", "e", { repeat: true }), at)).toEqual({ held: null, out: [] });
+      }
     });
 
     it("later than TAKE_BACK_MS after the first m, an m is a key on its own: held afresh (M, see the map, M closes it)", () => {
@@ -570,14 +639,16 @@ describe("stepHeld — a lone M / B waits a moment for the next key (Windows: �
     });
   });
 
-  it("how long each key waits: M (the map) VOWEL_HOLD_MS — a moment more can take it back; B the whole word gap, because the bag takes the keyboard where there is one (a classroom), so a second ㅠ could not close it again", () => {
+  it("how long each key waits: M (the map) VOWEL_HOLD_MS — a slow typist's next key can still take it back; B a little longer, because the bag takes the keyboard where there is one (a classroom), so a second ㅠ could not close it again", () => {
     expect(heldKeyWaitMs({ type: "toggleMap" })).toBe(VOWEL_HOLD_MS);
-    expect(heldKeyWaitMs({ type: "bag" })).toBe(WORD_GAP_MS);
-    expect(VOWEL_HOLD_MS).toBeLessThan(WORD_GAP_MS);
-    // the take-back ends sooner than a person can react to the map starting to move (≥ ~200 ms), and within the word gap
-    expect(TAKE_BACK_MS - VOWEL_HOLD_MS).toBeLessThanOrEqual(200);
-    expect(TAKE_BACK_MS).toBeGreaterThanOrEqual(VOWEL_HOLD_MS + 100);
-    expect(TAKE_BACK_MS).toBeLessThanOrEqual(WORD_GAP_MS);
+    expect(heldKeyWaitMs({ type: "bag" })).toBe(BAG_HOLD_MS);
+    expect(VOWEL_HOLD_MS).toBeLessThan(BAG_HOLD_MS);
+    expect(BAG_HOLD_MS).toBeLessThanOrEqual(700); // the bag still answers B in well under a second
+    // Review round 3: the take-back reaches the slowest typist's next key (1.2 s a key) with room for a hesitation —
+    // the same span as the word gap — and no further: a second M later than that is a player closing the map
+    expect(TAKE_BACK_MS).toBe(WORD_GAP_MS);
+    expect(TAKE_BACK_MS).toBeGreaterThanOrEqual(1200 + 200);
+    expect(TAKE_BACK_MS).toBeLessThanOrEqual(1600);
   });
 });
 
@@ -696,6 +767,7 @@ describe("onHotkey — one shared window listener", () => {
     // The held M / B (stepHeld) acts when its hold runs out — a setTimeout. performance.now is mocked per test.
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     releaseAllUiCapture();
+    viewState.mode = "tp";
   });
   afterEach(() => {
     for (const off of disposers) off(); // idempotent — tests that already disposed are fine
@@ -703,6 +775,7 @@ describe("onHotkey — one shared window listener", () => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
     releaseAllUiCapture();
+    viewState.mode = "tp";
   });
 
   it("two subscribers both receive the same action (no starvation by preventDefault)", () => {
@@ -1212,7 +1285,7 @@ describe("onHotkey — one shared window listener", () => {
     }
   });
 
-  it("M, a look at the map, M again a second later: it just closes the map (no chat)", () => {
+  it("M, a look at the map, M again two seconds later: it just closes the map (no chat)", () => {
     const now = vi.spyOn(performance, "now");
     const fn = vi.fn();
     sub(fn);
@@ -1220,7 +1293,7 @@ describe("onHotkey — one shared window listener", () => {
       now.mockReturnValue(1000);
       latin("keydown", "KeyM", "m");
       vi.advanceTimersByTime(VOWEL_HOLD_MS);
-      now.mockReturnValue(2000);
+      now.mockReturnValue(3000);
       latin("keydown", "KeyM", "m");
       vi.advanceTimersByTime(VOWEL_HOLD_MS);
       expect(fn.mock.calls.map((c) => c[0])).toEqual([{ type: "toggleMap" }, { type: "toggleMap" }]);
@@ -1229,14 +1302,14 @@ describe("onHotkey — one shared window listener", () => {
     }
   });
 
-  it("B on its own opens the bag once the whole word gap has passed; a slow ㅠㅠ (450 ms apart) never opens it", () => {
+  it("B on its own opens the bag once its wait has passed; a slow ㅠㅠ (450 ms apart) never opens it", () => {
     const now = vi.spyOn(performance, "now");
     const fn = vi.fn();
     sub(fn);
     try {
       now.mockReturnValue(1000);
       latin("keydown", "KeyB", "b");
-      vi.advanceTimersByTime(WORD_GAP_MS - 1);
+      vi.advanceTimersByTime(BAG_HOLD_MS - 1);
       expect(fn).not.toHaveBeenCalled();
       vi.advanceTimersByTime(1);
       expect(fn.mock.calls.map((c) => c[0])).toEqual([{ type: "bag" }]);
@@ -1245,7 +1318,7 @@ describe("onHotkey — one shared window listener", () => {
       vi.advanceTimersByTime(450);
       now.mockReturnValue(5450);
       latin("keydown", "KeyB", "b");
-      vi.advanceTimersByTime(WORD_GAP_MS * 2);
+      vi.advanceTimersByTime(BAG_HOLD_MS * 2);
       expect(fn.mock.calls.map((c) => c[0])).toEqual([{ type: "bag" }, { type: "typeToChat", prefix: "b" }]);
     } finally {
       now.mockRestore();
@@ -1288,6 +1361,203 @@ describe("onHotkey — one shared window listener", () => {
       latin("keydown", "KeyM", "m");
       vi.advanceTimersByTime(VOWEL_HOLD_MS);
       expect(fn.mock.calls.at(-1)?.[0]).toEqual({ type: "toggleMap" });
+    } finally {
+      now.mockRestore();
+    }
+  });
+
+  // Review round 3 (2026-11-10): a slower typist (about 0.6 s a key or slower) still got the map — "그래" (r m f o) left it
+  // open with only "o" in the chat on top, "음" (d m a) and "즈" (w m) opened it. Each line below is played through the
+  // shared listener as Windows Chrome hands it outside a field (plain latin keys, each held 50 ms) at 0.09 – 1.2 s a key,
+  // with a stand-in for the map (the overview, a toggle) and for the chat field: the keys from the one that opened the
+  // chat on land in it, after a held letter (`prefix`) put in first.
+  describe("slow typing never leaves the map open (round 3 matrix: 그래 · 음 · 즈 · ㅡㅡ · 안녕하세요 · 그래 알겠어 · me too)", () => {
+    const LINES: [label: string, keys: string, field: string][] = [
+      ["그래", "rmfo", "mfo"],
+      ["음", "dma", "ma"],
+      ["즈", "wm", "m"],
+      ["ㅡㅡ", "mm", "mm"],
+      ["안녕하세요", "dkssudgktpdy", "kssudgktpdy"],
+      ["그래 알겠어", "rmfo dkfrpTdj", "mfo dkfrpTdj"], // ㅆ = Shift + T
+      ["me too", "me too", "me too"],
+    ];
+    const codeOf = (k: string) => (k === " " ? "Space" : `Key${k.toUpperCase()}`);
+
+    /** Type `keys` one every `gapMs` (each held `holdMs`), then wait until every hold and take-back is long over. */
+    function play(keys: string, gapMs: number, holdMs = 50) {
+      const now = vi.spyOn(performance, "now");
+      const st = { clock: 10_000, map: false, openedAt: 0, longestOpen: 0, field: null as string | null };
+      const to = (t: number) => {
+        now.mockReturnValue(t);
+        vi.advanceTimersByTime(t - st.clock);
+        st.clock = t;
+      };
+      now.mockReturnValue(st.clock);
+      const fn = vi.fn((a: HotkeyAction) => {
+        if (a.type === "toggleMap") {
+          st.map = !st.map;
+          viewState.mode = st.map ? "ov" : "tp"; // what CameraRig's toggleOverview does
+          if (st.map) st.openedAt = st.clock;
+          else st.longestOpen = Math.max(st.longestOpen, st.clock - st.openedAt);
+        }
+        if (a.type === "typeToChat" && st.field === null) {
+          st.field = a.prefix ?? ""; // ChatInput: focus(), then the held letter at the caret
+          acquireUiCapture("chat");
+        }
+      });
+      const off = sub(fn);
+      try {
+        let t = st.clock;
+        for (const k of keys) {
+          to(t);
+          const shiftKey = k !== k.toLowerCase();
+          const ev = latin("keydown", codeOf(k), k, { shiftKey });
+          if (st.field !== null && !ev.defaultPrevented) st.field += k; // the character lands where the caret is
+          to(t + holdMs);
+          latin("keyup", codeOf(k), k, { shiftKey });
+          t += gapMs;
+        }
+        to(t + TAKE_BACK_MS + 1000);
+      } finally {
+        now.mockRestore();
+        off();
+        releaseAllUiCapture();
+      }
+      if (st.map) st.longestOpen = Math.max(st.longestOpen, st.clock - st.openedAt);
+      return { mapEndsOpen: st.map, longestOpen: st.longestOpen, field: st.field, actions: fn.mock.calls.map((c) => c[0]) };
+    }
+
+    for (const gap of [90, 300, 600, 900, 1200])
+      for (const [label, keys, field] of LINES)
+        it(`"${label}" (${keys}) at ${gap} ms a key: the whole line from its first letter on is in the chat, the map never stays open`, () => {
+          const r = play(keys, gap);
+          expect(r.mapEndsOpen, "the map ends open").toBe(false);
+          expect(r.longestOpen, "the map stood open longer than the take-back").toBeLessThanOrEqual(TAKE_BACK_MS);
+          expect(r.field).toBe(field);
+          // none of its letters did a game key's job once the line was under way (ㄹ = F interact, 1–6 emoji, ...)
+          expect(r.actions.filter((a) => a.type === "interact" || a.type === "emoji" || a.type === "toggleView")).toEqual([]);
+          viewState.mode = "tp";
+        });
+
+    it("a consonant (or a vowel after it) typed slower than WORD_GAP_MS is a key on its own again: R, 1.6 s, M is the map", () => {
+      const r = play("rm", WORD_GAP_MS + 100);
+      expect(r.mapEndsOpen).toBe(true);
+      expect(r.field).toBeNull();
+    });
+  });
+
+  it('"그" typed with ㄱ still held (R down, M 200 ms later, R up after): the chat, never the map', () => {
+    const now = vi.spyOn(performance, "now");
+    const fn = vi.fn();
+    sub(fn);
+    try {
+      now.mockReturnValue(1000);
+      latin("keydown", "KeyR", "r");
+      now.mockReturnValue(1200);
+      latin("keydown", "KeyM", "m");
+      now.mockReturnValue(1260);
+      latin("keyup", "KeyR", "r");
+      vi.advanceTimersByTime(TAKE_BACK_MS);
+      expect(fn.mock.calls.map((c) => c[0])).toEqual([{ type: "recenter" }, { type: "typeToChat" }]);
+    } finally {
+      now.mockRestore();
+    }
+  });
+
+  it("walking (W held 0.9 s, let go) and M 0.3 s later is the map — a held W is no letter, even with no auto-repeat", () => {
+    const now = vi.spyOn(performance, "now");
+    const fn = vi.fn();
+    sub(fn);
+    try {
+      now.mockReturnValue(1000);
+      latin("keydown", "KeyW", "w");
+      now.mockReturnValue(1900);
+      latin("keyup", "KeyW", "w");
+      now.mockReturnValue(2200);
+      latin("keydown", "KeyM", "m");
+      vi.advanceTimersByTime(VOWEL_HOLD_MS);
+      expect(fn.mock.calls.map((c) => c[0])).toEqual([{ type: "toggleMap" }]);
+    } finally {
+      now.mockRestore();
+    }
+  });
+
+  it("the map open: walking on it with WASD keeps it open (no chat), and M then closes it AT ONCE — after a short step too", () => {
+    const now = vi.spyOn(performance, "now");
+    const fn = vi.fn((a: HotkeyAction) => {
+      if (a.type === "toggleMap") viewState.mode = viewState.mode === "ov" ? "tp" : "ov";
+    });
+    sub(fn);
+    try {
+      now.mockReturnValue(1000);
+      latin("keydown", "KeyM", "m");
+      latin("keyup", "KeyM", "m");
+      vi.advanceTimersByTime(VOWEL_HOLD_MS);
+      expect(viewState.mode).toBe("ov");
+      // a short step on the map, inside the take-back: W walks (drei's job), the map stays, no chat
+      now.mockReturnValue(1600);
+      latin("keydown", "KeyW", "w");
+      now.mockReturnValue(1680);
+      latin("keyup", "KeyW", "w");
+      expect(fn.mock.calls.map((c) => c[0])).toEqual([{ type: "toggleMap" }]);
+      // and M right after that step (a consonant tap!) closes the map at once — the open map's own key, no wait, no chat
+      now.mockReturnValue(2000);
+      latin("keydown", "KeyM", "m");
+      expect(fn.mock.calls.map((c) => c[0])).toEqual([{ type: "toggleMap" }, { type: "toggleMap" }]);
+      expect(viewState.mode).toBe("tp");
+      vi.advanceTimersByTime(TAKE_BACK_MS * 2);
+      expect(fn).toHaveBeenCalledTimes(2);
+    } finally {
+      now.mockRestore();
+    }
+  });
+
+  it("the map opened by the 🗺 button: M closes it at once; a line typed right after is not taken for ㅡ (no map flicker)", () => {
+    const now = vi.spyOn(performance, "now");
+    const fn = vi.fn((a: HotkeyAction) => {
+      if (a.type === "toggleMap") viewState.mode = viewState.mode === "ov" ? "tp" : "ov";
+      if (a.type === "typeToChat") acquireUiCapture("chat");
+    });
+    sub(fn);
+    try {
+      viewState.mode = "ov"; // the button
+      now.mockReturnValue(1000);
+      latin("keydown", "KeyM", "m");
+      latin("keyup", "KeyM", "m");
+      expect(fn.mock.calls.map((c) => c[0])).toEqual([{ type: "toggleMap" }]);
+      now.mockReturnValue(1300);
+      latin("keydown", "KeyH", "h");
+      vi.advanceTimersByTime(TAKE_BACK_MS * 2);
+      expect(fn.mock.calls.map((c) => c[0])).toEqual([{ type: "toggleMap" }, { type: "typeToChat" }]);
+      expect(viewState.mode).toBe("tp");
+    } finally {
+      now.mockRestore();
+    }
+  });
+
+  it("M, the map, M again later than the take-back: it just closes (no chat); sooner, it reads as ㅡㅡ — the map closes too", () => {
+    const now = vi.spyOn(performance, "now");
+    const fn = vi.fn((a: HotkeyAction) => {
+      if (a.type === "toggleMap") viewState.mode = viewState.mode === "ov" ? "tp" : "ov";
+      if (a.type === "typeToChat") acquireUiCapture("chat");
+    });
+    sub(fn);
+    try {
+      now.mockReturnValue(1000);
+      latin("keydown", "KeyM", "m");
+      vi.advanceTimersByTime(VOWEL_HOLD_MS);
+      now.mockReturnValue(1000 + TAKE_BACK_MS + 1);
+      latin("keydown", "KeyM", "m");
+      expect(fn.mock.calls.map((c) => c[0])).toEqual([{ type: "toggleMap" }, { type: "toggleMap" }]);
+      expect(viewState.mode).toBe("tp");
+      // sooner: the map closes all the same, and the chat opens with "m" (the second m lands after it)
+      now.mockReturnValue(5000);
+      latin("keydown", "KeyM", "m");
+      vi.advanceTimersByTime(VOWEL_HOLD_MS);
+      now.mockReturnValue(6000);
+      latin("keydown", "KeyM", "m");
+      expect(fn.mock.calls.slice(2).map((c) => c[0])).toEqual([{ type: "toggleMap" }, { type: "toggleMap" }, { type: "typeToChat", prefix: "m" }]);
+      expect(viewState.mode).toBe("tp");
     } finally {
       now.mockRestore();
     }

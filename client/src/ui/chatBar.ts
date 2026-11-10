@@ -12,9 +12,10 @@ import { CHAT_RATE } from "@caysonverse/shared/constants";
 
 /**
  * What a keydown inside the focused chat field does. "sendAfterIme": an Enter the IME handled after it had already
- * committed the syllable (Safari) — send the line once the IME has settled, i.e. right after this event.
+ * committed the syllable (Safari) — send the line once the IME has settled, i.e. right after this event. "consume": the
+ * IME's own key (Safari's 229 Escape, which only drops the syllable) — keep it from the window's hotkeys, do nothing else.
  */
-export type ChatKeyAction = "send" | "sendAfterIme" | "leave" | null;
+export type ChatKeyAction = "send" | "sendAfterIme" | "leave" | "consume" | null;
 
 /** The bits of a keydown this reads — lets tests pass plain objects. */
 export interface ChatKeyLike {
@@ -68,14 +69,16 @@ export function hasChatText(line: string): boolean {
  *    (WebKit bug 165004). A Korean Enter commits AND sends, so it is not ignored (that made a Korean player press Enter
  *    twice there): "sendAfterIme" — the caller sends after this event, once the committed syllable is in the field.
  *    Unless what was just committed has no Hangul in it (`lastCommit`): a Japanese / Chinese Enter only confirms the
- *    conversion — nothing, as before. An Escape the IME handled (229) only drops the syllable: nothing.
+ *    conversion — nothing, as before. An Escape the IME handled (229) only drops the syllable: "consume" — review
+ *    round 3: left alone it bubbled up to the window's hotkey table, which took it for the menu key, and the menu's
+ *    Escape blurred the chat (escape.ts) and could open the menu. A second, plain Escape leaves as always.
  *  - One press never acts twice: no Enter while an IME send is queued, and an empty-field Enter within
  *    IME_ENTER_TAIL_MS of one is its tail, not a "leave". Nothing on an auto-repeat either: an Enter held a little too
  *    long after sending would otherwise repeat onto the field the send just emptied and read as "empty Enter = leave".
  */
 export function chatKeyAction(e: ChatKeyLike, line: string, ctx: ChatKeyContext = {}): ChatKeyAction {
   if (e.isComposing || e.repeat) return null;
-  if (e.key === "Escape") return e.keyCode === 229 ? null : "leave";
+  if (e.key === "Escape") return e.keyCode === 229 ? "consume" : "leave";
   if (e.key !== "Enter" || ctx.imeSendQueued) return null;
   if (e.keyCode === 229) return ctx.lastCommit && !HANGUL.test(ctx.lastCommit) ? null : "sendAfterIme";
   if (hasChatText(line)) return "send";
@@ -166,4 +169,68 @@ export function paceSend(sentAt: readonly number[], now: number, heldUntil: numb
   if (wait === 0) return { send: true, notice: false, until: null };
   const running = heldUntil !== null && now < heldUntil;
   return { send: false, notice: !running, until: now + wait };
+}
+
+/**
+ * How long (ms) after the finger of a press that left the chat lifted, its click may still come. A phone fires a tap's
+ * click right after the finger lifts (no double-tap delay with width=device-width); 400 ms also covers the old
+ * ~300–350 ms delay, and the HUD is still back at once.
+ */
+export const LEAVE_TAP_CLICK_MS = 400;
+
+/** The longest (ms) a press that left the chat keeps the HUD in its chat layout while its finger is still down — a
+ *  pointerup that never came (the window lost focus mid-press). A drag of the view may well go on for a few seconds. */
+export const LEAVE_TAP_HOLD_MAX_MS = 5000;
+
+/** The press (pointerdown outside the bar) that took the caret out of the chat, until it is over. */
+export interface LeaveTap {
+  pointerId: number;
+  /** Its finger (button) has lifted: what remains is the click it may still produce. */
+  up: boolean;
+}
+
+/** What happens around a leave tap (ChatInput listens on the window, capture phase). */
+export type LeaveTapEvent =
+  | { type: "press"; pointerId: number }
+  | { type: "pointerup"; pointerId: number }
+  | { type: "pointercancel"; pointerId: number }
+  | { type: "click" }
+  | { type: "timeout" }
+  | { type: "focus" };
+
+/** A leave tap after one event, and its fallback timer: (re)start it with `timerMs`, stop it (null), or leave it (absent). */
+export interface LeaveTapStep {
+  tap: LeaveTap | null;
+  timerMs?: number | null;
+}
+
+/**
+ * The HUD keeps its chat layout (the 💬 button away, the emoji fan / action / jump buttons hidden: cv-chat-focus) until
+ * the tap that left the chat is over (pure; ChatInput keeps the state and the timer).
+ *
+ * Why (review round 3, phones): the tap that leaves blurs the field at its pointerdown — the keyboard must go, and the
+ * tap still does what it does on the 3D view (click-to-move, the camera) — and the HUD used to come back right then,
+ * before the finger lifted. The browser aims a tap's click when the finger LIFTS, so that same tap's click landed on a
+ * button that had just come back: where 💬 sits, the chat was left and entered again (the keyboard popped up again);
+ * where the emoji fan / the action button sit, they fired. Holding the layout until the click has gone to what was
+ * under the finger (or a moment after the lift when no click comes, or a cancel) means nothing appears under a finger.
+ *  - press: the tap starts; the field blurs right after (ChatInput), and the bar folds away at once (it cannot be hit).
+ *  - pointerup of that finger: wait LEAVE_TAP_CLICK_MS for its click.
+ *  - click: over right AFTER it (a 0 ms timer) — the click has gone to what was there in the chat layout.
+ *  - pointercancel of that finger (a scroll, a system gesture: no click will come), the timer, the chat taking the caret
+ *    again: over.
+ * Other fingers, and a click before the finger lifted, change nothing.
+ */
+export function leaveTapStep(tap: LeaveTap | null, ev: LeaveTapEvent): LeaveTapStep {
+  if (ev.type === "press") return { tap: { pointerId: ev.pointerId, up: false }, timerMs: LEAVE_TAP_HOLD_MAX_MS };
+  if (ev.type === "timeout" || ev.type === "focus") return { tap: null, timerMs: null };
+  if (tap === null) return { tap: null };
+  switch (ev.type) {
+    case "pointerup":
+      return ev.pointerId === tap.pointerId && !tap.up ? { tap: { ...tap, up: true }, timerMs: LEAVE_TAP_CLICK_MS } : { tap };
+    case "pointercancel":
+      return ev.pointerId === tap.pointerId ? { tap: null, timerMs: null } : { tap };
+    case "click":
+      return tap.up ? { tap, timerMs: 0 } : { tap };
+  }
 }

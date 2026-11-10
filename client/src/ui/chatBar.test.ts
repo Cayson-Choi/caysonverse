@@ -3,7 +3,11 @@ import { CHAT_RATE } from "@caysonverse/shared/constants";
 import {
   CHAT_PACE_SLACK_MS,
   IME_ENTER_TAIL_MS,
+  LEAVE_TAP_CLICK_MS,
+  LEAVE_TAP_HOLD_MAX_MS,
   chatKeyAction,
+  leaveTapStep,
+  type LeaveTap,
   chatPaceAllows,
   chatPaceWaitMs,
   hasChatText,
@@ -47,8 +51,8 @@ describe("chatKeyAction", () => {
     expect(chatKeyAction({ key: "Enter", isComposing: false, keyCode: 229 }, "안녕하세요")).toBe("sendAfterIme");
     // even when the field still reads empty: the committed syllable may land right after the keydown
     expect(chatKeyAction({ key: "Enter", isComposing: false, keyCode: 229 }, "")).toBe("sendAfterIme");
-    // an Escape the IME handled only cancels the syllable — it never leaves the chat
-    expect(chatKeyAction({ key: "Escape", isComposing: false, keyCode: 229 }, "안")).toBeNull();
+    // an Escape the IME handled only cancels the syllable — it never leaves the chat (see "consume" below)
+    expect(chatKeyAction({ key: "Escape", isComposing: false, keyCode: 229 }, "안")).toBe("consume");
     // the plain Enter (keyCode 13) sends at once, as before
     expect(chatKeyAction({ key: "Enter", isComposing: false, keyCode: 13 }, "안녕하세요")).toBe("send");
   });
@@ -90,6 +94,20 @@ describe("chatKeyAction", () => {
     // the press itself (repeat false) still sends / leaves
     expect(chatKeyAction({ key: "Enter", isComposing: false, keyCode: 13, repeat: false }, "hello")).toBe("send");
     expect(chatKeyAction({ key: "Enter", isComposing: false, keyCode: 13, repeat: false }, "")).toBe("leave");
+  });
+
+  // Review round 3: Safari hands the Escape that cancels a syllable as keyCode 229 with isComposing false. The bar did
+  // nothing with it — and so let it bubble up to the window, where the hotkey table took it for the menu key: the menu's
+  // Escape blurred the chat (escape.ts) and could open the menu. The IME's own Escape is consumed: it stays the IME's.
+  it("an Escape the IME handled (keyCode 229, no composition — Safari) is consumed: kept from the hotkeys, the chat stays", () => {
+    expect(chatKeyAction({ key: "Escape", isComposing: false, keyCode: 229 }, "")).toBe("consume");
+    expect(chatKeyAction({ key: "Escape", isComposing: false, keyCode: 229 }, "그")).toBe("consume");
+    // a second, plain Escape leaves as always
+    expect(chatKeyAction({ key: "Escape", isComposing: false, keyCode: 27 }, "")).toBe("leave");
+    // during a composition (Chrome / Firefox) it is still the IME's: nothing — the hotkey table drops composing keys itself
+    expect(chatKeyAction({ key: "Escape", isComposing: true, keyCode: 229 }, "그")).toBeNull();
+    // its auto-repeat: nothing
+    expect(chatKeyAction({ key: "Escape", isComposing: false, keyCode: 229, repeat: true }, "")).toBeNull();
   });
 
   it("every other key is the field's own (typing, WASD letters, arrows, Tab)", () => {
@@ -259,5 +277,75 @@ describe("insertPrefix — the held letter goes in at the caret", () => {
 
   it("a caret outside the text is clamped to it", () => {
     expect(insertPrefix("ab", 9, 9, "m", 120)).toEqual({ value: "abm", caret: 3 });
+  });
+});
+
+// Review round 3 (phones): the tap that leaves the chat blurred the field at its pointerdown, and the HUD came back at
+// once — the 💬 button at its old place, the emoji fan, the action and jump buttons. The browser aims a tap's click when
+// the finger LIFTS, so the same tap's click landed on a button that had just come back: tapping where 💬 sits left the
+// chat and went straight back in (the keyboard popped up again), the emoji fan opened, the action fired. Now the HUD
+// keeps its chat layout until that tap is over: its click, or a moment after the finger lifts when no click comes.
+describe("leaveTapStep — the HUD keeps its chat layout until the tap that left the chat is over", () => {
+  const down: LeaveTap = { pointerId: 7, up: false };
+  const up: LeaveTap = { pointerId: 7, up: true };
+
+  it("the press that leaves starts it (a long fallback while the finger is down, in case its pointerup is never seen)", () => {
+    expect(leaveTapStep(null, { type: "press", pointerId: 7 })).toEqual({ tap: down, timerMs: LEAVE_TAP_HOLD_MAX_MS });
+    expect(LEAVE_TAP_HOLD_MAX_MS).toBeGreaterThanOrEqual(3000); // a drag of the view may go on for a while
+  });
+
+  it("its finger lifting: the click it may still produce gets LEAVE_TAP_CLICK_MS to come", () => {
+    expect(leaveTapStep(down, { type: "pointerup", pointerId: 7 })).toEqual({ tap: up, timerMs: LEAVE_TAP_CLICK_MS });
+    // a phone's click comes right after the finger lifts (no 300 ms delay with width=device-width); the fallback also
+    // covers the old double-tap delay (~300–350 ms), and is still short enough that the HUD is back at once
+    expect(LEAVE_TAP_CLICK_MS).toBeGreaterThanOrEqual(350);
+    expect(LEAVE_TAP_CLICK_MS).toBeLessThanOrEqual(400);
+  });
+
+  it("the click after it: the HUD comes back right AFTER that click (a 0 ms timer) — the click went to what was under the finger", () => {
+    expect(leaveTapStep(up, { type: "click" })).toEqual({ tap: up, timerMs: 0 });
+    // the fallback running out, or the click's own 0 ms timer: over
+    expect(leaveTapStep(up, { type: "timeout" })).toEqual({ tap: null, timerMs: null });
+  });
+
+  it("a cancelled press (a scroll, a system gesture) produces no click: over at once", () => {
+    expect(leaveTapStep(down, { type: "pointercancel", pointerId: 7 })).toEqual({ tap: null, timerMs: null });
+    expect(leaveTapStep(up, { type: "pointercancel", pointerId: 7 })).toEqual({ tap: null, timerMs: null });
+  });
+
+  it("the chat taking the caret again (Enter, a typed key) ends it at once", () => {
+    expect(leaveTapStep(down, { type: "focus" })).toEqual({ tap: null, timerMs: null });
+    expect(leaveTapStep(up, { type: "focus" })).toEqual({ tap: null, timerMs: null });
+  });
+
+  it("other fingers, a click before the finger lifted, a second lift: nothing changes", () => {
+    expect(leaveTapStep(down, { type: "pointerup", pointerId: 8 })).toEqual({ tap: down });
+    expect(leaveTapStep(down, { type: "pointercancel", pointerId: 8 })).toEqual({ tap: down });
+    expect(leaveTapStep(down, { type: "click" })).toEqual({ tap: down });
+    expect(leaveTapStep(up, { type: "pointerup", pointerId: 7 })).toEqual({ tap: up });
+  });
+
+  it("with no tap going on, nothing happens (no timer either)", () => {
+    for (const ev of [
+      { type: "pointerup", pointerId: 7 },
+      { type: "pointercancel", pointerId: 7 },
+      { type: "click" },
+      { type: "timeout" },
+      { type: "focus" },
+    ] as const)
+      expect(leaveTapStep(null, ev), ev.type).toEqual(ev.type === "timeout" || ev.type === "focus" ? { tap: null, timerMs: null } : { tap: null });
+  });
+
+  it("a whole tap: press → lift → click → (0 ms) over; a drag: press → lift → (no click) fallback → over", () => {
+    let t = leaveTapStep(null, { type: "press", pointerId: 3 }).tap;
+    t = leaveTapStep(t, { type: "pointerup", pointerId: 3 }).tap;
+    const c = leaveTapStep(t, { type: "click" });
+    expect(c.tap).not.toBeNull(); // still in the chat layout while the click is being dispatched
+    expect(c.timerMs).toBe(0);
+    expect(leaveTapStep(c.tap, { type: "timeout" }).tap).toBeNull();
+    let d = leaveTapStep(null, { type: "press", pointerId: 4 }).tap;
+    d = leaveTapStep(d, { type: "pointerup", pointerId: 4 }).tap;
+    expect(d).toEqual({ pointerId: 4, up: true });
+    expect(leaveTapStep(d, { type: "timeout" }).tap).toBeNull();
   });
 });

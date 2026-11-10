@@ -271,10 +271,11 @@
   touch-action: manipulation;
 }
 
-/* A thumb-sized send button (42 px) on a phone. */
+/* A thumb-sized send button on a phone: the project's 48 px touch minimum (game/settings.ts MIN_TOUCH_PX). The bar
+   grows to 48 + 2 × 3 padding + 2 × 1 border = 56 px; at 320 px wide the field keeps ~180 px beside the counter. */
 .cv-touch .cv-chat-send {
-  width: 42px;
-  height: 42px;
+  width: 48px;
+  height: 48px;
 }
 
 .cv-touch .cv-chat-send svg {
@@ -283,8 +284,9 @@
 }
 
 /* The 💬 button: a round HudButton (hud.css) whose rectangle comes from game/hud.ts. It is
-   unmounted while the field has focus (the bar took its place); the rest of the cluster
-   hides under cv-chat-focus (action.css / emoji.css). */
+   unmounted while the field has focus (the bar took its place) and until the tap that took the
+   caret out is over (ChatInput.tsx: that tap's click must not land on it); the rest of the
+   cluster hides under cv-chat-focus (action.css / emoji.css) for as long. */
 .cv-chat-btn .cv-hud-glyph {
   font-size: 26px;
 }
