@@ -79,6 +79,12 @@ export const CHAT_MAX_LENGTH = 200;
 /** Per-client chat rate cap: at most `count` accepted messages per `windowMs`. */
 export const CHAT_RATE = { count: 3, windowMs: 5000 } as const;
 
+/**
+ * The personal notice for a line over CHAT_RATE: the server's when it drops one, the chat bar's when it holds one
+ * back (the line then stays in the field).
+ */
+export const CHAT_TOO_FAST = "메시지가 너무 빨라요. 잠시 후 다시 시도해주세요.";
+
 /** How long (ms) a speech bubble stays visible above its author before removal. */
 export const SPEECH_BUBBLE_MS = 6000;
 

@@ -311,14 +311,16 @@
 }
 /* A phone: the chat bar is folded away until the 💬 button focuses it, and the bottom edge belongs to the
    stick and the buttons — so the line shows with the bar: right above it while it is open (the bar
-   rides on the keyboard, and so does the line). */
+   rides on the keyboard, and so does the line). cv-chat-open (ChatInput.tsx), not cv-chat-focus: that one
+   outlasts the tap that leaves the chat, and the line would float over the folded bar meanwhile. */
 .cv-touch .cv-esc-chatnote {
   display: none;
 }
-.cv-touch.cv-chat-focus .cv-esc-chatnote,
-.cv-chat-focus .cv-esc-chatnote {
+.cv-touch.cv-chat-open .cv-esc-chatnote,
+.cv-chat-open .cv-esc-chatnote {
   display: inline-flex;
-  bottom: calc(max(env(safe-area-inset-bottom, 0px) + 12px, var(--cv-kbd-inset, 0px) + 12px) + 52px);
+  /* the phone bar is 56 px tall (its 48 px send button, chat.css) — the line sits 4 px above it */
+  bottom: calc(max(env(safe-area-inset-bottom, 0px) + 12px, var(--cv-kbd-inset, 0px) + 12px) + 60px);
 }
 
 /* ───────────────────────────────────────── covers ───────────────────────────────────────── */

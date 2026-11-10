@@ -771,6 +771,9 @@ try {
     check('Enter → B shows the bubble "안녕 wasd e1"', bubble.includes("안녕 wasd e1"), { bubbles: bubble });
     const gone = await pollUntil(() => pb.evaluate((sid) => window.__cv.getTyping().includes(sid), sidA), (v) => v === false, 2000, 30);
     check("…and A leaves B's typing list", gone === false, {});
+    const stay = await active(pa);
+    check("(2026-11-10) after the send the caret stays in the chat field", /cv-chat-field/.test(stay.cls), stay);
+    await pa.keyboard.press("Escape"); // leave the chat
     await sleep(500);
     await shot(pb, "pc-06-bubble-B.png");
 
