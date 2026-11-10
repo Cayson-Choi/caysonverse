@@ -8,6 +8,7 @@ import {
   MeshBasicMaterial,
   Points,
   PointsMaterial,
+  Vector2,
   Vector3,
   Vector4,
   type Material,
@@ -18,6 +19,7 @@ import {
 } from "three";
 import {
   COLLIDER_PREFIX,
+  LIGHTMAP_INTENSITY,
   LIGHTMAP_MATERIAL_PREFIX,
   configureLightmap,
   isMesh,
@@ -60,6 +62,9 @@ import type { DayNightState } from "./dayNightBlend";
  *    the far hills, forest and falls take the time of day's tint; `M_window` and `M_lamp` (copies) glow warm and past
  *    white at night (the rich tier's bloom picks them up); the fountain's lights glow in the water. `M_glass` stays
  *    as it is: not emissive.
+ *  - `M_moon` (the node `fountain_moon`, put in by scripts/patch-village-moon.mjs) is the fountain's crescent: unlit
+ *    with normals and no light map; it gets the bake's own light on it as a smooth function of the normal (a probe) and
+ *    the night bake's fountain lights, blended like the light maps, and a glaze (`moonMaterial`, `MOON_PROBE`).
  *  - `col__*` are the collision boxes (shared/…/generated/villageColliders.ts is generated from them): hidden.
  *  - The ground's flat layers lie 1-3 cm above each other (plaza and road +0.01, plot lawns +0.02, lanes +0.018,
  *    forecourt +0.03); with the far plane at 1.6 km their materials get a polygon offset, the upper layer winning.
@@ -97,6 +102,7 @@ export const MATERIAL = {
   window: "M_window",
   lamp: "M_lamp",
   glass: "M_glass",
+  moon: "M_moon",
 } as const;
 
 /** How far past white the plot outlines are pushed (×). The rich tier's bloom starts at luminance 1.6. */
@@ -294,6 +300,9 @@ void main() {`;
 /** The albedo before COLOR_0 (which is the light on the foliage, a tint on the light-mapped materials). */
 const LIFT_ALBEDO = /* glsl */ `vec3 villageAlbedo = diffuseColor.rgb;
 #include <color_fragment>`;
+/** The moonlit cast of the night map's light (dim texels bluish, the lamps' pools as they are): `liftMaterial`'s. */
+const moonlitCast = (light: string) =>
+  `mix( uVillageMoonTint, vec3( 1.0 ), smoothstep( 0.04, 0.22, dot( ${light}, vec3( 0.2126, 0.7152, 0.0722 ) ) ) )`;
 /**
  * The light map's texel: the day map (× the dusk tint) and the night map, blended by the clock's weight. Each map is
  * read only while it counts (the weight is a uniform: the branch is coherent), so a daytime frame costs one fetch.
@@ -303,7 +312,7 @@ const LIGHTMAP_TEXEL_TO = /* glsl */ `vec4 lightMapTexel = vec4( 0.0, 0.0, 0.0, 
 	if ( uVillageNight < 0.999 ) lightMapTexel.rgb = texture2D( lightMap, vLightMapUv ).rgb * uVillageDayTint * ( 1.0 - uVillageNight );
 	if ( uVillageNight > 0.001 ) {
 		vec3 villageNightLight = texture2D( uVillageNightMap, vLightMapUv ).rgb;
-		villageNightLight *= mix( uVillageMoonTint, vec3( 1.0 ), smoothstep( 0.04, 0.22, dot( villageNightLight, vec3( 0.2126, 0.7152, 0.0722 ) ) ) );
+		villageNightLight *= ${moonlitCast("villageNightLight")};
 		lightMapTexel.rgb += villageNightLight * uVillageNight;
 	}`;
 const LIFT_LIGHT = /* glsl */ `#ifdef USE_LIGHTMAP
@@ -376,6 +385,176 @@ export function litMaterial(source: Material, kind: keyof typeof LIT): MeshBasic
 
 /** The fountain's lights in the water at night: how hard they glow (the water shader's `uFountain.w`). */
 export const FOUNTAIN_GLOW_STRENGTH = 1.5;
+
+/**
+ * The fountain's crescent (`M_moon` on the node `fountain_moon`, scripts/patch-village-moon.mjs). Light-mapped, it got
+ * ~3.5 texels per metre of the shared 2048² map, in 11 UV islands, which showed as stepped bands along its edges. Now it
+ * is a dense, round-rimmed mesh with smooth normals (unlit like every village material), and its light is the bake's own
+ * light on it as a smooth function instead of texels — a probe:
+ *  - `day`, `night`: the light map's value (L / 2, linear, as the map stores it) on the old crescent, as nine
+ *    spherical-harmonic terms of the surface normal (game axes; basis 1, y, z, x, xy, yz, 3z² − 1, xz, x² − y²). Fitted to
+ *    all 584 texels of the old crescent in the 2c416d8 bake (robust least squares, a ridge on the l = 2 band; rms 0.065
+ *    by day, which is mostly the seams this removes, 0.014 at night): art/village/tools/fit_moon_probe.py. They hold
+ *    while the bake's light does (bake_village.py: the day sun and sky, `NIGHT`);
+ *  - `uplight`: the night bake's fountain lights, which light the crescent's lower half by its height (no function of
+ *    the normal alone holds them): eight 50 W point lights at r 1.9 m, 1.0 m up (build_village.py), in the map's units
+ *    `gain` · cos θ / d² (Cycles' diffuse light from P W is P / 4π² · cos θ / d², the map stores half: 50 / 8π²; a free
+ *    fit of the night texels gave 0.65 / 0.65 / 0.63 × the colour), shaded by the upper bowl (r 1.62 m at 1.6 m) where it
+ *    stands between a light and the crescent (the same fit without the bowl misses the texels by 3×);
+ *  - then every light-mapped surface's recipe (`liftMaterial`): day × the dusk tint and night × its moonlit cast,
+ *    blended by the night map's weight, clipped at 1 as the map is, × lightMapIntensity / π (1.6), + the lift × its
+ *    tint, × the albedo. So the crescent keeps its old colours by day and night and turns with everything around it;
+ *  - `glaze`: a polished glaze on top: the same light seen in the mirrored direction × a glaze's environment BRDF (F0
+ *    0.04, `roughness`; Karis' fit, as three's physical material uses), about 4 % facing the eye and a third at the rim.
+ */
+export const MOON_PROBE = {
+  day: [
+    [0.5804, 0.6162, 0.6842],
+    [0.2772, 0.3275, 0.3891],
+    [-0.2239, -0.1916, -0.125],
+    [0.235, 0.1937, 0.1385],
+    [-0.0309, -0.0331, -0.0761],
+    [-0.1074, -0.0885, -0.0153],
+    [0.023, 0.0272, 0.0377],
+    [-0.0615, -0.0564, -0.0383],
+    [0.1252, 0.119, 0.1165],
+  ],
+  night: [
+    [0.025, 0.0289, 0.0427],
+    [0.0077, 0.011, 0.0225],
+    [0.0096, 0.0112, 0.0165],
+    [0.0062, 0.007, 0.012],
+    [0.0129, 0.0145, 0.0163],
+    [0.0097, 0.0122, 0.0153],
+    [0.0019, 0.0018, 0.0025],
+    [0.0011, -0.0002, -0.0008],
+    [-0.0029, -0.0043, -0.0059],
+  ],
+  uplight: { gain: 0.6333, color: [0.7, 0.86, 1.0], count: 8, radius: 1.9, height: 1.0, phase: 0.2, bowlRadius: 1.62, bowlY: 1.6, soft: 0.12 },
+  glaze: { strength: 1, roughness: 0.32 },
+} as const;
+
+type Rgb = readonly [number, number, number];
+/** A probe's value for the unit normal `n` (game axes), unclipped: the GLSL's `moonSH`. */
+export function moonProbe(c: readonly Rgb[], n: readonly [number, number, number]): [number, number, number] {
+  const [x, y, z] = n;
+  const basis = [1, y, z, x, x * y, y * z, 3 * z * z - 1, x * z, x * x - y * y];
+  return [0, 1, 2].map((k) => basis.reduce((s, b, i) => s + b * c[i]![k]!, 0)) as [number, number, number];
+}
+
+const moonPatched = new WeakSet<Material>();
+const f4 = (n: number) => n.toFixed(4);
+const vec3Of = (c: readonly number[]) => `vec3( ${c.map(f4).join(", ")} )`;
+const shArray = (name: string, c: readonly Rgb[]) => `const vec3 ${name}[ 9 ] = vec3[ 9 ](\n\t${c.map(vec3Of).join(",\n\t")}\n);`;
+
+const MOON_VERTEX_PARS = /* glsl */ `varying vec3 vMoonWorld;
+varying vec3 vMoonNormal;
+void main() {`;
+const MOON_VERTEX = /* glsl */ `#include <project_vertex>
+	vMoonWorld = ( modelMatrix * vec4( transformed, 1.0 ) ).xyz;
+	vMoonNormal = normalize( mat3( modelMatrix ) * normal );`;
+function moonFragmentPars(): string {
+  const u = MOON_PROBE.uplight;
+  return /* glsl */ `uniform float uVillageLift;
+uniform vec3 uVillageLiftTint;
+uniform vec3 uVillageDayTint;
+uniform vec3 uVillageMoonTint;
+uniform float uVillageNight;
+uniform vec2 uMoonFountain;
+varying vec3 vMoonWorld;
+varying vec3 vMoonNormal;
+${shArray("MOON_DAY", MOON_PROBE.day)}
+${shArray("MOON_NIGHT", MOON_PROBE.night)}
+#define MOON_UPLIGHTS ${u.count}
+#define MOON_UPLIGHT_RADIUS ${f4(u.radius)}
+#define MOON_UPLIGHT_Y ${f4(u.height)}
+#define MOON_UPLIGHT_PHASE ${f4(u.phase)}
+#define MOON_UPLIGHT_COLOR ${vec3Of(u.color.map((c) => c * u.gain))}
+#define MOON_BOWL_R ${f4(u.bowlRadius)}
+#define MOON_BOWL_Y ${f4(u.bowlY)}
+#define MOON_BOWL_SOFT ${f4(u.soft)}
+#define MOON_LIGHTMAP_SCALE ${f4(LIGHTMAP_INTENSITY / Math.PI)}
+#define MOON_GLAZE ${f4(MOON_PROBE.glaze.strength)}
+#define MOON_GLAZE_ROUGHNESS ${f4(MOON_PROBE.glaze.roughness)}
+vec3 moonSH( const in vec3 c[ 9 ], const in vec3 n ) {
+	return c[ 0 ] + c[ 1 ] * n.y + c[ 2 ] * n.z + c[ 3 ] * n.x + c[ 4 ] * ( n.x * n.y ) + c[ 5 ] * ( n.y * n.z )
+		+ c[ 6 ] * ( 3.0 * n.z * n.z - 1.0 ) + c[ 7 ] * ( n.x * n.z ) + c[ 8 ] * ( n.x * n.x - n.y * n.y );
+}
+// the fountain's lights on a point of the crescent (cos / d², the upper bowl's shadow), the map's units / the colour
+float moonUplight( const in vec3 p, const in vec3 n ) {
+	float lit = 0.0;
+	for ( int k = 0; k < MOON_UPLIGHTS; k ++ ) {
+		float a = 6.2831853 * float( k ) / float( MOON_UPLIGHTS ) + MOON_UPLIGHT_PHASE;
+		vec3 lp = vec3( uMoonFountain.x + MOON_UPLIGHT_RADIUS * cos( a ), MOON_UPLIGHT_Y, uMoonFountain.y + MOON_UPLIGHT_RADIUS * sin( a ) );
+		vec3 toLight = lp - p;
+		float d2 = dot( toLight, toLight );
+		float t = ( MOON_BOWL_Y - lp.y ) / max( p.y - lp.y, 1e-3 );
+		float open = smoothstep( MOON_BOWL_R - MOON_BOWL_SOFT, MOON_BOWL_R + MOON_BOWL_SOFT, length( mix( lp.xz, p.xz, t ) - uMoonFountain ) );
+		lit += max( dot( n, toLight * inversesqrt( d2 ) ), 0.0 ) / d2 * open;
+	}
+	return lit;
+}
+// the light a light-mapped surface facing n would get here (liftMaterial's recipe on the probe's texel)
+vec3 moonLight( const in vec3 n, const in float uplight ) {
+	vec3 texel = vec3( 0.0 );
+	if ( uVillageNight < 0.999 ) texel = clamp( moonSH( MOON_DAY, n ), 0.0, 1.0 ) * uVillageDayTint * ( 1.0 - uVillageNight );
+	if ( uVillageNight > 0.001 ) {
+		vec3 villageNightLight = clamp( moonSH( MOON_NIGHT, n ) + uplight * MOON_UPLIGHT_COLOR, 0.0, 1.0 );
+		villageNightLight *= ${moonlitCast("villageNightLight")};
+		texel += villageNightLight * uVillageNight;
+	}
+	return texel * MOON_LIGHTMAP_SCALE + uVillageLift * uVillageLiftTint;
+}
+void main() {`;
+}
+/** Where three's basic shader adds a light-map-less material's light (1.0: unlit). */
+export const MOON_LIGHT_FROM = "reflectedLight.indirectDiffuse += vec3( 1.0 );";
+const MOON_LIGHT_TO = /* glsl */ `{
+			vec3 moonN = normalize( vMoonNormal );
+			reflectedLight.indirectDiffuse += moonLight( moonN, uVillageNight > 0.001 ? moonUplight( vMoonWorld, moonN ) : 0.0 );
+		}`;
+/** Where its outgoing light is summed up: the glaze goes on top (not × the albedo). */
+export const MOON_GLAZE_FROM = "vec3 outgoingLight = reflectedLight.indirectDiffuse;";
+const MOON_GLAZE_TO = /* glsl */ `vec3 outgoingLight = reflectedLight.indirectDiffuse;
+	{
+		vec3 moonN = normalize( vMoonNormal );
+		vec3 moonV = normalize( cameraPosition - vMoonWorld );
+		float moonNV = saturate( dot( moonN, moonV ) );
+		const vec4 moonC0 = vec4( - 1.0, - 0.0275, - 0.572, 0.022 );
+		const vec4 moonC1 = vec4( 1.0, 0.0425, 1.04, - 0.04 );
+		vec4 moonR = MOON_GLAZE_ROUGHNESS * moonC0 + moonC1;
+		float moonA = min( moonR.x * moonR.x, exp2( - 9.28 * moonNV ) ) * moonR.x + moonR.y;
+		vec2 moonAB = vec2( - 1.04, 1.04 ) * moonA + moonR.zw;
+		outgoingLight += moonLight( reflect( - moonV, moonN ), 0.0 ) * ( 0.04 * moonAB.x + moonAB.y ) * MOON_GLAZE;
+	}`;
+
+/**
+ * Light the crescent's material (three's unlit MeshBasicMaterial from the GLB) with the probe and give it its glaze
+ * (idempotent; the village's shared time-of-day uniforms drive it, as they drive the light-mapped materials).
+ */
+export function moonMaterial(material: Material): void {
+  if (moonPatched.has(material)) return;
+  moonPatched.add(material);
+  const f = VILLAGE_LAYOUT.plaza.fountain.centre;
+  const uniforms = {
+    uVillageLift: liftUniform,
+    uVillageLiftTint: liftTintUniform,
+    uVillageDayTint: dayTintUniform,
+    uVillageMoonTint: moonTintUniform,
+    uVillageNight: nightBlendUniform,
+    uMoonFountain: { value: new Vector2(f.x, f.z) },
+  };
+  material.onBeforeCompile = (shader) => {
+    Object.assign(shader.uniforms, uniforms);
+    shader.vertexShader = shader.vertexShader.replace("void main() {", MOON_VERTEX_PARS).replace("#include <project_vertex>", MOON_VERTEX);
+    shader.fragmentShader = shader.fragmentShader
+      .replace("void main() {", moonFragmentPars())
+      .replace(MOON_LIGHT_FROM, MOON_LIGHT_TO)
+      .replace(MOON_GLAZE_FROM, MOON_GLAZE_TO);
+  };
+  material.customProgramCacheKey = () => "village-moon";
+  material.needsUpdate = true;
+}
 
 /** The waterfall's sheet slides down this many texture lengths per second. */
 export const FALLS_SPEED = 0.45;
@@ -583,6 +762,8 @@ export function prepareVillage(
           m.polygonOffsetUnits = offset;
           m.needsUpdate = true;
         }
+      } else if (m.name === MATERIAL.moon) {
+        moonMaterial(m);
       } else if (m.name === MATERIAL.backdrop) {
         if ((m as MeshBasicMaterial).fog) {
           (m as MeshBasicMaterial).fog = false;
