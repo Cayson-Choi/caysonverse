@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 /**
  * scripts/patch-village-moon.mjs — 광장 분수의 초승달을 village.glb 안에서 새로 만든다 (fix/fix-moon-smooth).
  *
