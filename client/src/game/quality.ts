@@ -8,8 +8,8 @@
  *  - `low` ("가볍게"): no post-processing, the baked lighting of the model and cheap blob shadows.
  * The setting is "auto" / "high" / "low"; "auto" picks `low` on a touch device or where WebGL is drawn in software
  * (gpuProbe.ts: a blocked graphics driver, a VM) and `high` otherwise, and the choice can be changed in the menu at any
- * time. While the rich tier runs, a frame governor (renderBudget.ts) lowers its dpr when the GPU cannot keep
- * up (the effects stay).
+ * time. While the rich tier runs, a frame governor (renderBudget.ts) lowers the resolution its scene is drawn at when the
+ * GPU cannot keep up (the effects stay).
  *
  * The dpr cap and the shadow kind of a tier are NOT applied from here: `getRenderProfile(isTouch, tier)`
  * (renderProfile.ts) reads this table and is the one place a Canvas gets its render budget from (ruling E17).
@@ -34,15 +34,14 @@ export interface QualitySpec {
   /** "soft": a real-time shadow map for the characters. "blob": a flat radial-gradient under each one. */
   shadows: "soft" | "blob";
   /**
-   * react-three-fiber dpr clamp `[min, max]`. The rich tier stops at 1.5 (perf/interaction-latency): at 2 a 2560-wide
-   * laptop panel at 150 % would be drawn at 3414 px, 1.8x the pixels of 1.5 for little a viewer can see, and the frame
-   * governor (renderBudget.ts) steps it lower still on a GPU that cannot keep up.
+   * react-three-fiber dpr clamp `[min, max]`: the canvas's resolution. On the rich tier the frame governor
+   * (renderBudget.ts) draws the scene at a lower share of it while the GPU cannot keep up (dpr 2 -> 1.5 -> 1.25 -> 1).
    */
   dpr: [number, number];
 }
 
 export const QUALITY: Record<QualityTier, QualitySpec> = {
-  high: { bloom: true, shafts: true, sparkles: 60, shadows: "soft", dpr: [1, 1.5] },
+  high: { bloom: true, shafts: true, sparkles: 60, shadows: "soft", dpr: [1, 2] },
   low: { bloom: false, shafts: false, sparkles: 0, shadows: "blob", dpr: [1, 1] },
 };
 

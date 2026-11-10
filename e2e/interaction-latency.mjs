@@ -11,13 +11,14 @@
 //
 // 무엇을 하나: 입장 화면에서 닉네임을 넣고 마을에 들어가, 입력 없이 --steady ms 동안 프레임 간격을 잰 뒤 사람 손처럼(누르고 약 90 ms 뒤 뗌)
 // 캔버스 클릭 10번(클릭 이동), 키 누름(WASD·방향키 길게, Shift 달리기, Space 점프, Enter 채팅 열기·글자·Escape 닫기),
-// HUD 버튼(이모지, 지도, 메뉴, 배경음악, 소리, 시점, 접속자 목록)을 차례로 누른다. --throttle 값마다 브라우저를 새로 띄운다(CDP CPU 스로틀).
+// HUD 버튼(이모지, 지도, 메뉴 — 처음 열기는 버튼, 두 번째는 Esc — 배경음악, 소리, 시점, 접속자 목록)을 차례로 누른다. --throttle 값마다 브라우저를 새로 띄운다(CDP CPU 스로틀).
 //
 // 숫자 읽는 법(상호작용 하나 = 같은 interactionId의 Event Timing 항목들):
 //   inp     가장 느린 항목의 duration(INP가 쓰는 값, 8 ms 단위로 반올림됨)
 //   render  툴바식 "render"(= 다음 그림이 화면에 나올 때까지): 마지막 항목의 duration - (processingEnd - startTime)
 //   input / proc  툴바식 입력 지연(첫 항목 processingStart - startTime) / 처리 시간(항목별 processingEnd - processingStart의 합)
 //   프레임   rAF 간격(입력 없는 구간과 상호작용 구간), rAF 콜백 안의 JS 시간, --gputime이면 프레임당 GPU 시간(EXT_disjoint_timer_query_webgl2)
+//   단계     프레임 조절기가 장면 해상도(렌더 스케일)를 바꾼 때(게임의 User Timing 표시 "cv:render-scale")와 그 앞뒤 300 ms의 가장 긴 프레임 간격
 // --contend N: 같은 GPU를 쓰는 다른 브라우저 프로세스 N개가 마을을 그리는 동안 잰다(다른 탭·창·3D 앱이 GPU를 나눠 쓰는 상황).
 //   --contend-url: 그 브라우저들이 여는 주소(기본 --url, 곧 같은 빌드 두 창). 다른 빌드를 주면 바깥 부하를 고정한 채 비교할 수 있다.
 // --gpu software: SwiftShader(소프트웨어 GL), 그래픽 드라이버가 막힌 PC의 최악 조건.
@@ -72,7 +73,7 @@ if (!GPU_ARGS[a.gpu]) {
 
 /** Page-side instrumentation (an init script): Event Timing, rAF callback timing, optional GPU time per frame. */
 function instrument(opts) {
-  const M = (window.__lat = { events: [], raf: [], gpu: [], loaf: [], sizes: [] });
+  const M = (window.__lat = { events: [], raf: [], gpu: [], loaf: [], sizes: [], scales: [] });
   try {
     new PerformanceObserver((list) => {
       for (const e of list.getEntries()) {
@@ -91,6 +92,12 @@ function instrument(opts) {
     new PerformanceObserver((list) => {
       for (const e of list.getEntries()) M.loaf.push([e.startTime, e.duration, e.blockingDuration]);
     }).observe({ type: "long-animation-frame", buffered: true });
+  } catch {}
+  try {
+    // The frame governor's steps (QualityEffects marks each one: the post chain's render scale, renderBudget.ts).
+    new PerformanceObserver((list) => {
+      for (const e of list.getEntries()) if (e.name === "cv:render-scale") M.scales.push([e.startTime, e.detail?.level ?? null, e.detail?.scale ?? null]);
+    }).observe({ type: "mark", buffered: true });
   } catch {}
   // GPU time of everything a rAF callback submits (one TIME_ELAPSED query around the callback, read back frames later).
   const ctxs = [];
@@ -136,7 +143,8 @@ function instrument(opts) {
         }
         M.raf.push(ts, t0, performance.now());
         if (M.raf.length > 300000) M.raf.splice(0, 150000);
-        // The game canvas's drawing-buffer size: a change is the frame governor stepping the dpr (renderBudget.ts).
+        // The game canvas's drawing-buffer size (the governor's steps no longer resize it: only a window resize or a tier
+        // change should show here).
         const c = document.querySelector(".cv-canvas canvas"); // (react-three-fiber puts the class on the canvas's wrapper)
         const last = M.sizes[M.sizes.length - 1];
         if (c && (!last || last[1] !== c.width || last[2] !== c.height)) M.sizes.push([ts, c.width, c.height]);
@@ -278,8 +286,10 @@ async function runOnce(throttle) {
       await button("map close", '[aria-label="지도 보기"]', 1800);
       await act("M key map", () => tap("KeyM"), 1800);
       await act("M key close", () => tap("KeyM"), 1800);
-      await button("menu open", '[aria-label="메뉴 열기"]');
+      await button("menu open (1st)", '[aria-label="메뉴 열기"]');
       await button("menu close", ".cv-menu-close");
+      await act("Escape menu (2nd)", () => tap("Escape"), 1200);
+      await act("Escape menu close", () => tap("Escape"), 1200);
       await button("bgm toggle", '[aria-label="배경음악 켜기/끄기"]');
       await button("bgm toggle2", '[aria-label="배경음악 켜기/끄기"]');
       await button("sound toggle", '[aria-label="소리 켜기/끄기"]', 1000);
@@ -392,12 +402,23 @@ async function runOnce(throttle) {
       const js = Math.max(0, ...around.map((f) => f.js));
       return { at: Math.round(ts), size: `${w}x${h}`, phase: ts < steadyStart ? "settle" : ts < steadyEnd ? "steady" : near ? `after ${near.label}` : "?", maxGap: r1(gap), maxJs: r1(js) };
     }),
+    // the governor's steps (render scale), with the longest frame interval and frame JS within 300 ms of each
+    renderScales: m.scales.map(([ts, level, scale]) => {
+      const near = marks.filter((k) => k.t0 <= ts).pop();
+      const around = frames.filter((f) => f.ts >= ts - 300 && f.ts <= ts + 300);
+      let gap = 0;
+      for (let i = 1; i < around.length; i++) gap = Math.max(gap, around[i].ts - around[i - 1].ts);
+      const js = Math.max(0, ...around.map((f) => f.js));
+      return { at: Math.round(ts), level, scale: scale === null ? null : Math.round(scale * 1000) / 1000, phase: ts < steadyStart ? "settle" : ts < steadyEnd ? "steady" : near ? `after ${near.label}` : "?", maxGap: r1(gap), maxJs: r1(js) };
+    }),
     errors: errors.filter((e) => !/THREE\.Clock|favicon/.test(e)).slice(0, 10),
   };
   const file = join(a.out, `${a.label}-t${throttle}.json`);
   writeFileSync(file, JSON.stringify({ summary, inters, marks }, null, 1));
   console.log(`\n=== ${a.label} throttle ${throttle}x gpu=${a.gpu} graphics=${a.graphics} contend=${a.contend} ${summary.viewport} -> ${file}`);
   console.log(`renderer ${infoStart.renderer} | canvas ${infoStart.canvas} -> ${infoEnd.canvas} | gfx ${infoStart.gfx} -> ${infoEnd.gfx}`);
+  if (summary.renderScales.length)
+    console.log(`render scale steps ${summary.renderScales.map((c) => `L${c.level} x${c.scale} @${c.at} (${c.phase}, frame gap ${c.maxGap} js ${c.maxJs})`).join(" -> ")}`);
   if (summary.canvasSizes.length > 1)
     console.log(`canvas sizes ${summary.canvasSizes.map((c, i) => `${c.size} (${c.phase}${i ? `, frame gap ${c.maxGap} js ${c.maxJs}` : ""})`).join(" -> ")}`);
   const fl = (f) => `fps ${f.fps} | interval p50 ${f.interval.p50} p90 ${f.interval.p90} max ${f.interval.max} | js p50 ${f.js.p50} p90 ${f.js.p90}${f.gpu ? ` | gpu p50 ${f.gpu.p50} p90 ${f.gpu.p90}` : ""}`;

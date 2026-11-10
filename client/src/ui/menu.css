@@ -14,6 +14,12 @@
   -webkit-tap-highlight-color: transparent;
 }
 
+/* The card painted once ahead, invisibly (MenuPanel.tsx PREWARM_AFTER_MS): 0.1 % opacity is under one 8-bit step. */
+.cv-menu-backdrop.is-prewarm {
+  opacity: 0.001;
+  pointer-events: none;
+}
+
 .cv-menu {
   display: flex;
   flex-direction: column;

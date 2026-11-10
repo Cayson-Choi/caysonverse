@@ -1,44 +1,53 @@
 import { create } from "zustand";
 
 /**
- * The rich tier's GPU budget at run time (perf/interaction-latency): a frame governor that steps the drawing resolution
- * down while the GPU cannot keep up — and back up when it can. Nothing else about the frame changes (the bloom, the
- * shadows and every material stay as they are: no shader is recompiled, which would itself be a long frame).
+ * The rich tier's GPU budget at run time (perf/interaction-latency): a frame governor that steps the scene's drawing
+ * resolution down while the GPU cannot keep up — and back up when it can. Nothing else about the frame changes (the bloom,
+ * the shadows and every material stay as they are: no shader is recompiled, which would itself be a long frame).
  *
  * Why: the rich tier's frame is GPU-bound on a laptop's integrated GPU, and much more so when that GPU is shared (a second
  * tab or window of the game, another 3D app). Chrome then shows each input about four frame intervals later, so a 12 fps
- * frame rate is a 300-700 ms wait after every click or key press (the owner's Vercel toolbar numbers). Lowering the dpr
- * is the one change that scales the GPU work down without changing what is drawn (1.5 -> 1.25 -> 1).
+ * frame rate is a 300-700 ms wait after every click or key press (the owner's Vercel toolbar numbers). Drawing fewer pixels
+ * is the one change that scales the GPU work down without changing what is drawn: the steps are the dprs 1.5 -> 1.25 -> 1
+ * (2 -> 1.5 -> 1.25 -> 1 on a dpr-2 screen), applied as the post chain's render scale (postChain.ts `setScale`: the scene is
+ * drawn into a part of the same target and stretched over the screen). A step re-makes nothing — the canvas keeps its
+ * size — so it costs nothing on its frame. (Resizing the canvas for a step, the first version, made that frame 100-317 ms
+ * and flashed the cleared canvas over the game.)
  *
  * The rule (`FrameGovernor`), judged every 250 ms over the last 2 s of frames: a frame's wait is its interval minus the
  * main thread's busy time in it — the previous frame's callbacks and render calls, the browser's own work for that frame
  * (style, layout, paint, the commit) and any task that ran before the main thread was free (QualityEffects measures it
  * with a message posted at the end of each frame). What is left is the time the main thread sat idle until the next
  * frame was let in. When the median interval is longer than 22 ms (under ~45 fps) AND the median wait is longer than a
- * whole display refresh, the frames are waiting on the GPU or the compositor and a smaller canvas helps: one step down.
+ * whole display refresh, the frames are waiting on the GPU or the compositor and a smaller picture may help: one step down.
  * Measured (headless Chrome, Radeon 680M): GPU-bound frames wait 28 ms (the old chain) and 35 ms (the GPU shared with two
  * other windows of the game) of 37-43 ms intervals; CPU-bound ones (4x CPU throttling, 27 ms of JS in 34 ms intervals)
- * wait 5 ms. A CPU-bound frame is left alone: fewer pixels would not make it faster, only blurrier. (Counting only the
- * frame callbacks as busy was not enough: at 4x the browser's own per-frame work was read as a wait and the dpr was
- * stepped down for nothing.) The refresh is the shortest interval seen (16.7 ms until a shorter one shows up: 120 Hz).
- * After 10 s of a steady 60 fps take one step back up; a step up that has to be taken back within 30 s is a flip-flop, and
- * each one triples the wait before the next step up (30 s, 90 s, 270 s, then 5 min at most). Every step is one long
- * frame (the canvas and its targets are re-made: 100-230 ms measured on the Radeon 680M), so a GPU that stays shared
- * must not see the dpr go up and down every few seconds (measured with the old 8 s / 10 s / x2 rule: five steps in a
- * minute, one of them inside a click), while one that is free again still gets its sharp picture back.
- * The first 4 s after the scene starts and 1.5 s after every step are not judged (loading, the resize itself), nor are
- * pauses (an interval over 400 ms: a hidden tab, a load).
+ * wait 5 ms. A CPU-bound frame is left alone: fewer pixels would not make it faster, only blurrier. The refresh is the
+ * shortest interval seen (16.7 ms until a shorter one shows up: 120 Hz).
  *
- * Pure (no three, no DOM): unit-tested in renderBudget.test.ts. The level lives in `useRenderBudget`: the post chain's
- * governor (QualityEffects) writes it and sets the Canvas's dpr; PlayShell reads it whenever it renders (`budgetDpr`).
+ * A descent must pay: the steps down from one level are one descent, and when the last step it could take has not made
+ * the median interval at least 15 % shorter than when it began, the sharp picture comes back and no new descent starts
+ * until the interval gets 15 % longer than that (or the frames are fast again). An idle main thread at 33 ms frames is
+ * not always a busy GPU: a browser holding rAF at 30 fps (Chrome's energy saver), a 30 Hz display. Smaller pictures do
+ * not help there, so they must not stay. (Each step of a descent is judged on the vsync's ladder: 33 -> 33 -> 17 ms
+ * is a descent that paid at its second step.)
+ *
+ * After 10 s of a steady 60 fps take one step back up; a descent that starts within 2 minutes of a step up is a flip-flop,
+ * and each one triples the wait before the next step up (30 s, 90 s, 270 s, then 5 min at most), so a GPU that stays
+ * shared does not see the sharpness go up and down every half minute, while one that is free again still gets its sharp
+ * picture back. The first 4 s after the scene starts and 0.5 s after every step are not judged (loading, the step itself),
+ * nor are pauses (an interval over 400 ms: a hidden tab, a load).
+ *
+ * Pure (no three, no DOM): unit-tested in renderBudget.test.ts. The level lives in `useRenderBudget` (the next scene under
+ * the same setting starts where this one ended up); QualityEffects runs the governor and gives its scale to the post chain.
  */
 
 export interface BudgetStep {
-  /** The dpr cap of this step (the Canvas's dpr range is clamped under it). */
+  /** The dpr the scene is drawn at on this step. */
   dpr: number;
 }
 
-/** The rich tier's dpr caps, best first. */
+/** The rich tier's dpr caps under the top, best first. */
 export const DPR_STEPS: readonly number[] = [1.5, 1.25, 1];
 
 /** The dpr react-three-fiber draws at for a `[min, max]` range on a screen of `deviceDpr` (its calculateDpr). */
@@ -47,8 +56,8 @@ export function rangeDpr(range: readonly [number, number], deviceDpr: number): n
 }
 
 /**
- * The distinct steps for this screen: a cap that would not lower the dpr the range already gives is skipped (a 1080p
- * screen at 100 % is at dpr 1 already: it has one step, and the governor has nothing to do there).
+ * The distinct steps for this screen: the canvas's own dpr first, then each cap that lowers it (a 1080p screen at 100 % is
+ * at dpr 1 already: it has one step, and the governor has nothing to do there).
  */
 export function budgetSteps(range: readonly [number, number], deviceDpr: number): BudgetStep[] {
   const base = rangeDpr(range, deviceDpr);
@@ -60,16 +69,19 @@ export function budgetSteps(range: readonly [number, number], deviceDpr: number)
   return steps;
 }
 
-/** The Canvas's dpr range on a step: the tier's range with its top clamped to the step's dpr. */
-export function stepDprRange(range: readonly [number, number], step: BudgetStep): [number, number] {
-  return [Math.min(range[0], step.dpr), Math.min(range[1], step.dpr)];
+/** The post chain's render scale on `level`: the step's dpr over the canvas's (the top step's). */
+export function stepScale(steps: readonly BudgetStep[], level: number): number {
+  if (steps.length === 0) return 1;
+  const top = steps[0]!.dpr;
+  const at = steps[Math.min(Math.max(0, level), steps.length - 1)]!.dpr;
+  return top > 0 ? at / top : 1;
 }
 
 export const GOVERNOR = {
   /** Not judged for this long after the governor starts (the scene's first seconds: loading, shader compiles). */
   warmupMs: 4000,
-  /** ...and for this long after each step (the canvas and its targets are re-made at the new size). */
-  settleMs: 1500,
+  /** ...and for this long after each step (a step re-makes nothing; the frames in flight were drawn at the old scale). */
+  settleMs: 500,
   /** The window a judgement is made over. */
   windowMs: 2000,
   /** The windows are judged this often, not on every frame (each judgement sorts them). */
@@ -88,12 +100,14 @@ export const GOVERNOR = {
   upWindowMs: 10_000,
   upBackoff: 3,
   maxUpWaitMs: 300_000,
-  /** A step down within this long after a step up is a flip-flop. */
-  flipFlopMs: 30_000,
+  /** A descent that starts within this long after a step up is a flip-flop (a GPU shared on and off: ~40 s cycles seen). */
+  flipFlopMs: 120_000,
+  /** A descent has paid when it has made the median interval at least this much shorter (x 0.85)... */
+  gain: 0.85,
+  /** ...and after one that did not, a new one starts only once the interval is this much longer than its start (x 1.15). */
+  worse: 1.15,
   /** An interval this long is a pause (a hidden tab, a load), not a frame. */
   pauseMs: 400,
-  /** No step this soon after a press or a release (a click's or a key's next paint comes within ~100-300 ms). */
-  inputQuietMs: 600,
 } as const;
 
 function median(xs: number[]): number {
@@ -113,6 +127,10 @@ export class FrameGovernor {
   private fastSince: number;
   private lastUpAt = -Infinity;
   private flipFlops = 0;
+  /** The descent in progress: the level it started from and the median interval there. */
+  private descent: { from: number; interval: number } | null = null;
+  /** The interval at which a whole descent did not pay (null: none, or the frames have been fast since). */
+  private noGainAt: number | null = null;
 
   /** `levels`: how many steps there are (budgetSteps(...).length); `start`: the level to begin on; `now`: the clock (ms). */
   constructor(levels: number, start: number, now: number) {
@@ -125,11 +143,9 @@ export class FrameGovernor {
   /**
    * One frame: `now` (ms), the interval from the previous frame to this one (their rAF timestamps), and how much of that
    * interval the main thread was busy (the previous frame's callbacks and the browser's work for it, other tasks: what
-   * the interval had to fit), and when the player last pressed or let go of something. Returns the new level when it
-   * changes, else null. No step is taken within `inputQuietMs` of an input: a step is one long frame (the canvas and its
-   * targets are re-made), and it would land in that input's next paint; the step waits for a quiet moment instead.
+   * the interval had to fit). Returns the new level when it changes, else null.
    */
-  sample(now: number, intervalMs: number, busyMs: number, lastInputAt = -Infinity): number | null {
+  sample(now: number, intervalMs: number, busyMs: number): number | null {
     if (now < this.holdUntil) return null;
     if (!(intervalMs > 0) || intervalMs > GOVERNOR.pauseMs) return null;
     if (intervalMs >= GOVERNOR.minRefreshMs && intervalMs < this.refresh) this.refresh = intervalMs;
@@ -147,13 +163,29 @@ export class FrameGovernor {
 
     const interval = median(this.intervals);
     if (interval > GOVERNOR.fastMs) this.fastSince = now;
-    if (now - lastInputAt < GOVERNOR.inputQuietMs) return null;
-    if (this.level < this.maxLevel && interval > GOVERNOR.slowMs && median(this.waits) > GOVERNOR.waitRefreshes * this.refresh) {
-      if (now - this.lastUpAt < GOVERNOR.flipFlopMs) this.flipFlops++;
+    else this.noGainAt = null; // fast again: what did not pay before is judged afresh
+    const waiting = interval > GOVERNOR.slowMs && median(this.waits) > GOVERNOR.waitRefreshes * this.refresh;
+
+    const d = this.descent;
+    if (d && interval <= d.interval * GOVERNOR.gain) {
+      this.descent = null; // the smaller picture paid: it stays (and the next step down, if any, starts a new descent)
+    } else if (d && (this.level >= this.maxLevel || !waiting)) {
+      // Every step down so far left the frames as slow as before: the sharp picture back, and no new descent at this rate.
+      this.descent = null;
+      this.noGainAt = d.interval;
+      return this.step(d.from, now);
+    }
+
+    const blocked = this.noGainAt !== null && interval <= this.noGainAt * GOVERNOR.worse;
+    if (this.level < this.maxLevel && waiting && !blocked) {
+      if (!this.descent) {
+        this.descent = { from: this.level, interval };
+        if (now - this.lastUpAt < GOVERNOR.flipFlopMs) this.flipFlops++;
+      }
       return this.step(this.level + 1, now);
     }
     const upWait = Math.min(GOVERNOR.maxUpWaitMs, GOVERNOR.upWindowMs * GOVERNOR.upBackoff ** this.flipFlops);
-    if (this.level > 0 && now - this.fastSince >= upWait) {
+    if (!this.descent && this.level > 0 && now - this.fastSince >= upWait) {
       this.lastUpAt = now;
       return this.step(this.level - 1, now);
     }
@@ -187,19 +219,8 @@ export const useRenderBudget = create<RenderBudgetStore>((set) => ({
   setLevel: (setting, level) => set({ setting, level }),
 }));
 
-/** The level a scene under `setting` starts on (and the level in force: read, not subscribed to — see `budgetDpr`). */
+/** The level a scene under `setting` starts on. */
 export function startLevel(setting: string): number {
   const s = useRenderBudget.getState();
   return s.setting === setting ? s.level : 0;
-}
-
-/**
- * The Canvas's dpr range on `level` of the tier's `range` on a screen of `deviceDpr`. The governor applies a step itself
- * (react-three-fiber's setDpr from inside the Canvas) and the scene's shell reads the level when it renders for another
- * reason, so the two always agree and a step does not re-render the whole scene (a 50-100 ms main-thread block, measured
- * as the input delay of a click that met a step).
- */
-export function budgetDpr(range: readonly [number, number], deviceDpr: number, level: number): [number, number] {
-  const steps = budgetSteps(range, deviceDpr);
-  return stepDprRange(range, steps[Math.min(Math.max(0, level), steps.length - 1)]!);
 }

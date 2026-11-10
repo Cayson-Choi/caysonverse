@@ -8,6 +8,7 @@ import {
   MeshBasicMaterial,
   Object3D,
   PlaneGeometry,
+  PointsMaterial,
   SRGBColorSpace,
   ShaderLib,
   ShaderMaterial,
@@ -30,6 +31,7 @@ import {
   LIT,
   STAR_COUNT,
   STAR_RADIUS,
+  STAR_SIZE,
   VILLAGE_CAMERA_PLANES,
   VILLAGE_GROUND_DECAL,
   applyDayNight,
@@ -61,6 +63,7 @@ import { DAY_LIFT, NIGHT_LOOK, dayNightAt, indoorState, type DayNightState } fro
 import { parseKstTime } from "@caysonverse/shared/village/sunClock";
 import { HALL_ACTIVE_MAP, VILLAGE_ACTIVE_MAP, VILLAGE_CAMERA_PAD } from "../game/activeMap";
 import { DEFAULT_DECAL_Y } from "../game/groundDecal";
+import { setRenderScale } from "../game/renderScale";
 
 /**
  * A node tree with the names and materials the village.glb contract promises (Task 6 report): the same shape the
@@ -795,6 +798,23 @@ describe("applyDayNight: the clock's numbers into the model (Task 7A)", () => {
     }
     expect(STAR_RADIUS).toBeLessThan(1400); // in front of the dome
     expect(a.visible).toBe(false);
+  });
+
+  it("a star keeps its size on screen when the scene is drawn at a lower render scale and stretched (renderScale.ts)", () => {
+    const stars = makeStars(4);
+    const m = stars.material as PointsMaterial;
+    const draw = () => stars.onBeforeRender(null as never, null as never, null as never, null as never, m, null as never);
+    draw();
+    expect(m.size).toBe(STAR_SIZE);
+    setRenderScale(1 / 1.5);
+    try {
+      draw();
+      expect(m.size).toBeCloseTo(STAR_SIZE / 1.5, 12);
+    } finally {
+      setRenderScale(1);
+    }
+    draw();
+    expect(m.size).toBe(STAR_SIZE);
   });
 });
 

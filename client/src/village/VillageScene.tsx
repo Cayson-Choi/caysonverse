@@ -10,6 +10,7 @@ import type { Identity } from "../stores/appStore";
 import { DoorFade } from "./DoorFade";
 import { doorFade } from "./doorFadeModel";
 import { useQualityTier } from "../game/QualityEffects";
+import { SceneWarmUp } from "../game/SceneWarmUp";
 import { VILLAGE_LAYOUT, type AreaId } from "@caysonverse/shared/village/villageLayout";
 import { PlotMarkers } from "./PlotMarkers";
 import { DoorPad } from "./VillageHall";
@@ -84,6 +85,8 @@ function VillageArea({ area, tier }: { area: AreaId; tier: VillageTier }) {
       <LoadBoundary fallback={<PlainGround />} onReset={clearVillageCaches} notice="마을 풍경을 불러오지 못했어요. 잠시 뒤 다시 불러올게요.">
         <Suspense fallback={null}>
           <VillageModel tier={tier} />
+          {/* Its materials compiled ahead once the model is in (night-only and out-of-view ones included). */}
+          <SceneWarmUp key={tier} />
         </Suspense>
       </LoadBoundary>
       <PlotMarkers />

@@ -6,7 +6,7 @@ import { useSettingsStore } from "../stores/settingsStore";
 import { BLOOM, QUALITY, exposureFor, resolveQuality, type GraphicsSetting, type QualityTier, type ToneCurve } from "./quality";
 import { DEFAULT_DECAL_Y, decalY, type GroundDecal } from "./groundDecal";
 import { PostChain } from "./postChain";
-import { FrameGovernor, budgetDpr, budgetSteps, startLevel, useRenderBudget } from "./renderBudget";
+import { FrameGovernor, budgetSteps, startLevel, stepScale, useRenderBudget } from "./renderBudget";
 import { softwareGl } from "./gpuProbe";
 import "./quality.css";
 
@@ -21,7 +21,7 @@ import "./quality.css";
  *    (windows, the sun's patch, sparkles), then one final pass tone-maps and converts to sRGB like the renderer
  *    does itself, and smooths the edges (postChain.ts: no MSAA target, no second full-screen blend — the old chain
  *    kept a laptop's GPU at 30-46 fps, perf/interaction-latency). A frame governor (renderBudget.ts) lowers the
- *    dpr while the GPU cannot keep up.
+ *    scene's render scale while the GPU cannot keep up.
  *    The bloom's strength and radius are the brief's (0.6 / 0.4). Its threshold is raised from the
  *    brief's 0.85 to 1.6 for a scene as bright as ours: at 0.85 the whole floor and the (tone-map-compensated)
  *    sky glow and the frame turns into a blue-white haze; the baked sun patches reach about 1.4, so 1.3 hazed them too (Task 24);
@@ -47,15 +47,22 @@ export function activePostChain(): PostChain | null {
 /** Frame start marks for the governor: the first frame callback of every frame (before any scene work). */
 const FIRST = -1_000_000;
 
-/** A press or a release: the governor does not step right after one (renderBudget.ts `inputQuietMs`). */
-const INPUT_EVENTS = ["pointerdown", "pointerup", "keydown", "keyup"] as const;
+/** A User Timing mark per step, for measurements (e2e/interaction-latency.mjs): cheap, and nothing reads it in the game. */
+function markStep(level: number, scale: number): void {
+  try {
+    performance.mark("cv:render-scale", { detail: { level, scale } });
+  } catch {
+    // (an old browser without mark details: nothing to measure there)
+  }
+}
 
 /**
  * The rich tier's post chain (postChain.ts), drawn on the frame callback at priority 1 (which also tells
- * react-three-fiber not to draw the frame itself), and the frame governor that steps its budget (renderBudget.ts).
+ * react-three-fiber not to draw the frame itself), and the frame governor that steps its render scale (renderBudget.ts).
+ * The canvas keeps the tier's dpr: a step is the chain's scale only, taken before the frame is drawn, so it costs
+ * nothing and the frame it lands on is already drawn at the new scale.
  */
 function PostEffects({ setting }: { setting: GraphicsSetting }) {
-  const setDpr = useThree((s) => s.setDpr);
   const chain = useMemo(() => new PostChain(BLOOM), []);
   useEffect(() => {
     activeChain = chain;
@@ -65,26 +72,17 @@ function PostEffects({ setting }: { setting: GraphicsSetting }) {
     };
   }, [chain]);
   const deviceDpr = typeof window === "undefined" ? 1 : window.devicePixelRatio || 1;
-  const steps = budgetSteps(QUALITY.high.dpr, deviceDpr);
-  const lastInput = useRef(-Infinity);
-  useEffect(() => {
-    const mark = (e: Event) => {
-      if (!(e as KeyboardEvent).repeat) lastInput.current = performance.now();
-    };
-    const opts = { capture: true, passive: true } as const;
-    for (const t of INPUT_EVENTS) window.addEventListener(t, mark, opts);
-    return () => {
-      for (const t of INPUT_EVENTS) window.removeEventListener(t, mark, opts);
-    };
-  }, []);
+  const steps = useMemo(() => budgetSteps(QUALITY.high.dpr, deviceDpr), [deviceDpr]);
 
   const governor = useRef<FrameGovernor | null>(null);
   useEffect(() => {
-    governor.current = new FrameGovernor(steps.length, startLevel(setting), performance.now());
+    const g = new FrameGovernor(steps.length, startLevel(setting), performance.now());
+    governor.current = g;
+    chain.setScale(stepScale(steps, g.level));
     return () => {
       governor.current = null;
     };
-  }, [setting, steps.length]);
+  }, [setting, steps, chain]);
   // When the main thread is free again after a frame: a message posted at the end of the frame's callbacks is handled
   // only after the browser's own work for that frame (style, layout, paint, the commit to the compositor) and any task
   // queued before it (input, network, React) — on a slow CPU all of that is CPU time too, not a wait on the GPU.
@@ -115,26 +113,28 @@ function PostEffects({ setting }: { setting: GraphicsSetting }) {
     f.ts = typeof t === "number" ? t : f.start;
   }, FIRST);
   useFrame(({ gl, scene, camera }) => {
-    gl.getDrawingBufferSize(size);
-    chain.setSize(size.x, size.y);
-    chain.render(gl, scene, camera);
     const g = governor.current;
     const f = frame.current;
-    const now = performance.now();
+    const c = channel.current;
     // The main thread's idle time before this frame began: from when it was free after the previous frame (none seen:
     // it was busy all along) to this frame's first callback. The rest of the interval was CPU work.
     const interval = f.ts - f.prevTs;
     const idle = f.freeAt > f.prevStart ? Math.max(0, f.start - f.freeAt) : 0;
     f.freeAt = 0;
-    const c = channel.current;
+    if (g && f.prevTs !== 0 && c) {
+      const next = g.sample(f.start, interval, Math.max(0, interval - idle));
+      if (next !== null) {
+        // The step itself: the chain's scale for this very frame (and the next scene's start, useRenderBudget).
+        useRenderBudget.getState().setLevel(setting, next);
+        const scale = stepScale(steps, next);
+        chain.setScale(scale);
+        markStep(next, scale);
+      }
+    }
+    gl.getDrawingBufferSize(size);
+    chain.setSize(size.x, size.y);
+    chain.render(gl, scene, camera);
     c?.port2.postMessage(0);
-    if (!g || f.prevTs === 0 || !c) return;
-    const next = g.sample(now, interval, Math.max(0, interval - idle), lastInput.current);
-    if (next === null) return;
-    // The step itself, here: react-three-fiber resizes the canvas. PlayShell is not re-rendered for it (it reads the
-    // level whenever it renders for another reason, budgetDpr): re-rendering the whole scene blocked the main thread.
-    useRenderBudget.getState().setLevel(setting, next);
-    setDpr(budgetDpr(QUALITY.high.dpr, deviceDpr, next));
   }, 1);
   return null;
 }

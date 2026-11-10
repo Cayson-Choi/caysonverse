@@ -35,6 +35,7 @@ import {
   type SkyMapping,
 } from "./villageWater";
 import type { ToneCurve } from "../game/quality";
+import { renderScale } from "../game/renderScale";
 import { VILLAGE_LAYOUT } from "@caysonverse/shared/village/villageLayout";
 import type { DayNightState } from "./dayNightBlend";
 
@@ -729,6 +730,9 @@ function rng(seed: number): () => number {
   };
 }
 
+/** A star's size on screen (px at the canvas's dpr). */
+export const STAR_SIZE = 2.2;
+
 /** The night sky's stars (points of mixed brightness, never in the fog, never lit). Invisible until the night fades them in. */
 export function makeStars(count = STAR_COUNT): Points {
   const rand = rng(20261103);
@@ -752,7 +756,7 @@ export function makeStars(count = STAR_COUNT): Points {
   g.setAttribute("position", new Float32BufferAttribute(pos, 3));
   g.setAttribute("color", new Float32BufferAttribute(col, 3));
   const m = new PointsMaterial({
-    size: 2.2,
+    size: STAR_SIZE,
     sizeAttenuation: false,
     vertexColors: true,
     transparent: true,
@@ -762,6 +766,11 @@ export function makeStars(count = STAR_COUNT): Points {
     toneMapped: false,
   });
   const stars = new Points(g, m);
+  // The size is in screen pixels: drawn at a lower render scale and stretched over the screen (renderScale.ts), a star
+  // shrinks by the same share so it comes out the same size.
+  stars.onBeforeRender = () => {
+    m.size = STAR_SIZE * renderScale();
+  };
   stars.name = "village_stars";
   stars.frustumCulled = false;
   stars.visible = false;

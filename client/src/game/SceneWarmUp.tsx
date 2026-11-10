@@ -31,25 +31,42 @@ export function warmScene(
   }
 }
 
+/** Run `fn` when the main thread is idle (soon after at the latest); returns a cancel. */
+function whenIdle(fn: () => void): () => void {
+  if (typeof requestIdleCallback === "function") {
+    const id = requestIdleCallback(fn, { timeout: 1000 });
+    return () => cancelIdleCallback(id);
+  }
+  const id = setTimeout(fn, 50);
+  return () => clearTimeout(id);
+}
+
 /**
- * Mounted at the end of the scene's Suspense boundary (PlayShell): its effect runs once the scene's content is in. One
- * frame later (the content has been drawn once: its lights and the post chain are set up) every material is compiled for
- * the frame's target, and the reaction glyphs are drawn and uploaded in idle time (emojiSprite.ts).
+ * Mounted at the end of a Suspense boundary, after the content it waits for: PlayShell's (the avatars, the markers),
+ * and the village's and the memorial hall's own (VillageScene.tsx, MemorialHall.tsx: their models load inside a boundary of
+ * their own, after PlayShell's has resolved — a warm-up there alone ran before the village was in the scene). Its effect
+ * runs once that content is in; one frame later (it has been drawn once: its lights and the post chain are set up), in
+ * idle time, every material of the scene is compiled for the frame's target — the ones the first frames did not draw:
+ * hidden ones (the night's stars and glows), ones out of view, the map view's. Compiling what is already compiled only
+ * looks it up. Keyed by the tier where it is mounted (the target, and so every program, changes with it). `emoji`: also
+ * draw and upload the reaction glyphs in idle time (emojiSprite.ts; PlayShell's).
  */
-export function SceneWarmUp() {
+export function SceneWarmUp({ emoji = false }: { emoji?: boolean }) {
   const gl = useThree((s) => s.gl);
   const scene = useThree((s) => s.scene);
   const camera = useThree((s) => s.camera);
   useEffect(() => {
     let stopEmoji: (() => void) | null = null;
+    let stopIdle: (() => void) | null = null;
     const id = requestAnimationFrame(() => {
-      void warmScene(gl, scene, camera, activePostChain()?.target ?? null);
-      stopEmoji = prewarmEmojiTextures(gl);
+      stopIdle = whenIdle(() => void warmScene(gl, scene, camera, activePostChain()?.target ?? null));
+      if (emoji) stopEmoji = prewarmEmojiTextures(gl);
     });
     return () => {
       cancelAnimationFrame(id);
+      stopIdle?.();
       stopEmoji?.();
     };
-  }, [gl, scene, camera]);
+  }, [gl, scene, camera, emoji]);
   return null;
 }

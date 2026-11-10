@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { onHotkey } from "../game/hotkeys";
 import { blurTextEntry, handleEscape, type FocusLike } from "../game/escape";
 import { clearClickTarget } from "../game/clickMove";
@@ -38,6 +38,39 @@ const NAMETAG_OPTIONS: readonly { value: NametagMode; label: string }[] = [
   { value: "nearby", label: "가까운 사람만" },
   { value: "off", label: "끄기" },
 ];
+
+/**
+ * The card is painted once ahead, invisibly, a little after the scene starts (perf/interaction-latency): its first paint
+ * compiles the browser's drawing shaders for it (the rounded, shadowed card, the switches, the sliders) and rasterises
+ * and lays out its Korean text in the fonts and weights it uses — 70-110 ms of GPU and layout work that made the first
+ * "메뉴" press take 130-150 ms (250-380 ms on a 4x slower CPU) where every later one took ~64. Drawn at 0.1 % opacity
+ * (nothing a viewer can see: under one 8-bit step), not hit-testable, hidden from assistive technology and inert, and
+ * gone again after `PREWARM_HOLD_MS`. The open effect (keyboard, focus) is not run for it.
+ */
+const PREWARM_AFTER_MS = 2500;
+const PREWARM_HOLD_MS = 400;
+
+/** After `PREWARM_AFTER_MS`, in idle time: true for `PREWARM_HOLD_MS` once per mount. */
+function usePrewarm(): boolean {
+  const [on, setOn] = useState(false);
+  useEffect(() => {
+    let idle: number | null = null;
+    const timer = setTimeout(() => {
+      if (typeof requestIdleCallback === "function") idle = requestIdleCallback(() => setOn(true), { timeout: 3000 });
+      else setOn(true);
+    }, PREWARM_AFTER_MS);
+    return () => {
+      clearTimeout(timer);
+      if (idle !== null) cancelIdleCallback(idle);
+    };
+  }, []);
+  useEffect(() => {
+    if (!on) return;
+    const timer = setTimeout(() => setOn(false), PREWARM_HOLD_MS);
+    return () => clearTimeout(timer);
+  }, [on]);
+  return on;
+}
 
 /** "1배", "1.25배" — the slider's current value, without trailing zeros. */
 function formatSensitivity(v: number): string {
@@ -142,6 +175,7 @@ export function MenuPanel({ graphics = false, onToggleView, onShowGuide }: MenuP
   const panelRef = useRef<HTMLDivElement>(null);
   // A press that began on the dimmed backdrop (not inside the card) — see the backdrop's click.
   const pressedBackdrop = useRef(false);
+  const prewarm = usePrewarm();
 
   // The one Esc subscriber. Mounted for the world's lifetime, open or not.
   useEffect(
@@ -181,7 +215,9 @@ export function MenuPanel({ graphics = false, onToggleView, onShowGuide }: MenuP
     };
   }, [open]);
 
-  if (!open) return null;
+  if (!open && !prewarm) return null;
+  // The invisible first paint (see PREWARM_AFTER_MS): the same card, never interactive.
+  const ghost = !open;
 
   const close = () => useUiStore.getState().setMenuOpen(false);
   // "끄기" hides every tag, your own included: say so instead of leaving a switch that does nothing.
@@ -189,7 +225,9 @@ export function MenuPanel({ graphics = false, onToggleView, onShowGuide }: MenuP
 
   return (
     <div
-      className="cv-menu-backdrop"
+      className={"cv-menu-backdrop" + (ghost ? " is-prewarm" : "")}
+      aria-hidden={ghost || undefined}
+      inert={ghost || undefined}
       onPointerDown={(e) => {
         pressedBackdrop.current = e.target === e.currentTarget;
       }}
