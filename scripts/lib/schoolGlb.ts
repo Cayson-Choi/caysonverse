@@ -501,6 +501,11 @@ export const BUDGETS: Record<SchoolKind, { maxBytes: number; maxTriangles: numbe
 /** A required col__ box may differ from its layout box by at most this much on each side (m; boxes are read at 0.01). */
 export const BOX_TOLERANCE = 0.011;
 export const MAX_MATERIALS = 24;
+/**
+ * The material ceiling per file: MAX_MATERIALS, but one more for the village, whose fountain crescent (`M_moon`) is the
+ * one surface the game lights live (fix/fix-moon-smooth: light-mapped, its 3.5 texels per metre showed as stepped bands).
+ */
+export const MATERIAL_LIMITS: Record<SchoolKind, number> = { hub: MAX_MATERIALS, counsel: MAX_MATERIALS, village: MAX_MATERIALS + 1, memorial: MAX_MATERIALS };
 export const MAX_TEXTURE_SIDE = 2048;
 /** An obj__ node's origin may differ from the TS anchor by at most this much (m, on the ground plane). */
 export const OBJ_ANCHOR_TOLERANCE = 0.25;
@@ -676,7 +681,8 @@ export function checkSchoolGlb(input: CheckInput): CheckResult[] {
   }
 
   const materials = gltf.materials ?? [];
-  out.push(result(materials.length <= MAX_MATERIALS, "재질 수", `${materials.length}개, 한도 ${MAX_MATERIALS}개`));
+  const maxMaterials = MATERIAL_LIMITS[kind];
+  out.push(result(materials.length <= maxMaterials, "재질 수", `${materials.length}개, 한도 ${maxMaterials}개`));
 
   out.push(checkTextures(input));
 

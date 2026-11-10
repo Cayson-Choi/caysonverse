@@ -219,7 +219,7 @@ export function LocalPlayer({
     };
   }, [showOwnNametag, sessionId, nickname, isAdmin, bubbleAnchor, tagHeight, bubbleRest]);
   // Own emoji reaction: same broadcast-driven, self-included discipline; it starts above the own bubble.
-  useEmoji(sessionId, groupRef, bubbleAnchor, bubbleTop);
+  useEmoji(sessionId, groupRef, avatar.topY, bubbleTop);
 
   const { actions } = useAnimations(animations, model);
 

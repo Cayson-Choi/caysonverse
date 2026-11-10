@@ -29,6 +29,11 @@ import {
   GROUND_LAYER_OFFSET,
   LIGHT_LIFT,
   LIT,
+  MOON_GLAZE_FROM,
+  MOON_LIGHT_FROM,
+  MOON_PROBE,
+  moonMaterial,
+  moonProbe,
   STAR_COUNT,
   STAR_RADIUS,
   STAR_SIZE,
@@ -120,6 +125,8 @@ interface Fixture {
   root: Object3D;
   mats: Record<string, MeshBasicMaterial>;
   textures: Record<string, Texture>;
+  /** The fountain's crescent: unlit, no light map, as GLTFLoader makes it for `M_moon` (KHR_materials_unlit). */
+  moon: MeshBasicMaterial;
 }
 
 function fixture(): Fixture {
@@ -161,7 +168,11 @@ function fixture(): Fixture {
   street.name = "inst__street_green_1";
   root.add(far, street);
   root.add(mesh("col__house_1", mats.LM_wood), mesh("col__tree_1", mats.LM_wood), mesh("col__stream_bank_1", mats.LM_wood));
-  return { root, mats, textures };
+  const moon = mat("M_moon", { map: new Texture() });
+  const moonMesh = new Mesh(new SphereGeometry(1, 8, 6), moon);
+  moonMesh.name = "fountain_moon";
+  root.add(moonMesh);
+  return { root, mats, textures, moon };
 }
 
 const named = (root: Object3D, name: string) => root.getObjectByName(name) as Mesh;
@@ -525,6 +536,18 @@ describe("prepareVillage: the model dressed for the game", () => {
     expect(Math.max(...LIT.lamp.color) * LIT.lamp.boost).toBeGreaterThan(1.6);
   });
 
+  it("the fountain's crescent (M_moon) gets the bake's light as a probe: never light-mapped, lifted or graded, patched once", () => {
+    const f = fixture();
+    prepareVillage(f.root, new Texture(), "high");
+    expect(f.moon.lightMap).toBeNull();
+    expect(f.moon.customProgramCacheKey()).toBe("village-moon");
+    expect(f.moon.color.toArray()).toEqual([1, 1, 1]);
+    const patch = f.moon.onBeforeCompile;
+    prepareVillage(f.root, new Texture(), "low"); // a second dressing (another tier) patches it once
+    expect(f.moon.onBeforeCompile).toBe(patch);
+    expect(named(f.root, "fountain_moon").material).toBe(f.moon); // the shared material, not a copy
+  });
+
   it("disposeVillage releases its own copies and nothing of the loader's cache", () => {
     const f = fixture();
     const nodes = prepareVillage(f.root, new Texture(), "high");
@@ -751,6 +774,54 @@ describe("applyDayNight: the clock's numbers into the model (Task 7A)", () => {
     expect(f.mats.LM_plaza.color.toArray()).toEqual([...GROUND_GRADE.LM_plaza!]);
   });
 
+  it("the crescent turns with the light maps: it reads the same shared weights and tints, so no write of its own", () => {
+    const f = fixture();
+    prepareVillage(f.root, new Texture(), "high");
+    const shader = { uniforms: {} as Record<string, unknown>, fragmentShader: "void main() {", vertexShader: "void main() {" };
+    f.moon.onBeforeCompile(shader as never, null as never);
+    expect(shader.uniforms.uVillageNight).toBe(nightBlendUniform);
+    expect(shader.uniforms.uVillageDayTint).toBe(dayTintUniform);
+    expect(shader.uniforms.uVillageMoonTint).toBe(moonTintUniform);
+    expect(shader.uniforms.uVillageLift).toBe(liftUniform);
+    expect(shader.uniforms.uVillageLiftTint).toBe(liftTintUniform);
+    const c = VILLAGE_LAYOUT.plaza.fountain.centre;
+    expect((shader.uniforms.uMoonFountain as { value: { x: number; y: number } }).value).toMatchObject({ x: c.x, y: c.z });
+  });
+
+  it("the crescent's probe is the old bake's light: bluish sky on its face, the sun on its back, dim below, never negative", () => {
+    const yaw = (-25 * Math.PI) / 180;
+    const front = [Math.sin(yaw), 0, Math.cos(yaw)] as const; // the face the spawn sees (build_village.py: yaw -25 deg)
+    const back = [-front[0], 0, -front[2]] as const;
+    const luma = (c: readonly number[]) => 0.2126 * c[0]! + 0.7152 * c[1]! + 0.0722 * c[2]!;
+    const day = (n: readonly [number, number, number]) => moonProbe(MOON_PROBE.day, n);
+    // The old crescent's texels facing the spawn (n . front > 0.7) averaged (0.36, 0.44, 0.59) and those facing away
+    // (< -0.7) (0.93, 0.92, 0.92): the probe's value straight on is within 0.12 of each.
+    day(front).forEach((v, k) => expect(Math.abs(v - [0.36, 0.44, 0.59][k]!)).toBeLessThan(0.12));
+    day(back).forEach((v, k) => expect(Math.abs(v - [0.93, 0.92, 0.92][k]!)).toBeLessThan(0.12));
+    expect(day(front)[2]).toBeGreaterThan(day(front)[0] + 0.15); // the sky's blue
+    expect(luma(day([0, 1, 0]))).toBeGreaterThan(luma(day([0, -1, 0])) + 0.4);
+    // Over every direction: never negative, at most a hair past the map's clip at 1 (the shader clips).
+    let lo = Infinity;
+    let hi = -Infinity;
+    let nightLo = Infinity;
+    for (let i = 0; i < 2000; i++) {
+      const z = 1 - (2 * (i + 0.5)) / 2000;
+      const r = Math.sqrt(1 - z * z);
+      const a = i * 2.399963;
+      const n = [r * Math.cos(a), r * Math.sin(a), z] as const;
+      for (const v of day(n)) {
+        lo = Math.min(lo, v);
+        hi = Math.max(hi, v);
+      }
+      for (const v of moonProbe(MOON_PROBE.night, n)) nightLo = Math.min(nightLo, v);
+    }
+    expect(lo).toBeGreaterThan(0.03);
+    expect(hi).toBeLessThan(1.1);
+    expect(nightLo).toBeGreaterThan(0);
+    // The night bake's fountain lights in the map's units: 50 W gives 50 / 8 pi^2 (Cycles' P / 4 pi^2, the map stores half).
+    expect(MOON_PROBE.uplight.gain).toBeCloseTo(50 / (8 * Math.PI * Math.PI), 4);
+  });
+
   it("the weights follow the sun through dusk: the night map's weight rises, the lamps come on past 0.3, the golden hour tints the day side", () => {
     const nodes = prepareVillage(fixture().root, new Texture(), "low");
     const seen: Array<{ night: number; lit: number; r: number; b: number }> = [];
@@ -871,6 +942,47 @@ describe("the shader patches against three's own MeshBasicMaterial shader (T7 re
       expect(count(fs, "float villageGlowLuma")).toBe(1);
       expect(fs.indexOf("#include <map_fragment>")).toBeLessThan(fs.indexOf("float villageGlowLuma"));
     }
+  });
+
+  it("the crescent's probe light and glaze land in three's own MeshBasicMaterial shader, as the light maps' light does", () => {
+    const BASIC_VS = ShaderLib.basic.vertexShader;
+    for (const [text, anchor] of [
+      [BASIC_VS, "void main() {"],
+      [BASIC_VS, "#include <project_vertex>"],
+      [BASIC, "void main() {"],
+      [BASIC, MOON_LIGHT_FROM],
+      [BASIC, MOON_GLAZE_FROM],
+    ] as const) {
+      expect(count(text, anchor), anchor).toBe(1);
+    }
+    const m = mat("M_moon");
+    moonMaterial(m);
+    const shader = { uniforms: {} as Record<string, unknown>, fragmentShader: BASIC, vertexShader: BASIC_VS };
+    m.onBeforeCompile(shader as never, null as never);
+    const vs = shader.vertexShader;
+    const fs = shader.fragmentShader;
+    expect(count(vs, "varying vec3 vMoonNormal;")).toBe(1);
+    expect(vs.indexOf("#include <project_vertex>")).toBeLessThan(vs.indexOf("vMoonWorld = ( modelMatrix"));
+    expect(vs).toContain("* normal );"); // the normal attribute itself: the basic shader has no objectNormal without an env map
+    expect(count(fs, "varying vec3 vMoonNormal;")).toBe(1);
+    expect(count(fs, "void main() {")).toBe(1);
+    expect(fs).not.toContain(MOON_LIGHT_FROM); // never the unlit 1.0
+    // The probe's light where three adds an unlit material's, before the albedo multiplies it; the glaze on top after.
+    const light = fs.indexOf("reflectedLight.indirectDiffuse += moonLight(");
+    expect(light).toBeGreaterThan(fs.indexOf("#ifdef USE_LIGHTMAP"));
+    expect(light).toBeLessThan(fs.indexOf("reflectedLight.indirectDiffuse *= diffuseColor.rgb;"));
+    const glaze = fs.indexOf("outgoingLight += moonLight( reflect(");
+    expect(glaze).toBeGreaterThan(fs.indexOf(MOON_GLAZE_FROM));
+    expect(glaze).toBeLessThan(fs.indexOf("#include <tonemapping_fragment>"));
+    // The coefficients, and the night blend as the light maps have it.
+    expect(fs).toContain(`const vec3 MOON_DAY[ 9 ] = vec3[ 9 ](\n\tvec3( ${MOON_PROBE.day[0].map((v) => v.toFixed(4)).join(", ")} )`);
+    expect(fs).toContain(`#define MOON_UPLIGHTS ${MOON_PROBE.uplight.count}`);
+    expect(fs).toContain(`#define MOON_LIGHTMAP_SCALE ${(LIGHTMAP_INTENSITY / Math.PI).toFixed(4)}`);
+    const cast = "mix( uVillageMoonTint, vec3( 1.0 ), smoothstep( 0.04, 0.22, dot( villageNightLight, vec3( 0.2126, 0.7152, 0.0722 ) ) ) )";
+    expect(count(fs, cast)).toBe(1);
+    const lm = mat("LM_test");
+    liftMaterial(lm);
+    expect(count(compile(lm), cast)).toBe(1); // the same cast as every light-mapped surface's
   });
 
   it("the dome's inverse tone curve lands right before three's tone mapping (rich tier)", () => {
