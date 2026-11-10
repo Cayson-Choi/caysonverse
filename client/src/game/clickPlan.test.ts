@@ -4,6 +4,7 @@ import type { AABB } from "@caysonverse/shared/collision";
 import { VILLAGE_LAYOUT, villageGeometry } from "@caysonverse/shared/village/villageLayout";
 import {
   MAX_PUSH,
+  RAISED_MAX_Y,
   WALKABLE_MAX_Y,
   WALKABLE_MIN_NY,
   isFreeSpot,
@@ -12,6 +13,7 @@ import {
   nearestFreeSpot,
   planClickMove,
   simulateWalk,
+  surfaceKind,
   walkStart,
 } from "./clickPlan";
 import { ARRIVE_DIST } from "./clickMove";
@@ -31,6 +33,29 @@ describe("clickPlan — what is ground (rule 1)", () => {
     expect(isWalkableSurface({ y: 0.01, ny: WALKABLE_MIN_NY - 0.01 })).toBe(false); // a steep bank
     expect(isWalkableSurface({ y: 0.45, ny: 1 })).toBe(false); // a bench seat
     expect(isWalkableSurface({ y: 0.3, ny: 1 })).toBe(false); // the memorial's step
+  });
+
+  it("surfaceKind: low ground (may be pushed out of a margin); a raised flat or a curb's side out in the open (as clicked); else nothing", () => {
+    const at = (y: number, ny: number, x = 0, z = 5) => ({ x, y, z, ny });
+    expect(surfaceKind(at(0.01, 1), [BOX], BOUNDS)).toBe("ground");
+    expect(surfaceKind(at(0.01, 1, 0, 1.2), [BOX], BOUNDS)).toBe("ground"); // at a collider's foot: still ground (pushed out)
+    // the bridge's deck crown (0.13-0.15 m), the memorial's steps (0.30 / 0.45 m): free spots, walked to as clicked
+    expect(surfaceKind(at(0.15, 1), [BOX], BOUNDS)).toBe("open");
+    expect(surfaceKind(at(0.45, 1), [BOX], BOUNDS)).toBe("open");
+    expect(surfaceKind(at(RAISED_MAX_Y, WALKABLE_MIN_NY), [BOX], BOUNDS)).toBe("open"); // both limits inclusive
+    // a curb's side (a low upright face out in the open) is ground there
+    expect(surfaceKind(at(0.06, 0), [BOX], BOUNDS)).toBe("open");
+    // a bench seat is raised flat INSIDE its collider: never pushed out to the bench's foot — nothing
+    expect(surfaceKind(at(0.45, 1, 0, 0), [BOX], BOUNDS)).toBe("none");
+    expect(surfaceKind(at(0.06, 0, 0, 1.2), [BOX], BOUNDS)).toBe("none"); // a wall's foot (in its collider)
+    expect(surfaceKind(at(RAISED_MAX_Y + 0.01, 1), [BOX], BOUNDS)).toBe("none"); // a table, a sill: higher than a step
+    expect(surfaceKind(at(0.3, 0), [BOX], BOUNDS)).toBe("none"); // a riser's upper part, a trunk: an upright face above a curb
+    expect(surfaceKind(at(-0.2, 0.5), [BOX], BOUNDS)).toBe("none"); // a steep bank below the ground (the creek)
+  });
+
+  it("a raised surface out in the open is walked to as clicked, its height kept; one in a collider is refused, not pushed", () => {
+    expect(planClickMove(0, 10, { x: 3, y: 0.14, z: -4, ny: 1 }, [BOX], BOUNDS)).toEqual({ ok: true, x: 3, z: -4, y: 0.14, adjusted: "none" });
+    expect(planClickMove(0, 10, { x: 0, y: 0.45, z: 0.9, ny: 1 }, [BOX], BOUNDS)).toEqual({ ok: false, reason: "not-ground" });
   });
 
   it("refuses a click on nothing or on what is not ground: no walk, no ring", () => {
@@ -124,6 +149,19 @@ describe("clickPlan — the walk (rule 3)", () => {
     expect(plan).toEqual({ ok: true, x: 0, z: 6, y: 0.01, adjusted: "none" });
   });
 
+  it("getting up (the stand-up glide off a bench), the walk starts where the glide lands, not inside the bench", () => {
+    expect(walkStart(0, 0.1, undefined, { x: 0, z: 1.2 })).toEqual({ x: 0, z: 1.2 });
+    expect(walkStart(3, 4, undefined, null)).toEqual({ x: 3, z: 4 });
+    expect(walkStart(3, 4, { standX: 3, standZ: 5.2 }, { x: 9, z: 9 })).toEqual({ x: 3, z: 5.2 }); // seated: the seat's
+    // from inside the bench's collider the slide lets the simulated walk through it ("arrived" behind the bench) —
+    // planned from the landing, the bench stops it and the ring goes where the avatar really stops
+    const bench: AABB = { minX: -1, maxX: 1, minZ: -0.3, maxZ: 0.3 };
+    const from = walkStart(0, 0.1, undefined, { x: 0, z: 1.6 });
+    const plan = planClickMove(from.x, from.z, ground(0, -6), [bench], BOUNDS);
+    expect(plan.ok && plan.adjusted).toBe("stopped");
+    if (plan.ok) expect(plan.z).toBeGreaterThan(0.3 + R - 0.01);
+  });
+
   it("seated, the ground at the dismount point itself still means: get up and stand there (standing, it means stop)", () => {
     const at = ground(0.1, 1.2);
     expect(planClickMove(0, 1.2, at, [], BOUNDS)).toEqual({ ok: false, reason: "here" });
@@ -168,6 +206,15 @@ describe("clickPlan — 케이슨 마을's real colliders", () => {
     expect(plan.adjusted).toBe("stopped");
     expect(plan.z).toBeCloseTo(-1.39 + R, 1); // the bench's collider ends at z = -1.39
     expect(simulateWalk(300.6, 1.5, plan.x, plan.z, obstacles, hall).arrived).toBe(true);
+  });
+
+  it("the bridge's deck (its crown 0.13-0.15 m up) is walked to as clicked, the creek's only crossing", () => {
+    const plan = planClickMove(-24, 68, { x: -24, y: 0.14, z: 75, ny: 1 }, obstacles, village);
+    expect(plan).toMatchObject({ ok: true, x: -24, z: 75, y: 0.14, adjusted: "none" });
+  });
+
+  it("the memorial's step is walked to as clicked", () => {
+    expect(planClickMove(0, -46, { x: 0, y: 0.3, z: -52.3, ny: 1 }, obstacles, village)).toMatchObject({ ok: true, adjusted: "none", y: 0.3 });
   });
 
   it("the hall: open floor is walked to as clicked", () => {

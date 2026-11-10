@@ -41,13 +41,14 @@ import {
   setPendingClick,
   clearPendingClick,
 } from "./clickMove";
-import { asSurface, pickSurface, surfaceHeightAt, type ScenePick } from "./clickPick";
+import { asSurface, pickSurface, surfaceHeightAt, warmPick, type ScenePick } from "./clickPick";
 import { clickIntent, planClickMove, walkStart, type ClickPlan } from "./clickPlan";
 import { overviewAllowed } from "./indoorCamera";
 import { createFollowRig, createFollowSpot, noteAreaLimit, stepFollowRig } from "./followRig";
 import { rememberOrbit, restoreOrbit } from "./cameraMemory";
 import { cameraProbe } from "./cameraProbe";
 import { activeBounds, activeSeats, getActiveMap } from "./activeMap";
+import { localGlide } from "./seatMotion";
 import { getLocalLift } from "./jump";
 import { useSettingsStore } from "../stores/settingsStore";
 import type { Orbit, Pose, SeatState } from "./types";
@@ -224,16 +225,17 @@ export function CameraRig({ pose, orbit, seat, fogRange = LEGACY_FOG, far: baseF
       raycaster.near = cam.near; // nearer than the near plane is not drawn: nothing to click
       raycaster.far = cam.far;
       raycaster.layers.mask = cam.layers.mask;
-      return pickSurface(raycaster, scene);
+      return pickSurface(raycaster, scene, { area: activeBounds() });
     };
     /**
      * Where a click on `pick` sends the avatar (clickPlan.ts) — or why it sends it nowhere — planned from where its
-     * walk starts: where it stands, or, seated, the spot it gets up onto (the seat's dismount point).
+     * walk starts: where it stands, or, seated, the spot it gets up onto (the seat's dismount point), or, getting up,
+     * where the stand-up glide lands. `t0`: when the click's pick began (the dev hook times pick + plan together).
      */
-    const planFor = (pick: ScenePick | null): ClickPlan => {
-      const t0 = performance.now();
+    const planFor = (pick: ScenePick | null, t0 = performance.now()): ClickPlan => {
       const s = seat.index >= 0 ? activeSeats()[seat.index] : undefined;
-      const from = walkStart(pose.x, pose.z, s);
+      const g = localGlide.current;
+      const from = walkStart(pose.x, pose.z, s, g && { x: g.toX, z: g.toZ });
       const plan = planClickMove(from.x, from.z, asSurface(pick), getActiveMap().geometry.obstacles, activeBounds(), !!s);
       // A destination moved off the click lies on the ground found there (a lane, a lawn, the forecourt).
       if (plan.ok && plan.adjusted !== "none") plan.y = surfaceHeightAt(raycaster, scene, plan.x, plan.z, plan.y);
@@ -347,8 +349,9 @@ export function CameraRig({ pose, orbit, seat, fogRange = LEGACY_FOG, far: baseF
             e.pointerType === "touch" ? TAP_MAX_PX : CLICK_MAX_PX,
           )
         ) {
+          const t0 = performance.now();
           const pick = pickAt(e.clientX, e.clientY);
-          const plan = planFor(pick);
+          const plan = planFor(pick, t0);
           const intent = clickIntent(plan); // walk there / stop here (own feet) / nothing (a wall, a body, the sky...)
           // Which half is the look half follows the left-handed setting — the SAME store
           // field TouchJoystick's prop comes from (WorldScene), so the stick half and
@@ -450,6 +453,32 @@ export function CameraRig({ pose, orbit, seat, fogRange = LEGACY_FOG, far: baseF
       rememberOrbit(orbit); // a scene ending mid-drag still hands its camera to the next one
     };
   }, [gl, orbit, camera, scene, pose, seat]);
+
+  // The click pick's one-time preparation (clickPick.ts warmPick: the cells of the large meshes, the leaves' texels),
+  // a few ms at a time while the page is idle, so no click pays for it — and again as the scene changes (a model that
+  // loads late, the hall).
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let idle: number | undefined;
+    let stopped = false;
+    const step = () => {
+      idle = undefined;
+      if (stopped) return;
+      const done = warmPick(scene, 6);
+      timer = setTimeout(schedule, done ? 2000 : 30);
+    };
+    const schedule = () => {
+      if (stopped) return;
+      if (typeof window.requestIdleCallback === "function") idle = window.requestIdleCallback(step, { timeout: 1000 });
+      else step();
+    };
+    timer = setTimeout(schedule, 500);
+    return () => {
+      stopped = true;
+      if (timer !== undefined) clearTimeout(timer);
+      if (idle !== undefined) window.cancelIdleCallback?.(idle);
+    };
+  }, [scene]);
 
   useFrame((state, delta) => {
     // ── A door into or out of a building (케이슨 마을, indoorCamera.ts) ── the player was just put somewhere else: the

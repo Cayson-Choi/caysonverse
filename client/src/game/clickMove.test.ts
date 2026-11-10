@@ -134,6 +134,15 @@ describe("clickMove — the ring's surface height and the tap's pending ring", (
     expect(peekClickRing()).toBeNull();
   });
 
+  it("a tap while a walk is under way shows ITS ring at once; the walk's own ring gives way until the tap's walk starts", () => {
+    setClickTarget(8, 8, 0.01); // walking to A
+    setPendingClick(-3, 2, 0.02); // tap B on the look half (the 300 ms double-tap wait)
+    expect(peekClickRing()).toEqual({ x: -3, z: 2, y: 0.02 }); // B's ring, not A's (round 2 review)
+    expect(getClickTarget()).toEqual({ x: 8, z: 8, y: 0.01 }); // still walking to A meanwhile
+    clearPendingClick(); // a second tap: a double tap (recenter), B is dropped
+    expect(peekClickRing()).toEqual({ x: 8, z: 8, y: 0.01 }); // A's ring is back
+  });
+
   it("clearing the target (a key, Esc, sitting down) drops a pending ring too", () => {
     setPendingClick(1, 1, 0);
     clearClickTarget();
@@ -215,6 +224,18 @@ describe("clickMove — stuck detection (net displacement window)", () => {
     expect(STUCK_MIN_DIST).toBeGreaterThan(0.1 * STUCK_WINDOW_SEC);
     run(2 * STUCK_WINDOW_SEC, (t) => ({ x: t * 0.1, z: 0 }));
     expect(getClickTarget()).toBeNull();
+  });
+
+  it("one long frame (a hitch: a GC pause, a texture upload) is not 0.8 s of pushing a wall", () => {
+    setClickTarget(10, 0);
+    // the first step after the click arrives 1.2 s late: the avatar has not moved yet because it could not, not because it is stuck
+    expect(stepClickMove(0, 0, 1.2)).not.toBeNull();
+    expect(getClickTarget()).not.toBeNull();
+    run(1.6, (t) => ({ x: 0.2 + t * 3, z: 0 })); // and walks on from there
+    expect(getClickTarget()).not.toBeNull();
+    // a hitch in the middle of a walk is no different
+    expect(stepClickMove(5, 0, 2)).not.toBeNull();
+    expect(getClickTarget()).not.toBeNull();
   });
 
   it("re-click resets the stuck window (a fresh target gets a fresh budget)", () => {

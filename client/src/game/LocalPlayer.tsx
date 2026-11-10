@@ -15,6 +15,7 @@ import {
   glideDone,
   sitDownLift,
   standUpLift,
+  localGlide,
   type Glide,
 } from "./seatMotion";
 import { benchClipPlanes, clipAvatar, enableBenchClipping } from "./benchClip";
@@ -248,7 +249,10 @@ export function LocalPlayer({
   // 후에 이전 세계의 목표 지점으로 걸어가는 일이 없게 한다.
   useEffect(() => {
     resetClickMove();
-    return () => resetClickMove();
+    return () => {
+      resetClickMove();
+      localGlide.current = null;
+    };
   }, []);
 
   // 점프 (Task 11): Space는 공용 단축키 표가 입력 중·자동반복을 이미 걸러 준다.
@@ -536,6 +540,7 @@ export function LocalPlayer({
     // The sit / stand clip's own clock (the lift and the glides follow it).
     if (animStateRef.current === "sitDown" || animStateRef.current === "standUp") motion.elapsed += delta;
     const stillGliding = stepGlide();
+    localGlide.current = motion.glide; // where a click's walk starts while it lasts (CameraRig, clickPlan.ts walkStart)
 
     // Advance the one-shot sit/stand clips off a timer (the mixer is auto-ticked
     // by drei's useAnimations, so the clips play regardless of this branch).

@@ -8,13 +8,15 @@
  * under it (hidden) and walked the avatar into it until the no-progress rule dropped it; a click past the area slid
  * along its edge, away from the cursor. The rules now, the same for a mouse and a finger:
  *
- *  1. Only GROUND takes a walk: the surface must face up (n.y >= WALKABLE_MIN_NY) and lie no higher than
- *     WALKABLE_MAX_Y — the avatar's feet stay at y = 0, so a bench seat, the fountain's rim, a step or a roof is not
- *     somewhere to walk to. An avatar, a wall, a roof, the sky: no walk and no ring.
+ *  1. Only what a body can stand on takes a walk (surfaceKind): low GROUND — facing up (n.y >= WALKABLE_MIN_NY) and
+ *     no higher than WALKABLE_MAX_Y; or, out in the open (no collider there), a raised surface facing up no higher than
+ *     a step (RAISED_MAX_Y: the bridge's deck, the memorial's steps, a flower bed's top) or the low side of a curb.
+ *     The avatar's feet stay at y = 0 and walk over all of those. A bench seat or the fountain's rim (raised, inside a
+ *     collider), an avatar, a wall, a roof, the sky: no walk and no ring.
  *  2. The spot must be one a body can stand on: inside the area the player is in and clear of every collider grown by
- *     the player's radius, as LocalPlayer's slide sees them. Visible ground just inside that margin (at a wall's foot,
- *     under a bench) moves out to the nearest free point when that is within MAX_PUSH; anything deeper (the creek's
- *     banks, the fountain's basin, past the area's edge) is refused.
+ *     the player's radius, as LocalPlayer's slide sees them. Visible low ground just inside that margin (at a wall's
+ *     foot, under a bench) moves out to the nearest free point when that is within MAX_PUSH; anything deeper (the
+ *     creek's banks, the fountain's basin, past the area's edge) is refused. A raised surface is never moved.
  *  3. The walk there is simulated: the same straight steer, collision slide, bounds clamp and no-progress release as
  *     LocalPlayer + stepClickMove. Arriving, the ring goes on the click. Stopped on the way (a bench, a wall, the creek
  *     bank in between), the ring goes where the avatar will stop — the walk to that spot is checked to arrive too. One
@@ -28,17 +30,25 @@ import { MOVE_SPEED } from "@caysonverse/shared/constants";
 import { PLAYER_RADIUS } from "@caysonverse/shared/worldMap";
 import { resolveCollision, type AABB } from "@caysonverse/shared/collision";
 import type { Bounds } from "@caysonverse/shared/school/geometry";
-import { ARRIVE_DIST, STUCK_MIN_DIST, STUCK_WINDOW_SEC } from "./clickMove";
+import { ARRIVE_DIST, STUCK_MIN_DIST, STUCK_STEP_MAX_SEC, STUCK_WINDOW_SEC } from "./clickMove";
 
 /** A surface is ground when its normal is at least this upright (about 37 degrees of slope at most). */
 export const WALKABLE_MIN_NY = 0.8;
 
 /**
- * ...and it lies no higher than this (m). The village's ground layers top out at 3 cm (the forecourt) and the curbs at
- * 5 cm, the escape hall's rugs at 3.6 cm; the lowest thing the avatar cannot stand on is far higher (steps 30 cm, a
- * bench seat 45 cm).
+ * ...and it lies no higher than this (m) to be low ground, the kind a click at a collider's foot may be pushed out of.
+ * The village's ground layers top out at 3 cm (the forecourt) and its curbs at 5 and 11 cm, the escape hall's rugs at
+ * 3.6 cm. Below it, an upright face out in the open (a curb's side) counts too.
  */
 export const WALKABLE_MAX_Y = 0.12;
+
+/**
+ * A surface facing up out in the open (no collider) is walked to up to this high (m): the bridge's deck (its crown
+ * 13-15 cm, round 2 review: the creek's only crossing refused a click), the memorial's steps (30 / 45 cm), a flower
+ * bed's top (38 cm). Higher (a table, a sill, a bench's back) is not a floor; a bench seat (45 cm) and the fountain's
+ * rim lie inside their colliders and are refused there.
+ */
+export const RAISED_MAX_Y = 0.46;
 
 /** Visible ground inside a collider's margin moves out to the nearest free point when that is at most this far (m). */
 export const MAX_PUSH = 0.75;
@@ -64,9 +74,22 @@ export interface SurfacePoint {
   ny: number;
 }
 
-/** Ground the avatar can walk to (rule 1). */
+/** Low ground (rule 1): facing up and no higher than WALKABLE_MAX_Y — walked to, or pushed out of a collider's margin. */
 export function isWalkableSurface(s: { y: number; ny: number }): boolean {
   return s.ny >= WALKABLE_MIN_NY && s.y <= WALKABLE_MAX_Y;
+}
+
+/**
+ * What a clicked surface is to the walk (rule 1): "ground" (low ground, may be pushed out of a collider's margin);
+ * "open" (out in the open: a raised surface facing up no higher than RAISED_MAX_Y, or a face no higher than
+ * WALKABLE_MAX_Y above the ground — a curb's side; walked to exactly as clicked); "none" (nothing to walk to).
+ */
+export function surfaceKind(s: SurfacePoint, obstacles: readonly AABB[], bounds: Bounds): "ground" | "open" | "none" {
+  if (isWalkableSurface(s)) return "ground";
+  const raised = s.ny >= WALKABLE_MIN_NY && s.y <= RAISED_MAX_Y;
+  const curbSide = s.y > 0 && s.y <= WALKABLE_MAX_Y;
+  if (!raised && !curbSide) return "none";
+  return isFreeSpot(s.x, s.z, obstacles, bounds) ? "open" : "none";
 }
 
 /**
@@ -174,7 +197,7 @@ export function simulateWalk(
     const dz = toZ - z;
     const len = Math.hypot(dx, dz);
     if (len < ARRIVE_DIST) return { x, z, arrived: true };
-    windowSec += SIM_DT;
+    windowSec += Math.min(SIM_DT, STUCK_STEP_MAX_SEC);
     if (windowSec >= STUCK_WINDOW_SEC) {
       if (Math.hypot(x - anchorX, z - anchorZ) < STUCK_MIN_DIST) return { x, z, arrived: false };
       anchorX = x;
@@ -215,14 +238,19 @@ export function clickIntent(plan: ClickPlan): "walk" | "stop" | "ignore" {
 
 /**
  * Where a click's walk starts: where the avatar stands — or, seated, the seat's dismount point (`standX/standZ`):
- * a click first gets the body up, and getting up puts it there (the seat itself lies inside the bench's collider).
+ * a click first gets the body up, and getting up puts it there (the seat itself lies inside the bench's collider) —
+ * or, while a glide carries the body (getting up: the stand-up clip moves it off the seat, LocalPlayer), where that
+ * glide lands (`landing`): the walk waits for it there. Round 2 review: planned from the gliding pose, inside the
+ * bench's collider, the simulated walk slid through the bench and put the ring behind it.
  */
 export function walkStart(
   x: number,
   z: number,
   seat: { standX: number; standZ: number } | undefined,
+  landing: { x: number; z: number } | null = null,
 ): { x: number; z: number } {
-  return seat ? { x: seat.standX, z: seat.standZ } : { x, z };
+  if (seat) return { x: seat.standX, z: seat.standZ };
+  return landing ? { x: landing.x, z: landing.z } : { x, z };
 }
 
 /**
@@ -239,8 +267,10 @@ export function planClickMove(
   bounds: Bounds,
   seated = false,
 ): ClickPlan {
-  if (!surface || !isWalkableSurface(surface)) return { ok: false, reason: "not-ground" };
-  const spot = nearestFreeSpot(surface.x, surface.z, obstacles, bounds);
+  const kind = surface ? surfaceKind(surface, obstacles, bounds) : "none";
+  if (!surface || kind === "none") return { ok: false, reason: "not-ground" };
+  // low ground may be pushed out of a collider's margin; an open surface is already a free spot, taken as it is
+  const spot = kind === "ground" ? nearestFreeSpot(surface.x, surface.z, obstacles, bounds) : { x: surface.x, z: surface.z };
   if (!spot) return { ok: false, reason: "blocked" };
   const pushed = spot.x !== surface.x || spot.z !== surface.z;
   if (Math.hypot(spot.x - fromX, spot.z - fromZ) < ARRIVE_DIST) {

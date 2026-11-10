@@ -12,16 +12,27 @@
 //
 // Every click is judged from the player's side by an oracle that does not use the app's picker:
 //  - under the cursor: the first visible surface along the click ray (see-through things skipped: sprites, shadows,
-//    decals, water, glass that writes no depth, colliders). It is "ground" when it faces up (n.y >= 0.8), lies no
-//    higher than 12 cm, inside the area and clear of every collider grown by the player's radius; otherwise it is an
-//    avatar, a solid thing (a wall, a bench, a roof, a step, leaves), ground in a collider or past the area, or nothing.
-//  - the ring: where it is (its centre against the surface under the cursor) and how much of it reaches the screen.
-//    Three renders of the same frame (as drawn / the ring forced on top / the ring hidden) give the drawn fraction;
-//    rays from the camera to 17 points of the ring (weighted by their area on the screen) give the fraction a solid thing above 15 cm may hide (a bench, a wall,
-//    an avatar, leaves). Ground or a curb in front of the ring is a sunk ring, never an excuse.
-// Fails: a clean ground click with no ring (missing); a ring drawn less than the oracle allows (hidden) or with ground in
-// front of it (sunk); a ring off the screen; a ring away from the click or on a non-ground click that the avatar then
-// does not reach (misleading); a ring that is lost while the avatar walks to it (pop-in).
+//    decals, water, glass that writes no depth, colliders). Whether an alpha-tested surface (a leaf card) is really
+//    drawn at that pixel is asked of the GPU, not of the texture: the frame is rendered for that one pixel with the
+//    mesh and without it (round 2 review: the oracle used to share the app's blind spot and passed refused clicks on
+//    the lawn seen between leaves). The surface is "ground" — what a body can stand on, the walk rule of the spec —
+//    when it is low ground (facing up, n.y >= 0.8, no higher than 12 cm) inside the area and clear of every collider
+//    grown by the player's radius, or out in the open (no collider) a raised flat up to a step's 46 cm (the bridge's
+//    deck, the memorial's steps) or a curb's side (a face no higher than 12 cm). Otherwise it is an avatar, a solid
+//    thing (a wall, a bench, a roof, leaves), low ground in a collider or past the area, or nothing. Two cases may go
+//    either way and are never "missing": leaves the camera's near fade dithers ("leafy": the dither follows the screen
+//    pixel), ground seen through a gap right at a leaf's edge ("ground-leafedge": a neighbouring pixel shows it), and
+//    a click right at a body's outline ("avatar-edge": a body 2 px away; the idle pose moves it between look and click).
+//  - the ring: where it is (its centre against the surface under the cursor, its size as drawn) and how much of it
+//    reaches the screen. Three renders of the same frame (as drawn / the ring forced on top / the ring hidden) give the
+//    drawn fraction; rays from the camera to 17 points of the ring (weighted by their area on the screen) give the
+//    fraction a solid thing above 15 cm may hide (a bench, a wall, an avatar, leaves; where a sample looks through
+//    leaves its whole share, since one pixel cannot say how much of its sector they cover). Ground or a curb in front of
+//    the ring never excuses a hidden ring.
+// Fails: a clean ground click with no ring (missing); a ring drawn less than the oracle allows (hidden; "sunk" too when
+// ground or a curb is what covers it, or the ring lies under the clicked surface); a ring off the screen or too small
+// to read (tiny: under 6 px tall); a ring away from the click or on a non-ground click that the avatar then does not
+// reach (misleading); a ring that is lost while the avatar walks to it (pop-in).
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -49,6 +60,8 @@ const VIS_SLACK = 0.12;
 const AT_CLICK_M = 0.15;
 /** Arrival: the walk ends within this of the ring (the game's arrival radius is 0.35 m). */
 const ARRIVE_M = 0.45;
+/** A ring drawn less than this tall on the screen (CSS px) cannot be read (a far ring is a thin ellipse). */
+const TINY_PX = 4;
 
 const r2 = (n) => (n == null ? n : Math.round(n * 100) / 100);
 const all = [];
@@ -60,6 +73,8 @@ async function installProbe(p) {
     const f = await window.__imp("/@react-three_fiber.js");
     const THREE = await window.__imp("/node_modules/.vite/deps/three.js");
     const am = await window.__imp("/src/game/activeMap.ts");
+    // the village's foliage thins out near the camera (a screen-door dither between these view depths; main has none)
+    const fadeBand = (await window.__imp("/src/village/villageModelPrep.ts").catch(() => null))?.FOLIAGE_NEAR_FADE ?? null;
     const canvas = document.querySelector(".cv-canvas canvas");
     const root = f._roots.get(canvas) ?? [...f._roots.values()].pop();
     const st = () => root.store.getState();
@@ -76,7 +91,52 @@ async function installProbe(p) {
         if (!ring && o.isMesh && o.geometry?.type === "RingGeometry" && Math.abs(o.geometry.parameters.innerRadius - 0.3) < 1e-6) ring = o;
       });
       if (!ring) return null;
-      return { group: ring.parent, meshes: ring.parent.children.filter((c) => c.isMesh) };
+      return { ring, group: ring.parent, meshes: ring.parent.children.filter((c) => c.isMesh) };
+    }
+    // One pixel of the frame, rendered on its own (the camera's view offset to that pixel), with `hide` hidden. The
+    // shadow map is held as it is, the destination ring hidden, so only `hide` can change the pixel.
+    const rt = new THREE.WebGLRenderTarget(1, 1);
+    const pcam = new THREE.PerspectiveCamera();
+    const pixA = new Uint8Array(4);
+    const pixB = new Uint8Array(4);
+    function renderPixel(sx, sy, hide, out) {
+      const { gl, scene, camera } = st();
+      const r = gl.domElement.getBoundingClientRect();
+      pcam.copy(camera);
+      pcam.setViewOffset(r.width, r.height, sx - 0.5, sy - 0.5, 1, 1);
+      pcam.updateProjectionMatrix();
+      const mk = markerParts();
+      const mkVis = mk?.group.visible;
+      if (mk) mk.group.visible = false;
+      const was = hide ? hide.visible : null;
+      if (hide) hide.visible = false;
+      const auto = gl.shadowMap.autoUpdate;
+      gl.shadowMap.autoUpdate = false;
+      const prev = gl.getRenderTarget();
+      gl.setRenderTarget(rt);
+      gl.clear(true, true, true);
+      gl.render(scene, pcam);
+      gl.readRenderTargetPixels(rt, 0, 0, 1, 1, out);
+      gl.setRenderTarget(prev);
+      gl.shadowMap.autoUpdate = auto;
+      if (hide) hide.visible = was;
+      if (mk) mk.group.visible = mkVis;
+    }
+    /** Whether `obj` is drawn at canvas pixel (sx, sy): the pixel changes when it is hidden. */
+    function drawnAt(obj, sx, sy) {
+      renderPixel(sx, sy, null, pixA);
+      renderPixel(sx, sy, obj, pixB);
+      return Math.max(Math.abs(pixA[0] - pixB[0]), Math.abs(pixA[1] - pixB[1]), Math.abs(pixA[2] - pixB[2])) > 2;
+    }
+    /** A material that may draw only part of its surface (an alpha-tested card, a hashed one). */
+    const cutout = (mat) => !!mat && (mat.alphaTest > 0 || !!mat.alphaMap || !!mat.alphaHash);
+    /** The canvas pixel a world point projects to (null behind the camera). */
+    function canvasPx(v3) {
+      const { camera, gl } = st();
+      const r = gl.domElement.getBoundingClientRect();
+      const v = v3.clone().project(camera);
+      if (v.z > 1) return null;
+      return [((v.x + 1) / 2) * r.width, ((1 - v.y) / 2) * r.height];
     }
     function inMarker(o) {
       const mk = markerParts();
@@ -113,19 +173,45 @@ async function installProbe(p) {
       if (n.dot(dir) > 0) n.negate();
       return n.y;
     }
-    /** `glass`: also stop at blended surfaces that write no depth but still tint what is behind them (glass, a gate). */
-    function first(origin, dir, near, far, glass = false) {
+    /**
+     * `glass`: also stop at blended surfaces that write no depth but still tint what is behind them (glass, a gate).
+     * `fromCamera`: the ray is the camera's through a pixel, so a cut-out surface (leaves) is checked on the GPU.
+     */
+    /** After first(): whether its line of sight crossed leaves (a cut-out card passed at a gap, or a dithered one). */
+    let lastLeafy = false;
+    /** After first(): the cut-out meshes it looked through at a gap (for the leaf-edge check). */
+    let lastGaps = [];
+    function first(origin, dir, near, far, glass = false, fromCamera = false) {
       ray.set(origin, dir);
       ray.camera = st().camera; // sprites (name tags) refuse a ray without it
       ray.near = near;
       ray.far = far;
+      lastLeafy = false;
+      lastGaps = [];
+      const drawn = new Map();
       for (const h of ray.intersectObjects(st().scene.children, true)) {
         if (!shown(h.object) || inMarker(h.object)) continue;
         const mat = matOf(h);
         const tints = glass && mat && mat.visible !== false && mat.transparent && mat.opacity > 0.05 && !mat.isShadowMaterial && !h.object.isSprite && !h.object.isPoints && h.point.y > 0.15;
         if (!tints && seeThrough(h.object, mat)) continue;
-        // leaves faded out around the camera are not drawn there (the branch's villageModelPrep FOLIAGE_NEAR_FADE)
-        if (typeof mat?.userData?.nearFade === "number" && h.distance < mat.userData.nearFade) continue;
+        // leaves near the camera are dithered out (the branch's villageModelPrep FOLIAGE_NEAR_FADE): gone nearer than
+        // the band, partly drawn inside it (the dither follows the screen pixel: neither a ray nor a one-pixel render can
+        // tell which) — a hit there is "leafy"
+        const fading = typeof mat?.userData?.nearFade === "number" && fadeBand;
+        if (fading && h.distance < fadeBand[0]) continue;
+        if (fading && h.distance < fadeBand[1]) {
+          lastLeafy = true;
+          return { x: h.point.x, y: h.point.y, z: h.point.z, dist: h.distance, ny: upNormal(h, dir), name: h.object.name || h.object.type, mat: mat?.name || mat?.type, avatar: false, fadeBand: true };
+        }
+        if (cutout(mat)) lastLeafy = true;
+        if (fromCamera && cutout(mat)) {
+          if (!drawn.has(h.object)) {
+            const at = canvasPx(h.point);
+            drawn.set(h.object, !at || drawnAt(h.object, at[0], at[1]));
+            if (!drawn.get(h.object)) lastGaps.push(h.object);
+          }
+          if (!drawn.get(h.object)) continue; // nothing of it at this pixel: the gap between the leaves
+        }
         return { x: h.point.x, y: h.point.y, z: h.point.z, dist: h.distance, ny: upNormal(h, dir), name: h.object.name || h.object.type, mat: mat?.name || mat?.type, avatar: isAvatar(h.object) };
       }
       return null;
@@ -133,11 +219,15 @@ async function installProbe(p) {
     function classify(hit) {
       if (!hit) return "nothing";
       if (hit.avatar) return "avatar";
-      if (hit.ny < 0.8 || hit.y > 0.12) return "solid";
       const b = am.activeBounds();
-      if (hit.x < b.minX + R || hit.x > b.maxX - R || hit.z < b.minZ + R || hit.z > b.maxZ - R) return "ground-outside";
-      for (const o of am.getActiveMap().geometry.obstacles)
-        if (hit.x > o.minX - R && hit.x < o.maxX + R && hit.z > o.minZ - R && hit.z < o.maxZ + R) return "ground-in-collider";
+      const outside = hit.x < b.minX + R || hit.x > b.maxX - R || hit.z < b.minZ + R || hit.z > b.maxZ - R;
+      const inCollider = am.getActiveMap().geometry.obstacles.some((o) => hit.x > o.minX - R && hit.x < o.maxX + R && hit.z > o.minZ - R && hit.z < o.maxZ + R);
+      const low = hit.ny >= 0.8 && hit.y <= 0.12;
+      // out in the open, a body stands on a raised flat up to a step (the bridge's deck, the memorial's steps) and on a curb's side
+      const open = (hit.ny >= 0.8 && hit.y <= 0.46) || (hit.y > 0 && hit.y <= 0.12);
+      if (!low && !(open && !outside && !inCollider)) return "solid";
+      if (outside) return "ground-outside";
+      if (inCollider) return "ground-in-collider";
       // the ground at the avatar's own feet (within the game's 0.35 m arrival radius): already there, no ring needed
       const me = window.__cv.getPos();
       if (Math.hypot(hit.x - me.x, hit.z - me.z) < 0.35) return "ground-here";
@@ -148,17 +238,46 @@ async function installProbe(p) {
       const { gl, camera } = st();
       const r = gl.domElement.getBoundingClientRect();
       ray.setFromCamera(new THREE.Vector2(((sx - r.left) / r.width) * 2 - 1, -(((sy - r.top) / r.height) * 2 - 1)), camera);
+      // three keeps a skinned mesh's bounds from the pose it first measured: measure them again in this pose
+      st().scene.traverse((m) => {
+        if (m.isSkinnedMesh) {
+          m.boundingSphere = null;
+          m.boundingBox = null;
+        }
+      });
       const o = ray.ray.origin.clone();
       const d = ray.ray.direction.clone();
-      const hit = first(o, d, camera.near, camera.far);
-      return { hit: round(hit), kind: classify(hit) };
+      const hit = first(o, d, camera.near, camera.far, false, true);
+      let kind = classify(hit);
+      // Right at a body's outline (a head's top, a hand) the idle pose moves a few cm between this look and the click:
+      // a pixel 2 px away on a body (or off it) makes it a coin toss, fair either way.
+      if (kind !== "avatar" && kind !== "nothing") {
+        const bodies = [];
+        st().scene.traverse((m) => m.isSkinnedMesh && shown(m) && bodies.push(m));
+        for (const [dx, dy] of [[-2, 0], [2, 0], [0, -2], [0, 2]]) {
+          ray.setFromCamera(new THREE.Vector2(((sx + dx - r.left) / r.width) * 2 - 1, -(((sy + dy - r.top) / r.height) * 2 - 1)), camera);
+          const b = ray.intersectObjects(bodies, false)[0];
+          if (b && (!hit || b.distance < hit.dist)) kind = "avatar-edge";
+        }
+      }
+      // Leaves dithered near the camera, or ground seen through a gap right at a leaf's edge (a neighbouring pixel
+      // shows the leaf: the app samples the texture, the GPU a filtered mip of it): either outcome is fair there.
+      if (hit?.fadeBand) kind = "leafy";
+      else if (kind === "ground" && lastGaps.length) {
+        const cx = sx - r.left, cy = sy - r.top;
+        const near8 = [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1]];
+        if (lastGaps.some((obj) => near8.some(([dx, dy]) => drawnAt(obj, cx + dx, cy + dy)))) kind = "ground-leafedge";
+      }
+      return { hit: round(hit), kind };
     }
+    /** The ring as drawn: its centre and its size (the world scale of its mesh: 1 = 0.42 m outer radius; the pulse is held at 1 while probing). */
     function ring() {
       const mk = markerParts();
       if (!mk || !shown(mk.group)) return null;
-      mk.group.updateWorldMatrix(true, false);
-      const v = new THREE.Vector3().setFromMatrixPosition(mk.group.matrixWorld);
-      return { x: +v.x.toFixed(3), y: +v.y.toFixed(3), z: +v.z.toFixed(3) };
+      mk.ring.updateWorldMatrix(true, false);
+      const v = new THREE.Vector3().setFromMatrixPosition(mk.ring.matrixWorld);
+      const s = new THREE.Vector3().setFromMatrixScale(mk.ring.matrixWorld).x;
+      return { x: +v.x.toFixed(3), y: +v.y.toFixed(3), z: +v.z.toFixed(3), s: +s.toFixed(3) };
     }
     /**
      * What may hide the ring: a ray from the camera to the middle of each of 16 sectors of the band and to the dot,
@@ -187,26 +306,30 @@ async function installProbe(p) {
       const N = 16;
       for (let k = 0; k < N; k++) {
         const a0 = (k / N) * Math.PI * 2, a1 = ((k + 1) / N) * Math.PI * 2, am = (a0 + a1) / 2;
-        const w = area([px(rg.x + Math.cos(a0) * 0.3, rg.z + Math.sin(a0) * 0.3), px(rg.x + Math.cos(a0) * 0.42, rg.z + Math.sin(a0) * 0.42), px(rg.x + Math.cos(a1) * 0.42, rg.z + Math.sin(a1) * 0.42), px(rg.x + Math.cos(a1) * 0.3, rg.z + Math.sin(a1) * 0.3)]);
-        samples.push([rg.x + Math.cos(am) * 0.36, rg.z + Math.sin(am) * 0.36, w]);
+        const ri = 0.3 * rg.s, ro = 0.42 * rg.s, rm = 0.36 * rg.s;
+        const w = area([px(rg.x + Math.cos(a0) * ri, rg.z + Math.sin(a0) * ri), px(rg.x + Math.cos(a0) * ro, rg.z + Math.sin(a0) * ro), px(rg.x + Math.cos(a1) * ro, rg.z + Math.sin(a1) * ro), px(rg.x + Math.cos(a1) * ri, rg.z + Math.sin(a1) * ri)]);
+        samples.push([rg.x + Math.cos(am) * rm, rg.z + Math.sin(am) * rm, w]);
       }
-      const dot = area([px(rg.x - 0.07, rg.z - 0.07), px(rg.x + 0.07, rg.z - 0.07), px(rg.x + 0.07, rg.z + 0.07), px(rg.x - 0.07, rg.z + 0.07)]);
+      const dd = 0.07 * rg.s;
+      const dot = area([px(rg.x - dd, rg.z - dd), px(rg.x + dd, rg.z - dd), px(rg.x + dd, rg.z + dd), px(rg.x - dd, rg.z + dd)]);
       samples.push([rg.x, rg.z, dot]);
-      let legit = 0, sunk = 0, total = 0;
+      let legit = 0, sunk = 0, leafy = 0, total = 0;
       const what = {};
       for (const [x, z, w] of samples) {
         total += w;
         const dir = new THREE.Vector3(x, rg.y, z).sub(cam);
         const dist = dir.length();
         dir.normalize();
-        const h = first(cam, dir, camera.near, dist + 0.2, true);
+        const h = first(cam, dir, camera.near, dist + 0.2, true, true);
+        // a line of sight through leaves: one pixel per sector cannot say how much of the sector they cover
+        if (lastLeafy && (!h || h.dist < dist - 0.03 || h.fadeBand)) leafy += w;
         if (!h || h.dist >= dist - 0.03) continue;
         if (h.y > 0.15 || h.avatar) legit += w; // a solid thing (or an avatar's feet, or glass) in front of the ring
         else sunk += w; // ground or a curb in front of the ring: the ring is under it
         what[h.mat] = (what[h.mat] ?? 0) + 1;
       }
-      if (!total) return { legit: 0, sunk: 0, what };
-      return { legit: +(legit / total).toFixed(3), sunk: +(sunk / total).toFixed(3), what };
+      if (!total) return { legit: 0, sunk: 0, leafy: 0, what };
+      return { legit: +(legit / total).toFixed(3), sunk: +(sunk / total).toFixed(3), leafy: +(leafy / total).toFixed(3), what };
     }
     /** The ring's screen rectangle (client px) and centre. */
     function ringRect(rad) {
@@ -218,7 +341,7 @@ async function installProbe(p) {
       let minX = 1e9, minY = 1e9, maxX = -1e9, maxY = -1e9, behind = false;
       for (let k = 0; k < 32; k++) {
         const a = (k / 32) * Math.PI * 2;
-        v.set(rg.x + Math.cos(a) * rad, rg.y, rg.z + Math.sin(a) * rad).project(camera);
+        v.set(rg.x + Math.cos(a) * rad * rg.s, rg.y, rg.z + Math.sin(a) * rad * rg.s).project(camera);
         if (v.z > 1) behind = true;
         const px = r.left + ((v.x + 1) / 2) * r.width;
         const py = r.top + ((1 - v.y) / 2) * r.height;
@@ -295,8 +418,8 @@ async function installProbe(p) {
     };
     const walkFired = () => hold.fired;
     /** The first visible surface straight down at (x, z) (a roof, a step, the creek's bed under the water). */
-    function topAt(x, z) {
-      const h = first(new THREE.Vector3(x, 60, z), new THREE.Vector3(0, -1, 0), 0, 200);
+    function topAt(x, z, from = 60) {
+      const h = first(new THREE.Vector3(x, from, z), new THREE.Vector3(0, -1, 0), 0, 200);
       return h && [h.x, h.y, h.z];
     }
     /** The first visible surface along a level ray from (x0, y, z0) toward (x1, y, z1) (a wall's face). */
@@ -305,7 +428,26 @@ async function installProbe(p) {
       const h = first(new THREE.Vector3(x0, y, z0), d, 0, 200);
       return h && [h.x, h.y, h.z];
     }
-    window.__cm = { analyze, ring, ringOracle, ringRect, markerMode, camInfo, screenOf, freeze, clearTarget, topAt, faceAt, holdNextWalk, walkFired };
+    /**
+     * A pixel where a plain raycast meets an alpha-tested card (leaves) first but the GPU draws the ground behind it
+     * there: the gap between the leaves (round 2 review blocker). Scans the screen; null when there is none.
+     */
+    function findLeafGap() {
+      const { gl, camera } = st();
+      const r = gl.domElement.getBoundingClientRect();
+      for (let gy = 0.3; gy < 0.92; gy += 0.03)
+        for (let gx = 0.03; gx < 0.97; gx += 0.03) {
+          const sx = Math.round(r.width * gx), sy = Math.round(r.height * gy);
+          ray.setFromCamera(new THREE.Vector2((sx / r.width) * 2 - 1, -((sy / r.height) * 2 - 1)), camera);
+          const o = ray.ray.origin.clone(), d = ray.ray.direction.clone();
+          const raw = first(o, d, camera.near, camera.far, false, false);
+          if (!raw || !/^M_leaf/.test(raw.mat ?? "")) continue;
+          const seen = first(o, d, camera.near, camera.far, false, true);
+          if (seen && classify(seen) === "ground" && seen.dist > raw.dist + 0.5) return { x: r.left + sx, y: r.top + sy, leaf: raw.mat, ground: round(seen) };
+        }
+      return null;
+    }
+    window.__cm = { analyze, ring, ringOracle, ringRect, markerMode, camInfo, screenOf, freeze, clearTarget, topAt, faceAt, holdNextWalk, walkFired, findLeafGap };
   });
 }
 
@@ -358,7 +500,7 @@ async function ringVisibility(p, label, keep) {
     });
     writeFileSync(join(run.evidence, "rings", `${label}.png`), PNG.sync.write(out));
   }
-  return { onScreen: true, maskPx: mask, visibleFrac: mask ? +(vis / mask).toFixed(3) : 0, centre: { x: r2(rect.cx), y: r2(rect.cy) }, clip };
+  return { onScreen: true, maskPx: mask, visibleFrac: mask ? +(vis / mask).toFixed(3) : 0, centre: { x: r2(rect.cx), y: r2(rect.cy) }, tall: r2(rect.maxY - rect.minY), wide: r2(rect.maxX - rect.minX), clip };
 }
 
 /** A tap (CDP touch) or a mouse click at client (sx, sy). */
@@ -466,9 +608,13 @@ function judge(row) {
     if (!v?.onScreen) fails.push("offscreen");
     else {
       const expected = 1 - (row.oracle?.legit ?? 0);
-      if ((row.oracle && row.oracle.sunk > 0.05) || (row.lift != null && row.lift < -0.001)) fails.push("sunk");
+      // behind leaves the 17 samples cannot measure the cover: their share may be hidden too
+      const hidden = v.visibleFrac < expected - (row.oracle?.leafy ?? 0) - VIS_SLACK;
+      // ground or a curb in front of the ring (the oracle's sunk share) is never an excuse: then it is a sunk ring
+      if ((hidden && row.oracle && row.oracle.sunk > 0.05) || (row.lift != null && row.lift < -0.001)) fails.push("sunk");
       if (row.lift != null && row.lift > 0.1) fails.push("floating"); // drawn in the air above the clicked surface
-      if (v.visibleFrac < expected - VIS_SLACK) fails.push("hidden");
+      if (hidden) fails.push("hidden");
+      if (v.tall < TINY_PX) fails.push("tiny");
       row.expected = r2(expected);
     }
     const moved = row.fromClick === null || row.fromClick > AT_CLICK_M || row.kind !== "ground";
@@ -485,7 +631,7 @@ function logRow(row) {
   const h = row.hit;
   const v = row.vis;
   const tail = row.target
-    ? `ring (${row.target.x},${row.target.z}) y=${row.ring?.y} d=${row.fromClick} vis=${v?.onScreen ? v.visibleFrac : v?.reason} exp=${row.expected ?? "-"}${row.oracle?.sunk ? ` sunk=${row.oracle.sunk}` : ""}${row.endToTarget != null ? ` end=${row.endToTarget}` : ""}`
+    ? `ring (${row.target.x},${row.target.z}) y=${row.ring?.y} s=${row.ring?.s} d=${row.fromClick} vis=${v?.onScreen ? v.visibleFrac : v?.reason}${v?.onScreen ? ` ${v.wide}x${v.tall}px` : ""} exp=${row.expected ?? "-"}${row.oracle?.sunk ? ` sunk=${row.oracle.sunk}` : ""}${row.endToTarget != null ? ` end=${row.endToTarget}` : ""}`
     : `no ring${row.pick?.plan && !row.pick.plan.ok ? ` (${row.pick.plan.reason})` : ""}`;
   const line = `${row.ok ? "  ok " : "  BAD"} ${row.place}/${row.pose} (${row.screen.x},${row.screen.y}) ${row.kind}${h ? ` ${h.mat}@${h.y} d${h.dist}` : ""} -> ${tail}${row.fails.length ? "  [" + row.fails.join(",") + "]" : ""}`;
   if (!row.ok || process.env.CM_VERBOSE) console.log(line);
@@ -644,10 +790,11 @@ async function villageCases(p) {
   const caseAt = async (id, aim, from, yaw = 0, pitch = 0.35, dist = 6) => {
     if (!wantCase(id)) return null;
     if (from) await walkRoute(p, from);
-    // an aim is a point, or ["top", x, z] / ["face", x0, z0, x1, z1, y]: the visible surface found there in the scene
+    // an aim is a point, or ["top", x, z] / ["low", x, z] (under the eaves: from 1 m up) / ["face", x0, z0, x1, z1, y]:
+    // the visible surface found there in the scene
     const world =
-      aim[0] === "top"
-        ? await p.page.evaluate(([x, z]) => window.__cm.topAt(x, z), aim.slice(1))
+      aim[0] === "top" || aim[0] === "low"
+        ? await p.page.evaluate(([x, z, from]) => window.__cm.topAt(x, z, from), [aim[1], aim[2], aim[0] === "low" ? 1 : 60])
         : aim[0] === "face"
           ? await p.page.evaluate((a) => window.__cm.faceAt(...a), aim.slice(1))
           : aim;
@@ -695,7 +842,30 @@ async function villageCases(p) {
     // cherries stand between it and a camera 6 m back)
     await caseAt("memorial_step", ["top", -5, -52], [[0, -46], [0, -49.4]], 0.3, 0.5, 3);
     await caseAt("memorial_wall", ["face", 3, -49, 3, -60, 2.0], [[0, -49.4]], -0.3, 0.25, 3);
+    // the memorial's step in front of its door (a free spot, 30 cm up): walked to as clicked
+    await caseAt("memorial_stairs", ["low", 0, -52.3], [[0, -49.4]], 0, 0.5, 3);
+    // the ring road's 11 cm curb (z -30.7..-30.9 at x = 2.6): rings on the road beyond it and on the paving before it
+    await caseAt("curb_road", [2.6, 0.01, -31.15], [[0, -40], [0, -33], [2.6, -28.5]], 0, 0.5, 7);
+    await caseAt("curb_walk", [2.6, 0.01, -30.55], [[2.6, -28.5]], 0, 0.5, 7);
     await caseAt("plot_lawn", [56, 0.02, 13], [[0, -33], [-14, -20], [-20, 5], [0, 28], [30, 24], [44, 15]], -Math.PI / 2);
+    // the lawn seen between a street tree's leaves (round 2 review blocker: refused as "a leaf" and no walk)
+    if (wantCase("leaf_gap")) {
+      await walkRoute(p, [[44, 15]]);
+      let gap = null;
+      for (const [yaw, pitch] of [[-Math.PI / 2, 0.35], [-Math.PI / 2 + 0.3, 0.35], [-Math.PI / 2 - 0.3, 0.45], [-Math.PI / 2, 0.55]]) {
+        await setOrbitGoal(p, yaw, pitch, 6);
+        gap = await p.page.evaluate(() => window.__cm.findLeafGap());
+        if (gap) break;
+      }
+      const row = gap
+        ? await probe(p, gap.x, gap.y, { place: "case", pose: "leaf_gap" }, { walk: true, label: "case_desk_leaf_gap" })
+        : { place: "case", pose: "leaf_gap", device: "desktop", ok: false, fails: ["aim"], kind: "unseen" };
+      row.id = "leaf_gap";
+      row.gap = gap;
+      all.push(row);
+      out.push(row);
+      console.log(`  ${row.ok ? "ok " : "BAD"} case leaf_gap: ${gap ? `through ${gap.leaf} at (${gap.x},${gap.y})` : "no gap found"} -> ${row.target ? `ring (${row.target.x},${row.target.z}) vis=${row.vis?.visibleFrac} end=${row.endToTarget}` : "no ring"}${row.fails?.length ? " [" + row.fails.join(",") + "]" : ""}`);
+    }
     // Seated on a plaza bench (seat 8, plaza_5, facing the fountain; the seat lies inside the bench's collider): a click
     // on the paving ahead of it and one behind it get the avatar up and walk it to the ring (planned from the bench's
     // dismount point, where getting up puts the body).
@@ -717,10 +887,44 @@ async function villageCases(p) {
       await sitOn(8, [[30, 24], [0, 28], [-2.7, 13]]);
       await caseAt("seated_behind", [-4.6, 0.01, 13.6], null, Math.PI, 0.45, 6);
     }
+    // Getting up: a click from the seat stands the body up, and a second click while the stand-up clip still carries
+    // it off the bench (behind the bench) must be planned from where that glide lands (round 2 review): a ring the
+    // avatar then reaches, or none.
+    if (wantCase("stand_glide")) {
+      await sitOn(8, [[30, 24], [0, 28], [-2.7, 13]]);
+      await setOrbitGoal(p, Math.PI, 0.45, 6);
+      await p.page.keyboard.press("KeyE"); // get up (no target of its own)
+      await p.page.waitForFunction(() => window.__cv.getPos().seatIndex === -1, null, { timeout: 8000 }).catch(() => {});
+      // the click lands while the stand-up clip carries the body off the bench (main has no such hook: it clicks at once)
+      await p.page
+        .waitForFunction(async () => (await window.__imp("/src/game/seatMotion.ts")).localGlide?.current != null, null, { timeout: 1500, polling: 16 })
+        .catch(() => {});
+      const behind = await p.page.evaluate((w) => window.__cm.screenOf(...w), [-4.6, 0.01, 13.6]);
+      const gliding = await p.page.evaluate(async () => (await window.__imp("/src/game/seatMotion.ts")).localGlide?.current != null);
+      const a = await p.page.evaluate(([x, y]) => window.__cm.analyze(x, y), [Math.round(behind.x), Math.round(behind.y)]);
+      await pressAt(p, Math.round(behind.x), Math.round(behind.y));
+      await sleep(120);
+      const tgt = await target(p);
+      const row = { place: "case", pose: "stand_glide", id: "stand_glide", device: "desktop", kind: a.kind, hit: a.hit, gliding, target: tgt && { x: r2(tgt.x), z: r2(tgt.z) }, pick: await appPick(p) };
+      if (tgt) {
+        const t0 = Date.now();
+        while (Date.now() - t0 < 30000 && (await target(p))) await sleep(150);
+        const end = await pos(p);
+        row.end = { x: r2(end.x), z: r2(end.z) };
+        row.endToTarget = r2(Math.hypot(end.x - tgt.x, end.z - tgt.z));
+      }
+      row.fails = tgt && row.endToTarget > ARRIVE_M ? ["misleading"] : !tgt && a.kind === "ground" && row.pick?.plan?.reason !== "unreachable" ? ["missing"] : [];
+      row.ok = row.fails.length === 0;
+      all.push(row);
+      out.push(row);
+      console.log(`  ${row.ok ? "ok " : "BAD"} case stand_glide: clicked while gliding=${gliding}, ${a.kind} -> ${tgt ? `ring (${row.target.x},${row.target.z}) end=${row.endToTarget}` : "no ring"}${row.fails.length ? " [" + row.fails.join(",") + "]" : ""}`);
+    }
     // the creek (z 72-78 at x = -6, its collider z 69-81) from its north bank
     await caseAt("creek_bed", ["top", -6, 77], [[0, 28], [-6, 50], [-6, 66]], Math.PI, 0.6, 5);
     await caseAt("far_bank", ["top", -6, 85], [[-6, 66]], Math.PI);
     await caseAt("beyond_bounds", ["top", -6, 105], [[-6, 66]], Math.PI, 0.25);
+    // the bridge (x -26..-22, z 72..78): its deck's crown is 13-15 cm up — the creek's only crossing must take a click
+    await caseAt("bridge_deck", ["top", -24, 75], [[-12, 64], [-24, 46], [-24, 66]], Math.PI, 0.5, 6);
     for (const r of out) run.check(`case ${r.id}: ${r.target ? "ring where the avatar stops" : "no ring"}`, r.ok, { kind: r.kind, target: r.target, endToTarget: r.endToTarget, fails: r.fails });
   });
 }
@@ -755,15 +959,68 @@ async function walkIn(p) {
       const oracle = await p.page.evaluate(() => window.__cm.ringOracle());
       const v = await ringVisibility(p, k % 4 === 0 ? `walkin_${p.touch ? "phone" : "desk"}_${k}` : null, k % 4 === 0);
       const at = await pos(p);
-      series.push({ k, dist: r2(Math.hypot(at.x - tgt.x, at.z - tgt.z)), vis: v.onScreen ? v.visibleFrac : v.reason, expected: oracle ? r2(1 - oracle.legit) : null });
+      series.push({ k, dist: r2(Math.hypot(at.x - tgt.x, at.z - tgt.z)), vis: v.onScreen ? v.visibleFrac : v.reason, expected: oracle ? r2(1 - oracle.legit) : null, leafy: oracle?.leafy ?? 0 });
       await p.page.evaluate(() => window.__cm.freeze(false));
       await sleep(450);
     }
     await p.page.evaluate(() => window.__cm.freeze(false)); // the loop may end while the avatar is held
-    const bad = series.filter((s) => typeof s.vis !== "number" || s.vis < (s.expected ?? 1) - VIS_SLACK);
+    const bad = series.filter((s) => typeof s.vis !== "number" || s.vis < (s.expected ?? 1) - (s.leafy ?? 0) - VIS_SLACK);
     console.log("  walk-in:", series.map((s) => `${s.dist}m:${s.vis}`).join(" "));
     all.push({ place: "walkin", device: p.touch ? "phone" : "desktop", target: tgt, series, ok: bad.length === 0, fails: bad.length ? ["pop-in"] : [] });
     run.check("the ring stays drawn over the whole walk", bad.length === 0, { samples: series.length, bad: bad.slice(0, 6) });
+  });
+}
+
+/** First person, a ground point ~20 m ahead: the ring must be drawn and readable (round 2 review: a 2 px line). */
+async function firstPersonFar(p) {
+  await run.step("desktop first person: a far ring", async () => {
+    await walkAndWait(p, 0, 28, 30000, 0.6);
+    await setOrbitGoal(p, 0, 0.35, 6);
+    await p.page.keyboard.press("KeyV");
+    await sleep(1500);
+    const vp = p.page.viewportSize();
+    let s = null;
+    for (let y = Math.round(vp.height * 0.48); y < vp.height * 0.8 && !s; y += 4) {
+      const a = await p.page.evaluate(([x, y]) => window.__cm.analyze(x, y), [Math.round(vp.width / 2), y]);
+      if (a.kind === "ground" && a.hit.dist > 16 && a.hit.dist < 26) s = { x: Math.round(vp.width / 2), y, d: a.hit.dist };
+    }
+    if (run.check("a ground point 16-26 m ahead is on the first-person screen", !!s, {})) {
+      const row = await probe(p, s.x, s.y, { place: "fp", pose: "far" }, { label: "fp_far" });
+      row.id = "fp_far";
+      all.push(row);
+      logRow(row);
+      run.check(`the far first-person ring reads (${row.vis?.wide}x${row.vis?.tall} px at ${r2(s.d)} m, vis ${row.vis?.visibleFrac})`, row.ok && row.vis?.tall >= 6, { fails: row.fails, vis: row.vis });
+    }
+    await p.page.keyboard.press("KeyV");
+    await sleep(1200);
+  });
+}
+
+/** A phone tap on the look half while a walk is under way: its ring shows at once, not 300 ms later (round 2 review). */
+async function retapWhileWalking(p) {
+  await run.step("phone: a second tap while walking shows its ring at once", async () => {
+    await walkAndWait(p, 0, 18, 30000, 0.6);
+    await setOrbitGoal(p, 0, 0.35, 6);
+    const vp = p.page.viewportSize();
+    const pts = [];
+    for (let y = Math.round(vp.height * 0.45); y < vp.height * 0.7 && pts.length < 2; y += 10) {
+      const x = Math.round(vp.width * (pts.length ? 0.85 : 0.65));
+      const a = await p.page.evaluate(([x, y]) => window.__cm.analyze(x, y), [x, y]);
+      if (a.kind === "ground" && a.hit.dist > 9) pts.push([x, y]);
+    }
+    if (!run.check("two far plaza points on the look half", pts.length === 2, { pts })) return;
+    await pressAt(p, ...pts[0]);
+    await p.page.waitForFunction(() => !!window.__cvClickTarget?.(), null, { timeout: 2000 }).catch(() => {});
+    await sleep(250); // walking to A
+    await pressAt(p, ...pts[1]);
+    await sleep(60); // well inside the 300 ms double-tap wait
+    const rg = await p.page.evaluate(() => window.__cm.ring());
+    const plan = (await appPick(p))?.plan;
+    const atB = !!(rg && plan?.ok && Math.hypot(rg.x - plan.x, rg.z - plan.z) < 0.05);
+    run.check("the ring is at the new tap within 60 ms (while the double-tap wait runs)", atB, { ring: rg, plan });
+    all.push({ place: "retap", device: "phone", ok: atB, fails: atB ? [] : ["late"], target: rg });
+    await sleep(600);
+    await p.page.evaluate(() => window.__cm.clearTarget());
   });
 }
 
@@ -803,6 +1060,8 @@ for (const device of DEVICES) {
         await installProbe(p);
       });
       if (PLACES.includes("walk")) await walkIn(p);
+      if (PLACES.includes("walk") && phone) await retapWhileWalking(p);
+      if (PLACES.includes("walk") && !phone) await firstPersonFar(p);
       if (PLACES.includes("village")) await villageSweep(p, phone);
       if (PLACES.includes("cases") && !phone) await villageCases(p);
     });

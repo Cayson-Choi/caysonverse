@@ -62,6 +62,14 @@ export const STUCK_WINDOW_SEC = 0.8;
  */
 export const STUCK_MIN_DIST = 0.25;
 
+/**
+ * One frame counts toward the no-progress window for at most this long (s). A long frame — a GC pause, a texture
+ * upload, a busy phone — right after a click used to fill the whole window on the first step, before the avatar could
+ * take one: the walk was dropped at once and its ring vanished (round 2, seen in the click sweep). Slow frames
+ * still add up; one hitch does not.
+ */
+export const STUCK_STEP_MAX_SEC = STUCK_WINDOW_SEC / 4;
+
 /** An auto-move destination: the ground point, and the height of the surface clicked there (where the ring lies). */
 export interface ClickTarget extends GroundVec {
   y: number;
@@ -162,11 +170,12 @@ export function clearPendingClick(): void {
 }
 
 /**
- * Where the destination ring is drawn this frame: the walk's target, else a held-back tap's. The live object, never
- * a copy (per-frame, no allocation; read-only like peekClickTarget).
+ * Where the destination ring is drawn this frame: a held-back tap's (the newest intent: tapped while a walk is under
+ * way, its ring shows at once and the walk's own gives way until the tap's walk replaces it — round 2 review), else
+ * the walk's target. The live object, never a copy (per-frame, no allocation; read-only like peekClickTarget).
  */
 export function peekClickRing(): Readonly<ClickTarget> | null {
-  return state.target ?? state.pending;
+  return state.pending ?? state.target;
 }
 
 /** Drop the target and any pending tap ring (manual-input yield / sit-confirm / Esc — design 29 (b)/(e)). */
@@ -229,7 +238,7 @@ export function stepClickMove(px: number, pz: number, dt: number): GroundVec | n
     state.anchored = true;
     state.windowSec = 0;
   }
-  state.windowSec += dt;
+  state.windowSec += Math.min(dt, STUCK_STEP_MAX_SEC);
   if (state.windowSec >= STUCK_WINDOW_SEC) {
     if (Math.hypot(px - state.anchorX, pz - state.anchorZ) < STUCK_MIN_DIST) {
       clearClickTarget(); // blocked (wall/corner) — stop instead of grinding
