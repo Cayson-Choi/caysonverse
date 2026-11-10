@@ -36,3 +36,11 @@ Poly Haven CC0 1.0 자산만 썼습니다.
 | leafy_grass | https://polyhaven.com/a/leafy_grass | 창밖 정원 그림 `T_m_garden`의 잔디 |
 | precast_stone_paving | https://polyhaven.com/a/precast_stone_paving | 창밖 정원 그림의 돌길 |
 | island_tree_01 (잎 텍스처만), japanese_zelkova_bark, sakura_bark | 위 표 | 창밖 정원 그림의 나무(마을과 같은 잎·껍질 텍스처) |
+
+## 마을버스 (`village_bus.glb`) — 2026-11-11
+
+이 프로젝트에서 Blender와 스크립트로 직접 만든 것입니다(`art/village/tools/build_bus.py`, `make_bus_textures.py`, 저장소에는
+올리지 않음). 3D 생성 AI, 사진, 외부 모델은 쓰지 않았습니다. 형상은 9 m급 저상 마을버스의 공개 치수(전장·전폭·축거·오버행·타이어
+규격)와 비율만 참고해 코드로 만들었고, 제조사 엠블럼·회사 도색·노선 번호·글자는 넣지 않았습니다. 도색("들녘": 아이보리·숲녹색·
+호박색 줄), 마을 아이콘, 휠체어·유모차 그림, 행선지 LED 문양(어떤 글자로도 읽히지 않도록 숫자·로마자·한글 자모·한글 2,350자와
+비교해 걸러 낸 무작위 점 문양), 타이어·휠·루버 텍스처는 모두 스크립트가 직접 그렸습니다. 외부 자산은 없습니다.

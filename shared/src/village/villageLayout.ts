@@ -355,10 +355,12 @@ function makeVillageLayout(): VillageLayout {
       lamps: [27.5, 80, 142.5, 217.5, 332.5].map((azimuth) => onCircle(azimuth, 28)),
     },
     ringRoad: { centre: pt(0, 0), radius: 34, width: 6, sidewalk: { width: 2, side: "outer" } },
-    // Parked on the outer lane at the east (x 33.1..35.6 stays inside the road's 31..37 band along its whole 8 m).
+    // Parked on the outer lane at the east, nose north, doors to the shelter: a 9 m low-floor village bus (2.49 m wide,
+    // village_bus.glb). x 32.95..35.45, z -10.25..-1.25 stays inside the road's 31..37 band (outer corner at r 36.90);
+    // its front door (z -9.85..-8.76) stops at the shelter's north end and its middle door (z -5.9..-4.5) at the shelter.
     busStop: {
       shelter: { centre: pt(38, -6), size: sz(1.6, 4) },
-      bus: { centre: pt(34.35, -6), size: sz(2.5, 8) },
+      bus: { centre: pt(34.2, -5.75), size: sz(2.5, 9) },
     },
     // A gentle bow to the south beyond plot_s (z 49..67); every segment is 6 m of water with 3 m of bank on each side,
     // and the centre line moves at most 3 m from one segment to the next.

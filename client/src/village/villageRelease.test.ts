@@ -47,11 +47,14 @@ vi.mock("@react-three/fiber", () => {
 });
 
 import { VILLAGE_LIGHTMAP_URL, VILLAGE_MODEL_URL, VILLAGE_NIGHT_LIGHTMAP_URL, nightMapUniform } from "./villageModelPrep";
+import { BUS_MODEL_URL } from "./villageBusPrep";
 import {
+  clearBusCache,
   clearVillageCaches,
   holdNightLightmap,
   holdVillageFiles,
   holdsVillageFiles,
+  noteBusRequested,
   noteNightRequested,
   noteVillageRequested,
 } from "./villageRelease";
@@ -234,5 +237,47 @@ describe("villageRelease — the night light map has its own hold (final fix I2b
     release();
     expect(() => vi.advanceTimersByTime(0)).not.toThrow();
     expect(h.textureClear).toEqual([]);
+  });
+});
+
+describe("villageRelease — the village bus (village_bus.glb) goes with the village's files", () => {
+  it("drawn: released with them one tick after the scene lets go, its geometry, materials and textures freed", () => {
+    loaded();
+    const bus = model();
+    h.cache.set(BUS_MODEL_URL, { state: "ready", value: bus.gltf });
+    const release = holdVillageFiles();
+    noteVillageRequested();
+    noteBusRequested();
+    release();
+    expect(h.gltfClear).toEqual([]);
+    vi.advanceTimersByTime(0);
+    expect(h.gltfClear).toEqual([VILLAGE_MODEL_URL, BUS_MODEL_URL]);
+    for (const r of bus.parts) expect(bus.disposed.has(r)).toBe(true);
+    expect(h.cache.size).toBe(0);
+  });
+
+  it("a re-hold in the same tick keeps it; once released, a later release reads nothing of it", () => {
+    const bus = model();
+    h.cache.set(BUS_MODEL_URL, { state: "ready", value: bus.gltf });
+    const release = holdVillageFiles();
+    noteBusRequested();
+    release();
+    const again = holdVillageFiles();
+    vi.advanceTimersByTime(0);
+    expect(h.gltfClear).toEqual([]);
+    expect(bus.disposed.size).toBe(0);
+    again();
+    vi.advanceTimersByTime(0);
+    expect(h.gltfClear).toEqual([BUS_MODEL_URL]);
+    expect(bus.disposed.size).toBe(bus.parts.length);
+    const r2 = holdVillageFiles();
+    r2();
+    expect(() => vi.advanceTimersByTime(0)).not.toThrow(); // the stand-in throws on a read of an absent entry
+    expect(h.gltfClear).toEqual([BUS_MODEL_URL]);
+  });
+
+  it("clearBusCache forgets a failed download, so the bus's boundary fetches it again", () => {
+    clearBusCache();
+    expect(h.gltfClear).toEqual([BUS_MODEL_URL]);
   });
 });

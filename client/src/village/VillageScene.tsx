@@ -19,9 +19,10 @@ import { CubbyView } from "./CubbyView";
 import { cubbyCardState, openCubbyCard } from "./cubbyCard";
 import { DayNight } from "./DayNight";
 import { VillageModel } from "./VillageModel";
+import { VillageBus } from "./VillageBus";
 import { VillageBgmButton } from "./VillageBgmButton";
 import { VILLAGE_CAMERA_PLANES, VILLAGE_GROUND_DECAL, type VillageTier } from "./villageModelPrep";
-import { clearVillageCaches, holdVillageFiles, holdsVillageFiles } from "./villageRelease";
+import { clearBusCache, clearVillageCaches, holdVillageFiles, holdsVillageFiles } from "./villageRelease";
 import { LoadBoundary } from "./LoadBoundary";
 import { areaGate, localArea, readSelfArea, releaseLocalArea, seedLocalArea, useLocalArea } from "./villageArea";
 import { CUBBY_TARGET_PREFIX, GUIDE_TARGET_PREFIX, villageAndHallTargets, villageTargets } from "./villageTargets";
@@ -85,6 +86,10 @@ function VillageArea({ area, tier }: { area: AreaId; tier: VillageTier }) {
       <LoadBoundary fallback={<PlainGround />} onReset={clearVillageCaches} notice="마을 풍경을 불러오지 못했어요. 잠시 뒤 다시 불러올게요.">
         <Suspense fallback={null}>
           <VillageModel tier={tier} />
+          {/* The bus at the stop loads beside the model (one wait, one warm-up); a failed bus never takes the village down. */}
+          <LoadBoundary fallback={null} onReset={clearBusCache} notice="마을버스를 불러오지 못했어요. 잠시 뒤 다시 불러올게요.">
+            <VillageBus tier={tier} />
+          </LoadBoundary>
           {/* Its materials compiled ahead once the model is in (night-only and out-of-view ones included). */}
           <SceneWarmUp key={tier} />
         </Suspense>

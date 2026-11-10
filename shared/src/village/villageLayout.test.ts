@@ -239,9 +239,9 @@ describe("layout values (brief + rulings + owner changes)", () => {
     expect(L.bridge).toEqual({ minX: GAP.minX, maxX: GAP.maxX, minZ: band.minZ, maxZ: band.maxZ });
   });
 
-  it("pavilion and bus stop (shelter visual, parked bus 8 x 2.5 on the outer side of the road)", () => {
+  it("pavilion and bus stop (shelter visual, parked 9 m bus 9 x 2.5 on the outer side of the road)", () => {
     expect(L.pavilion).toEqual({ centre: { x: -16, z: 62 }, size: { x: 5, z: 5 } });
-    expect(L.busStop.bus.size).toEqual({ x: 2.5, z: 8 });
+    expect(L.busStop.bus.size).toEqual({ x: 2.5, z: 9 });
     const bus = boxOf(L.busStop.bus);
     // On the road: every corner within the band, and on the outer half (beyond the road's centre line).
     for (const x of [bus.minX, bus.maxX]) {
@@ -616,7 +616,7 @@ describe("village colliders are built from the layout", () => {
     expect(box("plaza_zelkova")).toEqual(boxOf({ centre: L.plaza.zelkova.centre, size: L.plaza.zelkova.collider }));
   });
 
-  it("parked bus 8 x 2.5, scenery colliders match the layout footprints", () => {
+  it("parked bus 9 x 2.5, scenery colliders match the layout footprints", () => {
     expect(box("bus")).toEqual(boxOf(L.busStop.bus));
     expect(box("cafe")).toEqual(boxOf(L.sceneryHouses.find((h) => h.kind === "cafe")!));
     expect(box("house_3")).toEqual({ minX: 25, maxX: 33, minZ: 34, maxZ: 40 });
@@ -1257,7 +1257,7 @@ describe("export for the Blender scripts", () => {
     expect(out.plaza.benches).toHaveLength(8);
     expect(out.plaza.lamps.length).toBeGreaterThanOrEqual(4);
     expect(out.ringRoad.sidewalk).toEqual({ width: 2, side: "outer" });
-    expect(out.busStop.bus.size).toEqual({ x: 2.5, z: 8 });
+    expect(out.busStop.bus.size).toEqual({ x: 2.5, z: 9 });
     expect(out.busStop.shelter).toHaveProperty("bounds");
     expect(out.stream.segments).toHaveLength(STREAM.segments.length);
     expect(out.stream.segments[0].water).toEqual({ minX: -95, maxX: -70, minZ: 67, maxZ: 73 });
