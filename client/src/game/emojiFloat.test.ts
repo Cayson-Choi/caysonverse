@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { EMOJI_DISPLAY_MS } from "@caysonverse/shared/constants";
-import { BUBBLE_BASE_HEIGHT, BUBBLE_GAP_M, EMOJI_BASE_HEIGHT, EMOJI_SPRITE_HEIGHT } from "./constants";
-import { emojiBaseHeight, emojiFloatProgress, EMOJI_RISE_M } from "./emojiFloat";
+import { BUBBLE_GAP_M, EMOJI_BASE_HEIGHT, EMOJI_SPRITE_HEIGHT } from "./constants";
+import { emojiBaseHeight, emojiFloatProgress, EMOJI_HEAD_GAP_M, EMOJI_RISE_M } from "./emojiFloat";
 
 describe("emojiFloatProgress", () => {
   it("starts at zero offset and full opacity", () => {
@@ -45,31 +45,32 @@ describe("emojiFloatProgress", () => {
   });
 });
 
-describe("emojiBaseHeight — where the glyph starts, clear of the tag and any speech bubble", () => {
+describe("emojiBaseHeight — where the glyph starts: just above the head, or above a speech bubble", () => {
   const half = EMOJI_SPRITE_HEIGHT / 2;
 
   it("with a bubble up it starts just above the bubble's top edge (the sprite is centre-origin)", () => {
-    // A tall two-line bubble resting on a lifted tag: bottom 2.9 m, top 3.7 m.
-    expect(emojiBaseHeight(2.9, 3.7)).toBeCloseTo(3.7 + BUBBLE_GAP_M + half, 9);
-    // ...and follows the bubble wherever it is, even under the default.
-    expect(emojiBaseHeight(2.3, 2.6)).toBeCloseTo(2.6 + BUBBLE_GAP_M + half, 9);
+    // A tall two-line bubble: top 3.7 m. The head top does not matter then.
+    expect(emojiBaseHeight(2.16, 3.7)).toBeCloseTo(3.7 + BUBBLE_GAP_M + half, 9);
+    expect(emojiBaseHeight(2.73, 2.6)).toBeCloseTo(2.6 + BUBBLE_GAP_M + half, 9);
   });
 
   it("never draws over a bubble: its lowest point is above the bubble's top edge", () => {
     for (const top of [2.4, 2.9, 3.4, 4.2]) {
-      const base = emojiBaseHeight(top - 0.5, top);
+      const base = emojiBaseHeight(2.16, top);
       expect(base - half).toBeGreaterThanOrEqual(top);
     }
   });
 
-  it("without a bubble it keeps the default height while the tag sits below it", () => {
-    expect(emojiBaseHeight(BUBBLE_BASE_HEIGHT, null)).toBeCloseTo(EMOJI_BASE_HEIGHT, 9);
-    // Up close the tag top is ~2.3 m: the default 2.9 m already clears it.
-    expect(emojiBaseHeight(2.36, null)).toBeCloseTo(EMOJI_BASE_HEIGHT, 9);
+  it("without a bubble it starts right above the head (owner 2026-11-10: start near the head, then rise)", () => {
+    // a bare toy head (top 2.16 m): the glyph's bottom edge sits EMOJI_HEAD_GAP_M above the head
+    expect(emojiBaseHeight(2.16, null)).toBeCloseTo(2.16 + EMOJI_HEAD_GAP_M + half, 9);
+    expect(emojiBaseHeight(2.16, null) - half).toBeGreaterThanOrEqual(2.16);
+    // a crown or a tall hat raises it with the head top
+    expect(emojiBaseHeight(2.73, null)).toBeCloseTo(2.73 + EMOJI_HEAD_GAP_M + half, 9);
   });
 
-  it("without a bubble it still climbs over a tall or lifted tag (anchor above the default)", () => {
-    expect(emojiBaseHeight(3.4, null)).toBeCloseTo(3.4 + BUBBLE_GAP_M + half, 9);
-    expect(emojiBaseHeight(3.4, null)).toBeGreaterThan(EMOJI_BASE_HEIGHT);
+  it("starts much lower than the old bubble-anchor height, so it stays in view longer", () => {
+    // before: max(EMOJI_BASE_HEIGHT, bubble anchor + gap + half) = 2.9 .. 3.3 m for a 2.16-2.5 m head
+    expect(emojiBaseHeight(2.16, null)).toBeLessThan(EMOJI_BASE_HEIGHT - 0.3);
   });
 });

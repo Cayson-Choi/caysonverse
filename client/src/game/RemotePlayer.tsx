@@ -115,7 +115,7 @@ export function RemotePlayer({
   const bubbleTop = useSpeechBubble(sessionId, groupRef, bubbleAnchor);
   // Emoji reaction above this avatar, driven by the emoji broadcast. Same
   // cleanup-with-avatar discipline as the speech bubble; it starts above the bubble.
-  useEmoji(sessionId, groupRef, bubbleAnchor, bubbleTop);
+  useEmoji(sessionId, groupRef, avatar.topY, bubbleTop);
 
   // Per-frame mutable state — refs, never React state.
   const idleAction = useRef<AnimationAction | null>(null);

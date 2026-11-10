@@ -98,8 +98,11 @@ function hubSpec(): SchoolSpec {
   };
 }
 
-/** Materials the village game code drives itself (never light-mapped): windows, lamps, water, the plot outlines. */
-export const VILLAGE_NON_LIGHTMAPPED = ["M_window", "M_lamp", "M_water", "M_glow_plot"] as const;
+/**
+ * Materials the village game code drives itself (never light-mapped): windows, lamps, water, the plot outlines, and the
+ * fountain's crescent (lit live; scripts/patch-village-moon.mjs puts it in every village.glb).
+ */
+export const VILLAGE_NON_LIGHTMAPPED = ["M_window", "M_lamp", "M_water", "M_glow_plot", "M_moon"] as const;
 
 /**
  * 케이슨 마을: every layout collider exists as its `col__<id>` box with the layout's exact rectangle and a height that

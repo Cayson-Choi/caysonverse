@@ -64,6 +64,7 @@ import { cameraProbe } from "./cameraProbe";
 import { activeBounds, activeSeats, getActiveMap } from "./activeMap";
 import { localGlide } from "./seatMotion";
 import { getLocalLift } from "./jump";
+import { useFpCursor } from "./useFpCursor";
 import { useSettingsStore } from "../stores/settingsStore";
 import type { Orbit, Pose, SeatState } from "./types";
 
@@ -198,6 +199,8 @@ export function CameraRig({ pose, orbit, seat, fogRange = LEGACY_FOG, far: baseF
   const lastBounds = useRef(activeBounds());
   // Z / C are registered in the shared KeyboardControls map; read their live state.
   const [, getKeys] = useKeyboardControls<MoveControl>();
+  // First person hides the resting mouse cursor over the 3D view (fpCursor.ts) — the owner saw it as a stray icon.
+  useFpCursor(gl.domElement, getKeys);
 
   // Dev/E2E only: expose the live camera (the maze cap is not reflected in
   // orbit.distance, and the FP look yaw lives outside orbit). Tree-shaken in prod.
