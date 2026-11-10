@@ -56,7 +56,10 @@ import {
   capModelTextures,
   capTextureSize,
   type CanvasLike,
+  FOLIAGE_NEAR_FADE,
+  nearFadeUniform,
 } from "./villageModelPrep";
+import { NEAR_FADE_KEY } from "../game/clickPick";
 import { DAY_LIFT, NIGHT_LOOK, dayNightAt, indoorState, type DayNightState } from "./dayNightBlend";
 import { parseKstTime } from "@caysonverse/shared/village/sunClock";
 import { HALL_ACTIVE_MAP, VILLAGE_ACTIVE_MAP, VILLAGE_CAMERA_PAD } from "../game/activeMap";
@@ -289,7 +292,7 @@ describe("prepareVillage: the model dressed for the game", () => {
   it("gives the light-mapped materials and the village's own foliage the time of day's light (shared uniforms), not the backdrop", () => {
     const f = fixture();
     const nodes = prepareVillage(f.root, new Texture(), "low");
-    const patched = (m: MeshBasicMaterial) => m.customProgramCacheKey() === "village-light";
+    const patched = (m: MeshBasicMaterial) => m.customProgramCacheKey().startsWith("village-light");
     for (const m of [f.mats.LM_plaza, f.mats.LM_grass, f.mats.LM_wood, f.mats.M_leaf_green]) expect(patched(m), m.name).toBe(true);
     for (const m of [f.mats.M_window, f.mats.M_lamp, f.mats.M_glass, f.mats.M_backdrop]) expect(patched(m), m.name).toBe(false);
     expect(patched(materialOf(nodes.root, "inst__far_0_0"))).toBe(false);
@@ -335,6 +338,32 @@ describe("prepareVillage: the model dressed for the game", () => {
     const hook = f.mats.LM_grass.onBeforeCompile;
     prepareVillage(f.root, new Texture(), "high");
     expect(f.mats.LM_grass.onBeforeCompile).toBe(hook);
+  });
+
+  it("the village's own leaves and trunks fade out near the camera (the camera in a street tree's crown); the ground does not", () => {
+    const f = fixture();
+    prepareVillage(f.root, new Texture(), "low");
+    const compileOf = (m: MeshBasicMaterial) => {
+      const shader = { uniforms: {} as Record<string, unknown>, fragmentShader: "void main() {\n#include <color_fragment>\n}", vertexShader: "" };
+      m.onBeforeCompile(shader as never, null as never);
+      return shader;
+    };
+    const leaf = compileOf(f.mats.M_leaf_green);
+    expect(leaf.uniforms.uVillageNearFade).toBe(nearFadeUniform);
+    expect(nearFadeUniform.value.toArray()).toEqual([...FOLIAGE_NEAR_FADE]);
+    expect(leaf.fragmentShader).toContain("float villageDepth = 1.0 / gl_FragCoord.w;");
+    expect(leaf.fragmentShader).toContain("if ( villageKeep < villageNoise ) discard;");
+    // the fade runs first in main(), before anything is shaded
+    expect(leaf.fragmentShader.indexOf("discard")).toBeLessThan(leaf.fragmentShader.indexOf("#include <color_fragment>"));
+    expect(f.mats.M_leaf_green.customProgramCacheKey()).toBe("village-light-foliage");
+    // the click pick skips these leaves nearer than the fade's middle (clickPick.ts)
+    expect(f.mats.M_leaf_green.userData[NEAR_FADE_KEY]).toBeCloseTo((FOLIAGE_NEAR_FADE[0] + FOLIAGE_NEAR_FADE[1]) / 2, 9);
+    const ground = compileOf(f.mats.LM_grass);
+    expect(ground.uniforms).not.toHaveProperty("uVillageNearFade");
+    expect(ground.fragmentShader).not.toContain("discard");
+    expect(f.mats.LM_grass.customProgramCacheKey()).toBe("village-light");
+    expect(f.mats.LM_grass.userData[NEAR_FADE_KEY]).toBeUndefined();
+    expect(FOLIAGE_NEAR_FADE[0]).toBeGreaterThan(VILLAGE_CAMERA_PLANES.near);
   });
 
   it("the cherry blossoms take their own foliage tint (darker at night); every other foliage the shared one; noon is white for both", () => {

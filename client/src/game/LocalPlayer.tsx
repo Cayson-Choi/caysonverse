@@ -47,6 +47,7 @@ import { HIDE_BLEND, OV_VIS_BLEND } from "./viewMode";
 import { clipFor, lookFromAppearance } from "./characterLook";
 import { reportAvatarClip, useAvatar } from "./useAvatar";
 import { BlobShadow } from "./BlobShadow";
+import { PICK_AS_BODY } from "./clickPick";
 import { createNametag } from "./nametag";
 import { registerLabel } from "./labelRegistry";
 import { bubbleRestHeight, nametagRestHeight } from "./nametagLayout";
@@ -649,7 +650,7 @@ export function LocalPlayer({
   });
 
   return (
-    <group ref={groupRef}>
+    <group ref={groupRef} userData={PICK_AS_BODY}>
       <primitive object={model} />
       {blobShadow && (
         <group ref={shadowRef}>

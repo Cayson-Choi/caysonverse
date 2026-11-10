@@ -1,10 +1,12 @@
 /**
  * 바닥 클릭 자동 이동 (design 29) — pure helpers + the module-mutable target.
  *
- * A short primary-button press on the canvas (under CLICK_MAX_PX of travel and
- * CLICK_MAX_MS of hold — anything longer/farther is the existing look-drag) is
- * raycast onto the y=0 floor plane and stored here as the auto-move target.
- * LocalPlayer's per-frame controller then composes the unit direction toward it
+ * A short primary-button press on the canvas (under CLICK_MAX_PX of travel — TAP_MAX_PX for a finger — and
+ * CLICK_MAX_MS of hold; anything longer/farther is the existing look-drag) becomes the auto-move target. Where it
+ * goes is decided from the surface actually under the cursor (clickPick.ts → clickPlan.ts, owner 2026-11-10): ground
+ * walks there, anything else (a wall, a bench, a body, the sky, past the area) does nothing, and a walk something
+ * stops on the way targets where it will stop — so the destination ring (ClickMarker) is never shown where the avatar
+ * will not go. LocalPlayer's per-frame controller then composes the unit direction toward it
  * into the NORMAL movement intent (dirToIntent → worldDirection → collision →
  * moveSender), so auto-move is not a forked movement path — same speed, same
  * collision slide, same network validation as a key press.
@@ -37,6 +39,13 @@ export const DRAG_SIGN = -1;
 /** A press travelling this many px or more (screen distance) is a drag, not a click. */
 export const CLICK_MAX_PX = 6;
 
+/**
+ * The same for a finger: a fingertip drifts more than a mouse, and the stick half already allowed 10 px
+ * (joystick.ts STICK_TAP_MAX_PX), so a tap that drifted 6-10 px on the look half turned the view a hair and walked
+ * nowhere. One tolerance for both halves now.
+ */
+export const TAP_MAX_PX = 10;
+
 /** A press held this many ms or more is a drag/long-press, not a click. */
 export const CLICK_MAX_MS = 400;
 
@@ -53,9 +62,19 @@ export const STUCK_WINDOW_SEC = 0.8;
  */
 export const STUCK_MIN_DIST = 0.25;
 
+/** An auto-move destination: the ground point, and the height of the surface clicked there (where the ring lies). */
+export interface ClickTarget extends GroundVec {
+  y: number;
+}
+
 /** The auto-move state: target + the no-progress measurement window. */
 interface ClickMoveState {
-  target: GroundVec | null;
+  target: ClickTarget | null;
+  /**
+   * A touch tap on the look half waits DOUBLE_TAP_MS for a second tap before it walks (CameraRig); its ring shows at
+   * once meanwhile, so the finger sees where it is going. Never walked to — the walk is `target`.
+   */
+  pending: ClickTarget | null;
   /** Window anchor position; `anchored` false until the first step seeds it. */
   anchorX: number;
   anchorZ: number;
@@ -66,6 +85,7 @@ interface ClickMoveState {
 
 const state: ClickMoveState = {
   target: null,
+  pending: null,
   anchorX: 0,
   anchorZ: 0,
   anchored: false,
@@ -79,37 +99,19 @@ declare global {
      * CameraRig under `import.meta.env.DEV`; absent in production. Kept apart
      * from `__cv` (owned by debug.ts) so this lane never edits that hook.
      */
-    __cvClickTarget?: () => GroundVec | null;
+    __cvClickTarget?: () => ClickTarget | null;
+    /** Dev/E2E only: what the last click landed on and what was made of it (CameraRig). */
+    __cvClickPick?: () => unknown;
   }
 }
 
 /**
- * Click vs drag: true when the pointer travelled less than CLICK_MAX_PX (screen
- * distance from the down point) AND was held under CLICK_MAX_MS. The primary-
- * button / single-pointer requirements are enforced by the caller (CameraRig),
- * which owns the pointer bookkeeping.
+ * Click vs drag: true when the pointer travelled less than `maxPx` (CLICK_MAX_PX for a mouse, TAP_MAX_PX for a
+ * finger; screen distance from the down point) AND was held under CLICK_MAX_MS. The primary-button /
+ * single-pointer requirements are enforced by the caller (CameraRig), which owns the pointer bookkeeping.
  */
-export function isClick(dxPx: number, dyPx: number, elapsedMs: number): boolean {
-  return Math.hypot(dxPx, dyPx) < CLICK_MAX_PX && elapsedMs < CLICK_MAX_MS;
-}
-
-/**
- * Intersect a ray (origin `o`, direction `d` — normalization not required) with
- * the y=0 floor plane. Returns the ground point, or null when the ray points
- * level or upward (a click on the sky never produces a target).
- */
-export function groundPoint(
-  ox: number,
-  oy: number,
-  oz: number,
-  dx: number,
-  dy: number,
-  dz: number,
-): GroundVec | null {
-  if (dy >= -1e-9) return null; // level or upward: no floor ahead
-  const t = -oy / dy;
-  if (t < 0) return null; // origin already below the floor (never in practice)
-  return { x: ox + dx * t, z: oz + dz * t };
+export function isClick(dxPx: number, dyPx: number, elapsedMs: number, maxPx: number = CLICK_MAX_PX): boolean {
+  return Math.hypot(dxPx, dyPx) < maxPx && elapsedMs < CLICK_MAX_MS;
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -118,40 +120,59 @@ function clamp(value: number, min: number, max: number): number {
 
 /**
  * Set (or REPLACE — a re-click mid-move is the instant direction change design
- * 29 mandates) the auto-move target. The point is clamped into the reachable
- * band (the active map's bounds − PLAYER_RADIUS, the same clamp LocalPlayer applies to the
- * body) so an out-of-bounds click still ARRIVES at the wall instead of grinding
- * the stuck detector against an unreachable point. Each new target restarts the
- * no-progress window with a fresh budget.
+ * 29 mandates) the auto-move target; `y` is the height of the surface it lies on (the ring's). A click's target was
+ * already checked by clickPlan.ts (inside the area, clear of the colliders, reached by the walk); the clamp into the
+ * active map's bounds − PLAYER_RADIUS (the same clamp LocalPlayer applies to the body) stays as the backstop for
+ * targets set directly (dev hooks, the E2E). Each new target restarts the no-progress window with a fresh budget
+ * and takes over from a pending tap ring.
  */
-export function setClickTarget(x: number, z: number): void {
+export function setClickTarget(x: number, z: number, y = 0): void {
   const b = activeBounds();
   state.target = {
     x: clamp(x, b.minX + PLAYER_RADIUS, b.maxX - PLAYER_RADIUS),
     z: clamp(z, b.minZ + PLAYER_RADIUS, b.maxZ - PLAYER_RADIUS),
+    y,
   };
+  state.pending = null;
   state.anchored = false;
   state.windowSec = 0;
 }
 
 /** The live target (a copy), or null while auto-move is idle. */
-export function getClickTarget(): GroundVec | null {
+export function getClickTarget(): ClickTarget | null {
   return state.target ? { ...state.target } : null;
 }
 
 /**
- * The live target itself, NOT a copy — for per-frame readers (the destination
- * ring) that must not allocate. Read-only: the object is replaced by every
- * setClickTarget and never mutated in place, so holding it is safe but changing
- * it is not.
+ * The live target itself, NOT a copy — for per-frame readers that must not allocate. Read-only: the object is
+ * replaced by every setClickTarget and never mutated in place, so holding it is safe but changing it is not.
  */
-export function peekClickTarget(): Readonly<GroundVec> | null {
+export function peekClickTarget(): Readonly<ClickTarget> | null {
   return state.target;
 }
 
-/** Drop the target (manual-input yield / sit-confirm — design 29 (b)/(e)). */
+/** Show a held-back tap's ring at (x, z) on a surface at `y` without walking (see `pending`). */
+export function setPendingClick(x: number, z: number, y: number): void {
+  state.pending = { x, z, y };
+}
+
+/** Drop a held-back tap's ring (a double tap, a pinch, the walk refused when the wait ends). */
+export function clearPendingClick(): void {
+  state.pending = null;
+}
+
+/**
+ * Where the destination ring is drawn this frame: the walk's target, else a held-back tap's. The live object, never
+ * a copy (per-frame, no allocation; read-only like peekClickTarget).
+ */
+export function peekClickRing(): Readonly<ClickTarget> | null {
+  return state.target ?? state.pending;
+}
+
+/** Drop the target and any pending tap ring (manual-input yield / sit-confirm / Esc — design 29 (b)/(e)). */
 export function clearClickTarget(): void {
   state.target = null;
+  state.pending = null;
   state.anchored = false;
   state.windowSec = 0;
 }
@@ -188,7 +209,8 @@ export function dirToIntent(dir: GroundVec, cameraYaw: number): Intent {
  * target, or null when idle — clearing the target first on arrival or on a
  * no-progress verdict (net displacement under STUCK_MIN_DIST across the last
  * STUCK_WINDOW_SEC — pushing a wall). The caller feeds the direction through
- * dirToIntent so the regular movement path does the actual moving.
+ * dirToIntent so the regular movement path does the actual moving. clickPlan.ts
+ * simulateWalk replays exactly this rule to predict where a walk stops.
  */
 export function stepClickMove(px: number, pz: number, dt: number): GroundVec | null {
   const target = state.target;

@@ -7,16 +7,19 @@ import {
   DRAG_SIGN,
   CLICK_MAX_PX,
   CLICK_MAX_MS,
+  TAP_MAX_PX,
   ARRIVE_DIST,
   STUCK_WINDOW_SEC,
   STUCK_MIN_DIST,
   isClick,
-  groundPoint,
   hasArrived,
   dirToIntent,
   setClickTarget,
   getClickTarget,
   peekClickTarget,
+  peekClickRing,
+  setPendingClick,
+  clearPendingClick,
   clearClickTarget,
   resetClickMove,
   stepClickMove,
@@ -58,31 +61,20 @@ describe("clickMove — isClick (click vs drag boundary)", () => {
     expect(CLICK_MAX_MS).toBe(400);
     expect(isClick(CLICK_MAX_PX - 0.1, 0, CLICK_MAX_MS - 1)).toBe(true);
   });
-});
 
-describe("clickMove — groundPoint (ray ∩ y=0 plane)", () => {
-  it("hits straight down under the origin", () => {
-    expect(groundPoint(2, 10, 3, 0, -1, 0)).toEqual({ x: 2, z: 3 });
-  });
-
-  it("hits along a slanted ray (unnormalized direction is fine)", () => {
-    // From (0,5,0) toward (5,0,5): direction (5,-5,5), t = 1.
-    const p = groundPoint(0, 5, 0, 5, -5, 5);
-    expect(p).not.toBeNull();
-    expect(p!.x).toBeCloseTo(5, 9);
-    expect(p!.z).toBeCloseTo(5, 9);
-  });
-
-  it("returns null for horizontal or upward rays (no floor ahead)", () => {
-    expect(groundPoint(0, 5, 0, 1, 0, 0)).toBeNull();
-    expect(groundPoint(0, 5, 0, 0, 1, 0)).toBeNull();
+  it("a finger gets the stick's tap tolerance (10 px): a tap that drifts 6-10 px still walks", () => {
+    expect(TAP_MAX_PX).toBe(10);
+    expect(isClick(8, 0, 100)).toBe(false); // a mouse: that is a drag
+    expect(isClick(8, 0, 100, TAP_MAX_PX)).toBe(true); // a finger: still a tap
+    expect(isClick(TAP_MAX_PX, 0, 100, TAP_MAX_PX)).toBe(false);
+    expect(isClick(0, 0, CLICK_MAX_MS, TAP_MAX_PX)).toBe(false); // the same 400 ms
   });
 });
 
 describe("clickMove — target set/clamp/replace", () => {
   it("stores a target inside the bounds unchanged", () => {
     setClickTarget(-10, 5);
-    expect(getClickTarget()).toEqual({ x: -10, z: 5 });
+    expect(getClickTarget()).toEqual({ x: -10, z: 5, y: 0 });
   });
 
   it("clamps an out-of-bounds click to the reachable band (bounds − radius)", () => {
@@ -90,13 +82,14 @@ describe("clickMove — target set/clamp/replace", () => {
     expect(getClickTarget()).toEqual({
       x: WORLD_BOUNDS.maxX - PLAYER_RADIUS,
       z: WORLD_BOUNDS.minZ + PLAYER_RADIUS,
+      y: 0,
     });
   });
 
   it("re-click replaces the target immediately (mid-move direction change)", () => {
     setClickTarget(10, 0);
     setClickTarget(-5, 3);
-    expect(getClickTarget()).toEqual({ x: -5, z: 3 });
+    expect(getClickTarget()).toEqual({ x: -5, z: 3, y: 0 });
   });
 
   it("clearClickTarget drops the target (manual-input cancel path)", () => {
@@ -110,14 +103,41 @@ describe("clickMove — target set/clamp/replace", () => {
     expect(peekClickTarget()).toBeNull();
     setClickTarget(4, -2);
     const first = peekClickTarget();
-    expect(first).toEqual({ x: 4, z: -2 });
+    expect(first).toEqual({ x: 4, z: -2, y: 0 });
     expect(peekClickTarget()).toBe(first); // same object every call: no per-frame allocation
     expect(getClickTarget()).not.toBe(first); // getClickTarget keeps its defensive copy
     setClickTarget(1, 1);
-    expect(peekClickTarget()).toEqual({ x: 1, z: 1 });
-    expect(first).toEqual({ x: 4, z: -2 }); // a held reference is never mutated by a re-click
+    expect(peekClickTarget()).toEqual({ x: 1, z: 1, y: 0 });
+    expect(first).toEqual({ x: 4, z: -2, y: 0 }); // a held reference is never mutated by a re-click
     clearClickTarget();
     expect(peekClickTarget()).toBeNull();
+  });
+});
+
+describe("clickMove — the ring's surface height and the tap's pending ring", () => {
+  it("a target keeps the height of the surface it was clicked on (the ring lies there)", () => {
+    setClickTarget(3, -4, 0.03);
+    expect(getClickTarget()).toEqual({ x: 3, z: -4, y: 0.03 });
+    expect(peekClickRing()).toEqual({ x: 3, z: -4, y: 0.03 });
+  });
+
+  it("a held-back tap shows its ring at once without walking; the walk replaces it, a double tap drops it", () => {
+    setPendingClick(2, 5, 0.01);
+    expect(peekClickRing()).toEqual({ x: 2, z: 5, y: 0.01 });
+    expect(getClickTarget()).toBeNull();
+    expect(stepClickMove(0, 0, 0.016)).toBeNull(); // nothing walks yet
+    setClickTarget(2, 5, 0.01); // the 300 ms are up
+    expect(peekClickRing()).toBe(peekClickTarget());
+    clearClickTarget();
+    setPendingClick(2, 5, 0.01);
+    clearPendingClick(); // the second tap of a double tap
+    expect(peekClickRing()).toBeNull();
+  });
+
+  it("clearing the target (a key, Esc, sitting down) drops a pending ring too", () => {
+    setPendingClick(1, 1, 0);
+    clearClickTarget();
+    expect(peekClickRing()).toBeNull();
   });
 });
 
@@ -204,7 +224,7 @@ describe("clickMove — stuck detection (net displacement window)", () => {
     run(STUCK_WINDOW_SEC - 0.2, () => ({ x: 0, z: 0 }));
     setClickTarget(-10, 0);
     run(0.4, () => ({ x: 0, z: 0 })); // 0.4 < window: must still be alive
-    expect(getClickTarget()).toEqual({ x: -10, z: 0 });
+    expect(getClickTarget()).toEqual({ x: -10, z: 0, y: 0 });
     run(STUCK_WINDOW_SEC, () => ({ x: 0, z: 0 })); // …but a full window kills it
     expect(getClickTarget()).toBeNull();
   });
@@ -219,7 +239,7 @@ describe("clickMove — the active map (Task 15)", () => {
     expect(getClickTarget()!.x).toBeCloseTo(48 - PLAYER_RADIUS, 6);
     // The hub's other edges clamp too (HUB_BOUNDS x -14..48, z -12..12) — not the world's.
     setClickTarget(-100, -100);
-    expect(getClickTarget()).toEqual({ x: -14 + PLAYER_RADIUS, z: -12 + PLAYER_RADIUS });
+    expect(getClickTarget()).toEqual({ x: -14 + PLAYER_RADIUS, z: -12 + PLAYER_RADIUS, y: 0 });
     // Back in the legacy world the world's own bounds apply again.
     setActiveMap(LEGACY_ACTIVE_MAP);
     setClickTarget(100, 0);
