@@ -9,7 +9,7 @@ import { isTouchDevice } from "../device";
 import { useChatStore } from "../stores/chatStore";
 import { useCoachStore } from "../stores/coachStore";
 import { useNpcStore } from "../stores/npcStore";
-import { chatKeyAction, chatPaceAllows, hasChatText, pressLeavesChat, typeToChatAllowed } from "./chatBar";
+import { chatKeyAction, hasChatText, insertPrefix, paceSend, pressLeavesChat, typeToChatAllowed } from "./chatBar";
 import { HudButton } from "./HudButton";
 import { KBD_INSET_VAR, trackKbdInset } from "./kbdInset";
 import { rectStyle, useTouchHudLayout } from "./useTouchHudLayout";
@@ -53,23 +53,30 @@ const keepCaret = (e: { preventDefault(): void }) => e.preventDefault();
  *    the browser types the character — or starts the Hangul composition — into it. Not while the
  *    조교 dialogue is open or another field has the caret (chatBar.ts typeToChatAllowed). Chrome on
  *    Windows turns the IME off outside a field, so out there ㅡ arrives as a plain "m": an M / B
- *    right after a consonant key is read as ㅡ / ㅠ of a word (hotkeys.ts followsConsonant), so a
- *    Korean line never opens the map or the bag; on its own M is still the map. The keys pressed
- *    before the chat took the caret were game keys, and that first key arrives as a latin letter,
- *    so the first syllable may need fixing — WASD / Z / C and E / F stay game keys in both modes, so
- *    a line that STARTS with ㅈ ㅁ ㄴ ㅇ ㅋ ㅊ ㄷ ㄹ walks / turns / interacts on that first key, and
- *    ㄱ ㅍ (R V) recenter / switch the view. Enter (or a click on the bar) first is the sure way in,
- *    and once in, the chat stays open.
+ *    right after a consonant key is read as ㅡ / ㅠ of a word (hotkeys.ts followsConsonant), and a
+ *    lone M / B waits a moment (hotkeys.ts heldKeyWaitMs) — when the next key goes on typing (ㅡㅡ,
+ *    ㅠㅠ, "my") the chat opens with the held letter put in first (the action's `prefix`), otherwise
+ *    it is the map / the bag; a slower second key (within the word gap) still takes back the map
+ *    that opened meanwhile. The keys pressed before the chat took the caret were game keys, and
+ *    those first keys arrive as latin letters ("ㅡㅡ" reads "mm" there), so the first syllable may
+ *    need fixing — WASD / Z / C and E / F stay game keys in both modes, so a line that STARTS with
+ *    ㅈ ㅁ ㄴ ㅇ ㅋ ㅊ ㄷ ㄹ (ㅋㅋ, ㅇㅇ) walks / turns / interacts on those keys, and ㄱ ㅍ (R V)
+ *    recenter / switch the view. Enter (or a click on the bar) first is the sure way in, and once
+ *    in, the chat stays open.
  *  - While focused, the "chat" capture tells the movement system and the hotkey table to ignore
  *    keys (see uiCapture.ts), so typing never walks the avatar or fires a hotkey.
  *  - IME-safe: Enter never acts during a composition (e.g. Hangul) — the IME finishes the syllable
  *    first. A send reads the line from the field itself (a syllable still being composed when the
  *    button is pressed is already in it) and clears it, so the last syllable is never dropped and
- *    never sent twice.
+ *    never sent twice. Safari ends the composition BEFORE the Enter's keydown (keyCode 229,
+ *    isComposing false): that Enter sends right after the event, once the syllable is in (one
+ *    press, as elsewhere), and a second keydown of the same press does nothing (chatBar.ts).
  *  - Pacing: the server drops a line over its cap (CHAT_RATE: 3 lines / 5 s) — after the field was
  *    cleared, so the line was lost. Now that the chat stays open that cap is easy to reach, so the
- *    bar holds such a line back itself (chatBar.ts chatPaceAllows): it stays in the field with the
- *    server's own notice, and Enter sends it a moment later.
+ *    bar holds such a line back itself (chatBar.ts paceSend): it stays in the field, a note right
+ *    above the bar says why (the log is folded away on a phone) and the send button dims until the
+ *    line may go; the log gets the server's own notice ONCE per hold, however often the player
+ *    presses meanwhile.
  *  - A sent line is the guide's ③ "말하기": a send reports `talked` (coachStore) — only for a
  *    line that really goes out, never an empty or blank one.
  *  - Typing indicator (Task 12): every change tells the typing sender whether the
@@ -84,8 +91,21 @@ export function ChatInput() {
   // One sender per mount (it remembers the last ON it sent, for the server's rate
   // window) — useState, not useMemo, so React can never silently rebuild it.
   const [typing] = useState(() => createTypingSender(sendTyping));
-  /** When this bar's last lines went out (performance.now()), newest last — for chatPaceAllows. */
+  /** When this bar's last lines went out (performance.now()), newest last — for paceSend. */
   const sentAt = useRef<number[]>([]);
+  /** A line held back by the pace: until when (ms; null = none), and the timer that ends the hold. */
+  const heldUntil = useRef<number | null>(null);
+  const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** 0 = nothing held; otherwise the number of refused presses so far (re-keys the note, replaying its nudge). */
+  const [held, setHeld] = useState(0);
+  /** Safari's IME Enter (chatBar.ts sendAfterIme): a composition is open; a send is queued; the queued send waits for
+   *  the composition to end; when the last such send went (performance.now()). */
+  const composing = useRef(false);
+  const imeQueued = useRef(false);
+  const imeAfterEnd = useRef(false);
+  const imeSentAt = useRef<number | null>(null);
+  /** What the composition that just ended committed (null: none since the last key) — chatBar.ts lastCommit. */
+  const lastCommit = useRef<string | null>(null);
   const layout = useTouchHudLayout();
 
   // Soft-keyboard handling (touch only): while focused, mark <html> with
@@ -120,7 +140,8 @@ export function ChatInput() {
   // which sets the same capture flag) would steal focus to the chat bar instead of inserting a
   // newline — and cancels the browser default of Enter / `/` once for all subscribers, which is
   // also why the `/` that opens chat is never typed into the field. typeToChat is NOT cancelled:
-  // the focus moves during the keydown, so the character the key types lands in the field.
+  // the focus moves during the keydown, so the character the key types lands in the field — after
+  // the letter of a held M / B (`prefix`, "ㅡㅡ" / "my"), put in at the caret first.
   useEffect(() => {
     return onHotkey((action) => {
       if (action.type !== "openChat" && action.type !== "typeToChat") return;
@@ -135,8 +156,16 @@ export function ChatInput() {
       )
         return;
       input.focus();
+      if (action.type !== "typeToChat" || !action.prefix) return;
+      const end = input.value.length;
+      const r = insertPrefix(input.value, input.selectionStart ?? end, input.selectionEnd ?? end, action.prefix, CHAT_MAX_LENGTH);
+      if (!r) return;
+      input.value = r.value;
+      input.setSelectionRange(r.caret, r.caret);
+      setValue(r.value);
+      typing.onInput(performance.now(), hasChatText(r.value));
     });
-  }, []);
+  }, [typing]);
 
   // A press anywhere outside the bar takes the caret out of the field. Capture phase on the
   // document, so it runs before (and whatever) the pressed element does: the canvas, a HUD
@@ -161,28 +190,65 @@ export function ChatInput() {
   // remount, kick) fires no blur, so tell the others it stopped.
   useEffect(() => () => typing.stop(), [typing]);
 
-  /** Send the line in the field (if it has any text) and clear it. The caret stays where it is. */
-  function send() {
+  // A hold that outlives the bar must not set state on an unmounted component.
+  useEffect(
+    () => () => {
+      if (holdTimer.current !== null) clearTimeout(holdTimer.current);
+    },
+    [],
+  );
+
+  /** The pace lets lines go again: the note goes, the send button lights up (when there is text). */
+  function endHold() {
+    if (holdTimer.current !== null) clearTimeout(holdTimer.current);
+    holdTimer.current = null;
+    heldUntil.current = null;
+    setHeld(0);
+  }
+
+  /**
+   * Send the line in the field (if it has any text) and clear it; true when it went. The caret stays where it is.
+   * Too fast for the server: the line stays in the field, held until it may go (the note, the dimmed button).
+   */
+  function send(): boolean {
     const input = inputRef.current;
     // The field itself is the truth: it already holds a syllable an IME is still composing.
     const line = input ? input.value : value;
-    if (!hasChatText(line)) return; // a blank line goes nowhere (the dimmed button)
+    if (!hasChatText(line)) return false; // a blank line goes nowhere (the dimmed button)
     const now = performance.now();
-    if (!chatPaceAllows(sentAt.current, now)) {
-      // The server would drop it: keep the line in the field (and the "…" on) and say why, as the server would.
-      useChatStore.getState().pushSystem(CHAT_TOO_FAST);
-      return;
+    const pace = paceSend(sentAt.current, now, heldUntil.current);
+    if (!pace.send) {
+      // The server would drop it: keep the line in the field (and the "…" on) and say why — in the log once per hold.
+      if (pace.notice) useChatStore.getState().pushSystem(CHAT_TOO_FAST);
+      const until = pace.until ?? now;
+      heldUntil.current = until;
+      setHeld((n) => n + 1);
+      if (holdTimer.current !== null) clearTimeout(holdTimer.current);
+      holdTimer.current = setTimeout(endHold, Math.max(0, until - now));
+      return false;
     }
+    if (heldUntil.current !== null) endHold();
     sentAt.current = [...sentAt.current, now].slice(-CHAT_RATE.count);
     typing.stop(); // OFF first, so the receivers drop the "…" before the bubble lands
     sendChat(line); // trims; server is authoritative
     useCoachStore.getState().report("talked"); // ③ of the first-visit guide
     if (input) input.value = ""; // at once, even if React's copy of the line lagged behind the field
     setValue("");
+    return true;
+  }
+
+  /** The queued send of Safari's IME Enter: now, unless a composition is (still) open — then when it ends. */
+  function runImeSend() {
+    if (composing.current) {
+      imeAfterEnd.current = true;
+      return;
+    }
+    imeQueued.current = false;
+    if (send()) imeSentAt.current = performance.now();
   }
 
   const collapsed = isTouchDevice && !focused;
-  const ready = hasChatText(value);
+  const ready = hasChatText(value) && held === 0;
 
   return (
     <>
@@ -200,8 +266,8 @@ export function ChatInput() {
       <div
         ref={barRef}
         className={"cv-chat-input" + (collapsed ? " is-collapsed" : "")}
-        // A press on the bar around the field (its padding, the counter, the send button) keeps
-        // the caret; a click there puts it in the field (PC: the bar is visible unfocused too).
+        // A press on the bar around the field (its padding, the counter, the note, the send button)
+        // keeps the caret; a click there puts it in the field (PC: the bar is visible unfocused too).
         onPointerDown={(e) => {
           if (e.target !== inputRef.current) keepCaret(e);
         }}
@@ -212,6 +278,12 @@ export function ChatInput() {
           if (e.target !== inputRef.current) inputRef.current?.focus();
         }}
       >
+        {held > 0 && (
+          // Re-keyed on every refused press, so its nudge replays: the press did something.
+          <div key={held} className="cv-chat-note" role="status">
+            {CHAT_TOO_FAST}
+          </div>
+        )}
         <input
           ref={inputRef}
           className="cv-chat-field"
@@ -229,6 +301,23 @@ export function ChatInput() {
             releaseUiCapture("chat");
             setFocused(false);
             typing.stop();
+            // A blur ends any composition; a send still waiting for its end goes now (or not at all, if blank).
+            composing.current = false;
+            if (imeAfterEnd.current) {
+              imeAfterEnd.current = false;
+              runImeSend();
+            }
+          }}
+          onCompositionStart={() => {
+            composing.current = true;
+            lastCommit.current = null;
+          }}
+          onCompositionEnd={(e) => {
+            composing.current = false;
+            lastCommit.current = e.data ?? "";
+            if (!imeAfterEnd.current) return;
+            imeAfterEnd.current = false;
+            setTimeout(runImeSend, 0); // after the input event that brings the committed syllable
           }}
           onChange={(e) => {
             const next = e.target.value.slice(0, CHAT_MAX_LENGTH);
@@ -237,14 +326,24 @@ export function ChatInput() {
           }}
           onKeyDown={(e) => {
             const act = chatKeyAction(
-              // the IME finishes first; a held key acts once
+              // the IME finishes first; a held key acts once; one press never acts twice
               { key: e.key, isComposing: e.nativeEvent.isComposing, keyCode: e.keyCode, repeat: e.repeat },
               e.currentTarget.value,
+              {
+                imeSendQueued: imeQueued.current,
+                sinceImeSend: imeSentAt.current === null ? undefined : performance.now() - imeSentAt.current,
+                lastCommit: lastCommit.current ?? undefined,
+              },
             );
+            lastCommit.current = null; // it speaks for the one key right after the commit only
             if (act === null) return;
             e.preventDefault(); // consumed: the hotkey table must not also open the chat / the menu
             if (act === "send") send();
-            else e.currentTarget.blur();
+            else if (act === "sendAfterIme") {
+              // Safari: the syllable was committed before this keydown — send once the IME's input event is in.
+              imeQueued.current = true;
+              setTimeout(runImeSend, 0);
+            } else e.currentTarget.blur();
           }}
         />
         {value.length >= CHAT_MAX_LENGTH - COUNTER_LEAD && (
@@ -262,7 +361,7 @@ export function ChatInput() {
           tabIndex={-1}
           onPointerDown={keepCaret}
           onMouseDown={keepCaret}
-          onClick={send}
+          onClick={() => send()}
         >
           <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
             <path d="M3.4 20.1 21.2 12.6a.65.65 0 0 0 0-1.2L3.4 3.9a.6.6 0 0 0-.83.7L4.9 11.2l8.1.8-8.1.8-2.33 6.6a.6.6 0 0 0 .83.7Z" />

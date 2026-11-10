@@ -116,6 +116,53 @@
   pointer-events: none; /* the button is the target, never its glyph */
 }
 
+/* The note right above the bar while a quick line is held back (ChatInput.tsx: the server's own
+   "too fast" words). It rides with the bar — on a phone, on the keyboard, where the folded log
+   cannot be seen. Warm text on the bar's dark glass; it nudges each time a press is refused. */
+.cv-chat-note {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  width: max-content;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 6px 12px;
+  font-size: 13px;
+  line-height: 1.35;
+  text-align: center;
+  color: #ffe1ad;
+  background: rgba(18, 14, 36, 0.9);
+  border: 1px solid rgba(255, 196, 120, 0.45);
+  border-radius: 10px;
+  backdrop-filter: blur(6px);
+  cursor: default;
+  transform: translateX(-50%);
+  animation: cv-chat-nudge 0.32s ease-out;
+}
+
+@keyframes cv-chat-nudge {
+  0% {
+    opacity: 0.35;
+    transform: translateX(-50%) translateY(4px);
+  }
+  35% {
+    opacity: 1;
+    transform: translateX(calc(-50% - 5px));
+  }
+  65% {
+    transform: translateX(calc(-50% + 4px));
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cv-chat-note {
+    animation: none;
+  }
+}
+
 /* ── Chat log (PC: bottom-left, above the input bar; collapsible) ──
    column-reverse puts the toggle (first in the DOM) at the bottom and the rows above it.
 

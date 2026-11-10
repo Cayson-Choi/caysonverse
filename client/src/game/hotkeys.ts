@@ -37,8 +37,10 @@ export type HotkeyAction =
   /**
    * A key that TYPES something and is no game key, pressed while nothing holds the keyboard: the chat bar takes the
    * caret DURING this keydown (no preventDefault), so the character — or the Hangul composition — lands in the field.
+   * `prefix`: what a held key before it typed (a lone M / B that turned out to start a word, see stepHeld) — the chat
+   * puts it in first, so "ㅡㅡ" / "my" lose nothing to the hold.
    */
-  | { type: "typeToChat" };
+  | { type: "typeToChat"; prefix?: string };
 
 /** The bits of a KeyboardEvent the table reads — lets tests pass plain objects. */
 export interface KeyLike {
@@ -73,7 +75,7 @@ const MOVE_CODES: ReadonlySet<string> = new Set(MOVE_KEYS.flatMap((k) => k.keys)
  * 2026-11-10: talking without clicking the bar first opened the map). The positional keys keep their job in every mode:
  * WASD / arrows / Z / C (MOVE_CODES), E / F interact, Space, the digits, Tab, Enter, `/`, Esc. Where the key arrives as
  * a plain latin letter outside a field (Chrome on Windows), only the vowels ㅡ ㅠ can be told — by the consonant
- * before them (followsConsonant); a lone M / B / R / V there is the hotkey.
+ * before them (followsConsonant), or by the key after them (stepHeld: ㅡㅡ, ㅠㅠ); a lone R / V there is the hotkey.
  */
 const IME_TYPING_CODES: ReadonlySet<string> = new Set(["KeyR", "KeyV", "KeyM", "KeyB"]);
 
@@ -181,7 +183,8 @@ export function followsConsonant(prev: PrevKey | null, now: number): boolean {
  * game keys in every input mode. 한글 mode is the key itself saying so (key "Process" / 229, or a jamo — macOS). Where
  * the browser hands a plain latin letter outside a field (Windows: the IME is off there), M / B are typing when
  * `afterConsonant` — the key right before was a consonant key, as in 그 (R M) or 응 (D M D); see followsConsonant.
- * On its own, M is the map and B the bag, in either mode (a Korean line never starts with ㅡ / ㅠ).
+ * Otherwise this says toggleMap / bag — and the shared listener holds that a moment (stepHeld): a line CAN start with
+ * ㅡ / ㅠ (ㅡㅡ, ㅠㅠ), and the key after it tells.
  * keyup only matters for Tab (roster hide) and E / F (interactUp: the end of a held interaction) and is
  * deliberately unconditional: the list must never stay stuck open because the chat grabbed focus
  * mid-hold, and a hold must be able to end after an overlay took the keyboard.
@@ -228,6 +231,119 @@ export function resolveHotkey(e: KeyLike, uiCaptured: boolean, afterConsonant = 
       return !MOVE_CODES.has(e.code) && typesText(e) ? { type: "typeToChat" } : null;
     }
   }
+}
+
+/**
+ * How long (ms) a lone M out in the world waits for the next key before it opens the map. A Korean line CAN start with
+ * the vowels ㅡ ㅠ — ㅡㅡ, ㅠㅠ, ㅡㅅㅡ are among the commonest chat lines (review 2026-11-10) — and on Windows they arrive
+ * as a plain "m" / "b" with no consonant before them, so that one key cannot tell; the next one can. A double tap is
+ * 100–250 ms apart; the map's own fly-up takes 300 ms (OV_BLEND_SEC), so the wait barely shows. A slower second key
+ * (up to TAKE_BACK_MS after the first) still makes it a word: the map that opened meanwhile is taken back (stepHeld).
+ */
+export const VOWEL_HOLD_MS = 300;
+
+/**
+ * How long (ms) after a lone M that already opened the map a key that goes on typing still takes the map back (stepHeld:
+ * a slow ㅡㅡ). The hold plus 200 ms — sooner than anyone reacts to the map starting to move, so a second M later than
+ * this is a player closing the map they saw, not the second ㅡ of a word.
+ */
+export const TAKE_BACK_MS = VOWEL_HOLD_MS + 200;
+
+/**
+ * How long a held key waits before it acts: the map VOWEL_HOLD_MS (it is a toggle, so a moment more — TAKE_BACK_MS — can
+ * still take it back); the bag the whole WORD_GAP_MS — in a classroom the bag takes the keyboard as it opens (an overlay, the
+ * first chip focused), so a second ㅠ could never reach the table to close it again; elsewhere B does nothing anyway.
+ */
+export function heldKeyWaitMs(action: HotkeyAction): number {
+  return action.type === "bag" ? WORD_GAP_MS : VOWEL_HOLD_MS;
+}
+
+/** A lone M / B held back (stepHeld): the action it will take, the letter it typed, when (ms). */
+export interface HeldKey {
+  action: HotkeyAction;
+  char: string;
+  at: number;
+  /**
+   * The wait ran out and the action was taken (the map is opening). Until TAKE_BACK_MS after `at`, a key that goes on
+   * typing still makes the M the start of a word: the action is taken again (a toggle: the map closes) and the chat
+   * opens with the letter.
+   */
+  acted?: boolean;
+}
+
+/** One key through the hold: what to remember, and the actions to hand the subscribers now, in order. */
+export interface HeldStep {
+  held: HeldKey | null;
+  out: HotkeyAction[];
+}
+
+/**
+ * Keys that leave a held M / B as it is: a bare Shift (ㅡ_ㅡ, a capital next), Ctrl / Alt / Meta on their way to a chord,
+ * Caps Lock and the 한/영 / 한자 keys (a player switching modes before typing on).
+ */
+function isNeutralKey(e: KeyLike): boolean {
+  return (
+    /^(Shift|Control|Alt|Meta)(Left|Right)$/.test(e.code) ||
+    e.code === "CapsLock" ||
+    e.code === "Lang1" ||
+    e.code === "Lang2" ||
+    e.key === "HangulMode" ||
+    e.key === "HanjaMode"
+  );
+}
+
+/**
+ * Whether this keydown's action is held back instead of taken: a plain latin M / B (the map / the bag) out in the world —
+ * typed by itself (no IME at work: that is typing already, see resolveHotkey), so it may be ㅡ / ㅠ starting a line.
+ */
+function isHeldVowel(e: KeyLike, action: HotkeyAction | null): boolean {
+  return (
+    action !== null &&
+    (action.type === "toggleMap" || action.type === "bag") &&
+    VOWEL_HOTKEY_CODES.has(e.code) &&
+    typesText(e) &&
+    !isImeKey(e)
+  );
+}
+
+/**
+ * The shared listener's hold on a lone M / B (pure; the timer lives in handleKey): given what is held, one key event and
+ * the action resolveHotkey found for it, what to hold now and which actions to hand out at once.
+ *  - A lone plain M / B is held — nothing happens yet; it acts when its wait runs out (heldKeyWaitMs, handleKey).
+ *  - The next key goes on TYPING — another M / B (ㅡㅡ, ㅠㅠ) or any typed key that is no game key (ㅡㅅㅡ, ㅡ.ㅡ, "my") —
+ *    so the M / B started a word: one typeToChat carrying the held letter (`prefix`); the map / bag never open.
+ *  - Any other key (WASD, Space, E / F, R, Enter, a digit, an arrow, an auto-repeat, a chord): M was the map after all —
+ *    it acts AT ONCE, then that key does its own job. So M-then-walk never waits.
+ *  - After the wait ran out (`acted`: the map is opening), up to TAKE_BACK_MS after the press: a key that goes on typing
+ *    (a slow ㅡㅡ) takes the map back — the toggle once more — and opens the chat with the letter; any other key just
+ *    does its own job (the map stays). Later than that, the M is long done and the key is a key on its own.
+ *  - A bare modifier / 한영 key changes nothing; a key while something took the keyboard meanwhile (a click into a
+ *    field) drops the held action — no map opening under the chat, nothing taken back.
+ * Keyups pass straight through.
+ */
+export function stepHeld(
+  held: HeldKey | null,
+  e: KeyLike,
+  action: HotkeyAction | null,
+  uiCaptured: boolean,
+  now: number,
+): HeldStep {
+  const own = action ? [action] : [];
+  if (e.type === "keyup") return { held, out: own };
+  if (held?.acted && now - held.at > TAKE_BACK_MS) held = null; // long done: this key is a key on its own
+  const out: HotkeyAction[] = [];
+  if (held !== null) {
+    if (isNeutralKey(e)) return { held, out: own };
+    if (uiCaptured) return { held: null, out: own };
+    if (action?.type === "typeToChat" || isHeldVowel(e, action)) {
+      const chat: HotkeyAction = { type: "typeToChat", prefix: held.char };
+      return { held: null, out: held.acted ? [held.action, chat] : [chat] };
+    }
+    if (!held.acted) out.push(held.action);
+  }
+  if (action !== null && !uiCaptured && isHeldVowel(e, action))
+    return { held: { action, char: e.key as string, at: now }, out };
+  return { held: null, out: [...out, ...own] };
 }
 
 /** What one Esc press does (controls-ux Task 15; overlays: AI 학교 탈출 Task 18). */
@@ -291,6 +407,43 @@ const subscribers: { fn: HotkeyListener }[] = [];
 /** The last key pressed out in the world (trackKey) — reset when the listener is installed. */
 let prevKey: PrevKey | null = null;
 
+/** The lone M / B being held (stepHeld), the keydown that started it, and the timer that lets it act. */
+let held: HeldKey | null = null;
+let heldEvent: KeyboardEvent | null = null;
+let heldTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** Hand one action to every subscriber. Snapshot: a subscriber may unsubscribe (or subscribe) while we fan out. */
+function fanOut(action: HotkeyAction, e: KeyboardEvent): void {
+  for (const s of subscribers.slice()) s.fn(action, e);
+}
+
+/** Forget the held key (and its timer) without acting on it. */
+function dropHeld(): void {
+  if (heldTimer !== null) clearTimeout(heldTimer);
+  held = null;
+  heldEvent = null;
+  heldTimer = null;
+}
+
+/**
+ * Hold `next` (from this keydown `e`) until its wait runs out (heldKeyWaitMs) — then it acts, unless something took the
+ * keyboard meanwhile (a click into the chat: no map under it), and stays remembered as `acted` until TAKE_BACK_MS (a
+ * slow second key can still take it back, stepHeld).
+ */
+function holdKey(next: HeldKey, e: KeyboardEvent): void {
+  dropHeld();
+  held = next;
+  heldEvent = e;
+  heldTimer = setTimeout(() => {
+    const h = held;
+    const ev = heldEvent;
+    dropHeld();
+    if (!h || !ev || isUiCaptured()) return;
+    fanOut(h.action, ev);
+    if (subscribers.length > 0) held = { ...h, acted: true };
+  }, heldKeyWaitMs(next.action));
+}
+
 /** The single shared window handler (keydown + keyup). */
 function handleKey(e: KeyboardEvent): void {
   // Only keydown / keyup are ever registered here, so `type` is one of the two.
@@ -300,12 +453,17 @@ function handleKey(e: KeyboardEvent): void {
   // our own preventDefault must not make the action vanish.
   const action = resolveHotkey(e as KeyLike, uiCaptured, followsConsonant(prevKey, now));
   prevKey = trackKey(prevKey, e as KeyLike, uiCaptured, now);
+  const step = stepHeld(held, e as KeyLike, action, uiCaptured, now);
+  if (step.held !== held) {
+    if (step.held === null) dropHeld();
+    else holdKey(step.held, e);
+  }
+  // The key's OWN action decides the default: a held M cancels nothing, and neither does the typeToChat it may turn into
+  // (the letter must land in the field), while the Enter that follows a held M still does.
   if ((action && hotkeyPreventsDefault(action)) || keydownCancelsDefault(e as KeyLike, uiCaptured)) {
     e.preventDefault();
   }
-  if (!action) return;
-  // Snapshot: a subscriber may unsubscribe (or subscribe) while we fan out.
-  for (const s of subscribers.slice()) s.fn(action, e);
+  for (const a of step.out) fanOut(a, e);
 }
 
 /**
@@ -317,6 +475,7 @@ export function onHotkey(fn: HotkeyListener): () => void {
   const entry = { fn };
   if (subscribers.length === 0) {
     prevKey = null;
+    dropHeld();
     window.addEventListener("keydown", handleKey);
     window.addEventListener("keyup", handleKey);
   }
@@ -326,6 +485,7 @@ export function onHotkey(fn: HotkeyListener): () => void {
     if (i === -1) return; // already disposed
     subscribers.splice(i, 1);
     if (subscribers.length === 0) {
+      dropHeld(); // a world torn down never opens a map afterwards
       window.removeEventListener("keydown", handleKey);
       window.removeEventListener("keyup", handleKey);
     }
