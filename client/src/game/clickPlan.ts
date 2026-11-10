@@ -18,14 +18,18 @@
  *     foot, under a bench) moves out to the nearest free point when that is within MAX_PUSH; anything deeper (the
  *     creek's banks, the fountain's basin, past the area's edge) is refused. A raised surface is never moved.
  *  3. The walk there is simulated: the same straight steer, collision slide, bounds clamp and no-progress release as
- *     LocalPlayer + stepClickMove. Arriving, the ring goes on the click. Stopped on the way (a bench, a wall, the creek
- *     bank in between), the ring goes where the avatar will stop — the walk to that spot is checked to arrive too. One
- *     that cannot get going (MIN_TRIP) is refused. So the ring is never shown where the avatar will not go.
- *  4. And the player must see the ring (requireSeen; round 3 review: the stop under a cherry's crown, the stop 18-25 m
- *     along the creek bank off the screen, the lawn seen through a pinhole in a crown — each walked with a ring nobody
- *     could see, the very "동그라미가 안 나타남" this is about). The CameraRig measures how much of the ring would reach
- *     the screen from the camera (clickPick.ts ringView); too little, or its centre off the screen, and the click does
- *     nothing at all.
+ *     LocalPlayer + stepClickMove. Arriving (a slide round a bench or a corner included), the ring goes on the click.
+ *     Not arriving (a bench square in the way, a wall, the creek in between), the ring goes where the straight walk
+ *     toward the click first meets the obstacle (WalkResult.contact) and the avatar walks there — straight toward the
+ *     cursor, stopping at the obstacle, the ring on its way to the cursor. Not where the slide would end: across the
+ *     creek that carried the stop 18-25 m along the bank, off the screen, and walked the avatar 17.7 m away from where
+ *     the player was looking (round 3 review). The walk to that spot is checked to arrive too. One that cannot get going
+ *     (MIN_TRIP: already against the obstacle) is refused. So the ring is never shown where the avatar will not go.
+ *  4. And the player must see the ring (requireSeen; round 3 review: the stop under a cherry's crown, the stop off the
+ *     screen, the lawn seen through a pinhole in a crown — each walked with a ring nobody could see, the very
+ *     "동그라미가 안 나타남" this is about). The CameraRig measures how much of the ring would reach the screen from the
+ *     camera (clickPick.ts ringView); too little, or its centre off the screen, and the click does nothing at all: no
+ *     ring and no walk, as for a click on a wall.
  *
  * Other players are not in the simulation (they move): one in the way still stops the walk early, and the
  * no-progress rule releases it as before.
@@ -171,6 +175,11 @@ export interface WalkResult {
   x: number;
   z: number;
   arrived: boolean;
+  /**
+   * Where the straight walk first met something (a collider's grown face, the area's edge): the body after the first
+   * step the slide or the clamp changed. Null when nothing ever changed a step (it arrived straight, or ran out of time).
+   */
+  contact: { x: number; z: number } | null;
 }
 
 /**
@@ -204,24 +213,33 @@ export function simulateWalk(
   let anchorX = x;
   let anchorZ = z;
   let windowSec = 0;
+  let contact: { x: number; z: number } | null = null;
   for (let i = 0; i < maxSteps; i++) {
     const dx = toX - x;
     const dz = toZ - z;
     const len = Math.hypot(dx, dz);
-    if (len < ARRIVE_DIST) return { x, z, arrived: true };
+    if (len < ARRIVE_DIST) return { x, z, arrived: true, contact };
     windowSec += Math.min(SIM_DT, STUCK_STEP_MAX_SEC);
     if (windowSec >= STUCK_WINDOW_SEC) {
-      if (Math.hypot(x - anchorX, z - anchorZ) < STUCK_MIN_DIST) return { x, z, arrived: false };
+      if (Math.hypot(x - anchorX, z - anchorZ) < STUCK_MIN_DIST) return { x, z, arrived: false, contact };
       anchorX = x;
       anchorZ = z;
       windowSec = 0;
     }
-    const next = resolveCollision(x, z, (dx / len) * step, (dz / len) * step, r, near);
-    x = Math.min(Math.max(next.x, bounds.minX + r), bounds.maxX - r);
-    z = Math.min(Math.max(next.z, bounds.minZ + r), bounds.maxZ - r);
+    const sx = (dx / len) * step;
+    const sz = (dz / len) * step;
+    const next = resolveCollision(x, z, sx, sz, r, near);
+    const nx = Math.min(Math.max(next.x, bounds.minX + r), bounds.maxX - r);
+    const nz = Math.min(Math.max(next.z, bounds.minZ + r), bounds.maxZ - r);
+    if (!contact && Math.hypot(nx - (x + sx), nz - (z + sz)) > CONTACT_EPS) contact = { x: nx, z: nz };
+    x = nx;
+    z = nz;
   }
-  return { x, z, arrived: false };
+  return { x, z, arrived: false, contact };
 }
+
+/** A step the slide or the clamp moved by more than this (m) met something (simulateWalk's `contact`). */
+const CONTACT_EPS = 1e-6;
 
 /**
  * Why a click takes no walk (for the dev hook and the tests). "here": the ground at the avatar's own feet — that one
@@ -292,11 +310,13 @@ export function planClickMove(
   }
   const walk = simulateWalk(fromX, fromZ, spot.x, spot.z, obstacles, bounds);
   if (walk.arrived) return { ok: true, x: spot.x, z: spot.z, y: surface.y, adjusted: pushed ? "pushed" : "none" };
-  // Stopped on the way: the ring goes where the avatar stops — when that is a real trip and the walk to it arrives.
-  if (Math.hypot(walk.x - fromX, walk.z - fromZ) < MIN_TRIP) return { ok: false, reason: "unreachable" };
-  const again = simulateWalk(fromX, fromZ, walk.x, walk.z, obstacles, bounds);
+  // Stopped on the way: the ring goes where the straight walk toward the click meets the obstacle (rule 3) — when that
+  // is a real trip and the walk to it arrives.
+  const stop = walk.contact ?? walk;
+  if (Math.hypot(stop.x - fromX, stop.z - fromZ) < MIN_TRIP) return { ok: false, reason: "unreachable" };
+  const again = simulateWalk(fromX, fromZ, stop.x, stop.z, obstacles, bounds);
   if (!again.arrived) return { ok: false, reason: "unreachable" };
-  return { ok: true, x: walk.x, z: walk.z, y: surface.y, adjusted: "stopped" };
+  return { ok: true, x: stop.x, z: stop.z, y: surface.y, adjusted: "stopped" };
 }
 
 /**

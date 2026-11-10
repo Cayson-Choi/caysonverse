@@ -395,27 +395,33 @@ export function CameraRig({ pose, orbit, seat, fogRange = LEGACY_FOG, far: baseF
             e.pointerType === "touch" ? TAP_MAX_PX : CLICK_MAX_PX,
           )
         ) {
-          const t0 = performance.now();
-          const pick = pickAt(e.clientX, e.clientY);
-          const plan = planFor(pick, t0);
-          const intent = clickIntent(plan); // walk there / stop here (own feet) / nothing (a wall, a body, the sky...)
           // Which half is the look half follows the left-handed setting — the SAME store
           // field TouchJoystick's prop comes from (WorldScene), so the stick half and
           // the look half can never overlap or leave a gap.
           const leftHanded = useSettingsStore.getState().settings.leftHanded;
-          if (e.pointerType === "touch" && isLookHalf(e.clientX, window.innerWidth, leftHanded)) {
-            // Look half: wait for a possible second tap. Two taps recenter the
-            // camera; one tap walks after DOUBLE_TAP_MS (planned on what the
-            // finger actually touched, not wherever the camera is by then), its
-            // ring showing from the tap on. The world can change during that
-            // wait, so the walk is re-checked when it fires (overview opened, chat
-            // took the keyboard, the player sat down meanwhile — see canTapWalk).
-            const tap: TapRecord = { t: performance.now(), x: e.clientX, y: e.clientY };
+          const lookTap = e.pointerType === "touch" && isLookHalf(e.clientX, window.innerWidth, leftHanded);
+          // A look-half tap is timed by its lift (the event's own time), before any pick: a busy page must not
+          // push a second tap past the double-tap window by the time the first one's pick took (round 3
+          // merge test: a phone under load lost its double tap — a walk instead of a recenter).
+          const tap: TapRecord | null = lookTap ? { t: e.timeStamp > 0 ? e.timeStamp : performance.now(), x: e.clientX, y: e.clientY } : null;
+          if (tap && isDoubleTap(lastTap, tap)) {
+            // The second tap of a double tap: the camera swings back behind the body — no pick, no walk.
             clearPendingWalk();
-            if (isDoubleTap(lastTap, tap)) {
-              lastTap = null;
-              requestRecenter(pose.yaw);
-            } else {
+            lastTap = null;
+            requestRecenter(pose.yaw);
+          } else {
+            const t0 = performance.now();
+            const pick = pickAt(e.clientX, e.clientY);
+            const plan = planFor(pick, t0);
+            const intent = clickIntent(plan); // walk there / stop here (own feet) / nothing (a wall, a body, the sky...)
+            if (tap) {
+              // Look half: wait for a possible second tap. Two taps recenter the
+              // camera; one tap walks after DOUBLE_TAP_MS (planned on what the
+              // finger actually touched, not wherever the camera is by then), its
+              // ring showing from the tap on. The world can change during that
+              // wait, so the walk is re-checked when it fires (overview opened, chat
+              // took the keyboard, the player sat down meanwhile — see canTapWalk).
+              clearPendingWalk();
               lastTap = tap;
               if (intent !== "ignore") {
                 const seatedAtTap = seat.index >= 0;
@@ -436,11 +442,11 @@ export function CameraRig({ pose, orbit, seat, fogRange = LEGACY_FOG, far: baseF
                   else clearPendingClick();
                 }, DOUBLE_TAP_MS);
               }
+            } else if (plan.ok) {
+              setClickTarget(plan.x, plan.z, plan.y); // 벽·사람·하늘·갈 수 없는 곳은 무시 (clickPlan.ts)
+            } else if (intent === "stop") {
+              clearClickTarget(); // 내 발밑: 그 자리에 멈춤
             }
-          } else if (plan.ok) {
-            setClickTarget(plan.x, plan.z, plan.y); // 벽·사람·하늘·갈 수 없는 곳은 무시 (clickPlan.ts)
-          } else if (intent === "stop") {
-            clearClickTarget(); // 내 발밑: 그 자리에 멈춤
           }
         }
       }

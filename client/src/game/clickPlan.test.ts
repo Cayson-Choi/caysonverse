@@ -263,3 +263,44 @@ describe("clickPlan — a walk needs a ring the player can see (round 3 review: 
     expect(requireSeen(refused, { onScreen: false, seen: 0 })).toBe(refused);
   });
 });
+
+describe("clickPlan — a walk that cannot arrive stops where it meets the obstacle, toward the click (round 3 review: the creek)", () => {
+  it("a long wall crossed at a slant: the ring is where the straight walk meets it, not 15 m along it where the slide ends", () => {
+    const wall: AABB = { minX: -19, maxX: 19, minZ: -3, maxZ: -2.5 };
+    const raw = simulateWalk(0, 0, 16, -8, [wall], BOUNDS);
+    expect(raw.arrived).toBe(false);
+    expect(raw.x).toBeGreaterThan(12); // the slide along the wall's face ends near the click's x
+    const plan = planClickMove(0, 0, ground(16, -8), [wall], BOUNDS);
+    expect(plan.ok && plan.adjusted).toBe("stopped");
+    if (!plan.ok) return;
+    expect(plan.z).toBeCloseTo(-2.5 + R, 6); // at the wall's grown face...
+    expect(plan.x).toBeCloseTo((16 * (2.5 - R)) / 8, 1); // ...on the line from the avatar to the click
+    expect(simulateWalk(0, 0, plan.x, plan.z, [wall], BOUNDS).arrived).toBe(true);
+  });
+
+  it("simulateWalk reports the first contact (null when nothing was in the way)", () => {
+    expect(simulateWalk(0, 0, 5, 5, [], BOUNDS).contact).toBeNull();
+    const c = simulateWalk(0, 6, 0, -6, [BOX], BOUNDS).contact!;
+    expect(c.x).toBeCloseTo(0, 6);
+    expect(c.z).toBeCloseTo(1 + R, 6);
+  });
+
+  it("the real creek: the lawn across it seen from the bridge's head puts the ring on the near bank toward it, not 18 m along it", () => {
+    const obstacles = villageGeometry.obstacles;
+    const village = VILLAGE_LAYOUT.areas.village;
+    const from = { x: -24, z: 66 };
+    const click = ground(-43.6, 92.8, 0.001);
+    const raw = simulateWalk(from.x, from.z, click.x, click.z, obstacles, village);
+    expect(Math.hypot(raw.x - from.x, raw.z - from.z)).toBeGreaterThan(15); // where the slide along the bank ends
+    const plan = planClickMove(from.x, from.z, click, obstacles, village);
+    expect(plan.ok && plan.adjusted).toBe("stopped");
+    if (!plan.ok) return;
+    expect(plan.z).toBeLessThan(69); // the near bank (the creek's collider starts at z = 69)
+    expect(Math.hypot(plan.x - from.x, plan.z - from.z)).toBeLessThan(4);
+    // on the line toward the click: the sideways offset from it is a step at most
+    const ux = click.x - from.x;
+    const uz = click.z - from.z;
+    const off = Math.abs((plan.x - from.x) * uz - (plan.z - from.z) * ux) / Math.hypot(ux, uz);
+    expect(off).toBeLessThan(0.1);
+  });
+});
