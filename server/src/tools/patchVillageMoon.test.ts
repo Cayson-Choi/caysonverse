@@ -318,5 +318,5 @@ describe("patchVillageMoon: the crescent replaced in a village.glb, nothing else
     const dry = run(src, "--dry");
     expect(dry.status, dry.stderr).toBe(0);
     expect(fs.readFileSync(src).equals(glb)).toBe(true);
-  });
+  }, 30_000); // three node processes, each loading Draco: well over the 5 s default when the machine is busy
 });
