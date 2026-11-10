@@ -91,6 +91,15 @@ export function exitFp(orbit: Orbit): void {
   syncButton();
 }
 
+/**
+ * The body yaw (pose.yaw, which other players see) of a first-person player looking along `fpYaw`: facing the view.
+ * The look yaw is the camera's azimuth (as orbit.yaw), half a turn from the facing — the third-person camera sits
+ * right behind a body facing this (recenterYaw), so a V toggle turns nothing.
+ */
+export function fpBodyYaw(fpYaw: number): number {
+  return normalizeAngle(fpYaw + Math.PI);
+}
+
 /** Toggle between modes (V key / 👁 button). Reads/writes orbit.yaw for seeding. */
 export function toggleViewMode(orbit: Orbit): void {
   if (viewState.mode === "tp") enterFp(orbit.yaw);

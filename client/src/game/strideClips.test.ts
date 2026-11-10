@@ -17,7 +17,8 @@ import { LOOP_STRIDE, createLoopDriver, loopRate, stepLoop, type LoopStride } fr
  * Contact: a vertex of a foot is on the ground while it is within BAND of that foot's lowest point over the BASE loop
  * (Walking_A / Running_A). The skirt variants keep the base timing but not its feet (the short-skirt walk lifts the
  * stance foot, the long-skirt run never touches the ground), so they are judged over the base loop's contacts: what
- * their feet do while the base loop's feet are down.
+ * their feet do while the base loop's feet are down. Their own lowest points are art defects, not steps (pinned
+ * below: when the art is fixed those tests fail, and the variants should then be measured over their own contacts).
  *
  * Natural speed: with the loop's own warp, the ground speed at which those contacting sole points slide least (the
  * summed world path of every contacting vertex over one loop). A rolling foot's contact points never all move alike,
@@ -268,10 +269,13 @@ describe("the stride table (stride.ts) against character.glb", () => {
 const FAMILIES: [string, string, string][] = [
   ["pants", CLIP.walk, CLIP.run],
   ["skirt / petal_skirt", "Walking_A_ShortSkirt", "Running_A_ShortSkirt"],
-  ["longskirt", "Walking_A_LongSkirt", "Running_A_LongSkirt"],
 ];
+const LONG_WALK = "Walking_A_LongSkirt";
+const LONG_RUN = "Running_A_LongSkirt";
 const rateOf = (s: LoopStride, v: number) => (phase: number) => loopRate(s, v, phase);
 const even = (scale: number) => () => scale;
+/** The fastest ground speed (m/s, up to `v`) loop `name` plants its feet at: its rate ceiling's (the long skirt's). */
+const plantedUpTo = (name: string, v: number) => Math.min(v, (LOOP_STRIDE[name].maxScale ?? Infinity) * LOOP_STRIDE[name].speed);
 
 describe("feet that stay put at the game's speeds (what the avatars do with the table)", () => {
   it.each(FAMILIES)("%s: walking at MOVE_SPEED and running at RUN_SPEED, the soles on the ground barely slip", (_label, walk, run) => {
@@ -284,14 +288,81 @@ describe("feet that stay put at the game's speeds (what the avatars do with the 
 
   it.each(WALKS)("%s: the warp slips less than the best even rate could", (walk) => {
     const m = measure(walk);
+    const v = plantedUpTo(walk, MOVE_SPEED);
     let best = Infinity;
-    for (let scale = 0.5; scale <= 6; scale += 0.02) best = Math.min(best, m.slip(MOVE_SPEED, even(scale)));
-    expect(m.slip(MOVE_SPEED, rateOf(LOOP_STRIDE[walk], MOVE_SPEED))).toBeLessThan(0.85 * best);
+    for (let scale = 0.5; scale <= 6; scale += 0.02) best = Math.min(best, m.slip(v, even(scale)));
+    expect(m.slip(v, rateOf(LOOP_STRIDE[walk], v))).toBeLessThan(0.85 * best);
   }, 30000);
 
   // The bug: every loop played at rate 1 under the old 4 m/s walk and the 6.4 m/s run.
   it.each(FAMILIES)("%s: the old playback slipped over 2.5x as much", (_label, walk, run) => {
     expect(measure(walk).slip(4, even(1))).toBeGreaterThan(2.5 * measure(walk).slip(MOVE_SPEED, rateOf(LOOP_STRIDE[walk], MOVE_SPEED)));
     expect(measure(run).slip(RUN_SPEED, even(1))).toBeGreaterThan(2.5 * measure(run).slip(RUN_SPEED, rateOf(LOOP_STRIDE[run], RUN_SPEED)));
+  }, 30000);
+
+  // Review 2026-11-10: the long skirt's loops are capped to the other looks' pace (stride.ts LOOP_STRIDE), its feet
+  // hidden under the hem. They are planted up to the cap's speed and slip some above it — still less than before.
+  it("longskirt: planted up to its rate ceiling; capped at the game speeds, it slips some, less than the old playback", () => {
+    for (const [name, v, old, slip] of [
+      [LONG_WALK, MOVE_SPEED, 4, 0.2],
+      [LONG_RUN, RUN_SPEED, RUN_SPEED, 0.12],
+    ] as const) {
+      const m = measure(name);
+      const s = LOOP_STRIDE[name];
+      expect(plantedUpTo(name, v)).toBeLessThan(v); // capped below the game speed
+      expect(m.slip(plantedUpTo(name, v), rateOf(s, plantedUpTo(name, v)))).toBeLessThan(slip);
+      const capped = m.slip(v, rateOf(s, v));
+      expect(capped).toBeLessThan(0.5);
+      expect(capped).toBeLessThan(m.slip(old, even(1)));
+    }
+  }, 30000);
+});
+
+/** Lowest point (m) of each foot of `name` per sample, above that foot's ground in the base loop. */
+function heightOverBaseGround(name: string): { base: Float32Array[]; lift: number[][] } {
+  const base = sampleFeet(baseOf(name));
+  const clip = sampleFeet(name);
+  const ground = [Infinity, Infinity];
+  for (const p of base.pos) for (let i = 0; i < side.length; i++) if (side[i] >= 0) ground[side[i]] = Math.min(ground[side[i]], p[i * 3 + 1]);
+  const lift = clip.pos.map((p) => {
+    const low = [Infinity, Infinity];
+    for (let i = 0; i < side.length; i++) if (side[i] >= 0) low[side[i]] = Math.min(low[side[i]], p[i * 3 + 1]);
+    return [low[0] - ground[0], low[1] - ground[1]];
+  });
+  return { base: base.pos, lift };
+}
+
+/** Over the samples the base loop has foot `s` down (within BAND), the variant's lift of that foot (m). */
+function liftWhileBaseDown(name: string): number[] {
+  const { base, lift } = heightOverBaseGround(name);
+  const baseLow = heightOverBaseGround(baseOf(name)).lift;
+  const out: number[] = [];
+  for (let k = 0; k < base.length; k++) for (const s of [0, 1]) if (baseLow[k][s] <= BAND) out.push(lift[k][s]);
+  return out;
+}
+
+// Review 2026-11-10 (the fairy look): the skirt variants are judged over the BASE loop's contacts because their own
+// feet do not meet the ground where steps would. These are art defects of character.glb, not something a playback rate
+// can fix; they are pinned so a re-export that fixes them fails here, and the variants are then re-measured over
+// their own contacts.
+describe("the skirt variants' own feet (art; why the table judges them over the base loop's contacts)", () => {
+  it("the short-skirt walk lifts its planted foot off the ground in mid-stance (about 5 cm)", () => {
+    expect(Math.max(...liftWhileBaseDown("Walking_A_ShortSkirt"))).toBeGreaterThan(0.03);
+  }, 30000);
+
+  it("the long-skirt walk's feet hover over the base loop's ground while it is down", () => {
+    expect(median(liftWhileBaseDown(LONG_WALK))).toBeGreaterThan(0.02);
+  }, 30000);
+
+  it("the short-skirt run's feet are lowest while swinging: its planted foot stays up, the swinging one scuffs below it", () => {
+    const planted = median(liftWhileBaseDown("Running_A_ShortSkirt"));
+    const { lift } = heightOverBaseGround("Running_A_ShortSkirt");
+    expect(planted).toBeGreaterThan(0.015);
+    expect(Math.min(...lift.flat())).toBeLessThan(planted - 0.015);
+  }, 30000);
+
+  it("the long-skirt run's feet never reach the ground", () => {
+    const { lift } = heightOverBaseGround(LONG_RUN);
+    expect(Math.min(...lift.flat())).toBeGreaterThan(0);
   }, 30000);
 });

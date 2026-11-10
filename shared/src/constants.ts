@@ -27,8 +27,8 @@ export const PATCH_RATE_MS = 100;
 
 /**
  * Walk speed in meters/second. 발주자(2026-11-10): 4 → 2 m/s, so the walk cycle's steps carry the body instead of
- * the body sliding over stepping feet. The toy's legs (hip to ankle 0.37 m) reach about 0.38 m per step: a walk
- * that keeps its feet planted at 4 m/s would need over 10 steps a second, at 2 m/s about 5 (client stride.ts plays
+ * the body sliding over stepping feet. The toy's legs (hip to ankle 0.37 m) reach about 0.49 m per step: a walk
+ * that keeps its feet planted at 4 m/s would need about 8 steps a second, at 2 m/s about 4 (client stride.ts plays
  * the walk loop at the rate that matches). Getting around takes longer; running is unchanged (RUN_SPEED).
  */
 export const MOVE_SPEED = 2;

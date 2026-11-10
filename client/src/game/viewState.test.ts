@@ -16,11 +16,13 @@ import {
   endSeatCamera,
   dropOverview,
   exitOverview,
+  fpBodyYaw,
 } from "./viewState";
 import { HALL_ACTIVE_MAP, LEGACY_ACTIVE_MAP, VILLAGE_ACTIVE_MAP, setActiveMap } from "./activeMap";
 import { recenterYaw } from "./cameraControls";
 import { SEAT_YAW } from "@caysonverse/shared/worldMap";
 import { normalizeAngle } from "./yaw";
+import { worldDirection } from "./input";
 import { useViewStore } from "../stores/viewStore";
 import { BLEND_SEC, OV_BLEND_SEC } from "./viewMode";
 import type { Orbit } from "./types";
@@ -95,6 +97,27 @@ describe("viewState — yaw seeding continuity (wrap-safe, both directions)", ()
     expect(o.pitch).toBe(0.8);
     expect(o.distance).toBe(11);
     expect(o.yaw).toBeCloseTo(0.5, 6); // seeded back from the (unchanged) fpYaw
+  });
+});
+
+describe("viewState — the first-person body faces the view (fpBodyYaw)", () => {
+  // Bug found 2026-11-10 (walk foot-slide review): the FP body yaw was the look yaw itself, which faces the OTHER way
+  // (orbit / look yaw is the camera's azimuth, recenterYaw). Other players saw a first-person walker going backward
+  // with its walk cycle stepping forward — the worst foot slide of all.
+  it("faces where W walks, at every look yaw", () => {
+    for (const fpYaw of [0, 0.7, -2.4, Math.PI, 3.1]) {
+      const body = fpBodyYaw(fpYaw);
+      const w = worldDirection({ forward: 1, right: 0 }, fpYaw);
+      expect(Math.sin(body)).toBeCloseTo(w.x, 9);
+      expect(Math.cos(body)).toBeCloseTo(w.z, 9);
+      expect(Math.abs(body)).toBeLessThanOrEqual(Math.PI);
+    }
+  });
+
+  it("is the facing the third-person camera sits right behind (no turn across a V toggle)", () => {
+    for (const fpYaw of [0, 1.2, -2.9]) {
+      expect(normalizeAngle(recenterYaw(fpBodyYaw(fpYaw)) - fpYaw)).toBeCloseTo(0, 9);
+    }
   });
 });
 

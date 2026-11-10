@@ -22,7 +22,17 @@ import { readIntent, worldDirection } from "./input";
 import type { Intent, MoveInput } from "./input";
 import { gaitClip, gaitFor, moveSpeed } from "./gait";
 import type { Gait } from "./gait";
-import { createLoopDriver, handoverTime, lookStride, loopFade, loopTimeScale, stepLoop } from "./stride";
+import {
+  alongFacing,
+  createLoopDriver,
+  handoverTime,
+  lookStride,
+  loopFade,
+  loopSpeed,
+  loopTimeScale,
+  stepFacing,
+  stepLoop,
+} from "./stride";
 import {
   stepClickMove,
   dirToIntent,
@@ -43,7 +53,7 @@ import {
   publishLocalJump,
   resetLocalJump,
 } from "./jump";
-import { beginSeatCamera, endSeatCamera, viewState } from "./viewState";
+import { beginSeatCamera, endSeatCamera, fpBodyYaw, viewState } from "./viewState";
 import { HIDE_BLEND, OV_VIS_BLEND } from "./viewMode";
 import { clipFor, lookFromAppearance } from "./characterLook";
 import { reportAvatarClip, useAvatar } from "./useAvatar";
@@ -54,7 +64,7 @@ import { bubbleRestHeight, nametagRestHeight } from "./nametagLayout";
 import { isLocalTeacher } from "./ownNametag";
 import { useSpeechBubble } from "./useSpeechBubble";
 import { useEmoji } from "./useEmoji";
-import { normalizeAngle, stepYaw } from "./yaw";
+import { stepYaw } from "./yaw";
 import { createMoveSender } from "./moveSender";
 import { installDebugHook } from "./debug";
 import { ANIM_FADE, CLIP, MODEL_FACING_OFFSET, TURN_SPEED } from "./constants";
@@ -130,6 +140,9 @@ export function LocalPlayer({
   // jump) owns the body; the loco step below puts a loop back on.
   const loopRef = useRef<Gait | null>("idle");
   const driveRef = useRef(createLoopDriver());
+  // The walk / run loop fading out after a walk <-> run switch, and how long (s) it still shows: it keeps following
+  // the ground speed while it does (a stop freezes it instead, and a one-shot leaves it be).
+  const fadingRef = useRef<{ loop: Gait; left: number } | null>(null);
   // Seating anim state machine (v2 Task 1). `loco` = normal walk/idle; `sitDown`
   // and `standUp` are one-shot transient clips; `sitIdle` is the held seated pose.
   const animStateRef = useRef<"loco" | "sitDown" | "sitIdle" | "standUp">("loco");
@@ -288,9 +301,10 @@ export function LocalPlayer({
 
   /**
    * Hand the body from the loop on it (fading out; none while a one-shot had it) to loop `to` (fading in) at ground
-   * speed `speed` (m/s), and report the clip. A walk / run loop starts on the step the outgoing one was on (or, from
-   * standing, with its left foot planted) at the rate that keeps that foot still (stride.ts). Stopping freezes the
-   * outgoing loop: the body stands still from this frame on, so its feet do too while they fade out.
+   * speed `speed` (m/s; negative backing up — stride.ts loopSpeed), and report the clip. A walk / run loop starts on
+   * the step the outgoing one was on (or, from standing, with its left foot planted) at the rate that keeps that foot
+   * still (stride.ts). Stopping freezes the outgoing loop: the body stands still from this frame on, so its feet do too
+   * while they fade out; an outgoing walk / run loop keeps following the speed while it fades (the loco step).
    */
   function switchLoop(to: Gait, speed: number): void {
     const from = loopRef.current;
@@ -300,6 +314,7 @@ export function LocalPlayer({
       out.fadeOut(fade);
       if (to === "idle") out.timeScale = 0;
     }
+    fadingRef.current = out && from !== "idle" && to !== "idle" ? { loop: from as Gait, left: fade } : null;
     loopRef.current = to;
     const loop = action(gaitClip(to));
     if (!loop) return;
@@ -320,6 +335,7 @@ export function LocalPlayer({
   function releaseLoop(fade: number): void {
     if (loopRef.current !== null) action(gaitClip(loopRef.current))?.fadeOut(fade);
     loopRef.current = null;
+    fadingRef.current = null;
   }
 
   /** Play the one-shot clip `base` (clamped on its last frame); returns its duration (s). */
@@ -633,6 +649,8 @@ export function LocalPlayer({
     // slower (or 0). The loop on the body and its rate follow it (stride.ts). A server correction moves the pose
     // elsewhere in the frame, never in this step, so it is no step of the feet.
     let groundSpeed = 0;
+    let movedX = 0;
+    let movedZ = 0;
     if (moving) {
       const dir = worldDirection(intent, activeYaw);
       const speed = moveSpeed(run);
@@ -653,7 +671,9 @@ export function LocalPlayer({
       const bounds = activeBounds(); // the area the player is in (케이슨 마을: not the rectangle spanning both areas)
       pose.x = clamp(next.x, bounds.minX + PLAYER_RADIUS, bounds.maxX - PLAYER_RADIUS);
       pose.z = clamp(next.z, bounds.minZ + PLAYER_RADIUS, bounds.maxZ - PLAYER_RADIUS);
-      if (delta > 0) groundSpeed = Math.hypot(pose.x - fromX, pose.z - fromZ) / delta;
+      movedX = pose.x - fromX;
+      movedZ = pose.z - fromZ;
+      if (delta > 0) groundSpeed = Math.hypot(movedX, movedZ) / delta;
       if (!inFp) {
         // TP + overview: the (visible) body turns smoothly toward the movement dir.
         // FP never turns the view for movement — A/D strafe, S backs up, and the
@@ -662,30 +682,40 @@ export function LocalPlayer({
         pose.yaw = stepYaw(pose.yaw, targetYaw, TURN_SPEED * delta);
       }
     }
-    // FP: the body yaw follows the look direction DIRECTLY (no TURN_SPEED lag),
-    // moving or standing — it is simply fpYaw. Network semantics are unchanged —
+    // FP: the body faces the look direction DIRECTLY (no TURN_SPEED lag), moving
+    // or standing — fpBodyYaw (the look yaw is the camera's azimuth, half a turn
+    // from the facing: it used to be copied as is, and other players saw a
+    // first-person walker going backward). Network semantics are unchanged —
     // yaw still reaches others only via move messages (moveSender fires on
     // movement); there is NO idle-yaw streaming, so rotating the view while
     // standing sends nothing.
-    if (inFp) pose.yaw = normalizeAngle(viewState.fpYaw);
+    if (inFp) pose.yaw = fpBodyYaw(viewState.fpYaw);
 
     placeGroup(group, animStateRef.current === "loco", suspended, currentSeatLift());
     group.rotation.y = pose.yaw + MODEL_FACING_OFFSET;
 
     // The loop on the body follows the ground speed: Idle / walk / run crossfades when the speed calls for another
-    // loop, and every frame the loop plays at the rate that keeps the foot on the ground still (stride.ts) — but only
+    // loop, and every frame the loop plays at the rate that keeps the foot on the ground still (stride.ts) — backward
+    // while the body backs up (first person: S), and a walk / run loop still fading out after a switch too — but only
     // in pure loco; the StandUp one-shot and an airborne hop own the body until they finish (and leave no loop on it,
     // so this puts one on).
     if (animStateRef.current === "loco" && jumpSeqRef.current === -1) {
       gaitRef.current = gait;
       const drive = driveRef.current;
       const loop = stepLoop(drive, loopRef.current ?? "idle", gait !== "idle", groundSpeed, delta);
-      if (loop !== loopRef.current) switchLoop(loop, drive.speed);
+      stepFacing(drive, alongFacing(movedX, movedZ, pose.yaw), delta);
+      const speed = loopSpeed(drive);
+      if (loop !== loopRef.current) switchLoop(loop, speed);
       else if (loop !== "idle") {
         const playing = action(gaitClip(loop));
-        if (playing) {
-          playing.timeScale = loopTimeScale(loop, drive.speed, stride, playing.time, playing.getClip().duration);
-        }
+        if (playing) playing.timeScale = loopTimeScale(loop, speed, stride, playing.time, playing.getClip().duration);
+      }
+      const fading = fadingRef.current;
+      if (fading) {
+        const out = action(gaitClip(fading.loop));
+        if (out) out.timeScale = loopTimeScale(fading.loop, speed, stride, out.time, out.getClip().duration);
+        fading.left -= delta;
+        if (fading.left <= 0) fadingRef.current = null;
       }
     }
 
