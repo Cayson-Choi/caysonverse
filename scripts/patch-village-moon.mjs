@@ -16,9 +16,9 @@
  *     stores an explicit grid as 6-decimal text: the values move by about 1e-6, a few hundredths of a step at most);
  *  2. adds (or, on a patched file, replaces) the node `fountain_moon`: one primitive of a dense crescent with a rounded rim
  *     (an elliptical cross-section all round, pointed tips), analytic normals and the atlas's pearl gradient as UV0;
- *  3. gives it the material `M_moon`: not light-mapped and not unlit — the game lights it live (sun or moon, the sky
- *     light) like the players, with a glaze reflection of the sky light and the fountain's lights at night
- *     (client/src/village/villageModelPrep.ts `moonMaterial`);
+ *  3. gives it the material `M_moon`: unlit like every village material, the atlas as its colour, no light map. The game
+ *     gives it the bake's own light on it as a smooth function of the normal (client/src/village/villageModelPrep.ts
+ *     `MOON_PROBE`, `moonMaterial`), so it keeps the old crescent's colours by day and night;
  *  4. checks the result against the input: every other primitive's Draco data, every image and every other JSON entry
  *     byte for byte, and the changed primitive's triangles (decoded, as steps on the input's grid) = the input's minus the
  *     crescent's, every value within 0.05 of a step of the input's. Exit 1 if not.
@@ -47,20 +47,28 @@ export const MOON = {
   nRing: 32, // segments around the cross-section
   arcBunch: 0.5, // 0..1: how much denser the segments are at the tips (where the band narrows fast)
 };
-/** The atlas's moon region (art/village/work/tex/atlas.json `regions.moon`, T_atlas 2048²) and an inset from its border. */
-export const MOON_ATLAS = { x: 1536, y: 0, w: 512, h: 512, size: 2048, inset: 0.01 };
 /**
- * The material: a glazed porcelain (the game adds the live light, villageModelPrep.ts). `color` (× the atlas's pearl
- * gradient) cools it a little: the live sky light's ground half is the lawns' yellow-green and the afternoon sun is
- * orange, which would turn the white moon ivory; the baked village around it is lit by a blue sky.
+ * The atlas's moon region (art/village/work/tex/atlas.json `regions.moon`, T_atlas 2048²) and an inset from its border:
+ * 1/20 of the region (26 px), so the mip levels a far crescent reads (down to the 32 px one) stay inside the region and
+ * never take in the dark window cell to its left or the banner below it.
  */
-export const MOON_MATERIAL = { name: "M_moon", roughness: 0.32, color: [0.85, 0.9, 1.0, 1] };
+export const MOON_ATLAS = { x: 1536, y: 0, w: 512, h: 512, size: 2048, inset: 0.05 };
+/**
+ * The material: unlit (KHR_materials_unlit, like every village material), the atlas's pearl gradient as it is. The game
+ * lights it with the bake's own light on it (villageModelPrep.ts `MOON_PROBE`).
+ */
+export const MOON_MATERIAL = { name: "M_moon", color: [1, 1, 1, 1] };
 export const MOON_NODE = "fountain_moon";
+const UNLIT = "KHR_materials_unlit";
 
 /**
  * The crescent's mesh: an outer circle R1, an inner circle R2 offset right and up; across the band (inner edge to outer
  * edge) an ellipse — u = (1 - cos φ) / 2 across, z = ±T/2 · sin φ through — so the rim is round all the way, and the
  * thickness T = 0.3 R1 · (w / w_max)^0.55 thins with the band's width w to a point at each tip.
+ * UV0 runs along the arc tip to tip (as the old crescent's did) and across the band by the distance across it, centred:
+ * the widest point spans the region, a tip only its middle. (Spanning the whole region at every width put the region's
+ * height into the last centimetres of each tip: the GPU then read a mip level a few texels wide there, which takes in
+ * the cells around the region and showed as a dark dotted line down the tips.)
  * Returns float64 arrays: positions, normals (unit, outward), uvs (glTF, into the atlas), indices (CCW from outside).
  */
 export function moonGeometry(o = MOON) {
@@ -129,6 +137,7 @@ export function moonGeometry(o = MOON) {
   for (let i = 1; i < nA; i++) {
     const t = i / nA;
     const mid = centreLine(t);
+    const span = local(t, 0)[5] / wMax; // the band's width here, as a share of its widest
     for (let j = 0; j < nR; j++) {
       const phi = (2 * Math.PI * j) / nR;
       const p = P(t, phi);
@@ -138,7 +147,7 @@ export function moonGeometry(o = MOON) {
       if (dot(n, sub(p, mid)) < 0) n = [-n[0], -n[1], -n[2]];
       pos.push(...p);
       nrm.push(...n);
-      tex.push(...uv(arcFrac(t), (1 - Math.cos(phi)) / 2));
+      tex.push(...uv(arcFrac(t), 0.5 + span * ((1 - Math.cos(phi)) / 2 - 0.5)));
     }
   }
   const tipIndex = [];
@@ -199,7 +208,7 @@ export function readGlb(buf) {
   return { json, bin };
 }
 
-function writeGlb(json, bin) {
+export function writeGlb(json, bin) {
   let js = Buffer.from(JSON.stringify(json), "utf8");
   js = Buffer.concat([js, Buffer.alloc((4 - (js.length % 4)) % 4, 0x20)]);
   const b = Buffer.concat([bin, Buffer.alloc((4 - (bin.length % 4)) % 4, 0)]);
@@ -244,7 +253,8 @@ function rebuildBin(json, bin, replace) {
 
 let D = null;
 let E = null;
-async function draco() {
+/** Load Draco's decoder and encoder (once). */
+export async function draco() {
   if (!D) D = await draco3d.createDecoderModule({});
   if (!E) E = await draco3d.createEncoderModule({});
   return { D, E };
@@ -258,7 +268,7 @@ const TYPE_OF = (name) =>
  * Decode a Draco primitive: per glTF attribute its float values, size and quantization (bits, origin, range — read with
  * the transform skipped), and the faces.
  */
-function decodeDraco(json, bin, prim) {
+export function decodeDraco(json, bin, prim) {
   const ext = prim.extensions[DRACO_EXT];
   const data = viewBytes(json, bin, ext.bufferView);
   const run = (skip) => {
@@ -315,7 +325,7 @@ function decodeDraco(json, bin, prim) {
  * { values (Float32Array, per point), size, quant: {bits, origin?, range?} | null }. An `origin` + `range` pins the
  * quantization grid (a re-encode then decodes to the same floats). Returns { bytes, ids: glTF name → Draco attribute id }.
  */
-function encodeDraco(attrs, faces, np) {
+export function encodeDraco(attrs, faces, np) {
   const mesh = new E.Mesh();
   const mb = new E.MeshBuilder();
   mb.AddFacesToMesh(mesh, faces.length / 3, faces);
@@ -482,9 +492,11 @@ export async function patchVillageMoon(input) {
       baseColorFactor: MOON_MATERIAL.color,
       baseColorTexture: { index: baseTex },
       metallicFactor: 0,
-      roughnessFactor: MOON_MATERIAL.roughness,
+      roughnessFactor: 1,
     },
+    extensions: { [UNLIT]: {} },
   };
+  if (!(json.extensionsUsed ?? []).includes(UNLIT)) json.extensionsUsed = [...(json.extensionsUsed ?? []), UNLIT];
   if (matIndex < 0) {
     matIndex = json.materials.length;
     json.materials.push(material);
@@ -575,7 +587,7 @@ async function verify(inputBuf, outBuf, changed) {
     textures: j.textures,
     samplers: j.samplers,
     images: j.images?.map((im) => ({ ...im, bufferView: undefined })),
-    extensionsUsed: j.extensionsUsed,
+    extensionsUsed: j.extensionsUsed?.filter((e) => e !== UNLIT), // the crescent's material may be the first unlit one
     extensionsRequired: j.extensionsRequired,
     sceneNodes: j.scenes.map((s) => s.nodes.filter((i) => j.nodes[i].name !== MOON_NODE).map((i) => j.nodes[i].name)),
     meshes: j.meshes.filter((_, i) => i !== moonMesh).map((m) => m.name),
