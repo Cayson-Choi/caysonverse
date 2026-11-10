@@ -214,7 +214,7 @@ async function installProbe(p) {
     let lastLeafy = false;
     /** After first(): the cut-out meshes it looked through at a gap (for the leaf-edge check). */
     let lastGaps = [];
-    function first(origin, dir, near, far, glass = false, fromCamera = false, throughFade = false) {
+    function first(origin, dir, near, far, glass = false, fromCamera = false, throughFade = false, withOwn = false) {
       ray.set(origin, dir);
       ray.camera = st().camera; // sprites (name tags) refuse a ray without it
       ray.near = near;
@@ -223,7 +223,7 @@ async function installProbe(p) {
       lastGaps = [];
       const drawn = new Map();
       for (const h of ray.intersectObjects(st().scene.children, true)) {
-        if (!shown(h.object) || inMarker(h.object) || isOwnLookedThrough(h.object)) continue;
+        if (!shown(h.object) || inMarker(h.object) || (!withOwn && isOwnLookedThrough(h.object))) continue;
         const mat = matOf(h);
         const tints = glass && mat && mat.visible !== false && mat.transparent && mat.opacity > 0.05 && !mat.isShadowMaterial && !h.object.isSprite && !h.object.isPoints && h.point.y > 0.15;
         if (!tints && seeThrough(h.object, mat)) continue;
@@ -385,7 +385,9 @@ async function installProbe(p) {
         const dir = new THREE.Vector3(x, rg.y, z).sub(cam);
         const dist = dir.length();
         dir.normalize();
-        const h = first(cam, dir, camera.near, dist + 0.2, true, gpu);
+        // the own body counts here as a body (it moves off the ring; the share it covers is drawn through it, fainter —
+        // where its colour is close to the ring's, as a blue shirt, the drawn share cannot tell it from the body)
+        const h = first(cam, dir, camera.near, dist + 0.2, true, gpu, false, true);
         // a line of sight through leaves: one pixel per sector cannot say how much of the sector they cover
         if (lastLeafy && (!h || h.dist < dist - 0.03 || h.fadeBand)) leafy += w;
         if (!h || h.dist >= dist - 0.03) continue;
@@ -1139,10 +1141,13 @@ async function villageCases(p) {
     }
     // the creek (z 72-78 at x = -6, its collider z 69-81) from its north bank
     await caseAt("creek_bed", ["top", -6, 77], [[0, 28], [-6, 50], [-6, 66]], Math.PI, 0.6, 5);
-    await caseAt("far_bank", ["top", -6, 85], [[-6, 66]], Math.PI);
     // round 4 review: the grass band at the water (inside the creek's collider) did nothing; the walk goes to the bank
     await caseAt("creek_nearband", ["low", -6, 69.5], [[-6, 66]], Math.PI, 0.5);
     await caseAt("beyond_bounds", ["top", -6, 105], [[-6, 66]], Math.PI, 0.25);
+    // across the creek: over the bridge to the click (round 4 review: the ring sat 2.6 m ahead, behind the avatar's
+    // back). Last of the creek cases: it leaves the avatar on the far bank, and the routes here cross no creek.
+    await caseAt("far_bank", ["top", -6, 85], [[-6, 66]], Math.PI);
+    await walkRoute(p, [[-24, 84], [-24, 66]]); // back over the bridge
     // the bridge (x -26..-22, z 72..78): its deck's crown is 13-15 cm up — the creek's only crossing must take a click
     await caseAt("bridge_deck", ["top", -24, 75], [[-12, 64], [-24, 46], [-24, 66]], Math.PI, 0.5, 6);
     // Round 3 review: walks whose ring nobody saw. The lawn past the bridge path's low stone wall: the walk stops at the
