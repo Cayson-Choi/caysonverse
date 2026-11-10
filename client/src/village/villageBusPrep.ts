@@ -1,18 +1,34 @@
-import { DoubleSide, MeshBasicMaterial, MeshPhysicalMaterial, MeshStandardMaterial, Vector3, type Material, type Object3D } from "three";
+import {
+  AddEquation,
+  Color,
+  CustomBlending,
+  DstColorFactor,
+  DoubleSide,
+  MeshBasicMaterial,
+  MeshPhysicalMaterial,
+  MeshStandardMaterial,
+  OneMinusSrcAlphaFactor,
+  Vector3,
+  type Material,
+  type Object3D,
+} from "three";
 import { VILLAGE_LAYOUT, type VillageLayout } from "@caysonverse/shared/village/villageLayout";
 import { COLLIDER_PREFIX, isMesh } from "../game/hub/hubModelPrep";
 import { LIGHTING } from "../game/sceneLighting";
 import { linearHex, type DayNightState } from "./dayNightBlend";
-import type { VillageTier } from "./villageModelPrep";
+import { VILLAGE_GROUND_DECAL, type VillageTier } from "./villageModelPrep";
 
 /**
  * 케이슨 마을's village bus (`village_bus.glb`, art/village/tools/build_bus.py): a 9 m low-floor midibus modelled by
  * script — the pure part, unit-tested with a hand-built node tree (villageBusPrep.test.ts).
  *
  * Unlike the village (unlit, light-mapped), the bus is lit live like the avatars: PBR materials under the scene's sun
- * and sky light, so it follows the time of day by itself. Its ground shadow is baked into the village's light maps (day
- * and night, under its real outline), so it stands on the road on both tiers; it does not cast a live shadow too (that
- * would double the baked one) but on the rich tier it takes the avatars' live shadows.
+ * and sky light, so it follows the time of day by itself. Its shadows on the road are baked, like the village's: the
+ * contact shadow under it and its shadow from the day bake's sun (bus review r3: the one in the village's light map is
+ * a faint smudge on the dark asphalt, and from above the bus threw none while the shelter and the trees did), both in
+ * its ground quad, on both tiers, the sun's by the day light map's weight. It casts no live shadow: the live sun follows
+ * the clock while the baked shadows keep the bake's afternoon, so a live one would point elsewhere (and it lay on the
+ * asphalt as a blue patch through the shadow floor). On the rich tier it takes the avatars' live shadows.
  *
  * The paint, chrome and glass reflect the sky: an analytic sky (zenith, horizon and ground colours by the reflected
  * direction's height, a dark band of tree tops and roofs just above the horizon, softened toward their average with
@@ -29,9 +45,16 @@ import type { VillageTier } from "./villageModelPrep";
  *    B metalness; emissive = what glows at night: lamps, LED dots, the lit cabin), double-sided;
  *  - `M_bus_glass`: tinted glass (alpha blended, see-through to the cabin);
  *  - `M_bus_led`: the three destination signs (dot patterns that read as nothing; lit by day too);
- *  - `M_bus_ground`: a quad on the road under the bus whose base colour is the darkness its body and tyres put on the
- *    road (ambient occlusion baked in Blender, sRGB-encoded: white = darkest): the contact shadow the village's light
- *    map is too coarse for (about 0.5 m a texel on the road). Drawn black through that map, before the glass.
+ *  - `M_bus_ground`: a quad on the road round the bus, 5 cm up (the village's ground decals' height, over every ground
+ *    layer: the road at 1 cm, the paving rings, the lawns, the forecourt's 3 cm), whose base colour
+ *    map carries, sRGB-encoded (three's decode gives the values themselves): in red the darkness its body and tyres put
+ *    on the road (ambient occlusion baked in Blender, 1 = darkest), the contact shadow the village's light map is too
+ *    coarse for (about 0.5 m a texel on the road); in green the night's white light on the ground (the low beams' pool
+ *    ahead, the lit cabin's through the windows and doors); in blue its shadow from the day bake's sun (azimuth 70°,
+ *    20° up, art/village/tools/look.json: the way the baked buildings' and trees' shadows point). Drawn first among the
+ *    transparent things in one pass: dst × (1 - darkness + light) (`GROUND_OUT`): the light pools light what is there,
+ *    the road's texture and albedo kept. The light tier draws straight to the canvas and blends in sRGB: its factors
+ *    are the rich tier's raised to 1/2.2 (`uBusGamma`), so both tiers show the same shadow and light.
  *
  * `prepareBus` works on a CLONE of the cached scene and makes its own materials (listed in `own`); the loader's stay as
  * they are, so `disposeBus` frees exactly what it made.
@@ -59,11 +82,29 @@ export const BUS_LOOK = {
   clearcoatRoughness: 0.25,
   /** The emissive map's strength at full night (headlamps and tail lamps, the DRL dots, the cabin's lights). */
   nightGlow: 1.7,
-  /** The destination signs: lit by day as real LED signs are, brighter at night. */
-  ledDay: 1.0,
-  ledNight: 1.6,
+  /**
+   * The destination signs: lit by day as real LED signs are, and bright (bus review r3: at 1.0 they read as faint dots
+   * on a grey panel; the side and rear signs sit behind the tinted windows, the front one has no tinted pane since);
+   * at night less, the glass passing more and the dark around them.
+   */
+  ledDay: 3.0,
+  ledNight: 1.5,
+  /** How see-through the glass is at full night: the lit cabin shows as it does in a real bus after dark. */
+  glassNightOpacity: 0.55,
   /** The contact shadow's darkness where the baked map is white (under the floor, at the tyres' contact). */
   groundShadow: 0.85,
+  /**
+   * The shadow from the day bake's sun at full day, where the map is fully shadowed (× the day light map's weight):
+   * about the baked shelter's on the sidewalk beside it (35-40 % darker).
+   */
+  sunShadow: 0.38,
+  /**
+   * The night's light pools at full night: where their map is 1 the ground takes this much more light than it has (× 1
+   * + this), and their colour (sRGB, warm white). Bus review r3: added as a colour (0.42) they lay over the road and
+   * the paving as a flat beige sheet.
+   */
+  groundGlow: 3.0,
+  groundGlowColor: "#FFF0DA",
 } as const;
 
 /** The reflected sky (linear): the village's afternoon — pale blue above, hazy at the horizon, grey-green ground. */
@@ -87,8 +128,13 @@ export interface BusNodes {
   body: MeshStandardMaterial | null;
   glass: MeshStandardMaterial | null;
   led: MeshStandardMaterial | null;
-  /** The contact shadow on the road (null in a file without one). */
+  /** The contact shadow and the night's light on the road (null in a file without one). */
   ground: MeshBasicMaterial | null;
+  /** The night's light on the ground and the sun's shadow now (its shader reads them; `applyBusDayNight` writes). */
+  groundGlow: { value: number };
+  groundSun: { value: number };
+  /** 1 on the rich tier (it blends in linear light), 1 / 2.2 on the light tier (in sRGB, on the canvas). */
+  groundGamma: { value: number };
   /** The sky reflection's strength on the paint and on the glass (their shaders read these; `applyBusDayNight` writes). */
   bodySky: { value: number };
   glassSky: { value: number };
@@ -207,16 +253,46 @@ function glassMaterial(source: MeshStandardMaterial): MeshStandardMaterial {
 }
 
 /**
- * The contact shadow: black through the baked darkness (the file's base colour map, sRGB-encoded so that three's
- * decode gives the darkness itself), on the road just under the bus, drawn first among the transparent things.
+ * The ground quad's output, written last (after three's tone mapping, colour space and fog: these are factors, not a
+ * colour): the darkness (alpha) is the contact shadow (red) and the sun's (blue) together, the night's light (green)
+ * is a factor on what is there: the blend (`DstColor`, `OneMinusSrcAlpha`) gives dst × (1 - alpha + light).
  */
-function groundMaterial(source: MeshStandardMaterial): MeshBasicMaterial {
-  const m = new MeshBasicMaterial({ color: 0x000000, transparent: true, depthWrite: false, opacity: BUS_LOOK.groundShadow });
+export const GROUND_OUT = /* glsl */ `vec4 busG = texture2D( map, vMapUv );
+float busKeep = ( 1.0 - busG.r * opacity ) * ( 1.0 - busG.b * uBusSun );
+gl_FragColor = vec4( pow( vec3( 1.0 ) + uBusGlowColor * busG.g * uBusGlow, vec3( uBusGamma ) ) - 1.0, 1.0 - pow( busKeep, uBusGamma ) );`;
+
+/**
+ * The contact shadow and the night's light pools: the file's map read by channel (GROUND_OUT), on the road round the
+ * bus, drawn first among the transparent things. The quad lies at the village's decal height and the material carries
+ * its offset (VILLAGE_GROUND_DECAL, stronger than every ground layer's): bus review r3 found the quad 1 cm UNDER the
+ * road, where the depth test hid it from most views (and at 2 cm it still hid under the paving's rings). No fog.
+ */
+function groundMaterial(source: MeshStandardMaterial, nodes: Pick<BusNodes, "groundGlow" | "groundSun" | "groundGamma">): MeshBasicMaterial {
+  const m = new MeshBasicMaterial({ transparent: true, depthWrite: false, opacity: BUS_LOOK.groundShadow });
   m.name = source.name;
-  m.alphaMap = source.map;
+  m.map = source.map;
+  m.fog = false;
+  m.toneMapped = false;
+  m.blending = CustomBlending;
+  m.blendEquation = AddEquation;
+  m.blendSrc = DstColorFactor;
+  m.blendDst = OneMinusSrcAlphaFactor;
   m.polygonOffset = true;
-  m.polygonOffsetFactor = -2;
-  m.polygonOffsetUnits = -2;
+  m.polygonOffsetFactor = VILLAGE_GROUND_DECAL.polygonOffsetFactor;
+  m.polygonOffsetUnits = VILLAGE_GROUND_DECAL.polygonOffsetUnits;
+  const glowColor = new Color(BUS_LOOK.groundGlowColor);
+  m.onBeforeCompile = (shader) => {
+    Object.assign(shader.uniforms, {
+      uBusGlow: nodes.groundGlow,
+      uBusSun: nodes.groundSun,
+      uBusGamma: nodes.groundGamma,
+      uBusGlowColor: { value: glowColor },
+    });
+    shader.fragmentShader = shader.fragmentShader
+      .replace("void main() {", "uniform float uBusGlow;\nuniform float uBusSun;\nuniform float uBusGamma;\nuniform vec3 uBusGlowColor;\nvoid main() {")
+      .replace("#include <dithering_fragment>", GROUND_OUT);
+  };
+  m.customProgramCacheKey = () => "village-bus-ground";
   return m;
 }
 
@@ -229,8 +305,8 @@ function ledMaterial(source: MeshStandardMaterial): MeshStandardMaterial {
 
 /**
  * Dress a clone of the loaded bus: placed at the stop, its materials made for the tier (the paint and glass reflecting
- * the sky), the night's glow off, live shadows taken on the rich tier only. The bus never moves: its matrices are
- * computed once.
+ * the sky), the night's glow off, live shadows taken on the rich tier only (none cast: its shadows are baked into the
+ * ground quad). The bus never moves: its matrices are computed once.
  */
 export function prepareBus(source: Object3D, tier: VillageTier, layout: Pick<VillageLayout, "busStop"> = VILLAGE_LAYOUT): BusNodes {
   const root = source.clone(true);
@@ -246,6 +322,9 @@ export function prepareBus(source: Object3D, tier: VillageTier, layout: Pick<Vil
     ground: null,
     bodySky: { value: BUS_LOOK.envIntensity },
     glassSky: { value: BUS_LOOK.glassEnvIntensity },
+    groundGlow: { value: 0 },
+    groundSun: { value: BUS_LOOK.sunShadow },
+    groundGamma: { value: tier === "high" ? 1 : 1 / 2.2 },
     own: [],
   };
   const swap = (m: Material): Material => {
@@ -262,7 +341,7 @@ export function prepareBus(source: Object3D, tier: VillageTier, layout: Pick<Vil
     } else if (m.name === BUS_MATERIAL.led) {
       out = nodes.led = ledMaterial(s);
     } else if (m.name === BUS_MATERIAL.ground) {
-      out = nodes.ground = groundMaterial(s);
+      out = nodes.ground = groundMaterial(s, nodes);
     }
     if (!out) return m;
     made.set(m, out);
@@ -276,9 +355,9 @@ export function prepareBus(source: Object3D, tier: VillageTier, layout: Pick<Vil
     }
     if (!isMesh(o)) return;
     o.material = Array.isArray(o.material) ? o.material.map(swap) : swap(o.material);
-    o.castShadow = false; // the baked shadow is its shadow
     const ground = !Array.isArray(o.material) && o.material.name === BUS_MATERIAL.ground;
-    // The avatars' live shadows fall on it on the rich tier (the road under the contact shadow takes its own).
+    o.castShadow = false; // its shadows are baked into the ground quad (the bake's sun, not the clock's)
+    // The avatars' live shadows fall on it on the rich tier (the road under the ground quad takes its own).
     o.receiveShadow = tier === "high" && !ground;
     if (ground) o.renderOrder = -1; // under the glass, whatever the sort
   });
@@ -306,12 +385,15 @@ export function busEnvScale(s: Pick<DayNightState, "hemiIntensity" | "hemiSky">)
 }
 
 /** Per frame: the time of day into the bus (plain number writes). */
-export function applyBusDayNight(nodes: BusNodes, s: Pick<DayNightState, "lights" | "hemiIntensity" | "hemiSky">): void {
+export function applyBusDayNight(nodes: BusNodes, s: Pick<DayNightState, "day" | "lights" | "hemiIntensity" | "hemiSky">): void {
   const env = busEnvScale(s);
   nodes.bodySky.value = BUS_LOOK.envIntensity * env;
   nodes.glassSky.value = BUS_LOOK.glassEnvIntensity * env;
   if (nodes.body) nodes.body.emissiveIntensity = s.lights * BUS_LOOK.nightGlow;
   if (nodes.led) nodes.led.emissiveIntensity = BUS_LOOK.ledDay + (BUS_LOOK.ledNight - BUS_LOOK.ledDay) * s.lights;
+  if (nodes.glass) nodes.glass.opacity = BUS_LOOK.glassOpacity + (BUS_LOOK.glassNightOpacity - BUS_LOOK.glassOpacity) * s.lights;
+  nodes.groundGlow.value = s.lights * BUS_LOOK.groundGlow;
+  nodes.groundSun.value = s.day * BUS_LOOK.sunShadow;
 }
 
 /** Free what `prepareBus` made (the loader's geometry, textures and materials stay with its cache). */

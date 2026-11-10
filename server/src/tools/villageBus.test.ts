@@ -10,7 +10,9 @@ import type { Gltf } from "../../../scripts/lib/schoolGlb";
 import {
   BUDGETS,
   VILLAGE_BUS_BUDGET,
+  VILLAGE_BUS_GROUND_CLEARANCE,
   VILLAGE_BUS_MATERIALS,
+  VILLAGE_GROUND_TOP,
   VILLAGE_SCENE_MAX_TRIANGLES,
   checkVillageBus,
   checkVillageSceneTriangles,
@@ -33,7 +35,15 @@ describe("village_bus.glb (bus review: its budget is checked)", () => {
     const { gltf, size, bin } = load("village_bus.glb");
     const results = checkVillageBus(gltf, size, bin);
     expect(failed(results)).toEqual([]);
-    expect(results.map((r) => r.label)).toEqual(["버스 노드", "버스 재질·그리기", "버스 라이트맵 없음", "버스 파일 크기", "버스 삼각형 수", "버스 텍스처 크기"]);
+    expect(results.map((r) => r.label)).toEqual([
+      "버스 노드",
+      "버스 재질·그리기",
+      "버스 라이트맵 없음",
+      "버스 파일 크기",
+      "버스 삼각형 수",
+      "버스 텍스처 크기",
+      "버스 바닥 판 높이",
+    ]);
     expect(VILLAGE_BUS_MATERIALS).toHaveLength(4);
     expect(size).toBeLessThanOrEqual(VILLAGE_BUS_BUDGET.maxBytes);
     expect(countTriangles(gltf)).toBeLessThanOrEqual(VILLAGE_BUS_BUDGET.maxTriangles);
@@ -45,7 +55,7 @@ describe("village_bus.glb (bus review: its budget is checked)", () => {
     expect(r.level).toBe("ok");
   });
 
-  it("a second mesh node, a missing material, a fat file, too many triangles and a light-mapped material each fail", () => {
+  it("a second mesh node, a missing material, a fat file, a light-mapped material, a sunk ground quad and too many triangles each fail", () => {
     const { gltf, size, bin } = load("village_bus.glb");
     const node = gltf.nodes!.find((n) => n.name === "village_bus")!;
     const twoNodes: Gltf = { ...gltf, nodes: [...gltf.nodes!, { ...node, name: "village_bus_copy" }] };
@@ -62,6 +72,16 @@ describe("village_bus.glb (bus review: its budget is checked)", () => {
 
     const lm: Gltf = { ...gltf, materials: gltf.materials!.map((m) => (m.name === "M_bus" ? { ...m, name: "LM_bus" } : m)) };
     expect(failed(checkVillageBus(lm, size, bin)).map((r) => r.label)).toContain("버스 라이트맵 없음");
+
+    // the ground quad back at y 0, under the road (bus review r3: the depth test hid it), or at 2 cm, under the paving
+    const prim = mesh.primitives.find((p) => gltf.materials![p.material!]!.name === "M_bus_ground")!;
+    const acc = prim.attributes.POSITION!;
+    const at = (y: number): Gltf => ({
+      ...gltf,
+      accessors: gltf.accessors!.map((a, i) => (i === acc ? { ...a, min: [a.min![0]!, y, a.min![2]!], max: [a.max![0]!, y, a.max![2]!] } : a)),
+    });
+    for (const y of [0, 0.02]) expect(failed(checkVillageBus(at(y), size, bin)).map((r) => r.label)).toEqual(["버스 바닥 판 높이"]);
+    expect(gltf.accessors![acc]!.min![1]!).toBeGreaterThanOrEqual(VILLAGE_GROUND_TOP + VILLAGE_BUS_GROUND_CLEARANCE);
 
     // every primitive counted three times over: past the 40k
     const fat: Gltf = { ...gltf, meshes: gltf.meshes!.map((m) => (m === mesh ? { ...m, primitives: [...m.primitives, ...m.primitives, ...m.primitives] } : m)) };

@@ -1,12 +1,29 @@
 import { describe, expect, it } from "vitest";
-import { BoxGeometry, DoubleSide, Group, Mesh, MeshBasicMaterial, MeshPhysicalMaterial, MeshStandardMaterial, ShaderLib, Texture, type WebGLProgramParametersWithUniforms } from "three";
+import {
+  BoxGeometry,
+  CustomBlending,
+  DoubleSide,
+  DstColorFactor,
+  Group,
+  Mesh,
+  MeshBasicMaterial,
+  MeshPhysicalMaterial,
+  MeshStandardMaterial,
+  OneMinusSrcAlphaFactor,
+  ShaderLib,
+  Texture,
+  type Material,
+  type WebGLProgramParametersWithUniforms,
+} from "three";
 import { VILLAGE_LAYOUT } from "@caysonverse/shared/village/villageLayout";
 import { LIGHTING } from "../game/sceneLighting";
 import { stateFor } from "./dayNightBlend";
+import { VILLAGE_GROUND_DECAL } from "./villageModelPrep";
 import {
   BUS_LOOK,
   BUS_MATERIAL,
   BUS_MODEL_URL,
+  GROUND_OUT,
   applyBusDayNight,
   busEnvScale,
   busPlacement,
@@ -33,9 +50,9 @@ function busFile() {
   return { scene, body, glass, led, ground, shadow, orm, meshes };
 }
 
-/** Run a material's onBeforeCompile on three's own physical shader (what the renderer would compile). */
-function compiled(m: MeshStandardMaterial) {
-  const lib = ShaderLib.physical;
+/** Run a material's onBeforeCompile on three's own shader for it (what the renderer would compile). */
+function compiled(m: Material, kind: "physical" | "basic" = "physical") {
+  const lib = ShaderLib[kind];
   const shader = { uniforms: { ...lib.uniforms }, vertexShader: lib.vertexShader, fragmentShader: lib.fragmentShader } as unknown as WebGLProgramParametersWithUniforms;
   m.onBeforeCompile(shader, undefined as never);
   return shader as unknown as { uniforms: Record<string, { value: unknown }>; fragmentShader: string };
@@ -44,8 +61,8 @@ function compiled(m: MeshStandardMaterial) {
 const white: [number, number, number] = [1, 1, 1];
 const DAY_STATE = stateFor(45, 180);
 const NIGHT_STATE = stateFor(-25, 0);
-const night = { lights: 1, hemiIntensity: 0.25 * LIGHTING.village.hemi[2], hemiSky: white };
-const day = { lights: 0, hemiIntensity: LIGHTING.village.hemi[2], hemiSky: white };
+const night = { day: 0, lights: 1, hemiIntensity: 0.25 * LIGHTING.village.hemi[2], hemiSky: white };
+const day = { day: 1, lights: 0, hemiIntensity: LIGHTING.village.hemi[2], hemiSky: white };
 
 describe("the village bus (village_bus.glb) dressed for the game", () => {
   it("stands at the layout's parked-bus box, nose north as modelled (the 9 m bus's box)", () => {
@@ -126,19 +143,40 @@ describe("the village bus (village_bus.glb) dressed for the game", () => {
     expect(n.glass!.forceSinglePass).toBe(true);
   });
 
-  it("the contact shadow: black through the baked darkness, over the road, under the glass", () => {
+  it("the ground quad: the baked darkness and the night's light by channel, over the road, under the glass", () => {
     const f = busFile();
     for (const tier of ["high", "low"] as const) {
       const n = prepareBus(f.scene, tier);
       const g = n.ground!;
       expect(g).toBeInstanceOf(MeshBasicMaterial);
-      expect(g.color.getHex()).toBe(0x000000);
-      expect(g.alphaMap).toBe(f.shadow);
-      expect(g.map).toBeNull();
+      expect(g.map).toBe(f.shadow);
+      expect(g.alphaMap).toBeNull();
       expect(g.transparent).toBe(true);
       expect(g.depthWrite).toBe(false);
+      expect(g.fog).toBe(false);
       expect(g.opacity).toBe(BUS_LOOK.groundShadow);
+      // dst x (1 - darkness + light): the light pools light what is there; factors, so no tone mapping
+      expect(g.blending).toBe(CustomBlending);
+      expect(g.blendSrc).toBe(DstColorFactor);
+      expect(g.blendDst).toBe(OneMinusSrcAlphaFactor);
+      expect(g.toneMapped).toBe(false);
+      // the village's decal offset, stronger than the road layer's (bus review r3: the quad lay under the road)
       expect(g.polygonOffset).toBe(true);
+      expect(g.polygonOffsetFactor).toBe(VILLAGE_GROUND_DECAL.polygonOffsetFactor);
+      expect(g.polygonOffsetUnits).toBe(VILLAGE_GROUND_DECAL.polygonOffsetUnits);
+      const s = compiled(g, "basic");
+      expect(s.fragmentShader).toContain(GROUND_OUT);
+      // written last: after the tone mapping, colour space and fog steps
+      expect(s.fragmentShader.indexOf(GROUND_OUT)).toBeGreaterThan(s.fragmentShader.indexOf("#include <colorspace_fragment>"));
+      expect(s.fragmentShader.indexOf(GROUND_OUT)).toBeGreaterThan(s.fragmentShader.indexOf("#include <fog_fragment>"));
+      expect(s.fragmentShader).not.toContain("#include <dithering_fragment>");
+      expect(s.fragmentShader).toContain("uniform float uBusGlow;");
+      expect(s.uniforms.uBusGlow).toBe(n.groundGlow);
+      expect(s.uniforms.uBusSun).toBe(n.groundSun);
+      // the light tier blends in sRGB on the canvas: its factors are the rich tier's to the 1/2.2
+      expect(s.uniforms.uBusGamma).toBe(n.groundGamma);
+      expect(n.groundGamma.value).toBeCloseTo(tier === "high" ? 1 : 1 / 2.2);
+      expect(g.customProgramCacheKey()).toBe("village-bus-ground");
       let mesh: Mesh | null = null;
       n.root.traverse((o) => {
         if ((o as Mesh).isMesh && (o as Mesh).material === g) mesh = o as Mesh;
@@ -150,7 +188,7 @@ describe("the village bus (village_bus.glb) dressed for the game", () => {
     }
   });
 
-  it("light tier: plain standard paint (no clear coat); shadows: none cast (the bake has its shadow), the avatars' taken on the rich tier only", () => {
+  it("light tier: plain standard paint (no clear coat); shadows: none cast (baked in its ground quad), the avatars' taken on the rich tier only", () => {
     const low = prepareBus(busFile().scene, "low");
     expect(low.body).toBeInstanceOf(MeshStandardMaterial);
     expect(low.body).not.toBeInstanceOf(MeshPhysicalMaterial);
@@ -168,16 +206,24 @@ describe("the village bus (village_bus.glb) dressed for the game", () => {
     }
   });
 
-  it("the time of day: lamps and the cabin glow at night, the signs brighten, the reflected sky dims with the sky light", () => {
+  it("the time of day: lamps and the cabin glow at night, the signs stay lit, the reflected sky dims with the sky light", () => {
     const n = prepareBus(busFile().scene, "high");
     applyBusDayNight(n, day);
     expect(n.body!.emissiveIntensity).toBe(0);
     expect(n.led!.emissiveIntensity).toBeCloseTo(BUS_LOOK.ledDay);
+    expect(n.glass!.opacity).toBeCloseTo(BUS_LOOK.glassOpacity);
+    expect(n.groundGlow.value).toBe(0); // no light pools by day
+    expect(n.groundSun.value).toBeCloseTo(BUS_LOOK.sunShadow); // the sun's shadow, as the day light map's
     expect(n.bodySky.value).toBeCloseTo(BUS_LOOK.envIntensity);
     expect(n.glassSky.value).toBeCloseTo(BUS_LOOK.glassEnvIntensity);
     applyBusDayNight(n, night);
     expect(n.body!.emissiveIntensity).toBeCloseTo(BUS_LOOK.nightGlow);
     expect(n.led!.emissiveIntensity).toBeCloseTo(BUS_LOOK.ledNight);
+    // the lit cabin shows through clearer glass; the low beams and the cabin light the ground
+    expect(n.glass!.opacity).toBeCloseTo(BUS_LOOK.glassNightOpacity);
+    expect(BUS_LOOK.glassNightOpacity).toBeLessThan(BUS_LOOK.glassOpacity);
+    expect(n.groundGlow.value).toBeCloseTo(BUS_LOOK.groundGlow);
+    expect(n.groundSun.value).toBe(0); // gone with the day light map
     expect(n.bodySky.value).toBeCloseTo(BUS_LOOK.envIntensity * 0.25);
     expect(busEnvScale({ hemiIntensity: 0, hemiSky: white })).toBe(0.05);
     expect(busEnvScale({ hemiIntensity: 100, hemiSky: white })).toBe(1.2);
