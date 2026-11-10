@@ -14,7 +14,7 @@ export const HEAD_BONE_NAME = "head";
 export const CLIP = {
   idle: "Idle",
   walk: "Walking_A",
-  // Run cycle (controls-ux Task 5) — 0.800 s loop.
+  // Run cycle (controls-ux Task 5) — 0.792 s loop. Which loop plays and how fast follows the ground speed (stride.ts).
   run: "Running_A",
   // Jump (controls-ux Task 11) — 1.167 s clip, played one-shot at ~1.46x so it spans
   // JUMP_DURATION_MS (jump.ts).
@@ -153,7 +153,7 @@ export const PLAYOUT_HISTORY = 40;
  * MOVE_SPEED just in time to reach the second pose (`restTailStart`) — a straight line
  * across it would creep through the whole pause and, when the render time skips ahead,
  * jump. It asks for no lag, and the render time may skip its standing part at once.
- * The speed is well under the 4 m/s walk and well over a stop-start pair (one frame of
+ * The speed is well under the 2 m/s walk and well over a stop-start pair (one frame of
  * motion over the pause, ~0.2 m/s); the span is well over the 100-117 ms between two
  * moves, even when the patch grouping merges two of them.
  */
@@ -225,19 +225,23 @@ export const WALK_ON_SPEED = 0.3;
 export const WALK_OFF_SPEED = 0.15;
 
 /**
- * Remote run/walk hysteresis (m/s). A remote's gait is derived from its
- * INTERPOLATED speed only (the client never syncs walk/run). Walking is 4 m/s and
- * running 6.4 m/s; the ON threshold sits above a walker's ±30% jitter ceiling
- * (5.2 m/s), and the OFF threshold sits well below the run speed, so ordinary
- * jitter neither flashes the run cycle on a walker nor drops a runner back to walk.
+ * Run/walk hysteresis (m/s). A remote's gait is derived from its INTERPOLATED speed
+ * only (the client never syncs walk/run), and every avatar's locomotion loop — the
+ * walk or the run cycle — follows the speed it goes at (stride.ts). Walking is
+ * MOVE_SPEED (2 m/s since 2026-11-10) and running RUN_SPEED (6.4 m/s): the ON
+ * threshold sits well above a walker's ±30% jitter ceiling (2.6 m/s) and even its
+ * windowed reading through delivery bursts, the OFF threshold well below a runner's
+ * dips (4.5 m/s), so ordinary jitter neither flashes the run cycle on a walker nor
+ * drops a runner back to walk. A tab opened before the walk slowed down still walks
+ * at 4 m/s: at that speed the run cycle (slowed to it) is the one whose feet keep pace.
  */
-export const RUN_ON_SPEED = 5.6;
-export const RUN_OFF_SPEED = 4.8;
+export const RUN_ON_SPEED = 3.8;
+export const RUN_OFF_SPEED = 3.4;
 
 /**
  * Render-time windows (ms) the remote gait speed is measured over (see
  * `remoteGaitSpeed`). A single patch-to-patch speed is useless for the idle/walk/run
- * decision: receive-time bursts make a 4 m/s walker read 20-40 m/s for a segment
+ * decision: receive-time bursts make a walker read 5-10x its speed for a segment
  * and a runner on a jittery link dip to 4 m/s. So the speed is the path length
  * travelled over a window, divided by the window:
  *   - SPEED_WINDOW_MS (300)       the responsive reading: ramps up over it when a move

@@ -48,7 +48,7 @@ export const STUCK_WINDOW_SEC = 0.8;
 
 /**
  * Minimum net displacement (m) per STUCK_WINDOW_SEC to count as progress. Free
- * walking covers MOVE_SPEED×window ≈ 3.2 m and even a shallow wall-slide well
+ * walking covers MOVE_SPEED×window ≈ 1.6 m and even a shallow wall-slide well
  * over this; pinned against a wall/corner it is ~0 → the target is released.
  */
 export const STUCK_MIN_DIST = 0.25;

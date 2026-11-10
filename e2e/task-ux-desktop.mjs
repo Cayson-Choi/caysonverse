@@ -340,7 +340,6 @@ try {
         SEAT_YAW: W.SEAT_YAW,
         MOVE_SPEED: K.MOVE_SPEED,
         RUN_SPEED: K.RUN_SPEED,
-        RUN_SPEED_MULTIPLIER: K.RUN_SPEED_MULTIPLIER,
         ROLE_TEACHER: K.ROLE_TEACHER,
         TYPING_WINDOW_MS: K.TYPING_RATE.windowMs,
         KEY_YAW_RATE: C.CAMERA_KEY_YAW_RATE,
@@ -352,7 +351,7 @@ try {
   const { SEATS, SEAT_YAW, MOVE_SPEED, RUN_SPEED, ROLE_TEACHER } = shared;
   CODE = { keyYawRate: shared.KEY_YAW_RATE, jumpCooldownMs: shared.JUMP_COOLDOWN_MS, typingWindowMs: shared.TYPING_WINDOW_MS };
   // Not a copy of the numbers: only that the modules loaded and the relations the steps rely on hold.
-  check("shared constants loaded from the source modules", MOVE_SPEED > 0 && Math.abs(RUN_SPEED - MOVE_SPEED * shared.RUN_SPEED_MULTIPLIER) < 1e-9 && SEATS.length > 1 && CODE.keyYawRate > 0 && CODE.jumpCooldownMs > 0, {
+  check("shared constants loaded from the source modules", MOVE_SPEED > 0 && RUN_SPEED > 2 * MOVE_SPEED && SEATS.length > 1 && CODE.keyYawRate > 0 && CODE.jumpCooldownMs > 0, {
     MOVE_SPEED, RUN_SPEED, seats: SEATS.length, SEAT_YAW, ...CODE,
   });
 
@@ -440,7 +439,7 @@ try {
     const gaitsB = [...new Set(rowsB.map((r) => r.gait))];
     check("(extra) B shows A's walk as a walk, never as the run gait", gaitsB.includes("walk") && !gaitsB.includes("run"), { gaitsOnB: gaitsB });
     const p1 = await getPos(pa);
-    check("A moved east about one stride", p1.x - p0.x > 2.8, { dx: r2(p1.x - p0.x) });
+    check("A moved east about MOVE_SPEED x 1 s", p1.x - p0.x > MOVE_SPEED * 0.7, { dx: r2(p1.x - p0.x) });
     await shot(pa, "pc-01-walk-A.png");
     await sleep(500);
   });

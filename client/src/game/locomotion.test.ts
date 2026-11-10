@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { MOVE_SPEED, RUN_SPEED } from "@caysonverse/shared/constants";
 import { nextGait, nextWalking } from "./locomotion";
 import {
   RUN_OFF_SPEED,
@@ -81,9 +82,9 @@ describe("nextGait (idle / walk / run hysteresis)", () => {
 
   it("a stopping runner drops through walk to idle without ever skipping the walk band", () => {
     let g: Gait = "run";
-    g = nextGait(g, 5.0); // still above RUN_OFF → run
+    g = nextGait(g, RUN_OFF_SPEED + 0.2); // still above RUN_OFF → run
     expect(g).toBe("run");
-    g = nextGait(g, 4.0); // below RUN_OFF, above WALK_OFF → walk
+    g = nextGait(g, RUN_OFF_SPEED - 0.5); // below RUN_OFF, above WALK_OFF → walk
     expect(g).toBe("walk");
     g = nextGait(g, 0.0); // stopped → idle
     expect(g).toBe("idle");
@@ -91,7 +92,7 @@ describe("nextGait (idle / walk / run hysteresis)", () => {
 
   it("a remote walking at MOVE_SPEED with ±30% interpolation jitter never shows the run cycle", () => {
     let g: Gait = "walk";
-    for (const s of [2.8, 5.2, 3.1, 5.0, 4.4]) {
+    for (const s of [0.7, 1.3, 0.78, 1.25, 1.1].map((f) => MOVE_SPEED * f)) {
       g = nextGait(g, s);
       expect(g).not.toBe("run");
     }
@@ -100,7 +101,7 @@ describe("nextGait (idle / walk / run hysteresis)", () => {
 
   it("a remote running at RUN_SPEED (6.4 m/s) keeps the run cycle through jitter dips that stay above RUN_OFF_SPEED", () => {
     let g: Gait = "walk";
-    for (const s of [6.4, 5.9, 6.9, 5.5, 6.2, 5.0]) {
+    for (const s of [1, 0.92, 1.08, 0.86, 0.97, 0.78].map((f) => RUN_SPEED * f)) {
       g = nextGait(g, s);
     }
     expect(g).toBe("run");
@@ -174,8 +175,8 @@ const HEAVY_JITTER = [0, 30, 0, 50, 10, 0, 40];
 const LIGHT_JITTER = [0, 15, 0, 25, 0, 10];
 
 describe("remote gait end to end (interpolation windows + hysteresis)", () => {
-  it("a 4 m/s walker whose patches sometimes arrive 10 ms apart and sometimes 250 ms late never yields run", () => {
-    const patches = arrivals(4, STALLS, 140, 10);
+  it("a MOVE_SPEED walker whose patches sometimes arrive 10 ms apart and sometimes 250 ms late never yields run", () => {
+    const patches = arrivals(MOVE_SPEED, STALLS, 140, 10);
     const spans = patches.slice(1).map((p, i) => p.recv - patches[i].recv);
     expect(Math.min(...spans)).toBe(10); // the model really contains 10 ms bursts...
     expect(Math.max(...spans)).toBeGreaterThanOrEqual(250); // ...and 250 ms stalls
@@ -186,9 +187,9 @@ describe("remote gait end to end (interpolation windows + hysteresis)", () => {
   });
 
   it.each([45, 60, 70, 71])(
-    "a 4 m/s walker whose burst patches arrive %i ms apart never yields run",
+    "a MOVE_SPEED walker whose burst patches arrive %i ms apart never yields run",
     (gap) => {
-      const patches = arrivals(4, STALLS, 140, gap);
+      const patches = arrivals(MOVE_SPEED, STALLS, 140, gap);
       const spans = patches.slice(1).map((p, i) => p.recv - patches[i].recv);
       expect(spans.filter((s) => s === gap).length).toBeGreaterThan(10); // the bursts really are `gap` ms apart
       const frames = simulate(patches, 13000);
@@ -200,15 +201,15 @@ describe("remote gait end to end (interpolation windows + hysteresis)", () => {
   it.each([
     ["[0,30,0,50,10,0,40]", HEAVY_JITTER],
     ["[0,15,0,25,0,10]", LIGHT_JITTER],
-  ])("a 4 m/s walker under delivery delays %s ms never yields run", (_name, delays) => {
-    const frames = simulate(arrivals(4, delays, 140), 13000);
+  ])("a MOVE_SPEED walker under delivery delays %s ms never yields run", (_name, delays) => {
+    const frames = simulate(arrivals(MOVE_SPEED, delays, 140), 13000);
     expect(frames.length).toBeGreaterThan(500);
     expect(frames.filter((f) => f.gait === "run")).toEqual([]);
     expect(frames.some((f) => f.gait === "walk")).toBe(true);
   });
 
   /**
-   * A 6.4 m/s runner sending 60 patches then stopping. `enterMs` = how long after
+   * A RUN_SPEED (6.4 m/s) runner sending 60 patches then stopping. `enterMs` = how long after
    * its first movement is rendered the run cycle starts; `fraction` = share of the
    * frames from then until the last patch is rendered that are in run.
    */
@@ -217,7 +218,7 @@ describe("remote gait end to end (interpolation windows + hysteresis)", () => {
     fraction: number;
     leaveMs: number;
   } {
-    const patches = arrivals(6.4, delays, 60);
+    const patches = arrivals(RUN_SPEED, delays, 60);
     const endX = patches[patches.length - 1].x;
     const frames = simulate(patches, patches[patches.length - 1].recv + 1500);
     const moveStart = frames.find((f) => f.x > 0)!.now; // the avatar starts moving on screen
@@ -260,12 +261,14 @@ describe("remote gait end to end (interpolation windows + hysteresis)", () => {
     expect(runnerOutcome(delays).leaveMs).toBeLessThanOrEqual(150);
   });
 
-  it("a runner who stops comes to idle: run, then walk, then idle (no skipping, no re-entry)", () => {
-    const patches = arrivals(6.4, [0], 60);
+  it("a runner who stops comes to idle without running again (straight from run: held on its last pose before its speed falls under RUN_OFF_SPEED)", () => {
+    const patches = arrivals(RUN_SPEED, [0], 60);
     const last = patches[patches.length - 1].recv;
     const frames = simulate(patches, last + 2000).filter((f) => f.now > last);
     const order: Gait[] = [];
     for (const f of frames) if (order[order.length - 1] !== f.gait) order.push(f.gait);
-    expect(order).toEqual(["run", "walk", "idle"]);
+    expect(order[0]).toBe("run");
+    expect(order[order.length - 1]).toBe("idle");
+    expect(order.slice(1).includes("run")).toBe(false);
   });
 });

@@ -25,21 +25,24 @@ export const VILLAGE_MAX_CLIENTS = 30;
 /** State broadcast interval in milliseconds (10Hz). */
 export const PATCH_RATE_MS = 100;
 
-/** Maximum walk speed in meters/second. */
-export const MOVE_SPEED = 4;
+/**
+ * Walk speed in meters/second. 발주자(2026-11-10): 4 → 2 m/s, so the walk cycle's steps carry the body instead of
+ * the body sliding over stepping feet. The toy's legs (hip to ankle 0.37 m) reach about 0.38 m per step: a walk
+ * that keeps its feet planted at 4 m/s would need over 10 steps a second, at 2 m/s about 5 (client stride.ts plays
+ * the walk loop at the rate that matches). Getting around takes longer; running is unchanged (RUN_SPEED).
+ */
+export const MOVE_SPEED = 2;
 
 /** Displacement clamp multiplier — tolerated overshoot over the ideal step. */
 export const MOVE_SPEED_SLACK = 1.5;
 
-/** Run speed as a multiple of the walk speed (Shift held; controls-ux §5). */
-export const RUN_SPEED_MULTIPLIER = 1.6;
-
 /**
- * Maximum run speed in meters/second (`MOVE_SPEED * RUN_SPEED_MULTIPLIER` = 6.4).
- * The client never reports walk/run state, so the server's move budget is sized
- * for the fastest legal gait.
+ * Run speed in meters/second (Shift held / the stick pushed to its rim; controls-ux §5). Its own number, not a
+ * multiple of MOVE_SPEED: slowing the walk (2026-11-10) did not slow the run. The client never reports walk/run
+ * state, so the server's move budget is sized for the fastest legal gait — this one — and still takes every move of
+ * a tab opened before the walk slowed down (it walks at 4 m/s until it reloads).
  */
-export const RUN_SPEED = MOVE_SPEED * RUN_SPEED_MULTIPLIER;
+export const RUN_SPEED = 6.4;
 
 /** Per-client move-message rate cap (messages per second). */
 export const MOVE_MAX_MSGS_PER_SEC = 30;
