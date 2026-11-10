@@ -11,9 +11,9 @@
  * rise/fade is driven every frame straight through refs via `emojiFloatProgress`
  * — never React state.
  *
- * Where it starts: above the avatar's speech bubble when one is up, else above its name tag
- * (emojiBaseHeight), so it never draws over a lifted or tall bubble. The base eases toward
- * that height instead of jumping when a bubble appears or expires mid-reaction.
+ * Where it starts: right above the avatar's head (or hat), or above its speech bubble when one is
+ * up so a chat line is never covered (emojiBaseHeight). The base eases toward that height instead
+ * of jumping when a bubble appears or expires mid-reaction.
  */
 
 import { useEffect, useRef, type RefObject } from "react";
@@ -24,7 +24,6 @@ import { emojiRegistry } from "./emojiRegistry";
 import { createEmojiSprite, type EmojiSpriteHandle } from "./emojiSprite";
 import { emojiBaseHeight, emojiFloatProgress } from "./emojiFloat";
 import { smoothToward } from "./cameraControls";
-import { BUBBLE_BASE_HEIGHT } from "./constants";
 import type { BubbleTop } from "./useSpeechBubble";
 
 /** How fast the start height chases a moved bubble / tag, per second (settles in ~0.2 s). */
@@ -33,7 +32,8 @@ const BASE_EASE_RATE = 14;
 export function useEmoji(
   sessionId: string,
   groupRef: RefObject<Group | null>,
-  anchor?: { y: number },
+  /** Top of the avatar's head or hat (m above its group): the look's `topY`. */
+  headTopY: number,
   bubbleTop?: BubbleTop,
 ): void {
   const stateRef = useRef<{ seq: number; handle: EmojiSpriteHandle | null; baseY: number }>({
@@ -73,7 +73,7 @@ export function useEmoji(
       s.seq = entry.seq;
       s.baseY = NaN; // a fresh reaction starts at its target height, no glide
     }
-    const target = emojiBaseHeight(anchor?.y ?? BUBBLE_BASE_HEIGHT, bubbleTop?.topY ?? null);
+    const target = emojiBaseHeight(headTopY, bubbleTop?.topY ?? null);
     s.baseY = Number.isNaN(s.baseY) ? target : smoothToward(s.baseY, target, dt, BASE_EASE_RATE);
     const { offsetY, opacity } = emojiFloatProgress(now - entry.startedAt);
     s.handle.setProgress(offsetY, opacity, s.baseY);
