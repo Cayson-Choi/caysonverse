@@ -116,9 +116,11 @@ interface TagState extends NametagProbe {
 export interface NametagFrame {
   /**
    * One frame. `widthPx` / `heightPx` are the canvas's CSS size, `dt` seconds since the
-   * last frame, `nowMs` the `performance.now()` clock the registries use.
+   * last frame, `nowMs` the `performance.now()` clock the registries use, `dpr` the device
+   * pixels per CSS pixel the labels are drawn at (the renderer's pixel ratio: a tag's text is
+   * rasterized at its on-screen size in those pixels, spriteCanvas.ts).
    */
-  update(camera: PerspectiveCamera, widthPx: number, heightPx: number, dt: number, nowMs: number): void;
+  update(camera: PerspectiveCamera, widthPx: number, heightPx: number, dt: number, nowMs: number, dpr?: number): void;
   /** Forget all per-label state (the scene unmounted); the next `update` starts afresh. */
   reset(): void;
 }
@@ -318,7 +320,7 @@ export function createNametagFrame(): NametagFrame {
   }
 
   return {
-    update(camera, widthPx, heightPx, dt, nowMs) {
+    update(camera, widthPx, heightPx, dt, nowMs, dpr = 1) {
       const t0 = import.meta.env.DEV ? performance.now() : 0;
 
       const list = labelEntries();
@@ -411,17 +413,20 @@ export function createNametagFrame(): NametagFrame {
           const depth = viewDepth(view, s.anchorX, s.anchorY + tag.sprite.position.y, s.anchorZ);
           const h = nametagWorldHeight(depth, fov, heightPx);
           tag.setHeight(h);
+          // The text's on-screen height (CSS px): the tag is rasterized at it, in device pixels.
+          const textPx = h * NAMETAG_TEXT_FRACTION * pixelsPerMetre(depth, fov, heightPx);
 
           // The bubble's bottom edge: just above the tag's top edge, wherever it is now.
           entry.bubbleAnchor.y = s.restY + s.liftM + h / 2 + BUBBLE_GAP_M;
           if (import.meta.env.DEV) {
             s.tagTopM = tag.sprite.position.y + h / 2;
             s.bubbleM = entry.bubbleAnchor.y;
-            s.textPx = h * NAMETAG_TEXT_FRACTION * pixelsPerMetre(depth, fov, heightPx);
+            s.textPx = textPx;
           }
 
           // Looks change only for tags that can be seen: swapping one rasterizes a texture.
           if (s.opacity > VISIBLE_OPACITY && !deferLooks) {
+            tag.setTextDevicePx(textPx * dpr);
             s.typing = typingRegistry.isTyping(entry.id, nowMs);
             tag.setTyping(s.typing);
             const bubble = s.bubbleFrame === frameNo ? s.bubble : null;

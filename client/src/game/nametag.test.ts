@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { Group, LinearMipmapLinearFilter, Vector3, type SpriteMaterial, type Texture } from "three";
+import { Group, LinearFilter, Vector3, type SpriteMaterial, type Texture } from "three";
 import {
   NAMETAG_BASE_HEIGHT_M,
   NAMETAG_FONT_PX,
@@ -13,9 +13,14 @@ import {
   nametagCacheSize,
   nametagIdleSize,
   nametagLabel,
+  nametagMetrics,
+  resetNametagStartFont,
   NAMETAG_IDLE_LOOKS,
+  NAMETAG_MAX_FONT_PX,
+  NAMETAG_MIN_FONT_PX,
   type Nametag,
 } from "./nametag";
+import { LABEL_LAYER, LABEL_SNAP, RASTERS_PER_FRAME } from "./spriteCanvas";
 
 // ── a recording canvas: the module only needs getContext("2d") ──────────────
 
@@ -77,6 +82,7 @@ function fakeCanvas(): FakeCanvas {
 beforeEach(() => {
   canvases.length = 0;
   clearIdleNametagLooks(); // the parked looks are module state: start every test from none
+  resetNametagStartFont(); // so is the size a new tag starts at
   vi.stubGlobal("document", { createElement: () => fakeCanvas() });
 });
 afterEach(() => {
@@ -97,10 +103,10 @@ describe("label and cache key", () => {
     expect(nametagLabel("민수", "teacher", true)).toBe("👑 민수 …");
   });
 
-  it("keys on badge|highlight|typing|text", () => {
-    expect(nametagCacheKey("민수", "none", false, false)).toBe("none|0|0|민수");
-    expect(nametagCacheKey("민수", "teacher", true, false)).toBe("teacher|1|0|민수");
-    expect(nametagCacheKey("조교", "ai", false, true)).toBe("ai|0|1|조교");
+  it("keys on font|badge|highlight|typing|text (the font defaults to the 48 px design)", () => {
+    expect(nametagCacheKey("민수", "none", false, false)).toBe("48|none|0|0|민수");
+    expect(nametagCacheKey("민수", "teacher", true, false)).toBe("48|teacher|1|0|민수");
+    expect(nametagCacheKey("조교", "ai", false, true, 19)).toBe("19|ai|0|1|조교");
   });
 
   it("a name containing '|' cannot collide with another look (the text is the tail)", () => {
@@ -201,11 +207,115 @@ describe("rasterized looks", () => {
     tags.forEach((t) => t.dispose());
   });
 
-  it("mipmapped, so 48 px text shown at 12–16 px does not shimmer", () => {
+  it("a label sprite: no mipmaps, linear, snapped to whole pixels, on the label layer, colours as drawn", () => {
     const tag = createNametag("민수");
-    expect(mapOf(tag).minFilter).toBe(LinearMipmapLinearFilter);
-    expect(mapOf(tag).generateMipmaps).toBe(true);
+    expect(mapOf(tag).minFilter).toBe(LinearFilter);
+    expect(mapOf(tag).generateMipmaps).toBe(false);
+    const material = tag.sprite.material as SpriteMaterial;
+    expect(material.toneMapped).toBe(false);
+    expect(material.fog).toBe(false);
+    expect(tag.sprite.layers.mask).toBe(1 << LABEL_LAYER);
+    const shader = {
+      uniforms: {} as Record<string, { value: unknown }>,
+      vertexShader: "",
+      fragmentShader: "void main() {\n#include <map_fragment>\n}",
+    };
+    material.onBeforeCompile(shader as never, null as never);
+    expect(shader.uniforms.uSnap!.value).toBe(LABEL_SNAP);
     tag.dispose();
+  });
+});
+
+describe("device-pixel size (fix/crisp-labels)", () => {
+  const fontOf = (c: (typeof canvases)[number]) => Number(/ (\d+)px /.exec(c.draws.find((d) => d.kind === "text")!.font!)![1]);
+  let frameNo = 1000;
+  beforeEach(() => {
+    // a fresh frame (raster budget) per test: the budget is keyed on document.timeline.currentTime
+    frameNo += 1;
+    vi.stubGlobal("document", { createElement: () => fakeCanvas(), timeline: { currentTime: frameNo } });
+  });
+
+  it("metrics scale from the 48 px design and are whole pixels", () => {
+    expect(nametagMetrics(48)).toMatchObject({ font: 48, padY: 14, height: 76, padX: 26 });
+    for (let f = NAMETAG_MIN_FONT_PX; f <= NAMETAG_MAX_FONT_PX; f++) {
+      const m = nametagMetrics(f);
+      for (const v of Object.values(m)) expect(Number.isInteger(v)).toBe(true);
+      expect(m.height).toBe(f + 2 * m.padY);
+      // the text keeps about NAMETAG_TEXT_FRACTION (48 / 76) of the tag's height at every size
+      expect(Math.abs(f / m.height - 48 / 76)).toBeLessThan(0.07);
+      expect(m.teacherBorder).toBeGreaterThanOrEqual(1);
+    }
+    expect(nametagMetrics(19)).toMatchObject({ font: 19, padY: 6, height: 31 });
+  });
+
+  it("re-rasterizes at the whole-pixel font the text is shown at, in device px", () => {
+    const tag = createNametag("안내원");
+    expect(fontOf(drawn()[0])).toBe(NAMETAG_FONT_PX);
+    tag.setTextDevicePx(12.8 * 1.5); // 19.2 device px
+    expect(drawn()).toHaveLength(2);
+    const c = drawn()[1];
+    expect(fontOf(c)).toBe(19);
+    expect(c.height).toBe(nametagMetrics(19).height);
+    expect(mapOf(tag).image).toBe(c);
+    // the sprite keeps its world height; its width follows the new canvas's aspect
+    expect(tag.sprite.scale.x / tag.sprite.scale.y).toBeCloseTo(c.width / c.height, 6);
+    tag.dispose();
+  });
+
+  it("hysteresis: a size wobbling around a half pixel does not re-rasterize", () => {
+    const tag = createNametag("민수");
+    tag.setTextDevicePx(19.2);
+    const n = drawn().length;
+    for (const px of [19.5, 18.6, 19.7, 18.4, 19.6]) tag.setTextDevicePx(px);
+    expect(drawn()).toHaveLength(n);
+    tag.setTextDevicePx(20.0); // 0.8 px away: the next whole size
+    expect(fontOf(drawn().at(-1)!)).toBe(20);
+    tag.dispose();
+  });
+
+  it("a size it was shown at before comes back from the cache, no new canvas", () => {
+    const tag = createNametag("민수");
+    tag.setTextDevicePx(19);
+    tag.setTextDevicePx(24);
+    const n = drawn().length;
+    tag.setTextDevicePx(19);
+    expect(drawn()).toHaveLength(n);
+    expect(fontOf(mapOf(tag).image as never)).toBe(19);
+    tag.dispose();
+  });
+
+  it("clamps to the font range", () => {
+    const tag = createNametag("민수");
+    tag.setTextDevicePx(3);
+    expect(fontOf(drawn().at(-1)!)).toBe(NAMETAG_MIN_FONT_PX);
+    tag.setTextDevicePx(500);
+    expect(fontOf(drawn().at(-1)!)).toBe(NAMETAG_MAX_FONT_PX);
+    tag.dispose();
+  });
+
+  it(`at most RASTERS_PER_FRAME (${RASTERS_PER_FRAME}) new canvases a frame; the others wait for the next frame`, () => {
+    const tags = ["a", "b", "c", "d"].map((t) => createNametag(t));
+    const n = drawn().length;
+    for (const t of tags) t.setTextDevicePx(21);
+    expect(drawn().length - n).toBe(RASTERS_PER_FRAME);
+    vi.stubGlobal("document", { createElement: () => fakeCanvas(), timeline: { currentTime: ++frameNo } });
+    for (const t of tags) t.setTextDevicePx(21);
+    expect(drawn().length - n).toBe(4);
+    // ...and a size already rasterized costs no budget at all
+    const e = createNametag("a");
+    for (let i = 0; i < 3; i++) e.setTextDevicePx(21);
+    expect(drawn().length - n).toBe(4 + 0);
+    tags.forEach((t) => t.dispose());
+    e.dispose();
+  });
+
+  it("a new tag starts at the size the last tag was sized to", () => {
+    const a = createNametag("a");
+    a.setTextDevicePx(22);
+    const b = createNametag("b");
+    expect(fontOf(drawn().at(-1)!)).toBe(22);
+    a.dispose();
+    b.dispose();
   });
 });
 

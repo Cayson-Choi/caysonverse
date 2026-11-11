@@ -711,6 +711,57 @@ try {
     check("__cvClickTarget() stays null after the 300 ms window", (await getTarget(pa)) === null, {});
     await shot(pa, "m-06-recentered.png");
 
+    // Slower double taps (round 5 review): a pair at an everyday pace (90 / 110 ms presses, 170 ms apart) and one whose
+    // second press is held longer lift the second finger more than 300 ms after the first lift — the first tap's walk
+    // used to start meanwhile: a 1 m walk AND the recenter. The double tap is decided at the second touch's down now.
+    for (const [p1, gap, p2] of [
+      [90, 170, 110],
+      [90, 230, 190],
+    ]) {
+      await sleep(600); // the previous pair ages out
+      await touch.drag(5, 150, 330, 280, 330, { steps: 8 });
+      await sleep(300);
+      const before = await getPos(pa);
+      const yaw0 = (await getOrbit(pa)).yaw;
+      const tPair = Date.now();
+      await touch.tap(290, 520, p1);
+      await sleep(gap);
+      await touch.tap(293, 522, p2);
+      await sleep(CODE.doubleTapMs + 500);
+      const rows = await rowsBetween(pa, "A", tPair, Date.now());
+      const after = await getPos(pa);
+      const moved = Math.hypot(after.x - before.x, after.z - before.z);
+      check(`a slower double tap (${p1} / ${gap} / ${p2} ms): the camera recentres`, rows.some((r) => r.goal) || Math.abs(norm((await getOrbit(pa)).yaw - recenterYaw(after.yaw))) <= 0.05, {
+        samples: rows.length, yawBefore: r2(yaw0), yawAfter: r2((await getOrbit(pa)).yaw), want: r2(recenterYaw(after.yaw)),
+      });
+      check(`…and the first tap never walks (no target at any sample, the avatar stays put)`, rows.every((r) => !r.target) && moved < 0.05 && (await getTarget(pa)) === null, {
+        withTarget: rows.filter((r) => r.target).length, moved: r2(moved),
+      });
+    }
+
+    // A tap, then a look-drag begun at once from the same spot (round 6 review): the drag's touch-down comes within
+    // 300 ms and 30 px of the tap, so it is taken for a double tap's second touch and drops the tap's walk — but it turns
+    // into a drag, so it was no double tap: the tap walks after all (as before the round 5 change), and nothing recentres.
+    {
+      await sleep(600);
+      await touch.drag(5, 150, 330, 280, 330, { steps: 8 });
+      await sleep(300);
+      const yaw0 = (await getOrbit(pa)).yaw;
+      const tPair = Date.now();
+      await touch.tap(285, 480, 60);
+      await sleep(100);
+      await touch.drag(6, 287, 482, 230, 482, { steps: 8 }); // a look-drag from the same spot
+      const walked = await pollUntil(() => getTarget(pa), (t) => t !== null, 1500, 25);
+      const rows = await rowsBetween(pa, "A", tPair, Date.now());
+      check("a tap and a look-drag at once from the same spot: the tap walks after all", !!walked, {
+        target: walked ? [r2(walked.x), r2(walked.z)] : null,
+      });
+      check("…the drag turned the view, and nothing recentred", rows.every((r) => !r.goal) && Math.abs(norm((await getOrbit(pa)).yaw - yaw0)) > 0.05, {
+        withGoal: rows.filter((r) => r.goal).length, yawBefore: r2(yaw0), yawAfter: r2((await getOrbit(pa)).yaw),
+      });
+      await settleWalk(pa);
+    }
+
     // One tap on the floor: held back 300 ms, then the click target appears.
     await sleep(600); // let the previous tap pair age out
     await touch.tap(285, 480, 40);

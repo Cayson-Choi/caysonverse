@@ -14,6 +14,8 @@ import {
   freeTexture,
   nightMapUniform,
 } from "./villageModelPrep";
+import { BUS_MODEL_URL } from "./villageBusPrep";
+import { clearBus, readBus } from "./villageBusLoader";
 
 /**
  * Releasing 케이슨 마을's files (Task 7 review I1; final review I2 for phones), in the counselling room's pattern
@@ -31,19 +33,35 @@ import {
  *    and a re-decode).
  *  - The night light map has its own hold (`holdNightLightmap`, VillageModel's NightLightmap): it is loaded only when
  *    night is near (nightLightmap.ts) and goes when it is not wanted any more.
+ *  - The village bus (`village_bus.glb`, VillageBus) goes with the village's files: the same hold, its own "requested"
+ *    flag (a scene that never drew it reads nothing).
  */
 
-// `useLoader` / `useGLTF` here are plain cache reads (no React hooks inside them), not hook calls.
+// `useLoader` / `useGLTF` / `readBus` here are plain cache reads (no React hooks inside them), not hook calls.
 const readCache = useLoader;
 
 let held = false;
 let requested = false;
+let busRequested = false;
 let timer: ReturnType<typeof setTimeout> | null = null;
 
 /** The model and its day light map are being read (VillageModel renders): a release must free them. */
 export function noteVillageRequested(): void {
   requested = true;
 }
+
+/** The village bus is being read (VillageBus renders): a release must free it. */
+export function noteBusRequested(): void {
+  busRequested = true;
+}
+
+/** The bus's cache entry (freed like the village model: geometry, materials, textures). */
+export const BUS_CACHE: CachedFile = {
+  id: BUS_MODEL_URL,
+  read: () => readBus(),
+  clear: () => clearBus(),
+  free: (g) => disposeVillageSource((g as GLTF).scene),
+};
 
 /** The village's two cache entries (the night light map has its own, below). */
 export const VILLAGE_CACHE: readonly CachedFile[] = [
@@ -85,6 +103,10 @@ function releaseNow(): void {
   if (requested) {
     requested = false;
     for (const f of VILLAGE_CACHE) releaseCachedFile(f, () => held);
+  }
+  if (busRequested) {
+    busRequested = false;
+    releaseCachedFile(BUS_CACHE, () => held);
   }
 }
 
@@ -143,8 +165,23 @@ export function holdNightLightmap(): () => void {
   };
 }
 
-/** Forget every village entry in the loaders' caches (safe to call more than once; frees nothing). */
+/**
+ * Forget the bus's entry in the loader's cache (its load failed: the next try downloads again; frees nothing). Nothing
+ * of it is left to release either (bus review r4, P6): a release before the next try used to read the absent entry,
+ * which starts a fresh download just to free it. The next try's read notes it again (VillageBus).
+ */
+export function clearBusCache(): void {
+  busRequested = false;
+  BUS_CACHE.clear();
+}
+
+/**
+ * Forget every village entry in the loaders' caches (safe to call more than once; frees nothing). As with the bus
+ * (P6): nothing is left to release, so a release before the next try reads (downloads) nothing.
+ */
 export function clearVillageCaches(): void {
+  requested = false;
+  nightRequested = false;
   for (const f of VILLAGE_CACHE) f.clear();
   NIGHT_LIGHTMAP_CACHE.clear();
 }

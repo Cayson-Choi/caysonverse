@@ -22,12 +22,15 @@
  *   - extensionsUsed에 KHR_materials_unlit. KHR_draco_mesh_compression은 있어도 없어도 된다(hub는 Draco, counsel은 아니다)
  *   - LM_* 재질이 있으면 GLB 옆(`<방>_lightmap.webp`, `<방>_lm.webp` 또는 `lightmaps/<방>_lightmap.webp`)에 라이트맵 WebP가 있고,
  *     그 재질을 쓰는 모든 primitive에 TEXCOORD_1이 있다
- * 의존성 없음. 순수 부분: scripts/lib/schoolGlb.ts (테스트: server/src/tools/schoolGlb.test.ts).
+ *   - village: 옆의 마을버스 village_bus.glb도 점검한다(마을과 늘 함께 그려지는 파일, 버스 검토). 노드 village_bus 하나,
+ *     재질 M_bus·M_bus_glass·M_bus_led·M_bus_ground가 primitive 하나씩(그리기 4번), LM_ 없음, ≤ 1.5 MB, 삼각형 ≤ 40k,
+ *     텍스처 한 변 ≤ 1024, 그리고 마을 + 버스 삼각형 ≤ 300k(마을 260k + 버스 40k). 버스 파일이 옆에 없으면 WARN
+ * 의존성 없음. 순수 부분: scripts/lib/schoolGlb.ts (테스트: server/src/tools/schoolGlb.test.ts, villageBus.test.ts).
  */
 
 import fs from "node:fs";
 import path from "node:path";
-import { checkSchoolGlb, imageSize, parseGlb } from "./lib/schoolGlb";
+import { checkSchoolGlb, checkVillageBus, checkVillageSceneTriangles, imageSize, parseGlb } from "./lib/schoolGlb";
 import type { LightmapFile, SchoolKind } from "./lib/schoolGlb";
 import { schoolSpec } from "./lib/schoolSpec";
 
@@ -94,6 +97,22 @@ export function main(argv: string[]): number {
     // A glTF that is malformed in a way the checks cannot get past: say so in one line, no stack trace.
     console.error(`FAIL: ${glbPath}를 점검하지 못했어요: ${(err as Error).message}`);
     return 1;
+  }
+  if (kind === "village") {
+    // The bus parked at the stop is its own file but always drawn with the village: its budget, and the two together.
+    const busPath = path.join(path.dirname(glbPath), "village_bus.glb");
+    if (fs.existsSync(busPath)) {
+      try {
+        const busData = fs.readFileSync(busPath);
+        const bus = parseGlb(busData);
+        results.push(...checkVillageBus(bus.gltf, busData.length, bus.bin));
+        results.push(checkVillageSceneTriangles(parsed.gltf, bus.gltf));
+      } catch (err) {
+        results.push({ level: "fail", label: "버스 파일", detail: `${busPath}를 읽지 못했어요: ${(err as Error).message}` });
+      }
+    } else {
+      results.push({ level: "warn", label: "버스 파일", detail: `${busPath}가 없어서 버스와 마을 + 버스 삼각형은 세지 않았어요` });
+    }
   }
   console.log(`${glbPath} (${kind})`);
   let failed = 0;

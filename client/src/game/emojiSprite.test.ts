@@ -62,4 +62,26 @@ describe("emoji reaction textures (perf/interaction-latency: no canvas draw or u
     while (queue.length) queue.shift()!();
     expect(more).toHaveLength(1);
   });
+
+  it("(fix/crisp-labels) a 256 px mipmapped glyph sampled half a level sharp, on the label layer, never pixel-snapped", async () => {
+    const { createEmojiSprite, EMOJI_LOD_BIAS } = await import("./emojiSprite");
+    const { LABEL_LAYER } = await import("./spriteCanvas");
+    const { LinearMipmapLinearFilter } = await import("three");
+    const e = createEmojiSprite("🎉");
+    const material = e.sprite.material as unknown as {
+      map: { image: { width: number }; generateMipmaps: boolean; minFilter: number };
+      toneMapped: boolean;
+      onBeforeCompile(s: unknown, r: unknown): void;
+    };
+    expect(material.map.image.width).toBe(256);
+    expect(material.map.generateMipmaps).toBe(true);
+    expect(material.map.minFilter).toBe(LinearMipmapLinearFilter);
+    expect(material.toneMapped).toBe(false);
+    expect(e.sprite.layers.mask).toBe(1 << LABEL_LAYER);
+    const s = { uniforms: {} as Record<string, { value: unknown }>, vertexShader: "", fragmentShader: "void main() {}" };
+    material.onBeforeCompile(s, null);
+    expect(s.uniforms.uLodBias!.value).toBe(EMOJI_LOD_BIAS);
+    expect(s.uniforms.uSnap!.value).toBe(0);
+    e.dispose();
+  });
 });

@@ -36,3 +36,20 @@ Poly Haven CC0 1.0 자산만 썼습니다.
 | leafy_grass | https://polyhaven.com/a/leafy_grass | 창밖 정원 그림 `T_m_garden`의 잔디 |
 | precast_stone_paving | https://polyhaven.com/a/precast_stone_paving | 창밖 정원 그림의 돌길 |
 | island_tree_01 (잎 텍스처만), japanese_zelkova_bark, sakura_bark | 위 표 | 창밖 정원 그림의 나무(마을과 같은 잎·껍질 텍스처) |
+
+## 마을버스 (`village_bus.glb`) — 2026-11-11
+
+이 프로젝트에서 Blender와 스크립트로 직접 만든 것입니다(`art/village/tools/build_bus.py`, `make_bus_textures.py`, 저장소에는
+올리지 않음). 3D 생성 AI, 사진, 외부 모델은 쓰지 않았습니다. 형상은 9 m급 저상 마을버스의 공개 치수(전장·전폭·축거·오버행·타이어
+규격)와 비율만 참고해 코드로 만들었고, 제조사 엠블럼·회사 도색·노선 번호는 넣지 않았습니다. 도색, 휠체어·유모차 그림,
+타이어·휠·루버 텍스처는 모두 스크립트가 직접 그렸습니다. 외부 모델·사진 자산은 없습니다.
+
+- 도색(2026-11-11 4차, 발주자가 고른 1안 "달빛 남색"): 진주빛 흰 차체, 아래 몰딩부터 0.70 m까지 남색 아랫단, 그 위 보라색 가는
+  줄 하나, 흰 지붕 띠. 무늬·배지는 없습니다(뒤 범퍼의 반사판도 줄무늬 없는 빨간 사각형, 4차 다듬기).
+- 글자는 이 마을의 이름뿐입니다. 양옆과 뒤의 "☾ 케이슨 마을"(초승달은 분수의 초승달 모양을 스크립트로 그림)은 주아체(Jua,
+  Copyright 2018 The Jua Project Authors, SIL Open Font License 1.1)로 그렸습니다. 글꼴 파일과 라이선스 전문(`OFL.txt`)은
+  `art/village/fonts/`에 함께 두었고, GLB에는 글꼴 파일이 아니라 그려진 글자 그림만 들어 있습니다.
+- 행선지 LED(앞·옆 "케이슨 마을", 뒤 "마을버스")는 Windows의 맑은 고딕 Bold로 쓴 글자를 1비트 점으로 찍어 그린 그림입니다
+  (글꼴 파일은 넣지 않음).
+버스 아래 도로에 까는 접지 그림자(`M_bus_ground`의 그림)도 같은 스크립트가 이 버스 모델 자체로 Blender에서 구운 앰비언트
+오클루전입니다(2026-11-11 2차, 외부 자산 없음).
