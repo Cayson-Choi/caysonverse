@@ -241,8 +241,8 @@ describe("layout values (brief + rulings + owner changes)", () => {
     expect(L.bridge).toEqual({ minX: GAP.minX, maxX: GAP.maxX, minZ: band.minZ, maxZ: band.maxZ });
   });
 
-  it("pavilion and bus stop (shelter visual, parked 9 m bus 9 x 2.5 on the outer side of the road)", () => {
-    expect(L.pavilion).toEqual({ centre: { x: -16, z: 62 }, size: { x: 5, z: 5 } });
+  it("pavilion and bus stop (B pavilion, shelter visual, parked 9 m bus 9 x 2.5 on the outer side of the road)", () => {
+    expect(L.pavilion).toEqual({ centre: { x: -17, z: 62 }, size: { x: 6.5, z: 6.5 } });
     expect(L.busStop.bus.size).toEqual({ x: 2.5, z: 9 });
     const bus = boxOf(L.busStop.bus);
     // On the road: every corner within the band, and on the outer half (beyond the road's centre line).
@@ -262,13 +262,23 @@ describe("layout values (brief + rulings + owner changes)", () => {
     expect(shelterR).toBeLessThanOrEqual(SIDEWALK_OUTER);
   });
 
-  it("six 18 x 18 plots on a ring of about 58 m: ids, labels, sign text, plot_n due north, plot_w under construction", () => {
+  it("six B-scale plots on a ring: ids, labels, sign text, plot_n due north, plot_w under construction", () => {
     expect(L.plots.map((p) => [p.id, p.size.x, p.size.z])).toEqual(
-      ["plot_n", "plot_ne", "plot_e", "plot_w", "plot_nw", "plot_s"].map((id) => [id, 18, 18]),
+      [
+        ["plot_n", 28, 24],
+        ["plot_ne", 26, 26],
+        ["plot_e", 26, 26],
+        ["plot_w", 26, 22],
+        ["plot_nw", 26, 26],
+        ["plot_s", 24, 18],
+      ],
     );
-    expect(plot("plot_n").centre).toEqual({ x: 0, z: -58 });
-    for (const p of L.plots) expect(Math.hypot(p.centre.x, p.centre.z), p.id).toBeGreaterThan(57);
-    for (const p of L.plots) expect(Math.hypot(p.centre.x, p.centre.z), p.id).toBeLessThan(59);
+    expect(plot("plot_n").centre).toEqual({ x: 0, z: -60 });
+    expect(plot("plot_ne").centre).toEqual({ x: 52, z: -37 });
+    expect(plot("plot_e").centre).toEqual({ x: 60, z: 15 });
+    expect(plot("plot_w").centre).toEqual({ x: -60, z: 12 });
+    expect(plot("plot_nw").centre).toEqual({ x: -52, z: -37 });
+    expect(plot("plot_s").centre).toEqual({ x: 0, z: 58 });
     // plot_n holds the memorial hall (no sign); the rest are empty with an upcoming label.
     expect(plot("plot_n").sign).toBeNull();
     expect(plot("plot_n").signPost).toBeNull();
@@ -281,13 +291,13 @@ describe("layout values (brief + rulings + owner changes)", () => {
     expect(L.plots.filter((p) => p.underConstruction).map((p) => p.id)).toEqual(["plot_w"]);
   });
 
-  it("memorial exterior: 14 x 12 centred on plot_n, door on the south face, pad 0.4 m outside the façade, arrival 2.2 m south", () => {
+  it("memorial exterior: B footprint 20 x 16 centred on plot_n, door on the south face, pad r 2 m", () => {
     const ex = L.memorial.exterior;
     expect(ex.centre).toEqual(plot("plot_n").centre);
-    expect(ex.size).toEqual({ x: 14, z: 12 });
-    expect(boxAt(ex.centre, ex.size)).toEqual({ minX: -7, maxX: 7, minZ: -64, maxZ: -52 });
+    expect(ex.size).toEqual({ x: 20, z: 16 });
+    expect(boxAt(ex.centre, ex.size)).toEqual({ minX: -10, maxX: 10, minZ: -68, maxZ: -52 });
     expect(ex.doorSide).toBe("s");
-    expect(ex.doorPad.radius).toBe(1.6);
+    expect(ex.doorPad.radius).toBe(2);
     expect(ex.doorPad.centre.x).toBe(0);
     expect(ex.doorPad.centre.z).toBeCloseTo(-52 + 0.4, 9); // the façade is z = -52
     expect(ex.arrival.x).toBe(0);
@@ -295,12 +305,12 @@ describe("layout values (brief + rulings + owner changes)", () => {
     expect(ex.arrival.yaw).toBe(0); // faces +z, away from the building
   });
 
-  it("memorial interior (unchanged): origin (300, 0), 9 x 12, ceiling 3.4, pad (300, 5.2), spawn (300, 3.6)", () => {
+  it("memorial interior B: origin (300, 0), 15 x 12, ceiling 4.5, pad (300, 5.2), spawn (300, 3.6)", () => {
     const inn = L.memorial.interior;
     expect(inn.origin).toEqual({ x: 300, z: 0 });
-    expect(inn.size).toEqual({ x: 9, z: 12 });
-    expect(inn.room).toEqual({ minX: 295.5, maxX: 304.5, minZ: -6, maxZ: 6 });
-    expect(inn.ceilingHeight).toBe(3.4);
+    expect(inn.size).toEqual({ x: 15, z: 12 });
+    expect(inn.room).toEqual({ minX: 292.5, maxX: 307.5, minZ: -6, maxZ: 6 });
+    expect(inn.ceilingHeight).toBe(4.5);
     expect(inn.doorSide).toBe("s");
     expect(inn.doorPad).toEqual({ centre: { x: 300, z: 5.2 }, radius: 1.4 });
     expect(inn.spawn.x).toBe(300);
@@ -323,14 +333,14 @@ describe("layout values (brief + rulings + owner changes)", () => {
     );
     expect(cafes[0].colour).toBe("wood");
     expect(kiosks[0].colour).toBe("wood");
-    expect(kiosks[0].size).toEqual({ x: 4, z: 3 });
+    expect(kiosks[0].size).toEqual({ x: 5, z: 4 });
     expect(new Set(L.sceneryHouses.map((h) => h.id)).size).toBe(12);
     for (const h of L.sceneryHouses) {
       expect(h.enterable, h.id).toBe(false);
       expect(["n", "s", "e", "w"], h.id).toContain(h.doorSide);
     }
-    for (const h of houses) expect(h.size, h.id).toEqual({ x: 8, z: 6 });
-    expect(cafes[0].size.x * cafes[0].size.z).toBeGreaterThan(8 * 6);
+    for (const h of houses) expect(h.size, h.id).toEqual({ x: 11.2, z: 8.4 });
+    expect(cafes[0].size).toEqual({ x: 16, z: 12.5 });
   });
 
   it("backdrop: the waterfall back-left and the lake with a pavilion on the right, outside the walk bounds", () => {
@@ -356,7 +366,7 @@ describe("layout values (brief + rulings + owner changes)", () => {
     expect(Object.keys(L.areas).sort()).toEqual(["hall", "village"]);
     expect(L.areas.village).toEqual(L.walkBounds);
     expect(L.areas.hall).toEqual(L.memorial.interior.room);
-    expect(L.areas.hall).toEqual({ minX: 295.5, maxX: 304.5, minZ: -6, maxZ: 6 });
+    expect(L.areas.hall).toEqual({ minX: 292.5, maxX: 307.5, minZ: -6, maxZ: 6 });
   });
 });
 
@@ -365,16 +375,16 @@ describe("memorial hall cubby walls (Task 8)", () => {
   const anchors = cubbyAnchors(L);
   const [back, east] = inn.cubbyWalls;
 
-  it("a white-lacquer back wall of 20 x 7 and a light-oak east wall of 18 x 7, cubbies 0.40 m with 0.025 m boards", () => {
+  it("a white-lacquer back wall of 34 x 7 and a light-oak east wall of 18 x 7, cubbies 0.40 m with 0.025 m boards", () => {
     expect(inn.cubbyWalls).toHaveLength(2);
-    expect(back).toMatchObject({ wall: "n", finish: "lacquer", cols: 20, rows: 7, cell: 0.4, frame: 0.025 });
+    expect(back).toMatchObject({ wall: "n", finish: "lacquer", cols: 34, rows: 7, cell: 0.4, frame: 0.025 });
     expect(east).toMatchObject({ wall: "e", finish: "oak", cols: 18, rows: 7, cell: 0.4, frame: 0.025 });
     expect(back.yaw).toBeCloseTo(0, 12); // faces +z, into the room
     expect(east.yaw).toBeCloseTo(-Math.PI / 2, 12); // faces -x
   });
 
-  it("one anchor per cubby (266), ids <wall>_<row>_<col> unique, nodes anchor__cubby_<id>", () => {
-    expect(anchors).toHaveLength(20 * 7 + 18 * 7);
+  it("one anchor per cubby (364), ids <wall>_<row>_<col> unique, nodes anchor__cubby_<id>", () => {
+    expect(anchors).toHaveLength(34 * 7 + 18 * 7);
     expect(new Set(anchors.map((a) => a.id)).size).toBe(anchors.length);
     expect(anchors[0]).toMatchObject({ id: "n_0_0", wall: "n", row: 0, col: 0 });
     expect(cubbyAnchorNode("e_6_17")).toBe("anchor__cubby_e_6_17");
@@ -388,10 +398,10 @@ describe("memorial hall cubby walls (Task 8)", () => {
     expect(at("n_1_0").y - at("n_0_0").y).toBeCloseTo(0.425, 9);
     expect(at("n_0_0").y).toBeCloseTo(0.12 + 0.025 + 0.2, 9);
     expect(at("n_6_0").y + 0.2 + 0.025).toBeLessThan(inn.ceilingHeight);
-    expect(at("e_0_0").x).toBeCloseTo(304.5 - 0.39, 9);
+    expect(at("e_0_0").x).toBeCloseTo(307.5 - 0.39, 9);
     expect(at("e_0_1").z - at("e_0_0").z).toBeCloseTo(0.425, 9);
     // the back run ends where the east unit's front face is; the east run starts at the back unit's front face
-    expect(at("n_0_19").x + 0.2 + 0.025).toBeCloseTo(304.5 - 0.39, 9);
+    expect(at("n_0_33").x + 0.2 + 0.025).toBeCloseTo(307.5 - 0.39, 9);
     expect(at("e_0_0").z - 0.2 - 0.025).toBeCloseTo(-6 + 0.39, 9);
     for (const a of anchors) {
       expect(inside(HALL, { x: a.x, z: a.z }), a.id).toBe(true);
@@ -402,8 +412,8 @@ describe("memorial hall cubby walls (Task 8)", () => {
   it("the units stand against their walls, inside the room, clear of each other, the door pad and the spawn", () => {
     const nb = cubbyWallBox(back);
     const eb = cubbyWallBox(east);
-    expect(nb).toEqual({ minX: 295.585, maxX: 304.11, minZ: -6, maxZ: -5.61 });
-    expect(eb).toEqual({ minX: 304.11, maxX: 304.5, minZ: -5.61, maxZ: 2.065 });
+    expect(nb).toEqual({ minX: 292.635, maxX: 307.11, minZ: -6, maxZ: -5.61 });
+    expect(eb).toEqual({ minX: 307.11, maxX: 307.5, minZ: -5.61, maxZ: 2.065 });
     expect(overlaps(nb, eb)).toBe(false);
     const pad = inn.doorPad;
     for (const b of [nb, eb]) {
@@ -422,8 +432,8 @@ describe("memorial hall cubby walls (Task 8)", () => {
       expect(distToBox(inn.doorPad.centre, c)).toBeGreaterThan(inn.doorPad.radius);
       expect(distToBox(HALL_SPAWN, c)).toBeGreaterThan(PLAYER_RADIUS);
     }
-    // the cubby units are camera boxes up to the ceiling
-    expect(MEMORIAL_CAMERA_BOXES.filter((b) => (b.height ?? 0) >= 3.4 - EPS).length).toBeGreaterThanOrEqual(6);
+    // the cubby units are camera boxes up to the B ceiling
+    expect(MEMORIAL_CAMERA_BOXES.filter((b) => (b.height ?? 0) >= 4.5 - EPS).length).toBeGreaterThanOrEqual(6);
   });
 
   it("exports the walls with their footprints and every anchor with its node name", () => {
@@ -621,7 +631,7 @@ describe("village colliders are built from the layout", () => {
   it("parked bus 9 x 2.5, scenery colliders match the layout footprints", () => {
     expect(box("bus")).toEqual(boxOf(L.busStop.bus));
     expect(box("cafe")).toEqual(boxOf(L.sceneryHouses.find((h) => h.kind === "cafe")!));
-    expect(box("house_3")).toEqual({ minX: 25, maxX: 33, minZ: 34, maxZ: 40 });
+    expect(box("house_3")).toEqual({ minX: 23.4, maxX: 34.6, minZ: 33.4, maxZ: 41.800000000000004 });
   });
 
   it("the creek is walled off over its whole length except the bridge gap: boxes follow the curve, water plus 3 m of bank each side", () => {
@@ -643,8 +653,8 @@ describe("village colliders are built from the layout", () => {
 
   it("changing a layout value moves its collider (values and collider list are separate)", () => {
     const moved = greyboxColliders({ ...L, pavilion: { ...L.pavilion, centre: { x: -16, z: 66 } } });
-    expect(moved.find((c) => c.id === "pavilion")!.box).toEqual({ minX: -18.5, maxX: -13.5, minZ: 63.5, maxZ: 68.5 });
-    expect(box("pavilion")).toEqual({ minX: -18.5, maxX: -13.5, minZ: 59.5, maxZ: 64.5 });
+    expect(moved.find((c) => c.id === "pavilion")!.box).toEqual({ minX: -19.25, maxX: -12.75, minZ: 62.75, maxZ: 69.25 });
+    expect(box("pavilion")).toEqual({ minX: -20.25, maxX: -13.75, minZ: 58.75, maxZ: 65.25 });
   });
 
   it("buildVillageGeometry takes a named collider list or the extractor's { obstacles, cameraBoxes }", () => {
@@ -729,7 +739,7 @@ describe("villageGeometry plays on the colliders generated from village.glb (Tas
   it("id 'village', bounds spanning both areas, the hall's walls as camera boxes, then the generated boxes", () => {
     expect(villageGeometry.id).toBe("village");
     expect(villageGeometry.bounds).toEqual(villageBounds(L));
-    expect(villageGeometry.bounds).toEqual({ minX: -95, maxX: 310, minZ: -95, maxZ: 95 }); // the hall's walls plus a 5 m apron
+    expect(villageGeometry.bounds).toEqual({ minX: -95, maxX: 313, minZ: -95, maxZ: 95 }); // the B hall's walls plus a 5 m apron
     for (const w of hallWalls(L)) expect(villageGeometry.cameraBoxes).toContainEqual(w);
     // + the guides (Task 9A) and the parked bus's mirrors (bus review r3)
     expect(villageGeometry).toEqual(buildVillageGeometry(L, VILLAGE_MODEL_COLLIDERS, HALL_MODEL_COLLIDERS, [...guideColliders(), ...busMirrorColliders()]));
@@ -774,7 +784,7 @@ describe("the hall's interior plays on the colliders generated from memorial.glb
     // the furniture really is there: the sofa, the bench, the memorial table, both cubby units
     expect(inside.length).toBe(MEMORIAL_COLLIDERS.length - 4);
     expect(isBlocked(300.6, -1.6, PLAYER_RADIUS, villageGeometry.obstacles)).toBe(true); // the bench
-    expect(isBlocked(304.3, 0, PLAYER_RADIUS, villageGeometry.obstacles)).toBe(true); // the east cubby unit
+    expect(isBlocked(307.3, 0, PLAYER_RADIUS, villageGeometry.obstacles)).toBe(true); // the B east cubby unit
   });
 
   it("every generated camera box is a camera box of the geometry, plus the ceiling slab", () => {
@@ -785,11 +795,11 @@ describe("the hall's interior plays on the colliders generated from memorial.glb
     expect(hallInteriorColliders(L).cameraBoxes.at(-1)).toEqual(hallCeilingSlab(L));
   });
 
-  it("the ceiling slab is derived from ceilingHeight: underside 3.3 (brief), over the room and its walls", () => {
+  it("the ceiling slab is derived from B ceilingHeight: underside 4.4, over the room and its walls", () => {
     const slab = hallCeilingSlab(L);
     const { ceilingHeight, room } = L.memorial.interior;
     expect(slab.minY).toBeCloseTo(ceilingHeight - HALL_CEILING_DROP, 9);
-    expect(slab.minY).toBe(3.3);
+    expect(slab.minY).toBe(4.4);
     expect(slab.height).toBeCloseTo(ceilingHeight + HALL_CEILING_DROP, 9);
     for (const w of hallWalls(L)) {
       expect(slab.minX).toBeLessThanOrEqual(w.minX);
@@ -1176,8 +1186,8 @@ describe.each(GEOMETRIES)("village geometry invariants: %s", (_name, geo) => {
       // The server judges where a move LANDS (it does not sweep): (300, 5.5) -> (300, 7.2) clears the 0.5 m south wall.
       expect(isBlocked(300, 7.2, PLAYER_RADIUS, obstacles)).toBe(true);
       expect(isBlocked(300, -7.2, PLAYER_RADIUS, obstacles)).toBe(true);
-      expect(isBlocked(293, 0, PLAYER_RADIUS, obstacles)).toBe(true);
-      expect(isBlocked(304.6, 0, PLAYER_RADIUS, obstacles)).toBe(true); // the east wall, where the clamp puts an outward step
+      expect(isBlocked(292.3, 0, PLAYER_RADIUS, obstacles)).toBe(true);
+      expect(isBlocked(307.7, 0, PLAYER_RADIUS, obstacles)).toBe(true); // the east wall, where the clamp puts an outward step
       // ...and a lattice over everything between the village and the hall's far side, outside the room, is blocked.
       let free = 0;
       for (let x = L.walkBounds.maxX + 0.5; x <= geo.bounds.maxX; x += 0.5) {
@@ -1292,25 +1302,25 @@ describe("export for the Blender scripts", () => {
 
   it("plots keep id, centre, size, label, sign, the sign post (position and facing), under-construction and a ready-made rectangle", () => {
     const n = out.plots.find((p) => p.id === "plot_n")!;
-    expect(n).toMatchObject({ label: "추모관", sign: null, signPost: null, underConstruction: false, centre: { x: 0, z: -58 }, size: { x: 18, z: 18 }, bounds: { minX: -9, maxX: 9, minZ: -67, maxZ: -49 } });
+    expect(n).toMatchObject({ label: "추모관", sign: null, signPost: null, underConstruction: false, centre: { x: 0, z: -60 }, size: { x: 28, z: 24 }, bounds: { minX: -14, maxX: 14, minZ: -72, maxZ: -48 } });
     const w = out.plots.find((p) => p.id === "plot_w")!;
-    expect(w).toMatchObject({ label: "도서관", sign: "곧 지어져요", underConstruction: true, signPost: { x: -48, z: 15, facing: "e" }, bounds: { minX: -65, maxX: -47, minZ: 6, maxZ: 24 } });
+    expect(w).toMatchObject({ label: "도서관", sign: "곧 지어져요", underConstruction: true, signPost: { x: -48, z: 15, facing: "e" }, bounds: { minX: -73, maxX: -47, minZ: 1, maxZ: 23 } });
   });
 
   it("houses and the café export colour, door side, kind and rectangle", () => {
     const pink = out.sceneryHouses.find((h) => h.id === "house_1")!;
-    expect(pink).toMatchObject({ kind: "house", colour: "pink", doorSide: "s", bounds: { minX: 17, maxX: 25, minZ: -45, maxZ: -39 } });
+    expect(pink).toMatchObject({ kind: "house", colour: "pink", doorSide: "s", bounds: { minX: 15.4, maxX: 26.6, minZ: -46.2, maxZ: -37.8 } });
     const cafe = out.sceneryHouses.find((h) => h.kind === "cafe")!;
-    expect(cafe).toMatchObject({ id: "cafe", doorSide: "w", colour: "wood", size: { x: 12, z: 9 } });
+    expect(cafe).toMatchObject({ id: "cafe", doorSide: "w", colour: "wood", size: { x: 16, z: 12.5 } });
   });
 
   it("memorial exterior has footprint, door pad, arrival and collider pieces; interior has room, ceiling, door side, pad, spawn, walls and blockers", () => {
-    expect(out.memorial.exterior.footprint).toEqual({ minX: -7, maxX: 7, minZ: -64, maxZ: -52 });
+    expect(out.memorial.exterior.footprint).toEqual({ minX: -10, maxX: 10, minZ: -68, maxZ: -52 });
     expect(out.memorial.exterior.doorPad).toEqual(L.memorial.exterior.doorPad);
     expect(out.memorial.exterior.arrival).toEqual(L.memorial.exterior.arrival);
     expect(out.memorial.exterior.colliders).toHaveLength(3);
     expect(out.memorial.interior.room).toEqual(L.areas.hall);
-    expect(out.memorial.interior.ceilingHeight).toBe(3.4);
+    expect(out.memorial.interior.ceilingHeight).toBe(4.5);
     expect(out.memorial.interior.doorSide).toBe("s");
     expect(out.memorial.interior.doorPad).toEqual(L.memorial.interior.doorPad);
     expect(out.memorial.interior.spawn).toEqual(L.memorial.interior.spawn);
