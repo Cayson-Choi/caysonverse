@@ -378,7 +378,8 @@ function makeVillageLayout(): VillageLayout {
       bridgeGap: { minX: -26, maxX: -22 },
     },
     bridge: { minX: -26, maxX: -22, minZ: 72, maxZ: 78 },
-    pavilion: { centre: pt(-17, 62), size: sz(6.5, 6.5) },
+      // Keep the north-bank pavilion footprint compact so creek-side click routes retain a clear detour.
+      pavilion: { centre: pt(-16, 62), size: sz(5, 5) },
     lanes: [
       { id: "lane_plot_n", width: 3, points: [pt(0, -30), pt(0, -51.6)] },
       { id: "lane_plot_ne", width: 3, points: [pt(24.72, -16.99), pt(38.5, -33)] },

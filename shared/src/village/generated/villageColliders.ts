@@ -85,7 +85,7 @@ export const VILLAGE_COLLIDERS: readonly AABB[] = [
   { minX: -19.92, maxX: -17.62, minZ: 14.6, maxZ: 16.9 }, // col__plaza_planter_4
   { minX: -19.4, maxX: -18.9, minZ: -36.73, maxZ: -36.23 }, // col__tree_67
   { minX: -55.6, maxX: -44.4, minZ: 35.8, maxZ: 44.2 }, // col__house_8 (B)
-  { minX: -20.25, maxX: -13.75, minZ: 58.75, maxZ: 65.25 }, // col__pavilion (B)
+  { minX: -18.5, maxX: -13.5, minZ: 59.5, maxZ: 64.5 }, // col__pavilion
   { minX: -18.47, maxX: -16.17, minZ: -18.47, maxZ: -16.17 }, // col__plaza_planter_1
   { minX: -18, maxX: -12, minZ: -58, maxZ: -55.4 }, // col__garden_house_8
   { minX: -16.71, maxX: -16.21, minZ: 41.59, maxZ: 42.09 }, // col__tree_59

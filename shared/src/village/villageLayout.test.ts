@@ -241,8 +241,8 @@ describe("layout values (brief + rulings + owner changes)", () => {
     expect(L.bridge).toEqual({ minX: GAP.minX, maxX: GAP.maxX, minZ: band.minZ, maxZ: band.maxZ });
   });
 
-  it("pavilion and bus stop (B pavilion, shelter visual, parked 9 m bus 9 x 2.5 on the outer side of the road)", () => {
-    expect(L.pavilion).toEqual({ centre: { x: -17, z: 62 }, size: { x: 6.5, z: 6.5 } });
+  it("pavilion and bus stop (compact pavilion, shelter visual, parked 9 m bus 9 x 2.5 on the outer side of the road)", () => {
+    expect(L.pavilion).toEqual({ centre: { x: -16, z: 62 }, size: { x: 5, z: 5 } });
     expect(L.busStop.bus.size).toEqual({ x: 2.5, z: 9 });
     const bus = boxOf(L.busStop.bus);
     // On the road: every corner within the band, and on the outer half (beyond the road's centre line).
@@ -653,8 +653,8 @@ describe("village colliders are built from the layout", () => {
 
   it("changing a layout value moves its collider (values and collider list are separate)", () => {
     const moved = greyboxColliders({ ...L, pavilion: { ...L.pavilion, centre: { x: -16, z: 66 } } });
-    expect(moved.find((c) => c.id === "pavilion")!.box).toEqual({ minX: -19.25, maxX: -12.75, minZ: 62.75, maxZ: 69.25 });
-    expect(box("pavilion")).toEqual({ minX: -20.25, maxX: -13.75, minZ: 58.75, maxZ: 65.25 });
+    expect(moved.find((c) => c.id === "pavilion")!.box).toEqual({ minX: -18.5, maxX: -13.5, minZ: 63.5, maxZ: 68.5 });
+    expect(box("pavilion")).toEqual({ minX: -18.5, maxX: -13.5, minZ: 59.5, maxZ: 64.5 });
   });
 
   it("buildVillageGeometry takes a named collider list or the extractor's { obstacles, cameraBoxes }", () => {
