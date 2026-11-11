@@ -184,7 +184,7 @@ describe("the hall desk and the way out (Task 9A)", () => {
     expect(between).toMatchObject({ kind: "target", target: { id: MEMORIAL_DOOR_ID } });
   });
 
-  it("the enlarged B hall keeps the guide desk and cubby walls out of overlapping reach", () => {
+  it("a guide and a cubby in reach: the nearer wins, the guide on a tie, whatever the door does", () => {
     let both = 0;
     for (let x = 296; x <= 307; x += 0.1)
       for (let z = -6; z <= 6; z += 0.1) {
@@ -198,7 +198,7 @@ describe("the hall desk and the way out (Task 9A)", () => {
         const want = t.find((v) => (v.priority ?? 0) > (g.priority ?? 0)) ? null : c.dist < g.dist ? c.id : g.id;
         if (want) expect(pick, `${x},${z}`).toMatchObject({ target: { id: want } });
       }
-    expect(both).toBe(0);
+    expect(both).toBeGreaterThan(0);
   });
 
   it("nothing is offered while the cubby card or a guide's questions are open (the action button hides)", () => {
