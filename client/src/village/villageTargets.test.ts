@@ -100,8 +100,8 @@ describe("villageAndHallTargets — the cubbies' close-up inside the hall (Task 
     return { x: c.x + Math.sin(a.yaw) * d, z: c.z + Math.cos(a.yaw) * d };
   };
 
-  it("38 columns (20 on the back wall, 18 on the east), each with its 7 rows bottom first", () => {
-    expect(cols).toHaveLength(38);
+  it("52 columns (34 on the back wall, 18 on the east), each with its 7 rows bottom first", () => {
+    expect(cols).toHaveLength(52);
     for (const c of cols) {
       expect(c.rows.map((r) => r.row)).toEqual([0, 1, 2, 3, 4, 5, 6]);
       expect(cubbyColumn(`cubby:${c.key}`)).toBe(cubbyColumn(c.key));
@@ -184,7 +184,7 @@ describe("the hall desk and the way out (Task 9A)", () => {
     expect(between).toMatchObject({ kind: "target", target: { id: MEMORIAL_DOOR_ID } });
   });
 
-  it("a guide and a cubby in reach: the nearer wins, the guide on a tie, whatever the door does (final fix)", () => {
+  it("the enlarged B hall keeps the guide desk and cubby walls out of overlapping reach", () => {
     let both = 0;
     for (let x = 296; x <= 305; x += 0.1)
       for (let z = -6; z <= 6; z += 0.1) {
@@ -198,7 +198,7 @@ describe("the hall desk and the way out (Task 9A)", () => {
         const want = t.find((v) => (v.priority ?? 0) > (g.priority ?? 0)) ? null : c.dist < g.dist ? c.id : g.id;
         if (want) expect(pick, `${x},${z}`).toMatchObject({ target: { id: want } });
       }
-    expect(both).toBeGreaterThan(0);
+    expect(both).toBe(0);
   });
 
   it("nothing is offered while the cubby card or a guide's questions are open (the action button hides)", () => {

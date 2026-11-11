@@ -109,15 +109,15 @@ describe("the village's lighting (data, so the clock can drive it later)", () =>
 });
 
 describe("the camera limit of each map (케이슨 마을 Task 5: a building's camera stays under its ceiling)", () => {
-  it("inside the memorial hall: 3.0 m high, no overview, no distance cap (the zoom holds) — under its 3.4 m ceiling", () => {
-    expect({ ...HALL_ACTIVE_MAP.cameraLimit }).toEqual({ maxY: 3, overview: false });
+  it("inside the enlarged B memorial hall: 4.1 m high, no overview, no distance cap (the zoom holds)", () => {
+    expect({ ...HALL_ACTIVE_MAP.cameraLimit }).toEqual({ maxY: 4.1, overview: false });
     expect(HALL_ACTIVE_MAP.cameraLimit!.maxY).toBeLessThan(VILLAGE_LAYOUT.memorial.interior.ceilingHeight);
   });
 
   it("the hall's height limit plus its spring-arm pad stays under the ceiling slab (Task 5 review m3, Task 9)", () => {
     const slab = villageGeometry.cameraBoxes.find((b) => b.minY !== undefined && b.minX <= VILLAGE_LAYOUT.areas.hall.minX)!;
     expect(slab).toEqual(hallCeilingSlab(VILLAGE_LAYOUT));
-    expect(slab.minY).toBe(3.3);
+    expect(slab.minY).toBe(4.4);
     const pad = HALL_ACTIVE_MAP.cameraPad ?? SPRING.pad;
     expect(pad).toBe(VILLAGE_CAMERA_PAD);
     expect(HALL_ACTIVE_MAP.cameraLimit!.maxY + pad).toBeLessThanOrEqual(slab.minY! + 1e-9);
