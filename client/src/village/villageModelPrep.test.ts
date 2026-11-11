@@ -62,6 +62,7 @@ import {
   LIGHT_TIER_MAX_TEXTURE,
   capModelTextures,
   capTextureSize,
+  configureModelTextureFiltering,
   type CanvasLike,
   FOLIAGE_NEAR_FADE,
   nearFadeUniform,
@@ -182,6 +183,13 @@ const named = (root: Object3D, name: string) => root.getObjectByName(name) as Me
 const materialOf = (root: Object3D, name: string) => named(root, name).material as MeshBasicMaterial;
 
 describe("prepareVillage: the model dressed for the game", () => {
+  it("raises anisotropic filtering on oblique model textures without touching the source tree", () => {
+    const f = fixture();
+    expect(configureModelTextureFiltering(f.root, 8)).toBeGreaterThan(0);
+    expect(f.textures.leaf.anisotropy).toBe(8);
+    expect(configureModelTextureFiltering(f.root, 4)).toBe(0);
+  });
+
   it("works on a clone and hides every col__ box (and nothing else)", () => {
     const f = fixture();
     const nodes = prepareVillage(f.root, new Texture(), "high");

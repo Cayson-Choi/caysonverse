@@ -59,7 +59,16 @@ export function VillageModel({ tier }: { tier: VillageTier }) {
   const gl = useThree((s) => s.gl);
   const nodes = useMemo(
     // A texture already on the GPU (a rich-to-light switch mid-visit) is never capped: its storage is immutable.
-    () => prepareVillage(gltf.scene, lightmap, tier, LIGHTING.village.toneCurve, undefined, (t) => gl.properties.has(t)),
+    () =>
+      prepareVillage(
+        gltf.scene,
+        lightmap,
+        tier,
+        LIGHTING.village.toneCurve,
+        undefined,
+        (t) => gl.properties.has(t),
+        gl.capabilities.getMaxAnisotropy(),
+      ),
     [gltf, lightmap, tier, gl],
   );
   // The 3D flowers and cherry crowns (veg3d), built in steps after the village is up; once ready they hide the old

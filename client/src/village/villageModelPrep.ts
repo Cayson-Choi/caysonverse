@@ -264,6 +264,28 @@ export function capTextureSize(
 
 const COLOUR_MAPS = ["map", "alphaMap", "emissiveMap", "normalMap", "roughnessMap", "metalnessMap", "aoMap", "bumpMap"] as const;
 
+/** Raise the model's oblique-surface filtering so plaza paving stays readable when the camera looks down closely. */
+export function configureModelTextureFiltering(root: Object3D, maxAnisotropy = 1): number {
+  const anisotropy = Math.max(1, Math.min(16, Math.floor(Number.isFinite(maxAnisotropy) ? maxAnisotropy : 1)));
+  const seen = new Set<Texture>();
+  let changed = 0;
+  root.traverse((o) => {
+    if (!isMesh(o)) return;
+    for (const m of materialsOf(o)) {
+      for (const key of COLOUR_MAPS) {
+        const texture = (m as unknown as Record<string, Texture | null | undefined>)[key];
+        if (!texture || seen.has(texture)) continue;
+        seen.add(texture);
+        if (texture.anisotropy >= anisotropy) continue;
+        texture.anisotropy = anisotropy;
+        texture.needsUpdate = true;
+        changed++;
+      }
+    }
+  });
+  return changed;
+}
+
 /** Cap every texture of the model's materials (not the light maps) at `max` px. Returns how many it shrank. */
 export function capModelTextures(
   root: Object3D,
@@ -753,9 +775,13 @@ export function prepareVillage(
   curve: ToneCurve = "neutral",
   nightLightmap?: Texture | null,
   isUploaded?: (t: Texture) => boolean,
+  maxAnisotropy = 1,
 ): VillageNodes {
   const root = source.clone(true);
   configureLightmap(lightmap);
+  lightmap.anisotropy = Math.max(lightmap.anisotropy, Math.min(16, Math.max(1, Math.floor(maxAnisotropy))));
+  lightmap.needsUpdate = true;
+  configureModelTextureFiltering(root, maxAnisotropy);
   // The night light map is loaded on its own when night is near (VillageModel's NightLightmap, final fix I2b):
   // left out, the current one stays; null clears it.
   if (nightLightmap !== undefined) setNightLightmap(nightLightmap);
