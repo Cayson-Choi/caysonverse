@@ -317,8 +317,9 @@ describe("isStickTap (a quick tap passes through to click-move)", () => {
     expect(isStickTap(6, 8, 100)).toBe(false); // exactly 10 px
   });
 
-  it("holding 250 ms or longer is a stick press, not a tap", () => {
-    expect(isStickTap(0, 0, 250)).toBe(false);
+  it("holding 400 ms or longer is a stick press, not a tap — the look half's limit, so one tap walks on either half", () => {
+    expect(isStickTap(0, 0, 300)).toBe(true); // a slow finger: a walk on the look half, so here too
+    expect(isStickTap(0, 0, 400)).toBe(false);
     expect(isStickTap(0, 0, 900)).toBe(false);
   });
 });

@@ -8,6 +8,7 @@ import {
   stickUp,
 } from "../game/joystick";
 import type { MoveInput } from "../game/input";
+import { pressTravel } from "../game/clickMove";
 import { useViewStore } from "../stores/viewStore";
 import { useUiStore } from "../stores/uiStore";
 import "./touch.css";
@@ -94,6 +95,11 @@ export function TouchJoystick({ moveInput, leftHanded = false }: TouchJoystickPr
     let downX = 0;
     let downY = 0;
     let downAt = 0;
+    // The farthest the press has gone from where it went down (px): a push that came back to its start is still a
+    // stick push, not a tap (round 4 review — it walked on the stick and then to the ground under the thumb as well).
+    let travel = 0;
+    // The event's own time (ms, performance.now()'s clock): a busy page handles a lift late, not a long press.
+    const eventTime = (e: PointerEvent) => (e.timeStamp > 0 ? e.timeStamp : performance.now());
 
     const clearInput = () => {
       moveInput.forward = 0;
@@ -117,7 +123,8 @@ export function TouchJoystick({ moveInput, leftHanded = false }: TouchJoystickPr
       }
       downX = e.clientX;
       downY = e.clientY;
-      downAt = performance.now();
+      downAt = eventTime(e);
+      travel = 0;
       place(base, state.ox, state.oy, STICK_RADIUS_PX);
       place(knob, state.ox, state.oy, KNOB_HALF_PX);
       stick.classList.add("is-active");
@@ -126,6 +133,7 @@ export function TouchJoystick({ moveInput, leftHanded = false }: TouchJoystickPr
     const onMove = (e: PointerEvent) => {
       const input = stickMove(state, e.pointerId, e.clientX, e.clientY);
       if (!input) return;
+      travel = pressTravel(travel, e.clientX - downX, e.clientY - downY);
       moveInput.forward = input.forward;
       moveInput.right = input.right;
       moveInput.run = input.run;
@@ -144,7 +152,7 @@ export function TouchJoystick({ moveInput, leftHanded = false }: TouchJoystickPr
       clearInput();
       if (
         e.type === "pointerup" &&
-        isStickTap(e.clientX - downX, e.clientY - downY, performance.now() - downAt)
+        isStickTap(pressTravel(travel, e.clientX - downX, e.clientY - downY), 0, eventTime(e) - downAt)
       ) {
         passTapToGround(e);
       }

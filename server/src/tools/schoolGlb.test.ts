@@ -15,6 +15,7 @@ import {
   BUDGETS,
   CAMERA_BOX_MIN_HEIGHT,
   MAX_MATERIALS,
+  MATERIAL_LIMITS,
   MAX_TEXTURE_SIDE,
   OBJ_ANCHOR_TOLERANCE,
   checkSchoolGlb,
@@ -544,6 +545,8 @@ describe("checkSchoolGlb", () => {
     expect(BUDGETS.memorial).toEqual({ maxBytes: 1.5 * 1024 * 1024, maxTriangles: 60_000 }); // Task 9: actual 0.33 MB, 17k
     expect(BOX_TOLERANCE).toBeCloseTo(0.011, 6);
     expect(MAX_MATERIALS).toBe(24);
+    // one more for the village: the fountain's live-lit crescent (M_moon)
+    expect(MATERIAL_LIMITS).toEqual({ hub: 24, counsel: 24, village: 25, memorial: 24 });
     expect(MAX_TEXTURE_SIDE).toBe(2048);
     expect(OBJ_ANCHOR_TOLERANCE).toBe(0.25);
   });
@@ -605,6 +608,15 @@ describe("checkSchoolGlb", () => {
     expect(failed(run(g)).map((r) => r.label).join()).toMatch(/재질/);
     g.materials = g.materials.slice(0, 24);
     expect(failed(run(g))).toEqual([]);
+  });
+
+  it("the village may have 25 materials (the crescent's M_moon), not 26", () => {
+    const g = goodGltf();
+    const spec = tinySpec({ kind: "village" });
+    g.materials = Array.from({ length: 26 }, (_, i) => ({ name: `M_${i}`, extensions: { KHR_materials_unlit: {} } }));
+    expect(failed(run(g, { kind: "village", spec })).map((r) => r.label).join()).toMatch(/재질/);
+    g.materials = g.materials.slice(0, 25);
+    expect(failed(run(g, { kind: "village", spec })).map((r) => r.label).join()).not.toMatch(/재질 수/);
   });
 
   it("fails an embedded texture larger than 2048 on a side", () => {
@@ -878,7 +890,7 @@ describe("schoolSpec", () => {
     expect(spec.requiredBoxes).toEqual(colliders.map((c) => ({ node: colliderNode(c.id), box: c.box, camera: c.camera })));
     expect(spec.requiredBoxes!.filter((b) => !b.camera).map((b) => b.node)).toContain("col__plaza_fountain");
     expect(spec.requiredBoxes!.filter((b) => !b.camera).map((b) => b.node)).toContain("col__pavilion");
-    expect(spec.requiredMaterials).toEqual(["M_window", "M_lamp", "M_water", "M_glow_plot"]);
+    expect(spec.requiredMaterials).toEqual(["M_window", "M_lamp", "M_water", "M_glow_plot", "M_moon"]);
     expect(VILLAGE_NON_LIGHTMAPPED.every((m) => !m.startsWith("LM_"))).toBe(true);
     expect(spec.requiredNodes).toContain("col__plaza_fountain");
     expect(spec.requiredNodes).toContain("col__memorial_back");

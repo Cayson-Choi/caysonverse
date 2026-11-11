@@ -355,10 +355,12 @@ function makeVillageLayout(): VillageLayout {
       lamps: [27.5, 80, 142.5, 217.5, 332.5].map((azimuth) => onCircle(azimuth, 28)),
     },
     ringRoad: { centre: pt(0, 0), radius: 34, width: 6, sidewalk: { width: 2, side: "outer" } },
-    // Parked on the outer lane at the east (x 33.1..35.6 stays inside the road's 31..37 band along its whole 8 m).
+    // Parked on the outer lane at the east, nose north, doors to the shelter: a 9 m low-floor village bus (2.49 m wide,
+    // village_bus.glb). x 32.95..35.45, z -10.25..-1.25 stays inside the road's 31..37 band (outer corner at r 36.90);
+    // its front door (z -9.85..-8.76) stops at the shelter's north end and its middle door (z -5.9..-4.5) at the shelter.
     busStop: {
       shelter: { centre: pt(38, -6), size: sz(1.6, 4) },
-      bus: { centre: pt(34.35, -6), size: sz(2.5, 8) },
+      bus: { centre: pt(34.2, -5.75), size: sz(2.5, 9) },
     },
     // A gentle bow to the south beyond plot_s (z 49..67); every segment is 6 m of water with 3 m of bank on each side,
     // and the centre line moves at most 3 m from one segment to the next.
@@ -701,6 +703,28 @@ export function buildVillageGeometry(
   );
 }
 
+/**
+ * How far the parked bus's rabbit-ear mirrors reach past its box (m): village_bus.glb (art/village/tools/build_bus.py
+ * mirror()) hangs their heads at head height (1.5-2.2 m) 0.25 m out from each side and 0.35 m ahead of the front;
+ * these reaches add a couple of centimetres (server/src/tools/villageBus.test.ts checks the file against them).
+ */
+export const BUS_MIRROR_REACH = { side: 0.27, ahead: 0.37 } as const;
+
+/**
+ * The parked bus's two mirrors as colliders of their own (bus review r3: standing at a front corner, an avatar's head
+ * took the mirror in it): a box under each mirror head, from the bus's side out and from its front ahead (nose north,
+ * -z), so nobody stands inside one. They overlap the bus's box by 0.1 m (no seam).
+ */
+export function busMirrorColliders(layout: Pick<VillageLayout, "busStop"> = VILLAGE_LAYOUT): AABB[] {
+  const b = boxAt(layout.busStop.bus.centre, layout.busStop.bus.size);
+  const { side, ahead } = BUS_MIRROR_REACH;
+  const z = { minZ: round(b.minZ - ahead, 6), maxZ: round(b.minZ + 0.1, 6) };
+  return [
+    { minX: round(b.minX - side, 6), maxX: round(b.minX + 0.1, 6), ...z },
+    { minX: round(b.maxX - 0.1, 6), maxX: round(b.maxX + side, 6), ...z },
+  ];
+}
+
 /** The village area's colliders generated from village.glb (Task 7): the layout's boxes plus the model's own. */
 export const VILLAGE_MODEL_COLLIDERS: GeneratedColliders = { obstacles: VILLAGE_COLLIDERS, cameraBoxes: VILLAGE_CAMERA_BOXES };
 
@@ -716,8 +740,9 @@ export const villageGeometry: MapGeometry = buildVillageGeometry(
   VILLAGE_LAYOUT,
   VILLAGE_MODEL_COLLIDERS,
   HALL_MODEL_COLLIDERS,
-  // Task 9A: the two guides (plaza and hall desk) stand on a small collider each, so nobody walks through them.
-  guideColliders(),
+  // Task 9A: the two guides (plaza and hall desk) stand on a small collider each, so nobody walks through them; the
+  // parked bus's mirrors hang past its box at head height (bus review r3): a collider under each.
+  [...guideColliders(), ...busMirrorColliders()],
 );
 
 /**

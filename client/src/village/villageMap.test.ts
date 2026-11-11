@@ -67,18 +67,18 @@ describe("the village's two maps (one geometry, the bounds of the area the playe
     expect(HALL_ACTIVE_MAP.zoneLabel(300, 0)).toBe("추모관");
   });
 
-  it("a click far outside clamps to the area the player is in, not to the spanning rectangle", () => {
+  it("a target set far outside clamps to the area the player is in, not to the spanning rectangle", () => {
     setActiveMap(VILLAGE_ACTIVE_MAP);
     setClickTarget(5000, 5000);
     const v = VILLAGE_LAYOUT.areas.village;
-    expect(getClickTarget()).toEqual({ x: v.maxX - PLAYER_RADIUS, z: v.maxZ - PLAYER_RADIUS });
+    expect(getClickTarget()).toEqual({ x: v.maxX - PLAYER_RADIUS, z: v.maxZ - PLAYER_RADIUS, y: 0 });
 
     setActiveMap(HALL_ACTIVE_MAP);
     setClickTarget(5000, 5000);
     const hall = VILLAGE_LAYOUT.areas.hall;
-    expect(getClickTarget()).toEqual({ x: hall.maxX - PLAYER_RADIUS, z: hall.maxZ - PLAYER_RADIUS });
+    expect(getClickTarget()).toEqual({ x: hall.maxX - PLAYER_RADIUS, z: hall.maxZ - PLAYER_RADIUS, y: 0 });
     setClickTarget(-5000, -5000);
-    expect(getClickTarget()).toEqual({ x: hall.minX + PLAYER_RADIUS, z: hall.minZ + PLAYER_RADIUS });
+    expect(getClickTarget()).toEqual({ x: hall.minX + PLAYER_RADIUS, z: hall.minZ + PLAYER_RADIUS, y: 0 });
   });
 });
 

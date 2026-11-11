@@ -19,18 +19,32 @@
  * phone-class CPU, and the largest part of the name tags' frame cost). three re-uploads
  * a disposed texture by itself when it is drawn again.
  *
- * The per-frame setters (setHeight / setOpacity / setOffsetY, and setHighlight /
+ * The per-frame setters (setHeight / setOpacity / setOffsetY, setTextDevicePx, and setHighlight /
  * setTyping while unchanged) allocate nothing and touch no React state.
+ *
+ * Crisp text (fix/crisp-labels, spriteCanvas.ts): a look is rasterized at the size it is SHOWN at — its font in whole
+ * device pixels (the tag's projected text height x dpr, `setTextDevicePx`), every other metric scaled from the 48 px design
+ * and rounded to whole pixels — and drawn one texel per screen pixel by the label shader. The font size is part of the
+ * look's key, so a tag that walks nearer moves through a few sizes (12-16 CSS px: 7 sizes at dpr 1.5), each rasterized
+ * once and kept like any other look; a frame rasterizes at most RASTERS_PER_FRAME new ones (the rest wait a frame).
  */
 
-import { CanvasTexture, LinearMipmapLinearFilter, Sprite, SpriteMaterial } from "three";
+import { CanvasTexture, Sprite, SpriteMaterial } from "three";
 import {
   NAMETAG_BASE_HEIGHT_M,
   NAMETAG_FONT_PX,
   NAMETAG_HEIGHT,
   NAMETAG_PAD_Y_PX,
 } from "./constants";
-import { billboardSprite, canvas2d, canvasTexture, roundRect } from "./spriteCanvas";
+import {
+  LABEL_SNAP,
+  billboardSprite,
+  canvas2d,
+  canvasTexture,
+  fontBucket,
+  roundRect,
+  takeRasterBudget,
+} from "./spriteCanvas";
 
 /** Who the tag belongs to: a student/other (none), the teacher (👑 + gold border), or an AI 조교 (AI pill). */
 export type NametagBadge = "none" | "teacher" | "ai";
@@ -48,6 +62,11 @@ export interface Nametag {
   setHighlight(on: boolean): void;
   /** A trailing " …" (the player is typing a chat line). */
   setTyping(on: boolean): void;
+  /**
+   * The tag's text is `px` DEVICE pixels tall on screen now (projected CSS px x dpr): re-rasterize at that whole-pixel font
+   * size when it has moved far enough from the current one (fontBucket) and this frame's raster budget allows.
+   */
+  setTextDevicePx(px: number): void;
   /** Dispose the per-avatar material and release the shared texture. Safe to call twice. */
   dispose(): void;
 }
@@ -58,42 +77,75 @@ export interface Nametag {
 export const FONT_FAMILY =
   'system-ui, -apple-system, "Segoe UI", "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", ' +
   '"Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif';
-const TEXT_FONT = `600 ${NAMETAG_FONT_PX}px ${FONT_FAMILY}`;
+const TEXT_WEIGHT = 600;
 
 const CAPSULE_FILL = "rgba(255, 255, 255, 0.92)";
 const TEXT_COLOR = "#1d1b2e";
 const TEACHER_BORDER = "#e0a100";
-const TEACHER_BORDER_PX = 3;
 const HIGHLIGHT_BORDER = "#4f8cff";
-const HIGHLIGHT_BORDER_PX = 4;
 const AI_PILL_FILL = "#5b4bd8";
 const AI_PILL_TEXT = "#ffffff";
-const AI_PILL_FONT = `700 26px ${FONT_FAMILY}`;
 const AI_PILL_LABEL = "AI";
-const AI_PILL_HEIGHT = 40;
-const AI_PILL_PAD_X = 14;
-/** Space between the capsule's left edge and the AI pill / between the pill and the text. */
-const AI_PILL_INSET = 16;
-const AI_PILL_GAP = 12;
 
-/** Horizontal padding (px) between the capsule's edge and the text. */
-const PAD_X = 26;
-/** The canvas is always this tall, whatever the badge — so the text is a fixed fraction of it. */
-const CANVAS_H = NAMETAG_FONT_PX + 2 * NAMETAG_PAD_Y_PX;
+/** The smallest and largest font (device px) a tag is rasterized at: 12-16 CSS px from dpr 0.67 to 4. */
+export const NAMETAG_MIN_FONT_PX = 8;
+export const NAMETAG_MAX_FONT_PX = 64;
+
+/** Every size of a tag drawn at font `fontPx`, in whole canvas pixels (the 48 px design scaled, then rounded). */
+export interface NametagMetrics {
+  font: number;
+  /** Canvas height: font + 2 x padY (so the text is ~NAMETAG_TEXT_FRACTION of the tag at any size). */
+  height: number;
+  padY: number;
+  /** Horizontal padding between the capsule's edge and the text. */
+  padX: number;
+  teacherBorder: number;
+  highlightBorder: number;
+  pillFont: number;
+  pillHeight: number;
+  pillPadX: number;
+  /** Space between the capsule's left edge and the AI pill / between the pill and the text. */
+  pillInset: number;
+  pillGap: number;
+  /** Text baseline (textBaseline "middle") below the canvas's centre. */
+  textDy: number;
+}
+
+/** The 48 px design (NAMETAG_FONT_PX) scaled to a `fontPx` font and rounded to whole pixels — so edges fall on pixels. */
+export function nametagMetrics(fontPx: number): NametagMetrics {
+  const font = Math.max(1, Math.round(fontPx));
+  const k = font / NAMETAG_FONT_PX;
+  const padY = Math.round(NAMETAG_PAD_Y_PX * k);
+  return {
+    font,
+    height: font + 2 * padY,
+    padY,
+    padX: Math.round(26 * k),
+    teacherBorder: Math.max(1, Math.round(3 * k)),
+    highlightBorder: Math.max(1, Math.round(4 * k)),
+    pillFont: Math.max(1, Math.round(26 * k)),
+    pillHeight: Math.round(40 * k),
+    pillPadX: Math.round(14 * k),
+    pillInset: Math.round(16 * k),
+    pillGap: Math.round(12 * k),
+    textDy: Math.round(2 * k),
+  };
+}
 
 /** The string drawn in the dark text color: crown prefix for a teacher, " …" while typing. */
 export function nametagLabel(text: string, badge: NametagBadge, typing: boolean): string {
   return (badge === "teacher" ? "👑 " : "") + text + (typing ? " …" : "");
 }
 
-/** Cache key: one texture per distinct look. */
+/** Cache key: one texture per distinct look and font size. */
 export function nametagCacheKey(
   text: string,
   badge: NametagBadge,
   highlight: boolean,
   typing: boolean,
+  fontPx: number = NAMETAG_FONT_PX,
 ): string {
-  return `${badge}|${highlight ? 1 : 0}|${typing ? 1 : 0}|${text}`;
+  return `${fontPx}|${badge}|${highlight ? 1 : 0}|${typing ? 1 : 0}|${text}`;
 }
 
 let measureCtx: CanvasRenderingContext2D | null = null;
@@ -103,19 +155,23 @@ function measure(font: string, s: string): number {
   return Math.ceil(measureCtx.measureText(s).width);
 }
 
-/** Rasterize one look onto a snug canvas. */
+/** Rasterize one look onto a snug canvas, at font `fontPx` (whole pixels: positions are whole too). */
 function renderCanvas(
   text: string,
   badge: NametagBadge,
   highlight: boolean,
   typing: boolean,
+  fontPx: number,
 ): { canvas: HTMLCanvasElement; aspect: number } {
+  const m = nametagMetrics(fontPx);
+  const textFont = `${TEXT_WEIGHT} ${m.font}px ${FONT_FAMILY}`;
+  const pillFont = `700 ${m.pillFont}px ${FONT_FAMILY}`;
   const label = nametagLabel(text, badge, typing);
-  const labelWidth = measure(TEXT_FONT, label);
-  const pillWidth = badge === "ai" ? measure(AI_PILL_FONT, AI_PILL_LABEL) + 2 * AI_PILL_PAD_X : 0;
-  const textX = badge === "ai" ? AI_PILL_INSET + pillWidth + AI_PILL_GAP : PAD_X;
-  const width = textX + labelWidth + PAD_X;
-  const height = CANVAS_H;
+  const labelWidth = measure(textFont, label);
+  const pillWidth = badge === "ai" ? measure(pillFont, AI_PILL_LABEL) + 2 * m.pillPadX : 0;
+  const textX = badge === "ai" ? m.pillInset + pillWidth + m.pillGap : m.padX;
+  const width = textX + labelWidth + m.padX;
+  const height = m.height;
 
   const canvas = document.createElement("canvas");
   canvas.width = width;
@@ -128,7 +184,7 @@ function renderCanvas(
   ctx.fill();
 
   // Border, drawn inside the canvas edge: the highlight wins over the teacher's gold.
-  const borderPx = highlight ? HIGHLIGHT_BORDER_PX : badge === "teacher" ? TEACHER_BORDER_PX : 0;
+  const borderPx = highlight ? m.highlightBorder : badge === "teacher" ? m.teacherBorder : 0;
   if (borderPx > 0) {
     ctx.lineWidth = borderPx;
     ctx.strokeStyle = highlight ? HIGHLIGHT_BORDER : TEACHER_BORDER;
@@ -137,24 +193,25 @@ function renderCanvas(
   }
 
   ctx.textBaseline = "middle";
+  const midY = Math.round(height / 2);
 
   // AI pill.
   if (badge === "ai") {
-    const pillY = (height - AI_PILL_HEIGHT) / 2;
+    const pillY = Math.round((height - m.pillHeight) / 2);
     ctx.fillStyle = AI_PILL_FILL;
-    roundRect(ctx, AI_PILL_INSET, pillY, pillWidth, AI_PILL_HEIGHT, AI_PILL_HEIGHT / 2);
+    roundRect(ctx, m.pillInset, pillY, pillWidth, m.pillHeight, m.pillHeight / 2);
     ctx.fill();
-    ctx.font = AI_PILL_FONT;
+    ctx.font = pillFont;
     ctx.textAlign = "center";
     ctx.fillStyle = AI_PILL_TEXT;
-    ctx.fillText(AI_PILL_LABEL, AI_PILL_INSET + pillWidth / 2, height / 2 + 1);
+    ctx.fillText(AI_PILL_LABEL, m.pillInset + Math.round(pillWidth / 2), midY + Math.round(m.textDy / 2));
   }
 
   // Text.
-  ctx.font = TEXT_FONT;
+  ctx.font = textFont;
   ctx.textAlign = "left";
   ctx.fillStyle = TEXT_COLOR;
-  ctx.fillText(label, textX, height / 2 + 2);
+  ctx.fillText(label, textX, midY + m.textDy);
 
   return { canvas, aspect: width / height };
 }
@@ -178,19 +235,24 @@ const cache = new Map<string, CachedTag>();
  */
 const idle = new Map<string, CachedTag>();
 
-/** How many released looks are kept for reuse (≈ 96 × 90 KB of canvas). Covers ~30 chatty players' variants. */
+/**
+ * How many released looks are kept for reuse (≈ 96 × 10-40 KB of canvas at the shown sizes). Covers ~30 chatty players'
+ * variants, or a dozen tags' last few sizes.
+ */
 export const NAMETAG_IDLE_LOOKS = 96;
 
-function acquire(text: string, badge: NametagBadge, highlight: boolean, typing: boolean): CachedTag {
-  const key = nametagCacheKey(text, badge, highlight, typing);
+/** Whether the look is rasterized already (shown or parked): taking it costs no canvas draw. */
+function hasLook(text: string, badge: NametagBadge, highlight: boolean, typing: boolean, fontPx: number): boolean {
+  return cache.has(nametagCacheKey(text, badge, highlight, typing, fontPx));
+}
+
+function acquire(text: string, badge: NametagBadge, highlight: boolean, typing: boolean, fontPx: number): CachedTag {
+  const key = nametagCacheKey(text, badge, highlight, typing, fontPx);
   let entry = cache.get(key);
   if (!entry) {
-    const { canvas, aspect } = renderCanvas(text, badge, highlight, typing);
+    const { canvas, aspect } = renderCanvas(text, badge, highlight, typing, fontPx);
+    // Shown at one texel per pixel (the label shader): no mipmaps, a plain linear filter.
     const texture = canvasTexture(canvas);
-    // The text is drawn at 48 px but shown at 12–16 CSS px: mipmaps keep that
-    // minification smooth instead of shimmering as the camera moves (WebGL2 has NPOT mipmaps).
-    texture.generateMipmaps = true;
-    texture.minFilter = LinearMipmapLinearFilter;
     entry = { key, texture, aspect, refs: 0 };
     cache.set(key, entry);
   } else if (entry.refs === 0) {
@@ -235,6 +297,17 @@ export function clearIdleNametagLooks(): void {
 const HIDDEN_OPACITY = 0.01;
 
 /**
+ * The font a new tag starts at: the size the last tag was sized to (a new tag usually shows at about the same size), so
+ * it is not rasterized once at a size it is never shown at. NAMETAG_FONT_PX until a tag has been sized.
+ */
+let startFontPx: number = NAMETAG_FONT_PX;
+
+/** Forget the remembered start size (tests). */
+export function resetNametagStartFont(): void {
+  startFontPx = NAMETAG_FONT_PX;
+}
+
+/**
  * Create a nametag for `text`, positioned above the avatar's head. `restHeightM` is the height of
  * the sprite's centre above the avatar's group at rest (an avatar passes nametagRestHeight of its
  * top, so a hat or halo never pokes through the tag); the default is NAMETAG_HEIGHT.
@@ -247,17 +320,18 @@ export function createNametag(
   let highlight = false;
   let typing = false;
   let heightM = NAMETAG_BASE_HEIGHT_M;
-  let entry = acquire(text, badge, highlight, typing);
+  let fontPx = startFontPx;
+  let entry = acquire(text, badge, highlight, typing, fontPx);
   let disposed = false;
 
-  const sprite = billboardSprite(entry.texture, entry.aspect, heightM, 999);
+  const sprite = billboardSprite(entry.texture, entry.aspect, heightM, 999, { snap: LABEL_SNAP });
   sprite.position.set(0, restHeightM, 0);
   const material = sprite.material as SpriteMaterial;
 
   /** Show the look for the current flags: take the new texture first, then let go of the old. */
   function swapLook(): void {
     if (disposed) return; // a disposed tag owns nothing: switching now would leak a texture reference
-    const next = acquire(text, badge, highlight, typing);
+    const next = acquire(text, badge, highlight, typing, fontPx);
     release(entry);
     entry = next;
     material.map = next.texture;
@@ -285,6 +359,15 @@ export function createNametag(
     setTyping(on) {
       if (on === typing) return;
       typing = on;
+      swapLook();
+    },
+    setTextDevicePx(px) {
+      if (disposed) return;
+      const next = fontBucket(px, fontPx, NAMETAG_MIN_FONT_PX, NAMETAG_MAX_FONT_PX);
+      if (next === fontPx) return;
+      if (!hasLook(text, badge, highlight, typing, next) && !takeRasterBudget()) return; // next frame
+      fontPx = next;
+      startFontPx = next;
       swapLook();
     },
     dispose() {

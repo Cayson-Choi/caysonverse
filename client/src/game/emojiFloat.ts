@@ -12,7 +12,7 @@
  */
 
 import { EMOJI_DISPLAY_MS } from "@caysonverse/shared/constants";
-import { BUBBLE_GAP_M, EMOJI_BASE_HEIGHT, EMOJI_SPRITE_HEIGHT } from "./constants";
+import { BUBBLE_GAP_M, EMOJI_SPRITE_HEIGHT } from "./constants";
 
 /** Total upward travel (m) over the animation's lifetime. */
 export const EMOJI_RISE_M = 0.8;
@@ -31,20 +31,22 @@ function clamp01(v: number): number {
   return v < 0 ? 0 : v > 1 ? 1 : v;
 }
 
+/** Clear space (m) between the top of the avatar's head (or hat) and the glyph's bottom edge at the start. */
+export const EMOJI_HEAD_GAP_M = 0.05;
+
 /**
  * Height (m above the avatar's group) of the emoji sprite's CENTRE before the rise is added.
- * `anchorY` is the avatar's bubble anchor (the bottom edge of its speech bubble, just above
- * its name tag — it moves with stacking, jumps and distance); `bubbleTopY` is the top edge of
- * the speech bubble when one is up, else null.
- *  - bubble up: just above its top edge, so a reaction and a bubble never overlap however
- *    tall or lifted the bubble is;
- *  - no bubble: the default EMOJI_BASE_HEIGHT, raised only if the tag reaches above it
- *    (a far, tall or stacked tag), so the glyph is never drawn over the tag.
+ * `headTopY` is the top of the avatar's head or hat (the look's `topY`); `bubbleTopY` is the top
+ * edge of the speech bubble when one is up, else null.
+ *  - no bubble: right above the head (owner, 2026-11-10: "머리 좀 가까이에서 출발해서 위로 올라가게 해줘. 그래야
+ *    조금 더 오래 보이지"), so the reaction starts by the face and floats up in view; it may pass over the
+ *    avatar's name tag on its way, which is short-lived and drawn on top;
+ *  - bubble up: just above the bubble's top edge, so a reaction never covers the words of a chat line.
  */
-export function emojiBaseHeight(anchorY: number, bubbleTopY: number | null): number {
+export function emojiBaseHeight(headTopY: number, bubbleTopY: number | null): number {
   const half = EMOJI_SPRITE_HEIGHT / 2;
   if (bubbleTopY !== null) return bubbleTopY + BUBBLE_GAP_M + half;
-  return Math.max(EMOJI_BASE_HEIGHT, anchorY + BUBBLE_GAP_M + half);
+  return headTopY + EMOJI_HEAD_GAP_M + half;
 }
 
 /** Animation state at `elapsedMs` since the emoji started showing. */

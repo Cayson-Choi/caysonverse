@@ -16,6 +16,11 @@
  * would end), which is also where the local player's bubble stays while its own tag
  * is off. BUBBLE_BASE_HEIGHT is only the fallback for a call without an anchor.
  *
+ * Size: every frame the bubble is told how tall its text is on screen in device pixels (its view depth,
+ * the camera's field of view, the canvas's height and the renderer's pixel ratio), and re-rasterizes
+ * when that whole-pixel size changed enough (bubbleSprite.ts, fix/crisp-labels): it is drawn one texel
+ * per screen pixel. A new bubble is rasterized at that size straight away.
+ *
  * Returns a stable ref holding the TOP edge of the bubble that is up right now (m above the
  * group; null when none), rewritten every frame — the avatar's emoji reaction starts above
  * it (useEmoji) so the two never draw over each other. Call this hook BEFORE useEmoji: both
@@ -24,10 +29,26 @@
 
 import { useEffect, useRef, type RefObject } from "react";
 import { useFrame } from "@react-three/fiber";
-import type { Group } from "three";
+import type { Group, PerspectiveCamera } from "three";
 import { bubbleRegistry } from "./bubbleRegistry";
-import { createBubbleSprite, type BubbleSprite } from "./bubbleSprite";
+import { bubbleTextCssPx, createBubbleSprite, type BubbleSprite } from "./bubbleSprite";
 import { BUBBLE_BASE_HEIGHT } from "./constants";
+import { pixelsPerMetre, viewDepth } from "./nametagLayout";
+
+/**
+ * The bubble text's on-screen height in device px for a bubble whose bottom edge is `bottomY` above `group`, seen by
+ * `camera` on a canvas `heightPx` CSS px tall at `dpr`. Measured at the bubble's bottom edge (a bubble is short: the
+ * depth hardly changes over it). Allocation-free.
+ */
+function bubbleDevicePx(group: Group, bottomY: number, camera: PerspectiveCamera, heightPx: number, dpr: number): number {
+  const g = group.matrixWorld.elements;
+  const x = g[4] * bottomY + g[12];
+  const y = g[5] * bottomY + g[13];
+  const z = g[6] * bottomY + g[14];
+  const depth = viewDepth(camera.matrixWorld.elements, x, y, z);
+  const ppm = pixelsPerMetre(depth, (camera.fov * Math.PI) / 180, heightPx);
+  return bubbleTextCssPx(ppm) * dpr;
+}
 
 /** Where the bubble currently up ends (see useSpeechBubble). */
 export interface BubbleTop {
@@ -52,7 +73,7 @@ export function useSpeechBubble(
     s.seq = -1;
   }
 
-  useFrame(() => {
+  useFrame((state) => {
     const group = groupRef.current;
     if (!group) return;
 
@@ -64,17 +85,23 @@ export function useSpeechBubble(
       top.topY = null;
       return;
     }
+    const bottomY = anchor?.y ?? BUBBLE_BASE_HEIGHT;
+    const camera = state.camera as PerspectiveCamera;
+    const px = camera.isPerspectiveCamera
+      ? bubbleDevicePx(group, bottomY, camera, state.size.height, state.gl.getPixelRatio())
+      : undefined;
     // (Re)build only when the active message actually changed.
     if (!s.bubble || s.seq !== entry.seq) {
       detach();
-      const bubble = createBubbleSprite(entry.text);
+      const bubble = createBubbleSprite(entry.text, px);
       group.add(bubble.sprite);
       s.bubble = bubble;
       s.seq = entry.seq;
+    } else if (px !== undefined) {
+      s.bubble.setTextDevicePx(px);
     }
-    // Sprites are centre-origin: the bottom edge at anchor.y puts the centre half a bubble higher.
-    const bottomY = anchor?.y ?? BUBBLE_BASE_HEIGHT;
-    s.bubble.sprite.position.y = bottomY + s.bubble.heightM / 2;
+    // The bubble's origin is its bottom edge (bubbleSprite.ts).
+    s.bubble.sprite.position.y = bottomY;
     top.topY = bottomY + s.bubble.heightM;
   });
 
