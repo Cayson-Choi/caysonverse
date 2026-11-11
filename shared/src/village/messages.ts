@@ -28,6 +28,8 @@ export const VillageMsg = {
   FishingCast: "FishingCast",
   /** Pull the line; only a server-observed submerged bobber can catch a fish. */
   FishingReel: "FishingReel",
+  /** Submit a house keypad code. The server validates the claimed house against the authoritative player position. */
+  Keypad: "Keypad",
 } as const;
 
 export type VillageMsg = (typeof VillageMsg)[keyof typeof VillageMsg];
@@ -40,6 +42,12 @@ export interface LightCandlePayload {
   cubby: string;
 }
 
+/** Client → server: a house id and the digits currently entered on its keypad. */
+export interface KeypadPayload {
+  buildingId: string;
+  code: string;
+}
+
 /** Payload type for each VillageMsg value. */
 export interface VillageMsgPayloads {
   [VillageMsg.UseDoor]: UseDoorPayload;
@@ -47,6 +55,7 @@ export interface VillageMsgPayloads {
   [VillageMsg.FishingRentRod]: FishingEmptyPayload;
   [VillageMsg.FishingCast]: FishingEmptyPayload;
   [VillageMsg.FishingReel]: FishingEmptyPayload;
+  [VillageMsg.Keypad]: KeypadPayload;
 }
 
 /** Fishing actions carry no client-controlled state; the server reads its own player pose and clock. */
@@ -75,6 +84,8 @@ export const VillageServerMsg = {
   FishingResult: "FishingResult",
   /** A personal rejection for an invalid/out-of-reach fishing action. */
   FishingRejected: "FishingRejected",
+  /** Result of a house keypad attempt; the expected code is never sent. */
+  KeypadResult: "KeypadResult",
 } as const;
 
 export type VillageServerMsg = (typeof VillageServerMsg)[keyof typeof VillageServerMsg];
@@ -109,4 +120,16 @@ export interface FishingResultPayload extends FishingStatePayload {
 
 export interface FishingRejectedPayload {
   reason: FishingReject;
+}
+
+export type KeypadResultReason = "invalid_request" | "too_far" | "locked_out" | "rate_limited" | "invalid_code" | "wrong_code";
+
+export interface KeypadResultPayload {
+  ok: boolean;
+  buildingId: string;
+  reason?: KeypadResultReason;
+  retryAfterMs?: number;
+  /** True while the house interior GLB is pending; the server uses the existing hall boundary as a placeholder. */
+  placeholder?: boolean;
+  area?: "hall";
 }

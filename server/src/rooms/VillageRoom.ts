@@ -14,6 +14,7 @@ import {
   type FishingRejectedPayload,
   type FishingResultPayload,
   type FishingStatePayload,
+  type KeypadResultPayload,
   type ServerTimePayload,
 } from "@caysonverse/shared/village/messages";
 import {
@@ -41,6 +42,8 @@ import {
   transitSnapshotAt,
   validateBusRide,
 } from "./transitRuntime";
+import { checkHouseKeypad, initialKeypadRate } from "./villageKeypad";
+import type { KeypadRateState } from "@caysonverse/shared/village/buildingAccess";
 
 /** Per-client bookkeeping (not part of synced state): the base's, plus the door-use cap. */
 interface VillageTracking extends Tracking {
@@ -52,6 +55,8 @@ interface VillageTracking extends Tracking {
   busBoarded: boolean;
   /** Trip id assigned at boarding; a rider is cleared when that trip returns. */
   busTripId: number | null;
+  /** Server-only state for house keypad failures and lockout. */
+  keypadRate: KeypadRateState;
 }
 
 /**
@@ -126,6 +131,9 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     });
     this.onMessage(VillageMsg.FishingReel, (client) => {
       this.handleFishingReel(client);
+    });
+    this.onMessage(VillageMsg.Keypad, (client, payload: unknown) => {
+      this.handleKeypad(client, payload);
     });
     // The time of day: everyone's clock offset is refreshed every 5 minutes (drift, a device clock changed meanwhile).
     this.clock.setInterval(() => this.broadcastServerTime(), SERVER_TIME_INTERVAL_MS);
@@ -214,6 +222,7 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
       candleRate: new RateWindow(CANDLE_RATE.count, CANDLE_RATE.windowMs),
       busBoarded: false,
       busTripId: null,
+      keypadRate: initialKeypadRate(),
     };
   }
 
@@ -531,7 +540,49 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
         this.sendFishingResult(client, stepped.state, stepped.event, now);
       } else {
         this.sendFishingState(client, stepped.state, now);
-      }
     }
+  }
+
+  /** House keypad: authoritative position + server-only code digest, then a placeholder hall teleport until house GLBs exist. */
+  private handleKeypad(client: Client, payload: unknown): void {
+    const player = this.state.players.get(client.sessionId);
+    const track = this.tracking.get(client.sessionId);
+    if (!player || !track || player.seatIndex >= 0 || player.area !== "village") return;
+    const body = payload !== null && typeof payload === "object" ? (payload as { buildingId?: unknown; code?: unknown }) : {};
+    if (typeof body.buildingId !== "string" || typeof body.code !== "string") return;
+    const result = checkHouseKeypad({
+      buildingId: body.buildingId,
+      playerId: client.sessionId,
+      area: player.area,
+      x: player.x,
+      z: player.z,
+      code: body.code,
+      nowMs: this.now(),
+      rate: track.keypadRate,
+    });
+    track.keypadRate = result.state;
+    const decision = result.decision;
+    const response: KeypadResultPayload = decision.ok
+      ? { ok: true, buildingId: decision.buildingId, area: "hall", placeholder: true }
+      : {
+          ok: false,
+          buildingId: body.buildingId,
+          reason:
+            decision.reason === "invalid_request" || decision.reason === "not_keypad_building"
+              ? "invalid_request"
+              : decision.reason === "rate_limited"
+                ? "wrong_code"
+                : decision.reason,
+          retryAfterMs: decision.retryAfterMs,
+        };
+    client.send(VillageServerMsg.KeypadResult, response);
+    if (!decision.ok) return;
+    const now = this.now();
+    const spawn = VILLAGE_LAYOUT.memorial.interior.spawn;
+    player.x = spawn.x;
+    player.z = spawn.z;
+    player.yaw = spawn.yaw;
+    player.area = "hall";
+    track.lastAcceptedAt = now;
   }
 }

@@ -31,6 +31,7 @@ import {
   BUS_RIDE_TARGET_LEAVE,
   CUBBY_TARGET_PREFIX,
   GUIDE_TARGET_PREFIX,
+  KEYPAD_TARGET_PREFIX,
   villageAndHallTargets,
   villageBusTarget,
   villageTargets,
@@ -44,6 +45,8 @@ import { StarFinderButton } from "./sky/StarFinderButton";
 import { FishingPanel } from "./FishingPanel";
 import { TransitRoadSignals } from "./TransitRoadSignals";
 import { PublicAutoDoor } from "./PublicAutoDoor";
+import { openKeypad, useKeypad } from "./keypadStore";
+import { VillageKeypad } from "./VillageKeypad";
 
 /**
  * 케이슨 마을 — the village scene (Task 4). A `PlayShell` on the village map under the village's afternoon
@@ -124,11 +127,12 @@ function VillageArea({ area, tier, pose }: { area: AreaId; tier: VillageTier; po
 
 function VillageDoors({ pose }: { pose: Pose }) {
   const { boarded } = useTransitState();
+  const keypadOpen = useKeypad().buildingId !== null;
   useEffect(() => {
     // Nothing is offered while the cubby card or a guide's questions are open (the E / action button hides).
     setTargetSource((p) => {
       const area = localArea();
-      const base = villageAndHallTargets(area, p.x, p.z, cubbyCardState() !== null || guideDialogOpen() !== null);
+      const base = villageAndHallTargets(area, p.x, p.z, cubbyCardState() !== null || guideDialogOpen() !== null || keypadOpen);
       const bus = villageBusTarget(area, p.x, p.z, boarded);
       return bus ? [...base, bus] : base;
     });
@@ -154,6 +158,11 @@ function VillageDoors({ pose }: { pose: Pose }) {
         openCubbyCard(target.id);
         return;
       }
+      if (target.kind === "object" && target.id.startsWith(KEYPAD_TARGET_PREFIX)) {
+        clearClickTarget();
+        openKeypad(target.id.slice(KEYPAD_TARGET_PREFIX.length));
+        return;
+      }
       if (target.kind !== "door") return;
       clearClickTarget(); // a click-move in progress must not walk on after the teleport
       doorFade.begin(() => {
@@ -166,7 +175,7 @@ function VillageDoors({ pose }: { pose: Pose }) {
       setTargetSource(null);
       setTargetHandler(null);
     };
-  }, [pose, boarded]);
+  }, [pose, boarded, keypadOpen]);
   return null;
 }
 
@@ -268,6 +277,7 @@ export function VillageScene({ identity }: { identity: Identity }) {
           <GuideDialog />
           <StarFinder orbit={orbit} />
           {area === "village" && <FishingPanel pose={pose} />}
+          <VillageKeypad />
         </>
       )}
     />

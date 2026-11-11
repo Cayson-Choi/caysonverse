@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { EMPTY_KEYPAD_RATE, recordKeypadAttempt, validateKeypadAttempt, type KeypadPolicy } from "./buildingAccess";
+import { EMPTY_KEYPAD_RATE, HOUSE_KEYPAD_IDS, keypadEntries, nearestKeypadEntry, recordKeypadAttempt, validateKeypadAttempt, type KeypadPolicy } from "./buildingAccess";
 
 const policy: KeypadPolicy = {
   keypadBuildingIds: new Set(["house_1"]),
@@ -13,6 +13,16 @@ const policy: KeypadPolicy = {
 const base = { buildingId: "house_1", playerId: "p1", area: "village", distanceM: 1, code: "1004", nowMs: 0 };
 
 describe("keypad access boundary", () => {
+  it("derives one keypad pad for each B-scale house and never includes public buildings", () => {
+    const entries = keypadEntries();
+    expect(entries).toHaveLength(10);
+    expect(entries.map((e) => e.buildingId)).toEqual([...HOUSE_KEYPAD_IDS]);
+    expect(entries.every((e) => e.placeholderArea === "hall")).toBe(true);
+    const near = nearestKeypadEntry(entries[0]!.pad.x, entries[0]!.pad.z);
+    expect(near?.entry.buildingId).toBe(entries[0]!.buildingId);
+    expect(near?.distanceM).toBe(0);
+  });
+
   it("accepts only a finite, nearby keypad request and never returns the expected code", () => {
     expect(validateKeypadAttempt(base, policy)).toEqual({ ok: true, buildingId: "house_1" });
     expect(JSON.stringify(validateKeypadAttempt(base, policy))).not.toContain("1004");

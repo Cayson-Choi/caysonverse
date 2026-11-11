@@ -1,0 +1,15 @@
+.cv-keypad { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; font-family: inherit; }
+.cv-keypad-backdrop { position: absolute; inset: 0; background: rgba(8, 9, 30, .48); }
+.cv-keypad-panel { position: relative; width: min(360px, calc(100vw - 32px)); padding: 24px; border-radius: 20px; background: #fbf9ff; color: #25204b; box-shadow: 0 18px 60px rgba(17, 11, 58, .35); text-align: center; }
+.cv-keypad-title { font-size: 22px; font-weight: 800; }
+.cv-keypad-house { margin-top: 4px; color: #6e55c8; font-size: 13px; }
+.cv-keypad-hint { margin: 14px 0; color: #66627b; font-size: 14px; }
+.cv-keypad-panel input { width: 150px; padding: 12px 10px; border: 2px solid #c9b9fa; border-radius: 12px; text-align: center; letter-spacing: .35em; font-size: 22px; }
+.cv-keypad-submit, .cv-keypad-close { display: block; width: 100%; margin-top: 14px; padding: 12px; border: 0; border-radius: 12px; font-weight: 700; cursor: pointer; }
+.cv-keypad-submit { background: #7354d4; color: #fff; }
+.cv-keypad-submit:disabled { opacity: .45; cursor: default; }
+.cv-keypad-close { margin-top: 8px; background: #eeeaf9; color: #4f4775; }
+.cv-keypad-result { margin-top: 12px; font-size: 13px; }
+.cv-keypad-result.is-ok { color: #23734e; }
+.cv-keypad-result.is-error { color: #a63749; }
+.cv-keypad-result small { display: block; margin-top: 5px; color: #6d687d; }

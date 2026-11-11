@@ -3,6 +3,7 @@ import { pickInteraction } from "../game/interact";
 import { readFileSync } from "node:fs";
 import { VILLAGE_LAYOUT, type AreaId } from "@caysonverse/shared/village/villageLayout";
 import { CANDLE_REACH_M } from "@caysonverse/shared/village/messages";
+import { keypadEntries } from "@caysonverse/shared/village/buildingAccess";
 import {
   CUBBY_LABEL,
   CUBBY_REACH_M,
@@ -26,6 +27,13 @@ const outside = VILLAGE_LAYOUT.memorial.exterior;
 const inside = VILLAGE_LAYOUT.memorial.interior;
 
 describe("villageTargets — the memorial hall's door", () => {
+  it("offers the nearest house keypad only on the village side", () => {
+    const entry = keypadEntries()[0]!;
+    expect(villageTargets("village", entry.pad.x, entry.pad.z)).toMatchObject([
+      { kind: "object", id: `keypad:${entry.buildingId}`, label: "번호키 입력" },
+    ]);
+    expect(villageTargets("hall", entry.pad.x, entry.pad.z)).toHaveLength(0);
+  });
   it("outside, within reach of the front door: one door target, labelled 추모관 들어가기", () => {
     const pad = outside.doorPad;
     const targets = villageTargets("village", pad.centre.x, pad.centre.z);

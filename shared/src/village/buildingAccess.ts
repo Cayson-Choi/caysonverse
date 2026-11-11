@@ -1,3 +1,5 @@
+import { VILLAGE_LAYOUT, type Point2, type SceneryHouse, type VillageLayout } from "./villageLayout";
+
 /**
  * Server boundary types and pure rate/lockout rules for building keypads.
  *
@@ -74,5 +76,44 @@ export function recordKeypadAttempt(
     return { state: { failedAtMs: [], lockedUntilMs }, decision: { ok: false, reason: "locked_out", retryAfterMs: p.lockoutMs } };
   }
   return { state: { failedAtMs, lockedUntilMs: 0 }, decision: { ok: false, reason: "rate_limited" } };
+}
+
+/** Houses are private keypad buildings; public buildings use the proximity-door state machine instead. */
+export const HOUSE_KEYPAD_IDS = Object.freeze(VILLAGE_LAYOUT.sceneryHouses.filter((h) => h.kind === "house").map((h) => h.id));
+export const HOUSE_KEYPAD_REACH_M = 2;
+
+export interface KeypadEntry {
+  buildingId: string;
+  pad: Point2;
+  /** Temporary placeholder destination until each house interior GLB is exported. */
+  placeholderArea: "hall";
+}
+
+function keypadPad(house: SceneryHouse): Point2 {
+  const halfX = house.size.x / 2;
+  const halfZ = house.size.z / 2;
+  const offset = 0.65;
+  switch (house.doorSide) {
+    case "n": return { x: house.centre.x, z: house.centre.z - halfZ - offset };
+    case "s": return { x: house.centre.x, z: house.centre.z + halfZ + offset };
+    case "e": return { x: house.centre.x + halfX + offset, z: house.centre.z };
+    case "w": return { x: house.centre.x - halfX - offset, z: house.centre.z };
+  }
+}
+
+export function keypadEntries(layout: VillageLayout = VILLAGE_LAYOUT): readonly KeypadEntry[] {
+  return layout.sceneryHouses
+    .filter((h) => h.kind === "house")
+    .map((h) => ({ buildingId: h.id, pad: keypadPad(h), placeholderArea: "hall" as const }));
+}
+
+export function nearestKeypadEntry(x: number, z: number, layout: VillageLayout = VILLAGE_LAYOUT): { entry: KeypadEntry; distanceM: number } | null {
+  if (!Number.isFinite(x) || !Number.isFinite(z)) return null;
+  let best: { entry: KeypadEntry; distanceM: number } | null = null;
+  for (const entry of keypadEntries(layout)) {
+    const distanceM = Math.hypot(x - entry.pad.x, z - entry.pad.z);
+    if (distanceM <= HOUSE_KEYPAD_REACH_M && (best === null || distanceM < best.distanceM)) best = { entry, distanceM };
+  }
+  return best;
 }
 
