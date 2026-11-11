@@ -36,6 +36,15 @@ import {
   makeRippleTexture,
   type SkyMapping,
 } from "./villageWater";
+import {
+  createFountainWater,
+  findFountainWater,
+  fountainDayNight,
+  fountainPoolGeometry,
+  makeFountainNoise,
+  tickFountain,
+  type FountainWater,
+} from "./fountainWater";
 import type { ToneCurve } from "../game/quality";
 import { NEAR_FADE_KEY } from "../game/clickPick";
 import { renderScale } from "../game/renderScale";
@@ -55,7 +64,9 @@ import type { DayNightState } from "./dayNightBlend";
  *    the inverse of its final tone curve, villageWater.ts). The backdrop has its haze baked in and takes no fog:
  *    `M_backdrop` (the hills and the far range) and the forest on the hills, the instanced `inst__far_*` cards (their
  *    leaf material is copied for them, as the village's own trees share it and stay in the fog).
- *  - `M_water` gets the runtime water (villageWater.ts); `M_waterfall` scrolls down its sheet.
+ *  - `M_water` gets the runtime water (villageWater.ts); `M_waterfall` scrolls down its sheet. The plaza fountain's
+ *    water is cut down to its three pools (their own copy of the water, with the landing rings and foam) and the jets,
+ *    curtains and drops are drawn anew at run time (fountainWater.ts); `fountain: "old"` keeps the model's tubes.
  *  - `M_glow_plot` (the plots' outline strips) glows: its colour is pushed past white (the rich tier blooms it) and
  *    it shows through the fog.
  *  - Day and night (Task 7A, dayNightBlend.ts): every `LM_*` blends the day light map with the night one (`village_lm_night.webp`,
@@ -627,8 +638,22 @@ export interface VillageNodes {
   graded: Array<{ material: MeshBasicMaterial; day: readonly [number, number, number]; night: readonly [number, number, number] }>;
   /** The stars (a layer of points just inside the dome), fading in with the night; null when none. */
   stars: Points | null;
+  /**
+   * The plaza fountain's runtime water (fountainWater.ts) and its pool's material (the model's fountain water cut down
+   * to its pools), or null (`fountain: "old"`, or no fountain in the model).
+   */
+  fountain: { water: FountainWater; pool: ShaderMaterial } | null;
   /** Materials, textures and geometries this call made (and nothing else): dispose them with the scene. */
   own: Array<Material | Texture | BufferGeometry>;
+}
+
+/** What `prepareVillage` may do differently. */
+export interface VillageOptions {
+  /**
+   * The plaza fountain's water: "new" (default) cuts the model's jets and sheets away and draws real water at run
+   * time; "old" leaves the model's water as it is (the DEV `?water=old` comparison).
+   */
+  fountain?: "new" | "old";
 }
 
 /** The light tier draws cheaper water and the dome untone-mapped; the rich tier, two ripple layers and a pre-distorted dome. */
@@ -776,6 +801,7 @@ export function prepareVillage(
   nightLightmap?: Texture | null,
   isUploaded?: (t: Texture) => boolean,
   maxAnisotropy = 1,
+  options: VillageOptions = {},
 ): VillageNodes {
   const root = source.clone(true);
   configureLightmap(lightmap);
@@ -886,8 +912,13 @@ export function prepareVillage(
 
   // The water.
   let water: ShaderMaterial | null = null;
+  let fountain: VillageNodes["fountain"] = null;
   const waterSource = found.get(MATERIAL.water) as MeshBasicMaterial | undefined;
   if (waterSource) {
+    // The plaza fountain's water (before its material is swapped): cut to its pools, the rest drawn at run time.
+    const centre = VILLAGE_LAYOUT.plaza.fountain.centre;
+    const fountainMesh = options.fountain === "old" ? null : findFountainWater(meshesWith(root, MATERIAL.water), centre);
+    const poolGeometry = fountainMesh ? fountainPoolGeometry(fountainMesh.geometry, fountainMesh.matrixWorld) : null;
     const ripple = makeRippleTexture();
     own.push(ripple);
     water = createWaterMaterial({
@@ -903,6 +934,25 @@ export function prepareVillage(
       if (!mesh.geometry.getAttribute("normal")) mesh.geometry.computeVertexNormals();
     }
     swapMaterial(root, MATERIAL.water, water);
+    if (fountainMesh && poolGeometry) {
+      const noise = makeFountainNoise();
+      const pool = createWaterMaterial({
+        map: waterSource.map,
+        sky: skySource?.map ?? null,
+        skyMapping,
+        ripple,
+        detail: tier === "high",
+        side: waterSource.side,
+        fountainPool: { noise },
+      });
+      (pool.uniforms.uFountain!.value as Vector4).set(centre.x, centre.z, WATER.fountainGlow.radius, 0);
+      fountainMesh.geometry = poolGeometry;
+      fountainMesh.material = pool;
+      const runtime = createFountainWater({ tier, centre, sky: skySource?.map ?? null, skyMapping, noise });
+      root.add(runtime.group);
+      own.push(poolGeometry, pool, noise, ...runtime.own);
+      fountain = { water: runtime, pool };
+    } else if (poolGeometry) poolGeometry.dispose();
   }
 
   // The waterfall: a copy of its material and map, the map slid down every frame.
@@ -934,7 +984,7 @@ export function prepareVillage(
   }
 
   freezeStatic(root);
-  return { root, water, falls, sky, skyMapping, hazed, graded, stars, own };
+  return { root, water, falls, sky, skyMapping, hazed, graded, stars, fountain, own };
 }
 
 /**
@@ -1037,14 +1087,10 @@ export function applyDayNight(nodes: VillageNodes, s: DayNightState): void {
     const n = s.night;
     g.material.color.setRGB(g.day[0] + (g.night[0] - g.day[0]) * n, g.day[1] + (g.night[1] - g.day[1]) * n, g.day[2] + (g.night[2] - g.day[2]) * n);
   }
-  const w = nodes.water;
-  if (w) {
-    (w.uniforms.uTint!.value as Vector3).set(s.waterTint[0], s.waterTint[1], s.waterTint[2]);
-    (w.uniforms.uFountain!.value as Vector4).w = s.lights * FOUNTAIN_GLOW_STRENGTH;
-    // The glint is the live key light's: the sun, or the moon at night.
-    (w.uniforms.uSunDir!.value as Vector3).set(s.keyDir[0], s.keyDir[1], s.keyDir[2]);
-    const level = Math.min(1, s.keyIntensity / 2.4);
-    (w.uniforms.uSunColor!.value as Vector3).set(s.keyColor[0] * level, s.keyColor[1] * level, s.keyColor[2] * level);
+  if (nodes.water) waterDayNight(nodes.water, s);
+  if (nodes.fountain) {
+    waterDayNight(nodes.fountain.pool, s);
+    fountainDayNight(nodes.fountain.water, s);
   }
   const stars = nodes.stars;
   if (stars) {
@@ -1053,9 +1099,23 @@ export function applyDayNight(nodes: VillageNodes, s: DayNightState): void {
   }
 }
 
+/** The time of day on a water material: its tint, the fountain's lights, the key light's glint. */
+function waterDayNight(w: ShaderMaterial, s: DayNightState): void {
+  (w.uniforms.uTint!.value as Vector3).set(s.waterTint[0], s.waterTint[1], s.waterTint[2]);
+  (w.uniforms.uFountain!.value as Vector4).w = s.lights * FOUNTAIN_GLOW_STRENGTH;
+  // The glint is the live key light's: the sun, or the moon at night.
+  (w.uniforms.uSunDir!.value as Vector3).set(s.keyDir[0], s.keyDir[1], s.keyDir[2]);
+  const level = Math.min(1, s.keyIntensity / 2.4);
+  (w.uniforms.uSunColor!.value as Vector3).set(s.keyColor[0] * level, s.keyColor[1] * level, s.keyColor[2] * level);
+}
+
 /** Per frame: the water's clock, the falls' slide and the dome's exposure (plain number writes). */
 export function tickVillage(nodes: VillageNodes, seconds: number, exposure: number): void {
   if (nodes.water) nodes.water.uniforms.uTime!.value = seconds;
+  if (nodes.fountain) {
+    nodes.fountain.pool.uniforms.uTime!.value = seconds;
+    nodes.fountain.pool.uniforms.uFTime!.value = tickFountain(nodes.fountain.water, seconds);
+  }
   if (nodes.falls) nodes.falls.map.offset.y = -nodes.falls.down * ((seconds * FALLS_SPEED) % 1);
   const inverse = nodes.sky?.userData.inverseTone as { uExposure: { value: number } } | undefined;
   if (inverse) inverse.uExposure.value = exposure;

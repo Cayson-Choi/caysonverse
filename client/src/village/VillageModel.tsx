@@ -32,6 +32,15 @@ declare global {
 }
 
 /**
+ * The plaza fountain's water: the runtime water (fountainWater.ts), or the model's own with the DEV address flag
+ * `?water=old` (for comparing the two). Production builds always draw the new water.
+ */
+function fountainMode(): "new" | "old" {
+  if (!import.meta.env.DEV || typeof location === "undefined") return "new";
+  return new URLSearchParams(location.search).get("water") === "old" ? "old" : "new";
+}
+
+/**
  * 케이슨 마을's model in the scene (Task 7): loads `village.glb` (Draco, decoder at /draco/, GPU instances) and its
  * light map, dresses a clone of it for the graphics tier (villageModelPrep.ts: light map, sky dome, water, falls,
  * glowing plot outlines, hidden `col__*` boxes) and renders it. The water's clock, the falls' slide, the dome's
@@ -68,6 +77,7 @@ export function VillageModel({ tier }: { tier: VillageTier }) {
         undefined,
         (t) => gl.properties.has(t),
         gl.capabilities.getMaxAnisotropy(),
+        { fountain: fountainMode() },
       ),
     [gltf, lightmap, tier, gl],
   );
