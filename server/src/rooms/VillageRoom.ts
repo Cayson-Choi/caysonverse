@@ -29,7 +29,7 @@ import {
   tickFishing,
   type FishingState,
 } from "@caysonverse/shared/village/fishing";
-import { VILLAGE_LAYOUT, villageGeometry } from "@caysonverse/shared/village/villageLayout";
+import { VILLAGE_LAYOUT, houseArea, houseInteriorGeometry, isHouseArea, villageGeometry } from "@caysonverse/shared/village/villageLayout";
 import { VILLAGE_SEATS } from "@caysonverse/shared/village/benchSeats";
 import { PlayerRoom, baseTracking, spawnInDisk, type Tracking } from "./PlayerRoom";
 import { validateJoinOptions } from "./joinValidation";
@@ -208,6 +208,10 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     return villageGeometry;
   }
 
+  protected geometryFor(player: Player): MapGeometry {
+    return isHouseArea(player.area) ? houseInteriorGeometry : villageGeometry;
+  }
+
   /** On the fountain plaza, within the layout's jitter of the spawn point, clamped into the bounds. */
   protected spawnPosition(): { x: number; z: number } {
     const { spawn } = VILLAGE_LAYOUT;
@@ -252,7 +256,7 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
 
   /** The memorial hall is quiet: no emoji, no jumping there (chat and walking are fine). */
   protected isQuiet(player: Player): boolean {
-    return player.area === "hall";
+    return player.area !== "village";
   }
 
   /** Seated on a bench → Move and Jump are dropped silently: getting up is an explicit Stand. */
@@ -564,7 +568,7 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     track.keypadRate = result.state;
     const decision = result.decision;
     const response: KeypadResultPayload = decision.ok
-      ? { ok: true, buildingId: decision.buildingId, area: "hall", placeholder: true }
+      ? { ok: true, buildingId: decision.buildingId, area: houseArea(decision.buildingId), placeholder: false }
       : {
           ok: false,
           buildingId: body.buildingId,
@@ -583,7 +587,7 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     player.x = spawn.x;
     player.z = spawn.z;
     player.yaw = spawn.yaw;
-    player.area = "hall";
+    player.area = houseArea(decision.buildingId);
     track.lastAcceptedAt = now;
   }
 }

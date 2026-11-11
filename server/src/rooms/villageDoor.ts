@@ -1,4 +1,4 @@
-import type { AreaId, VillageLayout } from "@caysonverse/shared/village/villageLayout";
+import { isHouseArea, type AreaId, type VillageLayout } from "@caysonverse/shared/village/villageLayout";
 import { VILLAGE_LAYOUT } from "@caysonverse/shared/village/villageLayout";
 
 /**
@@ -55,9 +55,9 @@ export function useDoor(
   z: number,
   layout: VillageLayout = VILLAGE_LAYOUT,
 ): DoorArrival | null {
-  if (area !== "village" && area !== "hall") return null;
+  if (area !== "village" && area !== "hall" && !isHouseArea(area)) return null;
   if (!Number.isFinite(x) || !Number.isFinite(z)) return null;
-  const pad = padFor(area, layout);
+  const pad = area === "village" ? layout.memorial.exterior.doorPad : layout.memorial.interior.doorPad;
   if (Math.hypot(x - pad.centre.x, z - pad.centre.z) > pad.radius + DOOR_REACH_M) return null;
   return arrivalAfter(area, layout);
 }

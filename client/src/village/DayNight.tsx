@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import { Color, type Camera, type Scene, type WebGLRenderer } from "three";
-import type { AreaId } from "@caysonverse/shared/village/villageLayout";
+import { isHouseArea, type AreaId } from "@caysonverse/shared/village/villageLayout";
 import { useLightRig } from "../game/lightRig";
 import { QUALITY, exposureFor, inverseNeutralToneMap, type QualityTier } from "../game/quality";
 import { useSettingsStore } from "../stores/settingsStore";
@@ -67,7 +67,7 @@ export function DayNight({ area, tier }: { area: AreaId; tier: QualityTier }) {
   }, [get]);
 
   useFrame((_, delta) => {
-    dayNight.step(Math.min(delta, 1), area === "hall");
+    dayNight.step(Math.min(delta, 1), area === "hall" || isHouseArea(area));
     const s = dayNight.applied;
 
     // Exposure: the scene's (the clock's) times the player's brightness.

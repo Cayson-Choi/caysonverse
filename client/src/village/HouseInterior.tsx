@@ -1,6 +1,8 @@
 import { useMemo } from "react";
 import type { VillageTier } from "./villageModelPrep";
 import { houseInteriorLayout, type HouseFurniture } from "@caysonverse/shared/village/houseInterior";
+import { DoorPad } from "./VillageHall";
+import { VILLAGE_LAYOUT } from "@caysonverse/shared/village/villageLayout";
 
 const VARIANT_COLORS = {
   pink: { wall: "#f5d8df", trim: "#9b5268", accent: "#d889a2" },
@@ -68,6 +70,7 @@ export function HouseInterior({ buildingId, origin = [0, 0, 0], tier = "high" }:
   const stepCount = 8;
   return (
     <group name={`house-interior-${layout.buildingId}`} position={origin}>
+      <DoorPad pad={{ centre: { x: 0, z: VILLAGE_LAYOUT.memorial.interior.doorPad.centre.z }, radius: VILLAGE_LAYOUT.memorial.interior.doorPad.radius }} />
       <mesh position={[0, -0.08, 0]} receiveShadow><boxGeometry args={[layout.width, 0.16, layout.depth]} /><meshStandardMaterial color="#a7a9a5" roughness={0.9} /></mesh>
       <mesh position={[0, layout.wallHeight + 0.08, 0]}><boxGeometry args={[layout.width, 0.16, layout.depth]} /><meshStandardMaterial color={colors.wall} roughness={1} /></mesh>
       <mesh position={[-wall, layout.wallHeight / 2, 0]} castShadow><boxGeometry args={[0.18, layout.wallHeight, layout.depth]} /><meshStandardMaterial color={colors.wall} roughness={0.94} /></mesh>

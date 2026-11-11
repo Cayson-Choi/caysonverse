@@ -56,7 +56,20 @@ export interface Disc {
 export type Side = "n" | "s" | "e" | "w";
 
 /** The two places a player can be: the open village, or inside the memorial hall. */
-export type AreaId = "village" | "hall";
+export type HouseAreaId = `house:${string}`;
+export type AreaId = "village" | "hall" | HouseAreaId;
+
+export function isHouseArea(area: string): area is HouseAreaId {
+  return area.startsWith("house:") && area.length > "house:".length;
+}
+
+export function houseArea(buildingId: string): HouseAreaId {
+  return `house:${buildingId}`;
+}
+
+export function buildingIdFromArea(area: string): string | null {
+  return isHouseArea(area) ? area.slice("house:".length) : null;
+}
 
 export type PlotId = "plot_n" | "plot_ne" | "plot_e" | "plot_w" | "plot_nw" | "plot_s";
 
@@ -244,7 +257,7 @@ export interface VillageLayout {
     waterfall: { centre: Point2; size: Size2; height: number; facing: Side };
     lake: { centre: Point2; size: Size2; pavilion: { centre: Point2; size: Size2 } };
   };
-  areas: Record<AreaId, Bounds>;
+  areas: Record<"village" | "hall", Bounds>;
 }
 
 /** The axis-aligned box of `size` centred on `centre`. */
@@ -744,6 +757,15 @@ export const villageGeometry: MapGeometry = buildVillageGeometry(
   // Task 9A: the two guides (plaza and hall desk) stand on a small collider each, so nobody walks through them; the
   // parked bus's mirrors hang past its box at head height (bus review r3): a collider under each.
   [...guideColliders(), ...busMirrorColliders()],
+);
+
+/** Procedural house interiors reuse the hall room footprint but omit memorial furniture and cubby obstacles. */
+export const houseInteriorGeometry: MapGeometry = makeGeometry(
+  "house",
+  VILLAGE_LAYOUT.areas.hall,
+  hallWalls(VILLAGE_LAYOUT),
+  [],
+  [],
 );
 
 /**

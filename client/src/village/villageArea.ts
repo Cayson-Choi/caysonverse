@@ -11,7 +11,7 @@
  */
 
 import { useSyncExternalStore } from "react";
-import type { AreaId } from "@caysonverse/shared/village/villageLayout";
+import { isHouseArea, type AreaId } from "@caysonverse/shared/village/villageLayout";
 import { normalizeArea, type AreaGate } from "../game/areaFilter";
 import { setQuiet } from "../game/quiet";
 import type { PlayersRoom } from "../game/remoteSync";
@@ -29,7 +29,7 @@ export function setLocalArea(next: AreaId): void {
   if (next === area) return;
   area = next;
   // The memorial hall is quiet: jumping and emoji are off while the local player is inside (quiet.ts).
-  setQuiet(next === "hall");
+  setQuiet(next === "hall" || isHouseArea(next));
   for (const l of [...listeners]) l();
 }
 

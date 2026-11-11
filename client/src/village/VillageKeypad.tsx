@@ -75,8 +75,8 @@ export function VillageKeypad() {
         </button>
         {result ? (
           <div className={`cv-keypad-result ${result.ok ? "is-ok" : "is-error"}`} aria-live="polite">
-            {result.ok ? "잠금이 해제됐어요. 실내 공간으로 이동합니다." : reasonText(result)}
-            {result.ok && result.placeholder ? <small>집 내부 3D 모델은 다음 아트 단계에서 연결됩니다.</small> : null}
+            {result.ok ? "잠금이 해제됐어요. 집 안으로 이동합니다." : reasonText(result)}
+            {result.ok && result.placeholder ? <small>집 내부 3D 모델은 준비 중이라 임시 공간을 보여드려요.</small> : null}
           </div>
         ) : null}
         <button type="button" className="cv-keypad-close" onClick={closeKeypad}>닫기</button>

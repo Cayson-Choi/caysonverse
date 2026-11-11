@@ -32,7 +32,8 @@ import { isBlocked } from "../collision";
 import { PLAYER_RADIUS, type Seat } from "../worldMap";
 import { SIT_ROOT_AHEAD } from "../sitPose";
 import type { Bounds } from "../school/geometry";
-import { VILLAGE_LAYOUT, villageGeometry, type AreaId, type Point2 } from "./villageLayout";
+import { VILLAGE_LAYOUT, houseArea, houseInteriorGeometry, villageGeometry, type AreaId, type Point2 } from "./villageLayout";
+import { HOUSE_INTERIOR_LAYOUTS } from "./houseInterior";
 
 /** One bench of the village: what sitting on it needs to know about its model. */
 export interface VillageBench {
@@ -103,10 +104,10 @@ function offset(x: number, z: number, yaw: number, along: number, ahead: number)
 }
 
 /** Whether a standing body at (x, z) is clear of every collider and inside `bounds`, with the dismount clearance. */
-export function standsClear(x: number, z: number, bounds: Bounds): boolean {
+export function standsClear(x: number, z: number, bounds: Bounds, geometry = villageGeometry): boolean {
   const r = PLAYER_RADIUS + STAND_CLEARANCE;
   if (x < bounds.minX + r || x > bounds.maxX - r || z < bounds.minZ + r || z > bounds.maxZ - r) return false;
-  return !isBlocked(x, z, r, villageGeometry.obstacles, 0);
+  return !isBlocked(x, z, r, geometry.obstacles, 0);
 }
 
 /** Directions the dismount search tries, turned off the facing (rad): straight ahead first, then up to 45 degrees aside. */
@@ -117,12 +118,12 @@ const STAND_TURNS: readonly number[] = [0, -0.26, 0.26, -0.52, 0.52, -0.79, 0.79
  * STAND_STEP steps (the straighter direction wins a tie). A plaza bench's collider is the axis-aligned box of a turned
  * bench, so straight ahead one seat would have to step almost a metre past the box's corner; a slight turn is nearer.
  */
-function dismountAhead(root: Point2, yaw: number, bounds: Bounds, id: string): Point2 {
+function dismountAhead(root: Point2, yaw: number, bounds: Bounds, id: string, geometry = villageGeometry): Point2 {
   for (let d = 0; d <= STAND_SEARCH + 1e-9; d += STAND_STEP) {
     for (const turn of STAND_TURNS) {
       const p = offset(root.x, root.z, yaw + turn, 0, d);
       const spot = { x: Math.round(p.x * 1000) / 1000, z: Math.round(p.z * 1000) / 1000 };
-      if (standsClear(spot.x, spot.z, bounds)) return spot;
+      if (standsClear(spot.x, spot.z, bounds, geometry)) return spot;
     }
   }
   throw new Error(`no clear dismount spot ahead of bench seat ${id}`);
@@ -137,7 +138,7 @@ export interface VillageSeat extends Seat {
 function makeSeats(benches: readonly VillageBench[]): VillageSeat[] {
   const seats: VillageSeat[] = [];
   for (const b of benches) {
-    const bounds = VILLAGE_LAYOUT.areas[b.area];
+    const bounds = b.area === "village" ? VILLAGE_LAYOUT.areas.village : VILLAGE_LAYOUT.areas.hall;
     for (const along of benchSeatOffsets(b.length)) {
       const p = offset(b.centre.x, b.centre.z, b.yaw, along, b.frontEdge + SIT_ROOT_AHEAD);
       const root = { x: Math.round(p.x * 1000) / 1000, z: Math.round(p.z * 1000) / 1000 };
@@ -153,6 +154,14 @@ function makeSeats(benches: readonly VillageBench[]): VillageSeat[] {
         bench: b.id,
         area: b.area,
       });
+    }
+  }
+  for (const layout of Object.values(HOUSE_INTERIOR_LAYOUTS)) {
+    const bounds = VILLAGE_LAYOUT.areas.hall;
+    for (const s of layout.seats) {
+      const root = { x: Math.round((300 + s.x) * 1000) / 1000, z: Math.round(s.z * 1000) / 1000 };
+      const stand = dismountAhead(root, s.yaw, bounds, s.id, houseInteriorGeometry);
+      seats.push({ x: root.x, z: root.z, yaw: s.yaw, standX: stand.x, standZ: stand.z, seatY: s.seatY, frontEdge: SIT_ROOT_AHEAD, bench: s.id, area: houseArea(layout.buildingId) });
     }
   }
   return seats;

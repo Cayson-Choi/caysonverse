@@ -3,6 +3,7 @@ import { useSoundStore } from "../stores/soundStore";
 import { HudButton } from "../ui/HudButton";
 import { createBrowserBgm, mountVillageBgm, type VillageBgm } from "./villageBgm";
 import { useLocalArea } from "./villageArea";
+import { isHouseArea } from "@caysonverse/shared/village/villageLayout";
 
 /**
  * The village's music: owns the controller for as long as the village scene is mounted (the effect creates and
@@ -29,7 +30,7 @@ export function VillageBgmButton() {
   );
 
   useEffect(() => {
-    bgm?.setHall(area === "hall");
+    bgm?.setHall(area === "hall" || isHouseArea(area));
   }, [bgm, area]);
 
   useEffect(() => {

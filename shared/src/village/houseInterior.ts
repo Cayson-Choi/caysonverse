@@ -67,8 +67,8 @@ export function houseInteriorLayout(buildingId: string): HouseInteriorLayout {
     { kind: "lamp", x: -0.45 * flip, z: 2.55, yaw: 0, width: 0.24, depth: 0.24, height: 1.55 },
   ];
   const seats: HouseSeat[] = [
-    { id: `${id}:sofa:0`, x: -2.45 * flip - 0.42 * flip, z: 1.85, yaw: Math.PI / 2 * flip, seatY: 0.48 },
-    { id: `${id}:sofa:1`, x: -2.45 * flip + 0.42 * flip, z: 1.85, yaw: Math.PI / 2 * flip, seatY: 0.48 },
+    { id: `${id}:sofa:0`, x: -2.45 * flip - 0.65 * flip, z: 1.85, yaw: Math.PI / 2 * flip, seatY: 0.48 },
+    { id: `${id}:sofa:1`, x: -2.45 * flip + 0.65 * flip, z: 1.85, yaw: Math.PI / 2 * flip, seatY: 0.48 },
     { id: `${id}:table:0`, x: 0.55 * flip, z: 0.7 + 0.82, yaw: Math.PI, seatY: 0.46 },
     { id: `${id}:table:1`, x: 0.55 * flip, z: 0.7 - 0.82, yaw: 0, seatY: 0.46 },
   ];

@@ -9,11 +9,11 @@
  * Outside the village nobody has an area, so remoteSync is given no `AreaGate` and nothing is filtered.
  */
 
-import type { AreaId } from "@caysonverse/shared/village/villageLayout";
+import { isHouseArea, type AreaId } from "@caysonverse/shared/village/villageLayout";
 
-/** `"hall"` is the hall; anything else (an older server, an unknown value) is the village. */
+/** Preserve a validated house area so each house is isolated; unknown values still fall back to the village. */
 export function normalizeArea(value: unknown): AreaId {
-  return value === "hall" ? "hall" : "village";
+  return value === "hall" || (typeof value === "string" && isHouseArea(value)) ? value : "village";
 }
 
 /** True when a player in `remoteArea` has an avatar for a viewer standing in `localArea`. */

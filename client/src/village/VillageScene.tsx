@@ -12,7 +12,7 @@ import { DoorFade } from "./DoorFade";
 import { doorFade } from "./doorFadeModel";
 import { useQualityTier } from "../game/QualityEffects";
 import { SceneWarmUp } from "../game/SceneWarmUp";
-import { VILLAGE_LAYOUT, type AreaId } from "@caysonverse/shared/village/villageLayout";
+import { VILLAGE_LAYOUT, buildingIdFromArea, isHouseArea, type AreaId } from "@caysonverse/shared/village/villageLayout";
 import { PlotMarkers } from "./PlotMarkers";
 import { DoorPad } from "./VillageHall";
 import { HallArea } from "./MemorialHall";
@@ -47,6 +47,7 @@ import { TransitRoadSignals } from "./TransitRoadSignals";
 import { PublicAutoDoor } from "./PublicAutoDoor";
 import { openKeypad, useKeypad } from "./keypadStore";
 import { VillageKeypad } from "./VillageKeypad";
+import { HouseInterior } from "./HouseInterior";
 
 /**
  * 케이슨 마을 — the village scene (Task 4). A `PlayShell` on the village map under the village's afternoon
@@ -98,6 +99,7 @@ function PlainGround() {
 /** What the local player's area draws: the village model and its signs and door pad, or the hall's room. */
 function VillageArea({ area, tier, pose }: { area: AreaId; tier: VillageTier; pose: Pose }) {
   if (area === "hall") return <HallArea pose={pose} />;
+  if (isHouseArea(area)) return <HouseInterior buildingId={buildingIdFromArea(area)!} origin={[300, 0, 0]} tier={tier} />;
   return (
     <>
       {/* A failed download shows a plain ground and tries again, instead of the crash screen (final review m2). */}

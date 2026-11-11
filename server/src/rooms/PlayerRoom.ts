@@ -102,6 +102,11 @@ export abstract class PlayerRoom<S extends PlayersState, T extends Tracking = Tr
   /** The map the players of this room walk on (bounds + obstacles for every Move). */
   protected abstract geometry(): MapGeometry;
 
+  /** Optional per-player collision variant (village house interiors use the same room bounds without hall furniture). */
+  protected geometryFor(_player: Player): MapGeometry {
+    return this.geometry();
+  }
+
   /** Where a joining player is placed. */
   protected abstract spawnPosition(): { x: number; z: number };
 
@@ -292,7 +297,7 @@ export abstract class PlayerRoom<S extends PlayersState, T extends Tracking = Tr
     // client-influenceable, so an idle/reconnect gap must NOT translate into a
     // world-spanning one-shot displacement budget. The validator then floors it.
     const elapsed = Math.min(now - track.lastAcceptedAt, MOVE_ELAPSED_CEIL_MS);
-    const next = validateMove({ x: player.x, z: player.z }, payload, elapsed, this.geometry());
+    const next = validateMove({ x: player.x, z: player.z }, payload, elapsed, this.geometryFor(player));
     if (next === null) {
       // Invalid → drop the whole message. The echoed clock is cleared: the server's pose is no longer the
       // sender's last move, so its client judges the divergence against where it stands now (it may have

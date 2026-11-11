@@ -21,9 +21,9 @@ import type { InteractTarget } from "../game/interact";
  * column wins; the door outranks a cubby (priority), though the two are never within reach of the same spot.
  */
 
-export const DOOR_LABEL: Readonly<Record<AreaId, string>> = { village: "추모관 들어가기", hall: "밖으로 나가기" };
+export const DOOR_LABEL: Readonly<Record<"village" | "hall", string>> = { village: "추모관 들어가기", hall: "밖으로 나가기" };
 /** The word for the 60 px round touch button. */
-export const DOOR_SHORT: Readonly<Record<AreaId, string>> = { village: "들어가기", hall: "나가기" };
+export const DOOR_SHORT: Readonly<Record<"village" | "hall", string>> = { village: "들어가기", hall: "나가기" };
 /** The target id of the memorial hall's door (both sides). */
 export const MEMORIAL_DOOR_ID = "memorial_door";
 export const KEYPAD_TARGET_PREFIX = "keypad:";
@@ -53,7 +53,11 @@ export function villageTargets(
 ): readonly InteractTarget[] {
   const pad = doorPadFor(area, layout);
   const dist = Math.hypot(x - pad.centre.x, z - pad.centre.z);
-  if (dist <= pad.radius + DOOR_OFFER_REACH_M) return [{ kind: "door", id: MEMORIAL_DOOR_ID, dist, icon: "🚪", label: DOOR_LABEL[area], short: DOOR_SHORT[area] }];
+  if (dist <= pad.radius + DOOR_OFFER_REACH_M) {
+    const label = area === "village" ? DOOR_LABEL.village : area === "hall" ? DOOR_LABEL.hall : "집 밖으로 나가기";
+    const short = area === "village" ? DOOR_SHORT.village : area === "hall" ? DOOR_SHORT.hall : "나가기";
+    return [{ kind: "door", id: MEMORIAL_DOOR_ID, dist, icon: "🚪", label, short }];
+  }
   if (area !== "village") return NONE;
   const keypad = keypadEntries(layout)
     .map((entry) => ({ ...entry, dist: Math.hypot(x - entry.pad.x, z - entry.pad.z) }))

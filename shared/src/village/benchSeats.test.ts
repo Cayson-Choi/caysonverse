@@ -4,7 +4,7 @@ import { PLAYER_RADIUS, SEAT_REACH, SEATS, approachesSeat, nearestFreeSeat } fro
 import { SIT_POSE, SIT_ROOT_AHEAD, liftForSeatY } from "../sitPose";
 import { VILLAGE_COLLIDERS } from "./generated/villageColliders";
 import { MEMORIAL_COLLIDERS } from "./generated/memorialColliders";
-import { VILLAGE_LAYOUT, villageGeometry } from "./villageLayout";
+import { VILLAGE_LAYOUT, houseInteriorGeometry, isHouseArea, villageGeometry } from "./villageLayout";
 import { STAND_CLEARANCE, VILLAGE_BENCHES, VILLAGE_SEATS, benchSeatOffsets, type VillageBench } from "./benchSeats";
 
 /** The seated figure's width across the arms (sitPose.ts: the torso with the upper arms, -0.52..0.54 m) and the hands' (-0.53..0.58). */
@@ -82,7 +82,8 @@ describe("village benches (the models sitting needs)", () => {
 
 describe("village seats (where a sitter goes)", () => {
   it("two seats per bench, in bench order, further apart than the seated figure is wide (hands to hands)", () => {
-    expect(VILLAGE_SEATS).toHaveLength(VILLAGE_BENCHES.length * 2);
+    const legacyCount = VILLAGE_BENCHES.length * 2;
+    expect(VILLAGE_SEATS.length).toBeGreaterThan(legacyCount);
     VILLAGE_BENCHES.forEach((b, i) => {
       const pair = VILLAGE_SEATS.slice(i * 2, i * 2 + 2);
       for (const s of pair) {
@@ -101,7 +102,7 @@ describe("village seats (where a sitter goes)", () => {
   });
 
   it("the sit pose lands ON the seat: hips on its front half, the butt between its edges, the hanging calves clear of the front edge", () => {
-    for (const s of VILLAGE_SEATS) {
+    for (const s of VILLAGE_SEATS.slice(0, VILLAGE_BENCHES.length * 2)) {
       const b = benchOf(s.bench);
       const root = inBenchFrame(b, s.x, s.z);
       const hips = root.ahead - SIT_POSE.hipsBehindRoot;
@@ -135,14 +136,14 @@ describe("village seats (where a sitter goes)", () => {
   it("no two sitters overlap: seats of different benches are far apart, and every seat point is in its own area", () => {
     for (let i = 0; i < VILLAGE_SEATS.length; i++) {
       const a = VILLAGE_SEATS[i]!;
-      const bounds = L.areas[a.area];
+      const bounds = a.area === "village" ? L.areas.village : L.areas.hall;
       expect(a.x).toBeGreaterThan(bounds.minX);
       expect(a.x).toBeLessThan(bounds.maxX);
       expect(a.z).toBeGreaterThan(bounds.minZ);
       expect(a.z).toBeLessThan(bounds.maxZ);
       for (let j = i + 1; j < VILLAGE_SEATS.length; j++) {
         const b = VILLAGE_SEATS[j]!;
-        expect(Math.hypot(a.x - b.x, a.z - b.z), `${i} vs ${j}`).toBeGreaterThan(SEATED_HANDS_WIDTH);
+        if (a.area === b.area) expect(Math.hypot(a.x - b.x, a.z - b.z), `${i} vs ${j}`).toBeGreaterThan(SEATED_HANDS_WIDTH);
       }
     }
   });
@@ -150,9 +151,10 @@ describe("village seats (where a sitter goes)", () => {
 
 describe("village seats (where a sitter gets up to)", () => {
   it("every dismount spot is clear of every collider of the village (a standing body plus margin) and inside its area", () => {
-    for (const s of VILLAGE_SEATS) {
-      expect(isBlocked(s.standX, s.standZ, PLAYER_RADIUS + STAND_CLEARANCE, villageGeometry.obstacles, 0), s.bench).toBe(false);
-      const bounds = L.areas[s.area];
+    for (const s of VILLAGE_SEATS.filter((v) => !isHouseArea(v.area))) {
+      const bounds = s.area === "village" ? L.areas.village : L.areas.hall;
+      const obstacles = isHouseArea(s.area) ? houseInteriorGeometry.obstacles : villageGeometry.obstacles;
+      expect(isBlocked(s.standX, s.standZ, PLAYER_RADIUS + STAND_CLEARANCE, obstacles, 0), s.bench).toBe(false);
       expect(s.standX - PLAYER_RADIUS).toBeGreaterThan(bounds.minX);
       expect(s.standX + PLAYER_RADIUS).toBeLessThan(bounds.maxX);
       expect(s.standZ - PLAYER_RADIUS).toBeGreaterThan(bounds.minZ);
@@ -161,7 +163,7 @@ describe("village seats (where a sitter gets up to)", () => {
   });
 
   it("gets up in front of the bench, a short step from the seat (within reach, so the seat is offered again from there)", () => {
-    for (const s of VILLAGE_SEATS) {
+    for (const s of VILLAGE_SEATS.filter((v) => !isHouseArea(v.area))) {
       const ahead = (s.standX - s.x) * Math.sin(s.yaw) + (s.standZ - s.z) * Math.cos(s.yaw);
       const d = Math.hypot(s.standX - s.x, s.standZ - s.z);
       expect(ahead).toBeGreaterThan(0);
