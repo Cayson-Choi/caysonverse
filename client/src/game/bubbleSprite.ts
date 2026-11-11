@@ -37,15 +37,15 @@ const MAX_TEXT_WIDTH = 560;
 const WORLD_PER_PX = 0.42 / 76;
 
 /** The font sizes (device px) a bubble is rasterized at; beyond them it is drawn scaled (very near or very far). */
-export const BUBBLE_MIN_FONT_PX = 6;
-export const BUBBLE_MAX_FONT_PX = 96;
+export const BUBBLE_MIN_FONT_PX = 8;
+export const BUBBLE_MAX_FONT_PX = 112;
 /** What a bubble is first rasterized at before its owner has sized it (the old fixed raster: the design at 2x). */
 export const BUBBLE_START_FONT_PX = 2 * FONT_SIZE;
 
 const FAMILY = 'system-ui, -apple-system, "Segoe UI", "Malgun Gothic", sans-serif';
-const fontOf = (px: number) => `500 ${px}px ${FAMILY}`;
-const FILL = "rgba(24, 20, 46, 0.82)";
-const TEXT = "#f4f1ff";
+const fontOf = (px: number) => `700 ${px}px ${FAMILY}`;
+const FILL = "rgba(24, 20, 46, 0.9)";
+const TEXT = "#ffffff";
 
 /** The bubble text's on-screen height (CSS px) where a metre spans `ppm` CSS px (nametagLayout `pixelsPerMetre`). */
 export function bubbleTextCssPx(ppm: number): number {

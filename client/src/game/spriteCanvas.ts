@@ -48,7 +48,7 @@ export const LABEL_LAYER = 30;
  * size, pixel-aligned. Its texture is made for the size it is shown at (within half a font pixel, `fontBucket`), so in
  * practice it always is; 0.2 still covers the smallest fonts' rounding (an 8 px font: its 2 px paddings are ±0.5 px).
  */
-export const LABEL_SNAP = 0.2;
+export const LABEL_SNAP = 0.3;
 
 /** Trace a rounded-rectangle path; the caller fills and/or strokes it. */
 export function roundRect(

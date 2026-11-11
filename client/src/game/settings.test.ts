@@ -6,6 +6,7 @@ import {
   MIN_TOUCH_PX,
   SENSITIVITY,
   SETTINGS_STORAGE_KEY,
+  OWN_NAMETAG_MIGRATION_KEY,
   buttonPx,
   loadSettings,
   normalizeSettings,
@@ -22,7 +23,7 @@ describe("DEFAULT_SETTINGS and constants", () => {
       leftHanded: false,
       lookSensitivity: 1,
       nametagMode: "nearby",
-      showOwnNametag: false,
+      showOwnNametag: true,
       coachDone: false,
       graphics: "auto",
       brightness: 1,
@@ -223,6 +224,7 @@ describe("loadSettings / saveSettings", () => {
     expect(Object.keys(storage.data)).toEqual(["cv-settings-v1"]);
     expect(JSON.parse(storage.data["cv-settings-v1"])).toEqual(next);
     expect(loadSettings(storage)).toEqual(next);
+    expect(storage.data[OWN_NAMETAG_MIGRATION_KEY]).toBe("1");
   });
 
   it("repairs a damaged stored blob instead of failing", () => {
@@ -237,5 +239,12 @@ describe("loadSettings / saveSettings", () => {
     expect(() => saveSettings({ ...DEFAULT_SETTINGS, leftHanded: true }, blockedStorage)).not.toThrow();
     expect(loadSettings(null)).toEqual(DEFAULT_SETTINGS);
     expect(() => saveSettings(DEFAULT_SETTINGS, null)).not.toThrow();
+  });
+
+  it("turns on the own name tag once for an older save, then preserves a later explicit choice", () => {
+    const storage = fakeStorage({ "cv-settings-v1": JSON.stringify({ showOwnNametag: false }) });
+    expect(loadSettings(storage).showOwnNametag).toBe(true);
+    storage.data["cv-settings-v1"] = JSON.stringify({ ...DEFAULT_SETTINGS, showOwnNametag: false });
+    expect(loadSettings(storage).showOwnNametag).toBe(false);
   });
 });
