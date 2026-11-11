@@ -8,9 +8,14 @@ import { BoxGeometry, InstancedMesh, Mesh, MeshBasicMaterial, Object3D, Texture 
 const h = vi.hoisted(() => {
   type Entry = { state: "ready"; value: unknown } | { state: "loading"; promise: Promise<void>; resolve: (v: unknown) => void };
   const cache = new Map<string, Entry>();
+  /** Reads of an absent entry (each would start a download in the real cache). */
+  const missing: string[] = [];
   const read = (url: string) => {
     const e = cache.get(url);
-    if (!e) throw new Error(`read of an entry that was never requested: ${url}`);
+    if (!e) {
+      missing.push(url);
+      throw new Error(`read of an entry that was never requested: ${url}`);
+    }
     if (e.state === "loading") throw e.promise;
     return e.value;
   };
@@ -26,7 +31,7 @@ const h = vi.hoisted(() => {
     cache.set(url, { state: "loading", promise, resolve });
     return resolve;
   };
-  return { cache, read, clear, loading, gltfClear: [] as string[], textureClear: [] as string[] };
+  return { cache, read, clear, loading, missing, gltfClear: [] as string[], textureClear: [] as string[] };
 });
 
 vi.mock("@react-three/drei", () => {
@@ -96,6 +101,7 @@ function loaded() {
 beforeEach(() => {
   vi.useFakeTimers();
   h.cache.clear();
+  h.missing.length = 0;
   h.gltfClear.length = 0;
   h.textureClear.length = 0;
 });
@@ -280,5 +286,36 @@ describe("villageRelease — the village bus (village_bus.glb) goes with the vil
   it("clearBusCache forgets a failed download, so the bus's boundary fetches it again", () => {
     clearBusCache();
     expect(h.gltfClear).toEqual([BUS_MODEL_URL]);
+  });
+
+  it("a release after a failed bus load (its entry cleared by the boundary) reads nothing: no download just to free it (r4, P6)", () => {
+    loaded();
+    const release = holdVillageFiles();
+    noteVillageRequested();
+    noteBusRequested(); // VillageBus read it ...
+    clearBusCache(); // ... the load failed: LoadBoundary's onReset, its retry still waiting
+    release(); // a phone walks into the memorial hall
+    vi.advanceTimersByTime(0);
+    expect(h.missing).toEqual([]); // the real cache would have started a fresh download of village_bus.glb here
+    expect(h.gltfClear).toEqual([BUS_MODEL_URL, VILLAGE_MODEL_URL]); // the boundary's clear, then the village's release
+    // the retry reads it again: then a release frees it as usual
+    const bus = model();
+    h.cache.set(BUS_MODEL_URL, { state: "ready", value: bus.gltf });
+    const again = holdVillageFiles();
+    noteBusRequested();
+    again();
+    vi.advanceTimersByTime(0);
+    expect(h.missing).toEqual([]);
+    expect(bus.disposed.size).toBe(bus.parts.length);
+  });
+
+  it("the same for a failed village load: its boundary's clear leaves nothing to read on release", () => {
+    const release = holdVillageFiles();
+    noteVillageRequested();
+    noteNightRequested();
+    clearVillageCaches();
+    release();
+    vi.advanceTimersByTime(0);
+    expect(h.missing).toEqual([]);
   });
 });

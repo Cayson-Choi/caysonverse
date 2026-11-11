@@ -9,11 +9,14 @@ import {
   OneFactor,
   OneMinusSrcAlphaFactor,
   Vector3,
+  type BufferGeometry,
   type Material,
+  type Mesh,
   type Object3D,
 } from "three";
 import { VILLAGE_LAYOUT, type VillageLayout } from "@caysonverse/shared/village/villageLayout";
 import { COLLIDER_PREFIX, isMesh } from "../game/hub/hubModelPrep";
+import { neutralToneMap } from "../game/quality";
 import { LIGHTING } from "../game/sceneLighting";
 import { linearHex, type DayNightState } from "./dayNightBlend";
 import { VILLAGE_GROUND_DECAL, type VillageTier } from "./villageModelPrep";
@@ -47,19 +50,27 @@ import { VILLAGE_GROUND_DECAL, type VillageTier } from "./villageModelPrep";
  *    B metalness; emissive = what glows at night: lamps, LED dots, the lit cabin), double-sided;
  *  - `M_bus_glass`: tinted glass (alpha blended, see-through to the cabin);
  *  - `M_bus_led`: the three destination signs, amber LED dots that read the village's own name: 케이슨 마을 on the
- *    front and the kerb-side sign, 마을버스 on the rear (livery r4, make_bus_textures.py); lit by day too;
+ *    front and the kerb-side sign, 마을버스 on the rear (livery r4, make_bus_textures.py); lit by day too. The front
+ *    sign has no pane over it; the kerb-side and rear signs stand a few cm behind the windows' tinted glass. The rich
+ *    tier sees them through it in linear light (still amber); the light tier blends the glass in sRGB over a sign
+ *    already tone-mapped and clamped, which left them a switched-off grey (bus review r4, P2): there the glass in
+ *    front of a sign keeps only its Fresnel reflection (`busSignsBehindGlass`, SIGN_PARS), a sign's clear cover as
+ *    the front's, so all three read as lit amber dots on dark, none brighter than the front;
  *  - `M_bus_ground`: a quad on the road round the bus, 5 cm up (the village's ground decals' height, over every ground
  *    layer: the road at 1 cm, the paving rings, the lawns, the forecourt's 3 cm), whose base colour
  *    map carries, sRGB-encoded (three's decode gives the values themselves): in red the darkness its body and tyres put
  *    on the road (ambient occlusion baked in Blender, 1 = darkest; gone 0.5 m out from the body and before the kerbs),
  *    the contact shadow the village's light map is too coarse for (about 0.5 m a texel on the road); in green the
  *    night's light on the road (the low beams' pool ahead, inside the kerbs). Blue is unused. Drawn first among the
- *    transparent things in one pass: dst × (1 - darkness) + light (`GROUND_OUT`). The light tier draws straight to
- *    the canvas and blends in sRGB: its shadow factor and its light are the rich tier's raised to 1/2.2 (`uBusGamma`),
- *    so both tiers show the same shadow and light.
+ *    transparent things in one pass: dst × (1 - darkness) + light (`GROUND_OUT`). The rich tier adds the light in
+ *    linear light before its tone curve. The light tier draws straight to the canvas, after its tone curve, and blends
+ *    in sRGB: its shadow factor is the rich tier's raised to 1/2.2, and its light is what the rich tier's sum shows on
+ *    the night's asphalt (`busPoolAdds`; bus review r4, P4: adding the light itself raised to 1/2.2 made its pool about
+ *    twice as bright, and grey).
  *
  * `prepareBus` works on a CLONE of the cached scene and makes its own materials (listed in `own`); the loader's stay as
- * they are, so `disposeBus` frees exactly what it made.
+ * they are, so `disposeBus` frees exactly what it made. The loader's textures get a modest anisotropic filter
+ * (`setBusAnisotropy`): the side wordmark and the rear louvres stay readable at a grazing 7-10 m.
  */
 
 export const BUS_MODEL_URL = "/models/village/village_bus.glb";
@@ -103,6 +114,18 @@ export const BUS_LOOK = {
    */
   groundGlow: 0.035,
   groundGlowColor: "#FFF0DA",
+  /**
+   * The asphalt the pool lies on at full night (linear, before the tone curve: what the rich tier adds the pool's light
+   * to), measured in front of the parked bus at 21:00 on both tiers (bus review r4, P4: the bare asphalt's median sRGB
+   * ~0.006 / 0.045 / 0.114, undone through the neutral curve at the night's exposure 1.95). The light tier, which can
+   * only add in sRGB after its tone curve, adds what the rich tier's sum shows on it (`busPoolAdds`): the same pool on
+   * both tiers there, within 4/255 on asphalt half to three times as bright.
+   */
+  nightAsphalt: [0.0045, 0.006, 0.0105],
+  /** The textures' anisotropic filter (at most the GPU's): the wordmarks and louvres at a grazing angle. */
+  anisotropy: 4,
+  /** How far round a sign behind glass the light tier's glass turns clear (m; the sign's black backing box is wider). */
+  signCoverMargin: 0.02,
 } as const;
 
 /** The reflected sky (linear): the village's afternoon — pale blue above, hazy at the horizon, grey-green ground. */
@@ -119,6 +142,13 @@ export function busPlacement(layout: Pick<VillageLayout, "busStop"> = VILLAGE_LA
   return { x: c.x, z: c.z, yaw: 0 };
 }
 
+/** A destination sign that stands behind the windows' glass: its box (world) and the way it faces (an axis). */
+export interface BusSign {
+  lo: Vector3;
+  hi: Vector3;
+  normal: Vector3;
+}
+
 export interface BusNodes {
   root: Object3D;
   body: MeshStandardMaterial | null;
@@ -128,8 +158,10 @@ export interface BusNodes {
   ground: MeshBasicMaterial | null;
   /** The night's light on the road now (its shader reads it; `applyBusDayNight` writes). */
   groundGlow: { value: number };
-  /** 1 on the rich tier (it blends in linear light), 1 / 2.2 on the light tier (in sRGB, on the canvas). */
-  groundGamma: { value: number };
+  /** The renderer's tone-mapping exposure now: the light tier's pool is worked out through its tone curve. */
+  groundExposure: { value: number };
+  /** The signs behind the windows' glass (world boxes): the light tier's glass is clear in front of them. */
+  signs: BusSign[];
   /** The sky reflection's strength on the paint and on the glass (their shaders read these; `applyBusDayNight` writes). */
   bodySky: { value: number };
   glassSky: { value: number };
@@ -187,21 +219,153 @@ outgoingLight = ( uBusSkyAverage * uBusSky * busF + outgoingLight * diffuseColor
 diffuseColor.a = busA;
 #include <opaque_fragment>`;
 
+/** The most signs behind glass the light tier's glass looks for (the kerb side's and the rear's). */
+export const BUS_SIGN_SLOTS = 2;
+
+/** The signs' boxes as the glass's shader reads them (an empty slot faces nowhere: its normal is zero). */
+export interface BusSignUniforms {
+  uBusSignLo: { value: Vector3[] };
+  uBusSignHi: { value: Vector3[] };
+  uBusSignN: { value: Vector3[] };
+}
+
+const slots = () => Array.from({ length: BUS_SIGN_SLOTS }, () => new Vector3());
+
+/**
+ * The light tier's glass: clear in front of a sign (bus review r4, P2). Seen from a sign's side, the ray from the eye
+ * through this fragment of glass meets the sign's box beyond the glass: there the tint goes (alpha 0) and only the
+ * Fresnel reflection stays, as over the front sign, which has no pane. The world position comes from the vertex shader.
+ */
+const SIGN_PARS = /* glsl */ `varying vec3 vBusWorld;
+uniform vec3 uBusSignLo[ ${BUS_SIGN_SLOTS} ];
+uniform vec3 uBusSignHi[ ${BUS_SIGN_SLOTS} ];
+uniform vec3 uBusSignN[ ${BUS_SIGN_SLOTS} ];
+bool busOverSign() {
+	vec3 d = vBusWorld - cameraPosition;
+	d = mix( d, vec3( 1e-5 ), vec3( lessThan( abs( d ), vec3( 1e-5 ) ) ) );
+	vec3 inv = 1.0 / d;
+	for ( int i = 0; i < ${BUS_SIGN_SLOTS}; i ++ ) {
+		if ( dot( cameraPosition - 0.5 * ( uBusSignLo[ i ] + uBusSignHi[ i ] ), uBusSignN[ i ] ) <= 0.0 ) continue;
+		vec3 t0 = ( uBusSignLo[ i ] - cameraPosition ) * inv;
+		vec3 t1 = ( uBusSignHi[ i ] - cameraPosition ) * inv;
+		vec3 tn = min( t0, t1 );
+		vec3 tf = max( t0, t1 );
+		float tNear = max( max( tn.x, tn.y ), tn.z );
+		float tFar = min( min( tf.x, tf.y ), tf.z );
+		if ( tFar >= max( tNear, 1.0 ) ) return true;
+	}
+	return false;
+}
+void main() {`;
+const SIGN_COVER = /* glsl */ `if ( busOverSign() ) diffuseColor.a = 0.0;
+`;
+const SIGN_VERTEX_PARS = /* glsl */ `varying vec3 vBusWorld;
+void main() {`;
+const SIGN_VERTEX = /* glsl */ `#include <project_vertex>
+vBusWorld = ( modelMatrix * vec4( transformed, 1.0 ) ).xyz;`;
+
+/**
+ * The same test in TypeScript (SIGN_PARS mirrors it): is the glass at `glass` (world) in front of one of `signs`, seen
+ * from `eye`? Seen from a sign's side only, and with the sign beyond the glass.
+ */
+export function busOverSign(eye: Vector3, glass: Vector3, signs: readonly BusSign[]): boolean {
+  const d = [glass.x - eye.x, glass.y - eye.y, glass.z - eye.z].map((v) => (Math.abs(v) < 1e-5 ? 1e-5 : v));
+  const o = [eye.x, eye.y, eye.z];
+  for (const sg of signs) {
+    const mid = sg.lo.clone().add(sg.hi).multiplyScalar(0.5);
+    if (eye.clone().sub(mid).dot(sg.normal) <= 0) continue;
+    const lo = [sg.lo.x, sg.lo.y, sg.lo.z];
+    const hi = [sg.hi.x, sg.hi.y, sg.hi.z];
+    let near = -Infinity;
+    let far = Infinity;
+    for (let k = 0; k < 3; k++) {
+      const t0 = (lo[k]! - o[k]!) / d[k]!;
+      const t1 = (hi[k]! - o[k]!) / d[k]!;
+      near = Math.max(near, Math.min(t0, t1));
+      far = Math.min(far, Math.max(t0, t1));
+    }
+    if (far >= Math.max(near, 1)) return true;
+  }
+  return false;
+}
+
 /**
  * Give a material the sky's reflection, its strength read from `strength` (idempotent per material): the paint's way
- * (`"paint"`, through three's specular) or the glass's (`"glass"`, its own Fresnel mix: GLASS_ADD).
+ * (`"paint"`, through three's specular) or the glass's (`"glass"`, its own Fresnel mix: GLASS_ADD). `cover`: the light
+ * tier's glass, clear in front of the signs behind it (SIGN_PARS).
  */
-export function addBusSky(material: MeshStandardMaterial, strength: { value: number }, kind: "paint" | "glass" = "paint"): void {
+export function addBusSky(
+  material: MeshStandardMaterial,
+  strength: { value: number },
+  kind: "paint" | "glass" = "paint",
+  cover?: BusSignUniforms,
+): void {
   material.onBeforeCompile = (shader) => {
-    Object.assign(shader.uniforms, skyUniforms, { uBusSky: strength });
+    Object.assign(shader.uniforms, skyUniforms, { uBusSky: strength }, cover);
     shader.fragmentShader = shader.fragmentShader.replace("void main() {", SKY_PARS);
-    shader.fragmentShader =
-      kind === "glass"
-        ? shader.fragmentShader.replace("#include <opaque_fragment>", GLASS_ADD)
-        : shader.fragmentShader.replace("#include <lights_fragment_maps>", SKY_ADD);
+    if (kind === "glass") {
+      shader.fragmentShader = shader.fragmentShader.replace("#include <opaque_fragment>", (cover ? SIGN_COVER : "") + GLASS_ADD);
+      if (cover) {
+        shader.fragmentShader = shader.fragmentShader.replace("void main() {", SIGN_PARS);
+        shader.vertexShader = shader.vertexShader.replace("void main() {", SIGN_VERTEX_PARS).replace("#include <project_vertex>", SIGN_VERTEX);
+      }
+    } else {
+      shader.fragmentShader = shader.fragmentShader.replace("#include <lights_fragment_maps>", SKY_ADD);
+    }
   };
-  material.customProgramCacheKey = () => `village-bus-sky-${kind}`;
+  material.customProgramCacheKey = () => `village-bus-sky-${kind}${cover ? "-cover" : ""}`;
   material.needsUpdate = true;
+}
+
+/**
+ * The destination signs behind the windows' glass, from the sign material's own triangles in world space (the bus
+ * placed): grouped by the way they face; the front sign (facing forward, -z: it has no pane in front of it) and
+ * anything not upright left out; the largest `BUS_SIGN_SLOTS`, each box grown by `signCoverMargin`.
+ */
+export function busSignsBehindGlass(root: Object3D, led: Material): BusSign[] {
+  const groups = new Map<string, BusSign & { area: number }>();
+  const a = new Vector3();
+  const b = new Vector3();
+  const c = new Vector3();
+  const n = new Vector3();
+  const e = new Vector3();
+  root.updateMatrixWorld(true);
+  root.traverse((o) => {
+    if (!isMesh(o) || o.material !== led) return;
+    const g = (o as Mesh).geometry as BufferGeometry;
+    const pos = g.attributes.position;
+    if (!pos) return;
+    const idx = g.index;
+    const count = idx ? idx.count : pos.count;
+    for (let i = 0; i + 2 < count; i += 3) {
+      const at = (k: number) => (idx ? idx.getX(i + k) : i + k);
+      a.fromBufferAttribute(pos, at(0)).applyMatrix4(o.matrixWorld);
+      b.fromBufferAttribute(pos, at(1)).applyMatrix4(o.matrixWorld);
+      c.fromBufferAttribute(pos, at(2)).applyMatrix4(o.matrixWorld);
+      n.subVectors(b, a).cross(e.subVectors(c, a));
+      const twice = n.length();
+      if (twice < 1e-9) continue;
+      n.divideScalar(twice);
+      if (Math.abs(n.y) > 0.5 || n.z < -0.5) continue;
+      const key = Math.abs(n.x) >= Math.abs(n.z) ? (n.x > 0 ? "+x" : "-x") : "+z";
+      let gr = groups.get(key);
+      if (!gr) {
+        const normal = key === "+z" ? new Vector3(0, 0, 1) : new Vector3(key === "+x" ? 1 : -1, 0, 0);
+        gr = { lo: a.clone(), hi: a.clone(), normal, area: 0 };
+        groups.set(key, gr);
+      }
+      for (const v of [a, b, c]) {
+        gr.lo.min(v);
+        gr.hi.max(v);
+      }
+      gr.area += twice / 2;
+    }
+  });
+  const m = BUS_LOOK.signCoverMargin;
+  return [...groups.values()]
+    .sort((p, q) => q.area - p.area)
+    .slice(0, BUS_SIGN_SLOTS)
+    .map(({ lo, hi, normal }) => ({ lo: lo.subScalar(m), hi: hi.addScalar(m), normal }));
 }
 
 /** The body's material for a tier: the rich tier's clear-coated paint, or the light tier's plain standard material. */
@@ -244,15 +408,72 @@ function glassMaterial(source: MeshStandardMaterial): MeshStandardMaterial {
   return m;
 }
 
+type Rgb = [number, number, number];
+
+/** sRGB's transfer (three's sRGBTransferOETF): linear light to what the canvas stores. */
+const encodeSrgb = (c: number): number => (c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(c, 1 / 2.4) - 0.055);
+
+/** What the village's light tier writes to the canvas for a linear colour: its tone curve (neutral) at `exposure`, in sRGB. */
+export function busDisplay(rgb: readonly number[], exposure: number): Rgb {
+  const t = neutralToneMap(rgb, exposure);
+  return [encodeSrgb(Math.max(0, t[0])), encodeSrgb(Math.max(0, t[1])), encodeSrgb(Math.max(0, t[2]))];
+}
+
+/**
+ * What the ground quad adds where the pool's light is `light` (linear; GROUND_OUT mirrors this). The rich tier adds the
+ * light itself, in linear light, before its tone curve. The light tier adds in sRGB on the canvas, after its tone
+ * curve: there it adds what the rich tier's sum shows on the night's asphalt, display(asphalt + light) -
+ * display(asphalt): the same pool on both tiers there (warm: the neutral curve's toe lifts the dark red most), a little
+ * more on brighter ground (bus review r4, P4: the light itself raised to 1/2.2 was about twice the rich tier's, and grey).
+ */
+export function busPoolAdds(
+  tier: VillageTier,
+  light: readonly number[],
+  exposure: number,
+  asphalt: readonly number[] = BUS_LOOK.nightAsphalt,
+): Rgb {
+  if (tier === "high") return [light[0]!, light[1]!, light[2]!];
+  const lit = busDisplay([asphalt[0]! + light[0]!, asphalt[1]! + light[1]!, asphalt[2]! + light[2]!], exposure);
+  const bare = busDisplay(asphalt, exposure);
+  return [lit[0] - bare[0], lit[1] - bare[1], lit[2] - bare[2]];
+}
+
+/** The ground quad's uniforms, and the light tier's display of a linear colour (`busDisplay`, three's neutral curve). */
+const GROUND_PARS = /* glsl */ `uniform float uBusGlow;
+uniform vec3 uBusGlowColor;
+uniform vec3 uBusAsphalt;
+uniform float uBusExposure;
+vec3 busNeutral( vec3 c ) {
+	c *= uBusExposure;
+	float x = min( c.r, min( c.g, c.b ) );
+	float offset = x < 0.08 ? x - 6.25 * x * x : 0.04;
+	c -= offset;
+	float peak = max( c.r, max( c.g, c.b ) );
+	if ( peak < 0.76 ) return c;
+	float newPeak = 1.0 - 0.0576 / ( peak - 0.52 );
+	c *= newPeak / peak;
+	float g = 1.0 - 1.0 / ( 0.15 * ( peak - newPeak ) + 1.0 );
+	return mix( c, vec3( newPeak ), g );
+}
+vec3 busDisplay( vec3 c ) {
+	return sRGBTransferOETF( vec4( max( busNeutral( c ), 0.0 ), 1.0 ) ).rgb;
+}
+void main() {`;
+
 /**
  * The ground quad's output, written last (after three's tone mapping, colour space and fog: a light and a darkness,
  * not a surface's colour): the darkness (alpha) is the contact shadow (red), the night's light (green) is added. The
  * blend (`One`, `OneMinusSrcAlpha`: premultiplied) gives dst × (1 - darkness) + light. The light tier blends in sRGB
- * on the canvas: both are raised to 1/2.2 there (`uBusGamma`; for the light, exact on the dark asphalt it lies on).
+ * on the canvas (`BUS_SRGB_CANVAS`): its shadow factor is the rich tier's raised to 1/2.2, its light `busPoolAdds`.
  */
 export const GROUND_OUT = /* glsl */ `vec4 busG = texture2D( map, vMapUv );
 float busKeep = 1.0 - busG.r * opacity;
-gl_FragColor = vec4( pow( uBusGlowColor * ( busG.g * uBusGlow ), vec3( uBusGamma ) ), 1.0 - pow( busKeep, uBusGamma ) );`;
+vec3 busLight = uBusGlowColor * ( busG.g * uBusGlow );
+#ifdef BUS_SRGB_CANVAS
+busLight = busDisplay( uBusAsphalt + busLight ) - busDisplay( uBusAsphalt );
+busKeep = pow( busKeep, 1.0 / 2.2 );
+#endif
+gl_FragColor = vec4( busLight, 1.0 - busKeep );`;
 
 /**
  * The contact shadow and the low beams' pool: the file's map read by channel (GROUND_OUT), on the road round the
@@ -260,8 +481,9 @@ gl_FragColor = vec4( pow( uBusGlowColor * ( busG.g * uBusGlow ), vec3( uBusGamma
  * its offset (VILLAGE_GROUND_DECAL, stronger than every ground layer's): bus review r3 found the quad 1 cm UNDER the
  * road, where the depth test hid it from most views (and at 2 cm it still hid under the paving's rings). No fog.
  */
-function groundMaterial(source: MeshStandardMaterial, nodes: Pick<BusNodes, "groundGlow" | "groundGamma">): MeshBasicMaterial {
+function groundMaterial(source: MeshStandardMaterial, nodes: Pick<BusNodes, "groundGlow" | "groundExposure">, tier: VillageTier): MeshBasicMaterial {
   const m = new MeshBasicMaterial({ transparent: true, depthWrite: false, opacity: BUS_LOOK.groundShadow });
+  if (tier !== "high") m.defines = { BUS_SRGB_CANVAS: "" };
   m.name = source.name;
   m.map = source.map;
   m.fog = false;
@@ -274,17 +496,17 @@ function groundMaterial(source: MeshStandardMaterial, nodes: Pick<BusNodes, "gro
   m.polygonOffsetFactor = VILLAGE_GROUND_DECAL.polygonOffsetFactor;
   m.polygonOffsetUnits = VILLAGE_GROUND_DECAL.polygonOffsetUnits;
   const glowColor = new Color(BUS_LOOK.groundGlowColor);
+  const asphalt = new Vector3(...BUS_LOOK.nightAsphalt);
   m.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, {
       uBusGlow: nodes.groundGlow,
-      uBusGamma: nodes.groundGamma,
       uBusGlowColor: { value: glowColor },
+      uBusAsphalt: { value: asphalt },
+      uBusExposure: nodes.groundExposure,
     });
-    shader.fragmentShader = shader.fragmentShader
-      .replace("void main() {", "uniform float uBusGlow;\nuniform float uBusGamma;\nuniform vec3 uBusGlowColor;\nvoid main() {")
-      .replace("#include <dithering_fragment>", GROUND_OUT);
+    shader.fragmentShader = shader.fragmentShader.replace("void main() {", GROUND_PARS).replace("#include <dithering_fragment>", GROUND_OUT);
   };
-  m.customProgramCacheKey = () => "village-bus-ground";
+  m.customProgramCacheKey = () => `village-bus-ground-${tier === "high" ? "linear" : "srgb"}`;
   return m;
 }
 
@@ -315,9 +537,12 @@ export function prepareBus(source: Object3D, tier: VillageTier, layout: Pick<Vil
     bodySky: { value: BUS_LOOK.envIntensity },
     glassSky: { value: BUS_LOOK.glassEnvIntensity },
     groundGlow: { value: 0 },
-    groundGamma: { value: tier === "high" ? 1 : 1 / 2.2 },
+    groundExposure: { value: 1 },
+    signs: [],
     own: [],
   };
+  // the light tier's glass: clear in front of the signs behind it (filled once the bus is placed, below)
+  const cover: BusSignUniforms | undefined = tier === "high" ? undefined : { uBusSignLo: { value: slots() }, uBusSignHi: { value: slots() }, uBusSignN: { value: slots() } };
   const swap = (m: Material): Material => {
     const hit = made.get(m);
     if (hit) return hit;
@@ -328,11 +553,11 @@ export function prepareBus(source: Object3D, tier: VillageTier, layout: Pick<Vil
       addBusSky(nodes.body, nodes.bodySky);
     } else if (m.name === BUS_MATERIAL.glass) {
       out = nodes.glass = glassMaterial(s);
-      addBusSky(nodes.glass, nodes.glassSky, "glass");
+      addBusSky(nodes.glass, nodes.glassSky, "glass", cover);
     } else if (m.name === BUS_MATERIAL.led) {
       out = nodes.led = ledMaterial(s);
     } else if (m.name === BUS_MATERIAL.ground) {
-      out = nodes.ground = groundMaterial(s, nodes);
+      out = nodes.ground = groundMaterial(s, nodes, tier);
     }
     if (!out) return m;
     made.set(m, out);
@@ -353,11 +578,37 @@ export function prepareBus(source: Object3D, tier: VillageTier, layout: Pick<Vil
     if (ground) o.renderOrder = -1; // under the glass, whatever the sort
   });
   root.updateMatrixWorld(true);
+  if (nodes.led) nodes.signs = busSignsBehindGlass(root, nodes.led);
   root.traverse((o) => {
     o.matrixAutoUpdate = false;
     o.matrixWorldAutoUpdate = false;
   });
+  if (cover) {
+    nodes.signs.forEach((sg, i) => {
+      cover.uBusSignLo.value[i]!.copy(sg.lo);
+      cover.uBusSignHi.value[i]!.copy(sg.hi);
+      cover.uBusSignN.value[i]!.copy(sg.normal);
+    });
+  }
   return nodes;
+}
+
+/**
+ * A modest anisotropic filter on the bus's drawn detail: the paint's atlas (the wordmarks, the louvres, the seams) and the
+ * signs' dots. At a grazing 7-10 m the side wordmark and the rear louvres stay readable instead of smearing into the
+ * paint (bus review r4, P3). The ORM and glow maps keep plain filtering (no fine detail; measured on the rich tier, all
+ * four filtered cost ~0.08 ms of GPU a frame with the bus filling the view). `max`: the GPU's
+ * (`renderer.capabilities.getMaxAnisotropy()`). The textures are the loader's, shared by every clone: set once, before
+ * their first upload (the same value on a re-dress, so never uploaded again). Returns the level.
+ */
+export function setBusAnisotropy(nodes: Pick<BusNodes, "body" | "led">, max: number): number {
+  const level = Math.max(1, Math.min(BUS_LOOK.anisotropy, Math.floor(max)));
+  for (const t of [nodes.body?.map, nodes.led?.map, nodes.led?.emissiveMap]) {
+    if (!t || t.anisotropy === level) continue; // (a texture listed twice is set once)
+    t.anisotropy = level;
+    t.needsUpdate = true;
+  }
+  return level;
 }
 
 /** Linear luminance of a linear RGB triple. */
@@ -375,8 +626,8 @@ export function busEnvScale(s: Pick<DayNightState, "hemiIntensity" | "hemiSky">)
   return Math.min(1.2, Math.max(0.05, (luma(s.hemiSky) * s.hemiIntensity) / DAY_SKY_LIGHT));
 }
 
-/** Per frame: the time of day into the bus (plain number writes). */
-export function applyBusDayNight(nodes: BusNodes, s: Pick<DayNightState, "lights" | "hemiIntensity" | "hemiSky">): void {
+/** Per frame: the time of day and the renderer's exposure into the bus (plain number writes). */
+export function applyBusDayNight(nodes: BusNodes, s: Pick<DayNightState, "lights" | "hemiIntensity" | "hemiSky">, exposure = 1): void {
   const env = busEnvScale(s);
   nodes.bodySky.value = BUS_LOOK.envIntensity * env;
   nodes.glassSky.value = BUS_LOOK.glassEnvIntensity * env;
@@ -384,6 +635,7 @@ export function applyBusDayNight(nodes: BusNodes, s: Pick<DayNightState, "lights
   if (nodes.led) nodes.led.emissiveIntensity = BUS_LOOK.ledDay + (BUS_LOOK.ledNight - BUS_LOOK.ledDay) * s.lights;
   if (nodes.glass) nodes.glass.opacity = BUS_LOOK.glassOpacity + (BUS_LOOK.glassNightOpacity - BUS_LOOK.glassOpacity) * s.lights;
   nodes.groundGlow.value = s.lights * BUS_LOOK.groundGlow;
+  nodes.groundExposure.value = exposure;
 }
 
 /** Free what `prepareBus` made (the loader's geometry, textures and materials stay with its cache). */

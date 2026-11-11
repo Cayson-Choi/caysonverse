@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   BoxGeometry,
+  BufferGeometry,
   CustomBlending,
   DoubleSide,
   Group,
@@ -12,23 +13,31 @@ import {
   OneMinusSrcAlphaFactor,
   ShaderLib,
   Texture,
+  Float32BufferAttribute,
+  Vector3,
   type Material,
   type WebGLProgramParametersWithUniforms,
 } from "three";
 import { VILLAGE_LAYOUT } from "@caysonverse/shared/village/villageLayout";
 import { LIGHTING } from "../game/sceneLighting";
-import { stateFor } from "./dayNightBlend";
+import { linearHex, stateFor } from "./dayNightBlend";
 import { VILLAGE_GROUND_DECAL } from "./villageModelPrep";
 import {
   BUS_LOOK,
   BUS_MATERIAL,
   BUS_MODEL_URL,
+  BUS_SIGN_SLOTS,
+  BUS_SKY,
   GROUND_OUT,
   applyBusDayNight,
+  busDisplay,
   busEnvScale,
+  busOverSign,
   busPlacement,
+  busPoolAdds,
   disposeBus,
   prepareBus,
+  setBusAnisotropy,
 } from "./villageBusPrep";
 
 /** A stand-in for village_bus.glb as GLTFLoader gives it: a node with one mesh per material (four primitives). */
@@ -180,10 +189,11 @@ describe("the village bus (village_bus.glb) dressed for the game", () => {
       // the contact shadow alone (bus review r4): no sun's shadow channel any more
       expect(s.uniforms.uBusSun).toBeUndefined();
       expect(s.fragmentShader).not.toContain("busG.b");
-      // the light tier blends in sRGB on the canvas: its factors are the rich tier's to the 1/2.2
-      expect(s.uniforms.uBusGamma).toBe(n.groundGamma);
-      expect(n.groundGamma.value).toBeCloseTo(tier === "high" ? 1 : 1 / 2.2);
-      expect(g.customProgramCacheKey()).toBe("village-bus-ground");
+      // the light tier blends in sRGB on the canvas, after its tone curve (whose exposure it follows): it adds the pool
+      // as busPoolAdds works it out (the intent is checked below, "the two tiers' pool ...")
+      expect(s.uniforms.uBusExposure).toBe(n.groundExposure);
+      expect(g.defines?.BUS_SRGB_CANVAS !== undefined).toBe(tier === "low");
+      expect(g.customProgramCacheKey()).toBe(`village-bus-ground-${tier === "high" ? "linear" : "srgb"}`);
       let mesh: Mesh | null = null;
       n.root.traverse((o) => {
         if ((o as Mesh).isMesh && (o as Mesh).material === g) mesh = o as Mesh;
@@ -229,6 +239,9 @@ describe("the village bus (village_bus.glb) dressed for the game", () => {
     expect(n.glass!.opacity).toBeCloseTo(BUS_LOOK.glassNightOpacity);
     expect(BUS_LOOK.glassNightOpacity).toBeLessThan(BUS_LOOK.glassOpacity);
     expect(n.groundGlow.value).toBeCloseTo(BUS_LOOK.groundGlow);
+    expect(n.groundExposure.value).toBe(1);
+    applyBusDayNight(n, night, 1.95); // the renderer's exposure (the night's 1.95 × the brightness)
+    expect(n.groundExposure.value).toBe(1.95);
     expect(n.bodySky.value).toBeCloseTo(BUS_LOOK.envIntensity * 0.25);
     expect(busEnvScale({ hemiIntensity: 0, hemiSky: white })).toBe(0.05);
     expect(busEnvScale({ hemiIntensity: 100, hemiSky: white })).toBe(1.2);
@@ -245,5 +258,199 @@ describe("the village bus (village_bus.glb) dressed for the game", () => {
     disposeBus(n);
     for (const m of n.own) expect(disposed.has(m)).toBe(true);
     for (const m of [f.body, f.glass, f.led, f.ground]) expect(disposed.has(m)).toBe(false);
+  });
+});
+
+// ───────────────────────── bus review r4 polish: the two tiers' signs and pool, the anisotropy ─────────────────────────
+
+/** A triangle pair for a quad, wound so that its face looks along `facing` (three's front face: counter-clockwise). */
+function quad(corners: [number, number, number][], facing: Vector3): number[] {
+  const [a, b, c, d] = corners.map((p) => new Vector3(...p)) as [Vector3, Vector3, Vector3, Vector3];
+  const n = b.clone().sub(a).cross(c.clone().sub(a));
+  const tri = (p: Vector3, q: Vector3, r: Vector3) => [p, q, r].flatMap((v) => v.toArray());
+  return n.dot(facing) > 0 ? [...tri(a, b, c), ...tri(a, c, d)] : [...tri(a, c, b), ...tri(a, d, c)];
+}
+
+/**
+ * The bus's three signs as build_bus.py makes them (the file's frame: nose -z, doors +x): the front one under the
+ * windscreen facing forward, the kerb-side one behind the first window aft of the front door, the rear one behind the
+ * rear window. Bus-local metres.
+ */
+function signedBusFile() {
+  const f = busFile();
+  const front = quad([[-0.85, 2.33, -4.45], [0.85, 2.33, -4.45], [0.85, 2.53, -4.45], [-0.85, 2.53, -4.45]], new Vector3(0, 0, -1));
+  const side = quad([[1.17, 2.25, -2.95], [1.17, 2.25, -2.05], [1.17, 2.43, -2.05], [1.17, 2.43, -2.95]], new Vector3(1, 0, 0));
+  const rear = quad([[-0.35, 2.33, 4.38], [0.35, 2.33, 4.38], [0.35, 2.53, 4.38], [-0.35, 2.53, 4.38]], new Vector3(0, 0, 1));
+  const g = new BufferGeometry();
+  g.setAttribute("position", new Float32BufferAttribute([...front, ...side, ...rear], 3));
+  (f.meshes[2] as Mesh).geometry = g;
+  return f;
+}
+
+const luma = (c: readonly number[]) => 0.2126 * c[0]! + 0.7152 * c[1]! + 0.0722 * c[2]!;
+const mixRgb = (a: readonly number[], b: readonly number[], t: number) => a.map((v, i) => v + (b[i]! - v) * t);
+const scale = (a: readonly number[], k: number) => a.map((v) => v * k);
+const add = (a: readonly number[], b: readonly number[]) => a.map((v, i) => v + b[i]!);
+
+describe("the signs behind glass: lit amber dots on both tiers, none brighter than the front (bus review r4, P2)", () => {
+  const LIT = linearHex("#FFB347"); // a lit dot in bus_led.png (make_bus_textures.py AMBER)
+  const BG = linearHex("#070707"); // the sign's dark ground between the dots
+  const SKY = [0, 1, 2].map((i) => (BUS_SKY.zenith[i]! + BUS_SKY.horizon[i]! + BUS_SKY.groundFar[i]!) / 3);
+  const F = BUS_LOOK.glassF0; // head-on
+  const TIMES = [
+    { name: "day", exposure: DAY_STATE.exposure, env: 1, led: BUS_LOOK.ledDay, opacity: BUS_LOOK.glassOpacity },
+    { name: "night", exposure: NIGHT_STATE.exposure, env: 0.1, led: BUS_LOOK.ledNight, opacity: BUS_LOOK.glassNightOpacity },
+  ];
+  /**
+   * What reaches the eye from a sign texel head-on (GLASS_ADD's blend: dst × (1 - a') + sky F + tint, a' = mix(a, 1, F);
+   * the glass's own dark tint left out): the front sign as it is; the rich tier through the glass in linear light, then
+   * its tone curve; the light tier's tone curve first, the glass blended in sRGB after: with the r4 glass, and with the
+   * glass clear in front of the sign (its Fresnel reflection kept).
+   */
+  function seen(texel: readonly number[], t: (typeof TIMES)[number]) {
+    const led = scale(texel, t.led);
+    const sky = scale(SKY, t.env);
+    const a2 = t.opacity + (1 - t.opacity) * F;
+    return {
+      front: busDisplay(led, t.exposure),
+      rich: busDisplay(add(scale(sky, F), scale(led, (1 - t.opacity) * (1 - F))), t.exposure),
+      lowR4: mixRgb(busDisplay(led, t.exposure), busDisplay(scale(sky, F / a2), t.exposure), a2),
+      low: mixRgb(busDisplay(led, t.exposure), busDisplay(sky, t.exposure), F),
+    };
+  }
+  const amber = (c: readonly number[]) => c[0]! > c[1]! && c[1]! > c[2]! && c[0]! - c[2]! > 0.25;
+
+  for (const t of TIMES) {
+    it(`${t.name}: a lit dot reads amber on dark on both tiers; the light tier's sign as the front's (r4 left it grey)`, () => {
+      const lit = seen(LIT, t);
+      const bg = seen(BG, t);
+      for (const tier of ["front", "rich", "low"] as const) {
+        expect(amber(lit[tier]), `${tier} ${lit[tier].map((v) => v.toFixed(2))}`).toBe(true);
+        expect(luma(lit[tier]) - luma(bg[tier]), tier).toBeGreaterThan(0.4); // lit dots on a dark sign
+        expect(luma(lit[tier]) - luma(bg[tier]), tier).toBeLessThanOrEqual(luma(lit.front) - luma(bg.front) + 1e-9); // none brighter
+      }
+      // the light tier's sign shows its LEDs as the front does (only the glass's thin reflection over them)
+      expect(luma(lit.low)).toBeGreaterThan(0.85 * luma(lit.front));
+      // what r4 drew: the dots dimmed to a fifth in sRGB, under a grey reflection: no amber, little contrast
+      expect(luma(lit.lowR4)).toBeLessThan(0.5 * luma(lit.front));
+      expect(lit.lowR4[0]! - lit.lowR4[2]!).toBeLessThan(0.2);
+    });
+  }
+
+  it("the signs behind glass are found from the sign material's own faces: the kerb side's and the rear's, not the front's", () => {
+    const n = prepareBus(signedBusFile().scene, "low");
+    const at = busPlacement();
+    expect(n.signs).toHaveLength(2);
+    const side = n.signs.find((s) => s.normal.x === 1)!;
+    const rear = n.signs.find((s) => s.normal.z === 1)!;
+    const m = BUS_LOOK.signCoverMargin;
+    const close = (got: Vector3, want: number[]) => want.forEach((v, i) => expect(got.getComponent(i)).toBeCloseTo(v, 5));
+    close(side.lo, [at.x + 1.17 - m, 2.25 - m, at.z - 2.95 - m]);
+    close(side.hi, [at.x + 1.17 + m, 2.43 + m, at.z - 2.05 + m]);
+    close(rear.lo, [at.x - 0.35 - m, 2.33 - m, at.z + 4.38 - m]);
+    expect(n.signs.some((s) => s.normal.z === -1)).toBe(false); // the front sign has no pane in front of it
+  });
+
+  it("the light tier's glass is clear exactly where it is in front of a sign, seen from that sign's side", () => {
+    const n = prepareBus(signedBusFile().scene, "low");
+    const { x, z } = busPlacement();
+    const v = (dx: number, y: number, dz: number) => new Vector3(x + dx, y, z + dz);
+    // from the kerb, through the window in front of the kerb-side sign: clear; through a lower pane or another window: tinted
+    expect(busOverSign(v(6, 1.6, -2.5), v(1.21, 2.34, -2.5), n.signs)).toBe(true);
+    expect(busOverSign(v(3, 1.6, -6), v(1.21, 2.34, -2.8), n.signs)).toBe(true); // at an angle
+    expect(busOverSign(v(6, 1.6, -2.5), v(1.21, 1.7, -2.5), n.signs)).toBe(false);
+    expect(busOverSign(v(6, 1.6, -2.5), v(1.21, 2.34, 1.0), n.signs)).toBe(false);
+    // from behind, through the rear window at the rear sign: clear
+    expect(busOverSign(v(0, 1.6, 10), v(0, 2.43, 4.42), n.signs)).toBe(true);
+    // from the far side, across the cabin at the sign's back, or from the front at the front sign: tinted
+    expect(busOverSign(v(-6, 2.4, -2.5), v(-1.21, 2.34, -2.5), n.signs)).toBe(false);
+    expect(busOverSign(v(0, 1.6, -10), v(0, 2.4, -4.4), n.signs)).toBe(false);
+    // the rich tier's glass is the r4 glass (its linear blend keeps the signs lit): no clear patch
+    expect(compiled(prepareBus(signedBusFile().scene, "high").glass!).fragmentShader).not.toContain("busOverSign");
+  });
+
+  it("the light tier's glass shader runs that test on the signs found (their boxes in its uniforms)", () => {
+    const n = prepareBus(signedBusFile().scene, "low");
+    const s = compiled(n.glass!) as ReturnType<typeof compiled> & { vertexShader: string };
+    expect(s.fragmentShader).toContain("if ( busOverSign() ) diffuseColor.a = 0.0;");
+    expect(s.fragmentShader.indexOf("busOverSign() ) diffuseColor.a")).toBeLessThan(s.fragmentShader.indexOf("float busF = uBusGlassF0"));
+    expect(s.vertexShader).toContain("vBusWorld = ( modelMatrix * vec4( transformed, 1.0 ) ).xyz;");
+    const lo = (s.uniforms.uBusSignLo as { value: Vector3[] }).value;
+    const nn = (s.uniforms.uBusSignN as { value: Vector3[] }).value;
+    expect(lo).toHaveLength(BUS_SIGN_SLOTS);
+    n.signs.forEach((sg, i) => {
+      expect(lo[i]!.equals(sg.lo)).toBe(true);
+      expect(nn[i]!.equals(sg.normal)).toBe(true);
+    });
+    expect(n.glass!.customProgramCacheKey()).toBe("village-bus-sky-glass-cover");
+  });
+});
+
+describe("the low beams' pool: the same on both tiers (bus review r4, P4)", () => {
+  const exposure = NIGHT_STATE.exposure; // the night's (× the brightness 1.0)
+  const A = BUS_LOOK.nightAsphalt;
+  const pool = (k: number) => scale(linearHex(BUS_LOOK.groundGlowColor), BUS_LOOK.groundGlow * k); // the map's green k
+  /** On asphalt `asphalt` (linear, before the tone curve): what each tier shows with the pool's light `light`. */
+  const shown = (asphalt: readonly number[], light: readonly number[]) => ({
+    rich: busDisplay(add(asphalt, busPoolAdds("high", light, exposure)), exposure),
+    low: add(busDisplay(asphalt, exposure), busPoolAdds("low", light, exposure)),
+    lowR4: add(busDisplay(asphalt, exposure), light.map((v) => Math.pow(v, 1 / 2.2))), // r4: light^(1/2.2)
+  });
+
+  it("on the night's asphalt in front of the bus the light tier shows the rich tier's pool, across the pool's falloff", () => {
+    for (const k of [0.1, 0.25, 0.5, 0.75, 1]) {
+      const s = shown(A, pool(k));
+      for (let i = 0; i < 3; i++) expect(s.low[i]).toBeCloseTo(s.rich[i]!, 6);
+    }
+  });
+
+  it("on darker or brighter asphalt nearby (the asphalt's grain, the lamps' baked light) it stays within 4/255", () => {
+    for (const k of [0.5, 0.75, 1.5, 2, 3]) {
+      for (const m of [0.25, 0.5, 1]) {
+        const s = shown(scale(A, k), pool(m));
+        for (let i = 0; i < 3; i++) expect(Math.abs(s.low[i]! - s.rich[i]!), `asphalt x${k}, pool ${m}, channel ${i}`).toBeLessThan(4 / 255);
+      }
+    }
+  });
+
+  it("warm and modest on both tiers; r4's light tier was brighter and blue-grey", () => {
+    const bare = busDisplay(A, exposure);
+    const s = shown(A, pool(1));
+    for (const tier of ["rich", "low"] as const) {
+      const lift = s[tier].map((v, i) => v - bare[i]!);
+      expect(lift[0]).toBeGreaterThan(lift[1]!); // warm: red lifted most, blue least
+      expect(lift[1]).toBeGreaterThan(lift[2]!);
+      expect(luma(s[tier])).toBeLessThan(0.35); // modest: a lit patch of asphalt, not a white sheet
+    }
+    const r4 = s.lowR4.map((v, i) => v - bare[i]!);
+    const rich = s.rich.map((v, i) => v - bare[i]!);
+    expect(r4[2]).toBeGreaterThan(1.6 * rich[2]!); // r4: twice as much blue: a grey pool
+    expect(luma(s.lowR4)).toBeGreaterThan(luma(s.rich));
+  });
+
+  it("by day the pool is off on both tiers (nothing added)", () => {
+    for (const tier of ["high", "low"] as const) {
+      for (const v of busPoolAdds(tier, [0, 0, 0], DAY_STATE.exposure)) expect(v).toBeCloseTo(0, 9);
+    }
+  });
+});
+
+describe("the bus's drawn detail gets a modest anisotropic filter (bus review r4, P3)", () => {
+  it("the paint's atlas and the signs' dots: min(4, the GPU's), each set once; the ORM, glow and ground maps left alone", () => {
+    const f = busFile();
+    const n = prepareBus(f.scene, "high");
+    const maps = [f.body.map!, f.led.emissiveMap!];
+    const versions = maps.map((t) => t.version);
+    expect(setBusAnisotropy(n, 16)).toBe(BUS_LOOK.anisotropy);
+    for (const t of maps) expect(t.anisotropy).toBe(4);
+    maps.forEach((t, i) => expect(t.version).toBe(versions[i]! + 1)); // uploaded with it
+    for (const t of [f.orm, f.body.emissiveMap!, f.shadow]) expect(t.anisotropy).toBe(1); // no fine detail: plain filtering
+    // a re-dress (a tier switch) with the same filter: nothing to upload again
+    const again = prepareBus(f.scene, "low");
+    setBusAnisotropy(again, 16);
+    maps.forEach((t, i) => expect(t.version).toBe(versions[i]! + 1));
+    // a GPU that offers less: what it offers
+    expect(setBusAnisotropy(prepareBus(busFile().scene, "low"), 2)).toBe(2);
+    expect(setBusAnisotropy(prepareBus(busFile().scene, "low"), 0)).toBe(1);
   });
 });

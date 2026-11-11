@@ -14,7 +14,7 @@ vi.mock("@react-three/fiber", () => {
   return { useLoader };
 });
 
-import { BusGLTFLoader, busLoadingManager, clearBus, preloadBus, readBus, withBusDraco } from "./villageBusLoader";
+import { BusGLTFLoader, busLoadingManager, clearBus, preloadBus, readBus, releaseBusDraco, withBusDraco } from "./villageBusLoader";
 import { BUS_MODEL_URL } from "./villageBusPrep";
 import { DRACO_PATH } from "../game/hub/hubModelPrep";
 
@@ -53,17 +53,80 @@ describe("villageBusLoader — the bus loads off the village's critical path (bu
     expect(h.calls[1]!.ext).toBe(withBusDraco);
   });
 
-  it("its Draco decoder is made once, on the bus's manager, from the app's decoder path, one worker", () => {
+  it("its Draco decoder is made on the bus's manager, from the app's decoder path, one worker, shared by the loads in flight", () => {
+    releaseBusDraco();
     const a = new BusGLTFLoader();
     const b = new BusGLTFLoader();
     withBusDraco(a);
     withBusDraco(b);
-    const da = (a as unknown as { dracoLoader: { manager: unknown; decoderPath: string; workerLimit: number } }).dracoLoader;
-    const db = (b as unknown as { dracoLoader: unknown }).dracoLoader;
+    const da = a.dracoLoader as unknown as { manager: unknown; decoderPath: string; workerLimit: number };
     expect(da).toBeTruthy();
-    expect(db).toBe(da);
+    expect(b.dracoLoader).toBe(a.dracoLoader);
     expect(da.manager).toBe(busLoadingManager);
     expect(da.decoderPath).toBe(DRACO_PATH);
     expect(da.workerLimit).toBe(1);
+    releaseBusDraco();
+  });
+});
+
+/** A worker as DRACOLoader keeps them (its pool), recording whether it was terminated. */
+function fakeWorker() {
+  return { terminated: false, terminate() { this.terminated = true; } };
+}
+type Pooled = { workerPool: ReturnType<typeof fakeWorker>[]; workerSourceURL: string };
+
+describe("villageBusLoader — the bus's Draco decoder lives only while a bus request is in flight (bus review r4, P5)", () => {
+  it("once every bus request has settled (loaded), its worker is terminated and the next load makes a new decoder", () => {
+    const loader = new BusGLTFLoader();
+    const url = "/models/village/village_bus.glb";
+    busLoadingManager.itemStart(url); // the request starts (GLTFLoader.load)
+    withBusDraco(loader);
+    const first = loader.dracoLoader!;
+    const w = fakeWorker();
+    (first as unknown as Pooled).workerPool.push(w); // what decoding the file spawned
+    busLoadingManager.itemStart("/draco/draco_decoder.wasm"); // the decoder's own files, on the same manager
+    busLoadingManager.itemEnd("/draco/draco_decoder.wasm");
+    expect(w.terminated).toBe(false); // the bus is still being read: the decoder stays
+    expect(loader.dracoLoader).toBe(first);
+    busLoadingManager.itemEnd(url); // parsed and decoded: the bus is in
+    expect(w.terminated).toBe(true);
+    expect((first as unknown as Pooled).workerPool).toHaveLength(0);
+    expect(loader.dracoLoader).toBeNull(); // nothing keeps the old decoder (and the decoder files it read)
+    withBusDraco(loader); // a later load (a retry, the village read again after the hall)
+    expect(loader.dracoLoader).toBeTruthy();
+    expect(loader.dracoLoader).not.toBe(first);
+    releaseBusDraco();
+  });
+
+  it("a failed request lets it go too (the manager's end follows its error); a request still pending keeps it", () => {
+    const loader = new BusGLTFLoader();
+    const url = "/models/village/village_bus.glb";
+    busLoadingManager.itemStart(url);
+    busLoadingManager.itemStart(url + "?late");
+    withBusDraco(loader);
+    const d = loader.dracoLoader!;
+    const w = fakeWorker();
+    (d as unknown as Pooled).workerPool.push(w);
+    busLoadingManager.itemError(url); // a 404: GLTFLoader reports the error, then ends the item
+    busLoadingManager.itemEnd(url);
+    expect(w.terminated).toBe(false); // the other request is still out
+    busLoadingManager.itemEnd(url + "?late");
+    expect(w.terminated).toBe(true);
+    expect(loader.dracoLoader).toBeNull();
+  });
+
+  it("the worker's source URL is revoked with it; releasing twice is harmless", () => {
+    const revoke = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+    try {
+      const loader = new BusGLTFLoader();
+      withBusDraco(loader);
+      (loader.dracoLoader as unknown as Pooled).workerSourceURL = "blob:bus-draco";
+      releaseBusDraco();
+      releaseBusDraco();
+      expect(revoke).toHaveBeenCalledTimes(1);
+      expect(revoke).toHaveBeenCalledWith("blob:bus-draco");
+    } finally {
+      revoke.mockRestore();
+    }
   });
 });

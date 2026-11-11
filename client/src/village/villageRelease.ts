@@ -165,13 +165,23 @@ export function holdNightLightmap(): () => void {
   };
 }
 
-/** Forget the bus's entry in the loader's cache (its load failed: the next try downloads again; frees nothing). */
+/**
+ * Forget the bus's entry in the loader's cache (its load failed: the next try downloads again; frees nothing). Nothing
+ * of it is left to release either (bus review r4, P6): a release before the next try used to read the absent entry,
+ * which starts a fresh download just to free it. The next try's read notes it again (VillageBus).
+ */
 export function clearBusCache(): void {
+  busRequested = false;
   BUS_CACHE.clear();
 }
 
-/** Forget every village entry in the loaders' caches (safe to call more than once; frees nothing). */
+/**
+ * Forget every village entry in the loaders' caches (safe to call more than once; frees nothing). As with the bus
+ * (P6): nothing is left to release, so a release before the next try reads (downloads) nothing.
+ */
 export function clearVillageCaches(): void {
+  requested = false;
+  nightRequested = false;
   for (const f of VILLAGE_CACHE) f.clear();
   NIGHT_LIGHTMAP_CACHE.clear();
 }
