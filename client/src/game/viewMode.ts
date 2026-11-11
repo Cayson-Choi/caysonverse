@@ -38,8 +38,11 @@ export const OV_BLEND_SEC = 0.3;
  * First-person look-pitch clamp (rad). Wider than the TP orbit pitch
  * ([minPitch -0.1, maxPitch 1.2]) so a first-person view can glance up at the
  * ceiling and down at the floor. Negative = look up, positive = look down.
+ * Up to -1.5 (86°, 케이슨 마을's night sky): the star finder's reticle reaches
+ * the zenith (Vega at 83° on a summer evening), and the look stays 4° short of
+ * vertical so `lookAt` never flips.
  */
-export const FP_PITCH_MIN = -1.1;
+export const FP_PITCH_MIN = -1.5;
 export const FP_PITCH_MAX = 1.2;
 
 /**

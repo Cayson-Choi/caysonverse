@@ -1,0 +1,422 @@
+/* 별자리 찾기 (케이슨 마을's night sky): the card in the HUD's night style (hud.css's roster), the reticle, the edge arrow,
+   the names on the sky. Nothing here takes the pointer but the card itself and its buttons. */
+
+/* The 🔭 chip by day: dimmed, with a small moon (there is something to do tonight). */
+.cv-sky-hud-btn.is-day {
+  color: rgba(210, 202, 240, 0.6);
+  background: rgba(18, 14, 36, 0.55);
+}
+.cv-sky-hud-btn.is-day::after {
+  content: "🌙";
+  position: absolute;
+  right: 2px;
+  bottom: 1px;
+  font-size: 11px;
+  line-height: 1;
+  pointer-events: none;
+}
+
+/* ── layers over the canvas ── */
+/* The frame shows and hides these with the `hidden` attribute: it must win over their own display. */
+.cv-sky-layer [hidden] {
+  display: none !important;
+}
+.cv-sky-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 19; /* above the canvas, below the chat bar (20) and the HUD (21+) */
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.cv-sky-label {
+  position: absolute;
+  left: 0;
+  top: 0;
+  margin: 10px 0 0 10px; /* beside the point, never on it */
+  white-space: nowrap;
+  font-size: 12px;
+  line-height: 1.2;
+  color: rgba(214, 226, 255, 0.92);
+  text-shadow: 0 0 4px rgba(0, 0, 0, 0.9), 0 1px 2px rgba(0, 0, 0, 0.9);
+  will-change: transform;
+}
+/* A figure's name stands centred above its highest star (the frame places it there). */
+.cv-sky-label.is-figure {
+  margin: -16px 0 0 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(190, 210, 255, 0.85);
+}
+.cv-sky-label.is-focus {
+  margin: -20px 0 0 0;
+  font-size: 17px;
+  font-weight: 700;
+  color: #fff3c8;
+}
+.cv-sky-label.is-star {
+  font-size: 12px;
+  color: rgba(255, 246, 220, 0.9);
+}
+
+.cv-sky-reticle {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 160px;
+  height: 160px;
+  transform: translate(-50%, -50%);
+}
+.cv-sky-reticle svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.cv-sky-reticle-base {
+  fill: none;
+  stroke: rgba(225, 232, 255, 0.55);
+  stroke-width: 1.2;
+  vector-effect: non-scaling-stroke;
+}
+.cv-sky-reticle-ring {
+  fill: none;
+  stroke: #ffd36b;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  transform: rotate(-90deg);
+  transform-origin: 50px 50px;
+}
+.cv-sky-reticle-dot {
+  fill: rgba(235, 240, 255, 0.7);
+}
+.cv-sky-reticle.is-aiming .cv-sky-reticle-base {
+  stroke: rgba(255, 214, 120, 0.9);
+}
+
+.cv-sky-arrow {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  margin: -24px 0 0 -40px;
+  width: 80px;
+  color: #ffe9a8;
+  text-shadow: 0 0 6px rgba(0, 0, 0, 0.9);
+}
+.cv-sky-arrow-glyph {
+  font-size: 30px;
+  line-height: 1;
+  animation: cv-sky-nudge 1.2s ease-in-out infinite;
+}
+.cv-sky-arrow-text {
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+@keyframes cv-sky-nudge {
+  0%,
+  100% {
+    opacity: 0.75;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* ── the card ── */
+.cv-sky-card {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 26; /* above the HUD rows (22-24), below the banner (30) and the menus */
+  width: min(380px, calc(100vw - 32px));
+  /* never down to the reticle in the middle of the screen (its radius comes from the frame) */
+  max-height: calc(50vh - var(--cv-sky-reticle, 84px) - 16px - 12px);
+  overflow-y: auto;
+  padding: 10px 12px 12px;
+  color: #ece7ff;
+  background: rgba(14, 11, 30, 0.86);
+  border: 1px solid rgba(150, 130, 220, 0.32);
+  border-radius: 14px;
+  backdrop-filter: blur(8px);
+  font-size: 14px;
+  line-height: 1.45;
+  animation: cv-sky-card-in 0.2s ease-out;
+}
+@keyframes cv-sky-card-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -6px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+/* A phone: under the top row of buttons, beside the button column (left / right inline from the touch layout);
+   compact, foldable to its header, and above the reticle. */
+.cv-sky-card.is-touch {
+  top: calc(var(--cv-hud-top-end, 64px) + 8px);
+  width: auto;
+  transform: none;
+  max-height: calc(50vh - var(--cv-sky-reticle, 84px) - var(--cv-hud-top-end, 64px) - 8px - 10px);
+  font-size: 13px;
+  line-height: 1.35;
+  padding: 8px 10px 10px;
+  animation: cv-sky-card-fade 0.2s ease-out;
+}
+@keyframes cv-sky-card-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.cv-sky-card.is-touch .cv-sky-mini {
+  width: 64px;
+  height: 56px;
+}
+.cv-sky-card.is-touch .cv-sky-name {
+  font-size: 15px;
+}
+.cv-sky-card.is-touch .cv-sky-where,
+.cv-sky-card.is-touch .cv-sky-look,
+.cv-sky-card.is-touch .cv-sky-toggle {
+  font-size: 12px;
+}
+.cv-sky-card.is-touch .cv-sky-body {
+  gap: 4px;
+  margin-top: 6px;
+}
+.cv-sky-card.is-folded {
+  padding-bottom: 8px;
+}
+
+.cv-sky-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.cv-sky-title {
+  font-weight: 700;
+  font-size: 14px;
+}
+.cv-sky-count {
+  font-weight: 500;
+  color: #c9bff5;
+}
+.cv-sky-head-btns {
+  display: flex;
+  gap: 6px;
+  flex: none;
+}
+
+.cv-sky-btn {
+  flex: none;
+  min-width: 34px;
+  height: 34px;
+  padding: 0 8px;
+  font: inherit;
+  font-size: 15px;
+  color: #f2eeff;
+  background: rgba(40, 32, 78, 0.85);
+  border: 1px solid rgba(150, 130, 220, 0.4);
+  border-radius: 10px;
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+.cv-sky-btn:hover {
+  background: rgba(70, 56, 128, 0.9);
+}
+.cv-sky-btn.is-wide {
+  height: 38px;
+  padding: 0 14px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.cv-touch .cv-sky-btn {
+  min-width: 38px;
+  height: 38px;
+  padding: 0 6px;
+}
+.cv-sky-card.is-touch .cv-sky-title {
+  white-space: nowrap;
+  font-size: 13px;
+}
+.cv-sky-card.is-touch .cv-sky-head-btns {
+  gap: 4px;
+}
+.cv-touch .cv-sky-btn.is-wide {
+  height: 44px;
+}
+
+.cv-sky-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+.cv-sky-body p {
+  margin: 0;
+}
+.cv-sky-big {
+  font-size: 16px;
+  font-weight: 700;
+  color: #fff3c8;
+}
+.cv-sky-text {
+  color: #ded8f8;
+}
+.cv-sky-notice {
+  font-size: 12px;
+  color: #b9b0e6;
+}
+.cv-sky-tip {
+  font-size: 13px;
+  color: #ffe2a0;
+}
+.cv-sky-info {
+  font-size: 13px;
+  color: #a8e0ff;
+}
+.cv-sky-story {
+  color: #f0ebff;
+}
+
+.cv-sky-fp {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 10px;
+  background: rgba(255, 214, 120, 0.12);
+  color: #ffe2a0;
+  font-weight: 600;
+}
+
+.cv-sky-target {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+.cv-sky-mini {
+  flex: none;
+  width: 96px;
+  height: 84px;
+  border-radius: 10px;
+  background: radial-gradient(ellipse at 50% 40%, #1c2350 0%, #0b0d22 100%);
+}
+.cv-sky-mini line {
+  stroke: rgba(130, 165, 255, 0.75);
+  stroke-width: 1.2;
+}
+.cv-sky-mini line.is-gold {
+  stroke: rgba(255, 196, 100, 0.8);
+}
+.cv-sky-mini circle {
+  fill: #fdf8ea;
+}
+.cv-sky-target-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.cv-sky-name {
+  font-size: 16px;
+  font-weight: 700;
+  color: #fff;
+}
+.cv-sky-again {
+  font-size: 12px;
+  font-weight: 500;
+  color: #c9bff5;
+}
+.cv-sky-hint {
+  color: #d8d0ff;
+}
+.cv-sky-where,
+.cv-sky-look {
+  font-size: 13px;
+  color: #c9c1f0;
+}
+
+.cv-sky-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 4px;
+}
+.cv-sky-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #d8d0ff;
+  cursor: pointer;
+  user-select: none;
+}
+.cv-sky-toggle input {
+  width: 18px;
+  height: 18px;
+  accent-color: #8b74ff;
+}
+
+.cv-sky-album h3 {
+  margin: 4px 0 2px;
+  font-size: 14px;
+  color: #fff3c8;
+}
+.cv-sky-album h3 span {
+  font-weight: 500;
+  color: #c9bff5;
+}
+.cv-sky-album ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.cv-sky-album li {
+  display: flex;
+  flex-direction: column;
+  padding: 4px 8px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+}
+.cv-sky-album li.is-unknown {
+  color: #9d95c8;
+}
+.cv-sky-row-name {
+  font-weight: 600;
+}
+.cv-sky-row-date {
+  font-weight: 400;
+  font-size: 12px;
+  color: #b3aae0;
+}
+.cv-sky-row-when,
+.cv-sky-row-story {
+  font-size: 12px;
+  color: #b9b0e6;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cv-sky-arrow-glyph,
+  .cv-sky-card {
+    animation: none;
+  }
+}
