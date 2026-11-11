@@ -17,8 +17,10 @@ import {
   VILLAGE_LAYOUT,
   VILLAGE_MODEL_COLLIDERS,
   areaGapBlockers,
+  BUS_MIRROR_REACH,
   boxAt,
   buildVillageGeometry,
+  busMirrorColliders,
   colliderNode,
   cubbyAnchorNode,
   cubbyAnchors,
@@ -674,6 +676,53 @@ describe("village colliders are built from the layout", () => {
   });
 });
 
+describe("the parked bus's mirrors have colliders of their own (bus review r3: a head inside a mirror)", () => {
+  const bus = boxAt(L.busStop.bus.centre, L.busStop.bus.size);
+  const mirrors = busMirrorColliders(L);
+  /** The mirror heads' plan rectangles in the village (village_bus.glb: |x| 1.27..1.50, 0.255..0.345 m ahead of the front). */
+  const heads: AABB[] = [
+    { minX: bus.minX - 0.25, maxX: bus.minX - 0.02, minZ: bus.minZ - 0.345, maxZ: bus.minZ - 0.255 },
+    { minX: bus.maxX + 0.02, maxX: bus.maxX + 0.25, minZ: bus.minZ - 0.345, maxZ: bus.minZ - 0.255 },
+  ];
+  const gap = (px: number, pz: number, b: AABB) => Math.hypot(Math.max(b.minX - px, 0, px - b.maxX), Math.max(b.minZ - pz, 0, pz - b.maxZ));
+
+  it("one box at each front corner, out from the side and ahead of the front by the mirrors' reach, joined to the bus's box", () => {
+    expect(mirrors).toHaveLength(2);
+    const [l, r] = mirrors as [AABB, AABB];
+    expect(l.minX).toBeCloseTo(bus.minX - BUS_MIRROR_REACH.side, 6);
+    expect(r.maxX).toBeCloseTo(bus.maxX + BUS_MIRROR_REACH.side, 6);
+    for (const m of mirrors) {
+      expect(m.minZ).toBeCloseTo(bus.minZ - BUS_MIRROR_REACH.ahead, 6); // the nose is north (-z)
+      expect(overlaps(m, bus)).toBe(true);
+      expect(villageGeometry.obstacles).toContainEqual(m);
+    }
+    const contains = (o: AABB, i: AABB) => o.minX <= i.minX && o.maxX >= i.maxX && o.minZ <= i.minZ && o.maxZ >= i.maxZ;
+    for (const [i, h] of heads.entries()) expect(contains(mirrors[i]!, h)).toBe(true);
+  });
+
+  it("nobody can stand with their head in a mirror: every free spot round the front corners keeps a body's radius from both heads", () => {
+    // the reviewer's spot, at the west front corner with the mirror in the face
+    expect(isBlocked(32.34, -10.34, PLAYER_RADIUS, villageGeometry.obstacles)).toBe(true);
+    let free = 0;
+    for (let x = bus.minX - 1.5; x <= bus.maxX + 1.5; x += 0.05) {
+      for (let z = bus.minZ - 1.5; z <= bus.minZ + 0.6; z += 0.05) {
+        if (isBlocked(x, z, PLAYER_RADIUS, villageGeometry.obstacles)) continue;
+        free += 1;
+        for (const h of heads) expect(gap(x, z, h)).toBeGreaterThanOrEqual(PLAYER_RADIUS - 1e-6);
+      }
+    }
+    expect(free).toBeGreaterThan(1000);
+  });
+
+  it("the way across the front of the bus and along its sides stays open", () => {
+    const z = bus.minZ - BUS_MIRROR_REACH.ahead - PLAYER_RADIUS - 0.05;
+    for (let x = 31.6; x <= 36.6; x += 0.1) expect(isBlocked(x, z, PLAYER_RADIUS, villageGeometry.obstacles)).toBe(false);
+    for (let zz = bus.minZ + 0.1 + PLAYER_RADIUS + 0.05; zz <= bus.maxZ; zz += 0.25) {
+      expect(isBlocked(bus.minX - PLAYER_RADIUS - 0.05, zz, PLAYER_RADIUS, villageGeometry.obstacles)).toBe(false);
+    }
+  });
+});
+
 describe("villageGeometry plays on the colliders generated from village.glb (Task 7)", () => {
   const colliders = greyboxColliders(L);
 
@@ -682,7 +731,8 @@ describe("villageGeometry plays on the colliders generated from village.glb (Tas
     expect(villageGeometry.bounds).toEqual(villageBounds(L));
     expect(villageGeometry.bounds).toEqual({ minX: -95, maxX: 310, minZ: -95, maxZ: 95 }); // the hall's walls plus a 5 m apron
     for (const w of hallWalls(L)) expect(villageGeometry.cameraBoxes).toContainEqual(w);
-    expect(villageGeometry).toEqual(buildVillageGeometry(L, VILLAGE_MODEL_COLLIDERS, HALL_MODEL_COLLIDERS, guideColliders())); // + the guides (Task 9A)
+    // + the guides (Task 9A) and the parked bus's mirrors (bus review r3)
+    expect(villageGeometry).toEqual(buildVillageGeometry(L, VILLAGE_MODEL_COLLIDERS, HALL_MODEL_COLLIDERS, [...guideColliders(), ...busMirrorColliders()]));
     expect(VILLAGE_MODEL_COLLIDERS.obstacles).toBe(VILLAGE_COLLIDERS);
     expect(VILLAGE_MODEL_COLLIDERS.cameraBoxes).toBe(VILLAGE_CAMERA_BOXES);
     for (const b of VILLAGE_COLLIDERS) expect(villageGeometry.obstacles).toContainEqual(b);

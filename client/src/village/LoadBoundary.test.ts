@@ -1,4 +1,3 @@
-import { Suspense, isValidElement } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LoadBoundary } from "./LoadBoundary";
 import { LOAD_RETRY_LIMIT, retryDelayMs } from "./loadRetry";
@@ -11,9 +10,9 @@ import { LOAD_RETRY_LIMIT, retryDelayMs } from "./loadRetry";
 
 type State = { failed: boolean; tries: number };
 
-function boundary(isolateRetries = false) {
+function boundary() {
   const onReset = vi.fn();
-  const b = new LoadBoundary({ fallback: "fallback", onReset, notice: "다시 불러올게요", isolateRetries, children: "children" });
+  const b = new LoadBoundary({ fallback: "fallback", onReset, notice: "다시 불러올게요", children: "children" });
   // React's updater is not attached: apply setState in place.
   b.setState = ((u: Partial<State> | ((s: State) => Partial<State>)) => {
     b.state = { ...b.state, ...(typeof u === "function" ? u(b.state) : u) };
@@ -82,27 +81,5 @@ describe("LoadBoundary retry", () => {
     vi.advanceTimersByTime(retryDelayMs(LOAD_RETRY_LIMIT) * 2);
     expect(b.state).toEqual({ failed: true, tries: LOAD_RETRY_LIMIT });
     expect(onReset).toHaveBeenCalledTimes(LOAD_RETRY_LIMIT + 1);
-  });
-
-  it("isolateRetries: the first try renders in the Suspense above, a retry in its own", () => {
-    const { b, fail } = boundary(true);
-    b.componentDidMount();
-    expect(b.render()).toBe("children");
-    fail();
-    vi.advanceTimersByTime(retryDelayMs(0));
-    const el = b.render();
-    expect(isValidElement(el)).toBe(true);
-    if (!isValidElement<{ fallback: unknown; children: unknown }>(el)) return;
-    expect(el.type).toBe(Suspense);
-    expect(el.props.fallback).toBe("fallback");
-    expect(el.props.children).toBe("children");
-  });
-
-  it("without isolateRetries a retry renders its children as they are", () => {
-    const { b, fail } = boundary(false);
-    b.componentDidMount();
-    fail();
-    vi.advanceTimersByTime(retryDelayMs(0));
-    expect(b.render()).toBe("children");
   });
 });

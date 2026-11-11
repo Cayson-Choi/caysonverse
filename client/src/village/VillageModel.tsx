@@ -19,7 +19,7 @@ import {
 import { dayNight } from "./dayNightDriver";
 import { useNightMapWanted } from "./nightLightmap";
 import { holdNightLightmap, noteBusRequested, noteNightRequested, noteVillageRequested } from "./villageRelease";
-import { BUS_MODEL_URL } from "./villageBusPrep";
+import { preloadBus } from "./villageBusLoader";
 
 declare global {
   interface Window {
@@ -47,10 +47,10 @@ export function VillageModel({ tier }: { tier: VillageTier }) {
   // A release from now on must free what this reads, even if it is still loading (villageRelease.ts).
   noteVillageRequested();
   // The files download at once: the light map's and the bus's requests start before the model's read suspends this
-  // component (VillageBus, its sibling, is not rendered until this one resumes).
+  // component (the bus, beside it, is read in a Suspense of its own: usually in when the village is, never waited for).
   useTexture.preload(VILLAGE_LIGHTMAP_URL);
   noteBusRequested();
-  useGLTF.preload(BUS_MODEL_URL, DRACO_PATH);
+  preloadBus();
   const gltf = useGLTF(VILLAGE_MODEL_URL, DRACO_PATH);
   const lightmap = useTexture(VILLAGE_LIGHTMAP_URL);
   const gl = useThree((s) => s.gl);

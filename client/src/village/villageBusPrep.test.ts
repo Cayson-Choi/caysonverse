@@ -3,12 +3,12 @@ import {
   BoxGeometry,
   CustomBlending,
   DoubleSide,
-  DstColorFactor,
   Group,
   Mesh,
   MeshBasicMaterial,
   MeshPhysicalMaterial,
   MeshStandardMaterial,
+  OneFactor,
   OneMinusSrcAlphaFactor,
   ShaderLib,
   Texture,
@@ -111,7 +111,10 @@ describe("the village bus (village_bus.glb) dressed for the game", () => {
     const n = prepareBus(busFile().scene, "high");
     const s = compiled(n.body!);
     expect(s.fragmentShader).toContain("vec3 busSky(");
-    expect(s.fragmentShader).toContain("uBusTreeline"); // the tree tops above the horizon
+    // plain (bus review r4): no band of tree tops, no hard horizon line
+    expect(s.fragmentShader).not.toContain("uBusTreeline");
+    expect(s.fragmentShader).not.toContain("atan(");
+    expect(s.fragmentShader).toContain("smoothstep( - 0.25, 0.25, r.y )");
     expect(s.fragmentShader).toContain("radiance += busSky( geometryViewDir, geometryNormal, material.roughness );");
     expect(s.fragmentShader).toContain("clearcoatRadiance += busSky(");
     // after three's own IBL (empty without an environment map), before the lights are summed up
@@ -125,11 +128,13 @@ describe("the village bus (village_bus.glb) dressed for the game", () => {
     expect(compiled(n.led!).fragmentShader).not.toContain("busSky");
   });
 
-  it("the glass mirrors the sky by its own Fresnel over the tint and the cabin, in one pass", () => {
+  it("the glass mirrors one even sky colour by its own Fresnel over the tint and the cabin, in one pass", () => {
     const n = prepareBus(busFile().scene, "high");
     const s = compiled(n.glass!);
-    expect(s.fragmentShader).toContain("vec3 busSky(");
     expect(s.fragmentShader).not.toContain("radiance += busSky(");
+    // plain, even glass like the houses' windows (bus review r4): the sky's average, whatever the direction
+    expect(s.fragmentShader).toContain("uBusSkyAverage * uBusSky * busF");
+    expect(s.fragmentShader).not.toContain("busSky( geometryViewDir");
     // the mix happens on the lit colour, just before it is written out (alpha raised toward 1 at grazing angles)
     const at = s.fragmentShader.indexOf("float busF = uBusGlassF0");
     expect(at).toBeGreaterThan(s.fragmentShader.indexOf("#include <lights_fragment_end>"));
@@ -155,9 +160,9 @@ describe("the village bus (village_bus.glb) dressed for the game", () => {
       expect(g.depthWrite).toBe(false);
       expect(g.fog).toBe(false);
       expect(g.opacity).toBe(BUS_LOOK.groundShadow);
-      // dst x (1 - darkness + light): the light pools light what is there; factors, so no tone mapping
+      // dst x (1 - darkness) + light (premultiplied): written after the tone mapping, so none on it
       expect(g.blending).toBe(CustomBlending);
-      expect(g.blendSrc).toBe(DstColorFactor);
+      expect(g.blendSrc).toBe(OneFactor);
       expect(g.blendDst).toBe(OneMinusSrcAlphaFactor);
       expect(g.toneMapped).toBe(false);
       // the village's decal offset, stronger than the road layer's (bus review r3: the quad lay under the road)
@@ -172,7 +177,9 @@ describe("the village bus (village_bus.glb) dressed for the game", () => {
       expect(s.fragmentShader).not.toContain("#include <dithering_fragment>");
       expect(s.fragmentShader).toContain("uniform float uBusGlow;");
       expect(s.uniforms.uBusGlow).toBe(n.groundGlow);
-      expect(s.uniforms.uBusSun).toBe(n.groundSun);
+      // the contact shadow alone (bus review r4): no sun's shadow channel any more
+      expect(s.uniforms.uBusSun).toBeUndefined();
+      expect(s.fragmentShader).not.toContain("busG.b");
       // the light tier blends in sRGB on the canvas: its factors are the rich tier's to the 1/2.2
       expect(s.uniforms.uBusGamma).toBe(n.groundGamma);
       expect(n.groundGamma.value).toBeCloseTo(tier === "high" ? 1 : 1 / 2.2);
@@ -212,18 +219,16 @@ describe("the village bus (village_bus.glb) dressed for the game", () => {
     expect(n.body!.emissiveIntensity).toBe(0);
     expect(n.led!.emissiveIntensity).toBeCloseTo(BUS_LOOK.ledDay);
     expect(n.glass!.opacity).toBeCloseTo(BUS_LOOK.glassOpacity);
-    expect(n.groundGlow.value).toBe(0); // no light pools by day
-    expect(n.groundSun.value).toBeCloseTo(BUS_LOOK.sunShadow); // the sun's shadow, as the day light map's
+    expect(n.groundGlow.value).toBe(0); // no light pool by day
     expect(n.bodySky.value).toBeCloseTo(BUS_LOOK.envIntensity);
     expect(n.glassSky.value).toBeCloseTo(BUS_LOOK.glassEnvIntensity);
     applyBusDayNight(n, night);
     expect(n.body!.emissiveIntensity).toBeCloseTo(BUS_LOOK.nightGlow);
     expect(n.led!.emissiveIntensity).toBeCloseTo(BUS_LOOK.ledNight);
-    // the lit cabin shows through clearer glass; the low beams and the cabin light the ground
+    // the lit cabin shows through clearer glass; the low beams light the road ahead
     expect(n.glass!.opacity).toBeCloseTo(BUS_LOOK.glassNightOpacity);
     expect(BUS_LOOK.glassNightOpacity).toBeLessThan(BUS_LOOK.glassOpacity);
     expect(n.groundGlow.value).toBeCloseTo(BUS_LOOK.groundGlow);
-    expect(n.groundSun.value).toBe(0); // gone with the day light map
     expect(n.bodySky.value).toBeCloseTo(BUS_LOOK.envIntensity * 0.25);
     expect(busEnvScale({ hemiIntensity: 0, hemiSky: white })).toBe(0.05);
     expect(busEnvScale({ hemiIntensity: 100, hemiSky: white })).toBe(1.2);

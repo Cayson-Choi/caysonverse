@@ -703,6 +703,28 @@ export function buildVillageGeometry(
   );
 }
 
+/**
+ * How far the parked bus's rabbit-ear mirrors reach past its box (m): village_bus.glb (art/village/tools/build_bus.py
+ * mirror()) hangs their heads at head height (1.5-2.2 m) 0.25 m out from each side and 0.35 m ahead of the front;
+ * these reaches add a couple of centimetres (server/src/tools/villageBus.test.ts checks the file against them).
+ */
+export const BUS_MIRROR_REACH = { side: 0.27, ahead: 0.37 } as const;
+
+/**
+ * The parked bus's two mirrors as colliders of their own (bus review r3: standing at a front corner, an avatar's head
+ * took the mirror in it): a box under each mirror head, from the bus's side out and from its front ahead (nose north,
+ * -z), so nobody stands inside one. They overlap the bus's box by 0.1 m (no seam).
+ */
+export function busMirrorColliders(layout: Pick<VillageLayout, "busStop"> = VILLAGE_LAYOUT): AABB[] {
+  const b = boxAt(layout.busStop.bus.centre, layout.busStop.bus.size);
+  const { side, ahead } = BUS_MIRROR_REACH;
+  const z = { minZ: round(b.minZ - ahead, 6), maxZ: round(b.minZ + 0.1, 6) };
+  return [
+    { minX: round(b.minX - side, 6), maxX: round(b.minX + 0.1, 6), ...z },
+    { minX: round(b.maxX - 0.1, 6), maxX: round(b.maxX + side, 6), ...z },
+  ];
+}
+
 /** The village area's colliders generated from village.glb (Task 7): the layout's boxes plus the model's own. */
 export const VILLAGE_MODEL_COLLIDERS: GeneratedColliders = { obstacles: VILLAGE_COLLIDERS, cameraBoxes: VILLAGE_CAMERA_BOXES };
 
@@ -718,8 +740,9 @@ export const villageGeometry: MapGeometry = buildVillageGeometry(
   VILLAGE_LAYOUT,
   VILLAGE_MODEL_COLLIDERS,
   HALL_MODEL_COLLIDERS,
-  // Task 9A: the two guides (plaza and hall desk) stand on a small collider each, so nobody walks through them.
-  guideColliders(),
+  // Task 9A: the two guides (plaza and hall desk) stand on a small collider each, so nobody walks through them; the
+  // parked bus's mirrors hang past its box at head height (bus review r3): a collider under each.
+  [...guideColliders(), ...busMirrorColliders()],
 );
 
 /**

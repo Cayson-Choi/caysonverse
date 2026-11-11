@@ -39,8 +39,9 @@ vi.mock("@react-three/drei", () => {
 });
 vi.mock("@react-three/fiber", () => {
   const useLoader = (_: unknown, url: string) => h.read(url);
-  useLoader.clear = (_: unknown, url: string) => {
-    h.textureClear.push(url);
+  // The bus has a GLTF loader of its own (villageBusLoader.ts): its clears count with the GLTF ones.
+  useLoader.clear = (loader: { name?: string }, url: string) => {
+    (loader?.name === "BusGLTFLoader" ? h.gltfClear : h.textureClear).push(url);
     h.clear(url);
   };
   return { useLoader };

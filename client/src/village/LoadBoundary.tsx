@@ -1,4 +1,4 @@
-import { Component, Suspense, type ReactNode } from "react";
+import { Component, type ReactNode } from "react";
 import { useChatStore } from "../stores/chatStore";
 import { LOAD_RETRY_LIMIT, retryDelayMs } from "./loadRetry";
 
@@ -13,6 +13,9 @@ import { LOAD_RETRY_LIMIT, retryDelayMs } from "./loadRetry";
  * re-suspends) unmounts and remounts this class component: `componentWillUnmount` stops a pending retry, so
  * `componentDidMount` arms it again (bus review: the village's Suspense did this 0.35 s after it first showed, and a
  * failed bus was never fetched again).
+ *
+ * A model the area must not wait for (the village bus) puts a Suspense of its own INSIDE the boundary: its first load
+ * and every retry suspend there, never in the area's (bus review r3, M2).
  */
 interface Props {
   /** What to draw while the model is missing. */
@@ -21,12 +24,6 @@ interface Props {
   onReset: () => void;
   /** The chat line shown once on the first failure. */
   notice: string;
-  /**
-   * The retries wait in a Suspense of their own (showing `fallback`), not in the nearest one above: the first try
-   * still loads with its neighbours (one wait, one warm-up), but a retry never hides them (the village bus: its
-   * re-download must not blank the whole village).
-   */
-  isolateRetries?: boolean;
   children: ReactNode;
 }
 
@@ -81,7 +78,6 @@ export class LoadBoundary extends Component<Props, State> {
 
   render(): ReactNode {
     if (this.state.failed) return this.props.fallback;
-    if (this.props.isolateRetries && this.state.tries > 0) return <Suspense fallback={this.props.fallback}>{this.props.children}</Suspense>;
     return this.props.children;
   }
 }

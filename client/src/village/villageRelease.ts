@@ -15,6 +15,7 @@ import {
   nightMapUniform,
 } from "./villageModelPrep";
 import { BUS_MODEL_URL } from "./villageBusPrep";
+import { clearBus, readBus } from "./villageBusLoader";
 
 /**
  * Releasing 케이슨 마을's files (Task 7 review I1; final review I2 for phones), in the counselling room's pattern
@@ -36,7 +37,7 @@ import { BUS_MODEL_URL } from "./villageBusPrep";
  *    flag (a scene that never drew it reads nothing).
  */
 
-// `useLoader` / `useGLTF` here are plain cache reads (no React hooks inside them), not hook calls.
+// `useLoader` / `useGLTF` / `readBus` here are plain cache reads (no React hooks inside them), not hook calls.
 const readCache = useLoader;
 
 let held = false;
@@ -57,8 +58,8 @@ export function noteBusRequested(): void {
 /** The bus's cache entry (freed like the village model: geometry, materials, textures). */
 export const BUS_CACHE: CachedFile = {
   id: BUS_MODEL_URL,
-  read: () => useGLTF(BUS_MODEL_URL, DRACO_PATH),
-  clear: () => useGLTF.clear(BUS_MODEL_URL),
+  read: () => readBus(),
+  clear: () => clearBus(),
   free: (g) => disposeVillageSource((g as GLTF).scene),
 };
 

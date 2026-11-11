@@ -6,6 +6,7 @@
 import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
+import { BUS_MIRROR_REACH, VILLAGE_LAYOUT } from "@caysonverse/shared/village/villageLayout";
 import type { Gltf } from "../../../scripts/lib/schoolGlb";
 import {
   BUDGETS,
@@ -47,6 +48,22 @@ describe("village_bus.glb (bus review: its budget is checked)", () => {
     expect(VILLAGE_BUS_MATERIALS).toHaveLength(4);
     expect(size).toBeLessThanOrEqual(VILLAGE_BUS_BUDGET.maxBytes);
     expect(countTriangles(gltf)).toBeLessThanOrEqual(VILLAGE_BUS_BUDGET.maxTriangles);
+  });
+
+  it("what the body has past the bus's box is the rabbit-ear mirrors, inside their colliders' reach (bus review r3)", () => {
+    const { gltf } = load("village_bus.glb");
+    const node = gltf.nodes!.find((n) => n.name === "village_bus")!;
+    const prim = gltf.meshes![node.mesh!]!.primitives.find((p) => gltf.materials![p.material!]!.name === "M_bus")!;
+    const a = gltf.accessors![prim.attributes.POSITION!]!;
+    const [minX, , minZ] = a.min as number[];
+    const [maxX, , maxZ] = a.max as number[];
+    const box = VILLAGE_LAYOUT.busStop.bus.size;
+    // the file's nose is -z (north), as the village places it: the mirrors' heads are the furthest out and ahead
+    expect(Math.max(-minX!, maxX!)).toBeGreaterThan(box.x / 2); // they do stand out (the colliders are needed)
+    expect(Math.max(-minX!, maxX!)).toBeLessThanOrEqual(box.x / 2 + BUS_MIRROR_REACH.side);
+    expect(-minZ!).toBeLessThanOrEqual(box.z / 2 + BUS_MIRROR_REACH.ahead);
+    // at the back only the bumper's lip (under any head; a body's radius covers it)
+    expect(maxZ!).toBeLessThanOrEqual(box.z / 2 + 0.05);
   });
 
   it("the village and the bus together stay within the village's 260k plus the bus's 40k", () => {
