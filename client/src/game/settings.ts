@@ -40,7 +40,7 @@ export const DEFAULT_SETTINGS: Settings = {
   leftHanded: false,
   lookSensitivity: 1,
   nametagMode: "nearby",
-  showOwnNametag: false,
+  showOwnNametag: true,
   coachDone: false,
   graphics: "auto",
   brightness: BRIGHTNESS.default,
@@ -63,6 +63,8 @@ export const MIN_GAP_PX = 8;
 
 /** localStorage key. The `v1` is the schema version of the stored blob. */
 export const SETTINGS_STORAGE_KEY = "cv-settings-v1";
+/** One-time migration: the own name tag used to default to hidden. */
+export const OWN_NAMETAG_MIGRATION_KEY = "cv-own-nametag-v2";
 
 const BUTTON_SIZES: readonly ButtonSize[] = ["small", "medium", "large"];
 const NAMETAG_MODES: readonly NametagMode[] = ["all", "nearby", "off"];
@@ -153,10 +155,21 @@ function browserStorage(): StorageLike | null {
 
 /** Read the saved settings; blocked or empty storage is the defaults, never an error. */
 export function loadSettings(storage: StorageLike | null = browserStorage()): Settings {
+  let settings: Settings;
   try {
-    return parseSettings(storage ? storage.getItem(SETTINGS_STORAGE_KEY) : null);
+    settings = parseSettings(storage ? storage.getItem(SETTINGS_STORAGE_KEY) : null);
   } catch {
     return { ...DEFAULT_SETTINGS };
+  }
+  if (!storage) return settings;
+  try {
+    if (storage.getItem(OWN_NAMETAG_MIGRATION_KEY) === "1") return settings;
+    const migrated = settings.showOwnNametag ? settings : { ...settings, showOwnNametag: true };
+    if (!settings.showOwnNametag) saveSettings(migrated, storage);
+    storage.setItem(OWN_NAMETAG_MIGRATION_KEY, "1");
+    return migrated;
+  } catch {
+    return settings;
   }
 }
 

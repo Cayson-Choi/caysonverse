@@ -43,7 +43,10 @@
   height: 36px;
   box-sizing: border-box;
   padding: 0 4px 0 13px;
-  font-size: 15px;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  text-rendering: geometricPrecision;
   color: #f2eeff;
   background: transparent;
   border: 0;
@@ -239,14 +242,16 @@
 }
 
 .cv-chat-row {
-  font-size: 13px;
-  line-height: 1.4;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.5;
+  text-rendering: geometricPrecision;
   color: #ece7ff;
   word-break: break-word;
 }
 
 .cv-chat-name {
-  font-weight: 700;
+  font-weight: 800;
   color: #b9a8ff;
 }
 
