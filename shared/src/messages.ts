@@ -44,6 +44,14 @@ export const MessageType = {
    * everyone except the sender: relay `{ sid, on }`. A transient event, never schema state.
    */
   Typing: "typing",
+  /** Client -> server: request to board or leave the scheduled village bus. */
+  BusRide: "bus_ride",
+  /** Server -> every client: authoritative scheduled bus pose and signal state. */
+  BusState: "bus_state",
+  /** Server -> one client: why a bus boarding request was rejected. */
+  BusRejected: "bus_rejected",
+  /** Server -> one client: the sender's authoritative boarded state. */
+  BusRideState: "bus_ride_state",
 } as const;
 
 export type MessageType = (typeof MessageType)[keyof typeof MessageType];
@@ -155,6 +163,29 @@ export interface TypingBroadcast {
   on: boolean;
 }
 
+export interface BusRidePayload {
+  action: "board" | "leave";
+}
+
+export interface BusStatePayload {
+  tripId: number;
+  status: "inTransit" | "atStop" | "boarding";
+  progress: number;
+  x: number;
+  z: number;
+  yaw: number;
+  signal: "green" | "amber" | "red";
+}
+
+export interface BusRejectedPayload {
+  reason: string;
+}
+
+export interface BusRideStatePayload {
+  boarded: boolean;
+  tripId: number;
+}
+
 /** Payload type for each message id, keyed by MessageType. */
 export interface MessagePayloads {
   [MessageType.Move]: MovePayload;
@@ -171,4 +202,8 @@ export interface MessagePayloads {
   // entry lists both shapes.
   [MessageType.Jump]: JumpPayload | JumpBroadcast;
   [MessageType.Typing]: TypingPayload | TypingBroadcast;
+  [MessageType.BusRide]: BusRidePayload;
+  [MessageType.BusState]: BusStatePayload;
+  [MessageType.BusRejected]: BusRejectedPayload;
+  [MessageType.BusRideState]: BusRideStatePayload;
 }
