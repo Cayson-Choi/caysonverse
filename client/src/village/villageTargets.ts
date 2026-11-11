@@ -26,6 +26,11 @@ export const DOOR_SHORT: Readonly<Record<AreaId, string>> = { village: "들어�
 /** The target id of the memorial hall's door (both sides). */
 export const MEMORIAL_DOOR_ID = "memorial_door";
 
+/** The bus target uses the same server-side 4.5 m gate, with a small client cushion. */
+export const BUS_OFFER_REACH_M = 4.2;
+export const BUS_RIDE_TARGET_BOARD = "village_bus_board";
+export const BUS_RIDE_TARGET_LEAVE = "village_bus_leave";
+
 /** How far past the pad's radius the button is offered (m). The server's own reach is 0.9 (villageDoor.ts DOOR_REACH_M). */
 export const DOOR_OFFER_REACH_M = 0.7;
 
@@ -46,6 +51,22 @@ export function villageTargets(
   const dist = Math.hypot(x - pad.centre.x, z - pad.centre.z);
   if (!(dist <= pad.radius + DOOR_OFFER_REACH_M)) return NONE; // also false for NaN
   return [{ kind: "door", id: MEMORIAL_DOOR_ID, dist, icon: "🚪", label: DOOR_LABEL[area], short: DOOR_SHORT[area] }];
+}
+
+/** A board/leave target around the east-side stop; the server re-checks the pose and schedule. */
+export function villageBusTarget(area: AreaId, x: number, z: number, boarded: boolean): InteractTarget | null {
+  if (area !== "village") return null;
+  const dist = Math.hypot(x - VILLAGE_LAYOUT.busStop.bus.centre.x, z - VILLAGE_LAYOUT.busStop.bus.centre.z);
+  if (!(dist <= BUS_OFFER_REACH_M)) return null;
+  return {
+    kind: "object",
+    id: boarded ? BUS_RIDE_TARGET_LEAVE : BUS_RIDE_TARGET_BOARD,
+    dist,
+    icon: "🚌",
+    label: boarded ? "버스에서 내리기" : "버스 타기",
+    short: boarded ? "하차" : "탑승",
+    priority: 2,
+  };
 }
 
 /** How near (m, on the ground) to a cubby column its close-up is offered (brief: 1.2 m). The server lets a candle be lit from 1.5 m. */

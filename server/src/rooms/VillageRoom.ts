@@ -1,7 +1,7 @@
 import type { Client } from "colyseus";
 import { Player, WorldState } from "@caysonverse/shared/schema";
 import { MessageType } from "@caysonverse/shared/messages";
-import type { ChatBroadcast } from "@caysonverse/shared/messages";
+import type { BusRideStatePayload, ChatBroadcast } from "@caysonverse/shared/messages";
 import { PATCH_RATE_MS, ROLE_STUDENT, VILLAGE_MAX_CLIENTS } from "@caysonverse/shared/constants";
 import { APPEARANCE_FIELDS } from "@caysonverse/shared/appearance";
 import type { MapGeometry } from "@caysonverse/shared/school/geometry";
@@ -21,6 +21,11 @@ import { RateWindow } from "./rateLimit";
 import { DOOR_RATE, useDoor } from "./villageDoor";
 import { candleCubby } from "./villageCandle";
 import { validateSit } from "./seating";
+import {
+  BUS_STATE_RATE_MS,
+  transitSnapshotAt,
+  validateBusRide,
+} from "./transitRuntime";
 
 /** Per-client bookkeeping (not part of synced state): the base's, plus the door-use cap. */
 interface VillageTracking extends Tracking {
@@ -28,6 +33,10 @@ interface VillageTracking extends Tracking {
   doorRate: RateWindow;
   /** Sliding-window rate cap for lighting candles (1 per 5 seconds, Task 9). */
   candleRate: RateWindow;
+  /** Whether this session has been accepted onto the current scheduled trip. */
+  busBoarded: boolean;
+  /** Trip id assigned at boarding; a rider is cleared when that trip returns. */
+  busTripId: number | null;
 }
 
 /**
@@ -71,6 +80,9 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
    */
   private readonly occupancy = new Map<number, string>();
 
+  /** Player objects currently on the bus; WeakSet keeps canMove allocation-free. */
+  private readonly busRiders = new WeakSet<Player>();
+
   onCreate(): void {
     // Move, Chat, Emoji, Jump, Typing (+ the "*" catch-all for stray types).
     this.registerPlayerMessages();
@@ -86,8 +98,14 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     this.onMessage(VillageMsg.LightCandle, (client, payload: unknown) => {
       this.handleLightCandle(client, payload);
     });
+    this.onMessage(MessageType.BusRide, (client, payload: unknown) => {
+      this.handleBusRide(client, payload);
+    });
     // The time of day: everyone's clock offset is refreshed every 5 minutes (drift, a device clock changed meanwhile).
     this.clock.setInterval(() => this.broadcastServerTime(), SERVER_TIME_INTERVAL_MS);
+    // The bus is server-clocked. A 250 ms cadence keeps the render smooth while the
+    // client interpolates between snapshots and every client sees the same signal.
+    this.clock.setInterval(() => this.broadcastTransit(), BUS_STATE_RATE_MS);
   }
 
   /** The server's wall clock (Unix epoch ms, UTC). A seam for tests; the door and move caps use `now()`. */
@@ -125,6 +143,9 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     player.area = "village";
     this.seatPlayer(client, player); // state + tracking (createTracking below)
     client.send(VillageServerMsg.ServerTime, this.serverTime());
+    const snapshot = transitSnapshotAt(this.wallClock());
+    client.send(MessageType.BusState, snapshot);
+    client.send(MessageType.BusRideState, { boarded: false, tripId: snapshot.tripId } satisfies BusRideStatePayload);
   }
 
   /**
@@ -135,6 +156,11 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
   override onReconnect(client: Client): void {
     super.onReconnect(client);
     client.send(VillageServerMsg.ServerTime, this.serverTime());
+    const snapshot = transitSnapshotAt(this.wallClock());
+    client.send(MessageType.BusState, snapshot);
+    const track = this.tracking.get(client.sessionId);
+    const tripId = track?.busTripId ?? snapshot.tripId;
+    client.send(MessageType.BusRideState, { boarded: track?.busBoarded === true, tripId } satisfies BusRideStatePayload);
   }
 
   /** The village map: the open village plus the memorial hall's sealed interior. */
@@ -154,6 +180,8 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
       ...baseTracking(now),
       doorRate: new RateWindow(DOOR_RATE.count, DOOR_RATE.windowMs),
       candleRate: new RateWindow(CANDLE_RATE.count, CANDLE_RATE.windowMs),
+      busBoarded: false,
+      busTripId: null,
     };
   }
 
@@ -188,7 +216,7 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
 
   /** Seated on a bench → Move and Jump are dropped silently: getting up is an explicit Stand. */
   protected canMove(player: Player): boolean {
-    return player.seatIndex < 0;
+    return player.seatIndex < 0 && !this.busRiders.has(player);
   }
 
   /**
@@ -197,8 +225,60 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
    * its seat until it is back or gone.
    */
   onLeave(client: Client): void {
+    const player = this.state.players.get(client.sessionId);
+    if (player) this.busRiders.delete(player);
     this.releaseSeat(client.sessionId);
     super.onLeave(client);
+  }
+
+  /** Publish the scheduled route and clear riders once their three-minute lap returns. */
+  private broadcastTransit(): void {
+    const now = this.wallClock();
+    const snapshot = transitSnapshotAt(now);
+    for (const client of this.clients) {
+      const track = this.tracking.get(client.sessionId);
+      if (!track?.busBoarded || track.busTripId === null) continue;
+      // A rider stays on one lap only. Once the bus is back at the stop, the
+      // placeholder ride ends and the player can board the next hourly trip.
+      if (snapshot.status !== "inTransit" || snapshot.tripId !== track.busTripId) {
+        track.busBoarded = false;
+        track.busTripId = null;
+        const player = this.state.players.get(client.sessionId);
+        if (player) this.busRiders.delete(player);
+        client.send(MessageType.BusRideState, { boarded: false, tripId: snapshot.tripId } satisfies BusRideStatePayload);
+      }
+    }
+    this.broadcast(MessageType.BusState, snapshot);
+  }
+
+  /** Validate one board/leave request against the authoritative player pose and schedule. */
+  private handleBusRide(client: Client, payload: unknown): void {
+    const player = this.state.players.get(client.sessionId);
+    const track = this.tracking.get(client.sessionId);
+    if (!player || !track) return;
+    const decision = validateBusRide(payload, {
+      boarded: track.busBoarded,
+      area: player.area,
+      x: player.x,
+      z: player.z,
+    }, this.wallClock());
+    if (!decision.ok) {
+      client.send(MessageType.BusRejected, { reason: decision.notice });
+      return;
+    }
+    const action = payload !== null && typeof payload === "object" ? (payload as { action?: unknown }).action : undefined;
+    if (action === "board") {
+      track.busBoarded = true;
+      track.busTripId = decision.tripId;
+      this.busRiders.add(player);
+      client.send(MessageType.BusRideState, { boarded: true, tripId: decision.tripId } satisfies BusRideStatePayload);
+      return;
+    }
+    // `leave` is accepted only for an existing rider by validateBusRide.
+    track.busBoarded = false;
+    track.busTripId = null;
+    this.busRiders.delete(player);
+    client.send(MessageType.BusRideState, { boarded: false, tripId: transitSnapshotAt(this.wallClock()).tripId } satisfies BusRideStatePayload);
   }
 
   /**

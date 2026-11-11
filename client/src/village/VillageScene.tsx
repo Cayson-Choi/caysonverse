@@ -6,6 +6,7 @@ import { setTargetHandler, setTargetSource } from "../game/interactTargets";
 import type { PlayersRoom } from "../game/remoteSync";
 import type { Pose } from "../game/types";
 import { getRoom, sendUseDoor } from "../net/connection";
+import { sendBusRide, startTransitSync, type TransitRoom, useTransitState } from "../net/transitSync";
 import type { Identity } from "../stores/appStore";
 import { DoorFade } from "./DoorFade";
 import { doorFade } from "./doorFadeModel";
@@ -25,7 +26,15 @@ import { VILLAGE_CAMERA_PLANES, VILLAGE_GROUND_DECAL, type VillageTier } from ".
 import { clearBusCache, clearVillageCaches, holdVillageFiles, holdsVillageFiles } from "./villageRelease";
 import { LoadBoundary } from "./LoadBoundary";
 import { areaGate, localArea, readSelfArea, releaseLocalArea, seedLocalArea, useLocalArea } from "./villageArea";
-import { CUBBY_TARGET_PREFIX, GUIDE_TARGET_PREFIX, villageAndHallTargets, villageTargets } from "./villageTargets";
+import {
+  BUS_RIDE_TARGET_BOARD,
+  BUS_RIDE_TARGET_LEAVE,
+  CUBBY_TARGET_PREFIX,
+  GUIDE_TARGET_PREFIX,
+  villageAndHallTargets,
+  villageBusTarget,
+  villageTargets,
+} from "./villageTargets";
 import { GuideNpcs } from "./GuideNpc";
 import { GuideDialog } from "./GuideDialog";
 import { guideDialogOpen, openGuideDialog } from "./guideDialogStore";
@@ -109,11 +118,27 @@ function VillageArea({ area, tier }: { area: AreaId; tier: VillageTier }) {
 }
 
 function VillageDoors({ pose }: { pose: Pose }) {
+  const { boarded } = useTransitState();
   useEffect(() => {
     // Nothing is offered while the cubby card or a guide's questions are open (the E / action button hides).
-    setTargetSource((p) => villageAndHallTargets(localArea(), p.x, p.z, cubbyCardState() !== null || guideDialogOpen() !== null));
+    setTargetSource((p) => {
+      const area = localArea();
+      const base = villageAndHallTargets(area, p.x, p.z, cubbyCardState() !== null || guideDialogOpen() !== null);
+      const bus = villageBusTarget(area, p.x, p.z, boarded);
+      return bus ? [...base, bus] : base;
+    });
     setTargetHandler((target, phase) => {
       if (phase !== "press") return;
+      if (target.id === BUS_RIDE_TARGET_BOARD) {
+        clearClickTarget();
+        sendBusRide("board");
+        return;
+      }
+      if (target.id === BUS_RIDE_TARGET_LEAVE) {
+        clearClickTarget();
+        sendBusRide("leave");
+        return;
+      }
       if (target.kind === "object" && target.id.startsWith(GUIDE_TARGET_PREFIX)) {
         clearClickTarget(); // stand still in front of the guide while the questions are open
         openGuideDialog(target.id);
@@ -136,8 +161,43 @@ function VillageDoors({ pose }: { pose: Pose }) {
       setTargetSource(null);
       setTargetHandler(null);
     };
-  }, [pose]);
+  }, [pose, boarded]);
   return null;
+}
+
+/** Small ride-status placeholder; the full window/camera view can build on this state. */
+function TransitRideHud() {
+  const { boarded, snapshot, notice } = useTransitState();
+  if (!boarded && !notice) return null;
+  return (
+    <div
+      style={{
+        marginTop: 8,
+        padding: "8px 10px",
+        borderRadius: 10,
+        background: "rgba(20, 28, 52, 0.82)",
+        color: "#fff",
+        fontSize: 12,
+        lineHeight: 1.35,
+      }}
+    >
+      {boarded ? (
+        <>
+          <div>🚌 버스 탑승 중 · 창밖을 보는 중</div>
+          <div style={{ opacity: 0.75 }}>{snapshot?.signal === "red" ? "신호 대기" : "노선 운행 중"}</div>
+          <button
+            type="button"
+            onClick={() => sendBusRide("leave")}
+            style={{ marginTop: 5, border: 0, borderRadius: 7, padding: "4px 8px", cursor: "pointer" }}
+          >
+            하차
+          </button>
+        </>
+      ) : (
+        <div>{notice}</div>
+      )}
+    </div>
+  );
 }
 
 export function VillageScene({ identity }: { identity: Identity }) {
@@ -151,6 +211,7 @@ export function VillageScene({ identity }: { identity: Identity }) {
     return { room: r, area: readSelfArea(r) };
   });
   const { room } = boot;
+  useEffect(() => (room ? startTransitSync(room as unknown as TransitRoom) : undefined), [room]);
   const [published, setPublished] = useState(false);
   useLayoutEffect(() => {
     const token = seedLocalArea(boot.area);
@@ -191,6 +252,7 @@ export function VillageScene({ identity }: { identity: Identity }) {
       hudColumn={
         <>
           <VillageBgmButton />
+          <TransitRideHud />
           <StarFinderButton />
         </>
       }
