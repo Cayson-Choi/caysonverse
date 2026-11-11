@@ -878,6 +878,24 @@ describe.each(GEOMETRIES)("village geometry invariants: %s", (_name, geo) => {
       expect(r.every((p) => inside(L.areas.village, p))).toBe(true);
     });
 
+    it("the forest perimeter is reachable on every side and in every corner", () => {
+      // The forest cards begin outside the walk area. These targets keep the player's body clear of the
+      // clamp (2 m inside each edge) while proving the legal map boundary itself is not cut off by a
+      // scenery collider or by the creek/bridge route.
+      const b = L.walkBounds;
+      const perimeter = [
+        { name: "north-west", x: b.minX + 2, z: b.minZ + 2 },
+        { name: "north-east", x: b.maxX - 2, z: b.minZ + 2 },
+        { name: "south-west", x: b.minX + 2, z: b.maxZ - 2 },
+        { name: "south-east", x: b.maxX - 2, z: b.maxZ - 2 },
+        { name: "west", x: b.minX + 2, z: (b.minZ + b.maxZ) / 2 },
+        { name: "east", x: b.maxX - 2, z: (b.minZ + b.maxZ) / 2 },
+        { name: "north", x: (b.minX + b.maxX) / 2, z: b.minZ + 2 },
+        { name: "south", x: (b.minX + b.maxX) / 2, z: b.maxZ - 2 },
+      ];
+      for (const target of perimeter) expect(hasNear(r, target, GRID), target.name).toBe(true);
+    });
+
     it("every plot, house, the café, the pavilion and the bus stop can be reached from the spawn, without the bridge", () => {
       for (const p of L.plots) {
         expect(cut.some((q) => inside(boxOf(p), q)), p.id).toBe(true);
