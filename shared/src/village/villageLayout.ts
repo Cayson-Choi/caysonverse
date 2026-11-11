@@ -12,7 +12,7 @@
  * Layout v2 (owner, 2026-11-03): a much bigger plaza so many people can gather, in the style of
  * art/village/refs/owner_village_style.webp. From the plaza centre outwards: fountain (basin 16 m) inside
  * a paved disk (r 30), the ring road (r 31..37) with a 2 m sidewalk outside it, small colourful houses and
- * a café, then the six 18 x 18 plots on a ring of r ~58, and the creek beyond the southern plots. The
+ * a café, then the six B-scale plots on a ring of r ~58, and the creek beyond the southern plots. The
  * waterfall and the lake are backdrop outside the walk bounds (visual only).
  *
  * Two areas live in ONE coordinate space, far apart: the village (x -95..95) and the memorial hall's interior
@@ -82,7 +82,8 @@ export interface VillagePlot {
 export type HouseColour = "pink" | "skyblue" | "yellow" | "white" | "mint" | "wood";
 
 /** The footprint of each kind of scenery building (x by z, m). */
-export const SCENERY_SIZES = { house: { x: 8, z: 6 }, cafe: { x: 12, z: 9 }, kiosk: { x: 4, z: 3 } } as const;
+/** Approved building-scale B footprints; art generation consumes the exported layout JSON. */
+export const SCENERY_SIZES = { house: { x: 11.2, z: 8.4 }, cafe: { x: 16, z: 12.5 }, kiosk: { x: 5, z: 4 } } as const;
 
 /**
  * A small colourful house, the café with striped awnings, or the café's timber flower kiosk, for the scenery.
@@ -202,7 +203,7 @@ export interface MemorialInterior {
   doorPad: Disc;
   /** Where a visitor appears when they come in (yaw faces into the room). */
   spawn: Point2 & { yaw: number };
-  /** The cubby walls: the back wall (white lacquer, 20 x 7) and the east wall (light oak, 18 x 7), meeting in the north-east corner. */
+  /** The cubby walls: the back wall (white lacquer, 34 x 7) and the east wall (light oak, 18 x 7), meeting in the north-east corner. */
   cubbyWalls: readonly CubbyWall[];
 }
 
@@ -300,12 +301,12 @@ function plot(
   id: PlotId,
   centre: Point2,
   label: string,
-  rest: { signPost: (Point2 & { facing: Side }) | null; underConstruction?: boolean },
+  rest: { signPost: (Point2 & { facing: Side }) | null; underConstruction?: boolean; size?: Size2 },
 ): VillagePlot {
   return {
     id,
     centre,
-    size: sz(18, 18),
+    size: rest.size ?? sz(18, 18),
     label,
     sign: rest.signPost === null ? null : SIGN_COMING_SOON,
     underConstruction: rest.underConstruction ?? false,
@@ -328,16 +329,15 @@ function house(
 const CUBBY = { cell: 0.4, frame: 0.025, depth: 0.36, unitDepth: 0.39, plinth: 0.12, rows: 7 } as const;
 
 /**
- * The hall's two cubby walls (room x 295.5..304.5, z -6..6). The east unit runs from the back unit's front face
- * (z = -6 + 0.39) toward the door, 18 columns (7.675 m, to z = 2.065); the back unit runs west from the east unit's
- * front face (x = 304.5 - 0.39), 20 columns (8.525 m, to x = 295.585; a filler closes the 8.5 cm to the west wall).
+ * The hall's two cubby walls (B plan room x 292.5..307.5, z -6..6). The east unit remains 18 columns; the north
+ * unit grows to 34 columns so the wider room is filled without changing cubby size or row ids.
  */
 function hallCubbyWalls(): CubbyWall[] {
   const run = (cols: number) => cols * (CUBBY.cell + CUBBY.frame) + CUBBY.frame;
-  const eastFront = 304.5 - CUBBY.unitDepth;
+  const eastFront = 307.5 - CUBBY.unitDepth;
   const backFront = -6 + CUBBY.unitDepth;
   return [
-    { wall: "n", finish: "lacquer", ...CUBBY, cols: 20, start: pt(round(eastFront - run(20), 6), backFront), along: pt(1, 0), yaw: FACING_SOUTH },
+    { wall: "n", finish: "lacquer", ...CUBBY, cols: 34, start: pt(round(eastFront - run(34), 6), backFront), along: pt(1, 0), yaw: FACING_SOUTH },
     { wall: "e", finish: "oak", ...CUBBY, cols: 18, start: pt(eastFront, backFront), along: pt(0, 1), yaw: FACING_WEST },
   ];
 }
@@ -359,7 +359,7 @@ function makeVillageLayout(): VillageLayout {
     // village_bus.glb). x 32.95..35.45, z -10.25..-1.25 stays inside the road's 31..37 band (outer corner at r 36.90);
     // its front door (z -9.85..-8.76) stops at the shelter's north end and its middle door (z -5.9..-4.5) at the shelter.
     busStop: {
-      shelter: { centre: pt(38, -6), size: sz(1.6, 4) },
+      shelter: { centre: pt(38, -5.5), size: sz(1.8, 5) },
       bus: { centre: pt(34.2, -5.75), size: sz(2.5, 9) },
     },
     // A gentle bow to the south beyond plot_s (z 49..67); every segment is 6 m of water with 3 m of bank on each side,
@@ -378,7 +378,8 @@ function makeVillageLayout(): VillageLayout {
       bridgeGap: { minX: -26, maxX: -22 },
     },
     bridge: { minX: -26, maxX: -22, minZ: 72, maxZ: 78 },
-    pavilion: { centre: pt(-16, 62), size: sz(5, 5) },
+      // Keep the north-bank pavilion footprint compact so creek-side click routes retain a clear detour.
+      pavilion: { centre: pt(-16, 62), size: sz(5, 5) },
     lanes: [
       { id: "lane_plot_n", width: 3, points: [pt(0, -30), pt(0, -51.6)] },
       { id: "lane_plot_ne", width: 3, points: [pt(24.72, -16.99), pt(38.5, -33)] },
@@ -390,26 +391,26 @@ function makeVillageLayout(): VillageLayout {
       { id: "lane_bus", width: 2.5, points: [pt(30, 1), pt(38.5, 1), pt(38.5, -6)] },
     ],
     plots: [
-      plot("plot_n", pt(0, -58), "추모관", { signPost: null }),
-      plot("plot_ne", pt(48, -33), "성당", { signPost: { x: 40, z: -33, facing: "w" } }),
-      plot("plot_e", pt(56, 15), "학교", { signPost: { x: 48, z: 15, facing: "w" } }),
-      plot("plot_w", pt(-56, 15), "도서관", { signPost: { x: -48, z: 15, facing: "e" }, underConstruction: true }),
-      plot("plot_nw", pt(-48, -33), "절", { signPost: { x: -40, z: -33, facing: "e" } }),
-      plot("plot_s", pt(0, 58), "교회", { signPost: { x: 0, z: 50, facing: "n" } }),
+      plot("plot_n", pt(0, -60), "추모관", { signPost: null, size: sz(28, 24) }),
+      plot("plot_ne", pt(52, -37), "성당", { signPost: { x: 40, z: -33, facing: "w" }, size: sz(26, 26) }),
+      plot("plot_e", pt(60, 15), "학교", { signPost: { x: 48, z: 15, facing: "w" }, size: sz(26, 26) }),
+      plot("plot_w", pt(-60, 12), "도서관", { signPost: { x: -48, z: 15, facing: "e" }, underConstruction: true, size: sz(26, 22) }),
+      plot("plot_nw", pt(-52, -37), "절", { signPost: { x: -40, z: -33, facing: "e" }, size: sz(26, 26) }),
+      plot("plot_s", pt(0, 58), "교회", { signPost: { x: 0, z: 50, facing: "n" }, size: sz(24, 18) }),
     ],
     memorial: {
       exterior: {
-        centre: pt(0, -58),
-        size: sz(14, 12),
+        centre: pt(0, -60),
+        size: sz(20, 16),
         doorSide: "s",
-        doorPad: { centre: pt(0, -51.6), radius: 1.6 },
+        doorPad: { centre: pt(0, -51.6), radius: 2.0 },
         arrival: { x: 0, z: -49.4, yaw: FACING_SOUTH },
       },
       interior: {
         origin: pt(300, 0),
-        size: sz(9, 12),
-        room: boxAt(pt(300, 0), sz(9, 12)),
-        ceilingHeight: 3.4,
+        size: sz(15, 12),
+        room: boxAt(pt(300, 0), sz(15, 12)),
+        ceilingHeight: 4.5,
         doorSide: "s",
         doorPad: { centre: pt(300, 5.2), radius: 1.4 },
         // 0.2 m outside the 1.4 m door pad's edge (pad centre z = 5.2, spawn z = 3.6, distance 1.6), so a new arrival is not standing on the door.
@@ -423,22 +424,22 @@ function makeVillageLayout(): VillageLayout {
     sceneryHouses: [
       house("house_1", pt(21, -42), "pink", "s"),
       house("house_2", pt(-21, -42), "skyblue", "s"),
-      house("house_3", pt(29, 37), "yellow", "n"),
-      house("house_4", pt(-28, 38), "white", "n"),
-      house("house_5", pt(-46, -8), "mint", "e"),
-      house("house_6", pt(15, -52), "yellow", "s"),
-      house("house_7", pt(31, -50), "mint", "s"),
-      house("house_8", pt(-15, -52), "skyblue", "s"),
-      house("house_9", pt(-31, -50), "pink", "s"),
-      house("house_10", pt(-40, 28), "white", "e"),
-      house("cafe", pt(46, -12), "wood", "w", "cafe"),
-      house("kiosk", pt(46, -3), "wood", "w", "kiosk"),
+      house("house_3", pt(29, 37.6), "yellow", "n"),
+      house("house_4", pt(-31.6, 39.4), "white", "n"),
+      house("house_5", pt(-47, -8), "mint", "e"),
+      house("house_6", pt(42, 42.5), "yellow", "n"),
+      house("house_7", pt(31, -56), "mint", "s"),
+      house("house_8", pt(-50, 40), "skyblue", "e"),
+      house("house_9", pt(-31, -56), "pink", "s"),
+      house("house_10", pt(-40.6, 27), "white", "e"),
+      house("cafe", pt(48.6, -13.85), "wood", "w", "cafe"),
+      house("kiosk", pt(48.6, -3.85), "wood", "w", "kiosk"),
     ],
     backdrop: {
       waterfall: { centre: pt(-118, -78), size: sz(28, 14), height: 36, facing: "e" },
       lake: { centre: pt(130, -15), size: sz(60, 90), pavilion: { centre: pt(108, -12), size: sz(6, 6) } },
     },
-    areas: { village: { minX: -95, maxX: 95, minZ: -95, maxZ: 95 }, hall: boxAt(pt(300, 0), sz(9, 12)) },
+    areas: { village: { minX: -95, maxX: 95, minZ: -95, maxZ: 95 }, hall: boxAt(pt(300, 0), sz(15, 12)) },
   };
 }
 
@@ -634,14 +635,14 @@ export interface GeneratedColliders {
 
 /**
  * How far under the hall's ceiling (`ceilingHeight`) the ceiling's camera box starts (m): the slab spans
- * `ceilingHeight - HALL_CEILING_DROP .. ceilingHeight + HALL_CEILING_DROP`, so with the 3.4 m ceiling its underside is 3.3 (Task 9).
+ * `ceilingHeight - HALL_CEILING_DROP .. ceilingHeight + HALL_CEILING_DROP`, so with the B 4.5 m ceiling its underside is 4.4 (Task 9).
  * The drawn ceiling stays at 3.4; the 10 cm under it keep the spring arm's padded stop clear of the plaster.
  */
 export const HALL_CEILING_DROP = 0.1;
 
 /**
  * The memorial hall's ceiling as a camera box (Task 9; Task 5 review m3): over the room and its walls, from
- * `ceilingHeight - HALL_CEILING_DROP` (3.3) up to `ceilingHeight + HALL_CEILING_DROP`. The third-person camera's spring arm
+ * `ceilingHeight - HALL_CEILING_DROP` (4.4 in B) up to `ceilingHeight + HALL_CEILING_DROP`. The third-person camera's spring arm
  * stops under it, so the view never pokes through the roof even where the clamp alone would let it.
  */
 export function hallCeilingSlab(layout: VillageLayout): CameraBox {

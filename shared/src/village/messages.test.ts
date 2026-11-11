@@ -4,8 +4,15 @@ import { ClassMsg, EscapeMsg } from "../escape/messages";
 import { CANDLE_BURN_MS, CANDLE_RATE, CANDLE_REACH_M, SERVER_TIME_INTERVAL_MS, VillageMsg, VillageServerMsg } from "./messages";
 
 describe("VillageMsg", () => {
-  it("the wire names are UseDoor and LightCandle (brief values, verbatim) and collide with no other message family", () => {
-    expect(VillageMsg).toEqual({ UseDoor: "UseDoor", LightCandle: "LightCandle" });
+  it("keeps village action wire names stable and collision-free", () => {
+    expect(VillageMsg).toEqual({
+      UseDoor: "UseDoor",
+      LightCandle: "LightCandle",
+      FishingRentRod: "FishingRentRod",
+      FishingCast: "FishingCast",
+      FishingReel: "FishingReel",
+      Keypad: "Keypad",
+    });
     const values = Object.values(VillageMsg);
     expect(new Set(values).size).toBe(values.length);
     // A village client also hears the world messages (VillageRoom is a PlayerRoom).
@@ -14,7 +21,14 @@ describe("VillageMsg", () => {
   });
 
   it("the server's clock goes out as ServerTime (server → client), a name no other family uses, every 5 minutes", () => {
-    expect(VillageServerMsg).toEqual({ ServerTime: "ServerTime", CandleLit: "CandleLit" });
+    expect(VillageServerMsg).toEqual({
+      ServerTime: "ServerTime",
+      CandleLit: "CandleLit",
+      FishingState: "FishingState",
+      FishingResult: "FishingResult",
+      FishingRejected: "FishingRejected",
+      KeypadResult: "KeypadResult",
+    });
     const others = new Set<string>([
       ...Object.values(MessageType),
       ...Object.values(ClassMsg),

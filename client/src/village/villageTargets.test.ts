@@ -3,6 +3,7 @@ import { pickInteraction } from "../game/interact";
 import { readFileSync } from "node:fs";
 import { VILLAGE_LAYOUT, type AreaId } from "@caysonverse/shared/village/villageLayout";
 import { CANDLE_REACH_M } from "@caysonverse/shared/village/messages";
+import { keypadEntries } from "@caysonverse/shared/village/buildingAccess";
 import {
   CUBBY_LABEL,
   CUBBY_REACH_M,
@@ -26,6 +27,13 @@ const outside = VILLAGE_LAYOUT.memorial.exterior;
 const inside = VILLAGE_LAYOUT.memorial.interior;
 
 describe("villageTargets — the memorial hall's door", () => {
+  it("offers the nearest house keypad only on the village side", () => {
+    const entry = keypadEntries()[0]!;
+    expect(villageTargets("village", entry.pad.x, entry.pad.z)).toMatchObject([
+      { kind: "object", id: `keypad:${entry.buildingId}`, label: "번호키 입력" },
+    ]);
+    expect(villageTargets("hall", entry.pad.x, entry.pad.z)).toHaveLength(0);
+  });
   it("outside, within reach of the front door: one door target, labelled 추모관 들어가기", () => {
     const pad = outside.doorPad;
     const targets = villageTargets("village", pad.centre.x, pad.centre.z);
@@ -100,8 +108,8 @@ describe("villageAndHallTargets — the cubbies' close-up inside the hall (Task 
     return { x: c.x + Math.sin(a.yaw) * d, z: c.z + Math.cos(a.yaw) * d };
   };
 
-  it("38 columns (20 on the back wall, 18 on the east), each with its 7 rows bottom first", () => {
-    expect(cols).toHaveLength(38);
+  it("52 columns (34 on the back wall, 18 on the east), each with its 7 rows bottom first", () => {
+    expect(cols).toHaveLength(52);
     for (const c of cols) {
       expect(c.rows.map((r) => r.row)).toEqual([0, 1, 2, 3, 4, 5, 6]);
       expect(cubbyColumn(`cubby:${c.key}`)).toBe(cubbyColumn(c.key));
@@ -158,7 +166,7 @@ describe("villageAndHallTargets — the guides' 문의하기 (Task 9A)", () => {
   });
 
   it("the hall desk offers 문의하기 inside the hall, not at the arrival point and not at the way out", () => {
-    const t = villageAndHallTargets("hall", 301.2, 3.0);
+    const t = villageAndHallTargets("hall", 305.2, 4.4);
     expect(t.map((x) => x.id)).toContain("guide:hall_desk");
     expect(villageAndHallTargets("hall", inside.spawn.x, inside.spawn.z).map((x) => x.id)).not.toContain("guide:hall_desk");
     const pad = inside.doorPad;
@@ -175,18 +183,18 @@ describe("the hall desk and the way out (Task 9A)", () => {
   it("where both are in reach the nearer one wins (E at the desk asks the desk, at the door it leaves)", () => {
     const pick = (x: number, z: number) =>
       pickInteraction({ seated: false, seat: null, npc: null, npcPanelOpen: false, targets: villageAndHallTargets("hall", x, z) });
-    // the desk stands at (302.8, 3.0) (final fix: 1 m north of where it was, so the two reaches overlap less)
-    const atDesk = pick(301.4, 3.8); // 1.61 m from the desk, 1.98 m from the pad's centre
+    // the B desk stands at (306.4, 4.6), beside the widened east wall
+    const atDesk = pick(305.0, 4.6); // 1.4 m from the desk, well beyond the door pad
     expect(atDesk).toMatchObject({ kind: "target", target: { id: "guide:hall_desk" } });
-    const atDoor = pick(300.6, 4.6); // 0.85 m from the pad, 2.72 m from the desk (out of its reach)
+    const atDoor = pick(300.6, 4.6); // 0.85 m from the pad, out of the desk's reach
     expect(atDoor).toMatchObject({ kind: "target", target: { id: MEMORIAL_DOOR_ID } });
-    const between = pick(301.1, 4.2); // 1.49 m from the pad, 2.08 m from the desk: the door is nearer
+    const between = pick(301.8, 5.2); // inside the door offer radius and outside the desk reach
     expect(between).toMatchObject({ kind: "target", target: { id: MEMORIAL_DOOR_ID } });
   });
 
-  it("a guide and a cubby in reach: the nearer wins, the guide on a tie, whatever the door does (final fix)", () => {
+  it("a guide and a cubby in reach: the nearer wins, the guide on a tie, whatever the door does", () => {
     let both = 0;
-    for (let x = 296; x <= 305; x += 0.1)
+    for (let x = 296; x <= 307; x += 0.1)
       for (let z = -6; z <= 6; z += 0.1) {
         const t = villageAndHallTargets("hall", x, z);
         const g = t.find((v) => v.id === "guide:hall_desk");
@@ -202,8 +210,8 @@ describe("the hall desk and the way out (Task 9A)", () => {
   });
 
   it("nothing is offered while the cubby card or a guide's questions are open (the action button hides)", () => {
-    expect(villageAndHallTargets("hall", 301.4, 3.8).length).toBeGreaterThan(0);
-    expect(villageAndHallTargets("hall", 301.4, 3.8, true)).toHaveLength(0);
+    expect(villageAndHallTargets("hall", 305.0, 4.6).length).toBeGreaterThan(0);
+    expect(villageAndHallTargets("hall", 305.0, 4.6, true)).toHaveLength(0);
     expect(villageAndHallTargets("village", 5, 13.5, true)).toHaveLength(0);
   });
 });

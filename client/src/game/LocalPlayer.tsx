@@ -74,6 +74,7 @@ import { ANIM_FADE, CLIP, MODEL_FACING_OFFSET, TURN_SPEED } from "./constants";
 import type { MoveControl } from "./constants";
 import type { Orbit, Pose, SeatState } from "./types";
 import { getRoom, sendJump, sendMove, sendStand } from "../net/connection";
+import { useTransitState } from "../net/transitSync";
 import { isInputSuspended } from "../net/resilience";
 import { useAppStore } from "../stores/appStore";
 import { useSettingsStore } from "../stores/settingsStore";
@@ -134,6 +135,7 @@ export function LocalPlayer({
   moveInput,
   blobShadow,
 }: LocalPlayerProps) {
+  const { boarded: busBoarded } = useTransitState();
   const [, getKeys] = useKeyboardControls<MoveControl>();
   const groupRef = useRef<Group>(null);
   // The gait the player's input last asked for while in loco (idle / walk / run) — the E2E probe's getGait().
@@ -490,7 +492,7 @@ export function LocalPlayer({
     // movement keys are zeroed so nothing walks the avatar. We don't touch drei's
     // key listeners, so nothing can get stuck on blur (see uiCapture.ts).
     const suspended = isInputSuspended();
-    const captured = isUiCaptured() || suspended;
+    const captured = isUiCaptured() || suspended || busBoarded;
     const keys = guardMoveKeys(getKeys(), captured);
     // The joystick obeys the same freeze (a held stick must not steer behind a close-up / the menu).
     const stick = guardMoveInput(moveInput, captured);
@@ -532,7 +534,7 @@ export function LocalPlayer({
     const gliding = seatMotionRef.current.glide !== null;
     if (manual) {
       clearClickTarget();
-    } else if (!suspended && !seated && !gliding && !isUiCaptured()) {
+    } else if (!suspended && !busBoarded && !seated && !gliding && !isUiCaptured()) {
       // ui-capture gate (review v2-14 M1): while the chat input owns the keyboard
       // the KEYS are frozen above — a pre-set click target must freeze too, or the
       // avatar keeps walking while the user types (asymmetric input freeze).

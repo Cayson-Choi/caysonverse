@@ -25,8 +25,8 @@ function wanted(distance: number, pitch: number, yaw: number, fx: number, fz: nu
 }
 
 describe("HALL_CAMERA_LIMIT", () => {
-  it("is the memorial hall's limit: 3.0 m high (Task 9: under the 3.3 m slab less the 0.3 m pad), no overview, no distance cap", () => {
-    expect({ ...HALL_CAMERA_LIMIT }).toEqual({ maxY: 3, overview: false });
+  it("is derived from the enlarged B memorial hall ceiling, keeps overview off and has no distance cap", () => {
+    expect({ ...HALL_CAMERA_LIMIT }).toEqual({ maxY: 4.1, overview: false });
     expect(HALL_CAMERA_LIMIT.maxDistance).toBeUndefined();
   });
 

@@ -1,4 +1,5 @@
 import { VILLAGE_LAYOUT, cubbyAnchors, type AreaId, type CubbyAnchor, type Disc, type VillageLayout } from "@caysonverse/shared/village/villageLayout";
+import { HOUSE_KEYPAD_REACH_M, keypadEntries } from "@caysonverse/shared/village/buildingAccess";
 import { GUIDE_ASK_LABEL, nearestGuide } from "@caysonverse/shared/village/guides";
 import type { InteractTarget } from "../game/interact";
 
@@ -25,6 +26,14 @@ export const DOOR_LABEL: Readonly<Record<AreaId, string>> = { village: "추모�
 export const DOOR_SHORT: Readonly<Record<AreaId, string>> = { village: "들어가기", hall: "나가기" };
 /** The target id of the memorial hall's door (both sides). */
 export const MEMORIAL_DOOR_ID = "memorial_door";
+export const KEYPAD_TARGET_PREFIX = "keypad:";
+export const KEYPAD_LABEL = "번호키 입력";
+export const KEYPAD_SHORT = "번호키";
+
+/** The bus target uses the same server-side 4.5 m gate, with a small client cushion. */
+export const BUS_OFFER_REACH_M = 4.2;
+export const BUS_RIDE_TARGET_BOARD = "village_bus_board";
+export const BUS_RIDE_TARGET_LEAVE = "village_bus_leave";
 
 /** How far past the pad's radius the button is offered (m). The server's own reach is 0.9 (villageDoor.ts DOOR_REACH_M). */
 export const DOOR_OFFER_REACH_M = 0.7;
@@ -44,8 +53,30 @@ export function villageTargets(
 ): readonly InteractTarget[] {
   const pad = doorPadFor(area, layout);
   const dist = Math.hypot(x - pad.centre.x, z - pad.centre.z);
-  if (!(dist <= pad.radius + DOOR_OFFER_REACH_M)) return NONE; // also false for NaN
-  return [{ kind: "door", id: MEMORIAL_DOOR_ID, dist, icon: "🚪", label: DOOR_LABEL[area], short: DOOR_SHORT[area] }];
+  if (dist <= pad.radius + DOOR_OFFER_REACH_M) return [{ kind: "door", id: MEMORIAL_DOOR_ID, dist, icon: "🚪", label: DOOR_LABEL[area], short: DOOR_SHORT[area] }];
+  if (area !== "village") return NONE;
+  const keypad = keypadEntries(layout)
+    .map((entry) => ({ ...entry, dist: Math.hypot(x - entry.pad.x, z - entry.pad.z) }))
+    .filter((entry) => entry.dist <= HOUSE_KEYPAD_REACH_M)
+    .sort((a, b) => a.dist - b.dist)[0];
+  if (!keypad) return NONE;
+  return [{ kind: "object", id: `${KEYPAD_TARGET_PREFIX}${keypad.buildingId}`, dist: keypad.dist, icon: "🔢", label: KEYPAD_LABEL, short: KEYPAD_SHORT }];
+}
+
+/** A board/leave target around the east-side stop; the server re-checks the pose and schedule. */
+export function villageBusTarget(area: AreaId, x: number, z: number, boarded: boolean): InteractTarget | null {
+  if (area !== "village") return null;
+  const dist = Math.hypot(x - VILLAGE_LAYOUT.busStop.bus.centre.x, z - VILLAGE_LAYOUT.busStop.bus.centre.z);
+  if (!(dist <= BUS_OFFER_REACH_M)) return null;
+  return {
+    kind: "object",
+    id: boarded ? BUS_RIDE_TARGET_LEAVE : BUS_RIDE_TARGET_BOARD,
+    dist,
+    icon: "🚌",
+    label: boarded ? "버스에서 내리기" : "버스 타기",
+    short: boarded ? "하차" : "탑승",
+    priority: 2,
+  };
 }
 
 /** How near (m, on the ground) to a cubby column its close-up is offered (brief: 1.2 m). The server lets a candle be lit from 1.5 m. */

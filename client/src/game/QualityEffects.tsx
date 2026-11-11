@@ -7,6 +7,7 @@ import { BLOOM, QUALITY, exposureFor, resolveQuality, type GraphicsSetting, type
 import { DEFAULT_DECAL_Y, decalY, type GroundDecal } from "./groundDecal";
 import { PostChain } from "./postChain";
 import { FrameGovernor, budgetSteps, startLevel, stepScale, useRenderBudget } from "./renderBudget";
+import { interactionPressureActive, noteInteraction } from "./renderScale";
 import { softwareGl } from "./gpuProbe";
 import "./quality.css";
 
@@ -74,6 +75,23 @@ function PostEffects({ setting }: { setting: GraphicsSetting }) {
   const deviceDpr = typeof window === "undefined" ? 1 : window.devicePixelRatio || 1;
   const steps = useMemo(() => budgetSteps(QUALITY.high.dpr, deviceDpr), [deviceDpr]);
 
+  // A pointer/keyboard event can arrive while the GPU still has the previous rich frame in flight. Mark it in a
+  // passive capture listener and draw the next frame at the governor's lowest scale; this keeps the input path free of
+  // React work and makes the first interaction responsive before the governor's normal warm-up window has elapsed.
+  useEffect(() => {
+    const onPointerDown = () => noteInteraction();
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!e.repeat) noteInteraction();
+    };
+    const opts = { capture: true, passive: true } as const;
+    window.addEventListener("pointerdown", onPointerDown, opts);
+    window.addEventListener("keydown", onKeyDown, opts);
+    return () => {
+      window.removeEventListener("pointerdown", onPointerDown, opts);
+      window.removeEventListener("keydown", onKeyDown, opts);
+    };
+  }, []);
+
   const governor = useRef<FrameGovernor | null>(null);
   useEffect(() => {
     const g = new FrameGovernor(steps.length, startLevel(setting), performance.now());
@@ -131,6 +149,9 @@ function PostEffects({ setting }: { setting: GraphicsSetting }) {
         markStep(next, scale);
       }
     }
+    const governorScale = stepScale(steps, g?.level ?? startLevel(setting));
+    const scale = interactionPressureActive() ? Math.min(governorScale, stepScale(steps, steps.length - 1)) : governorScale;
+    chain.setScale(scale);
     gl.getDrawingBufferSize(size);
     chain.setSize(size.x, size.y);
     chain.render(gl, scene, camera);

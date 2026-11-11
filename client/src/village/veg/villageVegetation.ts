@@ -18,11 +18,12 @@ import {
 } from "three";
 import { isMesh, materialsOf } from "../../game/hub/hubModelPrep";
 import { CHERRY_MATERIAL, type VillageTier } from "../villageModelPrep";
-import { growCherry, plazaCherrySkeletons, type Bunch, type CherryCrown } from "./cherryTree";
+import { growCherry, outdoorCherrySkeletons, plazaCherrySkeletons, type Bunch, type CherryCrown } from "./cherryTree";
+import { growGreen, PLAZA_ZELKOVA, type GreenCluster, type GreenCrown } from "./greenTree";
 import { placeFlowers, SPECIES_COUNT, type Plant } from "./flowerPlacement";
 import { keepTriangles, readCards, type AttributeLike, type Card } from "./vegCards";
 import { makeBlossomAtlas } from "./vegAtlas";
-import { blossomBunch, bunchSprite, speciesMeshes, twigMesh } from "./vegGeometry";
+import { blossomBunch, bunchSprite, greenCluster, greenClusterFar, speciesMeshes, twigMesh } from "./vegGeometry";
 import { chooseLod, groupIntoCells, sphereDistance, VEG_TIERS, type Cell, type Vec3, type VegTierConfig } from "./vegLod";
 import { vegMaterial, vegTimeUniform } from "./vegMaterial";
 import { DAY_SUN_DIRECTION } from "../dayNightBlend";
@@ -54,10 +55,10 @@ export interface VegStats {
   plants: number;
   bunches: number;
   twigs: number;
-  hiddenCards: { flora: number; cherry: number };
+  hiddenCards: { flora: number; cherry: number; green: number };
   keptFlowerCards: number;
   /** Instances drawn this frame per level: flowers [full, simple, thinned], cherry [flowers, sprites, thinned]. */
-  levels: { flowers: [number, number, number]; cherry: [number, number, number] };
+  levels: { flowers: [number, number, number]; cherry: [number, number, number]; green: [number, number, number] };
   /** Triangles and draw calls the vegetation draws this frame (instances x mesh triangles). */
   tris: number;
   calls: number;
@@ -194,6 +195,15 @@ interface CherryTree {
   visible: boolean;
 }
 
+interface GreenTree {
+  crown: GreenCrown;
+  full: Batch;
+  far: Batch;
+  thin: Batch;
+  level: number;
+  visible: boolean;
+}
+
 /** The bunch sprite is this much bigger than the bunch's measured size (its picture has a ragged edge). */
 const SPRITE_K = 1.3;
 /** The close-up bunch mesh is ~0.24 m across at scale 1. */
@@ -209,15 +219,20 @@ export class VillageVegetation {
   private readonly flowerLayers: Array<{ lod0: Layer; lod1: Layer }> = [];
   private readonly flowerCells: FlowerCell[] = [];
   private readonly cherry: CherryTree[] = [];
+  private readonly green: GreenTree[] = [];
   private bunchLayer: Layer | null = null;
   private spriteLayer: Layer | null = null;
   private twigTris = 0;
+  private greenLayer: Layer | null = null;
+  private greenFarLayer: Layer | null = null;
+  private greenTwigTris = 0;
   private readonly frustum = new Frustum();
   private readonly projView = new Matrix4();
   private readonly sphere = new Sphere();
   private readonly statsData: VegStats;
   private dirtyFlowers = true;
   private dirtyCherry = true;
+  private dirtyGreen = true;
   /** Meshes of the village clone whose geometry was swapped for a copy without the old cards, and what they had. */
   private readonly swapped: Array<{ mesh: Mesh; original: BufferGeometry }> = [];
 
@@ -231,9 +246,9 @@ export class VillageVegetation {
       plants: 0,
       bunches: 0,
       twigs: 0,
-      hiddenCards: { flora: 0, cherry: 0 },
+      hiddenCards: { flora: 0, cherry: 0, green: 0 },
       keptFlowerCards: 0,
-      levels: { flowers: [0, 0, 0], cherry: [0, 0, 0] },
+      levels: { flowers: [0, 0, 0], cherry: [0, 0, 0], green: [0, 0, 0] },
       tris: 0,
       calls: 0,
       genMs: 0,
@@ -305,9 +320,9 @@ export class VillageVegetation {
     }
     if (await step("flowerMeshes")) return v.abandon();
 
-    // ── the plaza cherries: one tree per step ──
+    // ── plaza and static outdoor cherries: one tree per step ──
     const crowns: CherryCrown[] = [];
-    for (const sk of plazaCherrySkeletons()) {
+    for (const sk of [...plazaCherrySkeletons(), ...outdoorCherrySkeletons()]) {
       crowns.push(growCherry(sk));
       if (await step(`cherry${sk.index}`)) return v.abandon();
     }
@@ -372,8 +387,61 @@ export class VillageVegetation {
     v.twigTris = (twigGeo.index?.count ?? 0) / 3;
     if (await step("cherryMeshes")) return v.abandon();
 
+    // ── the plaza zelkova: keep the baked trunk, replace its large green cards with folded leaf clusters ──
+    const greenCrown = growGreen(PLAZA_ZELKOVA);
+    const greenMat = vegMaterial({ name: "M_veg_green", wind: 0.018, windFar: cfg.windFar ? 28 : 10, ambient: 0.48, sky: 0.18, sun: 0.46, back: 0.42 });
+    const greenFarMat = vegMaterial({ name: "M_veg_green_far", wind: 0.008, windFar: 30, ambient: 0.54, sky: 0.16, sun: 0.34, back: 0.35 });
+    const greenGeo = greenCluster(false);
+    const greenFarGeo = greenClusterFar();
+    v.own.push(greenMat, greenFarMat, greenGeo, greenFarGeo);
+    v.greenLayer = new Layer(greenGeo, greenMat, greenCrown.clusters.length, "veg_zelkova_leaf_clusters");
+    v.greenFarLayer = new Layer(greenFarGeo, greenFarMat, greenCrown.clusters.length, "veg_zelkova_leaf_puffs");
+    v.own.push(v.greenLayer.mesh, v.greenFarLayer.mesh);
+    v.group.add(v.greenLayer.mesh, v.greenFarLayer.mesh);
+    const greenFull = makeBatch(
+      greenCrown.clusters.map((c: GreenCluster) => {
+        tmpQ.setFromUnitVectors(UP, tmpP.set(c.nx, c.ny, c.nz));
+        tmpQ2.setFromAxisAngle(UP, c.seed * Math.PI * 2);
+        tmpQ.multiply(tmpQ2);
+        const s = c.size / 0.5;
+        return { m: new Matrix4().compose(new Vector3(c.x, c.y, c.z), tmpQ, new Vector3(s, s, s)), tint: [1, 1, 1], light: c.light };
+      }),
+    );
+    const greenCfg = cfg.green;
+    const greenThin = makeBatch(
+      greenCrown.clusters.filter((c) => c.seed < greenCfg.thin).map((c: GreenCluster) => {
+        tmpQ.setFromUnitVectors(UP, tmpP.set(c.nx, c.ny, c.nz));
+        tmpQ2.setFromAxisAngle(UP, c.seed * Math.PI * 2);
+        tmpQ.multiply(tmpQ2);
+        const s = (c.size * greenCfg.thinScale) / 0.5;
+        return { m: new Matrix4().compose(new Vector3(c.x, c.y, c.z), tmpQ, new Vector3(s, s, s)), tint: [1, 1, 1], light: c.light };
+      }),
+    );
+    const greenFar = makeBatch(
+      greenCrown.clusters.map((c: GreenCluster) => {
+        const s = c.size * 1.1;
+        return { m: new Matrix4().compose(new Vector3(c.x, c.y, c.z), new Quaternion(), new Vector3(s, s, s)), tint: [1, 1, 1], light: c.light };
+      }),
+    );
+    v.green.push({ crown: greenCrown, full: greenFull, far: greenFar, thin: greenThin, level: -1, visible: false });
+    const greenTwigGeo = twigMesh(
+      greenCrown.twigs.map((branch) => ({
+        branch,
+        light: (_p: Vec3, n: Vec3) => 0.48 + 0.32 * Math.max(0, n[1]) + 0.12 * Math.max(0, n[0] * DAY_SUN_DIRECTION[0] + n[1] * DAY_SUN_DIRECTION[1] + n[2] * DAY_SUN_DIRECTION[2]),
+      })),
+      tier === "low",
+    );
+    const greenTwigObj = new Mesh(greenTwigGeo, twigMat);
+    greenTwigObj.name = "veg_zelkova_twigs";
+    greenTwigObj.matrixAutoUpdate = false;
+    v.group.add(greenTwigObj);
+    v.own.push(greenTwigGeo);
+    v.greenTwigTris = (greenTwigGeo.index?.count ?? 0) / 3;
+    if (await step("greenMeshes")) return v.abandon();
+
     // ── last: hide the old cards, all at once, now that the new vegetation is ready ──
     let hiddenCherry = 0;
+    let hiddenGreen = 0;
     if (hide) {
       floraMeshes.forEach((mesh, mi) => {
         const drop = placed.replaced.filter((c) => cardMesh.get(c) === mi);
@@ -389,6 +457,17 @@ export class VillageVegetation {
           hiddenCherry += drop.length;
         }
       }
+      for (const mesh of meshesWithMaterial(root, "M_leaf_green")) {
+        const g = mesh.geometry;
+        const cards = readCards(worldPositions(mesh), g.index ? (g.index.array as ArrayLike<number>) : null, null, null);
+        const drop = cards.filter(
+          (c) => c.h > 0.05 && Math.hypot(c.x - PLAZA_ZELKOVA.base[0], c.z - PLAZA_ZELKOVA.base[2]) < PLAZA_ZELKOVA.R + 1.0 && c.y > PLAZA_ZELKOVA.base[1] + 1.0,
+        );
+        if (drop.length) {
+          v.hideCards(mesh, drop);
+          hiddenGreen += drop.length;
+        }
+      }
     }
     steps.hide = Math.round(performance.now() - t);
     work += performance.now() - t;
@@ -396,7 +475,7 @@ export class VillageVegetation {
       plants: placed.plants.length,
       bunches: total,
       twigs: twigs.length,
-      hiddenCards: { flora: hide ? placed.replaced.length : 0, cherry: hiddenCherry },
+      hiddenCards: { flora: hide ? placed.replaced.length : 0, cherry: hiddenCherry, green: hiddenGreen },
       keptFlowerCards: placed.kept.length,
       genMs: Math.round(work),
     });
@@ -455,8 +534,22 @@ export class VillageVegetation {
         this.dirtyCherry = true;
       }
     }
+    const gr = this.cfg.green;
+    for (const t of this.green) {
+      const b = t.crown.bounds;
+      const level = chooseLod(t.level, sphereDistance(cx, cy, cz, b), gr);
+      this.sphere.center.set(b.x, b.y, b.z);
+      this.sphere.radius = b.r;
+      const visible = level < gr.far.length && this.frustum.intersectsSphere(this.sphere);
+      if (level !== t.level || visible !== t.visible) {
+        t.level = level;
+        t.visible = visible;
+        this.dirtyGreen = true;
+      }
+    }
     if (this.dirtyFlowers) this.refillFlowers();
     if (this.dirtyCherry) this.refillCherry();
+    if (this.dirtyGreen) this.refillGreen();
   }
 
   private refillFlowers(): void {
@@ -507,10 +600,37 @@ export class VillageVegetation {
     this.recount();
   }
 
+  private refillGreen(): void {
+    this.dirtyGreen = false;
+    const full = this.greenLayer;
+    const far = this.greenFarLayer;
+    if (!full || !far) return;
+    const lv: [number, number, number] = [0, 0, 0];
+    full.begin();
+    far.begin();
+    for (const t of this.green) {
+      if (!t.visible) continue;
+      if (t.level === 0) {
+        full.push(t.full);
+        lv[0] += t.full.n;
+      } else if (t.level === 1) {
+        far.push(t.far);
+        lv[1] += t.far.n;
+      } else if (t.level === 2) {
+        far.push(t.thin);
+        lv[2] += t.thin.n;
+      }
+    }
+    full.end();
+    far.end();
+    this.statsData.levels.green = lv;
+    this.recount();
+  }
+
   private recount(): void {
-    let tris = this.twigTris;
+    let tris = this.twigTris + this.greenTwigTris;
     let calls = 1;
-    const layers = [...this.flowerLayers.flatMap((l) => [l.lod0, l.lod1]), this.bunchLayer, this.spriteLayer];
+    const layers = [...this.flowerLayers.flatMap((l) => [l.lod0, l.lod1]), this.bunchLayer, this.spriteLayer, this.greenLayer, this.greenFarLayer];
     for (const l of layers) {
       if (!l || l.n === 0) continue;
       tris += l.n * l.tris;

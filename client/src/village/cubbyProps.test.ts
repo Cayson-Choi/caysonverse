@@ -28,10 +28,10 @@ import {
 const anchors = cubbyAnchors(VILLAGE_LAYOUT);
 
 describe("SAMPLE_CUBBIES — the hall's example memorials (Task 9)", () => {
-  it("fills 60 % of the 266 cubbies, on both walls and across every row", () => {
-    expect(anchors).toHaveLength(266);
+  it("fills 60 % of the enlarged B hall's 364 cubbies, on both walls and across every row", () => {
+    expect(anchors).toHaveLength(364);
     expect(SAMPLE_FILL).toBe(0.6);
-    expect(SAMPLE_CUBBIES).toHaveLength(Math.round(266 * 0.6));
+    expect(SAMPLE_CUBBIES).toHaveLength(Math.round(364 * 0.6));
     expect(new Set(SAMPLE_CUBBIES.map((s) => s.id)).size).toBe(SAMPLE_CUBBIES.length);
     expect(new Set(SAMPLE_CUBBIES.map((s) => s.id.split("_")[0]))).toEqual(new Set(["n", "e"]));
     for (let row = 0; row < 7; row += 1) expect(SAMPLE_CUBBIES.some((s) => s.id.split("_")[1] === String(row)), `row ${row}`).toBe(true);

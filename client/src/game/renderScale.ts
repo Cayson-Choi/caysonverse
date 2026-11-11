@@ -6,6 +6,22 @@
  * light tier; the shadow map's own targets are not stretched).
  */
 let scale = 1;
+let interactionPressureUntil = -Infinity;
+
+/** Keep the next few frames cheap after an input starts. This is deliberately a module scalar: pointer/keyboard
+ * handlers can set it without a React render, while the post chain applies the scale at the next frame boundary. */
+export function noteInteraction(now = typeof performance === "undefined" ? 0 : performance.now()): void {
+  interactionPressureUntil = Math.max(interactionPressureUntil, now + 1200);
+}
+
+export function interactionPressureActive(now = typeof performance === "undefined" ? 0 : performance.now()): boolean {
+  return now < interactionPressureUntil;
+}
+
+/** Test helper; production input paths never need to clear the pressure explicitly. */
+export function resetInteractionPressure(): void {
+  interactionPressureUntil = -Infinity;
+}
 
 export function renderScale(): number {
   return scale;

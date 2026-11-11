@@ -865,19 +865,19 @@ describe("schoolSpec", () => {
     const anchors = cubbyAnchors(VILLAGE_LAYOUT);
     const inn = VILLAGE_LAYOUT.memorial.interior;
     expect(spec.kind).toBe("memorial");
-    expect(anchors).toHaveLength(266);
+    expect(anchors).toHaveLength(364);
     for (const a of anchors) expect(spec.requiredNodes).toContain(cubbyAnchorNode(a.id));
-    expect(spec.placements).toHaveLength(266);
+    expect(spec.placements).toHaveLength(364);
     expect(spec.placements[0]).toEqual({ node: "anchor__cubby_n_0_0", x: anchors[0]!.x, y: anchors[0]!.y, z: anchors[0]!.z, yaw: 0, tolerance: CUBBY_ANCHOR_TOLERANCE });
     expect(CUBBY_ANCHOR_TOLERANCE).toBe(0.02);
     expect(spec.requiredBoxes!.slice(0, 4)).toEqual(HALL_WALL_IDS.map((id, i) => ({ node: `col__${id}`, box: hallWalls(VILLAGE_LAYOUT)[i], camera: true })));
-    expect(spec.requiredBoxes!.find((b) => b.node === "col__cubby_n")!.box).toEqual({ minX: 295.5, maxX: 304.5, minZ: -6, maxZ: -5.61 });
-    expect(spec.requiredBoxes!.find((b) => b.node === "col__cubby_e")!.box).toEqual({ minX: 304.11, maxX: 304.5, minZ: -5.61, maxZ: 2.065 });
+    expect(spec.requiredBoxes!.find((b) => b.node === "col__cubby_n")!.box).toEqual({ minX: 292.5, maxX: 307.5, minZ: -6, maxZ: -5.61 });
+    expect(spec.requiredBoxes!.find((b) => b.node === "col__cubby_e")!.box).toEqual({ minX: 307.11, maxX: 307.5, minZ: -5.61, maxZ: 2.065 });
     expect(spec.requiredBoxes!.every((b) => b.camera)).toBe(true);
     expect(spec.requiredMaterials).toEqual([...MEMORIAL_NON_LIGHTMAPPED]);
     expect(spec.clearDiscs!.map((d) => [d.x, d.z])).toEqual([[300, 5.2], [inn.spawn.x, inn.spawn.z]]);
     expect(spec.clearDiscs![0]!.ignore).toEqual(HALL_WALL_IDS.map((id) => `col__${id}`));
-    expect(spec.ceiling).toEqual({ node: "ceil__hall", y: 3.4, room: inn.room });
+    expect(spec.ceiling).toEqual({ node: "ceil__hall", y: 4.5, room: inn.room });
     expect(spec.requiredNodes).toContain("ceil__hall");
     expect(KNOWN_PROP_HEIGHTS.memorial).toEqual({});
   });
@@ -998,7 +998,7 @@ describe("CLIs", () => {
       cubeNode(b.node, [(b.box.minX + b.box.maxX) / 2, 1.75, (b.box.minZ + b.box.maxZ) / 2], [b.box.maxX - b.box.minX, 3.5, b.box.maxZ - b.box.minZ]),
     );
     for (const p of spec.placements) nodes.push({ name: p.node, translation: [p.x, p.y!, p.z], rotation: [0, Math.sin(p.yaw! / 2), 0, Math.cos(p.yaw! / 2)] });
-    nodes.push({ name: "ceil__hall", translation: [300, 3.45, 0], scale: [9, 0.1, 12] }, { name: "hall_lm", mesh: 1 });
+    nodes.push({ name: "ceil__hall", translation: [300, 4.55, 0], scale: [15, 0.1, 12] }, { name: "hall_lm", mesh: 1 });
     const g = baseGltf(nodes);
     g.materials = [
       { name: "LM_floor", extensions: { KHR_materials_unlit: {} } },
@@ -1013,7 +1013,7 @@ describe("CLIs", () => {
     const ok = runTs("check-school-glb.ts", file, "memorial");
     expect(ok.stdout + ok.stderr).toContain("PASS");
     expect(ok.status).toBe(0);
-    expect(ok.stdout).toMatch(/OK\s+앵커 위치: 266개/);
+    expect(ok.stdout).toMatch(/OK\s+앵커 위치: 364개/);
     const k = nodes.findIndex((n) => n.name === "anchor__cubby_e_3_7");
     nodes[k]!.translation = [nodes[k]!.translation![0]! - 0.05, nodes[k]!.translation![1]!, nodes[k]!.translation![2]!];
     fs.writeFileSync(file, makeGlb(g));

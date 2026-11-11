@@ -5,6 +5,7 @@ import { readBus } from "./villageBusLoader";
 import { dayNight } from "./dayNightDriver";
 import type { VillageTier } from "./villageModelPrep";
 import { noteBusRequested } from "./villageRelease";
+import { getTransitRenderPose, stepTransitRender } from "../net/transitSync";
 
 declare global {
   interface Window {
@@ -28,6 +29,11 @@ export function VillageBus({ tier }: { tier: VillageTier }) {
   const nodes = useMemo(() => {
     const n = prepareBus(gltf.scene, tier);
     setBusAnisotropy(n, gl.capabilities.getMaxAnisotropy());
+    // prepareBus freezes every node's local matrix for the static parked model.
+    // The root alone is made dynamic so the server-scheduled route can move the
+    // complete bus without rebuilding materials or child matrices.
+    n.root.matrixAutoUpdate = true;
+    n.root.matrixWorldAutoUpdate = true;
     return n;
   }, [gltf, tier, gl]);
   useEffect(() => {
@@ -38,7 +44,14 @@ export function VillageBus({ tier }: { tier: VillageTier }) {
       disposeBus(nodes);
     };
   }, [nodes]);
-  useFrame((state) => applyBusDayNight(nodes, dayNight.applied, state.gl.toneMappingExposure));
+  useFrame((state, delta) => {
+    stepTransitRender(delta);
+    const pose = getTransitRenderPose();
+    nodes.root.position.set(pose.x, 0, pose.z);
+    nodes.root.rotation.set(0, pose.yaw, 0);
+    nodes.root.updateMatrixWorld(true);
+    applyBusDayNight(nodes, dayNight.applied, state.gl.toneMappingExposure);
+  });
   // dispose={null}: the geometry and the loader's materials belong to the loader's cache.
   return <primitive object={nodes.root} dispose={null} />;
 }

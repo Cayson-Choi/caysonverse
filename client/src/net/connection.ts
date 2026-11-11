@@ -11,6 +11,7 @@ import { CLASS_ROOM, type TextLevel } from "@caysonverse/shared/escape/constants
 import { normalizeClassCode } from "@caysonverse/shared/escape/classCode";
 import type { ClassPayloads, EscapePayloads } from "@caysonverse/shared/escape/messages";
 import { VillageMsg } from "@caysonverse/shared/village/messages";
+import type { FishingEmptyPayload } from "@caysonverse/shared/village/messages";
 import { SERVER_URL } from "./endpoint";
 import {
   joinErrorNotice,
@@ -419,6 +420,12 @@ export function sendUseDoor(): void {
   room?.send(VillageMsg.UseDoor, {});
 }
 
+/** Submit a house keypad code; the server validates the authoritative position and never receives a reusable credential. */
+export function sendKeypad(buildingId: string, code: string): void {
+  if (roomMode !== "village") return;
+  room?.send(VillageMsg.Keypad, { buildingId, code });
+}
+
 /**
  * 케이슨 마을 (Task 9): light a candle in a memorial cubby. The server checks that we are in the hall within 1.5 m of
  * it and a 1-per-5-seconds cap, then tells everyone in the hall (`CandleLit`); anything else is dropped silently.
@@ -427,6 +434,27 @@ export function sendUseDoor(): void {
 export function sendLightCandle(cubby: string): void {
   if (roomMode !== "village") return;
   room?.send(VillageMsg.LightCandle, { cubby });
+}
+
+/** Rent the session's rod. The server validates the player's authoritative position at the kiosk. */
+export function sendFishingRentRod(): void {
+  if (roomMode !== "village") return;
+  const payload: FishingEmptyPayload = {};
+  room?.send(VillageMsg.FishingRentRod, payload);
+}
+
+/** Cast at the pond. The server chooses the bite time and owns the bobber phase. */
+export function sendFishingCast(): void {
+  if (roomMode !== "village") return;
+  const payload: FishingEmptyPayload = {};
+  room?.send(VillageMsg.FishingCast, payload);
+}
+
+/** Pull the line. A catch is possible only while the server reports a submerged bobber. */
+export function sendFishingReel(): void {
+  if (roomMode !== "village") return;
+  const payload: FishingEmptyPayload = {};
+  room?.send(VillageMsg.FishingReel, payload);
 }
 
 /** Send a classroom (puzzle) message. No-op unless a classroom connection is open. */

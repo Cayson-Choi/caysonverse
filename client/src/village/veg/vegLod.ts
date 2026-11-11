@@ -107,6 +107,8 @@ export function keepThinned(seed: number, fraction: number): boolean {
 export interface VegTierConfig {
   flowers: LodBands & { thin: number; thinScale: number; /** share of plants drawn at level 1 */ mid: number };
   cherry: LodBands & { thin: number; thinScale: number };
+  /** Broadleaf crowns: close folded leaves, mid closed puffs, far sparse puffs. */
+  green: LodBands & { thin: number; thinScale: number };
   /** Wind on (rich) or only on the nearest level (light). */
   windFar: boolean;
 }
@@ -115,6 +117,7 @@ export const VEG_TIERS: Readonly<Record<"high" | "low", VegTierConfig>> = {
   high: {
     flowers: { far: [10, 34, 110], hysteresis: 1.5, thin: 0.34, thinScale: 1.45, mid: 1 },
     cherry: { far: [9, 55, 600], hysteresis: 2, thin: 0.55, thinScale: 1.3 },
+    green: { far: [8, 42, 180], hysteresis: 2, thin: 0.42, thinScale: 1.35 },
     windFar: true,
   },
   low: {
@@ -122,6 +125,7 @@ export const VEG_TIERS: Readonly<Record<"high" | "low", VegTierConfig>> = {
     flowers: { far: [5, 18, 55], hysteresis: 1.5, thin: 0.2, thinScale: 1.7, mid: 0.5 },
     // no full blossom clusters: the bunch sprites only, half of them past 30 m
     cherry: { far: [-1, 30, 600], hysteresis: 2, thin: 0.5, thinScale: 1.35 },
+    green: { far: [-1, 28, 160], hysteresis: 2, thin: 0.34, thinScale: 1.4 },
     windFar: false,
   },
 };

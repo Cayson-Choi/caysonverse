@@ -55,6 +55,7 @@ import {
   sendMove,
   sendTyping,
   sendUseDoor,
+  sendKeypad,
   setEscapeRoom,
   setRoom,
 } from "./connection";
@@ -253,6 +254,19 @@ describe("joinVillage (케이슨 마을)", () => {
     sendUseDoor();
     expect(village.send).toHaveBeenCalledTimes(1);
     expect(village.send).toHaveBeenCalledWith(VillageMsg.UseDoor, {});
+  });
+
+  it("sendKeypad sends only the claimed house id and typed digits in village mode", async () => {
+    const village = fakeRoom();
+    h.joinOrCreate.mockResolvedValueOnce(village);
+    await joinVillage({ nickname: "가람", appearance: LOOK });
+    sendKeypad("house_1", "1004");
+    expect(village.send).toHaveBeenCalledWith(VillageMsg.Keypad, { buildingId: "house_1", code: "1004" });
+    const world = fakeRoom();
+    h.join.mockResolvedValueOnce(world);
+    await joinWorld({ nickname: "가람", appearance: LOOK });
+    sendKeypad("house_1", "1004");
+    expect(world.send).not.toHaveBeenCalled();
   });
 
   it("a drop after a server restart rejoins by joinOrCreate(VILLAGE_ROOM) — never the world's join — and stays in village mode", async () => {

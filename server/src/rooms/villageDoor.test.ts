@@ -58,9 +58,9 @@ describe("arrivalAfter", () => {
 });
 
 describe("useDoor", () => {
-  it("from the village: allowed within the memorial pad radius + 0.9 m (2.5 m), refused beyond", () => {
+  it("from the village: allowed within the enlarged memorial pad radius + 0.9 m (2.9 m), refused beyond", () => {
     const reach = outPad.radius + DOOR_REACH_M;
-    expect(reach).toBeCloseTo(2.5, 12);
+    expect(reach).toBeCloseTo(2.9, 12);
     expect(useDoor("village", outPad.centre.x, outPad.centre.z)).toEqual(arrivalAfter("village"));
     expect(useDoor("village", outPad.centre.x, outPad.centre.z + reach - 0.01)).toEqual(arrivalAfter("village"));
     expect(useDoor("village", outPad.centre.x + reach - 0.01, outPad.centre.z)).not.toBeNull();

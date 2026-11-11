@@ -49,8 +49,8 @@ export interface Vec3 {
 export const VILLAGE_CAMERA_PAD = 0.3;
 
 /**
- * Inside the memorial hall (ceiling 3.4 m): no overview, and the camera at or under the ceiling slab's underside
- * (`hallCeilingSlab`: `ceilingHeight - 0.1` = 3.3) less the hall's spring-arm pad (0.3): 3.0 m. Derived, not typed in
+ * Inside the B memorial hall (ceiling 4.5 m): no overview, and the camera at or under the ceiling slab's underside
+ * (`hallCeilingSlab`: `ceilingHeight - 0.1` = 4.4) less the hall's spring-arm pad (0.3): 4.1 m. Derived, not typed in
  * (Task 5 review m3): the clamped spot then sits exactly at the slab's padded underside, so the arm never has to fold
  * under the slab in the normal case. (Task 5 had 3.1 with the old 0.2 pad.)
  *

@@ -5,27 +5,27 @@
 import type { AABB, CameraBox } from "../../collision";
 
 export const MEMORIAL_COLLIDERS: readonly AABB[] = [
-  { minX: 295, maxX: 295.5, minZ: -6.5, maxZ: 6.5 }, // col__hall_wall_w
-  { minX: 295, maxX: 305, minZ: -6.5, maxZ: -6 }, // col__hall_wall_n
-  { minX: 295, maxX: 305, minZ: 6, maxZ: 6.5 }, // col__hall_wall_s
-  { minX: 295.5, maxX: 304.5, minZ: -6, maxZ: -5.61 }, // col__cubby_n
+  { minX: 292, maxX: 292.5, minZ: -6.5, maxZ: 6.5 }, // col__hall_wall_w (B)
+  { minX: 292, maxX: 308, minZ: -6.5, maxZ: -6 }, // col__hall_wall_n (B)
+  { minX: 292, maxX: 308, minZ: 6, maxZ: 6.5 }, // col__hall_wall_s (B)
+  { minX: 292.635, maxX: 307.11, minZ: -6, maxZ: -5.61 }, // col__cubby_n (B)
   { minX: 295.5, maxX: 296.5, minZ: 1.6, maxZ: 4.4 }, // col__sofa_long
   { minX: 295.88, maxX: 296.42, minZ: -0.27, maxZ: 0.27 }, // col__plant
   { minX: 296.5, maxX: 297.6, minZ: 3.5, maxZ: 4.4 }, // col__sofa_short
   { minX: 296.9, maxX: 297.8, minZ: 2.15, maxZ: 3.05 }, // col__coffee_table
   { minX: 298.5, maxX: 299.9, minZ: -4.15, maxZ: -3.65 }, // col__memorial_table
   { minX: 299.4, maxX: 301.8, minZ: -1.81, maxZ: -1.39 }, // col__bench
-  { minX: 304.11, maxX: 304.5, minZ: -5.61, maxZ: 2.07 }, // col__cubby_e
-  { minX: 304.5, maxX: 305, minZ: -6.5, maxZ: 6.5 }, // col__hall_wall_e
+  { minX: 307.11, maxX: 307.5, minZ: -5.61, maxZ: 2.07 }, // col__cubby_e (B)
+  { minX: 307.5, maxX: 308, minZ: -6.5, maxZ: 6.5 }, // col__hall_wall_e (B)
 ];
 
 // 위 상자 가운데 1.6 m 이상 큰 소품(사물함·책장…): 카메라가 뚫고 보면 안 되는 상자(높이 포함).
 export const MEMORIAL_CAMERA_BOXES: readonly CameraBox[] = [
-  { minX: 295, maxX: 295.5, minZ: -6.5, maxZ: 6.5, height: 3.5 }, // col__hall_wall_w
-  { minX: 295, maxX: 305, minZ: -6.5, maxZ: -6, height: 3.5 }, // col__hall_wall_n
-  { minX: 295, maxX: 305, minZ: 6, maxZ: 6.5, height: 3.5 }, // col__hall_wall_s
-  { minX: 295.5, maxX: 304.5, minZ: -6, maxZ: -5.61, height: 3.4 }, // col__cubby_n
+  { minX: 292, maxX: 292.5, minZ: -6.5, maxZ: 6.5, height: 4.6 }, // col__hall_wall_w (B)
+  { minX: 292, maxX: 308, minZ: -6.5, maxZ: -6, height: 4.6 }, // col__hall_wall_n (B)
+  { minX: 292, maxX: 308, minZ: 6, maxZ: 6.5, height: 4.6 }, // col__hall_wall_s (B)
+  { minX: 292.635, maxX: 307.11, minZ: -6, maxZ: -5.61, height: 4.5 }, // col__cubby_n (B)
   { minX: 295.88, maxX: 296.42, minZ: -0.27, maxZ: 0.27, height: 2 }, // col__plant
-  { minX: 304.11, maxX: 304.5, minZ: -5.61, maxZ: 2.07, height: 3.4 }, // col__cubby_e
-  { minX: 304.5, maxX: 305, minZ: -6.5, maxZ: 6.5, height: 3.5 }, // col__hall_wall_e
+  { minX: 307.11, maxX: 307.5, minZ: -5.61, maxZ: 2.07, height: 4.5 }, // col__cubby_e (B)
+  { minX: 307.5, maxX: 308, minZ: -6.5, maxZ: 6.5, height: 4.6 }, // col__hall_wall_e (B)
 ];
