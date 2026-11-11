@@ -501,6 +501,42 @@ export function speciesMeshes(): SpeciesMeshes[] {
   ];
 }
 
+// ─────────────────────────────────────────────── green canopy ───────────────────────────────────────────────
+
+/** A folded, volumetric leaf cluster for broadleaf canopies. The core keeps the crown solid while the leaves provide
+ * the close-up silhouette and visible depth that the old green foliage cards lacked. */
+export function greenCluster(simple = false, seed = 17): BufferGeometry {
+  const b = new GeoBuilder();
+  b.windHeight = 0.55;
+  const rand = mulberry32(seed);
+  const dark = rgba("#244D1A");
+  const mid = rgba("#477D29");
+  const light = rgba("#82A94C");
+  dome(b, [0, 0.12, 0], simple ? 0.22 : 0.25, simple ? 0.18 : 0.25, simple ? 6 : 8, dark, mid);
+  const leaves = simple ? 7 : 14;
+  for (let i = 0; i < leaves; i++) {
+    const a = (i / leaves) * Math.PI * 2 + rand() * 0.7;
+    const el = 0.15 + rand() * 0.85;
+    const dir: Vec3 = [Math.cos(a) * Math.cos(el), Math.sin(el), Math.sin(a) * Math.cos(el)];
+    const base: Vec3 = [Math.cos(a) * 0.08, 0.08 + rand() * 0.12, Math.sin(a) * 0.08];
+    leaf(b, base, dir, [0, 1, 0], simple ? 0.18 : 0.12 + rand() * 0.055, simple ? 0.08 : 0.052 + rand() * 0.018, {
+      detail: simple ? 0 : 1,
+      fold: 0.42,
+      droop: 0.22,
+      colour: { rib: light, edge: mid, base: dark },
+    });
+  }
+  return b.build();
+}
+
+/** A cheap closed puff used beyond the near green-canopy LOD. */
+export function greenClusterFar(): BufferGeometry {
+  const b = new GeoBuilder();
+  b.windHeight = 0.5;
+  dome(b, [0, 0.12, 0], 0.25, 0.22, 6, rgba("#315F20"), rgba("#6C9639"));
+  return b.build();
+}
+
 // ─────────────────────────────────────────────── cherry ───────────────────────────────────────────────
 
 /** The atlas cells (vegAtlas.ts): 4 x 4 cells of the blossom atlas. */
