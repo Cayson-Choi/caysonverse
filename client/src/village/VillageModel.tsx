@@ -21,6 +21,8 @@ import { useNightMapWanted } from "./nightLightmap";
 import { holdNightLightmap, noteBusRequested, noteNightRequested, noteVillageRequested } from "./villageRelease";
 import { preloadBus } from "./villageBusLoader";
 import { createVegetation, vegModeFrom, type VegStats, type VillageVegetation } from "./veg/villageVegetation";
+import { createWaterfall3D, hideWaterfallCards, type Waterfall3D } from "./waterfall3d";
+import type { Object3D } from "three";
 
 declare global {
   interface Window {
@@ -38,6 +40,11 @@ declare global {
 function fountainMode(): "new" | "old" {
   if (!import.meta.env.DEV || typeof location === "undefined") return "new";
   return new URLSearchParams(location.search).get("water") === "old" ? "old" : "new";
+}
+
+function waterfallMode(): "new" | "old" {
+  if (!import.meta.env.DEV || typeof location === "undefined") return "new";
+  return new URLSearchParams(location.search).get("waterfall") === "old" ? "old" : "new";
 }
 
 /**
@@ -103,6 +110,19 @@ export function VillageModel({ tier }: { tier: VillageTier }) {
       setVeg(null);
     };
   }, [nodes, tier]);
+  const waterfall = useMemo<{ runtime: Waterfall3D; hidden: Object3D[] } | null>(() => {
+    if (waterfallMode() === "old") return null;
+    const hidden = hideWaterfallCards(nodes.root);
+    return { runtime: createWaterfall3D(tier), hidden };
+  }, [nodes, tier]);
+  useEffect(() => {
+    return () => {
+      waterfall?.runtime.dispose();
+      waterfall?.hidden.forEach((o) => {
+        o.visible = true;
+      });
+    };
+  }, [waterfall]);
   const night = useNightMapWanted();
   useEffect(() => {
     // Dev/E2E probe: the dressed model (draw-call and material checks). Tree-shaken in production.
@@ -116,12 +136,14 @@ export function VillageModel({ tier }: { tier: VillageTier }) {
     tickVillage(nodes, clock.elapsedTime, gl.toneMappingExposure);
     applyDayNight(nodes, dayNight.applied);
     veg?.update(camera, clock.elapsedTime);
+    waterfall?.runtime.update(clock.elapsedTime, camera);
   });
   // dispose={null}: the geometry and shared materials belong to the loader's cache.
   return (
     <>
       <primitive object={nodes.root} dispose={null} />
       {veg && <primitive object={veg.group} dispose={null} />}
+      {waterfall && <primitive object={waterfall.runtime.group} dispose={null} />}
       {night && (
         <Suspense fallback={null}>
           <NightLightmap />
