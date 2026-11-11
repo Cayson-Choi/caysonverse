@@ -482,7 +482,7 @@ describe("prepareVillage: the fountain", () => {
   it("old (?water=old): the model's water as it was, no runtime fountain", () => {
     const source = village();
     const sourceGeometry = (source.getObjectByName("village_water_11") as Mesh).geometry;
-    const nodes = prepareVillage(source, new Texture(), "high", "neutral", undefined, undefined, { fountain: "old" });
+    const nodes = prepareVillage(source, new Texture(), "high", "neutral", undefined, undefined, 1, { fountain: "old" });
     expect(nodes.fountain).toBeNull();
     const m = nodes.root.getObjectByName("village_water_11") as Mesh;
     expect(m.geometry).toBe(sourceGeometry);
