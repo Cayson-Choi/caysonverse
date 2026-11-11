@@ -114,6 +114,31 @@ function makeBatch(items: ReadonlyArray<{ m: Matrix4; tint: readonly number[]; l
   return b;
 }
 
+/** Read GPU-instanced card transforms and turn each card into a compact volumetric replacement. */
+function instancedCardItems(root: Object3D, materialName: string): { items: Array<{ m: Matrix4; tint: number[]; light: number }>; meshes: InstancedMesh[] } {
+  const items: Array<{ m: Matrix4; tint: number[]; light: number }> = [];
+  const meshes: InstancedMesh[] = [];
+  root.traverse((o) => {
+    const mesh = o as InstancedMesh;
+    if (!mesh.isInstancedMesh || !materialsOf(mesh).some((m) => m.name === materialName)) return;
+    mesh.updateWorldMatrix(true, false);
+    const local = new Matrix4();
+    const world = new Matrix4();
+    const p = new Vector3();
+    const q = new Quaternion();
+    const s = new Vector3();
+    for (let i = 0; i < mesh.count; i++) {
+      mesh.getMatrixAt(i, local);
+      world.multiplyMatrices(mesh.matrixWorld, local);
+      world.decompose(p, q, s);
+      const size = Math.max(0.45, Math.min(2.2, (Math.abs(s.x) + Math.abs(s.y) + Math.abs(s.z)) / 3));
+      items.push({ m: new Matrix4().compose(p, q, new Vector3(size, size, size)), tint: [1, 1, 1], light: 0.86 });
+    }
+    meshes.push(mesh);
+  });
+  return { items, meshes };
+}
+
 /** An instanced mesh that is refilled from batches. */
 class Layer {
   readonly mesh: InstancedMesh;
@@ -225,6 +250,11 @@ export class VillageVegetation {
   private twigTris = 0;
   private greenLayer: Layer | null = null;
   private greenFarLayer: Layer | null = null;
+  /** 3D replacements for instanced street/orchard foliage cards. */
+  private greenCardLayer: Layer | null = null;
+  private greenGrassLayer: Layer | null = null;
+  /** 3D replacements for instanced street cherry cards. */
+  private cherryCardLayer: Layer | null = null;
   private greenTwigTris = 0;
   private readonly frustum = new Frustum();
   private readonly projView = new Matrix4();
@@ -235,6 +265,7 @@ export class VillageVegetation {
   private dirtyGreen = true;
   /** Meshes of the village clone whose geometry was swapped for a copy without the old cards, and what they had. */
   private readonly swapped: Array<{ mesh: Mesh; original: BufferGeometry }> = [];
+  private readonly hiddenInstanced: Array<{ mesh: InstancedMesh; visible: boolean }> = [];
 
   private constructor(tier: VillageTier, mode: Exclude<VegMode, "old">) {
     this.cfg = VEG_TIERS[tier];
@@ -394,6 +425,41 @@ export class VillageVegetation {
     const greenGeo = greenCluster(false);
     const greenFarGeo = greenClusterFar();
     v.own.push(greenMat, greenFarMat, greenGeo, greenFarGeo);
+    // Instanced street/orchard foliage used to remain as flat cards. Read their transforms and replace each one
+    // with a small volumetric leaf cluster; the original instanced meshes are hidden together with the other cards.
+    const greenCardItems = instancedCardItems(root, "M_leaf_green");
+    const cherryCardItems = instancedCardItems(root, CHERRY_MATERIAL);
+    const grassItems = placed.kept.map((c) => ({
+      m: new Matrix4().compose(new Vector3(c.x, c.floor, c.z), new Quaternion().setFromAxisAngle(UP, c.x * 0.7 + c.z * 0.37), new Vector3(0.65, 0.65, 0.65)),
+      tint: [0.88, 1, 0.82],
+      light: c.light,
+    }));
+    if (greenCardItems.items.length) {
+      v.greenCardLayer = new Layer(greenFarGeo, greenFarMat, greenCardItems.items.length, "veg_green_instanced_cards");
+      v.greenCardLayer.begin();
+      v.greenCardLayer.push(makeBatch(greenCardItems.items));
+      v.greenCardLayer.end();
+      v.group.add(v.greenCardLayer.mesh);
+      v.own.push(v.greenCardLayer.mesh);
+    }
+    if (grassItems.length) {
+      v.greenGrassLayer = new Layer(greenFarGeo, greenFarMat, grassItems.length, "veg_grass_tufts_3d");
+      v.greenGrassLayer.begin();
+      v.greenGrassLayer.push(makeBatch(grassItems));
+      v.greenGrassLayer.end();
+      v.group.add(v.greenGrassLayer.mesh);
+      v.own.push(v.greenGrassLayer.mesh);
+    }
+    if (cherryCardItems.items.length) {
+      v.cherryCardLayer = new Layer(bunchGeo, bunchMat, cherryCardItems.items.length, "veg_cherry_instanced_cards");
+      v.cherryCardLayer.begin();
+      v.cherryCardLayer.push(makeBatch(cherryCardItems.items));
+      v.cherryCardLayer.end();
+      v.group.add(v.cherryCardLayer.mesh);
+      v.own.push(v.cherryCardLayer.mesh);
+    }
+    v.hiddenInstanced.push(...greenCardItems.meshes.map((mesh) => ({ mesh, visible: mesh.visible })));
+    v.hiddenInstanced.push(...cherryCardItems.meshes.map((mesh) => ({ mesh, visible: mesh.visible })));
     v.greenLayer = new Layer(greenGeo, greenMat, greenCrown.clusters.length, "veg_zelkova_leaf_clusters");
     v.greenFarLayer = new Layer(greenFarGeo, greenFarMat, greenCrown.clusters.length, "veg_zelkova_leaf_puffs");
     v.own.push(v.greenLayer.mesh, v.greenFarLayer.mesh);
@@ -444,7 +510,7 @@ export class VillageVegetation {
     let hiddenGreen = 0;
     if (hide) {
       floraMeshes.forEach((mesh, mi) => {
-        const drop = placed.replaced.filter((c) => cardMesh.get(c) === mi);
+        const drop = [...placed.replaced, ...placed.kept].filter((c) => cardMesh.get(c) === mi);
         if (drop.length) v.hideCards(mesh, drop);
       });
       for (const mesh of meshesWithMaterial(root, CHERRY_MATERIAL)) {
@@ -468,6 +534,7 @@ export class VillageVegetation {
           hiddenGreen += drop.length;
         }
       }
+      for (const { mesh } of v.hiddenInstanced) mesh.visible = false;
     }
     steps.hide = Math.round(performance.now() - t);
     work += performance.now() - t;
@@ -475,8 +542,8 @@ export class VillageVegetation {
       plants: placed.plants.length,
       bunches: total,
       twigs: twigs.length,
-      hiddenCards: { flora: hide ? placed.replaced.length : 0, cherry: hiddenCherry, green: hiddenGreen },
-      keptFlowerCards: placed.kept.length,
+      hiddenCards: { flora: hide ? placed.replaced.length + placed.kept.length : 0, cherry: hiddenCherry, green: hiddenGreen },
+      keptFlowerCards: hide ? 0 : placed.kept.length,
       genMs: Math.round(work),
     });
     return v;
@@ -630,7 +697,7 @@ export class VillageVegetation {
   private recount(): void {
     let tris = this.twigTris + this.greenTwigTris;
     let calls = 1;
-    const layers = [...this.flowerLayers.flatMap((l) => [l.lod0, l.lod1]), this.bunchLayer, this.spriteLayer, this.greenLayer, this.greenFarLayer];
+    const layers = [...this.flowerLayers.flatMap((l) => [l.lod0, l.lod1]), this.bunchLayer, this.spriteLayer, this.cherryCardLayer, this.greenLayer, this.greenFarLayer, this.greenCardLayer, this.greenGrassLayer];
     for (const l of layers) {
       if (!l || l.n === 0) continue;
       tris += l.n * l.tris;
@@ -646,6 +713,8 @@ export class VillageVegetation {
 
   dispose(): void {
     // the village clone gets its own geometry back (its old cards show again)
+    for (const { mesh, visible } of this.hiddenInstanced) mesh.visible = visible;
+    this.hiddenInstanced.length = 0;
     for (const { mesh, original } of this.swapped) mesh.geometry = original;
     this.swapped.length = 0;
     for (const r of this.own) r.dispose();
