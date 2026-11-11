@@ -716,6 +716,8 @@ export function freezeStatic(root: Object3D): void {
 
 /** The stars: this many, between 8 and 90 degrees above the horizon, `STAR_RADIUS` m from the dome's centre (inside the dome). */
 export const STAR_COUNT = 520;
+/** The real sky (sky/StarSky.tsx) is drawn: the random stars step aside (they stay as the stand-in until its file is in). */
+export const randomStars = { hidden: false };
 export const STAR_RADIUS = 1300;
 
 /** A seeded generator (mulberry32): the same sky every time. */
@@ -809,7 +811,7 @@ export function applyDayNight(nodes: VillageNodes, s: DayNightState): void {
   }
   const stars = nodes.stars;
   if (stars) {
-    stars.visible = s.stars > 0.01;
+    stars.visible = s.stars > 0.01 && !randomStars.hidden;
     (stars.material as PointsMaterial).opacity = s.stars;
   }
 }

@@ -28,6 +28,9 @@ import { CUBBY_TARGET_PREFIX, GUIDE_TARGET_PREFIX, villageAndHallTargets, villag
 import { GuideNpcs } from "./GuideNpc";
 import { GuideDialog } from "./GuideDialog";
 import { guideDialogOpen, openGuideDialog } from "./guideDialogStore";
+import { StarSky } from "./sky/StarSky";
+import { StarFinder } from "./sky/StarFinder";
+import { StarFinderButton } from "./sky/StarFinderButton";
 
 /**
  * 케이슨 마을 — the village scene (Task 4). A `PlayShell` on the village map under the village's afternoon
@@ -172,16 +175,23 @@ export function VillageScene({ identity }: { identity: Identity }) {
           <VillageArea area={area} tier={tier} />
           <GuideNpcs area={area} />
           <VillageDoors pose={pose} />
+          {area === "village" && <StarSky tier={tier} />}
         </>
       )}
-      hudColumn={<VillageBgmButton />}
-      hud={
+      hudColumn={
+        <>
+          <VillageBgmButton />
+          <StarFinderButton />
+        </>
+      }
+      hud={({ orbit }) => (
         <>
           <DoorFade />
           <CubbyView />
           <GuideDialog />
+          <StarFinder orbit={orbit} />
         </>
-      }
+      )}
     />
   );
 }
