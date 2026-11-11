@@ -192,7 +192,7 @@ export function LocalPlayer({
   const bubbleAnchor = useRef({ y: bubbleRest }).current;
   const bubbleTop = useSpeechBubble(sessionId, groupRef, bubbleAnchor);
 
-  // Own name tag — off by default; the player turns it on in the menu. Same create /
+  // Own name tag — on by default; the player can still turn it off in the menu. Same create /
   // register / release pair as a remote avatar's (RemotePlayer), so the NametagSystem
   // sizes, fades and stacks it with the rest. Pinned: your own tag is never dropped for
   // being outside the nearest 15. The teacher badge follows the synced role (the admin
