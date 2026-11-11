@@ -6,6 +6,7 @@ import { setAvatarOpacity } from "./characterAvatar";
 import { clipFor, lookFromAppearance } from "./characterLook";
 import { reportAvatarClip, useAvatar } from "./useAvatar";
 import { BlobShadow } from "./BlobShadow";
+import { PICK_AS_BODY } from "./clickPick";
 import { createNametag } from "./nametag";
 import { registerLabel } from "./labelRegistry";
 import { bubbleRestHeight, nametagRestHeight } from "./nametagLayout";
@@ -544,7 +545,7 @@ export function RemotePlayer({
   });
 
   return (
-    <group ref={groupRef}>
+    <group ref={groupRef} userData={PICK_AS_BODY}>
       <primitive object={avatar.root} />
       {blobShadow && (
         <group ref={shadowRef}>

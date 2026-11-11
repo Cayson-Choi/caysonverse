@@ -37,6 +37,7 @@ import {
   type SkyMapping,
 } from "./villageWater";
 import type { ToneCurve } from "../game/quality";
+import { NEAR_FADE_KEY } from "../game/clickPick";
 import { renderScale } from "../game/renderScale";
 import { VILLAGE_LAYOUT } from "@caysonverse/shared/village/villageLayout";
 import type { DayNightState } from "./dayNightBlend";
@@ -160,6 +161,17 @@ export const GROUND_GRADE_NIGHT: Readonly<Record<string, readonly [number, numbe
 
 /** The village's own foliage and trunks: their light is in COLOR_0 (no light map). */
 export const FOLIAGE_MATERIALS: readonly string[] = ["M_leaf_green", "M_leaf_cherry", "M_leaf_flora", "M_bark"];
+
+/**
+ * The village's own foliage fades out close to the camera (m of view depth): gone nearer than the first, a
+ * screen-door dither up to the second. On the tree-lined lanes, the creek path and the plots' lane the third-person
+ * camera sits inside a street tree's crown (its spring arm stops at walls, not at leaves), and leaves a hand's width
+ * from the lens covered most of the screen: the avatar, the ground and the destination ring behind them
+ * (2026-11-10, the click ring's review). The shadows stay (the shadow pass draws its own depth material).
+ */
+export const FOLIAGE_NEAR_FADE: readonly [number, number] = [1.2, 2.4];
+/** The fade's band, shared by every foliage material. */
+export const nearFadeUniform = { value: new Vector2(FOLIAGE_NEAR_FADE[0], FOLIAGE_NEAR_FADE[1]) };
 
 /**
  * The time of day's shared uniforms (Task 7A): ONE object each for every patched material, so one write reaches them
@@ -297,6 +309,20 @@ uniform sampler2D uVillageNightMap;
 uniform vec3 uVillageMoonTint;
 #endif
 void main() {`;
+/**
+ * The foliage's near fade (FOLIAGE_NEAR_FADE): `1 / gl_FragCoord.w` is the fragment's view depth; between the band's
+ * ends it is kept against an interleaved-gradient-noise threshold, so the leaves thin out instead of popping.
+ */
+const NEAR_FADE_PARS = /* glsl */ `uniform vec2 uVillageNearFade;
+void main() {
+	{
+		float villageDepth = 1.0 / gl_FragCoord.w;
+		if ( villageDepth < uVillageNearFade.y ) {
+			float villageKeep = ( villageDepth - uVillageNearFade.x ) / ( uVillageNearFade.y - uVillageNearFade.x );
+			float villageNoise = fract( 52.9829189 * fract( dot( gl_FragCoord.xy, vec2( 0.06711056, 0.00583715 ) ) ) );
+			if ( villageKeep < villageNoise ) discard;
+		}
+	}`;
 /** The albedo before COLOR_0 (which is the light on the foliage, a tint on the light-mapped materials). */
 const LIFT_ALBEDO = /* glsl */ `vec3 villageAlbedo = diffuseColor.rgb;
 #include <color_fragment>`;
@@ -330,6 +356,9 @@ const LIFT_LIGHT = /* glsl */ `#ifdef USE_LIGHTMAP
 export function liftMaterial(material: Material): void {
   if (lifted.has(material)) return;
   lifted.add(material);
+  // The village's own leaves and trunks also fade out near the camera; the click pick skips them there (clickPick.ts).
+  const foliage = FOLIAGE_MATERIALS.includes(material.name);
+  if (foliage) material.userData[NEAR_FADE_KEY] = (FOLIAGE_NEAR_FADE[0] + FOLIAGE_NEAR_FADE[1]) / 2;
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uVillageLift = liftUniform;
     shader.uniforms.uVillageLiftTint = liftTintUniform;
@@ -338,13 +367,14 @@ export function liftMaterial(material: Material): void {
     shader.uniforms.uVillageNight = nightBlendUniform;
     shader.uniforms.uVillageNightMap = nightMapUniform;
     shader.uniforms.uVillageMoonTint = moonTintUniform;
+    if (foliage) shader.uniforms.uVillageNearFade = nearFadeUniform;
     shader.fragmentShader = shader.fragmentShader
-      .replace("void main() {", LIFT_PARS)
+      .replace("void main() {", foliage ? LIFT_PARS.replace("void main() {", NEAR_FADE_PARS) : LIFT_PARS)
       .replace(LIGHTMAP_TEXEL_FROM, LIGHTMAP_TEXEL_TO)
       .replace("#include <color_fragment>", LIFT_ALBEDO)
       .replace("#include <aomap_fragment>", LIFT_LIGHT);
   };
-  material.customProgramCacheKey = () => "village-light";
+  material.customProgramCacheKey = () => (foliage ? "village-light-foliage" : "village-light");
   material.needsUpdate = true;
 }
 

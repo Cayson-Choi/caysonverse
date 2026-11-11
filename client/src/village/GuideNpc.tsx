@@ -6,6 +6,7 @@ import type { AreaId } from "@caysonverse/shared/village/villageLayout";
 import { CLIP } from "../game/constants";
 import { clipFor, lookFromAppearance } from "../game/characterLook";
 import { createNametag } from "../game/nametag";
+import { PICK_AS_BODY } from "../game/clickPick";
 import { registerLabel } from "../game/labelRegistry";
 import { bubbleRestHeight, nametagRestHeight } from "../game/nametagLayout";
 import { reportAvatarClip, useAvatar } from "../game/useAvatar";
@@ -53,7 +54,7 @@ function GuideFigure({ guide }: { guide: Guide }) {
   }, [guide.tag, probeId, tagHeight, bubbleRest]);
 
   return (
-    <group ref={groupRef} position={[guide.pos.x, 0, guide.pos.z]} rotation-y={guide.yaw}>
+    <group ref={groupRef} position={[guide.pos.x, 0, guide.pos.z]} rotation-y={guide.yaw} userData={PICK_AS_BODY}>
       <primitive object={avatar.root} />
     </group>
   );

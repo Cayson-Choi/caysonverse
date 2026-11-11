@@ -58,8 +58,11 @@ export const STICK_RUN_RELEASE = 0.8;
 /** A press that travels under this many px and lasts under STICK_TAP_MAX_MS is a tap. */
 export const STICK_TAP_MAX_PX = 10;
 
-/** See STICK_TAP_MAX_PX. */
-export const STICK_TAP_MAX_MS = 250;
+/**
+ * See STICK_TAP_MAX_PX. The look half's limit (clickMove.ts CLICK_MAX_MS): a 250-400 ms tap walked there and not
+ * here, so the same finger tap did different things on the two halves.
+ */
+export const STICK_TAP_MAX_MS = 400;
 
 /**
  * Where a press starts a stick: the lower-left quarter, minus the left edge
