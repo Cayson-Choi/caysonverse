@@ -540,6 +540,7 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
         this.sendFishingResult(client, stepped.state, stepped.event, now);
       } else {
         this.sendFishingState(client, stepped.state, now);
+      }
     }
   }
 
