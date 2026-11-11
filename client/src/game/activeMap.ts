@@ -14,8 +14,9 @@
 import { LEGACY_GEOMETRY, SEATS, type Seat } from "@caysonverse/shared/worldMap";
 import { hubGeometry, hubZoneLabel } from "@caysonverse/shared/school/hubMap";
 import { VILLAGE_LAYOUT, villageGeometry, type AreaId } from "@caysonverse/shared/village/villageLayout";
-import { VILLAGE_SEATS } from "@caysonverse/shared/village/benchSeats";
+import { VILLAGE_BENCHES, VILLAGE_SEATS } from "@caysonverse/shared/village/benchSeats";
 import type { Bounds, MapGeometry } from "@caysonverse/shared/school/geometry";
+import type { AABB } from "@caysonverse/shared/collision";
 import { zoneLabelAt } from "./hud";
 import { HALL_CAMERA_LIMIT, VILLAGE_CAMERA_PAD, type CameraLimit } from "./indoorCamera";
 
@@ -54,6 +55,12 @@ export interface ActiveMap {
    * `VILLAGE_CAMERA_PAD`: its near plane is 0.2 (VILLAGE_CAMERA_PLANES), so a pad of 0.2 left no slack in a corner.
    */
   cameraPad?: number;
+  /**
+   * Colliders of furniture whose real shape covers less ground than its box: visible ground inside one moves out to the
+   * nearest spot a body stands on from farther than a wall's foot (clickPlan.ts PlanOptions.furniture). 케이슨 마을's
+   * benches (`VILLAGE_FURNITURE`); absent elsewhere.
+   */
+  furniture?: readonly AABB[];
 }
 
 /** 케이슨 마을's spring-arm pad: wider than its 0.2 m near plane (Task 7 review m5). Lives in indoorCamera.ts (the hall's limit derives from it). */
@@ -77,6 +84,18 @@ export function activeBounds(): Bounds {
   return mapBounds(current);
 }
 
+/**
+ * 케이슨 마을's benches as colliders: for each bench the box of the geometry that holds its centre (the art's
+ * col__bench_<n>, the turned bench's footprint's box — benchSeats.test.ts — the forecourt's stone block, the hall's board).
+ */
+export const VILLAGE_FURNITURE: readonly AABB[] = Object.freeze(
+  VILLAGE_BENCHES.flatMap((b) =>
+    villageGeometry.obstacles.filter(
+      (o) => b.centre.x > o.minX && b.centre.x < o.maxX && b.centre.z > o.minZ && b.centre.z < o.maxZ && o.maxX - o.minX <= 3 && o.maxZ - o.minZ <= 3,
+    ),
+  ),
+);
+
 /** 케이슨 마을, the open village (the default 입장하기): the village area's rectangle of the shared geometry. */
 export const VILLAGE_ACTIVE_MAP: ActiveMap = Object.freeze({
   geometry: villageGeometry,
@@ -84,6 +103,7 @@ export const VILLAGE_ACTIVE_MAP: ActiveMap = Object.freeze({
   cameraPad: VILLAGE_CAMERA_PAD,
   zoneLabel: () => "케이슨 마을",
   seats: VILLAGE_SEATS, // every bench of the village (the hall's are out of reach from here)
+  furniture: VILLAGE_FURNITURE,
 });
 
 /** 케이슨 마을, inside the memorial hall: the same geometry (one collision truth), the hall's own rectangle. */
@@ -94,6 +114,7 @@ export const HALL_ACTIVE_MAP: ActiveMap = Object.freeze({
   cameraPad: VILLAGE_CAMERA_PAD, // the same scene, the same near plane
   zoneLabel: () => "추모관",
   seats: VILLAGE_SEATS, // the same list (the server indexes one), so a seat index means the same bench in both areas
+  furniture: VILLAGE_FURNITURE,
 });
 
 /** The village map for the area the local player is in: one of two prebuilt maps, so a re-render is never a switch. */

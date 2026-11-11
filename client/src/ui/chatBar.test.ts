@@ -475,6 +475,22 @@ describe("takeBackDraft / draftKey / undoDraft — the guess a take-back makes",
     expect(undoDraft("", { before: "", typed: "" })).toBe("");
     expect(undoDraft("mm", null)).toBeNull();
   });
+
+  // The PC-M 5차 report ("안녕" in the field, M, a look, M, then S: the avatar hardly moved) was the e2e's own setup —
+  // the click on the view just before had click-moved the avatar ~20 m off, and S walked back over that walk. The
+  // decision itself is the same over an unsent line as over an empty field: the walk key undoes, and it is not typed.
+  it("over an unsent line it decides exactly as over an empty field: S undoes the guess, the line stays", () => {
+    for (const before of ["", "안녕"]) {
+      const end = before.length;
+      const inserted = insertPrefix(before, end, end, "m", 200);
+      expect(inserted, before).not.toBeNull();
+      const d = takeBackDraft(before, inserted!, "m", 200);
+      expect(d, before).toEqual({ before, typed: `${before}mm` });
+      for (const e of [{ code: "KeyS", key: "s" }, { code: "KeyS", key: "Process", keyCode: 229 }, { code: "KeyW", key: "w" }])
+        expect(draftKey(e), `${before} ${JSON.stringify(e)}`).toBe("undo");
+      expect(undoDraft(`${before}mm`, d), before).toBe(before);
+    }
+  });
 });
 
 // Review round 5 (phones, Android): the system back key (or the keyboard's own fold key) hides the soft keyboard without

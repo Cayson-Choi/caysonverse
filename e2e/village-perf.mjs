@@ -45,6 +45,10 @@ const MB = 1_000_000;
 const GATE = {
   village: { bytes: 8 * MIB, tris: 260_000, tex: 2048 },
   memorial: { bytes: 6 * MIB, tris: 200_000, tex: 2048 },
+  /** The bus at the stop (village_bus.glb, always drawn with the village; bus review): the bus task's 40k and 1.5 MB. */
+  bus: { bytes: 1.5 * MIB, tris: 40_000, tex: 1024, draws: 4 },
+  /** The village scene's two always-drawn models together: the village's 260k plus the bus's 40k. */
+  villageScene: { tris: 300_000 },
   /** The plan's "15 MB", decimal (T10 review I2). */
   firstLoadBytes: 15 * MB,
   /** Main-thread busy ms per frame (T10 review I1): the mean frame time is capped at 16.7 ms headless and cannot fail. */
@@ -146,6 +150,15 @@ if (args.mode === "assets") {
     check(`${file} textures <= ${gate.tex}^2 (largest side ${g.maxTextureSide})`, g.maxTextureSide <= gate.tex);
   }
   for (const f of ["memorial_props.glb"]) out[f] = inspectGlb(join(M, f));
+  // The village bus: its own file, drawn with the village from the first frame (scripts/lib/schoolGlb.ts checkVillageBus).
+  const bus = (out["village_bus.glb"] = inspectGlb(join(M, "village_bus.glb")));
+  console.log(JSON.stringify({ ...bus, textures: bus.textures.map((t) => `${t.name} ${t.w}x${t.h} ${t.bytes}B`) }, null, 1));
+  check(`village_bus.glb <= ${GATE.bus.bytes / MIB} MB (${fmt(bus.bytes)} B)`, bus.bytes <= GATE.bus.bytes);
+  check(`village_bus.glb <= ${fmt(GATE.bus.tris)} triangles (${fmt(bus.sceneTriangles)})`, bus.sceneTriangles <= GATE.bus.tris);
+  check(`village_bus.glb textures <= ${GATE.bus.tex}^2 (largest side ${bus.maxTextureSide})`, bus.maxTextureSide <= GATE.bus.tex);
+  check(`village_bus.glb <= ${GATE.bus.draws} draw calls (${bus.drawPrimitives} primitives)`, bus.drawPrimitives <= GATE.bus.draws);
+  const sceneTris = out.village.sceneTriangles + bus.sceneTriangles;
+  check(`village scene (village.glb + village_bus.glb) <= ${fmt(GATE.villageScene.tris)} triangles (${fmt(sceneTris)})`, sceneTris <= GATE.villageScene.tris);
   for (const f of ["village_lm.webp", "village_lm_night.webp", "memorial_lm.webp"]) {
     const p = join(M, f);
     const size = imageSize(readFileSync(p), "image/webp");
@@ -160,7 +173,8 @@ if (args.mode === "assets") {
   };
   const glbTex = (g, cap) => g.textures.reduce((a, t) => a + (t.w && t.h ? decoded(t.w, t.h, cap) : 0), 0);
   const lm = (f) => decoded(out[f].w, out[f].h);
-  const v = { full: glbTex(out.village), capped: glbTex(out.village, LIGHT_TIER_MAX_TEXTURE) };
+  // the bus's textures are resident whenever the village's are
+  const v = { full: glbTex(out.village) + glbTex(bus), capped: glbTex(out.village, LIGHT_TIER_MAX_TEXTURE) + glbTex(bus, LIGHT_TIER_MAX_TEXTURE) };
   const hallSet = glbTex(out.memorial) + glbTex(out["memorial_props.glb"]) + lm("memorial_lm.webp") + (atlasSize ? decoded(atlasSize.w, atlasSize.h) : 0);
   const dayLm = lm("village_lm.webp");
   const nightLm = lm("village_lm_night.webp");

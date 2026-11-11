@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   ACESFilmicToneMapping,
+  CanvasTexture,
   Color,
   LinearSRGBColorSpace,
   Mesh,
@@ -8,7 +9,9 @@ import {
   PerspectiveCamera,
   SRGBColorSpace,
   Scene,
+  type Camera,
   type Material,
+  type Object3D,
   type ToneMapping,
   type WebGLRenderTarget,
   type WebGLRenderer,
@@ -16,14 +19,18 @@ import {
 import { PostChain, outputDefines } from "./postChain";
 import { BLOOM } from "./quality";
 import { renderScale } from "./renderScale";
+import { LABEL_LAYER, billboardSprite } from "./spriteCanvas";
 
 /** A renderer that only records where each draw went (no WebGL in the unit tests). */
 function fakeRenderer(toneMapping: ToneMapping = NeutralToneMapping) {
   let target: WebGLRenderTarget | null = null;
   const draws: { target: WebGLRenderTarget | null; what: string; scale: number }[] = [];
+  /** Per scene draw: the camera's layer mask, the autoClear in force and the scene's children at the time. */
+  const scenes: { mask: number; autoClear: boolean; children: Object3D[]; matrixWorldAutoUpdate: boolean }[] = [];
   const clear = new Color();
   const gl = {
     autoClear: true,
+    info: { autoReset: true },
     toneMapping,
     toneMappingExposure: 1.4,
     outputColorSpace: SRGBColorSpace,
@@ -37,13 +44,21 @@ function fakeRenderer(toneMapping: ToneMapping = NeutralToneMapping) {
     setClearColor: (c: Color) => {
       clear.copy(c);
     },
-    render: (object: unknown) => {
+    render: (object: unknown, camera: Camera) => {
       const material = (object as Mesh).material as Material;
       const what = object instanceof Scene ? "scene" : material.name || material.type;
       draws.push({ target, what, scale: renderScale() });
+      if (object instanceof Scene) {
+        scenes.push({
+          mask: camera.layers.mask,
+          autoClear: gl.autoClear,
+          children: [...object.children],
+          matrixWorldAutoUpdate: object.matrixWorldAutoUpdate,
+        });
+      }
     },
   };
-  return { gl: gl as unknown as WebGLRenderer, draws, target: () => target };
+  return { gl: gl as unknown as WebGLRenderer, draws, scenes, target: () => target };
 }
 
 describe("PostChain: the rich tier's frame in three full-screen passes fewer", () => {
@@ -68,14 +83,16 @@ describe("PostChain: the rich tier's frame in three full-screen passes fewer", (
     // nothing but the scene ever lands in the scene's target: no additive blend-back, no second resolve
     expect(r.draws.filter((d) => d.target === chain.target)).toHaveLength(1);
     // high pass + 5 mips x 2 blurs + composite
-    const bloom = r.draws.slice(1, -1);
+    const bloom = r.draws.slice(1, -2);
     expect(bloom).toHaveLength(1 + 10 + 1);
     expect(bloom.every((d) => d.target !== null)).toBe(true);
     expect(bloom[0]).toEqual({ target: chain.bloomPass.renderTargetBright, what: "PostChain.bright", scale: 1 });
     expect(chain.highPass.uniforms.tDiffuse!.value).toBe(chain.target.texture);
-    // the last draw is the final pass, to the screen, reading the scene and the bloom's composite
-    const last = r.draws[r.draws.length - 1]!;
+    // then the final pass, to the screen, reading the scene and the bloom's composite...
+    const last = r.draws[r.draws.length - 2]!;
     expect(last).toEqual({ target: null, what: "PostChain.output", scale: 1 });
+    // ...and the labels over it, on the screen too
+    expect(r.draws[r.draws.length - 1]).toEqual({ target: null, what: "scene", scale: 1 });
     expect(chain.output.uniforms.tScene!.value).toBe(chain.target.texture);
     expect(chain.output.uniforms.tBloom!.value).toBe(chain.bloomPass.renderTargetsHorizontal[0]!.texture);
     expect(chain.output.uniforms.toneMappingExposure!.value).toBe(1.4);
@@ -177,6 +194,103 @@ describe("PostChain.setScale: the frame governor's step, with nothing re-made", 
     expect(r.draws[0]!.scale).toBe(0.75);
     expect(r.draws.slice(1).every((d) => d.scale === 1)).toBe(true);
     expect(renderScale()).toBe(1);
+  });
+});
+
+describe("PostChain labels (fix/crisp-labels): drawn last, at full resolution, never in the scene pass", () => {
+  function labelled() {
+    const scene = new Scene();
+    const avatar = new Scene();
+    const tag = billboardSprite(new CanvasTexture(undefined as never), 3, 0.3, 999);
+    avatar.add(tag);
+    scene.add(avatar);
+    const camera = new PerspectiveCamera();
+    camera.layers.enable(LABEL_LAYER); // as NametagSystem leaves it
+    return { scene, avatar, tag, camera };
+  }
+
+  it("the scene pass leaves the label layer out; the label pass draws ONLY it, onto the finished frame", () => {
+    const chain = new PostChain(BLOOM);
+    chain.setSize(800, 600);
+    chain.setScale(0.5); // the governor's lowest step: the labels must not be stretched with the scene
+    const r = fakeRenderer();
+    const { scene, avatar, camera } = labelled();
+    const mask = camera.layers.mask;
+    chain.render(r.gl, scene, camera);
+    expect(r.scenes).toHaveLength(2);
+    const [scenePass, labelPass] = r.scenes;
+    expect(scenePass!.mask & (1 << LABEL_LAYER)).toBe(0);
+    expect(scenePass!.mask & 1).toBe(1);
+    expect(labelPass!.mask).toBe(1 << LABEL_LAYER);
+    // to the screen (not the scaled scene target), at render scale 1, after the final pass, clearing nothing
+    expect(r.draws.at(-1)).toEqual({ target: null, what: "scene", scale: 1 });
+    expect(labelPass!.autoClear).toBe(false);
+    // the label pass walks the real scene's children (the labels stay on their avatars) without re-updating matrices
+    expect(labelPass!.children).toEqual([avatar]);
+    expect(labelPass!.matrixWorldAutoUpdate).toBe(false);
+    // ...from a scene of its own (its own render state: no lights flip-flopping in the real scene's)
+    expect(avatar.parent).toBe(scene);
+    // everything handed back
+    expect(camera.layers.mask).toBe(mask);
+    expect(r.gl.autoClear).toBe(true);
+    expect(r.gl.info.autoReset).toBe(true);
+  });
+
+  it("the label pass's scene keeps no children between frames", () => {
+    const chain = new PostChain(BLOOM);
+    chain.setSize(800, 600);
+    const r = fakeRenderer();
+    const { scene, camera } = labelled();
+    chain.render(r.gl, scene, camera);
+    const labels = (chain as unknown as { labels: Scene }).labels;
+    expect(labels.children).toHaveLength(0);
+    expect(labels.children).not.toBe(scene.children);
+    expect(scene.children).toHaveLength(1);
+  });
+
+  it("warmLabels compiles one stand-in label for the screen, in the label pass's own (light-less) scene, and keeps it", async () => {
+    vi.stubGlobal("document", { createElement: () => ({ width: 0, height: 0 }) });
+    try {
+      const chain = new PostChain(BLOOM);
+      const r = fakeRenderer();
+      const target = chain.target;
+      r.gl.setRenderTarget(target);
+      const compiled: { object: Object3D; scene: Object3D; target: WebGLRenderTarget | null }[] = [];
+      (r.gl as unknown as { compileAsync: unknown }).compileAsync = (object: Object3D, _c: Camera, scene: Object3D) => {
+        compiled.push({ object, scene, target: r.target() });
+        return Promise.resolve();
+      };
+      const camera = new PerspectiveCamera();
+      await chain.warmLabels(r.gl, camera);
+      await chain.warmLabels(r.gl, camera);
+      expect(compiled).toHaveLength(2);
+      const labels = (chain as unknown as { labels: Scene }).labels;
+      expect(compiled[0]!.scene).toBe(labels);
+      expect(compiled[0]!.target).toBeNull();
+      expect(compiled[0]!.object.layers.mask).toBe(1 << LABEL_LAYER);
+      expect(compiled[1]!.object).toBe(compiled[0]!.object); // the same stand-in: its program is never released
+      expect(r.target()).toBe(target); // the renderer's target is given back
+      chain.dispose();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("a throwing draw still gives the camera its layers back", () => {
+    const chain = new PostChain(BLOOM);
+    chain.setSize(800, 600);
+    const r = fakeRenderer();
+    const { scene, camera } = labelled();
+    const mask = camera.layers.mask;
+    (r.gl as unknown as { render: () => void }).render = () => {
+      throw new Error("lost context");
+    };
+    expect(() => chain.render(r.gl, scene, camera)).toThrow();
+    expect(camera.layers.mask).toBe(mask);
+    expect(() => chain.renderLabels(r.gl, scene, camera)).toThrow();
+    expect(camera.layers.mask).toBe(mask);
+    expect(r.gl.autoClear).toBe(true);
+    expect(r.gl.info.autoReset).toBe(true);
   });
 });
 

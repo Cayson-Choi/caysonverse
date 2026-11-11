@@ -62,6 +62,12 @@ export interface Glide {
   window: { from: number; to: number };
 }
 
+/**
+ * The local body's glide under way, if any (LocalPlayer writes it every frame; null when none). While it carries the
+ * body off a bench nothing else moves it, and a click's walk starts where it lands (clickPlan.ts walkStart).
+ */
+export const localGlide: { current: Glide | null } = { current: null };
+
 /** Where the glide puts the root after `elapsed` s of a clip `duration` s long (writes into `out`). */
 export function glideAt(g: Glide, elapsed: number, duration: number, out: { x: number; z: number; yaw: number }): void {
   const k = windowProgress(elapsed, duration, g.window);

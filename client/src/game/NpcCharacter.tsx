@@ -18,6 +18,7 @@ import type { Group } from "three";
 import { CLIP } from "./constants";
 import { clipFor } from "./characterLook";
 import { createNametag } from "./nametag";
+import { PICK_AS_BODY } from "./clickPick";
 import { registerLabel } from "./labelRegistry";
 import { bubbleRestHeight, nametagRestHeight } from "./nametagLayout";
 import { NPC_TAG_TEXT, type NpcConfig } from "./npc";
@@ -78,7 +79,7 @@ export function NpcCharacter({ npc }: { npc: NpcConfig }) {
   }, [npc.id, tagHeight, bubbleRest]);
 
   return (
-    <group ref={groupRef} position={[npc.pos.x, 0, npc.pos.z]} rotation-y={npc.rotY}>
+    <group ref={groupRef} position={[npc.pos.x, 0, npc.pos.z]} rotation-y={npc.rotY} userData={PICK_AS_BODY}>
       <primitive object={avatar.root} />
     </group>
   );

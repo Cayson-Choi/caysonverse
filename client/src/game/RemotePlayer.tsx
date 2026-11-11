@@ -6,6 +6,7 @@ import { setAvatarOpacity } from "./characterAvatar";
 import { clipFor, lookFromAppearance } from "./characterLook";
 import { reportAvatarClip, useAvatar } from "./useAvatar";
 import { BlobShadow } from "./BlobShadow";
+import { PICK_AS_BODY } from "./clickPick";
 import { createNametag } from "./nametag";
 import { registerLabel } from "./labelRegistry";
 import { bubbleRestHeight, nametagRestHeight } from "./nametagLayout";
@@ -114,7 +115,7 @@ export function RemotePlayer({
   const bubbleTop = useSpeechBubble(sessionId, groupRef, bubbleAnchor);
   // Emoji reaction above this avatar, driven by the emoji broadcast. Same
   // cleanup-with-avatar discipline as the speech bubble; it starts above the bubble.
-  useEmoji(sessionId, groupRef, bubbleAnchor, bubbleTop);
+  useEmoji(sessionId, groupRef, avatar.topY, bubbleTop);
 
   // Per-frame mutable state — refs, never React state.
   const idleAction = useRef<AnimationAction | null>(null);
@@ -544,7 +545,7 @@ export function RemotePlayer({
   });
 
   return (
-    <group ref={groupRef}>
+    <group ref={groupRef} userData={PICK_AS_BODY}>
       <primitive object={avatar.root} />
       {blobShadow && (
         <group ref={shadowRef}>
