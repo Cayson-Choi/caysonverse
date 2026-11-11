@@ -69,6 +69,8 @@ import { localGlide } from "./seatMotion";
 import { getLocalLift } from "./jump";
 import { useFpCursor } from "./useFpCursor";
 import { useSettingsStore } from "../stores/settingsStore";
+import { getTransitRenderPose, useTransitState } from "../net/transitSync";
+import { transitWindowCamera } from "../village/transitCamera";
 import type { Orbit, Pose, SeatState } from "./types";
 
 interface CameraRigProps {
@@ -225,6 +227,9 @@ export function CameraRig({ pose, orbit, seat, fogRange = LEGACY_FOG, far: baseF
   const lastBounds = useRef(activeBounds());
   // Z / C are registered in the shared KeyboardControls map; read their live state.
   const [, getKeys] = useKeyboardControls<MoveControl>();
+  // A boarded village bus owns the camera pose until the server confirms a leave.
+  // Keeping this as a tiny external-store hook avoids per-frame React renders.
+  const { boarded: busBoarded } = useTransitState();
   // First person hides the resting mouse cursor over the 3D view (fpCursor.ts) — the owner saw it as a stray icon.
   useFpCursor(gl.domElement, getKeys);
 
@@ -902,6 +907,17 @@ export function CameraRig({ pose, orbit, seat, fogRange = LEGACY_FOG, far: baseF
       lerp(uTgtY, 0, ovT),
       lerp(uTgtZ, ovPosZ, ovT),
     );
+
+    // While riding, replace the normal avatar orbit with a passenger eye at
+    // the bus cabin and aim through its right-side window. The world camera
+    // resumes on the very next frame after the authoritative leave state,
+    // preserving the player's TP/FP/overview orbit exactly as it was.
+    if (busBoarded) {
+      const ride = transitWindowCamera(getTransitRenderPose());
+      camera.position.set(ride.x, ride.y, ride.z);
+      camera.up.set(0, 1, 0);
+      camera.lookAt(ride.targetX, ride.targetY, ride.targetZ);
+    }
 
     // Overview looks down from far above; push the fog band out (eased by ovT) so
     // the whole map reads crisply instead of hazing into the sky. Restored exactly

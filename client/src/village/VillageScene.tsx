@@ -42,6 +42,7 @@ import { StarSky } from "./sky/StarSky";
 import { StarFinder } from "./sky/StarFinder";
 import { StarFinderButton } from "./sky/StarFinderButton";
 import { FishingPanel } from "./FishingPanel";
+import { TransitRoadSignals } from "./TransitRoadSignals";
 
 /**
  * 케이슨 마을 — the village scene (Task 4). A `PlayShell` on the village map under the village's afternoon
@@ -112,6 +113,7 @@ function VillageArea({ area, tier }: { area: AreaId; tier: VillageTier }) {
           <SceneWarmUp key={tier} />
         </Suspense>
       </LoadBoundary>
+      <TransitRoadSignals />
       <PlotMarkers />
       <DoorPad pad={VILLAGE_LAYOUT.memorial.exterior.doorPad} y={0.06} />
     </>
