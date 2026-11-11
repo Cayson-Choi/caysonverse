@@ -1,3 +1,4 @@
+import { ARC_LAND_R } from "./fountainLayout";
 import {
   Color,
   DataTexture,
@@ -262,6 +263,53 @@ void main() {
 }
 `;
 
+/**
+ * The dome's sky in a direction `r` (linear), for a reflection: the model's sky texture as the dome lays it, the land
+ * near the horizon. Needs the uniforms `uSky`, `uSkyMap` and `uLand` (and three's `<common>` for PI2). Shared with the
+ * fountain's streams and curtains (fountainWater.ts).
+ */
+export const SKY_AT_GLSL = /* glsl */ `
+vec3 skyAt( vec3 r ) {
+  float low = 1.0 - smoothstep( 0.02, 0.2, r.y ); // reflections near the horizon show the land, not the haze
+  r.y = max( r.y, 0.03 );
+  r = normalize( r );
+  float az = atan( r.x, r.z );
+  float el = asin( clamp( r.y, 0.0, 1.0 ) );
+  vec2 uv = vec2( fract( uSkyMap.x * az / PI2 + uSkyMap.y ), clamp( uSkyMap.z * el + uSkyMap.w, 0.0, 1.0 ) );
+  // A fixed, blurred level: rippled water blurs its reflection, and the azimuth's wrap leaves no mip seam.
+  return mix( textureLod( uSky, uv, 3.0 ).rgb, uLand, low );
+}
+`;
+
+/**
+ * The plaza fountain's pool (FOUNTAIN_POOL, fountainWater.ts): the water the jets and curtains land in. Rings spread from
+ * every landing point (16 arcs on r 2.9, the 8 crowns around r 1.9 on the pedestal's pool) and from the curtains' landing
+ * lines (r 1.85 on the pedestal's pool, r 2.75 on the basin), with white foam where the water comes down; the rest of the
+ * basin stays calm enough to mirror the sky. At night the underwater lights are bright spots with a shimmering pool of
+ * light around them instead of one blue glow over the whole basin. `uFTime` is the fountain's wrapped clock.
+ */
+const FOUNTAIN_POOL_PARS = /* glsl */ `
+#ifdef FOUNTAIN_POOL
+uniform sampler2D uNoise;
+uniform float uFTime;
+const float FP_K = 78.5398163;  // rings 8 cm apart
+const float FP_W = 27.4889357;  // ... running out at 0.35 m/s (2625 periods in 600 s)
+// The rings spreading from a point c: their slope added to s, the distance to c kept in near.
+void fpRings( vec2 q, vec2 c, float amp, float decay, float phase, inout vec2 s, inout float near ) {
+  vec2 dv = q - c;
+  float d = length( dv );
+  float env = amp * exp( -d / decay ) * smoothstep( 0.0, 0.12, d );
+  s += dv / max( d, 1e-3 ) * cos( d * FP_K - FP_W * uFTime + phase ) * env;
+  near = min( near, d );
+}
+// The two points of a ring of n (radius r, first at angle a0) nearest to the angle th.
+vec2 fpPoint( float k, float n, float r, float a0 ) {
+  float a = a0 + k * PI2 / n;
+  return vec2( cos( a ), sin( a ) ) * r;
+}
+#endif
+`;
+
 const WATER_FRAGMENT = /* glsl */ `
 uniform sampler2D uMap;
 uniform sampler2D uRipple;
@@ -289,16 +337,8 @@ varying vec2 vUv;
 varying vec3 vWorldPos;
 varying vec3 vWorldNormal;
 
-vec3 skyAt( vec3 r ) {
-  float low = 1.0 - smoothstep( 0.02, 0.2, r.y ); // reflections near the horizon show the land, not the haze
-  r.y = max( r.y, 0.03 );
-  r = normalize( r );
-  float az = atan( r.x, r.z );
-  float el = asin( clamp( r.y, 0.0, 1.0 ) );
-  vec2 uv = vec2( fract( uSkyMap.x * az / PI2 + uSkyMap.y ), clamp( uSkyMap.z * el + uSkyMap.w, 0.0, 1.0 ) );
-  // A fixed, blurred level: rippled water blurs its reflection, and the azimuth's wrap leaves no mip seam.
-  return mix( textureLod( uSky, uv, 3.0 ).rgb, uLand, low );
-}
+${SKY_AT_GLSL}
+${FOUNTAIN_POOL_PARS}
 
 void main() {
   // The model's texture at a coarse level: its foam half, and a soft shade over the bed (its sparkle patches blurred away).
@@ -312,7 +352,56 @@ void main() {
   #ifdef WATER_DETAIL
     g = g * 0.7 + ( texture2D( uRipple, p * uRippleScale.y + uTime * uRippleDrift.zw ).xy * 2.0 - 1.0 ) * 0.5;
   #endif
-  vec3 n = normalize( vec3( g.x * uRippleTilt, 1.0, g.y * uRippleTilt ) );
+  float tilt = uRippleTilt;
+  vec2 extra = vec2( 0.0 );
+  #ifdef FOUNTAIN_POOL
+    // The fountain's pool (see FOUNTAIN_POOL_PARS): no foam from the model's texture; its own rings, foam and lights.
+    foam = 0.0;
+    vec2 q = vWorldPos.xz - uFountain.xy;
+    float pr = length( q );
+    float pth = atan( q.y, q.x );
+    // The 8 cm rings fade out where a pixel spans more than about 1.5 cm (no moire far away).
+    float aa = 1.0 - smoothstep( 0.012, 0.03, length( fwidth( vWorldPos.xz ) ) );
+    // Foam: soft clumps (value noise) laced with bubbles (the cell walls), two layers drifting apart. Sampled here,
+    // outside any branch.
+    vec4 fa = texture2D( uNoise, q * 1.3 + vec2( 0.0, uFTime * 0.05 ) );
+    vec4 fb = texture2D( uNoise, q * 2.3 - vec2( uFTime * 0.0333333, 0.0 ) );
+    float lace = 0.55 * ( fa.r * 0.6 + fb.g * 0.4 ) + 0.45 * ( 1.0 - min( fa.b, fb.b ) );
+    float nearJet = 9.0;
+    float band = 9.0;
+    float cover = 0.0;
+    float lit = 0.0;
+    if ( vWorldPos.y < 0.6 ) {
+      // The basin: the 16 arcs land on r ${ARC_LAND_R.toFixed(3)} (the two nearest ring sources), the lower curtain on r 2.75.
+      float k = floor( pth / PI2 * 16.0 );
+      fpRings( q, fpPoint( k, 16.0, ${ARC_LAND_R.toFixed(4)}, 0.0 ), 0.34 * aa, 0.55, k * 2.3, extra, nearJet );
+      fpRings( q, fpPoint( k + 1.0, 16.0, ${ARC_LAND_R.toFixed(4)}, 0.0 ), 0.34 * aa, 0.55, k * 2.3 + 2.3, extra, nearJet );
+      float dl = pr - 2.75;
+      extra += q / max( pr, 1e-3 ) * sign( dl ) * cos( abs( dl ) * FP_K - FP_W * uFTime ) * 0.22 * aa * exp( -abs( dl ) / 0.3 );
+      band = abs( dl );
+      // Rough between the pedestal and the landings, calm toward the rim (a mirror for the sky).
+      tilt *= mix( 2.0, 0.8, smoothstep( 3.1, 3.9, pr ) );
+      cover = max( 0.85 * ( 1.0 - smoothstep( 0.03, 0.34, nearJet ) ), 0.5 * ( 1.0 - smoothstep( 0.01, 0.1, band ) ) );
+      // The nozzles' lights (16 on r 5.1): a bright point under each and a soft pool of light around it.
+      float kn = floor( pth / PI2 * 16.0 + 0.5 );
+      float dn = length( q - fpPoint( kn, 16.0, 5.1, 0.0 ) );
+      lit = exp( -dn * dn / 0.006 ) * 2.2 + exp( -dn * dn / 0.12 ) * 0.18;
+    } else if ( vWorldPos.y < 1.2 ) {
+      // The pedestal's pool: the crowns rain down around the 8 upright jets (r 1.9), the upper curtain lands on r 1.85.
+      float ku = floor( ( pth - 0.2 ) / PI2 * 8.0 + 0.5 );
+      fpRings( q, fpPoint( ku, 8.0, 1.9, 0.2 ), 0.28 * aa, 0.35, ku * 1.7, extra, nearJet );
+      float dl = pr - 1.85;
+      extra += q / max( pr, 1e-3 ) * sign( dl ) * cos( abs( dl ) * FP_K - FP_W * uFTime ) * 0.2 * aa * exp( -abs( dl ) / 0.2 );
+      band = abs( dl );
+      tilt *= 2.4;
+      cover = max( 0.7 * ( 1.0 - smoothstep( 0.08, 0.55, nearJet ) ), 0.5 * ( 1.0 - smoothstep( 0.01, 0.1, band ) ) );
+      lit = exp( -nearJet * nearJet / 0.006 ) * 3.0 + exp( -nearJet * nearJet / 0.12 ) * 0.45;
+    } else {
+      tilt *= 1.8; // the bowl: the crowns' rain
+    }
+    float fpFoam = smoothstep( 1.0 - cover, 1.0 - cover + 0.22, lace ) * min( 1.0, cover * 1.15 );
+  #endif
+  vec3 n = normalize( vec3( g.x * tilt - extra.x, 1.0, g.y * tilt - extra.y ) );
   vec3 V = normalize( cameraPosition - vWorldPos );
   float cosT = clamp( dot( n, V ), 0.0, 1.0 );
   float F = 0.02 + 0.98 * pow( 1.0 - cosT, 5.0 );
@@ -333,12 +422,23 @@ void main() {
   vec4 foamTex = texture2D( uMap, vUv + vec2( 0.0, -uTime * uFoamFlow ) );
   col = mix( col, foamTex.rgb, foam );
   alpha = mix( alpha, foamTex.a, foam );
+  #ifdef FOUNTAIN_POOL
+    col = mix( col, vec3( 0.8, 0.84, 0.86 ), fpFoam * 0.85 );
+    alpha = mix( alpha, 1.0, fpFoam * 0.85 );
+  #endif
 
   // The time of day (Task 7A): the whole surface follows the light (dark blue at night), and at night the fountain's
   // underwater lights glow in its pool and jets (x, z, radius, strength), the foam the most.
   col *= uTint;
-  float fd = length( vWorldPos.xz - uFountain.xy ) / max( uFountain.z, 1e-3 );
-  col += uFountainColor * ( uFountain.w * exp( -fd * fd ) * ( 0.45 + 0.55 * foam ) );
+  #ifdef FOUNTAIN_POOL
+    // Bright points where the lights are, a shimmering pool of light around them, the foam lit from below; only a faint
+    // glow over the rest (the whole basin glowing blue read as a neon tub).
+    float fd = pr / max( uFountain.z, 1e-3 );
+    col += uFountainColor * ( uFountain.w * ( 0.05 * exp( -fd * fd ) + lit * ( 0.75 + 0.5 * ( g.x + g.y ) ) + fpFoam * ( 0.25 + 0.5 * lit ) ) );
+  #else
+    float fd = length( vWorldPos.xz - uFountain.xy ) / max( uFountain.z, 1e-3 );
+    col += uFountainColor * ( uFountain.w * exp( -fd * fd ) * ( 0.45 + 0.55 * foam ) );
+  #endif
 
   gl_FragColor = vec4( col, alpha );
   #include <tonemapping_fragment>
@@ -357,6 +457,11 @@ export interface WaterOptions {
   /** The rich tier: two ripple layers and the sun's glint. */
   detail: boolean;
   side: Side;
+  /**
+   * The plaza fountain's pool (fountainWater.ts): its landing rings, foam and night lights, drawn with the fountain's
+   * noise texture (`uNoise`) and wrapped clock (`uFTime`). Off (absent) for every other water surface.
+   */
+  fountainPool?: { noise: Texture } | null;
 }
 
 /** The village's water surface (a ShaderMaterial with the scene's fog, tone mapping and colour space). */
@@ -389,11 +494,13 @@ export function createWaterMaterial(o: WaterOptions): ShaderMaterial {
         uTint: { value: new Vector3(1, 1, 1) },
         uFountain: { value: new Vector4(0, 0, WATER.fountainGlow.radius, 0) },
         uFountainColor: { value: new Vector3(fountain.r, fountain.g, fountain.b) },
+        uNoise: { value: null },
+        uFTime: { value: 0 },
       },
     ]),
     vertexShader: WATER_VERTEX,
     fragmentShader: WATER_FRAGMENT,
-    defines: o.detail ? { WATER_DETAIL: "" } : {},
+    defines: { ...(o.detail ? { WATER_DETAIL: "" } : {}), ...(o.fountainPool ? { FOUNTAIN_POOL: "" } : {}) },
     transparent: true,
     depthWrite: false,
     fog: true,
@@ -403,6 +510,8 @@ export function createWaterMaterial(o: WaterOptions): ShaderMaterial {
   m.uniforms.uMap!.value = o.map;
   m.uniforms.uRipple!.value = o.ripple;
   m.uniforms.uSky!.value = o.sky;
+  m.uniforms.uNoise!.value = o.fountainPool?.noise ?? null;
+  if (o.fountainPool) m.name = "M_water (fountain pool)";
   const s = o.skyMapping;
   (m.uniforms.uSkyMap!.value as Vector4).set(s.uSign, s.uOffset, s.vScale, s.vOffset);
   return m;
