@@ -234,14 +234,30 @@ describe("village_bus.glb geometry: the wordmark decals and the signs behind gla
     const led = tris.M_bus_led!;
     const glass = tris.M_bus_glass!;
     const allGlass = Array.from({ length: glass.faces.length / 3 }, (_, f) => f);
-    const signs: Record<string, number[]> = { front: [], side: [], rear: [] };
+    const signs: Record<string, number[]> = { front: [], side: [], rear: [], other: [] };
     for (let f = 0; f < led.faces.length / 3; f++) {
-      const n = normalOf(corners(led, f));
-      signs[n[2] < -0.5 ? "front" : n[0] > 0.9 ? "side" : n[2] > 0.9 ? "rear" : "other"]?.push(f);
+      const c3 = corners(led, f);
+      const n = normalOf(c3);
+      const kind = n[2] < -0.5 ? "front" : n[0] > 0.9 ? "side" : n[2] > 0.9 ? "rear" : "other";
+      signs[kind]!.push(f);
+      // every face looks out of the body (the file's frame is centred on the bus): no back of a sign turned into the cabin
+      const mid = [0, 1, 2].map((k) => (c3[0][k]! + c3[1][k]! + c3[2][k]!) / 3);
+      expect(mid[0]! * n[0] + mid[2]! * n[2], `${kind} sign face ${f} faces into the cabin`).toBeGreaterThan(0);
     }
     expect(signs.front!.length).toBeGreaterThan(0);
     expect(signs.side!.length).toBeGreaterThan(0);
     expect(signs.rear!.length).toBeGreaterThan(0);
+    // the three signs and nothing else (polish tech r1): the glass clears in front of the signs it finds among these
+    // faces (client villageBusPrep.ts busSignsBehindGlass, BUS_SIGN_SLOTS = 2: the kerb side's and the rear's); a face
+    // any other way would compete for those two slots
+    expect(signs.other, "LED faces neither front, kerb side nor rear").toEqual([]);
+    // the kerb-side and rear signs are each one flat panel (one box each for the glass's test)
+    const spread = (fs: number[], k: number) => {
+      const v = fs.flatMap((f) => corners(led, f).map((p) => p[k]!));
+      return Math.max(...v) - Math.min(...v);
+    };
+    expect(spread(signs.side!, 0)).toBeLessThan(0.002);
+    expect(spread(signs.rear!, 2)).toBeLessThan(0.002);
     const gapOut = (f: number) => {
       const c3 = corners(led, f);
       const n = normalOf(c3);
