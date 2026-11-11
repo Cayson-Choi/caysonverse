@@ -508,14 +508,19 @@ export function CameraRig({ pose, orbit, seat, fogRange = LEGACY_FOG, far: baseF
       }
       // A touch on the look half within DOUBLE_TAP_MS of a tap's lift, near it: a double tap, decided now — the first
       // tap's walk is dropped before this touch is lifted, however long it is held (LookTapGate).
-      if (
+      const doubleTap =
         clickStart &&
         e.pointerType === "touch" &&
         viewState.mode !== "ov" &&
         isLookHalf(e.clientX, window.innerWidth, useSettingsStore.getState().settings.leftHanded) &&
-        taps.down(e.pointerId, clickStart.t, e.clientX, e.clientY)
-      ) {
+        taps.down(e.pointerId, clickStart.t, e.clientX, e.clientY);
+      if (doubleTap && clickStart) {
         clickStart.second = true;
+        // A busy page can let the first tap's walk start before this touch-down is handled. LookTapGate normally
+        // undoes that walk through its callback; clear the live target as well so a delayed callback can never leave
+        // the avatar walking while the camera recentres.
+        clickWork.drop();
+        clearClickTarget();
         secondTouchGeneration = clickGeneration();
       }
       if (pointers.size === 2) {
@@ -634,6 +639,9 @@ export function CameraRig({ pose, orbit, seat, fogRange = LEGACY_FOG, far: baseF
             // The pick runs just after this event, on a copy of the camera as it is now: the page answers the finger
             // first, so a second tap is not held up behind the first one's pick (round 3 merge test, round 4 review:
             // a phone under load lost its double tap — a walk instead of a recenter).
+            // A look-half tap takes over a mouse/stick plan that is still searching for a route. The two HeldWork
+            // lanes must not be allowed to finish out of order and replace this tap's target later.
+            clickWork.drop();
             const cam = camera as PerspectiveCamera;
             cam.updateMatrixWorld();
             const tap: LookTap = {
@@ -652,6 +660,8 @@ export function CameraRig({ pose, orbit, seat, fogRange = LEGACY_FOG, far: baseF
             // A mouse click, or a tap on the stick half: planned now, walked the moment its plan is made (a way round
             // is looked for over the next moments, its ring showing meanwhile).
             const t0 = performance.now();
+            // This input lane takes over any held look-half tap (including its pending ring and route slices).
+            taps.reset();
             clickWork.drop(); // a click still being planned gives way to this one
             let generation = clickGeneration();
             planClick(
