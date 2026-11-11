@@ -1,4 +1,4 @@
-import { Suspense, useEffect, useLayoutEffect, useMemo } from "react";
+import { Suspense, useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import { useGLTF, useTexture } from "@react-three/drei";
 import { DRACO_PATH } from "../game/hub/hubModelPrep";
@@ -20,11 +20,14 @@ import { dayNight } from "./dayNightDriver";
 import { useNightMapWanted } from "./nightLightmap";
 import { holdNightLightmap, noteBusRequested, noteNightRequested, noteVillageRequested } from "./villageRelease";
 import { preloadBus } from "./villageBusLoader";
+import { createVegetation, vegModeFrom, type VegStats, type VillageVegetation } from "./veg/villageVegetation";
 
 declare global {
   interface Window {
     /** Dev-only: the dressed village model (VillageModel). Absent in production builds. */
     __cvVillage?: () => VillageNodes;
+    /** Dev-only: the 3D vegetation's numbers (veg3d: mode, instances per level, triangles, draw calls), or null (`?veg=old`). */
+    __cvVeg?: () => VegStats | null;
   }
 }
 
@@ -59,6 +62,28 @@ export function VillageModel({ tier }: { tier: VillageTier }) {
     () => prepareVillage(gltf.scene, lightmap, tier, LIGHTING.village.toneCurve, undefined, (t) => gl.properties.has(t)),
     [gltf, lightmap, tier, gl],
   );
+  // The 3D flowers and cherry crowns (veg3d), built in steps after the village is up; once ready they hide the old
+  // cards in this clone (`?veg=old` in DEV keeps them). Disposing gives the clone its cards back.
+  const [veg, setVeg] = useState<VillageVegetation | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    let built: VillageVegetation | null = null;
+    void createVegetation(nodes.root, tier, vegModeFrom(window.location.search, import.meta.env.DEV), () => cancelled).then((v) => {
+      if (!v) return;
+      if (cancelled) v.dispose();
+      else {
+        built = v;
+        setVeg(v);
+      }
+    });
+    if (import.meta.env.DEV) window.__cvVeg = () => built?.stats() ?? null;
+    return () => {
+      cancelled = true;
+      if (import.meta.env.DEV) delete window.__cvVeg;
+      built?.dispose();
+      setVeg(null);
+    };
+  }, [nodes, tier]);
   const night = useNightMapWanted();
   useEffect(() => {
     // Dev/E2E probe: the dressed model (draw-call and material checks). Tree-shaken in production.
@@ -68,14 +93,16 @@ export function VillageModel({ tier }: { tier: VillageTier }) {
       disposeVillage(nodes);
     };
   }, [nodes]);
-  useFrame(({ clock, gl }) => {
+  useFrame(({ clock, gl, camera }) => {
     tickVillage(nodes, clock.elapsedTime, gl.toneMappingExposure);
     applyDayNight(nodes, dayNight.applied);
+    veg?.update(camera, clock.elapsedTime);
   });
   // dispose={null}: the geometry and shared materials belong to the loader's cache.
   return (
     <>
       <primitive object={nodes.root} dispose={null} />
+      {veg && <primitive object={veg.group} dispose={null} />}
       {night && (
         <Suspense fallback={null}>
           <NightLightmap />
