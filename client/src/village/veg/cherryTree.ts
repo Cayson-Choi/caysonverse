@@ -58,19 +58,30 @@ const norm = (a: Vec3): Vec3 => {
 const lerp = (a: Vec3, b: Vec3, t: number): Vec3 => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
 const dot = (a: Vec3, b: Vec3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 
-/** One plaza cherry's skeleton: parts_trees.tree(F, x, z, "cherry", H, 3.0, 100 + i, y0=0.38), replayed. */
-export function cherrySkeleton(i: number): CherrySkeleton {
-  const a = deg(PLAZA_CHERRY_ANGLES[i]!);
-  const x = PLAZA_CHERRY_RING * Math.cos(a);
-  const z = PLAZA_CHERRY_RING * Math.sin(a);
-  const H = 6.2 + (i % 3) * 0.4;
-  const R = 3.0;
-  const rng = new PyRandom(100 + i);
-  const trunkR = 0.13;
-  const forkH = H * 0.36; // KINDS["cherry"]["fork"]
+/** Parameters for replaying the Blender tree() skeleton at any outdoor position. */
+export interface CherrySkeletonSpec {
+  index: number;
+  x: number;
+  z: number;
+  H: number;
+  R: number;
+  seed: number;
+  y0?: number;
+  trunkR?: number;
+  fork?: number;
+  yaw?: number;
+}
+
+/** Replay one outdoor cherry/orchard skeleton from the Blender tree() parameters. */
+export function cherrySkeletonAt(spec: CherrySkeletonSpec): CherrySkeleton {
+  const { index, x, z, H, R } = spec;
+  const rng = new PyRandom(spec.seed);
+  const trunkR = spec.trunkR ?? 0.13;
+  const forkH = H * (spec.fork ?? 0.36);
+  const yaw = spec.yaw ?? 0;
   // Blender space from here (z up, y = -game z), as the script
-  const base: Vec3 = [x, -z, PLAZA_CHERRY_Y0];
-  const la = rng.uniform(0, 2 * Math.PI);
+  const base: Vec3 = [x, -z, spec.y0 ?? PLAZA_CHERRY_Y0];
+  const la = rng.uniform(0, 2 * Math.PI) + yaw;
   const leanv: Vec3 = mul([Math.cos(la), Math.sin(la), 0], 0.06 * forkH);
   const fork = add(add(base, [0, 0, forkH]), leanv);
   const crownC = add(add(base, [0, 0, forkH + (H - forkH) * 0.5]), leanv);
@@ -79,7 +90,7 @@ export function cherrySkeleton(i: number): CherrySkeleton {
   const sides: Branch[] = [];
   const nl = 5;
   for (let li = 0; li < nl; li++) {
-    const az = (2 * Math.PI * li) / nl + rng.uniform(-0.3, 0.3);
+    const az = (2 * Math.PI * li) / nl + rng.uniform(-0.3, 0.3) + yaw;
     const el = deg(rng.uniform(30, 58));
     const d: Vec3 = [Math.cos(az) * Math.cos(el), Math.sin(az) * Math.cos(el), Math.sin(el)];
     let Lb = (R * rng.uniform(0.75, 0.95)) / Math.max(0.35, Math.cos(el));
@@ -100,7 +111,35 @@ export function cherrySkeleton(i: number): CherrySkeleton {
       sides.push({ pts: [q0, lerp(q0, q1, 0.5), q1].map(g), radii: [r0 * 0.3, r0 * 0.18, 0.012] });
     }
   }
-  return { index: i, base: g(base), fork: g(fork), H, R, crownC: g(crownC), crownH, limbs, sides };
+  return { index, base: g(base), fork: g(fork), H, R, crownC: g(crownC), crownH, limbs, sides };
+}
+
+/** One plaza cherry's skeleton: parts_trees.tree(F, x, z, "cherry", H, 3.0, 100 + i, y0=0.38), replayed. */
+export function cherrySkeleton(i: number): CherrySkeleton {
+  const a = deg(PLAZA_CHERRY_ANGLES[i]!);
+  return cherrySkeletonAt({
+    index: i,
+    x: PLAZA_CHERRY_RING * Math.cos(a),
+    z: PLAZA_CHERRY_RING * Math.sin(a),
+    H: 6.2 + (i % 3) * 0.4,
+    R: 3.0,
+    seed: 100 + i,
+    y0: PLAZA_CHERRY_Y0,
+    trunkR: 0.13,
+    fork: 0.36,
+  });
+}
+
+/** Static outdoor cherries from parts_trees.village_trees (the non-instanced trees beyond the plaza). */
+export const OUTDOOR_CHERRY_SPECS: readonly CherrySkeletonSpec[] = [
+  [-13.5, 36.0, 6.0, 2.9], [-15.5, 44.5, 6.4, 3.0], [-27.5, 52.0, 6.0, 2.8],
+  [-20.0, 58.0, 5.8, 2.7], [23.0, 42.5, 5.8, 2.7], [-31.0, 46.5, 5.6, 2.6],
+  [-51.5, -1.0, 6.0, 2.8], [55.0, -19.5, 6.2, 2.8], [18.0, 62.0, 6.0, 2.8],
+  [70.0, 30.0, 6.0, 2.8], [-72.0, 30.0, 6.2, 2.8],
+].map(([x, z, H, R], i) => ({ index: 100 + i, x, z, H, R, seed: 300 + i, y0: 0, trunkR: 0.13, fork: 0.36 }));
+
+export function outdoorCherrySkeletons(): CherrySkeleton[] {
+  return OUTDOOR_CHERRY_SPECS.map(cherrySkeletonAt);
 }
 
 export function plazaCherrySkeletons(): CherrySkeleton[] {

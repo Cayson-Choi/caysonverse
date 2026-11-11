@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { crownEnvelope, envelopeRadius, growCherry, plazaCherrySkeletons } from "./cherryTree";
+import { OUTDOOR_CHERRY_SPECS, crownEnvelope, envelopeRadius, growCherry, outdoorCherrySkeletons, plazaCherrySkeletons } from "./cherryTree";
 
 /**
  * The limb tips the art script drew (python, art/village/tools/parts_trees.tree replayed with random.Random(100+i)),
@@ -93,5 +93,19 @@ describe("growCherry", () => {
         expect(t.radii[0]!).toBeLessThanOrEqual(0.035);
         expect(t.radii[t.radii.length - 1]!).toBeLessThan(0.005);
       }
+  });
+});
+
+describe("outdoor cherry skeletons", () => {
+  it("replays every static cherry outside the plaza at its authored position", () => {
+    const specs = OUTDOOR_CHERRY_SPECS;
+    const trees = outdoorCherrySkeletons();
+    expect(trees).toHaveLength(11);
+    expect(trees.map((t) => [t.base[0], t.base[2]])).toEqual(specs.map((s) => [s.x, s.z]));
+    for (const tree of trees) {
+      expect(tree.limbs).toHaveLength(5);
+      expect(tree.sides).toHaveLength(10);
+      expect(tree.crownH).toBeGreaterThan(1.5);
+    }
   });
 });
