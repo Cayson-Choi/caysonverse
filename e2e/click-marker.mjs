@@ -1449,12 +1449,11 @@ async function replanOnTapView(p) {
 }
 
 /**
- * The player's own body hiding the ring (round 6 review): a click on the avatar's head walks to the ground straight
- * ahead, behind the body the whole way. The body fades while it hides the ring (selfBody.ts) and the ring shows through
- * it; once the ring no longer hides behind it (arrived), the body is back in full.
+ * The player's own body in front of the ring: a click on the avatar's head walks to the ground straight ahead. The body
+ * stays opaque while the ring's ghost pass shows the covered part through it.
  */
 async function ownBodyFades(p) {
-  await run.step("desktop: a click on the own head — the body fades while it hides the ring, the ring shows through it", async () => {
+  await run.step("desktop: a click on the own head — the body stays opaque while the ring shows through it", async () => {
     await walkAndWait(p, 0, 18, 30000, 0.6);
     await setOrbitGoal(p, 0, 0.35, 6);
     const head = await p.page.evaluate(async () => {
@@ -1490,11 +1489,11 @@ async function ownBodyFades(p) {
     const end = await fadeState();
     await p.page.screenshot({ path: join(run.evidence, "own_body_fade_end.png") });
     const walking = samples.filter((s) => s.target && s.t > 300);
-    const faded = walking.filter((s) => s.hiding && s.opacity < 0.7 && s.depthCopies > 0);
+    const opaque = walking.filter((s) => !s.hiding && s.opacity === 1 && s.depthCopies === 0);
     const pick = await appPick(p);
-    const ok = walking.length > 0 && faded.length >= Math.ceil(walking.length * 0.6) && end.opacity === 1 && end.depthCopies === 0 && !end.hiding;
-    console.log(`  own-body-fade: ${faded.length}/${walking.length} walking samples faded; end opacity ${end.opacity}, depth copies ${end.depthCopies}`);
-    run.check("a click on the own head: it walks, the body fades (and writes its depth first) while it hides the ring, and comes back in full", ok, {
+    const ok = walking.length > 0 && opaque.length === walking.length && end.opacity === 1 && end.depthCopies === 0 && !end.hiding;
+    console.log(`  own-body-opaque: ${opaque.length}/${walking.length} walking samples opaque; end opacity ${end.opacity}, depth copies ${end.depthCopies}`);
+    run.check("a click on the own head: it walks while the body stays opaque and the ring remains visible", ok, {
       head, plan: pick?.plan ?? null, samples: samples.slice(0, 12), end,
     });
     all.push({ place: "own-body", device: "desktop", ok, fails: ok ? [] : ["hidden"], target: pick?.plan ?? null });
