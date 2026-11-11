@@ -34,6 +34,14 @@ export interface SignalState {
   canBusProceed: boolean;
 }
 
+export type PedestrianSignalColor = "walk" | "flashing" | "stop";
+
+export interface PedestrianSignalState {
+  color: PedestrianSignalColor;
+  remainingMs: number;
+  canCross: boolean;
+}
+
 export const TRANSIT = {
   hourMs: 60 * 60 * 1000,
   lapMs: 3 * 60 * 1000,
@@ -41,6 +49,8 @@ export const TRANSIT = {
   signalCycleMs: 40 * 1000,
   signalGreenMs: 22 * 1000,
   signalAmberMs: 3 * 1000,
+  pedestrianWalkMs: 18 * 1000,
+  pedestrianFlashingMs: 4 * 1000,
   stop: { x: 34.2, z: -5.75 } as TransitPoint,
   route: [
     { x: 34.2, z: -5.75 },
@@ -130,4 +140,16 @@ export function signalAt(utcMs: number, offsetMs = 0): SignalState {
     remainingMs: redMs - (elapsed - TRANSIT.signalGreenMs - TRANSIT.signalAmberMs),
     canBusProceed: false,
   };
+}
+
+/** Pedestrian phase is intentionally offset from the bus phase so the two signals are visibly independent. */
+export function pedestrianSignalAt(utcMs: number, offsetMs = 8_000): PedestrianSignalState {
+  const elapsed = mod(utcMs + offsetMs, TRANSIT.signalCycleMs);
+  if (elapsed < TRANSIT.pedestrianWalkMs) {
+    return { color: "walk", remainingMs: TRANSIT.pedestrianWalkMs - elapsed, canCross: true };
+  }
+  if (elapsed < TRANSIT.pedestrianWalkMs + TRANSIT.pedestrianFlashingMs) {
+    return { color: "flashing", remainingMs: TRANSIT.pedestrianWalkMs + TRANSIT.pedestrianFlashingMs - elapsed, canCross: false };
+  }
+  return { color: "stop", remainingMs: TRANSIT.signalCycleMs - elapsed, canCross: false };
 }

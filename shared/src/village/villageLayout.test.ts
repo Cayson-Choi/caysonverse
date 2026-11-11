@@ -674,6 +674,14 @@ describe("village colliders are built from the layout", () => {
     expect(generated.bounds).toEqual(bare.bounds);
   });
 
+  it("keeps bus-shelter glass and frame panels visual-only even if a GLB export tags them as colliders", () => {
+    const shelter = boxOf(L.busStop.shelter);
+    const glassPanel = { minX: shelter.minX + 0.1, maxX: shelter.maxX - 0.1, minZ: shelter.minZ + 0.1, maxZ: shelter.maxZ - 0.1 };
+    const geometry = buildVillageGeometry(L, { obstacles: [glassPanel], cameraBoxes: [glassPanel] });
+    expect(geometry.obstacles).not.toContainEqual(glassPanel);
+    expect(geometry.cameraBoxes).not.toContainEqual(glassPanel);
+  });
+
   it("the greybox build: the colliders flagged camera are the buildings (houses, café, kiosk, bus, memorial)", () => {
     const geo = buildVillageGeometry(L, colliders);
     for (const c of colliders) {

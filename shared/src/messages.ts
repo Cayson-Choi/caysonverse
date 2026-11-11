@@ -175,6 +175,8 @@ export interface BusStatePayload {
   z: number;
   yaw: number;
   signal: "green" | "amber" | "red";
+  /** Separate pedestrian crossing phase; optional for old clients during rolling deploys. */
+  pedestrianSignal?: "walk" | "flashing" | "stop";
 }
 
 export interface BusRejectedPayload {

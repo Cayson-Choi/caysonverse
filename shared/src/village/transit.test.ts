@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { TRANSIT, busTripAt, routePoseAt, signalAt } from "./transit";
+import { TRANSIT, busTripAt, pedestrianSignalAt, routePoseAt, signalAt } from "./transit";
 
 describe("village transit schedule", () => {
   it("starts a new trip at each exact hour and completes one lap at the stop", () => {
@@ -52,5 +52,12 @@ describe("traffic signals", () => {
   it("supports a deterministic phase offset for another crossing", () => {
     expect(signalAt(0, TRANSIT.signalCycleMs - 1).color).toBe("red");
     expect(signalAt(TRANSIT.signalCycleMs, TRANSIT.signalCycleMs).color).toBe("green");
+  });
+
+  it("keeps pedestrian crossing phases separate from the bus signal", () => {
+    expect(pedestrianSignalAt(0, 0).color).toBe("walk");
+    expect(pedestrianSignalAt(TRANSIT.pedestrianWalkMs, 0).color).toBe("flashing");
+    expect(pedestrianSignalAt(TRANSIT.pedestrianWalkMs + TRANSIT.pedestrianFlashingMs, 0).color).toBe("stop");
+    expect(pedestrianSignalAt(0, 0).color).not.toBe(signalAt(0, 0).color);
   });
 });

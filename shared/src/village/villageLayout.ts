@@ -708,12 +708,19 @@ export function buildVillageGeometry(
     "obstacles" in colliders
       ? colliders
       : { obstacles: colliders.map((c) => c.box), cameraBoxes: colliders.filter((c) => c.camera).map((c) => c.box) };
+  // The shelter's glass and slim frame are visual-only.  Keep them out of the walk/camera geometry even if a future
+  // GLB export accidentally tags those panels as `col__*`; the bus route and the player must be able to pass the stop.
+  const shelter = boxAt(layout.busStop.shelter.centre, layout.busStop.shelter.size);
+  const isShelterPanel = (b: AABB): boolean =>
+    b.minX >= shelter.minX && b.maxX <= shelter.maxX && b.minZ >= shelter.minZ && b.maxZ <= shelter.maxZ;
+  const obstacles = village.obstacles.filter((b) => !isShelterPanel(b));
+  const cameraBoxes = village.cameraBoxes.filter((b) => !isShelterPanel(b));
   return makeGeometry(
     "village",
     villageBounds(layout),
     hallWalls(layout),
-    [...areaGapBlockers(layout), ...hallSurroundBlockers(layout), ...village.obstacles, ...(hall?.obstacles ?? []), ...extra],
-    [...village.cameraBoxes, ...(hall?.cameraBoxes ?? [])],
+    [...areaGapBlockers(layout), ...hallSurroundBlockers(layout), ...obstacles, ...(hall?.obstacles ?? []), ...extra],
+    [...cameraBoxes, ...(hall?.cameraBoxes ?? [])],
   );
 }
 
