@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CHAT_MAX_LENGTH, CHAT_RATE, CHAT_TOO_FAST } from "@caysonverse/shared/constants";
 import { acquireUiCapture, releaseUiCapture, captureReleaseEffect } from "../game/uiCapture";
+import { suppressWorldPointer } from "../game/worldPointerGuard";
 import { onHotkey } from "../game/hotkeys";
 import { isTextEntry, type FocusLike } from "../game/escape";
 import { createTypingSender } from "../game/typing";
@@ -303,6 +304,9 @@ export function ChatInput() {
       const input = inputRef.current;
       if (!input || document.activeElement !== input) return;
       if (!pressLeavesChat(e.target, barRef.current)) return;
+      // The canvas press is the dismissal gesture itself. CameraRig must not
+      // reinterpret this same pointer sequence as click-to-walk.
+      if (e.target === document.querySelector("canvas")) suppressWorldPointer(e.pointerId);
       // Where the HUD's controls come back (its own buttons, an open emoji fan, the guide card): only a press near one
       // needs the layout held.
       const l = layoutRef.current;
