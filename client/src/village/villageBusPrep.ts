@@ -46,7 +46,8 @@ import { VILLAGE_GROUND_DECAL, type VillageTier } from "./villageModelPrep";
  *  - `M_bus`: the atlas (base colour × COLOR_0 = baked ambient occlusion; ORM: R = the clear coat's mask, G roughness,
  *    B metalness; emissive = what glows at night: lamps, LED dots, the lit cabin), double-sided;
  *  - `M_bus_glass`: tinted glass (alpha blended, see-through to the cabin);
- *  - `M_bus_led`: the three destination signs (dot patterns that read as nothing; lit by day too);
+ *  - `M_bus_led`: the three destination signs, amber LED dots that read the village's own name: 케이슨 마을 on the
+ *    front and the kerb-side sign, 마을버스 on the rear (livery r4, make_bus_textures.py); lit by day too;
  *  - `M_bus_ground`: a quad on the road round the bus, 5 cm up (the village's ground decals' height, over every ground
  *    layer: the road at 1 cm, the paving rings, the lawns, the forecourt's 3 cm), whose base colour
  *    map carries, sRGB-encoded (three's decode gives the values themselves): in red the darkness its body and tyres put
