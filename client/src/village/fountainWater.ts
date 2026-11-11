@@ -72,7 +72,7 @@ import type { DayNightState } from "./dayNightBlend";
  * underwater lights' light travels up inside the clear streams and shows where the water breaks (the drops, the crowns,
  * the foam), as in a real lit fountain, while the smooth parts stay dark. Nothing here allocates per frame.
  *
- * The light (phone) tier draws the same with fewer segments and a fifth of the drops, no splashes and no mist.
+ * The light (phone) tier draws the same with fewer segments and roughly a fifth of the drops, no splashes and no mist.
  * Everything without a GPU (the trajectories, the pool's triangles, the particle pools, the LOD) is unit-tested in
  * fountainWater.test.ts.
  */
@@ -242,8 +242,10 @@ export const CURTAIN_SEGMENTS = { high: { around: 96, down: 12 }, low: { around:
 
 /** What a stream looks like (m): its diameter at the nozzle and at the end, where it starts and finishes breaking. */
 export const STREAM = {
-  arc: { width: [0.026, 0.045], break: ARC_BREAK },
-  upright: { width: [0.032, 0.07], break: UPRIGHT_BREAK },
+  // The outer-facing arcs read as a continuous, wet ribbon before they break into drops. A slightly wider core makes the
+  // water visible on a phone-sized viewport without relying on a bloom-heavy white material.
+  arc: { width: [0.034, 0.058], break: ARC_BREAK },
+  upright: { width: [0.04, 0.084], break: UPRIGHT_BREAK },
 } as const;
 
 /** The streams (16 arcs, 8 upright jets) as one ribbon geometry: the vertex shader places every vertex (see RIBBON_VERTEX). */
@@ -762,11 +764,13 @@ export const MIN_PX = 1.5;
 
 /**
  * How the clock's light lands on white water (× the state's linear light): the sky's (hemisphere) and the key's. By day
- * this keeps the white water at about 0.6-1.2 (linear, under the rich tier's bloom threshold 1.6).
+ * this keeps the white water below the rich tier's bloom threshold (1.6 linear) while retaining visible surface grain.
  */
-export const WHITE_WATER_LIGHT = { ambient: 0.32, key: 0.135, glint: 0.9 } as const;
+// Keep the water below the daytime bloom threshold while retaining enough diffuse light for the stream's grain and drops to
+// remain legible. The former values produced a white smear in the noon screenshot once the richer particle veil was enabled.
+export const WHITE_WATER_LIGHT = { ambient: 0.24, key: 0.1, glint: 0.55 } as const;
 /** The fountain's lights in the streams and drops at night: × the lights' weight (0..1) × `WATER.fountainGlow.color`. */
-export const FOUNTAIN_LIGHT_STRENGTH = 1.25;
+export const FOUNTAIN_LIGHT_STRENGTH = 0.95;
 
 /** Render order: the pool (the model's water, 0) first, then the curtains' inside and outside, the streams, the drops. */
 export const FOUNTAIN_RENDER_ORDER = { curtainBack: 3, curtainFront: 4, ribbons: 5, particles: 6 } as const;
