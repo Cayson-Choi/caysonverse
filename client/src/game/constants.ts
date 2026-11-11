@@ -71,7 +71,9 @@ export const MOVE_KEYS: KeyboardControlsEntry<MoveControl>[] = [
 /** Third-person orbit camera tuning. */
 export const CAMERA = {
   distance: 6, // first-visit follow distance (m); after that the player's own zoom is kept (cameraMemory.ts)
-  minDistance: 2.5,
+  // Keep the third-person camera outside the avatar's head and hat. Going closer enters first person instead of
+  // rendering the inside of the local character during a max-zoom look-down.
+  minDistance: 3.2,
   // 18m + pitch 0.35 puts the camera ~7.8m up — above the 4m walls, so max
   // zoom-out reads as a bird's-eye overview of the room instead of a wall face.
   maxDistance: 18,

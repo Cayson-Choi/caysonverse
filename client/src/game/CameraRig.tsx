@@ -27,6 +27,7 @@ import {
 } from "./overview";
 import { onHotkey } from "./hotkeys";
 import { isUiCaptured } from "./uiCapture";
+import { consumeSuppressedWorldPointer } from "./worldPointerGuard";
 import { CAMERA_LOOK_LIFT, ZOOM_BAND, pinchZoomDelta, stepKeyYaw, stepOrbitToward } from "./cameraControls";
 import { DOUBLE_TAP_MS, HeldWork, LookTapGate, canTapWalk, isLookHalf } from "./tapGesture";
 import {
@@ -496,6 +497,10 @@ export function CameraRig({ pose, orbit, seat, fogRange = LEGACY_FOG, far: baseF
     };
 
     const onDown = (e: PointerEvent) => {
+      // ChatInput closes on a document-capture pointerdown over the canvas.
+      // Consume that mark before recording the pointer so its dismissal press
+      // cannot become a click-move on pointerup.
+      if (consumeSuppressedWorldPointer(e.pointerId)) return;
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       clickStart =
         e.button === 0 && pointers.size === 1
