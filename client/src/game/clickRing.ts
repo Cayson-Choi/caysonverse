@@ -105,6 +105,53 @@ export function ringScreenScale(dist: number, sinElev: number, fovDeg: number, v
 }
 
 /**
+ * The player's own body seen from behind (the third-person camera rides right behind it) covers the ground straight
+ * ahead of it: a ring there — a click on the body itself, looked through to the ground beyond (clickPick.ts), or any
+ * walk straight away from the camera — stays behind the body the whole walk, from the head down to the knees, and only
+ * its dashed see-through outline shows, on the body (round 6 review: "a hair ornament"; 10-20 % of clicks in the
+ * default view). Grown until its ends showed beside the body, it read as a hoop round the neck or the waist. So while
+ * the body hides the ring (ringBehindSelf), the body fades to SELF_FADE_OPACITY and is drawn after the ring
+ * (SELF_FADE_RENDER_ORDER, LocalPlayer): the ring is seen through it, on the ground, as the ground round it is — the way
+ * a game fades a character that stands between the player and what the player must see. The outline is the avatar's,
+ * measured in the default view (1280 x 800 and 375 x 812): a half-width of SELF_HALF_WIDTH x its height over the head
+ * and the arms, SELF_LEGS_HALF_WIDTH x its height over the lower SELF_LEGS_SHARE of it.
+ */
+export const SELF_HALF_WIDTH = 0.27;
+export const SELF_LEGS_HALF_WIDTH = 0.15;
+export const SELF_LEGS_SHARE = 0.25;
+/** The ring counts as hidden while neither of its ends reaches this far (CSS px) past the body's outline. */
+export const RING_SELF_MARGIN_PX = 12;
+/** The body's opacity while it hides the ring, and how fast (s, a time constant) it fades out and back. */
+export const SELF_FADE_OPACITY = 0.45;
+export const SELF_FADE_TAU = 0.1;
+/** The faded body's render order: after the ring (RING_RENDER_ORDER), so the ring shows through it. */
+export const SELF_FADE_RENDER_ORDER = RING_RENDER_ORDER + 1;
+
+/** The player's own body on the screen (CSS px): its centre line, its feet's and its top's rows, its half-widths. */
+export interface SelfOutline {
+  x: number;
+  feetY: number;
+  topY: number;
+  half: number;
+  legsHalf: number;
+}
+
+/**
+ * Whether the player's own body hides the ring: its centre (cx, cy; px) inside `body`'s outline and behind it
+ * (`behind`: farther from the camera than the body), and neither of its ends — `ringHalfPx` its half-width on the
+ * screen — nor its near edge (its half-height: the half-width x `sinElev`, the sine of the view ray's elevation)
+ * reaching RING_SELF_MARGIN_PX past the outline.
+ */
+export function ringBehindSelf(cx: number, cy: number, ringHalfPx: number, sinElev: number, body: SelfOutline, behind: boolean): boolean {
+  if (!behind || !(ringHalfPx > 0) || !(body.feetY > body.topY) || cy <= body.topY || cy >= body.feetY) return false;
+  const h = (body.feetY - cy) / (body.feetY - body.topY);
+  const half = h < SELF_LEGS_SHARE ? body.legsHalf : body.half;
+  const off = Math.abs(cx - body.x);
+  if (off >= half || off + ringHalfPx >= half + RING_SELF_MARGIN_PX) return false; // an end shows beside the body
+  return cy + ringHalfPx * Math.max(sinElev, MIN_SIN_ELEV) < body.feetY + RING_SELF_MARGIN_PX; // else its near edge shows below the feet
+}
+
+/**
  * The part of the ring something nearer covers (ClickMarker's see-through pass) is drawn as a dashed, thinner, fainter
  * ring: it reads as "a ring on the ground behind that", not as part of what covers it (round 5 review: drawn whole at
  * 0.7 through the player's own body, the ring sat on the head like a hair ornament). RING_GHOST_DASHES dashes round it,

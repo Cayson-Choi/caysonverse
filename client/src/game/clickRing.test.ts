@@ -23,7 +23,15 @@ import {
   ringDepthBias,
   ringLift,
   ringScreenScale,
+  ringBehindSelf,
   ringY,
+  RING_SELF_MARGIN_PX,
+  SELF_FADE_OPACITY,
+  SELF_FADE_RENDER_ORDER,
+  SELF_HALF_WIDTH,
+  SELF_LEGS_HALF_WIDTH,
+  SELF_LEGS_SHARE,
+  type SelfOutline,
 } from "./clickRing";
 
 describe("clickRing — the destination ring on the ground", () => {
@@ -128,5 +136,42 @@ describe("clickRing — the covered part of the ring (round 5 review: a hair orn
     expect(RING_GHOST_FRAGMENT).toContain("diffuseColor.a *=");
     expect(RING_GHOST_FRAGMENT).toContain("discard");
     expect(RING_GHOST_FRAGMENT).toContain(RING_GHOST_DASHES.toFixed(1));
+  });
+});
+
+describe("clickRing — a ring behind the player's own body: the body fades so it shows through (round 6 review)", () => {
+  // the default view on a 1280 x 800 canvas, as measured: the body's centre line at 640, feet at 588, top at 335;
+  // a 2.15 m avatar 6.1 m from the camera (126 px a metre)
+  const pxPerM = 126;
+  const body: SelfOutline = { x: 640, feetY: 588, topY: 335, half: SELF_HALF_WIDTH * 2.15 * pxPerM, legsHalf: SELF_LEGS_HALF_WIDTH * 2.15 * pxPerM };
+
+  it("the outline is the measured avatar's: about 0.58 m either side over the head and arms, 0.32 m at the legs", () => {
+    expect(SELF_HALF_WIDTH * 2.15).toBeCloseTo(0.58, 1);
+    expect(SELF_LEGS_HALF_WIDTH * 2.15).toBeCloseTo(0.32, 1);
+    expect(SELF_LEGS_SHARE).toBeGreaterThan(0.1);
+    expect(SELF_LEGS_SHARE).toBeLessThan(0.4);
+  });
+
+  it("hidden: a ring 6.5 m ahead behind the head (25 px either side of its centre), one behind the back, behind the legs", () => {
+    expect(ringBehindSelf(640, 400, 25, 0.25, body, true)).toBe(true);
+    expect(ringBehindSelf(660, 480, 30, 0.28, body, true)).toBe(true);
+    expect(ringBehindSelf(640, 560, 20, 0.3, body, true)).toBe(true);
+  });
+
+  it("not hidden: in front of the body, beside it, an end clear of it, above the head, its near edge below the feet", () => {
+    expect(ringBehindSelf(640, 400, 25, 0.25, body, false)).toBe(false); // nearer the camera than the body
+    expect(ringBehindSelf(640 + body.half + 2, 400, 25, 0.25, body, true)).toBe(false); // beside it
+    expect(ringBehindSelf(640, 400, body.half + RING_SELF_MARGIN_PX, 0.25, body, true)).toBe(false); // both ends show
+    expect(ringBehindSelf(640 + body.half - 20, 400, 32 + RING_SELF_MARGIN_PX, 0.25, body, true)).toBe(false); // one end shows
+    expect(ringBehindSelf(640, 330, 25, 0.25, body, true)).toBe(false); // above the head
+    expect(ringBehindSelf(640, 585, 40, 0.4, body, true)).toBe(false); // its near arc below the feet
+    expect(ringBehindSelf(640, 560, 60, 0.3, body, true)).toBe(false); // behind the legs, wider than them
+  });
+
+  it("the faded body lets the ring through: under half opacity, drawn after the ring", () => {
+    expect(SELF_FADE_OPACITY).toBeGreaterThan(0.3);
+    expect(SELF_FADE_OPACITY).toBeLessThan(0.6);
+    expect(SELF_FADE_RENDER_ORDER).toBeGreaterThan(RING_RENDER_ORDER);
+    expect(SELF_FADE_RENDER_ORDER).toBeLessThan(999); // before the name tags, bubbles and emoji
   });
 });

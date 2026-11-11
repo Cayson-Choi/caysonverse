@@ -136,6 +136,18 @@ function eventTime(e: Event): number {
   return e.timeStamp > 0 ? e.timeStamp : performance.now();
 }
 
+/** A look-half tap held back for a possible second tap (CameraRig lookTapWalk). */
+interface LookTap {
+  /** Where the finger lifted (client px). */
+  at: { x: number; y: number };
+  /** A copy of the camera as it was then: the tap is picked, and its ring judged, on what the finger saw. */
+  snap: PerspectiveCamera;
+  /** When it was handled (performance.now()): its walk waits DOUBLE_TAP_MS from here. */
+  tappedAt: number;
+  /** Seated at the tap: its walk still means "get up and go there" (canTapWalk). */
+  seatedAtTap: boolean;
+}
+
 /** Pixel distance between the first two active pointers (0 if fewer than two). */
 function spread(pointers: Map<number, { x: number; y: number }>): number {
   const values = pointers.values();
@@ -249,6 +261,9 @@ export function CameraRig({ pose, orbit, seat, fogRange = LEGACY_FOG, far: baseF
     // DOUBLE_TAP_MS (its pick, its walk, its plan's slices) in case a second tap turns it into a recenter, and that
     // second touch, decided the moment it goes down. Dropped on a double tap, a pinch and unmount.
     const taps = new LookTapGate();
+    // The click-move generation (clickGeneration) when a double tap's second touch went down, after it dropped the first
+    // tap: should that touch turn into a drag, the first tap walks after all — unless the player took over meanwhile.
+    let secondTouchGeneration = -1;
     // A mouse click's (or a stick-half tap's) plan still looking for its way round (planClick): a newer click drops it.
     const clickWork = new HeldWork();
     /** What a click at a screen point lands on: the first visible surface under it (clickPick.ts). Once per click. */
@@ -369,6 +384,116 @@ export function CameraRig({ pose, orbit, seat, fogRange = LEGACY_FOG, far: baseF
     const stopWalk = () => {
       if (peekClickTarget()) clearClickTarget();
     };
+    /** Where a walk starts now (planClick's own rule, walkStart): where the avatar stands, gets up onto, or lands. */
+    const walkFrom = () => {
+      const s = seat.index >= 0 ? activeSeats()[seat.index] : undefined;
+      const g = localGlide.current;
+      return walkStart(pose.x, pose.z, s, g && { x: g.toX, z: g.toZ });
+    };
+    /**
+     * A look-half tap (onUp): its pick just after the event, on the camera as it was at the tap (`snap`); its plan, its
+     * ring shown at once; its walk once DOUBLE_TAP_MS have passed since the tap (`wait`: a second tap may still turn it
+     * into a recenter) — or at once (the second touch turned into a drag: LookTapGate.dragged). Every step on
+     * `taps.work`, dropped together by a new tap, a double tap or a pinch. Whenever the player takes over meanwhile — a
+     * key, the stick, Esc, a sit or another click (clickGeneration) — nothing of it shows or walks any more (round 6
+     * review: a ring brought back by a way round found after the player had moved on, a walk started by a re-plan
+     * finished after it).
+     */
+    const lookTapWalk = (tap: LookTap, wait: boolean) => {
+      const generation = clickGeneration();
+      taps.work.hold(() => {
+        const t0 = performance.now();
+        const pick = pickAt(tap.at.x, tap.at.y, tap.snap);
+        const plannedFrom = walkFrom();
+        planClick(
+          pick,
+          (plan, provisional) => {
+            if (clickGeneration() !== generation) {
+              // the player took over while its way round was looked for: its ring does not come back
+              if (provisional && peekPendingClick() === provisional) clearPendingClick();
+              return;
+            }
+            const intent = clickIntent(plan); // walk there / stop here (own feet) / nothing (a wall, a body, the sky...)
+            // the ring at the plan's spot (a menu open: no walk follows, no ring)
+            const shown = plan.ok && !isUiCaptured() ? setPendingClick(plan.x, plan.z, plan.y) : null;
+            if (!shown && provisional && peekPendingClick() === provisional) clearPendingClick();
+            if (intent === "ignore") return;
+            /** Its ring (`shown`, or a re-plan's `ring`) taken down if it still shows — never another click's. */
+            const dropOwnRing = (ring: Readonly<ClickTarget> | null = null) => {
+              const now = peekPendingClick();
+              if (now !== null && (now === shown || now === ring)) clearPendingClick();
+            };
+            taps.work.hold(
+              () => {
+                // a key, the stick, Esc, a sit or another click meanwhile: the player took over — no walk
+                const dropped = clickGeneration() !== generation || (shown !== null && peekPendingClick() !== shown);
+                if (!canTapWalk(viewState.mode, isUiCaptured(), tap.seatedAtTap, seat.index >= 0, dropped)) {
+                  if (!dropped) clearPendingClick();
+                  else dropOwnRing();
+                  if (import.meta.env.DEV) window.__cvTapWalk?.();
+                  return;
+                }
+                // A tap at the own feet means stop, whatever the walk in progress did meanwhile (round 4 review:
+                // planned again 300 ms later, 0.6 m on, it walked back to the tap instead).
+                if (intent === "stop") {
+                  clearClickTarget();
+                  if (import.meta.env.DEV) window.__cvTapWalk?.();
+                  return;
+                }
+                const walkTo = (now: ClickPlan, ring: Readonly<ClickTarget> | null) => {
+                  if (now.ok) {
+                    setClickTarget(now.x, now.z, now.y, now.via);
+                    // should a second touch that came in time be handled only now, this walk is taken back
+                    const set = clickGeneration();
+                    taps.walked(() => {
+                      if (clickGeneration() === set) clearClickTarget();
+                    });
+                  } else if (clickIntent(now) === "stop") clearClickTarget(); // it is at the avatar's feet now: stop
+                  else dropOwnRing(ring);
+                  if (import.meta.env.DEV) window.__cvTapWalk?.(); // the E2E holds the avatar here, before a frame walks it
+                };
+                // Where the avatar was when the tap was planned: that plan holds. A walk in progress moved it: the
+                // same surface, planned again from where it is now — its ring judged on the screen as the finger saw it
+                // (`snap`; round 6 review: judged 300 ms later on the live camera, a tap at the bottom of the screen
+                // behind a walk away from it had left the screen and was refused, its ring gone).
+                const from = walkFrom();
+                if (Math.hypot(from.x - plannedFrom.x, from.z - plannedFrom.z) < 1e-3) {
+                  walkTo(plan, null);
+                  return;
+                }
+                let replanned = clickGeneration();
+                planClick(
+                  pick,
+                  (now, ring) => {
+                    // its way round was looked for over a few moments: the player may have taken over meanwhile
+                    const tookOver = clickGeneration() !== replanned;
+                    if (tookOver || !canTapWalk(viewState.mode, isUiCaptured(), tap.seatedAtTap, seat.index >= 0)) {
+                      dropOwnRing(ring);
+                      if (import.meta.env.DEV) window.__cvTapWalk?.();
+                      return;
+                    }
+                    walkTo(now, ring);
+                  },
+                  taps.work,
+                  {
+                    snap: tap.snap,
+                    provisional: true,
+                    onDefer: () => {
+                      stopWalk();
+                      replanned = clickGeneration();
+                    },
+                  },
+                );
+              },
+              wait ? Math.max(0, DOUBLE_TAP_MS - (performance.now() - tap.tappedAt)) : 0,
+              () => clearPendingClick(), // its ring goes with it
+            );
+          },
+          taps.work,
+          { t0, snap: tap.snap, provisional: !isUiCaptured() },
+        );
+      }, 0);
+    };
 
     const onDown = (e: PointerEvent) => {
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -391,6 +516,7 @@ export function CameraRig({ pose, orbit, seat, fogRange = LEGACY_FOG, far: baseF
         taps.down(e.pointerId, clickStart.t, e.clientX, e.clientY)
       ) {
         clickStart.second = true;
+        secondTouchGeneration = clickGeneration();
       }
       if (pointers.size === 2) {
         pinchPrev = spread(pointers);
@@ -403,6 +529,9 @@ export function CameraRig({ pose, orbit, seat, fogRange = LEGACY_FOG, far: baseF
       if (!p) return; // a move with no prior down (e.g. hovering) — ignore
       if (clickStart && clickStart.id === e.pointerId) {
         clickStart.travel = pressTravel(clickStart.travel, e.clientX - clickStart.x, e.clientY - clickStart.y);
+        // a double tap's second touch turned into a look-drag: no double tap — the first tap walks after all (round 6
+        // review: tapped, then dragged at once from the same spot, the tap did nothing)
+        if (clickStart.second && clickStart.travel >= TAP_MAX_PX) taps.dragged(e.pointerId);
       }
       const dx = e.clientX - p.x;
       const dy = e.clientY - p.y;
@@ -480,9 +609,12 @@ export function CameraRig({ pose, orbit, seat, fogRange = LEGACY_FOG, far: baseF
         const travel = pressTravel(start.travel, e.clientX - start.x, e.clientY - start.y);
         if (start.second) {
           // The second touch of a double tap (decided at its touch-down, onDown): the camera swings back behind the
-          // body — unless the touch became a drag (that turned the view) or was cancelled. No pick, no walk.
+          // body — unless the touch became a drag (that turned the view) or was cancelled: then it was no double tap,
+          // and the first tap walks after all (LookTapGate.dragged, once). No pick, no walk of its own.
+          const tapped = e.type === "pointerup" && viewState.mode !== "ov" && travel < TAP_MAX_PX;
+          if (!tapped) taps.dragged(e.pointerId);
           taps.up(e.pointerId);
-          if (e.type === "pointerup" && viewState.mode !== "ov" && travel < TAP_MAX_PX) requestRecenter(pose.yaw);
+          if (tapped) requestRecenter(pose.yaw);
         } else if (
           e.type === "pointerup" && // a pointercancel is never a click
           viewState.mode !== "ov" &&
@@ -499,76 +631,23 @@ export function CameraRig({ pose, orbit, seat, fogRange = LEGACY_FOG, far: baseF
             // ring showing from the tap on. The world can change during that wait, so the walk is re-checked when
             // it fires (overview opened, chat took the keyboard, the player sat down or took over meanwhile — see
             // canTapWalk).
-            taps.tap(upAt, e.clientX, e.clientY);
             // The pick runs just after this event, on a copy of the camera as it is now: the page answers the finger
             // first, so a second tap is not held up behind the first one's pick (round 3 merge test, round 4 review:
             // a phone under load lost its double tap — a walk instead of a recenter).
             const cam = camera as PerspectiveCamera;
             cam.updateMatrixWorld();
-            const snap = new PerspectiveCamera().copy(cam, false);
-            const at = { x: e.clientX, y: e.clientY };
-            const tappedAt = performance.now();
-            const seatedAtTap = seat.index >= 0;
-            const generation = clickGeneration(); // a walk set or dropped by hand meanwhile: the player took over
-            const walkFrom = () => {
-              const s = seat.index >= 0 ? activeSeats()[seat.index] : undefined;
-              const g = localGlide.current;
-              return walkStart(pose.x, pose.z, s, g && { x: g.toX, z: g.toZ });
+            const tap: LookTap = {
+              at: { x: e.clientX, y: e.clientY },
+              snap: new PerspectiveCamera().copy(cam, false),
+              tappedAt: performance.now(),
+              seatedAtTap: seat.index >= 0,
             };
-            taps.work.hold(() => {
-              const t0 = performance.now();
-              const pick = pickAt(at.x, at.y, snap);
-              const plannedFrom = walkFrom();
-              planClick(
-                pick,
-                (plan, provisional) => {
-                  const intent = clickIntent(plan); // walk there / stop here (own feet) / nothing (a wall, a body, the sky...)
-                  // the ring at the plan's spot (a menu open: no walk follows, no ring)
-                  const shown = plan.ok && !isUiCaptured() ? setPendingClick(plan.x, plan.z, plan.y) : null;
-                  if (!shown && provisional && peekPendingClick() === provisional) clearPendingClick();
-                  if (intent === "ignore") return;
-                  taps.work.hold(
-                    () => {
-                      // a key, the stick, Esc, a sit or another click meanwhile: the player took over — no walk
-                      const dropped = clickGeneration() !== generation || (shown !== null && peekPendingClick() !== shown);
-                      if (!canTapWalk(viewState.mode, isUiCaptured(), seatedAtTap, seat.index >= 0, dropped)) {
-                        if (!dropped) clearPendingClick();
-                        if (import.meta.env.DEV) window.__cvTapWalk?.();
-                        return;
-                      }
-                      // A tap at the own feet means stop, whatever the walk in progress did meanwhile (round 4 review:
-                      // planned again 300 ms later, 0.6 m on, it walked back to the tap instead).
-                      if (intent === "stop") {
-                        clearClickTarget();
-                        if (import.meta.env.DEV) window.__cvTapWalk?.();
-                        return;
-                      }
-                      const walkTo = (now: ClickPlan) => {
-                        if (now.ok) {
-                          setClickTarget(now.x, now.z, now.y, now.via);
-                          // should a second touch that came in time be handled only now, this walk is taken back
-                          const set = clickGeneration();
-                          taps.walked(() => {
-                            if (clickGeneration() === set) clearClickTarget();
-                          });
-                        } else if (clickIntent(now) === "stop") clearClickTarget(); // it is at the avatar's feet now: stop
-                        else clearPendingClick();
-                        if (import.meta.env.DEV) window.__cvTapWalk?.(); // the E2E holds the avatar here, before a frame walks it
-                      };
-                      // Where the avatar was when the tap was planned: that plan holds. A walk in progress moved it: the
-                      // same surface, planned again from where it is now.
-                      const from = walkFrom();
-                      if (Math.hypot(from.x - plannedFrom.x, from.z - plannedFrom.z) < 1e-3) walkTo(plan);
-                      else planClick(pick, walkTo, taps.work, { provisional: true, onDefer: stopWalk });
-                    },
-                    Math.max(0, DOUBLE_TAP_MS - (performance.now() - tappedAt)),
-                    () => clearPendingClick(), // its ring goes with it
-                  );
-                },
-                taps.work,
-                { t0, snap, provisional: !isUiCaptured() },
-              );
-            }, 0);
+            taps.tap(upAt, e.clientX, e.clientY, () => {
+              // a second touch that dropped it turned into a drag: walked after all, at once — unless the player took
+              // over since that touch went down
+              if (clickGeneration() === secondTouchGeneration) lookTapWalk(tap, false);
+            });
+            lookTapWalk(tap, true);
           } else {
             // A mouse click, or a tap on the stick half: planned now, walked the moment its plan is made (a way round
             // is looked for over the next moments, its ring showing meanwhile).

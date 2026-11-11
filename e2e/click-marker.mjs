@@ -1396,6 +1396,112 @@ async function stopAtFeet(p) {
 }
 
 /**
+ * A phone tap low on the look half while walking away from the camera (round 6 review): its walk is planned again when
+ * the 300 ms wait ends (the walk moved the avatar), and that plan used to judge the ring on the live camera — 0.6 m on,
+ * the ground tapped at the bottom of the screen had left it, and the tap was refused ("unseen": its ring gone, no walk).
+ * Planned again on the camera the finger saw, it walks to the ring on the tap.
+ */
+async function replanOnTapView(p) {
+  await run.step("phone: a tap at the bottom of the screen while walking away walks there (planned again on the tap's view)", async () => {
+    const results = [];
+    // nothing of an earlier probe holds the walk (an armed walk hold takes the UI capture when this tap's walk starts)
+    const unhold = () =>
+      p.page.evaluate(() => {
+        if (window.__cmHold) window.__cmHold.armed = false;
+        return window.__cm.freeze(false);
+      });
+    for (let trial = 0; trial < 3; trial++) {
+      await unhold();
+      await walkAndWait(p, 0, 18, 30000, 0.6);
+      await setOrbitGoal(p, 0, 0.35, 6);
+      const vp = p.page.viewportSize();
+      // low on the look half, clear of the buttons in its corner (the chat button's edge is 30 px off (225, 776))
+      const sx = Math.round(vp.width * 0.54);
+      const sy = vp.height - 24 - trial * 6;
+      const over = await p.page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.tagName ?? null, [sx, sy]);
+      const h = await p.page.evaluate(([x, y]) => window.__cm.analyze(x, y), [sx, sy]);
+      if (over !== "CANVAS" || h.kind !== "ground") {
+        results.push({ trial, skipped: over !== "CANVAS" ? over : h.kind });
+        continue;
+      }
+      const me = await pos(p);
+      await p.page.evaluate(async ([x, z]) => (await window.__imp("/src/game/clickMove.ts")).setClickTarget(x, z), [me.x, me.z - 14]);
+      await sleep(700); // walking away from the camera
+      const seen = await p.page.evaluate(([x, y]) => window.__cm.analyze(x, y), [sx, sy]); // what the finger touches now
+      await pressAt(p, sx, sy);
+      await sleep(250);
+      const during = await p.page.evaluate(() => window.__cm.ring());
+      await sleep(700); // past the wait and the plan made again
+      const pick = await appPick(p);
+      const tgt = await target(p);
+      const toTap = tgt && seen.hit ? Math.hypot(tgt.x - seen.hit.x, tgt.z - seen.hit.z) : null;
+      results.push({ trial, toTap: toTap == null ? null : r2(toTap), ringDuringWait: !!during, plan: pick?.plan ?? null, tap: [sx, sy], touched: seen.hit, target: tgt });
+      await p.page.evaluate(() => window.__cm.clearTarget());
+      await sleep(300);
+    }
+    await unhold();
+    const used = results.filter((r) => !r.skipped);
+    const ok = used.length > 0 && used.every((r) => r.ringDuringWait && r.plan?.ok && r.target && r.toTap < 0.6);
+    console.log(`  replan-on-tap-view: ${used.filter((r) => r.plan?.ok).length}/${used.length} walked${results.length > used.length ? `, ${results.length - used.length} skipped` : ""}`);
+    run.check("a tap at the bottom of the screen during a walk away: its ring shows during the wait, then it walks there (not refused 'unseen')", ok, results);
+    all.push({ place: "replan-view", device: "phone", ok, fails: ok ? [] : ["refused"], target: used[0]?.target ?? null });
+  });
+}
+
+/**
+ * The player's own body hiding the ring (round 6 review): a click on the avatar's head walks to the ground straight
+ * ahead, behind the body the whole way. The body fades while it hides the ring (selfBody.ts) and the ring shows through
+ * it; once the ring no longer hides behind it (arrived), the body is back in full.
+ */
+async function ownBodyFades(p) {
+  await run.step("desktop: a click on the own head — the body fades while it hides the ring, the ring shows through it", async () => {
+    await walkAndWait(p, 0, 18, 30000, 0.6);
+    await setOrbitGoal(p, 0, 0.35, 6);
+    const head = await p.page.evaluate(async () => {
+      const THREE = await window.__imp("/node_modules/.vite/deps/three.js");
+      const sb = (await window.__imp("/src/game/selfBody.ts")).selfBody;
+      const { camera, gl } = window.__cvThree();
+      const r = gl.domElement.getBoundingClientRect();
+      const e = sb.object.matrixWorld.elements;
+      const v = new THREE.Vector3(e[12], e[13] + sb.height * 0.72, e[14]).project(camera);
+      return { x: Math.round(r.left + ((v.x + 1) / 2) * r.width), y: Math.round(r.top + ((1 - v.y) / 2) * r.height) };
+    });
+    const fadeState = () =>
+      p.page.evaluate(async () => {
+        const sb = (await window.__imp("/src/game/selfBody.ts")).selfBody;
+        let opacity = 1;
+        let depthCopies = 0;
+        sb.object?.traverse((o) => {
+          if (o.userData?.selfDepth) depthCopies++;
+          else if (o.isSkinnedMesh && o.material && !o.material.userData?.base?.transparent) opacity = Math.min(opacity, o.material.opacity);
+        });
+        return { hiding: sb.hidingRing, opacity: +opacity.toFixed(2), depthCopies, ring: window.__cm.ring(), target: window.__cvClickTarget?.() ?? null };
+      });
+    await pressAt(p, head.x, head.y);
+    const samples = [];
+    const t0 = Date.now();
+    while (Date.now() - t0 < 6000) {
+      const s = await fadeState();
+      samples.push({ t: Date.now() - t0, ...s, ring: !!s.ring, target: !!s.target });
+      if (!s.target && Date.now() - t0 > 600) break;
+      await sleep(150);
+    }
+    await sleep(600);
+    const end = await fadeState();
+    await p.page.screenshot({ path: join(run.evidence, "own_body_fade_end.png") });
+    const walking = samples.filter((s) => s.target && s.t > 300);
+    const faded = walking.filter((s) => s.hiding && s.opacity < 0.7 && s.depthCopies > 0);
+    const pick = await appPick(p);
+    const ok = walking.length > 0 && faded.length >= Math.ceil(walking.length * 0.6) && end.opacity === 1 && end.depthCopies === 0 && !end.hiding;
+    console.log(`  own-body-fade: ${faded.length}/${walking.length} walking samples faded; end opacity ${end.opacity}, depth copies ${end.depthCopies}`);
+    run.check("a click on the own head: it walks, the body fades (and writes its depth first) while it hides the ring, and comes back in full", ok, {
+      head, plan: pick?.plan ?? null, samples: samples.slice(0, 12), end,
+    });
+    all.push({ place: "own-body", device: "desktop", ok, fails: ok ? [] : ["hidden"], target: pick?.plan ?? null });
+  });
+}
+
+/**
  * A phone tap on the look half while the walk it interrupts arrives inside the tap's 300 ms double-tap wait: the new
  * tap's ring must stay on the screen the whole time (round 3 review: the arrival dropped it and it came back 300 ms on).
  */
@@ -1476,6 +1582,8 @@ for (const device of DEVICES) {
       if (PLACES.includes("walk") && phone) await retapWhileWalking(p);
       if (PLACES.includes("walk") && phone) await retapWhileArriving(p);
       if (PLACES.includes("walk") && phone) await stopAtFeet(p);
+      if (PLACES.includes("walk") && phone) await replanOnTapView(p);
+      if (PLACES.includes("walk") && !phone) await ownBodyFades(p);
       if (PLACES.includes("walk") && !phone) await firstPersonFar(p);
       if (PLACES.includes("village")) await villageSweep(p, phone);
       if (PLACES.includes("cases") && !phone) await villageCases(p);

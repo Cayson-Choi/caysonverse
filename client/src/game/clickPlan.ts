@@ -23,7 +23,9 @@
  *     covers more ground than the piece itself (a plaza bench turned to face the fountain: a 1.9 x 0.66 m bench in a
  *     2.0 x 1.34 m box — the walk's collision is boxes only) is no wall: visible ground inside its box moves out up to
  *     FURNITURE_MAX_PUSH (round 5 review: seated, the paving right behind the backrest did nothing). The nearest spot
- *     may lie in a gap no body reaches: the nearest one the avatar walks to is taken (freeSpotsNear).
+ *     may lie in a gap no body reaches: the nearest one the avatar walks to is taken (freeSpotsNear) — never a way
+ *     round into a gap between two boxes (`squeezed`: the way's grid has no cell there), and the open ground along the
+ *     gap past the ends of what squeezes it is weighed too (round 6 review: behind plaza_4, by the guide).
  *  3. The walk there is simulated: the same steer, collision slide, bounds clamp and no-progress release as
  *     LocalPlayer + stepClickMove. Arriving straight (a slide round a bench or a corner included), the ring goes on the
  *     click. Not arriving, a way round is looked for (findDetour — round 4 review: round the bench a seated player gets
@@ -37,7 +39,10 @@
  *     would end: across the creek that carried the stop 18-25 m along the bank, off the screen, and walked the avatar
  *     17.7 m away from where the player was looking (round 3 review). The walk to that spot is checked to arrive too.
  *     One that cannot get going (MIN_TRIP: already against the obstacle) takes a longer way round (DETOUR_FAR_RATIO)
- *     rather than nothing; with none at all it is refused. So the ring is never shown where the avatar will not go.
+ *     rather than nothing; with none at all it is refused. So the ring is never shown where the avatar will not go —
+ *     at any frame rate: a walk counts only when it keeps PLAN_PROGRESS_MARGIN over the no-progress rule all the way,
+ *     and one that comes near a collider is walked again at the steps of 20, 30 and 144 fps (walkThere; round 6
+ *     review: straight plans crawling along a face, or parting from the 60 Hz walk at a corner, stopped 1-12 m short).
  *  4. And the ring must be on the screen (requireSeen): its centre in front of the camera and inside the screen, or
  *     the click does nothing at all — no ring and no walk, as for a click on a wall (round 3 review: a stop off the
  *     screen walked with a ring nobody could see, the very "동그라미가 안 나타남" this is about). What covers part of
@@ -101,8 +106,59 @@ export const SIM_DT = 1 / 60;
  */
 export const SIM_EXTRA_SEC = 2;
 
+/**
+ * A plan's simulated walk must keep this many times the no-progress rule's net displacement (STUCK_MIN_DIST per
+ * STUCK_WINDOW_SEC) to count as getting there. The game walks at its own frame rate (LocalPlayer's `delta`), not the
+ * simulation's 60 Hz: a slide that crawls along a face at about the rule's own pace arrives at one frame rate and is
+ * dropped at another, a ring left on the ground 1-12 m ahead (round 6 review: 0.1-0.2 % of straight plans at 20, 30 or
+ * 144 fps). Below this the plan looks for a way round (which keeps clear of the faces) instead.
+ */
+export const PLAN_PROGRESS_MARGIN = 1.5;
+
 /** How far past a collider's grown face a pushed-out point lands (m), so it is clear of it, not on it. */
 const PUSH_EPS = 0.02;
+
+/**
+ * A free spot lies in a gap between two grown boxes (freeSpotsNear `squeezed`) when, across either axis, the room from
+ * the box (or the area's edge) on one side to the one on the other is under this (m) — a pushed-out point, PUSH_EPS off
+ * the face it left, has less than SPOT_ROOM past it the way it was pushed. Only a walk that comes straight along such a
+ * gap gets into it; a way round's grid of DETOUR_CELL cells has no cell there (round 6 review: the 7 cm between
+ * plaza_4's grown box and the guide's, the nearest spot to the paving behind the backrest, refused the click or put its
+ * ring at the guide's feet 2.1 m off).
+ */
+const SPOT_ROOM = 0.2;
+const GAP_MIN = SPOT_ROOM + PUSH_EPS;
+
+/**
+ * The gap a free spot (x, z) is squeezed in, or null: the axis across which the grown boxes (or the area's edge) either
+ * side of it leave less than GAP_MIN, and those boxes (none for the edge).
+ */
+function gapAround(x: number, z: number, obstacles: readonly AABB[], bounds: Bounds, r: number): { acrossZ: boolean; sides: AABB[] } | null {
+  for (const acrossZ of [true, false]) {
+    const p = acrossZ ? z : x; // along the axis across the gap
+    const q = acrossZ ? x : z;
+    let lo = p - ((acrossZ ? bounds.minZ : bounds.minX) + r);
+    let hi = (acrossZ ? bounds.maxZ : bounds.maxX) - r - p;
+    let loBox: AABB | null = null;
+    let hiBox: AABB | null = null;
+    for (const b of obstacles) {
+      const qMin = (acrossZ ? b.minX : b.minZ) - r;
+      const qMax = (acrossZ ? b.maxX : b.maxZ) + r;
+      if (!(q > qMin && q < qMax)) continue;
+      const pMin = (acrossZ ? b.minZ : b.minX) - r;
+      const pMax = (acrossZ ? b.maxZ : b.maxX) + r;
+      if (pMin >= p && pMin - p < hi) {
+        hi = pMin - p;
+        hiBox = b;
+      } else if (pMax <= p && p - pMax < lo) {
+        lo = p - pMax;
+        loBox = b;
+      }
+    }
+    if (lo + hi < GAP_MIN) return { acrossZ, sides: [loBox, hiBox].filter((b): b is AABB => b !== null) };
+  }
+  return null;
+}
 
 /** The surface under the cursor: a point and how upright its (camera-facing) normal is. */
 export interface SurfacePoint {
@@ -163,13 +219,24 @@ export function nearestFreeSpot(
   maxPush = MAX_PUSH,
   r = PLAYER_RADIUS,
 ): { x: number; z: number } | null {
-  return freeSpotsNear(x, z, obstacles, bounds, maxPush, r)[0] ?? null;
+  const spot = freeSpotsNear(x, z, obstacles, bounds, maxPush, r)[0];
+  return spot ? { x: spot.x, z: spot.z } : null;
+}
+
+/** A free spot freeSpotsNear found: `squeezed` when it lies in a gap between two grown boxes (GAP_MIN). */
+export interface FreeSpot {
+  x: number;
+  z: number;
+  squeezed?: boolean;
 }
 
 /**
  * Every free spot nearestFreeSpot weighs, nearest first: (x, z) itself when it is free, else the points out of the
  * grown obstacles across their faces. The nearest may lie in a gap no body reaches (round 5 review: the 7 cm between
- * a bench's grown box and a planter's): the plan takes the nearest it can walk to.
+ * a bench's grown box and a planter's): the plan takes the nearest it can walk to, and goes round to none `squeezed`.
+ * Out of such a gap — (x, z) itself may lie in one — the points along it past the ends of the boxes that squeeze it are
+ * weighed too (round 6 review: the paving behind plaza_4's backrest — the gap's spot 0.6 m off, the next roomy one
+ * 1.2 m off at the bench's end, and open paving 0.66 m off just past the guide's corner).
  */
 export function freeSpotsNear(
   x: number,
@@ -178,42 +245,58 @@ export function freeSpotsNear(
   bounds: Bounds,
   maxPush = MAX_PUSH,
   r = PLAYER_RADIUS,
-): Array<{ x: number; z: number }> {
-  if (isFreeSpot(x, z, obstacles, bounds, r)) return [{ x, z }];
-  let frontier: Array<{ x: number; z: number }> = [{ x, z }];
-  const found: Array<{ x: number; z: number; d: number }> = [];
+): FreeSpot[] {
+  const found: Array<{ x: number; z: number; d: number; squeezed: boolean }> = [];
   const seen = new Set<string>();
-  for (let round = 0; round < 3 && frontier.length > 0; round++) {
-    const next: Array<{ x: number; z: number }> = [];
-    for (const p of frontier) {
-      const moves: Array<{ x: number; z: number }> = [];
-      // into the bounds
-      const bx = Math.min(Math.max(p.x, bounds.minX + r + PUSH_EPS), bounds.maxX - r - PUSH_EPS);
-      const bz = Math.min(Math.max(p.z, bounds.minZ + r + PUSH_EPS), bounds.maxZ - r - PUSH_EPS);
-      if (bx !== p.x || bz !== p.z) moves.push({ x: bx, z: bz });
-      for (const b of obstacles) {
-        if (!(p.x > b.minX - r && p.x < b.maxX + r && p.z > b.minZ - r && p.z < b.maxZ + r)) continue;
-        moves.push(
-          { x: b.minX - r - PUSH_EPS, z: p.z },
-          { x: b.maxX + r + PUSH_EPS, z: p.z },
-          { x: p.x, z: b.minZ - r - PUSH_EPS },
-          { x: p.x, z: b.maxZ + r + PUSH_EPS },
-        );
-      }
-      for (const m of moves) {
-        const d = Math.hypot(m.x - x, m.z - z);
-        if (d > maxPush) continue; // every later move only goes farther from a point already too far
-        const key = `${m.x.toFixed(4)},${m.z.toFixed(4)}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        if (isFreeSpot(m.x, m.z, obstacles, bounds, r)) found.push({ x: m.x, z: m.z, d });
-        else next.push(m);
+  /** The point m: too far, seen, free (roomy, or squeezed — then its ways out along the gap), or on (`next`). */
+  const take = (m: { x: number; z: number }, next: Array<{ x: number; z: number }> | null): void => {
+    const d = Math.hypot(m.x - x, m.z - z);
+    if (d > maxPush) return; // every later move only goes farther from a point already too far
+    const key = `${m.x.toFixed(4)},${m.z.toFixed(4)}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    if (!isFreeSpot(m.x, m.z, obstacles, bounds, r)) {
+      next?.push(m);
+      return;
+    }
+    const gap = gapAround(m.x, m.z, obstacles, bounds, r);
+    found.push({ x: m.x, z: m.z, d, squeezed: gap !== null });
+    if (!gap || next === null) return;
+    // along the gap, past the ends of the boxes either side of it
+    for (const b of gap.sides) {
+      if (gap.acrossZ) {
+        take({ x: b.minX - r - PUSH_EPS, z: m.z }, null);
+        take({ x: b.maxX + r + PUSH_EPS, z: m.z }, null);
+      } else {
+        take({ x: m.x, z: b.minZ - r - PUSH_EPS }, null);
+        take({ x: m.x, z: b.maxZ + r + PUSH_EPS }, null);
       }
     }
-    frontier = next;
+  };
+  if (isFreeSpot(x, z, obstacles, bounds, r)) {
+    take({ x, z }, []);
+  } else {
+    let frontier: Array<{ x: number; z: number }> = [{ x, z }];
+    for (let round = 0; round < 3 && frontier.length > 0; round++) {
+      const next: Array<{ x: number; z: number }> = [];
+      for (const p of frontier) {
+        // into the bounds
+        const bx = Math.min(Math.max(p.x, bounds.minX + r + PUSH_EPS), bounds.maxX - r - PUSH_EPS);
+        const bz = Math.min(Math.max(p.z, bounds.minZ + r + PUSH_EPS), bounds.maxZ - r - PUSH_EPS);
+        if (bx !== p.x || bz !== p.z) take({ x: bx, z: bz }, next);
+        for (const b of obstacles) {
+          if (!(p.x > b.minX - r && p.x < b.maxX + r && p.z > b.minZ - r && p.z < b.maxZ + r)) continue;
+          take({ x: b.minX - r - PUSH_EPS, z: p.z }, next);
+          take({ x: b.maxX + r + PUSH_EPS, z: p.z }, next);
+          take({ x: p.x, z: b.minZ - r - PUSH_EPS }, next);
+          take({ x: p.x, z: b.maxZ + r + PUSH_EPS }, next);
+        }
+      }
+      frontier = next;
+    }
   }
   found.sort((a, b) => a.d - b.d);
-  return found.map((f) => ({ x: f.x, z: f.z }));
+  return found.map((f) => (f.squeezed ? { x: f.x, z: f.z, squeezed: true } : { x: f.x, z: f.z }));
 }
 
 /** Where a simulated walk ended and whether it arrived (within ARRIVE_DIST of where it was going). */
@@ -241,7 +324,8 @@ const NO_VIA: readonly GroundPoint[] = [];
  * the next of the `via` corners not yet passed (clickMove.ts viaPassed), then to the target (stepClickMove), moved at
  * MOVE_SPEED through resolveCollision against `obstacles` and clamped a radius inside `bounds` (LocalPlayer), released
  * on arrival or when the net displacement over STUCK_WINDOW_SEC falls under STUCK_MIN_DIST (stepClickMove's
- * no-progress rule).
+ * no-progress rule) — over any such span, and times PLAN_PROGRESS_MARGIN: a crawl the game may drop at another frame
+ * rate (its windows fall elsewhere, its steps are longer or shorter) is no arrival.
  */
 export function simulateWalk(
   fromX: number,
@@ -252,6 +336,7 @@ export function simulateWalk(
   bounds: Bounds,
   r = PLAYER_RADIUS,
   via: readonly GroundPoint[] = NO_VIA,
+  dt = SIM_DT,
 ): WalkResult {
   // Each axis only ever moves toward its aim (the slide clamps, never reverses), so each leg stays inside the
   // rectangle spanned by its two ends: only the obstacles near those rectangles can touch the walk.
@@ -274,14 +359,17 @@ export function simulateWalk(
   }
   const near = obstacles.filter((b) => b.maxX > loX - pad && b.minX < hiX + pad && b.maxZ > loZ - pad && b.minZ < hiZ + pad);
 
-  const step = MOVE_SPEED * SIM_DT;
+  const step = MOVE_SPEED * dt;
+  const progress = STUCK_MIN_DIST * PLAN_PROGRESS_MARGIN;
   const local = nearbyBoxes(near, loX - pad, hiX + pad, loZ - pad, hiZ + pad, r + step + 0.01);
-  const maxSteps = Math.ceil(((legs / MOVE_SPEED) * 1.25 + SIM_EXTRA_SEC) / SIM_DT);
+  const maxSteps = Math.ceil(((legs / MOVE_SPEED) * 1.25 + SIM_EXTRA_SEC) / dt);
   let x = fromX;
   let z = fromZ;
-  let anchorX = x;
-  let anchorZ = z;
-  let windowSec = 0;
+  // The no-progress test over EVERY span of STUCK_WINDOW_SEC, not only over windows laid from the walk's first step as
+  // the game lays them: the game's windows start wherever its frames fall, so any span may be one of them.
+  const span = Math.max(1, Math.round(STUCK_WINDOW_SEC / Math.min(dt, STUCK_STEP_MAX_SEC)));
+  const pastX = new Float64Array(span);
+  const pastZ = new Float64Array(span);
   let contact: { x: number; z: number } | null = null;
   let k = 0; // the next via corner not yet passed
   let legX = fromX; // where the leg toward it began (viaPassed)
@@ -296,13 +384,10 @@ export function simulateWalk(
     const dx = (k < via.length ? via[k].x : toX) - x;
     const dz = (k < via.length ? via[k].z : toZ) - z;
     const len = Math.hypot(dx, dz);
-    windowSec += Math.min(SIM_DT, STUCK_STEP_MAX_SEC);
-    if (windowSec >= STUCK_WINDOW_SEC) {
-      if (Math.hypot(x - anchorX, z - anchorZ) < STUCK_MIN_DIST) return { x, z, arrived: false, contact };
-      anchorX = x;
-      anchorZ = z;
-      windowSec = 0;
-    }
+    const slot = i % span;
+    if (i >= span && Math.hypot(x - pastX[slot], z - pastZ[slot]) < progress) return { x, z, arrived: false, contact };
+    pastX[slot] = x;
+    pastZ[slot] = z;
     const sx = (dx / len) * step;
     const sz = (dz / len) * step;
     const next = resolveCollision(x, z, sx, sz, r, local(x, z));
@@ -313,6 +398,54 @@ export function simulateWalk(
     z = nz;
   }
   return { x, z, arrived: false, contact };
+}
+
+/**
+ * The game's frame steps a plan's walk is also checked at (s), besides SIM_DT, when it comes near what is in the way:
+ * a slow phone (20 fps; a run's step at 60 fps is about as long), a 30 fps tab, a 144 Hz screen. Axis-separated slides
+ * part ways at a corner by the step's length — the 60 Hz walk slid one side of a planter's corner and on, a 20 fps one
+ * the other side and stopped there (round 6 review).
+ */
+export const SIM_CHECK_DTS: readonly number[] = [1 / 20, 1 / 30, 1 / 144];
+
+/** The longest step SIM_CHECK_DTS take (m): a walk keeping this much more than the radius off every box meets none. */
+const SIM_MAX_STEP = MOVE_SPEED * Math.max(...SIM_CHECK_DTS);
+
+/**
+ * simulateWalk, and whether the game walks it to the end at any frame rate: one that met nothing on its way (no
+ * contact) and whose legs keep SIM_MAX_STEP more than the radius off every collider walks the same at every step
+ * length; any other is walked again at each of SIM_CHECK_DTS, and must arrive at every one of them too.
+ */
+export function walkThere(
+  fromX: number,
+  fromZ: number,
+  toX: number,
+  toZ: number,
+  obstacles: readonly AABB[],
+  bounds: Bounds,
+  via: readonly GroundPoint[] = NO_VIA,
+  r = PLAYER_RADIUS,
+): WalkResult {
+  const walk = simulateWalk(fromX, fromZ, toX, toZ, obstacles, bounds, r, via);
+  if (!walk.arrived) return walk;
+  if (!walk.contact) {
+    let ax = fromX;
+    let az = fromZ;
+    let clear = true;
+    for (const p of [...via, { x: toX, z: toZ }]) {
+      if (!segmentClear(ax, az, p.x, p.z, obstacles, r + SIM_MAX_STEP)) {
+        clear = false;
+        break;
+      }
+      ax = p.x;
+      az = p.z;
+    }
+    if (clear) return walk;
+  }
+  for (const dt of SIM_CHECK_DTS) {
+    if (!simulateWalk(fromX, fromZ, toX, toZ, obstacles, bounds, r, via, dt).arrived) return { ...walk, arrived: false };
+  }
+  return walk;
 }
 
 /** The cell (m) of simulateWalk's box lookup, and how many boxes make one worth building. */
@@ -382,15 +515,27 @@ const DETOUR_NEAR_COST = 2;
 
 /**
  * How far (m) a way round keeps past the grown faces of what it goes round — its corners and its legs between them —
- * where there is room (a narrow gap gets less: DETOUR_CLEAR_TIERS). More than VIA_REACH, how early the walk turns for
+ * where there is room (a narrow gap gets less: DETOUR_TRIES). More than VIA_REACH, how early the walk turns for
  * the next corner: the turned leg then runs at most that much nearer than the way itself, never into a face (round 5
  * review: the corners lay 0.02-0.04 m off the grown faces and the walk turned 0.2 m before them, into a bench's or the
  * bridge's corner, where it stuck — a ring on the click, an avatar stopped short of it).
  */
 export const DETOUR_VIA_CLEAR = 0.25;
 
-/** The clearances tried in turn: the full one, a narrower one for a narrow gap, none (the grown faces themselves). */
-const DETOUR_CLEAR_TIERS: readonly number[] = [DETOUR_VIA_CLEAR, 0];
+/**
+ * The searches tried in turn: the full clearance, then none (the grown faces themselves) for a narrow gap — each on the
+ * grid's usual lines, then on a grid laid so the destination is a cell's centre (`onGoal`): a destination in a strip
+ * narrower than a cell between two grown boxes has no cell centre in the strip on the usual lines (round 6 review:
+ * seated at the memorial forecourt's bench, two points of the 0.47 m strip between its back and the hall's wall were
+ * refused while their neighbours 0.1 m off were walked to). The usual lines go first: laid on the destination, a way
+ * may come in along a face it lies just off, which some frame rates' steps catch on (walkThere checks every way).
+ */
+const DETOUR_TRIES: ReadonlyArray<{ clear: number; onGoal: boolean }> = [
+  { clear: DETOUR_VIA_CLEAR, onGoal: false },
+  { clear: DETOUR_VIA_CLEAR, onGoal: true },
+  { clear: 0, onGoal: false },
+  { clear: 0, onGoal: true },
+];
 
 /**
  * How far past a corner (m) a walk may get before it turns for the next one: one step of a run (RUN_SPEED 6.4 m/s) in a
@@ -517,7 +662,7 @@ export interface DetourLimits {
  * A way for a body from (fromX, fromZ) to (toX, toZ) round the colliders (rule 3), as the corners to walk by in order
  * (the ends left out), or null when there is none within DETOUR_MARGIN of the straight line and DETOUR_MAX_RATIO of its
  * length (or the `limits` given). Looked for with the full clearance first (DETOUR_VIA_CLEAR past every grown face),
- * then with none for a narrow gap (detourWithClearance).
+ * then with none for a narrow gap (detourWithClearance), each on two grids (DETOUR_TRIES): the first way found.
  */
 export function findDetour(
   fromX: number,
@@ -543,8 +688,8 @@ export function* findDetourSteps(
   r = PLAYER_RADIUS,
   limits: DetourLimits = {},
 ): Steps<GroundPoint[] | null> {
-  for (const clear of DETOUR_CLEAR_TIERS) {
-    const via = yield* detourSteps(fromX, fromZ, toX, toZ, obstacles, bounds, r, clear, limits);
+  for (const t of DETOUR_TRIES) {
+    const via = yield* detourSteps(fromX, fromZ, toX, toZ, obstacles, bounds, r, t.clear, limits, t.onGoal);
     if (via) return via;
   }
   return null;
@@ -557,7 +702,7 @@ export function* findDetourSteps(
  * the way the body walks to with no slide, keeping `clear` (the radius alone on the legs from the start and to the
  * destination, which may stand closer), checked from the corner itself and from where the walk really turns there
  * (VIA_REACH before it, VIA_LATE past it: clickMove.ts viaPassed). Both ends must be free spots (the start is where the
- * body stands).
+ * body stands). `onGoal`: the grid laid so the destination is a cell's centre (DETOUR_TRIES).
  */
 export function detourWithClearance(
   fromX: number,
@@ -569,8 +714,9 @@ export function detourWithClearance(
   r = PLAYER_RADIUS,
   clear = DETOUR_VIA_CLEAR,
   limits: DetourLimits = {},
+  onGoal = false,
 ): GroundPoint[] | null {
-  return runSteps(detourSteps(fromX, fromZ, toX, toZ, obstacles, bounds, r, clear, limits));
+  return runSteps(detourSteps(fromX, fromZ, toX, toZ, obstacles, bounds, r, clear, limits, onGoal));
 }
 
 /** detourWithClearance in slices (Steps): it pauses every DETOUR_SLICE_CELLS cells of its grid search. */
@@ -584,17 +730,22 @@ function* detourSteps(
   r: number,
   clear: number,
   limits: DetourLimits,
+  onGoal: boolean,
 ): Steps<GroundPoint[] | null> {
   const margin = limits.margin ?? DETOUR_MARGIN;
   const straight = Math.hypot(toX - fromX, toZ - fromZ);
   const maxLen = straight * (limits.ratio ?? DETOUR_MAX_RATIO) + (limits.slack ?? DETOUR_SLACK);
   const rc = r + clear;
-  const x0 = Math.max(Math.min(fromX, toX) - margin, bounds.minX + r);
+  const xLo = Math.max(Math.min(fromX, toX) - margin, bounds.minX + r);
   const x1 = Math.min(Math.max(fromX, toX) + margin, bounds.maxX - r);
-  const z0 = Math.max(Math.min(fromZ, toZ) - margin, bounds.minZ + r);
+  const zLo = Math.max(Math.min(fromZ, toZ) - margin, bounds.minZ + r);
   const z1 = Math.min(Math.max(fromZ, toZ) + margin, bounds.maxZ - r);
-  if (!(x1 > x0 && z1 > z0)) return null;
-  const cell = Math.max(DETOUR_CELL, Math.sqrt(((x1 - x0) * (z1 - z0)) / DETOUR_MAX_CELLS));
+  if (!(x1 > xLo && z1 > zLo)) return null;
+  const cell = Math.max(DETOUR_CELL, Math.sqrt(((x1 - xLo) * (z1 - zLo)) / DETOUR_MAX_CELLS));
+  // `onGoal`: the grid's origin moved down by under a cell so the destination is a cell's centre — a destination in a
+  // strip narrower than a cell between two grown boxes then has a row of open cells along the strip (DETOUR_TRIES).
+  const x0 = onGoal ? toX - cell * (Math.max(0, Math.ceil((toX - xLo) / cell - 0.5)) + 0.5) : xLo;
+  const z0 = onGoal ? toZ - cell * (Math.max(0, Math.ceil((toZ - zLo) / cell - 0.5)) + 0.5) : zLo;
   const nx = Math.max(1, Math.ceil((x1 - x0) / cell));
   const nz = Math.max(1, Math.ceil((z1 - z0) / cell));
   const boxes = obstacles.filter((b) => b.maxX + rc > x0 && b.minX - rc < x1 && b.maxZ + rc > z0 && b.minZ - rc < z1);
@@ -824,9 +975,10 @@ export interface PendingDetour {
   fromZ: number;
   /**
    * Where the ring may go, nearest the click first: the spot clicked, or the free spots out of the colliders' margins
-   * round it (freeSpotsNear). The first the avatar walks to — straight or round — is taken. Never empty.
+   * round it (freeSpotsNear). The first the avatar walks to — straight, or round unless `squeezed` — is taken. Never
+   * empty.
    */
-  spots: ReadonlyArray<{ x: number; z: number }>;
+  spots: readonly FreeSpot[];
   /** The clicked surface: its height (the ring's), and where it is (a spot anywhere else was moved: "pushed"). */
   surface: SurfacePoint;
   seated: boolean;
@@ -840,7 +992,7 @@ export interface PendingDetour {
 export type PlanStart = { plan: ClickPlan; detour?: undefined } | { plan?: undefined; detour: PendingDetour };
 
 /** How many of the free spots round a click a plan tries (freeSpotsNear), nearest first. */
-const PLAN_SPOTS = 4;
+const PLAN_SPOTS = 6;
 
 /** Whether (x, z) lies inside one of `boxes` grown by `r`. */
 function insideGrown(x: number, z: number, boxes: readonly AABB[], r = PLAYER_RADIUS): boolean {
@@ -882,12 +1034,14 @@ export function startClickPlan(
 ): PlanStart {
   const kind = surface ? surfaceKind(surface, obstacles, bounds) : "none";
   if (!surface || kind === "none") return { plan: { ok: false, reason: "not-ground" } };
-  // Low ground may be pushed out of a collider's margin — farther out of a piece of furniture's box; an open surface is
-  // already a free spot, taken as it is.
-  let spots = kind === "ground" ? freeSpotsNear(surface.x, surface.z, obstacles, bounds) : [{ x: surface.x, z: surface.z }];
-  if (spots.length === 0 && options.furniture && insideGrown(surface.x, surface.z, options.furniture)) {
-    spots = freeSpotsNear(surface.x, surface.z, obstacles, bounds, FURNITURE_MAX_PUSH);
-  }
+  // Low ground may be pushed out of a collider's margin — farther out of a piece of furniture's box (round 6 review: the
+  // one spot within MAX_PUSH of the paving behind plaza_4's backrest lay in a 7 cm gap and the farther ones were never
+  // tried); an open surface is already a free spot, taken as it is.
+  const furniture = !!options.furniture && insideGrown(surface.x, surface.z, options.furniture);
+  let spots: readonly FreeSpot[] =
+    kind === "ground"
+      ? freeSpotsNear(surface.x, surface.z, obstacles, bounds, furniture ? FURNITURE_MAX_PUSH : MAX_PUSH)
+      : [{ x: surface.x, z: surface.z }];
   if (spots.length === 0) {
     // Nowhere to stand there (deep in a collider, past the area's edge): toward it, up to what is in the way (rule 2).
     const toward = simulateWalk(fromX, fromZ, surface.x, surface.z, obstacles, bounds);
@@ -901,8 +1055,8 @@ export function startClickPlan(
 }
 
 /**
- * The rest of a plan startClickPlan left open: the nearest of its spots the avatar walks to (round what is in the way,
- * or — past the first — straight), else where the walk stops on the way.
+ * The rest of a plan startClickPlan left open: the nearest of its spots the avatar walks to (round what is in the way —
+ * not into a gap between two boxes, `squeezed` — or, past the first, straight), else where the walk stops on the way.
  */
 export function finishClickPlan(d: PendingDetour): ClickPlan {
   return runSteps(finishClickPlanSteps(d));
@@ -918,6 +1072,7 @@ export function* finishClickPlanSteps(d: PendingDetour): Steps<ClickPlan> {
       if (straight.plan) return straight.plan;
       yield;
     }
+    if (spot.squeezed) continue; // a way round has no cell in the gap: only a walk straight along it gets in
     const round = yield* roundToSteps(fromX, fromZ, spot, surface, obstacles, bounds);
     if (round) return round;
   }
@@ -926,7 +1081,8 @@ export function* finishClickPlanSteps(d: PendingDetour): Steps<ClickPlan> {
   // Already against what is in the way, and no way round within DETOUR_MAX_RATIO: rather than nothing at all for a
   // click on ground in plain view (the far creek bank tapped from the water's edge), a longer way round.
   const far = { ratio: DETOUR_FAR_RATIO, slack: DETOUR_FAR_SLACK, margin: DETOUR_FAR_MARGIN };
-  return (yield* roundToSteps(fromX, fromZ, d.spots[0], surface, obstacles, bounds, far)) ?? stopped;
+  const target = d.spots.find((s) => !s.squeezed) ?? d.spots[0];
+  return (yield* roundToSteps(fromX, fromZ, target, surface, obstacles, bounds, far)) ?? stopped;
 }
 
 /** The plan to `spot` when the avatar walks straight there (or already stands on it), else that straight walk. */
@@ -943,12 +1099,15 @@ function straightTo(
   if (Math.hypot(spot.x - fromX, spot.z - fromZ) < ARRIVE_DIST) {
     return { plan: seated ? { ok: true, x: spot.x, z: spot.z, y: surface.y, adjusted } : { ok: false, reason: "here" } };
   }
-  const walk = simulateWalk(fromX, fromZ, spot.x, spot.z, obstacles, bounds);
+  const walk = walkThere(fromX, fromZ, spot.x, spot.z, obstacles, bounds);
   if (walk.arrived) return { plan: { ok: true, x: spot.x, z: spot.z, y: surface.y, adjusted } };
   return { walk };
 }
 
-/** The plan to `spot` round what is in the way (findDetour), when that way is walked to the end; else null. In slices. */
+/**
+ * The plan to `spot` round what is in the way: the first way of DETOUR_TRIES that is walked to the end at every frame
+ * rate (walkThere); else null. In slices.
+ */
 function* roundToSteps(
   fromX: number,
   fromZ: number,
@@ -958,12 +1117,15 @@ function* roundToSteps(
   bounds: Bounds,
   limits: DetourLimits = {},
 ): Steps<ClickPlan | null> {
-  const via = yield* findDetourSteps(fromX, fromZ, spot.x, spot.z, obstacles, bounds, PLAYER_RADIUS, limits);
-  if (!via) return null;
-  yield;
-  if (!simulateWalk(fromX, fromZ, spot.x, spot.z, obstacles, bounds, PLAYER_RADIUS, via).arrived) return null;
   const adjusted = spot.x !== surface.x || spot.z !== surface.z ? "pushed" : "none";
-  return { ok: true, x: spot.x, z: spot.z, y: surface.y, adjusted, via };
+  for (const t of DETOUR_TRIES) {
+    const via = yield* detourSteps(fromX, fromZ, spot.x, spot.z, obstacles, bounds, PLAYER_RADIUS, t.clear, limits, t.onGoal);
+    if (!via) continue;
+    yield;
+    // walked to the end at every frame rate, or the next search's way is tried
+    if (walkThere(fromX, fromZ, spot.x, spot.z, obstacles, bounds, via).arrived) return { ok: true, x: spot.x, z: spot.z, y: surface.y, adjusted, via };
+  }
+  return null;
 }
 
 /**
@@ -973,7 +1135,7 @@ function* roundToSteps(
 function stoppedOnTheWay(fromX: number, fromZ: number, walk: WalkResult, y: number, obstacles: readonly AABB[], bounds: Bounds): ClickPlan {
   const stop = walk.contact ?? walk;
   if (Math.hypot(stop.x - fromX, stop.z - fromZ) < MIN_TRIP) return { ok: false, reason: "unreachable" };
-  const again = simulateWalk(fromX, fromZ, stop.x, stop.z, obstacles, bounds);
+  const again = walkThere(fromX, fromZ, stop.x, stop.z, obstacles, bounds);
   if (!again.arrived) return { ok: false, reason: "unreachable" };
   return { ok: true, x: stop.x, z: stop.z, y, adjusted: "stopped" };
 }

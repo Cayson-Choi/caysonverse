@@ -134,14 +134,8 @@ function lookHalf() {
     downAt = Date.now();
     return gate.down(id, downAt, x, y);
   };
-  /** The touch `id` lifts after `holdMs` (a tap: it moved less than TAP_MAX_PX, held under CLICK_MAX_MS). */
-  const up = (id: number, second: boolean, x = 300, y = 500) => {
-    const upAt = Date.now();
-    if (second) {
-      if (gate.up(id)) log.push(`recenter@${upAt}`);
-      return;
-    }
-    gate.tap(upAt, x, y);
+  /** A tap's pick (its ring shows), then its walk — after DOUBLE_TAP_MS from its lift (`wait`), or at once. */
+  const walkOf = (upAt: number, wait: boolean) => {
     gate.work.hold(() => {
       ring = true; // the pick: the ring shows at once
       gate.work.hold(
@@ -153,14 +147,30 @@ function lookHalf() {
             log.push(`walk-undone@${Date.now()}`);
           });
         },
-        Math.max(0, DOUBLE_TAP_MS - (Date.now() - upAt)),
+        wait ? Math.max(0, DOUBLE_TAP_MS - (Date.now() - upAt)) : 0,
         () => {
           ring = false;
         },
       );
     }, 0);
   };
-  return { gate, log, down, up, state: () => ({ ring, walking }), downAt: () => downAt };
+  /**
+   * The touch `id` lifts (a tap: it moved less than TAP_MAX_PX, held under CLICK_MAX_MS). A second touch lifted after
+   * it turned into a drag (`dragged`) or was cancelled: no recenter, the first tap walks after all (CameraRig onUp).
+   */
+  const up = (id: number, second: boolean, x = 300, y = 500, dragged = false) => {
+    const upAt = Date.now();
+    if (second) {
+      if (dragged) gate.dragged(id);
+      if (gate.up(id) && !dragged) log.push(`recenter@${upAt}`);
+      return;
+    }
+    gate.tap(upAt, x, y, () => walkOf(upAt, false));
+    walkOf(upAt, true);
+  };
+  /** The touch `id` moved past TAP_MAX_PX: a look-drag (CameraRig onMove). */
+  const drag = (id: number) => gate.dragged(id);
+  return { gate, log, down, up, drag, state: () => ({ ring, walking }), downAt: () => downAt };
 }
 
 describe("LookTapGate — a double tap is decided when the second touch goes down (round 5 review)", () => {
@@ -250,6 +260,66 @@ describe("LookTapGate — a double tap is decided when the second touch goes dow
     expect(h.log).toEqual([]);
     expect(h.state().ring).toBe(false);
     expect(h.down(2)).toBe(false); // no first tap to pair with any more
+  });
+
+  it("a tap, then a look-drag begun at once from the same spot: no double tap — the tap walks when the drag starts (round 6 review)", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const h = lookHalf();
+    h.up(1, h.down(1));
+    vi.advanceTimersByTime(120);
+    expect(h.down(2)).toBe(true); // within 300 ms and 30 px of the lift: taken for a second tap — the walk dropped
+    expect(h.state().ring).toBe(false);
+    vi.advanceTimersByTime(60);
+    h.drag(2); // it moved: a drag
+    vi.advanceTimersByTime(1);
+    expect(h.log).toEqual(["walk@181"]); // at once: its pick and its walk on the next timers
+    expect(h.state()).toEqual({ ring: true, walking: true });
+    vi.advanceTimersByTime(400);
+    h.up(2, true, 300, 500, true); // the drag lifts: no recenter, no second walk
+    vi.advanceTimersByTime(1000);
+    expect(h.log).toEqual(["walk@181"]); // at once: its pick and its walk on the next timers
+    // moving on and on (more moves) walks once
+    h.drag(2);
+    expect(h.log).toEqual(["walk@181"]); // at once: its pick and its walk on the next timers
+  });
+
+  it("a second touch that is cancelled walks the first tap too; one lifted as a tap still only recenters", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const h = lookHalf();
+    h.up(1, h.down(1));
+    vi.advanceTimersByTime(100);
+    h.down(2);
+    vi.advanceTimersByTime(80);
+    h.up(2, true, 300, 500, true); // pointercancel: handled as not-a-tap
+    vi.advanceTimersByTime(1);
+    expect(h.log).toEqual(["walk@181"]); // at once: its pick and its walk on the next timers
+    vi.useRealTimers();
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const t = lookHalf();
+    t.up(1, t.down(1));
+    vi.advanceTimersByTime(100);
+    t.down(2);
+    vi.advanceTimersByTime(80);
+    t.up(2, true);
+    t.drag(2); // a stray move after the lift changes nothing
+    vi.advanceTimersByTime(1000);
+    expect(t.log).toEqual(["recenter@180"]);
+  });
+
+  it("a pinch while the second touch is down forgets the first tap: its drag walks nothing", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const h = lookHalf();
+    h.up(1, h.down(1));
+    vi.advanceTimersByTime(100);
+    h.down(2);
+    h.gate.reset(); // a second finger
+    h.drag(2);
+    vi.advanceTimersByTime(1000);
+    expect(h.log).toEqual([]);
   });
 
   it("a new single tap replaces the held one (its walk and ring), and the second touch is disarmed by its lift", () => {

@@ -22,12 +22,16 @@ import {
   nearestFreeSpot,
   planClickMove,
   requireSeen,
+  PLAN_PROGRESS_MARGIN,
+  SIM_CHECK_DTS,
+  detourWithClearance,
   segmentClear,
   simulateWalk,
   surfaceKind,
   walkStart,
+  walkThere,
 } from "./clickPlan";
-import { ARRIVE_DIST, VIA_REACH } from "./clickMove";
+import { ARRIVE_DIST, STUCK_MIN_DIST, STUCK_WINDOW_SEC, VIA_REACH } from "./clickMove";
 import { VILLAGE_FURNITURE } from "./activeMap";
 
 const R = PLAYER_RADIUS;
@@ -527,5 +531,82 @@ describe("clickPlan — round 5 review: ways round keep clear of corners, benche
     }
     expect(slices).toBeGreaterThan(0);
     expect(r.value).toEqual(finishClickPlan(start.detour!));
+  });
+});
+
+describe("clickPlan — round 6 review: gaps between two boxes, frame rates, grids laid on the destination", () => {
+  // a 2 x 1.34 m bench box and a 0.6 m guide behind it: 7 cm between their grown boxes (plaza_4 and the guide)
+  const bench: AABB = { minX: 3.21, maxX: 5.21, minZ: 9.49, maxZ: 10.83 };
+  const guide: AABB = { minX: 4.7, maxX: 5.3, minZ: 11.7, maxZ: 12.3 };
+  const boxes = [bench, guide];
+
+  it("a spot pushed into the gap is squeezed; the points along the gap past the guide's ends are weighed too", () => {
+    const spots = freeSpotsNear(4.56, 10.65, boxes, BOUNDS, FURNITURE_MAX_PUSH);
+    expect(spots[0]).toEqual({ x: 4.56, z: bench.maxZ + R + 0.02, squeezed: true });
+    // out of the gap along it: just past the guide's west end, 0.66 m off the click — roomy
+    expect(spots[1]).toEqual({ x: guide.minX - R - 0.02, z: bench.maxZ + R + 0.02 });
+    for (let i = 1; i < spots.length; i++) {
+      expect(Math.hypot(spots[i].x - 4.56, spots[i].z - 10.65)).toBeGreaterThanOrEqual(Math.hypot(spots[i - 1].x - 4.56, spots[i - 1].z - 10.65));
+    }
+    // a click on the gap itself (free, but 7 cm wide) is squeezed too, with the same ways out
+    const inGap = freeSpotsNear(4.4, 11.26, boxes, BOUNDS);
+    expect(inGap[0]).toEqual({ x: 4.4, z: 11.26, squeezed: true });
+    expect(inGap[1]).toEqual({ x: guide.minX - R - 0.02, z: 11.26 });
+    // nearestFreeSpot is still the nearest, plain
+    expect(nearestFreeSpot(4.56, 10.65, boxes, BOUNDS, FURNITURE_MAX_PUSH)).toEqual({ x: 4.56, z: bench.maxZ + R + 0.02 });
+    // open paving with room either side is no gap
+    expect(freeSpotsNear(2, 13, boxes, BOUNDS)).toEqual([{ x: 2, z: 13 }]);
+  });
+
+  it("the paving behind the bench, clicked from its west end and from behind the guide: a ring just past the guide's corner, walked to", () => {
+    for (const from of [
+      { x: 2.39, z: 10.92 },
+      { x: 5.23, z: 13.24 },
+    ]) {
+      const plan = planClickMove(from.x, from.z, ground(4.56, 10.65), boxes, BOUNDS, false, { furniture: [bench] });
+      expect(plan).toMatchObject({ ok: true, x: guide.minX - R - 0.02, adjusted: "pushed" });
+      if (!plan.ok) continue;
+      expect(Math.hypot(plan.x - 4.56, plan.z - 10.65)).toBeLessThan(0.7);
+      expect(walkThere(from.x, from.z, plan.x, plan.z, boxes, BOUNDS, plan.via).arrived).toBe(true);
+    }
+  });
+
+  it("a destination in a strip narrower than a cell: found on a grid laid on it when the usual lines miss the strip", () => {
+    // a 0.47 m strip between the grown faces of a bench and a wall (the memorial forecourt), the start in front of the bench
+    const fbench: AABB = { minX: -5.95, maxX: -3.65, minZ: -50.73, maxZ: -50.07 };
+    const wall: AABB = { minX: -7, maxX: -1.6, minZ: -64, maxZ: -52 };
+    const bounds = { minX: -95, maxX: 95, minZ: -95, maxZ: 95 };
+    const from = { x: -4.2, z: -49.575 };
+    const to = { x: -5.1, z: -51.375 };
+    expect(detourWithClearance(from.x, from.z, to.x, to.z, [fbench, wall], bounds, R, 0)).toBeNull(); // the usual lines
+    const via = detourWithClearance(from.x, from.z, to.x, to.z, [fbench, wall], bounds, R, 0, {}, true);
+    expect(via).not.toBeNull();
+    expect(walkThere(from.x, from.z, to.x, to.z, [fbench, wall], bounds, via!).arrived).toBe(true);
+    expect(planClickMove(from.x, from.z, ground(to.x, to.z), [fbench, wall], bounds, true)).toMatchObject({ ok: true, x: to.x, z: to.z, adjusted: "none" });
+  });
+
+  it("a crawl along a face at about the no-progress pace is no arrival: the plan's walk must keep PLAN_PROGRESS_MARGIN over any span", () => {
+    expect(PLAN_PROGRESS_MARGIN).toBeGreaterThan(1);
+    // pressed square against a wall, a target just past its end at a sliver of an angle: the slide creeps along it
+    const wall: AABB = { minX: -10, maxX: 0, minZ: -0.5, maxZ: 0.5 };
+    const bounds = { minX: -60, maxX: 60, minZ: -60, maxZ: 60 };
+    const from = { x: -3, z: 0.5 + R };
+    const to = { x: 0.6, z: -40 };
+    // the slide's pace (MOVE_SPEED x the target's share along the wall) is under the margin from the first step on
+    const pace = (2 * (to.x - from.x)) / Math.hypot(to.x - from.x, to.z - from.z);
+    expect(pace * STUCK_WINDOW_SEC).toBeLessThan(STUCK_MIN_DIST * PLAN_PROGRESS_MARGIN);
+    expect(simulateWalk(from.x, from.z, to.x, to.z, [wall], bounds).arrived).toBe(false);
+    const plan = planClickMove(from.x, from.z, ground(to.x, to.z), [wall], bounds);
+    expect(plan).toMatchObject({ ok: true, x: to.x, z: to.z, adjusted: "none" });
+    if (plan.ok) expect(plan.via!.length).toBeGreaterThan(0); // round the wall's end, clear of its face
+  });
+
+  it("walkThere: a walk that meets nothing, well off every face, is one walk; one near a face is walked at every frame step too", () => {
+    expect(SIM_CHECK_DTS).toEqual(expect.arrayContaining([1 / 20, 1 / 30, 1 / 144]));
+    expect(walkThere(0, 10, 0, -10, [], BOUNDS)).toMatchObject({ arrived: true, contact: null });
+    // the slide round BOX's corner arrives at 60 Hz and at every other step
+    const w = walkThere(0.6, 6, 2.2, -6, [BOX], BOUNDS);
+    expect(w.arrived).toBe(true);
+    for (const dt of SIM_CHECK_DTS) expect(simulateWalk(0.6, 6, 2.2, -6, [BOX], BOUNDS, R, [], dt).arrived).toBe(true);
   });
 });

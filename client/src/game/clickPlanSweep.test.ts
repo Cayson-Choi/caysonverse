@@ -16,7 +16,7 @@ import { PLAYER_RADIUS } from "@caysonverse/shared/worldMap";
 import { resolveCollision } from "@caysonverse/shared/collision";
 import { VILLAGE_LAYOUT, villageGeometry } from "@caysonverse/shared/village/villageLayout";
 import { VILLAGE_BENCHES, VILLAGE_SEATS } from "@caysonverse/shared/village/benchSeats";
-import { findDetour, isFreeSpot, planClickMove, simulateWalk, type ClickPlan } from "./clickPlan";
+import { findDetour, isFreeSpot, planClickMove, simulateWalk, walkThere, type ClickPlan } from "./clickPlan";
 import { ARRIVE_DIST, clearClickTarget, getClickTarget, setClickTarget, stepClickMove } from "./clickMove";
 import { LEGACY_ACTIVE_MAP, VILLAGE_ACTIVE_MAP, VILLAGE_FURNITURE, setActiveMap } from "./activeMap";
 
@@ -219,5 +219,118 @@ describe("clickPlan sweep — the game's walk follows the ways round at any fram
     }
     expect(ways).toBeGreaterThan(50);
     expect(failed).toEqual([]);
+  });
+});
+
+describe("clickPlan sweep — round 6 review: every walking plan, straight ones too, arrives at 20, 30, 60 and 144 fps", () => {
+  beforeAll(() => setActiveMap(VILLAGE_ACTIVE_MAP));
+  afterAll(() => setActiveMap(LEGACY_ACTIVE_MAP));
+
+  // the review's regions (its Monte Carlo: 3 of 2,455 plaza plans stopped short at 20 fps, 2 at 30, 4 at 144 — straight
+  // ones crawling along a face at about the no-progress rule's pace, or parting from the 60 Hz walk at a corner)
+  const regions = { plaza: [-16, 16, -16, 16], memorial: [-14, 14, -60, -36], houses: [-58, -30, -22, 6] } as const;
+  for (const [name, [x0, x1, z0, z1]] of Object.entries(regions)) {
+    it(`${name}: clicks on the open ground or a collider's margin — the game's walk reaches every ring`, () => {
+      const rnd = seeded(4242 + name.length);
+      const failed: string[] = [];
+      let plans = 0;
+      for (let k = 0; k < 900; k++) {
+        let fx: number, fz: number;
+        do {
+          fx = x0 + rnd() * (x1 - x0);
+          fz = z0 + rnd() * (z1 - z0);
+        } while (!isFreeSpot(fx, fz, obstacles, village));
+        const tx = x0 + rnd() * (x1 - x0);
+        const tz = z0 + rnd() * (z1 - z0);
+        if (obstacles.some((o) => tx > o.minX && tx < o.maxX && tz > o.minZ && tz < o.maxZ)) continue;
+        const plan = planClickMove(fx, fz, ground(tx, tz), obstacles, village, false, options);
+        if (!plan.ok) continue;
+        plans++;
+        for (const fps of [20, 30, 60, 144]) {
+          const w = gameWalk({ x: fx, z: fz }, plan, 1 / fps, MOVE_SPEED);
+          if (!w.arrived) failed.push(`${fps} fps (${fx.toFixed(2)}, ${fz.toFixed(2)}) -> (${plan.x.toFixed(2)}, ${plan.z.toFixed(2)}) ${plan.adjusted} via ${plan.via?.length ?? 0}: stopped at (${w.x.toFixed(2)}, ${w.z.toFixed(2)})`);
+        }
+      }
+      expect(plans).toBeGreaterThan(500);
+      expect(failed).toEqual([]);
+    });
+  }
+
+  it("the review's walks: straight crawls along a face go round now, and arrive at every frame rate", () => {
+    for (const [fx, fz, tx, tz] of [
+      [-1.73, 15.83, 11.38, -5.71], // 144 fps stopped 2.9 m short
+      [-3.29, -12.65, -11.07, -2.34], // 20 fps stopped 3.3 m short
+      [7.09, 12.75, 10.93, -1.06], // 20 fps stopped 6.7 m short
+      [12.87, -39.87, -1.42, -38.56], // 20 fps stopped 11.95 m short
+    ]) {
+      const plan = planClickMove(fx, fz, ground(tx, tz), obstacles, village, false, options);
+      expect(plan).toMatchObject({ ok: true, x: tx, z: tz, adjusted: "none" });
+      if (!plan.ok) continue;
+      for (const fps of [20, 30, 60, 144]) expect(gameWalk({ x: fx, z: fz }, plan, 1 / fps, MOVE_SPEED).arrived).toBe(true);
+    }
+  });
+});
+
+describe("clickPlan sweep — round 6 review: the paving between plaza_4's back and the guide, the forecourt's strip", () => {
+  const guide = { minX: 4.7, maxX: 5.3, minZ: 11.7, maxZ: 12.3 };
+
+  it("the review's clicks: a ring out of the 7 cm gap, under 1 m off, walked to (it did nothing, or put the ring 2.1 m off at the guide's feet)", () => {
+    expect(obstacles.some((o) => o.minX === guide.minX && o.maxZ === guide.maxZ)).toBe(true);
+    for (const [fx, fz, tx, tz] of [
+      [2.39, 10.92, 4.56, 10.65],
+      [2.39, 10.92, 4.46, 10.54],
+      [2.39, 10.92, 4.66, 10.74],
+      [5.23, 13.24, 4.55, 10.65],
+    ]) {
+      const plan = planClickMove(fx, fz, ground(tx, tz), obstacles, village, false, options);
+      expect(plan).toMatchObject({ ok: true, adjusted: "pushed" });
+      if (!plan.ok) continue;
+      expect(Math.hypot(plan.x - tx, plan.z - tz)).toBeLessThan(1);
+      expect(walkThere(fx, fz, plan.x, plan.z, obstacles, village, plan.via).arrived).toBe(true);
+    }
+  });
+
+  it("open paving between them, from 70 places round: nothing refused, no ring a metre off the click", () => {
+    const targets: Array<[number, number]> = [];
+    for (let x = 3.2; x <= 5.8; x += 0.2) {
+      for (let z = 10.3; z <= 11.75; z += 0.2) {
+        if (!underABench(x, z) && !obstacles.some((o) => !isBenchBox(o) && x > o.minX && x < o.maxX && z > o.minZ && z < o.maxZ)) targets.push([x, z]);
+      }
+    }
+    const starts: Array<[number, number]> = [];
+    for (let x = 0; x <= 9; x += 1) for (let z = 7; z <= 15; z += 1) if (isFreeSpot(x, z, obstacles, village)) starts.push([x, z]);
+    expect(targets.length).toBeGreaterThan(50);
+    expect(starts.length).toBeGreaterThan(50);
+    const bad: string[] = [];
+    for (const [fx, fz] of starts) {
+      for (const [tx, tz] of targets) {
+        const plan = planClickMove(fx, fz, ground(tx, tz), obstacles, village, false, options);
+        if (!plan.ok) {
+          if (plan.reason !== "here") bad.push(`(${fx}, ${fz}) -> (${tx.toFixed(2)}, ${tz.toFixed(2)}): ${plan.reason}`);
+        } else if (Math.hypot(plan.x - tx, plan.z - tz) > 1) {
+          bad.push(`(${fx}, ${fz}) -> (${tx.toFixed(2)}, ${tz.toFixed(2)}): ring ${Math.hypot(plan.x - tx, plan.z - tz).toFixed(2)} m off`);
+        }
+      }
+    }
+    expect(bad).toEqual([]);
+  });
+
+  it("seated at the forecourt's bench, the strip behind it on a 0.1 m grid: every point walked to (two were refused)", () => {
+    const s = VILLAGE_SEATS[17];
+    expect(s.bench).toBe("memorial_forecourt");
+    const refused: string[] = [];
+    let points = 0;
+    for (let x = -6.3; x <= -3.3; x += 0.1) {
+      for (const z of [-51.175, -51.275, -51.375, -51.475, -51.575]) {
+        if (!openGround(x, z)) continue;
+        points++;
+        const plan = planClickMove(s.standX, s.standZ, ground(x, z), obstacles, village, true, options);
+        if (!plan.ok) refused.push(`(${x.toFixed(2)}, ${z}): ${plan.reason}`);
+        else if (!walkThere(s.standX, s.standZ, plan.x, plan.z, obstacles, village, plan.via).arrived) refused.push(`(${x.toFixed(2)}, ${z}): stuck`);
+      }
+    }
+    expect(points).toBeGreaterThan(100);
+    expect(refused).toEqual([]);
+    for (const x of [-5.1, -5]) expect(planClickMove(s.standX, s.standZ, ground(x, -51.375), obstacles, village, true, options)).toMatchObject({ ok: true, x, z: -51.375, adjusted: "none" });
   });
 });

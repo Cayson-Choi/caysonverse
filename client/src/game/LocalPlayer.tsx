@@ -60,6 +60,7 @@ import { clipFor, lookFromAppearance } from "./characterLook";
 import { reportAvatarClip, useAvatar } from "./useAvatar";
 import { BlobShadow } from "./BlobShadow";
 import { PICK_AS_SELF } from "./clickPick";
+import { createSelfFade, endSelfFade, registerSelfBody, selfBody, stepSelfFade } from "./selfBody";
 import { createNametag } from "./nametag";
 import { registerLabel } from "./labelRegistry";
 import { bubbleRestHeight, nametagRestHeight } from "./nametagLayout";
@@ -222,6 +223,17 @@ export function LocalPlayer({
   }, [showOwnNametag, sessionId, nickname, isAdmin, bubbleAnchor, tagHeight, bubbleRest]);
   // Own emoji reaction: same broadcast-driven, self-included discipline; it starts above the own bubble.
   useEmoji(sessionId, groupRef, avatar.topY, bubbleTop);
+  // The own body, for the destination ring it may hide (ClickMarker): while it does, the body fades (stepSelfFade below).
+  const selfFadeRef = useRef(createSelfFade());
+  useEffect(() => {
+    const group = groupRef.current;
+    const unregister = group ? registerSelfBody(group, avatar.topY) : undefined;
+    const fade = selfFadeRef.current;
+    return () => {
+      unregister?.();
+      endSelfFade(fade, avatar); // a cached avatar is never handed on faded
+    };
+  }, [avatar]);
 
   const { actions } = useAnimations(animations, model);
 
@@ -468,6 +480,10 @@ export function LocalPlayer({
     // was hidden in the FP it was opened from — gated on the ov BLEND, not the
     // instant mode flip, so neither transition direction flashes near the eye.
     group.visible = viewState.ovBlend > OV_VIS_BLEND ? true : viewState.blend < HIDE_BLEND;
+    // The destination ring straight ahead, behind the body (a click on the body itself, a walk away from the camera):
+    // the body fades and is drawn after the ring, so the ring shows through it (round 6 review: only its dashes showed,
+    // on the body, all the way there).
+    stepSelfFade(selfFadeRef.current, avatar, group.visible && selfBody.hidingRing, delta);
 
     // Focus guard: while the chat input owns keyboard input — OR while the
     // resilience driver is reconnecting (world frozen behind the overlay) —
