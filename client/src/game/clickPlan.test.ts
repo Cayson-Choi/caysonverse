@@ -5,12 +5,18 @@ import { VILLAGE_LAYOUT, villageGeometry } from "@caysonverse/shared/village/vil
 import { VILLAGE_SEATS } from "@caysonverse/shared/village/benchSeats";
 import {
   DETOUR_MAX_RATIO,
+  DETOUR_VIA_CLEAR,
+  FURNITURE_MAX_PUSH,
   MAX_PUSH,
   RAISED_MAX_Y,
   WALKABLE_MAX_Y,
   WALKABLE_MIN_NY,
   findDetour,
+  finishClickPlan,
+  finishClickPlanSteps,
+  freeSpotsNear,
   isFreeSpot,
+  startClickPlan,
   clickIntent,
   isWalkableSurface,
   nearestFreeSpot,
@@ -21,7 +27,8 @@ import {
   surfaceKind,
   walkStart,
 } from "./clickPlan";
-import { ARRIVE_DIST } from "./clickMove";
+import { ARRIVE_DIST, VIA_REACH } from "./clickMove";
+import { VILLAGE_FURNITURE } from "./activeMap";
 
 const R = PLAYER_RADIUS;
 const BOUNDS = { minX: -20, maxX: 20, minZ: -20, maxZ: 20 };
@@ -418,5 +425,107 @@ describe("clickPlan — a walk that cannot arrive stops where it meets the obsta
     expect(segmentClear(1 + R, 3, 1 + R + 2, 1 + R, [BOX])).toBe(true); // a corner touched from outside
     expect(segmentClear(0, 5, 0, -5, [BOX])).toBe(false);
     expect(segmentClear(-5, 5, 5, 5, [BOX])).toBe(true);
+  });
+});
+
+describe("clickPlan — round 5 review: ways round keep clear of corners, benches' boxes, nothing-happens", () => {
+  /** How far (m) (x, z) is outside `b` grown by the radius (negative: inside). */
+  const outside = (x: number, z: number, b: AABB) => Math.max(b.minX - R - x, x - (b.maxX + R), b.minZ - R - z, z - (b.maxZ + R));
+
+  it("a way round keeps DETOUR_VIA_CLEAR past the grown faces at its corners, more than the walk turns early (VIA_REACH)", () => {
+    expect(VIA_REACH).toBeLessThan(DETOUR_VIA_CLEAR);
+    for (const [from, to] of [
+      [
+        { x: 0, z: 6 },
+        { x: 0, z: -6 },
+      ],
+      [
+        { x: 0.3, z: 3 },
+        { x: -0.4, z: -2.5 },
+      ],
+      [
+        { x: 4, z: 1 },
+        { x: -4, z: -1.2 },
+      ],
+    ]) {
+      const via = findDetour(from.x, from.z, to.x, to.z, [BOX], BOUNDS)!;
+      expect(via.length).toBeGreaterThan(0);
+      for (const p of via) expect(outside(p.x, p.z, BOX)).toBeGreaterThanOrEqual(DETOUR_VIA_CLEAR - 1e-9);
+      expect(simulateWalk(from.x, from.z, to.x, to.z, [BOX], BOUNDS, R, via).arrived).toBe(true);
+    }
+  });
+
+  it("a gap narrower than the clearance is still gone through, with none (the grown faces themselves)", () => {
+    // two boxes 0.9 m apart: room for a body (0.8 m) but not for the clearance either side
+    const a: AABB = { minX: -6, maxX: -0.45, minZ: -0.5, maxZ: 0.5 };
+    const b: AABB = { minX: 0.45, maxX: 6, minZ: -0.5, maxZ: 0.5 };
+    const wallW: AABB = { minX: -21, maxX: -6, minZ: -0.5, maxZ: 0.5 };
+    const wallE: AABB = { minX: 6, maxX: 21, minZ: -0.5, maxZ: 0.5 };
+    const boxes = [a, b, wallW, wallE];
+    const plan = planClickMove(0.6, 4, ground(-0.6, -4), boxes, BOUNDS);
+    expect(plan).toMatchObject({ ok: true, x: -0.6, z: -4, adjusted: "none" });
+    if (plan.ok) expect(simulateWalk(0.6, 4, -0.6, -4, boxes, BOUNDS, R, plan.via).arrived).toBe(true);
+  });
+
+  it("a click on the ground inside a bench's box moves out up to FURNITURE_MAX_PUSH — only for furniture", () => {
+    // a 2 x 1.34 m box round a turned bench; the ground 0.1 m off its middle is in plain view behind the backrest
+    const bench: AABB = { minX: -1, maxX: 1, minZ: -0.67, maxZ: 0.67 };
+    const click = ground(0, 0.1);
+    expect(nearestFreeSpot(0, 0.1, [bench], BOUNDS)).toBeNull(); // nothing within MAX_PUSH
+    expect(planClickMove(0, 5, click, [bench], BOUNDS)).toMatchObject({ ok: true, adjusted: "stopped" }); // a wall: up to it
+    const plan = planClickMove(0, 5, click, [bench], BOUNDS, false, { furniture: [bench] });
+    expect(plan).toMatchObject({ ok: true, adjusted: "pushed" });
+    if (!plan.ok) return;
+    expect(plan.z).toBeCloseTo(0.67 + R + 0.02, 6); // the nearest place a body stands, on the clicked side
+    expect(Math.hypot(plan.x - 0, plan.z - 0.1)).toBeLessThanOrEqual(FURNITURE_MAX_PUSH);
+    // the creek's water is no furniture: still toward it, the ring at the bank
+    const village = VILLAGE_LAYOUT.areas.village;
+    const creekPlan = planClickMove(-6, 66, ground(-6, 76), villageGeometry.obstacles, village, false, { furniture: VILLAGE_FURNITURE });
+    expect(creekPlan).toMatchObject({ ok: true, adjusted: "stopped" });
+  });
+
+  it("the nearest spot out of a collider's margin lies in a gap no body reaches: the next nearest is taken", () => {
+    // seat 7 (plaza_4): the paving between the bench's back and the planter behind it — 7 cm of room between the grown boxes
+    const s = VILLAGE_SEATS[7];
+    const village = VILLAGE_LAYOUT.areas.village;
+    const spots = freeSpotsNear(4.98, 11.41, villageGeometry.obstacles, village);
+    expect(spots.length).toBeGreaterThan(1);
+    for (let i = 1; i < spots.length; i++) {
+      const d0 = Math.hypot(spots[i - 1].x - 4.98, spots[i - 1].z - 11.41);
+      expect(Math.hypot(spots[i].x - 4.98, spots[i].z - 11.41)).toBeGreaterThanOrEqual(d0);
+    }
+    const plan = planClickMove(s.standX, s.standZ, ground(4.98, 11.41), villageGeometry.obstacles, village, true, { furniture: VILLAGE_FURNITURE });
+    expect(plan.ok).toBe(true);
+    if (plan.ok) expect(simulateWalk(s.standX, s.standZ, plan.x, plan.z, villageGeometry.obstacles, village, R, plan.via).arrived).toBe(true);
+  });
+
+  it("the far creek bank tapped from the water's edge (no way round within DETOUR_MAX_RATIO): over the bridge, not nothing", () => {
+    const village = VILLAGE_LAYOUT.areas.village;
+    const from = { x: 4.67, z: 71.21 }; // at the creek's south face, the bridge 27 m west
+    const plan = planClickMove(from.x, from.z, ground(-7.51, 87.08), villageGeometry.obstacles, village);
+    expect(plan).toMatchObject({ ok: true, x: -7.51, z: 87.08, adjusted: "none" });
+    if (!plan.ok) return;
+    expect(plan.via!.some((p) => p.x > -26 + R && p.x < -22 - R)).toBe(true); // by the bridge
+    expect(simulateWalk(from.x, from.z, plan.x, plan.z, villageGeometry.obstacles, village, R, plan.via).arrived).toBe(true);
+  });
+
+  it("startClickPlan + finishClickPlan is planClickMove; the way round's search runs in slices (finishClickPlanSteps)", () => {
+    const village = VILLAGE_LAYOUT.areas.village;
+    const obstacles = villageGeometry.obstacles;
+    // straight: decided at the start
+    expect(startClickPlan(0, 16, ground(3, 20), obstacles, village).plan).toEqual(planClickMove(0, 16, ground(3, 20), obstacles, village));
+    // across the creek by the bridge: a way round, left for the finish
+    const start = startClickPlan(-6, 65.7, ground(-6, 85, 0.001), obstacles, village);
+    expect(start.plan).toBeUndefined();
+    expect(finishClickPlan(start.detour!)).toEqual(planClickMove(-6, 65.7, ground(-6, 85, 0.001), obstacles, village));
+    const steps = finishClickPlanSteps(start.detour!);
+    let slices = 0;
+    let r = steps.next();
+    while (!r.done) {
+      slices++;
+      r = steps.next();
+    }
+    expect(slices).toBeGreaterThan(0);
+    expect(r.value).toEqual(finishClickPlan(start.detour!));
   });
 });

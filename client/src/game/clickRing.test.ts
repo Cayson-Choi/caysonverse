@@ -1,4 +1,14 @@
 import { describe, it, expect } from "vitest";
+import {
+  RING_GHOST_DASHES,
+  RING_GHOST_DUTY,
+  RING_GHOST_FRAGMENT,
+  RING_GHOST_INNER,
+  RING_GHOST_OPACITY,
+  RING_GHOST_OUTER,
+  RING_INNER as GHOST_RING_INNER,
+  RING_OUTER as GHOST_RING_OUTER,
+} from "./clickRing";
 import { GROUND_LAYER_OFFSET, VILLAGE_GROUND_DECAL } from "../village/villageModelPrep";
 import { DEFAULT_DECAL_Y } from "./groundDecal";
 import {
@@ -97,5 +107,26 @@ describe("clickRing — the ring stays readable on the screen (round 2 review: a
   it("never grows past RING_MAX_SCALE", () => {
     const { dist, sin } = view(1.6, 400);
     expect(ringScreenScale(dist, sin, 50, 800)).toBe(RING_MAX_SCALE);
+  });
+});
+
+describe("clickRing — the covered part of the ring (round 5 review: a hair ornament on the player's own head)", () => {
+  it("is drawn fainter than the ring (0.9), dashed and thinner, inside the ring's own band", () => {
+    expect(RING_GHOST_OPACITY).toBeGreaterThanOrEqual(0.35);
+    expect(RING_GHOST_OPACITY).toBeLessThanOrEqual(0.45);
+    expect(RING_GHOST_DASHES).toBeGreaterThanOrEqual(8);
+    expect(Number.isInteger(RING_GHOST_DASHES)).toBe(true); // a whole number of dashes: no seam where the angle wraps
+    expect(RING_GHOST_DUTY).toBeGreaterThan(0.3);
+    expect(RING_GHOST_DUTY).toBeLessThan(0.75);
+    expect(RING_GHOST_INNER).toBeGreaterThan(GHOST_RING_INNER);
+    expect(RING_GHOST_OUTER).toBeLessThan(GHOST_RING_OUTER);
+    expect(RING_GHOST_OUTER - RING_GHOST_INNER).toBeLessThan(GHOST_RING_OUTER - GHOST_RING_INNER);
+  });
+
+  it("its fragment cut keeps three's alpha map, scales the alpha and drops what is left out", () => {
+    expect(RING_GHOST_FRAGMENT.startsWith("#include <alphamap_fragment>")).toBe(true);
+    expect(RING_GHOST_FRAGMENT).toContain("diffuseColor.a *=");
+    expect(RING_GHOST_FRAGMENT).toContain("discard");
+    expect(RING_GHOST_FRAGMENT).toContain(RING_GHOST_DASHES.toFixed(1));
   });
 });

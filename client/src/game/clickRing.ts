@@ -103,3 +103,46 @@ export function ringScreenScale(dist: number, sinElev: number, fovDeg: number, v
   const tall = wide * Math.max(sinElev, MIN_SIN_ELEV);
   return Math.min(RING_MAX_SCALE, Math.max(1, RING_MIN_WIDTH_PX / wide, RING_MIN_HEIGHT_PX / tall));
 }
+
+/**
+ * The part of the ring something nearer covers (ClickMarker's see-through pass) is drawn as a dashed, thinner, fainter
+ * ring: it reads as "a ring on the ground behind that", not as part of what covers it (round 5 review: drawn whole at
+ * 0.7 through the player's own body, the ring sat on the head like a hair ornament). RING_GHOST_DASHES dashes round it,
+ * each RING_GHOST_DUTY of its share of the round; the band from RING_GHOST_INNER to RING_GHOST_OUTER (the ring itself:
+ * RING_INNER..RING_OUTER); no centre dot.
+ */
+export const RING_GHOST_OPACITY = 0.45;
+export const RING_GHOST_DASHES = 16;
+export const RING_GHOST_DUTY = 0.55;
+export const RING_GHOST_INNER = 0.33;
+export const RING_GHOST_OUTER = 0.39;
+
+/** The see-through pass's vertex additions: the ring's own plane coordinates (its geometry lies in local x / y). */
+export const RING_GHOST_VERTEX_PARS = /* glsl */ `varying vec2 vRingLocal;
+`;
+export const RING_GHOST_VERTEX = /* glsl */ `#include <begin_vertex>
+vRingLocal = position.xy;
+`;
+
+/**
+ * The see-through pass's fragment cut (after three's `alphamap_fragment`): only the dashes of the thinner band stay,
+ * their edges smoothed over a pixel (the derivatives of the plane coordinates — the angle's own jump at its seam never
+ * enters them), the rest discarded.
+ */
+export const RING_GHOST_FRAGMENT_PARS = /* glsl */ `varying vec2 vRingLocal;
+`;
+export const RING_GHOST_FRAGMENT = /* glsl */ `#include <alphamap_fragment>
+{
+  float ringR = length(vRingLocal);
+  vec2 ringPx = fwidth(vRingLocal);
+  float ringW = max(length(ringPx), 1e-5);
+  float ringBand = smoothstep(${RING_GHOST_INNER.toFixed(3)} - ringW, ${RING_GHOST_INNER.toFixed(3)} + ringW, ringR)
+    * (1.0 - smoothstep(${RING_GHOST_OUTER.toFixed(3)} - ringW, ${RING_GHOST_OUTER.toFixed(3)} + ringW, ringR));
+  float ringTurn = atan(vRingLocal.y, vRingLocal.x) / 6.28318531 + 0.5;
+  float ringDash = fract(ringTurn * ${RING_GHOST_DASHES.toFixed(1)});
+  float ringDashW = ringW / max(ringR, 1e-4) * ${(RING_GHOST_DASHES / (2 * Math.PI)).toFixed(5)};
+  float ringOn = smoothstep(0.0, ringDashW, ringDash) * (1.0 - smoothstep(${RING_GHOST_DUTY.toFixed(3)} - ringDashW, ${RING_GHOST_DUTY.toFixed(3)} + ringDashW, ringDash));
+  diffuseColor.a *= ringBand * ringOn;
+  if (diffuseColor.a < 0.004) discard;
+}
+`;

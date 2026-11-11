@@ -28,8 +28,7 @@ import {
 import { onHotkey } from "./hotkeys";
 import { isUiCaptured } from "./uiCapture";
 import { CAMERA_LOOK_LIFT, ZOOM_BAND, pinchZoomDelta, stepKeyYaw, stepOrbitToward } from "./cameraControls";
-import { DOUBLE_TAP_MS, canTapWalk, isDoubleTap, isLookHalf } from "./tapGesture";
-import type { TapRecord } from "./tapGesture";
+import { DOUBLE_TAP_MS, HeldWork, LookTapGate, canTapWalk, isLookHalf } from "./tapGesture";
 import {
   DRAG_SIGN,
   CLICK_MAX_PX,
@@ -43,14 +42,17 @@ import {
   peekPendingClick,
   clearPendingClick,
   clickGeneration,
+  peekClickTarget,
+  type ClickTarget,
 } from "./clickMove";
 import { asSurface, faceIsTall, pickSurface, ringView, surfaceHeightAt, warmPick, type ScenePick } from "./clickPick";
 import {
   WALKABLE_MAX_Y,
   WALKABLE_MIN_NY,
   clickIntent,
-  planClickMove,
+  finishClickPlanSteps,
   requireSeen,
+  startClickPlan,
   walkStart,
   type ClickPlan,
   type RingView,
@@ -110,9 +112,20 @@ function clamp(value: number, min: number, max: number): number {
 
 /**
  * Dev/E2E only (`window.__cvClickPick`): the last click — what it landed on, the plan made of it, how its ring would look (`view`; and `unseen`, the
- * plan rule 4 refused) and the ms the pick and the plan took together.
+ * plan rule 4 refused) and the ms the pick and the plan took together. `pending`: its way round is still being looked
+ * for (`plan` null until then).
  */
-let lastClickPick: { pick: ScenePick | null; plan: ClickPlan; view: RingView | null; unseen: ClickPlan | null; ms: number } | null = null;
+let lastClickPick: {
+  pick: ScenePick | null;
+  plan: ClickPlan | null;
+  view: RingView | null;
+  unseen: ClickPlan | null;
+  pending: boolean;
+  ms: number;
+} | null = null;
+
+/** How long (ms) one slice of a click's way-round search runs before the page gets the thread back (CameraRig planClick). */
+const PLAN_SLICE_MS = 4;
 
 function lerp(a: number, b: number, t: number): number {
   return a + (b - a) * t;
@@ -227,29 +240,17 @@ export function CameraRig({ pose, orbit, seat, fogRange = LEGACY_FOG, far: baseF
     // button voids it; on release, only a press that passes isClick (< ~6px,
     // < ~400ms) becomes a floor click — anything longer stays a pure look-drag.
     // `travel`: the farthest it has gone from the down point (pressTravel) — a drag that came back is still a drag.
-    let clickStart: { id: number; x: number; y: number; t: number; travel: number } | null = null;
+    // `second`: the second touch of a double tap (LookTapGate, decided at its touch-down).
+    let clickStart: { id: number; x: number; y: number; t: number; travel: number; second: boolean } | null = null;
     // Reused per mount for the click's scene raycast (never per event — no GC churn).
     const raycaster = new Raycaster();
     const ndc = new Vector2();
-    // Touch double-tap bookkeeping (look half only): the last finished tap, and the
-    // single-tap walk that is being held back for DOUBLE_TAP_MS in case a second
-    // tap turns it into a recenter. The timer is cleared on a double tap, a pinch
-    // and unmount.
-    let lastTap: TapRecord | null = null;
-    // A look-half tap's pick, run just after its event (see onUp), and its held-back walk.
-    let pendingPick: ReturnType<typeof setTimeout> | null = null;
-    let pendingWalk: ReturnType<typeof setTimeout> | null = null;
-    const clearPendingWalk = () => {
-      if (pendingPick !== null) {
-        clearTimeout(pendingPick);
-        pendingPick = null;
-      }
-      if (pendingWalk !== null) {
-        clearTimeout(pendingWalk);
-        pendingWalk = null;
-        clearPendingClick(); // its ring goes with it
-      }
-    };
+    // Touch double-tap bookkeeping (look half only — tapGesture.ts LookTapGate): the last tap, what it holds back for
+    // DOUBLE_TAP_MS (its pick, its walk, its plan's slices) in case a second tap turns it into a recenter, and that
+    // second touch, decided the moment it goes down. Dropped on a double tap, a pinch and unmount.
+    const taps = new LookTapGate();
+    // A mouse click's (or a stick-half tap's) plan still looking for its way round (planClick): a newer click drops it.
+    const clickWork = new HeldWork();
     /** What a click at a screen point lands on: the first visible surface under it (clickPick.ts). Once per click. */
     const pickAt = (clientX: number, clientY: number, cam = camera as PerspectiveCamera): ScenePick | null => {
       const rect = el.getBoundingClientRect();
@@ -264,12 +265,37 @@ export function CameraRig({ pose, orbit, seat, fogRange = LEGACY_FOG, far: baseF
       return pickSurface(raycaster, scene, { area: activeBounds() });
     };
     /**
+     * Rule 4: how a ring at (x, z) on a surface at `surfaceY` would look from `cam` — as ClickMarker will draw it: its
+     * lift, its screen size. Only whether it is on the screen is asked (ringView's `need` 0: no rays — what covers part
+     * of it, the ring is drawn through; round 5 review: the share in plain view was measured on every click for nothing).
+     */
+    const viewOfRing = (x: number, surfaceY: number, z: number, cam: PerspectiveCamera): RingView => {
+      const y = surfaceY + ringLift(decal);
+      const dist = Math.hypot(cam.position.x - x, cam.position.y - y, cam.position.z - z);
+      const scale = cam.isPerspectiveCamera ? ringScreenScale(dist, (cam.position.y - y) / Math.max(dist, 1e-4), cam.fov, el.clientHeight || 1) : 1;
+      return ringView(raycaster, scene, cam, x, y, z, scale, 0);
+    };
+    /**
      * Where a click on `pick` sends the avatar (clickPlan.ts) — or why it sends it nowhere — planned from where its
      * walk starts: where it stands, or, seated, the spot it gets up onto (the seat's dismount point), or, getting up,
-     * where the stand-up glide lands. `t0`: when the click's pick began (the dev hook times pick + plan together).
-     * `snap`: the camera as it was at the tap (a copy), for a pick run after its event; the live camera otherwise.
+     * where the stand-up glide lands. Handed to `done` at once when the walk there is straight (most clicks), else once
+     * its way round has been looked for, PLAN_SLICE_MS at a time on `work`'s timers (finishClickPlanSteps): the click's
+     * handler never waits for a grid search (round 5 review: 15 ms in a pointerup handler for a click across the
+     * fountain, 40-60 ms on a slower CPU). Meanwhile, with `provisional`, the ring already shows where that way round
+     * leads (the pending ring, clickMove.ts), so the click is answered at once; `done` gets that ring (or null) to take
+     * down if the plan comes to nothing. Dropping `work` drops the plan and its ring. `onDefer` runs when the plan is
+     * left for later, before that ring shows (a walk in progress stops there: the plan starts where the avatar stands).
+     * `snap`: the camera as it was at the tap (a copy) for a pick run after its event; the live camera otherwise. `t0`:
+     * when the click's pick began (the dev hook times pick + plan together).
      */
-    const planFor = (pick: ScenePick | null, t0 = performance.now(), snap: PerspectiveCamera | null = null): ClickPlan => {
+    const planClick = (
+      pick: ScenePick | null,
+      done: (plan: ClickPlan, provisional: Readonly<ClickTarget> | null) => void,
+      work: HeldWork,
+      opts: { t0?: number; snap?: PerspectiveCamera | null; provisional?: boolean; onDefer?: () => void } = {},
+    ): void => {
+      const t0 = opts.t0 ?? performance.now();
+      const snap = opts.snap ?? null;
       const s = seat.index >= 0 ? activeSeats()[seat.index] : undefined;
       const g = localGlide.current;
       const from = walkStart(pose.x, pose.z, s, g && { x: g.toX, z: g.toZ });
@@ -278,49 +304,98 @@ export function CameraRig({ pose, orbit, seat, fogRange = LEGACY_FOG, far: baseF
       if (pick && surface && pick.ny < WALKABLE_MIN_NY && pick.y > 0 && pick.y <= WALKABLE_MAX_Y && pick.faceTall === undefined) {
         pick.faceTall = faceIsTall(raycaster, scene, pick);
       }
-      let plan = planClickMove(from.x, from.z, surface, getActiveMap().geometry.obstacles, activeBounds(), !!s);
+      const map = getActiveMap();
+      const start = startClickPlan(from.x, from.z, surface, map.geometry.obstacles, activeBounds(), !!s, { furniture: map.furniture });
+      const cameraNow = (): PerspectiveCamera => {
+        if (snap) return snap;
+        const cam = camera as PerspectiveCamera;
+        cam.updateMatrixWorld();
+        return cam;
+      };
       // A destination moved off the click lies on the ground found there (a lane, a lawn, the forecourt).
-      if (plan.ok && plan.adjusted !== "none") plan.y = surfaceHeightAt(raycaster, scene, plan.x, plan.z, plan.y);
-      // Rule 4: only a ring on the screen takes a walk — as ClickMarker will draw it: its lift, its screen size. (What
-      // covers part of it, the ring is drawn through; in DEV the dev hook gets the share in plain view too.)
-      let view: RingView | null = null;
-      let unseen: ClickPlan | null = null;
-      if (plan.ok) {
-        const cam = snap ?? (camera as PerspectiveCamera);
-        if (!snap) cam.updateMatrixWorld();
-        const y = plan.y + ringLift(decal);
-        const dist = Math.hypot(cam.position.x - plan.x, cam.position.y - y, cam.position.z - plan.z);
-        const scale = cam.isPerspectiveCamera ? ringScreenScale(dist, (cam.position.y - y) / Math.max(dist, 1e-4), cam.fov, el.clientHeight || 1) : 1;
-        view = ringView(raycaster, scene, cam, plan.x, y, plan.z, scale, import.meta.env.DEV ? undefined : 0);
-        const seen = requireSeen(plan, view);
-        if (!seen.ok) unseen = plan;
-        plan = seen;
+      const groundAt = (x: number, z: number, y: number, moved: boolean) => (moved ? surfaceHeightAt(raycaster, scene, x, z, y) : y);
+      const settle = (raw: ClickPlan): ClickPlan => {
+        let plan = raw;
+        if (plan.ok && plan.adjusted !== "none") plan = { ...plan, y: groundAt(plan.x, plan.z, plan.y, true) };
+        // Rule 4: only a ring on the screen takes a walk.
+        let view: RingView | null = null;
+        let unseen: ClickPlan | null = null;
+        if (plan.ok) {
+          view = viewOfRing(plan.x, plan.y, plan.z, cameraNow());
+          const seen = requireSeen(plan, view);
+          if (!seen.ok) unseen = plan;
+          plan = seen;
+        }
+        if (import.meta.env.DEV) lastClickPick = { pick, plan, view, unseen, pending: false, ms: performance.now() - t0 };
+        return plan;
+      };
+      if (start.plan) {
+        done(settle(start.plan), null);
+        return;
       }
-      if (import.meta.env.DEV) lastClickPick = { pick, plan, view, unseen, ms: performance.now() - t0 };
-      return plan;
+      const detour = start.detour;
+      opts.onDefer?.();
+      let shown: Readonly<ClickTarget> | null = null;
+      if (opts.provisional) {
+        const spot = detour.spots[0];
+        const y = groundAt(spot.x, spot.z, detour.surface.y, spot.x !== detour.surface.x || spot.z !== detour.surface.z);
+        if (viewOfRing(spot.x, y, spot.z, cameraNow()).onScreen) shown = setPendingClick(spot.x, spot.z, y);
+      }
+      const dropRing = () => {
+        if (shown && peekPendingClick() === shown) clearPendingClick();
+      };
+      if (import.meta.env.DEV) lastClickPick = { pick, plan: null, view: null, unseen: null, pending: true, ms: performance.now() - t0 };
+      const steps = finishClickPlanSteps(detour);
+      const slice = () => {
+        const began = performance.now();
+        for (;;) {
+          const r = steps.next();
+          if (r.done) {
+            done(settle(r.value), shown);
+            return;
+          }
+          if (performance.now() - began >= PLAN_SLICE_MS) break;
+        }
+        work.hold(slice, 0, dropRing);
+      };
+      work.hold(slice, 0, dropRing);
     };
 
     // The look-drag gain: CAMERA.dragSpeed x the player's sensitivity setting, read
     // when the drag moves (not captured at mount), so changing it in the menu applies
     // to the very next drag.
     const dragSpeed = () => CAMERA.dragSpeed * useSettingsStore.getState().settings.lookSensitivity;
+    /** A walk in progress stops where it is (a new click is being planned from there: planClick `onDefer`). */
+    const stopWalk = () => {
+      if (peekClickTarget()) clearClickTarget();
+    };
 
     const onDown = (e: PointerEvent) => {
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       clickStart =
         e.button === 0 && pointers.size === 1
-          ? { id: e.pointerId, x: e.clientX, y: e.clientY, t: eventTime(e), travel: 0 }
+          ? { id: e.pointerId, x: e.clientX, y: e.clientY, t: eventTime(e), travel: 0, second: false }
           : null;
       try {
         el.setPointerCapture(e.pointerId);
       } catch {
         // synthetic events may have no active pointer; capture is best-effort
       }
+      // A touch on the look half within DOUBLE_TAP_MS of a tap's lift, near it: a double tap, decided now — the first
+      // tap's walk is dropped before this touch is lifted, however long it is held (LookTapGate).
+      if (
+        clickStart &&
+        e.pointerType === "touch" &&
+        viewState.mode !== "ov" &&
+        isLookHalf(e.clientX, window.innerWidth, useSettingsStore.getState().settings.leftHanded) &&
+        taps.down(e.pointerId, clickStart.t, e.clientX, e.clientY)
+      ) {
+        clickStart.second = true;
+      }
       if (pointers.size === 2) {
         pinchPrev = spread(pointers);
         // A second finger means a pinch, not a double tap: forget the held-back walk.
-        clearPendingWalk();
-        lastTap = null;
+        taps.reset();
       }
     };
     const onMove = (e: PointerEvent) => {
@@ -390,7 +465,7 @@ export function CameraRig({ pose, orbit, seat, fogRange = LEGACY_FOG, far: baseF
     const onUp = (e: PointerEvent) => {
       // Click-move (design 29): a released candidate that stayed a "click"
       // (short + still + not cancelled) is planned from the surface under it
-      // (planAt) and becomes the auto-move target. Skipped in overview (no overview click-move —
+      // (planClick) and becomes the auto-move target. Skipped in overview (no overview click-move —
       // YAGNI, documented) and inert for clicks on DOM UI, which never reach
       // these canvas-only down handlers. Runs in TP and FP alike (in FP the walk
       // is camera-relative and never turns the look). The touch stick zone passes
@@ -402,35 +477,29 @@ export function CameraRig({ pose, orbit, seat, fogRange = LEGACY_FOG, far: baseF
         // Timed by the events' own times, not by when this handler got to run: on a busy page a 60 ms tap's lift
         // was handled 459 ms after its press and dropped as a long press (round 4 review).
         const upAt = eventTime(e);
-        if (
+        const travel = pressTravel(start.travel, e.clientX - start.x, e.clientY - start.y);
+        if (start.second) {
+          // The second touch of a double tap (decided at its touch-down, onDown): the camera swings back behind the
+          // body — unless the touch became a drag (that turned the view) or was cancelled. No pick, no walk.
+          taps.up(e.pointerId);
+          if (e.type === "pointerup" && viewState.mode !== "ov" && travel < TAP_MAX_PX) requestRecenter(pose.yaw);
+        } else if (
           e.type === "pointerup" && // a pointercancel is never a click
           viewState.mode !== "ov" &&
-          isClick(
-            pressTravel(start.travel, e.clientX - start.x, e.clientY - start.y),
-            0,
-            upAt - start.t,
-            e.pointerType === "touch" ? TAP_MAX_PX : CLICK_MAX_PX,
-          )
+          isClick(travel, 0, upAt - start.t, e.pointerType === "touch" ? TAP_MAX_PX : CLICK_MAX_PX)
         ) {
           // Which half is the look half follows the left-handed setting — the SAME store
           // field TouchJoystick's prop comes from (WorldScene), so the stick half and
           // the look half can never overlap or leave a gap.
           const leftHanded = useSettingsStore.getState().settings.leftHanded;
           const lookTap = e.pointerType === "touch" && isLookHalf(e.clientX, window.innerWidth, leftHanded);
-          if (lookTap && isDoubleTap(lastTap, { t: start.t, x: e.clientX, y: e.clientY })) {
-            // The second tap of a double tap (it went down within DOUBLE_TAP_MS of the first one's lift): the camera
-            // swings back behind the body — no pick, no walk.
-            clearPendingWalk();
-            lastTap = null;
-            requestRecenter(pose.yaw);
-          } else if (lookTap) {
+          if (lookTap) {
             // Look half: wait for a possible second tap. Two taps recenter the camera; one tap walks after
             // DOUBLE_TAP_MS (planned on what the finger actually touched, not wherever the camera is by then), its
             // ring showing from the tap on. The world can change during that wait, so the walk is re-checked when
             // it fires (overview opened, chat took the keyboard, the player sat down or took over meanwhile — see
             // canTapWalk).
-            clearPendingWalk();
-            lastTap = { t: upAt, x: e.clientX, y: e.clientY };
+            taps.tap(upAt, e.clientX, e.clientY);
             // The pick runs just after this event, on a copy of the camera as it is now: the page answers the finger
             // first, so a second tap is not held up behind the first one's pick (round 3 merge test, round 4 review:
             // a phone under load lost its double tap — a walk instead of a recenter).
@@ -441,44 +510,94 @@ export function CameraRig({ pose, orbit, seat, fogRange = LEGACY_FOG, far: baseF
             const tappedAt = performance.now();
             const seatedAtTap = seat.index >= 0;
             const generation = clickGeneration(); // a walk set or dropped by hand meanwhile: the player took over
-            pendingPick = setTimeout(() => {
-              pendingPick = null;
+            const walkFrom = () => {
+              const s = seat.index >= 0 ? activeSeats()[seat.index] : undefined;
+              const g = localGlide.current;
+              return walkStart(pose.x, pose.z, s, g && { x: g.toX, z: g.toZ });
+            };
+            taps.work.hold(() => {
               const t0 = performance.now();
               const pick = pickAt(at.x, at.y, snap);
-              const plan = planFor(pick, t0, snap);
-              const intent = clickIntent(plan); // walk there / stop here (own feet) / nothing (a wall, a body, the sky...)
-              if (intent === "ignore") return;
-              // the ring at once (a menu open: no walk follows)
-              const shown = plan.ok && !isUiCaptured() ? setPendingClick(plan.x, plan.z, plan.y) : null;
-              pendingWalk = setTimeout(() => {
-                pendingWalk = null;
-                // a key, the stick, Esc, a sit or another click meanwhile: the player took over — no walk
-                const dropped = clickGeneration() !== generation || (shown !== null && peekPendingClick() !== shown);
-                if (!canTapWalk(viewState.mode, isUiCaptured(), seatedAtTap, seat.index >= 0, dropped)) {
-                  if (!dropped) clearPendingClick();
-                  return;
-                }
-                // A tap at the own feet means stop, whatever the walk in progress did meanwhile (round 4 review: planned
-                // again 300 ms later, 0.6 m on, it walked back to the tap instead).
-                if (intent === "stop") {
-                  clearClickTarget();
-                  return;
-                }
-                // The same surface, planned again from where the avatar is now (a walk in progress moved it).
-                const now = planFor(pick);
-                if (now.ok) setClickTarget(now.x, now.z, now.y, now.via);
-                else if (clickIntent(now) === "stop") clearClickTarget(); // it is at the avatar's feet now: stop
-                else clearPendingClick();
-              }, Math.max(0, DOUBLE_TAP_MS - (performance.now() - tappedAt)));
+              const plannedFrom = walkFrom();
+              planClick(
+                pick,
+                (plan, provisional) => {
+                  const intent = clickIntent(plan); // walk there / stop here (own feet) / nothing (a wall, a body, the sky...)
+                  // the ring at the plan's spot (a menu open: no walk follows, no ring)
+                  const shown = plan.ok && !isUiCaptured() ? setPendingClick(plan.x, plan.z, plan.y) : null;
+                  if (!shown && provisional && peekPendingClick() === provisional) clearPendingClick();
+                  if (intent === "ignore") return;
+                  taps.work.hold(
+                    () => {
+                      // a key, the stick, Esc, a sit or another click meanwhile: the player took over — no walk
+                      const dropped = clickGeneration() !== generation || (shown !== null && peekPendingClick() !== shown);
+                      if (!canTapWalk(viewState.mode, isUiCaptured(), seatedAtTap, seat.index >= 0, dropped)) {
+                        if (!dropped) clearPendingClick();
+                        if (import.meta.env.DEV) window.__cvTapWalk?.();
+                        return;
+                      }
+                      // A tap at the own feet means stop, whatever the walk in progress did meanwhile (round 4 review:
+                      // planned again 300 ms later, 0.6 m on, it walked back to the tap instead).
+                      if (intent === "stop") {
+                        clearClickTarget();
+                        if (import.meta.env.DEV) window.__cvTapWalk?.();
+                        return;
+                      }
+                      const walkTo = (now: ClickPlan) => {
+                        if (now.ok) {
+                          setClickTarget(now.x, now.z, now.y, now.via);
+                          // should a second touch that came in time be handled only now, this walk is taken back
+                          const set = clickGeneration();
+                          taps.walked(() => {
+                            if (clickGeneration() === set) clearClickTarget();
+                          });
+                        } else if (clickIntent(now) === "stop") clearClickTarget(); // it is at the avatar's feet now: stop
+                        else clearPendingClick();
+                        if (import.meta.env.DEV) window.__cvTapWalk?.(); // the E2E holds the avatar here, before a frame walks it
+                      };
+                      // Where the avatar was when the tap was planned: that plan holds. A walk in progress moved it: the
+                      // same surface, planned again from where it is now.
+                      const from = walkFrom();
+                      if (Math.hypot(from.x - plannedFrom.x, from.z - plannedFrom.z) < 1e-3) walkTo(plan);
+                      else planClick(pick, walkTo, taps.work, { provisional: true, onDefer: stopWalk });
+                    },
+                    Math.max(0, DOUBLE_TAP_MS - (performance.now() - tappedAt)),
+                    () => clearPendingClick(), // its ring goes with it
+                  );
+                },
+                taps.work,
+                { t0, snap, provisional: !isUiCaptured() },
+              );
             }, 0);
           } else {
+            // A mouse click, or a tap on the stick half: planned now, walked the moment its plan is made (a way round
+            // is looked for over the next moments, its ring showing meanwhile).
             const t0 = performance.now();
-            const plan = planFor(pickAt(e.clientX, e.clientY), t0);
-            if (plan.ok) {
-              setClickTarget(plan.x, plan.z, plan.y, plan.via); // 벽·사람·하늘·갈 수 없는 곳은 무시 (clickPlan.ts)
-            } else if (clickIntent(plan) === "stop") {
-              clearClickTarget(); // 내 발밑: 그 자리에 멈춤
-            }
+            clickWork.drop(); // a click still being planned gives way to this one
+            let generation = clickGeneration();
+            planClick(
+              pickAt(e.clientX, e.clientY),
+              (plan, provisional) => {
+                // a key, the stick, Esc or a sit while its way round was looked for: the player took over
+                if (clickGeneration() !== generation) return;
+                if (plan.ok) {
+                  setClickTarget(plan.x, plan.z, plan.y, plan.via); // 벽·사람·하늘·갈 수 없는 곳은 무시 (clickPlan.ts)
+                } else if (clickIntent(plan) === "stop") {
+                  clearClickTarget(); // 내 발밑: 그 자리에 멈춤
+                } else if (provisional && peekPendingClick() === provisional) {
+                  clearPendingClick();
+                }
+              },
+              clickWork,
+              {
+                t0,
+                provisional: true,
+                onDefer: () => {
+                  stopWalk();
+                  generation = clickGeneration();
+                },
+              },
+            );
           }
         }
       }
@@ -535,7 +654,8 @@ export function CameraRig({ pose, orbit, seat, fogRange = LEGACY_FOG, far: baseF
       window.removeEventListener("pointercancel", onUp);
       el.removeEventListener("wheel", onWheel);
       offHotkey();
-      clearPendingWalk();
+      taps.reset();
+      clickWork.drop();
       rememberOrbit(orbit); // a scene ending mid-drag still hands its camera to the next one
     };
   }, [gl, orbit, camera, scene, pose, seat, decal]);

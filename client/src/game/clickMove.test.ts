@@ -27,6 +27,7 @@ import {
   stepClickMove,
   clickGeneration,
   VIA_REACH,
+  viaPassed,
 } from "./clickMove";
 import { worldDirection } from "./input";
 
@@ -357,5 +358,24 @@ describe("clickMove — round 4 review", () => {
     expect(clickGeneration()).toBe(g1);
     clearClickTarget(); // a key (LocalPlayer clears on any manual input, every frame of it), the stick, Esc, a sit
     expect(clickGeneration()).not.toBe(g1);
+  });
+});
+
+describe("clickMove — round 5 review: a corner passed in one long step", () => {
+  it("viaPassed: within VIA_REACH, or beyond the line through the corner square to the leg", () => {
+    const c = { x: 0, z: 4 };
+    expect(viaPassed(0, 4 - VIA_REACH / 2, c, 0, 0)).toBe(true);
+    expect(viaPassed(0, 3.5, c, 0, 0)).toBe(false);
+    expect(viaPassed(0, 4.15, c, 0, 0)).toBe(true); // stepped over it (a run, a slow frame)
+    expect(viaPassed(0.6, 4.01, c, 0, 0)).toBe(true); // past its line, off to the side
+    expect(viaPassed(0.6, 3.9, c, 0, 0)).toBe(false);
+  });
+
+  it("a step that jumps over the corner turns for the next one instead of walking back to it", () => {
+    setClickTarget(4, 4, 0, [{ x: 0, z: 4 }]);
+    stepClickMove(0, 0, 1 / 60); // the leg toward the corner begins here
+    const d = stepClickMove(0, 4.2, 1 / 60)!; // 0.2 m past it, more than VIA_REACH
+    expect(d.x).toBeGreaterThan(0.99); // on to the target (east), not back south to the corner
+    clearClickTarget();
   });
 });

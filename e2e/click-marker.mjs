@@ -80,6 +80,8 @@ const SEEN_AT_CLICK = 0.3;
 const SEEN_MOVED = 0.5;
 /** A refusal as "unseen" is unfair only when the ring would plainly have been seen: this far past the share needed. */
 const SEEN_MARGIN = 0.15;
+/** The covered part of a ring counts as seen when at least this share of its pixels shows the see-through outline. */
+const GHOST_DRAWN = 0.1;
 
 const r2 = (n) => (n == null ? n : Math.round(n * 100) / 100);
 const all = [];
@@ -453,9 +455,10 @@ async function installProbe(p) {
     }
     const saved = new Map();
     /**
-     * "normal" | "ontop" (no depth test, drawn last) | "hidden"; the pulse is held at 1 while probing. The ring's
-     * see-through pass (round 4: where something nearer covers the ring, it is drawn fainter through it — the branch's
-     * ClickMarker `ringGhost` meshes) is part of what the player sees ("normal"), not of the reference on top.
+     * "normal" | "ontop" (no depth test, drawn last) | "noghost" (as drawn, less the see-through pass) | "hidden"; the
+     * pulse is held at 1 while probing. The ring's see-through pass (round 4: where something nearer covers the ring,
+     * it is drawn through it — the branch's ClickMarker `ringGhost` meshes; round 6: as a dashed, thinner, fainter
+     * outline) is part of what the player sees ("normal"), not of the reference on top.
      */
     function markerMode(mode) {
       const mk = markerParts();
@@ -474,7 +477,7 @@ async function installProbe(p) {
         const ghost = !!mesh.userData?.ringGhost;
         mesh.renderOrder = mode === "ontop" ? 10000 : s0.ro;
         mesh.material.depthTest = mode === "ontop" ? false : s0.dt;
-        mesh.material.visible = mode === "hidden" || (ghost && mode === "ontop") ? false : s0.vis;
+        mesh.material.visible = mode === "hidden" || (ghost && (mode === "ontop" || mode === "noghost")) ? false : s0.vis;
       }
       return true;
     }
@@ -520,6 +523,13 @@ async function installProbe(p) {
       };
     }
     window.__cmHold = hold;
+    // The branch calls this the moment a look-half tap's held-back walk is decided (CameraRig, DEV), in that task.
+    window.__cvTapWalk = () => {
+      if (!hold.armed) return;
+      hold.armed = false;
+      hold.fired = true;
+      uiCap.acquireUiCapture("cm-probe");
+    };
     const holdNextWalk = () => {
       hold.armed = true;
       hold.fired = false;
@@ -621,23 +631,32 @@ async function ringVisibility(p, label, keep) {
   if (x1 - x0 < 2 || y1 - y0 < 2 || !centreOn) return { onScreen: false, reason: "off screen", rect };
   const clip = { x: x0, y: y0, width: x1 - x0, height: y1 - y0 };
   const shots = {};
-  for (const mode of ["normal", "ontop", "hidden"]) {
+  for (const mode of ["normal", "ontop", "noghost", "hidden"]) {
     await p.page.evaluate((m) => window.__cm.markerMode(m), mode);
     await sleep(110);
     shots[mode] = PNG.sync.read(await p.page.screenshot({ clip }));
   }
   await p.page.evaluate(() => window.__cm.markerMode("normal"));
-  const A = shots.normal, B = shots.ontop, C = shots.hidden;
-  let mask = 0, vis = 0;
+  const A = shots.normal, B = shots.ontop, C = shots.hidden, G = shots.noghost;
+  let mask = 0, plain = 0, covered = 0, ghostPx = 0;
   for (let i = 0; i < B.data.length; i += 4) {
     const dBC = diff(B, C, i);
     if (dBC < 60) continue;
     mask++;
-    // Drawn: the pixel shows at least 40 % of the ring's own contrast there. The see-through pass (round 4: the part
-    // something covers, drawn through it at 0.7 against the ring's 0.9) is drawn — over a bright arm its sRGB contrast
-    // falls just short of half the reference's; a part nothing draws shows none of it.
-    if (diff(A, C, i) >= 0.4 * dBC) vis++;
+    // Drawn plainly: the pixel shows at least 40 % of the ring's own contrast there (as drawn, less the see-through
+    // pass). The rest is covered — by a body, a bench, leaves — and the see-through pass draws it as a dashed, thinner,
+    // fainter outline (round 6: a covered ring read as a hair ornament): a pixel of that outline is one where the pass
+    // changes the picture at all.
+    if (diff(G, C, i) >= 0.4 * dBC) plain++;
+    else {
+      covered++;
+      if (diff(A, G, i) >= 8) ghostPx++;
+    }
   }
+  // The covered part is seen through what covers it when its outline is drawn there: about a quarter of its pixels
+  // (dashes over a little more than half the round, on half the band's width). A part with no outline is not seen.
+  const ghostShare = covered ? ghostPx / covered : 0;
+  const vis = plain + (ghostShare >= GHOST_DRAWN ? covered : ghostPx);
   if (keep && label) {
     // the strip: as drawn | forced on top | hidden, three times larger (in device pixels: a phone's are 2 per CSS px)
     const W = A.width, H = A.height, S = W > clip.width ? 2 : 3;
@@ -653,7 +672,22 @@ async function ringVisibility(p, label, keep) {
     });
     writeFileSync(join(run.evidence, "rings", `${label}.png`), PNG.sync.write(out));
   }
-  return { onScreen: true, maskPx: mask, visibleFrac: mask ? +(vis / mask).toFixed(3) : 0, centre: { x: r2(rect.cx), y: r2(rect.cy) }, tall: r2(rect.maxY - rect.minY), wide: r2(rect.maxX - rect.minX), clip };
+  return {
+    onScreen: true,
+    maskPx: mask,
+    visibleFrac: mask ? +(vis / mask).toFixed(3) : 0,
+    plainFrac: mask ? +(plain / mask).toFixed(3) : 0,
+    ghostShare: +ghostShare.toFixed(3),
+    centre: { x: r2(rect.cx), y: r2(rect.cy) },
+    tall: r2(rect.maxY - rect.minY),
+    wide: r2(rect.maxX - rect.minX),
+    clip,
+  };
+}
+
+/** Wait (up to 3 s) while the app is still looking for the last click's way round (CameraRig plans it after the event). */
+async function settlePlan(p) {
+  await p.page.waitForFunction(() => !window.__cvClickPick?.()?.pending, null, { timeout: 3000, polling: 16 }).catch(() => {});
 }
 
 /** A tap (CDP touch) or a mouse click at client (sx, sy). */
@@ -696,6 +730,7 @@ async function probe(p, sx, sy, ctx, { walk = false, label = null, home = null }
   if (lookHalf) await p.page.evaluate(() => window.__cm.holdNextWalk());
   else await p.page.evaluate(() => window.__cm.freeze(true));
   await pressAt(p, sx, sy);
+  await settlePlan(p);
   if (lookHalf) {
     const t0 = Date.now();
     while (Date.now() - t0 < 900 && !(await p.page.evaluate(() => window.__cm.walkFired()))) await sleep(15);
@@ -989,7 +1024,7 @@ async function villageCases(p) {
    * visible surface under the aimed point is the aimed thing (no tree, roof or own body in the way), click it for real
    * and let the avatar walk. A case whose aim cannot be seen fails as a setup error ("aim").
    */
-  const caseAt = async (id, aim, from, yaw = 0, pitch = 0.35, dist = 6) => {
+  const caseAt = async (id, aim, from, yaw = 0, pitch = 0.35, dist = 6, groundOnly = false) => {
     if (!wantCase(id)) return null;
     if (from) await walkRoute(p, from);
     // an aim is a point, or ["top", x, z] / ["low", x, z] (under the eaves: from 1 m up) / ["face", x0, z0, x1, z1, y]:
@@ -1018,7 +1053,8 @@ async function villageCases(p) {
         seen = dy;
         break;
       }
-      if (a.hit && Math.hypot(a.hit.x - world[0], a.hit.y - world[1], a.hit.z - world[2]) < tol) {
+      // `groundOnly`: the aim is the ground itself, not a bench's seat beside it within the tolerance
+      if (a.hit && Math.hypot(a.hit.x - world[0], a.hit.y - world[1], a.hit.z - world[2]) < tol && (!groundOnly || (/^ground/.test(a.kind ?? "") && a.hit.y < 0.1))) {
         seen = dy;
         break;
       }
@@ -1099,13 +1135,24 @@ async function villageCases(p) {
       await caseAt("seated_behind", [-4.6, 0.01, 13.6], null, Math.PI, 0.45, 6);
     }
     // round 4 review: the paving right behind the bench (the review's taps) did nothing — up, round the bench's end
-    for (const [id, x, z] of [
-      ["seated_behind_near", -3.63, 11.24],
-      ["seated_behind_side", -5.79, 10.86],
+    for (const [id, x, z, yaw, pitch] of [
+      ["seated_behind_near", -3.63, 11.24, Math.PI, 0.45],
+      ["seated_behind_side", -5.79, 10.86, Math.PI, 0.45],
+      // round 5 review: the paving right behind the backrest (inside the turned bench's box: the ring moves out to
+      // where the body stands) and past the bench's front end (round the bench): both did nothing
+      ["seated_backrest", -4.68, 10.4, Math.PI, 0.6],
+      ["seated_front_end", -5.9, 9.3, Math.PI / 2, 0.5],
     ]) {
       if (!wantCase(id)) continue;
       await sitOn(8, [[30, 24], [0, 28], [-2.7, 13]]);
-      await caseAt(id, [x, 0.01, z], null, Math.PI, 0.45, 6);
+      const fresh = id === "seated_backrest" || id === "seated_front_end";
+      const row = await caseAt(id, [x, 0.01, z], null, yaw, pitch, 6, fresh);
+      // the ground there is in plain view: the tap must get the avatar up and walk it to a ring it reaches
+      if (fresh && row && !row.fails?.includes("aim")) {
+        run.check(`${id}: a tap on the open ground there gets up and walks to its ring`, !!row.target && row.endToTarget != null && row.endToTarget <= ARRIVE_M, {
+          kind: row.kind, hit: row.hit, target: row.target, end: row.endToTarget, plan: row.pick?.plan,
+        });
+      }
     }
     // Getting up: a click from the seat stands the body up, and a second click while the stand-up clip still carries
     // it off the bench (behind the bench) must be planned from where that glide lands (round 2 review): a ring the

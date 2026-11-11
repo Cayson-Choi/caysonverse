@@ -53,8 +53,28 @@ export const CLICK_MAX_MS = 400;
 /** Arrival radius (m): inside this of the target, auto-move stops and clears. */
 export const ARRIVE_DIST = 0.35;
 
-/** A way round's corner (ClickTarget.via) counts as passed this close (m): the steer turns to the next one. */
-export const VIA_REACH = 0.2;
+/**
+ * A way round's corner (ClickTarget.via) counts as passed this close (m), or once the body is past it (viaPassed): the
+ * steer turns to the next one. It must stay below the clearance the way keeps from what it goes round (clickPlan.ts
+ * DETOUR_VIA_CLEAR): turning this early, the next leg runs at most this much closer to it than the way does (round 5
+ * review: turning 0.2 m early toward corners laid 0.02-0.04 m off the grown faces, the walk cut into a bench's corner
+ * and stuck there).
+ */
+export const VIA_REACH = 0.1;
+
+/**
+ * Whether a walk at (px, pz) is done with the way round's corner `c` it was heading for from (fromX, fromZ) — where its
+ * leg toward that corner began: within VIA_REACH of it, or past it (beyond the line through it square to the leg). A
+ * step longer than twice VIA_REACH (a run, a slow frame) can jump over the reach: walking on toward a corner already
+ * behind would turn the body back and forth on it. stepClickMove and clickPlan.ts simulateWalk both ask this.
+ */
+export function viaPassed(px: number, pz: number, c: GroundVec, fromX: number, fromZ: number): boolean {
+  const dx = c.x - px;
+  const dz = c.z - pz;
+  if (dx * dx + dz * dz < VIA_REACH * VIA_REACH) return true;
+  // past it: the body lies on the far side of the corner, seen along the leg
+  return (px - c.x) * (c.x - fromX) + (pz - c.z) * (c.z - fromZ) >= 0;
+}
 
 /** No-progress window (s): net displacement is measured over spans this long. */
 export const STUCK_WINDOW_SEC = 0.8;
@@ -88,6 +108,9 @@ interface ClickMoveState {
   target: ClickTarget | null;
   /** The next of the target's `via` corners not yet passed. */
   viaIndex: number;
+  /** Where the leg toward that corner began: the body at the walk's first step, then each corner passed (viaPassed). */
+  legX: number;
+  legZ: number;
   /**
    * Counts every walk set or dropped by the player's own hand (setClickTarget, clearClickTarget — a key, the stick,
    * Esc, a sit, another click), not the walk's own end (arrival, no progress). A tap held back for its double-tap
@@ -111,6 +134,8 @@ interface ClickMoveState {
 const state: ClickMoveState = {
   target: null,
   viaIndex: 0,
+  legX: Number.NaN,
+  legZ: Number.NaN,
   generation: 0,
   pending: null,
   anchorX: 0,
@@ -129,6 +154,8 @@ declare global {
     __cvClickTarget?: () => ClickTarget | null;
     /** Dev/E2E only: what the last click landed on and what was made of it (CameraRig). */
     __cvClickPick?: () => unknown;
+    /** Dev/E2E only, set by the E2E: called the moment a look-half tap's held-back walk is decided (CameraRig). */
+    __cvTapWalk?: () => void;
   }
 }
 
@@ -171,6 +198,8 @@ export function setClickTarget(x: number, z: number, y = 0, via?: readonly Groun
     ...(via && via.length > 0 ? { via } : {}),
   };
   state.viaIndex = 0;
+  state.legX = Number.NaN; // the first step sets it
+  state.legZ = Number.NaN;
   state.generation++;
   state.pending = null;
   state.anchored = false;
@@ -305,15 +334,21 @@ export function stepClickMove(px: number, pz: number, dt: number): GroundVec | n
     state.windowSec = 0;
   }
 
-  // A way round: toward its next corner not yet passed (within VIA_REACH), then the target (clickPlan.ts simulateWalk
-  // walks the same rule).
+  // A way round: toward its next corner not yet passed (viaPassed), then the target (clickPlan.ts simulateWalk walks
+  // the same rule).
   const via = target.via;
-  while (via && state.viaIndex < via.length && Math.hypot(via[state.viaIndex].x - px, via[state.viaIndex].z - pz) < VIA_REACH) {
+  if (Number.isNaN(state.legX)) {
+    state.legX = px;
+    state.legZ = pz;
+  }
+  while (via && state.viaIndex < via.length && viaPassed(px, pz, via[state.viaIndex], state.legX, state.legZ)) {
+    state.legX = via[state.viaIndex].x;
+    state.legZ = via[state.viaIndex].z;
     state.viaIndex++;
   }
   const aim = via && state.viaIndex < via.length ? via[state.viaIndex] : target;
   const dx = aim.x - px;
   const dz = aim.z - pz;
-  const len = Math.hypot(dx, dz); // ≥ VIA_REACH or ARRIVE_DIST here, never 0
+  const len = Math.hypot(dx, dz); // ≥ VIA_REACH (a corner not reached) or ARRIVE_DIST here, never 0
   return { x: dx / len, z: dz / len };
 }

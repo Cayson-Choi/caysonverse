@@ -70,3 +70,112 @@ export function canTapWalk(
   if (mode === "ov" || uiCaptured || dropped) return false;
   return seatedAtTap || !seatedNow;
 }
+
+/** The timers held-back work runs on (setTimeout by default; the tests pass fakes). */
+export interface TapTimers {
+  set(fn: () => void, ms: number): unknown;
+  clear(handle: unknown): void;
+}
+
+const WINDOW_TIMERS: TapTimers = {
+  set: (fn, ms) => setTimeout(fn, ms),
+  clear: (h) => clearTimeout(h as ReturnType<typeof setTimeout>),
+};
+
+/**
+ * Work held back on timers — a tap's pick, its walk, the slices of a plan's way round — dropped all at once when the
+ * player's next gesture makes it moot. `onDrop` runs for a piece dropped before it ran (its ring goes with it).
+ */
+export class HeldWork {
+  private readonly held = new Map<unknown, (() => void) | undefined>();
+  constructor(private readonly timers: TapTimers = WINDOW_TIMERS) {}
+
+  /** Run `fn` in `ms` unless dropped first. */
+  hold(fn: () => void, ms: number, onDrop?: () => void): void {
+    const handle = this.timers.set(() => {
+      this.held.delete(handle);
+      fn();
+    }, ms);
+    this.held.set(handle, onDrop);
+  }
+
+  /** Whether anything is still held. */
+  get busy(): boolean {
+    return this.held.size > 0;
+  }
+
+  /** Drop everything still held (each piece's `onDrop` runs). */
+  drop(): void {
+    const dropped = [...this.held];
+    this.held.clear();
+    for (const [handle, onDrop] of dropped) {
+      this.timers.clear(handle);
+      onDrop?.();
+    }
+  }
+}
+
+/**
+ * The look half's taps (CameraRig): one tap walks after DOUBLE_TAP_MS, two recenter the camera. A double tap is decided
+ * when the SECOND touch goes DOWN — no later than DOUBLE_TAP_MS after the first one's lift, within DOUBLE_TAP_PX of it —
+ * and at that moment everything the first tap was holding back (its pick, its walk, the slices of its plan) is dropped,
+ * so the first tap's walk can never start once a second touch has begun, however long that touch is then held (round 5
+ * review: a 250 ms gap and a 170 ms second press walked 1 m AND recentred — the decision was made at the second lift,
+ * after the first tap's walk timer had fired). Should the second touch's down be handled late, after that walk did start
+ * (a busy page), the walk is taken back (`walked`). The second touch's lift then recenters, unless it became a drag.
+ */
+export class LookTapGate {
+  private last: TapRecord | null = null;
+  private second: number | null = null;
+  private undo: (() => void) | null = null;
+  readonly work: HeldWork;
+
+  constructor(timers: TapTimers = WINDOW_TIMERS) {
+    this.work = new HeldWork(timers);
+  }
+
+  /**
+   * A touch went down on the look half (pointer `id`, its event time `t`, at x, y). True: it is the second touch of a
+   * double tap — the first tap's held work is dropped now, a walk it already started taken back.
+   */
+  down(id: number, t: number, x: number, y: number): boolean {
+    if (!isDoubleTap(this.last, { t, x, y })) return false;
+    this.work.drop();
+    const undo = this.undo;
+    this.undo = null;
+    this.last = null;
+    this.second = id;
+    undo?.();
+    return true;
+  }
+
+  /** The touch `id` went up (or was cancelled): whether it was a double tap's second touch (it is no longer). */
+  up(id: number): boolean {
+    if (this.second !== id) return false;
+    this.second = null;
+    return true;
+  }
+
+  /** A single look-half tap lifted (its event time `t`, at x, y): maybe a double tap's first. Earlier held work goes. */
+  tap(t: number, x: number, y: number): void {
+    this.work.drop();
+    this.undo = null;
+    this.last = { t, x, y };
+  }
+
+  /**
+   * The tap's held walk started: `undo` takes it back should a second touch's down that came within DOUBLE_TAP_MS of
+   * the tap's lift be handled only now (down). Kept until the next tap.
+   */
+  walked(undo: () => void): void {
+    this.undo = undo;
+  }
+
+  /** A pinch (a second finger), the view going away: everything dropped, no double tap pending. */
+  reset(): void {
+    this.work.drop();
+    this.undo = null;
+    this.last = null;
+    this.second = null;
+  }
+}

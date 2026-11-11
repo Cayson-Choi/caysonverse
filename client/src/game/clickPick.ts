@@ -923,6 +923,9 @@ export function ringView(
 ): RingView {
   ndc.set(x, y, z).project(camera);
   if (!(ndc.z < 1 && ndc.z > -1 && Math.abs(ndc.x) <= 1 && Math.abs(ndc.y) <= 1)) return { onScreen: false, seen: 0 };
+  // Nothing more is asked (the app's plan, rule 4): no samples, no walk over the scene (round 5 review: the scene walk
+  // ran on every click for an answer no one read).
+  if (need !== undefined && need <= 0) return { onScreen: true, seen: 0 };
   const near = (camera as { near?: number }).near ?? 0.1;
   camPos.setFromMatrixPosition(camera.matrixWorld);
   const ri = RING_INNER * scale;

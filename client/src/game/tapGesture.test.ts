@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { DOUBLE_TAP_MS, DOUBLE_TAP_PX, canTapWalk, isDoubleTap, isLookHalf } from "./tapGesture";
+import { describe, it, expect, vi, afterEach } from "vitest";
+import { DOUBLE_TAP_MS, DOUBLE_TAP_PX, HeldWork, LookTapGate, canTapWalk, isDoubleTap, isLookHalf } from "./tapGesture";
 import { isStickZone } from "./joystick";
 
 describe("tapGesture — constants", () => {
@@ -116,5 +116,171 @@ describe("canTapWalk — a tap dropped while it waited (round 3 review)", () => 
     expect(canTapWalk("tp", false, false, false, true)).toBe(false);
     expect(canTapWalk("tp", false, true, false, true)).toBe(false);
     expect(canTapWalk("tp", false, false, false, false)).toBe(true);
+  });
+});
+
+/**
+ * The look half as CameraRig drives it, on fake timers: a tap's lift holds its pick back a moment and, from the pick,
+ * its walk until DOUBLE_TAP_MS after the lift; a touch's down asks the gate whether it is a double tap's second; its
+ * lift recenters when it was. Event times are the timers' own clock (the events are handled at once here).
+ */
+function lookHalf() {
+  const gate = new LookTapGate();
+  const log: string[] = [];
+  let ring = false;
+  let walking = false;
+  let downAt = 0;
+  const down = (id: number, x = 300, y = 500) => {
+    downAt = Date.now();
+    return gate.down(id, downAt, x, y);
+  };
+  /** The touch `id` lifts after `holdMs` (a tap: it moved less than TAP_MAX_PX, held under CLICK_MAX_MS). */
+  const up = (id: number, second: boolean, x = 300, y = 500) => {
+    const upAt = Date.now();
+    if (second) {
+      if (gate.up(id)) log.push(`recenter@${upAt}`);
+      return;
+    }
+    gate.tap(upAt, x, y);
+    gate.work.hold(() => {
+      ring = true; // the pick: the ring shows at once
+      gate.work.hold(
+        () => {
+          walking = true;
+          log.push(`walk@${Date.now()}`);
+          gate.walked(() => {
+            walking = false;
+            log.push(`walk-undone@${Date.now()}`);
+          });
+        },
+        Math.max(0, DOUBLE_TAP_MS - (Date.now() - upAt)),
+        () => {
+          ring = false;
+        },
+      );
+    }, 0);
+  };
+  return { gate, log, down, up, state: () => ({ ring, walking }), downAt: () => downAt };
+}
+
+describe("LookTapGate — a double tap is decided when the second touch goes down (round 5 review)", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** One tap pair: first press `p1` ms, then `gap` ms from its lift to the second down, then a `p2` ms second press. */
+  function pair(p1: number, gap: number, p2: number) {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const h = lookHalf();
+    const first = h.down(1);
+    vi.advanceTimersByTime(p1);
+    h.up(1, first);
+    vi.advanceTimersByTime(gap);
+    const second = h.down(2, 304, 503);
+    vi.advanceTimersByTime(p2);
+    h.up(2, second);
+    vi.advanceTimersByTime(2000);
+    return { h, first, second };
+  }
+
+  it("the review's timeline: second down 250 ms, second lift 420 ms after the first down — recenter, never a walk", () => {
+    // first press 60 ms, its lift at 60; the second touch down at 250 (190 ms after the lift), up at 420 — 360 ms after
+    // the first lift, past the 300 ms the first tap's walk was waiting for
+    const { h, first, second } = pair(60, 190, 170);
+    expect(first).toBe(false);
+    expect(second).toBe(true);
+    expect(h.log).toEqual(["recenter@420"]);
+    expect(h.state()).toEqual({ ring: false, walking: false }); // the first tap's ring went with its walk
+  });
+
+  it("the review's other taps: 90/110 ms presses 170 ms apart, and a long second press — recenter only", () => {
+    expect(pair(90, 170, 110).h.log).toEqual(["recenter@370"]);
+    expect(pair(90, 235, 185).h.log).toEqual(["recenter@510"]);
+    // however long the second touch is held, the first tap's walk never starts
+    expect(pair(60, 200, 1500).h.log).toEqual(["recenter@1760"]);
+  });
+
+  it("the old quick double tap (40 ms taps, 110 ms apart) still recenters", () => {
+    expect(pair(40, 70, 40).h.log).toEqual(["recenter@150"]);
+  });
+
+  it("a second touch more than DOUBLE_TAP_MS after the first lift, or far from it, is a tap of its own: the first walks", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const late = lookHalf();
+    late.up(1, late.down(1));
+    vi.advanceTimersByTime(DOUBLE_TAP_MS + 1);
+    expect(late.log).toEqual([`walk@${DOUBLE_TAP_MS}`]);
+    expect(late.down(2)).toBe(false);
+    vi.useRealTimers();
+
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const far = lookHalf();
+    far.up(1, far.down(1));
+    vi.advanceTimersByTime(100);
+    expect(far.down(2, 300 + DOUBLE_TAP_PX + 5, 500)).toBe(false);
+    vi.advanceTimersByTime(DOUBLE_TAP_MS);
+    expect(far.log[0]).toBe(`walk@${DOUBLE_TAP_MS}`);
+  });
+
+  it("a second touch whose down is handled only after the first walk started (a busy page) takes that walk back", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const h = lookHalf();
+    h.up(1, h.down(1));
+    vi.advanceTimersByTime(DOUBLE_TAP_MS + 40); // the walk fired at 300
+    expect(h.state().walking).toBe(true);
+    // the second touch went down at 280 (its event time), handled now at 340
+    expect(h.gate.down(2, 280, 300, 500)).toBe(true);
+    expect(h.state().walking).toBe(false);
+    expect(h.log).toEqual([`walk@${DOUBLE_TAP_MS}`, `walk-undone@${DOUBLE_TAP_MS + 40}`]);
+    expect(h.gate.up(2)).toBe(true);
+  });
+
+  it("a pinch (reset) drops the held walk and any pending double tap", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const h = lookHalf();
+    h.up(1, h.down(1));
+    vi.advanceTimersByTime(50);
+    h.gate.reset();
+    vi.advanceTimersByTime(1000);
+    expect(h.log).toEqual([]);
+    expect(h.state().ring).toBe(false);
+    expect(h.down(2)).toBe(false); // no first tap to pair with any more
+  });
+
+  it("a new single tap replaces the held one (its walk and ring), and the second touch is disarmed by its lift", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const h = lookHalf();
+    h.up(1, h.down(1));
+    vi.advanceTimersByTime(DOUBLE_TAP_MS + 100); // walked
+    h.up(2, h.down(2, 500, 200)); // far away: a new single tap
+    vi.advanceTimersByTime(DOUBLE_TAP_MS + 10);
+    expect(h.log).toEqual([`walk@${DOUBLE_TAP_MS}`, `walk@${2 * DOUBLE_TAP_MS + 100}`]);
+    expect(h.gate.up(7)).toBe(false);
+  });
+});
+
+describe("HeldWork", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("runs what it holds unless dropped; a dropped piece's onDrop runs, a piece that already ran is not dropped", () => {
+    vi.useFakeTimers();
+    const w = new HeldWork();
+    const ran: string[] = [];
+    w.hold(() => ran.push("a"), 10, () => ran.push("drop a"));
+    w.hold(() => ran.push("b"), 50, () => ran.push("drop b"));
+    expect(w.busy).toBe(true);
+    vi.advanceTimersByTime(20);
+    w.drop();
+    vi.advanceTimersByTime(100);
+    expect(ran).toEqual(["a", "drop b"]);
+    expect(w.busy).toBe(false);
   });
 });
