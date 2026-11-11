@@ -56,6 +56,8 @@ export interface FishingState {
   catch: FishCatch | null;
 }
 
+export type FishingEvent = "rod_rented" | "cast" | "bite" | "missed" | "caught";
+
 export type FishingReject =
   | "not_near_rental"
   | "already_has_rod"
@@ -71,13 +73,31 @@ export interface FishingActionResult {
   ok: boolean;
   state: FishingState;
   reject?: FishingReject;
-  event?: "rod_rented" | "cast" | "bite" | "missed" | "caught";
+  event?: FishingEvent;
 }
 
 export interface FishingPoints {
   x: number;
   z: number;
 }
+
+/**
+ * Authoritative fishing interaction anchors in the village's ground plane.
+ *
+ * The lake backdrop is intentionally outside the walk rectangle, so the playable
+ * shoreline and the rod kiosk sit at the east forest edge. Keeping these anchors
+ * beside the state machine gives the server, client prompt and future Blender
+ * props one source of truth. The player stands on the bank; the cast target is
+ * the water just beyond the boundary.
+ */
+export const FISHING_SPOTS = Object.freeze({
+  rental: Object.freeze({ x: 86, z: -15 }),
+  pond: Object.freeze({ x: 93, z: -15 }),
+}) satisfies Readonly<{ rental: FishingPoints; pond: FishingPoints }>;
+
+/** The interaction radii are deliberately a little smaller than the visual props. */
+export const FISHING_RENTAL_REACH_M = FISHING.rentalReachM;
+export const FISHING_POND_REACH_M = FISHING.pondReachM;
 
 export function createFishingState(): FishingState {
   return {

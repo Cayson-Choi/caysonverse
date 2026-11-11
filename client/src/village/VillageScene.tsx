@@ -41,6 +41,7 @@ import { guideDialogOpen, openGuideDialog } from "./guideDialogStore";
 import { StarSky } from "./sky/StarSky";
 import { StarFinder } from "./sky/StarFinder";
 import { StarFinderButton } from "./sky/StarFinderButton";
+import { FishingPanel } from "./FishingPanel";
 
 /**
  * 케이슨 마을 — the village scene (Task 4). A `PlayShell` on the village map under the village's afternoon
@@ -256,12 +257,13 @@ export function VillageScene({ identity }: { identity: Identity }) {
           <StarFinderButton />
         </>
       }
-      hud={({ orbit }) => (
+      hud={({ orbit, pose }) => (
         <>
           <DoorFade />
           <CubbyView />
           <GuideDialog />
           <StarFinder orbit={orbit} />
+          {area === "village" && <FishingPanel pose={pose} />}
         </>
       )}
     />

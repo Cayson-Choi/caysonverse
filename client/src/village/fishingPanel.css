@@ -1,0 +1,85 @@
+.cv-fishing {
+  position: fixed;
+  right: max(16px, env(safe-area-inset-right));
+  bottom: max(104px, calc(env(safe-area-inset-bottom) + 96px));
+  z-index: 24;
+  width: min(260px, calc(100vw - 32px));
+  box-sizing: border-box;
+  padding: 12px 14px;
+  border: 1px solid rgba(236, 214, 174, 0.48);
+  border-radius: 16px;
+  background: rgba(18, 29, 49, 0.9);
+  color: #f8f4e9;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.28);
+  font-size: 13px;
+  line-height: 1.35;
+  pointer-events: auto;
+}
+.cv-fishing-title {
+  margin-bottom: 7px;
+  color: #ffe4a8;
+  font-weight: 700;
+}
+.cv-fishing-bobber {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 24px;
+  font-weight: 600;
+}
+.cv-fishing-bobber-dot {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #f2f3f6;
+  box-shadow: 0 0 0 2px rgba(99, 189, 244, 0.35);
+}
+.cv-fishing-bobber.is-waiting .cv-fishing-bobber-dot {
+  animation: cv-fishing-float 1.8s ease-in-out infinite;
+  background: #ff816f;
+}
+.cv-fishing-bobber.is-submerged .cv-fishing-bobber-dot {
+  transform: translateY(8px);
+  background: #ff5a52;
+  box-shadow: 0 0 0 3px rgba(255, 92, 82, 0.24);
+}
+@keyframes cv-fishing-float {
+  0%, 100% { transform: translateY(-2px); }
+  50% { transform: translateY(2px); }
+}
+.cv-fishing-helper,
+.cv-fishing-result,
+.cv-fishing-notice {
+  margin-top: 6px;
+  color: rgba(248, 244, 233, 0.82);
+}
+.cv-fishing-result {
+  color: #ffd987;
+  font-weight: 700;
+}
+.cv-fishing-notice {
+  color: #ffb8a9;
+}
+.cv-fishing-action {
+  display: block;
+  width: 100%;
+  min-height: 40px;
+  margin-top: 9px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 11px;
+  background: #507fd9;
+  color: #fff;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+.cv-fishing-action:hover { background: #6590e3; }
+.cv-fishing-action:disabled { opacity: 0.55; cursor: default; }
+@media (max-width: 600px) {
+  .cv-fishing {
+    right: 12px;
+    bottom: max(132px, calc(env(safe-area-inset-bottom) + 122px));
+  }
+}
