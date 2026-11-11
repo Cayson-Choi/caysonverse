@@ -43,6 +43,7 @@ import { StarFinder } from "./sky/StarFinder";
 import { StarFinderButton } from "./sky/StarFinderButton";
 import { FishingPanel } from "./FishingPanel";
 import { TransitRoadSignals } from "./TransitRoadSignals";
+import { PublicAutoDoor } from "./PublicAutoDoor";
 
 /**
  * 케이슨 마을 — the village scene (Task 4). A `PlayShell` on the village map under the village's afternoon
@@ -92,8 +93,8 @@ function PlainGround() {
 }
 
 /** What the local player's area draws: the village model and its signs and door pad, or the hall's room. */
-function VillageArea({ area, tier }: { area: AreaId; tier: VillageTier }) {
-  if (area === "hall") return <HallArea />;
+function VillageArea({ area, tier, pose }: { area: AreaId; tier: VillageTier; pose: Pose }) {
+  if (area === "hall") return <HallArea pose={pose} />;
   return (
     <>
       {/* A failed download shows a plain ground and tries again, instead of the crash screen (final review m2). */}
@@ -116,6 +117,7 @@ function VillageArea({ area, tier }: { area: AreaId; tier: VillageTier }) {
       <TransitRoadSignals />
       <PlotMarkers />
       <DoorPad pad={VILLAGE_LAYOUT.memorial.exterior.doorPad} y={0.06} />
+      <PublicAutoDoor area="village" pose={pose} />
     </>
   );
 }
@@ -246,7 +248,7 @@ export function VillageScene({ identity }: { identity: Identity }) {
       world3d={({ pose }) => (
         <>
           <DayNight area={area} tier={tier} />
-          <VillageArea area={area} tier={tier} />
+          <VillageArea area={area} tier={tier} pose={pose} />
           <GuideNpcs area={area} />
           <VillageDoors pose={pose} />
           {area === "village" && <StarSky tier={tier} />}

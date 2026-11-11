@@ -57,7 +57,7 @@ function occupied(o: AutoDoorObservation, c: AutoDoorConfig): boolean {
   return o.playerDistancesM.some((d) => Number.isFinite(d) && d <= c.approachRadiusM);
 }
 
-function phase(state: AutoDoorState, next: AutoDoorPhase, nowMs: number): AutoDoorState {
+function phase(next: AutoDoorPhase, nowMs: number): AutoDoorState {
   return { phase: next, phaseSinceMs: nowMs, clearSinceMs: null };
 }
 
@@ -75,19 +75,19 @@ export function stepAutoDoor(
 
   switch (state.phase) {
     case "closed":
-      return wantsOpen ? phase(state, "opening", now) : state;
+      return wantsOpen ? phase("opening", now) : state;
     case "opening":
       if (now - state.phaseSinceMs < config.openingMs) return state;
-      return wantsOpen ? phase(state, "open", now) : { phase: "open", phaseSinceMs: now, clearSinceMs: now };
+      return wantsOpen ? phase("open", now) : { phase: "open", phaseSinceMs: now, clearSinceMs: now };
     case "open": {
       if (wantsOpen) return state.clearSinceMs === null ? state : { ...state, clearSinceMs: null };
       const clearSince = state.clearSinceMs ?? now;
       if (now - clearSince < config.closeDelayMs) return { ...state, clearSinceMs: clearSince };
-      return phase(state, "closing", now);
+      return phase("closing", now);
     }
     case "closing":
-      if (wantsOpen) return phase(state, "opening", now);
-      return now - state.phaseSinceMs >= config.closingMs ? phase(state, "closed", now) : state;
+      if (wantsOpen) return phase("opening", now);
+      return now - state.phaseSinceMs >= config.closingMs ? phase("closed", now) : state;
   }
 }
 

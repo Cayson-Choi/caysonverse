@@ -74,9 +74,9 @@ describe("guides (Task 9A)", () => {
     for (const c of VILLAGE_COLLIDERS) expect(overlaps(box, c), JSON.stringify(c)).toBe(false);
   });
 
-  it("hall_desk stands at (302.8, 3.0) facing -x, clear of the hall's col__ boxes, the door pad and the inside spawn", () => {
+  it("hall_desk stands at the B desk position (306.4, 4.6) facing -x, clear of the hall's col__ boxes, the door pad and the inside spawn", () => {
     const g = guideById("hall_desk")!;
-    expect(g.pos).toEqual({ x: 302.8, z: 3.0 });
+    expect(g.pos).toEqual({ x: 306.4, z: 4.6 });
     expect(g.area).toBe("hall");
     expect(g.yaw).toBeCloseTo(-Math.PI / 2, 9);
     const box = guideColliders([g])[0]!;
@@ -107,7 +107,7 @@ describe("guides (Task 9A)", () => {
     expect(nearestGuide("village", 5, 12 + 1.5)?.guide.id).toBe("plaza_guide");
     expect(nearestGuide("village", 5, 12 + GUIDE_REACH_M + 0.01)).toBeNull();
     expect(nearestGuide("hall", 5, 13)).toBeNull();
-    expect(nearestGuide("hall", 301.5, 3.0)?.guide.id).toBe("hall_desk");
+    expect(nearestGuide("hall", 305.0, 4.6)?.guide.id).toBe("hall_desk");
     expect(nearestGuide("village", 301.5, 3.0)).toBeNull();
     expect(nearestGuide("village", Number.NaN, 0)).toBeNull();
   });

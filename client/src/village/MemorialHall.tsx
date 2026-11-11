@@ -26,6 +26,8 @@ import { clearMemorialCaches, holdMemorialFiles, noteMemorialRequested } from ".
 import { LoadBoundary } from "./LoadBoundary";
 import { HALL_CUBBY_ANCHORS, SAMPLE_CUBBIES, SAMPLE_PHOTO_ATLAS } from "./sampleCubbies";
 import { DoorPad, HallRoom } from "./VillageHall";
+import { PublicAutoDoor } from "./PublicAutoDoor";
+import type { Pose } from "../game/types";
 
 declare global {
   interface Window {
@@ -232,7 +234,7 @@ function MemorialHall() {
  * for as long as it shows (memorialRelease.ts: loaded on entering, released on leaving), shows the plain room until the
  * model is in, and the way out's door pad. The candles go out when the hall is left.
  */
-export function HallArea() {
+export function HallArea({ pose }: { pose: Pose }) {
   useEffect(() => holdMemorialFiles(), []);
   useEffect(() => () => clearCandles(), []);
   return (
@@ -244,6 +246,7 @@ export function HallArea() {
         </Suspense>
       </LoadBoundary>
       <DoorPad pad={VILLAGE_LAYOUT.memorial.interior.doorPad} />
+      <PublicAutoDoor area="hall" pose={pose} />
     </>
   );
 }

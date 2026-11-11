@@ -5,7 +5,7 @@ import { SAMPLE_FILL, hashId, sampleFilledIds } from "@caysonverse/shared/villag
 export { SAMPLE_FILL, hashId };
 
 /**
- * The memorial hall's example cubbies (케이슨 마을 Task 9): until families can place their own, 60 % of the 266 cubbies
+ * The memorial hall's example cubbies (케이슨 마을 Task 9): until families can place their own, 60 % of the 364 B-plan cubbies
  * are filled with a sample memorial so the hall reads as a real 봉안당 — the props in the cubby (from
  * memorial_props.glb), a pet's portrait (a tile of the placeholder atlas), a name, the years and one line.
  *
