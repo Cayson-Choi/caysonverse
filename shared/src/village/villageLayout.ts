@@ -501,6 +501,14 @@ function streamColliders(stream: VillageStream): VillageCollider[] {
   return out;
 }
 
+/** Solid part of the bus shelter: the rear glass. The bus-facing side and windbreak edges stay open to the bus lane. */
+export function busShelterColliders(layout: Pick<VillageLayout, "busStop"> = VILLAGE_LAYOUT): AABB[] {
+  const s = boxAt(layout.busStop.shelter.centre, layout.busStop.shelter.size);
+  const wall = 0.04;
+  // Put the collision skin immediately behind the glass so the lane remains clear while a player cannot walk through it.
+  return [{ minX: s.maxX + 0.18, maxX: s.maxX + 0.18 + wall, minZ: s.minZ, maxZ: s.maxZ }];
+}
+
 /**
  * The memorial's solid footprint minus the door-side pad area: three boxes (west, east and back of the
  * door recess). The pad reaches `radius` into the building, so the recess is pad-wide and that deep; the
@@ -708,19 +716,12 @@ export function buildVillageGeometry(
     "obstacles" in colliders
       ? colliders
       : { obstacles: colliders.map((c) => c.box), cameraBoxes: colliders.filter((c) => c.camera).map((c) => c.box) };
-  // The shelter's glass and slim frame are visual-only.  Keep them out of the walk/camera geometry even if a future
-  // GLB export accidentally tags those panels as `col__*`; the bus route and the player must be able to pass the stop.
-  const shelter = boxAt(layout.busStop.shelter.centre, layout.busStop.shelter.size);
-  const isShelterPanel = (b: AABB): boolean =>
-    b.minX >= shelter.minX && b.maxX <= shelter.maxX && b.minZ >= shelter.minZ && b.maxZ <= shelter.maxZ;
-  const obstacles = village.obstacles.filter((b) => !isShelterPanel(b));
-  const cameraBoxes = village.cameraBoxes.filter((b) => !isShelterPanel(b));
   return makeGeometry(
     "village",
     villageBounds(layout),
     hallWalls(layout),
-    [...areaGapBlockers(layout), ...hallSurroundBlockers(layout), ...obstacles, ...(hall?.obstacles ?? []), ...extra],
-    [...cameraBoxes, ...(hall?.cameraBoxes ?? [])],
+    [...areaGapBlockers(layout), ...hallSurroundBlockers(layout), ...village.obstacles, ...busShelterColliders(layout), ...(hall?.obstacles ?? []), ...extra],
+    [...village.cameraBoxes, ...busShelterColliders(layout), ...(hall?.cameraBoxes ?? [])],
   );
 }
 

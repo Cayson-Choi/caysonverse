@@ -94,6 +94,20 @@ function meshesWithMaterial(root: Object3D, name: string): Mesh[] {
   return out;
 }
 
+/** Hide legacy flat foliage synchronously while volumetric replacements are built. */
+export function hideLegacyVegetationSources(root: Object3D): () => void {
+  const hidden: Array<{ object: Object3D; visible: boolean }> = [];
+  const names = new Set([FLORA, CHERRY_MATERIAL, "M_leaf_green"]);
+  root.traverse((object) => {
+    if (!isMesh(object) || !materialsOf(object).some((material) => names.has(material.name))) return;
+    hidden.push({ object, visible: object.visible });
+    object.visible = false;
+  });
+  return () => {
+    for (const entry of hidden) entry.object.visible = entry.visible;
+  };
+}
+
 interface Batch {
   n: number;
   matrices: Float32Array;
@@ -137,6 +151,22 @@ function instancedCardItems(root: Object3D, materialName: string): { items: Arra
     meshes.push(mesh);
   });
   return { items, meshes };
+}
+
+/** Read non-instanced foliage cards and turn each card into a compact volumetric cluster. */
+function meshCardItems(root: Object3D, materialName: string): Array<{ m: Matrix4; tint: number[]; light: number }> {
+  const items: Array<{ m: Matrix4; tint: number[]; light: number }> = [];
+  for (const mesh of meshesWithMaterial(root, materialName)) {
+    const g = mesh.geometry;
+    const cards = readCards(worldPositions(mesh), g.index ? (g.index.array as ArrayLike<number>) : null, null, null);
+    for (const card of cards) {
+      if (card.h <= 0.05) continue;
+      const size = Math.max(0.55, Math.min(2.2, card.h / 1.7));
+      const yaw = Math.atan2(card.bz - card.az, card.bx - card.ax) + Math.PI / 2;
+      items.push({ m: new Matrix4().compose(new Vector3(card.x, card.y, card.z), new Quaternion().setFromAxisAngle(UP, yaw), new Vector3(size, size, size)), tint: [1, 1, 1], light: card.light });
+    }
+  }
+  return items;
 }
 
 /** An instanced mesh that is refilled from batches. */
@@ -429,15 +459,19 @@ export class VillageVegetation {
     // with a small volumetric leaf cluster; the original instanced meshes are hidden together with the other cards.
     const greenCardItems = instancedCardItems(root, "M_leaf_green");
     const cherryCardItems = instancedCardItems(root, CHERRY_MATERIAL);
+    const greenMeshItems = meshCardItems(root, "M_leaf_green");
+    const cherryMeshItems = meshCardItems(root, CHERRY_MATERIAL);
     const grassItems = placed.kept.map((c) => ({
       m: new Matrix4().compose(new Vector3(c.x, c.floor, c.z), new Quaternion().setFromAxisAngle(UP, c.x * 0.7 + c.z * 0.37), new Vector3(0.65, 0.65, 0.65)),
       tint: [0.88, 1, 0.82],
       light: c.light,
     }));
-    if (greenCardItems.items.length) {
-      v.greenCardLayer = new Layer(greenFarGeo, greenFarMat, greenCardItems.items.length, "veg_green_instanced_cards");
+    const greenReplacementItems = [...greenCardItems.items, ...greenMeshItems];
+    const cherryReplacementItems = [...cherryCardItems.items, ...cherryMeshItems];
+    if (greenReplacementItems.length) {
+      v.greenCardLayer = new Layer(greenFarGeo, greenFarMat, greenReplacementItems.length, "veg_green_volumetric_cards");
       v.greenCardLayer.begin();
-      v.greenCardLayer.push(makeBatch(greenCardItems.items));
+      v.greenCardLayer.push(makeBatch(greenReplacementItems));
       v.greenCardLayer.end();
       v.group.add(v.greenCardLayer.mesh);
       v.own.push(v.greenCardLayer.mesh);
@@ -450,10 +484,10 @@ export class VillageVegetation {
       v.group.add(v.greenGrassLayer.mesh);
       v.own.push(v.greenGrassLayer.mesh);
     }
-    if (cherryCardItems.items.length) {
-      v.cherryCardLayer = new Layer(bunchGeo, bunchMat, cherryCardItems.items.length, "veg_cherry_instanced_cards");
+    if (cherryReplacementItems.length) {
+      v.cherryCardLayer = new Layer(bunchGeo, bunchMat, cherryReplacementItems.length, "veg_cherry_volumetric_cards");
       v.cherryCardLayer.begin();
-      v.cherryCardLayer.push(makeBatch(cherryCardItems.items));
+      v.cherryCardLayer.push(makeBatch(cherryReplacementItems));
       v.cherryCardLayer.end();
       v.group.add(v.cherryCardLayer.mesh);
       v.own.push(v.cherryCardLayer.mesh);

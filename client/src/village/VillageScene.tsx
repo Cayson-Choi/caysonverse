@@ -21,6 +21,8 @@ import { cubbyCardState, openCubbyCard } from "./cubbyCard";
 import { DayNight } from "./DayNight";
 import { VillageModel } from "./VillageModel";
 import { VillageBus } from "./VillageBus";
+import { BusStopShelter } from "./BusStopShelter";
+import { FishingPondProps } from "./FishingPondProps";
 import { VillageBgmButton } from "./VillageBgmButton";
 import { VILLAGE_CAMERA_PLANES, VILLAGE_GROUND_DECAL, type VillageTier } from "./villageModelPrep";
 import { clearBusCache, clearVillageCaches, holdVillageFiles, holdsVillageFiles } from "./villageRelease";
@@ -106,6 +108,8 @@ function VillageArea({ area, tier, pose }: { area: AreaId; tier: VillageTier; po
       <LoadBoundary fallback={<PlainGround />} onReset={clearVillageCaches} notice="마을 풍경을 불러오지 못했어요. 잠시 뒤 다시 불러올게요.">
         <Suspense fallback={null}>
           <VillageModel tier={tier} />
+          <BusStopShelter />
+          <FishingPondProps />
           {/* The bus at the stop (bus review r3, M2): its own error boundary and its own Suspense, so the village never
               waits for it. Its download starts with the model's, so it is usually in when the village shows (and warmed
               up with it); if it comes later it appears then (its own warm-up), and a stalled or failed bus is no bus. */}

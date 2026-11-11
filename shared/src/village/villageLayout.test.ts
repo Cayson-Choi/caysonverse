@@ -20,6 +20,7 @@ import {
   BUS_MIRROR_REACH,
   boxAt,
   buildVillageGeometry,
+  busShelterColliders,
   busMirrorColliders,
   colliderNode,
   cubbyAnchorNode,
@@ -658,28 +659,29 @@ describe("village colliders are built from the layout", () => {
   });
 
   it("buildVillageGeometry takes a named collider list or the extractor's { obstacles, cameraBoxes }", () => {
-    const fixed = hallWalls(L).length + areaGapBlockers(L).length + hallSurroundBlockers(L).length;
+    const fixed = hallWalls(L).length + areaGapBlockers(L).length + hallSurroundBlockers(L).length + 1;
     const bare = buildVillageGeometry(L, []);
     expect(bare.obstacles).toHaveLength(fixed);
-    expect(bare.cameraBoxes).toEqual(hallWalls(L));
+    expect(bare.cameraBoxes).toEqual([...hallWalls(L), ...busShelterColliders(L)]);
     const box = { minX: 0, maxX: 1, minZ: 0, maxZ: 1 };
     const one = buildVillageGeometry(L, [{ id: "x", box, camera: false }]);
     expect(one.obstacles).toHaveLength(fixed + 1);
-    expect(one.cameraBoxes).toHaveLength(hallWalls(L).length);
+    expect(one.cameraBoxes).toHaveLength(hallWalls(L).length + 1);
     const tall = { ...box, height: 3 };
     const generated = buildVillageGeometry(L, { obstacles: [box], cameraBoxes: [tall] });
     expect(generated.obstacles).toHaveLength(fixed + 1);
-    expect(generated.obstacles.at(-1)).toEqual(box);
-    expect(generated.cameraBoxes).toEqual([...hallWalls(L), tall]); // the height is kept
+    expect(generated.obstacles).toContainEqual(box);
+    expect(generated.obstacles.at(-1)).toEqual(busShelterColliders(L)[0]);
+    expect(generated.cameraBoxes).toEqual([...hallWalls(L), tall, busShelterColliders(L)[0]]); // the height is kept
     expect(generated.bounds).toEqual(bare.bounds);
   });
 
-  it("keeps bus-shelter glass and frame panels visual-only even if a GLB export tags them as colliders", () => {
+  it("blocks the shelter rear glass while leaving the bus-facing side open", () => {
     const shelter = boxOf(L.busStop.shelter);
-    const glassPanel = { minX: shelter.minX + 0.1, maxX: shelter.maxX - 0.1, minZ: shelter.minZ + 0.1, maxZ: shelter.maxZ - 0.1 };
-    const geometry = buildVillageGeometry(L, { obstacles: [glassPanel], cameraBoxes: [glassPanel] });
-    expect(geometry.obstacles).not.toContainEqual(glassPanel);
-    expect(geometry.cameraBoxes).not.toContainEqual(glassPanel);
+    const geometry = buildVillageGeometry(L, { obstacles: [], cameraBoxes: [] });
+    const walls = geometry.obstacles.filter((b) => b.minX >= shelter.maxX && b.minZ >= shelter.minZ - 0.01 && b.maxZ <= shelter.maxZ + 0.01);
+    expect(walls).toContainEqual(busShelterColliders(L)[0]);
+    expect(walls.some((b) => b.minX > shelter.maxX)).toBe(true);
   });
 
   it("the greybox build: the colliders flagged camera are the buildings (houses, café, kiosk, bus, memorial)", () => {
