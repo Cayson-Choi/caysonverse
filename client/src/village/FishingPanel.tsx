@@ -24,6 +24,26 @@ export function FishingPanel({ pose }: { pose: Pose }) {
   const room = getRoom();
   const [state, setState] = useState<FishingStatePayload>(EMPTY_FISHING_STATE);
   const [notice, setNotice] = useState<string | null>(null);
+  const [nearby, setNearby] = useState(() => ({
+    rental: near(pose, FISHING_SPOTS.rental, FISHING_RENTAL_REACH_M + 0.9),
+    pond: near(pose, FISHING_SPOTS.pond, FISHING_POND_REACH_M + 0.9),
+  }));
+  // PlayShell mutates the live pose object in place for every frame, so React does not re-render from its identity.
+  // Sample only the two fishing zones at 5 Hz and publish a state change when crossing a zone boundary; this keeps the
+  // prompt responsive without putting a React render on the animation path.
+  useEffect(() => {
+    let last = nearby;
+    const id = window.setInterval(() => {
+      const next = {
+        rental: near(pose, FISHING_SPOTS.rental, FISHING_RENTAL_REACH_M + 0.9),
+        pond: near(pose, FISHING_SPOTS.pond, FISHING_POND_REACH_M + 0.9),
+      };
+      if (next.rental === last.rental && next.pond === last.pond) return;
+      last = next;
+      setNearby(next);
+    }, 200);
+    return () => window.clearInterval(id);
+  }, [pose]);
   useEffect(() => {
     if (!room) return;
     const offState = room.onMessage(VillageServerMsg.FishingState, (payload: unknown) => {
@@ -46,8 +66,8 @@ export function FishingPanel({ pose }: { pose: Pose }) {
     };
   }, [room]);
 
-  const nearRental = near(pose, FISHING_SPOTS.rental, FISHING_RENTAL_REACH_M + 0.9);
-  const nearPond = near(pose, FISHING_SPOTS.pond, FISHING_POND_REACH_M + 0.9);
+  const nearRental = nearby.rental;
+  const nearPond = nearby.pond;
   if (!nearRental && !nearPond && state.phase === "no_rod") return null;
 
   const result = fishingResultLabel(state);
