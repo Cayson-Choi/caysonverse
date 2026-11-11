@@ -18,7 +18,7 @@ import {
 } from "three";
 import { isMesh, materialsOf } from "../../game/hub/hubModelPrep";
 import { CHERRY_MATERIAL, type VillageTier } from "../villageModelPrep";
-import { growCherry, plazaCherrySkeletons, type Bunch, type CherryCrown } from "./cherryTree";
+import { growCherry, outdoorCherrySkeletons, plazaCherrySkeletons, type Bunch, type CherryCrown } from "./cherryTree";
 import { growGreen, PLAZA_ZELKOVA, type GreenCluster, type GreenCrown } from "./greenTree";
 import { placeFlowers, SPECIES_COUNT, type Plant } from "./flowerPlacement";
 import { keepTriangles, readCards, type AttributeLike, type Card } from "./vegCards";
@@ -320,9 +320,9 @@ export class VillageVegetation {
     }
     if (await step("flowerMeshes")) return v.abandon();
 
-    // ── the plaza cherries: one tree per step ──
+    // ── plaza and static outdoor cherries: one tree per step ──
     const crowns: CherryCrown[] = [];
-    for (const sk of plazaCherrySkeletons()) {
+    for (const sk of [...plazaCherrySkeletons(), ...outdoorCherrySkeletons()]) {
       crowns.push(growCherry(sk));
       if (await step(`cherry${sk.index}`)) return v.abandon();
     }
