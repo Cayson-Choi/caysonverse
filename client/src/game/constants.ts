@@ -50,6 +50,9 @@ export const HEAD_HEIGHT = 1.4;
  */
 export const FP_EYE_HEIGHT = HEAD_HEIGHT + 0.1;
 
+/** Third-person safety distance below which the local avatar is hidden instead of showing its inside surfaces. */
+export const SELF_CAMERA_HIDE_DISTANCE = 1.8;
+
 /** drei KeyboardControls action names (typed control set). */
 export type MoveControl = "forward" | "backward" | "left" | "right" | "run" | "camLeft" | "camRight";
 

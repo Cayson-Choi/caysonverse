@@ -56,6 +56,7 @@ import {
 } from "./jump";
 import { beginSeatCamera, endSeatCamera, fpBodyYaw, viewState } from "./viewState";
 import { HIDE_BLEND, OV_VIS_BLEND } from "./viewMode";
+import { cameraProbe } from "./cameraProbe";
 import { clipFor, lookFromAppearance } from "./characterLook";
 import { reportAvatarClip, useAvatar } from "./useAvatar";
 import { BlobShadow } from "./BlobShadow";
@@ -70,7 +71,7 @@ import { useEmoji } from "./useEmoji";
 import { stepYaw } from "./yaw";
 import { createMoveSender } from "./moveSender";
 import { installDebugHook } from "./debug";
-import { ANIM_FADE, CLIP, MODEL_FACING_OFFSET, TURN_SPEED } from "./constants";
+import { ANIM_FADE, CLIP, MODEL_FACING_OFFSET, SELF_CAMERA_HIDE_DISTANCE, TURN_SPEED } from "./constants";
 import type { MoveControl } from "./constants";
 import type { Orbit, Pose, SeatState } from "./types";
 import { getRoom, sendJump, sendMove, sendStand } from "../net/connection";
@@ -481,7 +482,14 @@ export function LocalPlayer({
     // third-person top-down: the own avatar is shown there (design 20) even if it
     // was hidden in the FP it was opened from — gated on the ov BLEND, not the
     // instant mode flip, so neither transition direction flashes near the eye.
-    group.visible = viewState.ovBlend > OV_VIS_BLEND ? true : viewState.blend < HIDE_BLEND;
+    // Hide immediately on FP entry because the mode flips before the blend reaches HIDE_BLEND. In TP, also hide when
+    // a wall or shelter has shortened the spring arm into the avatar's head.
+    const cameraInsideSelf =
+      viewState.mode === "tp" &&
+      viewState.blend < HIDE_BLEND &&
+      cameraProbe.distance > 0 &&
+      cameraProbe.distance < SELF_CAMERA_HIDE_DISTANCE;
+    group.visible = viewState.ovBlend > OV_VIS_BLEND ? true : viewState.mode !== "fp" && viewState.blend < HIDE_BLEND && !cameraInsideSelf;
     // The destination ring straight ahead, behind the body (a click on the body itself, a walk away from the camera):
     // the body fades and is drawn after the ring, so the ring shows through it (round 6 review: only its dashes showed,
     // on the body, all the way there).
