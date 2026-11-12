@@ -228,6 +228,23 @@ function greenStreetBranchGeometry(
         light: (_p, n) => 0.42 + 0.35 * Math.max(0, n[1]),
       });
     }
+    // Every visible leaf cluster gets its own fine twig. The old six-spoke scaffold left many clusters between spokes,
+    // which made them read as floating cards even though the larger branches were present.
+    for (const leaf of nearby) {
+      const dx = leaf.x - cx;
+      const dy = leaf.y - forkY;
+      const dz = leaf.z - cz;
+      const length = Math.hypot(dx, dy, dz);
+      if (length < 0.35) continue;
+      const sway = Math.sin(leaf.x * 7.13 + leaf.z * 4.37) * 0.12;
+      const start: Vec3 = [cx + dx * 0.16, forkY + dy * 0.12, cz + dz * 0.16];
+      const mid: Vec3 = [cx + dx * 0.58 - dz / Math.max(0.1, length) * sway, forkY + dy * 0.58, cz + dz * 0.58 + dx / Math.max(0.1, length) * sway];
+      const end: Vec3 = [leaf.x, leaf.y - 0.12, leaf.z];
+      branches.push({
+        branch: { pts: [start, mid, end], radii: [0.038, 0.014, 0.004] },
+        light: (_p, n) => 0.44 + 0.34 * Math.max(0, n[1]),
+      });
+    }
   });
   return twigMesh(branches, coarse);
 }
