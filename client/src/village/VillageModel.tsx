@@ -91,7 +91,7 @@ export function VillageModel({ tier }: { tier: VillageTier }) {
   // The 3D flowers and cherry crowns (veg3d), built in steps after the village is up; once ready they hide the old
   // cards in this clone (`?veg=old` in DEV keeps them). Disposing gives the clone its cards back.
   const [veg, setVeg] = useState<VillageVegetation | null>(null);
-  useEffect(() => {
+  useLayoutEffect(() => {
     let cancelled = false;
     let built: VillageVegetation | null = null;
     const mode = vegModeFrom(window.location.search, import.meta.env.DEV);

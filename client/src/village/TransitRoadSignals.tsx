@@ -35,34 +35,28 @@ function Crosswalk({ x, z, vertical }: { x: number; z: number; vertical: boolean
   );
 }
 
-function VehicleSignal({ x, z, signal, flip = false }: { x: number; z: number; signal: SignalColor; flip?: boolean }) {
+function TrafficHead({ signal }: { signal: SignalColor }) {
   const lights: SignalColor[] = ["red", "amber", "green"];
   return (
-    <group name="vehicle-signal" position={[x, 0, z]} rotation-y={flip ? Math.PI : 0}>
-      <mesh position={[0, 1.3, 0]}>
-        <cylinderGeometry args={[0.07, 0.09, 2.6, 8]} />
-        <meshStandardMaterial color="#222936" roughness={0.55} metalness={0.35} />
-      </mesh>
-      <mesh position={[flip ? -0.42 : 0.42, 2.64, 0]} rotation-z={Math.PI / 2}>
-        <boxGeometry args={[0.08, 0.9, 0.08]} />
-        <meshStandardMaterial color="#222936" metalness={0.35} roughness={0.55} />
-      </mesh>
-      <mesh position={[0, 2.63, 0]}>
-        <boxGeometry args={[0.36, 0.88, 0.22]} />
-        <meshStandardMaterial color="#10151d" roughness={0.45} metalness={0.2} />
-      </mesh>
+    <group name="vehicle-signal-head">
+      <mesh castShadow><boxGeometry args={[0.5, 1.02, 0.24]} /><meshStandardMaterial color="#111820" roughness={0.5} metalness={0.2} /></mesh>
       {lights.map((color, i) => (
-        <group key={color} position={[0, 2.9 - i * 0.27, -0.13]}>
-          <mesh>
-            <sphereGeometry args={[0.075, 12, 8]} />
-            <meshStandardMaterial color={SIGNAL_COLORS[color]} emissive={SIGNAL_COLORS[color]} emissiveIntensity={signal === color ? 2.5 : 0.08} roughness={0.35} />
-          </mesh>
-          <mesh position={[0, 0, -0.06]} rotation-x={Math.PI / 2}>
-            <cylinderGeometry args={[0.105, 0.105, 0.08, 12]} />
-            <meshStandardMaterial color="#080b10" roughness={0.5} metalness={0.15} />
-          </mesh>
+        <group key={color} position={[0, 0.32 - i * 0.32, -0.145]}>
+          <mesh><circleGeometry args={[0.095, 20]} /><meshStandardMaterial color={SIGNAL_COLORS[color]} emissive={SIGNAL_COLORS[color]} emissiveIntensity={signal === color ? 2.2 : 0.04} roughness={0.34} /></mesh>
+          <mesh position={[0, 0, -0.012]}><torusGeometry args={[0.108, 0.014, 8, 20]} /><meshStandardMaterial color="#05080d" roughness={0.48} metalness={0.18} /></mesh>
+          <mesh position={[0, 0.105, 0.01]}><boxGeometry args={[0.25, 0.07, 0.18]} /><meshStandardMaterial color="#080d13" roughness={0.52} metalness={0.14} /></mesh>
         </group>
       ))}
+    </group>
+  );
+}
+
+function VehicleSignal({ x, z, signal, flip = false }: { x: number; z: number; signal: SignalColor; flip?: boolean }) {
+  return (
+    <group name="vehicle-signal" position={[x, 0, z]} rotation-y={flip ? Math.PI : 0}>
+      <mesh position={[0, 1.3, 0]}><cylinderGeometry args={[0.07, 0.09, 2.6, 8]} /><meshStandardMaterial color="#222936" roughness={0.55} metalness={0.35} /></mesh>
+      <mesh position={[flip ? -0.42 : 0.42, 2.64, 0]} rotation-z={Math.PI / 2}><boxGeometry args={[0.08, 0.9, 0.08]} /><meshStandardMaterial color="#222936" metalness={0.35} roughness={0.55} /></mesh>
+      <group position={[0, 2.63, 0]}><TrafficHead signal={signal} /></group>
     </group>
   );
 }
