@@ -1,5 +1,6 @@
 import {
   BufferAttribute,
+  Box3,
   Euler,
   Frustum,
   Group,
@@ -18,7 +19,7 @@ import {
 } from "three";
 import { isMesh, materialsOf } from "../../game/hub/hubModelPrep";
 import { CHERRY_MATERIAL, type VillageTier } from "../villageModelPrep";
-import { growCherry, outdoorCherrySkeletons, plazaCherrySkeletons, type Bunch, type CherryCrown } from "./cherryTree";
+import { growCherry, outdoorCherrySkeletons, plazaCherrySkeletons, type Branch, type Bunch, type CherryCrown } from "./cherryTree";
 import { growGreen, PLAZA_ZELKOVA, type GreenCluster, type GreenCrown } from "./greenTree";
 import { placeFlowers, SPECIES_COUNT, type Plant } from "./flowerPlacement";
 import { keepTriangles, readCards, type AttributeLike, type Card } from "./vegCards";
@@ -167,6 +168,34 @@ function meshCardItems(root: Object3D, materialName: string): Array<{ m: Matrix4
     }
   }
   return items;
+}
+
+/** Build branch connectors for baked green trees so volumetric replacement leaves remain attached to their trunks. */
+function greenStreetBranchGeometry(root: Object3D, coarse: boolean): BufferGeometry {
+  const branches: Array<{ branch: Branch; light: (p: Vec3, n: Vec3) => number }> = [];
+  const box = new Box3();
+  root.traverse((object) => {
+    if (!isMesh(object) || !/var_(street_green|orchard)_trunks/.test(object.name)) return;
+    box.setFromObject(object);
+    const cx = (box.min.x + box.max.x) * 0.5;
+    const cz = (box.min.z + box.max.z) * 0.5;
+    const baseY = box.min.y;
+    const topY = box.max.y;
+    const height = Math.max(2.5, topY - baseY);
+    const spread = Math.max(1.2, Math.max(box.max.x - box.min.x, box.max.z - box.min.z) * 0.72);
+    const forkY = baseY + height * 0.56;
+    const crownY = baseY + height * 0.9;
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2 + (cx + cz) * 0.07;
+      const end: Vec3 = [cx + Math.cos(a) * spread, crownY + (i % 2 ? 0.3 : -0.15), cz + Math.sin(a) * spread];
+      const mid: Vec3 = [cx + Math.cos(a) * spread * 0.42, forkY + height * 0.12, cz + Math.sin(a) * spread * 0.42];
+      branches.push({ branch: { pts: [[cx, forkY, cz], mid, end], radii: [0.12, 0.065, 0.018] }, light: (_p, n) => 0.42 + 0.35 * Math.max(0, n[1]) });
+      const side = a + (i % 2 ? 0.72 : -0.72);
+      const sideEnd: Vec3 = [cx + Math.cos(side) * spread * 0.72, forkY + height * 0.27, cz + Math.sin(side) * spread * 0.72];
+      branches.push({ branch: { pts: [mid, [cx + Math.cos(side) * spread * 0.53, forkY + height * 0.2, cz + Math.sin(side) * spread * 0.53], sideEnd], radii: [0.055, 0.032, 0.012] }, light: (_p, n) => 0.4 + 0.32 * Math.max(0, n[1]) });
+    }
+  });
+  return twigMesh(branches, coarse);
 }
 
 /** An instanced mesh that is refilled from batches. */
@@ -537,6 +566,12 @@ export class VillageVegetation {
     v.group.add(greenTwigObj);
     v.own.push(greenTwigGeo);
     v.greenTwigTris = (greenTwigGeo.index?.count ?? 0) / 3;
+    const streetGreenBranchGeo = greenStreetBranchGeometry(root, tier === "low");
+    const streetGreenBranchObj = new Mesh(streetGreenBranchGeo, twigMat);
+    streetGreenBranchObj.name = "veg_street_green_branches";
+    streetGreenBranchObj.matrixAutoUpdate = false;
+    v.group.add(streetGreenBranchObj);
+    v.own.push(streetGreenBranchGeo);
     if (await step("greenMeshes")) return v.abandon();
 
     // ── last: hide the old cards, all at once, now that the new vegetation is ready ──
