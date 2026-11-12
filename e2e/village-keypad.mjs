@@ -11,7 +11,8 @@ const outArg = process.argv.find((a) => a.startsWith("--out="));
 run.evidence = outArg ? outArg.slice("--out=".length) : run.evidence;
 mkdirSync(run.evidence, { recursive: true });
 
-const player = await openPlayer(await launchBrowser(DESKTOP), "keypad");
+const browser = await launchBrowser(DESKTOP);
+const player = await openPlayer(browser, run, { tag: "keypad" });
 try {
   await player.page.goto(`${CLIENT_URL}/?time=${encodeURIComponent("2026-11-03T12:30")}`, { waitUntil: "domcontentloaded" });
   await entryReady(player);
@@ -30,6 +31,6 @@ try {
   await player.page.waitForFunction(async () => (await window.__imp("/src/village/villageArea.ts")).localArea() === "village", null, { timeout: 15000 });
   console.log(JSON.stringify({ ok: true, area: "village", evidence: run.evidence }));
 } finally {
-  await player.browser.close();
+  await browser.close();
 }
 
