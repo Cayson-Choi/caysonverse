@@ -436,10 +436,10 @@ describe("prepareVillage: the model dressed for the game", () => {
     setNightLightmap(null);
   });
 
-  it("the light tier caps oversized model textures at 2048 px; the rich tier leaves them", () => {
+  it("the light tier caps the model's textures at 1024 px (final review I2); the rich tier leaves them", () => {
     const big = () => {
       const t = new Texture();
-    t.image = { width: 4096, height: 2048 };
+      t.image = { width: 2048, height: 1024 };
       return t;
     };
     const drawn: Array<[number, number]> = [];
@@ -451,13 +451,13 @@ describe("prepareVillage: the model dressed for the game", () => {
     const t = big();
     const v0 = t.version;
     expect(capTextureSize(t, LIGHT_TIER_MAX_TEXTURE, canvas)).toBe(true);
-    expect(drawn).toEqual([[2048, 1024]]);
-    expect((t.image as CanvasLike).width).toBe(2048);
-    expect((t.image as CanvasLike).height).toBe(1024);
+    expect(drawn).toEqual([[1024, 512]]);
+    expect((t.image as CanvasLike).width).toBe(1024);
+    expect((t.image as CanvasLike).height).toBe(512);
     expect(t.version).toBeGreaterThan(v0);
     expect(capTextureSize(t, LIGHT_TIER_MAX_TEXTURE, canvas)).toBe(false); // once
     const small = new Texture();
-    small.image = { width: 2048, height: 2048 };
+    small.image = { width: 1024, height: 1024 };
     expect(capTextureSize(small, LIGHT_TIER_MAX_TEXTURE, canvas)).toBe(false);
     expect(capTextureSize(big(), LIGHT_TIER_MAX_TEXTURE, () => null)).toBe(false); // no canvas: left as it is
     let closed = false;
@@ -468,7 +468,7 @@ describe("prepareVillage: the model dressed for the game", () => {
     // A texture already on the GPU (the graphics setting changed mid-visit) keeps its image: its storage is immutable.
     const uploaded = big();
     expect(capTextureSize(uploaded, LIGHT_TIER_MAX_TEXTURE, canvas, () => true)).toBe(false);
-    expect((uploaded.image as { width: number }).width).toBe(4096);
+    expect((uploaded.image as { width: number }).width).toBe(2048);
     expect(capTextureSize(uploaded, LIGHT_TIER_MAX_TEXTURE, canvas, () => false)).toBe(true);
     const onGpu = big();
     const root2 = new Object3D();
@@ -482,7 +482,7 @@ describe("prepareVillage: the model dressed for the game", () => {
     m1.lightMap = lm;
     root.add(new Mesh(new BoxGeometry(), m1), new Mesh(new BoxGeometry(), new MeshBasicMaterial({ map: shared })));
     expect(capModelTextures(root, LIGHT_TIER_MAX_TEXTURE, canvas)).toBe(1);
-    expect((lm.image as { width: number }).width).toBe(4096);
+    expect((lm.image as { width: number }).width).toBe(2048);
   });
 
   it("the water: one runtime water material on every M_water surface, reflecting the dome as it is laid on the sky", () => {
