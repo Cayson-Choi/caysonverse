@@ -217,8 +217,8 @@ export function setNightLightmap(texture: Texture | null): void {
   nightMapUniform.value = texture;
 }
 
-/** The light tier's largest texture side (final review I2). The light maps keep their 2048 (soft shadows show it). */
-export const LIGHT_TIER_MAX_TEXTURE = 1024;
+/** The light tier's largest colour-texture side. Keep 2048 so close first-person paving stays crisp on phones. */
+export const LIGHT_TIER_MAX_TEXTURE = 2048;
 
 /** The slice of a canvas `capTextureSize` draws into. */
 export interface CanvasLike {
@@ -811,7 +811,7 @@ export function prepareVillage(
   // The night light map is loaded on its own when night is near (VillageModel's NightLightmap, final fix I2b):
   // left out, the current one stays; null clears it.
   if (nightLightmap !== undefined) setNightLightmap(nightLightmap);
-  // The light (phone) tier caps the model's colour textures at 1024 px (final review I2): a quarter of the memory.
+  // The light (phone) tier caps oversized colour textures at 2048 px while retaining close floor detail.
   if (tier === "low") capModelTextures(source, LIGHT_TIER_MAX_TEXTURE, undefined, isUploaded);
   const own: VillageNodes["own"] = [];
   const hazed: MeshBasicMaterial[] = [];
