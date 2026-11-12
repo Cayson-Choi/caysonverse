@@ -49,6 +49,12 @@ import type { VegMode } from "./vegMode";
 export { vegModeFrom, type VegMode } from "./vegMode";
 
 const FLORA = "M_leaf_flora";
+/** The plaza zelkova currently has no reliable trunk-to-ground connection, so keep the whole asset out of the scene. */
+export const REMOVE_PLAZA_ZELKOVA = true;
+
+function isNearPlazaZelkova(x: number, z: number): boolean {
+  return Math.hypot(x - PLAZA_ZELKOVA.base[0], z - PLAZA_ZELKOVA.base[2]) < PLAZA_ZELKOVA.R + 1.2;
+}
 
 export interface VegStats {
   mode: VegMode;
@@ -353,6 +359,22 @@ export class VillageVegetation {
    */
   static async build(root: Object3D, tier: VillageTier, mode: Exclude<VegMode, "old">, cancelled: () => boolean = () => false): Promise<VillageVegetation | null> {
     const v = new VillageVegetation(tier, mode);
+    if (REMOVE_PLAZA_ZELKOVA) {
+      root.traverse((object) => {
+        if (!isMesh(object) || object.name !== "village_lm_11") return;
+        const materials = materialsOf(object).map((material) => {
+          if (material.name !== "LM_bark") return material;
+          const hidden = material.clone();
+          hidden.transparent = true;
+          hidden.opacity = 0;
+          hidden.depthWrite = false;
+          hidden.needsUpdate = true;
+          v.own.push(hidden);
+          return hidden;
+        });
+        object.material = Array.isArray(object.material) ? materials : materials[0]!;
+      });
+    }
     const steps = v.statsData.steps;
     let work = 0;
     let t = performance.now();
@@ -495,7 +517,10 @@ export class VillageVegetation {
       tint: [0.88, 1, 0.82],
       light: c.light,
     }));
-    const greenReplacementItems = [...greenCardItems.items, ...greenMeshItems];
+    const greenReplacementItems = [
+      ...greenCardItems.items,
+      ...greenMeshItems.filter((item) => !REMOVE_PLAZA_ZELKOVA || !isNearPlazaZelkova(item.m.elements[12]!, item.m.elements[14]!)),
+    ];
     const cherryReplacementItems = [...cherryCardItems.items, ...cherryMeshItems];
     if (greenReplacementItems.length) {
       v.greenCardLayer = new Layer(greenFarGeo, greenFarMat, greenReplacementItems.length, "veg_green_volumetric_cards");
@@ -566,6 +591,13 @@ export class VillageVegetation {
     v.group.add(greenTwigObj);
     v.own.push(greenTwigGeo);
     v.greenTwigTris = (greenTwigGeo.index?.count ?? 0) / 3;
+    if (REMOVE_PLAZA_ZELKOVA) {
+      v.green.length = 0;
+      v.greenLayer.mesh.visible = false;
+      v.greenFarLayer.mesh.visible = false;
+      greenTwigObj.visible = false;
+      v.greenTwigTris = 0;
+    }
     const streetGreenBranchGeo = greenStreetBranchGeometry(root, tier === "low");
     const streetGreenBranchObj = new Mesh(streetGreenBranchGeo, twigMat);
     streetGreenBranchObj.name = "veg_street_green_branches";
