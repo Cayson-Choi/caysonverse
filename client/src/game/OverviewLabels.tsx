@@ -70,7 +70,7 @@ function createLabel(text: string): LabelHandle {
 /**
  * Room names on the map (controls-ux Task 16): while the overview is up, each room carries
  * its name — 미로방, 로비, 강의실, AI 갤러리 — at its centre, so "where is the lecture hall?"
- * reads at a glance next to the yellow self marker (OverviewMarker).
+ * reads at a glance next to the red self marker (OverviewMarker).
  *
  * Shown only once the overview blend is past OV_VIS_BLEND (the camera is high enough that
  * the map is readable, the same gate the self marker uses), so they never flash over the

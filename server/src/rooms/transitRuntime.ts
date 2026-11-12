@@ -1,4 +1,4 @@
-import { TRANSIT, busTripAt, signalAt } from "@caysonverse/shared/village/transit";
+import { TRANSIT, busTripAt, pedestrianSignalAt, signalAt } from "@caysonverse/shared/village/transit";
 import type {
   BusRejectedPayload,
   BusRidePayload,
@@ -22,6 +22,7 @@ export function transitSnapshotAt(utcMs: number): BusStatePayload {
     z: trip.pose.z,
     yaw: trip.pose.yaw,
     signal: signalAt(utcMs).color,
+    pedestrianSignal: pedestrianSignalAt(utcMs).color,
   };
 }
 

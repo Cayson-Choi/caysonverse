@@ -13,7 +13,7 @@
 
 import { LEGACY_GEOMETRY, SEATS, type Seat } from "@caysonverse/shared/worldMap";
 import { hubGeometry, hubZoneLabel } from "@caysonverse/shared/school/hubMap";
-import { VILLAGE_LAYOUT, villageGeometry, type AreaId } from "@caysonverse/shared/village/villageLayout";
+import { VILLAGE_LAYOUT, villageGeometry, houseInteriorGeometry, type AreaId, isHouseArea } from "@caysonverse/shared/village/villageLayout";
 import { VILLAGE_BENCHES, VILLAGE_SEATS } from "@caysonverse/shared/village/benchSeats";
 import type { Bounds, MapGeometry } from "@caysonverse/shared/school/geometry";
 import type { AABB } from "@caysonverse/shared/collision";
@@ -117,9 +117,29 @@ export const HALL_ACTIVE_MAP: ActiveMap = Object.freeze({
   furniture: VILLAGE_FURNITURE,
 });
 
+/** Procedural private house interiors: same room bounds/camera ceiling, no memorial furniture colliders. */
+export const HOUSE_ACTIVE_MAP: ActiveMap = Object.freeze({
+  geometry: houseInteriorGeometry,
+  bounds: VILLAGE_LAYOUT.areas.hall,
+  cameraLimit: HALL_CAMERA_LIMIT,
+  cameraPad: VILLAGE_CAMERA_PAD,
+  zoneLabel: () => "집 안",
+  seats: VILLAGE_SEATS,
+  furniture: [],
+});
+
+const HOUSE_MAPS = new Map<string, ActiveMap>();
+function houseActiveMap(area: AreaId): ActiveMap {
+  const existing = HOUSE_MAPS.get(area);
+  if (existing) return existing;
+  const map = Object.freeze({ ...HOUSE_ACTIVE_MAP, seats: VILLAGE_SEATS.filter((s) => s.area === area) });
+  HOUSE_MAPS.set(area, map);
+  return map;
+}
+
 /** The village map for the area the local player is in: one of two prebuilt maps, so a re-render is never a switch. */
 export function villageActiveMap(area: AreaId): ActiveMap {
-  return area === "hall" ? HALL_ACTIVE_MAP : VILLAGE_ACTIVE_MAP;
+  return area === "hall" ? HALL_ACTIVE_MAP : isHouseArea(area) ? houseActiveMap(area) : VILLAGE_ACTIVE_MAP;
 }
 
 const HUB_GATED: ActiveMap = Object.freeze({ geometry: hubGeometry(false), zoneLabel: hubZoneLabel });

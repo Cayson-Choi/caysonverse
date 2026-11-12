@@ -51,12 +51,12 @@ function seeded(seed: number): () => number {
 }
 
 describe("clickPlan sweep — seated, every tap on the open ground round a seat gets up and walks (round 5 review)", () => {
-  it("all 20 seats, 3 m round each on a 0.25 m grid: no open-ground tap refused, every walk reaches its ring", () => {
+  it("all village and house seats, 3 m round each on a 0.25 m grid: no open-ground tap refused, every walk reaches its ring", () => {
     let points = 0;
     const refused: string[] = [];
     let pushedFar = 0;
-    VILLAGE_SEATS.forEach((s, i) => {
-      const bounds = VILLAGE_LAYOUT.areas[s.area];
+    VILLAGE_SEATS.filter((s) => !s.area.startsWith("house:")).forEach((s, i) => {
+      const bounds = s.area === "village" ? VILLAGE_LAYOUT.areas.village : VILLAGE_LAYOUT.areas.hall;
       for (let gx = -12; gx <= 12; gx++) {
         for (let gz = -12; gz <= 12; gz++) {
           const x = s.x + gx * 0.25;

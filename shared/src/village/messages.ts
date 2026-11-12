@@ -131,5 +131,5 @@ export interface KeypadResultPayload {
   retryAfterMs?: number;
   /** True while the house interior GLB is pending; the server uses the existing hall boundary as a placeholder. */
   placeholder?: boolean;
-  area?: "hall";
+  area?: string;
 }

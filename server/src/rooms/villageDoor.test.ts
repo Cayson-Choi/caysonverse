@@ -39,7 +39,7 @@ describe("arrivalAfter", () => {
   it("both arrival points are collider-free in the village geometry and inside their own area", () => {
     for (const a of [arrivalAfter("village"), arrivalAfter("hall")]) {
       expect(isBlocked(a.x, a.z, PLAYER_RADIUS, villageGeometry.obstacles), JSON.stringify(a)).toBe(false);
-      const bounds = L.areas[a.area];
+      const bounds = a.area === "village" ? L.areas.village : L.areas.hall;
       expect(a.x).toBeGreaterThanOrEqual(bounds.minX + PLAYER_RADIUS);
       expect(a.x).toBeLessThanOrEqual(bounds.maxX - PLAYER_RADIUS);
       expect(a.z).toBeGreaterThanOrEqual(bounds.minZ + PLAYER_RADIUS);

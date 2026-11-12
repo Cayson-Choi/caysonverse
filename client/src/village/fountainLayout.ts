@@ -5,9 +5,10 @@
  *
  * The shapes are the model's (art/village/tools/build_village.py `build_fountain()`): the same nozzles, the same
  * landing points, the same pools and lips. Only the water is drawn anew, at run time, as real water moves:
- *  - 16 arcing jets from the basin's rim (r 5.1, y 0.42) toward the pedestal, landing on the pool at r 2.9. The model's
- *    quadratic Bezier is a parabola: its apex 1.32 m above the nozzle gives a launch at 5.1 m/s up and 2.1 m/s in, 1.04 s
- *    in the air.
+ *  - 16 arcing jets from the pedestal (r 2.9, y 0.45) outward to the basin's rim (r 5.1, y 0.42). The model's
+ *    quadratic Bezier is a parabola: its apex 1.32 m above the nozzle gives a launch at 5.1 m/s up and 2.1 m/s out, 1.04 s
+ *    in the air. Starting at the inner tier keeps the spray visibly flowing away from the centre, matching the fountain's
+ *    real-world nozzle direction instead of the old inward-facing tubes.
  *  - 8 upright jets on the pedestal's pool (r 1.9, y 0.80) rising 2.9 m: 7.5 m/s, 0.77 s up; they fall back as a crown.
  *  - 2 curtains over the bowl's lip (r 1.64, y 1.62 -> r 1.85, y 0.80) and the pedestal's (r 2.52, y 0.80 -> r 2.75, y 0.40):
  *    a parabola from the lip at the speed that lands where the model's sheet landed.
@@ -47,10 +48,11 @@ export const FOUNTAIN = {
   /** The upper bowl's water. Its stone lip reaches r 1.62. */
   bowl: { y: 1.6, r: 1.52, lipR: 1.62 },
   /**
-   * The model's arcs: a quadratic Bezier from the nozzle (r 5.1, y 0.42) to (r 2.9, y 0.45), its control point 2.6 m above
-   * the middle (apex 1.735). A Bezier is a parabola: the jet follows it exactly and goes on down to the water (y 0.40).
+   * The model's arcs: a quadratic Bezier from the inner nozzle (r 2.9, y 0.45) to the basin's outer landing ring (r 5.1, y 0.42),
+   * its control point 2.6 m above the middle (apex 1.735). A Bezier is a parabola: the jet follows it exactly and goes on down
+   * to the water (y 0.40). The two radii are deliberately ordered inner -> outer so the visible spray points away from the plaza.
    */
-  arcs: { count: 16, nozzleR: 5.1, nozzleY: 0.42, endR: 2.9, endY: 0.45, lift: 2.6, apexY: 1.735 },
+  arcs: { count: 16, nozzleR: 2.9, nozzleY: 0.45, endR: 5.1, endY: 0.42, lift: 2.6, apexY: 1.735 },
   uprights: { count: 8, r: 1.9, baseY: 0.8, height: 2.9, angle0: 0.2 },
   curtains: [
     { lipR: 1.64, lipY: 1.62, landR: 1.85, landY: 0.8 },
@@ -124,7 +126,7 @@ export function arcJet(k: number): Jet {
   return { origin, velocity, flight: timeDownTo(origin, velocity, FOUNTAIN.pool.y), angle };
 }
 
-/** Where the arcs come down on the basin's water (m from the centre): 2 cm inside the model's end (r 2.9, 5 cm higher). */
+/** Where the arcs come down on the basin's water (m from the centre): 2 cm inside the model's outer landing ring. */
 export const ARC_LAND_R = (() => {
   const j = arcJet(0);
   const p = ballistic(j.origin, j.velocity, j.flight);
@@ -158,12 +160,14 @@ export function curtainPoint(i: number, tau: number): { r: number; y: number } {
 export const PARTICLE_KIND = { arcDrop: 0, crown: 1, curtainDrop: 2, splash: 3, mist: 4, head: 5 } as const;
 export type ParticleKind = (typeof PARTICLE_KIND)[keyof typeof PARTICLE_KIND];
 
-/** How many particles each emitter has, per tier. The rich tier's cap is 2048; the light tier's 384. */
+/** How many particles each emitter has, per tier. The rich tier's cap is 2560; the light tier's 512. */
 export const PARTICLE_BUDGET = {
-  high: { arcDrop: 44, crown: 112, curtainDrop: 64, arcSplash: 10, crownSplash: 8, curtainSplash: 24, mist: 24, head: 2 },
-  low: { arcDrop: 10, crown: 22, curtainDrop: 16, arcSplash: 0, crownSplash: 0, curtainSplash: 0, mist: 0, head: 1 },
+  // A fuller veil is made from moderately more drops in each emitter instead of more emitters. This keeps the 16/8 rhythm,
+  // predictable LOD ordering and draw-call count while adding visible volume close to the basin.
+  high: { arcDrop: 52, crown: 128, curtainDrop: 72, arcSplash: 12, crownSplash: 10, curtainSplash: 28, mist: 28, head: 3 },
+  low: { arcDrop: 12, crown: 24, curtainDrop: 20, arcSplash: 0, crownSplash: 0, curtainSplash: 0, mist: 0, head: 1 },
 } as const;
-export const PARTICLE_CAP = { high: 2048, low: 384 } as const;
+export const PARTICLE_CAP = { high: 2560, low: 512 } as const;
 
 /** One particle: launched from `origin` with `velocity` every `life` s (offset by `phase`), kicked sideways after `kickAt` s. */
 export interface Particle {
@@ -244,6 +248,9 @@ export function buildParticles(tier: "high" | "low"): { particles: Particle[]; f
       return [p[0] + kick[0] * dt, p[1], p[2] + kick[1] * dt];
     };
     let t = timeDownTo(o, v, FOUNTAIN.pool.y);
+    // `wrapPeriod` rounds a cycle to a whole number in TIME_WRAP. Leave a centimetre of landing margin so that this tiny
+    // rounding (and the shader's matching clock) cannot move a drop just over a stone lip on the final frame.
+    const lipMargin = 0.01;
     for (const [h, lip] of [
       [FOUNTAIN.bowl.y, FOUNTAIN.bowl.lipR],
       [FOUNTAIN.tier.y, FOUNTAIN.tier.lipR],
@@ -251,7 +258,7 @@ export function buildParticles(tier: "high" | "low"): { particles: Particle[]; f
       const th = timeDownTo(o, v, h);
       if (!(th > 0)) continue;
       const p = at(th);
-      if (Math.hypot(p[0], p[2]) < lip) {
+      if (Math.hypot(p[0], p[2]) < lip - lipMargin) {
         t = th;
         break;
       }

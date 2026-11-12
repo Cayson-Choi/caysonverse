@@ -130,23 +130,24 @@ function modelFountainWater(): { geometry: BufferGeometry; poolTriangles: number
 }
 
 describe("fountainLayout: the water's paths match the model", () => {
-  it("the arcs: from the rim's nozzle (r 5.1, y 0.42) over the model's apex (1.735) onto the water at r 2.9", () => {
+  it("the arcs: from the inner nozzle (r 2.9, y 0.45) over the model's apex (1.735) out to the basin at r 5.1", () => {
     for (let k = 0; k < FOUNTAIN.arcs.count; k++) {
       const j = arcJet(k);
-      close(Math.hypot(j.origin[0], j.origin[2]), 5.1, 1e-9);
-      close(j.origin[1], 0.42, 1e-9);
+      close(Math.hypot(j.origin[0], j.origin[2]), FOUNTAIN.arcs.nozzleR, 1e-9);
+      close(j.origin[1], FOUNTAIN.arcs.nozzleY, 1e-9);
       const apexT = j.velocity[1] / G;
       close(ballistic(j.origin, j.velocity, apexT)[1], FOUNTAIN.arcs.apexY, 1e-4);
       const end = ballistic(j.origin, j.velocity, j.flight);
       close(end[1], FOUNTAIN.pool.y, 1e-9);
-      // The water comes down where the model's own jet did (its Bezier ends at r 2.9, y 0.45): within 3 cm.
+      // The water comes down at the model's outer landing ring (its Bezier ends at r 5.1, y 0.42): within 3 cm.
       close(Math.hypot(end[0], end[2]), FOUNTAIN.arcs.endR, 0.03);
       close(Math.hypot(end[0], end[2]), ARC_LAND_R, 1e-9);
       close(landingTime(j.origin, j.velocity), j.flight, 1e-6);
     }
-    // The physics: 5.1 m/s up, 2.1 m/s in, about a second in the air.
+    // The physics: 5.0 m/s up, 2.1 m/s out, about a second in the air.
     const j = arcJet(0);
-    close(j.velocity[1], 5.08, 0.01);
+    expect(j.origin[0] * j.velocity[0] + j.origin[2] * j.velocity[2]).toBeGreaterThan(0);
+    close(j.velocity[1], 5.02, 0.01);
     close(Math.hypot(j.velocity[0], j.velocity[2]), 2.14, 0.01);
     close(j.flight, 1.04, 0.01);
   });
@@ -154,14 +155,15 @@ describe("fountainLayout: the water's paths match the model", () => {
   it("the arcs trace the model's own curve: every point of its Bezier lies on the parabola (±1 mm)", () => {
     const j = arcJet(3);
     const a = j.angle;
-    const p0 = [5.1 * Math.cos(a), 0.42, 5.1 * Math.sin(a)];
-    const p2 = [2.9 * Math.cos(a), 0.45, 2.9 * Math.sin(a)];
-    const p1 = [(p0[0]! + p2[0]!) / 2, (p0[1]! + p2[1]!) / 2 + 2.6, (p0[2]! + p2[2]!) / 2];
+    const p0 = [FOUNTAIN.arcs.nozzleR * Math.cos(a), FOUNTAIN.arcs.nozzleY, FOUNTAIN.arcs.nozzleR * Math.sin(a)];
+    const p2 = [FOUNTAIN.arcs.endR * Math.cos(a), FOUNTAIN.arcs.endY, FOUNTAIN.arcs.endR * Math.sin(a)];
+    const p1 = [(p0[0]! + p2[0]!) / 2, (p0[1]! + p2[1]!) / 2 + FOUNTAIN.arcs.lift, (p0[2]! + p2[2]!) / 2];
     for (let i = 0; i <= 10; i++) {
       const q = quadBezier(p0, p1, p2, i / 10);
       // The parabola's height at the same distance from the centre.
       const r = Math.hypot(q[0]!, q[2]!);
-      const t = (5.1 - r) / Math.hypot(j.velocity[0], j.velocity[2]);
+      const radialSpeed = Math.hypot(j.velocity[0], j.velocity[2]);
+      const t = (r - FOUNTAIN.arcs.nozzleR) / radialSpeed;
       close(ballistic(j.origin, j.velocity, t)[1], q[1]!, 0.001);
     }
   });
@@ -264,10 +266,10 @@ describe("fountainLayout: the particle pools", () => {
     });
   }
 
-  it("the light tier: no splashes, no mist, at most 384", () => {
+  it("the light tier: no splashes, no mist, within its 512-particle cap", () => {
     const { particles } = buildParticles("low");
     expect(particles.some((p) => p.kind === PARTICLE_KIND.splash || p.kind === PARTICLE_KIND.mist)).toBe(false);
-    expect(particles.length).toBeLessThanOrEqual(384);
+    expect(particles.length).toBeLessThanOrEqual(PARTICLE_CAP.low);
   });
 
   it("each drop's cycle ends at the water (or the stone) it falls on", () => {
@@ -335,7 +337,7 @@ describe("fountainWater: geometry and the system", () => {
     const g = buildRibbonGeometry("high");
     const pos = g.getAttribute("position");
     const last = RIBBON_SEGMENTS.high.arc * 2;
-    close(Math.hypot(pos.getX(last), pos.getZ(last)), 2.9, 0.03);
+    close(Math.hypot(pos.getX(last), pos.getZ(last)), FOUNTAIN.arcs.endR, 0.03);
     close(pos.getY(last), 0.4, 1e-4);
     close(Math.hypot(pos.getX(last), pos.getZ(last)), ARC_LAND_R, 1e-4);
   });
@@ -416,11 +418,12 @@ describe("fountainWater: geometry and the system", () => {
     const noon = stateFor(60, 180);
     fountainDayNight(f, noon);
     expect((f.uniforms.uGlow!.value as Vector3).length()).toBe(0);
-    // The brightest white water (backlit, the forward scatter capped at 3): luminance under the rich tier's bloom (1.6).
+    // The brightest white water (backlit, the forward scatter capped at 3): keep the noon luminance below 1.0 so a phone
+    // screenshot retains the stream's grain instead of clipping to a white bloom.
     const amb = f.uniforms.uAmbient!.value as Vector3;
     const key = f.uniforms.uKeyColor!.value as Vector3;
     const lum = (v: Vector3) => 0.2126 * v.x + 0.7152 * v.y + 0.0722 * v.z;
-    expect(lum(amb) + lum(key) * (0.4 + 0.6 * 3)).toBeLessThan(1.3);
+    expect(lum(amb) + lum(key) * (0.4 + 0.6 * 3)).toBeLessThan(1.0);
     expect(lum(amb)).toBeCloseTo(lum(new Vector3(...noon.hemiSky)) * noon.hemiIntensity * WHITE_WATER_LIGHT.ambient, 9);
     const night = stateFor(-30, 0);
     fountainDayNight(f, night);

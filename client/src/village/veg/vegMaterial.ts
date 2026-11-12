@@ -100,12 +100,11 @@ varying vec3 vVegLight;
 varying vec3 vVegTint;
 void main() {`;
 
-/** The alpha of a cut-out picture is raised with its mip level, so its outline does not shrink away at a distance. */
+/** Keep cut-out foliage alpha stable without derivative instructions that trigger ANGLE warnings on mobile GPUs. */
 const FRAG_MAP = /* glsl */ `#include <map_fragment>
 #if defined( USE_MAP ) && defined( USE_ALPHATEST )
-	vec2 vegTexel = vMapUv * vec2( textureSize( map, 0 ) );
-	float vegMip = max( 0.0, 0.5 * log2( max( dot( dFdx( vegTexel ), dFdx( vegTexel ) ), dot( dFdy( vegTexel ), dFdy( vegTexel ) ) ) ) );
-	diffuseColor.a *= 1.0 + vegMip * 0.3;
+	// A fixed lift avoids dFdx/dFdy inside the cut-out path, which ANGLE reports as a varying-gradient warning.
+	diffuseColor.a *= 1.12;
 #endif`;
 
 const FRAG_COLOR = /* glsl */ `vec3 vegAlbedo = vColor.rgb * mix( vec3( 1.0 ), vVegTint, vColor.a );

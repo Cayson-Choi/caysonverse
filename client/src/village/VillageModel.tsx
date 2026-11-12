@@ -20,7 +20,7 @@ import { dayNight } from "./dayNightDriver";
 import { useNightMapWanted } from "./nightLightmap";
 import { holdNightLightmap, noteBusRequested, noteNightRequested, noteVillageRequested } from "./villageRelease";
 import { preloadBus } from "./villageBusLoader";
-import { createVegetation, vegModeFrom, type VegStats, type VillageVegetation } from "./veg/villageVegetation";
+import { createVegetation, hideLegacyVegetationSources, vegModeFrom, type VegStats, type VillageVegetation } from "./veg/villageVegetation";
 import { createWaterfall3D, hideWaterfallCards, type Waterfall3D } from "./waterfall3d";
 import type { Object3D } from "three";
 
@@ -94,8 +94,13 @@ export function VillageModel({ tier }: { tier: VillageTier }) {
   useEffect(() => {
     let cancelled = false;
     let built: VillageVegetation | null = null;
-    void createVegetation(nodes.root, tier, vegModeFrom(window.location.search, import.meta.env.DEV), () => cancelled).then((v) => {
-      if (!v) return;
+    const mode = vegModeFrom(window.location.search, import.meta.env.DEV);
+    const restoreLegacy = mode === "new" ? hideLegacyVegetationSources(nodes.root) : () => {};
+    void createVegetation(nodes.root, tier, mode, () => cancelled).then((v) => {
+      if (!v) {
+        restoreLegacy();
+        return;
+      }
       if (cancelled) v.dispose();
       else {
         built = v;
@@ -107,6 +112,7 @@ export function VillageModel({ tier }: { tier: VillageTier }) {
       cancelled = true;
       if (import.meta.env.DEV) delete window.__cvVeg;
       built?.dispose();
+      restoreLegacy();
       setVeg(null);
     };
   }, [nodes, tier]);

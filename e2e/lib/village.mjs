@@ -229,7 +229,7 @@ export const ceilingHits = (p) =>
       const mat = mats[hit.face?.materialIndex ?? 0] ?? mats[0];
       const n = hit.face ? hit.face.normal.clone().transformDirection(hit.object.matrixWorld) : new THREE.Vector3(0, -1, 0);
       const faceSeen = mat.side === THREE.DoubleSide || (mat.side === THREE.FrontSide && n.y < 0) || (mat.side === THREE.BackSide && n.y > 0);
-      out.push({ x: Math.round(x * 10) / 10, z: Math.round(z * 10) / 10, y: Math.round(hit.point.y * 100) / 100, mesh: hit.object.name, material: mat.name, side: mat.side, faceSeen, ok: hit.point.y >= 3.2 && hit.point.y <= 3.7 && faceSeen && mat.visible !== false });
+      out.push({ x: Math.round(x * 10) / 10, z: Math.round(z * 10) / 10, y: Math.round(hit.point.y * 100) / 100, mesh: hit.object.name, material: mat.name, side: mat.side, faceSeen, ok: hit.point.y >= 4.35 && hit.point.y <= 4.65 && faceSeen && mat.visible !== false });
     }
     return out;
   });
@@ -399,7 +399,7 @@ export async function runVillageScenario({ name, device }) {
       await walkAndWait(B, 298.3, 0.8, 15000, 0.6); // out of the arrival point: players block each other, and A walks this way later
     });
 
-    await run.step("6. inside: camera y <= 3.0 at full orbit pitch; the ceiling is seen from inside", async () => {
+    await run.step("6. inside: camera y <= 4.1 at full orbit pitch; the ceiling is seen from inside", async () => {
       await walkChecked(run, A, 301.4, 2.0, "the middle of the hall", 0.5, 15000);
       await turnCameraTo(A, 301.0, -5);
       await setOrbit(A, phone ? null : 3.6, 1.2);
@@ -408,7 +408,7 @@ export async function runVillageScenario({ name, device }) {
       const top = await ceilingShare(A);
       summary.fullPitch = { ...top, pitch: o.pitch, distance: o.distance };
       run.check("the orbit pitch is at its limit (>= 1.1)", o.pitch >= 1.1, o);
-      run.check("camera y <= 3.0 (+0.01) at full pitch: under the 3.3 m slab, never above the ceiling", top.y <= 3.01 && top.y > 2.0, top);
+      run.check("camera y <= 4.1 (+0.01) at full pitch: under the 4.5 m slab, never above the ceiling", top.y <= 4.11 && top.y > 2.0, top);
       await hideHud(A);
       await run.shot(A, "hall-fullpitch-frame.png");
       await showHud(A);
@@ -422,7 +422,7 @@ export async function runVillageScenario({ name, device }) {
       run.check("the ceiling is in the frame when the view is level (some of it inside the picture)", level.share > 0.05, summary.levelPitch);
       const hits = await ceilingHits(A);
       summary.ceilingHits = hits;
-      run.check("the ceiling is a shown mesh 3.2..3.7 m up, its face seen from below (rays up from 3 points; 2 of 3 at least)", hits.filter((h) => h.ok).length >= 2, hits);
+      run.check("the ceiling is a shown mesh around 4.5 m up, its face seen from below (rays up from 3 points; 2 of 3 at least)", hits.filter((h) => h.ok).length >= 2, hits);
       await hideHud(A);
       await run.shot(A, "hall-ceiling-view-frame.png");
       await showHud(A);
