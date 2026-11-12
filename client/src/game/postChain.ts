@@ -98,7 +98,6 @@ precision highp float;
 uniform sampler2D tScene;
 uniform sampler2D tBloom;
 uniform vec2 texel;
-uniform bool uFxaaEnabled;
 // The part of tScene the scene was drawn into (the render scale), as a share of the texture, and the last texel centre in it
 // (a sample is held inside the part: past its edge lies what an earlier, larger frame left).
 uniform vec2 uvScale;
@@ -160,10 +159,6 @@ const float SUBPIXEL_BLENDING = 0.25;
 
 void main() {
   vec2 uv = vUv * uvScale;
-  if (!uFxaaEnabled) {
-    outColor = frameAt(uv);
-    return;
-  }
   float m = lumaAt(uv);
   float n = lumaAt(uv + texel * vec2(0.0, 1.0));
   float e = lumaAt(uv + texel * vec2(1.0, 0.0));
@@ -356,7 +351,6 @@ export class PostChain {
         tScene: { value: this.target.texture },
         tBloom: { value: null },
         texel: { value: new Vector2(1, 1) },
-        uFxaaEnabled: { value: true },
         uvScale: { value: uvScale },
         uvMax: { value: uvMax },
         toneMappingExposure: { value: 1 },
@@ -397,11 +391,6 @@ export class PostChain {
     if (s === this.renderScale) return;
     this.renderScale = s;
     this.applyRegion();
-  }
-
-  /** Disable the final edge blend for first-person close-ups so high-frequency floor texels stay sharp. */
-  setFxaaEnabled(enabled: boolean): void {
-    this.output.uniforms.uFxaaEnabled!.value = enabled;
   }
 
   private applyRegion(): void {

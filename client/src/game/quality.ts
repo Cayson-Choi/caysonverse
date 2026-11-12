@@ -42,8 +42,7 @@ export interface QualitySpec {
 
 export const QUALITY: Record<QualityTier, QualitySpec> = {
   high: { bloom: true, shafts: true, sparkles: 60, shadows: "soft", dpr: [1, 2] },
-  // Keep the light tier inexpensive while retaining one bounded supersample step for close first-person floors.
-  low: { bloom: false, shafts: false, sparkles: 0, shadows: "blob", dpr: [1, 1.25] },
+  low: { bloom: false, shafts: false, sparkles: 0, shadows: "blob", dpr: [1, 1] },
 };
 
 /**

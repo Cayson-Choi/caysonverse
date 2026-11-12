@@ -359,46 +359,6 @@ void main() {
 /** The albedo before COLOR_0 (which is the light on the foliage, a tint on the light-mapped materials). */
 const LIFT_ALBEDO = /* glsl */ `vec3 villageAlbedo = diffuseColor.rgb;
 #include <color_fragment>`;
-
-/**
- * A small repeatable paving detail for the plaza's close first-person view. The baked plaza atlas covers the whole
- * round square, so its individual stone edges become sub-texel when the camera is pressed close to the ground. Keep
- * the atlas for the large layout and colour variation, then add a restrained tiled edge/noise pass in shader space.
- * This is deliberately procedural: one extra arithmetic block avoids another image request and works on the phone
- * tier as well as the rich tier.
- */
-const PLAZA_DETAIL_FRAGMENT = /* glsl */ `
-{
-  vec2 plazaDetailUv = vMapUv * vec2(220.0, 135.0);
-  float plazaRow = floor(plazaDetailUv.y);
-  plazaDetailUv.x += mod(plazaRow, 2.0) * 0.5;
-  vec2 plazaCell = floor(plazaDetailUv);
-  vec2 plazaLocal = fract(plazaDetailUv);
-  float plazaEdgeDistance = min(min(plazaLocal.x, 1.0 - plazaLocal.x), min(plazaLocal.y, 1.0 - plazaLocal.y));
-  float plazaGrout = 1.0 - smoothstep(0.018, 0.065, plazaEdgeDistance);
-  float plazaNoise = fract(sin(dot(plazaCell, vec2(127.1, 311.7))) * 43758.5453);
-  vec2 plazaMicroCell = floor(plazaLocal * 7.0);
-  float plazaMicroNoise = fract(sin(dot(plazaCell + plazaMicroCell, vec2(41.7, 89.3))) * 15731.743);
-  vec3 plazaStone = mix(vec3(0.92, 0.91, 0.89), vec3(1.08, 1.06, 1.02), plazaNoise * 0.72 + plazaMicroNoise * 0.28);
-  diffuseColor.rgb *= mix(plazaStone, vec3(0.66, 0.67, 0.68), plazaGrout * 0.62);
-}
-`;
-
-/** Re-apply the paving edge after the baked light, so bright daytime tiles keep their relief instead of washing out. */
-const PLAZA_DETAIL_LIGHT = /* glsl */ `
-{
-  vec2 plazaLightUv = vMapUv * vec2(220.0, 135.0);
-  float plazaLightRow = floor(plazaLightUv.y);
-  plazaLightUv.x += mod(plazaLightRow, 2.0) * 0.5;
-  vec2 plazaLightCell = floor(plazaLightUv);
-  vec2 plazaLightLocal = fract(plazaLightUv);
-  float plazaLightEdge = min(min(plazaLightLocal.x, 1.0 - plazaLightLocal.x), min(plazaLightLocal.y, 1.0 - plazaLightLocal.y));
-  float plazaLightGrout = 1.0 - smoothstep(0.014, 0.048, plazaLightEdge);
-  float plazaLightNoise = fract(sin(dot(plazaLightCell, vec2(127.1, 311.7))) * 43758.5453);
-  outgoingLight *= mix(vec3(0.94, 0.93, 0.91), vec3(1.06, 1.04, 1.00), plazaLightNoise);
-  outgoingLight *= mix(vec3(1.0), vec3(0.54, 0.55, 0.56), plazaLightGrout * 0.78);
-}
-`;
 /** The moonlit cast of the night map's light (dim texels bluish, the lamps' pools as they are): `liftMaterial`'s. */
 const moonlitCast = (light: string) =>
   `mix( uVillageMoonTint, vec3( 1.0 ), smoothstep( 0.04, 0.22, dot( ${light}, vec3( 0.2126, 0.7152, 0.0722 ) ) ) )`;
@@ -431,7 +391,6 @@ export function liftMaterial(material: Material): void {
   lifted.add(material);
   // The village's own leaves and trunks also fade out near the camera; the click pick skips them there (clickPick.ts).
   const foliage = FOLIAGE_MATERIALS.includes(material.name);
-  const plaza = material.name === "LM_plaza";
   if (foliage) material.userData[NEAR_FADE_KEY] = (FOLIAGE_NEAR_FADE[0] + FOLIAGE_NEAR_FADE[1]) / 2;
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uVillageLift = liftUniform;
@@ -445,12 +404,10 @@ export function liftMaterial(material: Material): void {
     shader.fragmentShader = shader.fragmentShader
       .replace("void main() {", foliage ? LIFT_PARS.replace("void main() {", NEAR_FADE_PARS) : LIFT_PARS)
       .replace(LIGHTMAP_TEXEL_FROM, LIGHTMAP_TEXEL_TO)
-      .replace("#include <map_fragment>", plaza ? `#include <map_fragment>\n${PLAZA_DETAIL_FRAGMENT}` : "#include <map_fragment>")
       .replace("#include <color_fragment>", LIFT_ALBEDO)
-      .replace("#include <aomap_fragment>", LIFT_LIGHT)
-      .replace("vec3 outgoingLight = reflectedLight.indirectDiffuse;", plaza ? `vec3 outgoingLight = reflectedLight.indirectDiffuse;\n${PLAZA_DETAIL_LIGHT}` : "vec3 outgoingLight = reflectedLight.indirectDiffuse;");
+      .replace("#include <aomap_fragment>", LIFT_LIGHT);
   };
-  material.customProgramCacheKey = () => (foliage ? "village-light-foliage" : plaza ? "village-light-plaza" : "village-light");
+  material.customProgramCacheKey = () => (foliage ? "village-light-foliage" : "village-light");
   material.needsUpdate = true;
 }
 
