@@ -388,6 +388,27 @@ describe("prepareVillage: the model dressed for the game", () => {
     expect(FOLIAGE_NEAR_FADE[0]).toBeGreaterThan(VILLAGE_CAMERA_PLANES.near);
   });
 
+  it("adds a restrained high-frequency paving detail to the plaza material for close first-person views", () => {
+    const f = fixture();
+    prepareVillage(f.root, new Texture(), "high");
+    const shader = {
+      uniforms: {} as Record<string, unknown>,
+      fragmentShader: [
+        "void main() {",
+        "#include <map_fragment>",
+        "#include <color_fragment>",
+        "#include <aomap_fragment>",
+        "vec3 outgoingLight = reflectedLight.indirectDiffuse;",
+      ].join("\n"),
+      vertexShader: "",
+    };
+    f.mats.LM_plaza.onBeforeCompile(shader as never, null as never);
+    expect(f.mats.LM_plaza.customProgramCacheKey()).toBe("village-light-plaza");
+    expect(shader.fragmentShader).toContain("plazaDetailUv");
+    expect(shader.fragmentShader).toContain("plazaLightUv");
+    expect(shader.fragmentShader).toContain("vec2(220.0, 135.0)");
+  });
+
   it("the cherry blossoms take their own foliage tint (darker at night); every other foliage the shared one; noon is white for both", () => {
     const cherry = mat("M_leaf_cherry");
     const green = mat("M_leaf_green");

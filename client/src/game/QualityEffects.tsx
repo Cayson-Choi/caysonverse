@@ -8,6 +8,7 @@ import { DEFAULT_DECAL_Y, decalY, type GroundDecal } from "./groundDecal";
 import { PostChain } from "./postChain";
 import { FrameGovernor, budgetSteps, startLevel, stepScale, useRenderBudget } from "./renderBudget";
 import { interactionPressureActive, noteInteraction } from "./renderScale";
+import { viewState } from "./viewState";
 import { softwareGl } from "./gpuProbe";
 import "./quality.css";
 
@@ -151,7 +152,9 @@ function PostEffects({ setting }: { setting: GraphicsSetting }) {
     }
     const governorScale = stepScale(steps, g?.level ?? startLevel(setting));
     const scale = interactionPressureActive() ? Math.min(governorScale, stepScale(steps, steps.length - 1)) : governorScale;
-    chain.setScale(scale);
+    const firstPersonSharp = viewState.mode === "fp" && viewState.blend > 0.95;
+    chain.setScale(firstPersonSharp ? 1 : scale);
+    chain.setFxaaEnabled(!firstPersonSharp);
     gl.getDrawingBufferSize(size);
     chain.setSize(size.x, size.y);
     chain.render(gl, scene, camera);
