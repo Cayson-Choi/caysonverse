@@ -390,7 +390,7 @@ export function liftMaterial(material: Material): void {
   if (lifted.has(material)) return;
   lifted.add(material);
   // The village's own leaves and trunks also fade out near the camera; the click pick skips them there (clickPick.ts).
-  const foliage = FOLIAGE_MATERIALS.includes(material.name);
+  const foliage = FOLIAGE_MATERIALS.includes(material.name) && material.name !== "M_bark";
   if (foliage) material.userData[NEAR_FADE_KEY] = (FOLIAGE_NEAR_FADE[0] + FOLIAGE_NEAR_FADE[1]) / 2;
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uVillageLift = liftUniform;

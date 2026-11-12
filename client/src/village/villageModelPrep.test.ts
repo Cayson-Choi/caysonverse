@@ -388,6 +388,16 @@ describe("prepareVillage: the model dressed for the game", () => {
     expect(FOLIAGE_NEAR_FADE[0]).toBeGreaterThan(VILLAGE_CAMERA_PLANES.near);
   });
 
+  it("keeps tree bark solid near the camera while leaves still use the near fade", () => {
+    const bark = mat("M_bark");
+    liftMaterial(bark);
+    const shader = { uniforms: {} as Record<string, unknown>, fragmentShader: "void main() {\n#include <color_fragment>\n}", vertexShader: "" };
+    bark.onBeforeCompile(shader as never, null as never);
+    expect(bark.userData[NEAR_FADE_KEY]).toBeUndefined();
+    expect(shader.uniforms).not.toHaveProperty("uVillageNearFade");
+    expect(bark.customProgramCacheKey()).toBe("village-light");
+  });
+
   it("the cherry blossoms take their own foliage tint (darker at night); every other foliage the shared one; noon is white for both", () => {
     const cherry = mat("M_leaf_cherry");
     const green = mat("M_leaf_green");

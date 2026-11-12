@@ -176,9 +176,18 @@ function meshCardItems(root: Object3D, materialName: string): Array<{ m: Matrix4
   return items;
 }
 
-/** Build branch connectors for baked green trees so volumetric replacement leaves remain attached to their trunks. */
-function greenStreetBranchGeometry(root: Object3D, coarse: boolean): BufferGeometry {
+/** Build branch connectors for baked green trees so each replacement leaf cluster has a real branch entering it. */
+function greenStreetBranchGeometry(
+  root: Object3D,
+  coarse: boolean,
+  leafItems: ReadonlyArray<{ m: Matrix4 }>,
+): BufferGeometry {
   const branches: Array<{ branch: Branch; light: (p: Vec3, n: Vec3) => number }> = [];
+  const leaves = leafItems.map((item) => ({
+    x: item.m.elements[12]!,
+    y: item.m.elements[13]!,
+    z: item.m.elements[14]!,
+  }));
   const box = new Box3();
   root.traverse((object) => {
     if (!isMesh(object) || !/var_(street_green|orchard)_trunks/.test(object.name)) return;
@@ -189,16 +198,35 @@ function greenStreetBranchGeometry(root: Object3D, coarse: boolean): BufferGeome
     const topY = box.max.y;
     const height = Math.max(2.5, topY - baseY);
     const spread = Math.max(1.2, Math.max(box.max.x - box.min.x, box.max.z - box.min.z) * 0.72);
-    const forkY = baseY + height * 0.56;
+    const forkY = baseY + height * 0.48;
     const crownY = baseY + height * 0.9;
+    const trunkRadius = Math.min(0.22, Math.max(0.12, spread * 0.08));
+    branches.push({
+      branch: { pts: [[cx, baseY, cz], [cx, forkY, cz]], radii: [trunkRadius, trunkRadius * 0.72] },
+      light: (_p, n) => 0.42 + 0.35 * Math.max(0, n[1]),
+    });
+    const nearby = leaves.filter((leaf) => {
+      const dx = leaf.x - cx;
+      const dz = leaf.z - cz;
+      return dx * dx + dz * dz <= (spread * 1.35) ** 2 && leaf.y >= forkY - 0.25 && leaf.y <= crownY + height * 0.35;
+    });
     for (let i = 0; i < 6; i++) {
       const a = (i / 6) * Math.PI * 2 + (cx + cz) * 0.07;
-      const end: Vec3 = [cx + Math.cos(a) * spread, crownY + (i % 2 ? 0.3 : -0.15), cz + Math.sin(a) * spread];
-      const mid: Vec3 = [cx + Math.cos(a) * spread * 0.42, forkY + height * 0.12, cz + Math.sin(a) * spread * 0.42];
-      branches.push({ branch: { pts: [[cx, forkY, cz], mid, end], radii: [0.12, 0.065, 0.018] }, light: (_p, n) => 0.42 + 0.35 * Math.max(0, n[1]) });
-      const side = a + (i % 2 ? 0.72 : -0.72);
-      const sideEnd: Vec3 = [cx + Math.cos(side) * spread * 0.72, forkY + height * 0.27, cz + Math.sin(side) * spread * 0.72];
-      branches.push({ branch: { pts: [mid, [cx + Math.cos(side) * spread * 0.53, forkY + height * 0.2, cz + Math.sin(side) * spread * 0.53], sideEnd], radii: [0.055, 0.032, 0.012] }, light: (_p, n) => 0.4 + 0.32 * Math.max(0, n[1]) });
+      const sector = nearby
+        .filter((leaf) => {
+          const angle = Math.atan2(leaf.z - cz, leaf.x - cx);
+          const delta = Math.atan2(Math.sin(angle - a), Math.cos(angle - a));
+          return Math.abs(delta) <= Math.PI / 6;
+        })
+        .sort((left, right) => Math.hypot(right.x - cx, right.z - cz) + right.y * 0.15 - (Math.hypot(left.x - cx, left.z - cz) + left.y * 0.15));
+      const fallback: Vec3 = [cx + Math.cos(a) * spread, crownY + (i % 2 ? 0.3 : -0.15), cz + Math.sin(a) * spread];
+      const target = sector[0] ?? { x: fallback[0], y: fallback[1], z: fallback[2] };
+      const end: Vec3 = [target.x, target.y - 0.16, target.z];
+      const mid: Vec3 = [cx + (end[0] - cx) * 0.42, forkY + (end[1] - forkY) * 0.42, cz + (end[2] - cz) * 0.42];
+      branches.push({
+        branch: { pts: [[cx, forkY, cz], mid, end], radii: [trunkRadius * 0.72, trunkRadius * 0.38, 0.018] },
+        light: (_p, n) => 0.42 + 0.35 * Math.max(0, n[1]),
+      });
     }
   });
   return twigMesh(branches, coarse);
@@ -504,8 +532,9 @@ export class VillageVegetation {
     const greenMat = vegMaterial({ name: "M_veg_green", wind: 0.018, windFar: cfg.windFar ? 28 : 10, ambient: 0.48, sky: 0.18, sun: 0.46, back: 0.42 });
     const greenFarMat = vegMaterial({ name: "M_veg_green_far", wind: 0.008, windFar: 30, ambient: 0.54, sky: 0.16, sun: 0.34, back: 0.35 });
     const greenGeo = greenCluster(false);
+    const greenCardGeo = greenCluster(tier === "low", 29);
     const greenFarGeo = greenClusterFar();
-    v.own.push(greenMat, greenFarMat, greenGeo, greenFarGeo);
+    v.own.push(greenMat, greenFarMat, greenGeo, greenCardGeo, greenFarGeo);
     // Instanced street/orchard foliage used to remain as flat cards. Read their transforms and replace each one
     // with a small volumetric leaf cluster; the original instanced meshes are hidden together with the other cards.
     const greenCardItems = instancedCardItems(root, "M_leaf_green");
@@ -523,7 +552,7 @@ export class VillageVegetation {
     ];
     const cherryReplacementItems = [...cherryCardItems.items, ...cherryMeshItems];
     if (greenReplacementItems.length) {
-      v.greenCardLayer = new Layer(greenFarGeo, greenFarMat, greenReplacementItems.length, "veg_green_volumetric_cards");
+      v.greenCardLayer = new Layer(greenCardGeo, greenMat, greenReplacementItems.length, "veg_green_volumetric_cards");
       v.greenCardLayer.begin();
       v.greenCardLayer.push(makeBatch(greenReplacementItems));
       v.greenCardLayer.end();
@@ -598,7 +627,7 @@ export class VillageVegetation {
       greenTwigObj.visible = false;
       v.greenTwigTris = 0;
     }
-    const streetGreenBranchGeo = greenStreetBranchGeometry(root, tier === "low");
+    const streetGreenBranchGeo = greenStreetBranchGeometry(root, tier === "low", greenReplacementItems);
     const streetGreenBranchObj = new Mesh(streetGreenBranchGeo, twigMat);
     streetGreenBranchObj.name = "veg_street_green_branches";
     streetGreenBranchObj.matrixAutoUpdate = false;
