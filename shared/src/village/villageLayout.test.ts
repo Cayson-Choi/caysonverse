@@ -35,6 +35,7 @@ import {
   hallSurroundBlockers,
   hallWalls,
   segmentBand,
+  solidBox,
   segmentBank,
   villageBounds,
   villageGeometry,
@@ -351,7 +352,9 @@ describe("layout values (brief + rulings + owner changes)", () => {
       expect(["n", "s", "e", "w"], h.id).toContain(h.doorSide);
     }
     for (const h of houses) expect(h.size, h.id).toEqual({ x: 11.2, z: 8.4 });
-    expect(cafes[0].size).toEqual({ x: 16, z: 12.5 });
+    expect(cafes[0].size).toEqual({ x: 20, z: 15 });
+    expect(cafes[0].terrace).toBe(6);
+    for (const h of L.sceneryHouses.filter((x) => x.kind !== "cafe")) expect(h.terrace, h.id).toBe(0);
   });
 
   it("backdrop: the waterfall back-left and the lake with a pavilion on the right, outside the walk bounds", () => {
@@ -641,8 +644,10 @@ describe("village colliders are built from the layout", () => {
 
   it("parked bus 9 x 2.5, scenery colliders match the layout footprints", () => {
     expect(box("bus")).toEqual(boxOf(L.busStop.bus));
-    expect(box("cafe")).toEqual(boxOf(L.sceneryHouses.find((h) => h.kind === "cafe")!));
-    expect(box("house_3")).toEqual({ minX: 23.4, maxX: 34.6, minZ: 33.4, maxZ: 41.800000000000004 });
+    // the café's solid box is its footprint minus the walkable terrace on the door (west) side (option 2: 20 x 15, terrace 6 m)
+    expect(box("cafe")).toEqual({ minX: 46.6, maxX: 60.6, minZ: -22.6, maxZ: -7.6 });
+    expect(box("cafe")).toEqual(solidBox(L.sceneryHouses.find((h) => h.kind === "cafe")!));
+    expect(box("house_3")).toEqual({ minX: 23.4, maxX: 34.6, minZ: 33.4, maxZ: 41.8 });
   });
 
   it("the creek is walled off over its whole length except the bridge gap: boxes follow the curve, water plus 3 m of bank each side", () => {
@@ -947,6 +952,13 @@ describe.each(GEOMETRIES)("village geometry invariants: %s", (_name, geo) => {
       expect(walkUpTo(cut, boxOf(L.busStop.shelter))).toBe(true);
       expect(walkUpTo(cut, boxOf(L.busStop.bus))).toBe(true);
       expect(cut.length).toBeGreaterThan(90000);
+    });
+
+    it("the café's terrace is walkable ground: its middle, the future door pad (45.1, -15.1) and the way-out spot (42.6, -15.1) are free and reached", () => {
+      for (const p of [{ x: 43.6, z: -15.1 }, { x: 45.1, z: -15.1 }, { x: 42.6, z: -15.1 }]) {
+        expect(isBlocked(p.x, p.z, PLAYER_RADIUS, obstacles), `${p.x}, ${p.z}`).toBe(false);
+        expect(hasNear(cut, p, GRID), `${p.x}, ${p.z}`).toBe(true);
+      }
     });
 
     it("the memorial door pad and the arrival spot are reachable, without the bridge", () => {
@@ -1338,7 +1350,7 @@ describe("export for the Blender scripts", () => {
     const pink = out.sceneryHouses.find((h) => h.id === "house_1")!;
     expect(pink).toMatchObject({ kind: "house", colour: "pink", doorSide: "s", bounds: { minX: 15.4, maxX: 26.6, minZ: -46.2, maxZ: -37.8 } });
     const cafe = out.sceneryHouses.find((h) => h.kind === "cafe")!;
-    expect(cafe).toMatchObject({ id: "cafe", doorSide: "w", colour: "wood", size: { x: 16, z: 12.5 } });
+    expect(cafe).toMatchObject({ id: "cafe", doorSide: "w", colour: "wood", size: { x: 20, z: 15 }, terrace: 6, solid: { minX: 46.6, maxX: 60.6, minZ: -22.6, maxZ: -7.6 } });
   });
 
   it("memorial exterior has footprint, door pad, arrival and collider pieces; interior has room, ceiling, door side, pad, spawn, walls and blockers", () => {

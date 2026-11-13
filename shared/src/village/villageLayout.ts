@@ -97,7 +97,13 @@ export type HouseColour = "pink" | "skyblue" | "yellow" | "white" | "mint" | "wo
 
 /** The footprint of each kind of scenery building (x by z, m). */
 /** Approved building-scale B footprints; art generation consumes the exported layout JSON. */
-export const SCENERY_SIZES = { house: { x: 11.2, z: 8.4 }, cafe: { x: 16, z: 12.5 }, kiosk: { x: 5, z: 4 } } as const;
+export const SCENERY_SIZES = { house: { x: 11.2, z: 8.4 }, cafe: { x: 20, z: 15 }, kiosk: { x: 5, z: 4 } } as const;
+
+/**
+ * Café option 2 (2026-11-12 decision): 20 x 15 m, two floors. The open terrace in front of the door is walkable ground
+ * (a 3 cm deck), so the café's solid box is the footprint minus this depth on the door side (`solidBox`).
+ */
+export const SCENERY_TERRACE = { house: 0, cafe: 6, kiosk: 0 } as const;
 
 /**
  * A small colourful house, the café with striped awnings, or the café's timber flower kiosk, for the scenery.
@@ -112,6 +118,20 @@ export interface SceneryHouse {
   colour: HouseColour;
   /** The side the (closed) door is on; it faces the ring road. */
   doorSide: Side;
+  /** Depth (m) of the open, walkable terrace on the door side, inside the footprint: 0 for houses and the kiosk. */
+  terrace: number;
+}
+
+/** The solid part of a scenery building: its footprint minus the walkable terrace on the door side. */
+export function solidBox(h: Pick<SceneryHouse, "centre" | "size" | "doorSide" | "terrace">): AABB {
+  const b = boxAt(h.centre, h.size);
+  const t = h.terrace;
+  switch (h.doorSide) {
+    case "n": return { ...b, minZ: b.minZ + t };
+    case "s": return { ...b, maxZ: b.maxZ - t };
+    case "e": return { ...b, maxX: b.maxX - t };
+    case "w": return { ...b, minX: b.minX + t };
+  }
 }
 
 /** One stretch of the creek: its centre line runs at `z` from `minX` to `maxX` (the water is `width` wide). */
@@ -263,11 +283,13 @@ export interface VillageLayout {
 
 /** The axis-aligned box of `size` centred on `centre`. */
 export function boxAt(centre: Point2, size: Size2): AABB {
+  // rounded to 1e-6: 37.6 + 4.2 must be 41.8, not 41.800000000000004 (the model's boxes are exact to 0.01)
+  const r = (v: number) => Math.round(v * 1e6) / 1e6;
   return {
-    minX: centre.x - size.x / 2,
-    maxX: centre.x + size.x / 2,
-    minZ: centre.z - size.z / 2,
-    maxZ: centre.z + size.z / 2,
+    minX: r(centre.x - size.x / 2),
+    maxX: r(centre.x + size.x / 2),
+    minZ: r(centre.z - size.z / 2),
+    maxZ: r(centre.z + size.z / 2),
   };
 }
 
@@ -336,7 +358,7 @@ function house(
   kind: SceneryHouse["kind"] = "house",
 ): SceneryHouse {
   const size = SCENERY_SIZES[kind];
-  return { id, kind, centre, size: sz(size.x, size.z), enterable: false, colour, doorSide };
+  return { id, kind, centre, size: sz(size.x, size.z), enterable: false, colour, doorSide, terrace: SCENERY_TERRACE[kind] };
 }
 
 /** Cubby size (inner, m), board thickness, depth to the back panel and the unit's full depth (the approved concept, 2026-11-03). */
@@ -449,7 +471,7 @@ function makeVillageLayout(): VillageLayout {
       house("house_8", pt(-50, 40), "skyblue", "e"),
       house("house_9", pt(-31, -56), "pink", "s"),
       house("house_10", pt(-40.6, 27), "white", "e"),
-      house("cafe", pt(48.6, -13.85), "wood", "w", "cafe"),
+      house("cafe", pt(50.6, -15.1), "wood", "w", "cafe"),
       house("kiosk", pt(48.6, -3.85), "wood", "w", "kiosk"),
     ],
     backdrop: {
@@ -584,7 +606,7 @@ export function greyboxColliders(layout: VillageLayout): VillageCollider[] {
     { id: "pavilion", box: boxAt(pavilion.centre, pavilion.size), camera: false },
     { id: "bus", box: boxAt(busStop.bus.centre, busStop.bus.size), camera: true },
     ...memorialColliders(memorial.exterior),
-    ...sceneryHouses.map((h): VillageCollider => ({ id: h.id, box: boxAt(h.centre, h.size), camera: true })),
+    ...sceneryHouses.map((h): VillageCollider => ({ id: h.id, box: solidBox(h), camera: true })),
   ];
 }
 
@@ -892,7 +914,7 @@ export function exportVillageLayout(layout: VillageLayout = VILLAGE_LAYOUT) {
         cubbyAnchors: cubbyAnchors(layout).map((a) => ({ ...a, node: cubbyAnchorNode(a.id) })),
       },
     },
-    sceneryHouses: layout.sceneryHouses.map((h) => ({ ...bounded(h), node: colliderNode(h.id) })),
+    sceneryHouses: layout.sceneryHouses.map((h) => ({ ...bounded(h), solid: solidBox(h), node: colliderNode(h.id) })),
     backdrop: {
       waterfall: bounded(layout.backdrop.waterfall),
       lake: { ...bounded(layout.backdrop.lake), pavilion: bounded(layout.backdrop.lake.pavilion) },
