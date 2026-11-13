@@ -53,3 +53,27 @@ describe("transitSync", () => {
     stop();
   });
 });
+
+describe("the transit clock (review r2: the lamps lagged the bus by about a second)", () => {
+  it("runs on the snapshots' server time, taking the quickest delivery of the last few seconds", async () => {
+    const { sampleTransitClockForTest, transitNowMs } = await import("./transitSync");
+    const stop = startTransitSync(fakeRoom().room);
+    // three snapshots: on time (the server's 10_000 seen at 1_000), one 900 ms late (a long frame), one on time
+    sampleTransitClockForTest(10_000, 1_000);
+    sampleTransitClockForTest(10_250, 2_150);
+    sampleTransitClockForTest(10_500, 1_500);
+    const now = performance.now();
+    expect(Math.abs(transitNowMs() - now - 9_000)).toBeLessThan(50); // the late sample (8_100) does not pull the clock back
+    stop();
+  });
+});
+
+describe("the ride HUD's line (review r2: it said red under a green)", () => {
+  it("names the light the bus waits at", async () => {
+    const { rideStatusText } = await import("./transitSync");
+    expect(rideStatusText(null)).toBe("노선 운행 중");
+    expect(rideStatusText({ waiting: false, signal: "red" })).toBe("노선 운행 중");
+    expect(rideStatusText({ waiting: true, signal: "red" })).toBe("빨간불 · 신호 대기 중");
+    expect(rideStatusText({ waiting: true, signal: "amber" })).toBe("황색불 · 신호 대기 중");
+  });
+});

@@ -1,12 +1,17 @@
-import { TRANSIT, busTripAt, pedestrianSignalAt, signalAt } from "@caysonverse/shared/village/transit";
+import { busTripAt, pedestrianSignalAt, signalAt } from "@caysonverse/shared/village/transit";
+import { busBoardingDistance } from "@caysonverse/shared/village/villageLayout";
 import type {
   BusRejectedPayload,
   BusRidePayload,
   BusStatePayload,
 } from "@caysonverse/shared/messages";
 
-/** The server's proximity gate around the east-side bus stop: the bus's doors and the waiting pad and shelter 6 m behind them (client BUS_OFFER_REACH_M is a little tighter). */
-export const BUS_BOARD_REACH_M = 7.2;
+/**
+ * The server's proximity gate at the east-side bus stop: how far (m) outside the boarding area (the bus, the waiting pad
+ * and the shelter, villageLayout.ts busBoardingArea) a rider may still board. Review r2: it was a 7.2 m circle round the
+ * bus's centre, which left the shelter's south end out. The client offers the button a little tighter (BUS_OFFER_REACH_M).
+ */
+export const BUS_BOARD_REACH_M = 1.2;
 
 /** How often the room publishes the authoritative bus pose. */
 export const BUS_STATE_RATE_MS = 250;
@@ -24,6 +29,7 @@ export function transitSnapshotAt(utcMs: number): BusStatePayload {
     signal: signalAt(utcMs).color,
     pedestrianSignal: pedestrianSignalAt(utcMs).color,
     waiting: trip.waiting,
+    serverMs: utcMs,
   };
 }
 
@@ -63,7 +69,7 @@ export function validateBusRide(
   if (state.area !== "village") return { ok: false, notice: "버스 정류장 근처에서만 탈 수 있어요." };
   if (trip.status !== "boarding") return { ok: false, notice: "버스는 매시 출발 30초 전부터 탈 수 있어요." };
   if (!Number.isFinite(state.x) || !Number.isFinite(state.z)) return { ok: false, notice: "버스 정류장 근처에서만 탈 수 있어요." };
-  if (Math.hypot(state.x - TRANSIT.stop.x, state.z - TRANSIT.stop.z) > BUS_BOARD_REACH_M) {
+  if (busBoardingDistance(state.x, state.z) > BUS_BOARD_REACH_M) {
     return { ok: false, notice: "버스 정류장 근처에서만 탈 수 있어요." };
   }
   return { ok: true, tripId: trip.tripId };

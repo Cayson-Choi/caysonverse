@@ -215,3 +215,16 @@ describe("the hall desk and the way out (Task 9A)", () => {
     expect(villageAndHallTargets("village", 5, 13.5, true)).toHaveLength(0);
   });
 });
+
+describe("villageBusTarget — the board button under the shelter (review r2)", () => {
+  it("is offered anywhere under the shelter and on the pad, and not across the road", async () => {
+    const { villageBusTarget } = await import("./villageTargets");
+    const s = VILLAGE_LAYOUT.busStop.shelter;
+    for (const dz of [-1.6, -0.8, 0, 0.8, 1.6]) {
+      for (const dx of [-0.5, 0, 0.5]) expect(villageBusTarget("village", s.centre.x + dx, s.centre.z + dz, false), `${dx},${dz}`).not.toBeNull();
+    }
+    expect(villageBusTarget("village", 38.5, -6.5, false)).not.toBeNull(); // the pad, by the doors
+    expect(villageBusTarget("village", 30, -6.5, false)).toBeNull(); // the plaza's side of the road
+    expect(villageBusTarget("village", 40, 3, false)).toBeNull(); // past the crosswalk
+  });
+});

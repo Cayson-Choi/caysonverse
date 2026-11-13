@@ -53,13 +53,60 @@ export const ROUTE_RADIUS = 35.3;
 const ROUTE_START_ANGLE = Math.atan2(STOP_POINT.z, STOP_POINT.x);
 const ROUTE_STEPS = 72;
 
-/** One clockwise lap (seen from above, angle decreasing) from the stop back to the stop, in 5 degree chords. */
-function ringRoute(): readonly TransitPoint[] {
-  const pts: TransitPoint[] = [];
-  for (let i = 0; i <= ROUTE_STEPS; i++) {
-    const a = ROUTE_START_ANGLE - (i / ROUTE_STEPS) * Math.PI * 2;
-    pts.push(i === 0 || i === ROUTE_STEPS ? { ...STOP_POINT } : { x: ROUTE_RADIUS * Math.cos(a), z: ROUTE_RADIUS * Math.sin(a) });
+/**
+ * Where the lap leaves the ring for the stop (rad, atan2(z, x) + 2pi on the way back): from here the bus pulls in along a
+ * smooth curve that ends on the stop heading north, square to the shelter. Review r2: the last 5 degree chord ran straight
+ * from the lane's middle (R 35.3) to the stop (R 34.7), 15 degrees off the chord before it and 19 off the parked heading,
+ * so the bus swung in and turned on the spot as it stopped.
+ */
+const APPROACH_ANGLE = 0.25;
+const APPROACH_STEPS = 16;
+/** How far round the ring the pull-out from the stop joins the lane's middle (rad), in PULL_STEPS pieces. */
+const PULL_OUT_ANGLE = 0.25;
+const PULL_STEPS = 8;
+
+/** The parked bus's heading: nose north (-z), the way the model, its box and the shelter are laid out. */
+const PARKED_YAW = Math.PI;
+
+/** A cubic Hermite from `a` (heading `ta`) to `b` (heading `tb`), sampled in `n` steps, without its first point. */
+function hermite(a: TransitPoint, ta: TransitPoint, b: TransitPoint, tb: TransitPoint, n: number): TransitPoint[] {
+  const out: TransitPoint[] = [];
+  for (let i = 1; i <= n; i++) {
+    const t = i / n;
+    const h00 = 2 * t ** 3 - 3 * t ** 2 + 1;
+    const h10 = t ** 3 - 2 * t ** 2 + t;
+    const h01 = -2 * t ** 3 + 3 * t ** 2;
+    const h11 = t ** 3 - t ** 2;
+    out.push({ x: h00 * a.x + h10 * ta.x + h01 * b.x + h11 * tb.x, z: h00 * a.z + h10 * ta.z + h01 * b.z + h11 * tb.z });
   }
+  return out;
+}
+
+/**
+ * One clockwise lap (seen from above, angle decreasing) from the stop back to the stop: out of the stop onto the lane's
+ * middle, round the ring in 5 degree chords, and from APPROACH_ANGLE a smooth pull-in that ends on the stop heading
+ * north (no turn on the spot at the end).
+ */
+function ringRoute(): readonly TransitPoint[] {
+  const step = (Math.PI * 2) / ROUTE_STEPS;
+  const ring = (a: TransitPoint["x"]): TransitPoint => ({ x: ROUTE_RADIUS * Math.cos(a), z: ROUTE_RADIUS * Math.sin(a) });
+  // clockwise along the ring the heading is (sin a, -cos a); parked it is PARKED_YAW's, (sin, cos)
+  const along = (a: number, m: number): TransitPoint => ({ x: Math.sin(a) * m, z: -Math.cos(a) * m });
+  const parked = (m: number): TransitPoint => ({ x: Math.sin(PARKED_YAW) * m, z: Math.cos(PARKED_YAW) * m });
+  const pts: TransitPoint[] = [{ ...STOP_POINT }];
+  // pull out: a smooth curve from the stop onto the lane's middle (review r2: the first chord turned 16 degrees at once)
+  const out = ROUTE_START_ANGLE - PULL_OUT_ANGLE;
+  const outSpan = Math.hypot(ring(out).x - STOP_POINT.x, ring(out).z - STOP_POINT.z);
+  pts.push(...hermite(STOP_POINT, parked(outSpan), ring(out), along(out, outSpan), PULL_STEPS));
+  let a = out - step;
+  const last = APPROACH_ANGLE - Math.PI * 2;
+  for (; a >= last; a -= step) pts.push(ring(a));
+  // pull in: from the ring onto the stop, heading north at the end (no turn on the spot)
+  const fa = a + step;
+  const from = pts[pts.length - 1]!;
+  const span = Math.hypot(STOP_POINT.x - from.x, STOP_POINT.z - from.z);
+  pts.push(...hermite(from, along(fa, span), STOP_POINT, parked(span), APPROACH_STEPS));
+  pts[pts.length - 1] = { ...STOP_POINT };
   return pts;
 }
 
@@ -116,7 +163,7 @@ export function routePoseAt(progress: number, route: readonly TransitPoint[] = T
 }
 
 /** The parked bus: at the stop, nose north (-z), square to the stop's box and the shelter. */
-const PARKED_POSE: TransitPose = { x: STOP_POINT.x, z: STOP_POINT.z, yaw: Math.PI };
+const PARKED_POSE: TransitPose = { x: STOP_POINT.x, z: STOP_POINT.z, yaw: PARKED_YAW };
 
 /** Total length of the route (m). */
 export function routeLength(route: readonly TransitPoint[] = TRANSIT.route): number {
@@ -148,36 +195,68 @@ export function clearCrosswalkMs(speed: number): number {
   return (TRANSIT.stopLineM + CROSSWALK_HALF_M + TRANSIT.busLengthM) / speed;
 }
 
+/** Distance along the route (m) where it first crosses the ray at `angle` (rad, atan2(z, x)) from the plaza's centre. */
+export function routeDistanceAtAngle(angle: number, route: readonly TransitPoint[] = TRANSIT.route): number {
+  let s = 0;
+  for (let i = 0; i + 1 < route.length; i++) {
+    const a = route[i]!;
+    const b = route[i + 1]!;
+    const len = Math.hypot(b.x - a.x, b.z - a.z);
+    // signed side of the ray's line for each end; a sign change in front of the centre is the crossing
+    const da = Math.sin(angle) * a.x - Math.cos(angle) * a.z;
+    const db = Math.sin(angle) * b.x - Math.cos(angle) * b.z;
+    if (da !== db && (da === 0 || Math.sign(da) !== Math.sign(db))) {
+      const t = da / (da - db);
+      const p = lerp(a, b, t);
+      if (p.x * Math.cos(angle) + p.z * Math.sin(angle) > 0) return s + len * t;
+    }
+    s += len;
+  }
+  return s;
+}
+
 /**
- * The signalised crossings on the route, in the order the bus meets them. The bus runs clockwise (angle decreasing), so a
- * crossing at angle a is reached `((start - a) mod 2pi) * R` metres into the lap, and the bus waits that far short of it
- * minus the stop line's distance (the nose `stopLineM` before the crosswalk's centre, the bus's centre half a bus further).
+ * The signalised crossings on the route, in the order the bus meets them (it runs clockwise, angle decreasing): each is
+ * where the route crosses the crossing's centre line, and the bus waits that far short of it minus the stop line's
+ * distance (the nose `stopLineM` before the crosswalk's centre, the bus's centre half a bus further).
  */
-export const TRANSIT_HOLDS: readonly TransitHold[] = SIGNAL_CROSSINGS.map((c) => {
-  const start = Math.atan2(TRANSIT.stop.z, TRANSIT.stop.x);
-  const arc = mod(start - c.angle, Math.PI * 2) * ROUTE_RADIUS;
-  return { id: c.id, distance: arc - (TRANSIT.stopLineM + TRANSIT.busLengthM / 2), offsetMs: 0 };
-}).sort((x, y) => x.distance - y.distance);
+export const TRANSIT_HOLDS: readonly TransitHold[] = SIGNAL_CROSSINGS.map((c) => ({
+  id: c.id,
+  distance: routeDistanceAtAngle(c.angle) - (TRANSIT.stopLineM + TRANSIT.busLengthM / 2),
+  offsetMs: 0,
+})).sort((x, y) => x.distance - y.distance);
 
 export interface TripTimeline {
-  /** per hold: when the bus arrives at the stop line and when it may go on */
-  holds: { arriveMs: number; releaseMs: number; distance: number }[];
+  /**
+   * per hold: when the bus leaves the previous point (`fromMs`, `fromDistance`), when it reaches the stop line and when
+   * it may go on. The leg up to the line is at a constant speed, normally the lap's; slower when the bus eases off for
+   * a green it could not clear (see tripTimeline).
+   */
+  holds: { fromMs: number; fromDistance: number; arriveMs: number; releaseMs: number; distance: number }[];
   /** when the bus is back at the stop */
   endMs: number;
 }
 
-/** The timeline of a trip that leaves the stop at `startMs`: constant speed, a wait at each crossing until its signal is green. */
+/**
+ * The timeline of a trip that leaves the stop at `startMs`: constant speed, a wait at each crossing until its signal is
+ * green. A bus that would reach a stop line while the green is on but too short to clear the crosswalk does not stop at
+ * a green light (review r2: it stood 6 s under a green every hour while the HUD said red): like a driver who sees the
+ * green is stale, it eases off on the way and reaches the line as the amber comes on, then waits for the next green.
+ */
 export function tripTimeline(startMs: number): TripTimeline {
   const length = routeLength();
   const speed = length / TRANSIT.lapMs; // m per ms while moving
+  const clearMs = clearCrosswalkMs(speed);
   let t = startMs;
   let s = 0;
   const holds: TripTimeline["holds"] = [];
   for (const h of TRANSIT_HOLDS) {
-    t += (h.distance - s) / speed;
-    const arriveMs = t;
-    t = nextGreenAt(t, h.offsetMs, clearCrosswalkMs(speed));
-    holds.push({ arriveMs, releaseMs: t, distance: h.distance });
+    let arriveMs = t + (h.distance - s) / speed;
+    const phase = mod(arriveMs + h.offsetMs, TRANSIT.signalCycleMs);
+    if (phase >= TRANSIT.signalGreenMs - clearMs && phase < TRANSIT.signalGreenMs) arriveMs += TRANSIT.signalGreenMs - phase;
+    const releaseMs = nextGreenAt(arriveMs, h.offsetMs, clearMs);
+    holds.push({ fromMs: t, fromDistance: s, arriveMs, releaseMs, distance: h.distance });
+    t = releaseMs;
     s = h.distance;
   }
   return { holds, endMs: t + (length - s) / speed };
@@ -191,7 +270,10 @@ function routeDistanceAt(utcMs: number, startMs: number): { distance: number; wa
   let t = startMs;
   let s = 0;
   for (const h of tl.holds) {
-    if (utcMs < h.arriveMs) return { distance: s + (utcMs - t) * speed, waiting: false };
+    if (utcMs < h.arriveMs) {
+      const k = h.arriveMs > h.fromMs ? (utcMs - h.fromMs) / (h.arriveMs - h.fromMs) : 1;
+      return { distance: h.fromDistance + (h.distance - h.fromDistance) * k, waiting: false };
+    }
     if (utcMs < h.releaseMs) return { distance: h.distance, waiting: true };
     t = h.releaseMs;
     s = h.distance;

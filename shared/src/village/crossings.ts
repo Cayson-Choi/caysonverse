@@ -7,6 +7,9 @@
  * manual draws them): the pole carries the vehicle head on a cantilever arm over the lane and the pedestrian head
  * facing across the road, as one unit (`village_signals.glb`, art/village/tools/build_signals.py).
  *
+ * Review r3: the school lane (lane_plot_e) meets the ring 8 m south of the bus crossing, where the bus waits at its stop
+ * line; it has no zebra of its own (make_textures.py XW_SKIP): its walkers cross at the signalised one.
+ *
  * A crossing has a local frame: x outward from the plaza (radial), z along the road in the direction of increasing
  * angle (the side the bus approaches from, as it runs clockwise seen from above), origin on the ring's middle line.
  */

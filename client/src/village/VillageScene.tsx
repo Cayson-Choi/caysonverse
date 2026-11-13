@@ -7,7 +7,7 @@ import { setTargetHandler, setTargetSource } from "../game/interactTargets";
 import type { PlayersRoom } from "../game/remoteSync";
 import type { Pose } from "../game/types";
 import { getRoom, sendUseDoor } from "../net/connection";
-import { sendBusRide, startTransitSync, type TransitRoom, useTransitState } from "../net/transitSync";
+import { rideStatusText, sendBusRide, startTransitSync, type TransitRoom, useTransitState } from "../net/transitSync";
 import type { Identity } from "../stores/appStore";
 import { DoorFade } from "./DoorFade";
 import { doorFade } from "./doorFadeModel";
@@ -213,7 +213,7 @@ function TransitRideHud() {
       {boarded ? (
         <>
           <div>🚌 버스 탑승 중 · 창밖을 보는 중</div>
-          <div style={{ opacity: 0.75 }}>{snapshot?.waiting ? "빨간불 · 신호 대기 중" : "노선 운행 중"}</div>
+          <div style={{ opacity: 0.75 }}>{rideStatusText(snapshot)}</div>
           <button
             type="button"
             onClick={() => sendBusRide("leave")}

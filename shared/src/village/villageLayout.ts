@@ -516,6 +516,25 @@ export const BUS_STOP_SIGN: Point2 = pt(40.0, -1.8);
 const BUS_SIGN_POST = 0.07;
 
 /**
+ * Where a rider can board the parked bus from: the bus's own box, the waiting pad and the shelter, as one box from the
+ * bus's far side to the shelter's back glass, over the bus's length and the shelter's (review r2: the reach was a circle
+ * round the bus's centre, and once the stop moved north the shelter's middle was outside the offer's 6.8 m).
+ */
+export function busBoardingArea(layout: Pick<VillageLayout, "busStop"> = VILLAGE_LAYOUT): AABB {
+  const b = boxAt(layout.busStop.bus.centre, layout.busStop.bus.size);
+  const s = boxAt(layout.busStop.shelter.centre, layout.busStop.shelter.size);
+  return { minX: b.minX, maxX: s.maxX, minZ: Math.min(b.minZ, s.minZ), maxZ: Math.max(b.maxZ, s.maxZ) };
+}
+
+/** Distance (m, on the ground) from a point to the boarding area (busBoardingArea); 0 inside it. */
+export function busBoardingDistance(x: number, z: number, layout: Pick<VillageLayout, "busStop"> = VILLAGE_LAYOUT): number {
+  const a = busBoardingArea(layout);
+  const dx = Math.max(a.minX - x, 0, x - a.maxX);
+  const dz = Math.max(a.minZ - z, 0, z - a.maxZ);
+  return Math.hypot(dx, dz);
+}
+
+/**
  * Solid parts of the bus stop: the shelter's rear glass and its two end glass panels (the side facing the road stays open
  * to the pad), then the stop sign's post. The rear glass comes first.
  */

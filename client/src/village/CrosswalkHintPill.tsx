@@ -1,8 +1,7 @@
 import { useEffect, useState } from "react";
 import type { Pose } from "../game/types";
 import { crosswalkHintAt, type CrosswalkHint as Hint } from "./crosswalkHint";
-import { useTransitState } from "../net/transitSync";
-import { villageClock } from "./villageClock";
+import { transitNowMs, useTransitState } from "../net/transitSync";
 import "./crosswalkHint.css";
 
 /**
@@ -17,7 +16,7 @@ export function CrosswalkHintPill({ pose }: { pose: Pose }) {
   useEffect(() => {
     let last = "";
     const id = window.setInterval(() => {
-      const h = crosswalkHintAt(pose.x, pose.z, villageClock.liveMs());
+      const h = crosswalkHintAt(pose.x, pose.z, transitNowMs());
       const key = h ? `${h.tone}|${h.text}|${h.seconds}` : "";
       if (key === last) return;
       last = key;
