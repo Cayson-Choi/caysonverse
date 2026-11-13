@@ -108,6 +108,9 @@ const LEAF = {
 /**
  * A leaf folded along its midrib (a shallow V: the two halves rise from the rib), drooping toward its tip. 8 triangles
  * (`detail` 1) or 2 (`detail` 0: a folded diamond). Ovate unless `strap` (a long narrow strap: tulip, muscari).
+ * `detail` 2 (16 triangles): a real leaf's outline for the nearest look (a young tree's leaves 0.5 m from the eye,
+ * review r1 2026-11-13: the 8-triangle blade read as a flat diamond plate there): a rounded base, widest a third of the
+ * way up, a drawn-out tip, and its edges curling down a little.
  */
 export function leaf(
   b: GeoBuilder,
@@ -116,7 +119,7 @@ export function leaf(
   up: Vec3,
   length: number,
   width: number,
-  opts: { fold?: number; droop?: number; detail?: 0 | 1; strap?: boolean; colour?: { rib: Rgba; edge: Rgba; base: Rgba } } = {},
+  opts: { fold?: number; droop?: number; detail?: 0 | 1 | 2; strap?: boolean; colour?: { rib: Rgba; edge: Rgba; base: Rgba } } = {},
 ): void {
   const fold = opts.fold ?? 0.35;
   const droop = opts.droop ?? 0.25;
@@ -141,6 +144,42 @@ export function leaf(
     const v3 = b.v(at(0.45, 1), nr, c.edge);
     b.tri(v0, v1, v2);
     b.tri(v0, v2, v3);
+    return;
+  }
+  if (opts.detail === 2 && !opts.strap) {
+    // the ovate outline: half width at t (0..1), widest near 0.35, round at the base, drawn out to the tip
+    const hw = width / 2;
+    const half = (t: number) => hw * 1.08 * Math.sin(Math.PI * Math.min(1, t ** 0.78)) ** 0.75;
+    const edge = (t: number, s: -1 | 1): Vec3 => {
+      const w = half(t);
+      const drop = -droop * length * t * t;
+      // the halves rise from the rib (the fold) and their outer edge curls back down a little
+      const lift = fold * w * 0.8 - 0.18 * w;
+      return add(add(add(base, mul(d, length * t)), mul(side, w * s)), mul(n, drop + lift));
+    };
+    const rib = (t: number): Vec3 => add(add(base, mul(d, length * t)), mul(n, -droop * length * t * t));
+    const rows = [0.12, 0.34, 0.58, 0.8];
+    const m0 = b.v(base, n, c.base);
+    const L: number[] = [];
+    const M: number[] = [];
+    const R: number[] = [];
+    rows.forEach((t, i) => {
+      const k = i / (rows.length - 1);
+      L.push(b.v(edge(t, -1), nl, mix(mix(c.base, c.edge, 0.6), c.edge, k)));
+      M.push(b.v(rib(t), n, mix(mix(c.base, c.rib, 0.7), c.rib, k)));
+      R.push(b.v(edge(t, 1), nr, mix(mix(c.base, c.edge, 0.6), c.edge, k)));
+    });
+    const tip = b.v(rib(1), n, c.edge);
+    b.tri(m0, L[0]!, M[0]!);
+    b.tri(m0, M[0]!, R[0]!);
+    for (let i = 0; i + 1 < rows.length; i++) {
+      b.tri(L[i]!, L[i + 1]!, M[i + 1]!);
+      b.tri(L[i]!, M[i + 1]!, M[i]!);
+      b.tri(M[i]!, M[i + 1]!, R[i + 1]!);
+      b.tri(M[i]!, R[i + 1]!, R[i]!);
+    }
+    b.tri(L[rows.length - 1]!, tip, M[rows.length - 1]!);
+    b.tri(M[rows.length - 1]!, tip, R[rows.length - 1]!);
     return;
   }
   const m0 = b.v(base, n, c.base);
@@ -586,10 +625,11 @@ export const SPRAY_LEAVES = [23, 6, 3] as const;
  * A broadleaf spray (instanced; its origin is the point of the twig it grows from): a short shoot along local +y
  * (0.31 m at scale 1) with twelve alternate leaves, two short side shoots of five and a terminal leaf (6.5-9.5 cm at
  * scale 1, a street tree's 8-11 cm), the blades facing local +z, folded along their midribs, drooping toward the tip
- * (level 0). Level 1: six folded diamonds round the same shoot, no stem (12 triangles); level 2: three larger ones
- * (6 triangles). Wind grows from 0 at the origin to the leaf tips.
+ * (level 0; `fine`: each leaf with a real leaf's outline, 16 triangles instead of 8, for the PC's near look). Level 1:
+ * six folded diamonds round the same shoot, no stem (12 triangles); level 2: three larger ones (6 triangles). Wind grows
+ * from 0 at the origin to the leaf tips.
  */
-export function leafSpray(level: 0 | 1 | 2, seed = 21): BufferGeometry {
+export function leafSpray(level: 0 | 1 | 2, seed = 21, fine = false): BufferGeometry {
   const b = new GeoBuilder();
   b.windHeight = 0.42;
   const rand = mulberry32(seed + level * 101);
@@ -611,7 +651,7 @@ export function leafSpray(level: 0 | 1 | 2, seed = 21): BufferGeometry {
         const dir = norm(add(out, mul(d, 0.35)));
         const l = 0.065 + 0.02 * Math.sin((i / Math.max(1, n - 1)) * Math.PI) + rand() * 0.012;
         const up = norm([-side * (0.15 + rand() * 0.25), 0.12, 1]);
-        leaf(b, add(at, [side * 0.004, 0, 0]), dir, up, l, l * 0.5, { fold: 0.3, droop: 0.22, detail: 1, colour: shade() });
+        leaf(b, add(at, [side * 0.004, 0, 0]), dir, up, l, l * 0.5, { fold: 0.3, droop: 0.22, detail: fine ? 2 : 1, colour: shade() });
       }
     };
     shoot([0, 0, 0], [0, 1, 0.08], 0.31, 12, 0.03);
@@ -625,7 +665,7 @@ export function leafSpray(level: 0 | 1 | 2, seed = 21): BufferGeometry {
       tube(b, [from, end], [0.0026, 0.0016], 3, () => stem, (t) => 0.3 + t * 0.4);
       shoot(from, d, 0.14, 5, 0.03);
     }
-    leaf(b, stemAt(0.31), norm([0, 1, 0.14]), [0, 0, 1], 0.09, 0.045, { fold: 0.3, droop: 0.2, detail: 1, colour: shade() });
+    leaf(b, stemAt(0.31), norm([0, 1, 0.14]), [0, 0, 1], 0.09, 0.045, { fold: 0.3, droop: 0.2, detail: fine ? 2 : 1, colour: shade() });
   } else if (level === 1) {
     for (const [s, side, l] of [
       [0.05, -1, 0.15],

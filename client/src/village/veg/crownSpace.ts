@@ -1,4 +1,5 @@
-import { envelopeRadius, type Envelope, type KeepOut } from "./crownGrowth";
+import { cutAt, distToPolyline, envelopeRadius, pointAt, polyLength, type Envelope, type KeepOut } from "./crownGrowth";
+import type { Branch } from "./treeSkeleton";
 import type { Vec3 } from "./vegLod";
 
 /**
@@ -61,4 +62,53 @@ export function crownKeepOut(own: Envelope, others: readonly Envelope[], boxes: 
     }
     return false;
   };
+}
+
+/** The houses' part of a crown's keep-out alone (`crownKeepOut` without the neighbours' air), or undefined: none near. */
+export function buildingKeepOut(own: Envelope, boxes: readonly Box[]): KeepOut | undefined {
+  return crownKeepOut(own, [], boxes);
+}
+
+/**
+ * A skeleton with its limbs and side branches cut back short of a house (`inside`: the house's keep-out), `back` metres
+ * before they would enter it, and the side branches that grew from a part cut away dropped. The crown makes room for
+ * the house (crownKeepOut), and a limb running on into that room was left bare, ending in its fork's stubs against the
+ * pavilion's eaves (review r1, 2026-11-13: scherry04): a real tree beside a house has that limb pruned. The crown is
+ * grown on the cut skeleton (no twig from a limb that is not there) and its bark drawn from it. `cut`: how many
+ * branches were cut or dropped (0: the skeleton itself is returned).
+ */
+export function trimSkeleton<T extends { limbs: Branch[]; sides: Branch[] }>(sk: T, inside: KeepOut, back = 0.45, step = 0.05): { sk: T; cut: number } {
+  let cut = 0;
+  const firstInside = (b: Branch): number => {
+    const total = polyLength(b);
+    for (let s = 0; s <= total + 1e-9; s += step) if (inside(pointAt(b, Math.min(s, total)).p)) return s;
+    return Infinity;
+  };
+  const limbs: Branch[] = [];
+  const kept: Array<Branch | null> = sk.limbs.map((l) => {
+    const s = firstInside(l);
+    if (s === Infinity) return l;
+    cut++;
+    const keep = s - back;
+    return keep < 0.3 ? null : cutAt(l, keep, Infinity);
+  });
+  for (const l of kept) if (l) limbs.push(l);
+  const sides: Branch[] = [];
+  sk.sides.forEach((side) => {
+    // its limb: the side branches come two per limb, in order
+    const limb = kept[Math.floor(sk.sides.indexOf(side) / 2)] ?? null;
+    if (!limb || distToPolyline(side.pts[0]!, limb) > 0.03) {
+      cut++;
+      return;
+    }
+    const s = firstInside(side);
+    if (s === Infinity) {
+      sides.push(side);
+      return;
+    }
+    cut++;
+    if (s - back >= 0.2) sides.push(cutAt(side, s - back, Infinity));
+  });
+  if (!cut) return { sk, cut };
+  return { sk: { ...sk, limbs, sides }, cut };
 }

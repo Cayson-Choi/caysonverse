@@ -119,7 +119,9 @@ export function treeSkeleton(spec: TreeSpec): TreeSkeleton {
     const p2 = add(add(p0, mul(d, Lb * 0.7)), [0, 0, Lb * 0.06]);
     const p3 = add(add(p0, mul(d, Lb)), [0, 0, kind !== "willow" ? -Lb * 0.05 : -Lb * 0.12]);
     const r0 = trunkR * 0.55;
-    limbs.push({ pts: [p0, p1, p2, p3].map(g), radii: [r0, r0 * 0.7, r0 * 0.45, 0.02] });
+    // the file ends every limb 2 cm thick and every side branch 1.2 cm (a young tree's limb hardly tapers at all): the
+    // runtime draws them tapering on to a fine tip, as real ones do (review r1, 2026-11-13: sawn-off ends from below)
+    limbs.push({ pts: [p0, p1, p2, p3].map(g), radii: [r0, r0 * 0.7, r0 * 0.45, Math.min(0.02, r0 * 0.16)] });
     clusters.push(p3, p2);
     for (let j = 0; j < 2; j++) {
       const t = rng.uniform(0.45, 0.8);
@@ -128,7 +130,7 @@ export function treeSkeleton(spec: TreeSpec): TreeSkeleton {
       const el2 = el + rng.uniform(-0.2, 0.4);
       const d2: Vec3 = [Math.cos(az2) * Math.cos(el2), Math.sin(az2) * Math.cos(el2), Math.sin(el2)];
       const q1 = add(q0, mul(d2, Lb * 0.45));
-      sides.push({ pts: [q0, lerp(q0, q1, 0.5), q1].map(g), radii: [r0 * 0.3, r0 * 0.18, 0.012] });
+      sides.push({ pts: [q0, lerp(q0, q1, 0.5), q1].map(g), radii: [r0 * 0.3, r0 * 0.18, Math.min(0.012, r0 * 0.1)] });
       clusters.push(q1);
     }
   }

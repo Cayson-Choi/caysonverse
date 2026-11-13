@@ -144,6 +144,34 @@ export function colonise(sk: Pick<TreeSkeleton, "limbs" | "sides">, env: Envelop
   };
   sk.limbs.forEach((l, i) => addBranchNodes(l, o.limbFrom, i));
   sk.sides.forEach((s, i) => addBranchNodes(s, o.sideFrom, sk.limbs.length + i));
+  // the skeleton's branches with a bounding sphere each (the twigs must not run into another one, below)
+  const skel = skeletonBranches(sk).map((b) => {
+    let c: Vec3 = [0, 0, 0];
+    for (const p of b.pts) c = add(c, p);
+    c = mul(c, 1 / b.pts.length);
+    let r = 0;
+    for (const p of b.pts) r = Math.max(r, len(sub(p, c)));
+    return { b, c, r };
+  });
+  /**
+   * How far along (share of `L`) a twig from `from` toward `dirN` may run before it meets another skeleton branch than
+   * its own `parent` (4 cm off its line): 1 when it meets none. A twig ending on another limb reads as a closed loop of
+   * branches from under the crown (review r1, 2026-11-13: young07); it stops short of it instead.
+   */
+  const freeRun = (from: Vec3, dirN: Vec3, L: number, parent: number): number => {
+    const mid = add(from, mul(dirN, L * 0.5));
+    for (let k = 7; k <= 20; k++) {
+      const t = k / 20;
+      const p = add(from, mul(dirN, L * t));
+      for (let j = 0; j < skel.length; j++) {
+        if (j === parent) continue;
+        const e = skel[j]!;
+        if (len(sub(mid, e.c)) > e.r + L * 0.5 + 0.05) continue;
+        if (distToPolyline(p, e.b) < 0.065) return t; // the twig bows and wiggles a little off this line
+      }
+    }
+    return 1;
+  };
 
   // attractors in the shell, inner ones first (twigs reaching out can then branch off the earlier ones)
   const attractors: Vec3[] = [];
@@ -224,11 +252,14 @@ export function colonise(sk: Pick<TreeSkeleton, "limbs" | "sides">, env: Envelop
       list.pop();
     }
     const d = sub(a, best.p);
-    const L = Math.min(len(d), o.maxLen);
     const dirN = norm(d);
+    const L0 = Math.min(len(d), o.maxLen);
+    const meet = freeRun(best.p, dirN, L0, best.twig < 0 ? -1 - best.twig : -1);
+    const L = meet < 1 ? L0 * (meet - 0.15) : L0;
     // a gently bowed twig: up a little in the middle, a small sideways wiggle
     const side = norm([-dirN[2], 0, dirN[0]]);
     const wig = (rand() - 0.5) * 0.12 * L;
+    if (L < 0.12) continue; // it would only be a stub against the other branch: none
     const pts: Vec3[] = [];
     const n = L > 0.7 ? 4 : 3;
     for (let k = 0; k <= n; k++) {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { BufferAttribute, BufferGeometry, Vector3 } from "three";
-import { BARK_STYLE, barkColour, barkLight, barkPixels, pointedEnd, skeletonBark, twigBark } from "./barkGeometry";
+import { BARK_STYLE, barkColour, barkLight, barkPixels, forkLimb, pointedEnd, skeletonBark, twigBark } from "./barkGeometry";
+import { YOUNG_SPECS } from "./treeSkeleton";
 import { bakedBarkIndex } from "./bakedBark";
 import { GREEN_GROW, growBroadleaf } from "./treeCrown";
 import { PLAZA_CHERRY_SPECS, VILLAGE_TREE_SPECS, WILLOW_SPECS, treeSkeleton } from "./treeSkeleton";
@@ -67,5 +68,43 @@ describe("runtime bark: one bark from the ground to the twig tips", () => {
     expect(cut.dropped).toBe(1);
     expect([...cut.index]).toEqual([3, 4, 5]);
     expect(bakedBarkIndex(g, [treeSkeleton(WILLOW_SPECS[0]!)])).toBeNull();
+  });
+
+  it("every limb starts on the trunk's last ring (below the fork), runs on up its line, then onto the limb's own line", () => {
+    for (const spec of [WILLOW_SPECS[0]!, VILLAGE_TREE_SPECS[0]!, YOUNG_SPECS[3]!]) {
+      const sk = treeSkeleton(spec);
+      const top = sk.trunk.pts[3]!;
+      const a = sk.trunk.pts[0]!;
+      const l = Math.hypot(top[0] - a[0], top[1] - a[1], top[2] - a[2]);
+      const dirT: Vec3 = [(top[0] - a[0]) / l, (top[1] - a[1]) / l, (top[2] - a[2]) / l];
+      const part: Vec3 = [top[0] - dirT[0] * 0.25, top[1] - dirT[1] * 0.25, top[2] - dirT[2] * 0.25];
+      const partR = sk.trunk.radii[3]! * 1.03;
+      for (const limb of sk.limbs) {
+        const g = forkLimb(limb, part, partR, dirT);
+        expect(g.pts[0]).toEqual(part);
+        expect(g.radii[0]).toBe(partR);
+        // leaving along the trunk's line: its second point still close to the trunk's axis
+        const p1 = g.pts[1]!;
+        const rel: Vec3 = [p1[0] - part[0], p1[1] - part[1], p1[2] - part[2]];
+        const along = rel[0] * dirT[0] + rel[1] * dirT[1] + rel[2] * dirT[2];
+        expect(Math.hypot(rel[0] - dirT[0] * along, rel[1] - dirT[1] * along, rel[2] - dirT[2] * along)).toBeLessThan(along * 0.6);
+        // and ends on the limb's own line, at its own tip, never thicker than where it starts
+        expect(g.pts[g.pts.length - 1]).toEqual(limb.pts[limb.pts.length - 1]);
+        for (const r of g.radii) expect(r).toBeLessThanOrEqual(partR + 1e-9);
+      }
+    }
+  });
+
+  it("a branch tapers out to a fine point at its tip, never thicker toward it (a young tree's limbs too)", () => {
+    for (const spec of [YOUNG_SPECS[2]!, PLAZA_CHERRY_SPECS[1]!]) {
+      const sk = treeSkeleton(spec);
+      for (const b of [...sk.limbs, ...sk.sides]) {
+        const t = pointedEnd(b);
+        for (let i = 1; i < t.radii.length; i++) expect(t.radii[i]).toBeLessThanOrEqual(t.radii[i - 1]! + 1e-9);
+        expect(t.radii[t.radii.length - 1]).toBeLessThanOrEqual(0.0015);
+        // the file's last point no more than a third of the branch's base (no sawn-off log end)
+        expect(t.radii[b.radii.length - 1]).toBeLessThanOrEqual(Math.max(0.0035, b.radii[0]! * 0.33) + 1e-9);
+      }
+    }
   });
 });
