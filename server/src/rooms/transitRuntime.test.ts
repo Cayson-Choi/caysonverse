@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { TRANSIT } from "@caysonverse/shared/village/transit";
+import { TRANSIT, busTripAt } from "@caysonverse/shared/village/transit";
 import { VILLAGE_LAYOUT, busBoardingArea } from "@caysonverse/shared/village/villageLayout";
 import { BUS_BOARD_REACH_M, riderOnTrip, transitSnapshotAt, validateBusRide } from "./transitRuntime";
 
@@ -19,8 +19,8 @@ describe("VillageRoom transit runtime", () => {
   });
 
   it("tells clients the bus is waiting at a red crosswalk signal, and not moving while it waits", () => {
-    const a = transitSnapshotAt(hour + 35_000);
-    const b = transitSnapshotAt(hour + 37_000);
+    const a = transitSnapshotAt(hour + 37_000);
+    const b = transitSnapshotAt(hour + 39_000);
     expect(a.waiting).toBe(true);
     expect(a.signal).toBe("red");
     expect(a.pedestrianSignal).toBe("flashing");
@@ -67,5 +67,25 @@ describe("VillageRoom transit runtime", () => {
     const area = busBoardingArea();
     expect(validateBusRide({ action: "board" }, { area: "village", x: area.maxX + BUS_BOARD_REACH_M + 0.2, z: TRANSIT.stop.z, boarded: false }, boarding).ok).toBe(false);
     expect(validateBusRide({ action: "board" }, { area: "village", x: TRANSIT.stop.x, z: area.maxZ + BUS_BOARD_REACH_M + 0.2, boarded: false }, boarding).ok).toBe(false);
+  });
+});
+
+describe("fix/bus-smooth: the server and the client run the same bus", () => {
+  it("publishes exactly the shared timeline's pose, at any moment of the lap (what the client draws from every frame)", () => {
+    for (let ms = 0; ms < TRANSIT.departureEveryMs; ms += 1_700) {
+      const snapshot = transitSnapshotAt(hour + ms);
+      const trip = busTripAt(hour + ms);
+      expect([snapshot.x, snapshot.z, snapshot.yaw, snapshot.progress, snapshot.waiting, snapshot.status]).toEqual([trip.pose.x, trip.pose.z, trip.pose.yaw, trip.progress, trip.waiting, trip.status]);
+    }
+  });
+
+  it("the snapshots are a smooth path: a 250 ms tick never moves the bus more than the cruise covers", () => {
+    const cruise = 222 / TRANSIT.lapMs; // m per ms, about
+    let prev = transitSnapshotAt(hour);
+    for (let ms = 250; ms < 230_000; ms += 250) {
+      const s = transitSnapshotAt(hour + ms);
+      expect(Math.hypot(s.x - prev.x, s.z - prev.z)).toBeLessThanOrEqual(cruise * 250 * 1.05);
+      prev = s;
+    }
   });
 });

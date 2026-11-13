@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { TRANSIT, TRANSIT_HOLDS, busTripAt, nextGreenAt, pedestrianSignalAt, routeDistanceAtAngle, routeLength, routePoseAt, signalAt, tripTimeline } from "./transit";
+import { BUS_RAMP_MS, TRANSIT, TRANSIT_HOLDS, busMotionAt, busTripAt, clearCrosswalkMs, legSpeedAt, nextGreenAt, pedestrianSignalAt, routeDistanceAtAngle, routeLength, routePoseAt, routePoseAtDistance, signalAt, tripTimeline } from "./transit";
 import { SIGNAL_CROSSINGS, crossingPoint } from "./crossings";
 import { VILLAGE_LAYOUT } from "./villageLayout";
 
@@ -93,10 +93,14 @@ describe("the bus at the crosswalks' signals", () => {
         expect(signalAt((h.arriveMs + h.releaseMs) / 2).canBusProceed).toBe(false);
       }
       expect(busTripAt(h.releaseMs + 1_000).waiting).toBe(false);
-      // on its way again (at the lap's speed, or a little slower on a leg where it eases off for the next light)
-      const moved = busTripAt(h.releaseMs + 1_000).progress * routeLength() - h.distance;
-      expect(moved).toBeGreaterThan(speed * 1_000 * 0.8);
-      expect(moved).toBeLessThanOrEqual(speed * 1_000 + 1e-6);
+      // it pulls away gently (eased from rest: well under the cruise in the first second) and is at the cruise a ramp later
+      if (h.releaseMs > h.arriveMs) {
+        const moved = busTripAt(h.releaseMs + 1_000).progress * routeLength() - h.distance;
+        expect(moved).toBeGreaterThan(0);
+        expect(moved).toBeLessThan(speed * 1_000 * 0.1);
+        const leg = tl.legs.find((l) => l.fromMs === h.releaseMs)!;
+        expect(legSpeedAt(leg, h.releaseMs + BUS_RAMP_MS + 500)).toBeCloseTo(leg.speed, 12);
+      }
     }
     expect(tl.endMs - hour).toBeGreaterThan(TRANSIT.lapMs);
     expect(tl.endMs).toBeLessThan(hour + TRANSIT.departureEveryMs - TRANSIT.boardingMs);
@@ -108,11 +112,14 @@ describe("the bus at the crosswalks' signals", () => {
   });
 
   it("never has the bus on a crosswalk when the pedestrians' walk begins (review r1)", () => {
-    const stripes = (TRANSIT.stopLineM + 2.35 + TRANSIT.busLengthM) / speed; // nose on the stop line -> tail past the zebra
+    // nose on the stop line -> tail past the zebra: from rest it takes half a ramp longer than at speed
+    const stripes = (TRANSIT.stopLineM + 2.35 + TRANSIT.busLengthM) / speed + BUS_RAMP_MS / 2;
     for (let off = 0; off < TRANSIT.signalCycleMs; off += 500) {
       const tl = tripTimeline(hour + off);
       for (const h of tl.holds) {
-        const clearAt = h.releaseMs + stripes;
+        // a hold it drives through is crossed at the leg's cruise, no ramp
+        const leg = tl.legs.find((l) => h.arriveMs >= l.fromMs && h.arriveMs <= l.toMs)!;
+        const clearAt = h.releaseMs + (h.stops ? stripes : (TRANSIT.stopLineM + 2.35 + TRANSIT.busLengthM) / leg.speed);
         // vehicles are still green when the bus's tail leaves the crosswalk
         expect(signalAt(clearAt - 1).color).toBe("green");
         // and no walk phase (24-34 s) starts while it is on the zebra
@@ -141,13 +148,14 @@ describe("review r2: the bus never stands under a green, on a crosswalk, or turn
     }
   });
 
-  it("eases off (never stops) on a leg where the green would be too short to clear the crosswalk", () => {
-    const tl = tripTimeline(hour);
+  it("cruises a little slower (never stops under the green) on a leg where the green would be too short to clear the crosswalk", () => {
     const speed = routeLength() / TRANSIT.lapMs;
-    for (const h of tl.holds) {
-      const legSpeed = (h.distance - h.fromDistance) / (h.arriveMs - h.fromMs);
-      expect(legSpeed).toBeLessThanOrEqual(speed + 1e-9);
-      expect(legSpeed).toBeGreaterThan(speed * 0.85); // a gentle easing, not a crawl
+    for (let off = 0; off < TRANSIT.signalCycleMs; off += 500) {
+      const tl = tripTimeline(hour + off);
+      for (const leg of tl.legs) {
+        expect(leg.speed).toBeLessThanOrEqual(speed + 1e-9);
+        expect(leg.speed).toBeGreaterThan(speed * 0.6); // a gentle easing, not a crawl
+      }
     }
   });
 
@@ -187,14 +195,14 @@ describe("review r2: the bus never stands under a green, on a crosswalk, or turn
     }
   });
 
-  it("turns at most 5 degrees from one chord to the next, pulling in and out of the stop too (review r2: 16 and 19)", () => {
+  it("turns at most 1 degree from one chord to the next, pulling in and out of the stop too (review r2: 16 and 19)", () => {
     const r = TRANSIT.route;
     for (let i = 1; i + 1 < r.length; i++) {
       const y1 = Math.atan2(r[i]!.x - r[i - 1]!.x, r[i]!.z - r[i - 1]!.z);
       const y2 = Math.atan2(r[i + 1]!.x - r[i]!.x, r[i + 1]!.z - r[i]!.z);
       let d = Math.abs(y2 - y1);
       if (d > Math.PI) d = Math.PI * 2 - d;
-      expect(d * (180 / Math.PI)).toBeLessThanOrEqual(5.0001);
+      expect(d * (180 / Math.PI)).toBeLessThanOrEqual(1.0001);
     }
     // the last chord arrives heading north, as the bus is parked; the first leaves heading north
     const last = Math.atan2(r[r.length - 1]!.x - r[r.length - 2]!.x, r[r.length - 1]!.z - r[r.length - 2]!.z);
@@ -203,5 +211,113 @@ describe("review r2: the bus never stands under a green, on a crosswalk, or turn
     const end = tripTimeline(hour).endMs;
     expect(Math.abs(Math.abs(busTripAt(end - 300).pose.yaw) - Math.PI) * (180 / Math.PI)).toBeLessThan(3);
     expect(busTripAt(end + 1).pose.yaw).toBe(Math.PI);
+  });
+});
+
+describe("fix/bus-smooth: the bus moves and turns without a step", () => {
+  const hour = Date.UTC(2026, 10, 12, 3, 0, 0);
+  const wrap = (d: number): number => {
+    while (d > Math.PI) d -= Math.PI * 2;
+    while (d < -Math.PI) d += Math.PI * 2;
+    return d;
+  };
+
+  it("the route's heading is continuous: no jump between samples 0.25 m apart, and the ring is a true circle", () => {
+    const len = routeLength();
+    let prev = routePoseAtDistance(0);
+    let worst = 0;
+    for (let d = 0.25; d <= len; d += 0.25) {
+      const p = routePoseAtDistance(d);
+      worst = Math.max(worst, Math.abs(wrap(p.yaw - prev.yaw)));
+      expect(Math.hypot(p.x - prev.x, p.z - prev.z)).toBeLessThanOrEqual(0.2501);
+      prev = p;
+    }
+    // a 35 m circle turns 0.4 degrees per 0.25 m; the eased pull-out and pull-in a little more, nowhere a corner
+    expect(worst * (180 / Math.PI)).toBeLessThan(1.5);
+    // the lane's middle: every point of the ring part is at the lane radius
+    for (let d = 15; d < len - 15; d += 1) {
+      const p = routePoseAtDistance(d);
+      expect(Math.hypot(p.x, p.z)).toBeCloseTo(35.3, 2);
+      // clockwise tangent of the circle: the heading is (sin a, -cos a) with a the position's angle
+      const a = Math.atan2(p.z, p.x);
+      expect(Math.abs(wrap(p.yaw - Math.atan2(Math.sin(a), -Math.cos(a)))) * (180 / Math.PI)).toBeLessThan(0.3);
+    }
+  });
+
+  it("starts and ends parked, heading north, with no turn at either end", () => {
+    expect(routePoseAtDistance(0).yaw).toBe(Math.PI);
+    expect(Math.abs(wrap(routePoseAtDistance(routeLength()).yaw - Math.PI))).toBeLessThan(1e-9);
+    expect(Math.abs(wrap(routePoseAtDistance(0.3).yaw - Math.PI)) * (180 / Math.PI)).toBeLessThan(2);
+  });
+
+  it("the speed is continuous over the whole trip: eased out of the stop and the lights, flat at the cruise, no jump", () => {
+    const cruise = routeLength() / TRANSIT.lapMs; // m/ms
+    const dtMs = 100;
+    // the biggest acceleration of a ramp is vp * pi / (2 T): the most the speed may change in one step
+    const maxStep = ((cruise * 1000 * Math.PI) / (2 * (BUS_RAMP_MS / 1000))) * (dtMs / 1000);
+    for (const off of [0, 7_000, 13_000, 21_000, 33_000]) {
+      const start = hour + off;
+      const tl = tripTimeline(start);
+      let prevV = 0;
+      let prev = routePoseAtDistance(0);
+      let sawCruise = false;
+      for (let t = start + dtMs; t <= tl.endMs + 2_000; t += dtMs) {
+        const p = routePoseAtDistance(busMotionAt(t, start).distance); // the trip's own timeline, at any phase of the signals
+        const v = (Math.hypot(p.x - prev.x, p.z - prev.z) / dtMs) * 1000; // m/s
+        expect(Math.abs(v - prevV), `off ${off} t=${t - start}`).toBeLessThan(maxStep * 1.2 + 0.01);
+        expect(v).toBeLessThanOrEqual(cruise * 1000 * 1.02);
+        if (v > cruise * 1000 * 0.98) sawCruise = true;
+        prevV = v;
+        prev = p;
+      }
+      expect(sawCruise).toBe(true);
+      expect(prevV).toBe(0); // parked at the end
+    }
+  });
+
+  it("is at rest exactly at the start and the end of each leg and moving in between; a gap between legs is a wait at a red", () => {
+    const tl = tripTimeline(hour);
+    for (const leg of tl.legs) {
+      expect(legSpeedAt(leg, leg.fromMs)).toBe(0);
+      expect(legSpeedAt(leg, leg.toMs)).toBe(0);
+      for (let k = 1; k < 20; k++) expect(legSpeedAt(leg, leg.fromMs + ((leg.toMs - leg.fromMs) * k) / 20)).toBeGreaterThan(0);
+    }
+    for (let i = 1; i < tl.legs.length; i++) {
+      const gap = tl.legs[i]!.fromMs - tl.legs[i - 1]!.toMs;
+      expect(gap).toBeGreaterThanOrEqual(0);
+      const h = tl.holds.find((x) => x.stops && x.releaseMs === tl.legs[i]!.fromMs)!;
+      expect(h.releaseMs - h.arriveMs).toBe(gap);
+    }
+    expect(busMotionAt(tl.endMs + 5_000, hour).speed).toBe(0);
+  });
+
+  it("eases to a halt before a stop line (the last ramp covers half a ramp's cruise) and at the end of the lap", () => {
+    const tl = tripTimeline(hour);
+    const first = tl.legs[0]!;
+    const inLastRamp = first.toDistance - busMotionAt(first.toMs - BUS_RAMP_MS, hour).distance;
+    expect(inLastRamp).toBeCloseTo((first.speed * BUS_RAMP_MS) / 2, 6);
+    const last = tl.legs.at(-1)!;
+    expect(last.toMs).toBe(tl.endMs);
+    expect(last.toDistance).toBeCloseTo(routeLength(), 6);
+  });
+
+  it("does not slow down for a green it can drive through (such a hold has no stop)", () => {
+    let throughs = 0;
+    for (let off = 0; off < TRANSIT.signalCycleMs; off += 1_000) {
+      const tl = tripTimeline(hour + off);
+      for (const h of tl.holds) {
+        if (h.stops) continue;
+        throughs++;
+        expect(h.arriveMs).toBe(h.releaseMs);
+        expect(signalAt(h.arriveMs).color).toBe("green");
+        expect(legSpeedAt(tl.legs.find((l) => h.arriveMs > l.fromMs && h.arriveMs < l.toMs)!, h.arriveMs)).toBeGreaterThan(0);
+      }
+    }
+    expect(throughs).toBeGreaterThan(0);
+  });
+
+  it("clearCrosswalkMs counts the pull-away from rest", () => {
+    const speed = routeLength() / TRANSIT.lapMs;
+    expect(clearCrosswalkMs(speed)).toBeCloseTo((TRANSIT.stopLineM + 2.5 + TRANSIT.busLengthM) / speed + BUS_RAMP_MS / 2, 6);
   });
 });

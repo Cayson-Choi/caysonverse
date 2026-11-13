@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 import { MessageType } from "@caysonverse/shared/messages";
-import { TRANSIT } from "@caysonverse/shared/village/transit";
+import { TRANSIT, busTripAt } from "@caysonverse/shared/village/transit";
 import { villageClock } from "../village/villageClock";
 import type {
   BusRejectedPayload,
@@ -27,10 +27,15 @@ let state: TransitClientState = initial;
 let boundRoom: TransitRoom | null = null;
 const listeners = new Set<() => void>();
 
-/** Render pose is kept outside React so the bus can ease every frame without re-rendering the HUD. */
+/**
+ * Render pose: kept outside React, and NOT eased toward network samples. Every frame it is derived from the shared
+ * deterministic timeline (transit.ts busTripAt: eased speed, a round arc, stops at the red signals) at the synced server
+ * time (transitNowMs), the very function the server publishes its snapshots with. Review (fix/bus-smooth): the bus used to
+ * chase the 250 ms snapshots with a first-order low-pass, so it moved in 0.3 m hops with a speed that rose and fell four
+ * times a second ("it keeps stopping on its way"). The snapshots now only correct the clock and carry the status.
+ */
 let renderPose = { x: TRANSIT.stop.x, z: TRANSIT.stop.z, yaw: Math.PI }; // parked: heading north (-z)
-let targetPose = { ...renderPose };
-let hasPose = false;
+let renderAt = Number.NaN;
 
 /**
  * The transit clock: the server's time as the bus snapshots carry it (`serverMs`), for the crosswalk lamps and the
@@ -40,22 +45,48 @@ let hasPose = false;
  * one (network, a long frame) only makes its sample smaller, so the clock is the LARGEST sample of the last few seconds:
  * the server's time less the quickest delivery. The bus is drawn from the same snapshots (eased), so a lamp never lags
  * its bus. Before the first sample (or from an old server without `serverMs`) it is the village clock.
+ *
+ * The clock the bus is drawn by must not hop either: the largest sample changes when one leaves the window, and a bare
+ * jump of tens of ms would show as a jump of the bus. So `clockApplied` follows that target at no more than CLOCK_SLEW
+ * (a clock that runs 2 % fast or slow: 0.02 x 1.2 m/s, invisible); only a first sample or a gap above CLOCK_SNAP_MS
+ * (a suspended tab, a server clock change) takes it at once.
  */
 const CLOCK_WINDOW = 24; // 6 s of snapshots at 4 Hz
 const clockSamples: number[] = [];
-let clockOffset: number | null = null;
+let clockTarget: number | null = null;
+let clockApplied: number | null = null;
+let clockAt = 0;
+/** how fast the applied offset may drift toward the target (ms per ms: 2 %) and the gap that is snapped instead */
+const CLOCK_SLEW = 0.02;
+const CLOCK_SNAP_MS = 1500;
 const monotonic = (): number => (typeof performance !== "undefined" ? performance.now() : Date.now());
 
 function sampleClock(serverMs: number | undefined, receivedAt = monotonic()): void {
   if (typeof serverMs !== "number" || !Number.isFinite(serverMs)) return;
   clockSamples.push(serverMs - receivedAt);
   if (clockSamples.length > CLOCK_WINDOW) clockSamples.shift();
-  clockOffset = Math.max(...clockSamples);
+  clockTarget = Math.max(...clockSamples);
+  if (clockApplied === null || Math.abs(clockTarget - clockApplied) > CLOCK_SNAP_MS) {
+    clockApplied = clockTarget;
+    clockAt = receivedAt;
+  }
+}
+
+/** Let the applied offset drift toward the target for the time since the last look. */
+function slewClock(now: number): void {
+  if (clockApplied === null || clockTarget === null) return;
+  const dt = Math.max(0, now - clockAt);
+  clockAt = now;
+  const step = CLOCK_SLEW * dt;
+  clockApplied += Math.max(-step, Math.min(step, clockTarget - clockApplied));
 }
 
 /** The server's time now (Unix ms) by the bus snapshots; the village clock (unpinned) until the first one. */
 export function transitNowMs(): number {
-  return clockOffset === null ? villageClock.liveMs() : monotonic() + clockOffset;
+  if (clockApplied === null) return villageClock.liveMs();
+  const now = monotonic();
+  slewClock(now);
+  return now + clockApplied;
 }
 
 /** Tests: feed a snapshot's clock sample received at `receivedAt` (performance.now() units). */
@@ -65,7 +96,8 @@ export function sampleTransitClockForTest(serverMs: number, receivedAt: number):
 
 function resetClock(): void {
   clockSamples.length = 0;
-  clockOffset = null;
+  clockTarget = null;
+  clockApplied = null;
 }
 
 function publish(next: TransitClientState): void {
@@ -75,11 +107,6 @@ function publish(next: TransitClientState): void {
 
 function setSnapshot(snapshot: BusStatePayload): void {
   sampleClock(snapshot.serverMs);
-  targetPose = { x: snapshot.x, z: snapshot.z, yaw: snapshot.yaw };
-  if (!hasPose) {
-    renderPose = { ...targetPose };
-    hasPose = true;
-  }
   publish({ ...state, snapshot, notice: null });
 }
 
@@ -90,10 +117,9 @@ function setRide(next: BusRideStatePayload): void {
 /** Bind one village room; cleanup is called when the scene unmounts or reconnects. */
 export function startTransitSync(room: TransitRoom): () => void {
   boundRoom = room;
-  hasPose = false;
   resetClock();
-  targetPose = { x: TRANSIT.stop.x, z: TRANSIT.stop.z, yaw: Math.PI };
-  renderPose = { ...targetPose };
+  renderAt = Number.NaN;
+  renderPose = { x: TRANSIT.stop.x, z: TRANSIT.stop.z, yaw: Math.PI };
   publish(initial);
   const offState = room.onMessage<BusStatePayload>(MessageType.BusState, setSnapshot);
   const offRide = room.onMessage<BusRideStatePayload>(MessageType.BusRideState, setRide);
@@ -106,7 +132,6 @@ export function startTransitSync(room: TransitRoom): () => void {
     offRejected();
     if (boundRoom === room) boundRoom = null;
     publish(initial);
-    hasPose = false;
   };
 }
 
@@ -129,18 +154,24 @@ export function useTransitState(): TransitClientState {
   return useSyncExternalStore(subscribeTransit, getTransitState, getTransitState);
 }
 
-/** Smooth the last server snapshot toward the current route pose. */
-export function stepTransitRender(deltaSeconds: number): void {
-  const alpha = 1 - Math.exp(-Math.max(0, deltaSeconds) * 12);
-  renderPose.x += (targetPose.x - renderPose.x) * alpha;
-  renderPose.z += (targetPose.z - renderPose.z) * alpha;
-  let angle = targetPose.yaw - renderPose.yaw;
-  while (angle > Math.PI) angle -= Math.PI * 2;
-  while (angle < -Math.PI) angle += Math.PI * 2;
-  renderPose.yaw += angle * alpha;
+/** The bus's pose at the synced server time, written into the render pose (once per distinct instant). */
+function refreshRenderPose(): void {
+  const now = transitNowMs();
+  if (now === renderAt) return;
+  renderAt = now;
+  const pose = busTripAt(now).pose;
+  renderPose.x = pose.x;
+  renderPose.z = pose.z;
+  renderPose.yaw = pose.yaw;
+}
+
+/** Frame step: the bus's pose from the timeline at the synced time (the argument is kept for callers; the pose needs no easing). */
+export function stepTransitRender(_deltaSeconds?: number): void {
+  refreshRenderPose();
 }
 
 export function getTransitRenderPose(): Readonly<{ x: number; z: number; yaw: number }> {
+  refreshRenderPose();
   return renderPose;
 }
 
