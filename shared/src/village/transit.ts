@@ -111,7 +111,7 @@ function ringRoute(): readonly TransitPoint[] {
 }
 
 export const TRANSIT = {
-  departureEveryMs: 30 * 60 * 1000, // every 30 minutes, on the hour and the half hour (owner 2026-11-13)
+  departureEveryMs: 10 * 60 * 1000, // every 10 minutes (owner 2026-11-13, for testing rides; was 30)
   lapMs: 3 * 60 * 1000,
   boardingMs: 30 * 1000,
   /** One cycle of the crossing signals: vehicles green 0-20 s, amber 20-23, red 23-40; pedestrians stop 0-24, walk 24-34, flashing 34-38, stop 38-40. */
