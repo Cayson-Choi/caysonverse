@@ -219,7 +219,7 @@ export function stepArmLimit(limit: number, reach: number, desired: number, dt: 
  * `(1 − k) × lookLift`, so the view looks over the head into the room instead of at it. Like every arm change it lasts
  * only while the wall is in the way (k < 1) and never writes the player's orbit.
  */
-export const INDOOR_ARM = { lookLift: 1.3, refReach: 3.6 } as const;
+export const INDOOR_ARM = { lookLift: 1.3, refReach: 4.4, lookFadeBelow: 2.0 } as const;
 
 /**
  * Indoors, the arm against a wall is shaped as it was tuned with the hall's old 3.6 m cap (`INDOOR_ARM.refReach`),
@@ -241,7 +241,8 @@ export function indoorArmShape(
   const kept = Math.max(ref, armLimit) * Math.sin(pitch);
   return {
     offY: offY >= 0 ? Math.min(offY, Math.max(0, kept)) : Math.max(offY, Math.min(0, kept)),
-    lookLift: (1 - Math.min(1, armLimit / ref)) * INDOOR_ARM.lookLift,
+    // fades out as the camera comes right over the head (a sofa against the wall): looking above a head you hover over loses it
+    lookLift: (1 - Math.min(1, armLimit / ref)) * INDOOR_ARM.lookLift * Math.min(1, armLimit / INDOOR_ARM.lookFadeBelow),
   };
 }
 

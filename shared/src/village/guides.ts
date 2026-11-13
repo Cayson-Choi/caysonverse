@@ -36,6 +36,8 @@ export interface Guide {
   tag: string;
   area: AreaId;
   pos: { x: number; z: number };
+  /** How far away (m) the guide can be asked; absent = GUIDE_REACH_M. The hall desk reaches over its counter and the two visitor chairs. */
+  reach?: number;
   /** `atan2(dirX, dirZ)` (0 faces +z). */
   yaw: number;
   /** A fixed look on the toy figure. */
@@ -45,6 +47,8 @@ export interface Guide {
 
 /** Within this distance (m, on the ground) "문의하기" is offered. */
 export const GUIDE_REACH_M = 2.2;
+/** The hall desk is asked from the visitor side of the counter, past the two consultation chairs (x 304.2): 3.5 m reaches x 303.0. */
+export const HALL_DESK_REACH_M = 3.5;
 /** Half the side of a guide's square collider (m): 0.6 x 0.6, about the figure's footprint. */
 export const GUIDE_COLLIDER_HALF = 0.3;
 /** The words on the action button and the touch button. */
@@ -108,6 +112,7 @@ export const GUIDES: readonly Guide[] = deepFreeze([
     tag: "안내원",
     area: "hall",
     pos: { x: 306.4, z: 4.6 },
+    reach: HALL_DESK_REACH_M,
     yaw: -Math.PI / 2, // faces -x
     appearance: appearanceFromIds(
       { hat: null, hair: "bob", face: "calm", top: "shirt_tie", bottom: "longskirt", shoes: "dress", item: null },
@@ -160,7 +165,7 @@ export function nearestGuide(area: AreaId, x: number, z: number, guides: readonl
   for (const g of guides) {
     if (g.area !== area) continue;
     const d = Math.hypot(x - g.pos.x, z - g.pos.z);
-    if (d <= GUIDE_REACH_M && (best === null || d < best.dist)) best = { guide: g, dist: d };
+    if (d <= (g.reach ?? GUIDE_REACH_M) && (best === null || d < best.dist)) best = { guide: g, dist: d };
   }
   return best;
 }

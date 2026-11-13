@@ -152,11 +152,11 @@ describe("village seats (where a sitter goes)", () => {
 });
 
 describe("the memorial hall's seats (generated from the model's seat__ markers)", () => {
-  it("every sofa, armchair, chair and bench of the hall is a seat: 22 places, 32 seats", () => {
-    expect(MEMORIAL_SEAT_MARKERS).toHaveLength(22);
+  it("every sofa, armchair, chair and bench of the hall is a seat: 21 places, 31 seats", () => {
+    expect(MEMORIAL_SEAT_MARKERS).toHaveLength(21);
     const by = (furn: string) => MEMORIAL_SEAT_MARKERS.filter((m) => m.furn === furn).length;
-    expect({ sofa: by("sofa"), armchair: by("armchair"), chair: by("chair"), bench: by("bench") }).toEqual({ sofa: 4, armchair: 2, chair: 6, bench: 10 });
-    expect(hallSeats).toHaveLength(32);
+    expect({ sofa: by("sofa"), armchair: by("armchair"), chair: by("chair"), bench: by("bench") }).toEqual({ sofa: 3, armchair: 2, chair: 6, bench: 10 });
+    expect(hallSeats).toHaveLength(31);
     for (const m of MEMORIAL_SEAT_MARKERS) expect(seatsOf(m.id).length, m.id).toBe(m.kind === "backless" && m.both ? 2 : 1);
   });
 

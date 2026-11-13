@@ -279,21 +279,29 @@ try {
   });
 
   await run.step("the north-west corner: bank A right behind the player keeps the camera up (no head filling the screen)", async () => {
+    // the step starts in third person (the candle step above toggles first person on and off; a toggle can be missed there)
+    for (let k = 0; k < 2; k++) {
+      const mode = await A.page.evaluate(async () => (await window.__imp("/src/game/viewState.ts")).viewState.mode);
+      if (mode === "tp") break;
+      await A.page.keyboard.press("KeyV");
+      await sleep(1300);
+    }
     await walkAndWait(A, 299.9, -0.5, 15000, 0.5);
     await walkAndWait(A, 299.9, -3.9, 15000, 0.5);
     await walkAndWait(A, 293.4, -4.9, 15000, 0.4); // the north-west corner: bank A is 0.7 m behind the player
     await turnCameraTo(A, 297, 5); // the camera behind, toward bank A
     await setOrbit(A, 3.6, 0.35);
     await sleep(1500);
-    const cam = await A.page.evaluate(() => {
+    const cam = await A.page.evaluate(async () => {
       const { camera } = window.__cvThree();
+      const { viewState } = await window.__imp("/src/game/viewState.ts");
       const p = window.__cv.getPos();
       const head = camera.position.clone().set(p.x, 1.45, p.z).project(camera);
-      return { y: camera.position.y, x: camera.position.x, z: camera.position.z, headNdcY: head.y, arm: Math.hypot(camera.position.x - p.x, camera.position.z - p.z) };
+      return { mode: viewState.mode, blend: viewState.blend, orbit: window.__cv.getOrbit(), y: camera.position.y, x: camera.position.x, z: camera.position.z, headNdcY: head.y, arm: Math.hypot(camera.position.x - p.x, camera.position.z - p.z) };
     });
     summary.corner = cam;
     run.check("in the corner the arm is short (the wall is right behind)", cam.arm < 1.2, cam);
-    run.check("the camera stays above the head and under the ceiling (1.2..3.0 m)", cam.y > 1.2 && cam.y <= 3.0001, cam);
+    run.check("the camera stays above the head and under the ceiling (2.3..3.0 m)", cam.y > 2.3 && cam.y <= 3.0001, cam);
     run.check("the head sits low in the frame (NDC y < -0.4), not in the middle of it", cam.headNdcY < -0.4, cam);
     await run.shot(A, "hall-corner.png");
   });

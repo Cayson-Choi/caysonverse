@@ -443,15 +443,16 @@ describe("the map's own pad (케이슨 마을: 0.3 m, wider than its 0.2 m near 
 
 describe("indoor arm shaping (케이슨 마을 Task 9: the 9 x 12 m hall must not fill the screen with the own head)", () => {
   it("indoors a shortened arm keeps its height and the look rises by (1 − k) × lookLift", () => {
-    expect(INDOOR_ARM).toEqual({ lookLift: 1.3, refReach: 3.6 });
+    expect(INDOOR_ARM).toEqual({ lookLift: 1.3, refReach: 4.4, lookFadeBelow: 2.0 });
     expect(armHeightScaleAt(0.2, true)).toBe(1);
     expect(armLookLiftAt(0.2, true)).toBeCloseTo(0.8 * INDOOR_ARM.lookLift, 9);
   });
 
-  it("against a wall a long zoom is shaped like the old 3.6 m reference: same height and look lift as a 3.6 m arm", () => {
+  it("against a wall a long zoom is shaped like the reference length: same height and look lift as an arm of the reference length", () => {
     // Review 2026-11-10: the zoom is no longer capped indoors, so the shaping must not depend on the uncapped length.
     const pitch = 0.35;
-    const capped = indoorArmShape(2.1, 3.6, 3.6 * Math.sin(pitch), pitch);
+    const ref = INDOOR_ARM.refReach;
+    const capped = indoorArmShape(2.1, ref, ref * Math.sin(pitch), pitch);
     for (const reach of [6, 10, 18, 28.8]) {
       const offY = Math.min(reach * Math.sin(pitch), 1.85); // the ceiling clamp may flatten the wanted spot
       const s = indoorArmShape(2.1, reach, offY, pitch);
@@ -462,6 +463,14 @@ describe("indoor arm shaping (케이슨 마을 Task 9: the 9 x 12 m hall must no
     const full = indoorArmShape(9.999999, 10, 1.85, pitch);
     expect(full.offY).toBeCloseTo(1.85, 5);
     expect(full.lookLift).toBe(0);
+  });
+
+  it("the look lift fades out when the arm is nearly gone (a camera hovering over the head must still see it)", () => {
+    const pitch = 0.35;
+    const tiny = indoorArmShape(0.3, 6, 1.5, pitch);
+    const ok = indoorArmShape(2.0, 6, 1.5, pitch);
+    expect(tiny.lookLift).toBeLessThan(0.4 * ok.lookLift);
+    expect(indoorArmShape(0, 6, 1.5, pitch).lookLift).toBe(0);
   });
 
   it("a full arm changes nothing indoors either: the shaping lasts only while a wall is in the way", () => {

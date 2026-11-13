@@ -85,27 +85,43 @@ export function hallNightWeight(outdoorNight: number, mapReady: boolean): number
 }
 
 let loading: Promise<void> | null = null;
+/** Bumped by every dispose: a load that started before it must not hang its textures on the uniforms. */
+let generation = 0;
+/** The tier the night map in the uniform was loaded for. */
+let loadedTier: "high" | "low" | null = null;
 
-/** Load the night map and the night park (once; configured like the day map). Resolves when both are in. */
+/** Load the night map and the night park (once per tier; configured like the day map). Resolves when both are in. */
 export function loadHallNight(tier: "high" | "low", loader: Pick<TextureLoader, "loadAsync"> = new TextureLoader()): Promise<void> {
-  if (hallNightMapUniform.value && hallGardenNightUniform.value) return Promise.resolve();
+  if (hallNightMapUniform.value && hallGardenNightUniform.value && loadedTier === tier) return Promise.resolve();
   if (loading) return loading;
-  loading = Promise.all([loader.loadAsync(HALL_NIGHT_LIGHTMAP_URL[tier]), loader.loadAsync(HALL_GARDEN_NIGHT_URL)])
+  const mine = generation;
+  const p: Promise<void> = Promise.all([loader.loadAsync(HALL_NIGHT_LIGHTMAP_URL[tier]), loader.loadAsync(HALL_GARDEN_NIGHT_URL)])
     .then(([lm, garden]) => {
+      if (mine !== generation) {
+        // the hall was left while this loaded: nobody wants the files
+        lm.dispose();
+        garden.dispose();
+        return;
+      }
       configureLightmap(lm);
       garden.colorSpace = SRGBColorSpace;
       garden.flipY = false;
       garden.needsUpdate = true;
+      // a tier change swaps the map: the old one goes
+      if (hallNightMapUniform.value && hallNightMapUniform.value !== lm) hallNightMapUniform.value.dispose();
+      if (hallGardenNightUniform.value && hallGardenNightUniform.value !== garden) hallGardenNightUniform.value.dispose();
       hallNightMapUniform.value = lm;
       hallGardenNightUniform.value = garden;
+      loadedTier = tier;
     })
     .catch(() => {
       // the night is an enhancement: a failed fetch leaves the day look (the next visit tries again)
     })
     .finally(() => {
-      loading = null;
+      if (loading === p) loading = null;
     });
-  return loading;
+  loading = p;
+  return p;
 }
 
 /** Whether both night files are in. */
@@ -115,6 +131,9 @@ export function hallNightReady(): boolean {
 
 /** Free the night files (the hall is left) and put the weight back to the day. */
 export function disposeHallNight(): void {
+  generation++;
+  loading = null;
+  loadedTier = null;
   hallNightMapUniform.value?.dispose();
   hallGardenNightUniform.value?.dispose();
   hallNightMapUniform.value = null;

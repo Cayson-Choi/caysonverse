@@ -5,8 +5,8 @@
 import type { SeatMarker } from "../seatMarkers";
 
 export const MEMORIAL_SEAT_MARKERS: readonly SeatMarker[] = [
-  { id: "armchair_0", furn: "armchair", kind: "backed", x: 294, z: 2.09, y: 0.43, yaw: 0, edge: 0.29, back: 0.29, width: 0.62, group: "armchair_0", both: false, exitTurn: 0, lean: 0.2 },
-  { id: "armchair_1", furn: "armchair", kind: "backed", x: 296.2, z: 2.09, y: 0.43, yaw: 0, edge: 0.29, back: 0.29, width: 0.62, group: "armchair_1", both: false, exitTurn: 0, lean: 0.2 },
+  { id: "armchair_0", furn: "armchair", kind: "backed", x: 294, z: 2.03, y: 0.43, yaw: 0, edge: 0.35, back: 0.23, width: 0.62, group: "armchair_0", both: false, exitTurn: 0, lean: 0.26 },
+  { id: "armchair_1", furn: "armchair", kind: "backed", x: 296.2, z: 2.03, y: 0.43, yaw: 0, edge: 0.35, back: 0.23, width: 0.62, group: "armchair_1", both: false, exitTurn: 0, lean: 0.26 },
   { id: "bench_e1_s0", furn: "bench", kind: "backless", x: 301.023, z: -2.7, y: 0.45, yaw: 3.141593, edge: 0.21, back: 0, width: 1, group: "bench_e1_s0", both: true, exitTurn: 0, lean: 0 },
   { id: "bench_e1_s1", furn: "bench", kind: "backless", x: 302.223, z: -2.7, y: 0.45, yaw: 3.141593, edge: 0.21, back: 0, width: 1, group: "bench_e1_s1", both: true, exitTurn: 0, lean: 0 },
   { id: "bench_e2_s0", furn: "bench", kind: "backless", x: 301.023, z: -0.6, y: 0.45, yaw: 3.141593, edge: 0.21, back: 0, width: 1, group: "bench_e2_s0", both: true, exitTurn: 0, lean: 0 },
@@ -23,8 +23,7 @@ export const MEMORIAL_SEAT_MARKERS: readonly SeatMarker[] = [
   { id: "letter_n1", furn: "chair", kind: "backed", x: 295.05, z: -3.75, y: 0.47, yaw: 0, edge: 0.23, back: 0.23, width: 0.46, group: "letter_n1", both: false, exitTurn: 3.141593, lean: 0.1 },
   { id: "letter_s0", furn: "chair", kind: "backed", x: 293.75, z: -2.15, y: 0.47, yaw: 3.141593, edge: 0.23, back: 0.23, width: 0.46, group: "letter_s0", both: false, exitTurn: 3.141593, lean: 0.1 },
   { id: "letter_s1", furn: "chair", kind: "backed", x: 295.05, z: -2.15, y: 0.47, yaw: 3.141593, edge: 0.23, back: 0.23, width: 0.46, group: "letter_s1", both: false, exitTurn: 3.141593, lean: 0.1 },
-  { id: "sofa_a0", furn: "sofa", kind: "backed", x: 293.475, z: 5.42, y: 0.43, yaw: 3.141593, edge: 0.31, back: 0.31, width: 1.15, group: "sofa_a0", both: false, exitTurn: 0, lean: 0.2 },
-  { id: "sofa_a1", furn: "sofa", kind: "backed", x: 294.625, z: 5.42, y: 0.43, yaw: 3.141593, edge: 0.31, back: 0.31, width: 1.15, group: "sofa_a1", both: false, exitTurn: 0, lean: 0.2 },
-  { id: "sofa_a2", furn: "sofa", kind: "backed", x: 295.775, z: 5.42, y: 0.43, yaw: 3.141593, edge: 0.31, back: 0.31, width: 1.15, group: "sofa_a2", both: false, exitTurn: 0, lean: 0.2 },
-  { id: "sofa_b0", furn: "sofa", kind: "backed", x: 293.23, z: 3.9, y: 0.43, yaw: 1.570796, edge: 0.31, back: 0.31, width: 1.15, group: "sofa_b0", both: false, exitTurn: 0, lean: 0.2 },
+  { id: "sofa_a0", furn: "sofa", kind: "backed", x: 294.242, z: 5.49, y: 0.43, yaw: 3.141593, edge: 0.38, back: 0.24, width: 1.405, group: "sofa_a0", both: false, exitTurn: 0, lean: 0.26 },
+  { id: "sofa_a1", furn: "sofa", kind: "backed", x: 295.648, z: 5.49, y: 0.43, yaw: 3.141593, edge: 0.38, back: 0.24, width: 1.405, group: "sofa_a1", both: false, exitTurn: 0, lean: 0.26 },
+  { id: "sofa_b0", furn: "sofa", kind: "backed", x: 293.16, z: 3.9, y: 0.43, yaw: 1.570796, edge: 0.38, back: 0.24, width: 1.15, group: "sofa_b0", both: false, exitTurn: 0, lean: 0.26 },
 ];

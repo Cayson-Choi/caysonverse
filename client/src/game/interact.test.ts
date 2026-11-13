@@ -54,6 +54,12 @@ describe("pickInteraction with scene targets", () => {
     });
   });
 
+  it("a target with beatsSeatBeyond (the hall desk) beats a seat farther than that, and loses to one right beside the player", () => {
+    const desk = t({ id: "guide:hall_desk", dist: 2.9, beatsSeatBeyond: 0.9 });
+    expect(pickInteraction({ ...base, seat: { index: 3, dist: 1.2 }, targets: [desk] })).toEqual({ kind: "target", target: desk });
+    expect(pickInteraction({ ...base, seat: { index: 3, dist: 0.7 }, targets: [desk] })).toEqual({ kind: "sit", seatIndex: 3 });
+  });
+
   it("a tie goes seat > target", () => {
     const seat = { index: 2, dist: 1 };
     expect(pickInteraction({ ...base, seat, targets: [t({ dist: 1 })] })).toEqual({ kind: "sit", seatIndex: 2 });

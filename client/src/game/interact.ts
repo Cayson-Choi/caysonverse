@@ -25,6 +25,11 @@ export interface InteractTarget {
    * Which target wins when several are in reach: the higher number first, the nearer one among equals (default 0).
    */
   priority?: number;
+  /**
+   * The target beats a free seat unless that seat is nearer than this (m): the hall desk is asked from among its visitor
+   * chairs, and the chair's "앉기" only wins once you stand right at it.
+   */
+  beatsSeatBeyond?: number;
 }
 
 export type Interaction =
@@ -69,7 +74,9 @@ export function pickInteraction(i: InteractInput): Interaction | null {
       const np = nearest.priority ?? 0;
       if (cp > np || (cp === np && c.dist < nearest.dist)) nearest = c;
     }
-    if (nearest !== null && nearest.dist < bestDist) best = { kind: "target", target: nearest };
+    if (nearest !== null && (nearest.dist < bestDist || (i.seat !== null && nearest.beatsSeatBeyond !== undefined && bestDist >= nearest.beatsSeatBeyond))) {
+      best = { kind: "target", target: nearest };
+    }
   }
   return best;
 }

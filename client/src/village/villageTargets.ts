@@ -139,11 +139,11 @@ export function nearestCubbyColumn(x: number, z: number, columns: readonly Cubby
 export const GUIDE_TARGET_PREFIX = "guide:";
 export const GUIDE_SHORT = "문의";
 
-/** The guide of the player's area within `GUIDE_REACH_M` (2.2 m): "문의하기" opens its questions (GuideDialog). */
+/** The guide of the player's area within its reach (2.2 m; the hall desk 3.5 m): "문의하기" opens its questions (GuideDialog). */
 export function guideTarget(area: AreaId, x: number, z: number): InteractTarget | null {
   const near = nearestGuide(area, x, z);
   if (!near) return null;
-  return { kind: "object", id: `${GUIDE_TARGET_PREFIX}${near.guide.id}`, dist: near.dist, icon: "💬", label: GUIDE_ASK_LABEL, short: GUIDE_SHORT };
+  return { kind: "object", id: `${GUIDE_TARGET_PREFIX}${near.guide.id}`, dist: near.dist, icon: "💬", label: GUIDE_ASK_LABEL, short: GUIDE_SHORT, beatsSeatBeyond: 0.9 };
 }
 
 /**

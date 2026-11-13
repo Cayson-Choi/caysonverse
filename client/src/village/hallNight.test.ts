@@ -50,4 +50,33 @@ describe("hallNight — the hall's light follows the village's clock", () => {
     m.name = "M_lamp";
     expect(isSkylight(m)).toBe(false);
   });
+
+  it("a load that is overtaken by leaving the hall frees its files instead of hanging them on the uniforms; another tier swaps the map", async () => {
+    const made: Texture[] = [];
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const loader = {
+      loadAsync: async () => {
+        await gate;
+        const t = new Texture();
+        made.push(t);
+        return t as Texture<HTMLImageElement>;
+      },
+    };
+    const pending = loadHallNight("high", loader);
+    disposeHallNight(); // left while loading
+    release();
+    await pending;
+    expect(hallNightReady()).toBe(false);
+    expect(made).toHaveLength(2);
+
+    const plain = { loadAsync: async () => new Texture() as Texture<HTMLImageElement> };
+    await loadHallNight("low", plain);
+    const first = hallNightMapUniform.value;
+    await loadHallNight("low", plain); // same tier: nothing new
+    expect(hallNightMapUniform.value).toBe(first);
+    await loadHallNight("high", plain); // another tier: a new map
+    expect(hallNightMapUniform.value).not.toBe(first);
+    disposeHallNight();
+  });
 });
