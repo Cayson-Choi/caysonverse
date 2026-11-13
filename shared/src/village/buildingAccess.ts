@@ -89,15 +89,18 @@ export interface KeypadEntry {
   placeholderArea: "hall";
 }
 
+/** The pad stands on the porch (walkable deck), 0.65 m in front of the door, which is in the body's front wall (the porch depth in from the footprint edge). */
+export const KEYPAD_PAD_FROM_DOOR_M = 0.65;
+
 function keypadPad(house: SceneryHouse): Point2 {
   const halfX = house.size.x / 2;
   const halfZ = house.size.z / 2;
-  const offset = 0.65;
+  const offset = house.terrace - KEYPAD_PAD_FROM_DOOR_M;
   switch (house.doorSide) {
-    case "n": return { x: house.centre.x, z: house.centre.z - halfZ - offset };
-    case "s": return { x: house.centre.x, z: house.centre.z + halfZ + offset };
-    case "e": return { x: house.centre.x + halfX + offset, z: house.centre.z };
-    case "w": return { x: house.centre.x - halfX - offset, z: house.centre.z };
+    case "n": return { x: house.centre.x, z: house.centre.z - halfZ + offset };
+    case "s": return { x: house.centre.x, z: house.centre.z + halfZ - offset };
+    case "e": return { x: house.centre.x + halfX - offset, z: house.centre.z };
+    case "w": return { x: house.centre.x - halfX + offset, z: house.centre.z };
   }
 }
 

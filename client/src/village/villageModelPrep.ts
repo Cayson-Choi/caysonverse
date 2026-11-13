@@ -72,8 +72,8 @@ import type { DayNightState } from "./dayNightBlend";
  *  - Day and night (Task 7A, dayNightBlend.ts): every `LM_*` blends the day light map with the night one (`village_lm_night.webp`,
  *    the same UV set: the moon, and the lamps' and windows' pools) by one shared weight; the foliage's vertex light and
  *    the far hills, forest and falls take the time of day's tint; `M_window` and `M_lamp` (copies) glow warm and past
- *    white at night (the rich tier's bloom picks them up); the fountain's lights glow in the water. `M_glass` stays
- *    as it is: not emissive.
+ *    white at night (the rich tier's bloom picks them up); the fountain's lights glow in the water. `M_glass` is not emissive and goes
+ *    dark with the lit weight (`nightGlass`).
  *  - `M_moon` (the node `fountain_moon`, put in by scripts/patch-village-moon.mjs) is the fountain's crescent: unlit
  *    with normals and no light map; it gets the bake's own light on it as a smooth function of the normal (a probe) and
  *    the night bake's fountain lights, blended like the light maps, and a glaze (`moonMaterial`, `MOON_PROBE`).
@@ -429,6 +429,24 @@ void main() {`;
 const LIT_GLOW = /* glsl */ `#include <map_fragment>
 float villageGlowLuma = dot( diffuseColor.rgb, vec3( 0.2126, 0.7152, 0.0722 ) );
 diffuseColor.rgb = mix( diffuseColor.rgb, uVillageLitColor * ( 0.4 + 0.9 * villageGlowLuma ) * uVillageLitBoost, uVillageLit );`;
+
+const GLASS_PARS = /* glsl */ `uniform float uVillageLit;
+void main() {`;
+/** At night the unlit glass sheet would keep glowing with the day's sky sheen: it goes dark with the windows' lit weight. */
+const GLASS_NIGHT = /* glsl */ `#include <map_fragment>
+diffuseColor.rgb *= mix( 1.0, 0.1, uVillageLit );
+diffuseColor.a *= mix( 1.0, 0.55, uVillageLit );`;
+
+/** Dim the shared `M_glass` (windows, doors, shop glass) with the night, in place and idempotently (house review 2026-11-13). */
+export function nightGlass(m: Material): void {
+  const b = m as MeshBasicMaterial;
+  b.onBeforeCompile = (shader) => {
+    shader.uniforms.uVillageLit = litUniform;
+    shader.fragmentShader = shader.fragmentShader.replace("void main() {", GLASS_PARS).replace("#include <map_fragment>", GLASS_NIGHT);
+  };
+  b.customProgramCacheKey = () => "village-glass-night";
+  b.needsUpdate = true;
+}
 
 /** A copy of a window or lamp material that glows with `litUniform`. */
 export function litMaterial(source: Material, kind: keyof typeof LIT): MeshBasicMaterial {
@@ -899,6 +917,9 @@ export function prepareVillage(
     own.push(lit);
     swapMaterial(root, name, lit);
   }
+
+  const glassSource = found.get(MATERIAL.glass);
+  if (glassSource) nightGlass(glassSource);
 
   // The plots' outlines glow.
   const glowSource = found.get(MATERIAL.glowPlot) as MeshBasicMaterial | undefined;

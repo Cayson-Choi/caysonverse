@@ -101,9 +101,12 @@ export const SCENERY_SIZES = { house: { x: 11.2, z: 8.4 }, cafe: { x: 20, z: 15 
 
 /**
  * Café option 2 (2026-11-12 decision): 20 x 15 m, two floors. The open terrace in front of the door is walkable ground
- * (a 3 cm deck), so the café's solid box is the footprint minus this depth on the door side (`solidBox`).
+ * (a 3 cm deck), so the café's solid box is the footprint minus this depth on the door side (`solidBox`); the 0.45 m stone
+ * step under the façade stands inside the solid box (5.55 of the 6 m).
+ * The houses' 2.25 m porch is the same kind of walkable deck: the body's front wall stands 2.25 m inside the footprint edge,
+ * so the solid box is the body, and the porch's posts, rails, planters and bench have their own small `col__` boxes.
  */
-export const SCENERY_TERRACE = { house: 0, cafe: 6, kiosk: 0 } as const;
+export const SCENERY_TERRACE = { house: 2.25, cafe: 5.55, kiosk: 0.7 } as const;
 
 /**
  * A small colourful house, the café with striped awnings, or the café's timber flower kiosk, for the scenery.
@@ -118,7 +121,7 @@ export interface SceneryHouse {
   colour: HouseColour;
   /** The side the (closed) door is on; it faces the ring road. */
   doorSide: Side;
-  /** Depth (m) of the open, walkable terrace on the door side, inside the footprint: 0 for houses and the kiosk. */
+  /** Depth (m) of the open, walkable terrace (the houses' porch, the café's terrace) on the door side, inside the footprint: the kiosk's 0.7 m of paving in front of its flower shelf. */
   terrace: number;
 }
 
@@ -126,11 +129,12 @@ export interface SceneryHouse {
 export function solidBox(h: Pick<SceneryHouse, "centre" | "size" | "doorSide" | "terrace">): AABB {
   const b = boxAt(h.centre, h.size);
   const t = h.terrace;
+  const r2 = (v: number): number => Math.round(v * 100) / 100;     // the model's col__ boxes are written in centimetres
   switch (h.doorSide) {
-    case "n": return { ...b, minZ: b.minZ + t };
-    case "s": return { ...b, maxZ: b.maxZ - t };
-    case "e": return { ...b, maxX: b.maxX - t };
-    case "w": return { ...b, minX: b.minX + t };
+    case "n": return { ...b, minZ: r2(b.minZ + t) };
+    case "s": return { ...b, maxZ: r2(b.maxZ - t) };
+    case "e": return { ...b, maxX: r2(b.maxX - t) };
+    case "w": return { ...b, minX: r2(b.minX + t) };
   }
 }
 

@@ -353,8 +353,9 @@ describe("layout values (brief + rulings + owner changes)", () => {
     }
     for (const h of houses) expect(h.size, h.id).toEqual({ x: 11.2, z: 8.4 });
     expect(cafes[0].size).toEqual({ x: 20, z: 15 });
-    expect(cafes[0].terrace).toBe(6);
-    for (const h of L.sceneryHouses.filter((x) => x.kind !== "cafe")) expect(h.terrace, h.id).toBe(0);
+    expect(cafes[0].terrace).toBe(5.55);
+    for (const h of houses) expect(h.terrace, h.id).toBe(2.25);
+    expect(L.sceneryHouses.find((x) => x.kind === "kiosk")!.terrace).toBe(0.7);
   });
 
   it("backdrop: the waterfall back-left and the lake with a pavilion on the right, outside the walk bounds", () => {
@@ -644,10 +645,10 @@ describe("village colliders are built from the layout", () => {
 
   it("parked bus 9 x 2.5, scenery colliders match the layout footprints", () => {
     expect(box("bus")).toEqual(boxOf(L.busStop.bus));
-    // the café's solid box is its footprint minus the walkable terrace on the door (west) side (option 2: 20 x 15, terrace 6 m)
-    expect(box("cafe")).toEqual({ minX: 46.6, maxX: 60.6, minZ: -22.6, maxZ: -7.6 });
+    // the café's solid box is its footprint minus the walkable terrace on the door (west) side (option 2: 20 x 15, terrace 5.55 m)
+    expect(box("cafe")).toEqual({ minX: 46.15, maxX: 60.6, minZ: -22.6, maxZ: -7.6 });
     expect(box("cafe")).toEqual(solidBox(L.sceneryHouses.find((h) => h.kind === "cafe")!));
-    expect(box("house_3")).toEqual({ minX: 23.4, maxX: 34.6, minZ: 33.4, maxZ: 41.8 });
+    expect(box("house_3")).toEqual({ minX: 23.4, maxX: 34.6, minZ: 35.65, maxZ: 41.8 });   // the body; the 2.25 m porch in front is walkable
   });
 
   it("the creek is walled off over its whole length except the bridge gap: boxes follow the curve, water plus 3 m of bank each side", () => {
@@ -1350,7 +1351,7 @@ describe("export for the Blender scripts", () => {
     const pink = out.sceneryHouses.find((h) => h.id === "house_1")!;
     expect(pink).toMatchObject({ kind: "house", colour: "pink", doorSide: "s", bounds: { minX: 15.4, maxX: 26.6, minZ: -46.2, maxZ: -37.8 } });
     const cafe = out.sceneryHouses.find((h) => h.kind === "cafe")!;
-    expect(cafe).toMatchObject({ id: "cafe", doorSide: "w", colour: "wood", size: { x: 20, z: 15 }, terrace: 6, solid: { minX: 46.6, maxX: 60.6, minZ: -22.6, maxZ: -7.6 } });
+    expect(cafe).toMatchObject({ id: "cafe", doorSide: "w", colour: "wood", size: { x: 20, z: 15 }, terrace: 5.55, solid: { minX: 46.15, maxX: 60.6, minZ: -22.6, maxZ: -7.6 } });
   });
 
   it("memorial exterior has footprint, door pad, arrival and collider pieces; interior has room, ceiling, door side, pad, spawn, walls and blockers", () => {

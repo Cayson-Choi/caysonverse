@@ -558,7 +558,7 @@ describe("prepareVillage: the model dressed for the game", () => {
     expect(nodes.own).toContain(lamp);
     expect(materialOf(nodes.root, "village_glass")).toBe(f.mats.M_glass);
     expect(f.mats.M_glass.toneMapped).toBe(true);
-    expect(f.mats.M_glass.customProgramCacheKey()).not.toBe("village-lit");
+    expect(f.mats.M_glass.customProgramCacheKey()).toBe("village-glass-night"); // dark at night with the lit weight (review 2026-11-13)
     // The hook: map_fragment is followed by the glow, mixed by the shared lit weight.
     const compile = (m: MeshBasicMaterial) => {
       const shader = {

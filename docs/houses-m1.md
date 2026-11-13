@@ -41,3 +41,15 @@ npx tsx --tsconfig server/tsconfig.json scripts/check-school-glb.ts client/publi
 - 집 실내 GLB와 번호키 열기(`HOUSE_INTERIORS_OPEN=false` 그대로). 창 안쪽은 방 한 칸짜리 껍데기와 커튼이에요.
 - 좌석 표시를 읽어 앉기로 잇기. 카페 테라스 의자에는 충돌을 주지 않았어요(옆에서 다가가야 해서).
 - 추모관 안(`build_memorial.py`)은 다른 작업이라 건드리지 않았어요.
+
+
+## 2차 검토 반영 (2026-11-13)
+
+- **포치는 걸어갈 수 있는 판석 바닥**: `SCENERY_TERRACE.house = 2.25`, 집의 `col__house_*`는 몸체만(발자국 − 2.25 m). 포치의 난간·기둥·양옆 화단·벤치는 작은 `col__house_N_porch_k` 상자로 따로 있어요. 번호키 패드는 실제 문 앞 0.65 m(포치 위).
+- **카페** `SCENERY_TERRACE.cafe = 5.55`(돌 받침 0.45 m가 충돌 안), 테라스 의자 12개에 `col__cafe_terrace_chair_k`, 탁자·파라솔을 바깥쪽으로 옮기고 차양을 1.1 m로 줄였어요. **키오스크** `SCENERY_TERRACE.kiosk = 0.7`, 화단 2개는 따로 상자.
+- 앉기 표시 이름에 방향(`_face<n|s|e|w>`)을 넣고, 등받이 있는 의자는 `approach front`.
+- 박공 포치 지붕 경사 15도, 창대와 0.6 m 이상 띄움(assert). 10번 집 벤치는 문 옆, 가운데 기둥은 문짝과 안 겹침.
+- 벽 조각이 T자 이음 없이 이어지도록 꼭짓점을 맞춰(`wall_pieces`) 한 벽이 한 UV 섬이 되고, 라이트맵 조각보가 사라졌어요.
+- 밤 유리: `M_glass`가 창 불(`litUniform`)에 따라 어두워져요(`nightGlass`). 유리 알파도 낮춤.
+- 집마다: 벽등 2개, 번지판(7세그먼트), 우편함, 에어컨 실외기, 1번 장미 격자, 3번 2층 파티오창+쥘리엣 난간, 5번 유리 온실, 6번 장독, 9번 1층 뒤 큰 파티오창, 10번 화로대. 8번 노란 줄 제거. 화분 상자에 꽃을 더 심고 밝은 나무색으로.
+- 다른 작업 공간(caysonverse-village/art/village/tools)에 덮어썼던 내 스크립트를 백업 원본으로 되돌렸어요(추모관 쪽 파일은 그대로).
