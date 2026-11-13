@@ -8,7 +8,10 @@
  * `begin()` when a build starts (VillageModel), `done(token)` when it ends built or failed (a cancelled build says
  * nothing: a newer one has begun, or the village is going away). A later `begin` supersedes an earlier one
  * (StrictMode's replay, a tier change): only the newest build's end uncovers. The cover starts closed: the village is
- * not dressed before its first build has even begun (the model still loading). `expect()` (the veil, while it covers)
+ * not dressed before its first build has even begun (the model still loading). Once dressed it stays so while the
+ * player is indoors and back out (the vegetation is kept, vegPark.ts): only a new build covers again. `uncover()` when
+ * the kept vegetation dresses the village at once, or when the model fails to load (its fallback and notice must show,
+ * not the cover; `uncover` also makes a build still running end in nothing). `expect()` (the veil, while it covers)
  * and `begin()` arm a fail-safe: `FAIL_SAFE_MS` later it uncovers by itself, so a build that never ends (or never
  * starts: the model failed to load) cannot black out the village for good. `reset()` when the scene goes away.
  */
@@ -20,6 +23,8 @@ export interface VegDressing {
   begin(): number;
   done(token: number): void;
   expect(): void;
+  /** Uncover now: the village is dressed without a build (its kept vegetation), or its model failed to load. */
+  uncover(): void;
   reset(): void;
   subscribe(listener: () => void): () => void;
 }
@@ -67,6 +72,11 @@ export function createVegDressing(
     },
     done(t) {
       if (t !== token) return;
+      disarm();
+      set(true);
+    },
+    uncover() {
+      token++;
       disarm();
       set(true);
     },

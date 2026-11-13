@@ -68,4 +68,19 @@ describe("vegDressing", () => {
     t.advance(FAIL_SAFE_MS * 2);
     expect(d.dressed()).toBe(false);
   });
+
+  it("uncover: dressed at once (the kept vegetation, a failed model); an older build's end changes nothing", () => {
+    const t = fakeTimers();
+    const d = createVegDressing(t);
+    const building = d.begin();
+    d.uncover();
+    expect(d.dressed()).toBe(true);
+    d.done(building);
+    expect(d.dressed()).toBe(true);
+    t.advance(FAIL_SAFE_MS * 2);
+    expect(d.dressed()).toBe(true);
+    // a new build covers again
+    d.begin();
+    expect(d.dressed()).toBe(false);
+  });
 });

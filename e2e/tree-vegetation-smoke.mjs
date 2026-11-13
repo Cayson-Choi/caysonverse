@@ -10,6 +10,7 @@
  *  - 옛 평면 잎 카드가 남지 않았는지(잎 메시의 카드 삼각형, 인스턴스 잎 메시, 벚꽃은 떨어진 꽃잎만 남음), 광장 느티나무가 없어졌는지,
  *    뒷산 숲(inst__far_*)의 카드는 그대로 보이는지;
  *  - 새 메시들의 경계 구(bounding sphere)가 비어 있지 않은지(절두체 컬링으로 사라지는 일 없음);
+ *  - 나무 껍질(줄기·큰가지·곁가지)을 런타임으로 그리고 파일의 라이트맵 껍질은 그만큼 뺐는지(색이 끊기는 이음매 없음);
  *  - 가로수 밑에 카메라를 두면 그 나무가 가장 가까운 단계(3D 잎 가지)로 그려지는지.
  *
  *   서버  (server/)  PORT=<p> npx tsx src/index.ts
@@ -90,6 +91,8 @@ async function check(tag, device, graphics) {
     run.check("녹색 잎 카드 4700장 이상 숨김", s.hiddenCards.green >= 4700, s.hiddenCards);
     run.check("벚꽃 수관 카드 7500장 이상 숨김", s.hiddenCards.cherry >= 7500, s.hiddenCards);
     run.check("가로수·관목 인스턴스 잎 카드 숨김", ["inst__street_green_1", "inst__shrub_0"].every((n) => s.hiddenInstanced.includes(n)), s.hiddenInstanced);
+    // 나무 껍질은 땅에서 잔가지 끝까지 한 벌(런타임): 마을 파일의 라이트맵 껍질은 그 나무들만큼 잘라 내고, 인스턴스 나무의 껍질 메시는 숨긴다
+    run.check("나무 껍질을 런타임으로 그리고 파일의 같은 껍질은 뺐다", s.bark.meshes >= 10 && s.bark.bakedTris > 10000 && ["inst__street_green_0", "inst__street_cherry_0", "inst__orchard_0"].every((n) => s.hiddenInstanced.includes(n)), s.bark);
     run.check("가로 벚나무·과수원은 떨어진 꽃잎만", ["inst__street_cherry_1", "inst__orchard_1"].every((n) => s.petalInstanced.includes(n)), s.petalInstanced);
     run.check("광장 느티나무 껍질 삼각형을 걷어냈다", s.zelkovaBarkTris > 300, s.zelkovaBarkTris);
     // the meadow: its instanced patches and every grass card are 3D now (tufts, reeds, wild flowers), none left flat

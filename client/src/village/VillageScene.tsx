@@ -10,6 +10,8 @@ import { sendBusRide, startTransitSync, type TransitRoom, useTransitState } from
 import type { Identity } from "../stores/appStore";
 import { DoorFade } from "./DoorFade";
 import { VegVeil } from "./VegVeil";
+import { vegDressing } from "./vegDressing";
+import { vegetationPark } from "./veg/villageVegetation";
 import { doorFade } from "./doorFadeModel";
 import { useQualityTier } from "../game/QualityEffects";
 import { SceneWarmUp } from "../game/SceneWarmUp";
@@ -99,6 +101,9 @@ function PlainGround() {
   );
 }
 
+/** A failed village model: its cover lifts at once (the plain ground and the notice show, not "불러오는 중…"). */
+const uncoverVillage = () => vegDressing.uncover();
+
 /** What the local player's area draws: the village model and its signs and door pad, or the hall's room. */
 function VillageArea({ area, tier, pose }: { area: AreaId; tier: VillageTier; pose: Pose }) {
   if (area === "hall") return <HallArea pose={pose} />;
@@ -106,7 +111,7 @@ function VillageArea({ area, tier, pose }: { area: AreaId; tier: VillageTier; po
   return (
     <>
       {/* A failed download shows a plain ground and tries again, instead of the crash screen (final review m2). */}
-      <LoadBoundary fallback={<PlainGround />} onReset={clearVillageCaches} notice="마을 풍경을 불러오지 못했어요. 잠시 뒤 다시 불러올게요.">
+      <LoadBoundary fallback={<PlainGround />} onReset={clearVillageCaches} onFail={uncoverVillage} notice="마을 풍경을 불러오지 못했어요. 잠시 뒤 다시 불러올게요.">
         <Suspense fallback={null}>
           <VillageModel tier={tier} />
           <BusStopShelter />
@@ -247,6 +252,8 @@ export function VillageScene({ identity }: { identity: Identity }) {
   // (Task 7 review I1). On the light (phone) tier they go while the player is in the hall too, and load again on the
   // way out (final review I2: the village's textures are not resident next to the hall's).
   const holdFiles = holdsVillageFiles(tier, area);
+  // The village's built vegetation is kept while this scene is up (indoors too): freed one tick after it goes.
+  useEffect(() => vegetationPark.hold(), []);
   useEffect(() => (holdFiles ? holdVillageFiles() : undefined), [holdFiles]);
   if (!room) return null;
 

@@ -6,6 +6,7 @@ import {
   colonise,
   cross,
   crownConnection,
+  dressExposed,
   dot,
   envelopeRadius,
   isSkyGap,
@@ -253,10 +254,29 @@ export function growBroadleaf(sk: TreeSkeleton, o: BroadleafOptions = GREEN_GROW
   grown.forEach((t, i) => along(t, i, o.twigFrom, false));
   const skel = skeletonBranches(sk);
   skel.forEach((b, i) => along(b, -1 - i, i < sk.limbs.length ? o.limbFrom : o.sideFrom, true));
+  // no bare branch shows from outside the crown (a limb poking out with one spray at its tip): dress it
+  const placed: Vec3[] = leaves.map((l) => [l.x, l.y, l.z]);
+  const dress = exposedDressing(kind, o);
+  dressExposed([...skel, ...grown], placed, env, { ...dress, step: o.step }, (i, s, p, dir) => {
+    const n = leaves.length;
+    trySpray(p, dir, { twig: i < skel.length ? -1 - i : i - skel.length, s }, false, true);
+    return leaves.slice(n).map((l): Vec3 => [l.x, l.y, l.z]);
+  });
 
   const pruned = pruneTwigs(grown, hangs);
   for (const l of leaves) if (l.twig >= 0) l.twig = pruned.map[l.twig]!;
   return { kind, skeleton: sk, twigs: pruned.twigs, leaves, env, bounds: leafBounds(env, leaves, 0.5) };
+}
+
+/**
+ * How the crowns' bare stretches are found (crownGrowth.dressExposed and pokingRuns): a branch point is covered by a
+ * spray whose origin is within `reach` (about the spray's length), and hidden from outside by a cluster within `cover`
+ * of the line from the crown's centre out through it.
+ */
+export function exposedDressing(kind: LeafKind, o?: Pick<BroadleafOptions, "size">): { reach: number; cover: number } {
+  if (kind === "willow") return { reach: 0.3, cover: 0.45 };
+  const size = o?.size ?? (kind === "young" ? YOUNG_GROW.size : GREEN_GROW.size);
+  return { reach: 0.4 * size, cover: Math.max(0.25, 0.38 * size) };
 }
 
 function leafBounds(env: Envelope, leaves: readonly Leaf[], reach: number): LeafCrown["bounds"] {
@@ -368,6 +388,13 @@ export function growWillow(sk: TreeSkeleton, o: WillowOptions = WILLOW_GROW): Le
     const from = i < sk.limbs.length ? 0.45 : 0.3;
     for (let s = from * total; s < total; s += o.strandStep * 1.6 * (0.8 + 0.4 * rand())) strand(pointAt(b, s).p, -1 - i, s);
     strand(b.pts[b.pts.length - 1]!, -1 - i, total);
+  });
+  // no bare limb shows over or beside the dome: a strand hangs from every exposed stretch
+  const placed: Vec3[] = leaves.map((l) => [l.x, l.y, l.z]);
+  dressExposed(skel, placed, env, { ...exposedDressing("willow"), step: 0.3 }, (i, s, p) => {
+    const n = leaves.length;
+    strand(p, -1 - i, s);
+    return leaves.slice(n).map((l): Vec3 => [l.x, l.y, l.z]);
   });
   // the dome's branches carry leaves along their outer half too
   dome.forEach((t, i) => {

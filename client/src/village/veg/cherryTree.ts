@@ -7,6 +7,7 @@ import {
   colonise,
   crownConnection,
   dot,
+  dressExposed,
   envelopeRadius,
   isSkyGap,
   len,
@@ -210,6 +211,13 @@ export function growCherry(sk: CherrySkeleton, opts: GrowOptions = CHERRY_GROW):
   sk.limbs.forEach((l, i) => along(l, -1 - i, 0.8, opts.bunchStep * 1.2, dress));
   // every baked limb and side branch ends in blossom
   skel.forEach((b, i) => tryBunch(b.pts[b.pts.length - 1]!, { twig: -1 - i, s: polyLength(b) }, true));
+  // no bare limb shows from outside the crown with one bunch at its tip: blossom along every exposed stretch
+  const placed: Vec3[] = bunches.map((b) => [b.x, b.y, b.z]);
+  dressExposed([...skel, ...grown], placed, env, { ...cherryDressing(scale), step: opts.bunchStep * 1.2 }, (i, s, p) => {
+    const n = bunches.length;
+    tryBunch(p, { twig: i < skel.length ? -1 - i : i - skel.length, s }, true);
+    return bunches.slice(n).map((b): Vec3 => [b.x, b.y, b.z]);
+  });
 
   // no twig ends in empty air: cut each back to its last bunch (or child twig)
   const pruned = pruneTwigs(grown, hangs);
@@ -218,6 +226,11 @@ export function growCherry(sk: CherrySkeleton, opts: GrowOptions = CHERRY_GROW):
   let r = 0;
   for (const b of bunches) r = Math.max(r, Math.hypot(b.x - env.c[0], b.y - env.c[1], b.z - env.c[2]) + b.size);
   return { skeleton: sk, twigs: pruned.twigs, bunches, bounds: { x: env.c[0], y: env.c[1], z: env.c[2], r } };
+}
+
+/** How a blossom crown's bare stretches are found (crownGrowth.dressExposed): a bunch covers ~its radius. */
+export function cherryDressing(bunchScale = 1): { reach: number; cover: number } {
+  return { reach: 0.2 * bunchScale, cover: 0.35 * bunchScale };
 }
 
 /** The connection measures of a blossom crown (crownGrowth.crownConnection). */

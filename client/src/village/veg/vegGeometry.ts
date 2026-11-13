@@ -2,7 +2,6 @@ import { BufferGeometry, Float32BufferAttribute, Uint16BufferAttribute, Uint32Bu
 import { TUFT, linearHex } from "./flowerPlacement";
 import { mulberry32 } from "./vegRandom";
 import type { Vec3 } from "./vegLod";
-import type { Branch } from "./cherryTree";
 
 /**
  * The runtime vegetation's meshes (veg3d), built in code: no texture cards standing in for many plants. Every leaf,
@@ -581,13 +580,14 @@ const WILLOW: LeafColour[] = [
 ];
 
 /** Number of leaves in a broadleaf spray per level (0 full, 1 mid, 2 far). */
-export const SPRAY_LEAVES = [10, 5, 3] as const;
+export const SPRAY_LEAVES = [23, 6, 3] as const;
 
 /**
  * A broadleaf spray (instanced; its origin is the point of the twig it grows from): a short shoot along local +y
- * (0.31 m at scale 1) with nine alternate leaves and a terminal one, the blades facing local +z, folded along their
- * midribs and drooping toward the tip (level 0, 92 triangles). Level 1: five folded diamonds round the same shoot, no
- * stem (10 triangles); level 2: three larger ones (6 triangles). Wind grows from 0 at the origin to the leaf tips.
+ * (0.31 m at scale 1) with twelve alternate leaves, two short side shoots of five and a terminal leaf (6.5-9.5 cm at
+ * scale 1, a street tree's 8-11 cm), the blades facing local +z, folded along their midribs, drooping toward the tip
+ * (level 0). Level 1: six folded diamonds round the same shoot, no stem (12 triangles); level 2: three larger ones
+ * (6 triangles). Wind grows from 0 at the origin to the leaf tips.
  */
 export function leafSpray(level: 0 | 1 | 2, seed = 21): BufferGeometry {
   const b = new GeoBuilder();
@@ -597,28 +597,47 @@ export function leafSpray(level: 0 | 1 | 2, seed = 21): BufferGeometry {
   const shade = () => BROADLEAF[Math.floor(rand() * BROADLEAF.length)]!;
   const stemAt = (s: number): Vec3 => [0, s, 0.08 * s * s];
   if (level === 0) {
-    tube(b, [stemAt(0), stemAt(0.1), stemAt(0.21), stemAt(0.31)], [0.0055, 0.0042, 0.0032, 0.0022], 3, () => stem, (t) => t * 0.5);
-    for (let i = 0; i < 9; i++) {
-      const s = 0.04 + i * 0.032;
-      const side = i % 2 ? 1 : -1;
-      const th = ((24 + rand() * 24) * Math.PI) / 180;
-      const dir = norm([side * Math.cos(th), Math.sin(th), (rand() - 0.35) * 0.4]);
-      const length = 0.12 + 0.05 * Math.sin((i / 8) * Math.PI) + rand() * 0.02;
-      const up = norm([-side * (0.15 + rand() * 0.2), 0.12, 1]);
-      leaf(b, add(stemAt(s), [side * 0.005, 0, 0]), dir, up, length, length * 0.5, { fold: 0.3, droop: 0.24, detail: 1, colour: shade() });
+    // a leafy shoot as a real one is: leaves 7-10 cm (at the street trees' scale) alternating up the shoot and on two
+    // short side shoots, each turned its own way round the stem (not one flat fan of big leaves)
+    tube(b, [stemAt(0), stemAt(0.1), stemAt(0.21), stemAt(0.31)], [0.0045, 0.0036, 0.0028, 0.002], 3, () => stem, (t) => t * 0.5);
+    const shoot = (from: Vec3, d: Vec3, length: number, n: number, start: number) => {
+      for (let i = 0; i < n; i++) {
+        const s0 = start + (i / n) * (length - start);
+        const at = add(from, mul(d, s0));
+        const side = i % 2 ? 1 : -1;
+        const twist = (rand() - 0.5) * 0.9;
+        const th = ((28 + rand() * 26) * Math.PI) / 180;
+        const out = norm([side * Math.cos(th) * Math.cos(twist), Math.sin(th), Math.sin(twist) * 0.8 + (rand() - 0.4) * 0.3]);
+        const dir = norm(add(out, mul(d, 0.35)));
+        const l = 0.065 + 0.02 * Math.sin((i / Math.max(1, n - 1)) * Math.PI) + rand() * 0.012;
+        const up = norm([-side * (0.15 + rand() * 0.25), 0.12, 1]);
+        leaf(b, add(at, [side * 0.004, 0, 0]), dir, up, l, l * 0.5, { fold: 0.3, droop: 0.22, detail: 1, colour: shade() });
+      }
+    };
+    shoot([0, 0, 0], [0, 1, 0.08], 0.31, 12, 0.03);
+    for (const [s0, side] of [
+      [0.09, -1],
+      [0.17, 1],
+    ] as const) {
+      const from = stemAt(s0);
+      const d = norm([side * 0.75, 0.65, 0.12]);
+      const end = add(from, mul(d, 0.14));
+      tube(b, [from, end], [0.0026, 0.0016], 3, () => stem, (t) => 0.3 + t * 0.4);
+      shoot(from, d, 0.14, 5, 0.03);
     }
-    leaf(b, stemAt(0.31), norm([0, 1, 0.14]), [0, 0, 1], 0.17, 0.085, { fold: 0.3, droop: 0.2, detail: 1, colour: shade() });
+    leaf(b, stemAt(0.31), norm([0, 1, 0.14]), [0, 0, 1], 0.09, 0.045, { fold: 0.3, droop: 0.2, detail: 1, colour: shade() });
   } else if (level === 1) {
     for (const [s, side, l] of [
-      [0.07, -1, 0.19],
-      [0.12, 1, 0.2],
-      [0.19, -1, 0.2],
-      [0.24, 1, 0.19],
+      [0.05, -1, 0.15],
+      [0.1, 1, 0.16],
+      [0.15, -1, 0.16],
+      [0.2, 1, 0.16],
+      [0.25, -1, 0.15],
     ] as const) {
       const th = ((30 + rand() * 15) * Math.PI) / 180;
       leaf(b, stemAt(s), norm([side * Math.cos(th), Math.sin(th), 0.1]), norm([-side * 0.2, 0.1, 1]), l, l * 0.56, { fold: 0.32, droop: 0.2, detail: 0, colour: shade() });
     }
-    leaf(b, stemAt(0.28), norm([0, 1, 0.12]), [0, 0, 1], 0.2, 0.11, { fold: 0.3, droop: 0.18, detail: 0, colour: shade() });
+    leaf(b, stemAt(0.28), norm([0, 1, 0.12]), [0, 0, 1], 0.16, 0.09, { fold: 0.3, droop: 0.18, detail: 0, colour: shade() });
   } else {
     leaf(b, stemAt(0.08), norm([-0.8, 0.6, 0.1]), [0, 0, 1], 0.25, 0.15, { fold: 0.32, droop: 0.15, detail: 0, colour: shade() });
     leaf(b, stemAt(0.14), norm([0.8, 0.6, 0.1]), [0, 0, 1], 0.25, 0.15, { fold: 0.32, droop: 0.15, detail: 0, colour: shade() });
@@ -828,14 +847,7 @@ export function bunchSprite(scale = 1): BufferGeometry {
   return b.build();
 }
 
-/** Twig bark colours: the cherries' dark grey-brown, the broadleaf trees' and willows' paler grey-brown (their limbs). */
-export const TWIG_BARK = {
-  cherry: ["#4B3A33", "#6A574D"],
-  green: ["#6E5E4C", "#8E7C66"],
-  willow: ["#6F6447", "#8C8060"],
-} as const;
-
-/** How far (m) a phone's simplified twig may stray from the grown line (twigMesh). */
+/** How far (m) a phone's simplified twig may stray from the grown line (barkGeometry.simplifyTwig). */
 export const TWIG_SIMPLIFY_TOL = 0.01;
 
 /** Douglas-Peucker: the indices of the points of `pts` to keep so the line stays within `tol` (m) of the full one. */
@@ -870,24 +882,4 @@ export function simplifyLine(pts: readonly Vec3[], tol: number): number[] {
   const out: number[] = [];
   keep.forEach((k, i) => k && out.push(i));
   return out;
-}
-
-/** A tree's twigs as one mesh: 3-4 sided tubes in its bark colour, each vertex its light. */
-export function twigMesh(twigs: ReadonlyArray<{ branch: Branch; light: (p: Vec3, n: Vec3) => number }>, coarse = false, colours: readonly [string, string] = TWIG_BARK.cherry): BufferGeometry {
-  const b = new GeoBuilder();
-  const bark = rgba(colours[0], 0, 1);
-  const barkTop = rgba(colours[1], 0, 1);
-  for (const { branch, light } of twigs) {
-    const sides = !coarse && branch.radii[0]! > 0.012 ? 4 : 3;
-    let { pts, radii } = branch;
-    if (coarse && pts.length > 3) {
-      // phones: fewer rings, but the twig keeps its shape within 1 cm (a willow strand's hook, a bowed twig), so
-      // the leaves and blossoms placed on the full line stay on the drawn one
-      const keep = simplifyLine(pts, TWIG_SIMPLIFY_TOL);
-      pts = keep.map((i) => pts[i]!);
-      radii = keep.map((i) => radii[i]!);
-    }
-    tube(b, pts, radii, sides, (_t, ny) => mix(bark, barkTop, Math.max(0, ny)), () => 0, light);
-  }
-  return b.build();
 }

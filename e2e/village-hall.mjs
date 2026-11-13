@@ -1,6 +1,7 @@
 /**
  * e2e/village-hall.mjs — 추모관 안 (케이슨 마을 1단계 Task 9): 문으로 들어가서, 채워진 칸 앞에서 E로 가까이 보기 카드를 열고,
- * 촛불을 켜면 다른 사람(두 번째 탭)도 CandleLit을 받는지, 그리고 추모관 화면 세 장의 밝기(낮 기준)를 본다.
+ * 촛불을 켜면 다른 사람(두 번째 탭)도 CandleLit을 받는지, 추모관 화면 세 장의 밝기(낮 기준), 그리고 두 번 나갔다 들어와도
+ * 마을이 가림막 없이 바로 나무를 다 갖춘 채 보이는지(처음 지은 식생을 그대로 다시 씀)를 본다.
  *
  *   npm run dev   (다른 창에서)
  *   node e2e/village-hall.mjs [--out=<폴더>]
@@ -14,6 +15,7 @@ import { join } from "node:path";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { CLIENT_URL, DESKTOP, createRun, entryReady, launchBrowser, openPlayer, press, sleep, turnCameraTo, waitIdle, walkAndWait, walkTo } from "./lib/common.mjs";
 import { MEAN_MIN, P5_MIN, decodePng, lumaStats, passes } from "./luma-check.mjs";
+import { enterHall as enterHallAgain, leaveHall, outWithoutCover } from "./lib/village.mjs";
 
 const run = createRun("village-hall");
 const args = process.argv.slice(2);
@@ -296,6 +298,23 @@ try {
     run.check("the camera keeps its height (> 2.3 m) under the ceiling (<= 3.0 m)", cam.y > 2.3 && cam.y <= 3.0001, cam);
     run.check("the head sits low in the frame (NDC y < -0.4), not in the middle of it", cam.headNdcY < -0.4, cam);
     await run.shot(A, "hall-corner.png");
+  });
+
+  await run.step("out of the hall and back in, twice: the village comes back dressed at once, never covered", async () => {
+    // the vegetation grown on the first arrival is kept indoors (vegPark.ts): each way out dresses the new clone with
+    // it (its `attaches` counts them), with no rebuild and no cover (VegVeil) over the village
+    // (a dev build's StrictMode replays the effect: an attach can count twice there)
+    summary.exits = [];
+    let before = 0;
+    for (let k = 1; k <= 2; k++) {
+      const out = await outWithoutCover(A, leaveHall, before);
+      summary.exits.push(out);
+      run.check(`way out ${k}: the kept vegetation dressed the village (attached again, every tree)`, out.dressed && (out.veg?.attaches ?? 0) > before && out.veg.trees > 100, out);
+      before = out.veg?.attaches ?? before;
+      run.check(`way out ${k}: the cover never showed`, out.veil.covered === 0 && out.veil.samples > 20, out.veil);
+      await run.shot(A, `hall-exit-${k}.png`);
+      if (k === 1) await enterHallAgain(A);
+    }
   });
 
   await A.ctx.close();

@@ -1,4 +1,5 @@
 import {
+  Box3,
   BufferAttribute,
   BufferGeometry,
   Euler,
@@ -41,11 +42,14 @@ import { TriangleGrid, faceNormal, openEdges, type DrawnGap, type V3 } from "./d
 import { placeFlowers, SPECIES_COUNT, type Plant } from "./flowerPlacement";
 import { keepTriangles, readCards, type AttributeLike, type Card } from "./vegCards";
 import { makeBlossomAtlas } from "./vegAtlas";
-import { TWIG_BARK, blossomBunch, bunchSprite, bushGeometry, leafSpray, speciesMeshes, twigMesh, willowSpray } from "./vegGeometry";
+import { GeoBuilder, blossomBunch, bunchSprite, bushGeometry, leafSpray, speciesMeshes, willowSpray } from "./vegGeometry";
+import { BARK_STYLE, barkLight, barkTexture, simplifyTwig, skeletonBark, skeletonBarkInto, twigBark, type BarkPattern } from "./barkGeometry";
+import { bakedBarkIndex } from "./bakedBark";
 import { chooseLod, groupIntoCells, sphereDistance, VEG_TIERS, type Cell, type LodBands, type Vec3, type VegTierConfig } from "./vegLod";
 import { vegMaterial, vegTimeUniform } from "./vegMaterial";
 import { DAY_SUN_DIRECTION } from "../dayNightBlend";
 import type { VegMode } from "./vegMode";
+import { createVegPark } from "./vegPark";
 
 /**
  * 케이슨 마을's 3D vegetation (veg3d): real 3D flowers in the beds, and every tree and bush a player can come near
@@ -112,6 +116,8 @@ export interface VegStats {
   makingRoom: string[];
   /** The zelkova's bark triangles taken out. */
   zelkovaBarkTris: number;
+  /** The runtime bark (trunks, limbs, side branches): meshes, triangles drawn (instances counted), vertices; the file's light-mapped bark triangles cut out. */
+  bark: { meshes: number; tris: number; vertices: number; bakedTris: number };
   /** Instances drawn this frame per level: flowers [full, simple, thinned], trees per class [near, mid, far]. */
   levels: { flowers: [number, number, number]; cherry: [number, number, number]; green: [number, number, number]; willow: [number, number, number]; bush: [number, number, number] };
   /** Triangles and draw calls the vegetation draws this frame (in view). */
@@ -120,6 +126,8 @@ export interface VegStats {
   /** Twig meshes drawn this frame and their vertex total (memory). */
   twigMeshes: number;
   twigVertices: number;
+  /** Times this vegetation dressed a new village clone at once (back out of the hall or a house: no rebuild). */
+  attaches: number;
   /** Milliseconds of main-thread work the build took (in steps, the main thread handed back between them). */
   genMs: number;
   /** Milliseconds from the build's start to its end (the work, and the frames drawn in between). */
@@ -199,6 +207,33 @@ export function hideLegacyVegetationSources(root: Object3D): () => void {
     zelkova.restore();
     zelkovaTris.delete(root);
   };
+}
+
+/** A change to the village clone (VillageVegetation.edits): the mesh's key in the clone, its new index or visibility. */
+interface CloneEdit {
+  key: string;
+  index?: Uint32Array;
+  visible?: boolean;
+}
+
+/**
+ * Every object of a clone by a key that names the same object in every clone of the file: its name and its turn among
+ * those named so (made once per clone, before the vegetation adds anything to it).
+ */
+const keysByRoot = new WeakMap<Object3D, Map<Object3D, string>>();
+function cloneKeys(root: Object3D): Map<Object3D, string> {
+  let keys = keysByRoot.get(root);
+  if (keys) return keys;
+  const made = new Map<Object3D, string>();
+  const seen = new Map<string, number>();
+  root.traverse((o) => {
+    const n = seen.get(o.name) ?? 0;
+    seen.set(o.name, n + 1);
+    made.set(o, `${o.name}#${n}`);
+  });
+  keysByRoot.set(root, made);
+  keys = made;
+  return keys;
 }
 
 interface Batch {
@@ -425,14 +460,8 @@ function sphereOf(b: { x: number; y: number; z: number; r: number }, xf: Matrix4
   return s;
 }
 
-/** Light along a twig: darker inside the crown and underneath, a little brighter toward the sun. */
-function twigLight(c: Vec3, R: number, base = 0.35, span = 0.45) {
-  const sun = DAY_SUN_DIRECTION;
-  return (p: Vec3, n: Vec3) => {
-    const rho = Math.min(1, Math.hypot(p[0] - c[0], (p[1] - c[1]) * 1.4, p[2] - c[2]) / R);
-    return (base + span * rho) * (0.85 + 0.15 * Math.max(0, n[0] * sun[0] + n[1] * sun[1] + n[2] * sun[2]));
-  };
-}
+/** The bark's light of a tree (barkGeometry.barkLight): the same for its trunk, limbs and twigs. */
+const barkLightOf = (sk: TreeSkeleton) => barkLight(sk.crownC, sk.R, sk.base[1], DAY_SUN_DIRECTION as Vec3);
 
 /** The ten bushes' tints: a little hue variety (the leaves are tinted, the heart too). */
 const tintOf = (seed: number): number[] => {
@@ -468,10 +497,13 @@ export class VillageVegetation {
   private readonly sphere = new Sphere();
   private readonly statsData: VegStats;
   private dirtyFlowers = true;
-  /** Meshes of the village clone whose geometry was swapped for a copy without the old cards, and what they had. */
-  private readonly swapped: Array<{ mesh: Mesh; original: BufferGeometry }> = [];
-  private readonly hiddenInstanced: Array<{ mesh: InstancedMesh; visible: boolean }> = [];
-  private readonly reshown: Array<{ mesh: Mesh; visible: boolean }> = [];
+  /**
+   * What the vegetation changed in the village clone (a mesh's index swapped for one without the old cards or bark, a
+   * mesh hidden or shown), by the mesh's place in the clone: made again on another clone of the same file (`attach`).
+   */
+  private readonly edits: CloneEdit[] = [];
+  /** How to undo each change on the clone it is attached to (`detach`). */
+  private readonly undo: Array<() => void> = [];
   private readonly twigFar: number;
   /** The village clone the vegetation dresses (its bark, for measuring the connection on what is drawn). */
   private root: Object3D | null = null;
@@ -498,11 +530,13 @@ export class VillageVegetation {
       petalInstanced: [],
       makingRoom: [],
       zelkovaBarkTris: 0,
+      bark: { meshes: 0, tris: 0, vertices: 0, bakedTris: 0 },
       levels: { flowers: [0, 0, 0], cherry: [0, 0, 0], green: [0, 0, 0], willow: [0, 0, 0], bush: [0, 0, 0] },
       tris: 0,
       calls: 0,
       twigMeshes: 0,
       twigVertices: 0,
+      attaches: 0,
       genMs: 0,
       wallMs: 0,
       steps: {},
@@ -609,6 +643,9 @@ export class VillageVegetation {
       street_cherry: findInstanced(root, "inst__street_cherry_1"),
       orchard: findInstanced(root, "inst__orchard_1"),
       shrub: findInstanced(root, "inst__shrub_0"),
+      barkStreetGreen: findInstanced(root, "inst__street_green_0"),
+      barkStreetCherry: findInstanced(root, "inst__street_cherry_0"),
+      barkOrchard: findInstanced(root, "inst__orchard_0"),
     };
     const xfs = {
       street_green: inst.street_green ? instanceMatrices(inst.street_green) : [],
@@ -623,12 +660,20 @@ export class VillageVegetation {
     if (atlas) v.own.push(atlas);
     const bunchMat = vegMaterial({ name: "M_veg_blossom", map: atlas, alphaTest: 0.5, cherry: true, wind: 0.012, windFar: 25, ambient: 0.62, sky: 0.12, sun: 0.38, back: 0.6 });
     const spriteMat = vegMaterial({ name: "M_veg_blossom_far", map: atlas, alphaTest: 0.5, cherry: true, sprite: true, wind: 0.01, windFar: 25, ambient: 1, sky: 0, sun: 0, back: 0 });
-    const twigMat = vegMaterial({ name: "M_veg_twigs", wind: 0, windFar: 1, ambient: 0.55, sky: 0.2, sun: 0.45, back: 0.2 });
+    // the bark (trunk, limbs, side branches and twigs alike): one material per kind of bark, its texture drawn in code
+    const barkMats = {} as Record<BarkPattern, Material>;
+    for (const pattern of ["cherry", "plates", "willow", "smooth", "plum"] as const) {
+      const map = barkTexture(pattern);
+      const mat = vegMaterial({ name: `M_veg_bark_${pattern}`, map, wind: 0, windFar: 1, ambient: 0.55, sky: 0.2, sun: 0.45, back: 0.2 });
+      barkMats[pattern] = mat;
+      v.own.push(map, mat);
+    }
+    const barkMatOf = (sk: TreeSkeleton) => barkMats[BARK_STYLE[sk.kind].pattern];
     const leafMat = vegMaterial({ name: "M_veg_leaves", wind: 0.024, windFar: cfg.windFar ? 30 : 12, ambient: 0.44, sky: 0.2, sun: 0.42, back: 0.42 });
     const leafFarMat = vegMaterial({ name: "M_veg_leaves_far", wind: 0.01, windFar: 40, ambient: 0.54, sky: 0.18, sun: 0.38, back: 0.4 });
     const willowMat = vegMaterial({ name: "M_veg_willow", wind: 0.03, windFar: cfg.windFar ? 30 : 12, ambient: 0.54, sky: 0.2, sun: 0.4, back: 0.5 });
     const bushMat = vegMaterial({ name: "M_veg_bush", wind: 0.01, windFar: 20, ambient: 0.5, sky: 0.22, sun: 0.4, back: 0.35 });
-    v.own.push(bunchMat, spriteMat, twigMat, leafMat, leafFarMat, willowMat, bushMat);
+    v.own.push(bunchMat, spriteMat, leafMat, leafFarMat, willowMat, bushMat);
     const bunchGeo = blossomBunch();
     // the sprite takes the bunch's own matrix (scale size / 0.24): its quad is the bunch's size x SPRITE_K at scale 1
     const spriteGeo = bunchSprite(BUNCH_MESH_SIZE * SPRITE_K);
@@ -730,8 +775,8 @@ export class VillageVegetation {
       stats.trees[kind].clusters += n;
       return draw;
     };
-    const twigObject = (geo: BufferGeometry, xf: Matrix4 | null, name: string): Mesh => {
-      const m = new Mesh(geo, twigMat);
+    const twigObject = (geo: BufferGeometry, xf: Matrix4 | null, name: string, mat: Material): Mesh => {
+      const m = new Mesh(geo, mat);
       m.name = name;
       m.matrixAutoUpdate = false;
       if (xf) m.matrix.copy(xf);
@@ -740,12 +785,10 @@ export class VillageVegetation {
       v.group.add(m);
       return m;
     };
-    const twigGeo = (twigs: readonly Branch[], c: Vec3, R: number, colours: readonly [string, string]) => {
-      const geo = twigMesh(
-        twigs.map((branch) => ({ branch, light: twigLight(c, R) })),
-        low,
-        colours,
-      );
+    const twigGeo = (twigs: readonly Branch[], sk: TreeSkeleton) => {
+      // the orchard's small trees: their finest twigs a little thicker (4.5 mm, a plum's real twig), so they read as
+      // lines between the blossoms, not as dots
+      const geo = twigBark(twigs, BARK_STYLE[sk.kind], low, barkLightOf(sk), low ? simplifyTwig : undefined, sk.kind === "orchard" ? 0.0045 : 0);
       v.own.push(geo);
       stats.twigVertices += geo.getAttribute("position").count;
       return geo;
@@ -772,21 +815,21 @@ export class VillageVegetation {
     const drawBlossom = (crown: CherryCrown, kind: TreeKindStat, places: readonly Place[]) => {
       addConn(cherryConnection(crown));
       stats.bunches += crown.bunches.length * places.length;
-      const geo = twigGeo(crown.twigs, crown.skeleton.crownC, crown.skeleton.R, TWIG_BARK.cherry);
+      const geo = twigGeo(crown.twigs, crown.skeleton);
       stats.trees[kind].twigs += crown.twigs.length * places.length;
       for (const { xf, i } of places) {
         const d = addTree(`${kind}_${crown.skeleton.index}_${i}`, "blossom", kind, crown.bunches, bunchMatrix, bunchTint, crown.bounds, xf, ch);
-        d.twig = twigObject(geo, xf, `veg_twigs_${d.name}`);
+        d.twig = twigObject(geo, xf, `veg_twigs_${d.name}`, barkMatOf(crown.skeleton));
       }
     };
     const drawLeafy = (crown: LeafCrown, kind: TreeKindStat, places: readonly Place[]) => {
       addConn(leafConnection(crown));
       const cls: DrawClass = crown.kind === "willow" ? "willow" : "leaf";
-      const geo = twigGeo(crown.twigs, crown.env.c, crown.env.rx, crown.kind === "willow" ? TWIG_BARK.willow : TWIG_BARK.green);
+      const geo = twigGeo(crown.twigs, crown.skeleton);
       stats.trees[kind].twigs += crown.twigs.length * places.length;
       for (const { xf, i } of places) {
         const d = addTree(`${kind}_${crown.skeleton.index}_${i}`, cls, kind, crown.leaves, leafMatrix, leafTint, crown.bounds, xf, gr);
-        d.twig = twigObject(geo, xf, `veg_twigs_${d.name}`);
+        d.twig = twigObject(geo, xf, `veg_twigs_${d.name}`, barkMatOf(crown.skeleton));
       }
     };
     const f = focus?.() ?? [0, 0, 0];
@@ -914,8 +957,85 @@ export class VillageVegetation {
     stats.bushes = bushes.length;
     if (await step("bushes")) return v.abandon();
 
+    // ── the bark: every tree's trunk, limbs and side branches drawn here, in its twigs' bark (barkGeometry.ts) ──
+    // the trees placed one by one, merged per 40 m cell and kind of bark (culled by cell); the instanced variants as
+    // instanced meshes on the file's own instance matrices
+    const single = [...plaza, ...village, ...willows, ...young];
+    const cells = new Map<string, { builder: GeoBuilder; pattern: BarkPattern }>();
+    for (const sk of single) {
+      const pattern = BARK_STYLE[sk.kind].pattern;
+      const key = `${pattern}_${Math.floor(sk.base[0] / 40)}_${Math.floor(sk.base[2] / 40)}`;
+      let cell = cells.get(key);
+      if (!cell) cells.set(key, (cell = { builder: new GeoBuilder(), pattern }));
+      skeletonBarkInto(cell.builder, sk, low, barkLightOf(sk));
+    }
+    const barkMeshes: Mesh[] = [];
+    for (const [key, { builder, pattern }] of cells) {
+      const geo = builder.build();
+      const mesh = new Mesh(geo, barkMats[pattern]);
+      mesh.name = `veg_bark_${key}`;
+      barkMeshes.push(mesh);
+      v.own.push(geo);
+    }
+    for (const key of ["street_green", "street_cherry", "orchard"] as const) {
+      const list = xfs[key];
+      if (!list.length) continue;
+      const sk = variant[key];
+      const geo = skeletonBark(sk, low, barkLightOf(sk));
+      const mesh = new InstancedMesh(geo, barkMatOf(sk), list.length);
+      list.forEach((xf, i) => mesh.setMatrixAt(i, xf));
+      mesh.instanceMatrix.needsUpdate = true;
+      // culled by a sphere round every instance's whole tree (its origin and the geometry's reach from it)
+      if (!geo.boundingSphere) geo.computeBoundingSphere();
+      const reach = geo.boundingSphere!.center.length() + geo.boundingSphere!.radius;
+      const box = new Box3();
+      for (const xf of list) {
+        const c = new Vector3().setFromMatrixPosition(xf);
+        const r = reach * new Vector3().setFromMatrixScale(xf).x;
+        box.expandByPoint(c.clone().addScalar(r)).expandByPoint(c.clone().addScalar(-r));
+      }
+      const sphere = box.getBoundingSphere(new Sphere());
+      for (const xf of list) {
+        const d = new Vector3().setFromMatrixPosition(xf).distanceTo(sphere.center) + reach * new Vector3().setFromMatrixScale(xf).x;
+        sphere.radius = Math.max(sphere.radius, d + 0.01);
+      }
+      mesh.boundingSphere = sphere;
+      mesh.name = `veg_bark_${key}`;
+      barkMeshes.push(mesh);
+      v.own.push(geo, { dispose: () => mesh.dispose() });
+    }
+    for (const mesh of barkMeshes) {
+      mesh.matrixAutoUpdate = false;
+      mesh.userData[CLICK_PICK_KEY] = "ignore";
+      v.group.add(mesh);
+      const n = (mesh.geometry.index?.count ?? 0) / 3;
+      stats.bark.tris += n * ((mesh as InstancedMesh).isInstancedMesh ? (mesh as InstancedMesh).count : 1);
+      stats.bark.vertices += mesh.geometry.getAttribute("position").count;
+    }
+    stats.bark.meshes = barkMeshes.length;
+    if (await step("bark")) return v.abandon();
+
     // ── last: hide the old cards, all at once, now that the new vegetation is ready ──
     if (hide) {
+      // the file's own bark of the same trees goes (drawn twice it would fight): the light-mapped bark of the trees
+      // placed one by one, cut out triangle by triangle, and the instanced variants' bark meshes, hidden whole
+      const barkMeshesOfFile: Mesh[] = [];
+      root.traverse((o) => {
+        if (!isMesh(o) || (o as InstancedMesh).isInstancedMesh || !materialsOf(o).some((m) => m.name === "LM_bark")) return;
+        o.updateWorldMatrix(true, false);
+        if (o.matrixWorld.equals(new Matrix4())) barkMeshesOfFile.push(o);
+      });
+      for (const mesh of barkMeshesOfFile) {
+        const cut = bakedBarkIndex(mesh.geometry, single);
+        if (!cut) continue;
+        v.swapIndex(mesh, cut.index);
+        stats.bark.bakedTris += cut.dropped;
+      }
+      for (const mesh of [inst.barkStreetGreen, inst.barkStreetCherry, inst.barkOrchard]) {
+        if (!mesh) continue;
+        v.setVisible(mesh, false);
+        stats.hiddenInstanced.push(mesh.name);
+      }
       floraMeshes.forEach((mesh, mi) => {
         const drop = placed.replaced.filter((c) => cardMesh.get(c) === mi);
         if (drop.length) v.hideCards(mesh, drop);
@@ -933,13 +1053,12 @@ export class VillageVegetation {
         if (drop.length) v.hideCards(mesh, drop);
         stats.hiddenCards.cherry += drop.length;
         // the fallen petals on the ground stay
-        if ((mesh.geometry.index?.count ?? 0) > 0) v.show(mesh);
+        if ((mesh.geometry.index?.count ?? 0) > 0) v.setVisible(mesh, true);
       }
       // the instanced trees: the street greens' and the bushes' cards go; the cherries and orchards keep their petals
       for (const mesh of [inst.street_green, inst.shrub]) {
         if (!mesh) continue;
-        v.hiddenInstanced.push({ mesh, visible: mesh.visible });
-        mesh.visible = false;
+        v.setVisible(mesh, false);
         stats.hiddenInstanced.push(mesh.name);
       }
       for (const mesh of [inst.street_cherry, inst.orchard]) {
@@ -947,7 +1066,7 @@ export class VillageVegetation {
         const g = mesh.geometry;
         const canopy = readCards(g.getAttribute("position") as BufferAttribute, g.index ? (g.index.array as ArrayLike<number>) : null, null, null).filter((c) => c.h > 0.05);
         v.hideCards(mesh, canopy);
-        v.show(mesh);
+        v.setVisible(mesh, true);
         stats.petalInstanced.push(mesh.name);
         stats.hiddenCards.cherry += canopy.length;
       }
@@ -1026,6 +1145,14 @@ export class VillageVegetation {
         for (const xf of instanceMatrices(o as InstancedMesh)) addMesh(bark, o.geometry, xf, false);
       } else addMesh(bark, o.geometry, o.matrixWorld, false);
     });
+    // the runtime bark (trunks, limbs, side branches) too
+    this.group.traverse((o) => {
+      if (!isMesh(o) || !o.name.startsWith("veg_bark_")) return;
+      o.updateWorldMatrix(true, false);
+      if ((o as InstancedMesh).isInstancedMesh) {
+        for (const xf of instanceMatrices(o as InstancedMesh)) addMesh(bark, o.geometry, xf, true);
+      } else addMesh(bark, o.geometry, o.matrixWorld, true);
+    });
     const out: DrawnGap = { clusters: 0, maxGap: 0, over2cm: 0, over5cm: 0, byKind: {}, worst: null };
     const twigGrids = new Map<string, TriangleGrid>();
     for (const t of this.trees) {
@@ -1075,18 +1202,68 @@ export class VillageVegetation {
   /** Give `mesh` (a mesh of the village clone) a copy of its geometry without the cards' triangles. */
   private hideCards(mesh: Mesh, drop: readonly Card[]): void {
     const src = mesh.geometry;
-    const g = src.clone();
-    const index = keepTriangles(src.index ? (src.index.array as ArrayLike<number>) : null, src.getAttribute("position").count, drop);
-    g.setIndex(new BufferAttribute(index, 1));
-    mesh.geometry = g;
-    this.own.push(g);
-    this.swapped.push({ mesh, original: src });
+    this.swapIndex(mesh, keepTriangles(src.index ? (src.index.array as ArrayLike<number>) : null, src.getAttribute("position").count, drop));
   }
 
-  /** Show a mesh the arrival hid (VillageModel's hideLegacyVegetationSources), its old cards now cut out. */
-  private show(mesh: Mesh): void {
-    this.reshown.push({ mesh, visible: mesh.visible });
-    mesh.visible = true;
+  /** Give `mesh` (of the clone) a copy of its geometry with `index` (recorded: made again by `attach`). */
+  private swapIndex(mesh: Mesh, index: Uint32Array, record = true): void {
+    const original = mesh.geometry;
+    const copy = original.clone();
+    copy.setIndex(new BufferAttribute(index, 1));
+    mesh.geometry = copy;
+    this.undo.push(() => {
+      mesh.geometry = original;
+      copy.dispose();
+    });
+    if (record && this.root) this.edits.push({ key: cloneKeys(this.root).get(mesh)!, index });
+  }
+
+  /** Show or hide a mesh of the clone (recorded: made again by `attach`). */
+  private setVisible(mesh: Object3D, visible: boolean, record = true): void {
+    const was = mesh.visible;
+    mesh.visible = visible;
+    this.undo.push(() => {
+      mesh.visible = was;
+    });
+    if (record && this.root) this.edits.push({ key: cloneKeys(this.root).get(mesh)!, visible });
+  }
+
+  /**
+   * Give the village clone back everything the vegetation changed in it (its old cards and bark show again) and let go
+   * of it. The vegetation itself is kept: `attach` dresses another clone of the same file with it, at once (the
+   * player back out of the memorial hall or a house: no rebuild, no cover).
+   */
+  detach(): void {
+    for (let i = this.undo.length - 1; i >= 0; i--) this.undo[i]!();
+    this.undo.length = 0;
+    this.root = null;
+  }
+
+  /** Dress `root` (a fresh clone of the same village file) as the clone this was built on: the same cards and bark out. */
+  attach(root: Object3D): void {
+    if (this.root) this.detach();
+    this.root = root;
+    this.statsData.attaches++;
+    const byKey = new Map<string, Object3D>();
+    for (const [o, key] of cloneKeys(root)) byKey.set(key, o);
+    for (const e of this.edits) {
+      const o = byKey.get(e.key);
+      if (!o) continue;
+      if (e.index) this.swapIndex(o as Mesh, e.index, false);
+      if (e.visible !== undefined) this.setVisible(o, e.visible, false);
+    }
+  }
+
+  /**
+   * Free the vegetation's GPU buffers (its geometries and instance buffers), keeping their data: drawn again, they are
+   * uploaded again. For the phone tier while the vegetation waits indoors (the village's own files go too).
+   */
+  releaseGpu(): void {
+    this.group.traverse((o) => {
+      if (!isMesh(o)) return;
+      o.geometry.dispose();
+      if ((o as InstancedMesh).isInstancedMesh) (o as InstancedMesh).dispose();
+    });
   }
 
   /** A tree's instanced mesh for level 0 or 1, made the first time it is needed. */
@@ -1277,12 +1454,8 @@ export class VillageVegetation {
 
   dispose(): void {
     // the village clone gets its own geometry back (its old cards show again)
-    for (const { mesh, visible } of this.hiddenInstanced) mesh.visible = visible;
-    this.hiddenInstanced.length = 0;
-    for (const { mesh, visible } of this.reshown) mesh.visible = visible;
-    this.reshown.length = 0;
-    for (const { mesh, original } of this.swapped) mesh.geometry = original;
-    this.swapped.length = 0;
+    this.detach();
+    this.edits.length = 0;
     for (const r of this.own) r.dispose();
     this.own.length = 0;
   }
@@ -1293,3 +1466,6 @@ export function createVegetation(root: Object3D, tier: VillageTier, mode: VegMod
   if (mode === "old") return Promise.resolve(null);
   return VillageVegetation.build(root, tier, mode, cancelled, options);
 }
+
+/** The vegetation kept while the player is indoors (vegPark.ts): VillageModel parks and takes it, VillageScene holds it. */
+export const vegetationPark = createVegPark<VillageVegetation>();

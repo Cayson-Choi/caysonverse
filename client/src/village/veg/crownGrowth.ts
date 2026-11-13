@@ -419,3 +419,144 @@ export function crownConnection(skeleton: readonly Branch[], twigs: readonly Gro
   }
   return { clusters: clusters.length, twigs: twigs.length, maxGap, unattached, bareTips };
 }
+
+/** Below this (the y of the unit direction from the crown's centre) a branch point is on the crown's underside. */
+const UNDERSIDE = -0.35;
+/** Past this normalised radius a branch point is in the crown's outer shell. */
+const OUTER_SHELL = 0.82;
+
+/** A bare stretch of a branch on the crown's outside (crownGrowth.pokingRuns). */
+export interface PokingRun {
+  /** The branch (as `Attached.twig`: >= 0 a twig, < 0 the skeleton branch -1 - k) and the run's length (m). */
+  branch: number;
+  length: number;
+  /** Where the run ends (its outer end). */
+  at: Vec3;
+}
+
+/**
+ * Bare branch poking out of the crown (the owner, 2026-11-13: no limb may stick out of a crown with a leaf at its tip):
+ * every branch is sampled every 5 cm; a sample is bare when no cluster is within `reach` m of it, and on the outside
+ * when no cluster lies beyond it on the line from the crown's centre out through it (within `cover` m of that line):
+ * nothing hides it from a viewer outside the crown; in the crown's outer shell (normalised radius > 0.82) every bare
+ * point counts (seen from below or the side it stands against the sky). The crown's underside is left out: the limbs seen from under a
+ * tree are bare in a real one too. A run is a stretch of samples that are both. Returns every run of
+ * at least `min` m. Slow (every sample against every cluster): for the tests and checks only.
+ */
+export function pokingRuns(skeleton: readonly Branch[], twigs: readonly Branch[], clusters: readonly Vec3[], env: Envelope, reach: number, min = 0.25, cover = 0.45): PokingRun[] {
+  const cell = Math.max(0.2, reach);
+  const grid = new Map<string, Vec3[]>();
+  const key = (x: number, y: number, z: number) => `${Math.floor(x / cell)},${Math.floor(y / cell)},${Math.floor(z / cell)}`;
+  for (const c of clusters) {
+    const k = key(c[0], c[1], c[2]);
+    let list = grid.get(k);
+    if (!list) grid.set(k, (list = []));
+    list.push(c);
+  }
+  const bare = (p: Vec3) => {
+    const i0 = Math.floor(p[0] / cell);
+    const j0 = Math.floor(p[1] / cell);
+    const k0 = Math.floor(p[2] / cell);
+    for (let i = -1; i <= 1; i++)
+      for (let j = -1; j <= 1; j++)
+        for (let k = -1; k <= 1; k++)
+          for (const c of grid.get(`${i0 + i},${j0 + j},${k0 + k}`) ?? []) if (Math.hypot(c[0] - p[0], c[1] - p[1], c[2] - p[2]) <= reach) return false;
+    return true;
+  };
+  const outside = (p: Vec3) => {
+    const u = norm(sub(p, env.c));
+    // the crown's underside (limbs seen from under the tree against the sky) may be bare, as a real tree's is
+    if (u[1] < UNDERSIDE) return false;
+    // in the crown's outer shell a bare stretch shows against the sky from below or the side whatever lies beyond it
+    if (envelopeRadius(env, p) > OUTER_SHELL) return true;
+    for (const c of clusters) {
+      const d = sub(c, p);
+      const t = dot(d, u);
+      if (t > 0 && dot(d, d) - t * t < cover * cover) return false;
+    }
+    return true;
+  };
+  const out: PokingRun[] = [];
+  const scan = (b: Branch, id: number) => {
+    const total = polyLength(b);
+    let run = 0;
+    let last: Vec3 = b.pts[0]!;
+    const flush = () => {
+      if (run >= min) out.push({ branch: id, length: run, at: last });
+      run = 0;
+    };
+    for (let s = 0; s <= total + 1e-9; s += 0.05) {
+      const p = pointAt(b, Math.min(s, total)).p;
+      if (bare(p) && outside(p)) {
+        run += 0.05;
+        last = p;
+      } else flush();
+    }
+    flush();
+  };
+  skeleton.forEach((b, i) => scan(b, -1 - i));
+  twigs.forEach((b, i) => scan(b, i));
+  return out;
+}
+
+/**
+ * Dress the bare stretches of `branches` that show from outside the crown (as `pokingRuns` sees them): each branch is
+ * walked from its tip in, `step` m at a time, and where a point is bare (no cluster within `reach`) and on the outside
+ * (no cluster beyond it within `cover` of the line from the crown's centre), `place` hangs foliage there and returns
+ * the clusters it added (none: the point stays bare, e.g. a house's keep-out). `clusters` is added to in place.
+ */
+export function dressExposed(
+  branches: readonly Branch[],
+  clusters: Vec3[],
+  env: Envelope,
+  o: { reach: number; cover: number; step: number },
+  place: (branch: number, s: number, p: Vec3, dir: Vec3) => Vec3[],
+): number {
+  const cell = Math.max(0.2, o.reach);
+  const grid = new Map<number, Vec3[]>();
+  const key = (i: number, j: number, k: number) => ((i + 4096) * 8192 + (j + 4096)) * 8192 + (k + 4096);
+  const put = (c: Vec3) => {
+    const k = key(Math.floor(c[0] / cell), Math.floor(c[1] / cell), Math.floor(c[2] / cell));
+    let list = grid.get(k);
+    if (!list) grid.set(k, (list = []));
+    list.push(c);
+  };
+  clusters.forEach(put);
+  const bare = (p: Vec3) => {
+    const i0 = Math.floor(p[0] / cell);
+    const j0 = Math.floor(p[1] / cell);
+    const k0 = Math.floor(p[2] / cell);
+    for (let i = -1; i <= 1; i++)
+      for (let j = -1; j <= 1; j++)
+        for (let k = -1; k <= 1; k++)
+          for (const c of grid.get(key(i0 + i, j0 + j, k0 + k)) ?? []) if ((c[0] - p[0]) ** 2 + (c[1] - p[1]) ** 2 + (c[2] - p[2]) ** 2 <= o.reach * o.reach) return false;
+    return true;
+  };
+  const outside = (p: Vec3) => {
+    const u = norm(sub(p, env.c));
+    // the crown's underside (limbs seen from under the tree against the sky) may be bare, as a real tree's is
+    if (u[1] < UNDERSIDE) return false;
+    // in the crown's outer shell a bare stretch shows against the sky from below or the side whatever lies beyond it
+    if (envelopeRadius(env, p) > OUTER_SHELL) return true;
+    for (const c of clusters) {
+      const d = sub(c, p);
+      const t = dot(d, u);
+      if (t > 0 && dot(d, d) - t * t < o.cover * o.cover) return false;
+    }
+    return true;
+  };
+  let added = 0;
+  branches.forEach((b, i) => {
+    const total = polyLength(b);
+    for (let s = total; s >= 0; s -= o.step) {
+      const at = pointAt(b, s);
+      if (!bare(at.p) || !outside(at.p)) continue;
+      for (const c of place(i, s, at.p, at.dir)) {
+        clusters.push(c);
+        put(c);
+        added++;
+      }
+    }
+  });
+  return added;
+}

@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { TriangleGrid, closestOnTriangle, faceNormal, openEdges, type V3 } from "./drawnGap";
-import { simplifyLine, twigMesh, TWIG_SIMPLIFY_TOL } from "./vegGeometry";
+import { simplifyLine, TWIG_SIMPLIFY_TOL } from "./vegGeometry";
+import { BARK_STYLE, simplifyTwig, twigBark } from "./barkGeometry";
 import type { Branch } from "./treeSkeleton";
 
 /** The triangles of a twig mesh into a grid (vertex normals as the outward side). */
-function gridOf(geo: ReturnType<typeof twigMesh>): TriangleGrid {
+function gridOf(geo: ReturnType<typeof twigBark>): TriangleGrid {
   const grid = new TriangleGrid(0.1);
   const pos = geo.getAttribute("position");
   const nrm = geo.getAttribute("normal");
@@ -63,7 +64,7 @@ describe("TriangleGrid.gap", () => {
 
 describe("TriangleGrid.gap on an open tube (the twigs, the file's limbs: no end caps)", () => {
   // the reviewer's case (2026-11-13): a twig (0,0,0) -> (0,1,0); points on its axis past either end were 0 (inside)
-  const grid = gridOf(twigMesh([{ branch: { pts: [[0, 0, 0], [0, 0.5, 0], [0, 1, 0]], radii: [0.012, 0.01, 0.008] }, light: () => 1 }]));
+  const grid = gridOf(twigBark([{ pts: [[0, 0, 0], [0, 0.5, 0], [0, 1, 0]], radii: [0.012, 0.01, 0.008] }], BARK_STYLE.cherry, false, () => 1));
   it("measures a point past the open end by its distance to the rim", () => {
     for (const y of [1.05, 1.2, 1.4]) expect(grid.gap([0, y, 0], 1)).toBeGreaterThan(y - 1 - 1e-6);
     for (const y of [-0.2, -0.4]) expect(grid.gap([0, y, 0], 1)).toBeGreaterThan(-y - 1e-6);
@@ -95,7 +96,7 @@ describe("twig simplification (phones)", () => {
   it("every point of the grown strand (where leaves hang) stays on the phone's drawn twig", () => {
     const strand = hookedStrand();
     for (const coarse of [false, true]) {
-      const grid = gridOf(twigMesh([{ branch: strand, light: () => 1 }], coarse));
+      const grid = gridOf(twigBark([strand], BARK_STYLE.willow, coarse, () => 1, coarse ? simplifyTwig : undefined));
       // along the full line, every 2 cm: the gap to the drawn tube (0 inside it)
       let worst = 0;
       for (let i = 1; i < strand.pts.length; i++) {

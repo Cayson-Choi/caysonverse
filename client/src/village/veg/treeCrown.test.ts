@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { crownConnection, distToPolyline, envelopeRadius, polyLength, pruneTwigs, skeletonBranches, type GrownTwig } from "./crownGrowth";
-import { GREEN_GROW, YOUNG_GROW, broadleafEnvelope, growBroadleaf, growWillow, leafConnection, type LeafCrown } from "./treeCrown";
-import { cherryConnection, growCherry } from "./cherryTree";
+import { crownConnection, distToPolyline, envelopeRadius, pokingRuns, polyLength, pruneTwigs, skeletonBranches, type Envelope, type GrownTwig } from "./crownGrowth";
+import { GREEN_GROW, YOUNG_GROW, broadleafEnvelope, exposedDressing, growBroadleaf, growWillow, leafConnection, type LeafCrown } from "./treeCrown";
+import { CHERRY_GROW, cherryConnection, cherryDressing, crownEnvelope, growCherry } from "./cherryTree";
 import { PLAZA_CHERRY_SPECS, VARIANT_SPECS, VILLAGE_TREE_SPECS, WILLOW_SPECS, YOUNG_SPECS, treeSkeleton, type Branch } from "./treeSkeleton";
 import type { Vec3 } from "./vegLod";
 
@@ -134,5 +134,32 @@ describe("pruneTwigs and crownConnection", () => {
     expect(conn.maxGap).toBeCloseTo(0.08, 6);
     expect(conn.unattached).toBe(1);
     expect(conn.bareTips).toBe(1); // the twig's tip (1, 1) has nothing within reach
+  });
+});
+
+describe("no bare branch pokes out of a crown (the owner, 2026-11-13)", () => {
+  const cases: Array<[string, Branch[], Branch[], Vec3[], Envelope, { reach: number; cover: number }]> = [];
+  for (const [label, c] of crowns) cases.push([label, skeletonBranches(c.skeleton), c.twigs, c.leaves.map((l): Vec3 => [l.x, l.y, l.z]), c.env, exposedDressing(c.kind)]);
+  for (const [label, sk, opts, scale] of [
+    ["plaza cherry", treeSkeleton(PLAZA_CHERRY_SPECS[2]!), CHERRY_GROW, 1],
+    ["street cherry", treeSkeleton(VARIANT_SPECS.street_cherry), { attractors: 400, bunchStep: 0.08, dressBranches: true }, 1],
+    ["orchard", treeSkeleton(VARIANT_SPECS.orchard), { attractors: 240, bunchStep: 0.045, bunchScale: 0.7, headroom: { r: 1.0, y: 2.0 }, dressBranches: true }, 0.7],
+  ] as const) {
+    const c = growCherry(sk, opts);
+    cases.push([label, skeletonBranches(sk), c.twigs, c.bunches.map((b): Vec3 => [b.x, b.y, b.z]), crownEnvelope(sk), cherryDressing(scale)]);
+  }
+  for (const [label, skel, twigs, clusters, env, d] of cases) {
+    it(`${label}: no bare stretch of 25 cm or more shows from outside`, () => {
+      expect(pokingRuns(skel, twigs, clusters, env, d.reach, 0.25, d.cover)).toEqual([]);
+    });
+  }
+
+  it("finds a limb poking bare out of a crown", () => {
+    const env: Envelope = { c: [0, 0, 0], rx: 1, up: 1, down: 1 };
+    const limb: Branch = { pts: [[0, 0, 0], [2, 0, 0]], radii: [0.05, 0.02] };
+    const clusters: Vec3[] = [[0.5, 0.2, 0], [0.6, -0.1, 0.2], [2, 0, 0]]; // inside, and one at the tip
+    const runs = pokingRuns([limb], [], clusters, env, 0.3, 0.25, 0.4);
+    expect(runs.length).toBe(1);
+    expect(runs[0]!.length).toBeGreaterThan(0.6);
   });
 });
