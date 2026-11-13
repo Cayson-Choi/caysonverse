@@ -101,63 +101,97 @@ export function VillageModel({ tier }: { tier: VillageTier }) {
   // (vegPark.ts), no cover and no rebuild.
   const [veg, setVeg] = useState<VillageVegetation | null>(null);
   useLayoutEffect(() => {
-    let cancelled = false;
+    // live: this clone's build; carried: the clone went away first and the build goes on (vegPark.ts); dead: stop it
+    let state: "live" | "carried" | "dead" = "live";
+    let stopped = false; // a carried build the park stopped (the scene went away, or another tier wants its own)
+    let building: Promise<VillageVegetation | null> | null = null;
+    let letGo: (() => void) | null = null;
     let built: VillageVegetation | null = null;
     const mode = vegModeFrom(window.location.search, import.meta.env.DEV);
     const restoreLegacy = mode === "new" ? hideLegacyVegetationSources(nodes.root) : () => {};
+    const dress = (v: VillageVegetation) => {
+      built = v;
+      setVeg(v);
+    };
     // back from the hall or a house: the vegetation built on the first arrival dresses this clone at once (vegPark.ts)
     const kept = mode === "old" ? null : vegetationPark.take(tier, mode);
     if (kept) {
       kept.attach(nodes.root);
-      built = kept;
-      setVeg(kept);
+      dress(kept);
       vegDressing.uncover();
-    } else {
+    } else if (mode !== "old") {
+      // the first arrival's build, still going (the player went in early and came straight back out): this clone is
+      // dressed with it the moment it is done, under the cover
       const dressing = vegDressing.begin();
-      void createVegetation(nodes.root, tier, mode, () => cancelled, {
-        sliceMs: () => (vegDressing.dressed() ? 12 : 50),
-        // the trees nearest the camera grow first, and each shows as soon as it is grown
-        focus: () => {
-          const p = getThree().camera.position;
-          return [p.x, p.y, p.z];
-        },
-        onShow: (v) => {
-          if (!cancelled) setVeg(v);
-        },
-      })
-        .catch((e: unknown) => {
+      letGo = vegetationPark.adopt(tier, mode, (v) => {
+        letGo = null;
+        if (state !== "live") {
+          // this clone went away first: keep it for the next one
+          if (v) vegetationPark.park(v, tier, mode);
+          return;
+        }
+        vegDressing.done(dressing);
+        if (!v) {
+          restoreLegacy();
+          return;
+        }
+        v.attach(nodes.root);
+        dress(v);
+      });
+      if (!letGo) {
+        building = createVegetation(nodes.root, tier, mode, () => state === "dead" || stopped, {
+          // while carried (the player indoors) it works in short slices: the room they are in stays smooth
+          sliceMs: () => (state === "live" && !vegDressing.dressed() ? 50 : 12),
+          // the trees nearest the camera grow first, and each shows as soon as it is grown
+          focus: () => {
+            const p = getThree().camera.position;
+            return [p.x, p.y, p.z];
+          },
+          onShow: (v) => {
+            if (state === "live") setVeg(v);
+          },
+        }).catch((e: unknown) => {
           // never left covered by a build that failed: the village shows without its 3D vegetation
           console.error("[veg3d] build failed", e);
           return null;
-        })
-        .then((v) => {
-          if (!cancelled) vegDressing.done(dressing);
-          if (!v) {
-            // a cancelled build: the cleanup gave the old foliage back already, and a newer effect (StrictMode's replay,
-            // a tier change) may have hidden it again since: leave that alone
-            if (!cancelled) restoreLegacy();
-            return;
-          }
-          if (cancelled) v.dispose();
-          else {
-            built = v;
-            setVeg(v);
-          }
         });
+        void building.then((v) => {
+          if (state !== "live") return; // carried (vegPark.ts takes it from here) or stopped
+          building = null;
+          vegDressing.done(dressing);
+          if (v) dress(v);
+          else restoreLegacy();
+        });
+      }
     }
     if (import.meta.env.DEV) {
       window.__cvVeg = () => built?.stats() ?? null;
       window.__cvVegDrawn = () => built?.measureDrawn() ?? null;
     }
     return () => {
-      cancelled = true;
       if (import.meta.env.DEV) {
         delete window.__cvVeg;
         delete window.__cvVegDrawn;
       }
-      // kept for the way back out (given back to this clone first); the scene frees it when it goes (vegPark.ts)
-      if (built && mode !== "old") vegetationPark.park(built, tier, mode);
-      else built?.dispose();
+      if (built) {
+        state = "dead";
+        // kept for the way back out (given back to this clone first); the scene frees it when it goes (vegPark.ts)
+        if (mode !== "old") vegetationPark.park(built, tier, mode);
+        else built.dispose();
+      } else {
+        // not dressed yet: the way back out is covered until it is (no bare village, no empty frame)
+        vegDressing.cover();
+        if (building) {
+          // the build goes on without this clone, and is parked (or adopted) once done
+          state = "carried";
+          vegetationPark.carry(building, tier, mode, () => {
+            stopped = true;
+          });
+        } else {
+          state = "dead";
+          letGo?.();
+        }
+      }
       restoreLegacy();
       setVeg(null);
     };

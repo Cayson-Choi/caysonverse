@@ -45,7 +45,7 @@ describe("vegDressing", () => {
     expect(calls).toBe(1);
   });
 
-  it("uncovers by itself when a build never ends, or never begins", () => {
+  it("uncovers by itself when a build never ends", () => {
     const t = fakeTimers();
     const d = createVegDressing(t);
     d.begin();
@@ -53,11 +53,29 @@ describe("vegDressing", () => {
     expect(d.dressed()).toBe(false);
     t.advance(1);
     expect(d.dressed()).toBe(true);
+  });
 
-    const e = createVegDressing(t);
-    e.expect();
-    t.advance(FAIL_SAFE_MS);
-    expect(e.dressed()).toBe(true);
+  it("never lifts by itself while the model is still loading (no build yet): no open-empty-shut flicker", () => {
+    const t = fakeTimers();
+    const d = createVegDressing(t);
+    t.advance(FAIL_SAFE_MS * 3); // a slow line: the model takes 36 s
+    expect(d.dressed()).toBe(false);
+    let calls = 0;
+    d.subscribe(() => calls++);
+    const b = d.begin(); // the model is in: the build starts, still covered (no change)
+    expect(calls).toBe(0);
+    d.done(b);
+    expect(d.dressed()).toBe(true);
+    expect(calls).toBe(1);
+  });
+
+  it("cover: gone indoors before dressed, covered and the fail-safe off", () => {
+    const t = fakeTimers();
+    const d = createVegDressing(t);
+    d.begin();
+    d.cover();
+    t.advance(FAIL_SAFE_MS * 2);
+    expect(d.dressed()).toBe(false);
   });
 
   it("a finished build disarms the fail-safe, and reset covers", () => {

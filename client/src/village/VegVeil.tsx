@@ -15,11 +15,8 @@ export function VegVeil({ active }: { active: boolean }) {
   const ready = useSyncExternalStore(vegDressing.subscribe, dressed, dressed);
   useEffect(() => () => vegDressing.reset(), []);
   const on = active && !ready;
-  useEffect(() => {
-    if (on) vegDressing.expect();
-  }, [on]);
   // inside (the hall, a house) the village's vegetation is kept (vegPark.ts): coming back out it is dressed at once,
-  // no cover (a new build, e.g. after the first one was cut short by going in, covers again: vegDressing.begin)
+  // no cover. Gone in before it was dressed, its build goes on and the way back out is covered until it is done.
   return (
     <div
       className="cv-veg-veil"

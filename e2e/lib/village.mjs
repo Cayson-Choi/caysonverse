@@ -96,7 +96,7 @@ export async function outWithoutCover(p, leave, before) {
   const veil = await veilSeen(p);
   const veg = await p.page.evaluate(() => {
     const s = window.__cvVeg?.();
-    return s ? { attaches: s.attaches, trees: Object.values(s.trees).reduce((a, k) => a + k.trees, 0) } : null;
+    return s ? { attaches: s.attaches, trees: Object.values(s.trees).reduce((a, k) => a + k.trees, 0), cloneEdits: s.cloneEdits } : null;
   });
   return { dressed, veil, veg };
 }
@@ -559,6 +559,7 @@ export async function runVillageScenario({ name, device }) {
       const out = await outWithoutCover(A, leaveHall, before);
       summary.hallExit = out;
       run.check("back out: the kept vegetation dressed the village again (no rebuild)", out.dressed && (out.veg?.attaches ?? 0) > before && out.veg.trees > 100, out);
+      run.check("back out: every change to the new clone made again (old cards and baked bark cut, instanced bark hidden)", (out.veg?.cloneEdits?.total ?? 0) > 3 && out.veg.cloneEdits.inEffect === out.veg.cloneEdits.total, out.veg?.cloneEdits);
       run.check("back out: the cover (VegVeil) never showed", out.veil.covered === 0 && out.veil.samples > 20, out.veil);
       await leaveHall(B);
       const at = await pos(A);

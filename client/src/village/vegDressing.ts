@@ -22,7 +22,8 @@ export interface VegDressing {
   dressed(): boolean;
   begin(): number;
   done(token: number): void;
-  expect(): void;
+  /** Covered again (and the fail-safe off): the village went away before it was dressed. */
+  cover(): void;
   /** Uncover now: the village is dressed without a build (its kept vegetation), or its model failed to load. */
   uncover(): void;
   reset(): void;
@@ -67,8 +68,9 @@ export function createVegDressing(
       set(false);
       return token;
     },
-    expect() {
-      if (!dressed && safe === null) arm();
+    cover() {
+      disarm();
+      set(false);
     },
     done(t) {
       if (t !== token) return;

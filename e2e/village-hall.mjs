@@ -310,6 +310,7 @@ try {
       const out = await outWithoutCover(A, leaveHall, before);
       summary.exits.push(out);
       run.check(`way out ${k}: the kept vegetation dressed the village (attached again, every tree)`, out.dressed && (out.veg?.attaches ?? 0) > before && out.veg.trees > 100, out);
+      run.check(`way out ${k}: every change to the new clone made again (old cards and baked bark cut, instanced bark hidden)`, (out.veg?.cloneEdits?.total ?? 0) > 3 && out.veg.cloneEdits.inEffect === out.veg.cloneEdits.total, out.veg?.cloneEdits);
       before = out.veg?.attaches ?? before;
       run.check(`way out ${k}: the cover never showed`, out.veil.covered === 0 && out.veil.samples > 20, out.veil);
       await run.shot(A, `hall-exit-${k}.png`);

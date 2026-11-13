@@ -94,4 +94,81 @@ describe("vegPark: the vegetation kept while indoors", () => {
     expect(v.log).not.toContain("dispose");
     expect(park.take("high", "new")).toBe(v);
   });
+
+  it("carries a build its clone left early, and parks it once done", async () => {
+    const t = fakeTimers();
+    const park = createVegPark<V>(t);
+    const release = park.hold();
+    let finish!: (v: V | null) => void;
+    let stopped = false;
+    park.carry(new Promise((r) => (finish = r)), "high", "new", () => (stopped = true));
+    expect(park.carrying()).toBe(true);
+    expect(park.take("high", "new")).toBeNull();
+    const v = veg();
+    finish(v);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(stopped).toBe(false);
+    expect(park.carrying()).toBe(false);
+    expect(park.take("high", "new")).toBe(v);
+    release();
+  });
+
+  it("a clone back out before the carried build ends adopts it (no second build)", async () => {
+    const park = createVegPark<V>(fakeTimers());
+    const release = park.hold();
+    let finish!: (v: V | null) => void;
+    park.carry(new Promise((r) => (finish = r)), "low", "new", () => {});
+    const got: Array<V | null> = [];
+    const letGo = park.adopt("low", "new", (v) => got.push(v));
+    expect(letGo).not.toBeNull();
+    const v = veg();
+    finish(v);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(got).toEqual([v]);
+    expect(park.peek()).toBeNull(); // handed over, not parked
+    release();
+  });
+
+  it("let go of again (the clone went in once more): parked when done", async () => {
+    const park = createVegPark<V>(fakeTimers());
+    const release = park.hold();
+    let finish!: (v: V | null) => void;
+    park.carry(new Promise((r) => (finish = r)), "high", "new", () => {});
+    const got: Array<V | null> = [];
+    park.adopt("high", "new", (v) => got.push(v))!();
+    const v = veg();
+    finish(v);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(got).toEqual([]);
+    expect(park.peek()).toBe(v);
+    release();
+  });
+
+  it("another tier stops the carried build; the scene going away stops it too", async () => {
+    const t = fakeTimers();
+    const park = createVegPark<V>(t);
+    let release = park.hold();
+    let stopped = 0;
+    let finish!: (v: V | null) => void;
+    park.carry(new Promise((r) => (finish = r)), "high", "new", () => stopped++);
+    expect(park.adopt("low", "new", () => {})).toBeNull();
+    expect(stopped).toBe(1);
+    const late = veg();
+    finish(late);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(late.log).toContain("dispose");
+    expect(park.peek()).toBeNull();
+
+    park.carry(new Promise(() => {}), "high", "new", () => stopped++);
+    release();
+    t.flush();
+    expect(stopped).toBe(2);
+    expect(park.carrying()).toBe(false);
+    release = park.hold();
+    release();
+  });
 });

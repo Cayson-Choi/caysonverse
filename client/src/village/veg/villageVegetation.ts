@@ -128,6 +128,11 @@ export interface VegStats {
   twigVertices: number;
   /** Times this vegetation dressed a new village clone at once (back out of the hall or a house: no rebuild). */
   attaches: number;
+  /**
+   * The changes this vegetation makes to the village clone (its old cards and the baked bark cut out, the instanced
+   * bark hidden) and how many of them are in effect on the clone it dresses now: equal after every `attach` (e2e).
+   */
+  cloneEdits: { total: number; inEffect: number };
   /** Milliseconds of main-thread work the build took (in steps, the main thread handed back between them). */
   genMs: number;
   /** Milliseconds from the build's start to its end (the work, and the frames drawn in between). */
@@ -537,6 +542,7 @@ export class VillageVegetation {
       twigMeshes: 0,
       twigVertices: 0,
       attaches: 0,
+      cloneEdits: { total: 0, inEffect: 0 },
       genMs: 0,
       wallMs: 0,
       steps: {},
@@ -1449,7 +1455,21 @@ export class VillageVegetation {
   }
 
   stats(): VegStats {
-    return structuredClone(this.statsData);
+    const out = structuredClone(this.statsData);
+    let inEffect = 0;
+    if (this.root) {
+      const byKey = new Map<string, Object3D>();
+      for (const [o, key] of cloneKeys(this.root)) byKey.set(key, o);
+      for (const e of this.edits) {
+        const o = byKey.get(e.key);
+        if (!o) continue;
+        const indexOk = !e.index || (o as Mesh).geometry?.index?.array === e.index;
+        const visibleOk = e.visible === undefined || o.visible === e.visible;
+        if (indexOk && visibleOk) inEffect++;
+      }
+    }
+    out.cloneEdits = { total: this.edits.length, inEffect };
+    return out;
   }
 
   dispose(): void {
