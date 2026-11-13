@@ -14,7 +14,7 @@ const h = vi.hoisted(() => {
   let currentRoom: unknown = null;
   return {
     reconnect: vi.fn(),
-    joinRoom: vi.fn(),
+    joinVillageRoom: vi.fn(),
     waitForSelf: vi.fn(),
     getRoom: () => currentRoom,
     setRoom: (r: unknown) => {
@@ -30,14 +30,13 @@ vi.mock("./connection", () => ({
   client: { reconnect: h.reconnect },
   getRoom: h.getRoom,
   setRoom: h.setRoom,
-  joinRoom: h.joinRoom,
+  joinVillageRoom: h.joinVillageRoom,
   waitForSelf: h.waitForSelf,
 }));
 
 vi.mock("./backoff", () => ({ reconnectBackoffMs: () => [0, 0, 0, 0] }));
 
 import { attachResilience } from "./resilience";
-import { rememberAdminCode, forgetAdminCode, getAdminCode } from "./adminSession";
 import { useAppStore } from "../stores/appStore";
 import { DEFAULT_APPEARANCE } from "@caysonverse/shared/appearance";
 
@@ -61,6 +60,7 @@ interface FakeRoom {
   reconnectionToken: string;
   reconnection: { enabled: boolean };
   onLeave: (cb: (code: number) => void) => void;
+  onMessage: (type: string, cb: (message: never) => void) => () => void;
   fireLeave: (code: number) => void;
   state: unknown;
 }
@@ -72,6 +72,7 @@ function fakeRoom(sessionId: string): FakeRoom {
     reconnectionToken: `tok-${sessionId}`,
     reconnection: { enabled: true },
     onLeave: (cb) => void cbs.push(cb),
+    onMessage: () => () => undefined, // the village clock / candles listen on every armed room
     fireLeave: (code) => cbs.slice().forEach((cb) => cb(code)),
     state: {},
   };
@@ -99,25 +100,23 @@ beforeEach(() => {
   vi.stubGlobal("sessionStorage", memStorage());
   vi.stubGlobal("localStorage", memStorage());
   h.reconnect.mockReset();
-  h.joinRoom.mockReset();
+  h.joinVillageRoom.mockReset();
   h.waitForSelf.mockReset();
   h.resetRoom();
-  forgetAdminCode();
   useAppStore.setState({
-    screen: "world",
+    screen: "village",
     identity: { nickname: "u", appearance: DEFAULT_APPEARANCE, sessionId: "R0" },
-    isAdmin: false,
     notice: null,
     reconnecting: false,
     connectionEpoch: 0,
   });
 });
 
-describe("F4 — a drop during the confirm wait must not strand a zombie world", () => {
+describe("F4 — a drop during the confirm wait must not strand a zombie village", () => {
   it("adopts+arms the room BEFORE waitForSelf, and retries when it closes mid-wait", async () => {
     const roomA = fakeRoom("A"); // first fresh join, drops again during waitForSelf
     const roomB = fakeRoom("B"); // the retry that succeeds
-    h.joinRoom.mockResolvedValueOnce(roomA).mockResolvedValueOnce(roomB);
+    h.joinVillageRoom.mockResolvedValueOnce(roomA).mockResolvedValueOnce(roomB);
     // waitForSelf never resolves for A (we abort it via the mid-wait close);
     // resolves immediately for B.
     h.waitForSelf.mockImplementation((r: FakeRoom) =>
@@ -134,12 +133,12 @@ describe("F4 — a drop during the confirm wait must not strand a zombie world",
     await flush();
 
     // Recovered on the retry rather than stranding: B is adopted, overlay cleared.
-    expect(h.joinRoom).toHaveBeenCalledTimes(2);
+    expect(h.joinVillageRoom).toHaveBeenCalledTimes(2);
     expect(h.getRoom()).toBe(roomB);
     const s = useAppStore.getState();
     expect(s.reconnecting).toBe(false);
     expect(s.connectionEpoch).toBe(1);
-    expect(s.screen).toBe("world"); // never fell back to entry
+    expect(s.screen).toBe("village"); // never fell back to entry
   });
 });
 
@@ -147,15 +146,15 @@ describe("fresh re-join carries this tab's appearance (character stage 3)", () =
   it("joins with the in-memory nickname + appearance, never the pre-builder character/tint", async () => {
     const look = { ...DEFAULT_APPEARANCE, top: 3, topColor: 5, voice: 1 };
     useAppStore.setState({ identity: { nickname: "케이슨", appearance: look, sessionId: "R0" } });
-    h.joinRoom.mockResolvedValueOnce(fakeRoom("A"));
+    h.joinVillageRoom.mockResolvedValueOnce(fakeRoom("A"));
     h.waitForSelf.mockResolvedValue(undefined);
 
     dropInitialRoom(); // no token → straight to Phase-2 fresh join
     await flush();
 
-    expect(h.joinRoom).toHaveBeenCalledTimes(1);
+    expect(h.joinVillageRoom).toHaveBeenCalledTimes(1);
     // Exactly nickname + appearance: no sessionId, no pre-builder character/tint.
-    expect(h.joinRoom.mock.calls[0][0]).toEqual({ nickname: "케이슨", appearance: look });
+    expect(h.joinVillageRoom.mock.calls[0][0]).toEqual({ nickname: "케이슨", appearance: look });
   });
 
   it("ignores a different look another tab's builder saved to localStorage meanwhile", async () => {
@@ -164,15 +163,15 @@ describe("fresh re-join carries this tab's appearance (character stage 3)", () =
     useAppStore.setState({ identity: { nickname: "케이슨", appearance: mine, sessionId: "R0" } });
     // Another tab entered later with another look and nickname: the shared cache now holds THAT one.
     localStorage.setItem("cv.entry", JSON.stringify({ nickname: "다른탭", appearance: otherTab }));
-    h.joinRoom.mockResolvedValueOnce(fakeRoom("A"));
+    h.joinVillageRoom.mockResolvedValueOnce(fakeRoom("A"));
     h.waitForSelf.mockResolvedValue(undefined);
 
     dropInitialRoom();
     await flush();
 
-    expect(h.joinRoom).toHaveBeenCalledTimes(1);
-    expect(h.joinRoom.mock.calls[0][0]).toEqual({ nickname: "케이슨", appearance: mine });
-    // The rejoined world still shows the look this tab entered with.
+    expect(h.joinVillageRoom).toHaveBeenCalledTimes(1);
+    expect(h.joinVillageRoom.mock.calls[0][0]).toEqual({ nickname: "케이슨", appearance: mine });
+    // The rejoined village still shows the look this tab entered with.
     expect(useAppStore.getState().identity?.appearance).toEqual(mine);
   });
 
@@ -180,57 +179,14 @@ describe("fresh re-join carries this tab's appearance (character stage 3)", () =
     const cached = { ...DEFAULT_APPEARANCE, shoes: 3, voice: 1 };
     useAppStore.setState({ identity: null });
     localStorage.setItem("cv.entry", JSON.stringify({ nickname: "캐시", appearance: cached }));
-    h.joinRoom.mockResolvedValueOnce(fakeRoom("A"));
+    h.joinVillageRoom.mockResolvedValueOnce(fakeRoom("A"));
     h.waitForSelf.mockResolvedValue(undefined);
 
     dropInitialRoom();
     await flush();
 
-    expect(h.joinRoom).toHaveBeenCalledTimes(1);
-    expect(h.joinRoom.mock.calls[0][0]).toEqual({ nickname: "캐시", appearance: cached });
-  });
-});
-
-describe("F5 — admin status is reconciled with what the server actually granted", () => {
-  it("re-sends the module-memory admin code on a fresh rejoin and stays admin", async () => {
-    useAppStore.setState({ isAdmin: true });
-    rememberAdminCode("secret");
-    const roomA = fakeRoom("A");
-    h.joinRoom.mockResolvedValueOnce(roomA);
-    h.waitForSelf.mockResolvedValue(undefined);
-
-    dropInitialRoom();
-    await flush();
-
-    // The code was re-sent, and a successful admin join keeps isAdmin true.
-    expect(h.joinRoom).toHaveBeenCalledWith(
-      expect.objectContaining({ adminCode: "secret" }),
-    );
-    expect(useAppStore.getState().isAdmin).toBe(true);
-    expect(useAppStore.getState().screen).toBe("world");
-  });
-
-  it("falls back to a normal-user join when the resent code is rejected (recovery preserved)", async () => {
-    useAppStore.setState({ isAdmin: true });
-    rememberAdminCode("stale");
-    const roomB = fakeRoom("B");
-    // Admin join rejected deterministically (server restarted w/ different code),
-    // then the non-admin retry succeeds.
-    h.joinRoom
-      .mockRejectedValueOnce(new Error("관리자 코드가 올바르지 않습니다")) // 관리자 코드가 올바르지 않습니다
-      .mockResolvedValueOnce(roomB);
-    h.waitForSelf.mockResolvedValue(undefined);
-
-    dropInitialRoom();
-    await flush();
-
-    expect(h.joinRoom).toHaveBeenCalledTimes(2);
-    // Second attempt carries NO admin code.
-    expect(h.joinRoom.mock.calls[1][0]).not.toHaveProperty("adminCode");
-    // Demoted to a normal user, but still connected (no entry fallback).
-    expect(useAppStore.getState().isAdmin).toBe(false);
-    expect(useAppStore.getState().screen).toBe("world");
-    expect(getAdminCode()).toBeNull(); // the bad code was forgotten
+    expect(h.joinVillageRoom).toHaveBeenCalledTimes(1);
+    expect(h.joinVillageRoom.mock.calls[0][0]).toEqual({ nickname: "캐시", appearance: cached });
   });
 });
 
@@ -238,12 +194,12 @@ describe("D2 — deterministic rejections surface the real reason immediately", 
   it("does NOT retry a server-authored (Hangul) rejection and shows it verbatim", async () => {
     // denySet kick in the lost-kick-close race: every attempt is refused with the same
     // Korean reason. It must terminate on the FIRST attempt, not after ~31s.
-    h.joinRoom.mockRejectedValue(new Error("입장이 제한되었습니다")); // 입장이 제한되었습니다
+    h.joinVillageRoom.mockRejectedValue(new Error("입장이 제한되었습니다")); // 입장이 제한되었습니다
 
     dropInitialRoom();
     await flush();
 
-    expect(h.joinRoom).toHaveBeenCalledTimes(1); // no backoff hammering
+    expect(h.joinVillageRoom).toHaveBeenCalledTimes(1); // no backoff hammering
     const s = useAppStore.getState();
     expect(s.screen).toBe("entry");
     expect(s.notice).toBe("입장이 제한되었습니다"); // 입장이 제한되었습니다 (the real reason)
@@ -251,7 +207,7 @@ describe("D2 — deterministic rejections surface the real reason immediately", 
 
   it("keeps retrying a transient/network failure through the backoff", async () => {
     const roomC = fakeRoom("C");
-    h.joinRoom
+    h.joinVillageRoom
       .mockRejectedValueOnce(new TypeError("fetch failed")) // transient
       .mockResolvedValueOnce(roomC);
     h.waitForSelf.mockResolvedValue(undefined);
@@ -259,7 +215,7 @@ describe("D2 — deterministic rejections surface the real reason immediately", 
     dropInitialRoom();
     await flush();
 
-    expect(h.joinRoom).toHaveBeenCalledTimes(2); // retried, then recovered
-    expect(useAppStore.getState().screen).toBe("world");
+    expect(h.joinVillageRoom).toHaveBeenCalledTimes(2); // retried, then recovered
+    expect(useAppStore.getState().screen).toBe("village");
   });
 });

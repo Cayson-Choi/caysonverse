@@ -5,7 +5,7 @@ import {
   applyPreset,
 } from "@caysonverse/shared/appearance";
 import { RUN_SPEED } from "@caysonverse/shared/constants";
-import { SEATS } from "@caysonverse/shared/worldMap";
+import { VILLAGE_SEATS as SEATS } from "@caysonverse/shared/village/benchSeats";
 import {
   addRemote,
   removeRemote,
@@ -22,7 +22,7 @@ import { advancePlayout, createPlayout } from "./playout";
 import { sample } from "./interpolation";
 import { createSeatMotion, stepSeatMotion } from "./remoteSeat";
 import { collectObstacles } from "./playerObstacles";
-import { LEGACY_ACTIVE_MAP, setActiveMap } from "./activeMap";
+import { VILLAGE_ACTIVE_MAP, setActiveMap } from "./activeMap";
 
 function rec(sessionId: string, over: Partial<RemotePlayerRecord> = {}): RemotePlayerRecord {
   return {
@@ -31,7 +31,6 @@ function rec(sessionId: string, over: Partial<RemotePlayerRecord> = {}): RemoteP
     appearance: { ...DEFAULT_APPEARANCE },
     connected: true,
     seatIndex: -1,
-    role: 0,
     snapshots: [],
     playout: createPlayout(),
     ...over,
@@ -86,22 +85,6 @@ describe("remoteStore roster + resync rebuild dedup", () => {
   });
 });
 
-describe("remoteStore role", () => {
-  beforeEach(() => clearRemotes());
-
-  it("keeps the synced role on the record and in getRemotes()", () => {
-    addRemote(rec("student"));
-    addRemote(rec("teacher", { role: 1 }));
-
-    expect(getRemoteRecord("student")?.role).toBe(0);
-    expect(getRemoteRecord("teacher")?.role).toBe(1);
-
-    const remotes = getRemotes();
-    expect(remotes.find((r) => r.sessionId === "student")?.role).toBe(0);
-    expect(remotes.find((r) => r.sessionId === "teacher")?.role).toBe(1);
-  });
-});
-
 describe("remoteStore appearance", () => {
   beforeEach(() => clearRemotes());
 
@@ -142,7 +125,7 @@ describe("remoteStore — the solid body is the one on screen (fix: collision on
   });
 
   it("a running remote blocks where it is drawn, not a playout lag ahead of it on empty floor", () => {
-    setActiveMap(LEGACY_ACTIVE_MAP);
+    setActiveMap(VILLAGE_ACTIVE_MAP);
     addRemote(rec("runner"));
     const record = getRemoteRecord("runner")!;
     receiveRemotePose("runner", 0, 0, 0, 0, Math.PI / 2);

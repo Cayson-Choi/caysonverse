@@ -15,7 +15,6 @@
  * so one Esc closes the whole dialogue / overlay even while you are typing in it.
  */
 
-import { useNpcStore } from "../stores/npcStore";
 import { useUiStore } from "../stores/uiStore";
 import { topOverlay } from "../ui/overlayStack";
 import { resolveEscape } from "./hotkeys";
@@ -59,12 +58,11 @@ export function blurTextEntry(el: FocusLike | null | undefined): boolean {
 }
 
 /**
- * Open the menu. It sits on top of everything, so the roster and the 조교 dialogue are
- * closed as it opens (the ☰ button and Esc both come through here) — they would only
- * hide behind the dimmed backdrop and be waiting when the menu closes.
+ * Open the menu. It sits on top of everything, so the roster is closed as it opens (the ☰ button
+ * and Esc both come through here) — it would only hide behind the dimmed backdrop and be waiting
+ * when the menu closes.
  */
 export function openMenu(): void {
-  if (useNpcStore.getState().activeNpc !== null) useNpcStore.getState().closePanel();
   const ui = useUiStore.getState();
   ui.setRosterOpen(false);
   ui.setMenuOpen(true);
@@ -73,16 +71,12 @@ export function openMenu(): void {
 /** Run one Esc press. */
 export function handleEscape(): void {
   const overlay = topOverlay();
-  const npcOpen = useNpcStore.getState().activeNpc !== null;
-  if (!npcOpen && overlay === null && blurTextEntry(document.activeElement as FocusLike | null)) return;
+  if (overlay === null && blurTextEntry(document.activeElement as FocusLike | null)) return;
 
   const ui = useUiStore.getState();
-  switch (resolveEscape({ overlayOpen: overlay !== null, npcOpen, rosterOpen: ui.rosterOpen, menuOpen: ui.menuOpen })) {
+  switch (resolveEscape({ overlayOpen: overlay !== null, rosterOpen: ui.rosterOpen, menuOpen: ui.menuOpen })) {
     case "closeOverlay":
       overlay?.close();
-      break;
-    case "closeNpc":
-      useNpcStore.getState().closePanel();
       break;
     case "closeRoster":
       ui.setRosterOpen(false);

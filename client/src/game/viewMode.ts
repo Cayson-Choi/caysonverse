@@ -84,7 +84,7 @@ const AT_MIN_EPS = 1e-6;
  * 1/`duration` per second. Linear here (the eye-easing is applied at read time by
  * `easeBlend`) so a mid-blend reversal — flip the target — CONTINUES from the
  * current value instead of restarting or snapping. Clamped to [0,1]; a large
- * `dt` (tab refocus) can't overshoot. Mirrors mazeCamera.stepMazeCapEngage.
+ * `dt` (tab refocus) can't overshoot. Mirrors indoorCamera.stepCapEngage.
  */
 export function stepBlend(current: number, target: number, dt: number, duration = BLEND_SEC): number {
   const step = duration > 0 ? dt / duration : 1;

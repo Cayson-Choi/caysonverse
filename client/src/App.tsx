@@ -2,10 +2,6 @@ import { useEffect } from "react";
 import { useAppStore } from "./stores/appStore";
 import { EntryScreen } from "./ui/EntryScreen";
 import { VillageScene } from "./village/VillageScene";
-import { WorldScene } from "./game/WorldScene";
-import { HubScene } from "./game/HubScene";
-import { EscapeScene } from "./escape/EscapeScene";
-import { LoadingTransition } from "./escape/ui/LoadingTransition";
 import { ReconnectingOverlay } from "./ui/ReconnectingOverlay";
 import { AppErrorBoundary } from "./ui/AppErrorBoundary";
 
@@ -27,45 +23,30 @@ function useCanvasContextMenuSuppression() {
 
 /**
  * Top-level screen router. `screen` and `identity` are UI state (zustand), not
- * per-frame data. Entry -> (join success) -> village (the default 입장하기) or the
- * world (`?world=legacy`); an unexpected room leave is handled by the resilience
- * driver (reconnect behind the overlay, or fall back to entry). The VillageScene
- * and the WorldScene are keyed by `connectionEpoch` so a reconnect remounts
- * them against the new room (rebinding every scene-level room subscription); the
- * reconnection overlay lives OUTSIDE that key so it survives the remount.
+ * per-frame data. Entry -> (join success) -> village (케이슨 마을); an unexpected
+ * room leave is handled by the resilience driver (reconnect behind the overlay, or
+ * fall back to entry). The VillageScene is keyed by `connectionEpoch` so a reconnect
+ * remounts it against the new room (rebinding every scene-level room subscription);
+ * the reconnection overlay lives OUTSIDE that key so it survives the remount.
  * AppErrorBoundary wraps both screens: an uncaught render error (e.g. inside the
  * 3D scene) shows a refresh prompt instead of React unmounting the root to a blank
  * page, and leaves any open room.
- *
- * AI 학교 탈출: `hub` is a class's hall and corridor (HubScene, Task 15), keyed by
- * `connectionEpoch` like the world. `escape` is a team's classroom (EscapeScene, Task 17), keyed by
- * `escapeEpoch` so a classroom reconnect remounts it (chat and emoji rebind to the new room). The
- * "…로 들어가는 중" card (LoadingTransition) lives OUTSIDE the scenes, like the reconnection overlay:
- * the hall goes down and the classroom comes up underneath it.
  */
 export default function App() {
   useCanvasContextMenuSuppression();
   const screen = useAppStore((s) => s.screen);
   const identity = useAppStore((s) => s.identity);
   const connectionEpoch = useAppStore((s) => s.connectionEpoch);
-  const escapeEpoch = useAppStore((s) => s.escapeEpoch);
 
   return (
     <>
       <AppErrorBoundary>
         {screen === "village" && identity ? (
           <VillageScene key={connectionEpoch} identity={identity} />
-        ) : screen === "world" && identity ? (
-          <WorldScene key={connectionEpoch} identity={identity} />
-        ) : screen === "hub" && identity ? (
-          <HubScene key={connectionEpoch} identity={identity} />
-        ) : screen === "escape" && identity ? (
-          <EscapeScene key={escapeEpoch} identity={identity} />
         ) : (
           <EntryScreen />
         )}
       </AppErrorBoundary>
-      <LoadingTransition />
       <ReconnectingOverlay />
     </>
   );

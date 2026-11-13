@@ -1,13 +1,10 @@
-import { describe, it, expect } from "vitest";
+import { afterEach, beforeEach, describe, it, expect } from "vitest";
 import type { AABB, CameraBox } from "@caysonverse/shared/collision";
 import { wallsAround } from "@caysonverse/shared/school/geometry";
-import { COUNSEL_GEOMETRY } from "@caysonverse/shared/school/counselMap";
-import { HUB_GEOMETRY_OPEN } from "@caysonverse/shared/school/hubMap";
-import { MAZE_WALLS } from "@caysonverse/shared/maze";
-import { PLAYER_RADIUS, WALLS, WALL_HEIGHT } from "@caysonverse/shared/worldMap";
+import { villageGeometry } from "@caysonverse/shared/village/villageLayout";
+import { PLAYER_RADIUS, WALL_HEIGHT } from "@caysonverse/shared/worldMap";
 import {
   ARM_FREE,
-  CAMERA_BOXES,
   SPRING,
   armHeightScaleAt,
   INDOOR_ARM,
@@ -19,7 +16,12 @@ import {
   stepArmLimit,
   stepSpringDistance,
 } from "./cameraCollision";
-import { LEGACY_ACTIVE_MAP, VILLAGE_ACTIVE_MAP, VILLAGE_CAMERA_PAD, getActiveMap, setActiveMap } from "./activeMap";
+import { VILLAGE_ACTIVE_MAP, VILLAGE_CAMERA_PAD, getActiveMap, setActiveMap } from "./activeMap";
+
+// Casts below run on a plain map (no pad of its own: SPRING.pad), as the arm's tuning is pinned against it.
+const PLAIN_MAP = { geometry: villageGeometry, zoneLabel: () => "" };
+beforeEach(() => setActiveMap(PLAIN_MAP));
+afterEach(() => setActiveMap(VILLAGE_ACTIVE_MAP));
 
 // A long wall across the +Z side of the origin: 0.3 m thick, face at z = 4.
 const WALL: AABB = { minX: -5, maxX: 5, minZ: 4, maxZ: 4.3 };
@@ -27,13 +29,6 @@ const WALL: AABB = { minX: -5, maxX: 5, minZ: 4, maxZ: 4.3 };
 describe("cameraCollision — constants (verbatim from the brief)", () => {
   it("keeps the agreed spring tuning", () => {
     expect(SPRING).toEqual({ minDist: 0.6, pad: 0.2, returnRate: 6 });
-  });
-
-  it("CAMERA_BOXES is every room wall plus every maze wall, in that order", () => {
-    expect(CAMERA_BOXES.length).toBe(WALLS.length + MAZE_WALLS.length);
-    expect(CAMERA_BOXES.slice(0, WALLS.length)).toEqual(WALLS);
-    expect(CAMERA_BOXES.slice(WALLS.length)).toEqual(MAZE_WALLS);
-    expect(MAZE_WALLS.length).toBeGreaterThan(0);
   });
 });
 
@@ -126,16 +121,12 @@ describe("segmentHitFraction", () => {
     expect(segmentHitFraction(0, 1.4, 0, 0, 1.4, 10, [])).toBe(1);
   });
 
-  it("uses the real room walls by default: from the lounge to the south wall", () => {
-    // WALLS' south wall face is at z = WORLD_BOUNDS.maxZ = 18; x = −15 is clear of everything else.
-    expect(segmentHitFraction(-15, 1.4, 0, -15, 1.4, 30)).toBeCloseTo(18 / 30, 6);
-    // ...and a camera 10 m up in the air sails over the 4 m wall.
-    expect(segmentHitFraction(-15, WALL_HEIGHT + 6, 0, -15, WALL_HEIGHT + 6, 30)).toBe(1);
-  });
-
-  it("uses the maze walls by default too", () => {
-    // Cast straight across a real maze wall that is thin in Z: it (or something nearer) must be hit.
-    const w = MAZE_WALLS.find((m) => m.maxZ - m.minZ < 1 && m.maxX - m.minX > 1);
+  it("uses the active map's camera boxes by default (the open village's)", () => {
+    // Cast straight across a real village wall that is thin in Z: it (or something nearer) must be hit.
+    setActiveMap(VILLAGE_ACTIVE_MAP);
+    const w = villageGeometry.cameraBoxes.find(
+      (m) => m.maxZ - m.minZ < 1 && m.maxX - m.minX > 1 && m.maxX - m.minX < 20 && m.height === undefined,
+    );
     expect(w).toBeDefined();
     const box = w as AABB;
     const cx = (box.minX + box.maxX) / 2;
@@ -144,6 +135,8 @@ describe("segmentHitFraction", () => {
     const t = segmentHitFraction(cx, 1.4, cz - 5, cx, 1.4, cz + 5);
     expect(t).toBeGreaterThanOrEqual(0);
     expect(t).toBeLessThanOrEqual(0.5 - depth / 20 + 1e-9);
+    // ...and a camera 10 m up in the air sails over a 4 m wall.
+    expect(segmentHitFraction(cx, WALL_HEIGHT + 6, cz - 5, cx, WALL_HEIGHT + 6, cz + 5, [box])).toBe(1);
   });
 });
 
@@ -173,22 +166,26 @@ describe("segmentHitFraction — tall props (a box that states its own height)",
     expect(segmentHitFraction(17, 2.5, -2.6, 17, 2.5, 5, [LOCKERS])).toBe(1);
   });
 
-  it("the spring arm stops 0.2 m in front of a locker bank when the camera would end inside it (hub corridor)", () => {
-    // The Task 23 case: camera on the north side, low (a recentre while looking south): the head at (17, 1.9, 1) and the
-    // wanted camera spot 5 m behind it, north, at the same height — the corridor's north wall alone left it inside the lockers.
-    const lockers = HUB_GEOMETRY_OPEN.cameraBoxes;
+  it("the spring arm stops 0.2 m in front of a tall box when the camera would end inside it", () => {
+    // Camera on the north side, low (a recentre while looking south): the head at (17, 1.9, 1) and the wanted camera
+    // spot 5 m behind it, north, at the same height — a wall alone would leave it inside the tall box.
+    const lockers = [LOCKERS];
     const arm = springArmDistance(17, 1.9, 1, 17, 1.9, -4, 5, lockers);
     expect(arm).toBeCloseTo(1 + 2.36 - SPRING.pad, 6); // stops at z = -2.36 + 0.2 = -2.16: 3.16 m out
     // Over the lockers (camera well above 2.2 m at the face) nothing stops it.
     expect(springArmDistance(17, 1.9, 1, 17, 7.5, -4, 5, lockers)).toBe(5);
   });
 
-  it("the counselling room's bookcase and cabinet stop the camera; the desk and the low table do not", () => {
-    const boxes = COUNSEL_GEOMETRY.cameraBoxes;
-    // Looking west past the east bookcase (x 3.98..4.5, 2.1 m): head at (2.5, 1.9, -2.5), camera east of it at the same height.
+  it("a bookcase-high box stops the camera; a desk-high and a table-high one do not", () => {
+    const boxes: CameraBox[] = [
+      { minX: 3.98, maxX: 4.5, minZ: -4, maxZ: 0, height: 2.1 }, // bookcase
+      { minX: -4.38, maxX: -3.54, minZ: -2, maxZ: 0, height: 1.24 }, // desk
+      { minX: -1, maxX: 1, minZ: 0, maxZ: 2, height: 0.66 }, // low table
+    ];
+    // Looking west past the bookcase: head at (2.5, 1.9, -2.5), camera east of it at the same height.
     const east = segmentHitFraction(2.5, 1.9, -2.5, 5.2, 1.9, -2.5, boxes, WALL_HEIGHT, SPRING.pad);
     expect(east).toBeLessThan(1);
-    // The desk (x -4.38..-3.54, 1.24 m) is looked over by a camera at 1.9 m.
+    // The desk (1.24 m) is looked over by a camera at 1.9 m.
     expect(segmentHitFraction(-2.5, 1.9, -1.1, -5.2, 1.9, -1.1, boxes, WALL_HEIGHT, SPRING.pad)).toBe(1);
     // The low table (0.66 m) the same.
     expect(segmentHitFraction(-2, 1.9, 0.9, 2, 1.9, 0.9, boxes, WALL_HEIGHT, SPRING.pad)).toBe(1);
@@ -413,7 +410,7 @@ describe("the map's own pad (케이슨 마을: 0.3 m, wider than its 0.2 m near 
   it("cameraPad() is the active map's pad, SPRING.pad where the map names none", () => {
     const before = getActiveMap();
     try {
-      setActiveMap(LEGACY_ACTIVE_MAP);
+      setActiveMap({ geometry: villageGeometry, zoneLabel: () => "" }); // a map that names no pad
       expect(cameraPad()).toBe(SPRING.pad);
       setActiveMap(VILLAGE_ACTIVE_MAP);
       expect(cameraPad()).toBe(VILLAGE_CAMERA_PAD);

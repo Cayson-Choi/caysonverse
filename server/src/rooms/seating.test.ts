@@ -1,6 +1,16 @@
 import { describe, it, expect } from "vitest";
-import { SEATS, SEAT_REACH, type Seat } from "@caysonverse/shared/worldMap";
-import { validateSit, SEAT_OCCUPIED } from "./seating";
+import { SEAT_REACH, type Seat } from "@caysonverse/shared/worldMap";
+import { VILLAGE_SEATS as SEATS } from "@caysonverse/shared/village/benchSeats";
+import { validateSit as validateSitOn, SEAT_OCCUPIED } from "./seating";
+
+/** The village's benches are the seat list unless a test passes its own. */
+const validateSit = (
+  player: { x: number; z: number; seatIndex: number },
+  payload: unknown,
+  occupancy: ReadonlyMap<number, string>,
+  sessionId: string,
+  seats: readonly Seat[] = SEATS,
+) => validateSitOn(player, payload, occupancy, sessionId, seats);
 
 // A player standing exactly on seat `i`'s dismount point (in reach, standing).
 function atSeat(i: number, seatIndex = -1) {
@@ -74,19 +84,18 @@ describe("validateSit — occupancy (personal rejection notice)", () => {
   });
 });
 
-// escape phase 1, Task 2: the seat list is an argument (default SEATS), so a map without
-// chairs (school hub, team rooms) passes [] and every Sit is dropped.
+// The seat list is an argument, so a map without seats passes [] and every Sit is dropped.
 describe("validateSit — seat list argument", () => {
   it("an empty seat list accepts no Sit", () =>
     expect(validateSit({ x: SEATS[0].x, z: SEATS[0].z, seatIndex: -1 }, { seatIndex: 0 }, new Map(), "a", [])).toBeNull());
 
   it("judges index range and reach against the given list, not SEATS", () => {
     const far: Seat = { x: 100, z: 100, yaw: 0, standX: 101, standZ: 100 };
-    // At the custom chair: in reach of it → accepted, though nowhere near legacy SEATS[0].
+    // At the custom chair: in reach of it → accepted, though nowhere near the village bench SEATS[0].
     expect(validateSit({ x: 101, z: 100, seatIndex: -1 }, { seatIndex: 0 }, empty, SELF, [far])).toEqual({
       seatIndex: 0,
     });
-    // At legacy SEATS[0] (accepted with the default list) → out of reach of the custom chair.
+    // At SEATS[0] (accepted with the village list) → out of reach of the custom chair.
     expect(validateSit(atSeat(0), { seatIndex: 0 }, empty, SELF)).toEqual({ seatIndex: 0 });
     expect(validateSit(atSeat(0), { seatIndex: 0 }, empty, SELF, [far])).toBeNull();
     // Index 1 exists in SEATS but not in a one-chair list → dropped.

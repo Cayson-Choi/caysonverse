@@ -18,7 +18,7 @@ export interface RemotePlayerRecord {
   nickname: string;
   /**
    * The 15 synced appearance fields (`pickAppearance(player)` at add). The server
-   * writes them once at join, so — like `role` — there is no setter and no listener.
+   * writes them once at join, so there is no setter and no listener.
    */
   appearance: Appearance;
   connected: boolean;
@@ -28,12 +28,6 @@ export interface RemotePlayerRecord {
    * change (`seatLine`).
    */
   seatIndex: number;
-  /**
-   * Synced `Player.role` (0 = student / 1 = teacher; ROLE_* in shared constants).
-   * Read ONCE at add — the server fixes it for the whole session, so there is no
-   * setter and no listener.
-   */
-  role: number;
   /** Position history ring buffer (on the remote's timeline), sampled by the interpolation layer. */
   snapshots: Snapshot[];
   /** When along `snapshots` this remote is drawn (playout.ts): its timeline, render time and lag. */
@@ -200,10 +194,9 @@ export interface RemoteSummary {
   yaw: number;
   connected: boolean;
   seatIndex: number;
-  role: number;
 }
 
-/** Dev/E2E view: each remote's appearance, newest known position + ghost flag + seat + role. */
+/** Dev/E2E view: each remote's appearance, newest known position + ghost flag + seat. */
 export function getRemotes(): RemoteSummary[] {
   const out: RemoteSummary[] = [];
   for (const record of records.values()) {
@@ -217,7 +210,6 @@ export function getRemotes(): RemoteSummary[] {
       yaw: last?.yaw ?? 0,
       connected: record.connected,
       seatIndex: record.seatIndex,
-      role: record.role,
     });
   }
   return out;

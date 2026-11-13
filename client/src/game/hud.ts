@@ -15,55 +15,24 @@
  */
 
 import { EMOJIS } from "@caysonverse/shared/constants";
-import { ZONES } from "@caysonverse/shared/worldMap";
 import { MIN_GAP_PX, MIN_TOUCH_PX, buttonPx, type ButtonSize } from "./settings";
-
-// ───────────────────────────────── room names ─────────────────────────────────
-
-export type ZoneKey = keyof typeof ZONES;
-
-/** What the 왼쪽 위 chip and the 지도 call each room. */
-export const ZONE_LABELS: Record<ZoneKey, string> = {
-  maze: "미로방",
-  lounge: "로비",
-  lectureHall: "강의실",
-  gallery: "AI 갤러리",
-};
-
-/** Lookup order: the rooms share edges (lounge | hall at x = 0, lounge | gallery at z = -18) — first match wins. */
-const ZONE_ORDER: readonly ZoneKey[] = ["gallery", "maze", "lectureHall", "lounge"];
-
-/**
- * The legacy world's room (x, z) is in, or "" outside every room. Edges are inside. The HUD
- * reads the ACTIVE map's `zoneLabel` (activeMap.ts); this is the legacy map's one.
- */
-export function zoneLabelAt(x: number, z: number): string {
-  for (const key of ZONE_ORDER) {
-    const b = ZONES[key];
-    if (x >= b.minX && x <= b.maxX && z >= b.minZ && z <= b.maxZ) return ZONE_LABELS[key];
-  }
-  return "";
-}
 
 // ─────────────────────────────────── roster ───────────────────────────────────
 
 export interface RosterRow {
   sid: string;
   nickname: string;
-  teacher: boolean;
   self: boolean;
 }
 
 /** One collator for every roster sort (building one per compare would cost more than the sort). */
 const KOREAN = new Intl.Collator("ko");
 
-/** 선생님 → 나 → 나머지 (한글 가나다순). A teacher who is me is the first teacher. */
+/** 나 → 나머지 (한글 가나다순). */
 export function rosterRows(self: RosterRow, remotes: readonly RosterRow[]): RosterRow[] {
   const all: RosterRow[] = [{ ...self, self: true }, ...remotes.map((r) => ({ ...r, self: false }))];
-  const rank = (r: RosterRow): number => (r.teacher ? 0 : r.self ? 1 : 2);
   return all.sort(
     (a, b) =>
-      rank(a) - rank(b) ||
       Number(b.self) - Number(a.self) ||
       KOREAN.compare(a.nickname, b.nickname) ||
       (a.sid < b.sid ? -1 : a.sid > b.sid ? 1 : 0),
@@ -75,9 +44,9 @@ export function rosterTitle(count: number): string {
   return `접속자 ${count}명`;
 }
 
-/** One list line: 👑 before a teacher, " (나)" after me. */
+/** One list line: " (나)" after me. */
 export function rosterRowLabel(row: RosterRow): string {
-  return `${row.teacher ? "👑 " : ""}${row.nickname}${row.self ? " (나)" : ""}`;
+  return `${row.nickname}${row.self ? " (나)" : ""}`;
 }
 
 // ─────────────────────────────────── emoji fan ───────────────────────────────────

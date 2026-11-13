@@ -1,34 +1,28 @@
 /**
  * Context-sensitive interaction (controls overhaul, Task 10): ONE target for E / F
- * and for the on-screen action button — sit on a chair, stand up, or talk to an
- * AI 조교. Pure: the world is read once by `interactInputAt` (throttled to ~5 Hz by
- * the ActionButton, never per frame), `pickInteraction` decides, and the rest is
- * labels. The maze return portal is deliberately NOT a target — it stays behind the
- * 큐리 panel's own button (design 34), so E can never teleport anyone.
+ * and for the on-screen action button - sit on a bench, stand up, or use what the scene offers (a door,
+ * the keypad, a guide). Pure: the world is read once by `interactInputAt` (throttled to ~5 Hz by
+ * the ActionButton, never per frame), `pickInteraction` decides, and the rest is labels.
  */
 
-import { SEATS, SEAT_REACH, nearestFreeSeat, type Seat } from "@caysonverse/shared/worldMap";
-import { NPC_CLOSE_RADIUS, NPC_TALK_RADIUS, nearestNpc, npcDistance, type NpcId } from "./npc";
+import { SEAT_REACH, nearestFreeSeat, type Seat } from "@caysonverse/shared/worldMap";
 
 /**
- * Something a scene offers besides the world's chairs and 조교 (AI 학교 탈출, Task 16): the team
- * rug in the hall, a door pad in the corridor, and — in a classroom — the objects. A scene plugs
- * its list in through interactTargets.ts; `dist` is metres from the player to the target.
+ * Something a scene offers besides the benches: the memorial hall's door, a house keypad, a guide to talk to, the
+ * fishing kiosk. A scene plugs its list in through interactTargets.ts; `dist` is metres from the player to the target.
  */
 export interface InteractTarget {
-  kind: "teamDesk" | "door" | "object";
+  kind: "door" | "object";
   id: string;
   dist: number;
   icon: string;
   label: string;
   /** The word for the 60 px round touch button, when `label` is too long for it. */
   short?: string;
-  /** Pressed and held (a lone member's coop switch) instead of tapped. */
+  /** Pressed and held instead of tapped. */
   hold?: boolean;
   /**
    * Which target wins when several are in reach: the higher number first, the nearer one among equals (default 0).
-   * A classroom's coop key switch sits about as far from its anchor's standing spot as a note or a drawer does, so
-   * "nearest wins" would often offer the note while the player is trying to reach the key.
    */
   priority?: number;
 }
@@ -36,7 +30,6 @@ export interface InteractTarget {
 export type Interaction =
   | { kind: "sit"; seatIndex: number }
   | { kind: "stand" }
-  | { kind: "talk"; npc: NpcId }
   | { kind: "target"; target: InteractTarget };
 
 /** What is within reach right now. `dist` is metres from the player to the target. */
@@ -44,34 +37,24 @@ export interface InteractInput {
   seated: boolean;
   /** Nearest FREE seat within SEAT_REACH (null while seated). */
   seat: { index: number; dist: number } | null;
-  /** Nearest AI 조교 within NPC_TALK_RADIUS. */
-  npc: { id: NpcId; dist: number } | null;
-  /** An NPC chat panel is already open. */
-  npcPanelOpen: boolean;
-  /** What the active scene offers (hub, classroom). Absent in the world. */
+  /** What the active scene offers. */
   targets?: readonly InteractTarget[];
 }
 
 /**
  * The one thing E / F / the button would do now, or null.
- *  - Seated → stand, whatever is nearby (the seat is the only thing you can do).
- *  - Seat, 조교 and scene targets in reach → the nearest; an exact tie goes seat > 조교 > target.
+ *  - Seated -> stand, whatever is nearby (the seat is the only thing you can do).
+ *  - Seat and scene targets in reach -> the nearest; an exact tie goes seat > target.
  *    Among scene targets the higher `priority` wins, then the nearer one, then the earlier one in the list.
- *  - While a chat panel is open, "talk" is not offered (you are already talking).
  */
 export function pickInteraction(i: InteractInput): Interaction | null {
   if (i.seated) return { kind: "stand" };
-  const npc = i.npcPanelOpen ? null : i.npc;
   let best: Interaction | null = null;
   let bestDist = Infinity;
   // Strict `<`: of equal distances the one considered first wins.
   if (i.seat) {
     best = { kind: "sit", seatIndex: i.seat.index };
     bestDist = i.seat.dist;
-  }
-  if (npc && npc.dist < bestDist) {
-    best = { kind: "talk", npc: npc.id };
-    bestDist = npc.dist;
   }
   const targets = i.targets;
   if (targets) {
@@ -91,10 +74,9 @@ export function pickInteraction(i: InteractInput): Interaction | null {
   return best;
 }
 
-/** Icon for the button: the chair for sit/stand, a speech bubble for the 조교, the target's own otherwise. */
+/** Icon for the button: the chair for sit/stand, the target's own otherwise. */
 export function interactionIcon(i: Interaction): string {
-  if (i.kind === "target") return i.target.icon;
-  return i.kind === "talk" ? "💬" : "🪑";
+  return i.kind === "target" ? i.target.icon : "🪑";
 }
 
 /** Full Korean label (desktop pill text, aria-label). */
@@ -104,33 +86,21 @@ export function interactionLabel(i: Interaction): string {
       return "앉기";
     case "stand":
       return "일어서기";
-    case "talk":
-      return "조교와 대화";
     case "target":
       return i.target.label;
   }
 }
 
-/** Short label for the 60 px round touch button ("조교와 대화" would not fit). */
+/** Short label for the 60 px round touch button. */
 export function interactionShortLabel(i: Interaction): string {
-  if (i.kind === "target") return i.target.short ?? i.target.label;
-  return i.kind === "talk" ? "대화" : interactionLabel(i);
-}
-
-/**
- * Whether the open 조교 chat panel must close because the player walked away from the
- * assistant they are talking to (more than NPC_CLOSE_RADIUS, measured from THAT
- * assistant, not the nearest one). False while no panel is open.
- */
-export function shouldClosePanel(activeNpc: NpcId | null, x: number, z: number): boolean {
-  return activeNpc !== null && npcDistance(activeNpc, x, z) > NPC_CLOSE_RADIUS;
+  return i.kind === "target" ? (i.target.short ?? i.target.label) : interactionLabel(i);
 }
 
 /**
  * Do what E / the button would do, on the FRESH world: re-read the target first (the
  * button's own copy can be ~200 ms old — a chair taken or a step away since the last
  * proximity pass), act only on what that read says, then re-read so the button reflects
- * the result (talk → panel open → the button goes). `refresh` returns the current pick.
+ * the result. `refresh` returns the current pick.
  */
 export function interactNow(
   refresh: () => Interaction | null,
@@ -150,7 +120,6 @@ export function sameInteraction(a: Interaction | null, b: Interaction | null): b
   if (a === b) return true;
   if (!a || !b || a.kind !== b.kind) return false;
   if (a.kind === "sit" && b.kind === "sit") return a.seatIndex === b.seatIndex;
-  if (a.kind === "talk" && b.kind === "talk") return a.npc === b.npc;
   if (a.kind === "target" && b.kind === "target") {
     const x = a.target;
     const y = b.target;
@@ -169,31 +138,26 @@ export function holdEnded(held: InteractTarget | null, next: Interaction | null)
   return !(next !== null && next.kind === "target" && next.target.id === held.id && next.target.hold === true);
 }
 
-/** Which seats and whether the legacy world's AI 조교 are around (`interactInputAt`). Default: the legacy world. */
+/** The seats of the map the player stands in (`interactInputAt`). */
 export interface InteractWorld {
   /** The active map's seats (activeMap's `seats`). */
   seats: readonly Seat[];
-  /** The legacy world's AI 조교 are here (only there: the village's guides are scene targets). */
-  npcs: boolean;
 }
-
-const LEGACY_WORLD: InteractWorld = { seats: SEATS, npcs: true };
 
 /**
  * Read the world around `(x, z)` into an `InteractInput`. `seatIndex` is the local
  * player's own server-confirmed seat (-1 standing); `isOccupied` reports seats taken
  * by ANY player (self + remotes); `targets` is what the active scene offers (interactTargets.ts);
- * `world` names the seats of the map (default: the legacy world's chairs and its 조교).
- * Allocates one small object — call it at the ~5 Hz UI cadence or on a key press, never per frame.
+ * `world` names the seats of the map.
+ * Allocates one small object - call it at the ~5 Hz UI cadence or on a key press, never per frame.
  */
 export function interactInputAt(
   x: number,
   z: number,
   seatIndex: number,
   isOccupied: (index: number) => boolean,
-  npcPanelOpen: boolean,
-  targets?: readonly InteractTarget[],
-  world: InteractWorld = LEGACY_WORLD,
+  targets: readonly InteractTarget[] | undefined,
+  world: InteractWorld,
 ): InteractInput {
   const seated = seatIndex >= 0;
   let seat: InteractInput["seat"] = null;
@@ -203,7 +167,5 @@ export function interactInputAt(
       seat = { index, dist: Math.hypot(x - world.seats[index].x, z - world.seats[index].z) };
     }
   }
-  const near = world.npcs ? nearestNpc(x, z, NPC_TALK_RADIUS) : null;
-  const npc = near ? { id: near.id, dist: npcDistance(near.id, x, z) } : null;
-  return { seated, seat, npc, npcPanelOpen, targets };
+  return { seated, seat, targets };
 }

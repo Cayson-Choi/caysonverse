@@ -2,7 +2,7 @@ import { create } from "zustand";
 
 /**
  * Sound mute state — drives the 🔊/🔇 toggle button. It gates the 케이슨 마을 guides' voice clips
- * (guideVoice.ts, Task 9A) and the legacy world's AI 조교 voices (npcStore); chat is never read aloud (CHAT_VOICE_ENABLED, owner decision 2026-11-03).
+ * (guideVoice.ts, Task 9A); chat is never read aloud (CHAT_VOICE_ENABLED, owner decision 2026-11-03).
  * Discrete UI state, so zustand is fine here (this is not per-frame data). Persisted to
  * localStorage so the choice survives reloads; default is ON (not muted) — the value only
  * exists once the user has toggled at least once. The storage key keeps its old name

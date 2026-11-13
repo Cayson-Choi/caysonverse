@@ -15,16 +15,9 @@
  * the segment cannot reach.
  */
 
-import type { AABB, CameraBox } from "@caysonverse/shared/collision";
-import { LEGACY_GEOMETRY, WALL_HEIGHT } from "@caysonverse/shared/worldMap";
+import type { CameraBox } from "@caysonverse/shared/collision";
+import { WALL_HEIGHT } from "@caysonverse/shared/worldMap";
 import { getActiveMap } from "./activeMap";
-
-/**
- * Every box the camera can be blocked by in the legacy world: the room walls and the maze walls
- * (0..WALL_HEIGHT tall). It IS `LEGACY_GEOMETRY.cameraBoxes` — the one list the school maps'
- * geometries also carry — so there is no second copy of this geometry to drift.
- */
-export const CAMERA_BOXES: readonly AABB[] = LEGACY_GEOMETRY.cameraBoxes;
 
 /** The camera boxes of the map the player stands in now (activeMap.ts): what every cast uses. */
 export function cameraBoxes(): readonly CameraBox[] {

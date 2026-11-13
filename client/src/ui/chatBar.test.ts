@@ -161,16 +161,12 @@ describe("pressLeavesChat", () => {
 });
 
 describe("typeToChatAllowed", () => {
-  it("a typed key opens the world chat when nothing else is being typed into", () => {
-    expect(typeToChatAllowed({ npcOpen: false, otherFieldFocused: false })).toBe(true);
-  });
-
-  it("not while the 조교 dialogue is open — the question must never go out to everyone by accident", () => {
-    expect(typeToChatAllowed({ npcOpen: true, otherFieldFocused: false })).toBe(false);
+  it("a typed key opens the chat when nothing else is being typed into", () => {
+    expect(typeToChatAllowed({ otherFieldFocused: false })).toBe(true);
   });
 
   it("not while another text field has the caret (it gets its own keys)", () => {
-    expect(typeToChatAllowed({ npcOpen: false, otherFieldFocused: true })).toBe(false);
+    expect(typeToChatAllowed({ otherFieldFocused: true })).toBe(false);
   });
 });
 

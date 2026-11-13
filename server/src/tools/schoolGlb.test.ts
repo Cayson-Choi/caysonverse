@@ -40,9 +40,6 @@ import {
   schoolSpec,
 } from "../../../scripts/lib/schoolSpec";
 import { cameraExportName } from "../../../scripts/extract-colliders";
-import { COUNSEL_ANCHORS, COUNSEL_VISUALS } from "../../../shared/src/school/counselMap";
-import { HUB_DOORS } from "../../../shared/src/school/hubMap";
-import { ROOM_IDS } from "../../../shared/src/escape/constants";
 import {
   VILLAGE_LAYOUT,
   colliderNode,
@@ -315,17 +312,10 @@ describe("tallColliders (the camera boxes among the props)", () => {
     expect(tallColliders(lockers, extractColliders(lockers).colliders, { lockers: 1.7 })[0]!.height).toBe(2.2);
   });
 
-  it("keeps the colliders' order, and the real hall and counselling-room list names are all real col__ boxes of hub.glb / counsel.glb", () => {
+  it("keeps the colliders' order", () => {
     const g = baseGltf([cubeNode("col__b", [5, 1.1, 5], [2, 2.2, 2]), cubeNode("col__a", [1, 1.1, 3], [2, 2.2, 2])]);
     const { colliders } = extractColliders(g);
     expect(tallColliders(g, colliders).map((t) => t.name)).toEqual(colliders.map((c) => c.name));
-    // Both models: a renamed prop (a hall plant or sign as much as a counselling-room cabinet) must fail here, not silently lose its camera box.
-    for (const room of ["hub", "counsel"] as const) {
-      const glb = path.join(REPO_ROOT, "client", "public", "models", "school", `${room}.glb`);
-      if (!fs.existsSync(glb)) continue;
-      const real = extractColliders(parseGlb(fs.readFileSync(glb)).gltf).colliders.map((c) => c.name.slice("col__".length));
-      for (const name of Object.keys(KNOWN_PROP_HEIGHTS[room])) expect(real, `${room}: ${name}`).toContain(name);
-    }
   });
 });
 
@@ -503,7 +493,7 @@ describe("worldTranslation", () => {
 /** A spec small enough to build by hand. */
 function tinySpec(over: Partial<SchoolSpec> = {}): SchoolSpec {
   return {
-    kind: "counsel",
+    kind: "memorial",
     requiredNodes: ["obj__a", "obj__b"],
     requiredPrefixes: [{ prefix: "col__", min: 1 }],
     placements: [
@@ -527,7 +517,7 @@ function goodGltf(): Gltf {
 }
 
 const run = (g: Gltf, over: Partial<Parameters<typeof checkSchoolGlb>[0]> = {}) =>
-  checkSchoolGlb({ kind: "counsel", fileBytes: 1_000_000, gltf: g, bin: null, spec: tinySpec(), lightmap: null, ...over });
+  checkSchoolGlb({ kind: "memorial", fileBytes: 1_000_000, gltf: g, bin: null, spec: tinySpec(), lightmap: null, ...over });
 const failed = (results: ReturnType<typeof run>) => results.filter((r) => r.level === "fail");
 
 describe("checkSchoolGlb", () => {
@@ -539,23 +529,21 @@ describe("checkSchoolGlb", () => {
   });
 
   it("pins the budgets from the plan", () => {
-    expect(BUDGETS.hub).toEqual({ maxBytes: 3.5 * 1024 * 1024, maxTriangles: 150_000 });
-    expect(BUDGETS.counsel).toEqual({ maxBytes: 5 * 1024 * 1024, maxTriangles: 120_000 });
     expect(BUDGETS.village).toEqual({ maxBytes: 8 * 1024 * 1024, maxTriangles: 260_000 });
     expect(BUDGETS.memorial).toEqual({ maxBytes: 1.5 * 1024 * 1024, maxTriangles: 60_000 }); // Task 9: actual 0.33 MB, 17k
     expect(BOX_TOLERANCE).toBeCloseTo(0.011, 6);
     expect(MAX_MATERIALS).toBe(24);
     // one more for the village: the fountain's live-lit crescent (M_moon)
-    expect(MATERIAL_LIMITS).toEqual({ hub: 24, counsel: 24, village: 25, memorial: 24 });
+    expect(MATERIAL_LIMITS).toEqual({ village: 25, memorial: 24 });
     expect(MAX_TEXTURE_SIDE).toBe(2048);
     expect(OBJ_ANCHOR_TOLERANCE).toBe(0.25);
   });
 
-  it("fails a file over its size budget (hub 3.5 MB, counsel 5 MB) and accepts the limit itself", () => {
-    expect(failed(run(goodGltf(), { fileBytes: 5 * 1024 * 1024 + 1 })).map((r) => r.label).join()).toMatch(/크기/);
-    expect(failed(run(goodGltf(), { fileBytes: 5 * 1024 * 1024 }))).toEqual([]);
-    expect(failed(run(goodGltf(), { kind: "hub", fileBytes: 3.5 * 1024 * 1024 + 1, spec: tinySpec({ kind: "hub" }) })).map((r) => r.label).join()).toMatch(/크기/);
-    expect(failed(run(goodGltf(), { kind: "hub", fileBytes: 3.5 * 1024 * 1024, spec: tinySpec({ kind: "hub" }) }))).toEqual([]);
+  it("fails a file over its size budget (memorial 1.5 MB, village 8 MB) and accepts the limit itself", () => {
+    expect(failed(run(goodGltf(), { fileBytes: 1.5 * 1024 * 1024 + 1 })).map((r) => r.label).join()).toMatch(/크기/);
+    expect(failed(run(goodGltf(), { fileBytes: 1.5 * 1024 * 1024 }))).toEqual([]);
+    expect(failed(run(goodGltf(), { kind: "village", fileBytes: 8 * 1024 * 1024 + 1, spec: tinySpec({ kind: "village" }) })).map((r) => r.label).join()).toMatch(/크기/);
+    expect(failed(run(goodGltf(), { kind: "village", fileBytes: 8 * 1024 * 1024, spec: tinySpec({ kind: "village" }) }))).toEqual([]);
   });
 
   it("fails when a required node is missing and names it", () => {
@@ -591,15 +579,15 @@ describe("checkSchoolGlb", () => {
     expect(failed(run(obj)).map((r) => r.detail).join("\n")).toContain("obj__a");
   });
 
-  it("fails too many triangles (hub 150k, counsel 120k)", () => {
+  it("fails too many triangles (memorial 60k, village 260k)", () => {
     const g = goodGltf();
     // The quad mesh (obj__b) supplies all the triangles; the cube of col__wall is hidden in the game and not counted.
-    g.accessors![3]!.count = 3 * (120_000 + 1);
+    g.accessors![3]!.count = 3 * (60_000 + 1);
     expect(failed(run(g)).map((r) => r.label).join()).toMatch(/삼각형/);
-    g.accessors![3]!.count = 3 * 120_000;
+    g.accessors![3]!.count = 3 * 60_000;
     expect(failed(run(g))).toEqual([]);
-    g.accessors![3]!.count = 3 * (150_000 + 1);
-    expect(failed(run(g, { kind: "hub", spec: tinySpec({ kind: "hub" }) })).map((r) => r.label).join()).toMatch(/삼각형/);
+    g.accessors![3]!.count = 3 * (260_000 + 1);
+    expect(failed(run(g, { kind: "village", spec: tinySpec({ kind: "village" }) })).map((r) => r.label).join()).toMatch(/삼각형/);
   });
 
   it("fails more than 24 materials", () => {
@@ -797,14 +785,14 @@ describe("checkSchoolGlb: required materials and GPU instancing (village)", () =
   });
 
   it("the triangle budget counts the drawn instances: under budget stored, over budget drawn -> FAIL", () => {
-    // counsel budget 120k; the instanced quad (2 triangles) x 60,001 instances = 120,002 drawn, while the file stores 4
-    const g = instanced(60_001);
+    // memorial budget 60k; the instanced quad (2 triangles) x 30,001 instances = 60,002 drawn, while the file stores 4
+    const g = instanced(30_001);
     const res = run(g);
     const tri = res.find((r) => r.label === "삼각형 수")!;
     expect(tri.level).toBe("fail");
     expect(tri.detail).toMatch(/GPU 인스턴스 포함 \(파일에 든 것 4개\)/);
     expect(countFileTriangles(g)).toBe(4);
-    expect(failed(run(instanced(50_000)))).toEqual([]);
+    expect(failed(run(instanced(25_000)))).toEqual([]);
   });
 });
 
@@ -900,37 +888,6 @@ describe("schoolSpec", () => {
     ]);
     expect(KNOWN_PROP_HEIGHTS.village).toEqual({});
   });
-
-  it("counsel: every anchor and every visual node is required, and the placements are the TS anchors", () => {
-    const spec = schoolSpec("counsel");
-    for (const a of COUNSEL_ANCHORS) expect(spec.requiredNodes).toContain(`obj__${a.id}`);
-    for (const v of COUNSEL_VISUALS) expect(spec.requiredNodes).toContain(v.node);
-    expect(spec.placements).toHaveLength(COUNSEL_ANCHORS.length);
-    const ari = spec.placements.find((p) => p.node === "obj__counsel_screen");
-    expect(ari).toEqual({ node: "obj__counsel_screen", x: 0, z: -3.6 });
-    expect(spec.identityRotationPrefixes).toContain("obj__");
-    expect(spec.requiredPrefixes.map((p) => p.prefix)).toContain("col__");
-  });
-
-  it("hub: gate with 8 bars, a board window per room, a door and a pad per corridor door", () => {
-    const spec = schoolSpec("hub");
-    expect(spec.requiredNodes).toContain("gate__east");
-    for (let i = 1; i <= 8; i += 1) expect(spec.requiredNodes).toContain(`gate__east__bar_${i}`);
-    for (const room of ROOM_IDS) expect(spec.requiredNodes).toContain(`board_window__${room}`);
-    for (const d of HUB_DOORS) {
-      expect(spec.requiredNodes).toContain(`door__${d.room}`);
-      expect(spec.requiredNodes).toContain(`door__${d.room}__L`);
-      expect(spec.requiredNodes).toContain(`door__${d.room}__R`);
-      expect(spec.requiredNodes).toContain(`pad__${d.room}`);
-    }
-    const counselPad = spec.placements.find((p) => p.node === "pad__counsel");
-    expect(counselPad).toEqual({ node: "pad__counsel", x: 22, z: -1.7 });
-    const counselDoor = spec.placements.find((p) => p.node === "door__counsel");
-    expect(counselDoor).toEqual({ node: "door__counsel", x: 22, z: -3 });
-    const libraryDoor = spec.placements.find((p) => p.node === "door__library");
-    expect(libraryDoor).toEqual({ node: "door__library", x: 22, z: 3 });
-    expect(spec.requiredPrefixes.map((p) => p.prefix)).toContain("col__");
-  });
 });
 
 // ---------------------------------------------------------------------------------------------------------
@@ -954,12 +911,12 @@ describe("CLIs", () => {
   });
 
   it("check-school-glb: a missing file is a FAIL (exit 1), and so is a bad room name", () => {
-    const missing = runTs("check-school-glb.ts", path.join(tmp, "nope.glb"), "hub");
+    const missing = runTs("check-school-glb.ts", path.join(tmp, "nope.glb"), "village");
     expect(missing.status).toBe(1);
     expect(missing.stderr + missing.stdout).toContain("파일 없음");
     const badKind = runTs("check-school-glb.ts", path.join(tmp, "nope.glb"), "library");
     expect(badKind.status).toBe(1);
-    expect(badKind.stderr + badKind.stdout).toMatch(/hub\|counsel/);
+    expect(badKind.stderr + badKind.stdout).toMatch(/village\|memorial/);
   });
 
   it("check-school-glb village: the layout's boxes, light points and village_lm.webp next to the GLB -> PASS (exit 0)", () => {
@@ -1022,33 +979,33 @@ describe("CLIs", () => {
     expect(bad.stdout).toMatch(/FAIL\s+앵커 위치: .*anchor__cubby_e_3_7/);
   });
 
-  it("check-school-glb: an empty glTF fails the hub checks with exit 1", () => {
-    const file = path.join(tmp, "hub.glb");
+  it("check-school-glb: an empty glTF fails the village checks with exit 1", () => {
+    const file = path.join(tmp, "village.glb");
     fs.writeFileSync(file, makeGlb(baseGltf([{ name: "x" }])));
-    const res = runTs("check-school-glb.ts", file, "hub");
+    const res = runTs("check-school-glb.ts", file, "village");
     expect(res.status).toBe(1);
-    expect(res.stdout).toContain("gate__east");
+    expect(res.stdout).toContain("col__");
     expect(res.stdout).toContain("FAIL");
   });
 
   it("check-school-glb: a malformed glTF is one 'FAIL: ...' line and exit 1, never a stack trace", () => {
-    const file = path.join(tmp, "hub.glb");
+    const file = path.join(tmp, "village.glb");
     // A null material makes the light-map check throw a TypeError.
     const g = baseGltf([{ name: "x" }]);
     (g as unknown as { materials: unknown[] }).materials = [null];
     fs.writeFileSync(file, makeGlb(g));
-    const res = runTs("check-school-glb.ts", file, "hub");
+    const res = runTs("check-school-glb.ts", file, "village");
     expect(res.status).toBe(1);
-    expect(res.stderr).toMatch(/FAIL: .*hub\.glb/);
+    expect(res.stderr).toMatch(/FAIL: .*village\.glb/);
     expect(res.stderr + res.stdout).not.toMatch(/\n\s+at /);
   });
 
   it("check-school-glb: a malformed %-escape in an image uri is a texture FAIL (exit 1), not a crash", () => {
-    const file = path.join(tmp, "hub.glb");
+    const file = path.join(tmp, "village.glb");
     const g = baseGltf([{ name: "x" }]);
     g.images = [{ uri: "%E0%A4%A.png" }];
     fs.writeFileSync(file, makeGlb(g));
-    const res = runTs("check-school-glb.ts", file, "hub");
+    const res = runTs("check-school-glb.ts", file, "village");
     expect(res.status).toBe(1);
     expect(res.stdout).toMatch(/FAIL\s+텍스처 크기/);
     expect(res.stderr + res.stdout).not.toMatch(/URIError|\n\s+at /);

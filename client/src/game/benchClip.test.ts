@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { MeshStandardMaterial, Vector3 } from "three";
-import { SEATS } from "@caysonverse/shared/worldMap";
 import { SIT_POSE } from "@caysonverse/shared/sitPose";
 import { VILLAGE_SEATS } from "@caysonverse/shared/village/benchSeats";
 import type { BuiltAvatar } from "./characterAvatar";
@@ -28,8 +27,8 @@ describe("benchClipPlanes — what of a sitter is hidden: inside the bench only"
     expect(clipped(planes, at(-0.6, 1.2))).toBe(false); // the back, high above the seat
   });
 
-  it("is null for a chair of the legacy world (nothing is ever clipped there)", () => {
-    expect(benchClipPlanes(SEATS[0])).toBeNull();
+  it("is null for a seat without a bench (nothing is clipped)", () => {
+    expect(benchClipPlanes({ x: 0, z: 0, yaw: 0, standX: 0.9, standZ: 0 })).toBeNull();
     expect(benchClipPlanes(undefined)).toBeNull();
   });
 });

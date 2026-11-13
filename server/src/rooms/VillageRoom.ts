@@ -2,7 +2,7 @@ import type { Client } from "colyseus";
 import { Player, WorldState } from "@caysonverse/shared/schema";
 import { MessageType } from "@caysonverse/shared/messages";
 import type { BusRideStatePayload, ChatBroadcast } from "@caysonverse/shared/messages";
-import { PATCH_RATE_MS, ROLE_STUDENT, VILLAGE_MAX_CLIENTS } from "@caysonverse/shared/constants";
+import { PATCH_RATE_MS, VILLAGE_MAX_CLIENTS } from "@caysonverse/shared/constants";
 import { APPEARANCE_FIELDS } from "@caysonverse/shared/appearance";
 import type { MapGeometry } from "@caysonverse/shared/school/geometry";
 import {
@@ -175,7 +175,6 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     player.z = spawn.z;
     player.yaw = VILLAGE_LAYOUT.spawn.yaw; // facing the fountain
     player.connected = true;
-    player.role = ROLE_STUDENT; // the village has no admin
     player.area = "village";
     this.seatPlayer(client, player); // state + tracking (createTracking below)
     this.fishing.set(client.sessionId, createFishingState());

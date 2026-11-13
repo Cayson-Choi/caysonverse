@@ -21,10 +21,9 @@
 
 import { normalizeAngle } from "./yaw";
 import type { ViewMode } from "./viewMode";
-import { MIN_GAP_PX, MIN_TOUCH_PX } from "./settings";
+import { MIN_GAP_PX } from "./settings";
 import {
   HUD_CHIP_H_PX,
-  HUD_COLUMN_MAX_W_PX,
   HUD_TOP_INSET_PX,
   rectGap,
   restRects,
@@ -208,8 +207,6 @@ const COACH_CHIP_MAX_W_PX = 120;
  * avatar stands at the middle of the screen, right at that edge, and the card should clear its head.
  */
 export const COACH_ZONE_LIFT_PX = 32;
-/** The admin panel's own border (px), around its 48 px header (admin.css). */
-const ADMIN_BORDER_PX = 1;
 /** Search resolution (px) of the free-spot search. */
 const COACH_GRID_PX = 4;
 /** Cost of one px of vertical overlap with the stick zone, in px of distance from the ideal spot. */
@@ -228,8 +225,6 @@ export interface CoachPlaceInput {
   safe: SafeInsets;
   leftHanded: boolean;
   layout: TouchHudLayout;
-  /** The teacher's admin panel hangs (folded) under the chat-log toggle — one more thing to keep clear. */
-  admin: boolean;
   /** The card's size: `coachCardWidth` wide, as tall as its text made it. */
   w: number;
   h: number;
@@ -238,24 +233,15 @@ export interface CoachPlaceInput {
 /**
  * Everything a card must keep MIN_GAP_PX from on a phone: every HUD button at rest, plus
  * the parts of the top-left column that are not buttons in the layout model — the room-name
- * chip and, for a teacher, the admin panel's folded header. (The open emoji fan hides the
+ * chip. (The open emoji fan hides the
  * card instead, see coach.css; the roster and menu hide it too.)
  */
-export function coachObstacles(l: TouchHudLayout, vw: number, admin: boolean): Rect[] {
+export function coachObstacles(l: TouchHudLayout): Rect[] {
   const onLeft = l.column.side === "left";
   const edge = onLeft ? l.roster.x : l.roster.x + l.roster.w;
   const chipW = COACH_CHIP_MAX_W_PX;
   const out = restRects(l);
   out.push({ x: onLeft ? edge : edge - chipW, y: l.roster.y - MIN_GAP_PX - HUD_CHIP_H_PX, w: chipW, h: HUD_CHIP_H_PX });
-  if (admin) {
-    const w = Math.min(HUD_COLUMN_MAX_W_PX, vw - 2 * COACH_EDGE_PX);
-    out.push({
-      x: onLeft ? edge : edge - w,
-      y: l.chatLog.y + l.chatLog.h + MIN_GAP_PX,
-      w,
-      h: MIN_TOUCH_PX + 2 * ADMIN_BORDER_PX,
-    });
-  }
   return out;
 }
 
@@ -292,7 +278,7 @@ function overlapArea(a: Rect, b: Rect): number {
  * Not a per-frame call: CoachMarks runs it when the screen, settings or step change.
  */
 export function placeCoachCard(step: Exclude<CoachStep, "done">, input: CoachPlaceInput): Rect {
-  const { vw, vh, safe, leftHanded, layout, admin, w, h } = input;
+  const { vw, vh, safe, leftHanded, layout, w, h } = input;
   const minX = safe.left + COACH_EDGE_PX;
   const maxX = vw - safe.right - COACH_EDGE_PX - w;
   const minY = safe.top + COACH_EDGE_PX;
@@ -319,7 +305,7 @@ export function placeCoachCard(step: Exclude<CoachStep, "done">, input: CoachPla
   idealX = clampX(idealX);
   idealY = clampY(idealY);
 
-  const obstacles = coachObstacles(layout, vw, admin);
+  const obstacles = coachObstacles(layout);
   let best: Rect = { x: idealX, y: idealY, w, h };
   let bestCost = Infinity;
   for (const y of axisValues(minY, Math.max(minY, maxY), idealY)) {

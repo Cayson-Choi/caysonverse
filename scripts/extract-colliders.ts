@@ -1,16 +1,15 @@
 /**
- * scripts/extract-colliders.ts — GLB의 `col__*` 상자를 충돌 상자(AABB) 목록 TypeScript 파일로 뽑는다 (방탈출 1단계 Task 22).
+ * scripts/extract-colliders.ts — GLB의 `col__*` 상자를 충돌 상자(AABB) 목록 TypeScript 파일로 뽑는다.
  *
  *   npx tsx --tsconfig server/tsconfig.json scripts/extract-colliders.ts <glb> <ExportName> <out.ts>
  *
- *   예: ... scripts/extract-colliders.ts client/public/models/school/hub.glb HUB_PROP_COLLIDERS shared/src/school/generated/hubColliders.ts
- *       ... scripts/extract-colliders.ts client/public/models/school/counsel.glb COUNSEL_PROP_COLLIDERS shared/src/school/generated/counselColliders.ts
+ *   예: ... scripts/extract-colliders.ts client/public/models/village/village.glb VILLAGE_COLLIDERS shared/src/village/generated/villageColliders.ts
  *
  * `col__*` 노드는 정육면체 하나에 translation과 scale만 있는 상자다. 바닥 평면의 상자는 translation ± scale/2 (x, z)이고,
  * 0.01로 반올림하고 minX, minZ, maxX, maxZ 순으로 정렬한다. 회전·matrix·부모가 있거나 크기가 0이면 FAIL(종료 코드 1)이고
  * 파일을 쓰지 않는다. `col__*`가 하나도 없어도 FAIL이다. 같은 입력이면 출력은 바이트 단위로 같다.
  * 같은 파일에 카메라 상자도 쓴다(`<이름>_CAMERA_BOXES`): 높이가 1.6 m 이상인 소품의 상자(사물함·책장…)와 그 높이. 높이는 노드의 위쪽 끝
- * (translation.y + scale.y / 2)이거나, 아트가 상자를 1 m 정육면체로 둔 방(상담실)은 schoolSpec.ts의 KNOWN_PROP_HEIGHTS다.
+ * (translation.y + scale.y / 2)이거나, 아트가 상자를 1 m 정육면체로 둔 모델은 schoolSpec.ts의 KNOWN_PROP_HEIGHTS다(지금은 둘 다 비어 있다).
  * 의존성 없음. 순수 부분: scripts/lib/schoolGlb.ts (테스트: server/src/tools/schoolGlb.test.ts).
  */
 
@@ -30,7 +29,7 @@ function collisionImportFrom(outFile: string): string {
   return rel.startsWith(".") ? rel : `./${rel}`;
 }
 
-/** HUB_PROP_COLLIDERS -> HUB_PROP_CAMERA_BOXES (the tall props' export, next to the collider list). */
+/** VILLAGE_COLLIDERS -> VILLAGE_CAMERA_BOXES (the tall props' export, next to the collider list). */
 export function cameraExportName(exportName: string): string {
   return /COLLIDERS$/.test(exportName) ? exportName.replace(/COLLIDERS$/, "CAMERA_BOXES") : `${exportName}_CAMERA_BOXES`;
 }
@@ -51,7 +50,7 @@ export function main(argv: string[]): number {
     const gltf = parseGlb(fs.readFileSync(glbPath)).gltf;
     extraction = extractColliders(gltf);
     const room = path.basename(glbPath, ".glb");
-    const known = room === "hub" || room === "counsel" ? KNOWN_PROP_HEIGHTS[room] : {};
+    const known = room === "village" || room === "memorial" ? KNOWN_PROP_HEIGHTS[room] : {};
     tall = tallColliders(gltf, extraction.colliders, known);
   } catch (err) {
     console.error(`FAIL: ${glbPath}를 읽지 못했어요: ${(err as Error).message}`);

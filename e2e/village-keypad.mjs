@@ -5,7 +5,7 @@
  * Run with a dev server: `node e2e/village-keypad.mjs [--out=<folder>]`.
  */
 import { mkdirSync } from "node:fs";
-import { CLIENT_URL, DESKTOP, createRun, entryReady, launchBrowser, openPlayer, press, sleep, walkAndWait } from "./lib/escape.mjs";
+import { CLIENT_URL, DESKTOP, createRun, entryReady, launchBrowser, openPlayer, press, sleep, walkAndWait } from "./lib/common.mjs";
 
 const run = createRun("village-keypad");
 const outArg = process.argv.find((a) => a.startsWith("--out="));

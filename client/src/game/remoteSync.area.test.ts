@@ -70,7 +70,6 @@ const h = vi.hoisted(() => {
 vi.mock("@colyseus/sdk", () => ({ getStateCallbacks: h.getStateCallbacks }));
 
 import { DEFAULT_APPEARANCE } from "@caysonverse/shared/appearance";
-import { PLACE_ESCAPE, PLACE_HUB } from "@caysonverse/shared/escape/constants";
 import type { AreaId } from "@caysonverse/shared/village/villageLayout";
 import { startRemoteSync, type PlayersRoom } from "./remoteSync";
 import type { AreaGate } from "./areaFilter";
@@ -79,7 +78,7 @@ import { clearRemotes, getRemoteRecord, getRoster } from "./remoteStore";
 let seq = 0;
 type TestPlayer = Record<string, unknown>;
 function player(over: TestPlayer = {}): TestPlayer {
-  return { ...DEFAULT_APPEARANCE, nickname: `p${++seq}`, connected: true, seatIndex: -1, role: 0, place: PLACE_HUB, area: "village", x: 1, z: 2, yaw: 0, ...over };
+  return { ...DEFAULT_APPEARANCE, nickname: `p${++seq}`, connected: true, seatIndex: -1, area: "village", x: 1, z: 2, yaw: 0, ...over };
 }
 
 /** A gate with its own state (the real one is villageArea's store; this keeps the test about the sync). */
@@ -202,24 +201,13 @@ describe("startRemoteSync with an area gate (케이슨 마을)", () => {
     expect(self.yaw).toBe(0);
   });
 
-  it("without a gate nothing about my facing is touched (a kick-back in the legacy world)", () => {
+  it("without a gate nothing about my facing is touched (a kick-back without an area gate)", () => {
     const me = player({ area: "village", yaw: 2 });
     room.players.set("me", me);
     const self = { x: 0, z: 0, yaw: 1.2 };
     start(undefined, self);
     h.patch(me, { area: "hall", x: 300, z: 3.6, yaw: Math.PI });
     expect(self.yaw).toBe(1.2);
-  });
-
-  it("the classroom rule still applies on top (a remote inside a classroom is not shown even in my area)", () => {
-    const gate = makeGate("village");
-    room.players.set("me", player());
-    const a = join("a", player({ area: "village" }));
-    start(gate);
-    h.patch(a, { place: PLACE_ESCAPE });
-    expect(getRoster()).toEqual([]);
-    h.patch(a, { place: PLACE_HUB });
-    expect(getRoster()).toEqual(["a"]);
   });
 
   it("a player leaving is gone from the store, and teardown clears it and unsubscribes from the gate", () => {
@@ -243,17 +231,12 @@ describe("startRemoteSync with an area gate (케이슨 마을)", () => {
   });
 });
 
-describe("startRemoteSync WITHOUT a gate (the legacy world, the hall, a classroom) — nothing about areas", () => {
-  it("shows every remote whatever its area field says, and the place filter works as before", () => {
+describe("startRemoteSync WITHOUT a gate — nothing about areas", () => {
+  it("shows every remote whatever its area field says", () => {
     room.players.set("me", player());
     room.players.set("a", player({ area: "hall" }));
     room.players.set("b", player({ area: "village" }));
     start();
-    expect(getRoster()).toEqual(["a", "b"]);
-    const a = room.players.get("a")!;
-    h.patch(a, { place: PLACE_ESCAPE });
-    expect(getRoster()).toEqual(["b"]);
-    h.patch(a, { place: PLACE_HUB });
     expect(getRoster()).toEqual(["a", "b"]);
   });
 });

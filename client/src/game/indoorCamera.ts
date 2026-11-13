@@ -4,17 +4,16 @@
  * 카메라 구조". Every building has a roof, and from inside you see the ceiling.
  *
  * A place can carry a `CameraLimit` (`ActiveMap.cameraLimit`): the camera spot is at most `maxY` (m) up, so no pitch,
- * zoom or screen shape can lift it through the ceiling, and — where the limit names a `maxDistance` (the legacy maze) —
+ * zoom or screen shape can lift it through the ceiling, and — where the limit names a `maxDistance` —
  * pulled in to at most that far from the player's head. The memorial hall names none: the player's zoom holds there.
  * Neither clamp ever writes the player's orbit; it shapes one frame's camera spot, so leaving the place gives the
- * chosen view back exactly. Where there is no limit (the open village, the legacy world, the hub) nothing is clamped.
- * The maze's anti-peek cap (mazeCamera.ts) is the same clamp with its own numbers; both go through
+ * chosen view back exactly. Where there is no limit (the open village) nothing is clamped. Everything goes through
  * `indoorCameraClamp`, so there is ONE rule for "the camera stays under a lid".
  *
- * Two independent clamps (the maze needs both, the hall only the second):
+ * Two independent clamps (a limit may name both; the hall only the second):
  *   - distance: the offset from the head is scaled down to `maxDistance` (the camera keeps its direction), and
  *   - height: the final Y is capped at `maxY` (the pitch cannot lift it past the ceiling at any distance).
- * A 0..1 `engage` blends the clamp in (the maze eases it over 0.3 s as the player walks in); a building's limit is
+ * A 0..1 `engage` blends the clamp in (`stepCapEngage` eases it over 0.3 s); a building's limit is
  * engaged at once, because the door's curtain already hides the cut.
  *
  * Pure and allocation-free (the caller passes `out`): CameraRig calls it every frame.
@@ -115,8 +114,36 @@ export function overviewAllowed(limit: CameraLimit | undefined): boolean {
 /**
  * True when going from a place with limit `a` to one with limit `b` crosses a limit (into or out of a building):
  * the camera is then re-seated at once instead of being eased. Two places with the same limit — or none — are
- * not a crossing (a hub gate opening must not snap the view).
+ * not a crossing.
  */
 export function limitsDiffer(a: CameraLimit | undefined, b: CameraLimit | undefined): boolean {
   return a !== b;
+}
+
+/** Seconds to fully engage / release a camera limit (smooth, no snap jolt). */
+export const CAP_ENGAGE_SEC = 0.3;
+
+/**
+ * Advance the limit's engagement (0 = off, 1 = fully limited) toward its target (`inside ? 1 : 0`) at a constant rate
+ * over CAP_ENGAGE_SEC. Clamped to [0,1]; a large `delta` (tab refocus) can't overshoot.
+ */
+export function stepCapEngage(engage: number, inside: boolean, delta: number): number {
+  const target = inside ? 1 : 0;
+  const step = CAP_ENGAGE_SEC > 0 ? delta / CAP_ENGAGE_SEC : 1;
+  if (engage < target) return Math.min(target, engage + step);
+  if (engage > target) return Math.max(target, engage - step);
+  return engage;
+}
+
+/** The camera limit in force on `map`: the map's own (a building's ceiling limit), or none (the open village). */
+export function cameraLimitAt(map: { cameraLimit?: CameraLimit }): CameraLimit | undefined {
+  return map.cameraLimit;
+}
+
+/**
+ * Whether the camera arm takes its indoor shape (keeps its height, the look rises over the head): only under a
+ * building's own ceiling limit (the map's `cameraLimit`).
+ */
+export function indoorArmAt(map: { cameraLimit?: CameraLimit }, limitNow: CameraLimit | undefined): boolean {
+  return limitNow !== undefined && map.cameraLimit !== undefined;
 }

@@ -7,15 +7,9 @@ export const APP_NAME = "caysonverse";
 /** Default Colyseus server port, used when the PORT env var is not set. */
 export const DEFAULT_SERVER_PORT = 2567;
 
-/** Matchmaking name of the main world room (registered in Task 3). */
-export const WORLD_ROOM = "world";
-
-/** Max clients allowed in the world room (100 target + reconnection headroom). */
-export const MAX_CLIENTS = 110;
-
 /**
- * Matchmaking name of 케이슨 마을 (the open countryside village). Unlike the world, the village is NOT a
- * pre-created singleton: clients `joinOrCreate` it and a full room spills into a new shard.
+ * Matchmaking name of 케이슨 마을 (the open countryside village). The village is NOT a pre-created singleton:
+ * clients `joinOrCreate` it and a full room spills into a new shard.
  */
 export const VILLAGE_ROOM = "village";
 
@@ -131,27 +125,6 @@ export const TYPING_RATE = { count: 1, windowMs: 3000 } as const;
  */
 export const TYPING_TTL_MS = 5000;
 
-// ── Roles (controls-ux Task 3) — synced as `Player.role` (uint8). ──
-
-/** `Player.role` for an ordinary participant (the schema default). */
-export const ROLE_STUDENT = 0;
-
-/**
- * `Player.role` for the teacher. The server writes it ONLY when the join's admin
- * code authenticated (WorldRoom.onJoin); join options and client messages can
- * never set it. The `isAdmin` marker itself stays server-only.
- */
-export const ROLE_TEACHER = 1;
-
-// ── Admin: announce banner + kick (Task 9). ──
-
-/**
- * Maximum announcement banner length in characters, counted after trimming.
- * Larger than CHAT_MAX_LENGTH because a notice may carry more than one line of
- * instruction. Parameterizes the shared chat sanitizer (see server chat.ts).
- */
-export const ANNOUNCE_MAX_LENGTH = 300;
-
 /**
  * WebSocket close code the server uses when an admin KICKS a client. In the
  * application-reserved 4000–4999 range so the SDK delivers it verbatim to
@@ -184,13 +157,7 @@ export const RECONNECT_WINDOW_S = 20;
 export { APPEARANCE_FIELDS, APPEARANCE_RANGES } from "./appearance";
 
 /**
- * Map geometry lives in worldMap.ts (the single source of truth for bounds,
- * spawn, furniture and collision). Re-exported here so existing importers of
+ * The player's collision radius lives in worldMap.ts (with the seat model). Re-exported here so existing importers of
  * `@caysonverse/shared/constants` keep working; there is still ONE definition.
  */
-export {
-  WORLD_BOUNDS,
-  SPAWN_POINT,
-  SPAWN_JITTER,
-  PLAYER_RADIUS,
-} from "./worldMap";
+export { PLAYER_RADIUS } from "./worldMap";

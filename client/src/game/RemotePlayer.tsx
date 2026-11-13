@@ -40,7 +40,6 @@ import {
   jumpRegistry,
   jumpTimeScale,
 } from "./jump";
-import { ROLE_TEACHER } from "@caysonverse/shared/constants";
 import { ANIM_FADE, CLIP, MODEL_FACING_OFFSET } from "./constants";
 import { activeSeats } from "./activeMap";
 import {
@@ -88,8 +87,6 @@ export function RemotePlayer({
   const record = getRemoteRecord(sessionId);
   const appearance = record?.appearance ?? DEFAULT_APPEARANCE;
   const nickname = record?.nickname ?? "";
-  // The server writes the role once at join (Task 3); everyone sees the teacher's 👑.
-  const isTeacher = record?.role === ROLE_TEACHER;
 
   const groupRef = useRef<Group>(null);
 
@@ -285,20 +282,19 @@ export function RemotePlayer({
   // dev double-run of effects and renders cannot leak a texture reference): the sprite is
   // parented to the avatar group — it rides the jump lift — and starts invisible so it
   // fades in rather than flashing at full opacity. The NametagSystem owns it from the
-  // registration on: whether it is shown (nearest 15 / speaking / the teacher, pinned),
-  // its fade, size, stacking, typing "…" and the bubble anchor. The teacher's tag is
-  // pinned: everyone sees the 👑 whenever the teacher is on screen and in range.
+  // registration on: whether it is shown (nearest 15 / speaking),
+  // its fade, size, stacking, typing "…" and the bubble anchor.
   useEffect(() => {
     const group = groupRef.current;
     if (!group) return;
-    const tag = createNametag(nickname, isTeacher ? "teacher" : "none", tagHeight);
+    const tag = createNametag(nickname, "none", tagHeight);
     tag.setOpacity(0);
     group.add(tag.sprite);
     const unregister = registerLabel({
       id: sessionId,
       anchor: group,
       tag,
-      pinned: isTeacher,
+      pinned: false,
       bubbleAnchor,
       heightM: tagHeight,
     });
@@ -307,7 +303,7 @@ export function RemotePlayer({
       group.remove(tag.sprite);
       tag.dispose();
     };
-  }, [sessionId, nickname, isTeacher, bubbleAnchor, tagHeight]);
+  }, [sessionId, nickname, bubbleAnchor, tagHeight]);
 
   // Release this avatar's mixer on unmount. Its materials and the shared merged
   // geometry belong to useAvatar, which releases them itself (never disposed here).

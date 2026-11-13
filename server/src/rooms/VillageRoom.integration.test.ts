@@ -5,10 +5,8 @@ import { matchMaker } from "colyseus";
 import {
   VILLAGE_ROOM,
   VILLAGE_MAX_CLIENTS,
-  WORLD_ROOM,
   PATCH_RATE_MS,
   RECONNECT_WINDOW_S,
-  ROLE_STUDENT,
   PLAYER_RADIUS,
   TYPING_RATE,
 } from "@caysonverse/shared/constants";
@@ -28,14 +26,12 @@ import { SEAT_OCCUPIED } from "./seating";
 import { SAMPLE_FILLED_IDS } from "@caysonverse/shared/village/sampleFill";
 import { APPEARANCE_FIELDS, APPEARANCE_RANGES, DEFAULT_APPEARANCE, pickAppearance, type Appearance } from "@caysonverse/shared/appearance";
 import type { Player } from "@caysonverse/shared/schema";
-import { rooms, type VillageRoom, type WorldRoom } from "./index";
+import { rooms, type VillageRoom } from "./index";
 import type { Tracking } from "./PlayerRoom";
 
 /**
- * VillageRoom (케이슨 마을 1단계 Task 2). ONE boot for the whole file, on its own port. The brief named 2574,
- * but reconnectWindow.integration.test.ts already boots on 2574 and vitest runs files in parallel, so this
- * file takes the next free one (2568 WorldRoom, 2569 ClassRoom, 2570 EscapeRoom, 2571 escapeFlow,
- * 2572 PlayerRoom, 2573 banditAi, 2574 reconnectWindow, 2575 this file).
+ * VillageRoom (케이슨 마을 1단계 Task 2). ONE boot for the whole file, on its own port; vitest runs files in
+ * parallel, so every integration file takes its own (2572 PlayerRoom, 2575 this file).
  *
  * Time-sensitive checks (door cap, speed budget) run on a test clock: the room's `now()` is replaced, so
  * they do not wait in real time or depend on the machine's speed. Joins use the production verb
@@ -207,7 +203,6 @@ describe("VillageRoom setup (integration)", () => {
     expect(p.nickname).toBe("케이슨");
     expect(pickAppearance(p)).toEqual(look);
     expect(p.area).toBe("village");
-    expect(p.role).toBe(ROLE_STUDENT);
     expect(p.connected).toBe(true);
     expect(p.seatIndex).toBe(-1);
     // Within the layout's jitter of the spawn point, clear of the fountain's collider.
@@ -223,22 +218,20 @@ describe("VillageRoom setup (integration)", () => {
     expect(room.state.players.size).toBe(0);
   });
 
-  it("syncs the area to other clients and starts with an empty banner (no admin: announce and kick are stray messages)", async () => {
+  it("syncs the area to other clients (there is no admin: an announce or kick message is a stray one and is dropped)", async () => {
     const room = await colyseus.createRoom<VillageRoom>(VILLAGE_ROOM);
     const alice = await colyseus.connectTo(room, JOIN);
     const bob = await colyseus.connectTo(room, JOIN_BOB);
     expect(await pollFor(() => bob.state?.players?.get(alice.sessionId))).toBeDefined();
     expect(bob.state.players.get(alice.sessionId)!.area).toBe("village");
-    expect(room.state.announcement).toBe("");
 
     let leaveCode: number | null = null;
     alice.onLeave((code) => {
       leaveCode = code;
     });
-    alice.send(MessageType.Announce, { text: "공지" });
-    alice.send(MessageType.Kick, { sid: bob.sessionId });
+    alice.send("announce", { text: "공지" });
+    alice.send("kick", { sid: bob.sessionId });
     await roundTrip(alice, bob); // both were handled (and dropped) before this typing event went out
-    expect(room.state.announcement).toBe("");
     expect(room.state.players.has(bob.sessionId)).toBe(true);
     expect(leaveCode).toBeNull();
   });
@@ -571,25 +564,6 @@ describe("VillageRoom quiet hall (integration)", () => {
     expect(emojis).toEqual([{ sid: alice.sessionId, index: 0 }]);
     expect(jumps).toEqual([{ sid: alice.sessionId }]);
     expect(clock.t).toBeGreaterThan(0);
-  });
-
-  it("the quiet is the village's own: the legacy world still relays emoji and jump whatever the area field says", async () => {
-    const room = await colyseus.createRoom<WorldRoom>(WORLD_ROOM);
-    const alice = await colyseus.connectTo(room, JOIN);
-    const bob = await colyseus.connectTo(room, JOIN_BOB);
-    const a = room.state.players.get(alice.sessionId)!;
-    expect(a.area).toBe("village"); // the world never sets it: the default
-    a.area = "hall";
-    const emojis: EmojiBroadcast[] = [];
-    const jumps: JumpBroadcast[] = [];
-    bob.onMessage(MessageType.Emoji, (m: EmojiBroadcast) => emojis.push(m));
-    bob.onMessage(MessageType.Jump, (m: JumpBroadcast) => jumps.push(m));
-
-    alice.send(MessageType.Emoji, { index: 3 });
-    alice.send(MessageType.Jump, {});
-    expect(await pollFor(() => emojis.length === 1 && jumps.length === 1)).toBe(true);
-    expect(emojis).toEqual([{ sid: alice.sessionId, index: 3 }]);
-    expect(jumps).toEqual([{ sid: alice.sessionId }]);
   });
 });
 

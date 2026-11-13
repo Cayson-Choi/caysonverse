@@ -11,15 +11,13 @@ import {
   overviewPanDelta,
 } from "./overview";
 import { worldDirection } from "./input";
-import { WORLD_BOUNDS } from "@caysonverse/shared/constants";
 
-// The REAL map bounds, imported so these tests keep validating the actual world
-// as it grows (maze west, gallery north — a hardcoded copy silently went stale
-// once already: review v2-11 M2).
-const BOUNDS = WORLD_BOUNDS;
+// A wide test map (96 m x 52 m): the rules below (fit height, far plane) are about the map's shape, not about one scene.
+// (The village's own camera far plane is far larger than the overview needs: VILLAGE_CAMERA_PLANES.)
+const BOUNDS = { minX: -66, maxX: 30, minZ: -34, maxZ: 18 };
 const MAP_W = BOUNDS.maxX - BOUNDS.minX;
 const MAP_D = BOUNDS.maxZ - BOUNDS.minZ;
-const FOV = (55 * Math.PI) / 180; // WorldScene camera vertical fov
+const FOV = (55 * Math.PI) / 180; // the camera vertical fov
 
 describe("overview — fit height (whole map in frame, no hardcode)", () => {
   it("lands high enough that the map (with margin) fits at a landscape aspect", () => {

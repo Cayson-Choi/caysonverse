@@ -28,6 +28,23 @@ import type { Nametag } from "./nametag";
 import { createNametagFrame, type NametagFrame } from "./nametagFrame";
 import { distanceFade, nametagWorldHeight, pixelsPerMetre, viewDepth } from "./nametagLayout";
 import { typingRegistry } from "./typing";
+import { VILLAGE_ACTIVE_MAP, setActiveMap } from "./activeMap";
+import { villageGeometry } from "@caysonverse/shared/village/villageLayout";
+
+/**
+ * The occlusion tests below cast against the active map's camera boxes: a plain test map with one 4 m divider wall at
+ * x = 0 (north of its door gap) stands in for any wall (a wall is a camera box; only its place and height matter here).
+ */
+const DIVIDER_MAP = {
+  geometry: {
+    ...villageGeometry,
+    cameraBoxes: [
+      { minX: -0.25, maxX: 0.25, minZ: -18, maxZ: -2 },
+      { minX: -0.25, maxX: 0.25, minZ: 2, maxZ: 18 },
+    ],
+  },
+  zoneLabel: () => "",
+};
 
 const W = 1280;
 const H = 720;
@@ -182,9 +199,11 @@ beforeEach(() => {
   now = 10_000;
   setNametagMode("nearby");
   resetNametagCost();
+  setActiveMap(DIVIDER_MAP);
 });
 
 afterEach(() => {
+  setActiveMap(VILLAGE_ACTIVE_MAP);
   for (const a of avatars.splice(0)) a.unregister();
   frame.reset();
   bubbleRegistry.clear();

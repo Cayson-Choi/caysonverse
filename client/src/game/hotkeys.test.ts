@@ -2051,39 +2051,33 @@ describe("onHotkey — one shared window listener", () => {
 });
 
 describe("resolveEscape — what one Esc press does", () => {
-  const state = (npcOpen: boolean, rosterOpen: boolean, menuOpen: boolean, overlayOpen = false) => ({
+  const state = (rosterOpen: boolean, menuOpen: boolean, overlayOpen = false) => ({
     overlayOpen,
-    npcOpen,
     rosterOpen,
     menuOpen,
   });
 
-  it("the menu (on top) first, then the NPC panel, then the roster, then the menu opens", () => {
-    expect(resolveEscape(state(true, true, true))).toBe("closeMenu");
-    expect(resolveEscape(state(false, true, true))).toBe("closeMenu");
-    expect(resolveEscape(state(true, false, true))).toBe("closeMenu");
-    expect(resolveEscape(state(false, false, true))).toBe("closeMenu");
-    expect(resolveEscape(state(true, true, false))).toBe("closeNpc");
-    expect(resolveEscape(state(false, true, false))).toBe("closeRoster");
-    expect(resolveEscape(state(false, false, false))).toBe("openMenu");
+  it("the menu (on top) first, then the roster, then the menu opens", () => {
+    expect(resolveEscape(state(true, true))).toBe("closeMenu");
+    expect(resolveEscape(state(false, true))).toBe("closeMenu");
+    expect(resolveEscape(state(true, false))).toBe("closeRoster");
+    expect(resolveEscape(state(false, false))).toBe("openMenu");
   });
 
-  it("resolveEscape closes an overlay first — before the menu, the 조교 dialogue and the roster", () => {
-    expect(resolveEscape(state(false, false, false, true))).toBe("closeOverlay");
-    expect(resolveEscape(state(true, true, true, true))).toBe("closeOverlay");
-    expect(resolveEscape(state(false, true, false, true))).toBe("closeOverlay");
-    expect(resolveEscape(state(true, false, false, true))).toBe("closeOverlay");
-    expect(resolveEscape(state(false, false, true, true))).toBe("closeOverlay");
+  it("resolveEscape closes an overlay first — before the menu and the roster", () => {
+    expect(resolveEscape(state(false, false, true))).toBe("closeOverlay");
+    expect(resolveEscape(state(true, true, true))).toBe("closeOverlay");
+    expect(resolveEscape(state(true, false, true))).toBe("closeOverlay");
+    expect(resolveEscape(state(false, true, true))).toBe("closeOverlay");
   });
 
-  it("covers every combination: overlay → menu → npc → roster order, else the menu opens", () => {
+  it("covers every combination: overlay → menu → roster order, else the menu opens", () => {
     for (const overlay of [false, true])
-      for (const npc of [false, true])
-        for (const roster of [false, true])
-          for (const menu of [false, true]) {
-            const want = overlay ? "closeOverlay" : menu ? "closeMenu" : npc ? "closeNpc" : roster ? "closeRoster" : "openMenu";
-            expect(resolveEscape(state(npc, roster, menu, overlay)), `${overlay}/${npc}/${roster}/${menu}`).toBe(want);
-          }
+      for (const roster of [false, true])
+        for (const menu of [false, true]) {
+          const want = overlay ? "closeOverlay" : menu ? "closeMenu" : roster ? "closeRoster" : "openMenu";
+          expect(resolveEscape(state(roster, menu, overlay)), `${overlay}/${roster}/${menu}`).toBe(want);
+        }
   });
 
   it("Esc reaches the menu action while the keyboard is captured, so an open menu can be closed", () => {

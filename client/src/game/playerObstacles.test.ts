@@ -1,10 +1,12 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { OBSTACLES, PLAYER_RADIUS } from "@caysonverse/shared/worldMap";
-import { EAST_GATE, HUB_GEOMETRY_GATED, HUB_GEOMETRY_OPEN, hubZoneLabel } from "@caysonverse/shared/school/hubMap";
-import { LEGACY_ACTIVE_MAP, getActiveMap, setActiveMap } from "./activeMap";
+import { PLAYER_RADIUS } from "@caysonverse/shared/worldMap";
+import { houseInteriorGeometry, villageGeometry } from "@caysonverse/shared/village/villageLayout";
+import { VILLAGE_ACTIVE_MAP, getActiveMap, setActiveMap } from "./activeMap";
 import { collectObstacles, remoteBlocks } from "./playerObstacles";
 
 type RemoteTriple = [x: number, z: number, connected: boolean];
+
+const OBSTACLES = villageGeometry.obstacles;
 
 const forEachOf =
   (remotes: RemoteTriple[]) => (fn: (x: number, z: number, connected: boolean) => void) => {
@@ -64,38 +66,37 @@ describe("collectObstacles (design 33 — solid remote players)", () => {
   });
 });
 
-describe("collectObstacles — the active map (Task 15)", () => {
-  afterEach(() => setActiveMap(LEGACY_ACTIVE_MAP));
+describe("collectObstacles — the active map", () => {
+  afterEach(() => setActiveMap(VILLAGE_ACTIVE_MAP));
 
   it("collectObstacles uses the active map's obstacles after a switch and rebuilds only then", () => {
-    // Legacy first: the world's static list, and the same array frame after frame.
-    const legacyA = collectObstacles(0, 0, forEachOf([]));
-    const legacyB = collectObstacles(0, 0, forEachOf([[5, 5, true]]));
-    expect(legacyB).toBe(legacyA); // no rebuild without a switch
-    expect(legacyB).toHaveLength(OBSTACLES.length + 1);
+    // The village first: its static list, and the same array frame after frame.
+    setActiveMap(VILLAGE_ACTIVE_MAP);
+    const villageA = collectObstacles(0, 0, forEachOf([]));
+    const villageB = collectObstacles(0, 0, forEachOf([[5, 5, true]]));
+    expect(villageB).toBe(villageA); // no rebuild without a switch
+    expect(villageB).toHaveLength(OBSTACLES.length + 1);
 
-    // Switch to the gated hub: the hub's static prefix (walls, seal, gate, board, props).
-    setActiveMap({ geometry: HUB_GEOMETRY_GATED, zoneLabel: hubZoneLabel });
-    const hubA = collectObstacles(0, 0, forEachOf([[3, 0, true]]));
-    expect(hubA).not.toBe(legacyA); // rebuilt once, for the new map
-    expect(hubA).toHaveLength(HUB_GEOMETRY_GATED.obstacles.length + 1);
-    for (let i = 0; i < HUB_GEOMETRY_GATED.obstacles.length; i++) {
-      expect(hubA[i]).toBe(HUB_GEOMETRY_GATED.obstacles[i]);
+    // Switch to a house interior: its static prefix.
+    setActiveMap({ geometry: houseInteriorGeometry, zoneLabel: () => "집 안" });
+    const houseA = collectObstacles(0, 0, forEachOf([[3, 0, true]]));
+    expect(houseA).not.toBe(villageA); // rebuilt once, for the new map
+    expect(houseA).toHaveLength(houseInteriorGeometry.obstacles.length + 1);
+    for (let i = 0; i < houseInteriorGeometry.obstacles.length; i++) {
+      expect(houseA[i]).toBe(houseInteriorGeometry.obstacles[i]);
     }
-    expect(hubA).toContain(EAST_GATE);
-    const hubB = collectObstacles(0, 0, forEachOf([]));
-    expect(hubB).toBe(hubA); // …and not again while the map stays
-    expect(hubB).toHaveLength(HUB_GEOMETRY_GATED.obstacles.length);
+    const houseB = collectObstacles(0, 0, forEachOf([]));
+    expect(houseB).toBe(houseA); // …and not again while the map stays
+    expect(houseB).toHaveLength(houseInteriorGeometry.obstacles.length);
 
-    // The gate opens: the open geometry has no gate box.
-    setActiveMap({ geometry: HUB_GEOMETRY_OPEN, zoneLabel: hubZoneLabel });
-    const open = collectObstacles(0, 0, forEachOf([]));
-    expect(open).not.toBe(hubA);
-    expect(open).toHaveLength(HUB_GEOMETRY_OPEN.obstacles.length);
-    expect(open).not.toContain(EAST_GATE);
+    // Back in the village: rebuilt once more.
+    setActiveMap(VILLAGE_ACTIVE_MAP);
+    const back = collectObstacles(0, 0, forEachOf([]));
+    expect(back).not.toBe(houseA);
+    expect(back).toHaveLength(OBSTACLES.length);
 
     // Setting the SAME map object again is not a switch.
     setActiveMap(getActiveMap());
-    expect(collectObstacles(0, 0, forEachOf([]))).toBe(open);
+    expect(collectObstacles(0, 0, forEachOf([]))).toBe(back);
   });
 });
