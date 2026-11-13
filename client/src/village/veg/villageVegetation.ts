@@ -37,11 +37,11 @@ import {
 } from "./treeSkeleton";
 import { bushSize, findBushes, type Bush } from "./shrubs";
 import { removePlazaZelkova, zelkovaSkeleton } from "./zelkova";
-import { TriangleGrid, faceNormal, type DrawnGap, type V3 } from "./drawnGap";
+import { TriangleGrid, faceNormal, openEdges, type DrawnGap, type V3 } from "./drawnGap";
 import { placeFlowers, SPECIES_COUNT, type Plant } from "./flowerPlacement";
 import { keepTriangles, readCards, type AttributeLike, type Card } from "./vegCards";
 import { makeBlossomAtlas } from "./vegAtlas";
-import { TWIG_BARK, blossomBunch, bunchSprite, bushGeometry, greenClusterFar, leafSpray, speciesMeshes, twigMesh, willowSpray } from "./vegGeometry";
+import { TWIG_BARK, blossomBunch, bunchSprite, bushGeometry, leafSpray, speciesMeshes, twigMesh, willowSpray } from "./vegGeometry";
 import { chooseLod, groupIntoCells, sphereDistance, VEG_TIERS, type Cell, type LodBands, type Vec3, type VegTierConfig } from "./vegLod";
 import { vegMaterial, vegTimeUniform } from "./vegMaterial";
 import { DAY_SUN_DIRECTION } from "../dayNightBlend";
@@ -105,12 +105,13 @@ export interface VegStats {
   hiddenCards: { flora: number; cherry: number; green: number };
   /** Instanced leaf meshes hidden whole, and those cut down to their fallen petals. */
   hiddenInstanced: string[];
+  /** Plants per species (flowerPlacement.SPECIES: the four flowers, the grass tufts, the reeds). */
+  species: number[];
   petalInstanced: string[];
   /** The crowns that make room for a house or a neighbouring crown (crownSpace.ts). */
   makingRoom: string[];
   /** The zelkova's bark triangles taken out. */
   zelkovaBarkTris: number;
-  keptFlowerCards: number;
   /** Instances drawn this frame per level: flowers [full, simple, thinned], trees per class [near, mid, far]. */
   levels: { flowers: [number, number, number]; cherry: [number, number, number]; green: [number, number, number]; willow: [number, number, number]; bush: [number, number, number] };
   /** Triangles and draw calls the vegetation draws this frame (in view). */
@@ -136,6 +137,20 @@ function worldPositions(mesh: Mesh): AttributeLike {
   const v = new Vector3();
   for (let i = 0; i < attr.count; i++) {
     v.fromBufferAttribute(attr, i).applyMatrix4(mesh.matrixWorld);
+    out[i * 3] = v.x;
+    out[i * 3 + 1] = v.y;
+    out[i * 3 + 2] = v.z;
+  }
+  return { count: attr.count, getX: (i) => out[i * 3]!, getY: (i) => out[i * 3 + 1]!, getZ: (i) => out[i * 3 + 2]! };
+}
+
+/** A geometry's vertex positions moved by `xf` (an instance's world matrix), as an AttributeLike. */
+function transformedPositions(g: BufferGeometry, xf: Matrix4): AttributeLike {
+  const attr = g.getAttribute("position") as BufferAttribute;
+  const out = new Float32Array(attr.count * 3);
+  const v = new Vector3();
+  for (let i = 0; i < attr.count; i++) {
+    v.fromBufferAttribute(attr, i).applyMatrix4(xf);
     out[i * 3] = v.x;
     out[i * 3 + 1] = v.y;
     out[i * 3 + 2] = v.z;
@@ -345,6 +360,8 @@ export interface BuildOptions {
    * as soon as it is grown, nearest the focus first, instead of all of them at the build's end.
    */
   onShow?: (v: VillageVegetation) => void;
+  /** How long (ms) a slice of work may run before the main thread is handed back (default STEP_SLICE_MS). */
+  sliceMs?: () => number;
 }
 
 /** A slice of the build's work (ms) before the main thread is handed back. */
@@ -477,10 +494,10 @@ export class VillageVegetation {
       originBlobs: 0,
       hiddenCards: { flora: 0, cherry: 0, green: 0 },
       hiddenInstanced: [],
+      species: [],
       petalInstanced: [],
       makingRoom: [],
       zelkovaBarkTris: 0,
-      keptFlowerCards: 0,
       levels: { flowers: [0, 0, 0], cherry: [0, 0, 0], green: [0, 0, 0], willow: [0, 0, 0], bush: [0, 0, 0] },
       tris: 0,
       calls: 0,
@@ -499,7 +516,7 @@ export class VillageVegetation {
    * then shows as it is grown). `cancelled()` true: stop and free what was made (resolves null).
    */
   static async build(root: Object3D, tier: VillageTier, mode: Exclude<VegMode, "old">, cancelled: () => boolean = () => false, options: BuildOptions = {}): Promise<VillageVegetation | null> {
-    const { focus, onShow } = options;
+    const { focus, onShow, sliceMs } = options;
     const v = new VillageVegetation(tier, mode);
     v.root = root;
     const steps = v.statsData.steps;
@@ -513,7 +530,7 @@ export class VillageVegetation {
       work += now - t;
       // the main thread is handed back once a slice of work is done (not after every small step: each hand-back
       // costs a frame of the village's drawing before the build goes on)
-      if (now - slice >= STEP_SLICE_MS) {
+      if (now - slice >= (sliceMs?.() ?? STEP_SLICE_MS)) {
         await yieldToMain();
         slice = performance.now();
       }
@@ -525,17 +542,24 @@ export class VillageVegetation {
     const low = tier === "low";
     const stats = v.statsData;
 
-    // ── flowers: the beds, read from the old cards ──
+    // ── flowers and grass: the beds, the meadow's wild patches and tufts, the reeds, read from the old cards ──
     const floraMeshes = meshesWithMaterial(root, FLORA);
     const cardMesh = new Map<Card, number>();
     const allCards: Card[] = [];
+    const readFlora = (g: BufferGeometry, position: AttributeLike) =>
+      readCards(position, g.index ? (g.index.array as ArrayLike<number>) : null, (g.getAttribute("uv") as BufferAttribute) ?? null, (g.getAttribute("color") as BufferAttribute) ?? null);
     floraMeshes.forEach((mesh, mi) => {
-      const g = mesh.geometry;
-      const cards = readCards(worldPositions(mesh), g.index ? (g.index.array as ArrayLike<number>) : null, (g.getAttribute("uv") as BufferAttribute) ?? null, (g.getAttribute("color") as BufferAttribute) ?? null);
-      for (const c of cards) {
+      for (const c of readFlora(mesh.geometry, worldPositions(mesh))) {
         cardMesh.set(c, mi);
         allCards.push(c);
       }
+    });
+    // the meadow's patches are instanced (inst__meadow_*): each instance's cards, where it stands
+    root.traverse((o) => {
+      if (!(o as InstancedMesh).isInstancedMesh || !materialsOf(o as Mesh).some((m) => m.name === FLORA)) return;
+      const mesh = o as InstancedMesh;
+      for (const xf of instanceMatrices(mesh)) allCards.push(...readFlora(mesh.geometry, transformedPositions(mesh.geometry, xf)));
+      stats.hiddenInstanced.push(mesh.name);
     });
     if (await step("cards")) return v.abandon();
     const placed = placeFlowers(allCards);
@@ -545,6 +569,7 @@ export class VillageVegetation {
     const meshes = speciesMeshes();
     const counts = new Array<number>(SPECIES_COUNT).fill(0);
     for (const p of placed.plants) counts[p.species]!++;
+    stats.species = counts;
     meshes.forEach((sm, s) => {
       const lod0 = new Layer(sm.lod0, flowerMat, counts[s]!, `veg_flowers_${s}_full`);
       const lod1 = new Layer(sm.lod1, flowerMat, counts[s]!, `veg_flowers_${s}_simple`);
@@ -565,22 +590,6 @@ export class VillageVegetation {
         });
       }
       v.flowerCells.push({ cell, batches, level: -1, visible: false });
-    }
-    const greenFarGeo = greenClusterFar();
-    const greenFarMat = vegMaterial({ name: "M_veg_green_far", wind: 0.008, windFar: 30, ambient: 0.54, sky: 0.16, sun: 0.34, back: 0.35 });
-    v.own.push(greenFarGeo, greenFarMat);
-    const grassItems = placed.kept.map((c) => ({
-      m: new Matrix4().compose(new Vector3(c.x, c.floor, c.z), new Quaternion().setFromAxisAngle(UP, c.x * 0.7 + c.z * 0.37), new Vector3(0.65, 0.65, 0.65)),
-      tint: [0.88, 1, 0.82],
-      light: c.light,
-    }));
-    if (grassItems.length) {
-      const grass = new Layer(greenFarGeo, greenFarMat, grassItems.length, "veg_grass_tufts_3d");
-      grass.begin();
-      grass.push(makeBatch(grassItems));
-      grass.end();
-      v.group.add(grass.mesh);
-      v.own.push(grass.mesh);
     }
     if (await step("flowerMeshes")) return v.abandon();
 
@@ -843,8 +852,10 @@ export class VillageVegetation {
       if (shared.length) out.push(job(key, nearestOf(shared), () => draw(grow(), shared)));
       return out;
     };
-    const STREET_CHERRY = { attractors: 400, bunchStep: 0.08 };
-    const ORCHARD = { attractors: 170, bunchStep: 0.08 };
+    const STREET_CHERRY = { attractors: 400, bunchStep: 0.08, dressBranches: true };
+    // the orchard's small trees (3.8 m): smaller flowers, closer together (about the same blossom), and head room at
+    // the trunk (someone under one looks up into it, not into flowers 20 cm from their eyes)
+    const ORCHARD = { attractors: 240, bunchStep: 0.045, bunchScale: 0.7, headroom: { r: 1.0, y: 2.0 }, dressBranches: true };
     const jobs = [
       ...plaza.map((sk) => job(`cherry${sk.index}`, away(sk.base[0], sk.base[2]), () => drawBlossom(growCherry(sk, { ...CHERRY_GROW, keepOut: keepOutOf(sk) }), "plaza_cherry", ONCE))),
       ...village.map((sk) =>
@@ -906,7 +917,7 @@ export class VillageVegetation {
     // ── last: hide the old cards, all at once, now that the new vegetation is ready ──
     if (hide) {
       floraMeshes.forEach((mesh, mi) => {
-        const drop = [...placed.replaced, ...placed.kept].filter((c) => cardMesh.get(c) === mi);
+        const drop = placed.replaced.filter((c) => cardMesh.get(c) === mi);
         if (drop.length) v.hideCards(mesh, drop);
       });
       greenMeshes.forEach((mesh, mi) => {
@@ -944,8 +955,7 @@ export class VillageVegetation {
     }
     stats.plants = placed.plants.length;
     stats.twigs = Object.values(stats.trees).reduce((a, k) => a + k.twigs, 0);
-    stats.hiddenCards.flora = hide ? placed.replaced.length + placed.kept.length : 0;
-    stats.keptFlowerCards = hide ? 0 : placed.kept.length;
+    stats.hiddenCards.flora = hide ? placed.replaced.length : 0;
     steps.hide = Math.round(performance.now() - t);
     work += performance.now() - t;
     stats.genMs = Math.round(work);
@@ -963,6 +973,26 @@ export class VillageVegetation {
     const pa = new Vector3();
     const pb = new Vector3();
     const pc = new Vector3();
+    // the open edges (rims) of a geometry, found once (an instanced mesh's instances share them)
+    const rims = new Map<BufferGeometry, number[]>();
+    const rimsOf = (geo: BufferGeometry) => {
+      let r = rims.get(geo);
+      if (r) return r;
+      const pos = geo.getAttribute("position") as BufferAttribute;
+      const index = geo.index;
+      const n = index ? index.count : pos.count;
+      const tris: Array<[V3, V3, V3]> = [];
+      for (let t = 0; t < n; t += 3) {
+        const v = [0, 1, 2].map((k): V3 => {
+          const i = index ? index.getX(t + k) : t + k;
+          return [pos.getX(i), pos.getY(i), pos.getZ(i)];
+        });
+        tris.push([v[0]!, v[1]!, v[2]!]);
+      }
+      r = openEdges(tris);
+      rims.set(geo, r);
+      return r;
+    };
     const addMesh = (grid: TriangleGrid, geo: BufferGeometry, world: Matrix4, normals: boolean) => {
       const pos = geo.getAttribute("position") as BufferAttribute;
       const nrm = normals ? (geo.getAttribute("normal") as BufferAttribute | undefined) : undefined;
@@ -970,6 +1000,7 @@ export class VillageVegetation {
       const n = index ? index.count : pos.count;
       const rot = new Matrix4().extractRotation(world);
       const nv = new Vector3();
+      const open = rimsOf(geo);
       for (let t = 0; t < n; t += 3) {
         const ids = [0, 1, 2].map((k) => (index ? index.getX(t + k) : t + k));
         pa.fromBufferAttribute(pos, ids[0]!).applyMatrix4(world);
@@ -985,7 +1016,7 @@ export class VillageVegetation {
           nv.applyMatrix4(rot).normalize();
           normal = [nv.x, nv.y, nv.z];
         } else normal = faceNormal(a, b, c);
-        grid.add(a, b, c, normal);
+        grid.add(a, b, c, normal, open[t / 3]!);
       }
     };
     this.root?.traverse((o) => {

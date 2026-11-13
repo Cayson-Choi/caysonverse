@@ -1,5 +1,5 @@
 import { BufferGeometry, Float32BufferAttribute, Uint16BufferAttribute, Uint32BufferAttribute } from "three";
-import { linearHex } from "./flowerPlacement";
+import { TUFT, linearHex } from "./flowerPlacement";
 import { mulberry32 } from "./vegRandom";
 import type { Vec3 } from "./vegLod";
 import type { Branch } from "./cherryTree";
@@ -491,25 +491,81 @@ export function tulipPlant(simple: boolean, seed = 4): BufferGeometry {
   return b.build();
 }
 
-/** Every species' meshes, in `SPECIES` order. */
+/**
+ * A tuft of grass (or a clump of reeds by the water): blades rising from one root, spreading and arching out, each a
+ * narrow blade folded along its middle (a shallow V, so it has body seen edge-on), tapering to a point. Seen from any
+ * side or above it is a tuft, not a card or a ball. `simple`: fewer, plainer blades (mid distance).
+ */
+export function grassTuft(simple: boolean, kind: "grass" | "reed" = "grass", seed = 31): BufferGeometry {
+  const b = new GeoBuilder();
+  const { h: H, r: R } = TUFT[kind];
+  b.windHeight = H;
+  const rand = mulberry32(seed + (kind === "reed" ? 7 : 0));
+  const blades = simple ? (kind === "reed" ? 9 : 10) : kind === "reed" ? 18 : 22;
+  const rings = simple ? 2 : 4;
+  const colours =
+    kind === "reed"
+      ? { base: rgba("#4A5A26", 1), mid: rgba("#73843A", 1), tip: rgba("#A5A55A", 1) }
+      : { base: rgba("#2E5418", 1), mid: rgba("#5A8A2C", 1), tip: rgba("#9DBA55", 1) };
+  for (let i = 0; i < blades; i++) {
+    const a = (i / blades) * Math.PI * 2 + rand() * 0.9;
+    const out: Vec3 = [Math.cos(a), 0, Math.sin(a)];
+    // inner blades stand up, outer ones arch out further
+    const spread = 0.25 + 0.75 * rand();
+    const h = H * (0.55 + 0.45 * rand()) * (1 - 0.25 * spread);
+    const reach = R * spread * (0.8 + 0.4 * rand());
+    const root: Vec3 = [out[0] * R * 0.12 * rand(), 0, out[2] * R * 0.12 * rand()];
+    const w = (kind === "reed" ? 0.016 : 0.011) * (0.8 + 0.4 * rand()) * (simple ? 1.5 : 1);
+    const twist = (rand() - 0.5) * 0.8;
+    const at = (t: number): Vec3 => add(root, [out[0] * reach * t * t, h * (t - 0.18 * spread * t * t * t), out[2] * reach * t * t]);
+    const ring: number[][] = [];
+    for (let k = 0; k <= rings; k++) {
+      const t = k / (rings + 1);
+      const p = at(t);
+      const d = norm(sub(at(t + 0.02), p));
+      const across0 = norm(cross([0, 1, 0], out));
+      const across = norm(add(mul(across0, Math.cos(twist * t)), mul(cross(d, across0), Math.sin(twist * t))));
+      const n = norm(cross(across, d));
+      const hw = (w / 2) * (1 - 0.85 * t);
+      const fold = hw * 0.55;
+      const col = t < 0.4 ? mix(colours.base, colours.mid, t / 0.4) : mix(colours.mid, colours.tip, (t - 0.4) / 0.6);
+      const up = norm(add(n, [0, 0.8, 0]));
+      ring.push([
+        b.v(add(add(p, mul(across, -hw)), mul(n, fold)), up, col),
+        b.v(p, up, col),
+        b.v(add(add(p, mul(across, hw)), mul(n, fold)), up, col),
+      ]);
+    }
+    const tipP = at(1);
+    const tip = b.v(tipP, [0, 1, 0], colours.tip);
+    for (let k = 0; k < rings; k++) {
+      const [l0, c0, r0] = ring[k]!;
+      const [l1, c1, r1] = ring[k + 1]!;
+      b.tri(l0!, c0!, c1!);
+      b.tri(l0!, c1!, l1!);
+      b.tri(c0!, r0!, r1!);
+      b.tri(c0!, r1!, c1!);
+    }
+    const [l, c, r] = ring[rings]!;
+    b.tri(l!, c!, tip);
+    b.tri(c!, r!, tip);
+  }
+  return b.build();
+}
+
+/** Every species' meshes, in `SPECIES` order (the four flowers, then the meadow's grass tufts and the reeds). */
 export function speciesMeshes(): SpeciesMeshes[] {
   return [
     { lod0: petuniaPlant(false), lod1: petuniaPlant(true) },
     { lod0: pansyPlant(false), lod1: pansyPlant(true) },
     { lod0: muscariPlant(false), lod1: muscariPlant(true) },
     { lod0: tulipPlant(false), lod1: tulipPlant(true) },
+    { lod0: grassTuft(false, "grass"), lod1: grassTuft(true, "grass") },
+    { lod0: grassTuft(false, "reed"), lod1: grassTuft(true, "reed") },
   ];
 }
 
 // ─────────────────────────────────────────────── green canopy ───────────────────────────────────────────────
-
-/** A cheap closed puff (the 3D grass tufts that stand where the flower beds' grass cards were). */
-export function greenClusterFar(): BufferGeometry {
-  const b = new GeoBuilder();
-  b.windHeight = 0.5;
-  dome(b, [0, 0.12, 0], 0.25, 0.22, 6, rgba("#315F20"), rgba("#6C9639"));
-  return b.build();
-}
 
 type LeafColour = { rib: Rgba; edge: Rgba; base: Rgba };
 /** Broadleaf greens (linear, tinted per spray: alpha 1). Three shades so neighbouring leaves differ. */
@@ -697,7 +753,9 @@ export function blossomBunch(seed = 5): BufferGeometry {
   const b = new GeoBuilder();
   const rand = mulberry32(seed);
   const white = rgba("#FFFFFF", 1, 1);
-  const pedicel = rgba("#7C6A44", 0, 1); // green-brown, as the real ones (not black spikes at night)
+  // green-brown, as the real ones (not black spikes at night), a little darker than the twigs' top: seen from a hand's
+  // breadth they are fine stalks under the flowers, not yellow rods
+  const pedicel = rgba("#655A3A", 0, 1);
   const solid = (u: number, v: number) => cellUv(ATLAS_CELL.solid, u, v, 0.3);
   const flower = (centre: Vec3, face: Vec3, size: number, cell: number, cup: number) => {
     const f = norm(face);
@@ -723,7 +781,7 @@ export function blossomBunch(seed = 5): BufferGeometry {
   const stalk = (from: Vec3, to: Vec3) => {
     // a thin ribbon facing up-ish (two triangles), untextured (the atlas's solid cell)
     const d = norm(sub(to, from));
-    const side = mul(norm(cross(d, [0.3, 1, 0.2])), 0.001);
+    const side = mul(norm(cross(d, [0.3, 1, 0.2])), 0.0006);
     const a = b.v(sub(from, side), [0, 1, 0], pedicel, solid(0, 0), 1);
     const c2 = b.v(add(from, side), [0, 1, 0], pedicel, solid(1, 0), 1);
     const e = b.v(add(to, side), [0, 1, 0], pedicel, solid(1, 1), 1);

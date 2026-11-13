@@ -21,6 +21,7 @@ import { useNightMapWanted } from "./nightLightmap";
 import { holdNightLightmap, noteBusRequested, noteNightRequested, noteVillageRequested } from "./villageRelease";
 import { preloadBus } from "./villageBusLoader";
 import { createVegetation, hideLegacyVegetationSources, vegModeFrom, type VegStats, type VillageVegetation } from "./veg/villageVegetation";
+import { vegDressing } from "./vegDressing";
 import { createWaterfall3D, hideWaterfallCards, type Waterfall3D } from "./waterfall3d";
 import type { Object3D } from "three";
 import type { DrawnGap } from "./veg/drawnGap";
@@ -93,15 +94,18 @@ export function VillageModel({ tier }: { tier: VillageTier }) {
     [gltf, lightmap, tier, gl],
   );
   // The 3D flowers, trees and bushes (veg3d), built in steps after the village is up (the old foliage cards and the
-  // plaza zelkova hidden at once; each tree shows as soon as it is grown, the nearest first); once ready they cut the
-  // old cards out of this clone (`?veg=old` in DEV keeps them). Disposing gives the clone its cards back.
+  // plaza zelkova hidden at once); once ready they cut the old cards out of this clone (`?veg=old` in DEV keeps them).
+  // Disposing gives the clone its cards back. The village is covered while they grow (vegDressing.ts, VegVeil): no
+  // arrival ever shows the trees bare. Under the cover the build works in longer slices (it finishes sooner).
   const [veg, setVeg] = useState<VillageVegetation | null>(null);
   useLayoutEffect(() => {
     let cancelled = false;
     let built: VillageVegetation | null = null;
     const mode = vegModeFrom(window.location.search, import.meta.env.DEV);
     const restoreLegacy = mode === "new" ? hideLegacyVegetationSources(nodes.root) : () => {};
+    const dressing = vegDressing.begin();
     void createVegetation(nodes.root, tier, mode, () => cancelled, {
+      sliceMs: () => (vegDressing.dressed() ? 12 : 50),
       // the trees nearest the camera grow first, and each shows as soon as it is grown
       focus: () => {
         const p = getThree().camera.position;
@@ -110,19 +114,26 @@ export function VillageModel({ tier }: { tier: VillageTier }) {
       onShow: (v) => {
         if (!cancelled) setVeg(v);
       },
-    }).then((v) => {
-      if (!v) {
-        // a cancelled build: the cleanup gave the old foliage back already, and a newer effect (StrictMode's replay,
-        // a tier change) may have hidden it again since: leave that alone
-        if (!cancelled) restoreLegacy();
-        return;
-      }
-      if (cancelled) v.dispose();
-      else {
-        built = v;
-        setVeg(v);
-      }
-    });
+    })
+      .catch((e: unknown) => {
+        // never left covered by a build that failed: the village shows without its 3D vegetation
+        console.error("[veg3d] build failed", e);
+        return null;
+      })
+      .then((v) => {
+        if (!cancelled) vegDressing.done(dressing);
+        if (!v) {
+          // a cancelled build: the cleanup gave the old foliage back already, and a newer effect (StrictMode's replay,
+          // a tier change) may have hidden it again since: leave that alone
+          if (!cancelled) restoreLegacy();
+          return;
+        }
+        if (cancelled) v.dispose();
+        else {
+          built = v;
+          setVeg(v);
+        }
+      });
     if (import.meta.env.DEV) {
       window.__cvVeg = () => built?.stats() ?? null;
       window.__cvVegDrawn = () => built?.measureDrawn() ?? null;

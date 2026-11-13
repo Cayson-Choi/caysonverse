@@ -4,7 +4,9 @@
  *    인스턴스 나무 밑동에 덩어리가 없는지(originBlobs 0);
  *  - 잎 가지의 밑동과 꽃송이의 꽃자루가 화면에 그려진 잔가지·껍질 삼각형에서 5 cm 안에 있는지(window.__cvVegDrawn():
  *    이 화질에서 실제로 만든 잔가지 메시와 마을 파일의 껍질로 잰다. 휴대폰의 단순화된 잔가지도 그대로);
- *  - 입장 직후 식생이 준비되기 전에도 옛 평면 잎·꽃 카드와 광장 느티나무가 보이지 않는지;
+ *  - 입장 직후 식생이 준비되기 전에도 옛 평면 잎·꽃 카드와 광장 느티나무가 보이지 않는지, 그동안 마을이 가림막(VegVeil)에
+ *    가려 있어 맨 가지 나무가 한 번도 보이지 않는지, 다 자라면 가림막이 걷히는지;
+ *  - 들판 풀숲(inst__meadow_*, 풀 카드)과 냇가 갈대가 3D 풀 포기·갈대·들꽃으로 바뀌었는지(옛 카드도, 초록 반구도 없음);
  *  - 옛 평면 잎 카드가 남지 않았는지(잎 메시의 카드 삼각형, 인스턴스 잎 메시, 벚꽃은 떨어진 꽃잎만 남음), 광장 느티나무가 없어졌는지,
  *    뒷산 숲(inst__far_*)의 카드는 그대로 보이는지;
  *  - 새 메시들의 경계 구(bounding sphere)가 비어 있지 않은지(절두체 컬링으로 사라지는 일 없음);
@@ -33,12 +35,13 @@ async function check(tag, device, graphics) {
     await player.page.waitForFunction(() => window.__cv?.getScreen?.() === "village", null, { timeout: 60000 });
     // until the 3D vegetation is ready: no old flat foliage card shows and the plaza zelkova is already gone (the
     // arrival hides them at once; a cancelled first build must not give them back)
-    const early = { samples: 0, legacy: [], zelkova: 0 };
+    const early = { samples: 0, legacy: [], zelkova: 0, uncovered: 0 };
     for (let i = 0; i < 900; i++) {
       const r = await player.page.evaluate(() => {
         const v = window.__cvVillage?.();
         if (!v) return null;
-        const out = { legacy: [], deck: false, ready: !!window.__cvVeg?.() };
+        const veil = document.querySelector(".cv-veg-veil");
+        const out = { legacy: [], deck: false, ready: !!window.__cvVeg?.(), covered: veil?.getAttribute("data-covered") === "1" };
         v.root.traverse((o) => {
           if (!o.isMesh || o.name.startsWith("inst__far_")) return;
           let vis = true;
@@ -55,13 +58,22 @@ async function check(tag, device, graphics) {
         early.samples++;
         early.legacy.push(...r.legacy);
         if (!r.deck) early.zelkova++;
+        // the village is there but its trees are still growing: it must be covered (no bare trees on arrival)
+        if (!r.ready && !r.covered) early.uncovered++;
         if (r.ready) break;
       }
       await sleep(100);
     }
     run.check("입장 직후(식생 준비 전)에 옛 평면 잎·꽃 카드가 보이지 않는다", early.samples > 0 && early.legacy.length === 0, early);
     run.check("입장 직후부터 광장 느티나무가 없다", early.samples > 0 && early.zelkova === 0, early);
+    run.check("나무가 자라는 동안 마을이 가림막에 가려 있다 (맨 가지 나무가 보이지 않음)", early.samples > 0 && early.uncovered === 0, early);
     await player.page.waitForFunction(() => typeof window.__cvVeg === "function" && window.__cvVeg() !== null && !!window.__cvThree?.(), null, { timeout: 90000 });
+    await sleep(800);
+    const veil = await player.page.evaluate(() => {
+      const el = document.querySelector(".cv-veg-veil");
+      return el ? { covered: el.getAttribute("data-covered"), opacity: getComputedStyle(el).opacity } : null;
+    });
+    run.check("다 자라면 가림막이 걷힌다", veil?.covered === "0" && Number(veil.opacity) < 0.05, veil);
   });
   await run.step(`${tag}: 수관과 연결`, async () => {
     const s = await player.page.evaluate(() => window.__cvVeg());
@@ -80,6 +92,11 @@ async function check(tag, device, graphics) {
     run.check("가로수·관목 인스턴스 잎 카드 숨김", ["inst__street_green_1", "inst__shrub_0"].every((n) => s.hiddenInstanced.includes(n)), s.hiddenInstanced);
     run.check("가로 벚나무·과수원은 떨어진 꽃잎만", ["inst__street_cherry_1", "inst__orchard_1"].every((n) => s.petalInstanced.includes(n)), s.petalInstanced);
     run.check("광장 느티나무 껍질 삼각형을 걷어냈다", s.zelkovaBarkTris > 300, s.zelkovaBarkTris);
+    // the meadow: its instanced patches and every grass card are 3D now (tufts, reeds, wild flowers), none left flat
+    run.check("들판 풀숲 인스턴스(inst__meadow_0..3) 카드를 3D로 바꿨다", [0, 1, 2, 3].every((i) => s.hiddenInstanced.includes(`inst__meadow_${i}_0`)), s.hiddenInstanced);
+    run.check("풀 카드가 3D 풀 포기로 (1400포기 이상)", s.species[4] >= 1400, s.species);
+    run.check("냇가 키 큰 풀 카드가 3D 갈대로 (400포기 이상)", s.species[5] >= 400, s.species);
+    run.check("꽃 카드 6000장 이상을 3D 꽃·풀로 바꿨다", s.hiddenCards.flora >= 6000, s.hiddenCards);
   });
   await run.step(`${tag}: 그려진 잔가지·껍질과 잎의 간격`, async () => {
     // every leaf spray's stem foot and blossom bunch's spur against the triangles on screen: the twig meshes as built
@@ -92,7 +109,7 @@ async function check(tag, device, graphics) {
   await run.step(`${tag}: 장면 — 옛 카드, 뒷산 숲, 경계 구`, async () => {
     const r = await player.page.evaluate(() => {
       const { scene } = window.__cvThree();
-      const out = { leafTrisLeft: [], instancedLeafVisible: [], farVisible: 0, farHidden: 0, cherryHigh: [], emptyBounds: [], deck: false, zelkovaLeft: 0 };
+      const out = { leafTrisLeft: [], instancedLeafVisible: [], farVisible: 0, farHidden: 0, cherryHigh: [], emptyBounds: [], deck: false, zelkovaLeft: 0, floraVisible: [], puffs: false };
       const mats = (o) => (Array.isArray(o.material) ? o.material : [o.material]).map((m) => m?.name);
       const visible = (o) => {
         for (let p = o; p; p = p.parent) if (!p.visible) return false;
@@ -118,6 +135,11 @@ async function check(tag, device, graphics) {
           if (top > 0.12) out.cherryHigh.push(`${o.name}:${top.toFixed(2)}`);
         }
         if (o.name === "zelkova_deck_top") out.deck = true;
+        if (names.includes("M_leaf_flora")) {
+          if (o.isInstancedMesh) out.floraVisible.push(o.name);
+          else if ((g.index?.count ?? 0) > 0) out.floraVisible.push(`${o.name}:${g.index.count / 3}`);
+        }
+        if (o.name === "veg_grass_tufts_3d") out.puffs = true;
         if (o.parent?.name === "village_vegetation" || o.name.startsWith("veg_")) {
           const s = o.isInstancedMesh ? o.boundingSphere : g.boundingSphere;
           if (o.frustumCulled && (!s || !(s.radius > 0) || !Number.isFinite(s.radius))) out.emptyBounds.push(o.name);
@@ -153,6 +175,8 @@ async function check(tag, device, graphics) {
     run.check("녹색 잎 메시에 평면 카드가 남지 않았다", r.leafTrisLeft.length === 0, r.leafTrisLeft);
     run.check("인스턴스 녹색 잎 카드가 보이지 않는다 (뒷산 숲 제외)", r.instancedLeafVisible.length === 0, r.instancedLeafVisible);
     run.check("벚꽃 카드는 땅 위 꽃잎만 남았다", r.cherryHigh.length === 0, r.cherryHigh);
+    run.check("꽃·풀 평면 카드가 보이지 않는다 (들판 인스턴스 포함)", r.floraVisible.length === 0, r.floraVisible);
+    run.check("밑동의 초록 반구(옛 veg_grass_tufts_3d)가 없다", !r.puffs, r.puffs);
     run.check("뒷산 숲 카드 7000그루가 보인다", r.farVisible >= 7000, r.farVisible);
     run.check("느티나무 줄기가 평상 위에 남지 않았다", r.zelkovaLeft === 0, r.zelkovaLeft);
     run.check("평상 가운데 판", r.deck, r.deck);

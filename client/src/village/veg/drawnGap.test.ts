@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { TriangleGrid, closestOnTriangle, faceNormal, type V3 } from "./drawnGap";
+import { TriangleGrid, closestOnTriangle, faceNormal, openEdges, type V3 } from "./drawnGap";
 import { simplifyLine, twigMesh, TWIG_SIMPLIFY_TOL } from "./vegGeometry";
 import type { Branch } from "./treeSkeleton";
 
@@ -9,13 +9,18 @@ function gridOf(geo: ReturnType<typeof twigMesh>): TriangleGrid {
   const pos = geo.getAttribute("position");
   const nrm = geo.getAttribute("normal");
   const idx = geo.index!;
+  const tris: Array<[V3, V3, V3]> = [];
+  const normals: V3[] = [];
   for (let t = 0; t < idx.count; t += 3) {
     const ids = [idx.getX(t), idx.getX(t + 1), idx.getX(t + 2)];
     const p = ids.map((i) => [pos.getX(i), pos.getY(i), pos.getZ(i)] as V3);
     const n = ids.reduce<V3>((a, i) => [a[0] + nrm.getX(i), a[1] + nrm.getY(i), a[2] + nrm.getZ(i)], [0, 0, 0]);
     const l = Math.hypot(...n);
-    grid.add(p[0]!, p[1]!, p[2]!, [n[0] / l, n[1] / l, n[2] / l]);
+    tris.push([p[0]!, p[1]!, p[2]!]);
+    normals.push([n[0] / l, n[1] / l, n[2] / l]);
   }
+  const open = openEdges(tris);
+  tris.forEach(([a, b, c], i) => grid.add(a, b, c, normals[i]!, open[i]!));
   return grid;
 }
 
@@ -53,6 +58,26 @@ describe("TriangleGrid.gap", () => {
     expect(g.gap([0.2, 0.2, 0.3], 1)).toBeCloseTo(0.3);
     expect(g.gap([0.2, 0.2, -0.1], 1)).toBe(0);
     expect(g.gap([0.2, 0.2, 3], 1)).toBe(Infinity);
+  });
+});
+
+describe("TriangleGrid.gap on an open tube (the twigs, the file's limbs: no end caps)", () => {
+  // the reviewer's case (2026-11-13): a twig (0,0,0) -> (0,1,0); points on its axis past either end were 0 (inside)
+  const grid = gridOf(twigMesh([{ branch: { pts: [[0, 0, 0], [0, 0.5, 0], [0, 1, 0]], radii: [0.012, 0.01, 0.008] }, light: () => 1 }]));
+  it("measures a point past the open end by its distance to the rim", () => {
+    for (const y of [1.05, 1.2, 1.4]) expect(grid.gap([0, y, 0], 1)).toBeGreaterThan(y - 1 - 1e-6);
+    for (const y of [-0.2, -0.4]) expect(grid.gap([0, y, 0], 1)).toBeGreaterThan(-y - 1e-6);
+    expect(grid.gap([0, 1.4, 0], 1)).toBeCloseTo(Math.hypot(0.4, 0.008), 2);
+  });
+  it("still counts a point inside the tube as touching, and measures one beside it", () => {
+    expect(grid.gap([0, 0.5, 0], 1)).toBe(0);
+    expect(grid.gap([0, 0.25, 0.001], 1)).toBe(0);
+    expect(grid.gap([0.2, 0.5, 0], 1)).toBeCloseTo(0.2 - 0.01, 2);
+  });
+  it("marks only the rims as open", () => {
+    const sq: V3[] = [[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0]];
+    // two triangles of a square share the diagonal: it is not open, the four sides are
+    expect(openEdges([[sq[0]!, sq[1]!, sq[2]!], [sq[0]!, sq[2]!, sq[3]!]])).toEqual([1 | 2, 2 | 4]);
   });
 });
 

@@ -3,7 +3,11 @@
  * against the very line it was placed on, so it always passed). Here every leaf spray's and blossom bunch's origin
  * (its instance's place) is measured against the triangles on screen: the twig meshes as built for the tier (the
  * phone's simplified ones too) and the village file's own bark (the trunks and limbs the clusters may hang on).
- * A point inside a closed bark tube (a cluster on a thick limb's axis) counts as touching. Pure: unit-tested.
+ * A point inside a bark tube (a cluster on a thick limb's axis) counts as touching: it lies behind the nearest face.
+ * The tubes are open at their ends (the twigs, the file's limbs: no caps), so "behind the nearest face" alone would
+ * also take a point past a tube's open end, on its axis, for inside (the nearest point is then on the rim, and the
+ * rim's face points away from it). A point whose nearest point lies on an open edge (a rim: an edge only one triangle
+ * of the mesh has, `openEdges`) is measured by its plain distance. Pure: unit-tested.
  */
 
 export type V3 = [number, number, number];
@@ -39,9 +43,39 @@ export function closestOnTriangle(p: V3, a: V3, b: V3, c: V3): V3 {
   return at(a, ab, vb * denom, ac, vc * denom);
 }
 
+/** The squared distance from `p` to the segment a-b. */
+function segmentDist2(p: V3, a: V3, b: V3): number {
+  const ab: V3 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+  const l2 = ab[0] * ab[0] + ab[1] * ab[1] + ab[2] * ab[2];
+  const t = l2 > 0 ? Math.max(0, Math.min(1, ((p[0] - a[0]) * ab[0] + (p[1] - a[1]) * ab[1] + (p[2] - a[2]) * ab[2]) / l2)) : 0;
+  const dx = p[0] - a[0] - ab[0] * t;
+  const dy = p[1] - a[1] - ab[1] * t;
+  const dz = p[2] - a[2] - ab[2] * t;
+  return dx * dx + dy * dy + dz * dz;
+}
+
+/**
+ * Which edges of each triangle are open (only that triangle of the mesh has them: a tube's rim), as a mask per
+ * triangle (1: a-b, 2: b-c, 4: c-a). Vertices are matched by position (to 0.01 mm: split UV seams are one vertex).
+ */
+export function openEdges(tris: ReadonlyArray<readonly [V3, V3, V3]>): number[] {
+  const q = (v: V3) => `${Math.round(v[0] * 1e5)},${Math.round(v[1] * 1e5)},${Math.round(v[2] * 1e5)}`;
+  const edgeKey = (a: string, b: string) => (a < b ? `${a}|${b}` : `${b}|${a}`);
+  const uses = new Map<string, number>();
+  const keys = tris.map(([a, b, c]) => {
+    const ka = q(a);
+    const kb = q(b);
+    const kc = q(c);
+    const e = [edgeKey(ka, kb), edgeKey(kb, kc), edgeKey(kc, ka)];
+    for (const k of e) uses.set(k, (uses.get(k) ?? 0) + 1);
+    return e;
+  });
+  return keys.map((e) => e.reduce((m, k, i) => (uses.get(k) === 1 ? m | (1 << i) : m), 0));
+}
+
 /**
  * Triangles in a grid of `cell`-metre cubes (each triangle in every cell its box touches). Each triangle carries an
- * outward normal (the mesh's own vertex normals, or its winding).
+ * outward normal (the mesh's own vertex normals, or its winding) and which of its edges are open (`openEdges`).
  */
 export class TriangleGrid {
   private readonly tris: number[] = [];
@@ -53,13 +87,13 @@ export class TriangleGrid {
   }
 
   get size(): number {
-    return this.tris.length / 12;
+    return this.tris.length / 13;
   }
 
-  /** Add the triangle a, b, c with outward normal n (unit). */
-  add(a: V3, b: V3, c: V3, n: V3): void {
-    const id = this.tris.length / 12;
-    this.tris.push(...a, ...b, ...c, ...n);
+  /** Add the triangle a, b, c with outward normal n (unit) and its open edges (mask, `openEdges`). */
+  add(a: V3, b: V3, c: V3, n: V3, open = 0): void {
+    const id = this.tris.length / 13;
+    this.tris.push(...a, ...b, ...c, ...n, open);
     const s = this.cell;
     const lo = [0, 1, 2].map((d) => Math.floor(Math.min(a[d]!, b[d]!, c[d]!) / s));
     const hi = [0, 1, 2].map((d) => Math.floor(Math.max(a[d]!, b[d]!, c[d]!) / s));
@@ -74,8 +108,8 @@ export class TriangleGrid {
   }
 
   /**
-   * The gap from `p` to the nearest triangle (0 when `p` lies behind it: inside the tube), searched out to `maxR`
-   * metres (Infinity past it).
+   * The gap from `p` to the nearest triangle (0 when `p` lies behind it: inside the tube, unless the nearest point is
+   * on an open edge: past a tube's open end), searched out to `maxR` metres (Infinity past it).
    */
   gap(p: V3, maxR: number): number {
     const s = this.cell;
@@ -97,16 +131,25 @@ export class TriangleGrid {
             for (const id of list) {
               if (seen.has(id)) continue;
               seen.add(id);
-              const o = id * 12;
+              const o = id * 13;
               const t = this.tris;
-              const q = closestOnTriangle(p, [t[o]!, t[o + 1]!, t[o + 2]!], [t[o + 3]!, t[o + 4]!, t[o + 5]!], [t[o + 6]!, t[o + 7]!, t[o + 8]!]);
+              const A: V3 = [t[o]!, t[o + 1]!, t[o + 2]!];
+              const B: V3 = [t[o + 3]!, t[o + 4]!, t[o + 5]!];
+              const C: V3 = [t[o + 6]!, t[o + 7]!, t[o + 8]!];
+              const q = closestOnTriangle(p, A, B, C);
               const dx = p[0] - q[0];
               const dy = p[1] - q[1];
               const dz = p[2] - q[2];
               const d = Math.hypot(dx, dy, dz);
               if (d < best) {
                 best = d;
-                inside = dx * t[o + 9]! + dy * t[o + 10]! + dz * t[o + 11]! < 0;
+                const open = t[o + 12]!;
+                const onRim =
+                  open !== 0 &&
+                  (((open & 1) !== 0 && segmentDist2(q, A, B) < 1e-12) ||
+                    ((open & 2) !== 0 && segmentDist2(q, B, C) < 1e-12) ||
+                    ((open & 4) !== 0 && segmentDist2(q, C, A) < 1e-12));
+                inside = !onRim && dx * t[o + 9]! + dy * t[o + 10]! + dz * t[o + 11]! < 0;
               }
             }
           }

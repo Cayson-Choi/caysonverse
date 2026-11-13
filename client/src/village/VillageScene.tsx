@@ -9,6 +9,7 @@ import { getRoom, sendUseDoor } from "../net/connection";
 import { sendBusRide, startTransitSync, type TransitRoom, useTransitState } from "../net/transitSync";
 import type { Identity } from "../stores/appStore";
 import { DoorFade } from "./DoorFade";
+import { VegVeil } from "./VegVeil";
 import { doorFade } from "./doorFadeModel";
 import { useQualityTier } from "../game/QualityEffects";
 import { SceneWarmUp } from "../game/SceneWarmUp";
@@ -278,6 +279,7 @@ export function VillageScene({ identity }: { identity: Identity }) {
       }
       hud={({ orbit, pose }) => (
         <>
+          <VegVeil active={area === "village"} />
           <DoorFade />
           <CubbyView />
           <GuideDialog />

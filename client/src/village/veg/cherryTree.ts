@@ -102,6 +102,18 @@ export interface GrowOptions {
   minD?: number;
   /** Space the crown keeps out of (crownGrowth.KeepOut): no twig grows into it, no bunch hangs there. */
   keepOut?: KeepOut;
+  /** The bunches' size against a big cherry's (1): the small orchard trees carry smaller flowers. */
+  bunchScale?: number;
+  /**
+   * Head room under the crown: no bunch (and no twig toward one) within `r` m of the trunk below `y` m above its foot.
+   * Someone standing at the trunk then looks up into the crown instead of having flowers at their eyes.
+   */
+  headroom?: { r: number; y: number };
+  /**
+   * Blossom all along the outer part of the file's own limbs and side branches, also where they reach out of the
+   * crown's shell or through one of its holes (a small tree's straight branches would otherwise stand bare over it).
+   */
+  dressBranches?: boolean;
 }
 
 export const CHERRY_GROW: GrowOptions = { attractors: 540, bunchStep: 0.08 };
@@ -113,7 +125,13 @@ export function growCherry(sk: CherrySkeleton, opts: GrowOptions = CHERRY_GROW):
   const rand = mulberry32(9000 + sk.index * 7919);
   const env = crownEnvelope(sk);
   const salt = sk.index * 3 + 1;
-  const grown = colonise(sk, env, salt, rand, { ...CHERRY_COLONISE, attractors: opts.attractors, keepOut: opts.keepOut });
+  const scale = opts.bunchScale ?? 1;
+  const head = opts.headroom;
+  const outer = opts.keepOut;
+  const keepOut: KeepOut | undefined = head
+    ? (p) => (p[1] - sk.base[1] < head.y && Math.hypot(p[0] - sk.base[0], p[2] - sk.base[2]) < head.r) || !!outer?.(p)
+    : outer;
+  const grown = colonise(sk, env, salt, rand, { ...CHERRY_COLONISE, attractors: opts.attractors, keepOut });
 
   // bunches along the outer part of every twig, and on the outer ends of the limbs' side branches
   const bunches: Bunch[] = [];
@@ -122,7 +140,7 @@ export function growCherry(sk: CherrySkeleton, opts: GrowOptions = CHERRY_GROW):
   const gkey = (i: number, j: number, k: number) => ((i + 2048) * 4096 + (j + 2048)) * 4096 + (k + 2048);
   const cell = 0.2;
   // bunches at least this far apart: a little closer than the spurs could sit before they had to stay on their twig
-  const minD = opts.minD ?? 0.088;
+  const minD = opts.minD ?? 0.088 * scale;
   const tryBunch = (p0: Vec3, hang: Hang, force = false) => {
     const outward = norm([p0[0] - env.c[0], (p0[1] - env.c[1]) * 0.8 + 0.25, p0[2] - env.c[2]]);
     // the spur sits on its twig: at most ~4.5 cm off it
@@ -130,7 +148,7 @@ export function growCherry(sk: CherrySkeleton, opts: GrowOptions = CHERRY_GROW):
     const rho = envelopeRadius(env, p);
     if (!force && rho > lumpyLimit(p, salt) * 1.06) return;
     if (!force && isSkyGap(p, salt)) return;
-    if (opts.keepOut?.(p)) return;
+    if (keepOut?.(p)) return;
     const i0 = Math.floor(p[0] / cell);
     const j0 = Math.floor(p[1] / cell);
     const k0 = Math.floor(p[2] / cell);
@@ -156,7 +174,7 @@ export function growCherry(sk: CherrySkeleton, opts: GrowOptions = CHERRY_GROW):
       nx: face[0],
       ny: face[1],
       nz: face[2],
-      size: 0.24 + 0.1 * rand(),
+      size: (0.24 + 0.1 * rand()) * scale,
       light,
       depth,
       seed: rand(),
@@ -170,7 +188,7 @@ export function growCherry(sk: CherrySkeleton, opts: GrowOptions = CHERRY_GROW):
     if (!list) grid.set(key, (list = []));
     list.push(b);
   };
-  const along = (b: Branch, id: number, from: number, step: number) => {
+  const along = (b: Branch, id: number, from: number, step: number, force = false) => {
     let total = 0;
     for (let i = 1; i < b.pts.length; i++) total += len(sub(b.pts[i]!, b.pts[i - 1]!));
     for (let s = total - 0.01; s >= from * total; s -= step * (0.8 + 0.4 * rand())) {
@@ -178,7 +196,7 @@ export function growCherry(sk: CherrySkeleton, opts: GrowOptions = CHERRY_GROW):
       for (let i = 1; i < b.pts.length; i++) {
         const l = len(sub(b.pts[i]!, b.pts[i - 1]!));
         if (s <= acc + l + 1e-9) {
-          tryBunch(lerp(b.pts[i - 1]!, b.pts[i]!, (s - acc) / (l || 1)), { twig: id, s });
+          tryBunch(lerp(b.pts[i - 1]!, b.pts[i]!, (s - acc) / (l || 1)), { twig: id, s }, force);
           break;
         }
         acc += l;
@@ -187,8 +205,9 @@ export function growCherry(sk: CherrySkeleton, opts: GrowOptions = CHERRY_GROW):
   };
   grown.forEach((t, i) => along(t, i, 0.3, opts.bunchStep));
   const skel = skeletonBranches(sk);
-  sk.sides.forEach((s, i) => along(s, -1 - (sk.limbs.length + i), 0.55, opts.bunchStep * 1.2));
-  sk.limbs.forEach((l, i) => along(l, -1 - i, 0.8, opts.bunchStep * 1.2));
+  const dress = !!opts.dressBranches;
+  sk.sides.forEach((s, i) => along(s, -1 - (sk.limbs.length + i), 0.55, opts.bunchStep * 1.2, dress));
+  sk.limbs.forEach((l, i) => along(l, -1 - i, 0.8, opts.bunchStep * 1.2, dress));
   // every baked limb and side branch ends in blossom
   skel.forEach((b, i) => tryBunch(b.pts[b.pts.length - 1]!, { twig: -1 - i, s: polyLength(b) }, true));
 
