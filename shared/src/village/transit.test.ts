@@ -81,29 +81,40 @@ describe("the bus at the crosswalks' signals", () => {
     for (const h of TRANSIT_HOLDS) expect(h.distance).toBeGreaterThan(0);
   });
 
-  it("waits at a red signal and goes on at green, never crossing against the signal", () => {
-    const tl = tripTimeline(hour);
-    expect(tl.holds.some((h) => h.releaseMs > h.arriveMs)).toBe(true); // at least one real wait per lap
-    for (const h of tl.holds) {
-      expect(signalAt(h.releaseMs).color).toBe("green");
-      if (h.releaseMs > h.arriveMs) {
-        const mid = busTripAt((h.arriveMs + h.releaseMs) / 2);
+  it("waits at a red signal and goes on at green, never crossing against the signal (at every phase of the departure)", () => {
+    let waits = 0;
+    for (let off = 0; off < TRANSIT.signalCycleMs; off += 1_000) {
+      const start = hour + off;
+      const tl = tripTimeline(start);
+      for (const h of tl.holds) {
+        expect(signalAt(h.releaseMs).color).toBe("green");
+        if (h.releaseMs <= h.arriveMs) continue;
+        waits++;
+        const mid = busMotionAt((h.arriveMs + h.releaseMs) / 2, start);
         expect(mid.waiting).toBe(true);
-        expect(mid.progress * routeLength()).toBeCloseTo(h.distance, 6);
+        expect(mid.distance).toBeCloseTo(h.distance, 6);
         expect(signalAt((h.arriveMs + h.releaseMs) / 2).canBusProceed).toBe(false);
-      }
-      expect(busTripAt(h.releaseMs + 1_000).waiting).toBe(false);
-      // it pulls away gently (eased from rest: well under the cruise in the first second) and is at the cruise a ramp later
-      if (h.releaseMs > h.arriveMs) {
-        const moved = busTripAt(h.releaseMs + 1_000).progress * routeLength() - h.distance;
+        expect(busMotionAt(h.releaseMs + 1_000, start).waiting).toBe(false);
+        // it pulls away gently (eased from rest: well under the cruise in the first second) and is at the cruise a ramp later
+        const moved = busMotionAt(h.releaseMs + 1_000, start).distance - h.distance;
         expect(moved).toBeGreaterThan(0);
         expect(moved).toBeLessThan(speed * 1_000 * 0.1);
         const leg = tl.legs.find((l) => l.fromMs === h.releaseMs)!;
-        expect(legSpeedAt(leg, h.releaseMs + BUS_RAMP_MS + 500)).toBeCloseTo(leg.speed, 12);
+        if (leg.toDistance - leg.fromDistance >= leg.speed * BUS_RAMP_MS) expect(legSpeedAt(leg, h.releaseMs + BUS_RAMP_MS + 500)).toBeCloseTo(leg.speed, 12);
       }
+      expect(tl.endMs - start).toBeGreaterThan(TRANSIT.lapMs);
     }
-    expect(tl.endMs - hour).toBeGreaterThan(TRANSIT.lapMs);
-    expect(tl.endMs).toBeLessThan(hour + TRANSIT.departureEveryMs - TRANSIT.boardingMs);
+    expect(waits).toBeGreaterThan(0); // red lights are met at some departures
+  });
+
+  it("a lap, signal waits and ramps included, ends well before the next boarding", () => {
+    // the worst case: a wait of nearly a whole signal cycle at each of the two holds, plus the ramps
+    const worst = TRANSIT.lapMs + 2 * TRANSIT.signalCycleMs + 3 * BUS_RAMP_MS;
+    for (let off = 0; off < TRANSIT.signalCycleMs; off += 500) {
+      const start = hour + off;
+      expect(tripTimeline(start).endMs - start).toBeLessThanOrEqual(worst);
+    }
+    expect(worst).toBeLessThan((TRANSIT.departureEveryMs - TRANSIT.boardingMs) / 2);
   });
 
   it("nextGreenAt is the same instant when green and the next cycle's start otherwise", () => {

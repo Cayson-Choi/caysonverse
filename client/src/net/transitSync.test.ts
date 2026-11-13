@@ -9,7 +9,7 @@ import {
   transitNowMs,
   type TransitRoom,
 } from "./transitSync";
-import { TRANSIT, busTripAt, routeLength } from "@caysonverse/shared/village/transit";
+import { BUS_RAMP_MS, TRANSIT, busTripAt, routeLength, tripTimeline } from "@caysonverse/shared/village/transit";
 
 function fakeRoom() {
   const handlers = new Map<string, Set<(value: unknown) => void>>();
@@ -65,7 +65,10 @@ describe("transitSync", () => {
     const f = fakeRoom();
     const stop = startTransitSync(f.room);
     const hour = Math.floor(1_700_000_000_000 / TRANSIT.departureEveryMs) * TRANSIT.departureEveryMs;
-    const base = hour + 60_000; // well into the first leg, at the cruise
+    // well into a long cruising leg: halfway between the end of the first ramp and the start of the last one
+    const tl0 = tripTimeline(hour);
+    const base = tl0.legs[0]!.fromMs + BUS_RAMP_MS + 5_000; // 20 s of test follow
+    expect(base + 20_000).toBeLessThan(tl0.legs[0]!.toMs - BUS_RAMP_MS); // the whole run is at the cruise
     let mono = 1_000;
     const spy = vi.spyOn(performance, "now").mockImplementation(() => mono);
     const cruise = routeLength() / TRANSIT.lapMs; // m per ms
@@ -99,7 +102,8 @@ describe("transitSync", () => {
 
   it("agrees with the server's snapshot pose at the same server time (one shared function)", () => {
     const hour = Math.floor(1_700_000_000_000 / TRANSIT.departureEveryMs) * TRANSIT.departureEveryMs;
-    for (const at of [1_000, 20_000, 39_000, 60_000, 150_000, 215_000]) {
+    const lap = tripTimeline(hour).endMs - hour;
+    for (const at of [0.01, 0.1, 0.3, 0.5, 0.7, 0.99].map((k) => Math.round(lap * k))) {
       const f = fakeRoom();
       const stop = startTransitSync(f.room);
       const spy = vi.spyOn(performance, "now").mockReturnValue(10_000);

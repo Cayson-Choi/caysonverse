@@ -113,7 +113,7 @@ function ringRoute(): readonly TransitPoint[] {
 
 export const TRANSIT = {
   departureEveryMs: 10 * 60 * 1000, // every 10 minutes (owner 2026-11-13, for testing rides; was 30)
-  lapMs: 3 * 60 * 1000,
+  lapMs: 50 * 1000, // ~4.4 m/s (16 km/h) cruise on the ring (owner 2026-11-13: smooth, real bus pace)
   boardingMs: 30 * 1000,
   /** One cycle of the crossing signals: vehicles green 0-20 s, amber 20-23, red 23-40; pedestrians stop 0-24, walk 24-34, flashing 34-38, stop 38-40. */
   signalCycleMs: 40 * 1000,
@@ -274,7 +274,7 @@ export const TRANSIT_HOLDS: readonly TransitHold[] = SIGNAL_CROSSINGS.map((c) =>
  * raised cosine, v = vp (1 - cos(pi t / T)) / 2, so the speed AND the acceleration are continuous (no jerk at either
  * end): it pulls away from the stop and from a red light gently, and rolls to a halt at a stop line or at the stop.
  */
-export const BUS_RAMP_MS = 4000;
+export const BUS_RAMP_MS = 5000;
 
 export interface TripLeg {
   /** it starts at rest at `fromMs`, `fromDistance` (m along the route), ends at rest at `toMs`, `toDistance` */
@@ -374,7 +374,8 @@ function buildTimeline(startMs: number): TripTimeline {
     for (;;) {
       const distance = j < H.length ? H[j]!.distance : length;
       const D = distance - s;
-      let speed = cruise;
+      // a leg too short to reach the cruise in both ramps (the last one) peaks lower
+      let speed = D >= cruise * T ? cruise : D / T;
       let arrive = t + legDuration(D, cruise);
       if (j < H.length) {
         const h = H[j]!;

@@ -119,8 +119,8 @@ await page.evaluate(
       g.fillStyle = "#000";
       g.font = "bold 15px sans-serif";
       g.fillText(`${labels[i]}  (speed CV ${s.stats.speedCv}, frozen frames ${s.stats.frozenFrames}, ${s.stats.fps} fps)`, 70, y + 12);
-      panel(y + 20, 150, s.rows, "v", 0, 3, "#d33", "speed (m/s), per rendered frame", " m/s");
-      panel(y + 195, 100, s.rows, "w", -8, 8, "#36c", "turn rate (deg/s), per rendered frame", "");
+      panel(y + 20, 150, s.rows, "v", 0, 5, "#d33", "speed (m/s), per rendered frame", " m/s");
+      panel(y + 195, 100, s.rows, "w", -20, 20, "#36c", "turn rate (deg/s), per rendered frame", "");
     });
   },
   { sets: sets.map((s) => ({ rows: s.rows.map((r) => ({ s: r.s, v: r.v, w: r.w })), stats: s.stats })), labels },

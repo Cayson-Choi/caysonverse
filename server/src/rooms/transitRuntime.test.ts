@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { TRANSIT, busTripAt } from "@caysonverse/shared/village/transit";
+import { TRANSIT, busTripAt, tripTimeline } from "@caysonverse/shared/village/transit";
 import { VILLAGE_LAYOUT, busBoardingArea } from "@caysonverse/shared/village/villageLayout";
 import { BUS_BOARD_REACH_M, riderOnTrip, transitSnapshotAt, validateBusRide } from "./transitRuntime";
 
@@ -18,24 +18,29 @@ describe("VillageRoom transit runtime", () => {
     expect(["green", "amber", "red"]).toContain(snapshot.signal);
   });
 
-  it("tells clients the bus is waiting at a red crosswalk signal, and not moving while it waits", () => {
-    const a = transitSnapshotAt(hour + 37_000);
-    const b = transitSnapshotAt(hour + 39_000);
-    expect(a.waiting).toBe(true);
-    expect(a.signal).toBe("red");
-    expect(a.pedestrianSignal).toBe("flashing");
-    expect([b.x, b.z, b.progress]).toEqual([a.x, a.z, a.progress]);
-    const moving = transitSnapshotAt(hour + 10_000);
+  it("publishes the bus's waiting flag and holds it still while it waits (the departure's own signal phase decides if it waits)", () => {
+    const tl = tripTimeline(hour);
+    let prev = transitSnapshotAt(hour);
+    for (let ms = 250; ms < tl.endMs - hour; ms += 250) {
+      const s = transitSnapshotAt(hour + ms);
+      expect(s.waiting).toBe(busTripAt(hour + ms).waiting);
+      if (s.waiting && prev.waiting) expect([s.x, s.z, s.progress]).toEqual([prev.x, prev.z, prev.progress]);
+      prev = s;
+    }
+    const moving = transitSnapshotAt(hour + TRANSIT.signalGreenMs / 2);
     expect(moving.waiting).toBe(false);
+    // red lights are in the snapshot's signal: at the hour the vehicles' signal is green, 30 s in it is red
     expect(moving.signal).toBe("green");
+    expect(transitSnapshotAt(hour + TRANSIT.signalGreenMs + TRANSIT.signalAmberMs + 1_000).signal).toBe("red");
   });
 
   it("keeps a rider who boarded before the hour on the bus through the wait and the lap, and drops them at the stop", () => {
     const rider = hour + TRANSIT.departureEveryMs; // boarded in the 30 s before the next hour: that trip's id
     expect(riderOnTrip(transitSnapshotAt(boarding), rider)).toBe(true); // still waiting for the departure
     expect(riderOnTrip(transitSnapshotAt(rider + 5_000), rider)).toBe(true); // the lap
-    expect(riderOnTrip(transitSnapshotAt(rider + 100_000), rider)).toBe(true);
-    expect(riderOnTrip(transitSnapshotAt(rider + TRANSIT.lapMs + 60_000), rider)).toBe(false); // back at the stop
+    const lapEnd = tripTimeline(rider).endMs - rider; // the lap, signal waits and ramps included
+    expect(riderOnTrip(transitSnapshotAt(rider + lapEnd / 2), rider)).toBe(true);
+    expect(riderOnTrip(transitSnapshotAt(rider + lapEnd + 1_000), rider)).toBe(false); // back at the stop
     expect(riderOnTrip(transitSnapshotAt(rider + TRANSIT.departureEveryMs - 5_000), rider)).toBe(false); // the next trip is up
     expect(riderOnTrip(transitSnapshotAt(boarding), null)).toBe(false);
   });

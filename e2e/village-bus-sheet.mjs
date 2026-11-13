@@ -22,9 +22,9 @@ const rel = meta.map((m) => ({ ...m, s: (m.ms - startMs) / 1000 }));
 // the fixed camera: 120 m up, 38 degree fov, 640 px square -> half-height 120 * tan(19 deg) m
 const M = 640 / (2 * 120 * Math.tan((19 * Math.PI) / 180)); // px per metre
 const windows = [
-  { name: "A-departure", from: 0, to: 20, cx: 28, cz: -16 },
-  { name: "B-red-light", from: 28, to: 48, cx: 8, cz: -24 },
-  { name: "C-arrival", from: (endMs - startMs) / 1000 - 24, to: (endMs - startMs) / 1000, cx: 27, cz: -6 },
+  { name: "A-departure", from: 0, to: 14, cx: 22, cz: -22 },
+  { name: "B-north-crossing", from: 6, to: 20, cx: 8, cz: -24 },
+  { name: "C-arrival", from: (endMs - startMs) / 1000 - 14, to: (endMs - startMs) / 1000, cx: 26, cz: -6 },
 ];
 
 const browser = await launchBrowser();
