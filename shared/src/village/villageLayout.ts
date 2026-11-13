@@ -33,6 +33,7 @@ import { DEFAULT_WALL_THICKNESS, makeGeometry, wallsAround } from "../school/geo
 import { VILLAGE_CAMERA_BOXES, VILLAGE_COLLIDERS } from "./generated/villageColliders";
 import { MEMORIAL_CAMERA_BOXES, MEMORIAL_COLLIDERS } from "./generated/memorialColliders";
 import { guideColliders } from "./guides";
+import { signalPoleColliders } from "./crossings";
 import type { Bounds, MapGeometry } from "../school/geometry";
 
 export interface Point2 {
@@ -369,11 +370,14 @@ function makeVillageLayout(): VillageLayout {
     },
     ringRoad: { centre: pt(0, 0), radius: 34, width: 6, sidewalk: { width: 2, side: "outer" } },
     // Parked on the outer lane at the east, nose north, doors to the shelter: a 9 m low-floor village bus (2.49 m wide,
-    // village_bus.glb). x 32.95..35.45, z -10.25..-1.25 stays inside the road's 31..37 band (outer corner at r 36.90);
-    // its front door (z -9.85..-8.76) stops at the shelter's north end and its middle door (z -5.9..-4.5) at the shelter.
+    // village_bus.glb). x 32.85..35.35, z -11..-2 (review r1: 0.85 m north of before, its tail 1.1 m clear of the
+    // crosswalk's stripes at z -1); a straight bus on the ring's curve must stay inside the road's 31..37 band (outer corner
+    // at r 37.02); its front door stops at the shelter's north end and its middle door (z -6.65..-5.25) at the shelter.
     busStop: {
-      shelter: { centre: pt(38, -5.5), size: sz(1.8, 5) },
-      bus: { centre: pt(34.2, -5.75), size: sz(2.5, 9) },
+      // xwalk fix 2026-11-13: the shelter stands at the BACK of a paved waiting pad (BUS_STOP_PAD) with 3 m of clear paving
+      // between the roadway's kerb and its roof (bus stop review: the old one stood on the kerb, 1.5 m from the bus's doors)
+      shelter: { centre: pt(40.9, -4.9), size: sz(1.5, 3.6) },
+      bus: { centre: pt(34.1, -6.5), size: sz(2.5, 9) },
     },
     // A gentle bow to the south beyond plot_s (z 49..67); every segment is 6 m of water with 3 m of bank on each side,
     // and the centre line moves at most 3 m from one segment to the next.
@@ -501,12 +505,51 @@ function streamColliders(stream: VillageStream): VillageCollider[] {
   return out;
 }
 
-/** Solid part of the bus shelter: the rear glass. The bus-facing side and windbreak edges stay open to the bus lane. */
+/**
+ * The waiting pad of the bus stop (art/village/tools/build_busstop.py, village_busstop.glb): a paved L, 4.5 cm up, from
+ * the sidewalk back to the shelter, notched round the café's corner (x >= 40.6, z < -7.6; the pad stops at z -7.4). The ground is flat for the
+ * game: it is a look, not a collider. The stop sign's post stands at its south end.
+ */
+export const BUS_STOP_PAD: readonly Point2[] = [pt(38.6, -10.8), pt(40.4, -10.8), pt(40.4, -7.4), pt(43.4, -7.4), pt(43.4, -1.4), pt(38.6, -1.4)];
+export const BUS_STOP_SIGN: Point2 = pt(40.0, -1.8);
+/** Half the width of the sign's post as a collider (m). */
+const BUS_SIGN_POST = 0.07;
+
+/**
+ * Where a rider can board the parked bus from: the bus's own box, the waiting pad and the shelter, as one box from the
+ * bus's far side to the shelter's back glass, over the bus's length and the shelter's (review r2: the reach was a circle
+ * round the bus's centre, and once the stop moved north the shelter's middle was outside the offer's 6.8 m).
+ */
+export function busBoardingArea(layout: Pick<VillageLayout, "busStop"> = VILLAGE_LAYOUT): AABB {
+  const b = boxAt(layout.busStop.bus.centre, layout.busStop.bus.size);
+  const s = boxAt(layout.busStop.shelter.centre, layout.busStop.shelter.size);
+  return { minX: b.minX, maxX: s.maxX, minZ: Math.min(b.minZ, s.minZ), maxZ: Math.max(b.maxZ, s.maxZ) };
+}
+
+/** Distance (m, on the ground) from a point to the boarding area (busBoardingArea); 0 inside it. */
+export function busBoardingDistance(x: number, z: number, layout: Pick<VillageLayout, "busStop"> = VILLAGE_LAYOUT): number {
+  const a = busBoardingArea(layout);
+  const dx = Math.max(a.minX - x, 0, x - a.maxX);
+  const dz = Math.max(a.minZ - z, 0, z - a.maxZ);
+  return Math.hypot(dx, dz);
+}
+
+/**
+ * Solid parts of the bus stop: the shelter's rear glass and its two end glass panels (the side facing the road stays open
+ * to the pad), then the stop sign's post. The rear glass comes first.
+ */
 export function busShelterColliders(layout: Pick<VillageLayout, "busStop"> = VILLAGE_LAYOUT): AABB[] {
   const s = boxAt(layout.busStop.shelter.centre, layout.busStop.shelter.size);
-  const wall = 0.04;
-  // Put the collision skin immediately behind the glass so the lane remains clear while a player cannot walk through it.
-  return [{ minX: s.maxX + 0.18, maxX: s.maxX + 0.18 + wall, minZ: s.minZ, maxZ: s.maxZ }];
+  const t = 0.03; // half the glass's thickness as a collision skin
+  const rear = s.maxX - 0.05; // the back glass's plane (the posts' centre line)
+  const r = (n: number) => Math.round(n * 1e6) / 1e6;
+  const end = (z: number): AABB => ({ minX: r(s.minX + 0.05), maxX: r(rear + t), minZ: r(z - t), maxZ: r(z + t) });
+  return [
+    { minX: r(rear - t), maxX: r(rear + t), minZ: s.minZ, maxZ: s.maxZ },
+    end(s.minZ + 0.05),
+    end(s.maxZ - 0.05),
+    { minX: r(BUS_STOP_SIGN.x - BUS_SIGN_POST), maxX: r(BUS_STOP_SIGN.x + BUS_SIGN_POST), minZ: r(BUS_STOP_SIGN.z - BUS_SIGN_POST), maxZ: r(BUS_STOP_SIGN.z + BUS_SIGN_POST) },
+  ];
 }
 
 /**
@@ -720,7 +763,7 @@ export function buildVillageGeometry(
     "village",
     villageBounds(layout),
     hallWalls(layout),
-    [...areaGapBlockers(layout), ...hallSurroundBlockers(layout), ...village.obstacles, ...busShelterColliders(layout), ...(hall?.obstacles ?? []), ...extra],
+    [...areaGapBlockers(layout), ...hallSurroundBlockers(layout), ...village.obstacles, ...signalPoleColliders(), ...busShelterColliders(layout), ...(hall?.obstacles ?? []), ...extra],
     [...village.cameraBoxes, ...busShelterColliders(layout), ...(hall?.cameraBoxes ?? [])],
   );
 }

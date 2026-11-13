@@ -30,7 +30,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { checkSchoolGlb, checkVillageBus, checkVillageSceneTriangles, imageSize, parseGlb } from "./lib/schoolGlb";
-import type { LightmapFile, SchoolKind } from "./lib/schoolGlb";
+import { signalPoleSpots } from "../shared/src/village/crossings";
+import type { LightmapFile, SceneExtra, SchoolKind } from "./lib/schoolGlb";
 import { schoolSpec } from "./lib/schoolSpec";
 
 const USAGE = "usage: npx tsx --tsconfig server/tsconfig.json scripts/check-school-glb.ts <glb> village|memorial";
@@ -105,7 +106,13 @@ export function main(argv: string[]): number {
         const busData = fs.readFileSync(busPath);
         const bus = parseGlb(busData);
         results.push(...checkVillageBus(bus.gltf, busData.length, bus.bin));
-        results.push(checkVillageSceneTriangles(parsed.gltf, bus.gltf));
+        // the crosswalk signals (one clone per pole, signalPoleSpots) and the bus stop's shelter are drawn with the village too
+        const extras: SceneExtra[] = [];
+        for (const [file, copies] of [["village_signals.glb", signalPoleSpots().length], ["village_busstop.glb", 1]] as const) {
+          const extraPath = path.join(path.dirname(glbPath), file);
+          if (fs.existsSync(extraPath)) extras.push({ name: file.replace(/^village_|\.glb$/g, ""), gltf: parseGlb(fs.readFileSync(extraPath)).gltf, copies });
+        }
+        results.push(checkVillageSceneTriangles(parsed.gltf, bus.gltf, extras));
       } catch (err) {
         results.push({ level: "fail", label: "버스 파일", detail: `${busPath}를 읽지 못했어요: ${(err as Error).message}` });
       }

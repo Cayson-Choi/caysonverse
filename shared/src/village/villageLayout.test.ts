@@ -18,6 +18,8 @@ import {
   VILLAGE_MODEL_COLLIDERS,
   areaGapBlockers,
   BUS_MIRROR_REACH,
+  BUS_STOP_PAD,
+  BUS_STOP_SIGN,
   boxAt,
   buildVillageGeometry,
   busShelterColliders,
@@ -37,6 +39,7 @@ import {
   villageBounds,
   villageGeometry,
 } from "./villageLayout";
+import { signalPoleColliders } from "./crossings";
 import type { PlotId, Point2, Side, VillageLane } from "./villageLayout";
 
 const L = VILLAGE_LAYOUT;
@@ -255,12 +258,19 @@ describe("layout values (brief + rulings + owner changes)", () => {
       }
     }
     expect(Math.hypot(L.busStop.bus.centre.x, L.busStop.bus.centre.z)).toBeGreaterThan(L.ringRoad.radius);
-    // The shelter stands on the sidewalk.
+    // The shelter stands at the back of its waiting pad, beyond the sidewalk, with a clear walking space of at least 2 m
+    // between the sidewalk's outer edge and the shelter's roof (0.3 m overhang) so a body can walk up to the bus.
     const shelter = boxOf(L.busStop.shelter);
-    expect(distToBox({ x: 0, z: 0 }, shelter)).toBeGreaterThanOrEqual(RING_OUTER);
-    const shelterR = Math.hypot(L.busStop.shelter.centre.x, L.busStop.shelter.centre.z);
-    expect(shelterR).toBeGreaterThanOrEqual(RING_OUTER);
-    expect(shelterR).toBeLessThanOrEqual(SIDEWALK_OUTER);
+    expect(distToBox({ x: 0, z: 0 }, shelter)).toBeGreaterThanOrEqual(SIDEWALK_OUTER);
+    const roofFront = shelter.minX - 0.3;
+    const kerbX = Math.sqrt(RING_OUTER ** 2 - L.busStop.shelter.centre.z ** 2);
+    expect(roofFront - kerbX, "clear paving between the kerb and the roof").toBeGreaterThanOrEqual(2.5);
+    expect(roofFront - (L.busStop.bus.centre.x + L.busStop.bus.size.x / 2), "clear space between the bus's doors and the roof").toBeGreaterThanOrEqual(3.5);
+    // the pad covers the shelter and clears the café
+    const cafe = L.sceneryHouses.find((h) => h.id === "cafe")!;
+    const cafeBox = boxOf(cafe);
+    for (const p of BUS_STOP_PAD) expect(p.x < cafeBox.minX || p.z > cafeBox.maxZ, `pad corner (${p.x}, ${p.z}) outside the café`).toBe(true);
+    expect(BUS_STOP_PAD.every((p) => p.x <= SIDEWALK_OUTER + 5)).toBe(true);
   });
 
   it("six B-scale plots on a ring: ids, labels, sign text, plot_n due north, plot_w under construction", () => {
@@ -593,7 +603,7 @@ describe("layout sanity (nothing is built on the water, the road or each other)"
     expect(bEnd.x).toBeLessThanOrEqual(GAP.maxX);
     expect(bEnd.z).toBeCloseTo(L.bridge.minZ, 9);
     const bus = lane("lane_bus");
-    expect(distToBox(bus.points[bus.points.length - 1], boxOf(L.busStop.shelter))).toBeLessThanOrEqual(1);
+    expect(distToBox(bus.points[bus.points.length - 1], boxOf(L.busStop.shelter))).toBeLessThanOrEqual(2);
   });
 
   it("every lane is clear of every collider by at least its half width (a body can walk its whole length)", () => {
@@ -659,29 +669,36 @@ describe("village colliders are built from the layout", () => {
   });
 
   it("buildVillageGeometry takes a named collider list or the extractor's { obstacles, cameraBoxes }", () => {
-    const fixed = hallWalls(L).length + areaGapBlockers(L).length + hallSurroundBlockers(L).length + 1;
+    const fixed = hallWalls(L).length + areaGapBlockers(L).length + hallSurroundBlockers(L).length + busShelterColliders(L).length + signalPoleColliders().length;
     const bare = buildVillageGeometry(L, []);
     expect(bare.obstacles).toHaveLength(fixed);
     expect(bare.cameraBoxes).toEqual([...hallWalls(L), ...busShelterColliders(L)]);
     const box = { minX: 0, maxX: 1, minZ: 0, maxZ: 1 };
     const one = buildVillageGeometry(L, [{ id: "x", box, camera: false }]);
     expect(one.obstacles).toHaveLength(fixed + 1);
-    expect(one.cameraBoxes).toHaveLength(hallWalls(L).length + 1);
+    expect(one.cameraBoxes).toHaveLength(hallWalls(L).length + busShelterColliders(L).length);
     const tall = { ...box, height: 3 };
     const generated = buildVillageGeometry(L, { obstacles: [box], cameraBoxes: [tall] });
     expect(generated.obstacles).toHaveLength(fixed + 1);
     expect(generated.obstacles).toContainEqual(box);
-    expect(generated.obstacles.at(-1)).toEqual(busShelterColliders(L)[0]);
-    expect(generated.cameraBoxes).toEqual([...hallWalls(L), tall, busShelterColliders(L)[0]]); // the height is kept
+    expect(generated.obstacles.slice(-busShelterColliders(L).length)).toEqual(busShelterColliders(L));
+    expect(generated.cameraBoxes).toEqual([...hallWalls(L), tall, ...busShelterColliders(L)]); // the height is kept
     expect(generated.bounds).toEqual(bare.bounds);
   });
 
-  it("blocks the shelter rear glass while leaving the bus-facing side open", () => {
+  it("blocks the shelter's rear glass, its two end panels and the sign post while leaving the pad-facing side open", () => {
     const shelter = boxOf(L.busStop.shelter);
     const geometry = buildVillageGeometry(L, { obstacles: [], cameraBoxes: [] });
-    const walls = geometry.obstacles.filter((b) => b.minX >= shelter.maxX && b.minZ >= shelter.minZ - 0.01 && b.maxZ <= shelter.maxZ + 0.01);
-    expect(walls).toContainEqual(busShelterColliders(L)[0]);
-    expect(walls.some((b) => b.minX > shelter.maxX)).toBe(true);
+    for (const wall of busShelterColliders(L)) expect(geometry.obstacles).toContainEqual(wall);
+    const [rear, north, south, post] = busShelterColliders(L);
+    expect(rear!.maxX).toBeGreaterThan(shelter.maxX - 0.1); // at the back
+    expect(rear!.minX).toBeGreaterThan(shelter.minX + 1); // the front half of the shelter is open
+    expect(north!.maxZ).toBeLessThan(shelter.minZ + 0.2);
+    expect(south!.minZ).toBeGreaterThan(shelter.maxZ - 0.2);
+    expect(post!.maxX - post!.minX).toBeLessThan(0.2);
+    // nothing blocks the front: a body (radius 0.3) can stand at the shelter's front edge and at its middle
+    expect(isBlocked(shelter.minX + 0.3, L.busStop.shelter.centre.z, 0.3, busShelterColliders(L))).toBe(false);
+    expect(isBlocked(L.busStop.shelter.centre.x, L.busStop.shelter.centre.z, 0.3, busShelterColliders(L))).toBe(false);
   });
 
   it("the greybox build: the colliders flagged camera are the buildings (houses, café, kiosk, bus, memorial)", () => {
@@ -722,7 +739,7 @@ describe("the parked bus's mirrors have colliders of their own (bus review r3: a
 
   it("nobody can stand with their head in a mirror: every free spot round the front corners keeps a body's radius from both heads", () => {
     // the reviewer's spot, at the west front corner with the mirror in the face
-    expect(isBlocked(32.34, -10.34, PLAYER_RADIUS, villageGeometry.obstacles)).toBe(true);
+    expect(isBlocked(32.24, -11.09, PLAYER_RADIUS, villageGeometry.obstacles)).toBe(true);
     let free = 0;
     for (let x = bus.minX - 1.5; x <= bus.maxX + 1.5; x += 0.05) {
       for (let z = bus.minZ - 1.5; z <= bus.minZ + 0.6; z += 0.05) {
@@ -1359,5 +1376,40 @@ describe("export for the Blender scripts", () => {
     expect(out.backdrop.waterfall).toMatchObject({ height: 36, facing: "e", bounds: { minX: -132, maxX: -104, minZ: -85, maxZ: -71 } });
     expect(out.backdrop.lake.pavilion).toHaveProperty("bounds");
     expect(centre(out.plaza.fountain.collider.bounds)).toEqual({ x: 0, z: 0 });
+  });
+});
+
+describe("the bus stop's walking space (xwalk fix: the shelter at the back of the pad, room between it and the bus)", () => {
+  const bus = boxAt(L.busStop.bus.centre, L.busStop.bus.size);
+  const shelter = boxOf(L.busStop.shelter);
+  const obstacles = villageGeometry.obstacles;
+
+  it("an avatar can stand and walk side by side between the bus's door side and the shelter, along its whole length", () => {
+    for (let z = bus.minZ + 0.5; z <= -2.6; z += 0.5) {
+      for (let x = bus.maxX + 0.5; x <= shelter.minX - 0.5; x += 0.25) {
+        expect(isBlocked(x, z, PLAYER_RADIUS, obstacles), `(${x}, ${z})`).toBe(false);
+      }
+    }
+  });
+
+  it("a 2-wide corridor (two avatars abreast) is open from the bus's middle door to the shelter's front", () => {
+    const z = L.busStop.shelter.centre.z;
+    for (let x = bus.maxX + 0.45; x <= shelter.minX; x += 0.1) {
+      expect(isBlocked(x, z - 0.4, PLAYER_RADIUS, obstacles)).toBe(false);
+      expect(isBlocked(x, z + 0.4, PLAYER_RADIUS, obstacles)).toBe(false);
+    }
+  });
+
+  it("the stop sign's post is solid and the shelter's inside is walkable from the front", () => {
+    expect(isBlocked(BUS_STOP_SIGN.x, BUS_STOP_SIGN.z, PLAYER_RADIUS, obstacles)).toBe(true);
+    expect(isBlocked(shelter.minX + 0.3, L.busStop.shelter.centre.z, PLAYER_RADIUS, obstacles)).toBe(false);
+    expect(BUS_STOP_PAD.length).toBeGreaterThanOrEqual(6);
+  });
+
+  it("the signal posts are solid and off the sidewalk's walking line", () => {
+    for (const box of signalPoleColliders()) {
+      const c = { x: (box.minX + box.maxX) / 2, z: (box.minZ + box.maxZ) / 2 };
+      expect(isBlocked(c.x, c.z, PLAYER_RADIUS, obstacles)).toBe(true);
+    }
   });
 });

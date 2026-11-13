@@ -134,6 +134,14 @@ export interface BusStatePayload {
   signal: "green" | "amber" | "red";
   /** Separate pedestrian crossing phase; optional for old clients during rolling deploys. */
   pedestrianSignal?: "walk" | "flashing" | "stop";
+  /** The bus is standing at a crosswalk's stop line, waiting for its green (optional for old clients). */
+  waiting?: boolean;
+  /**
+   * The server's clock (Unix ms) this snapshot was computed at. The client runs the crosswalk lamps on it, so a lamp
+   * changes with the bus it governs (review r2: lamps on the device clock plus a once-measured offset ran ~1 s late,
+   * and the bus moved off under a red). Optional for old servers.
+   */
+  serverMs?: number;
 }
 
 export interface BusRejectedPayload {

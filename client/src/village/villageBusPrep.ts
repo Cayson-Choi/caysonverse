@@ -1,3 +1,4 @@
+import { versionedUrl } from "./modelUrl";
 import {
   AddEquation,
   Color,
@@ -75,7 +76,7 @@ import { VILLAGE_GROUND_DECAL, type VillageTier } from "./villageModelPrep";
  * (`setBusAnisotropy`): the side wordmark and the rear louvres stay readable at a grazing 7-10 m.
  */
 
-export const BUS_MODEL_URL = "/models/village/village_bus.glb";
+export const BUS_MODEL_URL = versionedUrl("/models/village/village_bus.glb");
 
 export const BUS_MATERIAL = { body: "M_bus", glass: "M_bus_glass", led: "M_bus_led", ground: "M_bus_ground" } as const;
 

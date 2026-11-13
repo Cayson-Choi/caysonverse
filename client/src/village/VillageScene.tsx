@@ -1,4 +1,5 @@
 import { Suspense, useEffect, useLayoutEffect, useState } from "react";
+import { useGLTF } from "@react-three/drei";
 import { PlayShell } from "../game/PlayShell";
 import { villageActiveMap } from "../game/activeMap";
 import { clearClickTarget } from "../game/clickMove";
@@ -6,7 +7,7 @@ import { setTargetHandler, setTargetSource } from "../game/interactTargets";
 import type { PlayersRoom } from "../game/remoteSync";
 import type { Pose } from "../game/types";
 import { getRoom, sendUseDoor } from "../net/connection";
-import { sendBusRide, startTransitSync, type TransitRoom, useTransitState } from "../net/transitSync";
+import { rideStatusText, sendBusRide, startTransitSync, type TransitRoom, useTransitState } from "../net/transitSync";
 import type { Identity } from "../stores/appStore";
 import { DoorFade } from "./DoorFade";
 import { VegVeil } from "./VegVeil";
@@ -24,7 +25,7 @@ import { cubbyCardState, openCubbyCard } from "./cubbyCard";
 import { DayNight } from "./DayNight";
 import { VillageModel } from "./VillageModel";
 import { VillageBus } from "./VillageBus";
-import { BusStopShelter } from "./BusStopShelter";
+import { BUSSTOP_MODEL_URL, BusStopShelter } from "./BusStopShelter";
 import { FishingPondProps } from "./FishingPondProps";
 import { VillageBgmButton } from "./VillageBgmButton";
 import { VILLAGE_CAMERA_PLANES, VILLAGE_GROUND_DECAL, type VillageTier } from "./villageModelPrep";
@@ -48,7 +49,8 @@ import { StarSky } from "./sky/StarSky";
 import { StarFinder } from "./sky/StarFinder";
 import { StarFinderButton } from "./sky/StarFinderButton";
 import { FishingPanel } from "./FishingPanel";
-import { TransitRoadSignals } from "./TransitRoadSignals";
+import { CrosswalkHintPill } from "./CrosswalkHintPill";
+import { SIGNALS_MODEL_URL, TransitRoadSignals } from "./TransitRoadSignals";
 import { PublicAutoDoor } from "./PublicAutoDoor";
 import { openKeypad, useKeypad } from "./keypadStore";
 import { VillageKeypad } from "./VillageKeypad";
@@ -114,7 +116,12 @@ function VillageArea({ area, tier, pose }: { area: AreaId; tier: VillageTier; po
       <LoadBoundary fallback={<PlainGround />} onReset={clearVillageCaches} onFail={uncoverVillage} notice="마을 풍경을 불러오지 못했어요. 잠시 뒤 다시 불러올게요.">
         <Suspense fallback={null}>
           <VillageModel tier={tier} />
-          <BusStopShelter />
+          {/* The bus stop's pad and shelter and the crosswalk signals are small files of their own: a failed one is just missing. */}
+          <LoadBoundary fallback={null} onReset={() => useGLTF.clear(BUSSTOP_MODEL_URL)} notice="버스 정류장을 불러오지 못했어요. 잠시 뒤 다시 불러올게요.">
+            <Suspense fallback={null}>
+              <BusStopShelter />
+            </Suspense>
+          </LoadBoundary>
           <FishingPondProps />
           {/* The bus at the stop (bus review r3, M2): its own error boundary and its own Suspense, so the village never
               waits for it. Its download starts with the model's, so it is usually in when the village shows (and warmed
@@ -129,7 +136,9 @@ function VillageArea({ area, tier, pose }: { area: AreaId; tier: VillageTier; po
           <SceneWarmUp key={tier} />
         </Suspense>
       </LoadBoundary>
-      <TransitRoadSignals />
+      <LoadBoundary fallback={null} onReset={() => useGLTF.clear(SIGNALS_MODEL_URL)} notice="횡단보도 신호등을 불러오지 못했어요. 잠시 뒤 다시 불러올게요.">
+        <TransitRoadSignals />
+      </LoadBoundary>
       <PlotMarkers />
       <DoorPad pad={VILLAGE_LAYOUT.memorial.exterior.doorPad} y={0.06} />
       <PublicAutoDoor area="village" pose={pose} />
@@ -191,6 +200,12 @@ function VillageDoors({ pose }: { pose: Pose }) {
   return null;
 }
 
+/**
+ * The live shadows' colour in the village (review r3): the school's indigo (#2b2a55) laid a purple-blue band and square
+ * on the road under the signals' arms and heads and round the bus. Shade on sunlit asphalt is a neutral dark grey.
+ */
+const VILLAGE_SHADOW_COLOR = "#1d1e22";
+
 /** Small ride-status placeholder; the full window/camera view can build on this state. */
 function TransitRideHud() {
   const { boarded, snapshot, notice } = useTransitState();
@@ -210,7 +225,7 @@ function TransitRideHud() {
       {boarded ? (
         <>
           <div>🚌 버스 탑승 중 · 창밖을 보는 중</div>
-          <div style={{ opacity: 0.75 }}>{snapshot?.signal === "red" ? "신호 대기" : "노선 운행 중"}</div>
+          <div style={{ opacity: 0.75 }}>{rideStatusText(snapshot)}</div>
           <button
             type="button"
             onClick={() => sendBusRide("leave")}
@@ -268,6 +283,7 @@ export function VillageScene({ identity }: { identity: Identity }) {
       areas={areaGate}
       cameraPlanes={VILLAGE_CAMERA_PLANES}
       groundDecal={VILLAGE_GROUND_DECAL}
+      shadowColor={VILLAGE_SHADOW_COLOR}
       world3d={({ pose }) => (
         <>
           <DayNight area={area} tier={tier} />
@@ -292,6 +308,7 @@ export function VillageScene({ identity }: { identity: Identity }) {
           <GuideDialog />
           <StarFinder orbit={orbit} />
           {area === "village" && <FishingPanel pose={pose} />}
+          {area === "village" && <CrosswalkHintPill pose={pose} />}
           <VillageKeypad />
         </>
       )}

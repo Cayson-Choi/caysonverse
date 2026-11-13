@@ -1,12 +1,17 @@
-import { TRANSIT, busTripAt, pedestrianSignalAt, signalAt } from "@caysonverse/shared/village/transit";
+import { busTripAt, pedestrianSignalAt, signalAt } from "@caysonverse/shared/village/transit";
+import { busBoardingDistance } from "@caysonverse/shared/village/villageLayout";
 import type {
   BusRejectedPayload,
   BusRidePayload,
   BusStatePayload,
 } from "@caysonverse/shared/messages";
 
-/** The server's proximity gate around the east-side bus stop. */
-export const BUS_BOARD_REACH_M = 4.5;
+/**
+ * The server's proximity gate at the east-side bus stop: how far (m) outside the boarding area (the bus, the waiting pad
+ * and the shelter, villageLayout.ts busBoardingArea) a rider may still board. Review r2: it was a 7.2 m circle round the
+ * bus's centre, which left the shelter's south end out. The client offers the button a little tighter (BUS_OFFER_REACH_M).
+ */
+export const BUS_BOARD_REACH_M = 1.2;
 
 /** How often the room publishes the authoritative bus pose. */
 export const BUS_STATE_RATE_MS = 250;
@@ -23,7 +28,17 @@ export function transitSnapshotAt(utcMs: number): BusStatePayload {
     yaw: trip.pose.yaw,
     signal: signalAt(utcMs).color,
     pedestrianSignal: pedestrianSignalAt(utcMs).color,
+    waiting: trip.waiting,
+    serverMs: utcMs,
   };
+}
+
+/**
+ * Whether a rider boarded on trip `riderTripId` is still on it, given the published snapshot: from boarding (the 30 s before
+ * the hour, when the trip's id is the coming hour's) through the lap; not once the bus is back at the stop or a later trip is up.
+ */
+export function riderOnTrip(snapshot: Pick<BusStatePayload, "tripId" | "status">, riderTripId: number | null): boolean {
+  return riderTripId !== null && snapshot.tripId === riderTripId && (snapshot.status === "inTransit" || snapshot.status === "boarding");
 }
 
 export type BusRideDecision =
@@ -54,7 +69,7 @@ export function validateBusRide(
   if (state.area !== "village") return { ok: false, notice: "버스 정류장 근처에서만 탈 수 있어요." };
   if (trip.status !== "boarding") return { ok: false, notice: "버스는 매시 출발 30초 전부터 탈 수 있어요." };
   if (!Number.isFinite(state.x) || !Number.isFinite(state.z)) return { ok: false, notice: "버스 정류장 근처에서만 탈 수 있어요." };
-  if (Math.hypot(state.x - TRANSIT.stop.x, state.z - TRANSIT.stop.z) > BUS_BOARD_REACH_M) {
+  if (busBoardingDistance(state.x, state.z) > BUS_BOARD_REACH_M) {
     return { ok: false, notice: "버스 정류장 근처에서만 탈 수 있어요." };
   }
   return { ok: true, tripId: trip.tripId };

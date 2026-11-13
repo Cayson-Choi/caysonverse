@@ -1,4 +1,4 @@
-import { VILLAGE_LAYOUT, cubbyAnchors, type AreaId, type CubbyAnchor, type Disc, type VillageLayout } from "@caysonverse/shared/village/villageLayout";
+import { VILLAGE_LAYOUT, busBoardingDistance, cubbyAnchors, type AreaId, type CubbyAnchor, type Disc, type VillageLayout } from "@caysonverse/shared/village/villageLayout";
 import { HOUSE_KEYPAD_REACH_M, keypadEntries } from "@caysonverse/shared/village/buildingAccess";
 import { GUIDE_ASK_LABEL, nearestGuide } from "@caysonverse/shared/village/guides";
 import type { InteractTarget } from "../game/interact";
@@ -30,8 +30,11 @@ export const KEYPAD_TARGET_PREFIX = "keypad:";
 export const KEYPAD_LABEL = "번호키 입력";
 export const KEYPAD_SHORT = "번호키";
 
-/** The bus target uses the same server-side 4.5 m gate, with a small client cushion. */
-export const BUS_OFFER_REACH_M = 4.2;
+/**
+ * How far (m) outside the boarding area (the bus, the waiting pad and the shelter, villageLayout.ts busBoardingArea) the
+ * board button is offered: inside the server's 1.2 m (transitRuntime.ts BUS_BOARD_REACH_M) with a small cushion.
+ */
+export const BUS_OFFER_REACH_M = 0.8;
 export const BUS_RIDE_TARGET_BOARD = "village_bus_board";
 export const BUS_RIDE_TARGET_LEAVE = "village_bus_leave";
 
@@ -70,7 +73,7 @@ export function villageTargets(
 /** A board/leave target around the east-side stop; the server re-checks the pose and schedule. */
 export function villageBusTarget(area: AreaId, x: number, z: number, boarded: boolean): InteractTarget | null {
   if (area !== "village") return null;
-  const dist = Math.hypot(x - VILLAGE_LAYOUT.busStop.bus.centre.x, z - VILLAGE_LAYOUT.busStop.bus.centre.z);
+  const dist = busBoardingDistance(x, z);
   if (!(dist <= BUS_OFFER_REACH_M)) return null;
   return {
     kind: "object",

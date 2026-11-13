@@ -98,6 +98,8 @@ export interface PlayShellProps {
    * Default: 3 cm, no offset.
    */
   groundDecal?: GroundDecal;
+  /** The rich tier's live shadows' colour (ShadowFloor); default the school's indigo. */
+  shadowColor?: string;
 }
 
 /**
@@ -308,7 +310,7 @@ export function PlayShell(p: PlayShellProps) {
         </KeyboardControls>
         <NametagSystem />
         {p.effects && <QualityEffects tier={tier} brightness={brightness} exposure={light.exposure} toneCurve={light.toneCurve} />}
-        {p.effects && profile.shadows && <ShadowFloor bounds={b} decal={p.groundDecal ?? null} />}
+        {p.effects && profile.shadows && <ShadowFloor bounds={b} decal={p.groundDecal ?? null} color={p.shadowColor} />}
         {import.meta.env.DEV && <RenderStatsProbe />}
       </Canvas>
       <LoadingOverlay />

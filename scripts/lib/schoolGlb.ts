@@ -1127,12 +1127,22 @@ export function checkVillageBus(gltf: Gltf, byteLength: number, bin: Uint8Array 
 }
 
 /** The village scene's two always-drawn models together (village.glb + village_bus.glb) against VILLAGE_SCENE_MAX_TRIANGLES. */
-export function checkVillageSceneTriangles(village: Gltf, bus: Gltf): CheckResult {
+/** A separate model drawn with the village `copies` times (the crosswalk signals: one unit per pole). */
+export interface SceneExtra {
+  name: string;
+  gltf: Gltf;
+  copies: number;
+}
+
+export function checkVillageSceneTriangles(village: Gltf, bus: Gltf, extras: readonly SceneExtra[] = []): CheckResult {
   const v = countTriangles(village);
   const b = countTriangles(bus);
+  const counted = extras.map((e) => ({ name: e.name, copies: e.copies, tris: countTriangles(e.gltf) * e.copies }));
+  const total = v + b + counted.reduce((n, e) => n + e.tris, 0);
+  const more = counted.map((e) => ` + ${e.name} ${e.tris}${e.copies > 1 ? ` (${e.copies}벌)` : ""}`).join("");
   return result(
-    v + b <= VILLAGE_SCENE_MAX_TRIANGLES,
-    "마을 장면 삼각형 수 (마을 + 버스)",
-    `${v + b}개 = 마을 ${v} + 버스 ${b}, 한도 ${VILLAGE_SCENE_MAX_TRIANGLES}개 (마을 ${BUDGETS.village.maxTriangles} + 버스 ${VILLAGE_BUS_BUDGET.maxTriangles})`,
+    total <= VILLAGE_SCENE_MAX_TRIANGLES,
+    "마을 장면 삼각형 수 (마을 + 버스 + 신호등·정류장)",
+    `${total}개 = 마을 ${v} + 버스 ${b}${more}, 한도 ${VILLAGE_SCENE_MAX_TRIANGLES}개 (마을 ${BUDGETS.village.maxTriangles} + 버스 ${VILLAGE_BUS_BUDGET.maxTriangles})`,
   );
 }

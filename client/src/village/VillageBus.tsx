@@ -33,7 +33,11 @@ export function VillageBus({ tier }: { tier: VillageTier }) {
     // The root alone is made dynamic so the server-scheduled route can move the
     // complete bus without rebuilding materials or child matrices.
     n.root.matrixAutoUpdate = true;
-    n.root.matrixWorldAutoUpdate = true;
+    // prepareBus switched every node's world-matrix update off: without it only the root moved on paper and the
+    // meshes stayed drawn at the stop. The children's local matrices stay frozen; their world matrices follow the root.
+    n.root.traverse((o) => {
+      o.matrixWorldAutoUpdate = true;
+    });
     return n;
   }, [gltf, tier, gl]);
   useEffect(() => {
@@ -48,7 +52,8 @@ export function VillageBus({ tier }: { tier: VillageTier }) {
     stepTransitRender(delta);
     const pose = getTransitRenderPose();
     nodes.root.position.set(pose.x, 0, pose.z);
-    nodes.root.rotation.set(0, pose.yaw, 0);
+    // the model is built nose north (-z) and the pose's yaw is the heading (0 faces +z): half a turn between them
+    nodes.root.rotation.set(0, pose.yaw + Math.PI, 0);
     nodes.root.updateMatrixWorld(true);
     applyBusDayNight(nodes, dayNight.applied, state.gl.toneMappingExposure);
   });
