@@ -23,6 +23,8 @@ import {
 } from "@caysonverse/shared/village/messages";
 import { VILLAGE_LAYOUT, cubbyAnchors, villageGeometry } from "@caysonverse/shared/village/villageLayout";
 import { VILLAGE_SEATS } from "@caysonverse/shared/village/benchSeats";
+import { ARRIVAL_SPACING_M, DOOR_PAD_CLEARANCE_M, SPACING_SLACK_M } from "@caysonverse/shared/village/arrivalSpot";
+import { keypadEntries } from "@caysonverse/shared/village/buildingAccess";
 import { isBlocked } from "@caysonverse/shared/collision";
 import { SEAT_OCCUPIED } from "./seating";
 import { SAMPLE_FILLED_IDS } from "@caysonverse/shared/village/sampleFill";
@@ -464,6 +466,103 @@ describe("VillageRoom door (integration)", () => {
     clock.t += 500;
     client.send(MessageType.Move, { x: beside, z: 0, yaw: -Math.PI / 2 }); // accepted
     expect(await pollFor(() => player.x === beside)).toBe(true);
+  });
+});
+
+describe("VillageRoom arrivals never stack (integration, fix/arrival-spread)", () => {
+  /** `n` visitors in one fresh room, each with its own nickname. */
+  async function crowd(n: number) {
+    const room = await colyseus.createRoom<VillageRoom>(VILLAGE_ROOM);
+    const clients: Awaited<ReturnType<typeof colyseus.connectTo<VillageRoom>>>[] = [];
+    for (let i = 0; i < n; i++) clients.push(await colyseus.connectTo(room, { nickname: `손님${i + 1}`, appearance: DEFAULT_APPEARANCE }));
+    const players = clients.map((c) => room.state.players.get(c.sessionId)!);
+    return { room, clients, players };
+  }
+  const gaps = (ps: readonly { x: number; z: number }[]) => {
+    let min = Infinity;
+    for (let i = 0; i < ps.length; i++) for (let j = i + 1; j < ps.length; j++) min = Math.min(min, Math.hypot(ps[i].x - ps[j].x, ps[i].z - ps[j].z));
+    return min;
+  };
+  const offPad = (p: { x: number; z: number }, pad: typeof IN_PAD) => Math.hypot(p.x - pad.centre.x, p.z - pad.centre.z) >= pad.radius + DOOR_PAD_CLEARANCE_M - 1e-6;
+
+  it("eight visitors joining one room appear on the plaza at least 1.1 m apart, all clear of colliders", async () => {
+    const { players } = await crowd(8);
+    expect(gaps(players)).toBeGreaterThanOrEqual(ARRIVAL_SPACING_M - SPACING_SLACK_M);
+    for (const p of players) {
+      expect(p.area).toBe("village");
+      expect(isBlocked(p.x, p.z, PLAYER_RADIUS, villageGeometry.obstacles, 0)).toBe(false);
+      expect(Math.hypot(p.x - L.spawn.x, p.z - L.spawn.z)).toBeLessThan(10); // still on the plaza, by the spawn
+    }
+  });
+
+  it("six visitors on the outside pad use the door in the same tick: inside, nobody within 1.1 m of anyone, nobody on the way out", async () => {
+    const { room, clients, players } = await crowd(6);
+    const clock = useClock(room);
+    players.forEach((p, i) => placeAt(p, OUT_PAD.centre.x - 1.25 + i * 0.5, OUT_PAD.centre.z)); // shoulder to shoulder on the pad
+    for (const c of clients) c.send(VillageMsg.UseDoor, {});
+    expect(await pollFor(() => players.every((p) => p.area === "hall"))).toBe(true);
+    expect(gaps(players)).toBeGreaterThanOrEqual(ARRIVAL_SPACING_M - SPACING_SLACK_M);
+    for (const p of players) {
+      expect(offPad(p, IN_PAD), `${p.x}, ${p.z}`).toBe(true);
+      expect(isBlocked(p.x, p.z, PLAYER_RADIUS, villageGeometry.obstacles, 0)).toBe(false);
+      expect(p.yaw).toBeCloseTo(HALL_SPAWN.yaw, 6); // all face into the room
+    }
+    // The first one through stands on the layout's spawn; the others beside and ahead of it.
+    expect(players.filter((p) => p.x === HALL_SPAWN.x && p.z === HALL_SPAWN.z)).toHaveLength(1);
+
+    // And all six out again in the same tick (a second later: the door cap).
+    clock.t += 1001;
+    players.forEach((p, i) => placeAt(p, IN_PAD.centre.x - 0.75 + i * 0.3, IN_PAD.centre.z - 0.4));
+    for (const c of clients) c.send(VillageMsg.UseDoor, {});
+    expect(await pollFor(() => players.every((p) => p.area === "village"))).toBe(true);
+    expect(gaps(players)).toBeGreaterThanOrEqual(ARRIVAL_SPACING_M - SPACING_SLACK_M);
+    for (const p of players) {
+      expect(offPad(p, OUT_PAD), `${p.x}, ${p.z}`).toBe(true);
+      expect(isBlocked(p.x, p.z, PLAYER_RADIUS, villageGeometry.obstacles, 0)).toBe(false);
+      expect(p.yaw).toBe(OUTSIDE_ARRIVAL.yaw);
+    }
+    expect(players.filter((p) => p.x === OUTSIDE_ARRIVAL.x && p.z === OUTSIDE_ARRIVAL.z)).toHaveLength(1);
+  });
+
+  it("someone still standing on the hall's spawn: the next visitor through the door appears right beside them, and every client sees it", async () => {
+    const { room, clients, players } = await crowd(2);
+    const [alice, bob] = players;
+    alice.area = "hall";
+    placeAt(alice, HALL_SPAWN.x, HALL_SPAWN.z);
+    placeAt(bob, OUT_PAD.centre.x, OUT_PAD.centre.z);
+    clients[1].send(VillageMsg.UseDoor, {});
+    expect(await pollFor(() => bob.area === "hall")).toBe(true);
+    expect(Math.hypot(bob.x - alice.x, bob.z - alice.z)).toBeCloseTo(ARRIVAL_SPACING_M, 9);
+    expect(bob.z).toBe(HALL_SPAWN.z); // beside, not in front
+    // Alice's client sees Bob there (float32 on the wire).
+    expect(await pollFor(() => clients[0].state?.players?.get(clients[1].sessionId)?.area === "hall")).toBe(true);
+    const seen = clients[0].state.players.get(clients[1].sessionId)!;
+    expect(Math.hypot(seen.x - alice.x, seen.z - alice.z)).toBeGreaterThanOrEqual(ARRIVAL_SPACING_M - SPACING_SLACK_M);
+    void room;
+  });
+
+  it("two family members opening the same house's keypad in the same tick land apart inside it (the keypad is paused on the client, the rule stays right)", async () => {
+    const { clients, players } = await crowd(2);
+    const entry = keypadEntries()[0]!;
+    placeAt(players[0], entry.pad.x - 0.3, entry.pad.z);
+    placeAt(players[1], entry.pad.x + 0.3, entry.pad.z);
+    for (const c of clients) c.send(VillageMsg.Keypad, { buildingId: entry.buildingId, code: "1004" });
+    const area = `house:${entry.buildingId}`;
+    expect(await pollFor(() => players.every((p) => p.area === area))).toBe(true);
+    expect(gaps(players)).toBeGreaterThanOrEqual(ARRIVAL_SPACING_M - SPACING_SLACK_M);
+    for (const p of players) expect(offPad(p, IN_PAD)).toBe(true);
+  });
+
+  it("only the players of the arrival's own area count: someone at the same coordinates in a house does not push a hall arrival aside", async () => {
+    const { clients, players } = await crowd(2);
+    const [carol, bob] = players;
+    carol.area = "house:house_1"; // the houses' interiors share the hall's coordinates
+    placeAt(carol, HALL_SPAWN.x, HALL_SPAWN.z);
+    placeAt(bob, OUT_PAD.centre.x, OUT_PAD.centre.z);
+    clients[1].send(VillageMsg.UseDoor, {});
+    expect(await pollFor(() => bob.area === "hall")).toBe(true);
+    expect(bob.x).toBe(HALL_SPAWN.x);
+    expect(bob.z).toBe(HALL_SPAWN.z);
   });
 });
 
