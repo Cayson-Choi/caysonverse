@@ -194,6 +194,12 @@ function VillageDoors({ pose }: { pose: Pose }) {
   return null;
 }
 
+/**
+ * The live shadows' colour in the village (review r3): the school's indigo (#2b2a55) laid a purple-blue band and square
+ * on the road under the signals' arms and heads and round the bus. Shade on sunlit asphalt is a neutral dark grey.
+ */
+const VILLAGE_SHADOW_COLOR = "#1d1e22";
+
 /** Small ride-status placeholder; the full window/camera view can build on this state. */
 function TransitRideHud() {
   const { boarded, snapshot, notice } = useTransitState();
@@ -269,6 +275,7 @@ export function VillageScene({ identity }: { identity: Identity }) {
       areas={areaGate}
       cameraPlanes={VILLAGE_CAMERA_PLANES}
       groundDecal={VILLAGE_GROUND_DECAL}
+      shadowColor={VILLAGE_SHADOW_COLOR}
       world3d={({ pose }) => (
         <>
           <DayNight area={area} tier={tier} />
