@@ -5,6 +5,8 @@
  * client uses the same pure functions for interpolation and signal lights.
  */
 
+import { SIGNAL_CROSSINGS } from "./crossings";
+
 export interface TransitPoint {
   x: number;
   z: number;
@@ -24,6 +26,8 @@ export interface BusTrip {
   /** 0 at the stop, 1 just before returning to the stop. */
   progress: number;
   pose: TransitPose;
+  /** true while the bus waits at a crosswalk for its signal */
+  waiting: boolean;
 }
 
 export type SignalColor = "green" | "amber" | "red";
@@ -42,27 +46,38 @@ export interface PedestrianSignalState {
   canCross: boolean;
 }
 
+const STOP_POINT: TransitPoint = { x: 34.2, z: -5.75 };
+export const ROUTE_RADIUS = Math.hypot(STOP_POINT.x, STOP_POINT.z);
+const ROUTE_START_ANGLE = Math.atan2(STOP_POINT.z, STOP_POINT.x);
+const ROUTE_STEPS = 72;
+
+/** One clockwise lap (seen from above, angle decreasing) from the stop back to the stop, in 5 degree chords. */
+function ringRoute(): readonly TransitPoint[] {
+  const pts: TransitPoint[] = [];
+  for (let i = 0; i <= ROUTE_STEPS; i++) {
+    const a = ROUTE_START_ANGLE - (i / ROUTE_STEPS) * Math.PI * 2;
+    pts.push(i === 0 || i === ROUTE_STEPS ? { ...STOP_POINT } : { x: ROUTE_RADIUS * Math.cos(a), z: ROUTE_RADIUS * Math.sin(a) });
+  }
+  return pts;
+}
+
 export const TRANSIT = {
   hourMs: 60 * 60 * 1000,
   lapMs: 3 * 60 * 1000,
   boardingMs: 30 * 1000,
+  /** One cycle of the crossing signals: vehicles green 0-20 s, amber 20-23, red 23-40; pedestrians stop 0-24, walk 24-34, flashing 34-38, stop 38-40. */
   signalCycleMs: 40 * 1000,
-  signalGreenMs: 22 * 1000,
+  signalGreenMs: 20 * 1000,
   signalAmberMs: 3 * 1000,
-  pedestrianWalkMs: 18 * 1000,
+  pedestrianStartMs: 24 * 1000,
+  pedestrianWalkMs: 10 * 1000,
   pedestrianFlashingMs: 4 * 1000,
+  /** Where the bus's nose stops before a crosswalk's centre when the signal is not green (m along the road): 2 m of crosswalk + 3.6 m. */
+  stopLineM: 5.6,
+  busLengthM: 9,
   stop: { x: 34.2, z: -5.75 } as TransitPoint,
-  route: [
-    { x: 34.2, z: -5.75 },
-    { x: 24.1, z: -24.1 },
-    { x: 0, z: -34 },
-    { x: -24.1, z: -24.1 },
-    { x: -34, z: 0 },
-    { x: -24.1, z: 24.1 },
-    { x: 0, z: 34 },
-    { x: 24.1, z: 24.1 },
-    { x: 34.2, z: -5.75 },
-  ] as readonly TransitPoint[],
+  /** The ring road's lane the bus runs in (R 34.68, through the stop), as a circle of short chords. */
+  route: ringRoute(),
 } as const;
 
 const mod = (n: number, d: number): number => ((n % d) + d) % d;
@@ -98,14 +113,90 @@ export function routePoseAt(progress: number, route: readonly TransitPoint[] = T
   return { ...end, yaw: 0 };
 }
 
+/** The parked bus: at the stop, nose north (-z), square to the stop's box and the shelter. */
+const PARKED_POSE: TransitPose = { x: STOP_POINT.x, z: STOP_POINT.z, yaw: Math.PI };
+
+/** Total length of the route (m). */
+export function routeLength(route: readonly TransitPoint[] = TRANSIT.route): number {
+  let total = 0;
+  for (let i = 0; i + 1 < route.length; i++) total += Math.hypot(route[i + 1]!.x - route[i]!.x, route[i + 1]!.z - route[i]!.z);
+  return total;
+}
+
+/** A place where the bus must wait for green: its distance along the route (centre of the bus) and the crossing's signal offset. */
+export interface TransitHold {
+  id: string;
+  /** route distance (m) of the bus's centre when its nose is on the stop line */
+  distance: number;
+  offsetMs: number;
+}
+
+/** The first moment at or after `utcMs` when the crossing's signal is green. */
+export function nextGreenAt(utcMs: number, offsetMs = 0): number {
+  const phase = mod(utcMs + offsetMs, TRANSIT.signalCycleMs);
+  return phase < TRANSIT.signalGreenMs ? utcMs : utcMs + (TRANSIT.signalCycleMs - phase);
+}
+
+/**
+ * The signalised crossings on the route, in the order the bus meets them. The bus runs clockwise (angle decreasing), so a
+ * crossing at angle a is reached `((start - a) mod 2pi) * R` metres into the lap, and the bus waits that far short of it
+ * minus the stop line's distance (the nose `stopLineM` before the crosswalk's centre, the bus's centre half a bus further).
+ */
+export const TRANSIT_HOLDS: readonly TransitHold[] = SIGNAL_CROSSINGS.map((c) => {
+  const start = Math.atan2(TRANSIT.stop.z, TRANSIT.stop.x);
+  const arc = mod(start - c.angle, Math.PI * 2) * ROUTE_RADIUS;
+  return { id: c.id, distance: arc - (TRANSIT.stopLineM + TRANSIT.busLengthM / 2), offsetMs: 0 };
+}).sort((x, y) => x.distance - y.distance);
+
+export interface TripTimeline {
+  /** per hold: when the bus arrives at the stop line and when it may go on */
+  holds: { arriveMs: number; releaseMs: number; distance: number }[];
+  /** when the bus is back at the stop */
+  endMs: number;
+}
+
+/** The timeline of a trip that leaves the stop at `startMs`: constant speed, a wait at each crossing until its signal is green. */
+export function tripTimeline(startMs: number): TripTimeline {
+  const length = routeLength();
+  const speed = length / TRANSIT.lapMs; // m per ms while moving
+  let t = startMs;
+  let s = 0;
+  const holds: TripTimeline["holds"] = [];
+  for (const h of TRANSIT_HOLDS) {
+    t += (h.distance - s) / speed;
+    const arriveMs = t;
+    t = nextGreenAt(t, h.offsetMs);
+    holds.push({ arriveMs, releaseMs: t, distance: h.distance });
+    s = h.distance;
+  }
+  return { holds, endMs: t + (length - s) / speed };
+}
+
+/** Distance along the route (m) of the bus at `utcMs` during a trip from `startMs`, and whether it is waiting at a signal. */
+function routeDistanceAt(utcMs: number, startMs: number): { distance: number; waiting: boolean } {
+  const tl = tripTimeline(startMs);
+  const length = routeLength();
+  const speed = length / TRANSIT.lapMs;
+  let t = startMs;
+  let s = 0;
+  for (const h of tl.holds) {
+    if (utcMs < h.arriveMs) return { distance: s + (utcMs - t) * speed, waiting: false };
+    if (utcMs < h.releaseMs) return { distance: h.distance, waiting: true };
+    t = h.releaseMs;
+    s = h.distance;
+  }
+  return { distance: Math.min(length, s + (utcMs - t) * speed), waiting: false };
+}
+
 /** The scheduled trip and bus pose at an absolute UTC timestamp. */
 export function busTripAt(utcMs: number): BusTrip {
   const hour = Math.floor(utcMs / TRANSIT.hourMs) * TRANSIT.hourMs;
-  const elapsed = Math.max(0, utcMs - hour);
   const nextStartMs = hour + TRANSIT.hourMs;
-  if (elapsed < TRANSIT.lapMs) {
-    const progress = elapsed / TRANSIT.lapMs;
-    return { tripId: hour, startMs: hour, nextStartMs, status: "inTransit", progress, pose: routePoseAt(progress) };
+  const end = tripTimeline(hour).endMs;
+  if (utcMs < end) {
+    const { distance, waiting } = routeDistanceAt(utcMs, hour);
+    const progress = distance / routeLength();
+    return { tripId: hour, startMs: hour, nextStartMs, status: "inTransit", progress, pose: routePoseAt(progress), waiting };
   }
   const boardingStart = nextStartMs - TRANSIT.boardingMs;
   if (utcMs >= boardingStart) {
@@ -115,10 +206,11 @@ export function busTripAt(utcMs: number): BusTrip {
       nextStartMs: nextStartMs + TRANSIT.hourMs,
       status: "boarding",
       progress: 0,
-      pose: routePoseAt(0),
+      pose: PARKED_POSE,
+      waiting: false,
     };
   }
-  return { tripId: hour, startMs: hour, nextStartMs, status: "atStop", progress: 1, pose: routePoseAt(1) };
+  return { tripId: hour, startMs: hour, nextStartMs, status: "atStop", progress: 1, pose: PARKED_POSE, waiting: false };
 }
 
 /** A deterministic signal cycle. offsetMs lets nearby crossings change out of phase. */
@@ -142,14 +234,18 @@ export function signalAt(utcMs: number, offsetMs = 0): SignalState {
   };
 }
 
-/** Pedestrian phase is intentionally offset from the bus phase so the two signals are visibly independent. */
-export function pedestrianSignalAt(utcMs: number, offsetMs = 8_000): PedestrianSignalState {
-  const elapsed = mod(utcMs + offsetMs, TRANSIT.signalCycleMs);
-  if (elapsed < TRANSIT.pedestrianWalkMs) {
-    return { color: "walk", remainingMs: TRANSIT.pedestrianWalkMs - elapsed, canCross: true };
-  }
-  if (elapsed < TRANSIT.pedestrianWalkMs + TRANSIT.pedestrianFlashingMs) {
-    return { color: "flashing", remainingMs: TRANSIT.pedestrianWalkMs + TRANSIT.pedestrianFlashingMs - elapsed, canCross: false };
-  }
-  return { color: "stop", remainingMs: TRANSIT.signalCycleMs - elapsed, canCross: false };
+/**
+ * The pedestrian phase of the same cycle (walk only while the vehicles are red): stop until 24 s, the walking figure for
+ * 10 s, the flashing figure for 4 s (finish crossing, do not start), then stop for the last 2 s while the vehicles'
+ * red is still on. Never overlaps the vehicles' green or amber.
+ */
+export function pedestrianSignalAt(utcMs: number, offsetMs = 0): PedestrianSignalState {
+  const e = mod(utcMs + offsetMs, TRANSIT.signalCycleMs);
+  const walkEnd = TRANSIT.pedestrianStartMs + TRANSIT.pedestrianWalkMs;
+  const flashEnd = walkEnd + TRANSIT.pedestrianFlashingMs;
+  if (e >= TRANSIT.pedestrianStartMs && e < walkEnd) return { color: "walk", remainingMs: walkEnd - e, canCross: true };
+  if (e >= walkEnd && e < flashEnd) return { color: "flashing", remainingMs: flashEnd - e, canCross: false };
+  // stop: until the walk starts (this cycle or the next one)
+  const untilWalk = e < TRANSIT.pedestrianStartMs ? TRANSIT.pedestrianStartMs - e : TRANSIT.signalCycleMs - e + TRANSIT.pedestrianStartMs;
+  return { color: "stop", remainingMs: untilWalk, canCross: false };
 }

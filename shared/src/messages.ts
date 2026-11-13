@@ -177,6 +177,8 @@ export interface BusStatePayload {
   signal: "green" | "amber" | "red";
   /** Separate pedestrian crossing phase; optional for old clients during rolling deploys. */
   pedestrianSignal?: "walk" | "flashing" | "stop";
+  /** The bus is standing at a crosswalk's stop line, waiting for its green (optional for old clients). */
+  waiting?: boolean;
 }
 
 export interface BusRejectedPayload {

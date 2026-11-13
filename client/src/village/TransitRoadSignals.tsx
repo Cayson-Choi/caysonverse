@@ -1,112 +1,165 @@
-import { pedestrianSignalAt, signalAt, type PedestrianSignalColor, type SignalColor } from "@caysonverse/shared/village/transit";
-import { useTransitState } from "../net/transitSync";
+import { Suspense, useEffect, useMemo } from "react";
+import { useFrame } from "@react-three/fiber";
+import { useGLTF } from "@react-three/drei";
+import { CanvasTexture, Color, SRGBColorSpace, type Material, type Mesh, type MeshStandardMaterial, type Object3D } from "three";
+import { signalPoleSpots } from "@caysonverse/shared/village/crossings";
+import { DRACO_PATH } from "../game/hub/hubModelPrep";
+import { villageClock } from "./villageClock";
+import { lampKey, lampsAt, type LampState } from "./signalLamps";
 
-const SIGNAL_COLORS: Record<SignalColor, string> = {
-  red: "#ef3340",
+/**
+ * The two crossings' signal units (`village_signals.glb`, art/village/tools/build_signals.py): a galvanised post with a
+ * cantilever arm, a horizontal red/amber/green head over the lane facing the approaching bus, and a vertical
+ * pedestrian head (red standing figure, green walking figure, count-down display) facing across the road. Two units
+ * per crossing, on diagonal corners (shared/village/crossings.ts), all four sharing one set of lamp materials: the
+ * lamps are the file's separate meshes (lens_red/amber/green, ped_fig_stop/walk, countdown_screen), so a state is
+ * a few material writes. The states follow the shared cycle (transit.ts signalAt / pedestrianSignalAt) on the
+ * village's server-synced clock, the same one the bus's holds at the crosswalks come from.
+ *
+ * DEV only: `window.__cvSignals = { vehicle, ped }` forces the lamps (screenshots of every state); unset it to
+ * go back to the clock.
+ */
+export const SIGNALS_MODEL_URL = "/models/village/village_signals.glb";
+
+declare global {
+  interface Window {
+    /** Dev-only: force the crosswalk lamps. Absent in production builds. */
+    __cvSignals?: { vehicle?: "green" | "amber" | "red"; ped?: "walk" | "flashing" | "stop" } | null;
+  }
+}
+
+const LIT = {
+  red: "#ff2a30",
   amber: "#ffb000",
-  green: "#32d74b",
+  green: "#2fe07e",
+  pedStop: "#ff3036",
+  pedWalk: "#34f088",
 };
+const LAMP_ON = 2.4;
+const LAMP_OFF = 0;
 
-const PED_COLORS: Record<PedestrianSignalColor, string> = {
-  walk: "#36d27a",
-  flashing: "#ffb000",
-  stop: "#ef3340",
-};
+interface Lamps {
+  red: MeshStandardMaterial;
+  amber: MeshStandardMaterial;
+  green: MeshStandardMaterial;
+  pedStop: MeshStandardMaterial;
+  pedWalk: MeshStandardMaterial;
+  count: MeshStandardMaterial;
+}
 
-function Crosswalk({ x, z, vertical }: { x: number; z: number; vertical: boolean }) {
-  const stripes = Array.from({ length: 7 }, (_, i) => i - 3);
+function lampMaterials(root: Object3D): Lamps | null {
+  const found: Record<string, MeshStandardMaterial> = {};
+  root.traverse((o) => {
+    const m = (o as Mesh).material as Material | undefined;
+    if (m && "emissive" in m && /^M_(lens_(red|amber|green)|ped_(stop|walk)|countdown)$/.test(m.name)) found[m.name] = m as MeshStandardMaterial;
+  });
+  const need = ["M_lens_red", "M_lens_amber", "M_lens_green", "M_ped_stop", "M_ped_walk", "M_countdown"];
+  if (need.some((n) => !found[n])) return null;
+  return {
+    red: found["M_lens_red"]!,
+    amber: found["M_lens_amber"]!,
+    green: found["M_lens_green"]!,
+    pedStop: found["M_ped_stop"]!,
+    pedWalk: found["M_ped_walk"]!,
+    count: found["M_countdown"]!,
+  };
+}
+
+function setLamp(m: MeshStandardMaterial, color: string, on: boolean): void {
+  m.emissive.set(color);
+  m.emissiveIntensity = on ? LAMP_ON : LAMP_OFF;
+}
+
+/** Draw the count-down digits into the display's canvas (green while walking, red while waiting). */
+function drawCountdown(ctx: CanvasRenderingContext2D, tex: CanvasTexture, seconds: number, color: "green" | "red"): void {
+  ctx.fillStyle = "#050607";
+  ctx.fillRect(0, 0, 128, 128);
+  ctx.fillStyle = color === "green" ? "#45ff96" : "#ff4a3a";
+  ctx.font = "bold 88px 'Noto Sans KR', 'Arial Black', sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(String(Math.min(99, seconds)), 64, 70);
+  tex.needsUpdate = true;
+}
+
+function apply(l: Lamps, s: LampState, ctx: CanvasRenderingContext2D | null, tex: CanvasTexture | null): void {
+  setLamp(l.red, LIT.red, s.vehicle === "red");
+  setLamp(l.amber, LIT.amber, s.vehicle === "amber");
+  setLamp(l.green, LIT.green, s.vehicle === "green");
+  setLamp(l.pedStop, LIT.pedStop, s.stopLit);
+  setLamp(l.pedWalk, LIT.pedWalk, s.walkLit);
+  if (ctx && tex) drawCountdown(ctx, tex, s.countdown.seconds, s.countdown.color);
+}
+
+function SignalUnits() {
+  const gltf = useGLTF(SIGNALS_MODEL_URL, DRACO_PATH);
+  const spots = useMemo(() => signalPoleSpots(), []);
+  const units = useMemo(
+    () =>
+      spots.map(() => {
+        const u = gltf.scene.clone(true);
+        u.traverse((o) => {
+          const mesh = o as Mesh;
+          if (mesh.isMesh) mesh.castShadow = /sig_zinc|sig_black/.test(mesh.name);
+        });
+        return u;
+      }),
+    [gltf, spots],
+  );
+  const lamps = useMemo(() => lampMaterials(gltf.scene), [gltf]);
+  const display = useMemo(() => {
+    if (typeof document === "undefined") return null;
+    const canvas = document.createElement("canvas");
+    canvas.width = canvas.height = 128;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+    const tex = new CanvasTexture(canvas);
+    tex.colorSpace = SRGBColorSpace;
+    tex.flipY = false; // glTF UVs run from the top, like the file's own textures
+    return { ctx, tex };
+  }, []);
+  const last = useMemo(() => ({ key: "" }), []);
+  useEffect(() => {
+    if (!lamps) return;
+    lamps.count.color = new Color("#ffffff");
+    if (display) {
+      lamps.count.map = display.tex;
+      lamps.count.emissiveMap = display.tex;
+      lamps.count.emissive = new Color("#ffffff");
+      lamps.count.emissiveIntensity = 1.3;
+      lamps.count.needsUpdate = true;
+    }
+    last.key = "";
+    return () => {
+      lamps.count.map = null;
+      lamps.count.emissiveMap = null;
+      lamps.count.needsUpdate = true;
+      display?.tex.dispose();
+    };
+  }, [lamps, display, last]);
+  useFrame(() => {
+    if (!lamps) return;
+    const override = import.meta.env.DEV ? window.__cvSignals : null;
+    const state = lampsAt(villageClock.nowMs(), override);
+    const key = lampKey(state);
+    if (key === last.key) return;
+    last.key = key;
+    apply(lamps, state, display?.ctx ?? null, display?.tex ?? null);
+  });
   return (
-    <group position={[x, 0.035, z]}>
-      <mesh position={[0, -0.012, vertical ? 0 : 0]} rotation-x={-Math.PI / 2}>
-        <planeGeometry args={vertical ? [4.5, 5.3] : [5.3, 4.5]} />
-        <meshStandardMaterial color="#1c242d" roughness={0.96} />
-      </mesh>
-      {stripes.map((offset) => (
-        <mesh
-          key={offset}
-          position={vertical ? [offset * 0.62, 0, 0] : [0, 0, offset * 0.62]}
-          rotation-x={-Math.PI / 2}
-        >
-          <planeGeometry args={vertical ? [0.32, 4.3] : [4.3, 0.32]} />
-          <meshStandardMaterial color="#f4f6f8" roughness={0.82} metalness={0} />
-        </mesh>
+    <group name="village-crosswalk-signals">
+      {units.map((u, i) => (
+        <primitive key={`${spots[i]!.crossing}-${spots[i]!.pole}`} object={u} position={[spots[i]!.x, 0, spots[i]!.z]} rotation-y={spots[i]!.yaw} dispose={null} />
       ))}
     </group>
   );
 }
 
-function TrafficHead({ signal }: { signal: SignalColor }) {
-  const lights: SignalColor[] = ["red", "amber", "green"];
-  return (
-    <group name="vehicle-signal-head">
-      <mesh castShadow><boxGeometry args={[0.5, 1.02, 0.24]} /><meshStandardMaterial color="#111820" roughness={0.5} metalness={0.2} /></mesh>
-      {lights.map((color, i) => (
-        <group key={color} position={[0, 0.32 - i * 0.32, -0.145]}>
-          <mesh><circleGeometry args={[0.095, 20]} /><meshStandardMaterial color={SIGNAL_COLORS[color]} emissive={SIGNAL_COLORS[color]} emissiveIntensity={signal === color ? 2.2 : 0.04} roughness={0.34} /></mesh>
-          <mesh position={[0, 0, -0.012]}><torusGeometry args={[0.108, 0.014, 8, 20]} /><meshStandardMaterial color="#05080d" roughness={0.48} metalness={0.18} /></mesh>
-          <mesh position={[0, 0.105, 0.01]}><boxGeometry args={[0.25, 0.07, 0.18]} /><meshStandardMaterial color="#080d13" roughness={0.52} metalness={0.14} /></mesh>
-        </group>
-      ))}
-    </group>
-  );
-}
-
-function VehicleSignal({ x, z, signal, flip = false }: { x: number; z: number; signal: SignalColor; flip?: boolean }) {
-  return (
-    <group name="vehicle-signal" position={[x, 0, z]} rotation-y={flip ? Math.PI : 0}>
-      <mesh position={[0, 1.3, 0]}><cylinderGeometry args={[0.07, 0.09, 2.6, 8]} /><meshStandardMaterial color="#222936" roughness={0.55} metalness={0.35} /></mesh>
-      <mesh position={[flip ? -0.42 : 0.42, 2.64, 0]} rotation-z={Math.PI / 2}><boxGeometry args={[0.08, 0.9, 0.08]} /><meshStandardMaterial color="#222936" metalness={0.35} roughness={0.55} /></mesh>
-      <group position={[0, 2.63, 0]}><TrafficHead signal={signal} /></group>
-    </group>
-  );
-}
-
-function PedestrianSignal({ x, z, signal, flip = false }: { x: number; z: number; signal: PedestrianSignalColor; flip?: boolean }) {
-  return (
-    <group name="pedestrian-signal" position={[x, 0, z]} rotation-y={flip ? Math.PI : 0}>
-      <mesh position={[0, 1.05, 0]}><cylinderGeometry args={[0.055, 0.07, 2.1, 8]} /><meshStandardMaterial color="#202934" metalness={0.35} roughness={0.58} /></mesh>
-      <mesh position={[0, 2.12, -0.04]}><boxGeometry args={[0.3, 0.62, 0.2]} /><meshStandardMaterial color="#111820" metalness={0.15} roughness={0.42} /></mesh>
-      {(["stop", "walk"] as const).map((phase, i) => (
-        <group key={phase} position={[0, 2.28 - i * 0.25, -0.15]}>
-          <mesh>
-            <circleGeometry args={[0.07, 16]} />
-            <meshStandardMaterial
-              color={signal === "flashing" && phase === "walk" ? PED_COLORS.flashing : PED_COLORS[phase]}
-              emissive={signal === "flashing" && phase === "walk" ? PED_COLORS.flashing : PED_COLORS[phase]}
-              emissiveIntensity={signal === phase || (signal === "flashing" && phase === "walk") ? 2.8 : 0.06}
-              roughness={0.42}
-            />
-          </mesh>
-          <mesh position={[0, 0, 0.055]}>
-            <torusGeometry args={[0.085, 0.015, 6, 16]} />
-            <meshStandardMaterial color="#05080d" roughness={0.5} metalness={0.15} />
-          </mesh>
-        </group>
-      ))}
-      <mesh position={[0, 2.72, 0]}><boxGeometry args={[0.48, 0.08, 0.08]} /><meshStandardMaterial color="#27313c" /></mesh>
-    </group>
-  );
-}
-
-/** Lightweight in-layout road furniture driven by the same server signal snapshot as the bus. */
+/** Crosswalk signal posts of the ring road (a failed or slow model is no signals: the village never waits for it). */
 export function TransitRoadSignals() {
-  const { snapshot } = useTransitState();
-  const now = Date.now();
-  const signal = snapshot?.signal ?? signalAt(now).color;
-  const pedestrian = snapshot?.pedestrianSignal ?? pedestrianSignalAt(now).color;
   return (
-    <group name="village-transit-road-furniture">
-      <Crosswalk x={34} z={0} vertical={false} />
-      <VehicleSignal x={30.6} z={-3.1} signal={signal} />
-      <VehicleSignal x={37.4} z={3.1} signal={signal} flip />
-      <PedestrianSignal x={31.3} z={3.0} signal={pedestrian} />
-      <PedestrianSignal x={36.7} z={-3.0} signal={pedestrian} flip />
-      <Crosswalk x={0} z={-34} vertical />
-      <VehicleSignal x={-3.1} z={-30.6} signal={signal} />
-      <VehicleSignal x={3.1} z={-37.4} signal={signal} flip />
-      <PedestrianSignal x={3.0} z={-31.3} signal={pedestrian} />
-      <PedestrianSignal x={-3.0} z={-36.7} signal={pedestrian} flip />
-    </group>
+    <Suspense fallback={null}>
+      <SignalUnits />
+    </Suspense>
   );
 }
-

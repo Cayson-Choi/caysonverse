@@ -5,8 +5,8 @@ import type {
   BusStatePayload,
 } from "@caysonverse/shared/messages";
 
-/** The server's proximity gate around the east-side bus stop. */
-export const BUS_BOARD_REACH_M = 4.5;
+/** The server's proximity gate around the east-side bus stop: the bus's doors and the waiting pad and shelter 6 m behind them (client BUS_OFFER_REACH_M is a little tighter). */
+export const BUS_BOARD_REACH_M = 7.2;
 
 /** How often the room publishes the authoritative bus pose. */
 export const BUS_STATE_RATE_MS = 250;
@@ -23,7 +23,16 @@ export function transitSnapshotAt(utcMs: number): BusStatePayload {
     yaw: trip.pose.yaw,
     signal: signalAt(utcMs).color,
     pedestrianSignal: pedestrianSignalAt(utcMs).color,
+    waiting: trip.waiting,
   };
+}
+
+/**
+ * Whether a rider boarded on trip `riderTripId` is still on it, given the published snapshot: from boarding (the 30 s before
+ * the hour, when the trip's id is the coming hour's) through the lap; not once the bus is back at the stop or a later trip is up.
+ */
+export function riderOnTrip(snapshot: Pick<BusStatePayload, "tripId" | "status">, riderTripId: number | null): boolean {
+  return riderTripId !== null && snapshot.tripId === riderTripId && (snapshot.status === "inTransit" || snapshot.status === "boarding");
 }
 
 export type BusRideDecision =

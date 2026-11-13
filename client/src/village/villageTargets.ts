@@ -30,8 +30,8 @@ export const KEYPAD_TARGET_PREFIX = "keypad:";
 export const KEYPAD_LABEL = "번호키 입력";
 export const KEYPAD_SHORT = "번호키";
 
-/** The bus target uses the same server-side 4.5 m gate, with a small client cushion. */
-export const BUS_OFFER_REACH_M = 4.2;
+/** The bus target uses the server's 7.2 m gate with a small client cushion: the bus's doors and the waiting pad and shelter (6 m behind them). */
+export const BUS_OFFER_REACH_M = 6.8;
 export const BUS_RIDE_TARGET_BOARD = "village_bus_board";
 export const BUS_RIDE_TARGET_LEAVE = "village_bus_leave";
 

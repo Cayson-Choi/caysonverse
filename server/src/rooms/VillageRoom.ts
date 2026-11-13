@@ -39,6 +39,7 @@ import { candleCubby } from "./villageCandle";
 import { validateSit } from "./seating";
 import {
   BUS_STATE_RATE_MS,
+  riderOnTrip,
   transitSnapshotAt,
   validateBusRide,
 } from "./transitRuntime";
@@ -146,7 +147,10 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
 
   /** The server's wall clock (Unix epoch ms, UTC). A seam for tests; the door and move caps use `now()`. */
   protected wallClock(): number {
-    return Date.now();
+    // DEV only (never in production): CV_DEV_CLOCK_OFFSET_MS shifts the village's clock, to see the hourly bus run and the
+    // crosswalk signals without waiting for the hour (the clients follow it: they read the time from the server).
+    const dev = process.env.NODE_ENV === "production" ? 0 : Number(process.env.CV_DEV_CLOCK_OFFSET_MS ?? 0);
+    return Date.now() + (Number.isFinite(dev) ? dev : 0);
   }
 
   /** The server's clock for one visitor (on join; queued until their join completes) or for everyone. */
@@ -284,9 +288,10 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     for (const client of this.clients) {
       const track = this.tracking.get(client.sessionId);
       if (!track?.busBoarded || track.busTripId === null) continue;
-      // A rider stays on one lap only. Once the bus is back at the stop, the
-      // placeholder ride ends and the player can board the next hourly trip.
-      if (snapshot.status !== "inTransit" || snapshot.tripId !== track.busTripId) {
+      // A rider stays on one lap only: from boarding (the 30 s before the hour, the trip's own id) through the lap. Once
+      // the bus is back at the stop (or a later trip is up), the ride ends and the player can board the next hourly trip.
+      // (It used to end at once for anyone who boarded before the hour: the status was "boarding", not "inTransit".)
+      if (!riderOnTrip(snapshot, track.busTripId)) {
         track.busBoarded = false;
         track.busTripId = null;
         const player = this.state.players.get(client.sessionId);

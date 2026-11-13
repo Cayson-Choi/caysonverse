@@ -26,7 +26,7 @@ let boundRoom: TransitRoom | null = null;
 const listeners = new Set<() => void>();
 
 /** Render pose is kept outside React so the bus can ease every frame without re-rendering the HUD. */
-let renderPose = { x: 34.2, z: -5.75, yaw: 0 };
+let renderPose = { x: 34.2, z: -5.75, yaw: Math.PI }; // parked: heading north (-z)
 let targetPose = { ...renderPose };
 let hasPose = false;
 
@@ -52,7 +52,7 @@ function setRide(next: BusRideStatePayload): void {
 export function startTransitSync(room: TransitRoom): () => void {
   boundRoom = room;
   hasPose = false;
-  targetPose = { x: 34.2, z: -5.75, yaw: 0 };
+  targetPose = { x: 34.2, z: -5.75, yaw: Math.PI };
   renderPose = { ...targetPose };
   publish(initial);
   const offState = room.onMessage<BusStatePayload>(MessageType.BusState, setSnapshot);
