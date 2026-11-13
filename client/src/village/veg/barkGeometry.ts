@@ -164,22 +164,80 @@ export function barkTube(b: GeoBuilder, pts: readonly Vec3[], radii: readonly nu
   return frames;
 }
 
+/** A limb's or side branch's radius (m) at its last point, after `taperBranch`: a twig's (crownGrowth's twigs end at 3.2 mm). */
+export const TIP_R = 0.004;
+
+/** The point on a polyline nearest to `p`: its arc length and radius there, and the distance. */
+function nearestOn(b: Branch, p: Vec3): { s: number; r: number; d: number } {
+  let best = { s: 0, r: b.radii[0]!, d: Infinity };
+  let acc = 0;
+  for (let i = 1; i < b.pts.length; i++) {
+    const a = b.pts[i - 1]!;
+    const ab = sub(b.pts[i]!, a);
+    const l2 = dot(ab, ab) || 1e-12;
+    const t = Math.max(0, Math.min(1, dot(sub(p, a), ab) / l2));
+    const d = len(sub(p, add(a, mul(ab, t))));
+    const l = Math.sqrt(l2);
+    if (d < best.d) best = { s: acc + l * t, r: b.radii[i - 1]! + (b.radii[i]! - b.radii[i - 1]!) * t, d };
+    acc += l;
+  }
+  return best;
+}
+
 /**
- * A branch tapering out at its tip, as a real one does: the file's limbs end 2 cm thick (as thick as near their base on
- * a young tree) and their side branches 1.2 cm, which read as sawn-off logs from under the crown (review r1,
- * 2026-11-13). The branch never thickens toward its tip, its last point is a third of its base at most, and it runs on
- * along its line for up to 12 radii (25 cm at most: inside the leaves at its tip) to a point of 1.5 mm.
+ * A branch tapering evenly along its whole length, as a real one does (review r2, 2026-11-13: the file's limbs keep
+ * 16 % of their base radius to their last point, a limb cut back short of a house keeps all of it, and a short cone
+ * closed them there: telescoped ends and little horns from under the crown). The radius falls in a straight line from
+ * the base (`r0`, or the branch's own) to `TIP_R` (or finer) at the last point, on toward the point where it would close
+ * (`pointedEnd` carries it there): no step and no sudden cone anywhere. The points stay where they are.
+ */
+export function taperBranch(b: Branch, r0 = b.radii[0]!): Branch {
+  let L = 0;
+  for (let i = 1; i < b.pts.length; i++) L += len(sub(b.pts[i]!, b.pts[i - 1]!));
+  // a long thin branch ends finer, so that it closes within 30 cm past its last point at the same taper
+  const rt = Math.min(TIP_R, r0 * 0.3, (0.3 * r0) / (L + 0.3));
+  const close = L + (L * rt) / Math.max(1e-6, r0 - rt);
+  let s = 0;
+  const radii = b.pts.map((p, i) => {
+    if (i) s += len(sub(p, b.pts[i - 1]!));
+    return r0 * (1 - s / close);
+  });
+  return { pts: b.pts, radii };
+}
+
+/**
+ * The skeleton with every limb and side branch tapering evenly (`taperBranch`); a side branch never thicker where it
+ * leaves its limb than 0.7 of the limb there. Run before the crown is grown on it (the twigs take their radius from
+ * the branch they leave) and again by the bark (it changes nothing the second time).
+ */
+export function taperSkeleton<T extends { limbs: Branch[]; sides: Branch[] }>(sk: T): T {
+  const limbs = sk.limbs.map((l) => taperBranch(l));
+  const sides = sk.sides.map((side) => {
+    let at = { s: 0, r: side.radii[0]!, d: Infinity };
+    for (const l of limbs) {
+      const q = nearestOn(l, side.pts[0]!);
+      if (q.d < at.d) at = q;
+    }
+    return taperBranch(side, at.d < 0.1 ? Math.min(side.radii[0]!, at.r * 0.7) : side.radii[0]!);
+  });
+  return { ...sk, limbs, sides };
+}
+
+/**
+ * A branch's tip: it never thickens toward it, and runs on past its last point at the same taper to where it closes
+ * (30 cm at most, inside the leaves at its tip), ending in a point of under a millimetre.
  */
 export function pointedEnd(b: Branch): Branch {
   const n = b.pts.length;
   const last = b.pts[n - 1]!;
+  const seg = len(sub(last, b.pts[n - 2]!));
   const d = norm(sub(last, b.pts[n - 2]!));
   const radii = [...b.radii];
   for (let i = 1; i < n; i++) radii[i] = Math.min(radii[i]!, radii[i - 1]!);
-  radii[n - 1] = Math.min(radii[n - 1]!, Math.max(0.0035, radii[0]! * 0.33));
   const r = radii[n - 1]!;
-  const ext = Math.min(0.25, r * 12);
-  return { pts: [...b.pts, add(last, mul(d, ext * 0.55)), add(last, mul(d, ext))], radii: [...radii, r * 0.5, Math.min(0.0015, r * 0.3)] };
+  const slope = (radii[n - 2]! - r) / Math.max(seg, 1e-6);
+  const ext = Math.max(r * 3, Math.min(0.3, slope > 1e-6 ? r / slope : 0.3));
+  return { pts: [...b.pts, add(last, mul(d, ext * 0.5)), add(last, mul(d, ext))], radii: [...radii, r * 0.5, Math.min(0.0008, r * 0.2)] };
 }
 
 /** The faces round a branch of radius `r` (`low`: the phone tier). */
@@ -261,9 +319,61 @@ export function forkLimb(limb: Branch, part: Vec3, partR: number, dirT: Vec3): B
   return { pts, radii };
 }
 
-/** `skeletonBark` added to a builder (several trees in one mesh). */
-export function skeletonBarkInto(b: GeoBuilder, sk: TreeSkeleton, low: boolean, light: (p: Vec3, n: Vec3) => number): void {
-  const style = BARK_STYLE[sk.kind];
+/**
+ * A branch with its corners rounded (review r2, 2026-11-13: the file's limbs bend 10-30 degrees at their middle points,
+ * and seen from below a limb turning there away from the eye ended in a flat lip, its open ring, with the rest of it a
+ * thin spike behind): every corner sharper than 6 degrees is replaced by a short curve (a quadratic from `f` before it
+ * to `f` after it, `f` at most 30 cm and 40 % of either side), the radius following the arc length as before. The curve
+ * passes within a few centimetres of the corner: the twigs and side branches grown off it stay inside the bark.
+ */
+export function roundCorners(b: Branch, f = 0.3): Branch {
+  const n = b.pts.length;
+  if (n < 3) return b;
+  const pts: Vec3[] = [b.pts[0]!];
+  const radii: number[] = [b.radii[0]!];
+  for (let i = 1; i < n - 1; i++) {
+    const p = b.pts[i]!;
+    const a = sub(p, b.pts[i - 1]!);
+    const c = sub(b.pts[i + 1]!, p);
+    const la = len(a);
+    const lc = len(c);
+    const da = mul(a, 1 / (la || 1));
+    const dc = mul(c, 1 / (lc || 1));
+    const turn = (Math.acos(Math.max(-1, Math.min(1, dot(da, dc)))) * 180) / Math.PI;
+    if (turn < 6 || la < 1e-4 || lc < 1e-4) {
+      pts.push(p);
+      radii.push(b.radii[i]!);
+      continue;
+    }
+    const g = Math.min(f, la * 0.4, lc * 0.4);
+    const A = sub(p, mul(da, g));
+    const B = add(p, mul(dc, g));
+    const rA = b.radii[i]! + (b.radii[i - 1]! - b.radii[i]!) * (g / la);
+    const rB = b.radii[i]! + (b.radii[i + 1]! - b.radii[i]!) * (g / lc);
+    // a ring every 12 degrees of the turn (2 to 3 short pieces for the file's 10-30 degree bends)
+    const K = Math.max(2, Math.min(3, Math.ceil(turn / 12)));
+    for (let k = 0; k <= K; k++) {
+      const t = k / K;
+      const u = 1 - t;
+      pts.push([A[0] * u * u + 2 * p[0] * u * t + B[0] * t * t, A[1] * u * u + 2 * p[1] * u * t + B[1] * t * t, A[2] * u * u + 2 * p[2] * u * t + B[2] * t * t]);
+      radii.push(rA + (rB - rA) * t);
+    }
+  }
+  pts.push(b.pts[n - 1]!);
+  radii.push(b.radii[n - 1]!);
+  return { pts, radii };
+}
+
+/** The bark's shapes of a tree as drawn (`skeletonBarkInto`): the trunk (to where the limbs part), its limbs, its sides. */
+export interface DrawnBark {
+  trunk: Branch;
+  limbs: Branch[];
+  sides: Branch[];
+}
+
+/** A tree's trunk, limbs and side branches as the bark draws them (tapered, the limbs out of the trunk, pointed). */
+export function drawnBark(skIn: TreeSkeleton): DrawnBark {
+  const sk = taperSkeleton(skIn);
   const trunk = sk.trunk;
   const r0 = trunk.radii[1]!;
   const ground = sk.base;
@@ -277,21 +387,33 @@ export function skeletonBarkInto(b: GeoBuilder, sk: TreeSkeleton, low: boolean, 
   const f = Math.max(0, 1 - below / Math.max(segL, 1e-3));
   const part: Vec3 = [trunk.pts[2]![0] + (top[0] - trunk.pts[2]![0]) * f, trunk.pts[2]![1] + (top[1] - trunk.pts[2]![1]) * f, trunk.pts[2]![2] + (top[2] - trunk.pts[2]![2]) * f];
   const partR = trunk.radii[2]! + (forkR - trunk.radii[2]!) * f;
-  const pts: Vec3[] = [trunk.pts[0]!, [ground[0], ground[1], ground[2]], add(ground, mul(dirT, 0.12)), add(ground, mul(dirT, 0.3)), trunk.pts[1]!, trunk.pts[2]!, part];
-  const radii = [r0 * 1.5, r0 * 1.45, r0 * 1.25, r0 * 1.1, trunk.radii[1]!, trunk.radii[2]!, partR];
+  return {
+    trunk: {
+      pts: [trunk.pts[0]!, [ground[0], ground[1], ground[2]], add(ground, mul(dirT, 0.12)), add(ground, mul(dirT, 0.3)), trunk.pts[1]!, trunk.pts[2]!, part],
+      radii: [r0 * 1.5, r0 * 1.45, r0 * 1.25, r0 * 1.1, trunk.radii[1]!, trunk.radii[2]!, partR],
+    },
+    limbs: sk.limbs.map((limb) => {
+      // the bends of the limb past the fork's curve (that curve is smooth already: 7 points)
+      const f = forkLimb(limb, part, partR, dirT);
+      const rest = roundCorners({ pts: f.pts.slice(6), radii: f.radii.slice(6) });
+      return pointedEnd({ pts: [...f.pts.slice(0, 6), ...rest.pts], radii: [...f.radii.slice(0, 6), ...rest.radii] });
+    }),
+    sides: sk.sides.map((side) => pointedEnd(roundCorners(side))),
+  };
+}
+
+/** `skeletonBark` added to a builder (several trees in one mesh). */
+export function skeletonBarkInto(b: GeoBuilder, sk: TreeSkeleton, low: boolean, light: (p: Vec3, n: Vec3) => number): void {
+  const style = BARK_STYLE[sk.kind];
+  const d = drawnBark(sk);
+  const r0 = sk.trunk.radii[1]!;
   const sides = barkSides(r0, low);
-  const frames = barkTube(b, pts, radii, sides, style, light, { flare: { k: 0.35, top: 0.45, seed: sk.index * 1.37, groundY: ground[1] } });
+  const frames = barkTube(b, d.trunk.pts, d.trunk.radii, sides, style, light, { flare: { k: 0.35, top: 0.45, seed: sk.index * 1.37, groundY: sk.base[1] } });
   const v0 = frames.v[frames.v.length - 1] ?? 0;
   const tx0 = frames.tx[frames.tx.length - 1];
-  for (const limb of sk.limbs) {
-    const tip = pointedEnd(forkLimb(limb, part, partR, dirT));
-    // the trunk's faces round (its first ring is the trunk's last)
-    barkTube(b, tip.pts, tip.radii, sides, style, light, { v0, tx0 });
-  }
-  for (const side of sk.sides) {
-    const tip = pointedEnd(side);
-    barkTube(b, tip.pts, tip.radii, barkSides(side.radii[0]!, low), style, light, { v0: 0.71 });
-  }
+  // the limbs with the trunk's faces round (their first ring is the trunk's last)
+  for (const tip of d.limbs) barkTube(b, tip.pts, tip.radii, sides, style, light, { v0, tx0 });
+  for (const tip of d.sides) barkTube(b, tip.pts, tip.radii, barkSides(tip.radii[0]!, low), style, light, { v0: 0.71 });
 }
 
 /** A phone's twig: fewer rings, its shape kept within 1 cm (the clusters placed on the full line stay on it). */

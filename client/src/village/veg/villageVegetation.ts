@@ -43,10 +43,11 @@ import { placeFlowers, SPECIES_COUNT, type Plant } from "./flowerPlacement";
 import { keepTriangles, readCards, type AttributeLike, type Card } from "./vegCards";
 import { makeBlossomAtlas } from "./vegAtlas";
 import { GeoBuilder, blossomBunch, bunchSprite, bushGeometry, leafSpray, speciesMeshes, willowSpray } from "./vegGeometry";
-import { BARK_STYLE, barkLight, barkTexture, simplifyTwig, skeletonBark, skeletonBarkInto, twigBark, type BarkPattern } from "./barkGeometry";
+import { BARK_STYLE, barkLight, barkTexture, drawnBark, simplifyTwig, skeletonBark, skeletonBarkInto, taperSkeleton, twigBark, type BarkPattern } from "./barkGeometry";
+import { setCameraKeepOut } from "../../game/cameraCollision";
 import { bakedBarkIndex } from "./bakedBark";
 import { chooseLod, groupIntoCells, sphereDistance, VEG_TIERS, type Cell, type LodBands, type Vec3, type VegTierConfig } from "./vegLod";
-import { vegMaterial, vegTimeUniform, setVegLamps } from "./vegMaterial";
+import { vegMaterial, vegTimeUniform, vegViewHeightUniform, setVegLamps } from "./vegMaterial";
 import { DAY_SUN_DIRECTION } from "../dayNightBlend";
 import type { VegMode } from "./vegMode";
 import { createVegPark } from "./vegPark";
@@ -130,6 +131,8 @@ export interface VegStats {
   attaches: number;
   /** The trees whose limbs were cut back short of a house beside them (crownSpace.trimSkeleton). */
   trimmed: string[];
+  /** Bark segments the follow camera keeps out of. */
+  cameraKeepOut?: number;
   /** The street lamps lighting the vegetation at night (vegMaterial.ts `vegLampsUniform`). */
   lamps: number;
   /** The lamps found in the village file (only the `VEG_LAMPS` nearest the plaza light the vegetation). */
@@ -523,6 +526,8 @@ function forcedLevels(cfg: VegTierConfig): VegTierConfig {
 export class VillageVegetation {
   readonly group = new Group();
   private readonly own: Array<{ dispose(): void }> = [];
+  /** The trunks' and limbs' keep-out for the follow camera (`cameraKeepOut`), set each frame it is drawn. */
+  keepOut: ReturnType<typeof cameraKeepOut> | null = null;
   private readonly cfg: VegTierConfig;
   private readonly flowerLayers: Array<{ lod0: Layer; lod1: Layer }> = [];
   private readonly flowerCells: FlowerCell[] = [];
@@ -641,7 +646,7 @@ export class VillageVegetation {
     if (await step("cards")) return v.abandon();
     const placed = placeFlowers(allCards);
     if (await step("placement")) return v.abandon();
-    const flowerMat = vegMaterial({ name: "M_veg_flowers", wind: 0.022, windFar: cfg.windFar ? 30 : 10, ambient: 0.5, sky: 0.12, sun: 0.5, back: 0.45 });
+    const flowerMat = vegMaterial({ name: "M_veg_flowers", push: true, wind: 0.022, windFar: cfg.windFar ? 30 : 10, ambient: 0.5, sky: 0.12, sun: 0.5, back: 0.45 });
     v.own.push(flowerMat);
     const meshes = speciesMeshes();
     const counts = new Array<number>(SPECIES_COUNT).fill(0);
@@ -701,21 +706,26 @@ export class VillageVegetation {
     // ── materials and the clusters' meshes ──
     const atlas: Texture | null = makeBlossomAtlas();
     if (atlas) v.own.push(atlas);
-    const bunchMat = vegMaterial({ name: "M_veg_blossom", map: atlas, alphaTest: 0.5, cherry: true, wind: 0.012, windFar: 25, ambient: 0.62, sky: 0.12, sun: 0.38, back: 0.6 });
+    const bunchMat = vegMaterial({ name: "M_veg_blossom", push: true, map: atlas, alphaTest: 0.5, cherry: true, wind: 0.012, windFar: 25, ambient: 0.62, sky: 0.12, sun: 0.38, back: 0.6 });
     const spriteMat = vegMaterial({ name: "M_veg_blossom_far", map: atlas, alphaTest: 0.5, cherry: true, sprite: true, wind: 0.01, windFar: 25, ambient: 1, sky: 0, sun: 0, back: 0 });
     // the bark (trunk, limbs, side branches and twigs alike): one material per kind of bark, its texture drawn in code
     const barkMats = {} as Record<BarkPattern, Material>;
+    const twigMats = {} as Record<BarkPattern, Material>;
     for (const pattern of ["cherry", "plates", "willow", "smooth", "plum"] as const) {
       const map = barkTexture(pattern);
       const mat = vegMaterial({ name: `M_veg_bark_${pattern}`, map, wind: 0, windFar: 1, ambient: 0.55, sky: 0.2, sun: 0.45, back: 0.2 });
       barkMats[pattern] = mat;
-      v.own.push(map, mat);
+      // the twigs' bark: the same, but giving way round the camera as the leaves do, and never thinner than a pixel
+      const twig = vegMaterial({ name: `M_veg_twigs_${pattern}`, map, push: true, twig: true, wind: 0, windFar: 1, ambient: 0.55, sky: 0.2, sun: 0.45, back: 0.2 });
+      twigMats[pattern] = twig;
+      v.own.push(map, mat, twig);
     }
     const barkMatOf = (sk: TreeSkeleton) => barkMats[BARK_STYLE[sk.kind].pattern];
-    const leafMat = vegMaterial({ name: "M_veg_leaves", wind: 0.024, windFar: cfg.windFar ? 30 : 12, ambient: 0.44, sky: 0.2, sun: 0.42, back: 0.42 });
-    const leafFarMat = vegMaterial({ name: "M_veg_leaves_far", wind: 0.01, windFar: 40, ambient: 0.54, sky: 0.18, sun: 0.38, back: 0.4 });
-    const willowMat = vegMaterial({ name: "M_veg_willow", wind: 0.03, windFar: cfg.windFar ? 30 : 12, ambient: 0.54, sky: 0.2, sun: 0.4, back: 0.5 });
-    const bushMat = vegMaterial({ name: "M_veg_bush", wind: 0.01, windFar: 20, ambient: 0.5, sky: 0.22, sun: 0.4, back: 0.35 });
+    const twigMatOf = (sk: TreeSkeleton) => twigMats[BARK_STYLE[sk.kind].pattern];
+    const leafMat = vegMaterial({ name: "M_veg_leaves", push: true, wind: 0.024, windFar: cfg.windFar ? 30 : 12, ambient: 0.44, sky: 0.2, sun: 0.42, back: 0.42 });
+    const leafFarMat = vegMaterial({ name: "M_veg_leaves_far", push: true, wind: 0.01, windFar: 40, ambient: 0.54, sky: 0.18, sun: 0.38, back: 0.4 });
+    const willowMat = vegMaterial({ name: "M_veg_willow", push: true, wind: 0.03, windFar: cfg.windFar ? 30 : 12, ambient: 0.54, sky: 0.2, sun: 0.4, back: 0.5 });
+    const bushMat = vegMaterial({ name: "M_veg_bush", push: true, wind: 0.01, windFar: 20, ambient: 0.5, sky: 0.22, sun: 0.4, back: 0.35 });
     v.own.push(bunchMat, spriteMat, leafMat, leafFarMat, willowMat, bushMat);
     const bunchGeo = blossomBunch();
     // the sprite takes the bunch's own matrix (scale size / 0.24): its quad is the bunch's size x SPRITE_K at scale 1
@@ -864,7 +874,7 @@ export class VillageVegetation {
       stats.trees[kind].twigs += crown.twigs.length * places.length;
       for (const { xf, i } of places) {
         const d = addTree(`${kind}_${crown.skeleton.index}_${i}`, "blossom", kind, crown.bunches, bunchMatrix, bunchTint, crown.bounds, xf, ch);
-        d.twig = twigObject(geo, xf, `veg_twigs_${d.name}`, barkMatOf(crown.skeleton));
+        d.twig = twigObject(geo, xf, `veg_twigs_${d.name}`, twigMatOf(crown.skeleton));
       }
     };
     const drawLeafy = (crown: LeafCrown, kind: TreeKindStat, places: readonly Place[]) => {
@@ -874,7 +884,7 @@ export class VillageVegetation {
       stats.trees[kind].twigs += crown.twigs.length * places.length;
       for (const { xf, i } of places) {
         const d = addTree(`${kind}_${crown.skeleton.index}_${i}`, cls, kind, crown.leaves, leafMatrix, leafTint, crown.bounds, xf, gr);
-        d.twig = twigObject(geo, xf, `veg_twigs_${d.name}`, barkMatOf(crown.skeleton));
+        d.twig = twigObject(geo, xf, `veg_twigs_${d.name}`, twigMatOf(crown.skeleton));
       }
     };
     const f = focus?.() ?? [0, 0, 0];
@@ -919,9 +929,16 @@ export class VillageVegetation {
     for (const sk of [...plaza, ...village, ...young]) {
       const walls = buildingKeepOut(envOf.get(sk)!, boxes);
       const t = walls ? trimSkeleton(sk, walls) : null;
-      drawnSk.set(sk, t && t.cut ? t.sk : sk);
+      // every limb and side branch tapering evenly to its tip (barkGeometry.taperSkeleton), cut back or not
+      drawnSk.set(sk, taperSkeleton(t && t.cut ? t.sk : sk));
       if (t && t.cut) stats.trimmed.push(`${sk.kind}${sk.index}`);
     }
+    for (const sk of willows) drawnSk.set(sk, taperSkeleton(sk));
+    const taperedVariant = {
+      street_green: taperSkeleton(variant.street_green),
+      street_cherry: taperSkeleton(variant.street_cherry),
+      orchard: taperSkeleton(variant.orchard),
+    };
     const ownBark: Record<VariantKey, Array<{ i: number; sk: TreeSkeleton; xf: Matrix4 }>> = { street_cherry: [], orchard: [], street_green: [] };
     const keepOutOf = (sk: TreeSkeleton) => {
       const k = crownKeepOut(envOf.get(sk)!, allEnvs, boxes);
@@ -958,7 +975,7 @@ export class VillageVegetation {
               return walls([wl.x, wl.y, wl.z]);
             })
           : null;
-        const own = t && t.cut ? t.sk : undefined;
+        const own = t && t.cut ? taperSkeleton(t.sk) : undefined;
         if (own) {
           ownBark[key].push({ i, sk: own, xf });
           stats.trimmed.push(`${key}${i}`);
@@ -981,11 +998,11 @@ export class VillageVegetation {
             : drawLeafy(growBroadleaf(drawnSk.get(sk)!, GREEN_GROW, "green", keepOutOf(sk)), "village_green", ONCE),
         ),
       ),
-      ...instanceJobs("street_cherry", "street_cherry", (keepOut, sk) => growCherry(sk ?? variant.street_cherry, { ...STREET_CHERRY, keepOut })),
-      ...instanceJobs("orchard", "orchard", (keepOut, sk) => growCherry(sk ?? variant.orchard, { ...ORCHARD, keepOut })),
-      ...instanceJobs("street_green", "street_green", (keepOut, sk) => growBroadleaf(sk ?? variant.street_green, GREEN_GROW, "green", keepOut)),
+      ...instanceJobs("street_cherry", "street_cherry", (keepOut, sk) => growCherry(sk ?? taperedVariant.street_cherry, { ...STREET_CHERRY, keepOut })),
+      ...instanceJobs("orchard", "orchard", (keepOut, sk) => growCherry(sk ?? taperedVariant.orchard, { ...ORCHARD, keepOut })),
+      ...instanceJobs("street_green", "street_green", (keepOut, sk) => growBroadleaf(sk ?? taperedVariant.street_green, GREEN_GROW, "green", keepOut)),
       ...young.map((sk) => job(`young${sk.index}`, away(sk.base[0], sk.base[2]), () => drawLeafy(growBroadleaf(drawnSk.get(sk)!, YOUNG_GROW, "young", keepOutOf(sk)), "young", ONCE))),
-      ...willows.map((sk) => job(`willow${sk.index}`, away(sk.base[0], sk.base[2]), () => drawLeafy(growWillow(sk), "willow", ONCE))),
+      ...willows.map((sk) => job(`willow${sk.index}`, away(sk.base[0], sk.base[2]), () => drawLeafy(growWillow(drawnSk.get(sk)!), "willow", ONCE))),
     ];
     jobs.sort((p, q) => p.d - q.d);
     // the vegetation is shown now (the flowers, and each tree as it comes)
@@ -1097,6 +1114,33 @@ export class VillageVegetation {
       stats.bark.vertices += mesh.geometry.getAttribute("position").count;
     }
     stats.bark.meshes = barkMeshes.length;
+    // the follow camera keeps out of the trunks and limbs (the near plane would cut one open): every drawn bark segment
+    // as a capsule, in a 2 m grid
+    {
+      const parts: number[] = [];
+      const pv = new Vector3();
+      const addBark = (sk: TreeSkeleton, xf: Matrix4 | null) => {
+        const d = drawnBark(sk);
+        const k = xf ? new Vector3().setFromMatrixScale(xf).x : 1;
+        for (const br of [d.trunk, ...d.limbs, ...d.sides])
+          for (let i = 1; i < br.pts.length; i++) {
+            const seg: number[] = [];
+            for (const p of [br.pts[i - 1]!, br.pts[i]!]) {
+              pv.set(p[0], p[1], p[2]);
+              if (xf) pv.applyMatrix4(xf);
+              seg.push(pv.x, pv.y, pv.z);
+            }
+            parts.push(...seg, Math.max(br.radii[i - 1]!, br.radii[i]!) * k);
+          }
+      };
+      for (const sk of single) addBark(drawnSk.get(sk) ?? sk, null);
+      for (const key of ["street_green", "street_cherry", "orchard"] as const) {
+        const own = new Map(ownBark[key].map((o) => [o.i, o.sk]));
+        xfs[key].forEach((xf, i) => addBark(own.get(i) ?? taperedVariant[key], xf));
+      }
+      stats.cameraKeepOut = parts.length / 7;
+      v.keepOut = cameraKeepOut(parts);
+    }
     if (await step("bark")) return v.abandon();
 
     // ── last: hide the old cards, all at once, now that the new vegetation is ready ──
@@ -1376,8 +1420,14 @@ export class VillageVegetation {
   }
 
   /** Per frame: the wind's clock, each cell's, tree's and bush's level, and a refill when they changed. */
-  update(camera: Camera, seconds: number): void {
+  update(camera: Camera, seconds: number, viewHeight?: number): void {
     vegTimeUniform.value = seconds;
+    if (viewHeight) vegViewHeightUniform.value = viewHeight;
+    // the camera keeps out of the bark while the vegetation is drawn (not while it waits indoors)
+    if (this.keepOut) {
+      this.keepOut.touch();
+      setCameraKeepOut(this.keepOut);
+    }
     camera.updateMatrixWorld();
     this.projView.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
     this.frustum.setFromProjectionMatrix(this.projView);
@@ -1551,12 +1601,69 @@ export class VillageVegetation {
   }
 
   dispose(): void {
+    setCameraKeepOut(null);
+    this.keepOut = null;
     // the village clone gets its own geometry back (its old cards show again)
     this.detach();
     this.edits.length = 0;
     for (const r of this.own) r.dispose();
     this.own.length = 0;
   }
+}
+
+/** How far (m) the follow camera keeps from the bark's surface: past the near plane's corners (0.2 m away). */
+export const BARK_CAMERA_ROOM = 0.4;
+
+/**
+ * The follow camera's keep-out of the bark: `parts` is flat segments (ax, ay, az, bx, by, bz, radius); a point is out
+ * of bounds within `BARK_CAMERA_ROOM` of a segment's surface. Only while the vegetation is drawn: `update` sets it each
+ * frame, and it lapses a second after the last (the vegetation waiting indoors, or gone).
+ */
+export function cameraKeepOut(parts: readonly number[], room = BARK_CAMERA_ROOM, now: () => number = () => performance.now()) {
+  const CELL = 2;
+  const grid = new Map<number, number[]>();
+  const key = (i: number, k: number) => (i + 4096) * 8192 + (k + 4096);
+  for (let s = 0; s < parts.length; s += 7) {
+    const r = parts[s + 6]! + room;
+    const i0 = Math.floor((Math.min(parts[s]!, parts[s + 3]!) - r) / CELL);
+    const i1 = Math.floor((Math.max(parts[s]!, parts[s + 3]!) + r) / CELL);
+    const k0 = Math.floor((Math.min(parts[s + 2]!, parts[s + 5]!) - r) / CELL);
+    const k1 = Math.floor((Math.max(parts[s + 2]!, parts[s + 5]!) + r) / CELL);
+    for (let i = i0; i <= i1; i++)
+      for (let k = k0; k <= k1; k++) {
+        let list = grid.get(key(i, k));
+        if (!list) grid.set(key(i, k), (list = []));
+        list.push(s);
+      }
+  }
+  let seen = now();
+  const test = Object.assign((x: number, y: number, z: number): boolean => {
+    if (now() - seen > 1000) return false;
+    const list = grid.get(key(Math.floor(x / CELL), Math.floor(z / CELL)));
+    if (!list) return false;
+    for (const s of list) {
+      const ax = parts[s]!;
+      const ay = parts[s + 1]!;
+      const az = parts[s + 2]!;
+      const dx = parts[s + 3]! - ax;
+      const dy = parts[s + 4]! - ay;
+      const dz = parts[s + 5]! - az;
+      const l2 = dx * dx + dy * dy + dz * dz || 1e-12;
+      const t = Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy + (z - az) * dz) / l2));
+      const ex = ax + dx * t - x;
+      const ey = ay + dy * t - y;
+      const ez = az + dz * t - z;
+      const r = parts[s + 6]! + room;
+      if (ex * ex + ey * ey + ez * ez < r * r) return true;
+    }
+    return false;
+  }, {
+    /** Marks the vegetation as drawn now (the keep-out holds for a second). */
+    touch: () => {
+      seen = now();
+    },
+  });
+  return test;
 }
 
 /** Build the vegetation for a dressed village clone (in steps), or null in the `old` mode or when cancelled. */

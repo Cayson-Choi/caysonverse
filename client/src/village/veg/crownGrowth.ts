@@ -268,7 +268,9 @@ export function colonise(sk: Pick<TreeSkeleton, "limbs" | "sides">, env: Envelop
       pts.push(add(add(add(best.p, mul(dirN, L * t)), [0, bow, 0]), mul(side, wig * Math.sin(t * Math.PI))));
     }
     const r0 = Math.min(best.r * 0.8, 0.0075 + 0.0045 * L);
-    const radii = pts.map((_, k) => r0 + (0.0032 - r0) * (k / n));
+    // tapering to 3.2 mm (or staying as fine as it starts: a twig off a fine branch tip never thickens toward its own)
+    const rTip = Math.min(0.0032, r0);
+    const radii = pts.map((_, k) => r0 + (rTip - r0) * (k / n));
     const id = twigs.length;
     twigs.push({ pts, radii, parent: best.twig, parentS: best.s });
     let s = 0;

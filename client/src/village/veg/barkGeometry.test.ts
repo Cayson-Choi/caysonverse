@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { BufferAttribute, BufferGeometry, Vector3 } from "three";
-import { BARK_STYLE, barkColour, barkLight, barkPixels, forkLimb, pointedEnd, skeletonBark, twigBark } from "./barkGeometry";
+import { BARK_STYLE, TIP_R, barkColour, barkLight, barkPixels, forkLimb, pointedEnd, skeletonBark, roundCorners, taperBranch, taperSkeleton, twigBark } from "./barkGeometry";
+import { cutAt, pointAt, polyLength } from "./crownGrowth";
 import { YOUNG_SPECS } from "./treeSkeleton";
 import { bakedBarkIndex } from "./bakedBark";
 import { GREEN_GROW, growBroadleaf } from "./treeCrown";
@@ -95,15 +96,61 @@ describe("runtime bark: one bark from the ground to the twig tips", () => {
     }
   });
 
-  it("a branch tapers out to a fine point at its tip, never thicker toward it (a young tree's limbs too)", () => {
-    for (const spec of [YOUNG_SPECS[2]!, PLAZA_CHERRY_SPECS[1]!]) {
-      const sk = treeSkeleton(spec);
-      for (const b of [...sk.limbs, ...sk.sides]) {
+  it("every limb and side branch tapers evenly along its whole length to a fine point: no step, no sudden cone", () => {
+    const segSlopes = (b: { pts: Vec3[]; radii: number[] }) =>
+      b.pts.slice(1).map((p, i) => {
+        const q = b.pts[i]!;
+        return (b.radii[i]! - b.radii[i + 1]!) / Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]);
+      });
+    for (const spec of [YOUNG_SPECS[2]!, PLAZA_CHERRY_SPECS[1]!, VILLAGE_TREE_SPECS[4]!, WILLOW_SPECS[1]!]) {
+      const raw = treeSkeleton(spec);
+      const sk = taperSkeleton(raw);
+      // the bark tapers it again: nothing changes
+      expect(taperSkeleton(sk)).toEqual(sk);
+      // a limb cut back short of a house (crownSpace.trimSkeleton keeps its radius at the cut) tapers too
+      const cut = cutAt(raw.limbs[0]!, polyLength(raw.limbs[0]!) * 0.5, Infinity);
+      for (const b of [...sk.limbs, ...sk.sides, taperBranch(cut)]) {
+        expect(b.radii[b.radii.length - 1]).toBeLessThanOrEqual(TIP_R + 1e-9);
         const t = pointedEnd(b);
         for (let i = 1; i < t.radii.length; i++) expect(t.radii[i]).toBeLessThanOrEqual(t.radii[i - 1]! + 1e-9);
-        expect(t.radii[t.radii.length - 1]).toBeLessThanOrEqual(0.0015);
-        // the file's last point no more than a third of the branch's base (no sawn-off log end)
-        expect(t.radii[b.radii.length - 1]).toBeLessThanOrEqual(Math.max(0.0035, b.radii[0]! * 0.33) + 1e-9);
+        expect(t.radii[t.radii.length - 1]).toBeLessThanOrEqual(0.001);
+        // one slope from the base to the point
+        const sl = segSlopes(t);
+        const k = sl[0]!;
+        for (const x of sl.slice(0, -1)) expect(Math.abs(x - k)).toBeLessThan(k * 0.02);
+        expect(sl[sl.length - 1]).toBeLessThan(k * 1.02);
+      }
+      // a side branch is never thicker where it leaves its limb than 0.7 of the limb there
+      sk.sides.forEach((side, i) => {
+        const limb = sk.limbs[Math.floor(i / 2)]!;
+        let best = { d: Infinity, r: 0 };
+        for (let s = 0; s <= polyLength(limb); s += 0.01) {
+          const q = pointAt(limb, s);
+          const d = Math.hypot(q.p[0] - side.pts[0]![0], q.p[1] - side.pts[0]![1], q.p[2] - side.pts[0]![2]);
+          if (d < best.d) best = { d, r: q.r };
+        }
+        expect(side.radii[0]).toBeLessThanOrEqual(best.r * 0.7 + 0.0005);
+      });
+    }
+  });
+  it("a limb's bends are rounded (no ring seen end-on as a lip), within a few centimetres of the file's line", () => {
+    const sk = taperSkeleton(treeSkeleton(VILLAGE_TREE_SPECS[4]!));
+    for (const limb of sk.limbs) {
+      const r = roundCorners(limb);
+      for (let i = 1; i + 1 < r.pts.length; i++) {
+        const a = r.pts[i]!.map((x, k) => x - r.pts[i - 1]![k]!);
+        const c = r.pts[i + 1]!.map((x, k) => x - r.pts[i]![k]!);
+        const cos = (a[0]! * c[0]! + a[1]! * c[1]! + a[2]! * c[2]!) / (Math.hypot(a[0]!, a[1]!, a[2]!) * Math.hypot(c[0]!, c[1]!, c[2]!));
+        expect(cos).toBeGreaterThan(Math.cos((16 * Math.PI) / 180));
+      }
+      for (let i = 1; i < r.radii.length; i++) expect(r.radii[i]).toBeLessThanOrEqual(r.radii[i - 1]! + 1e-9);
+      for (const p of r.pts) {
+        let best = Infinity;
+        for (let s = 0; s <= polyLength(limb); s += 0.01) {
+          const q = pointAt(limb, s).p;
+          best = Math.min(best, Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]));
+        }
+        expect(best).toBeLessThan(0.04);
       }
     }
   });

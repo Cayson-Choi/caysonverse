@@ -34,6 +34,8 @@ declare global {
     __cvVeg?: () => VegStats | null;
     /** Dev-only: every leaf spray's and blossom bunch's gap to the drawn twigs and bark (slow: checks only). */
     __cvVegDrawn?: () => DrawnGap | null;
+    /** Dev-only: whether a point is inside the follow camera's keep-out of the trees' bark (null: no vegetation). */
+    __cvVegKeepOut?: (x: number, y: number, z: number) => boolean | null;
   }
 }
 
@@ -167,11 +169,13 @@ export function VillageModel({ tier }: { tier: VillageTier }) {
     if (import.meta.env.DEV) {
       window.__cvVeg = () => built?.stats() ?? null;
       window.__cvVegDrawn = () => built?.measureDrawn() ?? null;
+      window.__cvVegKeepOut = (x, y, z) => built?.keepOut?.(x, y, z) ?? null;
     }
     return () => {
       if (import.meta.env.DEV) {
         delete window.__cvVeg;
         delete window.__cvVegDrawn;
+        delete window.__cvVegKeepOut;
       }
       if (built) {
         state = "dead";
@@ -221,7 +225,7 @@ export function VillageModel({ tier }: { tier: VillageTier }) {
   useFrame(({ clock, gl, camera }) => {
     tickVillage(nodes, clock.elapsedTime, gl.toneMappingExposure);
     applyDayNight(nodes, dayNight.applied);
-    veg?.update(camera, clock.elapsedTime);
+    veg?.update(camera, clock.elapsedTime, gl.domElement.height);
     waterfall?.runtime.update(clock.elapsedTime, camera);
   });
   // dispose={null}: the geometry and shared materials belong to the loader's cache.

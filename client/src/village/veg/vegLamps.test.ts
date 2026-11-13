@@ -37,3 +37,19 @@ describe("the street lamps that light the vegetation at night", () => {
     expect(vegLampsUniform.value).toHaveLength(VEG_LAMPS);
   });
 });
+
+describe("the follow camera's keep-out of the bark", () => {
+  it("is out of bounds within the room of a segment's surface, only while the vegetation is drawn", async () => {
+    const { cameraKeepOut, BARK_CAMERA_ROOM } = await import("./villageVegetation");
+    let t = 0;
+    const k = cameraKeepOut([0, 0, 0, 0, 4, 0, 0.1], BARK_CAMERA_ROOM, () => t);
+    expect(k(0.1 + BARK_CAMERA_ROOM - 0.02, 2, 0)).toBe(true);
+    expect(k(0.1 + BARK_CAMERA_ROOM + 0.02, 2, 0)).toBe(false);
+    expect(k(0, 4.45, 0)).toBe(true);
+    expect(k(0, 4.6, 0)).toBe(false);
+    t = 2000;
+    expect(k(0.2, 2, 0)).toBe(false);
+    k.touch();
+    expect(k(0.2, 2, 0)).toBe(true);
+  });
+});
