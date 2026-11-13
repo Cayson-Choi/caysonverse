@@ -1,3 +1,4 @@
+import { versionedUrl } from "./modelUrl";
 import {
   Box3,
   BufferGeometry,
@@ -89,10 +90,10 @@ import type { DayNightState } from "./dayNightBlend";
  * made here, listed in `own` and released with `disposeVillage`.
  */
 
-export const VILLAGE_MODEL_URL = "/models/village/village.glb";
-export const VILLAGE_LIGHTMAP_URL = "/models/village/village_lm.webp";
+export const VILLAGE_MODEL_URL = versionedUrl("/models/village/village.glb");
+export const VILLAGE_LIGHTMAP_URL = versionedUrl("/models/village/village_lm.webp");
 /** The night light map: baked on the same UV set as the day one (art/village/tools/bake_village.py --night). */
-export const VILLAGE_NIGHT_LIGHTMAP_URL = "/models/village/village_lm_night.webp";
+export const VILLAGE_NIGHT_LIGHTMAP_URL = versionedUrl("/models/village/village_lm_night.webp");
 
 /**
  * The village camera's planes (m): the sky dome is 1.4 km out (and the far range 1.1 km), so the far plane is past

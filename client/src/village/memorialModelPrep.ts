@@ -1,3 +1,4 @@
+import { versionedUrl } from "./modelUrl";
 import { type InstancedMesh, type Material, type MeshBasicMaterial, type Object3D, type Texture } from "three";
 import { COLLIDER_PREFIX, LIGHTMAP_MATERIAL_PREFIX, configureLightmap, isMesh, lightmapMaterial, materialsOf } from "../game/hub/hubModelPrep";
 
@@ -17,9 +18,9 @@ import { COLLIDER_PREFIX, LIGHTMAP_MATERIAL_PREFIX, configureLightmap, isMesh, l
  * map), so nothing is copied and `disposeMemorial` only frees the clone's instance buffers.
  */
 
-export const MEMORIAL_MODEL_URL = "/models/village/memorial.glb";
-export const MEMORIAL_LIGHTMAP_URL = "/models/village/memorial_lm.webp";
-export const MEMORIAL_PROPS_URL = "/models/village/memorial_props.glb";
+export const MEMORIAL_MODEL_URL = versionedUrl("/models/village/memorial.glb");
+export const MEMORIAL_LIGHTMAP_URL = versionedUrl("/models/village/memorial_lm.webp");
+export const MEMORIAL_PROPS_URL = versionedUrl("/models/village/memorial_props.glb");
 
 export interface MemorialNodes {
   root: Object3D;
