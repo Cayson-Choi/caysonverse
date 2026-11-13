@@ -1,5 +1,6 @@
 import { defineConfig } from "vitest/config";
 import { fileURLToPath } from "node:url";
+import { modelHashes } from "./vite.config";
 
 // The client imports the shared workspace via the tsconfig `paths` alias
 // (`@caysonverse/shared/*`). Vitest does not read tsconfig paths, so mirror the
@@ -7,6 +8,7 @@ import { fileURLToPath } from "node:url";
 // tests are pure-logic only (no DOM/WebGL), so the default `node` environment is
 // intentional — no jsdom.
 export default defineConfig({
+  define: { __MODEL_HASHES__: JSON.stringify(modelHashes()) },
   resolve: {
     alias: {
       "@caysonverse/shared": fileURLToPath(new URL("../shared/src", import.meta.url)),

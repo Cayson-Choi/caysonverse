@@ -4,8 +4,8 @@ import { PLAYER_RADIUS, SEAT_REACH, approachesSeat, nearestFreeSeat } from "../w
 import { SIT_POSE, SIT_ROOT_AHEAD, liftForSeatY } from "../sitPose";
 import { VILLAGE_COLLIDERS } from "./generated/villageColliders";
 import { MEMORIAL_COLLIDERS } from "./generated/memorialColliders";
-import { VILLAGE_LAYOUT, houseInteriorGeometry, isHouseArea, villageGeometry } from "./villageLayout";
-import { STAND_CLEARANCE, VILLAGE_BENCHES, VILLAGE_SEATS, benchSeatOffsets, type VillageBench } from "./benchSeats";
+import { VILLAGE_LAYOUT, busShelterBenchCollider, busShelterColliders, houseInteriorGeometry, isHouseArea, villageGeometry } from "./villageLayout";
+import { SHELTER_BENCH, STAND_CLEARANCE, VILLAGE_BENCHES, VILLAGE_SEATS, benchSeatOffsets, type VillageBench } from "./benchSeats";
 
 /** The seated figure's width across the arms (sitPose.ts: the torso with the upper arms, -0.52..0.54 m) and the hands' (-0.53..0.58). */
 const SEATED_HANDS_WIDTH = 0.532 + 0.575;
@@ -42,6 +42,7 @@ describe("village benches (the models sitting needs)", () => {
       ...L.plaza.benches.map((_, i) => `plaza_${i + 1}`),
       "memorial_forecourt",
       "hall",
+      "shelter",
     ]);
     expect(VILLAGE_BENCHES.filter((b) => b.area === "hall").map((b) => b.id)).toEqual(["hall"]);
   });
@@ -71,10 +72,10 @@ describe("village benches (the models sitting needs)", () => {
   it("seat surfaces are ordinary bench height, a few cm above the sit pose's butt (the avatar is lifted, never sunk)", () => {
     for (const b of VILLAGE_BENCHES) {
       expect(b.seatTop).toBeGreaterThanOrEqual(0.43);
-      expect(b.seatTop).toBeLessThanOrEqual(0.47);
+      expect(b.seatTop).toBeLessThanOrEqual(0.52); // the shelter's slats stand on a 4.5 cm pad
       const lift = liftForSeatY(b.seatTop);
       expect(lift).toBeGreaterThan(0);
-      expect(lift).toBeLessThan(0.1);
+      expect(lift).toBeLessThan(0.13);
     }
     expect(liftForSeatY(undefined)).toBe(0); // the legacy chairs: drawn as authored
   });
@@ -94,7 +95,7 @@ describe("village seats (where a sitter goes)", () => {
         expect(s.frontEdge).toBe(SIT_ROOT_AHEAD);
       }
       const apart = Math.hypot(pair[0]!.x - pair[1]!.x, pair[0]!.z - pair[1]!.z);
-      expect(apart).toBeCloseTo(2 * benchSeatOffsets(b.length)[1]!, 2);
+      expect(apart).toBeCloseTo(2 * (b.seatOffsets ?? benchSeatOffsets(b.length))[1]!, 2);
       expect(apart).toBeGreaterThan(SEATED_HANDS_WIDTH);
     });
     expect(benchSeatOffsets(1.86)).toEqual([-0.58, 0.58]); // the plaza benches
@@ -210,5 +211,68 @@ describe("benches are sat on from the front (approachesSeat / nearestFreeSeat)",
     expect(approachesSeat(chair, chair.x - 1, chair.z)).toBe(true);
     expect(approachesSeat(chair, chair.x + 1, chair.z)).toBe(true);
     expect(nearestFreeSeat(chair.standX, chair.standZ, () => false, SEAT_REACH, [chair])).toBe(0);
+  });
+});
+
+describe("the bus stop shelter's bench", () => {
+  const seats = VILLAGE_SEATS.filter((v) => v.bench === "shelter");
+  const shelter = L.busStop.shelter;
+  const rearGlass = busShelterColliders(L)[0]!; // the back wall behind the bench
+  const index = (i: number) => VILLAGE_SEATS.indexOf(seats[i]!);
+
+  it("has a seat for each 1.15 m of its 2.3 m length, in the end cells between the arm dividers, at slat height", () => {
+    expect(SHELTER_BENCH.length).toBe(2.3);
+    expect(seats).toHaveLength(2);
+    expect(seats.map((s) => s.area)).toEqual(["village", "village"]);
+    expect(seats[0]!.seatY).toBeCloseTo(0.5125, 4);
+    const along = seats.map((s) => inBenchFrame(SHELTER_BENCH, s.x, s.z).along);
+    // the dividers (build_busstop.py) stand 0.38 m either side of the middle; each seat has 0.77 m between a divider and the end
+    expect(Math.abs(along[0]!)).toBeGreaterThan(0.38 + 0.31 - 0.05);
+    expect(Math.abs(along[1]!)).toBeGreaterThan(0.38 + 0.31 - 0.05);
+    expect(Math.abs(along[0]!) + 0.31).toBeLessThanOrEqual(SHELTER_BENCH.length / 2);
+    expect(Math.abs(along[0]! - along[1]!)).toBeGreaterThan(SEATED_HANDS_WIDTH);
+  });
+
+  it("lies inside the shelter, against its glass back wall", () => {
+    const b = SHELTER_BENCH;
+    expect(b.centre.x).toBeGreaterThan(shelter.centre.x);
+    expect(b.centre.x).toBeLessThan(rearGlass.minX);
+    expect(Math.abs(b.centre.z - shelter.centre.z)).toBeLessThan(1e-9);
+    const solid = busShelterBenchCollider(L);
+    expect(solid.maxX).toBeLessThan(rearGlass.minX);
+    expect(solid.minZ).toBeGreaterThan(shelter.centre.z - shelter.size.z / 2);
+    expect(solid.maxZ).toBeLessThan(shelter.centre.z + shelter.size.z / 2);
+    expect(VILLAGE_BENCHES.indexOf(b)).toBe(VILLAGE_BENCHES.length - 1);
+    // the village seats list the shelter's right after the hall's, before any house seat
+    expect(VILLAGE_SEATS[VILLAGE_BENCHES.length * 2 - 1]!.bench).toBe("shelter");
+  });
+
+  it("is sat on from the FRONT only, facing the road: the glass wall is its back rest (any side behind it is refused)", () => {
+    for (const s of seats) {
+      expect(s.yaw).toBeCloseTo(-Math.PI / 2, 9); // facing west, to the road
+      const fwd = { x: Math.sin(s.yaw), z: Math.cos(s.yaw) };
+      expect(fwd.x).toBeLessThan(-0.99);
+      // from the road side (in front of the seat): offered
+      expect(approachesSeat(s, s.x + fwd.x * 0.8, s.z + fwd.z * 0.8)).toBe(true);
+      expect(approachesSeat(s, s.standX, s.standZ)).toBe(true);
+      // from behind the glass (east of the bench), even within reach: not offered
+      expect(approachesSeat(s, s.x - fwd.x * 1.2, s.z - fwd.z * 1.2)).toBe(false);
+      expect(approachesSeat(s, rearGlass.maxX + 0.5, s.z)).toBe(false);
+      expect(nearestFreeSeat(rearGlass.maxX + 0.5, s.z, () => false, SEAT_REACH, VILLAGE_SEATS)).toBeNull();
+    }
+    // standing at the open side offers the nearer seat, and the other when it is taken
+    const x = seats[0]!.x - 0.5;
+    const z = (seats[0]!.z + seats[1]!.z) / 2 + 0.05; // in front of the bench, a hair nearer the second seat
+    expect(nearestFreeSeat(x, z, () => false, SEAT_REACH, VILLAGE_SEATS)).toBe(index(1));
+    expect(nearestFreeSeat(x, z, (i) => i === index(1), SEAT_REACH, VILLAGE_SEATS)).toBe(index(0));
+  });
+
+  it("puts the sitter inside the shelter, clear of the glass and the bench, and gets up to the road side, clear of every collider", () => {
+    for (const s of seats) {
+      expect(s.x).toBeGreaterThan(shelter.centre.x - shelter.size.x / 2);
+      expect(s.x).toBeLessThan(rearGlass.minX);
+      expect(s.standX).toBeLessThan(s.x); // west of the seat: the road side
+      expect(isBlocked(s.standX, s.standZ, PLAYER_RADIUS + STAND_CLEARANCE, villageGeometry.obstacles, 0)).toBe(false);
+    }
   });
 });

@@ -10,7 +10,7 @@ import { join, relative, sep } from "node:path";
  * Model URLs carry ?v=<hash> (client/src/village/modelUrl.ts), so a deploy that changes a model makes browsers fetch
  * the new file at once instead of reusing a day-old cached copy, and unchanged models stay cached.
  */
-function modelHashes(): Record<string, string> {
+export function modelHashes(): Record<string, string> {
   const root = fileURLToPath(new URL("./public", import.meta.url));
   const out: Record<string, string> = {};
   const walk = (dir: string) => {

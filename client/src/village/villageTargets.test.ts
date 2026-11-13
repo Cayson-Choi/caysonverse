@@ -228,3 +228,25 @@ describe("villageBusTarget — the board button under the shelter (review r2)", 
     expect(villageBusTarget("village", 40, 3, false)).toBeNull(); // past the crosswalk
   });
 });
+
+describe("villageBusTarget — the board button gives the shelter's bench the key (owner, 2026-11-13)", () => {
+  it("yields to a free seat in reach unless the bus is taking riders; \"leave\" never yields", async () => {
+    const { villageBusTarget } = await import("./villageTargets");
+    const { pickInteraction } = await import("../game/interact");
+    const s = VILLAGE_LAYOUT.busStop.shelter;
+    const x = s.centre.x - 0.4;
+    const z = s.centre.z + 0.77;
+    const idle = villageBusTarget("village", x, z, false, false)!;
+    const boarding = villageBusTarget("village", x, z, false, true)!;
+    expect(idle.yieldsToSeat).toBe(true);
+    expect(boarding.yieldsToSeat).toBeUndefined();
+    expect(villageBusTarget("village", x, z, true, false)!.yieldsToSeat).toBeUndefined();
+    const seat = { index: 20, dist: 0.5 };
+    // not boarding: the seat is the pick; with no seat in reach the board button is still offered
+    expect(pickInteraction({ seated: false, seat, targets: [idle] })).toEqual({ kind: "sit", seatIndex: 20 });
+    expect(pickInteraction({ seated: false, seat: null, targets: [idle] })?.kind).toBe("target");
+    // boarding: the button keeps the key, as before
+    expect(pickInteraction({ seated: false, seat, targets: [boarding] })?.kind).toBe("target");
+  });
+});
+

@@ -14,7 +14,8 @@
  *  - the low stone bench on the memorial hall's forecourt: a 2.2 x 0.55 m block, 0.45 m high, west of the door. It
  *    has no back; a sitter faces south, toward the plaza, with the building behind;
  *  - the oak bench inside the hall: a 2.4 x 0.42 m board 0.455 m up on two legs, 2.3 m south of the memorial table.
- *    No back either; a sitter faces north, toward the table and the cubby wall.
+ *    No back either; a sitter faces north, toward the table and the cubby wall;
+ *  - the bus stop shelter's bench (`SHELTER_BENCH`): slats along its glass back wall; a sitter faces west, to the road.
  *
  * Two seats per bench (`benchSeatOffsets`): the toy figure is about 1.05 m across the arms while seated (its head
  * 1.0 m), so two sitters 1.16–1.2 m apart keep clear of each other and both sit on the seat; three would not fit on
@@ -49,6 +50,11 @@ export interface VillageBench {
   frontEdge: number;
   /** Length of the seat along the bench (m). */
   length: number;
+  /**
+   * Where the seats are along the bench from its centre (m), when the bench has dividers: one seat per cell, in the
+   * middle of it. Absent: `benchSeatOffsets(length)`.
+   */
+  seatOffsets?: readonly number[];
 }
 
 /**
@@ -75,9 +81,30 @@ const STAND_SEARCH = 1.5;
 /** The plaza bench model (parts_props.py `bench`): five slats 0.085 m wide at -0.22..0.22, 0.40..0.445 m up, 1.86 m long. */
 const PLAZA_BENCH = { seatTop: 0.445, frontEdge: 0.22 + 0.085 / 2, length: 1.86 } as const;
 
-/** Yaw that faces south (+z) and north (-z). */
+/** Yaw that faces south (+z), north (-z) and west (-x). */
 const FACING_SOUTH = 0;
 const FACING_NORTH = Math.PI;
+const FACING_WEST = -Math.PI / 2;
+
+/**
+ * The bus stop shelter's bench (art/village/tools/build_busstop.py build_shelter, village_busstop.glb; the shelter's centre is
+ * busStop.shelter.centre (40.9, -4.9), its back glass at x 41.6): three 0.13 m slats at x 40.985..41.415 (the seat, 0.5125 m up
+ * from the ground: 4.5 cm of pad and 0.4675 m of bench), 2.3 m long along z, two slatted back rests at x 41.48 and two arm
+ * dividers at z -/+0.38 from the centre that cut it into a 0.76 m middle cell and two 0.77 m end cells. Its back is the glass
+ * wall: a bench with a back rest is sat on from the front only (the road side, facing west), like the plaza's. Two seats, in
+ * the end cells: the middle cell is too narrow for the toy figure's 1.05 m across the arms, and a seat 1.53 m from its
+ * neighbour keeps both sitters clear of the dividers.
+ */
+export const SHELTER_BENCH: VillageBench = {
+  id: "shelter",
+  area: "village",
+  centre: { x: 41.2, z: VILLAGE_LAYOUT.busStop.shelter.centre.z },
+  yaw: FACING_WEST,
+  seatTop: 0.5125,
+  frontEdge: 41.2 - 40.985,
+  length: 2.3,
+  seatOffsets: [-0.765, 0.765],
+};
 
 function makeBenches(): VillageBench[] {
   const plaza = VILLAGE_LAYOUT.plaza.benches.map(
@@ -89,10 +116,11 @@ function makeBenches(): VillageBench[] {
     { id: "memorial_forecourt", area: "village", centre: { x: -4.8, z: -50.4 }, yaw: FACING_SOUTH, seatTop: 0.45, frontEdge: 0.55 / 2, length: 2.2 },
     // build_memorial.py `bench`: rbox(mb, 300.6, -1.6, 0.40, 2.4, 0.42, 0.055, "LM_oak")
     { id: "hall", area: "hall", centre: { x: 300.6, z: -1.6 }, yaw: FACING_NORTH, seatTop: 0.455, frontEdge: 0.42 / 2, length: 2.4 },
+    SHELTER_BENCH,
   ];
 }
 
-/** Every bench a player can sit on, in seat order (plaza 1..8, the forecourt, the hall). */
+/** Every bench a player can sit on, in seat order (plaza 1..8, the forecourt, the hall, the bus stop's shelter). */
 export const VILLAGE_BENCHES: readonly VillageBench[] = Object.freeze(makeBenches());
 
 /** A point `along` metres along the bench (its local x) and `ahead` metres along the facing from (x, z). */
@@ -139,7 +167,7 @@ function makeSeats(benches: readonly VillageBench[]): VillageSeat[] {
   const seats: VillageSeat[] = [];
   for (const b of benches) {
     const bounds = b.area === "village" ? VILLAGE_LAYOUT.areas.village : VILLAGE_LAYOUT.areas.hall;
-    for (const along of benchSeatOffsets(b.length)) {
+    for (const along of b.seatOffsets ?? benchSeatOffsets(b.length)) {
       const p = offset(b.centre.x, b.centre.z, b.yaw, along, b.frontEdge + SIT_ROOT_AHEAD);
       const root = { x: Math.round(p.x * 1000) / 1000, z: Math.round(p.z * 1000) / 1000 };
       const stand = dismountAhead(root, b.yaw, bounds, `${b.id}:${along}`);

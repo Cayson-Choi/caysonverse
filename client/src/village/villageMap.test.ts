@@ -112,7 +112,7 @@ describe("the camera limit of each map (케이슨 마을 Task 5: a building's ca
   });
 
   it("the hall's height limit plus its spring-arm pad stays under the ceiling slab (Task 5 review m3, Task 9)", () => {
-    const slab = villageGeometry.cameraBoxes.find((b) => b.minY !== undefined && b.minX <= VILLAGE_LAYOUT.areas.hall.minX)!;
+    const slab = villageGeometry.cameraBoxes.find((b) => b.minY !== undefined && b.minX <= VILLAGE_LAYOUT.areas.hall.minX && b.maxX >= VILLAGE_LAYOUT.areas.hall.minX)!;
     expect(slab).toEqual(hallCeilingSlab(VILLAGE_LAYOUT));
     expect(slab.minY).toBe(4.4);
     const pad = HALL_ACTIVE_MAP.cameraPad ?? SPRING.pad;

@@ -54,6 +54,8 @@ import {
   publishLocalJump,
   resetLocalJump,
 } from "./jump";
+import { jumpHeadroom } from "@caysonverse/shared/village/overhead";
+import { localArea } from "../village/villageArea";
 import { beginSeatCamera, endSeatCamera, fpBodyYaw, viewState } from "./viewState";
 import { HIDE_BLEND, OV_VIS_BLEND } from "./viewMode";
 import { cameraProbe } from "./cameraProbe";
@@ -393,7 +395,7 @@ export function LocalPlayer({
           reportClip(jump.getClip().name);
         }
       }
-      return jumpOffsetY(now - hop.startedAt);
+      return jumpOffsetY(now - hop.startedAt, jumpHeadroom(pose.x, pose.z, localArea(), avatar.topY));
     }
 
     if (phase === "landed" || phase === "dropped") {

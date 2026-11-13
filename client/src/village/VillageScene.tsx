@@ -141,14 +141,15 @@ function VillageArea({ area, tier, pose }: { area: AreaId; tier: VillageTier; po
 }
 
 function VillageDoors({ pose }: { pose: Pose }) {
-  const { boarded } = useTransitState();
+  const { boarded, snapshot } = useTransitState();
+  const boardingNow = snapshot?.status === "boarding";
   const keypadOpen = useKeypad().buildingId !== null;
   useEffect(() => {
     // Nothing is offered while the cubby card or a guide's questions are open (the E / action button hides).
     setTargetSource((p) => {
       const area = localArea();
       const base = villageAndHallTargets(area, p.x, p.z, cubbyCardState() !== null || guideDialogOpen() !== null || keypadOpen);
-      const bus = villageBusTarget(area, p.x, p.z, boarded);
+      const bus = villageBusTarget(area, p.x, p.z, boarded, boardingNow);
       return bus ? [...base, bus] : base;
     });
     setTargetHandler((target, phase) => {
@@ -190,7 +191,7 @@ function VillageDoors({ pose }: { pose: Pose }) {
       setTargetSource(null);
       setTargetHandler(null);
     };
-  }, [pose, boarded, keypadOpen]);
+  }, [pose, boarded, boardingNow, keypadOpen]);
   return null;
 }
 
