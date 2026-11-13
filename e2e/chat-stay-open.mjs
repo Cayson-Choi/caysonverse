@@ -14,18 +14,18 @@
 // button that comes back under the finger; Safari's 229 Escape only cancels the syllable; the phone send button is 48 px.
 // Review round 4: the take-back never re-opens a map the 🗺 button closed (pc-matrix), W held + M is the map (not "mwww"),
 // a press that leaves the chat and becomes a joystick drag gets the HUD back at once (phones, step 6), and in a classroom
-// the bag is never toggled back and the "too fast" note clears the team-chat line (part classroom: teacher + 2 students).
+// the bag is never toggled back and the "too fast" note clears the team-chat line.
 // Review round 5: a quick look at the map (M, a look, M) no longer leaves the player typing — the W after it walks
 // (pc-matrix 5차); the village has no bag, so B is a letter there (a slow ㅠㅠ / "bye" keeps every b); on a phone a press
 // that leaves the chat far from every button (the joystick) gets the HUD back at once (step 6), Android's back key that
 // folds the keyboard lets go of the field (step 7), and the "too fast" words reach a screen reader (a live region).
 //
 // Plain Playwright against a dev stack, in the style of the other e2e scripts:
-//   server:  PORT=2681 TEACHER_KEYS_FILE=e2e/fixtures/teacher-keys.e2e.json npx tsx src/index.ts   (in server/; the path is from the repo root)
+//   server:  PORT=2681 npx tsx src/index.ts   (in server/)
 //   client:  VITE_SERVER_URL=http://localhost:2681 npx vite --port 5281 --strictPort (in client/)
 //   CV_CLIENT_URL=http://localhost:5281 node e2e/chat-stay-open.mjs
-// CV_CHAT_EVIDENCE=<dir> puts the screenshots + assertions there (default: .superpowers/sdd/evidence/task-escape/chat-stay-open).
-// CV_CHAT_ONLY=<parts> (comma list of pc, pc-matrix, iphone13, kakao-android, legacy, hall, classroom) runs only those parts.
+// CV_CHAT_EVIDENCE=<dir> puts the screenshots + assertions there (default: .superpowers/sdd/evidence/village/chat-stay-open).
+// CV_CHAT_ONLY=<parts> (comma list of pc, pc-matrix, iphone13, kakao-android) runs only those parts.
 //
 // The IME is driven through CDP (Input.imeSetComposition / Input.insertText): Blink then holds a REAL composition
 // (compositionstart/update/end, isComposing on the keydowns), which is what a Hangul IME does to the page.
@@ -38,25 +38,17 @@ import { join } from "node:path";
 import {
   CLIENT_URL,
   DESKTOP,
-  PAD_A,
-  PAD_B,
   createRun,
   entryReady,
-  inPlay,
-  joinAsStudent,
-  joinAsTeacher,
-  joinTeam,
-  makeTeam,
   openPlayer,
   pos,
   press,
   sleep,
-  teacherStart,
   topOverlay,
   turnCameraTo,
   waitIdle,
   walkAndWait,
-} from "./lib/escape.mjs";
+} from "./lib/common.mjs";
 import { joinVillage, standAtPlazaGuide } from "./lib/village.mjs";
 
 const run = createRun("chat-stay-open");
@@ -1793,215 +1785,10 @@ async function pcMatrix(browser) {
   await A.ctx.close();
 }
 
-// ─────────────────────────────────────────────────────── legacy world ───────────────────────────────────────────────────────
-
-async function legacy(browser) {
-  const L = await openPlayer(browser, run, { tag: "legacy", device: DESKTOP });
-  const offShadow = run.allow("PCFSoftShadowMap deprecation (legacy world)", /PCFSoftShadowMap has been deprecated/);
-  await run.step("Legacy world: same chat bar (Enter stays, click leaves)", async () => {
-    await L.page.goto(new URL("/?world=legacy", CLIENT_URL).href, { waitUntil: "domcontentloaded" });
-    await entryReady(L);
-    L.nick = `옛${Math.floor(Math.random() * 900 + 100)}`;
-    await L.page.locator("input.cv-input").first().fill(L.nick);
-    await L.page.locator(".cv-submit").click();
-    await L.page.waitForFunction(() => window.__cv?.getScreen?.() === "world" && !!window.__cv?.getPos, null, { timeout: 40000 });
-    await sleep(2500);
-    await L.page.keyboard.press("Enter");
-    await until(() => state(L), (s) => s.focused);
-    await L.page.keyboard.type("옛 월드 한 줄", { delay: 20 });
-    await L.page.keyboard.press("Enter");
-    check('legacy: "옛 월드 한 줄" sent once', (await sentOnce(L, "옛 월드 한 줄")) === 1, await myLines(L));
-    const s1 = await state(L);
-    check("legacy: the caret stays in the field", s1.focused && s1.value === "", s1);
-    check("legacy: the send button is there", (await sendInfo(L))?.name === "보내기", await sendInfo(L));
-    const vp = L.page.viewportSize();
-    await L.page.mouse.click(vp.width / 2, vp.height * 0.3);
-    const s2 = await until(() => state(L), (s) => !s.focused, 1500);
-    check("legacy: a click on the 3D view leaves the chat", !s2.focused && !s2.captured, s2);
-    // review round 5: no bag in the legacy world either — B (ㅠ) is a letter, at once
-    await sleep(1700);
-    await L.page.keyboard.down("b");
-    await sleep(50);
-    await L.page.keyboard.up("b");
-    const s3 = await until(() => state(L), (s) => s.value === "b", 1200);
-    check('legacy: a lone B (no bag here) opens the chat with "b" at once', s3.focused && s3.value === "b", s3);
-    await L.page.locator(FIELD).fill("");
-    await L.page.keyboard.press("Escape");
-  });
-  offShadow();
-  await L.ctx.close();
-}
-
-// ─────────────────────────────────────────── AI 학교 탈출: the class hall ───────────────────────────────────────────
-// Needs the server started with TEACHER_KEYS_FILE=e2e/fixtures/teacher-keys.e2e.json (the TEST key of lib/escape.mjs).
-
-async function hall(browser) {
-  const T = await openPlayer(browser, run, { tag: "hall", device: DESKTOP });
-  await run.step("AI 학교 탈출 반 복도: same chat bar (Enter stays, button, click leaves)", async () => {
-    T.nick = `쌤${Math.floor(Math.random() * 900 + 100)}`;
-    const code = await joinAsTeacher(T, T.nick);
-    check("the class hall is up", !!code, { code });
-    check("the hall has the same bar with the send button", (await sendInfo(T))?.name === "보내기", await sendInfo(T));
-    await T.page.keyboard.press("Enter");
-    await until(() => state(T), (s) => s.focused);
-    await T.page.keyboard.type("복도 한 줄", { delay: 20 });
-    await T.page.keyboard.press("Enter");
-    check('hall: "복도 한 줄" sent once', (await sentOnce(T, "복도 한 줄")) === 1, await myLines(T));
-    const s1 = await state(T);
-    check("hall: the caret stays in the field", s1.focused && s1.value === "", s1);
-    await T.page.keyboard.type("버튼", { delay: 20 });
-    await T.page.locator(SEND).click();
-    check('hall: "버튼" sent once by the button', (await sentOnce(T, "버튼")) === 1 && (await state(T)).focused, await myLines(T));
-    const vp = T.page.viewportSize();
-    await T.page.mouse.click(vp.width / 2, vp.height * 0.35);
-    const s2 = await until(() => state(T), (s) => !s.focused, 1500);
-    check("hall: a click on the 3D view leaves the chat", !s2.focused && !s2.captured, s2);
-  });
-  await T.ctx.close();
-}
-
-// ─────────────────────────────────────────── AI 학교 탈출: a classroom ───────────────────────────────────────────
-// Review round 4: (major) the take-back reached the bag (B acts after 0.6 s, the take-back was 1.5 s): the tray opened by
-// 🎒, B closed it, E right after toggled it OPEN again by key (the keyboard, the first chip) and opened the chat with "b".
-// (minor) the "too fast" note above the bar sat right under the team-chat line ("팀 채팅 · 선생님이 볼 수 있어요"), which
-// covered most of it; on a phone the line also floated over the folded bar during the tap that left the chat.
-// A teacher, a PC student and a phone student (iPhone 13) — one team of two, in the counselling room.
-// Needs the server started with TEACHER_KEYS_FILE=e2e/fixtures/teacher-keys.e2e.json (as the hall).
-
-async function classroom(browser) {
-  const T = await openPlayer(browser, run, { tag: "room-teacher", device: DESKTOP });
-  const A = await openPlayer(browser, run, { tag: "room-pc", device: DESKTOP });
-  const B = await openPlayer(browser, run, { tag: "room-phone", device: IPHONE_13 });
-  const r3 = () => Math.floor(Math.random() * 900 + 100);
-  await run.step("교실 1. 선생님 · PC 학생 · 폰 학생 — 한 팀으로 교실 입장", async () => {
-    T.nick = `쌤${r3()}`;
-    const code = await joinAsTeacher(T, T.nick);
-    check("the class is open", !!code, { code });
-    B.nick = `폰${r3()}`;
-    await joinAsStudent(B, B.nick, code);
-    const team = await makeTeam(B);
-    A.nick = `피씨${r3()}`;
-    await joinAsStudent(A, A.nick, code);
-    await joinTeam(A, team);
-    await teacherStart(T);
-    await B.page.waitForFunction(() => /복도 문이 열렸어요/.test(document.querySelector(".cv-hub-phase")?.textContent ?? ""), null, { timeout: 8000 }).catch(() => {});
-    await walkAndWait(B, PAD_A[0], PAD_A[1], 40000, 1.0);
-    await walkAndWait(A, PAD_B[0], PAD_B[1], 40000, 1.0);
-    await B.page.waitForFunction(() => document.querySelector(".cv-action-btn .cv-action-text")?.textContent === "입장", null, { timeout: 10000 }).catch(() => {});
-    await B.page.locator(".cv-action-btn").tap();
-    const both = await Promise.all([A, B].map((p) => p.page.waitForFunction(() => window.__cv?.getScreen?.() === "escape", null, { timeout: 10000 }).then(() => true, () => false)));
-    check("both students are in the classroom", both.every(Boolean), both);
-    await Promise.all([inPlay(A), inPlay(B)]);
-    await sleep(1500);
-    check("the team-chat line is up on the PC", (await stackInfo(A)).line !== null, await stackInfo(A));
-  });
-
-  await run.step("교실 2. PC — 빠른 네 번째 줄: 안내가 '팀 채팅' 줄 위에, 서로 안 겹침", async () => {
-    await sleep(5800); // a fresh chat window
-    await A.page.keyboard.press("Enter");
-    await until(() => state(A), (s) => s.focused);
-    for (const line of ["교실1", "교실2", "교실3", "교실4"]) {
-      await A.page.keyboard.type(line, { delay: 15 });
-      await A.page.keyboard.press("Enter");
-      await sleep(120);
-    }
-    await sleep(400);
-    const s1 = await state(A);
-    const g = await stackInfo(A);
-    const n = await noteInfo(A);
-    check("PC classroom: the 4th quick line stays in the field, and the note says why", s1.focused && s1.value === "교실4" && !!n && n.text.includes("너무 빨라요") && n.onTop, { ...s1, note: n });
-    check("…the note sits above the team-chat line, which sits right above the bar — the two do not overlap at all", g.overlap === 0 && g.noteAboveLine && g.lineAboveBar, g);
-    await shots(A, "room-pc-held");
-    await until(() => noteInfo(A), (x) => x === null, 7000, 100);
-    await A.page.keyboard.press("Enter");
-    check('"교실4" then goes, once', (await sentOnce(A, "교실4")) === 1, await myLines(A));
-    await A.page.keyboard.press("Escape"); // the empty field: out of the chat
-    await until(() => state(A), (s) => !s.focused);
-  });
-
-  await run.step("교실 3. PC — 🎒로 연 가방을 B로 닫고 곧바로 E: 가방이 다시 열리지 않고 채팅도 안 열림", async () => {
-    await sleep(TAKE_BACK_MS + 200);
-    const tray = () => A.page.locator(".cv-esc-bag-tray").count();
-    await A.page.locator(".cv-esc-bag-btn").click();
-    const open1 = await until(tray, (n) => n === 1, 2000);
-    const capOpen = (await state(A)).captured;
-    const tB = Date.now();
-    await A.page.keyboard.press("b");
-    const closed = await until(tray, (n) => n === 0, 2000, 20);
-    await sleep(300);
-    const sinceB = Date.now() - tB;
-    await A.page.keyboard.press("e");
-    await sleep(TAKE_BACK_MS + 300);
-    const after = await tray();
-    const s = await state(A);
-    const top = await topOverlay(A);
-    check(
-      "classroom: the tray opened by 🎒 (no keyboard capture), B closes it after its wait, E within the take-back: the tray stays closed, no chat, nothing typed",
-      open1 === 1 && !capOpen && closed === 0 && sinceB < TAKE_BACK_MS && after === 0 && !s.focused && s.value === "" && top !== "bag",
-      { open1, capOpen, closed, eAfterMs: sinceB, trayAfter: after, overlay: top, ...s },
-    );
-    await shots(A, "room-pc-bag-b-then-e");
-    if (top) await A.page.keyboard.press("Escape"); // E may have opened a close-up next to the door
-    await sleep(500);
-  });
-
-  await run.step("교실 4. 폰 — '팀 채팅' 줄은 열린 바 바로 위, 빠른 네 번째 줄 안내와 안 겹침, 나오는 탭 동안 접힌 바 위에 떠 있지 않음", async () => {
-    await sleep(5800);
-    const emojiNear = await B.page.evaluate(() => {
-      const e = document.querySelector(".cv-emoji-toggle");
-      const r = e ? e.getBoundingClientRect() : null;
-      return r && r.width > 0 ? { x: Math.round(r.x + r.width / 2), y: Math.round(r.y - 24) } : null;
-    });
-    check("phone classroom: the emoji button is there before chatting (a spot near it is where the leave tap goes)", !!emojiNear, { emojiNear });
-    await press(B, B.page.locator(".cv-chat-btn"));
-    await until(() => state(B), (s) => s.focused, 2000);
-    await sleep(300);
-    const g0 = await stackInfo(B);
-    check("phone classroom: the team-chat line shows with the open bar, right above it", !!g0.line && g0.lineAboveBar, g0);
-    for (const line of ["폰교실1", "폰교실2", "폰교실3", "폰교실4"]) {
-      await B.page.keyboard.type(line, { delay: 15 });
-      await press(B, B.page.locator(SEND));
-      await sleep(150);
-    }
-    await sleep(400);
-    const s1 = await state(B);
-    const g = await stackInfo(B);
-    const n = await noteInfo(B);
-    check("phone classroom: the 4th line stays (focused), the note says why on screen", s1.focused && s1.value === "폰교실4" && !!n && n.visible && n.onScreen && n.onTop, { ...s1, note: n });
-    check("…the note sits above the team-chat line, which sits right above the bar — no overlap", g.overlap === 0 && g.noteAboveLine && g.lineAboveBar, g);
-    await shots(B, "room-phone-held");
-    await until(() => noteInfo(B), (x) => x === null, 7000, 100);
-    await press(B, B.page.locator(SEND));
-    check('"폰교실4" then goes, once', (await sentOnce(B, "폰교실4")) === 1, await myLines(B));
-    // the tap that leaves, finger down 0.3 s, near a control (24 px above where the emoji button comes back — a tap
-    // there may click it, review round 5): the HUD holds its chat layout meanwhile, but the line goes with the bar
-    const cdpR = await B.page.context().newCDPSession(B.page);
-    const near = emojiNear ?? { x: Math.round(B.page.viewportSize().width * 0.72), y: Math.round(B.page.viewportSize().height * 0.33) };
-    await cdpR.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [near] });
-    await sleep(200);
-    const mid = await B.page.evaluate(() => ({
-      focusClass: document.documentElement.classList.contains("cv-chat-focus"),
-      openClass: document.documentElement.classList.contains("cv-chat-open"),
-      line: getComputedStyle(document.querySelector(".cv-esc-chatnote")).display,
-      collapsed: !!document.querySelector(".cv-chat-input.is-collapsed"),
-    }));
-    await B.page.screenshot({ path: join(run.evidence, "room-phone-leave-held-full.png") }).catch(() => {});
-    await cdpR.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
-    await sleep(900);
-    const s2 = await state(B);
-    check("phone classroom: during the tap that leaves near a button (finger still down) the HUD keeps its chat layout, but the bar is folded and the team-chat line went with it", mid.focusClass && !mid.openClass && mid.collapsed && mid.line === "none", { ...mid, at: near });
-    check("…and after the tap the chat is left", !s2.focused && s2.collapsed && !s2.focusClass, s2);
-    await cdpR.detach().catch(() => {});
-  });
-  await B.ctx.close();
-  await A.ctx.close();
-  await T.ctx.close();
-}
-
 // Real Chrome with the GPU, as on the owner's PC (ANGLE / D3D11 on Windows).
 const GPU_ARGS = process.platform === "win32" ? ["--use-angle=d3d11", "--enable-gpu", "--ignore-gpu-blocklist"] : ["--enable-gpu", "--ignore-gpu-blocklist"];
 const browser = await chromium.launch({ headless: true, channel: "chrome", args: GPU_ARGS });
-// CV_CHAT_ONLY=pc,pc-matrix,iphone13,kakao-android,legacy,hall,classroom runs only those parts (default: all of them).
+// CV_CHAT_ONLY=pc,pc-matrix,iphone13,kakao-android runs only those parts (default: all of them).
 const ONLY = process.env.CV_CHAT_ONLY ? new Set(process.env.CV_CHAT_ONLY.split(",").map((t) => t.trim())) : null;
 const want = (part) => !ONLY || ONLY.has(part);
 try {
@@ -2009,9 +1796,6 @@ try {
   if (want("pc-matrix")) await pcMatrix(browser);
   if (want("iphone13")) await phone(browser, "iphone13", IPHONE_13);
   if (want("kakao-android")) await phone(browser, "kakao-android", KAKAO_ANDROID);
-  if (want("legacy")) await legacy(browser);
-  if (want("hall")) await hall(browser);
-  if (want("classroom")) await classroom(browser);
 } finally {
   await browser.close();
 }

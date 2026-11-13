@@ -7,7 +7,7 @@
  * 마을에 들어가 소리 요소(window.__cvBgm.element())의 상태를 읽는다: 클릭 전 정지, 첫 클릭 뒤 재생(볼륨 0.35),
  * 추모관 안 0.15, 밖 0.35, 끄기 버튼 뒤 정지·저장, 다시 켜기. 헤드리스 크롬은 소리를 내지 않으므로 상태만 본다.
  */
-import { CLIENT_URL, DESKTOP, createRun, launchBrowser, openPlayer, sleep } from "./lib/escape.mjs";
+import { CLIENT_URL, DESKTOP, createRun, launchBrowser, openPlayer, sleep } from "./lib/common.mjs";
 
 const run = createRun("village-bgm");
 const browser = await launchBrowser();

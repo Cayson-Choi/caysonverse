@@ -1,6 +1,5 @@
 import { describe, it, expect } from "vitest";
 import { MessageType } from "../messages";
-import { ClassMsg, EscapeMsg } from "../escape/messages";
 import { CANDLE_BURN_MS, CANDLE_RATE, CANDLE_REACH_M, SERVER_TIME_INTERVAL_MS, VillageMsg, VillageServerMsg } from "./messages";
 
 describe("VillageMsg", () => {
@@ -16,7 +15,7 @@ describe("VillageMsg", () => {
     const values = Object.values(VillageMsg);
     expect(new Set(values).size).toBe(values.length);
     // A village client also hears the world messages (VillageRoom is a PlayerRoom).
-    const others = new Set<string>([...Object.values(MessageType), ...Object.values(ClassMsg), ...Object.values(EscapeMsg)]);
+    const others = new Set<string>(Object.values(MessageType));
     for (const v of values) expect(others.has(v), v).toBe(false);
   });
 
@@ -31,8 +30,6 @@ describe("VillageMsg", () => {
     });
     const others = new Set<string>([
       ...Object.values(MessageType),
-      ...Object.values(ClassMsg),
-      ...Object.values(EscapeMsg),
       ...Object.values(VillageMsg),
     ]);
     for (const v of Object.values(VillageServerMsg)) expect(others.has(v), v).toBe(false);

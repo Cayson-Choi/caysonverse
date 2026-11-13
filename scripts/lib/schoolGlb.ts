@@ -275,8 +275,8 @@ export interface TallBox {
 
 /**
  * The `col__*` boxes whose prop stands `CAMERA_BOX_MIN_HEIGHT` or higher: the camera boxes among the props.
- * A box's height is the top of its node (translation.y + scale.y / 2: the hub's locker banks are 2.2 m boxes)
- * or, when the art kept the box a plain 1 m cube although the prop is taller (every counselling-room box),
+ * A box's height is the top of its node (translation.y + scale.y / 2)
+ * or, when the art kept the box a plain 1 m cube although the prop is taller,
  * the height `known` gives for its name without the `col__` prefix (schoolSpec.ts: measured from the model).
  * Same order as `colliders`.
  */
@@ -476,7 +476,7 @@ function meshTriangles(gltf: Gltf, meshIndex: number): number {
 // ---------------------------------------------------------------------------------------------------------
 // The budget checks.
 
-export type SchoolKind = "hub" | "counsel" | "village" | "memorial";
+export type SchoolKind = "village" | "memorial";
 export type Level = "ok" | "fail" | "warn";
 
 export interface CheckResult {
@@ -487,14 +487,12 @@ export interface CheckResult {
 
 const MB = 1024 * 1024;
 /**
- * Plan Global Constraints: hub (hall + corridor) <= 3.5 MB, classroom <= 5 MB; triangles from Task 22.
+ * Per-model budgets (file size and triangles).
  * 케이슨 마을 (village plan, Global Constraints): village.glb <= 8 MB and <= 260k triangles; memorial.glb (the hall's
  * interior, Task 8) was planned at <= 6 MB and <= 200k triangles, and is held to 1.5 MB and 60k since Task 9 (Task 8
  * review m5: the file is 0.33 MB and 17k triangles, so the plan's ceiling would not catch a regression).
  */
 export const BUDGETS: Record<SchoolKind, { maxBytes: number; maxTriangles: number }> = {
-  hub: { maxBytes: 3.5 * MB, maxTriangles: 150_000 },
-  counsel: { maxBytes: 5 * MB, maxTriangles: 120_000 },
   village: { maxBytes: 8 * MB, maxTriangles: 260_000 },
   memorial: { maxBytes: 1.5 * MB, maxTriangles: 60_000 },
 };
@@ -505,7 +503,7 @@ export const MAX_MATERIALS = 24;
  * The material ceiling per file: MAX_MATERIALS, but one more for the village, whose fountain crescent (`M_moon`) is the
  * one surface the game lights live (fix/fix-moon-smooth: light-mapped, its 3.5 texels per metre showed as stepped bands).
  */
-export const MATERIAL_LIMITS: Record<SchoolKind, number> = { hub: MAX_MATERIALS, counsel: MAX_MATERIALS, village: MAX_MATERIALS + 1, memorial: MAX_MATERIALS };
+export const MATERIAL_LIMITS: Record<SchoolKind, number> = { village: MAX_MATERIALS + 1, memorial: MAX_MATERIALS };
 export const MAX_TEXTURE_SIDE = 2048;
 /** An obj__ node's origin may differ from the TS anchor by at most this much (m, on the ground plane). */
 export const OBJ_ANCHOR_TOLERANCE = 0.25;

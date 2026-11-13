@@ -182,7 +182,7 @@ describe("villageAndHallTargets — the guides' 문의하기 (Task 9A)", () => {
 describe("the hall desk and the way out (Task 9A)", () => {
   it("where both are in reach the nearer one wins (E at the desk asks the desk, at the door it leaves)", () => {
     const pick = (x: number, z: number) =>
-      pickInteraction({ seated: false, seat: null, npc: null, npcPanelOpen: false, targets: villageAndHallTargets("hall", x, z) });
+      pickInteraction({ seated: false, seat: null, targets: villageAndHallTargets("hall", x, z) });
     // the B desk stands at (306.4, 4.6), beside the widened east wall
     const atDesk = pick(305.0, 4.6); // 1.4 m from the desk, well beyond the door pad
     expect(atDesk).toMatchObject({ kind: "target", target: { id: "guide:hall_desk" } });
@@ -202,7 +202,7 @@ describe("the hall desk and the way out (Task 9A)", () => {
         if (!g || !c) continue;
         both += 1;
         expect(g.priority ?? 0, `${x},${z}`).toBe(c.priority ?? 0);
-        const pick = pickInteraction({ seated: false, seat: null, npc: null, npcPanelOpen: false, targets: t });
+        const pick = pickInteraction({ seated: false, seat: null, targets: t });
         const want = t.find((v) => (v.priority ?? 0) > (g.priority ?? 0)) ? null : c.dist < g.dist ? c.id : g.id;
         if (want) expect(pick, `${x},${z}`).toMatchObject({ target: { id: want } });
       }

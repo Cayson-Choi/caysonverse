@@ -14,16 +14,11 @@
  *     `reconnectionToken` (server held the seat via allowReconnection), within the
  *     RECONNECT_WINDOW_S budget → same avatar, same position. If the server
  *     answers but rejects the token (it restarted), we skip straight to Phase 2.
- *   Phase 2 — server restarted / window expired: silent fresh join (join-existing
- *     -only against the boot-created singleton world) with this tab's identity and
- *     the pure exponential backoff (1s,2s,4s… cap 8s, ~30s). A new avatar at spawn
- *     is EXPECTED (no DB). A 521 ("no rooms found") and transient/network failures
- *     are RETRIED — the room may still be re-creating in the server's boot window
- *     (mass reconnect after a restart lands exactly there). A DETERMINISTIC server
- *     rejection (a Korean reason: denySet kick, nickname rule, bad cached identity)
- *     is NOT retried — it can never succeed, so we surface the real reason at once.
- *     An admin session re-sends its (module-memory) code so a restart preserves the
- *     instructor's powers; a rejected code falls back to a normal-user join.
+ *   Phase 2 — server restarted / window expired: silent fresh join (`joinOrCreate`) with this tab's
+ *     identity and the pure exponential backoff (1s,2s,4s… cap 8s, ~30s). A new avatar at spawn
+ *     is EXPECTED (no DB). A 521 and transient/network failures are RETRIED. A DETERMINISTIC server
+ *     rejection (a Korean reason: denySet kick, nickname rule, bad cached identity) is NOT retried — it
+ *     can never succeed, so we surface the real reason at once.
  *   Exhausted / rejected → entry screen with the real Korean reason (capacity when
  *     genuinely full, the server's rejection verbatim, else the generic failure).
  *
@@ -33,41 +28,14 @@
  * then bumps the connection epoch so the scene REMOUNTS and rebinds (remote store
  * rebuilt clean — no duplicate avatars).
  *
- * Village mode (케이슨 마을 — `attachResilience(room, "village")`): the same driver, with a village room's
- * differences: it is NOT a singleton, so Phase 2 rejoins with `joinOrCreate` (`joinVillageRoom` — a new
- * shard when none is left, never a 521 "no rooms found"), and there is no admin to carry over.
- *
- * Class mode (AI 학교 탈출, Task 13 — `attachResilience(room, "class")`): the same driver for
- * a class (반) connection, with these differences:
- *   - arming a class room also binds its class sync (classSync.ts) — before any await, so a
- *     ticket sent right after a (re)join is never dropped;
- *   - CLASS_CLOSED_CODE (the class ended) → entry with "수업이 끝났어요", no reconnect (the SDK's
- *     own loop is off for every room, so neither 4102 nor the kick code is ever retried);
- *   - every way back to the entry also leaves the team classroom, unbinds the class sync and
- *     forgets the teacher key;
- *   - Phase 2 (the server restarted — Review Focus 5) follows `classRejoinPlan`: a teacher asks
- *     for a new pass for THE SAME class code (re-opening the class) and joins with it; a student
- *     rejoins by the cached code, retrying 521 for CLASS_REJOIN_BUDGET_MS until the teacher has
- *     re-opened it. A fresh class session starts in the hall, so a dead classroom is dropped
- *     and the screen goes back to the hall (a takeover's ticket may bring it back in).
+ * It is NOT a singleton: Phase 2 rejoins with `joinOrCreate` (`joinVillageRoom` — a new shard when none is
+ * left, never a 521 "no rooms found"), and there is no admin to carry over.
  */
 
 import type { Room } from "@colyseus/sdk";
-import type { ClassState, WorldState } from "@caysonverse/shared/schema";
+import type { WorldState } from "@caysonverse/shared/schema";
 import { RECONNECT_WINDOW_S } from "@caysonverse/shared/constants";
-import { CLASS_CLOSED_CODE, CLASS_REJOIN_BUDGET_MS } from "@caysonverse/shared/escape/constants";
-import {
-  client,
-  getRoom,
-  setRoom,
-  joinRoom,
-  joinVillageRoom,
-  waitForSelf,
-  joinClassRoom,
-  requestTeacherPass,
-  getEscapeRoom,
-  leaveEscape,
-} from "./connection";
+import { client, getRoom, setRoom, joinVillageRoom, waitForSelf } from "./connection";
 import { reconnectBackoffMs } from "./backoff";
 import { retryWhile } from "./joinRetry";
 import {
@@ -77,24 +45,13 @@ import {
   shouldRetryFreshJoin,
   joinErrorNotice,
   serverResponded,
-  classRejoinPlan,
-  classRejoinNotice,
-  shouldRetryClassRejoin,
   FAILED_NOTICE,
 } from "./reconnectPolicy";
 import { loadIdentity } from "./identityCache";
-import { getAdminCode, forgetAdminCode } from "./adminSession";
-import { getTeacher, forgetTeacher } from "./teacherSession";
-import { forgetTeacherClass } from "./teacherClassCache";
-import { bindClassSync, unbindClassSync } from "./classSync";
 import { bindVillageClock } from "../village/villageClock";
 import { bindHallCandles } from "../village/hallCandles";
 import { wasKicked, markKicked } from "./kickSeam";
 import { useAppStore } from "../stores/appStore";
-import { useClassStore } from "../stores/classStore";
-
-/** Which kind of main connection a room is (see the village and class-mode notes above). */
-export type ResilienceMode = "world" | "class" | "village";
 
 /** sessionStorage key for the room reconnection token (scoped to this tab). */
 const TOKEN_KEY = "cv.reconnectToken";
@@ -148,35 +105,19 @@ function clearToken(): void {
 /**
  * Arm resilience on a freshly (re)connected room: persist its token, take over
  * the reconnect loop from the SDK, and route its next close through us. Called on
- * the initial join AND after every reconnect. A class room (mode "class") also gets
- * its class sync bound here, before anything awaits.
+ * the initial join AND after every reconnect.
  */
-export function attachResilience(room: Room<WorldState>, mode: ResilienceMode = "world"): void {
+export function attachResilience(room: Room<WorldState>): void {
   saveToken(room.reconnectionToken);
   // Own the loop: disable the SDK's built-in auto-reconnect so every close is a
-  // single, classifiable onLeave with the original code (a class's 4102 and the
-  // kick code included — they must never be retried).
+  // single, classifiable onLeave with the original code (a kick must never be retried).
   room.reconnection.enabled = false;
-  room.onLeave((code: number) => handleLeave(room, code, mode));
-  // ClassState extends WorldState; the class room is held through the world type (Room is invariant).
-  if (mode === "class") bindClassSync(room as unknown as Room<ClassState>);
+  room.onLeave((code: number) => handleLeave(room, code));
   // The village's clock: the server sends its time right after the join (and every 5 minutes), so the handler must
   // exist before anything awaits (the SDK drops a message nobody listens for). Bound again on every reconnect: it is
   // the new room's. Leaves with the room.
-  if (mode === "village") {
-    bindVillageClock(room);
-    bindHallCandles(room); // the memorial hall's candles (Task 9): CandleLit can come any time while in the hall
-  }
-}
-
-/**
- * Leaving a class session for good (any way back to the entry): drop the team classroom
- * (consented — the class is gone or we are), stop the class sync, forget the teacher key.
- */
-function endClassSession(): void {
-  void leaveEscape();
-  unbindClassSync();
-  forgetTeacher();
+  bindVillageClock(room);
+  bindHallCandles(room); // the memorial hall's candles (Task 9): CandleLit can come any time while in the hall
 }
 
 /** True while recovering — read each frame (no subscribe) to suspend input. */
@@ -184,14 +125,14 @@ export function isInputSuspended(): boolean {
   return useAppStore.getState().reconnecting;
 }
 
-function handleLeave(leftRoom: Room<WorldState>, code: number, mode: ResilienceMode): void {
+function handleLeave(leftRoom: Room<WorldState>, code: number): void {
   // Ignore a superseded room's late close (getRoom already moved on).
   if (getRoom() !== leftRoom) return;
 
   if (reconnecting) {
     // A close DURING active recovery: the room we just adopted flapped again
     // before we could confirm it. Do NOT drop it (that stranded the user in a
-    // zombie world — F4) and do NOT start a second overlapping reconnect: abort
+    // zombie village) and do NOT start a second overlapping reconnect: abort
     // the in-flight confirm wait so the current loop simply tries again.
     abortConfirm?.();
     return;
@@ -203,22 +144,15 @@ function handleLeave(leftRoom: Room<WorldState>, code: number, mode: ResilienceM
       markKicked(); // honor Task 9's no-reconnect seam
       clearToken();
     }
-    forgetAdminCode(); // leaving the world drops the session admin secret
-    if (mode === "class") {
-      clearToken(); // the class session is over: its token can only fail
-      // The class ended: stop prefilling its code in the teacher form (it can only be refused now).
-      if (code === CLASS_CLOSED_CODE) forgetTeacherClass();
-      endClassSession();
-    }
     setRoom(null);
     useAppStore.getState().leaveToEntry(decision.notice);
     return;
   }
 
-  void startReconnect(mode);
+  void startReconnect();
 }
 
-async function startReconnect(mode: ResilienceMode): Promise<void> {
+async function startReconnect(): Promise<void> {
   if (reconnecting) return;
   reconnecting = true;
   setRoom(null); // stop sends to the dead room while we recover
@@ -227,19 +161,15 @@ async function startReconnect(mode: ResilienceMode): Promise<void> {
 
   try {
     // Phase 1 — same avatar within the window.
-    if (await phaseTokenReconnect(mode)) return;
+    if (await phaseTokenReconnect()) return;
     // Phase 2 — fresh avatar (server restarted / window expired).
-    const outcome = mode === "class" ? await phaseFreshClassJoin() : await phaseFreshJoin(mode);
+    const outcome = await phaseFreshJoin();
     if (outcome.status === "connected") return;
     // Terminal → entry with the chosen notice (capacity if genuinely full, the
     // real Korean reason for a deterministic rejection, else generic failure).
-    forgetAdminCode();
-    if (mode === "class") endClassSession();
     store.leaveToEntry(outcome.notice);
   } catch {
     // Defensive: never strand the user on an unexpected error.
-    forgetAdminCode();
-    if (mode === "class") endClassSession();
     store.leaveToEntry(FAILED_NOTICE);
   } finally {
     store.setReconnecting(false);
@@ -249,15 +179,15 @@ async function startReconnect(mode: ResilienceMode): Promise<void> {
 
 /**
  * Adopt a freshly (re)connected room and wait for our player to appear — arming
- * OUR onLeave and disabling the SDK's auto-reconnect BEFORE the wait (mirrors
- * joinWorld). If the room closes DURING the wait (a second drop on a flaky
- * network — the exact case that used to strand into a zombie world), the armed
- * onLeave aborts this wait via `abortConfirm` so the recovery loop retries
- * instead of adopting a room the SDK is already tearing down (F4).
+ * OUR onLeave and disabling the SDK's auto-reconnect BEFORE the wait. If the room
+ * closes DURING the wait (a second drop on a flaky network — the exact case that
+ * used to strand into a zombie village), the armed onLeave aborts this wait via
+ * `abortConfirm` so the recovery loop retries instead of adopting a room the SDK
+ * is already tearing down (F4).
  */
-async function adoptAndConfirm(room: Room<WorldState>, mode: ResilienceMode = "world"): Promise<void> {
+async function adoptAndConfirm(room: Room<WorldState>): Promise<void> {
   setRoom(room);
-  attachResilience(room, mode); // arm onLeave + disable SDK loop (+ class sync) BEFORE waiting
+  attachResilience(room); // arm onLeave + disable SDK loop BEFORE waiting
   let settled = false;
   const finish = () => {
     settled = true;
@@ -278,7 +208,7 @@ async function adoptAndConfirm(room: Room<WorldState>, mode: ResilienceMode = "w
 }
 
 /** Phase 1: re-establish the same session with the persisted token. */
-async function phaseTokenReconnect(mode: ResilienceMode): Promise<boolean> {
+async function phaseTokenReconnect(): Promise<boolean> {
   if (!loadToken()) return false; // nothing to resume → straight to a fresh join
 
   const deadline = Date.now() + RECONNECT_WINDOW_S * 1000;
@@ -289,8 +219,8 @@ async function phaseTokenReconnect(mode: ResilienceMode): Promise<boolean> {
     if (!token) return false;
     try {
       const room = (await client.reconnect<WorldState>(token)) as Room<WorldState>;
-      await adoptAndConfirm(room, mode); // adopt + arm onLeave BEFORE the confirm wait
-      onReconnected(room); // Phase 1 keeps server userData → admin preserved
+      await adoptAndConfirm(room); // adopt + arm onLeave BEFORE the confirm wait
+      onReconnected(room); // Phase 1 keeps the same session
       return true;
     } catch (err) {
       // Server reachable but token rejected (it restarted) → give up on the
@@ -310,22 +240,15 @@ type FreshJoinOutcome = { status: "connected" } | { status: "terminal"; notice: 
 /**
  * Phase 2: silent fresh join with this tab's identity (appStore) + exponential backoff.
  *
- * Retry policy (D2): a 521 "no rooms found" and transient/network failures are
- * retried through the backoff (the singleton world may still be re-creating in
- * the server's boot window). A DETERMINISTIC server rejection (a Korean reason:
- * denySet kick, nickname rule, bad cached identity) can never succeed, so it is
- * NOT retried — we surface the real reason immediately instead of hammering it
- * for ~31s behind the overlay and then showing a misleading generic notice.
+ * Retry policy (D2): a 521 and transient/network failures are retried through the backoff.
+ * A DETERMINISTIC server rejection (a Korean reason: denySet kick, nickname rule, bad cached
+ * identity) can never succeed, so it is NOT retried — we surface the real reason immediately
+ * instead of hammering it for ~31s behind the overlay and then showing a misleading generic notice.
  *
- * Admin (F5): if this session authenticated as admin, its code is held in module
- * memory and re-sent so a server restart preserves the instructor's powers. A
- * REJECTED code (server restarted with a different/unset ADMIN_CODE) falls back
- * to a normal-user join — it must not fail recovery.
- *
- * Village: the same loop with `joinVillageRoom` (joinOrCreate) for the join and no admin step —
- * the village has no admin, so any code held from an earlier world session is never sent to it.
+ * The village is not a singleton: the join is `joinOrCreate` (`joinVillageRoom`), so a new shard
+ * is made when none is left.
  */
-async function phaseFreshJoin(mode: "world" | "village"): Promise<FreshJoinOutcome> {
+async function phaseFreshJoin(): Promise<FreshJoinOutcome> {
   // Rejoin as the identity THIS tab entered with (in memory), not the shared
   // localStorage cache: another tab's character builder may have saved a different
   // look (or nickname) since, and re-joining with that would desync the server from
@@ -336,48 +259,18 @@ async function phaseFreshJoin(mode: "world" | "village"): Promise<FreshJoinOutco
     appearance: identity.appearance,
   };
 
-  const village = mode === "village";
-  const join = village ? joinVillageRoom : joinRoom;
-
-  // Whether the room we finally adopt is an authenticated admin join. A join that
-  // SUPPLIED a code and SUCCEEDED proves the code was correct (a wrong code is
-  // rejected server-side), mirroring the entry-screen inference.
-  let grantedAdmin = false;
-  let adminFellBack = false; // set once a resent code was rejected → stop retrying it
-
   try {
     const room = await retryWhile<Room<WorldState>>({
       attempt: async () => {
-        const code = village ? null : getAdminCode();
-        if (code !== null && !adminFellBack) {
-          try {
-            const r = await joinRoom({ ...baseParams, adminCode: code });
-            grantedAdmin = true;
-            await adoptAndConfirm(r, mode);
-            return r;
-          } catch (err) {
-            // A transient/capacity failure: retry the whole attempt (still as
-            // admin next time). A DETERMINISTIC rejection of the admin join: the
-            // code (or the identity) was refused — drop the code and fall through
-            // to a normal-user join so recovery is preserved (F5). If the reason
-            // was actually the identity, the non-admin join fails the same way
-            // and that real reason becomes terminal below.
-            if (!isDeterministicRejection(err)) throw err;
-            adminFellBack = true;
-            forgetAdminCode();
-            grantedAdmin = false;
-          }
-        }
-        const r = await join(baseParams);
-        grantedAdmin = false;
-        await adoptAndConfirm(r, mode);
+        const r = await joinVillageRoom(baseParams);
+        await adoptAndConfirm(r);
         return r;
       },
       shouldRetry: shouldRetryFreshJoin,
       delaysMs: reconnectBackoffMs(),
       sleep,
     });
-    onReconnected(room, grantedAdmin);
+    onReconnected(room);
     return { status: "connected" };
   } catch (err) {
     // Terminal. A deterministic/capacity error → the real Korean reason (denied,
@@ -390,68 +283,10 @@ async function phaseFreshJoin(mode: "world" | "village"): Promise<FreshJoinOutco
   }
 }
 
-/**
- * Phase 2 for a class connection (Review Focus 5): rejoin the class this tab was in, by
- * `classRejoinPlan` — a teacher first asks for a new pass for THE SAME code (`reopen: true`: the
- * teacher route re-opens a class the restart removed) and joins with it; a student joins by the code and keeps
- * retrying a 521 (the class is not re-opened yet) for CLASS_REJOIN_BUDGET_MS. A Korean refusal,
- * or a teacher-route 4xx, is terminal at once (`shouldRetryClassRejoin`).
- *
- * A fresh class session starts in the hall, never in a classroom: the classroom this tab had
- * before the drop is dead, so it is dropped and the screen goes back to the hall. (If the join
- * took over a ghost that was inside, the server sends a new ticket and classSync goes back in.)
- */
-async function phaseFreshClassJoin(): Promise<FreshJoinOutcome> {
-  const identity = useAppStore.getState().identity ?? loadIdentity();
-  // The class this tab was in: its own identity's code, else the class state it last saw (kept
-  // through a reconnect), else the cache (which another tab may have changed since).
-  const classCode = identity.classCode || useClassStore.getState().classCode || loadIdentity().classCode;
-  const plan = classRejoinPlan({ classCode }, getTeacher());
-  if (plan === null) return { status: "terminal", notice: FAILED_NOTICE };
-  const staleEscape = getEscapeRoom();
-
-  try {
-    const room = await retryWhile<Room<WorldState>>({
-      attempt: async () => {
-        const teacherPass =
-          plan.kind === "teacher"
-            ? (
-                await requestTeacherPass({
-                  teacherKey: plan.key,
-                  classCode: plan.classCode,
-                  textLevel: plan.textLevel,
-                  reopen: true,
-                })
-              ).pass
-            : undefined;
-        const joined = await joinClassRoom({
-          classCode: plan.classCode,
-          nickname: identity.nickname,
-          appearance: identity.appearance,
-          teacherPass,
-        });
-        const r = joined as unknown as Room<WorldState>;
-        await adoptAndConfirm(r, "class");
-        return r;
-      },
-      shouldRetry: shouldRetryClassRejoin,
-      delaysMs: reconnectBackoffMs({ budgetMs: CLASS_REJOIN_BUDGET_MS }),
-      sleep,
-    });
-    onReconnected(room, plan.kind === "teacher");
-    if (staleEscape !== null && getEscapeRoom() === staleEscape) void leaveEscape();
-    useAppStore.getState().exitEscape();
-    return { status: "connected" };
-  } catch (err) {
-    return { status: "terminal", notice: classRejoinNotice(err) };
-  }
-}
-
-/** Resume the world on a (re)connected room already adopted by adoptAndConfirm. */
-function onReconnected(room: Room<WorldState>, isAdmin?: boolean): void {
+/** Resume the village on a (re)connected room already adopted by adoptAndConfirm. */
+function onReconnected(room: Room<WorldState>): void {
   // setRoom + attachResilience were done by adoptAndConfirm (before the wait).
-  // Bump the epoch → WorldScene remounts on the new room (remote store rebuilt
-  // clean); adopt the (possibly new) sessionId; reconcile admin (undefined =
-  // preserve for a token reconnect); hide the overlay + resume input.
-  useAppStore.getState().reconnected(room.sessionId, isAdmin);
+  // Bump the epoch → VillageScene remounts on the new room (remote store rebuilt
+  // clean); adopt the (possibly new) sessionId; hide the overlay + resume input.
+  useAppStore.getState().reconnected(room.sessionId);
 }

@@ -1,9 +1,6 @@
 import { useEffect, useSyncExternalStore } from "react";
-import { ROLE_TEACHER } from "@caysonverse/shared/constants";
-import { getRoom } from "../net/connection";
 import { onHotkey } from "../game/hotkeys";
 import { rosterRowLabel, rosterRows, rosterTitle, type RosterRow } from "../game/hud";
-import { isLocalTeacher } from "../game/ownNametag";
 import { getRemoteRecord, getRoster, subscribeRoster } from "../game/remoteStore";
 import { useAppStore } from "../stores/appStore";
 import { useUiStore } from "../stores/uiStore";
@@ -39,7 +36,7 @@ export function useRosterHotkey(): void {
 }
 
 /**
- * How many players are in the world, me included — the number on the 👥 button. Counts
+ * How many players are in the village, me included — the number on the 👥 button. Counts
  * only (no rows are built or sorted), and re-renders on join / leave only.
  */
 export function useRosterCount(): number {
@@ -51,29 +48,24 @@ export function useRosterCount(): number {
 /** The player list's rows: me plus every remote, in the order game/hud.ts `rosterRows` gives. */
 function useRosterRows(): RosterRow[] {
   const identity = useAppStore((s) => s.identity);
-  const isAdmin = useAppStore((s) => s.isAdmin);
   // Re-renders on join / leave only (the roster is the set of ids, never positions).
   const roster = useSyncExternalStore(subscribeRoster, getRoster, getRoster);
   if (!identity) return [];
-  const myRole = getRoom()?.state?.players?.get?.(identity.sessionId)?.role;
   const self: RosterRow = {
     sid: identity.sessionId,
     nickname: identity.nickname,
-    teacher: isLocalTeacher(myRole, isAdmin),
     self: true,
   };
   const remotes: RosterRow[] = roster.map((sid) => {
     const rec = getRemoteRecord(sid);
-    return { sid, nickname: rec?.nickname ?? sid, teacher: rec?.role === ROLE_TEACHER, self: false };
+    return { sid, nickname: rec?.nickname ?? sid, self: false };
   });
   return rosterRows(self, remotes);
 }
 
 /**
- * The player list (접속자 N명): 👑 before a teacher, "(나)" after me, teachers first, then
- * me, then the rest in Korean order. A short scrolling card in the top-left column, under
- * the 👥 button — in the column's flow, so it pushes the admin panel down instead of
- * covering it.
+ * The player list (접속자 N명): "(나)" after me, me first, then the rest in Korean order. A short
+ * scrolling card in the top-left column, under the 👥 button — in the column's flow.
  */
 export function RosterPanel() {
   const open = useUiStore((s) => s.rosterOpen);

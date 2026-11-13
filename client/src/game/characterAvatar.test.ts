@@ -4,6 +4,7 @@ import {
   BufferGeometry,
   Color,
   DoubleSide,
+  BoxGeometry,
   Float32BufferAttribute,
   Group,
   Material,
@@ -19,7 +20,6 @@ import {
 } from "three";
 import { appearanceFromIds } from "@caysonverse/shared/appearance";
 import { lookFromAppearance, lookKey, visibleParts, type AvatarLook } from "./characterLook";
-import { attachNpcAccessories } from "./npcLook";
 import {
   AVATAR_BOUNDS,
   MAX_DRAW_MESHES,
@@ -587,6 +587,20 @@ const tallLook = (hat: string | null): AvatarLook =>
     ),
   );
 
+/**
+ * A decorator that hangs a thin plate on the head bone, `rise` above it (a stand-in for anything `decorate` may add: it
+ * is built on the clone only and its material is the avatar's own, released with it).
+ */
+function plateOnHead(rise: number): (b: BuiltAvatar) => void {
+  return (b) => {
+    const material = new MeshStandardMaterial();
+    const plate = new Mesh(new BoxGeometry(0.1, 0.05, 0.1), material);
+    plate.position.y = rise;
+    b.root.getObjectByName("head")!.add(plate);
+    b.materials.push(material);
+  };
+}
+
 describe("topY", () => {
   const heights = { body__head: 1.8, hair__short: 2.0, hair__short__hat: 2.0, hat__cap: 3.0 } as const;
 
@@ -601,14 +615,12 @@ describe("topY", () => {
     releaseAvatar(capped);
   });
 
-  it("includes what decorate adds: the AI 조교 halo ring rises above the hair", () => {
+  it("includes what decorate adds: a plate above the head rises above the hair", () => {
     const tall = tallScene(heights);
     const plain = buildAvatar(tall, tallLook(null));
-    const halo = buildAvatar(tall, tallLook(null), (b) => attachNpcAccessories(b.root, "#e8833a", b.materials));
-    // head bone y 1 + ring at 1.1 above it + the tube's radius 0.025 (the ring lies flat: its thickness is its
-    // height; a 10-sided tube peaks a hair under its radius, hence the 2 digits)
-    expect(halo.topY).toBeCloseTo(1 + 1.1 + 0.025, 2);
-    expect(halo.topY).toBeLessThan(1 + 1.1 + 0.025 + 1e-9);
+    const halo = buildAvatar(tall, tallLook(null), plateOnHead(1.1));
+    // head bone y 1 + the plate at 1.1 above it + half its 0.05 thickness
+    expect(halo.topY).toBeCloseTo(1 + 1.1 + 0.025, 6);
     expect(halo.topY).toBeGreaterThan(plain.topY);
     expect(plain.topY).toBeCloseTo(2.0, 9);
     releaseAvatar(plain);
@@ -618,10 +630,10 @@ describe("topY", () => {
   it("a decoration lower than the hair changes nothing, and the source scene stays untouched", () => {
     const tall = tallScene({ ...heights, hair__short: 5.0 });
     const before = tall.scene.children.length;
-    const a = buildAvatar(tall, tallLook(null), (b) => attachNpcAccessories(b.root, "#4d8df0", b.materials));
+    const a = buildAvatar(tall, tallLook(null), plateOnHead(0.1));
     expect(a.topY).toBeCloseTo(5.0, 9);
     expect(tall.scene.children).toHaveLength(before);
-    expect((tall.scene.getObjectByName("head") as Object3D).children).toHaveLength(0); // the halo hangs on the clone only
+    expect((tall.scene.getObjectByName("head") as Object3D).children).toHaveLength(0); // the plate hangs on the clone only
     releaseAvatar(a);
   });
 

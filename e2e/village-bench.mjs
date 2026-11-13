@@ -12,7 +12,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { chromium } from "playwright";
-import { DESKTOP, createRun, openPlayer, pos, sleep, walkAndWait } from "./lib/escape.mjs";
+import { DESKTOP, createRun, openPlayer, pos, sleep, walkAndWait } from "./lib/common.mjs";
 import { act, hideHud, joinVillage, showHud } from "./lib/village.mjs";
 
 const outArg = process.argv.find((a) => a.startsWith("--out="));

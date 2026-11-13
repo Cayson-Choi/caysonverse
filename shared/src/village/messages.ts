@@ -1,7 +1,7 @@
 /**
  * 케이슨 마을 room messages — browser-safe (values and types only), shared by the server and the client.
- * World messages stay in ../messages.ts and the class/escape ones in ../escape/messages.ts; a village
- * client also hears the world's Move/Chat/Emoji/Jump/Typing (VillageRoom is a PlayerRoom), so a value here
+ * The shared player messages stay in ../messages.ts; a village
+ * client also hears Move/Chat/Emoji/Jump/Typing (VillageRoom is a PlayerRoom), so a value here
  * must never equal one of those (a test pins it).
  */
 

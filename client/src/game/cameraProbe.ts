@@ -3,7 +3,7 @@ import type { ViewMode } from "./viewMode";
 /**
  * Live camera readout, published once per frame by CameraRig and read by the
  * dev/E2E hook (`window.__cvCamera`). A single shared mutable object — never React
- * state — so the per-frame write is allocation-free. Lets the maze camera-cap E2E
+ * state — so the per-frame write is allocation-free. Lets the camera E2E
  * assert the ACTUAL camera height/distance (the cap is applied at render time and
  * is not reflected in the user's `orbit.distance`), and lets the first-person E2E
  * assert the live view mode / blend / FP look yaw (design 19).
@@ -13,7 +13,7 @@ export const cameraProbe = {
   x: 0,
   y: 0,
   z: 0,
-  /** Effective follow distance after the portrait pull-back AND the maze cap. */
+  /** Effective follow distance after the portrait pull-back AND the place's camera limit. */
   distance: 0,
   /** Active view mode ('tp' | 'fp' | 'ov'). */
   mode: "tp" as ViewMode,

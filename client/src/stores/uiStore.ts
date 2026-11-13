@@ -3,7 +3,7 @@ import { create } from "zustand";
 /**
  * Which full-screen-ish panels are open (controls-ux Task 15). Discrete UI state —
  * never per-frame data. Esc closes them in priority order through `resolveEscape`
- * (hotkeys.ts); the NPC dialogue panel keeps its own flag in npcStore.
+ * (hotkeys.ts).
  */
 interface UiStore {
   /** The Esc / ☰ menu (MenuPanel). */
@@ -16,7 +16,7 @@ interface UiStore {
   setMenuOpen: (open: boolean) => void;
   toggleMenu: () => void;
   setRosterOpen: (open: boolean) => void;
-  /** A fresh world starts with nothing open (WorldScene mount). */
+  /** A fresh scene starts with nothing open (PlayShell mount). */
   resetPanels: () => void;
 }
 

@@ -12,7 +12,7 @@
 
 import { join } from "node:path";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { CLIENT_URL, DESKTOP, createRun, entryReady, launchBrowser, openPlayer, press, sleep, turnCameraTo, waitIdle, walkAndWait, walkTo } from "./lib/escape.mjs";
+import { CLIENT_URL, DESKTOP, createRun, entryReady, launchBrowser, openPlayer, press, sleep, turnCameraTo, waitIdle, walkAndWait, walkTo } from "./lib/common.mjs";
 import { MEAN_MIN, P5_MIN, decodePng, lumaStats, passes } from "./luma-check.mjs";
 
 const run = createRun("village-hall");

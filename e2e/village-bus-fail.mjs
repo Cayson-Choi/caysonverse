@@ -12,7 +12,7 @@
  *   node e2e/village-bus-fail.mjs [--only=hang,404,late] [--out=<폴더>]
  */
 import { mkdirSync } from "node:fs";
-import { DESKTOP, createRun, launchBrowser, openPlayer, sleep } from "./lib/escape.mjs";
+import { DESKTOP, createRun, launchBrowser, openPlayer, sleep } from "./lib/common.mjs";
 import { joinVillage } from "./lib/village.mjs";
 
 const args = process.argv.slice(2);

@@ -14,7 +14,7 @@
 import { join } from "node:path";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { chromium } from "playwright";
-import { CLIENT_URL, DESKTOP, REPO, createRun, entryReady, openPlayer, press, sleep, walkAndWait, walkTo, waitIdle } from "./lib/escape.mjs";
+import { CLIENT_URL, DESKTOP, REPO, createRun, entryReady, openPlayer, press, sleep, walkAndWait, walkTo, waitIdle } from "./lib/common.mjs";
 
 const run = createRun("camera-keep");
 const args = process.argv.slice(2);

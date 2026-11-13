@@ -15,7 +15,6 @@ import {
 } from "@caysonverse/shared/appearance";
 import { CHARACTER_MANIFEST, CHARACTER_SLOTS, type CharacterSlot } from "@caysonverse/shared/characterManifest";
 import { NICKNAME_MAX, NICKNAME_MIN } from "@caysonverse/shared/constants";
-import { DESTINATION_FONT_TEXT } from "./entryForm";
 
 export interface ChipOption {
   /** 외형 필드 값(부품 인덱스). */
@@ -108,9 +107,6 @@ export const BUILDER_COPY = {
   rotateRight: "오른쪽으로 돌리기",
   sheetOpen: "꾸미기 창 크게 보기",
   sheetClose: "꾸미기 창 작게 보기",
-  admin: "관리자이신가요?",
-  adminCode: "관리자 코드",
-  adminPlaceholder: "강사 전용",
   submit: "입장하기",
   submitting: "입장 중…",
 } as const;
@@ -119,8 +115,7 @@ export const BUILDER_COPY = {
 export const [RANDOM_ICON, RANDOM_TEXT] = BUILDER_COPY.random.split(" ") as [string, string];
 
 /**
- * 조립실이 Jua(제목용 글꼴)로 그리는 고정 글자 전부: 제목·묶음 이름·탭·프리셋 이름·버튼·안내, 그리고 입장하기 뒤의
- * "어디로 갈까요?" 단계(entryForm.ts DESTINATION_FONT_TEXT: 제목·체험 이름·버튼·선생님/학생 전환).
+ * 조립실이 Jua(제목용 글꼴)로 그리는 고정 글자 전부: 제목·묶음 이름·탭·프리셋 이름·버튼·안내.
  * scripts/subset-builder-font.mjs가 이 글자만 남긴 글꼴을 만들고, builderFont.test.ts가 빠진 글자가 없는지 본다.
  * 부품 카드 이름(61개)은 시안처럼 본문 굵은 글꼴이다: Jua 글리프가 커서(글자당 약 200 B) 넣으면 글꼴이 36 KB로
  * 25 KB 목표를 넘는다. 닉네임 입력·오류 문구·색 이름·작은 설명도 본문 글꼴이라 넣지 않는다.
@@ -132,14 +127,11 @@ export const BUILDER_FONT_TEXT: string = [
   BUILDER_COPY.dragHint,
   BUILDER_COPY.loading,
   BUILDER_COPY.nickname,
-  BUILDER_COPY.admin,
-  BUILDER_COPY.adminCode,
   BUILDER_COPY.submit,
   BUILDER_COPY.submitting,
   ...CHARACTER_SLOTS.map((slot) => CHARACTER_MANIFEST.slotLabels[slot]),
   ...CHARACTER_SLOTS.map((slot) => colorLabel(slot)),
   ...APPEARANCE_PRESETS.map((preset) => preset.label),
-  DESTINATION_FONT_TEXT,
 ].join(" ");
 
 /** 지금 탭 머리에 보이는 "부품 · 색"(예: "마법사 모자 · 보라"). 색이 없는 슬롯("없음")은 부품 이름만. */

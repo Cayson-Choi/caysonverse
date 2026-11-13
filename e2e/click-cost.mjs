@@ -10,7 +10,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { chromium } from "playwright";
-import { DESKTOP, createRun, openPlayer, sleep, walkAndWait } from "./lib/escape.mjs";
+import { DESKTOP, createRun, openPlayer, sleep, walkAndWait } from "./lib/common.mjs";
 import { joinVillage } from "./lib/village.mjs";
 
 const REPEAT = Number(process.env.CC_REPEAT || 8);

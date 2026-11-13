@@ -1,8 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { WORLD_BOUNDS } from "@caysonverse/shared/constants";
+import { VILLAGE_LAYOUT } from "@caysonverse/shared/village/villageLayout";
 import { PLAYER_RADIUS } from "@caysonverse/shared/worldMap";
-import { hubGeometry, hubZoneLabel } from "@caysonverse/shared/school/hubMap";
-import { LEGACY_ACTIVE_MAP, setActiveMap } from "./activeMap";
+import { HALL_ACTIVE_MAP, VILLAGE_ACTIVE_MAP, setActiveMap } from "./activeMap";
+
+const WORLD_BOUNDS = VILLAGE_LAYOUT.areas.village;
+const HALL_BOUNDS = VILLAGE_LAYOUT.areas.hall;
 import {
   DRAG_SIGN,
   CLICK_MAX_PX,
@@ -256,19 +258,19 @@ describe("clickMove — stuck detection (net displacement window)", () => {
   });
 });
 
-describe("clickMove — the active map (Task 15)", () => {
-  afterEach(() => setActiveMap(LEGACY_ACTIVE_MAP));
+describe("clickMove — the active map", () => {
+  afterEach(() => setActiveMap(VILLAGE_ACTIVE_MAP));
 
   it("setClickTarget clamps into the active map's bounds", () => {
-    setActiveMap({ geometry: hubGeometry(true), zoneLabel: hubZoneLabel });
-    setClickTarget(100, 0);
-    expect(getClickTarget()!.x).toBeCloseTo(48 - PLAYER_RADIUS, 6);
-    // The hub's other edges clamp too (HUB_BOUNDS x -14..48, z -12..12) — not the world's.
-    setClickTarget(-100, -100);
-    expect(getClickTarget()).toEqual({ x: -14 + PLAYER_RADIUS, z: -12 + PLAYER_RADIUS, y: 0 });
-    // Back in the legacy world the world's own bounds apply again.
-    setActiveMap(LEGACY_ACTIVE_MAP);
-    setClickTarget(100, 0);
+    setActiveMap(HALL_ACTIVE_MAP);
+    setClickTarget(HALL_BOUNDS.maxX + 100, 0);
+    expect(getClickTarget()!.x).toBeCloseTo(HALL_BOUNDS.maxX - PLAYER_RADIUS, 6);
+    // The hall's other edges clamp too — not the village's.
+    setClickTarget(-1e4, -1e4);
+    expect(getClickTarget()).toEqual({ x: HALL_BOUNDS.minX + PLAYER_RADIUS, z: HALL_BOUNDS.minZ + PLAYER_RADIUS, y: 0 });
+    // Back in the open village the village's own bounds apply again.
+    setActiveMap(VILLAGE_ACTIVE_MAP);
+    setClickTarget(1e4, 0);
     expect(getClickTarget()!.x).toBeCloseTo(WORLD_BOUNDS.maxX - PLAYER_RADIUS, 6);
   });
 });

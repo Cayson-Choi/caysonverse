@@ -24,7 +24,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import zlib from "node:zlib";
 import {
   CLIENT_URL, DESKTOP, PHONE, createRun, entryReady, launchBrowser, openPlayer, press, sleep, turnCameraTo, walkAndWait,
-} from "./lib/escape.mjs";
+} from "./lib/common.mjs";
 import { MEAN_MIN, NIGHT_MEAN_MIN, NIGHT_WALK_P50_MIN, P5_MIN, decodePng, nightStats, passes, passesNight } from "./luma-check.mjs";
 
 const run = createRun("village-daynight");

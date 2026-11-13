@@ -29,6 +29,10 @@ export interface DoorArrival {
  * Village → hall: the inside spawn, facing into the room (the layout's `interior.spawn`).
  * Hall → village: the layout's `memorial.exterior.arrival` — south of the door pad, outside the building,
  * facing south (+z), away from it. Both places belong to the layout, not to this file.
+ *
+ * These are the NOMINAL spots. The room puts the player there only when it is free; with someone already standing
+ * there it uses the nearest free spot beside it (shared/src/village/arrivalSpot.ts `spreadArrival`), so two visitors
+ * through the door in the same second never appear inside each other.
  */
 export function arrivalAfter(from: AreaId, layout: VillageLayout = VILLAGE_LAYOUT): DoorArrival {
   if (from === "village") {

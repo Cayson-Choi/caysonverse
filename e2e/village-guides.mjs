@@ -10,7 +10,7 @@
  * 남기는 것(폴더): guide-plaza.png, guide-plaza-answer.png, guide-hall.png, guide-hall-answer.png, assertions-village-guides.json.
  */
 import { mkdirSync } from "node:fs";
-import { CLIENT_URL, DESKTOP, createRun, entryReady, launchBrowser, openPlayer, press, sleep, turnCameraTo, walkAndWait, walkTo, waitIdle } from "./lib/escape.mjs";
+import { CLIENT_URL, DESKTOP, createRun, entryReady, launchBrowser, openPlayer, press, sleep, turnCameraTo, walkAndWait, walkTo, waitIdle } from "./lib/common.mjs";
 
 const run = createRun("village-guides");
 const args = process.argv.slice(2);

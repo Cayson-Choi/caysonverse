@@ -98,29 +98,3 @@ describe("loadIdentity", () => {
     expect(loadIdentity()).toEqual({ nickname: "", appearance: DEFAULT_APPEARANCE });
   });
 });
-
-describe("classCode (AI 학교 탈출, Task 13)", () => {
-  it("identity cache keeps a valid classCode and drops a bad one", () => {
-    // Saved in its canonical form (the class filter on the server is exact).
-    saveIdentity({ nickname: "케이슨", appearance: DEFAULT_APPEARANCE, classCode: " ab2cde " });
-    expect(JSON.parse(localStorage.getItem(KEY)!).classCode).toBe("AB2CDE");
-    expect(loadIdentity()).toEqual({ nickname: "케이슨", appearance: DEFAULT_APPEARANCE, classCode: "AB2CDE" });
-
-    // A bad stored code (look-alikes 0/O/1/I, wrong length, wrong type) loads as "" — no code.
-    for (const bad of ["0OIL11", "AB2CD", "AB2CDEF", 123456, null]) {
-      localStorage.setItem(KEY, JSON.stringify({ nickname: "케이슨", appearance: DEFAULT_APPEARANCE, classCode: bad }));
-      expect(loadIdentity().classCode, String(bad)).toBe("");
-    }
-
-    // A bad code is never written either.
-    saveIdentity({ nickname: "케이슨", appearance: DEFAULT_APPEARANCE, classCode: "0OIL11" });
-    expect(JSON.parse(localStorage.getItem(KEY)!)).toEqual({ nickname: "케이슨", appearance: DEFAULT_APPEARANCE });
-  });
-
-  it("a world identity has no classCode at all (the field is optional, ruling E14)", () => {
-    saveIdentity({ nickname: "케이슨", appearance: DEFAULT_APPEARANCE });
-    const loaded = loadIdentity();
-    expect("classCode" in loaded).toBe(false);
-    expect(loaded).toEqual({ nickname: "케이슨", appearance: DEFAULT_APPEARANCE });
-  });
-});

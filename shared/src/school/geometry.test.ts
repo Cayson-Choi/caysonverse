@@ -1,8 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { isBlocked } from "../collision";
 import type { AABB } from "../collision";
-import { MAZE_WALLS } from "../maze";
-import { LEGACY_GEOMETRY, OBSTACLES, WALLS, WORLD_BOUNDS } from "../worldMap";
 import { makeGeometry, wallsAround } from "./geometry";
 import type { Opening } from "./geometry";
 import { inside, overlaps } from "./reachTestUtil";
@@ -130,44 +128,25 @@ describe("makeGeometry", () => {
   const bounds = { minX: -1, maxX: 10, minZ: -2, maxZ: 8 };
 
   it("makeGeometry: cameraBoxes are the walls only", () => {
-    const g = makeGeometry("counsel", bounds, walls, props);
+    const g = makeGeometry("village", bounds, walls, props);
     expect(g.cameraBoxes).toEqual(walls);
     expect(g.cameraBoxes).not.toContainEqual(props[0]);
   });
 
   it("obstacles are the walls followed by the props", () => {
-    const g = makeGeometry("hub-open", bounds, walls, props);
+    const g = makeGeometry("village", bounds, walls, props);
     expect(g.obstacles).toEqual([...walls, ...props]);
   });
 
   it("carries the id and bounds through unchanged", () => {
-    const g = makeGeometry("hub-gated", bounds, walls, props);
-    expect(g.id).toBe("hub-gated");
+    const g = makeGeometry("house", bounds, walls, props);
+    expect(g.id).toBe("house");
     expect(g.bounds).toEqual(bounds);
   });
 
   it("with no props, obstacles and cameraBoxes hold the same boxes", () => {
-    const g = makeGeometry("counsel", bounds, walls, []);
+    const g = makeGeometry("village", bounds, walls, []);
     expect(g.obstacles).toEqual(g.cameraBoxes);
     expect(g.obstacles).toHaveLength(1);
-  });
-});
-
-describe("LEGACY_GEOMETRY (the existing world, bundled by name)", () => {
-  it("is the legacy geometry over the existing bounds and obstacle list (same objects, no copy)", () => {
-    expect(LEGACY_GEOMETRY.id).toBe("legacy");
-    expect(LEGACY_GEOMETRY.bounds).toBe(WORLD_BOUNDS);
-    expect(LEGACY_GEOMETRY.obstacles).toBe(OBSTACLES);
-  });
-
-  it("camera boxes are every room wall followed by every maze wall", () => {
-    expect(MAZE_WALLS.length).toBeGreaterThan(0);
-    expect(LEGACY_GEOMETRY.cameraBoxes).toHaveLength(WALLS.length + MAZE_WALLS.length);
-    expect(LEGACY_GEOMETRY.cameraBoxes.slice(0, WALLS.length)).toEqual(WALLS);
-    expect(LEGACY_GEOMETRY.cameraBoxes.slice(WALLS.length)).toEqual(MAZE_WALLS);
-  });
-
-  it("every camera box is also a collision obstacle", () => {
-    for (const box of LEGACY_GEOMETRY.cameraBoxes) expect(LEGACY_GEOMETRY.obstacles).toContainEqual(box);
   });
 });

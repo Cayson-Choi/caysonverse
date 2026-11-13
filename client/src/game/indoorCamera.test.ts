@@ -2,15 +2,17 @@ import { describe, expect, it } from "vitest";
 import { VILLAGE_LAYOUT } from "@caysonverse/shared/village/villageLayout";
 import { CAMERA, HEAD_HEIGHT } from "./constants";
 import {
+  CAP_ENGAGE_SEC,
   HALL_CAMERA_LIMIT,
+  cameraLimitAt,
+  indoorArmAt,
   indoorCameraClamp,
   limitedDistance,
-  limitedY,
   limitsDiffer,
   overviewAllowed,
+  stepCapEngage,
   type CameraLimit,
 } from "./indoorCamera";
-import { MAZE_CAMERA_LIMIT, MAZE_CAM_MAX_DISTANCE, MAZE_CAM_MAX_Y, cappedCameraY, cappedFollowDistance } from "./mazeCamera";
 
 const EPS = 1e-9;
 
@@ -116,58 +118,9 @@ describe("indoorCameraClamp — the hall never lets the camera reach the ceiling
   });
 });
 
-describe("indoorCameraClamp — the maze gives the same results as before (golden values)", () => {
-  it("is the maze's 6 m / 3.5 m cap, and the maze keeps its overview", () => {
-    expect({ ...MAZE_CAMERA_LIMIT }).toEqual({ maxY: MAZE_CAM_MAX_Y, maxDistance: MAZE_CAM_MAX_DISTANCE, overview: true });
-    expect(MAZE_CAM_MAX_Y).toBe(3.5);
-    expect(MAZE_CAM_MAX_DISTANCE).toBe(6);
-  });
-
-  // Values computed with the pre-generalisation formulas of CameraRig (cappedFollowDistance, then cappedCameraY).
-  const golden: Array<{ d: number; pitch: number; yaw: number; fx: number; fz: number; e: number; x: number; y: number; z: number }> = [
-    { d: 18, pitch: 1.2, yaw: 0.7, fx: -48, fz: 3, e: 1, x: -46.59937635275037, y: 3.5, z: 4.662878985080608 },
-    { d: 18, pitch: 0.35, yaw: 0.7, fx: -48, fz: 3, e: 1, x: -44.3690369008516, y: 3.457386844732708, z: 7.310831282217317 },
-    { d: 10, pitch: 0.35, yaw: -1.1, fx: -40, fz: -5, e: 0.5, x: -46.69740700424369, y: 3.8215912298218053, z: -1.591233447035251 },
-    { d: 28.8, pitch: 1.2, yaw: 2.0, fx: -40, fz: -5, e: 1, x: -38.02305415758417, y: 3.5, z: -5.904764199342763 },
-    { d: 6, pitch: 0.35, yaw: 0, fx: 0, fz: 0, e: 1, x: 0, y: 3.457386844732708, z: 5.636236277084273 },
-  ];
-  for (const g of golden) {
-    it(`distance ${g.d}, pitch ${g.pitch}, engage ${g.e}`, () => {
-      const { desired, target } = wanted(g.d, g.pitch, g.yaw, g.fx, g.fz);
-      const c = indoorCameraClamp(desired, target, MAZE_CAMERA_LIMIT, g.e);
-      expect(c.x).toBeCloseTo(g.x, 9);
-      expect(c.y).toBeCloseTo(g.y, 9);
-      expect(c.z).toBeCloseTo(g.z, 9);
-    });
-  }
-
-  it("agrees with the maze's own scalar caps over a sweep of pitch, zoom and engagement", () => {
-    for (let pitch = -0.1; pitch <= 1.2 + 1e-9; pitch += 0.1) {
-      for (let zoom = 2.5; zoom <= 28.8; zoom += 1.3) {
-        for (const e of [0, 0.25, 0.5, 1]) {
-          const { desired, target } = wanted(zoom, pitch, 0.6, -45, 2);
-          const c = indoorCameraClamp(desired, target, MAZE_CAMERA_LIMIT, e);
-          const d = cappedFollowDistance(zoom, e);
-          expect(c.x).toBeCloseTo(-45 + d * Math.cos(pitch) * Math.sin(0.6), 9);
-          expect(c.z).toBeCloseTo(2 + d * Math.cos(pitch) * Math.cos(0.6), 9);
-          expect(c.y).toBeCloseTo(cappedCameraY(HEAD_HEIGHT + d * Math.sin(pitch), e), 9);
-        }
-      }
-    }
-  });
-
-  it("the scalar caps are the same functions the clamp is built from", () => {
-    expect(limitedDistance(18, MAZE_CAMERA_LIMIT, 1)).toBe(cappedFollowDistance(18, 1));
-    expect(limitedDistance(18, MAZE_CAMERA_LIMIT, 0.5)).toBe(cappedFollowDistance(18, 0.5));
-    expect(limitedY(10, MAZE_CAMERA_LIMIT, 1)).toBe(cappedCameraY(10, 1));
-    expect(limitedY(10, MAZE_CAMERA_LIMIT, 0.5)).toBe(cappedCameraY(10, 0.5));
-  });
-});
-
 describe("overviewAllowed — the top-down map", () => {
-  it("is refused in the hall, allowed in the maze and where there is no limit", () => {
+  it("is refused in the hall and allowed where there is no limit", () => {
     expect(overviewAllowed(HALL_CAMERA_LIMIT)).toBe(false);
-    expect(overviewAllowed(MAZE_CAMERA_LIMIT)).toBe(true);
     expect(overviewAllowed(undefined)).toBe(true);
   });
 });
@@ -182,5 +135,35 @@ describe("limitsDiffer — crossing a door into or out of a limited place", () =
   it("is false for two places with the same (or no) limit, so a gate opening is not a snap", () => {
     expect(limitsDiffer(undefined, undefined)).toBe(false);
     expect(limitsDiffer(HALL_CAMERA_LIMIT, HALL_CAMERA_LIMIT)).toBe(false);
+  });
+});
+
+describe("stepCapEngage — the engagement lerp", () => {
+  it("moves at a constant rate over CAP_ENGAGE_SEC, in both directions", () => {
+    const half = stepCapEngage(0, true, CAP_ENGAGE_SEC / 2);
+    expect(half).toBeCloseTo(0.5, 9);
+    expect(stepCapEngage(0, true, CAP_ENGAGE_SEC)).toBe(1); // full step
+    expect(stepCapEngage(1, false, CAP_ENGAGE_SEC)).toBe(0);
+    expect(stepCapEngage(0.5, false, CAP_ENGAGE_SEC / 2)).toBeCloseTo(0, 9);
+  });
+
+  it("a big delta (tab refocus) cannot overshoot, and a settled value stays put", () => {
+    expect(stepCapEngage(0.9, true, 1)).toBe(1);
+    expect(stepCapEngage(0.1, false, 1)).toBe(0);
+    expect(stepCapEngage(1, true, 0.1)).toBe(1);
+    expect(stepCapEngage(0, false, 0.1)).toBe(0);
+  });
+});
+
+describe("cameraLimitAt / indoorArmAt", () => {
+  it("the limit is the map's own: none in the open village, the hall's ceiling limit inside", () => {
+    expect(cameraLimitAt({})).toBeUndefined();
+    expect(cameraLimitAt({ cameraLimit: HALL_CAMERA_LIMIT })).toBe(HALL_CAMERA_LIMIT);
+  });
+
+  it("the arm takes its indoor shape only under a map's own limit", () => {
+    expect(indoorArmAt({}, undefined)).toBe(false);
+    expect(indoorArmAt({ cameraLimit: HALL_CAMERA_LIMIT }, HALL_CAMERA_LIMIT)).toBe(true);
+    expect(indoorArmAt({}, HALL_CAMERA_LIMIT)).toBe(false);
   });
 });

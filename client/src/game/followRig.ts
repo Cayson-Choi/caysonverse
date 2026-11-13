@@ -10,7 +10,6 @@
  *   - the portrait pull-back (aspectFraming.ts): a narrow screen draws the same zoom a little farther — it depends on
  *     the screen's shape only, never on where the player is or what they do;
  *   - the place's camera limit (indoorCamera.ts): under the memorial hall's ceiling the camera is held below the roof;
- *     in the legacy maze the anti-peek cap also shortens it;
  *   - the spring arm (cameraCollision.ts): a wall between the head and the camera pulls it in at once, and lets it back
  *     out (SPRING.returnRate) as soon as the way is clear;
  *   - the floor stop (`aboveGroundY`): never under the ground.
@@ -24,8 +23,17 @@
 import { HEAD_HEIGHT } from "./constants";
 import { aboveGroundY, smoothToward } from "./cameraControls";
 import { aspectDistanceScale } from "./aspectFraming";
-import { MAZE_CAMERA_LIMIT, cameraLimitAt, indoorArmAt, stepMazeCapEngage } from "./mazeCamera";
-import { indoorCameraClamp, limitedDistance, limitsDiffer, type CameraLimit, type Vec3 } from "./indoorCamera";
+import {
+  HALL_CAMERA_LIMIT,
+  cameraLimitAt,
+  indoorArmAt,
+  indoorCameraClamp,
+  limitedDistance,
+  limitsDiffer,
+  stepCapEngage,
+  type CameraLimit,
+  type Vec3,
+} from "./indoorCamera";
 import { ARM_FREE, armHeightScaleAt, armLookLiftAt, indoorArmShape, springArmDistance, stepArmLimit } from "./cameraCollision";
 import { getActiveMap } from "./activeMap";
 import type { Orbit } from "./types";
@@ -36,9 +44,9 @@ export interface FollowRig {
   renderDist: number;
   /** The spring arm's eased limit (m): snaps in at a wall, eases back out, ARM_FREE in the open. */
   armLimit: number;
-  /** Camera-limit engagement, 0 (off) .. 1 (fully limited): eased for the maze, at once for a building. */
+  /** Camera-limit engagement, 0 (off) .. 1 (fully limited): eased in the open, at once for a building. */
   capEngage: number;
-  /** The limit `capEngage` blends — kept after the player leaves the maze, so the cap eases out with its own numbers. */
+  /** The limit `capEngage` blends — kept after the player leaves a building, so the cap eases out with its own numbers. */
   limit: CameraLimit;
   /** The map's camera limit as of the last frame: a different one is a door into or out of a building. */
   lastAreaLimit: CameraLimit | undefined;
@@ -62,7 +70,7 @@ export function createFollowRig(orbit: Readonly<Orbit>): FollowRig {
     renderDist: orbit.distance,
     armLimit: ARM_FREE,
     capEngage: areaLimit ? 1 : 0,
-    limit: areaLimit ?? MAZE_CAMERA_LIMIT,
+    limit: areaLimit ?? HALL_CAMERA_LIMIT, // at engage 0 the limit is not applied: a placeholder until a building sets one
     lastAreaLimit: areaLimit,
   };
 }
@@ -113,12 +121,12 @@ export function stepFollowRig(
   // The zoom glide: a wheel notch or a pinch eases in, and the distance then holds the player's value exactly.
   rig.renderDist = smoothToward(rig.renderDist, orbit.distance, dt);
 
-  // The place's camera limit: a building's ceiling (the active map's), or the legacy maze's anti-peek cap while the
-  // player is in it. Eased toward 1 inside, then the spot's height (and the maze's distance) are clamped.
+  // The place's camera limit: a building's ceiling (the active map's). Eased toward 1 inside, then the spot's height
+  // (and distance, where the limit names one) are clamped.
   const map = getActiveMap();
-  const limitNow = cameraLimitAt(map, x, z);
+  const limitNow = cameraLimitAt(map);
   if (limitNow) rig.limit = limitNow;
-  const engage = stepMazeCapEngage(rig.capEngage, limitNow !== undefined, dt);
+  const engage = stepCapEngage(rig.capEngage, limitNow !== undefined, dt);
   rig.capEngage = engage;
   const wantedDistance = rig.renderDist * aspectDistanceScale(aspect);
   out.distance = limitedDistance(wantedDistance, rig.limit, engage);

@@ -4,7 +4,7 @@
 
 ## character.glb — Cayson 토이 피규어
 
-플레이어와 AI 조교가 모두 쓰는 캐릭터 모델 하나입니다. 부품(머리카락·모자·옷·신발·아이템·얼굴)은 같은 파일 안에 들어 있고, 입장 화면의 "캐릭터 조립실"에서 고른 부품만 남겨 그립니다.
+플레이어가 쓰는 캐릭터 모델 하나입니다. 부품(머리카락·모자·옷·신발·아이템·얼굴)은 같은 파일 안에 들어 있고, 입장 화면의 "캐릭터 조립실"에서 고른 부품만 남겨 그립니다.
 
 - 메시·텍스처: 이 저장소의 오리지널 작업물입니다.
 - 뼈대(`Rig_Medium`)와 기본 동작 클립 7개(`Idle`, `Walking_A`, `Running_A`, `Sit_Chair_Down`, `Sit_Chair_Idle`, `Sit_Chair_StandUp`, `Jump_Full_Short`)는 **KayKit Adventurers Character Pack (v1.0)** by **Kay Lousberg**(KayKit)에서 가져왔습니다.
@@ -34,7 +34,3 @@
 - **Jua** — Copyright 2018 The Jua Project Authors (google/fonts). License: **SIL Open Font License 1.1** — 전문은 `../fonts/OFL-Jua.txt`.
 - 조립실 고정 문구에 쓰인 글자만 남긴 부분집합(WOFF)입니다. `scripts/subset-builder-font.mjs`가 원본 `Jua-Regular.ttf`에서 만듭니다. 이름은 OFL의 예약 글꼴 이름이 없어 그대로 둡니다.
 - 외부 글꼴 서버(Google Fonts 등)를 쓰지 않고 이 저장소에서 직접 보냅니다.
-
-## 가구 — `furniture/`
-
-가구 모델의 출처와 라이선스는 `furniture/LICENSE.md`에 따로 적혀 있습니다.

@@ -4,7 +4,7 @@ import type { InteractTarget } from "./interact";
 import type { Pose } from "./types";
 
 const pose: Pose = { x: 3, z: -4, yaw: 0 };
-const target: InteractTarget = { kind: "teamDesk", id: "teamDesk", dist: 1, icon: "👥", label: "팀 만들기" };
+const target: InteractTarget = { kind: "object", id: "bench_note", dist: 1, icon: "💬", label: "말 걸기" };
 
 afterEach(() => {
   setTargetSource(null);
@@ -42,7 +42,7 @@ describe("interactTargets (the scene's target plug)", () => {
     setTargetHandler((t, phase) => calls.push(`${t.id}:${phase}`));
     fireTarget(target, "press");
     fireTarget(target, "release");
-    expect(calls).toEqual(["teamDesk:press", "teamDesk:release"]);
+    expect(calls).toEqual(["bench_note:press", "bench_note:release"]);
     setTargetHandler(null);
     fireTarget(target, "press");
     expect(calls).toHaveLength(2);

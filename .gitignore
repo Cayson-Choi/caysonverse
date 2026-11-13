@@ -11,12 +11,7 @@ dist/
 Thumbs.db
 .superpowers/
 
-# 선생님 키 파일 (sha256만 들어 있어도 커밋하지 않는다). e2e 픽스처만 예외.
-server/teacher-keys.json
-teacher-keys*.json
-!e2e/fixtures/teacher-keys.e2e.json
-
-# 갤러리 원본 사진/그림 (웹용 변환본만 client/public/gallery에 커밋)
+# 사진/그림 원본(저장소에 커밋하지 않는다)
 mypictures/
 art/
 

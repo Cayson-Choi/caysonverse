@@ -65,7 +65,6 @@ import { createSelfFade, endSelfFade, registerSelfBody, selfBody, stepSelfFade }
 import { createNametag } from "./nametag";
 import { registerLabel } from "./labelRegistry";
 import { bubbleRestHeight, nametagRestHeight } from "./nametagLayout";
-import { isLocalTeacher } from "./ownNametag";
 import { useSpeechBubble } from "./useSpeechBubble";
 import { useEmoji } from "./useEmoji";
 import { stepYaw } from "./yaw";
@@ -77,7 +76,6 @@ import type { Orbit, Pose, SeatState } from "./types";
 import { getRoom, sendJump, sendMove, sendStand } from "../net/connection";
 import { useTransitState } from "../net/transitSync";
 import { isInputSuspended } from "../net/resilience";
-import { useAppStore } from "../stores/appStore";
 import { useSettingsStore } from "../stores/settingsStore";
 
 /** Fallback seconds for a sit/stand clip if its duration can't be read yet. */
@@ -198,15 +196,12 @@ export function LocalPlayer({
   // Own name tag — on by default; the player can still turn it off in the menu. Same create /
   // register / release pair as a remote avatar's (RemotePlayer), so the NametagSystem
   // sizes, fades and stacks it with the rest. Pinned: your own tag is never dropped for
-  // being outside the nearest 15. The teacher badge follows the synced role (the admin
-  // flag only stands in until the room state can be read).
+  // being outside the nearest 15.
   const showOwnNametag = useSettingsStore((s) => s.settings.showOwnNametag);
-  const isAdmin = useAppStore((s) => s.isAdmin);
   useEffect(() => {
     const group = groupRef.current;
     if (!showOwnNametag || !group) return;
-    const role = getRoom()?.state?.players?.get?.(sessionId)?.role;
-    const tag = createNametag(nickname, isLocalTeacher(role, isAdmin) ? "teacher" : "none", tagHeight);
+    const tag = createNametag(nickname, "none", tagHeight);
     tag.setOpacity(0); // fades in under the NametagSystem instead of flashing at full opacity
     group.add(tag.sprite);
     const unregister = registerLabel({
@@ -223,7 +218,7 @@ export function LocalPlayer({
       tag.dispose();
       bubbleAnchor.y = bubbleRest; // no tag any more: the bubble drops back to its rest height
     };
-  }, [showOwnNametag, sessionId, nickname, isAdmin, bubbleAnchor, tagHeight, bubbleRest]);
+  }, [showOwnNametag, sessionId, nickname, bubbleAnchor, tagHeight, bubbleRest]);
   // Own emoji reaction: same broadcast-driven, self-included discipline; it starts above the own bubble.
   useEmoji(sessionId, groupRef, avatar.topY, bubbleTop);
   // The own body, for the destination ring it may hide (ClickMarker): while it does, the body fades (stepSelfFade below).

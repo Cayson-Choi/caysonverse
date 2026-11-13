@@ -18,9 +18,10 @@ import {
   exitOverview,
   fpBodyYaw,
 } from "./viewState";
-import { HALL_ACTIVE_MAP, LEGACY_ACTIVE_MAP, VILLAGE_ACTIVE_MAP, setActiveMap } from "./activeMap";
+import { HALL_ACTIVE_MAP, VILLAGE_ACTIVE_MAP, setActiveMap } from "./activeMap";
 import { recenterYaw } from "./cameraControls";
-import { SEAT_YAW } from "@caysonverse/shared/worldMap";
+/** A seated player's yaw for the seat-camera tests (any fixed turn will do). */
+const SEAT_YAW = Math.PI / 2;
 import { normalizeAngle } from "./yaw";
 import { worldDirection } from "./input";
 import { useViewStore } from "../stores/viewStore";
@@ -382,7 +383,7 @@ describe("viewState — sitting and standing leave the camera alone (owner 2026-
 });
 
 describe("viewState — no overview inside a building (케이슨 마을 Task 5)", () => {
-  afterEach(() => setActiveMap(LEGACY_ACTIVE_MAP));
+  afterEach(() => setActiveMap(VILLAGE_ACTIVE_MAP));
 
   it("the toggle (M key and the map button) is refused in the memorial hall: nothing changes", () => {
     setActiveMap(HALL_ACTIVE_MAP);
@@ -405,8 +406,8 @@ describe("viewState — no overview inside a building (케이슨 마을 Task 5)"
     expect(useViewStore.getState().isOv).toBe(false);
   });
 
-  it("the village (no camera limit), the legacy world and the maze keep their overview", () => {
-    for (const map of [VILLAGE_ACTIVE_MAP, LEGACY_ACTIVE_MAP]) {
+  it("the open village (no camera limit) keeps its overview", () => {
+    for (const map of [VILLAGE_ACTIVE_MAP]) {
       setActiveMap(map);
       toggleOverview();
       expect(viewState.mode).toBe("ov");

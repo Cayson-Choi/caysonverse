@@ -6,7 +6,6 @@
   "description": "100봇 부하 테스트 스크립트 (@colyseus/loadtest 기반)",
   "scripts": {
     "loadtest": "node run.mjs",
-    "bot": "tsx bot.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

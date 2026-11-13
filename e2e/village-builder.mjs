@@ -12,7 +12,7 @@
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { CLIENT_URL, DESKTOP, REPO, createRun, entryReady, launchBrowser, openPlayer, sleep } from "./lib/escape.mjs";
+import { CLIENT_URL, DESKTOP, REPO, createRun, entryReady, launchBrowser, openPlayer, sleep } from "./lib/common.mjs";
 
 /** A shared-package source file as the dev server serves it (the app imports these through the workspace alias). */
 const fsUrl = (rel) => "/@fs/" + pathToFileURL(join(REPO, rel)).pathname.replace(/^\//, "");

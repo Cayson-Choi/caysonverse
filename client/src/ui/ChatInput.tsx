@@ -9,7 +9,6 @@ import { sendChat, sendTyping } from "../net/connection";
 import { isTouchDevice } from "../device";
 import { useChatStore } from "../stores/chatStore";
 import { useCoachStore } from "../stores/coachStore";
-import { useNpcStore } from "../stores/npcStore";
 import {
   KBD_DOWN_MAX_PX,
   KBD_FOLD_SETTLE_MS,
@@ -271,7 +270,6 @@ export function ChatInput() {
       if (
         action.type === "typeToChat" &&
         !typeToChatAllowed({
-          npcOpen: useNpcStore.getState().activeNpc !== null,
           otherFieldFocused: isTextEntry(document.activeElement as FocusLike | null),
         })
       )
