@@ -1,8 +1,7 @@
 import { BufferGeometry, Float32BufferAttribute, Uint16BufferAttribute, Uint32BufferAttribute } from "three";
-import { linearHex } from "./flowerPlacement";
+import { TUFT, linearHex } from "./flowerPlacement";
 import { mulberry32 } from "./vegRandom";
 import type { Vec3 } from "./vegLod";
-import type { Branch } from "./cherryTree";
 
 /**
  * The runtime vegetation's meshes (veg3d), built in code: no texture cards standing in for many plants. Every leaf,
@@ -109,6 +108,9 @@ const LEAF = {
 /**
  * A leaf folded along its midrib (a shallow V: the two halves rise from the rib), drooping toward its tip. 8 triangles
  * (`detail` 1) or 2 (`detail` 0: a folded diamond). Ovate unless `strap` (a long narrow strap: tulip, muscari).
+ * `detail` 2 (16 triangles): a real leaf's outline for the nearest look (a young tree's leaves 0.5 m from the eye,
+ * review r1 2026-11-13: the 8-triangle blade read as a flat diamond plate there): a rounded base, widest a third of the
+ * way up, a drawn-out tip, and its edges curling down a little.
  */
 export function leaf(
   b: GeoBuilder,
@@ -117,7 +119,7 @@ export function leaf(
   up: Vec3,
   length: number,
   width: number,
-  opts: { fold?: number; droop?: number; detail?: 0 | 1; strap?: boolean; colour?: { rib: Rgba; edge: Rgba; base: Rgba } } = {},
+  opts: { fold?: number; droop?: number; detail?: 0 | 1 | 2; strap?: boolean; colour?: { rib: Rgba; edge: Rgba; base: Rgba } } = {},
 ): void {
   const fold = opts.fold ?? 0.35;
   const droop = opts.droop ?? 0.25;
@@ -142,6 +144,42 @@ export function leaf(
     const v3 = b.v(at(0.45, 1), nr, c.edge);
     b.tri(v0, v1, v2);
     b.tri(v0, v2, v3);
+    return;
+  }
+  if (opts.detail === 2 && !opts.strap) {
+    // the ovate outline: half width at t (0..1), widest near 0.35, round at the base, drawn out to the tip
+    const hw = width / 2;
+    const half = (t: number) => hw * 1.08 * Math.sin(Math.PI * Math.min(1, t ** 0.78)) ** 0.75;
+    const edge = (t: number, s: -1 | 1): Vec3 => {
+      const w = half(t);
+      const drop = -droop * length * t * t;
+      // the halves rise from the rib (the fold) and their outer edge curls back down a little
+      const lift = fold * w * 0.8 - 0.18 * w;
+      return add(add(add(base, mul(d, length * t)), mul(side, w * s)), mul(n, drop + lift));
+    };
+    const rib = (t: number): Vec3 => add(add(base, mul(d, length * t)), mul(n, -droop * length * t * t));
+    const rows = [0.12, 0.34, 0.58, 0.8];
+    const m0 = b.v(base, n, c.base);
+    const L: number[] = [];
+    const M: number[] = [];
+    const R: number[] = [];
+    rows.forEach((t, i) => {
+      const k = i / (rows.length - 1);
+      L.push(b.v(edge(t, -1), nl, mix(mix(c.base, c.edge, 0.6), c.edge, k)));
+      M.push(b.v(rib(t), n, mix(mix(c.base, c.rib, 0.7), c.rib, k)));
+      R.push(b.v(edge(t, 1), nr, mix(mix(c.base, c.edge, 0.6), c.edge, k)));
+    });
+    const tip = b.v(rib(1), n, c.edge);
+    b.tri(m0, L[0]!, M[0]!);
+    b.tri(m0, M[0]!, R[0]!);
+    for (let i = 0; i + 1 < rows.length; i++) {
+      b.tri(L[i]!, L[i + 1]!, M[i + 1]!);
+      b.tri(L[i]!, M[i + 1]!, M[i]!);
+      b.tri(M[i]!, M[i + 1]!, R[i + 1]!);
+      b.tri(M[i]!, R[i + 1]!, R[i]!);
+    }
+    b.tri(L[rows.length - 1]!, tip, M[rows.length - 1]!);
+    b.tri(M[rows.length - 1]!, tip, R[rows.length - 1]!);
     return;
   }
   const m0 = b.v(base, n, c.base);
@@ -491,50 +529,262 @@ export function tulipPlant(simple: boolean, seed = 4): BufferGeometry {
   return b.build();
 }
 
-/** Every species' meshes, in `SPECIES` order. */
+/**
+ * A tuft of grass (or a clump of reeds by the water): blades rising from one root, spreading and arching out, each a
+ * narrow blade folded along its middle (a shallow V, so it has body seen edge-on), tapering to a point. Seen from any
+ * side or above it is a tuft, not a card or a ball. `simple`: fewer, plainer blades (mid distance).
+ */
+export function grassTuft(simple: boolean, kind: "grass" | "reed" = "grass", seed = 31): BufferGeometry {
+  const b = new GeoBuilder();
+  const { h: H, r: R } = TUFT[kind];
+  b.windHeight = H;
+  const rand = mulberry32(seed + (kind === "reed" ? 7 : 0));
+  const blades = simple ? (kind === "reed" ? 9 : 10) : kind === "reed" ? 18 : 22;
+  const rings = simple ? 2 : 4;
+  const colours =
+    kind === "reed"
+      ? { base: rgba("#4A5A26", 1), mid: rgba("#73843A", 1), tip: rgba("#A5A55A", 1) }
+      : { base: rgba("#2E5418", 1), mid: rgba("#5A8A2C", 1), tip: rgba("#9DBA55", 1) };
+  for (let i = 0; i < blades; i++) {
+    const a = (i / blades) * Math.PI * 2 + rand() * 0.9;
+    const out: Vec3 = [Math.cos(a), 0, Math.sin(a)];
+    // inner blades stand up, outer ones arch out further
+    const spread = 0.25 + 0.75 * rand();
+    const h = H * (0.55 + 0.45 * rand()) * (1 - 0.25 * spread);
+    const reach = R * spread * (0.8 + 0.4 * rand());
+    const root: Vec3 = [out[0] * R * 0.12 * rand(), 0, out[2] * R * 0.12 * rand()];
+    const w = (kind === "reed" ? 0.016 : 0.011) * (0.8 + 0.4 * rand()) * (simple ? 1.5 : 1);
+    const twist = (rand() - 0.5) * 0.8;
+    const at = (t: number): Vec3 => add(root, [out[0] * reach * t * t, h * (t - 0.18 * spread * t * t * t), out[2] * reach * t * t]);
+    const ring: number[][] = [];
+    for (let k = 0; k <= rings; k++) {
+      const t = k / (rings + 1);
+      const p = at(t);
+      const d = norm(sub(at(t + 0.02), p));
+      const across0 = norm(cross([0, 1, 0], out));
+      const across = norm(add(mul(across0, Math.cos(twist * t)), mul(cross(d, across0), Math.sin(twist * t))));
+      const n = norm(cross(across, d));
+      const hw = (w / 2) * (1 - 0.85 * t);
+      const fold = hw * 0.55;
+      const col = t < 0.4 ? mix(colours.base, colours.mid, t / 0.4) : mix(colours.mid, colours.tip, (t - 0.4) / 0.6);
+      const up = norm(add(n, [0, 0.8, 0]));
+      ring.push([
+        b.v(add(add(p, mul(across, -hw)), mul(n, fold)), up, col),
+        b.v(p, up, col),
+        b.v(add(add(p, mul(across, hw)), mul(n, fold)), up, col),
+      ]);
+    }
+    const tipP = at(1);
+    const tip = b.v(tipP, [0, 1, 0], colours.tip);
+    for (let k = 0; k < rings; k++) {
+      const [l0, c0, r0] = ring[k]!;
+      const [l1, c1, r1] = ring[k + 1]!;
+      b.tri(l0!, c0!, c1!);
+      b.tri(l0!, c1!, l1!);
+      b.tri(c0!, r0!, r1!);
+      b.tri(c0!, r1!, c1!);
+    }
+    const [l, c, r] = ring[rings]!;
+    b.tri(l!, c!, tip);
+    b.tri(c!, r!, tip);
+  }
+  return b.build();
+}
+
+/** Every species' meshes, in `SPECIES` order (the four flowers, then the meadow's grass tufts and the reeds). */
 export function speciesMeshes(): SpeciesMeshes[] {
   return [
     { lod0: petuniaPlant(false), lod1: petuniaPlant(true) },
     { lod0: pansyPlant(false), lod1: pansyPlant(true) },
     { lod0: muscariPlant(false), lod1: muscariPlant(true) },
     { lod0: tulipPlant(false), lod1: tulipPlant(true) },
+    { lod0: grassTuft(false, "grass"), lod1: grassTuft(true, "grass") },
+    { lod0: grassTuft(false, "reed"), lod1: grassTuft(true, "reed") },
   ];
 }
 
 // ─────────────────────────────────────────────── green canopy ───────────────────────────────────────────────
 
-/** A folded, volumetric leaf cluster for broadleaf canopies. The core keeps the crown solid while the leaves provide
- * the close-up silhouette and visible depth that the old green foliage cards lacked. */
-export function greenCluster(simple = false, seed = 17): BufferGeometry {
+type LeafColour = { rib: Rgba; edge: Rgba; base: Rgba };
+/** Broadleaf greens (linear, tinted per spray: alpha 1). Three shades so neighbouring leaves differ. */
+const BROADLEAF: LeafColour[] = [
+  { rib: rgba("#73A043", 1), edge: rgba("#447C26", 1), base: rgba("#27501A", 1) },
+  { rib: rgba("#658F39", 1), edge: rgba("#386A21", 1), base: rgba("#204415", 1) },
+  { rib: rgba("#82AC4C", 1), edge: rgba("#518A30", 1), base: rgba("#305A1E", 1) },
+];
+/** Willow leaves: narrow, a lighter yellow-green. */
+const WILLOW: LeafColour[] = [
+  { rib: rgba("#A9C567", 1), edge: rgba("#82A84B", 1), base: rgba("#5A7E32", 1) },
+  { rib: rgba("#98BA5B", 1), edge: rgba("#739C42", 1), base: rgba("#4D722B", 1) },
+];
+
+/** Number of leaves in a broadleaf spray per level (0 full, 1 mid, 2 far). */
+export const SPRAY_LEAVES = [23, 6, 3] as const;
+
+/**
+ * A broadleaf spray (instanced; its origin is the point of the twig it grows from): a short shoot along local +y
+ * (0.31 m at scale 1) with twelve alternate leaves, two short side shoots of five and a terminal leaf (6.5-9.5 cm at
+ * scale 1, a street tree's 8-11 cm), the blades facing local +z, folded along their midribs, drooping toward the tip
+ * (level 0; `fine`: each leaf with a real leaf's outline, 16 triangles instead of 8, for the PC's near look). Level 1:
+ * six folded diamonds round the same shoot, no stem (12 triangles); level 2: three larger ones (6 triangles). Wind grows
+ * from 0 at the origin to the leaf tips.
+ */
+export function leafSpray(level: 0 | 1 | 2, seed = 21, fine = false): BufferGeometry {
   const b = new GeoBuilder();
-  b.windHeight = 0.55;
-  const rand = mulberry32(seed);
-  const dark = rgba("#244D1A");
-  const mid = rgba("#477D29");
-  const light = rgba("#82A94C");
-  dome(b, [0, 0.12, 0], simple ? 0.22 : 0.25, simple ? 0.18 : 0.25, simple ? 6 : 8, dark, mid);
-  const leaves = simple ? 7 : 14;
-  for (let i = 0; i < leaves; i++) {
-    const a = (i / leaves) * Math.PI * 2 + rand() * 0.7;
-    const el = 0.15 + rand() * 0.85;
-    const dir: Vec3 = [Math.cos(a) * Math.cos(el), Math.sin(el), Math.sin(a) * Math.cos(el)];
-    const base: Vec3 = [Math.cos(a) * 0.08, 0.08 + rand() * 0.12, Math.sin(a) * 0.08];
-    leaf(b, base, dir, [0, 1, 0], simple ? 0.18 : 0.12 + rand() * 0.055, simple ? 0.08 : 0.052 + rand() * 0.018, {
-      detail: simple ? 0 : 1,
-      fold: 0.42,
-      droop: 0.22,
-      colour: { rib: light, edge: mid, base: dark },
+  b.windHeight = 0.42;
+  const rand = mulberry32(seed + level * 101);
+  const stem = rgba("#5D6B2E", 0, 1);
+  const shade = () => BROADLEAF[Math.floor(rand() * BROADLEAF.length)]!;
+  const stemAt = (s: number): Vec3 => [0, s, 0.08 * s * s];
+  if (level === 0) {
+    // a leafy shoot as a real one is: leaves 7-10 cm (at the street trees' scale) alternating up the shoot and on two
+    // short side shoots, each turned its own way round the stem (not one flat fan of big leaves)
+    tube(b, [stemAt(0), stemAt(0.1), stemAt(0.21), stemAt(0.31)], [0.0045, 0.0036, 0.0028, 0.002], 3, () => stem, (t) => t * 0.5);
+    const shoot = (from: Vec3, d: Vec3, length: number, n: number, start: number) => {
+      for (let i = 0; i < n; i++) {
+        const s0 = start + (i / n) * (length - start);
+        const at = add(from, mul(d, s0));
+        const side = i % 2 ? 1 : -1;
+        const twist = (rand() - 0.5) * 0.9;
+        const th = ((28 + rand() * 26) * Math.PI) / 180;
+        const out = norm([side * Math.cos(th) * Math.cos(twist), Math.sin(th), Math.sin(twist) * 0.8 + (rand() - 0.4) * 0.3]);
+        const dir = norm(add(out, mul(d, 0.35)));
+        const l = 0.065 + 0.02 * Math.sin((i / Math.max(1, n - 1)) * Math.PI) + rand() * 0.012;
+        const up = norm([-side * (0.15 + rand() * 0.25), 0.12, 1]);
+        leaf(b, add(at, [side * 0.004, 0, 0]), dir, up, l, l * 0.5, { fold: 0.3, droop: 0.22, detail: fine ? 2 : 1, colour: shade() });
+      }
+    };
+    shoot([0, 0, 0], [0, 1, 0.08], 0.31, 12, 0.03);
+    for (const [s0, side] of [
+      [0.09, -1],
+      [0.17, 1],
+    ] as const) {
+      const from = stemAt(s0);
+      const d = norm([side * 0.75, 0.65, 0.12]);
+      const end = add(from, mul(d, 0.14));
+      tube(b, [from, end], [0.0026, 0.0016], 3, () => stem, (t) => 0.3 + t * 0.4);
+      shoot(from, d, 0.14, 5, 0.03);
+    }
+    leaf(b, stemAt(0.31), norm([0, 1, 0.14]), [0, 0, 1], 0.09, 0.045, { fold: 0.3, droop: 0.2, detail: fine ? 2 : 1, colour: shade() });
+  } else if (level === 1) {
+    for (const [s, side, l] of [
+      [0.05, -1, 0.15],
+      [0.1, 1, 0.16],
+      [0.15, -1, 0.16],
+      [0.2, 1, 0.16],
+      [0.25, -1, 0.15],
+    ] as const) {
+      const th = ((30 + rand() * 15) * Math.PI) / 180;
+      leaf(b, stemAt(s), norm([side * Math.cos(th), Math.sin(th), 0.1]), norm([-side * 0.2, 0.1, 1]), l, l * 0.56, { fold: 0.32, droop: 0.2, detail: 0, colour: shade() });
+    }
+    leaf(b, stemAt(0.28), norm([0, 1, 0.12]), [0, 0, 1], 0.16, 0.09, { fold: 0.3, droop: 0.18, detail: 0, colour: shade() });
+  } else {
+    leaf(b, stemAt(0.08), norm([-0.8, 0.6, 0.1]), [0, 0, 1], 0.25, 0.15, { fold: 0.32, droop: 0.15, detail: 0, colour: shade() });
+    leaf(b, stemAt(0.14), norm([0.8, 0.6, 0.1]), [0, 0, 1], 0.25, 0.15, { fold: 0.32, droop: 0.15, detail: 0, colour: shade() });
+    leaf(b, stemAt(0.24), norm([0, 1, 0.1]), [0, 0, 1], 0.26, 0.15, { fold: 0.3, droop: 0.15, detail: 0, colour: shade() });
+  }
+  return b.build();
+}
+
+/**
+ * A stretch of a willow strand's leaves (instanced; origin on the strand, local +y along the strand, which hangs
+ * down): narrow lance leaves (folded slivers) round the 0.3 m stretch, pointing on down and a little out, ten at level 0
+ * (20 triangles), six at level 1 (12), three at level 2 (6). The strand itself is in the twig mesh.
+ */
+export function willowSpray(level: 0 | 1 | 2, seed = 23): BufferGeometry {
+  const b = new GeoBuilder();
+  b.windHeight = 0.32;
+  const rand = mulberry32(seed + level * 131);
+  const n = [10, 6, 3][level]!;
+  for (let i = 0; i < n; i++) {
+    const s = 0.02 + (i / n) * 0.27;
+    const phi = i * 2.39996 + rand() * 0.4;
+    const radial: Vec3 = [Math.cos(phi), 0, Math.sin(phi)];
+    const tangent: Vec3 = [-Math.sin(phi), 0, Math.cos(phi)];
+    const al = ((22 + rand() * 20) * Math.PI) / 180;
+    const dir = norm(add(mul([0, 1, 0], Math.cos(al)), mul(radial, Math.sin(al))));
+    const up = norm(cross(dir, tangent));
+    const length = [0.12, 0.15, 0.19][level]! + rand() * 0.03;
+    const width = [0.026, 0.034, 0.05][level]!;
+    leaf(b, add([0, s, 0], mul(radial, 0.004)), dir, up, length, width, {
+      strap: true,
+      fold: 0.25,
+      droop: 0.06,
+      detail: 0,
+      colour: WILLOW[Math.floor(rand() * WILLOW.length)]!,
     });
   }
   return b.build();
 }
 
-/** A cheap closed puff used beyond the near green-canopy LOD. */
-export function greenClusterFar(): BufferGeometry {
+/**
+ * A round bush (instanced, scaled to each bush): a dense dark heart (a squashed ellipsoid sitting on the ground, so no
+ * light shows through) covered all over by short leafy sprigs growing out of it. Unit size: radius 1 in x and z at
+ * scale 1, 1 high, its base at y 0. Level 0: 230 sprigs of 4 folded leaves; level 1: 160 sprigs of 2 diamonds;
+ * level 2: the heart and 24 leaves.
+ */
+export function bushGeometry(level: 0 | 1 | 2, seed = 29): BufferGeometry {
   const b = new GeoBuilder();
-  b.windHeight = 0.5;
-  dome(b, [0, 0.12, 0], 0.25, 0.22, 6, rgba("#315F20"), rgba("#6C9639"));
+  b.windHeight = 1.4;
+  const rand = mulberry32(seed + level * 17);
+  const heart = rgba("#2A501E", 1);
+  const heartTop = rgba("#41702A", 1);
+  // the heart: an ellipsoid round (0, 0.5, 0), radii 0.84 / 0.47, its bottom cut flat at the ground
+  const segs = [10, 8, 6][level]!;
+  const rings = [6, 5, 4][level]!;
+  const ring: number[][] = [];
+  for (let j = 0; j <= rings; j++) {
+    const v = -0.92 + (j / rings) * 1.92; // sin of the latitude, from just above the bottom to the top
+    const lat = Math.asin(Math.max(-1, Math.min(1, v)));
+    const y = 0.5 + Math.sin(lat) * 0.47;
+    const r = Math.cos(lat) * 0.84;
+    const row: number[] = [];
+    for (let i = 0; i < segs; i++) {
+      const a = (i / segs) * Math.PI * 2;
+      const n = norm([Math.cos(a) * Math.cos(lat), Math.sin(lat) * 1.6, Math.sin(a) * Math.cos(lat)]);
+      row.push(b.v([Math.cos(a) * r, Math.max(0.01, y), Math.sin(a) * r], n, mix(heart, heartTop, j / rings), [0.5, 0.5], 0));
+    }
+    ring.push(row);
+  }
+  for (let j = 0; j < rings; j++)
+    for (let i = 0; i < segs; i++) {
+      const i1 = (i + 1) % segs;
+      b.tri(ring[j]![i]!, ring[j + 1]![i]!, ring[j + 1]![i1]!);
+      b.tri(ring[j]![i]!, ring[j + 1]![i1]!, ring[j]![i1]!);
+    }
+  // sprigs: a Fibonacci sphere over the ellipsoid, the lowest band left out (the bush sits on the ground)
+  const count = [230, 160, 24][level]!;
+  const per = [4, 2, 1][level]!;
+  for (let k = 0; k < count; k++) {
+    const yN = 1 - ((k + 0.5) / count) * 1.75; // 1 .. -0.75
+    const rr = Math.sqrt(Math.max(0, 1 - yN * yN));
+    const a = k * 2.39996;
+    const n: Vec3 = norm([Math.cos(a) * rr, yN * 1.7, Math.sin(a) * rr]);
+    // a lumpy outline, not a ball: the sprigs stand out further on some sides
+    // (on the heart's surface, never inside it)
+    const lump = 1.06 + 0.05 * Math.sin(3 * a + 2 * yN) + 0.03 * Math.sin(5 * a - 3 * yN);
+    const at: Vec3 = [Math.cos(a) * rr * 0.84 * lump, 0.5 + yN * 0.47 * lump, Math.sin(a) * rr * 0.84 * lump];
+    for (let q = 0; q < per; q++) {
+      // the leaves lie over the bush like scales (along its surface, a little out), their blades facing out
+      const t = perpendicularOf(n, rand() * Math.PI * 2);
+      const dir = norm(add(add(t, mul(n, 0.5)), [0, 0.15, 0]));
+      const up0 = norm(add(n, [0, 0.35, 0]));
+      const up = Math.hypot(...cross(dir, up0)) < 1e-3 ? ([1, 0, 0] as Vec3) : up0;
+      const length = [0.15, 0.2, 0.28][level]! * (0.85 + rand() * 0.3);
+      leaf(b, add(at, mul(t, 0.02 * q)), dir, up, length, length * 0.55, {
+        fold: 0.35,
+        droop: 0.2,
+        detail: level === 0 ? 1 : 0,
+        colour: BROADLEAF[Math.floor(rand() * BROADLEAF.length)]!,
+      });
+    }
+  }
   return b.build();
+}
+
+function perpendicularOf(n: Vec3, angle: number): Vec3 {
+  const [t, bb] = basis(n);
+  return norm(add(mul(t, Math.cos(angle)), mul(bb, Math.sin(angle))));
 }
 
 // ─────────────────────────────────────────────── cherry ───────────────────────────────────────────────
@@ -562,7 +812,9 @@ export function blossomBunch(seed = 5): BufferGeometry {
   const b = new GeoBuilder();
   const rand = mulberry32(seed);
   const white = rgba("#FFFFFF", 1, 1);
-  const pedicel = rgba("#7C6A44", 0, 1); // green-brown, as the real ones (not black spikes at night)
+  // green-brown, as the real ones (not black spikes at night), a little darker than the twigs' top: seen from a hand's
+  // breadth they are fine stalks under the flowers, not yellow rods
+  const pedicel = rgba("#655A3A", 0, 1);
   const solid = (u: number, v: number) => cellUv(ATLAS_CELL.solid, u, v, 0.3);
   const flower = (centre: Vec3, face: Vec3, size: number, cell: number, cup: number) => {
     const f = norm(face);
@@ -588,7 +840,7 @@ export function blossomBunch(seed = 5): BufferGeometry {
   const stalk = (from: Vec3, to: Vec3) => {
     // a thin ribbon facing up-ish (two triangles), untextured (the atlas's solid cell)
     const d = norm(sub(to, from));
-    const side = mul(norm(cross(d, [0.3, 1, 0.2])), 0.001);
+    const side = mul(norm(cross(d, [0.3, 1, 0.2])), 0.0006);
     const a = b.v(sub(from, side), [0, 1, 0], pedicel, solid(0, 0), 1);
     const c2 = b.v(add(from, side), [0, 1, 0], pedicel, solid(1, 0), 1);
     const e = b.v(add(to, side), [0, 1, 0], pedicel, solid(1, 1), 1);
@@ -621,7 +873,7 @@ export function blossomBunch(seed = 5): BufferGeometry {
 }
 
 /** The bunch as a sprite (far): one quad (-0.5..0.5) the shader turns to the camera, showing a bunch picture. */
-export function bunchSprite(): BufferGeometry {
+export function bunchSprite(scale = 1): BufferGeometry {
   const b = new GeoBuilder();
   const c = rgba("#FFFFFF", 1, 1);
   const q = [
@@ -629,27 +881,45 @@ export function bunchSprite(): BufferGeometry {
     [0.5, -0.5],
     [0.5, 0.5],
     [-0.5, 0.5],
-  ].map(([x, y]) => b.v([x!, y!, 0], [0, 0, 1], c, cellUv(ATLAS_CELL.bunchA, x! + 0.5, 0.5 - y!), 1));
+  ].map(([x, y]) => b.v([x! * scale, y! * scale, 0], [0, 0, 1], c, cellUv(ATLAS_CELL.bunchA, x! + 0.5, 0.5 - y!), 1));
   b.tri(q[0]!, q[1]!, q[2]!);
   b.tri(q[0]!, q[2]!, q[3]!);
   return b.build();
 }
 
-/** All the twigs of the plaza cherries as one mesh: 3-4 sided tubes, dark grey-brown bark, each vertex its light. */
-export function twigMesh(twigs: ReadonlyArray<{ branch: Branch; light: (p: Vec3, n: Vec3) => number }>, coarse = false): BufferGeometry {
-  const b = new GeoBuilder();
-  const bark = rgba("#4B3A33", 0, 1);
-  const barkTop = rgba("#6A574D", 0, 1);
-  for (const { branch, light } of twigs) {
-    const sides = !coarse && branch.radii[0]! > 0.007 ? 4 : 3;
-    let { pts, radii } = branch;
-    if (coarse && pts.length > 3) {
-      // phones: base, middle and tip only (a twig is a pixel or two wide there)
-      const m = Math.floor(pts.length / 2);
-      pts = [pts[0]!, pts[m]!, pts[pts.length - 1]!];
-      radii = [radii[0]!, radii[m]!, radii[radii.length - 1]!];
+/** How far (m) a phone's simplified twig may stray from the grown line (barkGeometry.simplifyTwig). */
+export const TWIG_SIMPLIFY_TOL = 0.01;
+
+/** Douglas-Peucker: the indices of the points of `pts` to keep so the line stays within `tol` (m) of the full one. */
+export function simplifyLine(pts: readonly Vec3[], tol: number): number[] {
+  const n = pts.length;
+  if (n <= 2) return pts.map((_, i) => i);
+  const keep = new Uint8Array(n);
+  keep[0] = 1;
+  keep[n - 1] = 1;
+  const stack: Array<[number, number]> = [[0, n - 1]];
+  while (stack.length) {
+    const [a, b] = stack.pop()!;
+    const A = pts[a]!;
+    const ab = sub(pts[b]!, A);
+    const l2 = ab[0] * ab[0] + ab[1] * ab[1] + ab[2] * ab[2];
+    let worst = -1;
+    let at = -1;
+    for (let i = a + 1; i < b; i++) {
+      const ap = sub(pts[i]!, A);
+      const t = l2 > 0 ? Math.max(0, Math.min(1, (ap[0] * ab[0] + ap[1] * ab[1] + ap[2] * ab[2]) / l2)) : 0;
+      const d = Math.hypot(ap[0] - ab[0] * t, ap[1] - ab[1] * t, ap[2] - ab[2] * t);
+      if (d > worst) {
+        worst = d;
+        at = i;
+      }
     }
-    tube(b, pts, radii, sides, (_t, ny) => mix(bark, barkTop, Math.max(0, ny)), () => 0, light);
+    if (worst > tol) {
+      keep[at] = 1;
+      stack.push([a, at], [at, b]);
+    }
   }
-  return b.build();
+  const out: number[] = [];
+  keep.forEach((k, i) => k && out.push(i));
+  return out;
 }

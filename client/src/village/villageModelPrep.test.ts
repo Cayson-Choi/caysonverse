@@ -798,7 +798,7 @@ describe("applyDayNight: the clock's numbers into the model (Task 7A)", () => {
     expect(liftUniform.value).toBeCloseTo(NIGHT_LOOK.lift, 9);
     expect(foliageTintUniform.value.toArray()).toEqual([...NIGHT_LOOK.foliageTint].map((v) => expect.closeTo(v, 5)));
     // The cherry blossoms darker still (Task 7A review m-g).
-    expect(cherryTintUniform.value.toArray()).toEqual([0.05, 0.07, 0.15].map((v) => expect.closeTo(v, 5)));
+    expect(cherryTintUniform.value.toArray()).toEqual([0.07, 0.08, 0.115].map((v) => expect.closeTo(v, 5)));
     for (let k = 0; k < 3; k++) expect(NIGHT_LOOK.cherryTint[k]).toBeLessThan(NIGHT_LOOK.foliageTint[k]!);
     expect(dayTintUniform.value.toArray()).toEqual([1, 1, 1]); // the day light map has no weight at night: no extra darkening
     expect(nodes.sky!.color.toArray()).toEqual([...NIGHT_LOOK.domeTint].map((v) => expect.closeTo(v, 5)));

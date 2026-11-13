@@ -24,6 +24,8 @@ interface Props {
   onReset: () => void;
   /** The chat line shown once on the first failure. */
   notice: string;
+  /** Called on every failure (the village's cover lifts at once: the fallback and the notice must show). */
+  onFail?: () => void;
   children: ReactNode;
 }
 
@@ -41,6 +43,11 @@ export class LoadBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(): void {
+    try {
+      this.props.onFail?.();
+    } catch {
+      // ignore
+    }
     try {
       this.props.onReset();
     } catch {

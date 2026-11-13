@@ -143,8 +143,12 @@ export const NIGHT_LOOK = {
   liftTint: [0.5, 0.68, 1.0] as Rgb,
   /** × the foliage's day vertex light (the trees at night) — no light map has them. */
   foliageTint: [0.075, 0.1, 0.2] as Rgb,
-  /** × the cherry blossoms' day vertex light at night: darker than the green leaves (Task 7A review m-g). */
-  cherryTint: [0.05, 0.07, 0.15] as Rgb,
+  /**
+   * × the cherry blossoms' day vertex light at night. A pale grey-blue moonlight: the runtime blossoms also lose most
+   * of their pink at night (veg/vegMaterial.ts, `vegNightUniform`), so they read white-grey under the moon as real ones
+   * do, not the deep violet a blue tint on pink made (review r1, 2026-11-13).
+   */
+  cherryTint: [0.07, 0.08, 0.115] as Rgb,
   domeTint: [0.03, 0.05, 0.12] as Rgb,
   hazeTint: [0.075, 0.1, 0.19] as Rgb,
   waterTint: [0.12, 0.2, 0.42] as Rgb,

@@ -20,9 +20,11 @@ import { dayNight } from "./dayNightDriver";
 import { useNightMapWanted } from "./nightLightmap";
 import { holdNightLightmap, noteBusRequested, noteNightRequested, noteVillageRequested } from "./villageRelease";
 import { preloadBus } from "./villageBusLoader";
-import { createVegetation, hideLegacyVegetationSources, vegModeFrom, type VegStats, type VillageVegetation } from "./veg/villageVegetation";
+import { createVegetation, hideLegacyVegetationSources, vegModeFrom, vegetationPark, type VegStats, type VillageVegetation } from "./veg/villageVegetation";
+import { vegDressing } from "./vegDressing";
 import { createWaterfall3D, hideWaterfallCards, type Waterfall3D } from "./waterfall3d";
 import type { Object3D } from "three";
+import type { DrawnGap } from "./veg/drawnGap";
 
 declare global {
   interface Window {
@@ -30,6 +32,10 @@ declare global {
     __cvVillage?: () => VillageNodes;
     /** Dev-only: the 3D vegetation's numbers (veg3d: mode, instances per level, triangles, draw calls), or null (`?veg=old`). */
     __cvVeg?: () => VegStats | null;
+    /** Dev-only: every leaf spray's and blossom bunch's gap to the drawn twigs and bark (slow: checks only). */
+    __cvVegDrawn?: () => DrawnGap | null;
+    /** Dev-only: whether a point is inside the follow camera's keep-out of the trees' bark (null: no vegetation). */
+    __cvVegKeepOut?: (x: number, y: number, z: number) => boolean | null;
   }
 }
 
@@ -73,6 +79,7 @@ export function VillageModel({ tier }: { tier: VillageTier }) {
   const gltf = useGLTF(VILLAGE_MODEL_URL, DRACO_PATH);
   const lightmap = useTexture(VILLAGE_LIGHTMAP_URL);
   const gl = useThree((s) => s.gl);
+  const getThree = useThree((s) => s.get);
   const nodes = useMemo(
     // A texture already on the GPU (a rich-to-light switch mid-visit) is never capped: its storage is immutable.
     () =>
@@ -88,34 +95,111 @@ export function VillageModel({ tier }: { tier: VillageTier }) {
       ),
     [gltf, lightmap, tier, gl],
   );
-  // The 3D flowers and cherry crowns (veg3d), built in steps after the village is up; once ready they hide the old
-  // cards in this clone (`?veg=old` in DEV keeps them). Disposing gives the clone its cards back.
+  // The 3D flowers, trees and bushes (veg3d), built in steps after the village is up (the old foliage cards and the
+  // plaza zelkova hidden at once); once ready they cut the old cards out of this clone (`?veg=old` in DEV keeps them).
+  // Detaching gives the clone its cards back. The village is covered while they grow (vegDressing.ts, VegVeil): no
+  // arrival ever shows the trees bare. Under the cover the build works in longer slices (it finishes sooner). Built
+  // once: going into the hall or a house parks the vegetation and coming out dresses the new clone with it at once
+  // (vegPark.ts), no cover and no rebuild.
   const [veg, setVeg] = useState<VillageVegetation | null>(null);
   useLayoutEffect(() => {
-    let cancelled = false;
+    // live: this clone's build; carried: the clone went away first and the build goes on (vegPark.ts); dead: stop it
+    let state: "live" | "carried" | "dead" = "live";
+    let stopped = false; // a carried build the park stopped (the scene went away, or another tier wants its own)
+    let building: Promise<VillageVegetation | null> | null = null;
+    let letGo: (() => void) | null = null;
     let built: VillageVegetation | null = null;
     const mode = vegModeFrom(window.location.search, import.meta.env.DEV);
     const restoreLegacy = mode === "new" ? hideLegacyVegetationSources(nodes.root) : () => {};
-    void createVegetation(nodes.root, tier, mode, () => cancelled).then((v) => {
-      if (!v) {
-        restoreLegacy();
-        return;
+    const dress = (v: VillageVegetation) => {
+      built = v;
+      setVeg(v);
+    };
+    // back from the hall or a house: the vegetation built on the first arrival dresses this clone at once (vegPark.ts)
+    const kept = mode === "old" ? null : vegetationPark.take(tier, mode);
+    if (kept) {
+      kept.attach(nodes.root);
+      dress(kept);
+      vegDressing.uncover();
+    } else if (mode !== "old") {
+      // the first arrival's build, still going (the player went in early and came straight back out): this clone is
+      // dressed with it the moment it is done, under the cover
+      const dressing = vegDressing.begin();
+      letGo = vegetationPark.adopt(tier, mode, (v) => {
+        letGo = null;
+        if (state !== "live") {
+          // this clone went away first: keep it for the next one
+          if (v) vegetationPark.park(v, tier, mode);
+          return;
+        }
+        vegDressing.done(dressing);
+        if (!v) {
+          restoreLegacy();
+          return;
+        }
+        v.attach(nodes.root);
+        dress(v);
+      });
+      if (!letGo) {
+        building = createVegetation(nodes.root, tier, mode, () => state === "dead" || stopped, {
+          // while carried (the player indoors) it works in short slices: the room they are in stays smooth
+          sliceMs: () => (state === "live" && !vegDressing.dressed() ? 50 : 12),
+          // the trees nearest the camera grow first, and each shows as soon as it is grown
+          focus: () => {
+            const p = getThree().camera.position;
+            return [p.x, p.y, p.z];
+          },
+          onShow: (v) => {
+            if (state === "live") setVeg(v);
+          },
+        }).catch((e: unknown) => {
+          // never left covered by a build that failed: the village shows without its 3D vegetation
+          console.error("[veg3d] build failed", e);
+          return null;
+        });
+        void building.then((v) => {
+          if (state !== "live") return; // carried (vegPark.ts takes it from here) or stopped
+          building = null;
+          vegDressing.done(dressing);
+          if (v) dress(v);
+          else restoreLegacy();
+        });
       }
-      if (cancelled) v.dispose();
-      else {
-        built = v;
-        setVeg(v);
-      }
-    });
-    if (import.meta.env.DEV) window.__cvVeg = () => built?.stats() ?? null;
+    }
+    if (import.meta.env.DEV) {
+      window.__cvVeg = () => built?.stats() ?? null;
+      window.__cvVegDrawn = () => built?.measureDrawn() ?? null;
+      window.__cvVegKeepOut = (x, y, z) => built?.keepOut?.(x, y, z) ?? null;
+    }
     return () => {
-      cancelled = true;
-      if (import.meta.env.DEV) delete window.__cvVeg;
-      built?.dispose();
+      if (import.meta.env.DEV) {
+        delete window.__cvVeg;
+        delete window.__cvVegDrawn;
+        delete window.__cvVegKeepOut;
+      }
+      if (built) {
+        state = "dead";
+        // kept for the way back out (given back to this clone first); the scene frees it when it goes (vegPark.ts)
+        if (mode !== "old") vegetationPark.park(built, tier, mode);
+        else built.dispose();
+      } else {
+        // not dressed yet: the way back out is covered until it is (no bare village, no empty frame)
+        vegDressing.cover();
+        if (building) {
+          // the build goes on without this clone, and is parked (or adopted) once done
+          state = "carried";
+          vegetationPark.carry(building, tier, mode, () => {
+            stopped = true;
+          });
+        } else {
+          state = "dead";
+          letGo?.();
+        }
+      }
       restoreLegacy();
       setVeg(null);
     };
-  }, [nodes, tier]);
+  }, [nodes, tier, getThree]);
   const waterfall = useMemo<{ runtime: Waterfall3D; hidden: Object3D[] } | null>(() => {
     if (waterfallMode() === "old") return null;
     const hidden = hideWaterfallCards(nodes.root);
@@ -141,7 +225,7 @@ export function VillageModel({ tier }: { tier: VillageTier }) {
   useFrame(({ clock, gl, camera }) => {
     tickVillage(nodes, clock.elapsedTime, gl.toneMappingExposure);
     applyDayNight(nodes, dayNight.applied);
-    veg?.update(camera, clock.elapsedTime);
+    veg?.update(camera, clock.elapsedTime, gl.domElement.height);
     waterfall?.runtime.update(clock.elapsedTime, camera);
   });
   // dispose={null}: the geometry and shared materials belong to the loader's cache.

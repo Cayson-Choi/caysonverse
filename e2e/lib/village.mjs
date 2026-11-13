@@ -64,6 +64,43 @@ export async function leaveHall(p) {
   await sleep(1500);
 }
 
+/**
+ * Watch the vegetation's cover (VegVeil, .cv-veg-veil) from now on: every 40 ms, whether it covers (data-covered or any
+ * opacity). `veilSeen` stops and returns how many samples saw it, and how many were taken.
+ */
+export async function watchVeil(p) {
+  await p.page.evaluate(() => {
+    clearInterval(window.__veilWatch);
+    window.__veilSeen = { covered: 0, samples: 0 };
+    window.__veilWatch = setInterval(() => {
+      const e = document.querySelector(".cv-veg-veil");
+      window.__veilSeen.samples++;
+      if (e && (e.getAttribute("data-covered") === "1" || parseFloat(getComputedStyle(e).opacity) > 0.02)) window.__veilSeen.covered++;
+    }, 40);
+  });
+}
+export const veilSeen = (p) => p.page.evaluate(() => (clearInterval(window.__veilWatch), window.__veilSeen));
+
+/**
+ * Back out of the hall (or a house) with the vegetation kept (vegPark.ts): watched from before the door until the
+ * village's kept vegetation has dressed it again (`__cvVeg().attaches` past `before`) and 1.5 s more. Returns the cover
+ * samples and the vegetation's numbers.
+ */
+export async function outWithoutCover(p, leave, before) {
+  await watchVeil(p);
+  await leave(p);
+  const dressed = await p.page
+    .waitForFunction((n) => (window.__cvVeg?.()?.attaches ?? 0) > n, before, { timeout: 60000 })
+    .then(() => true, () => false);
+  await sleep(1500);
+  const veil = await veilSeen(p);
+  const veg = await p.page.evaluate(() => {
+    const s = window.__cvVeg?.();
+    return s ? { attaches: s.attaches, trees: Object.values(s.trees).reduce((a, k) => a + k.trees, 0), cloneEdits: s.cloneEdits } : null;
+  });
+  return { dressed, veil, veg };
+}
+
 /** Drag the follow camera: a mouse on a PC, one finger (CDP touch) on a phone. dy > 0 moves down the screen. */
 export async function dragView(p, dx, dy) {
   const vp = p.page.viewportSize();
@@ -517,7 +554,13 @@ export async function runVillageScenario({ name, device }) {
     });
 
     await run.step("10. back out through the door", async () => {
-      await leaveHall(A);
+      // the village comes back dressed at once: its vegetation was kept while A was inside (vegPark.ts), no cover
+      const before = (await A.page.evaluate(() => window.__cvVeg?.()?.attaches)) ?? 0;
+      const out = await outWithoutCover(A, leaveHall, before);
+      summary.hallExit = out;
+      run.check("back out: the kept vegetation dressed the village again (no rebuild)", out.dressed && (out.veg?.attaches ?? 0) > before && out.veg.trees > 100, out);
+      run.check("back out: every change to the new clone made again (old cards and baked bark cut, instanced bark hidden)", (out.veg?.cloneEdits?.total ?? 0) > 3 && out.veg.cloneEdits.inEffect === out.veg.cloneEdits.total, out.veg?.cloneEdits);
+      run.check("back out: the cover (VegVeil) never showed", out.veil.covered === 0 && out.veil.samples > 20, out.veil);
       await leaveHall(B);
       const at = await pos(A);
       run.check("A is in the village again, outside the memorial's door", (await areaOf(A)) === "village" && Math.abs(at.x) < 20 && at.z < -40, at);

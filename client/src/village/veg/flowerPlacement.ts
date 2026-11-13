@@ -15,15 +15,25 @@ import { hashUnit, mulberry32, valueNoise3 } from "./vegRandom";
  *  - Colours come in drifts of 2-5 plants (a low-frequency hash), with a small per-plant jitter; plants on a raised
  *    bed's rim lean out over it.
  *  - Flower cards mixed into the meadow grass tufts (grass cards right next to them) are wild patches, not beds: they
- *    are left to the old cards for now.
+ *    are planted the same way but sparser (WILD_SPACING), as flowers come up among grass.
+ *  - Every grass card (the meadow's tufts, the reeds by the water) becomes a 3D tuft of blades (vegGeometry.grassTuft)
+ *    standing where the card stood, as tall as it was: the "plants" of species grass and reed.
  */
 
-export const SPECIES = { petunia: 0, pansy: 1, muscari: 2, tulip: 3 } as const;
+export const SPECIES = { petunia: 0, pansy: 1, muscari: 2, tulip: 3, grass: 4, reed: 5 } as const;
 export type Species = (typeof SPECIES)[keyof typeof SPECIES];
-export const SPECIES_COUNT = 4;
+export const SPECIES_COUNT = 6;
 
-/** Minimum distance between two plants of a species (m): the planting spacing x 0.85. */
-export const SPACING: Readonly<Record<Species, number>> = { 0: 0.19, 1: 0.135, 2: 0.11, 3: 0.14 };
+/** Minimum distance between two plants of a species (m): the planting spacing x 0.85 (the tufts: one per old card). */
+export const SPACING: Readonly<Record<Species, number>> = { 0: 0.19, 1: 0.135, 2: 0.11, 3: 0.14, 4: 0, 5: 0 };
+
+/** The wild patches in the meadow's grass are this much sparser than a bed. */
+export const WILD_SPACING = 1.7;
+
+/** A grass tuft's and a reed clump's height (m) and spread (radius) at scale 1 (vegGeometry.grassTuft). */
+export const TUFT = { grass: { h: 0.4, r: 0.26 }, reed: { h: 1.0, r: 0.3 } } as const;
+/** Grass cards taller than this (m) are reeds. */
+export const REED_H = 0.6;
 
 /** Candidate points per card and how far round its centre they fall (m). */
 export const CANDIDATES_PER_CARD = 12;
@@ -189,10 +199,8 @@ export function speciesFor(row: number, x: number, z: number): { species: Specie
 
 export interface PlacementResult {
   plants: Plant[];
-  /** Cards replaced by plants (their triangles are hidden). */
+  /** Cards replaced by plants or tufts (their triangles are hidden). */
   replaced: Card[];
-  /** Flower cards left as they are (wild patches in the grass tufts). */
-  kept: Card[];
 }
 
 /** True for flower cards with a grass card (row 3) on the same floor within 1.2 m: the meadow's tufts. */
@@ -208,7 +216,7 @@ function inGrassTuft(card: Card, grid: Map<string, Card[]>): boolean {
   return false;
 }
 
-/** Plants for the flower cards (rows 0-2) among `cards`. */
+/** Plants for the flower cards (rows 0-2) among `cards`, and a tuft for each grass card (row 3). */
 export function placeFlowers(cards: readonly Card[], beds: readonly Bed[] = PLAZA_BEDS, seed = 20261110): PlacementResult {
   const rand = mulberry32(seed);
   const grass = cards.filter((c) => c.h > 0.05 && floraRow(c.v) === FLORA_ROW.grass);
@@ -220,7 +228,6 @@ export function placeFlowers(cards: readonly Card[], beds: readonly Bed[] = PLAZ
     l.push(g);
   }
   const replaced: Card[] = [];
-  const kept: Card[] = [];
   const plants: Plant[] = [];
   // a spatial hash of placed plants (0.25 m cells) for the minimum distance
   const cell = 0.25;
@@ -240,20 +247,24 @@ export function placeFlowers(cards: readonly Card[], beds: readonly Bed[] = PLAZ
   };
   // 1. candidates: scattered round each card's centre (the union of these discs is the bed), or, on the plaza's raised
   //    beds, a jittered grid over the whole bed (its cards are too few to cover it: a planter is planted full)
-  type Candidate = { x: number; z: number; y: number; row: number; light: number };
+  type Candidate = { x: number; z: number; y: number; row: number; light: number; wild?: boolean };
   const candidates: Candidate[] = [];
   const bedCards = new Map<Bed, Card[]>();
   for (const card of cards) {
     if (card.h < 0.05) continue; // flat cards are not flower strips
     const row = floraRow(card.v);
     if (row > FLORA_ROW.purple) continue;
-    if (inGrassTuft(card, grassGrid)) {
-      kept.push(card);
-      continue;
-    }
     replaced.push(card);
     const cx = (card.ax + card.bx) / 2;
     const cz = (card.az + card.bz) / 2;
+    if (inGrassTuft(card, grassGrid)) {
+      for (let k = 0; k < CANDIDATES_PER_CARD / 2; k++) {
+        const r = k === 0 ? 0 : CANDIDATE_RADIUS * 1.2 * Math.sqrt(rand());
+        const t = rand() * Math.PI * 2;
+        candidates.push({ x: cx + r * Math.cos(t), z: cz + r * Math.sin(t), y: card.floor, row, light: card.light, wild: true });
+      }
+      continue;
+    }
     const onBed = bedAt(beds, cx, cz);
     if (onBed) {
       let list = bedCards.get(onBed.bed);
@@ -301,7 +312,7 @@ export function placeFlowers(cards: readonly Card[], beds: readonly Bed[] = PLAZ
     const onBed = bedAt(beds, x, z);
     if (onBed && !onBed.ok) continue;
     const { species, palette } = speciesFor(row, x, z);
-    if (tooClose(x, y, z, SPACING[species])) continue;
+    if (tooClose(x, y, z, SPACING[species] * (c.wild ? WILD_SPACING : 1))) continue;
     const drift = driftUnit(x, z, species * 7 + row);
     const base = linearHex(pick(PALETTES[palette], drift));
     const bright = 0.92 + 0.16 * rand();
@@ -328,5 +339,25 @@ export function placeFlowers(cards: readonly Card[], beds: readonly Bed[] = PLAZ
     if (!list) grid.set(k, (list = []));
     list.push(p);
   }
-  return { plants, replaced, kept };
+  // 3. the grass: a tuft where each grass card stood, as tall as the card, turned at random
+  for (const g of grass) {
+    const reed = g.h > REED_H;
+    const size = reed ? TUFT.reed : TUFT.grass;
+    const k = 0.92 + 0.14 * rand();
+    plants.push({
+      x: (g.ax + g.bx) / 2,
+      y: g.floor,
+      z: (g.az + g.bz) / 2,
+      species: reed ? SPECIES.reed : SPECIES.grass,
+      yaw: rand() * Math.PI * 2,
+      scale: Math.max(0.5, g.h / size.h) * (0.9 + 0.2 * rand()),
+      leanX: (rand() - 0.5) * 0.1,
+      leanZ: (rand() - 0.5) * 0.1,
+      tint: [k * (0.94 + 0.12 * rand()), k, k * (0.92 + 0.1 * rand())],
+      light: g.light,
+      seed: rand(),
+    });
+    replaced.push(g);
+  }
+  return { plants, replaced };
 }

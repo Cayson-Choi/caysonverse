@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { PLAZA_BEDS, SPACING, SPECIES, bedAt, placeFlowers, speciesFor, type Plant } from "./flowerPlacement";
+import { PLAZA_BEDS, SPACING, SPECIES, TUFT, WILD_SPACING, bedAt, placeFlowers, speciesFor, type Plant } from "./flowerPlacement";
 import type { Card } from "./vegCards";
 
 let nextId = 0;
@@ -93,12 +93,33 @@ describe("placeFlowers", () => {
     }
   });
 
-  it("leaves the flower cards of the meadow's grass tufts to the old cards", () => {
+  it("plants the meadow's wild patches sparser than a bed, and a grass tuft for every grass card", () => {
     const tuft = [card(50, 50, 3), card(50.6, 50.2, 3), card(50.3, 50.5, 0)];
-    const { replaced, kept, plants } = placeFlowers(tuft);
-    expect(replaced).toHaveLength(0);
-    expect(kept).toHaveLength(1);
-    expect(plants).toHaveLength(0);
+    const { replaced, plants } = placeFlowers(tuft);
+    // every card is replaced: nothing is left to the old flat cards
+    expect(replaced).toHaveLength(3);
+    const grass = plants.filter((p) => p.species === SPECIES.grass);
+    expect(grass).toHaveLength(2);
+    for (const g of grass) {
+      expect(tuft.some((c) => Math.hypot(c.x - g.x, c.z - g.z) < 1e-6 && c.v > 0.75)).toBe(true);
+      expect(g.scale * TUFT.grass.h).toBeGreaterThan(0.35 * 0.85);
+      expect(g.scale * TUFT.grass.h).toBeLessThan(0.35 * 1.15);
+    }
+    const flowers = plants.filter((p) => p.species < SPECIES.grass);
+    expect(flowers.length).toBeGreaterThan(0);
+    for (const a of flowers)
+      for (const b of flowers) if (a !== b && a.species === b.species) expect(Math.hypot(a.x - b.x, a.z - b.z)).toBeGreaterThanOrEqual(SPACING[a.species] * WILD_SPACING - 1e-9);
+    // the same card in a bed (no grass beside it) is planted denser
+    const bed = placeFlowers([card(50.3, 50.5, 0)]).plants;
+    expect(bed.length).toBeGreaterThanOrEqual(flowers.length);
+  });
+
+  it("makes reeds of the tall grass cards", () => {
+    const tall = { ...card(10, 10, 3), h: 1.1 };
+    const { plants } = placeFlowers([tall]);
+    expect(plants).toHaveLength(1);
+    expect(plants[0]!.species).toBe(SPECIES.reed);
+    expect(plants[0]!.scale * TUFT.reed.h).toBeGreaterThan(1.1 * 0.85);
   });
 
   it("is deterministic", () => {

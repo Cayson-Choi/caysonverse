@@ -102,7 +102,7 @@ describe("a summer noon, a winter noon, a midnight", () => {
     expect(s.exposure).toBeGreaterThan(noon.exposure);
     expect(s.lift).toBeCloseTo(NIGHT_LOOK.lift, 9);
     // The cherry blossoms are darker than the green leaves at night (Task 7A review m-g).
-    expect(s.cherryTint).toEqual([0.05, 0.07, 0.15].map((v) => expect.closeTo(v, 9)));
+    expect(s.cherryTint).toEqual([0.07, 0.08, 0.115].map((v) => expect.closeTo(v, 9)));
     expect(linearLuma(s.cherryTint)).toBeLessThan(linearLuma(s.foliageTint));
     const moon = directionFrom(NIGHT_MOON.azimuthDeg, NIGHT_MOON.elevationDeg);
     for (let i = 0; i < 3; i++) expect(s.keyDir[i]).toBeCloseTo(moon[i]!, 9);
