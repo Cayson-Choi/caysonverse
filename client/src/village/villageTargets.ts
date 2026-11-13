@@ -36,7 +36,7 @@ export const BUS_RIDE_TARGET_BOARD = "village_bus_board";
 export const BUS_RIDE_TARGET_LEAVE = "village_bus_leave";
 
 /** How far past the pad's radius the button is offered (m). The server's own reach is 0.9 (villageDoor.ts DOOR_REACH_M). */
-export const DOOR_OFFER_REACH_M = 0.7;
+export const DOOR_OFFER_REACH_M = 0.8;
 
 const NONE: readonly InteractTarget[] = Object.freeze([]);
 

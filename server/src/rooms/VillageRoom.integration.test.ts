@@ -485,7 +485,7 @@ describe("VillageRoom arrivals never stack (integration, fix/arrival-spread)", (
   };
   const offPad = (p: { x: number; z: number }, pad: typeof IN_PAD) => Math.hypot(p.x - pad.centre.x, p.z - pad.centre.z) >= pad.radius + DOOR_PAD_CLEARANCE_M - 1e-6;
 
-  it("eight visitors joining one room appear on the plaza at least 1.1 m apart, all clear of colliders", async () => {
+  it("eight visitors joining one room appear on the plaza at least 1.4 m apart, all clear of colliders", async () => {
     const { players } = await crowd(8);
     expect(gaps(players)).toBeGreaterThanOrEqual(ARRIVAL_SPACING_M - SPACING_SLACK_M);
     for (const p of players) {
@@ -495,7 +495,7 @@ describe("VillageRoom arrivals never stack (integration, fix/arrival-spread)", (
     }
   });
 
-  it("six visitors on the outside pad use the door in the same tick: inside, nobody within 1.1 m of anyone, nobody on the way out", async () => {
+  it("six visitors on the outside pad use the door in the same tick: inside, nobody within 1.4 m of anyone, nobody on the way out", async () => {
     const { room, clients, players } = await crowd(6);
     const clock = useClock(room);
     players.forEach((p, i) => placeAt(p, OUT_PAD.centre.x - 1.25 + i * 0.5, OUT_PAD.centre.z)); // shoulder to shoulder on the pad
