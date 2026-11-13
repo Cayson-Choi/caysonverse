@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { JUMP_DURATION_MS, JUMP_RATE, KICK_CLOSE_CODE, MAX_CLIENTS, VILLAGE_MAX_CLIENTS, VILLAGE_ROOM, WORLD_ROOM } from "./constants";
+import { JUMP_DURATION_MS, JUMP_RATE, KICK_CLOSE_CODE, VILLAGE_MAX_CLIENTS, VILLAGE_ROOM } from "./constants";
 
 describe("jump timing (controls-ux Task 11)", () => {
   it("one hop lasts 0.8 s and the server lets exactly one through per hop", () => {
@@ -28,7 +28,5 @@ describe("village room constants (케이슨 마을 1단계 Task 2)", () => {
   it("the room is named village and holds 30 visitors per shard", () => {
     expect(VILLAGE_ROOM).toBe("village");
     expect(VILLAGE_MAX_CLIENTS).toBe(30);
-    expect(VILLAGE_ROOM).not.toBe(WORLD_ROOM);
-    expect(VILLAGE_MAX_CLIENTS).toBeLessThan(MAX_CLIENTS); // a village shard is a small town, not the whole world room
   });
 });

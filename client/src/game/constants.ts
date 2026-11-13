@@ -98,17 +98,6 @@ export const CAMERA = {
 } as const;
 
 /**
- * Scene palette — bright daylight sky (design 30: the world reads as a lit real
- * building). The entry screen keeps its cosmic navy branding; only the 3D world
- * changed. Also the fog colour, so distance fades into haze, not darkness.
- */
-export const SKY_COLOR = "#cde3f5";
-// Pushed out with maxDistance=18: at full zoom-out across the 60m map the far
-// wall sits ~75-80m from the camera, so the old FOG_FAR=70 would swallow it.
-export const FOG_NEAR = 35;
-export const FOG_FAR = 100;
-
-/**
  * The scene camera's far plane (m). The overview raises it with its blend (CameraRig): on a
  * tall phone the whole-map fit is width-limited and puts the camera over 200 m up, which
  * would clip the entire map away.

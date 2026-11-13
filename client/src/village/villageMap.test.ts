@@ -5,13 +5,11 @@ import { SPRING } from "../game/cameraCollision";
 import { PLAYER_RADIUS } from "@caysonverse/shared/worldMap";
 import {
   HALL_ACTIVE_MAP,
-  LEGACY_ACTIVE_MAP,
   VILLAGE_ACTIVE_MAP,
   VILLAGE_CAMERA_PAD,
   activeBounds,
   activeMapVersion,
   getActiveMap,
-  hubActiveMap,
   mapBounds,
   setActiveMap,
   villageActiveMap,
@@ -21,7 +19,7 @@ import { LIGHTING } from "../game/sceneLighting";
 import { VILLAGE_CAMERA_PLANES } from "./villageModelPrep";
 
 afterEach(() => {
-  setActiveMap(LEGACY_ACTIVE_MAP);
+  setActiveMap(VILLAGE_ACTIVE_MAP);
   resetClickMove();
 });
 
@@ -39,10 +37,9 @@ describe("the village's two maps (one geometry, the bounds of the area the playe
     expect(mapBounds(HALL_ACTIVE_MAP).minX).toBeGreaterThan(290);
   });
 
-  it("maps without their own bounds (the legacy world, the hub) read the geometry's, as before", () => {
-    expect(mapBounds(LEGACY_ACTIVE_MAP)).toBe(LEGACY_ACTIVE_MAP.geometry.bounds);
-    expect(mapBounds(hubActiveMap(false))).toBe(hubActiveMap(false).geometry.bounds);
-    expect(mapBounds(hubActiveMap(true))).toBe(hubActiveMap(true).geometry.bounds);
+  it("a map without its own bounds reads the geometry's", () => {
+    const plain = { geometry: villageGeometry, zoneLabel: () => "" };
+    expect(mapBounds(plain)).toBe(villageGeometry.bounds);
   });
 
   it("villageActiveMap hands out one prebuilt map per area, so a re-render is never a switch", () => {
@@ -127,11 +124,8 @@ describe("the camera limit of each map (케이슨 마을 Task 5: a building's ca
     expect(slab.minY).toBeCloseTo(VILLAGE_LAYOUT.memorial.interior.ceilingHeight - 0.1, 9);
   });
 
-  it("the open village, the legacy world and the hub have no limit (their camera is as before)", () => {
+  it("the open village has no camera limit", () => {
     expect(VILLAGE_ACTIVE_MAP.cameraLimit).toBeUndefined();
-    expect(LEGACY_ACTIVE_MAP.cameraLimit).toBeUndefined();
-    expect(hubActiveMap(false).cameraLimit).toBeUndefined();
-    expect(hubActiveMap(true).cameraLimit).toBeUndefined();
   });
 
   it("the limit follows the area through the door", () => {

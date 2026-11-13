@@ -1,9 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { APP_NAME, NICKNAME_MAX } from "@caysonverse/shared/constants";
 import type { Appearance } from "@caysonverse/shared/appearance";
-import type { TextLevel } from "@caysonverse/shared/escape/constants";
-import { sanitizeCodeInput } from "@caysonverse/shared/escape/classCode";
-import { primeChatAudio } from "../game/chatVoice";
 import { preloadCharacterAssets } from "../game/useAvatar";
 import { characterModel } from "../game/characterModel";
 import { isTouchDevice } from "../device";
@@ -14,57 +11,18 @@ import { BuilderIcon } from "./BuilderIcons";
 import { BUILDER_COPY } from "./builderOptions";
 import { ENTRY_ART, stageLayout, type StageLayout } from "./stageLayout";
 import { useEntryViewport } from "./entryViewport";
-import {
-  CLASS_CODE_ERROR,
-  ENTRY_COPY,
-  TEACHER_KEY_ERROR,
-  entryDestinations,
-  entryModeFromUrl,
-  entryRoute,
-  enterClassAsStudent,
-  enterClassAsTeacher,
-  enterVillageDirectly,
-  validateStudentEntry,
-  validateTeacherEntry,
-  refusalField,
-  teacherFieldsAfter,
-  type ClassEntryDeps,
-  type DestinationId,
-  type TeacherFields,
-  type VillageEntryDeps,
-} from "./entryForm";
-import { DestinationSheet, type DestinationError } from "./DestinationSheet";
-import { joinClass, joinVillage, joinWorld, requestTeacherPass } from "../net/connection";
+import { ENTRY_COPY, enterVillageDirectly, type VillageEntryDeps } from "./entryForm";
+import { joinVillage } from "../net/connection";
 import { clearKicked } from "../net/kickSeam";
-import { rememberAdminCode, forgetAdminCode } from "../net/adminSession";
-import { forgetTeacher, rememberTeacher } from "../net/teacherSession";
-import { loadIdentity, saveIdentity } from "../net/identityCache";
-import { forgetTeacherClass, loadTeacherClass, saveTeacherClass } from "../net/teacherClassCache";
+import { saveIdentity, loadIdentity } from "../net/identityCache";
 import { useAppStore } from "../stores/appStore";
 import "./entry.css";
 import "./builder.css";
 
-/** The real app behind the class entry flows (entryForm.ts; its tests pass fakes). */
-const CLASS_DEPS: ClassEntryDeps = {
-  joinClass,
-  requestTeacherPass,
-  rememberTeacher,
-  forgetTeacher,
-  saveTeacherClass: (classCode) => saveTeacherClass(classCode),
-  forgetTeacherClass,
-  saveIdentity,
-  clearKicked,
-  enterHub: (identity, isTeacher) => useAppStore.getState().enterHub(identity, isTeacher),
-};
-
 /** The real app behind the village entry (entryForm.ts `enterVillageDirectly`; its tests pass fakes). */
 const VILLAGE_DEPS: VillageEntryDeps = {
   joinVillage,
-  // A village visit rewrites the cached identity; keep the class code already there so the escape sheet still prefills it.
-  saveIdentity: (identity) => {
-    const classCode = loadIdentity().classCode;
-    saveIdentity(classCode ? { ...identity, classCode } : identity);
-  },
+  saveIdentity,
   clearKicked,
   enterVillage: (identity) => useAppStore.getState().enterVillage(identity),
 };
@@ -174,63 +132,25 @@ function usePointerParallax(ref: { current: HTMLElement | null }) {
  * Entry screen with the character builder ("캐릭터 조립실", character stage 3; Task 7b look): a bright sky-garden
  * stage — the background art's podium carries the 3D figure, glass panels (wide screens) or a bottom sheet
  * (phones) hold the builder, and the nickname plate + 입장 sit under the figure. The DOM order (title → nickname
- * → builder → admin → message → submit) and every Task 7 class/role/aria/text are unchanged; positions come from
+ * → builder → message → submit) and every Task 7 class/role/aria/text are unchanged; positions come from
  * stageLayout() via CSS variables. The last look (localStorage "cv.entry") is loaded on open and saved only on
  * 입장 — never on every edit. Entering the world unmounts this screen, and with it the preview's WebGL canvas.
  *
- * Where 입장하기 leads (owner decision 2026-11-03; entryModeFromUrl / entryRoute): by default it checks the
- * nickname and look and joins 케이슨 마을 at once — no code, no sheet. `?experience=escape` opens
- * "어디로 갈까요?" (DestinationSheet, AI 학교 탈출 Task 14): a student's 반 코드 entry, or a teacher's 반 열기 — and
- * a class join lands in the hall (`hub`). The builder is Caysonverse's shared entrance, with no school chrome.
- * The admin pill belongs to the world and is not shown in either. `?world=legacy` keeps the old entry exactly:
- * builder → 입장하기 → the world, admin pill included.
+ * 입장하기 checks the nickname and look and joins 케이슨 마을 at once — no code, no sheet. Every address opens the
+ * village (the older `?experience=escape` and `?world=legacy` links included).
  */
 export function EntryScreen() {
-  const enterWorld = useAppStore((s) => s.enterWorld);
   const notice = useAppStore((s) => s.notice);
   const clearNotice = useAppStore((s) => s.clearNotice);
 
-  const [entryMode] = useState(() => entryModeFromUrl(window.location.search));
-  const route = entryRoute(entryMode);
-  const legacy = route === "world";
-  /** The destination step ("어디로 갈까요?") belongs to the AI 학교 탈출 entry only. */
-  const school = route === "destinations";
   const [saved] = useState(loadIdentity);
   const [nickname, setNickname] = useState(saved.nickname);
   // The look being built: starts from the cached one, or DEFAULT_APPEARANCE
   // (loadIdentity migrates a pre-builder or corrupt cache).
   const [appearance, setAppearance] = useState(saved.appearance);
-  const [showAdmin, setShowAdmin] = useState(false);
-  const [adminCode, setAdminCode] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  // ── "어디로 갈까요?" (`?experience=escape` only) ──
-  const [destOpen, setDestOpen] = useState(false);
-  /**
-   * The sheet's role and the teacher key — a credential: in this screen's state only, never stored or
-   * prefilled, and forgotten whenever the sheet closes or switches back to 학생 (teacherFieldsAfter).
-   */
-  const [teacherFields, setTeacherFields] = useState<TeacherFields>(() => ({ role: "student", teacherKey: "" }));
-  const { role, teacherKey } = teacherFields;
-  /** The last class code entered is prefilled (identity cache); the teacher key never is. */
-  const [classCode, setClassCode] = useState(() => sanitizeCodeInput(saved.classCode ?? ""));
-  /**
-   * The teacher's optional class code: prefilled with the class this browser last opened as a teacher
-   * (teacherClassCache, a few hours at most), so a reloaded teacher tab goes back into its running class;
-   * empty opens a new class.
-   */
-  const [teacherClassCode, setTeacherClassCode] = useState(() => loadTeacherClass());
-  const [textLevel, setTextLevel] = useState<TextLevel>("easy");
-  const [destError, setDestError] = useState<DestinationError | null>(null);
-  /** Bumped by every refused try in the sheet (re-focus + shake the field at fault). */
-  const [destErrorSeq, setDestErrorSeq] = useState(0);
-  /** The destination whose join is running. */
-  const [pending, setPending] = useState<DestinationId | null>(null);
-  const submitRef = useRef<HTMLButtonElement>(null);
-  const nicknameRef = useRef<HTMLInputElement>(null);
-  /** Where focus goes once the sheet has closed (the sheet's modal dialog makes the rest inert until then). */
-  const refocusRef = useRef<HTMLElement | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   /** The screen size the layout is built for: a phone keyboard that shrinks the viewport does not change it. */
   const view = useEntryViewport(rootRef);
@@ -243,29 +163,12 @@ export function EntryScreen() {
   const [modelReloads, setModelReloads] = useState(0);
   const scrollerRef = useRef<HTMLDivElement>(null);
   const motesRef = useRef<HTMLDivElement>(null);
-  const adminRef = useRef<HTMLDivElement>(null);
-  const adminButtonRef = useRef<HTMLButtonElement>(null);
   usePointerParallax(motesRef);
 
   // Warm the model cache as soon as the builder opens (the preview and then the world both use character.glb).
   useEffect(() => {
     preloadCharacterAssets();
   }, []);
-
-  // The admin code popover closes on Esc / the toggle (focus back to the toggle) and on any press outside it.
-  // A typed code is kept while it is closed (the toggle shows a dot) and is still sent with 입장.
-  function closeAdmin(returnFocus: boolean) {
-    setShowAdmin(false);
-    if (returnFocus) adminButtonRef.current?.focus();
-  }
-  useEffect(() => {
-    if (!showAdmin) return;
-    const onDown = (e: PointerEvent) => {
-      if (!adminRef.current?.contains(e.target as Node)) setShowAdmin(false);
-    };
-    document.addEventListener("pointerdown", onDown, true);
-    return () => document.removeEventListener("pointerdown", onDown, true);
-  }, [showAdmin]);
 
   // Editing the form dismisses any leftover kick/disconnect notice.
   function dismissMessages() {
@@ -306,52 +209,10 @@ export function EntryScreen() {
     }
   }
 
-  /**
-   * Join the current world with a checked look (the `?world=legacy` entry, or its card when
-   * SHOW_WORLD_ON_ENTRY). Resolves with the words to show, or null once in (this screen unmounts then).
-   */
-  async function joinTheWorld(value: EntryInput, typedAdminCode: string): Promise<string | null> {
-    if (!(await characterModelReady())) return BUILDER_COPY.modelRetry;
-
-    // Remember the last look for the next visit (spec §4 "마지막 외형 기억") — saved
-    // here on 입장 only, not on every builder edit.
-    saveIdentity(value);
-
-    // A deliberate manual entry clears any prior kick block (Task 11 seam).
-    clearKicked();
-
-    // Only supply a code when the admin field has one; a successful join with a
-    // code proves it was correct (a wrong code is rejected server-side), so we
-    // can infer admin status locally without the server leaking it.
-    const trimmedCode = typedAdminCode.trim();
-    const asAdmin = trimmedCode.length > 0;
-    const params = asAdmin ? { ...value, adminCode: trimmedCode } : value;
-
-    try {
-      const room = await joinWorld(params);
-      // A join that supplied a code AND succeeded proves the code was correct, so
-      // remember it (module memory only) to re-authenticate on a Phase-2 fresh
-      // rejoin after a server restart; a non-admin join clears any stale code.
-      if (asAdmin) rememberAdminCode(trimmedCode);
-      else forgetAdminCode();
-      enterWorld({ ...value, sessionId: room.sessionId }, asAdmin);
-      // On success this component unmounts; do not touch state afterwards.
-      return null;
-    } catch (err) {
-      return err instanceof Error ? err.message : ENTRY_COPY.failed;
-    }
-  }
-
-  /** The builder's 입장하기: the village (default), the destination step (`?experience=escape`) or the world (`?world=legacy`). */
+  /** The builder's 입장하기: check the nickname and look, then join 케이슨 마을. */
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     if (submitting) return;
-
-    // Mobile autoplay policy: unlock audio playback (one silent clip) HERE, synchronously inside the
-    // click's user gesture — after an await the gesture may no longer count. Chat is never read aloud
-    // any more; only the legacy world still has voices (its AI 조교 replies), so only its entry primes.
-    // Safe no-op where Audio is absent, and idempotent across repeated (e.g. failed-validation) clicks.
-    if (legacy) primeChatAudio();
 
     const result = validateEntry({ nickname, appearance });
     if (!result.ok) {
@@ -362,90 +223,13 @@ export function EntryScreen() {
     setError(null);
     clearNotice();
 
-    if (school) {
-      setDestError(null);
-      setDestOpen(true);
-      return;
-    }
-
     setSubmitting(true);
-    const failed = legacy ? await joinTheWorld(result.value, adminCode) : await joinTheVillage(result.value);
+    const failed = await joinTheVillage(result.value);
     if (failed !== null) {
       setError(failed);
       setSubmitting(false);
     }
   }
-
-  /** Show words in the sheet's card (and re-focus / shake the field at fault). */
-  function refuseInSheet(dest: DestinationId, text: string, field?: "code" | "key") {
-    setDestError(field ? { dest, text, field } : { dest, text });
-    setDestErrorSeq((n) => n + 1);
-  }
-
-  /** AI 학교 탈출's 입장하기 (student, 반 코드) / 반 열기 (teacher, 선생님 키). */
-  async function enterSchool() {
-    if (submitting) return;
-
-    const check =
-      role === "student"
-        ? validateStudentEntry({ classCode, nickname })
-        : validateTeacherEntry({ teacherKey, nickname, classCode: teacherClassCode });
-    if (!check.ok) {
-      const field = check.error === CLASS_CODE_ERROR ? "code" : check.error === TEACHER_KEY_ERROR ? "key" : undefined;
-      return refuseInSheet("escape", check.error, field);
-    }
-    const look = validateEntry({ nickname, appearance });
-    if (!look.ok) return refuseInSheet("escape", look.error);
-
-    setDestError(null);
-    setSubmitting(true);
-    setPending("escape");
-    try {
-      if (!(await characterModelReady())) throw new Error(BUILDER_COPY.modelRetry);
-      if (role === "student") await enterClassAsStudent(CLASS_DEPS, { ...look.value, classCode });
-      else await enterClassAsTeacher(CLASS_DEPS, { ...look.value, teacherKey, textLevel, classCode: teacherClassCode });
-      // In the hall now: this screen unmounts; do not touch state afterwards.
-    } catch (err) {
-      // The server's / connection layer's Korean words, as they come.
-      refuseInSheet(
-        "escape",
-        err instanceof Error && err.message ? err.message : ENTRY_COPY.failed,
-        refusalField(role, err) ?? undefined,
-      );
-      setSubmitting(false);
-      setPending(null);
-    }
-  }
-
-  /** The current world's card (only listed when SHOW_WORLD_ON_ENTRY): a plain world join. */
-  async function enterWorldFromSheet() {
-    if (submitting) return;
-    primeChatAudio(); // the world's AI 조교 still speak: inside the press's user gesture (see handleSubmit)
-    const look = validateEntry({ nickname, appearance });
-    if (!look.ok) return refuseInSheet("world", look.error);
-    setDestError(null);
-    setSubmitting(true);
-    setPending("world");
-    const failed = await joinTheWorld(look.value, "");
-    if (failed !== null) {
-      refuseInSheet("world", failed);
-      setSubmitting(false);
-      setPending(null);
-    }
-  }
-
-  /** Close the sheet; focus returns to 입장하기 (or the nameplate, to change the nickname). */
-  function closeDestinations(focus: "submit" | "nickname" = "submit") {
-    refocusRef.current = focus === "nickname" ? nicknameRef.current : submitRef.current;
-    setDestOpen(false);
-    setTeacherFields((f) => teacherFieldsAfter(f, "close"));
-  }
-  useEffect(() => {
-    if (destOpen) return;
-    const el = refocusRef.current;
-    refocusRef.current = null;
-    el?.focus();
-  }, [destOpen]);
 
   const message = error ?? notice;
   const nicknameInvalid = error === NICKNAME_ERROR;
@@ -494,7 +278,6 @@ export function EntryScreen() {
         >
           <span className="cv-label">{BUILDER_COPY.nickname}</span>
           <input
-            ref={nicknameRef}
             className="cv-input"
             type="text"
             value={nickname}
@@ -534,51 +317,6 @@ export function EntryScreen() {
           </div>
         </section>
 
-        {/* The admin pill belongs to the world: only the `?world=legacy` entry shows it. */}
-        {legacy && (
-          <div
-            className="cv-admin-toggle"
-            ref={adminRef}
-            onKeyDown={(e) => {
-              if (e.key !== "Escape" || !showAdmin) return;
-              e.stopPropagation();
-              closeAdmin(true);
-            }}
-          >
-            <button
-              type="button"
-              className="cv-admin-link"
-              ref={adminButtonRef}
-              aria-expanded={showAdmin}
-              aria-controls={showAdmin ? "cv-admin-pop" : undefined}
-              data-has-code={adminCode.trim() ? "" : undefined}
-              onClick={() => (showAdmin ? closeAdmin(true) : setShowAdmin(true))}
-            >
-              <BuilderIcon name="key" />
-              <span className="cv-admin-text">{BUILDER_COPY.admin}</span>
-            </button>
-            {showAdmin && (
-              <label className="cv-field cv-admin-pop" id="cv-admin-pop">
-                <span className="cv-label">{BUILDER_COPY.adminCode}</span>
-                <input
-                  className="cv-input"
-                  type="password"
-                  value={adminCode}
-                  placeholder={BUILDER_COPY.adminPlaceholder}
-                  autoComplete="off"
-                  aria-label="관리자 코드"
-                  // Opened from the toggle: type right away.
-                  autoFocus
-                  onChange={(e) => {
-                    setAdminCode(e.target.value);
-                    dismissMessages();
-                  }}
-                />
-              </label>
-            )}
-          </div>
-        )}
-
         {message && (
           <p className="cv-message" role="alert">
             {message}
@@ -588,12 +326,9 @@ export function EntryScreen() {
         {/* Phones: a fade under the sticky 입장 so the sheet content scrolling beneath it stays readable. */}
         <div className="cv-cta-fade" aria-hidden="true" />
         <button
-          ref={submitRef}
           className={"cv-submit" + (validateNickname(nickname) === null ? " is-ready" : "")}
           type="submit"
           disabled={submitting}
-          // AI 학교 탈출 entry: it opens the destination step (a dialog).
-          aria-haspopup={school ? "dialog" : undefined}
         >
           {submitting ? BUILDER_COPY.submitting : BUILDER_COPY.submit}
           {/* Hover brightening and the press flash: an opacity layer (no filter animation). */}
@@ -604,42 +339,6 @@ export function EntryScreen() {
         </button>
       </form>
 
-      {school && destOpen && (
-        <DestinationSheet
-          destinations={entryDestinations()}
-          phone={layout.mode === "phone"}
-          role={role}
-          onRole={(next) => {
-            setTeacherFields((f) => teacherFieldsAfter(f, next));
-            setDestError(null);
-          }}
-          nickname={nickname}
-          classCode={classCode}
-          onClassCode={(code) => {
-            setClassCode(code);
-            if (destError) setDestError(null);
-          }}
-          teacherKey={teacherKey}
-          onTeacherKey={(key) => {
-            setTeacherFields((f) => ({ ...f, teacherKey: key }));
-            if (destError) setDestError(null);
-          }}
-          teacherClassCode={teacherClassCode}
-          onTeacherClassCode={(code) => {
-            setTeacherClassCode(code);
-            if (destError) setDestError(null);
-          }}
-          textLevel={textLevel}
-          onTextLevel={setTextLevel}
-          error={destError}
-          errorSeq={destErrorSeq}
-          pending={pending}
-          onEnterClass={() => void enterSchool()}
-          onEnterWorld={() => void enterWorldFromSheet()}
-          onChangeNickname={() => closeDestinations("nickname")}
-          onClose={() => closeDestinations()}
-        />
-      )}
     </div>
   );
 }

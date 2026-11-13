@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { normalizeArea, showsInArea } from "./areaFilter";
-import { placeTransition, visibilityChange } from "./placeFilter";
-import { PLACE_ESCAPE, PLACE_HUB } from "@caysonverse/shared/escape/constants";
+import { visibilityChange } from "./placeFilter";
 
 describe("areaFilter (케이슨 마을 — who the village shows)", () => {
   it("normalizeArea: hall is the hall, anything else is the village", () => {
@@ -24,12 +23,5 @@ describe("areaFilter (케이슨 마을 — who the village shows)", () => {
     expect(visibilityChange(true, false)).toBe("remove");
     expect(visibilityChange(true, true)).toBeNull();
     expect(visibilityChange(false, false)).toBeNull();
-  });
-
-  it("placeTransition still answers as before (it is visibilityChange on the place rule)", () => {
-    expect(placeTransition(false, PLACE_HUB)).toBe("add");
-    expect(placeTransition(true, PLACE_ESCAPE)).toBe("remove");
-    expect(placeTransition(true, PLACE_HUB)).toBeNull();
-    expect(placeTransition(false, PLACE_ESCAPE)).toBeNull();
   });
 });

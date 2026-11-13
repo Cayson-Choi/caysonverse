@@ -508,26 +508,24 @@ export function stepHeld(
   return { held: null, out: [...out, ...own] };
 }
 
-/** What one Esc press does (controls-ux Task 15; overlays: AI 학교 탈출 Task 18). */
-export type EscapeAction = "closeOverlay" | "closeNpc" | "closeRoster" | "closeMenu" | "openMenu";
+/** What one Esc press does (controls-ux Task 15). */
+export type EscapeAction = "closeOverlay" | "closeRoster" | "closeMenu" | "openMenu";
 
 /**
  * The ONE place that decides what Esc does: it closes the topmost thing that is open —
- * a classroom overlay first (the close-up, a lock plate, ... — the top one of ui/overlayStack.ts, one
- * per press), then the menu (it sits on top of everything and closes the others as it opens), then
- * the 조교 dialogue, then the player roster — and when nothing is open it opens the menu.
+ * an overlay first (a close-up card — the top one of ui/overlayStack.ts, one per press), then the
+ * menu (it sits on top of everything and closes the others as it opens), then the player roster —
+ * and when nothing is open it opens the menu.
  * (A focused text field lets go of the keyboard before any of this: see escape.ts.)
  * Nothing else listens for Esc to close a panel.
  */
 export function resolveEscape(s: {
   overlayOpen: boolean;
-  npcOpen: boolean;
   rosterOpen: boolean;
   menuOpen: boolean;
 }): EscapeAction {
   if (s.overlayOpen) return "closeOverlay";
   if (s.menuOpen) return "closeMenu";
-  if (s.npcOpen) return "closeNpc";
   if (s.rosterOpen) return "closeRoster";
   return "openMenu";
 }

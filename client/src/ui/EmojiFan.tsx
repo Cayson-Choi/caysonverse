@@ -1,7 +1,6 @@
 import { useEffect, useState, type CSSProperties } from "react";
 import { EMOJIS } from "@caysonverse/shared/constants";
 import { useQuiet } from "../game/quiet";
-import { useNpcStore } from "../stores/npcStore";
 import { useUiStore } from "../stores/uiStore";
 import { addChatLayoutTargets } from "./chatLayoutTargets";
 import { useEmojiFire } from "./EmojiPalette";
@@ -21,20 +20,19 @@ const FAN_OPEN_CLASS = "cv-fan-open";
  *
  * Every button here is a HudButton (never takes focus from a press), so the chat field's
  * caret and the keyboard are untouched, and the 1–6 keys keep working through
- * `useEmojiFire`. The fan also closes when the menu or a 조교 dialogue opens.
+ * `useEmojiFire`. The fan also closes when the menu opens.
  */
 export function EmojiFan() {
   const { fire, pulseIndex } = useEmojiFire();
   const layout = useTouchHudLayout();
   const [open, setOpen] = useState(false);
   const menuOpen = useUiStore((s) => s.menuOpen);
-  const npcOpen = useNpcStore((s) => s.activeNpc !== null);
   const quiet = useQuiet();
 
   // Something else took the screen (or the place went quiet): fold up.
   useEffect(() => {
-    if (menuOpen || npcOpen || quiet) setOpen(false);
-  }, [menuOpen, npcOpen, quiet]);
+    if (menuOpen || quiet) setOpen(false);
+  }, [menuOpen, quiet]);
 
   // While open, the six buttons are where a chat on a phone gives them back (hidden under cv-chat-focus): a tap that
   // leaves the chat there keeps the chat layout until it is over (ChatInput, chatLayoutTargets.ts).

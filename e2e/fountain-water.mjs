@@ -22,7 +22,7 @@ import { join } from "node:path";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 import { chromium } from "playwright";
-import { CLIENT_URL, PHONE, entryReady, press, sleep } from "./lib/escape.mjs";
+import { CLIENT_URL, PHONE, entryReady, press, sleep } from "./lib/common.mjs";
 
 const { values: args } = parseArgs({
   options: {

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { MOVE_SPEED } from "@caysonverse/shared/constants";
 import { DEFAULT_APPEARANCE } from "@caysonverse/shared/appearance";
-import { SEATS, type Seat } from "@caysonverse/shared/worldMap";
+import type { Seat } from "@caysonverse/shared/worldMap";
 import { VILLAGE_SEATS } from "@caysonverse/shared/village/benchSeats";
 import { sample } from "./interpolation";
 import { advancePlayout, createPlayout } from "./playout";
@@ -222,7 +222,6 @@ function simulate(plan: Plan, net: Net): Run {
     appearance: { ...DEFAULT_APPEARANCE },
     connected: true,
     seatIndex: -1,
-    role: 0,
     snapshots: [],
     playout: createPlayout(0),
   });
@@ -388,8 +387,9 @@ describe("standing still, then sitting: the facing does not spin in one frame", 
   });
 });
 
-// A legacy classroom chair (no seatY): the server snaps the sitter onto it and back off to the aisle. Coming from the
+// A chair without a seat height (no seatY): the server snaps the sitter onto it and back off to the aisle. Coming from the
 // dismount side means coming through the chair's back.
+const SEATS: readonly Seat[] = [{ x: 10, z: 20, yaw: Math.PI / 2, standX: 9.1, standZ: 20 }];
 const CHAIR = 0;
 const chair = SEATS[CHAIR];
 const AT_CHAIR: Plan = {
@@ -402,7 +402,7 @@ const AT_CHAIR: Plan = {
   walkOff: 0,
 };
 
-describe("a legacy chair snaps on and off, exactly as before — never a slide through its back", () => {
+describe("a chair without a seat height snaps on and off — never a slide through its back", () => {
   beforeEach(() => clearRemotes());
 
   it.each([
@@ -455,8 +455,7 @@ describe("seat line (the stamped seat changes)", () => {
       appearance: { ...DEFAULT_APPEARANCE },
       connected: true,
       seatIndex: -1,
-      role: 0,
-      snapshots: [],
+        snapshots: [],
       playout: createPlayout(0),
     });
     receiveRemotePose("s", 1000, 0, 0, 0, 0);

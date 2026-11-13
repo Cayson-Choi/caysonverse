@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { blurTextEntry, handleEscape, isTextEntry, openMenu, type FocusLike } from "./escape";
-import { useNpcStore } from "../stores/npcStore";
 import { useUiStore } from "../stores/uiStore";
 import { popOverlay, pushOverlay, resetOverlays, topOverlay } from "../ui/overlayStack";
 
@@ -14,7 +13,6 @@ const el = (o: Partial<FocusLike>) => {
 const focus = (focused: FocusLike | null) => vi.stubGlobal("document", { activeElement: focused });
 
 beforeEach(() => {
-  useNpcStore.setState({ activeNpc: null, sending: false, histories: {} });
   useUiStore.setState({ menuOpen: false, rosterOpen: false });
   resetOverlays();
   focus(null);
@@ -89,27 +87,15 @@ describe("handleEscape", () => {
   });
 
   it("with the menu open Esc closes the MENU first — it is on top of everything", () => {
-    // Defensive: the menu normally closes the roster / 조교 dialogue as it opens, but if
-    // either is somehow still open under it, Esc still peels the topmost (the menu) first.
-    useNpcStore.setState({ activeNpc: "lobby" });
+    // Defensive: the menu normally closes the roster as it opens, but if it is somehow still open under it, Esc
+    // still peels the topmost (the menu) first.
     useUiStore.setState({ menuOpen: true, rosterOpen: true });
     handleEscape();
     expect(useUiStore.getState()).toMatchObject({ menuOpen: false, rosterOpen: true });
-    expect(useNpcStore.getState().activeNpc).toBe("lobby");
   });
 
-  it("with the menu closed: the 조교 dialogue first (even while typing in it), then the roster, then the menu opens", () => {
-    useNpcStore.setState({ activeNpc: "lobby" });
+  it("with the menu closed: the roster first, then the menu opens", () => {
     useUiStore.setState({ menuOpen: false, rosterOpen: true });
-    const field = el({ tagName: "INPUT", type: "text" });
-    focus(field);
-
-    handleEscape();
-    expect(useNpcStore.getState().activeNpc).toBeNull();
-    expect(field.blur).not.toHaveBeenCalled(); // the dialogue unmounts with its field
-    expect(useUiStore.getState()).toMatchObject({ menuOpen: false, rosterOpen: true });
-
-    focus(null);
     handleEscape();
     expect(useUiStore.getState()).toMatchObject({ menuOpen: false, rosterOpen: false });
     handleEscape();
@@ -117,18 +103,16 @@ describe("handleEscape", () => {
   });
 });
 
-describe("handleEscape — overlays (investigation, locks, team panel, last door)", () => {
+describe("handleEscape — overlays", () => {
   it("an open overlay closes first, whatever else is open — and nothing else changes", () => {
     const close = vi.fn<() => void>();
     pushOverlay("inspect", close);
-    useNpcStore.setState({ activeNpc: "lobby" });
     useUiStore.setState({ menuOpen: true, rosterOpen: true });
 
     handleEscape();
 
     expect(close).toHaveBeenCalledTimes(1);
     expect(useUiStore.getState()).toMatchObject({ menuOpen: true, rosterOpen: true });
-    expect(useNpcStore.getState().activeNpc).toBe("lobby");
   });
 
   it("with nothing but an overlay open Esc closes it and does not open the menu", () => {
@@ -175,12 +159,10 @@ describe("handleEscape — overlays (investigation, locks, team panel, last door
 });
 
 describe("openMenu — opening the menu clears what sits under it", () => {
-  it("closes the roster and the 조교 dialogue as the menu opens", () => {
-    useNpcStore.setState({ activeNpc: "lobby" });
+  it("closes the roster as the menu opens", () => {
     useUiStore.setState({ menuOpen: false, rosterOpen: true });
     openMenu();
     expect(useUiStore.getState()).toMatchObject({ menuOpen: true, rosterOpen: false });
-    expect(useNpcStore.getState().activeNpc).toBeNull();
   });
 
   it("is what an Esc with nothing else open does, and it is idempotent", () => {
@@ -188,6 +170,5 @@ describe("openMenu — opening the menu clears what sits under it", () => {
     expect(useUiStore.getState()).toMatchObject({ menuOpen: true, rosterOpen: false });
     openMenu();
     expect(useUiStore.getState().menuOpen).toBe(true);
-    expect(useNpcStore.getState().activeNpc).toBeNull();
   });
 });

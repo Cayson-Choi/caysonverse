@@ -3,7 +3,7 @@ import { useFrame, useThree } from "@react-three/fiber";
 import { useKeyboardControls } from "@react-three/drei";
 import { PerspectiveCamera, Raycaster, Vector2 } from "three";
 import type { Fog } from "three";
-import { CAMERA, CAMERA_FAR, FOG_FAR, FOG_NEAR, FP_EYE_HEIGHT, HEAD_HEIGHT } from "./constants";
+import { CAMERA, CAMERA_FAR, FP_EYE_HEIGHT, HEAD_HEIGHT } from "./constants";
 import type { MoveControl } from "./constants";
 import { normalizeAngle } from "./yaw";
 import { clampFpPitch, easeBlend } from "./viewMode";
@@ -80,9 +80,9 @@ interface CameraRigProps {
   seat: SeatState;
   /**
    * The scene's fog band [near, far] (m): where the overview's fog push-out starts from and
-   * returns to. Defaults to the legacy world's FOG_NEAR / FOG_FAR.
+   * returns to.
    */
-  fogRange?: readonly [number, number];
+  fogRange: readonly [number, number];
   /**
    * The scene's far plane (m) outside the overview (default CAMERA_FAR). 케이슨 마을 draws its sky dome and far
    * mountains out to 1.4 km and passes a far plane past them (VillageScene).
@@ -95,19 +95,8 @@ interface CameraRigProps {
   decal?: GroundDecal | null;
 }
 
-const LEGACY_FOG: readonly [number, number] = [FOG_NEAR, FOG_FAR];
-
 /** Longest frame (s) a held Z / C may turn the view for — a stalled tab can't spin it. */
 const MAX_KEY_TURN_DT = 0.1;
-
-/**
- * Overview mode IS allowed to bypass the maze anti-peek cap (design 20 —
- * developer decision: easy escape wins over hiding the maze solution). The
- * top-down overview pose is a SEPARATE camera term that never runs through the
- * maze cap, so this switch is documentation + the single line a future "lock the
- * overview inside the maze" feature would flip to re-apply the cap there.
- */
-export const OVERVIEW_ALLOWED_IN_MAZE = true;
 
 function clamp(value: number, min: number, max: number): number {
   return value < min ? min : value > max ? max : value;
@@ -205,7 +194,7 @@ function spread(pointers: Map<number, { x: number; y: number }>): number {
  * All per-frame state lives in the shared `orbit` object, the rig and the module
  * `viewState` (all mutated in place) — never React state.
  */
-export function CameraRig({ pose, orbit, seat, fogRange = LEGACY_FOG, far: baseFar = CAMERA_FAR, decal = null }: CameraRigProps) {
+export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_FAR, decal = null }: CameraRigProps) {
   const camera = useThree((s) => s.camera);
   const gl = useThree((s) => s.gl);
   const scene = useThree((s) => s.scene);
@@ -233,7 +222,7 @@ export function CameraRig({ pose, orbit, seat, fogRange = LEGACY_FOG, far: baseF
   // First person hides the resting mouse cursor over the 3D view (fpCursor.ts) — the owner saw it as a stray icon.
   useFpCursor(gl.domElement, getKeys);
 
-  // Dev/E2E only: expose the live camera (the maze cap is not reflected in
+  // Dev/E2E only: expose the live camera (a camera limit is not reflected in
   // orbit.distance, and the FP look yaw lives outside orbit). Tree-shaken in prod.
   useEffect(() => {
     if (!import.meta.env.DEV) return;
@@ -885,9 +874,8 @@ export function CameraRig({ pose, orbit, seat, fogRange = LEGACY_FOG, far: baseF
     const uTgtY = lerp(HEAD_HEIGHT + CAMERA_LOOK_LIFT + tpLookLift, FP_EYE_HEIGHT + hop + fwdY, t);
     const uTgtZ = lerp(followZ, pose.z + fwdZ, t);
 
-    // ── Overview pose ── straight up over the pan-centre, looking down. The maze
-    // cap is bypassed here by construction (this is a separate pose term, never
-    // routed through cappedCameraY — see OVERVIEW_ALLOWED_IN_MAZE). ──
+    // ── Overview pose ── straight up over the pan-centre, looking down. A camera limit (a building's ceiling) is
+    // bypassed here by construction (this is a separate pose term, never routed through the limit). ──
     const ovPosX = viewState.ovCenterX;
     const ovPosY = viewState.ovHeight;
     const ovPosZ = viewState.ovCenterZ;
@@ -921,7 +909,7 @@ export function CameraRig({ pose, orbit, seat, fogRange = LEGACY_FOG, far: baseF
 
     // Overview looks down from far above; push the fog band out (eased by ovT) so
     // the whole map reads crisply instead of hazing into the sky. Restored exactly
-    // to FOG_NEAR/FOG_FAR at ovT = 0.
+    // to the scene's fog band at ovT = 0.
     const fog = state.scene.fog as Fog | null;
     if (fog && (fog as { isFog?: boolean }).isFog) {
       const h = viewState.ovHeight;

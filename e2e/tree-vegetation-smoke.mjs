@@ -17,7 +17,7 @@
  *   CV_CLIENT_URL=http://localhost:<q> node e2e/tree-vegetation-smoke.mjs
  */
 import { mkdirSync } from "node:fs";
-import { createRun, DESKTOP, entryReady, launchBrowser, openPlayer, PHONE, press, CLIENT_URL, sleep } from "./lib/escape.mjs";
+import { createRun, DESKTOP, entryReady, launchBrowser, openPlayer, PHONE, press, CLIENT_URL, sleep } from "./lib/common.mjs";
 
 const run = createRun("tree-vegetation-smoke");
 run.allow("D3D X3595 (bloom shader, known)", /warning X3595: gradient instruction used in a loop/);

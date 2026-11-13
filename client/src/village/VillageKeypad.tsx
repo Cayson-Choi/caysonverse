@@ -8,6 +8,10 @@ import "./villageKeypad.css";
 
 export const KEYPAD_OVERLAY_ID = "keypad";
 
+/** House interiors are being rebuilt (owner, 2026-11-13: "임시로 막기"). Flip to true when the new interiors ship. */
+export const HOUSE_INTERIORS_OPEN = false;
+export const HOUSE_INTERIORS_PAUSED_TEXT = "집 안을 새로 꾸미고 있어요. 곧 들어갈 수 있게 열어 드릴게요.";
+
 function reasonText(result: KeypadResultPayload): string {
   switch (result.reason) {
     case "locked_out": return `잠금 상태예요. ${Math.ceil((result.retryAfterMs ?? 0) / 1000)}초 뒤 다시 시도해 주세요.`;
@@ -52,6 +56,19 @@ export function VillageKeypad() {
     keypadPending();
     sendKeypad(keypad.buildingId!, code);
   };
+  if (!HOUSE_INTERIORS_OPEN) {
+    // Interiors are being rebuilt: the keypad only explains that, it never sends a code or moves the player.
+    return (
+      <div className="cv-keypad" role="dialog" aria-modal="true" aria-label="집 번호키">
+        <div className="cv-keypad-backdrop" onPointerDown={closeKeypad} />
+        <div className="cv-keypad-panel">
+          <div className="cv-keypad-title">집 번호키</div>
+          <p className="cv-keypad-hint cv-keypad-paused">{HOUSE_INTERIORS_PAUSED_TEXT}</p>
+          <button type="button" className="cv-keypad-close" autoFocus onClick={closeKeypad}>닫기</button>
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="cv-keypad" role="dialog" aria-modal="true" aria-label="집 번호키">
       <div className="cv-keypad-backdrop" onPointerDown={closeKeypad} />

@@ -11,7 +11,6 @@ import {
 } from "../game/coach";
 import { viewState } from "../game/viewState";
 import { isTouchDevice } from "../device";
-import { useAppStore } from "../stores/appStore";
 import { useCoachStore } from "../stores/coachStore";
 import { useSettingsStore } from "../stores/settingsStore";
 import { useUiStore } from "../stores/uiStore";
@@ -33,7 +32,6 @@ import "./coach.css";
 function CoachCard({ step }: { step: Exclude<CoachStep, "done"> }) {
   const report = useCoachStore((s) => s.report);
   const leftHanded = useSettingsStore((s) => s.settings.leftHanded);
-  const isAdmin = useAppStore((s) => s.isAdmin);
   const layout = useTouchHudLayout();
   const vp = useTouchViewport();
   const ref = useRef<HTMLDivElement>(null);
@@ -65,12 +63,11 @@ function CoachCard({ step }: { step: Exclude<CoachStep, "done"> }) {
             safe: vp.safe,
             leftHanded,
             layout,
-            admin: isAdmin,
             w: width,
             h: height,
           })
         : null,
-    [step, vp, leftHanded, layout, isAdmin, width, height],
+    [step, vp, leftHanded, layout, width, height],
   );
   const style: CSSProperties | undefined = spot
     ? { left: spot.x, top: spot.y, width: spot.w }

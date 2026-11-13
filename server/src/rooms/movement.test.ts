@@ -5,12 +5,37 @@ import {
   MOVE_SPEED_SLACK,
   MOVE_ELAPSED_CEIL_MS,
   MOVE_ELAPSED_FLOOR_MS,
-  WORLD_BOUNDS,
   PLAYER_RADIUS,
 } from "@caysonverse/shared/constants";
-import { LEGACY_GEOMETRY, SPAWN_POINT, SPAWN_JITTER } from "@caysonverse/shared/worldMap";
 import type { MapGeometry } from "@caysonverse/shared/school/geometry";
-import { validateMove, spawnInDisk, moveBaselineAfter } from "./movement";
+import { validateMove as validateMoveOn, spawnInDisk, moveBaselineAfter } from "./movement";
+
+/**
+ * A plain test map (60 m x 40 m) with the features the rules below are pinned against: a sofa-sized box, a divider wall
+ * with a door gap, a screen box on the east edge and a solid west wall. The validator takes the map as an argument (the
+ * village passes its own geometry); `validateMove` here defaults to this one.
+ */
+const WORLD_BOUNDS = { minX: -30, maxX: 30, minZ: -20, maxZ: 20 };
+const SPAWN_POINT = { x: -15, z: 0 } as const;
+const SPAWN_JITTER = 2;
+const TEST_MAP: MapGeometry = {
+  id: "village",
+  bounds: WORLD_BOUNDS,
+  obstacles: [
+    { minX: -16.5, maxX: -13.5, minZ: 2.9, maxZ: 4.1 }, // sofa
+    { minX: -0.25, maxX: 0.25, minZ: -18, maxZ: -2 }, // divider, north of the door gap
+    { minX: -0.25, maxX: 0.25, minZ: 2, maxZ: 18 }, // divider, south of the door gap
+    { minX: 29.5, maxX: 30, minZ: -4, maxZ: 4 }, // screen
+    { minX: -30, maxX: -29, minZ: -20, maxZ: 20 }, // solid west wall
+  ],
+  cameraBoxes: [],
+};
+const validateMove = (
+  current: { x: number; z: number },
+  payload: unknown,
+  elapsedMs: number,
+  geo: MapGeometry = TEST_MAP,
+) => validateMoveOn(current, payload, elapsedMs, geo);
 
 const ORIGIN = { x: 0, z: 0 };
 
@@ -110,7 +135,7 @@ describe("moveBaselineAfter — a step spends only the budget it used (fix/remot
     for (let k = 0; k < 90; k++, now += 1000 / 30) {
       const budget = Math.min(now - baseline, MOVE_ELAPSED_CEIL_MS);
       const next = validateMove(current, { x: current.x + 1, z: 0, yaw: 0 }, budget, {
-        ...LEGACY_GEOMETRY,
+        ...TEST_MAP,
         bounds: { minX: -1e6, maxX: 1e6, minZ: -1e6, maxZ: 1e6 },
         obstacles: [],
       });
@@ -205,8 +230,8 @@ describe("validateMove — bounds clamp", () => {
     // The min-Z (south) boundary at a clear lounge x (spawn column): a legal-speed
     // overshoot south of the world clamps the centre a body-radius off the wall
     // (accepted, not dropped). NOTE the SW/min-X corner is now the MAZE's walled
-    // corner (v2-3 west extension) — overshooting there is correctly DROPPED, so
-    // this exercises the clamp on the still-open south edge.
+    // edge is walled — overshooting there is correctly DROPPED, so
+    // this exercises the clamp on the open south edge.
     const c = { x: -15, z: WORLD_BOUNDS.minZ + 0.1 };
     const result = validateMove(c, { x: -15, z: WORLD_BOUNDS.minZ - 5, yaw: 0 }, 10000);
     expect(result).not.toBeNull();
@@ -214,9 +239,8 @@ describe("validateMove — bounds clamp", () => {
     expect(result!.z).toBeCloseTo(WORLD_BOUNDS.minZ + PLAYER_RADIUS, 6);
   });
 
-  it("drops an overshoot into the maze west wall (the min-X boundary is now walled)", () => {
-    // After the west extension the world's min-X edge coincides with the maze's
-    // solid west wall, so a clamp there lands inside a wall → dropped (not accepted).
+  it("drops an overshoot into the solid west wall (the min-X boundary is walled)", () => {
+    // The map's min-X edge coincides with a solid wall, so a clamp there lands inside it → dropped (not accepted).
     const c = { x: WORLD_BOUNDS.minX + PLAYER_RADIUS + 0.2, z: -10 };
     const result = validateMove(c, { x: WORLD_BOUNDS.minX - 5, z: -10, yaw: 0 }, 10000);
     expect(result).toBeNull();
@@ -277,11 +301,10 @@ describe("validateMove — yaw normalization", () => {
   });
 });
 
-// escape phase 1, Task 2: the map a player stands in is an argument, so the school hub and
-// the team rooms reuse the same speed/bounds/obstacle rules on their own geometry.
+// The map a player stands in is an argument, so every map reuses the same speed/bounds/obstacle rules.
 describe("validateMove — map geometry argument", () => {
   const BOX: MapGeometry = {
-    id: "counsel",
+    id: "village",
     bounds: { minX: -6, maxX: 6, minZ: -5, maxZ: 5 },
     obstacles: [{ minX: 1, maxX: 2, minZ: -1, maxZ: 1 }],
     cameraBoxes: [],
@@ -297,35 +320,11 @@ describe("validateMove — map geometry argument", () => {
   it("drops a move into the given geometry's obstacle", () =>
     expect(validateMove({ x: 0.3, z: 0 }, { x: 0.8, z: 0, yaw: 0 }, 100, BOX)).toBeNull());
 
-  it("without geo it is the legacy map (same verdicts as before)", () => {
-    // Moves whose verdict on the legacy world is pinned by the tests above: accepted open
-    // floor, clamped edges, furniture/wall drops. Each must come out the same with no
-    // argument and with LEGACY_GEOMETRY passed explicitly.
-    const cases: Array<[{ x: number; z: number }, unknown, number]> = [
-      [ORIGIN, { x: 0.3, z: 0.2, yaw: 0 }, 100], // open floor
-      [{ x: -0.5, z: 0 }, { x: 0.5, z: 0, yaw: 0 }, 1000], // door gap
-      [{ x: WORLD_BOUNDS.maxX - 0.1, z: 12 }, { x: WORLD_BOUNDS.maxX + 5, z: 12, yaw: 0 }, 2000], // east clamp
-      [{ x: -15, z: WORLD_BOUNDS.minZ + 0.1 }, { x: -15, z: WORLD_BOUNDS.minZ - 5, yaw: 0 }, 10000], // south clamp
-      [{ x: -15, z: 2.4 }, { x: -15, z: 3.5, yaw: 0 }, 1000], // sofa
-      [{ x: 0.7, z: -8 }, { x: 0, z: -8, yaw: 0 }, 1000], // divider wall
-      [{ x: 29, z: 0 }, { x: 29.6, z: 0, yaw: 0 }, 1000], // lecture-hall screen
-      [{ x: WORLD_BOUNDS.minX + PLAYER_RADIUS + 0.2, z: -10 }, { x: WORLD_BOUNDS.minX - 5, z: -10, yaw: 0 }, 10000], // maze west wall
-    ];
-    const defaults = cases.map(([c, p, e]) => validateMove(c, p, e));
-    const explicit = cases.map(([c, p, e]) => validateMove(c, p, e, LEGACY_GEOMETRY));
-    expect(defaults).toEqual(explicit);
-    // Non-vacuous: the set holds both outcomes (4 accepted, 4 dropped)...
-    expect(defaults.filter((r) => r === null)).toHaveLength(4);
-    // ...and the clamps really used the legacy bounds, not some other map's.
-    expect(defaults[2]!.x).toBeCloseTo(WORLD_BOUNDS.maxX - PLAYER_RADIUS, 6);
-    expect(defaults[3]!.z).toBeCloseTo(WORLD_BOUNDS.minZ + PLAYER_RADIUS, 6);
-  });
-
-  it("judges against the given map only (a legacy obstacle is open floor elsewhere)", () => {
-    // The legacy sofa at (-15, 3.5) drops the move on the legacy map; a map whose bounds
+  it("judges against the given map only (an obstacle of one map is open floor elsewhere)", () => {
+    // The sofa at (-15, 3.5) drops the move on the test map; a map whose bounds
     // contain that point and has no props there accepts the same move.
     const open: MapGeometry = {
-      id: "hub-open",
+      id: "village",
       bounds: { minX: -20, maxX: 20, minZ: -20, maxZ: 20 },
       obstacles: [],
       cameraBoxes: [],
@@ -339,11 +338,10 @@ describe("validateMove — map geometry argument", () => {
   });
 });
 
-// escape phase 1, Task 2: the spawn rule WorldRoom used, with the map as an argument
-// (ClassRoom spawns around HUB_SPAWN on the hub geometry with the same function).
+// The spawn rule, with the map as an argument.
 describe("spawnInDisk", () => {
   const ROOM: MapGeometry = {
-    id: "counsel",
+    id: "village",
     bounds: { minX: -6, maxX: 6, minZ: -5, maxZ: 5 },
     obstacles: [],
     cameraBoxes: [],
@@ -373,9 +371,9 @@ describe("spawnInDisk", () => {
     expect(west.x).toBe(-6 + PLAYER_RADIUS);
   });
 
-  it("with Math.random keeps the world spawn inside its jitter disk and the world bounds", () => {
+  it("with Math.random keeps the spawn inside its jitter disk and the map bounds", () => {
     for (let i = 0; i < 500; i++) {
-      const p = spawnInDisk(SPAWN_POINT.x, SPAWN_POINT.z, SPAWN_JITTER, LEGACY_GEOMETRY);
+      const p = spawnInDisk(SPAWN_POINT.x, SPAWN_POINT.z, SPAWN_JITTER, TEST_MAP);
       expect(Math.hypot(p.x - SPAWN_POINT.x, p.z - SPAWN_POINT.z)).toBeLessThanOrEqual(SPAWN_JITTER + 1e-9);
       expect(p.x).toBeGreaterThanOrEqual(WORLD_BOUNDS.minX + PLAYER_RADIUS);
       expect(p.x).toBeLessThanOrEqual(WORLD_BOUNDS.maxX - PLAYER_RADIUS);

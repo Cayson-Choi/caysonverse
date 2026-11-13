@@ -3,7 +3,6 @@ import { EMOJIS } from "@caysonverse/shared/constants";
 import { MIN_GAP_PX, MIN_TOUCH_PX, buttonPx, type ButtonSize } from "./settings";
 import {
   HUD_NARROW_BELOW_PX,
-  ZONE_LABELS,
   clampFanCenterX,
   fanButtonPx,
   fanOpenRects,
@@ -15,7 +14,6 @@ import {
   rosterRows,
   rosterTitle,
   touchHudLayout,
-  zoneLabelAt,
   type Rect,
   type RosterRow,
   type SafeInsets,
@@ -28,55 +26,15 @@ const NO_INSETS: SafeInsets = { top: 0, right: 0, bottom: 0, left: 0 };
 const row = (sid: string, nickname: string, extra: Partial<RosterRow> = {}): RosterRow => ({
   sid,
   nickname,
-  teacher: false,
   self: false,
   ...extra,
 });
 
-describe("zone labels", () => {
-  it("zoneLabelAt names the four rooms", () => {
-    expect(zoneLabelAt(-15, 0)).toBe("로비");
-    expect(zoneLabelAt(15, 0)).toBe("강의실");
-    expect(zoneLabelAt(-15, -26)).toBe("AI 갤러리");
-    expect(zoneLabelAt(-48, 0)).toBe("미로방");
-    expect(zoneLabelAt(500, 500)).toBe("");
-  });
-
-  it("ZONE_LABELS has the fixed copy for every zone", () => {
-    expect(ZONE_LABELS).toEqual({
-      maze: "미로방",
-      lounge: "로비",
-      lectureHall: "강의실",
-      gallery: "AI 갤러리",
-    });
-  });
-
-  it("the shared lounge / hall edge belongs to the hall, the gallery door line to the gallery", () => {
-    // Order is gallery → maze → lectureHall → lounge, inclusive edges: the first match wins.
-    expect(zoneLabelAt(0, 0)).toBe("강의실");
-    expect(zoneLabelAt(-15, -18)).toBe("AI 갤러리");
-    expect(zoneLabelAt(-15, -17.99)).toBe("로비");
-  });
-});
-
 describe("roster", () => {
-  it("rosterRows: teachers first, then me, then Korean order", () => {
-    const rows = rosterRows(row("me", "하늘", { self: true }), [
-      row("a", "다람", {}),
-      row("b", "가나", {}),
-      row("t", "선생님", { teacher: true }),
-      row("c", "나비", {}),
-    ]);
-    expect(rows.map((r) => r.sid)).toEqual(["t", "me", "b", "c", "a"]);
-    expect(rows.map((r) => r.nickname)).toEqual(["선생님", "하늘", "가나", "나비", "다람"]);
-  });
-
-  it("when I am the teacher I am the first row; another teacher follows me", () => {
-    const rows = rosterRows(row("me", "쌤", { self: true, teacher: true }), [
-      row("s1", "가나"),
-      row("t2", "가르침", { teacher: true }),
-    ]);
-    expect(rows.map((r) => r.sid)).toEqual(["me", "t2", "s1"]);
+  it("rosterRows: me first, then Korean order", () => {
+    const rows = rosterRows(row("me", "하늘", { self: true }), [row("a", "다람"), row("b", "가나"), row("c", "나비")]);
+    expect(rows.map((r) => r.sid)).toEqual(["me", "b", "c", "a"]);
+    expect(rows.map((r) => r.nickname)).toEqual(["하늘", "가나", "나비", "다람"]);
   });
 
   it("flags are normalized: only the first argument is me", () => {
@@ -92,12 +50,10 @@ describe("roster", () => {
     expect(remotes.map((r) => r.sid)).toEqual(["z", "y"]);
   });
 
-  it("title and row copy: 접속자 N명, 👑 before a teacher, (나) after me", () => {
+  it("title and row copy: 접속자 N명, (나) after me", () => {
     expect(rosterTitle(1)).toBe("접속자 1명");
     expect(rosterTitle(27)).toBe("접속자 27명");
-    expect(rosterRowLabel(row("t", "김쌤", { teacher: true }))).toBe("👑 김쌤");
     expect(rosterRowLabel(row("me", "하늘", { self: true }))).toBe("하늘 (나)");
-    expect(rosterRowLabel(row("me", "쌤", { self: true, teacher: true }))).toBe("👑 쌤 (나)");
     expect(rosterRowLabel(row("a", "친구"))).toBe("친구");
   });
 });

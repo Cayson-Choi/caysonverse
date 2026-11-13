@@ -5,10 +5,8 @@ import { matchMaker } from "colyseus";
 import {
   VILLAGE_ROOM,
   VILLAGE_MAX_CLIENTS,
-  WORLD_ROOM,
   PATCH_RATE_MS,
   RECONNECT_WINDOW_S,
-  ROLE_STUDENT,
   PLAYER_RADIUS,
   TYPING_RATE,
 } from "@caysonverse/shared/constants";
@@ -23,19 +21,19 @@ import {
 } from "@caysonverse/shared/village/messages";
 import { VILLAGE_LAYOUT, cubbyAnchors, villageGeometry } from "@caysonverse/shared/village/villageLayout";
 import { VILLAGE_SEATS } from "@caysonverse/shared/village/benchSeats";
+import { ARRIVAL_SPACING_M, DOOR_PAD_CLEARANCE_M, SPACING_SLACK_M } from "@caysonverse/shared/village/arrivalSpot";
+import { keypadEntries } from "@caysonverse/shared/village/buildingAccess";
 import { isBlocked } from "@caysonverse/shared/collision";
 import { SEAT_OCCUPIED } from "./seating";
 import { SAMPLE_FILLED_IDS } from "@caysonverse/shared/village/sampleFill";
 import { APPEARANCE_FIELDS, APPEARANCE_RANGES, DEFAULT_APPEARANCE, pickAppearance, type Appearance } from "@caysonverse/shared/appearance";
 import type { Player } from "@caysonverse/shared/schema";
-import { rooms, type VillageRoom, type WorldRoom } from "./index";
+import { rooms, type VillageRoom } from "./index";
 import type { Tracking } from "./PlayerRoom";
 
 /**
- * VillageRoom (케이슨 마을 1단계 Task 2). ONE boot for the whole file, on its own port. The brief named 2574,
- * but reconnectWindow.integration.test.ts already boots on 2574 and vitest runs files in parallel, so this
- * file takes the next free one (2568 WorldRoom, 2569 ClassRoom, 2570 EscapeRoom, 2571 escapeFlow,
- * 2572 PlayerRoom, 2573 banditAi, 2574 reconnectWindow, 2575 this file).
+ * VillageRoom (케이슨 마을 1단계 Task 2). ONE boot for the whole file, on its own port; vitest runs files in
+ * parallel, so every integration file takes its own (2572 PlayerRoom, 2575 this file).
  *
  * Time-sensitive checks (door cap, speed budget) run on a test clock: the room's `now()` is replaced, so
  * they do not wait in real time or depend on the machine's speed. Joins use the production verb
@@ -207,7 +205,6 @@ describe("VillageRoom setup (integration)", () => {
     expect(p.nickname).toBe("케이슨");
     expect(pickAppearance(p)).toEqual(look);
     expect(p.area).toBe("village");
-    expect(p.role).toBe(ROLE_STUDENT);
     expect(p.connected).toBe(true);
     expect(p.seatIndex).toBe(-1);
     // Within the layout's jitter of the spawn point, clear of the fountain's collider.
@@ -223,22 +220,20 @@ describe("VillageRoom setup (integration)", () => {
     expect(room.state.players.size).toBe(0);
   });
 
-  it("syncs the area to other clients and starts with an empty banner (no admin: announce and kick are stray messages)", async () => {
+  it("syncs the area to other clients (there is no admin: an announce or kick message is a stray one and is dropped)", async () => {
     const room = await colyseus.createRoom<VillageRoom>(VILLAGE_ROOM);
     const alice = await colyseus.connectTo(room, JOIN);
     const bob = await colyseus.connectTo(room, JOIN_BOB);
     expect(await pollFor(() => bob.state?.players?.get(alice.sessionId))).toBeDefined();
     expect(bob.state.players.get(alice.sessionId)!.area).toBe("village");
-    expect(room.state.announcement).toBe("");
 
     let leaveCode: number | null = null;
     alice.onLeave((code) => {
       leaveCode = code;
     });
-    alice.send(MessageType.Announce, { text: "공지" });
-    alice.send(MessageType.Kick, { sid: bob.sessionId });
+    alice.send("announce", { text: "공지" });
+    alice.send("kick", { sid: bob.sessionId });
     await roundTrip(alice, bob); // both were handled (and dropped) before this typing event went out
-    expect(room.state.announcement).toBe("");
     expect(room.state.players.has(bob.sessionId)).toBe(true);
     expect(leaveCode).toBeNull();
   });
@@ -467,6 +462,103 @@ describe("VillageRoom door (integration)", () => {
   });
 });
 
+describe("VillageRoom arrivals never stack (integration, fix/arrival-spread)", () => {
+  /** `n` visitors in one fresh room, each with its own nickname. */
+  async function crowd(n: number) {
+    const room = await colyseus.createRoom<VillageRoom>(VILLAGE_ROOM);
+    const clients: Awaited<ReturnType<typeof colyseus.connectTo<VillageRoom>>>[] = [];
+    for (let i = 0; i < n; i++) clients.push(await colyseus.connectTo(room, { nickname: `손님${i + 1}`, appearance: DEFAULT_APPEARANCE }));
+    const players = clients.map((c) => room.state.players.get(c.sessionId)!);
+    return { room, clients, players };
+  }
+  const gaps = (ps: readonly { x: number; z: number }[]) => {
+    let min = Infinity;
+    for (let i = 0; i < ps.length; i++) for (let j = i + 1; j < ps.length; j++) min = Math.min(min, Math.hypot(ps[i].x - ps[j].x, ps[i].z - ps[j].z));
+    return min;
+  };
+  const offPad = (p: { x: number; z: number }, pad: typeof IN_PAD) => Math.hypot(p.x - pad.centre.x, p.z - pad.centre.z) >= pad.radius + DOOR_PAD_CLEARANCE_M - 1e-6;
+
+  it("eight visitors joining one room appear on the plaza at least 1.4 m apart, all clear of colliders", async () => {
+    const { players } = await crowd(8);
+    expect(gaps(players)).toBeGreaterThanOrEqual(ARRIVAL_SPACING_M - SPACING_SLACK_M);
+    for (const p of players) {
+      expect(p.area).toBe("village");
+      expect(isBlocked(p.x, p.z, PLAYER_RADIUS, villageGeometry.obstacles, 0)).toBe(false);
+      expect(Math.hypot(p.x - L.spawn.x, p.z - L.spawn.z)).toBeLessThan(10); // still on the plaza, by the spawn
+    }
+  });
+
+  it("six visitors on the outside pad use the door in the same tick: inside, nobody within 1.4 m of anyone, nobody on the way out", async () => {
+    const { room, clients, players } = await crowd(6);
+    const clock = useClock(room);
+    players.forEach((p, i) => placeAt(p, OUT_PAD.centre.x - 1.25 + i * 0.5, OUT_PAD.centre.z)); // shoulder to shoulder on the pad
+    for (const c of clients) c.send(VillageMsg.UseDoor, {});
+    expect(await pollFor(() => players.every((p) => p.area === "hall"))).toBe(true);
+    expect(gaps(players)).toBeGreaterThanOrEqual(ARRIVAL_SPACING_M - SPACING_SLACK_M);
+    for (const p of players) {
+      expect(offPad(p, IN_PAD), `${p.x}, ${p.z}`).toBe(true);
+      expect(isBlocked(p.x, p.z, PLAYER_RADIUS, villageGeometry.obstacles, 0)).toBe(false);
+      expect(p.yaw).toBeCloseTo(HALL_SPAWN.yaw, 6); // all face into the room
+    }
+    // The first one through stands on the layout's spawn; the others beside and ahead of it.
+    expect(players.filter((p) => p.x === HALL_SPAWN.x && p.z === HALL_SPAWN.z)).toHaveLength(1);
+
+    // And all six out again in the same tick (a second later: the door cap).
+    clock.t += 1001;
+    players.forEach((p, i) => placeAt(p, IN_PAD.centre.x - 0.75 + i * 0.3, IN_PAD.centre.z - 0.4));
+    for (const c of clients) c.send(VillageMsg.UseDoor, {});
+    expect(await pollFor(() => players.every((p) => p.area === "village"))).toBe(true);
+    expect(gaps(players)).toBeGreaterThanOrEqual(ARRIVAL_SPACING_M - SPACING_SLACK_M);
+    for (const p of players) {
+      expect(offPad(p, OUT_PAD), `${p.x}, ${p.z}`).toBe(true);
+      expect(isBlocked(p.x, p.z, PLAYER_RADIUS, villageGeometry.obstacles, 0)).toBe(false);
+      expect(p.yaw).toBe(OUTSIDE_ARRIVAL.yaw);
+    }
+    expect(players.filter((p) => p.x === OUTSIDE_ARRIVAL.x && p.z === OUTSIDE_ARRIVAL.z)).toHaveLength(1);
+  });
+
+  it("someone still standing on the hall's spawn: the next visitor through the door appears right beside them, and every client sees it", async () => {
+    const { room, clients, players } = await crowd(2);
+    const [alice, bob] = players;
+    alice.area = "hall";
+    placeAt(alice, HALL_SPAWN.x, HALL_SPAWN.z);
+    placeAt(bob, OUT_PAD.centre.x, OUT_PAD.centre.z);
+    clients[1].send(VillageMsg.UseDoor, {});
+    expect(await pollFor(() => bob.area === "hall")).toBe(true);
+    expect(Math.hypot(bob.x - alice.x, bob.z - alice.z)).toBeCloseTo(ARRIVAL_SPACING_M, 9);
+    expect(bob.z).toBe(HALL_SPAWN.z); // beside, not in front
+    // Alice's client sees Bob there (float32 on the wire).
+    expect(await pollFor(() => clients[0].state?.players?.get(clients[1].sessionId)?.area === "hall")).toBe(true);
+    const seen = clients[0].state.players.get(clients[1].sessionId)!;
+    expect(Math.hypot(seen.x - alice.x, seen.z - alice.z)).toBeGreaterThanOrEqual(ARRIVAL_SPACING_M - SPACING_SLACK_M);
+    void room;
+  });
+
+  it("two family members opening the same house's keypad in the same tick land apart inside it (the keypad is paused on the client, the rule stays right)", async () => {
+    const { clients, players } = await crowd(2);
+    const entry = keypadEntries()[0]!;
+    placeAt(players[0], entry.pad.x - 0.3, entry.pad.z);
+    placeAt(players[1], entry.pad.x + 0.3, entry.pad.z);
+    for (const c of clients) c.send(VillageMsg.Keypad, { buildingId: entry.buildingId, code: "1004" });
+    const area = `house:${entry.buildingId}`;
+    expect(await pollFor(() => players.every((p) => p.area === area))).toBe(true);
+    expect(gaps(players)).toBeGreaterThanOrEqual(ARRIVAL_SPACING_M - SPACING_SLACK_M);
+    for (const p of players) expect(offPad(p, IN_PAD)).toBe(true);
+  });
+
+  it("only the players of the arrival's own area count: someone at the same coordinates in a house does not push a hall arrival aside", async () => {
+    const { clients, players } = await crowd(2);
+    const [carol, bob] = players;
+    carol.area = "house:house_1"; // the houses' interiors share the hall's coordinates
+    placeAt(carol, HALL_SPAWN.x, HALL_SPAWN.z);
+    placeAt(bob, OUT_PAD.centre.x, OUT_PAD.centre.z);
+    clients[1].send(VillageMsg.UseDoor, {});
+    expect(await pollFor(() => bob.area === "hall")).toBe(true);
+    expect(bob.x).toBe(HALL_SPAWN.x);
+    expect(bob.z).toBe(HALL_SPAWN.z);
+  });
+});
+
 describe("VillageRoom quiet hall (integration)", () => {
   it("in the village emoji and jump go out; inside the hall they are refused silently, and chat stays in the hall", async () => {
     const room = await colyseus.createRoom<VillageRoom>(VILLAGE_ROOM);
@@ -571,25 +663,6 @@ describe("VillageRoom quiet hall (integration)", () => {
     expect(emojis).toEqual([{ sid: alice.sessionId, index: 0 }]);
     expect(jumps).toEqual([{ sid: alice.sessionId }]);
     expect(clock.t).toBeGreaterThan(0);
-  });
-
-  it("the quiet is the village's own: the legacy world still relays emoji and jump whatever the area field says", async () => {
-    const room = await colyseus.createRoom<WorldRoom>(WORLD_ROOM);
-    const alice = await colyseus.connectTo(room, JOIN);
-    const bob = await colyseus.connectTo(room, JOIN_BOB);
-    const a = room.state.players.get(alice.sessionId)!;
-    expect(a.area).toBe("village"); // the world never sets it: the default
-    a.area = "hall";
-    const emojis: EmojiBroadcast[] = [];
-    const jumps: JumpBroadcast[] = [];
-    bob.onMessage(MessageType.Emoji, (m: EmojiBroadcast) => emojis.push(m));
-    bob.onMessage(MessageType.Jump, (m: JumpBroadcast) => jumps.push(m));
-
-    alice.send(MessageType.Emoji, { index: 3 });
-    alice.send(MessageType.Jump, {});
-    expect(await pollFor(() => emojis.length === 1 && jumps.length === 1)).toBe(true);
-    expect(emojis).toEqual([{ sid: alice.sessionId, index: 3 }]);
-    expect(jumps).toEqual([{ sid: alice.sessionId }]);
   });
 });
 

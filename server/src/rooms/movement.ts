@@ -4,7 +4,6 @@ import {
   MOVE_ELAPSED_FLOOR_MS,
   PLAYER_RADIUS,
 } from "@caysonverse/shared/constants";
-import { LEGACY_GEOMETRY } from "@caysonverse/shared/worldMap";
 import { isBlocked } from "@caysonverse/shared/collision";
 import type { MapGeometry } from "@caysonverse/shared/school/geometry";
 import type { MovePayload } from "@caysonverse/shared/messages";
@@ -36,9 +35,7 @@ import type { MovePayload } from "@caysonverse/shared/messages";
  *
  * Collision is enforced from the SAME obstacles the client slides against, so
  * both sides share one source of map/collision truth. `geo` is the map the
- * player stands in; it defaults to the legacy world (`LEGACY_GEOMETRY`, whose
- * bounds and obstacles ARE `WORLD_BOUNDS` / `OBSTACLES`), so existing callers
- * keep their exact verdicts.
+ * player stands in.
  *
  * 기준 속도 = 달리기 속도 (controls-ux §5): the client never reports walk/run, so
  * the speed budget is sized for RUN_SPEED (6.4 m/s; the walk is MOVE_SPEED, 2 m/s since 2026-11-10 — a tab still
@@ -48,7 +45,7 @@ export function validateMove(
   current: { x: number; z: number },
   payload: unknown,
   elapsedMs: number,
-  geo: MapGeometry = LEGACY_GEOMETRY,
+  geo: MapGeometry,
 ): MovePayload | null {
   // 1. shape
   if (typeof payload !== "object" || payload === null) return null;
@@ -115,7 +112,7 @@ export function moveBaselineAfter(nowMs: number, budgetMs: number, stepM: number
  * step 4), so joiners don't stack yet always land in-bounds. Obstacles are not
  * checked — each map keeps its spawn disk clear (the map data tests pin that).
  *
- * `random` draws the radius first, then the angle (WorldRoom's original order);
+ * `random` draws the radius first, then the angle (the original order);
  * it is Math.random except in tests.
  */
 export function spawnInDisk(

@@ -73,9 +73,8 @@ interface HudTopProps {
 /**
  * The top of the screen (controls-ux Task 16).
  *  - Top-left column: room name + 👥 player count, the roster list when open, then whatever
- *    the world hangs under it (touch: the chat-log toggle; teachers: the admin panel).
+ *    the scene hangs under it (touch: the chat-log toggle).
  *  - Top-right: 👁 🗺 🔊 ☰ in one row, 8 px apart.
- * The announcement banner stays top-centre (banner.css).
  *
  * A PC lays both out in hud.css. A phone gets the numbers from game/hud.ts
  * `touchHudLayout` (the ones hud.test.ts checks): where the top group sits, which corner

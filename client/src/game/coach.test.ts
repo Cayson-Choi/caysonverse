@@ -222,23 +222,21 @@ interface Phone {
   vh: number;
   /** The insets this screen really comes with (a notch only on the phones that have one). */
   safes: readonly SafeInsets[];
-  /** Whether a teacher's folded admin header can be asked to fit too (not on the smallest landscape screen). */
-  admin: readonly boolean[];
 }
 const BOTH = [false, true] as const;
 const PHONES: readonly Phone[] = [
-  { vw: 320, vh: 568, safes: [NO_INSETS], admin: BOTH },
-  { vw: 360, vh: 640, safes: [NO_INSETS], admin: BOTH },
-  { vw: 375, vh: 812, safes: [NO_INSETS, NOTCH_PORTRAIT], admin: BOTH },
-  { vw: 390, vh: 844, safes: [NO_INSETS, NOTCH_PORTRAIT], admin: BOTH },
-  { vw: 412, vh: 915, safes: [NO_INSETS], admin: BOTH },
-  { vw: 480, vh: 800, safes: [NO_INSETS], admin: BOTH },
-  { vw: 568, vh: 320, safes: [NO_INSETS], admin: [false] },
-  { vw: 667, vh: 375, safes: [NO_INSETS], admin: BOTH },
-  { vw: 812, vh: 375, safes: [NO_INSETS, NOTCH_LANDSCAPE], admin: BOTH },
-  { vw: 844, vh: 390, safes: [NO_INSETS, NOTCH_LANDSCAPE], admin: BOTH },
-  { vw: 932, vh: 430, safes: [NO_INSETS, NOTCH_LANDSCAPE], admin: BOTH },
-  { vw: 1024, vh: 768, safes: [NO_INSETS], admin: BOTH },
+  { vw: 320, vh: 568, safes: [NO_INSETS] },
+  { vw: 360, vh: 640, safes: [NO_INSETS] },
+  { vw: 375, vh: 812, safes: [NO_INSETS, NOTCH_PORTRAIT] },
+  { vw: 390, vh: 844, safes: [NO_INSETS, NOTCH_PORTRAIT] },
+  { vw: 412, vh: 915, safes: [NO_INSETS] },
+  { vw: 480, vh: 800, safes: [NO_INSETS] },
+  { vw: 568, vh: 320, safes: [NO_INSETS] },
+  { vw: 667, vh: 375, safes: [NO_INSETS] },
+  { vw: 812, vh: 375, safes: [NO_INSETS, NOTCH_LANDSCAPE] },
+  { vw: 844, vh: 390, safes: [NO_INSETS, NOTCH_LANDSCAPE] },
+  { vw: 932, vh: 430, safes: [NO_INSETS, NOTCH_LANDSCAPE] },
+  { vw: 1024, vh: 768, safes: [NO_INSETS] },
 ];
 const PLACED: readonly ("move" | "look" | "talk")[] = ["move", "look", "talk"];
 
@@ -248,14 +246,13 @@ function placeAll(
   size: ButtonSize,
   leftHanded: boolean,
   safe: SafeInsets,
-  admin: boolean,
   h = COACH_CARD_H_GUESS_PX,
 ) {
   const layout = touchHudLayout({ vw, vh, safe, size, leftHanded });
   const w = coachCardWidth(vw, safe);
-  const obstacles = coachObstacles(layout, vw, admin);
+  const obstacles = coachObstacles(layout);
   return PLACED.map((step) => {
-    const card = placeCoachCard(step, { vw, vh, safe, leftHanded, layout, admin, w, h });
+    const card = placeCoachCard(step, { vw, vh, safe, leftHanded, layout, w, h });
     return { step, card, layout, obstacles };
   });
 }
@@ -275,16 +272,13 @@ function tooClose(card: Rect, obstacles: readonly Rect[]): number[] {
 }
 
 describe("placeCoachCard — keeps 8 px from every HUD button (the card never hides a control)", () => {
-  for (const { vw, vh, safes, admin: admins } of PHONES) {
+  for (const { vw, vh, safes } of PHONES) {
     for (const size of SIZES) {
       for (const leftHanded of BOTH) {
-        for (const admin of admins) {
-          // A teacher's folded admin header on a 375 px tall landscape phone at 크게 leaves no room for a card
-          // (the fallback test below covers that case).
-          if (admin && size === "large" && vh < 400) continue;
-          it(`${vw}×${vh} ${size} ${leftHanded ? "left" : "right"}-handed${admin ? " + admin" : ""}`, () => {
+        {
+          it(`${vw}×${vh} ${size} ${leftHanded ? "left" : "right"}-handed`, () => {
             for (const safe of safes) {
-              for (const { step, card, obstacles } of placeAll(vw, vh, size, leftHanded, safe, admin)) {
+              for (const { step, card, obstacles } of placeAll(vw, vh, size, leftHanded, safe)) {
                 const where = `${step} @ ${JSON.stringify(card)} insets ${JSON.stringify(safe)}`;
                 // inside the screen's margins
                 expect(card.x, where).toBeGreaterThanOrEqual(safe.left + COACH_EDGE_PX - 1e-9);
@@ -304,16 +298,16 @@ describe("placeCoachCard — keeps 8 px from every HUD button (the card never hi
   it("a taller card (4 lines of text) still finds a free spot on a normal portrait phone", () => {
     for (const { vw, vh } of PHONES.filter((v) => v.vh >= 640))
       for (const leftHanded of BOTH)
-        for (const { step, card, obstacles } of placeAll(vw, vh, "large", leftHanded, NO_INSETS, true, 150)) {
+        for (const { step, card, obstacles } of placeAll(vw, vh, "large", leftHanded, NO_INSETS, 150)) {
           expect(tooClose(card, obstacles), `${vw}×${vh} ${step} ${leftHanded}`).toEqual([]);
         }
   });
 
-  it("on a screen too small for the HUD plus a card (568×320, notched, teacher) it falls back to the least crowded spot, inside the margins", () => {
+  it("on a screen too small for the HUD plus a card (568×320, notched) it falls back to the least crowded spot, inside the margins", () => {
     const vw = 568;
     const vh = 320;
     const safe = NOTCH_LANDSCAPE;
-    for (const { step, card, obstacles } of placeAll(vw, vh, "large", false, safe, true)) {
+    for (const { step, card, obstacles } of placeAll(vw, vh, "large", false, safe)) {
       expect(card.x, step).toBeGreaterThanOrEqual(safe.left + COACH_EDGE_PX - 1e-9);
       expect(card.y, step).toBeGreaterThanOrEqual(safe.top + COACH_EDGE_PX - 1e-9);
       expect(card.x + card.w, step).toBeLessThanOrEqual(vw - safe.right - COACH_EDGE_PX + 1e-9);
@@ -335,7 +329,7 @@ describe("placeCoachCard — keeps 8 px from every HUD button (the card never hi
 
 describe("placeCoachCard — where each card goes", () => {
   const at = (vw: number, vh: number, leftHanded: boolean, size: ButtonSize = "medium") => {
-    const [move, look, talk] = placeAll(vw, vh, size, leftHanded, NO_INSETS, false);
+    const [move, look, talk] = placeAll(vw, vh, size, leftHanded, NO_INSETS);
     return { move: move.card, look: look.card, talk: talk.card, layout: move.layout };
   };
 
@@ -384,27 +378,20 @@ describe("placeCoachCard — where each card goes", () => {
 });
 
 describe("coachObstacles", () => {
-  it("covers every resting button plus the room-name chip, and the admin header for a teacher", () => {
+  it("covers every resting button plus the room-name chip", () => {
     const l = touchHudLayout({ vw: 375, vh: 812, safe: NO_INSETS, size: "medium", leftHanded: false });
-    const plain = coachObstacles(l, 375, false);
-    const teacher = coachObstacles(l, 375, true);
-    expect(plain.length).toBe(4 + 4 + 2 + 1); // jump, action, emoji, 💬 · 4 top buttons · 👥, chat-log toggle · the chip
-    expect(teacher.length).toBe(plain.length + 1);
-    const chip = plain[plain.length - 1];
+    const obs = coachObstacles(l);
+    expect(obs.length).toBe(4 + 4 + 2 + 1); // jump, action, emoji, 💬 · 4 top buttons · 👥, chat-log toggle · the chip
+    const chip = obs[obs.length - 1];
     expect(chip.x).toBe(l.roster.x);
     expect(chip.y + chip.h + MIN_GAP_PX).toBe(l.roster.y); // the chip sits right above 👥
-    const admin = teacher[teacher.length - 1];
-    expect(admin.y).toBe(l.chatLog.y + l.chatLog.h + MIN_GAP_PX);
-    expect(admin.h).toBeGreaterThanOrEqual(48);
   });
 
-  it("mirrors with the column when left-handed (chip and admin hang from the right edge)", () => {
+  it("mirrors with the column when left-handed (the chip hangs from the right edge)", () => {
     const l = touchHudLayout({ vw: 375, vh: 812, safe: NO_INSETS, size: "medium", leftHanded: true });
-    const obs = coachObstacles(l, 375, true);
-    const chip = obs[obs.length - 2];
-    const admin = obs[obs.length - 1];
+    const obs = coachObstacles(l);
+    const chip = obs[obs.length - 1];
     expect(chip.x + chip.w).toBe(l.roster.x + l.roster.w);
-    expect(admin.x + admin.w).toBe(l.roster.x + l.roster.w);
   });
 });
 

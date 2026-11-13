@@ -2,7 +2,7 @@ import type { Client } from "colyseus";
 import { Player, WorldState } from "@caysonverse/shared/schema";
 import { MessageType } from "@caysonverse/shared/messages";
 import type { BusRideStatePayload, ChatBroadcast } from "@caysonverse/shared/messages";
-import { PATCH_RATE_MS, ROLE_STUDENT, VILLAGE_MAX_CLIENTS } from "@caysonverse/shared/constants";
+import { PATCH_RATE_MS, VILLAGE_MAX_CLIENTS } from "@caysonverse/shared/constants";
 import { APPEARANCE_FIELDS } from "@caysonverse/shared/appearance";
 import type { MapGeometry } from "@caysonverse/shared/school/geometry";
 import {
@@ -31,6 +31,7 @@ import {
 } from "@caysonverse/shared/village/fishing";
 import { VILLAGE_LAYOUT, houseArea, houseInteriorGeometry, isHouseArea, villageGeometry } from "@caysonverse/shared/village/villageLayout";
 import { VILLAGE_SEATS } from "@caysonverse/shared/village/benchSeats";
+import { arrivalArea, freeSpawnSpot, spreadArrival } from "@caysonverse/shared/village/arrivalSpot";
 import { PlayerRoom, baseTracking, spawnInDisk, type Tracking } from "./PlayerRoom";
 import { validateJoinOptions } from "./joinValidation";
 import { RateWindow } from "./rateLimit";
@@ -175,7 +176,6 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     player.z = spawn.z;
     player.yaw = VILLAGE_LAYOUT.spawn.yaw; // facing the fountain
     player.connected = true;
-    player.role = ROLE_STUDENT; // the village has no admin
     player.area = "village";
     this.seatPlayer(client, player); // state + tracking (createTracking below)
     this.fishing.set(client.sessionId, createFishingState());
@@ -212,10 +212,32 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     return isHouseArea(player.area) ? houseInteriorGeometry : villageGeometry;
   }
 
-  /** On the fountain plaza, within the layout's jitter of the spawn point, clamped into the bounds. */
+  /**
+   * On the fountain plaza, within the layout's jitter of the spawn point, clamped into the bounds — and never on top of
+   * someone already in the village: a random draw that lands within `ARRIVAL_SPACING_M` of a player is drawn again, and
+   * when a dozen draws all land on someone the nearest free spot round the spawn point is used (shared arrivalSpot.ts).
+   */
   protected spawnPosition(): { x: number; z: number } {
     const { spawn } = VILLAGE_LAYOUT;
-    return spawnInDisk(spawn.x, spawn.z, spawn.jitter, this.geometry());
+    const at = freeSpawnSpot(
+      () => spawnInDisk(spawn.x, spawn.z, spawn.jitter, this.geometry()),
+      spawn,
+      arrivalArea("village"),
+      this.playersIn("village"),
+    );
+    return { x: at.x, z: at.z };
+  }
+
+  /**
+   * Where the players of `area` stand (all of them, a ghost waiting out its reconnection window included: it comes back
+   * where it was), minus `except` (the one arriving). What an arrival is spread against.
+   */
+  private playersIn(area: string, except?: string): { x: number; z: number }[] {
+    const out: { x: number; z: number }[] = [];
+    this.state.players.forEach((p, sid) => {
+      if (sid !== except && p.area === area) out.push({ x: p.x, z: p.z });
+    });
+    return out;
   }
 
   /** The base bookkeeping plus the door-use cap. */
@@ -418,9 +440,12 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     const now = this.now();
     if (!track.doorRate.tryAccept(now)) return; // flood → silent drop
 
-    player.x = arrival.x;
-    player.z = arrival.z;
-    player.yaw = arrival.yaw;
+    // The door's own spot if it is free, else the nearest free one beside it: two visitors through the door in the
+    // same second (or one walking in while another still stands at the spawn) never appear inside each other.
+    const at = spreadArrival(arrival.area, arrival, this.playersIn(arrival.area, client.sessionId));
+    player.x = at.x;
+    player.z = at.z;
+    player.yaw = at.yaw;
     player.area = arrival.area;
     track.lastAcceptedAt = now;
   }
@@ -583,11 +608,13 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     client.send(VillageServerMsg.KeypadResult, response);
     if (!decision.ok) return;
     const now = this.now();
-    const spawn = VILLAGE_LAYOUT.memorial.interior.spawn;
-    player.x = spawn.x;
-    player.z = spawn.z;
-    player.yaw = spawn.yaw;
-    player.area = houseArea(decision.buildingId);
+    const area = houseArea(decision.buildingId);
+    // The same spread as the hall's door: a family member coming in after another lands beside them, not inside.
+    const at = spreadArrival(area, VILLAGE_LAYOUT.memorial.interior.spawn, this.playersIn(area, client.sessionId));
+    player.x = at.x;
+    player.z = at.z;
+    player.yaw = at.yaw;
+    player.area = area;
     track.lastAcceptedAt = now;
   }
 }

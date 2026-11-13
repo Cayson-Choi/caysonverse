@@ -10,7 +10,7 @@ import { getStateCallbacks, type Room } from "@colyseus/sdk";
 // TYPE-ONLY: schema decorators must never enter the browser bundle.
 import type { WorldState } from "@caysonverse/shared/schema";
 import { pickAppearance } from "@caysonverse/shared/appearance";
-import { visibilityChange, showsInHub } from "./placeFilter";
+import { visibilityChange } from "./placeFilter";
 import { normalizeArea, showsInArea, type AreaGate } from "./areaFilter";
 import type { Pose, SeatState } from "./types";
 import { createPlayout } from "./playout";
@@ -46,11 +46,6 @@ export type PlayersRoom = Room<{ players: WorldState["players"] }>;
  * `selfPose` is the local player's live pose, corrected on large server
  * divergence. Returns a teardown that detaches every listener and clears the
  * store (call on unmount / room leave).
- *
- * Place (AI 학교 탈출, Task 15): a remote whose `place` is not the hall (inside a team
- * classroom) has no avatar here — it is taken out of the store when it goes in and put back,
- * at its current position, when it comes out (placeFilter.ts). In the world every place is
- * the hall, so nothing changes there.
  *
  * Area (케이슨 마을, Task 4): with an `areas` gate (the village scene passes one) a remote in the OTHER area
  * than the local player's is treated the same way (areaFilter.ts) — not in the store, so not mounted. The
@@ -146,8 +141,7 @@ export function startRemoteSync(
       return;
     }
 
-    // (Re)add the avatar from the player's CURRENT fields — on join, and when it comes back
-    // into the hall from a classroom.
+    // (Re)add the avatar from the player's CURRENT fields — on join, and when it comes back into my area.
     const show = (): void => {
       addRemote({
         sessionId,
@@ -156,7 +150,6 @@ export function startRemoteSync(
         appearance: pickAppearance(player),
         connected: player.connected,
         seatIndex: player.seatIndex,
-        role: player.role, // fixed for the session by the server: read once, no listener
         snapshots: [],
         // The current moveT times a move we never saw (they may have stopped long ago): only a newer one counts.
         playout: createPlayout(moverClock(player)),
@@ -164,9 +157,9 @@ export function startRemoteSync(
       // Seed with the current position so the avatar shows up immediately (no clock: it is a standing pose).
       receiveRemotePose(sessionId, nowMs(), 0, player.x, player.z, player.yaw);
     };
-    // Shown = in the hall (not inside a classroom) AND, in the village, in my area. Every field that decides it
-    // goes through `reconcile`, which reads them live, so no change can be judged on a stale copy.
-    const wanted = (): boolean => showsInHub(player.place) && (!areas || showsInArea(player.area, areas.local()));
+    // Shown = in my area. Every field that decides it goes through `reconcile`, which reads them live, so no
+    // change can be judged on a stale copy.
+    const wanted = (): boolean => !areas || showsInArea(player.area, areas.local());
     let shown = wanted();
     if (shown) show();
     const reconcile = (): void => {
@@ -177,8 +170,6 @@ export function startRemoteSync(
       shown = want;
     };
 
-    // In / out of a team classroom (the immediate first call changes nothing).
-    const offPlace = $(player).listen("place", reconcile);
     // Through the village's door (theirs), or my own going through it (the gate): in / out of my area.
     const offArea = areas ? [$(player).listen("area", reconcile), areas.subscribe(reconcile)] : [];
 
@@ -195,7 +186,7 @@ export function startRemoteSync(
       setRemoteConnected(sessionId, value);
     });
     const offSeat = $(player).listen("seatIndex", take);
-    perPlayer.set(sessionId, [offPlace, ...offArea, offChange, offConnected, offSeat]);
+    perPlayer.set(sessionId, [...offArea, offChange, offConnected, offSeat]);
   }, true); // immediate → replay players already present when we joined
 
   const offRemove = $(room.state).players.onRemove((_player, sessionId: string) => {
