@@ -1,6 +1,6 @@
-import { DoubleSide, MeshBasicMaterial, Vector3, type Texture } from "three";
+import { DoubleSide, MeshBasicMaterial, Vector3, Vector4, type Texture } from "three";
 import { DAY_SUN_DIRECTION } from "../dayNightBlend";
-import { cherryTintUniform, foliageTintUniform, liftUniform } from "../villageModelPrep";
+import { cherryTintUniform, foliageTintUniform, liftUniform, litUniform, vegNightUniform } from "../villageModelPrep";
 
 /**
  * The runtime vegetation's material (veg3d): the village's unlit look (MeshBasicMaterial, the light baked in, the
@@ -16,8 +16,28 @@ import { cherryTintUniform, foliageTintUniform, liftUniform } from "../villageMo
  *  - alpha-tested pictures (`map` + `alphaTest`) keep their outline at a distance (the alpha is raised with the mip
  *    level, Golus' fix), so far blossoms do not thin out.
  * Day and night: `(albedo x light + albedo x lift) x tint`, the same as the old foliage (villageModelPrep.liftMaterial),
- * with the same shared uniforms: the foliage tint, or the cherry blossoms' darker one.
+ * with the same shared uniforms: the foliage tint, or the cherry blossoms' darker one. At night:
+ *  - the blossoms lose most of their pink (`vegNightUniform`): petals under the moon read white-grey, as in photos of
+ *    cherries at night, not violet (a blue moonlight on pink);
+ *  - the street lamps light what stands near them, warm (`vegLampsUniform`, their places read from the village file:
+ *    `setVegLamps`), as they light the ground in the night light map, once they are on (`litUniform`).
  */
+
+/** The street lamps the vegetation is lit by at night (at most `VEG_LAMPS`): xyz, w the strength (0: none). */
+export const VEG_LAMPS = 32;
+export const vegLampsUniform = { value: Array.from({ length: VEG_LAMPS }, () => new Vector4(0, -1000, 0, 0)) };
+/** The lamps' places (world, the light's height) into `vegLampsUniform`, the nearest `VEG_LAMPS` to `centre` first. */
+export function setVegLamps(lamps: ReadonlyArray<readonly [number, number, number]>, centre: readonly [number, number, number] = [0, 0, 0]): number {
+  const sorted = [...lamps].sort((a, b) => Math.hypot(a[0] - centre[0], a[2] - centre[2]) - Math.hypot(b[0] - centre[0], b[2] - centre[2]));
+  vegLampsUniform.value.forEach((v, i) => {
+    const l = sorted[i];
+    if (l) v.set(l[0], l[1], l[2], 1);
+    else v.set(0, -1000, 0, 0);
+  });
+  return Math.min(sorted.length, VEG_LAMPS);
+}
+/** The lamps' warm light (linear) on the vegetation: the lamp glass's own colour. */
+const LAMP_COLOUR = "vec3( 1.0, 0.78, 0.5 )";
 
 /** The vegetation clock (s) and wind strength (1 = a light breeze), shared by every vegetation material. */
 export const vegTimeUniform = { value: 0 };
@@ -51,6 +71,10 @@ attribute float aWind;
 attribute float aLight;
 varying vec3 vVegLight;
 varying vec3 vVegTint;
+uniform vec4 uVegLamps[ ${VEG_LAMPS} ];
+uniform float uVegLit;
+varying float vVegLamp;
+varying vec3 vVegWorld;
 void main() {`;
 
 const VERT_COLOR = /* glsl */ `vColor = color;
@@ -91,14 +115,35 @@ const VERT_PROJECT = /* glsl */ `#ifdef USE_INSTANCING
 	vegWorld.x += vegSwayK * ( sin( uVegTime * 1.7 + vegPhase ) * 0.65 + sin( uVegTime * 3.3 + vegPhase * 1.9 ) * 0.35 );
 	vegWorld.z += vegSwayK * ( sin( uVegTime * 1.3 + vegPhase * 1.3 ) * 0.5 + sin( uVegTime * 2.7 + vegPhase * 0.7 ) * 0.25 );
 	vVegLight = vec3( aLight * vegShadeK );
+	// the street lamps nearby, once they are on: full within a metre and a half, gone by eight
+	float vegLampK = 0.0;
+	if ( uVegLit > 0.0 ) {
+		for ( int i = 0; i < ${VEG_LAMPS}; i ++ ) {
+			vec4 vegL = uVegLamps[ i ];
+			float vegD = distance( vegWorld, vegL.xyz );
+			vegLampK += vegL.w * ( 1.0 - smoothstep( 1.5, 8.0, vegD ) ) / ( 1.0 + 0.06 * vegD * vegD );
+		}
+	}
+	vVegLamp = min( vegLampK, 1.5 ) * uVegLit;
+	vVegWorld = vegWorld;
 	vec4 mvPosition = viewMatrix * vec4( vegWorld, 1.0 );
 	gl_Position = projectionMatrix * mvPosition;`;
 
 const FRAG_PARS = /* glsl */ `uniform float uVegLift;
 uniform vec3 uVegTint;
+uniform float uVegNight;
 varying vec3 vVegLight;
 varying vec3 vVegTint;
-void main() {`;
+varying float vVegLamp;
+varying vec3 vVegWorld;
+void main() {
+	// a twig, leaf or limb right at the camera (inside a young tree's crown) dissolves instead of being cut flat by the
+	// near plane, which showed sawn-off stubs (review r1, 2026-11-13): gone within 22 cm, a dithered fade out to 45 cm
+	float vegNear = distance( vVegWorld, cameraPosition );
+	if ( vegNear < 0.45 ) {
+		float vegDither = fract( 52.9829189 * fract( dot( gl_FragCoord.xy, vec2( 0.06711056, 0.00583715 ) ) ) );
+		if ( ( vegNear - 0.22 ) / 0.23 < vegDither ) discard;
+	}`;
 
 /** Keep cut-out foliage alpha stable without derivative instructions that trigger ANGLE warnings on mobile GPUs. */
 const FRAG_MAP = /* glsl */ `#include <map_fragment>
@@ -108,7 +153,12 @@ const FRAG_MAP = /* glsl */ `#include <map_fragment>
 #endif`;
 
 const FRAG_COLOR = /* glsl */ `vec3 vegAlbedo = vColor.rgb * mix( vec3( 1.0 ), vVegTint, vColor.a );
-diffuseColor.rgb *= vegAlbedo * ( vVegLight + uVegLift ) * uVegTint;`;
+#ifdef VEG_CHERRY
+	// petals under the moon: their pink mostly gone (white-grey), a little brighter than their pink's luminance
+	vec3 vegPale = vec3( dot( vegAlbedo, vec3( 0.2126, 0.7152, 0.0722 ) ) * 1.18 );
+	vegAlbedo = mix( vegAlbedo, vegPale, uVegNight * 0.75 );
+#endif
+diffuseColor.rgb *= vegAlbedo * ( ( vVegLight + uVegLift ) * uVegTint + vVegLamp * ${LAMP_COLOUR} * 0.55 );`;
 
 const SUN = new Vector3(...DAY_SUN_DIRECTION).normalize();
 
@@ -130,6 +180,9 @@ export function vegMaterial(o: VegMaterialOptions): MeshBasicMaterial {
     uVegShade: { value: [o.ambient, o.sky, o.sun, o.back] },
     uVegLift: liftUniform,
     uVegTint: o.cherry ? cherryTintUniform : foliageTintUniform,
+    uVegNight: vegNightUniform,
+    uVegLamps: vegLampsUniform,
+    uVegLit: litUniform,
   };
   m.userData.vegUniforms = uniforms;
   m.onBeforeCompile = (shader) => {
@@ -138,7 +191,7 @@ export function vegMaterial(o: VegMaterialOptions): MeshBasicMaterial {
       .replace("void main() {", VERT_PARS)
       .replace("#include <color_vertex>", VERT_COLOR)
       .replace("#include <project_vertex>", VERT_PROJECT);
-    shader.fragmentShader = shader.fragmentShader
+    shader.fragmentShader = (o.cherry ? "#define VEG_CHERRY\n" : "") + shader.fragmentShader
       .replace("void main() {", FRAG_PARS)
       .replace("#include <map_fragment>", FRAG_MAP)
       .replace("#include <color_fragment>", FRAG_COLOR);

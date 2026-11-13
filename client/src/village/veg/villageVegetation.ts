@@ -19,10 +19,10 @@ import {
 } from "three";
 import { isMesh, materialsOf } from "../../game/hub/hubModelPrep";
 import { CLICK_PICK_KEY } from "../../game/clickPick";
-import { BACKDROP_FOREST_PREFIX, CHERRY_MATERIAL, type VillageTier } from "../villageModelPrep";
+import { BACKDROP_FOREST_PREFIX, CHERRY_MATERIAL, MATERIAL, type VillageTier } from "../villageModelPrep";
 import { CHERRY_GROW, cherryConnection, crownEnvelope, growCherry, type Bunch, type CherryCrown } from "./cherryTree";
 import type { Connection, Envelope, KeepOut } from "./crownGrowth";
-import { BUILDING_BOX, buildingSpace, crownKeepOut, type Box } from "./crownSpace";
+import { BUILDING_BOX, buildingSpace, crownKeepOut, type Box, buildingKeepOut, trimSkeleton } from "./crownSpace";
 import { GREEN_GROW, YOUNG_GROW, broadleafEnvelope, growBroadleaf, growWillow, leafConnection, willowEnvelope, type Leaf, type LeafCrown } from "./treeCrown";
 import {
   PLAZA_CHERRY_SPECS,
@@ -46,7 +46,7 @@ import { GeoBuilder, blossomBunch, bunchSprite, bushGeometry, leafSpray, species
 import { BARK_STYLE, barkLight, barkTexture, simplifyTwig, skeletonBark, skeletonBarkInto, twigBark, type BarkPattern } from "./barkGeometry";
 import { bakedBarkIndex } from "./bakedBark";
 import { chooseLod, groupIntoCells, sphereDistance, VEG_TIERS, type Cell, type LodBands, type Vec3, type VegTierConfig } from "./vegLod";
-import { vegMaterial, vegTimeUniform } from "./vegMaterial";
+import { vegMaterial, vegTimeUniform, setVegLamps } from "./vegMaterial";
 import { DAY_SUN_DIRECTION } from "../dayNightBlend";
 import type { VegMode } from "./vegMode";
 import { createVegPark } from "./vegPark";
@@ -128,6 +128,12 @@ export interface VegStats {
   twigVertices: number;
   /** Times this vegetation dressed a new village clone at once (back out of the hall or a house: no rebuild). */
   attaches: number;
+  /** The trees whose limbs were cut back short of a house beside them (crownSpace.trimSkeleton). */
+  trimmed: string[];
+  /** The street lamps lighting the vegetation at night (vegMaterial.ts `vegLampsUniform`). */
+  lamps: number;
+  /** The lamps found in the village file (only the `VEG_LAMPS` nearest the plaza light the vegetation). */
+  lampsFound: number;
   /**
    * The changes this vegetation makes to the village clone (its old cards and the baked bark cut out, the instanced
    * bark hidden) and how many of them are in effect on the clone it dresses now: equal after every `attach` (e2e).
@@ -450,6 +456,34 @@ function instanceMatrices(mesh: InstancedMesh): Matrix4[] {
   return out;
 }
 
+/**
+ * The street lamps' (and lanterns') places in the village clone: the centres of their glowing glass (`M_lamp`), one
+ * per lamp (the glass's points gathered within 1.2 m of each other). The vegetation near them is lit warm at night.
+ */
+export function lampPlaces(root: Object3D): Array<[number, number, number]> {
+  const groups: Array<{ x: number; y: number; z: number; n: number }> = [];
+  const p = new Vector3();
+  root.traverse((o) => {
+    if (!isMesh(o) || !materialsOf(o).some((m) => m.name === MATERIAL.lamp)) return;
+    o.updateWorldMatrix(true, false);
+    const pos = o.geometry.getAttribute("position") as BufferAttribute;
+    const xfs = (o as InstancedMesh).isInstancedMesh ? instanceMatrices(o as InstancedMesh) : [o.matrixWorld];
+    const every = Math.max(1, Math.floor(pos.count / 400));
+    for (const xf of xfs)
+      for (let i = 0; i < pos.count; i += every) {
+        p.fromBufferAttribute(pos, i).applyMatrix4(xf);
+        const g = groups.find((q) => Math.hypot(q.x / q.n - p.x, q.z / q.n - p.z) < 1.2 && Math.abs(q.y / q.n - p.y) < 2);
+        if (g) {
+          g.x += p.x;
+          g.y += p.y;
+          g.z += p.z;
+          g.n++;
+        } else groups.push({ x: p.x, y: p.y, z: p.z, n: 1 });
+      }
+  });
+  return groups.map((g) => [g.x / g.n, g.y / g.n, g.z / g.n]);
+}
+
 function findInstanced(root: Object3D, name: string): InstancedMesh | null {
   let found: InstancedMesh | null = null;
   root.traverse((o) => {
@@ -466,7 +500,7 @@ function sphereOf(b: { x: number; y: number; z: number; r: number }, xf: Matrix4
 }
 
 /** The bark's light of a tree (barkGeometry.barkLight): the same for its trunk, limbs and twigs. */
-const barkLightOf = (sk: TreeSkeleton) => barkLight(sk.crownC, sk.R, sk.base[1], DAY_SUN_DIRECTION as Vec3);
+const barkLightOf = (sk: TreeSkeleton) => barkLight(sk.crownC, sk.R, sk.base[1], DAY_SUN_DIRECTION as Vec3, { p: sk.trunk.pts[3]!, r: sk.trunk.radii[3]! });
 
 /** The ten bushes' tints: a little hue variety (the leaves are tinted, the heart too). */
 const tintOf = (seed: number): number[] => {
@@ -542,6 +576,9 @@ export class VillageVegetation {
       twigMeshes: 0,
       twigVertices: 0,
       attaches: 0,
+      trimmed: [],
+      lamps: 0,
+      lampsFound: 0,
       cloneEdits: { total: 0, inEffect: 0 },
       genMs: 0,
       wallMs: 0,
@@ -684,7 +721,8 @@ export class VillageVegetation {
     // the sprite takes the bunch's own matrix (scale size / 0.24): its quad is the bunch's size x SPRITE_K at scale 1
     const spriteGeo = bunchSprite(BUNCH_MESH_SIZE * SPRITE_K);
     const spriteFarGeo = bunchSprite(BUNCH_MESH_SIZE * SPRITE_K);
-    const sprayGeos = [leafSpray(0), leafSpray(1), leafSpray(2)] as const;
+    // the PC's near leaves have a real leaf's outline (a young tree's are seen from half a metre); the phone's keep 8 triangles
+    const sprayGeos = [leafSpray(0, 21, !low), leafSpray(1), leafSpray(2)] as const;
     const willowGeos = [willowSpray(0), willowSpray(1), willowSpray(2)] as const;
     v.own.push(bunchGeo, spriteGeo, spriteFarGeo, ...sprayGeos, ...willowGeos);
     const ch = cfg.cherry;
@@ -794,7 +832,8 @@ export class VillageVegetation {
     const twigGeo = (twigs: readonly Branch[], sk: TreeSkeleton) => {
       // the orchard's small trees: their finest twigs a little thicker (4.5 mm, a plum's real twig), so they read as
       // lines between the blossoms, not as dots
-      const geo = twigBark(twigs, BARK_STYLE[sk.kind], low, barkLightOf(sk), low ? simplifyTwig : undefined, sk.kind === "orchard" ? 0.0045 : 0);
+      // the young trees' twigs come within arm's reach: rounder, pointed at the tip (twigBark `near`)
+      const geo = twigBark(twigs, BARK_STYLE[sk.kind], low, barkLightOf(sk), low ? simplifyTwig : undefined, sk.kind === "orchard" ? 0.0045 : 0, sk.kind === "young");
       v.own.push(geo);
       stats.twigVertices += geo.getAttribute("position").count;
       return geo;
@@ -857,6 +896,10 @@ export class VillageVegetation {
       const c = new Vector3(e.c[0], e.c[1], e.c[2]).applyMatrix4(xf);
       return { c: [c.x, c.y, c.z], rx: e.rx * k, up: e.up * k, down: e.down * k };
     };
+    // the street lamps: what grows near them is lit warm at night (vegMaterial.ts)
+    const lamps = lampPlaces(root);
+    stats.lampsFound = lamps.length;
+    stats.lamps = setVegLamps(lamps, [0, 0, 0]);
     const envOf = new Map<TreeSkeleton, Envelope>();
     for (const sk of plaza) envOf.set(sk, crownEnvelope(sk));
     for (const sk of village) envOf.set(sk, sk.kind === "cherry" ? crownEnvelope(sk) : broadleafEnvelope(sk, GREEN_GROW));
@@ -870,6 +913,16 @@ export class VillageVegetation {
     type VariantKey = keyof typeof variantEnv;
     const instEnv = Object.fromEntries((Object.keys(variantEnv) as VariantKey[]).map((k) => [k, xfs[k].map((xf) => placedEnv(variantEnv[k], xf))])) as Record<VariantKey, Envelope[]>;
     const allEnvs = [...envOf.values(), ...Object.values(instEnv).flat()];
+    // the limbs that would run on into a house's room are cut back short of it (crownSpace.trimSkeleton): the crown is
+    // grown on the cut skeleton and its bark drawn from it. A single tree's: `drawnSk`; an instance's: `ownBark`
+    const drawnSk = new Map<TreeSkeleton, TreeSkeleton>();
+    for (const sk of [...plaza, ...village, ...young]) {
+      const walls = buildingKeepOut(envOf.get(sk)!, boxes);
+      const t = walls ? trimSkeleton(sk, walls) : null;
+      drawnSk.set(sk, t && t.cut ? t.sk : sk);
+      if (t && t.cut) stats.trimmed.push(`${sk.kind}${sk.index}`);
+    }
+    const ownBark: Record<VariantKey, Array<{ i: number; sk: TreeSkeleton; xf: Matrix4 }>> = { street_cherry: [], orchard: [], street_green: [] };
     const keepOutOf = (sk: TreeSkeleton) => {
       const k = crownKeepOut(envOf.get(sk)!, allEnvs, boxes);
       if (k) stats.makingRoom.push(`${sk.kind}${sk.index}`);
@@ -880,7 +933,7 @@ export class VillageVegetation {
      * A variant's instances: those that meet nothing share one crown (grown once at the origin); each of the others
      * grows its own, its keep-out carried to the origin through the instance matrix.
      */
-    const instanceJobs = (key: VariantKey, kind: TreeKindStat, grow: (keepOut?: KeepOut) => CherryCrown | LeafCrown) => {
+    const instanceJobs = (key: VariantKey, kind: TreeKindStat, grow: (keepOut?: KeepOut, sk?: TreeSkeleton) => CherryCrown | LeafCrown) => {
       const shared: Place[] = [];
       const out: Array<ReturnType<typeof job>> = [];
       const draw = (crown: CherryCrown | LeafCrown, places: readonly Place[]) => ("bunches" in crown ? drawBlossom(crown, kind, places) : drawLeafy(crown, kind, places));
@@ -896,7 +949,21 @@ export class VillageVegetation {
           w.set(p[0], p[1], p[2]).applyMatrix4(xf);
           return world([w.x, w.y, w.z]);
         };
-        out.push(job(`${key}${i}`, away(xf.elements[12]!, xf.elements[14]!), () => draw(grow(local), [{ xf, i }])));
+        // its limbs cut back short of a house beside it (drawn with a bark of its own, not the shared instanced one)
+        const walls = buildingKeepOut(instEnv[key][i]!, boxes);
+        const wl = new Vector3();
+        const t = walls
+          ? trimSkeleton(variant[key], (p) => {
+              wl.set(p[0], p[1], p[2]).applyMatrix4(xf);
+              return walls([wl.x, wl.y, wl.z]);
+            })
+          : null;
+        const own = t && t.cut ? t.sk : undefined;
+        if (own) {
+          ownBark[key].push({ i, sk: own, xf });
+          stats.trimmed.push(`${key}${i}`);
+        }
+        out.push(job(`${key}${i}`, away(xf.elements[12]!, xf.elements[14]!), () => draw(grow(local, own), [{ xf, i }])));
       });
       if (shared.length) out.push(job(key, nearestOf(shared), () => draw(grow(), shared)));
       return out;
@@ -906,18 +973,18 @@ export class VillageVegetation {
     // the trunk (someone under one looks up into it, not into flowers 20 cm from their eyes)
     const ORCHARD = { attractors: 240, bunchStep: 0.045, bunchScale: 0.7, headroom: { r: 1.0, y: 2.0 }, dressBranches: true };
     const jobs = [
-      ...plaza.map((sk) => job(`cherry${sk.index}`, away(sk.base[0], sk.base[2]), () => drawBlossom(growCherry(sk, { ...CHERRY_GROW, keepOut: keepOutOf(sk) }), "plaza_cherry", ONCE))),
+      ...plaza.map((sk) => job(`cherry${sk.index}`, away(sk.base[0], sk.base[2]), () => drawBlossom(growCherry(drawnSk.get(sk)!, { ...CHERRY_GROW, keepOut: keepOutOf(sk) }), "plaza_cherry", ONCE))),
       ...village.map((sk) =>
         job(`${sk.kind}${sk.index}`, away(sk.base[0], sk.base[2]), () =>
           sk.kind === "cherry"
-            ? drawBlossom(growCherry(sk, { ...CHERRY_GROW, keepOut: keepOutOf(sk) }), "village_cherry", ONCE)
-            : drawLeafy(growBroadleaf(sk, GREEN_GROW, "green", keepOutOf(sk)), "village_green", ONCE),
+            ? drawBlossom(growCherry(drawnSk.get(sk)!, { ...CHERRY_GROW, keepOut: keepOutOf(sk) }), "village_cherry", ONCE)
+            : drawLeafy(growBroadleaf(drawnSk.get(sk)!, GREEN_GROW, "green", keepOutOf(sk)), "village_green", ONCE),
         ),
       ),
-      ...instanceJobs("street_cherry", "street_cherry", (keepOut) => growCherry(variant.street_cherry, { ...STREET_CHERRY, keepOut })),
-      ...instanceJobs("orchard", "orchard", (keepOut) => growCherry(variant.orchard, { ...ORCHARD, keepOut })),
-      ...instanceJobs("street_green", "street_green", (keepOut) => growBroadleaf(variant.street_green, GREEN_GROW, "green", keepOut)),
-      ...young.map((sk) => job(`young${sk.index}`, away(sk.base[0], sk.base[2]), () => drawLeafy(growBroadleaf(sk, YOUNG_GROW, "young", keepOutOf(sk)), "young", ONCE))),
+      ...instanceJobs("street_cherry", "street_cherry", (keepOut, sk) => growCherry(sk ?? variant.street_cherry, { ...STREET_CHERRY, keepOut })),
+      ...instanceJobs("orchard", "orchard", (keepOut, sk) => growCherry(sk ?? variant.orchard, { ...ORCHARD, keepOut })),
+      ...instanceJobs("street_green", "street_green", (keepOut, sk) => growBroadleaf(sk ?? variant.street_green, GREEN_GROW, "green", keepOut)),
+      ...young.map((sk) => job(`young${sk.index}`, away(sk.base[0], sk.base[2]), () => drawLeafy(growBroadleaf(drawnSk.get(sk)!, YOUNG_GROW, "young", keepOutOf(sk)), "young", ONCE))),
       ...willows.map((sk) => job(`willow${sk.index}`, away(sk.base[0], sk.base[2]), () => drawLeafy(growWillow(sk), "willow", ONCE))),
     ];
     jobs.sort((p, q) => p.d - q.d);
@@ -973,7 +1040,7 @@ export class VillageVegetation {
       const key = `${pattern}_${Math.floor(sk.base[0] / 40)}_${Math.floor(sk.base[2] / 40)}`;
       let cell = cells.get(key);
       if (!cell) cells.set(key, (cell = { builder: new GeoBuilder(), pattern }));
-      skeletonBarkInto(cell.builder, sk, low, barkLightOf(sk));
+      skeletonBarkInto(cell.builder, drawnSk.get(sk) ?? sk, low, barkLightOf(sk));
     }
     const barkMeshes: Mesh[] = [];
     for (const [key, { builder, pattern }] of cells) {
@@ -984,7 +1051,18 @@ export class VillageVegetation {
       v.own.push(geo);
     }
     for (const key of ["street_green", "street_cherry", "orchard"] as const) {
-      const list = xfs[key];
+      // an instance with limbs cut back (beside a house) has a bark of its own, placed by its matrix
+      for (const o of ownBark[key]) {
+        const geo = skeletonBark(o.sk, low, barkLightOf(o.sk));
+        const mesh = new Mesh(geo, barkMatOf(o.sk));
+        mesh.matrix.copy(o.xf);
+        mesh.matrixWorldNeedsUpdate = true;
+        mesh.name = `veg_bark_${key}${o.i}`;
+        barkMeshes.push(mesh);
+        v.own.push(geo);
+      }
+      const owned = new Set(ownBark[key].map((o) => o.i));
+      const list = xfs[key].filter((_, i) => !owned.has(i));
       if (!list.length) continue;
       const sk = variant[key];
       const geo = skeletonBark(sk, low, barkLightOf(sk));
