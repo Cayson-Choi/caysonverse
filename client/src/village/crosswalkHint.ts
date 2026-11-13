@@ -2,7 +2,7 @@ import { SIGNAL_CROSSINGS, crossingFrame } from "@caysonverse/shared/village/cro
 import { pedestrianSignalAt, signalAt } from "@caysonverse/shared/village/transit";
 
 /** How near (m) to a crosswalk's centre the hint shows. */
-export const CROSSWALK_HINT_REACH_M = 9;
+export const CROSSWALK_HINT_REACH_M = 6.5;
 
 export interface CrosswalkHint {
   tone: "go" | "wait" | "hurry";

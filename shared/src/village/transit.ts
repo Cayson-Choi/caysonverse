@@ -46,8 +46,10 @@ export interface PedestrianSignalState {
   canCross: boolean;
 }
 
-const STOP_POINT: TransitPoint = { x: 34.2, z: -5.75 };
-export const ROUTE_RADIUS = Math.hypot(STOP_POINT.x, STOP_POINT.z);
+// review r1: the stop moved 0.85 m north (-z) so the parked bus's tail is 1.1 m clear of the crosswalk's stripes
+const STOP_POINT: TransitPoint = { x: 34.1, z: -6.5 };
+/** The bus runs in the middle of the outer lane (the ring road's lane is R 34..37; the bus is 2.5 m wide), not on the stop's own radius. */
+export const ROUTE_RADIUS = 35.3;
 const ROUTE_START_ANGLE = Math.atan2(STOP_POINT.z, STOP_POINT.x);
 const ROUTE_STEPS = 72;
 
@@ -75,8 +77,8 @@ export const TRANSIT = {
   /** Where the bus's nose stops before a crosswalk's centre when the signal is not green (m along the road): 2 m of crosswalk + 3.6 m. */
   stopLineM: 5.6,
   busLengthM: 9,
-  stop: { x: 34.2, z: -5.75 } as TransitPoint,
-  /** The ring road's lane the bus runs in (R 34.68, through the stop), as a circle of short chords. */
+  stop: { x: 34.1, z: -6.5 } as TransitPoint,
+  /** The ring road's lane the bus runs in (R 35.3, the outer lane's middle; the stop's bay is at its kerb side), as a circle of short chords. */
   route: ringRoute(),
 } as const;
 
@@ -132,9 +134,18 @@ export interface TransitHold {
 }
 
 /** The first moment at or after `utcMs` when the crossing's signal is green. */
-export function nextGreenAt(utcMs: number, offsetMs = 0): number {
+export function nextGreenAt(utcMs: number, offsetMs = 0, clearMs = 0): number {
   const phase = mod(utcMs + offsetMs, TRANSIT.signalCycleMs);
-  return phase < TRANSIT.signalGreenMs ? utcMs : utcMs + (TRANSIT.signalCycleMs - phase);
+  // a bus that needs `clearMs` to get its tail off the crosswalk may only start while that much green is left, so it is
+  // never on the crosswalk when the pedestrians' walk begins (review r1: 14 s of crawling at 1.2 m/s)
+  return phase < TRANSIT.signalGreenMs - clearMs ? utcMs : utcMs + (TRANSIT.signalCycleMs - phase);
+}
+
+/** Half the crosswalk's depth along the road as the bus's tail must clear it (the zebra is 4.7 m deep; a little spare). */
+const CROSSWALK_HALF_M = 2.5;
+/** Time for a bus standing on its stop line to drive its whole length past the crosswalk's far edge (ms) at `speed` m/ms. */
+export function clearCrosswalkMs(speed: number): number {
+  return (TRANSIT.stopLineM + CROSSWALK_HALF_M + TRANSIT.busLengthM) / speed;
 }
 
 /**
@@ -165,7 +176,7 @@ export function tripTimeline(startMs: number): TripTimeline {
   for (const h of TRANSIT_HOLDS) {
     t += (h.distance - s) / speed;
     const arriveMs = t;
-    t = nextGreenAt(t, h.offsetMs);
+    t = nextGreenAt(t, h.offsetMs, clearCrosswalkMs(speed));
     holds.push({ arriveMs, releaseMs: t, distance: h.distance });
     s = h.distance;
   }

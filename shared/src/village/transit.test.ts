@@ -102,6 +102,20 @@ describe("the bus at the crosswalks' signals", () => {
     expect(nextGreenAt(30_000)).toBe(40_000);
   });
 
+  it("never has the bus on a crosswalk when the pedestrians' walk begins (review r1)", () => {
+    const stripes = (TRANSIT.stopLineM + 2.35 + TRANSIT.busLengthM) / speed; // nose on the stop line -> tail past the zebra
+    for (let off = 0; off < TRANSIT.signalCycleMs; off += 500) {
+      const tl = tripTimeline(hour + off);
+      for (const h of tl.holds) {
+        const clearAt = h.releaseMs + stripes;
+        // vehicles are still green when the bus's tail leaves the crosswalk
+        expect(signalAt(clearAt - 1).color).toBe("green");
+        // and no walk phase (24-34 s) starts while it is on the zebra
+        for (let t = h.releaseMs; t < clearAt; t += 250) expect(pedestrianSignalAt(t).canCross).toBe(false);
+      }
+    }
+  });
+
   it("runs the same trip every hour", () => {
     const a = tripTimeline(hour);
     const b = tripTimeline(hour + 7 * TRANSIT.hourMs);

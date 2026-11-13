@@ -21,7 +21,7 @@ import { fileURLToPath } from "node:url";
 import { decodeDraco, draco, encodeDraco, readGlb, writeGlb } from "./patch-village-moon.mjs";
 
 /** The old shelter and its sign post (game metres): the roof's footprint 2.1 x 5.3 round (38, -5.5), the post 0.6 m north of it. */
-export const OLD_SHELTER = { minX: 36.9, maxX: 39.1, minZ: -9.0, maxZ: -2.7, minY: 0.1 };
+export const OLD_SHELTER = { minX: 36.9, maxX: 39.1, minZ: -9.0, maxZ: -2.7, minY: 0.1, sideMinX: 37.2 };
 const MATERIALS = new Set(["LM_atlas", "LM_wood"]);
 const DRACO_EXT = "KHR_draco_mesh_compression";
 
@@ -91,10 +91,13 @@ export async function patchVillageBusstop(input) {
       const gone = [];
       const keep = [];
       for (let f = 0; f < dec.nf; f++) {
-        const ok = [0, 1, 2].every((k) => {
+        const pts = [0, 1, 2].map((k) => {
           const i = dec.faces[f * 3 + k];
-          return inBox([P[i * 3], P[i * 3 + 1], P[i * 3 + 2]]);
+          return [P[i * 3], P[i * 3 + 1], P[i * 3 + 2]];
         });
+        // the old shelter's tops (every corner above the pavement), and (review r2) the sides of its posts and bench legs, which
+        // start at y = 0: every corner in the footprint beyond the kerb (x >= 37.2) with one corner above 0.3 m
+        const ok = pts.every(inBox) || (pts.every((q) => q[0] >= OLD_SHELTER.sideMinX && q[0] <= OLD_SHELTER.maxX && q[2] >= OLD_SHELTER.minZ && q[2] <= OLD_SHELTER.maxZ) && pts.some((q) => q[1] > 0.3));
         (ok ? gone : keep).push(f);
       }
       if (gone.length === 0) continue;

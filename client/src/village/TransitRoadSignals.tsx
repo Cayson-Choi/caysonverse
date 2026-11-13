@@ -28,14 +28,16 @@ declare global {
   }
 }
 
+// review r2: lit lenses read pale pink / mint by day (the emissive was over-exposed by the tone mapping). A real LED head is a deep,
+// saturated red / amber / green, so a lit lens also takes the colour as its base and the emissive is gentler.
 const LIT = {
-  red: "#ff2a30",
-  amber: "#ffb000",
-  green: "#2fe07e",
-  pedStop: "#ff3036",
-  pedWalk: "#34f088",
+  red: "#ff1420",
+  amber: "#ffa200",
+  green: "#00d46a",
+  pedStop: "#ff1f28",
+  pedWalk: "#18e07a",
 };
-const LAMP_ON = 2.4;
+const LAMP_ON = 1.35;
 const LAMP_OFF = 0;
 
 interface Lamps {
@@ -65,9 +67,14 @@ function lampMaterials(root: Object3D): Lamps | null {
   };
 }
 
+const DARK_LENS = new WeakMap<MeshStandardMaterial, Color>();
+
 function setLamp(m: MeshStandardMaterial, color: string, on: boolean): void {
+  if (!DARK_LENS.has(m)) DARK_LENS.set(m, m.color.clone());
   m.emissive.set(color);
   m.emissiveIntensity = on ? LAMP_ON : LAMP_OFF;
+  if (on) m.color.set(color).multiplyScalar(0.45);
+  else m.color.copy(DARK_LENS.get(m)!);
 }
 
 /** Draw the count-down digits into the display's canvas (green while walking, red while waiting). */
@@ -140,7 +147,7 @@ function SignalUnits() {
   useFrame(() => {
     if (!lamps) return;
     const override = import.meta.env.DEV ? window.__cvSignals : null;
-    const state = lampsAt(villageClock.nowMs(), override);
+    const state = lampsAt(villageClock.liveMs(), override);
     const key = lampKey(state);
     if (key === last.key) return;
     last.key = key;

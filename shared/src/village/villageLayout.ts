@@ -370,13 +370,14 @@ function makeVillageLayout(): VillageLayout {
     },
     ringRoad: { centre: pt(0, 0), radius: 34, width: 6, sidewalk: { width: 2, side: "outer" } },
     // Parked on the outer lane at the east, nose north, doors to the shelter: a 9 m low-floor village bus (2.49 m wide,
-    // village_bus.glb). x 32.95..35.45, z -10.25..-1.25 stays inside the road's 31..37 band (outer corner at r 36.90);
-    // its front door (z -9.85..-8.76) stops at the shelter's north end and its middle door (z -5.9..-4.5) at the shelter.
+    // village_bus.glb). x 32.85..35.35, z -11..-2 (review r1: 0.85 m north of before, its tail 1.1 m clear of the
+    // crosswalk's stripes at z -1); a straight bus on the ring's curve must stay inside the road's 31..37 band (outer corner
+    // at r 37.02); its front door stops at the shelter's north end and its middle door (z -6.65..-5.25) at the shelter.
     busStop: {
       // xwalk fix 2026-11-13: the shelter stands at the BACK of a paved waiting pad (BUS_STOP_PAD) with 3 m of clear paving
       // between the roadway's kerb and its roof (bus stop review: the old one stood on the kerb, 1.5 m from the bus's doors)
       shelter: { centre: pt(40.9, -4.9), size: sz(1.5, 3.6) },
-      bus: { centre: pt(34.2, -5.75), size: sz(2.5, 9) },
+      bus: { centre: pt(34.1, -6.5), size: sz(2.5, 9) },
     },
     // A gentle bow to the south beyond plot_s (z 49..67); every segment is 6 m of water with 3 m of bank on each side,
     // and the centre line moves at most 3 m from one segment to the next.

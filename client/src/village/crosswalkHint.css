@@ -16,6 +16,8 @@
   font-size: 14px;
   font-weight: 600;
   line-height: 1.25;
+  word-break: keep-all;
+  overflow-wrap: break-word;
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.26);
   pointer-events: none;
   user-select: none;

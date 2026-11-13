@@ -17,7 +17,7 @@ export function CrosswalkHintPill({ pose }: { pose: Pose }) {
   useEffect(() => {
     let last = "";
     const id = window.setInterval(() => {
-      const h = crosswalkHintAt(pose.x, pose.z, villageClock.nowMs());
+      const h = crosswalkHintAt(pose.x, pose.z, villageClock.liveMs());
       const key = h ? `${h.tone}|${h.text}|${h.seconds}` : "";
       if (key === last) return;
       last = key;

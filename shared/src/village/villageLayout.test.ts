@@ -739,7 +739,7 @@ describe("the parked bus's mirrors have colliders of their own (bus review r3: a
 
   it("nobody can stand with their head in a mirror: every free spot round the front corners keeps a body's radius from both heads", () => {
     // the reviewer's spot, at the west front corner with the mirror in the face
-    expect(isBlocked(32.34, -10.34, PLAYER_RADIUS, villageGeometry.obstacles)).toBe(true);
+    expect(isBlocked(32.24, -11.09, PLAYER_RADIUS, villageGeometry.obstacles)).toBe(true);
     let free = 0;
     for (let x = bus.minX - 1.5; x <= bus.maxX + 1.5; x += 0.05) {
       for (let z = bus.minZ - 1.5; z <= bus.minZ + 0.6; z += 0.05) {
