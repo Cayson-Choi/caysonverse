@@ -31,7 +31,7 @@ export interface PlayersState {
 
 /**
  * Per-client bookkeeping the base keeps for every seated player (never synced).
- * A room that needs more (WorldRoom's maze-escape clock) widens it through the
+ * A room that needs more (VillageRoom's door and fishing clocks) widens it through the
  * `T` parameter of `PlayerRoom` and builds it in `createTracking`.
  */
 export interface Tracking {
@@ -73,9 +73,8 @@ export function baseTracking(now: number): Tracking {
 }
 
 /**
- * The common room for anything where avatars walk around together: the legacy
- * world (WorldRoom), the open village (VillageRoom), a class's hub (ClassRoom)
- * and a team's classroom (EscapeRoom).
+ * The common room for anything where avatars walk around together: the open
+ * village (VillageRoom).
  *
  * It owns the player messages every such room shares — Move, Chat, Emoji, Jump,
  * Typing — with their rate caps and pure validators, the per-client tracking,
@@ -120,7 +119,7 @@ export abstract class PlayerRoom<S extends PlayersState, T extends Tracking = Tr
    * Wire the shared player messages. Call once from the subclass's onCreate.
    *
    * The `"*"` catch-all (ruling E6) drops any message type that has no handler
-   * in this room — a stale client, or a legacy message such as Sit sent to a room
+   * in this room — a stale client, or a message such as Sit sent to a room
    * without chairs. Without it, production Colyseus answers an unregistered type
    * with `client.leave(4002 WITH_ERROR)`, i.e. the player is thrown out. Colyseus
    * consults the catch-all only when no specific handler exists, so every type
@@ -147,7 +146,7 @@ export abstract class PlayerRoom<S extends PlayersState, T extends Tracking = Tr
 
   /**
    * Put `player` into synced state and start its bookkeeping (call from onJoin).
-   * "Seat" as in a seat in the room — unrelated to WorldRoom's chairs (Sit/Stand).
+   * "Seat" as in a seat in the room — unrelated to the benches (Sit/Stand).
    */
   protected seatPlayer(client: Client, player: Player): void {
     this.state.players.set(client.sessionId, player);
@@ -168,7 +167,7 @@ export abstract class PlayerRoom<S extends PlayersState, T extends Tracking = Tr
   /**
    * Is this player where the room must stay quiet? true → Emoji and Jump are dropped SILENTLY (nothing
    * is broadcast, no notice is sent); Move, Chat and Typing are unaffected. Default: never quiet, so the
-   * world, the class and the escape rooms behave exactly as before. VillageRoom: inside the memorial hall.
+   * rooms that never override it behave as before. VillageRoom: inside the memorial hall.
    */
   protected isQuiet(_player: Player): boolean {
     return false;
@@ -187,7 +186,7 @@ export abstract class PlayerRoom<S extends PlayersState, T extends Tracking = Tr
 
   /**
    * May this sanitized chat line go out? Default: the Korean profanity filter, in EVERY room on
-   * this base — the legacy world included, because the same children use it (ruling E21). A room
+   * this base. A room
    * that must opt out overrides this with `return { ok: true }`; nothing else needs to change.
    */
   protected checkProfanity(text: string): ProfanityResult {
@@ -198,7 +197,7 @@ export abstract class PlayerRoom<S extends PlayersState, T extends Tracking = Tr
    * A chat line was held back by `checkProfanity`. The sender has already been told
    * (CHAT_NOT_NICE) and nobody else hears the line. `masked` is the line with each offending
    * word replaced by ● — the original text is deliberately NOT passed on, so it cannot be stored
-   * or logged by accident. Default: nothing. ClassRoom and EscapeRoom forward it to the teacher.
+   * or logged by accident. Default: nothing.
    */
   protected onChatBlocked(_client: Client, _player: Player, _masked: string): void {}
 
@@ -281,7 +280,7 @@ export abstract class PlayerRoom<S extends PlayersState, T extends Tracking = Tr
     const track = this.tracking.get(client.sessionId);
     if (!player || !track) return; // no seat yet / already left → drop
 
-    // A player the room holds in place (WorldRoom: seated) is fully
+    // A player the room holds in place (seated) is fully
     // server-positioned → moves are dropped silently.
     if (!this.canMove(player)) return;
 
@@ -383,7 +382,7 @@ export abstract class PlayerRoom<S extends PlayersState, T extends Tracking = Tr
 
   /**
    * Jump pipeline (binding order): sender must be in the room's state → a sender
-   * that may not move (`canMove` false — WorldRoom: seated, a server-positioned
+   * that may not move (`canMove` false — seated, a server-positioned
    * avatar cannot jump) is dropped silently → a quiet place (`isQuiet`) is
    * dropped silently too → per-client rate cap (1 per
    * JUMP_RATE.windowMs = 800 ms; exceeded → drop silently, it's a key press) →

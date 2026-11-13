@@ -104,11 +104,10 @@ export function pressLeavesChat(target: unknown, bar: Container | null): boolean
 
 /**
  * Whether a typed key (the hotkey table's `typeToChat`: a key that types a character and is no game key, pressed while
- * nothing holds the keyboard) may open the world chat with it. Not while the 조교 dialogue is open — a question meant for
- * the assistant must never go out to everyone by accident — and not while another text field has the caret.
+ * nothing holds the keyboard) may open the chat with it. Not while another text field has the caret.
  */
-export function typeToChatAllowed(s: { npcOpen: boolean; otherFieldFocused: boolean }): boolean {
-  return !s.npcOpen && !s.otherFieldFocused;
+export function typeToChatAllowed(s: { otherFieldFocused: boolean }): boolean {
+  return !s.otherFieldFocused;
 }
 
 /**

@@ -3,7 +3,7 @@ import { MOVE_SPEED, RUN_SPEED } from "@caysonverse/shared/constants";
 import { VILLAGE_LAYOUT } from "@caysonverse/shared/village/villageLayout";
 import { CAMERA, HEAD_HEIGHT } from "./constants";
 import { CAMERA_LOOK_LIFT, ZOOM_BAND } from "./cameraControls";
-import { HALL_ACTIVE_MAP, LEGACY_ACTIVE_MAP, VILLAGE_ACTIVE_MAP, setActiveMap } from "./activeMap";
+import { HALL_ACTIVE_MAP, VILLAGE_ACTIVE_MAP, setActiveMap } from "./activeMap";
 import { HALL_CAMERA_LIMIT } from "./indoorCamera";
 import { createFollowRig, createFollowSpot, noteAreaLimit, stepFollowRig, type FollowRig, type FollowSpot } from "./followRig";
 import { applyZoom, beginSeatCamera, endSeatCamera, resetViewMode, viewState } from "./viewState";
@@ -73,7 +73,7 @@ beforeEach(() => {
   resetViewMode();
   setActiveMap(VILLAGE_ACTIVE_MAP);
 });
-afterEach(() => setActiveMap(LEGACY_ACTIVE_MAP));
+afterEach(() => setActiveMap(VILLAGE_ACTIVE_MAP));
 
 describe("follow rig — the zoom set with the wheel holds while the player moves", () => {
   it("walking, running, stopping and turning on the open plaza: the camera stays exactly at the chosen distance and angle", () => {

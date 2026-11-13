@@ -1,11 +1,10 @@
 /**
  * One map's collision truth, packaged: `MapGeometry` is what the server's movement check,
  * the client's slide resolver and the camera spring arm all read for the map a player is
- * standing in (the legacy world, the school hub with its gate open or shut, or a team's
- * room). Browser-safe: it imports only the `AABB` type — no THREE, no schema, no clocks.
+ * standing in (케이슨 마을 or a house interior). Browser-safe: it imports only the `AABB` type — no THREE, no schema, no clocks.
  *
  * `wallsAround` builds the wall boxes of a rectangular room; `makeGeometry` bundles walls
- * and props. Same rules as worldMap.ts: the wall boxes are BOTH the collision truth and the
+ * and props. The wall boxes are BOTH the collision truth and the
  * render geometry, and every box is an axis-aligned rectangle on the ground plane.
  */
 
@@ -19,7 +18,7 @@ export interface Bounds {
   maxZ: number;
 }
 
-export type GeometryId = "legacy" | "hub-open" | "hub-gated" | "counsel" | "village" | "house";
+export type GeometryId = "village" | "house";
 
 export interface MapGeometry {
   id: GeometryId;
@@ -41,7 +40,7 @@ export interface Opening {
   to: number;
 }
 
-/** Default wall thickness (m), same as worldMap.ts' WALL_THICKNESS. */
+/** Default wall thickness (m). */
 export const DEFAULT_WALL_THICKNESS = 0.5;
 
 /**
@@ -98,7 +97,7 @@ export function wallsAround(
 
 /**
  * Bundle a map: `obstacles` = walls then props, `cameraBoxes` = the walls, then the `tallProps`
- * (low props are looked over, not through; a tall one — a locker bank, a bookcase — is a camera
+ * (low props are looked over, not through; a tall one — a bookcase, a wall unit — is a camera
  * box that states its own height). `tallProps` are boxes the caller also lists in `props`: they
  * are NOT added to the obstacles twice. All arrays are fresh copies, so later changes to the
  * caller's arrays cannot alter a finished geometry.

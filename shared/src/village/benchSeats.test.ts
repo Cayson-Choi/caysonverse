@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { isBlocked, type AABB } from "../collision";
-import { PLAYER_RADIUS, SEAT_REACH, SEATS, approachesSeat, nearestFreeSeat } from "../worldMap";
+import { PLAYER_RADIUS, SEAT_REACH, approachesSeat, nearestFreeSeat } from "../worldMap";
 import { SIT_POSE, SIT_ROOT_AHEAD, liftForSeatY } from "../sitPose";
 import { VILLAGE_COLLIDERS } from "./generated/villageColliders";
 import { MEMORIAL_COLLIDERS } from "./generated/memorialColliders";
@@ -205,12 +205,10 @@ describe("benches are sat on from the front (approachesSeat / nearestFreeSeat)",
     expect(nearestFreeSeat(x, z, (i) => i === 0, SEAT_REACH, VILLAGE_SEATS)).toBe(1);
   });
 
-  it("the legacy chairs keep their any-side reach (no front edge), and the default list is still the world's", () => {
-    for (const c of SEATS) {
-      expect(c.frontEdge).toBeUndefined();
-      expect(c.seatY).toBeUndefined();
-      expect(approachesSeat(c, c.x - 1, c.z)).toBe(true);
-    }
-    expect(nearestFreeSeat(SEATS[0]!.standX, SEATS[0]!.standZ, () => false)).toBe(0);
+  it("a seat without a front edge keeps an any-side reach", () => {
+    const chair = { x: 0, z: 0, yaw: Math.PI / 2, standX: -0.9, standZ: 0 };
+    expect(approachesSeat(chair, chair.x - 1, chair.z)).toBe(true);
+    expect(approachesSeat(chair, chair.x + 1, chair.z)).toBe(true);
+    expect(nearestFreeSeat(chair.standX, chair.standZ, () => false, SEAT_REACH, [chair])).toBe(0);
   });
 });

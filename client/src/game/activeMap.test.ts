@@ -1,84 +1,62 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { afterEach, describe, expect, it } from "vitest";
-import { LEGACY_GEOMETRY, SEATS } from "@caysonverse/shared/worldMap";
-import { HUB_GEOMETRY_GATED, HUB_GEOMETRY_OPEN, hubGeometry, hubZoneLabel } from "@caysonverse/shared/school/hubMap";
 import { VILLAGE_SEATS } from "@caysonverse/shared/village/benchSeats";
+import { villageGeometry } from "@caysonverse/shared/village/villageLayout";
 import {
-  LEGACY_ACTIVE_MAP,
+  VILLAGE_ACTIVE_MAP,
   activeMapVersion,
   activeSeats,
   getActiveMap,
-  hubActiveMap,
   setActiveMap,
   villageActiveMap,
   type ActiveMap,
 } from "./activeMap";
-import { CAMERA_BOXES, cameraBoxes } from "./cameraCollision";
-import { zoneLabelAt } from "./hud";
+import { cameraBoxes } from "./cameraCollision";
 
-afterEach(() => setActiveMap(LEGACY_ACTIVE_MAP));
+afterEach(() => setActiveMap(VILLAGE_ACTIVE_MAP));
 
-describe("activeMap (Task 15 — the map seam)", () => {
-  it("starts on the legacy world: its geometry and its room names", () => {
-    expect(getActiveMap()).toBe(LEGACY_ACTIVE_MAP);
-    expect(LEGACY_ACTIVE_MAP.geometry).toBe(LEGACY_GEOMETRY);
-    expect(LEGACY_ACTIVE_MAP.zoneLabel(15, 0)).toBe(zoneLabelAt(15, 0));
-    expect(LEGACY_ACTIVE_MAP.zoneLabel(15, 0)).toBe("강의실");
+describe("activeMap (the map seam)", () => {
+  it("starts on the open village: its geometry and its name", () => {
+    expect(getActiveMap()).toBe(VILLAGE_ACTIVE_MAP);
+    expect(VILLAGE_ACTIVE_MAP.geometry).toBe(villageGeometry);
+    expect(VILLAGE_ACTIVE_MAP.zoneLabel(0, 0)).toBe("케이슨 마을");
   });
 
   it("setActiveMap bumps the version only for a new map", () => {
     const v0 = activeMapVersion();
-    setActiveMap(LEGACY_ACTIVE_MAP); // already current
+    setActiveMap(VILLAGE_ACTIVE_MAP); // already current
     expect(activeMapVersion()).toBe(v0);
 
-    const hub: ActiveMap = { geometry: hubGeometry(false), zoneLabel: hubZoneLabel };
-    setActiveMap(hub);
+    const other: ActiveMap = { geometry: villageGeometry, zoneLabel: () => "다른 곳" };
+    setActiveMap(other);
     expect(activeMapVersion()).toBe(v0 + 1);
-    expect(getActiveMap()).toBe(hub);
-    setActiveMap(hub); // the same object again: ignored
+    expect(getActiveMap()).toBe(other);
+    setActiveMap(other); // the same object again: ignored
     expect(activeMapVersion()).toBe(v0 + 1);
 
     // An equal-looking but different object IS a new map (identity, not deep equality).
-    setActiveMap({ geometry: hubGeometry(false), zoneLabel: hubZoneLabel });
+    setActiveMap({ geometry: villageGeometry, zoneLabel: () => "다른 곳" });
     expect(activeMapVersion()).toBe(v0 + 2);
-    setActiveMap(LEGACY_ACTIVE_MAP);
+    setActiveMap(VILLAGE_ACTIVE_MAP);
     expect(activeMapVersion()).toBe(v0 + 3);
   });
 
-  it("hubActiveMap hands out one prebuilt map per gate state (a re-render never bumps the version)", () => {
-    expect(hubActiveMap(false)).toBe(hubActiveMap(false));
-    expect(hubActiveMap(true)).toBe(hubActiveMap(true));
-    expect(hubActiveMap(false).geometry).toBe(HUB_GEOMETRY_GATED);
-    expect(hubActiveMap(true).geometry).toBe(HUB_GEOMETRY_OPEN);
-    expect(hubActiveMap(true).zoneLabel(0, 0)).toBe("중앙 홀");
-    expect(hubActiveMap(true).zoneLabel(30, 0)).toBe("동쪽 복도");
-  });
-
-  it("only the legacy world offers seats and AI 조교 (ruling E6)", () => {
-    expect(LEGACY_ACTIVE_MAP.seatsAndNpcs).toBe(true);
-    expect(hubActiveMap(false).seatsAndNpcs).toBeFalsy();
-    expect(hubActiveMap(true).seatsAndNpcs).toBeFalsy();
-  });
-
-  it("each map names its seats: the world's chairs, the village's benches in both areas (one list), none in the hub", () => {
-    expect(LEGACY_ACTIVE_MAP.seats).toBe(SEATS);
+  it("each map names its seats: the village's benches, one list for both areas", () => {
+    expect(VILLAGE_ACTIVE_MAP.seats).toBe(VILLAGE_SEATS);
     expect(villageActiveMap("village").seats).toBe(VILLAGE_SEATS);
     expect(villageActiveMap("hall").seats).toBe(VILLAGE_SEATS);
-    expect(villageActiveMap("village").seatsAndNpcs).toBeFalsy(); // benches, but no 조교 and no world chairs
-    expect(hubActiveMap(false).seats).toBeUndefined();
-    expect(activeSeats()).toBe(SEATS);
+    expect(activeSeats()).toBe(VILLAGE_SEATS);
     setActiveMap(villageActiveMap("hall"));
     expect(activeSeats()).toBe(VILLAGE_SEATS);
-    setActiveMap(hubActiveMap(true));
+    setActiveMap({ geometry: villageGeometry, zoneLabel: () => "" }); // a map without seats: nowhere to sit
     expect(activeSeats()).toEqual([]);
   });
 
   it("cameraBoxes() follows the active map", () => {
-    expect(cameraBoxes()).toBe(CAMERA_BOXES);
-    setActiveMap(hubActiveMap(false));
-    expect(cameraBoxes()).toBe(HUB_GEOMETRY_GATED.cameraBoxes);
-    setActiveMap(hubActiveMap(true));
-    expect(cameraBoxes()).toBe(HUB_GEOMETRY_OPEN.cameraBoxes);
+    expect(cameraBoxes()).toBe(villageGeometry.cameraBoxes);
+    const other: ActiveMap = { geometry: { ...villageGeometry, cameraBoxes: [] }, zoneLabel: () => "" };
+    setActiveMap(other);
+    expect(cameraBoxes()).toBe(other.geometry.cameraBoxes);
   });
 });
 

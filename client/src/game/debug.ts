@@ -10,9 +10,6 @@ import { viewState, type ViewState } from "./viewState";
 import { remoteGaitProbe, type Gait } from "./gait";
 import { getNametagCostMs, getNametagMode, nametagProbe, overviewLabelProbe } from "./labelRegistry";
 import { useAppStore, type Screen } from "../stores/appStore";
-import { useClassStore } from "../stores/classStore";
-import { useEscapeStore, type EscapeView } from "../stores/escapeStore";
-import type { InspectViewPayload } from "@caysonverse/shared/escape/messages";
 import { ensureFrameSampler, type FrameStats } from "./frameStats";
 
 /** Non-consented close code (MAY_TRY_RECONNECT) used by the dev drop hook. */
@@ -37,8 +34,6 @@ export interface RemoteView {
   connected: boolean;
   /** -1 = standing; >= 0 = the seat this remote occupies. */
   seatIndex: number;
-  /** Synced role: 0 = student, 1 = teacher (lets E2E assert the teacher marker). */
-  role: number;
 }
 
 /** Shape of one active speech bubble in the dev/E2E hook. */
@@ -84,16 +79,6 @@ export interface JumpView {
   seq: number;
   /** Milliseconds since take-off (0 .. JUMP_DURATION_MS). */
   elapsedMs: number;
-}
-
-/** The class (AI 학교 탈출) as the dev/E2E hook shows it: the store's data fields, no functions. */
-export interface ClassView {
-  phase: string;
-  classCode: string;
-  textLevel: string;
-  openRooms: string[];
-  litRooms: string[];
-  teams: { id: string; name: string; mine: boolean; escapeDoor: string; escapeRoomId: string; members: { sid: string; nickname: string; inEscape: boolean }[] }[];
 }
 
 declare global {
@@ -159,7 +144,7 @@ declare global {
       getNametags: () => NametagView[];
       /** Average ms the NametagSystem's frame took over the last 120 frames (0 before any). */
       getNametagCostMs: () => number;
-      /** The name tag mode the world is using right now ("all" / "nearby" / "off"), as set from the menu. */
+      /** The name tag mode the village is using right now ("all" / "nearby" / "off"), as set from the menu. */
       getNametagMode: () => "all" | "nearby" | "off";
       /** The map's room labels: sprite count, drawn this frame (overview blend past OV_VIS_BLEND)?, opacity. */
       getOverviewLabels: () => { count: number; visible: boolean; opacity: number };
@@ -178,19 +163,11 @@ declare global {
       sit: (seatIndex: number) => void;
       /** Send a Stand request (dev/E2E only). */
       stand: () => void;
-      /** Which screen the app shows: "entry" | "world" | "hub" | "escape" (AI 학교 탈출). */
+      /** Which screen the app shows: "entry" | "village". */
       getScreen: () => Screen;
-      /** The team classroom as the UI reads it (clock, phase, paused, flags …), or null outside one. */
-      getEscape: () => EscapeView | null;
-      /** The class (phase, code, open rooms, teams and who is inside a classroom), or null outside a class. */
-      getClass: () => ClassView | null;
-      /** The close-up the player has open (the server's `InspectView` payload: title, body, back, reveal, split …), or null. */
-      getInspect: () => InspectViewPayload | null;
-      /** The rooms whose progress-board window is lit (rooms a team of this class has escaped). */
-      getLitRooms: () => string[];
       /**
        * rAF interval statistics over the last `windowMs` (default 20 s): frames, mean, p95 and max in ms. A rolling
-       * page-wide sampler, so a hall → classroom switch does not reset it. Headless reference for the perf E2E.
+       * page-wide sampler, so a scene switch does not reset it. Headless reference for the perf E2E.
        */
       getFrameStats: (windowMs?: number) => FrameStats;
     };
@@ -262,35 +239,7 @@ export function installDebugHook(
     sit: (seatIndex: number) => sendSit(seatIndex),
     stand: () => sendStand(),
     getScreen: () => useAppStore.getState().screen,
-    getEscape: () => {
-      const v = useEscapeStore.getState().view;
-      return v === null ? null : structuredClone(v);
-    },
-    getInspect: () => {
-      const v = useEscapeStore.getState().inspect;
-      return v === null ? null : structuredClone(v);
-    },
-    getLitRooms: () => [...useClassStore.getState().litRooms],
     getFrameStats: (windowMs = 20000) => ensureFrameSampler().stats(windowMs, performance.now()),
-    getClass: () => {
-      const c = useClassStore.getState();
-      if (c.classCode === "") return null;
-      return {
-        phase: c.phase,
-        classCode: c.classCode,
-        textLevel: c.textLevel,
-        openRooms: [...c.openRooms],
-        litRooms: [...c.litRooms],
-        teams: c.teams.map((t) => ({
-          id: t.id,
-          name: t.name,
-          mine: t.mine,
-          escapeDoor: t.escapeDoor,
-          escapeRoomId: t.escapeRoomId,
-          members: t.members.map((m) => ({ ...m })),
-        })),
-      };
-    },
   };
   return () => {
     delete window.__cv;

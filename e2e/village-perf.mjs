@@ -27,7 +27,7 @@ import { readFileSync, readdirSync, writeFileSync, mkdirSync, statSync, existsSy
 import { gzipSync, brotliCompressSync, constants as zc } from "node:zlib";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
-import { PHONE, REPO, cdp, createRun, entryReady, launchBrowser, openPlayer, press, r2, sleep, walkAndWait } from "./lib/escape.mjs";
+import { PHONE, REPO, cdp, createRun, entryReady, launchBrowser, openPlayer, press, r2, sleep, walkAndWait } from "./lib/common.mjs";
 
 const { values: args } = parseArgs({
   options: { mode: { type: "string", default: "village" }, ms: { type: "string" }, throttle: { type: "string" }, graphics: { type: "string", default: "low" }, label: { type: "string", default: "run" } },

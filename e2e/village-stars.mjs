@@ -17,7 +17,7 @@
 
 import { chromium } from "playwright";
 import { mkdirSync } from "node:fs";
-import { CLIENT_URL, DESKTOP, PHONE, createRun, entryReady, openPlayer, press, sleep, touchDown, touchMoveTo, touchUp } from "./lib/escape.mjs";
+import { CLIENT_URL, DESKTOP, PHONE, createRun, entryReady, openPlayer, press, sleep, touchDown, touchMoveTo, touchUp } from "./lib/common.mjs";
 
 const run = createRun("village-stars");
 const args = process.argv.slice(2);

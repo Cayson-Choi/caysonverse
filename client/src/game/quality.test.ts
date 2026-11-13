@@ -85,7 +85,7 @@ describe("BLOOM", () => {
     // The bloom pass thresholds on luma. A sky that glows would haze the whole frame.
     for (let i = 0; i <= 6; i++) {
       const exposure = exposureFor(BRIGHTNESS.min + i * BRIGHTNESS.step);
-      const [r, g, b] = skyBeforeToneMap(LIGHTING.brightDay.sky, exposure);
+      const [r, g, b] = skyBeforeToneMap(LIGHTING.village.sky, exposure);
       expect(0.299 * r + 0.587 * g + 0.114 * b).toBeLessThan(BLOOM.threshold);
     }
   });

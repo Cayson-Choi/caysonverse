@@ -10,29 +10,12 @@ export const MessageType = {
   ChatRejected: "chat_rejected",
   /** Client -> server: fire an emoji reaction. Server -> all: relay a reaction. */
   Emoji: "emoji",
-  /** Client(admin) -> server: set/clear the announcement banner (schema state). */
-  Announce: "announce",
-  /** Client(admin) -> server: kick a target player by session id. */
-  Kick: "kick",
   /** Client -> server: request to sit on a specific seat index. */
   Sit: "sit",
   /** Client -> server: request to stand up from the current seat. */
   Stand: "stand",
   /** Server -> one client: a personal notice that their sit request was rejected. */
   SitRejected: "sit_rejected",
-  /**
-   * Server -> all clients: a room-wide system notice (dimmed chat-log row for
-   * EVERYONE). Used by the maze escape broadcast. Carries the escaper's `sid` so
-   * the client can fire the local 🎉 celebration on self without a new sync.
-   */
-  System: "system",
-  /**
-   * Client -> server: EXPLICIT return-to-lobby request from the maze goal
-   * chamber (design 34 후속 — 발주자: 가운데 도달만으로 자동 포탈 금지, 큐리와
-   * 대화 후 버튼으로만). Server validates the sender actually stands in the
-   * chamber (shared canUsePortal) before teleporting; elsewhere it is a no-op.
-   */
-  PortalReturn: "portal_return",
   /**
    * Client -> server: the sender jumped. Server -> everyone except the sender: relay
    * tagged with the sender's sid (the sender hopped locally). A transient event
@@ -103,22 +86,6 @@ export interface EmojiBroadcast {
   index: number;
 }
 
-/**
- * Client(admin) -> server: set the announcement banner. An empty (or
- * whitespace-only) string is VALID and CLEARS the banner. The server verifies
- * the sender is admin (server-side `isAdmin` marker, not the synced
- * `Player.role`) and drops otherwise.
- */
-export interface AnnouncePayload {
-  text: string;
-}
-
-/** Client(admin) -> server: kick the player owning `sid`. */
-export interface KickPayload {
-  /** Target session id (the admin cannot kick themselves). */
-  sid: string;
-}
-
 /** Client -> server: request to sit on seat `seatIndex` (0..SEATS.length-1). */
 export interface SitPayload {
   seatIndex: number;
@@ -130,16 +97,6 @@ export type StandPayload = Record<string, never>;
 /** Server -> the sender only: why their sit request was dropped (Korean reason). */
 export interface SitRejectedPayload {
   reason: string;
-}
-
-/**
- * Server -> every client: a system notice rendered as a dimmed chat-log row for
- * all. `sid` (when present) is the session the notice is ABOUT — the client
- * compares it to its own session id to fire a local self-celebration.
- */
-export interface SystemBroadcast {
-  text: string;
-  sid?: string;
 }
 
 /** Client -> server: the sender jumped. Carries no data (the server never reads it). */
@@ -194,12 +151,9 @@ export interface MessagePayloads {
   [MessageType.Chat]: ChatPayload;
   [MessageType.ChatRejected]: ChatRejectedPayload;
   [MessageType.Emoji]: EmojiPayload;
-  [MessageType.Announce]: AnnouncePayload;
-  [MessageType.Kick]: KickPayload;
   [MessageType.Sit]: SitPayload;
   [MessageType.Stand]: StandPayload;
   [MessageType.SitRejected]: SitRejectedPayload;
-  [MessageType.System]: SystemBroadcast;
   // Jump/Typing travel both ways under one id (request up, relay down), so each
   // entry lists both shapes.
   [MessageType.Jump]: JumpPayload | JumpBroadcast;

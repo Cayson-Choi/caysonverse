@@ -140,9 +140,6 @@ describe("builderOptions — copy (no voice: chat is never read aloud, owner 202
       rotateRight: "오른쪽으로 돌리기",
       sheetOpen: "꾸미기 창 크게 보기",
       sheetClose: "꾸미기 창 작게 보기",
-      admin: "관리자이신가요?",
-      adminCode: "관리자 코드",
-      adminPlaceholder: "강사 전용",
       submit: "입장하기",
       submitting: "입장 중…",
     });
@@ -157,7 +154,7 @@ describe("builderOptions — copy (no voice: chat is never read aloud, owner 202
     expect(BUILDER_FONT_TEXT).not.toContain("고양이 귀 머리띠");
     expect(BUILDER_FONT_TEXT).not.toContain("망원경");
     for (const preset of APPEARANCE_PRESETS) expect(words).toContain(preset.label);
-    for (const copy of ["캐릭터 조립실", "추천 캐릭터", "랜덤", "끌어서", "캐릭터를 불러오는 중…", "닉네임", "관리자이신가요?", "관리자 코드", "입장하기", "입장 중…", "피부색"]) {
+    for (const copy of ["캐릭터 조립실", "추천 캐릭터", "랜덤", "끌어서", "캐릭터를 불러오는 중…", "닉네임", "입장하기", "입장 중…", "피부색"]) {
       expect(BUILDER_FONT_TEXT).toContain(copy);
     }
     expect(BUILDER_FONT_TEXT).not.toContain("🎲");

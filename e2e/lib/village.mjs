@@ -1,11 +1,11 @@
 // Shared helpers of the 케이슨 마을 E2E scripts (Task 11): e2e/village-desktop.mjs and e2e/village-mobile.mjs run the same
 // scenario (runVillageScenario below), one with a mouse + keyboard, one with a phone (touch, taps on the action button).
-// Plain Playwright against the dev stack (`npm run dev`: client :5173, server :2567), on top of e2e/lib/escape.mjs.
+// Plain Playwright against the dev stack (`npm run dev`: client :5173, server :2567), on top of e2e/lib/common.mjs.
 //
-// Page code reaches the app's modules through `window.__imp(path)` (see escape.mjs openPlayer).
+// Page code reaches the app's modules through `window.__imp(path)` (see common.mjs openPlayer).
 
 import { mkdirSync } from "node:fs";
-import { CLIENT_URL, DESKTOP, PHONE, createRun, entryReady, launchBrowser, layoutReport, openPlayer, press, pos, sleep, touchDown, touchMoveTo, touchUp, turnCameraTo, visibleButtons, waitIdle, walkAndWait, walkTo } from "./escape.mjs";
+import { CLIENT_URL, DESKTOP, PHONE, createRun, entryReady, launchBrowser, layoutReport, openPlayer, press, pos, sleep, touchDown, touchMoveTo, touchUp, turnCameraTo, visibleButtons, waitIdle, walkAndWait, walkTo } from "./common.mjs";
 
 /** The pinned noon the other village scripts use (so the day/night look is the same every run). */
 export const NOON = "2026-11-03T12:30";
@@ -258,7 +258,7 @@ export async function standAtPlazaGuide(p) {
 const r3 = (n) => Math.round(n * 1000) / 1000;
 
 /**
- * The whole scenario (brief of Task 11), for one device kind. `device` is DESKTOP or PHONE from escape.mjs; `name` the run name.
+ * The whole scenario (brief of Task 11), for one device kind. `device` is DESKTOP or PHONE from common.mjs; `name` the run name.
  * Returns the process exit code.
  */
 export async function runVillageScenario({ name, device }) {

@@ -14,7 +14,7 @@
  */
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { DESKTOP, createRun, launchBrowser, openPlayer, sleep } from "./lib/escape.mjs";
+import { DESKTOP, createRun, launchBrowser, openPlayer, sleep } from "./lib/common.mjs";
 import { joinVillage } from "./lib/village.mjs";
 
 const args = process.argv.slice(2);

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import { boot, type ColyseusTestServer } from "@colyseus/testing";
 import config from "@colyseus/tools";
 import { defineRoom, type Client } from "colyseus";
-import { WORLD_ROOM, PLAYER_RADIUS, CHAT_MAX_LENGTH } from "@caysonverse/shared/constants";
+import { VILLAGE_ROOM, PLAYER_RADIUS, CHAT_MAX_LENGTH } from "@caysonverse/shared/constants";
 import { MessageType } from "@caysonverse/shared/messages";
 import type {
   ChatBroadcast,
@@ -15,12 +15,11 @@ import { Player, WorldState } from "@caysonverse/shared/schema";
 import type { MapGeometry } from "@caysonverse/shared/school/geometry";
 import { PlayerRoom, baseTracking, type Tracking } from "./PlayerRoom";
 import { CHAT_NOT_NICE, type ProfanityResult } from "./profanity";
-import { rooms, type WorldRoom } from "./index";
+import { rooms, type VillageRoom } from "./index";
 
 /**
  * The shared PlayerRoom base (escape phase 1, Task 2). Its own port: every integration test
- * file boots its own in-process server, and vitest runs files in parallel (ruling E1 —
- * WorldRoom keeps the default 2568; ClassRoom/EscapeRoom take 2569–2571).
+ * file boots its own in-process server, and vitest runs files in parallel.
  */
 const PORT = 2572;
 
@@ -34,7 +33,7 @@ const flush = () => new Promise((r) => setTimeout(r, 60));
 
 /** A small room with one prop; the legacy world would accept moves this map drops. */
 const PROBE_GEO: MapGeometry = {
-  id: "counsel",
+  id: "village",
   bounds: { minX: -6, maxX: 6, minZ: -5, maxZ: 5 },
   obstacles: [{ minX: 1, maxX: 2, minZ: -1, maxZ: 1 }],
   cameraBoxes: [],
@@ -143,9 +142,9 @@ beforeEach(async () => {
 // Ruling E6: a message type no handler is registered for (a stale client, a legacy "Sit"
 // sent to a room without chairs) is DROPPED. Without the catch-all, production Colyseus
 // answers it with client.leave(4002 WITH_ERROR) — the player would be thrown out.
-describe("PlayerRoom stray messages (WorldRoom)", () => {
+describe("PlayerRoom stray messages (VillageRoom)", () => {
   it("drops an unregistered message type without closing the sender", async () => {
-    const room = await colyseus.createRoom<WorldRoom>(WORLD_ROOM);
+    const room = await colyseus.createRoom<VillageRoom>(VILLAGE_ROOM);
     const alice = await colyseus.connectTo(room, JOIN_A);
     const bob = await colyseus.connectTo(room, JOIN_B);
     alice.reconnection.enabled = false; // a close must show up as a leave, not be healed
@@ -162,7 +161,7 @@ describe("PlayerRoom stray messages (WorldRoom)", () => {
     await flush();
     await flush();
 
-    // Still connected and still in the world...
+    // Still connected and still in the village...
     expect(leaveCode).toBeNull();
     expect(room.state.players.get(alice.sessionId)?.connected).toBe(true);
     expect(room.clients.getById(alice.sessionId)).toBeDefined();

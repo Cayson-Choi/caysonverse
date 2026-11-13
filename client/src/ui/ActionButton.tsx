@@ -15,12 +15,10 @@ import {
   interactionShortLabel,
   pickInteraction,
   sameInteraction,
-  shouldClosePanel,
   type InteractTarget,
   type Interaction,
 } from "../game/interact";
 import { useChatStore } from "../stores/chatStore";
-import { useNpcStore } from "../stores/npcStore";
 import { isTouchDevice } from "../device";
 import type { Pose, SeatState } from "../game/types";
 import { rectStyle, useTouchHudLayout } from "./useTouchHudLayout";
@@ -51,9 +49,6 @@ function perform(it: Interaction, startHold: (target: InteractTarget) => void): 
     case "stand":
       sendStand();
       break;
-    case "talk":
-      useNpcStore.getState().openPanel(it.npc);
-      break;
     case "target":
       // The scene decides what its target does (the hall: the team panel, "enter"). A tap is a press;
       // a hold target (a lone member's coop switch) is pressed now and released when the finger / key lets go.
@@ -65,22 +60,21 @@ function perform(it: Interaction, startHold: (target: InteractTarget) => void): 
 
 /**
  * The one context button (DOM overlay above the canvas) and the E / F key behind it:
- * sit on a nearby free chair, stand up, talk to a nearby AI 조교, or use what the active scene
- * offers (the hall's team rug and door pads, a classroom's objects — interactTargets.ts) —
- * whichever is nearest (interact.ts decides). Renders nothing when there is nothing to do.
+ * sit on a nearby free bench, stand up, or use what the active scene offers (the memorial hall's door, a keypad,
+ * a guide, the fishing kiosk - interactTargets.ts) - whichever is nearest (interact.ts decides). Renders nothing
+ * when there is nothing to do.
  *
  *  - Touch: a 60 px round button right above the 72 px JumpButton (icon + short label),
  *    pinned to the rectangle game/hud.ts `touchHudLayout` gives it.
  *  - Desktop: a small pill at the bottom right, above the emoji row, `E 앉기` (clickable too).
  *
- * It also owns what the old SitPrompt / NpcPrompt did off the render path:
+ * It also owns, off the render path:
  *  - a ~5 Hz proximity check (occupancy comes from every player's schema-synced
- *    `seatIndex` — no extra network),
- *  - closing the 조교 chat panel when you walk past NPC_CLOSE_RADIUS of it, and
- *  - the personal SitRejected notice → a dimmed chat-log system row.
+ *    `seatIndex` - no extra network), and
+ *  - the personal SitRejected notice -> a dimmed chat-log system row.
  *
- * A scene's HOLD target (a lone member's coop switch, "3초 길게 누르기") is pressed when the finger / mouse
- * goes down on the button or E / F goes down, and RELEASED when it comes up — and on every other way out:
+ * A HOLD target (pressed and held) is pressed when the finger / mouse
+ * goes down on the button or E / F goes down, and RELEASED when it comes up - and on every other way out:
  * the pointer being cancelled, the window losing focus or going to the background, the page being hidden,
  * the target no longer being the pick (walked out of reach, an overlay opened, paused) and this button
  * unmounting. The server finishes a hold by itself after the full time, so a release that never gets
@@ -99,8 +93,6 @@ export function ActionButton({ pose, seat }: { pose: Pose; seat: SeatState }) {
   const current = useRef<Interaction | null>(null);
   // The hold target being held (not state: nothing is drawn from it; the ring is the scene's).
   const held = useRef<Held | null>(null);
-  // Re-evaluate at once when a chat panel opens or closes (F → button gone).
-  const panelOpen = useNpcStore((s) => s.activeNpc !== null);
   const layout = useTouchHudLayout();
 
   // Personal rejection notice (occupied-seat race) → dimmed system row. Mirrors
@@ -121,37 +113,18 @@ export function ActionButton({ pose, seat }: { pose: Pose; seat: SeatState }) {
     fireTarget(h.target, "release");
   }, []);
 
-  // One proximity pass: auto-close a far chat panel, then pick the interaction.
-  // Reads the live pose / seat refs; allocates only at this cadence.
+  // One proximity pass: pick the interaction. Reads the live pose / seat refs; allocates only at this cadence.
   const refresh = useCallback((): Interaction | null => {
-    const npcState = useNpcStore.getState();
-    // The conversation ends when you walk away from the assistant you were talking to.
-    if (shouldClosePanel(npcState.activeNpc, pose.x, pose.z)) npcState.closePanel();
-    // What the active scene offers (the school maps: the hall's rug and pads; empty in the world).
+    // What the active scene offers (the memorial hall's door, keypads, guides, the fishing kiosk).
     const targets = getTargets(pose);
     const map = getActiveMap();
     let next: Interaction | null;
-    if (map.seatsAndNpcs) {
+    if (map.seats && map.seats.length > 0) {
+      // Its benches (from the front) and the scene's targets.
       const occupied = new Set(getRemoteSeatIndices());
-      next = pickInteraction(
-        interactInputAt(
-          pose.x,
-          pose.z,
-          seat.index,
-          (i) => occupied.has(i),
-          useNpcStore.getState().activeNpc !== null,
-          targets,
-        ),
-      );
-    } else if (map.seats && map.seats.length > 0) {
-      // 케이슨 마을: its benches (from the front) and the scene's targets; no AI 조교 (the guides are targets).
-      const occupied = new Set(getRemoteSeatIndices());
-      next = pickInteraction(
-        interactInputAt(pose.x, pose.z, seat.index, (i) => occupied.has(i), false, targets, { seats: map.seats, npcs: false }),
-      );
+      next = pickInteraction(interactInputAt(pose.x, pose.z, seat.index, (i) => occupied.has(i), targets, { seats: map.seats }));
     } else {
-      // The school maps have no seats and no AI 조교 (ruling E6): a school map offers its targets and nothing else.
-      next = pickInteraction({ seated: false, seat: null, npc: null, npcPanelOpen: false, targets });
+      next = pickInteraction({ seated: false, seat: null, targets });
     }
     if (!sameInteraction(next, current.current)) {
       current.current = next;
@@ -185,10 +158,6 @@ export function ActionButton({ pose, seat }: { pose: Pose; seat: SeatState }) {
     return () => window.clearInterval(id);
   }, [refresh]);
 
-  useEffect(() => {
-    refresh();
-  }, [panelOpen, refresh]);
-
   // E / F: the shared hotkey table already drops auto-repeat, IME composition and
   // keys typed into a focused field (typing "e" in the chat never sits). Re-read
   // the world first so a key pressed right after walking up sees the current target.
@@ -196,7 +165,7 @@ export function ActionButton({ pose, seat }: { pose: Pose; seat: SeatState }) {
   useEffect(
     () =>
       onHotkey((action) => {
-        if (action.type === "interact") act("key"); // e.g. talk → the panel opens, the button goes
+        if (action.type === "interact") act("key"); 
         else if (action.type === "interactUp") releaseHold("key");
       }),
     [act, releaseHold],

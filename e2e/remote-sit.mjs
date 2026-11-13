@@ -1,14 +1,13 @@
 /**
  * e2e/remote-sit.mjs — how ANOTHER player sitting down and getting up looks on my screen (fix: remote sit/stand).
  *
- * Tab A sits on a 케이슨 마을 bench (and, with --legacy, on a legacy classroom chair); tab B stands in front of it and
+ * Tab A sits on a 케이슨 마을 bench ; tab B stands in front of it and
  * records, every frame, where it DRAWS A (`__cv.getRemoteDrawn`: x, z, yaw, and on the fixed build the lift y and the
  * seat mode) and which clip A's avatar plays (`__cvAvatars()`), while A records its own pose and seat (`__cv.getPos`).
  * Both on the epoch clock. Scenarios:
  *   walk-up-sit   A walks up to the bench and presses E the moment it arrives; 2 s later W gets it up and walks on;
  *   sit-then-W    A presses E, and holds W from the frame the seat is confirmed (gets up at once);
  *   still-sit     A stands 3 s facing the bench, then E (the facing turns onto the seat); E again gets up;
- *   chair         (--legacy) the same on a classroom chair, approached from the aisle (through the chair's back).
  * Measured on B's frames: where the sit-down clip starts (how far from where A stood, and how fast the drawn body was
  * still moving), the fastest frame while the clip plays (a "zip" onto the seat), the largest one-frame jump and turn
  * over the whole sit/stand, the lift's largest one-frame change, and for the chair the slide (the distance travelled in
@@ -17,23 +16,22 @@
  *   PORT=2637 npx tsx src/index.ts        (in server/)
  *   node e2e/lib/jitterProxy.mjs 2638 2637 2639        (optional: --net=jitter needs it)
  *   VITE_SERVER_URL=http://localhost:2638 npx vite --port 5237 --strictPort   (in client/)
- *   CV_CLIENT_URL=http://localhost:5237 CV_PROXY_CONTROL=http://localhost:2639 node e2e/remote-sit.mjs --out=<folder> --label=after [--net=jitter] [--legacy]
+ *   CV_CLIENT_URL=http://localhost:5237 CV_PROXY_CONTROL=http://localhost:2639 node e2e/remote-sit.mjs --out=<folder> --label=after [--net=jitter]
  */
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { chromium } from "playwright";
-import { CLIENT_URL, DESKTOP, createRun, entryReady, openPlayer, pos, press, sleep, turnCameraTo, walkAndWait } from "./lib/escape.mjs";
+import { CLIENT_URL, DESKTOP, createRun, entryReady, openPlayer, pos, press, sleep, turnCameraTo, walkAndWait } from "./lib/common.mjs";
 import { joinVillage } from "./lib/village.mjs";
 
 const arg = (name, dflt) => process.argv.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3) ?? dflt;
 const OUT = arg("out", join(process.cwd(), ".superpowers", "sdd", "evidence", "remote-sit"));
 const LABEL = arg("label", "run");
 const NET = arg("net", "clean");
-const LEGACY = process.argv.includes("--legacy");
 const CONTROL = process.env.CV_PROXY_CONTROL || "";
 mkdirSync(OUT, { recursive: true });
 
-const run = createRun(`remote-sit-${LABEL}-${NET}${LEGACY ? "-legacy" : ""}`);
+const run = createRun(`remote-sit-${LABEL}-${NET}`);
 run.evidence = OUT;
 const gpu = process.platform === "win32" ? ["--use-angle=d3d11", "--enable-gpu", "--ignore-gpu-blocklist"] : ["--enable-gpu", "--ignore-gpu-blocklist"];
 const browser = await chromium.launch({ headless: true, channel: "chrome", args: gpu });
@@ -54,7 +52,6 @@ const startRecA = (p) =>
 /**
  * B's recorder: A's avatar GROUP as it is in B's scene (its position, lift y and facing — what B sees, on any build:
  * the old build's probe left the stand-up glide out), found once by the probe's pose, plus the clip A's avatar plays.
- * The legacy world has no scene hook: there the probe is used (a chair has no glide or lift on either build).
  */
 const startRecB = (p, sid) =>
   p.page.evaluate((sid) => {
@@ -202,7 +199,7 @@ async function sidOf(viewer, nick) {
   return viewer.page.evaluate((n) => window.__cv.getRemotes().find((r) => r.nickname === n).sessionId, nick);
 }
 
-if (!LEGACY) {
+{
   await run.step("1. two players in 케이슨 마을; B watches the plaza bench", async () => {
     await joinVillage(A, "앉A");
     await joinVillage(B, "봄B");
@@ -276,56 +273,8 @@ if (!LEGACY) {
     });
     results.push(res);
   });
-} else {
-  // The legacy world's renderer warns about its shadow type once per tab (as on main; not this test's business).
-  run.allow("PCFSoftShadowMap deprecation (legacy world)", /PCFSoftShadowMap has been deprecated/);
-  await run.step("1. two players in the legacy world; B watches a classroom chair", async () => {
-    for (const [p, nick] of [
-      [A, "앉A"],
-      [B, "봄B"],
-    ]) {
-      await p.page.goto(new URL("/?world=legacy", CLIENT_URL).href, { waitUntil: "domcontentloaded" });
-      await entryReady(p);
-      p.nick = `${nick}${Math.floor(Math.random() * 900 + 100)}`.slice(0, 5);
-      await p.page.locator("input.cv-input").first().fill(p.nick);
-      await press(p, p.page.locator(".cv-submit"));
-      await p.page.waitForFunction(() => !!window.__cv?.getPos, null, { timeout: 40000 });
-      await sleep(2500);
-    }
-  });
-  const seats = await A.page.evaluate(async () => (await window.__imp("/shared/src/worldMap.ts")).SEATS.map((s) => ({ ...s })));
-  const S = 3; // front row by the door: the chair at (2.7, 3) faces the screen (+x); its dismount (1.8, 3) is behind it
-  const s = seats[S];
-  const sidA = await sidOf(B, A.nick);
-  const DOOR = [
-    [-2, 0],
-    [2, 0],
-  ];
-  for (const [x, z] of DOOR) await walkAndWait(B, x, z, 20000, 0.6);
-  await walkAndWait(B, s.standX, s.z - 3.6, 30000, 0.5);
-  await turnCameraTo(B, s.x, s.z);
-  for (const [x, z] of DOOR) await walkAndWait(A, x, z, 20000, 0.6);
-  await run.step("2. chair: walk up to its back, E after 1 s, E again 2 s later", async () => {
-    await walkAndWait(A, s.standX - 1.3, s.z, 30000, 0.4);
-    await sleep(800);
-    const res = await recordScenario("chair", A, B, sidA, async () => {
-      await walkUpTo(A, s.standX - 0.05, s.z); // 0.95 m behind the chair (it faces +x)
-      await sleep(1000);
-      await A.page.keyboard.press("KeyE");
-      const shot = await shots(B, `${LABEL}-${NET}-chair`);
-      await sleep(250);
-      await shot.mid();
-      run.check("A is seated on the chair", await seatIs(A, (i) => window.__cv.getPos().seatIndex === i, 8000, S));
-      await sleep(2000);
-      await shot.end();
-      await A.page.keyboard.press("KeyE");
-      run.check("A stood up", await seatIs(A, () => window.__cv.getPos().seatIndex === -1));
-      await sleep(1800);
-    });
-    results.push(res);
-  });
 }
 
 await browser.close();
-writeFileSync(join(OUT, `summary-${LABEL}-${NET}${LEGACY ? "-legacy" : ""}.json`), JSON.stringify(results, null, 2));
+writeFileSync(join(OUT, `summary-${LABEL}-${NET}.json`), JSON.stringify(results, null, 2));
 process.exit(run.finish({ out: OUT, results }));

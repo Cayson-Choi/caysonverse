@@ -31,8 +31,6 @@ import { HudTop } from "../ui/HudTop";
 import { TouchJoystick } from "../ui/TouchJoystick";
 import { ActionButton } from "../ui/ActionButton";
 import { JumpButton } from "../ui/JumpButton";
-import { Banner } from "../ui/Banner";
-import { AdminPanel } from "../ui/AdminPanel";
 import { MenuPanel } from "../ui/MenuPanel";
 import { CoachMarks } from "../ui/CoachMarks";
 import { startJumpSync } from "../net/jumpSync";
@@ -41,7 +39,6 @@ import { getRenderProfile } from "./renderProfile";
 import { releaseAllUiCapture } from "./uiCapture";
 import { resetViewMode, toggleViewMode, toggleOverview, viewState } from "./viewState";
 import { bindNametagMode } from "./settingsBridge";
-import { useAppStore } from "../stores/appStore";
 import { useCoachStore } from "../stores/coachStore";
 import { useSettingsStore } from "../stores/settingsStore";
 import { useUiStore } from "../stores/uiStore";
@@ -64,46 +61,41 @@ export type ShellSlot = ReactNode | ((shell: ShellFrame) => ReactNode);
 
 export interface PlayShellProps {
   identity: Identity;
-  /** The room this scene's players live in (the class for the hall, the classroom inside one). */
+  /** The room this scene's players live in. */
   room: PlayersRoom;
   /** Set as THE active map while this scene is up (collision, camera, click-move, HUD). */
   activeMap: ActiveMap;
   lighting: LightingId;
   /**
-   * The school scenes' look (Task 21): the player's graphics tier (bloom, soft shadows or the light budget,
-   * its dpr) and brightness. The hall and the classrooms turn it on; off = the old render budget, no post effects.
+   * The player's graphics tier (bloom, soft shadows or the light budget, its dpr) and brightness. On = the tier's
+   * render budget and post effects; off = the plain render budget, no post effects.
    */
   effects: boolean;
   /** The scene's own 3D content, inside the Canvas. */
   world3d: ShellSlot;
   /** The scene's own DOM overlay, after the shared HUD. */
   hud: ShellSlot;
-  /** Extra rows under the top-left 👥 column (after the touch chat log and the admin panel). */
+  /** Extra rows under the top-left 👥 column (after the touch chat log). */
   hudColumn?: ReactNode;
   /**
-   * Whether the teacher's own admin panel hangs in the top-left column (default true). The hall hosts
-   * it inside its teacher panel instead (`hudColumn`), so it passes false.
-   */
-  adminPanel?: boolean;
-  /**
    * Half-size (m) of the sun's shadow box when it should FOLLOW the local player instead of covering the whole map
-   * (default: the whole map). A long map (the hub: hall + a 34 m corridor) would stretch one shadow map over 70 m
+   * (default: the whole map). A big map (the village is 190 m across) would stretch one shadow map over it
    * and blur every shadow; a box this big around the player keeps the texels small wherever they walk.
    */
   shadowFollowHalf?: number;
   /**
    * 케이슨 마을: the local player's area. Given, the remote players are filtered by it (only the avatars of the
-   * viewer's own area are mounted — areaFilter.ts). Absent in every other scene: nobody has an area there.
+   * viewer's own area are mounted — areaFilter.ts).
    */
   areas?: AreaGate;
   /**
-   * The camera's near and far planes (m), where they differ from the school's 0.1 / CAMERA_FAR: 케이슨 마을 draws a
+   * The camera's near and far planes (m), where they differ from the default 0.1 / CAMERA_FAR: 케이슨 마을 draws a
    * sky dome 1.4 km out (VillageScene). Read when the Canvas is made; the far plane is the camera rig's base.
    */
   cameraPlanes?: { near: number; far: number };
   /**
    * Where the ground decals lie (the avatars' blob shadows, the rich tier's shadow floor): height and polygon offset.
-   * Default: 3 cm, no offset (every scene but 케이슨 마을, whose ground layers carry offsets of their own).
+   * Default: 3 cm, no offset.
    */
   groundDecal?: GroundDecal;
 }
@@ -134,7 +126,7 @@ function SunFollow({
   return null;
 }
 
-/** The school scenes' camera planes. */
+/** The default camera planes. */
 const DEFAULT_PLANES = { near: 0.1, far: CAMERA_FAR } as const;
 
 function renderSlot(slot: ShellSlot, shell: ShellFrame): ReactNode {
@@ -160,7 +152,7 @@ function readSpawn(room: PlayersRoom, map: ActiveMap): Pose {
 }
 
 /**
- * The play scene every school map shares (AI 학교 탈출, Task 15): the Canvas with its lights,
+ * The play scene (케이슨 마을's): the Canvas with its lights,
  * the keyboard map, the local player, the other players of `room`, the camera rig, the
  * destination ring, the name tags — and the common HUD (chat, emoji, top bar, touch stick and
  * buttons, guide, menu). A scene brings only its map (`activeMap`), its lighting preset and
@@ -177,14 +169,12 @@ export function PlayShell(p: PlayShellProps) {
   setActiveMap(p.activeMap);
   const { identity, room } = p;
 
-  // Local-only: gates the admin panel (the teacher, in a class).
-  const isAdmin = useAppStore((s) => s.isAdmin);
   const leftHanded = useSettingsStore((s) => s.settings.leftHanded);
   useEffect(() => bindNametagMode(), []);
 
-  // The orbit starts at the world's default; CameraRig puts the player's remembered zoom and tilt on it before its first
-  // frame (cameraMemory.ts), so every scene — the village, the hall, the hub, a classroom — starts where the player left
-  // the camera. No scene has a camera preset of its own (owner 2026-11-10).
+  // The orbit starts at the default; CameraRig puts the player's remembered zoom and tilt on it before its first
+  // frame (cameraMemory.ts), so every scene starts where the player left the camera. No scene has a camera preset of
+  // its own (owner 2026-11-10).
   const [frame] = useState<ShellFrame>(() => ({
     pose: readSpawn(room, p.activeMap),
     orbit: { yaw: CAMERA.yaw, pitch: CAMERA.pitch, distance: CAMERA.distance },
@@ -193,7 +183,7 @@ export function PlayShell(p: PlayShellProps) {
   const { pose, orbit, seat } = frame;
   const [moveInput] = useState<MoveInput>(() => ({ forward: 0, right: 0, run: false }));
 
-  // Every fresh scene starts uncaptured, in third person, with no panel open (see WorldScene).
+  // Every fresh scene starts uncaptured, in third person, with no panel open.
   useEffect(() => {
     releaseAllUiCapture();
     resetViewMode();
@@ -206,10 +196,10 @@ export function PlayShell(p: PlayShellProps) {
     [room, identity.sessionId],
   );
 
-  // The graphics tier (the player's setting; "auto" = the device) and brightness, for the school scenes.
+  // The graphics tier (the player's setting; "auto" = the device) and brightness.
   const tier = useQualityTier();
   const brightness = useSettingsStore((s) => s.settings.brightness);
-  // One render budget source (ruling E17): dpr cap, real vs blob shadows. A tier drives it; no tier = the old matrix.
+  // One render budget source (ruling E17): dpr cap, real vs blob shadows. A tier drives it; no tier = the plain matrix.
   const profile = getRenderProfile(isTouchDevice, p.effects ? tier : undefined);
   // On the rich tier the bloom chain tone-maps the WHOLE frame, clear colour included, which would wash the sky
   // out to a dull grey-blue next to the light tier's (a renderer does not tone-map its clear colour). So there
@@ -236,7 +226,7 @@ export function PlayShell(p: PlayShellProps) {
   }, [p.effects, tier]);
 
   // The sun aims at the middle of the map, and its shadow box covers the whole map. "The map" is the part the
-  // local player is in (the village scene: the village OR the hall's room — activeMap.ts `mapBounds`).
+  // local player is in (the village OR the hall's room — activeMap.ts `mapBounds`).
   const light = LIGHTING[p.lighting];
   const planes = p.cameraPlanes ?? DEFAULT_PLANES;
   const b = mapBounds(p.activeMap);
@@ -322,7 +312,6 @@ export function PlayShell(p: PlayShellProps) {
         {import.meta.env.DEV && <RenderStatsProbe />}
       </Canvas>
       <LoadingOverlay />
-      <Banner />
       <Chat />
       {isTouchDevice ? <EmojiFan /> : <EmojiPalette />}
       <HudTop
@@ -332,10 +321,9 @@ export function PlayShell(p: PlayShellProps) {
         overviewDisabled={!overviewAllowed(p.activeMap.cameraLimit)}
       >
         {isTouchDevice && <ChatLog />}
-        {isAdmin && p.adminPanel !== false && <AdminPanel />}
         {p.hudColumn}
       </HudTop>
-      {/* E / F and the context button (on the school maps: the scene's own targets only, no seats, no 조교 — E6). */}
+      {/* E / F and the context button: the benches and the scene's own targets. */}
       <ActionButton pose={pose} seat={seat} />
       {isTouchDevice && <JumpButton sessionId={identity.sessionId} />}
       {isTouchDevice && <TouchJoystick moveInput={moveInput} leftHanded={leftHanded} />}

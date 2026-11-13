@@ -20,7 +20,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { chromium } from "playwright";
-import { DESKTOP, createRun, openPlayer, pos, sleep, turnCameraTo, walkAndWait } from "./lib/escape.mjs";
+import { DESKTOP, createRun, openPlayer, pos, sleep, turnCameraTo, walkAndWait } from "./lib/common.mjs";
 import { joinVillage } from "./lib/village.mjs";
 
 const arg = (name, dflt) => process.argv.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3) ?? dflt;

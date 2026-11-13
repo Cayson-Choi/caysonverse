@@ -4,7 +4,7 @@
  *   npm run dev   (다른 창에서)
  *   node e2e/village-mobile.mjs [--out=<폴더>]
  */
-import { PHONE } from "./lib/escape.mjs";
+import { PHONE } from "./lib/common.mjs";
 import { runVillageScenario } from "./lib/village.mjs";
 
 process.exit(await runVillageScenario({ name: "village-mobile", device: PHONE }));

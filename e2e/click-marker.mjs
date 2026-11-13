@@ -1,15 +1,15 @@
 // 클릭 이동의 목적지 링 (owner 2026-11-10: "찍은 부분의 동그라미가 간혹 안 나타나거나 제대로 표시가 안 된다").
 //
 // A sweep of real clicks (a mouse on a PC, CDP finger taps on a phone) over the canvas in 케이슨 마을 (the plaza, the
-// lane and forecourt, a plot lawn, the creek), the memorial hall's interior, the legacy world and the escape hall, plus
+// lane and forecourt, a plot lawn, the creek), the memorial hall's interior, plus
 // named cases (the fountain, the own avatar, a house wall, the memorial, a lane, the forecourt, a plot lawn, clicks from a
 // bench seat, the creek, past the creek, past the area, a stop under a crown, a stop off the screen, a step's riser, a
 // pinhole in a crown, a drag that came back), a long walk toward a far ring and a phone tap while a walk arrives.
 //
-//   server/: TEACHER_KEYS_FILE=e2e/fixtures/teacher-keys.e2e.json PORT=2697 npx tsx src/index.ts   (the path is the repo root's)
+//   server/: PORT=2697 npx tsx src/index.ts
 //   client/: VITE_SERVER_URL=http://localhost:2697 npx vite --port 5297 --strictPort
 //   CV_CLIENT_URL=http://localhost:5297 node e2e/click-marker.mjs
-//     CM_DEVICES=desktop,phone   CM_PLACES=village,hall,legacy,hub,cases,walk   CM_EVIDENCE=<dir>   CM_TAG=<name>   CM_CASES=<id,...>
+//     CM_DEVICES=desktop,phone   CM_PLACES=village,hall,cases,walk   CM_EVIDENCE=<dir>   CM_TAG=<name>   CM_CASES=<id,...>
 //
 // Every click is judged from the player's side by an oracle that does not use the app's picker:
 //  - under the cursor: the first visible surface along the click ray (see-through things skipped: sprites, shadows,
@@ -51,14 +51,14 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createRequire } from "node:module";
 import { chromium } from "playwright";
-import { CLIENT_URL, DESKTOP, PHONE, REPO, createRun, joinAsTeacher, openPlayer, pos, sleep, walkAndWait } from "./lib/escape.mjs";
+import { CLIENT_URL, DESKTOP, PHONE, REPO, createRun, openPlayer, pos, sleep, walkAndWait } from "./lib/common.mjs";
 import { enterHall, joinVillage } from "./lib/village.mjs";
 
 const require = createRequire(join(REPO, "package.json"));
 const { PNG } = require("playwright-core/lib/utilsBundle");
 
 const DEVICES = (process.env.CM_DEVICES || "desktop,phone").split(",");
-const PLACES = (process.env.CM_PLACES || "village,hall,legacy,hub,cases,walk").split(",");
+const PLACES = (process.env.CM_PLACES || "village,hall,cases,walk").split(",");
 /** Only these named cases (debugging; default all). */
 const CASES = process.env.CM_CASES?.split(",");
 const wantCase = (id) => !CASES || CASES.includes(id);
@@ -947,16 +947,6 @@ async function newPlayer(browser, device, tag) {
   return p;
 }
 
-async function joinLegacy(p) {
-  await p.page.goto(`${CLIENT_URL}/?world=legacy`, { waitUntil: "domcontentloaded" });
-  await p.page.locator("input.cv-input").first().waitFor({ state: "visible", timeout: 40000 });
-  await sleep(1200);
-  await p.page.locator("input.cv-input").first().fill(("cm" + Math.floor(Math.random() * 9000 + 1000)).slice(0, 8));
-  if (p.touch) await p.page.locator(".cv-submit").tap();
-  else await p.page.locator(".cv-submit").click();
-  await waitScene(p, "world");
-}
-
 const DESK_COLS = [0.12, 0.3, 0.5, 0.7, 0.88];
 const DESK_ROWS = [0.45, 0.55, 0.65, 0.78, 0.9];
 const PHONE_COLS = [0.12, 0.3, 0.5, 0.7, 0.88];
@@ -994,24 +984,6 @@ async function hallSweep(p, phone) {
       const pts = grid(p, phone ? [0.15, 0.5, 0.85] : [0.12, 0.31, 0.5, 0.69, 0.88], [0.3, 0.45, 0.6, 0.75, 0.88]);
       const rows = await sweepPose(p, "hall", [300, 1.5], [yaw, pitch, dist], pts);
       summarizeCheck(`hall yaw ${r2(yaw)}`, rows);
-    }
-  });
-}
-
-async function otherSweep(p, which, phone) {
-  await run.step(`${phone ? "phone" : "desktop"} ${which}`, async () => {
-    if (which === "legacy") await joinLegacy(p);
-    else {
-      await joinAsTeacher(p, ("cm" + Math.floor(Math.random() * 9000 + 1000)).slice(0, 8));
-      await waitScene(p, "hub");
-    }
-    await installProbe(p);
-    const home = await pos(p);
-    const poses = phone ? [[0, 0.35, 6]] : [[0, 0.35, 6], [Math.PI / 2, 0.8, 10]];
-    for (const [yaw, pitch, dist] of poses) {
-      const pts = grid(p, phone ? [0.15, 0.5, 0.85] : [0.12, 0.31, 0.5, 0.69, 0.88], [0.45, 0.6, 0.75, 0.88]);
-      const rows = await sweepPose(p, which, [home.x, home.z], [yaw, pitch, dist], pts);
-      summarizeCheck(`${which} yaw ${r2(yaw)}`, rows);
     }
   });
 }
@@ -1553,7 +1525,6 @@ function summarizeCheck(label, rows) {
 // ───────────────────────────────────────────── main ─────────────────────────────────────────────
 
 // The app's own warnings that are not this script's business, and the second copy of three the probe's import may load.
-run.allow("legacy world: PCFSoftShadowMap deprecation", /PCFSoftShadowMap has been deprecated/);
 run.allow("the probe's own three import", /Multiple instances of Three\.js being imported/);
 
 /** One browser per place: a long run of WebGL scenes in one browser ends with Chrome refusing new contexts. */
@@ -1597,13 +1568,6 @@ for (const device of DEVICES) {
         });
         await hallSweep(p, phone);
       });
-  }
-  for (const which of ["legacy", "hub"]) {
-    if (!PLACES.includes(which)) continue;
-    await inBrowser(async (browser) => {
-      const p = await newPlayer(browser, dev, `${device}-${which}`);
-      await otherSweep(p, which, phone);
-    });
   }
 }
 

@@ -1,4 +1,4 @@
-import { SEATS, SEAT_REACH, type Seat } from "@caysonverse/shared/worldMap";
+import { SEAT_REACH, type Seat } from "@caysonverse/shared/worldMap";
 
 /**
  * Pure, clock-free sit validation (mirrors movement.ts / emoji.ts discipline).
@@ -19,9 +19,8 @@ import { SEATS, SEAT_REACH, type Seat } from "@caysonverse/shared/worldMap";
  *                      someone else between prompt and click.
  *   - `{ seatIndex }`→ ACCEPT. The room snaps the player onto the seat.
  *
- * `seats` is the chair list of the map the player stands in. It defaults to the
- * legacy world's `SEATS`; a map without chairs passes `[]`, so every Sit there
- * is a silent drop (no index is in range).
+ * `seats` is the seat list of the map the player stands in; a map without seats
+ * passes `[]`, so every Sit there is a silent drop (no index is in range).
  */
 
 /** Personal Korean notice for the occupied-seat race (mirrors ChatRejected). */
@@ -32,7 +31,7 @@ export function validateSit(
   payload: unknown,
   occupancy: ReadonlyMap<number, string>,
   sessionId: string,
-  seats: readonly Seat[] = SEATS,
+  seats: readonly Seat[],
 ): { seatIndex: number } | { reason: string } | null {
   // 1. shape: an object carrying an integer seatIndex in range → else silent drop.
   if (typeof payload !== "object" || payload === null) return null;

@@ -4,7 +4,7 @@
  *   npm run dev   (다른 창에서)
  *   node e2e/village-desktop.mjs [--out=<폴더>]
  */
-import { DESKTOP } from "./lib/escape.mjs";
+import { DESKTOP } from "./lib/common.mjs";
 import { runVillageScenario } from "./lib/village.mjs";
 
 process.exit(await runVillageScenario({ name: "village-desktop", device: DESKTOP }));

@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { CHAT_VOICE_ENABLED } from "../game/tts";
 import { GuideVoice, VOICE_DUCK_LEVEL, type Duckable, type VoiceAudio } from "./guideVoice";
 import type { GainSink } from "./villageAudio";
 
@@ -220,9 +219,5 @@ describe("GuideVoice (Task 9A)", () => {
     expect(a.listenerCount()).toBe(0);
     expect(s.music.level).toBe(1);
     expect(s.v.press("hall_desk_3")).toBe("none");
-  });
-
-  it("chat is never spoken: CHAT_VOICE_ENABLED stays false", () => {
-    expect(CHAT_VOICE_ENABLED).toBe(false);
   });
 });

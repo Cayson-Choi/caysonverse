@@ -84,7 +84,6 @@ const h = vi.hoisted(() => {
 vi.mock("@colyseus/sdk", () => ({ getStateCallbacks: h.getStateCallbacks }));
 
 import { DEFAULT_APPEARANCE } from "@caysonverse/shared/appearance";
-import { PLACE_HUB } from "@caysonverse/shared/escape/constants";
 import { startRemoteSync, type PlayersRoom } from "./remoteSync";
 import { clearRemotes, getRemoteRecord } from "./remoteStore";
 import { clearSentMoves, createEchoWatch, healDeadline, noteEcho, recordSentMove } from "./sentMoves";
@@ -92,7 +91,7 @@ import { REFUSAL_HEAL_MS } from "./constants";
 
 type TestPlayer = Record<string, unknown>;
 function player(over: TestPlayer = {}): TestPlayer {
-  return { ...DEFAULT_APPEARANCE, nickname: "p", connected: true, seatIndex: -1, role: 0, place: PLACE_HUB, area: "village", x: 1, z: 2, yaw: 0, moveT: 0, ...over };
+  return { ...DEFAULT_APPEARANCE, nickname: "p", connected: true, seatIndex: -1, area: "village", x: 1, z: 2, yaw: 0, moveT: 0, ...over };
 }
 
 let room: InstanceType<typeof h.FakeRoom>;

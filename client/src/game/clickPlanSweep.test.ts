@@ -18,7 +18,7 @@ import { VILLAGE_LAYOUT, villageGeometry } from "@caysonverse/shared/village/vil
 import { VILLAGE_BENCHES, VILLAGE_SEATS } from "@caysonverse/shared/village/benchSeats";
 import { findDetour, isFreeSpot, planClickMove, simulateWalk, walkThere, type ClickPlan } from "./clickPlan";
 import { ARRIVE_DIST, clearClickTarget, getClickTarget, setClickTarget, stepClickMove } from "./clickMove";
-import { LEGACY_ACTIVE_MAP, VILLAGE_ACTIVE_MAP, VILLAGE_FURNITURE, setActiveMap } from "./activeMap";
+import { VILLAGE_ACTIVE_MAP, VILLAGE_FURNITURE, setActiveMap } from "./activeMap";
 
 const R = PLAYER_RADIUS;
 const obstacles = villageGeometry.obstacles;
@@ -168,7 +168,7 @@ function gameWalk(from: { x: number; z: number }, plan: ClickPlan & { ok: true }
 
 describe("clickPlan sweep — the game's walk follows the ways round at any frame rate, walking or running", () => {
   beforeAll(() => setActiveMap(VILLAGE_ACTIVE_MAP));
-  afterAll(() => setActiveMap(LEGACY_ACTIVE_MAP));
+  afterAll(() => setActiveMap(VILLAGE_ACTIVE_MAP));
 
   it("plaza, houses, creek: 30, 60 and 144 fps at a walk, 30 and 60 fps at a run — every way round arrives", () => {
     const failed: string[] = [];
@@ -224,7 +224,7 @@ describe("clickPlan sweep — the game's walk follows the ways round at any fram
 
 describe("clickPlan sweep — round 6 review: every walking plan, straight ones too, arrives at 20, 30, 60 and 144 fps", () => {
   beforeAll(() => setActiveMap(VILLAGE_ACTIVE_MAP));
-  afterAll(() => setActiveMap(LEGACY_ACTIVE_MAP));
+  afterAll(() => setActiveMap(VILLAGE_ACTIVE_MAP));
 
   // the review's regions (its Monte Carlo: 3 of 2,455 plaza plans stopped short at 20 fps, 2 at 30, 4 at 144 — straight
   // ones crawling along a face at about the no-progress rule's pace, or parting from the 60 Hz walk at a corner)

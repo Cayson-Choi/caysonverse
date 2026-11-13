@@ -1,9 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
 /**
- * The reconnection driver in VILLAGE mode (케이슨 마을): the village is not a singleton, so the Phase-2 fresh
- * rejoin after a server restart is `joinOrCreate` (`joinVillageRoom`), never the world's join-existing-only
- * `joinRoom(WORLD_ROOM)`; it carries no admin code; the re-armed room stays in village mode. `./connection`
+ * The reconnection driver (케이슨 마을): the village is not a singleton, so the Phase-2 fresh
+ * rejoin after a server restart is `joinOrCreate` (`joinVillageRoom`); it carries no admin code. `./connection`
  * is fully mocked (as in resilience.test.ts) with a single room handle; backoff delays are squashed to 0 ms.
  */
 
@@ -11,7 +10,6 @@ const h = vi.hoisted(() => {
   let currentRoom: unknown = null;
   return {
     reconnect: vi.fn(),
-    joinRoom: vi.fn(),
     joinVillageRoom: vi.fn(),
     waitForSelf: vi.fn(),
     getRoom: () => currentRoom,
@@ -25,7 +23,6 @@ vi.mock("./connection", () => ({
   client: { reconnect: h.reconnect },
   getRoom: h.getRoom,
   setRoom: h.setRoom,
-  joinRoom: h.joinRoom,
   joinVillageRoom: h.joinVillageRoom,
   waitForSelf: h.waitForSelf,
 }));
@@ -35,7 +32,6 @@ import { DEFAULT_APPEARANCE } from "@caysonverse/shared/appearance";
 import { KICK_CLOSE_CODE } from "@caysonverse/shared/constants";
 import { attachResilience } from "./resilience";
 import { villageClock } from "../village/villageClock";
-import { forgetAdminCode, rememberAdminCode } from "./adminSession";
 import { KICKED_NOTICE } from "./reconnectPolicy";
 import { useAppStore } from "../stores/appStore";
 
@@ -93,7 +89,7 @@ const ME = { nickname: "가람", appearance: DEFAULT_APPEARANCE, sessionId: "V0"
 function joinedVillage(): FakeRoom {
   const r0 = fakeRoom("V0");
   h.setRoom(r0);
-  attachResilience(r0 as never, "village");
+  attachResilience(r0 as never);
   return r0;
 }
 
@@ -106,20 +102,15 @@ function restart(r0: FakeRoom): void {
 beforeEach(() => {
   vi.stubGlobal("sessionStorage", memStorage());
   vi.stubGlobal("localStorage", memStorage());
-  for (const fn of [h.reconnect, h.joinRoom, h.joinVillageRoom, h.waitForSelf]) fn.mockReset();
+  for (const fn of [h.reconnect, h.joinVillageRoom, h.waitForSelf]) fn.mockReset();
   h.waitForSelf.mockResolvedValue(undefined);
   h.setRoom(null);
-  forgetAdminCode();
   useAppStore.setState({
     screen: "village",
     identity: { ...ME },
-    isAdmin: false,
     notice: null,
     reconnecting: false,
-    mainReconnecting: false,
-    escapeReconnecting: false,
     connectionEpoch: 0,
-    escapeEpoch: 0,
   });
 });
 
@@ -161,7 +152,6 @@ describe("village connection closes", () => {
     expect(useAppStore.getState().connectionEpoch).toBe(1);
     expect(useAppStore.getState().screen).toBe("village");
     expect(h.joinVillageRoom).not.toHaveBeenCalled();
-    expect(h.joinRoom).not.toHaveBeenCalled();
   });
 
   it("a kick code → the entry with the kick notice, nothing retried", async () => {
@@ -177,8 +167,8 @@ describe("village connection closes", () => {
   });
 });
 
-describe("Phase 2 after a server restart: joinOrCreate, not the world's join", () => {
-  it("rejoins with joinVillageRoom({ nickname, appearance }) as THIS tab's identity — never joinRoom(WORLD_ROOM)", async () => {
+describe("Phase 2 after a server restart: joinOrCreate", () => {
+  it("rejoins with joinVillageRoom({ nickname, appearance }) as THIS tab's identity", async () => {
     const r0 = joinedVillage();
     sessionStorage.removeItem("cv.reconnectToken"); // straight to Phase 2
     const fresh = fakeRoom("V9");
@@ -188,13 +178,11 @@ describe("Phase 2 after a server restart: joinOrCreate, not the world's join", (
 
     expect(h.joinVillageRoom).toHaveBeenCalledTimes(1);
     expect(h.joinVillageRoom).toHaveBeenCalledWith({ nickname: "가람", appearance: DEFAULT_APPEARANCE });
-    expect(h.joinRoom).not.toHaveBeenCalled();
     expect(h.getRoom()).toBe(fresh);
     const s = useAppStore.getState();
     expect(s.screen).toBe("village");
     expect(s.identity?.sessionId).toBe("V9");
     expect(s.connectionEpoch).toBe(1);
-    expect(s.isAdmin).toBe(false);
     expect(s.reconnecting).toBe(false);
   });
 
@@ -205,7 +193,6 @@ describe("Phase 2 after a server restart: joinOrCreate, not the world's join", (
     restart(r0);
     await flush();
     expect(h.joinVillageRoom).toHaveBeenCalledTimes(1);
-    expect(h.joinRoom).not.toHaveBeenCalled();
     expect(h.getRoom()).toBe(fresh);
   });
 
@@ -225,7 +212,6 @@ describe("Phase 2 after a server restart: joinOrCreate, not the world's join", (
     fresh.fireLeave(1006);
     await flush();
     expect(h.joinVillageRoom).toHaveBeenCalledTimes(2);
-    expect(h.joinRoom).not.toHaveBeenCalled();
     expect(h.getRoom()).toBe(again);
   });
 
@@ -251,18 +237,5 @@ describe("Phase 2 after a server restart: joinOrCreate, not the world's join", (
     const s = useAppStore.getState();
     expect(s.screen).toBe("entry");
     expect(s.notice).toBe("닉네임은 한글·영문·숫자 2~12자로 입력하세요.");
-  });
-
-  it("never sends an admin code to the village, even one left in memory from a world session", async () => {
-    rememberAdminCode("teacher-secret");
-    const r0 = joinedVillage();
-    sessionStorage.removeItem("cv.reconnectToken");
-    h.joinVillageRoom.mockResolvedValueOnce(fakeRoom("V4"));
-    r0.fireLeave(1006);
-    await flush();
-    expect(h.joinVillageRoom).toHaveBeenCalledWith({ nickname: "가람", appearance: DEFAULT_APPEARANCE });
-    expect(JSON.stringify(h.joinVillageRoom.mock.calls)).not.toContain("teacher-secret");
-    expect(h.joinRoom).not.toHaveBeenCalled();
-    expect(useAppStore.getState().isAdmin).toBe(false);
   });
 });

@@ -14,7 +14,7 @@
  */
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { DESKTOP, createRun, launchBrowser, openPlayer, pos, sleep, walkAndWait } from "./lib/escape.mjs";
+import { DESKTOP, createRun, launchBrowser, openPlayer, pos, sleep, walkAndWait } from "./lib/common.mjs";
 import { DOOR_ROUTE, act, areaOf, joinVillage, setOrbit } from "./lib/village.mjs";
 
 const arg = (name, dflt) => process.argv.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3) ?? dflt;
