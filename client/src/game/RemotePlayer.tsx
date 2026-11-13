@@ -53,6 +53,7 @@ import {
   type SeatTransition,
 } from "./remoteSeat";
 import { benchClipPlanes, clipAvatar, enableBenchClipping } from "./benchClip";
+import { stepLean } from "./leanBack";
 
 /** Fallback seconds for a sit/stand clip if its duration can't be read yet. */
 const SIT_CLIP_FALLBACK_SEC = 0.8;
@@ -405,6 +406,8 @@ export function RemotePlayer({
       clipAvatar(avatar, onBench ? benchClip.clip : null);
       benchClip.clipped = onBench;
     }
+    // A backed seat: lean back while seated (leanBack.ts). `seat.seat` is the seat index on the one global list.
+    stepLean(avatar.root, seat.mode === "seated" ? (activeSeats()[seat.seat]?.lean ?? 0) : 0, delta);
 
     // 3b) Jump (Task 11): a broadcast hop lifts the group (display only — the server
     //    y never changes) and plays Jump_Full_Short once, squeezed into

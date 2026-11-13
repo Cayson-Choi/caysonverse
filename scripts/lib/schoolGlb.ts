@@ -489,8 +489,8 @@ const MB = 1024 * 1024;
 /**
  * Per-model budgets (file size and triangles).
  * 케이슨 마을 (village plan, Global Constraints): village.glb <= 8 MB and <= 260k triangles; memorial.glb (the hall's
- * interior, Task 8) was planned at <= 6 MB and <= 200k triangles, and is held to 1.5 MB and 60k since Task 9 (Task 8
- * review m5: the file is 0.33 MB and 17k triangles, so the plan's ceiling would not catch a regression).
+ * interior, Task 8) was planned at <= 6 MB and <= 200k triangles, and is held to 1.5 MB and 60k since Task 9 (the 2026-11-13
+ * rebuild with 368 cubbies, furniture and plants is 0.58 MB and 40k triangles, so the tight ceiling still catches a regression).
  */
 export const BUDGETS: Record<SchoolKind, { maxBytes: number; maxTriangles: number }> = {
   village: { maxBytes: 8 * MB, maxTriangles: 260_000 },

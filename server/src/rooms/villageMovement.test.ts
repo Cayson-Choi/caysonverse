@@ -50,7 +50,7 @@ describe("a legal step through the hall's walls is dropped", () => {
   const CX = (HALL.minX + HALL.maxX) / 2; // the room's middle line (x = 300 today), read from the layout
   const E = HALL.maxX - CUBBY_UNIT_DEPTH - 0.45;
   const cases: Array<[string, { x: number; z: number }, { x: number; z: number }]> = [
-    ["north", { x: CX, z: N }, { x: CX, z: N - 3 }],
+    ["north", { x: 295, z: N }, { x: 295, z: N - 3 }], // in front of bank A (the niche's altar fills the middle line)
     ["south", { x: CX, z: HALL.maxZ - 0.45 }, { x: CX, z: HALL.maxZ - 0.45 + 3 }],
     ["west", { x: HALL.minX + 0.45, z: -2 }, { x: HALL.minX + 0.45 - 3, z: -2 }],
     ["east", { x: E, z: 0 }, { x: E + 3, z: 0 }],
@@ -59,8 +59,13 @@ describe("a legal step through the hall's walls is dropped", () => {
   it.each(cases)("a 3 m Move through the %s wall is dropped (and the same step inside the room is accepted)", (_side, from, to) => {
     expect(isBlocked(from.x, from.z, PLAYER_RADIUS, villageGeometry.obstacles)).toBe(false); // a legal place to stand
     expect(move(from, to)).toBeNull();
-    // A step of the same length along the wall, inside the room, is fine.
-    const along = Math.abs(to.x - from.x) > 0 ? { x: from.x, z: from.z + 3 } : { x: from.x + 3, z: from.z };
+    // A step of the same length along the wall, inside the room, is fine (the furniture decides which way is free: the south wall
+    // has the tea corner and the flower stand along it, the east wall the desk).
+    const options = Math.abs(to.x - from.x) > 0
+      ? [{ x: from.x, z: from.z + 3 }, { x: from.x, z: from.z - 3 }]
+      : [{ x: from.x + 3, z: from.z }, { x: from.x - 3, z: from.z }, { x: from.x, z: from.z - 3 }];
+    const along = options.find((p) => inRoom(p) && !isBlocked(p.x, p.z, PLAYER_RADIUS, villageGeometry.obstacles))!;
+    expect(along).toBeDefined();
     expect(move(from, along)).not.toBeNull();
   });
 

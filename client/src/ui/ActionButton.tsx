@@ -122,7 +122,7 @@ export function ActionButton({ pose, seat }: { pose: Pose; seat: SeatState }) {
     if (map.seats && map.seats.length > 0) {
       // Its benches (from the front) and the scene's targets.
       const occupied = new Set(getRemoteSeatIndices());
-      next = pickInteraction(interactInputAt(pose.x, pose.z, seat.index, (i) => occupied.has(i), targets, { seats: map.seats }));
+      next = pickInteraction(interactInputAt(pose.x, pose.z, seat.index, (i) => occupied.has(i), targets, { seats: map.seats, area: map.seatArea }));
     } else {
       next = pickInteraction({ seated: false, seat: null, targets });
     }

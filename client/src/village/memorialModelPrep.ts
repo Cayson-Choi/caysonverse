@@ -1,15 +1,18 @@
 import { type InstancedMesh, type Material, type MeshBasicMaterial, type Object3D, type Texture } from "three";
 import { COLLIDER_PREFIX, LIGHTMAP_MATERIAL_PREFIX, configureLightmap, isMesh, lightmapMaterial, materialsOf } from "../game/hub/hubModelPrep";
+import { isSkylight, patchHallGardenMaterial, patchHallLightmapMaterial } from "./hallNight";
 
 /**
  * The memorial hall's interior (`memorial.glb`, 케이슨 마을 Task 8) dressed for the game (Task 9) — the pure part.
  *
  * The file's contract (Task 8 report, checked by scripts/check-school-glb.ts `memorial`):
  *  - `LM_*` materials are unlit with the baked light on the second UV set (`memorial_lm.webp`): the village's recipe as
- *    it is (configureLightmap + lightmapMaterial: channel 1, flipY off, sRGB, `lightMapIntensity` 1.6π). No runtime lift
- *    and no day/night blend: the hall's light is its own, the same at any hour.
- *  - `hall_fx` (downlights, the skylight, the window glass, the garden card) and the LED strips (`inst__led_*`, GPU
- *    instances) are left as loaded.
+ *    it is (configureLightmap + lightmapMaterial: channel 1, flipY off, sRGB, `lightMapIntensity` 1.6π). Since the
+ *    2026-11-13 rebuild each one also blends the night light map by the village's night weight (hallNight.ts).
+ *  - `hall_fx` (the cove's slits, the downlights, the skylight, the window glass, the garden card) and the LED strips
+ *    (`inst__led_*`, GPU instances) are left as loaded; the garden card blends the night park, the skylight goes dark.
+ *  - `door__leaf_l` / `door__leaf_r`: the sliding glass leaves of the door, their own nodes (the game slides them, see
+ *    PublicAutoDoor.tsx); `prepareMemorial` hands them back in `doorLeaves`.
  *  - `col__*` boxes (shared/…/generated/memorialColliders.ts is generated from them) are hidden; `ceil__hall` and the
  *    `anchor__cubby_*` nodes are empties.
  *
@@ -18,13 +21,19 @@ import { COLLIDER_PREFIX, LIGHTMAP_MATERIAL_PREFIX, configureLightmap, isMesh, l
  */
 
 export const MEMORIAL_MODEL_URL = "/models/village/memorial.glb";
-export const MEMORIAL_LIGHTMAP_URL = "/models/village/memorial_lm.webp";
+/** The day light map: 2048 px on the rich tier, 1024 px on the light one (phones; a quarter of the memory). */
+export const MEMORIAL_LIGHTMAP_URLS = { high: "/models/village/memorial_lm.webp", low: "/models/village/memorial_lm_1k.webp" } as const;
+export const MEMORIAL_LIGHTMAP_URL = MEMORIAL_LIGHTMAP_URLS.high;
 export const MEMORIAL_PROPS_URL = "/models/village/memorial_props.glb";
 
 export interface MemorialNodes {
   root: Object3D;
   /** The light-mapped materials (for checks). */
   lightmapped: Material[];
+  /** The sliding glass leaves of the door (left, right), or null where the model has none. */
+  doorLeaves: { left: Object3D; right: Object3D } | null;
+  /** The skylight diffuser's material (it goes dark at night), when the model has one. */
+  skylight: MeshBasicMaterial | null;
 }
 
 /** Dress a clone of the loaded hall: light map on every `LM_*` material, collision boxes hidden. */
@@ -32,6 +41,7 @@ export function prepareMemorial(source: Object3D, lightmap: Texture): MemorialNo
   const root = source.clone(true);
   configureLightmap(lightmap);
   const lightmapped: Material[] = [];
+  let skylight: MeshBasicMaterial | null = null;
   root.traverse((o) => {
     if (o.name.startsWith(COLLIDER_PREFIX)) {
       o.visible = false;
@@ -39,13 +49,18 @@ export function prepareMemorial(source: Object3D, lightmap: Texture): MemorialNo
     }
     if (!isMesh(o)) return;
     for (const m of materialsOf(o)) {
+      if (m.name === "M_garden") patchHallGardenMaterial(m);
+      if (isSkylight(m)) skylight = m;
       if (!m.name.startsWith(LIGHTMAP_MATERIAL_PREFIX)) continue;
       lightmapMaterial(m, lightmap);
+      patchHallLightmapMaterial(m);
       if (!lightmapped.includes(m)) lightmapped.push(m);
     }
   });
   root.updateMatrixWorld(true);
-  return { root, lightmapped };
+  const left = root.getObjectByName("door__leaf_l");
+  const right = root.getObjectByName("door__leaf_r");
+  return { root, lightmapped, doorLeaves: left && right ? { left, right } : null, skylight };
 }
 
 /** Free what the clone owns: its InstancedMeshes' instance buffers (the geometry and materials are the loader's). */

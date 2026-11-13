@@ -102,3 +102,25 @@ describe("validateSit — seat list argument", () => {
     expect(validateSit({ x: 101, z: 100, seatIndex: -1 }, { seatIndex: 1 }, empty, SELF, [far])).toBeNull();
   });
 });
+
+// 2026-11-13: backed seats from the front only, one place with two facings is one seat.
+describe("validateSit — backed seats and two-sided benches (the rebuilt hall)", () => {
+  const sofa = SEATS.findIndex((s) => s.id === "sofa_a1");
+  const front = SEATS.findIndex((s) => s.id === "bench_w1_s0:front");
+  const back = SEATS.findIndex((s) => s.id === "bench_w1_s0:back");
+
+  it("a sofa seat is accepted from in front of it and silently dropped from behind its backrest, though within reach", () => {
+    const s = SEATS[sofa]!;
+    const f = { x: Math.sin(s.yaw), z: Math.cos(s.yaw) };
+    expect(validateSit({ x: s.standX, z: s.standZ, seatIndex: -1 }, { seatIndex: sofa }, empty, SELF)).toEqual({ seatIndex: sofa });
+    expect(validateSit({ x: s.x - f.x * 1.2, z: s.z - f.z * 1.2, seatIndex: -1 }, { seatIndex: sofa }, empty, SELF)).toBeNull();
+  });
+
+  it("the other facing of a taken bench seat is taken too (one place), the neighbouring place is free", () => {
+    const s = SEATS[back]!;
+    const p = { x: s.standX, z: s.standZ, seatIndex: -1 };
+    expect(validateSit(p, { seatIndex: back }, new Map([[front, "someone"]]), SELF)).toEqual({ reason: SEAT_OCCUPIED });
+    const neighbour = SEATS.findIndex((v) => v.id === "bench_w1_s1:back");
+    expect(validateSit(p, { seatIndex: back }, new Map([[neighbour, "someone"]]), SELF)).toEqual({ seatIndex: back });
+  });
+});

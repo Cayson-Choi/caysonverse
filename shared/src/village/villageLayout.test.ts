@@ -25,6 +25,7 @@ import {
   colliderNode,
   cubbyAnchorNode,
   cubbyAnchors,
+  cubbyId,
   cubbyWallBox,
   exportVillageLayout,
   greyboxColliders,
@@ -371,75 +372,101 @@ describe("layout values (brief + rulings + owner changes)", () => {
   });
 });
 
-describe("memorial hall cubby walls (Task 8)", () => {
+describe("memorial hall cubby banks (Task 8, rebuilt 2026-11-13)", () => {
   const inn = L.memorial.interior;
   const anchors = cubbyAnchors(L);
-  const [back, east] = inn.cubbyWalls;
+  const [bankA, bankB, bankE] = inn.cubbyWalls;
 
-  it("a white-lacquer back wall of 34 x 7 and a light-oak east wall of 18 x 7, cubbies 0.40 m with 0.025 m boards", () => {
-    expect(inn.cubbyWalls).toHaveLength(2);
-    expect(back).toMatchObject({ wall: "n", finish: "lacquer", cols: 34, rows: 7, cell: 0.4, frame: 0.025 });
-    expect(east).toMatchObject({ wall: "e", finish: "oak", cols: 18, rows: 7, cell: 0.4, frame: 0.025 });
-    expect(back.yaw).toBeCloseTo(0, 12); // faces +z, into the room
-    expect(east.yaw).toBeCloseTo(-Math.PI / 2, 12); // faces -x
+  it("three banks: A and B white lacquer 14 x 8 either side of the niche, E light oak 18 x 8 on the east wall; cubbies 0.40 m with 0.025 m boards", () => {
+    expect(inn.cubbyWalls).toHaveLength(3);
+    expect(bankA).toMatchObject({ wall: "n", bank: "A", finish: "lacquer", cols: 14, rows: 8, cell: 0.4, frame: 0.025 });
+    expect(bankB).toMatchObject({ wall: "n", bank: "B", finish: "lacquer", cols: 14, rows: 8, cell: 0.4, frame: 0.025 });
+    expect(bankE).toMatchObject({ wall: "e", bank: "E", finish: "oak", cols: 18, rows: 8, cell: 0.4, frame: 0.025 });
+    expect(bankA.yaw).toBeCloseTo(0, 12); // faces +z, into the room
+    expect(bankB.yaw).toBeCloseTo(0, 12);
+    expect(bankE.yaw).toBeCloseTo(-Math.PI / 2, 12); // faces -x
   });
 
-  it("one anchor per cubby (364), ids <wall>_<row>_<col> unique, nodes anchor__cubby_<id>", () => {
-    expect(anchors).toHaveLength(34 * 7 + 18 * 7);
+  it("the niche 기억의 자리 sits between the banks: 2.525 m wide, arched at 2.35 m with r 1.18", () => {
+    expect(inn.niche).toMatchObject({ minX: 298.61, maxX: 301.135, spring: 2.35, radius: 1.18, backZ: -6, frontZ: -5.61 });
+    expect(inn.niche.maxX - inn.niche.minX).toBeCloseTo(2.525, 9);
+    const runA = 14 * 0.425 + 0.025;
+    expect(bankA.start.x + runA).toBeCloseTo(inn.niche.minX, 9);
+    expect(bankB.start.x).toBeCloseTo(inn.niche.maxX, 9);
+    expect(bankB.start.x + runA).toBeCloseTo(307.5 - 0.39, 9);
+  });
+
+  it("one anchor per cubby (368), stable ids M1-<bank>-r<row>-c<col> unique, nodes anchor__cubby_<id>", () => {
+    expect(anchors).toHaveLength(14 * 8 * 2 + 18 * 8);
     expect(new Set(anchors.map((a) => a.id)).size).toBe(anchors.length);
-    expect(anchors[0]).toMatchObject({ id: "n_0_0", wall: "n", row: 0, col: 0 });
-    expect(cubbyAnchorNode("e_6_17")).toBe("anchor__cubby_e_6_17");
-    expect(anchors.some((a) => a.id === "e_6_17")).toBe(true);
+    expect(anchors[0]).toMatchObject({ id: "M1-A-r0-c00", bank: "A", wall: "n", row: 0, col: 0 });
+    expect(cubbyId("E", 7, 17)).toBe("M1-E-r7-c17");
+    expect(cubbyId("A", 3, 7)).toBe("M1-A-r3-c07");
+    expect(cubbyAnchorNode("M1-E-r7-c17")).toBe("anchor__cubby_M1-E-r7-c17");
+    expect(anchors.some((a) => a.id === "M1-E-r7-c17")).toBe(true);
+    for (const a of anchors) expect(a.id).toMatch(/^M1-[ABE]-r[0-7]-c\d\d$/);
+    // the count per bank
+    for (const [bank, n] of [["A", 112], ["B", 112], ["E", 144]] as const) expect(anchors.filter((a) => a.bank === bank)).toHaveLength(n);
   });
 
-  it("anchors sit on the opening plane, 0.425 m apart, the bottom one 0.345 m up and the top one under the ceiling", () => {
+  it("anchors sit on the opening plane, 0.425 m apart, the bottom one 0.345 m up and the top one under the cornice", () => {
     const at = (id: string) => anchors.find((a) => a.id === id)!;
-    expect(at("n_0_0").z).toBeCloseTo(-6 + 0.39, 9);
-    expect(at("n_0_1").x - at("n_0_0").x).toBeCloseTo(0.425, 9);
-    expect(at("n_1_0").y - at("n_0_0").y).toBeCloseTo(0.425, 9);
-    expect(at("n_0_0").y).toBeCloseTo(0.12 + 0.025 + 0.2, 9);
-    expect(at("n_6_0").y + 0.2 + 0.025).toBeLessThan(inn.ceilingHeight);
-    expect(at("e_0_0").x).toBeCloseTo(307.5 - 0.39, 9);
-    expect(at("e_0_1").z - at("e_0_0").z).toBeCloseTo(0.425, 9);
-    // the back run ends where the east unit's front face is; the east run starts at the back unit's front face
-    expect(at("n_0_33").x + 0.2 + 0.025).toBeCloseTo(307.5 - 0.39, 9);
-    expect(at("e_0_0").z - 0.2 - 0.025).toBeCloseTo(-6 + 0.39, 9);
+    expect(at("M1-A-r0-c00").z).toBeCloseTo(-6 + 0.39, 9);
+    expect(at("M1-A-r0-c01").x - at("M1-A-r0-c00").x).toBeCloseTo(0.425, 9);
+    expect(at("M1-A-r1-c00").y - at("M1-A-r0-c00").y).toBeCloseTo(0.425, 9);
+    expect(at("M1-A-r0-c00").y).toBeCloseTo(0.12 + 0.025 + 0.2, 9);
+    expect(at("M1-A-r7-c00").y + 0.2 + 0.025).toBeCloseTo(3.545, 9);
+    expect(at("M1-A-r7-c00").y + 0.2 + 0.025).toBeLessThan(inn.ceilingHeight);
+    expect(at("M1-E-r0-c00").x).toBeCloseTo(307.5 - 0.39, 9);
+    expect(at("M1-E-r0-c01").z - at("M1-E-r0-c00").z).toBeCloseTo(0.425, 9);
+    // bank B ends where the east bank's front face is; the east run starts at the back banks' front face
+    expect(at("M1-B-r0-c13").x + 0.2 + 0.025).toBeCloseTo(307.5 - 0.39, 9);
+    expect(at("M1-E-r0-c00").z - 0.2 - 0.025).toBeCloseTo(-6 + 0.39, 9);
     for (const a of anchors) {
       expect(inside(HALL, { x: a.x, z: a.z }), a.id).toBe(true);
-      expect(a.yaw).toBe(a.wall === "n" ? back.yaw : east.yaw);
+      expect(a.yaw).toBe(a.wall === "n" ? bankA.yaw : bankE.yaw);
     }
   });
 
-  it("the units stand against their walls, inside the room, clear of each other, the door pad and the spawn", () => {
-    const nb = cubbyWallBox(back);
-    const eb = cubbyWallBox(east);
-    expect(nb).toEqual({ minX: 292.635, maxX: 307.11, minZ: -6, maxZ: -5.61 });
-    expect(eb).toEqual({ minX: 307.11, maxX: 307.5, minZ: -5.61, maxZ: 2.065 });
-    expect(overlaps(nb, eb)).toBe(false);
+  it("an eye-level cubby is at hand: row 3 is 1.62 m up", () => {
+    const a = anchors.find((x) => x.id === "M1-A-r3-c07")!;
+    expect(a.y).toBeCloseTo(0.12 + 0.025 + 3 * 0.425 + 0.2, 9);
+  });
+
+  it("the banks stand against their walls, inside the room, clear of each other, the door pad and the spawn", () => {
+    const ba = cubbyWallBox(bankA);
+    const bb = cubbyWallBox(bankB);
+    const be = cubbyWallBox(bankE);
+    expect(ba).toEqual({ minX: 292.635, maxX: 298.61, minZ: -6, maxZ: -5.61 });
+    expect(bb).toEqual({ minX: 301.135, maxX: 307.11, minZ: -6, maxZ: -5.61 });
+    expect(be).toEqual({ minX: 307.11, maxX: 307.5, minZ: -5.61, maxZ: 2.065 });
+    expect(overlaps(ba, bb)).toBe(false);
+    expect(overlaps(bb, be)).toBe(false);
     const pad = inn.doorPad;
-    for (const b of [nb, eb]) {
+    for (const b of [ba, bb, be]) {
       expect(b.minX >= HALL.minX && b.maxX <= HALL.maxX && b.minZ >= HALL.minZ && b.maxZ <= HALL.maxZ).toBe(true);
       expect(distToBox(pad.centre, b)).toBeGreaterThan(pad.radius + 1);
       expect(distToBox(HALL_SPAWN, b)).toBeGreaterThan(1);
     }
   });
 
-  it("the colliders generated from memorial.glb hold the hall walls exactly, both units, and keep the door pad and the spawn free", () => {
+  it("the colliders generated from memorial.glb hold the hall walls exactly, the three banks and the niche, and keep the door pad and the spawn free", () => {
     for (const w of hallWalls(L)) expect(MEMORIAL_COLLIDERS.some((c) => sameBox(c, w)), JSON.stringify(w)).toBe(true);
     const inside = MEMORIAL_COLLIDERS.filter((c) => !hallWalls(L).some((w) => sameBox(c, w)));
-    expect(inside.length).toBeGreaterThanOrEqual(2);
+    expect(inside.length).toBeGreaterThanOrEqual(10);
     for (const c of inside) {
       expect(c.minX >= HALL.minX - EPS && c.maxX <= HALL.maxX + EPS && c.minZ >= HALL.minZ - EPS && c.maxZ <= HALL.maxZ + EPS).toBe(true);
       expect(distToBox(inn.doorPad.centre, c)).toBeGreaterThan(inn.doorPad.radius);
       expect(distToBox(HALL_SPAWN, c)).toBeGreaterThan(PLAYER_RADIUS);
     }
-    // the cubby units are camera boxes up to the B ceiling
-    expect(MEMORIAL_CAMERA_BOXES.filter((b) => (b.height ?? 0) >= 4.5 - EPS).length).toBeGreaterThanOrEqual(6);
+    // the banks and the niche are camera boxes up to the B ceiling
+    expect(MEMORIAL_CAMERA_BOXES.filter((b) => (b.height ?? 0) >= 4.5 - EPS).length).toBeGreaterThanOrEqual(4);
   });
 
-  it("exports the walls with their footprints and every anchor with its node name", () => {
+  it("exports the banks with their footprints, the niche and every anchor with its node name", () => {
     const out = exportVillageLayout(L).memorial.interior;
-    expect(out.cubbyWalls.map((w) => w.footprint)).toEqual([cubbyWallBox(back), cubbyWallBox(east)]);
+    expect(out.cubbyWalls.map((w) => w.footprint)).toEqual([cubbyWallBox(bankA), cubbyWallBox(bankB), cubbyWallBox(bankE)]);
+    expect(out.niche).toEqual(inn.niche);
     expect(out.cubbyAnchors).toHaveLength(anchors.length);
     for (const a of out.cubbyAnchors) expect(a.node).toBe(`anchor__cubby_${a.id}`);
   });
@@ -791,10 +818,12 @@ describe("the hall's interior plays on the colliders generated from memorial.glb
     const inside = MEMORIAL_COLLIDERS.filter((b) => !isHallWall(b));
     expect(HALL_MODEL_COLLIDERS.obstacles).toEqual(inside);
     for (const w of hallWalls(L)) expect(villageGeometry.obstacles.filter((o) => sameBox(o, w))).toHaveLength(1);
-    // the furniture really is there: the sofa, the bench, the memorial table, both cubby units
+    // the furniture really is there: the sofa, a bench, the desk, the banks
     expect(inside.length).toBe(MEMORIAL_COLLIDERS.length - 4);
-    expect(isBlocked(300.6, -1.6, PLAYER_RADIUS, villageGeometry.obstacles)).toBe(true); // the bench
-    expect(isBlocked(307.3, 0, PLAYER_RADIUS, villageGeometry.obstacles)).toBe(true); // the B east cubby unit
+    expect(isBlocked(298.1225, -2.7, PLAYER_RADIUS, villageGeometry.obstacles)).toBe(true); // a centre bench
+    expect(isBlocked(294.2, 5.5, PLAYER_RADIUS, villageGeometry.obstacles)).toBe(true); // the sofa
+    expect(isBlocked(307.3, 0, PLAYER_RADIUS, villageGeometry.obstacles)).toBe(true); // the east bank
+    expect(isBlocked(300, 3.6, PLAYER_RADIUS, villageGeometry.obstacles)).toBe(false); // the arrival spot stays free
   });
 
   it("every generated camera box is a camera box of the geometry, plus the ceiling slab", () => {
@@ -1187,9 +1216,10 @@ describe.each(GEOMETRIES)("village geometry invariants: %s", (_name, geo) => {
       expect(reachable(geo, HALL_SPAWN, GRID, 1.5).some((p) => p.x < HALL.minX)).toBe(false);
     });
 
-    it("the hall walls are outside the room (a body fits right into the room's free south-west corner)", () => {
+    it("the hall walls are outside the room (a body fits right into the room's free south-west corner of the first row, by the window)", () => {
       for (const w of hallWalls(L)) expect(overlaps(w, HALL), JSON.stringify(w)).toBe(false);
-      expect(isBlocked(HALL.minX + 0.4, HALL.maxZ - 0.4, PLAYER_RADIUS, obstacles)).toBe(false);
+      // the south-west corner holds the family lounge now; the free corner for this check is the north-west (the letter corner's plant is clear of it)
+      expect(isBlocked(HALL.minX + 0.4, HALL.minZ + 2.0, PLAYER_RADIUS, obstacles)).toBe(false);
     });
 
     it("a hop over a wall lands in a blocker: every spot outside the room, around it and across the gap, is blocked", () => {

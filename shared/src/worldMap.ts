@@ -50,17 +50,61 @@ export interface Seat {
    * backrest. Absent: any side within reach.
    */
   frontEdge?: number;
+  /**
+   * Seats of one group are never taken at the same time (the two facings of one backless bench seat, which can be sat on from
+   * either side). Absent: the seat is its own group.
+   */
+  group?: string;
+  /**
+   * A chair at a table (a dining or consultation chair): it can be sat on from any side, because its front is the table and nobody
+   * could reach it from there. A sofa, an armchair or a bench with a back is still sat on from its front only.
+   */
+  anySide?: boolean;
+  /** How far (rad) a sitter leans back into a backrest (a sofa, an armchair, a chair); absent or 0: sits upright. */
+  lean?: number;
+}
+
+const GROUP_MATES = new WeakMap<readonly Seat[], readonly (readonly number[])[]>();
+
+/** For each seat, the indices of the OTHER seats of its group (computed once per list). */
+function groupMates(seats: readonly Seat[]): readonly (readonly number[])[] {
+  let mates = GROUP_MATES.get(seats);
+  if (mates) return mates;
+  const byGroup = new Map<string, number[]>();
+  seats.forEach((s, i) => {
+    if (s.group === undefined) return;
+    const list = byGroup.get(s.group);
+    if (list) list.push(i);
+    else byGroup.set(s.group, [i]);
+  });
+  mates = seats.map((s, i) => (s.group === undefined ? [] : (byGroup.get(s.group) ?? []).filter((j) => j !== i)));
+  GROUP_MATES.set(seats, mates);
+  return mates;
+}
+
+/** Whether seat `index` is taken: by someone, or by someone on another seat of its group. */
+export function seatTaken(seats: readonly Seat[], index: number, isOccupied: (index: number) => boolean): boolean {
+  if (isOccupied(index)) return true;
+  for (const j of groupMates(seats)[index] ?? []) if (isOccupied(j)) return true;
+  return false;
 }
 
 /**
  * Whether a player at `(x, z)` may be offered `seat` from where they stand: always for a seat without a
  * `frontEdge`, and for a seat with one (a bench) only in front of that edge (the side the sitter faces).
  */
-export function approachesSeat(seat: Seat, x: number, z: number): boolean {
-  if (seat.frontEdge === undefined) return true;
+export function approachesSeat(seat: Seat, x: number, z: number, slack = 0): boolean {
+  if (seat.frontEdge === undefined || seat.anySide === true) return true;
   const ahead = (x - seat.x) * Math.sin(seat.yaw) + (z - seat.z) * Math.cos(seat.yaw);
-  return ahead >= -seat.frontEdge;
+  return ahead >= -seat.frontEdge - slack;
 }
+
+/**
+ * How much (m) the server forgives the front-edge line: the client's pose runs a few cm ahead of the one the server knows, and a
+ * sofa or armchair's front edge is only about 0.1 m from its root, so a visitor the client offered the seat to (standing right at
+ * the edge) could be a hair behind it on the server. From behind a backrest the visitor is more than a metre behind: still refused.
+ */
+export const SEAT_APPROACH_SLACK = 0.15;
 
 /**
  * Pure client proximity pick: the index of the nearest FREE seat within `reach`
@@ -79,7 +123,7 @@ export function nearestFreeSeat(
   let best = -1;
   let bestDist = reach;
   for (let i = 0; i < seats.length; i++) {
-    if (isOccupied(i)) continue;
+    if (seatTaken(seats, i, isOccupied)) continue;
     const s = seats[i];
     if (!approachesSeat(s, x, z)) continue;
     const d = Math.hypot(x - s.x, z - s.z);

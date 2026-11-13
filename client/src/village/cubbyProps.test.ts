@@ -16,7 +16,7 @@ import {
   PROP_KINDS,
   SAMPLE_BY_ID,
   SAMPLE_CUBBIES,
-  SAMPLE_FILL,
+  SAMPLE_CUBBY_IDS,
   SAMPLE_LINES,
   SAMPLE_NAMES,
   SAMPLE_PHOTO_ATLAS,
@@ -27,24 +27,23 @@ import {
 
 const anchors = cubbyAnchors(VILLAGE_LAYOUT);
 
-describe("SAMPLE_CUBBIES — the hall's example memorials (Task 9)", () => {
-  it("fills 60 % of the enlarged B hall's 364 cubbies, on both walls and across every row", () => {
-    expect(anchors).toHaveLength(364);
-    expect(SAMPLE_FILL).toBe(0.6);
-    expect(SAMPLE_CUBBIES).toHaveLength(Math.round(364 * 0.6));
-    expect(new Set(SAMPLE_CUBBIES.map((s) => s.id)).size).toBe(SAMPLE_CUBBIES.length);
-    expect(new Set(SAMPLE_CUBBIES.map((s) => s.id.split("_")[0]))).toEqual(new Set(["n", "e"]));
-    for (let row = 0; row < 7; row += 1) expect(SAMPLE_CUBBIES.some((s) => s.id.split("_")[1] === String(row)), `row ${row}`).toBe(true);
+describe("SAMPLE_CUBBIES — the hall's single example memorial (Task 9, cut down 2026-11-13)", () => {
+  it("exactly ONE of the 368 cubbies is filled (견본), a real cubby at eye height in bank A; every other one is empty", () => {
+    expect(anchors).toHaveLength(368);
+    expect(SAMPLE_CUBBY_IDS).toEqual(["M1-A-r3-c11"]);
+    expect(SAMPLE_CUBBIES).toHaveLength(1);
+    expect(SAMPLE_CUBBIES[0]!.id).toBe("M1-A-r3-c11");
     for (const s of SAMPLE_CUBBIES) expect(SAMPLE_BY_ID.get(s.id)).toBe(s);
+    expect(SAMPLE_BY_ID.size).toBe(1);
     expect(HALL_CUBBY_ANCHORS).toEqual(anchors);
   });
 
-  it("is seed-stable: built again it is the same, and each cubby's data depends only on its id", () => {
+  it("is seed-stable: built again it is the same, and its data depends only on its id", () => {
     expect(makeSampleCubbies(anchors)).toEqual(SAMPLE_CUBBIES);
     const reversed = makeSampleCubbies([...anchors].reverse());
     for (const s of reversed) expect(SAMPLE_BY_ID.get(s.id)).toEqual(s);
-    expect(hashId("n_3_10")).toBe(hashId("n_3_10"));
-    expect(hashId("n_3_10")).not.toBe(hashId("n_3_11"));
+    expect(hashId("M1-A-r3-c11")).toBe(hashId("M1-A-r3-c11"));
+    expect(hashId("M1-A-r3-c11")).not.toBe(hashId("M1-A-r3-c12"));
   });
 
   it("every sample has a name from the list, sensible years, a line, a portrait in the atlas, an urn, a photo and a name card", () => {
@@ -65,8 +64,6 @@ describe("SAMPLE_CUBBIES — the hall's example memorials (Task 9)", () => {
         expect(p.w).toBeLessThanOrEqual(0.36); // in front of the back panel
       }
     }
-    // the portraits are spread over the atlas
-    expect(new Set(SAMPLE_CUBBIES.map((s) => s.photo)).size).toBe(SAMPLE_PHOTO_ATLAS.count);
   });
 
   it("no '!' anywhere in the names or the lines (the hall's gentle tone)", () => {
@@ -90,7 +87,7 @@ describe("layoutCubbyProps — one instanced mesh per prop type (Task 9)", () =>
         expect(entry!.cubbies).toHaveLength(want);
       }
     }
-    expect(layout.length).toBe(PROP_KINDS.length); // 160 cubbies use every one of the nine
+    expect(layout.length).toBeGreaterThanOrEqual(3); // the one sample uses at least an urn, a photo frame and a name card
     expect(layout.find((e) => e.kind === "photo_frame")!.photoTiles).toHaveLength(SAMPLE_CUBBIES.length);
   });
 
@@ -104,7 +101,7 @@ describe("layoutCubbyProps — one instanced mesh per prop type (Task 9)", () =>
     expect(single.reduce((n, e) => n + e.count, 0)).toBe(one.props.length);
     for (const e of single) expect(e.cubbies.every((id) => id === one.id)).toBe(true);
     // a sample whose cubby is not in the hall is skipped
-    const stray: SampleCubby = { ...one, id: "n_9_99" };
+    const stray: SampleCubby = { ...one, id: "M1-A-r9-c99" };
     expect(layoutCubbyProps(anchors, [stray])).toEqual([]);
   });
 
@@ -126,7 +123,7 @@ describe("layoutCubbyProps — one instanced mesh per prop type (Task 9)", () =>
       });
     }
     // the frame: u along the run's right-hand axis, w back into the cell, the yaw turned
-    const east = anchors.find((a) => a.id === "e_0_0")!;
+    const east = anchors.find((a) => a.id === "M1-E-r0-c00")!;
     const m = placementMatrix(east, { u: 0.1, w: 0.2, dy: 0.05, turn: 0 });
     const p = new Vector3().setFromMatrixPosition(m);
     expect(p.x).toBeCloseTo(east.x + 0.2, 6); // the east wall faces -x: back into the cubby is +x
@@ -162,7 +159,7 @@ describe("the portraits share one material through a per-instance atlas tile", (
     const layout = layoutCubbyProps(anchors, SAMPLE_CUBBIES);
     const atlasMaterial = makePhotoMaterial(new Texture());
     const built = buildCubbyPropMeshes(scene, layout, atlasMaterial);
-    expect(built.meshes).toHaveLength(PROP_KINDS.length + 2); // the draw calls: 11 for ~1,000 props
+    expect(built.meshes).toHaveLength(layout.length + 2); // one draw call per prop type used (+ the two second slots)
     for (const e of layout) {
       const ms = built.meshes.filter((m) => m.name.startsWith(`inst__${e.kind}_`));
       for (const m of ms) expect(m.count).toBe(e.count);

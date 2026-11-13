@@ -7,7 +7,7 @@ import { cubbyColumn } from "./villageTargets";
  * store that opens and closes it. CubbyView draws it.
  *
  * Standing within 1.2 m of a column and pressing E (or the context button "가까이 보기") opens the card on that column,
- * on the filled cubby nearest eye height. "위 칸" / "아래 칸" step through the column's seven cubbies. A filled cubby shows
+ * on the filled cubby nearest eye height. "위 칸" / "아래 칸" step through the column's eight cubbies. A filled cubby shows
  * the portrait, the name, the years and the family's line, and "촛불 켜기" (it sends `LightCandle`; everyone in the hall
  * sees a small flame in that cubby for 60 s). An empty one says it will soon be possible to lay a pet to rest there.
  *
@@ -93,7 +93,7 @@ function set(next: CubbyCardState | null): void {
   for (const l of [...listeners]) l();
 }
 
-/** Open the card on a column (a key `n_10` or a target id `cubby:n_10`); an unknown column does nothing. */
+/** Open the card on a column (a key `A_11` or a target id `cubby:A_11`); an unknown column does nothing. */
 export function openCubbyCard(columnOrId: string): void {
   const column = cubbyColumn(columnOrId);
   if (!column) return;

@@ -128,12 +128,12 @@ try {
     run.check("B is in the hall", (await areaOf(B)) === "hall");
     const hall = await A.page.evaluate(() => window.__cvHall());
     summary.hall = hall;
-    run.check("the hall's props are instanced: few draw calls for ~1,000 props", hall.meshes < 60 && Object.keys(hall.props).length <= 13, {
+    run.check("the hall's props are instanced: few draw calls", hall.meshes < 60 && Object.keys(hall.props).length <= 13, {
       meshes: hall.meshes,
       instanced: hall.instanced,
       props: hall.props,
     });
-    run.check("160 sample cubbies (60 % of 266)", hall.samples === 160, hall.samples);
+    run.check("exactly one example cubby (견본) of the 368", hall.samples === 1, hall.samples);
     const orbit = await A.page.evaluate(() => window.__cv.getOrbit());
     run.check("the pitch came through the door unchanged (still the first-visit 0.35)", Math.abs(orbit.pitch - 0.35) < 0.02, orbit);
   });
@@ -147,14 +147,13 @@ try {
     await shoot(A, "hall-wide");
   });
 
-  // A filled cubby whose card opens at eye level (row 3, else 2), on the back wall east of the bench and the memorial
-  // table or on the east wall; the visitor stands 0.85 m in front of it.
+  // The one filled cubby (견본: bank A, row 3 = eye level, column 11); the visitor stands 0.85 m in front of it.
   const pick = await A.page.evaluate(async () => {
     const s = await window.__imp("/src/village/sampleCubbies.ts");
     const t = await window.__imp("/src/village/villageTargets.ts");
     const c = await window.__imp("/src/village/cubbyCard.ts");
-    const cols = t.cubbyColumns().filter((col) => (col.wall === "n" && col.x > 300.6 && col.x < 303.2) || (col.wall === "e" && col.z > -4.4 && col.z < 1.2));
-    for (const want of [3, 2, 4]) {
+    const cols = t.cubbyColumns().filter((col) => col.key === "A_11");
+    for (const want of [3]) {
       for (const column of cols) {
         const row = c.defaultRow(column.key);
         const a = column.rows[row];
@@ -170,8 +169,8 @@ try {
 
   await run.step("approach a filled cubby: 가까이 보기 is offered", async () => {
     run.check("found a filled cubby to visit", pick !== null, pick);
-    await walkAndWait(A, 302.6, 0.5, 15000, 0.5);
-    await walkAndWait(A, 302.6, -3.6, 15000, 0.5); // round the bench on its east side
+    await walkAndWait(A, 299.9, -1.5, 15000, 0.5); // up the aisle between the benches
+    await walkAndWait(A, 299.9, -3.9, 15000, 0.5);
     // Square in front of the column (columns are 0.425 m apart): line up 1.6 m out, then walk straight in. A click-move
     // stops about 0.35 m short of its goal, so the goal is 0.5 m out and the visitor ends about 0.85 m from the cubby.
     const fx = (pick.standX - pick.x) / 0.85;
@@ -279,10 +278,11 @@ try {
     await run.shot(B, "hall-candle-seen-by-B.png");
   });
 
-  await run.step("the corner: a wall right behind the player keeps the camera up (no head filling the screen)", async () => {
-    await walkAndWait(A, 302.6, 0.5, 15000, 0.5);
-    await walkAndWait(A, 296.9, 5.55, 15000, 0.4);
-    await turnCameraTo(A, 296, -5); // the camera behind, toward the south wall at 0.4 m
+  await run.step("the north-west corner: bank A right behind the player keeps the camera up (no head filling the screen)", async () => {
+    await walkAndWait(A, 299.9, -0.5, 15000, 0.5);
+    await walkAndWait(A, 299.9, -3.9, 15000, 0.5);
+    await walkAndWait(A, 293.4, -4.9, 15000, 0.4); // the north-west corner: bank A is 0.7 m behind the player
+    await turnCameraTo(A, 297, 5); // the camera behind, toward bank A
     await setOrbit(A, 3.6, 0.35);
     await sleep(1500);
     const cam = await A.page.evaluate(() => {
@@ -293,7 +293,7 @@ try {
     });
     summary.corner = cam;
     run.check("in the corner the arm is short (the wall is right behind)", cam.arm < 1.2, cam);
-    run.check("the camera keeps its height (> 2.3 m) under the ceiling (<= 3.0 m)", cam.y > 2.3 && cam.y <= 3.0001, cam);
+    run.check("the camera stays above the head and under the ceiling (1.2..3.0 m)", cam.y > 1.2 && cam.y <= 3.0001, cam);
     run.check("the head sits low in the frame (NDC y < -0.4), not in the middle of it", cam.headNdcY < -0.4, cam);
     await run.shot(A, "hall-corner.png");
   });

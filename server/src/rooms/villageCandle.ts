@@ -6,7 +6,7 @@ import { SAMPLE_FILLED_IDS, sampleFilledIds } from "@caysonverse/shared/village/
  * Pure candle rule of the memorial hall (케이슨 마을 Task 9; clock-free and room-free like villageDoor.ts): may a player
  * standing at (x, z) in `area` light the candle of `cubby`? The room owns the 1-per-5-seconds cap and the broadcast.
  *
- * The distance is measured on the ground plane, from the player to the cubby's anchor (its opening centre): the seven
+ * The distance is measured on the ground plane, from the player to the cubby's anchor (its opening centre): the eight
  * rows of a column share one spot on the floor, and a visitor stands in front of the column, not at the height of the
  * cubby. Nothing is stored: a candle is a broadcast, and each client lets it burn out by itself.
  *

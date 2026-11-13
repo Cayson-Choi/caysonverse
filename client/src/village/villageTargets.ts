@@ -85,7 +85,7 @@ export function villageBusTarget(area: AreaId, x: number, z: number, boarded: bo
 
 /** How near (m, on the ground) to a cubby column its close-up is offered (brief: 1.2 m). The server lets a candle be lit from 1.5 m. */
 export const CUBBY_REACH_M = 1.2;
-/** The target id prefix of a cubby column: `cubby:<wall>_<col>`. */
+/** The target id prefix of a cubby column: `cubby:<bank>_<col>`. */
 export const CUBBY_TARGET_PREFIX = "cubby:";
 export const CUBBY_LABEL = "가까이 보기";
 export const CUBBY_SHORT = "보기";
@@ -93,6 +93,7 @@ export const CUBBY_SHORT = "보기";
 /** A column of cubbies: its wall and column, where it stands on the floor (the anchors' x, z) and its rows' anchors (bottom first). */
 export interface CubbyColumn {
   key: string;
+  bank: CubbyAnchor["bank"];
   wall: CubbyAnchor["wall"];
   col: number;
   x: number;
@@ -100,25 +101,25 @@ export interface CubbyColumn {
   rows: readonly CubbyAnchor[];
 }
 
-/** The hall's cubby columns (`<wall>_<col>`), built from the layout's anchors. */
+/** The hall's cubby columns (`<bank>_<col>`, e.g. `A_11`), built from the layout's anchors. */
 export function cubbyColumns(layout: VillageLayout = VILLAGE_LAYOUT): CubbyColumn[] {
   const byKey = new Map<string, CubbyAnchor[]>();
   for (const a of cubbyAnchors(layout)) {
-    const key = `${a.wall}_${a.col}`;
+    const key = `${a.bank}_${a.col}`;
     let list = byKey.get(key);
     if (!list) byKey.set(key, (list = []));
     list.push(a);
   }
   return [...byKey.entries()].map(([key, rows]) => {
     rows.sort((a, b) => a.row - b.row);
-    return { key, wall: rows[0]!.wall, col: rows[0]!.col, x: rows[0]!.x, z: rows[0]!.z, rows };
+    return { key, bank: rows[0]!.bank, wall: rows[0]!.wall, col: rows[0]!.col, x: rows[0]!.x, z: rows[0]!.z, rows };
   });
 }
 
 const COLUMNS: readonly CubbyColumn[] = cubbyColumns();
 const COLUMN_BY_KEY: ReadonlyMap<string, CubbyColumn> = new Map(COLUMNS.map((c) => [c.key, c]));
 
-/** The column of a key (`n_10`) or a target id (`cubby:n_10`), or null. */
+/** The column of a key (`A_11`) or a target id (`cubby:A_11`), or null. */
 export function cubbyColumn(keyOrId: string): CubbyColumn | null {
   const key = keyOrId.startsWith(CUBBY_TARGET_PREFIX) ? keyOrId.slice(CUBBY_TARGET_PREFIX.length) : keyOrId;
   return COLUMN_BY_KEY.get(key) ?? null;

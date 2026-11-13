@@ -21,8 +21,13 @@ import { DRACO_PATH } from "../game/hub/hubModelPrep";
 import { SceneWarmUp } from "../game/SceneWarmUp";
 import { buildCubbyPropMeshes, layoutCubbyProps, makePhotoMaterial, placementMatrix } from "./cubbyProps";
 import { burningCandles, candleClock, clearCandles, pruneCandles, showInstances } from "./hallCandles";
-import { MEMORIAL_LIGHTMAP_URL, MEMORIAL_MODEL_URL, MEMORIAL_PROPS_URL, disposeMemorial, prepareMemorial } from "./memorialModelPrep";
-import { clearMemorialCaches, holdMemorialFiles, noteMemorialRequested } from "./memorialRelease";
+import { MEMORIAL_LIGHTMAP_URLS, MEMORIAL_MODEL_URL, MEMORIAL_PROPS_URL, disposeMemorial, prepareMemorial } from "./memorialModelPrep";
+import { clearMemorialCaches, holdMemorialFiles, noteMemorialRequested, setMemorialTier } from "./memorialRelease";
+import { disposeHallNight, hallNightReady, hallNightUniform, hallNightWeight, loadHallNight, skylightColour } from "./hallNight";
+import { useNightMapWanted } from "./nightLightmap";
+import { dayNight } from "./dayNightDriver";
+import { setHallDoorLeaves } from "./hallDoor";
+import { useQualityTier } from "../game/QualityEffects";
 import { LoadBoundary } from "./LoadBoundary";
 import { HALL_CUBBY_ANCHORS, SAMPLE_CUBBIES, SAMPLE_PHOTO_ATLAS } from "./sampleCubbies";
 import { DoorPad, HallRoom } from "./VillageHall";
@@ -148,12 +153,18 @@ const placePos = new Vector3();
 function MemorialHall() {
   // A release from now on must free what this reads, even if it is still loading (memorialRelease.ts).
   noteMemorialRequested();
+  // The 2048 px light map on the rich tier, 1024 px on the light one.
+  const tier = useQualityTier();
+  setMemorialTier(tier);
+  const lightmapUrl = MEMORIAL_LIGHTMAP_URLS[tier];
   // Every file downloads at once: the textures' requests start before the models' reads suspend this component.
-  useTexture.preload([MEMORIAL_LIGHTMAP_URL, SAMPLE_PHOTO_ATLAS.url]);
+  useTexture.preload([lightmapUrl, SAMPLE_PHOTO_ATLAS.url]);
   useGLTF.preload(MEMORIAL_PROPS_URL, DRACO_PATH);
   const hall = useGLTF(MEMORIAL_MODEL_URL, DRACO_PATH);
   const props = useGLTF(MEMORIAL_PROPS_URL, DRACO_PATH);
-  const [lightmap, atlas] = useTexture([MEMORIAL_LIGHTMAP_URL, SAMPLE_PHOTO_ATLAS.url]);
+  const [lightmap, atlas] = useTexture([lightmapUrl, SAMPLE_PHOTO_ATLAS.url]);
+  // Night (hallNight.ts): the night light map and park are fetched only when night is near.
+  const nightWanted = useNightMapWanted();
 
   const nodes = useMemo(() => prepareMemorial(hall.scene, lightmap), [hall, lightmap]);
   const photoMaterial = useMemo(() => {
@@ -169,6 +180,14 @@ function MemorialHall() {
   const candles = useMemo(() => makeCandles(props.scene), [props]);
 
   useEffect(() => () => disposeMemorial(nodes), [nodes]);
+  useEffect(() => {
+    setHallDoorLeaves(nodes.doorLeaves);
+    return () => setHallDoorLeaves(null);
+  }, [nodes]);
+  useEffect(() => {
+    if (nightWanted) void loadHallNight(tier);
+  }, [nightWanted, tier]);
+  useEffect(() => () => disposeHallNight(), []);
   useEffect(() => () => photoMaterial.dispose(), [photoMaterial]);
   useEffect(() => () => cubbyProps.own.forEach((r) => r.dispose()), [cubbyProps]);
   useEffect(() => () => candles.own.forEach((r) => r.dispose()), [candles]);
@@ -198,6 +217,15 @@ function MemorialHall() {
 
   // The candles: what burns now, each at its cubby; the glow faces the camera and breathes a little.
   useFrame(({ camera, clock }) => {
+    // The hall's light follows the village's clock: the day map, the night map, and in between a blend.
+    const night = hallNightWeight(dayNight.outdoor.night, hallNightReady());
+    if (hallNightUniform.value !== night) {
+      hallNightUniform.value = night;
+      if (nodes.skylight) {
+        const c = skylightColour(night);
+        nodes.skylight.color.setRGB(c[0], c[1], c[2]);
+      }
+    }
     pruneCandles(candleClock());
     let i = 0;
     const t = clock.elapsedTime;

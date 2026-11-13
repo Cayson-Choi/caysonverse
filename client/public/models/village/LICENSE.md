@@ -53,3 +53,19 @@ Poly Haven CC0 1.0 자산만 썼습니다.
   (글꼴 파일은 넣지 않음).
 버스 아래 도로에 까는 접지 그림자(`M_bus_ground`의 그림)도 같은 스크립트가 이 버스 모델 자체로 Blender에서 구운 앰비언트
 오클루전입니다(2026-11-11 2차, 외부 자산 없음).
+
+## 추모관 실내 다시 짓기 (`memorial.glb`, `memorial_lm.webp`, `memorial_lm_1k.webp`, `memorial_lm_night.webp`, `memorial_lm_night_1k.webp`, `memorial_garden_night.webp`) — 2026-11-13
+
+`memorial.glb`는 옛 방을 늘이지 않고 설계안(15 × 12 m, 천장 4.5 m)대로 Blender와 스크립트로 처음부터 다시 만들었습니다
+(`art/village/tools/build_memorial.py`, `make_memorial_textures.py`, `bake_memorial.py`, `post_memorial.py`, 저장소에는 올리지 않음).
+모양은 직접 모델링했고 AI로 만든 모델·텍스처는 없습니다. 낮·밤 라이트맵(2048 px와 폰용 1024 px)은 같은 Blender 장면을 굽습니다.
+앉는 자리 자료(`shared/src/village/generated/memorialSeats.ts`)와 충돌 상자는 이 모델의 `seat__*`·`col__*` 표식에서 뽑습니다.
+
+| 자산 | 출처 | 라이선스 | 쓰는 곳 |
+| --- | --- | --- | --- |
+| Noto Sans KR (`NotoSansKR-VF.ttf`) | Copyright The Noto Project Authors (https://github.com/notofonts/noto-cjk) | SIL Open Font License 1.1 | 모델 안 표지 글씨(구역 명패, "기억의 자리", 브랜드 벽, 안내도, 키오스크 화면, 우체통, 티 코너, 헌화 꽃)를 `T_m_signs`에 그림으로 구운 것. 글꼴 파일은 배포하지 않음 |
+| white_plaster_02 (Poly Haven) | https://polyhaven.com/a/white_plaster_02 | CC0 1.0 | 흰 벽·천장 결 (위 표와 같음) |
+| kloppenheim_06_puresky (HDRI 2k) | https://polyhaven.com/a/kloppenheim_06_puresky | CC0 1.0 | 낮 굽기의 하늘빛, 창밖 정원 그림의 하늘 |
+| leafy_grass, precast_stone_paving, island_tree_01(잎), japanese_zelkova_bark, sakura_bark (Poly Haven) | 위 표들 | CC0 1.0 | 창밖 정원 그림(낮 `T_m_garden`, 밤 `memorial_garden_night.webp`은 같은 그림을 어둡게 고쳐 별·달·정원등을 그린 것) |
+
+바닥 마루, 참나무, 래커, 패브릭, 작은 부품 색, 거실 액자 그림(강아지 수채화 느낌)은 스크립트가 직접 그렸습니다(절차적). 실사 견본 사진은 다음 단계(견본 칸)에서 출처와 함께 이 문서에 적습니다.

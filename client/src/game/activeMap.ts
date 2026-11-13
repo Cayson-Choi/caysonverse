@@ -13,6 +13,7 @@
 import type { Seat } from "@caysonverse/shared/worldMap";
 import { VILLAGE_LAYOUT, villageGeometry, houseInteriorGeometry, type AreaId, isHouseArea } from "@caysonverse/shared/village/villageLayout";
 import { VILLAGE_BENCHES, VILLAGE_SEATS } from "@caysonverse/shared/village/benchSeats";
+import { MEMORIAL_SEAT_MARKERS } from "@caysonverse/shared/village/generated/memorialSeats";
 import type { Bounds, MapGeometry } from "@caysonverse/shared/school/geometry";
 import type { AABB } from "@caysonverse/shared/collision";
 import { HALL_CAMERA_LIMIT, VILLAGE_CAMERA_PAD, type CameraLimit } from "./indoorCamera";
@@ -41,6 +42,11 @@ export interface ActiveMap {
    * camera all look a seat up here.
    */
   seats?: readonly Seat[];
+  /**
+   * The area whose seats this map offers (`VillageSeat.area`). `seats` is always the ONE global list, so an index means the same
+   * seat to the client and to the server; this says which of them the player can sit on from here.
+   */
+  seatArea?: AreaId;
   /**
    * How far in front of a wall the spring arm stops the camera here (m): absent = `SPRING.pad` (0.2). 케이슨 마을 sets
    * `VILLAGE_CAMERA_PAD`: its near plane is 0.2 (VILLAGE_CAMERA_PLANES), so a pad of 0.2 left no slack in a corner.
@@ -72,11 +78,15 @@ export function activeBounds(): Bounds {
  * col__bench_<n>, the turned bench's footprint's box — benchSeats.test.ts — the forecourt's stone block, the hall's board).
  */
 export const VILLAGE_FURNITURE: readonly AABB[] = Object.freeze(
-  VILLAGE_BENCHES.flatMap((b) =>
+  [
+    ...VILLAGE_BENCHES.map((b) => b.centre),
+    // the rebuilt hall: the furniture a marker's seat is on (a bench, an armchair, a chair; the long sofa is wider than 3 m)
+    ...MEMORIAL_SEAT_MARKERS.map((m) => ({ x: m.x, z: m.z })),
+  ].flatMap((c) =>
     villageGeometry.obstacles.filter(
-      (o) => b.centre.x > o.minX && b.centre.x < o.maxX && b.centre.z > o.minZ && b.centre.z < o.maxZ && o.maxX - o.minX <= 3 && o.maxZ - o.minZ <= 3,
+      (o) => c.x > o.minX && c.x < o.maxX && c.z > o.minZ && c.z < o.maxZ && o.maxX - o.minX <= 3 && o.maxZ - o.minZ <= 3,
     ),
-  ),
+  ).filter((o, i, all) => all.indexOf(o) === i),
 );
 
 /** 케이슨 마을, the open village : the village area's rectangle of the shared geometry. */
@@ -85,7 +95,8 @@ export const VILLAGE_ACTIVE_MAP: ActiveMap = Object.freeze({
   bounds: VILLAGE_LAYOUT.areas.village,
   cameraPad: VILLAGE_CAMERA_PAD,
   zoneLabel: () => "케이슨 마을",
-  seats: VILLAGE_SEATS, // every bench of the village (the hall's are out of reach from here)
+  seats: VILLAGE_SEATS, // the one global list; only the village's seats are offered from here
+  seatArea: "village",
   furniture: VILLAGE_FURNITURE,
 });
 
@@ -96,7 +107,8 @@ export const HALL_ACTIVE_MAP: ActiveMap = Object.freeze({
   cameraLimit: HALL_CAMERA_LIMIT, // a roof: the camera stays under the ceiling, no overview
   cameraPad: VILLAGE_CAMERA_PAD, // the same scene, the same near plane
   zoneLabel: () => "추모관",
-  seats: VILLAGE_SEATS, // the same list (the server indexes one), so a seat index means the same bench in both areas
+  seats: VILLAGE_SEATS, // the same list (the server indexes one), so a seat index means the same seat in every area
+  seatArea: "hall", // ...but only the hall's are offered here (the houses' share its coordinates)
   furniture: VILLAGE_FURNITURE,
 });
 
@@ -115,7 +127,9 @@ const HOUSE_MAPS = new Map<string, ActiveMap>();
 function houseActiveMap(area: AreaId): ActiveMap {
   const existing = HOUSE_MAPS.get(area);
   if (existing) return existing;
-  const map = Object.freeze({ ...HOUSE_ACTIVE_MAP, seats: VILLAGE_SEATS.filter((s) => s.area === area) });
+  // The GLOBAL seat list (an index is the server's index), narrowed to this house by `seatArea`; a filtered list would number the
+  // house's sofa 0..3 and the server would read those as the plaza's benches (the house-seat index bug of 2026-11-13).
+  const map = Object.freeze({ ...HOUSE_ACTIVE_MAP, seats: VILLAGE_SEATS, seatArea: area });
   HOUSE_MAPS.set(area, map);
   return map;
 }

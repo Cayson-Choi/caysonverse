@@ -72,16 +72,16 @@ describe("the card's cubby (Task 9)", () => {
       }
     }
     const none = new Map<string, SampleCubby>();
-    expect(defaultRow("n_0", none)).toBe(EYE_ROW);
+    expect(defaultRow("A_0", none)).toBe(EYE_ROW);
   });
 
   it("open, step up and down within the column, close", () => {
-    openCubbyCard("cubby:n_10");
+    openCubbyCard("cubby:A_10");
     const start = cubbyCardState()!;
-    expect(start.column).toBe("n_10");
-    expect(cubbyIdAt("n_10", start.row)).toBe(`n_${start.row}_10`);
+    expect(start.column).toBe("A_10");
+    expect(cubbyIdAt("A_10", start.row)).toBe(`M1-A-r${start.row}-c10`);
     for (let i = 0; i < 10; i += 1) moveCubbyRow(1);
-    expect(cubbyCardState()!.row).toBe(6);
+    expect(cubbyCardState()!.row).toBe(7);
     for (let i = 0; i < 10; i += 1) moveCubbyRow(-1);
     expect(cubbyCardState()!.row).toBe(0);
     closeCubbyCard();

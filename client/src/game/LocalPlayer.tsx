@@ -19,6 +19,7 @@ import {
   type Glide,
 } from "./seatMotion";
 import { benchClipPlanes, clipAvatar, enableBenchClipping } from "./benchClip";
+import { stepLean } from "./leanBack";
 import { readIntent, worldDirection } from "./input";
 import type { Intent, MoveInput } from "./input";
 import { gaitClip, gaitFor, moveSpeed } from "./gait";
@@ -647,6 +648,8 @@ export function LocalPlayer({
       clipAvatar(avatar, onBench ? motion.clip : null);
       motion.clipped = onBench;
     }
+    // A backed seat (sofa, armchair, chair): lean back into the backrest while sitting idle (leanBack.ts).
+    stepLean(avatar.root, animStateRef.current === "sitIdle" ? (activeSeats()[seatIndex]?.lean ?? 0) : 0, delta);
 
     // Seated → fully server-positioned: no integration, no moveSender. Standing up
     // is explicit — any movement intent (keys or joystick) sends ONE Stand. 착석

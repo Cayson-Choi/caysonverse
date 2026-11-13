@@ -231,3 +231,18 @@ describe("holdEnded — a held target lets go when it is no longer the pick", ()
     expect(holdEnded(null, pick(key()))).toBe(false);
   });
 });
+
+describe("interactInputAt — only the seats of the player's area are offered (the hall and the houses share coordinates)", () => {
+  const seats = [
+    { x: 300, z: 0, yaw: 0, standX: 300, standZ: 0.5, area: "house:house_1" },
+    { x: 300, z: 0.2, yaw: 0, standX: 300, standZ: 0.7, area: "hall" },
+  ];
+  it("a house's sofa is never offered in the hall, even when it is the nearest", () => {
+    const here = { seats, area: "hall" };
+    expect(interactInputAt(300, 0.9, -1, () => false, undefined, here).seat?.index).toBe(1);
+    expect(interactInputAt(300, 0.9, -1, () => false, undefined, { seats, area: "house:house_1" }).seat?.index).toBe(0);
+    expect(interactInputAt(300, 0.9, -1, () => false, undefined, { seats, area: "village" }).seat).toBeNull();
+    // the index is the global one either way
+    expect(interactInputAt(300, 0.9, -1, (i) => i === 1, undefined, here).seat).toBeNull();
+  });
+});

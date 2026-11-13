@@ -108,39 +108,39 @@ describe("villageAndHallTargets — the cubbies' close-up inside the hall (Task 
     return { x: c.x + Math.sin(a.yaw) * d, z: c.z + Math.cos(a.yaw) * d };
   };
 
-  it("52 columns (34 on the back wall, 18 on the east), each with its 7 rows bottom first", () => {
-    expect(cols).toHaveLength(52);
+  it("46 columns (A 14 and B 14 on the back wall, E 18 on the east), each with its 8 rows bottom first", () => {
+    expect(cols).toHaveLength(46);
     for (const c of cols) {
-      expect(c.rows.map((r) => r.row)).toEqual([0, 1, 2, 3, 4, 5, 6]);
+      expect(c.rows.map((r) => r.row)).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
       expect(cubbyColumn(`cubby:${c.key}`)).toBe(cubbyColumn(c.key));
     }
-    expect(cubbyColumn("n_99")).toBeNull();
+    expect(cubbyColumn("A_99")).toBeNull();
   });
 
   it("in front of a column: the close-up of that column, labelled 가까이 보기", () => {
-    const p = front("n_10", 0.7);
+    const p = front("A_10", 0.7);
     const t = villageAndHallTargets("hall", p.x, p.z);
     expect(t).toHaveLength(1);
-    expect(t[0]).toMatchObject({ kind: "object", id: "cubby:n_10", label: CUBBY_LABEL, short: CUBBY_SHORT });
+    expect(t[0]).toMatchObject({ kind: "object", id: "cubby:A_10", label: CUBBY_LABEL, short: CUBBY_SHORT });
     expect(t[0]!.dist).toBeCloseTo(0.7, 6);
     expect(CUBBY_LABEL).toBe("가까이 보기");
   });
 
   it("offered within 1.2 m, not past it; never outside the hall", () => {
     expect(CUBBY_REACH_M).toBe(1.2);
-    const near = front("e_4", CUBBY_REACH_M - 0.01);
-    const far = front("e_4", CUBBY_REACH_M + 0.01);
+    const near = front("E_4", CUBBY_REACH_M - 0.01);
+    const far = front("E_4", CUBBY_REACH_M + 0.01);
     expect(villageAndHallTargets("hall", near.x, near.z)).toHaveLength(1);
     expect(villageAndHallTargets("hall", far.x, far.z)).toHaveLength(0);
     expect(villageAndHallTargets("village", near.x, near.z)).toHaveLength(0);
   });
 
   it("the nearest column wins (columns are 0.425 m apart)", () => {
-    const a = cubbyColumn("n_10")!;
-    const b = cubbyColumn("n_11")!;
+    const a = cubbyColumn("A_10")!;
+    const b = cubbyColumn("A_11")!;
     const mid = (a.x + b.x) / 2;
-    expect(nearestCubbyColumn(mid - 0.05, a.z + 0.6)!.column.key).toBe("n_10");
-    expect(nearestCubbyColumn(mid + 0.05, a.z + 0.6)!.column.key).toBe("n_11");
+    expect(nearestCubbyColumn(mid - 0.05, a.z + 0.6)!.column.key).toBe("A_10");
+    expect(nearestCubbyColumn(mid + 0.05, a.z + 0.6)!.column.key).toBe("A_11");
   });
 
   it("the door still comes alone at the way out (no column near it), and the spawn and the room's middle offer no cubby", () => {

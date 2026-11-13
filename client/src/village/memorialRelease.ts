@@ -5,7 +5,8 @@ import type { GLTF } from "three-stdlib";
 import { DRACO_PATH } from "../game/hub/hubModelPrep";
 import { type CachedFile, releaseCachedFile } from "./loaderRelease";
 import { SAMPLE_PHOTO_ATLAS } from "./sampleCubbies";
-import { MEMORIAL_LIGHTMAP_URL, MEMORIAL_MODEL_URL, MEMORIAL_PROPS_URL, disposeLoadedScene } from "./memorialModelPrep";
+import { MEMORIAL_LIGHTMAP_URLS, MEMORIAL_MODEL_URL, MEMORIAL_PROPS_URL, disposeLoadedScene } from "./memorialModelPrep";
+import { disposeHallNight } from "./hallNight";
 import { freeTexture } from "./villageModelPrep";
 
 /**
@@ -30,13 +31,23 @@ let held = false;
 let requested = false;
 let timer: ReturnType<typeof setTimeout> | null = null;
 
-/** Every cached file of the hall. */
+/** The tier the hall was read for (its light map is the 2048 px one on "high", the 1024 px one on "low"). */
+let tier: "high" | "low" = "high";
+
+/** MemorialHall says which light map it reads, so a release clears the same cache entry. */
+export function setMemorialTier(t: "high" | "low"): void {
+  tier = t;
+}
+
+/** Every cached file of the hall (the textures follow the tier). */
 export const MEMORIAL_FILES = {
   gltf: [MEMORIAL_MODEL_URL, MEMORIAL_PROPS_URL],
-  textures: [MEMORIAL_LIGHTMAP_URL, SAMPLE_PHOTO_ATLAS.url],
-} as const;
+  get textures(): readonly [string, string] {
+    return [MEMORIAL_LIGHTMAP_URLS[tier], SAMPLE_PHOTO_ATLAS.url];
+  },
+};
 
-const textureList = [...MEMORIAL_FILES.textures];
+const textureList = (): string[] => [...MEMORIAL_FILES.textures];
 
 /** The hall's cache entries: the two models and the textures (one entry, read as a list). */
 export const MEMORIAL_CACHE: readonly CachedFile[] = [
@@ -49,9 +60,11 @@ export const MEMORIAL_CACHE: readonly CachedFile[] = [
     }),
   ),
   {
-    id: textureList.join("|"),
-    read: () => readCache(TextureLoader, textureList),
-    clear: () => readCache.clear(TextureLoader, textureList),
+    get id() {
+      return textureList().join("|");
+    },
+    read: () => readCache(TextureLoader, textureList()),
+    clear: () => readCache.clear(TextureLoader, textureList()),
     free: (ts) => (ts as Texture[]).forEach(freeTexture),
   },
 ];
@@ -74,6 +87,7 @@ function cancel(): void {
 
 function releaseNow(): void {
   held = false;
+  disposeHallNight();
   if (!requested) return;
   requested = false;
   for (const f of MEMORIAL_CACHE) releaseCachedFile(f, () => held);

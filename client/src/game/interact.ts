@@ -140,8 +140,10 @@ export function holdEnded(held: InteractTarget | null, next: Interaction | null)
 
 /** The seats of the map the player stands in (`interactInputAt`). */
 export interface InteractWorld {
-  /** The active map's seats (activeMap's `seats`). */
+  /** The active map's seats (activeMap's `seats`): ONE list for every area, indexed like the server's. */
   seats: readonly Seat[];
+  /** The area the player is in: only the seats of this area are offered (the hall's coordinates are the houses' too). */
+  area?: string;
 }
 
 /**
@@ -162,7 +164,11 @@ export function interactInputAt(
   const seated = seatIndex >= 0;
   let seat: InteractInput["seat"] = null;
   if (!seated) {
-    const index = nearestFreeSeat(x, z, isOccupied, SEAT_REACH, world.seats);
+    // A seat of another area is "taken": the hall and the houses share one coordinate space, so a house's sofa must never
+    // be offered in the hall (the ghost "앉기" of 2026-11-13).
+    const here = world.area;
+    const taken = here === undefined ? isOccupied : (i: number) => isOccupied(i) || (world.seats[i] as { area?: string }).area !== here;
+    const index = nearestFreeSeat(x, z, taken, SEAT_REACH, world.seats);
     if (index !== null) {
       seat = { index, dist: Math.hypot(x - world.seats[index].x, z - world.seats[index].z) };
     }

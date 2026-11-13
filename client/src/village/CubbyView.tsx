@@ -22,15 +22,15 @@ import "./cubbyView.css";
 /** The card's id on the overlay stack (Esc closes it; WASD and E stay with it while it is open). */
 export const CUBBY_OVERLAY_ID = "cubby";
 
-/** Rows in a cubby column (the layout's 7). */
-const ROWS = 7;
+/** Rows in a cubby column (the layout's 8). */
+const ROWS = 8;
 
 /** A press the server never answered (out of reach, the 5 s cap) gives the button back after this long. */
 const LIGHT_WAIT_MS = 2000;
 
 /**
  * The close-up card of a memorial cubby (케이슨 마을 Task 9; the pure part is cubbyCard.ts). Opened by "가까이 보기"
- * within 1.2 m of a column; shows the cubby nearest eye height first, "위 칸" / "아래 칸" step through the column. A filled
+ * within 1.2 m of a column; shows the cubby nearest eye height first, "위 칸" / "아래 칸" step through the column's eight cubbies. A filled
  * cubby: portrait, name, years, the family's line and "촛불 켜기"; an empty one: "곧 이 자리에 우리 아이를 모실 수 있어요".
  * Closes with 닫기, Esc, or when the player leaves the hall.
  */
