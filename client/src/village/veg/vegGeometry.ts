@@ -503,38 +503,173 @@ export function speciesMeshes(): SpeciesMeshes[] {
 
 // ─────────────────────────────────────────────── green canopy ───────────────────────────────────────────────
 
-/** A folded, volumetric leaf cluster for broadleaf canopies. The core keeps the crown solid while the leaves provide
- * the close-up silhouette and visible depth that the old green foliage cards lacked. */
-export function greenCluster(simple = false, seed = 17): BufferGeometry {
-  const b = new GeoBuilder();
-  b.windHeight = 0.55;
-  const rand = mulberry32(seed);
-  const dark = rgba("#244D1A");
-  const mid = rgba("#477D29");
-  const light = rgba("#82A94C");
-  dome(b, [0, 0.12, 0], simple ? 0.22 : 0.25, simple ? 0.18 : 0.25, simple ? 6 : 8, dark, mid);
-  const leaves = simple ? 7 : 14;
-  for (let i = 0; i < leaves; i++) {
-    const a = (i / leaves) * Math.PI * 2 + rand() * 0.7;
-    const el = 0.15 + rand() * 0.85;
-    const dir: Vec3 = [Math.cos(a) * Math.cos(el), Math.sin(el), Math.sin(a) * Math.cos(el)];
-    const base: Vec3 = [Math.cos(a) * 0.08, 0.08 + rand() * 0.12, Math.sin(a) * 0.08];
-    leaf(b, base, dir, [0, 1, 0], simple ? 0.18 : 0.12 + rand() * 0.055, simple ? 0.08 : 0.052 + rand() * 0.018, {
-      detail: simple ? 0 : 1,
-      fold: 0.42,
-      droop: 0.22,
-      colour: { rib: light, edge: mid, base: dark },
-    });
-  }
-  return b.build();
-}
-
-/** A cheap closed puff used beyond the near green-canopy LOD. */
+/** A cheap closed puff (the 3D grass tufts that stand where the flower beds' grass cards were). */
 export function greenClusterFar(): BufferGeometry {
   const b = new GeoBuilder();
   b.windHeight = 0.5;
   dome(b, [0, 0.12, 0], 0.25, 0.22, 6, rgba("#315F20"), rgba("#6C9639"));
   return b.build();
+}
+
+type LeafColour = { rib: Rgba; edge: Rgba; base: Rgba };
+/** Broadleaf greens (linear, tinted per spray: alpha 1). Three shades so neighbouring leaves differ. */
+const BROADLEAF: LeafColour[] = [
+  { rib: rgba("#73A043", 1), edge: rgba("#447C26", 1), base: rgba("#27501A", 1) },
+  { rib: rgba("#658F39", 1), edge: rgba("#386A21", 1), base: rgba("#204415", 1) },
+  { rib: rgba("#82AC4C", 1), edge: rgba("#518A30", 1), base: rgba("#305A1E", 1) },
+];
+/** Willow leaves: narrow, a lighter yellow-green. */
+const WILLOW: LeafColour[] = [
+  { rib: rgba("#A9C567", 1), edge: rgba("#82A84B", 1), base: rgba("#5A7E32", 1) },
+  { rib: rgba("#98BA5B", 1), edge: rgba("#739C42", 1), base: rgba("#4D722B", 1) },
+];
+
+/** Number of leaves in a broadleaf spray per level (0 full, 1 mid, 2 far). */
+export const SPRAY_LEAVES = [10, 5, 3] as const;
+
+/**
+ * A broadleaf spray (instanced; its origin is the point of the twig it grows from): a short shoot along local +y
+ * (0.31 m at scale 1) with nine alternate leaves and a terminal one, the blades facing local +z, folded along their
+ * midribs and drooping toward the tip (level 0, 92 triangles). Level 1: five folded diamonds round the same shoot, no
+ * stem (10 triangles); level 2: three larger ones (6 triangles). Wind grows from 0 at the origin to the leaf tips.
+ */
+export function leafSpray(level: 0 | 1 | 2, seed = 21): BufferGeometry {
+  const b = new GeoBuilder();
+  b.windHeight = 0.42;
+  const rand = mulberry32(seed + level * 101);
+  const stem = rgba("#5D6B2E", 0, 1);
+  const shade = () => BROADLEAF[Math.floor(rand() * BROADLEAF.length)]!;
+  const stemAt = (s: number): Vec3 => [0, s, 0.08 * s * s];
+  if (level === 0) {
+    tube(b, [stemAt(0), stemAt(0.1), stemAt(0.21), stemAt(0.31)], [0.0055, 0.0042, 0.0032, 0.0022], 3, () => stem, (t) => t * 0.5);
+    for (let i = 0; i < 9; i++) {
+      const s = 0.04 + i * 0.032;
+      const side = i % 2 ? 1 : -1;
+      const th = ((24 + rand() * 24) * Math.PI) / 180;
+      const dir = norm([side * Math.cos(th), Math.sin(th), (rand() - 0.35) * 0.4]);
+      const length = 0.12 + 0.05 * Math.sin((i / 8) * Math.PI) + rand() * 0.02;
+      const up = norm([-side * (0.15 + rand() * 0.2), 0.12, 1]);
+      leaf(b, add(stemAt(s), [side * 0.005, 0, 0]), dir, up, length, length * 0.5, { fold: 0.3, droop: 0.24, detail: 1, colour: shade() });
+    }
+    leaf(b, stemAt(0.31), norm([0, 1, 0.14]), [0, 0, 1], 0.17, 0.085, { fold: 0.3, droop: 0.2, detail: 1, colour: shade() });
+  } else if (level === 1) {
+    for (const [s, side, l] of [
+      [0.07, -1, 0.19],
+      [0.12, 1, 0.2],
+      [0.19, -1, 0.2],
+      [0.24, 1, 0.19],
+    ] as const) {
+      const th = ((30 + rand() * 15) * Math.PI) / 180;
+      leaf(b, stemAt(s), norm([side * Math.cos(th), Math.sin(th), 0.1]), norm([-side * 0.2, 0.1, 1]), l, l * 0.56, { fold: 0.32, droop: 0.2, detail: 0, colour: shade() });
+    }
+    leaf(b, stemAt(0.28), norm([0, 1, 0.12]), [0, 0, 1], 0.2, 0.11, { fold: 0.3, droop: 0.18, detail: 0, colour: shade() });
+  } else {
+    leaf(b, stemAt(0.08), norm([-0.8, 0.6, 0.1]), [0, 0, 1], 0.25, 0.15, { fold: 0.32, droop: 0.15, detail: 0, colour: shade() });
+    leaf(b, stemAt(0.14), norm([0.8, 0.6, 0.1]), [0, 0, 1], 0.25, 0.15, { fold: 0.32, droop: 0.15, detail: 0, colour: shade() });
+    leaf(b, stemAt(0.24), norm([0, 1, 0.1]), [0, 0, 1], 0.26, 0.15, { fold: 0.3, droop: 0.15, detail: 0, colour: shade() });
+  }
+  return b.build();
+}
+
+/**
+ * A stretch of a willow strand's leaves (instanced; origin on the strand, local +y along the strand, which hangs
+ * down): narrow lance leaves (folded slivers) round the 0.3 m stretch, pointing on down and a little out, ten at level 0
+ * (20 triangles), six at level 1 (12), three at level 2 (6). The strand itself is in the twig mesh.
+ */
+export function willowSpray(level: 0 | 1 | 2, seed = 23): BufferGeometry {
+  const b = new GeoBuilder();
+  b.windHeight = 0.32;
+  const rand = mulberry32(seed + level * 131);
+  const n = [10, 6, 3][level]!;
+  for (let i = 0; i < n; i++) {
+    const s = 0.02 + (i / n) * 0.27;
+    const phi = i * 2.39996 + rand() * 0.4;
+    const radial: Vec3 = [Math.cos(phi), 0, Math.sin(phi)];
+    const tangent: Vec3 = [-Math.sin(phi), 0, Math.cos(phi)];
+    const al = ((22 + rand() * 20) * Math.PI) / 180;
+    const dir = norm(add(mul([0, 1, 0], Math.cos(al)), mul(radial, Math.sin(al))));
+    const up = norm(cross(dir, tangent));
+    const length = [0.12, 0.15, 0.19][level]! + rand() * 0.03;
+    const width = [0.026, 0.034, 0.05][level]!;
+    leaf(b, add([0, s, 0], mul(radial, 0.004)), dir, up, length, width, {
+      strap: true,
+      fold: 0.25,
+      droop: 0.06,
+      detail: 0,
+      colour: WILLOW[Math.floor(rand() * WILLOW.length)]!,
+    });
+  }
+  return b.build();
+}
+
+/**
+ * A round bush (instanced, scaled to each bush): a dense dark heart (a squashed ellipsoid sitting on the ground, so no
+ * light shows through) covered all over by short leafy sprigs growing out of it. Unit size: radius 1 in x and z at
+ * scale 1, 1 high, its base at y 0. Level 0: 230 sprigs of 4 folded leaves; level 1: 160 sprigs of 2 diamonds;
+ * level 2: the heart and 24 leaves.
+ */
+export function bushGeometry(level: 0 | 1 | 2, seed = 29): BufferGeometry {
+  const b = new GeoBuilder();
+  b.windHeight = 1.4;
+  const rand = mulberry32(seed + level * 17);
+  const heart = rgba("#2A501E", 1);
+  const heartTop = rgba("#41702A", 1);
+  // the heart: an ellipsoid round (0, 0.5, 0), radii 0.84 / 0.47, its bottom cut flat at the ground
+  const segs = [10, 8, 6][level]!;
+  const rings = [6, 5, 4][level]!;
+  const ring: number[][] = [];
+  for (let j = 0; j <= rings; j++) {
+    const v = -0.92 + (j / rings) * 1.92; // sin of the latitude, from just above the bottom to the top
+    const lat = Math.asin(Math.max(-1, Math.min(1, v)));
+    const y = 0.5 + Math.sin(lat) * 0.47;
+    const r = Math.cos(lat) * 0.84;
+    const row: number[] = [];
+    for (let i = 0; i < segs; i++) {
+      const a = (i / segs) * Math.PI * 2;
+      const n = norm([Math.cos(a) * Math.cos(lat), Math.sin(lat) * 1.6, Math.sin(a) * Math.cos(lat)]);
+      row.push(b.v([Math.cos(a) * r, Math.max(0.01, y), Math.sin(a) * r], n, mix(heart, heartTop, j / rings), [0.5, 0.5], 0));
+    }
+    ring.push(row);
+  }
+  for (let j = 0; j < rings; j++)
+    for (let i = 0; i < segs; i++) {
+      const i1 = (i + 1) % segs;
+      b.tri(ring[j]![i]!, ring[j + 1]![i]!, ring[j + 1]![i1]!);
+      b.tri(ring[j]![i]!, ring[j + 1]![i1]!, ring[j]![i1]!);
+    }
+  // sprigs: a Fibonacci sphere over the ellipsoid, the lowest band left out (the bush sits on the ground)
+  const count = [230, 160, 24][level]!;
+  const per = [4, 2, 1][level]!;
+  for (let k = 0; k < count; k++) {
+    const yN = 1 - ((k + 0.5) / count) * 1.75; // 1 .. -0.75
+    const rr = Math.sqrt(Math.max(0, 1 - yN * yN));
+    const a = k * 2.39996;
+    const n: Vec3 = norm([Math.cos(a) * rr, yN * 1.7, Math.sin(a) * rr]);
+    // a lumpy outline, not a ball: the sprigs stand out further on some sides
+    // (on the heart's surface, never inside it)
+    const lump = 1.06 + 0.05 * Math.sin(3 * a + 2 * yN) + 0.03 * Math.sin(5 * a - 3 * yN);
+    const at: Vec3 = [Math.cos(a) * rr * 0.84 * lump, 0.5 + yN * 0.47 * lump, Math.sin(a) * rr * 0.84 * lump];
+    for (let q = 0; q < per; q++) {
+      // the leaves lie over the bush like scales (along its surface, a little out), their blades facing out
+      const t = perpendicularOf(n, rand() * Math.PI * 2);
+      const dir = norm(add(add(t, mul(n, 0.5)), [0, 0.15, 0]));
+      const up0 = norm(add(n, [0, 0.35, 0]));
+      const up = Math.hypot(...cross(dir, up0)) < 1e-3 ? ([1, 0, 0] as Vec3) : up0;
+      const length = [0.15, 0.2, 0.28][level]! * (0.85 + rand() * 0.3);
+      leaf(b, add(at, mul(t, 0.02 * q)), dir, up, length, length * 0.55, {
+        fold: 0.35,
+        droop: 0.2,
+        detail: level === 0 ? 1 : 0,
+        colour: BROADLEAF[Math.floor(rand() * BROADLEAF.length)]!,
+      });
+    }
+  }
+  return b.build();
+}
+
+function perpendicularOf(n: Vec3, angle: number): Vec3 {
+  const [t, bb] = basis(n);
+  return norm(add(mul(t, Math.cos(angle)), mul(bb, Math.sin(angle))));
 }
 
 // ─────────────────────────────────────────────── cherry ───────────────────────────────────────────────
@@ -621,7 +756,7 @@ export function blossomBunch(seed = 5): BufferGeometry {
 }
 
 /** The bunch as a sprite (far): one quad (-0.5..0.5) the shader turns to the camera, showing a bunch picture. */
-export function bunchSprite(): BufferGeometry {
+export function bunchSprite(scale = 1): BufferGeometry {
   const b = new GeoBuilder();
   const c = rgba("#FFFFFF", 1, 1);
   const q = [
@@ -629,19 +764,26 @@ export function bunchSprite(): BufferGeometry {
     [0.5, -0.5],
     [0.5, 0.5],
     [-0.5, 0.5],
-  ].map(([x, y]) => b.v([x!, y!, 0], [0, 0, 1], c, cellUv(ATLAS_CELL.bunchA, x! + 0.5, 0.5 - y!), 1));
+  ].map(([x, y]) => b.v([x! * scale, y! * scale, 0], [0, 0, 1], c, cellUv(ATLAS_CELL.bunchA, x! + 0.5, 0.5 - y!), 1));
   b.tri(q[0]!, q[1]!, q[2]!);
   b.tri(q[0]!, q[2]!, q[3]!);
   return b.build();
 }
 
-/** All the twigs of the plaza cherries as one mesh: 3-4 sided tubes, dark grey-brown bark, each vertex its light. */
-export function twigMesh(twigs: ReadonlyArray<{ branch: Branch; light: (p: Vec3, n: Vec3) => number }>, coarse = false): BufferGeometry {
+/** Twig bark colours: the cherries' dark grey-brown, the broadleaf trees' and willows' paler grey-brown (their limbs). */
+export const TWIG_BARK = {
+  cherry: ["#4B3A33", "#6A574D"],
+  green: ["#6E5E4C", "#8E7C66"],
+  willow: ["#6F6447", "#8C8060"],
+} as const;
+
+/** A tree's twigs as one mesh: 3-4 sided tubes in its bark colour, each vertex its light. */
+export function twigMesh(twigs: ReadonlyArray<{ branch: Branch; light: (p: Vec3, n: Vec3) => number }>, coarse = false, colours: readonly [string, string] = TWIG_BARK.cherry): BufferGeometry {
   const b = new GeoBuilder();
-  const bark = rgba("#4B3A33", 0, 1);
-  const barkTop = rgba("#6A574D", 0, 1);
+  const bark = rgba(colours[0], 0, 1);
+  const barkTop = rgba(colours[1], 0, 1);
   for (const { branch, light } of twigs) {
-    const sides = !coarse && branch.radii[0]! > 0.007 ? 4 : 3;
+    const sides = !coarse && branch.radii[0]! > 0.012 ? 4 : 3;
     let { pts, radii } = branch;
     if (coarse && pts.length > 3) {
       // phones: base, middle and tip only (a twig is a pixel or two wide there)
