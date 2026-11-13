@@ -67,7 +67,7 @@ export function validateBusRide(
 
   if (state.boarded) return { ok: false, notice: "이미 버스에 타고 있어요." };
   if (state.area !== "village") return { ok: false, notice: "버스 정류장 근처에서만 탈 수 있어요." };
-  if (trip.status !== "boarding") return { ok: false, notice: "버스는 매시 출발 30초 전부터 탈 수 있어요." };
+  if (trip.status !== "boarding") return { ok: false, notice: "버스는 매 정각과 30분, 출발 30초 전부터 탈 수 있어요." };
   if (!Number.isFinite(state.x) || !Number.isFinite(state.z)) return { ok: false, notice: "버스 정류장 근처에서만 탈 수 있어요." };
   if (busBoardingDistance(state.x, state.z) > BUS_BOARD_REACH_M) {
     return { ok: false, notice: "버스 정류장 근처에서만 탈 수 있어요." };

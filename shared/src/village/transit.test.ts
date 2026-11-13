@@ -21,10 +21,10 @@ describe("village transit schedule", () => {
 
   it("opens boarding before the next exact-hour departure", () => {
     const hour = Date.UTC(2026, 10, 12, 3, 0, 0);
-    const boarding = busTripAt(hour + TRANSIT.hourMs - TRANSIT.boardingMs);
+    const boarding = busTripAt(hour + TRANSIT.departureEveryMs - TRANSIT.boardingMs);
     expect(boarding.status).toBe("boarding");
-    expect(boarding.startMs).toBe(hour + TRANSIT.hourMs);
-    expect(boarding.nextStartMs).toBe(hour + TRANSIT.hourMs * 2);
+    expect(boarding.startMs).toBe(hour + TRANSIT.departureEveryMs);
+    expect(boarding.nextStartMs).toBe(hour + TRANSIT.departureEveryMs * 2);
   });
 
   it("interpolates route position and heading without leaving the route bounds", () => {
@@ -99,7 +99,7 @@ describe("the bus at the crosswalks' signals", () => {
       expect(moved).toBeLessThanOrEqual(speed * 1_000 + 1e-6);
     }
     expect(tl.endMs - hour).toBeGreaterThan(TRANSIT.lapMs);
-    expect(tl.endMs).toBeLessThan(hour + TRANSIT.hourMs - TRANSIT.boardingMs);
+    expect(tl.endMs).toBeLessThan(hour + TRANSIT.departureEveryMs - TRANSIT.boardingMs);
   });
 
   it("nextGreenAt is the same instant when green and the next cycle's start otherwise", () => {
@@ -123,8 +123,8 @@ describe("the bus at the crosswalks' signals", () => {
 
   it("runs the same trip every hour", () => {
     const a = tripTimeline(hour);
-    const b = tripTimeline(hour + 7 * TRANSIT.hourMs);
-    expect(b.endMs - (hour + 7 * TRANSIT.hourMs)).toBe(a.endMs - hour);
+    const b = tripTimeline(hour + 7 * TRANSIT.departureEveryMs);
+    expect(b.endMs - (hour + 7 * TRANSIT.departureEveryMs)).toBe(a.endMs - hour);
   });
 });
 

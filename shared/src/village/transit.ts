@@ -111,7 +111,7 @@ function ringRoute(): readonly TransitPoint[] {
 }
 
 export const TRANSIT = {
-  hourMs: 60 * 60 * 1000,
+  departureEveryMs: 30 * 60 * 1000, // every 30 minutes, on the hour and the half hour (owner 2026-11-13)
   lapMs: 3 * 60 * 1000,
   boardingMs: 30 * 1000,
   /** One cycle of the crossing signals: vehicles green 0-20 s, amber 20-23, red 23-40; pedestrians stop 0-24, walk 24-34, flashing 34-38, stop 38-40. */
@@ -283,8 +283,8 @@ function routeDistanceAt(utcMs: number, startMs: number): { distance: number; wa
 
 /** The scheduled trip and bus pose at an absolute UTC timestamp. */
 export function busTripAt(utcMs: number): BusTrip {
-  const hour = Math.floor(utcMs / TRANSIT.hourMs) * TRANSIT.hourMs;
-  const nextStartMs = hour + TRANSIT.hourMs;
+  const hour = Math.floor(utcMs / TRANSIT.departureEveryMs) * TRANSIT.departureEveryMs;
+  const nextStartMs = hour + TRANSIT.departureEveryMs;
   const end = tripTimeline(hour).endMs;
   if (utcMs < end) {
     const { distance, waiting } = routeDistanceAt(utcMs, hour);
@@ -296,7 +296,7 @@ export function busTripAt(utcMs: number): BusTrip {
     return {
       tripId: nextStartMs,
       startMs: nextStartMs,
-      nextStartMs: nextStartMs + TRANSIT.hourMs,
+      nextStartMs: nextStartMs + TRANSIT.departureEveryMs,
       status: "boarding",
       progress: 0,
       pose: PARKED_POSE,

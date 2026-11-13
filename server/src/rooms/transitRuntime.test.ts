@@ -3,8 +3,8 @@ import { TRANSIT } from "@caysonverse/shared/village/transit";
 import { VILLAGE_LAYOUT, busBoardingArea } from "@caysonverse/shared/village/villageLayout";
 import { BUS_BOARD_REACH_M, riderOnTrip, transitSnapshotAt, validateBusRide } from "./transitRuntime";
 
-const hour = Math.floor(1_700_000_000_000 / TRANSIT.hourMs) * TRANSIT.hourMs;
-const boarding = hour + TRANSIT.hourMs - TRANSIT.boardingMs + 5;
+const hour = Math.floor(1_700_000_000_000 / TRANSIT.departureEveryMs) * TRANSIT.departureEveryMs;
+const boarding = hour + TRANSIT.departureEveryMs - TRANSIT.boardingMs + 5;
 const nearStop = { area: "village", x: TRANSIT.stop.x, z: TRANSIT.stop.z };
 
 describe("VillageRoom transit runtime", () => {
@@ -31,18 +31,18 @@ describe("VillageRoom transit runtime", () => {
   });
 
   it("keeps a rider who boarded before the hour on the bus through the wait and the lap, and drops them at the stop", () => {
-    const rider = hour + TRANSIT.hourMs; // boarded in the 30 s before the next hour: that trip's id
+    const rider = hour + TRANSIT.departureEveryMs; // boarded in the 30 s before the next hour: that trip's id
     expect(riderOnTrip(transitSnapshotAt(boarding), rider)).toBe(true); // still waiting for the departure
     expect(riderOnTrip(transitSnapshotAt(rider + 5_000), rider)).toBe(true); // the lap
     expect(riderOnTrip(transitSnapshotAt(rider + 100_000), rider)).toBe(true);
     expect(riderOnTrip(transitSnapshotAt(rider + TRANSIT.lapMs + 60_000), rider)).toBe(false); // back at the stop
-    expect(riderOnTrip(transitSnapshotAt(rider + TRANSIT.hourMs - 5_000), rider)).toBe(false); // the next trip is up
+    expect(riderOnTrip(transitSnapshotAt(rider + TRANSIT.departureEveryMs - 5_000), rider)).toBe(false); // the next trip is up
     expect(riderOnTrip(transitSnapshotAt(boarding), null)).toBe(false);
   });
 
   it("accepts a nearby boarding request only in the 30-second boarding window", () => {
     const accepted = validateBusRide({ action: "board" }, { ...nearStop, boarded: false }, boarding);
-    expect(accepted).toEqual({ ok: true, tripId: hour + TRANSIT.hourMs });
+    expect(accepted).toEqual({ ok: true, tripId: hour + TRANSIT.departureEveryMs });
     expect(BUS_BOARD_REACH_M).toBeGreaterThan(0.5);
     // review r2: every free spot under the shelter boards, its south end and its middle included (7.0 m from the bus's centre)
     const s = VILLAGE_LAYOUT.busStop.shelter;
