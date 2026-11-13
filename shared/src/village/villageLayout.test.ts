@@ -674,18 +674,18 @@ describe("village colliders are built from the layout", () => {
     const fixed = hallWalls(L).length + areaGapBlockers(L).length + hallSurroundBlockers(L).length + busShelterColliders(L).length + 1 /* the shelter's bench */ + signalPoleColliders().length;
     const bare = buildVillageGeometry(L, []);
     expect(bare.obstacles).toHaveLength(fixed);
-    expect(bare.cameraBoxes).toEqual([...hallWalls(L), ...busShelterColliders(L), busShelterRoofSlab(L)]);
+    expect(bare.cameraBoxes).toEqual([...hallWalls(L), busShelterRoofSlab(L)]);
     const box = { minX: 0, maxX: 1, minZ: 0, maxZ: 1 };
     const one = buildVillageGeometry(L, [{ id: "x", box, camera: false }]);
     expect(one.obstacles).toHaveLength(fixed + 1);
-    expect(one.cameraBoxes).toHaveLength(hallWalls(L).length + busShelterColliders(L).length + 1);
+    expect(one.cameraBoxes).toHaveLength(hallWalls(L).length + 1);
     const tall = { ...box, height: 3 };
     const generated = buildVillageGeometry(L, { obstacles: [box], cameraBoxes: [tall] });
     expect(generated.obstacles).toHaveLength(fixed + 1);
     expect(generated.obstacles).toContainEqual(box);
     expect(generated.obstacles.slice(-busShelterColliders(L).length - 1, -1)).toEqual(busShelterColliders(L));
     expect(generated.obstacles.at(-1)).toEqual(busShelterBenchCollider(L));
-    expect(generated.cameraBoxes).toEqual([...hallWalls(L), tall, ...busShelterColliders(L), busShelterRoofSlab(L)]); // the height is kept
+    expect(generated.cameraBoxes).toEqual([...hallWalls(L), tall, busShelterRoofSlab(L)]); // the height is kept; the shelter's thin glass is no camera box (seated camera)
     expect(generated.bounds).toEqual(bare.bounds);
   });
 

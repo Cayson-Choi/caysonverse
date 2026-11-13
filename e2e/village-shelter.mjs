@@ -147,7 +147,7 @@ await run.step("jump under the shelter roof and in the open", async () => {
   });
   const top = await avatarTop();
   const head = under.max + top;
-  run.check("in the shelter the head stays under the roof's underside (2.55 m)", under.max > 0.1 && head < 2.55, { lift: under.max, avatarTop: top, headTop: head, at: inside });
+  run.check("in the shelter the head stays under the roof's underside (3.3 m)", under.max > 0.1 && head < 3.3, { lift: under.max, avatarTop: top, headTop: head, at: inside });
   await sleep(500);
   await walkAndWait(p, 24, 12, 40000, 0.8);
   await sleep(800);

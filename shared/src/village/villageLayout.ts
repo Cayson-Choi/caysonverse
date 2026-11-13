@@ -565,10 +565,10 @@ export function busShelterBenchCollider(layout: Pick<VillageLayout, "busStop"> =
 
 /**
  * The shelter's roof (art/village/tools/build_busstop.py build_shelter): an arched sheet 2.1 m (x) by 4.1 m (z) round the
- * shelter's centre, its underside 2.55 m up at the posts, the crown and the blue trim boards reaching 2.8 m. Shared by the
+ * shelter's centre, its underside 3.3 m up at the posts (owner 2026-11-13: the wizard hat, 2.69 m, touched the old 2.55 m roof), the crown and the blue trim boards reaching 3.55 m. Shared by the
  * camera slab (`busShelterRoofSlab`) and the jump's headroom (overhead.ts).
  */
-export const BUS_SHELTER_ROOF = { halfX: 1.05, halfZ: 2.05, underside: 2.55, top: 2.8 } as const;
+export const BUS_SHELTER_ROOF = { halfX: 1.05, halfZ: 2.05, underside: 3.3, top: 3.55 } as const;
 
 /**
  * The shelter's roof as a camera box, like the hall's ceiling slab: a camera under it (the player standing in the shelter)
@@ -795,7 +795,7 @@ export function buildVillageGeometry(
     villageBounds(layout),
     hallWalls(layout),
     [...areaGapBlockers(layout), ...hallSurroundBlockers(layout), ...village.obstacles, ...signalPoleColliders(), ...busShelterColliders(layout), busShelterBenchCollider(layout), ...(hall?.obstacles ?? []), ...extra],
-    [...village.cameraBoxes, ...busShelterColliders(layout), busShelterRoofSlab(layout), ...(hall?.cameraBoxes ?? [])],
+    [...village.cameraBoxes, busShelterRoofSlab(layout), ...(hall?.cameraBoxes ?? [])],
   );
 }
 

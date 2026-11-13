@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { JUMP_DURATION_MS, JUMP_RATE } from "@caysonverse/shared/constants";
-import { AVATAR_TOP_M, jumpHeadroom } from "@caysonverse/shared/village/overhead";
+import { jumpHeadroom } from "@caysonverse/shared/village/overhead";
 import { BUS_SHELTER_ROOF, VILLAGE_LAYOUT } from "@caysonverse/shared/village/villageLayout";
 import {
   JUMP_CLIENT_COOLDOWN_MS,
@@ -51,8 +51,9 @@ describe("jumpOffsetY", () => {
 
 describe("jumpOffsetY under a ceiling (headroom)", () => {
   const c = VILLAGE_LAYOUT.busStop.shelter.centre;
-  const under = jumpHeadroom(c.x, c.z, "village");
-  const head = (lift: number) => AVATAR_TOP_M + lift; // the default avatar's top (a bare head)
+  const WIZARD_TOP = 2.69; // the tallest head (wizard hat): the 3.3 m roof leaves it 0.58 m, less than the 1 m hop
+  const under = jumpHeadroom(c.x, c.z, "village", WIZARD_TOP);
+  const head = (lift: number) => WIZARD_TOP + lift;
 
   it("in the open the hop is exactly the same as before, with or without an infinite headroom", () => {
     for (let ms = 0; ms <= JUMP_DURATION_MS; ms += 10) {

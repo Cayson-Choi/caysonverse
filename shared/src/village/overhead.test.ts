@@ -12,11 +12,11 @@ describe("what is over a jumper's head", () => {
     expect(jumpHeadroom(34.1, -6.5, "village")).toBe(Infinity); // on the bus's lane, 6 m from the shelter
   });
 
-  it("under the bus shelter's roof the headroom is the roof's underside less the tallest head, well under the 1 m hop", () => {
+  it("under the bus shelter's roof the headroom is the roof's underside less the tallest head, a hat's clearance", () => {
     const room = jumpHeadroom(c.x, c.z, "village");
     expect(room).toBeCloseTo(BUS_SHELTER_ROOF.underside - AVATAR_TOP_M - HEAD_CLEARANCE_M, 9);
     expect(room).toBeGreaterThan(0);
-    expect(room).toBeLessThan(1); // the 1 m apex would put the head through the roof
+    expect(room).toBeGreaterThan(0.9); // the roof is 3.3 m: even the tallest head (wizard, 2.69 m) keeps 0.58 m to hop
     // everywhere in the shelter's glass footprint, front edge to back
     for (const [dx, dz] of [[-0.7, -1.7], [0.7, 1.7], [0, 0], [-0.7, 1.7]]) expect(jumpHeadroom(c.x + dx!, c.z + dz!, "village")).toBeCloseTo(room, 9);
   });
@@ -27,7 +27,9 @@ describe("what is over a jumper's head", () => {
     const wizard = jumpHeadroom(c.x, c.z, "village", 2.69);
     expect(bare).toBeGreaterThan(beanie);
     expect(beanie).toBeGreaterThan(0);
-    expect(wizard).toBe(0); // the 2.69 m hat is already through the 2.55 m roof: it cannot rise
+    expect(wizard).toBeCloseTo(3.3 - 2.69 - HEAD_CLEARANCE_M, 9); // the 2.69 m hat clears the 3.3 m roof with room for a small hop
+    expect(wizard).toBeGreaterThan(0.5);
+    expect(jumpHeadroom(c.x, c.z, "village", 3.4)).toBe(0); // one taller than the roof has none
     expect(bare).toBeCloseTo(BUS_SHELTER_ROOF.underside - 2.18 - HEAD_CLEARANCE_M, 9);
   });
 
