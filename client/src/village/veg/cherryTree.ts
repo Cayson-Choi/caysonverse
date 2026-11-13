@@ -22,6 +22,7 @@ import {
   type Envelope,
   type GrownTwig,
   type Hang,
+  type KeepOut,
 } from "./crownGrowth";
 import { PLAZA_CHERRY_SPECS, VILLAGE_TREE_SPECS, treeSkeleton, type Branch, type TreeSkeleton, type TreeSpec } from "./treeSkeleton";
 
@@ -99,6 +100,8 @@ export interface GrowOptions {
   bunchStep: number;
   /** The closest two bunches may be (m). */
   minD?: number;
+  /** Space the crown keeps out of (crownGrowth.KeepOut): no twig grows into it, no bunch hangs there. */
+  keepOut?: KeepOut;
 }
 
 export const CHERRY_GROW: GrowOptions = { attractors: 540, bunchStep: 0.08 };
@@ -110,7 +113,7 @@ export function growCherry(sk: CherrySkeleton, opts: GrowOptions = CHERRY_GROW):
   const rand = mulberry32(9000 + sk.index * 7919);
   const env = crownEnvelope(sk);
   const salt = sk.index * 3 + 1;
-  const grown = colonise(sk, env, salt, rand, { ...CHERRY_COLONISE, attractors: opts.attractors });
+  const grown = colonise(sk, env, salt, rand, { ...CHERRY_COLONISE, attractors: opts.attractors, keepOut: opts.keepOut });
 
   // bunches along the outer part of every twig, and on the outer ends of the limbs' side branches
   const bunches: Bunch[] = [];
@@ -127,6 +130,7 @@ export function growCherry(sk: CherrySkeleton, opts: GrowOptions = CHERRY_GROW):
     const rho = envelopeRadius(env, p);
     if (!force && rho > lumpyLimit(p, salt) * 1.06) return;
     if (!force && isSkyGap(p, salt)) return;
+    if (opts.keepOut?.(p)) return;
     const i0 = Math.floor(p[0] / cell);
     const j0 = Math.floor(p[1] / cell);
     const k0 = Math.floor(p[2] / cell);

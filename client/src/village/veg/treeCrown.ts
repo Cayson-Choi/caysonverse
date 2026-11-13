@@ -23,6 +23,7 @@ import {
   type Envelope,
   type GrownTwig,
   type Hang,
+  type KeepOut,
 } from "./crownGrowth";
 import type { Branch, TreeSkeleton } from "./treeSkeleton";
 
@@ -191,12 +192,12 @@ function facing(axis: Vec3, outward: Vec3, jitter: Vec3): Vec3 {
 }
 
 /** Twigs and leaf sprays of a broadleaf tree (see the file header). */
-export function growBroadleaf(sk: TreeSkeleton, o: BroadleafOptions = GREEN_GROW, kind: LeafKind = "green"): LeafCrown {
+export function growBroadleaf(sk: TreeSkeleton, o: BroadleafOptions = GREEN_GROW, kind: LeafKind = "green", keepOut?: KeepOut): LeafCrown {
   const rand = mulberry32(7000 + sk.index * 7919);
   const env = broadleafEnvelope(sk, o);
   const salt = sk.index * 5 + 2;
   const attractors = Math.max(o.minAttractors, Math.round(o.density * env.rx * env.rx * (env.up + env.down)));
-  const grown = colonise(sk, env, salt, rand, { ...o.colonise, attractors });
+  const grown = colonise(sk, env, salt, rand, { ...o.colonise, attractors, keepOut });
   const leaves: Leaf[] = [];
   const hangs: Hang[] = [];
   const spacing = new Spacing(0.25);
@@ -208,6 +209,7 @@ export function growBroadleaf(sk: TreeSkeleton, o: BroadleafOptions = GREEN_GROW
     if (!force && envelopeRadius(env, p) > lumpyLimit(p, salt) * 1.08) return;
     if (!force && isSkyGap(p, salt, o.colonise.gap)) return;
     if (spacing.near(p, force ? o.minD * 0.5 : o.minD)) return;
+    if (keepOut?.(p)) return;
     let axis: Vec3;
     if (tip) axis = norm(add(add(dir, mul(outward, 0.35)), [0, 0.2, 0]));
     else {

@@ -23,6 +23,7 @@ import { preloadBus } from "./villageBusLoader";
 import { createVegetation, hideLegacyVegetationSources, vegModeFrom, type VegStats, type VillageVegetation } from "./veg/villageVegetation";
 import { createWaterfall3D, hideWaterfallCards, type Waterfall3D } from "./waterfall3d";
 import type { Object3D } from "three";
+import type { DrawnGap } from "./veg/drawnGap";
 
 declare global {
   interface Window {
@@ -30,6 +31,8 @@ declare global {
     __cvVillage?: () => VillageNodes;
     /** Dev-only: the 3D vegetation's numbers (veg3d: mode, instances per level, triangles, draw calls), or null (`?veg=old`). */
     __cvVeg?: () => VegStats | null;
+    /** Dev-only: every leaf spray's and blossom bunch's gap to the drawn twigs and bark (slow: checks only). */
+    __cvVegDrawn?: () => DrawnGap | null;
   }
 }
 
@@ -73,6 +76,7 @@ export function VillageModel({ tier }: { tier: VillageTier }) {
   const gltf = useGLTF(VILLAGE_MODEL_URL, DRACO_PATH);
   const lightmap = useTexture(VILLAGE_LIGHTMAP_URL);
   const gl = useThree((s) => s.gl);
+  const getThree = useThree((s) => s.get);
   const nodes = useMemo(
     // A texture already on the GPU (a rich-to-light switch mid-visit) is never capped: its storage is immutable.
     () =>
@@ -88,17 +92,29 @@ export function VillageModel({ tier }: { tier: VillageTier }) {
       ),
     [gltf, lightmap, tier, gl],
   );
-  // The 3D flowers and cherry crowns (veg3d), built in steps after the village is up; once ready they hide the old
-  // cards in this clone (`?veg=old` in DEV keeps them). Disposing gives the clone its cards back.
+  // The 3D flowers, trees and bushes (veg3d), built in steps after the village is up (the old foliage cards and the
+  // plaza zelkova hidden at once; each tree shows as soon as it is grown, the nearest first); once ready they cut the
+  // old cards out of this clone (`?veg=old` in DEV keeps them). Disposing gives the clone its cards back.
   const [veg, setVeg] = useState<VillageVegetation | null>(null);
   useLayoutEffect(() => {
     let cancelled = false;
     let built: VillageVegetation | null = null;
     const mode = vegModeFrom(window.location.search, import.meta.env.DEV);
     const restoreLegacy = mode === "new" ? hideLegacyVegetationSources(nodes.root) : () => {};
-    void createVegetation(nodes.root, tier, mode, () => cancelled).then((v) => {
+    void createVegetation(nodes.root, tier, mode, () => cancelled, {
+      // the trees nearest the camera grow first, and each shows as soon as it is grown
+      focus: () => {
+        const p = getThree().camera.position;
+        return [p.x, p.y, p.z];
+      },
+      onShow: (v) => {
+        if (!cancelled) setVeg(v);
+      },
+    }).then((v) => {
       if (!v) {
-        restoreLegacy();
+        // a cancelled build: the cleanup gave the old foliage back already, and a newer effect (StrictMode's replay,
+        // a tier change) may have hidden it again since: leave that alone
+        if (!cancelled) restoreLegacy();
         return;
       }
       if (cancelled) v.dispose();
@@ -107,15 +123,21 @@ export function VillageModel({ tier }: { tier: VillageTier }) {
         setVeg(v);
       }
     });
-    if (import.meta.env.DEV) window.__cvVeg = () => built?.stats() ?? null;
+    if (import.meta.env.DEV) {
+      window.__cvVeg = () => built?.stats() ?? null;
+      window.__cvVegDrawn = () => built?.measureDrawn() ?? null;
+    }
     return () => {
       cancelled = true;
-      if (import.meta.env.DEV) delete window.__cvVeg;
+      if (import.meta.env.DEV) {
+        delete window.__cvVeg;
+        delete window.__cvVegDrawn;
+      }
       built?.dispose();
       restoreLegacy();
       setVeg(null);
     };
-  }, [nodes, tier]);
+  }, [nodes, tier, getThree]);
   const waterfall = useMemo<{ runtime: Waterfall3D; hidden: Object3D[] } | null>(() => {
     if (waterfallMode() === "old") return null;
     const hidden = hideWaterfallCards(nodes.root);

@@ -118,7 +118,8 @@ export interface VegTierConfig {
 export const VEG_TIERS: Readonly<Record<"high" | "low", VegTierConfig>> = {
   high: {
     flowers: { far: [10, 34, 110], hysteresis: 1.5, thin: 0.34, thinScale: 1.45, mid: 1 },
-    cherry: { far: [9, 55, 600], hysteresis: 2, thin: 0.55, thinScale: 1.3 },
+    // the 3D bunches out to 11 m (the sprites past it are sized to cover a crown as they do: no jump between them)
+    cherry: { far: [11, 55, 600], hysteresis: 2, thin: 0.55, thinScale: 1.3 },
     green: { far: [14, 60, 700], hysteresis: 2, thin: 0.42, thinScale: 1.35 },
     bush: { far: [12, 45, 400], hysteresis: 1.5 },
     windFar: true,
@@ -126,9 +127,9 @@ export const VEG_TIERS: Readonly<Record<"high" | "low", VegTierConfig>> = {
   low: {
     // phones: the full plants only right at the player's feet, the simple ones at half density, then sparse
     flowers: { far: [5, 18, 55], hysteresis: 1.5, thin: 0.2, thinScale: 1.7, mid: 0.5 },
-    // the full blossom clusters and leaf sprays only right round the camera (never a flat sprite or a folded sliver
-    // within a few metres), the bunch sprites and simple sprays beyond, half of them past 30 m
-    cherry: { far: [6, 30, 600], hysteresis: 2, thin: 0.5, thinScale: 1.35 },
+    // the full blossom clusters within 9 m (never a flat sprite within the 7-10 m a player looks at a tree from) and
+    // the full leaf sprays within 7 m, the bunch sprites and simple (still 3D) sprays beyond, half of them past 30 m
+    cherry: { far: [9, 30, 600], hysteresis: 1.5, thin: 0.5, thinScale: 1.35 },
     green: { far: [7, 32, 600], hysteresis: 2, thin: 0.34, thinScale: 1.45 },
     bush: { far: [6, 24, 300], hysteresis: 1.5 },
     windFar: false,

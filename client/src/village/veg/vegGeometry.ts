@@ -777,6 +777,43 @@ export const TWIG_BARK = {
   willow: ["#6F6447", "#8C8060"],
 } as const;
 
+/** How far (m) a phone's simplified twig may stray from the grown line (twigMesh). */
+export const TWIG_SIMPLIFY_TOL = 0.01;
+
+/** Douglas-Peucker: the indices of the points of `pts` to keep so the line stays within `tol` (m) of the full one. */
+export function simplifyLine(pts: readonly Vec3[], tol: number): number[] {
+  const n = pts.length;
+  if (n <= 2) return pts.map((_, i) => i);
+  const keep = new Uint8Array(n);
+  keep[0] = 1;
+  keep[n - 1] = 1;
+  const stack: Array<[number, number]> = [[0, n - 1]];
+  while (stack.length) {
+    const [a, b] = stack.pop()!;
+    const A = pts[a]!;
+    const ab = sub(pts[b]!, A);
+    const l2 = ab[0] * ab[0] + ab[1] * ab[1] + ab[2] * ab[2];
+    let worst = -1;
+    let at = -1;
+    for (let i = a + 1; i < b; i++) {
+      const ap = sub(pts[i]!, A);
+      const t = l2 > 0 ? Math.max(0, Math.min(1, (ap[0] * ab[0] + ap[1] * ab[1] + ap[2] * ab[2]) / l2)) : 0;
+      const d = Math.hypot(ap[0] - ab[0] * t, ap[1] - ab[1] * t, ap[2] - ab[2] * t);
+      if (d > worst) {
+        worst = d;
+        at = i;
+      }
+    }
+    if (worst > tol) {
+      keep[at] = 1;
+      stack.push([a, at], [at, b]);
+    }
+  }
+  const out: number[] = [];
+  keep.forEach((k, i) => k && out.push(i));
+  return out;
+}
+
 /** A tree's twigs as one mesh: 3-4 sided tubes in its bark colour, each vertex its light. */
 export function twigMesh(twigs: ReadonlyArray<{ branch: Branch; light: (p: Vec3, n: Vec3) => number }>, coarse = false, colours: readonly [string, string] = TWIG_BARK.cherry): BufferGeometry {
   const b = new GeoBuilder();
@@ -786,10 +823,11 @@ export function twigMesh(twigs: ReadonlyArray<{ branch: Branch; light: (p: Vec3,
     const sides = !coarse && branch.radii[0]! > 0.012 ? 4 : 3;
     let { pts, radii } = branch;
     if (coarse && pts.length > 3) {
-      // phones: base, middle and tip only (a twig is a pixel or two wide there)
-      const m = Math.floor(pts.length / 2);
-      pts = [pts[0]!, pts[m]!, pts[pts.length - 1]!];
-      radii = [radii[0]!, radii[m]!, radii[radii.length - 1]!];
+      // phones: fewer rings, but the twig keeps its shape within 1 cm (a willow strand's hook, a bowed twig), so
+      // the leaves and blossoms placed on the full line stay on the drawn one
+      const keep = simplifyLine(pts, TWIG_SIMPLIFY_TOL);
+      pts = keep.map((i) => pts[i]!);
+      radii = keep.map((i) => radii[i]!);
     }
     tube(b, pts, radii, sides, (_t, ny) => mix(bark, barkTop, Math.max(0, ny)), () => 0, light);
   }

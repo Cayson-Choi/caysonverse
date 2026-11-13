@@ -19,12 +19,12 @@ import {
 import { isMesh, materialsOf } from "../../game/hub/hubModelPrep";
 import { CLICK_PICK_KEY } from "../../game/clickPick";
 import { BACKDROP_FOREST_PREFIX, CHERRY_MATERIAL, type VillageTier } from "../villageModelPrep";
-import { cherryConnection, growCherry, type Bunch, type CherryCrown } from "./cherryTree";
-import { distToPolyline, type Connection } from "./crownGrowth";
-import { GREEN_GROW, YOUNG_GROW, growBroadleaf, growWillow, leafConnection, type Leaf, type LeafCrown } from "./treeCrown";
+import { CHERRY_GROW, cherryConnection, crownEnvelope, growCherry, type Bunch, type CherryCrown } from "./cherryTree";
+import type { Connection, Envelope, KeepOut } from "./crownGrowth";
+import { BUILDING_BOX, buildingSpace, crownKeepOut, type Box } from "./crownSpace";
+import { GREEN_GROW, YOUNG_GROW, broadleafEnvelope, growBroadleaf, growWillow, leafConnection, willowEnvelope, type Leaf, type LeafCrown } from "./treeCrown";
 import {
   PLAZA_CHERRY_SPECS,
-  PLAZA_ZELKOVA_SPEC,
   SHRUB_VARIANT,
   VARIANT_SPECS,
   VILLAGE_TREE_SPECS,
@@ -36,10 +36,12 @@ import {
   type TreeSkeleton,
 } from "./treeSkeleton";
 import { bushSize, findBushes, type Bush } from "./shrubs";
+import { removePlazaZelkova, zelkovaSkeleton } from "./zelkova";
+import { TriangleGrid, faceNormal, type DrawnGap, type V3 } from "./drawnGap";
 import { placeFlowers, SPECIES_COUNT, type Plant } from "./flowerPlacement";
 import { keepTriangles, readCards, type AttributeLike, type Card } from "./vegCards";
 import { makeBlossomAtlas } from "./vegAtlas";
-import { GeoBuilder, TWIG_BARK, blossomBunch, bunchSprite, bushGeometry, greenClusterFar, leafSpray, rgba, speciesMeshes, twigMesh, willowSpray } from "./vegGeometry";
+import { TWIG_BARK, blossomBunch, bunchSprite, bushGeometry, greenClusterFar, leafSpray, speciesMeshes, twigMesh, willowSpray } from "./vegGeometry";
 import { chooseLod, groupIntoCells, sphereDistance, VEG_TIERS, type Cell, type LodBands, type Vec3, type VegTierConfig } from "./vegLod";
 import { vegMaterial, vegTimeUniform } from "./vegMaterial";
 import { DAY_SUN_DIRECTION } from "../dayNightBlend";
@@ -61,14 +63,18 @@ import type { VegMode } from "./vegMode";
  *    (treeCrown.ts). The instanced street and orchard trees are grown once at the origin and placed by the file's own
  *    instance matrices. Each tree has its own instanced meshes for the near and middle levels (three culls them by
  *    the crown's sphere), the far level is one shared layer per kind (the clusters thinned and enlarged), and its
- *    twigs are drawn within `twigFar`.
+ *    twigs are drawn within `twigFar`. The blossoms' middle-level sprites are sized to cover a crown as the near
+ *    level's 3D bunches do (no jump at the boundary).
+ *  - Crowns make room (crownSpace.ts): a crown does not grow into a house beside it, and two crowns that meet share
+ *    the air between them (an instanced tree that meets something grows its own crown).
+ *  - The build is cut into steps; the old foliage and the plaza zelkova are hidden on arrival, and each tree shows
+ *    as soon as it is grown, the nearest the camera first.
  *  - Bushes: every bush (the instanced ones and those merged into the leaf meshes, found from their cards: shrubs.ts)
  *    is a round 3D bush on the ground, three levels.
  *  - The old cards of all of these are hidden by a copy of their mesh's index without them (the file and the loader's
- *    geometry are not touched); the cherries' fallen petals stay. The plaza zelkova is taken out whole (the owner,
- *    2026-11-12: "아예 저 나무는 몸통을 만들지 말고 없애버려"): its bark and cards are hidden and its round deck gets a
- *    plank top where the trunk stood. The backdrop forest on the hills (outside the walk bounds) keeps its crossed
- *    cards.
+ *    geometry are not touched); the cherries' fallen petals stay. The plaza zelkova is taken out whole on arrival
+ *    (zelkova.ts; the owner, 2026-11-12: "아예 저 나무는 몸통을 만들지 말고 없애버려"). The backdrop forest on the
+ *    hills (outside the walk bounds, 11 m or more from where a player can stand) keeps its crossed cards.
  *  - `?veg=old` (DEV) keeps the old village as it was; `?veg=both` shows both.
  *  - The phone tier (low) never draws the full levels, has fewer and simpler plants and less wind.
  */
@@ -100,6 +106,8 @@ export interface VegStats {
   /** Instanced leaf meshes hidden whole, and those cut down to their fallen petals. */
   hiddenInstanced: string[];
   petalInstanced: string[];
+  /** The crowns that make room for a house or a neighbouring crown (crownSpace.ts). */
+  makingRoom: string[];
   /** The zelkova's bark triangles taken out. */
   zelkovaBarkTris: number;
   keptFlowerCards: number;
@@ -113,6 +121,8 @@ export interface VegStats {
   twigVertices: number;
   /** Milliseconds of main-thread work the build took (in steps, the main thread handed back between them). */
   genMs: number;
+  /** Milliseconds from the build's start to its end (the work, and the frames drawn in between). */
+  wallMs: number;
   /** Each step's milliseconds. */
   steps: Record<string, number>;
 }
@@ -148,9 +158,13 @@ const cardsOf = (mesh: Mesh): Card[] => {
   return readCards(worldPositions(mesh), g.index ? (g.index.array as ArrayLike<number>) : null, null, null);
 };
 
+/** The zelkova's bark triangles the arrival took out, per village clone (the stats read it). */
+const zelkovaTris = new WeakMap<Object3D, number>();
+
 /**
- * Hide the old flat foliage at once, before the 3D vegetation is ready (no flash of the old cards on arrival). The
- * backdrop forest on the hills keeps its cards (outside the walk bounds; never seen up close).
+ * Hide the old flat foliage at once, before the 3D vegetation is ready (no flash of the old cards on arrival), and take
+ * the plaza zelkova out (zelkova.ts). The backdrop forest on the hills keeps its cards (outside the walk bounds; never
+ * seen up close). The returned restore gives it all back; it does so once (later calls do nothing).
  */
 export function hideLegacyVegetationSources(root: Object3D): () => void {
   const hidden: Array<{ object: Object3D; visible: boolean }> = [];
@@ -160,8 +174,15 @@ export function hideLegacyVegetationSources(root: Object3D): () => void {
     hidden.push({ object, visible: object.visible });
     object.visible = false;
   });
+  const zelkova = removePlazaZelkova(root);
+  zelkovaTris.set(root, zelkova.tris);
+  let done = false;
   return () => {
+    if (done) return;
+    done = true;
     for (const entry of hidden) entry.object.visible = entry.visible;
+    zelkova.restore();
+    zelkovaTris.delete(root);
   };
 }
 
@@ -190,10 +211,17 @@ class Layer {
   readonly mesh: InstancedMesh;
   readonly light: InstancedBufferAttribute;
   readonly tris: number;
+  readonly capacity: number;
   n = 0;
 
-  constructor(geometry: BufferGeometry, material: Material, capacity: number, name: string) {
+  constructor(
+    readonly geometry: BufferGeometry,
+    readonly material: Material,
+    capacity: number,
+    name: string,
+  ) {
     const cap = Math.max(1, capacity);
+    this.capacity = cap;
     this.light = new InstancedBufferAttribute(new Float32Array(cap), 1);
     geometry.setAttribute("aLight", this.light);
     this.mesh = new InstancedMesh(geometry, material, cap);
@@ -262,7 +290,15 @@ interface FlowerCell {
 }
 
 /** The bunch sprite is this much bigger than the bunch's measured size (its picture has a ragged edge). */
-const SPRITE_K = 1.3;
+const SPRITE_K = 0.62;
+/**
+ * Every bunch is drawn this much bigger than its measured size (round its spur, so it stays on its twig). With the
+ * sprite's size above, the near level's 3D bunches and the middle level's sprites cover a crown alike (measured from
+ * one camera with `?vegLod=near|mid`: the crown no longer jumps from a dense puff to a thin one at the boundary).
+ */
+const BUNCH_K = 1.3;
+/** The bunch mesh's spur (where it meets the twig), its local height at scale 1 (blossomBunch). */
+const BUNCH_SPUR_Y = -0.02;
 /** The close-up bunch mesh is ~0.24 m across at scale 1. */
 const BUNCH_MESH_SIZE = 0.24;
 
@@ -300,6 +336,19 @@ interface BushDraw {
   batch: Batch;
   level: number;
 }
+
+export interface BuildOptions {
+  /** Where the player looks from (the trees nearest it are grown first). */
+  focus?: () => Vec3 | null;
+  /**
+   * Called once the vegetation can be drawn (the flowers made, the trees about to grow): from then on each tree shows
+   * as soon as it is grown, nearest the focus first, instead of all of them at the build's end.
+   */
+  onShow?: (v: VillageVegetation) => void;
+}
+
+/** A slice of the build's work (ms) before the main thread is handed back. */
+const STEP_SLICE_MS = 12;
 
 /** Hand the main thread back between the build's steps (a frame can be drawn, input handled). */
 const yieldToMain = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
@@ -374,6 +423,18 @@ const tintOf = (seed: number): number[] => {
   return [0.92 + 0.12 * f(1), 0.95 + 0.08 * f(2), 0.88 + 0.12 * f(3)];
 };
 
+/**
+ * DEV only: `?vegLod=near|mid` draws every tree at that level wherever it stands (comparing the two levels from one
+ * camera: they must look alike at the boundary). Production builds always use the tier's bands.
+ */
+function forcedLevels(cfg: VegTierConfig): VegTierConfig {
+  if (!import.meta.env.DEV || typeof location === "undefined") return cfg;
+  const force = new URLSearchParams(location.search).get("vegLod");
+  if (force !== "near" && force !== "mid") return cfg;
+  const far = force === "near" ? [5000, 5001, 5002] : [-1, 5000, 5001];
+  return { ...cfg, cherry: { ...cfg.cherry, far }, green: { ...cfg.green, far } };
+}
+
 export class VillageVegetation {
   readonly group = new Group();
   private readonly own: Array<{ dispose(): void }> = [];
@@ -395,9 +456,11 @@ export class VillageVegetation {
   private readonly hiddenInstanced: Array<{ mesh: InstancedMesh; visible: boolean }> = [];
   private readonly reshown: Array<{ mesh: Mesh; visible: boolean }> = [];
   private readonly twigFar: number;
+  /** The village clone the vegetation dresses (its bark, for measuring the connection on what is drawn). */
+  private root: Object3D | null = null;
 
   private constructor(tier: VillageTier, mode: Exclude<VegMode, "old">) {
-    this.cfg = VEG_TIERS[tier];
+    this.cfg = forcedLevels(VEG_TIERS[tier]);
     this.twigFar = tier === "low" ? 24 : 45;
     this.group.name = "village_vegetation";
     this.group.matrixAutoUpdate = false;
@@ -415,6 +478,7 @@ export class VillageVegetation {
       hiddenCards: { flora: 0, cherry: 0, green: 0 },
       hiddenInstanced: [],
       petalInstanced: [],
+      makingRoom: [],
       zelkovaBarkTris: 0,
       keptFlowerCards: 0,
       levels: { flowers: [0, 0, 0], cherry: [0, 0, 0], green: [0, 0, 0], willow: [0, 0, 0], bush: [0, 0, 0] },
@@ -423,25 +487,36 @@ export class VillageVegetation {
       twigMeshes: 0,
       twigVertices: 0,
       genMs: 0,
+      wallMs: 0,
       steps: {},
     };
   }
 
   /**
-   * Build the vegetation for a dressed village clone in steps (the main thread is handed back between them, so the
-   * arrival is never frozen for the whole build). The old cards are hidden at the end, at once (VillageModel hides the
-   * old foliage meshes on arrival already). `cancelled()` true: stop and free what was made (resolves null).
+   * Build the vegetation for a dressed village clone in steps (the main thread is handed back between slices of
+   * them, so the arrival is never frozen for the whole build). VillageModel hides the old foliage meshes on arrival;
+   * the old cards are cut out at the end. `options.onShow` gets the vegetation as soon as it can be drawn (each tree
+   * then shows as it is grown). `cancelled()` true: stop and free what was made (resolves null).
    */
-  static async build(root: Object3D, tier: VillageTier, mode: Exclude<VegMode, "old">, cancelled: () => boolean = () => false): Promise<VillageVegetation | null> {
+  static async build(root: Object3D, tier: VillageTier, mode: Exclude<VegMode, "old">, cancelled: () => boolean = () => false, options: BuildOptions = {}): Promise<VillageVegetation | null> {
+    const { focus, onShow } = options;
     const v = new VillageVegetation(tier, mode);
+    v.root = root;
     const steps = v.statsData.steps;
     let work = 0;
-    let t = performance.now();
+    const start = performance.now();
+    let t = start;
+    let slice = start;
     const step = async (name: string) => {
       const now = performance.now();
       steps[name] = Math.round(now - t);
       work += now - t;
-      await yieldToMain();
+      // the main thread is handed back once a slice of work is done (not after every small step: each hand-back
+      // costs a frame of the village's drawing before the build goes on)
+      if (now - slice >= STEP_SLICE_MS) {
+        await yieldToMain();
+        slice = performance.now();
+      }
       t = performance.now();
       return cancelled();
     };
@@ -510,7 +585,7 @@ export class VillageVegetation {
     if (await step("flowerMeshes")) return v.abandon();
 
     // ── the trees' skeletons, replayed from the art script (the very limbs and cards of the file) ──
-    const zelkova = treeSkeleton(PLAZA_ZELKOVA_SPEC);
+    const zelkova = zelkovaSkeleton();
     const plaza = PLAZA_CHERRY_SPECS.map(treeSkeleton);
     const village = VILLAGE_TREE_SPECS.map(treeSkeleton);
     const willows = WILLOW_SPECS.map(treeSkeleton);
@@ -534,51 +609,6 @@ export class VillageVegetation {
     };
     if (await step("skeletons")) return v.abandon();
 
-    // ── grow the crowns, one tree per step ──
-    // each crown's connection is measured as it is grown (the e2e and the dev hook read it)
-    const blossoms: Array<{ crown: CherryCrown; kind: TreeKindStat; xfs: Matrix4[] | null }> = [];
-    const leafy: Array<{ crown: LeafCrown; kind: TreeKindStat; xfs: Matrix4[] | null }> = [];
-    const conn: Connection = { clusters: 0, twigs: 0, maxGap: 0, unattached: 0, bareTips: 0 };
-    const addConn = (c: Connection) => {
-      conn.clusters += c.clusters;
-      conn.twigs += c.twigs;
-      conn.maxGap = Math.max(conn.maxGap, c.maxGap);
-      conn.unattached += c.unattached;
-      conn.bareTips += c.bareTips;
-    };
-    const blossom = (crown: CherryCrown, kind: TreeKindStat, list: Matrix4[] | null) => {
-      blossoms.push({ crown, kind, xfs: list });
-      addConn(cherryConnection(crown));
-    };
-    const leafyCrown = (crown: LeafCrown, kind: TreeKindStat, list: Matrix4[] | null) => {
-      leafy.push({ crown, kind, xfs: list });
-      addConn(leafConnection(crown));
-    };
-    for (const sk of plaza) {
-      blossom(growCherry(sk), "plaza_cherry", null);
-      if (await step(`cherry${sk.index}`)) return v.abandon();
-    }
-    for (const sk of village) {
-      if (sk.kind === "cherry") blossom(growCherry(sk), "village_cherry", null);
-      else leafyCrown(growBroadleaf(sk, GREEN_GROW, "green"), "village_green", null);
-      if (await step(`${sk.kind}${sk.index}`)) return v.abandon();
-    }
-    blossom(growCherry(variant.street_cherry, { attractors: 400, bunchStep: 0.08 }), "street_cherry", xfs.street_cherry);
-    if (await step("street_cherry")) return v.abandon();
-    blossom(growCherry(variant.orchard, { attractors: 170, bunchStep: 0.08 }), "orchard", xfs.orchard);
-    if (await step("orchard")) return v.abandon();
-    leafyCrown(growBroadleaf(variant.street_green, GREEN_GROW, "green"), "street_green", xfs.street_green);
-    if (await step("street_green")) return v.abandon();
-    for (let i = 0; i < young.length; i++) {
-      leafyCrown(growBroadleaf(young[i]!, YOUNG_GROW, "young"), "young", null);
-      if (i % 5 === 4 && (await step(`young${i}`))) return v.abandon();
-    }
-    for (const sk of willows) {
-      leafyCrown(growWillow(sk), "willow", null);
-      if (await step(`willow${sk.index}`)) return v.abandon();
-    }
-    stats.connection = conn;
-
     // ── materials and the clusters' meshes ──
     const atlas: Texture | null = makeBlossomAtlas();
     if (atlas) v.own.push(atlas);
@@ -601,9 +631,9 @@ export class VillageVegetation {
     const gr = cfg.green;
     const triCount = (g: BufferGeometry) => (g.index ? g.index.count : g.getAttribute("position").count) / 3;
     // a class's far layer holds every tree's thinned clusters at most (made once its trees are in)
+    // (the far layer grows as the trees come in: refillFar)
     const mkClass = (cls: DrawClass, geos: [BufferGeometry, BufferGeometry], mats: [Material, Material], farGeo: BufferGeometry, farMat: Material, bands: ClassDraw["bands"]) => {
-      const cap = v.trees.filter((t) => t.cls === cls).reduce((a, t) => a + t.far.n, 0);
-      const far = new Layer(farGeo, farMat, cap, `veg_${cls}_far`);
+      const far = new Layer(farGeo, farMat, 1024, `veg_${cls}_far`);
       far.mesh.userData[CLICK_PICK_KEY] = "ignore";
       v.group.add(far.mesh);
       v.own.push(far.mesh);
@@ -620,7 +650,7 @@ export class VillageVegetation {
       tmpQ.setFromUnitVectors(UP, tmpP.set(b.nx, b.ny, b.nz));
       tmpQ2.setFromAxisAngle(UP, b.seed * Math.PI * 2);
       tmpQ.multiply(tmpQ2);
-      const s = b.size / BUNCH_MESH_SIZE;
+      const s = (b.size / BUNCH_MESH_SIZE) * BUNCH_K;
       return out.compose(tmpP.set(b.x, b.y, b.z), tmpQ, tmpS.set(s, s, s));
     };
     const leafMatrix = (l: Leaf, out: Matrix4) => {
@@ -712,37 +742,132 @@ export class VillageVegetation {
       return geo;
     };
 
-    for (const b of blossoms) {
-      const crown = b.crown;
-      const geo = twigGeo(crown.twigs, crown.skeleton.crownC, crown.skeleton.R, TWIG_BARK.cherry);
-      stats.trees[b.kind].twigs += crown.twigs.length * (b.xfs ? b.xfs.length : 1);
-      const list = b.xfs ?? [null];
-      for (let i = 0; i < list.length; i++) {
-        const xf = list[i]!;
-        const d = addTree(`${b.kind}_${crown.skeleton.index}_${i}`, "blossom", b.kind, crown.bunches, bunchMatrix, bunchTint, crown.bounds, xf, ch);
-        d.twig = twigObject(geo, xf, `veg_twigs_${d.name}`);
-        if (i % 12 === 11 && (await step(`blossomDraw${crown.skeleton.index}_${i}`))) return v.abandon();
-      }
-      if (await step(`blossomDraw${crown.skeleton.index}`)) return v.abandon();
-    }
-    mkClass("blossom", [bunchGeo, spriteGeo], [bunchMat, spriteMat], spriteFarGeo, spriteMat, ch);
     const leafTint = (l: Leaf) => tintOf(l.seed);
-    for (const l of leafy) {
-      const crown = l.crown;
-      const cls: DrawClass = crown.kind === "willow" ? "willow" : "leaf";
-      const geo = twigGeo(crown.twigs, crown.env.c, crown.env.rx, crown.kind === "willow" ? TWIG_BARK.willow : TWIG_BARK.green);
-      stats.trees[l.kind].twigs += crown.twigs.length * (l.xfs ? l.xfs.length : 1);
-      const list = l.xfs ?? [null];
-      for (let i = 0; i < list.length; i++) {
-        const xf = list[i]!;
-        const d = addTree(`${l.kind}_${crown.skeleton.index}_${i}`, cls, l.kind, crown.leaves, leafMatrix, leafTint, crown.bounds, xf, gr);
-        d.twig = twigObject(geo, xf, `veg_twigs_${d.name}`);
-        if (i % 8 === 7 && (await step(`leafDraw${crown.skeleton.index}_${i}`))) return v.abandon();
-      }
-      if (await step(`leafDraw${crown.skeleton.index}`)) return v.abandon();
-    }
+    mkClass("blossom", [bunchGeo, spriteGeo], [bunchMat, spriteMat], spriteFarGeo, spriteMat, ch);
     mkClass("leaf", [sprayGeos[0], sprayGeos[1]], [leafMat, leafMat], sprayGeos[2], leafFarMat, gr);
     mkClass("willow", [willowGeos[0], willowGeos[1]], [willowMat, willowMat], willowGeos[2], leafFarMat, gr);
+
+    // ── grow the crowns, nearest the camera first, and show each tree as soon as it is grown ──
+    // each crown's connection is measured as it is grown (the e2e and the dev hook read it)
+    const conn: Connection = { clusters: 0, twigs: 0, maxGap: 0, unattached: 0, bareTips: 0 };
+    const addConn = (c: Connection) => {
+      conn.clusters += c.clusters;
+      conn.twigs += c.twigs;
+      conn.maxGap = Math.max(conn.maxGap, c.maxGap);
+      conn.unattached += c.unattached;
+      conn.bareTips += c.bareTips;
+    };
+    /** Where a crown is drawn: the instance matrix (null: as grown) and its number (the draw's name). */
+    type Place = { xf: Matrix4 | null; i: number };
+    const ONCE: Place[] = [{ xf: null, i: 0 }];
+    const drawBlossom = (crown: CherryCrown, kind: TreeKindStat, places: readonly Place[]) => {
+      addConn(cherryConnection(crown));
+      stats.bunches += crown.bunches.length * places.length;
+      const geo = twigGeo(crown.twigs, crown.skeleton.crownC, crown.skeleton.R, TWIG_BARK.cherry);
+      stats.trees[kind].twigs += crown.twigs.length * places.length;
+      for (const { xf, i } of places) {
+        const d = addTree(`${kind}_${crown.skeleton.index}_${i}`, "blossom", kind, crown.bunches, bunchMatrix, bunchTint, crown.bounds, xf, ch);
+        d.twig = twigObject(geo, xf, `veg_twigs_${d.name}`);
+      }
+    };
+    const drawLeafy = (crown: LeafCrown, kind: TreeKindStat, places: readonly Place[]) => {
+      addConn(leafConnection(crown));
+      const cls: DrawClass = crown.kind === "willow" ? "willow" : "leaf";
+      const geo = twigGeo(crown.twigs, crown.env.c, crown.env.rx, crown.kind === "willow" ? TWIG_BARK.willow : TWIG_BARK.green);
+      stats.trees[kind].twigs += crown.twigs.length * places.length;
+      for (const { xf, i } of places) {
+        const d = addTree(`${kind}_${crown.skeleton.index}_${i}`, cls, kind, crown.leaves, leafMatrix, leafTint, crown.bounds, xf, gr);
+        d.twig = twigObject(geo, xf, `veg_twigs_${d.name}`);
+      }
+    };
+    const f = focus?.() ?? [0, 0, 0];
+    const away = (x: number, z: number) => Math.hypot(x - f[0], z - f[2]);
+    const nearestOf = (list: readonly Place[]) => Math.min(Infinity, ...list.map((p) => away(p.xf!.elements[12]!, p.xf!.elements[14]!)));
+
+    // ── room for each crown: the houses beside it and the crowns it meets (crownSpace.ts) ──
+    const boxes: Box[] = [];
+    root.traverse((o) => {
+      if (!isMesh(o) || !BUILDING_BOX.test(o.name)) return;
+      o.updateWorldMatrix(true, false);
+      if (!o.geometry.boundingBox) o.geometry.computeBoundingBox();
+      const bb = o.geometry.boundingBox!.clone().applyMatrix4(o.matrixWorld);
+      boxes.push(buildingSpace(o.name, [bb.min.x, bb.min.y, bb.min.z], [bb.max.x, bb.max.y, bb.max.z]));
+    });
+    /** An envelope moved by an instance matrix (the trees stand upright: a turn about y and a uniform scale). */
+    const placedEnv = (e: Envelope, xf: Matrix4): Envelope => {
+      const k = new Vector3().setFromMatrixScale(xf).x;
+      const c = new Vector3(e.c[0], e.c[1], e.c[2]).applyMatrix4(xf);
+      return { c: [c.x, c.y, c.z], rx: e.rx * k, up: e.up * k, down: e.down * k };
+    };
+    const envOf = new Map<TreeSkeleton, Envelope>();
+    for (const sk of plaza) envOf.set(sk, crownEnvelope(sk));
+    for (const sk of village) envOf.set(sk, sk.kind === "cherry" ? crownEnvelope(sk) : broadleafEnvelope(sk, GREEN_GROW));
+    for (const sk of young) envOf.set(sk, broadleafEnvelope(sk, YOUNG_GROW));
+    for (const sk of willows) envOf.set(sk, willowEnvelope(sk));
+    const variantEnv = {
+      street_cherry: crownEnvelope(variant.street_cherry),
+      orchard: crownEnvelope(variant.orchard),
+      street_green: broadleafEnvelope(variant.street_green, GREEN_GROW),
+    };
+    type VariantKey = keyof typeof variantEnv;
+    const instEnv = Object.fromEntries((Object.keys(variantEnv) as VariantKey[]).map((k) => [k, xfs[k].map((xf) => placedEnv(variantEnv[k], xf))])) as Record<VariantKey, Envelope[]>;
+    const allEnvs = [...envOf.values(), ...Object.values(instEnv).flat()];
+    const keepOutOf = (sk: TreeSkeleton) => {
+      const k = crownKeepOut(envOf.get(sk)!, allEnvs, boxes);
+      if (k) stats.makingRoom.push(`${sk.kind}${sk.index}`);
+      return k;
+    };
+    const job = (name: string, d: number, run: () => void) => ({ name, d, run });
+    /**
+     * A variant's instances: those that meet nothing share one crown (grown once at the origin); each of the others
+     * grows its own, its keep-out carried to the origin through the instance matrix.
+     */
+    const instanceJobs = (key: VariantKey, kind: TreeKindStat, grow: (keepOut?: KeepOut) => CherryCrown | LeafCrown) => {
+      const shared: Place[] = [];
+      const out: Array<ReturnType<typeof job>> = [];
+      const draw = (crown: CherryCrown | LeafCrown, places: readonly Place[]) => ("bunches" in crown ? drawBlossom(crown, kind, places) : drawLeafy(crown, kind, places));
+      xfs[key].forEach((xf, i) => {
+        const world = crownKeepOut(instEnv[key][i]!, allEnvs, boxes);
+        if (!world) {
+          shared.push({ xf, i });
+          return;
+        }
+        stats.makingRoom.push(`${key}${i}`);
+        const w = new Vector3();
+        const local: KeepOut = (p) => {
+          w.set(p[0], p[1], p[2]).applyMatrix4(xf);
+          return world([w.x, w.y, w.z]);
+        };
+        out.push(job(`${key}${i}`, away(xf.elements[12]!, xf.elements[14]!), () => draw(grow(local), [{ xf, i }])));
+      });
+      if (shared.length) out.push(job(key, nearestOf(shared), () => draw(grow(), shared)));
+      return out;
+    };
+    const STREET_CHERRY = { attractors: 400, bunchStep: 0.08 };
+    const ORCHARD = { attractors: 170, bunchStep: 0.08 };
+    const jobs = [
+      ...plaza.map((sk) => job(`cherry${sk.index}`, away(sk.base[0], sk.base[2]), () => drawBlossom(growCherry(sk, { ...CHERRY_GROW, keepOut: keepOutOf(sk) }), "plaza_cherry", ONCE))),
+      ...village.map((sk) =>
+        job(`${sk.kind}${sk.index}`, away(sk.base[0], sk.base[2]), () =>
+          sk.kind === "cherry"
+            ? drawBlossom(growCherry(sk, { ...CHERRY_GROW, keepOut: keepOutOf(sk) }), "village_cherry", ONCE)
+            : drawLeafy(growBroadleaf(sk, GREEN_GROW, "green", keepOutOf(sk)), "village_green", ONCE),
+        ),
+      ),
+      ...instanceJobs("street_cherry", "street_cherry", (keepOut) => growCherry(variant.street_cherry, { ...STREET_CHERRY, keepOut })),
+      ...instanceJobs("orchard", "orchard", (keepOut) => growCherry(variant.orchard, { ...ORCHARD, keepOut })),
+      ...instanceJobs("street_green", "street_green", (keepOut) => growBroadleaf(variant.street_green, GREEN_GROW, "green", keepOut)),
+      ...young.map((sk) => job(`young${sk.index}`, away(sk.base[0], sk.base[2]), () => drawLeafy(growBroadleaf(sk, YOUNG_GROW, "young", keepOutOf(sk)), "young", ONCE))),
+      ...willows.map((sk) => job(`willow${sk.index}`, away(sk.base[0], sk.base[2]), () => drawLeafy(growWillow(sk), "willow", ONCE))),
+    ];
+    jobs.sort((p, q) => p.d - q.d);
+    // the vegetation is shown now (the flowers, and each tree as it comes)
+    onShow?.(v);
+    for (const job of jobs) {
+      job.run();
+      if (await step(job.name)) return v.abandon();
+    }
+    stats.connection = conn;
     stats.originBlobs = blobs;
 
     // ── the cards: which the replayed trees drew, and the bushes in what is left ──
@@ -815,17 +940,99 @@ export class VillageVegetation {
         stats.petalInstanced.push(mesh.name);
         stats.hiddenCards.cherry += canopy.length;
       }
-      stats.zelkovaBarkTris = v.removeZelkova(root, zelkova);
+      stats.zelkovaBarkTris = zelkovaTris.get(root) ?? 0;
     }
     stats.plants = placed.plants.length;
-    stats.bunches = blossoms.reduce((a, b) => a + b.crown.bunches.length * (b.xfs ? b.xfs.length : 1), 0);
     stats.twigs = Object.values(stats.trees).reduce((a, k) => a + k.twigs, 0);
     stats.hiddenCards.flora = hide ? placed.replaced.length + placed.kept.length : 0;
     stats.keptFlowerCards = hide ? 0 : placed.kept.length;
     steps.hide = Math.round(performance.now() - t);
     work += performance.now() - t;
     stats.genMs = Math.round(work);
+    stats.wallMs = Math.round(performance.now() - start);
     return v;
+  }
+
+  /**
+   * DEV/E2E: every cluster's gap to what is drawn (drawnGap.ts): the tree's twig mesh as built for this tier, and the
+   * village's bark (trunks and limbs, the instanced trees' too). Slow (seconds): for checks only, never per frame.
+   */
+  measureDrawn(): DrawnGap {
+    const bark = new TriangleGrid(0.25);
+    const m = new Matrix4();
+    const pa = new Vector3();
+    const pb = new Vector3();
+    const pc = new Vector3();
+    const addMesh = (grid: TriangleGrid, geo: BufferGeometry, world: Matrix4, normals: boolean) => {
+      const pos = geo.getAttribute("position") as BufferAttribute;
+      const nrm = normals ? (geo.getAttribute("normal") as BufferAttribute | undefined) : undefined;
+      const index = geo.index;
+      const n = index ? index.count : pos.count;
+      const rot = new Matrix4().extractRotation(world);
+      const nv = new Vector3();
+      for (let t = 0; t < n; t += 3) {
+        const ids = [0, 1, 2].map((k) => (index ? index.getX(t + k) : t + k));
+        pa.fromBufferAttribute(pos, ids[0]!).applyMatrix4(world);
+        pb.fromBufferAttribute(pos, ids[1]!).applyMatrix4(world);
+        pc.fromBufferAttribute(pos, ids[2]!).applyMatrix4(world);
+        const a: V3 = [pa.x, pa.y, pa.z];
+        const b: V3 = [pb.x, pb.y, pb.z];
+        const c: V3 = [pc.x, pc.y, pc.z];
+        let normal: V3;
+        if (nrm) {
+          nv.set(0, 0, 0);
+          for (const i of ids) nv.add(pa.set(nrm.getX(i), nrm.getY(i), nrm.getZ(i)));
+          nv.applyMatrix4(rot).normalize();
+          normal = [nv.x, nv.y, nv.z];
+        } else normal = faceNormal(a, b, c);
+        grid.add(a, b, c, normal);
+      }
+    };
+    this.root?.traverse((o) => {
+      if (!isMesh(o) || o.name.startsWith(BACKDROP_FOREST_PREFIX) || !materialsOf(o).some((mat) => /bark/i.test(mat.name))) return;
+      o.updateWorldMatrix(true, false);
+      if ((o as InstancedMesh).isInstancedMesh) {
+        for (const xf of instanceMatrices(o as InstancedMesh)) addMesh(bark, o.geometry, xf, false);
+      } else addMesh(bark, o.geometry, o.matrixWorld, false);
+    });
+    const out: DrawnGap = { clusters: 0, maxGap: 0, over2cm: 0, over5cm: 0, byKind: {}, worst: null };
+    const twigGrids = new Map<string, TriangleGrid>();
+    for (const t of this.trees) {
+      let twigs: TriangleGrid | null = null;
+      if (t.twig) {
+        const key = `${t.twig.geometry.uuid}:${t.twig.matrix.elements.join(",")}`;
+        twigs = twigGrids.get(key) ?? null;
+        if (!twigs) {
+          twigs = new TriangleGrid(0.1);
+          addMesh(twigs, t.twig.geometry, t.twig.matrix, true);
+          twigGrids.clear();
+          twigGrids.set(key, twigs);
+        }
+      }
+      const k = (out.byKind[t.kind] ??= { clusters: 0, maxGap: 0, over5cm: 0 });
+      const arr = t.matrix.array as Float32Array;
+      for (let i = 0; i < t.n; i++) {
+        m.fromArray(arr, i * 16);
+        // where the cluster meets its twig: a bunch's spur (blossomBunch), a spray's stem foot (its origin)
+        pa.set(0, t.cls === "blossom" ? BUNCH_SPUR_Y : 0, 0).applyMatrix4(m);
+        const p: V3 = [pa.x, pa.y, pa.z];
+        const gap = Math.min(twigs ? twigs.gap(p, 0.6) : Infinity, bark.gap(p, 0.6));
+        const g = Number.isFinite(gap) ? gap : 0.6;
+        out.clusters++;
+        k.clusters++;
+        if (g > 0.02) out.over2cm++;
+        if (g > 0.05) {
+          out.over5cm++;
+          k.over5cm++;
+        }
+        k.maxGap = Math.max(k.maxGap, g);
+        if (g > out.maxGap) {
+          out.maxGap = g;
+          out.worst = { tree: t.name, at: p, gap: g };
+        }
+      }
+    }
+    return out;
   }
 
   /** A build that was cancelled: free what it made. */
@@ -849,66 +1056,6 @@ export class VillageVegetation {
   private show(mesh: Mesh): void {
     this.reshown.push({ mesh, visible: mesh.visible });
     mesh.visible = true;
-  }
-
-  /**
-   * Take the plaza zelkova out: its bark triangles (the trunk, the seven limbs and their side branches: whatever lies
-   * within its tubes' radius of the replayed skeleton) from the light-mapped bark, and a plank top on its round deck
-   * where the trunk went through. Returns the triangles taken out.
-   */
-  private removeZelkova(root: Object3D, sk: TreeSkeleton): number {
-    const parts: Array<{ b: Branch; r: number }> = [sk.trunk, ...sk.limbs, ...sk.sides].map((b) => ({ b, r: Math.max(...b.radii) + 0.08 }));
-    let removed = 0;
-    for (const mesh of meshesWithMaterial(root, "LM_bark")) {
-      const pos = worldPositions(mesh);
-      const src = mesh.geometry;
-      const index = src.index ? (src.index.array as ArrayLike<number>) : null;
-      const triCount = index ? index.length / 3 : pos.count / 3;
-      const keep: number[] = [];
-      for (let t = 0; t < triCount; t++) {
-        const a = index ? index[t * 3]! : t * 3;
-        const b = index ? index[t * 3 + 1]! : t * 3 + 1;
-        const c = index ? index[t * 3 + 2]! : t * 3 + 2;
-        const p: Vec3 = [(pos.getX(a) + pos.getX(b) + pos.getX(c)) / 3, (pos.getY(a) + pos.getY(b) + pos.getY(c)) / 3, (pos.getZ(a) + pos.getZ(b) + pos.getZ(c)) / 3];
-        const near = Math.hypot(p[0] - sk.base[0], p[2] - sk.base[2]) < sk.R * 2 && parts.some(({ b: br, r }) => distToPolyline(p, br) <= r);
-        if (near) removed++;
-        else keep.push(a, b, c);
-      }
-      if (keep.length === triCount * 3) continue;
-      const g = src.clone();
-      g.setIndex(new BufferAttribute(new Uint32Array(keep), 1));
-      mesh.geometry = g;
-      this.own.push(g);
-      this.swapped.push({ mesh, original: src });
-    }
-    if (removed) this.deckTop(sk.base);
-    return removed;
-  }
-
-  /** The round deck's middle, where the zelkova's trunk went through: a plank top level with the deck. */
-  private deckTop(base: Vec3): void {
-    const b = new GeoBuilder();
-    const segs = 24;
-    const r = 1.04;
-    const y = 0.462;
-    const centre = b.v([0, y, 0], [0, 1, 0], rgba("#673808"), [0.5, 0.5], 0, 0.86);
-    const ring: number[] = [];
-    for (let i = 0; i < segs; i++) {
-      const a = (i / segs) * Math.PI * 2;
-      // plank bands: a little lighter and darker by turns, as the deck's boards
-      const k = Math.floor(((Math.cos(a) * r + r) / (2 * r)) * 7) % 2 ? 0.94 : 1.04;
-      ring.push(b.v([Math.cos(a) * r, y, Math.sin(a) * r], [0, 1, 0], rgba("#6B3A09", 0, k), [0.5, 0.5], 0, 0.86));
-    }
-    for (let i = 0; i < segs; i++) b.tri(centre, ring[(i + 1) % segs]!, ring[i]!);
-    const geo = b.build();
-    const mat = vegMaterial({ name: "M_veg_deck_top", wind: 0, windFar: 1, ambient: 0.62, sky: 0.12, sun: 0.4, back: 0 });
-    const mesh = new Mesh(geo, mat);
-    mesh.name = "zelkova_deck_top";
-    mesh.position.set(base[0], 0, base[2]);
-    mesh.updateMatrix();
-    mesh.matrixAutoUpdate = false;
-    this.group.add(mesh);
-    this.own.push(geo, mat);
   }
 
   /** A tree's instanced mesh for level 0 or 1, made the first time it is needed. */
@@ -1016,6 +1163,18 @@ export class VillageVegetation {
   /** The far layer of a class: the thinned, enlarged clusters of every tree at level 2. */
   private refillFar(c: ClassDraw): void {
     c.dirty = false;
+    let need = 0;
+    for (const t of this.trees) if (t.level === 2 && this.classes.get(t.cls) === c) need += t.far.n;
+    if (need > c.far.capacity) {
+      // more trees came in than the layer holds: a bigger one in its place
+      const old = c.far;
+      c.far = new Layer(old.geometry, old.material, Math.ceil(need * 1.3), old.mesh.name);
+      c.far.mesh.userData[CLICK_PICK_KEY] = "ignore";
+      this.group.remove(old.mesh);
+      old.mesh.dispose();
+      this.group.add(c.far.mesh);
+      this.own.push(c.far.mesh);
+    }
     c.far.begin();
     for (const t of this.trees) if (t.level === 2 && this.classes.get(t.cls) === c) c.far.push(t.far);
     c.far.end();
@@ -1099,7 +1258,7 @@ export class VillageVegetation {
 }
 
 /** Build the vegetation for a dressed village clone (in steps), or null in the `old` mode or when cancelled. */
-export function createVegetation(root: Object3D, tier: VillageTier, mode: VegMode, cancelled?: () => boolean): Promise<VillageVegetation | null> {
+export function createVegetation(root: Object3D, tier: VillageTier, mode: VegMode, cancelled?: () => boolean, options?: BuildOptions): Promise<VillageVegetation | null> {
   if (mode === "old") return Promise.resolve(null);
-  return VillageVegetation.build(root, tier, mode, cancelled);
+  return VillageVegetation.build(root, tier, mode, cancelled, options);
 }

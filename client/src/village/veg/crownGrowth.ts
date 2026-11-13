@@ -83,7 +83,12 @@ export interface ColoniseOptions {
   maxKids: number;
   /** Sky-gap threshold for attractors (higher: fewer holes). */
   gap: number;
+  /** Space the crown must keep out of (a house, a neighbour's crown): no attractor there, so no twig grows into it. */
+  keepOut?: KeepOut;
 }
+
+/** True where a crown must not grow (game space): a house beside it, the part of the air a neighbour's crown owns. */
+export type KeepOut = (p: Vec3) => boolean;
 
 export const CHERRY_COLONISE: ColoniseOptions = {
   attractors: 540,
@@ -107,6 +112,9 @@ interface Node {
   twig: number;
   s: number;
 }
+
+/** The grid cell (m) of colonise's node search. */
+const GROW_CELL = 0.8;
 
 /** Twigs grown from the skeleton toward attractors in the envelope (see the file header). */
 export function colonise(sk: Pick<TreeSkeleton, "limbs" | "sides">, env: Envelope, salt: number, rand: () => number, o: ColoniseOptions): GrownTwig[] {
@@ -149,6 +157,7 @@ export function colonise(sk: Pick<TreeSkeleton, "limbs" | "sides">, env: Envelop
     const p: Vec3 = [env.c[0] + dir[0] * env.rx * rho, env.c[1] + dir[1] * (dir[1] >= 0 ? env.up : env.down) * rho, env.c[2] + dir[2] * env.rx * rho];
     if (envelopeRadius(env, p) > lumpyLimit(p, salt)) continue;
     if (isSkyGap(p, salt, o.gap)) continue;
+    if (o.keepOut?.(p)) continue;
     attractors.push(p);
   }
   const axisDist = (p: Vec3) => Math.hypot(p[0] - env.c[0], (p[1] - env.c[1]) * 0.7, p[2] - env.c[2]);
@@ -157,26 +166,63 @@ export function colonise(sk: Pick<TreeSkeleton, "limbs" | "sides">, env: Envelop
   const min2 = 0.0225;
   const max2 = o.reach * o.reach;
   const twigs: GrownTwig[] = [];
+  // the nodes in a grid, searched outward ring by ring from the attractor: a node's score is at least its distance,
+  // so once a ring lies farther than the best score so far nothing beyond it can win (the very node a scan of every
+  // node in order would pick: equal scores go to the earlier node)
+  const grid = new Map<number, number[]>();
+  const cellOf = (v: number) => Math.floor(v / GROW_CELL);
+  const keyOf = (i: number, j: number, k: number) => ((i + 512) * 1024 + (j + 512)) * 1024 + (k + 512);
+  const index = (id: number) => {
+    const p = nodes[id]!.p;
+    const key = keyOf(cellOf(p[0]), cellOf(p[1]), cellOf(p[2]));
+    let list = grid.get(key);
+    if (!list) grid.set(key, (list = []));
+    list.push(id);
+  };
+  nodes.forEach((_, id) => index(id));
+  const maxRing = Math.ceil(o.reach / GROW_CELL) + 1;
   for (const a of attractors) {
     let best: Node | null = null;
     let bestScore = Infinity;
-    for (const n of nodes) {
-      if (n.kids >= o.maxKids) continue;
-      const dx = a[0] - n.p[0];
-      const dy = a[1] - n.p[1];
-      const dz = a[2] - n.p[2];
-      const l2 = dx * dx + dy * dy + dz * dz;
-      if (l2 < min2 || l2 > max2) continue;
-      const l = Math.sqrt(l2);
-      const along = (n.dir[0] * dx + n.dir[1] * dy + n.dir[2] * dz) / l;
-      const score = l * (1.35 - 0.35 * along) + n.gen * 0.05;
-      if (score < bestScore) {
-        bestScore = score;
-        best = n;
-      }
+    let bestId = Infinity;
+    const ci = cellOf(a[0]);
+    const cj = cellOf(a[1]);
+    const ck = cellOf(a[2]);
+    for (let ring = 0; ring <= maxRing; ring++) {
+      if ((ring - 1) * GROW_CELL > bestScore) break;
+      for (let i = -ring; i <= ring; i++)
+        for (let j = -ring; j <= ring; j++)
+          for (let k = -ring; k <= ring; k++) {
+            if (Math.max(Math.abs(i), Math.abs(j), Math.abs(k)) !== ring) continue;
+            const list = grid.get(keyOf(ci + i, cj + j, ck + k));
+            if (!list) continue;
+            for (const id of list) {
+              const n = nodes[id]!;
+              const dx = a[0] - n.p[0];
+              const dy = a[1] - n.p[1];
+              const dz = a[2] - n.p[2];
+              const l2 = dx * dx + dy * dy + dz * dz;
+              if (l2 < min2 || l2 > max2) continue;
+              const l = Math.sqrt(l2);
+              const along = (n.dir[0] * dx + n.dir[1] * dy + n.dir[2] * dz) / l;
+              const score = l * (1.35 - 0.35 * along) + n.gen * 0.05;
+              if (score < bestScore || (score === bestScore && id < bestId)) {
+                bestScore = score;
+                bestId = id;
+                best = n;
+              }
+            }
+          }
     }
     if (!best) continue;
     best.kids++;
+    if (best.kids >= o.maxKids) {
+      // full: out of the search (the lists' order does not matter, ties go by id)
+      const list = grid.get(keyOf(cellOf(best.p[0]), cellOf(best.p[1]), cellOf(best.p[2])))!;
+      const at = list.indexOf(bestId);
+      list[at] = list[list.length - 1]!;
+      list.pop();
+    }
     const d = sub(a, best.p);
     const L = Math.min(len(d), o.maxLen);
     const dirN = norm(d);
@@ -198,6 +244,7 @@ export function colonise(sk: Pick<TreeSkeleton, "limbs" | "sides">, env: Envelop
     for (let k = 1; k <= n; k++) {
       s += len(sub(pts[k]!, pts[k - 1]!));
       nodes.push({ p: pts[k]!, r: radii[k]!, dir: dirN, gen: best.gen + 1, kids: 0, twig: id, s });
+      index(nodes.length - 1);
     }
   }
   return twigs;

@@ -1,7 +1,10 @@
 /**
  * e2e/tree-vegetation-smoke.mjs — 케이슨 마을 나무 점검 (2026-11-13). 휴대폰(graphics low)과 PC(graphics high)로 입장해서:
- *  - 나무마다 3D 수관이 다시 자랐는지(종류별 그루 수), 잎·꽃송이가 모두 잔가지에 붙어 있는지(간격 5 cm 이하, 끝이 빈 잔가지 0,
- *    가지 없는 잎 0: window.__cvVeg().connection), 인스턴스 나무 밑동에 덩어리가 없는지(originBlobs 0);
+ *  - 나무마다 3D 수관이 다시 자랐는지(종류별 그루 수), 끝이 빈 잔가지 0, 가지 없는 잎 0(window.__cvVeg().connection),
+ *    인스턴스 나무 밑동에 덩어리가 없는지(originBlobs 0);
+ *  - 잎 가지의 밑동과 꽃송이의 꽃자루가 화면에 그려진 잔가지·껍질 삼각형에서 5 cm 안에 있는지(window.__cvVegDrawn():
+ *    이 화질에서 실제로 만든 잔가지 메시와 마을 파일의 껍질로 잰다. 휴대폰의 단순화된 잔가지도 그대로);
+ *  - 입장 직후 식생이 준비되기 전에도 옛 평면 잎·꽃 카드와 광장 느티나무가 보이지 않는지;
  *  - 옛 평면 잎 카드가 남지 않았는지(잎 메시의 카드 삼각형, 인스턴스 잎 메시, 벚꽃은 떨어진 꽃잎만 남음), 광장 느티나무가 없어졌는지,
  *    뒷산 숲(inst__far_*)의 카드는 그대로 보이는지;
  *  - 새 메시들의 경계 구(bounding sphere)가 비어 있지 않은지(절두체 컬링으로 사라지는 일 없음);
@@ -28,6 +31,36 @@ async function check(tag, device, graphics) {
     await player.page.locator("input.cv-input").first().fill(`나무${tag.slice(0, 2)}`);
     await press(player, player.page.locator(".cv-submit"));
     await player.page.waitForFunction(() => window.__cv?.getScreen?.() === "village", null, { timeout: 60000 });
+    // until the 3D vegetation is ready: no old flat foliage card shows and the plaza zelkova is already gone (the
+    // arrival hides them at once; a cancelled first build must not give them back)
+    const early = { samples: 0, legacy: [], zelkova: 0 };
+    for (let i = 0; i < 900; i++) {
+      const r = await player.page.evaluate(() => {
+        const v = window.__cvVillage?.();
+        if (!v) return null;
+        const out = { legacy: [], deck: false, ready: !!window.__cvVeg?.() };
+        v.root.traverse((o) => {
+          if (!o.isMesh || o.name.startsWith("inst__far_")) return;
+          let vis = true;
+          for (let p = o; p; p = p.parent) if (!p.visible) vis = false;
+          if (!vis) return;
+          const names = (Array.isArray(o.material) ? o.material : [o.material]).map((m) => m?.name);
+          if (o.name === "zelkova_deck_top") out.deck = true;
+          // before the build is done, every foliage mesh of the file is hidden (after it, the petals come back)
+          if (!out.ready && names.some((n) => /^M_leaf_(green|cherry)$/.test(n))) out.legacy.push(o.name);
+        });
+        return out;
+      });
+      if (r) {
+        early.samples++;
+        early.legacy.push(...r.legacy);
+        if (!r.deck) early.zelkova++;
+        if (r.ready) break;
+      }
+      await sleep(100);
+    }
+    run.check("입장 직후(식생 준비 전)에 옛 평면 잎·꽃 카드가 보이지 않는다", early.samples > 0 && early.legacy.length === 0, early);
+    run.check("입장 직후부터 광장 느티나무가 없다", early.samples > 0 && early.zelkova === 0, early);
     await player.page.waitForFunction(() => typeof window.__cvVeg === "function" && window.__cvVeg() !== null && !!window.__cvThree?.(), null, { timeout: 90000 });
   });
   await run.step(`${tag}: 수관과 연결`, async () => {
@@ -36,7 +69,8 @@ async function check(tag, device, graphics) {
     for (const [kind, k] of Object.entries(s.trees)) run.check(`${kind}: 잎·꽃송이와 잔가지가 있다`, k.clusters > k.trees * 150 && k.twigs > k.trees * 40, k);
     const c = s.connection;
     run.check("잎·꽃송이 5만 개 이상을 검사했다", c.clusters > 50000, c.clusters);
-    run.check("잔가지에서 5 cm 넘게 떨어진 잎·꽃송이가 없다", c.maxGap <= 0.05, c.maxGap);
+    // (c.maxGap is measured on the line each cluster was placed on: it cannot fail. The gap that counts is measured
+    // below, on the drawn twig and bark triangles.)
     run.check("끝이 허공에서 끝나는 잔가지가 없다", c.bareTips === 0, c.bareTips);
     run.check("가지 없는 잎·꽃송이가 없다", c.unattached === 0, c.unattached);
     run.check("인스턴스 나무 밑동에 잎 덩어리가 없다", s.originBlobs === 0, s.originBlobs);
@@ -46,6 +80,14 @@ async function check(tag, device, graphics) {
     run.check("가로수·관목 인스턴스 잎 카드 숨김", ["inst__street_green_1", "inst__shrub_0"].every((n) => s.hiddenInstanced.includes(n)), s.hiddenInstanced);
     run.check("가로 벚나무·과수원은 떨어진 꽃잎만", ["inst__street_cherry_1", "inst__orchard_1"].every((n) => s.petalInstanced.includes(n)), s.petalInstanced);
     run.check("광장 느티나무 껍질 삼각형을 걷어냈다", s.zelkovaBarkTris > 300, s.zelkovaBarkTris);
+  });
+  await run.step(`${tag}: 그려진 잔가지·껍질과 잎의 간격`, async () => {
+    // every leaf spray's stem foot and blossom bunch's spur against the triangles on screen: the twig meshes as built
+    // for this graphics level (the phone's simplified ones) and the village's own bark
+    const d = await player.page.evaluate(() => window.__cvVegDrawn());
+    run.check("그려진 형상으로 잎·꽃송이 13만 개 이상을 검사했다", d.clusters > 130000, d.clusters);
+    run.check("그려진 잔가지·껍질에서 5 cm 넘게 떨어진 잎·꽃송이가 없다", d.over5cm === 0 && d.maxGap <= 0.05, { maxGap: d.maxGap, over5cm: d.over5cm, worst: d.worst });
+    for (const [kind, k] of Object.entries(d.byKind)) run.check(`${kind}: 그려진 간격 5 cm 이하`, k.maxGap <= 0.05, k);
   });
   await run.step(`${tag}: 장면 — 옛 카드, 뒷산 숲, 경계 구`, async () => {
     const r = await player.page.evaluate(() => {
