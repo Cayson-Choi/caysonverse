@@ -4,7 +4,7 @@ import { useGLTF } from "@react-three/drei";
 import { CanvasTexture, Color, SRGBColorSpace, type Material, type Mesh, type MeshStandardMaterial, type Object3D } from "three";
 import { signalPoleSpots } from "@caysonverse/shared/village/crossings";
 import { DRACO_PATH } from "../game/hub/hubModelPrep";
-import { villageClock } from "./villageClock";
+import { transitNowMs } from "../net/transitSync";
 import { lampKey, lampsAt, type LampState } from "./signalLamps";
 
 /**
@@ -14,7 +14,7 @@ import { lampKey, lampsAt, type LampState } from "./signalLamps";
  * per crossing, on diagonal corners (shared/village/crossings.ts), all four sharing one set of lamp materials: the
  * lamps are the file's separate meshes (lens_red/amber/green, ped_fig_stop/walk, countdown_screen), so a state is
  * a few material writes. The states follow the shared cycle (transit.ts signalAt / pedestrianSignalAt) on the
- * village's server-synced clock, the same one the bus's holds at the crosswalks come from.
+ * server's clock as the bus snapshots carry it (transitSync.ts transitNowMs), the clock the bus itself runs on.
  *
  * DEV only: `window.__cvSignals = { vehicle, ped }` forces the lamps (screenshots of every state); unset it to
  * go back to the clock.
@@ -32,13 +32,25 @@ declare global {
 // saturated red / amber / green, so a lit lens also takes the colour as its base and the emissive is gentler.
 const LIT = {
   red: "#ff1420",
-  amber: "#ffa200",
+  amber: "#ff8c00",
   green: "#00d46a",
   pedStop: "#ff1f28",
   pedWalk: "#18e07a",
 };
-const LAMP_ON = 1.35;
+const LAMP_ON = 0.6;
 const LAMP_OFF = 0;
+/**
+ * An unlit lens (review r2: the model's dark red / brown / dark green read as colours from afar, so on and off were hard
+ * to tell apart, the off amber a brown lump). A real LED head's off lens is all but black, with a faint tint of its colour
+ * by day (reference photos c07, c08).
+ */
+const UNLIT = {
+  red: "#1d0b0c",
+  amber: "#1d150a",
+  green: "#0a1a12",
+  pedStop: "#1d0b0c",
+  pedWalk: "#0a1a12",
+};
 
 interface Lamps {
   red: MeshStandardMaterial;
@@ -67,14 +79,13 @@ function lampMaterials(root: Object3D): Lamps | null {
   };
 }
 
-const DARK_LENS = new WeakMap<MeshStandardMaterial, Color>();
-
-function setLamp(m: MeshStandardMaterial, color: string, on: boolean): void {
-  if (!DARK_LENS.has(m)) DARK_LENS.set(m, m.color.clone());
+function setLamp(m: MeshStandardMaterial, color: string, unlit: string, on: boolean): void {
   m.emissive.set(color);
   m.emissiveIntensity = on ? LAMP_ON : LAMP_OFF;
-  if (on) m.color.set(color).multiplyScalar(0.45);
-  else m.color.copy(DARK_LENS.get(m)!);
+  // lit: the light is the emissive alone (a lit LED's own colour); the lens's base colour and the sky's reflection on it
+  // stay near black, else daylight washed the red to salmon and the amber to peach (review r2, phone and PC)
+  if (on) m.color.set(color).multiplyScalar(0.06);
+  else m.color.set(unlit);
 }
 
 /** Draw the count-down digits into the display's canvas (green while walking, red while waiting). */
@@ -90,11 +101,11 @@ function drawCountdown(ctx: CanvasRenderingContext2D, tex: CanvasTexture, second
 }
 
 function apply(l: Lamps, s: LampState, ctx: CanvasRenderingContext2D | null, tex: CanvasTexture | null): void {
-  setLamp(l.red, LIT.red, s.vehicle === "red");
-  setLamp(l.amber, LIT.amber, s.vehicle === "amber");
-  setLamp(l.green, LIT.green, s.vehicle === "green");
-  setLamp(l.pedStop, LIT.pedStop, s.stopLit);
-  setLamp(l.pedWalk, LIT.pedWalk, s.walkLit);
+  setLamp(l.red, LIT.red, UNLIT.red, s.vehicle === "red");
+  setLamp(l.amber, LIT.amber, UNLIT.amber, s.vehicle === "amber");
+  setLamp(l.green, LIT.green, UNLIT.green, s.vehicle === "green");
+  setLamp(l.pedStop, LIT.pedStop, UNLIT.pedStop, s.stopLit);
+  setLamp(l.pedWalk, LIT.pedWalk, UNLIT.pedWalk, s.walkLit);
   if (ctx && tex) drawCountdown(ctx, tex, s.countdown.seconds, s.countdown.color);
 }
 
@@ -147,7 +158,7 @@ function SignalUnits() {
   useFrame(() => {
     if (!lamps) return;
     const override = import.meta.env.DEV ? window.__cvSignals : null;
-    const state = lampsAt(villageClock.liveMs(), override);
+    const state = lampsAt(transitNowMs(), override);
     const key = lampKey(state);
     if (key === last.key) return;
     last.key = key;
