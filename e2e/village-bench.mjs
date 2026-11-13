@@ -134,7 +134,7 @@ await run.step("1. join: A in shorts + wizard hat, B in a long skirt + space hel
   await seedLook(B, LOOKS.longskirtHelmet);
   await joinVillage(B, "앉기B");
   all = await seats(A);
-  run.check("20 bench seats on the client", all.length === 20, all.length);
+  run.check("22 bench seats on the client (ten benches, two each, and the shelter's)", all.filter((s) => !s.area.startsWith("house")).length === 22, all.length);
 });
 
 // plaza_4 (south-east of the fountain, by the spawn): seats 6 and 7

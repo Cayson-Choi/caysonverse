@@ -1,4 +1,4 @@
-import { SEAT_REACH, type Seat } from "@caysonverse/shared/worldMap";
+import { SEAT_REACH, approachesSeat, type Seat } from "@caysonverse/shared/worldMap";
 
 /**
  * Pure, clock-free sit validation (mirrors movement.ts / emoji.ts discipline).
@@ -13,7 +13,8 @@ import { SEAT_REACH, type Seat } from "@caysonverse/shared/worldMap";
  *                      impossible for an honest client: bad payload, an already
  *                      seated sender (the UI never offers it), or a seat beyond
  *                      SEAT_REACH (the prompt only shows in range → a farther
- *                      request is a tampered client).
+ *                      request is a tampered client), or one from behind a bench's
+ *                      back rest (the prompt is only offered in front of it).
  *   - `{ reason }`   → REJECT with a personal Korean notice. The ONE non-silent
  *                      case: a first-come race where the seat was taken by
  *                      someone else between prompt and click.
@@ -46,6 +47,10 @@ export function validateSit(
   //    farther Sit is a tampered client → silent drop (not a user-facing reason).
   const seat = seats[seatIndex];
   if (Math.hypot(player.x - seat.x, player.z - seat.z) > SEAT_REACH) return null;
+
+  // 3b. a bench with a back (a seat with a front edge) is sat on from the front only: from behind its back rest the prompt is
+  //     never shown, so a Sit from there is a tampered client too (the same `approachesSeat` the client's prompt uses).
+  if (!approachesSeat(seat, player.x, player.z)) return null;
 
   // 4. occupancy: taken by SOMEONE ELSE → personal rejection notice (the race).
   const holder = occupancy.get(seatIndex);

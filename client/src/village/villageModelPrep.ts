@@ -89,10 +89,17 @@ import type { DayNightState } from "./dayNightBlend";
  * made here, listed in `own` and released with `disposeVillage`.
  */
 
-export const VILLAGE_MODEL_URL = "/models/village/village.glb";
-export const VILLAGE_LIGHTMAP_URL = "/models/village/village_lm.webp";
+/**
+ * Version of the shipped village files. The files are served with `max-age=86400` under fixed names, so a phone that had
+ * fetched the previous village.glb kept showing it (the old bus shelter, baked into that file, was taken out of
+ * the file by scripts/patch-village-busstop.mjs but stayed visible on phones for up to a day: owner, 2026-11-13). Bump this
+ * whenever village.glb, its light maps or village_signals.glb change: a new URL is a new cache entry.
+ */
+export const VILLAGE_ASSET_VERSION = "20261113b";
+export const VILLAGE_MODEL_URL = `/models/village/village.glb?v=${VILLAGE_ASSET_VERSION}`;
+export const VILLAGE_LIGHTMAP_URL = `/models/village/village_lm.webp?v=${VILLAGE_ASSET_VERSION}`;
 /** The night light map: baked on the same UV set as the day one (art/village/tools/bake_village.py --night). */
-export const VILLAGE_NIGHT_LIGHTMAP_URL = "/models/village/village_lm_night.webp";
+export const VILLAGE_NIGHT_LIGHTMAP_URL = `/models/village/village_lm_night.webp?v=${VILLAGE_ASSET_VERSION}`;
 
 /**
  * The village camera's planes (m): the sky dome is 1.4 km out (and the far range 1.1 km), so the far plane is past

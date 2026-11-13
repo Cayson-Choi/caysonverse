@@ -70,8 +70,11 @@ export function villageTargets(
   return [{ kind: "object", id: `${KEYPAD_TARGET_PREFIX}${keypad.buildingId}`, dist: keypad.dist, icon: "🔢", label: KEYPAD_LABEL, short: KEYPAD_SHORT }];
 }
 
-/** A board/leave target around the east-side stop; the server re-checks the pose and schedule. */
-export function villageBusTarget(area: AreaId, x: number, z: number, boarded: boolean): InteractTarget | null {
+/**
+ * A board/leave target around the east-side stop; the server re-checks the pose and schedule. `boardingNow`: the bus is
+ * taking riders (status "boarding"); when it is not, a free seat in reach takes precedence over the board button.
+ */
+export function villageBusTarget(area: AreaId, x: number, z: number, boarded: boolean, boardingNow = true): InteractTarget | null {
   if (area !== "village") return null;
   const dist = busBoardingDistance(x, z);
   if (!(dist <= BUS_OFFER_REACH_M)) return null;
@@ -83,6 +86,10 @@ export function villageBusTarget(area: AreaId, x: number, z: number, boarded: bo
     label: boarded ? "버스에서 내리기" : "버스 타기",
     short: boarded ? "하차" : "탑승",
     priority: 2,
+    // The shelter's bench is inside this area, and the bus takes riders only in the 30 s before it leaves (the server's
+    // "boarding" status): outside that, a free seat in reach gets the key (owner, 2026-11-13: 정류장 벤치에 앉을 수가 없어).
+    // While boarding the board button still wins, so nobody misses the bus on the bench's doorstep. "Leave" never yields.
+    ...(boarded || boardingNow ? {} : { yieldsToSeat: true }),
   };
 }
 

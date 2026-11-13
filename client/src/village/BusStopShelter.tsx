@@ -2,13 +2,14 @@ import { useMemo } from "react";
 import { useGLTF } from "@react-three/drei";
 import type { Mesh } from "three";
 import { DRACO_PATH } from "../game/hub/hubModelPrep";
+import { VILLAGE_ASSET_VERSION } from "./villageModelPrep";
 
 /**
  * The bus stop's waiting pad, shelter and stop sign (`village_busstop.glb`, art/village/tools/build_busstop.py), modelled
  * in world coordinates so it is placed as it is. The shelter stands at the back of a paved pad with room to walk between
  * it and the bus (shared/village/villageLayout.ts BUS_STOP_PAD, busShelterColliders); it is lit live like the signals.
  */
-export const BUSSTOP_MODEL_URL = "/models/village/village_busstop.glb";
+export const BUSSTOP_MODEL_URL = `/models/village/village_busstop.glb?v=${VILLAGE_ASSET_VERSION}`;
 
 /** Runtime 3D bus stop: arched roof, glass back and ends, route light box, bench, arrival display, sign. */
 export function BusStopShelter() {

@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { JUMP_DURATION_MS, JUMP_RATE } from "@caysonverse/shared/constants";
+import { AVATAR_TOP_M, jumpHeadroom } from "@caysonverse/shared/village/overhead";
+import { BUS_SHELTER_ROOF, VILLAGE_LAYOUT } from "@caysonverse/shared/village/villageLayout";
 import {
   JUMP_CLIENT_COOLDOWN_MS,
   JUMP_HEIGHT_M,
@@ -11,6 +13,8 @@ import {
   jumpPhase,
   jumpRegistry,
   jumpTimeScale,
+  JUMP_CEILING_SOFT_M,
+  softCeiling,
   localJump,
   pressJump,
   publishLocalJump,
@@ -42,6 +46,69 @@ describe("jumpOffsetY", () => {
       expect(y).toBeGreaterThanOrEqual(0);
       expect(y).toBeLessThanOrEqual(JUMP_HEIGHT_M + 1e-9);
     }
+  });
+});
+
+describe("jumpOffsetY under a ceiling (headroom)", () => {
+  const c = VILLAGE_LAYOUT.busStop.shelter.centre;
+  const under = jumpHeadroom(c.x, c.z, "village");
+  const head = (lift: number) => AVATAR_TOP_M + lift; // the default avatar's top (a bare head)
+
+  it("in the open the hop is exactly the same as before, with or without an infinite headroom", () => {
+    for (let ms = 0; ms <= JUMP_DURATION_MS; ms += 10) {
+      expect(jumpOffsetY(ms, Infinity)).toBe(jumpOffsetY(ms));
+      expect(jumpOffsetY(ms, jumpHeadroom(0, 14, "village"))).toBe(jumpOffsetY(ms));
+    }
+    expect(jumpOffsetY(JUMP_DURATION_MS / 2, jumpHeadroom(0, 14, "village"))).toBeCloseTo(JUMP_HEIGHT_M, 9);
+  });
+
+  it("in the shelter the head never reaches the roof's underside, over the whole hop, but the hop still rises (a soft bump)", () => {
+    let top = 0;
+    for (let ms = 0; ms <= JUMP_DURATION_MS; ms += 5) {
+      const lift = jumpOffsetY(ms, under);
+      top = Math.max(top, lift);
+      expect(head(lift)).toBeLessThan(BUS_SHELTER_ROOF.underside);
+      expect(lift).toBeLessThanOrEqual(jumpOffsetY(ms) + 1e-12); // never higher than the open hop
+    }
+    expect(top).toBeGreaterThan(under - 0.03); // it rises to just under the roof
+    expect(top).toBeLessThan(under);
+    expect(jumpOffsetY(0, under)).toBe(0);
+    expect(jumpOffsetY(JUMP_DURATION_MS, under)).toBe(0);
+  });
+
+  it("is smooth: no step in the lift from frame to frame (16 ms), and the start of the hop is untouched under the knee", () => {
+    let prev = 0;
+    for (let ms = 0; ms <= JUMP_DURATION_MS; ms += 16) {
+      const lift = jumpOffsetY(ms, under);
+      expect(Math.abs(lift - prev)).toBeLessThan(0.1);
+      prev = lift;
+    }
+    expect(jumpOffsetY(20, under)).toBe(jumpOffsetY(20)); // low in the hop, well under the knee
+  });
+
+  it("zero or negative headroom holds the avatar down", () => {
+    expect(jumpOffsetY(JUMP_DURATION_MS / 2, 0)).toBe(0);
+    expect(jumpOffsetY(JUMP_DURATION_MS / 2, -1)).toBe(0);
+  });
+});
+
+describe("softCeiling", () => {
+  it("leaves a lift under the knee alone and bends the rest toward the headroom without passing it", () => {
+    const room = 0.6;
+    expect(softCeiling(0.3, room)).toBe(0.3);
+    expect(softCeiling(room - JUMP_CEILING_SOFT_M, room)).toBe(room - JUMP_CEILING_SOFT_M);
+    for (const lift of [0.5, 0.6, 0.8, 1, 3, 100]) {
+      const v = softCeiling(lift, room);
+      expect(v).toBeLessThanOrEqual(room);
+      expect(v).toBeGreaterThanOrEqual(room - JUMP_CEILING_SOFT_M);
+    }
+    expect(softCeiling(1, room)).toBeGreaterThan(softCeiling(0.7, room)); // still rises with the hop
+    expect(softCeiling(1, Infinity)).toBe(1);
+    expect(softCeiling(0, room)).toBe(0);
+  });
+
+  it("a headroom smaller than the soft zone squeezes the whole zone into it", () => {
+    for (const lift of [0.01, 0.05, 0.5]) expect(softCeiling(lift, 0.05)).toBeLessThanOrEqual(0.05);
   });
 });
 

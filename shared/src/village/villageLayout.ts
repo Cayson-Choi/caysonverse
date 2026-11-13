@@ -553,6 +553,37 @@ export function busShelterColliders(layout: Pick<VillageLayout, "busStop"> = VIL
 }
 
 /**
+ * The shelter's bench as a solid (obstacles only, not a camera box: the camera looks over a bench): the slats, the legs and
+ * the back rest, x 40.98..41.55 (the glass is at 41.6) and the bench's 2.3 m along z (build_busstop.py: bz0..bz1 = centre z -/+ 1.15).
+ * A sitter gets up to the spot in front of it (benchSeats.ts).
+ */
+export function busShelterBenchCollider(layout: Pick<VillageLayout, "busStop"> = VILLAGE_LAYOUT): AABB {
+  const s = boxAt(layout.busStop.shelter.centre, layout.busStop.shelter.size);
+  const r = (n: number) => Math.round(n * 1e6) / 1e6;
+  return { minX: r(s.maxX - 0.67), maxX: r(s.maxX - 0.1), minZ: r(layout.busStop.shelter.centre.z - 1.15), maxZ: r(layout.busStop.shelter.centre.z + 1.15) };
+}
+
+/**
+ * The shelter's roof (art/village/tools/build_busstop.py build_shelter): an arched sheet 2.1 m (x) by 4.1 m (z) round the
+ * shelter's centre, its underside 2.55 m up at the posts, the crown and the blue trim boards reaching 2.8 m. Shared by the
+ * camera slab (`busShelterRoofSlab`) and the jump's headroom (overhead.ts).
+ */
+export const BUS_SHELTER_ROOF = { halfX: 1.05, halfZ: 2.05, underside: 2.55, top: 2.8 } as const;
+
+/**
+ * The shelter's roof as a camera box, like the hall's ceiling slab: a camera under it (the player standing in the shelter)
+ * is stopped short of the underside, so the view does not poke up through the roof. It starts 5 cm under the underside
+ * (the spring arm's pad keeps the stop clear of the sheet). Seen from above or from outside the box is no obstacle:
+ * only a cast that crosses it counts.
+ */
+export function busShelterRoofSlab(layout: Pick<VillageLayout, "busStop"> = VILLAGE_LAYOUT): CameraBox {
+  const c = layout.busStop.shelter.centre;
+  const r = BUS_SHELTER_ROOF;
+  const round6 = (n: number) => Math.round(n * 1e6) / 1e6;
+  return { minX: round6(c.x - r.halfX), maxX: round6(c.x + r.halfX), minZ: round6(c.z - r.halfZ), maxZ: round6(c.z + r.halfZ), minY: round6(r.underside - 0.05), height: r.top };
+}
+
+/**
  * The memorial's solid footprint minus the door-side pad area: three boxes (west, east and back of the
  * door recess). The pad reaches `radius` into the building, so the recess is pad-wide and that deep; the
  * whole pad disc stays free of colliders and the door stays reachable.
@@ -763,8 +794,8 @@ export function buildVillageGeometry(
     "village",
     villageBounds(layout),
     hallWalls(layout),
-    [...areaGapBlockers(layout), ...hallSurroundBlockers(layout), ...village.obstacles, ...signalPoleColliders(), ...busShelterColliders(layout), ...(hall?.obstacles ?? []), ...extra],
-    [...village.cameraBoxes, ...busShelterColliders(layout), ...(hall?.cameraBoxes ?? [])],
+    [...areaGapBlockers(layout), ...hallSurroundBlockers(layout), ...village.obstacles, ...signalPoleColliders(), ...busShelterColliders(layout), busShelterBenchCollider(layout), ...(hall?.obstacles ?? []), ...extra],
+    [...village.cameraBoxes, ...busShelterColliders(layout), busShelterRoofSlab(layout), ...(hall?.cameraBoxes ?? [])],
   );
 }
 

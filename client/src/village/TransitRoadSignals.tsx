@@ -6,6 +6,7 @@ import { signalPoleSpots } from "@caysonverse/shared/village/crossings";
 import { DRACO_PATH } from "../game/hub/hubModelPrep";
 import { transitNowMs } from "../net/transitSync";
 import { lampKey, lampsAt, type LampState } from "./signalLamps";
+import { VILLAGE_ASSET_VERSION } from "./villageModelPrep";
 
 /**
  * The two crossings' signal units (`village_signals.glb`, art/village/tools/build_signals.py): a galvanised post with a
@@ -19,7 +20,7 @@ import { lampKey, lampsAt, type LampState } from "./signalLamps";
  * DEV only: `window.__cvSignals = { vehicle, ped }` forces the lamps (screenshots of every state); unset it to
  * go back to the clock.
  */
-export const SIGNALS_MODEL_URL = "/models/village/village_signals.glb";
+export const SIGNALS_MODEL_URL = `/models/village/village_signals.glb?v=${VILLAGE_ASSET_VERSION}`;
 
 declare global {
   interface Window {

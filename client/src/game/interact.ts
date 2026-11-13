@@ -25,6 +25,12 @@ export interface InteractTarget {
    * Which target wins when several are in reach: the higher number first, the nearer one among equals (default 0).
    */
   priority?: number;
+  /**
+   * Gives way to a free seat in reach: while a seat is offered this target is not (the bus stop's board button: its area
+   * covers the shelter, and the bus takes riders only 30 s an hour, so outside that minute it must not take the E key
+   * from the bench). Absent: the target competes with the seat by distance as before.
+   */
+  yieldsToSeat?: boolean;
 }
 
 export type Interaction =
@@ -46,6 +52,7 @@ export interface InteractInput {
  *  - Seated -> stand, whatever is nearby (the seat is the only thing you can do).
  *  - Seat and scene targets in reach -> the nearest; an exact tie goes seat > target.
  *    Among scene targets the higher `priority` wins, then the nearer one, then the earlier one in the list.
+ *    A target that `yieldsToSeat` is not offered while a free seat is in reach.
  */
 export function pickInteraction(i: InteractInput): Interaction | null {
   if (i.seated) return { kind: "stand" };
@@ -61,6 +68,7 @@ export function pickInteraction(i: InteractInput): Interaction | null {
     let nearest: InteractTarget | null = null;
     for (let k = 0; k < targets.length; k++) {
       const c = targets[k];
+      if (c.yieldsToSeat && i.seat) continue; // a free seat in reach goes first (see InteractTarget.yieldsToSeat)
       if (nearest === null) {
         nearest = c;
         continue;

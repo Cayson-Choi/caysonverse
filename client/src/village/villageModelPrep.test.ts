@@ -1040,3 +1040,15 @@ describe("the shader patches against three's own MeshBasicMaterial shader (T7 re
     expect(count(fs, "void main() {")).toBe(1);
   });
 });
+
+describe("the village's files are versioned (a phone must not keep an old village.glb for a day)", () => {
+  it("the model and both light maps carry the same ?v= as the signals and the bus stop", async () => {
+    const { VILLAGE_ASSET_VERSION, VILLAGE_MODEL_URL, VILLAGE_LIGHTMAP_URL, VILLAGE_NIGHT_LIGHTMAP_URL } = await import("./villageModelPrep");
+    const { SIGNALS_MODEL_URL } = await import("./TransitRoadSignals");
+    const { BUSSTOP_MODEL_URL } = await import("./BusStopShelter");
+    for (const url of [VILLAGE_MODEL_URL, VILLAGE_LIGHTMAP_URL, VILLAGE_NIGHT_LIGHTMAP_URL, SIGNALS_MODEL_URL, BUSSTOP_MODEL_URL]) {
+      expect(url).toMatch(/^\/models\/village\/[a-z_]+\.(glb|webp)\?v=/);
+      expect(url.endsWith(`?v=${VILLAGE_ASSET_VERSION}`)).toBe(true);
+    }
+  });
+});
