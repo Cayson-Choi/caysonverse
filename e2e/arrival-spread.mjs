@@ -5,7 +5,7 @@
  * Two players (two tabs of ONE browser) walk onto the memorial's outside door pad side by side and press E in the same
  * second; once both are inside, each tab's own pose and its view of the other (`__cv.getRemotes`, the newest snapshot,
  * and `__cv.getRemoteDrawn`, where the avatar is drawn) must be at least the arrival spacing apart (2 x PLAYER_RADIUS
- * + 0.3 m = 1.1 m, shared/src/village/arrivalSpot.ts). Then both walk onto the inside pad and press E together, and
+ * + 0.6 m = 1.4 m, shared/src/village/arrivalSpot.ts). Then both walk onto the inside pad and press E together, and
  * the same holds outside. Neither arrival may stand on a door pad. A screenshot from each tab after each door.
  *
  *   PORT=2801 npx tsx src/index.ts                                         (in server/)
@@ -23,8 +23,8 @@ const run = createRun(`arrival-spread-${LABEL}`);
 run.evidence = arg("out", run.evidence);
 mkdirSync(run.evidence, { recursive: true });
 
-/** shared/src/village/arrivalSpot.ts ARRIVAL_SPACING_M: 2 x PLAYER_RADIUS (0.4) + 0.3 m. */
-const SPACING_M = 1.1;
+/** shared/src/village/arrivalSpot.ts ARRIVAL_SPACING_M: 2 x PLAYER_RADIUS (0.4) + 0.6 m. */
+const SPACING_M = 1.4;
 /** Two bodies of PLAYER_RADIUS overlap below this centre distance. */
 const BODY_M = 0.8;
 const OUT_PAD = { x: 0, z: -51.6, r: 2.0 };

@@ -65,9 +65,9 @@ function expectValid(spots: readonly Point2[], area: ArrivalArea): void {
 }
 
 describe("arrival spacing rules", () => {
-  it("two arrivals keep 1.1 m centre to centre (two 0.4 m bodies + 0.3 m of air), and stay 0.2 m off a door pad's edge", () => {
+  it("two arrivals keep 1.4 m centre to centre (two 0.4 m bodies + 0.6 m of air, so arms-out hands do not cross), and stay 0.2 m off a door pad's edge", () => {
     expect(PLAYER_RADIUS).toBe(0.4);
-    expect(ARRIVAL_SPACING_M).toBeCloseTo(1.1, 12);
+    expect(ARRIVAL_SPACING_M).toBeCloseTo(1.4, 12);
     expect(ARRIVAL_SPACING_M).toBeGreaterThan(2 * PLAYER_RADIUS);
     expect(DOOR_PAD_CLEARANCE_M).toBe(0.2);
     expect(SPACING_SLACK_M).toBeLessThan(0.01);
@@ -204,9 +204,11 @@ describe("findFreeSpot", () => {
     for (const s of arriveTogether(12, "hall", HALL_SPAWN)) expect(Math.hypot(s.x - HALL_SPAWN.x, s.z - HALL_SPAWN.z)).toBeLessThan(4);
   });
 
-  it("the first two into the hall are both still within reach of the way out (the button is there when they turn back)", () => {
+  it("the first two into the hall stay by the way out: the first within the button's reach, the second within the server's door reach (one small step brings the button)", () => {
     const [a, b] = arriveTogether(2, "hall", HALL_SPAWN);
-    for (const s of [a, b]) expect(Math.hypot(s.x - IN_PAD.centre.x, s.z - IN_PAD.centre.z)).toBeLessThanOrEqual(IN_PAD.radius + 0.7);
+    const d = (s: { x: number; z: number }) => Math.hypot(s.x - IN_PAD.centre.x, s.z - IN_PAD.centre.z);
+    expect(d(a)).toBeLessThanOrEqual(IN_PAD.radius + 0.7); // villageTargets DOOR_OFFER_REACH_M
+    expect(d(b)).toBeLessThanOrEqual(IN_PAD.radius + 0.9); // villageDoor DOOR_REACH_M
   });
 
   it("12 coming out of the hall together spread in front of the memorial, off its door pad and clear of the building", () => {
@@ -236,7 +238,7 @@ describe("findFreeSpot", () => {
 
   it("a full room falls back gracefully: free is false, the spot is still valid (no collider, no pad), the least crowded one, and deterministic", () => {
     const hall = arrivalArea("hall");
-    // A crowd every 0.7 m over the whole floor: no spot has 1.1 m of room.
+    // A crowd every 0.7 m over the whole floor: no spot has 1.4 m of room.
     const crowd: Point2[] = [];
     for (let x = hall.bounds.minX + 0.4; x <= hall.bounds.maxX - 0.4; x += 0.7) for (let z = hall.bounds.minZ + 0.4; z <= hall.bounds.maxZ - 0.4; z += 0.7) crowd.push({ x, z });
     const s = spreadArrival("hall", HALL_SPAWN, crowd);

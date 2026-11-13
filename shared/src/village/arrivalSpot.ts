@@ -32,15 +32,15 @@ import {
 } from "./villageLayout";
 
 /** Air between two arrivals' bodies (m), on top of their two radii. */
-export const ARRIVAL_GAP_M = 0.3;
-/** Least centre-to-centre distance between a new arrival and anyone already in the area: 2 x 0.4 + 0.3 = 1.1 m. */
+export const ARRIVAL_GAP_M = 0.6;
+/** Least centre-to-centre distance between a new arrival and anyone already in the area: 2 x 0.4 + 0.6 = 1.4 m (arms-out idle pose: hands do not cross). */
 export const ARRIVAL_SPACING_M = 2 * PLAYER_RADIUS + ARRIVAL_GAP_M;
 /**
  * How far outside a door pad's edge an arrival's centre stays (m). The layout's own arrivals sit exactly this far out
  * (the hall's spawn 1.6 m from its 1.4 m pad, the outside arrival 2.2 m from its 2.0 m pad).
  */
 export const DOOR_PAD_CLEARANCE_M = 0.2;
-/** Lattice rings around the nominal spot: ring k is about k spacings out, so 8 rings reach 8.8 m (217 spots). */
+/** Lattice rings around the nominal spot: ring k is about k spacings out, so 8 rings reach 11.2 m (217 spots). */
 export const ARRIVAL_RINGS = 8;
 /** Random draws a jittered spawn tries before it falls back to the lattice around the spawn point. */
 export const SPAWN_TRIES = 12;
