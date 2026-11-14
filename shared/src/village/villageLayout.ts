@@ -101,12 +101,13 @@ export const SCENERY_SIZES = { house: { x: 11.2, z: 8.4 }, cafe: { x: 20, z: 15 
 
 /**
  * Café option 2 (2026-11-12 decision): 20 x 15 m, two floors. The open terrace in front of the door is walkable ground
- * (a 3 cm deck), so the café's solid box is the footprint minus this depth on the door side (`solidBox`); the 0.45 m stone
- * step under the façade stands inside the solid box (5.55 of the 6 m).
+ * (a 3 cm deck), so the café's solid box is the footprint minus this depth on the door side (`solidBox`): it ends at the façade,
+ * and the 0.4 m stone step either side of the door has its own `col__cafe_step_*` boxes, while the flush stone landing in front
+ * of the door is walkable up to the threshold (review r3: no blocked strip of seemingly open ground).
  * The houses' 2.25 m porch is the same kind of walkable deck: the body's front wall stands 2.25 m inside the footprint edge,
  * so the solid box is the body, and the porch's posts, rails, planters and bench have their own small `col__` boxes.
  */
-export const SCENERY_TERRACE = { house: 2.25, cafe: 5.55, kiosk: 0.7 } as const;
+export const SCENERY_TERRACE = { house: 2.25, cafe: 6, kiosk: 0.7 } as const;
 
 /**
  * A small colourful house, the café with striped awnings, or the café's timber flower kiosk, for the scenery.

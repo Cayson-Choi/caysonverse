@@ -20,8 +20,9 @@ try {
   await player.page.locator("input.cv-input").first().fill("번호키 테스트");
   await press(player, player.page.locator(".cv-submit"));
   await player.page.waitForFunction(() => window.__cv?.getScreen?.() === "village", null, { timeout: 40000 });
-  // house_1 = (21,-42), south-facing B footprint 11.2 × 8.4; keypad pad ≈ (21,-37.15).
-  for (const [x, z] of [[0, 14], [0, -20], [15, -34], [21, -37.15]]) await walkAndWait(player, x, z, 40000, 1.2);
+  // house_1 = (21,-42), south-facing B footprint 11.2 × 8.4: the porch (2.25 m, walkable) runs z -40.05..-37.8 and the keypad pad
+  // stands on it 0.65 m in front of the door (≈ (21,-39.40), keypadEntries()); E is taken within HOUSE_KEYPAD_REACH_M (2 m).
+  for (const [x, z] of [[0, 14], [0, -20], [15, -34], [21, -37.15], [21, -39.3]]) await walkAndWait(player, x, z, 40000, 1.2);
   await player.page.keyboard.press("KeyE");
   const { HOUSE_INTERIORS_OPEN } = await player.page.evaluate(async () => {
     const m = await window.__imp("/src/village/VillageKeypad.tsx");
