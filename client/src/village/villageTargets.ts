@@ -139,11 +139,17 @@ export function nearestCubbyColumn(x: number, z: number, columns: readonly Cubby
 export const GUIDE_TARGET_PREFIX = "guide:";
 export const GUIDE_SHORT = "문의";
 
-/** The guide of the player's area within its reach (2.2 m; the hall desk 3.5 m): "문의하기" opens its questions (GuideDialog). */
+/**
+ * A free seat nearer than this (m) wins over a guide in reach: the hall desk is asked from round its two visitor chairs, and
+ * standing at a chair's side (0.95 m from its seat point, review 2026-11-15) must offer "앉기", not "문의하기".
+ */
+export const GUIDE_SEAT_YIELD_M = 1.1;
+
+/** The guide of the player's area within its reach (2.2 m; the hall desk 4.0 m): "문의하기" opens its questions (GuideDialog). */
 export function guideTarget(area: AreaId, x: number, z: number): InteractTarget | null {
   const near = nearestGuide(area, x, z);
   if (!near) return null;
-  return { kind: "object", id: `${GUIDE_TARGET_PREFIX}${near.guide.id}`, dist: near.dist, icon: "💬", label: GUIDE_ASK_LABEL, short: GUIDE_SHORT, beatsSeatBeyond: 0.9 };
+  return { kind: "object", id: `${GUIDE_TARGET_PREFIX}${near.guide.id}`, dist: near.dist, icon: "💬", label: GUIDE_ASK_LABEL, short: GUIDE_SHORT, beatsSeatBeyond: GUIDE_SEAT_YIELD_M };
 }
 
 /**

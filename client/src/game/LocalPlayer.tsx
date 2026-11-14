@@ -62,7 +62,7 @@ import { clipFor, lookFromAppearance } from "./characterLook";
 import { reportAvatarClip, useAvatar } from "./useAvatar";
 import { BlobShadow } from "./BlobShadow";
 import { PICK_AS_SELF } from "./clickPick";
-import { createSelfFade, endSelfFade, registerSelfBody, selfBody, stepSelfFade } from "./selfBody";
+import { createSelfFade, endSelfFade, indoorCloseHidden, registerSelfBody, selfBody, stepSelfFade } from "./selfBody";
 import { createNametag } from "./nametag";
 import { registerLabel } from "./labelRegistry";
 import { bubbleRestHeight, nametagRestHeight } from "./nametagLayout";
@@ -71,7 +71,7 @@ import { useEmoji } from "./useEmoji";
 import { stepYaw } from "./yaw";
 import { createMoveSender } from "./moveSender";
 import { installDebugHook } from "./debug";
-import { ANIM_FADE, CLIP, HEAD_HEIGHT, INDOOR_SELF_FADE_DISTANCE, INDOOR_SELF_FADE_OPACITY, MODEL_FACING_OFFSET, SELF_CAMERA_HIDE_DISTANCE, TURN_SPEED } from "./constants";
+import { ANIM_FADE, CLIP, HEAD_HEIGHT, INDOOR_SELF_HIDE_DISTANCE, INDOOR_SELF_SHOW_DISTANCE, MODEL_FACING_OFFSET, SELF_CAMERA_HIDE_DISTANCE, TURN_SPEED } from "./constants";
 import type { MoveControl } from "./constants";
 import type { Orbit, Pose, SeatState } from "./types";
 import { getRoom, sendJump, sendMove, sendStand } from "../net/connection";
@@ -225,6 +225,8 @@ export function LocalPlayer({
   useEmoji(sessionId, groupRef, avatar.topY, bubbleTop);
   // The own body, for the destination ring it may hide (ClickMarker): while it does, the body fades (stepSelfFade below).
   const selfFadeRef = useRef(createSelfFade());
+  /** Hidden because the camera is right at the head indoors (see the per-frame visibility below). */
+  const closeHiddenRef = useRef(false);
   useEffect(() => {
     const group = groupRef.current;
     const unregister = group ? registerSelfBody(group, avatar.topY) : undefined;
@@ -489,16 +491,22 @@ export function LocalPlayer({
     // A memorial cubby's close-up (cubbyFocus.ts) puts the lens at the cubby's height in front of it, where the own body may
     // stand: hidden while the close-up is more than a third of the way in.
     const inCloseUp = cubbyFocusWeight() > 0.33;
-    group.visible = viewState.ovBlend > OV_VIS_BLEND ? true : viewState.mode !== "fp" && viewState.blend < HIDE_BLEND && !cameraInsideSelf && !inCloseUp;
+    // Indoors a wall behind the player keeps the camera close to the head (the hall's door wall on arrival, the sofa against the
+    // lounge wall). The body used to fade there, but a faded head that near is a big see-through disc over half a phone screen
+    // (review 2026-11-15): it is hidden outright instead, name tag and all, and shown again once the camera has pulled back
+    // (a little further than where it hid, so it does not flicker on the edge).
+    const headDist = Math.hypot(cameraProbe.x - pose.x, cameraProbe.y - (group.position.y + HEAD_HEIGHT), cameraProbe.z - pose.z);
+    const indoorTp = viewState.mode === "tp" && getActiveMap().cameraLimit !== undefined;
+    closeHiddenRef.current = indoorCloseHidden(closeHiddenRef.current, indoorTp, headDist, INDOOR_SELF_HIDE_DISTANCE, INDOOR_SELF_SHOW_DISTANCE);
+    const closeIndoors = closeHiddenRef.current && viewState.ovBlend <= OV_VIS_BLEND;
+    group.visible =
+      viewState.ovBlend > OV_VIS_BLEND
+        ? true
+        : viewState.mode !== "fp" && viewState.blend < HIDE_BLEND && !cameraInsideSelf && !inCloseUp && !closeIndoors;
     // The destination ring straight ahead, behind the body (a click on the body itself, a walk away from the camera):
     // the body fades and is drawn after the ring, so the ring shows through it (round 6 review: only its dashes showed,
     // on the body, all the way there).
-    // Indoors a wall behind the player keeps the camera close to the head (the hall's door wall on arrival, the sofa against the
-    // lounge wall; review 2026-11-14: on a phone held upright the head covered 50-70 % of the screen and hid the memorial niche):
-    // the body then fades like it does for the ring, so the room shows through it.
-    const headDist = Math.hypot(cameraProbe.x - pose.x, cameraProbe.y - (group.position.y + HEAD_HEIGHT), cameraProbe.z - pose.z);
-    const closeIndoors = viewState.mode === "tp" && getActiveMap().cameraLimit !== undefined && headDist < INDOOR_SELF_FADE_DISTANCE;
-    stepSelfFade(selfFadeRef.current, avatar, group.visible && (selfBody.hidingRing || closeIndoors), delta, closeIndoors ? INDOOR_SELF_FADE_OPACITY : undefined);
+    stepSelfFade(selfFadeRef.current, avatar, group.visible && selfBody.hidingRing, delta);
 
     // Focus guard: while the chat input owns keyboard input — OR while the
     // resilience driver is reconnecting (world frozen behind the overlay) —
@@ -590,8 +598,8 @@ export function LocalPlayer({
       motion.elapsed = 0;
       motion.duration = animTimerRef.current;
       animStateRef.current = "sitDown";
-      // The camera swings behind the chair toward the screen (FP: the look snaps to it).
-      if (s) beginSeatCamera(orbit, s.yaw);
+      // Outdoors the camera stays as the player has it; indoors it glides once to look the way the seat faces (viewState.ts).
+      if (s) beginSeatCamera(orbit, s.yaw, getActiveMap().cameraLimit !== undefined);
     } else if (!seated && wasSeated) {
       // Stand confirmed: to the server's dismount pose, play StandUp → loco. A chair: snap there. A bench: the
       // clip carries the body from the seat to it (the dismount spot is just in front of the bench).

@@ -6,7 +6,8 @@ import { CAMERA_LOOK_LIFT, ZOOM_BAND } from "./cameraControls";
 import { HALL_ACTIVE_MAP, VILLAGE_ACTIVE_MAP, setActiveMap } from "./activeMap";
 import { HALL_CAMERA_LIMIT } from "./indoorCamera";
 import { createFollowRig, createFollowSpot, noteAreaLimit, stepFollowRig, type FollowRig, type FollowSpot } from "./followRig";
-import { applyZoom, beginSeatCamera, endSeatCamera, resetViewMode, viewState } from "./viewState";
+import { INDOOR_SEAT_PITCH, applyZoom, beginSeatCamera, endSeatCamera, resetViewMode, viewState } from "./viewState";
+import { recenterYaw } from "./cameraControls";
 import type { Orbit } from "./types";
 
 const DT = 1 / 60;
@@ -120,6 +121,23 @@ describe("follow rig — the zoom set with the wheel holds while the player move
     walk(rig, orbit, body, spot, 2, 0, 0, 0, (s, b) => expectAtChosenSpot(s, orbit, b.x, b.z, "seated"));
     endSeatCamera(orbit as Orbit);
     walk(rig, orbit, body, spot, 2, 4, 1, 0, (s, b) => expectAtChosenSpot(s, orbit, b.x, b.z, "stood up, walking off"));
+  });
+});
+
+describe("sitting down indoors (review 2026-11-15: the sofa camera stared at the rug)", () => {
+  it("indoors the seat sets ONE glide goal (the way the seat faces, a level tilt) and writes nothing itself; standing up sets none", () => {
+    const orbit = frozen({ yaw: -0.8, pitch: 0.9, distance: 6 });
+    viewState.orbitGoal = null;
+    beginSeatCamera(orbit as Orbit, 1.2, true); // a frozen orbit: any write would throw here
+    expect(viewState.orbitGoal).toEqual({ yaw: recenterYaw(1.2), pitch: INDOOR_SEAT_PITCH });
+    viewState.orbitGoal = null; // reached (or the player dragged)
+    endSeatCamera(orbit as Orbit);
+    expect(viewState.orbitGoal).toBeNull();
+  });
+  it("outdoors nothing changes", () => {
+    viewState.orbitGoal = null;
+    beginSeatCamera(frozen({ yaw: 0, pitch: 0.4, distance: 6 }) as Orbit, 0.3, false);
+    expect(viewState.orbitGoal).toBeNull();
   });
 });
 

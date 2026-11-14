@@ -1,4 +1,6 @@
 import { VILLAGE_LAYOUT, type CubbyAnchor, type CubbyWall } from "@caysonverse/shared/village/villageLayout";
+import { MEMORIAL_COLLIDERS } from "@caysonverse/shared/village/generated/memorialColliders";
+import type { AABB } from "@caysonverse/shared/collision";
 
 /**
  * The close-up camera of a memorial cubby (케이슨 마을 추모관; owner 2026-11-13: "가운데 칸은 잘 보이는데 윗칸은 보기가 힘들잖아"):
@@ -33,15 +35,44 @@ export const FOCUS_SPAN_PITCHES = 2.4;
 export const FOCUS_GLIDE_S = 0.55;
 /** The nearest the eye comes to the cubby's opening (m): never inside the unit, even on a very wide screen. */
 const MIN_DIST = 0.75;
+/**
+ * The lowest the eye goes (m above the hall floor, y = 0). A bottom-row cubby's opening is 0.35 m up; the eye stays at least this
+ * high and looks down into it (review 2026-11-15: on a phone the old pose lowered the eye under the floor for the bottom rows).
+ */
+export const MIN_EYE_HEIGHT = 0.6;
+/** How far the eye keeps from a piece of furniture's footprint (m), so the near plane does not cut into it. */
+const FURNITURE_MARGIN = 0.18;
+/** Over a piece of furniture the eye cannot get clear of, it rises to at least this height (m): above benches and tables. */
+const OVER_FURNITURE_EYE = 1.35;
 
 const WALL_BY_BANK: ReadonlyMap<string, CubbyWall> = new Map(VILLAGE_LAYOUT.memorial.interior.cubbyWalls.map((w) => [w.bank, w]));
+
+/** The hall's furniture footprints the eye must stay out of: everything but the walls and the cubby banks themselves. */
+const FURNITURE: readonly AABB[] = MEMORIAL_COLLIDERS.filter((b) => {
+  const w = b.maxX - b.minX;
+  const d = b.maxZ - b.minZ;
+  return Math.max(w, d) < 5; // walls (13-16 m) and the banks (6.1-7.7 m long) are not furniture
+});
+
+function inFurniture(x: number, z: number, boxes: readonly AABB[]): boolean {
+  const m = FURNITURE_MARGIN;
+  return boxes.some((b) => x > b.minX - m && x < b.maxX + m && z > b.minZ - m && z < b.maxZ + m);
+}
 
 /**
  * The eye and the look point that frame `anchor` in the free part of a screen of `aspect` (width / height) with a vertical field
  * of view of `fovDeg`, the card covering `inset`. The eye is straight out from the opening (along the cubby's facing), at the
- * cubby's height; the look point is shifted so the cubby sits in the middle of the free part.
+ * cubby's height (never under `MIN_EYE_HEIGHT`); the cubby is put in the middle of the free part by turning the look (sideways
+ * for a side panel, down for a bottom sheet), never by lowering the eye. When the spot is over furniture (a bench, the letter
+ * table) the eye comes closer to the cubby until it is clear, and if it cannot, it rises over it.
  */
-export function cubbyFocusPose(anchor: CubbyAnchor, aspect: number, fovDeg: number, inset: FocusInset): FocusPose {
+export function cubbyFocusPose(
+  anchor: CubbyAnchor,
+  aspect: number,
+  fovDeg: number,
+  inset: FocusInset,
+  furniture: readonly AABB[] = FURNITURE,
+): FocusPose {
   const wall = WALL_BY_BANK.get(anchor.bank);
   const pitch = wall ? wall.cell + wall.frame : 0.4;
   const half = (FOCUS_SPAN_PITCHES * pitch) / 2;
@@ -51,9 +82,7 @@ export function cubbyFocusPose(anchor: CubbyAnchor, aspect: number, fovDeg: numb
   // the free part's half-width and half-height, as shares of the whole view's
   const freeW = inset.side === "right" ? 1 - f : 1;
   const freeH = inset.side === "bottom" ? 1 - f : 1;
-  const dist = Math.max(MIN_DIST, half / (freeW * a * tan), half / (freeH * tan));
-  const hHalf = dist * tan; // the view's half-height at the cubby (m)
-  const wHalf = hHalf * a;
+  const want = Math.max(MIN_DIST, half / (freeW * a * tan), half / (freeH * tan));
   const outX = Math.sin(anchor.yaw);
   const outZ = Math.cos(anchor.yaw);
   // the camera looks into the wall (-out); its right is (cos yaw, 0, -sin yaw)
@@ -62,11 +91,29 @@ export function cubbyFocusPose(anchor: CubbyAnchor, aspect: number, fovDeg: numb
   // the free part's centre on the screen (NDC): left of a right panel, above a bottom sheet
   const cx = inset.side === "right" ? -f : 0;
   const cy = inset.side === "bottom" ? f : 0;
-  // the anchor appears at NDC (cx, cy) when the look point is shifted by -cx · wHalf to the right and -cy · hHalf up
-  const tx = anchor.x - rightX * cx * wHalf;
-  const tz = anchor.z - rightZ * cx * wHalf;
-  const ty = anchor.y - cy * hHalf;
-  return { ex: tx + outX * dist, ey: ty, ez: tz + outZ * dist, tx, ty, tz };
+  let ey = Math.max(anchor.y, MIN_EYE_HEIGHT);
+
+  const frame = (dist: number): FocusPose => {
+    // up and down: the eye stays where it is and the look tilts so the anchor shows at NDC y = cy
+    const elev = Math.atan2(anchor.y - ey, dist); // the anchor's angle above the horizontal, from the eye
+    const tilt = elev - Math.atan(cy * tan);
+    // the anchor's depth along the (tilted) view axis, and the view's half-width there (m)
+    const depth = Math.hypot(dist, anchor.y - ey) * Math.cos(elev - tilt);
+    const wHalf = depth * tan * a;
+    // sideways: the camera moves along the wall so the anchor shows at NDC x = cx (the look stays square to the wall)
+    const tx = anchor.x - rightX * cx * wHalf;
+    const tz = anchor.z - rightZ * cx * wHalf;
+    return { ex: tx + outX * dist, ey, ez: tz + outZ * dist, tx, ty: ey + dist * Math.tan(tilt), tz };
+  };
+
+  // over furniture: come closer (down to MIN_DIST) until the eye is clear of it
+  for (let dist = want; dist >= MIN_DIST - 1e-9; dist -= 0.05) {
+    const p = frame(dist);
+    if (!inFurniture(p.ex, p.ez, furniture)) return p;
+  }
+  // nowhere clear in front of this cubby: the furthest spot, the eye above the furniture
+  ey = Math.max(ey, OVER_FURNITURE_EYE);
+  return frame(want);
 }
 
 /** Ease in and out (smoothstep). */

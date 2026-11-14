@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { VILLAGE_LAYOUT, cubbyAnchors } from "@caysonverse/shared/village/villageLayout";
-import { FOCUS_GLIDE_S, cubbyFocusPose, cubbyFocusWeight, resetCubbyFocus, setCubbyFocus, stepCubbyFocus, type FocusPose } from "./cubbyFocus";
+import { MEMORIAL_COLLIDERS } from "@caysonverse/shared/village/generated/memorialColliders";
+import { FOCUS_GLIDE_S, MIN_EYE_HEIGHT, cubbyFocusPose, cubbyFocusWeight, resetCubbyFocus, setCubbyFocus, stepCubbyFocus, type FocusPose } from "./cubbyFocus";
 
 const anchors = cubbyAnchors(VILLAGE_LAYOUT);
 const top = anchors.find((a) => a.bank === "A" && a.row === 7 && a.col === 3)!;
@@ -26,17 +27,18 @@ function ndc(pose: FocusPose, p: { x: number; y: number; z: number }, aspect: nu
 afterEach(() => resetCubbyFocus());
 
 describe("cubbyFocusPose — the close-up frames ANY cubby at its own height (owner 2026-11-13: the top rows too)", () => {
-  it("the eye is straight out from the cubby at the cubby's height, looking square into the wall", () => {
+  it("the eye is straight out from the cubby at the cubby's height (never under the floor margin), looking square into the wall", () => {
     for (const a of [top, mid, east]) {
       const p = cubbyFocusPose(a, 16 / 9, 50, { side: "right", frac: 0 });
-      expect(p.ey).toBeCloseTo(a.y, 6);
-      expect(p.ty).toBeCloseTo(a.y, 6);
+      expect(p.ey).toBeCloseTo(Math.max(a.y, MIN_EYE_HEIGHT), 6);
       // out along the facing
       const out = { x: Math.sin(a.yaw), z: Math.cos(a.yaw) };
       const along = (p.ex - p.tx) * out.x + (p.ez - p.tz) * out.z;
       expect(along).toBeGreaterThan(0.7);
       expect(Math.abs((p.ex - p.tx) * out.z - (p.ez - p.tz) * out.x)).toBeLessThan(1e-9);
-      expect(ndc(p, a, 16 / 9, 50).x).toBeCloseTo(0, 6);
+      const s = ndc(p, a, 16 / 9, 50);
+      expect(s.x).toBeCloseTo(0, 6);
+      expect(s.y).toBeCloseTo(0, 6);
     }
   });
 
@@ -62,7 +64,7 @@ describe("cubbyFocusPose — the close-up frames ANY cubby at its own height (ow
     // the cubby's own width fits well inside the screen's width
     const w = VILLAGE_LAYOUT.memorial.interior.cubbyWalls.find((c) => c.bank === "A")!;
     const edge = { x: top.x + w.along.x * (w.cell / 2), y: top.y, z: top.z + w.along.z * (w.cell / 2) };
-    expect(Math.abs(ndc(p, edge, aspect, 50).x)).toBeLessThan(0.6);
+    expect(Math.abs(ndc(p, edge, aspect, 50).x)).toBeLessThan(0.75);
   });
 });
 
@@ -94,5 +96,62 @@ describe("the glide", () => {
     expect(out.ey).toBeLessThan(top.y);
     for (let i = 0; i < 60; i++) stepCubbyFocus(0.05, 1.5, 50, out);
     expect(out.ey).toBeCloseTo(top.y, 3);
+  });
+});
+
+/** Screens the close-up must work on: PC with the side card, phones upright with the bottom sheet (its share as CubbyView measures it, up to 0.6). */
+const SCREENS = [
+  { name: "pc", aspect: 16 / 9, inset: { side: "right" as const, frac: 0.3 } },
+  { name: "pc-narrow", aspect: 1.3, inset: { side: "right" as const, frac: 0.38 } },
+  { name: "phone45", aspect: 390 / 844, inset: { side: "bottom" as const, frac: 0.45 } },
+  { name: "phone60", aspect: 390 / 844, inset: { side: "bottom" as const, frac: 0.6 } },
+];
+
+describe("cubbyFocusPose — every row of every bank, PC and phone (review 2026-11-15: the bottom rows put the phone camera under the floor)", () => {
+  const furniture = MEMORIAL_COLLIDERS.filter((b) => Math.max(b.maxX - b.minX, b.maxZ - b.minZ) < 5);
+  const room = VILLAGE_LAYOUT.memorial.interior.room;
+  for (const scr of SCREENS) {
+    it(`${scr.name}: all 368 cubbies — eye above the floor margin and at or above the cubby, in the room, out of the furniture, the cubby in the middle of the free part`, () => {
+      expect(anchors).toHaveLength(368);
+      for (const a of anchors) {
+        const p = cubbyFocusPose(a, scr.aspect, 50, scr.inset);
+        expect(p.ey, a.id).toBeGreaterThanOrEqual(MIN_EYE_HEIGHT - 1e-9);
+        expect(p.ey, a.id).toBeGreaterThanOrEqual(a.y - 1e-9);
+        expect(p.ey, a.id).toBeLessThan(VILLAGE_LAYOUT.memorial.interior.ceilingHeight - 0.5);
+        expect(p.ex > room.minX && p.ex < room.maxX && p.ez > room.minZ && p.ez < room.maxZ, a.id).toBe(true);
+        const inside = furniture.some((b) => p.ex > b.minX && p.ex < b.maxX && p.ez > b.minZ && p.ez < b.maxZ);
+        // clear of every footprint, or (no clear spot) high enough to look over it
+        expect(!inside || p.ey >= 1.3, a.id).toBe(true);
+        const s = ndc(p, a, scr.aspect, 50);
+        const cx = scr.inset.side === "right" ? -scr.inset.frac : 0;
+        const cy = scr.inset.side === "bottom" ? scr.inset.frac : 0;
+        expect(Math.abs(s.x - cx), a.id).toBeLessThan(0.02);
+        expect(Math.abs(s.y - cy), a.id).toBeLessThan(0.02);
+      }
+    });
+  }
+
+  it("each row 0..7 of banks A, B and E on a phone: the bottom row looks down from above the floor, the top row straight across", () => {
+    for (const bank of ["A", "B", "E"] as const) {
+      for (let row = 0; row < 8; row++) {
+        const a = anchors.find((x) => x.bank === bank && x.row === row && x.col === 4)!;
+        const p = cubbyFocusPose(a, 390 / 844, 50, { side: "bottom", frac: 0.45 });
+        expect(p.ey, a.id).toBeCloseTo(Math.max(a.y, MIN_EYE_HEIGHT), 6);
+        expect(p.ty, `${a.id} looks down a little to lift the cubby above the sheet`).toBeLessThan(p.ey);
+      }
+    }
+  });
+
+  it("the east bench and the letter table no longer hold the phone camera (E r0-r1 c6-c11, A c2-c6 at a 0.6 sheet)", () => {
+    const bench = MEMORIAL_COLLIDERS.find((b) => b.minX === 304.64 && b.minZ === -2.9)!;
+    expect(bench.minX).toBeCloseTo(304.64, 2); // col__bench_east
+    for (const a of anchors.filter((x) => (x.bank === "E" && x.row <= 1 && x.col >= 6 && x.col <= 11) || (x.bank === "A" && x.col >= 2 && x.col <= 6))) {
+      for (const frac of [0.45, 0.6]) {
+        const p = cubbyFocusPose(a, 390 / 844, 50, { side: "bottom", frac });
+        const inBench = p.ex > bench.minX && p.ex < bench.maxX && p.ez > bench.minZ && p.ez < bench.maxZ;
+        const inTable = p.ex > 293.4 && p.ex < 295.4 && p.ez > -3.35 && p.ez < -2.55;
+        expect(inBench || inTable, a.id).toBe(false);
+      }
+    }
   });
 });

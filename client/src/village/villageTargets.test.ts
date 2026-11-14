@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { pickInteraction } from "../game/interact";
+import { interactInputAt, pickInteraction } from "../game/interact";
+import { HALL_ACTIVE_MAP } from "../game/activeMap";
 import { readFileSync } from "node:fs";
 import { VILLAGE_LAYOUT, type AreaId } from "@caysonverse/shared/village/villageLayout";
 import { CANDLE_REACH_M } from "@caysonverse/shared/village/messages";
@@ -213,5 +214,17 @@ describe("the hall desk and the way out (Task 9A)", () => {
     expect(villageAndHallTargets("hall", 305.0, 4.6).length).toBeGreaterThan(0);
     expect(villageAndHallTargets("hall", 305.0, 4.6, true)).toHaveLength(0);
     expect(villageAndHallTargets("village", 5, 13.5, true)).toHaveLength(0);
+  });
+});
+
+describe("the hall desk and its visitor chairs (review 2026-11-15: '문의하기' at the chair's side)", () => {
+  const pick = (x: number, z: number) => {
+    const input = interactInputAt(x, z, -1, () => false, undefined, { seats: HALL_ACTIVE_MAP.seats ?? [], area: "hall" });
+    return pickInteraction({ ...input, targets: villageAndHallTargets("hall", x, z) });
+  };
+  it("standing at the side of consult chair 0 offers 앉기; well away from both chairs the desk is asked", () => {
+    expect(pick(304.15, 2.5)).toMatchObject({ kind: "sit" });
+    expect(pick(304.48, 2.82)).toMatchObject({ kind: "sit" });
+    expect(pick(303.0, 4.0)).toMatchObject({ kind: "target", target: { id: "guide:hall_desk" } });
   });
 });

@@ -55,11 +55,12 @@ export const SELF_CAMERA_HIDE_DISTANCE = 1.8;
 
 /**
  * Inside a building (a place with a camera limit), a third-person camera nearer than this (m) to the own head — a wall right
- * behind the player holds it there — fades the own body (selfBody.ts), so the room shows through it.
+ * behind the player holds it there — hides the own body (LocalPlayer), so the room is in plain view. It used to fade to a faint
+ * outline, but that near a faded head is a big see-through disc over half a phone screen (review 2026-11-15).
  */
-export const INDOOR_SELF_FADE_DISTANCE = 2.8;
-/** How far the own body fades there: a faint outline, the room behind it in plain view (round 3 check on a phone). */
-export const INDOOR_SELF_FADE_OPACITY = 0.22;
+export const INDOOR_SELF_HIDE_DISTANCE = 2.8;
+/** The hidden body shows again once the camera is this far from the head (a little past the hide distance: no flicker; under the 3.2 m nearest zoom). */
+export const INDOOR_SELF_SHOW_DISTANCE = 3.05;
 
 /** drei KeyboardControls action names (typed control set). */
 export type MoveControl = "forward" | "backward" | "left" | "right" | "run" | "camLeft" | "camRight";

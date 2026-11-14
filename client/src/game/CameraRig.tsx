@@ -552,9 +552,33 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
         taps.reset();
       }
     };
+    /**
+     * A mouse hovering a cubby in the hall shows the hand cursor, so the player can tell a cubby is clicked to look at it
+     * (review 2026-11-15: nothing said so). At most ~8 picks a second, and only with no button down.
+     */
+    let lastHoverPick = 0;
+    let hoverCursor = false;
+    const hoverCubby = (e: PointerEvent) => {
+      if (e.pointerType !== "mouse" || e.buttons !== 0) return;
+      const now = performance.now();
+      if (now - lastHoverPick < 120) return;
+      lastHoverPick = now;
+      let over = false;
+      if (localArea() === "hall" && cubbyFocusAnchor() === null) {
+        const hit = pickAt(e.clientX, e.clientY);
+        over = !!hit && !hit.blocker && cubbyAtPoint(VILLAGE_LAYOUT, hit.x, hit.y, hit.z) !== null;
+      }
+      if (over !== hoverCursor) {
+        hoverCursor = over;
+        el.style.cursor = over ? "pointer" : "";
+      }
+    };
     const onMove = (e: PointerEvent) => {
       const p = pointers.get(e.pointerId);
-      if (!p) return; // a move with no prior down (e.g. hovering) — ignore
+      if (!p) {
+        hoverCubby(e);
+        return; // a move with no prior down (e.g. hovering): nothing else
+      }
       if (clickStart && clickStart.id === e.pointerId) {
         clickStart.travel = pressTravel(clickStart.travel, e.clientX - clickStart.x, e.clientY - clickStart.y);
         // a double tap's second touch turned into a look-drag: no double tap — the first tap walks after all (round 6
@@ -763,6 +787,7 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
     return () => {
       el.removeEventListener("pointerdown", onDown);
       el.removeEventListener("pointermove", onMove);
+      if (hoverCursor) el.style.cursor = "";
       window.removeEventListener("pointerup", onUp);
       window.removeEventListener("pointercancel", onUp);
       el.removeEventListener("wheel", onWheel);

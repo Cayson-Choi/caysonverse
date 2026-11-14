@@ -103,4 +103,29 @@ describe("hallNight — the hall's light follows the village's clock", () => {
     expect(lm[1]!.url).not.toBe(lm[0]!.url);
     disposeHallNight();
   });
+
+  it("high -> low -> high while the first high load is in flight ends on the high map (review 2026-11-15)", async () => {
+    disposeHallNight();
+    const made: { url: string; t: Texture }[] = [];
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => (release = r));
+    const loader = {
+      loadAsync: async (url: string) => {
+        const t = new Texture();
+        made.push({ url, t });
+        if (made.length <= 2) await gate;
+        return t as Texture<HTMLImageElement>;
+      },
+    };
+    const a = loadHallNight("high", loader);
+    const b = loadHallNight("low", loader);
+    const c = loadHallNight("high", loader);
+    release();
+    await Promise.all([a, b, c]);
+    const lm = made.filter((m) => !m.url.includes("garden"));
+    expect(hallNightMapUniform.value).toBe(lm[lm.length - 1]!.t);
+    expect(lm[lm.length - 1]!.url).toBe(lm[0]!.url); // the high map, not the 1k one
+    expect(lm.every((m) => m.url === lm[0]!.url)).toBe(true); // the low map was never even fetched
+    disposeHallNight();
+  });
 });

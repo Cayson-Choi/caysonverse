@@ -84,8 +84,7 @@ function drawAfterRing(f: SelfFade, avatar: BuiltAvatar, on: boolean): void {
  * One frame of the own body's fade (`dt` s): toward SELF_FADE_OPACITY while it hides the ring (`fade`), else back to 1,
  * eased (SELF_FADE_TAU). While faded it is drawn after the ring, its depth first: the ring shows through its front
  * surface the way the ground round it does — not over it, and no dashed outline of it on the body. Touches the
- * materials only when the opacity changes. Returns the opacity now. `faded`: the opacity faded to (the camera held close to the
- * head indoors fades it further, INDOOR_SELF_FADE_OPACITY).
+ * materials only when the opacity changes. Returns the opacity now. `faded`: the opacity faded to.
  */
 export function stepSelfFade(f: SelfFade, avatar: BuiltAvatar, fade: boolean, dt: number, faded = SELF_FADE_OPACITY): number {
   const goal = fade ? faded : 1;
@@ -104,4 +103,14 @@ export function endSelfFade(f: SelfFade, avatar: BuiltAvatar): void {
   f.opacity = 1;
   setAvatarOpacity(avatar, 1);
   drawAfterRing(f, avatar, false);
+}
+
+/**
+ * Whether the own body is hidden because an indoor third-person camera is right at the head (`headDist` m from it): hidden under
+ * `hideAt`, shown again only past `showAt` (a little further, so the edge does not flicker). Outdoors, in first person or the
+ * overview (`indoorTp` false) it is never hidden for this.
+ */
+export function indoorCloseHidden(wasHidden: boolean, indoorTp: boolean, headDist: number, hideAt: number, showAt: number): boolean {
+  if (!indoorTp) return false;
+  return headDist < (wasHidden ? showAt : hideAt);
 }

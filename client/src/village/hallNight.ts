@@ -91,17 +91,21 @@ let loadingTier: "high" | "low" | null = null;
 let generation = 0;
 /** The tier the night map in the uniform was loaded for. */
 let loadedTier: "high" | "low" | null = null;
+/** The tier asked for last: a load queued behind another tier's loads THIS one when it runs, whatever it was queued for. */
+let wantedTier: "high" | "low" | null = null;
 
 /** Load the night map and the night park (once per tier; configured like the day map). Resolves when both are in. */
 export function loadHallNight(tier: "high" | "low", loader: Pick<TextureLoader, "loadAsync"> = new TextureLoader()): Promise<void> {
+  wantedTier = tier;
   if (hallNightMapUniform.value && hallGardenNightUniform.value && loadedTier === tier) return Promise.resolve();
   if (loading) {
     if (loadingTier === tier) return loading;
     // another tier is in flight (the graphics tier changed meanwhile): load this one after it, so the map that stays is the one
-    // the CURRENT tier wants (review 2026-11-14: a phone kept the 2048 px night map after a high → low switch)
+    // the CURRENT tier wants (review 2026-11-14: a phone kept the 2048 px night map after a high → low switch). It loads the tier
+    // asked for LAST, not the one it was queued for: high → low → high must end on high (review 2026-11-15).
     const after = loading;
     const gen = generation;
-    return after.then(() => (gen === generation ? loadHallNight(tier, loader) : undefined));
+    return after.then(() => (gen === generation && wantedTier ? loadHallNight(wantedTier, loader) : undefined));
   }
   const mine = generation;
   const p: Promise<void> = Promise.all([loader.loadAsync(HALL_NIGHT_LIGHTMAP_URL[tier]), loader.loadAsync(HALL_GARDEN_NIGHT_URL)])
@@ -148,6 +152,7 @@ export function disposeHallNight(): void {
   loading = null;
   loadingTier = null;
   loadedTier = null;
+  wantedTier = null;
   hallNightMapUniform.value?.dispose();
   hallGardenNightUniform.value?.dispose();
   hallNightMapUniform.value = null;

@@ -183,14 +183,23 @@ export function cancelOrbitGoal(): void {
 }
 
 /**
- * The seat is confirmed. The camera stays exactly as the player has it (owner
- * 2026-11-10: "자동으로 바뀌니까 헷갈려") — it used to swing behind the chair at a preset
- * tilt and distance (third person) or snap the look onto the screen (first person), and
- * glide back on standing up. Kept as the sit flow's camera hook (LocalPlayer calls it on
- * every confirmed sit), deliberately empty: neither the orbit nor the view state changes.
+ * The tilt a seat indoors starts the third-person camera at (rad): nearly level, over the shoulder, so the room is in view.
+ * Indoors the wall behind a sofa holds the camera at the head, and at the player's usual walking tilt it looked straight down
+ * at the rug (review 2026-11-15).
  */
-export function beginSeatCamera(_orbit: Orbit, _seatYaw: number): void {
-  // Nothing: sitting down does not move the camera.
+export const INDOOR_SEAT_PITCH = 0.12;
+
+/**
+ * The seat is confirmed. Outdoors the camera stays exactly as the player has it (owner 2026-11-10: "자동으로 바뀌니까
+ * 헷갈려") — it used to swing behind the chair at a preset tilt and distance (third person) or snap the look onto the screen
+ * (first person), and glide back on standing up. Indoors (`indoor`: a place with a camera limit, the memorial hall) the
+ * third-person camera glides ONCE, as the player sits, to look the way the seat faces at a level tilt (`INDOOR_SEAT_PITCH`):
+ * a goal like the R key's, so any drag, Z / C, wheel or pinch takes over at once, and nothing touches the camera again
+ * while seated or on standing up. LocalPlayer calls it on every confirmed sit.
+ */
+export function beginSeatCamera(_orbit: Orbit, seatYaw: number, indoor = false): void {
+  if (!indoor || viewState.mode !== "tp") return;
+  viewState.orbitGoal = { yaw: recenterYaw(seatYaw), pitch: INDOOR_SEAT_PITCH };
 }
 
 /** The player stood up: the camera stays as it is, like on sitting down (see `beginSeatCamera`). */
