@@ -148,6 +148,7 @@ function fixture(): Fixture {
     M_waterfall: mat("M_waterfall", { map: textures.falls, transparent: true }),
     M_leaf_green: mat("M_leaf_green", { map: textures.leaf, alphaTest: 0.5 }),
     M_window: mat("M_window"),
+    M_shop: mat("M_shop"),
     M_lamp: mat("M_lamp"),
     M_glass: mat("M_glass", { transparent: true }),
   };
@@ -157,6 +158,7 @@ function fixture(): Fixture {
   lm.name = "village_lm_11";
   root.add(lm);
   root.add(mesh("village_fx_11", mats.M_glow_plot), mesh("village_fx_12", mats.M_window), mesh("village_fx_10", mats.M_lamp));
+  root.add(mesh("village_fx_22", mats.M_shop));
   root.add(mesh("village_glass", mats.M_glass));
   const pool = mesh("village_water_11", mats.M_water, new PlaneGeometry(12, 12).rotateX(-Math.PI / 2));
   root.add(pool, mesh("village_water_12", mats.M_water, new PlaneGeometry(6, 40).rotateX(-Math.PI / 2)));
@@ -581,6 +583,28 @@ describe("prepareVillage: the model dressed for the game", () => {
     // Glowing means past white: the boosted glow colour exceeds 1, so the rich tier's bloom (threshold 1.6) takes it.
     expect(Math.max(...LIT.window.color) * LIT.window.boost).toBeGreaterThan(1.6);
     expect(Math.max(...LIT.lamp.color) * LIT.lamp.boost).toBeGreaterThan(1.6);
+  });
+
+  it("a shop's painted interior (M_shop) is lit at night by multiplying the picture, not flattened to the windows' glow", () => {
+    const f = fixture();
+    const nodes = prepareVillage(f.root, new Texture(), "high");
+    const shop = materialOf(nodes.root, "village_fx_22");
+    expect(shop).not.toBe(f.mats.M_shop);
+    expect(shop.name).toBe("M_shop");
+    expect(nodes.own).toContain(shop);
+    expect(shop.customProgramCacheKey()).toBe("village-lit-shop");
+    const shader = {
+      uniforms: {} as Record<string, { value: unknown }>,
+      fragmentShader: "void main() {\n#include <map_fragment>\n#include <color_fragment>\n}",
+      vertexShader: "",
+    };
+    shop.onBeforeCompile(shader as never, null as never);
+    expect(shader.uniforms.uVillageLit).toBe(litUniform);
+    expect(shader.uniforms.uVillageLitBoost!.value).toBe(LIT.shop.boost);
+    expect(shader.fragmentShader).toContain("diffuseColor.rgb * uVillageLitColor * uVillageLitBoost");
+    expect(shader.fragmentShader).not.toContain("villageGlowLuma");
+    // A mid-grey picture texel (0.35) stays below the bloom threshold lit, so the picture is not washed out.
+    expect(0.35 * Math.max(...LIT.shop.color) * LIT.shop.boost).toBeLessThan(1);
   });
 
   it("the fountain's crescent (M_moon) gets the bake's light as a probe: never light-mapped, lifted or graded, patched once", () => {

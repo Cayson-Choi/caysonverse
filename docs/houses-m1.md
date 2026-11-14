@@ -12,7 +12,7 @@
   - 충돌 = 보이는 것: 몸체 둘레 0.57 m 띠는 돌 테두리 화단(꽃·관목)이고 `col__house_*` 상자는 몸체(+둘레 화단)만이에요(발자국 − 문 쪽 2.25 m). 포치는 걸을 수 있고, 포치의 난간·기둥·양옆 화단·벤치·소품은 작은 `col__house_N_porch_k` 상자예요.
 - **카페(안 2)**: `SCENERY_SIZES.cafe` 20 × 15, 중심 (50.6, −15.1), `SCENERY_TERRACE.cafe = 6`. 충돌 상자는 테라스를 뺀 본채 `solidBox` (x 46.6 ~ 60.6, 정면 벽까지)라서 테라스(3 cm 데크)와 문 앞 돌 디딤판은 걸을 수 있어요. 문 양옆 0.4 m 돌 단은 `col__cafe_step_1/2`. 테라스에 파라솔 테이블 4개, 의자 12개(`seat__cafe_terrace_*` 표시)와 낮은 충돌(테이블·의자·화단).
 - **좌석 표시**: 포치 벤치(2·9·10번), 카페 테라스 의자 12개에 빈 물체 `seat__<id>__<값들>`을 GLB에 넣었어요(이름에 seatTop·길이·자리 수·자세·등받이·접근 방향이 들어 있어요). 실제 앉기 연결은 뒤 단계예요.
-- **삼각형 예산**(마을 ≤ 260k, 마을 장면 ≤ 300k): 새 건물이 늘린 만큼 눈에 안 띄는 곳을 줄였어요. 바깥 땅의 평지 격자를 5 m로(개울가·가장자리는 2.5 m 그대로), 먼 산 격자를 40/28/14 m로, 텃밭 울타리 말뚝을 28 cm 간격에 4면으로. 결과 마을 247,464 / 장면 294,468.
+- **삼각형 예산**(마을 ≤ 260k, 마을 장면 ≤ 300k): 새 건물이 늘린 만큼 눈에 안 띄는 곳을 줄였어요. 바깥 땅의 평지 격자를 5 m로(개울가·가장자리는 2.5 m 그대로), 먼 산 격자를 40/28/14 m로, 텃밭 울타리 말뚝을 28 cm 간격에 4면으로. 결과(4차 검토 반영 뒤) 마을 252,259 / 장면 299,263 (2차 247,464 / 294,468, 3차 250,699 / 297,703).
 - 나무: B안 건물에 가지가 파고드는 나무 9그루를 가장 가까운 빈 자리로 옮기고, 가로수는 문 앞 3.6 m 안에 심지 않아요(`parts_fill.door_clear`).
 
 ## 빌드 순서 (art/는 git이 무시해요)
@@ -20,13 +20,15 @@
 `D:/Codex/cayson-games/caysonverse-houses/art/village/tools` (원본 `caysonverse-village/art/village/tools`를 복사해 고친 것).
 
 ```
+python tools/make_textures.py atlas      # 간판 그림(sign_cafe, sign_kiosk)이 든 T_atlas (art/village 안에서)
 npx tsx scripts/export-village-layout.ts art/village/layout.json
 CV_CPU=1 blender -b --factory-startup -P tools/build_village.py
 CV_CPU=1 blender -b work/village_authoring.blend -P tools/bake_village.py -- --samples 384
 CV_CPU=1 blender -b work/village_lmprep.blend  -P tools/bake_village.py -- --night --samples 384
-python tools/post_village.py --lm-quality 82 ; python tools/post_village.py --night --lm-quality 82   # 달 패치(patch-village-moon.mjs) 포함
-node scripts/village-lm-uvmap.mjs <glb> <dir>/lmmap.bin ; python tools/post_lightmap_busbay.py <dir> <lm.webp> <out.webp>   # 낮·밤 둘 다, 다시 WebP 82
+python tools/post_village.py --lm-quality 82 ; python tools/post_village.py --night --lm-quality 76   # 달 패치(patch-village-moon.mjs) 포함
+node scripts/village-lm-uvmap.mjs <glb> <dir>/lmmap.bin ; python tools/post_lightmap_busbay.py <dir> <lm.webp> <out.webp>   # 낮·밤 둘 다, 다시 WebP 낮 82 / 밤 76
 npx tsx --tsconfig server/tsconfig.json scripts/extract-colliders.ts client/public/models/village/village.glb VILLAGE_COLLIDERS shared/src/village/generated/villageColliders.ts
+npx tsx --tsconfig server/tsconfig.json scripts/extract-seat-markers.ts client/public/models/village/village.glb shared/src/village/generated/villageSeatMarkers.ts
 npx tsx --tsconfig server/tsconfig.json scripts/check-school-glb.ts client/public/models/village/village.glb village
 ```
 
@@ -69,4 +71,19 @@ npx tsx --tsconfig server/tsconfig.json scripts/check-school-glb.ts client/publi
 - 굽기 스크립트(`bake_village.py`)가 좌석 표시의 사용자 속성(`approach`, `frontEdge`, `standX/standZ`…)을 GLB 노드 `extras`로 넣어요(`export_extras`는 꺼 둔 채 좌석 노드에만). 점검: `seats.mts` 15곳 통과.
 - 창 화단(2·9·10번 앞 1층 창)이 포치 데크 위로 0.3 m 튀어나와 충돌 상자 밖이었어요. 데크 위 창은 화단 깊이를 0.12 m로 줄였어요(`window(flowerbox=0.12)`, 다른 장식 띠와 같은 0.13 m 이내).
 - 횡단보도는 이 브랜치의 `make_textures.py`가 이미 한 줄 얼룩말로 그려서(`XW_SKIP`) 굽기의 `T_plaza`가 곧 새 그림이에요(main의 패치된 그림과 361 픽셀만 달라요). 버스 칸 라이트맵 후처리(`village-lm-uvmap.mjs` → `post_lightmap_busbay.py`)는 낮·밤 모두 했어요.
-- 카페 1층 방 껍데기의 앞벽을 뺐어요(LM_ 재질은 양면이라 가게 유리 뒤를 가렸어요). 이제 낮에 선반·칠판 메뉴·펜던트·화분이 보여요. 카페·키오스크 실내 그림은 낮은 값으로 어둡게(감마 1.7) 그렸어요. 밤에는 창 불 셰이더가 밝기 2.1배라 키오스크 안쪽 꽃이 여전히 허옇게 떠요(알려진 한계).
+- 카페 1층 방 껍데기의 앞벽을 뺐어요(LM_ 재질은 양면이라 가게 유리 뒤를 가렸어요). 이제 낮에 선반·칠판 메뉴·펜던트·화분이 보여요. 카페·키오스크 실내 그림은 낮은 값으로 어둡게(감마 1.7) 그렸어요. 밤에는 창 불 셰이더가 밝기 2.1배라 키오스크 안쪽 꽃이 여전히 허옇게 떠요(4차에서 `M_shop`으로 고침).
+
+
+## 4차 검토 반영 (2026-11-15)
+
+- **밤 가게 창**: 카페 1층 실내 그림판·옆 1층 창과 키오스크 꽃 선반 그림을 새 재질 `M_shop`(작업 재질 `A_shop_glass`, `window(lit_mat=...)`)으로 뺐어요. 게임은 창 불처럼 밝기로 색을 덮지 않고 그림 × 따뜻한 빛(`LIT.shop`, 색 1.0/0.88/0.70 × 2.3)으로 켜서, 밤에도 선반·칠판 메뉴·펜던트·꽃 양동이가 보여요(크림색 판이 사라짐). 마을 GLB 재질 한도는 25 → 26(`MATERIAL_LIMITS.village`, 이유는 주석).
+- **앉기**: GLB의 좌석 표시를 `scripts/extract-seat-markers.ts`가 `shared/src/village/generated/villageSeatMarkers.ts`로 뽑고, `benchSeats.ts`가 카페 의자 12개와 포치 벤치 3개(2·9·10번)를 `VILLAGE_SEATS` 끝(60~74번)에 붙여요. 벤치·집 좌석 번호는 그대로예요.
+  - 포치 벤치: 앞에서만, 일어서면 앞으로(표시에 `frontEdge 0.22` 추가).
+  - 카페 의자: 앞이 탁자라 옆에서 앉아요. 등받이 뒷면(의자 중심 뒤 0.26 m)보다 앞이면 E 안내가 뜨고, 의자 폭에서 몸 하나만큼 옆(0.56 m 이상)이면 탭 이동이 멈추는 여유(0.35 m)만큼 뒤까지 허용해요(`Seat.approachEdge`, `Seat.beside`). 바로 뒤에서는 안 떠요. 일어설 자리는 표시의 `standX/standZ`에서 가장 가까운, 몸 둘레 0.55 m가 빈 곳(5 cm 격자, 0.5 m 안). 모서리 의자(1·3·6·8번, 탁자 끝과 화단 사이 1.08 m)는 그런 곳이 없어 표시 자리 그대로예요.
+  - 게임에서 확인: 카페 1·2·10번 의자, 10번 집 포치 벤치에 E로 앉고 일어섰어요.
+  - `clickPlanSweep` 시험: 카페 의자는 테라스 안, 몸이 들어가는 곳만 탭 대상으로 봐요(의자·탁자 사이 0.2~0.8 m 틈은 몸 0.8 m가 못 들어가요).
+- **간판**: 카페 박공 간판 "케이슨 카페 / COFFEE · DESSERT"(짙은 초록 바탕, 크림 글씨, 금색 테), 키오스크 간판 "케이슨 꽃집"(크림 바탕, 초록 글씨, 꽃 두 송이). `T_atlas`의 빈 오른쪽 아래(`sign_cafe` 1024×352, `sign_kiosk` 1024×208, 맑은 고딕 굵게). 키오스크 간판은 차양 뒤에 가려져 있어서 차양 위(3.0~3.5 m)로 올렸어요. 이름은 임시라 사장님이 정하면 바꿔요.
+- **테라스 가구**: 의자는 실제 카페 테라스의 곡목(Thonet풍) 의자 — 모서리를 깎은 참나무 좌판, 살짝 벌어진 다리 4개, 옆·앞 가로대, 뒤로 기운 등받이 기둥, 휜 윗 등판, 살 3개. 긴 탁자는 모서리를 깎은 참나무 상판 + 검은 철제 다리 2개(기둥·발·윗 가로대), 2인 탁자는 둥근 상판 + 받침 기둥 + 십자 발. 좌석 높이 0.46 m.
+- 용량: village.glb 5,500,628 B, 낮 라이트맵 409,822 B(WebP 82), 밤 331,330 B(WebP 76). 낮 첫 접속 5,910,450 B(main보다 약 75 KB 적음), 밤 첫 접속 6,241,780 B(main 6,226,074 B보다 약 16 KB 많음: 의자·간판 형상과 간판 그림만큼).
+- 키오스크 앞 쉘터(쉘터 동쪽 끝 x 41.65, 키오스크 판매창 x 46.1): main의 정류장 배치 그대로라 이번에도 옮기지 않았어요. 판매창까지는 쉘터를 돌아 걸어가요.
+

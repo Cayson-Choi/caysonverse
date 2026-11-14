@@ -112,6 +112,8 @@ export const MATERIAL = {
   water: "M_water",
   waterfall: "M_waterfall",
   window: "M_window",
+  /** The café's and the flower kiosk's painted interiors behind their shop glass (art: A_shop_glass). */
+  shop: "M_shop",
   lamp: "M_lamp",
   glass: "M_glass",
   moon: "M_moon",
@@ -419,6 +421,13 @@ export function liftMaterial(material: Material): void {
 export const LIT = {
   window: { color: [1.0, 0.76, 0.46], boost: 2.1 },
   lamp: { color: [1.0, 0.8, 0.5], boost: 3.4 },
+  /**
+   * A shop's painted interior (`M_shop`: the café's room, the kiosk's flower shelves). The windows' recipe replaces each
+   * texel with the glow colour by its luma, which flattened these pictures into a cream plate at night (review
+   * 2026-11-15); a shop's light multiplies the picture instead (`LIT_SHOP`), so its shelves, menu board, pendants and
+   * flowers stay legible and only its brightest spots (the lamps' pools) reach the bloom.
+   */
+  shop: { color: [1.0, 0.88, 0.7], boost: 2.3 },
 } as const;
 /** How lit the windows and lamps are (0..1), shared by their copies. */
 export const litUniform = { value: 0 };
@@ -429,6 +438,10 @@ void main() {`;
 const LIT_GLOW = /* glsl */ `#include <map_fragment>
 float villageGlowLuma = dot( diffuseColor.rgb, vec3( 0.2126, 0.7152, 0.0722 ) );
 diffuseColor.rgb = mix( diffuseColor.rgb, uVillageLitColor * ( 0.4 + 0.9 * villageGlowLuma ) * uVillageLitBoost, uVillageLit );`;
+
+/** A shop's interior at night: the picture × the warm light (keeps its detail; see LIT.shop). */
+const LIT_SHOP = /* glsl */ `#include <map_fragment>
+diffuseColor.rgb = mix( diffuseColor.rgb, diffuseColor.rgb * uVillageLitColor * uVillageLitBoost, uVillageLit );`;
 
 const GLASS_PARS = /* glsl */ `uniform float uVillageLit;
 void main() {`;
@@ -458,9 +471,11 @@ export function litMaterial(source: Material, kind: keyof typeof LIT): MeshBasic
   };
   m.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, uniforms);
-    shader.fragmentShader = shader.fragmentShader.replace("void main() {", LIT_PARS).replace("#include <map_fragment>", LIT_GLOW);
+    shader.fragmentShader = shader.fragmentShader
+      .replace("void main() {", LIT_PARS)
+      .replace("#include <map_fragment>", kind === "shop" ? LIT_SHOP : LIT_GLOW);
   };
-  m.customProgramCacheKey = () => "village-lit";
+  m.customProgramCacheKey = () => (kind === "shop" ? "village-lit-shop" : "village-lit");
   return m;
 }
 
@@ -909,6 +924,7 @@ export function prepareVillage(
   // The windows and lamps: copies that glow at night (M_glass, the lanterns' and windows' panes, stays as it is).
   for (const [name, kind] of [
     [MATERIAL.window, "window"],
+    [MATERIAL.shop, "shop"],
     [MATERIAL.lamp, "lamp"],
   ] as const) {
     const source = found.get(name);

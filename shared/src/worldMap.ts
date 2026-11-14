@@ -50,6 +50,17 @@ export interface Seat {
    * backrest. Absent: any side within reach.
    */
   frontEdge?: number;
+  /**
+   * How far behind the seat point a player may stand and still be offered the seat (m), when that is not `frontEdge`:
+   * a café chair at a table is sat on from beside it, anywhere in front of its backrest (benchSeats.ts markerSeats).
+   */
+  approachEdge?: number;
+  /**
+   * A chair sat on from beside it: a player at least `lateral` m to its side (clear of the chair's own width, so not
+   * behind its backrest) is offered it up to `edge` m behind the seat point — a tap-walk stops up to 0.35 m short of its
+   * goal, so one coming along the chair's side from behind would otherwise stop just past the backrest's plane.
+   */
+  beside?: { lateral: number; edge: number };
 }
 
 /**
@@ -57,9 +68,13 @@ export interface Seat {
  * `frontEdge`, and for a seat with one (a bench) only in front of that edge (the side the sitter faces).
  */
 export function approachesSeat(seat: Seat, x: number, z: number): boolean {
-  if (seat.frontEdge === undefined) return true;
+  const edge = seat.approachEdge ?? seat.frontEdge;
+  if (edge === undefined) return true;
   const ahead = (x - seat.x) * Math.sin(seat.yaw) + (z - seat.z) * Math.cos(seat.yaw);
-  return ahead >= -seat.frontEdge;
+  if (ahead >= -edge) return true;
+  if (!seat.beside) return false;
+  const lateral = Math.abs((x - seat.x) * Math.cos(seat.yaw) - (z - seat.z) * Math.sin(seat.yaw));
+  return lateral >= seat.beside.lateral && ahead >= -seat.beside.edge;
 }
 
 /**

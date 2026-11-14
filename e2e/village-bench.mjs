@@ -134,7 +134,11 @@ await run.step("1. join: A in shorts + wizard hat, B in a long skirt + space hel
   await seedLook(B, LOOKS.longskirtHelmet);
   await joinVillage(B, "앉기B");
   all = await seats(A);
-  run.check("20 bench seats on the client", all.length === 20, all.length);
+  // the benches' 20 seats come first (plaza 1..8, forecourt, hall); the houses' and the art's marked seats (café chairs,
+  // porch benches, review 2026-11-15) follow, so these indices stay
+  const benchIds = all.slice(0, 20).map((s) => s.bench);
+  run.check("20 bench seats first on the client", benchIds.every((id) => /^(plaza_\d|memorial_forecourt|hall)$/.test(id)) && all.length > 20, `${all.length} seats, first 20: ${[...new Set(benchIds)].join(",")}`);
+  run.check("café chairs and porch benches are seats", all.filter((s) => s.bench.startsWith("cafe_terrace_")).length === 12 && all.filter((s) => s.bench.endsWith("_porch")).length === 3, all.length);
 });
 
 // plaza_4 (south-east of the fountain, by the spawn): seats 6 and 7

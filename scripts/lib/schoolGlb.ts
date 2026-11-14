@@ -501,9 +501,12 @@ export const BOX_TOLERANCE = 0.011;
 export const MAX_MATERIALS = 24;
 /**
  * The material ceiling per file: MAX_MATERIALS, but one more for the village, whose fountain crescent (`M_moon`) is the
- * one surface the game lights live (fix/fix-moon-smooth: light-mapped, its 3.5 texels per metre showed as stepped bands).
+ * one surface the game lights live (fix/fix-moon-smooth: light-mapped, its 3.5 texels per metre showed as stepped bands),
+ * and one more for the shops' painted interiors (`M_shop`, the café's and the kiosk's: lit at night by multiplying the
+ * picture, where the windows' `M_window` glow flattened them into a cream plate — house review 2026-11-15; one more draw
+ * in the fx chunks that hold them).
  */
-export const MATERIAL_LIMITS: Record<SchoolKind, number> = { village: MAX_MATERIALS + 1, memorial: MAX_MATERIALS };
+export const MATERIAL_LIMITS: Record<SchoolKind, number> = { village: MAX_MATERIALS + 2, memorial: MAX_MATERIALS };
 export const MAX_TEXTURE_SIDE = 2048;
 /** An obj__ node's origin may differ from the TS anchor by at most this much (m, on the ground plane). */
 export const OBJ_ANCHOR_TOLERANCE = 0.25;

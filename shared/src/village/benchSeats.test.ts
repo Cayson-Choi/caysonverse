@@ -5,7 +5,12 @@ import { SIT_POSE, SIT_ROOT_AHEAD, liftForSeatY } from "../sitPose";
 import { VILLAGE_COLLIDERS } from "./generated/villageColliders";
 import { MEMORIAL_COLLIDERS } from "./generated/memorialColliders";
 import { VILLAGE_LAYOUT, houseInteriorGeometry, isHouseArea, villageGeometry } from "./villageLayout";
-import { STAND_CLEARANCE, VILLAGE_BENCHES, VILLAGE_SEATS, benchSeatOffsets, type VillageBench } from "./benchSeats";
+import { CHAIR_BACK_BEHIND, STAND_CLEARANCE, VILLAGE_BENCHES, VILLAGE_SEATS, benchSeatOffsets, type VillageBench } from "./benchSeats";
+import { VILLAGE_SEAT_MARKERS } from "./generated/villageSeatMarkers";
+
+const MARKED = new Set(VILLAGE_SEAT_MARKERS.map((m) => m.id));
+/** The seats the art marks (café chairs, porch benches): appended after the benches' and the houses'. */
+const markedSeats = () => VILLAGE_SEATS.filter((s) => MARKED.has(s.bench));
 
 /** The seated figure's width across the arms (sitPose.ts: the torso with the upper arms, -0.52..0.54 m) and the hands' (-0.53..0.58). */
 const SEATED_HANDS_WIDTH = 0.532 + 0.575;
@@ -143,7 +148,16 @@ describe("village seats (where a sitter goes)", () => {
       expect(a.z).toBeLessThan(bounds.maxZ);
       for (let j = i + 1; j < VILLAGE_SEATS.length; j++) {
         const b = VILLAGE_SEATS[j]!;
-        if (a.area === b.area) expect(Math.hypot(a.x - b.x, a.z - b.z), `${i} vs ${j}`).toBeGreaterThan(SEATED_HANDS_WIDTH);
+        if (a.area !== b.area) continue;
+        // two sitters facing each other across a café table: their feet meet under it, their bodies (the hips, 0.397 m
+        // behind each root) are what must keep apart
+        const fa = { x: Math.sin(a.yaw), z: Math.cos(a.yaw) };
+        const fb = { x: Math.sin(b.yaw), z: Math.cos(b.yaw) };
+        const facing = fa.x * fb.x + fa.z * fb.z < -0.9 && (b.x - a.x) * fa.x + (b.z - a.z) * fa.z > 0;
+        const d = facing
+          ? Math.hypot(a.x - fa.x * SIT_POSE.hipsBehindRoot - (b.x - fb.x * SIT_POSE.hipsBehindRoot), a.z - fa.z * SIT_POSE.hipsBehindRoot - (b.z - fb.z * SIT_POSE.hipsBehindRoot))
+          : Math.hypot(a.x - b.x, a.z - b.z);
+        expect(d, `${i} vs ${j}`).toBeGreaterThan(SEATED_HANDS_WIDTH);
       }
     }
   });
@@ -163,7 +177,7 @@ describe("village seats (where a sitter gets up to)", () => {
   });
 
   it("gets up in front of the bench, a short step from the seat (within reach, so the seat is offered again from there)", () => {
-    for (const s of VILLAGE_SEATS.filter((v) => !isHouseArea(v.area))) {
+    for (const s of VILLAGE_SEATS.filter((v) => !isHouseArea(v.area) && v.approachEdge === undefined)) {
       const ahead = (s.standX - s.x) * Math.sin(s.yaw) + (s.standZ - s.z) * Math.cos(s.yaw);
       const d = Math.hypot(s.standX - s.x, s.standZ - s.z);
       expect(ahead).toBeGreaterThan(0);
@@ -174,12 +188,68 @@ describe("village seats (where a sitter gets up to)", () => {
   });
 
   it("two sitters of one bench get up to different spots, clear of each other and of the other seat", () => {
-    for (let i = 0; i < VILLAGE_SEATS.length; i += 2) {
+    for (let i = 0; i < VILLAGE_SEATS.length - markedSeats().length; i += 2) {
       const a = VILLAGE_SEATS[i]!;
       const b = VILLAGE_SEATS[i + 1]!;
       expect(Math.hypot(a.standX - b.standX, a.standZ - b.standZ)).toBeGreaterThan(2 * PLAYER_RADIUS);
       expect(Math.hypot(a.standX - b.x, a.standZ - b.z)).toBeGreaterThan(2 * PLAYER_RADIUS);
       expect(Math.hypot(b.standX - a.x, b.standZ - a.z)).toBeGreaterThan(2 * PLAYER_RADIUS);
+    }
+  });
+});
+
+describe("the art's marked seats: café terrace chairs and porch benches (review 2026-11-15)", () => {
+  it("every seat__ marker of village.glb is a seat, after the benches' and the houses' (their indices stay)", () => {
+    expect(VILLAGE_SEAT_MARKERS.filter((m) => m.id.startsWith("cafe_terrace_"))).toHaveLength(12);
+    expect(VILLAGE_SEAT_MARKERS.filter((m) => /^house_\d+_porch$/.test(m.id)).map((m) => m.id)).toEqual(["house_2_porch", "house_9_porch", "house_10_porch"]);
+    const marked = markedSeats();
+    expect(marked).toHaveLength(15);
+    expect(VILLAGE_SEATS.slice(-15)).toEqual(marked);
+    expect(VILLAGE_SEATS.slice(0, VILLAGE_BENCHES.length * 2).every((s) => !MARKED.has(s.bench))).toBe(true);
+  });
+
+  it("a café chair: the sitter's root just past the seat's front edge, getting up beside the chair; offered beside it, never from behind the backrest", () => {
+    const chairs = VILLAGE_SEATS.map((s, i) => ({ s, i })).filter(({ s }) => s.bench.startsWith("cafe_terrace_"));
+    expect(chairs).toHaveLength(12);
+    for (const { s, i } of chairs) {
+      const m = VILLAGE_SEAT_MARKERS.find((k) => k.id === s.bench)!;
+      const f = { x: Math.sin(s.yaw), z: Math.cos(s.yaw) };
+      const ahead = (s.x - m.x) * f.x + (s.z - m.z) * f.z;
+      expect(ahead).toBeCloseTo(m.frontEdge + SIT_ROOT_AHEAD, 3);
+      expect(s.seatY).toBe(m.seatTop);
+      // the art's spot, or further out on the line from the chair where the terrace's clearance needs it
+      expect(Math.hypot(s.standX - m.standX!, s.standZ - m.standZ!)).toBeLessThanOrEqual(0.5);
+      // the get-up spot is beside the chair (not ahead: the table is there), within reach and a short step
+      const standAhead = (s.standX - m.x) * f.x + (s.standZ - m.z) * f.z;
+      expect(standAhead).toBeGreaterThanOrEqual(-CHAIR_BACK_BEHIND);
+      expect(standAhead).toBeLessThanOrEqual(m.frontEdge);
+      expect(Math.hypot(s.standX - s.x, s.standZ - s.z)).toBeLessThan(1.2); // a step aside, well within SEAT_REACH
+      expect(approachesSeat(s, s.standX, s.standZ)).toBe(true);
+      expect(nearestFreeSeat(s.standX, s.standZ, () => false, SEAT_REACH, VILLAGE_SEATS)).toBe(i);
+      // behind the backrest: not offered, right behind it nor a little to the side (still behind the chair's width)
+      for (const side of [0, 0.3]) {
+        const l = { x: Math.cos(s.yaw), z: -Math.sin(s.yaw) };
+        const back = { x: m.x - f.x * (CHAIR_BACK_BEHIND + 0.15) + l.x * side, z: m.z - f.z * (CHAIR_BACK_BEHIND + 0.15) + l.z * side };
+        expect(approachesSeat(s, back.x, back.z)).toBe(false);
+      }
+      // beside the chair, level with its back or a tap-walk's stop past it: offered
+      const l = { x: Math.cos(s.yaw), z: -Math.sin(s.yaw) };
+      for (const behind of [CHAIR_BACK_BEHIND, CHAIR_BACK_BEHIND + 0.3]) {
+        for (const sgn of [-1, 1]) expect(approachesSeat(s, m.x - f.x * behind + l.x * sgn * 0.6, m.z - f.z * behind + l.z * sgn * 0.6)).toBe(true);
+      }
+    }
+  });
+
+  it("a porch bench: one seat in front of its board, getting up toward the lane, clear of the porch's posts and rails", () => {
+    const porch = markedSeats().filter((s) => s.bench.endsWith("_porch"));
+    expect(porch).toHaveLength(3);
+    for (const s of porch) {
+      const m = VILLAGE_SEAT_MARKERS.find((k) => k.id === s.bench)!;
+      const f = { x: Math.sin(s.yaw), z: Math.cos(s.yaw) };
+      expect((s.x - m.x) * f.x + (s.z - m.z) * f.z).toBeCloseTo(m.frontEdge + SIT_ROOT_AHEAD, 3);
+      expect(s.approachEdge).toBeUndefined();
+      expect(approachesSeat(s, m.x - f.x * 0.5, m.z - f.z * 0.5)).toBe(false); // behind the backrest
+      expect(isBlocked(s.standX, s.standZ, PLAYER_RADIUS + STAND_CLEARANCE, villageGeometry.obstacles, 0)).toBe(false);
     }
   });
 });

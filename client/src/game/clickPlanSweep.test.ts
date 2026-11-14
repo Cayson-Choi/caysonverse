@@ -13,7 +13,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { MOVE_SPEED, RUN_SPEED } from "@caysonverse/shared/constants";
 import { PLAYER_RADIUS } from "@caysonverse/shared/worldMap";
-import { resolveCollision } from "@caysonverse/shared/collision";
+import { isBlocked, resolveCollision } from "@caysonverse/shared/collision";
 import { VILLAGE_LAYOUT, villageGeometry } from "@caysonverse/shared/village/villageLayout";
 import { VILLAGE_BENCHES, VILLAGE_SEATS } from "@caysonverse/shared/village/benchSeats";
 import { findDetour, isFreeSpot, planClickMove, simulateWalk, walkThere, type ClickPlan } from "./clickPlan";
@@ -44,6 +44,20 @@ const underABench = (x: number, z: number) =>
 const openGround = (x: number, z: number) =>
   !obstacles.some((o) => x > o.minX && x < o.maxX && z > o.minZ && z < o.maxZ && (!isBenchBox(o) || underABench(x, z)));
 
+/**
+ * The café terrace (its chairs are seats since the 2026-11-15 review): its deck inside the side planters
+ * (scenery cafe, local x +-6.9, z 4.4..10 -> game x 40.6..46.2, z -22.0..-8.2). Its chairs and tables stand 0.2-0.8 m
+ * apart, narrower than a body (0.8 m): a tap into such a gap has no spot a body fits within 0.3 m and is not open ground
+ * a walk can reach (the planner refuses it as it would a gap between two of any boxes).
+ */
+const TERRACE = { minX: 40.6, maxX: 46.2, minZ: -22.0, maxZ: -8.2 };
+const onTerrace = (x: number, z: number) => x >= TERRACE.minX && x <= TERRACE.maxX && z >= TERRACE.minZ && z <= TERRACE.maxZ;
+const bodyFitsNear = (x: number, z: number) => {
+  for (let i = -6; i <= 6; i++) for (let j = -6; j <= 6; j++) if (Math.hypot(i, j) * 0.05 <= 0.3 && !isBlocked(x + i * 0.05, z + j * 0.05, R, obstacles, 0)) return true;
+  return false;
+};
+const cafeChair = (s: { bench: string }) => s.bench.startsWith("cafe_terrace_");
+
 /** A seeded generator (Park-Miller), so the sweep is the same every run. */
 function seeded(seed: number): () => number {
   let s = seed;
@@ -62,6 +76,8 @@ describe("clickPlan sweep — seated, every tap on the open ground round a seat 
           const x = s.x + gx * 0.25;
           const z = s.z + gz * 0.25;
           if (x < bounds.minX || x > bounds.maxX || z < bounds.minZ || z > bounds.maxZ || !openGround(x, z)) continue;
+          // a café chair: the taps round it on its terrace, where a body fits
+          if (cafeChair(s) && (!onTerrace(x, z) || !bodyFitsNear(x, z))) continue;
           points++;
           const plan = planClickMove(s.standX, s.standZ, ground(x, z), obstacles, bounds, true, options);
           if (!plan.ok) {
