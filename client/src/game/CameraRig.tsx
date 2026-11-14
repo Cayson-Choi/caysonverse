@@ -66,7 +66,7 @@ import { rememberOrbit, restoreOrbit } from "./cameraMemory";
 import { cameraProbe } from "./cameraProbe";
 import { activeBounds, activeSeats, getActiveMap } from "./activeMap";
 import { localGlide } from "./seatMotion";
-import { seatApproachGoal, seatUnderTap } from "./seatTap";
+import { seatApproachGoal, seatUnderTap, warmSeatApproachGoals } from "./seatTap";
 import { setPreferredSeat } from "./seatPreference";
 import { getLocalLift } from "./jump";
 import { useFpCursor } from "./useFpCursor";
@@ -237,6 +237,26 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
       delete window.__cvCamera;
       delete window.__cvClickTarget;
       delete window.__cvClickPick;
+    };
+  }, []);
+
+  // The tapped chairs' goals (seatTap.ts) worked out ahead, one seat per timer tick, whenever the map's seats change
+  // (entering the village, a house): the first tap on a chair then never runs that search in its pointerup handler.
+  useEffect(() => {
+    let seen: readonly unknown[] | null = null;
+    let cancel = (): void => {};
+    const look = (): void => {
+      const seats = activeSeats();
+      if (seats === seen) return;
+      seen = seats;
+      cancel();
+      cancel = seats.length > 0 ? warmSeatApproachGoals(seats, getActiveMap().geometry.obstacles, activeBounds()) : () => {};
+    };
+    look();
+    const id = window.setInterval(look, 1000);
+    return () => {
+      window.clearInterval(id);
+      cancel();
     };
   }, []);
 

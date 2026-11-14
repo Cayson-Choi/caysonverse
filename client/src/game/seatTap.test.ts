@@ -83,3 +83,26 @@ describe("a tap on a chair walks to that chair's own spot", () => {
     expect(plans).toBe(132);
   });
 });
+
+describe("the goals are worked out ahead, one seat at a time (review 2026-11-15: 20 ms in a pointerup handler)", () => {
+  it("warmSeatApproachGoals fills every marked seat's goal, one per tick; each seat's search stays short", async () => {
+    const { warmSeatApproachGoals, seatApproachGoalReady, markedSeatIndices } = await import("./seatTap");
+    const seats = VILLAGE_SEATS.slice(); // a fresh list: a cold cache
+    const ticks: (() => void)[] = [];
+    warmSeatApproachGoals(seats, obstacles, village, (run) => ticks.push(run));
+    const marked = markedSeatIndices(seats);
+    expect(marked).toHaveLength(15);
+    let worst = 0;
+    let n = 0;
+    while (ticks.length > 0) {
+      const t0 = performance.now();
+      ticks.shift()!();
+      worst = Math.max(worst, performance.now() - t0);
+      n++;
+    }
+    expect(n).toBe(15);
+    expect(marked.every((i) => seatApproachGoalReady(seats, i))).toBe(true);
+    console.log(`seatApproachGoal: worst seat ${worst.toFixed(2)} ms`);
+    expect(worst).toBeLessThan(15); // was up to 20 ms; a loaded CI box gets slack
+  });
+});

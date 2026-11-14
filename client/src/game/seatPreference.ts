@@ -1,7 +1,8 @@
 /**
  * The seat the player last tapped (a chair or porch bench, seatTap.ts), so the walk that ends beside it offers THAT seat
  * though another chair 1 m off may be a hair nearer (the terrace's corner chairs): `interactInputAt` takes it while it is
- * free, in reach and approachable, for PREFERENCE_MS after the tap, and until the player sits or taps elsewhere.
+ * free, in reach and approachable, for PREFERENCE_MS after the tap, and until the player sits, taps elsewhere or moves by
+ * the keys or the stick (LocalPlayer.tsx clears it then; review 2026-11-15).
  */
 export const PREFERENCE_MS = 30000;
 

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import { useAnimations, useKeyboardControls } from "@react-three/drei";
 import { Group, LoopOnce, type Plane } from "three";
+import { setPreferredSeat } from "./seatPreference";
 import type { Appearance } from "@caysonverse/shared/appearance";
 import { PLAYER_RADIUS } from "@caysonverse/shared/worldMap";
 import { liftForSeatY } from "@caysonverse/shared/sitPose";
@@ -539,6 +540,7 @@ export function LocalPlayer({
     const gliding = seatMotionRef.current.glide !== null;
     if (manual) {
       clearClickTarget();
+      setPreferredSeat(-1); // the keys / stick took over: the chair tapped before no longer outranks a nearer one
     } else if (!suspended && !busBoarded && !seated && !gliding && !isUiCaptured()) {
       // ui-capture gate (review v2-14 M1): while the chat input owns the keyboard
       // the KEYS are frozen above — a pre-set click target must freeze too, or the
@@ -563,6 +565,7 @@ export function LocalPlayer({
       // (`seatY`): walk onto its spot while the clip starts, and rise to its surface as the body sits (seatMotion).
       // 진행 중이던 클릭 자동 이동도 여기서 해제된다 (design 29 (e) 착석 완료).
       clearClickTarget();
+      setPreferredSeat(-1); // sat down: the tapped chair's preference is spent (seatPreference.ts)
       const s = activeSeats()[seatIndex];
       motion.bench = s !== undefined && s.seatY !== undefined;
       motion.lift = liftForSeatY(s?.seatY);

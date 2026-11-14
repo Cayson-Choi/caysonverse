@@ -77,17 +77,33 @@ const ROBUST_STEPS = [0.4, 0.3, 0.2, 0.1, 0] as const;
 const goals = new WeakMap<readonly Seat[], Map<number, { x: number; z: number } | null>>();
 
 /**
+ * How far round the seat point (m) an obstacle can matter to the goal search: the goal's radius, the widest ring, the
+ * body and the room wanted, a grid step to spare.
+ */
+const NEAR_REACH = GOAL_RADIUS + ROBUST_STEPS[0] + PLAYER_RADIUS + CLEAR_WANTED + 2 * GRID;
+
+/** The obstacles that can touch the search round (x, z): a terrace's dozen of the village's ~280 (review 2026-11-15). */
+function obstaclesNear(x: number, z: number, obstacles: readonly AABB[]): AABB[] {
+  return obstacles.filter((b) => b.maxX > x - NEAR_REACH && b.minX < x + NEAR_REACH && b.maxZ > z - NEAR_REACH && b.minZ < z + NEAR_REACH);
+}
+
+/**
  * Where a tap on seat `index` walks to: a spot a body stands on from which that seat is offered (worldMap approachesSeat,
  * within SEAT_REACH) — where it stays offered all round the spot a tap-walk's stop could be (it stops up to ARRIVE_DIST
  * short: ROBUST_STEPS, the widest ring that holds first), then as roomy as the terrace allows (a way round needs room to
  * get in). Another chair nearer the stop is no matter: the tapped one is preferred (seatPreference.ts). Null when there
  * is no such spot. Cached per seat list.
+ *
+ * Cost (review 2026-11-15: up to 20 ms in a pointerup handler, the first tap on a porch bench): only the obstacles near the
+ * seat are tested (`obstaclesNear`), which keeps one seat well under CameraRig's PLAN_SLICE_MS, and `warmSeatApproachGoals`
+ * fills the cache one seat per timer tick once a map's seats are known, so a tap normally finds its goal ready.
  */
-export function seatApproachGoal(seats: readonly Seat[], index: number, obstacles: readonly AABB[], bounds: Bounds): { x: number; z: number } | null {
+export function seatApproachGoal(seats: readonly Seat[], index: number, allObstacles: readonly AABB[], bounds: Bounds): { x: number; z: number } | null {
   let byIndex = goals.get(seats);
   if (!byIndex) goals.set(seats, (byIndex = new Map()));
   if (byIndex.has(index)) return byIndex.get(index) ?? null;
   const s = seats[index];
+  const obstacles = obstaclesNear(s.x, s.z, allObstacles);
   let best: { x: number; z: number } | null = null;
   let bestScore = -Infinity;
   const offered = (x: number, z: number) => approachesSeat(s, x, z) && Math.hypot(x - s.x, z - s.z) <= SEAT_REACH;
@@ -118,4 +134,44 @@ export function seatApproachGoal(seats: readonly Seat[], index: number, obstacle
   }
   byIndex.set(index, best);
   return best;
+}
+
+/** Whether seat `index` of `seats` has its goal worked out already. */
+export function seatApproachGoalReady(seats: readonly Seat[], index: number): boolean {
+  return goals.get(seats)?.has(index) ?? false;
+}
+
+/** The marked seats' indices in `seats` (the ones a tap can mean). */
+export function markedSeatIndices(seats: readonly Seat[]): number[] {
+  const ids = new Set(FOOTPRINTS.map((f) => f.id));
+  const out: number[] = [];
+  seats.forEach((s, i) => {
+    if (ids.has((s as { bench?: string }).bench ?? "")) out.push(i);
+  });
+  return out;
+}
+
+/**
+ * Work out every marked seat's goal ahead of the first tap, one seat per `schedule` tick (a timer: never more than one
+ * seat's search in a row on the main thread). Returns a cancel. `schedule` defaults to setTimeout(…, 0).
+ */
+export function warmSeatApproachGoals(
+  seats: readonly Seat[],
+  obstacles: readonly AABB[],
+  bounds: Bounds,
+  schedule: (run: () => void) => unknown = (run) => setTimeout(run, 0),
+): () => void {
+  const todo = markedSeatIndices(seats).filter((i) => !seatApproachGoalReady(seats, i));
+  let cancelled = false;
+  const step = (): void => {
+    if (cancelled) return;
+    const i = todo.shift();
+    if (i === undefined) return;
+    seatApproachGoal(seats, i, obstacles, bounds);
+    if (todo.length > 0) schedule(step);
+  };
+  if (todo.length > 0) schedule(step);
+  return () => {
+    cancelled = true;
+  };
 }
