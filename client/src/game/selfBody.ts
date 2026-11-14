@@ -84,10 +84,11 @@ function drawAfterRing(f: SelfFade, avatar: BuiltAvatar, on: boolean): void {
  * One frame of the own body's fade (`dt` s): toward SELF_FADE_OPACITY while it hides the ring (`fade`), else back to 1,
  * eased (SELF_FADE_TAU). While faded it is drawn after the ring, its depth first: the ring shows through its front
  * surface the way the ground round it does — not over it, and no dashed outline of it on the body. Touches the
- * materials only when the opacity changes. Returns the opacity now.
+ * materials only when the opacity changes. Returns the opacity now. `faded`: the opacity faded to (the camera held close to the
+ * head indoors fades it further, INDOOR_SELF_FADE_OPACITY).
  */
-export function stepSelfFade(f: SelfFade, avatar: BuiltAvatar, fade: boolean, dt: number): number {
-  const goal = fade ? SELF_FADE_OPACITY : 1;
+export function stepSelfFade(f: SelfFade, avatar: BuiltAvatar, fade: boolean, dt: number, faded = SELF_FADE_OPACITY): number {
+  const goal = fade ? faded : 1;
   let next = goal + (f.opacity - goal) * Math.exp(-Math.min(Math.max(dt, 0), 0.1) / SELF_FADE_TAU);
   if (Math.abs(next - goal) < 0.01) next = goal;
   if (next === f.opacity) return next;

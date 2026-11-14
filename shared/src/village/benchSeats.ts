@@ -188,8 +188,9 @@ function markerSeats(m: SeatMarker): VillageSeat[] {
       kind: m.kind,
       lean: m.kind === "backed" ? m.lean : 0,
       group: m.group,
-      // a chair at a table has the table in front of it: it is sat on from any side (a sofa or an armchair from the front only)
-      anySide: m.furn === "chair" ? true : undefined,
+      // a chair at a table has the table in front of it: it is also sat on from its sides, up to the backrest's face (never
+      // through the backrest); a sofa or an armchair from the front only
+      sidePlane: m.furn === "chair" ? Math.round((ahead + m.back) * 1000) / 1000 : undefined,
     });
   }
   return out;
@@ -203,7 +204,9 @@ function makeSeats(benches: readonly VillageBench[]): VillageSeat[] {
     for (const along of benchSeatOffsets(b.length)) {
       for (const turn of turns) {
         const yaw = wrapYaw(b.yaw + turn);
-        const p = offset(b.centre.x, b.centre.z, yaw, along, b.frontEdge + SIT_ROOT_AHEAD);
+        // `offset`'s "along" turns with the yaw: the back facing (yaw + pi) takes -along so both facings of one place stay at the
+        // SAME spot on the bench (review 2026-11-14: the back seat of -0.6 landed at +0.6 and its group paired the wrong seats)
+        const p = offset(b.centre.x, b.centre.z, yaw, turn === 0 ? along : -along, b.frontEdge + SIT_ROOT_AHEAD);
         const root = { x: Math.round(p.x * 1000) / 1000, z: Math.round(p.z * 1000) / 1000 };
         const place = `${b.id}:${along}`;
         const stand = dismountAhead(root, yaw, bounds, place);

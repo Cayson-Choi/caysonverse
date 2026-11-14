@@ -56,10 +56,11 @@ export interface Seat {
    */
   group?: string;
   /**
-   * A chair at a table (a dining or consultation chair): it can be sat on from any side, because its front is the table and nobody
-   * could reach it from there. A sofa, an armchair or a bench with a back is still sat on from its front only.
+   * A chair at a table (a dining or consultation chair): its front is the table, so it is also sat on from its LEFT and RIGHT —
+   * anywhere up to its backrest's plane, `sidePlane` m behind the root — but never from behind the backrest (owner rule
+   * 2026-11-13: a backed seat is never sat through its back). Absent: the front-edge rule (`frontEdge`) alone.
    */
-  anySide?: boolean;
+  sidePlane?: number;
   /** How far (rad) a sitter leans back into a backrest (a sofa, an armchair, a chair); absent or 0: sits upright. */
   lean?: number;
 }
@@ -94,8 +95,9 @@ export function seatTaken(seats: readonly Seat[], index: number, isOccupied: (in
  * `frontEdge`, and for a seat with one (a bench) only in front of that edge (the side the sitter faces).
  */
 export function approachesSeat(seat: Seat, x: number, z: number, slack = 0): boolean {
-  if (seat.frontEdge === undefined || seat.anySide === true) return true;
+  if (seat.frontEdge === undefined) return true;
   const ahead = (x - seat.x) * Math.sin(seat.yaw) + (z - seat.z) * Math.cos(seat.yaw);
+  if (seat.sidePlane !== undefined) return ahead >= -seat.sidePlane - slack;
   return ahead >= -seat.frontEdge - slack;
 }
 

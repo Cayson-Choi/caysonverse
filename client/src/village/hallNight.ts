@@ -85,6 +85,8 @@ export function hallNightWeight(outdoorNight: number, mapReady: boolean): number
 }
 
 let loading: Promise<void> | null = null;
+/** The tier the load in flight is for. */
+let loadingTier: "high" | "low" | null = null;
 /** Bumped by every dispose: a load that started before it must not hang its textures on the uniforms. */
 let generation = 0;
 /** The tier the night map in the uniform was loaded for. */
@@ -93,7 +95,14 @@ let loadedTier: "high" | "low" | null = null;
 /** Load the night map and the night park (once per tier; configured like the day map). Resolves when both are in. */
 export function loadHallNight(tier: "high" | "low", loader: Pick<TextureLoader, "loadAsync"> = new TextureLoader()): Promise<void> {
   if (hallNightMapUniform.value && hallGardenNightUniform.value && loadedTier === tier) return Promise.resolve();
-  if (loading) return loading;
+  if (loading) {
+    if (loadingTier === tier) return loading;
+    // another tier is in flight (the graphics tier changed meanwhile): load this one after it, so the map that stays is the one
+    // the CURRENT tier wants (review 2026-11-14: a phone kept the 2048 px night map after a high → low switch)
+    const after = loading;
+    const gen = generation;
+    return after.then(() => (gen === generation ? loadHallNight(tier, loader) : undefined));
+  }
   const mine = generation;
   const p: Promise<void> = Promise.all([loader.loadAsync(HALL_NIGHT_LIGHTMAP_URL[tier]), loader.loadAsync(HALL_GARDEN_NIGHT_URL)])
     .then(([lm, garden]) => {
@@ -118,9 +127,13 @@ export function loadHallNight(tier: "high" | "low", loader: Pick<TextureLoader, 
       // the night is an enhancement: a failed fetch leaves the day look (the next visit tries again)
     })
     .finally(() => {
-      if (loading === p) loading = null;
+      if (loading === p) {
+        loading = null;
+        loadingTier = null;
+      }
     });
   loading = p;
+  loadingTier = tier;
   return p;
 }
 
@@ -133,6 +146,7 @@ export function hallNightReady(): boolean {
 export function disposeHallNight(): void {
   generation++;
   loading = null;
+  loadingTier = null;
   loadedTier = null;
   hallNightMapUniform.value?.dispose();
   hallGardenNightUniform.value?.dispose();

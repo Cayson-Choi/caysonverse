@@ -88,7 +88,7 @@ export const CUBBY_REACH_M = 1.2;
 /** The target id prefix of a cubby column: `cubby:<bank>_<col>`. */
 export const CUBBY_TARGET_PREFIX = "cubby:";
 export const CUBBY_LABEL = "가까이 보기";
-export const CUBBY_SHORT = "보기";
+export const CUBBY_SHORT = "칸 보기";
 
 /** A column of cubbies: its wall and column, where it stands on the floor (the anchors' x, z) and its rows' anchors (bottom first). */
 export interface CubbyColumn {
@@ -171,7 +171,8 @@ export function villageAndHallTargets(area: AreaId, x: number, z: number, panelO
       kind: "object",
       id: `${CUBBY_TARGET_PREFIX}${near.column.key}`,
       dist: near.dist,
-      icon: "🕯️",
+      // a magnifier, not a candle: the button opens the close-up (review 2026-11-14: "🕯️ 보기" read as "light a candle")
+      icon: "🔍",
       label: CUBBY_LABEL,
       short: CUBBY_SHORT,
     };

@@ -1,11 +1,12 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { CANDLE_BURN_MS, VillageServerMsg } from "@caysonverse/shared/village/messages";
+import { setLocalArea } from "./villageArea";
 import { bindHallCandles, burningCandles, clearCandles, isCandleBurning, noteCandleLit, pruneCandles, subscribeCandles } from "./hallCandles";
 
 afterEach(() => clearCandles());
 
-describe("hallCandles — a lit candle burns 60 s on every client in the hall (Task 9)", () => {
-  it("burns from the moment it was heard for 60 s, then goes out", () => {
+describe("hallCandles — a lit candle burns an hour on every client in the hall (server-kept since 2026-11-14)", () => {
+  it("burns an hour from when it was lit, then goes out", () => {
     noteCandleLit("n_3_10", "케이슨", 1000);
     expect(isCandleBurning("n_3_10", 1000 + CANDLE_BURN_MS - 1)).toBe(true);
     expect(isCandleBurning("n_3_10", 1000 + CANDLE_BURN_MS)).toBe(false);
@@ -13,10 +14,17 @@ describe("hallCandles — a lit candle burns 60 s on every client in the hall (T
     expect(burningCandles().size).toBe(1);
     expect(pruneCandles(1000 + CANDLE_BURN_MS)).toBe(true);
     expect(burningCandles().size).toBe(0);
-    expect(CANDLE_BURN_MS).toBe(60_000);
+    expect(CANDLE_BURN_MS).toBe(3_600_000);
   });
 
-  it("lit again while burning, it starts the 60 s over; listeners hear every change", () => {
+  it("a candle lit 32 minutes ago (as the server says) has 28 minutes left", () => {
+    noteCandleLit("c", "케이슨", 10_000_000, 32 * 60_000);
+    expect(burningCandles().get("c")).toEqual({ at: 10_000_000 - 32 * 60_000, by: "케이슨" });
+    expect(isCandleBurning("c", 10_000_000 + 28 * 60_000 - 1)).toBe(true);
+    expect(isCandleBurning("c", 10_000_000 + 28 * 60_000)).toBe(false);
+  });
+
+  it("a later word about the same cubby replaces it; listeners hear every change", () => {
     let calls = 0;
     const off = subscribeCandles(() => (calls += 1));
     noteCandleLit("e_0_5", "밥이", 0);
@@ -28,7 +36,7 @@ describe("hallCandles — a lit candle burns 60 s on every client in the hall (T
     off();
   });
 
-  it("the room binding takes CandleLit and ignores a malformed one", () => {
+  it("the room binding takes CandleLit and CandleState and ignores a malformed one", () => {
     const handlers = new Map<string, (m: unknown) => void>();
     const room = {
       onMessage<T>(type: string, cb: (m: T) => void) {
@@ -43,8 +51,24 @@ describe("hallCandles — a lit candle burns 60 s on every client in the hall (T
     h(null);
     h({ cubby: "" });
     expect([...burningCandles().keys()]).toEqual(["n_0_0"]);
+    const st = handlers.get(VillageServerMsg.CandleState)!;
+    st({ candles: [{ cubby: "M1-A-r3-c11", by: "밥이", agoMs: 60_000 }, { cubby: 3 }] });
+    expect([...burningCandles().keys()]).toEqual(["M1-A-r3-c11"]); // the list replaces what was there
+    st({ nope: 1 });
+    expect(burningCandles().size).toBe(1);
     off();
     expect(handlers.size).toBe(0);
+  });
+});
+
+describe("the candles go out on this client when it leaves the hall (not on a scene remount)", () => {
+  it("leaving the hall clears them; walking in keeps what the server just said", () => {
+    setLocalArea("village");
+    noteCandleLit("c", "케이슨", 0);
+    setLocalArea("hall"); // the CandleState came with the door, just before the area flipped
+    expect(burningCandles().size).toBe(1);
+    setLocalArea("village");
+    expect(burningCandles().size).toBe(0);
   });
 });
 

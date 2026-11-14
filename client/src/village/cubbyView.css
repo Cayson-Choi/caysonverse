@@ -1,11 +1,14 @@
 /* The memorial cubby's close-up card (케이슨 마을 Task 9): quiet, warm, readable on a phone. */
 .cv-cubby {
+  /* No dimmed backdrop: the camera shows the cubby itself (cubbyFocus.ts); a click on the canvas moves to another cubby. */
   position: fixed;
   inset: 0;
-  z-index: 35; /* above the HUD (20-30), below the covers (40) and the menu (60), like the escape close-up */
-  display: grid;
-  place-items: center;
+  z-index: 35; /* above the HUD (20-30), below the covers (40) and the menu (60) */
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
   padding: 16px;
+  pointer-events: none;
   touch-action: manipulation;
   animation: cv-cubby-fade 0.25s ease-out;
 }
@@ -17,20 +20,16 @@
     opacity: 1;
   }
 }
-.cv-cubby-backdrop {
-  position: absolute;
-  inset: 0;
-  background: rgba(36, 30, 26, 0.32);
-}
 .cv-cubby-panel {
+  pointer-events: auto;
   position: relative;
-  width: min(320px, 100%);
+  width: min(330px, 100%);
   max-height: calc(100% - 8px);
   overflow-y: auto;
   box-sizing: border-box;
-  padding: 18px 18px 16px;
+  padding: 16px 18px 14px;
   border-radius: 18px;
-  background: #f7f3ec;
+  background: rgba(247, 243, 236, 0.97);
   color: #3b322b;
   box-shadow: 0 18px 48px rgba(40, 30, 20, 0.28);
   display: flex;
@@ -38,6 +37,72 @@
   align-items: center;
   gap: 6px;
   text-align: center;
+}
+.cv-cubby-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.cv-cubby-text {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+.cv-cubby-sample {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: #4b4fd8;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+.cv-cubby-note {
+  margin: 0;
+  font-size: 11.5px;
+  color: #8a7a6b;
+}
+/* A phone held upright: a sheet at the bottom, the cubby framed above it. */
+@media (max-width: 719px), (max-aspect-ratio: 1/1) {
+  .cv-cubby {
+    align-items: flex-end;
+    justify-content: center;
+    padding: 0 0 max(8px, env(safe-area-inset-bottom));
+  }
+  .cv-cubby-panel {
+    width: min(480px, calc(100% - 16px));
+    max-height: 46vh;
+    padding: 12px 14px 10px;
+    gap: 4px;
+  }
+  .cv-cubby-body {
+    flex-direction: row;
+    align-items: flex-start;
+    gap: 12px;
+    text-align: left;
+    width: 100%;
+  }
+  .cv-cubby-text {
+    align-items: flex-start;
+  }
+  .cv-cubby .cv-cubby-photo {
+    width: 84px;
+    border-width: 5px;
+    flex: none;
+  }
+  .cv-cubby-name {
+    font-size: 18px;
+  }
+  .cv-cubby-line {
+    margin: 2px 0;
+    font-size: 14px;
+  }
+  .cv-cubby-nav {
+    margin-top: 2px;
+  }
 }
 .cv-cubby-where {
   font-size: 12px;
@@ -138,6 +203,16 @@
   opacity: 0.45;
   cursor: default;
 }
-.cv-cubby-nav .cv-cubby-close {
-  background: #efe8de;
+.cv-cubby-close {
+  width: 100%;
+  min-height: 48px;
+  margin-top: 6px;
+  border: none;
+  border-radius: 12px;
+  background: #3b322b;
+  color: #fff;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
 }

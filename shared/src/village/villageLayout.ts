@@ -623,6 +623,40 @@ export function cubbyAnchors(layout: VillageLayout): CubbyAnchor[] {
   return out;
 }
 
+/**
+ * The cubby a point on a cubby wall belongs to (a click or a tap on it: 케이슨 마을 추모관, owner 2026-11-13 "윗칸도 잘 보이게"): the
+ * point's place along the run and its height pick the column and the row — the frame board around a cubby counts as that cubby
+ * (half a board each side), so every point of the wall's face names exactly one cubby. A point more than `ahead` m in front of
+ * the opening plane, or behind the unit, or past the wall's ends, plinth or top, is no cubby (`null`).
+ */
+export function cubbyAtPoint(layout: VillageLayout, x: number, y: number, z: number, ahead = 0.12): CubbyAnchor | null {
+  if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) return null;
+  for (const w of layout.memorial.interior.cubbyWalls) {
+    const rx = x - w.start.x;
+    const rz = z - w.start.z;
+    const out = rx * Math.sin(w.yaw) + rz * Math.cos(w.yaw); // + into the room
+    if (out > ahead || out < -w.unitDepth) continue;
+    const u = rx * w.along.x + rz * w.along.z;
+    const pitch = w.cell + w.frame;
+    const col = Math.floor((u - w.frame / 2) / pitch);
+    const row = Math.floor((y - w.plinth - w.frame / 2) / pitch);
+    if (col < 0 || col >= w.cols || row < 0 || row >= w.rows) continue;
+    const cu = w.frame + col * pitch + w.cell / 2;
+    return {
+      id: cubbyId(w.bank, row, col),
+      bank: w.bank,
+      wall: w.wall,
+      row,
+      col,
+      x: round(w.start.x + w.along.x * cu, 6),
+      y: round(w.plinth + w.frame + row * pitch + w.cell / 2, 6),
+      z: round(w.start.z + w.along.z * cu, 6),
+      yaw: w.yaw,
+    };
+  }
+  return null;
+}
+
 /** A cubby wall's footprint: from its opening plane back to the room wall, along its whole run. */
 export function cubbyWallBox(w: CubbyWall): AABB {
   const len = w.cols * (w.cell + w.frame) + w.frame;

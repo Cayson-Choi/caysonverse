@@ -141,10 +141,8 @@ describe("village seats (where a sitter goes)", () => {
       for (let j = i + 1; j < VILLAGE_SEATS.length; j++) {
         const b = VILLAGE_SEATS[j]!;
         if (a.area !== b.area || (a.group !== undefined && a.group === b.group)) continue;
-        // the two sides of one bench are two people sitting back to back, not side by side
         // people on the two sides of the letter table face each other across it (their arms rest on the table)
         if (a.bench.startsWith("letter_") && b.bench.startsWith("letter_") && Math.abs(Math.abs(Math.atan2(Math.sin(a.yaw - b.yaw), Math.cos(a.yaw - b.yaw))) - Math.PI) < 1e-3) continue;
-        if (a.bench === b.bench && Math.abs(Math.abs(Math.atan2(Math.sin(a.yaw - b.yaw), Math.cos(a.yaw - b.yaw))) - Math.PI) < 1e-3) continue;
         expect(Math.hypot(a.x - b.x, a.z - b.z), `${a.id} vs ${b.id}`).toBeGreaterThan(SEATED_HANDS_WIDTH);
       }
     }
@@ -207,13 +205,40 @@ describe("the memorial hall's seats (generated from the model's seat__ markers)"
     expect(approachesSeat(sofa, sofa.x - f.x * 1.2, sofa.z - f.z * 1.2, SEAT_APPROACH_SLACK)).toBe(false);
   });
 
-  it("a chair at a table is sat on from any side (its front is the table); a sofa and an armchair only from the front", () => {
-    const chair = VILLAGE_SEATS[indexOf("letter_s0")]!;
-    const f = fwd(chair);
-    expect(chair.anySide).toBe(true);
-    expect(approachesSeat(chair, chair.x - f.x * 1.1, chair.z - f.z * 1.1)).toBe(true); // from behind the chair
-    expect(VILLAGE_SEATS[indexOf("armchair_0")]!.anySide).toBeUndefined();
-    expect(VILLAGE_SEATS[indexOf("sofa_a1")]!.anySide).toBeUndefined();
+  it("a chair at a table is sat on from its sides too (its front is the table), never through its backrest", () => {
+    for (const id of ["letter_s0", "letter_n1", "consult_0", "consult_1"]) {
+      const chair = VILLAGE_SEATS[indexOf(id)]!;
+      const f = fwd(chair);
+      const side = { x: f.z, z: -f.x }; // a quarter turn from the facing
+      expect(chair.sidePlane, id).toBeGreaterThan(0.2);
+      expect(approachesSeat(chair, chair.x + side.x * 0.6, chair.z + side.z * 0.6), `${id} from its side`).toBe(true);
+      expect(approachesSeat(chair, chair.x - side.x * 0.6, chair.z - side.z * 0.6), `${id} from its other side`).toBe(true);
+      // from behind the backrest: refused by the client, and by the server even with its slack
+      expect(approachesSeat(chair, chair.x - f.x * 1.1, chair.z - f.z * 1.1), `${id} from behind`).toBe(false);
+      expect(approachesSeat(chair, chair.x - f.x * 1.1, chair.z - f.z * 1.1, SEAT_APPROACH_SLACK), `${id} from behind (server)`).toBe(false);
+    }
+    expect(VILLAGE_SEATS[indexOf("armchair_0")]!.sidePlane).toBeUndefined();
+    expect(VILLAGE_SEATS[indexOf("sofa_a1")]!.sidePlane).toBeUndefined();
+  });
+
+  it("a backless bench outdoors: the two facings of one place sit at the same spot, back to back, and are one group", () => {
+    const seats = VILLAGE_SEATS.filter((s) => s.bench === "memorial_forecourt");
+    expect(seats).toHaveLength(4);
+    const byGroup = new Map<string, VillageSeat[]>();
+    for (const s of seats) byGroup.set(s.group!, [...(byGroup.get(s.group!) ?? []), s]);
+    expect(byGroup.size).toBe(2);
+    for (const [g, pair] of byGroup) {
+      expect(pair, g).toHaveLength(2);
+      const [a, b] = pair as [VillageSeat, VillageSeat];
+      const ax = a.x - Math.sin(a.yaw) * (a.frontEdge ?? 0); // back from the root to the bench's middle line
+      const bx = b.x - Math.sin(b.yaw) * (b.frontEdge ?? 0);
+      // the same spot along the bench (the bench runs along x at the forecourt)
+      expect(Math.abs(ax - bx), g).toBeLessThan(1e-3);
+      expect(Math.abs(Math.abs(Math.atan2(Math.sin(a.yaw - b.yaw), Math.cos(a.yaw - b.yaw))) - Math.PI), g).toBeLessThan(1e-3);
+    }
+    // the two places along the bench are a full place apart
+    const fronts = seats.filter((s) => s.id.endsWith(":front"));
+    expect(Math.abs(fronts[0]!.x - fronts[1]!.x)).toBeGreaterThan(SEATED_HANDS_WIDTH);
   });
 
   it("one place is one seat: taking one facing of a bench seat blocks the other", () => {

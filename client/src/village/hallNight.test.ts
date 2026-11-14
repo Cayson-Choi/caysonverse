@@ -79,4 +79,28 @@ describe("hallNight — the hall's light follows the village's clock", () => {
     expect(hallNightMapUniform.value).not.toBe(first);
     disposeHallNight();
   });
+  it("a tier change while the other tier is still loading ends on the CURRENT tier's map (the old one freed)", async () => {
+    disposeHallNight();
+    const made: { url: string; t: Texture }[] = [];
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => (release = r));
+    const loader = {
+      loadAsync: async (url: string) => {
+        const t = new Texture();
+        made.push({ url, t });
+        if (made.length <= 2) await gate; // the first (high) load hangs until released
+        return t as Texture<HTMLImageElement>;
+      },
+    };
+    const high = loadHallNight("high", loader);
+    const low = loadHallNight("low", loader);
+    release();
+    await high;
+    await low;
+    const lm = made.filter((m) => !m.url.includes("garden"));
+    expect(lm).toHaveLength(2);
+    expect(hallNightMapUniform.value).toBe(lm[1]!.t); // the low one stays
+    expect(lm[1]!.url).not.toBe(lm[0]!.url);
+    disposeHallNight();
+  });
 });

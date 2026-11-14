@@ -23,6 +23,7 @@ describe("VillageMsg", () => {
     expect(VillageServerMsg).toEqual({
       ServerTime: "ServerTime",
       CandleLit: "CandleLit",
+      CandleState: "CandleState",
       FishingState: "FishingState",
       FishingResult: "FishingResult",
       FishingRejected: "FishingRejected",
@@ -36,9 +37,9 @@ describe("VillageMsg", () => {
     expect(SERVER_TIME_INTERVAL_MS).toBe(300_000);
   });
 
-  it("candles (Task 9): 1.5 m from the cubby, one per 5 seconds, burning 60 seconds", () => {
-    expect(CANDLE_REACH_M).toBe(1.5);
+  it("candles: from anywhere in the hall (the close-up), one per 5 seconds, burning an hour (owner 2026-11-13)", () => {
+    expect(CANDLE_REACH_M).toBe(20);
     expect(CANDLE_RATE).toEqual({ count: 1, windowMs: 5000 });
-    expect(CANDLE_BURN_MS).toBe(60_000);
+    expect(CANDLE_BURN_MS).toBe(3_600_000);
   });
 });

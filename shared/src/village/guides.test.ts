@@ -110,7 +110,9 @@ describe("guides (Task 9A)", () => {
     expect(nearestGuide("hall", 305.0, 4.6)?.guide.id).toBe("hall_desk");
     // the visitor side of the counter, behind the two consultation chairs (x 304.2): asked from x 303.0
     expect(nearestGuide("hall", 303.0, 4.0)?.guide.id).toBe("hall_desk");
-    expect(nearestGuide("hall", 302.5, 4.0)).toBeNull();
+    // where the chairs and the kiosk stop a visitor walking straight in from the door (review 2026-11-14)
+    expect(nearestGuide("hall", 302.96, 3.87)?.guide.id).toBe("hall_desk");
+    expect(nearestGuide("hall", 302.2, 4.6)).toBeNull();
     expect(nearestGuide("village", 301.5, 3.0)).toBeNull();
     expect(nearestGuide("village", Number.NaN, 0)).toBeNull();
   });

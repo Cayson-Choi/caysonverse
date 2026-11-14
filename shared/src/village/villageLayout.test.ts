@@ -25,6 +25,7 @@ import {
   colliderNode,
   cubbyAnchorNode,
   cubbyAnchors,
+  cubbyAtPoint,
   cubbyId,
   cubbyWallBox,
   exportVillageLayout,
@@ -1389,5 +1390,32 @@ describe("export for the Blender scripts", () => {
     expect(out.backdrop.waterfall).toMatchObject({ height: 36, facing: "e", bounds: { minX: -132, maxX: -104, minZ: -85, maxZ: -71 } });
     expect(out.backdrop.lake.pavilion).toHaveProperty("bounds");
     expect(centre(out.plaza.fountain.collider.bounds)).toEqual({ x: 0, z: 0 });
+  });
+});
+
+describe("cubbyAtPoint — a click on a cubby wall names its cubby (윗칸도 눌러서 가까이 보기)", () => {
+  const anchors = cubbyAnchors(VILLAGE_LAYOUT);
+  it("every cubby's opening centre, and points near its edges, name that cubby", () => {
+    for (const a of anchors) {
+      const w = VILLAGE_LAYOUT.memorial.interior.cubbyWalls.find((c) => c.bank === a.bank)!;
+      expect(cubbyAtPoint(VILLAGE_LAYOUT, a.x, a.y, a.z)?.id, a.id).toBe(a.id);
+      const e = w.cell / 2 - 0.01;
+      expect(cubbyAtPoint(VILLAGE_LAYOUT, a.x + w.along.x * e, a.y + e, a.z + w.along.z * e)?.id, a.id).toBe(a.id);
+      expect(cubbyAtPoint(VILLAGE_LAYOUT, a.x - w.along.x * e, a.y - e, a.z - w.along.z * e)?.id, a.id).toBe(a.id);
+      // the back panel of the cubby (a click through its opening)
+      expect(cubbyAtPoint(VILLAGE_LAYOUT, a.x - Math.sin(a.yaw) * w.depth, a.y, a.z - Math.cos(a.yaw) * w.depth)?.id, a.id).toBe(a.id);
+    }
+  });
+  it("the top row works like any other (the case the owner asked about)", () => {
+    const top = anchors.filter((a) => a.row === 7);
+    expect(top.length).toBe(14 + 14 + 18);
+    for (const a of top) expect(cubbyAtPoint(VILLAGE_LAYOUT, a.x, a.y + 0.1, a.z)?.row).toBe(7);
+  });
+  it("the floor in front of a wall, the room's middle and points past the ends are no cubby", () => {
+    const a = anchors[0]!;
+    expect(cubbyAtPoint(VILLAGE_LAYOUT, a.x + Math.sin(a.yaw) * 1, a.y, a.z + Math.cos(a.yaw) * 1)).toBeNull();
+    expect(cubbyAtPoint(VILLAGE_LAYOUT, 300, 0.01, 0)).toBeNull();
+    expect(cubbyAtPoint(VILLAGE_LAYOUT, a.x, 0.02, a.z)).toBeNull(); // the plinth
+    expect(cubbyAtPoint(VILLAGE_LAYOUT, Number.NaN, 1, 1)).toBeNull();
   });
 });

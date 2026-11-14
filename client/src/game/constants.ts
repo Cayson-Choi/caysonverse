@@ -53,6 +53,14 @@ export const FP_EYE_HEIGHT = HEAD_HEIGHT + 0.1;
 /** Third-person safety distance below which the local avatar is hidden instead of showing its inside surfaces. */
 export const SELF_CAMERA_HIDE_DISTANCE = 1.8;
 
+/**
+ * Inside a building (a place with a camera limit), a third-person camera nearer than this (m) to the own head — a wall right
+ * behind the player holds it there — fades the own body (selfBody.ts), so the room shows through it.
+ */
+export const INDOOR_SELF_FADE_DISTANCE = 2.8;
+/** How far the own body fades there: a faint outline, the room behind it in plain view (round 3 check on a phone). */
+export const INDOOR_SELF_FADE_OPACITY = 0.22;
+
 /** drei KeyboardControls action names (typed control set). */
 export type MoveControl = "forward" | "backward" | "left" | "right" | "run" | "camLeft" | "camRight";
 

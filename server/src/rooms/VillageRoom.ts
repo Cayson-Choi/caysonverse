@@ -10,7 +10,7 @@ import {
   SERVER_TIME_INTERVAL_MS,
   VillageMsg,
   VillageServerMsg,
-  type CandleLitPayload,
+  type CandleStatePayload,
   type FishingRejectedPayload,
   type FishingResultPayload,
   type FishingStatePayload,
@@ -37,6 +37,7 @@ import { validateJoinOptions } from "./joinValidation";
 import { RateWindow } from "./rateLimit";
 import { DOOR_RATE, useDoor } from "./villageDoor";
 import { candleCubby } from "./villageCandle";
+import { CANDLES, type CandleBook } from "./candleBook";
 import { validateSit } from "./seating";
 import {
   BUS_STATE_RATE_MS,
@@ -106,7 +107,13 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
   /** Fishing is room memory only: disconnecting or disposing a room loses the session's catch. */
   private readonly fishing = new Map<string, FishingState>();
 
+  /** The process's candles (every room's hall shows the same ones); a test may swap in its own. */
+  protected candles: CandleBook = CANDLES;
+  private offCandles: (() => void) | null = null;
+
   onCreate(): void {
+    // A candle lit in ANY room's hall burns in this room's hall too (the book is shared by every shard).
+    this.offCandles = this.candles.onLit((c) => this.broadcastToArea("hall", VillageServerMsg.CandleLit, c));
     // Move, Chat, Emoji, Jump, Typing (+ the "*" catch-all for stray types).
     this.registerPlayerMessages();
     this.onMessage(MessageType.Sit, (client, payload) => {
@@ -155,6 +162,17 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     return { serverTimeMs: this.wallClock() };
   }
 
+  onDispose(): void {
+    this.offCandles?.();
+    this.offCandles = null;
+  }
+
+  /** The candles burning now, to one client (it came into the hall, or came back inside it). */
+  private sendCandles(client: Client): void {
+    const msg: CandleStatePayload = { candles: this.candles.snapshot(this.wallClock()) };
+    client.send(VillageServerMsg.CandleState, msg);
+  }
+
   /** Re-send the server's clock to every client in the room. */
   broadcastServerTime(): void {
     this.broadcast(VillageServerMsg.ServerTime, this.serverTime());
@@ -201,6 +219,7 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     client.send(MessageType.BusRideState, { boarded: track?.busBoarded === true, tripId } satisfies BusRideStatePayload);
     const state = this.fishing.get(client.sessionId);
     if (state) this.sendFishingState(client, state);
+    if (this.state.players.get(client.sessionId)?.area === "hall") this.sendCandles(client);
   }
 
   /** The village map: the open village plus the memorial hall's sealed interior. */
@@ -448,13 +467,15 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     player.yaw = at.yaw;
     player.area = arrival.area;
     track.lastAcceptedAt = now;
+    if (arrival.area === "hall") this.sendCandles(client); // the candles already burning, and who lit them
   }
 
   /**
    * Candle pipeline (Task 9): sender must have a seat → the pure rule `candleCubby` decides from the player's
    * AUTHORITATIVE area and position and the named cubby (in the hall, within 1.5 m of its anchor on the ground) → SILENT
-   * drop otherwise → per-client rate cap (1 per 5 seconds; after the distance, like the door) → `CandleLit` to every
-   * client in the hall, the lighter included. Nothing is stored: each client burns the candle for 60 s itself.
+   * drop otherwise → per-client rate cap (1 per 5 seconds; after the distance, like the door) → the process's candle book keeps
+   * it for an hour (refused while that cubby's candle still burns) → `CandleLit` to every client in the hall of EVERY room
+   * (the book's listeners), the lighter included.
    */
   private handleLightCandle(client: Client, payload: unknown): void {
     const player = this.state.players.get(client.sessionId);
@@ -463,9 +484,9 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     const cubby = payload !== null && typeof payload === "object" ? (payload as { cubby?: unknown }).cubby : undefined;
     const anchor = candleCubby(player.area, player.x, player.z, cubby);
     if (anchor === null) return;
+    if (this.candles.burning(anchor.id, this.wallClock())) return; // already burning: the card shows who lit it
     if (!track.candleRate.tryAccept(this.now())) return;
-    const lit: CandleLitPayload = { cubby: anchor.id, by: player.nickname };
-    this.broadcastToArea("hall", VillageServerMsg.CandleLit, lit);
+    this.candles.light(anchor.id, player.nickname, this.wallClock());
   }
 
   /** Project the private state without exposing future bite timestamps to the browser. */

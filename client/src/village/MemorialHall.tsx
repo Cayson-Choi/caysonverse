@@ -20,7 +20,7 @@ import { VILLAGE_LAYOUT, type CubbyAnchor } from "@caysonverse/shared/village/vi
 import { DRACO_PATH } from "../game/hub/hubModelPrep";
 import { SceneWarmUp } from "../game/SceneWarmUp";
 import { buildCubbyPropMeshes, layoutCubbyProps, makePhotoMaterial, placementMatrix } from "./cubbyProps";
-import { burningCandles, candleClock, clearCandles, pruneCandles, showInstances } from "./hallCandles";
+import { burningCandles, candleClock, pruneCandles, showInstances } from "./hallCandles";
 import { MEMORIAL_LIGHTMAP_URLS, MEMORIAL_MODEL_URL, MEMORIAL_PROPS_URL, disposeMemorial, prepareMemorial } from "./memorialModelPrep";
 import { clearMemorialCaches, holdMemorialFiles, noteMemorialRequested, setMemorialTier } from "./memorialRelease";
 import { disposeHallNight, hallNightReady, hallNightUniform, hallNightWeight, loadHallNight, skylightColour } from "./hallNight";
@@ -41,7 +41,7 @@ declare global {
   }
 }
 
-/** At most this many candles burn at once in one client's hall (60 s each; one per visitor per 5 s). */
+/** At most this many candles burn at once in one client's hall (an hour each, one per filled cubby). */
 export const MAX_CANDLES = 64;
 
 /** Where a lit candle stands in its cubby (the cubby's frame, cubbyProps.ts): front right, clear of the name card. */
@@ -260,11 +260,10 @@ function MemorialHall() {
 /**
  * The memorial hall's interior (케이슨 마을 Task 9), mounted while the local player is in the hall. Holds the hall's files
  * for as long as it shows (memorialRelease.ts: loaded on entering, released on leaving), shows the plain room until the
- * model is in, and the way out's door pad. The candles go out when the hall is left.
+ * model is in, and the way out's door pad. The candles go out when the hall is left (hallCandles.ts, on the area change).
  */
 export function HallArea({ pose }: { pose: Pose }) {
   useEffect(() => holdMemorialFiles(), []);
-  useEffect(() => () => clearCandles(), []);
   return (
     <>
       <LoadBoundary fallback={<HallRoom withPad={false} />} onReset={clearMemorialCaches} notice="추모관을 불러오지 못했어요. 잠시 뒤 다시 불러올게요.">

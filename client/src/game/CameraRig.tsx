@@ -71,6 +71,10 @@ import { useFpCursor } from "./useFpCursor";
 import { useSettingsStore } from "../stores/settingsStore";
 import { getTransitRenderPose, useTransitState } from "../net/transitSync";
 import { transitWindowCamera } from "../village/transitCamera";
+import { VILLAGE_LAYOUT, cubbyAtPoint } from "@caysonverse/shared/village/villageLayout";
+import { localArea } from "../village/villageArea";
+import { openCubbyAt } from "../village/cubbyCard";
+import { cubbyFocusAnchor, stepCubbyFocus, type FocusPose } from "../village/cubbyFocus";
 import type { Orbit, Pose, SeatState } from "./types";
 
 interface CameraRigProps {
@@ -206,6 +210,8 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
     return createFollowRig(orbit);
   });
   const [tpSpot] = useState(createFollowSpot);
+  // the memorial cubby close-up's pose this frame (cubbyFocus.ts), reused (no allocation per frame)
+  const [focusPose] = useState<FocusPose>(() => ({ ex: 0, ey: 0, ez: 0, tx: 0, ty: 0, tz: 0 }));
   // Live whole-map fit height (aspect-dependent) — recomputed each frame, read by
   // the overview wheel/pinch handlers for the zoom ceiling. Ref, not state.
   const fitHeight = useRef(0);
@@ -273,6 +279,24 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
       raycaster.far = cam.far;
       raycaster.layers.mask = cam.layers.mask;
       return pickSurface(raycaster, scene, { area: activeBounds() });
+    };
+    /**
+     * In the memorial hall a click or a tap on a cubby — any row, the top one too (owner 2026-11-13) — opens its close-up (the
+     * card, and the camera glides to the front of that cubby: cubbyFocus.ts) instead of walking. While a close-up is open a
+     * click elsewhere does nothing (the card's own buttons and Esc end it). True when the click was taken here.
+     */
+    const hallCubbyClick = (clientX: number, clientY: number): boolean => {
+      if (localArea() !== "hall") return false;
+      const hit = pickAt(clientX, clientY);
+      const cubby = hit && !hit.blocker ? cubbyAtPoint(VILLAGE_LAYOUT, hit.x, hit.y, hit.z) : null;
+      if (cubby) {
+        taps.reset();
+        clickWork.drop();
+        clearClickTarget();
+        openCubbyAt(cubby);
+        return true;
+      }
+      return cubbyFocusAnchor() !== null;
     };
     /**
      * Rule 4: how a ring at (x, z) on a surface at `surfaceY` would look from `cam` — as ClickMarker will draw it: its
@@ -622,7 +646,8 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
         } else if (
           e.type === "pointerup" && // a pointercancel is never a click
           viewState.mode !== "ov" &&
-          isClick(travel, 0, upAt - start.t, e.pointerType === "touch" ? TAP_MAX_PX : CLICK_MAX_PX)
+          isClick(travel, 0, upAt - start.t, e.pointerType === "touch" ? TAP_MAX_PX : CLICK_MAX_PX) &&
+          !hallCubbyClick(e.clientX, e.clientY)
         ) {
           // Which half is the look half follows the left-handed setting — the SAME store
           // field TouchJoystick's prop comes from (WorldScene), so the stick half and
@@ -895,6 +920,19 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
       lerp(uTgtY, 0, ovT),
       lerp(uTgtZ, ovPosZ, ovT),
     );
+
+    // A memorial cubby's close-up (cubbyFocus.ts): the camera glides from the player's view to the front of that cubby, at its
+    // height, and back when the card closes. The player's own orbit is never written: closing it puts the view back as it was.
+    const fw = stepCubbyFocus(delta, aspect, cam.fov, focusPose);
+    if (fw > 0) {
+      const p = camera.position;
+      const lx = lerp(uTgtX, ovPosX, ovT);
+      const ly = lerp(uTgtY, 0, ovT);
+      const lz = lerp(uTgtZ, ovPosZ, ovT);
+      p.set(lerp(p.x, focusPose.ex, fw), lerp(p.y, focusPose.ey, fw), lerp(p.z, focusPose.ez, fw));
+      camera.up.set(0, 1, 0);
+      camera.lookAt(lerp(lx, focusPose.tx, fw), lerp(ly, focusPose.ty, fw), lerp(lz, focusPose.tz, fw));
+    }
 
     // While riding, replace the normal avatar orbit with a passenger eye at
     // the bus cabin and aim through its right-side window. The world camera

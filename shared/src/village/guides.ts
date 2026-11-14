@@ -47,8 +47,12 @@ export interface Guide {
 
 /** Within this distance (m, on the ground) "문의하기" is offered. */
 export const GUIDE_REACH_M = 2.2;
-/** The hall desk is asked from the visitor side of the counter, past the two consultation chairs (x 304.2): 3.5 m reaches x 303.0. */
-export const HALL_DESK_REACH_M = 3.5;
+/**
+ * The hall desk is asked from the visitor side of the counter, past the two consultation chairs (x 304.2) and the kiosk: a visitor
+ * walking straight in from the door is stopped by them at about (302.96, 3.87), 3.52 m from the guide (review 2026-11-14), so the
+ * reach is 4.0 m (x 302.4 on the desk's line).
+ */
+export const HALL_DESK_REACH_M = 4.0;
 /** Half the side of a guide's square collider (m): 0.6 x 0.6, about the figure's footprint. */
 export const GUIDE_COLLIDER_HALF = 0.3;
 /** The words on the action button and the touch button. */

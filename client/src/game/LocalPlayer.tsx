@@ -7,7 +7,7 @@ import { PLAYER_RADIUS } from "@caysonverse/shared/worldMap";
 import { liftForSeatY } from "@caysonverse/shared/sitPose";
 import { resolveCollision } from "@caysonverse/shared/collision";
 import { collectObstacles } from "./playerObstacles";
-import { activeBounds, activeSeats } from "./activeMap";
+import { activeBounds, activeSeats, getActiveMap } from "./activeMap";
 import {
   SIT_GLIDE,
   STAND_GLIDE,
@@ -71,13 +71,14 @@ import { useEmoji } from "./useEmoji";
 import { stepYaw } from "./yaw";
 import { createMoveSender } from "./moveSender";
 import { installDebugHook } from "./debug";
-import { ANIM_FADE, CLIP, MODEL_FACING_OFFSET, SELF_CAMERA_HIDE_DISTANCE, TURN_SPEED } from "./constants";
+import { ANIM_FADE, CLIP, HEAD_HEIGHT, INDOOR_SELF_FADE_DISTANCE, INDOOR_SELF_FADE_OPACITY, MODEL_FACING_OFFSET, SELF_CAMERA_HIDE_DISTANCE, TURN_SPEED } from "./constants";
 import type { MoveControl } from "./constants";
 import type { Orbit, Pose, SeatState } from "./types";
 import { getRoom, sendJump, sendMove, sendStand } from "../net/connection";
 import { useTransitState } from "../net/transitSync";
 import { isInputSuspended } from "../net/resilience";
 import { useSettingsStore } from "../stores/settingsStore";
+import { cubbyFocusWeight } from "../village/cubbyFocus";
 
 /** Fallback seconds for a sit/stand clip if its duration can't be read yet. */
 const SIT_CLIP_FALLBACK_SEC = 0.8;
@@ -485,11 +486,19 @@ export function LocalPlayer({
       viewState.blend < HIDE_BLEND &&
       cameraProbe.distance > 0 &&
       cameraProbe.distance < SELF_CAMERA_HIDE_DISTANCE;
-    group.visible = viewState.ovBlend > OV_VIS_BLEND ? true : viewState.mode !== "fp" && viewState.blend < HIDE_BLEND && !cameraInsideSelf;
+    // A memorial cubby's close-up (cubbyFocus.ts) puts the lens at the cubby's height in front of it, where the own body may
+    // stand: hidden while the close-up is more than a third of the way in.
+    const inCloseUp = cubbyFocusWeight() > 0.33;
+    group.visible = viewState.ovBlend > OV_VIS_BLEND ? true : viewState.mode !== "fp" && viewState.blend < HIDE_BLEND && !cameraInsideSelf && !inCloseUp;
     // The destination ring straight ahead, behind the body (a click on the body itself, a walk away from the camera):
     // the body fades and is drawn after the ring, so the ring shows through it (round 6 review: only its dashes showed,
     // on the body, all the way there).
-    stepSelfFade(selfFadeRef.current, avatar, group.visible && selfBody.hidingRing, delta);
+    // Indoors a wall behind the player keeps the camera close to the head (the hall's door wall on arrival, the sofa against the
+    // lounge wall; review 2026-11-14: on a phone held upright the head covered 50-70 % of the screen and hid the memorial niche):
+    // the body then fades like it does for the ring, so the room shows through it.
+    const headDist = Math.hypot(cameraProbe.x - pose.x, cameraProbe.y - (group.position.y + HEAD_HEIGHT), cameraProbe.z - pose.z);
+    const closeIndoors = viewState.mode === "tp" && getActiveMap().cameraLimit !== undefined && headDist < INDOOR_SELF_FADE_DISTANCE;
+    stepSelfFade(selfFadeRef.current, avatar, group.visible && (selfBody.hidingRing || closeIndoors), delta, closeIndoors ? INDOOR_SELF_FADE_OPACITY : undefined);
 
     // Focus guard: while the chat input owns keyboard input — OR while the
     // resilience driver is reconnecting (world frozen behind the overlay) —

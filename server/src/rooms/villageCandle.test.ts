@@ -27,13 +27,13 @@ describe("candleCubby — who may light a candle in the memorial hall (Task 9, o
     expect(candleCubby("hall", n.x, n.z + 0.6, n.id)).not.toBeNull(); // the same spot, the filled row of the column
   });
 
-  it("the reach is 1.5 m on the ground plane", () => {
+  it("the reach covers the whole hall (the close-up opens on any cubby from anywhere in it)", () => {
     expect(candleCubby("hall", n.x, n.z + CANDLE_REACH_M - 0.001, n.id)).not.toBeNull();
     expect(candleCubby("hall", n.x, n.z + CANDLE_REACH_M + 0.001, n.id)).toBeNull();
   });
 
-  it("far from the cubby, in the village, an unknown cubby, a non-string or a broken position: refused", () => {
-    expect(candleCubby("hall", 300, 3.6, n.id)).toBeNull(); // the spawn, 9 m away
+  it("in the village, an unknown cubby, a non-string or a broken position: refused", () => {
+    expect(candleCubby("hall", 300, 3.6, n.id)).not.toBeNull(); // the spawn, 9 m away: still in the hall
     expect(candleCubby("village", n.x, n.z + 0.5, n.id)).toBeNull();
     expect(candleCubby("hall", n.x, n.z + 0.5, "n_9_10")).toBeNull();
     expect(candleCubby("hall", n.x, n.z + 0.5, "M1-A-r9-c99")).toBeNull();
