@@ -141,9 +141,10 @@ export const GUIDE_SHORT = "문의";
 
 /**
  * A free seat nearer than this (m) wins over a guide in reach: the hall desk is asked from round its two visitor chairs, and
- * standing at a chair's side (0.95 m from its seat point, review 2026-11-15) must offer "앉기", not "문의하기".
+ * standing at a chair's side (review 2026-11-15) or in the gap between the two chairs (up to ~1.2 m from either seat point,
+ * which sits deep in the chair) must offer "앉기", not "문의하기".
  */
-export const GUIDE_SEAT_YIELD_M = 1.1;
+export const GUIDE_SEAT_YIELD_M = 1.3;
 
 /** The guide of the player's area within its reach (2.2 m; the hall desk 4.0 m): "문의하기" opens its questions (GuideDialog). */
 export function guideTarget(area: AreaId, x: number, z: number): InteractTarget | null {

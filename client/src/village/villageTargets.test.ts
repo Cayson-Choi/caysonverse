@@ -227,4 +227,16 @@ describe("the hall desk and its visitor chairs (review 2026-11-15: '문의하기
     expect(pick(304.48, 2.82)).toMatchObject({ kind: "sit" });
     expect(pick(303.0, 4.0)).toMatchObject({ kind: "target", target: { id: "guide:hall_desk" } });
   });
+  it("from the gap between the two chairs, where a tap-walk stops (x 303.83), each chair is offered: the nearer one", () => {
+    const seats = (HALL_ACTIVE_MAP.seats ?? []) as readonly { id?: string }[];
+    const idAt = (x: number, z: number) => {
+      const p = pick(x, z);
+      return p?.kind === "sit" ? seats[p.seatIndex]!.id : p?.kind === "target" ? p.target.id : null;
+    };
+    expect(idAt(303.83, 4.0)).toBe("consult_0");
+    expect(idAt(303.83, 4.3)).toBe("consult_1");
+    expect(idAt(304.3, 4.12)).toMatch(/^consult_/);
+    // the e2e's visitor spot in front of the chairs still asks the desk
+    expect(idAt(303.5, 4.1)).toBe("guide:hall_desk");
+  });
 });

@@ -31,8 +31,8 @@ export const MEMORIAL_COLLIDERS: readonly AABB[] = [
   { minX: 301.14, maxX: 307.5, minZ: -6, maxZ: -5.61 }, // col__cubby_b
   { minX: 301.9, maxX: 303.7, minZ: 5.4, maxZ: 5.97 }, // col__flower_stand
   { minX: 303.1, maxX: 303.7, minZ: 2.57, maxZ: 2.95 }, // col__kiosk
-  { minX: 303.97, maxX: 304.43, minZ: 3.22, maxZ: 3.68 }, // col__consult_0
-  { minX: 303.97, maxX: 304.43, minZ: 4.37, maxZ: 4.83 }, // col__consult_1
+  { minX: 303.97, maxX: 304.43, minZ: 3.07, maxZ: 3.53 }, // col__consult_0
+  { minX: 303.97, maxX: 304.43, minZ: 4.72, maxZ: 5.18 }, // col__consult_1
   { minX: 304.64, maxX: 305.06, minZ: -2.9, maxZ: -0.7 }, // col__bench_east
   { minX: 304.88, maxX: 305.48, minZ: 2.26, maxZ: 5.44 }, // col__desk_front
   { minX: 305.4, maxX: 307.4, minZ: 2.26, maxZ: 2.84 }, // col__desk_return

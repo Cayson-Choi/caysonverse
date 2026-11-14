@@ -191,6 +191,7 @@ function markerSeats(m: SeatMarker): VillageSeat[] {
       // a chair at a table has the table in front of it: it is also sat on from its sides, up to the backrest's face (never
       // through the backrest); a sofa or an armchair from the front only
       sidePlane: m.furn === "chair" ? Math.round((ahead + m.back) * 1000) / 1000 : undefined,
+      sideHalf: m.furn === "chair" ? Math.round((m.width / 2) * 1000) / 1000 : undefined,
     });
   }
   return out;

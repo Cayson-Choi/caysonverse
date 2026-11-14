@@ -218,7 +218,29 @@ describe("the memorial hall's seats (generated from the model's seat__ markers)"
       expect(approachesSeat(chair, chair.x - f.x * 1.1, chair.z - f.z * 1.1, SEAT_APPROACH_SLACK), `${id} from behind (server)`).toBe(false);
     }
     expect(VILLAGE_SEATS[indexOf("armchair_0")]!.sidePlane).toBeUndefined();
+    expect(VILLAGE_SEATS[indexOf("armchair_0")]!.sideHalf).toBeUndefined();
     expect(VILLAGE_SEATS[indexOf("sofa_a1")]!.sidePlane).toBeUndefined();
+  });
+
+  it("beside a chair a little behind its backrest's plane is still beside it; straight behind the backrest never is", () => {
+    for (const id of ["letter_s0", "letter_n1", "consult_0", "consult_1"]) {
+      const chair = VILLAGE_SEATS[indexOf(id)]!;
+      const f = fwd(chair);
+      const side = { x: f.z, z: -f.x };
+      const plane = chair.sidePlane!;
+      expect(chair.sideHalf, id).toBeCloseTo(0.23, 2);
+      // 0.3 m behind the backrest's plane, 0.8 m out to the side: beside (the gap between the consultation chairs)
+      const besideBehind = { x: chair.x - f.x * (plane + 0.3) + side.x * 0.8, z: chair.z - f.z * (plane + 0.3) + side.z * 0.8 };
+      expect(approachesSeat(chair, besideBehind.x, besideBehind.z), `${id} beside, a little behind`).toBe(true);
+      // the same depth, right behind the backrest (no side offset, or within the chair's width): refused, server too
+      for (const off of [0, 0.2, -0.3]) {
+        const behind = { x: chair.x - f.x * (plane + 0.3) + side.x * off, z: chair.z - f.z * (plane + 0.3) + side.z * off };
+        expect(approachesSeat(chair, behind.x, behind.z, SEAT_APPROACH_SLACK), `${id} behind ${off}`).toBe(false);
+      }
+      // beside but far behind: refused
+      const farBehind = { x: chair.x - f.x * (plane + 0.8) + side.x * 0.8, z: chair.z - f.z * (plane + 0.8) + side.z * 0.8 };
+      expect(approachesSeat(chair, farBehind.x, farBehind.z, SEAT_APPROACH_SLACK), `${id} far behind`).toBe(false);
+    }
   });
 
   it("a backless bench outdoors: the two facings of one place sit at the same spot, back to back, and are one group", () => {

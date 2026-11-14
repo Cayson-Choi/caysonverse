@@ -61,6 +61,13 @@ export interface Seat {
    * 2026-11-13: a backed seat is never sat through its back). Absent: the front-edge rule (`frontEdge`) alone.
    */
   sidePlane?: number;
+  /**
+   * Half the width (m) of a chair with a `sidePlane`: a visitor standing clear of it to the side (further out than this plus
+   * `CHAIR_SIDE_CLEAR`) is beside the chair, not behind its backrest, and may be up to `CHAIR_SIDE_BEHIND` behind the backrest's
+   * plane (review 2026-11-15: the gap between the two consultation chairs is that far back, and a tap-walk stops short of the
+   * plane, so neither chair could be sat on from there).
+   */
+  sideHalf?: number;
   /** How far (rad) a sitter leans back into a backrest (a sofa, an armchair, a chair); absent or 0: sits upright. */
   lean?: number;
 }
@@ -96,10 +103,23 @@ export function seatTaken(seats: readonly Seat[], index: number, isOccupied: (in
  */
 export function approachesSeat(seat: Seat, x: number, z: number, slack = 0): boolean {
   if (seat.frontEdge === undefined) return true;
-  const ahead = (x - seat.x) * Math.sin(seat.yaw) + (z - seat.z) * Math.cos(seat.yaw);
-  if (seat.sidePlane !== undefined) return ahead >= -seat.sidePlane - slack;
+  const sin = Math.sin(seat.yaw);
+  const cos = Math.cos(seat.yaw);
+  const ahead = (x - seat.x) * sin + (z - seat.z) * cos;
+  if (seat.sidePlane !== undefined) {
+    if (ahead >= -seat.sidePlane - slack) return true;
+    // a little behind the backrest's plane, but off to the side of the chair (not behind the backrest itself)
+    if (seat.sideHalf === undefined) return false;
+    const lateral = Math.abs((x - seat.x) * cos - (z - seat.z) * sin);
+    return lateral >= seat.sideHalf + CHAIR_SIDE_CLEAR && ahead >= -seat.sidePlane - CHAIR_SIDE_BEHIND - slack;
+  }
   return ahead >= -seat.frontEdge - slack;
 }
+
+/** How far (m) beyond a chair's side a visitor must stand to count as beside it rather than behind it (`Seat.sideHalf`). */
+export const CHAIR_SIDE_CLEAR = 0.2;
+/** How far (m) behind a chair's backrest plane a visitor beside the chair is still offered it (`Seat.sideHalf`). */
+export const CHAIR_SIDE_BEHIND = 0.45;
 
 /**
  * How much (m) the server forgives the front-edge line: the client's pose runs a few cm ahead of the one the server knows, and a
