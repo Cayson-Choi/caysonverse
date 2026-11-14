@@ -50,8 +50,6 @@ const openGround = (x: number, z: number) =>
  * apart, narrower than a body (0.8 m): a tap into such a gap has no spot a body fits within 0.3 m and is not open ground
  * a walk can reach (the planner refuses it as it would a gap between two of any boxes).
  */
-const TERRACE = { minX: 40.6, maxX: 46.2, minZ: -22.0, maxZ: -8.2 };
-const onTerrace = (x: number, z: number) => x >= TERRACE.minX && x <= TERRACE.maxX && z >= TERRACE.minZ && z <= TERRACE.maxZ;
 const bodyFitsNear = (x: number, z: number) => {
   for (let i = -6; i <= 6; i++) for (let j = -6; j <= 6; j++) if (Math.hypot(i, j) * 0.05 <= 0.3 && !isBlocked(x + i * 0.05, z + j * 0.05, R, obstacles, 0)) return true;
   return false;
@@ -77,7 +75,7 @@ describe("clickPlan sweep — seated, every tap on the open ground round a seat 
           const z = s.z + gz * 0.25;
           if (x < bounds.minX || x > bounds.maxX || z < bounds.minZ || z > bounds.maxZ || !openGround(x, z)) continue;
           // a café chair: the taps round it on its terrace, where a body fits
-          if (cafeChair(s) && (!onTerrace(x, z) || !bodyFitsNear(x, z))) continue;
+          if (cafeChair(s) && !bodyFitsNear(x, z)) continue;
           points++;
           const plan = planClickMove(s.standX, s.standZ, ground(x, z), obstacles, bounds, true, options);
           if (!plan.ok) {

@@ -227,4 +227,19 @@ describe("villageBusTarget — the board button under the shelter (review r2)", 
     expect(villageBusTarget("village", 30, -6.5, false)).toBeNull(); // the plaza's side of the road
     expect(villageBusTarget("village", 40, 3, false)).toBeNull(); // past the crosswalk
   });
+
+  it("the fringe outside the area yields to a seat (the café's north-west chairs); inside the area boarding stays first", async () => {
+    const { villageBusTarget } = await import("./villageTargets");
+    expect(villageBusTarget("village", 41.88, -10.7, false)?.yieldsToSeat).toBe(true); // chair 66, 0.23 m off the area
+    const s = VILLAGE_LAYOUT.busStop.shelter;
+    expect(villageBusTarget("village", s.centre.x, s.centre.z, false)?.yieldsToSeat).toBe(false);
+  });
+
+  it("offers no board button while the bus cannot be boarded; leaving is always offered", async () => {
+    const { villageBusTarget } = await import("./villageTargets");
+    const s = VILLAGE_LAYOUT.busStop.shelter;
+    expect(villageBusTarget("village", s.centre.x, s.centre.z, false, false)).toBeNull();
+    expect(villageBusTarget("village", s.centre.x, s.centre.z, false, true)).not.toBeNull();
+    expect(villageBusTarget("village", s.centre.x, s.centre.z, true, false)?.id).toBe("village_bus_leave");
+  });
 });

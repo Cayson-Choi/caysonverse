@@ -5,7 +5,8 @@
  * the ActionButton, never per frame), `pickInteraction` decides, and the rest is labels.
  */
 
-import { SEAT_REACH, nearestFreeSeat, type Seat } from "@caysonverse/shared/worldMap";
+import { SEAT_REACH, approachesSeat, nearestFreeSeat, type Seat } from "@caysonverse/shared/worldMap";
+import { preferredSeat } from "./seatPreference";
 
 /**
  * Something a scene offers besides the benches: the memorial hall's door, a house keypad, a guide to talk to, the
@@ -25,6 +26,11 @@ export interface InteractTarget {
    * Which target wins when several are in reach: the higher number first, the nearer one among equals (default 0).
    */
   priority?: number;
+  /**
+   * A seat in reach beats this target even when the target is nearer (a far-reaching offer such as the bus button, which is
+   * offered up to 0.8 m outside its area, must not hide a chair next to it).
+   */
+  yieldsToSeat?: boolean;
 }
 
 export type Interaction =
@@ -69,7 +75,7 @@ export function pickInteraction(i: InteractInput): Interaction | null {
       const np = nearest.priority ?? 0;
       if (cp > np || (cp === np && c.dist < nearest.dist)) nearest = c;
     }
-    if (nearest !== null && nearest.dist < bestDist) best = { kind: "target", target: nearest };
+    if (nearest !== null && nearest.dist < bestDist && !(nearest.yieldsToSeat && i.seat)) best = { kind: "target", target: nearest };
   }
   return best;
 }
@@ -162,7 +168,11 @@ export function interactInputAt(
   const seated = seatIndex >= 0;
   let seat: InteractInput["seat"] = null;
   if (!seated) {
-    const index = nearestFreeSeat(x, z, isOccupied, SEAT_REACH, world.seats);
+    let index = nearestFreeSeat(x, z, isOccupied, SEAT_REACH, world.seats);
+    // the chair just tapped, while it is free and offered from here, over a nearer one beside it (seatPreference.ts)
+    const tapped = preferredSeat();
+    const t = tapped >= 0 ? world.seats[tapped] : undefined;
+    if (t && !isOccupied(tapped) && approachesSeat(t, x, z) && Math.hypot(x - t.x, z - t.z) <= SEAT_REACH) index = tapped;
     if (index !== null) {
       seat = { index, dist: Math.hypot(x - world.seats[index].x, z - world.seats[index].z) };
     }

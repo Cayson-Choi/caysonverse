@@ -66,6 +66,8 @@ import { rememberOrbit, restoreOrbit } from "./cameraMemory";
 import { cameraProbe } from "./cameraProbe";
 import { activeBounds, activeSeats, getActiveMap } from "./activeMap";
 import { localGlide } from "./seatMotion";
+import { seatApproachGoal, seatUnderTap } from "./seatTap";
+import { setPreferredSeat } from "./seatPreference";
 import { getLocalLift } from "./jump";
 import { useFpCursor } from "./useFpCursor";
 import { useSettingsStore } from "../stores/settingsStore";
@@ -309,13 +311,19 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
       const s = seat.index >= 0 ? activeSeats()[seat.index] : undefined;
       const g = localGlide.current;
       const from = walkStart(pose.x, pose.z, s, g && { x: g.toX, z: g.toZ });
-      const surface = asSurface(pick);
+      const picked = asSurface(pick);
+      // A tap on a marked chair or porch bench walks to THAT seat's own approach spot (seatTap.ts), never the ground nearest it.
+      const mapNow = getActiveMap();
+      const seatTapped = picked ? seatUnderTap(activeSeats(), picked.x, picked.y, picked.z) : -1;
+      const seatGoal = seatTapped >= 0 && seatTapped !== seat.index ? seatApproachGoal(activeSeats(), seatTapped, mapNow.geometry.obstacles, activeBounds()) : null;
+      setPreferredSeat(seatGoal ? seatTapped : -1); // the walk that ends beside the tapped chair offers it
+      const surface = seatGoal ? { x: seatGoal.x, y: surfaceHeightAt(raycaster, scene, seatGoal.x, seatGoal.z, 0.01), z: seatGoal.z, ny: 1 } : picked;
       // An upright face clicked low is a curb's side only if it ends there (not a step's riser): measured once.
       if (pick && surface && pick.ny < WALKABLE_MIN_NY && pick.y > 0 && pick.y <= WALKABLE_MAX_Y && pick.faceTall === undefined) {
         pick.faceTall = faceIsTall(raycaster, scene, pick);
       }
-      const map = getActiveMap();
-      const start = startClickPlan(from.x, from.z, surface, map.geometry.obstacles, activeBounds(), !!s, { furniture: map.furniture });
+      const map = mapNow;
+      const start = startClickPlan(from.x, from.z, surface, map.geometry.obstacles, activeBounds(), !!s, { furniture: map.furniture, farFirst: seatGoal !== null });
       const cameraNow = (): PerspectiveCamera => {
         if (snap) return snap;
         const cam = camera as PerspectiveCamera;

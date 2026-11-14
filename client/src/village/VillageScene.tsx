@@ -7,7 +7,8 @@ import { setTargetHandler, setTargetSource } from "../game/interactTargets";
 import type { PlayersRoom } from "../game/remoteSync";
 import type { Pose } from "../game/types";
 import { getRoom, sendUseDoor } from "../net/connection";
-import { rideStatusText, sendBusRide, startTransitSync, type TransitRoom, useTransitState } from "../net/transitSync";
+import { rideStatusText, sendBusRide, startTransitSync, transitNowMs, type TransitRoom, useTransitState } from "../net/transitSync";
+import { busTripAt } from "@caysonverse/shared/village/transit";
 import type { Identity } from "../stores/appStore";
 import { DoorFade } from "./DoorFade";
 import { doorFade } from "./doorFadeModel";
@@ -148,7 +149,7 @@ function VillageDoors({ pose }: { pose: Pose }) {
     setTargetSource((p) => {
       const area = localArea();
       const base = villageAndHallTargets(area, p.x, p.z, cubbyCardState() !== null || guideDialogOpen() !== null || keypadOpen);
-      const bus = villageBusTarget(area, p.x, p.z, boarded);
+      const bus = villageBusTarget(area, p.x, p.z, boarded, busTripAt(transitNowMs()).status === "boarding");
       return bus ? [...base, bus] : base;
     });
     setTargetHandler((target, phase) => {

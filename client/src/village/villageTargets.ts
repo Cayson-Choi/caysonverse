@@ -70,9 +70,15 @@ export function villageTargets(
   return [{ kind: "object", id: `${KEYPAD_TARGET_PREFIX}${keypad.buildingId}`, dist: keypad.dist, icon: "🔢", label: KEYPAD_LABEL, short: KEYPAD_SHORT }];
 }
 
-/** A board/leave target around the east-side stop; the server re-checks the pose and schedule. */
-export function villageBusTarget(area: AreaId, x: number, z: number, boarded: boolean): InteractTarget | null {
+/**
+ * A board/leave target around the east-side stop; the server re-checks the pose and schedule. `boardingNow`: the bus can be
+ * boarded at this moment (shared transit.ts: the 30 s before each hour, by the server's clock as the bus snapshots carry it,
+ * transitSync.ts transitNowMs) — outside it there is no "board" button (leaving the bus is always offered). It defaults to
+ * true so a caller without the clock keeps the always-offered button.
+ */
+export function villageBusTarget(area: AreaId, x: number, z: number, boarded: boolean, boardingNow = true): InteractTarget | null {
   if (area !== "village") return null;
+  if (!boarded && !boardingNow) return null;
   const dist = busBoardingDistance(x, z);
   if (!(dist <= BUS_OFFER_REACH_M)) return null;
   return {
@@ -83,6 +89,9 @@ export function villageBusTarget(area: AreaId, x: number, z: number, boarded: bo
     label: boarded ? "버스에서 내리기" : "버스 타기",
     short: boarded ? "하차" : "탑승",
     priority: 2,
+    // The button exists only while the bus can be boarded (boardingNow), so a seat never loses to one that does nothing; in
+    // that half minute a seat still wins on the 0.8 m fringe outside the area, and inside it boarding stays first.
+    yieldsToSeat: dist > 0,
   };
 }
 
