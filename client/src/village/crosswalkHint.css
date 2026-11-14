@@ -59,3 +59,20 @@
     padding: 7px 12px;
   }
 }
+/* The bus stop's timetable pill (BusStopHintPill): one row under the crosswalk pill. */
+.cv-bus-hint {
+  top: max(112px, calc(env(safe-area-inset-top) + 104px));
+}
+.cv-bus-hint.is-go {
+  background: rgba(20, 92, 58, 0.92);
+}
+.cv-bus-icon {
+  flex: none;
+  font-size: 16px;
+  line-height: 1;
+}
+@media (max-width: 480px) {
+  .cv-bus-hint {
+    top: max(106px, calc(env(safe-area-inset-top) + 98px));
+  }
+}

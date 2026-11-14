@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { Object3D, PerspectiveCamera, WebGLRenderTarget } from "three";
+import { MeshBasicMaterial, Object3D, PerspectiveCamera, WebGLRenderTarget } from "three";
+import { compileSafely } from "./compileSafely";
 import { warmScene } from "./SceneWarmUp";
 
 describe("warmScene: every material compiled ahead, for the target the frame is really drawn into", () => {
@@ -14,10 +15,12 @@ describe("warmScene: every material compiled ahead, for the target the frame is 
         setRenderTarget: (t: WebGLRenderTarget | null) => {
           target = t;
         },
-        compileAsync: () => {
+        compile: () => {
           compiledFor.push(target);
-          return Promise.resolve(undefined);
+          return new Set();
         },
+        properties: { get: () => ({}) },
+        extensions: { has: () => true },
       },
     };
   };
@@ -40,7 +43,49 @@ describe("warmScene: every material compiled ahead, for the target the frame is 
 
   it("a failed compile is not thrown into the frame", async () => {
     const f = fake(null);
-    const gl = { ...f.gl, compileAsync: () => Promise.reject(new Error("lost context")) };
+    const gl = {
+      ...f.gl,
+      compile: () => {
+        throw new Error("lost context");
+      },
+    };
     await expect(warmScene(gl as never, new Object3D(), new PerspectiveCamera(), null)).resolves.toBeUndefined();
+  });
+});
+
+describe("compileSafely: three's compileAsync without its uncaught throw", () => {
+  it("a material disposed while its program links (no program any more) is not waited for, and nothing throws", async () => {
+    const a = new MeshBasicMaterial();
+    const b = new MeshBasicMaterial();
+    const props = new Map<object, { currentProgram?: { isReady(): boolean } }>();
+    let readyB = false;
+    props.set(a, { currentProgram: { isReady: () => true } });
+    props.set(b, { currentProgram: { isReady: () => readyB } });
+    const gl = {
+      compile: () => new Set([a, b]),
+      properties: { get: (m: object) => props.get(m) ?? {} },
+      extensions: { has: () => true },
+    };
+    const done = compileSafely(gl as never, new Object3D(), new PerspectiveCamera());
+    props.delete(b); // disposed: three's properties.remove (its program gone)
+    await expect(done).resolves.toBeDefined();
+    readyB = true;
+  });
+
+  it("waits for a program still linking", async () => {
+    const a = new MeshBasicMaterial();
+    let ready = false;
+    const gl = {
+      compile: () => new Set([a]),
+      properties: { get: () => ({ currentProgram: { isReady: () => ready } }) },
+      extensions: { has: () => true },
+    };
+    let resolved = false;
+    const done = compileSafely(gl as never, new Object3D(), new PerspectiveCamera()).then(() => (resolved = true));
+    await new Promise((r) => setTimeout(r, 25));
+    expect(resolved).toBe(false);
+    ready = true;
+    await done;
+    expect(resolved).toBe(true);
   });
 });

@@ -1,3 +1,4 @@
+import { versionedUrl } from "./modelUrl";
 import {
   Box3,
   BufferGeometry,
@@ -89,10 +90,10 @@ import type { DayNightState } from "./dayNightBlend";
  * made here, listed in `own` and released with `disposeVillage`.
  */
 
-export const VILLAGE_MODEL_URL = "/models/village/village.glb";
-export const VILLAGE_LIGHTMAP_URL = "/models/village/village_lm.webp";
+export const VILLAGE_MODEL_URL = versionedUrl("/models/village/village.glb");
+export const VILLAGE_LIGHTMAP_URL = versionedUrl("/models/village/village_lm.webp");
 /** The night light map: baked on the same UV set as the day one (art/village/tools/bake_village.py --night). */
-export const VILLAGE_NIGHT_LIGHTMAP_URL = "/models/village/village_lm_night.webp";
+export const VILLAGE_NIGHT_LIGHTMAP_URL = versionedUrl("/models/village/village_lm_night.webp");
 
 /**
  * The village camera's planes (m): the sky dome is 1.4 km out (and the far range 1.1 km), so the far plane is past
@@ -202,6 +203,8 @@ export const foliageTintUniform = { value: new Vector3(1, 1, 1) };
 export const cherryTintUniform = { value: new Vector3(1, 1, 1) };
 /** The cherry blossoms' material: its foliage tint is `cherryTintUniform`. */
 export const CHERRY_MATERIAL = "M_leaf_cherry";
+/** How much it is night (0 day .. 1 night): the runtime blossoms lose their pink under the moon (veg/vegMaterial.ts). */
+export const vegNightUniform = { value: 0 };
 /**
  * The cool cast of moonlight on the night light map's dim texels (× linear): what the moon alone lights is bluish and
  * a little darker, while the lamps' and windows' pools (bright texels) keep their warm colour.
@@ -1115,6 +1118,7 @@ export function applyDayNight(nodes: VillageNodes, s: DayNightState): void {
   dayTintUniform.value.set(s.dayTint[0], s.dayTint[1], s.dayTint[2]);
   foliageTintUniform.value.set(s.foliageTint[0], s.foliageTint[1], s.foliageTint[2]);
   cherryTintUniform.value.set(s.cherryTint[0], s.cherryTint[1], s.cherryTint[2]);
+  vegNightUniform.value = s.night;
   // No night map yet (it loads when night is near, final fix I2b): the day map alone, never a black blend.
   nightBlendUniform.value = nightMapUniform.value ? s.night : 0;
   litUniform.value = s.lights;

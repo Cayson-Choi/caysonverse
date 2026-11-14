@@ -71,27 +71,55 @@ export function villageTargets(
 }
 
 /**
- * A board/leave target around the east-side stop; the server re-checks the pose and schedule. `boardingNow`: the bus can be
- * boarded at this moment (shared transit.ts: the 30 s before each hour, by the server's clock as the bus snapshots carry it,
- * transitSync.ts transitNowMs) — outside it there is no "board" button (leaving the bus is always offered). It defaults to
- * true so a caller without the clock keeps the always-offered button.
+ * How long until the next bus leaves, for the board button's words while it is not taking riders: "3분 20초" (long, the
+ * desktop pill) and "4분" / "20초" (short, the 60 px touch button; minutes rounded up so it never says 0분).
  */
-export function villageBusTarget(area: AreaId, x: number, z: number, boarded: boolean, boardingNow = true): InteractTarget | null {
+export function busCountdownWords(ms: number): { long: string; short: string } {
+  const s = Math.max(0, Math.ceil(ms / 1000));
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  const long = m === 0 ? `${r}초` : r === 0 ? `${m}분` : `${m}분 ${r}초`;
+  return { long, short: s >= 60 ? `${Math.ceil(s / 60)}분 뒤` : `${s}초 뒤` };
+}
+
+/**
+ * A board/leave target around the east-side stop; the server re-checks the pose and schedule.
+ *
+ * `boardingNow`: the bus is taking riders (shared transit.ts: the 30 s before each departure, by the server's clock as the
+ * bus snapshots carry it, transitSync.ts transitNowMs). `departsInMs`: how long until the next bus leaves.
+ *
+ * The way to ride is never hidden (review 2026-11-15: a first-time player at the stop must see how and when): outside the
+ * boarding half minute the button is still there and counts down to the next departure ("버스 타기 · 3분 20초 뒤 출발",
+ * touch: "4분 뒤"); pressing it says when the bus leaves and that boarding opens 30 s before (VillageScene). It then gives
+ * a free seat in reach the key (`yieldsToSeat`: the shelter's bench and the café chairs 66/67 sit inside or by its area;
+ * owner 2026-11-13: 정류장 벤치에 앉을 수가 없어). While boarding it keeps the key inside the area, so nobody misses the
+ * bus on the bench's doorstep, but on the 0.8 m fringe outside it a seat still wins. "Leave" never yields.
+ */
+export function villageBusTarget(
+  area: AreaId,
+  x: number,
+  z: number,
+  boarded: boolean,
+  boardingNow = true,
+  departsInMs?: number,
+): InteractTarget | null {
   if (area !== "village") return null;
-  if (!boarded && !boardingNow) return null;
   const dist = busBoardingDistance(x, z);
   if (!(dist <= BUS_OFFER_REACH_M)) return null;
+  if (boarded) {
+    return { kind: "object", id: BUS_RIDE_TARGET_LEAVE, dist, icon: "🚌", label: "버스에서 내리기", short: "하차", priority: 2 };
+  }
+  const waiting = !boardingNow && departsInMs !== undefined && Number.isFinite(departsInMs);
+  const words = waiting ? busCountdownWords(departsInMs) : null;
   return {
     kind: "object",
-    id: boarded ? BUS_RIDE_TARGET_LEAVE : BUS_RIDE_TARGET_BOARD,
+    id: BUS_RIDE_TARGET_BOARD,
     dist,
     icon: "🚌",
-    label: boarded ? "버스에서 내리기" : "버스 타기",
-    short: boarded ? "하차" : "탑승",
+    label: words ? `버스 타기 · ${words.long} 뒤 출발` : "버스 타기",
+    short: words ? words.short : "탑승",
     priority: 2,
-    // The button exists only while the bus can be boarded (boardingNow), so a seat never loses to one that does nothing; in
-    // that half minute a seat still wins on the 0.8 m fringe outside the area, and inside it boarding stays first.
-    yieldsToSeat: dist > 0,
+    ...(!boardingNow || dist > 0 ? { yieldsToSeat: true } : {}),
   };
 }
 

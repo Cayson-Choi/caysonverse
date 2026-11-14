@@ -77,7 +77,7 @@ npx tsx --tsconfig server/tsconfig.json scripts/check-school-glb.ts client/publi
 ## 4차 검토 반영 (2026-11-15)
 
 - **밤 가게 창**: 카페 1층 실내 그림판·옆 1층 창과 키오스크 꽃 선반 그림을 새 재질 `M_shop`(작업 재질 `A_shop_glass`, `window(lit_mat=...)`)으로 뺐어요. 게임은 창 불처럼 밝기로 색을 덮지 않고 그림 × 따뜻한 빛(`LIT.shop`, 색 1.0/0.88/0.70 × 2.3)으로 켜서, 밤에도 선반·칠판 메뉴·펜던트·꽃 양동이가 보여요(크림색 판이 사라짐). 마을 GLB 재질 한도는 25 → 26(`MATERIAL_LIMITS.village`, 이유는 주석).
-- **앉기**: GLB의 좌석 표시를 `scripts/extract-seat-markers.ts`가 `shared/src/village/generated/villageSeatMarkers.ts`로 뽑고, `benchSeats.ts`가 카페 의자 12개와 포치 벤치 3개(2·9·10번)를 `VILLAGE_SEATS` 끝(60~74번)에 붙여요. 벤치·집 좌석 번호는 그대로예요.
+- **앉기**: GLB의 좌석 표시를 `scripts/extract-seat-markers.ts`가 `shared/src/village/generated/villageSeatMarkers.ts`로 뽑고, `benchSeats.ts`가 카페 의자 12개와 포치 벤치 3개(2·9·10번)를 `VILLAGE_SEATS` 끝(62~76번: 정류장 쉘터 벤치 2자리가 앞에 들어와요)에 붙여요. 벤치·집 좌석 번호는 그대로예요.
   - 포치 벤치: 앞에서만, 일어서면 앞으로(표시에 `frontEdge 0.22` 추가).
   - 카페 의자: 앞이 탁자라 옆에서 앉아요. 등받이 뒷면(의자 중심 뒤 0.26 m)보다 앞이면 E 안내가 뜨고, 의자 폭에서 몸 하나만큼 옆(0.56 m 이상)이면 탭 이동이 멈추는 여유(0.35 m)만큼 뒤까지 허용해요(`Seat.approachEdge`, `Seat.beside`). 바로 뒤에서는 안 떠요. 일어설 자리는 표시의 `standX/standZ`에서 가장 가까운, 몸 둘레 0.55 m가 빈 곳(5 cm 격자, 0.5 m 안). 모서리 의자(1·3·6·8번, 탁자 끝과 화단 사이 1.08 m)는 그런 곳이 없어 표시 자리 그대로예요.
   - 게임에서 확인: 카페 1·2·10번 의자, 10번 집 포치 벤치에 E로 앉고 일어섰어요.

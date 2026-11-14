@@ -476,3 +476,18 @@ describe("indoor arm shaping (케이슨 마을 Task 9: the 9 x 12 m hall must no
     expect(wanted * armHeightScaleAt(k, false)).toBeLessThan(0.25); // outdoors: about head height
   });
 });
+
+describe("the camera's keep-out (the village trees' trunks and limbs)", () => {
+  it("pulls the arm in to just in front of what the camera would be in, and leaves a clear arm alone", async () => {
+    const { keepOutArmDistance } = await import("./cameraCollision");
+    // a limb across the arm's far end: x from 3.6 to 4.4 m is out of bounds
+    const limb = (x: number) => x > 3.6 && x < 4.4;
+    expect(keepOutArmDistance(0, 1.4, 0, 4, 1.4, 0, 4, (x) => limb(x))).toBeCloseTo(3.55, 5);
+    expect(keepOutArmDistance(0, 1.4, 0, 6, 1.4, 0, 6, (x) => limb(x))).toBe(6);
+    expect(keepOutArmDistance(0, 1.4, 0, 6, 1.4, 0, 6, null)).toBe(6);
+    // growing back out from 3 m it stops in front of it too
+    expect(keepOutArmDistance(0, 1.4, 0, 6, 1.4, 0, 6, (x) => limb(x), 4)).toBeCloseTo(3.55, 5);
+    // never shorter than the arm's minimum
+    expect(keepOutArmDistance(0, 1.4, 0, 4, 1.4, 0, 4, () => true)).toBe(0.6);
+  });
+});

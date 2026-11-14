@@ -76,7 +76,7 @@ const day = { day: 1, lights: 0, hemiIntensity: LIGHTING.village.hemi[2], hemiSk
 
 describe("the village bus (village_bus.glb) dressed for the game", () => {
   it("stands at the layout's parked-bus box, nose north as modelled (the 9 m bus's box)", () => {
-    expect(BUS_MODEL_URL).toBe("/models/village/village_bus.glb");
+    expect(BUS_MODEL_URL).toMatch(/^\/models\/village\/village_bus\.glb\?v=[0-9a-f]{10}$/);
     expect(VILLAGE_LAYOUT.busStop.bus.size).toEqual({ x: 2.5, z: 9 });
     const at = busPlacement();
     expect(at).toEqual({ x: VILLAGE_LAYOUT.busStop.bus.centre.x, z: VILLAGE_LAYOUT.busStop.bus.centre.z, yaw: 0 });

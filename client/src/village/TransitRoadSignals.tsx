@@ -1,3 +1,4 @@
+import { versionedUrl } from "./modelUrl";
 import { Suspense, useEffect, useMemo } from "react";
 import { useFrame } from "@react-three/fiber";
 import { useGLTF } from "@react-three/drei";
@@ -19,7 +20,7 @@ import { lampKey, lampsAt, type LampState } from "./signalLamps";
  * DEV only: `window.__cvSignals = { vehicle, ped }` forces the lamps (screenshots of every state); unset it to
  * go back to the clock.
  */
-export const SIGNALS_MODEL_URL = "/models/village/village_signals.glb";
+export const SIGNALS_MODEL_URL = versionedUrl("/models/village/village_signals.glb");
 
 declare global {
   interface Window {

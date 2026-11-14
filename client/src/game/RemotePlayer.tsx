@@ -40,6 +40,8 @@ import {
   jumpRegistry,
   jumpTimeScale,
 } from "./jump";
+import { jumpHeadroom } from "@caysonverse/shared/village/overhead";
+import { localArea } from "../village/villageArea";
 import { ANIM_FADE, CLIP, MODEL_FACING_OFFSET } from "./constants";
 import { activeSeats } from "./activeMap";
 import {
@@ -431,7 +433,7 @@ export function RemotePlayer({
             reportClip(jump);
           }
         }
-        lift = jumpOffsetY(nowMs - hop.startedAt);
+        lift = jumpOffsetY(nowMs - hop.startedAt, jumpHeadroom(group.position.x, group.position.z, localArea(), avatar.topY));
       } else if (phase === "landed" || phase === "dropped") {
         jumpSeqRef.current = -1;
         if (jump) {

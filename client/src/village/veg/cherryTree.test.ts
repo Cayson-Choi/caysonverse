@@ -55,8 +55,11 @@ describe("growCherry", () => {
   it("keeps the bunches in the old crown's volume (its baked ground shadow), off the trunk", () => {
     for (const c of crowns) {
       const env = crownEnvelope(c.skeleton);
+      // the baked limbs' and side branches' own tips (a bunch on each) may reach a little past it
+      const tips = [...c.skeleton.limbs, ...c.skeleton.sides].map((b) => b.pts[b.pts.length - 1]!);
       for (const b of c.bunches) {
-        expect(envelopeRadius(env, [b.x, b.y, b.z])).toBeLessThan(1.3);
+        const onTip = tips.some((t) => Math.hypot(t[0] - b.x, t[1] - b.y, t[2] - b.z) < 0.06);
+        if (!onTip) expect(envelopeRadius(env, [b.x, b.y, b.z])).toBeLessThan(1.3);
         expect(b.y).toBeGreaterThan(c.skeleton.fork[1] - 0.2);
       }
     }

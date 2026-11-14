@@ -107,8 +107,10 @@ export function keepThinned(seed: number, fraction: number): boolean {
 export interface VegTierConfig {
   flowers: LodBands & { thin: number; thinScale: number; /** share of plants drawn at level 1 */ mid: number };
   cherry: LodBands & { thin: number; thinScale: number };
-  /** Broadleaf crowns: close folded leaves, mid closed puffs, far sparse puffs. */
+  /** Leafy crowns (broadleaf and willow): full leaf sprays, simple sprays, far thinned and enlarged. */
   green: LodBands & { thin: number; thinScale: number };
+  /** Bushes: full sprigs, simple sprigs, the heart and a few leaves. */
+  bush: LodBands;
   /** Wind on (rich) or only on the nearest level (light). */
   windFar: boolean;
 }
@@ -116,16 +118,20 @@ export interface VegTierConfig {
 export const VEG_TIERS: Readonly<Record<"high" | "low", VegTierConfig>> = {
   high: {
     flowers: { far: [10, 34, 110], hysteresis: 1.5, thin: 0.34, thinScale: 1.45, mid: 1 },
-    cherry: { far: [9, 55, 600], hysteresis: 2, thin: 0.55, thinScale: 1.3 },
-    green: { far: [8, 42, 180], hysteresis: 2, thin: 0.42, thinScale: 1.35 },
+    // the 3D bunches out to 11 m (the sprites past it are sized to cover a crown as they do: no jump between them)
+    cherry: { far: [11, 55, 600], hysteresis: 2, thin: 0.55, thinScale: 1.3 },
+    green: { far: [14, 60, 700], hysteresis: 2, thin: 0.42, thinScale: 1.35 },
+    bush: { far: [12, 45, 400], hysteresis: 1.5 },
     windFar: true,
   },
   low: {
     // phones: the full plants only right at the player's feet, the simple ones at half density, then sparse
     flowers: { far: [5, 18, 55], hysteresis: 1.5, thin: 0.2, thinScale: 1.7, mid: 0.5 },
-    // no full blossom clusters: the bunch sprites only, half of them past 30 m
-    cherry: { far: [-1, 30, 600], hysteresis: 2, thin: 0.5, thinScale: 1.35 },
-    green: { far: [-1, 28, 160], hysteresis: 2, thin: 0.34, thinScale: 1.4 },
+    // the full blossom clusters within 9 m (never a flat sprite within the 7-10 m a player looks at a tree from) and
+    // the full leaf sprays within 7 m, the bunch sprites and simple (still 3D) sprays beyond, half of them past 30 m
+    cherry: { far: [9, 30, 600], hysteresis: 1.5, thin: 0.5, thinScale: 1.35 },
+    green: { far: [7, 32, 600], hysteresis: 2, thin: 0.34, thinScale: 1.45 },
+    bush: { far: [6, 24, 300], hysteresis: 1.5 },
     windFar: false,
   },
 };

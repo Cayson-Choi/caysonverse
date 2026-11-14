@@ -7,10 +7,13 @@ import { setTargetHandler, setTargetSource } from "../game/interactTargets";
 import type { PlayersRoom } from "../game/remoteSync";
 import type { Pose } from "../game/types";
 import { getRoom, sendUseDoor } from "../net/connection";
-import { rideStatusText, sendBusRide, startTransitSync, transitNowMs, type TransitRoom, useTransitState } from "../net/transitSync";
-import { busTripAt } from "@caysonverse/shared/village/transit";
+import { rideStatusText, sendBusRide, showTransitNotice, startTransitSync, transitNowMs, type TransitRoom, useTransitState } from "../net/transitSync";
+import { TRANSIT, busTripAt } from "@caysonverse/shared/village/transit";
 import type { Identity } from "../stores/appStore";
 import { DoorFade } from "./DoorFade";
+import { VegVeil } from "./VegVeil";
+import { vegDressing } from "./vegDressing";
+import { vegetationPark } from "./veg/villageVegetation";
 import { doorFade } from "./doorFadeModel";
 import { useQualityTier } from "../game/QualityEffects";
 import { SceneWarmUp } from "../game/SceneWarmUp";
@@ -36,6 +39,7 @@ import {
   CUBBY_TARGET_PREFIX,
   GUIDE_TARGET_PREFIX,
   KEYPAD_TARGET_PREFIX,
+  busCountdownWords,
   villageAndHallTargets,
   villageBusTarget,
   villageTargets,
@@ -48,6 +52,7 @@ import { StarFinder } from "./sky/StarFinder";
 import { StarFinderButton } from "./sky/StarFinderButton";
 import { FishingPanel } from "./FishingPanel";
 import { CrosswalkHintPill } from "./CrosswalkHintPill";
+import { BusStopHintPill } from "./BusStopHintPill";
 import { SIGNALS_MODEL_URL, TransitRoadSignals } from "./TransitRoadSignals";
 import { PublicAutoDoor } from "./PublicAutoDoor";
 import { openKeypad, useKeypad } from "./keypadStore";
@@ -101,6 +106,9 @@ function PlainGround() {
   );
 }
 
+/** A failed village model: its cover lifts at once (the plain ground and the notice show, not "불러오는 중…"). */
+const uncoverVillage = () => vegDressing.uncover();
+
 /** What the local player's area draws: the village model and its signs and door pad, or the hall's room. */
 function VillageArea({ area, tier, pose }: { area: AreaId; tier: VillageTier; pose: Pose }) {
   if (area === "hall") return <HallArea pose={pose} />;
@@ -108,7 +116,7 @@ function VillageArea({ area, tier, pose }: { area: AreaId; tier: VillageTier; po
   return (
     <>
       {/* A failed download shows a plain ground and tries again, instead of the crash screen (final review m2). */}
-      <LoadBoundary fallback={<PlainGround />} onReset={clearVillageCaches} notice="마을 풍경을 불러오지 못했어요. 잠시 뒤 다시 불러올게요.">
+      <LoadBoundary fallback={<PlainGround />} onReset={clearVillageCaches} onFail={uncoverVillage} notice="마을 풍경을 불러오지 못했어요. 잠시 뒤 다시 불러올게요.">
         <Suspense fallback={null}>
           <VillageModel tier={tier} />
           {/* The bus stop's pad and shelter and the crosswalk signals are small files of their own: a failed one is just missing. */}
@@ -141,6 +149,24 @@ function VillageArea({ area, tier, pose }: { area: AreaId; tier: VillageTier; po
   );
 }
 
+/**
+ * Whether the bus takes riders now and how long until it leaves (ms), by the server's clock as the bus snapshots carry it
+ * (transitSync.ts transitNowMs) and the shared timetable (transit.ts busTripAt) the server decides by.
+ */
+function busScheduleNow(): [boolean, number] {
+  const now = transitNowMs();
+  const trip = busTripAt(now);
+  if (trip.status === "boarding") return [true, trip.startMs - now];
+  return [false, trip.nextStartMs - now];
+}
+
+/** What pressing the board button says while the bus is not taking riders. */
+function busWaitNotice(departsInMs: number): string {
+  const every = Math.round(TRANSIT.departureEveryMs / 60000);
+  const open = Math.round(TRANSIT.boardingMs / 1000);
+  return `🚌 다음 버스는 ${busCountdownWords(departsInMs).long} 뒤에 떠나요. 버스는 ${every}분마다 다니고, 출발 ${open}초 전부터 탈 수 있어요.`;
+}
+
 function VillageDoors({ pose }: { pose: Pose }) {
   const { boarded } = useTransitState();
   const keypadOpen = useKeypad().buildingId !== null;
@@ -149,14 +175,17 @@ function VillageDoors({ pose }: { pose: Pose }) {
     setTargetSource((p) => {
       const area = localArea();
       const base = villageAndHallTargets(area, p.x, p.z, cubbyCardState() !== null || guideDialogOpen() !== null || keypadOpen);
-      const bus = villageBusTarget(area, p.x, p.z, boarded, busTripAt(transitNowMs()).status === "boarding");
+      const bus = villageBusTarget(area, p.x, p.z, boarded, ...busScheduleNow());
       return bus ? [...base, bus] : base;
     });
     setTargetHandler((target, phase) => {
       if (phase !== "press") return;
       if (target.id === BUS_RIDE_TARGET_BOARD) {
         clearClickTarget();
-        sendBusRide("board");
+        const [boardingNow, departsInMs] = busScheduleNow();
+        // Outside the boarding half minute: say when the bus leaves (the server would refuse; review 2026-11-15)
+        if (!boardingNow) showTransitNotice(busWaitNotice(departsInMs));
+        else sendBusRide("board");
         return;
       }
       if (target.id === BUS_RIDE_TARGET_LEAVE) {
@@ -262,6 +291,8 @@ export function VillageScene({ identity }: { identity: Identity }) {
   // (Task 7 review I1). On the light (phone) tier they go while the player is in the hall too, and load again on the
   // way out (final review I2: the village's textures are not resident next to the hall's).
   const holdFiles = holdsVillageFiles(tier, area);
+  // The village's built vegetation is kept while this scene is up (indoors too): freed one tick after it goes.
+  useEffect(() => vegetationPark.hold(), []);
   useEffect(() => (holdFiles ? holdVillageFiles() : undefined), [holdFiles]);
   if (!room) return null;
 
@@ -295,12 +326,14 @@ export function VillageScene({ identity }: { identity: Identity }) {
       }
       hud={({ orbit, pose }) => (
         <>
+          <VegVeil active={area === "village"} />
           <DoorFade />
           <CubbyView />
           <GuideDialog />
           <StarFinder orbit={orbit} />
           {area === "village" && <FishingPanel pose={pose} />}
           {area === "village" && <CrosswalkHintPill pose={pose} />}
+          {area === "village" && <BusStopHintPill pose={pose} />}
           <VillageKeypad />
         </>
       )}

@@ -254,3 +254,35 @@ export function armHeightScaleAt(k: number, indoor: boolean): number {
 export function armLookLiftAt(k: number, indoor: boolean): number {
   return indoor ? (1 - k) * INDOOR_ARM.lookLift : 0;
 }
+
+/**
+ * Places the camera must keep out of besides the walls: a test `(x, y, z) => true` while a point is too close to one.
+ * 케이슨 마을's trees set it (the bark of their trunks and limbs: the near plane would cut a limb open; the leaves and
+ * twigs give way round the eye on their own, vegMaterial.NEAR_ROOM). null: none.
+ */
+export type CameraKeepOut = (x: number, y: number, z: number) => boolean;
+let keepOut: CameraKeepOut | null = null;
+
+/** Set (or clear, null) the camera's keep-out. */
+export function setCameraKeepOut(f: CameraKeepOut | null): void {
+  keepOut = f;
+}
+
+/** The keep-out's step along the arm (m). */
+const KEEP_OUT_STEP = 0.05;
+
+/**
+ * The longest arm, up to `from` (default `desired`), whose end (on the line head -> camera at `desired`) is clear of the keep-out: the arm
+ * pulled in to just in front of a limb the camera would be in, never shorter than `SPRING.minDist`. `from` when there
+ * is no keep-out or its end is clear.
+ */
+export function keepOutArmDistance(headX: number, headY: number, headZ: number, camX: number, camY: number, camZ: number, desired: number, test: CameraKeepOut | null = keepOut, from: number = desired): number {
+  if (!test || from <= SPRING.minDist) return from;
+  const at = (d: number) => {
+    const k = d / desired;
+    return test(headX + (camX - headX) * k, headY + (camY - headY) * k, headZ + (camZ - headZ) * k);
+  };
+  if (!at(from)) return from;
+  for (let d = from - KEEP_OUT_STEP; d > SPRING.minDist; d -= KEEP_OUT_STEP) if (!at(d)) return d;
+  return SPRING.minDist;
+}

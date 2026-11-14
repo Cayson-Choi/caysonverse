@@ -102,3 +102,24 @@ describe("validateSit — seat list argument", () => {
     expect(validateSit({ x: 101, z: 100, seatIndex: -1 }, { seatIndex: 1 }, empty, SELF, [far])).toBeNull();
   });
 });
+
+describe("validateSit — a bench with a back is sat on from the front only", () => {
+  const SHELTER = SEATS.findIndex((s) => s.bench === "shelter");
+  const PLAZA = 0;
+  const behind = (i: number, d: number) => {
+    const s = SEATS[i];
+    return { x: s.x - Math.sin(s.yaw) * d, z: s.z - Math.cos(s.yaw) * d, seatIndex: -1 };
+  };
+
+  it("accepts from in front of the shelter's bench, drops from behind its glass back, even within reach", () => {
+    expect(SHELTER).toBeGreaterThanOrEqual(0);
+    expect(validateSit(atSeat(SHELTER), { seatIndex: SHELTER }, empty, SELF)).toEqual({ seatIndex: SHELTER });
+    expect(validateSit(behind(SHELTER, 1.2), { seatIndex: SHELTER }, empty, SELF)).toBeNull();
+  });
+
+  it("the plaza benches too; a seat without a front edge (a chair) keeps any side", () => {
+    expect(validateSit(behind(PLAZA, 1.2), { seatIndex: PLAZA }, empty, SELF)).toBeNull();
+    const chair: Seat = { x: 0, z: 0, yaw: 0, standX: 0, standZ: 1 };
+    expect(validateSit({ x: 0, z: -1, seatIndex: -1 }, { seatIndex: 0 }, empty, SELF, [chair])).toEqual({ seatIndex: 0 });
+  });
+});

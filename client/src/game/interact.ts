@@ -27,8 +27,10 @@ export interface InteractTarget {
    */
   priority?: number;
   /**
-   * A seat in reach beats this target even when the target is nearer (a far-reaching offer such as the bus button, which is
-   * offered up to 0.8 m outside its area, must not hide a chair next to it).
+   * Gives way to a free seat in reach: while a seat is offered this target is not (the bus stop's board button: its area
+   * covers the shelter, and the bus takes riders only 30 s before each departure, so outside that it must not take the E
+   * key from the bench; and on the 0.8 m fringe outside its area it must not hide a chair next to it). Absent: the target
+   * competes with the seat by distance as before.
    */
   yieldsToSeat?: boolean;
 }
@@ -52,6 +54,7 @@ export interface InteractInput {
  *  - Seated -> stand, whatever is nearby (the seat is the only thing you can do).
  *  - Seat and scene targets in reach -> the nearest; an exact tie goes seat > target.
  *    Among scene targets the higher `priority` wins, then the nearer one, then the earlier one in the list.
+ *    A target that `yieldsToSeat` is not offered while a free seat is in reach.
  */
 export function pickInteraction(i: InteractInput): Interaction | null {
   if (i.seated) return { kind: "stand" };
@@ -67,6 +70,7 @@ export function pickInteraction(i: InteractInput): Interaction | null {
     let nearest: InteractTarget | null = null;
     for (let k = 0; k < targets.length; k++) {
       const c = targets[k];
+      if (c.yieldsToSeat && i.seat) continue; // a free seat in reach goes first (see InteractTarget.yieldsToSeat)
       if (nearest === null) {
         nearest = c;
         continue;
@@ -75,7 +79,7 @@ export function pickInteraction(i: InteractInput): Interaction | null {
       const np = nearest.priority ?? 0;
       if (cp > np || (cp === np && c.dist < nearest.dist)) nearest = c;
     }
-    if (nearest !== null && nearest.dist < bestDist && !(nearest.yieldsToSeat && i.seat)) best = { kind: "target", target: nearest };
+    if (nearest !== null && nearest.dist < bestDist) best = { kind: "target", target: nearest };
   }
   return best;
 }

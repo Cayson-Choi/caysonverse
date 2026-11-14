@@ -82,15 +82,33 @@ export class JumpRegistry {
 /** Process-wide singleton: written by localJump + the jump broadcast, read by the avatars. */
 export const jumpRegistry = new JumpRegistry();
 
+/** How soft (m) the bump against a ceiling is: the hop starts to flatten this far under the headroom (see `softCeiling`). */
+export const JUMP_CEILING_SOFT_M = 0.12;
+
+/**
+ * `lift` held under `headroom` (m): unchanged up to `headroom - soft`, then bending over to meet `headroom` without ever
+ * passing it (a smooth knee, so the head meets the roof with a soft bump, not a hard stop). An infinite headroom (the open
+ * village) leaves `lift` exactly as it is.
+ */
+export function softCeiling(lift: number, headroom: number, soft: number = JUMP_CEILING_SOFT_M): number {
+  if (!(headroom < Infinity) || lift <= 0) return lift;
+  if (headroom <= 0) return 0;
+  const k = Math.min(soft, headroom);
+  const knee = headroom - k;
+  if (lift <= knee) return lift;
+  return knee + k * Math.tanh((lift - knee) / k);
+}
+
 /**
  * Height (m) above the floor `elapsedMs` after take-off: the parabola 4h·t(1 − t),
  * t = elapsed / JUMP_DURATION_MS — 0 on the ground, JUMP_HEIGHT_M at the midpoint,
- * and 0 outside [0, JUMP_DURATION_MS].
+ * and 0 outside [0, JUMP_DURATION_MS]. Under a roof `headroom` (m, shared/village/overhead.ts
+ * jumpHeadroom) holds the apex down so the head stays under it; the default is the open air.
  */
-export function jumpOffsetY(elapsedMs: number): number {
+export function jumpOffsetY(elapsedMs: number, headroom: number = Infinity): number {
   if (elapsedMs <= 0 || elapsedMs >= JUMP_DURATION_MS) return 0;
   const t = elapsedMs / JUMP_DURATION_MS;
-  return 4 * JUMP_HEIGHT_M * t * (1 - t);
+  return softCeiling(4 * JUMP_HEIGHT_M * t * (1 - t), headroom);
 }
 
 /**

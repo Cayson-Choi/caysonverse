@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { TRANSIT } from "@caysonverse/shared/village/transit";
+import { TRANSIT, busTripAt, tripTimeline } from "@caysonverse/shared/village/transit";
 import { VILLAGE_LAYOUT, busBoardingArea } from "@caysonverse/shared/village/villageLayout";
 import { BUS_BOARD_REACH_M, riderOnTrip, transitSnapshotAt, validateBusRide } from "./transitRuntime";
 
-const hour = Math.floor(1_700_000_000_000 / TRANSIT.hourMs) * TRANSIT.hourMs;
-const boarding = hour + TRANSIT.hourMs - TRANSIT.boardingMs + 5;
+const hour = Math.floor(1_700_000_000_000 / TRANSIT.departureEveryMs) * TRANSIT.departureEveryMs;
+const boarding = hour + TRANSIT.departureEveryMs - TRANSIT.boardingMs + 5;
 const nearStop = { area: "village", x: TRANSIT.stop.x, z: TRANSIT.stop.z };
 
 describe("VillageRoom transit runtime", () => {
@@ -18,31 +18,36 @@ describe("VillageRoom transit runtime", () => {
     expect(["green", "amber", "red"]).toContain(snapshot.signal);
   });
 
-  it("tells clients the bus is waiting at a red crosswalk signal, and not moving while it waits", () => {
-    const a = transitSnapshotAt(hour + 35_000);
-    const b = transitSnapshotAt(hour + 37_000);
-    expect(a.waiting).toBe(true);
-    expect(a.signal).toBe("red");
-    expect(a.pedestrianSignal).toBe("flashing");
-    expect([b.x, b.z, b.progress]).toEqual([a.x, a.z, a.progress]);
-    const moving = transitSnapshotAt(hour + 10_000);
+  it("publishes the bus's waiting flag and holds it still while it waits (the departure's own signal phase decides if it waits)", () => {
+    const tl = tripTimeline(hour);
+    let prev = transitSnapshotAt(hour);
+    for (let ms = 250; ms < tl.endMs - hour; ms += 250) {
+      const s = transitSnapshotAt(hour + ms);
+      expect(s.waiting).toBe(busTripAt(hour + ms).waiting);
+      if (s.waiting && prev.waiting) expect([s.x, s.z, s.progress]).toEqual([prev.x, prev.z, prev.progress]);
+      prev = s;
+    }
+    const moving = transitSnapshotAt(hour + TRANSIT.signalGreenMs / 2);
     expect(moving.waiting).toBe(false);
+    // red lights are in the snapshot's signal: at the hour the vehicles' signal is green, 30 s in it is red
     expect(moving.signal).toBe("green");
+    expect(transitSnapshotAt(hour + TRANSIT.signalGreenMs + TRANSIT.signalAmberMs + 1_000).signal).toBe("red");
   });
 
   it("keeps a rider who boarded before the hour on the bus through the wait and the lap, and drops them at the stop", () => {
-    const rider = hour + TRANSIT.hourMs; // boarded in the 30 s before the next hour: that trip's id
+    const rider = hour + TRANSIT.departureEveryMs; // boarded in the 30 s before the next hour: that trip's id
     expect(riderOnTrip(transitSnapshotAt(boarding), rider)).toBe(true); // still waiting for the departure
     expect(riderOnTrip(transitSnapshotAt(rider + 5_000), rider)).toBe(true); // the lap
-    expect(riderOnTrip(transitSnapshotAt(rider + 100_000), rider)).toBe(true);
-    expect(riderOnTrip(transitSnapshotAt(rider + TRANSIT.lapMs + 60_000), rider)).toBe(false); // back at the stop
-    expect(riderOnTrip(transitSnapshotAt(rider + TRANSIT.hourMs - 5_000), rider)).toBe(false); // the next trip is up
+    const lapEnd = tripTimeline(rider).endMs - rider; // the lap, signal waits and ramps included
+    expect(riderOnTrip(transitSnapshotAt(rider + lapEnd / 2), rider)).toBe(true);
+    expect(riderOnTrip(transitSnapshotAt(rider + lapEnd + 1_000), rider)).toBe(false); // back at the stop
+    expect(riderOnTrip(transitSnapshotAt(rider + TRANSIT.departureEveryMs - 5_000), rider)).toBe(false); // the next trip is up
     expect(riderOnTrip(transitSnapshotAt(boarding), null)).toBe(false);
   });
 
   it("accepts a nearby boarding request only in the 30-second boarding window", () => {
     const accepted = validateBusRide({ action: "board" }, { ...nearStop, boarded: false }, boarding);
-    expect(accepted).toEqual({ ok: true, tripId: hour + TRANSIT.hourMs });
+    expect(accepted).toEqual({ ok: true, tripId: hour + TRANSIT.departureEveryMs });
     expect(BUS_BOARD_REACH_M).toBeGreaterThan(0.5);
     // review r2: every free spot under the shelter boards, its south end and its middle included (7.0 m from the bus's centre)
     const s = VILLAGE_LAYOUT.busStop.shelter;
@@ -67,5 +72,25 @@ describe("VillageRoom transit runtime", () => {
     const area = busBoardingArea();
     expect(validateBusRide({ action: "board" }, { area: "village", x: area.maxX + BUS_BOARD_REACH_M + 0.2, z: TRANSIT.stop.z, boarded: false }, boarding).ok).toBe(false);
     expect(validateBusRide({ action: "board" }, { area: "village", x: TRANSIT.stop.x, z: area.maxZ + BUS_BOARD_REACH_M + 0.2, boarded: false }, boarding).ok).toBe(false);
+  });
+});
+
+describe("fix/bus-smooth: the server and the client run the same bus", () => {
+  it("publishes exactly the shared timeline's pose, at any moment of the lap (what the client draws from every frame)", () => {
+    for (let ms = 0; ms < TRANSIT.departureEveryMs; ms += 1_700) {
+      const snapshot = transitSnapshotAt(hour + ms);
+      const trip = busTripAt(hour + ms);
+      expect([snapshot.x, snapshot.z, snapshot.yaw, snapshot.progress, snapshot.waiting, snapshot.status]).toEqual([trip.pose.x, trip.pose.z, trip.pose.yaw, trip.progress, trip.waiting, trip.status]);
+    }
+  });
+
+  it("the snapshots are a smooth path: a 250 ms tick never moves the bus more than the cruise covers", () => {
+    const cruise = 222 / TRANSIT.lapMs; // m per ms, about
+    let prev = transitSnapshotAt(hour);
+    for (let ms = 250; ms < 230_000; ms += 250) {
+      const s = transitSnapshotAt(hour + ms);
+      expect(Math.hypot(s.x - prev.x, s.z - prev.z)).toBeLessThanOrEqual(cruise * 250 * 1.05);
+      prev = s;
+    }
   });
 });

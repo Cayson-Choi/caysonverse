@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useThree } from "@react-three/fiber";
 import type { Camera, Object3D, WebGLRenderTarget, WebGLRenderer } from "three";
+import { compileSafely } from "./compileSafely";
 import { activePostChain } from "./QualityEffects";
 import { prewarmEmojiTextures } from "./emojiSprite";
 
@@ -17,7 +18,7 @@ import { prewarmEmojiTextures } from "./emojiSprite";
  * renderer's own target is given back after.
  */
 export function warmScene(
-  gl: Pick<WebGLRenderer, "getRenderTarget" | "setRenderTarget" | "compileAsync">,
+  gl: Pick<WebGLRenderer, "getRenderTarget" | "setRenderTarget" | "compile" | "properties" | "extensions">,
   scene: Object3D,
   camera: Camera,
   target: WebGLRenderTarget | null,
@@ -25,7 +26,7 @@ export function warmScene(
   const prev = gl.getRenderTarget();
   gl.setRenderTarget(target);
   try {
-    return gl.compileAsync(scene, camera).catch(() => undefined);
+    return compileSafely(gl, scene, camera);
   } finally {
     gl.setRenderTarget(prev);
   }

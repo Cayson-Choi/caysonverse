@@ -822,7 +822,7 @@ describe("applyDayNight: the clock's numbers into the model (Task 7A)", () => {
     expect(liftUniform.value).toBeCloseTo(NIGHT_LOOK.lift, 9);
     expect(foliageTintUniform.value.toArray()).toEqual([...NIGHT_LOOK.foliageTint].map((v) => expect.closeTo(v, 5)));
     // The cherry blossoms darker still (Task 7A review m-g).
-    expect(cherryTintUniform.value.toArray()).toEqual([0.05, 0.07, 0.15].map((v) => expect.closeTo(v, 5)));
+    expect(cherryTintUniform.value.toArray()).toEqual([0.07, 0.08, 0.115].map((v) => expect.closeTo(v, 5)));
     for (let k = 0; k < 3; k++) expect(NIGHT_LOOK.cherryTint[k]).toBeLessThan(NIGHT_LOOK.foliageTint[k]!);
     expect(dayTintUniform.value.toArray()).toEqual([1, 1, 1]); // the day light map has no weight at night: no extra darkening
     expect(nodes.sky!.color.toArray()).toEqual([...NIGHT_LOOK.domeTint].map((v) => expect.closeTo(v, 5)));
@@ -1062,5 +1062,16 @@ describe("the shader patches against three's own MeshBasicMaterial shader (T7 re
     expect(count(fs, "gl_FragColor.rgb = villageInverseTone( gl_FragColor.rgb );\n#include <tonemapping_fragment>")).toBe(1);
     expect(fs).toContain("#define VILLAGE_INVERSE_NEUTRAL");
     expect(count(fs, "void main() {")).toBe(1);
+  });
+});
+
+describe("the village's files are versioned (a phone must not keep an old village.glb for a day)", () => {
+  it("the model, both light maps, the signals and the bus stop carry a content hash ?v=", async () => {
+    const { VILLAGE_MODEL_URL, VILLAGE_LIGHTMAP_URL, VILLAGE_NIGHT_LIGHTMAP_URL } = await import("./villageModelPrep");
+    const { SIGNALS_MODEL_URL } = await import("./TransitRoadSignals");
+    const { BUSSTOP_MODEL_URL } = await import("./BusStopShelter");
+    for (const url of [VILLAGE_MODEL_URL, VILLAGE_LIGHTMAP_URL, VILLAGE_NIGHT_LIGHTMAP_URL, SIGNALS_MODEL_URL, BUSSTOP_MODEL_URL]) {
+      expect(url).toMatch(/^\/models\/village\/[a-z_]+\.(glb|webp)\?v=[0-9a-f]{10}$/);
+    }
   });
 });

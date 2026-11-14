@@ -232,14 +232,43 @@ describe("villageBusTarget — the board button under the shelter (review r2)", 
     const { villageBusTarget } = await import("./villageTargets");
     expect(villageBusTarget("village", 41.88, -10.7, false)?.yieldsToSeat).toBe(true); // chair 66, 0.23 m off the area
     const s = VILLAGE_LAYOUT.busStop.shelter;
-    expect(villageBusTarget("village", s.centre.x, s.centre.z, false)?.yieldsToSeat).toBe(false);
+    expect(villageBusTarget("village", s.centre.x, s.centre.z, false)?.yieldsToSeat).toBeUndefined();
   });
 
-  it("offers no board button while the bus cannot be boarded; leaving is always offered", async () => {
-    const { villageBusTarget } = await import("./villageTargets");
+  it("never hides the way to ride: outside the boarding half minute the button counts down to the next bus (review 2026-11-15)", async () => {
+    const { villageBusTarget, busCountdownWords } = await import("./villageTargets");
     const s = VILLAGE_LAYOUT.busStop.shelter;
-    expect(villageBusTarget("village", s.centre.x, s.centre.z, false, false)).toBeNull();
-    expect(villageBusTarget("village", s.centre.x, s.centre.z, false, true)).not.toBeNull();
+    const waiting = villageBusTarget("village", s.centre.x, s.centre.z, false, false, 200_000)!;
+    expect(waiting.id).toBe("village_bus_board");
+    expect(waiting.label).toBe("버스 타기 · 3분 20초 뒤 출발");
+    expect(waiting.short).toBe("4분 뒤");
+    expect(waiting.yieldsToSeat).toBe(true);
+    expect(villageBusTarget("village", s.centre.x, s.centre.z, false, true, 20_000)).toMatchObject({ label: "버스 타기", short: "탑승" });
     expect(villageBusTarget("village", s.centre.x, s.centre.z, true, false)?.id).toBe("village_bus_leave");
+    expect(busCountdownWords(45_200)).toEqual({ long: "46초", short: "46초 뒤" });
+    expect(busCountdownWords(120_000)).toEqual({ long: "2분", short: "2분 뒤" });
+    expect(busCountdownWords(60_001)).toEqual({ long: "1분 1초", short: "2분 뒤" });
   });
 });
+
+describe("villageBusTarget — the board button gives the shelter's bench the key (owner, 2026-11-13)", () => {
+  it("yields to a free seat in reach unless the bus is taking riders; \"leave\" never yields", async () => {
+    const { villageBusTarget } = await import("./villageTargets");
+    const { pickInteraction } = await import("../game/interact");
+    const s = VILLAGE_LAYOUT.busStop.shelter;
+    const x = s.centre.x - 0.4;
+    const z = s.centre.z + 0.77;
+    const idle = villageBusTarget("village", x, z, false, false)!;
+    const boarding = villageBusTarget("village", x, z, false, true)!;
+    expect(idle.yieldsToSeat).toBe(true);
+    expect(boarding.yieldsToSeat).toBeUndefined();
+    expect(villageBusTarget("village", x, z, true, false)!.yieldsToSeat).toBeUndefined();
+    const seat = { index: 20, dist: 0.5 };
+    // not boarding: the seat is the pick; with no seat in reach the board button is still offered
+    expect(pickInteraction({ seated: false, seat, targets: [idle] })).toEqual({ kind: "sit", seatIndex: 20 });
+    expect(pickInteraction({ seated: false, seat: null, targets: [idle] })?.kind).toBe("target");
+    // boarding: the button keeps the key, as before
+    expect(pickInteraction({ seated: false, seat, targets: [boarding] })?.kind).toBe("target");
+  });
+});
+

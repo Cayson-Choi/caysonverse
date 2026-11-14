@@ -34,7 +34,7 @@ import {
   type CameraLimit,
   type Vec3,
 } from "./indoorCamera";
-import { ARM_FREE, armHeightScaleAt, armLookLiftAt, indoorArmShape, springArmDistance, stepArmLimit } from "./cameraCollision";
+import { ARM_FREE, armHeightScaleAt, armLookLiftAt, indoorArmShape, keepOutArmDistance, springArmDistance, stepArmLimit } from "./cameraCollision";
 import { getActiveMap } from "./activeMap";
 import type { Orbit } from "./types";
 
@@ -157,11 +157,15 @@ export function stepFollowRig(
     const offZ = tpZ - z;
     const reach = Math.sqrt(offX * offX + offY * offY + offZ * offZ);
     if (reach > 1e-6) {
-      const clear = springArmDistance(x, HEAD_HEIGHT, z, tpX, tpY, tpZ, reach);
+      const indoor = indoorArmAt(map, limitNow);
+      // outdoors the camera also keeps out of the trees' trunks and limbs (cameraCollision.setCameraKeepOut)
+      const walls = springArmDistance(x, HEAD_HEIGHT, z, tpX, tpY, tpZ, reach);
+      const clear = indoor ? walls : Math.min(walls, keepOutArmDistance(x, HEAD_HEIGHT, z, tpX, tpY, tpZ, reach));
       rig.armLimit = stepArmLimit(rig.armLimit, clear, reach, dt);
+      // the arm growing back out stops in front of a limb it would run into (it takes it in at once, as a wall)
+      if (!indoor && rig.armLimit < reach) rig.armLimit = Math.min(rig.armLimit, keepOutArmDistance(x, HEAD_HEIGHT, z, tpX, tpY, tpZ, reach, undefined, rig.armLimit));
       if (rig.armLimit < reach) {
         const k = rig.armLimit / reach;
-        const indoor = indoorArmAt(map, limitNow);
         tpX = x + offX * k;
         tpZ = z + offZ * k;
         if (indoor) {

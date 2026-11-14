@@ -994,6 +994,29 @@ describe("VillageRoom benches (integration)", () => {
     expect(b.seatIndex).toBe(PLAZA_B);
   });
 
+  it("the bus stop shelter's bench: its two seats are taken from the road side, never from behind the glass (a bench with a back is sat on from the front)", async () => {
+    const SHELTER = VILLAGE_SEATS.map((s, i) => (s.bench === "shelter" ? i : -1)).filter((i) => i >= 0);
+    expect(SHELTER).toHaveLength(2);
+    const { client, player } = await visitor();
+    const seat = VILLAGE_SEATS[SHELTER[0]!]!;
+    // behind the bench, east of the glass wall, within reach of the seat: refused silently
+    placeAt(player, seat.x + 1.2, seat.z);
+    client.send(MessageType.Sit, { seatIndex: SHELTER[0] });
+    await settle(client);
+    expect(player.seatIndex).toBe(-1);
+    // in front of it, on the road side: seated on the seat, facing the road
+    inFrontOf(player, SHELTER[0]!);
+    client.send(MessageType.Sit, { seatIndex: SHELTER[0] });
+    expect(await pollFor(() => player.seatIndex === SHELTER[0])).toBe(true);
+    expect(player.x).toBe(seat.x);
+    expect(player.z).toBe(seat.z);
+    expect(player.yaw).toBeCloseTo(-Math.PI / 2, 9);
+    client.send(MessageType.Stand, {});
+    expect(await pollFor(() => player.seatIndex === -1)).toBe(true);
+    expect(aheadOf(SHELTER[0]!, player.x, player.z)).toBeGreaterThan(0); // on the road side of the bench
+    expect(isBlocked(player.x, player.z, PLAYER_RADIUS, villageGeometry.obstacles)).toBe(false);
+  });
+
   it("out of reach, a bad index or a bench of the other area: refused silently", async () => {
     const { client, player } = await visitor();
     const rejected: SitRejectedPayload[] = [];
