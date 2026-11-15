@@ -12,7 +12,7 @@ export interface CharacterManifestShape {
   hairCut: number;
   hatHidesHair: readonly string[];
   npcOnly: Record<string, readonly string[]>;
-  /** 동작 클립 이름: 기본 7개와 하의 변형(*_LongSkirt, *_ShortSkirt). */
+  /** 동작 클립 이름: 기본 7개, 바닥 앉기 3개(Sit_Floor_*), 하의 변형(*_LongSkirt, *_ShortSkirt). */
   clips: readonly string[];
   /** 하의 부품 id → 기본 클립 → 변형 클립. 보폭은 유지하고 치마를 뚫지 않게 다리 움직임만 줄인다. */
   clipVariants: Record<string, Record<string, string>>;
@@ -244,7 +244,10 @@ export const CHARACTER_MANIFEST = {
     "Jump_Full_Short_LongSkirt",
     "Walking_A_ShortSkirt",
     "Running_A_ShortSkirt",
-    "Jump_Full_Short_ShortSkirt"
+    "Jump_Full_Short_ShortSkirt",
+    "Sit_Floor_Down",
+    "Sit_Floor_Idle",
+    "Sit_Floor_StandUp"
   ],
   "clipVariants": {
     "longskirt": {
@@ -276,4 +279,4 @@ export const CHARACTER_SLOTS: readonly CharacterSlot[] = Object.keys(CHARACTER_M
 export const BODY_MESHES = ["body__head", "body__hands", "body__torso", "body__legs", "body__feet"] as const;
 
 /** character.glb 내용의 sha256 앞 8자리. 클라이언트가 모델 URL에 ?v=로 붙인다(새 GLB를 배포하면 URL이 바뀐다). */
-export const CHARACTER_GLB_HASH = "6ace03f6";
+export const CHARACTER_GLB_HASH = "57442006";

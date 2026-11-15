@@ -8,6 +8,7 @@
  */
 
 import type { AABB } from "./collision";
+import type { SeatPoseKind } from "./sitPose";
 
 export type { AABB };
 
@@ -88,6 +89,11 @@ export interface Seat {
   reachBonus?: number;
   /** How far (rad) a sitter leans back into a backrest (a sofa, an armchair, a chair); absent or 0: sits upright. */
   lean?: number;
+  /**
+   * Which sit pose the seat uses (sitPose.ts `SeatPoseKind`): `floor` = cross-legged on a floor cushion / 보료 / floor sofa (the
+   * Sit_Floor_* clips; `seatY` is then the cushion's height and the sitter's lowest point rests on it). Absent: `chair`; `perch` (stool height) also plays the chair clips for now.
+   */
+  pose?: SeatPoseKind;
 }
 
 const GROUP_MATES = new WeakMap<readonly Seat[], readonly (readonly number[])[]>();

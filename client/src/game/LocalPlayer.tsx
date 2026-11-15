@@ -20,6 +20,7 @@ import {
 } from "./seatMotion";
 import { benchClipPlanes, clipAvatar, enableBenchClipping } from "./benchClip";
 import { stepLean } from "./leanBack";
+import { isFloorSeat, seatClipBase } from "./seatClips";
 import { readIntent, worldDirection } from "./input";
 import type { Intent, MoveInput } from "./input";
 import { gaitClip, gaitFor, moveSpeed } from "./gait";
@@ -75,6 +76,7 @@ import { installDebugHook } from "./debug";
 import {
   ANIM_FADE,
   CLIP,
+  FLOOR_CLIP,
   HEAD_HEIGHT,
   INDOOR_SELF_HIDE_DISTANCE,
   INDOOR_SELF_SHOW_DISTANCE,
@@ -104,6 +106,9 @@ const LOOK_CLIPS: readonly string[] = [
   CLIP.sitDown,
   CLIP.sitIdle,
   CLIP.sitStand,
+  FLOOR_CLIP.sitDown,
+  FLOOR_CLIP.sitIdle,
+  FLOOR_CLIP.sitStand,
   CLIP.jump,
 ];
 
@@ -165,6 +170,9 @@ export function LocalPlayer({
   // Seating anim state machine (v2 Task 1). `loco` = normal walk/idle; `sitDown`
   // and `standUp` are one-shot transient clips; `sitIdle` is the held seated pose.
   const animStateRef = useRef<"loco" | "sitDown" | "sitIdle" | "standUp">("loco");
+  // Whether the seat being sat on / got up from is a floor seat (cross-legged): `action` then plays the Sit_Floor_* clips for the
+  // sit roles. Set when the sit is confirmed, cleared when the stand-up has finished.
+  const sitFloorRef = useRef(false);
   const animTimerRef = useRef(0); // seconds left in the current transient clip
   const prevSeatRef = useRef(-1); // previous confirmed seatIndex (transition edge)
   const standRequestedRef = useRef(false); // debounce: one Stand per seated episode
@@ -329,7 +337,7 @@ export function LocalPlayer({
    * base names; only the name handed to the mixer is resolved. Allocation-free.
    */
   function action(base: string) {
-    return actions[clipFor(base, look)];
+    return actions[clipFor(seatClipBase(base, sitFloorRef.current), look)];
   }
 
   /**
@@ -606,7 +614,8 @@ export function LocalPlayer({
       clearClickTarget();
       const s = activeSeats()[seatIndex];
       motion.bench = s !== undefined && s.seatY !== undefined;
-      motion.lift = liftForSeatY(s?.seatY);
+      sitFloorRef.current = isFloorSeat(s);
+      motion.lift = liftForSeatY(s?.seatY, s?.pose);
       motion.clip = benchClipPlanes(s);
       motion.glide = null;
       if (s && motion.bench) {
@@ -676,6 +685,7 @@ export function LocalPlayer({
         action(CLIP.sitStand)?.fadeOut(ANIM_FADE);
         animStateRef.current = "loco";
         loopRef.current = null; // no loop on the body: the loco crossfade below puts one on
+        sitFloorRef.current = false;
         motion.bench = false;
         motion.lift = 0;
         motion.clip = null;

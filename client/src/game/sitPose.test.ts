@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { AnimationMixer, Vector3, type Bone, type Object3D, type SkinnedMesh } from "three";
+import { AnimationMixer, LoopOnce, Quaternion, Vector3, type Bone, type Object3D, type SkinnedMesh } from "three";
 import { GLTFLoader, type GLTF } from "three/examples/jsm/loaders/GLTFLoader.js";
-import { SIT_POSE, SIT_ROOT_AHEAD } from "@caysonverse/shared/sitPose";
-import { CLIP } from "./constants";
+import { FLOOR_SIT_POSE, liftForSeatY, SIT_POSE, SIT_ROOT_AHEAD } from "@caysonverse/shared/sitPose";
+import { CLIP, FLOOR_CLIP } from "./constants";
 
 /**
  * The seated pose the benches are built around (sitPose.ts), re-measured from the shipped character.glb: if a new
@@ -46,12 +46,20 @@ function withoutTextures(buf: Buffer): ArrayBuffer {
 }
 
 /** The skinned body in `clip` at its first frame: bones by (sanitized) name, and every vertex of `meshes` in world space. */
-async function pose(clip: string, meshes: readonly string[]) {
+function pose(clip: string, meshes: readonly string[]) {
+  return poseAt(clip, 0, meshes);
+}
+
+/** The same at `time` seconds into the clip (past the end: the last frame for a one-shot clip). */
+async function poseAt(clip: string, time: number, meshes: readonly string[]) {
   const gltf = await new Promise<GLTF>((res, rej) => new GLTFLoader().parse(withoutTextures(readFileSync(GLB)), "", res, rej));
   const root: Object3D = gltf.scene;
   const mixer = new AnimationMixer(root);
-  mixer.clipAction(gltf.animations.find((c) => c.name === clip)!).play();
-  mixer.setTime(0);
+  const action = mixer.clipAction(gltf.animations.find((c) => c.name === clip)!);
+  action.clampWhenFinished = true;
+  action.setLoop(LoopOnce, 1);
+  action.play();
+  mixer.setTime(time);
   root.updateMatrixWorld(true);
   const bones = new Map<string, Bone>();
   const verts: Vector3[] = [];
@@ -94,5 +102,63 @@ describe("the seated pose of character.glb (what the bench seats assume)", () =>
     const a = down.bones.get("hips")!.getWorldPosition(new Vector3());
     const b = stand.bones.get("hips")!.getWorldPosition(new Vector3());
     expect(a.distanceTo(b)).toBeLessThan(0.01);
+  }, 20000);
+});
+
+describe("the cross-legged floor pose of character.glb (what the floor cushion / 보료 seats assume)", () => {
+  const BODY = ["body__legs", "body__feet", "body__torso", "body__head", "body__hands"];
+
+  it("the hips sit hipsBehindRoot behind the root and the lowest point of the body is at contactY (a cushion just lifts by its height)", async () => {
+    const { bones, verts } = await pose(FLOOR_CLIP.sitIdle, BODY);
+    const hips = bones.get("hips")!.getWorldPosition(new Vector3());
+    expect(-hips.z).toBeCloseTo(FLOOR_SIT_POSE.hipsBehindRoot, 2);
+    expect(Math.abs(Math.min(...verts.map((v) => v.y)) - FLOOR_SIT_POSE.contactY)).toBeLessThan(0.015);
+    expect(liftForSeatY(0.12, "floor")).toBeCloseTo(0.12, 6);
+    expect(liftForSeatY(0.12)).toBeCloseTo(0.12 - SIT_POSE.contactY, 6); // chairs are unchanged
+  }, 20000);
+
+  it("the toes reach toesAheadOfRoot, the knees kneesSideways, the back of the torso torsoBehindRoot", async () => {
+    const { verts: legs } = await pose(FLOOR_CLIP.sitIdle, ["body__legs", "body__feet"]);
+    expect(Math.max(...legs.map((v) => v.z))).toBeCloseTo(FLOOR_SIT_POSE.toesAheadOfRoot, 1);
+    const { verts: thighs } = await pose(FLOOR_CLIP.sitIdle, ["body__legs"]);
+    expect(Math.max(...thighs.map((v) => Math.abs(v.x)))).toBeCloseTo(FLOOR_SIT_POSE.kneesSideways, 1);
+    const { verts: torso } = await pose(FLOOR_CLIP.sitIdle, ["body__torso"]);
+    expect(-Math.min(...torso.map((v) => v.z))).toBeCloseTo(FLOOR_SIT_POSE.torsoBehindRoot, 1);
+  }, 20000);
+
+  it("the sit-down ends where the idle begins and the stand-up begins there (no jump at either seam)", async () => {
+    const idle = await pose(FLOOR_CLIP.sitIdle, []);
+    const down = await poseAt(FLOOR_CLIP.sitDown, 1e9, []); // past the end: clamped to the last frame
+    const up = await pose(FLOOR_CLIP.sitStand, []);
+    const at = (p: { bones: Map<string, Bone> }, n: string) => p.bones.get(n)!.getWorldPosition(new Vector3());
+    for (const n of ["hips", "head", "footl", "footr", "handl", "handr"]) {
+      expect(at(down, n).distanceTo(at(idle, n)), `down end vs idle start: ${n}`).toBeLessThan(0.01);
+      expect(at(up, n).distanceTo(at(idle, n)), `idle start vs stand-up start: ${n}`).toBeLessThan(0.01);
+    }
+  }, 20000);
+
+  it("never goes through the floor while sitting down or getting up (every frame, lowest body point >= -1 cm)", async () => {
+    for (const clip of [FLOOR_CLIP.sitDown, FLOOR_CLIP.sitStand, FLOOR_CLIP.sitIdle]) {
+      for (const t of [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.5, 2.5]) {
+        const { verts } = await poseAt(clip, t, ["body__legs", "body__feet"]);
+        expect(Math.min(...verts.map((v) => v.y)), `${clip} @ ${t}s`).toBeGreaterThan(-0.01);
+      }
+    }
+  }, 60000);
+
+  it("the idle loop moves (breathing, a head turn) and its last frame meets its first", async () => {
+    const first = await poseAt(FLOOR_CLIP.sitIdle, 0, []);
+    const mid = await poseAt(FLOOR_CLIP.sitIdle, 0.375, []);
+    const moved = first.bones.get("head")!.getWorldPosition(new Vector3()).distanceTo(mid.bones.get("head")!.getWorldPosition(new Vector3()));
+    const chestMoved = first.bones.get("chest")!.getWorldQuaternion(new Quaternion()).angleTo(mid.bones.get("chest")!.getWorldQuaternion(new Quaternion()));
+    expect(moved + chestMoved).toBeGreaterThan(0.01);
+    const gltf = await new Promise<GLTF>((res, rej) => new GLTFLoader().parse(withoutTextures(readFileSync(GLB)), "", res, rej));
+    const clip = gltf.animations.find((c) => c.name === FLOOR_CLIP.sitIdle)!;
+    for (const tr of clip.tracks) {
+      if (!tr.name.endsWith(".quaternion")) continue;
+      const v = tr.values;
+      const n = tr.times.length - 1;
+      for (let k = 0; k < 4; k++) expect(Math.abs(v[n * 4 + k] - v[k]) < 1e-4 || Math.abs(v[n * 4 + k] + v[k]) < 1e-4, `${tr.name} loops`).toBe(true);
+    }
   }, 20000);
 });
