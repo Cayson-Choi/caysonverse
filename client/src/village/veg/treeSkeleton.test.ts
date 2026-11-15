@@ -53,7 +53,8 @@ const REF: Array<[string, TreeSpec, Ref]> = [
   ],
   [
     "village cherry (23, 42.5), seed 305 (its place in the mixed list)",
-    VILLAGE_TREE_SPECS.find((s) => s.x === 23 && s.z === 42.5)!,
+    // recorded at its pre-B-plan spot (the replay is the same wherever the tree stands; it now stands at (25.12, 44.62))
+    { ...VILLAGE_TREE_SPECS.find((s) => s.seed === 305)!, x: 23, z: 42.5 },
     {
       fork: [23.051489244634528, 2.088, 42.38578994752227],
       crownC: [23.051489244634528, 3.944, 42.38578994752227],
@@ -88,7 +89,8 @@ const REF: Array<[string, TreeSpec, Ref]> = [
   ],
   [
     "memorial young tree (-8.2, -51.5), seed 500",
-    YOUNG_SPECS[0]!,
+    // recorded at its pre-B-plan spot (now (-12, -55))
+    { ...YOUNG_SPECS[0]!, x: -8.2, z: -51.5 },
     {
       fork: [-8.177053024821411, 1.305, -51.42513795133612],
       crownC: [-8.177053024821411, 2.1025, -51.42513795133612],

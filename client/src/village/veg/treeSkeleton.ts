@@ -224,14 +224,18 @@ export const PLAZA_CHERRY_SPECS: readonly TreeSpec[] = PLAZA_CHERRY_ANGLES.map((
 export const PLAZA_ZELKOVA_SPEC: TreeSpec = { index: 99, kind: "zelkova", x: -25, z: -5, H: 13.5, R: 8.5, seed: 7, trunkR: 0.62 };
 
 /** parts_trees.village_trees: (kind, x, z, H, R), seed 300 + its place in this list (cherries and greens together). */
+// Where the trees stand AFTER the B-plan buildings (houses milestone 1): parts_trees.village_trees moves a tree whose crown
+// would reach into a building to the nearest free spot (_clear_of_buildings: radius 1.5 m * k, 24 angles), so the nine moved
+// trees carry those exact positions (build log "TREE moved ..."; villageTreeSpots.test checks them against the GLB's trunk boxes).
+// Seeds stay 300 + i (no tree was dropped).
 const VILLAGE_SPOTS: ReadonlyArray<[TreeKind, number, number, number, number]> = [
   ["cherry", -13.5, 36.0, 6.0, 2.9], ["cherry", -15.5, 44.5, 6.4, 3.0], ["cherry", -27.5, 52.0, 6.0, 2.8],
   ["cherry", -20.0, 58.0, 5.8, 2.7],
-  ["green", 35.5, 41.5, 8.0, 3.4], ["cherry", 23.0, 42.5, 5.8, 2.7],
-  ["green", -35.0, 42.0, 8.4, 3.5], ["cherry", -31.0, 46.5, 5.6, 2.6], ["green", -52.0, -14.0, 8.0, 3.3],
-  ["cherry", -51.5, -1.0, 6.0, 2.8], ["green", 54.5, -6.5, 8.6, 3.5], ["cherry", 55.0, -19.5, 6.2, 2.8],
+  ["green", 32.5, 46.69615242270663, 8.0, 3.4], ["cherry", 25.121320343559642, 44.621320343559645, 5.8, 2.7],
+  ["green", -38.0, 47.19615242270663, 8.4, 3.5], ["cherry", -31.0, 46.5, 5.6, 2.6], ["green", -52.38822856765378, -15.448888739433603, 8.0, 3.3],
+  ["cherry", -50.0511112605664, -0.6117714323462189, 6.0, 2.8], ["green", 56.0, -3.901923788646684, 8.6, 3.5], ["cherry", 64.0, -19.5, 6.2, 2.8],
   ["green", 70.0, -15.0, 9.0, 3.8], ["green", 74.0, 2.0, 8.0, 3.4], ["green", -70.0, -12.0, 9.2, 3.8],
-  ["green", -73.0, 0.0, 8.2, 3.4], ["green", 30.0, -62.0, 9.0, 3.8], ["green", -30.0, -62.0, 8.6, 3.6],
+  ["green", -73.0, 0.0, 8.2, 3.4], ["green", 27.878679656440355, -64.12132034355965, 9.0, 3.8], ["green", -32.121320343559645, -64.12132034355965, 8.6, 3.6],
   ["green", 60.0, 45.0, 9.0, 3.8], ["green", -60.0, 45.0, 8.8, 3.7], ["cherry", 18.0, 62.0, 6.0, 2.8],
   ["cherry", 70.0, 30.0, 6.0, 2.8], ["cherry", -72.0, 30.0, 6.2, 2.8], ["green", 80.0, -45.0, 9.0, 3.6],
   ["green", -80.0, -48.0, 9.0, 3.6], ["green", 45.0, -70.0, 8.8, 3.6], ["green", -46.0, -70.0, 8.8, 3.6],
@@ -250,8 +254,9 @@ export const WILLOW_SPECS: readonly TreeSpec[] = [
 /** The memorial's young trees (parts_buildings.memorial): tree(F, x, z, "young", H, H * 0.32, 500 + i). */
 export const YOUNG_SPECS: readonly TreeSpec[] = (() => {
   const spots: Array<[number, number, number]> = [];
-  for (const zz of [-51.5, -56.0, -60.5]) spots.push([-8.2, zz, 2.9], [8.2, zz, 2.7]);
-  for (const xx of [-6.0, -2.0, 2.0, 6.0]) spots.push([xx, -65.6, 2.6]);
+  // parts_memorial_ext.memorial (B-plan memorial): both sides (x +-12) and the back (z -70)
+  for (const zz of [-55.0, -60.0, -65.0]) spots.push([-12.0, zz, 2.9], [12.0, zz, 2.7]);
+  for (const xx of [-8.0, -3.0, 3.0, 8.0]) spots.push([xx, -70.0, 2.6]);
   return spots.map(([x, z, H], i) => ({ index: 300 + i, kind: "young" as const, x, z, H, R: H * 0.32, seed: 500 + i }));
 })();
 
