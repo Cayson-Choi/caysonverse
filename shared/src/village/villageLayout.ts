@@ -572,8 +572,8 @@ export function busEnvelope(layout: Pick<VillageLayout, "busStop"> = VILLAGE_LAY
   return envelope(busParkedFootprint(layout));
 }
 
-/** The parked bus's height as a camera box (m): village_bus.glb's roof with its pods. */
-export const BUS_HEIGHT = 3.3;
+/** The bus's height as a camera box (m): village_bus.glb's roof with its pods (taller since 2026-11-15: 3.45 m roof edge, pods to about 3.75). */
+export const BUS_HEIGHT = 3.75;
 /** How deep (m, along z) each of the parked bus's collider slices is. */
 const BUS_SLICE = 0.5;
 

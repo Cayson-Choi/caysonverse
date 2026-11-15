@@ -679,7 +679,7 @@ describe("village colliders are built from the layout", () => {
     expect(slices[0]!.minZ).toBe(env.minZ);
     expect(slices.at(-1)!.maxZ).toBe(env.maxZ);
     for (let i = 1; i < slices.length; i++) expect(slices[i]!.minZ).toBe(slices[i - 1]!.maxZ); // no seam
-    for (const b of slices) expect(b.height).toBe(3.3);
+    for (const b of slices) expect(b.height).toBe(3.75);
     const inSlice = (p: Point2) => slices.some((b) => p.x >= b.minX - 1e-5 && p.x <= b.maxX + 1e-5 && p.z >= b.minZ - 1e-5 && p.z <= b.maxZ + 1e-5);
     for (let across = -1.25; across <= 1.25; across += 0.125) {
       for (let along = -4.5; along <= 4.5; along += 0.125) expect(inSlice(busWorld(across, along)), `${across}, ${along}`).toBe(true);
