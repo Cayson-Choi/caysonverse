@@ -111,3 +111,42 @@ describe("@colyseus/schema decorator wiring", () => {
     expect(decoded.players.get("s1")!.seatIndex).toBe(-1);
   });
 });
+
+describe("Player fishing fields and the wider seatIndex (A10 D2)", () => {
+  it("seatIndex is int16 (the village has 133 seats) and the nine fishing fields keep their wire types and defaults", () => {
+    const meta = (Player as unknown as Record<symbol, Record<string, { name: string; type: unknown }>>)[Symbol.metadata];
+    const fields = Object.keys(meta).filter((k) => /^\d+$/.test(k)).map((k) => meta[k]!);
+    const typeOf = (name: string) => fields.find((f) => f.name === name)?.type;
+    expect(typeOf("seatIndex")).toBe("int16");
+    expect(typeOf("rod")).toBe("uint8");
+    expect(typeOf("fishSpot")).toBe("int8");
+    expect(typeOf("fishPhase")).toBe("uint8");
+    expect(typeOf("fishSeq")).toBe("uint16");
+    expect(typeOf("fishSig")).toBe("uint8");
+    expect(typeOf("fishKind")).toBe("uint8");
+    expect(typeOf("fishCm")).toBe("uint8");
+    expect(typeOf("fishAt")).toBe("uint32");
+    const p = new Player();
+    expect([p.rod, p.fishSpot, p.fishPhase, p.fishSeq, p.fishSig, p.fishKind, p.fishCm, p.fishAt]).toEqual([0, -1, 0, 0, 0, 0, 0, 0]);
+  });
+
+  it("a seat past 127 and every fishing field survive an encode / decode round trip", () => {
+    const state = new WorldState();
+    const p = new Player();
+    p.seatIndex = 130;
+    p.rod = 1;
+    p.fishSpot = 29;
+    p.fishPhase = 9;
+    p.fishSeq = 65535;
+    p.fishSig = 3;
+    p.fishKind = 11;
+    p.fishCm = 85;
+    p.fishAt = 4_000_000_000;
+    state.players.set("s1", p);
+    const decoded = new WorldState();
+    new Decoder(decoded).decode(new Encoder(state).encodeAll());
+    const q = decoded.players.get("s1")!;
+    expect([q.seatIndex, q.rod, q.fishSpot, q.fishPhase, q.fishSeq, q.fishSig, q.fishKind, q.fishCm, q.fishAt]).toEqual([130, 1, 29, 9, 65535, 3, 11, 85, 4_000_000_000]);
+  });
+});
+

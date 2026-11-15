@@ -5,7 +5,21 @@ import { SIT_POSE, SIT_ROOT_AHEAD, liftForSeatY } from "../sitPose";
 import { VILLAGE_COLLIDERS } from "./generated/villageColliders";
 import { MEMORIAL_COLLIDERS } from "./generated/memorialColliders";
 import { VILLAGE_LAYOUT, busShelterBenchCollider, busShelterColliders, houseInteriorGeometry, isHouseArea, villageGeometry } from "./villageLayout";
-import { CHAIR_BACK_BEHIND, SHELTER_BENCH, STAND_CLEARANCE, VILLAGE_BENCHES, VILLAGE_SEATS, benchSeatOffsets, type VillageBench } from "./benchSeats";
+import {
+  CHAIR_BACK_BEHIND,
+  LAKE_SEAT_BASE,
+  SHELTER_BENCH,
+  STAND_CLEARANCE,
+  VILLAGE_BENCHES,
+  VILLAGE_SEATS,
+  benchSeatOffsets,
+  fishingSeatIndex,
+  fishingSpotOfSeat,
+  seatPose,
+  seatStandSpot,
+  type VillageBench,
+} from "./benchSeats";
+import { LAKE_FISHING_SPOTS, lakeSeats } from "./lakeLayout";
 import { VILLAGE_SEAT_MARKERS } from "./generated/villageSeatMarkers";
 
 const MARKED = new Set(VILLAGE_SEAT_MARKERS.map((m) => m.id));
@@ -205,7 +219,7 @@ describe("the art's marked seats: café terrace chairs and porch benches (review
     expect(VILLAGE_SEAT_MARKERS.filter((m) => /^house_\d+_porch$/.test(m.id)).map((m) => m.id)).toEqual(["house_2_porch", "house_9_porch", "house_10_porch"]);
     const marked = markedSeats();
     expect(marked).toHaveLength(15);
-    expect(VILLAGE_SEATS.slice(-15)).toEqual(marked);
+    expect(VILLAGE_SEATS.slice(LAKE_SEAT_BASE - 15, LAKE_SEAT_BASE)).toEqual(marked); // the lake's seats come after them
     expect(VILLAGE_SEATS.slice(0, VILLAGE_BENCHES.length * 2).every((s) => !MARKED.has(s.bench))).toBe(true);
   });
 
@@ -343,6 +357,80 @@ describe("the bus stop shelter's bench", () => {
       expect(s.x).toBeLessThan(rearGlass.minX);
       expect(s.standX).toBeLessThan(s.x); // west of the seat: the road side
       expect(isBlocked(s.standX, s.standZ, PLAYER_RADIUS + STAND_CLEARANCE, villageGeometry.obstacles, 0)).toBe(false);
+    }
+  });
+});
+
+describe("the fishing lake's seats in the global index (A10 D2, design 5.4 and 12.2)", () => {
+  const lake = lakeSeats();
+
+  it("come last, so every older seat index stays: 77 old + 56 lake = 133 (over int8, so Player.seatIndex is int16)", () => {
+    expect(LAKE_SEAT_BASE).toBe(77);
+    expect(lake).toHaveLength(56);
+    expect(VILLAGE_SEATS).toHaveLength(133);
+    expect(VILLAGE_SEATS.length).toBeGreaterThan(127);
+    expect(VILLAGE_SEATS.length).toBeLessThan(32768);
+    expect(VILLAGE_SEATS.slice(0, LAKE_SEAT_BASE).some((s) => s.kind !== undefined)).toBe(false);
+    VILLAGE_SEATS.slice(LAKE_SEAT_BASE).forEach((s, i) => {
+      expect(s.area).toBe("village");
+      expect(s.x).toBe(lake[i]!.x);
+      expect(s.bench).toBe(lake[i]!.bench);
+    });
+  });
+
+  it("the 30 fishing chairs are the first lake seats, in LAKE_FISHING_SPOTS order", () => {
+    expect(LAKE_FISHING_SPOTS).toHaveLength(30);
+    LAKE_FISHING_SPOTS.forEach((spot, i) => {
+      const idx = fishingSeatIndex(i);
+      expect(idx).toBe(LAKE_SEAT_BASE + i);
+      expect(VILLAGE_SEATS[idx]).toMatchObject({ kind: "fishing_chair", spot: spot.id, approach: "side", yaw: spot.yaw });
+      expect(fishingSpotOfSeat(idx)).toBe(i);
+    });
+    expect(fishingSpotOfSeat(0)).toBe(-1);
+    expect(fishingSpotOfSeat(LAKE_SEAT_BASE + 30)).toBe(-1); // the first bench
+    expect(fishingSpotOfSeat(-1)).toBe(-1);
+    expect(fishingSpotOfSeat(999)).toBe(-1);
+  });
+
+  it("a backed seat (fishing chair, bench, porch) is offered from its front / side only; a backless one from anywhere in reach", () => {
+    for (const [i, s] of VILLAGE_SEATS.entries()) {
+      if (i < LAKE_SEAT_BASE) continue;
+      const ahead = (d: number) => ({ x: s.x + Math.sin(s.yaw) * d, z: s.z + Math.cos(s.yaw) * d });
+      if (s.approach === "either") {
+        for (const d of [1, -1]) expect(approachesSeat(s, ahead(d).x, ahead(d).z), `${s.bench} ${d}`).toBe(true);
+      } else {
+        expect(approachesSeat(s, ahead(1).x, ahead(1).z), `${s.bench} front`).toBe(true);
+        expect(approachesSeat(s, ahead(-1.2).x, ahead(-1.2).z), `${s.bench} behind the backrest`).toBe(false);
+      }
+    }
+  });
+
+  it("seatPose: an ordinary seat is its own pose; a backless lake seat faces the side the sitter came from, root over the board", () => {
+    expect(seatPose(VILLAGE_SEATS[0]!, 0, 0)).toEqual({ x: VILLAGE_SEATS[0]!.x, z: VILLAGE_SEATS[0]!.z, yaw: VILLAGE_SEATS[0]!.yaw, standX: VILLAGE_SEATS[0]!.standX, standZ: VILLAGE_SEATS[0]!.standZ });
+    const either = VILLAGE_SEATS.filter((s) => s.approach === "either" && s.other);
+    expect(either.length).toBeGreaterThan(0);
+    for (const s of either) {
+      const o = s.other!;
+      // the first side: a visitor standing where the first facing points
+      const a = seatPose(s, s.x + Math.sin(s.yaw), s.z + Math.cos(s.yaw));
+      expect(a.yaw).toBe(s.yaw);
+      expect([a.standX, a.standZ]).toEqual([s.standX, s.standZ]);
+      const b = seatPose(s, s.x + Math.sin(o.yaw), s.z + Math.cos(o.yaw));
+      expect(b.yaw).toBe(o.yaw);
+      expect([b.standX, b.standZ]).toEqual([o.standX, o.standZ]);
+      // the root is rootAhead ahead of the board's middle along the chosen facing
+      expect(Math.hypot(a.x - s.x, a.z - s.z)).toBeCloseTo(s.rootAhead!, 3);
+      expect(Math.hypot(b.x - s.x, b.z - s.z)).toBeCloseTo(s.rootAhead!, 3);
+      // and the stand spot follows the pose
+      expect(seatStandSpot(s, a.yaw)).toEqual({ x: a.standX, z: a.standZ });
+      expect(seatStandSpot(s, b.yaw)).toEqual({ x: b.standX, z: b.standZ });
+    }
+  });
+
+  it("every lake seat's get-up spot is clear of every collider", () => {
+    for (const s of VILLAGE_SEATS.slice(LAKE_SEAT_BASE)) {
+      const stands = [{ x: s.standX, z: s.standZ }, ...(s.other ? [{ x: s.other.standX, z: s.other.standZ }] : [])];
+      for (const p of stands) expect(isBlocked(p.x, p.z, PLAYER_RADIUS, villageGeometry.obstacles, 0), `${s.bench} ${p.x},${p.z}`).toBe(false);
     }
   });
 });

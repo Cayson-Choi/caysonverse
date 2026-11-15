@@ -36,6 +36,7 @@ import type { Bounds } from "../school/geometry";
 import { VILLAGE_LAYOUT, houseArea, houseInteriorGeometry, villageGeometry, type AreaId, type Point2 } from "./villageLayout";
 import { HOUSE_INTERIOR_LAYOUTS } from "./houseInterior";
 import { VILLAGE_SEAT_MARKERS } from "./generated/villageSeatMarkers";
+import { lakeSeats, type LakeSeat } from "./lakeLayout";
 
 /**
  * A seat the art marks in village.glb (`seat__*` empties: the café terrace's 12 chairs, the porch benches of houses 2, 9
@@ -201,6 +202,13 @@ function dismountAhead(root: Point2, yaw: number, bounds: Bounds, id: string, ge
 export interface VillageSeat extends Seat {
   bench: string;
   area: AreaId;
+  /** Lake seats (lakeLayout.ts): what kind, which fishing spot (a fishing chair), how they are approached, the backless extras. */
+  kind?: LakeSeat["kind"];
+  spot?: string;
+  approach?: LakeSeat["approach"];
+  backed?: boolean;
+  other?: LakeSeat["other"];
+  rootAhead?: number;
 }
 
 /**
@@ -310,6 +318,8 @@ function makeSeats(benches: readonly VillageBench[]): VillageSeat[] {
   }
   // the art's marked seats last, so the benches' and the houses' indices stay as they were (review 2026-11-15)
   seats.push(...markerSeats(VILLAGE_SEAT_MARKERS));
+  // the fishing lake's 56 seats (A10): the 30 fishing chairs first, in LAKE_FISHING_SPOTS order, then the benches, picnic, pavilion, porches
+  seats.push(...lakeSeats().map((s): VillageSeat => ({ ...s, area: "village" })));
   return seats;
 }
 
@@ -319,3 +329,43 @@ function makeSeats(benches: readonly VillageBench[]): VillageSeat[] {
  * the server validates and assigns by this index, the client looks the seat up by it (activeMap's `seats`).
  */
 export const VILLAGE_SEATS: readonly VillageSeat[] = Object.freeze(makeSeats(VILLAGE_BENCHES).map((s) => Object.freeze(s)));
+
+/** Index of the first lake seat in `VILLAGE_SEATS`: the 30 fishing chairs are `LAKE_SEAT_BASE + spotIndex` (spotIndex = LAKE_FISHING_SPOTS order). */
+export const LAKE_SEAT_BASE: number = VILLAGE_SEATS.length - lakeSeats().length;
+
+/** The seat index of the fishing chair of spot `spot` (0..29). */
+export function fishingSeatIndex(spot: number): number {
+  return LAKE_SEAT_BASE + spot;
+}
+
+/** The fishing spot of a seat index, or -1 when it is not a fishing chair. */
+export function fishingSpotOfSeat(seatIndex: number): number {
+  const s = VILLAGE_SEATS[seatIndex];
+  return s && s.kind === "fishing_chair" ? seatIndex - LAKE_SEAT_BASE : -1;
+}
+
+/**
+ * Where a sitter's ROOT goes and where they get up, for a seat sat on from (px, pz). Ordinary seats: the seat's own point and
+ * facing. A backless lake seat (`approach: "either"`: picnic benches, pavilion boards) is sat on from either side and the sitter
+ * faces the side they came from (rule P6): the root is `rootAhead` ahead of the board's middle along that facing (the hips over
+ * the board), and they get up on that side. `Player.x/z/yaw` of a seated player hold exactly this pose.
+ */
+export function seatPose(seat: VillageSeat, px: number, pz: number): { x: number; z: number; yaw: number; standX: number; standZ: number } {
+  if (seat.approach !== "either" || !seat.other || seat.rootAhead === undefined) return { x: seat.x, z: seat.z, yaw: seat.yaw, standX: seat.standX, standZ: seat.standZ };
+  const toward = (yaw: number) => (px - seat.x) * Math.sin(yaw) + (pz - seat.z) * Math.cos(yaw);
+  const second = toward(seat.other.yaw) > toward(seat.yaw);
+  const yaw = second ? seat.other.yaw : seat.yaw;
+  return {
+    x: Math.round((seat.x + Math.sin(yaw) * seat.rootAhead) * 1000) / 1000,
+    z: Math.round((seat.z + Math.cos(yaw) * seat.rootAhead) * 1000) / 1000,
+    yaw,
+    standX: second ? seat.other.standX : seat.standX,
+    standZ: second ? seat.other.standZ : seat.standZ,
+  };
+}
+
+/** The get-up spot of a seated player whose pose `yaw` was chosen by `seatPose`. */
+export function seatStandSpot(seat: VillageSeat, yaw: number): { x: number; z: number } {
+  if (seat.other && Math.abs(Math.atan2(Math.sin(yaw - seat.other.yaw), Math.cos(yaw - seat.other.yaw))) < 1e-3) return { x: seat.other.standX, z: seat.other.standZ };
+  return { x: seat.standX, z: seat.standZ };
+}

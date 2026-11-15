@@ -54,10 +54,11 @@ export class Player extends Schema {
   // older client, or a pose the server placed). Viewers time the remote walk by it (client playout.ts).
   @type("uint32") moveT = 0;
   @type("boolean") connected = true; // used by reconnection (Task 11)
-  // Seating (v2 Task 1): -1 = standing; 0..SEATS.length-1 = the occupied seat.
+  // Seating (v2 Task 1): -1 = standing; 0..SEATS.length-1 = the occupied seat. int16 since the fishing lake (A10) put the
+  // village's seats past 127 (77 + 56 lake seats = 133; int8 tops out at 127).
   // The first legitimate discrete synced state — a seated player is fully
   // server-positioned (x/z/yaw snapped to the seat), so 100 seated avatars sync.
-  @type("int8") seatIndex = -1;
+  @type("int16") seatIndex = -1;
   // 케이슨 마을: which area the player is in — "village" (the open village) or "hall" (inside the memorial hall,
   // where the room is quiet: no emoji, no jumping). Written by VillageRoom at join and on every door use.
   @type("string") area: AreaId = "village";
@@ -65,6 +66,17 @@ export class Player extends Schema {
   // VillageRoom on boarding. Every client draws a rider there, in the moving bus (owner 2026-11-15: the rider stood
   // outside on the pad); x/z keep where they boarded until the server puts them down at the door on getting off.
   @type("int8") busSeat = -1;
+  // 케이슨 낚시터 (A10, design lake-fishing 9.4; the rules are shared/village/fishing.ts): what the OTHER clients draw. Written only by
+  // villageFishing.ts. 12 bytes a player, sent only when a stage changes. The float's place and the nibble splashes are computed from
+  // (fishSpot, fishSeq) by every client (fishing.ts floatPosition / nibbleTimesMs), so no coordinates travel.
+  @type("uint8") rod = 0; // 0 none, 1 the 2칸 민장대 (carried folded, opened when seated)
+  @type("int8") fishSpot = -1; // index into LAKE_FISHING_SPOTS of the chair sat on, -1 none
+  @type("uint8") fishPhase = 0; // FISHING_PHASES index (none, carry, ready, casting, ... missed)
+  @type("uint16") fishSeq = 0; // the cast number: the seed of the float's place and the splashes
+  @type("uint8") fishSig = 0; // the bite signal (0 none, 1 rise, 2 sink, 3 drag): only in the bite stage
+  @type("uint8") fishKind = 0; // the fish (FISH_KINDS index + 1): only from the hooked stage until it is released
+  @type("uint8") fishCm = 0; // its length in cm
+  @type("uint32") fishAt = 0; // when this stage began: the server clock (ServerTime ms) modulo 2^32, so every screen is in step
 }
 
 /** The village room's synced state: every connected player, keyed by session id. */
