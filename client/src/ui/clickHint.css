@@ -1,0 +1,35 @@
+/* The click hint (ClickHint.tsx): low in the middle, above the chat bar and the stick zone, below the HUD buttons; a touch
+   goes through it. Fades in, holds, fades out within CLICK_HINT_MS (2.2 s). */
+.cv-click-hint {
+  position: fixed;
+  z-index: 21;
+  left: 50%;
+  bottom: calc(26vh + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  max-width: min(86vw, 420px);
+  padding: 9px 16px;
+  color: #f4f1ff;
+  font-size: 15px;
+  line-height: 1.4;
+  text-align: center;
+  word-break: keep-all;
+  background: rgba(18, 14, 36, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
+  box-shadow: 0 6px 20px rgba(8, 6, 20, 0.35);
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+  animation: cv-click-hint 2.2s ease-out forwards;
+}
+
+@keyframes cv-click-hint {
+  0% { opacity: 0; transform: translate(-50%, 6px); }
+  10% { opacity: 1; transform: translate(-50%, 0); }
+  80% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cv-click-hint { animation: none; }
+}

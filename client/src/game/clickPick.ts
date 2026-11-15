@@ -63,6 +63,8 @@ export interface ScenePick extends SurfacePoint {
   blocker: boolean;
   /** Name of the mesh hit (dev hook / tests). */
   name: string;
+  /** The click's ray (set by the click's handler: CameraRig pickAt) — a furniture click follows it on (furnitureClick.ts). */
+  ray?: { o: { x: number; y: number; z: number }; d: { x: number; y: number; z: number } };
 }
 
 export interface PickOptions {

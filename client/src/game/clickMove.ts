@@ -156,6 +156,8 @@ declare global {
     __cvClickPick?: () => unknown;
     /** Dev/E2E only, set by the E2E: called the moment a look-half tap's held-back walk is decided (CameraRig). */
     __cvTapWalk?: () => void;
+    /** Dev/E2E only: how many "갈 수 없어요" click hints were shown (CameraRig). */
+    __cvClickHints?: number;
   }
 }
 
