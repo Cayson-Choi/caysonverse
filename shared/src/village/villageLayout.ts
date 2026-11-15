@@ -623,7 +623,7 @@ export function busShelterLightBoxCameraBox(layout: Pick<VillageLayout, "busStop
   const s = boxAt(layout.busStop.shelter.centre, layout.busStop.shelter.size);
   const xb = s.maxX - 0.05; // the back wall's plane
   const round6 = (n: number) => Math.round(n * 1e6) / 1e6;
-  return { minX: round6(xb - 0.03), maxX: round6(xb + 0.05), minZ: round6(c.z - 0.62), maxZ: round6(c.z + 0.62), height: 2.6 };
+  return { minX: round6(xb - 0.03), maxX: round6(xb + 0.05), minZ: round6(c.z - 0.62), maxZ: round6(c.z + 0.62), height: BUS_SHELTER_ROOF.top };
 }
 
 /**

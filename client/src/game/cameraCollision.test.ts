@@ -514,6 +514,18 @@ describe("cameraCollision — the bus shelter's opaque light box (visual review 
     }
   });
 
+  it("blocks the high camera too: the box reaches the roof, so a cast at 2.95 m (pad 37.6,-4.9 facing west; kiosk front facing the shelter) cannot pass over it (shelter check r5)", () => {
+    expect(lightBox.height).toBeGreaterThanOrEqual(3.3);
+    // the boarding pad, facing the road: the cast that used to pass over a 2.6 m box and leave the camera behind the wall
+    const fromPad = springArmDistance(37.6, 1.5, -4.9, 41.86, 2.95, -5.09, 4.25, boxes, pad);
+    expect(fromPad).toBeLessThan(4.25);
+    expect(37.6 + (fromPad / 4.25) * (41.86 - 37.6)).toBeLessThan(lightBox.minX);
+    // in front of the kiosk, turned toward the shelter: the camera would stand inside the shelter with the box in between
+    const fromKiosk = springArmDistance(45.3, 1.5, -3.85, 41.14, 2.95, -5.46, 4.6, boxes, pad);
+    expect(fromKiosk).toBeLessThan(4.6);
+    expect(45.3 - (fromKiosk / 4.6) * (45.3 - 41.14)).toBeGreaterThan(lightBox.maxX);
+  });
+
   it("does not hold the camera facing north or south at the pad", () => {
     // Facing north and south the camera is over the open pad, nowhere near the light box (facing east the parked bus is the wall).
     expect(springArmDistance(38.5, 1.5, -5.2, 38.5, 2.2, 0.8, 6.2, boxes, pad)).toBe(6.2);
