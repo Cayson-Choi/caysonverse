@@ -6,7 +6,8 @@ import { CAMERA_LOOK_LIFT, ZOOM_BAND } from "./cameraControls";
 import { HALL_ACTIVE_MAP, VILLAGE_ACTIVE_MAP, setActiveMap } from "./activeMap";
 import { HALL_CAMERA_LIMIT } from "./indoorCamera";
 import { createFollowRig, createFollowSpot, noteAreaLimit, stepFollowRig, type FollowRig, type FollowSpot } from "./followRig";
-import { applyZoom, beginSeatCamera, endSeatCamera, resetViewMode, viewState } from "./viewState";
+import { INDOOR_SEAT_PITCH, applyZoom, beginSeatCamera, endSeatCamera, resetViewMode, viewState } from "./viewState";
+import { recenterYaw } from "./cameraControls";
 import type { Orbit } from "./types";
 
 const DT = 1 / 60;
@@ -123,6 +124,23 @@ describe("follow rig — the zoom set with the wheel holds while the player move
   });
 });
 
+describe("sitting down indoors (review 2026-11-15: the sofa camera stared at the rug)", () => {
+  it("indoors the seat sets ONE glide goal (the way the seat faces, a level tilt) and writes nothing itself; standing up sets none", () => {
+    const orbit = frozen({ yaw: -0.8, pitch: 0.9, distance: 6 });
+    viewState.orbitGoal = null;
+    beginSeatCamera(orbit as Orbit, 1.2, true); // a frozen orbit: any write would throw here
+    expect(viewState.orbitGoal).toEqual({ yaw: recenterYaw(1.2), pitch: INDOOR_SEAT_PITCH });
+    viewState.orbitGoal = null; // reached (or the player dragged)
+    endSeatCamera(orbit as Orbit);
+    expect(viewState.orbitGoal).toBeNull();
+  });
+  it("outdoors nothing changes", () => {
+    viewState.orbitGoal = null;
+    beginSeatCamera(frozen({ yaw: 0, pitch: 0.4, distance: 6 }) as Orbit, 0.3, false);
+    expect(viewState.orbitGoal).toBeNull();
+  });
+});
+
 describe("follow rig — doors into and out of a building", () => {
   const HALL = VILLAGE_LAYOUT.memorial.interior;
 
@@ -189,7 +207,7 @@ describe("follow rig — doors into and out of a building", () => {
           const h = [body.x - spot.x, HEAD_HEIGHT - spot.y, body.z - spot.z];
           const cos = (v[0] * h[0] + v[1] * h[1] + v[2] * h[2]) / (Math.hypot(v[0], v[1], v[2]) * Math.hypot(h[0], h[1], h[2]));
           const below = (Math.acos(Math.min(1, cos)) * 180) / Math.PI;
-          expect(below, `zoom ${distance}, tilt ${pitch}, aspect ${aspect.toFixed(2)}`).toBeLessThan(20);
+          expect(below, `zoom ${distance}, tilt ${pitch}, aspect ${aspect.toFixed(2)}`).toBeLessThan(22); // 2026-11-13: the head sits lower on purpose (the hall opened onto the avatar's head); the half-fov is 27.5
           expect(spot.y).toBeLessThanOrEqual(HALL_CAMERA_LIMIT.maxY + 1e-9);
         }
       }

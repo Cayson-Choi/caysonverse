@@ -94,8 +94,9 @@ export function sendKeypad(buildingId: string, code: string): void {
 }
 
 /**
- * 케이슨 마을 (Task 9): light a candle in a memorial cubby. The server checks that we are in the hall within 1.5 m of
- * it and a 1-per-5-seconds cap, then tells everyone in the hall (`CandleLit`); anything else is dropped silently.
+ * 케이슨 마을 (Task 9): light a candle in a memorial cubby. The server checks that we are in the hall, that the cubby's candle
+ * is not already burning and a 1-per-5-seconds cap, keeps it an hour and tells everyone in the hall (`CandleLit`); anything
+ * else is dropped silently.
  * No-op unless this tab is in the village.
  */
 export function sendLightCandle(cubby: string): void {

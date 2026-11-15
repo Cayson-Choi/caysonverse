@@ -1,4 +1,4 @@
-import { SEAT_REACH, approachesSeat, type Seat } from "@caysonverse/shared/worldMap";
+import { SEAT_APPROACH_SLACK, SEAT_REACH, approachesSeat, seatDistance, seatTaken, type Seat } from "@caysonverse/shared/worldMap";
 
 /**
  * Pure, clock-free sit validation (mirrors movement.ts / emoji.ts discipline).
@@ -46,15 +46,19 @@ export function validateSit(
   // 3. distance gate: honest clients only see the prompt within SEAT_REACH, so a
   //    farther Sit is a tampered client → silent drop (not a user-facing reason).
   const seat = seats[seatIndex];
-  if (Math.hypot(player.x - seat.x, player.z - seat.z) > SEAT_REACH) return null;
+  if (seatDistance(seat, player.x, player.z) > SEAT_REACH) return null;
 
-  // 3b. a bench with a back (a seat with a front edge) is sat on from the front only: from behind its back rest the prompt is
-  //     never shown, so a Sit from there is a tampered client too (the same `approachesSeat` the client's prompt uses).
-  if (!approachesSeat(seat, player.x, player.z)) return null;
+  // 3b. a backed seat (a sofa, an armchair, a bench with a back) is sat on from the front only: from behind the prompt is never
+  //     shown, so a request from there is a tampered client → silent drop.
+  if (!approachesSeat(seat, player.x, player.z, SEAT_APPROACH_SLACK)) return null;
 
-  // 4. occupancy: taken by SOMEONE ELSE → personal rejection notice (the race).
-  const holder = occupancy.get(seatIndex);
-  if (holder !== undefined && holder !== sessionId) return { reason: SEAT_OCCUPIED };
+  // 4. occupancy: taken by SOMEONE ELSE (the seat itself or another facing of the same bench seat) → personal rejection
+  //    notice (the race).
+  const heldByOther = (i: number): boolean => {
+    const holder = occupancy.get(i);
+    return holder !== undefined && holder !== sessionId;
+  };
+  if (seatTaken(seats, seatIndex, heldByOther)) return { reason: SEAT_OCCUPIED };
 
   return { seatIndex };
 }

@@ -22,6 +22,8 @@ export const SIT_POSE = {
   contactY: 0.39,
   /** How far behind the root the backs of the hanging calves are (m). A seat's front edge must stay behind this. */
   calvesBehindRoot: 0.22,
+  /** How far behind the root the back of the torso is (m): where a backrest's face must be on a backed seat. */
+  torsoBehindRoot: 0.71,
 } as const;
 
 /**
@@ -30,6 +32,13 @@ export const SIT_POSE = {
  * the front half of a park bench, the way a short-legged sitter perches.
  */
 export const SIT_ROOT_AHEAD = SIT_POSE.calvesBehindRoot + 0.03;
+
+/**
+ * How far in FRONT of a backrest's face the root goes on a backed seat (m): the torso's back is 0.71 m behind the root, so the
+ * back just touches the backrest (the lean-back pose then settles into it). The seat in front of the backrest is deeper than the
+ * hanging calves reach, so a sofa's cushion front is clipped like a bench's edge (benchClip.ts).
+ */
+export const BACKED_ROOT_AHEAD = SIT_POSE.torsoBehindRoot + 0.01;
 
 /** How far (m) to raise the seated avatar so the sit pose's butt rests on a seat surface `seatY` m high. */
 export function liftForSeatY(seatY: number | undefined): number {

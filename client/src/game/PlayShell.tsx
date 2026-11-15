@@ -33,6 +33,7 @@ import { ActionButton } from "../ui/ActionButton";
 import { JumpButton } from "../ui/JumpButton";
 import { MenuPanel } from "../ui/MenuPanel";
 import { CoachMarks } from "../ui/CoachMarks";
+import { ClickHint } from "../ui/ClickHint";
 import { startJumpSync } from "../net/jumpSync";
 import { isTouchDevice } from "../device";
 import { getRenderProfile } from "./renderProfile";
@@ -330,6 +331,7 @@ export function PlayShell(p: PlayShellProps) {
       {isTouchDevice && <JumpButton sessionId={identity.sessionId} />}
       {isTouchDevice && <TouchJoystick moveInput={moveInput} leftHanded={leftHanded} />}
       <CoachMarks pose={pose} orbit={orbit} />
+      <ClickHint />
       {renderSlot(p.hud, frame)}
       <MenuPanel
         graphics={p.effects}

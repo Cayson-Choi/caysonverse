@@ -8,7 +8,7 @@ import { PLAYER_RADIUS } from "@caysonverse/shared/worldMap";
 import { liftForSeatY } from "@caysonverse/shared/sitPose";
 import { resolveCollision } from "@caysonverse/shared/collision";
 import { collectObstacles, pushOutOfMovingBus } from "./playerObstacles";
-import { activeBounds, activeSeats } from "./activeMap";
+import { activeBounds, activeSeats, getActiveMap } from "./activeMap";
 import {
   SIT_GLIDE,
   STAND_GLIDE,
@@ -20,6 +20,7 @@ import {
   type Glide,
 } from "./seatMotion";
 import { benchClipPlanes, clipAvatar, enableBenchClipping } from "./benchClip";
+import { stepLean } from "./leanBack";
 import { readIntent, worldDirection } from "./input";
 import type { Intent, MoveInput } from "./input";
 import { gaitClip, gaitFor, moveSpeed } from "./gait";
@@ -64,7 +65,8 @@ import { clipFor, lookFromAppearance } from "./characterLook";
 import { reportAvatarClip, useAvatar } from "./useAvatar";
 import { BlobShadow } from "./BlobShadow";
 import { PICK_AS_SELF } from "./clickPick";
-import { createSelfFade, endSelfFade, registerSelfBody, selfBody, stepSelfFade } from "./selfBody";
+import { SELF_FADE_OPACITY } from "./clickRing";
+import { createSelfFade, endSelfFade, indoorCloseHidden, registerSelfBody, selfBody, stepSelfFade } from "./selfBody";
 import { createNametag } from "./nametag";
 import { registerLabel } from "./labelRegistry";
 import { bubbleRestHeight, nametagRestHeight } from "./nametagLayout";
@@ -73,7 +75,19 @@ import { useEmoji } from "./useEmoji";
 import { stepYaw } from "./yaw";
 import { createMoveSender } from "./moveSender";
 import { installDebugHook } from "./debug";
-import { ANIM_FADE, CLIP, MODEL_FACING_OFFSET, SELF_CAMERA_HIDE_DISTANCE, TURN_SPEED } from "./constants";
+import {
+  ANIM_FADE,
+  CLIP,
+  HEAD_HEIGHT,
+  INDOOR_SELF_HIDE_DISTANCE,
+  INDOOR_SELF_SHOW_DISTANCE,
+  MODEL_FACING_OFFSET,
+  SELF_CAMERA_HIDE_DISTANCE,
+  SELF_COVER_FADE_DISTANCE,
+  SELF_COVER_FADE_OPACITY,
+  SELF_COVER_SHOW_DISTANCE,
+  TURN_SPEED,
+} from "./constants";
 import type { MoveControl } from "./constants";
 import type { Orbit, Pose, SeatState } from "./types";
 import { getRoom, sendJump, sendMove, sendStand } from "../net/connection";
@@ -82,6 +96,7 @@ import { selfBusRide } from "./busRide";
 import { busPlace, busRiderPose, type BusRiderPose } from "@caysonverse/shared/village/busSeats";
 import { isInputSuspended } from "../net/resilience";
 import { useSettingsStore } from "../stores/settingsStore";
+import { cubbyFocusWeight } from "../village/cubbyFocus";
 
 /** Fallback seconds for a sit/stand clip if its duration can't be read yet. */
 const SIT_CLIP_FALLBACK_SEC = 0.8;
@@ -228,6 +243,9 @@ export function LocalPlayer({
   useEmoji(sessionId, groupRef, avatar.topY, bubbleTop);
   // The own body, for the destination ring it may hide (ClickMarker): while it does, the body fades (stepSelfFade below).
   const selfFadeRef = useRef(createSelfFade());
+  /** Hidden because the camera is right at the head indoors (see the per-frame visibility below). */
+  const closeHiddenRef = useRef(false);
+  const coverFadeRef = useRef(false);
   useEffect(() => {
     const group = groupRef.current;
     const unregister = group ? registerSelfBody(group, avatar.topY) : undefined;
@@ -529,16 +547,41 @@ export function LocalPlayer({
     // instant mode flip, so neither transition direction flashes near the eye.
     // Hide immediately on FP entry because the mode flips before the blend reaches HIDE_BLEND. In TP, also hide when
     // a wall or shelter has shortened the spring arm into the avatar's head.
+    const indoorTp = viewState.mode === "tp" && getActiveMap().cameraLimit !== undefined;
+    // Outdoors a wall or shelter that has shortened the spring arm into the avatar's head hides it (SELF_CAMERA_HIDE_DISTANCE).
     const cameraInsideSelf =
+      !indoorTp &&
       viewState.mode === "tp" &&
       viewState.blend < HIDE_BLEND &&
       cameraProbe.distance > 0 &&
       cameraProbe.distance < SELF_CAMERA_HIDE_DISTANCE;
-    group.visible = viewState.ovBlend > OV_VIS_BLEND ? true : viewState.mode !== "fp" && viewState.blend < HIDE_BLEND && !cameraInsideSelf;
+    // A memorial cubby's close-up (cubbyFocus.ts) puts the lens at the cubby's height in front of it, where the own body may
+    // stand: hidden while the close-up is more than a third of the way in.
+    const inCloseUp = cubbyFocusWeight() > 0.33;
+    // Indoors the player always sees their own avatar (review 2026-11-15 round 5: hiding it near the camera made it vanish on
+    // arrival and on most seats). The arrival spot and the seat framing (seatFraming.ts) keep the camera 3.2 m+ from the head;
+    // the body is hidden only when the camera is really inside the head (INDOOR_SELF_HIDE_DISTANCE, 0.6 m), never faded.
+    const headDist = Math.hypot(cameraProbe.x - pose.x, cameraProbe.y - (group.position.y + HEAD_HEIGHT), cameraProbe.z - pose.z);
+    closeHiddenRef.current = indoorCloseHidden(closeHiddenRef.current, indoorTp, headDist, INDOOR_SELF_HIDE_DISTANCE, INDOOR_SELF_SHOW_DISTANCE);
+    const closeIndoors = closeHiddenRef.current && viewState.ovBlend <= OV_VIS_BLEND;
+    group.visible =
+      viewState.ovBlend > OV_VIS_BLEND
+        ? true
+        : viewState.mode !== "fp" && viewState.blend < HIDE_BLEND && !cameraInsideSelf && !inCloseUp && !closeIndoors;
     // The destination ring straight ahead, behind the body (a click on the body itself, a walk away from the camera):
     // the body fades and is drawn after the ring, so the ring shows through it (round 6 review: only its dashes showed,
     // on the body, all the way there).
-    stepSelfFade(selfFadeRef.current, avatar, group.visible && selfBody.hidingRing, delta);
+    // Indoors, a wall behind that pushed the camera near the head (the over-the-shoulder view, cameraShoulder.ts): the body
+    // fades part way while it would cover the view (round 6 review), eased, its front surface only.
+    coverFadeRef.current = indoorCloseHidden(coverFadeRef.current, indoorTp && !inCloseUp, headDist, SELF_COVER_FADE_DISTANCE, SELF_COVER_SHOW_DISTANCE);
+    const cover = group.visible && coverFadeRef.current;
+    stepSelfFade(
+      selfFadeRef.current,
+      avatar,
+      group.visible && (selfBody.hidingRing || cover),
+      delta,
+      cover ? Math.min(SELF_COVER_FADE_OPACITY, selfBody.hidingRing ? SELF_FADE_OPACITY : 1) : undefined,
+    );
 
     // The village bus (owner 2026-11-15: "버스에 탑승했는데 캐릭터는 버스안에 있지 않고 밖에 그대로 서있어"): while I ride,
     // my avatar is in my place in the bus (busSeats.ts, given by the server), sitting on its seat or standing in the
@@ -653,8 +696,12 @@ export function LocalPlayer({
       motion.elapsed = 0;
       motion.duration = animTimerRef.current;
       animStateRef.current = "sitDown";
-      // The camera swings behind the chair toward the screen (FP: the look snaps to it).
-      if (s) beginSeatCamera(orbit, s.yaw);
+      // Outdoors the camera stays as the player has it; indoors it glides once to the nearest framing of the seat that leaves the
+      // camera 3.2 m+ from the head, so the player sees themself sitting (viewState.ts, seatFraming.ts).
+      if (s) {
+        const aspect = state.size.height > 0 ? state.size.width / state.size.height : 1;
+        beginSeatCamera(orbit, s.yaw, getActiveMap().cameraLimit !== undefined, { x: s.x, z: s.z, aspect });
+      }
     } else if (!seated && wasSeated) {
       // Stand confirmed: to the server's dismount pose, play StandUp → loco. A chair: snap there. A bench: the
       // clip carries the body from the seat to it (the dismount spot is just in front of the bench).
@@ -720,6 +767,8 @@ export function LocalPlayer({
       clipAvatar(avatar, onBench ? motion.clip : null);
       motion.clipped = onBench;
     }
+    // A backed seat (sofa, armchair, chair): lean back into the backrest while sitting idle (leanBack.ts).
+    stepLean(avatar.root, animStateRef.current === "sitIdle" ? (activeSeats()[seatIndex]?.lean ?? 0) : 0, delta);
 
     // Seated → fully server-positioned: no integration, no moveSender. Standing up
     // is explicit — any movement intent (keys or joystick) sends ONE Stand. 착석

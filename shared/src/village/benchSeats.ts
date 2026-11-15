@@ -13,9 +13,12 @@
  *    the fountain, the backrest behind the sitter;
  *  - the low stone bench on the memorial hall's forecourt: a 2.2 x 0.55 m block, 0.45 m high, west of the door. It
  *    has no back; a sitter faces south, toward the plaza, with the building behind;
- *  - the oak bench inside the hall: a 2.4 x 0.42 m board 0.455 m up on two legs, 2.3 m south of the memorial table.
- *    No back either; a sitter faces north, toward the table and the cubby wall;
- *  - the bus stop shelter's bench (`SHELTER_BENCH`): slats along its glass back wall; a sitter faces west, to the road.
+ *  - the memorial hall (2026-11-13 rebuild): every sofa, armchair, chair and bench of the rebuilt interior, from the `seat__*`
+ *    markers of its Blender scene (generated/memorialSeats.ts, scripts/gen-memorial-seats.ts). A BACKLESS seat (a bench) is
+ *    sat on from either side: its place has two facings that exclude each other (one `group`), and the side the visitor stands on
+ *    picks the facing. A BACKED seat (a sofa, an armchair, a chair) only from the front, leaning back (`lean`).
+ *  - the bus stop shelter's bench (`SHELTER_BENCH`): slats along its glass back wall; a sitter faces west, to the road;
+ *  - the art's marked village seats (`VILLAGE_SEAT_MARKERS`): the café terrace's chairs and the porch benches.
  *
  * Two seats per bench (`benchSeatOffsets`): the toy figure is about 1.05 m across the arms while seated (its head
  * 1.0 m), so two sitters 1.16–1.2 m apart keep clear of each other and both sit on the seat; three would not fit on
@@ -30,8 +33,10 @@
  */
 
 import { isBlocked } from "../collision";
-import { PLAYER_RADIUS, type Seat } from "../worldMap";
-import { SIT_ROOT_AHEAD } from "../sitPose";
+import { CHAIR_SIDE_CLEAR, CHAIR_SIDE_FAR, PLAYER_RADIUS, SEAT_REACH, approachesSeat, type Seat } from "../worldMap";
+import { BACKED_ROOT_AHEAD, SIT_ROOT_AHEAD } from "../sitPose";
+import { MEMORIAL_SEAT_MARKERS } from "./generated/memorialSeats";
+import type { SeatMarker } from "./seatMarkers";
 import type { Bounds } from "../school/geometry";
 import { VILLAGE_LAYOUT, houseArea, houseInteriorGeometry, villageGeometry, type AreaId, type Point2 } from "./villageLayout";
 import { HOUSE_INTERIOR_LAYOUTS } from "./houseInterior";
@@ -95,7 +100,12 @@ export interface VillageBench {
    * middle of it. Absent: `benchSeatOffsets(length)`.
    */
   seatOffsets?: readonly number[];
+  /** `backed`: a backrest behind the sitter (sat from the front only); `backless`: sat from either side (a second facing). */
+  kind: SeatKind;
 }
+
+/** What a seat is like to approach: a backrest behind it (front only, leaning back), or none (either side). */
+export type SeatKind = "backless" | "backed";
 
 /**
  * How far from a bench's centre its two seats are (m): 0.6 where the seat is long enough, else as far as keeps the
@@ -119,11 +129,10 @@ const STAND_STEP = 0.05;
 const STAND_SEARCH = 1.5;
 
 /** The plaza bench model (parts_props.py `bench`): five slats 0.085 m wide at -0.22..0.22, 0.40..0.445 m up, 1.86 m long. */
-const PLAZA_BENCH = { seatTop: 0.445, frontEdge: 0.22 + 0.085 / 2, length: 1.86 } as const;
+const PLAZA_BENCH = { seatTop: 0.445, frontEdge: 0.22 + 0.085 / 2, length: 1.86, kind: "backed" } as const;
 
-/** Yaw that faces south (+z), north (-z) and west (-x). */
+/** Yaw that faces south (+z) and west (-x). */
 const FACING_SOUTH = 0;
-const FACING_NORTH = Math.PI;
 const FACING_WEST = -Math.PI / 2;
 
 /**
@@ -144,6 +153,7 @@ export const SHELTER_BENCH: VillageBench = {
   frontEdge: 41.2 - 40.985,
   length: 2.3,
   seatOffsets: [-0.765, 0.765],
+  kind: "backed",
 };
 
 function makeBenches(): VillageBench[] {
@@ -152,15 +162,16 @@ function makeBenches(): VillageBench[] {
   );
   return [
     ...plaza,
-    // parts_buildings.py: mb.box(-4.8, -50.4, 0.0, 2.2, 0.55, 0.45, "LM_stone")
-    { id: "memorial_forecourt", area: "village", centre: { x: -4.8, z: -50.4 }, yaw: FACING_SOUTH, seatTop: 0.45, frontEdge: 0.55 / 2, length: 2.2 },
-    // build_memorial.py `bench`: rbox(mb, 300.6, -1.6, 0.40, 2.4, 0.42, 0.055, "LM_oak")
-    { id: "hall", area: "hall", centre: { x: 300.6, z: -1.6 }, yaw: FACING_NORTH, seatTop: 0.455, frontEdge: 0.42 / 2, length: 2.4 },
+    // parts_buildings.py: mb.box(-4.8, -50.4, 0.0, 2.2, 0.55, 0.45, "LM_stone") — a stone block with no back: sat from either side
+    { id: "memorial_forecourt", area: "village", centre: { x: -4.8, z: -50.4 }, yaw: FACING_SOUTH, seatTop: 0.45, frontEdge: 0.55 / 2, length: 2.2, kind: "backless" },
     SHELTER_BENCH,
   ];
 }
 
-/** Every bench a player can sit on, in seat order (plaza 1..8, the forecourt, the hall, the bus stop's shelter). */
+/**
+ * Every bench of the open village a player can sit on (plaza 1..8, the forecourt, the bus stop's shelter). The hall's seats come from its model's
+ * markers. Seat order: see `VILLAGE_SEATS` (the shelter's seats come after the houses').
+ */
 export const VILLAGE_BENCHES: readonly VillageBench[] = Object.freeze(makeBenches());
 
 /** A point `along` metres along the bench (its local x) and `ahead` metres along the facing from (x, z). */
@@ -175,8 +186,16 @@ function offset(x: number, z: number, yaw: number, along: number, ahead: number)
 export function standsClear(x: number, z: number, bounds: Bounds, geometry = villageGeometry): boolean {
   const r = PLAYER_RADIUS + STAND_CLEARANCE;
   if (x < bounds.minX + r || x > bounds.maxX - r || z < bounds.minZ + r || z > bounds.maxZ - r) return false;
-  return !isBlocked(x, z, r, geometry.obstacles, 0);
+  if (isBlocked(x, z, r, geometry.obstacles, 0)) return false;
+  // …and outside every collider grown SQUARE by the radius: the click-walk plans only from such a spot (clickPlan.ts isFreeSpot;
+  // round 8: up from letter_s0 at the corner of the letter table's grown box, 5 cm in, every tap after was "unreachable")
+  const q = PLAYER_RADIUS + STAND_SQUARE_CLEARANCE;
+  for (const b of geometry.obstacles) if (x > b.minX - q && x < b.maxX + q && z > b.minZ - q && z < b.maxZ + q) return false;
+  return true;
 }
+
+/** How far (m) past the square growth of the colliders a dismount spot keeps (standsClear). */
+const STAND_SQUARE_CLEARANCE = 0.02;
 
 /** Directions the dismount search tries, turned off the facing (rad): straight ahead first, then up to 45 degrees aside. */
 const STAND_TURNS: readonly number[] = [0, -0.26, 0.26, -0.52, 0.52, -0.79, 0.79];
@@ -197,10 +216,138 @@ function dismountAhead(root: Point2, yaw: number, bounds: Bounds, id: string, ge
   throw new Error(`no clear dismount spot ahead of bench seat ${id}`);
 }
 
-/** A village seat, plus the bench and the area it belongs to. */
+/**
+ * A chair with another chair of its kind next to it (the two consult chairs at the desk, the letter table's four): its dismount
+ * spot — where a click on it walks to and where its sitter stands up — is the nearest clear spot from which the chair is offered
+ * (`approachesSeat`: beside or in front of it, never behind its backrest) that is clearly nearer this chair's seat than any
+ * neighbour's (`STAND_NEIGHBOUR_MARGIN`). Review 2026-11-15 round 5: the second consult chair's spot was in the gap between the
+ * two, as near the first chair, so stopping a step short of it and pressing E sat on the first one. Null: none within reach.
+ */
+function chairStand(seat: Seat, neighbours: readonly Point2[], bounds: Bounds): Point2 | null {
+  let best: Point2 | null = null;
+  let bestD = Infinity;
+  const step = 0.05;
+  for (let ix = -26; ix <= 26; ix++) {
+    for (let iz = -26; iz <= 26; iz++) {
+      const x = Math.round((seat.x + ix * step) * 1000) / 1000;
+      const z = Math.round((seat.z + iz * step) * 1000) / 1000;
+      const own = Math.hypot(x - seat.x, z - seat.z);
+      if (own >= bestD || own > 1.6) continue;
+      // offered from the spot itself; and from anywhere a step short of it (a tap walk stops 0.35 m before its target) never the
+      // neighbour instead: there it is this chair or none
+      let ok = own - (seat.reachBonus ?? 0) <= SEAT_REACH - STAND_SHORT - 0.05 && approachesSeat(seat, x, z);
+      for (let k = 0; k <= 8 && ok; k++) {
+        const a = (k * Math.PI) / 4;
+        const px = k === 8 ? x : x + Math.cos(a) * STAND_SHORT;
+        const pz = k === 8 ? z : z + Math.sin(a) * STAND_SHORT;
+        const d = Math.hypot(px - seat.x, pz - seat.z);
+        ok = !neighbours.some((n) => Math.hypot(n.x - px, n.z - pz) < d + (k === 8 ? STAND_NEIGHBOUR_MARGIN : 0.01));
+      }
+      if (!ok || !standsClear(x, z, bounds)) continue;
+      best = { x, z };
+      bestD = own;
+    }
+  }
+  return best;
+}
+
+/** How much nearer (m) a chair's dismount spot is to its own seat than to a neighbouring chair's (`chairStand`). */
+const STAND_NEIGHBOUR_MARGIN = 0.25;
+/** How far short of its target a tap walk may stop (m; clickMove's ARRIVE_DIST and a little). */
+const STAND_SHORT = 0.35;
+/** How far ahead of its seat point (m) a chair at a table is still offered (`Seat.aheadMax`): its own side, not across the table. */
+const CHAIR_AHEAD_MAX = 0.6;
+/** How much farther (m) a chair at a desk or table is reached (`Seat.reachBonus`). */
+const CHAIR_REACH_BONUS = 0.35;
+
+/** A village seat, plus the furniture, the area, the kind and the lean it belongs to. */
 export interface VillageSeat extends Seat {
+  /** The seat's name: `<furniture>` or `<furniture>:<facing>`; unique across the whole list. */
+  id: string;
+  /** The furniture (bench, sofa, chair...) it is on. */
   bench: string;
   area: AreaId;
+  kind: SeatKind;
+  /** How far the sitter leans back into the backrest (rad); 0 where there is none. */
+  lean: number;
+}
+
+/** Wrap an angle into (-pi, pi]. */
+function wrapYaw(a: number): number {
+  let r = a;
+  while (r > Math.PI) r -= 2 * Math.PI;
+  while (r <= -Math.PI) r += 2 * Math.PI;
+  // a marker's pi is stored to 6 decimals (3.141593, a hair past pi): it is still "facing north", not a turn from -pi
+  if (Math.abs(Math.abs(r) - Math.PI) < 1e-5) return Math.PI;
+  return Math.round(r * 1e6) / 1e6;
+}
+
+/**
+ * The seats of one marker of the hall model: one facing, or for a backless seat sat from either side the front and the
+ * back facing (one exclusive group). The root is where the avatar's origin goes (see the header): ahead of the front edge for
+ * a backless seat, in front of the backrest's face for a backed one.
+ */
+function markerSeats(m: SeatMarker): VillageSeat[] {
+  const out: VillageSeat[] = [];
+  const turns = m.kind === "backless" && m.both ? [0, Math.PI] : [0];
+  for (const turn of turns) {
+    const yaw = wrapYaw(m.yaw + turn);
+    // `ahead` from the marker along the facing to the root; `frontEdge` from the root back to the seat's front edge
+    const ahead = m.kind === "backless" ? m.edge + SIT_ROOT_AHEAD : BACKED_ROOT_AHEAD - m.back;
+    const frontEdge = m.kind === "backless" ? SIT_ROOT_AHEAD : Math.max(0.05, ahead - m.edge);
+    const p = offset(m.x, m.z, yaw, 0, ahead);
+    const root = { x: Math.round(p.x * 1000) / 1000, z: Math.round(p.z * 1000) / 1000 };
+    const id = turns.length > 1 ? `${m.id}:${turn === 0 ? "front" : "back"}` : m.id;
+    const stand = dismountAhead(root, yaw + m.exitTurn, VILLAGE_LAYOUT.areas.hall, id);
+    const seat: VillageSeat = {
+      id,
+      x: root.x,
+      z: root.z,
+      yaw,
+      standX: stand.x,
+      standZ: stand.z,
+      seatY: m.y,
+      frontEdge,
+      bench: m.id,
+      area: "hall",
+      kind: m.kind,
+      lean: m.kind === "backed" ? m.lean : 0,
+      group: m.group,
+      // a chair at a table has the table in front of it: it is also sat on from its sides, up to the backrest's face (never
+      // through the backrest); a sofa or an armchair from the front only
+      sidePlane: m.furn === "chair" ? Math.round((ahead + m.back) * 1000) / 1000 : undefined,
+      sideHalf: m.furn === "chair" ? Math.round((m.width / 2) * 1000) / 1000 : undefined,
+      // its seat point is under the desk / table (BACKED_ROOT_AHEAD in front of the backrest): reached that much farther
+      reachBonus: m.furn === "chair" ? CHAIR_REACH_BONUS : undefined,
+      // the table in front: farther ahead than this is across it (the chair opposite's front), never this chair's
+      aheadMax: m.furn === "chair" ? CHAIR_AHEAD_MAX : undefined,
+    };
+    // the roots of the chairs of the same kind next to this one
+    const neighbours = MEMORIAL_SEAT_MARKERS.filter((o) => o.id !== m.id && o.furn === m.furn && Math.hypot(o.x - m.x, o.z - m.z) < 2.5).map((o) =>
+      offset(o.x, o.z, o.yaw, 0, o.kind === "backless" ? o.edge + SIT_ROOT_AHEAD : BACKED_ROOT_AHEAD - o.back),
+    );
+    if (m.furn === "chair" && neighbours.length > 0 && seat.sideHalf !== undefined) {
+      // beside it, behind the backrest's plane, only up to half the way to the next chair along the row (round 8 review)
+      const sin = Math.sin(yaw);
+      const cos = Math.cos(yaw);
+      let half = Infinity;
+      for (const n of neighbours) {
+        const ahead = (n.x - root.x) * sin + (n.z - root.z) * cos;
+        if (Math.abs(ahead) > 0.5) continue; // across the table: not along the row
+        half = Math.min(half, Math.abs((n.x - root.x) * cos - (n.z - root.z) * sin) / 2);
+      }
+      if (half < Infinity) seat.sideFar = Math.round(Math.min(CHAIR_SIDE_FAR, Math.max(CHAIR_SIDE_CLEAR + 0.1, half - seat.sideHalf + 0.1)) * 1000) / 1000;
+    }
+    if (m.furn === "chair" && neighbours.length > 0) {
+      const side = chairStand(seat, neighbours, VILLAGE_LAYOUT.areas.hall);
+      if (side) {
+        seat.standX = side.x;
+        seat.standZ = side.z;
+      }
+    }
+    out.push(seat);
+  }
+  return out;
 }
 
 /**
@@ -239,8 +386,8 @@ function besideChair(m: VillageSeatMarker, bounds: Bounds): Point2 {
   throw new Error(`seat ${m.id}: no clear get-up spot beside the chair`);
 }
 
-/** The marked seats (`VILLAGE_SEAT_MARKERS`) as village seats, in marker order. */
-function markerSeats(markers: readonly VillageSeatMarker[]): VillageSeat[] {
+/** The art's marked village seats (`VILLAGE_SEAT_MARKERS`) as village seats, in marker order: every one has a backrest. */
+function villageMarkerSeats(markers: readonly VillageSeatMarker[]): VillageSeat[] {
   const bounds = VILLAGE_LAYOUT.areas.village;
   const seats: VillageSeat[] = [];
   for (const m of markers) {
@@ -253,6 +400,7 @@ function markerSeats(markers: readonly VillageSeatMarker[]): VillageSeat[] {
         if (m.standX === undefined || m.standZ === undefined) throw new Error(`seat ${m.id}: a side-approached chair needs standX/standZ`);
         const stand = besideChair(m, bounds);
         seats.push({
+          id: m.places > 1 ? `${m.id}:${along}` : m.id,
           x: root.x,
           z: root.z,
           yaw,
@@ -269,11 +417,60 @@ function markerSeats(markers: readonly VillageSeatMarker[]): VillageSeat[] {
           },
           bench: m.id,
           area: "village",
+          kind: "backed",
+          lean: 0,
         });
       } else {
         const stand = dismountAhead(root, yaw, bounds, `${m.id}:${along}`);
-        seats.push({ x: root.x, z: root.z, yaw, standX: stand.x, standZ: stand.z, seatY: m.seatTop, frontEdge: SIT_ROOT_AHEAD, bench: m.id, area: "village" });
+        seats.push({
+          id: m.places > 1 ? `${m.id}:${along}` : m.id,
+          x: root.x,
+          z: root.z,
+          yaw,
+          standX: stand.x,
+          standZ: stand.z,
+          seatY: m.seatTop,
+          frontEdge: SIT_ROOT_AHEAD,
+          bench: m.id,
+          area: "village",
+          kind: "backed",
+          lean: 0,
+        });
       }
+    }
+  }
+  return seats;
+}
+
+/** A bench's seats: two places (or one per `seatOffsets` cell), a backless bench's with two facings each. */
+function benchSeats(b: VillageBench): VillageSeat[] {
+  const seats: VillageSeat[] = [];
+  const bounds = b.area === "village" ? VILLAGE_LAYOUT.areas.village : VILLAGE_LAYOUT.areas.hall;
+  const turns = b.kind === "backless" ? [0, Math.PI] : [0];
+  for (const along of b.seatOffsets ?? benchSeatOffsets(b.length)) {
+    for (const turn of turns) {
+      const yaw = wrapYaw(b.yaw + turn);
+      // `offset`'s "along" turns with the yaw: the back facing (yaw + pi) takes -along so both facings of one place stay at the
+      // SAME spot on the bench (review 2026-11-14: the back seat of -0.6 landed at +0.6 and its group paired the wrong seats)
+      const p = offset(b.centre.x, b.centre.z, yaw, turn === 0 ? along : -along, b.frontEdge + SIT_ROOT_AHEAD);
+      const root = { x: Math.round(p.x * 1000) / 1000, z: Math.round(p.z * 1000) / 1000 };
+      const place = `${b.id}:${along}`;
+      const stand = dismountAhead(root, yaw, bounds, place);
+      seats.push({
+        id: turns.length > 1 ? `${place}:${turn === 0 ? "front" : "back"}` : place,
+        x: root.x,
+        z: root.z,
+        yaw,
+        standX: stand.x,
+        standZ: stand.z,
+        seatY: b.seatTop,
+        frontEdge: SIT_ROOT_AHEAD,
+        bench: b.id,
+        area: b.area,
+        kind: b.kind,
+        lean: 0,
+        group: turns.length > 1 ? place : undefined,
+      });
     }
   }
   return seats;
@@ -281,41 +478,45 @@ function markerSeats(markers: readonly VillageSeatMarker[]): VillageSeat[] {
 
 function makeSeats(benches: readonly VillageBench[]): VillageSeat[] {
   const seats: VillageSeat[] = [];
-  for (const b of benches) {
-    const bounds = b.area === "village" ? VILLAGE_LAYOUT.areas.village : VILLAGE_LAYOUT.areas.hall;
-    for (const along of b.seatOffsets ?? benchSeatOffsets(b.length)) {
-      const p = offset(b.centre.x, b.centre.z, b.yaw, along, b.frontEdge + SIT_ROOT_AHEAD);
-      const root = { x: Math.round(p.x * 1000) / 1000, z: Math.round(p.z * 1000) / 1000 };
-      const stand = dismountAhead(root, b.yaw, bounds, `${b.id}:${along}`);
-      seats.push({
-        x: root.x,
-        z: root.z,
-        yaw: b.yaw,
-        standX: stand.x,
-        standZ: stand.z,
-        seatY: b.seatTop,
-        frontEdge: SIT_ROOT_AHEAD,
-        bench: b.id,
-        area: b.area,
-      });
-    }
-  }
+  // the open village's benches first (0..19), the shelter's held back so the hall's indices (20..50) and the houses' stay put
+  for (const b of benches) if (b !== SHELTER_BENCH) seats.push(...benchSeats(b));
+  for (const m of MEMORIAL_SEAT_MARKERS) seats.push(...markerSeats(m));
   for (const layout of Object.values(HOUSE_INTERIOR_LAYOUTS)) {
     const bounds = VILLAGE_LAYOUT.areas.hall;
     for (const s of layout.seats) {
       const root = { x: Math.round((300 + s.x) * 1000) / 1000, z: Math.round(s.z * 1000) / 1000 };
       const stand = dismountAhead(root, s.yaw, bounds, s.id, houseInteriorGeometry);
-      seats.push({ x: root.x, z: root.z, yaw: s.yaw, standX: stand.x, standZ: stand.z, seatY: s.seatY, frontEdge: SIT_ROOT_AHEAD, bench: s.id, area: houseArea(layout.buildingId) });
+      seats.push({
+        id: `${layout.buildingId}:${s.id}`,
+        x: root.x,
+        z: root.z,
+        yaw: s.yaw,
+        standX: stand.x,
+        standZ: stand.z,
+        seatY: s.seatY,
+        frontEdge: SIT_ROOT_AHEAD,
+        bench: s.id,
+        area: houseArea(layout.buildingId),
+        kind: "backless",
+        lean: 0,
+      });
     }
   }
-  // the art's marked seats last, so the benches' and the houses' indices stay as they were (review 2026-11-15)
-  seats.push(...markerSeats(VILLAGE_SEAT_MARKERS));
+  // main's later seats last, so the benches', the hall's and the houses' indices stay as they were (review 2026-11-15): the bus
+  // stop shelter's bench, then the art's marked seats (café terrace chairs, porch benches)
+  if (benches.includes(SHELTER_BENCH)) seats.push(...benchSeats(SHELTER_BENCH));
+  seats.push(...villageMarkerSeats(VILLAGE_SEAT_MARKERS));
   return seats;
 }
 
 /**
- * The village's seats: two per bench in `VILLAGE_BENCHES` order, the house interiors' seats, then the art's marked
- * seats (café terrace chairs, porch benches). Index === `Player.seatIndex` in the village room;
- * the server validates and assigns by this index, the client looks the seat up by it (activeMap's `seats`).
+ * The village's seats, ONE global list for every area, in this order (so every index another branch or a saved test pins stays put):
+ *  - two places per bench of the open village in `VILLAGE_BENCHES` order, the bus shelter's excepted (a backless one with two
+ *    facings): plaza 1..8 and the forecourt, 0..19;
+ *  - the memorial hall's, from its model's markers: 20..50;
+ *  - the houses' interiors: 51..90;
+ *  - the bus stop shelter's bench (2), then the art's marked village seats (café terrace chairs, porch benches).
+ * Index === `Player.seatIndex` in the village room: the server validates and assigns by this index, the client looks the seat up
+ * by it (activeMap's `seats`) and offers only the seats of the area the player is in (`VillageSeat.area`).
  */
 export const VILLAGE_SEATS: readonly VillageSeat[] = Object.freeze(makeSeats(VILLAGE_BENCHES).map((s) => Object.freeze(s)));

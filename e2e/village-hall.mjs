@@ -130,12 +130,12 @@ try {
     run.check("B is in the hall", (await areaOf(B)) === "hall");
     const hall = await A.page.evaluate(() => window.__cvHall());
     summary.hall = hall;
-    run.check("the hall's props are instanced: few draw calls for ~1,000 props", hall.meshes < 60 && Object.keys(hall.props).length <= 13, {
+    run.check("the hall's props are instanced: few draw calls", hall.meshes < 60 && Object.keys(hall.props).length <= 13, {
       meshes: hall.meshes,
       instanced: hall.instanced,
       props: hall.props,
     });
-    run.check("160 sample cubbies (60 % of 266)", hall.samples === 160, hall.samples);
+    run.check("exactly one example cubby (견본) of the 368", hall.samples === 1, hall.samples);
     const orbit = await A.page.evaluate(() => window.__cv.getOrbit());
     run.check("the pitch came through the door unchanged (still the first-visit 0.35)", Math.abs(orbit.pitch - 0.35) < 0.02, orbit);
   });
@@ -149,14 +149,13 @@ try {
     await shoot(A, "hall-wide");
   });
 
-  // A filled cubby whose card opens at eye level (row 3, else 2), on the back wall east of the bench and the memorial
-  // table or on the east wall; the visitor stands 0.85 m in front of it.
+  // The one filled cubby (견본: bank A, row 3 = eye level, column 11); the visitor stands 0.85 m in front of it.
   const pick = await A.page.evaluate(async () => {
     const s = await window.__imp("/src/village/sampleCubbies.ts");
     const t = await window.__imp("/src/village/villageTargets.ts");
     const c = await window.__imp("/src/village/cubbyCard.ts");
-    const cols = t.cubbyColumns().filter((col) => (col.wall === "n" && col.x > 300.6 && col.x < 303.2) || (col.wall === "e" && col.z > -4.4 && col.z < 1.2));
-    for (const want of [3, 2, 4]) {
+    const cols = t.cubbyColumns().filter((col) => col.key === "A_11");
+    for (const want of [3]) {
       for (const column of cols) {
         const row = c.defaultRow(column.key);
         const a = column.rows[row];
@@ -172,8 +171,8 @@ try {
 
   await run.step("approach a filled cubby: 가까이 보기 is offered", async () => {
     run.check("found a filled cubby to visit", pick !== null, pick);
-    await walkAndWait(A, 302.6, 0.5, 15000, 0.5);
-    await walkAndWait(A, 302.6, -3.6, 15000, 0.5); // round the bench on its east side
+    await walkAndWait(A, 299.9, -1.5, 15000, 0.5); // up the aisle between the benches
+    await walkAndWait(A, 299.9, -3.9, 15000, 0.5);
     // Square in front of the column (columns are 0.425 m apart): line up 1.6 m out, then walk straight in. A click-move
     // stops about 0.35 m short of its goal, so the goal is 0.5 m out and the visitor ends about 0.85 m from the cubby.
     const fx = (pick.standX - pick.x) / 0.85;
@@ -210,7 +209,10 @@ try {
     run.check("the card is the eye-level cubby of that column", card.id === pick.id, card.id);
     run.check("name, years and line are the sample's", card.name === pick.sample.name && card.years === `${pick.sample.born} – ${pick.sample.passed}` && card.line === pick.sample.line, card);
     run.check("the portrait is a tile of the atlas", /sample-photos\/atlas\.webp/.test(card.photo), card.photo);
-    run.check("the button says 촛불 켜기", card.button === "촛불 켜기", card.button);
+    // the server keeps a candle lit for an hour: a rerun on the same server within it finds the sample's candle still lit
+    // (round 8 review: the step failed on a rerun) — then the lit card is checked and the lighting step only watches it burn
+    summary.candleAlreadyLit = card.button === "촛불이 켜져 있어요";
+    run.check("the button says 촛불 켜기 (or, lit by an earlier run within the hour, 촛불이 켜져 있어요)", card.button === "촛불 켜기" || summary.candleAlreadyLit, card.button);
     run.check("no '!' on the card", !card.text.includes("!"), card.text);
     await run.shot(A, "hall-card.png");
   });
@@ -242,11 +244,11 @@ try {
       window.__candleHeard = [];
       window.__imp("/src/village/hallCandles.ts").then((m) => m.subscribeCandles(() => window.__candleHeard.push([...m.burningCandles().keys()])));
     });
-    await A.page.getByRole("button", { name: "촛불 켜기", exact: true }).click();
+    if (!summary.candleAlreadyLit) await A.page.getByRole("button", { name: "촛불 켜기", exact: true }).click();
     const gotB = await B.page
       .waitForFunction((id) => (window.__cvHall?.().candles ?? []).includes(id), pick.id, { timeout: 5000 })
       .then(() => true, () => false);
-    run.check("B (in the hall) heard CandleLit for that cubby", gotB, await B.page.evaluate(() => window.__candleHeard));
+    run.check(summary.candleAlreadyLit ? "B (in the hall) sees the candle an earlier run lit" : "B (in the hall) heard CandleLit for that cubby", gotB, await B.page.evaluate(() => window.__candleHeard));
     const gotA = await A.page
       .waitForFunction((id) => (window.__cvHall?.().candles ?? []).includes(id), pick.id, { timeout: 5000 })
       .then(() => true, () => false);
@@ -281,22 +283,32 @@ try {
     await run.shot(B, "hall-candle-seen-by-B.png");
   });
 
-  await run.step("the corner: a wall right behind the player keeps the camera up (no head filling the screen)", async () => {
-    await walkAndWait(A, 302.6, 0.5, 15000, 0.5);
-    await walkAndWait(A, 296.9, 5.55, 15000, 0.4);
-    await turnCameraTo(A, 296, -5); // the camera behind, toward the south wall at 0.4 m
+  await run.step("the north-west corner: bank A right behind the player keeps the camera up (no head filling the screen)", async () => {
+    // the step starts in third person (the candle step above toggles first person on and off; a toggle can be missed there)
+    for (let k = 0; k < 2; k++) {
+      const mode = await A.page.evaluate(async () => (await window.__imp("/src/game/viewState.ts")).viewState.mode);
+      if (mode === "tp") break;
+      await A.page.keyboard.press("KeyV");
+      await sleep(1300);
+    }
+    await walkAndWait(A, 299.9, -0.5, 15000, 0.5);
+    await walkAndWait(A, 299.9, -3.9, 15000, 0.5);
+    await walkAndWait(A, 293.4, -4.9, 15000, 0.4); // the north-west corner: bank A is 0.7 m behind the player
+    await turnCameraTo(A, 297, 5); // the camera behind, toward bank A
     await setOrbit(A, 3.6, 0.35);
     await sleep(1500);
-    const cam = await A.page.evaluate(() => {
+    const cam = await A.page.evaluate(async () => {
       const { camera } = window.__cvThree();
+      const { viewState } = await window.__imp("/src/game/viewState.ts");
       const p = window.__cv.getPos();
       const head = camera.position.clone().set(p.x, 1.45, p.z).project(camera);
-      return { y: camera.position.y, x: camera.position.x, z: camera.position.z, headNdcY: head.y, arm: Math.hypot(camera.position.x - p.x, camera.position.z - p.z) };
+      return { mode: viewState.mode, blend: viewState.blend, orbit: window.__cv.getOrbit(), y: camera.position.y, x: camera.position.x, z: camera.position.z, headNdcY: head.y, headNdcX: head.x, arm: Math.hypot(camera.position.x - p.x, camera.position.z - p.z) };
     });
     summary.corner = cam;
-    run.check("in the corner the arm is short (the wall is right behind)", cam.arm < 1.2, cam);
-    run.check("the camera keeps its height (> 2.3 m) under the ceiling (<= 3.0 m)", cam.y > 2.3 && cam.y <= 3.0001, cam);
-    run.check("the head sits low in the frame (NDC y < -0.4), not in the middle of it", cam.headNdcY < -0.4, cam);
+    // round 7: the wall behind turns the camera into the over-the-shoulder view, well to the side (cameraShoulder.ts)
+    run.check("in the corner the camera stands off to the side, not squeezed over the head (1.5 m+ across the floor)", cam.arm > 1.5, cam);
+    run.check("the camera stays above the head and under the ceiling (2.3..3.0 m)", cam.y > 2.3 && cam.y <= 3.0001, cam);
+    run.check("the head sits low and to one side of the frame (NDC y < -0.3, |x| > 0.2), not in the middle of it", cam.headNdcY < -0.3 && Math.abs(cam.headNdcX) > 0.2, cam);
     await run.shot(A, "hall-corner.png");
   });
 

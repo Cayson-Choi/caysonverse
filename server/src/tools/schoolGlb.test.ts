@@ -530,7 +530,7 @@ describe("checkSchoolGlb", () => {
 
   it("pins the budgets from the plan", () => {
     expect(BUDGETS.village).toEqual({ maxBytes: 8 * 1024 * 1024, maxTriangles: 260_000 });
-    expect(BUDGETS.memorial).toEqual({ maxBytes: 1.5 * 1024 * 1024, maxTriangles: 60_000 }); // Task 9: actual 0.33 MB, 17k
+    expect(BUDGETS.memorial).toEqual({ maxBytes: 1.5 * 1024 * 1024, maxTriangles: 60_000 }); // Task 9; the 2026-11-13 rebuild is 0.58 MB, 40k
     expect(BOX_TOLERANCE).toBeCloseTo(0.011, 6);
     expect(MAX_MATERIALS).toBe(24);
     // one more for the village: the fountain's live-lit crescent (M_moon)
@@ -848,18 +848,21 @@ describe("checkSchoolGlb: anchors with height and facing, clear discs, the ceili
 });
 
 describe("schoolSpec", () => {
-  it("memorial: an anchor per cubby (2 cm, facing), the hall walls and both cubby units as camera boxes, clear door pad and arrival, the ceiling", () => {
+  it("memorial: an anchor per cubby (2 cm, facing), the hall walls, the three banks and the niche as camera boxes, clear door pad and arrival, the ceiling", () => {
     const spec = schoolSpec("memorial");
     const anchors = cubbyAnchors(VILLAGE_LAYOUT);
     const inn = VILLAGE_LAYOUT.memorial.interior;
     expect(spec.kind).toBe("memorial");
-    expect(anchors).toHaveLength(364);
+    expect(anchors).toHaveLength(368);
     for (const a of anchors) expect(spec.requiredNodes).toContain(cubbyAnchorNode(a.id));
-    expect(spec.placements).toHaveLength(364);
-    expect(spec.placements[0]).toEqual({ node: "anchor__cubby_n_0_0", x: anchors[0]!.x, y: anchors[0]!.y, z: anchors[0]!.z, yaw: 0, tolerance: CUBBY_ANCHOR_TOLERANCE });
+    expect(spec.placements).toHaveLength(368);
+    expect(spec.placements[0]).toEqual({ node: "anchor__cubby_M1-A-r0-c00", x: anchors[0]!.x, y: anchors[0]!.y, z: anchors[0]!.z, yaw: 0, tolerance: CUBBY_ANCHOR_TOLERANCE });
     expect(CUBBY_ANCHOR_TOLERANCE).toBe(0.02);
     expect(spec.requiredBoxes!.slice(0, 4)).toEqual(HALL_WALL_IDS.map((id, i) => ({ node: `col__${id}`, box: hallWalls(VILLAGE_LAYOUT)[i], camera: true })));
-    expect(spec.requiredBoxes!.find((b) => b.node === "col__cubby_n")!.box).toEqual({ minX: 292.5, maxX: 307.5, minZ: -6, maxZ: -5.61 });
+    expect(spec.requiredBoxes!.find((b) => b.node === "col__cubby_a")!.box).toEqual({ minX: 292.5, maxX: 298.61, minZ: -6, maxZ: -5.61 });
+    expect(spec.requiredBoxes!.find((b) => b.node === "col__cubby_b")!.box).toEqual({ minX: 301.135, maxX: 307.5, minZ: -6, maxZ: -5.61 });
+    expect(spec.requiredBoxes!.find((b) => b.node === "col__niche")!.box).toEqual({ minX: 298.61, maxX: 301.135, minZ: -6, maxZ: -5.33 });
+    expect(spec.requiredNodes).toEqual(expect.arrayContaining(["door__leaf_l", "door__leaf_r"]));
     expect(spec.requiredBoxes!.find((b) => b.node === "col__cubby_e")!.box).toEqual({ minX: 307.11, maxX: 307.5, minZ: -5.61, maxZ: 2.065 });
     expect(spec.requiredBoxes!.every((b) => b.camera)).toBe(true);
     expect(spec.requiredMaterials).toEqual([...MEMORIAL_NON_LIGHTMAPPED]);
@@ -955,7 +958,7 @@ describe("CLIs", () => {
       cubeNode(b.node, [(b.box.minX + b.box.maxX) / 2, 1.75, (b.box.minZ + b.box.maxZ) / 2], [b.box.maxX - b.box.minX, 3.5, b.box.maxZ - b.box.minZ]),
     );
     for (const p of spec.placements) nodes.push({ name: p.node, translation: [p.x, p.y!, p.z], rotation: [0, Math.sin(p.yaw! / 2), 0, Math.cos(p.yaw! / 2)] });
-    nodes.push({ name: "ceil__hall", translation: [300, 4.55, 0], scale: [15, 0.1, 12] }, { name: "hall_lm", mesh: 1 });
+    nodes.push({ name: "ceil__hall", translation: [300, 4.55, 0], scale: [15, 0.1, 12] }, { name: "hall_lm", mesh: 1 }, { name: "door__leaf_l" }, { name: "door__leaf_r" });
     const g = baseGltf(nodes);
     g.materials = [
       { name: "LM_floor", extensions: { KHR_materials_unlit: {} } },
@@ -970,13 +973,13 @@ describe("CLIs", () => {
     const ok = runTs("check-school-glb.ts", file, "memorial");
     expect(ok.stdout + ok.stderr).toContain("PASS");
     expect(ok.status).toBe(0);
-    expect(ok.stdout).toMatch(/OK\s+앵커 위치: 364개/);
-    const k = nodes.findIndex((n) => n.name === "anchor__cubby_e_3_7");
+    expect(ok.stdout).toMatch(/OK\s+앵커 위치: 368개/);
+    const k = nodes.findIndex((n) => n.name === "anchor__cubby_M1-E-r3-c07");
     nodes[k]!.translation = [nodes[k]!.translation![0]! - 0.05, nodes[k]!.translation![1]!, nodes[k]!.translation![2]!];
     fs.writeFileSync(file, makeGlb(g));
     const bad = runTs("check-school-glb.ts", file, "memorial");
     expect(bad.status).toBe(1);
-    expect(bad.stdout).toMatch(/FAIL\s+앵커 위치: .*anchor__cubby_e_3_7/);
+    expect(bad.stdout).toMatch(/FAIL\s+앵커 위치: .*anchor__cubby_M1-E-r3-c07/);
   });
 
   it("check-school-glb: an empty glTF fails the village checks with exit 1", () => {

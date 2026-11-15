@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { pickInteraction } from "../game/interact";
+import { interactInputAt, pickInteraction } from "../game/interact";
+import { HALL_ACTIVE_MAP } from "../game/activeMap";
 import { readFileSync } from "node:fs";
 import { VILLAGE_LAYOUT, type AreaId } from "@caysonverse/shared/village/villageLayout";
 import { CANDLE_REACH_M } from "@caysonverse/shared/village/messages";
@@ -10,6 +11,7 @@ import {
   CUBBY_SHORT,
   DOOR_LABEL,
   DOOR_OFFER_REACH_M,
+  DOOR_INSIDE_OFFER_HALF_WIDTH_M,
   DOOR_SHORT,
   MEMORIAL_DOOR_ID,
   cubbyColumn,
@@ -58,9 +60,28 @@ describe("villageTargets — the memorial hall's door", () => {
   it.each<[AreaId]>([["village"], ["hall"]])("%s: offered within the pad radius + the offer reach, not an inch past it", (area) => {
     const pad = doorPadFor(area);
     const edge = pad.radius + DOOR_OFFER_REACH_M;
-    expect(villageTargets(area, pad.centre.x + edge - 0.001, pad.centre.z)).toHaveLength(1);
-    expect(villageTargets(area, pad.centre.x + edge + 0.001, pad.centre.z)).toHaveLength(0);
-    expect(villageTargets(area, pad.centre.x, pad.centre.z - edge - 0.001)).toHaveLength(0);
+    // straight in front of the door (inside: north of it, into the room)
+    const into = area === "village" ? 1 : -1;
+    expect(villageTargets(area, pad.centre.x, pad.centre.z + into * (edge - 0.001))).toHaveLength(1);
+    expect(villageTargets(area, pad.centre.x, pad.centre.z + into * (edge + 0.001))).toHaveLength(0);
+    if (area === "village") {
+      expect(villageTargets(area, pad.centre.x + edge - 0.001, pad.centre.z)).toHaveLength(1);
+      expect(villageTargets(area, pad.centre.x + edge + 0.001, pad.centre.z)).toHaveLength(0);
+    }
+  });
+
+  it("inside, past the pad's edge the way out is offered only straight in front of the door (round 6: not at the lounge entrance)", () => {
+    const pad = doorPadFor("hall");
+    expect(villageTargets("hall", 298.8, 3.15)).toHaveLength(0); // the lounge entrance, 2.37 m from the pad's centre
+    expect(villageTargets("hall", pad.centre.x + DOOR_INSIDE_OFFER_HALF_WIDTH_M - 0.001, pad.centre.z - 2.2)).toHaveLength(1);
+    expect(villageTargets("hall", pad.centre.x + DOOR_INSIDE_OFFER_HALF_WIDTH_M + 0.001, pad.centre.z - 2.2)).toHaveLength(0);
+    // on the pad itself, anywhere
+    expect(villageTargets("hall", pad.centre.x + pad.radius - 0.01, pad.centre.z)).toHaveLength(1);
+    // the arrival spot
+    expect(villageTargets("hall", inside.spawn.x, inside.spawn.z)).toHaveLength(1);
+    // round 7: past the pad's edge only on the room's side of the door (as the server)
+    expect(villageTargets("hall", pad.centre.x, pad.centre.z + 2.0)).toHaveLength(0);
+    expect(villageTargets("hall", pad.centre.x, pad.centre.z - 2.0)).toHaveLength(1);
   });
 
   it("away from the door nothing is offered: the spawn, the plaza, a plot's sign, the middle of the hall", () => {
@@ -95,7 +116,7 @@ describe("villageTargets — the memorial hall's door", () => {
     const out = outside.arrival;
     const sp = inside.spawn;
     expect(villageTargets("village", out.x, out.z)).toHaveLength(1); // the way out lands 2.2 m from the front door's centre
-    expect(villageTargets("hall", sp.x, sp.z)).toHaveLength(1); // the way in lands 1.6 m from the way out's centre
+    expect(villageTargets("hall", sp.x, sp.z)).toHaveLength(1); // the way in lands 2.6 m from the way out's centre (round 5)
   });
 });
 
@@ -108,39 +129,39 @@ describe("villageAndHallTargets — the cubbies' close-up inside the hall (Task 
     return { x: c.x + Math.sin(a.yaw) * d, z: c.z + Math.cos(a.yaw) * d };
   };
 
-  it("52 columns (34 on the back wall, 18 on the east), each with its 7 rows bottom first", () => {
-    expect(cols).toHaveLength(52);
+  it("46 columns (A 14 and B 14 on the back wall, E 18 on the east), each with its 8 rows bottom first", () => {
+    expect(cols).toHaveLength(46);
     for (const c of cols) {
-      expect(c.rows.map((r) => r.row)).toEqual([0, 1, 2, 3, 4, 5, 6]);
+      expect(c.rows.map((r) => r.row)).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
       expect(cubbyColumn(`cubby:${c.key}`)).toBe(cubbyColumn(c.key));
     }
-    expect(cubbyColumn("n_99")).toBeNull();
+    expect(cubbyColumn("A_99")).toBeNull();
   });
 
   it("in front of a column: the close-up of that column, labelled 가까이 보기", () => {
-    const p = front("n_10", 0.7);
+    const p = front("A_10", 0.7);
     const t = villageAndHallTargets("hall", p.x, p.z);
     expect(t).toHaveLength(1);
-    expect(t[0]).toMatchObject({ kind: "object", id: "cubby:n_10", label: CUBBY_LABEL, short: CUBBY_SHORT });
+    expect(t[0]).toMatchObject({ kind: "object", id: "cubby:A_10", label: CUBBY_LABEL, short: CUBBY_SHORT });
     expect(t[0]!.dist).toBeCloseTo(0.7, 6);
     expect(CUBBY_LABEL).toBe("가까이 보기");
   });
 
   it("offered within 1.2 m, not past it; never outside the hall", () => {
     expect(CUBBY_REACH_M).toBe(1.2);
-    const near = front("e_4", CUBBY_REACH_M - 0.01);
-    const far = front("e_4", CUBBY_REACH_M + 0.01);
+    const near = front("E_4", CUBBY_REACH_M - 0.01);
+    const far = front("E_4", CUBBY_REACH_M + 0.01);
     expect(villageAndHallTargets("hall", near.x, near.z)).toHaveLength(1);
     expect(villageAndHallTargets("hall", far.x, far.z)).toHaveLength(0);
     expect(villageAndHallTargets("village", near.x, near.z)).toHaveLength(0);
   });
 
   it("the nearest column wins (columns are 0.425 m apart)", () => {
-    const a = cubbyColumn("n_10")!;
-    const b = cubbyColumn("n_11")!;
+    const a = cubbyColumn("A_10")!;
+    const b = cubbyColumn("A_11")!;
     const mid = (a.x + b.x) / 2;
-    expect(nearestCubbyColumn(mid - 0.05, a.z + 0.6)!.column.key).toBe("n_10");
-    expect(nearestCubbyColumn(mid + 0.05, a.z + 0.6)!.column.key).toBe("n_11");
+    expect(nearestCubbyColumn(mid - 0.05, a.z + 0.6)!.column.key).toBe("A_10");
+    expect(nearestCubbyColumn(mid + 0.05, a.z + 0.6)!.column.key).toBe("A_11");
   });
 
   it("the door still comes alone at the way out (no column near it), and the spawn and the room's middle offer no cubby", () => {
@@ -188,7 +209,7 @@ describe("the hall desk and the way out (Task 9A)", () => {
     expect(atDesk).toMatchObject({ kind: "target", target: { id: "guide:hall_desk" } });
     const atDoor = pick(300.6, 4.6); // 0.85 m from the pad, out of the desk's reach
     expect(atDoor).toMatchObject({ kind: "target", target: { id: MEMORIAL_DOOR_ID } });
-    const between = pick(301.8, 5.2); // inside the door offer radius and outside the desk reach
+    const between = pick(301.2, 5.2); // on the door pad and outside the desk reach
     expect(between).toMatchObject({ kind: "target", target: { id: MEMORIAL_DOOR_ID } });
   });
 
@@ -238,7 +259,7 @@ describe("villageBusTarget — the board button under the shelter (review r2)", 
 
   it("always yields to a seat in reach (the café's north-west chairs, the shelter's bench), boarding or not (owner 2026-11-15)", async () => {
     const { villageBusTarget } = await import("./villageTargets");
-    expect(villageBusTarget("village", 41.88, -10.7, false)?.yieldsToSeat).toBe(true); // chair 66, 0.23 m off the area
+    expect(villageBusTarget("village", 41.88, -10.7, false)?.yieldsToSeat).toBe(true); // chair 97 (cafe_terrace_5), 0.23 m off the area
     const s = VILLAGE_LAYOUT.busStop.shelter;
     expect(villageBusTarget("village", s.centre.x, s.centre.z, false)?.yieldsToSeat).toBe(true);
     expect(villageBusTarget("village", s.centre.x, s.centre.z, false, false, 300_000)?.yieldsToSeat).toBe(true);
@@ -311,3 +332,28 @@ describe("villageBusTarget — the board button gives the shelter's bench the ke
   });
 });
 
+describe("the hall desk and its visitor chairs (review 2026-11-15: '문의하기' at the chair's side)", () => {
+  const pick = (x: number, z: number) => {
+    const input = interactInputAt(x, z, -1, () => false, undefined, { seats: HALL_ACTIVE_MAP.seats ?? [], area: "hall" });
+    return pickInteraction({ ...input, targets: villageAndHallTargets("hall", x, z) });
+  };
+  it("standing at the side of consult chair 0 offers 앉기; well away from both chairs the desk is asked", () => {
+    expect(pick(304.15, 2.5)).toMatchObject({ kind: "sit" });
+    expect(pick(304.48, 2.82)).toMatchObject({ kind: "sit" });
+    expect(pick(303.0, 4.0)).toMatchObject({ kind: "target", target: { id: "guide:hall_desk" } });
+  });
+  it("from the gap between the two chairs, where a tap-walk stops (x 303.83), each chair is offered: the nearer one", () => {
+    const seats = (HALL_ACTIVE_MAP.seats ?? []) as readonly { id?: string }[];
+    const idAt = (x: number, z: number) => {
+      const p = pick(x, z);
+      return p?.kind === "sit" ? seats[p.seatIndex]!.id : p?.kind === "target" ? p.target.id : null;
+    };
+    expect(idAt(303.83, 4.0)).toBe("consult_0");
+    expect(idAt(303.83, 4.3)).toBe("consult_1");
+    expect(idAt(304.3, 4.12)).toMatch(/^consult_/);
+    // round 5: a step short of the second chair's own spot (303.54, 4.5) offers that chair (its seat point is under the desk)
+    expect(idAt(303.29, 4.27)).toBe("consult_1");
+    // the e2e's visitor spot a step back from the chairs still asks the desk
+    expect(idAt(303.0, 3.9)).toBe("guide:hall_desk");
+  });
+});

@@ -12,7 +12,16 @@ import { VILLAGE_LAYOUT } from "@caysonverse/shared/village/villageLayout";
  */
 
 /** How far past a door pad's edge a player may still use the door (m): a pad radius + this. */
-export const DOOR_REACH_M = 0.9;
+// 1.3 (round 5, 2026-11-15; was 0.9): the hall's spawn moved 1 m in from its door so the camera behind a new arrival has room
+// (the player sees their own avatar), and a new arrival can still turn straight back out from where they stand.
+export const DOOR_REACH_M = 1.3;
+
+/**
+ * Inside a building the way out is used only from in front of the door: at most this far (m) to either side of the door's
+ * centre line (round 6 review, 2026-11-15: with the 1.3 m reach the lounge entrance, 1.2 m to the side and 2.37 m from the
+ * pad, offered "밖으로 나가기" — an E press on the way to the sofas left the hall). The arrival spot (on the line) stays inside.
+ */
+export const DOOR_INSIDE_HALF_WIDTH_M = 0.8;
 
 /** Per-client door-use cap: at most `count` accepted uses per `windowMs`. */
 export const DOOR_RATE = { count: 1, windowMs: 1000 } as const;
@@ -62,6 +71,10 @@ export function useDoor(
   if (area !== "village" && area !== "hall" && !isHouseArea(area)) return null;
   if (!Number.isFinite(x) || !Number.isFinite(z)) return null;
   const pad = area === "village" ? layout.memorial.exterior.doorPad : layout.memorial.interior.doorPad;
-  if (Math.hypot(x - pad.centre.x, z - pad.centre.z) > pad.radius + DOOR_REACH_M) return null;
+  const d = Math.hypot(x - pad.centre.x, z - pad.centre.z);
+  if (d > pad.radius + DOOR_REACH_M) return null;
+  // past the pad's edge inside a building: only straight in front of the door, on the room's side of it (the door is in the
+  // south wall, the room to the north: −z) — round 7 review: the rule looked at the sideways offset alone
+  if (area !== "village" && d > pad.radius && (Math.abs(x - pad.centre.x) > DOOR_INSIDE_HALF_WIDTH_M || z > pad.centre.z)) return null;
   return arrivalAfter(area, layout);
 }

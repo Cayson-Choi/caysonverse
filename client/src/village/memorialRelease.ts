@@ -5,7 +5,8 @@ import type { GLTF } from "three-stdlib";
 import { DRACO_PATH } from "../game/hub/hubModelPrep";
 import { type CachedFile, releaseCachedFile } from "./loaderRelease";
 import { SAMPLE_PHOTO_ATLAS } from "./sampleCubbies";
-import { MEMORIAL_LIGHTMAP_URL, MEMORIAL_MODEL_URL, MEMORIAL_PROPS_URL, disposeLoadedScene } from "./memorialModelPrep";
+import { MEMORIAL_LIGHTMAP_URLS, MEMORIAL_MODEL_URL, MEMORIAL_PROPS_URL, disposeLoadedScene } from "./memorialModelPrep";
+import { disposeHallNight } from "./hallNight";
 import { freeTexture } from "./villageModelPrep";
 
 /**
@@ -30,31 +31,48 @@ let held = false;
 let requested = false;
 let timer: ReturnType<typeof setTimeout> | null = null;
 
-/** Every cached file of the hall. */
+/** The tier the hall was read for (its light map is the 2048 px one on "high", the 1024 px one on "low"). */
+let tier: "high" | "low" = "high";
+
+/** Every tier whose light map was read this visit (a graphics change in the hall reads another one; all of them are released). */
+const readTiers = new Set<"high" | "low">();
+
+/** MemorialHall says which light map it reads, so a release clears the same cache entries. */
+export function setMemorialTier(t: "high" | "low"): void {
+  tier = t;
+  readTiers.add(t);
+}
+
+const texturesOf = (t: "high" | "low"): string[] => [MEMORIAL_LIGHTMAP_URLS[t], SAMPLE_PHOTO_ATLAS.url];
+
+/** Every cached file of the hall (the textures follow the tier). */
 export const MEMORIAL_FILES = {
   gltf: [MEMORIAL_MODEL_URL, MEMORIAL_PROPS_URL],
-  textures: [MEMORIAL_LIGHTMAP_URL, SAMPLE_PHOTO_ATLAS.url],
-} as const;
-
-const textureList = [...MEMORIAL_FILES.textures];
-
-/** The hall's cache entries: the two models and the textures (one entry, read as a list). */
-export const MEMORIAL_CACHE: readonly CachedFile[] = [
-  ...MEMORIAL_FILES.gltf.map(
-    (url): CachedFile => ({
-      id: url,
-      read: () => useGLTF(url, DRACO_PATH),
-      clear: () => useGLTF.clear(url),
-      free: (g) => disposeLoadedScene((g as GLTF).scene),
-    }),
-  ),
-  {
-    id: textureList.join("|"),
-    read: () => readCache(TextureLoader, textureList),
-    clear: () => readCache.clear(TextureLoader, textureList),
-    free: (ts) => (ts as Texture[]).forEach(freeTexture),
+  get textures(): readonly [string, string] {
+    return [MEMORIAL_LIGHTMAP_URLS[tier], SAMPLE_PHOTO_ATLAS.url];
   },
-];
+};
+
+const textureEntry = (t: "high" | "low"): CachedFile => ({
+  id: texturesOf(t).join("|"),
+  read: () => readCache(TextureLoader, texturesOf(t)),
+  clear: () => readCache.clear(TextureLoader, texturesOf(t)),
+  free: (ts) => (ts as Texture[]).forEach(freeTexture),
+});
+
+const gltfEntries: readonly CachedFile[] = MEMORIAL_FILES.gltf.map(
+  (url): CachedFile => ({
+    id: url,
+    read: () => useGLTF(url, DRACO_PATH),
+    clear: () => useGLTF.clear(url),
+    free: (g) => disposeLoadedScene((g as GLTF).scene),
+  }),
+);
+
+/** The hall's cache entries: the two models and the textures of every tier read (one entry per tier, read as a list). */
+export function memorialCache(): CachedFile[] {
+  return [...gltfEntries, ...[...new Set([...readTiers, tier])].map(textureEntry)];
+}
 
 /** The hall is being read (MemorialHall renders): a release must free what it reads, even mid-load. */
 export function noteMemorialRequested(): void {
@@ -63,7 +81,7 @@ export function noteMemorialRequested(): void {
 
 /** Forget the hall's models and textures in the loaders' caches (safe to call more than once; frees nothing). */
 export function clearMemorialCaches(): void {
-  for (const f of MEMORIAL_CACHE) f.clear();
+  for (const f of memorialCache()) f.clear();
 }
 
 function cancel(): void {
@@ -74,9 +92,12 @@ function cancel(): void {
 
 function releaseNow(): void {
   held = false;
+  disposeHallNight();
   if (!requested) return;
   requested = false;
-  for (const f of MEMORIAL_CACHE) releaseCachedFile(f, () => held);
+  const files = memorialCache();
+  readTiers.clear();
+  for (const f of files) releaseCachedFile(f, () => held);
 }
 
 /**

@@ -2,7 +2,8 @@ import { describe, it, expect } from "vitest";
 import { BoxGeometry, Group, Mesh, MeshBasicMaterial } from "three";
 import type { BuiltAvatar } from "./characterAvatar";
 import { SELF_FADE_OPACITY, SELF_FADE_RENDER_ORDER } from "./clickRing";
-import { createSelfFade, endSelfFade, registerSelfBody, selfBody, stepSelfFade } from "./selfBody";
+import { createSelfFade, endSelfFade, indoorCloseHidden, registerSelfBody, selfBody, stepSelfFade } from "./selfBody";
+import { INDOOR_SELF_HIDE_DISTANCE, INDOOR_SELF_SHOW_DISTANCE } from "./constants";
 
 /** An avatar of one mesh whose material is as assembled (its authored state in `userData.base`, characterAvatar.ts). */
 function fakeAvatar() {
@@ -90,5 +91,23 @@ describe("selfBody — the own body fades while it hides the destination ring (r
     offB();
     expect(selfBody.object).toBeNull();
     expect(selfBody.height).toBe(0);
+  });
+});
+
+describe("indoorCloseHidden — the own body indoors with the camera at the head (review 2026-11-15: no see-through disc)", () => {
+  const H = INDOOR_SELF_HIDE_DISTANCE;
+  const S = INDOOR_SELF_SHOW_DISTANCE;
+  it("hides it outright under the hide distance and shows it again only past the show distance", () => {
+    expect(indoorCloseHidden(false, true, H - 0.1, H, S)).toBe(true);
+    expect(indoorCloseHidden(true, true, H + 0.1, H, S)).toBe(true); // between the two: stays hidden
+    expect(indoorCloseHidden(false, true, H + 0.1, H, S)).toBe(false); // between the two: stays shown
+    expect(indoorCloseHidden(true, true, S + 0.01, H, S)).toBe(false);
+  });
+  it("never outdoors, in first person or the overview", () => {
+    expect(indoorCloseHidden(true, false, 0.5, H, S)).toBe(false);
+  });
+  it("the show distance is under the nearest zoom, so a camera that is free to pull back always brings the body back", () => {
+    expect(S).toBeGreaterThan(H);
+    expect(S).toBeLessThan(3.2);
   });
 });

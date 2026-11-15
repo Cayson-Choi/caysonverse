@@ -159,11 +159,10 @@ try {
     await A.page.locator(".cv-guide-close").click();
     await sleep(300);
     run.check("closed", (await A.page.locator(".cv-guide").count()) === 0, null);
-    const chat = await A.page.evaluate(async () => (await window.__imp("/src/game/tts.ts")).CHAT_VOICE_ENABLED);
-    run.check("CHAT_VOICE_ENABLED is false", chat === false, chat);
+    // (the chat-voice flag lived in game/tts.ts, which the village-only cleanup removed: nothing speaks chat any more)
   });
 
-  await run.step("into the hall: the desk guide at (302.8, 3.0), 문의하기, a gentle answer, the hall music ducked", async () => {
+  await run.step("into the hall: the desk guide at (306.4, 4.6), asked from the visitor side (3.5 m), 문의하기, a gentle answer, the hall music ducked", async () => {
     for (const [x, z] of [[-20, 5], [-14, -20], [0, -33], [0, -50.8]]) await walkAndWait(A, x, z, 40000, 1.2);
     await A.page.keyboard.press("KeyE");
     await A.page.waitForFunction(async () => (await window.__imp("/src/village/villageArea.ts")).localArea() === "hall", null, { timeout: 15000 });
@@ -171,9 +170,9 @@ try {
     await sleep(2500);
     const arrive = await targetsAt(A);
     run.check("at the arrival point the desk is not offered yet", !arrive.some((t) => t.id === "guide:hall_desk"), arrive);
-    await walkAndWait(A, 301.6, 3.0, 15000, 0.3); // 1.2 m from the desk, out of the way out's reach (2.1 m from the pad)
+    await walkAndWait(A, 303.0, 3.9, 15000, 0.3); // a step back from the two visitor chairs (the desk reaches 3.5 m; round 5: nearer, the chairs' 앉기 wins)
     summary.deskStand = await A.page.evaluate(() => window.__cv.getPos());
-    await turnCameraTo(A, 302.8, 3.0);
+    await turnCameraTo(A, 306.4, 4.6);
     await sleep(800);
     const ts = await targetsAt(A);
     run.check("문의하기 is offered at the desk", ts.some((t) => t.id === "guide:hall_desk" && t.label === "문의하기"), ts);

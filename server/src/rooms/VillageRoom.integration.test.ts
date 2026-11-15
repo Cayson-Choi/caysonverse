@@ -22,6 +22,7 @@ import {
   VillageMsg,
   VillageServerMsg,
   type CandleLitPayload,
+  type CandleStatePayload,
   type ServerTimePayload,
 } from "@caysonverse/shared/village/messages";
 import { VILLAGE_LAYOUT, cubbyAnchors, villageGeometry } from "@caysonverse/shared/village/villageLayout";
@@ -30,6 +31,7 @@ import { ARRIVAL_SPACING_M, DOOR_PAD_CLEARANCE_M, SPACING_SLACK_M } from "@cayso
 import { keypadEntries } from "@caysonverse/shared/village/buildingAccess";
 import { isBlocked } from "@caysonverse/shared/collision";
 import { SEAT_OCCUPIED } from "./seating";
+import { CANDLES } from "./candleBook";
 import { SAMPLE_FILLED_IDS } from "@caysonverse/shared/village/sampleFill";
 import { APPEARANCE_FIELDS, APPEARANCE_RANGES, DEFAULT_APPEARANCE, pickAppearance, type Appearance } from "@caysonverse/shared/appearance";
 import type { Player } from "@caysonverse/shared/schema";
@@ -359,10 +361,10 @@ describe("VillageRoom door (integration)", () => {
     expect(await pollFor(() => player.area === "hall")).toBe(true);
   });
 
-  it("allows the door out to the pad radius + 0.9 m (2.5 m) and refuses just beyond", async () => {
+  it("allows the door out to the pad radius + 1.3 m (3.3 m) and refuses just beyond", async () => {
     const { room, client, player } = await visitor();
     const clock = useClock(room);
-    const reach = OUT_PAD.radius + 0.9;
+    const reach = OUT_PAD.radius + 1.3;
 
     placeAt(player, OUT_PAD.centre.x, OUT_PAD.centre.z + reach + 0.05);
     client.send(VillageMsg.UseDoor, {});
@@ -824,22 +826,21 @@ describe("VillageRoom sharding (integration)", () => {
   }, 30_000);
 });
 
-describe("VillageRoom candles (integration, Task 9)", () => {
-  /**
-   * A filled cubby on the back wall (row 3; only a filled cubby takes a candle, final fix), an empty one on the same
-   * row, and the spots 0.8 m in front of them (inside the 1.5 m reach, clear of the unit).
-   */
-  const NORTH = cubbyAnchors(L).filter((a) => a.id.startsWith("n_3_"));
+describe("VillageRoom candles (integration; server-kept for an hour since 2026-11-14)", () => {
+  /** The filled cubby on the back wall (only a filled cubby takes a candle), an empty one on the same row, and a spot in front. */
+  const NORTH = cubbyAnchors(L).filter((a) => a.bank === "A" && a.row === 3);
   const CUBBY = NORTH.find((a) => SAMPLE_FILLED_IDS.has(a.id))!;
   const EMPTY = NORTH.find((a) => !SAMPLE_FILLED_IDS.has(a.id))!;
-  /** Another filled row of CUBBY's column (the same spot on the floor). */
-  const SECOND = cubbyAnchors(L).find((a) => a.id !== CUBBY.id && a.id.startsWith("n_") && a.id.endsWith(`_${CUBBY.id.split("_")[2]}`) && SAMPLE_FILLED_IDS.has(a.id))!;
   const FRONT = { x: CUBBY.x, z: CUBBY.z + 0.8 };
+
+  beforeEach(() => CANDLES.clear());
+  afterEach(() => CANDLES.clear());
 
   /** Alice and carol in the hall (alice in front of the cubby), bob on the plaza; every CandleLit each one hears. */
   async function hallParty() {
     const room = await colyseus.createRoom<VillageRoom>(VILLAGE_ROOM);
     const clock = useClock(room);
+    (room as unknown as { wallClock: () => number }).wallClock = () => clock.t;
     const alice = await colyseus.connectTo(room, JOIN);
     const bob = await colyseus.connectTo(room, JOIN_BOB);
     const carol = await colyseus.connectTo(room, JOIN_CAROL);
@@ -856,59 +857,74 @@ describe("VillageRoom candles (integration, Task 9)", () => {
     return { room, clock, alice, bob, carol, a, heard };
   }
 
-  it("in front of the cubby: everyone in the hall hears CandleLit { cubby, by } (the lighter too), nobody on the plaza", async () => {
+  it("everyone in the hall hears CandleLit { cubby, by, agoMs: 0 } (the lighter too), nobody on the plaza", async () => {
     const { alice, bob, heard } = await hallParty();
     alice.send(VillageMsg.LightCandle, { cubby: CUBBY.id });
     expect(await pollFor(() => heard.alice.length === 1 && heard.carol.length === 1)).toBe(true);
-    expect(heard.carol).toEqual([{ cubby: CUBBY.id, by: "케이슨" }]);
-    expect(heard.alice).toEqual([{ cubby: CUBBY.id, by: "케이슨" }]);
+    expect(heard.carol).toEqual([{ cubby: CUBBY.id, by: "케이슨", agoMs: 0 }]);
+    expect(heard.alice).toEqual([{ cubby: CUBBY.id, by: "케이슨", agoMs: 0 }]);
     await roundTrip(alice, bob); // had it gone to bob it would have arrived before this
     expect(heard.bob).toEqual([]);
   });
 
-  it("far from the cubby (the spawn, 9 m away), an empty or unknown cubby or a bad payload: refused silently, and no slot is used", async () => {
+  it("lit from anywhere in the hall (the close-up opens on any cubby), not from the village; an empty or unknown cubby or a bad payload: refused", async () => {
     const { clock, alice, carol, a, heard } = await hallParty();
-    placeAt(a, HALL_SPAWN.x, HALL_SPAWN.z);
+    a.area = "village";
     alice.send(VillageMsg.LightCandle, { cubby: CUBBY.id });
-    await settle(alice); // handled (and dropped) from the spawn before she steps up
-    placeAt(a, FRONT.x, FRONT.z);
+    await settle(alice);
+    a.area = "hall";
     placeAt(a, EMPTY.x, EMPTY.z + 0.8);
     alice.send(VillageMsg.LightCandle, { cubby: EMPTY.id }); // right in front of it, but nobody rests there
-    await settle(alice);
-    placeAt(a, FRONT.x, FRONT.z);
-    alice.send(VillageMsg.LightCandle, { cubby: "n_9_99" });
+    alice.send(VillageMsg.LightCandle, { cubby: "M1-A-r9-c99" });
     alice.send(VillageMsg.LightCandle, { cubby: 7 });
-    alice.send(VillageMsg.LightCandle, "n_3_10");
+    alice.send(VillageMsg.LightCandle, "M1-A-r3-c10");
     alice.send(VillageMsg.LightCandle);
     await roundTrip(alice, carol, clock);
     expect(heard.carol).toEqual([]);
-    expect(heard.alice).toEqual([]);
-    // the refusals used up nothing: right away, from the right spot, it goes through
+    // the refusals used up nothing: from the hall's door (9 m away), right away, it goes through
+    placeAt(a, HALL_SPAWN.x, HALL_SPAWN.z);
     alice.send(VillageMsg.LightCandle, { cubby: CUBBY.id });
     expect(await pollFor(() => heard.carol.length === 1)).toBe(true);
   });
 
-  it("is rate-limited to one per 5 seconds", async () => {
+  it("burns an hour: not lit again meanwhile (the first name stays), lit again after it went out", async () => {
     const { clock, alice, carol, heard } = await hallParty();
     alice.send(VillageMsg.LightCandle, { cubby: CUBBY.id });
     expect(await pollFor(() => heard.carol.length === 1)).toBe(true);
-    clock.t += 4000;
-    alice.send(VillageMsg.LightCandle, { cubby: SECOND.id });
-    await roundTrip(alice, carol); // the clock stays still: the typing sentinel is not needed twice
-    expect(heard.carol).toHaveLength(1);
-    clock.t += 1001;
-    alice.send(VillageMsg.LightCandle, { cubby: SECOND.id });
-    expect(await pollFor(() => heard.carol.length === 2)).toBe(true);
-    expect(heard.carol[1]).toEqual({ cubby: SECOND.id, by: "케이슨" });
-  });
-
-  it("from the village (even standing at the right x, z) the candle is refused", async () => {
-    const { alice, carol, a, heard } = await hallParty();
-    a.area = "village";
+    clock.t += 30 * 60_000;
     alice.send(VillageMsg.LightCandle, { cubby: CUBBY.id });
     await roundTrip(alice, carol);
-    expect(heard.carol).toEqual([]);
-    expect(heard.alice).toEqual([]);
+    expect(heard.carol).toHaveLength(1);
+    clock.t += 30 * 60_000;
+    alice.send(VillageMsg.LightCandle, { cubby: CUBBY.id });
+    expect(await pollFor(() => heard.carol.length === 2)).toBe(true);
+  });
+
+  it("a visitor who walks into the hall later is told the burning candles, who lit them and how long ago", async () => {
+    const { clock, alice, bob, room, heard } = await hallParty();
+    alice.send(VillageMsg.LightCandle, { cubby: CUBBY.id });
+    expect(await pollFor(() => heard.carol.length === 1)).toBe(true);
+    clock.t += 32 * 60_000;
+    const states: CandleStatePayload[] = [];
+    bob.onMessage(VillageServerMsg.CandleState, (m: CandleStatePayload) => states.push(m));
+    const b = room.state.players.get(bob.sessionId)!;
+    placeAt(b, L.memorial.exterior.doorPad.centre.x, L.memorial.exterior.doorPad.centre.z);
+    trackingOf(room, bob.sessionId).lastAcceptedAt = clock.t - 10_000;
+    bob.send(VillageMsg.UseDoor, {});
+    expect(await pollFor(() => states.length === 1)).toBe(true);
+    expect(states[0]).toEqual({ candles: [{ cubby: CUBBY.id, by: "케이슨", agoMs: 32 * 60_000 }] });
+  });
+
+  it("a candle lit in one room burns in the hall of another room too (the shards share one book)", async () => {
+    const { alice } = await hallParty();
+    const other = await colyseus.createRoom<VillageRoom>(VILLAGE_ROOM);
+    const dave = await colyseus.connectTo(other, JOIN_CAROL);
+    other.state.players.get(dave.sessionId)!.area = "hall";
+    const heard: CandleLitPayload[] = [];
+    dave.onMessage(VillageServerMsg.CandleLit, (m: CandleLitPayload) => heard.push(m));
+    alice.send(VillageMsg.LightCandle, { cubby: CUBBY.id });
+    expect(await pollFor(() => heard.length === 1)).toBe(true);
+    expect(heard[0]).toMatchObject({ cubby: CUBBY.id, by: "케이슨" });
   });
 });
 
@@ -916,7 +932,7 @@ describe("VillageRoom benches (integration)", () => {
   /** The two seats of the first plaza bench, and a seat of the hall's bench. */
   const PLAZA_A = 0;
   const PLAZA_B = 1;
-  const HALL_SEAT = VILLAGE_SEATS.findIndex((s) => s.area === "hall");
+  const HALL_SEAT = VILLAGE_SEATS.findIndex((s) => s.id === "bench_w1_s0:front");
 
   /** Stand a visitor in front of seat `i` (on its dismount spot: within reach, in front of the bench). */
   const inFrontOf = (player: Player, i: number): void => {
@@ -1015,7 +1031,7 @@ describe("VillageRoom benches (integration)", () => {
     expect(await pollFor(() => player.seatIndex === SHELTER[0])).toBe(true);
     expect(player.x).toBe(seat.x);
     expect(player.z).toBe(seat.z);
-    expect(player.yaw).toBeCloseTo(-Math.PI / 2, 9);
+    expect(player.yaw).toBeCloseTo(-Math.PI / 2, 5); // wrapYaw keeps 6 decimals
     client.send(MessageType.Stand, {});
     expect(await pollFor(() => player.seatIndex === -1)).toBe(true);
     expect(aheadOf(SHELTER[0]!, player.x, player.z)).toBeGreaterThan(0); // on the road side of the bench
@@ -1041,7 +1057,7 @@ describe("VillageRoom benches (integration)", () => {
     expect(rejected).toEqual([]);
   });
 
-  it("inside the hall a visitor sits on the oak bench, facing the memorial table (north), and gets up clear of it", async () => {
+  it("inside the hall a visitor sits on a centre bench from its north side, facing the niche (north), and gets up clear of it", async () => {
     const { client, player } = await visitor();
     inFrontOf(player, HALL_SEAT);
     client.send(MessageType.Sit, { seatIndex: HALL_SEAT });

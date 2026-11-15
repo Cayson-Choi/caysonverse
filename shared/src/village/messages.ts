@@ -17,9 +17,10 @@ export const VillageMsg = {
    */
   UseDoor: "UseDoor",
   /**
-   * Light a candle in a memorial cubby (Task 9). The server checks that the sender is in the hall and within
-   * `CANDLE_REACH_M` (on the ground) of that cubby's anchor, and a 1-per-5-seconds rate, then tells everyone in the hall
-   * (`VillageServerMsg.CandleLit`). Nothing is stored. Anything else is dropped silently.
+   * Light a candle in a memorial cubby (Task 9; server-kept since 2026-11-14). The server checks that the sender is in the hall
+   * (`CANDLE_REACH_M` covers the whole room: a cubby is looked at from anywhere through its close-up), that the cubby's candle is
+   * not already burning, and a 1-per-5-seconds rate; then it keeps the candle for `CANDLE_BURN_MS` and tells everyone in the
+   * hall, in every room of the village (`VillageServerMsg.CandleLit`). Anything else is dropped silently.
    */
   LightCandle: "LightCandle",
   /** Ask the server to rent the session's one fishing rod at the lakeside kiosk. */
@@ -61,12 +62,19 @@ export interface VillageMsgPayloads {
 /** Fishing actions carry no client-controlled state; the server reads its own player pose and clock. */
 export type FishingEmptyPayload = Record<string, never>;
 
-/** How far (m, on the ground plane) from a cubby's anchor a visitor may light its candle. */
-export const CANDLE_REACH_M = 1.5;
+/**
+ * How far (m, on the ground plane) from a cubby's anchor a visitor may light its candle: the whole hall (15 x 12 m, so 20 m) —
+ * the close-up opens on any cubby from anywhere in the room (owner 2026-11-13: the top rows as well), and its button must work.
+ */
+export const CANDLE_REACH_M = 20;
 /** Per-client candle cap: at most `count` accepted candles per `windowMs`. */
 export const CANDLE_RATE = { count: 1, windowMs: 5000 } as const;
-/** How long a lit candle burns in everyone's hall (ms). Clients keep the time; the server stores nothing. */
-export const CANDLE_BURN_MS = 60_000;
+/**
+ * How long a lit candle burns (ms): an hour (owner 2026-11-13: "초를 켜면 1시간 정도 켜졌다가 꺼지게 … 누가 와서 켜고 갔는지 알잖아").
+ * The server keeps it (who, when) and tells a visitor who walks into the hall later; a cubby's candle cannot be lit again while
+ * it burns.
+ */
+export const CANDLE_BURN_MS = 60 * 60_000;
 
 /** VillageRoom messages (server → client). */
 export const VillageServerMsg = {
@@ -78,6 +86,8 @@ export const VillageServerMsg = {
   ServerTime: "ServerTime",
   /** Someone lit a candle (Task 9): sent to every client in the hall, the lighter included. */
   CandleLit: "CandleLit",
+  /** Every candle burning now (`CandleStatePayload`): sent to a visitor who comes into the hall, or rejoins inside it. */
+  CandleState: "CandleState",
   /** The owner's session-local fishing state, including bobber phase and the latest catch. */
   FishingState: "FishingState",
   /** A fishing transition (cast, bite, missed or caught) for the owner's UI. */
@@ -98,10 +108,16 @@ export interface ServerTimePayload {
 /** How often the server re-sends its clock to everyone in a village room (5 minutes). */
 export const SERVER_TIME_INTERVAL_MS = 5 * 60 * 1000;
 
-/** Server → hall clients: the cubby whose candle was lit and who lit it (their nickname). */
+/** Server → hall clients: the cubby whose candle was lit, who lit it (their nickname) and how long ago (ms; 0 for a new one). */
 export interface CandleLitPayload {
   cubby: string;
   by: string;
+  agoMs: number;
+}
+
+/** Server → one client: the candles burning now. */
+export interface CandleStatePayload {
+  candles: CandleLitPayload[];
 }
 
 /** Wire-safe state projection. Bite timestamps stay server-only; `serverNowMs` is for UI countdown/animation only. */

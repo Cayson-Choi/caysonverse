@@ -1,16 +1,16 @@
 import { describe, it, expect } from "vitest";
 import { PLAYER_RADIUS } from "@caysonverse/shared/constants";
 import { isBlocked } from "@caysonverse/shared/collision";
-import { VILLAGE_LAYOUT, villageGeometry } from "@caysonverse/shared/village/villageLayout";
-import { DOOR_RATE, DOOR_REACH_M, arrivalAfter, useDoor } from "./villageDoor";
+import { HOUSE_INTERIOR_SPAWN, VILLAGE_LAYOUT, villageGeometry } from "@caysonverse/shared/village/villageLayout";
+import { DOOR_INSIDE_HALF_WIDTH_M, DOOR_RATE, DOOR_REACH_M, arrivalAfter, useDoor } from "./villageDoor";
 
 const L = VILLAGE_LAYOUT;
 const outPad = L.memorial.exterior.doorPad;
 const inPad = L.memorial.interior.doorPad;
 
 describe("door constants", () => {
-  it("reach is 0.9 m past the pad's edge and a client may use a door once a second", () => {
-    expect(DOOR_REACH_M).toBe(0.9);
+  it("reach is 1.3 m past the pad's edge and a client may use a door once a second", () => {
+    expect(DOOR_REACH_M).toBe(1.3);
     expect(DOOR_RATE).toEqual({ count: 1, windowMs: 1000 });
   });
 });
@@ -58,9 +58,9 @@ describe("arrivalAfter", () => {
 });
 
 describe("useDoor", () => {
-  it("from the village: allowed within the enlarged memorial pad radius + 0.9 m (2.9 m), refused beyond", () => {
+  it("from the village: allowed within the enlarged memorial pad radius + 1.3 m (3.3 m), refused beyond", () => {
     const reach = outPad.radius + DOOR_REACH_M;
-    expect(reach).toBeCloseTo(2.9, 12);
+    expect(reach).toBeCloseTo(3.3, 12);
     expect(useDoor("village", outPad.centre.x, outPad.centre.z)).toEqual(arrivalAfter("village"));
     expect(useDoor("village", outPad.centre.x, outPad.centre.z + reach - 0.01)).toEqual(arrivalAfter("village"));
     expect(useDoor("village", outPad.centre.x + reach - 0.01, outPad.centre.z)).not.toBeNull();
@@ -68,9 +68,9 @@ describe("useDoor", () => {
     expect(useDoor("village", outPad.centre.x, outPad.centre.z + 5)).toBeNull();
   });
 
-  it("from the hall: allowed within the inside pad radius + 0.9 m (2.3 m), refused beyond", () => {
+  it("from the hall: allowed within the inside pad radius + 1.3 m (2.7 m), refused beyond", () => {
     const reach = inPad.radius + DOOR_REACH_M;
-    expect(reach).toBeCloseTo(2.3, 12);
+    expect(reach).toBeCloseTo(2.7, 12);
     expect(useDoor("hall", inPad.centre.x, inPad.centre.z)).toEqual(arrivalAfter("hall"));
     expect(useDoor("hall", inPad.centre.x, inPad.centre.z - reach + 0.01)).toEqual(arrivalAfter("hall"));
     expect(useDoor("hall", inPad.centre.x, inPad.centre.z - reach - 0.01)).toBeNull();
@@ -93,5 +93,34 @@ describe("useDoor", () => {
     expect(useDoor("", outPad.centre.x, outPad.centre.z)).toBeNull();
     expect(useDoor("village", Number.NaN, outPad.centre.z)).toBeNull();
     expect(useDoor("village", outPad.centre.x, Number.POSITIVE_INFINITY)).toBeNull();
+  });
+});
+
+describe("the way out is used from in front of the door only (round 6 review, 2026-11-15)", () => {
+  it("not from the lounge entrance beside it; on the pad and straight in front, yes", () => {
+    const pad = VILLAGE_LAYOUT.memorial.interior.doorPad;
+    expect(useDoor("hall", 298.8, 3.15)).toBeNull(); // the lounge entrance, 2.37 m from the pad's centre
+    expect(useDoor("hall", pad.centre.x + DOOR_INSIDE_HALF_WIDTH_M - 0.01, pad.centre.z - 2.3)).not.toBeNull();
+    expect(useDoor("hall", pad.centre.x + DOOR_INSIDE_HALF_WIDTH_M + 0.01, pad.centre.z - 2.3)).toBeNull();
+    expect(useDoor("hall", pad.centre.x + pad.radius - 0.01, pad.centre.z)).not.toBeNull();
+    const spawn = VILLAGE_LAYOUT.memorial.interior.spawn;
+    expect(useDoor("hall", spawn.x, spawn.z)).not.toBeNull();
+  });
+
+  it("past the pad's edge only on the room's side of the door (round 7 review: the rule looked at the sideways offset alone)", () => {
+    const pad = VILLAGE_LAYOUT.memorial.interior.doorPad;
+    // straight in front, 2 m into the room: yes; the same 2 m the other way (behind the door, in the wall): no
+    expect(useDoor("hall", pad.centre.x, pad.centre.z - 2.0)).not.toBeNull();
+    expect(useDoor("hall", pad.centre.x, pad.centre.z + 2.0)).toBeNull();
+    // on the pad itself either way: yes
+    expect(useDoor("hall", pad.centre.x, pad.centre.z + pad.radius - 0.01)).not.toBeNull();
+  });
+});
+
+describe("a house's arrival spot is its own (round 6 review)", () => {
+  it("not the hall's spawn, and the way out is usable from it", () => {
+    const hall = VILLAGE_LAYOUT.memorial.interior.spawn;
+    expect(HOUSE_INTERIOR_SPAWN.z).not.toBe(hall.z);
+    expect(useDoor("house:house_1", HOUSE_INTERIOR_SPAWN.x, HOUSE_INTERIOR_SPAWN.z)).not.toBeNull();
   });
 });

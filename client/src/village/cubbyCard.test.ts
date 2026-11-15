@@ -49,7 +49,11 @@ describe("CubbyView copy (Task 9): gentle, no '!'", () => {
     expect(rowLabel(0)).toBe("아래에서 1번째 칸");
     expect(yearsLabel({ born: 2011, passed: 2024 })).toBe("2011 – 2024");
     expect(photoAlt("하늘이")).toBe("하늘이의 사진");
-    expect(litByLabel("케이슨")).toBe("케이슨 님이 촛불을 켰어요");
+    // owner 2026-11-13: who lit it and how long ago ("OO님이 32분 전에 켜 주셨어요")
+    expect(litByLabel("케이슨")).toBe("케이슨님이 방금 켜 주셨어요");
+    expect(litByLabel("케이슨", 32 * 60_000 + 5000)).toBe("케이슨님이 32분 전에 켜 주셨어요");
+    expect(litByLabel("케이슨", 61 * 60_000)).toBe("케이슨님이 1시간 전에 켜 주셨어요");
+    expect(litByLabel("", 5 * 60_000)).toBe("5분 전에 켜진 촛불이에요");
   });
 
   it("the portrait is a tile of the atlas (CSS background on the 4 x 4 grid)", () => {
@@ -72,16 +76,16 @@ describe("the card's cubby (Task 9)", () => {
       }
     }
     const none = new Map<string, SampleCubby>();
-    expect(defaultRow("n_0", none)).toBe(EYE_ROW);
+    expect(defaultRow("A_0", none)).toBe(EYE_ROW);
   });
 
   it("open, step up and down within the column, close", () => {
-    openCubbyCard("cubby:n_10");
+    openCubbyCard("cubby:A_10");
     const start = cubbyCardState()!;
-    expect(start.column).toBe("n_10");
-    expect(cubbyIdAt("n_10", start.row)).toBe(`n_${start.row}_10`);
+    expect(start.column).toBe("A_10");
+    expect(cubbyIdAt("A_10", start.row)).toBe(`M1-A-r${start.row}-c10`);
     for (let i = 0; i < 10; i += 1) moveCubbyRow(1);
-    expect(cubbyCardState()!.row).toBe(6);
+    expect(cubbyCardState()!.row).toBe(7);
     for (let i = 0; i < 10; i += 1) moveCubbyRow(-1);
     expect(cubbyCardState()!.row).toBe(0);
     closeCubbyCard();

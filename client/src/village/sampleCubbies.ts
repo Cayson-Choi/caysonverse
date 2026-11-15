@@ -1,13 +1,13 @@
 import { VILLAGE_LAYOUT, cubbyAnchors, type CubbyAnchor } from "@caysonverse/shared/village/villageLayout";
-import { SAMPLE_FILL, hashId, sampleFilledIds } from "@caysonverse/shared/village/sampleFill";
+import { SAMPLE_CUBBY_IDS, hashId, sampleFilledIds } from "@caysonverse/shared/village/sampleFill";
 
 // The choice of WHICH cubbies are filled lives in the shared package: the server lights candles only on those.
-export { SAMPLE_FILL, hashId };
+export { SAMPLE_CUBBY_IDS, hashId };
 
 /**
- * The memorial hall's example cubbies (케이슨 마을 Task 9): until families can place their own, 60 % of the 364 B-plan cubbies
- * are filled with a sample memorial so the hall reads as a real 봉안당 — the props in the cubby (from
- * memorial_props.glb), a pet's portrait (a tile of the placeholder atlas), a name, the years and one line.
+ * The memorial hall's example cubby (케이슨 마을 Task 9, cut down 2026-11-13): until families can place their own, ONE of the 368
+ * cubbies is filled with a sample memorial (견본) — the props in the cubby (from memorial_props.glb), a pet's portrait, a name, the
+ * years and one line. The other 367 are empty.
  *
  * Seed-stable: every choice comes from the cubby's own id (a hash), so every visitor, every visit and every client sees
  * the same hall, and a change to one cubby's data moves nothing else. Pure data; the scene instances it (cubbyProps.ts)
@@ -55,7 +55,7 @@ export interface PropPlacement {
 }
 
 export interface SampleCubby {
-  /** The cubby (a `cubbyAnchors` id, `<wall>_<row>_<col>`). */
+  /** The cubby (a `cubbyAnchors` id, `M1-<bank>-r<row>-c<col>`). */
   id: string;
   name: string;
   born: number;
@@ -103,30 +103,27 @@ export function seeded(seed: number): () => number {
   };
 }
 
-const between = (rnd: () => number, lo: number, hi: number) => lo + (hi - lo) * rnd();
-
-/** The props of one filled cubby (the Task 8 render's recipe; every filled cubby has an urn, a portrait and a name card). */
-function propsFor(rnd: () => number): PropPlacement[] {
-  const out: PropPlacement[] = [];
-  const put = (kind: PropKind, u: number, w: number, turn = 0, dy = 0) => out.push({ kind, u, w, dy, turn });
-  put(rnd() < 0.55 ? "urn_wood" : "urn_ceramic", between(rnd, -0.1, -0.05), 0.2, between(rnd, -0.3, 0.3));
-  put("photo_frame", between(rnd, 0.06, 0.09), 0.14, between(rnd, -0.15, 0.05));
-  if (rnd() < 0.35) put("house_frame", between(rnd, -0.03, 0.03), 0.3);
-  if (rnd() < 0.55) put("flowers", between(rnd, 0.11, 0.15), 0.08, between(rnd, -1, 1));
-  if (rnd() < 0.3) put("plush_bear", between(rnd, -0.15, -0.12), 0.1, between(rnd, -0.4, 0.2));
-  else if (rnd() < 0.5) put("tealight", between(rnd, -0.15, -0.11), 0.06);
-  if (rnd() < 0.2) put("stone_jar", between(rnd, 0, 0.04), 0.27);
-  put("name_card", between(rnd, -0.06, 0.02), 0.03);
-  return out;
-}
+/**
+ * The sample cubby's props, set by hand (review 2026-11-15: the seeded recipe stood the flower pot right in front of the photo, so
+ * the close-up showed only the cat's ears). The way a real charnel cubby is dressed (design 1-3, reference g21_charnel): the
+ * house-shaped frame at the back as the cubby's housing, the portrait upright in the middle in front of it, the urn to the left
+ * and the flowers to the right — both clear of the portrait — and the name card on the front ledge. The lit candle stands at
+ * the front right (`CANDLE_SPOT`, MemorialHall.tsx), clear of all of them.
+ */
+export const SAMPLE_PROPS: readonly PropPlacement[] = Object.freeze([
+  { kind: "house_frame", u: 0, w: 0.33, dy: 0, turn: 0 },
+  { kind: "photo_frame", u: 0, w: 0.2, dy: 0, turn: 0 },
+  { kind: "urn_wood", u: -0.13, w: 0.17, dy: 0, turn: 0.35 },
+  { kind: "flowers", u: 0.135, w: 0.22, dy: 0, turn: 0.6 },
+  { kind: "name_card", u: 0, w: 0.035, dy: 0, turn: 0 },
+] satisfies PropPlacement[]);
 
 /**
- * The sample memorials for `anchors`: the `SAMPLE_FILL` share of them (rounded) with the lowest hash of their id — a
- * seed-stable choice spread over both walls and every row — each with its props, a name, the years, a line and a
- * portrait. In the order of `anchors`.
+ * The sample memorials for `anchors`: the ids of `SAMPLE_CUBBY_IDS` that are among them, each with its props, a name, the years, a
+ * line and a portrait (seed-stable from the id). In the order of `anchors`.
  */
-export function makeSampleCubbies(anchors: readonly CubbyAnchor[], fill: number = SAMPLE_FILL): SampleCubby[] {
-  const chosen = sampleFilledIds(anchors, fill);
+export function makeSampleCubbies(anchors: readonly CubbyAnchor[], ids: readonly string[] = SAMPLE_CUBBY_IDS): SampleCubby[] {
+  const chosen = sampleFilledIds(anchors, ids);
   const out: SampleCubby[] = [];
   for (const a of anchors) {
     if (!chosen.has(a.id)) continue;
@@ -140,7 +137,7 @@ export function makeSampleCubbies(anchors: readonly CubbyAnchor[], fill: number 
       passed,
       line: SAMPLE_LINES[Math.floor(rnd() * SAMPLE_LINES.length)]!,
       photo: Math.floor(rnd() * SAMPLE_PHOTO_ATLAS.count),
-      props: propsFor(rnd),
+      props: SAMPLE_PROPS,
     });
   }
   return out;

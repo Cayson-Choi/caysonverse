@@ -5,7 +5,7 @@
  * the ActionButton, never per frame), `pickInteraction` decides, and the rest is labels.
  */
 
-import { SEAT_REACH, approachesSeat, nearestFreeSeat, type Seat } from "@caysonverse/shared/worldMap";
+import { SEAT_REACH, approachesSeat, nearestFreeSeat, seatDistance, seatTaken, type Seat } from "@caysonverse/shared/worldMap";
 import { preferredSeat } from "./seatPreference";
 
 /**
@@ -33,6 +33,11 @@ export interface InteractTarget {
    * distance as before.
    */
   yieldsToSeat?: boolean;
+  /**
+   * The target beats a free seat unless that seat is nearer than this (m): the hall desk is asked from among its visitor
+   * chairs, and the chair's "앉기" only wins once you stand right at it.
+   */
+  beatsSeatBeyond?: number;
 }
 
 export type Interaction =
@@ -79,7 +84,9 @@ export function pickInteraction(i: InteractInput): Interaction | null {
       const np = nearest.priority ?? 0;
       if (cp > np || (cp === np && c.dist < nearest.dist)) nearest = c;
     }
-    if (nearest !== null && nearest.dist < bestDist) best = { kind: "target", target: nearest };
+    if (nearest !== null && (nearest.dist < bestDist || (i.seat !== null && nearest.beatsSeatBeyond !== undefined && bestDist >= nearest.beatsSeatBeyond))) {
+      best = { kind: "target", target: nearest };
+    }
   }
   return best;
 }
@@ -150,8 +157,10 @@ export function holdEnded(held: InteractTarget | null, next: Interaction | null)
 
 /** The seats of the map the player stands in (`interactInputAt`). */
 export interface InteractWorld {
-  /** The active map's seats (activeMap's `seats`). */
+  /** The active map's seats (activeMap's `seats`): ONE list for every area, indexed like the server's. */
   seats: readonly Seat[];
+  /** The area the player is in: only the seats of this area are offered (the hall's coordinates are the houses' too). */
+  area?: string;
 }
 
 /**
@@ -172,13 +181,17 @@ export function interactInputAt(
   const seated = seatIndex >= 0;
   let seat: InteractInput["seat"] = null;
   if (!seated) {
-    let index = nearestFreeSeat(x, z, isOccupied, SEAT_REACH, world.seats);
+    // A seat of another area is "taken": the hall and the houses share one coordinate space, so a house's sofa must never
+    // be offered in the hall (the ghost "앉기" of 2026-11-13).
+    const here = world.area;
+    const taken = here === undefined ? isOccupied : (i: number) => isOccupied(i) || (world.seats[i] as { area?: string }).area !== here;
+    let index = nearestFreeSeat(x, z, taken, SEAT_REACH, world.seats);
     // the chair just tapped, while it is free and offered from here, over a nearer one beside it (seatPreference.ts)
     const tapped = preferredSeat();
     const t = tapped >= 0 ? world.seats[tapped] : undefined;
-    if (t && !isOccupied(tapped) && approachesSeat(t, x, z) && Math.hypot(x - t.x, z - t.z) <= SEAT_REACH) index = tapped;
+    if (t && !seatTaken(world.seats, tapped, taken) && approachesSeat(t, x, z) && seatDistance(t, x, z) <= SEAT_REACH) index = tapped;
     if (index !== null) {
-      seat = { index, dist: Math.hypot(x - world.seats[index].x, z - world.seats[index].z) };
+      seat = { index, dist: seatDistance(world.seats[index], x, z) };
     }
   }
   return { seated, seat, targets };

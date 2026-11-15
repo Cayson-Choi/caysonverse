@@ -508,6 +508,16 @@ export const DETOUR_FAR_MARGIN = 40;
 /** The search grid's cell (m); grown when the region would hold more than DETOUR_MAX_CELLS (a cross-map click). */
 const DETOUR_CELL = 0.5;
 const DETOUR_MAX_CELLS = 40000;
+/**
+ * ...or this fine (m) when the region is small enough to hold at most DETOUR_FINE_MAX_CELLS of them: a room (the memorial
+ * hall's 15 x 12 m, clipped to its walls) — never the open village, whose region is at least DETOUR_MARGIN either side.
+ * Round 9 review: the hall's central aisle is 1.3 m between the benches, a band 0.5 m wide for a body's centre; on the
+ * 0.5 m grid with the clearance no cell lay in it, so from the letter table's north side the way to the exit went round
+ * the east cubby wall (via x 303.65) — or, from a spot whose cells fell differently, there was none at all and the
+ * click on the exit did nothing ("unreachable").
+ */
+const DETOUR_FINE_CELL = 0.1;
+const DETOUR_FINE_MAX_CELLS = 20000;
 
 /** Cells this close (m) past the clearance kept cost DETOUR_NEAR_COST times more: the way keeps off the faces. */
 const DETOUR_CLEAR = 0.2;
@@ -533,6 +543,10 @@ export const DETOUR_VIA_CLEAR = 0.25;
 const DETOUR_TRIES: ReadonlyArray<{ clear: number; onGoal: boolean }> = [
   { clear: DETOUR_VIA_CLEAR, onGoal: false },
   { clear: DETOUR_VIA_CLEAR, onGoal: true },
+  // round 9 review: VIA_REACH past the faces, as much as the walk turns early — the memorial hall's 1.3 m central aisle
+  // (shut at the full clearance) without hugging a face the early turn would catch on (with none, the way from behind
+  // the letter table took the 10 cm strip at the wall, which the walk sticks in)
+  { clear: VIA_REACH, onGoal: false },
   { clear: 0, onGoal: false },
   { clear: 0, onGoal: true },
 ];
@@ -545,6 +559,8 @@ const VIA_LATE = 0.22;
 
 /** How far (cells) round its two ends the search starts and ends: a body at a bench's face sees open cells a step off. */
 const DETOUR_END_CELLS = 3;
+/** ...and at least this far (m) on a fine grid (DETOUR_FINE_CELL), whose 3 cells are a mere 0.3 m. */
+const DETOUR_END_REACH = 0.9;
 
 /**
  * Whether the segment a→b passes through the inside of the box (open: running along a face or touching a corner is
@@ -741,7 +757,11 @@ function* detourSteps(
   const zLo = Math.max(Math.min(fromZ, toZ) - margin, bounds.minZ + r);
   const z1 = Math.min(Math.max(fromZ, toZ) + margin, bounds.maxZ - r);
   if (!(x1 > xLo && z1 > zLo)) return null;
-  const cell = Math.max(DETOUR_CELL, Math.sqrt(((x1 - xLo) * (z1 - zLo)) / DETOUR_MAX_CELLS));
+  const regionArea = (x1 - xLo) * (z1 - zLo);
+  const cell =
+    regionArea / (DETOUR_FINE_CELL * DETOUR_FINE_CELL) <= DETOUR_FINE_MAX_CELLS
+      ? DETOUR_FINE_CELL
+      : Math.max(DETOUR_CELL, Math.sqrt(regionArea / DETOUR_MAX_CELLS));
   // `onGoal`: the grid's origin moved down by under a cell so the destination is a cell's centre — a destination in a
   // strip narrower than a cell between two grown boxes then has a row of open cells along the strip (DETOUR_TRIES).
   const x0 = onGoal ? toX - cell * (Math.max(0, Math.ceil((toX - xLo) / cell - 0.5)) + 0.5) : xLo;
@@ -803,13 +823,28 @@ function* detourSteps(
     return (Math.max(di, dj) + (Math.SQRT2 - 1) * Math.min(di, dj)) * cell;
   };
   const open = new CellHeap();
-  const reach = DETOUR_END_CELLS;
+  const reach = Math.max(DETOUR_END_CELLS, Math.ceil(DETOUR_END_REACH / cell));
   for (let j = Math.max(0, sj - reach); j <= Math.min(nz - 1, sj + reach); j++) {
     for (let i = Math.max(0, si - reach); i <= Math.min(nx - 1, si + reach); i++) {
       const c = j * nx + i;
       if (grid[c] === 2 || !segmentClear(fromX, fromZ, centreX(i), centreZ(j), boxes, r)) continue;
       g[c] = Math.hypot(centreX(i) - fromX, centreZ(j) - fromZ);
       open.push(c, g[c] + h(c));
+    }
+  }
+  // A start squeezed in a gap no cell lies in (round 9 review: between two letter chairs, at the table's grown edge — a
+  // tap on the table top had walked the body there — every click after was "unreachable"): the open cells round it the
+  // body gets to by its slide along the gap (the walk's own collision), the way's first leg then that slide.
+  let slideStart = false;
+  if (open.size === 0) {
+    for (let j = Math.max(0, sj - reach); j <= Math.min(nz - 1, sj + reach); j++) {
+      for (let i = Math.max(0, si - reach); i <= Math.min(nx - 1, si + reach); i++) {
+        const c = j * nx + i;
+        if (grid[c] === 2 || !simulateWalk(fromX, fromZ, centreX(i), centreZ(j), boxes, bounds, r).arrived) continue;
+        g[c] = Math.abs(centreX(i) - fromX) + Math.abs(centreZ(j) - fromZ);
+        open.push(c, g[c] + h(c));
+        slideStart = true;
+      }
     }
   }
   // The search ends at a cell round the destination the body walks on to it from — turning there for it as the walk
@@ -886,6 +921,7 @@ function* detourSteps(
       } else if (plain !== -1 && k - plain > 6) break; // well past the last clear one: the view is shut
     }
     if (next === -1) next = plain;
+    if (next === -1 && at === 0 && slideStart) next = 1; // the slide out of a gap (checked by the walk: walkThere)
     if (next === -1) return null; // not even the next point: the grid passed where a body does not
     const leg = Math.hypot(pts[next].x - pts[at].x, pts[next].z - pts[at].z);
     length += leg;
@@ -1130,14 +1166,46 @@ function* roundToSteps(
   limits: DetourLimits = {},
 ): Steps<ClickPlan | null> {
   const adjusted = spot.x !== surface.x || spot.z !== surface.z ? "pushed" : "none";
+  const straight = Math.hypot(spot.x - fromX, spot.z - fromZ);
+  let best: GroundPoint[] | null = null;
+  let bestLen = Infinity;
   for (const t of DETOUR_TRIES) {
     const via = yield* detourSteps(fromX, fromZ, spot.x, spot.z, obstacles, bounds, PLAYER_RADIUS, t.clear, limits, t.onGoal);
     if (!via) continue;
     yield;
     // walked to the end at every frame rate, or the next search's way is tried
-    if (walkThere(fromX, fromZ, spot.x, spot.z, obstacles, bounds, via).arrived) return { ok: true, x: spot.x, z: spot.z, y: surface.y, adjusted, via };
+    if (!walkThere(fromX, fromZ, spot.x, spot.z, obstacles, bounds, via).arrived) continue;
+    const len = wayLength(fromX, fromZ, via, spot.x, spot.z);
+    if (len < bestLen) {
+      best = via;
+      bestLen = len;
+    }
+    // a way not much longer than the straight line is taken; a long one only if the narrower searches find no shorter
+    if (bestLen <= straight * DETOUR_DIRECT_RATIO + DETOUR_DIRECT_SLACK) break;
   }
-  return null;
+  return best ? { ok: true, x: spot.x, z: spot.z, y: surface.y, adjusted, via: best } : null;
+}
+
+/**
+ * A way round this much longer than the straight line, plus DETOUR_DIRECT_SLACK (m), is taken as it is; a longer one is
+ * kept only when the narrower searches (DETOUR_TRIES: less clearance) find no shorter way the walk gets to the end of.
+ * Round 9 review: with the full clearance the hall's 1.3 m central aisle is shut, so from the aisle a tap on letter_n1
+ * went round the east cubby wall (via x 303.65) — 3 times the way through the aisle.
+ */
+const DETOUR_DIRECT_RATIO = 1.3;
+const DETOUR_DIRECT_SLACK = 1.5;
+
+/** The length (m) of the walk from (fromX, fromZ) by `via` to (toX, toZ). */
+export function wayLength(fromX: number, fromZ: number, via: readonly GroundPoint[], toX: number, toZ: number): number {
+  let len = 0;
+  let x = fromX;
+  let z = fromZ;
+  for (const p of [...via, { x: toX, z: toZ }]) {
+    len += Math.hypot(p.x - x, p.z - z);
+    x = p.x;
+    z = p.z;
+  }
+  return len;
 }
 
 /**

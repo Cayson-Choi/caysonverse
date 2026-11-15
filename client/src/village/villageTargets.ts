@@ -10,7 +10,7 @@ import type { InteractTarget } from "../game/interact";
  * door, the memorial hall's, with two sides: "추모관 들어가기" outside, "밖으로 나가기" inside. Pressing it sends
  * `VillageMsg.UseDoor`; the server decides (villageDoor.ts) and teleports.
  *
- * The server accepts a door within the pad's radius plus 0.9 m of its centre. This offers it a little less
+ * The server accepts a door within the pad's radius plus 1.3 m of its centre. This offers it a little less
  * (`DOOR_OFFER_REACH_M`): our pose runs a few centimetres ahead of the one the server knows, so a button shown at
  * the very edge could be pressed just outside what the server accepts and be dropped without a word. Both
  * arrival points (the way out lands 2.2 m from the outside pad's centre, the way in 1.6 m from the inside one)
@@ -39,8 +39,13 @@ export const BUS_OFFER_REACH_M = 0.8;
 export const BUS_RIDE_TARGET_BOARD = "village_bus_board";
 export const BUS_RIDE_TARGET_LEAVE = "village_bus_leave";
 
-/** How far past the pad's radius the button is offered (m). The server's own reach is 0.9 (villageDoor.ts DOOR_REACH_M). */
-export const DOOR_OFFER_REACH_M = 0.8;
+/** How far past the pad's radius the button is offered (m). The server's own reach is 1.3 (villageDoor.ts DOOR_REACH_M). */
+export const DOOR_OFFER_REACH_M = 1.25;
+/**
+ * Inside, the way out is offered past the pad's edge only in front of the door: at most this far (m) to either side of its
+ * centre line (the server's DOOR_INSIDE_HALF_WIDTH_M is 0.8; on the pad itself it is always offered). Round 6 review: the lounge entrance, 1.2 m to the side, offered it.
+ */
+export const DOOR_INSIDE_OFFER_HALF_WIDTH_M = 0.7;
 
 const NONE: readonly InteractTarget[] = Object.freeze([]);
 
@@ -57,7 +62,11 @@ export function villageTargets(
 ): readonly InteractTarget[] {
   const pad = doorPadFor(area, layout);
   const dist = Math.hypot(x - pad.centre.x, z - pad.centre.z);
-  if (dist <= pad.radius + DOOR_OFFER_REACH_M) {
+  // on the pad itself always; past its edge (the reach) inside a building only straight in front of the door, on the room's
+  // side of it (north, −z; the server's useDoor has the same rule)
+  const inFront =
+    area === "village" || dist <= pad.radius || (Math.abs(x - pad.centre.x) <= DOOR_INSIDE_OFFER_HALF_WIDTH_M && z <= pad.centre.z);
+  if (inFront && dist <= pad.radius + DOOR_OFFER_REACH_M) {
     const label = area === "village" ? DOOR_LABEL.village : area === "hall" ? DOOR_LABEL.hall : "집 밖으로 나가기";
     const short = area === "village" ? DOOR_SHORT.village : area === "hall" ? DOOR_SHORT.hall : "나가기";
     return [{ kind: "door", id: MEMORIAL_DOOR_ID, dist, icon: "🚪", label, short }];
@@ -96,7 +105,7 @@ export function busCountdownWords(ms: number): { long: string; short: string } {
  * The way to ride is never hidden (review 2026-11-15: a first-time player at the stop must see how and when): outside the
  * boarding window the button is still there and counts down to the next departure ("버스 타기 · 7분 뒤 출발",
  * touch: "7분 뒤"); pressing it says when the bus leaves and that boarding opens 3 min before (VillageScene).
- * It always gives a free seat in reach the key (`yieldsToSeat`: the shelter's bench and the café chairs 66/67 sit inside
+ * It always gives a free seat in reach the key (`yieldsToSeat`: the shelter's bench and the café chairs 97/98 sit inside
  * or by its area; owner 2026-11-13: 정류장 벤치에 앉을 수가 없어). With boarding open for 3 minutes (owner 2026-11-15)
  * riders wait on the bench like at a real stop, then stand and step towards the bus: no seat is in reach on the pad's
  * road half and at the doors, so there the button has the key (the stop's pill says so). "Leave" never yields, and is
@@ -136,14 +145,16 @@ export function villageBusTarget(
 
 /** How near (m, on the ground) to a cubby column its close-up is offered (brief: 1.2 m). The server lets a candle be lit from 1.5 m. */
 export const CUBBY_REACH_M = 1.2;
-/** The target id prefix of a cubby column: `cubby:<wall>_<col>`. */
+/** The target id prefix of a cubby column: `cubby:<bank>_<col>`. */
 export const CUBBY_TARGET_PREFIX = "cubby:";
 export const CUBBY_LABEL = "가까이 보기";
-export const CUBBY_SHORT = "보기";
+/** The touch button says the same as the PC one (round 6 review: "칸 보기" on a phone, "가까이 보기" on a PC). */
+export const CUBBY_SHORT = CUBBY_LABEL;
 
 /** A column of cubbies: its wall and column, where it stands on the floor (the anchors' x, z) and its rows' anchors (bottom first). */
 export interface CubbyColumn {
   key: string;
+  bank: CubbyAnchor["bank"];
   wall: CubbyAnchor["wall"];
   col: number;
   x: number;
@@ -151,25 +162,25 @@ export interface CubbyColumn {
   rows: readonly CubbyAnchor[];
 }
 
-/** The hall's cubby columns (`<wall>_<col>`), built from the layout's anchors. */
+/** The hall's cubby columns (`<bank>_<col>`, e.g. `A_11`), built from the layout's anchors. */
 export function cubbyColumns(layout: VillageLayout = VILLAGE_LAYOUT): CubbyColumn[] {
   const byKey = new Map<string, CubbyAnchor[]>();
   for (const a of cubbyAnchors(layout)) {
-    const key = `${a.wall}_${a.col}`;
+    const key = `${a.bank}_${a.col}`;
     let list = byKey.get(key);
     if (!list) byKey.set(key, (list = []));
     list.push(a);
   }
   return [...byKey.entries()].map(([key, rows]) => {
     rows.sort((a, b) => a.row - b.row);
-    return { key, wall: rows[0]!.wall, col: rows[0]!.col, x: rows[0]!.x, z: rows[0]!.z, rows };
+    return { key, bank: rows[0]!.bank, wall: rows[0]!.wall, col: rows[0]!.col, x: rows[0]!.x, z: rows[0]!.z, rows };
   });
 }
 
 const COLUMNS: readonly CubbyColumn[] = cubbyColumns();
 const COLUMN_BY_KEY: ReadonlyMap<string, CubbyColumn> = new Map(COLUMNS.map((c) => [c.key, c]));
 
-/** The column of a key (`n_10`) or a target id (`cubby:n_10`), or null. */
+/** The column of a key (`A_11`) or a target id (`cubby:A_11`), or null. */
 export function cubbyColumn(keyOrId: string): CubbyColumn | null {
   const key = keyOrId.startsWith(CUBBY_TARGET_PREFIX) ? keyOrId.slice(CUBBY_TARGET_PREFIX.length) : keyOrId;
   return COLUMN_BY_KEY.get(key) ?? null;
@@ -189,11 +200,18 @@ export function nearestCubbyColumn(x: number, z: number, columns: readonly Cubby
 export const GUIDE_TARGET_PREFIX = "guide:";
 export const GUIDE_SHORT = "문의";
 
-/** The guide of the player's area within `GUIDE_REACH_M` (2.2 m): "문의하기" opens its questions (GuideDialog). */
+/**
+ * A free seat nearer than this (m) wins over a guide in reach: the hall desk is asked from round its two visitor chairs, and
+ * standing at a chair's side (review 2026-11-15) or in the gap between the two chairs (up to ~1.2 m from either seat point,
+ * which sits deep in the chair) must offer "앉기", not "문의하기".
+ */
+export const GUIDE_SEAT_YIELD_M = 1.3;
+
+/** The guide of the player's area within its reach (2.2 m; the hall desk 4.0 m): "문의하기" opens its questions (GuideDialog). */
 export function guideTarget(area: AreaId, x: number, z: number): InteractTarget | null {
   const near = nearestGuide(area, x, z);
   if (!near) return null;
-  return { kind: "object", id: `${GUIDE_TARGET_PREFIX}${near.guide.id}`, dist: near.dist, icon: "💬", label: GUIDE_ASK_LABEL, short: GUIDE_SHORT };
+  return { kind: "object", id: `${GUIDE_TARGET_PREFIX}${near.guide.id}`, dist: near.dist, icon: "💬", label: GUIDE_ASK_LABEL, short: GUIDE_SHORT, beatsSeatBeyond: GUIDE_SEAT_YIELD_M };
 }
 
 /**
@@ -221,7 +239,8 @@ export function villageAndHallTargets(area: AreaId, x: number, z: number, panelO
       kind: "object",
       id: `${CUBBY_TARGET_PREFIX}${near.column.key}`,
       dist: near.dist,
-      icon: "🕯️",
+      // a magnifier, not a candle: the button opens the close-up (review 2026-11-14: "🕯️ 보기" read as "light a candle")
+      icon: "🔍",
       label: CUBBY_LABEL,
       short: CUBBY_SHORT,
     };

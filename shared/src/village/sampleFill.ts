@@ -1,15 +1,16 @@
 import { VILLAGE_LAYOUT, cubbyAnchors, type CubbyAnchor } from "./villageLayout";
 
 /**
- * Which of the memorial hall's cubbies hold a sample memorial (케이슨 마을 Task 9), shared by the client (which draws
- * and describes them, client/src/village/sampleCubbies.ts) and the server (which lights a candle only on a filled cubby:
- * final fix, the T9 review's "candle on an empty cubby" item).
+ * Which of the memorial hall's cubbies hold the example memorial (견본), shared by the client (which draws and describes it,
+ * client/src/village/sampleCubbies.ts) and the server (which lights a candle only on a filled cubby).
  *
- * Seed-stable: the `SAMPLE_FILL` share of the cubbies (rounded) with the lowest hash of `fill:<id>`, ties by id.
+ * 2026-11-13 (owner: "지금 추모관에는 다 빼고 예로 실사 사진 하나 첨부된 추모칸 하나만 만들어놓아보도록 해"): the 218 invented
+ * example cubbies are gone. Exactly ONE cubby is filled, at eye height in bank A beside the niche, as a clearly marked sample.
+ * Every other cubby of the 368 is empty and waits for a family.
  */
 
-/** How many of the hall's cubbies hold a sample (brief: 60 %). */
-export const SAMPLE_FILL = 0.6;
+/** The single example cubby (a `cubbyId`: bank A, row 3 from the bottom = eye height, column 11). */
+export const SAMPLE_CUBBY_IDS: readonly string[] = Object.freeze(["M1-A-r3-c11"]);
 
 /** FNV-1a hash of a string (32-bit): the seed of a cubby's choices. */
 export function hashId(id: string): number {
@@ -21,15 +22,10 @@ export function hashId(id: string): number {
   return h >>> 0;
 }
 
-/** The ids of the filled cubbies among `anchors`. */
-export function sampleFilledIds(anchors: readonly CubbyAnchor[], fill: number = SAMPLE_FILL): ReadonlySet<string> {
-  const want = Math.round(anchors.length * fill);
-  return new Set(
-    [...anchors]
-      .sort((a, b) => hashId(`fill:${a.id}`) - hashId(`fill:${b.id}`) || (a.id < b.id ? -1 : 1))
-      .slice(0, want)
-      .map((a) => a.id),
-  );
+/** The ids of the filled cubbies among `anchors` (the example cubby, if it is one of them). */
+export function sampleFilledIds(anchors: readonly CubbyAnchor[], ids: readonly string[] = SAMPLE_CUBBY_IDS): ReadonlySet<string> {
+  const have = new Set(anchors.map((a) => a.id));
+  return new Set(ids.filter((id) => have.has(id)));
 }
 
 /** The filled cubbies of the shared layout. */

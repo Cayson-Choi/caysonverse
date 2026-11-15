@@ -193,7 +193,9 @@ export interface MemorialExterior {
 export interface CubbyWall {
   /** The wall it stands against: "n" the back (north) wall, "e" the east wall. */
   wall: "n" | "e";
-  /** White lacquer (the back wall) or light oak (the east wall). */
+  /** The bank (구역): A and B are the two white banks either side of the memorial niche on the north wall, E the oak bank with glass doors on the east wall. */
+  bank: CubbyBank;
+  /** White lacquer (banks A and B) or light oak with glass doors (bank E). */
   finish: "lacquer" | "oak";
   rows: number;
   cols: number;
@@ -215,10 +217,22 @@ export interface CubbyWall {
   yaw: number;
 }
 
+/** The three banks of cubbies (구역) of the memorial hall. */
+export type CubbyBank = "A" | "B" | "E";
+
+/** The memorial hall's id of the hall in cubby ids (`M1-A-r3-c07`): a second hall would be `M2`. */
+export const HALL_ID = "M1";
+
+/** The stable id of a cubby: `M1-<bank>-r<row>-c<col>` (row 0 = bottom, column 0 = the run's start, two digits). Never renumbered. */
+export function cubbyId(bank: CubbyBank, row: number, col: number): string {
+  return `${HALL_ID}-${bank}-r${row}-c${String(col).padStart(2, "0")}`;
+}
+
 /** A cubby's opening centre, where the runtime puts what a family placed in it (Task 9). */
 export interface CubbyAnchor {
-  /** `<wall>_<row>_<col>`; row 0 is the bottom row, column 0 the run's start. */
+  /** `M1-<bank>-r<row>-c<col>` (`cubbyId`); row 0 is the bottom row, column 0 the run's start. The id is permanent. */
   id: string;
+  bank: CubbyBank;
   wall: CubbyWall["wall"];
   row: number;
   col: number;
@@ -243,8 +257,23 @@ export interface MemorialInterior {
   doorPad: Disc;
   /** Where a visitor appears when they come in (yaw faces into the room). */
   spawn: Point2 & { yaw: number };
-  /** The cubby walls: the back wall (white lacquer, 34 x 7) and the east wall (light oak, 18 x 7), meeting in the north-east corner. */
+  /** The cubby banks: A and B (white lacquer, 14 x 8 each) either side of the niche on the north wall, E (light oak, glass doors, 18 x 8) on the east wall. */
   cubbyWalls: readonly CubbyWall[];
+  /** The memorial niche (기억의 자리) between banks A and B on the north wall: an arched alcove with a skylight over it. */
+  niche: MemorialNiche;
+}
+
+/** The arched niche "기억의 자리" in the north wall (x range between the banks, the arch's spring height and radius, the back wall's z). */
+export interface MemorialNiche {
+  minX: number;
+  maxX: number;
+  /** Height where the arch starts to curve (m) and its radius. */
+  spring: number;
+  radius: number;
+  /** The niche's back wall (the hall's north wall, z). */
+  backZ: number;
+  /** The opening plane the banks share (z). */
+  frontZ: number;
 }
 
 export interface VillageLayout {
@@ -372,20 +401,38 @@ function house(
 }
 
 /** Cubby size (inner, m), board thickness, depth to the back panel and the unit's full depth (the approved concept, 2026-11-03). */
-const CUBBY = { cell: 0.4, frame: 0.025, depth: 0.36, unitDepth: 0.39, plinth: 0.12, rows: 7 } as const;
+const CUBBY = { cell: 0.4, frame: 0.025, depth: 0.36, unitDepth: 0.39, plinth: 0.12, rows: 8 } as const;
+
+/** The width of the memorial niche between banks A and B (m): the design's 기억의 자리. */
+const NICHE_WIDTH = 2.525;
+/** Columns of a north bank (A, B) and of the east bank (E). */
+const NORTH_BANK_COLS = 14;
+const EAST_BANK_COLS = 18;
 
 /**
- * The hall's two cubby walls (B plan room x 292.5..307.5, z -6..6). The east unit remains 18 columns; the north
- * unit grows to 34 columns so the wider room is filled without changing cubby size or row ids.
+ * The hall's three cubby banks (B plan room x 292.5..307.5, z -6..6): A and B, 14 x 8 each, on the north wall either side of
+ * the 2.525 m niche, and E, 18 x 8, on the east wall from the north-east corner southwards: 14 x 8 x 2 + 18 x 8 = 368 cubbies.
+ * The runs end exactly at the east cubbies' front plane (x 307.11), so B and E meet in the corner.
  */
 function hallCubbyWalls(): CubbyWall[] {
   const run = (cols: number) => cols * (CUBBY.cell + CUBBY.frame) + CUBBY.frame;
   const eastFront = 307.5 - CUBBY.unitDepth;
   const backFront = -6 + CUBBY.unitDepth;
+  const bStart = round(eastFront - run(NORTH_BANK_COLS), 6);
+  const aStart = round(bStart - NICHE_WIDTH - run(NORTH_BANK_COLS), 6);
   return [
-    { wall: "n", finish: "lacquer", ...CUBBY, cols: 34, start: pt(round(eastFront - run(34), 6), backFront), along: pt(1, 0), yaw: FACING_SOUTH },
-    { wall: "e", finish: "oak", ...CUBBY, cols: 18, start: pt(eastFront, backFront), along: pt(0, 1), yaw: FACING_WEST },
+    { wall: "n", bank: "A", finish: "lacquer", ...CUBBY, cols: NORTH_BANK_COLS, start: pt(aStart, backFront), along: pt(1, 0), yaw: FACING_SOUTH },
+    { wall: "n", bank: "B", finish: "lacquer", ...CUBBY, cols: NORTH_BANK_COLS, start: pt(bStart, backFront), along: pt(1, 0), yaw: FACING_SOUTH },
+    { wall: "e", bank: "E", finish: "oak", ...CUBBY, cols: EAST_BANK_COLS, start: pt(eastFront, backFront), along: pt(0, 1), yaw: FACING_WEST },
   ];
+}
+
+/** The niche between banks A and B (derived from them, so the model and the code cannot drift apart). */
+function hallNiche(walls: readonly CubbyWall[]): MemorialNiche {
+  const a = walls[0]!;
+  const b = walls[1]!;
+  const aEnd = a.start.x + a.cols * (a.cell + a.frame) + a.frame;
+  return { minX: round(aEnd, 6), maxX: round(b.start.x, 6), spring: 2.35, radius: round((b.start.x - aEnd) / 2 - 0.0825, 3), backZ: -6, frontZ: a.start.z };
 }
 
 function makeVillageLayout(): VillageLayout {
@@ -464,9 +511,12 @@ function makeVillageLayout(): VillageLayout {
         ceilingHeight: 4.5,
         doorSide: "s",
         doorPad: { centre: pt(300, 5.2), radius: 1.4 },
-        // 0.2 m outside the 1.4 m door pad's edge (pad centre z = 5.2, spawn z = 3.6, distance 1.6), so a new arrival is not standing on the door.
-        spawn: { x: 300, z: 3.6, yaw: FACING_NORTH },
+        // 1.2 m outside the 1.4 m door pad's edge (pad centre z = 5.2, spawn z = 2.6, distance 2.6): a new arrival is not standing on the door,
+        // and the door wall behind leaves the camera 3.2 m+ from the head, so the player sees their own avatar on arrival (review
+        // 2026-11-15 round 5: at z = 3.6 the wall held the camera 2.6 m from the head).
+        spawn: { x: 300, z: 2.6, yaw: FACING_NORTH },
         cubbyWalls: hallCubbyWalls(),
+        niche: hallNiche(hallCubbyWalls()),
       },
     },
     // Between the ring road's sidewalk (r 39) and the plots, doors toward the road. Houses 6-10 and the kiosk were
@@ -745,7 +795,8 @@ export function cubbyAnchors(layout: VillageLayout): CubbyAnchor[] {
       for (let col = 0; col < w.cols; col += 1) {
         const u = w.frame + col * pitch + w.cell / 2;
         out.push({
-          id: `${w.wall}_${row}_${col}`,
+          id: cubbyId(w.bank, row, col),
+          bank: w.bank,
           wall: w.wall,
           row,
           col,
@@ -758,6 +809,40 @@ export function cubbyAnchors(layout: VillageLayout): CubbyAnchor[] {
     }
   }
   return out;
+}
+
+/**
+ * The cubby a point on a cubby wall belongs to (a click or a tap on it: 케이슨 마을 추모관, owner 2026-11-13 "윗칸도 잘 보이게"): the
+ * point's place along the run and its height pick the column and the row — the frame board around a cubby counts as that cubby
+ * (half a board each side), so every point of the wall's face names exactly one cubby. A point more than `ahead` m in front of
+ * the opening plane, or behind the unit, or past the wall's ends, plinth or top, is no cubby (`null`).
+ */
+export function cubbyAtPoint(layout: VillageLayout, x: number, y: number, z: number, ahead = 0.12): CubbyAnchor | null {
+  if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) return null;
+  for (const w of layout.memorial.interior.cubbyWalls) {
+    const rx = x - w.start.x;
+    const rz = z - w.start.z;
+    const out = rx * Math.sin(w.yaw) + rz * Math.cos(w.yaw); // + into the room
+    if (out > ahead || out < -w.unitDepth) continue;
+    const u = rx * w.along.x + rz * w.along.z;
+    const pitch = w.cell + w.frame;
+    const col = Math.floor((u - w.frame / 2) / pitch);
+    const row = Math.floor((y - w.plinth - w.frame / 2) / pitch);
+    if (col < 0 || col >= w.cols || row < 0 || row >= w.rows) continue;
+    const cu = w.frame + col * pitch + w.cell / 2;
+    return {
+      id: cubbyId(w.bank, row, col),
+      bank: w.bank,
+      wall: w.wall,
+      row,
+      col,
+      x: round(w.start.x + w.along.x * cu, 6),
+      y: round(w.plinth + w.frame + row * pitch + w.cell / 2, 6),
+      z: round(w.start.z + w.along.z * cu, 6),
+      yaw: w.yaw,
+    };
+  }
+  return null;
 }
 
 /** A cubby wall's footprint: from its opening plane back to the room wall, along its whole run. */
@@ -970,6 +1055,17 @@ export const villageGeometry: MapGeometry = buildVillageGeometry(
   // parked bus's mirrors hang past its box at head height (bus review r3): a collider under each.
   [...guideColliders(), ...busMirrorColliders()],
 );
+
+/**
+ * Where a family member lands inside a house (the keypad's way in). The house interiors share the hall's footprint, but not its
+ * arrival spot: the hall's moved 1 m in (round 5) for its camera, which must not move the houses' with it (round 6 review). The
+ * houses keep their own, 1.6 m in front of the shared door pad's centre and facing into the room.
+ */
+export const HOUSE_INTERIOR_SPAWN: Readonly<{ x: number; z: number; yaw: number }> = Object.freeze({
+  x: VILLAGE_LAYOUT.memorial.interior.doorPad.centre.x,
+  z: VILLAGE_LAYOUT.memorial.interior.doorPad.centre.z - 1.6,
+  yaw: VILLAGE_LAYOUT.memorial.interior.spawn.yaw,
+});
 
 /** Procedural house interiors reuse the hall room footprint but omit memorial furniture and cubby obstacles. */
 export const houseInteriorGeometry: MapGeometry = makeGeometry(

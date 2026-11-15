@@ -35,6 +35,8 @@ export const r2 = (n) => Math.round(n * 100) / 100;
 /** Console lines that are expected (the known Clock warning). */
 const ALLOWED_CONSOLE = [
   { name: "THREE.Clock deprecation", re: /THREE\.Clock/ },
+  // Windows ANGLE (D3D) compiler note on the village lightmap shaders; it also appears with the village alone (checked before the hall changes)
+  { name: "ANGLE X3595 gradient-in-loop", re: /X3595: gradient instruction used in a loop/ },
 ];
 
 export function createRun(name) {

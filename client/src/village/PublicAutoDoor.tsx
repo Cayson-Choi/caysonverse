@@ -5,12 +5,18 @@ import { CLOSED_AUTO_DOOR, PUBLIC_AUTO_DOOR, stepAutoDoor, type AutoDoorState } 
 import { VILLAGE_LAYOUT, type AreaId } from "@caysonverse/shared/village/villageLayout";
 import type { Pose } from "../game/types";
 import { autoDoorOpenAmount } from "./publicAutoDoorModel";
+import { hallDoor } from "./hallDoor";
 
 /**
  * A lightweight public entrance overlay for the current memorial hall GLB. It gives the player immediate visual
- * feedback for the proximity door while `UseDoor` remains the validated teleport action. The model can later replace
- * these panels with `door__*` nodes without changing the shared state machine or the server boundary.
+ * feedback for the proximity door while `UseDoor` remains the validated teleport action.
+ *
+ * Inside the hall (2026-11-13 rebuild) the rebuilt model has its own glass leaves (`door__leaf_l` / `door__leaf_r`, see
+ * hallDoor.ts): the same state machine slides THOSE, and the overlay's panels are hidden. Outside they are still the panels.
  */
+/** How far each model leaf of the hall's door slides when the door is fully open (m): a leaf is 1.04 m wide, the opening 2.2 m. */
+export const HALL_LEAF_SLIDE_M = 1.0;
+
 export function PublicAutoDoor({ area, pose }: { area: AreaId; pose: Pose }) {
   const root = useRef<Group>(null);
   const left = useRef<Mesh>(null);
@@ -31,6 +37,14 @@ export function PublicAutoDoor({ area, pose }: { area: AreaId; pose: Pose }) {
       { ...PUBLIC_AUTO_DOOR, approachRadiusM: Math.max(PUBLIC_AUTO_DOOR.approachRadiusM, pad.radius + 0.75) },
     );
     const amount = autoDoorOpenAmount(state.current, nowMs, PUBLIC_AUTO_DOOR);
+    const model = area === "hall" ? hallDoor.leaves : null;
+    if (root.current) root.current.visible = model === null;
+    if (model) {
+      // the model's leaves are authored closed: each slides along x toward its own side
+      model.left.position.x = -amount * HALL_LEAF_SLIDE_M;
+      model.right.position.x = amount * HALL_LEAF_SLIDE_M;
+      return;
+    }
     if (left.current) left.current.position.x = -0.58 - amount * 0.52;
     if (right.current) right.current.position.x = 0.58 + amount * 0.52;
     if (sensor.current) {

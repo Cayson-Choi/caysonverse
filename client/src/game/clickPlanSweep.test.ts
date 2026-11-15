@@ -16,6 +16,7 @@ import { PLAYER_RADIUS } from "@caysonverse/shared/worldMap";
 import { isBlocked, resolveCollision } from "@caysonverse/shared/collision";
 import { VILLAGE_LAYOUT, villageGeometry } from "@caysonverse/shared/village/villageLayout";
 import { VILLAGE_BENCHES, VILLAGE_SEATS } from "@caysonverse/shared/village/benchSeats";
+import { reachable } from "@caysonverse/shared/school/reachTestUtil";
 import { findDetour, isFreeSpot, planClickMove, simulateWalk, walkThere, type ClickPlan } from "./clickPlan";
 import { ARRIVE_DIST, clearClickTarget, getClickTarget, setClickTarget, stepClickMove } from "./clickMove";
 import { VILLAGE_ACTIVE_MAP, VILLAGE_FURNITURE, setActiveMap } from "./activeMap";
@@ -31,7 +32,10 @@ const footprints = VILLAGE_BENCHES.map((b) => {
   const plaza = b.id.startsWith("plaza_");
   return { b, halfAlong: plaza ? 0.95 : b.length / 2, halfAhead: plaza ? 0.33 : b.frontEdge };
 });
-const isBenchBox = (o: { minX: number; maxX: number; minZ: number; maxZ: number }) => VILLAGE_FURNITURE.includes(o);
+const villageBenchBoxes = VILLAGE_FURNITURE.filter((o) =>
+  VILLAGE_BENCHES.some((b) => b.centre.x > o.minX && b.centre.x < o.maxX && b.centre.z > o.minZ && b.centre.z < o.maxZ),
+);
+const isBenchBox = (o: { minX: number; maxX: number; minZ: number; maxZ: number }) => villageBenchBoxes.includes(o);
 const underABench = (x: number, z: number) =>
   footprints.some(({ b, halfAlong, halfAhead }) => {
     const dx = x - b.centre.x;
@@ -57,6 +61,16 @@ const bodyFitsNear = (x: number, z: number) => {
 const cafeChair = (s: { bench: string }) => s.bench.startsWith("cafe_terrace_");
 /** On the terrace's deck (see above): a tap there from any seat (the bus shelter's next door, since main's merge) is held to the same rule. */
 const onTerrace = (x: number, z: number) => x > 40.6 && x < 46.2 && z > -22.0 && z < -8.2;
+/** The hall's floor a standing body (radius 0.4) can walk to from the arrival spot, on a 0.25 m grid. */
+const hallReach = (() => {
+  const sp = VILLAGE_LAYOUT.memorial.interior.spawn;
+  const pts = reachable({ ...villageGeometry, bounds: VILLAGE_LAYOUT.areas.hall }, { x: sp.x, z: sp.z }, 0.25, 0);
+  return { set: new Set(pts.map((p) => `${Math.round((p.x - sp.x) / 0.25)},${Math.round((p.z - sp.z) / 0.25)}`)), sp };
+})();
+const hallWalkable = (x: number, z: number): boolean =>
+  hallReach.set.has(`${Math.round((x - hallReach.sp.x) / 0.25)},${Math.round((z - hallReach.sp.z) / 0.25)}`) &&
+  Math.abs(x - hallReach.sp.x - Math.round((x - hallReach.sp.x) / 0.25) * 0.25) < 1e-6 &&
+  Math.abs(z - hallReach.sp.z - Math.round((z - hallReach.sp.z) / 0.25) * 0.25) < 1e-6;
 
 /** A seeded generator (Park-Miller), so the sweep is the same every run. */
 function seeded(seed: number): () => number {
@@ -78,6 +92,9 @@ describe("clickPlan sweep — seated, every tap on the open ground round a seat 
           if (x < bounds.minX || x > bounds.maxX || z < bounds.minZ || z > bounds.maxZ || !openGround(x, z)) continue;
           // a café chair: the taps round it on its terrace, where a body fits
           if ((cafeChair(s) || onTerrace(x, z)) && !bodyFitsNear(x, z)) continue;
+          // the hall: furniture makes pockets a body cannot stand in or cannot get out of; a tap there is rightly refused, so only
+          // spots a body fits on and can walk to from the arrival count (and the seat itself must be walkable-from: tested below)
+          if (s.area === "hall" && !hallWalkable(x, z)) continue;
           points++;
           const plan = planClickMove(s.standX, s.standZ, ground(x, z), obstacles, bounds, true, options);
           if (!plan.ok) {

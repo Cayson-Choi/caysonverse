@@ -73,12 +73,12 @@ describe("arrival spacing rules", () => {
     expect(SPACING_SLACK_M).toBeLessThan(0.01);
   });
 
-  it("the layout's own arrival points are valid spots (each exactly 0.2 m off its pad)", () => {
+  it("the layout's own arrival points are valid spots (outside 0.2 m off its pad; the hall's 1.2 m in, so its camera has room: round 5)", () => {
     expect(isValidSpot(HALL_SPAWN, arrivalArea("hall"))).toBe(true);
     expect(isValidSpot(OUT_ARRIVAL, arrivalArea("village"))).toBe(true);
     expect(isValidSpot(PLAZA, arrivalArea("village"))).toBe(true);
     expect(isValidSpot(HALL_SPAWN, arrivalArea("house:house_1"))).toBe(true);
-    expect(Math.hypot(HALL_SPAWN.x - IN_PAD.centre.x, HALL_SPAWN.z - IN_PAD.centre.z)).toBeCloseTo(IN_PAD.radius + DOOR_PAD_CLEARANCE_M, 9);
+    expect(Math.hypot(HALL_SPAWN.x - IN_PAD.centre.x, HALL_SPAWN.z - IN_PAD.centre.z)).toBeCloseTo(IN_PAD.radius + 1.2, 9);
     expect(Math.hypot(OUT_ARRIVAL.x - OUT_PAD.centre.x, OUT_ARRIVAL.z - OUT_PAD.centre.z)).toBeCloseTo(OUT_PAD.radius + DOOR_PAD_CLEARANCE_M, 9);
   });
 
@@ -103,7 +103,7 @@ describe("arrival spacing rules", () => {
 
   it("a spot on a collider, outside the room or on a door pad is not valid", () => {
     const hall = arrivalArea("hall");
-    expect(isValidSpot({ x: 296, z: 3 }, hall)).toBe(false); // the long sofa
+    expect(isValidSpot({ x: 294.5, z: 5.5 }, hall)).toBe(false); // the long sofa
     expect(isValidSpot({ x: 300, z: 5.7 }, hall)).toBe(false); // against the south wall, on the pad
     expect(isValidSpot({ x: IN_PAD.centre.x, z: IN_PAD.centre.z }, hall)).toBe(false); // on the way out
     expect(isValidSpot({ x: 300, z: IN_PAD.centre.z - IN_PAD.radius - 0.1 }, hall)).toBe(false); // 0.1 m off the pad's edge
@@ -187,9 +187,9 @@ describe("findFreeSpot", () => {
     expectValid([s], arrivalArea("hall"));
   });
 
-  it(`up to 12 (and the room's ${VILLAGE_MAX_CLIENTS}) entering the hall in the same tick get distinct, valid spots at least the spacing apart`, () => {
+  it(`up to 24 entering the hall in the same tick get distinct, free, valid spots at least the spacing apart (the furnished hall has room for 26)`, () => {
     const hall = arrivalArea("hall");
-    for (const n of [2, 3, 5, 8, 12, VILLAGE_MAX_CLIENTS]) {
+    for (const n of [2, 3, 5, 8, 12, 24]) {
       const spots = arriveTogether(n, "hall", HALL_SPAWN);
       expect(spots.every((s) => s.free), `n = ${n}`).toBe(true);
       expect(new Set(spots.map((s) => `${s.x.toFixed(4)},${s.z.toFixed(4)}`)).size).toBe(n);
@@ -204,11 +204,18 @@ describe("findFreeSpot", () => {
     for (const s of arriveTogether(12, "hall", HALL_SPAWN)) expect(Math.hypot(s.x - HALL_SPAWN.x, s.z - HALL_SPAWN.z)).toBeLessThan(4);
   });
 
-  it("the first two into the hall stay by the way out: the first within the button's reach, the second within the server's door reach (one small step brings the button)", () => {
+  it(`a full room (${VILLAGE_MAX_CLIENTS}) entering together still gets valid spots, never on furniture or a door pad (the last ones are the least crowded places)`, () => {
+    const hall = arrivalArea("hall");
+    const spots = arriveTogether(VILLAGE_MAX_CLIENTS, "hall", HALL_SPAWN);
+    expect(spots.filter((s) => s.free).length).toBeGreaterThanOrEqual(24);
+    expectValid(spots, hall);
+  });
+
+  it("the first two into the hall stay by the way out: the first within the button's reach, the second a step from it (round 5: the spawn moved 1 m in so the camera behind has room)", () => {
     const [a, b] = arriveTogether(2, "hall", HALL_SPAWN);
     const d = (s: { x: number; z: number }) => Math.hypot(s.x - IN_PAD.centre.x, s.z - IN_PAD.centre.z);
-    expect(d(a)).toBeLessThanOrEqual(IN_PAD.radius + 0.7); // villageTargets DOOR_OFFER_REACH_M
-    expect(d(b)).toBeLessThanOrEqual(IN_PAD.radius + 0.9); // villageDoor DOOR_REACH_M
+    expect(d(a)).toBeLessThanOrEqual(IN_PAD.radius + 1.25); // villageTargets DOOR_OFFER_REACH_M
+    expect(d(b)).toBeLessThanOrEqual(IN_PAD.radius + 2.0);
   });
 
   it("12 coming out of the hall together spread in front of the memorial, off its door pad and clear of the building", () => {

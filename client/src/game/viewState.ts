@@ -19,6 +19,7 @@ import { normalizeAngle } from "./yaw";
 import { recenterYaw, type OrbitGoal } from "./cameraControls";
 import { getActiveMap } from "./activeMap";
 import { overviewAllowed } from "./indoorCamera";
+import { INDOOR_SEAT_PITCH, indoorSeatFrame } from "./seatFraming";
 import { stepBlend, stepZoomMode, OV_BLEND_SEC, type ViewMode, type ZoomBand } from "./viewMode";
 import { useViewStore } from "../stores/viewStore";
 import type { Orbit } from "./types";
@@ -182,15 +183,33 @@ export function cancelOrbitGoal(): void {
   viewState.orbitGoal = null;
 }
 
+export { INDOOR_SEAT_PITCH };
+
+/** Where a seat indoors is: its spot and the screen's shape, to find a framing with room for the camera (seatFraming.ts). */
+export interface SeatAt {
+  x: number;
+  z: number;
+  aspect: number;
+}
+
 /**
- * The seat is confirmed. The camera stays exactly as the player has it (owner
- * 2026-11-10: "자동으로 바뀌니까 헷갈려") — it used to swing behind the chair at a preset
- * tilt and distance (third person) or snap the look onto the screen (first person), and
- * glide back on standing up. Kept as the sit flow's camera hook (LocalPlayer calls it on
- * every confirmed sit), deliberately empty: neither the orbit nor the view state changes.
+ * The seat is confirmed. Outdoors the camera stays exactly as the player has it (owner 2026-11-10: "자동으로 바뀌니까
+ * 헷갈려") — it used to swing behind the chair at a preset tilt and distance (third person) or snap the look onto the screen
+ * (first person), and glide back on standing up. Indoors (`indoor`: a place with a camera limit, the memorial hall) the
+ * third-person camera glides ONCE, as the player sits: to look the way the seat faces at a level tilt (`INDOOR_SEAT_PITCH`) where
+ * the room behind the seat lets the camera stay 3.2 m+ from the head, else turned round the seat to the nearest direction that
+ * does (review 2026-11-15 round 5: on a sofa against the wall the camera sat at the head and the player could not see themself
+ * sitting). A goal like the R key's, so any drag, Z / C, wheel or pinch takes over at once, and nothing touches the camera again
+ * while seated or on standing up. LocalPlayer calls it on every confirmed sit.
  */
-export function beginSeatCamera(_orbit: Orbit, _seatYaw: number): void {
-  // Nothing: sitting down does not move the camera.
+export function beginSeatCamera(orbit: Orbit, seatYaw: number, indoor = false, at?: SeatAt): void {
+  if (!indoor || viewState.mode !== "tp") return;
+  if (!at) {
+    viewState.orbitGoal = { yaw: recenterYaw(seatYaw), pitch: INDOOR_SEAT_PITCH };
+    return;
+  }
+  const f = indoorSeatFrame(at.x, at.z, seatYaw, orbit.distance, at.aspect);
+  viewState.orbitGoal = { yaw: f.yaw, pitch: f.pitch };
 }
 
 /** The player stood up: the camera stays as it is, like on sitting down (see `beginSeatCamera`). */

@@ -19,6 +19,8 @@ import {
   type Interaction,
 } from "../game/interact";
 import { useChatStore } from "../stores/chatStore";
+import { cubbyCardState } from "../village/cubbyCard";
+import { guideDialogOpen } from "../village/guideDialogStore";
 import { isTouchDevice } from "../device";
 import type { Pose, SeatState } from "../game/types";
 import { rectStyle, useTouchHudLayout } from "./useTouchHudLayout";
@@ -119,10 +121,13 @@ export function ActionButton({ pose, seat }: { pose: Pose; seat: SeatState }) {
     const targets = getTargets(pose);
     const map = getActiveMap();
     let next: Interaction | null;
-    if (map.seats && map.seats.length > 0) {
+    if (seat.index < 0 && (cubbyCardState() !== null || guideDialogOpen() !== null)) {
+      // A cubby card or a guide's questions are open: nothing is offered (no "앉기" behind the panel).
+      next = null;
+    } else if (map.seats && map.seats.length > 0) {
       // Its benches (from the front) and the scene's targets.
       const occupied = new Set(getRemoteSeatIndices());
-      next = pickInteraction(interactInputAt(pose.x, pose.z, seat.index, (i) => occupied.has(i), targets, { seats: map.seats }));
+      next = pickInteraction(interactInputAt(pose.x, pose.z, seat.index, (i) => occupied.has(i), targets, { seats: map.seats, area: map.seatArea }));
     } else {
       next = pickInteraction({ seated: false, seat: null, targets });
     }

@@ -53,8 +53,14 @@ function villageSpec(): SchoolSpec {
   };
 }
 
-/** Materials the memorial hall's game code drives itself: the lights (LED strips, downlights, candles) and the garden card. */
-export const MEMORIAL_NON_LIGHTMAPPED = ["M_lamp", "M_garden"] as const;
+/**
+ * Materials the memorial hall's game code drives itself or that are not light-mapped: the lights (LED strips, cove, downlights, candles),
+ * the garden card (day/night), the skylight diffuser, the window and cubby glass and the door's sliding leaves.
+ */
+export const MEMORIAL_NON_LIGHTMAPPED = ["M_lamp", "M_garden", "M_skylight", "M_glass", "M_alu"] as const;
+
+/** The niche collider's back-to-front depth: the arched alcove, the altar console and 5 cm (bake: niche()). */
+export const NICHE_COLLIDER_MAX_Z = -5.33;
 
 /** How close (m) a cubby anchor must sit to the layout's opening centre (the cubbies are 0.425 m apart). */
 export const CUBBY_ANCHOR_TOLERANCE = 0.02;
@@ -63,26 +69,28 @@ export const CUBBY_ANCHOR_TOLERANCE = 0.02;
 export const HALL_WALL_IDS = ["hall_wall_n", "hall_wall_s", "hall_wall_e", "hall_wall_w"] as const;
 
 /**
- * 추모관 안 (memorial.glb, Task 8): an `anchor__cubby_<id>` empty at every cubby's opening centre (within 2 cm, facing
- * into the room), the hall's four walls and the two cubby units as camera-height col__ boxes on the layout's rectangles,
- * no col__ box on the inside door pad or where visitors arrive, the `ceil__hall` slab under the roof, and the
- * materials the game drives itself.
+ * 추모관 안 (memorial.glb, Task 8, rebuilt 2026-11-13): an `anchor__cubby_<id>` empty at every one of the 368 cubbies'
+ * opening centres (within 2 cm, facing into the room), the hall's four walls, the three banks (A, B, E) and the niche as
+ * camera-height col__ boxes on the layout's rectangles, the door's two sliding leaves, no col__ box on the inside door pad or
+ * where visitors arrive, the `ceil__hall` slab under the roof, and the materials the game drives itself.
  */
 function memorialSpec(): SchoolSpec {
   const inn = VILLAGE_LAYOUT.memorial.interior;
   const anchors = cubbyAnchors(VILLAGE_LAYOUT);
-  const [back, east] = inn.cubbyWalls;
+  const [bankA, bankB, bankE] = inn.cubbyWalls;
   const walls = hallWalls(VILLAGE_LAYOUT);
   const wallNodes = HALL_WALL_IDS.map((id) => colliderNode(id));
   const boxes = [
     ...HALL_WALL_IDS.map((id, i) => ({ node: colliderNode(id), box: walls[i]!, camera: true })),
-    // the back unit's box runs wall to wall: its filler at the west end, the dead corner behind the east unit
-    { node: colliderNode("cubby_n"), box: { ...cubbyWallBox(back!), minX: inn.room.minX, maxX: inn.room.maxX }, camera: true },
-    { node: colliderNode("cubby_e"), box: cubbyWallBox(east!), camera: true },
+    // bank A runs to the west wall (its filler), bank B to the east wall (the dead corner behind the east bank)
+    { node: colliderNode("cubby_a"), box: { ...cubbyWallBox(bankA!), minX: inn.room.minX }, camera: true },
+    { node: colliderNode("cubby_b"), box: { ...cubbyWallBox(bankB!), maxX: inn.room.maxX }, camera: true },
+    { node: colliderNode("cubby_e"), box: cubbyWallBox(bankE!), camera: true },
+    { node: colliderNode("niche"), box: { minX: inn.niche.minX, maxX: inn.niche.maxX, minZ: inn.niche.backZ, maxZ: NICHE_COLLIDER_MAX_Z }, camera: true },
   ];
   return {
     kind: "memorial",
-    requiredNodes: [...anchors.map((a) => cubbyAnchorNode(a.id)), ...boxes.map((b) => b.node), "ceil__hall"],
+    requiredNodes: [...anchors.map((a) => cubbyAnchorNode(a.id)), ...boxes.map((b) => b.node), "ceil__hall", "door__leaf_l", "door__leaf_r"],
     requiredPrefixes: [
       { prefix: "anchor__cubby_", min: anchors.length },
       { prefix: "col__", min: boxes.length },

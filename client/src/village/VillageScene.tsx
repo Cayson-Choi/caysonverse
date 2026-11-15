@@ -76,7 +76,7 @@ import { HouseInterior } from "./HouseInterior";
  *    context button and E (interactTargets.ts). Pressing it draws the curtain (DoorFade) and then sends `UseDoor`;
  *  - the quiet hall: while inside, jumping and emoji are off (quiet.ts), as on the server;
  *  - the cubbies (Task 9): inside, within 1.2 m of a cubby column, "가까이 보기" (context button and E) opens the
- *    close-up card (CubbyView), where "촛불 켜기" lights a candle everyone in the hall sees for 60 s;
+ *    close-up card (CubbyView), where "촛불 켜기" lights a candle everyone in the hall sees for an hour (server-kept, with who lit it);
  *  - the guides (Task 9A): the plaza's 마을 안내원 and the hall's 안내 데스크 (GuideNpc), "문의하기" within 2.2 m opens
  *    their questions (GuideDialog); an answer plays its voice clip for this player only, ducking the music.
  *

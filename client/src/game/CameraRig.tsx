@@ -54,8 +54,10 @@ import {
   finishClickPlanSteps,
   requireSeen,
   startClickPlan,
+  surfaceKind,
   walkStart,
   type ClickPlan,
+  type SurfacePoint,
   type RingView,
 } from "./clickPlan";
 import { ringLift, ringScreenScale } from "./clickRing";
@@ -75,7 +77,24 @@ import { useSettingsStore } from "../stores/settingsStore";
 import { getTransitRenderPose, useTransitState } from "../net/transitSync";
 import { riderFov, transitRiderCamera, transitWindowCamera } from "../village/transitCamera";
 import { selfBusRide } from "./busRide";
+import { VILLAGE_LAYOUT, cubbyAtPoint } from "@caysonverse/shared/village/villageLayout";
+import { localArea } from "../village/villageArea";
+import { openCubbyAt } from "../village/cubbyCard";
+import { cubbyFocusAnchor, stepCubbyFocus, type FocusPose } from "../village/cubbyFocus";
 import type { Orbit, Pose, SeatState } from "./types";
+import { BASE_FOV } from "./cameraShoulder";
+import { furnitureClick } from "./furnitureClick";
+import { stepSeatOnArrival, type SeatIntent } from "./seatOnArrival";
+import { UNREACHABLE_HINT, useClickHint } from "../stores/clickHintStore";
+
+/** A click on floor the avatar cannot get to: a short line instead of silence (round 9 review). */
+function showUnreachableHint(): void {
+  useClickHint.getState().show(UNREACHABLE_HINT);
+  if (import.meta.env.DEV) window.__cvClickHints = (window.__cvClickHints ?? 0) + 1;
+}
+import { getRemoteSeatIndices } from "./remoteStore";
+import { sendSit } from "../net/connection";
+import { SEAT_REACH, approachesSeat, seatDistance, seatTaken } from "@caysonverse/shared/worldMap";
 
 interface CameraRigProps {
   pose: Pose;
@@ -118,7 +137,10 @@ let lastClickPick: {
   unseen: ClickPlan | null;
   pending: boolean;
   ms: number;
+  /** The seat a click on furniture picked (furnitureClick.ts), sat on when the walk ends at its approach. */
+  sitOn?: number | null;
 } | null = null;
+
 
 /** How long (ms) one slice of a click's way-round search runs before the page gets the thread back (CameraRig planClick). */
 const PLAN_SLICE_MS = 4;
@@ -210,9 +232,13 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
     return createFollowRig(orbit);
   });
   const [tpSpot] = useState(createFollowSpot);
+  // the memorial cubby close-up's pose this frame (cubbyFocus.ts), reused (no allocation per frame)
+  const [focusPose] = useState<FocusPose>(() => ({ ex: 0, ey: 0, ez: 0, tx: 0, ty: 0, tz: 0 }));
   // Live whole-map fit height (aspect-dependent) — recomputed each frame, read by
   // the overview wheel/pinch handlers for the zoom ceiling. Ref, not state.
   const fitHeight = useRef(0);
+  /** The camera's own vertical field of view (PlayShell's): the over-the-shoulder view on a phone widens it for a while. */
+  const baseFov = useRef(0);
   // Previous frame's mode, to detect the EDGE into overview and seed its camera
   // (distinct from viewState.prevMode, which is the mode overview will restore).
   const lastFrameMode = useRef(viewState.mode);
@@ -221,6 +247,12 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
   /** The seated FP eye's weight (0 standing .. 1 seated) and the seat it eases toward or away from (seatedEye.ts). */
   const seatedEyeW = useRef(0);
   const seatedEyeSeat = useRef<{ yaw: number; seatY?: number } | null>(null);
+  /**
+   * A seat clicked (furnitureClick.ts): once the walk to its approach (x, z) has started (`armed`: its ring is the walk's target)
+   * and ends there, the avatar sits on it. Another click, a key or the stick (the walk's target replaced or dropped short of the
+   * spot) forgets it.
+   */
+  const seatOnArrival = useRef<SeatIntent | null>(null);
   // Z / C are registered in the shared KeyboardControls map; read their live state.
   const [, getKeys] = useKeyboardControls<MoveControl>();
   // A boarded village bus owns the camera pose until the server confirms a leave.
@@ -240,7 +272,10 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
     // stuck-release without inferring it from position traces alone.
     window.__cvClickTarget = () => getClickTarget();
     window.__cvClickPick = () => lastClickPick && { ...lastClickPick };
+    // the seat a click on furniture will sit on when its walk ends (furnitureClick.ts), or null
+    (window as unknown as { __cvSeatOnArrival?: () => unknown }).__cvSeatOnArrival = () => seatOnArrival.current && { ...seatOnArrival.current };
     return () => {
+      delete (window as unknown as { __cvSeatOnArrival?: () => unknown }).__cvSeatOnArrival;
       delete window.__cvCamera;
       delete window.__cvClickTarget;
       delete window.__cvClickPick;
@@ -301,7 +336,30 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
       raycaster.near = cam.near; // nearer than the near plane is not drawn: nothing to click
       raycaster.far = cam.far;
       raycaster.layers.mask = cam.layers.mask;
-      return pickSurface(raycaster, scene, { area: activeBounds() });
+      const pick = pickSurface(raycaster, scene, { area: activeBounds() });
+      if (pick) {
+        const { origin: o, direction: d } = raycaster.ray;
+        pick.ray = { o: { x: o.x, y: o.y, z: o.z }, d: { x: d.x, y: d.y, z: d.z } };
+      }
+      return pick;
+    };
+    /**
+     * In the memorial hall a click or a tap on a cubby — any row, the top one too (owner 2026-11-13) — opens its close-up (the
+     * card, and the camera glides to the front of that cubby: cubbyFocus.ts) instead of walking. While a close-up is open a
+     * click elsewhere does nothing (the card's own buttons and Esc end it). True when the click was taken here.
+     */
+    const hallCubbyClick = (clientX: number, clientY: number): boolean => {
+      if (localArea() !== "hall") return false;
+      const hit = pickAt(clientX, clientY);
+      const cubby = hit && !hit.blocker ? cubbyAtPoint(VILLAGE_LAYOUT, hit.x, hit.y, hit.z) : null;
+      if (cubby) {
+        taps.reset();
+        clickWork.drop();
+        clearClickTarget();
+        openCubbyAt(cubby);
+        return true;
+      }
+      return cubbyFocusAnchor() !== null;
     };
     /**
      * Rule 4: how a ring at (x, z) on a surface at `surfaceY` would look from `cam` — as ClickMarker will draw it: its
@@ -338,19 +396,39 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
       const s = seat.index >= 0 ? activeSeats()[seat.index] : undefined;
       const g = localGlide.current;
       const from = walkStart(pose.x, pose.z, s, g && { x: g.toX, z: g.toZ });
-      const picked = asSurface(pick);
-      // A tap on a marked chair or porch bench walks to THAT seat's own approach spot (seatTap.ts), never the ground nearest it.
-      const mapNow = getActiveMap();
-      const seatTapped = picked ? seatUnderTap(activeSeats(), picked.x, picked.y, picked.z) : -1;
-      const seatGoal = seatTapped >= 0 && seatTapped !== seat.index ? seatApproachGoal(activeSeats(), seatTapped, mapNow.geometry.obstacles, activeBounds()) : null;
-      setPreferredSeat(seatGoal ? seatTapped : -1); // the walk that ends beside the tapped chair offers it
-      const surface = seatGoal ? { x: seatGoal.x, y: surfaceHeightAt(raycaster, scene, seatGoal.x, seatGoal.z, 0.01), z: seatGoal.z, ny: 1 } : picked;
+      let surface: SurfacePoint | null = asSurface(pick);
+      const map = getActiveMap();
+      // A tap on a marked chair or porch bench (the art's village seats: the café terrace, the porches) walks to THAT seat's own
+      // approach spot (seatTap.ts), never the ground nearest it, and sits on arrival like any other seat clicked (below).
+      const seatTapped = surface ? seatUnderTap(activeSeats(), surface.x, surface.y, surface.z) : -1;
+      const seatGoal = seatTapped >= 0 && seatTapped !== seat.index ? seatApproachGoal(activeSeats(), seatTapped, map.geometry.obstacles, activeBounds()) : null;
+      if (seatGoal) surface = { x: seatGoal.x, y: surfaceHeightAt(raycaster, scene, seatGoal.x, seatGoal.z, 0.01), z: seatGoal.z, ny: 1 };
       // An upright face clicked low is a curb's side only if it ends there (not a step's riser): measured once.
       if (pick && surface && pick.ny < WALKABLE_MIN_NY && pick.y > 0 && pick.y <= WALKABLE_MAX_Y && pick.faceTall === undefined) {
         pick.faceTall = faceIsTall(raycaster, scene, pick);
       }
-      const map = mapNow;
-      const start = startClickPlan(from.x, from.z, surface, map.geometry.obstacles, activeBounds(), !!s, { furniture: map.furniture, farFirst: seatGoal !== null });
+      // In the hall every collider in the room is furniture (round 9: the floor seen under the letter table's edge, between its
+      // chairs, had no free spot within MAX_PUSH and the tap was "unreachable"): floor inside one moves out as for a bench's box.
+      let furniture = localArea() === "hall" ? map.geometry.obstacles : map.furniture;
+      // A click on a seat or (in the hall) on other furniture is no ground, yet means something (round 8 review: a tap on the
+      // sofa did nothing): the seat's approach, to sit on arrival, or the floor next to the piece (furnitureClick.ts).
+      let sitOn: number | null = seatGoal ? seatTapped : null;
+      if (!seatGoal && surface && surfaceKind(surface, map.geometry.obstacles, activeBounds()) === "none") {
+        const remote = new Set(getRemoteSeatIndices());
+        const fc = furnitureClick(pick, pick?.ray ?? null, map.seats ?? activeSeats(), map.seatArea, (i) => remote.has(i), from, 0, localArea() === "hall");
+        // (a click on the seat the player is sitting on stays nothing)
+        if (fc && !(fc.seatIndex !== null && fc.seatIndex === seat.index)) {
+          // the floor there (a column that meets a cushion or a seat first is not the floor: the room's floor level then)
+          const fy = surfaceHeightAt(raycaster, scene, fc.surface.x, fc.surface.z, 0);
+          surface = { ...fc.surface, y: fy <= WALKABLE_MAX_Y ? fy : 0 };
+          sitOn = fc.seatIndex;
+          // the floor under a click on furniture lies inside its box: moved out as far as for a bench's
+          furniture = map.geometry.obstacles;
+        }
+      }
+      // the walk that ends beside the clicked seat offers THAT one, though another may be a hair nearer (seatPreference.ts)
+      setPreferredSeat(sitOn ?? -1);
+      const start = startClickPlan(from.x, from.z, surface, map.geometry.obstacles, activeBounds(), !!s, { furniture, farFirst: seatGoal !== null });
       const cameraNow = (): PerspectiveCamera => {
         if (snap) return snap;
         const cam = camera as PerspectiveCamera;
@@ -367,11 +445,18 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
         let unseen: ClickPlan | null = null;
         if (plan.ok) {
           view = viewOfRing(plan.x, plan.y, plan.z, cameraNow());
-          const seen = requireSeen(plan, view);
+          // a seat clicked was itself in view: its approach (beside or under the camera) need not be
+          const seen = sitOn === null ? requireSeen(plan, view) : plan;
           if (!seen.ok) unseen = plan;
           plan = seen;
         }
-        if (import.meta.env.DEV) lastClickPick = { pick, plan, view, unseen, pending: false, ms: performance.now() - t0 };
+        if (import.meta.env.DEV) lastClickPick = { pick, plan, view, unseen, pending: false, ms: performance.now() - t0, sitOn };
+        // a seat clicked: sat on once the walk to its approach ends there (the frame loop's seat-on-arrival)
+        // (already standing at it, the click is "here": sat on at once)
+        const now = performance.now();
+        if (sitOn === null) seatOnArrival.current = null;
+        else if (plan.ok) seatOnArrival.current = { index: sitOn, x: plan.x, z: plan.z, armed: false, at: now };
+        else seatOnArrival.current = plan.reason === "here" ? { index: sitOn, x: from.x, z: from.z, armed: true, at: now } : null;
         return plan;
       };
       if (start.plan) {
@@ -447,7 +532,18 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
             // the ring at the plan's spot (a menu open: no walk follows, no ring)
             const shown = plan.ok && !isUiCaptured() ? setPendingClick(plan.x, plan.z, plan.y) : null;
             if (!shown && provisional && peekPendingClick() === provisional) clearPendingClick();
-            if (intent === "ignore") return;
+            if (intent === "ignore") {
+              // a floor no body gets to: said so once the tap stands (not the first of a double tap)
+              if (!plan.ok && plan.reason === "unreachable") {
+                taps.work.hold(
+                  () => {
+                    if (clickGeneration() === generation) showUnreachableHint();
+                  },
+                  wait ? Math.max(0, DOUBLE_TAP_MS - (performance.now() - tap.tappedAt)) : 0,
+                );
+              }
+              return;
+            }
             /** Its ring (`shown`, or a re-plan's `ring`) taken down if it still shows — never another click's. */
             const dropOwnRing = (ring: Readonly<ClickTarget> | null = null) => {
               const now = peekPendingClick();
@@ -479,7 +575,10 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
                       if (clickGeneration() === set) clearClickTarget();
                     });
                   } else if (clickIntent(now) === "stop") clearClickTarget(); // it is at the avatar's feet now: stop
-                  else dropOwnRing(ring);
+                  else {
+                    if (now.reason === "unreachable") showUnreachableHint();
+                    dropOwnRing(ring);
+                  }
                   if (import.meta.env.DEV) window.__cvTapWalk?.(); // the E2E holds the avatar here, before a frame walks it
                 };
                 // Where the avatar was when the tap was planned: that plan holds. A walk in progress moved it: the
@@ -563,9 +662,33 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
         taps.reset();
       }
     };
+    /**
+     * A mouse hovering a cubby in the hall shows the hand cursor, so the player can tell a cubby is clicked to look at it
+     * (review 2026-11-15: nothing said so). At most ~8 picks a second, and only with no button down.
+     */
+    let lastHoverPick = 0;
+    let hoverCursor = false;
+    const hoverCubby = (e: PointerEvent) => {
+      if (e.pointerType !== "mouse" || e.buttons !== 0) return;
+      const now = performance.now();
+      if (now - lastHoverPick < 120) return;
+      lastHoverPick = now;
+      let over = false;
+      if (localArea() === "hall" && cubbyFocusAnchor() === null) {
+        const hit = pickAt(e.clientX, e.clientY);
+        over = !!hit && !hit.blocker && cubbyAtPoint(VILLAGE_LAYOUT, hit.x, hit.y, hit.z) !== null;
+      }
+      if (over !== hoverCursor) {
+        hoverCursor = over;
+        el.style.cursor = over ? "pointer" : "";
+      }
+    };
     const onMove = (e: PointerEvent) => {
       const p = pointers.get(e.pointerId);
-      if (!p) return; // a move with no prior down (e.g. hovering) — ignore
+      if (!p) {
+        hoverCubby(e);
+        return; // a move with no prior down (e.g. hovering): nothing else
+      }
       if (clickStart && clickStart.id === e.pointerId) {
         clickStart.travel = pressTravel(clickStart.travel, e.clientX - clickStart.x, e.clientY - clickStart.y);
         // a double tap's second touch turned into a look-drag: no double tap — the first tap walks after all (round 6
@@ -657,7 +780,8 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
         } else if (
           e.type === "pointerup" && // a pointercancel is never a click
           viewState.mode !== "ov" &&
-          isClick(travel, 0, upAt - start.t, e.pointerType === "touch" ? TAP_MAX_PX : CLICK_MAX_PX)
+          isClick(travel, 0, upAt - start.t, e.pointerType === "touch" ? TAP_MAX_PX : CLICK_MAX_PX) &&
+          !hallCubbyClick(e.clientX, e.clientY)
         ) {
           // Which half is the look half follows the left-handed setting — the SAME store
           // field TouchJoystick's prop comes from (WorldScene), so the stick half and
@@ -707,8 +831,9 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
                   setClickTarget(plan.x, plan.z, plan.y, plan.via); // 벽·사람·하늘·갈 수 없는 곳은 무시 (clickPlan.ts)
                 } else if (clickIntent(plan) === "stop") {
                   clearClickTarget(); // 내 발밑: 그 자리에 멈춤
-                } else if (provisional && peekPendingClick() === provisional) {
-                  clearPendingClick();
+                } else {
+                  if (plan.reason === "unreachable") showUnreachableHint(); // 갈 수 없는 바닥: 짧은 안내 (침묵 대신)
+                  if (provisional && peekPendingClick() === provisional) clearPendingClick();
                 }
               },
               clickWork,
@@ -773,6 +898,7 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
     return () => {
       el.removeEventListener("pointerdown", onDown);
       el.removeEventListener("pointermove", onMove);
+      if (hoverCursor) el.style.cursor = "";
       window.removeEventListener("pointerup", onUp);
       window.removeEventListener("pointercancel", onUp);
       el.removeEventListener("wheel", onWheel);
@@ -810,6 +936,27 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
   }, [scene]);
 
   useFrame((state, delta) => {
+    // ── Sit on a clicked seat on arrival (round 8 review: a first-time visitor taps the sofa to sit) ──
+    if (seatOnArrival.current) {
+      const step = stepSeatOnArrival(seatOnArrival.current, {
+        target: peekClickTarget(),
+        seated: seat.index >= 0,
+        pose,
+        now: performance.now(),
+        uiCaptured: isUiCaptured(),
+        // that very seat (not the nearest: between two rows of benches the facing seat of the next row can be nearer), if it is
+        // sat on from here and free; the server checks the same
+        canSit: (index) => {
+          const seats = getActiveMap().seats ?? activeSeats();
+          const target = seats[index];
+          const remote = getRemoteSeatIndices();
+          return !!target && !seatTaken(seats, index, (i) => remote.includes(i)) && approachesSeat(target, pose.x, pose.z) && seatDistance(target, pose.x, pose.z) <= SEAT_REACH;
+        },
+      });
+      seatOnArrival.current = step.next;
+      if (step.sit !== null) sendSit(step.sit);
+    }
+
     // ── A door into or out of a building (케이슨 마을, indoorCamera.ts) ── the player was just put somewhere else: the
     // rig's own easing starts fresh there (followRig.ts `noteAreaLimit`), behind the door's curtain. The view keeps the
     // player's yaw, pitch and zoom — it no longer swings behind the body or resets the tilt (owner 2026-11-10). A
@@ -850,6 +997,7 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
 
     const cam = camera as PerspectiveCamera;
     const aspect = cam.aspect;
+    if (baseFov.current === 0) baseFov.current = cam.isPerspectiveCamera ? cam.fov : BASE_FOV;
     // Whole-map fit height for the current aspect — seeds the overview and bounds
     // its zoom-out. Recomputed each frame so a viewport resize keeps the ceiling
     // honest (design 20 — nothing hardcoded).
@@ -859,7 +1007,7 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
     fitHeight.current = overviewFitHeight(
       mapBounds.maxX - mapBounds.minX,
       mapBounds.maxZ - mapBounds.minZ,
-      (cam.fov * Math.PI) / 180,
+      (baseFov.current * Math.PI) / 180,
       aspect,
     );
 
@@ -911,9 +1059,9 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
     const uPosZ = lerp(tpZ, pose.z + eye.dz, t);
     // TP looks at the (smoothed) follow point, a little above the head; FP at the
     // pose-anchored eye line.
-    const uTgtX = lerp(followX, pose.x + eye.dx + fwdX, t);
+    const uTgtX = lerp(followX + tpSpot.lookX, pose.x + eye.dx + fwdX, t);
     const uTgtY = lerp(HEAD_HEIGHT + CAMERA_LOOK_LIFT + tpLookLift, FP_EYE_HEIGHT + hop + eye.dy + fwdY, t);
-    const uTgtZ = lerp(followZ, pose.z + eye.dz + fwdZ, t);
+    const uTgtZ = lerp(followZ + tpSpot.lookZ, pose.z + eye.dz + fwdZ, t);
 
     // ── Overview pose ── straight up over the pan-centre, looking down. A camera limit (a building's ceiling) is
     // bypassed here by construction (this is a separate pose term, never routed through the limit). ──
@@ -936,6 +1084,19 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
       lerp(uTgtY, 0, ovT),
       lerp(uTgtZ, ovPosZ, ovT),
     );
+
+    // A memorial cubby's close-up (cubbyFocus.ts): the camera glides from the player's view to the front of that cubby, at its
+    // height, and back when the card closes. The player's own orbit is never written: closing it puts the view back as it was.
+    const fw = stepCubbyFocus(delta, aspect, baseFov.current, focusPose);
+    if (fw > 0) {
+      const p = camera.position;
+      const lx = lerp(uTgtX, ovPosX, ovT);
+      const ly = lerp(uTgtY, 0, ovT);
+      const lz = lerp(uTgtZ, ovPosZ, ovT);
+      p.set(lerp(p.x, focusPose.ex, fw), lerp(p.y, focusPose.ey, fw), lerp(p.z, focusPose.ez, fw));
+      camera.up.set(0, 1, 0);
+      camera.lookAt(lerp(lx, focusPose.tx, fw), lerp(ly, focusPose.ty, fw), lerp(lz, focusPose.tz, fw));
+    }
 
     // While riding, replace the normal avatar orbit with a passenger eye at
     // the bus cabin and aim through its right-side window. The world camera
@@ -979,6 +1140,12 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
     // The far plane rides with the overview too: the whole-map fit height is width-limited
     // on a tall phone (209 m at 375×812), past CAMERA_FAR, and the map would be clipped
     // away entirely. Continuous in ovT, and restored exactly to the scene's far plane at 0.
+    // The over-the-shoulder view against an indoor wall widens a portrait phone's view (cameraShoulder.ts), third person only.
+    const fov = baseFov.current + (busBoarded ? 0 : tpSpot.fovAdd * (1 - t) * (1 - ovT) * (1 - fw));
+    if (cam.isPerspectiveCamera && Math.abs(cam.fov - fov) > 1e-3) {
+      cam.fov = fov;
+      cam.updateProjectionMatrix();
+    }
     const far = overviewFar(baseFar, viewState.ovHeight, ovT);
     if (cam.far !== far) {
       cam.far = far;

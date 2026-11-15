@@ -53,6 +53,26 @@ export const FP_EYE_HEIGHT = HEAD_HEIGHT + 0.1;
 /** Third-person safety distance below which the local avatar is hidden instead of showing its inside surfaces. */
 export const SELF_CAMERA_HIDE_DISTANCE = 1.8;
 
+/**
+ * Inside a building (a place with a camera limit) the own body is hidden only when the third-person camera is really inside the
+ * head: nearer than this (m). Review 2026-11-15 round 5: it used to hide within 2.8 m (a faded head that near was a big see-through
+ * disc, and then hiding it made the player vanish on arrival and on most seats); the arrival spot and the seat framing now keep the
+ * camera 3.2 m+ from the head in normal play, and the body is never faded.
+ */
+export const INDOOR_SELF_HIDE_DISTANCE = 0.6;
+/** The hidden body shows again once the camera is this far from the head (a little past the hide distance: no flicker). */
+export const INDOOR_SELF_SHOW_DISTANCE = 0.8;
+
+/**
+ * Indoors, a third-person camera pushed this near the head by a wall (m) — the over-the-shoulder view (cameraShoulder.ts) —
+ * fades the own body to SELF_COVER_FADE_OPACITY (front surface only, never a ghost disc), eased; back in full past
+ * SELF_COVER_SHOW_DISTANCE. Review 2026-11-15 round 6; round 7: only a camera really close (under 1.5 m) fades it, and only
+ * lightly — the over-the-shoulder view now stands 2 m+ off and the avatar is drawn solid there.
+ */
+export const SELF_COVER_FADE_DISTANCE = 1.5;
+export const SELF_COVER_SHOW_DISTANCE = 1.7;
+export const SELF_COVER_FADE_OPACITY = 0.9;
+
 /** drei KeyboardControls action names (typed control set). */
 export type MoveControl = "forward" | "backward" | "left" | "right" | "run" | "camLeft" | "camRight";
 

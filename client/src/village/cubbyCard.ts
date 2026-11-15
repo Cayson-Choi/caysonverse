@@ -7,7 +7,7 @@ import { cubbyColumn } from "./villageTargets";
  * store that opens and closes it. CubbyView draws it.
  *
  * Standing within 1.2 m of a column and pressing E (or the context button "가까이 보기") opens the card on that column,
- * on the filled cubby nearest eye height. "위 칸" / "아래 칸" step through the column's seven cubbies. A filled cubby shows
+ * on the filled cubby nearest eye height. "위 칸" / "아래 칸" step through the column's eight cubbies. A filled cubby shows
  * the portrait, the name, the years and the family's line, and "촛불 켜기" (it sends `LightCandle`; everyone in the hall
  * sees a small flame in that cubby for 60 s). An empty one says it will soon be possible to lay a pet to rest there.
  *
@@ -25,6 +25,9 @@ export const CUBBY_COPY = {
   down: "아래 칸",
   close: "닫기",
   dialog: "추모 칸 가까이 보기",
+  sample: "견본",
+  sampleNote: "추모관을 보여 드리려고 꾸민 견본 칸이에요",
+  exit: "가까이 보기 끝내기",
 } as const;
 
 /** "아래에서 4번째 칸" (rows counted from the bottom, 1-based). */
@@ -42,9 +45,18 @@ export function photoAlt(name: string): string {
   return `${name}의 사진`;
 }
 
-/** "케이슨 님이 촛불을 켰어요" */
-export function litByLabel(by: string): string {
-  return by ? `${by} 님이 촛불을 켰어요` : CUBBY_COPY.burning;
+/** "방금" / "5분 전" / "1시간 전" (how long ago a candle was lit, from `agoMs`). */
+export function agoLabel(agoMs: number): string {
+  const min = Math.floor(Math.max(0, agoMs) / 60_000);
+  if (min < 1) return "방금";
+  if (min < 60) return `${min}분 전에`;
+  return `${Math.floor(min / 60)}시간 전에`;
+}
+
+/** "케이슨님이 32분 전에 켜 주셨어요" (owner 2026-11-13: so a family can see who came by). */
+export function litByLabel(by: string, agoMs = 0): string {
+  const when = agoLabel(agoMs);
+  return by ? `${by}님이 ${when} 켜 주셨어요` : `${when} 켜진 촛불이에요`;
 }
 
 /** The CSS background of a portrait tile (the atlas, sized to the card's box). */
@@ -93,11 +105,29 @@ function set(next: CubbyCardState | null): void {
   for (const l of [...listeners]) l();
 }
 
-/** Open the card on a column (a key `n_10` or a target id `cubby:n_10`); an unknown column does nothing. */
+/** Open the card on a column (a key `A_11` or a target id `cubby:A_11`); an unknown column does nothing. */
 export function openCubbyCard(columnOrId: string): void {
   const column = cubbyColumn(columnOrId);
   if (!column) return;
   set({ column: column.key, row: defaultRow(column.key) });
+}
+
+/**
+ * Open the card on one cubby (a click or a tap on it — the top row as easily as the middle one; owner 2026-11-13). The
+ * card is already open on another: it moves there.
+ */
+export function openCubbyAt(anchor: { bank: string; col: number; row: number }): boolean {
+  const column = cubbyColumn(`${anchor.bank}_${anchor.col}`);
+  if (!column || anchor.row < 0 || anchor.row >= column.rows.length) return false;
+  if (state && state.column === column.key && state.row === anchor.row) return true;
+  set({ column: column.key, row: anchor.row });
+  return true;
+}
+
+/** The anchor of the cubby the card shows, or null. */
+export function cubbyCardAnchor(s: CubbyCardState | null = state) {
+  if (!s) return null;
+  return cubbyColumn(s.column)?.rows[s.row] ?? null;
 }
 
 /** Step `delta` rows up (+1) or down (-1), staying in the column. */
