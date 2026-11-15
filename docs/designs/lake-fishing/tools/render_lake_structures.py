@@ -30,7 +30,7 @@ VIEWS = {
     "pier_side": ((116.0, 2.2, -4.5), (124.0, 0.5, -12.0), 38),
     "pier_t": ((131.0, 2.2, -7.0), (144.0, 0.6, -14.0), 34),
     "chairs_close": ((118.0, 1.5, -9.0), (121.0, 0.5, -12.3), 40),
-    "office": ((96.0, 2.4, -12.5), (102.0, 2.4, -22.0), 30),
+    "office": ((106.5, 2.2, -10.0), (101.5, 2.6, -21.5), 32),
     "office_window": ((102.0, 2.0, -15.5), (102.0, 2.0, -21.5), 34),
     "office_east": ((111.5, 2.0, -17.5), (106.5, 1.5, -22.5), 34),
     "props": ((110.0, 1.7, -17.5), (106.8, 1.1, -22.3), 32),
@@ -50,7 +50,21 @@ def main():
     only = only.split(",") if only else None
     res = [int(v) for v in arg("--res", "1280x800").split("x")]
     sc = bpy.context.scene
-    sc.render.engine = "BLENDER_EEVEE"
+    cyc = os.environ.get("LAKE_CYCLES") == "1"
+    sc.render.engine = "CYCLES" if cyc else "BLENDER_EEVEE"
+    if cyc:
+        try:
+            pref = bpy.context.preferences.addons["cycles"].preferences
+            pref.compute_device_type = "OPTIX" if any(d.type == "OPTIX" for d in pref.get_devices_for_type("OPTIX") or []) else "CUDA"
+            pref.get_devices()
+            for d in pref.devices:
+                d.use = d.type != "CPU"
+            sc.cycles.device = "GPU"
+        except Exception as e:
+            print("cycles gpu setup", e)
+        sc.cycles.samples = 48
+        sc.cycles.use_denoising = True
+        sc.cycles.max_bounces = 6
     sc.render.resolution_x, sc.render.resolution_y = res
     sc.render.film_transparent = False
     sc.render.image_settings.file_format = "PNG"

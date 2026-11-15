@@ -70,12 +70,19 @@ WORLD = F()
 # --------------------------------------------------------------------------------------------------- materials
 
 MATS = {}
+TEXDIR = os.environ.get("LAKE_TEX") or os.path.join(HERE, "..", "work", "tex")
+# key: roughness, metal, optional texture file, tile size in metres (u, v), random UV offset per face
 MAT_SPEC = {
-    # key: (rough, metal, kind)
-    "matte": dict(rough=0.82, metal=0.0),
-    "wood": dict(rough=0.7, metal=0.0),
-    "paint": dict(rough=0.42, metal=0.0),
-    "metal": dict(rough=0.38, metal=0.9),
+    "matte": dict(rough=0.85, metal=0.0),
+    "wood": dict(rough=0.75, metal=0.0, tex="grain", tile=(0.7, 0.7), jitter=True),
+    "paint": dict(rough=0.45, metal=0.0, tex="paint", tile=(1.2, 1.2), jitter=True),
+    "metal": dict(rough=0.4, metal=0.85, tex="metal", tile=(0.8, 0.8), jitter=True),
+    "log": dict(rough=0.9, metal=0.0, tex="log_wall", tile=(1.0, 0.68)),
+    "siding": dict(rough=0.75, metal=0.0, tex="siding", tile=(1.1, 1.1)),
+    "tile": dict(rough=0.8, metal=0.0, tex="tile", tile=(1.4, 1.4), jitter=True),
+    "concrete": dict(rough=0.9, metal=0.0, tex="concrete", tile=(1.5, 1.5), jitter=True),
+    "fabric": dict(rough=0.95, metal=0.0, tex="fabric", tile=(0.2, 0.2)),
+    "sign": dict(rough=0.55, metal=0.0, tex="signs", tile=(1.0, 1.0), explicit=True),
     "glass": dict(rough=0.05, metal=0.0, alpha=0.12, tint=(0.8, 0.9, 0.92)),
     "emit": dict(rough=0.5, metal=0.0, emit=((1.0, 0.86, 0.55), 3.0)),
     "emit_white": dict(rough=0.5, metal=0.0, emit=((1.0, 1.0, 0.97), 2.2)),
@@ -111,7 +118,21 @@ def material(key):
     else:
         ca = nt.nodes.new("ShaderNodeVertexColor")
         ca.layer_name = "Col"
-        nt.links.new(ca.outputs["Color"], bsdf.inputs["Base Color"])
+        if "tex" in sp:
+            tx = nt.nodes.new("ShaderNodeTexImage")
+            tx.image = bpy.data.images.load(os.path.abspath(os.path.join(TEXDIR, sp["tex"] + ".png")), check_existing=True)
+            tx.image.colorspace_settings.name = "sRGB"
+            mix = nt.nodes.new("ShaderNodeMix")
+            mix.data_type = "RGBA"
+            mix.blend_type = "MULTIPLY"
+            mix.inputs["Factor"].default_value = 1.0
+            nt.links.new(ca.outputs["Color"], mix.inputs["A"])
+            nt.links.new(tx.outputs["Color"], mix.inputs["B"])
+            nt.links.new(mix.outputs["Result"], bsdf.inputs["Base Color"])
+        else:
+            nt.links.new(ca.outputs["Color"], bsdf.inputs["Base Color"])
+    if "tint" not in sp:
+        m.use_backface_culling = True
     MATS[key] = m
     return m
 
@@ -143,9 +164,12 @@ class MB:
             self.col.append(c)
         return list(range(base, base + len(pts)))
 
-    def face(self, idx, mat="matte", smooth=False):
-        self.faces.append((tuple(idx), mat, smooth))
+    def face(self, idx, mat="matte", smooth=False, uv=None):
+        self.faces.append((tuple(idx), mat, smooth, uv))
         self.tris += len(idx) - 2
+
+    def quad_uv(self, p0, p1, p2, p3, uvs, col, mat="sign"):
+        self.face(self.verts([p0, p1, p2, p3], col), mat, False, uvs)
 
     def quad(self, p0, p1, p2, p3, col, mat="matte"):
         self.face(self.verts([p0, p1, p2, p3], col), mat)
@@ -160,6 +184,7 @@ class MB:
         name = name or self.name
         me = bpy.data.meshes.new(name)
         keys = [k for k in MAT_ORDER if any(f[1] == k for f in self.faces)]
+        sp = MAT_SPEC
         for k in keys:
             me.materials.append(material(k))
         me.from_pydata([tuple(v) for v in self.v], [], [f[0] for f in self.faces])
@@ -172,9 +197,53 @@ class MB:
             c = self.col[lp.vertex_index]
             flat.extend((c[0], c[1], c[2], c[3]))
         attr.data.foreach_set("color", flat)
+        # UV0: box projection in metres / tile size (random offset per face for grainy materials), or explicit
+        uvl = me.uv_layers.new(name="UVMap")
+        for poly, f in zip(me.polygons, self.faces):
+            key = keys[poly.material_index]
+            spec = sp[key]
+            if f[3] is not None:
+                for li, uv in zip(poly.loop_indices, f[3]):
+                    uvl.data[li].uv = uv
+                continue
+            n = poly.normal
+            ax = max(range(3), key=lambda k: abs(n[k]))
+            tu, tv = spec.get("tile", (1.0, 1.0))
+            ox = oy = 0.0
+            if spec.get("jitter"):
+                h = (poly.index * 2654435761) & 0xFFFFFFFF
+                ox, oy = (h & 0xFFFF) / 65535.0, (h >> 16) / 65535.0
+            for li in poly.loop_indices:
+                c = me.vertices[me.loops[li].vertex_index].co
+                if ax == 2:
+                    u, v = c.x, c.y
+                elif ax == 0:
+                    u, v = c.y, c.z
+                else:
+                    u, v = c.x, c.z
+                uvl.data[li].uv = (u / tu + ox, v / tv + oy)
         me.update()
         ob = bpy.data.objects.new(name, me)
         (collection or bpy.context.scene.collection).objects.link(ob)
+        # UV1: a lightmap layout, non-overlapping inside this object (A packs the objects into the atlas)
+        try:
+            lm = me.uv_layers.new(name="UVMap_LM")
+            me.uv_layers.active = lm
+            bpy.context.view_layer.objects.active = ob
+            for o in bpy.context.view_layer.objects:
+                o.select_set(False)
+            ob.select_set(True)
+            bpy.ops.object.mode_set(mode="EDIT")
+            bpy.ops.mesh.select_all(action="SELECT")
+            bpy.ops.uv.lightmap_pack(PREF_CONTEXT="ALL_FACES", PREF_PACK_IN_ONE=True, PREF_NEW_UVLAYER=False, PREF_BOX_DIV=18, PREF_MARGIN_DIV=0.1)
+            bpy.ops.object.mode_set(mode="OBJECT")
+            me.uv_layers.active = me.uv_layers["UVMap"]
+        except Exception as e:  # keep going without the second set
+            print("LM UV failed", name, e)
+            try:
+                bpy.ops.object.mode_set(mode="OBJECT")
+            except Exception:
+                pass
         return ob
 
 

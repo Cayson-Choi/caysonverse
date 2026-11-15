@@ -12,8 +12,9 @@ PAIRS = [
     ("관리소 · 대여점", refs + "/04_office_d.jpg", None, "office"),
     ("관리소 창구 안쪽 (진짜 형상)", refs + "/10_rod_rack_a.jpg", None, "office_window"),
     ("낚싯대 거치대 · 자판기 · 수거함", refs + "/10_rod_rack_b.jpg", None, "props"),
-    ("정자", village_refs + "/stream_bridge_pavilion.jpg", (676, 720, 982, 968), "pavilion"),
-    ("낚시의자 + 받침틀 (T자 끝)", refs + "/03_pier_covered_booths.jpg", None, "pier_t"),
+    ("정자 (기와 지붕 · 둥근 기둥 · 마루)", refs + "/jeongja_1.jpg", (200, 380, 900, 860), "pavilion"),
+    ("낚시의자 + 받침틀 (찌 거치대)", refs + "/chair_stand_1.jpg", None, "chairs_close"),
+    ("잔교 끝 T자 · 의자 · 난간", refs + "/03_pier_covered_booths.jpg", None, "pier_t"),
 ]
 W, H = 760, 475
 font = ImageFont.truetype("C:/Windows/Fonts/malgun.ttf", 22)

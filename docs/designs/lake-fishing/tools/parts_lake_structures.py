@@ -42,10 +42,20 @@ P = dict(
     log=hexc("#b45a27"), log_dark=hexc("#97481d"), roof_or=hexc("#cf6c2d"), roof_or_dark=hexc("#a9541f"),
     clad=hexc("#a27244"), clad_dark=hexc("#876035"), trim=hexc("#b4b9bd"), roof_blue=hexc("#2e69ae"), door_blue=hexc("#2563c9"),
     concrete=hexc("#8d8b85"), plate=hexc("#6e7378"), sign_white=hexc("#f1efe8"), sign_ink=hexc("#1f3a8a"),
-    tile=hexc("#3b3e41"), tile_light=hexc("#4a4d50"), pav_wood=hexc("#6b3f27"), pav_beam=hexc("#7a4a2c"), stone=hexc("#9a978f"),
+    tile=hexc("#44484c"), tile_light=hexc("#55595d"), pav_wood=hexc("#6b3f27"), pav_beam=hexc("#7a4a2c"), stone=hexc("#9a978f"),
     lamp_pole=hexc("#6a4a30"), lamp_shade=hexc("#e9e5db"), red=hexc("#c23b2e"), green_pallet=hexc("#2f9d70"),
     bin_blue=hexc("#1d4fa8"), vend_body=hexc("#26303c"), wood_light=hexc("#c9a574"), floor_in=hexc("#8f7757"), wall_in=hexc("#e2dccb"),
 )
+
+ATLAS = json.load(open(os.path.join(ROOT, "work", "tex", "atlas.json"), encoding="utf-8"))
+
+
+def sign_face(mb, fr, x0, x1, y0, y1, lz, name):
+    """A lettered board front: one quad textured from the sign atlas (work/tex/signs.png) -- no glyph geometry."""
+    px, py, w, h = ATLAS[name]
+    u0, u1, v1, v0 = px / 2048, (px + w) / 2048, 1 - py / 1024, 1 - (py + h) / 1024
+    mb.quad_uv(fr.p(x0, y0, lz), fr.p(x1, y0, lz), fr.p(x1, y1, lz), fr.p(x0, y1, lz), [(u0, v0), (u1, v0), (u1, v1), (u0, v1)], (1, 1, 1, 1), "sign")
+
 
 COLL = None   # collection of meshes
 MARK = None   # collection of empties and colliders
@@ -73,9 +83,10 @@ def planks(mb, rng, x0, x1, z0, z1, run, top=0.0, th=0.04, w=0.14, gap=0.012, co
         b = a + pitch - gap
         c = jit(rng, col, jit_amt)
         if run == "x":
-            boxw(mb, x0, x1, top - th, top, a, b, c, "wood", skip="D")
+            boxw(mb, x0, x1, top - th, top, a, b, c, "wood", skip="LRDFB")
         else:
-            boxw(mb, a, b, top - th, top, z0, z1, c, "wood", skip="D")
+            boxw(mb, a, b, top - th, top, z0, z1, c, "wood", skip="LRDFB")
+    boxw(mb, x0, x1, top - th - 0.004, top - th, z0, z1, hexc("#2a2018"), "matte", skip="D")  # the dark seen through the gaps
 
 
 def drum(mb, rng, cx, cz, axis, length=0.9, r=0.29, cy=-0.57, col=None):
@@ -85,12 +96,12 @@ def drum(mb, rng, cx, cz, axis, length=0.9, r=0.29, cy=-0.57, col=None):
         p0, p1 = (cx, cy, cz - length / 2), (cx, cy, cz + length / 2)
     else:
         p0, p1 = (cx - length / 2, cy, cz), (cx + length / 2, cy, cz)
-    tubew(mb, p0, p1, r, col, "paint", sides=12)
-    for t in (0.25, 0.75):
+    tubew(mb, p0, p1, r, col, "paint", sides=10, caps=(True, True))
+    for t in (0.5,):
         q0 = tuple(p0[i] + (p1[i] - p0[i]) * (t - 0.02) for i in range(3))
         q1 = tuple(p0[i] + (p1[i] - p0[i]) * (t + 0.02) for i in range(3))
-        tubew(mb, q0, q1, r + 0.012, mulc(col, 0.85), "paint", sides=12, caps=(False, False))
-    tubew(mb, (cx, cy + r - 0.01, cz), (cx, cy + r + 0.02, cz), 0.05, P["white"], "paint", sides=6)
+        tubew(mb, q0, q1, r + 0.012, mulc(col, 0.85), "paint", sides=10, caps=(False, False))
+    tubew(mb, (cx, cy + r - 0.01, cz), (cx, cy + r + 0.02, cz), 0.05, P["white"], "paint", sides=5)
 
 
 def railing(mb, a, b, openings=(), y_top=1.17, y_mid=0.6, every=1.9, col=None, post_r=0.024, rail_r=0.021, flange=True):
@@ -130,29 +141,29 @@ def build_chair(mb):
     for sx in (-1, 1):
         x = 0.215 * sx
         # legs: front pair leans forward, rear pair back
-        tube(mb, fr, (x, 0.44, 0.15), (x * 1.04, 0.0, 0.215), r, fr_c, "metal", 6, caps=(False, False))
-        tube(mb, fr, (x, 0.44, -0.13), (x * 1.04, 0.0, -0.2), r, fr_c, "metal", 6, caps=(False, False))
+        tube(mb, fr, (x, 0.44, 0.15), (x * 1.04, 0.0, 0.215), r, fr_c, "metal", 4, caps=(False, False))
+        tube(mb, fr, (x, 0.44, -0.13), (x * 1.04, 0.0, -0.2), r, fr_c, "metal", 4, caps=(False, False))
         # seat rail
-        tube(mb, fr, (x, 0.44, -0.2), (x, 0.44, 0.205), r * 0.9, fr_c, "metal", 6, caps=(False, False))
+        tube(mb, fr, (x, 0.44, -0.2), (x, 0.44, 0.205), r * 0.9, fr_c, "metal", 4, caps=(False, False))
         # back upright (leans back)
-        tube(mb, fr, (x, 0.44, -0.2), (x * 0.96, 0.9, -0.265), r, fr_c, "metal", 6, caps=(False, False))
+        tube(mb, fr, (x, 0.44, -0.2), (x * 0.96, 0.9, -0.265), r, fr_c, "metal", 4, caps=(False, False))
         # arm rest on a short post
-        tube(mb, fr, (x * 1.02, 0.64, -0.235), (x * 1.04, 0.66, 0.13), r * 0.9, fr_c, "metal", 6, caps=(False, False))
-        tube(mb, fr, (x * 1.03, 0.44, 0.11), (x * 1.03, 0.66, 0.12), r * 0.8, fr_c, "metal", 6, caps=(False, False))
+        tube(mb, fr, (x * 1.02, 0.64, -0.235), (x * 1.04, 0.66, 0.13), r * 0.9, fr_c, "metal", 4, caps=(False, False))
+        tube(mb, fr, (x * 1.03, 0.44, 0.11), (x * 1.03, 0.66, 0.12), r * 0.8, fr_c, "metal", 4, caps=(False, False))
         box(mb, fr, x * 1.04 - 0.027, x * 1.04 + 0.027, 0.66, 0.685, -0.2, 0.125, P["black"], "paint")
         # front foot caps
         box(mb, fr, x * 1.04 - 0.02, x * 1.04 + 0.02, 0.0, 0.012, 0.19, 0.24, P["black"], "matte")
         box(mb, fr, x * 1.04 - 0.02, x * 1.04 + 0.02, 0.0, 0.012, -0.225, -0.175, P["black"], "matte")
     # cross tubes
-    tube(mb, fr, (-0.215, 0.44, 0.205), (0.215, 0.44, 0.205), r * 0.9, fr_c, "metal", 6, caps=(False, False))
-    tube(mb, fr, (-0.2, 0.2, 0.17), (0.2, 0.2, 0.17), r * 0.8, fr_c, "metal", 6, caps=(False, False))
-    tube(mb, fr, (-0.2, 0.2, -0.16), (0.2, 0.2, -0.16), r * 0.8, fr_c, "metal", 6, caps=(False, False))
+    tube(mb, fr, (-0.215, 0.44, 0.205), (0.215, 0.44, 0.205), r * 0.9, fr_c, "metal", 4, caps=(False, False))
+    tube(mb, fr, (-0.2, 0.2, 0.17), (0.2, 0.2, 0.17), r * 0.8, fr_c, "metal", 4, caps=(False, False))
+    tube(mb, fr, (-0.2, 0.2, -0.16), (0.2, 0.2, -0.16), r * 0.8, fr_c, "metal", 4, caps=(False, False))
     # fabric: a slung seat and a back panel (hexahedra so the back can lean)
     rng = random.Random(3)
     pts = [fr.p(x, y, z) for (x, y, z) in (
         (-0.2, 0.43, -0.19), (0.2, 0.43, -0.19), (-0.2, 0.46, -0.19), (0.2, 0.46, -0.19),
         (-0.2, 0.43, 0.2), (0.2, 0.43, 0.2), (-0.2, 0.46, 0.2), (0.2, 0.46, 0.2))]
-    L.hexa(mb, pts, fab, "matte")
+    L.hexa(mb, pts, fab, "fabric")
     # back panel from y 0.56 to 0.88, following the uprights' lean (z = -0.2 - 0.065 * (y - 0.44) / 0.46)
     def zb(y):
         return -0.2 - 0.065 * (y - 0.44) / 0.46
@@ -171,7 +182,7 @@ def build_chair(mb):
             for ix in (0, 1):
                 ordered[ix + 2 * iy + 4 * iz] = pts[k]
                 k += 1
-    L.hexa(mb, ordered, fab2, "matte")
+    L.hexa(mb, ordered, fab2, "fabric")
     # a sewn seam / hem on the back and seat front
     tube(mb, fr, (-0.2, 0.575, zb(0.575) + 0.028), (0.2, 0.575, zb(0.575) + 0.028), 0.004, fab, "matte", 4)
 
@@ -182,19 +193,19 @@ def build_stand(mb):
     fr = F()
     k = P["black"]
     # base bar and two feet
-    tube(mb, fr, (0, 0.022, -0.11), (0, 0.022, 0.11), r, k, "metal", 6, caps=(False, False))
+    tube(mb, fr, (0, 0.022, -0.11), (0, 0.022, 0.11), r, k, "metal", 4, caps=(False, False))
     for z in (-0.11, 0.11):
-        tube(mb, fr, (-0.15, 0.022, z), (0.15, 0.022, z), r, k, "metal", 6, caps=(False, False))
+        tube(mb, fr, (-0.15, 0.022, z), (0.15, 0.022, z), r, k, "metal", 4, caps=(False, False))
         for sx in (-1, 1):
             box(mb, fr, sx * 0.15 - 0.014, sx * 0.15 + 0.014, 0.0, 0.022, z - 0.014, z + 0.014, P["rubber"], "matte")
     # forks: a pole and a Y of two prongs, a rubber collar
     for z, h in ((0.11, 0.54), (-0.11, 0.44)):
-        tube(mb, fr, (0, 0.022, z), (0, h, z), r, k, "metal", 6, caps=(False, False))
+        tube(mb, fr, (0, 0.022, z), (0, h, z), r, k, "metal", 4, caps=(False, False))
         for sx in (-1, 1):
             tube(mb, fr, (0, h, z), (sx * 0.045, h + 0.07, z), r * 0.9, k, "metal", 6, caps=(True, True))
         tube(mb, fr, (-0.044, h + 0.06, z), (0.044, h + 0.06, z), 0.0045, P["rubber"], "matte", 4)
     # a brace between the poles
-    tube(mb, fr, (0, 0.2, -0.11), (0, 0.36, 0.11), r * 0.8, k, "metal", 6, caps=(False, False))
+    tube(mb, fr, (0, 0.2, -0.11), (0, 0.36, 0.11), r * 0.8, k, "metal", 4, caps=(False, False))
 
 
 def instance(name, data, collection, x, z, yaw, y=0.0):
@@ -418,42 +429,48 @@ def hut(rng, key):
     holes_end = [(cz - 0.45, cz + 0.45, 1.35, 2.2)]
     rng2 = random.Random(7 if A else 8)
 
-    def log_run(a0, a1, y, axis, fixed, holes, col):
-        cuts = [(hh[0], hh[1]) for hh in holes if hh[2] < y + d / 2 and hh[3] > y - d / 2]
-        for s0, s1 in L.intervals_minus(a0, a1, cuts):
-            if s1 - s0 < 0.05:
-                continue
-            c = jit(rng2, col, 0.09)
-            if axis == "x":
-                tubew(mb, (s0, y, fixed), (s1, y, fixed), d / 2, c, "wood", sides=10)
-            else:
-                tubew(mb, (fixed, y, s0), (fixed, y, s1), d / 2, c, "wood", sides=10)
-
-    wall_a = door_wall_z + (d / 2 if A else -d / 2)  # log centre lines of the two long walls
+    wall_a = door_wall_z + (d / 2 if A else -d / 2)
     wall_b = bench_wall_z + (-d / 2 if A else d / 2)
-    for i in range(ncourse):
-        y = d / 2 + i * pitch
-        even = i % 2 == 0
-        ext = 0.12
-        xa, xb = (x0 - ext, x1 + ext) if even else (x0 + d, x1 - d)
-        za, zb = (z0 + d, z1 - d) if even else (z0 - ext, z1 + ext)
-        base = P["log"] if even else P["log_dark"]
-        log_run(xa, xb, y, "x", wall_a, holes_door_wall, base)
-        log_run(xa, xb, y, "x", wall_b, [], base)
-        log_run(za, zb, y, "z", x0 + d / 2, holes_end, base)
-        log_run(za, zb, y, "z", x1 - d / 2, holes_end, base)
     pitch_ang = math.radians(22)
     over = 0.62
     ey = H + 0.05
     ridge_y = ey + math.tan(pitch_ang) * ((z1 - z0) / 2 + over)
-    for i in range(ncourse, ncourse + 6):
+    # the log walls are flat panels carrying the log-wall texture; only the corner log ends stick out as geometry
+    logc = P["log"]
+    def wall(frame, a0, a1, holes):
+        for (r0, r1, b0, b1) in L.rects_minus((a0, a1, 0.0, H), holes):
+            box(mb, frame, r0, r1, b0, b1, -d, 0.0, jit(rng2, logc, 0.05), "log", skip="")
+    fdoor = F(0, 0, door_wall_z, 0 if not A else math.pi)
+    fbench = F(0, 0, bench_wall_z, math.pi if not A else 0)
+    def lxw(xw, fr_):
+        return xw if fr_.yaw == 0 else -xw
+    hd = [(min(lxw(h_[0], fdoor), lxw(h_[1], fdoor)), max(lxw(h_[0], fdoor), lxw(h_[1], fdoor)), h_[2], h_[3]) for h_ in holes_door_wall]
+    wall(fdoor, lxw(x0, fdoor) if fdoor.yaw == 0 else lxw(x1, fdoor), lxw(x1, fdoor) if fdoor.yaw == 0 else lxw(x0, fdoor), hd)
+    wall(fbench, lxw(x0, fbench) if fbench.yaw == 0 else lxw(x1, fbench), lxw(x1, fbench) if fbench.yaw == 0 else lxw(x0, fbench), [])
+    fw_ = F(x0, 0, cz, -math.pi / 2)
+    fe_ = F(x1, 0, cz, math.pi / 2)
+    he = [(h_[0] - cz, h_[1] - cz, h_[2], h_[3]) for h_ in holes_end]
+    wall(fw_, -(z1 - z0) / 2 + d, (z1 - z0) / 2 - d, he)
+    wall(fe_, -(z1 - z0) / 2 + d, (z1 - z0) / 2 - d, he)
+    # corner log ends: alternating courses stick out 0.12 m at each corner
+    ncourse = int(H / (d * 1.03))
+    pitch = H / ncourse
+    for i in range(ncourse):
         y = d / 2 + i * pitch
-        half = (ridge_y - 0.06 - (y + d / 2)) / math.tan(pitch_ang)
-        half = min(half, (z1 - z0) / 2 - 0.05)
-        if half < 0.12:
-            break
-        for xx in (x0 + d / 2, x1 - d / 2):
-            tubew(mb, (xx, y, cz - half), (xx, y, cz + half), d / 2, jit(rng2, P["log"], 0.09), "wood", sides=10)
+        for sx, xx in ((-1, x0), (1, x1)):
+            for sz, zz in ((-1, z0), (1, z1)):
+                if i % 2 == 0:
+                    tubew(mb, (xx - sx * d / 2, y, zz - sz * d / 2), (xx + sx * 0.12, y, zz - sz * d / 2), d / 2, jit(rng2, logc, 0.1), "wood", 6, caps=(False, True))
+                else:
+                    tubew(mb, (xx - sx * d / 2, y, zz - sz * d / 2), (xx - sx * d / 2, y, zz + sz * 0.12), d / 2, jit(rng2, P["log_dark"], 0.1), "wood", 6, caps=(False, True))
+    # gable ends: textured triangles above the walls
+    for xx, sg in ((x0, -1), (x1, 1)):
+        zl, zr_ = cz - ((z1 - z0) / 2 - 0.01), cz + ((z1 - z0) / 2 - 0.01)
+        a, b, c = V(xx, zl, H), V(xx, zr_, H), V(xx, cz, ridge_y - 0.07)
+        if sg > 0:
+            mb.tri(a, b, c, logc, "log")
+        else:
+            mb.tri(b, a, c, logc, "log")
     # door + window on the door wall: a frame facing outward (local +z = outward, local x = east on B, west on A)
     fr = F(0, 0, door_wall_z, 0 if not A else math.pi)
 
@@ -526,6 +543,11 @@ def wall_panels(mb, fr, a0, a1, y0, y1, holes, depth_core=0.12, rng=None, board_
         box(mb, fr, r0, r1, b0, b1, -0.12, -0.04, hexc("#5a4630"), "matte")
         box(mb, fr, r0, r1, b0, b1, -0.16, -0.12, P["wall_in"], "matte")
     if boards:
+        for (r0, r1, b0, b1) in L.rects_minus((a0, a1, y0, y1), holes):
+            box(mb, fr, r0, r1, b0, b1, -0.05, 0.0, clad, "siding", skip="")
+        n = 0
+        boards = False
+    if boards:
         n = int(round((y1 - y0) / pitch))
         p = (y1 - y0) / n
         for i in range(n):
@@ -553,7 +575,7 @@ def build_office(rng):
     FL = 0.4  # interior floor / plinth top
     WT = 3.6  # wall top
     # plinth (concrete): flush with the footprint, a darker skirt, steps in front of the door
-    boxw(mb, X0, X1, 0.0, FL, Z0, Z1, P["concrete"], "matte", skip="D")
+    boxw(mb, X0, X1, 0.0, FL, Z0, Z1, P["concrete"], "concrete", skip="D")
     boxw(mb, X0 - 0.01, X1 + 0.01, 0.0, 0.07, Z0 - 0.01, Z1 + 0.01, mulc(P["concrete"], 0.8), "matte", skip="D")
     # --- south wall (the front): window, door, plate
     south = F(cx, 0, Z1, 0.0)
@@ -630,10 +652,8 @@ def build_office(rng):
         boxw(mb, x - 0.12, x + 0.12, 0.0, 0.015, zb - 0.22, zb + 0.02, P["galv_dark"], "metal", skip="D")
     tubew(mb, (ax0, 2.92, zb - 0.1), (ax1, 2.92, zb - 0.1), 0.03, P["galv"], "metal", 8)
     ffr = F(cx, 0, zb + 0.0, 0.0)
-    box(mb, ffr, -2.8, 2.8, 2.58, 3.0, -0.06, 0.0, P["sign_white"], "paint")
-    box(mb, ffr, -2.8, 2.8, 2.58, 2.62, -0.06, 0.012, P["door_blue"], "paint")
-    box(mb, ffr, -2.8, 2.8, 2.96, 3.0, -0.06, 0.012, P["door_blue"], "paint")
-    L.text(mb, ffr, LAYOUT["params"]["rentalSignText"], 0.0, 2.79, 0.012, P["sign_ink"], fit_w=3.6, max_h=0.28, depth=0.012, mat="paint")
+    box(mb, ffr, -2.8, 2.8, 2.58, 3.0, -0.06, 0.0, P["door_blue"], "paint", skip="F")
+    sign_face(mb, ffr, -2.8, 2.8, 2.58, 3.0, 0.002, "rental")
     # --- roof (blue corrugated, shallow gable along x), gutter, downspout, vent pipes
     pitch_ang = math.radians(10)
     over = 0.62
@@ -642,8 +662,8 @@ def build_office(rng):
     ez0, ez1 = Z0 - over, Z1 + over
     ridge_y = ey + math.tan(pitch_ang) * ((Z1 - Z0) / 2 + over)
     across = V(ex1, ez0, ey) - V(ex0, ez0, ey)
-    corrugated(mb, V(ex0, ez0, ey), across, V(ex0, cz, ridge_y) - V(ex0, ez0, ey), 0.2, 0.02, P["roof_blue"], "paint")
-    corrugated(mb, V(ex0, cz, ridge_y), across, V(ex0, ez1, ey) - V(ex0, cz, ridge_y), 0.2, 0.02, jit(rng, P["roof_blue"], 0.02), "paint")
+    corrugated(mb, V(ex0, ez0, ey), across, V(ex0, cz, ridge_y) - V(ex0, ez0, ey), 0.3, 0.025, P["roof_blue"], "paint")
+    corrugated(mb, V(ex0, cz, ridge_y), across, V(ex0, ez1, ey) - V(ex0, cz, ridge_y), 0.3, 0.025, jit(rng, P["roof_blue"], 0.02), "paint")
     for (zz0, yy0, zz1, yy1) in ((ez0, ey, cz, ridge_y), (cz, ridge_y, ez1, ey)):
         mb.quad(V(ex0, zz0, yy0 - 0.06), V(ex0, zz1, yy1 - 0.06), V(ex1, zz1, yy1 - 0.06), V(ex1, zz0, yy0 - 0.06), P["trim"], "matte")
     mb.quad(V(ex0, ez1, ey - 0.16), V(ex1, ez1, ey - 0.16), V(ex1, ez1, ey + 0.03), V(ex0, ez1, ey + 0.03), P["trim"], "metal")
@@ -678,10 +698,8 @@ def build_office(rng):
     sfr = F(cx, 0, Z1 + 0.1, 0.0)
     sy0, sy1 = 3.78, 4.88
     sw = 5.5
-    box(mb, sfr, -sw / 2, sw / 2, sy0, sy1, -0.06, 0.0, P["sign_white"], "paint")
-    for (a, b, c, e) in ((-sw / 2, sw / 2, sy0, sy0 + 0.07), (-sw / 2, sw / 2, sy1 - 0.07, sy1), (-sw / 2, -sw / 2 + 0.07, sy0, sy1), (sw / 2 - 0.07, sw / 2, sy0, sy1)):
-        box(mb, sfr, a, b, c, e, -0.07, 0.02, P["door_blue"], "paint")
-    L.text(mb, sfr, LAYOUT["shop"]["sign"], 0.0, (sy0 + sy1) / 2 + 0.03, 0.02, P["sign_ink"], fit_w=4.9, max_h=0.78, depth=0.02, mat="paint")
+    box(mb, sfr, -sw / 2, sw / 2, sy0, sy1, -0.07, 0.0, P["door_blue"], "paint", skip="F")
+    sign_face(mb, sfr, -sw / 2, sw / 2, sy0, sy1, 0.002, "office")
     for xx in (-2.4, 0.0, 2.4):
         tube(mb, sfr, (xx, sy0, -0.03), (xx, sy0 - 0.2, -0.03), 0.03, P["galv"], "metal", 8)
         tube(mb, sfr, (xx, sy1 - 0.1, -0.03), (xx, ey + 0.55, -1.4), 0.022, P["galv"], "metal", 8)
@@ -719,7 +737,7 @@ def shelves(mb, rng, xa, xb, zback, FL):
     for k, y in enumerate((0.95, 1.55, 2.15, 2.75)):
         boxw(mb, xa, xb, y, y + 0.03, zback, zback + depth, P["wood_light"], "wood")
         x = xa + 0.12
-        while x < xb - 0.2:
+        while x < xb - 0.25:
             kind = rng.random()
             z = zback + 0.1 + rng.random() * 0.2
             c = rng.choice(cols)
@@ -727,19 +745,19 @@ def shelves(mb, rng, xa, xb, zback, FL):
                 w = 0.1 + rng.random() * 0.1
                 boxw(mb, x, x + w, y + 0.03, y + 0.1, z, z + 0.16, c, "paint")
                 boxw(mb, x + 0.01, x + w - 0.01, y + 0.1, y + 0.104, z + 0.01, z + 0.15, P["white"], "glass")
-                x += w + 0.04
+                x += w + 0.1
             elif kind < 0.55:  # bait tub
                 tubew(mb, (x + 0.06, y + 0.03, z + 0.08), (x + 0.06, y + 0.11, z + 0.08), 0.06, P["white"], "paint", 10)
                 tubew(mb, (x + 0.06, y + 0.11, z + 0.08), (x + 0.06, y + 0.125, z + 0.08), 0.063, c, "paint", 10)
-                x += 0.15
+                x += 0.22
             elif kind < 0.8:  # line spools stacked
                 for j in range(2):
                     tubew(mb, (x + 0.05, y + 0.03 + j * 0.045, z + 0.06), (x + 0.05, y + 0.07 + j * 0.045, z + 0.06), 0.045, c, "paint", 10)
-                x += 0.12
+                x += 0.2
             else:  # gloves / hook cards: a flat pack
                 boxw(mb, x, x + 0.14, y + 0.03, y + 0.045, z, z + 0.2, c, "matte")
                 boxw(mb, x + 0.02, x + 0.12, y + 0.045, y + 0.05, z + 0.03, z + 0.17, P["white"], "matte")
-                x += 0.18
+                x += 0.26
     # price tags along the board edges (blank white strips)
     for y in (0.95, 1.55, 2.15, 2.75):
         boxw(mb, xa + 0.05, xb - 0.05, y + 0.005, y + 0.03, zback + depth, zback + depth + 0.012, P["white"], "matte")
@@ -847,9 +865,9 @@ def build_vending(rng):
         for j in range(n):
             x = gx0 + 0.06 + (gx1 - gx0 - 0.1) * j / (n - 1)
             c = crng.choice(cans)
-            tube(mb, fr, (x, y + 0.02, -0.12), (x, y + 0.02 + 0.13, -0.12), 0.033, c, "paint", 8)
-            tube(mb, fr, (x, y + 0.15, -0.12), (x, y + 0.158, -0.12), 0.028, hexc("#c9ced3"), "metal", 8)
-            tube(mb, fr, (x, y + 0.02, -0.12), (x, y + 0.075, -0.12), 0.0335, mulc(c, 0.55), "paint", 8, caps=(False, False))
+            tube(mb, fr, (x, y + 0.02, -0.12), (x, y + 0.02 + 0.13, -0.12), 0.033, c, "paint", 6)
+            tube(mb, fr, (x, y + 0.15, -0.12), (x, y + 0.158, -0.12), 0.028, hexc("#c9ced3"), "metal", 6)
+            tube(mb, fr, (x, y + 0.02, -0.12), (x, y + 0.075, -0.12), 0.0335, mulc(c, 0.55), "paint", 6, caps=(False, False))
         for j in range(n):  # price tags: blank white strips on the shelf lip
             x = gx0 + 0.06 + (gx1 - gx0 - 0.1) * j / (n - 1)
             box(mb, fr, x - 0.03, x + 0.03, y, y + 0.02, 0.0, 0.004, P["white"], "matte")
@@ -903,9 +921,7 @@ def build_bin(rng):
     box(mb, fr, -0.3, 0.3, 0.9, 0.97, -0.2, -0.1, hexc("#0c1116"), "matte")  # slot (dark)
     box(mb, fr, -0.34, 0.34, 0.97, 1.0, -0.22, -0.08, hexc("#0c1116"), "matte") if False else None
     # label plate on the front
-    box(mb, fr, -0.32, 0.32, 0.36, 0.82, 0.0, 0.012, P["white"], "paint")
-    L.text(mb, fr, "외래어종 수거함", 0.0, 0.64, 0.012, P["sign_ink"], fit_w=0.56, max_h=0.14, depth=0.008, mat="paint")
-    L.text(mb, fr, "배스 · 블루길", 0.0, 0.46, 0.012, P["red"], fit_w=0.48, max_h=0.12, depth=0.008, mat="paint")
+    sign_face(mb, fr, -0.32, 0.32, 0.36, 0.82, 0.003, "bin")
     # wheels' stub and handle
     for sx in (-W / 2 + 0.12, W / 2 - 0.12):
         box(mb, fr, sx - 0.04, sx + 0.04, 0.0, 0.05, -D + 0.05, -D + 0.12, P["black"], "matte")
@@ -990,12 +1006,8 @@ def build_info_sign(rng):
     mb = MB("lake_info_sign")
     fr = F(99.6, 0.0, -13.7, 0.0)
     w, h, y0 = 1.7, 1.25, 1.0
-    sign_board(mb, fr, w, h, y0, P["sign_white"], P["door_blue"], [])
-    box(mb, fr, -w / 2 + 0.045, w / 2 - 0.045, y0 + h - 0.3, y0 + h - 0.045, 0.05, 0.062, P["door_blue"], "paint")
-    L.text(mb, fr, "이용 안내", 0.0, y0 + h - 0.17, 0.062, P["white"], fit_w=0.9, max_h=0.2, depth=0.01, mat="paint")
-    lines = [("낚싯대는 무료로 빌려드려요", P["sign_ink"]), ("배스·블루길은 수거함에 넣어요", P["red"]), ("쓰레기는 되가져가요", P["sign_ink"])]
-    for k, (s, c) in enumerate(lines):
-        L.text(mb, fr, s, 0.0, y0 + h - 0.5 - k * 0.24, 0.05, c, fit_w=1.5, max_h=0.16, depth=0.008, mat="paint")
+    sign_board(mb, fr, w, h, y0, P["door_blue"], P["door_blue"], [])
+    sign_face(mb, fr, -w / 2, w / 2, y0, y0 + h, 0.052, "info")
     return mb
 
 
@@ -1004,7 +1016,7 @@ def build_welcome_sign(rng):
     fr = F(97.3, 0.0, -13.3, -math.pi / 2)
     w, h, y0 = 2.6, 0.95, 1.25
     sign_board(mb, fr, w, h, y0, hexc("#2c4a38"), P["pav_wood"], [], wood=True, post_dx=1.0)
-    L.text(mb, fr, LAYOUT["params"]["signText"], 0.0, y0 + h / 2, 0.05, P["cream"], fit_w=2.0, max_h=0.62, depth=0.025, mat="paint")
+    sign_face(mb, fr, -w / 2, w / 2, y0, y0 + h, 0.052, "welcome")
     return mb
 
 
@@ -1095,7 +1107,7 @@ def build_pavilion(rng):
         sf = F(pc["x"], 0.0, pc["z"], side * math.pi / 2)
         for k in range(-12, 13):
             x = k * 0.3
-            tube(mb, sf, (x, 3.2, 2.9), (x, 3.42, eave - 0.1), 0.04, hexc("#6a432a"), "wood", 6, r1=0.035)
+            tube(mb, sf, (x, 3.2, 2.9), (x, 3.42, eave - 0.1), 0.04, hexc("#6a432a"), "wood", 4, r1=0.035, caps=(False, False))
     # the roof: a pyramidal tile roof (사모지붕), eaves curling up at the corners, a finial on top
     apex_y = 5.7
     ey0 = 3.6
@@ -1113,7 +1125,7 @@ def build_pavilion(rng):
         return sf.p(x, y + tile + lift, z)
 
     for side in range(4):
-        L.surface(mb, lambda u, v, s=side: roof_pt(s, u * 2 - 1, v), 24, 8, P["tile"], "matte", up=True, smooth=False,
+        L.surface(mb, lambda u, v, s=side: roof_pt(s, u * 2 - 1, v), 20, 7, P["tile"], "tile", up=True, smooth=False,
                   colfn=lambda i, j: P["tile"] if (i % 2) == 0 else P["tile_light"])
         L.surface(mb, lambda u, v, s=side: roof_pt(s, u * 2 - 1, v, -0.1), 8, 4, hexc("#5a3a26"), "wood", up=False)
         # eave end: a vertical tile face and a row of round end tiles along the edge
@@ -1155,11 +1167,11 @@ def lamp(mb, x, z, arm, pile):
     wood = P["lamp_pole"]
     top = 3.3
     if pile:
-        tubew(mb, (x, -1.7, z), (x, top, z), 0.1, wood, "wood", 10, r1=0.085)
+        tubew(mb, (x, -1.7, z), (x, top, z), 0.1, wood, "wood", 8, r1=0.085, caps=(False, False))
         tubew(mb, (x, -0.8, z), (x, -0.4, z), 0.13, mulc(wood, 0.6), "wood", 10)  # a worn collar at the water line
     else:
         boxw(mb, x - 0.14, x + 0.14, 0.0, 0.14, z - 0.14, z + 0.14, P["stone"], "matte", skip="D")
-        tubew(mb, (x, 0.14, z), (x, top, z), 0.075, wood, "wood", 10, r1=0.06)
+        tubew(mb, (x, 0.14, z), (x, top, z), 0.075, wood, "wood", 8, r1=0.06, caps=(False, False))
         tubew(mb, (x, 0.14, z), (x, 0.5, z), 0.095, mulc(wood, 0.8), "wood", 10, r1=0.075)
     tubew(mb, (x, top + 0.02, z), (x, top + 0.07, z), 0.08, P["galv_dark"], "metal", 10)
     ax, az = x + arm[0], z + arm[1]
@@ -1171,7 +1183,7 @@ def lamp(mb, x, z, arm, pile):
     tubew(mb, (ax, top - 0.02, az), (ax, top - 0.16, az), 0.018, P["galv_dark"], "metal", 6)
     sh = F(ax, top - 0.5, az)
     prof = [(0.31, 0.0), (0.30, 0.05), (0.27, 0.13), (0.21, 0.2), (0.13, 0.25), (0.05, 0.28), (0.0, 0.285)]
-    L.lathe(mb, sh, prof, 18, P["lamp_shade"], "paint", inner=True)
+    L.lathe(mb, sh, prof, 12, P["lamp_shade"], "paint", inner=True)
     tubew(mb, (ax, top - 0.5, az), (ax, top - 0.5 + 0.0, az), 0.31, P["lamp_shade"], "paint", 18, caps=(False, False)) if False else None
     tubew(mb, (ax, top - 0.51, az), (ax, top - 0.49, az), 0.325, P["black"], "metal", 18, caps=(False, False))
     L.sphere(mb, F(ax, top - 0.5, az), 0, 0.02, 0, 0.09, hexc("#fff1c9"), "emit", seg=10, rings=5)
@@ -1422,6 +1434,14 @@ def preview_scene():
         for c in o.users_collection:
             c.objects.unlink(o)
         pv.objects.link(o)
+    sh_ = LAYOUT["shop"]
+    pl = bpy.data.lights.new("pv_shop_light", "AREA")
+    pl.energy = 900
+    pl.size = 3.0
+    po = bpy.data.objects.new("pv_shop_light", pl)
+    po.location = V((sh_["minX"] + sh_["maxX"]) / 2, (sh_["minZ"] + sh_["maxZ"]) / 2 + 0.3, 3.45)
+    po.rotation_euler = (math.pi, 0, 0)
+    pv.objects.link(po)
     # sky
     w = bpy.data.worlds.new("pv_world")
     w.use_nodes = True
@@ -1456,7 +1476,7 @@ def export_glb(path):
     bpy.ops.object.select_all(action="DESELECT")
     for o in sel:
         o.select_set(True)
-    kw = dict(filepath=path, export_format="GLB", use_selection=True, export_extras=True, export_yup=True, export_apply=False)
+    kw = dict(filepath=path, export_format="GLB", use_selection=True, export_extras=True, export_yup=True, export_apply=False, export_image_format="WEBP")
     try:
         bpy.ops.export_scene.gltf(export_draco_mesh_compression_enable=True, export_draco_mesh_compression_level=6,
                                   export_draco_position_quantization=14, export_draco_normal_quantization=10,
