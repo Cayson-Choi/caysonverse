@@ -11,7 +11,7 @@ describe("busStopHintAt — the stop's timetable line (review 2026-11-15)", () =
   it("at the stop, between buses: when the next one leaves and that boarding opens 30 s before", () => {
     const h = busStopHintAt(s.x, s.z, base + every - 200_000, false)!;
     expect(h.tone).toBe("wait");
-    expect(h.text).toBe("다음 버스 3분 20초 뒤 출발 · 30초 전부터 탈 수 있어요");
+    expect(h.text).toBe("다음 버스 4분 뒤 출발 · 30초 전부터 탈 수 있어요");
   });
   it("in the boarding half minute: board now", () => {
     const h = busStopHintAt(s.x, s.z, base + every - 12_000, false)!;

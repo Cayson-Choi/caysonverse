@@ -25,6 +25,7 @@ import {
   busShelterBenchCollider,
   busShelterColliders,
   busShelterRoofSlab,
+  busShelterLightBoxCameraBox,
   busMirrorColliders,
   colliderNode,
   cubbyAnchorNode,
@@ -680,18 +681,18 @@ describe("village colliders are built from the layout", () => {
     const fixed = hallWalls(L).length + areaGapBlockers(L).length + hallSurroundBlockers(L).length + busShelterColliders(L).length + 1 /* the shelter's bench */ + signalPoleColliders().length;
     const bare = buildVillageGeometry(L, []);
     expect(bare.obstacles).toHaveLength(fixed);
-    expect(bare.cameraBoxes).toEqual([...hallWalls(L), busShelterRoofSlab(L)]);
+    expect(bare.cameraBoxes).toEqual([...hallWalls(L), busShelterRoofSlab(L), busShelterLightBoxCameraBox(L)]);
     const box = { minX: 0, maxX: 1, minZ: 0, maxZ: 1 };
     const one = buildVillageGeometry(L, [{ id: "x", box, camera: false }]);
     expect(one.obstacles).toHaveLength(fixed + 1);
-    expect(one.cameraBoxes).toHaveLength(hallWalls(L).length + 1);
+    expect(one.cameraBoxes).toHaveLength(hallWalls(L).length + 2); // the shelter's roof slab and light box
     const tall = { ...box, height: 3 };
     const generated = buildVillageGeometry(L, { obstacles: [box], cameraBoxes: [tall] });
     expect(generated.obstacles).toHaveLength(fixed + 1);
     expect(generated.obstacles).toContainEqual(box);
     expect(generated.obstacles.slice(-busShelterColliders(L).length - 1, -1)).toEqual(busShelterColliders(L));
     expect(generated.obstacles.at(-1)).toEqual(busShelterBenchCollider(L));
-    expect(generated.cameraBoxes).toEqual([...hallWalls(L), tall, busShelterRoofSlab(L)]); // the height is kept; the shelter's thin glass is no camera box (seated camera)
+    expect(generated.cameraBoxes).toEqual([...hallWalls(L), tall, busShelterRoofSlab(L), busShelterLightBoxCameraBox(L)]); // the height is kept; the shelter's glass is no camera box (seen through), its opaque light box is
     expect(generated.bounds).toEqual(bare.bounds);
   });
 
@@ -1428,5 +1429,17 @@ describe("the bus stop's walking space (xwalk fix: the shelter at the back of th
       const c = { x: (box.minX + box.maxX) / 2, z: (box.minZ + box.maxZ) / 2 };
       expect(isBlocked(c.x, c.z, PLAYER_RADIUS, obstacles)).toBe(true);
     }
+  });
+});
+
+describe("the bus shelter's opaque light box as a camera box (visual review r4)", () => {
+  it("covers the back wall's light box (1.24 m wide, floor to roof) and nothing else of the shelter", () => {
+    const b = busShelterLightBoxCameraBox(L);
+    const s = boxOf(L.busStop.shelter);
+    expect(b.maxX - b.minX).toBeCloseTo(0.08, 6);
+    expect(b.maxX).toBeLessThanOrEqual(s.maxX);
+    expect(b.maxZ - b.minZ).toBeCloseTo(1.24, 6);
+    expect((b.minZ + b.maxZ) / 2).toBeCloseTo(L.busStop.shelter.centre.z, 6);
+    expect(b.height).toBeGreaterThanOrEqual(2.55);
   });
 });

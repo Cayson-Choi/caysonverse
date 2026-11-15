@@ -240,14 +240,14 @@ describe("villageBusTarget — the board button under the shelter (review r2)", 
     const s = VILLAGE_LAYOUT.busStop.shelter;
     const waiting = villageBusTarget("village", s.centre.x, s.centre.z, false, false, 200_000)!;
     expect(waiting.id).toBe("village_bus_board");
-    expect(waiting.label).toBe("버스 타기 · 3분 20초 뒤 출발");
+    expect(waiting.label).toBe("버스 타기 · 4분 뒤 출발");
     expect(waiting.short).toBe("4분 뒤");
     expect(waiting.yieldsToSeat).toBe(true);
     expect(villageBusTarget("village", s.centre.x, s.centre.z, false, true, 20_000)).toMatchObject({ label: "버스 타기", short: "탑승" });
     expect(villageBusTarget("village", s.centre.x, s.centre.z, true, false)?.id).toBe("village_bus_leave");
     expect(busCountdownWords(45_200)).toEqual({ long: "46초", short: "46초 뒤" });
     expect(busCountdownWords(120_000)).toEqual({ long: "2분", short: "2분 뒤" });
-    expect(busCountdownWords(60_001)).toEqual({ long: "1분 1초", short: "2분 뒤" });
+    expect(busCountdownWords(60_001)).toEqual({ long: "2분", short: "2분 뒤" });
   });
 });
 

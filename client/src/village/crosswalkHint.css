@@ -7,6 +7,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  width: max-content; /* left: 50% leaves only half the screen to shrink-to-fit, which wrapped the text to 3 lines on a phone */
   max-width: calc(100vw - 32px);
   box-sizing: border-box;
   padding: 8px 14px;
@@ -73,6 +74,10 @@
 }
 @media (max-width: 480px) {
   .cv-bus-hint {
+    font-size: 12px;
+    padding: 6px 10px;
+    gap: 6px;
+    text-wrap: balance; /* if it still needs two lines, two even ones */
     top: max(106px, calc(env(safe-area-inset-top) + 98px));
   }
 }

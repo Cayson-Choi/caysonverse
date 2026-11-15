@@ -611,6 +611,22 @@ export function busShelterRoofSlab(layout: Pick<VillageLayout, "busStop"> = VILL
 }
 
 /**
+ * The shelter's one OPAQUE panel as a camera box (visual review r4: facing the road from the pad, the follow camera ended up
+ * behind the shelter, outside its back wall, with the black route light box — build_busstop.py: frame material, 1.24 m wide, floor
+ * to roof — between it and the avatar, hiding the avatar and half the screen exactly where a rider waits for the bus). The rest
+ * of the back wall (the two glass bays) and the end panels are see-through, so they are not camera boxes: a camera behind
+ * them still sees the avatar. A cast that crosses this box pulls the spring arm in to in front of it, inside the shelter, and
+ * the road-facing view looks out through the open front.
+ */
+export function busShelterLightBoxCameraBox(layout: Pick<VillageLayout, "busStop"> = VILLAGE_LAYOUT): CameraBox {
+  const c = layout.busStop.shelter.centre;
+  const s = boxAt(layout.busStop.shelter.centre, layout.busStop.shelter.size);
+  const xb = s.maxX - 0.05; // the back wall's plane
+  const round6 = (n: number) => Math.round(n * 1e6) / 1e6;
+  return { minX: round6(xb - 0.03), maxX: round6(xb + 0.05), minZ: round6(c.z - 0.62), maxZ: round6(c.z + 0.62), height: 2.6 };
+}
+
+/**
  * The memorial's solid footprint minus the door-side pad area: three boxes (west, east and back of the
  * door recess). The pad reaches `radius` into the building, so the recess is pad-wide and that deep; the
  * whole pad disc stays free of colliders and the door stays reachable.
@@ -822,7 +838,7 @@ export function buildVillageGeometry(
     villageBounds(layout),
     hallWalls(layout),
     [...areaGapBlockers(layout), ...hallSurroundBlockers(layout), ...village.obstacles, ...signalPoleColliders(), ...busShelterColliders(layout), busShelterBenchCollider(layout), ...(hall?.obstacles ?? []), ...extra],
-    [...village.cameraBoxes, busShelterRoofSlab(layout), ...(hall?.cameraBoxes ?? [])],
+    [...village.cameraBoxes, busShelterRoofSlab(layout), busShelterLightBoxCameraBox(layout), ...(hall?.cameraBoxes ?? [])],
   );
 }
 

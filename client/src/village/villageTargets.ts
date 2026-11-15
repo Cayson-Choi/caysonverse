@@ -71,15 +71,15 @@ export function villageTargets(
 }
 
 /**
- * How long until the next bus leaves, for the board button's words while it is not taking riders: "3분 20초" (long, the
- * desktop pill) and "4분" / "20초" (short, the 60 px touch button; minutes rounded up so it never says 0분).
+ * How long until the next bus leaves, for the board button's words while it is not taking riders: "4분" / "20초" (long, the pill and the desktop button;
+ * "4분 뒤" for the 60 px touch button): minutes are rounded up so it never says 0분, and both forms agree.
  */
 export function busCountdownWords(ms: number): { long: string; short: string } {
   const s = Math.max(0, Math.ceil(ms / 1000));
-  const m = Math.floor(s / 60);
-  const r = s % 60;
-  const long = m === 0 ? `${r}초` : r === 0 ? `${m}분` : `${m}분 ${r}초`;
-  return { long, short: s >= 60 ? `${Math.ceil(s / 60)}분 뒤` : `${s}초 뒤` };
+  // One rounding for every place that shows it (review r4: the phone button said "8분 뒤" while the pill said "7분 8초 뒤"):
+  // whole minutes rounded up from a minute on, seconds below it. It also keeps the pill on one line on a phone.
+  const words = s >= 60 ? `${Math.ceil(s / 60)}분` : `${s}초`;
+  return { long: words, short: `${words} 뒤` };
 }
 
 /**
