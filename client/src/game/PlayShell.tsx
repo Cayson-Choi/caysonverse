@@ -10,6 +10,7 @@ import { LocalPlayer } from "./LocalPlayer";
 import { RemotePlayers } from "./RemotePlayers";
 import { CameraRig } from "./CameraRig";
 import { OverviewMarker } from "./OverviewMarker";
+import { CompassProbe } from "./CompassProbe";
 import { ClickMarker } from "./ClickMarker";
 import { NametagSystem } from "./NametagSystem";
 import { RenderStatsProbe } from "./RenderStatsProbe";
@@ -302,6 +303,7 @@ export function PlayShell(p: PlayShellProps) {
                 />
                 <RemotePlayers room={room} selfPose={pose} selfSeat={seat} blobShadow={profile.blobShadows} areas={p.areas} />
                 <OverviewMarker pose={pose} />
+                <CompassProbe />
                 <ClickMarker />
                 <SceneWarmUp key={tier} emoji />
               </Suspense>

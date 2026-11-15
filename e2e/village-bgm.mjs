@@ -36,7 +36,16 @@ try {
   await sleep(2500);
   s = await state();
   check("after a click: playing at 0.35", s && !s.paused && Math.abs(s.volume - 0.35) < 0.02, s);
-  check("one toggle button", (await p.page.getByRole("button", { name: "배경음악 켜기/끄기" }).count()) === 1, null);
+  // the ♪ chip is gone: the music's switch lives in the menu's 소리 section
+  check("no standalone ♪ button", (await p.page.getByRole("button", { name: "배경음악 켜기/끄기" }).count()) === 0, null);
+  const musicSwitch = async () => {
+    await p.page.getByRole("button", { name: "메뉴 열기" }).click();
+    await p.page.locator(".cv-menu").waitFor({ state: "visible" });
+    await sleep(300);
+    await p.page.locator("[role=switch][aria-labelledby=cv-menu-music]").click();
+    await sleep(300);
+    await p.page.locator(".cv-menu-close").click();
+  };
   await p.page.evaluate(async () => (await window.__imp("/src/village/villageArea.ts")).setLocalArea("hall"));
   await sleep(1600);
   s = await state();
@@ -45,16 +54,16 @@ try {
   await sleep(1600);
   s = await state();
   check("back outside: 0.35", s && Math.abs(s.volume - 0.35) < 0.02, s);
-  await p.page.getByRole("button", { name: "배경음악 켜기/끄기" }).click();
+  await musicSwitch();
   await sleep(300);
   s = await state();
   const stored = await p.page.evaluate(() => localStorage.getItem("cv-village-bgm"));
   check("muted: paused, stored 0", s && s.paused && stored === "0", { s, stored });
-  await p.page.getByRole("button", { name: "배경음악 켜기/끄기" }).click();
+  await musicSwitch();
   await sleep(2200);
   s = await state();
   check("unmuted: playing again at 0.35", s && !s.paused && Math.abs(s.volume - 0.35) < 0.02, s);
-  await p.page.screenshot({ path: `${run.evidence}/bgm-button.png` });
+  await p.page.screenshot({ path: `${run.evidence}/bgm-menu-music.png` });
   const errs = run.errors?.length ?? 0;
   check("no console errors", errs === 0, run.errors);
 } catch (e) {

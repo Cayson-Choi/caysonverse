@@ -235,3 +235,27 @@
     padding-top: 8px;
   }
 }
+
+.cv-menu-slider input[type="range"]:disabled {
+  opacity: 0.4;
+}
+
+/* A PC (mouse) screen is wide and 800 px tall at the least: tighter rows so the whole card fits without scrolling. */
+html:not(.cv-touch) .cv-menu {
+  gap: 8px;
+  padding: 14px 18px 12px;
+}
+
+html:not(.cv-touch) .cv-menu-section {
+  gap: 4px;
+  padding-top: 8px;
+}
+
+html:not(.cv-touch) .cv-menu-row {
+  min-height: 34px;
+  gap: 4px 12px;
+}
+
+html:not(.cv-touch) .cv-menu-seg-btn {
+  min-height: 36px;
+}
