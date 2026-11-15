@@ -432,9 +432,9 @@ def mat_water():
     bump = nb.node("ShaderNodeBump"); bump.inputs["Strength"].default_value = 0.35; bump.inputs["Distance"].default_value = 0.4
     nt.links.new(h, bump.inputs["Height"])
     b = nb.node("ShaderNodeBsdfPrincipled")
-    deep = (0.020, 0.115, 0.095, 1)
-    shallow = (0.16, 0.36, 0.28, 1)
-    col = nb.mix(nb.math("POWER", R, 0.7), shallow, deep)
+    deep = (0.010, 0.055, 0.040, 1)
+    shallow = (0.10, 0.20, 0.12, 1)
+    col = nb.mix(nb.math("POWER", R, 0.5), shallow, deep)
     nt.links.new(col, b.inputs["Base Color"])
     b.inputs["Roughness"].default_value = 0.06
     b.inputs["Specular IOR Level"].default_value = 0.6

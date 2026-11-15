@@ -21,7 +21,8 @@ float, linear data, one per vertex). Colour channel meaning per object (what the
         UV       u 0..1 across (z), v = metres down the centre column / 4
   W_falls_pool       M_water          the pool surface at waterY (q 0..1.01 of the waterline ellipse)
         COLOR_0  R depth 0..1 (= depth / 2.2 m, from falls_shape.pool_bed_y), G ripple weight (1 at the impact point ..
-                 0 at 7 m), B shoreline factor (0 inside .. 1 at the waterline), A opacity (0.35 clear at the rim .. 0.95)
+                 0 at 7 m), B shoreline factor (0 inside .. 1 at the waterline), A opacity (0.12 = clear, pebbles visible, at the rim .. 0.95 once ~0.65 m deep).
+                 Suggested colours: shallow (0.10, 0.20, 0.12) -> deep dark olive-teal (0.010, 0.055, 0.040), mix by R^0.5
         UV       world-anchored: u = (x - impact x) / 4, v = (z - impact z) / 4 (metres / 4, like the others)
   W_falls_foam       M_falls_foam     lumpy foam heap + ragged apron ring at the impact + 3 foam lines dragged toward the outlet
         COLOR_0  R foam density, G radial phase 0 (centre) .. 1 (outer rim; the shader flows the foam texture outward),
@@ -172,11 +173,12 @@ def plunge_meshes(tier):
         return out
 
     main = F.plunge_path(n)
-    pts = [(x, y, z) for (x, y, z, _) in main]
+    sway = lambda f: 0.34 * math.sin(2 * math.pi * 1.15 * f + 0.7) * sm(0.0, 0.35, f) + 0.25 * nz(f * 3.1, 0.4, 6.2) * f
+    pts = [(x, y, z + sway(i / n)) for i, (x, y, z, _) in enumerate(main)]
     spd = speeds(main, F.PLUNGE_SPEED)
     wid = [F.plunge_width(i / n) for i in range(n + 1)]
     core = lens_ribbon("W_falls_plunge_0", pts, [w * 0.80 for w in wid], T["core_cols"],
-                       thick=lambda f: 0.20 + 0.36 * f, back=0.55, jag=lambda f: 0.08 + 0.38 * f,
+                       thick=lambda f: (0.20 + 0.36 * f) * (0.72 + 0.56 * (0.5 + 0.5 * nz(f * 7.0, 0.3, 2.0))), back=0.55, jag=lambda f: 0.08 + 0.38 * f,
                        alpha=lambda f, s: 0.97, seed=1, speed0=F.PLUNGE_SPEED, speeds=spd)
     # back film: wider, ragged, drifting 0.1..0.35 m behind the core, mostly aerated
     behind = [(x - 0.10 - 0.25 * (i / n), y, z) for i, (x, y, z) in enumerate(pts)]
@@ -206,6 +208,19 @@ def plunge_meshes(tier):
             strands = mm
         else:
             strands.merge(mm)
+    # wisps: thin spray ribbons that peel off both edges in the lower half of the fall
+    for side in (-1, 1):
+        for k in range(3 if tier == "high" else 2):
+            i0 = int((0.40 + 0.17 * k + 0.04 * side) * n)
+            sub = pts[i0:]
+            if len(sub) < 4:
+                continue
+            ctr = [(x - 0.1, y, z + side * (wid[i0 + i] * 0.40 + (0.05 + 0.05 * k) * i + 0.2)) for i, (x, y, z) in enumerate(sub)]
+            ww = [0.22 + 0.45 * i / (len(sub) - 1) for i in range(len(sub))]
+            wm = lens_ribbon("W_falls_plunge_2", ctr, ww, 3, thick=lambda f: 0.05, back=0.0, jag=lambda f: 0.3 + 0.4 * f,
+                             alpha=lambda f, s: 0.6 * sm(0.0, 0.3, f) * (1.0 - 0.5 * abs(s)), seed=20 + k + 5 * (side > 0),
+                             speed0=F.PLUNGE_SPEED, speeds=spd[i0:], air_bias=0.7, rim_air=0.3, film=True)
+            strands.merge(wm)
     return [core, film, strands]
 
 
@@ -247,12 +262,12 @@ def cascade_mesh(tier):
     pos = [[None] * cols for _ in range(nr)]
     ss = [-1.0 + 2.0 * j / (cols - 1) for j in range(cols)]
     for i, y in enumerate(ys):
-        zc = F.channel_z(y)
+        zc = F.channel_z(y) + 0.45 * nz(y * 0.17, 4.4, 1.0) * sm(F.LEDGE + 1.0, F.LEDGE + 4.0, y)
         half = F.channel_width(y) * 0.5
         neck = 1.0 - 0.22 * sm(F.LEDGE + 3.0, F.LEDGE, y)       # the water gathers into the spout at the lip
         for j, s in enumerate(ss):
             side = 0 if s < 0 else 1
-            hw = half * neck * (1.0 + 0.13 * nz(i * 0.43 + side * 9.1, 1.3, 2.2))
+            hw = half * neck * (1.0 + 0.28 * nz(i * 0.7 + side * 9.1, 1.3, 2.2))
             z = zc + s * hw
             x = _face_s(z, y) + CASCADE_OFFSET + 0.12 * (1.0 - s * s) * (0.7 + 0.3 * nz(i * 0.2, j * 0.7, 5.5))
             pos[i][j] = (x, y, z)
@@ -294,7 +309,9 @@ def cascade_mesh(tier):
         brink = clamp(brink + 0.18 * (nz(i * 0.7, j * 1.3, 7.7) + 1) * 0.5 * abs(s))
         y = ys[i]
         edge = clamp(1.9 * (1.0 - abs(s) ** 3.0) + 0.5 * nz(i * 0.55, s * 2.0, 9.9) - 0.1)
-        a = edge * sm(F.TOP, F.TOP - 1.2, y) * 0.96
+        tongue = sm(-0.30, 0.10, nz(s * 1.9 + 3.0, y * 0.23, 8.1)) * (1.0 - 0.0) # rock humps split the sheet into tongues
+        tongue = 0.12 + 0.88 * tongue if abs(s) < 0.95 and y < F.TOP - 2.0 and y > F.LEDGE + 2.5 else 1.0
+        a = edge * sm(F.TOP, F.TOP - 1.2, y) * 0.96 * tongue
         r = 0.5 + 0.5 * clamp(across * 0.5, -1, 1)
         g = 0.5 + 0.5 * clamp(along, -1, 1)
         return pos[i][j], (0.5 + 0.5 * s, arcs[i] / 4.0), (r, g, brink, a)
@@ -306,27 +323,36 @@ def cascade_mesh(tier):
 
 
 def cascade_foam(tier, ys, arcs_of_y):
-    """Splash heaps where each drop of the upper cascade lands on the next tread (and the lip's brink): lumpy foam ridges across
-    the channel, merged into W_falls_cascade (COLOR_0 B = 1 so the shader paints them white and breaks them up)."""
-    T = TIERS[tier]
+    """White-water chunks where the water lands on the treads: per tread 2-3 separate lumpy heaps of different width, height and
+    height-position (never the same spacing), plus a few small chunks between the treads. Merged into W_falls_cascade (B = 1)."""
     m = Mesh("W_falls_cascade", "M_falls_cascade")
-    cols = 11 if tier == "high" else 7
+    cols = 7 if tier == "high" else 5
     rows = 4 if tier == "high" else 3
+    jobs = []
     for n_, h in enumerate(F.CASCADE_LEDGES):
-        yb = h + 0.28
+        yb0 = h + 0.28 + 0.35 * nz(n_ * 2.3, 1.1, 0.4)
+        nch = 2 + (1 if nz(n_ * 5.1, 0.2, 3.3) > -0.05 else 0)
+        for c in range(nch):
+            s0 = -0.72 + 1.44 * (c + 0.5) / nch + 0.2 * nz(n_ * 3.7 + c, 0.5, 2.2)
+            ws = 0.85 / nch * (0.6 + 0.5 * (0.5 + 0.5 * nz(n_ + c * 2.9, 1.2, 4.4)))
+            jobs.append((yb0 + 0.25 * nz(c * 4.1, n_, 5.0), s0, ws, 0.7 + 0.8 * (0.5 + 0.5 * nz(c * 1.7 + n_, 2.2, 6.0))))
+    for k, (yy, s0, ws) in enumerate(((22.7, 0.35, 0.22), (26.4, -0.4, 0.25), (30.1, 0.1, 0.2))):
+        jobs.append((yy + 0.2 * nz(k, 1, 1), s0, ws, 0.55))
+    for jn, (yb, s0, ws, hs) in enumerate(jobs):
         zc = F.channel_z(yb)
-        half = F.channel_width(yb) * 0.5 * 0.92
+        half = F.channel_width(yb) * 0.5 * 0.9
         arc = arcs_of_y(yb)
 
-        def fn(i, j, yb=yb, zc=zc, half=half, arc=arc, n_=n_):
-            s = -1.0 + 2.0 * j / (cols - 1)
-            d = i / (rows - 1)                                   # 0 at the wall .. 1 at the front of the heap
-            z = zc + s * half * (1.0 + 0.1 * nz(n_ * 3.1, j * 0.9, 1.7))
-            lump = 0.5 + 0.5 * nz(j * 1.7 + n_ * 7, d * 2.0, 3.7)
-            depth = 1.05 * (0.35 + 0.65 * lump) * (1.0 - 0.4 * s * s)
+        def fn(i, j, yb=yb, zc=zc, half=half, arc=arc, jn=jn, s0=s0, ws=ws, hs=hs):
+            sl = -1.0 + 2.0 * j / (cols - 1)                      # local -1..1 across this chunk
+            s = max(-0.97, min(0.97, s0 + ws * sl))
+            d = i / (rows - 1)
+            z = zc + s * half
+            lump = 0.5 + 0.5 * nz(j * 1.9 + jn * 7, d * 2.0, 3.7)
+            depth = hs * 0.95 * (0.35 + 0.65 * lump) * (1.0 - 0.45 * sl * sl)
             x = _face_s(z, yb) + 0.06 + depth * d
-            y = yb + 0.6 * math.sin(math.pi * min(1.0, d * 0.9 + 0.12)) * (0.3 + 0.9 * lump) * (1.0 - 0.45 * s * s)
-            a = clamp(1.7 * (1.0 - abs(s) ** 2.5)) * sm(1.0, 0.7, d)
+            y = yb + hs * 0.55 * math.sin(math.pi * min(1.0, d * 0.9 + 0.12)) * (0.3 + 0.9 * lump) * (1.0 - 0.5 * sl * sl)
+            a = clamp(1.7 * (1.0 - abs(sl) ** 2.2)) * sm(1.0, 0.7, d)
             return (x, y, z), (0.5 + 0.5 * s, arc / 4.0 + d * 0.15), (0.5, 0.35, 1.0, a * 0.95)
         m.add_grid(rows, cols, fn)
     return m
@@ -348,7 +374,7 @@ def pool_mesh(tier):
         d01 = clamp((F.WATER_Y - F.pool_bed_y(x, z)) / F.POOL["depth"]) if q < 1.0 else 0.0
         near = sm(7.0, 0.0, math.hypot(x - ix, z - iz))
         shore = sm(0.88, 1.0, q)
-        a = 0.35 + 0.60 * d01 ** 0.55
+        a = 0.12 + 0.83 * sm(0.0, 0.3, d01)
         return (x, F.WATER_Y, z), ((x - ix) / 4.0, (z - iz) / 4.0), (d01, near, shore, a)
     base = len(m.v)
     p, uv, c = vert(0.0, 0.0)
@@ -419,19 +445,23 @@ def foam_mesh(tier):
     m = Mesh("W_falls_foam", "M_falls_foam")
     uvp = lambda x, z: ((x - ix) / 6.0 + 0.5, (z - iz) / 6.0 + 0.5)
 
-    # heap: rings 0..1 of a lumpy dome elongated along the sheet (z)
+    # heap: a lumpy, off-round mound right under the fall, leaning toward the outlet
+    DX, DZ = F.OUTLET["points"][0]["x"] - ix, F.OUTLET["points"][0]["z"] - iz
+    dl = math.hypot(DX, DZ)
+    DX, DZ = DX / dl, DZ / dl                                    # drift direction (toward the outlet)
     RX, RZ = 1.7, 2.7
     rings = (0.0, 0.3, 0.55, 0.78, 0.93, 1.0)
 
     def heap(i, j):
         q = rings[i]
         th = 2 * math.pi * j / segs
-        lump = 0.55 + 0.9 * abs(nz(math.cos(th) * 1.5 + 3.3, math.sin(th) * 1.5, q * 2.0))
-        rr = 1.0 + 0.16 * nz(th * 1.3, 2.2, 1.0)
-        x = ix + q * RX * rr * math.cos(th)
-        z = iz + q * RZ * rr * math.sin(th)
-        h = 0.44 * (1.0 - q ** 2.2) * lump + 0.05 * (1 - q)
-        return (x, y0 + 0.02 + h, z), uvp(x, z), (0.45 + 0.35 * (1.0 - q), q, clamp(h / 0.5), 0.97 * sm(1.0, 0.82, q))
+        lump = 0.4 + 1.1 * abs(nz(math.cos(th) * 1.9 + 3.3, math.sin(th) * 1.9, q * 2.6))
+        rr = 1.0 + 0.34 * nz(th * 1.7, 2.2, 1.0) + 0.14 * nz(th * 5.3, 1.0, 4.0)
+        x = ix + q * RX * rr * math.cos(th) + 0.5 * q * DX
+        z = iz + q * RZ * rr * math.sin(th) + 0.5 * q * DZ
+        h = 0.5 * (1.0 - q ** 2.0) * lump + 0.05 * (1 - q)
+        dens = clamp(0.35 + 0.5 * (1 - q) + 0.35 * nz(x * 1.6, z * 1.6, 2.2))
+        return (x, y0 + 0.02 + h, z), uvp(x, z), (dens, q, clamp(h / 0.55), 0.97 * sm(1.0, 0.8, q))
     base = len(m.v)
     for i in range(len(rings)):
         for j in range(segs):
@@ -445,19 +475,24 @@ def foam_mesh(tier):
                 m.f.append((a + j, b + j2, b + j))
             else:
                 m.f.append((a + j, a + j2, b + j2, b + j))
-    # apron: the ragged foam ring on the water round the impact (the "foam ring")
-    qs = (0.0, 0.35, 0.7, 1.0)
+    # apron: broken-edged foam patch round the impact, densest under the fall, pulled out toward the outlet (no round edge)
+    qs = (0.0, 0.3, 0.55, 0.78, 1.0)
     base = len(m.v)
-    asegs = segs + 6
+    asegs = segs + 12
     for i, q in enumerate(qs):
         for j in range(asegs):
             th = 2 * math.pi * j / asegs
-            rag = 1.0 + 0.26 * nz(math.cos(th) * 2.2 + 8.0, math.sin(th) * 2.2, 4.4) + 0.1 * nz(th * 5.0, 1.0, 2.0)
-            rx, rz = 1.5 + q * (3.6 - 1.5) * rag, 2.4 + q * (5.0 - 2.4) * rag
-            x, z = ix + rx * math.cos(th), iz + rz * math.sin(th)
-            a = (0.9 if i == 0 else 0.8) * sm(1.0, 0.45, q) if i else 0.9
+            c_, s_ = math.cos(th), math.sin(th)
+            rag = 1.0 + 0.5 * nz(c_ * 2.8 + 8.0, s_ * 2.8, 4.4) + 0.22 * nz(th * 6.0, 1.0, 2.0)
+            along = max(0.0, (c_ * 1.0 / 1.0) * 0.0 + (s_ * DZ + c_ * DX))      # how much this direction points to the outlet
+            stretch = 1.0 + 0.85 * along ** 1.5
+            rx, rz = 1.5 + q * (3.4 - 1.5) * rag * stretch, 2.4 + q * (4.6 - 2.4) * rag * stretch
+            x, z = ix + rx * c_ + 0.9 * q * DX, iz + rz * s_ + 0.9 * q * DZ
+            an = 0.5 + 0.5 * nz(x * 1.3 + 4.0, z * 1.3, 3.1)
+            a = 0.0 if i == len(qs) - 1 else clamp(0.95 * sm(1.0, 0.2, q) * clamp(0.35 + 1.5 * (an - 0.35 - 0.3 * q)))
+            a = max(a, 0.85 * sm(0.62, 0.0, q)) if i < len(qs) - 1 else a      # dense right under the fall: no gap to the heap
             m.v.append((x, y0 + 0.035 + 0.02 * (1 - q), z)); m.uv.append(uvp(x, z))
-            m.col.append((clamp(0.8 - 0.5 * q), clamp(0.4 + 0.6 * q), 0.1, clamp(a)))
+            m.col.append((clamp((0.85 - 0.6 * q) * (0.6 + 0.7 * an)), clamp(0.4 + 0.6 * q), 0.1, clamp(a)))
     for i in range(len(qs) - 1):
         a, b = base + i * asegs, base + (i + 1) * asegs
         for j in range(asegs):
