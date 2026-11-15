@@ -381,7 +381,7 @@ describe("coachObstacles", () => {
   it("covers every resting button plus the room-name chip", () => {
     const l = touchHudLayout({ vw: 375, vh: 812, safe: NO_INSETS, size: "medium", leftHanded: false });
     const obs = coachObstacles(l);
-    expect(obs.length).toBe(4 + 4 + 2 + 1); // jump, action, emoji, 💬 · 4 top buttons · 👥, chat-log toggle · the chip
+    expect(obs.length).toBe(4 + 3 + 2 + 1); // jump, action, emoji, 💬 · 3 top buttons · 👥, chat-log toggle · the chip
     const chip = obs[obs.length - 1];
     expect(chip.x).toBe(l.roster.x);
     expect(chip.y + chip.h + MIN_GAP_PX).toBe(l.roster.y); // the chip sits right above 👥

@@ -5,9 +5,9 @@ interface HudButtonProps {
   /** The accessible name (Korean). The glyph inside is decoration. */
   label: string;
   onClick: () => void;
-  /** Toggle state (🗺 map, 🔊 sound, 👁 first person...) for assistive tech. Omit for a plain button. */
+  /** Toggle state (🗺 map, 👁 first person...) for assistive tech. Omit for a plain button. */
   pressed?: boolean;
-  /** Draw the chip highlighted (`is-on`). Defaults to `pressed`; 🔊 is "pressed" by default but not highlighted. */
+  /** Draw the chip highlighted (`is-on`). Defaults to `pressed`. */
   highlight?: boolean;
   /** The button does nothing here and is drawn dimmed (the 🗺 map inside a building). Its place in the row stays. */
   disabled?: boolean;

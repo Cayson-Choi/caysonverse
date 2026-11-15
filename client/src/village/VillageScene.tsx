@@ -28,7 +28,7 @@ import { VillageModel } from "./VillageModel";
 import { VillageBus } from "./VillageBus";
 import { BUSSTOP_MODEL_URL, BusStopShelter } from "./BusStopShelter";
 import { FishingPondProps } from "./FishingPondProps";
-import { VillageBgmButton } from "./VillageBgmButton";
+import { VillageMusic } from "./VillageMusic";
 import { VILLAGE_CAMERA_PLANES, VILLAGE_GROUND_DECAL, type VillageTier } from "./villageModelPrep";
 import { clearBusCache, clearVillageCaches, holdVillageFiles, holdsVillageFiles } from "./villageRelease";
 import { LoadBoundary } from "./LoadBoundary";
@@ -328,7 +328,7 @@ export function VillageScene({ identity }: { identity: Identity }) {
       )}
       hudColumn={
         <>
-          <VillageBgmButton />
+          <VillageMusic />
           <TransitRideHud />
           <StarFinderButton />
         </>

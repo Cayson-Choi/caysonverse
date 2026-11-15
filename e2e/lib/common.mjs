@@ -35,6 +35,7 @@ export const r2 = (n) => Math.round(n * 100) / 100;
 /** Console lines that are expected (the known Clock warning). */
 const ALLOWED_CONSOLE = [
   { name: "THREE.Clock deprecation", re: /THREE\.Clock/ },
+  { name: "ANGLE X3595 gradient-in-loop", re: /X3595|THREE.WebGLProgram: Program Info Log/ },
 ];
 
 export function createRun(name) {

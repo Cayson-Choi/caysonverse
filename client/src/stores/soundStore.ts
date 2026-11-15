@@ -1,7 +1,7 @@
 import { create } from "zustand";
 
 /**
- * Sound mute state — drives the 🔊/🔇 toggle button. It gates the 케이슨 마을 guides' voice clips
+ * Sound mute state — drives the menu's 소리 switch (MenuPanel). It gates the 케이슨 마을 guides' voice clips
  * (guideVoice.ts, Task 9A); chat is never read aloud (CHAT_VOICE_ENABLED, owner decision 2026-11-03).
  * Discrete UI state, so zustand is fine here (this is not per-frame data). Persisted to
  * localStorage so the choice survives reloads; default is ON (not muted) — the value only
