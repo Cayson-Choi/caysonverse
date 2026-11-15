@@ -538,6 +538,9 @@ export const MOON_PROBE = {
   glaze: { strength: 1, roughness: 0.32 },
 } as const;
 
+/** × the crescent's light by day (1 at night): the bright white crescent glared against the daytime sky. */
+export const MOON_DAY_DIM = 0.5;
+
 type Rgb = readonly [number, number, number];
 /** A probe's value for the unit normal `n` (game axes), unclipped: the GLSL's `moonSH`. */
 export function moonProbe(c: readonly Rgb[], n: readonly [number, number, number]): [number, number, number] {
@@ -578,6 +581,7 @@ ${shArray("MOON_NIGHT", MOON_PROBE.night)}
 #define MOON_BOWL_Y ${f4(u.bowlY)}
 #define MOON_BOWL_SOFT ${f4(u.soft)}
 #define MOON_LIGHTMAP_SCALE ${f4(LIGHTMAP_INTENSITY / Math.PI)}
+#define MOON_DAY_DIM ${f4(MOON_DAY_DIM)}
 #define MOON_GLAZE ${f4(MOON_PROBE.glaze.strength)}
 #define MOON_GLAZE_ROUGHNESS ${f4(MOON_PROBE.glaze.roughness)}
 vec3 moonSH( const in vec3 c[ 9 ], const in vec3 n ) {
@@ -607,7 +611,8 @@ vec3 moonLight( const in vec3 n, const in float uplight ) {
 		villageNightLight *= ${moonlitCast("villageNightLight")};
 		texel += villageNightLight * uVillageNight;
 	}
-	return texel * MOON_LIGHTMAP_SCALE + uVillageLift * uVillageLiftTint;
+	// by day the white crescent glared against the sky: dimmed (B2); the night keeps the bake value
+	return ( texel * MOON_LIGHTMAP_SCALE + uVillageLift * uVillageLiftTint ) * mix( MOON_DAY_DIM, 1.0, uVillageNight );
 }
 void main() {`;
 }
