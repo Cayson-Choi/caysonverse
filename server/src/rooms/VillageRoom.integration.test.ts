@@ -14,6 +14,8 @@ import { MessageType } from "@caysonverse/shared/messages";
 import type { BusStatePayload, ChatBroadcast, EmojiBroadcast, JumpBroadcast, SitRejectedPayload } from "@caysonverse/shared/messages";
 import { TRANSIT, routePoseAtDistance } from "@caysonverse/shared/village/transit";
 import { busDismountSpot } from "@caysonverse/shared/village/busSeats";
+import { busClearance } from "@caysonverse/shared/village/busBody";
+import { busDriveTrip, type BusDrive } from "@caysonverse/shared/village/busDrive";
 import { BUS_LEAVE_MOVING_NOTICE } from "./transitRuntime";
 import {
   SERVER_TIME_INTERVAL_MS,
@@ -1130,6 +1132,61 @@ describe("VillageRoom bus stops for avatars on the road (integration, owner 2026
     expect(moving).toBeTruthy();
     expect(moving!.drive?.fromMs).toBeGreaterThan(slot + 20_000);
     void client;
+  });
+});
+
+describe("VillageRoom: nobody is ever inside the moving bus (integration, checker r2)", () => {
+  /** The bus's pose by the room's own driver at the room's clock. */
+  function busPose(room: VillageRoom, t: number) {
+    const drive = (room as unknown as { busDriver: { drive: BusDrive } }).busDriver.drive;
+    return busDriveTrip(drive, t);
+  }
+  function at(pose: { x: number; z: number; yaw: number }, ahead: number, right: number) {
+    const fx = Math.sin(pose.yaw);
+    const fz = Math.cos(pose.yaw);
+    return { x: pose.x + fx * ahead - fz * right, z: pose.z + fz * ahead + fx * right };
+  }
+
+  it("the bus's body reaching a walker (or a walker found inside it) puts them out on a flank, and every client sees it", async () => {
+    const { room, client, player } = await visitor();
+    const bob = await colyseus.connectTo(room, JOIN_BOB);
+    const slot = Date.UTC(2026, 10, 15, 3, 0, 0);
+    const clock = { t: slot - 1000 };
+    (room as unknown as { wallClock: () => number }).wallClock = () => clock.t;
+    for (; clock.t < slot + 8_000; clock.t += 100) room.tickBus();
+    const trip = busPose(room, clock.t);
+    expect(trip.status).toBe("inTransit");
+    const inside = at(trip.pose, 0.5, 0.4); // right in the bus's middle, door side
+    placeAt(player, inside.x, inside.z);
+    room.tickBus();
+    const now = busPose(room, clock.t).pose;
+    expect(busClearance(now, player.x, player.z, PLAYER_RADIUS)).toBeGreaterThanOrEqual(-1e-6);
+    const pushed = { x: player.x, z: player.z };
+    const seenByBob = () => bob.state?.players?.get(client.sessionId) as { x: number; z: number } | undefined;
+    expect(await pollFor(() => { const b = seenByBob(); return b && Math.hypot(b.x - pushed.x, b.z - pushed.z) < 1e-3; })).toBeTruthy();
+    // through the whole lap, standing beside the lane: never inside
+    for (; clock.t < slot + 60_000; clock.t += 100) {
+      room.tickBus();
+      const tr = busPose(room, clock.t);
+      if (tr.status === "inTransit") expect(busClearance(tr.pose, player.x, player.z, PLAYER_RADIUS)).toBeGreaterThanOrEqual(-1e-6);
+    }
+  });
+
+  it("a Move that ends inside the driving bus is taken but put out beside it (no step into its body)", async () => {
+    const { room, client, player } = await visitor();
+    const slot = Date.UTC(2026, 10, 15, 3, 0, 0);
+    const clock = { t: slot - 1000 };
+    (room as unknown as { wallClock: () => number }).wallClock = () => clock.t;
+    for (; clock.t < slot + 8_000; clock.t += 100) room.tickBus();
+    const pose = busPose(room, clock.t).pose;
+    const beside = at(pose, 0, 1.25 + PLAYER_RADIUS + 0.4);
+    placeAt(player, beside.x, beside.z);
+    const track = (room as unknown as { tracking: Map<string, Tracking> }).tracking.get(client.sessionId)!;
+    track.lastAcceptedAt = Date.now() - 1000;
+    const into = at(pose, 0, 0.6);
+    client.send(MessageType.Move, { x: into.x, z: into.z, yaw: 0 });
+    expect(await pollFor(() => Math.hypot(player.x - beside.x, player.z - beside.z) > 0.05)).toBe(true);
+    expect(busClearance(pose, player.x, player.z, PLAYER_RADIUS)).toBeGreaterThanOrEqual(-1e-6);
   });
 });
 

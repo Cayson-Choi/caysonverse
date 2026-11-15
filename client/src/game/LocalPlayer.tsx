@@ -7,7 +7,7 @@ import type { Appearance } from "@caysonverse/shared/appearance";
 import { PLAYER_RADIUS } from "@caysonverse/shared/worldMap";
 import { liftForSeatY } from "@caysonverse/shared/sitPose";
 import { resolveCollision } from "@caysonverse/shared/collision";
-import { collectObstacles } from "./playerObstacles";
+import { collectObstacles, pushOutOfMovingBus } from "./playerObstacles";
 import { activeBounds, activeSeats } from "./activeMap";
 import {
   SIT_GLIDE,
@@ -782,6 +782,16 @@ export function LocalPlayer({
         pose.yaw = stepYaw(pose.yaw, targetYaw, TURN_SPEED * delta);
       }
     }
+    // The moving bus is solid from every side (owner 2026-11-15; checker r2: walking at its flank went inside it): after
+    // the slide, out of its body to the nearest free side — a walk into it slides along it, and its body reaching me (at
+    // the kerb as it passes) shoves me out at its pace. Moving or not; the shove is sent like a step (the server pushes
+    // the same way, VillageRoom), and it is no step of the feet (groundSpeed above is the walk's alone).
+    const shoved = pushOutOfMovingBus(pose.x, pose.z);
+    if (shoved) {
+      pose.x = shoved.x;
+      pose.z = shoved.z;
+    }
+
     // FP: the body faces the look direction DIRECTLY (no TURN_SPEED lag), moving
     // or standing — fpBodyYaw (the look yaw is the camera's azimuth, half a turn
     // from the facing: it used to be copied as is, and other players saw a
@@ -821,7 +831,7 @@ export function LocalPlayer({
 
     // Throttled network send (idle: nothing; moving: <=1 per PATCH_RATE_MS;
     // exactly one final message on stop).
-    sender.update(performance.now(), moving, { x: pose.x, z: pose.z, yaw: pose.yaw });
+    sender.update(performance.now(), moving || shoved !== null, { x: pose.x, z: pose.z, yaw: pose.yaw });
   });
 
   return (

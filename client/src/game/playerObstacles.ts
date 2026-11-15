@@ -20,45 +20,12 @@
  */
 
 import { PLAYER_RADIUS, type AABB } from "@caysonverse/shared/worldMap";
-import { circleIntersectsAABB } from "@caysonverse/shared/collision";
+import { isBlocked } from "@caysonverse/shared/collision";
+import { pushOutOfBus } from "@caysonverse/shared/village/busBody";
 import { forEachRemotePosition } from "./remoteStore";
 import { activeMapVersion, getActiveMap } from "./activeMap";
 import { getMovingBusPose } from "../net/transitSync";
-
-/** The moving bus's body as boxes (m): its 9 m split in four pieces along its heading, each box round one piece. */
-const BUS_PIECES = 4;
-const BUS_HALF_LENGTH = 4.5;
-const BUS_HALF_WIDTH = 1.25;
-
-/**
- * The village bus's body while it drives (owner 2026-11-15: avatars must not walk into the moving bus): four boxes along
- * its heading, each the axis-aligned box round a quarter of the bus (2.25 x 2.5 m), so the body is covered at any yaw.
- * Written into `out` (reused boxes). Pure: tests feed a pose.
- */
-export function busBodyBoxes(pose: { x: number; z: number; yaw: number }, out: MutableAABB[]): number {
-  const fx = Math.sin(pose.yaw);
-  const fz = Math.cos(pose.yaw);
-  const halfPiece = BUS_HALF_LENGTH / BUS_PIECES;
-  const hx = Math.abs(fx) * halfPiece + Math.abs(fz) * BUS_HALF_WIDTH;
-  const hz = Math.abs(fz) * halfPiece + Math.abs(fx) * BUS_HALF_WIDTH;
-  for (let i = 0; i < BUS_PIECES; i++) {
-    const along = -BUS_HALF_LENGTH + halfPiece * (2 * i + 1);
-    const cx = pose.x + fx * along;
-    const cz = pose.z + fz * along;
-    let box = out[i];
-    if (!box) {
-      box = { minX: 0, maxX: 0, minZ: 0, maxZ: 0 };
-      out[i] = box;
-    }
-    box.minX = cx - hx;
-    box.maxX = cx + hx;
-    box.minZ = cz - hz;
-    box.maxZ = cz + hz;
-  }
-  return BUS_PIECES;
-}
-
-const busBoxes: MutableAABB[] = [];
+import { localArea } from "../village/villageArea";
 
 interface MutableAABB {
   minX: number;
@@ -104,7 +71,6 @@ export function collectObstacles(
   selfX: number,
   selfZ: number,
   forEach: typeof forEachRemotePosition = forEachRemotePosition,
-  movingBus: typeof getMovingBusPose = getMovingBusPose,
 ): readonly AABB[] {
   if (builtFor !== activeMapVersion()) {
     builtFor = activeMapVersion();
@@ -130,15 +96,30 @@ export function collectObstacles(
     list.push(box);
     used++;
   });
-  // The bus out on the road is solid (parked, its box is a static collider). Same escape rule: a piece the body already
-  // overlaps does not block, so nobody is stuck inside it.
-  const bus = movingBus();
-  if (bus) {
-    const n = busBodyBoxes(bus, busBoxes);
-    for (let i = 0; i < n; i++) {
-      const b = busBoxes[i]!;
-      if (!circleIntersectsAABB(selfX, selfZ, PLAYER_RADIUS, b, 1e-6)) list.push(b);
-    }
-  }
   return combined;
+}
+
+/** A spot the body may be put on by the bus's push: not inside a static collider of the active map. */
+function staticFree(x: number, z: number): boolean {
+  return isBlocked(x, z, PLAYER_RADIUS, getActiveMap().geometry.obstacles);
+}
+
+/**
+ * The moving bus is solid (owner 2026-11-15; checker r2: walking at the side of the driving bus went straight into its
+ * body). Every frame, after the walk's slide, the local body is put back outside the bus's body if it overlaps it
+ * (shared busBody.ts pushOutOfBus: the nearest free side, never its front): a walk into the flank slides along it, and
+ * the bus's body reaching me (at the kerb as it passes) shoves me out at its pace. The server does the same with every
+ * avatar (VillageRoom), so the pose I send agrees with it. Returns the new spot, or null when I am clear (or not on the
+ * village's road: parked, the bus is a static collider). Injectable for tests.
+ */
+export function pushOutOfMovingBus(
+  x: number,
+  z: number,
+  movingBus: typeof getMovingBusPose = getMovingBusPose,
+  inVillage: () => boolean = () => localArea() === "village",
+  blocked: (x: number, z: number) => boolean = staticFree,
+): { x: number; z: number } | null {
+  const bus = movingBus();
+  if (!bus || !inVillage()) return null;
+  return pushOutOfBus(bus, x, z, PLAYER_RADIUS, blocked);
 }

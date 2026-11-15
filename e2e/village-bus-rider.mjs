@@ -7,8 +7,10 @@
  *    pill is gone on A's screen and the ride panel says "출발 대기 중 · N 뒤 출발"; screenshots of A's own view and B's;
  *  - B walks onto the bus's lane ahead of the stop; the bus leaves, slows and stands short of B (never overlapping B's
  *    body), with A still in it; screenshots from B (on the road) and A (in the bus); A's leave on the lap is refused;
- *  - B steps onto the pavement: the bus drives on, round the lap, back to the stop: A is put down at the middle door,
- *    on both screens.
+ *  - B steps onto the pavement: the bus drives on; B click-walks at the middle of the passing bus again and again
+ *    (checker r2 repro) and never gets inside its body, on B's screen or A's;
+ *  - round the lap no exit action is offered (the panel says "정류장에 돌아오면 내려요"), back at the stop A is put down at the
+ *    middle door, on both screens.
  *  - phone: the stop's pill never covers the left HUD column, and its line names no E key.
  *
  * Start the server with its clock ~150 s before a departure (DEV offset), e.g. in Git Bash:
@@ -19,7 +21,7 @@
  */
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { DESKTOP, PHONE, createRun, launchBrowser, openPlayer, pos, sleep, turnCameraTo, walkAndWait } from "./lib/common.mjs";
+import { DESKTOP, PHONE, createRun, launchBrowser, openPlayer, pos, sleep, targets, turnCameraTo, walkAndWait } from "./lib/common.mjs";
 import { act, joinVillage, setOrbit } from "./lib/village.mjs";
 
 const outArg = process.argv.find((a) => a.startsWith("--out="));
@@ -192,13 +194,66 @@ await run.step("B steps onto the pavement: the bus drives on, round the lap, and
     await sleep(200);
   }
   run.check("the bus drove on once the way was clear", moved);
+
+  // Checker r2 repro (D): from the pavement, click-walk at the middle of the passing bus, again and again. B's body must
+  // never get inside it: on B's own screen (pose and bus read in the same instant) and as A, riding in it, draws B.
+  const chase = [];
+  let shotInside = false;
+  for (const t1 = Date.now(); Date.now() - t1 < 9000; ) {
+    const s = await B.page.evaluate(async () => {
+      const sync = await window.__imp("/src/net/transitSync.ts");
+      const pose = sync.getTransitRenderPose();
+      const status = sync.transitTripAt(sync.transitNowMs()).status;
+      const me = window.__cv.getPos();
+      (await window.__imp("/src/game/clickMove.ts")).setClickTarget(pose.x, pose.z);
+      return { bus: { x: pose.x, z: pose.z, yaw: pose.yaw }, status, me: { x: me.x, z: me.z } };
+    });
+    const aView = await A.page.evaluate(async (sidB) => {
+      const sync = await window.__imp("/src/net/transitSync.ts");
+      const pose = sync.getTransitRenderPose();
+      const d = window.__cv.getRemoteDrawn()[sidB];
+      return { bus: { x: pose.x, z: pose.z, yaw: pose.yaw }, B: d ? { x: d.x, z: d.z } : null };
+    }, sidB);
+    const row = { t: Date.now() - t1, status: s.status, clear: clearance(s.bus, s.me), local: local(s.bus, s.me), aClear: aView.B ? clearance(aView.bus, aView.B) : null };
+    chase.push(row);
+    if (!shotInside && row.status === "inTransit" && Math.abs(row.local.ahead) < 4.5 && row.clear < 0.3) {
+      shotInside = true;
+      await shot(B, `rider-2b-B-against-moving-bus-${tag}.png`);
+    }
+    if (row.status === "inTransit" && row.local.ahead < -9) break; // it has gone past
+    await sleep(100);
+  }
+  await B.page.evaluate(async () => (await window.__imp("/src/game/clickMove.ts")).clearClickTarget());
+  writeFileSync(join(OUT, `rider-chase-${tag}.json`), JSON.stringify(chase, null, 1));
+  const near = chase.filter((r) => r.status === "inTransit" && Math.abs(r.local.ahead) < 6);
+  const minOwn = Math.min(...chase.filter((r) => r.status === "inTransit").map((r) => r.clear));
+  const aRows = chase.filter((r) => r.status === "inTransit" && r.aClear !== null);
+  const minA = Math.min(...aRows.map((r) => r.aClear));
+  run.check("B reached the moving bus's flank while chasing it", near.some((r) => r.clear < 0.3), { closest: Math.min(...near.map((r) => r.clear)), n: near.length });
+  run.check("B never got inside the moving bus (own screen, min clearance >= 0)", minOwn >= -0.005, { minOwn });
+  run.check("A, riding in it, never drew B inside the bus (min clearance >= 0)", minA >= -0.005, { minA, n: aRows.length });
+  // B off the road again (the pavement beside the lane), out of the bus's way for the rest of the lap
+  const bp = await pos(B);
+  const rr = Math.hypot(bp.x, bp.z);
+  await walkAndWait(B, (bp.x / rr) * 38.6, (bp.z / rr) * 38.6, 15000, 0.8);
+
   await turnCameraTo(B, 34.8, -6.7);
   const lap = [];
+  let sawLeaveOnRoad = false;
+  let sawPanelNote = false;
   let off = false;
   for (const t1 = Date.now(); Date.now() - t1 < 180000; ) {
     const a = await bus(A);
     const seat = await A.page.evaluate(async () => (await window.__imp("/src/game/busRide.ts")).selfBusRide.slot);
     lap.push({ t: Date.now() - t1, status: a.status, boarded: a.boarded, seat, x: a.x, z: a.z, screen: await A.page.evaluate(() => window.__cv.getScreen()) });
+    if (a.boarded && a.status === "inTransit") {
+      // checker r2: no exit action that does nothing while it drives (PC "E 버스에서 내리기", phone's round "하차")
+      const ids = (await targets(A)).map((t) => t.id);
+      const hud = await hudText(A);
+      if (ids.includes("village_bus_leave") || /버스에서 내리기/.test(hud)) sawLeaveOnRoad = true;
+      if (hud.includes("정류장에 돌아오면 내려요")) sawPanelNote = true;
+      if (lap.length === 12) await shot(A, `rider-2c-riding-self-${tag}.png`);
+    }
     if (!a.boarded) {
       off = true;
       break;
@@ -206,6 +261,7 @@ await run.step("B steps onto the pavement: the bus drives on, round the lap, and
     await sleep(500);
   }
   writeFileSync(join(OUT, `rider-lap-${tag}.json`), JSON.stringify(lap, null, 1));
+  run.check("while it drives, no exit action is offered; the panel says it waits for the stop", !sawLeaveOnRoad && sawPanelNote, { sawLeaveOnRoad, sawPanelNote });
   const endAt = await bus(A);
   run.check("the ride ended back at the stop", off && endAt.status !== "inTransit", { endAt, sid: await sid(A), sidA });
   await sleep(2500);

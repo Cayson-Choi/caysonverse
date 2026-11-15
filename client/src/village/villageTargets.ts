@@ -99,7 +99,8 @@ export function busCountdownWords(ms: number): { long: string; short: string } {
  * It always gives a free seat in reach the key (`yieldsToSeat`: the shelter's bench and the café chairs 66/67 sit inside
  * or by its area; owner 2026-11-13: 정류장 벤치에 앉을 수가 없어). With boarding open for 3 minutes (owner 2026-11-15)
  * riders wait on the bench like at a real stop, then stand and step towards the bus: no seat is in reach on the pad's
- * road half and at the doors, so there the button has the key (the stop's pill says so). "Leave" never yields.
+ * road half and at the doors, so there the button has the key (the stop's pill says so). "Leave" never yields, and is
+ * offered only while the bus stands at the stop (`busOnRoad` false).
  */
 export function villageBusTarget(
   area: AreaId,
@@ -108,11 +109,15 @@ export function villageBusTarget(
   boarded: boolean,
   boardingNow = true,
   departsInMs?: number,
+  busOnRoad = false,
 ): InteractTarget | null {
   if (area !== "village") return null;
   const dist = busBoardingDistance(x, z);
   if (!(dist <= BUS_OFFER_REACH_M)) return null;
   if (boarded) {
+    // Out on the lap the doors stay shut (the server refuses a leave): no "버스에서 내리기" / "하차" that does nothing
+    // (checker r2). The ride panel says "정류장에 돌아오면 내려요"; back at the stop the button is here again.
+    if (busOnRoad) return null;
     return { kind: "object", id: BUS_RIDE_TARGET_LEAVE, dist, icon: "🚌", label: "버스에서 내리기", short: "하차", priority: 2 };
   }
   const waiting = !boardingNow && departsInMs !== undefined && Number.isFinite(departsInMs);

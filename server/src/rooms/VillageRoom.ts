@@ -2,7 +2,7 @@ import type { Client } from "colyseus";
 import { Player, WorldState } from "@caysonverse/shared/schema";
 import { MessageType } from "@caysonverse/shared/messages";
 import type { BusRideStatePayload, ChatBroadcast } from "@caysonverse/shared/messages";
-import { PATCH_RATE_MS, VILLAGE_MAX_CLIENTS } from "@caysonverse/shared/constants";
+import { PATCH_RATE_MS, PLAYER_RADIUS, VILLAGE_MAX_CLIENTS } from "@caysonverse/shared/constants";
 import { APPEARANCE_FIELDS } from "@caysonverse/shared/appearance";
 import type { MapGeometry } from "@caysonverse/shared/school/geometry";
 import {
@@ -46,6 +46,8 @@ import {
 } from "./transitRuntime";
 import { BUS_DRIVER, BusDriver, busDriveTrip } from "@caysonverse/shared/village/busDrive";
 import { busDismountSpot, freeBusSlot } from "@caysonverse/shared/village/busSeats";
+import { pushOutOfBus, type BusBodyPose } from "@caysonverse/shared/village/busBody";
+import { isBlocked } from "@caysonverse/shared/collision";
 import type { TransitPoint } from "@caysonverse/shared/village/transit";
 import { checkHouseKeypad, initialKeypadRate } from "./villageKeypad";
 import type { KeypadRateState } from "@caysonverse/shared/village/buildingAccess";
@@ -345,7 +347,38 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     });
     const changed = driver.step(now, obstacles);
     obstacles.length = 0;
+    // The moving bus is solid (checker r2: walking at its flank went inside it, and it drove on with them in it): whoever
+    // its body overlaps now is put out on the nearest free side, every client sees them there (shared busBody.ts).
+    const pose = this.movingBusPose(now);
+    if (pose) this.state.players.forEach((p) => this.pushOffBus(p, pose));
     if (changed || now - this.lastBusBroadcast >= BUS_STATE_RATE_MS || now < this.lastBusBroadcast) this.broadcastTransit();
+  }
+
+  /** The bus's pose while it is out on the road at `now` (null while it stands at the stop: there it is a static collider). */
+  private movingBusPose(now: number): BusBodyPose | null {
+    const trip = busDriveTrip(this.driverAt(now).drive, now);
+    return trip.status === "inTransit" ? trip.pose : null;
+  }
+
+  /**
+   * Put a walker the moving bus's body overlaps back outside it (shared busBody.ts pushOutOfBus: the nearest side free
+   * of the map's colliders, never the bus's front). Riders, someone on a bench and the other areas are left alone. The
+   * echoed move clock is kept: the push is under a step's size, so the mover's own client (which pushes itself the
+   * same way every frame) never snaps, and the viewers walk the avatar there smoothly.
+   */
+  private pushOffBus(player: Player, pose: BusBodyPose): void {
+    if (player.area !== "village" || player.seatIndex >= 0 || this.busRiders.has(player)) return;
+    const obstacles = this.geometryFor(player).obstacles;
+    const out = pushOutOfBus(pose, player.x, player.z, PLAYER_RADIUS, (x, z) => isBlocked(x, z, PLAYER_RADIUS, obstacles));
+    if (!out) return;
+    player.x = out.x;
+    player.z = out.z;
+  }
+
+  /** Every accepted step is checked against the moving bus too: nobody's step ends inside it (the tick catches the rest). */
+  protected afterMove(_client: Client, player: Player, _track: VillageTracking, _now: number): void {
+    const pose = this.movingBusPose(this.wallClock());
+    if (pose) this.pushOffBus(player, pose);
   }
 
   /** Publish the bus and clear riders once their lap returns. */

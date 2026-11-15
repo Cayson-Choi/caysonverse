@@ -13,6 +13,7 @@ import { bubbleRestHeight, nametagRestHeight } from "./nametagLayout";
 import { useSpeechBubble } from "./useSpeechBubble";
 import { useEmoji } from "./useEmoji";
 import { getRemoteRecord, noteRemoteDrawn, remoteDrawnProbe } from "./remoteStore";
+import { pushOutOfMovingBus } from "./playerObstacles";
 import { sample, exceedsSnapDistance } from "./interpolation";
 import { advancePlayout, playoutGaitSpeed } from "./playout";
 import { nextGait } from "./locomotion";
@@ -474,6 +475,16 @@ export function RemotePlayer({
       //    / off a bench from the drawn pose, a snap onto / off a legacy chair (remoteSeat.ts).
       const line = (rec.seatLine ??= createSeatLine(rec.seatIndex));
       stepSeatMotion(seat, line, renderT, target, delta, activeSeats(), drawn, seatTransition);
+      // Never drawn inside the moving bus (checker r2): the server puts anyone its body reaches out on a flank, but this
+      // avatar is drawn a moment behind its moves (the playout lag) while the bus is drawn at the present — so the same
+      // push (shared busBody.ts) is applied to the drawn pose too, and it sits against the flank on every screen.
+      if (seat.mode === "up") {
+        const out = pushOutOfMovingBus(drawn.x, drawn.z);
+        if (out) {
+          drawn.x = out.x;
+          drawn.z = out.z;
+        }
+      }
       group.position.x = drawn.x;
       group.position.z = drawn.z;
       group.rotation.y = drawn.yaw + MODEL_FACING_OFFSET;

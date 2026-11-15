@@ -73,7 +73,7 @@ import { getLocalLift } from "./jump";
 import { useFpCursor } from "./useFpCursor";
 import { useSettingsStore } from "../stores/settingsStore";
 import { getTransitRenderPose, useTransitState } from "../net/transitSync";
-import { transitRiderCamera, transitWindowCamera } from "../village/transitCamera";
+import { riderFov, transitRiderCamera, transitWindowCamera } from "../village/transitCamera";
 import { selfBusRide } from "./busRide";
 import type { Orbit, Pose, SeatState } from "./types";
 
@@ -226,6 +226,8 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
   // A boarded village bus owns the camera pose until the server confirms a leave.
   // Keeping this as a tiny external-store hook avoids per-frame React renders.
   const { boarded: busBoarded } = useTransitState();
+  /** The lens's field of view before the bus ride widened it (null while not riding). */
+  const fovBeforeRideRef = useRef<number | null>(null);
   // First person hides the resting mouse cursor over the 3D view (fpCursor.ts) — the owner saw it as a stray icon.
   useFpCursor(gl.domElement, getKeys);
 
@@ -942,10 +944,24 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
     if (busBoarded) {
       // In my place in the bus (busSeats.ts): over my shoulder and out of the window; before the server's place
       // arrives, the old passenger eye.
-      const ride = selfBusRide.slot >= 0 ? transitRiderCamera(getTransitRenderPose(), selfBusRide.slot, (camera as PerspectiveCamera).aspect) : transitWindowCamera(getTransitRenderPose());
+      const persp = camera as PerspectiveCamera;
+      const ride = selfBusRide.slot >= 0 ? transitRiderCamera(getTransitRenderPose(), selfBusRide.slot, persp.aspect) : transitWindowCamera(getTransitRenderPose());
       camera.position.set(ride.x, ride.y, ride.z);
       camera.up.set(0, 1, 0);
       camera.lookAt(ride.targetX, ride.targetY, ride.targetZ);
+      // The cabin is small (review r3: the rider filled the frame): a wider lens in the bus, as a phone's camera held up
+      // in one, put back exactly as it was on getting off.
+      const want = riderFov(persp.aspect);
+      if (persp.isPerspectiveCamera && persp.fov !== want) {
+        if (fovBeforeRideRef.current === null) fovBeforeRideRef.current = persp.fov;
+        persp.fov = want;
+        persp.updateProjectionMatrix();
+      }
+    } else if (fovBeforeRideRef.current !== null) {
+      const persp = camera as PerspectiveCamera;
+      persp.fov = fovBeforeRideRef.current;
+      persp.updateProjectionMatrix();
+      fovBeforeRideRef.current = null;
     }
 
     // Overview looks down from far above; push the fog band out (eased by ovT) so

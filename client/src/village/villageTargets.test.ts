@@ -228,6 +228,14 @@ describe("villageBusTarget — the board button under the shelter (review r2)", 
     expect(villageBusTarget("village", 40, 3, false)).toBeNull(); // past the crosswalk
   });
 
+  it("a rider is offered '버스에서 내리기' only while the bus stands at the stop, never out on the lap (checker r2)", async () => {
+    const { villageBusTarget, BUS_RIDE_TARGET_LEAVE } = await import("./villageTargets");
+    expect(villageBusTarget("village", 38.5, -6.5, true, true, 60_000, false)?.id).toBe(BUS_RIDE_TARGET_LEAVE);
+    expect(villageBusTarget("village", 38.5, -6.5, true, false, 400_000, true)).toBeNull();
+    // not boarded: the board button stays (it counts down) whether the bus is out or not
+    expect(villageBusTarget("village", 38.5, -6.5, false, false, 400_000, true)).not.toBeNull();
+  });
+
   it("always yields to a seat in reach (the café's north-west chairs, the shelter's bench), boarding or not (owner 2026-11-15)", async () => {
     const { villageBusTarget } = await import("./villageTargets");
     expect(villageBusTarget("village", 41.88, -10.7, false)?.yieldsToSeat).toBe(true); // chair 66, 0.23 m off the area

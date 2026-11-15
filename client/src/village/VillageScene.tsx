@@ -160,6 +160,11 @@ function busScheduleNow(): [boolean, number] {
   return [false, trip.nextStartMs - now];
 }
 
+/** The bus is out on its lap now (its doors shut: no getting off until it is back at the stop). */
+function busOnRoad(): boolean {
+  return transitTripAt(transitNowMs()).status === "inTransit";
+}
+
 /** What pressing the board button says while the bus is not taking riders. */
 function busWaitNotice(departsInMs: number): string {
   const every = Math.round(TRANSIT.departureEveryMs / 60000);
@@ -174,7 +179,7 @@ function VillageDoors({ pose }: { pose: Pose }) {
     setTargetSource((p) => {
       const area = localArea();
       const base = villageAndHallTargets(area, p.x, p.z, cubbyCardState() !== null || guideDialogOpen() !== null || keypadOpen);
-      const bus = villageBusTarget(area, p.x, p.z, boarded, ...busScheduleNow());
+      const bus = villageBusTarget(area, p.x, p.z, boarded, ...busScheduleNow(), busOnRoad());
       return bus ? [...base, bus] : base;
     });
     setTargetHandler((target, phase) => {
