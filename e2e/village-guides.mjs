@@ -170,7 +170,7 @@ try {
     await sleep(2500);
     const arrive = await targetsAt(A);
     run.check("at the arrival point the desk is not offered yet", !arrive.some((t) => t.id === "guide:hall_desk"), arrive);
-    await walkAndWait(A, 303.5, 4.1, 15000, 0.3); // in front of the two visitor chairs (the desk reaches 3.5 m)
+    await walkAndWait(A, 303.0, 3.9, 15000, 0.3); // a step back from the two visitor chairs (the desk reaches 3.5 m; round 5: nearer, the chairs' 앉기 wins)
     summary.deskStand = await A.page.evaluate(() => window.__cv.getPos());
     await turnCameraTo(A, 306.4, 4.6);
     await sleep(800);

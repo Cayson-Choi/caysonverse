@@ -53,18 +53,30 @@ const FURNITURE: readonly AABB[] = MEMORIAL_COLLIDERS.filter((b) => {
   const d = b.maxZ - b.minZ;
   return Math.max(w, d) < 5; // walls (13-16 m) and the banks (6.1-7.7 m long) are not furniture
 });
+/**
+ * The solid parts the eye can never be in or near, at any height: the walls and the cubby banks (and the niche). Review 2026-11-15
+ * (round 5): zone B's last column slid the eye sideways into zone E's bank, so half the screen was the inside of its cubbies.
+ */
+const SOLID: readonly AABB[] = MEMORIAL_COLLIDERS.filter((b) => !FURNITURE.includes(b));
+/** How far (m) the eye keeps from a wall or a cubby bank (the near plane is 0.2 m off the eye in the hall's 50° view). */
+export const SOLID_MARGIN = 0.25;
+
+function inBoxes(x: number, z: number, boxes: readonly AABB[], m: number): boolean {
+  return boxes.some((b) => x > b.minX - m && x < b.maxX + m && z > b.minZ - m && z < b.maxZ + m);
+}
 
 function inFurniture(x: number, z: number, boxes: readonly AABB[]): boolean {
-  const m = FURNITURE_MARGIN;
-  return boxes.some((b) => x > b.minX - m && x < b.maxX + m && z > b.minZ - m && z < b.maxZ + m);
+  return inBoxes(x, z, boxes, FURNITURE_MARGIN);
 }
 
 /**
  * The eye and the look point that frame `anchor` in the free part of a screen of `aspect` (width / height) with a vertical field
- * of view of `fovDeg`, the card covering `inset`. The eye is straight out from the opening (along the cubby's facing), at the
- * cubby's height (never under `MIN_EYE_HEIGHT`); the cubby is put in the middle of the free part by turning the look (sideways
- * for a side panel, down for a bottom sheet), never by lowering the eye. When the spot is over furniture (a bench, the letter
- * table) the eye comes closer to the cubby until it is clear, and if it cannot, it rises over it.
+ * of view of `fovDeg`, the card covering `inset`. The eye is out from the opening (along the cubby's facing), at the cubby's height
+ * (never under `MIN_EYE_HEIGHT`); the cubby is put in the middle of the free part by turning the look (sideways for a side panel,
+ * down for a bottom sheet), never by lowering the eye. For a side panel the eye first moves along the wall so the look stays square
+ * to it; where that would bring it into or near another wall or cubby bank (a corner column) it moves less, or the other way, and the
+ * look turns instead. When the spot is over furniture (a bench, the letter table) the eye comes closer to the cubby until it is
+ * clear, and if it cannot, it rises over it.
  */
 export function cubbyFocusPose(
   anchor: CubbyAnchor,
@@ -72,6 +84,7 @@ export function cubbyFocusPose(
   fovDeg: number,
   inset: FocusInset,
   furniture: readonly AABB[] = FURNITURE,
+  solid: readonly AABB[] = SOLID,
 ): FocusPose {
   const wall = WALL_BY_BANK.get(anchor.bank);
   const pitch = wall ? wall.cell + wall.frame : 0.4;
@@ -91,29 +104,72 @@ export function cubbyFocusPose(
   // the free part's centre on the screen (NDC): left of a right panel, above a bottom sheet
   const cx = inset.side === "right" ? -f : 0;
   const cy = inset.side === "bottom" ? f : 0;
+  const tanH = tan * a;
   let ey = Math.max(anchor.y, MIN_EYE_HEIGHT);
 
-  const frame = (dist: number): FocusPose => {
-    // up and down: the eye stays where it is and the look tilts so the anchor shows at NDC y = cy
-    const elev = Math.atan2(anchor.y - ey, dist); // the anchor's angle above the horizontal, from the eye
+  /** The pose with the eye `dist` out from the wall and `side` (m) along it from the anchor (+ = the camera's right). */
+  const pose = (dist: number, side: number): FocusPose => {
+    const ex = anchor.x + rightX * side + outX * dist;
+    const ez = anchor.z + rightZ * side + outZ * dist;
+    // the anchor seen from the eye: H across the floor, at angle phi right of straight-in, dy above the eye
+    const H = Math.hypot(dist, side);
+    const phi = Math.atan2(-side, dist);
+    const dy = anchor.y - ey;
+    // the look turns so the anchor is alpha right of it: NDC x = H sin(alpha) / (depth tanH) = cx, the depth along the tilted look
+    // depending on alpha too (a few fixed-point steps settle it)
+    let alpha = Math.atan(cx * tanH);
+    let h = H;
+    let tilt = 0;
+    for (let i = 0; i < 6; i++) {
+      h = H * Math.cos(alpha); // the anchor's depth along the level look
+      const elev = Math.atan2(dy, h);
+      tilt = elev - Math.atan(cy * tan); // up and down: the eye stays, the look tilts so the anchor shows at NDC y = cy
+      const depth = Math.hypot(h, dy) * Math.cos(elev - tilt);
+      const sinA = H > 1e-9 ? (cx * tanH * depth) / H : 0;
+      alpha = Math.asin(Math.max(-0.99, Math.min(0.99, sinA)));
+    }
+    h = H * Math.cos(alpha);
+    tilt = Math.atan2(dy, h) - Math.atan(cy * tan);
+    const psi = phi - alpha;
+    // the look's level direction: -out turned by psi toward the right
+    const lx = -outX * Math.cos(psi) + rightX * Math.sin(psi);
+    const lz = -outZ * Math.cos(psi) + rightZ * Math.sin(psi);
+    return { ex, ey, ez, tx: ex + lx * h, ty: ey + h * Math.tan(tilt), tz: ez + lz * h };
+  };
+  /** The sideways offset that keeps the look square to the wall (the anchor at NDC x = cx). */
+  const squareSide = (dist: number): number => {
+    const elev = Math.atan2(anchor.y - ey, dist);
     const tilt = elev - Math.atan(cy * tan);
-    // the anchor's depth along the (tilted) view axis, and the view's half-width there (m)
     const depth = Math.hypot(dist, anchor.y - ey) * Math.cos(elev - tilt);
-    const wHalf = depth * tan * a;
-    // sideways: the camera moves along the wall so the anchor shows at NDC x = cx (the look stays square to the wall)
-    const tx = anchor.x - rightX * cx * wHalf;
-    const tz = anchor.z - rightZ * cx * wHalf;
-    return { ex: tx + outX * dist, ey, ez: tz + outZ * dist, tx, ty: ey + dist * Math.tan(tilt), tz };
+    return -cx * depth * tanH;
+  };
+  const clear = (p: FocusPose): boolean => !inBoxes(p.ex, p.ez, solid, SOLID_MARGIN);
+
+  /** At `dist`: the square sideways spot, else the nearest clear one (less, then the other way), or null. */
+  const at = (dist: number, avoidFurniture: boolean): FocusPose | null => {
+    const s0 = squareSide(dist);
+    const ok = (p: FocusPose) => clear(p) && (!avoidFurniture || !inFurniture(p.ex, p.ez, furniture));
+    const first = pose(dist, s0);
+    if (s0 === 0) return ok(first) ? first : null;
+    if (ok(first)) return first;
+    // step from the square spot back through 0 and beyond, the smallest change first
+    const step = 0.05 * Math.sign(s0);
+    for (let k = 1; k <= 60; k++) {
+      const s = s0 - step * k;
+      const p = pose(dist, s);
+      if (ok(p)) return p;
+    }
+    return null;
   };
 
   // over furniture: come closer (down to MIN_DIST) until the eye is clear of it
   for (let dist = want; dist >= MIN_DIST - 1e-9; dist -= 0.05) {
-    const p = frame(dist);
-    if (!inFurniture(p.ex, p.ez, furniture)) return p;
+    const p = at(dist, true);
+    if (p) return p;
   }
-  // nowhere clear in front of this cubby: the furthest spot, the eye above the furniture
+  // nowhere clear in front of this cubby: the furthest spot clear of the walls and banks, the eye above the furniture
   ey = Math.max(ey, OVER_FURNITURE_EYE);
-  return frame(want);
+  return at(want, false) ?? pose(want, 0);
 }
 
 /** Ease in and out (smoothstep). */

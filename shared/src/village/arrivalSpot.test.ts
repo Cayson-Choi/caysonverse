@@ -73,12 +73,12 @@ describe("arrival spacing rules", () => {
     expect(SPACING_SLACK_M).toBeLessThan(0.01);
   });
 
-  it("the layout's own arrival points are valid spots (each exactly 0.2 m off its pad)", () => {
+  it("the layout's own arrival points are valid spots (outside 0.2 m off its pad; the hall's 1.2 m in, so its camera has room: round 5)", () => {
     expect(isValidSpot(HALL_SPAWN, arrivalArea("hall"))).toBe(true);
     expect(isValidSpot(OUT_ARRIVAL, arrivalArea("village"))).toBe(true);
     expect(isValidSpot(PLAZA, arrivalArea("village"))).toBe(true);
     expect(isValidSpot(HALL_SPAWN, arrivalArea("house:house_1"))).toBe(true);
-    expect(Math.hypot(HALL_SPAWN.x - IN_PAD.centre.x, HALL_SPAWN.z - IN_PAD.centre.z)).toBeCloseTo(IN_PAD.radius + DOOR_PAD_CLEARANCE_M, 9);
+    expect(Math.hypot(HALL_SPAWN.x - IN_PAD.centre.x, HALL_SPAWN.z - IN_PAD.centre.z)).toBeCloseTo(IN_PAD.radius + 1.2, 9);
     expect(Math.hypot(OUT_ARRIVAL.x - OUT_PAD.centre.x, OUT_ARRIVAL.z - OUT_PAD.centre.z)).toBeCloseTo(OUT_PAD.radius + DOOR_PAD_CLEARANCE_M, 9);
   });
 
@@ -211,11 +211,11 @@ describe("findFreeSpot", () => {
     expectValid(spots, hall);
   });
 
-  it("the first two into the hall stay by the way out: the first within the button's reach, the second within the server's door reach (one small step brings the button)", () => {
+  it("the first two into the hall stay by the way out: the first within the button's reach, the second a step from it (round 5: the spawn moved 1 m in so the camera behind has room)", () => {
     const [a, b] = arriveTogether(2, "hall", HALL_SPAWN);
     const d = (s: { x: number; z: number }) => Math.hypot(s.x - IN_PAD.centre.x, s.z - IN_PAD.centre.z);
-    expect(d(a)).toBeLessThanOrEqual(IN_PAD.radius + 0.7); // villageTargets DOOR_OFFER_REACH_M
-    expect(d(b)).toBeLessThanOrEqual(IN_PAD.radius + 0.9); // villageDoor DOOR_REACH_M
+    expect(d(a)).toBeLessThanOrEqual(IN_PAD.radius + 1.25); // villageTargets DOOR_OFFER_REACH_M
+    expect(d(b)).toBeLessThanOrEqual(IN_PAD.radius + 2.0);
   });
 
   it("12 coming out of the hall together spread in front of the memorial, off its door pad and clear of the building", () => {

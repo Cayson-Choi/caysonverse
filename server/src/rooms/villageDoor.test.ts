@@ -9,8 +9,8 @@ const outPad = L.memorial.exterior.doorPad;
 const inPad = L.memorial.interior.doorPad;
 
 describe("door constants", () => {
-  it("reach is 0.9 m past the pad's edge and a client may use a door once a second", () => {
-    expect(DOOR_REACH_M).toBe(0.9);
+  it("reach is 1.3 m past the pad's edge and a client may use a door once a second", () => {
+    expect(DOOR_REACH_M).toBe(1.3);
     expect(DOOR_RATE).toEqual({ count: 1, windowMs: 1000 });
   });
 });
@@ -58,9 +58,9 @@ describe("arrivalAfter", () => {
 });
 
 describe("useDoor", () => {
-  it("from the village: allowed within the enlarged memorial pad radius + 0.9 m (2.9 m), refused beyond", () => {
+  it("from the village: allowed within the enlarged memorial pad radius + 1.3 m (3.3 m), refused beyond", () => {
     const reach = outPad.radius + DOOR_REACH_M;
-    expect(reach).toBeCloseTo(2.9, 12);
+    expect(reach).toBeCloseTo(3.3, 12);
     expect(useDoor("village", outPad.centre.x, outPad.centre.z)).toEqual(arrivalAfter("village"));
     expect(useDoor("village", outPad.centre.x, outPad.centre.z + reach - 0.01)).toEqual(arrivalAfter("village"));
     expect(useDoor("village", outPad.centre.x + reach - 0.01, outPad.centre.z)).not.toBeNull();
@@ -68,9 +68,9 @@ describe("useDoor", () => {
     expect(useDoor("village", outPad.centre.x, outPad.centre.z + 5)).toBeNull();
   });
 
-  it("from the hall: allowed within the inside pad radius + 0.9 m (2.3 m), refused beyond", () => {
+  it("from the hall: allowed within the inside pad radius + 1.3 m (2.7 m), refused beyond", () => {
     const reach = inPad.radius + DOOR_REACH_M;
-    expect(reach).toBeCloseTo(2.3, 12);
+    expect(reach).toBeCloseTo(2.7, 12);
     expect(useDoor("hall", inPad.centre.x, inPad.centre.z)).toEqual(arrivalAfter("hall"));
     expect(useDoor("hall", inPad.centre.x, inPad.centre.z - reach + 0.01)).toEqual(arrivalAfter("hall"));
     expect(useDoor("hall", inPad.centre.x, inPad.centre.z - reach - 0.01)).toBeNull();

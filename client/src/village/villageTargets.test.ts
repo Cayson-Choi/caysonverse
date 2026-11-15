@@ -96,7 +96,7 @@ describe("villageTargets — the memorial hall's door", () => {
     const out = outside.arrival;
     const sp = inside.spawn;
     expect(villageTargets("village", out.x, out.z)).toHaveLength(1); // the way out lands 2.2 m from the front door's centre
-    expect(villageTargets("hall", sp.x, sp.z)).toHaveLength(1); // the way in lands 1.6 m from the way out's centre
+    expect(villageTargets("hall", sp.x, sp.z)).toHaveLength(1); // the way in lands 2.6 m from the way out's centre (round 5)
   });
 });
 
@@ -236,7 +236,9 @@ describe("the hall desk and its visitor chairs (review 2026-11-15: '문의하기
     expect(idAt(303.83, 4.0)).toBe("consult_0");
     expect(idAt(303.83, 4.3)).toBe("consult_1");
     expect(idAt(304.3, 4.12)).toMatch(/^consult_/);
-    // the e2e's visitor spot in front of the chairs still asks the desk
-    expect(idAt(303.5, 4.1)).toBe("guide:hall_desk");
+    // round 5: a step short of the second chair's own spot (303.54, 4.5) offers that chair (its seat point is under the desk)
+    expect(idAt(303.29, 4.27)).toBe("consult_1");
+    // the e2e's visitor spot a step back from the chairs still asks the desk
+    expect(idAt(303.0, 3.9)).toBe("guide:hall_desk");
   });
 });

@@ -5,7 +5,7 @@
  * the ActionButton, never per frame), `pickInteraction` decides, and the rest is labels.
  */
 
-import { SEAT_REACH, nearestFreeSeat, type Seat } from "@caysonverse/shared/worldMap";
+import { SEAT_REACH, nearestFreeSeat, seatDistance, type Seat } from "@caysonverse/shared/worldMap";
 
 /**
  * Something a scene offers besides the benches: the memorial hall's door, a house keypad, a guide to talk to, the
@@ -177,7 +177,7 @@ export function interactInputAt(
     const taken = here === undefined ? isOccupied : (i: number) => isOccupied(i) || (world.seats[i] as { area?: string }).area !== here;
     const index = nearestFreeSeat(x, z, taken, SEAT_REACH, world.seats);
     if (index !== null) {
-      seat = { index, dist: Math.hypot(x - world.seats[index].x, z - world.seats[index].z) };
+      seat = { index, dist: seatDistance(world.seats[index], x, z) };
     }
   }
   return { seated, seat, targets };

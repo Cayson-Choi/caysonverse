@@ -134,7 +134,14 @@ await run.step("1. join: A in shorts + wizard hat, B in a long skirt + space hel
   await seedLook(B, LOOKS.longskirtHelmet);
   await joinVillage(B, "앉기B");
   all = await seats(A);
-  run.check("20 bench seats on the client", all.length === 20, all.length);
+  // ONE global seat list (client = server): the village's 20 plaza / forecourt seats, the memorial hall's 31 (its model's
+  // seat__ markers: benches from either side, sofas / armchairs / chairs from the front), 4 in each house
+  const by = (area) => all.filter((s) => s.area === area).length;
+  run.check("20 village seats, 31 in the memorial hall (from its model), 4 per house", by("village") === 20 && by("hall") === 31 && by("house:house_1") === 4, {
+    village: by("village"),
+    hall: by("hall"),
+    total: all.length,
+  });
 });
 
 // plaza_4 (south-east of the fountain, by the spawn): seats 6 and 7
@@ -220,19 +227,65 @@ await run.step("6. the memorial's forecourt bench (stone, no back)", async () =>
   await sleep(1500);
 });
 
-await run.step("7. inside the memorial hall: the oak bench, facing the memorial table", async () => {
+/** Whether the local avatar is drawn (round 5: the own avatar must be seen when seated on every kind of seat in the hall). */
+const selfShown = async (p) => {
+  const at = await pos(p);
+  return p.page.evaluate(
+    ([x, z]) => {
+      const { scene } = window.__cvThree();
+      let found = null;
+      scene.traverse((o) => {
+        if (!found && o.isGroup && Math.abs(o.position.x - x) < 1e-3 && Math.abs(o.position.z - z) < 1e-3) found = o;
+      });
+      return found ? found.visible : null;
+    },
+    [at.x, at.z],
+  );
+};
+
+/** Stand up (E) and wait for it. */
+async function standUp(p) {
+  await p.page.keyboard.press("KeyE");
+  await p.page.waitForFunction(() => window.__cv.getPos().seatIndex === -1, null, { timeout: 8000 });
+  await sleep(1500);
+}
+
+await run.step("7. inside the memorial hall: a centre bench from the front and from behind, a sofa, an armchair, both consult chairs, a letter chair", async () => {
   await walkAndWait(A, 0, -50.8, 30000, 1.0); // the door pad, just east of the forecourt bench
   await act(A);
   await A.page.waitForFunction(async () => (await window.__imp("/src/village/villageArea.ts")).localArea() === "hall", null, { timeout: 15000 });
   await A.page.waitForFunction(() => !!window.__cvHall, null, { timeout: 60000 });
   await sleep(2500);
-  const i = all.findIndex((s) => s.bench === "hall");
-  const s = all[i];
-  await sitOn(A, s, i, [[300, 1.5], [302.6, 0.5], [302.6, -2.6]]);
-  await hideHud(A);
-  await views(A, "A-hall", { x: s.x - Math.sin(s.yaw) * 0.4, z: s.z - Math.cos(s.yaw) * 0.4 }, s.yaw, -0.6, 3.1); // under the 3.4 m ceiling
-  await A.page.screenshot({ path: join(OUT, "game-A-hall.png") });
-  await showHud(A);
+  run.check("A sees their own avatar on arrival in the hall", (await selfShown(A)) === true, await pos(A));
+  const hall = (id) => all.findIndex((s) => s.id === id);
+  const order = [
+    ["bench_w2_s1:back", [[300, 1.5]]],
+    ["bench_w1_s0:front", [[300, 1.5], [300, -1.7], [300, -3.9], [297.5, -3.9]]],
+    ["sofa_a1", [[300, -3.9], [300, -1.7], [300, 1.5], [297.6, 3.6]]],
+    ["armchair_1", [[297.6, 3.6], [297.6, 0.8]]],
+    ["letter_s1", [[297.6, 0.8], [296.4, -1.7]]],
+    ["consult_0", [[300, 1.5], [302.6, 1.6]]],
+    ["consult_1", [[304.39, 2.0], [302.6, 1.6], [302.6, 4.0]]],
+  ];
+  for (const [id, via] of order) {
+    const i = hall(id);
+    run.check(`${id} is in the seat list`, i >= 0, id);
+    if (i < 0) continue;
+    const s = all[i];
+    await sitOn(A, s, i, via);
+    await sleep(800); // the seat camera's glide
+    run.check(`${id}: A sees their own avatar seated (the camera has room, the body is not hidden)`, (await selfShown(A)) === true, await pos(A));
+    const cam = await A.page.evaluate(() => {
+      const { camera } = window.__cvThree();
+      return { x: camera.position.x, y: camera.position.y, z: camera.position.z };
+    });
+    const d = Math.hypot(cam.x - s.x, cam.y - 1.4, cam.z - s.z);
+    run.check(`${id}: the camera is 3 m+ from the seated head`, d > 3.0, { d: Math.round(d * 100) / 100, cam });
+    await hideHud(A);
+    await A.page.screenshot({ path: join(OUT, `game-A-hall-${id.replace(/[:]/g, "_")}.png`) });
+    await showHud(A);
+    await standUp(A);
+  }
 });
 
 await browser.close();

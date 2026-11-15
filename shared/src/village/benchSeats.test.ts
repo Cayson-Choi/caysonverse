@@ -238,7 +238,7 @@ describe("the memorial hall's seats (generated from the model's seat__ markers)"
         expect(approachesSeat(chair, behind.x, behind.z, SEAT_APPROACH_SLACK), `${id} behind ${off}`).toBe(false);
       }
       // beside but far behind: refused
-      const farBehind = { x: chair.x - f.x * (plane + 0.8) + side.x * 0.8, z: chair.z - f.z * (plane + 0.8) + side.z * 0.8 };
+      const farBehind = { x: chair.x - f.x * (plane + 1.1) + side.x * 0.8, z: chair.z - f.z * (plane + 1.1) + side.z * 0.8 };
       expect(approachesSeat(chair, farBehind.x, farBehind.z, SEAT_APPROACH_SLACK), `${id} far behind`).toBe(false);
     }
   });
@@ -374,4 +374,20 @@ describe("benches are sat on from the front (approachesSeat / nearestFreeSeat)",
     expect(approachesSeat(chair, chair.x + 1, chair.z)).toBe(true);
     expect(nearestFreeSeat(chair.standX, chair.standZ, () => false, SEAT_REACH, [chair])).toBe(0);
   });
+});
+
+describe("chairs side by side: each one's dismount spot offers that chair, never its neighbour (review 2026-11-15 round 5)", () => {
+  const hall = VILLAGE_SEATS.map((s) => (s.area === "hall" ? s : { ...s, x: 1e6, z: 1e6 }));
+  for (const [own, other] of [["consult_0", "consult_1"], ["consult_1", "consult_0"], ["letter_n0", "letter_n1"], ["letter_s1", "letter_s0"]] as const) {
+    it(`${own}: from its spot and a step short of it all round`, () => {
+      const i = VILLAGE_SEATS.findIndex((s) => s.id === own);
+      const j = VILLAGE_SEATS.findIndex((s) => s.id === other);
+      const s = VILLAGE_SEATS[i]!;
+      expect(nearestFreeSeat(s.standX, s.standZ, () => false, SEAT_REACH, hall)).toBe(i);
+      for (let k = 0; k < 8; k++) {
+        const a = (k * Math.PI) / 4;
+        expect(nearestFreeSeat(s.standX + Math.cos(a) * 0.35, s.standZ + Math.sin(a) * 0.35, () => false, SEAT_REACH, hall), `${own} k${k}`).not.toBe(j);
+      }
+    });
+  }
 });

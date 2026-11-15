@@ -356,10 +356,10 @@ describe("VillageRoom door (integration)", () => {
     expect(await pollFor(() => player.area === "hall")).toBe(true);
   });
 
-  it("allows the door out to the pad radius + 0.9 m (2.5 m) and refuses just beyond", async () => {
+  it("allows the door out to the pad radius + 1.3 m (3.3 m) and refuses just beyond", async () => {
     const { room, client, player } = await visitor();
     const clock = useClock(room);
-    const reach = OUT_PAD.radius + 0.9;
+    const reach = OUT_PAD.radius + 1.3;
 
     placeAt(player, OUT_PAD.centre.x, OUT_PAD.centre.z + reach + 0.05);
     client.send(VillageMsg.UseDoor, {});

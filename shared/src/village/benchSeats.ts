@@ -31,7 +31,7 @@
  */
 
 import { isBlocked } from "../collision";
-import { PLAYER_RADIUS, type Seat } from "../worldMap";
+import { PLAYER_RADIUS, SEAT_REACH, approachesSeat, type Seat } from "../worldMap";
 import { BACKED_ROOT_AHEAD, SIT_ROOT_AHEAD } from "../sitPose";
 import { MEMORIAL_SEAT_MARKERS } from "./generated/memorialSeats";
 import type { SeatMarker } from "./seatMarkers";
@@ -135,6 +135,48 @@ function dismountAhead(root: Point2, yaw: number, bounds: Bounds, id: string, ge
   throw new Error(`no clear dismount spot ahead of bench seat ${id}`);
 }
 
+/**
+ * A chair with another chair of its kind next to it (the two consult chairs at the desk, the letter table's four): its dismount
+ * spot — where a click on it walks to and where its sitter stands up — is the nearest clear spot from which the chair is offered
+ * (`approachesSeat`: beside or in front of it, never behind its backrest) that is clearly nearer this chair's seat than any
+ * neighbour's (`STAND_NEIGHBOUR_MARGIN`). Review 2026-11-15 round 5: the second consult chair's spot was in the gap between the
+ * two, as near the first chair, so stopping a step short of it and pressing E sat on the first one. Null: none within reach.
+ */
+function chairStand(seat: Seat, neighbours: readonly Point2[], bounds: Bounds): Point2 | null {
+  let best: Point2 | null = null;
+  let bestD = Infinity;
+  const step = 0.05;
+  for (let ix = -26; ix <= 26; ix++) {
+    for (let iz = -26; iz <= 26; iz++) {
+      const x = Math.round((seat.x + ix * step) * 1000) / 1000;
+      const z = Math.round((seat.z + iz * step) * 1000) / 1000;
+      const own = Math.hypot(x - seat.x, z - seat.z);
+      if (own >= bestD || own > 1.6) continue;
+      // offered from the spot itself; and from anywhere a step short of it (a tap walk stops 0.35 m before its target) never the
+      // neighbour instead: there it is this chair or none
+      let ok = own - (seat.reachBonus ?? 0) <= SEAT_REACH - STAND_SHORT - 0.05 && approachesSeat(seat, x, z);
+      for (let k = 0; k <= 8 && ok; k++) {
+        const a = (k * Math.PI) / 4;
+        const px = k === 8 ? x : x + Math.cos(a) * STAND_SHORT;
+        const pz = k === 8 ? z : z + Math.sin(a) * STAND_SHORT;
+        const d = Math.hypot(px - seat.x, pz - seat.z);
+        ok = !neighbours.some((n) => Math.hypot(n.x - px, n.z - pz) < d + (k === 8 ? STAND_NEIGHBOUR_MARGIN : 0.01));
+      }
+      if (!ok || !standsClear(x, z, bounds)) continue;
+      best = { x, z };
+      bestD = own;
+    }
+  }
+  return best;
+}
+
+/** How much nearer (m) a chair's dismount spot is to its own seat than to a neighbouring chair's (`chairStand`). */
+const STAND_NEIGHBOUR_MARGIN = 0.25;
+/** How far short of its target a tap walk may stop (m; clickMove's ARRIVE_DIST and a little). */
+const STAND_SHORT = 0.35;
+/** How much farther (m) a chair at a desk or table is reached (`Seat.reachBonus`). */
+const CHAIR_REACH_BONUS = 0.35;
+
 /** A village seat, plus the furniture, the area, the kind and the lean it belongs to. */
 export interface VillageSeat extends Seat {
   /** The seat's name: `<furniture>` or `<furniture>:<facing>`; unique across the whole list. */
@@ -174,7 +216,7 @@ function markerSeats(m: SeatMarker): VillageSeat[] {
     const root = { x: Math.round(p.x * 1000) / 1000, z: Math.round(p.z * 1000) / 1000 };
     const id = turns.length > 1 ? `${m.id}:${turn === 0 ? "front" : "back"}` : m.id;
     const stand = dismountAhead(root, yaw + m.exitTurn, VILLAGE_LAYOUT.areas.hall, id);
-    out.push({
+    const seat: VillageSeat = {
       id,
       x: root.x,
       z: root.z,
@@ -192,7 +234,21 @@ function markerSeats(m: SeatMarker): VillageSeat[] {
       // through the backrest); a sofa or an armchair from the front only
       sidePlane: m.furn === "chair" ? Math.round((ahead + m.back) * 1000) / 1000 : undefined,
       sideHalf: m.furn === "chair" ? Math.round((m.width / 2) * 1000) / 1000 : undefined,
-    });
+      // its seat point is under the desk / table (BACKED_ROOT_AHEAD in front of the backrest): reached that much farther
+      reachBonus: m.furn === "chair" ? CHAIR_REACH_BONUS : undefined,
+    };
+    // the roots of the chairs of the same kind next to this one
+    const neighbours = MEMORIAL_SEAT_MARKERS.filter((o) => o.id !== m.id && o.furn === m.furn && Math.hypot(o.x - m.x, o.z - m.z) < 2.5).map((o) =>
+      offset(o.x, o.z, o.yaw, 0, o.kind === "backless" ? o.edge + SIT_ROOT_AHEAD : BACKED_ROOT_AHEAD - o.back),
+    );
+    if (m.furn === "chair" && neighbours.length > 0) {
+      const side = chairStand(seat, neighbours, VILLAGE_LAYOUT.areas.hall);
+      if (side) {
+        seat.standX = side.x;
+        seat.standZ = side.z;
+      }
+    }
+    out.push(seat);
   }
   return out;
 }

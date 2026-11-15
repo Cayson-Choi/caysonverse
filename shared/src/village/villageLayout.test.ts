@@ -308,7 +308,7 @@ describe("layout values (brief + rulings + owner changes)", () => {
     expect(ex.arrival.yaw).toBe(0); // faces +z, away from the building
   });
 
-  it("memorial interior B: origin (300, 0), 15 x 12, ceiling 4.5, pad (300, 5.2), spawn (300, 3.6)", () => {
+  it("memorial interior B: origin (300, 0), 15 x 12, ceiling 4.5, pad (300, 5.2), spawn (300, 2.6)", () => {
     const inn = L.memorial.interior;
     expect(inn.origin).toEqual({ x: 300, z: 0 });
     expect(inn.size).toEqual({ x: 15, z: 12 });
@@ -317,9 +317,10 @@ describe("layout values (brief + rulings + owner changes)", () => {
     expect(inn.doorSide).toBe("s");
     expect(inn.doorPad).toEqual({ centre: { x: 300, z: 5.2 }, radius: 1.4 });
     expect(inn.spawn.x).toBe(300);
-    expect(inn.spawn.z).toBe(3.6);
-    // A new arrival is not standing inside the inside door pad: 1.6 m from its centre, 0.2 m outside its edge.
-    expect(Math.hypot(inn.spawn.x - inn.doorPad.centre.x, inn.spawn.z - inn.doorPad.centre.z)).toBeCloseTo(1.6, 9);
+    expect(inn.spawn.z).toBe(2.6);
+    // A new arrival is not standing inside the inside door pad: 2.6 m from its centre, 1.2 m outside its edge (round 5: far
+    // enough from the door wall that the camera behind has room).
+    expect(Math.hypot(inn.spawn.x - inn.doorPad.centre.x, inn.spawn.z - inn.doorPad.centre.z)).toBeCloseTo(2.6, 9);
     expect(inn.spawn.yaw).toBeCloseTo(Math.PI, 12); // facing -z
   });
 
@@ -824,7 +825,7 @@ describe("the hall's interior plays on the colliders generated from memorial.glb
     expect(isBlocked(298.1225, -2.7, PLAYER_RADIUS, villageGeometry.obstacles)).toBe(true); // a centre bench
     expect(isBlocked(294.2, 5.5, PLAYER_RADIUS, villageGeometry.obstacles)).toBe(true); // the sofa
     expect(isBlocked(307.3, 0, PLAYER_RADIUS, villageGeometry.obstacles)).toBe(true); // the east bank
-    expect(isBlocked(300, 3.6, PLAYER_RADIUS, villageGeometry.obstacles)).toBe(false); // the arrival spot stays free
+    expect(isBlocked(300, 2.6, PLAYER_RADIUS, villageGeometry.obstacles)).toBe(false); // the arrival spot stays free
   });
 
   it("every generated camera box is a camera box of the geometry, plus the ceiling slab", () => {

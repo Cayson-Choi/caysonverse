@@ -483,7 +483,10 @@ export function LocalPlayer({
     // instant mode flip, so neither transition direction flashes near the eye.
     // Hide immediately on FP entry because the mode flips before the blend reaches HIDE_BLEND. In TP, also hide when
     // a wall or shelter has shortened the spring arm into the avatar's head.
+    const indoorTp = viewState.mode === "tp" && getActiveMap().cameraLimit !== undefined;
+    // Outdoors a wall or shelter that has shortened the spring arm into the avatar's head hides it (SELF_CAMERA_HIDE_DISTANCE).
     const cameraInsideSelf =
+      !indoorTp &&
       viewState.mode === "tp" &&
       viewState.blend < HIDE_BLEND &&
       cameraProbe.distance > 0 &&
@@ -491,12 +494,10 @@ export function LocalPlayer({
     // A memorial cubby's close-up (cubbyFocus.ts) puts the lens at the cubby's height in front of it, where the own body may
     // stand: hidden while the close-up is more than a third of the way in.
     const inCloseUp = cubbyFocusWeight() > 0.33;
-    // Indoors a wall behind the player keeps the camera close to the head (the hall's door wall on arrival, the sofa against the
-    // lounge wall). The body used to fade there, but a faded head that near is a big see-through disc over half a phone screen
-    // (review 2026-11-15): it is hidden outright instead, name tag and all, and shown again once the camera has pulled back
-    // (a little further than where it hid, so it does not flicker on the edge).
+    // Indoors the player always sees their own avatar (review 2026-11-15 round 5: hiding it near the camera made it vanish on
+    // arrival and on most seats). The arrival spot and the seat framing (seatFraming.ts) keep the camera 3.2 m+ from the head;
+    // the body is hidden only when the camera is really inside the head (INDOOR_SELF_HIDE_DISTANCE, 0.6 m), never faded.
     const headDist = Math.hypot(cameraProbe.x - pose.x, cameraProbe.y - (group.position.y + HEAD_HEIGHT), cameraProbe.z - pose.z);
-    const indoorTp = viewState.mode === "tp" && getActiveMap().cameraLimit !== undefined;
     closeHiddenRef.current = indoorCloseHidden(closeHiddenRef.current, indoorTp, headDist, INDOOR_SELF_HIDE_DISTANCE, INDOOR_SELF_SHOW_DISTANCE);
     const closeIndoors = closeHiddenRef.current && viewState.ovBlend <= OV_VIS_BLEND;
     group.visible =
@@ -598,8 +599,12 @@ export function LocalPlayer({
       motion.elapsed = 0;
       motion.duration = animTimerRef.current;
       animStateRef.current = "sitDown";
-      // Outdoors the camera stays as the player has it; indoors it glides once to look the way the seat faces (viewState.ts).
-      if (s) beginSeatCamera(orbit, s.yaw, getActiveMap().cameraLimit !== undefined);
+      // Outdoors the camera stays as the player has it; indoors it glides once to the nearest framing of the seat that leaves the
+      // camera 3.2 m+ from the head, so the player sees themself sitting (viewState.ts, seatFraming.ts).
+      if (s) {
+        const aspect = state.size.height > 0 ? state.size.width / state.size.height : 1;
+        beginSeatCamera(orbit, s.yaw, getActiveMap().cameraLimit !== undefined, { x: s.x, z: s.z, aspect });
+      }
     } else if (!seated && wasSeated) {
       // Stand confirmed: to the server's dismount pose, play StandUp → loco. A chair: snap there. A bench: the
       // clip carries the body from the seat to it (the dismount spot is just in front of the bench).

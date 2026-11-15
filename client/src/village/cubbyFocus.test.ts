@@ -68,6 +68,22 @@ describe("cubbyFocusPose — the close-up frames ANY cubby at its own height (ow
   });
 });
 
+describe("cubbyFocusPose — the corner columns (review 2026-11-15 round 5: B c13 put the eye in zone E's bank)", () => {
+  it("zone B column 13, all 8 rows, PC 1280x720 and phone landscape: the eye stays clear of zone E's bank and the cubby is framed", () => {
+    const eBank = MEMORIAL_COLLIDERS.find((b) => b.minX === 307.11)!; // col__cubby_e
+    for (const [aspect, frac] of [[1280 / 720, 0.33], [844 / 390, 0.5], [932 / 430, 0.46]] as const) {
+      for (let row = 0; row < 8; row++) {
+        const a = anchors.find((x) => x.bank === "B" && x.row === row && x.col === 13)!;
+        const p = cubbyFocusPose(a, aspect, 50, { side: "right", frac });
+        expect(p.ex, a.id).toBeLessThan(eBank.minX - 0.2);
+        const s = ndc(p, a, aspect, 50);
+        expect(s.x, a.id).toBeCloseTo(-frac, 2);
+        expect(s.y, a.id).toBeCloseTo(0, 2);
+      }
+    }
+  });
+});
+
 describe("the glide", () => {
   it("eases in over the glide time, out when closed, and is nothing when no cubby is looked at", () => {
     const out: FocusPose = { ex: 0, ey: 0, ez: 0, tx: 0, ty: 0, tz: 0 };
@@ -105,10 +121,19 @@ const SCREENS = [
   { name: "pc-narrow", aspect: 1.3, inset: { side: "right" as const, frac: 0.38 } },
   { name: "phone45", aspect: 390 / 844, inset: { side: "bottom" as const, frac: 0.45 } },
   { name: "phone60", aspect: 390 / 844, inset: { side: "bottom" as const, frac: 0.6 } },
+  // review 2026-11-15 round 5: zone B's last column put the eye inside zone E's bank at these
+  { name: "pc1280", aspect: 1280 / 720, inset: { side: "right" as const, frac: 0.33 } },
+  { name: "pc1366", aspect: 1366 / 768, inset: { side: "right" as const, frac: 0.31 } },
+  { name: "pc1920", aspect: 1920 / 1080, inset: { side: "right" as const, frac: 0.22 } },
+  { name: "phone-land844", aspect: 844 / 390, inset: { side: "right" as const, frac: 0.5 } },
+  { name: "phone-land932", aspect: 932 / 430, inset: { side: "right" as const, frac: 0.46 } },
+  { name: "phone-land-max", aspect: 844 / 390, inset: { side: "right" as const, frac: 0.6 } },
 ];
 
 describe("cubbyFocusPose — every row of every bank, PC and phone (review 2026-11-15: the bottom rows put the phone camera under the floor)", () => {
   const furniture = MEMORIAL_COLLIDERS.filter((b) => Math.max(b.maxX - b.minX, b.maxZ - b.minZ) < 5);
+  // the walls and the cubby banks (A, B, E) and the niche: solid at every height
+  const solid = MEMORIAL_COLLIDERS.filter((b) => !furniture.includes(b));
   const room = VILLAGE_LAYOUT.memorial.interior.room;
   for (const scr of SCREENS) {
     it(`${scr.name}: all 368 cubbies — eye above the floor margin and at or above the cubby, in the room, out of the furniture, the cubby in the middle of the free part`, () => {
@@ -122,6 +147,9 @@ describe("cubbyFocusPose — every row of every bank, PC and phone (review 2026-
         const inside = furniture.some((b) => p.ex > b.minX && p.ex < b.maxX && p.ez > b.minZ && p.ez < b.maxZ);
         // clear of every footprint, or (no clear spot) high enough to look over it
         expect(!inside || p.ey >= 1.3, a.id).toBe(true);
+        // never in or within 0.2 m of a wall or a cubby bank (another bank's cubbies in front of the lens)
+        const nearSolid = solid.find((b) => p.ex > b.minX - 0.2 && p.ex < b.maxX + 0.2 && p.ez > b.minZ - 0.2 && p.ez < b.maxZ + 0.2);
+        expect(nearSolid, `${a.id} eye (${p.ex.toFixed(2)}, ${p.ez.toFixed(2)})`).toBeUndefined();
         const s = ndc(p, a, scr.aspect, 50);
         const cx = scr.inset.side === "right" ? -scr.inset.frac : 0;
         const cy = scr.inset.side === "bottom" ? scr.inset.frac : 0;

@@ -10,10 +10,13 @@ import {
   PlaneGeometry,
   Quaternion,
   RGBAFormat,
+  Shape,
+  ShapeGeometry,
+  Path,
   SRGBColorSpace,
   Vector3,
   type Material,
-  type Mesh,
+  Mesh,
   type Object3D,
 } from "three";
 import { VILLAGE_LAYOUT, type CubbyAnchor } from "@caysonverse/shared/village/villageLayout";
@@ -27,6 +30,7 @@ import { disposeHallNight, hallNightReady, hallNightUniform, hallNightWeight, lo
 import { useNightMapWanted } from "./nightLightmap";
 import { dayNight } from "./dayNightDriver";
 import { setHallDoorLeaves } from "./hallDoor";
+import { cubbyFocusAnchor, cubbyFocusWeight } from "./cubbyFocus";
 import { useQualityTier } from "../game/QualityEffects";
 import { LoadBoundary } from "./LoadBoundary";
 import { HALL_CUBBY_ANCHORS, SAMPLE_CUBBIES, SAMPLE_PHOTO_ATLAS } from "./sampleCubbies";
@@ -57,6 +61,37 @@ const FLAME_SIZE = { x: 0.04, y: 0.075 } as const;
 const GLOW_HEIGHT = 0.06;
 
 const ANCHOR_BY_ID: ReadonlyMap<string, CubbyAnchor> = new Map(HALL_CUBBY_ANCHORS.map((a) => [a.id, a]));
+
+const WALL_BY_BANK = new Map(VILLAGE_LAYOUT.memorial.interior.cubbyWalls.map((w) => [w.bank, w]));
+
+/**
+ * The chosen cubby's mark in the close-up (review 2026-11-15 round 5: three cubbies looked the same and only a small grey line on
+ * the card said which one was open): a thin warm-gold line round its opening, on the boards just outside it, breathing a little.
+ * One unit square outline (inner 1 x 1, the line 0.05 of it wide), scaled to the bank's cell.
+ */
+function makeSelectMark(): Mesh {
+  const o = 0.5 + 0.06;
+  const shape = new Shape();
+  shape.moveTo(-o, -o);
+  shape.lineTo(o, -o);
+  shape.lineTo(o, o);
+  shape.lineTo(-o, o);
+  shape.closePath();
+  const hole = new Path();
+  const i = 0.5 + 0.01;
+  hole.moveTo(-i, -i);
+  hole.lineTo(-i, i);
+  hole.lineTo(i, i);
+  hole.lineTo(i, -i);
+  hole.closePath();
+  shape.holes.push(hole);
+  const mat = new MeshBasicMaterial({ color: 0xffc35a, transparent: true, opacity: 0, depthWrite: false, toneMapped: false });
+  const mesh = new Mesh(new ShapeGeometry(shape), mat);
+  mesh.name = "cubby_select_mark";
+  mesh.visible = false;
+  mesh.renderOrder = 3;
+  return mesh;
+}
 
 /** A texture from a per-texel function (u, v in 0..1, v up) returning [r, g, b, a] in 0..1. */
 function paintTexture(size: number, texel: (u: number, v: number) => [number, number, number, number]): DataTexture {
@@ -178,6 +213,14 @@ function MemorialHall() {
     [props, photoMaterial],
   );
   const candles = useMemo(() => makeCandles(props.scene), [props]);
+  const selectMark = useMemo(() => makeSelectMark(), []);
+  useEffect(
+    () => () => {
+      selectMark.geometry.dispose();
+      (selectMark.material as Material).dispose();
+    },
+    [selectMark],
+  );
 
   useEffect(() => () => disposeMemorial(nodes), [nodes]);
   useEffect(() => {
@@ -217,6 +260,18 @@ function MemorialHall() {
 
   // The candles: what burns now, each at its cubby; the glow faces the camera and breathes a little.
   useFrame(({ camera, clock }) => {
+    // The open cubby's gold mark (the close-up's weight fades it in and out).
+    const focus = cubbyFocusAnchor();
+    const fw = cubbyFocusWeight();
+    if (focus && fw > 0) {
+      const wall = WALL_BY_BANK.get(focus.bank);
+      const cell = wall ? wall.cell : 0.36;
+      selectMark.position.set(focus.x + Math.sin(focus.yaw) * 0.004, focus.y, focus.z + Math.cos(focus.yaw) * 0.004);
+      selectMark.rotation.set(0, focus.yaw, 0);
+      selectMark.scale.set(cell, cell, 1);
+      (selectMark.material as MeshBasicMaterial).opacity = fw * (0.8 + 0.2 * Math.sin(clock.elapsedTime * 3));
+      selectMark.visible = true;
+    } else selectMark.visible = false;
     // The hall's light follows the village's clock: the day map, the night map, and in between a blend.
     const night = hallNightWeight(dayNight.outdoor.night, hallNightReady());
     if (hallNightUniform.value !== night) {
@@ -253,6 +308,7 @@ function MemorialHall() {
       <primitive object={nodes.root} dispose={null} />
       <primitive object={cubbyProps.group} dispose={null} />
       <primitive object={candles.group} dispose={null} />
+      <primitive object={selectMark} dispose={null} />
     </>
   );
 }

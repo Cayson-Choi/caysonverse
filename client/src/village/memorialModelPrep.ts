@@ -1,6 +1,7 @@
 import { type InstancedMesh, type Material, type MeshBasicMaterial, type Object3D, type Texture } from "three";
 import { COLLIDER_PREFIX, LIGHTMAP_MATERIAL_PREFIX, configureLightmap, isMesh, lightmapMaterial, materialsOf } from "../game/hub/hubModelPrep";
 import { isSkylight, patchHallGardenMaterial, patchHallLightmapMaterial } from "./hallNight";
+import { isHallGlass, patchHallGlassMaterial } from "./hallGlass";
 
 /**
  * The memorial hall's interior (`memorial.glb`, 케이슨 마을 Task 8) dressed for the game (Task 9) — the pure part.
@@ -50,6 +51,7 @@ export function prepareMemorial(source: Object3D, lightmap: Texture): MemorialNo
     if (!isMesh(o)) return;
     for (const m of materialsOf(o)) {
       if (m.name === "M_garden") patchHallGardenMaterial(m);
+      if (isHallGlass(m.name)) patchHallGlassMaterial(m); // reflective glass (hallGlass.ts, round 5)
       if (isSkylight(m)) skylight = m;
       if (!m.name.startsWith(LIGHTMAP_MATERIAL_PREFIX)) continue;
       lightmapMaterial(m, lightmap);

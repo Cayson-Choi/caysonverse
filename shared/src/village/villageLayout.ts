@@ -473,8 +473,10 @@ function makeVillageLayout(): VillageLayout {
         ceilingHeight: 4.5,
         doorSide: "s",
         doorPad: { centre: pt(300, 5.2), radius: 1.4 },
-        // 0.2 m outside the 1.4 m door pad's edge (pad centre z = 5.2, spawn z = 3.6, distance 1.6), so a new arrival is not standing on the door.
-        spawn: { x: 300, z: 3.6, yaw: FACING_NORTH },
+        // 1.2 m outside the 1.4 m door pad's edge (pad centre z = 5.2, spawn z = 2.6, distance 2.6): a new arrival is not standing on the door,
+        // and the door wall behind leaves the camera 3.2 m+ from the head, so the player sees their own avatar on arrival (review
+        // 2026-11-15 round 5: at z = 3.6 the wall held the camera 2.6 m from the head).
+        spawn: { x: 300, z: 2.6, yaw: FACING_NORTH },
         cubbyWalls: hallCubbyWalls(),
         niche: hallNiche(hallCubbyWalls()),
       },

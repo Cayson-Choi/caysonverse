@@ -1,4 +1,4 @@
-import { SEAT_APPROACH_SLACK, SEAT_REACH, approachesSeat, seatTaken, type Seat } from "@caysonverse/shared/worldMap";
+import { SEAT_APPROACH_SLACK, SEAT_REACH, approachesSeat, seatDistance, seatTaken, type Seat } from "@caysonverse/shared/worldMap";
 
 /**
  * Pure, clock-free sit validation (mirrors movement.ts / emoji.ts discipline).
@@ -45,7 +45,7 @@ export function validateSit(
   // 3. distance gate: honest clients only see the prompt within SEAT_REACH, so a
   //    farther Sit is a tampered client → silent drop (not a user-facing reason).
   const seat = seats[seatIndex];
-  if (Math.hypot(player.x - seat.x, player.z - seat.z) > SEAT_REACH) return null;
+  if (seatDistance(seat, player.x, player.z) > SEAT_REACH) return null;
 
   // 3b. a backed seat (a sofa, an armchair, a bench with a back) is sat on from the front only: from behind the prompt is never
   //     shown, so a request from there is a tampered client → silent drop.

@@ -68,6 +68,12 @@ export interface Seat {
    * plane, so neither chair could be sat on from there).
    */
   sideHalf?: number;
+  /**
+   * A chair at a desk or a table: its seat point sits deep under the desk, so it is reached this much (m) farther than
+   * `SEAT_REACH` from it (`seatDistance`; round 5, 2026-11-15: from beside the second consult chair, a step short of its spot, the
+   * seat point was 1.56 m away and the desk's "문의하기" came up instead). Absent: 0.
+   */
+  reachBonus?: number;
   /** How far (rad) a sitter leans back into a backrest (a sofa, an armchair, a chair); absent or 0: sits upright. */
   lean?: number;
 }
@@ -111,7 +117,11 @@ export function approachesSeat(seat: Seat, x: number, z: number, slack = 0): boo
     // a little behind the backrest's plane, but off to the side of the chair (not behind the backrest itself)
     if (seat.sideHalf === undefined) return false;
     const lateral = Math.abs((x - seat.x) * cos - (z - seat.z) * sin);
-    return lateral >= seat.sideHalf + CHAIR_SIDE_CLEAR && ahead >= -seat.sidePlane - CHAIR_SIDE_BEHIND - slack;
+    return (
+      lateral >= seat.sideHalf + CHAIR_SIDE_CLEAR &&
+      lateral <= seat.sideHalf + CHAIR_SIDE_FAR &&
+      ahead >= -seat.sidePlane - CHAIR_SIDE_BEHIND - slack
+    );
   }
   return ahead >= -seat.frontEdge - slack;
 }
@@ -119,7 +129,17 @@ export function approachesSeat(seat: Seat, x: number, z: number, slack = 0): boo
 /** How far (m) beyond a chair's side a visitor must stand to count as beside it rather than behind it (`Seat.sideHalf`). */
 export const CHAIR_SIDE_CLEAR = 0.2;
 /** How far (m) behind a chair's backrest plane a visitor beside the chair is still offered it (`Seat.sideHalf`). */
-export const CHAIR_SIDE_BEHIND = 0.45;
+export const CHAIR_SIDE_BEHIND = 0.8;
+/**
+ * How far (m) beyond a chair's side a visitor behind its backrest's plane may still stand to be offered it: next to that chair,
+ * not behind the chair beside it (round 5: from behind the second consult chair the first one, 1.7 m off, was offered).
+ */
+export const CHAIR_SIDE_FAR = 0.9;
+
+/** A player's distance from `seat` for the reach and the nearest-seat pick: from its seat point, less its `reachBonus`. */
+export function seatDistance(seat: Seat, x: number, z: number): number {
+  return Math.hypot(x - seat.x, z - seat.z) - (seat.reachBonus ?? 0);
+}
 
 /**
  * How much (m) the server forgives the front-edge line: the client's pose runs a few cm ahead of the one the server knows, and a
@@ -148,7 +168,7 @@ export function nearestFreeSeat(
     if (seatTaken(seats, i, isOccupied)) continue;
     const s = seats[i];
     if (!approachesSeat(s, x, z)) continue;
-    const d = Math.hypot(x - s.x, z - s.z);
+    const d = seatDistance(s, x, z);
     if (d <= bestDist) {
       bestDist = d;
       best = i;

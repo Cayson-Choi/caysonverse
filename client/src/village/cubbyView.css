@@ -62,8 +62,8 @@
 }
 .cv-cubby-note {
   margin: 0;
-  font-size: 11.5px;
-  color: #8a7a6b;
+  font-size: 14px;
+  color: #5c4a3a; /* 8:1 on the white card (review 2026-11-15 round 5: the old #8a7a6b was 3.9:1) */
 }
 /* A phone held upright: a sheet at the bottom, the cubby framed above it. */
 @media (max-width: 719px), (max-aspect-ratio: 1/1) {
@@ -105,8 +105,8 @@
   }
 }
 .cv-cubby-where {
-  font-size: 12px;
-  color: #8a7a6b;
+  font-size: 14px;
+  color: #5c4a3a;
   letter-spacing: 0.02em;
 }
 .cv-cubby-photo {
@@ -179,8 +179,9 @@
   cursor: default;
 }
 .cv-cubby-by {
-  font-size: 12px;
-  color: #8a7a6b;
+  font-size: 14px;
+  font-weight: 600;
+  color: #5c4a3a;
 }
 .cv-cubby-nav {
   display: flex;

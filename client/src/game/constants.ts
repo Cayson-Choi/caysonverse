@@ -54,13 +54,14 @@ export const FP_EYE_HEIGHT = HEAD_HEIGHT + 0.1;
 export const SELF_CAMERA_HIDE_DISTANCE = 1.8;
 
 /**
- * Inside a building (a place with a camera limit), a third-person camera nearer than this (m) to the own head — a wall right
- * behind the player holds it there — hides the own body (LocalPlayer), so the room is in plain view. It used to fade to a faint
- * outline, but that near a faded head is a big see-through disc over half a phone screen (review 2026-11-15).
+ * Inside a building (a place with a camera limit) the own body is hidden only when the third-person camera is really inside the
+ * head: nearer than this (m). Review 2026-11-15 round 5: it used to hide within 2.8 m (a faded head that near was a big see-through
+ * disc, and then hiding it made the player vanish on arrival and on most seats); the arrival spot and the seat framing now keep the
+ * camera 3.2 m+ from the head in normal play, and the body is never faded.
  */
-export const INDOOR_SELF_HIDE_DISTANCE = 2.8;
-/** The hidden body shows again once the camera is this far from the head (a little past the hide distance: no flicker; under the 3.2 m nearest zoom). */
-export const INDOOR_SELF_SHOW_DISTANCE = 3.05;
+export const INDOOR_SELF_HIDE_DISTANCE = 0.6;
+/** The hidden body shows again once the camera is this far from the head (a little past the hide distance: no flicker). */
+export const INDOOR_SELF_SHOW_DISTANCE = 0.8;
 
 /** drei KeyboardControls action names (typed control set). */
 export type MoveControl = "forward" | "backward" | "left" | "right" | "run" | "camLeft" | "camRight";

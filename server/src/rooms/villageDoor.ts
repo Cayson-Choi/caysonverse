@@ -12,7 +12,9 @@ import { VILLAGE_LAYOUT } from "@caysonverse/shared/village/villageLayout";
  */
 
 /** How far past a door pad's edge a player may still use the door (m): a pad radius + this. */
-export const DOOR_REACH_M = 0.9;
+// 1.3 (round 5, 2026-11-15; was 0.9): the hall's spawn moved 1 m in from its door so the camera behind a new arrival has room
+// (the player sees their own avatar), and a new arrival can still turn straight back out from where they stand.
+export const DOOR_REACH_M = 1.3;
 
 /** Per-client door-use cap: at most `count` accepted uses per `windowMs`. */
 export const DOOR_RATE = { count: 1, windowMs: 1000 } as const;

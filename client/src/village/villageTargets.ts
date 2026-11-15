@@ -9,7 +9,7 @@ import type { InteractTarget } from "../game/interact";
  * door, the memorial hall's, with two sides: "추모관 들어가기" outside, "밖으로 나가기" inside. Pressing it sends
  * `VillageMsg.UseDoor`; the server decides (villageDoor.ts) and teleports.
  *
- * The server accepts a door within the pad's radius plus 0.9 m of its centre. This offers it a little less
+ * The server accepts a door within the pad's radius plus 1.3 m of its centre. This offers it a little less
  * (`DOOR_OFFER_REACH_M`): our pose runs a few centimetres ahead of the one the server knows, so a button shown at
  * the very edge could be pressed just outside what the server accepts and be dropped without a word. Both
  * arrival points (the way out lands 2.2 m from the outside pad's centre, the way in 1.6 m from the inside one)
@@ -35,8 +35,8 @@ export const BUS_OFFER_REACH_M = 4.2;
 export const BUS_RIDE_TARGET_BOARD = "village_bus_board";
 export const BUS_RIDE_TARGET_LEAVE = "village_bus_leave";
 
-/** How far past the pad's radius the button is offered (m). The server's own reach is 0.9 (villageDoor.ts DOOR_REACH_M). */
-export const DOOR_OFFER_REACH_M = 0.8;
+/** How far past the pad's radius the button is offered (m). The server's own reach is 1.3 (villageDoor.ts DOOR_REACH_M). */
+export const DOOR_OFFER_REACH_M = 1.25;
 
 const NONE: readonly InteractTarget[] = Object.freeze([]);
 
