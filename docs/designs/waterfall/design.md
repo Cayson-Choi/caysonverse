@@ -346,3 +346,22 @@ W0 모양 고정(설계자, 0.5일) ──┬── W1 바위·땅 아트 ──
 - 물속 수영·물에 들어가기, 물고기 (A10 낚시 호수 몫).
 - 물리 기반 유체 시뮬레이션 (휴대폰에서 불가능, 셰이더 + 메시로 충분).
 - B6의 다른 숲 가장자리 넓히기 (쉼터만 B6과 같은 방식으로 준비해 둠).
+
+---
+
+## 12. W0 모양 고정 결과 (2026-11-16, 주인님 "추천대로")
+
+결정: 높이 36 m 유지, B안 너럭바위 쉼터(걸을 수 있음), 소에는 못 들어감(소 클릭 → 가장 가까운 물가), 너럭바위 옆 등받이 없는 돌 의자 2개(양쪽 앉기), 밤에 따뜻한 바닥 등 2개, 오전 안개 무지개는 high 등급만. 모두 `layout.backdrop.waterfall.options`의 스위치로 남겨 둠.
+
+**고정된 것 (하나의 출처)**
+- 숫자(위치·크기): `shared/src/village/villageLayout.ts` `backdrop.waterfall` (시험: `villageWaterfall.test.ts`). Blender 쪽은 `layout.json`으로 읽어요.
+- 바위 모양 함수: `art/village/tools/falls_shape.py` (git 제외 폴더라서 사본: [`tools/falls_shape.py`](tools/falls_shape.py)). `face_x(z, y)` 절벽 면, `terrain_y(x, z)` 사이트 땅(소 바닥·기슭·쉼터 0·나가는 물길·고원·물길 골짜기·이음매), `plunge_path()`, `cascade_path()`, `pool_*()`, `outlet_*()`, `walk_surface_ok()`. 순수 Python(직접 만든 노이즈)이라 Blender 버전과 상관없이 똑같아요. `python falls_shape.py --check`로 약속을 스스로 검사.
+- 모든 숫자·표본 표: [`falls-contract.json`](falls-contract.json) (`--export-contract`로 다시 씀; 시험이 layout과 같은지 확인).
+- 이음매: 사이트 상자 둘레 1 m마다 172점 (`site_edge_points()`), 파일 `art/village/work/waterfall_site_edge.json` (지금은 현재 마을 지형으로 만든 임시본 `--edge-provisional`; 사본 [`waterfall_site_edge.provisional.json`](waterfall_site_edge.provisional.json)). `terrain_y`는 상자 5 m 안에서 이 높이에 정확히 맞춰져요.
+- 렌더: [`w0-wide.png`](w0-wide.png), [`w0-pool-view.png`](w0-pool-view.png), [`w0-plan.png`](w0-plan.png) (`render_falls_shape.py`, 사본 `tools/`). 물·재질은 자리 표시용, 모양만 판정.
+
+**설계안에서 바뀐 것**
+- 카메라 금지 면: `x < −114.5` 한 줄이 아니라 **선(`cameraWall`, z −98..−58, 2 m마다)**. 협곡 양옆 바위가 x −110 근처까지 나와서 한 줄로는 카메라가 바위에 들어가요.
+- 나가는 물길: 소 남쪽 끝 (−110.4, −68.6) → (−107, −58). 사이트 안은 폭포 GLB가 그림. **V7 변경**: 마을 `feeder_pts()`는 첫 점 (−109, −76)을 지우고 (−107, −58)에서 시작, 그 점의 물 높이는 −0.30 이하.
+- 걷기 높이: 이 게임은 바닥 높이가 없어서(y = 0) 너럭바위 윗면은 0.02~0.04, 주변 자갈이 낮아서 바위처럼 보이게. 돌 의자는 0.42 m 높이의 따로 된 돌(충돌 상자 + 앉기 자리).
+- **V5b (W6)**: 마을 땅은 쉼터 상자(x −106..−95, z −90..−68) 안에서 0, 밖 2 m에 걸쳐 원래 높이로 (`pocket_flatten`). 이음매 파일도 이 규칙으로 만들어요.
