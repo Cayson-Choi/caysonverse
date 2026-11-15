@@ -127,7 +127,7 @@ describe("walking in the cabin", () => {
   });
 
   it("stepInCabin slides along a seat or wall and never ends inside one", () => {
-    let p = { ahead: BUS_ENTRY.ahead, right: BUS_ENTRY.right };
+    let p: { ahead: number; right: number } = { ahead: BUS_ENTRY.ahead, right: BUS_ENTRY.right };
     for (let i = 0; i < 400; i++) {
       const want = { ahead: p.ahead - 0.04, right: p.right + 0.03 * Math.sin(i / 7) };
       p = { ...stepInCabin(p, want) };

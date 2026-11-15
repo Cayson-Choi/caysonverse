@@ -45,7 +45,17 @@ import {
   validateBusRide,
 } from "./transitRuntime";
 import { BUS_DRIVER, BusDriver, busDriveTrip } from "@caysonverse/shared/village/busDrive";
-import { busDismountSpot, freeBusSlot } from "@caysonverse/shared/village/busSeats";
+import { busDismountSpot } from "@caysonverse/shared/village/busSeats";
+import {
+  BUS_ENTRY,
+  BUS_HOLDS,
+  BUS_SEATS,
+  busPlaceOf,
+  busRiderWorldPose,
+  seatStandUpSpot,
+  type BusRiderPoseFull,
+} from "@caysonverse/shared/village/busCabin";
+import { validateBusMove, validateBusSit } from "./busCabinMove";
 import { pushOutOfBus, type BusBodyPose } from "@caysonverse/shared/village/busBody";
 import { isBlocked } from "@caysonverse/shared/collision";
 import type { TransitPoint } from "@caysonverse/shared/village/transit";
@@ -64,6 +74,8 @@ interface VillageTracking extends Tracking {
   busTripId: number | null;
   /** Server-only state for house keypad failures and lockout. */
   keypadRate: KeypadRateState;
+  /** When the last step inside the bus was accepted (ms, the room clock): the walk speed budget. */
+  busMoveAt: number;
 }
 
 /**
@@ -137,6 +149,15 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     });
     this.onMessage(MessageType.BusRide, (client, payload: unknown) => {
       this.handleBusRide(client, payload);
+    });
+    this.onMessage(MessageType.BusMove, (client, payload: unknown) => {
+      this.handleBusMove(client, payload);
+    });
+    this.onMessage(MessageType.BusSit, (client, payload: unknown) => {
+      this.handleBusSit(client, payload);
+    });
+    this.onMessage(MessageType.BusStand, (client) => {
+      this.handleBusStand(client);
     });
     this.onMessage(VillageMsg.FishingRentRod, (client) => {
       this.handleFishingRentRod(client);
@@ -267,6 +288,7 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
       busBoarded: false,
       busTripId: null,
       keypadRate: initialKeypadRate(),
+      busMoveAt: now,
     };
   }
 
@@ -350,7 +372,10 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     // The moving bus is solid (checker r2: walking at its flank went inside it, and it drove on with them in it): whoever
     // its body overlaps now is put out on the nearest free side, every client sees them there (shared busBody.ts).
     const pose = this.busBodyPose(now);
-    this.state.players.forEach((p) => this.pushOffBus(p, pose));
+    this.state.players.forEach((p) => {
+      if (this.busRiders.has(p)) this.placeRider(p, pose);
+      else this.pushOffBus(p, pose);
+    });
     if (changed || now - this.lastBusBroadcast >= BUS_STATE_RATE_MS || now < this.lastBusBroadcast) this.broadcastTransit();
   }
 
@@ -417,13 +442,92 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     track.busTripId = null;
     this.busRiders.delete(player);
     if (player.busSeat < 0) return;
-    const spot = busDismountSpot(player.busSeat);
+    // spread along the pavement, one spot after another
+    const spot = busDismountSpot(this.dismountSlot++);
     player.busSeat = -1;
+    player.busAhead = 0;
+    player.busRight = 0;
+    player.busYaw = 0;
     player.x = spot.x;
     player.z = spot.z;
     player.yaw = spot.yaw;
     player.moveT = 0;
     track.lastAcceptedAt = this.now();
+  }
+
+  /** The next pavement spot a rider getting off is put on (busSeats.ts busDismountSpot spreads them). */
+  private dismountSlot = 0;
+
+  /** Put an aboard rider at the world pose of their place in the bus (x/z/yaw follow it; written only when it moved over 2 cm). */
+  private readonly riderPose: BusRiderPoseFull = { x: 0, z: 0, yaw: 0, y: 0, seated: false, holding: false };
+  private placeRider(player: Player, bus: BusBodyPose): void {
+    if (player.busSeat < 0) return;
+    const w = busRiderWorldPose(bus, player.busSeat, player.busAhead, player.busRight, player.busYaw, this.riderPose);
+    if (Math.hypot(w.x - player.x, w.z - player.z) > 0.02) {
+      player.x = w.x;
+      player.z = w.z;
+    }
+    const yaw = Math.atan2(Math.sin(w.yaw), Math.cos(w.yaw));
+    if (Math.abs(Math.atan2(Math.sin(yaw - player.yaw), Math.cos(yaw - player.yaw))) > 0.02) player.yaw = yaw;
+  }
+
+  /** The busSeat numbers other riders hold (seats and hold spots). */
+  private takenBusSpots(except: Player): Set<number> {
+    const taken = new Set<number>();
+    this.state.players.forEach((p) => {
+      if (p !== except && this.busRiders.has(p) && p.busSeat > 0) taken.add(p.busSeat);
+    });
+    return taken;
+  }
+
+  /** A step inside the bus (shared busCabin.ts): checked against the cabin, then written; a refused one is dropped (the schema is the echo). */
+  private handleBusMove(client: Client, payload: unknown): void {
+    const player = this.state.players.get(client.sessionId);
+    const track = this.tracking.get(client.sessionId);
+    if (!player || !track || !this.busRiders.has(player)) return;
+    const now = this.now();
+    const decision = validateBusMove({ busSeat: player.busSeat, ahead: player.busAhead, right: player.busRight }, payload, now - track.busMoveAt);
+    if (!decision.ok) return;
+    track.busMoveAt = now;
+    player.busAhead = decision.ahead;
+    player.busRight = decision.right;
+    player.busYaw = decision.yaw;
+    this.placeRider(player, this.busBodyPose(this.wallClock()));
+  }
+
+  /** Sit in a free seat or take hold of a pole. A refusal says why to the rider (a taken seat, the wrong side of a backed seat). */
+  private handleBusSit(client: Client, payload: unknown): void {
+    const player = this.state.players.get(client.sessionId);
+    if (!player || !this.busRiders.has(player)) return;
+    const decision = validateBusSit({ busSeat: player.busSeat, ahead: player.busAhead, right: player.busRight }, payload, this.takenBusSpots(player));
+    if (!decision.ok) {
+      if (decision.notice) client.send(MessageType.BusRejected, { reason: decision.notice });
+      return;
+    }
+    const spot = decision.kind === "seat" ? BUS_SEATS[decision.index]! : BUS_HOLDS[decision.index]!;
+    player.busSeat = decision.busSeat;
+    player.busAhead = spot.ahead;
+    player.busRight = spot.right;
+    player.busYaw = spot.yaw;
+    this.placeRider(player, this.busBodyPose(this.wallClock()));
+  }
+
+  /** From a seat or a hold spot back on one's feet in the aisle. */
+  private handleBusStand(client: Client): void {
+    const player = this.state.players.get(client.sessionId);
+    const track = this.tracking.get(client.sessionId);
+    if (!player || !track || !this.busRiders.has(player)) return;
+    const place = busPlaceOf(player.busSeat);
+    if (place.kind === "free") return;
+    if (place.kind === "seat") {
+      const spot = seatStandUpSpot(BUS_SEATS[place.index]!);
+      player.busAhead = spot.ahead;
+      player.busRight = spot.right;
+      player.busYaw = spot.yaw;
+    }
+    player.busSeat = 0;
+    track.busMoveAt = this.now();
+    this.placeRider(player, this.busBodyPose(this.wallClock()));
   }
 
   /** Validate one board/leave request against the authoritative player pose and schedule. */
@@ -448,12 +552,14 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
       track.busBoarded = true;
       track.busTripId = decision.tripId;
       this.busRiders.add(player);
-      // A place in the bus (busSeats.ts): every client draws the rider there, in the bus wherever it goes.
-      const taken: number[] = [];
-      this.state.players.forEach((p) => {
-        if (p !== player && this.busRiders.has(p)) taken.push(p.busSeat);
-      });
-      player.busSeat = freeBusSlot(taken);
+      // Aboard and free just inside the front door, facing back down the aisle (busCabin.ts BUS_ENTRY): the rider walks,
+      // sits or holds a pole from here; every client draws them in the bus wherever it goes.
+      player.busSeat = 0;
+      player.busAhead = BUS_ENTRY.ahead;
+      player.busRight = BUS_ENTRY.right;
+      player.busYaw = BUS_ENTRY.yaw;
+      track.busMoveAt = this.now();
+      this.placeRider(player, this.busBodyPose(this.wallClock()));
       client.send(MessageType.BusRideState, { boarded: true, tripId: decision.tripId } satisfies BusRideStatePayload);
       return;
     }
