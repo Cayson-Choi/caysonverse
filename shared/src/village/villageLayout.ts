@@ -34,6 +34,7 @@ import { VILLAGE_CAMERA_BOXES, VILLAGE_COLLIDERS } from "./generated/villageColl
 import { MEMORIAL_CAMERA_BOXES, MEMORIAL_COLLIDERS } from "./generated/memorialColliders";
 import { guideColliders } from "./guides";
 import { signalPoleColliders } from "./crossings";
+import { streetPoleColliders } from "./streetPoles";
 import { TRANSIT, busFootprint } from "./transit";
 import type { Bounds, MapGeometry } from "../school/geometry";
 
@@ -891,7 +892,6 @@ export function hallInteriorColliders(
  * `hall` is the hall's interior (`hallInteriorColliders`: furniture, the cubby units, the ceiling slab); absent, the
  * room is empty (the greybox).
  */
-const stripHeight = ({ minX, maxX, minZ, maxZ }: AABB): AABB => ({ minX, maxX, minZ, maxZ });
 
 export function buildVillageGeometry(
   layout: VillageLayout,
@@ -900,8 +900,6 @@ export function buildVillageGeometry(
   /** Small solid things that are not in a model (Task 9A: the guides' colliders). */
   extra: readonly AABB[] = [],
 ): MapGeometry {
-  // the parked bus stands turned along the kerb: its slices, not a model or layout box (busParkedColliders)
-  const bus = busParkedColliders(layout);
   const village: GeneratedColliders =
     "obstacles" in colliders
       ? colliders
@@ -910,8 +908,8 @@ export function buildVillageGeometry(
     "village",
     villageBounds(layout),
     hallWalls(layout),
-    [...areaGapBlockers(layout), ...hallSurroundBlockers(layout), ...village.obstacles, ...bus.map(stripHeight), ...signalPoleColliders(), ...busShelterColliders(layout), busShelterBenchCollider(layout), ...(hall?.obstacles ?? []), ...extra],
-    [...village.cameraBoxes, ...bus, busShelterRoofSlab(layout), busShelterLightBoxCameraBox(layout), ...(hall?.cameraBoxes ?? [])],
+    [...areaGapBlockers(layout), ...hallSurroundBlockers(layout), ...village.obstacles, ...signalPoleColliders(), ...streetPoleColliders(layout), ...busShelterColliders(layout), busShelterBenchCollider(layout), ...(hall?.obstacles ?? []), ...extra],
+    [...village.cameraBoxes, busShelterRoofSlab(layout), busShelterLightBoxCameraBox(layout), ...(hall?.cameraBoxes ?? [])],
   );
 }
 
@@ -966,9 +964,10 @@ export const villageGeometry: MapGeometry = buildVillageGeometry(
   VILLAGE_LAYOUT,
   VILLAGE_MODEL_COLLIDERS,
   HALL_MODEL_COLLIDERS,
-  // Task 9A: the two guides (plaza and hall desk) stand on a small collider each, so nobody walks through them; the
-  // parked bus's mirrors hang past its box at head height (bus review r3): a collider under each.
-  [...guideColliders(), ...busMirrorColliders()],
+  // Task 9A: the two guides (plaza and hall desk) stand on a small collider each, so nobody walks through them. The bus
+  // is no static collider (2026-11-15: it left an invisible wall at the empty stop): its body and mirrors are one moving
+  // solid at its current pose, parked or not (busBody.ts, applied by the server and every client).
+  [...guideColliders()],
 );
 
 /** Procedural house interiors reuse the hall room footprint but omit memorial furniture and cubby obstacles. */

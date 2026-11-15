@@ -349,15 +349,18 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     obstacles.length = 0;
     // The moving bus is solid (checker r2: walking at its flank went inside it, and it drove on with them in it): whoever
     // its body overlaps now is put out on the nearest free side, every client sees them there (shared busBody.ts).
-    const pose = this.movingBusPose(now);
-    if (pose) this.state.players.forEach((p) => this.pushOffBus(p, pose));
+    const pose = this.busBodyPose(now);
+    this.state.players.forEach((p) => this.pushOffBus(p, pose));
     if (changed || now - this.lastBusBroadcast >= BUS_STATE_RATE_MS || now < this.lastBusBroadcast) this.broadcastTransit();
   }
 
-  /** The bus's pose while it is out on the road at `now` (null while it stands at the stop: there it is a static collider). */
-  private movingBusPose(now: number): BusBodyPose | null {
-    const trip = busDriveTrip(this.driverAt(now).drive, now);
-    return trip.status === "inTransit" ? trip.pose : null;
+  /**
+   * The bus's body pose at `now`, wherever it is (parked at the stop or out on the road). The bus is one moving solid and
+   * no static collider (2026-11-15: a static slice left an invisible wall at the empty stop that trapped a person and
+   * blocked the returning bus), so it pushes at its stop and on the lap alike.
+   */
+  private busBodyPose(now: number): BusBodyPose {
+    return busDriveTrip(this.driverAt(now).drive, now).pose;
   }
 
   /**
@@ -377,8 +380,7 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
 
   /** Every accepted step is checked against the moving bus too: nobody's step ends inside it (the tick catches the rest). */
   protected afterMove(_client: Client, player: Player, _track: VillageTracking, _now: number): void {
-    const pose = this.movingBusPose(this.wallClock());
-    if (pose) this.pushOffBus(player, pose);
+    this.pushOffBus(player, this.busBodyPose(this.wallClock()));
   }
 
   /** Publish the bus and clear riders once their lap returns. */

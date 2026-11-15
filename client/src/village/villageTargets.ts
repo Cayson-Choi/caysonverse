@@ -93,10 +93,9 @@ export function busCountdownWords(ms: number): { long: string; short: string } {
  * `boardingNow`: the bus is taking riders (shared transit.ts TRANSIT.boardingMs: the 3 min before each departure, by the server's clock as the
  * bus snapshots carry it, transitSync.ts transitNowMs). `departsInMs`: how long until the next bus leaves.
  *
- * The way to ride is never hidden (review 2026-11-15: a first-time player at the stop must see how and when): outside the
- * boarding window the button is still there and counts down to the next departure ("버스 타기 · 7분 뒤 출발",
- * touch: "7분 뒤"); pressing it says when the bus leaves and that boarding opens 3 min before (VillageScene).
- * It always gives a free seat in reach the key (`yieldsToSeat`: the shelter's bench and the café chairs 66/67 sit inside
+ * The way to ride stays visible (review 2026-11-15) as a key-less chip (busStopHint.ts: when the next bus leaves and when boarding
+ * opens); the board ACTION exists only while the bus stands at the stop with its doors open (2026-11-15 check: the button with a
+ * countdown on it while the bus was away was confusing). It gives a free seat in reach the key (`yieldsToSeat`: the shelter's bench and the café chairs 66/67 sit inside
  * or by its area; owner 2026-11-13: 정류장 벤치에 앉을 수가 없어). With boarding open for 3 minutes (owner 2026-11-15)
  * riders wait on the bench like at a real stop, then stand and step towards the bus: no seat is in reach on the pad's
  * road half and at the doors, so there the button has the key (the stop's pill says so). "Leave" never yields, and is
@@ -120,15 +119,18 @@ export function villageBusTarget(
     if (busOnRoad) return null;
     return { kind: "object", id: BUS_RIDE_TARGET_LEAVE, dist, icon: "🚌", label: "버스에서 내리기", short: "하차", priority: 2 };
   }
-  const waiting = !boardingNow && departsInMs !== undefined && Number.isFinite(departsInMs);
-  const words = waiting ? busCountdownWords(departsInMs) : null;
+  // Not taking riders (the bus is away, or it stands at the stop with its doors still shut): no action at all (2026-11-15
+  // check: "E 버스 타기 · 10분 뒤 출발" showed on PC while the bus was away). The stop's timetable chip (busStopHint.ts, no
+  // key) says when it comes and when boarding opens.
+  if (!boardingNow || busOnRoad) return null;
+  void departsInMs;
   return {
     kind: "object",
     id: BUS_RIDE_TARGET_BOARD,
     dist,
     icon: "🚌",
-    label: words ? `버스 타기 · ${words.long} 뒤 출발` : "버스 타기",
-    short: words ? words.short : "탑승",
+    label: "버스 타기",
+    short: "탑승",
     priority: 2,
     yieldsToSeat: true,
   };

@@ -228,6 +228,15 @@ export function getMovingBusPose(): Readonly<{ x: number; z: number; yaw: number
   return renderMoving ? renderPose : null;
 }
 
+/**
+ * The bus's body pose wherever it is, parked at the stop or out on the road (2026-11-15: one moving solid, no static
+ * collider at the stop, so nothing is left behind when the bus is away). Before the first snapshot it is the timetable's.
+ */
+export function getBusBodyPose(): Readonly<{ x: number; z: number; yaw: number }> {
+  refreshRenderPose();
+  return renderPose;
+}
+
 /** Frame step: the bus's pose from the timeline at the synced time (the argument is kept for callers; the pose needs no easing). */
 export function stepTransitRender(_deltaSeconds?: number): void {
   refreshRenderPose();

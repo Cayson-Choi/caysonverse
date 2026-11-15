@@ -33,6 +33,9 @@ export function busStopHintAt(
     const how = touch ? "버스 앞에서 🚌 버튼" : "버스 앞에서 E / 🚌";
     return { tone: "board", text: `지금 탈 수 있어요 · ${busCountdownWords(trip.startMs - nowMs).long} 뒤 출발 (${how})` };
   }
+  if (trip.status === "inTransit") {
+    return { tone: "wait", text: `버스 운행 중 · ${busCountdownWords(trip.nextStartMs - nowMs).long} 뒤 출발 · 출발 ${boardingOpensWords()} 전부터 탈 수 있어요` };
+  }
   // one countdown only (review 2026-11-15: a second, rounded one for the boarding window disagreed with the first)
   return { tone: "wait", text: `다음 버스 ${busCountdownWords(trip.nextStartMs - nowMs).long} 뒤 출발 · 출발 ${boardingOpensWords()} 전부터 탈 수 있어요` };
 }

@@ -70,8 +70,7 @@ describe("the moving bus is solid from every side (owner 2026-11-15; checker r2)
     }
   });
 
-  it("parked (no moving pose) or outside the village it does nothing; the slide's obstacle list has no bus pieces any more", () => {
-    expect(pushOutOfMovingBus(0, 0, () => null, inVillage, free)).toBeNull();
+  it("outside the village it does nothing; parked, the bus pushes like any pose; the slide's obstacle list has no bus pieces any more", () => {
     expect(pushOutOfMovingBus(0, 0, () => ({ x: 0, z: 0, yaw: 0 }), () => false, free)).toBeNull();
     expect(pushOutOfMovingBus(0, 0, () => ({ x: 0, z: 0, yaw: 0 }), inVillage, free)).not.toBeNull();
     const a = collectObstacles(3, 0, noRemotes).length;
