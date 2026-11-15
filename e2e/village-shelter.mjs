@@ -94,7 +94,9 @@ await run.step("join", async () => {
   await joinVillage(p, "정류장");
   const seats = await p.page.evaluate(async () => (await window.__imp("/village/benchSeats.ts")).VILLAGE_SEATS.map((s) => ({ ...s })));
   p.seats = seats;
-  run.check("22 bench seats in the village and the hall (ten benches, two each, and the shelter's)", seats.filter((s) => s.area === "village" || s.area === "hall").length === 22, seats.length);
+  // the art's marked seats (café chairs, porch benches; feat/houses-m1) are village seats too, after the benches' and the houses'
+  const marked = (s) => /^cafe_terrace_\d+$|_porch$/.test(s.bench);
+  run.check("22 bench seats in the village and the hall (ten benches, two each, and the shelter's)", seats.slice(0, 22).every((s) => !marked(s)) && seats.filter((s) => (s.area === "village" || s.area === "hall") && !marked(s)).length === 22, seats.length);
   p.shelter = seats.map((s, i) => ({ ...s, i })).filter((s) => s.bench === "shelter");
   run.check("two shelter seats", p.shelter.length === 2, p.shelter.map((s) => s.i));
 });

@@ -5,6 +5,7 @@ import { AnimationMixer, Vector3, type Bone, type Object3D, type SkinnedMesh } f
 import { GLTFLoader, type GLTF } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { SIT_POSE, SIT_ROOT_AHEAD } from "@caysonverse/shared/sitPose";
 import { CLIP } from "./constants";
+import { SEATED_HEAD_BEHIND_ROOT, SEATED_HEAD_RISE } from "./seatedEye";
 
 /**
  * The seated pose the benches are built around (sitPose.ts), re-measured from the shipped character.glb: if a new
@@ -94,5 +95,22 @@ describe("the seated pose of character.glb (what the bench seats assume)", () =>
     const a = down.bones.get("hips")!.getWorldPosition(new Vector3());
     const b = stand.bones.get("hips")!.getWorldPosition(new Vector3());
     expect(a.distanceTo(b)).toBeLessThan(0.01);
+  }, 20000);
+
+  it("the seated head's centre is SEATED_HEAD_BEHIND_ROOT behind the root and SEATED_HEAD_RISE above the standing one (seatedEye.ts)", async () => {
+    const centre = (v: Vector3[]) => {
+      const lo = new Vector3(Infinity, Infinity, Infinity);
+      const hi = new Vector3(-Infinity, -Infinity, -Infinity);
+      for (const p of v) {
+        lo.min(p);
+        hi.max(p);
+      }
+      return lo.add(hi).multiplyScalar(0.5);
+    };
+    const sat = centre((await pose(CLIP.sitIdle, ["body__head"])).verts);
+    const stood = centre((await pose(CLIP.idle, ["body__head"])).verts);
+    expect(-sat.z).toBeCloseTo(SEATED_HEAD_BEHIND_ROOT, 1);
+    expect(Math.abs(stood.z)).toBeLessThan(0.03);
+    expect(sat.y - stood.y).toBeCloseTo(SEATED_HEAD_RISE, 1);
   }, 20000);
 });

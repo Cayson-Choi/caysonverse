@@ -67,6 +67,7 @@ import { cameraProbe } from "./cameraProbe";
 import { activeBounds, activeSeats, getActiveMap } from "./activeMap";
 import { localGlide } from "./seatMotion";
 import { seatApproachGoal, seatUnderTap, warmSeatApproachGoals } from "./seatTap";
+import { seatedEyeOffset, stepSeatedWeight } from "./seatedEye";
 import { setPreferredSeat } from "./seatPreference";
 import { getLocalLift } from "./jump";
 import { useFpCursor } from "./useFpCursor";
@@ -216,6 +217,9 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
   const lastFrameMode = useRef(viewState.mode);
   // The rectangle the overview was last framed for: a different one (a door in 케이슨 마을) re-frames an open overview.
   const lastBounds = useRef(activeBounds());
+  /** The seated FP eye's weight (0 standing .. 1 seated) and the seat it eases toward or away from (seatedEye.ts). */
+  const seatedEyeW = useRef(0);
+  const seatedEyeSeat = useRef<{ yaw: number; seatY?: number } | null>(null);
   // Z / C are registered in the shared KeyboardControls map; read their live state.
   const [, getKeys] = useKeyboardControls<MoveControl>();
   // A boarded village bus owns the camera pose until the server confirms a leave.
@@ -889,18 +893,24 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
 
     // ── Underlying pose (tp<->fp, no teleport-cut) — the base the overview lifts
     // FROM and settles BACK TO. ──
-    const uPosX = lerp(tpX, pose.x, t);
+    // Seated, the FP eye is at the seated head (behind the seat point, a little higher; seatedEye.ts), eased with the clip.
+    const seatNow = seat.index >= 0 ? activeSeats()[seat.index] : undefined;
+    seatedEyeW.current = stepSeatedWeight(seatedEyeW.current, seatNow !== undefined, delta);
+    if (seatNow) seatedEyeSeat.current = seatNow;
+    const eyeSeat = seatedEyeSeat.current;
+    const eye = eyeSeat ? seatedEyeOffset(eyeSeat.yaw, eyeSeat.seatY, seatedEyeW.current) : { dx: 0, dy: 0, dz: 0 };
+    const uPosX = lerp(tpX, pose.x + eye.dx, t);
     // Own hop (jump.ts): the first-person eye and look target rise with the avatar's
     // display-only lift, weighted by the FP blend — the own body is hidden there, so
     // without this a Space press would show nothing. TP (t = 0) is untouched.
     const hop = getLocalLift();
-    const uPosY = lerp(tpY, FP_EYE_HEIGHT + hop, t);
-    const uPosZ = lerp(tpZ, pose.z, t);
+    const uPosY = lerp(tpY, FP_EYE_HEIGHT + hop + eye.dy, t);
+    const uPosZ = lerp(tpZ, pose.z + eye.dz, t);
     // TP looks at the (smoothed) follow point, a little above the head; FP at the
     // pose-anchored eye line.
-    const uTgtX = lerp(followX, pose.x + fwdX, t);
-    const uTgtY = lerp(HEAD_HEIGHT + CAMERA_LOOK_LIFT + tpLookLift, FP_EYE_HEIGHT + hop + fwdY, t);
-    const uTgtZ = lerp(followZ, pose.z + fwdZ, t);
+    const uTgtX = lerp(followX, pose.x + eye.dx + fwdX, t);
+    const uTgtY = lerp(HEAD_HEIGHT + CAMERA_LOOK_LIFT + tpLookLift, FP_EYE_HEIGHT + hop + eye.dy + fwdY, t);
+    const uTgtZ = lerp(followZ, pose.z + eye.dz + fwdZ, t);
 
     // ── Overview pose ── straight up over the pan-centre, looking down. A camera limit (a building's ceiling) is
     // bypassed here by construction (this is a separate pose term, never routed through the limit). ──

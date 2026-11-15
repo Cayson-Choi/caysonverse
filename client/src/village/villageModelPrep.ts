@@ -422,8 +422,13 @@ export function liftMaterial(material: Material): void {
  * pulled toward the glow colour; the rich tier's bloom (threshold 1.6) lets the lit ones shine.
  */
 export const LIT = {
-  window: { color: [1.0, 0.76, 0.46], boost: 2.1 },
-  lamp: { color: [1.0, 0.8, 0.5], boost: 3.4 },
+  /**
+   * Review 2026-11-15: (1.0, 0.76, 0.46) — linear, so sRGB (255, 227, 181) — at boost 2.1 clipped every channel of a pale
+   * pane, and lit windows read as cold cream plates. A 2700 K incandescent is sRGB (255, 169, 87), linear about
+   * (1.0, 0.40, 0.10): warm amber panes, the curtains' folds still showing, the brightest past the rich tier's bloom.
+   */
+  window: { color: [1.0, 0.45, 0.14], boost: 1.7 },
+  lamp: { color: [1.0, 0.5, 0.18], boost: 2.6 },
   /**
    * A shop's painted interior (`M_shop`: the café's room, the kiosk's flower shelves). The windows' recipe replaces each
    * texel with the glow colour by its luma, which flattened these pictures into a cream plate at night (review

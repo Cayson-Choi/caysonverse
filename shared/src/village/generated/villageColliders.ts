@@ -190,25 +190,25 @@ export const VILLAGE_COLLIDERS: readonly AABB[] = [
   { minX: 40.6, maxX: 46.2, minZ: -22.6, maxZ: -22 }, // col__cafe_planter_1
   { minX: 40.6, maxX: 46.2, minZ: -8.2, maxZ: -7.6 }, // col__cafe_planter_2
   { minX: 40.65, maxX: 41.15, minZ: 4.72, maxZ: 5.22 }, // col__tree_45
-  { minX: 40.88, maxX: 41.32, minZ: -17.82, maxZ: -17.38 }, // col__cafe_terrace_chair_10
-  { minX: 40.88, maxX: 41.32, minZ: -12.82, maxZ: -12.38 }, // col__cafe_terrace_chair_12
+  { minX: 40.85, maxX: 41.29, minZ: -17.82, maxZ: -17.38 }, // col__cafe_terrace_chair_10
+  { minX: 40.85, maxX: 41.29, minZ: -12.82, maxZ: -12.38 }, // col__cafe_terrace_chair_12
   { minX: 40.89, maxX: 41.39, minZ: 16.24, maxZ: 16.74 }, // col__tree_40
-  { minX: 41.2, maxX: 41.64, minZ: -20.92, maxZ: -20.48 }, // col__cafe_terrace_chair_3
-  { minX: 41.2, maxX: 41.64, minZ: -19.72, maxZ: -19.28 }, // col__cafe_terrace_chair_4
-  { minX: 41.2, maxX: 41.64, minZ: -10.92, maxZ: -10.48 }, // col__cafe_terrace_chair_7
-  { minX: 41.2, maxX: 41.64, minZ: -9.72, maxZ: -9.28 }, // col__cafe_terrace_chair_8
-  { minX: 41.38, maxX: 42.22, minZ: -18.02, maxZ: -17.18 }, // col__cafe_terrace_table_3
-  { minX: 41.38, maxX: 42.22, minZ: -13.02, maxZ: -12.18 }, // col__cafe_terrace_table_4
+  { minX: 41.12, maxX: 41.56, minZ: -20.92, maxZ: -20.48 }, // col__cafe_terrace_chair_3
+  { minX: 41.12, maxX: 41.56, minZ: -19.72, maxZ: -19.28 }, // col__cafe_terrace_chair_4
+  { minX: 41.12, maxX: 41.56, minZ: -10.92, maxZ: -10.48 }, // col__cafe_terrace_chair_7
+  { minX: 41.12, maxX: 41.56, minZ: -9.72, maxZ: -9.28 }, // col__cafe_terrace_chair_8
   { minX: 41.43, maxX: 42.33, minZ: 9.46, maxZ: 10.36 }, // col__shrub_5
+  { minX: 41.58, maxX: 42.42, minZ: -18.02, maxZ: -17.18 }, // col__cafe_terrace_table_3
+  { minX: 41.58, maxX: 42.42, minZ: -13.02, maxZ: -12.18 }, // col__cafe_terrace_table_4
   { minX: 41.85, maxX: 42.75, minZ: -21.3, maxZ: -18.9 }, // col__cafe_terrace_table_1
   { minX: 41.85, maxX: 42.75, minZ: -11.3, maxZ: -8.9 }, // col__cafe_terrace_table_2
-  { minX: 42.28, maxX: 42.72, minZ: -17.82, maxZ: -17.38 }, // col__cafe_terrace_chair_9
-  { minX: 42.28, maxX: 42.72, minZ: -12.82, maxZ: -12.38 }, // col__cafe_terrace_chair_11
   { minX: 42.45, maxX: 43.35, minZ: 15.65, maxZ: 16.55 }, // col__shrub_8
-  { minX: 42.96, maxX: 43.4, minZ: -20.92, maxZ: -20.48 }, // col__cafe_terrace_chair_1
-  { minX: 42.96, maxX: 43.4, minZ: -19.72, maxZ: -19.28 }, // col__cafe_terrace_chair_2
-  { minX: 42.96, maxX: 43.4, minZ: -10.92, maxZ: -10.48 }, // col__cafe_terrace_chair_5
-  { minX: 42.96, maxX: 43.4, minZ: -9.72, maxZ: -9.28 }, // col__cafe_terrace_chair_6
+  { minX: 42.71, maxX: 43.15, minZ: -17.82, maxZ: -17.38 }, // col__cafe_terrace_chair_9
+  { minX: 42.71, maxX: 43.15, minZ: -12.82, maxZ: -12.38 }, // col__cafe_terrace_chair_11
+  { minX: 43.04, maxX: 43.48, minZ: -20.92, maxZ: -20.48 }, // col__cafe_terrace_chair_1
+  { minX: 43.04, maxX: 43.48, minZ: -19.72, maxZ: -19.28 }, // col__cafe_terrace_chair_2
+  { minX: 43.04, maxX: 43.48, minZ: -10.92, maxZ: -10.48 }, // col__cafe_terrace_chair_5
+  { minX: 43.04, maxX: 43.48, minZ: -9.72, maxZ: -9.28 }, // col__cafe_terrace_chair_6
   { minX: 43.58, maxX: 44.08, minZ: 9.34, maxZ: 9.84 }, // col__tree_39
   { minX: 44.26, maxX: 47.6, minZ: 38.3, maxZ: 40.55 }, // col__house_6_porch_1
   { minX: 44.41, maxX: 45.31, minZ: 10.62, maxZ: 11.52 }, // col__shrub_7
