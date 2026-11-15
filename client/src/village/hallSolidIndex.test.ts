@@ -58,3 +58,33 @@ describe("the hall's solid index (round 7 review: seat framing camera in the lou
     expect(idx.nearSolid(301, 2.0, 2.0, 0.3)).toBe(false);
   });
 });
+
+describe("round 8: the grid walk, the first hit and the cap under hung things", () => {
+  it("a segment that only clips a cell's corner still tests the piece filed in that cell (round 7 tech review)", () => {
+    // an upright sliver at x = 0.505, z 0.40..0.499: only in cell (1, 0); the segment crosses it at z ≈ 0.495
+    const t = new Float32Array([0.505, 0, 0.4, 0.505, 2, 0.4, 0.505, 0, 0.499, 0.505, 2, 0.4, 0.505, 2, 0.499, 0.505, 0, 0.499]);
+    const g = buildSolidIndex(t, 0, 2, 0, 2);
+    expect(g.segmentBlocked(0, 1, 0, 1, 1, 0.98, 0)).toBe(true);
+    expect(g.segmentHit(0, 1, 0, 1, 1, 0.98)).toBeCloseTo(Math.hypot(0.505, 0.505 * 0.98), 3);
+  });
+
+  it("segmentHit is the NEAREST face, also when a farther face was filed in an earlier cell", () => {
+    // the table's west face at x = 298 is the first hit of a line from x 297 eastward at 0.5 m up
+    expect(idx.segmentHit(297, 0.5, -0.5, 301, 0.5, -0.5)).toBeCloseTo(1, 3);
+    expect(idx.segmentHit(297, 1.2, -0.5, 301, 1.2, -0.5)).toBe(Infinity);
+    // a line climbing into the louvres from below hits a slat's underside at 3.88
+    const slat = X0 + 0.45 + 5 * 0.17 + 0.03;
+    expect(idx.segmentHit(slat, 1.6, 2.6, slat, 4.1, 2.6)).toBeCloseTo(3.88 - 1.6, 3);
+  });
+
+  it("the cap under hung things: under the louvres 0.4 m below their underside, rising away from them, the ceiling far off", () => {
+    const mid = X0 + 2;
+    expect(idx.hungCap(mid, 3, 3.5, 0.4, 0.4, 1.2)).toBeCloseTo(3.48, 3);
+    // 0.4 m outside their plan (east of the last slat): still 3.48; 1.4 m outside: 1.2 m higher
+    const east = X0 + 0.51 + 23 * 0.17;
+    expect(idx.hungCap(east + 0.4, 3, 3.5, 0.4, 0.4, 1.2)).toBeCloseTo(3.48, 3);
+    expect(idx.hungCap(east + 1.4, 3, 3.5, 0.4, 0.4, 1.2)).toBeCloseTo(4.1, 3); // the ceiling's 4.5 − 0.4 is lower than 3.48 + 1.2
+    // the table (0.75 m) is not hung; the open room's cap is the ceiling's
+    expect(idx.hungCap(301, -0.5, 3.5, 0.4, 0.4, 1.2)).toBeCloseTo(4.1, 3);
+  });
+});

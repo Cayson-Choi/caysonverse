@@ -31,8 +31,10 @@ import { useNightMapWanted } from "./nightLightmap";
 import { dayNight } from "./dayNightDriver";
 import { setHallDoorLeaves } from "./hallDoor";
 import { setSeatSightBlocker, setSeatSpotBlocker } from "../game/seatFraming";
+import { setCameraSolids } from "../game/cameraSolids";
 import { buildSolidIndex } from "./hallSolidIndex";
 import { cubbyFocusAnchor, cubbyFocusWeight } from "./cubbyFocus";
+import { glassFocusUniform } from "./hallGlass";
 import { useQualityTier } from "../game/QualityEffects";
 import { LoadBoundary } from "./LoadBoundary";
 import { HALL_CUBBY_ANCHORS, SAMPLE_CUBBIES, SAMPLE_PHOTO_ATLAS } from "./sampleCubbies";
@@ -231,19 +233,31 @@ function MemorialHall() {
     nodes.root.updateMatrixWorld(true);
     const tris: number[] = [];
     const v = new Vector3();
+    const each = new Matrix4();
+    // Every solid mesh as it stands now: what is hidden is skipped (a mesh shown later is not in it), an instanced one adds each
+    // instance (none in the hall model today; round 7 tech review). The door leaves are filed closed: no seat or camera spot is
+    // near the doors, and their own boxes (the walk's) hold the camera off them.
     nodes.root.traverse((o) => {
       const m = o as Mesh;
-      if (!m.isMesh || (m as unknown as InstancedMesh).isInstancedMesh || !m.visible) return;
+      if (!m.isMesh || !m.visible) return;
       if (Array.isArray(m.material) || (m.material as Material).transparent) return;
       const pos = m.geometry.getAttribute("position");
       if (!pos) return;
       const idx = m.geometry.getIndex();
       const count = idx ? idx.count : pos.count;
-      for (let i = 0; i + 2 < count; i += 3)
-        for (let k = 0; k < 3; k++) {
-          v.fromBufferAttribute(pos, idx ? idx.getX(i + k) : i + k).applyMatrix4(m.matrixWorld);
-          tris.push(v.x, v.y, v.z);
-        }
+      const inst = m as unknown as InstancedMesh;
+      const copies = inst.isInstancedMesh ? inst.count : 1;
+      for (let c = 0; c < copies; c++) {
+        if (inst.isInstancedMesh) {
+          inst.getMatrixAt(c, each);
+          each.premultiply(m.matrixWorld);
+        } else each.copy(m.matrixWorld);
+        for (let i = 0; i + 2 < count; i += 3)
+          for (let k = 0; k < 3; k++) {
+            v.fromBufferAttribute(pos, idx ? idx.getX(i + k) : i + k).applyMatrix4(each);
+            tris.push(v.x, v.y, v.z);
+          }
+      }
     });
     const room = VILLAGE_LAYOUT.memorial.interior.room;
     const solid = buildSolidIndex(Float32Array.from(tris), room.minX - 1, room.maxX + 1, room.minZ - 1, room.maxZ + 1);
@@ -253,9 +267,12 @@ function MemorialHall() {
     // oak louvres: their gaps let sight lines through, their underside does not; a lens level with them a metre away sees them as
     // a brown band over the top of the screen) — 0.25 m under their underside at least, within a metre of them
     const offSpot = setSeatSpotBlocker((x, y, z) => solid.underHung(x, y, z, 2.6, 1.0, 0.25) || solid.nearSolid(x, y, z, 0.3));
+    // …and the follow camera (round 8 review: dragged up near the lounge it went up among the louvres; cameraSolids.ts)
+    const offCamera = setCameraSolids(solid);
     return () => {
       offSight();
       offSpot();
+      offCamera();
     };
   }, [nodes]);
   useEffect(() => {
@@ -298,6 +315,7 @@ function MemorialHall() {
     // The open cubby's gold mark (the close-up's weight fades it in and out).
     const focus = cubbyFocusAnchor();
     const fw = cubbyFocusWeight();
+    glassFocusUniform.value = fw;
     if (focus && fw > 0) {
       const wall = WALL_BY_BANK.get(focus.bank);
       const cell = wall ? wall.cell : 0.36;
