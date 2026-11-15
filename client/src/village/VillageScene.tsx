@@ -1,3 +1,4 @@
+import { isTouchDevice } from "../device";
 import { Suspense, useEffect, useLayoutEffect, useState } from "react";
 import { useGLTF } from "@react-three/drei";
 import { PlayShell } from "../game/PlayShell";
@@ -9,7 +10,7 @@ import type { Pose } from "../game/types";
 import { getRoom, sendUseDoor } from "../net/connection";
 import { rideStatusText, sendBusRide, sendBusSit, sendBusStand, showTransitNotice, startTransitSync, transitNowMs, transitTripAt, type TransitRoom, useTransitState } from "../net/transitSync";
 import { BUS_VIEW_YAW, busCamGoal, busWalk, selfBusRide } from "../game/busRide";
-import { takenBusSpots } from "../game/remoteStore";
+import { busRiderPoints, takenBusSpots } from "../game/remoteStore";
 import { TRANSIT, boardingOpensWords } from "@caysonverse/shared/village/transit";
 import type { Identity } from "../stores/appStore";
 import { DoorFade } from "./DoorFade";
@@ -188,7 +189,7 @@ function VillageDoors({ pose }: { pose: Pose }) {
         const free = selfBusRide.slot === 0;
         const ahead = free && busWalk.valid ? busWalk.ahead : selfBusRide.ahead;
         const right = free && busWalk.valid ? busWalk.right : selfBusRide.right;
-        return villageBusCabinTargets(selfBusRide.slot, ahead, right, takenBusSpots(), busOnRoad());
+        return villageBusCabinTargets(selfBusRide.slot, ahead, right, takenBusSpots(), busOnRoad(), busRiderPoints());
       }
       const base = villageAndHallTargets(area, p.x, p.z, cubbyCardState() !== null || guideDialogOpen() !== null || keypadOpen);
       const bus = villageBusTarget(area, p.x, p.z, boarded, ...busScheduleNow(), busOnRoad());
@@ -274,11 +275,11 @@ function markRideHintSeen(): void {
 }
 
 /** The quick views: the camera eases to look out of the left windows, the front, the right windows (the doors' side) or the back. */
-const RIDE_VIEWS: ReadonlyArray<{ id: string; label: string; yaw: number }> = [
-  { id: "left", label: "◀ 왼쪽 창", yaw: BUS_VIEW_YAW.left },
-  { id: "front", label: "앞", yaw: BUS_VIEW_YAW.front },
-  { id: "right", label: "오른쪽 창 ▶", yaw: BUS_VIEW_YAW.right },
-  { id: "back", label: "뒤", yaw: BUS_VIEW_YAW.back },
+const RIDE_VIEWS: ReadonlyArray<{ id: string; label: string; short: string; yaw: number }> = [
+  { id: "left", label: "◀ 왼쪽 창", short: "◀ 왼쪽", yaw: BUS_VIEW_YAW.left },
+  { id: "front", label: "앞", short: "앞", yaw: BUS_VIEW_YAW.front },
+  { id: "right", label: "오른쪽 창 ▶", short: "오른쪽 ▶", yaw: BUS_VIEW_YAW.right },
+  { id: "back", label: "뒤", short: "뒤", yaw: BUS_VIEW_YAW.back },
 ];
 
 /**
@@ -287,6 +288,7 @@ const RIDE_VIEWS: ReadonlyArray<{ id: string; label: string; yaw: number }> = [
  */
 function TransitRideHud() {
   const { boarded, snapshot, notice } = useTransitState();
+  const touch = isTouchDevice;
   const [hint, setHint] = useState(false);
   useEffect(() => {
     if (!boarded || rideHintSeen()) return;
@@ -314,36 +316,36 @@ function TransitRideHud() {
         borderRadius: 10,
         background: "rgba(20, 28, 52, 0.82)",
         color: "#fff",
-        fontSize: 12,
-        lineHeight: 1.35,
+        fontSize: touch ? 11 : 12,
+        lineHeight: 1.3,
         pointerEvents: "auto",
-        maxWidth: 232,
+        maxWidth: touch ? 196 : 232,
       }}
       data-testid="bus-ride-hud"
     >
       {boarded ? (
         <>
           <div>🚌 버스 탑승 중</div>
-          <div style={{ opacity: 0.75 }}>{rideStatusText(snapshot, busCountdownWords(busScheduleNow()[1]).long)}</div>
+          {touch && !hint ? null : <div style={{ opacity: 0.75 }}>{rideStatusText(snapshot, busCountdownWords(busScheduleNow()[1]).long)}</div>}
           {notice ? (
             // why a seat was refused (taken, the wrong side of a backed seat, too far): a rider must see it
             <div role="alert" data-testid="bus-ride-notice" style={{ marginTop: 5, background: "rgba(255,196,64,0.28)", borderRadius: 8, padding: "5px 8px" }}>
               {notice}
             </div>
           ) : null}
-          <div style={{ marginTop: 6, display: "flex", flexWrap: "wrap", gap: 5 }} data-testid="bus-ride-views">
+          <div style={{ marginTop: 6, display: "flex", flexWrap: "nowrap", gap: 4 }} data-testid="bus-ride-views">
             {RIDE_VIEWS.map((v) => (
-              <button key={v.id} type="button" data-view={v.id} style={btn} onClick={() => { busCamGoal.yaw = v.yaw; }}>
-                {v.label}
+              <button key={v.id} type="button" data-view={v.id} style={{ ...btn, padding: "6px 6px", whiteSpace: "nowrap", flex: "0 0 auto" }} onClick={() => { busCamGoal.yaw = v.yaw; }}>
+                {touch ? v.short : v.label}
               </button>
             ))}
           </div>
           {hint ? (
             <div style={{ marginTop: 6, background: "rgba(139,92,246,0.35)", borderRadius: 8, padding: "6px 8px" }} data-testid="bus-ride-hint">
-              화면을 끌어서 창밖을 둘러보세요 · 빈 자리 가까이에서 앉을 수 있어요
+              {touch ? "화면을 끌어서 창밖을 둘러보세요 · 자리나 손잡이 가까이에서 아래 버튼" : "화면을 끌어서 창밖을 둘러보세요 · 자리나 손잡이 가까이에서 E"}
             </div>
-          ) : (
-            <div style={{ marginTop: 5, opacity: 0.7 }}>화면을 끌면 둘러볼 수 있어요 · 빈 자리 가까이에서 E(폰은 앉기 버튼)</div>
+          ) : touch ? null : (
+            <div style={{ marginTop: 5, opacity: 0.7 }}>화면을 끌면 둘러볼 수 있어요 · 자리·손잡이 가까이에서 E</div>
           )}
           {snapshot?.status === "inTransit" ? (
             // the doors open only at the stop (the server refuses a leave on the lap): say when instead of a dead button

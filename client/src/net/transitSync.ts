@@ -151,9 +151,14 @@ function setRide(next: BusRideStatePayload): void {
  * scene listens (e2e village-bus-rider: a rider's client read "not aboard" mid-lap after a short drop, while the server
  * still had them in the bus). So the place keeps `boarded` true whatever the order.
  */
+let lastSelfSlot = -1;
 export function noteSelfBusSeat(slot: number): void {
   const aboard = slot >= 0;
-  if (aboard !== state.boarded) publish({ ...state, boarded: aboard, notice: aboard ? null : state.notice });
+  // A seat or a pole taken (a place of its own) answers the refusal that was on the panel: the old line must not stay (review r1).
+  const took = slot > 0 && lastSelfSlot !== slot;
+  lastSelfSlot = slot;
+  if (took && state.notice !== null) noticeUntil = 0;
+  if (aboard !== state.boarded || (took && state.notice !== null)) publish({ ...state, boarded: aboard, notice: aboard ? null : state.notice });
 }
 
 /** Bind one village room; cleanup is called when the scene unmounts or reconnects. */

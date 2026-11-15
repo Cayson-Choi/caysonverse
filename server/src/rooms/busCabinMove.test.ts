@@ -49,9 +49,9 @@ describe("validateBusMove: the server accepts what the client's own walk produce
     expect(validateBusMove(from, { ahead: 0.6, right: -1.0, yaw: 0 }, 1000).ok).toBe(false); // into the wall seat
     expect(validateBusMove(from, { ahead: 0.6, right: 5, yaw: 0 }, 1000).ok).toBe(false);
     expect(validateBusMove(from, { ahead: 3.0, right: 0.0, yaw: 0 }, 50).ok).toBe(false); // 2.4 m in 50 ms
-    expect(validateBusMove(from, { ahead: 0.9, right: 0.0, yaw: 0 }, 100, [{ ahead: 1.0, right: 0.0 }]).ok).toBe(false);
+    expect(validateBusMove(from, { ahead: 0.9, right: 0.0, yaw: 0 }, 100, [{ ahead: 0.95, right: 0.0 }]).ok).toBe(false);
     // ... but a rider in the middle of the aisle is passed at its edge (0.25 m off the axis)
-    expect(validateBusMove({ busSeat: 0, ahead: 0.7, right: 0.2 }, { ahead: 0.9, right: 0.2, yaw: 0 }, 100, [{ ahead: 0.8, right: 0.0 }]).ok).toBe(true);
+    expect(validateBusMove({ busSeat: 0, ahead: 0.7, right: 0.18 }, { ahead: 0.9, right: 0.18, yaw: 0 }, 100, [{ ahead: 0.8, right: 0.0 }]).ok).toBe(true);
     expect(validateBusMove(from, { ahead: 0.7, right: 0.0, yaw: 0 }, 100, [{ ahead: -0.3, right: 0.0 }]).ok).toBe(true);
     expect(validateBusMove({ ...from, busSeat: 3 }, { ahead: 0.7, right: 0.0, yaw: 0 }, 100).ok).toBe(false);
     // straight through a whole seat (a long step across its depth): refused

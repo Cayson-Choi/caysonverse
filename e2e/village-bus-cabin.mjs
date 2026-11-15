@@ -158,7 +158,7 @@ await run.step("both board: aboard and free at the entry; the ride panel has the
     const r = await ride(p);
     run.check(`${name}: the camera is the bus camera`, r.cam.active === true, r.cam);
     const text = await hud(p);
-    run.check(`${name}: the panel has the quick views`, text.includes("왼쪽 창") && text.includes("오른쪽 창"), null);
+    run.check(`${name}: the panel has the quick views`, text.includes("왼쪽") && text.includes("오른쪽"), null);
     run.check(`${name}: the look-around hint is shown`, text.includes("화면을 끌어서 창밖을 둘러보세요") || text.includes("화면을 끌면 둘러볼 수 있어요"), null);
   }
   const rb = await ride(B);
@@ -179,11 +179,36 @@ await run.step("A walks the aisle inside the cabin (the keys), the server follow
   const s = await serverPlayer(A, sidA);
   run.check("A moved down the aisle", r.walk.ahead < before.walk.ahead - 1.2, { before: before.walk, after: r.walk });
   run.check("A stays inside the cabin (not through a seat or a wall)", Math.abs(r.walk.right) < 0.9 && r.walk.ahead > -4 && r.walk.ahead < 3.9, r.walk);
+  await sleep(1200);
+  const r2 = await ride(A);
+  const s2 = await serverPlayer(A, sidA);
   run.check("the server has A's point (within a step of the prediction)", s !== null && Math.hypot(s.busAhead - r.walk.ahead, s.busRight - r.walk.right) < 0.6, { s, walk: r.walk, end });
+  run.check("review r1: once A has stood still the server and A agree to a hand's breadth (no drift left standing)", Math.hypot(s2.busAhead - r2.walk.ahead, s2.busRight - r2.walk.right) < 0.12, { s2, walk: r2.walk });
   await shot(A, "cabin-2-A-walking-pc.png");
 });
 
+/** The aisle point nearest `near` (bus-local) where the cabin offers `kind` ("seat" or "hold"): found with the shared rules, no taken places. */
+const offerSpot = (p, kind, near) =>
+  p.page.evaluate(async ([kind, near]) => {
+    const c = await window.__imp("/shared/src/village/busCabin.ts");
+    let best = null;
+    for (let a = -3.6; a <= 3.4; a += 0.05) {
+      for (let r = -0.2; r <= 0.2; r += 0.05) {
+        if (c.cabinBlocked(a, r, 0.32)) continue;
+        const o = c.nearestFreeSpot(a, r, new Set(), new Set());
+        if (!o || o.kind !== kind) continue;
+        const d = Math.hypot(a - near[0], r - near[1]);
+        if (!best || d < best.d) best = { a, r, d, index: o.index };
+      }
+    }
+    return best;
+  }, [kind, near]);
+
 await run.step("A sits (E); B is refused the same seat; B takes hold of a pole", async () => {
+  const seatSpot = await offerSpot(A, "seat", [1.2, 0.1]);
+  run.check("there is an aisle spot that offers a seat (not only poles)", seatSpot !== null, seatSpot);
+  await walkBus(A, seatSpot.a, seatSpot.r, 0.15, 14000);
+  await sleep(500);
   const tg = await targetsOf(A);
   const sit = tg.find((t) => t.id.startsWith("bus_sit:seat:"));
   run.check("A is offered a seat to sit in", !!sit, tg);
@@ -228,19 +253,20 @@ await run.step("A sits (E); B is refused the same seat; B takes hold of a pole",
   // a rider holding a pole (the second kind of place): B stands up, A is told nothing; then B takes hold of the nearest pole spot
   await act(B);
   await waitSlot(B, (n) => n === 0, 5000);
+  // Review r1: holding on must work from the UI alone. B walks (keys) to a pole's spot and is OFFERED the hold (not the seat beside it).
+  const holdIdx = 1; // H2, beside the front-left pole
+  const spotH = await B.page.evaluate(async (i) => { const c = await window.__imp("/shared/src/village/busCabin.ts"); return { ahead: c.BUS_HOLDS[i].ahead, right: c.BUS_HOLDS[i].right }; }, holdIdx);
+  await walkBus(B, spotH.ahead, spotH.right, 0.2, 16000);
+  await sleep(500);
+  const tgH = await targetsOf(B);
+  run.check("standing at a pole offers 손잡이 잡기 (not the seat next to it)", tgH.some((t) => t.id === `bus_sit:hold:${holdIdx}`) && !tgH.some((t) => t.id.startsWith("bus_sit:seat:")), tgH);
+  await shot(B, "cabin-3-B-at-pole-phone.png");
+  await act(B);
+  await sleep(900);
   const holdOk = await B.page.evaluate(async () => {
-    const cabin = await window.__imp("/shared/src/village/busCabin.ts");
-    const sync = await window.__imp("/src/net/transitSync.ts");
     const room = (await window.__imp("/src/net/connection.ts")).getRoom();
     const me = room.state.players.get(window.__cv.getSessionId());
-    // the hold spot nearest to where the server has B (stood up beside the seat they sat in)
-    let best = 0;
-    cabin.BUS_HOLDS.forEach((h, i) => {
-      if (Math.hypot(h.ahead - me.busAhead, h.right - me.busRight) < Math.hypot(cabin.BUS_HOLDS[best].ahead - me.busAhead, cabin.BUS_HOLDS[best].right - me.busRight)) best = i;
-    });
-    sync.sendBusSit("hold", best);
-    await new Promise((r) => setTimeout(r, 900));
-    return { busSeat: me.busSeat, best, at: [me.busAhead, me.busRight] };
+    return { busSeat: me.busSeat, at: [me.busAhead, me.busRight] };
   });
   run.check("B takes hold of a pole (a hold place: busSeat above the seats)", holdOk.busSeat > 14, holdOk);
   await sleep(900);
@@ -276,6 +302,45 @@ await run.step("looking out of every window: left, right, front, back, a drag �
   const o1 = { yaw: await lookYaw(A) };
   run.check("a mouse drag turns A's view (the look yaw, relative to the bus)", Math.abs(Math.atan2(Math.sin(o1.yaw - o0.yaw), Math.cos(o1.yaw - o0.yaw))) > 0.2, { o0, o1 });
   writeFileSync(join(OUT, "cabin-eyes.json"), JSON.stringify(eyes, null, 2));
+});
+
+await run.step("review r1: a rider in the way of the view is not drawn; in third person no pole crosses the avatar", async () => {
+  // B holds a pole near the front; A (seated somewhere) looks at B from close by (first person): B is hidden when within 1.5 m in front of the lens
+  const groupAt = (p, x, z) =>
+    p.page.evaluate(([x, z]) => {
+      const { scene } = window.__cvThree();
+      let found = null;
+      scene.traverse((o) => {
+        if (o.isGroup && Math.hypot(o.position.x - x, o.position.z - z) < 0.06 && o.children.length > 2 && o.name !== "bus") found = found === false ? false : o.visible;
+      });
+      return found;
+    }, [x, z]);
+  const seenByA0 = (await A.page.evaluate(() => window.__cv.getRemoteDrawn()))[sidB];
+  const eyeA = (await ride(A)).cam;
+  const bus0 = await transit(A);
+  const lB = seenByA0 ? local(bus0, seenByA0) : null;
+  const dist = lB ? Math.hypot(lB.ahead - eyeA.eye[0], lB.right - eyeA.eye[1]) : 99;
+  const visB = seenByA0 ? await groupAt(A, seenByA0.x, seenByA0.z) : null;
+  run.check("B is drawn when far in front of A's lens, hidden when near", visB === null || (dist < 1.4 ? visB === false : true), { dist, visB });
+  // A in third person (wheel out): the cabin's fixtures near A's body are not drawn
+  await A.page.mouse.move(640, 400);
+  for (let i = 0; i < 5; i++) await A.page.mouse.wheel(0, 500);
+  await sleep(1400);
+  const camA = await A.page.evaluate(async () => {
+    const m = await window.__imp("/src/game/busRide.ts");
+    const t = await window.__imp("/src/village/transitCamera.ts");
+    const cs = m.busCamState;
+    const names = [...t.fadingFixtures(cs.eye, cs.head, cs.chest)];
+    const { scene } = window.__cvThree();
+    const vis = {};
+    scene.traverse((o) => { if (/^(pole|strap|stop_btn)_/.test(o.name)) vis[o.name] = o.visible; });
+    return { fp: cs.firstPerson, arm: cs.arm, names, vis, head: [...cs.head] };
+  });
+  run.check("A is in third person after the wheel", camA.fp === false, camA);
+  run.check("the poles and straps near A's body are named for hiding and are hidden in the scene", camA.names.length > 0 && camA.names.filter((n) => n in camA.vis).every((n) => camA.vis[n] === false), camA);
+  await shot(A, "cabin-3-A-seated-3rd-pc.png");
+  for (let i = 0; i < 6; i++) await A.page.mouse.wheel(0, -500);
+  await sleep(900);
 });
 
 await run.step("A stands up (E) and walks; the bus leaves and both ride along; round the lap both get off", async () => {

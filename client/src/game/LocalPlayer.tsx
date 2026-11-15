@@ -79,6 +79,7 @@ import type { Orbit, Pose, SeatState } from "./types";
 import { getRoom, sendJump, sendMove, sendStand } from "../net/connection";
 import { getTransitRenderPose, useTransitState } from "../net/transitSync";
 import { busWalk, busCamState, selfBusRide } from "./busRide";
+import { busRiderPoints } from "./remoteStore";
 import {
   BUS_HOLDS,
   BUS_SEATS,
@@ -483,6 +484,7 @@ export function LocalPlayer({
   const busSendRef = useRef({ at: 0, moving: false });
   const busStandSentRef = useRef(false);
   const busStepTmp = useRef({ ahead: 0, right: 0 }).current;
+  const busOthersTmp = useRef<{ ahead: number; right: number }[]>([]).current;
 
   /**
    * Onto the bus, or a change of place in it: whatever the body did gives way to the held seated pose on a seat; free or at
@@ -706,7 +708,7 @@ export function LocalPlayer({
           const da = dirW.x * fx + dirW.z * fz;
           const dr = -dirW.x * fz + dirW.z * fx;
           const speed = moveSpeed(false);
-          const next = stepInCabin(busWalk, { ahead: busWalk.ahead + da * speed * delta, right: busWalk.right + dr * speed * delta }, BUS_WALK_RADIUS, busStepTmp);
+          const next = stepInCabin(busWalk, { ahead: busWalk.ahead + da * speed * delta, right: busWalk.right + dr * speed * delta }, BUS_WALK_RADIUS, busStepTmp, busRiderPoints(busOthersTmp));
           const dA = next.ahead - busWalk.ahead;
           const dR = next.right - busWalk.right;
           busWalk.ahead = next.ahead;
@@ -721,8 +723,13 @@ export function LocalPlayer({
           }
         }
         if (inFp) busWalk.yaw = normalizeYaw(fpBodyYaw(viewState.fpYaw));
-        // The server's point, a round trip behind mine: only a far disagreement (a refused step) takes me back to it.
-        if (!moving && Math.hypot(selfBusRide.ahead - busWalk.ahead, selfBusRide.right - busWalk.right) > 0.8) {
+        // The server's point is a round trip behind mine. Once I have stood still long enough for my last step to have arrived
+        // (0.7 s after the last BusMove), any disagreement over 0.12 m means a step was refused: I take its point (review r1:
+        // the old 0.8 m rule let 0.1 - 0.8 m differences stand, so others saw me elsewhere and a sit was judged from there).
+        // While I walk, only a far one (a refused run of steps) takes me back.
+        const sinceSend = performance.now() - busSendRef.current.at;
+        const drift = Math.hypot(selfBusRide.ahead - busWalk.ahead, selfBusRide.right - busWalk.right);
+        if ((!moving && sinceSend > 700 && drift > 0.12) || drift > 1.6) {
           busWalk.ahead = selfBusRide.ahead;
           busWalk.right = selfBusRide.right;
         }

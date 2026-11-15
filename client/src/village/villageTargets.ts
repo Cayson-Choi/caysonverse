@@ -153,6 +153,7 @@ export function villageBusCabinTargets(
   right: number,
   taken: ReadonlySet<number>,
   busOnRoad: boolean,
+  riders?: ReadonlyArray<{ ahead: number; right: number }>,
 ): readonly InteractTarget[] {
   const place = busPlaceOf(busSeat);
   const out: InteractTarget[] = [];
@@ -171,7 +172,7 @@ export function villageBusCabinTargets(
   BUS_HOLDS.forEach((_h, i) => {
     if (taken.has(busHoldNumber(i))) takenHolds.add(i);
   });
-  const spot = nearestFreeSpot(ahead, right, takenSeats, takenHolds);
+  const spot = nearestFreeSpot(ahead, right, takenSeats, takenHolds, riders);
   if (spot) {
     out.push(
       spot.kind === "seat"

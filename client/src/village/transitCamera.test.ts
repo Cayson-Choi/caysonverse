@@ -91,6 +91,19 @@ describe("poles, rails and straps between the lens and the rider fade (a pole ne
     expect(fadingFixtures(far, V(far[0] - 1.6, far[1] + 0.3, 1.95), V(far[0] - 1.6, far[1] + 0.3, 1.3)).has(pole.name)).toBe(false);
   });
 
+
+  it("review r1: in third person a pole or strap beside the avatar's body (not on the line of sight) is not drawn", () => {
+    const pole = BUS_POLES[0]!;
+    const head = V(pole.ahead + 0.3, pole.right + 0.2, 1.62);
+    const chest = V(head[0], head[1], 1.0);
+    // lens on the far side of the avatar, looking across the body: the pole is beside it, 0.36 m off its axis
+    const eye = V(head[0] + 0.1, head[1] + 1.5, 1.8);
+    expect(fadingFixtures(eye, head, chest).has(pole.name)).toBe(true);
+    // a pole 0.8 m from the avatar's body is drawn (it is not on the line of sight and not at the lens)
+    const away = V(pole.ahead + 0.3, pole.right + 0.2 + 0.8, 1.62);
+    const awayChest = V(away[0], away[1], 1.0);
+    expect(fadingFixtures(V(away[0] + 0.1, away[1] + 2.4, 1.8), away, awayChest).has(pole.name)).toBe(false);
+  });
   it("a pole on the line from the lens to the avatar's head or chest fades", () => {
     const hold = BUS_HOLDS[1]!;
     const pole = BUS_POLES.find((p) => p.name === hold.pole)!;

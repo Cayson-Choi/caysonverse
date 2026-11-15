@@ -209,6 +209,8 @@ const STRAP_HALF_SPAN = 0.75;
 /** How close (m) a thin thing may come to the lens, and to the line from the lens to the rider's head and chest, before it fades. */
 export const FADE_NEAR_LENS = 0.6;
 export const FADE_NEAR_SIGHT = 0.2;
+/** In third person, a fixture this close (m) to the rider's body axis is not drawn (it would run across the avatar). */
+export const FADE_NEAR_BODY = 0.45;
 
 /**
  * Names of the cabin fixtures (poles, strap groups, rails) the camera sees through: within `FADE_NEAR_LENS` of the eye, or
@@ -218,15 +220,25 @@ export const FADE_NEAR_SIGHT = 0.2;
 export function fadingFixtures(eye: V3, head: V3, chest: V3, out: Set<string> = new Set()): Set<string> {
   out.clear();
   const eyeToHead = segmentLen(eye, head);
+  // Third person (review r1: poles, bells and straps ran across the sitting avatar's shoulders, arm and head): everything
+  // within the body's reach of the avatar's axis (feet to a hat's height) is not drawn either, whichever way the lens looks.
+  const body = eyeToHead > 0.05;
+  const bodyA: V3 = [head[0], head[1], chest[2] - 1.1];
+  const bodyB: V3 = [head[0], head[1], head[2] + 0.8];
   for (const p of BUS_POLES) {
     const a: V3 = [p.ahead, p.right, p.z0];
     const b: V3 = [p.ahead, p.right, p.z1];
+    if (body && segmentDistance(bodyA, bodyB, a, b) < FADE_NEAR_BODY) {
+      out.add(p.name);
+      continue;
+    }
     if (segmentDistance(eye, eye, a, b) < FADE_NEAR_LENS || (eyeToHead > 0.05 && (segmentDistance(eye, head, a, b) < FADE_NEAR_SIGHT || segmentDistance(eye, chest, a, b) < FADE_NEAR_SIGHT))) out.add(p.name);
   }
   for (const s of BUS_STRAPS) {
     const a: V3 = [s.ahead - STRAP_HALF_SPAN, s.right, s.z0];
     const b: V3 = [s.ahead + STRAP_HALF_SPAN, s.right, s.z1];
-    if (segmentDistance(eye, eye, a, b) < FADE_NEAR_LENS || segmentDistance(eye, head, a, b) < FADE_NEAR_SIGHT || segmentDistance(eye, chest, a, b) < FADE_NEAR_SIGHT) out.add(s.name);
+    if (body && segmentDistance(bodyA, bodyB, a, b) < FADE_NEAR_BODY) out.add(s.name);
+    else if (segmentDistance(eye, eye, a, b) < FADE_NEAR_LENS || segmentDistance(eye, head, a, b) < FADE_NEAR_SIGHT || segmentDistance(eye, chest, a, b) < FADE_NEAR_SIGHT) out.add(s.name);
   }
   for (const [side, name] of [[1, "rail_r"], [-1, "rail_l"]] as const) {
     const a: V3 = [RAIL_AHEAD[0], side * 0.6, RAIL_H];

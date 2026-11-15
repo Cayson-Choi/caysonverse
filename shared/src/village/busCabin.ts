@@ -179,8 +179,8 @@ export interface BusLocalPoint {
  * enforces BUS_RIDER_APART_SERVER (a little less: the other rider's point it sees is newer than the one a client draws, so
  * the server never refuses a step the client's own stricter prediction allowed).
  */
-export const BUS_RIDER_APART = 0.2;
-export const BUS_RIDER_APART_SERVER = 0.16;
+export const BUS_RIDER_APART = 0.14;
+export const BUS_RIDER_APART_SERVER = 0.11;
 
 /**
  * Whether a step from `from` to `to` walks INTO another rider: ends within `apart` of one and closer than where it started

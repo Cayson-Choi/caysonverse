@@ -225,11 +225,11 @@ describe("review r1: holds, crowd and the wall seats", () => {
   it("a step into another rider is refused, a step away from one is not, and the slide goes round", () => {
     const o = { ahead: 0, right: 0 };
     expect(crowdBlocks({ ahead: 1, right: 0 }, { ahead: 0.7, right: 0 }, [o])).toBe(false);
-    expect(crowdBlocks({ ahead: 0.8, right: 0 }, { ahead: 0.1, right: 0 }, [o])).toBe(true);
-    expect(crowdBlocks({ ahead: 0.1, right: 0 }, { ahead: 0.15, right: 0 }, [o])).toBe(false); // already inside: may walk out
+    expect(crowdBlocks({ ahead: 0.8, right: 0 }, { ahead: 0.05, right: 0 }, [o])).toBe(true);
+    expect(crowdBlocks({ ahead: 0.05, right: 0 }, { ahead: 0.1, right: 0 }, [o])).toBe(false); // already inside: may walk out
     // two riders pass in the narrowest aisle (0.5 m of walkable width): at its two edges
-    expect(crowdBlocks({ ahead: 0.6, right: 0.25 }, { ahead: 0.0, right: 0.25 }, [{ ahead: 0.3, right: 0.0 }])).toBe(false);
-    const out = stepInCabin({ ahead: 0.8, right: 0 }, { ahead: 0.1, right: 0 }, undefined, undefined, [o]);
+    expect(crowdBlocks({ ahead: 0.6, right: 0.2 }, { ahead: 0.0, right: 0.2 }, [{ ahead: 0.3, right: 0.0 }])).toBe(false);
+    const out = stepInCabin({ ahead: 0.8, right: 0 }, { ahead: 0.05, right: 0 }, undefined, undefined, [o]);
     expect(Math.hypot(out.ahead - o.ahead, out.right - o.right)).toBeGreaterThanOrEqual(BUS_RIDER_APART - 1e-9);
   });
 
@@ -237,7 +237,7 @@ describe("review r1: holds, crowd and the wall seats", () => {
     const seat = BUS_SEATS.find((x) => x.id === "R2")!;
     const first = seatStandUpSpot(seat);
     const second = seatStandUpSpot(seat, [{ ahead: first.ahead, right: first.right }]);
-    expect(Math.hypot(second.ahead - first.ahead, second.right - first.right)).toBeGreaterThanOrEqual(0.16);
+    expect(Math.hypot(second.ahead - first.ahead, second.right - first.right)).toBeGreaterThanOrEqual(0.11);
     expect(cabinBlocked(second.ahead, second.right)).toBe(false);
   });
 

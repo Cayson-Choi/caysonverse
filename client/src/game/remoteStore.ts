@@ -6,6 +6,7 @@
  * leave alone — never on movement. Positions never pass through React state.
  */
 
+import { busPlaceOf } from "@caysonverse/shared/village/busCabin";
 import type { Appearance } from "@caysonverse/shared/appearance";
 import type { Snapshot } from "./interpolation";
 import { receivePose, type Playout } from "./playout";
@@ -256,6 +257,21 @@ export interface DrawnPose {
  * reads it. Always empty in production, where the DEV guard is dead-code-eliminated.
  */
 export const remoteDrawnProbe = new Map<string, DrawnPose>();
+
+/**
+ * Where the other riders on foot stand in the bus (bus-local, the server's newest point): the walk predicts with them as
+ * bodies it does not step into (busCabin.ts crowdBlocks); a seated rider is inside its seat's solid already.
+ */
+export function busRiderPoints(into: { ahead: number; right: number }[] = []): { ahead: number; right: number }[] {
+  into.length = 0;
+  for (const record of records.values()) {
+    const n = record.busSeat ?? -1;
+    if (n < 0) continue;
+    if (busPlaceOf(n).kind === "seat") continue;
+    into.push({ ahead: record.busAhead ?? 0, right: record.busRight ?? 0 });
+  }
+  return into;
+}
 
 /** The busSeat numbers (seats and hold spots, busCabin.ts) the remotes aboard hold now: what the local rider cannot take. */
 export function takenBusSpots(into: Set<number> = new Set()): Set<number> {

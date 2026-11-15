@@ -75,7 +75,7 @@ import { useSettingsStore } from "../stores/settingsStore";
 import { getTransitRenderPose } from "../net/transitSync";
 import { busRiderCamera, ownSeatIndex, riderFov, type TransitCameraPose } from "../village/transitCamera";
 import { busArmFor, busCamGoal, busCamState, busElevation, riderBusPoint, selfBusRide } from "./busRide";
-import { BUS_HOLDS, BUS_SEATS, busPlaceOf, cabinFloorAt } from "@caysonverse/shared/village/busCabin";
+import { BUS_HOLDS, BUS_SEATS, busPlaceOf, cabinFloorAt, seatBodyPoint } from "@caysonverse/shared/village/busCabin";
 import type { Orbit, Pose, SeatState } from "./types";
 
 interface CameraRigProps {
@@ -957,7 +957,7 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
       }
       const place = busPlaceOf(selfBusRide.slot);
       const bus = getTransitRenderPose();
-      const spot = place.kind === "seat" ? BUS_SEATS[place.index] : place.kind === "hold" ? BUS_HOLDS[place.index] : undefined;
+      const spot = place.kind === "seat" ? seatBodyPoint(BUS_SEATS[place.index]!) : place.kind === "hold" ? BUS_HOLDS[place.index] : undefined;
       const local = riderBusPoint(selfBusRide, place.kind, spot);
       const ride = busRiderCamera(
         {
