@@ -236,9 +236,12 @@ export function indoorArmShape(
   reach: number,
   offY: number,
   pitch: number,
+  heightScale = 1,
 ): { offY: number; lookLift: number } {
   const ref = Math.min(reach, INDOOR_ARM.refReach);
-  const kept = Math.max(ref, armLimit) * Math.sin(pitch);
+  // `heightScale` > 1 on a portrait screen (round 6 review: on a phone the arrival view was the back of the head over the
+  // benches): the kept height grows with the screen's pull-back, so the camera looks down onto the hall over the head.
+  const kept = Math.max(ref, armLimit) * Math.sin(pitch) * heightScale;
   return {
     offY: offY >= 0 ? Math.min(offY, Math.max(0, kept)) : Math.max(offY, Math.min(0, kept)),
     // fades out as the camera comes right over the head (a sofa against the wall): looking above a head you hover over loses it

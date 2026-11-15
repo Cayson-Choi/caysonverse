@@ -11,6 +11,7 @@ import {
   CUBBY_SHORT,
   DOOR_LABEL,
   DOOR_OFFER_REACH_M,
+  DOOR_INSIDE_OFFER_HALF_WIDTH_M,
   DOOR_SHORT,
   MEMORIAL_DOOR_ID,
   cubbyColumn,
@@ -59,9 +60,25 @@ describe("villageTargets — the memorial hall's door", () => {
   it.each<[AreaId]>([["village"], ["hall"]])("%s: offered within the pad radius + the offer reach, not an inch past it", (area) => {
     const pad = doorPadFor(area);
     const edge = pad.radius + DOOR_OFFER_REACH_M;
-    expect(villageTargets(area, pad.centre.x + edge - 0.001, pad.centre.z)).toHaveLength(1);
-    expect(villageTargets(area, pad.centre.x + edge + 0.001, pad.centre.z)).toHaveLength(0);
-    expect(villageTargets(area, pad.centre.x, pad.centre.z - edge - 0.001)).toHaveLength(0);
+    // straight in front of the door (inside: north of it, into the room)
+    const into = area === "village" ? 1 : -1;
+    expect(villageTargets(area, pad.centre.x, pad.centre.z + into * (edge - 0.001))).toHaveLength(1);
+    expect(villageTargets(area, pad.centre.x, pad.centre.z + into * (edge + 0.001))).toHaveLength(0);
+    if (area === "village") {
+      expect(villageTargets(area, pad.centre.x + edge - 0.001, pad.centre.z)).toHaveLength(1);
+      expect(villageTargets(area, pad.centre.x + edge + 0.001, pad.centre.z)).toHaveLength(0);
+    }
+  });
+
+  it("inside, past the pad's edge the way out is offered only straight in front of the door (round 6: not at the lounge entrance)", () => {
+    const pad = doorPadFor("hall");
+    expect(villageTargets("hall", 298.8, 3.15)).toHaveLength(0); // the lounge entrance, 2.37 m from the pad's centre
+    expect(villageTargets("hall", pad.centre.x + DOOR_INSIDE_OFFER_HALF_WIDTH_M - 0.001, pad.centre.z - 2.2)).toHaveLength(1);
+    expect(villageTargets("hall", pad.centre.x + DOOR_INSIDE_OFFER_HALF_WIDTH_M + 0.001, pad.centre.z - 2.2)).toHaveLength(0);
+    // on the pad itself, anywhere
+    expect(villageTargets("hall", pad.centre.x + pad.radius - 0.01, pad.centre.z)).toHaveLength(1);
+    // the arrival spot
+    expect(villageTargets("hall", inside.spawn.x, inside.spawn.z)).toHaveLength(1);
   });
 
   it("away from the door nothing is offered: the spawn, the plaza, a plot's sign, the middle of the hall", () => {
@@ -189,7 +206,7 @@ describe("the hall desk and the way out (Task 9A)", () => {
     expect(atDesk).toMatchObject({ kind: "target", target: { id: "guide:hall_desk" } });
     const atDoor = pick(300.6, 4.6); // 0.85 m from the pad, out of the desk's reach
     expect(atDoor).toMatchObject({ kind: "target", target: { id: MEMORIAL_DOOR_ID } });
-    const between = pick(301.8, 5.2); // inside the door offer radius and outside the desk reach
+    const between = pick(301.2, 5.2); // on the door pad and outside the desk reach
     expect(between).toMatchObject({ kind: "target", target: { id: MEMORIAL_DOOR_ID } });
   });
 

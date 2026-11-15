@@ -3,7 +3,7 @@ import { VILLAGE_LAYOUT } from "@caysonverse/shared/village/villageLayout";
 import { VILLAGE_SEATS } from "@caysonverse/shared/village/benchSeats";
 import { CAMERA, INDOOR_SELF_HIDE_DISTANCE, INDOOR_SELF_SHOW_DISTANCE } from "./constants";
 import { HALL_ACTIVE_MAP, VILLAGE_ACTIVE_MAP, setActiveMap } from "./activeMap";
-import { INDOOR_SEAT_MIN_DIST, indoorSeatFrame, settledHeadDistance } from "./seatFraming";
+import { INDOOR_SEAT_MIN_DIST, indoorSeatFrame, setSeatSightBlocker, settledHeadDistance } from "./seatFraming";
 import { beginSeatCamera, resetViewMode, viewState } from "./viewState";
 import { indoorCloseHidden } from "./selfBody";
 import type { Orbit } from "./types";
@@ -70,5 +70,34 @@ describe("own avatar in view in the memorial hall (review 2026-11-15 round 5: it
     beginSeatCamera(orbit, sofa.yaw, true, { x: sofa.x, z: sofa.z, aspect: PC });
     const f = indoorSeatFrame(sofa.x, sofa.z, sofa.yaw, 6, PC);
     expect(viewState.orbitGoal).toEqual({ yaw: f.yaw, pitch: f.pitch });
+  });
+});
+
+describe("a sofa's first framing is from the room, with the body in sight (round 6 review: sofa a0/a1 behind the tea counter)", () => {
+  const sofas = HALL_SEATS.filter((s) => s.id === "sofa_a0" || s.id === "sofa_a1");
+  it("sofa a0 and a1 are framed from the room side (north of the sofa), not along the wall past the tea counter", () => {
+    expect(sofas).toHaveLength(2);
+    for (const s of sofas) {
+      for (const aspect of [PC, PHONE, PHONE_LAND]) {
+        const f = indoorSeatFrame(s.x, s.z, s.yaw, 6, aspect);
+        // the camera sits at (sin yaw, cos yaw) from the seat: the room is to the north (−z)
+        expect(Math.cos(f.yaw), `${s.id} aspect ${aspect.toFixed(2)}`).toBeLessThan(-0.3);
+        expect(f.dist).toBeGreaterThanOrEqual(INDOOR_SEAT_MIN_DIST - 1e-9);
+      }
+    }
+  });
+
+  it("a framing whose line to the seated body is blocked (the hall's model, registered by the hall) is passed over", () => {
+    const s = sofas[1]!;
+    const free = indoorSeatFrame(s.x, s.z, s.yaw, 6, PC);
+    // block every line from a camera on the free framing's side of the seat
+    const side = Math.sign(Math.sin(free.yaw)) || 1;
+    const off = setSeatSightBlocker((fx) => Math.sign(fx - s.x) === side);
+    try {
+      const f = indoorSeatFrame(s.x, s.z, s.yaw, 6, PC);
+      expect(Math.sign(Math.sin(f.yaw))).not.toBe(side);
+    } finally {
+      off();
+    }
   });
 });

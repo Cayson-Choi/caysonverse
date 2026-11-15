@@ -2,6 +2,7 @@ import { Suspense, useEffect, useMemo } from "react";
 import { useFrame } from "@react-three/fiber";
 import { useGLTF, useTexture } from "@react-three/drei";
 import {
+  Raycaster,
   DataTexture,
   Group,
   InstancedMesh,
@@ -30,6 +31,7 @@ import { disposeHallNight, hallNightReady, hallNightUniform, hallNightWeight, lo
 import { useNightMapWanted } from "./nightLightmap";
 import { dayNight } from "./dayNightDriver";
 import { setHallDoorLeaves } from "./hallDoor";
+import { setSeatSightBlocker } from "../game/seatFraming";
 import { cubbyFocusAnchor, cubbyFocusWeight } from "./cubbyFocus";
 import { useQualityTier } from "../game/QualityEffects";
 import { LoadBoundary } from "./LoadBoundary";
@@ -223,6 +225,30 @@ function MemorialHall() {
   );
 
   useEffect(() => () => disposeMemorial(nodes), [nodes]);
+  // A seat's first framing (seatFraming.ts) must see the seated body: the hall's solid model is cast against (glass is not).
+  useEffect(() => {
+    const ray = new Raycaster();
+    const from = new Vector3();
+    const dir = new Vector3();
+    const solid: Object3D[] = [];
+    nodes.root.updateMatrixWorld(true);
+    nodes.root.traverse((o) => {
+      const m = o as Mesh;
+      if (!m.isMesh || Array.isArray(m.material) || (m.material as Material).transparent) return;
+      solid.push(m);
+    });
+    return setSeatSightBlocker((fx, fy, fz, tx, ty, tz) => {
+      from.set(fx, fy, fz);
+      dir.set(tx - fx, ty - fy, tz - fz);
+      const len = dir.length();
+      // the last 0.35 m is the seat round the body itself (cushions, arms): not a blocker
+      if (len < 0.4) return false;
+      ray.set(from, dir.divideScalar(len));
+      ray.near = 0;
+      ray.far = len - 0.35;
+      return ray.intersectObjects(solid.filter((m) => m.visible), false).length > 0;
+    });
+  }, [nodes]);
   useEffect(() => {
     setHallDoorLeaves(nodes.doorLeaves);
     return () => setHallDoorLeaves(null);

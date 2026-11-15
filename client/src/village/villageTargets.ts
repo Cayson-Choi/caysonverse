@@ -37,6 +37,11 @@ export const BUS_RIDE_TARGET_LEAVE = "village_bus_leave";
 
 /** How far past the pad's radius the button is offered (m). The server's own reach is 1.3 (villageDoor.ts DOOR_REACH_M). */
 export const DOOR_OFFER_REACH_M = 1.25;
+/**
+ * Inside, the way out is offered past the pad's edge only in front of the door: at most this far (m) to either side of its
+ * centre line (the server's DOOR_INSIDE_HALF_WIDTH_M is 0.8; on the pad itself it is always offered). Round 6 review: the lounge entrance, 1.2 m to the side, offered it.
+ */
+export const DOOR_INSIDE_OFFER_HALF_WIDTH_M = 0.7;
 
 const NONE: readonly InteractTarget[] = Object.freeze([]);
 
@@ -53,7 +58,9 @@ export function villageTargets(
 ): readonly InteractTarget[] {
   const pad = doorPadFor(area, layout);
   const dist = Math.hypot(x - pad.centre.x, z - pad.centre.z);
-  if (dist <= pad.radius + DOOR_OFFER_REACH_M) {
+  // on the pad itself always; past its edge (the reach) inside a building only straight in front of the door
+  const inFront = area === "village" || dist <= pad.radius || Math.abs(x - pad.centre.x) <= DOOR_INSIDE_OFFER_HALF_WIDTH_M;
+  if (inFront && dist <= pad.radius + DOOR_OFFER_REACH_M) {
     const label = area === "village" ? DOOR_LABEL.village : area === "hall" ? DOOR_LABEL.hall : "집 밖으로 나가기";
     const short = area === "village" ? DOOR_SHORT.village : area === "hall" ? DOOR_SHORT.hall : "나가기";
     return [{ kind: "door", id: MEMORIAL_DOOR_ID, dist, icon: "🚪", label, short }];
@@ -88,7 +95,8 @@ export const CUBBY_REACH_M = 1.2;
 /** The target id prefix of a cubby column: `cubby:<bank>_<col>`. */
 export const CUBBY_TARGET_PREFIX = "cubby:";
 export const CUBBY_LABEL = "가까이 보기";
-export const CUBBY_SHORT = "칸 보기";
+/** The touch button says the same as the PC one (round 6 review: "칸 보기" on a phone, "가까이 보기" on a PC). */
+export const CUBBY_SHORT = CUBBY_LABEL;
 
 /** A column of cubbies: its wall and column, where it stands on the floor (the anchors' x, z) and its rows' anchors (bottom first). */
 export interface CubbyColumn {

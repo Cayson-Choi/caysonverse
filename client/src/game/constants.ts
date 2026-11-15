@@ -63,6 +63,15 @@ export const INDOOR_SELF_HIDE_DISTANCE = 0.6;
 /** The hidden body shows again once the camera is this far from the head (a little past the hide distance: no flicker). */
 export const INDOOR_SELF_SHOW_DISTANCE = 0.8;
 
+/**
+ * Indoors, a third-person camera pushed this near the head by a wall (m) — the over-the-shoulder view (cameraShoulder.ts) —
+ * fades the own body to SELF_COVER_FADE_OPACITY (front surface only, never a ghost disc), eased; back in full past
+ * SELF_COVER_SHOW_DISTANCE. Review 2026-11-15 round 6. Arrival (3.45 m) and every seat (3.35 m+) stay solid.
+ */
+export const SELF_COVER_FADE_DISTANCE = 2.3;
+export const SELF_COVER_SHOW_DISTANCE = 2.5;
+export const SELF_COVER_FADE_OPACITY = 0.6;
+
 /** drei KeyboardControls action names (typed control set). */
 export type MoveControl = "forward" | "backward" | "left" | "right" | "run" | "camLeft" | "camRight";
 

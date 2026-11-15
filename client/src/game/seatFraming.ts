@@ -11,6 +11,7 @@ import { CAMERA, HEAD_HEIGHT } from "./constants";
 import { recenterYaw } from "./cameraControls";
 import { normalizeAngle } from "./yaw";
 import { createFollowRig, createFollowSpot, stepFollowRig } from "./followRig";
+import { SHOULDER } from "./cameraShoulder";
 
 /** The tilt a seat indoors starts the third-person camera at (rad): nearly level, over the shoulder, so the room is in view. */
 export const INDOOR_SEAT_PITCH = 0.12;
@@ -20,12 +21,58 @@ const SEAT_PITCHES = [INDOOR_SEAT_PITCH, 0.3, 0.5] as const;
 export const INDOOR_SEAT_MIN_DIST = CAMERA.minDistance + 0.15;
 /** A seat's first framing is looked for at this distance (m) first, before settling for the least room. */
 export const INDOOR_SEAT_ROOMY = 4.5;
-/** The yaw offsets from "behind the seat" that are tried, in order: behind, then 15° steps round, right before left. */
+/**
+ * The yaw offsets from "behind the seat" that are tried, in order (right before left at each step): from behind (up to 45°
+ * round), then the front three-quarter views from the room, then straight from the front, then the side views. Round 6
+ * review: side views of a sofa against the wall look along the wall, past the tea counter and the door frame — the body
+ * reads as stuck to the counter — so they come last.
+ */
 const OFFSETS: readonly number[] = (() => {
-  const out = [0];
-  for (let k = 1; k <= 12; k++) out.push((k * Math.PI) / 12, (-k * Math.PI) / 12);
+  const deg = [0, 15, 30, 45, 135, 120, 150, 165, 180, 105, 90, 75, 60];
+  const out: number[] = [];
+  for (const d of deg) {
+    out.push((d * Math.PI) / 180);
+    if (d !== 0 && d !== 180) out.push((-d * Math.PI) / 180);
+  }
   return out;
 })();
+
+/**
+ * Whether something solid (the hall's own model: a counter, a cabinet, a coffee machine) stands between a camera spot and a point
+ * of the seated body. The hall registers a raycast over its model while it is mounted (MemorialHall.tsx); without one, every
+ * framing counts as clear. Round 6 review: sofa a0/a1's first framing looked along the wall past the tea counter, which hid
+ * the body — the walls-only arm could not know the counter was there.
+ */
+export type SightBlocked = (fromX: number, fromY: number, fromZ: number, toX: number, toY: number, toZ: number) => boolean;
+let sightBlocked: SightBlocked | null = null;
+/** Register (or clear) the blocker; returns the unregister for that one blocker. */
+export function setSeatSightBlocker(fn: SightBlocked | null): () => void {
+  sightBlocked = fn;
+  return () => {
+    if (sightBlocked === fn) sightBlocked = null;
+  };
+}
+/** Heights (m) of the seated body checked for sight: the lap, the chest and the head. The body is in view when all are. */
+export const SEAT_SIGHT_HEIGHTS = [0.5, 0.75, 1.05] as const;
+/**
+ * …and the chest's width with a margin (m, to either side, across the view): a framing that grazes a counter right beside the
+ * body (sofa a0/a1 seen along the wall past the tea counter) reads as the body stuck to the counter, so it does not count.
+ */
+export const SEAT_SIGHT_SIDE = 0.45;
+
+/** Whether a camera settled at `spot` sees the seated body at (x, z) (with no blocker registered: yes). */
+export function seatBodyInSight(spot: { x: number; y: number; z: number }, x: number, z: number): boolean {
+  const blocked = sightBlocked;
+  if (!blocked) return true;
+  if (SEAT_SIGHT_HEIGHTS.some((y) => blocked(spot.x, spot.y, spot.z, x, y, z))) return false;
+  const dx = x - spot.x;
+  const dz = z - spot.z;
+  const len = Math.hypot(dx, dz);
+  if (len < 1e-6) return true;
+  const sx = (-dz / len) * SEAT_SIGHT_SIDE;
+  const sz = (dx / len) * SEAT_SIGHT_SIDE;
+  return !blocked(spot.x, spot.y, spot.z, x + sx, 0.75, z + sz) && !blocked(spot.x, spot.y, spot.z, x - sx, 0.75, z - sz);
+}
 
 export interface SeatFrame {
   yaw: number;
@@ -36,13 +83,18 @@ export interface SeatFrame {
 
 /** Where the camera settles (distance from the head) for a player at (x, z) with the orbit (yaw, pitch, distance) on `aspect`. */
 export function settledHeadDistance(x: number, z: number, yaw: number, pitch: number, distance: number, aspect: number): number {
+  return settledSpot(x, z, yaw, pitch, distance, aspect).dist;
+}
+
+/** Where the camera settles for that orbit (and its distance from the head). */
+function settledSpot(x: number, z: number, yaw: number, pitch: number, distance: number, aspect: number): { x: number; y: number; z: number; dist: number } {
   const orbit = { yaw, pitch, distance };
   const rig = createFollowRig(orbit);
   const spot = createFollowSpot();
   // the arm takes a shorter length at once; two frames settle the ceiling and the walls
   stepFollowRig(rig, orbit, x, z, aspect, 1 / 60, true, spot);
   stepFollowRig(rig, orbit, x, z, aspect, 1 / 60, true, spot);
-  return Math.hypot(spot.x - x, spot.y - HEAD_HEIGHT, spot.z - z);
+  return { x: spot.x, y: spot.y, z: spot.z, dist: Math.hypot(spot.x - x, spot.y - HEAD_HEIGHT, spot.z - z) };
 }
 
 /**
@@ -53,19 +105,23 @@ export function settledHeadDistance(x: number, z: number, yaw: number, pitch: nu
 export function indoorSeatFrame(x: number, z: number, seatYaw: number, distance: number, aspect: number): SeatFrame {
   const behind = recenterYaw(seatYaw);
   let best: SeatFrame | null = null;
-  // first a roomy framing (the player's own zoom, up to INDOOR_SEAT_ROOMY) from behind or the side: a sofa against the wall is
+  // first a roomy framing (the player's own zoom, up to INDOOR_SEAT_ROOMY) from behind, the front three-quarters or the side: a sofa against the wall is
   // then seen from across the room, not from a camera squeezed along the wall; then any direction with the least room
   const roomy = Math.min(INDOOR_SEAT_ROOMY, distance * 0.9);
   for (const [need, maxOff] of [
-    [Math.max(INDOOR_SEAT_MIN_DIST, roomy), (3 * Math.PI) / 4 + 1e-9],
+    [Math.max(INDOOR_SEAT_MIN_DIST, roomy), Math.PI + 1e-9],
     [INDOOR_SEAT_MIN_DIST, Math.PI + 1e-9],
   ] as const) {
     for (const off of OFFSETS) {
       if (Math.abs(off) > maxOff) continue;
       for (const pitch of SEAT_PITCHES) {
         const yaw = normalizeAngle(behind + off);
-        const dist = settledHeadDistance(x, z, yaw, pitch, distance, aspect);
-        if (dist >= need - 1e-9) return { yaw, pitch, dist };
+        const spot = settledSpot(x, z, yaw, pitch, distance, aspect);
+        const dist = spot.dist;
+        // with room enough, the body must also be in sight (a counter or a cabinet between them is no framing), and the camera
+        // far enough out across the floor that the wall's over-the-shoulder view (cameraShoulder.ts) stays off
+        const across = Math.hypot(spot.x - x, spot.z - z);
+        if (dist >= need - 1e-9 && across >= SHOULDER.engageBelow && seatBodyInSight(spot, x, z)) return { yaw, pitch, dist };
         if (!best || dist > best.dist) best = { yaw, pitch, dist };
       }
     }

@@ -920,9 +920,9 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
     const uPosZ = lerp(tpZ, pose.z, t);
     // TP looks at the (smoothed) follow point, a little above the head; FP at the
     // pose-anchored eye line.
-    const uTgtX = lerp(followX, pose.x + fwdX, t);
+    const uTgtX = lerp(followX + tpSpot.lookX, pose.x + fwdX, t);
     const uTgtY = lerp(HEAD_HEIGHT + CAMERA_LOOK_LIFT + tpLookLift, FP_EYE_HEIGHT + hop + fwdY, t);
-    const uTgtZ = lerp(followZ, pose.z + fwdZ, t);
+    const uTgtZ = lerp(followZ + tpSpot.lookZ, pose.z + fwdZ, t);
 
     // ── Overview pose ── straight up over the pan-centre, looking down. A camera limit (a building's ceiling) is
     // bypassed here by construction (this is a separate pose term, never routed through the limit). ──

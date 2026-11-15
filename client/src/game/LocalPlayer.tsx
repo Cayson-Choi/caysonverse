@@ -62,6 +62,7 @@ import { clipFor, lookFromAppearance } from "./characterLook";
 import { reportAvatarClip, useAvatar } from "./useAvatar";
 import { BlobShadow } from "./BlobShadow";
 import { PICK_AS_SELF } from "./clickPick";
+import { SELF_FADE_OPACITY } from "./clickRing";
 import { createSelfFade, endSelfFade, indoorCloseHidden, registerSelfBody, selfBody, stepSelfFade } from "./selfBody";
 import { createNametag } from "./nametag";
 import { registerLabel } from "./labelRegistry";
@@ -71,7 +72,19 @@ import { useEmoji } from "./useEmoji";
 import { stepYaw } from "./yaw";
 import { createMoveSender } from "./moveSender";
 import { installDebugHook } from "./debug";
-import { ANIM_FADE, CLIP, HEAD_HEIGHT, INDOOR_SELF_HIDE_DISTANCE, INDOOR_SELF_SHOW_DISTANCE, MODEL_FACING_OFFSET, SELF_CAMERA_HIDE_DISTANCE, TURN_SPEED } from "./constants";
+import {
+  ANIM_FADE,
+  CLIP,
+  HEAD_HEIGHT,
+  INDOOR_SELF_HIDE_DISTANCE,
+  INDOOR_SELF_SHOW_DISTANCE,
+  MODEL_FACING_OFFSET,
+  SELF_CAMERA_HIDE_DISTANCE,
+  SELF_COVER_FADE_DISTANCE,
+  SELF_COVER_FADE_OPACITY,
+  SELF_COVER_SHOW_DISTANCE,
+  TURN_SPEED,
+} from "./constants";
 import type { MoveControl } from "./constants";
 import type { Orbit, Pose, SeatState } from "./types";
 import { getRoom, sendJump, sendMove, sendStand } from "../net/connection";
@@ -227,6 +240,7 @@ export function LocalPlayer({
   const selfFadeRef = useRef(createSelfFade());
   /** Hidden because the camera is right at the head indoors (see the per-frame visibility below). */
   const closeHiddenRef = useRef(false);
+  const coverFadeRef = useRef(false);
   useEffect(() => {
     const group = groupRef.current;
     const unregister = group ? registerSelfBody(group, avatar.topY) : undefined;
@@ -507,7 +521,17 @@ export function LocalPlayer({
     // The destination ring straight ahead, behind the body (a click on the body itself, a walk away from the camera):
     // the body fades and is drawn after the ring, so the ring shows through it (round 6 review: only its dashes showed,
     // on the body, all the way there).
-    stepSelfFade(selfFadeRef.current, avatar, group.visible && selfBody.hidingRing, delta);
+    // Indoors, a wall behind that pushed the camera near the head (the over-the-shoulder view, cameraShoulder.ts): the body
+    // fades part way while it would cover the view (round 6 review), eased, its front surface only.
+    coverFadeRef.current = indoorCloseHidden(coverFadeRef.current, indoorTp && !inCloseUp, headDist, SELF_COVER_FADE_DISTANCE, SELF_COVER_SHOW_DISTANCE);
+    const cover = group.visible && coverFadeRef.current;
+    stepSelfFade(
+      selfFadeRef.current,
+      avatar,
+      group.visible && (selfBody.hidingRing || cover),
+      delta,
+      cover ? Math.min(SELF_COVER_FADE_OPACITY, selfBody.hidingRing ? SELF_FADE_OPACITY : 1) : undefined,
+    );
 
     // Focus guard: while the chat input owns keyboard input — OR while the
     // resilience driver is reconnecting (world frozen behind the overlay) —

@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { PLAYER_RADIUS } from "@caysonverse/shared/constants";
 import { isBlocked } from "@caysonverse/shared/collision";
 import { VILLAGE_LAYOUT, villageGeometry } from "@caysonverse/shared/village/villageLayout";
-import { DOOR_RATE, DOOR_REACH_M, arrivalAfter, useDoor } from "./villageDoor";
+import { DOOR_INSIDE_HALF_WIDTH_M, DOOR_RATE, DOOR_REACH_M, arrivalAfter, useDoor } from "./villageDoor";
 
 const L = VILLAGE_LAYOUT;
 const outPad = L.memorial.exterior.doorPad;
@@ -93,5 +93,17 @@ describe("useDoor", () => {
     expect(useDoor("", outPad.centre.x, outPad.centre.z)).toBeNull();
     expect(useDoor("village", Number.NaN, outPad.centre.z)).toBeNull();
     expect(useDoor("village", outPad.centre.x, Number.POSITIVE_INFINITY)).toBeNull();
+  });
+});
+
+describe("the way out is used from in front of the door only (round 6 review, 2026-11-15)", () => {
+  it("not from the lounge entrance beside it; on the pad and straight in front, yes", () => {
+    const pad = VILLAGE_LAYOUT.memorial.interior.doorPad;
+    expect(useDoor("hall", 298.8, 3.15)).toBeNull(); // the lounge entrance, 2.37 m from the pad's centre
+    expect(useDoor("hall", pad.centre.x + DOOR_INSIDE_HALF_WIDTH_M - 0.01, pad.centre.z - 2.3)).not.toBeNull();
+    expect(useDoor("hall", pad.centre.x + DOOR_INSIDE_HALF_WIDTH_M + 0.01, pad.centre.z - 2.3)).toBeNull();
+    expect(useDoor("hall", pad.centre.x + pad.radius - 0.01, pad.centre.z)).not.toBeNull();
+    const spawn = VILLAGE_LAYOUT.memorial.interior.spawn;
+    expect(useDoor("hall", spawn.x, spawn.z)).not.toBeNull();
   });
 });
