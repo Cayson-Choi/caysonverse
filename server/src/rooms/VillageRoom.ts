@@ -29,7 +29,7 @@ import {
   tickFishing,
   type FishingState,
 } from "@caysonverse/shared/village/fishing";
-import { VILLAGE_LAYOUT, houseArea, houseInteriorGeometry, isHouseArea, villageGeometry } from "@caysonverse/shared/village/villageLayout";
+import { HOUSE_INTERIOR_SPAWN, VILLAGE_LAYOUT, houseArea, houseInteriorGeometry, isHouseArea, villageGeometry } from "@caysonverse/shared/village/villageLayout";
 import { VILLAGE_SEATS } from "@caysonverse/shared/village/benchSeats";
 import { arrivalArea, freeSpawnSpot, spreadArrival } from "@caysonverse/shared/village/arrivalSpot";
 import { PlayerRoom, baseTracking, spawnInDisk, type Tracking } from "./PlayerRoom";
@@ -631,7 +631,8 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     const now = this.now();
     const area = houseArea(decision.buildingId);
     // The same spread as the hall's door: a family member coming in after another lands beside them, not inside.
-    const at = spreadArrival(area, VILLAGE_LAYOUT.memorial.interior.spawn, this.playersIn(area, client.sessionId));
+    // The houses' own arrival spot (not the hall's: round 6 review — moving the hall's spawn moved the houses' too).
+    const at = spreadArrival(area, HOUSE_INTERIOR_SPAWN, this.playersIn(area, client.sessionId));
     player.x = at.x;
     player.z = at.z;
     player.yaw = at.yaw;

@@ -852,6 +852,17 @@ export const villageGeometry: MapGeometry = buildVillageGeometry(
   [...guideColliders(), ...busMirrorColliders()],
 );
 
+/**
+ * Where a family member lands inside a house (the keypad's way in). The house interiors share the hall's footprint, but not its
+ * arrival spot: the hall's moved 1 m in (round 5) for its camera, which must not move the houses' with it (round 6 review). The
+ * houses keep their own, 1.6 m in front of the shared door pad's centre and facing into the room.
+ */
+export const HOUSE_INTERIOR_SPAWN: Readonly<{ x: number; z: number; yaw: number }> = Object.freeze({
+  x: VILLAGE_LAYOUT.memorial.interior.doorPad.centre.x,
+  z: VILLAGE_LAYOUT.memorial.interior.doorPad.centre.z - 1.6,
+  yaw: VILLAGE_LAYOUT.memorial.interior.spawn.yaw,
+});
+
 /** Procedural house interiors reuse the hall room footprint but omit memorial furniture and cubby obstacles. */
 export const houseInteriorGeometry: MapGeometry = makeGeometry(
   "house",

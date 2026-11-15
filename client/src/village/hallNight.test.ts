@@ -129,3 +129,26 @@ describe("hallNight — the hall's light follows the village's clock", () => {
     disposeHallNight();
   });
 });
+
+describe("the cubby interiors' shared texture (round 6)", () => {
+  it("blends its night half (0.5 to the right) by the night weight, once per material", async () => {
+    const { MeshBasicMaterial } = await import("three");
+    const { HALL_CUBBY_MATERIAL, patchHallCubbyMaterial, hallNightUniform } = await import("./hallNight");
+    expect(HALL_CUBBY_MATERIAL).toBe("M_cubby_in");
+    const m = new MeshBasicMaterial();
+    patchHallCubbyMaterial(m);
+    const first = m.onBeforeCompile;
+    patchHallCubbyMaterial(m);
+    expect(m.onBeforeCompile).toBe(first);
+    const shader = {
+      uniforms: {} as Record<string, unknown>,
+      fragmentShader: "uniform vec3 diffuse;\nvoid main() {\n#include <map_fragment>\n}",
+      vertexShader: "",
+    };
+    m.onBeforeCompile(shader as never, undefined as never);
+    expect(shader.uniforms.uHallNight).toBe(hallNightUniform);
+    expect(shader.fragmentShader).toContain("vMapUv + vec2( 0.5, 0.0 )");
+    expect(shader.fragmentShader).toContain("uniform float uHallNight;");
+    expect(shader.fragmentShader).not.toContain("#include <map_fragment>");
+  });
+});

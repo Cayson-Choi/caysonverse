@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { PLAYER_RADIUS } from "@caysonverse/shared/constants";
 import { isBlocked } from "@caysonverse/shared/collision";
-import { VILLAGE_LAYOUT, villageGeometry } from "@caysonverse/shared/village/villageLayout";
+import { HOUSE_INTERIOR_SPAWN, VILLAGE_LAYOUT, villageGeometry } from "@caysonverse/shared/village/villageLayout";
 import { DOOR_INSIDE_HALF_WIDTH_M, DOOR_RATE, DOOR_REACH_M, arrivalAfter, useDoor } from "./villageDoor";
 
 const L = VILLAGE_LAYOUT;
@@ -105,5 +105,13 @@ describe("the way out is used from in front of the door only (round 6 review, 20
     expect(useDoor("hall", pad.centre.x + pad.radius - 0.01, pad.centre.z)).not.toBeNull();
     const spawn = VILLAGE_LAYOUT.memorial.interior.spawn;
     expect(useDoor("hall", spawn.x, spawn.z)).not.toBeNull();
+  });
+});
+
+describe("a house's arrival spot is its own (round 6 review)", () => {
+  it("not the hall's spawn, and the way out is usable from it", () => {
+    const hall = VILLAGE_LAYOUT.memorial.interior.spawn;
+    expect(HOUSE_INTERIOR_SPAWN.z).not.toBe(hall.z);
+    expect(useDoor("house:house_1", HOUSE_INTERIOR_SPAWN.x, HOUSE_INTERIOR_SPAWN.z)).not.toBeNull();
   });
 });

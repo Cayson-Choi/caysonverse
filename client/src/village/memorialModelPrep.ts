@@ -1,6 +1,6 @@
 import { type InstancedMesh, type Material, type MeshBasicMaterial, type Object3D, type Texture } from "three";
 import { COLLIDER_PREFIX, LIGHTMAP_MATERIAL_PREFIX, configureLightmap, isMesh, lightmapMaterial, materialsOf } from "../game/hub/hubModelPrep";
-import { isSkylight, patchHallGardenMaterial, patchHallLightmapMaterial } from "./hallNight";
+import { HALL_CUBBY_MATERIAL, isSkylight, patchHallCubbyMaterial, patchHallGardenMaterial, patchHallLightmapMaterial } from "./hallNight";
 import { isHallGlass, patchHallGlassMaterial } from "./hallGlass";
 
 /**
@@ -14,6 +14,8 @@ import { isHallGlass, patchHallGlassMaterial } from "./hallGlass";
  *    (`inst__led_*`, GPU instances) are left as loaded; the garden card blends the night park, the skylight goes dark.
  *  - `door__leaf_l` / `door__leaf_r`: the sliding glass leaves of the door, their own nodes (the game slides them, see
  *    PublicAutoDoor.tsx); `prepareMemorial` hands them back in `doorLeaves`.
+ *  - `M_cubby_in` (round 6): the white lacquer cubby interiors, unlit, one shared baked texture with day | night halves blended
+ *    by the night weight (hallNight.ts patchHallCubbyMaterial).
  *  - `col__*` boxes (shared/…/generated/memorialColliders.ts is generated from them) are hidden; `ceil__hall` and the
  *    `anchor__cubby_*` nodes are empties.
  *
@@ -51,6 +53,7 @@ export function prepareMemorial(source: Object3D, lightmap: Texture): MemorialNo
     if (!isMesh(o)) return;
     for (const m of materialsOf(o)) {
       if (m.name === "M_garden") patchHallGardenMaterial(m);
+      if (m.name === HALL_CUBBY_MATERIAL) patchHallCubbyMaterial(m); // the cubby interiors' shared day | night texture (round 6)
       if (isHallGlass(m.name)) patchHallGlassMaterial(m); // reflective glass (hallGlass.ts, round 5)
       if (isSkylight(m)) skylight = m;
       if (!m.name.startsWith(LIGHTMAP_MATERIAL_PREFIX)) continue;

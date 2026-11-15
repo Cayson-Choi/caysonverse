@@ -67,6 +67,31 @@ export function patchHallGardenMaterial(material: Material): void {
   material.needsUpdate = true;
 }
 
+/** The white lacquer cubby interiors' material (round 6): unlit, one shared light texture, day in its left half, night in its right. */
+export const HALL_CUBBY_MATERIAL = "M_cubby_in";
+
+const CUBBY_PARS = /* glsl */ `uniform float uHallNight;
+void main() {`;
+// The model's UVs address the day half (u 0..0.5); the night bake sits 0.5 to the right in the same texture (bake_cubby.py).
+const CUBBY_MAP = /* glsl */ `#ifdef USE_MAP
+	diffuseColor *= mix( texture2D( map, vMapUv ), texture2D( map, vMapUv + vec2( 0.5, 0.0 ) ), uHallNight );
+#endif`;
+
+/**
+ * Let the cubby interiors blend their night half in (idempotent). Round 6 review: in the hall's light map the 368 white cubbies
+ * had five tiny islands each and showed brown blotches and blur in the close-up; they now share one baked texture (day | night).
+ */
+export function patchHallCubbyMaterial(material: Material): void {
+  if (patched.has(material)) return;
+  patched.add(material);
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms.uHallNight = hallNightUniform;
+    shader.fragmentShader = shader.fragmentShader.replace("void main() {", CUBBY_PARS).replace("#include <map_fragment>", CUBBY_MAP);
+  };
+  material.customProgramCacheKey = () => "hall-cubby-night";
+  material.needsUpdate = true;
+}
+
 /** The skylight diffuser's colour at a night weight: the day's cool white to a deep blue. */
 export function skylightColour(night: number): [number, number, number] {
   const n = Math.min(1, Math.max(0, night));
