@@ -14,16 +14,31 @@ const COLOUR = { room: "#E9E1D2", ceiling: "#F2ECE0", doorPad: "#6D70F0" } as co
 
 const HALL_DRAW: MapGeometry = makeGeometry("village", VILLAGE_LAYOUT.areas.hall, hallWalls(VILLAGE_LAYOUT), [], []);
 
-/** A glowing disc where a door is used: the pad (the button shows within it and a little past it). */
-export function DoorPad({ pad, y = 0.05 }: { pad: Disc; y?: number }) {
+/**
+ * The way-out mark inside the memorial hall (round 9 review: the big see-through violet disc on the mat read as a game UI in the
+ * quiet hall and filled the bottom of the lounge's view): a thin warm ring, 1.1 m across, faint — on the mat at the door, where the
+ * "나가기" button shows. The pad itself (where the door is used) keeps its radius.
+ */
+const SUBTLE_RING = { outer: 0.55, inner: 0.5, colour: "#E9DDBF", opacity: 0.42 } as const;
+
+/** A glowing disc where a door is used: the pad (the button shows within it and a little past it); `subtle`: a faint ring. */
+export function DoorPad({ pad, y = 0.05, subtle = false }: { pad: Disc; y?: number; subtle?: boolean }) {
   const material = useMemo(
-    () => new MeshBasicMaterial({ color: COLOUR.doorPad, transparent: true, opacity: 0.55, depthWrite: false, toneMapped: false, fog: false }),
-    [],
+    () =>
+      new MeshBasicMaterial({
+        color: subtle ? SUBTLE_RING.colour : COLOUR.doorPad,
+        transparent: true,
+        opacity: subtle ? SUBTLE_RING.opacity : 0.55,
+        depthWrite: false,
+        toneMapped: false,
+        fog: false,
+      }),
+    [subtle],
   );
   useEffect(() => () => material.dispose(), [material]);
   return (
     <mesh position={[pad.centre.x, y, pad.centre.z]} rotation-x={-Math.PI / 2} material={material} renderOrder={2}>
-      <circleGeometry args={[pad.radius, 40]} />
+      {subtle ? <ringGeometry args={[SUBTLE_RING.inner, SUBTLE_RING.outer, 48]} /> : <circleGeometry args={[pad.radius, 40]} />}
     </mesh>
   );
 }

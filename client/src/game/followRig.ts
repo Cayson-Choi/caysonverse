@@ -35,7 +35,7 @@ import {
   type Vec3,
 } from "./indoorCamera";
 import { ARM_FREE, armHeightScaleAt, armLookLiftAt, cameraBoxes, cameraPad, indoorArmShape, springArmDistance, stepArmLimit } from "./cameraCollision";
-import { SHOULDER, createShoulderPose, portraitWeight, shoulderPose, shoulderTarget, stepShoulder, stepShoulderSide } from "./cameraShoulder";
+import { createShoulderPose, portraitWeight, shoulderPose, shoulderTarget, stepShoulder, stepShoulderSide } from "./cameraShoulder";
 import { getActiveMap } from "./activeMap";
 import { cameraSolids, shapeAgainstSolids, type SolidSpot } from "./cameraSolids";
 import type { Orbit } from "./types";
@@ -128,7 +128,13 @@ export const PORTRAIT_INDOOR_LIFT_MAX = 1.45;
  */
 export const INDOOR_LIFT_MIN = 1.25;
 
-/** How much (m) a wall must cut an indoor arm short for a portrait phone's view to be widened whole (`SHOULDER.portraitFovAdd`). */
+/**
+ * How much (degrees) a portrait phone's view widens at most when an indoor wall cuts the camera's arm short. Round 8 used the
+ * over-the-shoulder view's 22 (`SHOULDER.portraitFovAdd`); round 9 review: arriving in the memorial hall (the door wall 3.1 m
+ * behind) the own avatar still covered about a third of a phone's screen height over the niche and the benches.
+ */
+export const PORTRAIT_INDOOR_FOV_ADD = 32;
+/** How much (m) a wall must cut an indoor arm short for a portrait phone's view to be widened whole (PORTRAIT_INDOOR_FOV_ADD). */
 export const PORTRAIT_WIDEN_AT = 2.0;
 
 /** Scratch points for the camera limit, made once and rewritten every frame — the clamp allocates nothing. */
@@ -211,7 +217,7 @@ export function stepFollowRig(
           out.lookLift = shape.lookLift;
           // A portrait phone's view widens as the wall cuts the arm short (round 8 review: on arrival, the door wall 3.1 m
           // behind, the own back covered half a phone's screen): whole once the arm is PORTRAIT_WIDEN_AT m short.
-          out.fovAdd = SHOULDER.portraitFovAdd * portraitWeight(aspect) * Math.min(1, Math.max(0, (reach - rig.armLimit) / PORTRAIT_WIDEN_AT));
+          out.fovAdd = PORTRAIT_INDOOR_FOV_ADD * portraitWeight(aspect) * Math.min(1, Math.max(0, (reach - rig.armLimit) / PORTRAIT_WIDEN_AT));
           // Pushed this close to the head by the wall behind: over the shoulder instead of over the head (cameraShoulder.ts).
           shoulderWanted = shoulderTarget(Math.hypot(tpX - x, tpZ - z));
         } else {

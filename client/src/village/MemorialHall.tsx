@@ -235,8 +235,12 @@ function MemorialHall() {
     const v = new Vector3();
     const each = new Matrix4();
     // Every solid mesh as it stands now: what is hidden is skipped (a mesh shown later is not in it), an instanced one adds each
-    // instance (none in the hall model today; round 7 tech review). The door leaves are filed closed: no seat or camera spot is
-    // near the doors, and their own boxes (the walk's) hold the camera off them.
+    // instance. memorial.glb has 3 GPU-instanced nodes (EXT_mesh_gpu_instancing, 368 instances: the LED strip in every cubby of
+    // banks A, B and E), so the index holds 59.5k triangles where the file has 55.4k (round 9 tech review: an earlier comment said
+    // there were none). Round 7 skipped instanced meshes; since round 8 they are in, which (with the grid DDA visiting every cell
+    // a line crosses) is the likely cause of the seat-framing time going from 0.3 to 2.5 ms median (1.7 to 7.1 ms max) — run once
+    // per sit, cached. The door leaves are filed closed: no seat or camera spot is near the doors, and their own boxes (the
+    // walk's) hold the camera off them.
     nodes.root.traverse((o) => {
       const m = o as Mesh;
       if (!m.isMesh || !m.visible) return;
@@ -381,7 +385,7 @@ export function HallArea({ pose }: { pose: Pose }) {
           <SceneWarmUp />
         </Suspense>
       </LoadBoundary>
-      <DoorPad pad={VILLAGE_LAYOUT.memorial.interior.doorPad} />
+      <DoorPad pad={VILLAGE_LAYOUT.memorial.interior.doorPad} subtle />
       <PublicAutoDoor area="hall" pose={pose} />
     </>
   );
