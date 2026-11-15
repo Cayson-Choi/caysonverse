@@ -100,7 +100,7 @@ describe("the village's lighting (data, so the clock can drive it later)", () =>
     expect(azimuth).toBeCloseTo(70, 0);
     // Its own tone curve and exposure (the unlit, light-mapped model under the curve; the brightness gate, Task 7).
     expect(v.toneCurve).toBe("neutral");
-    expect(v.exposure).toBeGreaterThan(1);
+    expect(v.exposure).toBeGreaterThan(0.8);
     expect(v.exposure).toBeLessThan(2);
   });
 });

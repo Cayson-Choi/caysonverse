@@ -42,7 +42,7 @@ export const LIGHTING: Record<LightingId, Lighting> = {
     // The afternoon sun: warm, from the baked sun's side (azimuth 70°), 28° up — a little higher than the bake's 20°,
     // so the players' live shadows fall the same way as the baked ones but are long without lying flat.
     key: { color: "#FFD6A8", intensity: 2.4, position: [41.5, 23.5, -15.1] },
-    exposure: 1.4,
+    exposure: 0.95,
     toneCurve: "neutral",
   },
 };
