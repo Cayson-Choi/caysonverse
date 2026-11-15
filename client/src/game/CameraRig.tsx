@@ -76,6 +76,7 @@ import { localArea } from "../village/villageArea";
 import { openCubbyAt } from "../village/cubbyCard";
 import { cubbyFocusAnchor, stepCubbyFocus, type FocusPose } from "../village/cubbyFocus";
 import type { Orbit, Pose, SeatState } from "./types";
+import { BASE_FOV } from "./cameraShoulder";
 
 interface CameraRigProps {
   pose: Pose;
@@ -215,6 +216,8 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
   // Live whole-map fit height (aspect-dependent) — recomputed each frame, read by
   // the overview wheel/pinch handlers for the zoom ceiling. Ref, not state.
   const fitHeight = useRef(0);
+  /** The camera's own vertical field of view (PlayShell's): the over-the-shoulder view on a phone widens it for a while. */
+  const baseFov = useRef(0);
   // Previous frame's mode, to detect the EDGE into overview and seed its camera
   // (distinct from viewState.prevMode, which is the mode overview will restore).
   const lastFrameMode = useRef(viewState.mode);
@@ -865,6 +868,7 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
 
     const cam = camera as PerspectiveCamera;
     const aspect = cam.aspect;
+    if (baseFov.current === 0) baseFov.current = cam.isPerspectiveCamera ? cam.fov : BASE_FOV;
     // Whole-map fit height for the current aspect — seeds the overview and bounds
     // its zoom-out. Recomputed each frame so a viewport resize keeps the ceiling
     // honest (design 20 — nothing hardcoded).
@@ -874,7 +878,7 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
     fitHeight.current = overviewFitHeight(
       mapBounds.maxX - mapBounds.minX,
       mapBounds.maxZ - mapBounds.minZ,
-      (cam.fov * Math.PI) / 180,
+      (baseFov.current * Math.PI) / 180,
       aspect,
     );
 
@@ -948,7 +952,7 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
 
     // A memorial cubby's close-up (cubbyFocus.ts): the camera glides from the player's view to the front of that cubby, at its
     // height, and back when the card closes. The player's own orbit is never written: closing it puts the view back as it was.
-    const fw = stepCubbyFocus(delta, aspect, cam.fov, focusPose);
+    const fw = stepCubbyFocus(delta, aspect, baseFov.current, focusPose);
     if (fw > 0) {
       const p = camera.position;
       const lx = lerp(uTgtX, ovPosX, ovT);
@@ -985,6 +989,12 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
     // The far plane rides with the overview too: the whole-map fit height is width-limited
     // on a tall phone (209 m at 375×812), past CAMERA_FAR, and the map would be clipped
     // away entirely. Continuous in ovT, and restored exactly to the scene's far plane at 0.
+    // The over-the-shoulder view against an indoor wall widens a portrait phone's view (cameraShoulder.ts), third person only.
+    const fov = baseFov.current + (busBoarded ? 0 : tpSpot.fovAdd * (1 - t) * (1 - ovT) * (1 - fw));
+    if (cam.isPerspectiveCamera && Math.abs(cam.fov - fov) > 1e-3) {
+      cam.fov = fov;
+      cam.updateProjectionMatrix();
+    }
     const far = overviewFar(baseFar, viewState.ovHeight, ovT);
     if (cam.far !== far) {
       cam.far = far;

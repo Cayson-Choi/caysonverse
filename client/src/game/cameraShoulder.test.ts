@@ -80,8 +80,9 @@ describe("over-the-shoulder camera against an indoor wall (round 6 review)", () 
           const down = lookDown(spot, s.x, s.z);
           expect(down, `pitch ${pitch} look down`).toBeGreaterThan(0);
           expect(down, `pitch ${pitch} look down`).toBeLessThan(18);
-          // the head is off to the side / below, not in the middle of the view (it was straight under the lens)
-          expect(headOffAxis(spot, s.x, s.z), `pitch ${pitch} head off axis`).toBeGreaterThan(30);
+          // the head is off to a lower corner (PC) / below the middle (a phone), not in the middle of the view (round 6: it was
+          // straight under the lens); the whole head-and-shoulders framing is checked in cameraShoulderFrame.test.ts
+          expect(headOffAxis(spot, s.x, s.z), `pitch ${pitch} head off axis`).toBeGreaterThan(aspect > 1 ? 15 : 5);
         }
       });
     }

@@ -35,7 +35,7 @@ import {
   type Vec3,
 } from "./indoorCamera";
 import { ARM_FREE, armHeightScaleAt, armLookLiftAt, cameraBoxes, cameraPad, indoorArmShape, springArmDistance, stepArmLimit } from "./cameraCollision";
-import { createShoulderPose, shoulderPose, shoulderTarget, stepShoulder } from "./cameraShoulder";
+import { createShoulderPose, shoulderPose, shoulderTarget, stepShoulder, stepShoulderSide } from "./cameraShoulder";
 import { getActiveMap } from "./activeMap";
 import type { Orbit } from "./types";
 
@@ -55,6 +55,8 @@ export interface FollowRig {
   shoulder: number;
   /** The shoulder side in use (+1 right, −1 left), 0 while the shoulder view is off. */
   shoulderSide: number;
+  /** The side drawn, eased toward `shoulderSide` (a switch swings over). */
+  shoulderSideEase: number;
 }
 
 /** One frame's third-person camera spot. */
@@ -67,6 +69,8 @@ export interface FollowSpot {
   /** The look target's horizontal offset from the body (m): 0 but for the over-the-shoulder view, which looks ahead. */
   lookX: number;
   lookZ: number;
+  /** Degrees added to the vertical field of view this frame (the over-the-shoulder view on a portrait phone). */
+  fovAdd: number;
   /** The follow distance after the zoom glide, the portrait pull-back and the place's limit (the dev probe's). */
   distance: number;
 }
@@ -82,12 +86,13 @@ export function createFollowRig(orbit: Readonly<Orbit>): FollowRig {
     lastAreaLimit: areaLimit,
     shoulder: 0,
     shoulderSide: 0,
+    shoulderSideEase: 0,
   };
 }
 
 /** A fresh spot to write into (CameraRig makes one per mount; nothing is allocated per frame). */
 export function createFollowSpot(): FollowSpot {
-  return { x: 0, y: 0, z: 0, lookLift: 0, lookX: 0, lookZ: 0, distance: 0 };
+  return { x: 0, y: 0, z: 0, lookLift: 0, lookX: 0, lookZ: 0, fovAdd: 0, distance: 0 };
 }
 
 /**
@@ -106,11 +111,17 @@ export function noteAreaLimit(rig: FollowRig, orbit: Readonly<Orbit>, areaLimit:
   if (areaLimit) rig.limit = areaLimit;
   rig.shoulder = 0;
   rig.shoulderSide = 0;
+  rig.shoulderSideEase = 0;
   return true;
 }
 
 /** At most this much higher (×) a wall-shortened indoor arm keeps its camera on a portrait screen (cameraCollision indoorArmShape). */
 export const PORTRAIT_INDOOR_LIFT_MAX = 1.45;
+/**
+ * …and at least this much higher on any screen. Round 7 review: on PC the arrival view (the door wall right behind) had the head
+ * square over the "기억의 자리" across the hall; a little higher, the head sits under it and the niche shows whole.
+ */
+export const INDOOR_LIFT_MIN = 1.25;
 
 /** Scratch points for the camera limit, made once and rewritten every frame — the clamp allocates nothing. */
 const wantedSpot: Vec3 = { x: 0, y: 0, z: 0 };
@@ -169,6 +180,7 @@ export function stepFollowRig(
   out.lookLift = 0;
   out.lookX = 0;
   out.lookZ = 0;
+  out.fovAdd = 0;
   let shoulderWanted = 0;
   if (armActive) {
     const offX = tpX - x;
@@ -185,7 +197,7 @@ export function stepFollowRig(
         tpZ = z + offZ * k;
         if (indoor) {
           // Shaped against the old 3.6 m reference, not the (now uncapped) wanted arm: see indoorArmShape.
-          const shape = indoorArmShape(rig.armLimit, reach, offY, orbit.pitch, Math.min(PORTRAIT_INDOOR_LIFT_MAX, aspectDistanceScale(aspect)));
+          const shape = indoorArmShape(rig.armLimit, reach, offY, orbit.pitch, Math.max(INDOOR_LIFT_MIN, Math.min(PORTRAIT_INDOOR_LIFT_MAX, aspectDistanceScale(aspect))));
           tpY = HEAD_HEIGHT + shape.offY;
           out.lookLift = shape.lookLift;
           // Pushed this close to the head by the wall behind: over the shoulder instead of over the head (cameraShoulder.ts).
@@ -201,7 +213,9 @@ export function stepFollowRig(
   }
   rig.shoulder = stepShoulder(rig.shoulder, shoulderWanted, dt);
   if (rig.shoulder > 0) {
-    const sh = shoulderPose(x, z, orbit.yaw, tpX, tpZ, aspect, rig.shoulderSide, cameraBoxes(), cameraPad(), shoulderSpot);
+    const fresh = rig.shoulderSide === 0;
+    const sh = shoulderPose(x, z, orbit.yaw, tpX, tpZ, aspect, rig.shoulderSide, cameraBoxes(), cameraPad(), shoulderSpot, fresh ? Number.NaN : rig.shoulderSideEase);
+    rig.shoulderSideEase = fresh ? sh.side : stepShoulderSide(rig.shoulderSideEase, sh.side, dt);
     rig.shoulderSide = sh.side;
     const s = rig.shoulder;
     tpX += (sh.x - tpX) * s;
@@ -210,8 +224,10 @@ export function stepFollowRig(
     out.lookX = sh.lookX * s;
     out.lookZ = sh.lookZ * s;
     out.lookLift += (sh.lookLift - out.lookLift) * s;
+    out.fovAdd = sh.fovAdd * s;
   } else {
     rig.shoulderSide = 0;
+    rig.shoulderSideEase = 0;
   }
 
   // Never under the floor: a low pitch at a long zoom would otherwise look up at the ground's underside.

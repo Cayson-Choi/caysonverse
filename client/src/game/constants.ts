@@ -66,11 +66,12 @@ export const INDOOR_SELF_SHOW_DISTANCE = 0.8;
 /**
  * Indoors, a third-person camera pushed this near the head by a wall (m) — the over-the-shoulder view (cameraShoulder.ts) —
  * fades the own body to SELF_COVER_FADE_OPACITY (front surface only, never a ghost disc), eased; back in full past
- * SELF_COVER_SHOW_DISTANCE. Review 2026-11-15 round 6. Arrival (3.45 m) and every seat (3.35 m+) stay solid.
+ * SELF_COVER_SHOW_DISTANCE. Review 2026-11-15 round 6; round 7: only a camera really close (under 1.5 m) fades it, and only
+ * lightly — the over-the-shoulder view now stands 2 m+ off and the avatar is drawn solid there.
  */
-export const SELF_COVER_FADE_DISTANCE = 2.3;
-export const SELF_COVER_SHOW_DISTANCE = 2.5;
-export const SELF_COVER_FADE_OPACITY = 0.6;
+export const SELF_COVER_FADE_DISTANCE = 1.5;
+export const SELF_COVER_SHOW_DISTANCE = 1.7;
+export const SELF_COVER_FADE_OPACITY = 0.9;
 
 /** drei KeyboardControls action names (typed control set). */
 export type MoveControl = "forward" | "backward" | "left" | "right" | "run" | "camLeft" | "camRight";

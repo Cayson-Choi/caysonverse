@@ -297,12 +297,13 @@ try {
       const { viewState } = await window.__imp("/src/game/viewState.ts");
       const p = window.__cv.getPos();
       const head = camera.position.clone().set(p.x, 1.45, p.z).project(camera);
-      return { mode: viewState.mode, blend: viewState.blend, orbit: window.__cv.getOrbit(), y: camera.position.y, x: camera.position.x, z: camera.position.z, headNdcY: head.y, arm: Math.hypot(camera.position.x - p.x, camera.position.z - p.z) };
+      return { mode: viewState.mode, blend: viewState.blend, orbit: window.__cv.getOrbit(), y: camera.position.y, x: camera.position.x, z: camera.position.z, headNdcY: head.y, headNdcX: head.x, arm: Math.hypot(camera.position.x - p.x, camera.position.z - p.z) };
     });
     summary.corner = cam;
-    run.check("in the corner the arm is short (the wall is right behind)", cam.arm < 1.2, cam);
+    // round 7: the wall behind turns the camera into the over-the-shoulder view, well to the side (cameraShoulder.ts)
+    run.check("in the corner the camera stands off to the side, not squeezed over the head (1.5 m+ across the floor)", cam.arm > 1.5, cam);
     run.check("the camera stays above the head and under the ceiling (2.3..3.0 m)", cam.y > 2.3 && cam.y <= 3.0001, cam);
-    run.check("the head sits low in the frame (NDC y < -0.4), not in the middle of it", cam.headNdcY < -0.4, cam);
+    run.check("the head sits low and to one side of the frame (NDC y < -0.3, |x| > 0.2), not in the middle of it", cam.headNdcY < -0.3 && Math.abs(cam.headNdcX) > 0.2, cam);
     await run.shot(A, "hall-corner.png");
   });
 
