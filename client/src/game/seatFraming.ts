@@ -48,10 +48,47 @@ let sightBlocked: SightBlocked | null = null;
 /** Register (or clear) the blocker; returns the unregister for that one blocker. */
 export function setSeatSightBlocker(fn: SightBlocked | null): () => void {
   sightBlocked = fn;
+  frameCache.clear();
   return () => {
-    if (sightBlocked === fn) sightBlocked = null;
+    if (sightBlocked === fn) {
+      sightBlocked = null;
+      frameCache.clear();
+    }
   };
 }
+
+/**
+ * Whether a camera spot itself is inside or right against something solid, or up among things hung from the ceiling (the
+ * lounge's oak louvres and beams, the cove, the light fittings). Round 7 review: letter_s0's first framing put the camera at
+ * 4.1 m inside the louvres — the sight rays to the body slipped through the gaps between the slats, so the spot itself is
+ * tested. The hall registers it over its model while mounted (MemorialHall.tsx); without one, every spot is clear.
+ */
+export type SpotBlocked = (x: number, y: number, z: number) => boolean;
+let spotBlocked: SpotBlocked | null = null;
+/** Register (or clear) the spot test; returns the unregister for that one test. */
+export function setSeatSpotBlocker(fn: SpotBlocked | null): () => void {
+  spotBlocked = fn;
+  frameCache.clear();
+  return () => {
+    if (spotBlocked === fn) {
+      spotBlocked = null;
+      frameCache.clear();
+    }
+  };
+}
+
+/** Whether the camera spot is clear (no spot test registered: yes). */
+export function seatSpotClear(spot: { x: number; y: number; z: number }): boolean {
+  return !spotBlocked || !spotBlocked(spot.x, spot.y, spot.z);
+}
+
+/**
+ * The seats are fixed: a seat's first framing for one zoom and one screen shape is worked out once (round 7 review: the search
+ * cast up to ~800 rays over the hall's model and stalled the tap on 앉기 by 30-70 ms on a fast PC). Cleared whenever the hall's
+ * tests change (a new hall model).
+ */
+const frameCache = new Map<string, SeatFrame>();
+const FRAME_CACHE_MAX = 256;
 /** Heights (m) of the seated body checked for sight: the lap, the chest and the head. The body is in view when all are. */
 export const SEAT_SIGHT_HEIGHTS = [0.5, 0.75, 1.05] as const;
 /**
@@ -103,7 +140,19 @@ function settledSpot(x: number, z: number, yaw: number, pitch: number, distance:
  * Where no direction has that room (never in the hall), the one with the most.
  */
 export function indoorSeatFrame(x: number, z: number, seatYaw: number, distance: number, aspect: number): SeatFrame {
+  const key = `${x.toFixed(2)},${z.toFixed(2)},${seatYaw.toFixed(3)},${distance.toFixed(2)},${aspect.toFixed(3)}`;
+  const hit = frameCache.get(key);
+  if (hit) return { ...hit };
+  const f = searchSeatFrame(x, z, seatYaw, distance, aspect);
+  if (frameCache.size >= FRAME_CACHE_MAX) frameCache.clear();
+  frameCache.set(key, f);
+  return { ...f };
+}
+
+function searchSeatFrame(x: number, z: number, seatYaw: number, distance: number, aspect: number): SeatFrame {
   const behind = recenterYaw(seatYaw);
+  let bestClear: SeatFrame | null = null;
+  let bestSeen: SeatFrame | null = null;
   let best: SeatFrame | null = null;
   // first a roomy framing (the player's own zoom, up to INDOOR_SEAT_ROOMY) from behind, the front three-quarters or the side: a sofa against the wall is
   // then seen from across the room, not from a camera squeezed along the wall; then any direction with the least room
@@ -121,10 +170,15 @@ export function indoorSeatFrame(x: number, z: number, seatYaw: number, distance:
         // with room enough, the body must also be in sight (a counter or a cabinet between them is no framing), and the camera
         // far enough out across the floor that the wall's over-the-shoulder view (cameraShoulder.ts) stays off
         const across = Math.hypot(spot.x - x, spot.z - z);
-        if (dist >= need - 1e-9 && across >= SHOULDER.engageBelow && seatBodyInSight(spot, x, z)) return { yaw, pitch, dist };
+        // the camera spot itself: never inside the louvres, a cabinet or a wall's trim (round 7 review)
+        const clear = seatSpotClear(spot);
+        if (clear && dist >= need - 1e-9 && across >= SHOULDER.engageBelow && seatBodyInSight(spot, x, z)) return { yaw, pitch, dist };
+        if (clear && (!bestClear || dist > bestClear.dist)) bestClear = { yaw, pitch, dist };
+        // no framing with every rule met: one that still sees the body from a clear spot comes first
+        if (clear && dist >= INDOOR_SEAT_MIN_DIST - 1e-9 && (!bestSeen || dist < bestSeen.dist) && seatBodyInSight(spot, x, z)) bestSeen = { yaw, pitch, dist };
         if (!best || dist > best.dist) best = { yaw, pitch, dist };
       }
     }
   }
-  return best!;
+  return bestSeen ?? bestClear ?? best!;
 }

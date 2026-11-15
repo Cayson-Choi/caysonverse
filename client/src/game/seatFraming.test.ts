@@ -3,7 +3,8 @@ import { VILLAGE_LAYOUT } from "@caysonverse/shared/village/villageLayout";
 import { VILLAGE_SEATS } from "@caysonverse/shared/village/benchSeats";
 import { CAMERA, INDOOR_SELF_HIDE_DISTANCE, INDOOR_SELF_SHOW_DISTANCE } from "./constants";
 import { HALL_ACTIVE_MAP, VILLAGE_ACTIVE_MAP, setActiveMap } from "./activeMap";
-import { INDOOR_SEAT_MIN_DIST, indoorSeatFrame, setSeatSightBlocker, settledHeadDistance } from "./seatFraming";
+import { INDOOR_SEAT_MIN_DIST, indoorSeatFrame, seatSpotClear, setSeatSightBlocker, setSeatSpotBlocker, settledHeadDistance } from "./seatFraming";
+import { createFollowRig, createFollowSpot, stepFollowRig } from "./followRig";
 import { beginSeatCamera, resetViewMode, viewState } from "./viewState";
 import { indoorCloseHidden } from "./selfBody";
 import type { Orbit } from "./types";
@@ -96,6 +97,88 @@ describe("a sofa's first framing is from the room, with the body in sight (round
     try {
       const f = indoorSeatFrame(s.x, s.z, s.yaw, 6, PC);
       expect(Math.sign(Math.sin(f.yaw))).not.toBe(side);
+    } finally {
+      off();
+    }
+  });
+});
+
+describe("a seat's first framing never puts the camera inside or above solid things (round 7 review: letter_s0 in the louvres)", () => {
+  /** Where the camera settles for a frame (the same two-step settle the search uses). */
+  const settled = (x: number, z: number, f: { yaw: number; pitch: number }, aspect: number) => {
+    const orbit = { yaw: f.yaw, pitch: f.pitch, distance: 6 };
+    const rig = createFollowRig(orbit);
+    const spot = createFollowSpot();
+    stepFollowRig(rig, orbit, x, z, aspect, 1 / 60, true, spot);
+    stepFollowRig(rig, orbit, x, z, aspect, 1 / 60, true, spot);
+    return spot;
+  };
+  // the lounge's oak louvres as the hall model has them (build_memorial.py slats(): x 292.95..296.92, z 1.2..5.55, underside
+  // 3.88 m), grown as MemorialHall grows hung things (0.2 m round, 0.25 m under)
+  const LOUVRES = { minX: 292.75, maxX: 297.12, minZ: 1.0, maxZ: 5.75, minY: 3.88 - 0.25 };
+  const inLouvres = (x: number, y: number, z: number) => x >= LOUVRES.minX && x <= LOUVRES.maxX && z >= LOUVRES.minZ && z <= LOUVRES.maxZ && y > LOUVRES.minY;
+
+  it("letter_s0 on PC (the reviewer's case) and every hall seat on PC and phone: the settled camera is clear of the louvres", () => {
+    const off = setSeatSpotBlocker(inLouvres);
+    try {
+      for (const s of HALL_SEATS) {
+        for (const aspect of [PC, PHONE, PHONE_LAND]) {
+          const f = indoorSeatFrame(s.x, s.z, s.yaw, 6, aspect);
+          const spot = settled(s.x, s.z, f, aspect);
+          expect(inLouvres(spot.x, spot.y, spot.z), `${s.id} aspect ${aspect.toFixed(2)} ${JSON.stringify(spot)}`).toBe(false);
+          expect(seatSpotClear(spot)).toBe(true);
+        }
+      }
+    } finally {
+      off();
+    }
+  });
+
+  it("letter_s0 as the reviewer met it (the low framings from the lounge side see the body blocked): without the spot test the camera ends up in the louvres, with it never", () => {
+    const s = HALL_SEATS.find((x) => x.id === "letter_s0")!;
+    expect(s).toBeTruthy();
+    // in the hall the chairs and the sofa block the low lines from the lounge side; the high one slips through the slats
+    const offSight = setSeatSightBlocker((_fx, fy, fz) => fz > s.z + 1 && fy < 3.5);
+    try {
+      const f = indoorSeatFrame(s.x, s.z, s.yaw, 6, PC);
+      const spot = settled(s.x, s.z, f, PC);
+      expect(inLouvres(spot.x, spot.y, spot.z), JSON.stringify(spot)).toBe(true);
+      const offSpot = setSeatSpotBlocker(inLouvres);
+      try {
+        const g = indoorSeatFrame(s.x, s.z, s.yaw, 6, PC);
+        const at = settled(s.x, s.z, g, PC);
+        expect(inLouvres(at.x, at.y, at.z), JSON.stringify(at)).toBe(false);
+        expect(g.dist).toBeGreaterThanOrEqual(INDOOR_SEAT_MIN_DIST - 1e-9);
+      } finally {
+        offSpot();
+      }
+    } finally {
+      offSight();
+    }
+  });
+
+  it("the search is done once per seat, zoom and screen: a second ask is answered from the cache (no rays)", () => {
+    let rays = 0;
+    const off = setSeatSightBlocker(() => {
+      rays++;
+      return false;
+    });
+    try {
+      const s = HALL_SEATS.find((x) => x.id === "letter_s1")!;
+      const a = indoorSeatFrame(s.x, s.z, s.yaw, 6, PC);
+      const first = rays;
+      expect(first).toBeGreaterThan(0);
+      const b = indoorSeatFrame(s.x, s.z, s.yaw, 6, PC);
+      expect(rays).toBe(first);
+      expect(b).toEqual(a);
+      // a new registration (a new hall model) starts afresh
+      const off2 = setSeatSightBlocker(() => {
+        rays++;
+        return false;
+      });
+      indoorSeatFrame(s.x, s.z, s.yaw, 6, PC);
+      expect(rays).toBeGreaterThan(first);
+      off2();
     } finally {
       off();
     }

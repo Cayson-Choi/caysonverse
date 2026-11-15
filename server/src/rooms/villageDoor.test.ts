@@ -106,6 +106,15 @@ describe("the way out is used from in front of the door only (round 6 review, 20
     const spawn = VILLAGE_LAYOUT.memorial.interior.spawn;
     expect(useDoor("hall", spawn.x, spawn.z)).not.toBeNull();
   });
+
+  it("past the pad's edge only on the room's side of the door (round 7 review: the rule looked at the sideways offset alone)", () => {
+    const pad = VILLAGE_LAYOUT.memorial.interior.doorPad;
+    // straight in front, 2 m into the room: yes; the same 2 m the other way (behind the door, in the wall): no
+    expect(useDoor("hall", pad.centre.x, pad.centre.z - 2.0)).not.toBeNull();
+    expect(useDoor("hall", pad.centre.x, pad.centre.z + 2.0)).toBeNull();
+    // on the pad itself either way: yes
+    expect(useDoor("hall", pad.centre.x, pad.centre.z + pad.radius - 0.01)).not.toBeNull();
+  });
 });
 
 describe("a house's arrival spot is its own (round 6 review)", () => {

@@ -2,7 +2,6 @@ import { Suspense, useEffect, useMemo } from "react";
 import { useFrame } from "@react-three/fiber";
 import { useGLTF, useTexture } from "@react-three/drei";
 import {
-  Raycaster,
   DataTexture,
   Group,
   InstancedMesh,
@@ -31,7 +30,8 @@ import { disposeHallNight, hallNightReady, hallNightUniform, hallNightWeight, lo
 import { useNightMapWanted } from "./nightLightmap";
 import { dayNight } from "./dayNightDriver";
 import { setHallDoorLeaves } from "./hallDoor";
-import { setSeatSightBlocker } from "../game/seatFraming";
+import { setSeatSightBlocker, setSeatSpotBlocker } from "../game/seatFraming";
+import { buildSolidIndex } from "./hallSolidIndex";
 import { cubbyFocusAnchor, cubbyFocusWeight } from "./cubbyFocus";
 import { useQualityTier } from "../game/QualityEffects";
 import { LoadBoundary } from "./LoadBoundary";
@@ -225,29 +225,38 @@ function MemorialHall() {
   );
 
   useEffect(() => () => disposeMemorial(nodes), [nodes]);
-  // A seat's first framing (seatFraming.ts) must see the seated body: the hall's solid model is cast against (glass is not).
+  // A seat's first framing (seatFraming.ts) must see the seated body, and its camera must not sit in or above something solid: the
+  // hall's solid model (glass is not) is indexed once on a plan grid (hallSolidIndex.ts, round 7 review) and tested against.
   useEffect(() => {
-    const ray = new Raycaster();
-    const from = new Vector3();
-    const dir = new Vector3();
-    const solid: Object3D[] = [];
     nodes.root.updateMatrixWorld(true);
+    const tris: number[] = [];
+    const v = new Vector3();
     nodes.root.traverse((o) => {
       const m = o as Mesh;
-      if (!m.isMesh || Array.isArray(m.material) || (m.material as Material).transparent) return;
-      solid.push(m);
+      if (!m.isMesh || (m as unknown as InstancedMesh).isInstancedMesh || !m.visible) return;
+      if (Array.isArray(m.material) || (m.material as Material).transparent) return;
+      const pos = m.geometry.getAttribute("position");
+      if (!pos) return;
+      const idx = m.geometry.getIndex();
+      const count = idx ? idx.count : pos.count;
+      for (let i = 0; i + 2 < count; i += 3)
+        for (let k = 0; k < 3; k++) {
+          v.fromBufferAttribute(pos, idx ? idx.getX(i + k) : i + k).applyMatrix4(m.matrixWorld);
+          tris.push(v.x, v.y, v.z);
+        }
     });
-    return setSeatSightBlocker((fx, fy, fz, tx, ty, tz) => {
-      from.set(fx, fy, fz);
-      dir.set(tx - fx, ty - fy, tz - fz);
-      const len = dir.length();
-      // the last 0.35 m is the seat round the body itself (cushions, arms): not a blocker
-      if (len < 0.4) return false;
-      ray.set(from, dir.divideScalar(len));
-      ray.near = 0;
-      ray.far = len - 0.35;
-      return ray.intersectObjects(solid.filter((m) => m.visible), false).length > 0;
-    });
+    const room = VILLAGE_LAYOUT.memorial.interior.room;
+    const solid = buildSolidIndex(Float32Array.from(tris), room.minX - 1, room.maxX + 1, room.minZ - 1, room.maxZ + 1);
+    // the last 0.35 m of a sight line is the seat round the body itself (cushions, arms): not a blocker
+    const offSight = setSeatSightBlocker((fx, fy, fz, tx, ty, tz) => solid.segmentBlocked(fx, fy, fz, tx, ty, tz, 0.35));
+    // the camera spot: not within 0.3 m of a surface, and not up among, over or beside things hung from the ceiling (the lounge's
+    // oak louvres: their gaps let sight lines through, their underside does not; a lens level with them a metre away sees them as
+    // a brown band over the top of the screen) — 0.25 m under their underside at least, within a metre of them
+    const offSpot = setSeatSpotBlocker((x, y, z) => solid.underHung(x, y, z, 2.6, 1.0, 0.25) || solid.nearSolid(x, y, z, 0.3));
+    return () => {
+      offSight();
+      offSpot();
+    };
   }, [nodes]);
   useEffect(() => {
     setHallDoorLeaves(nodes.doorLeaves);

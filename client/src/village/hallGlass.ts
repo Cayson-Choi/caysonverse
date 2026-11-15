@@ -58,10 +58,13 @@ const FRAG_OUT = /* glsl */ `#include <opaque_fragment>
 			vec2 uv = fract( vec2( along, vGlassWorld.y - uPaneGrid.y ) / uPaneGrid.x );
 			float diag = uv.x + uv.y + 0.25 * R.y;
 			glint = smoothstep( 0.12, 0.0, abs( diag - 0.82 ) ) * 0.8 + smoothstep( 0.04, 0.0, abs( diag - 1.05 ) ) * 0.35;
+			// at night the room's light is low and there is nothing bright to mirror: the glint all but goes (round 7 review: in a
+			// night close-up the white diagonal bands read as scratches)
+			glint *= 1.0 - 0.85 * uHallNight;
 		}
 		float a = uGlassClear + 0.8 * fres + ( 0.14 * sheen + 0.15 * glint ) * lit * uGlassReflect;
 		vec3 tint = vec3( 0.86, 0.93, 0.93 );
-		vec3 col = mix( tint, vec3( 1.0 ), clamp( sheen * 0.7 + glint, 0.0, 1.0 ) );
+		vec3 col = mix( tint, vec3( 1.0 ), clamp( ( sheen * 0.7 + glint ) * lit, 0.0, 1.0 ) );
 		gl_FragColor = vec4( col, clamp( a, 0.0, 0.85 ) );
 	}`;
 

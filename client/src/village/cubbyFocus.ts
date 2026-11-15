@@ -36,10 +36,12 @@ export const FOCUS_GLIDE_S = 0.55;
 /** The nearest the eye comes to the cubby's opening (m): never inside the unit, even on a very wide screen. */
 const MIN_DIST = 0.75;
 /**
- * The lowest the eye goes (m above the hall floor, y = 0). A bottom-row cubby's opening is 0.35 m up; the eye stays at least this
- * high and looks down into it (review 2026-11-15: on a phone the old pose lowered the eye under the floor for the bottom rows).
+ * The lowest the eye goes (m above the hall floor, y = 0). A bottom-row cubby's centre is 0.345 m up. Review 2026-11-15: on a phone
+ * the old pose lowered the eye under the floor for the bottom rows (to centre the cubby over the sheet) — the eye now never goes
+ * under the cubby's own centre and turns the look instead. Round 7 review: held at 0.6 m it looked down into a bottom-row cubby,
+ * a tilted trapezoid; at the cubby's height it looks straight in, the uprights upright.
  */
-export const MIN_EYE_HEIGHT = 0.6;
+export const MIN_EYE_HEIGHT = 0.3;
 /** How far the eye keeps from a piece of furniture's footprint (m), so the near plane does not cut into it. */
 const FURNITURE_MARGIN = 0.18;
 /** Over a piece of furniture the eye cannot get clear of, it rises to at least this height (m): above benches and tables. */

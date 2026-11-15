@@ -79,6 +79,9 @@ describe("villageTargets — the memorial hall's door", () => {
     expect(villageTargets("hall", pad.centre.x + pad.radius - 0.01, pad.centre.z)).toHaveLength(1);
     // the arrival spot
     expect(villageTargets("hall", inside.spawn.x, inside.spawn.z)).toHaveLength(1);
+    // round 7: past the pad's edge only on the room's side of the door (as the server)
+    expect(villageTargets("hall", pad.centre.x, pad.centre.z + 2.0)).toHaveLength(0);
+    expect(villageTargets("hall", pad.centre.x, pad.centre.z - 2.0)).toHaveLength(1);
   });
 
   it("away from the door nothing is offered: the spawn, the plaza, a plot's sign, the middle of the hall", () => {

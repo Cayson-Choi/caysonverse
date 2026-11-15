@@ -58,8 +58,10 @@ export function villageTargets(
 ): readonly InteractTarget[] {
   const pad = doorPadFor(area, layout);
   const dist = Math.hypot(x - pad.centre.x, z - pad.centre.z);
-  // on the pad itself always; past its edge (the reach) inside a building only straight in front of the door
-  const inFront = area === "village" || dist <= pad.radius || Math.abs(x - pad.centre.x) <= DOOR_INSIDE_OFFER_HALF_WIDTH_M;
+  // on the pad itself always; past its edge (the reach) inside a building only straight in front of the door, on the room's
+  // side of it (north, −z; the server's useDoor has the same rule)
+  const inFront =
+    area === "village" || dist <= pad.radius || (Math.abs(x - pad.centre.x) <= DOOR_INSIDE_OFFER_HALF_WIDTH_M && z <= pad.centre.z);
   if (inFront && dist <= pad.radius + DOOR_OFFER_REACH_M) {
     const label = area === "village" ? DOOR_LABEL.village : area === "hall" ? DOOR_LABEL.hall : "집 밖으로 나가기";
     const short = area === "village" ? DOOR_SHORT.village : area === "hall" ? DOOR_SHORT.hall : "나가기";

@@ -189,3 +189,53 @@ export function disposeHallNight(): void {
 export function isSkylight(m: Material): m is MeshBasicMaterial {
   return m.name === "M_skylight" && (m as MeshBasicMaterial).isMeshBasicMaterial === true;
 }
+
+/** The skylight pane's extent on the floor plan (world x, z): its centre and half-size. */
+export interface SkylightRect {
+  cx: number;
+  cz: number;
+  hx: number;
+  hz: number;
+}
+
+/**
+ * Give the flat skylight diffuser a glazed look (round 7 review: by day a plain white plate, by night a flat dark-blue square with no
+ * depth). Drawn on the pane itself, no new geometry: slim frame bars (a 2 x 3 grid of panes, as a real ceiling lantern), and by night
+ * the pane darkens toward its middle while its edges keep a little of the room's light caught in the plaster reveal — the recess
+ * reads deep. Idempotent.
+ */
+export function patchSkylightMaterial(material: MeshBasicMaterial, rect: SkylightRect): void {
+  if (patched.has(material)) return;
+  patched.add(material);
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms.uHallNight = hallNightUniform;
+    shader.uniforms.uSkyRect = { value: [rect.cx, rect.cz, rect.hx, rect.hz] };
+    shader.vertexShader = shader.vertexShader
+      .replace("void main() {", "varying vec3 vSkyWorld;\nvoid main() {")
+      .replace("#include <project_vertex>", "#include <project_vertex>\n\tvSkyWorld = ( modelMatrix * vec4( transformed, 1.0 ) ).xyz;");
+    shader.fragmentShader = shader.fragmentShader
+      .replace("void main() {", "varying vec3 vSkyWorld;\nuniform float uHallNight;\nuniform vec4 uSkyRect;\nvoid main() {")
+      .replace(
+      "#include <opaque_fragment>",
+      `#include <opaque_fragment>
+	{
+		vec2 q = ( vSkyWorld.xz - uSkyRect.xy ) / uSkyRect.zw; // -1 .. 1 across the pane
+		vec2 a = abs( q );
+		float e = max( a.x, a.y );
+		// frame bars: the outer frame and a 2 x 3 grid (one bar across x, two across z)
+		float w = 0.035;
+		float bars = max( smoothstep( w, 0.0, abs( q.x ) ), max( smoothstep( w, 0.0, abs( a.y - 0.3333 ) ), smoothstep( 1.0 - 1.6 * w, 1.0, e ) ) );
+		// by night: darker in the middle, the edges catch the room's light
+		float rim = smoothstep( 0.55, 1.0, e );
+		float night = uHallNight;
+		vec3 c = gl_FragColor.rgb * mix( 1.0, 0.65 + 1.9 * rim, night );
+		// the bars: a light grey aluminium, by day a touch darker than the bright diffuser, by night lit by the room
+		vec3 bar = mix( vec3( 0.80, 0.80, 0.79 ), vec3( 0.20, 0.19, 0.18 ), night );
+		gl_FragColor.rgb = mix( c, bar, bars );
+	}`,
+    );
+  };
+  material.customProgramCacheKey = () => "hall-skylight";
+  material.needsUpdate = true;
+}
+

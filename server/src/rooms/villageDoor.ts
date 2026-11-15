@@ -71,8 +71,10 @@ export function useDoor(
   if (area !== "village" && area !== "hall" && !isHouseArea(area)) return null;
   if (!Number.isFinite(x) || !Number.isFinite(z)) return null;
   const pad = area === "village" ? layout.memorial.exterior.doorPad : layout.memorial.interior.doorPad;
-  if (Math.hypot(x - pad.centre.x, z - pad.centre.z) > pad.radius + DOOR_REACH_M) return null;
   const d = Math.hypot(x - pad.centre.x, z - pad.centre.z);
-  if (area !== "village" && d > pad.radius && Math.abs(x - pad.centre.x) > DOOR_INSIDE_HALF_WIDTH_M) return null;
+  if (d > pad.radius + DOOR_REACH_M) return null;
+  // past the pad's edge inside a building: only straight in front of the door, on the room's side of it (the door is in the
+  // south wall, the room to the north: −z) — round 7 review: the rule looked at the sideways offset alone
+  if (area !== "village" && d > pad.radius && (Math.abs(x - pad.centre.x) > DOOR_INSIDE_HALF_WIDTH_M || z > pad.centre.z)) return null;
   return arrivalAfter(area, layout);
 }

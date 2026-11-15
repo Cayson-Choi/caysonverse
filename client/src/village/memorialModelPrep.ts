@@ -1,6 +1,6 @@
-import { type InstancedMesh, type Material, type MeshBasicMaterial, type Object3D, type Texture } from "three";
+import { Box3, Vector3, type InstancedMesh, type Material, type Mesh, type MeshBasicMaterial, type Object3D, type Texture } from "three";
 import { COLLIDER_PREFIX, LIGHTMAP_MATERIAL_PREFIX, configureLightmap, isMesh, lightmapMaterial, materialsOf } from "../game/hub/hubModelPrep";
-import { HALL_CUBBY_MATERIAL, isSkylight, patchHallCubbyMaterial, patchHallGardenMaterial, patchHallLightmapMaterial } from "./hallNight";
+import { HALL_CUBBY_MATERIAL, isSkylight, patchHallCubbyMaterial, patchHallGardenMaterial, patchHallLightmapMaterial, patchSkylightMaterial } from "./hallNight";
 import { isHallGlass, patchHallGlassMaterial } from "./hallGlass";
 
 /**
@@ -45,6 +45,7 @@ export function prepareMemorial(source: Object3D, lightmap: Texture): MemorialNo
   configureLightmap(lightmap);
   const lightmapped: Material[] = [];
   let skylight: MeshBasicMaterial | null = null;
+  let skylightMesh: Object3D | null = null;
   root.traverse((o) => {
     if (o.name.startsWith(COLLIDER_PREFIX)) {
       o.visible = false;
@@ -55,7 +56,10 @@ export function prepareMemorial(source: Object3D, lightmap: Texture): MemorialNo
       if (m.name === "M_garden") patchHallGardenMaterial(m);
       if (m.name === HALL_CUBBY_MATERIAL) patchHallCubbyMaterial(m); // the cubby interiors' shared day | night texture (round 6)
       if (isHallGlass(m.name)) patchHallGlassMaterial(m); // reflective glass (hallGlass.ts, round 5)
-      if (isSkylight(m)) skylight = m;
+      if (isSkylight(m)) {
+        skylight = m;
+        skylightMesh = o;
+      }
       if (!m.name.startsWith(LIGHTMAP_MATERIAL_PREFIX)) continue;
       lightmapMaterial(m, lightmap);
       patchHallLightmapMaterial(m);
@@ -63,6 +67,28 @@ export function prepareMemorial(source: Object3D, lightmap: Texture): MemorialNo
     }
   });
   root.updateMatrixWorld(true);
+  // the skylight pane's glazing (frame bars, its night depth) is drawn over its extent on the plan (round 7 review)
+  if (skylight && skylightMesh) {
+    // the pane only: the mesh is merged with the other unlit pieces (hall_fx), so its box is the room's; the pane is up at the
+    // ceiling (the vertices over 4 m)
+    const m = skylightMesh as Mesh;
+    const pos = m.geometry?.getAttribute("position");
+    const b = new Box3();
+    const v = new Vector3();
+    if (pos) {
+      for (let i = 0; i < pos.count; i++) {
+        v.fromBufferAttribute(pos, i).applyMatrix4(m.matrixWorld);
+        if (v.y > 4.0) b.expandByPoint(v);
+      }
+    }
+    if (!b.isEmpty())
+      patchSkylightMaterial(skylight, {
+        cx: (b.min.x + b.max.x) / 2,
+        cz: (b.min.z + b.max.z) / 2,
+        hx: Math.max(0.05, (b.max.x - b.min.x) / 2),
+        hz: Math.max(0.05, (b.max.z - b.min.z) / 2),
+      });
+  }
   const left = root.getObjectByName("door__leaf_l");
   const right = root.getObjectByName("door__leaf_r");
   return { root, lightmapped, doorLeaves: left && right ? { left, right } : null, skylight };
