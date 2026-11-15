@@ -1,0 +1,136 @@
+<!doctype html>
+<meta charset="utf-8">
+<style>html,body{margin:0;background:#e9e4dc}</style>
+<script type="importmap">{"imports":{"three":"/node_modules/three/build/three.module.js","three/addons/":"/node_modules/three/examples/jsm/"}}</script>
+<script type="module">
+import * as THREE from "three";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+
+const loader = new GLTFLoader();
+const load = (u) => new Promise((res, rej) => loader.load(u, res, undefined, rej));
+const GRIP_OFFSET = [0, 0, 0.025];
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(1);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xe9e4dc);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x8a8478, 1.6));
+const sun = new THREE.DirectionalLight(0xffffff, 2.4); sun.position.set(2, 4, 3); scene.add(sun);
+const fill = new THREE.DirectionalLight(0xbcd0ff, 0.8); fill.position.set(-3, 1, -2); scene.add(fill);
+const floor = new THREE.Mesh(new THREE.CircleGeometry(4, 48).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0xb9c48f, roughness: 1 }));
+floor.position.y = -0.001; scene.add(floor);
+
+const SHOW = ["body__feet", "body__hands", "body__head", "body__legs", "body__torso", "face__smile", "hair__short", "top__tee", "bottom__pants", "shoes__sneakers"];
+
+let ch, chGltf, anims, gear, fish, mixer, gearMixer;
+const handR = () => ch.getObjectByName("handslotr");
+const handL = () => ch.getObjectByName("handslotl");
+
+async function init(opts) {
+  chGltf = await load("/models/character.glb");
+  anims = await load("/models/lake/fishing_anims.glb");
+  gear = await load(opts.gear || "/models/lake/lake_gear.glb");
+  try { fish = await load(opts.fish || "/models/lake/lake_fish.glb"); } catch (e) { fish = null; }
+  ch = chGltf.scene;
+  ch.traverse((o) => { if (o.isMesh || o.isSkinnedMesh) o.visible = SHOW.includes(o.name) || o.name === ""; });
+  scene.add(ch);
+  window.GN = {}; for (const n of ["grip", "net_grip", "float"]) window.GN[n] = gear.scene.getObjectByName(n);
+  window.FN = {}; if (fish) fish.scene.traverse((o) => { if (o.name.startsWith("fish_")) window.FN[o.name] = o; });
+  mixer = new THREE.AnimationMixer(ch);
+  window.READY = true;
+}
+
+function clipByName(list, n) { return list.find((c) => c.name === n); }
+
+function cleanup() {
+  for (const n of ["grip", "net_grip", "float"]) { const o = window.GN[n]; if (o && o.parent) o.parent.remove(o); }
+  if (window._fishObj) { scene.remove(window._fishObj); window._fishObj = null; }
+}
+
+const camPos = (view, c, dist) => {
+  const v = { side: [1, 0.15, 0.0001], front: [0.55, 0.2, 1], back: [-0.7, 0.3, -1], top: [0.2, 1.6, 0.9], hand: [0.5, 0.25, 0.8] }[view];
+  return new THREE.Vector3(...v).normalize().multiplyScalar(dist).add(c);
+};
+
+window.setup = (cfg) => {
+  cleanup();
+  mixer.stopAllAction();
+  const t = cfg.t;
+  if (cfg.base) { const a = mixer.clipAction(clipByName(chGltf.animations, cfg.base)); a.play(); a.time = cfg.baseT || 0; }
+  if (cfg.clip) { const a = mixer.clipAction(clipByName(anims.animations, cfg.clip)); a.play(); a.time = t; }
+  mixer.update(0);
+  ch.updateMatrixWorld(true);
+  const g = cfg.gear || {};
+  if (g.rod) {
+    const grip = window.GN.grip;
+    handR().add(grip); grip.position.set(...GRIP_OFFSET);
+    gearMixer = new THREE.AnimationMixer(grip);
+    const name = g.rod === "fold" ? "Rod_Folded" : "Rod_Extended";
+    const a = gearMixer.clipAction(clipByName(gear.animations, name)); a.play(); a.time = 0;
+    if (g.extend !== undefined) { const e = gearMixer.clipAction(clipByName(gear.animations, "Rod_Extend")); e.play(); e.time = g.extend * (14 / 24); e.weight = 1; a.weight = 0; }
+    if (g.bend) { const b = gearMixer.clipAction(clipByName(gear.animations, g.bend === "fight" ? "Rod_Bend_Fight" : "Rod_Bend_Idle")); b.play(); b.time = 0; b.weight = g.bendW ?? 1; }
+    gearMixer.update(0);
+  }
+  if (g.net) {
+    const n = window.GN.net_grip;
+    handL().add(n); n.position.set(...GRIP_OFFSET);
+  }
+  ch.updateMatrixWorld(true);
+  if (cfg.fish && fish) {
+    const f = window.FN["fish_" + cfg.fish.sp].clone(true);
+    const L = (cfg.fish.cm / 100) * 1.25;
+    f.scale.setScalar(L);
+    const pr = new THREE.Vector3(), pl = new THREE.Vector3();
+    handR().getWorldPosition(pr); handL().getWorldPosition(pl);
+    scene.add(f);
+    window._fishObj = f;
+    if (cfg.fish.mode === "show") {
+      const mid = pr.clone().add(pl).multiplyScalar(0.5);
+      const axis = pr.clone().sub(pl).setY(0).normalize(); // head toward the right hand
+      f.position.copy(mid).add(new THREE.Vector3(0, 0.03 + 0.07 * L, 0));
+      f.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), axis);
+    } else if (cfg.fish.mode === "lift") {
+      f.position.copy(pl).add(new THREE.Vector3(0.0, 0.03, 0.38 * L));
+      f.rotation.set(-0.25, 0.0, 0);
+    }
+  }
+};
+
+window.shot = (cfg, W, H) => {
+  window.setup(cfg);
+  renderer.setSize(W, H);
+  const cam = new THREE.PerspectiveCamera(cfg.fov || 34, W / H, 0.05, 40);
+  const tgt = new THREE.Vector3(...(cfg.target || [0, 1.0, 0]));
+  if (cfg.follow) { (cfg.follow === 'r' ? handR() : handL()).getWorldPosition(tgt); }
+  cam.position.copy(camPos(cfg.view || "side", tgt, cfg.dist || 4.2));
+  cam.lookAt(tgt);
+  renderer.render(scene, cam);
+  return renderer.domElement.toDataURL("image/png");
+};
+
+window.standalone = (cfg, W, H) => {
+  // object-only shot (no character): cfg.obj = {file, node, anim?}
+  cleanup(); mixer.stopAllAction();
+  ch.visible = false; floor.visible = false;
+  const src = cfg.src === "fish" ? fish : gear;
+  const o = (cfg.src === "fish" ? window.FN : window.GN)[cfg.node];
+  const holder = new THREE.Group(); scene.add(holder);
+  const p = o.parent; holder.add(o);
+  if (cfg.rot) holder.rotation.set(...cfg.rot);
+  if (cfg.scale) holder.scale.setScalar(cfg.scale);
+  if (cfg.clip) { const m = new THREE.AnimationMixer(o); const a = m.clipAction(clipByName(src.animations, cfg.clip)); a.play(); a.time = cfg.t || 0; m.update(0); }
+  holder.updateMatrixWorld(true);
+  renderer.setSize(W, H);
+  const cam = new THREE.PerspectiveCamera(cfg.fov || 30, W / H, 0.01, 40);
+  const tgt = new THREE.Vector3(...(cfg.target || [0, 0, 0]));
+  cam.position.set(...cfg.cam); cam.lookAt(tgt);
+  renderer.render(scene, cam);
+  const url = renderer.domElement.toDataURL("image/png");
+  holder.remove(o); scene.remove(holder); ch.visible = true; floor.visible = true;
+  return url;
+};
+
+await init(Object.fromEntries(new URLSearchParams(location.search)));
+</script>

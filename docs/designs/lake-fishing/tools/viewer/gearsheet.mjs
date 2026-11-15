@@ -1,0 +1,23 @@
+// gearsheet.mjs - renders each gear piece (and the show pose) to <outDir>/*.png for the 12.8 comparison sheet.
+import { open } from "./render.mjs";
+import fs from "node:fs";
+const outDir = process.argv[2] || "art/lake/work/gearviews";
+fs.mkdirSync(outDir, { recursive: true });
+const { page, close } = await open();
+const save = (n, url) => fs.writeFileSync(`${outDir}/${n}.png`, Buffer.from(url.split(",")[1], "base64"));
+const so = async (n, cfg, W = 700, H = 500) => save(n, await page.evaluate(([c, W, H]) => window.standalone(c, W, H), [cfg, W, H]));
+const U = [-0.8, 0.6, 0];
+await so("rod_folded", { node: "grip", clip: "Rod_Folded", t: 0, cam: [0.0, 0.0, 2.3], target: [-0.35, 0.34, 0], fov: 30 });
+await so("rod_extended", { node: "grip", clip: "Rod_Extended", t: 0, cam: [0.0, 0.0, 9.0], target: [-1.3, 0.9, 0], fov: 30 }, 900, 500);
+await so("rod_handle", { node: "grip", clip: "Rod_Extended", t: 0, cam: [0.5, 0.5, 0.9], target: [-0.04, 0.03, 0], fov: 30 });
+await so("rod_joint", { node: "grip", clip: "Rod_Extended", t: 0, cam: [-0.7, 0.6, 1.0], target: [-1.0, 0.75, 0], fov: 30 });
+await so("float", { node: "float", cam: [0.0, 0.1, 1.0], target: [0, 0.06, 0], fov: 30 }, 500, 700);
+await so("float_tip", { node: "float", cam: [0.0, 0.3, 0.35], target: [0, 0.26, 0], fov: 30 }, 500, 700);
+await so("net", { node: "net_grip", cam: [0.9, 1.8, 3.0], target: [0.8, 0.5, -0.1], fov: 30 }, 900, 600);
+const shot = async (n, cfg, W = 600, H = 720) => save(n, await page.evaluate(([c, W, H]) => window.shot(c, W, H), [cfg, W, H]));
+await shot("show_front", { clip: "Fish_Stand_Show", t: 1.4, fish: { sp: "carp", cm: 60, mode: "show" }, view: "front", dist: 3.2, target: [0, 1.0, 0.2] });
+await shot("hold_rod_front", { clip: "Fish_Sit_Idle", t: 0, gear: { rod: "ext" }, view: "front", dist: 5.5, target: [0, 1.4, 0.4] }, 600, 720);
+await shot("carry_rod_front", { base: "Walking_A", baseT: 0.3, clip: "Carry_Rod", t: 0.3, gear: { rod: "fold" }, view: "front", dist: 4.0, target: [0, 1.1, 0] });
+await shot("net_hold", { clip: "Fish_Net", t: 1.04, gear: { rod: "ext", net: true }, view: "front", dist: 5.5, target: [0, 1.4, 0.4] });
+await close();
+console.log("done");
