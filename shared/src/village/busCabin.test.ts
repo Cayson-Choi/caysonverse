@@ -7,6 +7,11 @@ import {
   BUS_EXIT_ZONE,
   BUS_HOLDS,
   BUS_HOLD_COUNT,
+  BUS_HOLD_OFFER_M,
+  BUS_RIDER_APART,
+  BUS_WALL_SEAT_SHIFT,
+  crowdBlocks,
+  seatBodyPoint,
   BUS_SEATS,
   BUS_SEAT_COUNT,
   busHoldNumber,
@@ -61,7 +66,7 @@ describe("the bus cabin data (generated from the Blender model)", () => {
       expect(s.yaw).toBeCloseTo(-Math.PI / 2, 2); // towards the doors (the aisle)
       expect(facingVector(s.yaw).right).toBeGreaterThan(0.99);
     }
-    expect(BUS_HOLDS.length).toBeGreaterThanOrEqual(8);
+    expect(BUS_HOLDS.length).toBeGreaterThanOrEqual(7);
     expect(new Set(BUS_HOLDS.map((h) => h.id)).size).toBe(BUS_HOLD_COUNT);
   });
 
@@ -192,5 +197,69 @@ describe("the rider place in the world", () => {
     expect(seated.y).toBeGreaterThan(s.floor);
     const w = busLocalToWorld(bus, 3, 1);
     expect(busLocal(bus, w.x, w.z).ahead).toBeCloseTo(3, 9);
+  });
+});
+
+describe("review r1: holds, crowd and the wall seats", () => {
+  it("every hold spot can be offered: standing at it offers its pole, not the free seat beside it", () => {
+    BUS_HOLDS.forEach((h, i) => {
+      const spot = nearestFreeSpot(h.ahead, h.right, new Set(), new Set());
+      expect(spot, h.id).toMatchObject({ kind: "hold", index: i });
+      expect(spot!.dist).toBeLessThanOrEqual(BUS_HOLD_OFFER_M);
+    });
+  });
+
+  it("two hold spots are at least a body apart, and a spot with someone at it is not offered", () => {
+    for (let a = 0; a < BUS_HOLDS.length; a++) {
+      for (let b = a + 1; b < BUS_HOLDS.length; b++) {
+        const d = Math.hypot(BUS_HOLDS[a]!.ahead - BUS_HOLDS[b]!.ahead, BUS_HOLDS[a]!.right - BUS_HOLDS[b]!.right);
+        expect(d, `${BUS_HOLDS[a]!.id}-${BUS_HOLDS[b]!.id}`).toBeGreaterThanOrEqual(0.55);
+      }
+    }
+    const h = BUS_HOLDS[1]!;
+    const taken = new Set(BUS_SEATS.map((_, i) => i));
+    const spot = nearestFreeSpot(h.ahead, h.right, taken, new Set(), [{ ahead: h.ahead + 0.1, right: h.right }]);
+    expect(spot === null || !(spot.kind === "hold" && spot.index === 1)).toBe(true);
+  });
+
+  it("a step into another rider is refused, a step away from one is not, and the slide goes round", () => {
+    const o = { ahead: 0, right: 0 };
+    expect(crowdBlocks({ ahead: 1, right: 0 }, { ahead: 0.7, right: 0 }, [o])).toBe(false);
+    expect(crowdBlocks({ ahead: 0.8, right: 0 }, { ahead: 0.1, right: 0 }, [o])).toBe(true);
+    expect(crowdBlocks({ ahead: 0.1, right: 0 }, { ahead: 0.15, right: 0 }, [o])).toBe(false); // already inside: may walk out
+    // two riders pass in the narrowest aisle (0.5 m of walkable width): at its two edges
+    expect(crowdBlocks({ ahead: 0.6, right: 0.25 }, { ahead: 0.0, right: 0.25 }, [{ ahead: 0.3, right: 0.0 }])).toBe(false);
+    const out = stepInCabin({ ahead: 0.8, right: 0 }, { ahead: 0.1, right: 0 }, undefined, undefined, [o]);
+    expect(Math.hypot(out.ahead - o.ahead, out.right - o.right)).toBeGreaterThanOrEqual(BUS_RIDER_APART - 1e-9);
+  });
+
+  it("standing up never puts a rider inside another", () => {
+    const seat = BUS_SEATS.find((x) => x.id === "R2")!;
+    const first = seatStandUpSpot(seat);
+    const second = seatStandUpSpot(seat, [{ ahead: first.ahead, right: first.right }]);
+    expect(Math.hypot(second.ahead - first.ahead, second.right - first.right)).toBeGreaterThanOrEqual(0.16);
+    expect(cabinBlocked(second.ahead, second.right)).toBe(false);
+  });
+
+  it("seated riders by the wall sit towards the aisle: their 0.5 m reach ends inside the bus's skin; neighbours are 0.6 m or more apart", () => {
+    for (const s of BUS_SEATS) {
+      const f = facingVector(s.yaw);
+      const body = seatBodyPoint(s);
+      if (Math.abs(f.right) < 0.5) {
+        expect(Math.abs(body.right) + 0.5, s.id).toBeLessThanOrEqual(1.245 - 0.04);
+      } else {
+        expect(Math.abs(body.right), s.id).toBeLessThanOrEqual(Math.abs(s.right) + 0.5);
+      }
+    }
+    expect(BUS_WALL_SEAT_SHIFT).toBeGreaterThan(0.1);
+    for (let a = 0; a < BUS_SEATS.length; a++) {
+      for (let b = a + 1; b < BUS_SEATS.length; b++) {
+        const A = seatBodyPoint(BUS_SEATS[a]!);
+        const B = seatBodyPoint(BUS_SEATS[b]!);
+        const d = Math.hypot(A.ahead - B.ahead, A.right - B.right);
+        // seats that face the same way side by side (same row): the hands may touch but the bodies are 0.65 m or more apart
+        if (Math.abs(A.ahead - B.ahead) < 0.3) expect(d, `${BUS_SEATS[a]!.id}-${BUS_SEATS[b]!.id}`).toBeGreaterThanOrEqual(0.6);
+      }
+    }
   });
 });

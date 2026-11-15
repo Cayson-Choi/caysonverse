@@ -1,10 +1,14 @@
 import type { BusMovePayload, BusSitPayload } from "@caysonverse/shared/messages";
 import { MOVE_ELAPSED_CEIL_MS, MOVE_ELAPSED_FLOOR_MS, MOVE_SPEED_SLACK, RUN_SPEED } from "@caysonverse/shared/constants";
 import {
+  BUS_WALK_RADIUS,
   BUS_HOLDS,
   BUS_HOLD_REACH_M,
+  BUS_RIDER_APART_SERVER,
   BUS_SEATS,
   BUS_HOLD_COUNT,
+  type BusLocalPoint,
+  crowdBlocks,
   BUS_SEAT_COUNT,
   busHoldNumber,
   busSeatNumber,
@@ -34,6 +38,7 @@ export function validateBusMove(
   from: { busSeat: number; ahead: number; right: number },
   payload: unknown,
   elapsedMs: number,
+  others?: ReadonlyArray<BusLocalPoint>,
 ): BusMoveDecision {
   if (from.busSeat !== 0) return { ok: false, reason: "drop" };
   if (payload === null || typeof payload !== "object") return { ok: false, reason: "drop" };
@@ -44,10 +49,15 @@ export function validateBusMove(
   const allowed = (RUN_SPEED * MOVE_SPEED_SLACK * dt) / 1000 + 0.05;
   const dist = Math.hypot(p.ahead - from.ahead, p.right - from.right);
   if (dist > allowed) return { ok: false, reason: "drop" };
+  // Nobody walks into another rider (the client predicts with a slightly stricter rule, so an honest step is never refused here).
+  if (crowdBlocks(from, { ahead: p.ahead, right: p.right }, others, BUS_RIDER_APART_SERVER)) return { ok: false, reason: "drop" };
+  // The segment, at half the walk radius: the client slides along seats and wheel housings (checker r1: 4 % of honest steps along
+  // a seat's edge were refused by a full-radius straight-line test and the two sides drifted apart), so a straight line that
+  // only grazes a solid's rim is honest; one that goes through a seat, a housing or a post (all deeper than the radius) is not.
   const n = Math.ceil(dist / 0.1);
   for (let k = 1; k < n; k++) {
     const t = k / n;
-    if (cabinBlocked(from.ahead + (p.ahead - from.ahead) * t, from.right + (p.right - from.right) * t)) return { ok: false, reason: "drop" };
+    if (cabinBlocked(from.ahead + (p.ahead - from.ahead) * t, from.right + (p.right - from.right) * t, BUS_WALK_RADIUS * 0.5)) return { ok: false, reason: "drop" };
   }
   return { ok: true, ahead: p.ahead, right: p.right, yaw: normalizeYaw(p.yaw) };
 }
@@ -69,6 +79,7 @@ export function validateBusSit(
   from: { busSeat: number; ahead: number; right: number },
   payload: unknown,
   taken: ReadonlySet<number>,
+  riders?: ReadonlyArray<BusLocalPoint>,
 ): BusSitDecision {
   if (from.busSeat !== 0) return { ok: false, notice: "" };
   if (payload === null || typeof payload !== "object") return { ok: false, notice: "" };
@@ -91,6 +102,8 @@ export function validateBusSit(
   const number = busHoldNumber(index);
   if (taken.has(number)) return { ok: false, notice: BUS_HOLD_TAKEN_NOTICE };
   const hold = BUS_HOLDS[index]!;
+  // someone standing at the pole's spot (not holding it yet) counts as holding it: two bodies never share a spot
+  if (riders && riders.some((o) => Math.hypot(o.ahead - hold.ahead, o.right - hold.right) < BUS_RIDER_APART_SERVER)) return { ok: false, notice: BUS_HOLD_TAKEN_NOTICE };
   if (Math.hypot(from.ahead - hold.ahead, from.right - hold.right) > BUS_HOLD_REACH_M) return { ok: false, notice: BUS_SEAT_FAR_NOTICE };
   return { ok: true, busSeat: number, kind: "hold", index };
 }

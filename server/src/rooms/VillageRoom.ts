@@ -63,6 +63,10 @@ import { checkHouseKeypad, initialKeypadRate } from "./villageKeypad";
 import type { KeypadRateState } from "@caysonverse/shared/village/buildingAccess";
 
 /** Per-client bookkeeping (not part of synced state): the base's, plus the door-use cap. */
+/** Most BusMove messages a second a rider may send (the client sends ten while it walks) and most sit / stand messages. */
+const BUS_MOVE_MAX_PER_SEC = 14;
+const BUS_ACT_MAX_PER_SEC = 6;
+
 interface VillageTracking extends Tracking {
   /** Sliding-window rate cap for door uses (1 per second). */
   doorRate: RateWindow;
@@ -76,6 +80,9 @@ interface VillageTracking extends Tracking {
   keypadRate: KeypadRateState;
   /** When the last step inside the bus was accepted (ms, the room clock): the walk speed budget. */
   busMoveAt: number;
+  /** Caps on the bus messages: the steps (BusMove) and the rest (sit, stand): a flood never speeds a rider up or buys CPU. */
+  busMoveRate: RateWindow;
+  busActRate: RateWindow;
 }
 
 /**
@@ -289,6 +296,8 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
       busTripId: null,
       keypadRate: initialKeypadRate(),
       busMoveAt: now,
+      busMoveRate: new RateWindow(BUS_MOVE_MAX_PER_SEC),
+      busActRate: new RateWindow(BUS_ACT_MAX_PER_SEC),
     };
   }
 
@@ -413,20 +422,21 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     const now = this.wallClock();
     this.lastBusBroadcast = now;
     const snapshot = this.busSnapshot(now);
-    for (const client of this.clients) {
-      const track = this.tracking.get(client.sessionId);
-      if (!track?.busBoarded || track.busTripId === null) continue;
+    // Everyone tracked, not only the connected clients: a rider whose connection dropped (the reconnect window is still open)
+    // used to stay aboard through the lap, holding a seat and riding as a ghost in the next lap's bus (review r1).
+    for (const [sessionId, track] of this.tracking) {
+      if (!track.busBoarded || track.busTripId === null) continue;
       // A rider stays on one lap only: from boarding (the 3 min before the departure, the trip's own id) through the lap. Once
       // the bus is back at the stop (or a later trip is up), the ride ends and the player can board the next hourly trip.
       // (It used to end at once for anyone who boarded before the hour: the status was "boarding", not "inTransit".)
       if (!riderOnTrip(snapshot, track.busTripId)) {
-        const player = this.state.players.get(client.sessionId);
+        const player = this.state.players.get(sessionId);
         if (player) this.getOffBus(player, track);
         else {
           track.busBoarded = false;
           track.busTripId = null;
         }
-        client.send(MessageType.BusRideState, { boarded: false, tripId: snapshot.tripId } satisfies BusRideStatePayload);
+        this.clients.find((c) => c.sessionId === sessionId)?.send(MessageType.BusRideState, { boarded: false, tripId: snapshot.tripId } satisfies BusRideStatePayload);
       }
     }
     this.broadcast(MessageType.BusState, snapshot);
@@ -471,6 +481,17 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     if (Math.abs(Math.atan2(Math.sin(yaw - player.yaw), Math.cos(yaw - player.yaw))) > 0.02) player.yaw = yaw;
   }
 
+  /** Where the other riders stand in the bus (bus-local): the bodies a step, a stand-up or a hold may not end inside. */
+  private otherBusPoints(except: Player): { ahead: number; right: number }[] {
+    const out: { ahead: number; right: number }[] = [];
+    this.state.players.forEach((p) => {
+      if (p === except || !this.busRiders.has(p) || p.busSeat < 0) return;
+      // seated riders are inside their seat's solid already (walkers never reach it); free and holding ones are bodies
+      if (busPlaceOf(p.busSeat).kind !== "seat") out.push({ ahead: p.busAhead, right: p.busRight });
+    });
+    return out;
+  }
+
   /** The busSeat numbers other riders hold (seats and hold spots). */
   private takenBusSpots(except: Player): Set<number> {
     const taken = new Set<number>();
@@ -486,7 +507,8 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     const track = this.tracking.get(client.sessionId);
     if (!player || !track || !this.busRiders.has(player)) return;
     const now = this.now();
-    const decision = validateBusMove({ busSeat: player.busSeat, ahead: player.busAhead, right: player.busRight }, payload, now - track.busMoveAt);
+    if (!track.busMoveRate.tryAccept(now)) return;
+    const decision = validateBusMove({ busSeat: player.busSeat, ahead: player.busAhead, right: player.busRight }, payload, now - track.busMoveAt, this.otherBusPoints(player));
     if (!decision.ok) return;
     track.busMoveAt = now;
     player.busAhead = decision.ahead;
@@ -498,8 +520,10 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
   /** Sit in a free seat or take hold of a pole. A refusal says why to the rider (a taken seat, the wrong side of a backed seat). */
   private handleBusSit(client: Client, payload: unknown): void {
     const player = this.state.players.get(client.sessionId);
-    if (!player || !this.busRiders.has(player)) return;
-    const decision = validateBusSit({ busSeat: player.busSeat, ahead: player.busAhead, right: player.busRight }, payload, this.takenBusSpots(player));
+    const track = this.tracking.get(client.sessionId);
+    if (!player || !track || !this.busRiders.has(player)) return;
+    if (!track.busActRate.tryAccept(this.now())) return;
+    const decision = validateBusSit({ busSeat: player.busSeat, ahead: player.busAhead, right: player.busRight }, payload, this.takenBusSpots(player), this.otherBusPoints(player));
     if (!decision.ok) {
       if (decision.notice) client.send(MessageType.BusRejected, { reason: decision.notice });
       return;
@@ -517,10 +541,11 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     const player = this.state.players.get(client.sessionId);
     const track = this.tracking.get(client.sessionId);
     if (!player || !track || !this.busRiders.has(player)) return;
+    if (!track.busActRate.tryAccept(this.now())) return;
     const place = busPlaceOf(player.busSeat);
     if (place.kind === "free") return;
     if (place.kind === "seat") {
-      const spot = seatStandUpSpot(BUS_SEATS[place.index]!);
+      const spot = seatStandUpSpot(BUS_SEATS[place.index]!, this.otherBusPoints(player));
       player.busAhead = spot.ahead;
       player.busRight = spot.right;
       player.busYaw = spot.yaw;

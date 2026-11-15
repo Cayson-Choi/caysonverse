@@ -19,27 +19,25 @@ export const GEN_CABIN_SEATS: readonly GenSeat[] = [
   { id: "L3", ahead: 0.4, right: -0.86, floor: 0.34, yaw: 0, backed: true },
   { id: "R1", ahead: 2.15, right: 0.86, floor: 0.8, yaw: 0, backed: true },
   { id: "R2", ahead: 1.1, right: 0.86, floor: 0.34, yaw: 0, backed: true },
-  { id: "W1", ahead: -0.15, right: -0.93, floor: 0.34, yaw: -1.571, backed: true },
-  { id: "W2", ahead: -0.8, right: -0.93, floor: 0.34, yaw: -1.571, backed: true },
+  { id: "W1", ahead: 0, right: -0.93, floor: 0.34, yaw: -1.571, backed: true },
+  { id: "W2", ahead: -1, right: -0.93, floor: 0.34, yaw: -1.571, backed: true },
   { id: "RL1", ahead: -2.2, right: -0.86, floor: 0.86, yaw: 0, backed: true },
   { id: "RR1", ahead: -2.2, right: 0.86, floor: 0.86, yaw: 0, backed: true },
   { id: "RL2", ahead: -3.05, right: -0.86, floor: 0.75, yaw: 0, backed: true },
   { id: "RR2", ahead: -3.05, right: 0.86, floor: 0.75, yaw: 0, backed: true },
-  { id: "B1", ahead: -3.85, right: -0.7, floor: 0.75, yaw: 0, backed: true },
+  { id: "B1", ahead: -3.85, right: -0.8, floor: 0.75, yaw: 0, backed: true },
   { id: "B2", ahead: -3.85, right: 0, floor: 0.75, yaw: 0, backed: true },
-  { id: "B3", ahead: -3.85, right: 0.7, floor: 0.75, yaw: 0, backed: true },
+  { id: "B3", ahead: -3.85, right: 0.8, floor: 0.75, yaw: 0, backed: true },
 ];
 
 export const GEN_CABIN_HOLDS: readonly GenHold[] = [
   { id: "H1", ahead: 3.35, right: 0.32, floor: 0.34, yaw: 0, pole: "pole_4" },
   { id: "H2", ahead: 1.7, right: -0.14, floor: 0.34, yaw: 0, pole: "pole_0" },
-  { id: "H3", ahead: 0.82, right: -0.14, floor: 0.34, yaw: 0, pole: "pole_1" },
-  { id: "H4", ahead: 0.55, right: 0.25, floor: 0.34, yaw: 0, pole: "pole_3" },
+  { id: "H3", ahead: 0.95, right: -0.14, floor: 0.34, yaw: 0, pole: "pole_1" },
+  { id: "H4", ahead: 0.35, right: 0.28, floor: 0.34, yaw: 0, pole: "pole_3" },
   { id: "H5", ahead: -1.1, right: 0.34, floor: 0.34, yaw: 0, pole: "pole_6" },
   { id: "H6", ahead: -1.75, right: -0.14, floor: 0.75, yaw: 0, pole: "pole_7" },
-  { id: "H7", ahead: -1.75, right: 0.2, floor: 0.75, yaw: 0, pole: "pole_8" },
-  { id: "H8", ahead: -2.62, right: -0.14, floor: 0.75, yaw: 0, pole: "pole_9" },
-  { id: "H9", ahead: -2.62, right: 0.2, floor: 0.75, yaw: 0, pole: "pole_10" },
+  { id: "H7", ahead: -2.62, right: 0.2, floor: 0.75, yaw: 0, pole: "pole_10" },
 ];
 
 export const GEN_CABIN_POLES: readonly GenPole[] = [
@@ -69,15 +67,15 @@ export const GEN_CABIN_SEAT_BACKS: readonly GenSeatBack[] = [
   { seat: "L3", min: [0.14, -1.17, 0.79], max: [0.26, -0.55, 1.46] },
   { seat: "R1", min: [1.89, 0.55, 1.25], max: [2.01, 1.17, 1.92] },
   { seat: "R2", min: [0.84, 0.55, 0.79], max: [0.96, 1.17, 1.46] },
-  { seat: "W1", min: [-0.46, -1.19, 0.79], max: [0.16, -1.07, 1.46] },
-  { seat: "W2", min: [-1.11, -1.19, 0.79], max: [-0.49, -1.07, 1.46] },
+  { seat: "W1", min: [-0.31, -1.19, 0.79], max: [0.31, -1.07, 1.46] },
+  { seat: "W2", min: [-1.31, -1.19, 0.79], max: [-0.69, -1.07, 1.46] },
   { seat: "RL1", min: [-2.46, -1.17, 1.31], max: [-2.34, -0.55, 1.98] },
   { seat: "RR1", min: [-2.46, 0.55, 1.31], max: [-2.34, 1.17, 1.98] },
   { seat: "RL2", min: [-3.31, -1.17, 1.2], max: [-3.19, -0.55, 1.87] },
   { seat: "RR2", min: [-3.31, 0.55, 1.2], max: [-3.19, 1.17, 1.87] },
-  { seat: "B1", min: [-4.11, -1.01, 1.2], max: [-3.99, -0.39, 1.87] },
+  { seat: "B1", min: [-4.11, -1.11, 1.2], max: [-3.99, -0.49, 1.87] },
   { seat: "B2", min: [-4.11, -0.31, 1.2], max: [-3.99, 0.31, 1.87] },
-  { seat: "B3", min: [-4.11, 0.39, 1.2], max: [-3.99, 1.01, 1.87] },
+  { seat: "B3", min: [-4.11, 0.49, 1.2], max: [-3.99, 1.11, 1.87] },
 ];
 
 export const GEN_CABIN_SOLIDS: readonly GenSolid[] = [
@@ -94,15 +92,15 @@ export const GEN_CABIN_SOLIDS: readonly GenSolid[] = [
   { id: "seat_L3", minAhead: 0.12, minRight: -1.17, maxAhead: 0.68, maxRight: -0.55 },
   { id: "seat_R1", minAhead: 1.87, minRight: 0.55, maxAhead: 2.43, maxRight: 1.17 },
   { id: "seat_R2", minAhead: 0.82, minRight: 0.55, maxAhead: 1.38, maxRight: 1.17 },
-  { id: "seat_W1", minAhead: -0.46, minRight: -1.21, maxAhead: 0.16, maxRight: -0.65 },
-  { id: "seat_W2", minAhead: -1.11, minRight: -1.21, maxAhead: -0.49, maxRight: -0.65 },
+  { id: "seat_W1", minAhead: -0.31, minRight: -1.21, maxAhead: 0.31, maxRight: -0.65 },
+  { id: "seat_W2", minAhead: -1.31, minRight: -1.21, maxAhead: -0.69, maxRight: -0.65 },
   { id: "seat_RL1", minAhead: -2.48, minRight: -1.17, maxAhead: -1.92, maxRight: -0.55 },
   { id: "seat_RR1", minAhead: -2.48, minRight: 0.55, maxAhead: -1.92, maxRight: 1.17 },
   { id: "seat_RL2", minAhead: -3.33, minRight: -1.17, maxAhead: -2.77, maxRight: -0.55 },
   { id: "seat_RR2", minAhead: -3.33, minRight: 0.55, maxAhead: -2.77, maxRight: 1.17 },
-  { id: "seat_B1", minAhead: -4.13, minRight: -1.01, maxAhead: -3.57, maxRight: -0.39 },
+  { id: "seat_B1", minAhead: -4.13, minRight: -1.11, maxAhead: -3.57, maxRight: -0.49 },
   { id: "seat_B2", minAhead: -4.13, minRight: -0.31, maxAhead: -3.57, maxRight: 0.31 },
-  { id: "seat_B3", minAhead: -4.13, minRight: 0.39, maxAhead: -3.57, maxRight: 1.01 },
+  { id: "seat_B3", minAhead: -4.13, minRight: 0.49, maxAhead: -3.57, maxRight: 1.11 },
 ];
 
 /** The floor's heights by xf (m back from the front face): the low floor, the two steps' treads, the raised rear. */
