@@ -194,8 +194,8 @@ const offerSpot = (p, kind, near) =>
     let best = null;
     for (let a = -3.6; a <= 3.4; a += 0.05) {
       for (let r = -0.2; r <= 0.2; r += 0.05) {
-        if (c.cabinBlocked(a, r, 0.32)) continue;
-        const o = c.nearestFreeSpot(a, r, new Set(), new Set());
+        if (c.cabinBlocked(a, r, 0.32) || c.BUS_HOLDS.some((h) => Math.hypot(a - h.ahead, r - h.right) < 0.55)) continue; // a margin off every pole's spot
+        const o = c.nearestFreeSpot(a, r, new Set(), new Set(), undefined, 0); // facing forward, as the front quick view leaves the rider
         if (!o || o.kind !== kind) continue;
         const d = Math.hypot(a - near[0], r - near[1]);
         if (!best || d < best.d) best = { a, r, d, index: o.index };

@@ -1331,6 +1331,44 @@ describe("VillageRoom riding in the bus: walk, sit, hold, stand (integration, ow
     expect(await pollFor(() => bobPlayer.busSeat === 0)).toBe(true);
   });
 
+  it("review r1: a flood of BusMove / BusSit messages is capped (no speed-up, no flood of replies)", async () => {
+    const { room, client, player } = await aboard();
+    const serverClient = room.clients.find((c) => c.sessionId === client.sessionId)!;
+    // the room's clock held still: 300 tiny steps in the same instant. Without a cap each is within the speed budget (the 10 ms floor
+    // allows 0.146 m); with it only about 14 pass, so the rider moved a fraction of the 3 m the 300 would have taken
+    const t0 = Date.now() + 5000;
+    (room as unknown as { now: () => number }).now = () => t0;
+    const start = player.busAhead;
+    let ahead = start;
+    for (let k = 0; k < 300; k++) {
+      ahead -= 0.01;
+      (room as unknown as { handleBusMove: (c: unknown, p: unknown) => void }).handleBusMove(serverClient, { ahead, right: player.busRight, yaw: 3 });
+    }
+    expect(start - player.busAhead).toBeLessThan(0.5);
+    expect(start - player.busAhead).toBeGreaterThan(0.05);
+    // sitting: every refusal is answered, so the answers are capped too
+    let replies = 0;
+    const fake = { sessionId: client.sessionId, send: () => { replies++; } };
+    for (let k = 0; k < 200; k++) (room as unknown as { handleBusSit: (c: unknown, p: unknown) => void }).handleBusSit(fake, { kind: "seat", index: 11 });
+    expect(replies).toBeLessThanOrEqual(6);
+    expect(replies).toBeGreaterThan(0);
+  });
+
+  it("review r1: a rider whose connection dropped is put off the bus when the lap ends (they used to ride on as a ghost holding a seat)", async () => {
+    process.env.CV_RECONNECT_WINDOW_S = "30";
+    const { room, client, player, slot, clock } = await aboard();
+    client.reconnection.enabled = false;
+    client.connection.close(4010, "test drop");
+    expect(await pollFor(() => room.state.players.get(client.sessionId)?.connected === false)).toBe(true);
+    expect(player.busSeat).toBe(0);
+    clock.t = slot + 20_000;
+    room.tickBus();
+    expect(player.busSeat).toBe(0); // still on the lap
+    clock.t = slot + 120_000; // well after the lap
+    room.tickBus();
+    expect(player.busSeat).toBe(-1);
+  });
+
   it("while the bus is out on the lap the rider's world pose follows it (x/z are the bus's point); a seated rider moves with it", async () => {
     const { room, client, player, slot, clock } = await aboard();
     const index = BUS_SEATS.findIndex((s) => s.id === "R2");

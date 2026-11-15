@@ -263,3 +263,19 @@ describe("review r1: holds, crowd and the wall seats", () => {
     }
   });
 });
+
+describe("review r1: every seat can be offered from the aisle by facing it", () => {
+  it("each seat is the offered one from some aisle point and facing (the rear row's outer seats too)", () => {
+    const offered = new Set<string>();
+    for (let a = -3.6; a <= 3.4; a += 0.05) {
+      for (let r = -0.2; r <= 0.2001; r += 0.05) {
+        if (cabinBlocked(a, r, 0.32)) continue;
+        for (let k = 0; k < 8; k++) {
+          const spot = nearestFreeSpot(a, r, new Set(), new Set(), undefined, -Math.PI + (k * Math.PI) / 4);
+          if (spot?.kind === "seat") offered.add(BUS_SEATS[spot.index]!.id);
+        }
+      }
+    }
+    expect([...offered].sort()).toEqual(BUS_SEATS.map((s) => s.id).sort());
+  });
+});

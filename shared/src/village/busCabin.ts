@@ -253,7 +253,7 @@ export function seatApproachOk(seat: BusSeat, ahead: number, right: number): boo
 }
 
 /** A hold spot is the place to take hold of its pole: standing within this of it offers the hold, not the seat beside it. */
-export const BUS_HOLD_OFFER_M = 0.6;
+export const BUS_HOLD_OFFER_M = 0.35;
 
 /**
  * What the rider can do from where they stand (the approach rules respected): the free hold spot they stand at (within
@@ -267,6 +267,7 @@ export function nearestFreeSpot(
   takenSeats: ReadonlySet<number>,
   takenHolds: ReadonlySet<number>,
   riders?: ReadonlyArray<BusLocalPoint>,
+  yaw?: number,
 ): { kind: "seat" | "hold"; index: number; dist: number } | null {
   const crowded = (a: number, b: number): boolean => !!riders && riders.some((o) => Math.hypot(o.ahead - a, o.right - b) < BUS_RIDER_APART_SERVER);
   let bestHold: { kind: "hold"; index: number; dist: number } | null = null;
@@ -278,12 +279,22 @@ export function nearestFreeSpot(
   });
   const hold = bestHold as { kind: "hold"; index: number; dist: number } | null;
   if (hold !== null && hold.dist <= BUS_HOLD_OFFER_M) return hold;
+  // The seat the rider turns to: with a facing, the one nearest the point half a metre ahead of them (the seat across the
+  // aisle is the one they look at, not the one level with them: otherwise the rear row's outer seats, always farther than the
+  // middle one from the aisle, could never be offered); without one, the nearest.
+  const fx = yaw === undefined ? 0 : facingVector(yaw).ahead * 0.5;
+  const fz = yaw === undefined ? 0 : facingVector(yaw).right * 0.5;
   let bestSeat: { kind: "seat"; index: number; dist: number } | null = null;
+  let bestScore = Infinity;
   BUS_SEATS.forEach((s, i) => {
     if (takenSeats.has(i) || !seatApproachOk(s, ahead, right)) return;
     const front = seatFrontPoint(s);
     const d = Math.hypot(ahead - front.ahead, right - front.right);
-    if (bestSeat === null || d < bestSeat.dist) bestSeat = { kind: "seat", index: i, dist: d };
+    const score = yaw === undefined ? d : Math.hypot(ahead + fx - front.ahead, right + fz - front.right);
+    if (score < bestScore) {
+      bestScore = score;
+      bestSeat = { kind: "seat", index: i, dist: d };
+    }
   });
   return (bestSeat as { kind: "seat"; index: number; dist: number } | null) ?? hold;
 }

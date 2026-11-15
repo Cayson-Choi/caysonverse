@@ -189,7 +189,7 @@ function VillageDoors({ pose }: { pose: Pose }) {
         const free = selfBusRide.slot === 0;
         const ahead = free && busWalk.valid ? busWalk.ahead : selfBusRide.ahead;
         const right = free && busWalk.valid ? busWalk.right : selfBusRide.right;
-        return villageBusCabinTargets(selfBusRide.slot, ahead, right, takenBusSpots(), busOnRoad(), busRiderPoints());
+        return villageBusCabinTargets(selfBusRide.slot, ahead, right, takenBusSpots(), busOnRoad(), busRiderPoints(), free && busWalk.valid ? busWalk.yaw : undefined);
       }
       const base = villageAndHallTargets(area, p.x, p.z, cubbyCardState() !== null || guideDialogOpen() !== null || keypadOpen);
       const bus = villageBusTarget(area, p.x, p.z, boarded, ...busScheduleNow(), busOnRoad());
