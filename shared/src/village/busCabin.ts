@@ -102,6 +102,29 @@ export const busHoldNumber = (holdIndex: number): number => BUS_SEAT_COUNT + 1 +
 /** Where a boarding rider stands: just inside the front door, facing back down the aisle (xf 1.05). */
 export const BUS_ENTRY = { ahead: 3.45, right: 0.2, yaw: Math.PI } as const;
 
+/**
+ * Where boarding riders are put, one after another just inside the front door and down the aisle (the first free one: nobody
+ * stands inside another rider's body when two board together). All face back down the aisle.
+ */
+export const BUS_ENTRIES: ReadonlyArray<{ ahead: number; right: number; yaw: number }> = [
+  BUS_ENTRY,
+  { ahead: 2.85, right: 0.2, yaw: Math.PI },
+  { ahead: 2.25, right: 0.0, yaw: Math.PI },
+  { ahead: 1.65, right: 0.0, yaw: Math.PI },
+  { ahead: 3.2, right: 0.55, yaw: Math.PI },
+  { ahead: 1.0, right: 0.0, yaw: Math.PI },
+  { ahead: 0.35, right: 0.1, yaw: Math.PI },
+  { ahead: -0.3, right: 0.0, yaw: Math.PI },
+];
+
+/** The first entry spot no other rider is within `apart` m of (the first one when every spot is taken). */
+export function freeBusEntry(others: ReadonlyArray<{ ahead: number; right: number }>, apart = 0.6): { ahead: number; right: number; yaw: number } {
+  for (const e of BUS_ENTRIES) {
+    if (!others.some((o) => Math.hypot(o.ahead - e.ahead, o.right - e.right) < apart)) return e;
+  }
+  return BUS_ENTRIES[0]!;
+}
+
 /** In front of the middle door (xf 4.35 .. 5.75): the exit zone (a rider here is offered 하차 while the bus stands). */
 export const BUS_EXIT_ZONE = { aheadMin: -1.35, aheadMax: 0.25, rightMin: 0.35, rightMax: 1.2 } as const;
 
@@ -195,27 +218,33 @@ export function seatApproachOk(seat: BusSeat, ahead: number, right: number): boo
   return (ahead - seat.ahead) * f.ahead + (right - seat.right) * f.right > -0.12;
 }
 
-/** The free seat or hold spot nearest to a rider (the approach rules respected), or null. */
+/**
+ * What the rider can do from where they stand (the approach rules respected): the nearest free SEAT in reach if there is
+ * one (sitting is what a rider walks to), else the nearest free hold spot, else null. A pole beside a free seat is not
+ * offered: stand there and take the seat, or hold the pole once the seats are taken (or from a spot with no seat in reach).
+ */
 export function nearestFreeSpot(
   ahead: number,
   right: number,
   takenSeats: ReadonlySet<number>,
   takenHolds: ReadonlySet<number>,
 ): { kind: "seat" | "hold"; index: number; dist: number } | null {
-  let best: { kind: "seat" | "hold"; index: number; dist: number } | null = null;
+  let bestSeat: { kind: "seat"; index: number; dist: number } | null = null;
   BUS_SEATS.forEach((s, i) => {
     if (takenSeats.has(i) || !seatApproachOk(s, ahead, right)) return;
     const front = seatFrontPoint(s);
     const d = Math.hypot(ahead - front.ahead, right - front.right);
-    if (best === null || d < best.dist) best = { kind: "seat", index: i, dist: d };
+    if (bestSeat === null || d < bestSeat.dist) bestSeat = { kind: "seat", index: i, dist: d };
   });
+  if (bestSeat) return bestSeat;
+  let bestHold: { kind: "hold"; index: number; dist: number } | null = null;
   BUS_HOLDS.forEach((h, i) => {
     if (takenHolds.has(i)) return;
     const d = Math.hypot(ahead - h.ahead, right - h.right);
     if (d > BUS_HOLD_REACH_M) return;
-    if (best === null || d < best.dist) best = { kind: "hold", index: i, dist: d };
+    if (bestHold === null || d < bestHold.dist) bestHold = { kind: "hold", index: i, dist: d };
   });
-  return best;
+  return bestHold;
 }
 
 /** Where a rider stands up to: in front of the cushion or in the aisle beside the seat, the first spot not blocked. */

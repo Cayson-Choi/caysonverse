@@ -1,0 +1,297 @@
+/**
+ * e2e/village-bus-cabin.mjs — free riding inside the village bus (owner 2026-11-15: "버스 안에서 캐릭터는 창문의 왼쪽 오른쪽을
+ * 다 볼 수 있어야 해 … 의자에 앉을 수도 있고 서있을 수도 있어야 해").
+ *
+ * Two clients: A on a PC (mouse + keyboard), B on a 390x844 phone (touch). Both board in the boarding window.
+ *  - aboard they are free in the aisle at the entry (busSeat 0); A walks the aisle with the keys (inside the cabin), sits in a free
+ *    seat with E; B tries the same seat (a notice, the seat is not shared), then takes hold of a pole with the action button;
+ *  - each sees the other in the bus (drawn pose inside the bus body, seated / holding);
+ *  - the camera: every quick view (left, front, right, back) on both clients; a drag turns the view; the eye stays in the shell;
+ *    screenshots of each view; no pole crosses the avatar's face (fading poles);
+ *  - A stands up and walks; the bus leaves and the riders move with it; round the lap the bus stops and both get off.
+ * Evidence: screenshots + JSON in --out.
+ *
+ * Start the server with its clock ~150 s before a departure:
+ *   OFF=$(node -e 'const n=Date.now()+170000,s=Math.ceil(n/600000)*600000;console.log(s-n)')
+ *   (cd server && CV_DEV_CLOCK_OFFSET_MS=$OFF PORT=2901 npx tsx src/index.ts)
+ *   (cd client && VITE_SERVER_URL=http://localhost:2901 npx vite --port 5501 --strictPort)
+ *   CV_CLIENT_URL=http://localhost:5501 node e2e/village-bus-cabin.mjs --out=<folder> [--time=2026-11-03T21:30]
+ */
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { DESKTOP, PHONE, createRun, launchBrowser, openPlayer, sleep, walkAndWait } from "./lib/common.mjs";
+import { act, joinVillage, NOON } from "./lib/village.mjs";
+
+const outArg = process.argv.find((a) => a.startsWith("--out="));
+const timeArg = process.argv.find((a) => a.startsWith("--time="));
+const TIME = timeArg ? timeArg.slice("--time=".length) : NOON;
+const night = TIME !== NOON;
+const run = createRun(night ? "village-bus-cabin-night" : "village-bus-cabin");
+const OUT = outArg ? outArg.slice("--out=".length) : run.evidence;
+mkdirSync(OUT, { recursive: true });
+const PHONE_390 = { ...PHONE, viewport: { width: 390, height: 844 } };
+
+// ANGLE/D3D's HLSL compiler warns (X3595) about three.js's own shadow loop when the PC tier first compiles a program inside the bus:
+// a driver notice of the village's existing shaders, not an app error.
+run.allow("ANGLE X3595 shader-compile notice", /X3595|THREE\.WebGLProgram: Program Info Log/);
+const browser = await launchBrowser();
+const A = await openPlayer(browser, run, { tag: "A-pc", device: DESKTOP });
+const B = await openPlayer(browser, run, { tag: "B-phone", device: PHONE_390 });
+const shot = (p, name) => p.page.screenshot({ path: join(OUT, name) });
+const sid = (p) => p.page.evaluate(() => window.__cv.getSessionId());
+const ride = (p) =>
+  p.page.evaluate(async () => {
+    const r = (await window.__imp("/src/game/busRide.ts")).selfBusRide;
+    const w = (await window.__imp("/src/game/busRide.ts")).busWalk;
+    const cam = (await window.__imp("/src/game/busRide.ts")).busCamState;
+    return { slot: r.slot, ahead: r.ahead, right: r.right, yaw: r.yaw, walk: { ahead: w.ahead, right: w.right, yaw: w.yaw, valid: w.valid }, cam: { active: cam.active, fp: cam.firstPerson, arm: cam.arm, eye: [...cam.eye] } };
+  });
+const serverPlayer = (p, id) =>
+  p.page.evaluate(async (id) => {
+    const room = (await window.__imp("/src/net/connection.ts")).getRoom();
+    const pl = room?.state?.players?.get?.(id);
+    return pl ? { busSeat: pl.busSeat, busAhead: pl.busAhead, busRight: pl.busRight, busYaw: pl.busYaw, x: pl.x, z: pl.z } : null;
+  }, id);
+const transit = (p) =>
+  p.page.evaluate(async () => {
+    const sync = await window.__imp("/src/net/transitSync.ts");
+    const pose = sync.getTransitRenderPose();
+    const now = sync.transitNowMs();
+    const trip = sync.transitTripAt(now);
+    return { x: pose.x, z: pose.z, yaw: pose.yaw, status: trip.status, startMs: trip.startMs, now, boarded: sync.getTransitState().boarded, notice: sync.getTransitState().notice };
+  });
+const targetsOf = (p) =>
+  p.page.evaluate(async () => {
+    const m = await window.__imp("/src/game/interactTargets.ts");
+    return m.getTargets(window.__cv.getPos()).map((t) => ({ id: t.id, label: t.label }));
+  });
+const hud = (p) => p.page.evaluate(() => document.body.innerText);
+const local = (b, q) => {
+  const fx = Math.sin(b.yaw);
+  const fz = Math.cos(b.yaw);
+  return { ahead: (q.x - b.x) * fx + (q.z - b.z) * fz, right: -(q.x - b.x) * fz + (q.z - b.z) * fx };
+};
+
+/** The orbit's yaw relative to the bus: set directly (the quick views ease to it; a drag would too). */
+async function view(p, name) {
+  await p.page.locator(`[data-testid=bus-ride-views] button[data-view=${name}]`).first().click({ timeout: 4000 }).catch(async () => {
+    await p.page.locator(`[data-testid=bus-ride-views] button[data-view=${name}]`).first().tap();
+  });
+  await sleep(1100);
+}
+
+/** Walk the free rider (keys on a PC) to a point in the bus's frame, a closed loop on the predicted point. */
+async function walkBus(p, ahead, right, tol = 0.25, ms = 14000) {
+  // the camera behind the rider looking forward (the front quick view): W = ahead, S = back, A/D across
+  await view(p, "front");
+  const t0 = Date.now();
+  let held = null;
+  const release = async () => {
+    if (held) await p.page.keyboard.up(held);
+    held = null;
+  };
+  let last = null;
+  while (Date.now() - t0 < ms) {
+    const r = await ride(p);
+    last = r.walk;
+    const da = ahead - r.walk.ahead;
+    const dr = right - r.walk.right;
+    if (Math.hypot(da, dr) < tol) break;
+    // W = forward (+ahead), D = to the camera's right; with the camera behind looking forward, right = the bus's right (+right)
+    const key = Math.abs(da) > Math.abs(dr) ? (da > 0 ? "KeyW" : "KeyS") : dr > 0 ? "KeyD" : "KeyA";
+    if (key !== held) {
+      await release();
+      await p.page.keyboard.down(key);
+      held = key;
+    }
+    await sleep(90);
+  }
+  await release();
+  await sleep(250);
+  return last;
+}
+
+await run.step("join A (PC) and B (phone)", async () => {
+  await joinVillage(A, "탑승", TIME);
+  await joinVillage(B, "구경", TIME);
+  await A.page.waitForFunction(async () => (await window.__imp("/src/net/transitSync.ts")).getTransitState().snapshot !== null, null, { timeout: 30000 });
+  const t = await transit(A);
+  run.check("the bus is at the stop (boarding is checked by the boarding itself below)", t.status === "boarding" || t.status === "atStop", { leftS: Math.round((t.startMs - t.now) / 1000), status: t.status });
+});
+const sidA = await sid(A);
+const sidB = await sid(B);
+
+await run.step("both walk to the bus doors", async () => {
+  await Promise.all([
+    (async () => {
+      await walkAndWait(A, 38.5, -0.5, 40000, 1);
+      await walkAndWait(A, 36.9, -6.0, 30000, 0.4);
+    })(),
+    (async () => {
+      await walkAndWait(B, 38.5, -0.5, 40000, 1);
+      await walkAndWait(B, 37.7, -8.9, 30000, 0.5);
+    })(),
+  ]);
+  await sleep(800);
+  const tg = await targetsOf(A);
+  run.check("A is offered 버스 타기 at the door", tg.some((t) => t.id === "village_bus_board"), tg);
+});
+
+await run.step("both board: aboard and free at the entry; the ride panel has the quick views and the hint", async () => {
+  await act(A);
+  await A.page.waitForFunction(async () => (await window.__imp("/src/game/busRide.ts")).selfBusRide.slot === 0, null, { timeout: 8000, polling: 200 }).catch(() => {});
+  await sleep(1200);
+  await shot(A, "cabin-1-A-entry-alone-pc.png"); // A alone aboard: the aisle in first person
+  await act(B);
+  const ok = await Promise.all([A, B].map((p) => p.page.waitForFunction(async () => (await window.__imp("/src/game/busRide.ts")).selfBusRide.slot === 0, null, { timeout: 8000, polling: 200 }).then(() => true, () => false)));
+  run.check("A and B are aboard and free (busSeat 0)", ok[0] && ok[1], ok);
+  await sleep(1500);
+  for (const [name, p] of [["A", A], ["B", B]]) {
+    const r = await ride(p);
+    run.check(`${name}: the camera is the bus camera`, r.cam.active === true, r.cam);
+    const text = await hud(p);
+    run.check(`${name}: the panel has the quick views`, text.includes("왼쪽 창") && text.includes("오른쪽 창"), null);
+    run.check(`${name}: the look-around hint is shown`, text.includes("화면을 끌어서 창밖을 둘러보세요") || text.includes("화면을 끌면 둘러볼 수 있어요"), null);
+  }
+  const rb = await ride(B);
+  run.check("B (phone) is offered something to sit in or hold at the entry (the action button)", (await targetsOf(B)).some((t) => t.id.startsWith("bus_sit:")), await targetsOf(B));
+  const pa = await serverPlayer(A, sidA);
+  const pb = await serverPlayer(B, sidB);
+  run.check("the two riders were put at different spots (not one inside the other)", Math.hypot(pa.busAhead - pb.busAhead, pa.busRight - pb.busRight) >= 0.55, { pa, pb });
+  run.check("A starts in first person (the avatar is hidden, the aisle in view)", (await A.page.evaluate(async () => (await window.__imp("/src/game/busRide.ts")).busCamState.firstPerson)) === true, null);
+  await shot(A, "cabin-1-A-entry-pc.png");
+  await shot(B, "cabin-1-B-entry-phone.png");
+  writeFileSync(join(OUT, "cabin-boarded.json"), JSON.stringify({ a: await ride(A), b: rb }, null, 2));
+});
+
+await run.step("A walks the aisle inside the cabin (the keys), the server follows", async () => {
+  const before = await ride(A);
+  const end = await walkBus(A, 1.5, 0.05, 0.3);
+  const r = await ride(A);
+  const s = await serverPlayer(A, sidA);
+  run.check("A moved down the aisle", r.walk.ahead < before.walk.ahead - 1.2, { before: before.walk, after: r.walk });
+  run.check("A stays inside the cabin (not through a seat or a wall)", Math.abs(r.walk.right) < 0.9 && r.walk.ahead > -4 && r.walk.ahead < 3.9, r.walk);
+  run.check("the server has A's point (within a step of the prediction)", s !== null && Math.hypot(s.busAhead - r.walk.ahead, s.busRight - r.walk.right) < 0.6, { s, walk: r.walk, end });
+  await shot(A, "cabin-2-A-walking-pc.png");
+});
+
+await run.step("A sits (E); B is refused the same seat; B takes hold of a pole", async () => {
+  const tg = await targetsOf(A);
+  const sit = tg.find((t) => t.id.startsWith("bus_sit:seat:"));
+  run.check("A is offered a seat to sit in", !!sit, tg);
+  await act(A);
+  const seated = await A.page.waitForFunction(async () => (await window.__imp("/src/game/busRide.ts")).selfBusRide.slot > 0, null, { timeout: 5000, polling: 150 }).then(() => true, () => false);
+  const ra = await ride(A);
+  run.check("A is seated (busSeat > 0)", seated, { slot: ra.slot, sit });
+  await sleep(1200);
+  const seenByB = (await B.page.evaluate(() => window.__cv.getRemoteDrawn()))[sidA];
+  const tr = await transit(B);
+  const lb = seenByB ? local(tr, seenByB) : null;
+  run.check("B draws A seated in the bus (inside the body)", seenByB?.mode === "bus-seated" && lb && Math.abs(lb.ahead) < 4.4 && Math.abs(lb.right) < 1.2 && seenByB.y > 0.3, { seenByB, lb });
+  // B tries the seat A took: B stands at the entry, far from it (or on the wrong side): a notice; then holds a pole
+  const rb0 = await ride(B);
+  const taken = ra.slot;
+  const refused = await B.page.evaluate(async (n) => {
+    const sync = await window.__imp("/src/net/transitSync.ts");
+    sync.sendBusSit("seat", n - 1);
+    await new Promise((r) => setTimeout(r, 900));
+    return sync.getTransitState().notice;
+  }, taken);
+  run.check("B asks for A's seat: a Korean notice, B stays free", typeof refused === "string" && refused.length > 0 && (await ride(B)).slot === 0, { refused, rb0: rb0.slot });
+  await act(B);
+  const held = await B.page.waitForFunction(async () => (await window.__imp("/src/game/busRide.ts")).selfBusRide.slot > 0, null, { timeout: 5000, polling: 150 }).then(() => true, () => false);
+  run.check("B takes a place (the action button): busSeat > 0", held, await ride(B));
+  await sleep(1200);
+  const seenByA = (await A.page.evaluate(() => window.__cv.getRemoteDrawn()))[sidB];
+  const ta = await transit(A);
+  const la = seenByA ? local(ta, seenByA) : null;
+  run.check("A draws B seated or holding on, inside the bus", (seenByA?.mode === "bus-holding" || seenByA?.mode === "bus-seated") && la && Math.abs(la.ahead) < 4.4 && Math.abs(la.right) < 1.2, { seenByA, la });
+  // a rider holding a pole (the second kind of place): B stands up, A is told nothing; then B takes hold of the nearest pole spot
+  await act(B);
+  await B.page.waitForFunction(async () => (await window.__imp("/src/game/busRide.ts")).selfBusRide.slot === 0, null, { timeout: 5000, polling: 150 }).then(() => true, () => false);
+  const holdOk = await B.page.evaluate(async () => {
+    const cabin = await window.__imp("/shared/src/village/busCabin.ts");
+    const sync = await window.__imp("/src/net/transitSync.ts");
+    const room = (await window.__imp("/src/net/connection.ts")).getRoom();
+    const me = room.state.players.get(window.__cv.getSessionId());
+    // the hold spot nearest to where the server has B (stood up beside the seat they sat in)
+    let best = 0;
+    cabin.BUS_HOLDS.forEach((h, i) => {
+      if (Math.hypot(h.ahead - me.busAhead, h.right - me.busRight) < Math.hypot(cabin.BUS_HOLDS[best].ahead - me.busAhead, cabin.BUS_HOLDS[best].right - me.busRight)) best = i;
+    });
+    sync.sendBusSit("hold", best);
+    await new Promise((r) => setTimeout(r, 900));
+    return { busSeat: me.busSeat, best, at: [me.busAhead, me.busRight] };
+  });
+  run.check("B takes hold of a pole (a hold place: busSeat above the seats)", holdOk.busSeat > 14, holdOk);
+  await sleep(900);
+  const seenHold = (await A.page.evaluate(() => window.__cv.getRemoteDrawn()))[sidB];
+  run.check("A draws B holding on (bus-holding), inside the bus", seenHold?.mode === "bus-holding", seenHold);
+  await shot(A, "cabin-3-A-seated-pc.png");
+  await shot(B, "cabin-3-B-holding-phone.png");
+});
+
+await run.step("looking out of every window: left, right, front, back, a drag — on the PC and on the phone", async () => {
+  const eyes = {};
+  const VIEW_YAW = { left: -Math.PI / 2, right: Math.PI / 2, front: Math.PI, back: 0 };
+  const lookYaw = (p) => p.page.evaluate(async () => (await window.__imp("/src/game/viewState.ts")).viewState.fpYaw);
+  for (const [name, p] of [["A", A], ["B", B]]) {
+    for (const v of ["left", "right", "front", "back"]) {
+      await view(p, v);
+      const r = await ride(p);
+      const ly = await lookYaw(p);
+      const dAng = Math.abs(Math.atan2(Math.sin(ly - VIEW_YAW[v]), Math.cos(ly - VIEW_YAW[v])));
+      run.check(`${name} ${v} view: the look turned to it (bus-relative yaw)`, dAng < 0.2, { ly, want: VIEW_YAW[v] });
+      eyes[`${name}-${v}`] = r.cam;
+      run.check(`${name} ${v} view: the eye is inside the cabin`, r.cam.active && Math.abs(r.cam.eye[1]) <= 1.13 && r.cam.eye[0] > -4.15 && r.cam.eye[0] < 4.05 && r.cam.eye[2] < 3.2, r.cam);
+      await shot(p, `cabin-4-${name}-${v}.png`);
+    }
+  }
+  // a drag turns the view round the rider
+  const o0 = { yaw: await lookYaw(A) };
+  await A.page.mouse.move(640, 400);
+  await A.page.mouse.down();
+  for (let s = 1; s <= 8; s++) await A.page.mouse.move(640 + s * 22, 400);
+  await A.page.mouse.up();
+  await sleep(400);
+  const o1 = { yaw: await lookYaw(A) };
+  run.check("a mouse drag turns A's view (the look yaw, relative to the bus)", Math.abs(Math.atan2(Math.sin(o1.yaw - o0.yaw), Math.cos(o1.yaw - o0.yaw))) > 0.2, { o0, o1 });
+  writeFileSync(join(OUT, "cabin-eyes.json"), JSON.stringify(eyes, null, 2));
+});
+
+await run.step("A stands up (E) and walks; the bus leaves and both ride along; round the lap both get off", async () => {
+  const tg = await targetsOf(A);
+  run.check("a seated A is offered 일어나기", tg.some((t) => t.id === "bus_stand"), tg);
+  await act(A);
+  const up = await A.page.waitForFunction(async () => (await window.__imp("/src/game/busRide.ts")).selfBusRide.slot === 0, null, { timeout: 5000, polling: 150 }).then(() => true, () => false);
+  run.check("A stands (busSeat 0) in the aisle", up, await ride(A));
+  // the bus departs; wait for it to be on the road and moving
+  const left = await A.page.waitForFunction(async () => {
+    const sync = await window.__imp("/src/net/transitSync.ts");
+    return sync.transitTripAt(sync.transitNowMs()).status === "inTransit";
+  }, null, { timeout: 200000, polling: 500 }).then(() => true, () => false);
+  run.check("the bus left with them aboard", left, await transit(A));
+  await sleep(6000);
+  const t1 = await transit(A);
+  const sA = await serverPlayer(A, sidA);
+  const lA = local(t1, { x: sA.x, z: sA.z });
+  run.check("A's world pose is inside the moving bus", Math.abs(lA.ahead) < 4.4 && Math.abs(lA.right) < 1.3, { lA, t1: { x: t1.x, z: t1.z } });
+  await walkBus(A, 0.2, 0.0, 0.35, 9000);
+  await view(A, "right");
+  await shot(A, "cabin-5-A-moving-right-pc.png");
+  await view(A, "left");
+  await shot(A, "cabin-5-A-moving-left-pc.png");
+  await shot(B, "cabin-5-B-moving-phone.png");
+  const back = await A.page.waitForFunction(async () => {
+    const sync = await window.__imp("/src/net/transitSync.ts");
+    return sync.transitTripAt(sync.transitNowMs()).status !== "inTransit" || !sync.getTransitState().boarded;
+  }, null, { timeout: 120000, polling: 1000 }).then(() => true, () => false);
+  run.check("the lap ended", back, await transit(A));
+  const off = await Promise.all([A, B].map((p) => p.page.waitForFunction(async () => (await window.__imp("/src/game/busRide.ts")).selfBusRide.slot === -1, null, { timeout: 20000, polling: 300 }).then(() => true, () => false)));
+  run.check("both are put down outside the door at the stop", off[0] && off[1], off);
+  await sleep(1500);
+  await shot(A, "cabin-6-A-off-pc.png");
+});
+
+await browser.close();
+process.exit(run.finish({ sidA, sidB, time: TIME }));

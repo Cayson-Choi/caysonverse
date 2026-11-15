@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   BUS_CABIN_BOUNDS,
   BUS_CEILING,
+  BUS_ENTRIES,
   BUS_ENTRY,
   BUS_EXIT_ZONE,
   BUS_HOLDS,
@@ -16,6 +17,7 @@ import {
   cabinBlocked,
   cabinFloorAt,
   facingVector,
+  freeBusEntry,
   inExitZone,
   nearestFreeSpot,
   seatApproachOk,
@@ -114,6 +116,17 @@ describe("walking in the cabin", () => {
     expect(cabinBlocked(mid.ahead, mid.right)).toBe(false);
     expect(free.has(cellOf(mid))).toBe(true);
     expect(inExitZone(mid.ahead, mid.right)).toBe(true);
+  });
+
+  it("the entry spots are free, reachable from the first one, and a second rider gets another spot (not inside the first)", () => {
+    const free = reachable();
+    for (const e of BUS_ENTRIES) {
+      expect(cabinBlocked(e.ahead, e.right), `entry ${e.ahead}`).toBe(false);
+      expect(free.has(cellOf(e)), `reach entry ${e.ahead}`).toBe(true);
+    }
+    const second = freeBusEntry([{ ahead: BUS_ENTRY.ahead, right: BUS_ENTRY.right }]);
+    expect(Math.hypot(second.ahead - BUS_ENTRY.ahead, second.right - BUS_ENTRY.right)).toBeGreaterThanOrEqual(0.6);
+    expect(freeBusEntry([]).ahead).toBe(BUS_ENTRY.ahead);
   });
 
   it("from the entry a rider can sit in every seat from its front (the approach point is reachable and allowed)", () => {

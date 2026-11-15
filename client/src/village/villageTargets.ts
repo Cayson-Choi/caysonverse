@@ -3,6 +3,7 @@ import { TRANSIT } from "@caysonverse/shared/village/transit";
 import { HOUSE_KEYPAD_REACH_M, keypadEntries } from "@caysonverse/shared/village/buildingAccess";
 import { GUIDE_ASK_LABEL, nearestGuide } from "@caysonverse/shared/village/guides";
 import type { InteractTarget } from "../game/interact";
+import { BUS_HOLDS, BUS_SEATS, busHoldNumber, busPlaceOf, busSeatNumber, inExitZone, nearestFreeSpot } from "@caysonverse/shared/village/busCabin";
 
 /**
  * What the village offers at a spot (케이슨 마을, Task 4) — pure: the scene hands it the local area and pose at
@@ -134,6 +135,60 @@ export function villageBusTarget(
     priority: 2,
     yieldsToSeat: true,
   };
+}
+
+/** The target ids inside the bus: `bus_sit:seat:<index>` / `bus_sit:hold:<index>` (sit down / take hold) and `bus_stand` (get up). */
+export const BUS_SIT_TARGET_PREFIX = "bus_sit:";
+export const BUS_STAND_TARGET_ID = "bus_stand";
+
+/**
+ * What the bus offers a rider aboard (owner 2026-11-15: sit or stand, walk inside): free in the aisle, the nearest free
+ * seat or hold spot in reach (a backed seat only from its front: busCabin.ts nearestFreeSpot) — "앉기" or "손잡이 잡기";
+ * in front of the middle door while the bus stands, "내리기" first; seated or holding, "일어나기". `taken`: the busSeat numbers
+ * other riders hold. Nothing here is a world target (the door, a guide): aboard, those are not in reach.
+ */
+export function villageBusCabinTargets(
+  busSeat: number,
+  ahead: number,
+  right: number,
+  taken: ReadonlySet<number>,
+  busOnRoad: boolean,
+): readonly InteractTarget[] {
+  const place = busPlaceOf(busSeat);
+  const out: InteractTarget[] = [];
+  if (place.kind !== "free") {
+    out.push({ kind: "object", id: BUS_STAND_TARGET_ID, dist: 0, icon: "🧍", label: "일어나기", short: "일어나기", priority: 2 });
+    return out;
+  }
+  if (!busOnRoad && inExitZone(ahead, right)) {
+    out.push({ kind: "object", id: BUS_RIDE_TARGET_LEAVE, dist: 0, icon: "🚪", label: "버스에서 내리기", short: "하차", priority: 4 });
+  }
+  const takenSeats = new Set<number>();
+  const takenHolds = new Set<number>();
+  BUS_SEATS.forEach((_s, i) => {
+    if (taken.has(busSeatNumber(i))) takenSeats.add(i);
+  });
+  BUS_HOLDS.forEach((_h, i) => {
+    if (taken.has(busHoldNumber(i))) takenHolds.add(i);
+  });
+  const spot = nearestFreeSpot(ahead, right, takenSeats, takenHolds);
+  if (spot) {
+    out.push(
+      spot.kind === "seat"
+        ? { kind: "object", id: `${BUS_SIT_TARGET_PREFIX}seat:${spot.index}`, dist: spot.dist, icon: "🪑", label: `앉기 (${BUS_SEATS[spot.index]!.id}번 자리)`, short: "앉기", priority: 3 }
+        : { kind: "object", id: `${BUS_SIT_TARGET_PREFIX}hold:${spot.index}`, dist: spot.dist, icon: "✋", label: "손잡이 잡고 서기", short: "잡기", priority: 3 },
+    );
+  }
+  return out;
+}
+
+/** The spot a `bus_sit:` target id names (`seat` or `hold`, and its index), or null. */
+export function parseBusSitTarget(id: string): { kind: "seat" | "hold"; index: number } | null {
+  if (!id.startsWith(BUS_SIT_TARGET_PREFIX)) return null;
+  const [kind, idx] = id.slice(BUS_SIT_TARGET_PREFIX.length).split(":");
+  const index = Number(idx);
+  if ((kind !== "seat" && kind !== "hold") || !Number.isInteger(index)) return null;
+  return { kind, index };
 }
 
 /** How near (m, on the ground) to a cubby column its close-up is offered (brief: 1.2 m). The server lets a candle be lit from 1.5 m. */

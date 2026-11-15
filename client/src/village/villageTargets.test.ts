@@ -305,3 +305,39 @@ describe("villageBusTarget — the board button gives the shelter's bench the ke
   });
 });
 
+
+describe("villageBusCabinTargets: sit, hold, get up and get off inside the bus (owner 2026-11-15)", () => {
+  it("free in the aisle by a seat: 앉기 for the nearest free seat from its front; a taken seat is skipped; a hold spot offers 손잡이", async () => {
+    const { villageBusCabinTargets, parseBusSitTarget } = await import("./villageTargets");
+    const { BUS_SEATS, seatFrontPoint, busSeatNumber, BUS_HOLDS } = await import("@caysonverse/shared/village/busCabin");
+    const i = BUS_SEATS.findIndex((s) => s.id === "L2");
+    const front = seatFrontPoint(BUS_SEATS[i]!);
+    const t = villageBusCabinTargets(0, front.ahead, front.right, new Set(), true);
+    const sit = t.find((x) => x.id.startsWith("bus_sit:seat:"));
+    expect(sit).toBeDefined();
+    expect(parseBusSitTarget(sit!.id)).toEqual({ kind: "seat", index: expect.any(Number) });
+    const taken = new Set<number>([busSeatNumber(i)]);
+    const t2 = villageBusCabinTargets(0, front.ahead, front.right, taken, true);
+    expect(t2.some((x) => x.id === `bus_sit:seat:${i}`)).toBe(false);
+    const h = BUS_HOLDS[1]!;
+    const hold = villageBusCabinTargets(0, h.ahead, h.right, new Set(BUS_SEATS.map((_, k) => busSeatNumber(k))), true);
+    expect(hold.some((x) => x.id.startsWith("bus_sit:hold:"))).toBe(true);
+  });
+
+  it("seated or holding: 일어나기 only; in front of the middle door while the bus stands: 내리기 first, never on the lap", async () => {
+    const { villageBusCabinTargets, BUS_STAND_TARGET_ID, BUS_RIDE_TARGET_LEAVE } = await import("./villageTargets");
+    const seated = villageBusCabinTargets(3, 0, 0, new Set(), true);
+    expect(seated.map((x) => x.id)).toEqual([BUS_STAND_TARGET_ID]);
+    const door = villageBusCabinTargets(0, -0.5, 0.6, new Set(), false);
+    expect(door[0]!.id).toBe(BUS_RIDE_TARGET_LEAVE);
+    const lap = villageBusCabinTargets(0, -0.5, 0.6, new Set(), true);
+    expect(lap.some((x) => x.id === BUS_RIDE_TARGET_LEAVE)).toBe(false);
+  });
+
+  it("parseBusSitTarget refuses anything else", async () => {
+    const { parseBusSitTarget } = await import("./villageTargets");
+    expect(parseBusSitTarget("village_bus_leave")).toBeNull();
+    expect(parseBusSitTarget("bus_sit:seat:x")).toBeNull();
+    expect(parseBusSitTarget("bus_sit:hold:2")).toEqual({ kind: "hold", index: 2 });
+  });
+});

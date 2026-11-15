@@ -1263,8 +1263,11 @@ describe("VillageRoom riding in the bus: walk, sit, hold, stand (integration, ow
     placeAt(player, 39.4, -6.2);
     placeAt(bobPlayer, 39.4, -8.4);
     client.send(MessageType.BusRide, { action: "board" });
+    expect(await pollFor(() => player.busSeat === 0)).toBe(true);
     bob.send(MessageType.BusRide, { action: "board" });
-    expect(await pollFor(() => player.busSeat === 0 && bobPlayer.busSeat === 0)).toBe(true);
+    expect(await pollFor(() => bobPlayer.busSeat === 0)).toBe(true);
+    // two riders boarding together are not put in one spot
+    expect(Math.hypot(player.busAhead - bobPlayer.busAhead, player.busRight - bobPlayer.busRight)).toBeGreaterThanOrEqual(0.55);
     return { room, client, player, bob, bobPlayer, slot, clock };
   }
 

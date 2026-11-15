@@ -34,6 +34,10 @@ export interface RemotePlayerRecord {
    * built without one (tests).
    */
   busSeat?: number;
+  /** The remote's point in the bus's own frame (m ahead of its middle, m towards its doors, the facing's offset: busCabin.ts). */
+  busAhead?: number;
+  busRight?: number;
+  busYaw?: number;
   /** Position history ring buffer (on the remote's timeline), sampled by the interpolation layer. */
   snapshots: Snapshot[];
   /** When along `snapshots` this remote is drawn (playout.ts): its timeline, render time and lag. */
@@ -202,8 +206,11 @@ export interface RemoteSummary {
   yaw: number;
   connected: boolean;
   seatIndex: number;
-  /** The remote's place in the bus (-1: not riding). */
+  /** The remote's place in the bus (-1: not riding) and its point in the bus's frame. */
   busSeat: number;
+  busAhead: number;
+  busRight: number;
+  busYaw: number;
 }
 
 /** Dev/E2E view: each remote's appearance, newest known position + ghost flag + seat. */
@@ -221,6 +228,9 @@ export function getRemotes(): RemoteSummary[] {
       connected: record.connected,
       seatIndex: record.seatIndex,
       busSeat: record.busSeat ?? -1,
+      busAhead: record.busAhead ?? 0,
+      busRight: record.busRight ?? 0,
+      busYaw: record.busYaw ?? 0,
     });
   }
   return out;
@@ -246,3 +256,13 @@ export interface DrawnPose {
  * reads it. Always empty in production, where the DEV guard is dead-code-eliminated.
  */
 export const remoteDrawnProbe = new Map<string, DrawnPose>();
+
+/** The busSeat numbers (seats and hold spots, busCabin.ts) the remotes aboard hold now: what the local rider cannot take. */
+export function takenBusSpots(into: Set<number> = new Set()): Set<number> {
+  into.clear();
+  for (const record of records.values()) {
+    const n = record.busSeat ?? -1;
+    if (n > 0) into.add(n);
+  }
+  return into;
+}

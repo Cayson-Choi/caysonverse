@@ -56,7 +56,15 @@ import {
   type SeatTransition,
 } from "./remoteSeat";
 import { benchClipPlanes, clipAvatar, enableBenchClipping } from "./benchClip";
-import { busPlace, busRiderPose, type BusRiderPose } from "@caysonverse/shared/village/busSeats";
+import {
+  BUS_HOLDS,
+  BUS_SEATS,
+  busPlaceOf,
+  busRiderWorldPose,
+  normalizeYaw,
+  type BusPlaceKind,
+  type BusRiderPoseFull,
+} from "@caysonverse/shared/village/busCabin";
 import { getTransitRenderPose } from "../net/transitSync";
 
 /** Fallback seconds for a sit/stand clip if its duration can't be read yet. */
@@ -158,8 +166,11 @@ export function RemotePlayer({
   const accDeltaRef = useRef(0); // accumulated delta (s) since last mixer.update
   const prevConnectedRef = useRef(true);
   // The place in the village bus this avatar is drawn in (-1: not riding), and the pose there (reused).
-  const ridingRef = useRef(-1);
-  const riderPoseRef = useRef<BusRiderPose>({ x: 0, z: 0, yaw: 0, y: 0, seated: true });
+  const ridingRef = useRef<BusPlaceKind | "none">("none");
+  const riderPoseRef = useRef<BusRiderPoseFull>({ x: 0, z: 0, yaw: 0, y: 0, seated: false, holding: false });
+  // The rider's point in the bus's own frame as DRAWN: it eases to the server's (the patches come ten a second) and moves
+  // with the bus, so the avatar walks the aisle smoothly whatever the bus does.
+  const busDrawnRef = useRef({ ahead: 0, right: 0, yaw: 0, y: 0, init: false });
 
   // Bind idle/walk/sit actions and settle the resting pose (mixer stays paused
   // afterward — an idle/seated avatar is a frozen pose, per the v1 mixer rules).
@@ -370,16 +381,20 @@ export function RemotePlayer({
    * On the bus (owner 2026-11-15): the body leaves whatever it was doing for the held seated pose (or Idle on a standing
    * place in the aisle); off it, Idle on the ground where the server put it down at the door.
    */
-  const startRide = (seated: boolean): void => {
+  const startRide = (kind: BusPlaceKind): void => {
     releaseLoop(ANIM_FADE);
     setGait("idle");
     jumpAction.current?.fadeOut(ANIM_FADE);
     jumpSeqRef.current = -1;
     sitDownAction.current?.fadeOut(ANIM_FADE);
     sitStandAction.current?.fadeOut(ANIM_FADE);
-    const hold = seated ? sitIdleAction.current : idleAction.current;
-    hold?.reset().fadeIn(ANIM_FADE).play();
-    reportClip(hold);
+    if (kind === "seat") {
+      sitIdleAction.current?.reset().fadeIn(ANIM_FADE).play();
+      reportClip(sitIdleAction.current);
+    } else {
+      sitIdleAction.current?.fadeOut(ANIM_FADE);
+      loopRef.current = null; // the ride's loop step puts Idle / the walk on
+    }
     fadeRef.current = ANIM_FADE;
     if (benchClipRef.current.clipped) clipAvatar(avatar, null);
     benchClipRef.current.clip = null;
@@ -416,19 +431,46 @@ export function RemotePlayer({
     const rec = getRemoteRecord(sessionId);
     if (!group || !rec || !seatRef.current) return;
 
-    // 0) The village bus: a rider is drawn in its place in the bus wherever the bus is (busSeats.ts, the bus's synced
-    //    pose: the same for every viewer), sitting on its seat or standing in the aisle, and moves with it.
+    // 0) The village bus: a rider is a person in the bus's own frame (busCabin.ts): free in the aisle they walk (eased from
+    //    the server's point, ten patches a second), on a seat they sit, at a pole they hold on; they move with the bus,
+    //    the same synced pose for every viewer.
     const busSlot = rec.busSeat ?? -1;
-    if (busSlot !== ridingRef.current) {
+    const placeNow = busSlot < 0 ? null : busPlaceOf(busSlot);
+    const kindNow: BusPlaceKind | "none" = placeNow ? placeNow.kind : "none";
+    const bd = busDrawnRef.current;
+    if (kindNow !== ridingRef.current) {
       const was = ridingRef.current;
-      ridingRef.current = busSlot;
-      if (busSlot >= 0) {
-        if (was < 0 || busPlace(was).seated !== busPlace(busSlot).seated) startRide(busPlace(busSlot).seated);
-      } else endRide(rec);
+      ridingRef.current = kindNow;
+      if (kindNow === "none") {
+        bd.init = false;
+        endRide(rec);
+      } else {
+        if (was === "none") bd.init = false;
+        startRide(kindNow);
+      }
     }
-    if (busSlot >= 0) {
-      const p = busRiderPose(getTransitRenderPose(), busSlot, riderPoseRef.current);
-      group.position.set(p.x, p.y, p.z);
+    if (placeNow) {
+      const bus = getTransitRenderPose();
+      const spot = placeNow.kind === "seat" ? BUS_SEATS[placeNow.index]! : placeNow.kind === "hold" ? BUS_HOLDS[placeNow.index]! : null;
+      const tA = spot ? spot.ahead : rec.busAhead ?? 0;
+      const tR = spot ? spot.right : rec.busRight ?? 0;
+      const tYaw = spot ? spot.yaw : rec.busYaw ?? 0;
+      if (!bd.init) {
+        bd.ahead = tA;
+        bd.right = tR;
+        bd.yaw = tYaw;
+        bd.init = true;
+      }
+      const k = placeNow.kind === "seat" ? 1 : 1 - Math.exp(-delta * 14);
+      const dA = (tA - bd.ahead) * k;
+      const dR = (tR - bd.right) * k;
+      bd.ahead += dA;
+      bd.right += dR;
+      bd.yaw = normalizeYaw(bd.yaw + normalizeYaw(tYaw - bd.yaw) * Math.min(1, delta * 12));
+      const p = busRiderWorldPose(bus, busSlot, bd.ahead, bd.right, bd.yaw, riderPoseRef.current);
+      const targetY = p.y;
+      bd.y = placeNow.kind === "seat" ? targetY : bd.init && bd.y > 0 ? bd.y + (targetY - bd.y) * Math.min(1, delta * 12) : targetY;
+      group.position.set(p.x, bd.y, p.z);
       group.rotation.y = p.yaw + MODEL_FACING_OFFSET;
       const drawn = drawnRef.current;
       drawn.x = p.x;
@@ -436,21 +478,45 @@ export function RemotePlayer({
       drawn.yaw = p.yaw;
       noteRemoteDrawn(rec, p.x, p.z);
       advancePlayout(rec.playout, rec.snapshots, performance.now()); // its clock keeps going for the walk after
+      // walking in the aisle: the foot loop follows the speed in the bus's frame
+      if (placeNow.kind !== "seat" && delta > 0) {
+        const speedBus = Math.hypot(dA, dR) / delta;
+        const fx = Math.sin(bus.yaw);
+        const fz = Math.cos(bus.yaw);
+        const moving = speedBus > 0.15;
+        const drive = driveRef.current;
+        const loop = stepLoop(drive, loopRef.current ?? "idle", moving, moving ? speedBus : 0, delta, REMOTE_SPEED_SMOOTH_S);
+        stepFacing(drive, moving ? alongFacing(dA * fx - dR * fz, dA * fz + dR * fx, p.yaw) : Number.NaN, delta);
+        const loopSpeedNow = loopSpeed(drive);
+        if (loop !== loopRef.current) switchLoop(loop, loopSpeedNow);
+        else if (loop !== "idle") {
+          const playing = loopAction(loop);
+          if (playing) playing.timeScale = loopTimeScale(loop, loopSpeedNow, stride, playing.time, playing.getClip().duration);
+        }
+        const fading = fadingRef.current;
+        if (fading) {
+          const out = loopAction(fading.loop);
+          if (out) out.timeScale = loopTimeScale(fading.loop, loopSpeedNow, stride, out.time, out.getClip().duration);
+          fading.left -= delta;
+          if (fading.left <= 0) fadingRef.current = null;
+        }
+      }
       if (import.meta.env.DEV) {
         const probe = remoteDrawnProbe.get(sessionId) ?? { t: 0, x: 0, z: 0, yaw: 0 };
         probe.t = performance.now();
         probe.x = p.x;
         probe.z = p.z;
         probe.yaw = p.yaw;
-        probe.y = p.y;
-        probe.mode = p.seated ? "bus-seated" : "bus-standing";
+        probe.y = bd.y;
+        probe.mode = p.seated ? "bus-seated" : p.holding ? "bus-holding" : "bus-standing";
         remoteDrawnProbe.set(sessionId, probe);
       }
       if (rec.connected !== prevConnectedRef.current) {
         setAvatarOpacity(avatar, rec.connected ? 1 : 0.5);
         prevConnectedRef.current = rec.connected;
       }
-      if (fadeRef.current > 0) {
+      const loopActive = loopRef.current !== null && loopRef.current !== "idle";
+      if (fadeRef.current > 0 || loopActive) {
         mixer.update(delta);
         fadeRef.current = Math.max(0, fadeRef.current - delta);
       }

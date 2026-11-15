@@ -47,11 +47,11 @@ import {
 import { BUS_DRIVER, BusDriver, busDriveTrip } from "@caysonverse/shared/village/busDrive";
 import { busDismountSpot } from "@caysonverse/shared/village/busSeats";
 import {
-  BUS_ENTRY,
   BUS_HOLDS,
   BUS_SEATS,
   busPlaceOf,
   busRiderWorldPose,
+  freeBusEntry,
   seatStandUpSpot,
   type BusRiderPoseFull,
 } from "@caysonverse/shared/village/busCabin";
@@ -554,10 +554,15 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
       this.busRiders.add(player);
       // Aboard and free just inside the front door, facing back down the aisle (busCabin.ts BUS_ENTRY): the rider walks,
       // sits or holds a pole from here; every client draws them in the bus wherever it goes.
+      const others: Array<{ ahead: number; right: number }> = [];
+      this.state.players.forEach((p) => {
+        if (p !== player && this.busRiders.has(p)) others.push({ ahead: p.busAhead, right: p.busRight });
+      });
+      const entry = freeBusEntry(others);
       player.busSeat = 0;
-      player.busAhead = BUS_ENTRY.ahead;
-      player.busRight = BUS_ENTRY.right;
-      player.busYaw = BUS_ENTRY.yaw;
+      player.busAhead = entry.ahead;
+      player.busRight = entry.right;
+      player.busYaw = entry.yaw;
       track.busMoveAt = this.now();
       this.placeRider(player, this.busBodyPose(this.wallClock()));
       client.send(MessageType.BusRideState, { boarded: true, tripId: decision.tripId } satisfies BusRideStatePayload);

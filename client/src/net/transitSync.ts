@@ -5,8 +5,10 @@ import { busDriveTrip, type BusDrive } from "@caysonverse/shared/village/busDriv
 import { villageClock } from "../village/villageClock";
 import { selfBusRide } from "../game/busRide";
 import type {
+  BusMovePayload,
   BusRejectedPayload,
   BusRidePayload,
+  BusSitPayload,
   BusRideStatePayload,
   BusStatePayload,
 } from "@caysonverse/shared/messages";
@@ -177,6 +179,21 @@ export function startTransitSync(room: TransitRoom): () => void {
 /** Request a board/leave action; the server remains authoritative. */
 export function sendBusRide(action: BusRidePayload["action"]): void {
   boundRoom?.send(MessageType.BusRide, { action } satisfies BusRidePayload);
+}
+
+/** A step inside the bus, in its own frame (the walk sends it about 10 times a second while moving; the server checks it). */
+export function sendBusMove(ahead: number, right: number, yaw: number): void {
+  boundRoom?.send(MessageType.BusMove, { ahead, right, yaw } satisfies BusMovePayload);
+}
+
+/** Sit in a seat or take hold of a pole (an index into BUS_SEATS / BUS_HOLDS); the server says why not if it cannot. */
+export function sendBusSit(kind: BusSitPayload["kind"], index: number): void {
+  boundRoom?.send(MessageType.BusSit, { kind, index } satisfies BusSitPayload);
+}
+
+/** From a seat or a hold spot back on one's feet in the aisle. */
+export function sendBusStand(): void {
+  boundRoom?.send(MessageType.BusStand, {});
 }
 
 export function subscribeTransit(listener: () => void): () => void {
