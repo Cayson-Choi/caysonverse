@@ -33,7 +33,7 @@ describe("the village's two maps (one geometry, the bounds of the area the playe
     expect(villageGeometry.bounds.maxX).toBeGreaterThan(300);
     expect(mapBounds(VILLAGE_ACTIVE_MAP)).toEqual(VILLAGE_LAYOUT.areas.village);
     expect(mapBounds(HALL_ACTIVE_MAP)).toEqual(VILLAGE_LAYOUT.areas.hall);
-    expect(mapBounds(VILLAGE_ACTIVE_MAP).maxX).toBe(95);
+    expect(mapBounds(VILLAGE_ACTIVE_MAP).maxX).toBe(VILLAGE_LAYOUT.areas.village.maxX); // 186: the village and the fishing lake east of it (A10)
     expect(mapBounds(HALL_ACTIVE_MAP).minX).toBeGreaterThan(290);
   });
 
