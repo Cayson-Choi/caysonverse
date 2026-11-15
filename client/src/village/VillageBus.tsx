@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
-import { type BusNodes, applyBusDayNight, disposeBus, prepareBus, setBusAnisotropy } from "./villageBusPrep";
+import { type BusNodes, applyBusDayNight, disposeBus, followBusSigns, prepareBus, setBusAnisotropy } from "./villageBusPrep";
 import { readBus } from "./villageBusLoader";
 import { dayNight } from "./dayNightDriver";
 import type { VillageTier } from "./villageModelPrep";
@@ -55,6 +55,7 @@ export function VillageBus({ tier }: { tier: VillageTier }) {
     // the model is built nose north (-z) and the pose's yaw is the heading (0 faces +z): half a turn between them
     nodes.root.rotation.set(0, pose.yaw + Math.PI, 0);
     nodes.root.updateMatrixWorld(true);
+    followBusSigns(nodes);
     applyBusDayNight(nodes, dayNight.applied, state.gl.toneMappingExposure);
   });
   // dispose={null}: the geometry and the loader's materials belong to the loader's cache.

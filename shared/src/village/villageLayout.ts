@@ -34,6 +34,7 @@ import { VILLAGE_CAMERA_BOXES, VILLAGE_COLLIDERS } from "./generated/villageColl
 import { MEMORIAL_CAMERA_BOXES, MEMORIAL_COLLIDERS } from "./generated/memorialColliders";
 import { guideColliders } from "./guides";
 import { signalPoleColliders } from "./crossings";
+import { TRANSIT, busFootprint } from "./transit";
 import type { Bounds, MapGeometry } from "../school/geometry";
 
 export interface Point2 {
@@ -267,8 +268,12 @@ export interface VillageLayout {
   };
   /** Visual only: no collider. The sidewalk runs along the outer edge. */
   ringRoad: { centre: Point2; radius: number; width: number; sidewalk: { width: number; side: "outer" } };
-  /** A bus stop on the ring road's outer side: the shelter is visual, the parked bus is a collider. */
-  busStop: { shelter: { centre: Point2; size: Size2 }; bus: { centre: Point2; size: Size2 } };
+  /**
+   * A bus stop on the ring road's outer side: the shelter is visual, the parked bus is a collider. The bus stands along
+   * its lane at the stop (transit.ts TRANSIT.parked), turned by `yaw` (the heading, atan2 of the forward x and z; PI is
+   * nose north): parallel to the curved kerb, not square to the map.
+   */
+  busStop: { shelter: { centre: Point2; size: Size2 }; bus: { centre: Point2; size: Size2; yaw: number } };
   stream: VillageStream;
   /** Walkable. Spans the water exactly: x = the stream's bridge gap, z = the water band of the segment it crosses. */
   bridge: AABB;
@@ -404,7 +409,9 @@ function makeVillageLayout(): VillageLayout {
       // xwalk fix 2026-11-13: the shelter stands at the BACK of a paved waiting pad (BUS_STOP_PAD) with 3 m of clear paving
       // between the roadway's kerb and its roof (bus stop review: the old one stood on the kerb, 1.5 m from the bus's doors)
       shelter: { centre: pt(40.9, -4.9), size: sz(1.5, 3.6) },
-      bus: { centre: pt(34.1, -6.5), size: sz(2.5, 9) },
+      // owner 2026-11-15 ("버스가 도로 폭에 맞게 잘 정지한 상태로 있도록 해"): the bus stands in its lane along the curved
+      // kerb (transit.ts BUS_LANE_RADIUS, BUS_STOP_ANGLE), no longer square to the map across the centre line
+      bus: { centre: pt(TRANSIT.parked.x, TRANSIT.parked.z), size: sz(2.5, 9), yaw: TRANSIT.parked.yaw },
     },
     // A gentle bow to the south beyond plot_s (z 49..67); every segment is 6 m of water with 3 m of bank on each side,
     // and the centre line moves at most 3 m from one segment to the next.
@@ -542,13 +549,75 @@ export const BUS_STOP_SIGN: Point2 = pt(40.0, -1.8);
 /** Half the width of the sign's post as a collider (m). */
 const BUS_SIGN_POST = 0.07;
 
+/** The parked bus's body as a plan rectangle (its four corners: front-left, front-right, rear-right, rear-left; right = doors). */
+export function busParkedFootprint(layout: Pick<VillageLayout, "busStop"> = VILLAGE_LAYOUT): Point2[] {
+  const { centre, size, yaw } = layout.busStop.bus;
+  return busFootprint({ x: centre.x, z: centre.z, yaw }, size);
+}
+
+/** The smallest axis-aligned box round a set of points (rounded to 1e-6). */
+function envelope(pts: readonly Point2[]): AABB {
+  const r = (v: number) => Math.round(v * 1e6) / 1e6;
+  return {
+    minX: r(Math.min(...pts.map((p) => p.x))),
+    maxX: r(Math.max(...pts.map((p) => p.x))),
+    minZ: r(Math.min(...pts.map((p) => p.z))),
+    maxZ: r(Math.max(...pts.map((p) => p.z))),
+  };
+}
+
+/** The axis-aligned box round the parked bus's (turned) body. */
+export function busEnvelope(layout: Pick<VillageLayout, "busStop"> = VILLAGE_LAYOUT): AABB {
+  return envelope(busParkedFootprint(layout));
+}
+
+/** The parked bus's height as a camera box (m): village_bus.glb's roof with its pods. */
+export const BUS_HEIGHT = 3.3;
+/** How deep (m, along z) each of the parked bus's collider slices is. */
+const BUS_SLICE = 0.5;
+
+/**
+ * The parked bus as colliders (and camera boxes, BUS_HEIGHT tall): it stands turned along the curved kerb, so its body is
+ * cut into slices 0.5 m deep across z, each the box round the part of the body inside it (at most 0.1 m more than the body
+ * at a side: the body is turned about 11 degrees). They join with no seam.
+ */
+export function busParkedColliders(layout: Pick<VillageLayout, "busStop"> = VILLAGE_LAYOUT): CameraBox[] {
+  const poly = busParkedFootprint(layout);
+  const env = envelope(poly);
+  const n = Math.ceil((env.maxZ - env.minZ) / BUS_SLICE - 1e-9);
+  const r = (v: number) => Math.round(v * 1e6) / 1e6;
+  const out: CameraBox[] = [];
+  for (let i = 0; i < n; i++) {
+    const z0 = env.minZ + ((env.maxZ - env.minZ) * i) / n;
+    const z1 = env.minZ + ((env.maxZ - env.minZ) * (i + 1)) / n;
+    const xs: number[] = [];
+    for (let k = 0; k < poly.length; k++) {
+      const a = poly[k]!;
+      const b = poly[(k + 1) % poly.length]!;
+      if (a.z >= z0 && a.z <= z1) xs.push(a.x);
+      for (const z of [z0, z1]) {
+        if ((a.z - z) * (b.z - z) < 0) xs.push(a.x + ((b.x - a.x) * (z - a.z)) / (b.z - a.z));
+      }
+    }
+    out.push({ minX: r(Math.min(...xs)), maxX: r(Math.max(...xs)), minZ: r(z0), maxZ: r(z1), height: BUS_HEIGHT });
+  }
+  return out;
+}
+
+/**
+ * village.glb's `col__bus`: the parked bus's old box, square to the map at (34.1, -6.5), from before the bus stood along
+ * its lane (owner 2026-11-15). The model still holds it; the game plays on `busParkedColliders` instead (the layout no
+ * longer lists a `bus` box, so the next village build drops it).
+ */
+export const MODEL_LEGACY_BUS_BOX: AABB = { minX: 32.85, maxX: 35.35, minZ: -11, maxZ: -2 };
+
 /**
  * Where a rider can board the parked bus from: the bus's own box, the waiting pad and the shelter, as one box from the
  * bus's far side to the shelter's back glass, over the bus's length and the shelter's (review r2: the reach was a circle
  * round the bus's centre, and once the stop moved north the shelter's middle was outside the offer's 6.8 m).
  */
 export function busBoardingArea(layout: Pick<VillageLayout, "busStop"> = VILLAGE_LAYOUT): AABB {
-  const b = boxAt(layout.busStop.bus.centre, layout.busStop.bus.size);
+  const b = busEnvelope(layout);
   const s = boxAt(layout.busStop.shelter.centre, layout.busStop.shelter.size);
   return { minX: b.minX, maxX: s.maxX, minZ: Math.min(b.minZ, s.minZ), maxZ: Math.max(b.maxZ, s.maxZ) };
 }
@@ -646,17 +715,17 @@ function memorialColliders(ex: MemorialExterior): VillageCollider[] {
 
 /**
  * Greybox colliders of the village area, built from the layout values: the plaza fountain and the zelkova's
- * deck, the creek, the pavilion, the parked bus, the memorial footprint and the scenery houses and café.
- * Plots, lanes, the ring road, the sidewalk and the bridge have none.
+ * deck, the creek, the pavilion, the memorial footprint and the scenery houses and café.
+ * Plots, lanes, the ring road, the sidewalk and the bridge have none. The parked bus stands turned along the kerb: its
+ * colliders are its slices (busParkedColliders), which buildVillageGeometry adds.
  */
 export function greyboxColliders(layout: VillageLayout): VillageCollider[] {
-  const { plaza, stream, pavilion, busStop, memorial, sceneryHouses } = layout;
+  const { plaza, stream, pavilion, memorial, sceneryHouses } = layout;
   return [
     { id: "plaza_fountain", box: boxAt(plaza.fountain.centre, plaza.fountain.collider), camera: false },
     { id: "plaza_zelkova", box: boxAt(plaza.zelkova.centre, plaza.zelkova.collider), camera: false },
     ...streamColliders(stream),
     { id: "pavilion", box: boxAt(pavilion.centre, pavilion.size), camera: false },
-    { id: "bus", box: boxAt(busStop.bus.centre, busStop.bus.size), camera: true },
     ...memorialColliders(memorial.exterior),
     ...sceneryHouses.map((h): VillageCollider => ({ id: h.id, box: solidBox(h), camera: true })),
   ];
@@ -822,6 +891,8 @@ export function hallInteriorColliders(
  * `hall` is the hall's interior (`hallInteriorColliders`: furniture, the cubby units, the ceiling slab); absent, the
  * room is empty (the greybox).
  */
+const stripHeight = ({ minX, maxX, minZ, maxZ }: AABB): AABB => ({ minX, maxX, minZ, maxZ });
+
 export function buildVillageGeometry(
   layout: VillageLayout,
   colliders: readonly VillageCollider[] | GeneratedColliders,
@@ -829,6 +900,8 @@ export function buildVillageGeometry(
   /** Small solid things that are not in a model (Task 9A: the guides' colliders). */
   extra: readonly AABB[] = [],
 ): MapGeometry {
+  // the parked bus stands turned along the kerb: its slices, not a model or layout box (busParkedColliders)
+  const bus = busParkedColliders(layout);
   const village: GeneratedColliders =
     "obstacles" in colliders
       ? colliders
@@ -837,8 +910,8 @@ export function buildVillageGeometry(
     "village",
     villageBounds(layout),
     hallWalls(layout),
-    [...areaGapBlockers(layout), ...hallSurroundBlockers(layout), ...village.obstacles, ...signalPoleColliders(), ...busShelterColliders(layout), busShelterBenchCollider(layout), ...(hall?.obstacles ?? []), ...extra],
-    [...village.cameraBoxes, busShelterRoofSlab(layout), busShelterLightBoxCameraBox(layout), ...(hall?.cameraBoxes ?? [])],
+    [...areaGapBlockers(layout), ...hallSurroundBlockers(layout), ...village.obstacles, ...bus.map(stripHeight), ...signalPoleColliders(), ...busShelterColliders(layout), busShelterBenchCollider(layout), ...(hall?.obstacles ?? []), ...extra],
+    [...village.cameraBoxes, ...bus, busShelterRoofSlab(layout), busShelterLightBoxCameraBox(layout), ...(hall?.cameraBoxes ?? [])],
   );
 }
 
@@ -855,17 +928,31 @@ export const BUS_MIRROR_REACH = { side: 0.27, ahead: 0.37 } as const;
  * -z), so nobody stands inside one. They overlap the bus's box by 0.1 m (no seam).
  */
 export function busMirrorColliders(layout: Pick<VillageLayout, "busStop"> = VILLAGE_LAYOUT): AABB[] {
-  const b = boxAt(layout.busStop.bus.centre, layout.busStop.bus.size);
+  const { centre, size, yaw } = layout.busStop.bus;
   const { side, ahead } = BUS_MIRROR_REACH;
-  const z = { minZ: round(b.minZ - ahead, 6), maxZ: round(b.minZ + 0.1, 6) };
-  return [
-    { minX: round(b.minX - side, 6), maxX: round(b.minX + 0.1, 6), ...z },
-    { minX: round(b.maxX - 0.1, 6), maxX: round(b.maxX + side, 6), ...z },
-  ];
+  const f = { x: Math.sin(yaw), z: Math.cos(yaw) };
+  const right = { x: -f.z, z: f.x };
+  const hl = size.z / 2;
+  const hw = size.x / 2;
+  // in the bus's own frame: across (+ = the door side), along (+ = ahead); the box round the turned rectangle
+  const box = (a0: number, a1: number): AABB =>
+    envelope(
+      [[a0, hl - 0.1], [a1, hl - 0.1], [a1, hl + ahead], [a0, hl + ahead]].map(([a, l]) => ({
+        x: centre.x + right.x * a! + f.x * l!,
+        z: centre.z + right.z * a! + f.z * l!,
+      })),
+    );
+  return [box(-hw - side, -hw + 0.1), box(hw - 0.1, hw + side)];
+}
+
+/** The generated colliders without the model's old parked-bus box (MODEL_LEGACY_BUS_BOX; the game uses busParkedColliders). */
+export function withoutLegacyBus(g: GeneratedColliders): GeneratedColliders {
+  const keep = (b: AABB) => !sameAabb(b, MODEL_LEGACY_BUS_BOX);
+  return { obstacles: g.obstacles.filter(keep), cameraBoxes: g.cameraBoxes.filter(keep) };
 }
 
 /** The village area's colliders generated from village.glb (Task 7): the layout's boxes plus the model's own. */
-export const VILLAGE_MODEL_COLLIDERS: GeneratedColliders = { obstacles: VILLAGE_COLLIDERS, cameraBoxes: VILLAGE_CAMERA_BOXES };
+export const VILLAGE_MODEL_COLLIDERS: GeneratedColliders = withoutLegacyBus({ obstacles: VILLAGE_COLLIDERS, cameraBoxes: VILLAGE_CAMERA_BOXES });
 
 /** The hall's interior generated from memorial.glb (Task 8), wired in Task 9: furniture, cubby units, the ceiling slab. */
 export const HALL_MODEL_COLLIDERS: GeneratedColliders = hallInteriorColliders(VILLAGE_LAYOUT);
@@ -903,12 +990,6 @@ export function exportVillageLayout(layout: VillageLayout = VILLAGE_LAYOUT) {
   const colliders = greyboxColliders(layout);
   const bounded = <T extends { centre: Point2; size: Size2 }>(o: T) => ({ ...o, bounds: boxAt(o.centre, o.size) });
   const collider = (c: VillageCollider) => ({ id: c.id, node: colliderNode(c.id), ...c.box, camera: c.camera });
-  const colliderBox = (id: string, centre: Point2, size: Size2) => ({
-    centre,
-    size,
-    bounds: boxAt(centre, size),
-    node: colliderNode(id),
-  });
   const { stream, memorial, plaza, busStop } = layout;
   return {
     format: "caysonverse-village-layout",
@@ -935,7 +1016,8 @@ export function exportVillageLayout(layout: VillageLayout = VILLAGE_LAYOUT) {
     ringRoad: layout.ringRoad,
     busStop: {
       shelter: bounded(busStop.shelter),
-      bus: colliderBox("bus", busStop.bus.centre, busStop.bus.size),
+      // turned along the kerb (yaw: the heading, PI = nose north): its body's corners and the box round them; no model box
+      bus: { centre: busStop.bus.centre, size: busStop.bus.size, yaw: busStop.bus.yaw, footprint: busParkedFootprint(layout), bounds: busEnvelope(layout) },
     },
     stream: {
       width: stream.width,

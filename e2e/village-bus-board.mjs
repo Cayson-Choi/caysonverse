@@ -48,9 +48,9 @@ const boarding = s0.status === "boarding";
 await run.step(boarding ? "boarding window: by the bus's doors E boards" : "between buses: the pill says when boarding opens", async () => {
   // round the bus's tail over the crosswalk's kerb side (the parked bus blocks a straight walk from the plaza)
   await walkAndWait(p, 38.5, -0.5, 40000, 1);
-  await walkAndWait(p, 36.6, -6.0, 30000, 0.4);
+  await walkAndWait(p, 36.9, -6.0, 30000, 0.4);
   await sleep(1500);
-  run.check("standing on the pad by the doors", Math.abs((await pos(p)).x - 36.6) < 0.6, await pos(p));
+  run.check("standing on the pad by the doors", Math.abs((await pos(p)).x - 36.9) < 0.6, await pos(p));
   const s = await schedule();
   const text = await pill();
   const label = await button();
@@ -79,7 +79,7 @@ await run.step("in front of the shelter's bench the seat keeps E", async () => {
 
 if (boarding) {
   await run.step("board from the doors: the server accepts", async () => {
-    await walkAndWait(p, 36.6, -6.0, 30000, 0.4);
+    await walkAndWait(p, 36.9, -6.0, 30000, 0.4);
     await sleep(1000);
     await act(p);
     const ok = await p.page.waitForFunction(async () => (await window.__imp("/src/net/transitSync.ts")).getTransitState().boarded, null, { timeout: 8000, polling: 200 }).then(() => true, () => false);

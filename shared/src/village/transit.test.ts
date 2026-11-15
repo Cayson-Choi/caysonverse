@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BUS_RAMP_MS, TRANSIT, boardingOpensWords, TRANSIT_HOLDS, busMotionAt, busTripAt, clearCrosswalkMs, legSpeedAt, nextGreenAt, pedestrianSignalAt, routeDistanceAtAngle, routeLength, routePoseAt, routePoseAtDistance, signalAt, tripTimeline } from "./transit";
+import { BUS_LANE_RADIUS, BUS_RAMP_MS, TRANSIT, busFootprint, boardingOpensWords, TRANSIT_HOLDS, busMotionAt, busTripAt, clearCrosswalkMs, legSpeedAt, nextGreenAt, pedestrianSignalAt, routeDistanceAtAngle, routeLength, routePoseAt, routePoseAtDistance, signalAt, tripTimeline } from "./transit";
 import { SIGNAL_CROSSINGS, crossingPoint } from "./crossings";
 import { VILLAGE_LAYOUT } from "./villageLayout";
 
@@ -34,10 +34,7 @@ describe("village transit schedule", () => {
     expect(first.x).toBeCloseTo(last.x, 6);
     expect(first.z).toBeCloseTo(last.z, 6);
     expect(Number.isFinite(middle.yaw)).toBe(true);
-    expect(middle.x).toBeGreaterThanOrEqual(-34.7);
-    expect(middle.x).toBeLessThanOrEqual(34.7);
-    expect(middle.z).toBeGreaterThanOrEqual(-34.7);
-    expect(middle.z).toBeLessThanOrEqual(34.7);
+    expect(Math.hypot(middle.x, middle.z)).toBeCloseTo(BUS_LANE_RADIUS, 2);
   });
 });
 
@@ -100,7 +97,8 @@ describe("the bus at the crosswalks' signals", () => {
         expect(moved).toBeGreaterThan(0);
         expect(moved).toBeLessThan(speed * 1_000 * 0.1);
         const leg = tl.legs.find((l) => l.fromMs === h.releaseMs)!;
-        if (leg.toDistance - leg.fromDistance >= leg.speed * BUS_RAMP_MS) expect(legSpeedAt(leg, h.releaseMs + BUS_RAMP_MS + 500)).toBeCloseTo(leg.speed, 12);
+        // at the cruise half a second after its pull-away ramp, unless the leg is too short to hold it that long
+        if (leg.toDistance - leg.fromDistance >= leg.speed * (BUS_RAMP_MS + 500)) expect(legSpeedAt(leg, h.releaseMs + BUS_RAMP_MS + 500)).toBeCloseTo(leg.speed, 12);
       }
       expect(tl.endMs - start).toBeGreaterThan(TRANSIT.lapMs);
     }
@@ -240,13 +238,14 @@ describe("review r2: the bus never stands under a green, on a crosswalk, or turn
       if (d > Math.PI) d = Math.PI * 2 - d;
       expect(d * (180 / Math.PI)).toBeLessThanOrEqual(1.0001);
     }
-    // the last chord arrives heading north, as the bus is parked; the first leaves heading north
+    // the last chord arrives heading the way the bus is parked (along the lane), the first leaves that way
     const last = Math.atan2(r[r.length - 1]!.x - r[r.length - 2]!.x, r[r.length - 1]!.z - r[r.length - 2]!.z);
     const first = Math.atan2(r[1]!.x - r[0]!.x, r[1]!.z - r[0]!.z);
-    for (const y of [last, first]) expect(Math.abs(Math.abs(y) - Math.PI) * (180 / Math.PI)).toBeLessThan(3);
+    const off = (y: number) => Math.abs(Math.atan2(Math.sin(y - TRANSIT.parked.yaw), Math.cos(y - TRANSIT.parked.yaw))) * (180 / Math.PI);
+    for (const y of [last, first]) expect(off(y)).toBeLessThan(0.3);
     const end = tripTimeline(hour).endMs;
-    expect(Math.abs(Math.abs(busTripAt(end - 300).pose.yaw) - Math.PI) * (180 / Math.PI)).toBeLessThan(3);
-    expect(busTripAt(end + 1).pose.yaw).toBe(Math.PI);
+    expect(off(busTripAt(end - 300).pose.yaw)).toBeLessThan(0.3);
+    expect(busTripAt(end + 1).pose.yaw).toBe(TRANSIT.parked.yaw);
   });
 });
 
@@ -268,22 +267,23 @@ describe("fix/bus-smooth: the bus moves and turns without a step", () => {
       expect(Math.hypot(p.x - prev.x, p.z - prev.z)).toBeLessThanOrEqual(0.2501);
       prev = p;
     }
-    // a 35 m circle turns 0.4 degrees per 0.25 m; the eased pull-out and pull-in a little more, nowhere a corner
-    expect(worst * (180 / Math.PI)).toBeLessThan(1.5);
-    // the lane's middle: every point of the ring part is at the lane radius
-    for (let d = 15; d < len - 15; d += 1) {
+    // a 35 m circle turns 0.4 degrees per 0.25 m, nowhere a corner (the stop is on the circle: no pull-in swing)
+    expect(worst * (180 / Math.PI)).toBeLessThan(0.5);
+    // the bus's lane: every point of the lap, the stop included, is at the lane radius
+    for (let d = 0; d <= len; d += 1) {
       const p = routePoseAtDistance(d);
-      expect(Math.hypot(p.x, p.z)).toBeCloseTo(35.3, 2);
+      expect(Math.hypot(p.x, p.z)).toBeCloseTo(BUS_LANE_RADIUS, 2);
       // clockwise tangent of the circle: the heading is (sin a, -cos a) with a the position's angle
       const a = Math.atan2(p.z, p.x);
       expect(Math.abs(wrap(p.yaw - Math.atan2(Math.sin(a), -Math.cos(a)))) * (180 / Math.PI)).toBeLessThan(0.3);
     }
   });
 
-  it("starts and ends parked, heading north, with no turn at either end", () => {
-    expect(routePoseAtDistance(0).yaw).toBe(Math.PI);
-    expect(Math.abs(wrap(routePoseAtDistance(routeLength()).yaw - Math.PI))).toBeLessThan(1e-9);
-    expect(Math.abs(wrap(routePoseAtDistance(0.3).yaw - Math.PI)) * (180 / Math.PI)).toBeLessThan(2);
+  it("starts and ends parked, heading along the lane, with no turn at either end", () => {
+    expect(routePoseAtDistance(0).yaw).toBe(TRANSIT.parked.yaw);
+    expect(Math.abs(wrap(routePoseAtDistance(routeLength()).yaw - TRANSIT.parked.yaw))).toBeLessThan(1e-9);
+    expect(Math.abs(wrap(routePoseAtDistance(0.3).yaw - TRANSIT.parked.yaw)) * (180 / Math.PI)).toBeLessThan(0.6);
+    expect(Math.abs(wrap(routePoseAtDistance(routeLength() - 0.3).yaw - TRANSIT.parked.yaw)) * (180 / Math.PI)).toBeLessThan(0.6);
   });
 
   it("the speed is continuous over the whole trip: eased out of the stop and the lights, flat at the cruise, no jump", () => {
@@ -355,5 +355,82 @@ describe("fix/bus-smooth: the bus moves and turns without a step", () => {
   it("clearCrosswalkMs counts the pull-away from rest", () => {
     const speed = routeLength() / TRANSIT.lapMs;
     expect(clearCrosswalkMs(speed)).toBeCloseTo((TRANSIT.stopLineM + 2.5 + TRANSIT.busLengthM) / speed + BUS_RAMP_MS / 2, 6);
+  });
+});
+
+describe("owner 2026-11-15: the bus stands and runs inside its own lane (to the road's width, not over the centre line)", () => {
+  /** The road: R 31..37, its yellow centre line R 34 +- 0.075 (make_textures.py), the outer kerb's face at R 37. */
+  const CENTRE_LINE = 34;
+  const PAINT_HALF = 0.075;
+  const KERB = 37;
+  /** Distance from the plaza's centre to a segment (the nearest point of a straight side of the bus). */
+  const segDist = (a: { x: number; z: number }, b: { x: number; z: number }) => {
+    const dx = b.x - a.x, dz = b.z - a.z;
+    const t = Math.max(0, Math.min(1, -(a.x * dx + a.z * dz) / (dx * dx + dz * dz)));
+    return Math.hypot(a.x + t * dx, a.z + t * dz);
+  };
+  /** The bus's nearest reach to the plaza's centre (its inner, left side) and its farthest (a door-side corner). */
+  const reach = (pose: { x: number; z: number; yaw: number }) => {
+    const [fl, fr, rr, rl] = busFootprint(pose);
+    return {
+      inner: Math.min(segDist(fl!, rl!), segDist(fl!, fr!), segDist(rr!, rl!)),
+      outer: Math.max(...[fl!, fr!, rr!, rl!].map((p) => Math.hypot(p.x, p.z))),
+      doorMid: Math.hypot((fr!.x + rr!.x) / 2, (fr!.z + rr!.z) / 2),
+    };
+  };
+
+  it("parked: wholly in the stop-side lane, clear of the centre line's paint, parallel to the kerb about 0.35 m off it", () => {
+    const p = TRANSIT.parked;
+    const r = reach(p);
+    expect(r.inner).toBeGreaterThanOrEqual(CENTRE_LINE + PAINT_HALF);
+    expect(r.outer).toBeLessThanOrEqual(KERB - 0.05);
+    expect(KERB - r.doorMid).toBeGreaterThanOrEqual(0.25);
+    expect(KERB - r.doorMid).toBeLessThanOrEqual(0.45);
+    // parallel to the kerb: the heading is the circle's tangent at the bus's centre
+    const a = Math.atan2(p.z, p.x);
+    const tangent = Math.atan2(Math.sin(a), -Math.cos(a));
+    expect(Math.abs(Math.atan2(Math.sin(p.yaw - tangent), Math.cos(p.yaw - tangent)))).toBeLessThan(1e-9);
+    expect(Math.hypot(p.x - TRANSIT.stop.x, p.z - TRANSIT.stop.z)).toBe(0);
+  });
+
+  it("parked: its tail 1 m short of the bus crossing's zebra (4 m along the road), its nose clear of every crossing", () => {
+    for (const c of SIGNAL_CROSSINGS) {
+      // signed distance along the road from the crossing's centre line, toward the bus's side (angle decreasing)
+      const along = (q: { x: number; z: number }) => q.x * Math.sin(c.angle) - q.z * Math.cos(c.angle);
+      const corners = busFootprint(TRANSIT.parked);
+      const near = Math.min(...corners.map((q) => Math.abs(along(q))));
+      const side = Math.sign(along(corners[0]!));
+      expect(corners.every((q) => Math.sign(along(q)) === side), c.id).toBe(true);
+      expect(near - 2, c.id).toBeGreaterThanOrEqual(c.id === "bus" ? 1 : 10);
+    }
+  });
+
+  it("along the whole lap, the approach and the pull-away included, the bus never crosses the centre line nor touches the kerb", () => {
+    const len = routeLength();
+    for (let d = 0; d <= len; d += 0.25) {
+      const r = reach(routePoseAtDistance(d));
+      expect(r.inner, `at ${d.toFixed(2)} m`).toBeGreaterThanOrEqual(CENTRE_LINE + PAINT_HALF);
+      expect(r.outer, `at ${d.toFixed(2)} m`).toBeLessThanOrEqual(KERB - 0.05);
+    }
+    // and the trip's own poses as it rolls in to the stop and pulls away (the timeline's last and first seconds)
+    const hour = Date.UTC(2026, 10, 12, 3, 0, 0);
+    const end = tripTimeline(hour).endMs;
+    for (let t = -8000; t <= 8000; t += 100) {
+      const pose = busTripAt(t < 0 ? end + t : hour + t).pose;
+      const r = reach(pose);
+      expect(r.inner).toBeGreaterThanOrEqual(CENTRE_LINE + PAINT_HALF);
+      expect(r.outer).toBeLessThanOrEqual(KERB - 0.05);
+    }
+  });
+
+  it("rolls into the parked pose with no snap: the last moving pose meets it in place and heading", () => {
+    const hour = Date.UTC(2026, 10, 12, 3, 0, 0);
+    const end = tripTimeline(hour).endMs;
+    const a = busTripAt(end - 1).pose;
+    const b = busTripAt(end + 1).pose;
+    expect(Math.hypot(a.x - b.x, a.z - b.z)).toBeLessThan(0.001);
+    expect(Math.abs(Math.atan2(Math.sin(a.yaw - b.yaw), Math.cos(a.yaw - b.yaw)))).toBeLessThan(0.001);
+    const c = busTripAt(hour + 1).pose;
+    expect(Math.hypot(c.x - b.x, c.z - b.z)).toBeLessThan(0.001);
   });
 });

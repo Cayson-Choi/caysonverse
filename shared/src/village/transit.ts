@@ -46,69 +46,62 @@ export interface PedestrianSignalState {
   canCross: boolean;
 }
 
-// review r1: the stop moved 0.85 m north (-z) so the parked bus's tail is 1.1 m clear of the crosswalk's stripes
-const STOP_POINT: TransitPoint = { x: 34.1, z: -6.5 };
-/** The bus runs in the middle of the outer lane (the ring road's lane is R 34..37; the bus is 2.5 m wide), not on the stop's own radius. */
-export const ROUTE_RADIUS = 35.3;
-const ROUTE_START_ANGLE = Math.atan2(STOP_POINT.z, STOP_POINT.x);
-/** The ring is sampled every 0.5 degree (0.3 m chords): the pose is read from this table, with the heading blended between its points, so the bus never turns in steps. */
+/**
+ * The bus's lane on the ring road: the road is R 31..37 with its yellow centre line at R 34, so the bus's lane (the outer
+ * one, where the stop is: it runs clockwise, keeping right) is R 34..37 and its kerb's face is at R 37. The bus (2.5 x 9 m,
+ * a straight box on a curve) runs and stops with its centre on this circle: its inner side's middle is 0.15 m off the
+ * centre line's middle (0.075 m clear of the paint), its door side's middle 0.35 m off the kerb, its rear and front
+ * corners 0.075 m off it (owner 2026-11-15: "버스가 도로 폭에 맞게 잘 정지한 상태로 있도록 해": the bus stood axis-aligned
+ * on the curve, its rear 1.1 m over the centre line). `busFootprint` / transit.test.ts check it.
+ */
+export const BUS_LANE_RADIUS = 35.4;
+/** Kept for the route's callers: the bus runs on its lane's circle. */
+export const ROUTE_RADIUS = BUS_LANE_RADIUS;
+/**
+ * Where the stop is on the ring (rad, atan2(z, x)): the parked bus's tail 1 m short of the bus crossing's zebra (review
+ * r1), its doors on the waiting pad (villageLayout.ts BUS_STOP_PAD), parallel to the kerb.
+ */
+export const BUS_STOP_ANGLE = -0.19;
+/** A point on the bus's lane circle at `angle`, heading clockwise along it (the heading (sin a, -cos a): yaw = atan2 of it). */
+export function laneAt(angle: number, radius: number = BUS_LANE_RADIUS): TransitPose {
+  return { x: radius * Math.cos(angle), z: radius * Math.sin(angle), yaw: Math.atan2(Math.sin(angle), -Math.cos(angle)) };
+}
+const STOP_POSE = laneAt(BUS_STOP_ANGLE);
+const STOP_POINT: TransitPoint = { x: STOP_POSE.x, z: STOP_POSE.z };
+/** The ring is sampled every 0.5 degree (0.31 m chords): the pose is read from this table, with the heading blended between its points, so the bus never turns in steps. */
 const ROUTE_STEPS = 720;
 
-/**
- * Where the lap leaves the ring for the stop (rad, atan2(z, x) + 2pi on the way back): from here the bus pulls in along a
- * smooth curve that ends on the stop heading north, square to the shelter. Review r2: the last 5 degree chord ran straight
- * from the lane's middle (R 35.3) to the stop (R 34.7), 15 degrees off the chord before it and 19 off the parked heading,
- * so the bus swung in and turned on the spot as it stopped.
- */
-const APPROACH_ANGLE = 0.25;
-const APPROACH_STEPS = 96;
-/** How far round the ring the pull-out from the stop joins the lane's middle (rad), in PULL_STEPS pieces. */
-const PULL_OUT_ANGLE = 0.25;
-const PULL_STEPS = 48;
-
-/** The parked bus's heading: nose north (-z), the way the model, its box and the shelter are laid out. */
-const PARKED_YAW = Math.PI;
-
-/** A cubic Hermite from `a` (heading `ta`) to `b` (heading `tb`), sampled in `n` steps, without its first point. */
-function hermite(a: TransitPoint, ta: TransitPoint, b: TransitPoint, tb: TransitPoint, n: number): TransitPoint[] {
-  const out: TransitPoint[] = [];
-  for (let i = 1; i <= n; i++) {
-    const t = i / n;
-    const h00 = 2 * t ** 3 - 3 * t ** 2 + 1;
-    const h10 = t ** 3 - 2 * t ** 2 + t;
-    const h01 = -2 * t ** 3 + 3 * t ** 2;
-    const h11 = t ** 3 - t ** 2;
-    out.push({ x: h00 * a.x + h10 * ta.x + h01 * b.x + h11 * tb.x, z: h00 * a.z + h10 * ta.z + h01 * b.z + h11 * tb.z });
-  }
-  return out;
-}
+/** The parked bus's heading: along the lane at the stop, parallel to the kerb (nose north-north-west, the way it runs). */
+const PARKED_YAW = STOP_POSE.yaw;
 
 /**
- * One clockwise lap (seen from above, angle decreasing) from the stop back to the stop: out of the stop onto the lane's
- * middle, round the ring in 0.5 degree chords, and from APPROACH_ANGLE a smooth pull-in that ends on the stop heading
- * north (no turn on the spot at the end).
+ * One clockwise lap (seen from above, angle decreasing) from the stop back to the stop, on the lane's circle in 0.5 degree
+ * chords. The stop is on that circle and the parked bus heads along it, so the bus pulls away and rolls in along its lane
+ * with no swing and no turn on the spot (review r2), and never leaves the lane.
  */
 function ringRoute(): readonly TransitPoint[] {
   const step = (Math.PI * 2) / ROUTE_STEPS;
-  const ring = (a: TransitPoint["x"]): TransitPoint => ({ x: ROUTE_RADIUS * Math.cos(a), z: ROUTE_RADIUS * Math.sin(a) });
-  // clockwise along the ring the heading is (sin a, -cos a); parked it is PARKED_YAW's, (sin, cos)
-  const along = (a: number, m: number): TransitPoint => ({ x: Math.sin(a) * m, z: -Math.cos(a) * m });
-  const parked = (m: number): TransitPoint => ({ x: Math.sin(PARKED_YAW) * m, z: Math.cos(PARKED_YAW) * m });
-  const pts: TransitPoint[] = [{ ...STOP_POINT }];
-  // pull out: a smooth curve from the stop onto the lane's middle (review r2: the first chord turned 16 degrees at once)
-  const out = ROUTE_START_ANGLE - PULL_OUT_ANGLE;
-  const outSpan = Math.hypot(ring(out).x - STOP_POINT.x, ring(out).z - STOP_POINT.z);
-  pts.push(...hermite(STOP_POINT, parked(outSpan), ring(out), along(out, outSpan), PULL_STEPS));
-  let a = out - step;
-  const last = APPROACH_ANGLE - Math.PI * 2;
-  for (; a >= last; a -= step) pts.push(ring(a));
-  // pull in: from the ring onto the stop, heading north at the end (no turn on the spot)
-  const fa = a + step;
-  const from = pts[pts.length - 1]!;
-  const span = Math.hypot(STOP_POINT.x - from.x, STOP_POINT.z - from.z);
-  pts.push(...hermite(from, along(fa, span), STOP_POINT, parked(span), APPROACH_STEPS));
+  const pts: TransitPoint[] = [];
+  for (let i = 0; i <= ROUTE_STEPS; i++) {
+    const p = laneAt(BUS_STOP_ANGLE - i * step);
+    pts.push({ x: p.x, z: p.z });
+  }
+  pts[0] = { ...STOP_POINT };
   pts[pts.length - 1] = { ...STOP_POINT };
   return pts;
+}
+
+/**
+ * The bus's footprint (its body's plan rectangle, 2.5 x 9 m) at a pose: four corners, front-left, front-right,
+ * rear-right, rear-left (right = the door side). `grow` widens it on every side.
+ */
+export function busFootprint(pose: TransitPose, size: { x: number; z: number } = { x: 2.5, z: 9 }, grow = 0): TransitPoint[] {
+  const f = { x: Math.sin(pose.yaw), z: Math.cos(pose.yaw) }; // forward
+  const r = { x: -f.z, z: f.x }; // the bus's right (doors): forward turned a quarter clockwise seen from above
+  const hl = size.z / 2 + grow;
+  const hw = size.x / 2 + grow;
+  const at = (a: number, b: number): TransitPoint => ({ x: pose.x + f.x * a + r.x * b, z: pose.z + f.z * a + r.z * b });
+  return [at(hl, -hw), at(hl, hw), at(-hl, hw), at(-hl, -hw)];
 }
 
 export const TRANSIT = {
@@ -130,8 +123,11 @@ export const TRANSIT = {
   /** Where the bus's nose stops before a crosswalk's centre when the signal is not green (m along the road): 2 m of crosswalk + 3.6 m. */
   stopLineM: 5.6,
   busLengthM: 9,
-  stop: { x: 34.1, z: -6.5 } as TransitPoint,
-  /** The ring road's lane the bus runs in (R 35.3, the outer lane's middle; the stop's bay is at its kerb side), as a circle of 0.3 m chords (the pose blends their headings, see routePoseAt). */
+  /** Where the parked bus's centre stands (on its lane's circle, BUS_STOP_ANGLE). */
+  stop: STOP_POINT,
+  /** The parked bus: at the stop, along its lane (parallel to the kerb). */
+  parked: { x: STOP_POINT.x, z: STOP_POINT.z, yaw: PARKED_YAW } as TransitPose,
+  /** The bus's lane (R 35.4) as a circle of 0.31 m chords from the stop round to the stop (the pose blends their headings, see routePoseAt). */
   route: ringRoute(),
 } as const;
 
@@ -164,7 +160,7 @@ function routeTable(route: readonly TransitPoint[]): RouteTable {
     const b = route[Math.min(n - 1, i + 1)]!;
     yaw[i] = n > 1 ? Math.atan2(b.x - a.x, b.z - a.z) : 0;
   }
-  // the lap leaves and returns to the stop heading north, as the parked bus stands (no turn on the spot at either end)
+  // the lap leaves and returns to the stop heading along the lane, as the parked bus stands (no turn on the spot at either end)
   if (n > 1 && route === TRANSIT.route) {
     yaw[0] = PARKED_YAW;
     yaw[n - 1] = PARKED_YAW;
@@ -212,8 +208,8 @@ export function routePoseAt(progress: number, route: readonly TransitPoint[] = T
   return routePoseAtDistance(clamp01(progress) * routeTable(route).total, route);
 }
 
-/** The parked bus: at the stop, nose north (-z), square to the stop's box and the shelter. */
-const PARKED_POSE: TransitPose = { x: STOP_POINT.x, z: STOP_POINT.z, yaw: PARKED_YAW };
+/** The parked bus: at the stop, along its lane, parallel to the kerb. */
+const PARKED_POSE: TransitPose = TRANSIT.parked;
 
 /** Total length of the route (m). */
 export function routeLength(route: readonly TransitPoint[] = TRANSIT.route): number {

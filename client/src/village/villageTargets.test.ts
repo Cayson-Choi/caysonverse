@@ -242,11 +242,13 @@ describe("villageBusTarget — the board button under the shelter (review r2)", 
     const { nearestFreeSeat, SEAT_REACH } = await import("@caysonverse/shared/worldMap");
     const { VILLAGE_SEATS: seats } = await import("@caysonverse/shared/village/benchSeats");
     const b = VILLAGE_LAYOUT.busStop.bus;
-    // the kerb strip along the bus's door side and the pad's road half, the whole length of the bus
-    for (let dx = 0.3; dx <= 3.5; dx += 0.4) {
+    // the kerb strip along the bus's door side and the pad's road half, the whole length of the bus (it stands turned
+    // along the kerb, 0.35 m off it: out to about x 38.9 as before; nearer the shelter its bench is in reach)
+    const f = { x: Math.sin(b.yaw), z: Math.cos(b.yaw) };
+    for (let dx = 0.3; dx <= 2.3; dx += 0.4) {
       for (let dz = -4; dz <= 4; dz += 0.5) {
-        const x = b.centre.x + b.size.x / 2 + dx;
-        const z = b.centre.z + dz;
+        const x = b.centre.x - f.z * (b.size.x / 2 + dx) + f.x * dz;
+        const z = b.centre.z + f.x * (b.size.x / 2 + dx) + f.z * dz;
         const index = nearestFreeSeat(x, z, () => false, SEAT_REACH, seats);
         const t = villageBusTarget("village", x, z, false, true, 100_000);
         if (!t) continue;

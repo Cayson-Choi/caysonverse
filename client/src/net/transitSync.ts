@@ -34,7 +34,7 @@ const listeners = new Set<() => void>();
  * chase the 250 ms snapshots with a first-order low-pass, so it moved in 0.3 m hops with a speed that rose and fell four
  * times a second ("it keeps stopping on its way"). The snapshots now only correct the clock and carry the status.
  */
-let renderPose = { x: TRANSIT.stop.x, z: TRANSIT.stop.z, yaw: Math.PI }; // parked: heading north (-z)
+let renderPose = { ...TRANSIT.parked }; // parked: along its lane at the stop, parallel to the kerb
 let renderAt = Number.NaN;
 
 /**
@@ -137,7 +137,7 @@ export function startTransitSync(room: TransitRoom): () => void {
   boundRoom = room;
   resetClock();
   renderAt = Number.NaN;
-  renderPose = { x: TRANSIT.stop.x, z: TRANSIT.stop.z, yaw: Math.PI };
+  renderPose = { ...TRANSIT.parked };
   publish(initial);
   const offState = room.onMessage<BusStatePayload>(MessageType.BusState, setSnapshot);
   const offRide = room.onMessage<BusRideStatePayload>(MessageType.BusRideState, setRide);
