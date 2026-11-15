@@ -132,8 +132,8 @@ function pAtLeast(kind: FishKind, x: number): number {
   }
   return p;
 }
-/** What the table implies (pinned, so an edit of the table is noticed). The design text said ~4.6 % / ~7 % for >= 45 cm; the approved table gives these. */
-const PINNED = { day45: 0.0766, night45: 0.1251, day70: 0.0074, night70: 0.0134 };
+/** What the table implies (pinned, so an edit of the table is noticed). Tuned to the design: ~4.6 % / ~7 % for >= 45 cm, ~0.7 % for >= 70 cm by day. */
+const PINNED = { day45: 0.0461, night45: 0.0736, day70: 0.0070, night70: 0.0130 };
 const analyticAtLeast = (night: number, x: number) => speciesShares(night).reduce((a, sh, i) => a + sh * pAtLeast(FISH_KINDS[i]!, x), 0);
 
 describe("the odds (design 12.10: 1,000,000 samples, +-0.3 percentage points)", () => {
@@ -159,7 +159,7 @@ describe("the odds (design 12.10: 1,000,000 samples, +-0.3 percentage points)", 
       expect(Math.abs(big70 / N - analyticAtLeast(night, 70))).toBeLessThan(0.003);
       expect(analyticAtLeast(night, 45)).toBeCloseTo(night === 0 ? PINNED.day45 : PINNED.night45, 3);
       expect(analyticAtLeast(night, 70)).toBeCloseTo(night === 0 ? PINNED.day70 : PINNED.night70, 3);
-      expect(net / N).toBeLessThan(0.3); // the hold stage (day ~18.8 %, night ~26 % of the bites) stays the exception
+      expect(net / N).toBeLessThan(0.3); // the hold stage (measured below) stays the exception
     });
   }
 

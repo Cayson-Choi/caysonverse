@@ -160,7 +160,7 @@ export interface FishSpecies {
 }
 
 /**
- * THE fish table (design 8): the one place the odds are changed. Sizes are integer cm: the design's 월척 (30.3 cm) is 31 here.
+ * THE fish table (design 8): the one place the odds are changed. The big-species bands were thinned (owner's coordinator, 2026-11-16) so >= 45 cm is ~4.6 % by day / ~7.4 % at night and >= 70 cm ~0.7 % by day, as the design says. Sizes are integer cm: the design's 월척 (30.3 cm) is 31 here.
  * Eel is a night fish (0 % by day, 1.5 % at night).
  */
 export const FISH_TABLE: readonly FishSpecies[] = Object.freeze(
@@ -169,11 +169,11 @@ export const FISH_TABLE: readonly FishSpecies[] = Object.freeze(
     { kind: "bluegill", label: "블루길", dayWeight: 22, nightWeight: 12, bands: [{ fromCm: 8, toCm: 16, p: 0.85 }, { fromCm: 16, toCm: 22, p: 0.15 }], signal: "sink", netFromCm: Infinity, disposal: "bin", trophyCm: null },
     { kind: "minnow", label: "피라미", dayWeight: 12, nightWeight: 6, bands: [{ fromCm: 7, toCm: 13, p: 0.9 }, { fromCm: 13, toCm: 16, p: 0.1 }], signal: "sink", netFromCm: Infinity, disposal: "release", trophyCm: null },
     { kind: "prussian_carp", label: "떡붕어", dayWeight: 8, nightWeight: 8, bands: [{ fromCm: 20, toCm: 30, p: 0.85 }, { fromCm: 30, toCm: 38, p: 0.15 }], signal: "rise", netFromCm: 30, disposal: "release", trophyCm: 35 },
-    { kind: "bass", label: "배스", dayWeight: 8, nightWeight: 4, bands: [{ fromCm: 20, toCm: 35, p: 0.8 }, { fromCm: 35, toCm: 45, p: 0.17 }, { fromCm: 45, toCm: 55, p: 0.03 }], signal: "drag", netFromCm: 40, disposal: "bin", trophyCm: 45 },
-    { kind: "carp", label: "잉어", dayWeight: 6, nightWeight: 7, bands: [{ fromCm: 35, toCm: 50, p: 0.55 }, { fromCm: 50, toCm: 70, p: 0.38 }, { fromCm: 70, toCm: 85, p: 0.07 }], signal: "drag", netFromCm: 0, disposal: "release", trophyCm: 70 },
+    { kind: "bass", label: "배스", dayWeight: 8, nightWeight: 4, bands: [{ fromCm: 20, toCm: 35, p: 0.8 }, { fromCm: 35, toCm: 45, p: 0.19 }, { fromCm: 45, toCm: 55, p: 0.01 }], signal: "drag", netFromCm: 40, disposal: "bin", trophyCm: 45 },
+    { kind: "carp", label: "잉어", dayWeight: 6, nightWeight: 7, bands: [{ fromCm: 35, toCm: 50, p: 0.88 }, { fromCm: 50, toCm: 70, p: 0.04 }, { fromCm: 70, toCm: 85, p: 0.08 }], signal: "drag", netFromCm: 0, disposal: "release", trophyCm: 70 },
     { kind: "korean_bullhead", label: "동자개", dayWeight: 4, nightWeight: 10, bands: [{ fromCm: 12, toCm: 22, p: 0.8 }, { fromCm: 22, toCm: 30, p: 0.2 }], signal: "sink", netFromCm: Infinity, disposal: "release", trophyCm: null },
-    { kind: "catfish", label: "메기", dayWeight: 3, nightWeight: 10, bands: [{ fromCm: 25, toCm: 45, p: 0.75 }, { fromCm: 45, toCm: 60, p: 0.25 }], signal: "drag", netFromCm: 40, disposal: "release", trophyCm: 55 },
-    { kind: "mirror_carp", label: "향어", dayWeight: 6, nightWeight: 6, bands: [{ fromCm: 30, toCm: 45, p: 0.8 }, { fromCm: 45, toCm: 60, p: 0.2 }], signal: "drag", netFromCm: 0, disposal: "release", trophyCm: 50 },
+    { kind: "catfish", label: "메기", dayWeight: 3, nightWeight: 10, bands: [{ fromCm: 25, toCm: 45, p: 0.98 }, { fromCm: 45, toCm: 60, p: 0.02 }], signal: "drag", netFromCm: 40, disposal: "release", trophyCm: 55 },
+    { kind: "mirror_carp", label: "향어", dayWeight: 6, nightWeight: 6, bands: [{ fromCm: 30, toCm: 45, p: 0.98 }, { fromCm: 45, toCm: 60, p: 0.02 }], signal: "drag", netFromCm: 0, disposal: "release", trophyCm: 50 },
     { kind: "snakehead", label: "가물치", dayWeight: 1, nightWeight: 1, bands: [{ fromCm: 45, toCm: 60, p: 0.6 }, { fromCm: 60, toCm: 80, p: 0.4 }], signal: "drag", netFromCm: 0, disposal: "release", trophyCm: 70 },
     { kind: "eel", label: "장어", dayWeight: 0, nightWeight: 1.5, bands: [{ fromCm: 40, toCm: 80, p: 1 }], signal: "drag", netFromCm: 0, disposal: "release", trophyCm: 60 },
   ].map((s) => Object.freeze({ ...s, bands: Object.freeze(s.bands) })) as FishSpecies[],
