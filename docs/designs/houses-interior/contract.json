@@ -1,0 +1,2126 @@
+{
+  "version": 1,
+  "note": "GENERATED from shared/src/village/houseAreas.ts by scripts/export-house-contract.ts — do not edit",
+  "room": {
+    "width": 10.6,
+    "depth": 7.8,
+    "wall": 0.3,
+    "storey": 4,
+    "ceiling": 3.7,
+    "frontDoor": {
+      "minX": 4.4,
+      "maxX": 6.2,
+      "height": 2.9
+    },
+    "openingMinWidth": 1.6,
+    "openingHeight": 2.6,
+    "passageMin": 0.9,
+    "seatFrontClear": 1,
+    "entrance": {
+      "minX": 3.6,
+      "maxX": 7,
+      "minZ": 0,
+      "maxZ": 1.5
+    }
+  },
+  "policy": {
+    "maxOccupants": 8,
+    "guideTellsCode": true,
+    "chatScope": "house",
+    "bedSit": "edge",
+    "cushionFacing": "table",
+    "windowView": "panorama",
+    "bathroom": "door-only",
+    "rememberCode": false,
+    "tinyFurnitureSittable": false
+  },
+  "camera": {
+    "ceilingPad": 0.25,
+    "slopeStart": 2.9
+  },
+  "lowCeilings": [
+    {
+      "n": 8,
+      "floor": 2,
+      "lowest": 2.9,
+      "why": "다락방 한쪽 경사 천장"
+    },
+    {
+      "n": 10,
+      "floor": 2,
+      "lowest": 2.9,
+      "why": "다락 침실 경사 천장"
+    }
+  ],
+  "stair": {
+    "risers": 17,
+    "riser": 0.235,
+    "treads": 16,
+    "tread": 0.34,
+    "run": 5.44,
+    "width": 1.3,
+    "railHeight": 0.9,
+    "landingLength": 1,
+    "wellSteps": 8
+  },
+  "pad": {
+    "radius": 0.5,
+    "reach": 1.3,
+    "halfWidth": 0.8
+  },
+  "exitPad": {
+    "x": 5.3,
+    "z": 0.9,
+    "radius": 0.7,
+    "facing": 3.141593
+  },
+  "entrySpawn": {
+    "x": 5.3,
+    "z": 3.1,
+    "yaw": 0
+  },
+  "stairPlans": {
+    "A": {
+      "type": "A",
+      "footprint": {
+        "minX": 5.06,
+        "maxX": 10.5,
+        "minZ": 6.4,
+        "maxZ": 7.7
+      },
+      "climb": {
+        "x": -1,
+        "z": 0
+      },
+      "foot": {
+        "x": 10.5,
+        "z": 7.05
+      },
+      "top": {
+        "x": 5.06,
+        "z": 7.05
+      },
+      "landing": {
+        "minX": 4.06,
+        "maxX": 5.06,
+        "minZ": 6.4,
+        "maxZ": 7.7
+      },
+      "upPad": {
+        "x": 9.85,
+        "z": 5.8,
+        "radius": 0.5,
+        "facing": 0
+      },
+      "downPad": {
+        "x": 4.56,
+        "z": 7.05,
+        "radius": 0.5,
+        "facing": 1.570796
+      },
+      "arriveUp": {
+        "x": 4.21,
+        "z": 7.05,
+        "yaw": 2.808457
+      },
+      "arriveDown": {
+        "x": 9.85,
+        "z": 5.45,
+        "yaw": -1.899126
+      }
+    },
+    "B": {
+      "type": "B",
+      "footprint": {
+        "minX": 0.1,
+        "maxX": 5.54,
+        "minZ": 6.4,
+        "maxZ": 7.7
+      },
+      "climb": {
+        "x": 1,
+        "z": 0
+      },
+      "foot": {
+        "x": 0.1,
+        "z": 7.05
+      },
+      "top": {
+        "x": 5.54,
+        "z": 7.05
+      },
+      "landing": {
+        "minX": 5.54,
+        "maxX": 6.54,
+        "minZ": 6.4,
+        "maxZ": 7.7
+      },
+      "upPad": {
+        "x": 0.75,
+        "z": 5.8,
+        "radius": 0.5,
+        "facing": 0
+      },
+      "downPad": {
+        "x": 6.04,
+        "z": 7.05,
+        "radius": 0.5,
+        "facing": -1.570796
+      },
+      "arriveUp": {
+        "x": 6.39,
+        "z": 7.05,
+        "yaw": -2.808457
+      },
+      "arriveDown": {
+        "x": 0.75,
+        "z": 5.45,
+        "yaw": 1.899126
+      }
+    },
+    "C": {
+      "type": "C",
+      "footprint": {
+        "minX": 9.2,
+        "maxX": 10.5,
+        "minZ": 1.9,
+        "maxZ": 7.34
+      },
+      "climb": {
+        "x": 0,
+        "z": 1
+      },
+      "foot": {
+        "x": 9.85,
+        "z": 1.9
+      },
+      "top": {
+        "x": 9.85,
+        "z": 7.34
+      },
+      "landing": {
+        "minX": 8.2,
+        "maxX": 9.2,
+        "minZ": 6.04,
+        "maxZ": 7.34
+      },
+      "upPad": {
+        "x": 9.85,
+        "z": 1.3,
+        "radius": 0.5,
+        "facing": 0
+      },
+      "downPad": {
+        "x": 8.7,
+        "z": 6.69,
+        "radius": 0.5,
+        "facing": 1.570796
+      },
+      "arriveUp": {
+        "x": 8.35,
+        "z": 6.69,
+        "yaw": -2.311703
+      },
+      "arriveDown": {
+        "x": 9.85,
+        "z": 0.95,
+        "yaw": -0.995581
+      }
+    },
+    "D": {
+      "type": "D",
+      "footprint": {
+        "minX": 0.1,
+        "maxX": 1.4,
+        "minZ": 1.9,
+        "maxZ": 7.34
+      },
+      "climb": {
+        "x": 0,
+        "z": 1
+      },
+      "foot": {
+        "x": 0.75,
+        "z": 1.9
+      },
+      "top": {
+        "x": 0.75,
+        "z": 7.34
+      },
+      "landing": {
+        "minX": 1.4,
+        "maxX": 2.4,
+        "minZ": 6.04,
+        "maxZ": 7.34
+      },
+      "upPad": {
+        "x": 0.75,
+        "z": 1.3,
+        "radius": 0.5,
+        "facing": 0
+      },
+      "downPad": {
+        "x": 1.9,
+        "z": 6.69,
+        "radius": 0.5,
+        "facing": -1.570796
+      },
+      "arriveUp": {
+        "x": 2.25,
+        "z": 6.69,
+        "yaw": 2.311703
+      },
+      "arriveDown": {
+        "x": 0.75,
+        "z": 0.95,
+        "yaw": 0.995581
+      }
+    }
+  },
+  "seat": {
+    "kinds": [
+      "backed",
+      "backless",
+      "floor"
+    ],
+    "poses": [
+      "chair",
+      "perch",
+      "floor"
+    ],
+    "furn": {
+      "chair": "backed",
+      "sofa": "backed",
+      "armchair": "backed",
+      "beanbag": "backed",
+      "bench": "backless",
+      "stool": "backless",
+      "barstool": "backless",
+      "ottoman": "backless",
+      "bed": "backless",
+      "windowseat": "backless",
+      "cushion": "floor",
+      "boryo": "floor",
+      "floorsofa": "floor"
+    },
+    "heights": {
+      "chair": {
+        "min": 0.35,
+        "max": 0.55
+      },
+      "perch": {
+        "min": 0.6,
+        "max": 0.75
+      },
+      "floor": {
+        "min": 0.03,
+        "max": 0.3
+      }
+    },
+    "minWidth": 0.38,
+    "extras": [
+      "furn",
+      "kind",
+      "pose",
+      "approach",
+      "yaw",
+      "edge",
+      "back",
+      "width",
+      "group",
+      "both",
+      "exitTurn",
+      "lean"
+    ],
+    "total": 118
+  },
+  "budget": {
+    "glb": {
+      "maxBytes": 1048576,
+      "maxTriangles": 45000,
+      "maxMaterials": 24,
+      "maxTextureSide": 2048
+    },
+    "props": {
+      "maxBytes": 629145.6,
+      "maxTriangles": 25000
+    },
+    "lightmap": {
+      "side": 2048,
+      "maxBytes": 460800,
+      "side1k": 1024,
+      "maxBytes1k": 235520
+    },
+    "view": {
+      "width": 2048,
+      "height": 1024
+    },
+    "maxDrawCallsPerFloor": 120,
+    "maxMemoryGrowthMB": 150,
+    "enterSecondsPrefetched": 2.5,
+    "enterSeconds": 6,
+    "loadTimeoutSeconds": 8,
+    "unloadAfterSeconds": 60
+  },
+  "exteriorBody": {
+    "halfWidth": 5.15,
+    "back": -4.05,
+    "front": 2.7
+  },
+  "houses": [
+    {
+      "n": 1,
+      "buildingId": "house_1",
+      "stair": "A",
+      "origin": {
+        "1": {
+          "x": 360,
+          "z": 0
+        },
+        "2": {
+          "x": 360,
+          "z": 30
+        }
+      },
+      "bounds": {
+        "1": {
+          "minX": 360,
+          "maxX": 370.6,
+          "minZ": -7.8,
+          "maxZ": 0
+        },
+        "2": {
+          "minX": 360,
+          "maxX": 370.6,
+          "minZ": 22.2,
+          "maxZ": 30
+        }
+      },
+      "areas": {
+        "1": "house:house_1:1",
+        "2": "house:house_1:2"
+      },
+      "places": {
+        "n": 1,
+        "buildingId": "house_1",
+        "stair": "A",
+        "spawnIn": {
+          "area": "house:house_1:1",
+          "x": 365.3,
+          "z": -3.1,
+          "yaw": 3.141593
+        },
+        "spawnUp": {
+          "area": "house:house_1:2",
+          "x": 364.21,
+          "z": 22.95,
+          "yaw": 0.333136
+        },
+        "spawnDown": {
+          "area": "house:house_1:1",
+          "x": 369.85,
+          "z": -5.45,
+          "yaw": -1.242467
+        },
+        "exitPad": {
+          "area": "house:house_1:1",
+          "x": 365.3,
+          "z": -0.9,
+          "yaw": 0,
+          "radius": 0.7
+        },
+        "upPad": {
+          "area": "house:house_1:1",
+          "x": 369.85,
+          "z": -5.8,
+          "yaw": 3.141593,
+          "radius": 0.5
+        },
+        "downPad": {
+          "area": "house:house_1:2",
+          "x": 364.56,
+          "z": 22.95,
+          "yaw": 1.570797,
+          "radius": 0.5
+        }
+      },
+      "requiredNodes": [
+        "floor__h1_1",
+        "floor__h1_2",
+        "stair__h1_up",
+        "stair__h1_down",
+        "door__h1_exit",
+        "spawn__h1_in",
+        "spawn__h1_2",
+        "spawn__h1_1s",
+        "ceil__h1_1",
+        "ceil__h1_2"
+      ],
+      "keepClear": {
+        "1": [
+          {
+            "name": "entry_corridor",
+            "box": {
+              "minX": 4.3,
+              "maxX": 6.3,
+              "minZ": 0,
+              "maxZ": 3.6
+            }
+          },
+          {
+            "name": "exit_pad",
+            "box": {
+              "minX": 4.6,
+              "maxX": 6,
+              "minZ": 0.2,
+              "maxZ": 1.6
+            }
+          },
+          {
+            "name": "up_pad",
+            "box": {
+              "minX": 9.35,
+              "maxX": 10.35,
+              "minZ": 5.3,
+              "maxZ": 6.3
+            }
+          },
+          {
+            "name": "arrive_down",
+            "box": {
+              "minX": 9.4,
+              "maxX": 10.3,
+              "minZ": 5,
+              "maxZ": 5.9
+            }
+          }
+        ],
+        "2": [
+          {
+            "name": "landing",
+            "box": {
+              "minX": 4.06,
+              "maxX": 5.06,
+              "minZ": 6.4,
+              "maxZ": 7.7
+            }
+          },
+          {
+            "name": "down_pad",
+            "box": {
+              "minX": 4.06,
+              "maxX": 5.06,
+              "minZ": 6.55,
+              "maxZ": 7.55
+            }
+          },
+          {
+            "name": "arrive_up",
+            "box": {
+              "minX": 3.76,
+              "maxX": 4.66,
+              "minZ": 6.6,
+              "maxZ": 7.5
+            }
+          }
+        ]
+      },
+      "seats": {
+        "1": {
+          "backed": 8
+        },
+        "2": {
+          "backless": 3,
+          "backed": 1
+        }
+      },
+      "files": {
+        "glb": "/models/village/houses/house_1.glb",
+        "lightmapDay": "/models/village/houses/house_1_lm.webp",
+        "lightmapDay1k": "/models/village/houses/house_1_lm_1k.webp",
+        "lightmapNight": "/models/village/houses/house_1_lm_night.webp",
+        "lightmapNight1k": "/models/village/houses/house_1_lm_night_1k.webp",
+        "view": "/models/village/houses/house_1_view.webp"
+      }
+    },
+    {
+      "n": 2,
+      "buildingId": "house_2",
+      "stair": "B",
+      "origin": {
+        "1": {
+          "x": 384,
+          "z": 0
+        },
+        "2": {
+          "x": 384,
+          "z": 30
+        }
+      },
+      "bounds": {
+        "1": {
+          "minX": 384,
+          "maxX": 394.6,
+          "minZ": -7.8,
+          "maxZ": 0
+        },
+        "2": {
+          "minX": 384,
+          "maxX": 394.6,
+          "minZ": 22.2,
+          "maxZ": 30
+        }
+      },
+      "areas": {
+        "1": "house:house_2:1",
+        "2": "house:house_2:2"
+      },
+      "places": {
+        "n": 2,
+        "buildingId": "house_2",
+        "stair": "B",
+        "spawnIn": {
+          "area": "house:house_2:1",
+          "x": 389.3,
+          "z": -3.1,
+          "yaw": 3.141593
+        },
+        "spawnUp": {
+          "area": "house:house_2:2",
+          "x": 390.39,
+          "z": 22.95,
+          "yaw": -0.333136
+        },
+        "spawnDown": {
+          "area": "house:house_2:1",
+          "x": 384.75,
+          "z": -5.45,
+          "yaw": 1.242467
+        },
+        "exitPad": {
+          "area": "house:house_2:1",
+          "x": 389.3,
+          "z": -0.9,
+          "yaw": 0,
+          "radius": 0.7
+        },
+        "upPad": {
+          "area": "house:house_2:1",
+          "x": 384.75,
+          "z": -5.8,
+          "yaw": 3.141593,
+          "radius": 0.5
+        },
+        "downPad": {
+          "area": "house:house_2:2",
+          "x": 390.04,
+          "z": 22.95,
+          "yaw": -1.570797,
+          "radius": 0.5
+        }
+      },
+      "requiredNodes": [
+        "floor__h2_1",
+        "floor__h2_2",
+        "stair__h2_up",
+        "stair__h2_down",
+        "door__h2_exit",
+        "spawn__h2_in",
+        "spawn__h2_2",
+        "spawn__h2_1s",
+        "ceil__h2_1",
+        "ceil__h2_2"
+      ],
+      "keepClear": {
+        "1": [
+          {
+            "name": "entry_corridor",
+            "box": {
+              "minX": 4.3,
+              "maxX": 6.3,
+              "minZ": 0,
+              "maxZ": 3.6
+            }
+          },
+          {
+            "name": "exit_pad",
+            "box": {
+              "minX": 4.6,
+              "maxX": 6,
+              "minZ": 0.2,
+              "maxZ": 1.6
+            }
+          },
+          {
+            "name": "up_pad",
+            "box": {
+              "minX": 0.25,
+              "maxX": 1.25,
+              "minZ": 5.3,
+              "maxZ": 6.3
+            }
+          },
+          {
+            "name": "arrive_down",
+            "box": {
+              "minX": 0.3,
+              "maxX": 1.2,
+              "minZ": 5,
+              "maxZ": 5.9
+            }
+          }
+        ],
+        "2": [
+          {
+            "name": "landing",
+            "box": {
+              "minX": 5.54,
+              "maxX": 6.54,
+              "minZ": 6.4,
+              "maxZ": 7.7
+            }
+          },
+          {
+            "name": "down_pad",
+            "box": {
+              "minX": 5.54,
+              "maxX": 6.54,
+              "minZ": 6.55,
+              "maxZ": 7.55
+            }
+          },
+          {
+            "name": "arrive_up",
+            "box": {
+              "minX": 5.94,
+              "maxX": 6.84,
+              "minZ": 6.6,
+              "maxZ": 7.5
+            }
+          }
+        ]
+      },
+      "seats": {
+        "1": {
+          "backed": 7,
+          "backless": 2
+        },
+        "2": {
+          "backed": 3,
+          "backless": 3
+        }
+      },
+      "files": {
+        "glb": "/models/village/houses/house_2.glb",
+        "lightmapDay": "/models/village/houses/house_2_lm.webp",
+        "lightmapDay1k": "/models/village/houses/house_2_lm_1k.webp",
+        "lightmapNight": "/models/village/houses/house_2_lm_night.webp",
+        "lightmapNight1k": "/models/village/houses/house_2_lm_night_1k.webp",
+        "view": "/models/village/houses/house_2_view.webp"
+      }
+    },
+    {
+      "n": 3,
+      "buildingId": "house_3",
+      "stair": "C",
+      "origin": {
+        "1": {
+          "x": 408,
+          "z": 0
+        },
+        "2": {
+          "x": 408,
+          "z": 30
+        }
+      },
+      "bounds": {
+        "1": {
+          "minX": 408,
+          "maxX": 418.6,
+          "minZ": -7.8,
+          "maxZ": 0
+        },
+        "2": {
+          "minX": 408,
+          "maxX": 418.6,
+          "minZ": 22.2,
+          "maxZ": 30
+        }
+      },
+      "areas": {
+        "1": "house:house_3:1",
+        "2": "house:house_3:2"
+      },
+      "places": {
+        "n": 3,
+        "buildingId": "house_3",
+        "stair": "C",
+        "spawnIn": {
+          "area": "house:house_3:1",
+          "x": 413.3,
+          "z": -3.1,
+          "yaw": 3.141593
+        },
+        "spawnUp": {
+          "area": "house:house_3:2",
+          "x": 416.35,
+          "z": 23.31,
+          "yaw": -0.82989
+        },
+        "spawnDown": {
+          "area": "house:house_3:1",
+          "x": 417.85,
+          "z": -0.95,
+          "yaw": -2.146012
+        },
+        "exitPad": {
+          "area": "house:house_3:1",
+          "x": 413.3,
+          "z": -0.9,
+          "yaw": 0,
+          "radius": 0.7
+        },
+        "upPad": {
+          "area": "house:house_3:1",
+          "x": 417.85,
+          "z": -1.3,
+          "yaw": 3.141593,
+          "radius": 0.5
+        },
+        "downPad": {
+          "area": "house:house_3:2",
+          "x": 416.7,
+          "z": 23.31,
+          "yaw": 1.570797,
+          "radius": 0.5
+        }
+      },
+      "requiredNodes": [
+        "floor__h3_1",
+        "floor__h3_2",
+        "stair__h3_up",
+        "stair__h3_down",
+        "door__h3_exit",
+        "spawn__h3_in",
+        "spawn__h3_2",
+        "spawn__h3_1s",
+        "ceil__h3_1",
+        "ceil__h3_2"
+      ],
+      "keepClear": {
+        "1": [
+          {
+            "name": "entry_corridor",
+            "box": {
+              "minX": 4.3,
+              "maxX": 6.3,
+              "minZ": 0,
+              "maxZ": 3.6
+            }
+          },
+          {
+            "name": "exit_pad",
+            "box": {
+              "minX": 4.6,
+              "maxX": 6,
+              "minZ": 0.2,
+              "maxZ": 1.6
+            }
+          },
+          {
+            "name": "up_pad",
+            "box": {
+              "minX": 9.35,
+              "maxX": 10.35,
+              "minZ": 0.8,
+              "maxZ": 1.8
+            }
+          },
+          {
+            "name": "arrive_down",
+            "box": {
+              "minX": 9.4,
+              "maxX": 10.3,
+              "minZ": 0.5,
+              "maxZ": 1.4
+            }
+          }
+        ],
+        "2": [
+          {
+            "name": "landing",
+            "box": {
+              "minX": 8.2,
+              "maxX": 9.2,
+              "minZ": 6.04,
+              "maxZ": 7.34
+            }
+          },
+          {
+            "name": "down_pad",
+            "box": {
+              "minX": 8.2,
+              "maxX": 9.2,
+              "minZ": 6.19,
+              "maxZ": 7.19
+            }
+          },
+          {
+            "name": "arrive_up",
+            "box": {
+              "minX": 7.9,
+              "maxX": 8.8,
+              "minZ": 6.24,
+              "maxZ": 7.14
+            }
+          }
+        ]
+      },
+      "seats": {
+        "1": {
+          "backed": 6,
+          "backless": 2
+        },
+        "2": {
+          "backed": 2,
+          "floor": 2
+        }
+      },
+      "files": {
+        "glb": "/models/village/houses/house_3.glb",
+        "lightmapDay": "/models/village/houses/house_3_lm.webp",
+        "lightmapDay1k": "/models/village/houses/house_3_lm_1k.webp",
+        "lightmapNight": "/models/village/houses/house_3_lm_night.webp",
+        "lightmapNight1k": "/models/village/houses/house_3_lm_night_1k.webp",
+        "view": "/models/village/houses/house_3_view.webp"
+      }
+    },
+    {
+      "n": 4,
+      "buildingId": "house_4",
+      "stair": "D",
+      "origin": {
+        "1": {
+          "x": 432,
+          "z": 0
+        },
+        "2": {
+          "x": 432,
+          "z": 30
+        }
+      },
+      "bounds": {
+        "1": {
+          "minX": 432,
+          "maxX": 442.6,
+          "minZ": -7.8,
+          "maxZ": 0
+        },
+        "2": {
+          "minX": 432,
+          "maxX": 442.6,
+          "minZ": 22.2,
+          "maxZ": 30
+        }
+      },
+      "areas": {
+        "1": "house:house_4:1",
+        "2": "house:house_4:2"
+      },
+      "places": {
+        "n": 4,
+        "buildingId": "house_4",
+        "stair": "D",
+        "spawnIn": {
+          "area": "house:house_4:1",
+          "x": 437.3,
+          "z": -3.1,
+          "yaw": 3.141593
+        },
+        "spawnUp": {
+          "area": "house:house_4:2",
+          "x": 434.25,
+          "z": 23.31,
+          "yaw": 0.82989
+        },
+        "spawnDown": {
+          "area": "house:house_4:1",
+          "x": 432.75,
+          "z": -0.95,
+          "yaw": 2.146012
+        },
+        "exitPad": {
+          "area": "house:house_4:1",
+          "x": 437.3,
+          "z": -0.9,
+          "yaw": 0,
+          "radius": 0.7
+        },
+        "upPad": {
+          "area": "house:house_4:1",
+          "x": 432.75,
+          "z": -1.3,
+          "yaw": 3.141593,
+          "radius": 0.5
+        },
+        "downPad": {
+          "area": "house:house_4:2",
+          "x": 433.9,
+          "z": 23.31,
+          "yaw": -1.570797,
+          "radius": 0.5
+        }
+      },
+      "requiredNodes": [
+        "floor__h4_1",
+        "floor__h4_2",
+        "stair__h4_up",
+        "stair__h4_down",
+        "door__h4_exit",
+        "spawn__h4_in",
+        "spawn__h4_2",
+        "spawn__h4_1s",
+        "ceil__h4_1",
+        "ceil__h4_2"
+      ],
+      "keepClear": {
+        "1": [
+          {
+            "name": "entry_corridor",
+            "box": {
+              "minX": 4.3,
+              "maxX": 6.3,
+              "minZ": 0,
+              "maxZ": 3.6
+            }
+          },
+          {
+            "name": "exit_pad",
+            "box": {
+              "minX": 4.6,
+              "maxX": 6,
+              "minZ": 0.2,
+              "maxZ": 1.6
+            }
+          },
+          {
+            "name": "up_pad",
+            "box": {
+              "minX": 0.25,
+              "maxX": 1.25,
+              "minZ": 0.8,
+              "maxZ": 1.8
+            }
+          },
+          {
+            "name": "arrive_down",
+            "box": {
+              "minX": 0.3,
+              "maxX": 1.2,
+              "minZ": 0.5,
+              "maxZ": 1.4
+            }
+          }
+        ],
+        "2": [
+          {
+            "name": "landing",
+            "box": {
+              "minX": 1.4,
+              "maxX": 2.4,
+              "minZ": 6.04,
+              "maxZ": 7.34
+            }
+          },
+          {
+            "name": "down_pad",
+            "box": {
+              "minX": 1.4,
+              "maxX": 2.4,
+              "minZ": 6.19,
+              "maxZ": 7.19
+            }
+          },
+          {
+            "name": "arrive_up",
+            "box": {
+              "minX": 1.8,
+              "maxX": 2.7,
+              "minZ": 6.24,
+              "maxZ": 7.14
+            }
+          }
+        ]
+      },
+      "seats": {
+        "1": {
+          "backed": 2,
+          "floor": 5
+        },
+        "2": {
+          "floor": 3
+        }
+      },
+      "files": {
+        "glb": "/models/village/houses/house_4.glb",
+        "lightmapDay": "/models/village/houses/house_4_lm.webp",
+        "lightmapDay1k": "/models/village/houses/house_4_lm_1k.webp",
+        "lightmapNight": "/models/village/houses/house_4_lm_night.webp",
+        "lightmapNight1k": "/models/village/houses/house_4_lm_night_1k.webp",
+        "view": "/models/village/houses/house_4_view.webp"
+      }
+    },
+    {
+      "n": 5,
+      "buildingId": "house_5",
+      "stair": "A",
+      "origin": {
+        "1": {
+          "x": 456,
+          "z": 0
+        },
+        "2": {
+          "x": 456,
+          "z": 30
+        }
+      },
+      "bounds": {
+        "1": {
+          "minX": 456,
+          "maxX": 466.6,
+          "minZ": -7.8,
+          "maxZ": 0
+        },
+        "2": {
+          "minX": 456,
+          "maxX": 466.6,
+          "minZ": 22.2,
+          "maxZ": 30
+        }
+      },
+      "areas": {
+        "1": "house:house_5:1",
+        "2": "house:house_5:2"
+      },
+      "places": {
+        "n": 5,
+        "buildingId": "house_5",
+        "stair": "A",
+        "spawnIn": {
+          "area": "house:house_5:1",
+          "x": 461.3,
+          "z": -3.1,
+          "yaw": 3.141593
+        },
+        "spawnUp": {
+          "area": "house:house_5:2",
+          "x": 460.21,
+          "z": 22.95,
+          "yaw": 0.333136
+        },
+        "spawnDown": {
+          "area": "house:house_5:1",
+          "x": 465.85,
+          "z": -5.45,
+          "yaw": -1.242467
+        },
+        "exitPad": {
+          "area": "house:house_5:1",
+          "x": 461.3,
+          "z": -0.9,
+          "yaw": 0,
+          "radius": 0.7
+        },
+        "upPad": {
+          "area": "house:house_5:1",
+          "x": 465.85,
+          "z": -5.8,
+          "yaw": 3.141593,
+          "radius": 0.5
+        },
+        "downPad": {
+          "area": "house:house_5:2",
+          "x": 460.56,
+          "z": 22.95,
+          "yaw": 1.570797,
+          "radius": 0.5
+        }
+      },
+      "requiredNodes": [
+        "floor__h5_1",
+        "floor__h5_2",
+        "stair__h5_up",
+        "stair__h5_down",
+        "door__h5_exit",
+        "spawn__h5_in",
+        "spawn__h5_2",
+        "spawn__h5_1s",
+        "ceil__h5_1",
+        "ceil__h5_2"
+      ],
+      "keepClear": {
+        "1": [
+          {
+            "name": "entry_corridor",
+            "box": {
+              "minX": 4.3,
+              "maxX": 6.3,
+              "minZ": 0,
+              "maxZ": 3.6
+            }
+          },
+          {
+            "name": "exit_pad",
+            "box": {
+              "minX": 4.6,
+              "maxX": 6,
+              "minZ": 0.2,
+              "maxZ": 1.6
+            }
+          },
+          {
+            "name": "up_pad",
+            "box": {
+              "minX": 9.35,
+              "maxX": 10.35,
+              "minZ": 5.3,
+              "maxZ": 6.3
+            }
+          },
+          {
+            "name": "arrive_down",
+            "box": {
+              "minX": 9.4,
+              "maxX": 10.3,
+              "minZ": 5,
+              "maxZ": 5.9
+            }
+          }
+        ],
+        "2": [
+          {
+            "name": "landing",
+            "box": {
+              "minX": 4.06,
+              "maxX": 5.06,
+              "minZ": 6.4,
+              "maxZ": 7.7
+            }
+          },
+          {
+            "name": "down_pad",
+            "box": {
+              "minX": 4.06,
+              "maxX": 5.06,
+              "minZ": 6.55,
+              "maxZ": 7.55
+            }
+          },
+          {
+            "name": "arrive_up",
+            "box": {
+              "minX": 3.76,
+              "maxX": 4.66,
+              "minZ": 6.6,
+              "maxZ": 7.5
+            }
+          }
+        ]
+      },
+      "seats": {
+        "1": {
+          "backed": 8
+        },
+        "2": {
+          "floor": 4,
+          "backless": 1
+        }
+      },
+      "files": {
+        "glb": "/models/village/houses/house_5.glb",
+        "lightmapDay": "/models/village/houses/house_5_lm.webp",
+        "lightmapDay1k": "/models/village/houses/house_5_lm_1k.webp",
+        "lightmapNight": "/models/village/houses/house_5_lm_night.webp",
+        "lightmapNight1k": "/models/village/houses/house_5_lm_night_1k.webp",
+        "view": "/models/village/houses/house_5_view.webp"
+      }
+    },
+    {
+      "n": 6,
+      "buildingId": "house_6",
+      "stair": "C",
+      "origin": {
+        "1": {
+          "x": 480,
+          "z": 0
+        },
+        "2": {
+          "x": 480,
+          "z": 30
+        }
+      },
+      "bounds": {
+        "1": {
+          "minX": 480,
+          "maxX": 490.6,
+          "minZ": -7.8,
+          "maxZ": 0
+        },
+        "2": {
+          "minX": 480,
+          "maxX": 490.6,
+          "minZ": 22.2,
+          "maxZ": 30
+        }
+      },
+      "areas": {
+        "1": "house:house_6:1",
+        "2": "house:house_6:2"
+      },
+      "places": {
+        "n": 6,
+        "buildingId": "house_6",
+        "stair": "C",
+        "spawnIn": {
+          "area": "house:house_6:1",
+          "x": 485.3,
+          "z": -3.1,
+          "yaw": 3.141593
+        },
+        "spawnUp": {
+          "area": "house:house_6:2",
+          "x": 488.35,
+          "z": 23.31,
+          "yaw": -0.82989
+        },
+        "spawnDown": {
+          "area": "house:house_6:1",
+          "x": 489.85,
+          "z": -0.95,
+          "yaw": -2.146012
+        },
+        "exitPad": {
+          "area": "house:house_6:1",
+          "x": 485.3,
+          "z": -0.9,
+          "yaw": 0,
+          "radius": 0.7
+        },
+        "upPad": {
+          "area": "house:house_6:1",
+          "x": 489.85,
+          "z": -1.3,
+          "yaw": 3.141593,
+          "radius": 0.5
+        },
+        "downPad": {
+          "area": "house:house_6:2",
+          "x": 488.7,
+          "z": 23.31,
+          "yaw": 1.570797,
+          "radius": 0.5
+        }
+      },
+      "requiredNodes": [
+        "floor__h6_1",
+        "floor__h6_2",
+        "stair__h6_up",
+        "stair__h6_down",
+        "door__h6_exit",
+        "spawn__h6_in",
+        "spawn__h6_2",
+        "spawn__h6_1s",
+        "ceil__h6_1",
+        "ceil__h6_2"
+      ],
+      "keepClear": {
+        "1": [
+          {
+            "name": "entry_corridor",
+            "box": {
+              "minX": 4.3,
+              "maxX": 6.3,
+              "minZ": 0,
+              "maxZ": 3.6
+            }
+          },
+          {
+            "name": "exit_pad",
+            "box": {
+              "minX": 4.6,
+              "maxX": 6,
+              "minZ": 0.2,
+              "maxZ": 1.6
+            }
+          },
+          {
+            "name": "up_pad",
+            "box": {
+              "minX": 9.35,
+              "maxX": 10.35,
+              "minZ": 0.8,
+              "maxZ": 1.8
+            }
+          },
+          {
+            "name": "arrive_down",
+            "box": {
+              "minX": 9.4,
+              "maxX": 10.3,
+              "minZ": 0.5,
+              "maxZ": 1.4
+            }
+          }
+        ],
+        "2": [
+          {
+            "name": "landing",
+            "box": {
+              "minX": 8.2,
+              "maxX": 9.2,
+              "minZ": 6.04,
+              "maxZ": 7.34
+            }
+          },
+          {
+            "name": "down_pad",
+            "box": {
+              "minX": 8.2,
+              "maxX": 9.2,
+              "minZ": 6.19,
+              "maxZ": 7.19
+            }
+          },
+          {
+            "name": "arrive_up",
+            "box": {
+              "minX": 7.9,
+              "maxX": 8.8,
+              "minZ": 6.24,
+              "maxZ": 7.14
+            }
+          }
+        ]
+      },
+      "seats": {
+        "1": {
+          "backed": 5,
+          "backless": 2
+        },
+        "2": {
+          "backless": 4
+        }
+      },
+      "files": {
+        "glb": "/models/village/houses/house_6.glb",
+        "lightmapDay": "/models/village/houses/house_6_lm.webp",
+        "lightmapDay1k": "/models/village/houses/house_6_lm_1k.webp",
+        "lightmapNight": "/models/village/houses/house_6_lm_night.webp",
+        "lightmapNight1k": "/models/village/houses/house_6_lm_night_1k.webp",
+        "view": "/models/village/houses/house_6_view.webp"
+      }
+    },
+    {
+      "n": 7,
+      "buildingId": "house_7",
+      "stair": "B",
+      "origin": {
+        "1": {
+          "x": 504,
+          "z": 0
+        },
+        "2": {
+          "x": 504,
+          "z": 30
+        }
+      },
+      "bounds": {
+        "1": {
+          "minX": 504,
+          "maxX": 514.6,
+          "minZ": -7.8,
+          "maxZ": 0
+        },
+        "2": {
+          "minX": 504,
+          "maxX": 514.6,
+          "minZ": 22.2,
+          "maxZ": 30
+        }
+      },
+      "areas": {
+        "1": "house:house_7:1",
+        "2": "house:house_7:2"
+      },
+      "places": {
+        "n": 7,
+        "buildingId": "house_7",
+        "stair": "B",
+        "spawnIn": {
+          "area": "house:house_7:1",
+          "x": 509.3,
+          "z": -3.1,
+          "yaw": 3.141593
+        },
+        "spawnUp": {
+          "area": "house:house_7:2",
+          "x": 510.39,
+          "z": 22.95,
+          "yaw": -0.333136
+        },
+        "spawnDown": {
+          "area": "house:house_7:1",
+          "x": 504.75,
+          "z": -5.45,
+          "yaw": 1.242467
+        },
+        "exitPad": {
+          "area": "house:house_7:1",
+          "x": 509.3,
+          "z": -0.9,
+          "yaw": 0,
+          "radius": 0.7
+        },
+        "upPad": {
+          "area": "house:house_7:1",
+          "x": 504.75,
+          "z": -5.8,
+          "yaw": 3.141593,
+          "radius": 0.5
+        },
+        "downPad": {
+          "area": "house:house_7:2",
+          "x": 510.04,
+          "z": 22.95,
+          "yaw": -1.570797,
+          "radius": 0.5
+        }
+      },
+      "requiredNodes": [
+        "floor__h7_1",
+        "floor__h7_2",
+        "stair__h7_up",
+        "stair__h7_down",
+        "door__h7_exit",
+        "spawn__h7_in",
+        "spawn__h7_2",
+        "spawn__h7_1s",
+        "ceil__h7_1",
+        "ceil__h7_2"
+      ],
+      "keepClear": {
+        "1": [
+          {
+            "name": "entry_corridor",
+            "box": {
+              "minX": 4.3,
+              "maxX": 6.3,
+              "minZ": 0,
+              "maxZ": 3.6
+            }
+          },
+          {
+            "name": "exit_pad",
+            "box": {
+              "minX": 4.6,
+              "maxX": 6,
+              "minZ": 0.2,
+              "maxZ": 1.6
+            }
+          },
+          {
+            "name": "up_pad",
+            "box": {
+              "minX": 0.25,
+              "maxX": 1.25,
+              "minZ": 5.3,
+              "maxZ": 6.3
+            }
+          },
+          {
+            "name": "arrive_down",
+            "box": {
+              "minX": 0.3,
+              "maxX": 1.2,
+              "minZ": 5,
+              "maxZ": 5.9
+            }
+          }
+        ],
+        "2": [
+          {
+            "name": "landing",
+            "box": {
+              "minX": 5.54,
+              "maxX": 6.54,
+              "minZ": 6.4,
+              "maxZ": 7.7
+            }
+          },
+          {
+            "name": "down_pad",
+            "box": {
+              "minX": 5.54,
+              "maxX": 6.54,
+              "minZ": 6.55,
+              "maxZ": 7.55
+            }
+          },
+          {
+            "name": "arrive_up",
+            "box": {
+              "minX": 5.94,
+              "maxX": 6.84,
+              "minZ": 6.6,
+              "maxZ": 7.5
+            }
+          }
+        ]
+      },
+      "seats": {
+        "1": {
+          "backed": 6,
+          "backless": 1
+        },
+        "2": {
+          "backless": 3
+        }
+      },
+      "files": {
+        "glb": "/models/village/houses/house_7.glb",
+        "lightmapDay": "/models/village/houses/house_7_lm.webp",
+        "lightmapDay1k": "/models/village/houses/house_7_lm_1k.webp",
+        "lightmapNight": "/models/village/houses/house_7_lm_night.webp",
+        "lightmapNight1k": "/models/village/houses/house_7_lm_night_1k.webp",
+        "view": "/models/village/houses/house_7_view.webp"
+      }
+    },
+    {
+      "n": 8,
+      "buildingId": "house_8",
+      "stair": "D",
+      "origin": {
+        "1": {
+          "x": 528,
+          "z": 0
+        },
+        "2": {
+          "x": 528,
+          "z": 30
+        }
+      },
+      "bounds": {
+        "1": {
+          "minX": 528,
+          "maxX": 538.6,
+          "minZ": -7.8,
+          "maxZ": 0
+        },
+        "2": {
+          "minX": 528,
+          "maxX": 538.6,
+          "minZ": 22.2,
+          "maxZ": 30
+        }
+      },
+      "areas": {
+        "1": "house:house_8:1",
+        "2": "house:house_8:2"
+      },
+      "places": {
+        "n": 8,
+        "buildingId": "house_8",
+        "stair": "D",
+        "spawnIn": {
+          "area": "house:house_8:1",
+          "x": 533.3,
+          "z": -3.1,
+          "yaw": 3.141593
+        },
+        "spawnUp": {
+          "area": "house:house_8:2",
+          "x": 530.25,
+          "z": 23.31,
+          "yaw": 0.82989
+        },
+        "spawnDown": {
+          "area": "house:house_8:1",
+          "x": 528.75,
+          "z": -0.95,
+          "yaw": 2.146012
+        },
+        "exitPad": {
+          "area": "house:house_8:1",
+          "x": 533.3,
+          "z": -0.9,
+          "yaw": 0,
+          "radius": 0.7
+        },
+        "upPad": {
+          "area": "house:house_8:1",
+          "x": 528.75,
+          "z": -1.3,
+          "yaw": 3.141593,
+          "radius": 0.5
+        },
+        "downPad": {
+          "area": "house:house_8:2",
+          "x": 529.9,
+          "z": 23.31,
+          "yaw": -1.570797,
+          "radius": 0.5
+        }
+      },
+      "requiredNodes": [
+        "floor__h8_1",
+        "floor__h8_2",
+        "stair__h8_up",
+        "stair__h8_down",
+        "door__h8_exit",
+        "spawn__h8_in",
+        "spawn__h8_2",
+        "spawn__h8_1s",
+        "ceil__h8_1",
+        "ceil__h8_2"
+      ],
+      "keepClear": {
+        "1": [
+          {
+            "name": "entry_corridor",
+            "box": {
+              "minX": 4.3,
+              "maxX": 6.3,
+              "minZ": 0,
+              "maxZ": 3.6
+            }
+          },
+          {
+            "name": "exit_pad",
+            "box": {
+              "minX": 4.6,
+              "maxX": 6,
+              "minZ": 0.2,
+              "maxZ": 1.6
+            }
+          },
+          {
+            "name": "up_pad",
+            "box": {
+              "minX": 0.25,
+              "maxX": 1.25,
+              "minZ": 0.8,
+              "maxZ": 1.8
+            }
+          },
+          {
+            "name": "arrive_down",
+            "box": {
+              "minX": 0.3,
+              "maxX": 1.2,
+              "minZ": 0.5,
+              "maxZ": 1.4
+            }
+          }
+        ],
+        "2": [
+          {
+            "name": "landing",
+            "box": {
+              "minX": 1.4,
+              "maxX": 2.4,
+              "minZ": 6.04,
+              "maxZ": 7.34
+            }
+          },
+          {
+            "name": "down_pad",
+            "box": {
+              "minX": 1.4,
+              "maxX": 2.4,
+              "minZ": 6.19,
+              "maxZ": 7.19
+            }
+          },
+          {
+            "name": "arrive_up",
+            "box": {
+              "minX": 1.8,
+              "maxX": 2.7,
+              "minZ": 6.24,
+              "maxZ": 7.14
+            }
+          }
+        ]
+      },
+      "seats": {
+        "1": {
+          "floor": 4,
+          "backless": 2
+        },
+        "2": {
+          "floor": 2,
+          "backed": 2
+        }
+      },
+      "files": {
+        "glb": "/models/village/houses/house_8.glb",
+        "lightmapDay": "/models/village/houses/house_8_lm.webp",
+        "lightmapDay1k": "/models/village/houses/house_8_lm_1k.webp",
+        "lightmapNight": "/models/village/houses/house_8_lm_night.webp",
+        "lightmapNight1k": "/models/village/houses/house_8_lm_night_1k.webp",
+        "view": "/models/village/houses/house_8_view.webp"
+      }
+    },
+    {
+      "n": 9,
+      "buildingId": "house_9",
+      "stair": "A",
+      "origin": {
+        "1": {
+          "x": 552,
+          "z": 0
+        },
+        "2": {
+          "x": 552,
+          "z": 30
+        }
+      },
+      "bounds": {
+        "1": {
+          "minX": 552,
+          "maxX": 562.6,
+          "minZ": -7.8,
+          "maxZ": 0
+        },
+        "2": {
+          "minX": 552,
+          "maxX": 562.6,
+          "minZ": 22.2,
+          "maxZ": 30
+        }
+      },
+      "areas": {
+        "1": "house:house_9:1",
+        "2": "house:house_9:2"
+      },
+      "places": {
+        "n": 9,
+        "buildingId": "house_9",
+        "stair": "A",
+        "spawnIn": {
+          "area": "house:house_9:1",
+          "x": 557.3,
+          "z": -3.1,
+          "yaw": 3.141593
+        },
+        "spawnUp": {
+          "area": "house:house_9:2",
+          "x": 556.21,
+          "z": 22.95,
+          "yaw": 0.333136
+        },
+        "spawnDown": {
+          "area": "house:house_9:1",
+          "x": 561.85,
+          "z": -5.45,
+          "yaw": -1.242467
+        },
+        "exitPad": {
+          "area": "house:house_9:1",
+          "x": 557.3,
+          "z": -0.9,
+          "yaw": 0,
+          "radius": 0.7
+        },
+        "upPad": {
+          "area": "house:house_9:1",
+          "x": 561.85,
+          "z": -5.8,
+          "yaw": 3.141593,
+          "radius": 0.5
+        },
+        "downPad": {
+          "area": "house:house_9:2",
+          "x": 556.56,
+          "z": 22.95,
+          "yaw": 1.570797,
+          "radius": 0.5
+        }
+      },
+      "requiredNodes": [
+        "floor__h9_1",
+        "floor__h9_2",
+        "stair__h9_up",
+        "stair__h9_down",
+        "door__h9_exit",
+        "spawn__h9_in",
+        "spawn__h9_2",
+        "spawn__h9_1s",
+        "ceil__h9_1",
+        "ceil__h9_2"
+      ],
+      "keepClear": {
+        "1": [
+          {
+            "name": "entry_corridor",
+            "box": {
+              "minX": 4.3,
+              "maxX": 6.3,
+              "minZ": 0,
+              "maxZ": 3.6
+            }
+          },
+          {
+            "name": "exit_pad",
+            "box": {
+              "minX": 4.6,
+              "maxX": 6,
+              "minZ": 0.2,
+              "maxZ": 1.6
+            }
+          },
+          {
+            "name": "up_pad",
+            "box": {
+              "minX": 9.35,
+              "maxX": 10.35,
+              "minZ": 5.3,
+              "maxZ": 6.3
+            }
+          },
+          {
+            "name": "arrive_down",
+            "box": {
+              "minX": 9.4,
+              "maxX": 10.3,
+              "minZ": 5,
+              "maxZ": 5.9
+            }
+          }
+        ],
+        "2": [
+          {
+            "name": "landing",
+            "box": {
+              "minX": 4.06,
+              "maxX": 5.06,
+              "minZ": 6.4,
+              "maxZ": 7.7
+            }
+          },
+          {
+            "name": "down_pad",
+            "box": {
+              "minX": 4.06,
+              "maxX": 5.06,
+              "minZ": 6.55,
+              "maxZ": 7.55
+            }
+          },
+          {
+            "name": "arrive_up",
+            "box": {
+              "minX": 3.76,
+              "maxX": 4.66,
+              "minZ": 6.6,
+              "maxZ": 7.5
+            }
+          }
+        ]
+      },
+      "seats": {
+        "1": {
+          "backed": 8,
+          "backless": 3
+        },
+        "2": {
+          "floor": 3,
+          "backless": 1
+        }
+      },
+      "files": {
+        "glb": "/models/village/houses/house_9.glb",
+        "lightmapDay": "/models/village/houses/house_9_lm.webp",
+        "lightmapDay1k": "/models/village/houses/house_9_lm_1k.webp",
+        "lightmapNight": "/models/village/houses/house_9_lm_night.webp",
+        "lightmapNight1k": "/models/village/houses/house_9_lm_night_1k.webp",
+        "view": "/models/village/houses/house_9_view.webp"
+      }
+    },
+    {
+      "n": 10,
+      "buildingId": "house_10",
+      "stair": "C",
+      "origin": {
+        "1": {
+          "x": 576,
+          "z": 0
+        },
+        "2": {
+          "x": 576,
+          "z": 30
+        }
+      },
+      "bounds": {
+        "1": {
+          "minX": 576,
+          "maxX": 586.6,
+          "minZ": -7.8,
+          "maxZ": 0
+        },
+        "2": {
+          "minX": 576,
+          "maxX": 586.6,
+          "minZ": 22.2,
+          "maxZ": 30
+        }
+      },
+      "areas": {
+        "1": "house:house_10:1",
+        "2": "house:house_10:2"
+      },
+      "places": {
+        "n": 10,
+        "buildingId": "house_10",
+        "stair": "C",
+        "spawnIn": {
+          "area": "house:house_10:1",
+          "x": 581.3,
+          "z": -3.1,
+          "yaw": 3.141593
+        },
+        "spawnUp": {
+          "area": "house:house_10:2",
+          "x": 584.35,
+          "z": 23.31,
+          "yaw": -0.82989
+        },
+        "spawnDown": {
+          "area": "house:house_10:1",
+          "x": 585.85,
+          "z": -0.95,
+          "yaw": -2.146012
+        },
+        "exitPad": {
+          "area": "house:house_10:1",
+          "x": 581.3,
+          "z": -0.9,
+          "yaw": 0,
+          "radius": 0.7
+        },
+        "upPad": {
+          "area": "house:house_10:1",
+          "x": 585.85,
+          "z": -1.3,
+          "yaw": 3.141593,
+          "radius": 0.5
+        },
+        "downPad": {
+          "area": "house:house_10:2",
+          "x": 584.7,
+          "z": 23.31,
+          "yaw": 1.570797,
+          "radius": 0.5
+        }
+      },
+      "requiredNodes": [
+        "floor__h10_1",
+        "floor__h10_2",
+        "stair__h10_up",
+        "stair__h10_down",
+        "door__h10_exit",
+        "spawn__h10_in",
+        "spawn__h10_2",
+        "spawn__h10_1s",
+        "ceil__h10_1",
+        "ceil__h10_2"
+      ],
+      "keepClear": {
+        "1": [
+          {
+            "name": "entry_corridor",
+            "box": {
+              "minX": 4.3,
+              "maxX": 6.3,
+              "minZ": 0,
+              "maxZ": 3.6
+            }
+          },
+          {
+            "name": "exit_pad",
+            "box": {
+              "minX": 4.6,
+              "maxX": 6,
+              "minZ": 0.2,
+              "maxZ": 1.6
+            }
+          },
+          {
+            "name": "up_pad",
+            "box": {
+              "minX": 9.35,
+              "maxX": 10.35,
+              "minZ": 0.8,
+              "maxZ": 1.8
+            }
+          },
+          {
+            "name": "arrive_down",
+            "box": {
+              "minX": 9.4,
+              "maxX": 10.3,
+              "minZ": 0.5,
+              "maxZ": 1.4
+            }
+          }
+        ],
+        "2": [
+          {
+            "name": "landing",
+            "box": {
+              "minX": 8.2,
+              "maxX": 9.2,
+              "minZ": 6.04,
+              "maxZ": 7.34
+            }
+          },
+          {
+            "name": "down_pad",
+            "box": {
+              "minX": 8.2,
+              "maxX": 9.2,
+              "minZ": 6.19,
+              "maxZ": 7.19
+            }
+          },
+          {
+            "name": "arrive_up",
+            "box": {
+              "minX": 7.9,
+              "maxX": 8.8,
+              "minZ": 6.24,
+              "maxZ": 7.14
+            }
+          }
+        ]
+      },
+      "seats": {
+        "1": {
+          "backed": 4,
+          "backless": 2
+        },
+        "2": {
+          "backless": 4
+        }
+      },
+      "files": {
+        "glb": "/models/village/houses/house_10.glb",
+        "lightmapDay": "/models/village/houses/house_10_lm.webp",
+        "lightmapDay1k": "/models/village/houses/house_10_lm_1k.webp",
+        "lightmapNight": "/models/village/houses/house_10_lm_night.webp",
+        "lightmapNight1k": "/models/village/houses/house_10_lm_night_1k.webp",
+        "view": "/models/village/houses/house_10_view.webp"
+      }
+    }
+  ]
+}
