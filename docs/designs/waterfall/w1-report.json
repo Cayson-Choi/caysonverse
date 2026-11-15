@@ -1,0 +1,48 @@
+{
+ "fails": [],
+ "worst_wall_gap_m": 0.466,
+ "falls_slab_0_top": 0.0412,
+ "falls_slab_1_top": 0.0315,
+ "falls_slab_2_top": 0.0215,
+ "falls_slab_3_top": 0.0311,
+ "falls_seat_n_top": 0.4221,
+ "falls_seat_s_top": 0.4234,
+ "pocket_ground_bad_verts": 0,
+ "max_x_cliff_ground": -100.0,
+ "tris": {
+  "cliff_lod0": 13288,
+  "cliff_lod1": 2663,
+  "flank_lod0": 1278,
+  "flank_lod1": 495,
+  "ground": 7744,
+  "kit_instances": 80,
+  "kit_instance_tris": 24542,
+  "kit_meshes": {
+   "falls_kit_0": 336,
+   "falls_kit_1": 308,
+   "falls_kit_2": 308,
+   "falls_kit_3": 196,
+   "falls_kit_4": 322,
+   "falls_kit_5": 280
+  },
+  "slabs_seats": 2624,
+  "lamps": 52,
+  "pebbles": 2880,
+  "veg": 7490
+ },
+ "tris_total_w1_high": 59898,
+ "tex": {
+  "files": [
+   "T_falls_gravel.png",
+   "T_falls_gravel_n.png",
+   "T_falls_rock.png",
+   "T_falls_rock_n.png",
+   "T_falls_slab.png",
+   "T_falls_slab_n.png",
+   "T_falls_turf.png",
+   "T_falls_turf_n.png"
+  ],
+  "sizes": "1024x1024 (rock, slab, gravel, turf) colour+normal"
+ },
+ "glb_bytes": 2810104
+}
