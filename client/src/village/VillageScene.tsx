@@ -325,6 +325,12 @@ function TransitRideHud() {
         <>
           <div>🚌 버스 탑승 중</div>
           <div style={{ opacity: 0.75 }}>{rideStatusText(snapshot, busCountdownWords(busScheduleNow()[1]).long)}</div>
+          {notice ? (
+            // why a seat was refused (taken, the wrong side of a backed seat, too far): a rider must see it
+            <div role="alert" data-testid="bus-ride-notice" style={{ marginTop: 5, background: "rgba(255,196,64,0.28)", borderRadius: 8, padding: "5px 8px" }}>
+              {notice}
+            </div>
+          ) : null}
           <div style={{ marginTop: 6, display: "flex", flexWrap: "wrap", gap: 5 }} data-testid="bus-ride-views">
             {RIDE_VIEWS.map((v) => (
               <button key={v.id} type="button" data-view={v.id} style={btn} onClick={() => { busCamGoal.yaw = v.yaw; }}>

@@ -31,9 +31,6 @@ const OUT = outArg ? outArg.slice("--out=".length) : run.evidence;
 mkdirSync(OUT, { recursive: true });
 const PHONE_390 = { ...PHONE, viewport: { width: 390, height: 844 } };
 
-// ANGLE/D3D's HLSL compiler warns (X3595) about three.js's own shadow loop when the PC tier first compiles a program inside the bus:
-// a driver notice of the village's existing shaders, not an app error.
-run.allow("ANGLE X3595 shader-compile notice", /X3595|THREE\.WebGLProgram: Program Info Log/);
 const browser = await launchBrowser();
 const A = await openPlayer(browser, run, { tag: "A-pc", device: DESKTOP });
 const B = await openPlayer(browser, run, { tag: "B-phone", device: PHONE_390 });
@@ -65,6 +62,17 @@ const targetsOf = (p) =>
     const m = await window.__imp("/src/game/interactTargets.ts");
     return m.getTargets(window.__cv.getPos()).map((t) => ({ id: t.id, label: t.label }));
   });
+/** Poll a node-side condition (Playwright's waitForFunction does not wait for an async page function's promise). */
+async function pollUntil(fn, ms, step = 150) {
+  const t0 = Date.now();
+  while (Date.now() - t0 < ms) {
+    if (await fn()) return true;
+    await sleep(step);
+  }
+  return false;
+}
+const waitSlot = (p, pred, ms = 6000) => pollUntil(async () => pred((await ride(p)).slot), ms);
+const tripStatus = (p) => p.page.evaluate(async () => { const sync = await window.__imp("/src/net/transitSync.ts"); return { status: sync.transitTripAt(sync.transitNowMs()).status, boarded: sync.getTransitState().boarded }; });
 const hud = (p) => p.page.evaluate(() => document.body.innerText);
 const local = (b, q) => {
   const fx = Math.sin(b.yaw);
@@ -114,7 +122,7 @@ async function walkBus(p, ahead, right, tol = 0.25, ms = 14000) {
 await run.step("join A (PC) and B (phone)", async () => {
   await joinVillage(A, "탑승", TIME);
   await joinVillage(B, "구경", TIME);
-  await A.page.waitForFunction(async () => (await window.__imp("/src/net/transitSync.ts")).getTransitState().snapshot !== null, null, { timeout: 30000 });
+  await pollUntil(() => A.page.evaluate(async () => (await window.__imp("/src/net/transitSync.ts")).getTransitState().snapshot !== null), 30000);
   const t = await transit(A);
   run.check("the bus is at the stop (boarding is checked by the boarding itself below)", t.status === "boarding" || t.status === "atStop", { leftS: Math.round((t.startMs - t.now) / 1000), status: t.status });
 });
@@ -139,11 +147,11 @@ await run.step("both walk to the bus doors", async () => {
 
 await run.step("both board: aboard and free at the entry; the ride panel has the quick views and the hint", async () => {
   await act(A);
-  await A.page.waitForFunction(async () => (await window.__imp("/src/game/busRide.ts")).selfBusRide.slot === 0, null, { timeout: 8000, polling: 200 }).catch(() => {});
+  await waitSlot(A, (n) => n === 0, 8000);
   await sleep(1200);
   await shot(A, "cabin-1-A-entry-alone-pc.png"); // A alone aboard: the aisle in first person
   await act(B);
-  const ok = await Promise.all([A, B].map((p) => p.page.waitForFunction(async () => (await window.__imp("/src/game/busRide.ts")).selfBusRide.slot === 0, null, { timeout: 8000, polling: 200 }).then(() => true, () => false)));
+  const ok = await Promise.all([A, B].map((p) => waitSlot(p, (n) => n === 0, 8000)));
   run.check("A and B are aboard and free (busSeat 0)", ok[0] && ok[1], ok);
   await sleep(1500);
   for (const [name, p] of [["A", A], ["B", B]]) {
@@ -180,9 +188,14 @@ await run.step("A sits (E); B is refused the same seat; B takes hold of a pole",
   const sit = tg.find((t) => t.id.startsWith("bus_sit:seat:"));
   run.check("A is offered a seat to sit in", !!sit, tg);
   await act(A);
-  const seated = await A.page.waitForFunction(async () => (await window.__imp("/src/game/busRide.ts")).selfBusRide.slot > 0, null, { timeout: 5000, polling: 150 }).then(() => true, () => false);
+  const seated = await waitSlot(A, (n) => n > 0, 5000);
+  const samples = [];
+  for (let i = 0; i < 8; i++) {
+    samples.push((await ride(A)).slot);
+    await sleep(200);
+  }
   const ra = await ride(A);
-  run.check("A is seated (busSeat > 0)", seated, { slot: ra.slot, sit });
+  run.check("A is seated (busSeat > 0) and stays seated", seated && samples.every((x) => x > 0), { slot: ra.slot, sit, samples });
   await sleep(1200);
   const seenByB = (await B.page.evaluate(() => window.__cv.getRemoteDrawn()))[sidA];
   const tr = await transit(B);
@@ -193,13 +206,19 @@ await run.step("A sits (E); B is refused the same seat; B takes hold of a pole",
   const taken = ra.slot;
   const refused = await B.page.evaluate(async (n) => {
     const sync = await window.__imp("/src/net/transitSync.ts");
+    const room = (await window.__imp("/src/net/connection.ts")).getRoom();
+    let got = null;
+    const off = room.onMessage("bus_rejected", (m) => { got = m.reason; });
     sync.sendBusSit("seat", n - 1);
-    await new Promise((r) => setTimeout(r, 900));
-    return sync.getTransitState().notice;
+    for (let i = 0; i < 25 && got === null; i++) await new Promise((r) => setTimeout(r, 150));
+    if (typeof off === "function") off();
+    return { got, notice: sync.getTransitState().notice, n };
   }, taken);
-  run.check("B asks for A's seat: a Korean notice, B stays free", typeof refused === "string" && refused.length > 0 && (await ride(B)).slot === 0, { refused, rb0: rb0.slot });
+  run.check("B asks for A's seat: a Korean notice, B stays free", typeof refused.got === "string" && refused.got.length > 0 && (await ride(B)).slot === 0, { refused, rb0: rb0.slot });
+  run.check("B's ride panel shows the refusal (a rider must see why)", (await hud(B)).includes("다른 사람이 앉아 있어요"), refused);
+  await shot(B, "cabin-3-B-seat-refused-phone.png");
   await act(B);
-  const held = await B.page.waitForFunction(async () => (await window.__imp("/src/game/busRide.ts")).selfBusRide.slot > 0, null, { timeout: 5000, polling: 150 }).then(() => true, () => false);
+  const held = await waitSlot(B, (n) => n > 0, 5000);
   run.check("B takes a place (the action button): busSeat > 0", held, await ride(B));
   await sleep(1200);
   const seenByA = (await A.page.evaluate(() => window.__cv.getRemoteDrawn()))[sidB];
@@ -208,7 +227,7 @@ await run.step("A sits (E); B is refused the same seat; B takes hold of a pole",
   run.check("A draws B seated or holding on, inside the bus", (seenByA?.mode === "bus-holding" || seenByA?.mode === "bus-seated") && la && Math.abs(la.ahead) < 4.4 && Math.abs(la.right) < 1.2, { seenByA, la });
   // a rider holding a pole (the second kind of place): B stands up, A is told nothing; then B takes hold of the nearest pole spot
   await act(B);
-  await B.page.waitForFunction(async () => (await window.__imp("/src/game/busRide.ts")).selfBusRide.slot === 0, null, { timeout: 5000, polling: 150 }).then(() => true, () => false);
+  await waitSlot(B, (n) => n === 0, 5000);
   const holdOk = await B.page.evaluate(async () => {
     const cabin = await window.__imp("/shared/src/village/busCabin.ts");
     const sync = await window.__imp("/src/net/transitSync.ts");
@@ -263,13 +282,10 @@ await run.step("A stands up (E) and walks; the bus leaves and both ride along; r
   const tg = await targetsOf(A);
   run.check("a seated A is offered 일어나기", tg.some((t) => t.id === "bus_stand"), tg);
   await act(A);
-  const up = await A.page.waitForFunction(async () => (await window.__imp("/src/game/busRide.ts")).selfBusRide.slot === 0, null, { timeout: 5000, polling: 150 }).then(() => true, () => false);
+  const up = await waitSlot(A, (n) => n === 0, 5000);
   run.check("A stands (busSeat 0) in the aisle", up, await ride(A));
   // the bus departs; wait for it to be on the road and moving
-  const left = await A.page.waitForFunction(async () => {
-    const sync = await window.__imp("/src/net/transitSync.ts");
-    return sync.transitTripAt(sync.transitNowMs()).status === "inTransit";
-  }, null, { timeout: 200000, polling: 500 }).then(() => true, () => false);
+  const left = await pollUntil(async () => (await tripStatus(A)).status === "inTransit", 200000, 500);
   run.check("the bus left with them aboard", left, await transit(A));
   await sleep(6000);
   const t1 = await transit(A);
@@ -282,12 +298,9 @@ await run.step("A stands up (E) and walks; the bus leaves and both ride along; r
   await view(A, "left");
   await shot(A, "cabin-5-A-moving-left-pc.png");
   await shot(B, "cabin-5-B-moving-phone.png");
-  const back = await A.page.waitForFunction(async () => {
-    const sync = await window.__imp("/src/net/transitSync.ts");
-    return sync.transitTripAt(sync.transitNowMs()).status !== "inTransit" || !sync.getTransitState().boarded;
-  }, null, { timeout: 120000, polling: 1000 }).then(() => true, () => false);
+  const back = await pollUntil(async () => { const t = await tripStatus(A); return t.status !== "inTransit" || !t.boarded; }, 120000, 1000);
   run.check("the lap ended", back, await transit(A));
-  const off = await Promise.all([A, B].map((p) => p.page.waitForFunction(async () => (await window.__imp("/src/game/busRide.ts")).selfBusRide.slot === -1, null, { timeout: 20000, polling: 300 }).then(() => true, () => false)));
+  const off = await Promise.all([A, B].map((p) => waitSlot(p, (n) => n === -1, 20000)));
   run.check("both are put down outside the door at the stop", off[0] && off[1], off);
   await sleep(1500);
   await shot(A, "cabin-6-A-off-pc.png");
