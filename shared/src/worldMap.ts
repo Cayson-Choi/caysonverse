@@ -69,6 +69,18 @@ export interface Seat {
    */
   sideHalf?: number;
   /**
+   * How far (m) beyond its side a visitor behind a chair's backrest plane may stand and still be offered it (`CHAIR_SIDE_FAR` when
+   * absent): next to a neighbouring chair this is held to half the way to it, so from behind that neighbour's backrest this chair
+   * is never offered (round 8 review: diagonally behind letter_s0 the "앉기" sat the visitor on letter_s1).
+   */
+  sideFar?: number;
+  /**
+   * How far (m) ahead of its seat point a visitor may stand and be offered a chair at a table (`sidePlane` chairs): the table is
+   * in front, so farther ahead is across the table, in front of the chair opposite (round 8 review: standing behind letter_n1 the
+   * "앉기" sat the visitor on letter_s1 across the table). Absent: no limit.
+   */
+  aheadMax?: number;
+  /**
    * A chair at a desk or a table: its seat point sits deep under the desk, so it is reached this much (m) farther than
    * `SEAT_REACH` from it (`seatDistance`; round 5, 2026-11-15: from beside the second consult chair, a step short of its spot, the
    * seat point was 1.56 m away and the desk's "문의하기" came up instead). Absent: 0.
@@ -113,13 +125,14 @@ export function approachesSeat(seat: Seat, x: number, z: number, slack = 0): boo
   const cos = Math.cos(seat.yaw);
   const ahead = (x - seat.x) * sin + (z - seat.z) * cos;
   if (seat.sidePlane !== undefined) {
+    if (seat.aheadMax !== undefined && ahead > seat.aheadMax + slack) return false;
     if (ahead >= -seat.sidePlane - slack) return true;
     // a little behind the backrest's plane, but off to the side of the chair (not behind the backrest itself)
     if (seat.sideHalf === undefined) return false;
     const lateral = Math.abs((x - seat.x) * cos - (z - seat.z) * sin);
     return (
       lateral >= seat.sideHalf + CHAIR_SIDE_CLEAR &&
-      lateral <= seat.sideHalf + CHAIR_SIDE_FAR &&
+      lateral <= seat.sideHalf + (seat.sideFar ?? CHAIR_SIDE_FAR) &&
       ahead >= -seat.sidePlane - CHAIR_SIDE_BEHIND - slack
     );
   }

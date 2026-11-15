@@ -222,6 +222,25 @@ describe("the memorial hall's seats (generated from the model's seat__ markers)"
     expect(VILLAGE_SEATS[indexOf("sofa_a1")]!.sidePlane).toBeUndefined();
   });
 
+  it("round 8 review: behind one letter chair, or across the table, the chair opposite or the next one is never offered", () => {
+    const hall = (i: number) => VILLAGE_SEATS[i]!.area !== "hall";
+    const at = (x: number, z: number) => {
+      const i = nearestFreeSeat(x, z, hall, SEAT_REACH, VILLAGE_SEATS);
+      return i === null ? null : VILLAGE_SEATS[i]!.id;
+    };
+    // behind letter_n1's backrest (it sat the visitor on letter_s1 across the table), and diagonally behind letter_s0
+    expect(at(295.38, -4.39)).toBeNull();
+    expect(at(294.06, -1.34)).toBeNull();
+    // in the gap behind the two north chairs, nearer letter_n0: letter_n0 (the chair beside), never s0 / s1 across the table
+    expect(at(294.28, -4.48)).toBe("letter_n0");
+    // each chair's own approach still offers that chair
+    for (const id of ["letter_n0", "letter_n1", "letter_s0", "letter_s1", "consult_0", "consult_1"]) {
+      const c = VILLAGE_SEATS[indexOf(id)]!;
+      expect(at(c.standX, c.standZ), id).toBe(id);
+      expect(c.aheadMax, id).toBeCloseTo(0.6, 3);
+    }
+  });
+
   it("beside a chair a little behind its backrest's plane is still beside it; straight behind the backrest never is", () => {
     for (const id of ["letter_s0", "letter_n1", "consult_0", "consult_1"]) {
       const chair = VILLAGE_SEATS[indexOf(id)]!;
@@ -229,8 +248,10 @@ describe("the memorial hall's seats (generated from the model's seat__ markers)"
       const side = { x: f.z, z: -f.x };
       const plane = chair.sidePlane!;
       expect(chair.sideHalf, id).toBeCloseTo(0.23, 2);
-      // 0.3 m behind the backrest's plane, 0.8 m out to the side: beside (the gap between the consultation chairs)
-      const besideBehind = { x: chair.x - f.x * (plane + 0.3) + side.x * 0.8, z: chair.z - f.z * (plane + 0.3) + side.z * 0.8 };
+      // 0.3 m behind the backrest's plane, 0.8 m out to the side (the gap between the consultation chairs; between the letter
+      // chairs, 1.3 m apart, up to half the way to the next chair: round 8): beside
+      const out = Math.min(0.8, chair.sideHalf! + (chair.sideFar ?? 0.9) - 0.05);
+      const besideBehind = { x: chair.x - f.x * (plane + 0.3) + side.x * out, z: chair.z - f.z * (plane + 0.3) + side.z * out };
       expect(approachesSeat(chair, besideBehind.x, besideBehind.z), `${id} beside, a little behind`).toBe(true);
       // the same depth, right behind the backrest (no side offset, or within the chair's width): refused, server too
       for (const off of [0, 0.2, -0.3]) {

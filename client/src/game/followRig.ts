@@ -35,8 +35,9 @@ import {
   type Vec3,
 } from "./indoorCamera";
 import { ARM_FREE, armHeightScaleAt, armLookLiftAt, cameraBoxes, cameraPad, indoorArmShape, springArmDistance, stepArmLimit } from "./cameraCollision";
-import { createShoulderPose, shoulderPose, shoulderTarget, stepShoulder, stepShoulderSide } from "./cameraShoulder";
+import { SHOULDER, createShoulderPose, portraitWeight, shoulderPose, shoulderTarget, stepShoulder, stepShoulderSide } from "./cameraShoulder";
 import { getActiveMap } from "./activeMap";
+import { cameraSolids, shapeAgainstSolids, type SolidSpot } from "./cameraSolids";
 import type { Orbit } from "./types";
 
 /** What the follow camera carries from one frame to the next. Mutated in place; never React state. */
@@ -57,6 +58,8 @@ export interface FollowRig {
   shoulderSide: number;
   /** The side drawn, eased toward `shoulderSide` (a switch swings over). */
   shoulderSideEase: number;
+  /** The clear length of the line from the head through the place's solid model (cameraSolids.ts), eased like the arm (m). */
+  solidLimit: number;
 }
 
 /** One frame's third-person camera spot. */
@@ -87,6 +90,7 @@ export function createFollowRig(orbit: Readonly<Orbit>): FollowRig {
     shoulder: 0,
     shoulderSide: 0,
     shoulderSideEase: 0,
+    solidLimit: ARM_FREE,
   };
 }
 
@@ -112,6 +116,7 @@ export function noteAreaLimit(rig: FollowRig, orbit: Readonly<Orbit>, areaLimit:
   rig.shoulder = 0;
   rig.shoulderSide = 0;
   rig.shoulderSideEase = 0;
+  rig.solidLimit = ARM_FREE;
   return true;
 }
 
@@ -123,11 +128,15 @@ export const PORTRAIT_INDOOR_LIFT_MAX = 1.45;
  */
 export const INDOOR_LIFT_MIN = 1.25;
 
+/** How much (m) a wall must cut an indoor arm short for a portrait phone's view to be widened whole (`SHOULDER.portraitFovAdd`). */
+export const PORTRAIT_WIDEN_AT = 2.0;
+
 /** Scratch points for the camera limit, made once and rewritten every frame — the clamp allocates nothing. */
 const wantedSpot: Vec3 = { x: 0, y: 0, z: 0 };
 const headSpot: Vec3 = { x: 0, y: 0, z: 0 };
 const limitedSpot: Vec3 = { x: 0, y: 0, z: 0 };
 const shoulderSpot = createShoulderPose();
+const solidSpot: SolidSpot = { x: 0, y: 0, z: 0, clear: 0 };
 
 /**
  * Advance the rig by `dt` and write the third-person camera spot for a player standing at (x, z) into `out`.
@@ -200,6 +209,9 @@ export function stepFollowRig(
           const shape = indoorArmShape(rig.armLimit, reach, offY, orbit.pitch, Math.max(INDOOR_LIFT_MIN, Math.min(PORTRAIT_INDOOR_LIFT_MAX, aspectDistanceScale(aspect))));
           tpY = HEAD_HEIGHT + shape.offY;
           out.lookLift = shape.lookLift;
+          // A portrait phone's view widens as the wall cuts the arm short (round 8 review: on arrival, the door wall 3.1 m
+          // behind, the own back covered half a phone's screen): whole once the arm is PORTRAIT_WIDEN_AT m short.
+          out.fovAdd = SHOULDER.portraitFovAdd * portraitWeight(aspect) * Math.min(1, Math.max(0, (reach - rig.armLimit) / PORTRAIT_WIDEN_AT));
           // Pushed this close to the head by the wall behind: over the shoulder instead of over the head (cameraShoulder.ts).
           shoulderWanted = shoulderTarget(Math.hypot(tpX - x, tpZ - z));
         } else {
@@ -224,10 +236,24 @@ export function stepFollowRig(
     out.lookX = sh.lookX * s;
     out.lookZ = sh.lookZ * s;
     out.lookLift += (sh.lookLift - out.lookLift) * s;
-    out.fovAdd = sh.fovAdd * s;
+    out.fovAdd += (sh.fovAdd - out.fovAdd) * s;
   } else {
     rig.shoulderSide = 0;
     rig.shoulderSideEase = 0;
+  }
+
+  // The place's real shape (round 8 review): not up among the lounge's louvres, not inside a sofa's back or a bank's edge
+  // (cameraSolids.ts). Only where a solid model is registered (the hall) and the third-person pose is drawn.
+  const solids = armActive ? cameraSolids() : null;
+  if (solids) {
+    const sp = shapeAgainstSolids(solids, x, HEAD_HEIGHT, z, tpX, tpY, tpZ, rig.solidLimit, solidSpot);
+    const len = Math.hypot(tpX - x, tpY - HEAD_HEIGHT, tpZ - z);
+    rig.solidLimit = stepArmLimit(rig.solidLimit, sp.clear, len, dt);
+    tpX = sp.x;
+    tpY = sp.y;
+    tpZ = sp.z;
+  } else {
+    rig.solidLimit = ARM_FREE;
   }
 
   // Never under the floor: a low pitch at a long zoom would otherwise look up at the ground's underside.

@@ -33,6 +33,7 @@ const FRAG_PARS = /* glsl */ `varying vec3 vGlassWorld;
 uniform float uHallNight;
 uniform float uGlassClear;
 uniform float uGlassReflect;
+uniform float uGlassFocus;
 uniform vec4 uPane; // the east bank's run: start x, start z, along x, along z
 uniform vec3 uPaneGrid; // pitch, first opening's lower edge (y), glint on (1) / off (0)
 void main() {`;
@@ -61,12 +62,19 @@ const FRAG_OUT = /* glsl */ `#include <opaque_fragment>
 			// at night the room's light is low and there is nothing bright to mirror: the glint all but goes (round 7 review: in a
 			// night close-up the white diagonal bands read as scratches)
 			glint *= 1.0 - 0.85 * uHallNight;
+			// and in a cubby close-up by day too (round 8 review: up close the white diagonal band was big and strong, the cubby
+			// behind it hard to see — it read as rain): a faint band only, the sheens halved, so the cubby is in plain view
+			glint *= 1.0 - 0.8 * uGlassFocus;
 		}
+		sheen *= 1.0 - 0.5 * uGlassFocus * uPaneGrid.z;
 		float a = uGlassClear + 0.8 * fres + ( 0.14 * sheen + 0.15 * glint ) * lit * uGlassReflect;
 		vec3 tint = vec3( 0.86, 0.93, 0.93 );
 		vec3 col = mix( tint, vec3( 1.0 ), clamp( ( sheen * 0.7 + glint ) * lit, 0.0, 1.0 ) );
 		gl_FragColor = vec4( col, clamp( a, 0.0, 0.85 ) );
 	}`;
+
+/** The cubby close-up's weight (0 .. 1, cubbyFocus.ts), shared by every patched glass material: MemorialHall writes it each frame. */
+export const glassFocusUniform = { value: 0 };
 
 /** How clear the glass is head-on, with no reflection over it (alpha). */
 export const GLASS_CLEAR_ALPHA = 0.09;
@@ -87,6 +95,7 @@ export function patchHallGlassMaterial(material: Material): void {
   m.onBeforeCompile = (shader) => {
     shader.uniforms.uHallNight = hallNightUniform;
     shader.uniforms.uGlassClear = { value: GLASS_CLEAR_ALPHA };
+    shader.uniforms.uGlassFocus = glassFocusUniform;
     // the cubby doors' sheens in full; the big window and the door (a garden behind them) half as strong
     shader.uniforms.uGlassReflect = { value: m.name === "M_glass_e" ? 1 : 0.5 };
     shader.uniforms.uPane = { value: PANE_RUN };

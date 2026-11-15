@@ -207,7 +207,10 @@ try {
     run.check("the card is the eye-level cubby of that column", card.id === pick.id, card.id);
     run.check("name, years and line are the sample's", card.name === pick.sample.name && card.years === `${pick.sample.born} – ${pick.sample.passed}` && card.line === pick.sample.line, card);
     run.check("the portrait is a tile of the atlas", /sample-photos\/atlas\.webp/.test(card.photo), card.photo);
-    run.check("the button says 촛불 켜기", card.button === "촛불 켜기", card.button);
+    // the server keeps a candle lit for an hour: a rerun on the same server within it finds the sample's candle still lit
+    // (round 8 review: the step failed on a rerun) — then the lit card is checked and the lighting step only watches it burn
+    summary.candleAlreadyLit = card.button === "촛불이 켜져 있어요";
+    run.check("the button says 촛불 켜기 (or, lit by an earlier run within the hour, 촛불이 켜져 있어요)", card.button === "촛불 켜기" || summary.candleAlreadyLit, card.button);
     run.check("no '!' on the card", !card.text.includes("!"), card.text);
     await run.shot(A, "hall-card.png");
   });
@@ -239,11 +242,11 @@ try {
       window.__candleHeard = [];
       window.__imp("/src/village/hallCandles.ts").then((m) => m.subscribeCandles(() => window.__candleHeard.push([...m.burningCandles().keys()])));
     });
-    await A.page.getByRole("button", { name: "촛불 켜기", exact: true }).click();
+    if (!summary.candleAlreadyLit) await A.page.getByRole("button", { name: "촛불 켜기", exact: true }).click();
     const gotB = await B.page
       .waitForFunction((id) => (window.__cvHall?.().candles ?? []).includes(id), pick.id, { timeout: 5000 })
       .then(() => true, () => false);
-    run.check("B (in the hall) heard CandleLit for that cubby", gotB, await B.page.evaluate(() => window.__candleHeard));
+    run.check(summary.candleAlreadyLit ? "B (in the hall) sees the candle an earlier run lit" : "B (in the hall) heard CandleLit for that cubby", gotB, await B.page.evaluate(() => window.__candleHeard));
     const gotA = await A.page
       .waitForFunction((id) => (window.__cvHall?.().candles ?? []).includes(id), pick.id, { timeout: 5000 })
       .then(() => true, () => false);

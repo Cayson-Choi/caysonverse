@@ -31,7 +31,7 @@
  */
 
 import { isBlocked } from "../collision";
-import { PLAYER_RADIUS, SEAT_REACH, approachesSeat, type Seat } from "../worldMap";
+import { CHAIR_SIDE_CLEAR, CHAIR_SIDE_FAR, PLAYER_RADIUS, SEAT_REACH, approachesSeat, type Seat } from "../worldMap";
 import { BACKED_ROOT_AHEAD, SIT_ROOT_AHEAD } from "../sitPose";
 import { MEMORIAL_SEAT_MARKERS } from "./generated/memorialSeats";
 import type { SeatMarker } from "./seatMarkers";
@@ -113,8 +113,16 @@ function offset(x: number, z: number, yaw: number, along: number, ahead: number)
 export function standsClear(x: number, z: number, bounds: Bounds, geometry = villageGeometry): boolean {
   const r = PLAYER_RADIUS + STAND_CLEARANCE;
   if (x < bounds.minX + r || x > bounds.maxX - r || z < bounds.minZ + r || z > bounds.maxZ - r) return false;
-  return !isBlocked(x, z, r, geometry.obstacles, 0);
+  if (isBlocked(x, z, r, geometry.obstacles, 0)) return false;
+  // …and outside every collider grown SQUARE by the radius: the click-walk plans only from such a spot (clickPlan.ts isFreeSpot;
+  // round 8: up from letter_s0 at the corner of the letter table's grown box, 5 cm in, every tap after was "unreachable")
+  const q = PLAYER_RADIUS + STAND_SQUARE_CLEARANCE;
+  for (const b of geometry.obstacles) if (x > b.minX - q && x < b.maxX + q && z > b.minZ - q && z < b.maxZ + q) return false;
+  return true;
 }
+
+/** How far (m) past the square growth of the colliders a dismount spot keeps (standsClear). */
+const STAND_SQUARE_CLEARANCE = 0.02;
 
 /** Directions the dismount search tries, turned off the facing (rad): straight ahead first, then up to 45 degrees aside. */
 const STAND_TURNS: readonly number[] = [0, -0.26, 0.26, -0.52, 0.52, -0.79, 0.79];
@@ -174,6 +182,8 @@ function chairStand(seat: Seat, neighbours: readonly Point2[], bounds: Bounds): 
 const STAND_NEIGHBOUR_MARGIN = 0.25;
 /** How far short of its target a tap walk may stop (m; clickMove's ARRIVE_DIST and a little). */
 const STAND_SHORT = 0.35;
+/** How far ahead of its seat point (m) a chair at a table is still offered (`Seat.aheadMax`): its own side, not across the table. */
+const CHAIR_AHEAD_MAX = 0.6;
 /** How much farther (m) a chair at a desk or table is reached (`Seat.reachBonus`). */
 const CHAIR_REACH_BONUS = 0.35;
 
@@ -236,11 +246,25 @@ function markerSeats(m: SeatMarker): VillageSeat[] {
       sideHalf: m.furn === "chair" ? Math.round((m.width / 2) * 1000) / 1000 : undefined,
       // its seat point is under the desk / table (BACKED_ROOT_AHEAD in front of the backrest): reached that much farther
       reachBonus: m.furn === "chair" ? CHAIR_REACH_BONUS : undefined,
+      // the table in front: farther ahead than this is across it (the chair opposite's front), never this chair's
+      aheadMax: m.furn === "chair" ? CHAIR_AHEAD_MAX : undefined,
     };
     // the roots of the chairs of the same kind next to this one
     const neighbours = MEMORIAL_SEAT_MARKERS.filter((o) => o.id !== m.id && o.furn === m.furn && Math.hypot(o.x - m.x, o.z - m.z) < 2.5).map((o) =>
       offset(o.x, o.z, o.yaw, 0, o.kind === "backless" ? o.edge + SIT_ROOT_AHEAD : BACKED_ROOT_AHEAD - o.back),
     );
+    if (m.furn === "chair" && neighbours.length > 0 && seat.sideHalf !== undefined) {
+      // beside it, behind the backrest's plane, only up to half the way to the next chair along the row (round 8 review)
+      const sin = Math.sin(yaw);
+      const cos = Math.cos(yaw);
+      let half = Infinity;
+      for (const n of neighbours) {
+        const ahead = (n.x - root.x) * sin + (n.z - root.z) * cos;
+        if (Math.abs(ahead) > 0.5) continue; // across the table: not along the row
+        half = Math.min(half, Math.abs((n.x - root.x) * cos - (n.z - root.z) * sin) / 2);
+      }
+      if (half < Infinity) seat.sideFar = Math.round(Math.min(CHAIR_SIDE_FAR, Math.max(CHAIR_SIDE_CLEAR + 0.1, half - seat.sideHalf + 0.1)) * 1000) / 1000;
+    }
     if (m.furn === "chair" && neighbours.length > 0) {
       const side = chairStand(seat, neighbours, VILLAGE_LAYOUT.areas.hall);
       if (side) {
