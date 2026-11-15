@@ -35,7 +35,7 @@ describe("VillageRoom transit runtime", () => {
   });
 
   it("keeps a rider who boarded before the hour on the bus through the wait and the lap, and drops them at the stop", () => {
-    const rider = hour + TRANSIT.departureEveryMs; // boarded in the 30 s before the next hour: that trip's id
+    const rider = hour + TRANSIT.departureEveryMs; // boarded in the 3 min before the next departure: that trip's id
     expect(riderOnTrip(transitSnapshotAt(boarding), rider)).toBe(true); // still waiting for the departure
     expect(riderOnTrip(transitSnapshotAt(rider + 5_000), rider)).toBe(true); // the lap
     const lapEnd = tripTimeline(rider).endMs - rider; // the lap, signal waits and ramps included
@@ -45,7 +45,7 @@ describe("VillageRoom transit runtime", () => {
     expect(riderOnTrip(transitSnapshotAt(boarding), null)).toBe(false);
   });
 
-  it("accepts a nearby boarding request only in the 30-second boarding window", () => {
+  it("accepts a nearby boarding request only in the 3-minute boarding window (owner 2026-11-15)", () => {
     const accepted = validateBusRide({ action: "board" }, { ...nearStop, boarded: false }, boarding);
     expect(accepted).toEqual({ ok: true, tripId: hour + TRANSIT.departureEveryMs });
     expect(BUS_BOARD_REACH_M).toBeGreaterThan(0.5);
@@ -57,6 +57,21 @@ describe("VillageRoom transit runtime", () => {
 
     const tooEarly = validateBusRide({ action: "board" }, { ...nearStop, boarded: false }, hour + 1_000);
     expect(tooEarly.ok).toBe(false);
+    // the window's edges: open from exactly 3 min before the departure until it leaves, and the refusal says so
+    const next = hour + TRANSIT.departureEveryMs;
+    expect(validateBusRide({ action: "board" }, { ...nearStop, boarded: false }, next - 3 * 60_000).ok).toBe(true);
+    expect(validateBusRide({ action: "board" }, { ...nearStop, boarded: false }, next - 1).ok).toBe(true);
+    const justBefore = validateBusRide({ action: "board" }, { ...nearStop, boarded: false }, next - 3 * 60_000 - 1);
+    expect(justBefore).toEqual({ ok: false, notice: "버스는 10분마다(정각, 10분, 20분 …) 출발해요. 출발 3분 전부터 탈 수 있어요." });
+    // once it has left, the next window opens only 3 min before the following departure
+    expect(validateBusRide({ action: "board" }, { ...nearStop, boarded: false }, next + 1).ok).toBe(false);
+  });
+
+  it("a rider who boards as the window opens stays on through the 3 minutes and the lap", () => {
+    const next = hour + TRANSIT.departureEveryMs;
+    const opened = next - TRANSIT.boardingMs;
+    for (let ms = opened; ms < next; ms += 10_000) expect(riderOnTrip(transitSnapshotAt(ms), next)).toBe(true);
+    expect(riderOnTrip(transitSnapshotAt(next + 1_000), next)).toBe(true);
   });
 
   it("rejects duplicate board/leave requests and validates the stop area", () => {

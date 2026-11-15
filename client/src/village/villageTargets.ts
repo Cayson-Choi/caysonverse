@@ -85,15 +85,16 @@ export function busCountdownWords(ms: number): { long: string; short: string } {
 /**
  * A board/leave target around the east-side stop; the server re-checks the pose and schedule.
  *
- * `boardingNow`: the bus is taking riders (shared transit.ts: the 30 s before each departure, by the server's clock as the
+ * `boardingNow`: the bus is taking riders (shared transit.ts TRANSIT.boardingMs: the 3 min before each departure, by the server's clock as the
  * bus snapshots carry it, transitSync.ts transitNowMs). `departsInMs`: how long until the next bus leaves.
  *
  * The way to ride is never hidden (review 2026-11-15: a first-time player at the stop must see how and when): outside the
- * boarding half minute the button is still there and counts down to the next departure ("버스 타기 · 3분 20초 뒤 출발",
- * touch: "4분 뒤"); pressing it says when the bus leaves and that boarding opens 30 s before (VillageScene). It then gives
- * a free seat in reach the key (`yieldsToSeat`: the shelter's bench and the café chairs 66/67 sit inside or by its area;
- * owner 2026-11-13: 정류장 벤치에 앉을 수가 없어). While boarding it keeps the key inside the area, so nobody misses the
- * bus on the bench's doorstep, but on the 0.8 m fringe outside it a seat still wins. "Leave" never yields.
+ * boarding window the button is still there and counts down to the next departure ("버스 타기 · 7분 뒤 출발",
+ * touch: "7분 뒤"); pressing it says when the bus leaves and that boarding opens 3 min before (VillageScene).
+ * It always gives a free seat in reach the key (`yieldsToSeat`: the shelter's bench and the café chairs 66/67 sit inside
+ * or by its area; owner 2026-11-13: 정류장 벤치에 앉을 수가 없어). With boarding open for 3 minutes (owner 2026-11-15)
+ * riders wait on the bench like at a real stop, then stand and step towards the bus: no seat is in reach on the pad's
+ * road half and at the doors, so there the button has the key (the stop's pill says so). "Leave" never yields.
  */
 export function villageBusTarget(
   area: AreaId,
@@ -119,7 +120,7 @@ export function villageBusTarget(
     label: words ? `버스 타기 · ${words.long} 뒤 출발` : "버스 타기",
     short: words ? words.short : "탑승",
     priority: 2,
-    ...(!boardingNow || dist > 0 ? { yieldsToSeat: true } : {}),
+    yieldsToSeat: true,
   };
 }
 

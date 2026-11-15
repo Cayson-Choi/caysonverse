@@ -114,7 +114,12 @@ function ringRoute(): readonly TransitPoint[] {
 export const TRANSIT = {
   departureEveryMs: 10 * 60 * 1000, // every 10 minutes (owner 2026-11-13, for testing rides; was 30)
   lapMs: 50 * 1000, // ~4.4 m/s (16 km/h) cruise on the ring (owner 2026-11-13: smooth, real bus pace)
-  boardingMs: 30 * 1000,
+  /**
+   * Boarding opens this long before each departure (owner 2026-11-15: "버스 탑승은 출발 3분전부터 탑승이 가능하도록 하자";
+   * it was 30 s). The lap (signal waits and ramps included, under 2.5 min at worst) brings the bus back to the stop long
+   * before this window opens, so the bus stands parked at the stop, doors open, through all of it.
+   */
+  boardingMs: 3 * 60 * 1000,
   /** One cycle of the crossing signals: vehicles green 0-20 s, amber 20-23, red 23-40; pedestrians stop 0-24, walk 24-34, flashing 34-38, stop 38-40. */
   signalCycleMs: 40 * 1000,
   signalGreenMs: 20 * 1000,
@@ -427,6 +432,15 @@ export function busMotionAt(utcMs: number, startMs: number): { distance: number;
     prev = leg;
   }
   return { distance: routeLength(), speed: 0, waiting: false };
+}
+
+/**
+ * How long before a departure boarding opens, in the words the UI and the server's notices use: "3분" (whole minutes) or
+ * "30초" (under a minute).
+ */
+export function boardingOpensWords(boardingMs: number = TRANSIT.boardingMs): string {
+  const s = Math.round(boardingMs / 1000);
+  return s >= 60 && s % 60 === 0 ? `${s / 60}분` : s >= 60 ? `${Math.floor(s / 60)}분 ${s % 60}초` : `${s}초`;
 }
 
 /** The scheduled trip and bus pose at an absolute UTC timestamp. */

@@ -8,7 +8,7 @@ import type { PlayersRoom } from "../game/remoteSync";
 import type { Pose } from "../game/types";
 import { getRoom, sendUseDoor } from "../net/connection";
 import { rideStatusText, sendBusRide, showTransitNotice, startTransitSync, transitNowMs, type TransitRoom, useTransitState } from "../net/transitSync";
-import { TRANSIT, busTripAt } from "@caysonverse/shared/village/transit";
+import { TRANSIT, boardingOpensWords, busTripAt } from "@caysonverse/shared/village/transit";
 import type { Identity } from "../stores/appStore";
 import { DoorFade } from "./DoorFade";
 import { VegVeil } from "./VegVeil";
@@ -163,8 +163,7 @@ function busScheduleNow(): [boolean, number] {
 /** What pressing the board button says while the bus is not taking riders. */
 function busWaitNotice(departsInMs: number): string {
   const every = Math.round(TRANSIT.departureEveryMs / 60000);
-  const open = Math.round(TRANSIT.boardingMs / 1000);
-  return `🚌 다음 버스는 ${busCountdownWords(departsInMs).long} 뒤에 떠나요. 버스는 ${every}분마다 다니고, 출발 ${open}초 전부터 탈 수 있어요.`;
+  return `🚌 다음 버스는 ${busCountdownWords(departsInMs).long} 뒤에 떠나요. 버스는 ${every}분마다 다니고, 출발 ${boardingOpensWords()} 전부터 탈 수 있어요.`;
 }
 
 function VillageDoors({ pose }: { pose: Pose }) {
@@ -183,7 +182,7 @@ function VillageDoors({ pose }: { pose: Pose }) {
       if (target.id === BUS_RIDE_TARGET_BOARD) {
         clearClickTarget();
         const [boardingNow, departsInMs] = busScheduleNow();
-        // Outside the boarding half minute: say when the bus leaves (the server would refuse; review 2026-11-15)
+        // Outside the boarding window (3 min before each departure): say when the bus leaves (the server would refuse; review 2026-11-15)
         if (!boardingNow) showTransitNotice(busWaitNotice(departsInMs));
         else sendBusRide("board");
         return;

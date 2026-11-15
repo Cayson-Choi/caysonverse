@@ -28,9 +28,9 @@ export interface InteractTarget {
   priority?: number;
   /**
    * Gives way to a free seat in reach: while a seat is offered this target is not (the bus stop's board button: its area
-   * covers the shelter, and the bus takes riders only 30 s before each departure, so outside that it must not take the E
-   * key from the bench; and on the 0.8 m fringe outside its area it must not hide a chair next to it). Absent: the target
-   * competes with the seat by distance as before.
+   * covers the shelter, and riders wait for the bus on the shelter's bench, so it must never take the E key from the bench;
+   * nor, on the 0.8 m fringe outside its area, hide a chair next to it). Absent: the target competes with the seat by
+   * distance as before.
    */
   yieldsToSeat?: boolean;
 }

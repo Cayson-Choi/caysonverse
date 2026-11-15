@@ -1,4 +1,4 @@
-import { busTripAt, pedestrianSignalAt, signalAt } from "@caysonverse/shared/village/transit";
+import { boardingOpensWords, busTripAt, pedestrianSignalAt, signalAt } from "@caysonverse/shared/village/transit";
 import { busBoardingDistance } from "@caysonverse/shared/village/villageLayout";
 import type {
   BusRejectedPayload,
@@ -34,7 +34,7 @@ export function transitSnapshotAt(utcMs: number): BusStatePayload {
 }
 
 /**
- * Whether a rider boarded on trip `riderTripId` is still on it, given the published snapshot: from boarding (the 30 s before
+ * Whether a rider boarded on trip `riderTripId` is still on it, given the published snapshot: from boarding (the 3 min before
  * the hour, when the trip's id is the coming hour's) through the lap; not once the bus is back at the stop or a later trip is up.
  */
 export function riderOnTrip(snapshot: Pick<BusStatePayload, "tripId" | "status">, riderTripId: number | null): boolean {
@@ -67,7 +67,7 @@ export function validateBusRide(
 
   if (state.boarded) return { ok: false, notice: "이미 버스에 타고 있어요." };
   if (state.area !== "village") return { ok: false, notice: "버스 정류장 근처에서만 탈 수 있어요." };
-  if (trip.status !== "boarding") return { ok: false, notice: "버스는 10분마다(정각, 10분, 20분 …) 출발해요. 출발 30초 전부터 탈 수 있어요." };
+  if (trip.status !== "boarding") return { ok: false, notice: `버스는 10분마다(정각, 10분, 20분 …) 출발해요. 출발 ${boardingOpensWords()} 전부터 탈 수 있어요.` };
   if (!Number.isFinite(state.x) || !Number.isFinite(state.z)) return { ok: false, notice: "버스 정류장 근처에서만 탈 수 있어요." };
   if (busBoardingDistance(state.x, state.z) > BUS_BOARD_REACH_M) {
     return { ok: false, notice: "버스 정류장 근처에서만 탈 수 있어요." };

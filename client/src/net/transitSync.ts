@@ -117,7 +117,7 @@ function liveNotice(): string | null {
   return state.notice !== null && monotonic() < noticeUntil ? state.notice : null;
 }
 
-/** Show a ride notice for TRANSIT_NOTICE_MS (the board button pressed outside the boarding half minute, a refusal). */
+/** Show a ride notice for TRANSIT_NOTICE_MS (the board button pressed outside the boarding window, a refusal). */
 export function showTransitNotice(text: string): void {
   noticeUntil = monotonic() + TRANSIT_NOTICE_MS;
   publish({ ...state, notice: text });

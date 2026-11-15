@@ -310,7 +310,7 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     for (const client of this.clients) {
       const track = this.tracking.get(client.sessionId);
       if (!track?.busBoarded || track.busTripId === null) continue;
-      // A rider stays on one lap only: from boarding (the 30 s before the hour, the trip's own id) through the lap. Once
+      // A rider stays on one lap only: from boarding (the 3 min before the departure, the trip's own id) through the lap. Once
       // the bus is back at the stop (or a later trip is up), the ride ends and the player can board the next hourly trip.
       // (It used to end at once for anyone who boarded before the hour: the status was "boarding", not "inTransit".)
       if (!riderOnTrip(snapshot, track.busTripId)) {

@@ -228,14 +228,36 @@ describe("villageBusTarget — the board button under the shelter (review r2)", 
     expect(villageBusTarget("village", 40, 3, false)).toBeNull(); // past the crosswalk
   });
 
-  it("the fringe outside the area yields to a seat (the café's north-west chairs); inside the area boarding stays first", async () => {
+  it("always yields to a seat in reach (the café's north-west chairs, the shelter's bench), boarding or not (owner 2026-11-15)", async () => {
     const { villageBusTarget } = await import("./villageTargets");
     expect(villageBusTarget("village", 41.88, -10.7, false)?.yieldsToSeat).toBe(true); // chair 66, 0.23 m off the area
     const s = VILLAGE_LAYOUT.busStop.shelter;
-    expect(villageBusTarget("village", s.centre.x, s.centre.z, false)?.yieldsToSeat).toBeUndefined();
+    expect(villageBusTarget("village", s.centre.x, s.centre.z, false)?.yieldsToSeat).toBe(true);
+    expect(villageBusTarget("village", s.centre.x, s.centre.z, false, false, 300_000)?.yieldsToSeat).toBe(true);
   });
 
-  it("never hides the way to ride: outside the boarding half minute the button counts down to the next bus (review 2026-11-15)", async () => {
+  it("by the bus's doors no seat is in reach, so while boarding is open E there boards the bus", async () => {
+    const { villageBusTarget } = await import("./villageTargets");
+    const { pickInteraction } = await import("../game/interact");
+    const { nearestFreeSeat, SEAT_REACH } = await import("@caysonverse/shared/worldMap");
+    const { VILLAGE_SEATS: seats } = await import("@caysonverse/shared/village/benchSeats");
+    const b = VILLAGE_LAYOUT.busStop.bus;
+    // the kerb strip along the bus's door side and the pad's road half, the whole length of the bus
+    for (let dx = 0.3; dx <= 3.5; dx += 0.4) {
+      for (let dz = -4; dz <= 4; dz += 0.5) {
+        const x = b.centre.x + b.size.x / 2 + dx;
+        const z = b.centre.z + dz;
+        const index = nearestFreeSeat(x, z, () => false, SEAT_REACH, seats);
+        const t = villageBusTarget("village", x, z, false, true, 100_000);
+        if (!t) continue;
+        const seat = index === null ? null : { index, dist: Math.hypot(x - seats[index]!.x, z - seats[index]!.z) };
+        const pick = pickInteraction({ seated: false, seat, targets: [t] });
+        expect(pick?.kind, `at (${x.toFixed(2)}, ${z.toFixed(2)})`).toBe("target");
+      }
+    }
+  });
+
+  it("never hides the way to ride: outside the boarding window the button counts down to the next bus (review 2026-11-15)", async () => {
     const { villageBusTarget, busCountdownWords } = await import("./villageTargets");
     const s = VILLAGE_LAYOUT.busStop.shelter;
     const waiting = villageBusTarget("village", s.centre.x, s.centre.z, false, false, 200_000)!;
@@ -252,7 +274,7 @@ describe("villageBusTarget — the board button under the shelter (review r2)", 
 });
 
 describe("villageBusTarget — the board button gives the shelter's bench the key (owner, 2026-11-13)", () => {
-  it("yields to a free seat in reach unless the bus is taking riders; \"leave\" never yields", async () => {
+  it("yields to a free seat in reach, also while the bus is taking riders; \"leave\" never yields", async () => {
     const { villageBusTarget } = await import("./villageTargets");
     const { pickInteraction } = await import("../game/interact");
     const s = VILLAGE_LAYOUT.busStop.shelter;
@@ -261,14 +283,15 @@ describe("villageBusTarget — the board button gives the shelter's bench the ke
     const idle = villageBusTarget("village", x, z, false, false)!;
     const boarding = villageBusTarget("village", x, z, false, true)!;
     expect(idle.yieldsToSeat).toBe(true);
-    expect(boarding.yieldsToSeat).toBeUndefined();
+    expect(boarding.yieldsToSeat).toBe(true);
     expect(villageBusTarget("village", x, z, true, false)!.yieldsToSeat).toBeUndefined();
     const seat = { index: 20, dist: 0.5 };
     // not boarding: the seat is the pick; with no seat in reach the board button is still offered
     expect(pickInteraction({ seated: false, seat, targets: [idle] })).toEqual({ kind: "sit", seatIndex: 20 });
     expect(pickInteraction({ seated: false, seat: null, targets: [idle] })?.kind).toBe("target");
-    // boarding: the button keeps the key, as before
-    expect(pickInteraction({ seated: false, seat, targets: [boarding] })?.kind).toBe("target");
+    // boarding (3 min, owner 2026-11-15): the bench still sits; with no seat in reach the button boards
+    expect(pickInteraction({ seated: false, seat, targets: [boarding] })).toEqual({ kind: "sit", seatIndex: 20 });
+    expect(pickInteraction({ seated: false, seat: null, targets: [boarding] })?.kind).toBe("target");
   });
 });
 

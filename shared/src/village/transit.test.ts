@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BUS_RAMP_MS, TRANSIT, TRANSIT_HOLDS, busMotionAt, busTripAt, clearCrosswalkMs, legSpeedAt, nextGreenAt, pedestrianSignalAt, routeDistanceAtAngle, routeLength, routePoseAt, routePoseAtDistance, signalAt, tripTimeline } from "./transit";
+import { BUS_RAMP_MS, TRANSIT, boardingOpensWords, TRANSIT_HOLDS, busMotionAt, busTripAt, clearCrosswalkMs, legSpeedAt, nextGreenAt, pedestrianSignalAt, routeDistanceAtAngle, routeLength, routePoseAt, routePoseAtDistance, signalAt, tripTimeline } from "./transit";
 import { SIGNAL_CROSSINGS, crossingPoint } from "./crossings";
 import { VILLAGE_LAYOUT } from "./villageLayout";
 
@@ -115,6 +115,31 @@ describe("the bus at the crosswalks' signals", () => {
       expect(tripTimeline(start).endMs - start).toBeLessThanOrEqual(worst);
     }
     expect(worst).toBeLessThan((TRANSIT.departureEveryMs - TRANSIT.boardingMs) / 2);
+  });
+
+  it("boarding opens 3 min before each departure, with the bus already parked at the stop for all of it (owner 2026-11-15)", () => {
+    expect(TRANSIT.boardingMs).toBe(3 * 60 * 1000);
+    expect(TRANSIT.departureEveryMs).toBe(10 * 60 * 1000);
+    expect(boardingOpensWords()).toBe("3분");
+    expect(boardingOpensWords(30_000)).toBe("30초");
+    expect(boardingOpensWords(90_000)).toBe("1분 30초");
+    // every departure over a whole signal-phase sweep (each lap meets the red lights differently)
+    for (let k = 0; k < 40; k++) {
+      const start = hour + k * TRANSIT.departureEveryMs;
+      const next = start + TRANSIT.departureEveryMs;
+      const opens = next - TRANSIT.boardingMs;
+      // the lap is over (the bus parked) well before boarding opens
+      expect(tripTimeline(start).endMs).toBeLessThan(opens - 60_000);
+      for (let t = opens; t < next; t += 5_000) {
+        const trip = busTripAt(t);
+        expect(trip.status).toBe("boarding");
+        expect(trip.tripId).toBe(next);
+        expect(trip.pose).toEqual(busTripAt(opens).pose); // parked, still
+        expect(trip.progress).toBe(0);
+      }
+      expect(busTripAt(opens - 1).status).toBe("atStop");
+      expect(busTripAt(next).status).toBe("inTransit"); // it leaves on the minute: still every 10 minutes
+    }
   });
 
   it("nextGreenAt is the same instant when green and the next cycle's start otherwise", () => {
