@@ -13,11 +13,14 @@ import { pickAppearance } from "@caysonverse/shared/appearance";
 import { visibilityChange } from "./placeFilter";
 import { normalizeArea, showsInArea, type AreaGate } from "./areaFilter";
 import type { Pose, SeatState } from "./types";
+import { selfBusRide } from "./busRide";
+import { noteSelfBusSeat } from "../net/transitSync";
 import { createPlayout } from "./playout";
 import { createEchoWatch, healDeadline, noteEcho, selfDiverged } from "./sentMoves";
 import {
   addRemote,
   clearRemotes,
+  getRemoteRecord,
   receiveRemotePose,
   removeRemote,
   setRemoteConnected,
@@ -121,7 +124,14 @@ export function startRemoteSync(
       const offSeat = $(player).listen("seatIndex", (value: number) => {
         selfSeat.index = value;
       });
-      const offs = [off, offSeat];
+      // My place in the bus (busRide.ts): LocalPlayer draws me there while I ride.
+      selfBusRide.slot = player.busSeat ?? -1;
+      noteSelfBusSeat(selfBusRide.slot);
+      const offBus = $(player).listen("busSeat", (value: number) => {
+        selfBusRide.slot = value ?? -1;
+        noteSelfBusSeat(selfBusRide.slot);
+      });
+      const offs = [off, offSeat, offBus];
       // Which area I am in (the village scene's maps, bounds, lighting and filter follow it). Seeds the
       // current value immediately, then follows every door.
       if (areas) {
@@ -150,6 +160,7 @@ export function startRemoteSync(
         appearance: pickAppearance(player),
         connected: player.connected,
         seatIndex: player.seatIndex,
+        busSeat: player.busSeat ?? -1,
         snapshots: [],
         // The current moveT times a move we never saw (they may have stopped long ago): only a newer one counts.
         playout: createPlayout(moverClock(player)),
@@ -186,7 +197,12 @@ export function startRemoteSync(
       setRemoteConnected(sessionId, value);
     });
     const offSeat = $(player).listen("seatIndex", take);
-    perPlayer.set(sessionId, [...offArea, offChange, offConnected, offSeat]);
+    // A rider is drawn in the bus (RemotePlayer, busSeats.ts) from the moment the server gives the place.
+    const offBus = $(player).listen("busSeat", (value: number) => {
+      const record = getRemoteRecord(sessionId);
+      if (record) record.busSeat = value ?? -1;
+    });
+    perPlayer.set(sessionId, [...offArea, offChange, offConnected, offSeat, offBus]);
   }, true); // immediate → replay players already present when we joined
 
   const offRemove = $(room.state).players.onRemove((_player, sessionId: string) => {
@@ -199,5 +215,6 @@ export function startRemoteSync(
     offRemove();
     for (const sessionId of [...perPlayer.keys()]) detach(sessionId);
     clearRemotes();
+    selfBusRide.slot = -1;
   };
 }

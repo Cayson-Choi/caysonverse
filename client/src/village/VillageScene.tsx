@@ -7,8 +7,8 @@ import { setTargetHandler, setTargetSource } from "../game/interactTargets";
 import type { PlayersRoom } from "../game/remoteSync";
 import type { Pose } from "../game/types";
 import { getRoom, sendUseDoor } from "../net/connection";
-import { rideStatusText, sendBusRide, showTransitNotice, startTransitSync, transitNowMs, type TransitRoom, useTransitState } from "../net/transitSync";
-import { TRANSIT, boardingOpensWords, busTripAt } from "@caysonverse/shared/village/transit";
+import { rideStatusText, sendBusRide, showTransitNotice, startTransitSync, transitNowMs, transitTripAt, type TransitRoom, useTransitState } from "../net/transitSync";
+import { TRANSIT, boardingOpensWords } from "@caysonverse/shared/village/transit";
 import type { Identity } from "../stores/appStore";
 import { DoorFade } from "./DoorFade";
 import { VegVeil } from "./VegVeil";
@@ -151,11 +151,11 @@ function VillageArea({ area, tier, pose }: { area: AreaId; tier: VillageTier; po
 
 /**
  * Whether the bus takes riders now and how long until it leaves (ms), by the server's clock as the bus snapshots carry it
- * (transitSync.ts transitNowMs) and the shared timetable (transit.ts busTripAt) the server decides by.
+ * (transitSync.ts transitNowMs) and the drive the server's bus driver publishes (transitTripAt: the timetable, held up for avatars on the road).
  */
 function busScheduleNow(): [boolean, number] {
   const now = transitNowMs();
-  const trip = busTripAt(now);
+  const trip = transitTripAt(now);
   if (trip.status === "boarding") return [true, trip.startMs - now];
   return [false, trip.nextStartMs - now];
 }
@@ -247,15 +247,20 @@ function TransitRideHud() {
     >
       {boarded ? (
         <>
-          <div>🚌 버스 탑승 중 · 창밖을 보는 중</div>
-          <div style={{ opacity: 0.75 }}>{rideStatusText(snapshot)}</div>
-          <button
-            type="button"
-            onClick={() => sendBusRide("leave")}
-            style={{ marginTop: 5, border: 0, borderRadius: 7, padding: "4px 8px", cursor: "pointer" }}
-          >
-            하차
-          </button>
+          <div>🚌 버스 탑승 중</div>
+          <div style={{ opacity: 0.75 }}>{rideStatusText(snapshot, busCountdownWords(busScheduleNow()[1]).long)}</div>
+          {snapshot?.status === "inTransit" ? (
+            // the doors open only at the stop (the server refuses a leave on the lap): say when instead of a dead button
+            <div style={{ marginTop: 4, opacity: 0.75 }}>정류장에 돌아오면 내려요</div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => sendBusRide("leave")}
+              style={{ marginTop: 5, border: 0, borderRadius: 7, padding: "4px 8px", cursor: "pointer" }}
+            >
+              하차
+            </button>
+          )}
         </>
       ) : (
         <div>{notice}</div>

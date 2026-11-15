@@ -142,6 +142,21 @@ export interface BusStatePayload {
    * and the bus moved off under a red). Optional for old servers.
    */
   serverMs?: number;
+  /**
+   * The server driver's drive (shared/village/busDrive.ts): the plan the bus drives, a brake while it stands for someone
+   * on the road, and the next departure. Clients draw the bus from it at the synced server time. Optional for old servers.
+   */
+  drive?: {
+    tripStartMs: number;
+    fromMs: number;
+    fromDistance: number;
+    brake: { atMs: number; distance: number; speed: number; decel: number } | null;
+    departMs: number;
+  };
+  /** The bus is standing (or braking) for someone in its way. */
+  blocked?: boolean;
+  /** Counts the bus's horn toots: a client toots once each time it goes up. */
+  horn?: number;
 }
 
 export interface BusRejectedPayload {

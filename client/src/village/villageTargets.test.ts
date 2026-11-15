@@ -271,7 +271,13 @@ describe("villageBusTarget — the board button under the shelter (review r2)", 
     expect(villageBusTarget("village", s.centre.x, s.centre.z, true, false)?.id).toBe("village_bus_leave");
     expect(busCountdownWords(45_200)).toEqual({ long: "46초", short: "46초 뒤" });
     expect(busCountdownWords(120_000)).toEqual({ long: "2분", short: "2분 뒤" });
-    expect(busCountdownWords(60_001)).toEqual({ long: "2분", short: "2분 뒤" });
+    // within the 3 boarding minutes: minutes and seconds (review 2026-11-15: 2:01 rounded up to "3분" read as just opened)
+    expect(busCountdownWords(60_001)).toEqual({ long: "1분 1초", short: "1분 1초 뒤" });
+    expect(busCountdownWords(179_000)).toEqual({ long: "2분 59초", short: "2분 59초 뒤" });
+    expect(busCountdownWords(180_000)).toEqual({ long: "3분", short: "3분 뒤" });
+    // before boarding opens: whole minutes rounded up, so never under "4분"
+    expect(busCountdownWords(180_001)).toEqual({ long: "4분", short: "4분 뒤" });
+    expect(busCountdownWords(400_000)).toEqual({ long: "7분", short: "7분 뒤" });
   });
 });
 

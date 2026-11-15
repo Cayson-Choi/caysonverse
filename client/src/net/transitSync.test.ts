@@ -7,8 +7,14 @@ import {
   startTransitSync,
   stepTransitRender,
   transitNowMs,
+  transitTripAt,
+  rideStatusText,
+  getMovingBusPose,
+  onBusHorn,
   type TransitRoom,
 } from "./transitSync";
+import { BusDriver, busDriveTrip } from "@caysonverse/shared/village/busDrive";
+import { routePoseAtDistance } from "@caysonverse/shared/village/transit";
 import { BUS_RAMP_MS, TRANSIT, busTripAt, routeLength, tripTimeline } from "@caysonverse/shared/village/transit";
 
 function fakeRoom() {
@@ -140,4 +146,59 @@ describe("the ride HUD's line (review r2: it said red under a green)", () => {
     expect(rideStatusText({ waiting: true, signal: "red" })).toBe("빨간불 · 신호 대기 중");
     expect(rideStatusText({ waiting: true, signal: "amber" })).toBe("황색불 · 신호 대기 중");
   });
+  it("parked at the stop with riders aboard it says it waits to leave and when, not that it runs (review 2026-11-15)", async () => {
+    const { rideStatusText } = await import("./transitSync");
+    expect(rideStatusText({ status: "boarding", waiting: false, signal: "green" }, "2분 30초")).toBe("출발 대기 중 · 2분 30초 뒤 출발");
+    expect(rideStatusText({ status: "boarding" })).toBe("출발 대기 중");
+    expect(rideStatusText({ status: "inTransit", waiting: false })).toBe("노선 운행 중");
+  });
 });
+
+describe("transitSync: the server driver's drive (bus stops for avatars, owner 2026-11-15)", () => {
+  it("draws the bus from the published drive (held up), shows the hold in the ride line and toots once per new horn", () => {
+    const f = fakeRoom();
+    const stop = startTransitSync(f.room);
+    const slot = Date.UTC(2026, 10, 15, 3, 0, 0);
+    const driver = new BusDriver(slot);
+    const lane = routePoseAtDistance(30);
+    let t = slot;
+    for (; t < slot + 20_000; t += 100) driver.step(t, [{ x: lane.x, z: lane.z }]);
+    const toots: number[] = [];
+    onBusHorn((n) => toots.push(n));
+    const snap = (horn: number) => ({ tripId: slot, status: "inTransit", progress: 0.1, x: 0, z: 0, yaw: 0, signal: "green", serverMs: t, drive: driver.drive, blocked: true, horn });
+    f.emit(MessageType.BusState, snap(0));
+    f.emit(MessageType.BusState, snap(1));
+    f.emit(MessageType.BusState, snap(1));
+    expect(toots).toEqual([1]);
+    const trip = transitTripAt(t + 5000);
+    expect(trip).toEqual(busDriveTrip(driver.drive, t + 5000));
+    // it stands where the driver stopped it, short of the avatar, while the timetable alone would have it far on
+    expect(Math.hypot(trip.pose.x - lane.x, trip.pose.z - lane.z)).toBeGreaterThan(4.5);
+    expect(busTripAt(t + 5000).progress).toBeGreaterThan(trip.progress);
+    expect(rideStatusText(getTransitState().snapshot)).toBe("앞에 사람이 있어 잠시 멈췄어요");
+    onBusHorn(null);
+    stop();
+    expect(getMovingBusPose()).toBeNull();
+  });
+});
+
+describe("transitSync: aboard follows the schema's place in the bus (a reconnect's remount must not lose the ride)", () => {
+  it("a place keeps the ride on through a remount, and losing it ends the ride", async () => {
+    const { noteSelfBusSeat } = await import("./transitSync");
+    const { selfBusRide } = await import("../game/busRide");
+    const f = fakeRoom();
+    let stop = startTransitSync(f.room);
+    noteSelfBusSeat(2);
+    selfBusRide.slot = 2;
+    expect(getTransitState().boarded).toBe(true);
+    // the scene remounts after a short drop: the BusRideState the server re-sent was missed, the schema still has the place
+    stop();
+    stop = startTransitSync(f.room);
+    expect(getTransitState().boarded).toBe(true);
+    selfBusRide.slot = -1;
+    noteSelfBusSeat(-1);
+    expect(getTransitState().boarded).toBe(false);
+    stop();
+  });
+});
+

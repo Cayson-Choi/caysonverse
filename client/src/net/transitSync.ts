@@ -1,7 +1,9 @@
 import { useSyncExternalStore } from "react";
 import { MessageType } from "@caysonverse/shared/messages";
-import { TRANSIT, busTripAt } from "@caysonverse/shared/village/transit";
+import { TRANSIT, busTripAt, type BusTrip } from "@caysonverse/shared/village/transit";
+import { busDriveTrip, type BusDrive } from "@caysonverse/shared/village/busDrive";
 import { villageClock } from "../village/villageClock";
+import { selfBusRide } from "../game/busRide";
 import type {
   BusRejectedPayload,
   BusRidePayload,
@@ -123,13 +125,33 @@ export function showTransitNotice(text: string): void {
   publish({ ...state, notice: text });
 }
 
+/** Called once for each new horn toot the server announces (VillageBus plays it near the listener). */
+let hornListener: ((count: number) => void) | null = null;
+export function onBusHorn(fn: ((count: number) => void) | null): void {
+  hornListener = fn;
+}
+
 function setSnapshot(snapshot: BusStatePayload): void {
   sampleClock(snapshot.serverMs);
+  const prevHorn = state.snapshot?.horn;
+  if (typeof snapshot.horn === "number" && typeof prevHorn === "number" && snapshot.horn > prevHorn) hornListener?.(snapshot.horn);
+  renderAt = Number.NaN; // a new drive (a brake, a re-start) is drawn from at once
   publish({ ...state, snapshot, notice: liveNotice() });
 }
 
 function setRide(next: BusRideStatePayload): void {
   publish({ ...state, boarded: next.boarded, tripId: next.tripId, notice: null });
+}
+
+/**
+ * The own `Player.busSeat` as the schema syncs it (remoteSync.ts): a place in the bus means aboard. The schema is synced
+ * whole again after a reconnect, while the one-off BusRideState the server re-sends then can land before the remounted
+ * scene listens (e2e village-bus-rider: a rider's client read "not aboard" mid-lap after a short drop, while the server
+ * still had them in the bus). So the place keeps `boarded` true whatever the order.
+ */
+export function noteSelfBusSeat(slot: number): void {
+  const aboard = slot >= 0;
+  if (aboard !== state.boarded) publish({ ...state, boarded: aboard, notice: aboard ? null : state.notice });
 }
 
 /** Bind one village room; cleanup is called when the scene unmounts or reconnects. */
@@ -138,7 +160,8 @@ export function startTransitSync(room: TransitRoom): () => void {
   resetClock();
   renderAt = Number.NaN;
   renderPose = { ...TRANSIT.parked };
-  publish(initial);
+  // a remount after a reconnect: aboard if the schema already gave us a place in the bus (noteSelfBusSeat)
+  publish(selfBusRide.slot >= 0 ? { ...initial, boarded: true } : initial);
   const offState = room.onMessage<BusStatePayload>(MessageType.BusState, setSnapshot);
   const offRide = room.onMessage<BusRideStatePayload>(MessageType.BusRideState, setRide);
   const offRejected = room.onMessage<BusRejectedPayload>(MessageType.BusRejected, (m) => showTransitNotice(m.reason));
@@ -170,15 +193,39 @@ export function useTransitState(): TransitClientState {
   return useSyncExternalStore(subscribeTransit, getTransitState, getTransitState);
 }
 
+/**
+ * The bus's trip at `nowMs` (server time): by the drive the server's driver published (it stops for avatars on the road,
+ * busDrive.ts), evaluated here at the synced time so it moves smoothly between snapshots; by the bare timetable before the
+ * first snapshot or from an old server without one. The stop's countdown and the board button read it too, so a held-up
+ * bus's later departure shows at once.
+ */
+export function transitTripAt(nowMs: number): BusTrip {
+  const drive = state.snapshot?.drive as BusDrive | undefined;
+  return drive ? busDriveTrip(drive, nowMs) : busTripAt(nowMs);
+}
+
+let renderMoving = false;
+
 /** The bus's pose at the synced server time, written into the render pose (once per distinct instant). */
 function refreshRenderPose(): void {
   const now = transitNowMs();
   if (now === renderAt) return;
   renderAt = now;
-  const pose = busTripAt(now).pose;
+  const trip = transitTripAt(now);
+  const pose = trip.pose;
   renderPose.x = pose.x;
   renderPose.z = pose.z;
   renderPose.yaw = pose.yaw;
+  renderMoving = state.snapshot !== null && trip.status === "inTransit";
+}
+
+/**
+ * The bus's pose while it is out on the road (null while it is parked at the stop, whose box is a static collider, or
+ * before the first snapshot): the local player's slide treats its body as solid (playerObstacles.ts).
+ */
+export function getMovingBusPose(): Readonly<{ x: number; z: number; yaw: number }> | null {
+  refreshRenderPose();
+  return renderMoving ? renderPose : null;
 }
 
 /** Frame step: the bus's pose from the timeline at the synced time (the argument is kept for callers; the pose needs no easing). */
@@ -195,7 +242,15 @@ export function getTransitRenderPose(): Readonly<{ x: number; z: number; yaw: nu
  * The ride HUD's second line. Review r2: it said "빨간불" whenever the bus waited, also under a green; the bus now waits
  * only on amber or red (transit.ts tripTimeline), and the line names the light the snapshot carries.
  */
-export function rideStatusText(snapshot: { waiting?: boolean; signal?: string } | null): string {
+export function rideStatusText(
+  snapshot: { waiting?: boolean; signal?: string; blocked?: boolean; status?: string } | null,
+  departsInWords?: string,
+): string {
+  // still at the stop with its doors open (review 2026-11-15: it said "노선 운행 중" through the 3 boarding minutes)
+  if (snapshot?.status === "boarding" || snapshot?.status === "atStop") {
+    return departsInWords ? `출발 대기 중 · ${departsInWords} 뒤 출발` : "출발 대기 중";
+  }
+  if (snapshot?.blocked) return "앞에 사람이 있어 잠시 멈췄어요";
   if (!snapshot?.waiting) return "노선 운행 중";
   if (snapshot.signal === "amber") return "황색불 · 신호 대기 중";
   if (snapshot.signal === "green") return "초록불 · 곧 출발해요";

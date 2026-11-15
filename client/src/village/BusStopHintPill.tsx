@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import type { Pose } from "../game/types";
-import { transitNowMs, useTransitState } from "../net/transitSync";
-import { busStopHintAt, type BusStopHint } from "./busStopHint";
+import { transitNowMs, transitTripAt, useTransitState } from "../net/transitSync";
+import { busStopHintAt, createHintGate, type BusStopHint } from "./busStopHint";
+import { isTouchDevice } from "../device";
 import "./crosswalkHint.css";
 
 /**
@@ -14,16 +15,17 @@ export function BusStopHintPill({ pose }: { pose: Pose }) {
   const [hint, setHint] = useState<BusStopHint | null>(null);
   const { boarded } = useTransitState();
   useEffect(() => {
-    let last = "";
-    const id = window.setInterval(() => {
-      const h = busStopHintAt(pose.x, pose.z, transitNowMs(), boarded);
-      const key = h ? `${h.tone}|${h.text}` : "";
-      if (key === last) return;
-      last = key;
-      setHint(h);
-    }, 250);
+    // The first sample is always published, a null one too (createHintGate: boarding must clear the line).
+    const changed = createHintGate();
+    const tick = (): void => {
+      const h = busStopHintAt(pose.x, pose.z, transitNowMs(), boarded, transitTripAt, isTouchDevice);
+      if (changed(h)) setHint(h);
+    };
+    tick();
+    const id = window.setInterval(tick, 250);
     return () => window.clearInterval(id);
   }, [pose, boarded]);
+  if (boarded) return null;
   if (!hint) return null;
   return (
     <div className={`cv-xwalk-hint cv-bus-hint is-${hint.tone === "board" ? "go" : "bus"}`} role="status" aria-live="polite">

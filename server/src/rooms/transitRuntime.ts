@@ -1,4 +1,5 @@
-import { boardingOpensWords, busTripAt, pedestrianSignalAt, signalAt } from "@caysonverse/shared/village/transit";
+import { boardingOpensWords, pedestrianSignalAt, signalAt, type BusTrip } from "@caysonverse/shared/village/transit";
+import { busDriveTrip, scheduledDrive, type BusDrive } from "@caysonverse/shared/village/busDrive";
 import { busBoardingDistance } from "@caysonverse/shared/village/villageLayout";
 import type {
   BusRejectedPayload,
@@ -16,9 +17,16 @@ export const BUS_BOARD_REACH_M = 1.2;
 /** How often the room publishes the authoritative bus pose. */
 export const BUS_STATE_RATE_MS = 250;
 
-/** The one payload shape broadcast to every village client. */
-export function transitSnapshotAt(utcMs: number): BusStatePayload {
-  const trip = busTripAt(utcMs);
+/**
+ * The one payload shape broadcast to every village client: the bus under `drive` (the room's BusDriver; the timetable's
+ * own drive by default), its pose for old clients and the drive itself for the current ones.
+ */
+export function transitSnapshotAt(
+  utcMs: number,
+  drive: BusDrive = scheduledDrive(utcMs),
+  extra: { blocked?: boolean; horn?: number } = {},
+): BusStatePayload {
+  const trip = busDriveTrip(drive, utcMs);
   return {
     tripId: trip.tripId,
     status: trip.status,
@@ -30,6 +38,9 @@ export function transitSnapshotAt(utcMs: number): BusStatePayload {
     pedestrianSignal: pedestrianSignalAt(utcMs).color,
     waiting: trip.waiting,
     serverMs: utcMs,
+    drive: { ...drive, brake: drive.brake ? { ...drive.brake } : null },
+    blocked: extra.blocked === true,
+    horn: extra.horn ?? 0,
   };
 }
 
@@ -40,6 +51,9 @@ export function transitSnapshotAt(utcMs: number): BusStatePayload {
 export function riderOnTrip(snapshot: Pick<BusStatePayload, "tripId" | "status">, riderTripId: number | null): boolean {
   return riderTripId !== null && snapshot.tripId === riderTripId && (snapshot.status === "inTransit" || snapshot.status === "boarding");
 }
+
+/** A leave asked for while the bus is out on its lap (owner 2026-11-15: the rider is in the bus, not left on the pad). */
+export const BUS_LEAVE_MOVING_NOTICE = "버스가 달리는 중이에요. 정류장에 돌아오면 내려요.";
 
 export type BusRideDecision =
   | { ok: true; tripId: number }
@@ -54,14 +68,16 @@ export function validateBusRide(
   payload: unknown,
   state: { boarded: boolean; area: string; x: number; z: number },
   utcMs: number,
+  trip: BusTrip = busDriveTrip(scheduledDrive(utcMs), utcMs),
 ): BusRideDecision {
   if (payload === null || typeof payload !== "object") return { ok: false, notice: "버스 요청을 이해하지 못했어요." };
   const action = (payload as Partial<BusRidePayload>).action;
   if (action !== "board" && action !== "leave") return { ok: false, notice: "버스 요청을 이해하지 못했어요." };
 
-  const trip = busTripAt(utcMs);
   if (action === "leave") {
     if (!state.boarded) return { ok: false, notice: "지금은 버스에 타고 있지 않아요." };
+    // The doors open only at the stop: a rider on the lap gets off when the bus is back (the ride ends there by itself).
+    if (trip.status === "inTransit") return { ok: false, notice: BUS_LEAVE_MOVING_NOTICE };
     return { ok: true, tripId: state.boarded ? trip.tripId : -1 };
   }
 

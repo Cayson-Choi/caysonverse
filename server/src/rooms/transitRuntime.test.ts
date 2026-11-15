@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { TRANSIT, busTripAt, tripTimeline } from "@caysonverse/shared/village/transit";
 import { VILLAGE_LAYOUT, busBoardingArea } from "@caysonverse/shared/village/villageLayout";
-import { BUS_BOARD_REACH_M, riderOnTrip, transitSnapshotAt, validateBusRide } from "./transitRuntime";
+import { BUS_BOARD_REACH_M, BUS_LEAVE_MOVING_NOTICE, riderOnTrip, transitSnapshotAt, validateBusRide } from "./transitRuntime";
 
 const hour = Math.floor(1_700_000_000_000 / TRANSIT.departureEveryMs) * TRANSIT.departureEveryMs;
 const boarding = hour + TRANSIT.departureEveryMs - TRANSIT.boardingMs + 5;
@@ -83,6 +83,9 @@ describe("VillageRoom transit runtime", () => {
       ok: false,
       notice: "지금은 버스에 타고 있지 않아요.",
     });
+    // the doors open only at the stop: a rider on the lap is refused, at the stop let off (owner 2026-11-15: riders are in the bus)
+    expect(validateBusRide({ action: "leave" }, { ...nearStop, boarded: true }, hour + 20_000)).toEqual({ ok: false, notice: BUS_LEAVE_MOVING_NOTICE });
+    expect(validateBusRide({ action: "leave" }, { ...nearStop, boarded: true }, boarding).ok).toBe(true);
     expect(validateBusRide({ action: "board" }, { area: "hall", x: TRANSIT.stop.x, z: TRANSIT.stop.z, boarded: false }, boarding).ok).toBe(false);
     const area = busBoardingArea();
     expect(validateBusRide({ action: "board" }, { area: "village", x: area.maxX + BUS_BOARD_REACH_M + 0.2, z: TRANSIT.stop.z, boarded: false }, boarding).ok).toBe(false);

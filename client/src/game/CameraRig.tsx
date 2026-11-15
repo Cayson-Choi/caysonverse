@@ -73,7 +73,8 @@ import { getLocalLift } from "./jump";
 import { useFpCursor } from "./useFpCursor";
 import { useSettingsStore } from "../stores/settingsStore";
 import { getTransitRenderPose, useTransitState } from "../net/transitSync";
-import { transitWindowCamera } from "../village/transitCamera";
+import { transitRiderCamera, transitWindowCamera } from "../village/transitCamera";
+import { selfBusRide } from "./busRide";
 import type { Orbit, Pose, SeatState } from "./types";
 
 interface CameraRigProps {
@@ -939,7 +940,9 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
     // resumes on the very next frame after the authoritative leave state,
     // preserving the player's TP/FP/overview orbit exactly as it was.
     if (busBoarded) {
-      const ride = transitWindowCamera(getTransitRenderPose());
+      // In my place in the bus (busSeats.ts): over my shoulder and out of the window; before the server's place
+      // arrives, the old passenger eye.
+      const ride = selfBusRide.slot >= 0 ? transitRiderCamera(getTransitRenderPose(), selfBusRide.slot, (camera as PerspectiveCamera).aspect) : transitWindowCamera(getTransitRenderPose());
       camera.position.set(ride.x, ride.y, ride.z);
       camera.up.set(0, 1, 0);
       camera.lookAt(ride.targetX, ride.targetY, ride.targetZ);

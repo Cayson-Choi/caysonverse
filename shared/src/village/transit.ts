@@ -209,7 +209,7 @@ export function routePoseAt(progress: number, route: readonly TransitPoint[] = T
 }
 
 /** The parked bus: at the stop, along its lane, parallel to the kerb. */
-const PARKED_POSE: TransitPose = TRANSIT.parked;
+export const PARKED_POSE: TransitPose = TRANSIT.parked;
 
 /** Total length of the route (m). */
 export function routeLength(route: readonly TransitPoint[] = TRANSIT.route): number {
@@ -329,7 +329,7 @@ function legDuration(distance: number, speed: number): number {
   return distance >= speed * BUS_RAMP_MS ? distance / speed + BUS_RAMP_MS : 2 * BUS_RAMP_MS;
 }
 
-const timelines = new Map<number, TripTimeline>();
+const timelines = new Map<string, TripTimeline>();
 
 /**
  * The timeline of a trip that leaves the stop at `startMs`: it eases away from rest to the lap's cruising speed, keeps it,
@@ -340,16 +340,25 @@ const timelines = new Map<number, TripTimeline>();
  * 6 s under a green every hour while the HUD said red): like a driver who sees the green is stale, it cruises a little
  * slower on the way and reaches the line as the amber comes on, then waits for the next green.
  */
-export function tripTimeline(startMs: number): TripTimeline {
-  const hit = timelines.get(startMs);
+export function tripTimeline(startMs: number, fromDistance = 0): TripTimeline {
+  const key = fromDistance === 0 ? String(startMs) : `${startMs}:${fromDistance}`;
+  const hit = timelines.get(key);
   if (hit) return hit;
-  const tl = buildTimeline(startMs);
-  if (timelines.size >= 16) timelines.delete(timelines.keys().next().value as number);
-  timelines.set(startMs, tl);
+  const tl = buildTripTimeline(startMs, fromDistance);
+  if (timelines.size >= 16) timelines.delete(timelines.keys().next().value as string);
+  timelines.set(key, tl);
   return tl;
 }
 
-function buildTimeline(startMs: number): TripTimeline {
+/** Where a bus standing within this of a hold's stop line counts as standing on it (m). */
+const AT_LINE_M = 0.05;
+
+/**
+ * The timeline (uncached) of a bus that leaves rest at `startMs`, `fromDistance` m along the lap (0: the stop), and drives
+ * the rest of the lap to the stop by the same rules. A bus held up on its way (busDrive.ts: someone on the road) goes on
+ * from where it stood with this; standing on a hold's stop line it waits there for the green first.
+ */
+export function buildTripTimeline(startMs: number, fromDistance = 0): TripTimeline {
   const length = routeLength();
   const cruise = length / TRANSIT.lapMs; // m per ms
   const T = BUS_RAMP_MS;
@@ -362,9 +371,21 @@ function buildTimeline(startMs: number): TripTimeline {
     mod(arrive + h.offsetMs, cycle) < TRANSIT.signalGreenMs - (TRANSIT.stopLineM + CROSSWALK_HALF_M + TRANSIT.busLengthM) / v;
 
   let t = startMs;
-  let s = 0;
+  let s = Math.max(0, Math.min(length, fromDistance));
   let i = 0; // the next hold the bus has not yet dealt with
+  while (i < H.length && H[i]!.distance < s - AT_LINE_M) i++;
+  if (length - s < AT_LINE_M) return { holds: holdsOut, legs, endMs: t };
   while (true) {
+    // standing on the next hold's stop line already: wait there for a green it can clear the crosswalk in
+    if (i < H.length && H[i]!.distance - s < AT_LINE_M) {
+      const h = H[i]!;
+      const releaseMs = nextGreenAt(t, h.offsetMs, clearCrosswalkMs(cruise));
+      holdsOut.push({ fromMs: t, fromDistance: s, arriveMs: t, releaseMs, distance: h.distance, stops: releaseMs > t });
+      t = releaseMs;
+      s = Math.max(s, h.distance);
+      i++;
+      continue;
+    }
     // the first hold from here the bus cannot drive through at the cruise (or the end of the route)
     let j = i;
     for (; j < H.length; j++) {
@@ -419,15 +440,22 @@ function buildTimeline(startMs: number): TripTimeline {
 }
 
 /** Distance along the route (m) of the bus at `utcMs` during a trip from `startMs`, its speed (m/s), and whether it is waiting at a signal. */
-export function busMotionAt(utcMs: number, startMs: number): { distance: number; speed: number; waiting: boolean } {
-  const tl = tripTimeline(startMs);
+export function busMotionAt(utcMs: number, startMs: number, fromDistance = 0): { distance: number; speed: number; waiting: boolean } {
+  const tl = tripTimeline(startMs, fromDistance);
   let prev: TripLeg | null = null;
   for (const leg of tl.legs) {
-    if (utcMs < leg.fromMs) return { distance: prev ? prev.toDistance : 0, speed: 0, waiting: prev !== null };
+    if (utcMs < leg.fromMs) return { distance: prev ? prev.toDistance : fromDistance, speed: 0, waiting: prev !== null || fromDistance > 0 };
     if (utcMs < leg.toMs) return { distance: legDistanceAt(leg, utcMs), speed: legSpeedAt(leg, utcMs) * 1000, waiting: false };
     prev = leg;
   }
   return { distance: routeLength(), speed: 0, waiting: false };
+}
+
+/** Where the bus driving a plan from rest at (`startMs`, `fromDistance`) next comes to rest after `utcMs` (m along the lap): a red light's stop line or the stop. */
+export function nextRestDistance(utcMs: number, startMs: number, fromDistance = 0): number {
+  const tl = tripTimeline(startMs, fromDistance);
+  for (const leg of tl.legs) if (utcMs < leg.toMs) return leg.toDistance;
+  return routeLength();
 }
 
 /**

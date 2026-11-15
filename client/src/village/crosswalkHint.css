@@ -79,5 +79,12 @@
     gap: 6px;
     text-wrap: balance; /* if it still needs two lines, two even ones */
     top: max(106px, calc(env(safe-area-inset-top) + 98px));
+    /* clear of the left HUD column (area, people, chat, music, sky: 12..84 px; review 2026-11-15: it covered them) */
+    left: 92px;
+    right: 12px;
+    transform: none;
+    width: auto;
+    max-width: none;
+    justify-content: center;
   }
 }

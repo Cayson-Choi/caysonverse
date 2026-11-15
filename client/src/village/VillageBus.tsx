@@ -5,7 +5,8 @@ import { readBus } from "./villageBusLoader";
 import { dayNight } from "./dayNightDriver";
 import type { VillageTier } from "./villageModelPrep";
 import { noteBusRequested } from "./villageRelease";
-import { getTransitRenderPose, stepTransitRender } from "../net/transitSync";
+import { getTransitRenderPose, onBusHorn, stepTransitRender } from "../net/transitSync";
+import { BUS_HORN_HEAR_M, playBusHorn } from "./busHorn";
 
 declare global {
   interface Window {
@@ -48,6 +49,16 @@ export function VillageBus({ tier }: { tier: VillageTier }) {
       disposeBus(nodes);
     };
   }, [nodes]);
+  const camera = useThree((s) => s.camera);
+  useEffect(() => {
+    // The server's driver toots when it has stood a while for someone on the road: heard near the bus only.
+    onBusHorn(() => {
+      const pose = getTransitRenderPose();
+      const d = Math.hypot(camera.position.x - pose.x, camera.position.z - pose.z);
+      if (d <= BUS_HORN_HEAR_M) playBusHorn(d);
+    });
+    return () => onBusHorn(null);
+  }, [camera]);
   useFrame((state, delta) => {
     stepTransitRender(delta);
     const pose = getTransitRenderPose();

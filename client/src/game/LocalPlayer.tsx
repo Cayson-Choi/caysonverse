@@ -77,7 +77,9 @@ import { ANIM_FADE, CLIP, MODEL_FACING_OFFSET, SELF_CAMERA_HIDE_DISTANCE, TURN_S
 import type { MoveControl } from "./constants";
 import type { Orbit, Pose, SeatState } from "./types";
 import { getRoom, sendJump, sendMove, sendStand } from "../net/connection";
-import { useTransitState } from "../net/transitSync";
+import { getTransitRenderPose, useTransitState } from "../net/transitSync";
+import { selfBusRide } from "./busRide";
+import { busPlace, busRiderPose, type BusRiderPose } from "@caysonverse/shared/village/busSeats";
 import { isInputSuspended } from "../net/resilience";
 import { useSettingsStore } from "../stores/settingsStore";
 
@@ -457,6 +459,51 @@ export function LocalPlayer({
     return true;
   }
 
+  // My place in the bus being drawn (-1: not riding) and the pose there (reused).
+  const ridingRef = useRef(-1);
+  const riderPoseRef = useRef<BusRiderPose>({ x: 0, z: 0, yaw: 0, y: 0, seated: true });
+
+  /** Onto the bus: whatever the body did gives way to the held seated pose (Idle on a standing place). */
+  function startRide(seated: boolean): void {
+    clearClickTarget();
+    releaseLoop(ANIM_FADE);
+    gaitRef.current = "idle";
+    action(CLIP.jump)?.fadeOut(ANIM_FADE);
+    jumpSeqRef.current = -1;
+    action(CLIP.sitDown)?.fadeOut(ANIM_FADE);
+    action(CLIP.sitStand)?.fadeOut(ANIM_FADE);
+    const motion = seatMotionRef.current;
+    if (motion.clipped) clipAvatar(avatar, null);
+    motion.clipped = false;
+    motion.clip = null;
+    motion.glide = null;
+    motion.bench = false;
+    motion.lift = 0;
+    animStateRef.current = "loco";
+    const hold = action(seated ? CLIP.sitIdle : CLIP.idle);
+    if (hold) {
+      hold.reset().fadeIn(ANIM_FADE).play();
+      reportClip(hold.getClip().name);
+    }
+    if (shadowRef.current) shadowRef.current.visible = false;
+  }
+
+  /** Off the bus: on the ground where the server put me down (outside the door), Idle, the seat state as synced. */
+  function endRide(): void {
+    action(CLIP.sitIdle)?.fadeOut(ANIM_FADE);
+    action(CLIP.idle)?.fadeOut(ANIM_FADE);
+    loopRef.current = null; // the loco step puts a loop back on
+    animStateRef.current = "loco";
+    prevSeatRef.current = seat.index;
+    if (shadowRef.current) shadowRef.current.visible = true;
+    const me = getRoom()?.state?.players?.get?.(sessionId);
+    if (me) {
+      pose.x = me.x;
+      pose.z = me.z;
+      pose.yaw = me.yaw;
+    }
+  }
+
   // A remount may get the same assembled avatar back (useAvatar's cache): never hand it on clipped.
   useEffect(
     () => () => {
@@ -492,6 +539,27 @@ export function LocalPlayer({
     // the body fades and is drawn after the ring, so the ring shows through it (round 6 review: only its dashes showed,
     // on the body, all the way there).
     stepSelfFade(selfFadeRef.current, avatar, group.visible && selfBody.hidingRing, delta);
+
+    // The village bus (owner 2026-11-15: "버스에 탑승했는데 캐릭터는 버스안에 있지 않고 밖에 그대로 서있어"): while I ride,
+    // my avatar is in my place in the bus (busSeats.ts, given by the server), sitting on its seat or standing in the
+    // aisle, and moves with the bus, as every other client draws me. My pose stays where I boarded (nothing is sent);
+    // getting off, the server puts me down at the door and the pose follows it.
+    const busSlot = selfBusRide.slot; // the schema: the place and the dismount spot come in one patch
+    if (busSlot !== ridingRef.current) {
+      const was = ridingRef.current;
+      ridingRef.current = busSlot;
+      if (busSlot >= 0) {
+        if (was < 0 || busPlace(was).seated !== busPlace(busSlot).seated) startRide(busPlace(busSlot).seated);
+      } else endRide();
+    }
+    if (busSlot >= 0) {
+      const p = busRiderPose(getTransitRenderPose(), busSlot, riderPoseRef.current);
+      group.position.set(p.x, p.y, p.z);
+      group.rotation.y = p.yaw + MODEL_FACING_OFFSET;
+      group.visible = true; // the ride camera looks at me from behind my seat (transitCamera.ts)
+      publishLocalJump(0, true);
+      return;
+    }
 
     // Focus guard: while the chat input owns keyboard input — OR while the
     // resilience driver is reconnecting (world frozen behind the overlay) —

@@ -1,4 +1,5 @@
 import { VILLAGE_LAYOUT, busBoardingDistance, cubbyAnchors, type AreaId, type CubbyAnchor, type Disc, type VillageLayout } from "@caysonverse/shared/village/villageLayout";
+import { TRANSIT } from "@caysonverse/shared/village/transit";
 import { HOUSE_KEYPAD_REACH_M, keypadEntries } from "@caysonverse/shared/village/buildingAccess";
 import { GUIDE_ASK_LABEL, nearestGuide } from "@caysonverse/shared/village/guides";
 import type { InteractTarget } from "../game/interact";
@@ -77,8 +78,12 @@ export function villageTargets(
 export function busCountdownWords(ms: number): { long: string; short: string } {
   const s = Math.max(0, Math.ceil(ms / 1000));
   // One rounding for every place that shows it (review r4: the phone button said "8분 뒤" while the pill said "7분 8초 뒤"):
-  // whole minutes rounded up from a minute on, seconds below it. It also keeps the pill on one line on a phone.
-  const words = s >= 60 ? `${Math.ceil(s / 60)}분` : `${s}초`;
+  // whole minutes rounded up while boarding is not open yet (more than the boarding window away: always "4분" or more);
+  // within it minutes and seconds (review 2026-11-15: "3분 뒤 출발" rounded up from 2:01 read as if boarding had just
+  // opened), and seconds alone under a minute.
+  const boardS = Math.round(TRANSIT.boardingMs / 1000);
+  const words =
+    s > boardS ? `${Math.ceil(s / 60)}분` : s >= 60 ? (s % 60 === 0 ? `${s / 60}분` : `${Math.floor(s / 60)}분 ${s % 60}초`) : `${s}초`;
   return { long: words, short: `${words} 뒤` };
 }
 
