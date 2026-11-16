@@ -1,5 +1,4 @@
-import { Suspense, useEffect, useMemo, useRef } from "react";
-import type { Mesh } from "three";
+import { Suspense, useEffect, useMemo } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import { type BusNodes, applyBusDayNight, disposeBus, followBusSigns, prepareBus, setBusAnisotropy } from "./villageBusPrep";
 import { readBus } from "./villageBusLoader";
@@ -53,20 +52,6 @@ export function VillageBus({ tier }: { tier: VillageTier }) {
       disposeBus(nodes);
     };
   }, [nodes]);
-  // The cabin's poles, ceiling rails and strap groups are separate nodes. They used to be hidden near the rider's lens; since
-  // owner 2026-11-16 ("반투명하게 보이게 하지 마") they are always drawn (the frame loop only makes sure none stays hidden).
-  const fixtures = useRef(new Map<string, Mesh>());
-  useEffect(() => {
-    const map = fixtures.current;
-    map.clear();
-    nodes.root.traverse((o) => {
-      if (/^(pole|strap|rail)_/.test(o.name) && (o as Mesh).isMesh) map.set(o.name, o as Mesh);
-    });
-    return () => {
-      for (const m of map.values()) m.visible = true;
-      map.clear();
-    };
-  }, [nodes]);
   const camera = useThree((s) => s.camera);
   useEffect(() => {
     // The server's driver toots when it has stood a while for someone on the road: heard near the bus only.
@@ -86,8 +71,6 @@ export function VillageBus({ tier }: { tier: VillageTier }) {
     nodes.root.updateMatrixWorld(true);
     followBusSigns(nodes);
     applyBusDayNight(nodes, dayNight.applied, state.gl.toneMappingExposure);
-    // owner 2026-11-16 ("반투명하게 보이게 하지 마"): the cabin's poles, rails and straps are always drawn, never hidden near the lens
-    for (const mesh of fixtures.current.values()) if (!mesh.visible) mesh.visible = true;
   });
   // dispose={null}: the geometry and the loader's materials belong to the loader's cache.
   // The driver (owner 2026-11-16) rides in the bus as its child: npc.glb is waited for in a Suspense of its own, and a failed one

@@ -1,14 +1,17 @@
 /**
- * e2e/village-bus-spots.mjs — the full place sweep of the village bus (HANDOFF rule 7: every seat / hold spot, PC and phone,
- * day and night). One rider boards, then for each place in --places=a-b (index 0..13 = BUS_SEATS, 14..20 = BUS_HOLDS) walks the
- * aisle with the keys to the aisle point nearest the place's front, takes the action the UI offers there (E / the round
- * button) and checks the server agrees (busSeat); a place the UI did not offer from there is taken with the message
- * directly and counted as "fallback" (reported). Screenshots: the view at the place, then the left / right windows.
- * Optional second rider (--other): a second PC client that boards first and takes a seat, so the sweep also shows another rider.
+ * e2e/village-bus-spots.mjs — the full seat sweep of the village bus v3 (owner 2026-11-16: no grab handles; ten big seats, every
+ * one sit-able by walking up to it or by tapping it). One rider boards, then for each seat in --places=a-b (index into BUS_SEATS):
+ *  1. walk + E: walks the aisle with the keys to the seat's approach point (shared seatApproachPoint), turns until the UI
+ *     offers THAT seat (the round button / E), takes it and checks the server agrees (busSeat); no message fallback;
+ *  2. tap: stands up, walks to an aisle point 1.2-1.8 m away, turns the view towards the seat and taps (phone) / clicks (PC)
+ *     its cushion on the screen; the rider walks there by itself and stops, still standing (owner 2026-11-17: no auto-sit), the
+ *     action button offers that seat, and E / the button sits: busSeat = the seat.
+ * Screenshots: the view from each seat, then the left / right windows. Optional second rider (--other): a PC client that
+ * boards first and sits in R2, so the sweep also shows another rider (and R2 is not offered: it is taken).
  *
- *   OFF=$(node -e 'const n=Date.now()+170000,s=Math.ceil(n/600000)*600000;console.log(s-n)')
- *   (cd server && CV_DEV_CLOCK_OFFSET_MS=$OFF PORT=2851 npx tsx src/index.ts)
- *   CV_CLIENT_URL=http://localhost:5451 node e2e/village-bus-spots.mjs --out=<folder> [--phone] [--time=2026-11-03T21:30] [--places=0-6] [--other]
+ *   OFF=$(node -e 'const n=Date.now()+175000,s=Math.ceil(n/600000)*600000;console.log(s-n)')
+ *   (cd server && CV_DEV_CLOCK_OFFSET_MS=$OFF PORT=3081 npx tsx src/index.ts)
+ *   CV_CLIENT_URL=http://localhost:5681 node e2e/village-bus-spots.mjs --out=<folder> [--phone] [--time=2026-11-03T21:30] [--places=0-9] [--other]
  */
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -19,16 +22,15 @@ const arg = (n, d) => (process.argv.find((a) => a.startsWith(`--${n}=`)) ?? `--$
 const phone = process.argv.includes("--phone");
 const other = process.argv.includes("--other");
 const TIME = arg("time", NOON);
-const [from, to] = arg("places", "0-20").split("-").map(Number);
+const [from, to] = arg("places", "0-9").split("-").map(Number);
 const night = TIME !== NOON;
 const tag = `${phone ? "phone" : "pc"}-${night ? "night" : "day"}`;
 const run = createRun(`village-bus-spots-${tag}`);
 const OUT = arg("out", run.evidence);
 mkdirSync(OUT, { recursive: true });
-const PHONE_390 = { ...PHONE, viewport: { width: 390, height: 844 } };
 
 const browser = await launchBrowser();
-const A = await openPlayer(browser, run, { tag: `A-${tag}`, device: phone ? PHONE_390 : DESKTOP });
+const A = await openPlayer(browser, run, { tag: `A-${tag}`, device: phone ? PHONE : DESKTOP });
 const O = other ? await openPlayer(browser, run, { tag: "O-pc", device: DESKTOP }) : null;
 const ride = (p) =>
   p.page.evaluate(async () => {
@@ -50,10 +52,12 @@ async function pollUntil(fn, ms, step = 150) {
   return false;
 }
 const view = async (p, name) => {
-  await p.page.locator(`[data-testid=bus-ride-views] button[data-view=${name}]`).first().click({ timeout: 4000 }).catch(() => p.page.locator(`[data-testid=bus-ride-views] button[data-view=${name}]`).first().tap({ timeout: 4000 })).catch(() => {}); // the ride may be over
+  const b = p.page.locator(`[data-testid=bus-ride-views] button[data-view=${name}]`).first();
+  if (p.touch) await b.tap({ timeout: 4000 }).catch(() => {});
+  else await b.click({ timeout: 4000 }).catch(() => {});
   await sleep(900);
 };
-async function walkBus(p, ahead, right, tol = 0.2, ms = 12000) {
+async function walkBus(p, ahead, right, tol = 0.15, ms = 14000) {
   await view(p, "front");
   const t0 = Date.now();
   let held = null;
@@ -68,98 +72,136 @@ async function walkBus(p, ahead, right, tol = 0.2, ms = 12000) {
     await sleep(70);
   }
   await release();
-  await sleep(250);
+  await sleep(300);
 }
+const standUp = async (p) => {
+  if ((await ride(p)).slot <= 0) return true;
+  await p.page.evaluate(async () => (await window.__imp("/src/net/transitSync.ts")).sendBusStand());
+  return pollUntil(async () => (await ride(p)).slot === 0, 4000);
+};
 
-// the aisle point to stand at for each place (the shared rules: reachable, approach ok, nearest to the front of a seat / the hold's own spot)
-
-let plan;
 await run.step("join and board", async () => {
   await joinVillage(A, "탑승", TIME);
   if (O) await joinVillage(O, "동승", TIME);
   await pollUntil(() => A.page.evaluate(async () => (await window.__imp("/src/net/transitSync.ts")).getTransitState().snapshot !== null), 30000);
-  for (const [p, dx, dz] of [[O, 36.9, -6.0], [A, 37.7, -8.9]]) {
+  for (const p of [O, A]) {
     if (!p) continue;
     await walkAndWait(p, 38.5, -0.5, 40000, 1);
-    await walkAndWait(p, dx, dz, 30000, 0.5);
+    await walkAndWait(p, 36.9, -6.0, 30000, 0.5);
+    await pollUntil(async () => (await status(p)).status === "boarding", 420000, 500); // the server may be started before the window opens
     await sleep(600);
     await act(p);
-    run.check("aboard and free", await pollUntil(async () => (await ride(p)).slot === 0 && (await status(p)).boarded, 8000), await status(p));
+    run.check(`${p.tag}: aboard and free`, await pollUntil(async () => (await ride(p)).slot === 0 && (await status(p)).boarded, 8000), await status(p));
     if (p === O) {
-      // the other rider sits in a middle seat and stays there
-      await O.page.evaluate(() => window.__imp("/src/net/transitSync.ts").then((m) => m.sendBusSit("seat", 4))); // seat R2 (a seat the sweep also takes later is skipped by the server: it is taken, so the sweep shows that too)
-      await sleep(500);
+      const ap = await O.page.evaluate(async () => { const c = await window.__imp("/shared/src/village/busCabin.ts"); const i = c.BUS_SEATS.findIndex((s) => s.id === "R2"); return { ...c.seatApproachPoint(c.BUS_SEATS[i]), i }; });
+      await walkBus(O, ap.ahead, ap.right, 0.12, 16000);
+      await O.page.evaluate(async (i) => (await window.__imp("/src/net/transitSync.ts")).sendBusSit("seat", i), ap.i);
+      run.check("the other rider sits in R2", await pollUntil(async () => (await ride(O)).slot === ap.i + 1, 5000), await ride(O));
     }
   }
-  await sleep(1500);
+  await sleep(1200);
 });
-plan = await A.page.evaluate(async () => {
+
+const plan = await A.page.evaluate(async () => {
   const c = await window.__imp("/shared/src/village/busCabin.ts");
-  const out = [];
-  c.BUS_SEATS.forEach((s, i) => {
-    const f = c.seatFrontPoint(s);
-    let best = null;
-    for (const margin of [0.55, 0.45, 0.38, 0]) {
-    if (best && best.d < 5) break; // a robust spot found at this margin
-    for (let a = -3.6; a <= 3.4; a += 0.05) for (let r = -0.25; r <= 0.25; r += 0.05) {
-      if (c.cabinBlocked(a, r, 0.32) || !c.seatApproachOk(s, a, r) || c.BUS_HOLDS.some((h) => Math.hypot(a - h.ahead, r - h.right) < margin)) continue; // not on a pole's spot (it would be offered first)
-      // standing here and looking one of the four ways, the seat must be the offered one, and still so a step (0.1 m) round the spot (the walk stops within a tolerance)
-      const offersAt = (x, y, yaw) => { const o = c.nearestFreeSpot(x, y, new Set(), new Set(), undefined, yaw); return !!o && o.kind === "seat" && o.index === i; };
-      let ok = false;
-      for (const yaw of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) {
-        if (!offersAt(a, r, yaw)) continue;
-        let all = true;
-        for (const da of [-0.1, 0, 0.1]) for (const dr of [-0.1, 0, 0.1]) if (!c.cabinBlocked(a + da, r + dr, 0.32) && !offersAt(a + da, r + dr, yaw)) all = false;
-        if (all) { ok = true; break; }
-      }
-      const d = Math.hypot(a - f.ahead, r - f.right) + (ok ? 0 : 5);
-      if (!best || d < best.d) best = { a, r, d, margin };
+  return c.BUS_SEATS.map((s, i) => {
+    const ap = c.seatApproachPoint(s);
+    // where the tap is made from: an aisle point 1.2 - 1.8 m from the approach (behind it for the front seats, ahead of it for the rear ones)
+    let start = null;
+    for (const d of [1.4, 1.2, 1.8, -1.4, -1.2, -1.8]) {
+      const a = ap.ahead + (ap.ahead > -1 ? -d : d);
+      if (!c.cabinBlocked(a, 0)) { start = { ahead: a, right: 0 }; break; }
     }
-    }
-    out.push({ kind: "seat", index: i, id: s.id, a: best.a, r: best.r, uiFacingForward: best.d < 5 });
+    return { index: i, id: s.id, a: ap.ahead, r: ap.right, start };
   });
-  c.BUS_HOLDS.forEach((h, i) => out.push({ kind: "hold", index: i, id: `H${i + 1}`, a: h.ahead, r: h.right, uiFacingForward: true }));
-  return out;
 });
 writeFileSync(join(OUT, "plan.json"), JSON.stringify(plan, null, 1));
 
 const results = [];
 for (const pl of plan.slice(from, Math.min(to, plan.length - 1) + 1)) {
-  const label = `${pl.kind} ${pl.id}`;
-  if (O && pl.kind === "seat" && pl.index === 4) { results.push({ label, skipped: "the other rider sits here" }); continue; }
-  const st = await status(A);
-  if (!st.boarded) { results.push({ label, skipped: "ride over" }); continue; }
-  const before = await ride(A);
-  if (before.slot !== 0) { await act(A); await pollUntil(async () => (await ride(A)).slot === 0, 4000); } // stand up first
-  await walkBus(A, pl.a, pl.r, pl.kind === "seat" ? 0.1 : 0.2, 14000);
+  const label = `seat ${pl.id}`;
+  if (!(await status(A)).boarded) { results.push({ label, skipped: "ride over" }); continue; }
+  const otherHere = O && pl.id === "R2";
+  // 1) walk + E (looking level again: the tap below looks down)
+  await standUp(A);
+  await A.page.evaluate(async () => { (await window.__imp("/src/game/viewState.ts")).viewState.fpPitch = 0; });
+  await walkBus(A, pl.a, pl.r, 0.12, 16000);
+  const want = `bus_sit:seat:${pl.index}`;
   let tg = await targetsOf(A);
-  const want = `bus_sit:${pl.kind}:${pl.index}`;
   let offered = tg.some((t) => t.id === want);
   const tried = [];
-  let method = "ui";
-  // a rider turns to the place they want (the quick views turn the body too): try each way of looking until the UI offers it
   for (const v of offered ? [] : ["back", "left", "right", "front"]) {
     await view(A, v);
-    await sleep(500);
+    await sleep(400);
     tg = await targetsOf(A);
-    tried.push(`${v}:${tg.map((t) => t.id).join("+")}@${(await ride(A)).walk.ahead.toFixed(2)},${(await ride(A)).walk.right.toFixed(2)}`);
-    if (tg.some((t) => t.id === want)) { offered = true; method = `ui (looking ${v})`; break; }
+    tried.push(`${v}:${tg.map((t) => t.id).join("+")}`);
+    if (tg.some((t) => t.id === want)) { offered = true; break; }
+  }
+  if (otherHere) {
+    run.check(`${label}: taken by the other rider, so it is not offered`, !offered, { tried });
+    results.push({ label, walkE: "taken (not offered)" });
+    continue;
   }
   if (offered) await act(A);
-  else {
-    method = "fallback-message";
-    await A.page.evaluate(([k, i]) => window.__imp("/src/net/transitSync.ts").then((m) => m.sendBusSit(k, i)), [pl.kind, pl.index]);
-  }
-  const num = pl.kind === "seat" ? pl.index + 1 : 14 + 1 + pl.index;
-  const ok = await pollUntil(async () => (await ride(A)).slot === num, 4000);
-  run.check(`${label}: taken (busSeat ${num}) via ${method}`, ok, { offered, tried, offeredNow: tg.map((t) => t.id), at: pl.a.toFixed(2) + "," + pl.r.toFixed(2) });
-  results.push({ label, method, ok, offeredUI: offered, uiFacingForward: pl.uiFacingForward });
+  const satE = offered && (await pollUntil(async () => (await ride(A)).slot === pl.index + 1, 4000));
+  run.check(`${label}: walk + E (the UI offers it, the server seats the rider)`, satE, { offered, tried, label: tg.find((t) => t.id === want)?.label, at: (await ride(A)).walk });
   await sleep(700);
-  await A.page.screenshot({ path: join(OUT, `${tag}-${String(pl.kind === "seat" ? pl.index : 14 + pl.index).padStart(2, "0")}-${pl.id}-view.png`) });
+  await A.page.evaluate(async () => { (await window.__imp("/src/game/viewState.ts")).viewState.fpPitch = 0; });
+  await view(A, "front");
+  const n = String(pl.index).padStart(2, "0");
+  await A.page.screenshot({ path: join(OUT, `${tag}-${n}-${pl.id}-view.png`) });
   for (const v of ["left", "right"]) {
     await view(A, v);
-    await A.page.screenshot({ path: join(OUT, `${tag}-${String(pl.kind === "seat" ? pl.index : 14 + pl.index).padStart(2, "0")}-${pl.id}-${v}.png`) });
+    await A.page.screenshot({ path: join(OUT, `${tag}-${n}-${pl.id}-${v}.png`) });
   }
+  // 2) tap: from an aisle point a few metres away
+  await standUp(A);
+  let satTap = false;
+  let tapInfo = null;
+  if (pl.start) {
+    await walkBus(A, pl.start.ahead, pl.start.right, 0.2, 16000);
+    // turn towards the seat and look down at it as a player would (a drag does this; here the look is set straight at the seat's
+    // cushion: the first person's yaw is bus-relative, its look direction (-cos, sin) in (ahead, right); its pitch + looks down)
+    const tries = [];
+    const aim = await A.page.evaluate(async (i) => {
+      const c = await window.__imp("/shared/src/village/busCabin.ts");
+      const w = (await window.__imp("/src/game/busRide.ts")).busWalk;
+      const s = c.BUS_SEATS[i];
+      const da = s.ahead + 0.06 - w.ahead;
+      const dr = s.right - w.right;
+      const drop = c.cabinFloorAt(w.ahead) + 1.95 - (s.floor + 0.47);
+      return { yaw: Math.atan2(dr, -da), pitch: Math.atan2(drop, Math.hypot(da, dr)) };
+    }, pl.index);
+    outer: for (const v of ["aim", pl.a < pl.start.ahead ? "back" : "front", "left", "right"]) {
+      if (v !== "aim") await view(A, v);
+      for (const pitch of v === "aim" ? [aim.pitch, aim.pitch * 0.7] : [0.35, 0.6, 0.15, 0.85]) {
+        await A.page.evaluate(async ([pt, yaw]) => { const vs = (await window.__imp("/src/game/viewState.ts")).viewState; vs.fpPitch = pt; if (yaw !== null) vs.fpYaw = yaw; }, [pitch, v === "aim" ? aim.yaw : null]);
+        await sleep(350);
+        const at = await A.page.evaluate((i) => window.__cvBusSeatScreen?.(i) ?? null, pl.index);
+        tries.push({ v, pitch, at: at && { x: Math.round(at.x), y: Math.round(at.y), on: at.onScreen } });
+        // on screen and clear of the HUD's corners (the ride panel top left, the buttons bottom right)
+        if (!at || !at.onScreen || at.y < 120 || at.y > (A.touch ? 640 : 660) || (at.x < 260 && at.y < 260)) continue;
+        tapInfo = { v, pitch, at };
+        if (A.touch) await A.page.touchscreen.tap(at.x, at.y);
+        else await A.page.mouse.click(at.x, at.y);
+        // owner 2026-11-17 ("의자를 찍으면 자동 앉기는 빼줘"): the tap only walks the rider there; arrived, they are still standing and
+        // the action button offers THAT seat; E / the button sits
+        const arrived = await pollUntil(async () => (await A.page.evaluate(async () => (await window.__imp("/src/game/busRide.ts")).busSeatGoal.index)) === -1, 15000);
+        await sleep(600);
+        const stillStanding = (await ride(A)).slot === 0;
+        const offered = (await targetsOf(A)).some((t) => t.id === `bus_sit:seat:${pl.index}`);
+        tapInfo = { v, pitch, at, arrived, stillStanding, offered };
+        if (arrived && stillStanding && offered) {
+          await act(A);
+          satTap = await pollUntil(async () => (await ride(A)).slot === pl.index + 1, 5000);
+        }
+        break outer;
+      }
+    }
+    if (!tapInfo) tapInfo = { tries };
+  }
+  run.check(`${label}: a tap / click on it walks the rider there (no auto-sit: still standing, the button offers that seat), E / the button sits`, satTap, { tapInfo, start: pl.start, now: await ride(A) });
+  results.push({ label, walkE: satE, tap: satTap });
 }
 writeFileSync(join(OUT, `results-${tag}-${from}-${to}.json`), JSON.stringify(results, null, 1));
 await browser.close();

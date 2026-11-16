@@ -95,9 +95,13 @@ export const BUS_LOOK = {
    * the front sign's 0.11; r4 polish, visual r1).
    */
   signGlassF0: 0.04,
-  /** How see-through the windows are, and their tint (sRGB). */
-  glassOpacity: 0.8,
-  glassColor: "#081014",
+  /**
+   * How see-through the windows are, and their tint (sRGB). Bus v3 (owner 2026-11-16: "시야가 잘 보이는 유리구조로"): the big
+   * frameless panes are lightly tinted (was 0.8 of a near-black tint), so the street is clearly seen from inside and the cabin
+   * from outside; the Fresnel reflection (glassF0) keeps them reading as glass.
+   */
+  glassOpacity: 0.34,
+  glassColor: "#1A2C33",
   /**
    * The rich tier's clear coat over the paint (its mask is the ORM map's red channel). Its roughness keeps the sun's
    * glint on the rolled roof edges a small highlight instead of a bloom halo (bus review: 0.12 bloomed).
@@ -114,7 +118,7 @@ export const BUS_LOOK = {
   ledDay: 3.0,
   ledNight: 1.5,
   /** How see-through the glass is at full night: the lit cabin shows as it does in a real bus after dark. */
-  glassNightOpacity: 0.55,
+  glassNightOpacity: 0.22,
   /** The contact shadow's darkness where the baked map is white (under the floor, at the tyres' contact). */
   groundShadow: 0.85,
   /**

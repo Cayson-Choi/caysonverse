@@ -120,7 +120,7 @@ await run.step("A boards: in the bus on both screens", async () => {
   const seen = (await B.page.evaluate(() => window.__cv.getRemoteDrawn()))[sidA];
   const b = await bus(B);
   const l = seen ? local(b, seen) : null;
-  run.check("B draws A in the bus (free in the aisle at the entry: bus-standing)", /^bus-(standing|seated|holding)$/.test(seen?.mode ?? "") && l && Math.abs(l.ahead) < 4.3 && Math.abs(l.right) < 1.2 && seen.y > 0.3, { seen, local: l });
+  run.check("B draws A in the bus (free in the aisle at the entry: bus-standing)", /^bus-(standing|seated)$/.test(seen?.mode ?? "") && l && Math.abs(l.ahead) < 4.3 && Math.abs(l.right) < 1.2 && seen.y > 0.3, { seen, local: l });
   await shot(A, `rider-1-self-boarded-${tag}.png`);
   // B looks at A's window from the pavement outside it, a little ahead of A so B's own body is not in the way
   const fx = Math.sin(b.yaw);

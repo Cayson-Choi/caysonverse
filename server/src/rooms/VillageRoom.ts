@@ -38,7 +38,7 @@ import {
 import { BUS_DRIVER, BusDriver, busDriveTrip } from "@caysonverse/shared/village/busDrive";
 import { busDismountSpot } from "@caysonverse/shared/village/busSeats";
 import {
-  BUS_HOLDS,
+  BUS_CAPACITY,
   BUS_SEATS,
   busPlaceOf,
   busRiderWorldPose,
@@ -204,6 +204,15 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     // crosswalk signals without waiting for the hour (the clients follow it: they read the time from the server).
     const dev = process.env.NODE_ENV === "production" ? 0 : Number(process.env.CV_DEV_CLOCK_OFFSET_MS ?? 0);
     return Date.now() + (Number.isFinite(dev) ? dev : 0);
+  }
+
+  /**
+   * How many may ride the bus (busCabin.ts BUS_CAPACITY: 10 seats + 16 standing places = 26). DEV only (never in production):
+   * CV_DEV_BUS_CAPACITY lowers it, so the e2e can fill the bus with a few browsers and see the next rider refused.
+   */
+  protected busCapacity(): number {
+    const dev = process.env.NODE_ENV === "production" ? NaN : Number(process.env.CV_DEV_BUS_CAPACITY ?? NaN);
+    return Number.isInteger(dev) && dev > 0 ? Math.min(dev, BUS_CAPACITY) : BUS_CAPACITY;
   }
 
   /** The server's clock for one visitor (on join; queued until their join completes) or for everyone. */
@@ -514,7 +523,7 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
   private dismountSlot = 0;
 
   /** Put an aboard rider at the world pose of their place in the bus (x/z/yaw follow it; written only when it moved over 2 cm). */
-  private readonly riderPose: BusRiderPoseFull = { x: 0, z: 0, yaw: 0, y: 0, seated: false, holding: false };
+  private readonly riderPose: BusRiderPoseFull = { x: 0, z: 0, yaw: 0, y: 0, seated: false };
   private placeRider(player: Player, bus: BusBodyPose): void {
     if (player.busSeat < 0) return;
     const w = busRiderWorldPose(bus, player.busSeat, player.busAhead, player.busRight, player.busYaw, this.riderPose);
@@ -531,13 +540,13 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     const out: { ahead: number; right: number }[] = [];
     this.state.players.forEach((p) => {
       if (p === except || !this.busRiders.has(p) || p.busSeat < 0) return;
-      // seated riders are inside their seat's solid already (walkers never reach it); free and holding ones are bodies
+      // seated riders are inside their seat's solid already (walkers never reach it); free ones are bodies
       if (busPlaceOf(p.busSeat).kind !== "seat") out.push({ ahead: p.busAhead, right: p.busRight });
     });
     return out;
   }
 
-  /** The busSeat numbers other riders hold (seats and hold spots). */
+  /** The busSeat numbers other riders sit in. */
   private takenBusSpots(except: Player): Set<number> {
     const taken = new Set<number>();
     this.state.players.forEach((p) => {
@@ -562,18 +571,18 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     this.placeRider(player, this.busBodyPose(this.wallClock()));
   }
 
-  /** Sit in a free seat or take hold of a pole. A refusal says why to the rider (a taken seat, the wrong side of a backed seat). */
+  /** Sit in a free seat. A refusal says why to the rider (a taken seat, the wrong side of a backed seat). */
   private handleBusSit(client: Client, payload: unknown): void {
     const player = this.state.players.get(client.sessionId);
     const track = this.tracking.get(client.sessionId);
     if (!player || !track || !this.busRiders.has(player)) return;
     if (!track.busActRate.tryAccept(this.now())) return;
-    const decision = validateBusSit({ busSeat: player.busSeat, ahead: player.busAhead, right: player.busRight }, payload, this.takenBusSpots(player), this.otherBusPoints(player));
+    const decision = validateBusSit({ busSeat: player.busSeat, ahead: player.busAhead, right: player.busRight }, payload, this.takenBusSpots(player));
     if (!decision.ok) {
       if (decision.notice) client.send(MessageType.BusRejected, { reason: decision.notice });
       return;
     }
-    const spot = decision.kind === "seat" ? BUS_SEATS[decision.index]! : BUS_HOLDS[decision.index]!;
+    const spot = BUS_SEATS[decision.index]!;
     player.busSeat = decision.busSeat;
     player.busAhead = spot.ahead;
     player.busRight = spot.right;
@@ -581,7 +590,7 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     this.placeRider(player, this.busBodyPose(this.wallClock()));
   }
 
-  /** From a seat or a hold spot back on one's feet in the aisle. */
+  /** From a seat back on one's feet in the aisle. */
   private handleBusStand(client: Client): void {
     const player = this.state.players.get(client.sessionId);
     const track = this.tracking.get(client.sessionId);
@@ -605,11 +614,23 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     const player = this.state.players.get(client.sessionId);
     const track = this.tracking.get(client.sessionId);
     if (!player || !track) return;
+    // Bus v3 (owner 2026-11-16): only as many ride as the bus holds (busCabin.ts BUS_CAPACITY: the seats + the standing places)
+    const others: Array<{ ahead: number; right: number }> = [];
+    let aboard = 0;
+    this.state.players.forEach((p) => {
+      if (p === player || !this.busRiders.has(p)) return;
+      aboard++;
+      if (p.busSeat === 0) others.push({ ahead: p.busAhead, right: p.busRight });
+    });
+    const entry = freeBusEntry(others);
     const decision = validateBusRide(payload, {
       boarded: track.busBoarded,
       area: player.area,
       x: player.x,
       z: player.z,
+      aboard,
+      capacity: this.busCapacity(),
+      standingFree: entry !== null,
     }, this.wallClock(), busDriveTrip(this.driverAt(this.wallClock()).drive, this.wallClock()));
     if (!decision.ok) {
       client.send(MessageType.BusRejected, { reason: decision.notice });
@@ -622,17 +643,13 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
       track.busBoarded = true;
       track.busTripId = decision.tripId;
       this.busRiders.add(player);
-      // Aboard and free just inside the front door, facing back down the aisle (busCabin.ts BUS_ENTRY): the rider walks,
-      // sits or holds a pole from here; every client draws them in the bus wherever it goes.
-      const others: Array<{ ahead: number; right: number }> = [];
-      this.state.players.forEach((p) => {
-        if (p !== player && this.busRiders.has(p)) others.push({ ahead: p.busAhead, right: p.busRight });
-      });
-      const entry = freeBusEntry(others);
+      // Aboard and free on the first standing place nobody stands on (busCabin.ts BUS_STANDING_SPOTS, from the front door),
+      // facing back down the aisle: the rider walks or sits from here; every client draws them in the bus wherever it goes.
+      const at = entry!;
       player.busSeat = 0;
-      player.busAhead = entry.ahead;
-      player.busRight = entry.right;
-      player.busYaw = entry.yaw;
+      player.busAhead = at.ahead;
+      player.busRight = at.right;
+      player.busYaw = at.yaw;
       track.busMoveAt = this.now();
       this.placeRider(player, this.busBodyPose(this.wallClock()));
       client.send(MessageType.BusRideState, { boarded: true, tripId: decision.tripId } satisfies BusRideStatePayload);

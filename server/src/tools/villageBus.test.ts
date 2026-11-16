@@ -8,7 +8,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { BUS_MIRROR_REACH, VILLAGE_LAYOUT } from "@caysonverse/shared/village/villageLayout";
-import { BUS_CEILING, BUS_HOLDS, BUS_POLES, BUS_STRAPS } from "@caysonverse/shared/village/busCabin";
+import { BUS_CEILING, BUS_DRIVER, BUS_SEATS } from "@caysonverse/shared/village/busCabin";
 import type { Gltf } from "../../../scripts/lib/schoolGlb";
 import {
   BUDGETS,
@@ -277,35 +277,33 @@ describe("village_bus.glb geometry: the wordmark decals and the signs behind gla
   });
 });
 
-describe("village_bus.glb cabin fixtures match the generated cabin data (bus-ride 2026-11-15)", () => {
+describe("village_bus.glb cabin: bus v3 (2026-11-16: no poles, rails or straps; the driver's seat and wheel are their own nodes)", () => {
   const { gltf } = load("village_bus.glb");
-  const nodeBox = (name: string) => {
-    const node = gltf.nodes!.find((n) => n.name === name);
-    expect(node, name).toBeDefined();
-    const prim = gltf.meshes![node!.mesh!]!.primitives[0]!;
-    const a = gltf.accessors![prim.attributes.POSITION!]!;
-    return { min: a.min as number[], max: a.max as number[] };
-  };
+  const names = gltf.nodes!.map((n) => n.name ?? "");
 
-  it("every pole is its own node, standing at the generated spot from its floor to the ceiling", () => {
-    for (const p of BUS_POLES) {
-      const { min, max } = nodeBox(p.name);
-      // glTF: x = right, y = up, z = -ahead
-      expect((min[0]! + max[0]!) / 2).toBeCloseTo(p.right, 1);
-      expect(-(min[2]! + max[2]!) / 2).toBeCloseTo(p.ahead, 1);
-      expect(min[1]!).toBeCloseTo(p.z0, 2);
-      expect(max[1]!).toBeCloseTo(p.z1, 2);
-    }
+  it("no stanchion, ceiling rail or strap node is left; the stop buttons are", () => {
+    expect(names.filter((n) => /^(pole|strap|rail)_/.test(n))).toEqual([]);
+    expect(names.filter((n) => n.startsWith("stop_btn_")).length).toBeGreaterThanOrEqual(BUS_SEATS.length - 2);
     expect(BUS_CEILING).toBeCloseTo(3.15, 6);
   });
 
-  it("the strap groups and a hold spot's pole exist as nodes (the camera fades them)", () => {
-    for (const s of BUS_STRAPS) nodeBox(s.name);
-    for (const h of BUS_HOLDS) expect(BUS_POLES.some((p) => p.name === h.pole), h.id).toBe(true);
-    const names = gltf.nodes!.map((n) => n.name ?? "");
-    expect(names.filter((n) => n.startsWith("stop_btn_")).length).toBeGreaterThanOrEqual(4);
-    expect(names).toContain("rail_l");
-    expect(names).toContain("rail_r");
+  it("bus_driver_seat, bus_steering_wheel and bus_driver_sit stand where the generated driver data says (glTF: x right, y up, z = -ahead)", () => {
+    const at = (name: string) => {
+      const n = gltf.nodes!.find((x) => x.name === name);
+      expect(n, name).toBeDefined();
+      return (n!.translation ?? [0, 0, 0]) as number[];
+    };
+    const seat = at("bus_driver_seat");
+    expect(seat[0]).toBeCloseTo(BUS_DRIVER.seat.right, 2);
+    expect(-seat[2]!).toBeCloseTo(BUS_DRIVER.seat.ahead, 2);
+    expect(seat[1]).toBeCloseTo(BUS_DRIVER.seat.floor, 2);
+    const wheel = at("bus_steering_wheel");
+    expect(wheel[0]).toBeCloseTo(BUS_DRIVER.wheel.right, 2);
+    expect(-wheel[2]!).toBeCloseTo(BUS_DRIVER.wheel.ahead, 2);
+    expect(wheel[1]).toBeCloseTo(BUS_DRIVER.wheel.y, 2);
+    expect(gltf.nodes!.find((x) => x.name === "bus_steering_wheel")!.rotation, "the wheel's tilt is its node's rotation").toBeDefined();
+    const sit = at("bus_driver_sit");
+    expect(-sit[2]!).toBeCloseTo(BUS_DRIVER.sit.ahead, 2);
   });
 
   it("the body is taller than before: window band to 2.75 m, roof edge 3.45 m (the 2.52 m head and 3.03 m hat fit)", () => {

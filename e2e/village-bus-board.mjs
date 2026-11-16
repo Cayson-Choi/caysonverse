@@ -87,8 +87,8 @@ if (boarding) {
     await sleep(800);
     await shot(`boarded-${tag}.png`);
     const label = await button();
-    // aboard, the action is the cabin's (sit in a free seat, take hold of a pole); the ride panel has the 하차 button (bus-ride 2026-11-15)
-    run.check("the action button now offers a seat or a pole inside the bus", /앉기|잡기|손잡이/.test(label), label);
+    // aboard, the action is the cabin's (sit in a free seat; bus v3: no grab handles); the ride panel has the 하차 button (bus-ride 2026-11-15)
+    run.check("the action button now offers a seat inside the bus (never a grab handle)", /앉기/.test(label) && !/잡기|손잡이/.test(label), label);
     const off = await p.page.evaluate(() => [...document.querySelectorAll("[data-testid=bus-ride-hud] button")].some((b) => b.textContent.trim() === "하차"));
     run.check("the ride panel has the 하차 button (the doors are open at the stop)", off);
   });

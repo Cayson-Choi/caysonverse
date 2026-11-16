@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import { useKeyboardControls } from "@react-three/drei";
-import { PerspectiveCamera, Raycaster, Vector2 } from "three";
+import { PerspectiveCamera, Raycaster, Vector2, Vector3 } from "three";
 import type { Fog } from "three";
 import { CAMERA, CAMERA_FAR, FP_EYE_HEIGHT, HEAD_HEIGHT } from "./constants";
 import type { MoveControl } from "./constants";
@@ -79,8 +79,9 @@ import { useFpCursor } from "./useFpCursor";
 import { useSettingsStore } from "../stores/settingsStore";
 import { getTransitRenderPose } from "../net/transitSync";
 import { busRiderCamera, ownSeatIndex, riderFov, type TransitCameraPose } from "../village/transitCamera";
-import { busCamGoal, busCamState, busElevation, riderBusPoint, selfBusRide } from "./busRide";
-import { BUS_HOLDS, BUS_SEATS, busPlaceOf, cabinFloorAt, seatBodyPoint } from "@caysonverse/shared/village/busCabin";
+import { busCamGoal, busCamState, busElevation, busSeatGoal, busSeatPreferred, riderBusPoint, selfBusRide } from "./busRide";
+import { BUS_SEATS, busPlaceOf, cabinFloorAt, seatBodyPoint } from "@caysonverse/shared/village/busCabin";
+import { busSeatUnderRay } from "../village/busSeatPick";
 import { VILLAGE_LAYOUT, cubbyAtPoint, isHouseArea } from "@caysonverse/shared/village/villageLayout";
 import { localArea } from "../village/villageArea";
 import { armHouseUse, houseTapTarget } from "../village/houseTap";
@@ -281,7 +282,23 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
     window.__cvClickPick = () => lastClickPick && { ...lastClickPick };
     // the seat a click on furniture walks to (and turns toward when its walk ends: furnitureClick.ts), or null
     (window as unknown as { __cvSeatOnArrival?: () => unknown }).__cvSeatOnArrival = () => seatOnArrival.current && { ...seatOnArrival.current };
+    // bus v3: where a bus seat's cushion is on the screen now (client px), for the e2e's tap on it
+    (window as unknown as { __cvBusSeatScreen?: (i: number) => unknown }).__cvBusSeatScreen = (i: number) => {
+      const s = BUS_SEATS[i];
+      if (!s) return null;
+      const bus = getTransitRenderPose();
+      const fx = Math.sin(bus.yaw);
+      const fz = Math.cos(bus.yaw);
+      const a = s.ahead + 0.06;
+      const p = new Vector3(bus.x + fx * a - fz * s.right, s.floor + 0.47, bus.z + fz * a + fx * s.right);
+      const cam = camera as PerspectiveCamera;
+      cam.updateMatrixWorld();
+      p.project(cam);
+      const rect = gl.domElement.getBoundingClientRect();
+      return { x: rect.left + ((p.x + 1) / 2) * rect.width, y: rect.top + ((1 - p.y) / 2) * rect.height, onScreen: p.z < 1 && Math.abs(p.x) < 1 && Math.abs(p.y) < 1 };
+    };
     return () => {
+      delete (window as unknown as { __cvBusSeatScreen?: unknown }).__cvBusSeatScreen;
       delete (window as unknown as { __cvSeatOnArrival?: () => unknown }).__cvSeatOnArrival;
       delete window.__cvCamera;
       delete window.__cvClickTarget;
@@ -349,6 +366,25 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
         pick.ray = { o: { x: o.x, y: o.y, z: o.z }, d: { x: d.x, y: d.y, z: d.z } };
       }
       return pick;
+    };
+    /**
+     * Bus v3 (owner 2026-11-16): riding, a click or a tap on one of the bus's seats walks the rider down the aisle to it and sits
+     * (busRide.ts busSeatGoal; LocalPlayer walks and asks). A click anywhere else in the bus does nothing (the bus has no ground
+     * to walk to). True when the rider is aboard: the click is the bus's.
+     */
+    const busSeatTap = (clientX: number, clientY: number, cam = camera as PerspectiveCamera): boolean => {
+      if (selfBusRide.slot < 0) return false;
+      const rect = el.getBoundingClientRect();
+      ndc.set(((clientX - rect.left) / rect.width) * 2 - 1, -(((clientY - rect.top) / rect.height) * 2 - 1));
+      raycaster.setFromCamera(ndc, cam);
+      const { origin: o, direction: d } = raycaster.ray;
+      const index = busSeatUnderRay(getTransitRenderPose(), o, d);
+      if (index >= 0) {
+        busSeatGoal.index = index;
+        busSeatPreferred.index = -1;
+        busSeatGoal.at = performance.now();
+      }
+      return true;
     };
     /**
      * In the memorial hall a click or a tap on a cubby — any row, the top one too (owner 2026-11-13) — opens its close-up (the
@@ -543,6 +579,7 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
      * finished after it).
      */
     const lookTapWalk = (tap: LookTap, wait: boolean) => {
+      if (busSeatTap(tap.at.x, tap.at.y, tap.snap)) return; // riding: a tap on a seat sits there, nothing else walks
       const generation = clickGeneration();
       taps.work.hold(() => {
         const t0 = performance.now();
@@ -850,6 +887,8 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
             // This input lane takes over any held look-half tap (including its pending ring and route slices).
             taps.reset();
             clickWork.drop(); // a click still being planned gives way to this one
+            // riding: a click on a seat sits there (busSeatTap), nothing else walks
+            if (!busSeatTap(e.clientX, e.clientY)) {
             let generation = clickGeneration();
             planClick(
               pickAt(e.clientX, e.clientY),
@@ -877,6 +916,7 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
                 },
               },
             );
+            }
           }
         }
       }
@@ -1153,7 +1193,7 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
       }
       const place = busPlaceOf(selfBusRide.slot);
       const bus = getTransitRenderPose();
-      const spot = place.kind === "seat" ? seatBodyPoint(BUS_SEATS[place.index]!) : place.kind === "hold" ? BUS_HOLDS[place.index] : undefined;
+      const spot = place.kind === "seat" ? seatBodyPoint(BUS_SEATS[place.index]!) : undefined;
       const local = riderBusPoint(selfBusRide, place.kind, spot);
       const ride = busRiderCamera(
         {

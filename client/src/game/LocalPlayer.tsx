@@ -94,11 +94,12 @@ import type { MoveControl } from "./constants";
 import type { Orbit, Pose, SeatState } from "./types";
 import { getRoom, sendJump, sendMove, sendStand } from "../net/connection";
 import { getTransitRenderPose, useTransitState } from "../net/transitSync";
-import { busWalk, busCamState, selfBusRide } from "./busRide";
-import { busRiderPoints } from "./remoteStore";
+import { busWalk, busCamState, busSeatGoal, busSeatPreferred, selfBusRide } from "./busRide";
+import { busRiderPoints, takenBusSpots } from "./remoteStore";
 import {
-  BUS_HOLDS,
   BUS_SEATS,
+  seatApproachPoint,
+  seatApproachOk,
   BUS_WALK_RADIUS,
   busLocalToWorld,
   busPlaceOf,
@@ -109,7 +110,7 @@ import {
   type BusPlaceKind,
   type BusRiderPoseFull,
 } from "@caysonverse/shared/village/busCabin";
-import { sendBusMove, sendBusStand } from "../net/transitSync";
+import { sendBusMove, sendBusStand, showTransitNotice } from "../net/transitSync";
 import { isInputSuspended } from "../net/resilience";
 import { useSettingsStore } from "../stores/settingsStore";
 import { cubbyFocusWeight } from "../village/cubbyFocus";
@@ -509,9 +510,9 @@ export function LocalPlayer({
     return true;
   }
 
-  // What I am in the bus ("none": not riding, "free": in the aisle, "seat", "hold") and the pose drawn (reused).
+  // What I am in the bus ("none": not riding, "free": in the aisle, "seat") and the pose drawn (reused).
   const ridingRef = useRef<BusPlaceKind | "none">("none");
-  const riderPoseRef = useRef<BusRiderPoseFull>({ x: 0, z: 0, yaw: 0, y: 0, seated: false, holding: false });
+  const riderPoseRef = useRef<BusRiderPoseFull>({ x: 0, z: 0, yaw: 0, y: 0, seated: false });
   // The orbit I had before boarding (put back on getting off), the floor height I stand at (eased over the steps), the
   // BusMove throttle and the one Stand asked for when a key is pressed on a seat.
   const orbitBeforeRideRef = useRef<{ yaw: number; pitch: number; distance: number } | null>(null);
@@ -521,6 +522,9 @@ export function LocalPlayer({
   const busStandSentRef = useRef(false);
   const busStepTmp = useRef({ ahead: 0, right: 0 }).current;
   const busOthersTmp = useRef<{ ahead: number; right: number }[]>([]).current;
+  const busTakenTmp = useRef(new Set<number>()).current;
+  /** The body as drawn in the bus's frame: it glides between the aisle and a seat (bus v3), see the riding step. */
+  const busDrawRef = useRef({ a: 0, r: 0, yaw: 0, y: 0, until: 0, init: false, kind: "none" as BusPlaceKind | "none" });
 
   /**
    * Onto the bus, or a change of place in it: whatever the body did gives way to the held seated pose on a seat; free or at
@@ -559,6 +563,8 @@ export function LocalPlayer({
   /** Off the bus: on the ground where the server put me down (outside the door), Idle, the seat state as synced. */
   function endRide(): void {
     busWalk.valid = false;
+    busDrawRef.current.init = false;
+    busDrawRef.current.kind = "none";
     busCamState.active = false;
     const saved = orbitBeforeRideRef.current;
     if (saved) {
@@ -728,9 +734,10 @@ export function LocalPlayer({
           // both rows of windows in view); the wheel / pinch out is the third-person arm inside the cabin (the camera's job).
           orbitBeforeRideRef.current = { yaw: orbit.yaw, pitch: orbit.pitch, distance: orbit.distance };
           wasFpBeforeRideRef.current = viewState.mode === "fp";
-          orbit.yaw = 0;
+          // bus v3 QA: boarding looks FORWARD (the windscreen and both rows of side windows), not at the rear seats
+          orbit.yaw = Math.PI;
           orbit.pitch = 0.6; // the player's zoom stays as they set it (owner 2026-11-16)
-          enterFp(0); // the look yaw is bus-relative: 0 looks to the rear, the way the avatar faces at the entry
+          enterFp(Math.PI); // the look yaw is bus-relative: PI looks to the front (BUS_VIEW_YAW.front)
           viewState.fpPitch = 0.05;
           busWalk.ahead = selfBusRide.ahead;
           busWalk.right = selfBusRide.right;
@@ -761,7 +768,55 @@ export function LocalPlayer({
           busWalk.valid = true;
         }
         const rel = inFp ? viewState.fpYaw : orbit.yaw;
+        // Bus v3: a seat tapped or clicked (busSeatGoal): walk the aisle to its approach point, then ask to sit (a key or the
+        // stick takes over and drops it; it gives up after 12 s, e.g. when another rider stands in the way).
+        let seatWalk = false;
+        if (busSeatGoal.index >= 0 && !suspended) {
+          if (moving || performance.now() - busSeatGoal.at > 12000) busSeatGoal.index = -1;
+          else if (takenBusSpots(busTakenTmp).has(busSeatGoal.index + 1)) {
+            showTransitNotice("다른 사람이 앉아 있어요.");
+            busSeatGoal.index = -1;
+          }
+          else {
+            const goalSeat = BUS_SEATS[busSeatGoal.index]!;
+            const ap = seatApproachPoint(goalSeat);
+            if (seatApproachOk(goalSeat, busWalk.ahead, busWalk.right) && Math.hypot(ap.ahead - busWalk.ahead, ap.right - busWalk.right) < 0.45) {
+              // arrived (the server's own reach rule): stop here; the rider sits with E / the 앉기 button, which now offers THIS
+              // seat (owner 2026-11-17: "의자를 찍으면 자동 앉기는 빼줘" — a tap only walks there)
+              sendBusMove(busWalk.ahead, busWalk.right, busWalk.yaw);
+              busSendRef.current.at = performance.now();
+              busSendRef.current.moving = false;
+              busSeatPreferred.index = busSeatGoal.index;
+              busSeatGoal.index = -1;
+            } else {
+              // down the aisle first (its middle), across to the approach point once level with it
+              const level = Math.abs(ap.ahead - busWalk.ahead) < 0.12;
+              const tA = ap.ahead;
+              const tR = level ? ap.right : 0;
+              const dA = tA - busWalk.ahead;
+              const dR = tR - busWalk.right;
+              const len = Math.hypot(dA, dR);
+              if (len > 1e-4) {
+                const speed = moveSpeed(false);
+                const stepLen = Math.min(len, speed * delta);
+                const next = stepInCabin(busWalk, { ahead: busWalk.ahead + (dA / len) * stepLen, right: busWalk.right + (dR / len) * stepLen }, BUS_WALK_RADIUS, busStepTmp, busRiderPoints(busOthersTmp));
+                const mA = next.ahead - busWalk.ahead;
+                const mR = next.right - busWalk.right;
+                busWalk.ahead = next.ahead;
+                busWalk.right = next.right;
+                if (delta > 0) groundSpeedBus = Math.hypot(mA, mR) / delta;
+                const fx = Math.sin(bus.yaw);
+                const fz = Math.cos(bus.yaw);
+                movedBusX = mA * fx - mR * fz;
+                movedBusZ = mA * fz + mR * fx;
+                if (!inFp && groundSpeedBus > 0.05) busWalk.yaw = normalizeYaw(stepYaw(busWalk.yaw + bus.yaw, bus.yaw + Math.atan2(-mR, mA), TURN_SPEED * delta) - bus.yaw);
+                seatWalk = groundSpeedBus > 0.05;
+              }
+            }
+          }
+        }
         if (moving && !suspended) {
+          busSeatPreferred.index = -1; // walking off by hand: the tapped seat is no longer the one offered
           const dirW = worldDirection(intent, bus.yaw + rel);
           const fx = Math.sin(bus.yaw);
           const fz = Math.cos(bus.yaw);
@@ -796,11 +851,11 @@ export function LocalPlayer({
         // BusMove, at most ten a second while moving and one final when I stop
         const send = busSendRef.current;
         const nowT = performance.now();
-        if (moving && groundSpeedBus > 0 && nowT - send.at >= 100) {
+        if ((moving || seatWalk) && groundSpeedBus > 0 && nowT - send.at >= 100) {
           sendBusMove(busWalk.ahead, busWalk.right, busWalk.yaw);
           send.at = nowT;
           send.moving = true;
-        } else if (!moving && send.moving) {
+        } else if (!moving && !seatWalk && send.moving) {
           sendBusMove(busWalk.ahead, busWalk.right, busWalk.yaw);
           send.moving = false;
           send.at = nowT;
@@ -812,23 +867,64 @@ export function LocalPlayer({
         void w;
       } else {
         busWalk.valid = false;
-        const spot = placeNow.kind === "seat" ? BUS_SEATS[placeNow.index]! : BUS_HOLDS[placeNow.index]!;
+        const spot = BUS_SEATS[placeNow.index]!;
         busWalk.ahead = spot.ahead;
         busWalk.right = spot.right;
         const r = busRiderWorldPose(bus, busSlot, spot.ahead, spot.right, spot.yaw, riderPoseRef.current);
         targetY = r.y;
-        // a key (or the stick) on a seat or at a pole stands me up in the aisle: one BusStand, then I walk
-        if (moving && !suspended && (!busStandSentRef.current || performance.now() - standAtRef.current > STAND_RETRY_MS)) {
+        // a key (or the stick) on a seat or at a pole stands me up in the aisle: one BusStand (again after STAND_RETRY_MS if the
+        // server has not answered), then I walk. A tap on ANOTHER seat stands me up too, and the walk to it follows (busSeatGoal); a
+        // tap on my own seat is nothing.
+        if (busSeatGoal.index === placeNow.index) busSeatGoal.index = -1;
+        busSeatPreferred.index = -1;
+        if ((moving || busSeatGoal.index >= 0) && !suspended && (!busStandSentRef.current || performance.now() - standAtRef.current > STAND_RETRY_MS)) {
           sendBusStand();
           busStandSentRef.current = true;
           standAtRef.current = performance.now();
         }
       }
-      // the floor under me eases over the steps (the raised rear, the step treads)
+      // the floor under me eases (a seat's platform over a wheel housing)
       const lerpK = Math.min(1, delta * 12);
       busYRef.current = placeNow.kind === "seat" ? targetY : busYRef.current + (targetY - busYRef.current) * lerpK;
       const rp = riderPoseRef.current;
-      group.position.set(rp.x, busYRef.current, rp.z);
+      // Bus v3 (owner 2026-11-16: "행동이 실제와 비슷한 느낌", not snappy): sitting down and standing up glide the body between the
+      // aisle and the seat over about a third of a second (in the bus's own frame, so the moving bus never drags it), instead of
+      // jumping there; walking in the aisle is drawn where it is.
+      {
+        const fxB = Math.sin(bus.yaw);
+        const fzB = Math.cos(bus.yaw);
+        const tA = (rp.x - bus.x) * fxB + (rp.z - bus.z) * fzB;
+        const tR = -(rp.x - bus.x) * fzB + (rp.z - bus.z) * fxB;
+        const tYaw = normalizeYaw(rp.yaw - bus.yaw);
+        const d = busDrawRef.current;
+        const nowT = performance.now();
+        if (!d.init) {
+          d.a = tA;
+          d.r = tR;
+          d.yaw = tYaw;
+          d.y = busYRef.current;
+          d.init = true;
+        }
+        if (placeNow.kind !== d.kind) {
+          d.kind = placeNow.kind;
+          d.until = nowT + 450;
+        }
+        if (nowT < d.until) {
+          const k = 1 - Math.exp(-delta * 9);
+          d.a += (tA - d.a) * k;
+          d.r += (tR - d.r) * k;
+          d.yaw = normalizeYaw(d.yaw + normalizeYaw(tYaw - d.yaw) * k);
+          d.y += (busYRef.current - d.y) * k;
+        } else {
+          d.a = tA;
+          d.r = tR;
+          d.yaw = tYaw;
+          d.y = busYRef.current;
+        }
+        busLocalToWorld(bus, d.a, d.r, rp);
+        rp.yaw = bus.yaw + d.yaw;
+        group.position.set(rp.x, d.y, rp.z);
+      }
       group.rotation.y = rp.yaw + MODEL_FACING_OFFSET;
       busCamState.avatar = group;
       busCamState.avatar = group;

@@ -5,7 +5,7 @@
 // Page code reaches the app's modules through `window.__imp(path)` (see common.mjs openPlayer).
 
 import { mkdirSync } from "node:fs";
-import { CLIENT_URL, DESKTOP, PHONE, createRun, entryReady, launchBrowser, layoutReport, openPlayer, press, pos, sleep, touchDown, touchMoveTo, touchUp, turnCameraTo, visibleButtons, waitIdle, walkAndWait, walkTo } from "./common.mjs";
+import { CLIENT_URL, DESKTOP, PHONE, SLOW, createRun, entryReady, launchBrowser, layoutReport, openPlayer, press, pos, sleep, touchDown, touchMoveTo, touchUp, turnCameraTo, visibleButtons, waitIdle, walkAndWait, walkTo } from "./common.mjs";
 
 /** An empty cubby's line: the free claim (memorial stage B, main a3724de) or, with the memorial off, the old "soon" line. */
 const EMPTY_CUBBY_LINES = ["지금은 무료로, 한 가족에 한 칸까지 모실 수 있어요", "곧 이 자리에 우리 아이를 모실 수 있어요"];
@@ -38,10 +38,10 @@ export async function joinVillage(p, prefix, time = NOON) {
   const nick = `${prefix}${++nickSeq}${Math.floor(Math.random() * 90 + 10)}`.slice(0, 10);
   await p.page.locator("input.cv-input").first().fill(nick);
   await press(p, p.page.locator(".cv-submit"));
-  const sheet = await p.page.waitForFunction(() => window.__cv?.getScreen?.() === "village", null, { timeout: 40000 }).then(
+  const sheet = await p.page.waitForFunction(() => window.__cv?.getScreen?.() === "village", null, { timeout: 40000 * SLOW }).then(
     () => p.page.evaluate(() => ({ dialogOpen: !!document.querySelector("dialog[open]"), asks: document.body.textContent.includes("어디로 갈까요") })),
   );
-  await p.page.waitForFunction(() => !!window.__cv?.getPos && !!window.__cvBgm && !!window.__cvGuideVoice, null, { timeout: 30000 });
+  await p.page.waitForFunction(() => !!window.__cv?.getPos && !!window.__cvBgm && !!window.__cvGuideVoice, null, { timeout: 30000 * SLOW });
   await sleep(1500);
   p.nick = nick;
   return { nick, sheet };

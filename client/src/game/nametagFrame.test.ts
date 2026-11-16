@@ -431,6 +431,33 @@ describe("stacking", () => {
   });
 });
 
+describe("bus v3 (owner 2026-11-16: the name tags flickered in the bus): a moving camera, nothing else moving relative to it", () => {
+  it("a lifted tag stays put frame after frame though the 5 Hz pass is the only one that refreshes the camera's matrix", () => {
+    // camera, a nearer tag and a farther stacked one all ride the way the camera looks (-z) at 4.4 m/s, as in the moving bus
+    // looking forward; the camera's position is moved every frame but its world matrix is left as it was (in the game the
+    // renderer refreshes it after the frame's work, and the 5 Hz pass refreshes it itself)
+    const near = addAvatar("near", 8, 2);
+    const far = addAvatar("far", 8.1, 1.6);
+    const offsets: number[] = [];
+    const sizes: number[] = [];
+    for (let i = 0; i < 120; i++) {
+      const dz = -4.4 * DT;
+      cam.position.z += dz;
+      near.group.position.z += dz;
+      far.group.position.z += dz;
+      now += DT * 1000;
+      frame.update(cam, W, H, DT, now);
+      if (i >= 60) {
+        offsets.push(far.tag.offsetM);
+        sizes.push(far.tag.sprite.scale.y);
+      }
+    }
+    expect(Math.max(...offsets)).toBeGreaterThan(0.05); // it is lifted
+    expect(Math.max(...offsets) - Math.min(...offsets)).toBeLessThan(0.002); // and steady
+    expect(Math.max(...sizes) - Math.min(...sizes)).toBeLessThan(0.002); // its size too
+  });
+});
+
 describe("stacking under a pitched camera", () => {
   /** Screen y (px, down) of the world point (x, y, z) through `camera`. */
   function screenY(camera: PerspectiveCamera, x: number, y: number, z: number): number {

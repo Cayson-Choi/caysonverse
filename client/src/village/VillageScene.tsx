@@ -12,7 +12,7 @@ import type { PlayersRoom } from "../game/remoteSync";
 import type { Pose } from "../game/types";
 import { getRoom, sendUseDoor, sendUseStair } from "../net/connection";
 import { rideStatusText, sendBusRide, sendBusSit, sendBusStand, showTransitNotice, startTransitSync, transitNowMs, transitTripAt, type TransitRoom, useTransitState } from "../net/transitSync";
-import { BUS_VIEW_YAW, busCamGoal, busWalk, selfBusRide } from "../game/busRide";
+import { BUS_VIEW_YAW, busCamGoal, busSeatPreferred, busWalk, selfBusRide } from "../game/busRide";
 import { busRiderPoints, takenBusSpots } from "../game/remoteStore";
 import { TRANSIT, boardingOpensWords } from "@caysonverse/shared/village/transit";
 import type { Identity } from "../stores/appStore";
@@ -214,7 +214,7 @@ function VillageDoors({ pose }: { pose: Pose }) {
         const free = selfBusRide.slot === 0;
         const ahead = free && busWalk.valid ? busWalk.ahead : selfBusRide.ahead;
         const right = free && busWalk.valid ? busWalk.right : selfBusRide.right;
-        return villageBusCabinTargets(selfBusRide.slot, ahead, right, takenBusSpots(), busOnRoad(), busRiderPoints(), free && busWalk.valid ? busWalk.yaw : undefined);
+        return villageBusCabinTargets(selfBusRide.slot, ahead, right, takenBusSpots(), busOnRoad(), busRiderPoints(), free && busWalk.valid ? busWalk.yaw : undefined, busSeatPreferred.index);
       }
       const base = villageAndHallTargets(area, p.x, p.z, cubbyCardState() !== null || guideDialogOpen() !== null || keypadOpen);
       const bus = villageBusTarget(area, p.x, p.z, boarded, ...busScheduleNow(), busOnRoad());
@@ -346,10 +346,12 @@ function TransitRideHud() {
     borderRadius: 8,
     padding: "6px 8px",
     cursor: "pointer",
-    fontSize: 12,
+    fontSize: touch ? 13 : 12,
     background: "rgba(255,255,255,0.92)",
     color: "#1b2147",
-    minHeight: 34,
+    // bus v3 QA: every button in the ride panel is a full 48 px tap target on a phone (the views were 24 x 34)
+    minHeight: touch ? 48 : 34,
+    minWidth: touch ? 48 : undefined,
   } as const;
   return (
     <div
@@ -376,7 +378,10 @@ function TransitRideHud() {
               {notice}
             </div>
           ) : null}
-          <div style={{ marginTop: 6, display: "flex", flexWrap: "nowrap", gap: 4 }} data-testid="bus-ride-views">
+          <div
+            style={touch ? { marginTop: 6, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 } : { marginTop: 6, display: "flex", flexWrap: "nowrap", gap: 4 }}
+            data-testid="bus-ride-views"
+          >
             {RIDE_VIEWS.map((v) => (
               <button key={v.id} type="button" data-view={v.id} style={{ ...btn, padding: "6px 6px", whiteSpace: "nowrap", flex: "0 0 auto" }} onClick={() => { busCamGoal.yaw = v.yaw; }}>
                 {touch ? v.short : v.label}
@@ -385,16 +390,16 @@ function TransitRideHud() {
           </div>
           {hint ? (
             <div style={{ marginTop: 6, background: "rgba(139,92,246,0.35)", borderRadius: 8, padding: "6px 8px" }} data-testid="bus-ride-hint">
-              {touch ? "화면을 끌어서 창밖을 둘러보세요 · 자리나 손잡이 가까이에서 아래 버튼" : "화면을 끌어서 창밖을 둘러보세요 · 자리나 손잡이 가까이에서 E"}
+              {touch ? "화면을 끌어서 창밖을 둘러보세요 · 빈 의자를 톡 누르면 가서 앉아요" : "화면을 끌어서 창밖을 둘러보세요 · 빈 의자를 누르거나 가까이에서 E"}
             </div>
           ) : touch ? null : (
-            <div style={{ marginTop: 5, opacity: 0.7 }}>화면을 끌면 둘러볼 수 있어요 · 자리·손잡이 가까이에서 E</div>
+            <div style={{ marginTop: 5, opacity: 0.7 }}>화면을 끌면 둘러볼 수 있어요 · 의자를 누르거나 가까이에서 E</div>
           )}
           {snapshot?.status === "inTransit" ? (
             // the doors open only at the stop (the server refuses a leave on the lap): say when instead of a dead button
             <div style={{ marginTop: 4, opacity: 0.75 }}>정류장에 돌아오면 내려요</div>
           ) : (
-            <button type="button" onClick={() => sendBusRide("leave")} style={{ ...btn, marginTop: 6 }}>
+            <button type="button" onClick={() => sendBusRide("leave")} style={{ ...btn, marginTop: 6, width: touch ? "100%" : undefined }}>
               하차
             </button>
           )}

@@ -6,33 +6,30 @@
  * (`busAhead`, `busRight`, `busYaw`), checks every step with the cabin's solids and walls, and every client draws the rider
  * in the bus wherever the bus is.
  *
- * The data (seats, hold spots, poles, walk solids, seat backs, floor steps) is generated from the Blender model
- * (art/village/tools/build_bus.py -> village_bus_cabin.json -> scripts/gen-bus-cabin.mjs -> generated/busCabin.ts): the
- * TypeScript never re-derives the model; server/src/tools/villageBus.test.ts checks the generated poles against the GLB.
+ * Bus v3 (owner 2026-11-16: "버스에 손잡이를 없애자 … 좌석을 캐릭터가 앉을 수 있게 좀 크게 … 몇개만 … 탑승 인원수는 니가 버스
+ * 사이즈를 보고 결정해"): no poles, rails or straps, so no "hold" place any more; ten large seats sized for the chibi avatar; the
+ * standing places (BUS_STANDING_SPOTS) are worked out here from the free floor and a body's footprint, and the capacity is the
+ * seats plus the standing places (BUS_CAPACITY), enforced by the server at boarding.
  *
- * `Player.busSeat`: -1 = not aboard; 0 = aboard and free (walking or standing in the aisle); 1..SEATS = seated in
- * BUS_SEATS[busSeat - 1]; SEATS + 1 .. SEATS + HOLDS = standing at BUS_HOLDS[busSeat - SEATS - 1], one hand on its pole.
- * `busSeat >= 0` still means "aboard".
+ * The data (seats, walk solids, seat backs, floor steps, the driver's place) is generated from the Blender model
+ * (art/village/tools/build_bus.py -> village_bus_cabin.json -> scripts/gen-bus-cabin.mjs -> generated/busCabin.ts).
  *
- * Sitting rules (owner 2026-11-13): every visible seat is sit-able; a backed seat only from the front, a backless one from
- * either side. All 14 seats of this bus are backed (the folding seats of the wheelchair bay too: their back is the wall).
+ * `Player.busSeat`: -1 = not aboard; 0 = aboard and free (walking or standing); 1..SEATS = seated in BUS_SEATS[busSeat - 1].
+ *
+ * Sitting rules (owner 2026-11-13): every visible seat is sit-able; a backed seat only from the front. All ten are backed.
  */
 
 import {
   GEN_CABIN_BOUNDS,
   GEN_CABIN_CEILING,
+  GEN_CABIN_DRIVER,
   GEN_CABIN_FLOOR,
   GEN_CABIN_HALF_WIDTH,
-  GEN_CABIN_HOLDS,
-  GEN_CABIN_POLES,
   GEN_CABIN_SEATS,
   GEN_CABIN_SEAT_BACKS,
   GEN_CABIN_SOLIDS,
-  GEN_CABIN_STRAPS,
-  type GenPole,
   type GenSeatBack,
   type GenSolid,
-  type GenStrap,
 } from "./generated/busCabin";
 import { SIT_POSE, SIT_ROOT_AHEAD } from "../sitPose";
 import { TRANSIT, type TransitPose } from "./transit";
@@ -48,84 +45,40 @@ export interface BusSeat {
   backed: boolean;
 }
 
-export interface BusHold {
-  id: string;
-  ahead: number;
-  right: number;
-  floor: number;
-  yaw: number;
-  /** the stanchion's object name in village_bus.glb */
-  pole: string;
-}
-
 export const BUS_SEATS: readonly BusSeat[] = GEN_CABIN_SEATS;
-export const BUS_HOLDS: readonly BusHold[] = GEN_CABIN_HOLDS;
-export const BUS_POLES: readonly GenPole[] = GEN_CABIN_POLES;
-export const BUS_STRAPS: readonly GenStrap[] = GEN_CABIN_STRAPS;
 export const BUS_SEAT_BACKS: readonly GenSeatBack[] = GEN_CABIN_SEAT_BACKS;
 export const BUS_SOLIDS: readonly GenSolid[] = GEN_CABIN_SOLIDS;
 export const BUS_CEILING = GEN_CABIN_CEILING;
 export const BUS_HALF_WIDTH = GEN_CABIN_HALF_WIDTH;
 export const BUS_CABIN_BOUNDS = GEN_CABIN_BOUNDS;
+/** The driver's seat and steering wheel (nodes bus_driver_seat / bus_steering_wheel / bus_driver_sit): no passenger goes there. */
+export const BUS_DRIVER = GEN_CABIN_DRIVER;
 
-/** How many seats and hold spots the bus has: the `busSeat` numbers 1..SEATS and SEATS+1..SEATS+HOLDS. */
+/** How many seats the bus has: the `busSeat` numbers 1..SEATS. */
 export const BUS_SEAT_COUNT = BUS_SEATS.length;
-export const BUS_HOLD_COUNT = BUS_HOLDS.length;
 
-/** A seat's surface above its floor (build_bus.py seat(): the cushion's top at 0.432 + 0.02). */
+/** A seat's surface above its floor (build_bus.py seat(): the cushion's top at 0.432 + 0.025). */
 export const BUS_SEAT_SURFACE = 0.452;
 
-/** The radius (m) the cabin's walls and solids treat a rider as: a little under the village's 0.4 (the aisle is 1.1 m wide). */
+/** The radius (m) the cabin's walls and solids treat a rider as: a body is 0.6 m across. */
 export const BUS_WALK_RADIUS = 0.3;
 
-/** How a rider stands in the bus: free (in the aisle), on a seat, or at a hold spot. */
-export type BusPlaceKind = "free" | "seat" | "hold";
+/** How a rider is in the bus: free (walking or standing) or on a seat. */
+export type BusPlaceKind = "free" | "seat";
 export interface BusPlaceRef {
   kind: BusPlaceKind;
-  /** the index into BUS_SEATS / BUS_HOLDS, -1 when free */
+  /** the index into BUS_SEATS, -1 when free */
   index: number;
 }
 
 /** `Player.busSeat` -> the place it names (free for 0 and anything out of range). */
 export function busPlaceOf(busSeat: number): BusPlaceRef {
   if (busSeat >= 1 && busSeat <= BUS_SEAT_COUNT) return { kind: "seat", index: busSeat - 1 };
-  const h = busSeat - BUS_SEAT_COUNT - 1;
-  if (busSeat > BUS_SEAT_COUNT && h < BUS_HOLD_COUNT) return { kind: "hold", index: h };
   return { kind: "free", index: -1 };
 }
 
 /** The `busSeat` of a seat (index into BUS_SEATS). */
 export const busSeatNumber = (seatIndex: number): number => seatIndex + 1;
-/** The `busSeat` of a hold spot (index into BUS_HOLDS). */
-export const busHoldNumber = (holdIndex: number): number => BUS_SEAT_COUNT + 1 + holdIndex;
-
-/** Where a boarding rider stands: just inside the front door, facing back down the aisle (xf 1.05). */
-export const BUS_ENTRY = { ahead: 3.45, right: 0.2, yaw: Math.PI } as const;
-
-/**
- * Where boarding riders are put, one after another just inside the front door and down the aisle (the first free one: nobody
- * stands inside another rider's body when two board together). All face back down the aisle.
- */
-export const BUS_ENTRIES: ReadonlyArray<{ ahead: number; right: number; yaw: number }> = [
-  BUS_ENTRY,
-  { ahead: 2.2, right: 0.0, yaw: Math.PI },
-  { ahead: 3.2, right: 0.15, yaw: Math.PI },
-  { ahead: 1.05, right: 0.0, yaw: Math.PI },
-  { ahead: -0.1, right: 0.0, yaw: Math.PI },
-  { ahead: -1.35, right: 0.0, yaw: Math.PI },
-  { ahead: -2.55, right: 0.0, yaw: Math.PI },
-];
-
-/**
- * The first entry spot no other rider is within `apart` m of (the first one when every spot is taken). 1.3 m by default: a
- * chibi avatar's head is 2.2 m up and 0.6 m across, and a rider a step in front of you fills the first-person view.
- */
-export function freeBusEntry(others: ReadonlyArray<{ ahead: number; right: number }>, apart = 1.3): { ahead: number; right: number; yaw: number } {
-  for (const e of BUS_ENTRIES) {
-    if (!others.some((o) => Math.hypot(o.ahead - e.ahead, o.right - e.right) < apart)) return e;
-  }
-  return BUS_ENTRIES[0]!;
-}
 
 /** In front of the middle door (xf 4.35 .. 5.75): the exit zone (a rider here is offered 하차 while the bus stands). */
 export const BUS_EXIT_ZONE = { aheadMin: -1.35, aheadMax: 0.25, rightMin: 0.35, rightMax: 1.2 } as const;
@@ -135,7 +88,7 @@ export function inExitZone(ahead: number, right: number): boolean {
   return ahead >= z.aheadMin && ahead <= z.aheadMax && right >= z.rightMin && right <= z.rightMax;
 }
 
-/** The cabin floor's height at a bus-local point (m): the low floor, the two steps' treads, the raised rear. */
+/** The cabin floor's height at a bus-local point (m). Bus v3 (owner 2026-11-16): one flat low floor front to back (no raised rear, no steps). */
 export function cabinFloorAt(ahead: number, _right = 0): number {
   const xf = TRANSIT.busLengthM / 2 - ahead;
   let h = GEN_CABIN_FLOOR[0]!.h;
@@ -172,15 +125,14 @@ export interface BusLocalPoint {
 }
 
 /**
- * How close (m) two riders may walk to each other in the aisle (centre to centre): a body is 0.6 m across but the aisle between
- * the seats is only 0.5 m of walkable width (the walk radius is 0.3), so a rider standing in the middle of it can only be passed at
- * the edge (0.25 m off the axis): two riders squeeze past each other as people do and never stand in one another (no step ends
- * closer than this). The client predicts with this, the server
- * enforces BUS_RIDER_APART_SERVER (a little less: the other rider's point it sees is newer than the one a client draws, so
- * the server never refuses a step the client's own stricter prediction allowed).
+ * How close (m) two riders may stand (centre to centre): a body is 0.6 m across; bus v3 (owner: nobody stands inside anybody)
+ * allows a shoulder's brush and no more. The client predicts with this, the server enforces BUS_RIDER_APART_SERVER (a little
+ * less: the other rider's point it sees is newer than the one a client draws, so the server never refuses a step the client's
+ * own stricter prediction allowed). The aisle between the seats is 0.75 m wide: a rider standing in it is not passed, as in a
+ * real narrow bus aisle; the wider floor by the doors and over the wheel housings is where people pass.
  */
-export const BUS_RIDER_APART = 0.14;
-export const BUS_RIDER_APART_SERVER = 0.11;
+export const BUS_RIDER_APART = 0.56;
+export const BUS_RIDER_APART_SERVER = 0.5;
 
 /**
  * Whether a step from `from` to `to` walks INTO another rider: ends within `apart` of one and closer than where it started
@@ -219,6 +171,22 @@ export function stepInCabin(
     out.right = from.right;
     return out;
   }
+  // Bus v3: the aisle between the seats is only a body wide, so a walk down the bus that meets a seat's corner a few cm off the
+  // aisle's middle slides round it towards the middle (by at most the step's own length) instead of stopping dead.
+  const step = Math.hypot(want.ahead - from.ahead, want.right - from.right);
+  if (Math.abs(want.ahead - from.ahead) > 1e-6 && Math.abs(from.right) > 1e-3) {
+    const toward = from.right - Math.sign(from.right) * Math.min(Math.abs(from.right), step);
+    if (okAt(want.ahead, toward)) {
+      out.ahead = want.ahead;
+      out.right = toward;
+      return out;
+    }
+    if (okAt(from.ahead, toward)) {
+      out.ahead = from.ahead;
+      out.right = toward;
+      return out;
+    }
+  }
   if (okAt(from.ahead, want.right)) {
     out.ahead = from.ahead;
     out.right = want.right;
@@ -229,19 +197,40 @@ export function stepInCabin(
   return out;
 }
 
-/** The point 0.45 m in front of a seat's cushion (where a rider sits down from). */
+/** The seat cushion's front edge, ahead of the seat's centre along its facing (build_bus.py: CUSHION_C + CUSHION_D / 2). */
+const CUSHION_FRONT = 0.04 + 0.5 / 2;
+
+/** The point a body's half width (0.32 m) in front of a seat's cushion: where a rider standing right in front of it would be. */
 export function seatFrontPoint(seat: BusSeat): BusLocalPoint {
   const f = facingVector(seat.yaw);
-  return { ahead: seat.ahead + f.ahead * 0.45, right: seat.right + f.right * 0.45 };
+  const d = CUSHION_FRONT + 0.32;
+  return { ahead: seat.ahead + f.ahead * d, right: seat.right + f.right * d };
 }
 
-/** How far (m) from a seat's front a rider may ask to sit, and from a hold spot to take hold. */
+/**
+ * Where a rider walks to sit in `seat`: its front point, or (the rows are close: the seat ahead's backrest is in the way) the
+ * nearest free point on the line from it towards the aisle's middle. Always on the cabin's free floor.
+ */
+export function seatApproachPoint(seat: BusSeat): BusLocalPoint {
+  const front = seatFrontPoint(seat);
+  for (let k = 0; k <= 40; k++) {
+    const r = front.right + (0 - front.right) * (k / 40);
+    if (!cabinBlocked(front.ahead, r)) return { ahead: front.ahead, right: r };
+  }
+  for (let k = 1; k <= 20; k++) {
+    for (const da of [k * 0.05, -k * 0.05]) {
+      if (!cabinBlocked(front.ahead + da, 0)) return { ahead: front.ahead + da, right: 0 };
+    }
+  }
+  return front;
+}
+
+/** How far (m) from a seat's front a rider may ask to sit. */
 export const BUS_SIT_REACH_M = 1.15;
-export const BUS_HOLD_REACH_M = 0.8;
 
 /**
  * Whether a rider at (ahead, right) may sit in `seat`: within reach of its front, and in FRONT of it (a backed seat is sat
- * in from the front only; a backless one from either side). Each seat's front is its facing direction.
+ * in from the front only). Each seat's front is its facing direction.
  */
 export function seatApproachOk(seat: BusSeat, ahead: number, right: number): boolean {
   const front = seatFrontPoint(seat);
@@ -252,64 +241,19 @@ export function seatApproachOk(seat: BusSeat, ahead: number, right: number): boo
   return (ahead - seat.ahead) * f.ahead + (right - seat.right) * f.right > -0.12;
 }
 
-/** A hold spot is the place to take hold of its pole: standing within this of it offers the hold, not the seat beside it. */
-export const BUS_HOLD_OFFER_M = 0.35;
-/** Standing this close to a pole's spot, the pole is offered whichever way they face. */
-export const BUS_HOLD_AT_M = 0.25;
-/** The angle (rad) within which a seat counts as the one the rider faces. */
-export const BUS_SEAT_FACE_RAD = (50 * Math.PI) / 180;
-
 /**
- * What the rider can do from where they stand (the approach rules respected): the free hold spot they stand at (within
- * BUS_HOLD_OFFER_M: they walked to that pole, so the pole is what is offered; owner 2026-11-15 follow-up: with the seat first
- * a first-time rider could never take hold), else the nearest free SEAT in reach, else a free hold spot in reach, else null.
- * `riders`: where the others are; a seat or spot with someone standing at it is not offered.
+ * The free seat a rider can sit in from where they stand (the approach rules respected), or null. With a facing (`yaw`), the
+ * seat nearest the point half a metre ahead of them (the one they look at); without one, the nearest.
  */
 export function nearestFreeSpot(
   ahead: number,
   right: number,
   takenSeats: ReadonlySet<number>,
-  takenHolds: ReadonlySet<number>,
-  riders?: ReadonlyArray<BusLocalPoint>,
   yaw?: number,
-): { kind: "seat" | "hold"; index: number; dist: number } | null {
-  const crowded = (a: number, b: number): boolean => !!riders && riders.some((o) => Math.hypot(o.ahead - a, o.right - b) < BUS_RIDER_APART_SERVER);
-  let bestHold: { kind: "hold"; index: number; dist: number } | null = null;
-  BUS_HOLDS.forEach((h, i) => {
-    if (takenHolds.has(i) || crowded(h.ahead, h.right)) return;
-    const d = Math.hypot(ahead - h.ahead, right - h.right);
-    if (d > BUS_HOLD_REACH_M) return;
-    if (bestHold === null || d < bestHold.dist) bestHold = { kind: "hold", index: i, dist: d };
-  });
-  const hold = bestHold as { kind: "hold"; index: number; dist: number } | null;
-  if (hold !== null && hold.dist <= BUS_HOLD_OFFER_M) {
-    // Facing a free seat (within BUS_SEAT_FACE_RAD of the way they look, the approach rules respected) and not right at the pole: the seat
-    // they turned to is what is offered (review 2026-11-16: a pole's offer radius hid the seats beside it, so L3 / RL1 / RR2 were never offered)
-    if (yaw !== undefined && hold.dist > BUS_HOLD_AT_M) {
-      const f = facingVector(yaw);
-      let faced: { index: number; dist: number } | null = null;
-      BUS_SEATS.forEach((s, i) => {
-        if (takenSeats.has(i) || !seatApproachOk(s, ahead, right)) return;
-        const front = seatFrontPoint(s);
-        const da = front.ahead - ahead;
-        const dr = front.right - right;
-        const d = Math.hypot(da, dr);
-        if (d < 1e-6 || d > BUS_HOLD_REACH_M + 0.6) return;
-        const cos = (da * f.ahead + dr * f.right) / d;
-        if (Math.acos(Math.max(-1, Math.min(1, cos))) > BUS_SEAT_FACE_RAD) return;
-        if (faced === null || d < faced.dist) faced = { index: i, dist: d };
-      });
-      const fs = faced as { index: number; dist: number } | null;
-      if (fs !== null) return { kind: "seat", index: fs.index, dist: fs.dist };
-    }
-    return hold;
-  }
-  // The seat the rider turns to: with a facing, the one nearest the point half a metre ahead of them (the seat across the
-  // aisle is the one they look at, not the one level with them: otherwise the rear row's outer seats, always farther than the
-  // middle one from the aisle, could never be offered); without one, the nearest.
+): { kind: "seat"; index: number; dist: number } | null {
   const fx = yaw === undefined ? 0 : facingVector(yaw).ahead * 0.5;
   const fz = yaw === undefined ? 0 : facingVector(yaw).right * 0.5;
-  let bestSeat: { kind: "seat"; index: number; dist: number } | null = null;
+  let best: { kind: "seat"; index: number; dist: number } | null = null;
   let bestScore = Infinity;
   BUS_SEATS.forEach((s, i) => {
     if (takenSeats.has(i) || !seatApproachOk(s, ahead, right)) return;
@@ -318,28 +262,28 @@ export function nearestFreeSpot(
     const score = yaw === undefined ? d : Math.hypot(ahead + fx - front.ahead, right + fz - front.right);
     if (score < bestScore) {
       bestScore = score;
-      bestSeat = { kind: "seat", index: i, dist: d };
+      best = { kind: "seat", index: i, dist: d };
     }
   });
-  return (bestSeat as { kind: "seat"; index: number; dist: number } | null) ?? hold;
+  return best;
 }
 
 /** Where a rider stands up to: in front of the cushion or in the aisle beside the seat, the first spot not blocked. */
 export function seatStandUpSpot(seat: BusSeat, riders?: ReadonlyArray<BusLocalPoint>): { ahead: number; right: number; yaw: number } {
-  const f = facingVector(seat.yaw);
+  const ap = seatApproachPoint(seat);
   const candidates: BusLocalPoint[] = [
-    { ahead: seat.ahead + f.ahead * 0.62, right: seat.right + f.right * 0.62 },
+    ap,
     { ahead: seat.ahead, right: 0 },
-    { ahead: seat.ahead + 0.4, right: 0 },
-    { ahead: seat.ahead - 0.4, right: 0 },
-    { ahead: seat.ahead + 0.8, right: 0 },
-    { ahead: seat.ahead - 0.8, right: 0 },
-    { ahead: seat.ahead + 1.2, right: 0 },
-    { ahead: seat.ahead - 1.2, right: 0 },
+    { ahead: ap.ahead + 0.6, right: 0 },
+    { ahead: ap.ahead - 0.6, right: 0 },
+    { ahead: ap.ahead + 1.2, right: 0 },
+    { ahead: ap.ahead - 1.2, right: 0 },
+    { ahead: ap.ahead + 1.8, right: 0 },
+    { ahead: ap.ahead - 1.8, right: 0 },
   ];
   const clear = (c: BusLocalPoint): boolean =>
-    !cabinBlocked(c.ahead, c.right) && !(riders && riders.some((o) => Math.hypot(o.ahead - c.ahead, o.right - c.right) < BUS_RIDER_APART_SERVER));
-  const hit = candidates.find(clear) ?? candidates.find((c) => !cabinBlocked(c.ahead, c.right)) ?? candidates[1]!;
+    !cabinBlocked(c.ahead, c.right) && !(riders && riders.some((o) => Math.hypot(o.ahead - c.ahead, o.right - c.right) < BUS_RIDER_APART));
+  const hit = candidates.find(clear) ?? candidates.find((c) => !cabinBlocked(c.ahead, c.right)) ?? ap;
   return { ahead: hit.ahead, right: hit.right, yaw: seat.yaw };
 }
 
@@ -364,19 +308,12 @@ export interface BusRiderPoseFull {
   /** how high the avatar's root stands */
   y: number;
   seated: boolean;
-  holding: boolean;
 }
 
 /**
- * The root of a seated rider relative to its seat: the avatar sits with the root a little ahead of the cushion (sitPose.ts
- * SIT_ROOT_AHEAD on the cushion's front edge). Along the seat's facing.
- */
-const CUSHION_FRONT = 0.04 + 0.37 / 2;
-
-/**
- * Seats by the walls: a seated avatar's hands reach 0.5 m from its middle and the seat's middle is 0.86 m from the aisle's
- * axis (0.34 m from the inner wall): sat in the middle, the hands came out through the wall (checker r1: over the side's
- * lettering). Those riders sit at the aisle end of the cushion, so the reach ends inside the wall (what main did too).
+ * Seats by the walls: a seated avatar's hands reach 0.5 m from its middle; sat in the middle of a wall seat the hands would come
+ * out through the wall (checker r1: over the side's lettering). Those riders sit towards the aisle end of the cushion, so the
+ * reach ends inside the wall.
  */
 export const BUS_WALL_SEAT_SHIFT = 0.25;
 
@@ -392,8 +329,56 @@ export function seatBodyPoint(seat: BusSeat): BusLocalPoint {
 }
 
 /**
+ * The standing places (bus v3): the free floor (the walk radius clear of every seat, housing, post and wall), clear of every
+ * seated rider's legs, packed greedily a body apart (BUS_STAND_APART) starting from the
+ * front door. Their count is the bus's standing capacity; the server puts a boarding rider on the first one nobody stands on.
+ */
+export const BUS_STAND_APART = 0.62;
+function standingSpots(): BusLocalPoint[] {
+  const step = 0.05;
+  const door: BusLocalPoint = { ahead: 3.4, right: 0.25 };
+  const seated = BUS_SEATS.map(seatBodyPoint);
+  const cand: Array<BusLocalPoint & { d: number }> = [];
+  const na = Math.round((GEN_CABIN_BOUNDS.aheadMax - GEN_CABIN_BOUNDS.aheadMin) / step);
+  const nr = Math.round((2 * GEN_CABIN_HALF_WIDTH) / step);
+  for (let i = 0; i <= na; i++) {
+    for (let j = 0; j <= nr; j++) {
+      const ahead = Math.round((GEN_CABIN_BOUNDS.aheadMin + i * step) * 1000) / 1000;
+      const right = Math.round((-GEN_CABIN_HALF_WIDTH + j * step) * 1000) / 1000;
+      if (cabinBlocked(ahead, right)) continue;
+      if (seated.some((p) => Math.hypot(p.ahead - ahead, p.right - right) < 0.55)) continue;
+      cand.push({ ahead, right, d: Math.hypot(ahead - door.ahead, right - door.right) });
+    }
+  }
+  cand.sort((p, q) => p.d - q.d || q.ahead - p.ahead || p.right - q.right);
+  const out: BusLocalPoint[] = [];
+  for (const c of cand) {
+    if (out.every((o) => Math.hypot(o.ahead - c.ahead, o.right - c.right) >= BUS_STAND_APART)) out.push({ ahead: c.ahead, right: c.right });
+  }
+  return out;
+}
+export const BUS_STANDING_SPOTS: readonly BusLocalPoint[] = standingSpots();
+/** How many may stand, how many ride in all (seated + standing): the server refuses a rider over BUS_CAPACITY at the door. */
+export const BUS_STANDING_COUNT = BUS_STANDING_SPOTS.length;
+export const BUS_CAPACITY = BUS_SEAT_COUNT + BUS_STANDING_COUNT;
+
+/** Where the first boarding rider stands: the first standing place, just inside the front door, facing back down the aisle. */
+export const BUS_ENTRY = { ahead: BUS_STANDING_SPOTS[0]!.ahead, right: BUS_STANDING_SPOTS[0]!.right, yaw: Math.PI } as const;
+
+/**
+ * Where a boarding rider is put: the first standing place no other rider stands within a body of (BUS_RIDER_APART), facing
+ * back down the aisle; null when every standing place has someone on or beside it (the server then refuses the boarding).
+ */
+export function freeBusEntry(others: ReadonlyArray<BusLocalPoint>, apart = BUS_RIDER_APART): { ahead: number; right: number; yaw: number } | null {
+  for (const e of BUS_STANDING_SPOTS) {
+    if (!others.some((o) => Math.hypot(o.ahead - e.ahead, o.right - e.right) < apart)) return { ahead: e.ahead, right: e.right, yaw: Math.PI };
+  }
+  return null;
+}
+
+/**
  * Where a rider is drawn (world), from the bus pose and the rider's bus-local place: `busSeat` (the schema) and the local
- * point. A seated rider is put on the seat (the seat's own point, whatever the point says); a holder at the hold spot.
+ * point. A seated rider is put on the seat (the seat's own point, whatever the point says).
  */
 export function busRiderWorldPose(
   bus: Pick<TransitPose, "x" | "z" | "yaw">,
@@ -401,7 +386,7 @@ export function busRiderWorldPose(
   ahead: number,
   right: number,
   yaw: number,
-  out: BusRiderPoseFull = { x: 0, z: 0, yaw: 0, y: 0, seated: false, holding: false },
+  out: BusRiderPoseFull = { x: 0, z: 0, yaw: 0, y: 0, seated: false },
 ): BusRiderPoseFull {
   const place = busPlaceOf(busSeat);
   let a = ahead;
@@ -409,7 +394,6 @@ export function busRiderWorldPose(
   let yw = yaw;
   let floor = cabinFloorAt(ahead, right);
   out.seated = false;
-  out.holding = false;
   if (place.kind === "seat") {
     const s = BUS_SEATS[place.index]!;
     const body = seatBodyPoint(s);
@@ -418,13 +402,6 @@ export function busRiderWorldPose(
     yw = s.yaw;
     floor = s.floor;
     out.seated = true;
-  } else if (place.kind === "hold") {
-    const h = BUS_HOLDS[place.index]!;
-    a = h.ahead;
-    r = h.right;
-    yw = h.yaw;
-    floor = h.floor;
-    out.holding = true;
   }
   busLocalToWorld(bus, a, r, out);
   out.yaw = bus.yaw + yw;

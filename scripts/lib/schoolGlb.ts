@@ -1091,9 +1091,13 @@ export const VILLAGE_BUS_GROUND_CLEARANCE = 0.01;
  */
 export const VILLAGE_SCENE_MAX_TRIANGLES = BUDGETS.village.maxTriangles + VILLAGE_BUS_BUDGET.maxTriangles;
 
-/** A separate cabin fixture of the bus (build_bus.py FIXTURE_PREFIXES): pole_*, rail_*, strap_*, stop_btn_*. */
+/**
+ * A separate cabin fixture of the bus (build_bus.py FIXTURE_PREFIXES): the stop buttons (stop_btn_*) and, since bus v3, the
+ * driver's seat and steering wheel (bus_driver_seat, bus_steering_wheel: their own nodes for the driver NPC). The old poles,
+ * rails and straps (pole_*, rail_*, strap_*) are gone with the grab handles (owner 2026-11-16).
+ */
 export function isBusFixtureName(name: string | undefined): boolean {
-  return name !== undefined && /^(pole|rail|strap|stop_btn)_/.test(name);
+  return name !== undefined && (/^stop_btn_/.test(name) || name === "bus_driver_seat" || name === "bus_steering_wheel");
 }
 
 /**
@@ -1104,8 +1108,8 @@ export function checkVillageBus(gltf: Gltf, byteLength: number, bin: Uint8Array 
   const out: CheckResult[] = [];
   const nodes = gltf.nodes ?? [];
   const materials = gltf.materials ?? [];
-  // The cabin's poles, ceiling rails, strap groups and stop buttons are separate nodes (the rider camera fades the ones that
-  // come between it and the avatar: client transitCamera.ts), each one mesh in M_bus only; the body is the one other node.
+  // The cabin's stop buttons and the driver's seat and steering wheel are separate nodes, each one mesh in M_bus only; the body
+  // is the one other node (bus_driver_sit is an empty: no mesh).
   const meshNodes = nodes.filter((n) => n.mesh !== undefined && !isBusFixtureName(n.name));
   const node = meshNodes.length === 1 && meshNodes[0]!.name === "village_bus" ? meshNodes[0]! : null;
   out.push(
@@ -1130,7 +1134,7 @@ export function checkVillageBus(gltf: Gltf, byteLength: number, bin: Uint8Array 
     .filter((n) => n.mesh !== undefined && isBusFixtureName(n.name))
     .filter((n) => (gltf.meshes?.[n.mesh!]?.primitives ?? []).some((p) => p.material === undefined || materials[p.material]?.name !== "M_bus"))
     .map((n) => n.name);
-  out.push(result(fixtureBad.length === 0, "버스 실내 부품 재질", fixtureBad.length === 0 ? "기둥·손잡이 등은 M_bus 하나만 써요" : `M_bus가 아닌 부품: ${fixtureBad.join(", ")}`));
+  out.push(result(fixtureBad.length === 0, "버스 실내 부품 재질", fixtureBad.length === 0 ? "하차벨·운전석·운전대는 M_bus 하나만 써요" : `M_bus가 아닌 부품: ${fixtureBad.join(", ")}`));
   const lightmapped = materials.filter((m) => (m.name ?? "").startsWith(LIGHTMAP_MATERIAL_PREFIX)).map((m) => m.name);
   out.push(result(lightmapped.length === 0, "버스 라이트맵 없음", lightmapped.length === 0 ? "실시간 조명 재질이에요" : `LM_ 재질: ${lightmapped.join(", ")}`));
   out.push(

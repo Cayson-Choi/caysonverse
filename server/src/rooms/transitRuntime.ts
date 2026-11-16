@@ -1,6 +1,7 @@
 import { boardingOpensWords, pedestrianSignalAt, signalAt, type BusTrip } from "@caysonverse/shared/village/transit";
 import { busDriveTrip, scheduledDrive, type BusDrive } from "@caysonverse/shared/village/busDrive";
 import { busBoardingDistance } from "@caysonverse/shared/village/villageLayout";
+import { BUS_CAPACITY } from "@caysonverse/shared/village/busCabin";
 import type {
   BusRejectedPayload,
   BusRidePayload,
@@ -55,6 +56,10 @@ export function riderOnTrip(snapshot: Pick<BusStatePayload, "tripId" | "status">
 /** A leave asked for while the bus is out on its lap (owner 2026-11-15: the rider is in the bus, not left on the pad). */
 export const BUS_LEAVE_MOVING_NOTICE = "버스가 달리는 중이에요. 정류장에 돌아오면 내려요.";
 
+/** Bus v3 (owner 2026-11-16): the bus is full (BUS_CAPACITY riders aboard), or every standing place has someone on it. */
+export const BUS_FULL_NOTICE = "버스가 가득 찼어요. 다음 버스를 기다려 주세요.";
+export const BUS_CROWDED_NOTICE = "버스 안에 설 자리가 없어요. 앉은 사람이 자리를 비우면 탈 수 있어요.";
+
 export type BusRideDecision =
   | { ok: true; tripId: number }
   | { ok: false; notice: BusRejectedPayload["reason"] };
@@ -66,7 +71,7 @@ export type BusRideDecision =
  */
 export function validateBusRide(
   payload: unknown,
-  state: { boarded: boolean; area: string; x: number; z: number },
+  state: { boarded: boolean; area: string; x: number; z: number; aboard?: number; capacity?: number; standingFree?: boolean },
   utcMs: number,
   trip: BusTrip = busDriveTrip(scheduledDrive(utcMs), utcMs),
 ): BusRideDecision {
@@ -88,5 +93,7 @@ export function validateBusRide(
   if (busBoardingDistance(state.x, state.z) > BUS_BOARD_REACH_M) {
     return { ok: false, notice: "버스 정류장 근처에서만 탈 수 있어요." };
   }
+  if ((state.aboard ?? 0) >= (state.capacity ?? BUS_CAPACITY)) return { ok: false, notice: BUS_FULL_NOTICE };
+  if (state.standingFree === false) return { ok: false, notice: BUS_CROWDED_NOTICE };
   return { ok: true, tripId: trip.tripId };
 }

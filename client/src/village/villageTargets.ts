@@ -4,7 +4,7 @@ import { TRANSIT } from "@caysonverse/shared/village/transit";
 import { HOUSE_KEYPAD_REACH_M, keypadEntries } from "@caysonverse/shared/village/buildingAccess";
 import { GUIDE_ASK_LABEL, nearestGuide } from "@caysonverse/shared/village/guides";
 import type { InteractTarget } from "../game/interact";
-import { BUS_HOLDS, BUS_SEATS, busHoldNumber, busPlaceOf, busSeatNumber, inExitZone, nearestFreeSpot } from "@caysonverse/shared/village/busCabin";
+import { BUS_SEATS, busPlaceOf, busSeatNumber, inExitZone, nearestFreeSpot, seatApproachOk } from "@caysonverse/shared/village/busCabin";
 
 /**
  * What the village offers at a spot (케이슨 마을, Task 4) — pure: the scene hands it the local area and pose at
@@ -94,7 +94,7 @@ export function villageTargets(
  * "4분 뒤" for the 60 px touch button): minutes are rounded up so it never says 0분, and both forms agree.
  */
 export function busCountdownWords(ms: number): { long: string; short: string } {
-  const s = Math.max(0, Math.ceil(ms / 1000));
+  const s = Math.max(1, Math.ceil(ms / 1000)); // never "0초": the last second reads "1초" (bus v3 QA: the wait said positively)
   // One rounding for every place that shows it (review r4: the phone button said "8분 뒤" while the pill said "7분 8초 뒤"):
   // whole minutes rounded up while boarding is not open yet (more than the boarding window away: always "4분" or more);
   // within it minutes and seconds (review 2026-11-15: "3분 뒤 출발" rounded up from 2:01 read as if boarding had just
@@ -158,11 +158,29 @@ export function villageBusTarget(
 export const BUS_SIT_TARGET_PREFIX = "bus_sit:";
 export const BUS_STAND_TARGET_ID = "bus_stand";
 
+/** The bus's seats by name, as a rider would say where they sit (bus v3: ten seats, busCabin.ts BUS_SEATS ids). */
+const BUS_SEAT_NAMES: Record<string, string> = {
+  L1: "왼쪽 맨 앞자리",
+  L2: "왼쪽 둘째 자리 · 임산부 배려석",
+  L3: "왼쪽 셋째 자리",
+  R1: "오른쪽 맨 앞자리",
+  R2: "오른쪽 둘째 자리",
+  RL1: "왼쪽 뒷자리",
+  RR1: "오른쪽 뒷자리",
+  B1: "맨 뒷줄 왼쪽",
+  B2: "맨 뒷줄 가운데",
+  B3: "맨 뒷줄 오른쪽",
+};
+export function busSeatName(index: number): string {
+  const id = BUS_SEATS[index]?.id ?? "";
+  return BUS_SEAT_NAMES[id] ?? `${id}번 자리`;
+}
+
 /**
- * What the bus offers a rider aboard (owner 2026-11-15: sit or stand, walk inside): free in the aisle, the nearest free
- * seat or hold spot in reach (a backed seat only from its front: busCabin.ts nearestFreeSpot) — "앉기" or "손잡이 잡기";
- * in front of the middle door while the bus stands, "내리기" first; seated or holding, "일어나기". `taken`: the busSeat numbers
- * other riders hold. Nothing here is a world target (the door, a guide): aboard, those are not in reach.
+ * What the bus offers a rider aboard (owner 2026-11-15: sit or stand, walk inside; bus v3 2026-11-16: no grab handles): free
+ * in the aisle, the free seat in reach they face (a backed seat only from its front: busCabin.ts nearestFreeSpot) — "앉기";
+ * in front of the middle door while the bus stands, "내리기" first; seated, "일어나기". `taken`: the busSeat numbers other
+ * riders sit in. Nothing here is a world target (the door, a guide): aboard, those are not in reach.
  */
 export function villageBusCabinTargets(
   busSeat: number,
@@ -172,6 +190,7 @@ export function villageBusCabinTargets(
   busOnRoad: boolean,
   riders?: ReadonlyArray<{ ahead: number; right: number }>,
   yaw?: number,
+  preferred = -1,
 ): readonly InteractTarget[] {
   const place = busPlaceOf(busSeat);
   const out: InteractTarget[] = [];
@@ -183,30 +202,25 @@ export function villageBusCabinTargets(
     out.push({ kind: "object", id: BUS_RIDE_TARGET_LEAVE, dist: 0, icon: "🚪", label: "버스에서 내리기", short: "하차", priority: 4 });
   }
   const takenSeats = new Set<number>();
-  const takenHolds = new Set<number>();
   BUS_SEATS.forEach((_s, i) => {
     if (taken.has(busSeatNumber(i))) takenSeats.add(i);
   });
-  BUS_HOLDS.forEach((_h, i) => {
-    if (taken.has(busHoldNumber(i))) takenHolds.add(i);
-  });
-  const spot = nearestFreeSpot(ahead, right, takenSeats, takenHolds, riders, yaw);
+  void riders;
+  // the seat a tap walked the rider to is the one offered while it can still be sat in from here (bus v3: a tap never sits)
+  const pref = preferred >= 0 && !takenSeats.has(preferred) && BUS_SEATS[preferred] && seatApproachOk(BUS_SEATS[preferred]!, ahead, right) ? { index: preferred, dist: 0 } : null;
+  const spot = pref ?? nearestFreeSpot(ahead, right, takenSeats, yaw);
   if (spot) {
-    out.push(
-      spot.kind === "seat"
-        ? { kind: "object", id: `${BUS_SIT_TARGET_PREFIX}seat:${spot.index}`, dist: spot.dist, icon: "🪑", label: `앉기 (${BUS_SEATS[spot.index]!.id}번 자리)`, short: "앉기", priority: 3 }
-        : { kind: "object", id: `${BUS_SIT_TARGET_PREFIX}hold:${spot.index}`, dist: spot.dist, icon: "✋", label: "손잡이 잡고 서기", short: "잡기", priority: 3 },
-    );
+    out.push({ kind: "object", id: `${BUS_SIT_TARGET_PREFIX}seat:${spot.index}`, dist: spot.dist, icon: "🪑", label: `앉기 (${busSeatName(spot.index)})`, short: "앉기", priority: 3 });
   }
   return out;
 }
 
-/** The spot a `bus_sit:` target id names (`seat` or `hold`, and its index), or null. */
-export function parseBusSitTarget(id: string): { kind: "seat" | "hold"; index: number } | null {
+/** The seat a `bus_sit:` target id names (`seat` and its index), or null. */
+export function parseBusSitTarget(id: string): { kind: "seat"; index: number } | null {
   if (!id.startsWith(BUS_SIT_TARGET_PREFIX)) return null;
   const [kind, idx] = id.slice(BUS_SIT_TARGET_PREFIX.length).split(":");
   const index = Number(idx);
-  if ((kind !== "seat" && kind !== "hold") || !Number.isInteger(index)) return null;
+  if (kind !== "seat" || !Number.isInteger(index)) return null;
   return { kind, index };
 }
 

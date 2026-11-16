@@ -191,12 +191,12 @@ export function sendBusMove(ahead: number, right: number, yaw: number): void {
   boundRoom?.send(MessageType.BusMove, { ahead, right, yaw } satisfies BusMovePayload);
 }
 
-/** Sit in a seat or take hold of a pole (an index into BUS_SEATS / BUS_HOLDS); the server says why not if it cannot. */
+/** Sit in a seat (an index into BUS_SEATS); the server says why not if it cannot. */
 export function sendBusSit(kind: BusSitPayload["kind"], index: number): void {
   boundRoom?.send(MessageType.BusSit, { kind, index } satisfies BusSitPayload);
 }
 
-/** From a seat or a hold spot back on one's feet in the aisle. */
+/** From a seat back on one's feet in the aisle. */
 export function sendBusStand(): void {
   boundRoom?.send(MessageType.BusStand, {});
 }
@@ -228,8 +228,28 @@ export function transitTripAt(nowMs: number): BusTrip {
 
 let renderMoving = false;
 
-/** The bus's pose at the synced server time, written into the render pose (once per distinct instant). */
+/**
+ * The animation frame the render pose was taken in: `document.timeline.currentTime`, the same for every callback of one frame
+ * (null outside a browser: the pose is then taken per distinct instant, as before).
+ */
+let renderFrame: number | null = null;
+function frameKey(): number | null {
+  const t = typeof document === "undefined" ? null : document.timeline?.currentTime;
+  return typeof t === "number" ? t : null;
+}
+
+/**
+ * The bus's pose at the synced server time, written into the render pose: ONCE PER FRAME in the browser (owner 2026-11-16: "버스
+ * 안에서 이름표가 계속 빠르게 깜빡거리는데"). It used to be taken anew at every call, so in one frame the camera (CameraRig), the
+ * bus's mesh (VillageBus), the riders (LocalPlayer / RemotePlayer) and their name tags each saw the bus a few milliseconds apart:
+ * at the lap's 4.4 m/s that put the riders 1-2 cm off the camera, a different amount every frame, and the name tags (drawn
+ * pixel-snapped, crisp text) jumped a pixel back and forth — a rapid flicker. One pose per frame keeps everything in the bus
+ * still relative to the rider's eye.
+ */
 function refreshRenderPose(): void {
+  const frame = frameKey();
+  if (frame !== null && frame === renderFrame && !Number.isNaN(renderAt)) return;
+  renderFrame = frame;
   const now = transitNowMs();
   if (now === renderAt) return;
   renderAt = now;

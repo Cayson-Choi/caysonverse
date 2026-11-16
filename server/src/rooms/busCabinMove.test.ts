@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BUS_HOLDS, BUS_SEATS, BUS_WALK_RADIUS, busSeatNumber, cabinBlocked, seatFrontPoint, stepInCabin } from "@caysonverse/shared/village/busCabin";
+import { BUS_SEATS, seatApproachPoint, BUS_WALK_RADIUS, busSeatNumber, cabinBlocked, stepInCabin } from "@caysonverse/shared/village/busCabin";
 import { validateBusMove, validateBusSit } from "./busCabinMove";
 
 /** A client's walk (the shared stepInCabin at 60 Hz, one BusMove every 100 ms) against the server's check: every honest step must be taken. */
@@ -13,7 +13,7 @@ describe("validateBusMove: the server accepts what the client's own walk produce
     let refused = 0;
     let sent = 0;
     for (let walk = 0; walk < 120; walk++) {
-      const me = { ahead: 3.3, right: 0.2 };
+      const me = { ahead: 3.4, right: 0.26 };
       const server = { busSeat: 0, ahead: me.ahead, right: me.right };
       let dirA = Math.cos(rnd() * 6.28);
       let dirR = Math.sin(rnd() * 6.28);
@@ -50,8 +50,8 @@ describe("validateBusMove: the server accepts what the client's own walk produce
     expect(validateBusMove(from, { ahead: 0.6, right: 5, yaw: 0 }, 1000).ok).toBe(false);
     expect(validateBusMove(from, { ahead: 3.0, right: 0.0, yaw: 0 }, 50).ok).toBe(false); // 2.4 m in 50 ms
     expect(validateBusMove(from, { ahead: 0.9, right: 0.0, yaw: 0 }, 100, [{ ahead: 0.95, right: 0.0 }]).ok).toBe(false);
-    // ... but a rider in the middle of the aisle is passed at its edge (0.25 m off the axis)
-    expect(validateBusMove({ busSeat: 0, ahead: 0.7, right: 0.18 }, { ahead: 0.9, right: 0.18, yaw: 0 }, 100, [{ ahead: 0.8, right: 0.0 }]).ok).toBe(true);
+    // bus v3: nobody walks into another body (a rider standing in the narrow aisle is not passed through)
+    expect(validateBusMove({ busSeat: 0, ahead: 0.3, right: 0.0 }, { ahead: 0.5, right: 0.0, yaw: 0 }, 100, [{ ahead: 0.95, right: 0.0 }]).ok).toBe(false);
     expect(validateBusMove(from, { ahead: 0.7, right: 0.0, yaw: 0 }, 100, [{ ahead: -0.3, right: 0.0 }]).ok).toBe(true);
     expect(validateBusMove({ ...from, busSeat: 3 }, { ahead: 0.7, right: 0.0, yaw: 0 }, 100).ok).toBe(false);
     // straight through a whole seat (a long step across its depth): refused
@@ -62,19 +62,19 @@ describe("validateBusMove: the server accepts what the client's own walk produce
 });
 
 describe("validateBusSit", () => {
-  it("a hold spot where another rider stands is refused", () => {
-    const h = BUS_HOLDS[0]!;
-    const here = { busSeat: 0, ahead: h.ahead, right: h.right };
-    expect(validateBusSit(here, { kind: "hold", index: 0 }, new Set()).ok).toBe(true);
-    expect(validateBusSit(here, { kind: "hold", index: 0 }, new Set(), [{ ahead: h.ahead + 0.1, right: h.right }]).ok).toBe(false);
+  it("bus v3: a hold request (the old poles) is dropped silently", () => {
+    const here = { busSeat: 0, ahead: 1.0, right: 0 };
+    expect(validateBusSit(here, { kind: "hold", index: 0 }, new Set())).toEqual({ ok: false, notice: "" });
   });
 
-  it("a seat from its front is taken, from behind is not, and a taken one is refused", () => {
+  it("every seat from its approach point is taken, from behind is not, and a taken one is refused", () => {
+    BUS_SEATS.forEach((s, i) => {
+      const ap = seatApproachPoint(s);
+      const at = { busSeat: 0, ahead: ap.ahead, right: ap.right };
+      expect(validateBusSit(at, { kind: "seat", index: i }, new Set()).ok, s.id).toBe(true);
+      expect(validateBusSit(at, { kind: "seat", index: i }, new Set([busSeatNumber(i)])).ok, s.id).toBe(false);
+    });
     const s = BUS_SEATS.find((x) => x.id === "R2")!;
-    const front = seatFrontPoint(s);
-    const at = { busSeat: 0, ahead: front.ahead, right: front.right };
-    expect(validateBusSit(at, { kind: "seat", index: BUS_SEATS.indexOf(s) }, new Set()).ok).toBe(true);
-    expect(validateBusSit(at, { kind: "seat", index: BUS_SEATS.indexOf(s) }, new Set([busSeatNumber(BUS_SEATS.indexOf(s))])).ok).toBe(false);
     const behind = { busSeat: 0, ahead: s.ahead - 0.8, right: s.right };
     expect(validateBusSit(behind, { kind: "seat", index: BUS_SEATS.indexOf(s) }, new Set()).ok).toBe(false);
   });
