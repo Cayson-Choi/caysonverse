@@ -21,27 +21,27 @@ export const HOUSE_7_COLLIDERS: readonly AABB[] = [
   { minX: 504.67, maxX: 505.27, minZ: -0.75, maxZ: -0.25 }, // col__h7_1_guitar2
   { minX: 505.46, maxX: 509.54, minZ: -7.7, maxZ: -6.4 }, // col__h7_1_stair_high
   { minX: 505.82, maxX: 506.58, minZ: 29.18, maxZ: 29.82 }, // col__h7_2_crates2
-  { minX: 505.9, maxX: 506.7, minZ: -6.11, maxZ: -5.29 }, // col__h7_1_armchair
+  { minX: 505.9, maxX: 506.7, minZ: -6.36, maxZ: -5.54 }, // col__h7_1_armchair
   { minX: 506.1, maxX: 507.9, minZ: 26, maxZ: 26.8 }, // col__h7_2_bench2
-  { minX: 506.82, maxX: 507.18, minZ: -6.08, maxZ: -5.72 }, // col__h7_1_lamp
+  { minX: 506.82, maxX: 507.18, minZ: -6.33, maxZ: -5.97 }, // col__h7_1_lamp
   { minX: 506.84, maxX: 507.36, minZ: 27.04, maxZ: 27.56 }, // col__h7_2_stool3
   { minX: 507.07, maxX: 508.02, minZ: -4.15, maxZ: -1.95 }, // col__h7_1_sofa
-  { minX: 507.35, maxX: 507.75, minZ: -4.67, maxZ: -4.22 }, // col__h7_1_side
+  { minX: 507.4, maxX: 507.8, minZ: -1.95, maxZ: -1.5 }, // col__h7_1_side
   { minX: 507.5, maxX: 507.6, minZ: -1.5, maxZ: 0 }, // col__h7_1_part_entry_0
   { minX: 507.6, maxX: 507.92, minZ: -1.4, maxZ: -0.1 }, // col__h7_1_part_entry_3
   { minX: 509.66, maxX: 510.3, minZ: -7.62, maxZ: -6.98 }, // col__h7_1_plant_b
   { minX: 510.28, maxX: 510.92, minZ: 29.08, maxZ: 29.72 }, // col__h7_2_plant
   { minX: 510.3, maxX: 511, minZ: -1.6, maxZ: -1.4 }, // col__h7_1_part_entry_2
   { minX: 511, maxX: 511.1, minZ: -1.5, maxZ: 0 }, // col__h7_1_part_entry_1
-  { minX: 511.7, maxX: 512.22, minZ: -2.65, maxZ: -2.15 }, // col__h7_1_dchair
+  { minX: 511.45, maxX: 511.97, minZ: -2.65, maxZ: -2.15 }, // col__h7_1_dchair
   { minX: 511.92, maxX: 514.28, minZ: 22.21, maxZ: 22.37 }, // col__h7_2_pegboard
+  { minX: 512.1, maxX: 513.2, minZ: -2.95, maxZ: -1.85 }, // col__h7_1_table
   { minX: 512.1, maxX: 514.1, minZ: 22.4, maxZ: 23.2 }, // col__h7_2_bench
   { minX: 512.18, maxX: 512.73, minZ: 23.37, maxZ: 23.92 }, // col__h7_2_stool
-  { minX: 512.35, maxX: 513.45, minZ: -2.95, maxZ: -1.85 }, // col__h7_1_table
   { minX: 512.9, maxX: 514.1, minZ: -0.35, maxZ: -0.05 }, // col__h7_1_case
+  { minX: 513.33, maxX: 513.85, minZ: -2.65, maxZ: -2.15 }, // col__h7_1_dchair2
   { minX: 513.46, maxX: 514.04, minZ: 23.36, maxZ: 23.94 }, // col__h7_2_stool2
   { minX: 513.54, maxX: 513.9, minZ: -7.4, maxZ: -6.4 }, // col__h7_1_bench
-  { minX: 513.58, maxX: 514.1, minZ: -2.65, maxZ: -2.15 }, // col__h7_1_dchair2
   { minX: 513.88, maxX: 514.52, minZ: -3.37, maxZ: -2.73 }, // col__h7_1_plant_r
   { minX: 513.94, maxX: 514.61, minZ: -7.65, maxZ: -6.15 }, // col__h7_1_piano
   { minX: 514.2, maxX: 514.6, minZ: 22.6, maxZ: 23.8 }, // col__h7_2_mat4
