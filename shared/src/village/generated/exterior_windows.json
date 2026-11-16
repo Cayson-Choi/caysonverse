@@ -1,7 +1,7 @@
 {
   "format": "caysonverse-exterior-windows",
   "version": 1,
-  "source": "design",
+  "source": "build",
   "houses": {
     "house_1": [
       {

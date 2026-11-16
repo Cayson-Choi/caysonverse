@@ -98,3 +98,22 @@
 - **Aside(사장님 2026-11-16 "쓸데없이 어사이드창을 여러개 띄우고 그러지 마", "사용이 끝난 어사이드는 닫아")**: 세션은 하나만 만들고 다시 쓰기, 쓸 일이 끝나면 `aside session stop <id>`로 멈추고 창을 닫기. 새 창·새 세션을 여러 개 띄우지 않기.
 - 브라우저는 한 번에 하나, Blender도 한 번에 하나(PC가 바빠요). 굽기는 `CV_CPU=1`.
 - 8장 시험 표 전체(`design.md`)와 6장 질감 규칙을 처음부터 지키기. 단색 면은 FAIL.
+
+## 10. X1 몸체 키트 결과 (2026-11-17, `feat/exterior-x1`)
+| 파일 | 내용 |
+|---|---|
+| `docs/designs/house-exteriors/tools/house_kit.py` | 몸체 키트(bpy 없음, X2·X4가 import): 기초 단, 벽(창 표 그대로 뚫음), 창(PVC 틀·미서기 2짝·크레센트·방충망·화강석 창대 + 물끊기·인방 몰딩), 현관문(오크 유리 양문·바 손잡이·도어락), 띠 몰딩, 방·커튼·밤 창(M_window), 지붕(아스팔트 슁글 줄마다 2.8 cm 턱 / 4·8·10번 징크 돌출이음), 삼나무 처마 밑판, 처마판·박공판·물끊기, 각진 홈통 + 걸이쇠, 선홈통 4개(꺾임·밴드 5·신발·화강석 낙수 받침), 굴뚝(스타코 / 스테인리스 연통), 환기 후드 |
+| `docs/designs/house-exteriors/tools/build_house_body.py` | Blender 5.3 빌드: `village_houses.glb`(Draco), 창 표(`--table-out`, `source: "build"`), 예산 보고, 렌더 |
+| `docs/designs/house-exteriors/tools/make_house_textures.py`, `SOURCES.md` | PBR 세트 7종 → 재질 5개(WebP 1024, albedo·normal·rough), CC0 출처 |
+| `client/public/models/village/village_houses.glb` | 껍데기 + 몸체 디테일 + `slot__` 30개 (X2 포치는 아직 없음) |
+| `client/public/models/village/houses/` | `house_{render,granite,shingle,wood,metal}_{albedo,normal,rough}.webp` + `house_textures.json` |
+| `client/dev/houses-lookdev.html`, `e2e/houses-lookdev.mjs` | 게임 미리보기(DEV): 재질 이름으로 세트를 붙이는 법, 낮·밤, PC·폰 |
+| `server/src/tools/houseBodyGlb.test.ts` | A1·A4·A6·6장 검사 |
+
+**넘겨주기**
+- **재질 ↔ 세트(X3):** GLB에는 그림이 없어요. `house_textures.json`의 `materials[이름].maps`를 재질 이름으로 붙여요(`flipY = false`, Repeat, albedo만 sRGB, `normalScale (1, −1)` — 접선 없는 glTF). 색(집 파스텔·물때)은 `COLOR_0`(정점색, 선형)이라 `vertexColors` 그대로. `LM_wood`(위 = 오크, 아래 = 삼나무)·`LM_metal`(위 = 도장 금속, 아래 = PVC)은 띠 두 개짜리 지도(UV가 띠를 넘지 않음). **LM_ 재질을 unlit(MeshBasic)로 바꾸면 normal·roughness가 사라져요** — 집은 버스처럼 lit(MeshStandard) + 라이트맵(X4)으로. `M_window`는 `KHR_materials_emissive_strength` 0(낮), 밤에 켜기. `M_glass`·`M_screen` BLEND.
+- **그리기:** 껍데기 재질 ≤ 7, 몸체 디테일 재질 5개(LM_metal·LM_stone·LM_wood·M_lamp·M_screen) → **X2는 디테일에 M_leaf_flora 하나만 더할 수 있어요**(6장). 렌더(LM_render)·지붕이 필요한 X2 부품은 껍데기 쪽에.
+- **삼각형:** 껍데기 1,582 ~ 1,756(≤ 1,800), 몸체 디테일 2,968 ~ 3,116 → **X2 몫은 집마다 ≈ 2,900**(디테일 ≤ 6,000). 10채 합 ≈ 47.2k.
+- **포치(X2):** 기초 단 앞면 = z 3.205, 윗면 0.30. 포치 판은 z 3.205부터(겹치지 않게), 윗면 0.30. 현관 문턱(화강석)은 문 개구부 안 y 0.28 ~ 0.315. 앞 모서리 선홈통 낙수 받침은 x ±5.28 (폭 0.5), z 3.255 ~ 3.855 (화단 안).
+- **창 표:** `exterior_windows.json`을 빌드 값(`source: "build"`)으로 썼어요 — 설계값과 차이 0.
+- **치수 메모:** 벽 꼭대기 8.30(바닥 +0.30 + 4.0 × 2), 처마 끝 아래 7.75, 용마루 갓 위 ≈ 11.97 (< 카메라 상자 12). 굴뚝·연통만 12 위로.

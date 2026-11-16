@@ -1,0 +1,95 @@
+{
+  "format": "caysonverse-house-textures",
+  "version": 1,
+  "mapSide": 1024,
+  "bytes": 3016956,
+  "materials": {
+    "LM_render": {
+      "sets": [
+        "render"
+      ],
+      "u_m": 2.0,
+      "v_m": 2.0,
+      "maps": {
+        "albedo": "house_render_albedo.webp",
+        "normal": "house_render_normal.webp",
+        "rough": "house_render_rough.webp"
+      }
+    },
+    "LM_stone": {
+      "sets": [
+        "granite"
+      ],
+      "u_m": 1.0,
+      "v_m": 1.0,
+      "maps": {
+        "albedo": "house_granite_albedo.webp",
+        "normal": "house_granite_normal.webp",
+        "rough": "house_granite_rough.webp"
+      }
+    },
+    "LM_roof": {
+      "sets": [
+        "shingle"
+      ],
+      "u_m": 2.0,
+      "rows": 14,
+      "exposure_m": 0.14285714285714285,
+      "maps": {
+        "albedo": "house_shingle_albedo.webp",
+        "normal": "house_shingle_normal.webp",
+        "rough": "house_shingle_rough.webp"
+      }
+    },
+    "LM_wood": {
+      "sets": [
+        "oak",
+        "timber_cladding"
+      ],
+      "bands": {
+        "oak": {
+          "v0": 0.5,
+          "v1": 1.0,
+          "u_m": 1.83,
+          "v_m": 0.915
+        },
+        "timber_cladding": {
+          "v0": 0.0,
+          "v1": 0.5,
+          "u_m": 1.13,
+          "v_m": 0.565
+        }
+      },
+      "maps": {
+        "albedo": "house_wood_albedo.webp",
+        "normal": "house_wood_normal.webp",
+        "rough": "house_wood_rough.webp"
+      }
+    },
+    "LM_metal": {
+      "sets": [
+        "metal_painted",
+        "pvc_frame"
+      ],
+      "bands": {
+        "metal_painted": {
+          "v0": 0.5,
+          "v1": 1.0,
+          "u_m": 1.0,
+          "v_m": 0.5
+        },
+        "pvc_frame": {
+          "v0": 0.0,
+          "v1": 0.5,
+          "u_m": 1.0,
+          "v_m": 0.5
+        }
+      },
+      "maps": {
+        "albedo": "house_metal_albedo.webp",
+        "normal": "house_metal_normal.webp",
+        "rough": "house_metal_rough.webp"
+      }
+    }
+  }
+}
