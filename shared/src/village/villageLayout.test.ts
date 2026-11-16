@@ -14,6 +14,7 @@ import {
   HALL_CEILING_DROP,
   HALL_MODEL_COLLIDERS,
   SCENERY_SIZES,
+  VILLAGE_EAST_EDGE,
   VILLAGE_LAYOUT,
   VILLAGE_MODEL_COLLIDERS,
   areaGapBlockers,
@@ -51,6 +52,7 @@ import {
   villageGeometry,
 } from "./villageLayout";
 import { streetPoleColliders } from "./streetPoles";
+import { LAKE_AREA, lakeCameraBoxes, lakeColliders } from "./lakeLayout";
 import { signalPoleColliders } from "./crossings";
 import type { PlotId, Point2, Side, VillageLane } from "./villageLayout";
 
@@ -408,9 +410,10 @@ describe("layout values (brief + rulings + owner changes)", () => {
     expect(lp.maxZ).toBeLessThanOrEqual(lk.maxZ);
   });
 
-  it("areas: village = walk bounds, hall = the interior rectangle", () => {
+  it("areas: village = walk bounds plus the fishing lake east of them (A10), hall = the interior rectangle", () => {
     expect(Object.keys(L.areas).sort()).toEqual(["hall", "village"]);
-    expect(L.areas.village).toEqual(L.walkBounds);
+    expect(L.areas.village).toEqual({ ...L.walkBounds, maxX: VILLAGE_EAST_EDGE });
+    expect(VILLAGE_EAST_EDGE).toBe(LAKE_AREA.maxX);
     expect(L.areas.hall).toEqual(L.memorial.interior.room);
     expect(L.areas.hall).toEqual({ minX: 292.5, maxX: 307.5, minZ: -6, maxZ: 6 });
   });
@@ -748,24 +751,24 @@ describe("village colliders are built from the layout", () => {
   });
 
   it("buildVillageGeometry takes a named collider list or the extractor's { obstacles, cameraBoxes }", () => {
-    const fixed = hallWalls(L).length + areaGapBlockers(L).length + hallSurroundBlockers(L).length + busShelterColliders(L).length + 1 /* the shelter's bench */ + signalPoleColliders().length + streetPoleColliders(L).length;
+    const fixed = hallWalls(L).length + areaGapBlockers(L).length + hallSurroundBlockers(L).length + lakeColliders().length + busShelterColliders(L).length + 1 /* the shelter's bench */ + signalPoleColliders().length + streetPoleColliders(L).length;
     const bare = buildVillageGeometry(L, []);
     expect(bare.obstacles).toHaveLength(fixed);
     // the bus is no static collider (it left an invisible wall at the empty stop): no slice of it in the map
     for (const b of busParkedColliders(L)) expect(bare.obstacles).not.toContainEqual({ minX: b.minX, maxX: b.maxX, minZ: b.minZ, maxZ: b.maxZ });
     for (const b of streetPoleColliders(L)) expect(bare.obstacles).toContainEqual(b);
-    expect(bare.cameraBoxes).toEqual([...hallWalls(L), busShelterRoofSlab(L), busShelterLightBoxCameraBox(L)]);
+    expect(bare.cameraBoxes).toEqual([...hallWalls(L), ...lakeCameraBoxes(), busShelterRoofSlab(L), busShelterLightBoxCameraBox(L)]);
     const box = { minX: 0, maxX: 1, minZ: 0, maxZ: 1 };
     const one = buildVillageGeometry(L, [{ id: "x", box, camera: false }]);
     expect(one.obstacles).toHaveLength(fixed + 1);
-    expect(one.cameraBoxes).toHaveLength(hallWalls(L).length + 2); // the shelter's roof slab and light box
+    expect(one.cameraBoxes).toHaveLength(hallWalls(L).length + lakeCameraBoxes().length + 2); // the lake's boxes, the shelter's roof slab and light box
     const tall = { ...box, height: 3 };
     const generated = buildVillageGeometry(L, { obstacles: [box], cameraBoxes: [tall] });
     expect(generated.obstacles).toHaveLength(fixed + 1);
     expect(generated.obstacles).toContainEqual(box);
     expect(generated.obstacles.slice(-busShelterColliders(L).length - 1, -1)).toEqual(busShelterColliders(L));
     expect(generated.obstacles.at(-1)).toEqual(busShelterBenchCollider(L));
-    expect(generated.cameraBoxes).toEqual([...hallWalls(L), tall, busShelterRoofSlab(L), busShelterLightBoxCameraBox(L)]); // the height is kept; the shelter's glass is no camera box (seen through), its opaque light box is
+    expect(generated.cameraBoxes).toEqual([...hallWalls(L), tall, ...lakeCameraBoxes(), busShelterRoofSlab(L), busShelterLightBoxCameraBox(L)]); // the height is kept; the shelter's glass is no camera box (seen through), its opaque light box is
     expect(generated.bounds).toEqual(bare.bounds);
   });
 
@@ -1246,9 +1249,10 @@ describe.each(GEOMETRIES)("village geometry invariants: %s", (_name, geo) => {
   });
 
   describe("the two areas", () => {
-    it("the village's east edge is sealed from the hall: from the spawn nothing past x = 95 and nothing in the hall is reachable", () => {
+    it("the village's east edge is sealed from the hall: from the spawn nothing past the lake (x 186) and nothing in the hall is reachable", () => {
       const r = villageFill(geo);
-      expect(r.some((p) => p.x > L.walkBounds.maxX)).toBe(false);
+      expect(r.some((p) => p.x > L.walkBounds.maxX)).toBe(true); // the fishing lake (A10) is walked on, past the village's old edge
+      expect(r.some((p) => p.x > LAKE_AREA.maxX)).toBe(false);
       expect(r.some((p) => p.x >= HALL.minX - 1)).toBe(false);
       expect(r.some((p) => inside(HALL, p))).toBe(false);
     });
@@ -1260,13 +1264,24 @@ describe.each(GEOMETRIES)("village geometry invariants: %s", (_name, geo) => {
       expect(villageFill(open).some((p) => p.x > 250)).toBe(true);
     });
 
-    it("the gap blocker spans the full z range of the bounds and runs from the village edge to the hall wall", () => {
-      for (const b of areaGapBlockers(L)) {
+    it("the gap blocker spans the full z range of the bounds and runs from the village area's edge to the hall wall; two strips close the lake's north and south", () => {
+      const all = areaGapBlockers(L);
+      const main = all.filter((b) => b.maxX === L.areas.hall.minX - 0.5); // the hall's outer west wall face
+      expect(main).toHaveLength(1);
+      expect(main[0]!.minX).toBe(L.areas.village.maxX);
+      expect(main[0]!.minZ).toBeLessThanOrEqual(geo.bounds.minZ);
+      expect(main[0]!.maxZ).toBeGreaterThanOrEqual(geo.bounds.maxZ);
+      // the fishing lake (A10): the strips north and south of its zone, from the village's old edge to the area's edge
+      const strips = all.filter((b) => b !== main[0]);
+      expect(strips).toHaveLength(2);
+      for (const b of strips) {
         expect(b.minX).toBe(L.walkBounds.maxX);
-        expect(b.minZ).toBeLessThanOrEqual(geo.bounds.minZ);
-        expect(b.maxZ).toBeGreaterThanOrEqual(geo.bounds.maxZ);
-        expect(b.maxX).toBe(L.areas.hall.minX - 0.5); // the hall's outer west wall face
+        expect(b.maxX).toBe(L.areas.village.maxX);
       }
+      expect(strips[0]!.minZ).toBeLessThanOrEqual(geo.bounds.minZ);
+      expect(strips[0]!.maxZ).toBe(LAKE_AREA.minZ);
+      expect(strips[1]!.minZ).toBe(LAKE_AREA.maxZ);
+      expect(strips[1]!.maxZ).toBeGreaterThanOrEqual(geo.bounds.maxZ);
     });
 
     it("interior: the inside spawn and the inside door pad are reachable, and the hall is a sealed room", () => {
@@ -1304,7 +1319,7 @@ describe.each(GEOMETRIES)("village geometry invariants: %s", (_name, geo) => {
       expect(isBlocked(307.7, 0, PLAYER_RADIUS, obstacles)).toBe(true); // the east wall, where the clamp puts an outward step
       // ...and a lattice over everything between the village and the hall's far side, outside the room, is blocked.
       let free = 0;
-      for (let x = L.walkBounds.maxX + 0.5; x <= geo.bounds.maxX; x += 0.5) {
+      for (let x = L.areas.village.maxX + 0.5; x <= geo.bounds.maxX; x += 0.5) {
         for (let z = geo.bounds.minZ; z <= geo.bounds.maxZ; z += 0.5) {
           if (isBlocked(x, z, PLAYER_RADIUS, obstacles)) continue;
           if (!inside(HALL, { x, z })) free++;

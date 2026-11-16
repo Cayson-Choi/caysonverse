@@ -111,6 +111,8 @@ import { sendBusMove, sendBusStand } from "../net/transitSync";
 import { isInputSuspended } from "../net/resilience";
 import { useSettingsStore } from "../stores/settingsStore";
 import { cubbyFocusWeight } from "../village/cubbyFocus";
+import { CARRY_STRIPPED_CLIPS, stripArm } from "../lake/fishingRig";
+import { useFishingRig, useHasRod } from "../lake/useFishingRig";
 
 /** Fallback seconds for a sit/stand clip if its duration can't be read yet. */
 const SIT_CLIP_FALLBACK_SEC = 0.8;
@@ -270,7 +272,11 @@ export function LocalPlayer({
     };
   }, [avatar]);
 
-  const { actions } = useAnimations(animations, model);
+  // Fishing lake (A10): a rod carrier's walk / run / idle have no right arm (Carry_Rod owns it), the rig (rod, clips) is the lake's.
+  const hasRod = useHasRod(sessionId);
+  const baseClips = useMemo(() => (hasRod ? animations.map((c) => (CARRY_STRIPPED_CLIPS.test(c.name) ? stripArm(c) : c)) : animations), [animations, hasRod]);
+  const { actions, mixer } = useAnimations(baseClips, model);
+  const fishRig = useFishingRig(sessionId, avatar, mixer);
 
   // The clip the mixer is on right now, as last reported to the DEV avatar probe
   // (`__cvAvatars()[sid].clip`): reported once per change, never per frame.
@@ -927,6 +933,12 @@ export function LocalPlayer({
       }
     }
 
+    // Fishing lake: the rod, the fishing clips, the landed fish (lake/fishingRig.ts); a no-op without a rod.
+    fishRig.update(delta, {
+      seatMode: animStateRef.current === "sitDown" ? "sitting" : animStateRef.current === "sitIdle" ? "seated" : animStateRef.current === "standUp" ? "standing" : "up",
+      baseSit: action(CLIP.sitIdle) ?? null,
+    });
+
     // Hide what hangs inside the bench while on it: from the moment the avatar stands on the seat's spot (the
     // walk onto it is over) until the stand-up clip has carried it off (benchClip.ts).
     const onBench =
@@ -952,7 +964,7 @@ export function LocalPlayer({
         sendStand();
         standRequestedRef.current = true;
       }
-      placeGroup(group, false, suspended, currentSeatLift());
+      placeGroup(group, false, suspended, currentSeatLift() * fishRig.liftFactor());
       group.rotation.y = pose.yaw + MODEL_FACING_OFFSET;
       return;
     }
@@ -961,7 +973,7 @@ export function LocalPlayer({
     // already put us on. Nothing moves the avatar meanwhile and nothing is sent (the pose ends exactly there); held
     // keys and a click target take over once it is there.
     if (stillGliding) {
-      placeGroup(group, false, suspended, currentSeatLift());
+      placeGroup(group, false, suspended, currentSeatLift() * fishRig.liftFactor());
       group.rotation.y = pose.yaw + MODEL_FACING_OFFSET;
       return;
     }
@@ -1022,7 +1034,7 @@ export function LocalPlayer({
     // standing sends nothing.
     if (inFp) pose.yaw = fpBodyYaw(viewState.fpYaw);
 
-    placeGroup(group, animStateRef.current === "loco", suspended, currentSeatLift());
+    placeGroup(group, animStateRef.current === "loco", suspended, currentSeatLift() * fishRig.liftFactor());
     group.rotation.y = pose.yaw + MODEL_FACING_OFFSET;
 
     // The loop on the body follows the ground speed: Idle / walk / run crossfades when the speed calls for another

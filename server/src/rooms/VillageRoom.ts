@@ -11,24 +11,9 @@ import {
   VillageMsg,
   VillageServerMsg,
   type CandleStatePayload,
-  type FishingRejectedPayload,
-  type FishingResultPayload,
-  type FishingStatePayload,
   type KeypadResultPayload,
   type ServerTimePayload,
 } from "@caysonverse/shared/village/messages";
-import {
-  FISHING_POND_REACH_M,
-  FISHING_RENTAL_REACH_M,
-  FISHING_SPOTS,
-  castLine,
-  createFishingState,
-  distanceSquared,
-  rentRod,
-  reelLine,
-  tickFishing,
-  type FishingState,
-} from "@caysonverse/shared/village/fishing";
 import { HOUSE_INTERIOR_SPAWN, VILLAGE_LAYOUT, houseArea, houseInteriorGeometry, isHouseArea, villageGeometry } from "@caysonverse/shared/village/villageLayout";
 import { VILLAGE_SEATS } from "@caysonverse/shared/village/benchSeats";
 import { arrivalArea, freeSpawnSpot, spreadArrival } from "@caysonverse/shared/village/arrivalSpot";
@@ -39,6 +24,7 @@ import { DOOR_RATE, useDoor } from "./villageDoor";
 import { candleCubby } from "./villageCandle";
 import { CANDLES, type CandleBook } from "./candleBook";
 import { validateSit } from "./seating";
+import { VillageFishing } from "./villageFishing";
 import {
   BUS_STATE_RATE_MS,
   riderOnTrip,
@@ -137,8 +123,18 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
   private lastBusBroadcast = 0;
   /** The avatars on the road this tick (reused). */
   private readonly busObstacles: TransitPoint[] = [];
-  /** Fishing is room memory only: disconnecting or disposing a room loses the session's catch. */
-  private readonly fishing = new Map<string, FishingState>();
+  /** The fishing lake's rules (villageFishing.ts): room memory only, a disconnect loses the rod and the catch. */
+  private readonly fishing: VillageFishing = new VillageFishing({
+    now: () => this.now(),
+    wallClock: () => this.wallClock(),
+    player: (sid) => this.state.players.get(sid),
+    clients: () => this.clients,
+    sit: (client, seatIndex) => this.handleSit(client, { seatIndex }),
+    stand: (client) => this.handleStand(client),
+    onMessage: (type, handler) => {
+      this.onMessage(type, handler);
+    },
+  });
 
   /** The process's candles (every room's hall shows the same ones); a test may swap in its own. */
   protected candles: CandleBook = CANDLES;
@@ -173,15 +169,7 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     this.onMessage(MessageType.BusStand, (client) => {
       this.handleBusStand(client);
     });
-    this.onMessage(VillageMsg.FishingRentRod, (client) => {
-      this.handleFishingRentRod(client);
-    });
-    this.onMessage(VillageMsg.FishingCast, (client) => {
-      this.handleFishingCast(client);
-    });
-    this.onMessage(VillageMsg.FishingReel, (client) => {
-      this.handleFishingReel(client);
-    });
+    this.fishing.register(); // the fishing messages (villageFishing.ts)
     this.onMessage(VillageMsg.Keypad, (client, payload: unknown) => {
       this.handleKeypad(client, payload);
     });
@@ -191,8 +179,8 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     // client interpolates between snapshots and every client sees the same signal.
     // The driver looks ahead every BUS_DRIVER.tickMs: a brake, a re-start or a horn is published at once.
     this.clock.setInterval(() => this.tickBus(), BUS_DRIVER.tickMs);
-    // A short server tick moves a waiting bobber into its submerged window. The client never chooses this transition.
-    this.clock.setInterval(() => this.tickFishingSessions(), 100);
+    // The fishing stages that end by themselves (nibble, bite, the fight, ...). The client never chooses these transitions.
+    this.clock.setInterval(() => this.fishing.tick(), 100);
   }
 
   /** The server's wall clock (Unix epoch ms, UTC). A seam for tests; the door and move caps use `now()`. */
@@ -242,12 +230,11 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     player.connected = true;
     player.area = "village";
     this.seatPlayer(client, player); // state + tracking (createTracking below)
-    this.fishing.set(client.sessionId, createFishingState());
     client.send(VillageServerMsg.ServerTime, this.serverTime());
     const snapshot = this.busSnapshot(this.wallClock());
     client.send(MessageType.BusState, snapshot);
     client.send(MessageType.BusRideState, { boarded: false, tripId: snapshot.tripId } satisfies BusRideStatePayload);
-    this.sendFishingState(client, this.fishing.get(client.sessionId)!);
+    this.fishing.join(client);
   }
 
   /**
@@ -263,8 +250,7 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     const track = this.tracking.get(client.sessionId);
     const tripId = track?.busTripId ?? snapshot.tripId;
     client.send(MessageType.BusRideState, { boarded: track?.busBoarded === true, tripId } satisfies BusRideStatePayload);
-    const state = this.fishing.get(client.sessionId);
-    if (state) this.sendFishingState(client, state);
+    this.fishing.resend(client);
     if (this.state.players.get(client.sessionId)?.area === "hall") this.sendCandles(client);
   }
 
@@ -366,7 +352,7 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
       player.busSeat = -1;
     }
     this.releaseSeat(client.sessionId);
-    this.fishing.delete(client.sessionId);
+    this.fishing.leave(client.sessionId);
     super.onLeave(client);
   }
 
@@ -624,10 +610,10 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
    * baseline so the seated span cannot later be spent as a one-shot displacement budget (D1). The client sees itself
    * seated once `seatIndex` syncs.
    */
-  private handleSit(client: Client, payload: unknown): void {
+  private handleSit(client: Client, payload: unknown): "seated" | "taken" | "dropped" {
     const player = this.state.players.get(client.sessionId);
     const track = this.tracking.get(client.sessionId);
-    if (!player || !track) return; // no seat yet / already left → drop
+    if (!player || !track) return "dropped"; // no seat yet / already left → drop
 
     const result = validateSit(
       { x: player.x, z: player.z, seatIndex: player.seatIndex },
@@ -636,22 +622,24 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
       client.sessionId,
       VILLAGE_SEATS,
     );
-    if (result === null) return; // malformed / already seated / out of reach → silent
+    if (result === null) return "dropped"; // malformed / already seated / out of reach → silent
     if ("reason" in result) {
       client.send(MessageType.SitRejected, { reason: result.reason }); // first come, first seated
-      return;
+      return "taken";
     }
 
     const seat = VILLAGE_SEATS[result.seatIndex];
     // The distance gate already keeps a bench in the other area out of reach (the hall is hundreds of metres away);
     // the area check states it.
-    if (seat.area !== player.area) return;
+    if (seat.area !== player.area) return "dropped";
     this.occupancy.set(result.seatIndex, client.sessionId);
     player.seatIndex = result.seatIndex;
     player.x = seat.x;
     player.z = seat.z;
     player.yaw = seat.yaw;
     track.lastAcceptedAt = this.now();
+    this.fishing.onSeated(client.sessionId, result.seatIndex); // a fishing chair with a rod: ready
+    return "seated";
   }
 
   /**
@@ -680,6 +668,7 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
   private releaseSeat(sessionId: string): void {
     const player = this.state.players.get(sessionId);
     if (!player || player.seatIndex < 0) return;
+    this.fishing.onStood(sessionId); // a fishing chair: the line comes out, the rod goes back on the shoulder
     if (this.occupancy.get(player.seatIndex) === sessionId) this.occupancy.delete(player.seatIndex);
     player.seatIndex = -1;
   }
@@ -736,111 +725,6 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     if (this.candles.burning(anchor.id, this.wallClock())) return; // already burning: the card shows who lit it
     if (!track.candleRate.tryAccept(this.now())) return;
     this.candles.light(anchor.id, player.nickname, this.wallClock());
-  }
-
-  /** Project the private state without exposing future bite timestamps to the browser. */
-  private fishingPayload(state: FishingState, now = this.now()): FishingStatePayload {
-    return {
-      phase: state.phase,
-      rodRented: state.rodRented,
-      castId: state.castId,
-      lastResult: state.lastResult,
-      catch: state.catch ? { ...state.catch } : null,
-      serverNowMs: now,
-    };
-  }
-
-  private sendFishingState(client: Client, state: FishingState, now = this.now()): void {
-    client.send(VillageServerMsg.FishingState, this.fishingPayload(state, now));
-  }
-
-  private sendFishingResult(client: Client, state: FishingState, event: FishingResultPayload["event"], now: number): void {
-    client.send(VillageServerMsg.FishingResult, { ...this.fishingPayload(state, now), event } satisfies FishingResultPayload);
-  }
-
-  private sendFishingRejected(client: Client, reason: FishingRejectedPayload["reason"]): void {
-    client.send(VillageServerMsg.FishingRejected, { reason } satisfies FishingRejectedPayload);
-  }
-
-  private fishingPlayer(client: Client): { player: Player; state: FishingState } | null {
-    const player = this.state.players.get(client.sessionId);
-    const state = this.fishing.get(client.sessionId);
-    if (!player || !state || player.area !== "village" || player.seatIndex >= 0) return null;
-    return { player, state };
-  }
-
-  private nearFishingSpot(player: Player, spot: { x: number; z: number }, reach: number): boolean {
-    return distanceSquared({ x: player.x, z: player.z }, spot) <= reach * reach + 1e-9;
-  }
-
-  private handleFishingRentRod(client: Client): void {
-    const found = this.fishingPlayer(client);
-    if (!found) return;
-    const now = this.now();
-    const result = rentRod(found.state, now, this.nearFishingSpot(found.player, FISHING_SPOTS.rental, FISHING_RENTAL_REACH_M));
-    if (!result.ok) {
-      this.sendFishingRejected(client, result.reject!);
-      return;
-    }
-    this.fishing.set(client.sessionId, result.state);
-    this.sendFishingState(client, result.state, now);
-  }
-
-  private handleFishingCast(client: Client): void {
-    const found = this.fishingPlayer(client);
-    if (!found) return;
-    const now = this.now();
-    const result = castLine(
-      found.state,
-      now,
-      this.nearFishingSpot(found.player, FISHING_SPOTS.pond, FISHING_POND_REACH_M),
-    );
-    if (!result.ok) {
-      this.sendFishingRejected(client, result.reject!);
-      return;
-    }
-    this.fishing.set(client.sessionId, result.state);
-    this.sendFishingResult(client, result.state, "cast", now);
-  }
-
-  private handleFishingReel(client: Client): void {
-    const found = this.fishingPlayer(client);
-    if (!found) return;
-    const now = this.now();
-    const result = reelLine(found.state, now);
-    if (!result.ok) {
-      this.fishing.set(client.sessionId, result.state);
-      this.sendFishingRejected(client, result.reject!);
-      if (result.state !== found.state) this.sendFishingState(client, result.state, now);
-      return;
-    }
-    this.fishing.set(client.sessionId, result.state);
-    const event = result.event;
-    if (event && event !== "rod_rented") this.sendFishingResult(client, result.state, event, now);
-    else this.sendFishingState(client, result.state, now);
-  }
-
-  /** Advance only the sessions that are waiting; no state is persisted beyond the room lifetime. */
-  private tickFishingSessions(): void {
-    const now = this.now();
-    for (const [sessionId, state] of this.fishing) {
-      const stepped = tickFishing(state, now);
-      if (!stepped.ok || !stepped.event) continue;
-      this.fishing.set(sessionId, stepped.state);
-      let client: Client | undefined;
-      for (const candidate of this.clients) {
-        if (candidate.sessionId === sessionId) {
-          client = candidate;
-          break;
-        }
-      }
-      if (!client) continue;
-      if (stepped.event === "bite" || stepped.event === "missed") {
-        this.sendFishingResult(client, stepped.state, stepped.event, now);
-      } else {
-        this.sendFishingState(client, stepped.state, now);
-      }
-    }
   }
 
   /** House keypad: authoritative position + server-only code digest, then a placeholder hall teleport until house GLBs exist. */

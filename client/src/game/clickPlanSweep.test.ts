@@ -17,6 +17,7 @@ import { isBlocked, resolveCollision } from "@caysonverse/shared/collision";
 import { VILLAGE_LAYOUT, villageGeometry } from "@caysonverse/shared/village/villageLayout";
 import { VILLAGE_BENCHES, VILLAGE_SEATS } from "@caysonverse/shared/village/benchSeats";
 import { reachable } from "@caysonverse/shared/school/reachTestUtil";
+import { inLakeWater, onLakeDeck } from "@caysonverse/shared/village/lakeLayout";
 import { findDetour, isFreeSpot, planClickMove, simulateWalk, walkThere, type ClickPlan } from "./clickPlan";
 import { ARRIVE_DIST, clearClickTarget, getClickTarget, setClickTarget, stepClickMove } from "./clickMove";
 import { VILLAGE_ACTIVE_MAP, VILLAGE_FURNITURE, setActiveMap } from "./activeMap";
@@ -90,6 +91,9 @@ describe("clickPlan sweep — seated, every tap on the open ground round a seat 
           const x = s.x + gx * 0.25;
           const z = s.z + gz * 0.25;
           if (x < bounds.minX || x > bounds.maxX || z < bounds.minZ || z > bounds.maxZ || !openGround(x, z)) continue;
+          // the lake's seats (A10): water is not ground. A tap on a water box's edge line (0.25 m grid points on the 0.5 m boxes' seams, strict-inside
+          // `openGround` calls them open) is a tap into the lake, which the planner rightly refuses.
+          if (inLakeWater(x, z) && !onLakeDeck(x, z)) continue;
           // a café chair: the taps round it on its terrace, where a body fits
           if ((cafeChair(s) || onTerrace(x, z)) && !bodyFitsNear(x, z)) continue;
           // the hall: furniture makes pockets a body cannot stand in or cannot get out of; a tap there is rightly refused, so only

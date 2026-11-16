@@ -11,6 +11,7 @@ import type { Bounds } from "@caysonverse/shared/school/geometry";
 import { isFreeSpot } from "./clickPlan";
 import { CHAIR_BACK_BEHIND, CHAIR_HALF_WIDTH } from "@caysonverse/shared/village/benchSeats";
 import { VILLAGE_SEAT_MARKERS } from "@caysonverse/shared/village/generated/villageSeatMarkers";
+import { lakeSeats } from "@caysonverse/shared/village/lakeLayout";
 
 /** A tap this far past a chair's footprint (m) still counts as on it (a seat's edge, a leg, a rail seen edge-on). */
 export const SEAT_TAP_MARGIN = 0.1;
@@ -31,7 +32,19 @@ interface Footprint {
   half: number;
 }
 
-const FOOTPRINTS: readonly Footprint[] = VILLAGE_SEAT_MARKERS.map((m) => ({
+/**
+ * The fishing lake's 30 chairs (lakeLayout.ts: the art's `seat__lake_*` markers will replace these when the lake's seat markers are
+ * generated). A seat is the sitter's ROOT; the chair's centre is behind it by the chair's front edge and the root's reach ahead.
+ */
+const CHAIR_FRONT_EDGE = 0.21;
+const LAKE_CHAIR_FOOTPRINTS: Footprint[] = lakeSeats()
+  .filter((s) => s.kind === "fishing_chair")
+  .map((s) => {
+    const back = CHAIR_FRONT_EDGE + (s.frontEdge ?? 0);
+    return { id: s.bench, x: s.x - Math.sin(s.yaw) * back, z: s.z - Math.cos(s.yaw) * back, yaw: s.yaw, front: CHAIR_FRONT_EDGE, back: CHAIR_BACK_BEHIND, half: CHAIR_HALF_WIDTH };
+  });
+
+const FOOTPRINTS: readonly Footprint[] = [...VILLAGE_SEAT_MARKERS.map((m): Footprint => ({
   id: m.id,
   x: m.x,
   z: m.z,
@@ -39,7 +52,7 @@ const FOOTPRINTS: readonly Footprint[] = VILLAGE_SEAT_MARKERS.map((m) => ({
   front: m.frontEdge,
   back: m.approach === "side" ? CHAIR_BACK_BEHIND : 0.3,
   half: m.approach === "side" ? CHAIR_HALF_WIDTH : (m.length ?? 1) / 2,
-}));
+})), ...LAKE_CHAIR_FOOTPRINTS];
 
 /**
  * The seat (index into `seats`) whose chair or bench the tap at (x, y, z) landed on, or -1. `seats` is the active map's

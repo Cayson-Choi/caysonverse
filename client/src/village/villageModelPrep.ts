@@ -391,7 +391,7 @@ const LIFT_LIGHT = /* glsl */ `#ifdef USE_LIGHTMAP
  * map, plus the lift; vertex-lit (no light map): `(COLOR_0 + lift) × foliage tint`. Both times multiplied by the albedo, as the
  * light is. The shared uniforms above drive it.
  */
-export function liftMaterial(material: Material): void {
+export function liftMaterial(material: Material, own?: { nightMap: { value: Texture | null }; nightBlend: { value: number }; key: string }): void {
   if (lifted.has(material)) return;
   lifted.add(material);
   // The village's own leaves and trunks also fade out near the camera; the click pick skips them there (clickPick.ts).
@@ -402,8 +402,9 @@ export function liftMaterial(material: Material): void {
     shader.uniforms.uVillageLiftTint = liftTintUniform;
     shader.uniforms.uVillageDayTint = dayTintUniform;
     shader.uniforms.uVillageFoliageTint = material.name === CHERRY_MATERIAL ? cherryTintUniform : foliageTintUniform;
-    shader.uniforms.uVillageNight = nightBlendUniform;
-    shader.uniforms.uVillageNightMap = nightMapUniform;
+    // another model's own night light map (the fishing lake, lake/lakeModelPrep.ts) and its own blend weight
+    shader.uniforms.uVillageNight = own?.nightBlend ?? nightBlendUniform;
+    shader.uniforms.uVillageNightMap = own?.nightMap ?? nightMapUniform;
     shader.uniforms.uVillageMoonTint = moonTintUniform;
     if (foliage) shader.uniforms.uVillageNearFade = nearFadeUniform;
     shader.fragmentShader = shader.fragmentShader
@@ -412,7 +413,7 @@ export function liftMaterial(material: Material): void {
       .replace("#include <color_fragment>", LIFT_ALBEDO)
       .replace("#include <aomap_fragment>", LIFT_LIGHT);
   };
-  material.customProgramCacheKey = () => (foliage ? "village-light-foliage" : "village-light");
+  material.customProgramCacheKey = () => (foliage ? "village-light-foliage" : "village-light") + (own ? `-${own.key}` : "");
   material.needsUpdate = true;
 }
 

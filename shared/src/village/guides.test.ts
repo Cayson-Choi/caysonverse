@@ -23,13 +23,13 @@ const L = VILLAGE_LAYOUT;
 const overlaps = (a: AABB, b: AABB) => a.minX < b.maxX && b.minX < a.maxX && a.minZ < b.maxZ && b.minZ < a.maxZ;
 
 describe("guides (Task 9A)", () => {
-  it("has the two guides with unique ids, 3-4 questions each, unique voice ids", () => {
+  it("has the two guides with unique ids, 3-5 questions each, unique voice ids", () => {
     expect(GUIDES.map((g) => g.id)).toEqual(["plaza_guide", "hall_desk"]);
     const voices = GUIDES.flatMap((g) => g.qas.map((q) => q.voice));
     expect(new Set(voices).size).toBe(voices.length);
     for (const g of GUIDES) {
       expect(g.qas.length).toBeGreaterThanOrEqual(3);
-      expect(g.qas.length).toBeLessThanOrEqual(4);
+      expect(g.qas.length).toBeLessThanOrEqual(5);
       expect(g.tag).toBe("안내원");
       expect(validateAppearance(g.appearance)).toEqual(g.appearance);
       expect(guideById(g.id)).toBe(g);
@@ -54,6 +54,11 @@ describe("guides (Task 9A)", () => {
     for (const g of GUIDES)
       for (const q of g.qas) {
         expect(guideVoiceUrl(q.voice)).toBe(`/village/voice/${q.voice}.m4a`);
+        if (q.textOnly) {
+          // words only (the lake's way, 2026-11-16): never asked for, so no 404
+          expect(existsSync(resolve(VOICE_DIR, `${q.voice}.m4a`))).toBe(false);
+          continue;
+        }
         const file = resolve(VOICE_DIR, `${q.voice}.m4a`);
         expect(existsSync(file), file).toBe(true);
         expect(statSync(file).size).toBeLessThanOrEqual(60 * 1024);

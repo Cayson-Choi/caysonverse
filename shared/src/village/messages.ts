@@ -5,7 +5,7 @@
  * must never equal one of those (a test pins it).
  */
 
-import type { FishCatch, FishingEvent, FishingPhase, FishingReject, FishingState } from "./fishing";
+import type { FishDisposal, FishKind, FishSignal, FishingAction, FishingPhase, FishingReject, FishingResultKind, TrophyTier } from "./fishing";
 
 /** VillageRoom messages (client → server). */
 export const VillageMsg = {
@@ -23,12 +23,22 @@ export const VillageMsg = {
    * hall, in every room of the village (`VillageServerMsg.CandleLit`). Anything else is dropped silently.
    */
   LightCandle: "LightCandle",
-  /** Ask the server to rent the session's one fishing rod at the lakeside kiosk. */
+  /** Rent the session's one rod (free) within `FISHING.rentReachM` of the rental pad. Empty payload. */
   FishingRentRod: "FishingRentRod",
-  /** Cast the session's rented line at the pond. */
+  /** Give the rod back within `FISHING.returnReachM` of the pad (standing); leaving the lake does it by itself. Empty payload. */
+  FishingReturnRod: "FishingReturnRod",
+  /** Sit on a fishing chair: `{ spot }` = index into LAKE_FISHING_SPOTS (or its id, "P01"). Same checks as Sit (front/side only). */
+  FishingSit: "FishingSit",
+  /** Cast the line (seated, rod, stage `ready`; at least 1.5 s since the last cast). Empty payload. */
   FishingCast: "FishingCast",
-  /** Pull the line; only a server-observed submerged bobber can catch a fish. */
-  FishingReel: "FishingReel",
+  /** The pull. Honoured only in the bite window (+ grace); during the nibble it is ignored without penalty. Empty payload. */
+  FishingStrike: "FishingStrike",
+  /** The big-fish button: `{ down: true }` while pressed (repeat it every <= 500 ms; one counts 1.5 s), `{ down: false }` on release. */
+  FishingHold: "FishingHold",
+  /** Stand up from the fishing chair (the same as Stand; the line comes out). Empty payload. */
+  FishingStand: "FishingStand",
+  /** Ask for the "오늘의 대어" board (it is also sent on join and, to the people at the lake, whenever it changes). Empty payload. */
+  FishingBoardRequest: "FishingBoardRequest",
   /** Submit a house keypad code. The server validates the claimed house against the authoritative player position. */
   Keypad: "Keypad",
 } as const;
@@ -54,13 +64,24 @@ export interface VillageMsgPayloads {
   [VillageMsg.UseDoor]: UseDoorPayload;
   [VillageMsg.LightCandle]: LightCandlePayload;
   [VillageMsg.FishingRentRod]: FishingEmptyPayload;
+  [VillageMsg.FishingReturnRod]: FishingEmptyPayload;
+  [VillageMsg.FishingSit]: FishingSitPayload;
   [VillageMsg.FishingCast]: FishingEmptyPayload;
-  [VillageMsg.FishingReel]: FishingEmptyPayload;
+  [VillageMsg.FishingStrike]: FishingEmptyPayload;
+  [VillageMsg.FishingHold]: FishingHoldPayload;
+  [VillageMsg.FishingStand]: FishingEmptyPayload;
+  [VillageMsg.FishingBoardRequest]: FishingEmptyPayload;
   [VillageMsg.Keypad]: KeypadPayload;
 }
 
 /** Fishing actions carry no client-controlled state; the server reads its own player pose and clock. */
 export type FishingEmptyPayload = Record<string, never>;
+export interface FishingSitPayload {
+  spot: number | string;
+}
+export interface FishingHoldPayload {
+  down: boolean;
+}
 
 /**
  * How far (m, on the ground plane) from a cubby's anchor a visitor may light its candle: the whole hall (15 x 12 m, so 20 m) —
@@ -88,12 +109,14 @@ export const VillageServerMsg = {
   CandleLit: "CandleLit",
   /** Every candle burning now (`CandleStatePayload`): sent to a visitor who comes into the hall, or rejoins inside it. */
   CandleState: "CandleState",
-  /** The owner's session-local fishing state, including bobber phase and the latest catch. */
+  /** The owner's fishing state (a personal message): sent on every stage change, on join/reconnect, and ~4 times a second in a fight. */
   FishingState: "FishingState",
-  /** A fishing transition (cast, bite, missed or caught) for the owner's UI. */
-  FishingResult: "FishingResult",
-  /** A personal rejection for an invalid/out-of-reach fishing action. */
+  /** A personal rejection for an invalid fishing action (a reason code; the HUD turns it into a short Korean line). */
   FishingRejected: "FishingRejected",
+  /** A big catch, to the people it concerns: the whole lake (`tier: "lake"`) or the whole village (`tier: "village"`). */
+  FishingTrophy: "FishingTrophy",
+  /** "오늘의 대어": the best 5 of each species since 04:00 Korean time (or the server's start). Personal. */
+  FishingBoard: "FishingBoard",
   /** Result of a house keypad attempt; the expected code is never sent. */
   KeypadResult: "KeypadResult",
 } as const;
@@ -120,22 +143,71 @@ export interface CandleStatePayload {
   candles: CandleLitPayload[];
 }
 
-/** Wire-safe state projection. Bite timestamps stay server-only; `serverNowMs` is for UI countdown/animation only. */
+/**
+ * The owner's fishing state (`VillageServerMsg.FishingState`). Secret plan times (the bite, the fish before `hooked`) are never
+ * in it; `phase` is the name of `Player.fishPhase`, `phaseAt` the same ms as `Player.fishAt` (the server's clock `now()`, which
+ * is `ServerTime.serverTimeMs` = Unix ms, so `serverNowMs - phaseAt` is how long the stage has lasted).
+ */
 export interface FishingStatePayload {
+  rod: boolean;
+  /** Index into LAKE_FISHING_SPOTS of the chair, -1 none. */
+  spot: number;
   phase: FishingPhase;
-  rodRented: boolean;
-  castId: number;
-  lastResult: FishingState["lastResult"];
-  catch: FishCatch | null;
+  /** Cast number (= `Player.fishSeq`). */
+  seq: number;
+  phaseAt: number;
   serverNowMs: number;
+  /** In `bite`: the signal, and when the strike window opens and closes (ms from `serverNowMs`; the grace is not included). */
+  signal: FishSignal | null;
+  windowOpensInMs: number | null;
+  windowClosesInMs: number | null;
+  /** In `fighting`: the progress of the hold (ms), what it needs (ms) and whether the server counts the button as down. */
+  holdMs: number;
+  holdNeedMs: number;
+  holdDown: boolean;
+  lastResult: FishingResultKind;
+  /** The fish, from `hooked` on (a landed or released fish stays until the next stage `ready`). */
+  catch: FishCatchPayload | null;
+  /** What caused this message ("rod_rented", "cast", ...) or null for a stage change / a refresh. */
+  action: FishingAction | null;
 }
 
-export interface FishingResultPayload extends FishingStatePayload {
-  event: Exclude<FishingEvent, "rod_rented">;
+export interface FishCatchPayload {
+  kind: FishKind;
+  label: string;
+  cm: number;
+  needsNet: boolean;
+  disposal: FishDisposal;
+  tier: TrophyTier;
 }
 
 export interface FishingRejectedPayload {
   reason: FishingReject;
+}
+
+export interface FishingTrophyPayload {
+  /** The catcher's session id and nickname. */
+  sid: string;
+  by: string;
+  kind: FishKind;
+  label: string;
+  cm: number;
+  tier: Exclude<TrophyTier, "none">;
+}
+
+export interface FishingBoardEntry {
+  kind: FishKind;
+  label: string;
+  cm: number;
+  by: string;
+  /** Unix ms of the catch. */
+  at: number;
+}
+
+export interface FishingBoardPayload {
+  /** The board day (Korean 04:00 to 04:00); the entries are grouped by species, biggest first, at most 5 each. */
+  day: number;
+  entries: FishingBoardEntry[];
 }
 
 export type KeypadResultReason = "invalid_request" | "too_far" | "locked_out" | "rate_limited" | "invalid_code" | "wrong_code";

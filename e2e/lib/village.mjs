@@ -341,7 +341,7 @@ export async function runVillageScenario({ name, device }) {
       await act(A);
       await A.page.locator(".cv-guide").waitFor({ state: "visible", timeout: 5000 });
       await sleep(500);
-      run.check("the dialog is the 마을 안내원's, with 4 questions", (await A.page.locator(".cv-guide").getAttribute("data-guide")) === "plaza_guide" && (await A.page.locator(".cv-guide-questions button").count()) === 4);
+      run.check("the dialog is the 마을 안내원's, with 5 questions (the 5th: the fishing lake, words only)", (await A.page.locator(".cv-guide").getAttribute("data-guide")) === "plaza_guide" && (await A.page.locator(".cv-guide-questions button").count()) === 5);
       await press(A, question(A, 0));
       await A.page.waitForFunction(() => { const b = window.__cvBgm; return window.__cvGuideVoice?.state().playing && b && Math.abs(b.level() - 0.105) < 0.01; }, null, { timeout: 5000 }).catch(() => {});
       const s = await audioState(A);

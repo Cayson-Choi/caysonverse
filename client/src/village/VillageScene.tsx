@@ -29,8 +29,8 @@ import { DayNight } from "./DayNight";
 import { VillageModel } from "./VillageModel";
 import { VillageBus } from "./VillageBus";
 import { BUSSTOP_MODEL_URL, BusStopShelter } from "./BusStopShelter";
-import { FishingPondProps } from "./FishingPondProps";
 import { VillageMusic } from "./VillageMusic";
+import { LakeWorld } from "../lake/LakeScene";
 import { VILLAGE_CAMERA_PLANES, VILLAGE_GROUND_DECAL, type VillageTier } from "./villageModelPrep";
 import { clearBusCache, clearVillageCaches, holdVillageFiles, holdsVillageFiles } from "./villageRelease";
 import { LoadBoundary } from "./LoadBoundary";
@@ -55,7 +55,7 @@ import { guideDialogOpen, openGuideDialog } from "./guideDialogStore";
 import { StarSky } from "./sky/StarSky";
 import { StarFinder } from "./sky/StarFinder";
 import { StarFinderButton } from "./sky/StarFinderButton";
-import { FishingPanel } from "./FishingPanel";
+import { LakeHud } from "../lake/LakeHud";
 import { CrosswalkHintPill } from "./CrosswalkHintPill";
 import { BusStopHintPill } from "./BusStopHintPill";
 import { SIGNALS_MODEL_URL, TransitRoadSignals } from "./TransitRoadSignals";
@@ -130,7 +130,7 @@ function VillageArea({ area, tier, pose }: { area: AreaId; tier: VillageTier; po
               <BusStopShelter />
             </Suspense>
           </LoadBoundary>
-          <FishingPondProps />
+          <LakeWorld pose={pose} tier={tier} />
           {/* The bus at the stop (bus review r3, M2): its own error boundary and its own Suspense, so the village never
               waits for it. Its download starts with the model's, so it is usually in when the village shows (and warmed
               up with it); if it comes later it appears then (its own warm-up), and a stalled or failed bus is no bus. */}
@@ -420,14 +420,14 @@ export function VillageScene({ identity }: { identity: Identity }) {
           <StarFinderButton />
         </>
       }
-      hud={({ orbit, pose }) => (
+      hud={({ orbit, pose, seat }) => (
         <>
           <VegVeil active={area === "village"} />
           <DoorFade />
           <CubbyView />
           <GuideDialog />
           <StarFinder orbit={orbit} />
-          {area === "village" && <FishingPanel pose={pose} />}
+          {area === "village" && <LakeHud pose={pose} seat={seat} orbit={orbit} />}
           {area === "village" && <CrosswalkHintPill pose={pose} />}
           {area === "village" && <BusStopHintPill pose={pose} />}
           <VillageKeypad />

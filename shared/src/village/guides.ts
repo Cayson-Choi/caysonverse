@@ -24,8 +24,10 @@ export interface GuideQA {
   question: string;
   /** The answer shown in the dialog and spoken by the clip (1-3 short sentences, "~요"). */
   answer: string;
-  /** The clip id: `/village/voice/<voice>.m4a`. */
+  /** The clip id: `/village/voice/<voice>.m4a` (also the answer's key in the dialog). */
   voice: string;
+  /** No clip was made for this answer (yet): the dialog shows the words only. */
+  textOnly?: boolean;
 }
 
 export interface Guide {
@@ -63,6 +65,11 @@ export const GUIDE_VOICE_DIR = "/village/voice";
 export const GUIDE_AI_VOICE_LABEL = "AI 음성";
 
 export const guideVoiceUrl = (voice: string): string => `${GUIDE_VOICE_DIR}/${voice}.m4a`;
+
+/** Whether an answer has no clip (`GuideQA.textOnly`): the voice controller shows it without playing anything. */
+export function isTextOnlyVoice(voice: string): boolean {
+  return GUIDES.some((g) => g.qas.some((q) => q.voice === voice && q.textOnly === true));
+}
 
 const PLAZA_POS = { x: 5, z: 12 };
 const SPAWN = { x: 0, z: 14 };
@@ -107,6 +114,13 @@ export const GUIDES: readonly Guide[] = deepFreeze([
         question: "여기도 밤이 오나요?",
         answer: "네, 이 마을은 한국의 실제 시간을 따라가요. 저녁이 되면 마을에도 해가 지고 밤이 찾아와요.",
         voice: "plaza_guide_4",
+      },
+      {
+        // the fishing lake (A10, owner 2026-11-16): words only until a clip is made in the guide's voice
+        question: "낚시터는 어디에 있어요?",
+        answer: "낚시터는 동쪽 길을 따라가면 있어요.",
+        voice: "plaza_guide_5",
+        textOnly: true,
       },
     ],
   },
