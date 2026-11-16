@@ -149,7 +149,20 @@ void main() {
     data = vec3( clamp( d / 7.0, 0.0, 1.0 ), 1.0 - smoothstep( 0.0, 3.0, d ), clamp( d / 24.0, 0.0, 1.0 ) );
   }
   float blur = 1.0 + 1.6 * data.b;
-  vec3 pano = mix( texture2D( uReflDay, puv, blur ).rgb, texture2D( uReflNight, puv, blur ).rgb, uNight );
+  // lake v2: the panorama's u wraps where the reflection looks straight north (atan's seam): there the screen derivative of u
+  // jumps by 1 and the GPU picked the smallest mip, a dashed line across the water (it shows with the moving chop). The
+  // gradients come from a copy of u that wraps elsewhere; the old mip bias is the gradients' scale.
+  vec2 gx = dFdx( puv );
+  vec2 gy = dFdy( puv );
+  float u2 = fract( puv.x + 0.5 );
+  float g2x = dFdx( u2 );
+  float g2y = dFdy( u2 );
+  if ( abs( g2x ) + abs( g2y ) < abs( gx.x ) + abs( gy.x ) ) {
+    gx.x = g2x;
+    gy.x = g2y;
+  }
+  float bs = exp2( blur );
+  vec3 pano = mix( textureGrad( uReflDay, puv, gx * bs, gy * bs ).rgb, textureGrad( uReflNight, puv, gx * bs, gy * bs ).rgb, uNight );
   // the panorama is A's open-water render (from (162, -14), 1.5 m above the water, no deck or railing in view): the sky, the bank's
   // forest and the far ridges all round, so the water reflects them as the photos do (no 35 degree fallback any more)
   // a little lift of the dark bank (the photos' water shows the forest and the ridges as soft mid tones, not black)
