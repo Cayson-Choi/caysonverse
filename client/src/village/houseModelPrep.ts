@@ -1,4 +1,4 @@
-import { BufferAttribute, Color, Matrix4, RepeatWrapping, Vector3, type InstancedMesh, type Material, type Mesh, type MeshBasicMaterial, type Object3D, type Texture } from "three";
+import { BufferAttribute, Color, Matrix4, RepeatWrapping, SRGBColorSpace, Vector3, type InstancedMesh, type Material, type Mesh, type MeshBasicMaterial, type Object3D, type Texture } from "three";
 import { COLLIDER_PREFIX, LIGHTMAP_MATERIAL_PREFIX, configureLightmap, isMesh, lightmapMaterial, materialsOf } from "../game/hub/hubModelPrep";
 import { HOUSE_FLOORS, HOUSE_NODE, houseFiles, type HouseFloor, type HouseNumber } from "@caysonverse/shared/village/houseAreas";
 import { freeTexture } from "./villageModelPrep";
@@ -75,6 +75,76 @@ export function viewBandVSpan(root: Object3D): number {
     }
   });
   return hi > lo ? hi - lo : 1;
+}
+
+/**
+ * The shared photo-real albedos (realism pass 2026-11-17, art/village/tools/houses/make_house_textures_real.py): a house GLB carries only a
+ * 128 px copy of each `T_h_*` albedo (the image's name); the full file is shared by all ten houses at
+ * `/textures/houses/<hi|lo>/<name>.webp` (PC: floors and walls 2048 px for 2.4–2.5 m, furniture 1024 px; phone half), downloaded once
+ * and kept by the browser's cache. The scan's relief (plank gaps, weave, stone joints) is baked into the albedo, the houses being drawn
+ * unlit under their light maps.
+ */
+export const HOUSE_TEXTURE_DIR = "/textures/houses";
+export const HOUSE_TEXTURE_PREFIX = "T_h_";
+
+export function houseTextureUrl(name: string, tier: "high" | "low"): string {
+  return `${HOUSE_TEXTURE_DIR}/${tier === "high" ? "hi" : "lo"}/${name}.webp`;
+}
+
+/** The shared albedo names a loaded house uses (the maps of its light-mapped materials named `T_h_*`), sorted. */
+export function houseSharedTextureNames(scene: Object3D): string[] {
+  const names = new Set<string>();
+  scene.traverse((o) => {
+    if (!isMesh(o)) return;
+    for (const m of materialsOf(o)) {
+      const map = (m as MeshBasicMaterial).map;
+      if (map && map.name.startsWith(HOUSE_TEXTURE_PREFIX)) names.add(map.name);
+    }
+  });
+  return [...names].sort();
+}
+
+/**
+ * Put the shared full-size albedos on a loaded house's materials in place of the GLB's small copies (once per material: the loader's
+ * materials are shared by every clone). The small copy's sampling (wrap, repeat — WALLPAPER_SCALE —, offset) carries over; the small
+ * copy is freed. Returns how many materials changed.
+ */
+export function applyHouseTextures(scene: Object3D, textures: ReadonlyMap<string, Texture>): number {
+  let changed = 0;
+  const done = new Set<Material>();
+  scene.traverse((o) => {
+    if (!isMesh(o)) return;
+    for (const m of materialsOf(o)) {
+      if (done.has(m)) continue;
+      done.add(m);
+      const b = m as MeshBasicMaterial;
+      const old = b.map;
+      if (!old || old.userData.houseShared) continue;
+      const full = textures.get(old.name);
+      if (!full) continue;
+      if (!full.userData.houseShared) {
+        full.userData.houseShared = true;
+        full.name = old.name;
+        full.flipY = false;
+        full.colorSpace = SRGBColorSpace;
+        full.wrapS = old.wrapS;
+        full.wrapT = old.wrapT;
+        full.channel = old.channel;
+        full.anisotropy = 4;
+        full.needsUpdate = true;
+      }
+      // one image, several samplings (a wallpaper drawn twice smaller in one house): a clone shares the GPU upload
+      const use = full.repeat.equals(old.repeat) && full.offset.equals(old.offset) ? full : full.clone();
+      use.userData.houseShared = true;
+      use.repeat.copy(old.repeat);
+      use.offset.copy(old.offset);
+      b.map = use;
+      b.needsUpdate = true;
+      old.dispose();
+      changed++;
+    }
+  });
+  return changed;
 }
 
 export interface HouseNodes {
@@ -315,7 +385,10 @@ export function disposeLoadedHouse(scene: Object3D): void {
     if (!isMesh(o)) return;
     free(o.geometry);
     for (const m of materialsOf(o)) {
-      free((m as MeshBasicMaterial).map);
+      const map = (m as MeshBasicMaterial).map;
+      // a shared albedo (applyHouseTextures) belongs to houseRelease's texture cache, which frees it when no house holds it
+      if (map?.userData.houseShared) map.dispose();
+      else free(map);
       free((m as MeshBasicMaterial).lightMap);
       free(m);
     }

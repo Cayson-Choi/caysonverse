@@ -64,10 +64,11 @@ export function loadHouseTexture(n: HouseNumber, url: string, loader: Pick<Textu
       () => null,
     );
     textures.set(url, p);
-    let set = textureUrls.get(n);
-    if (!set) textureUrls.set(n, (set = new Set()));
-    set.add(url);
   }
+  // every house that asked for the url holds it (the shared albedo files of /textures/houses/ are asked for by every house)
+  let set = textureUrls.get(n);
+  if (!set) textureUrls.set(n, (set = new Set()));
+  set.add(url);
   return p;
 }
 
@@ -82,6 +83,8 @@ export function releaseHouseNow(n: HouseNumber): void {
   cancelTimer(n);
   const wasRequested = requested.delete(n);
   for (const url of textureUrls.get(n) ?? []) {
+    // a shared file another house still holds stays
+    if ([...textureUrls].some(([m, urls]) => m !== n && urls.has(url))) continue;
     const p = textures.get(url);
     textures.delete(url);
     void p?.then((t) => {

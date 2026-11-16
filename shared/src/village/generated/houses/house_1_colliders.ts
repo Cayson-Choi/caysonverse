@@ -11,23 +11,29 @@ export const HOUSE_1_COLLIDERS: readonly AABB[] = [
   { minX: 359.7, maxX: 370.9, minZ: 21.9, maxZ: 22.2 }, // col__h1_2_wall_back
   { minX: 359.7, maxX: 360, minZ: 22.2, maxZ: 30 }, // col__h1_2_wall_left
   { minX: 359.7, maxX: 370.9, minZ: 30, maxZ: 30.3 }, // col__h1_2_wall_front
-  { minX: 359.95, maxX: 362.16, minZ: 26.87, maxZ: 28.53 }, // col__h1_2_bed
+  { minX: 360, maxX: 362.21, minZ: 26.87, maxZ: 28.53 }, // col__h1_2_bed
   { minX: 360.08, maxX: 360.48, minZ: 26.32, maxZ: 26.77 }, // col__h1_2_bedside2
   { minX: 360.08, maxX: 360.48, minZ: 28.92, maxZ: 29.37 }, // col__h1_2_bedside
   { minX: 360.15, maxX: 362.25, minZ: 22.2, maxZ: 22.8 }, // col__h1_2_wardrobe
   { minX: 360.2, maxX: 360.8, minZ: -6.8, maxZ: -6.2 }, // col__h1_1_plant
   { minX: 360.2, maxX: 361.2, minZ: -5.09, maxZ: -4.11 }, // col__h1_1_armchair
+  { minX: 360.22, maxX: 360.62, minZ: -5.57, maxZ: -5.12 }, // col__h1_1_side
+  { minX: 360.3, maxX: 360.6, minZ: -1.15, maxZ: -0.85 }, // col__h1_1_purifier
+  { minX: 360.3, maxX: 360.6, minZ: 24.05, maxZ: 24.35 }, // col__h1_2_purifier
   { minX: 360.57, maxX: 360.93, minZ: -2.68, maxZ: -2.32 }, // col__h1_1_lamp
-  { minX: 360.58, maxX: 362.13, minZ: -7.75, maxZ: -7.35 }, // col__h1_1_tvstand
+  { minX: 360.97, maxX: 361.33, minZ: -7.76, maxZ: -7.43 }, // col__h1_1_aircon
+  { minX: 361.5, maxX: 363.3, minZ: -7.75, maxZ: -7.35 }, // col__h1_1_tvstand
   { minX: 361.5, maxX: 363.9, minZ: -3.43, maxZ: -2.48 }, // col__h1_1_sofa
-  { minX: 362.05, maxX: 362.95, minZ: -5.75, maxZ: -4.85 }, // col__h1_1_coffee
+  { minX: 361.93, maxX: 363.43, minZ: -0.45, maxZ: -0.05 }, // col__h1_1_sideboard
+  { minX: 362.05, maxX: 362.95, minZ: -5.53, maxZ: -4.97 }, // col__h1_1_coffee
+  { minX: 363.22, maxX: 363.68, minZ: 22.42, maxZ: 22.88 }, // col__h1_2_laundry
   { minX: 363.5, maxX: 364.3, minZ: -0.33, maxZ: -0.01 }, // col__h1_1_shoes
   { minX: 364.03, maxX: 364.67, minZ: -7.77, maxZ: -7.13 }, // col__h1_1_plant2
+  { minX: 364.95, maxX: 365.41, minZ: 28.3, maxZ: 29.3 }, // col__h1_2_drawers
   { minX: 365.06, maxX: 369.14, minZ: -7.7, maxZ: -6.4 }, // col__h1_1_stair_high
   { minX: 365.06, maxX: 370.5, minZ: 22.3, maxZ: 23.6 }, // col__h1_2_stairwell
   { minX: 365.44, maxX: 365.56, minZ: 23.8, maxZ: 25.8 }, // col__h1_2_part_a_1
   { minX: 365.44, maxX: 365.56, minZ: 27.6, maxZ: 30 }, // col__h1_2_part_a_0
-  { minX: 365.6, maxX: 366.2, minZ: 29.2, maxZ: 29.8 }, // col__h1_2_plant2
   { minX: 365.7, maxX: 366.3, minZ: 24.1, maxZ: 24.7 }, // col__h1_2_plant
   { minX: 365.7, maxX: 366.7, minZ: 29.65, maxZ: 29.95 }, // col__h1_2_bookcase
   { minX: 366.88, maxX: 367.12, minZ: -1.5, maxZ: 0 }, // col__h1_1_entry
@@ -35,9 +41,9 @@ export const HOUSE_1_COLLIDERS: readonly AABB[] = [
   { minX: 367, maxX: 367.5, minZ: -4.52, maxZ: -4 }, // col__h1_1_dchair3
   { minX: 367, maxX: 367.5, minZ: -2.6, maxZ: -2.08 }, // col__h1_1_dchair
   { minX: 367.1, maxX: 369.7, minZ: -0.63, maxZ: -0.01 }, // col__h1_1_sinkrun
-  { minX: 367.3, maxX: 368.7, minZ: 22.28, maxZ: 22.63 }, // col__h1_2_console
   { minX: 367.9, maxX: 368.4, minZ: -4.52, maxZ: -4 }, // col__h1_1_dchair4
   { minX: 367.9, maxX: 368.4, minZ: -2.6, maxZ: -2.08 }, // col__h1_1_dchair2
+  { minX: 368.4, maxX: 369, minZ: 24.5, maxZ: 25.1 }, // col__h1_2_plant2
   { minX: 368.9, maxX: 369.9, minZ: 29.48, maxZ: 29.93 }, // col__h1_2_dressing
   { minX: 369.03, maxX: 369.65, minZ: 25.55, maxZ: 26.15 }, // col__h1_2_deskchair
   { minX: 369.14, maxX: 370.5, minZ: -7.7, maxZ: -6.4 }, // col__h1_1_stair_low
@@ -59,6 +65,7 @@ export const HOUSE_1_CAMERA_BOXES: readonly CameraBox[] = [
   { minX: 359.7, maxX: 360, minZ: 22.2, maxZ: 30, height: 3.7 }, // col__h1_2_wall_left
   { minX: 359.7, maxX: 370.9, minZ: 30, maxZ: 30.3, height: 3.7 }, // col__h1_2_wall_front
   { minX: 360.15, maxX: 362.25, minZ: 22.2, maxZ: 22.8, height: 2.4 }, // col__h1_2_wardrobe
+  { minX: 360.97, maxX: 361.33, minZ: -7.76, maxZ: -7.43, height: 1.85 }, // col__h1_1_aircon
   { minX: 365.06, maxX: 369.14, minZ: -7.7, maxZ: -6.4, height: 3.7 }, // col__h1_1_stair_high
   { minX: 365.44, maxX: 365.56, minZ: 23.8, maxZ: 25.8, height: 3.7 }, // col__h1_2_part_a_1
   { minX: 365.44, maxX: 365.56, minZ: 27.6, maxZ: 30, height: 3.7 }, // col__h1_2_part_a_0

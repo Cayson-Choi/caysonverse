@@ -11,6 +11,7 @@ export const HOUSE_5_COLLIDERS: readonly AABB[] = [
   { minX: 455.7, maxX: 466.9, minZ: 21.9, maxZ: 22.2 }, // col__h5_2_wall_back
   { minX: 455.7, maxX: 456, minZ: 22.2, maxZ: 30 }, // col__h5_2_wall_left
   { minX: 455.7, maxX: 466.9, minZ: 30, maxZ: 30.3 }, // col__h5_2_wall_front
+  { minX: 456, maxX: 456.4, minZ: 27.53, maxZ: 28.27 }, // col__h5_2_ladder
   { minX: 456.1, maxX: 456.4, minZ: 23.85, maxZ: 24.75 }, // col__h5_2_teacab
   { minX: 456.3, maxX: 456.9, minZ: -7.1, maxZ: -6.5 }, // col__h5_1_olive2
   { minX: 456.35, maxX: 456.95, minZ: -5.6, maxZ: -5 }, // col__h5_1_monstera3
@@ -18,6 +19,7 @@ export const HOUSE_5_COLLIDERS: readonly AABB[] = [
   { minX: 456.49, maxX: 457.33, minZ: -3.76, maxZ: -3.04 }, // col__h5_1_chair
   { minX: 456.49, maxX: 457.33, minZ: -1.96, maxZ: -1.24 }, // col__h5_1_chair2
   { minX: 457.55, maxX: 459.25, minZ: -5.18, maxZ: -4.32 }, // col__h5_1_sofa
+  { minX: 457.57, maxX: 457.93, minZ: -7.72, maxZ: -7.39 }, // col__h5_1_aircon
   { minX: 457.9, maxX: 458.9, minZ: -2.78, maxZ: -2.22 }, // col__h5_1_coffee
   { minX: 458.5, maxX: 459.9, minZ: 26.4, maxZ: 27.2 }, // col__h5_2_table
   { minX: 459.6, maxX: 460.2, minZ: -0.85, maxZ: -0.25 }, // col__h5_1_olive
@@ -28,10 +30,12 @@ export const HOUSE_5_COLLIDERS: readonly AABB[] = [
   { minX: 461.62, maxX: 461.98, minZ: 24.42, maxZ: 24.78 }, // col__h5_2_tealamp
   { minX: 462.1, maxX: 462.7, minZ: 29.1, maxZ: 29.7 }, // col__h5_2_plant2
   { minX: 462.43, maxX: 463.07, minZ: -0.92, maxZ: -0.28 }, // col__h5_1_rubber
+  { minX: 462.65, maxX: 462.95, minZ: 23.85, maxZ: 24.15 }, // col__h5_2_purifier
   { minX: 462.92, maxX: 463.65, minZ: -3.87, maxZ: -3.15 }, // col__h5_1_dchair2
   { minX: 462.92, maxX: 463.65, minZ: -2.45, maxZ: -1.72 }, // col__h5_1_dchair3
   { minX: 463.14, maxX: 463.26, minZ: 24, maxZ: 25.2 }, // col__h5_2_part_a_1
   { minX: 463.14, maxX: 463.26, minZ: 27, maxZ: 30 }, // col__h5_2_part_a_0
+  { minX: 463.25, maxX: 463.8, minZ: 28.35, maxZ: 29.55 }, // col__h5_2_wardrobe
   { minX: 463.45, maxX: 464.55, minZ: -3.35, maxZ: -2.25 }, // col__h5_1_dtable
   { minX: 464.35, maxX: 465.08, minZ: -3.87, maxZ: -3.15 }, // col__h5_1_dchair
   { minX: 464.35, maxX: 465.08, minZ: -2.45, maxZ: -1.72 }, // col__h5_1_dchair4
@@ -53,10 +57,12 @@ export const HOUSE_5_CAMERA_BOXES: readonly CameraBox[] = [
   { minX: 455.7, maxX: 456, minZ: 22.2, maxZ: 30, height: 3.7 }, // col__h5_2_wall_left
   { minX: 455.7, maxX: 466.9, minZ: 30, maxZ: 30.3, height: 3.7 }, // col__h5_2_wall_front
   { minX: 456.3, maxX: 456.9, minZ: -7.1, maxZ: -6.5, height: 1.7 }, // col__h5_1_olive2
+  { minX: 457.57, maxX: 457.93, minZ: -7.72, maxZ: -7.39, height: 1.85 }, // col__h5_1_aircon
   { minX: 459.6, maxX: 460.2, minZ: -0.85, maxZ: -0.25, height: 1.7 }, // col__h5_1_olive
   { minX: 461.06, maxX: 465.14, minZ: -7.7, maxZ: -6.4, height: 3.7 }, // col__h5_1_stair_high
   { minX: 463.14, maxX: 463.26, minZ: 24, maxZ: 25.2, height: 3.7 }, // col__h5_2_part_a_1
   { minX: 463.14, maxX: 463.26, minZ: 27, maxZ: 30, height: 3.7 }, // col__h5_2_part_a_0
+  { minX: 463.25, maxX: 463.8, minZ: 28.35, maxZ: 29.55, height: 1.9 }, // col__h5_2_wardrobe
   { minX: 465.5, maxX: 466.1, minZ: 24.4, maxZ: 25, height: 1.7 }, // col__h5_2_plant
   { minX: 466.6, maxX: 466.9, minZ: -7.8, maxZ: 0, height: 3.7 }, // col__h5_1_wall_right
   { minX: 466.6, maxX: 466.9, minZ: 22.2, maxZ: 30, height: 3.7 }, // col__h5_2_wall_right
