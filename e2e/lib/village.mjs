@@ -482,6 +482,9 @@ export async function runVillageScenario({ name, device }) {
       const ts = await A.page.evaluate(async () => (await window.__imp("/src/game/interactTargets.ts")).getTargets(window.__cv.getPos()).map((t) => ({ id: t.id, label: t.label })));
       run.check("가까이 보기 is offered for this column", ts.some((t) => t.id === `cubby:${pick.key}` && t.label === "가까이 보기"), ts);
       await act(A);
+      // on the phone the first CDP tap after the CDP touch drag (setOrbit's dragView) gets no click from Chrome (pointer and
+      // touch events, no click: a second tap gets it); the card is asked for once more then
+      if (!(await A.page.locator(".cv-cubby").waitFor({ state: "visible", timeout: 2500 }).then(() => true, () => false))) await act(A);
       await A.page.locator(".cv-cubby").waitFor({ state: "visible", timeout: 5000 });
       await sleep(700);
       const card = await A.page.evaluate(() => ({
@@ -523,7 +526,8 @@ export async function runVillageScenario({ name, device }) {
       for (let i = 0; i < Math.abs(pick.row - rowB); i++) await B.page.getByRole("button", { name: pick.row > rowB ? "위 칸" : "아래 칸", exact: true }).click();
       await sleep(400);
       const seen = await B.page.evaluate(() => ({ by: document.querySelector(".cv-cubby-by")?.textContent ?? null, id: document.querySelector(".cv-cubby")?.getAttribute("data-cubby"), button: document.querySelector(".cv-cubby-light")?.textContent, at: window.__cv.getPos() }));
-      run.check("B's card says '<닉네임> 님이 촛불을 켰어요'", seen.by === `${A.nick} 님이 촛불을 켰어요`, { ...seen, nick: A.nick, want: pick.id, rowB, pickRow: pick.row });
+      // the line names who lit it and when (cubbyCard.ts litByLabel: "<닉네임>님이 방금 켜 주셨어요")
+      run.check("B's card says '<닉네임>님이 … 켜 주셨어요'", seen.by === `${A.nick}님이 방금 켜 주셨어요`, { ...seen, nick: A.nick, want: pick.id, rowB, pickRow: pick.row });
       await run.shot(B, "hall-card-seen-by-B.png");
       await B.page.keyboard.press("Escape");
       await B.page.waitForFunction(() => !document.querySelector(".cv-cubby"), null, { timeout: 4000 }).catch(() => {});
