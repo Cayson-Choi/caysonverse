@@ -131,7 +131,7 @@ caysonverse(웹 3D 메타버스)의 배포·운영 방법입니다. DevOps 경�
 - **새 정적 자산**(모두 `client/dist`에 들어가 Vercel이 줍니다, 서버는 주지 않습니다):
   - `models/village/`: `village.glb`(5.41 MB), `memorial.glb`, `memorial_props.glb`, 라이트맵 `village_lm.webp`·`village_lm_night.webp`·`memorial_lm.webp`
   - `audio/village/village_bgm1.mp3`(96 kbps, 약 2.16 MB, 첫 터치 뒤에 받음)
-  - `village/voice/*.m4a`(안내원 음성 8개, 각 30~44 KB, 문의할 때만 받음)
+  - (안내원 음성 `village/voice/*.m4a`는 2026-11-17에 뺐습니다. 안내원 답변은 글로만 나옵니다.)
   - 추모관 파일은 추모관에 들어갈 때만 받습니다. 마을 GLB 주소에는 내용 해시(`?v=`)가 없으므로 0.4처럼 서버와 클라이언트를 연달아 올립니다.
 - **예산**(`e2e/village-perf.mjs`가 판정, 값은 `docs/loadtest.md` 10장): 첫 접속(배포 모양, gzip, BGM 포함) ≤ 15,000,000 B(측정 14,152,333~14,400,461 B, 최악 14,678,471 B), `village.glb` ≤ 8 MB·≤ 260k 삼각형, 메인 스레드 바쁜 시간 ≤ 33 ms/프레임. 에셋을 바꾸면 이 값을 다시 잽니다.
 - **루트 주소가 케이슨 마을입니다.** "AI 학교 탈출"과 예전 월드(`?experience=escape`, `?world=legacy`)는 코드에서 없앴습니다. 그 링크로 들어와도 그냥 케이슨 마을이 열립니다.

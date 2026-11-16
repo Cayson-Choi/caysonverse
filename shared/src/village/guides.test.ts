@@ -1,4 +1,4 @@
-import { existsSync, statSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { isBlocked, type AABB } from "../collision";
@@ -11,22 +11,21 @@ import {
   GUIDE_REACH_M,
   guideById,
   guideColliders,
-  guideVoiceUrl,
   nearestGuide,
 } from "./guides";
 import { VILLAGE_LAYOUT, villageGeometry } from "./villageLayout";
 
-// Run from shared/ (like characterManifest.test.ts).
+// Run from shared/ (like characterManifest.test.ts). The guides' clips were taken out (owner 2026-11-17).
 const VOICE_DIR = resolve(process.cwd(), "../client/public/village/voice");
 const L = VILLAGE_LAYOUT;
 const overlaps = (a: AABB, b: AABB) => a.minX < b.maxX && b.minX < a.maxX && a.minZ < b.maxZ && b.minZ < a.maxZ;
 
 describe("guides (Task 9A)", () => {
-  it("has the plaza guide only (the hall's desk guide was removed, owner 2026-11-17), 3-5 questions, unique voice ids", () => {
+  it("has the plaza guide only (the hall's desk guide was removed, owner 2026-11-17), 3-6 questions, unique answer ids", () => {
     expect(GUIDES.map((g) => g.id)).toEqual(["plaza_guide"]);
     expect(guideById("hall_desk")).toBeNull();
-    const voices = GUIDES.flatMap((g) => g.qas.map((q) => q.voice));
-    expect(new Set(voices).size).toBe(voices.length);
+    const ids = GUIDES.flatMap((g) => g.qas.map((q) => q.id));
+    expect(new Set(ids).size).toBe(ids.length);
     for (const g of GUIDES) {
       expect(g.qas.length).toBeGreaterThanOrEqual(3);
       expect(g.qas.length).toBeLessThanOrEqual(6) // the plaza guide: 6 with the houses' code (집 실내 G);
@@ -50,20 +49,10 @@ describe("guides (Task 9A)", () => {
       }
   });
 
-  it("every answer's voice clip exists in client/public/village/voice as a small .m4a", () => {
-    for (const g of GUIDES)
-      for (const q of g.qas) {
-        expect(guideVoiceUrl(q.voice)).toBe(`/village/voice/${q.voice}.m4a`);
-        if (q.textOnly) {
-          // words only (the lake's way, 2026-11-16): never asked for, so no 404
-          expect(existsSync(resolve(VOICE_DIR, `${q.voice}.m4a`))).toBe(false);
-          continue;
-        }
-        const file = resolve(VOICE_DIR, `${q.voice}.m4a`);
-        expect(existsSync(file), file).toBe(true);
-        expect(statSync(file).size).toBeLessThanOrEqual(60 * 1024);
-        expect(statSync(file).size).toBeGreaterThan(4 * 1024);
-      }
+  it("the guides speak in words only: no voice clips are shipped (owner 2026-11-17)", () => {
+    const clips = existsSync(VOICE_DIR) ? readdirSync(VOICE_DIR).filter((f) => /\.(m4a|mp3|ogg|wav)$/.test(f)) : [];
+    expect(clips).toEqual([]);
+    for (const g of GUIDES) for (const q of g.qas) expect(Object.keys(q).sort()).toEqual(["answer", "id", "question"]);
   });
 
   it("plaza_guide stands at (5, 12) facing the spawn, clear of the spawn jitter and the plaza's colliders", () => {

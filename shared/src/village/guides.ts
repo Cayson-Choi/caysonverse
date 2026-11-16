@@ -1,8 +1,7 @@
 /**
- * 케이슨 마을's guides (Task 9A, owner 2026-11-03: "어느 건물 또는 npc에게 문의할 때만 음성이 나오도록 ... 진짜 사람이
- * 말하는 것 같은 음성"). The plaza guide answers a few fixed questions; each answer has a pre-generated voice clip
- * (`/village/voice/<voice>.m4a`, made offline by art/village/voice/make_voice.py with VoxCPM2 from a DESIGNED voice —
- * never a clone of a real person). Chat is never spoken (CHAT_VOICE_ENABLED stays false).
+ * 케이슨 마을's guides (Task 9A). The plaza guide answers a few fixed questions, in words only: the voice clips were taken out
+ * (owner 2026-11-17: "음성 만드는데 리소스를 많이 잡아 먹는것 같으니 일단 안내원의 음성은 모두 빼자"); the old clips
+ * (VoxCPM2, a designed voice) are in git history before this change if they ever come back. Chat is never spoken.
  *
  * Browser-safe data (plain numbers and strings). The server and the client both put a small collider on each guide
  * (`guideColliders`, part of the village geometry), so nobody walks through them.
@@ -22,12 +21,10 @@ export type GuideId = "plaza_guide";
 export interface GuideQA {
   /** The question as the player picks it. */
   question: string;
-  /** The answer shown in the dialog and spoken by the clip (1-3 short sentences, "~요"). */
+  /** The answer shown in the dialog (1-3 short sentences, "~요"). */
   answer: string;
-  /** The clip id: `/village/voice/<voice>.m4a` (also the answer's key in the dialog). */
-  voice: string;
-  /** No clip was made for this answer (yet): the dialog shows the words only. */
-  textOnly?: boolean;
+  /** The answer's key in the dialog (unique across the guides). */
+  id: string;
 }
 
 export interface Guide {
@@ -58,18 +55,6 @@ export const GUIDE_REACH_M = 2.2;
 export const GUIDE_COLLIDER_HALF = 0.3;
 /** The words on the action button and the touch button. */
 export const GUIDE_ASK_LABEL = "문의하기";
-/** Where the clips are served from. */
-export const GUIDE_VOICE_DIR = "/village/voice";
-/** The label in the dialog that says the voice is synthetic. */
-export const GUIDE_AI_VOICE_LABEL = "AI 음성";
-
-export const guideVoiceUrl = (voice: string): string => `${GUIDE_VOICE_DIR}/${voice}.m4a`;
-
-/** Whether an answer has no clip (`GuideQA.textOnly`): the voice controller shows it without playing anything. */
-export function isTextOnlyVoice(voice: string): boolean {
-  return GUIDES.some((g) => g.qas.some((q) => q.voice === voice && q.textOnly === true));
-}
-
 const PLAZA_POS = { x: 5, z: 12 };
 const SPAWN = { x: 0, z: 14 };
 
@@ -98,36 +83,34 @@ export const GUIDES: readonly Guide[] = deepFreeze([
       {
         question: "여기는 어떤 곳이에요?",
         answer: "여기는 케이슨 마을이에요. 건물이 하나씩 천천히 늘어나는 조용한 시골 마을이에요.",
-        voice: "plaza_guide_1",
+        id: "plaza_guide_1",
       },
       {
         question: "추모관은 어디에 있어요?",
         answer: "추모관은 광장 북쪽에 있어요. 분수를 지나 쭉 걸어가시면 추모관 문이 보여요.",
-        voice: "plaza_guide_2",
+        id: "plaza_guide_2",
       },
       {
         question: "하늘색 테두리가 있는 빈 땅은 뭐예요?",
         answer: "앞으로 새 건물이 들어설 자리예요. 도서관 같은 건물이 하나씩 지어질 거예요.",
-        voice: "plaza_guide_3",
+        id: "plaza_guide_3",
       },
       {
         question: "여기도 밤이 오나요?",
         answer: "네, 이 마을은 한국의 실제 시간을 따라가요. 저녁이 되면 마을에도 해가 지고 밤이 찾아와요.",
-        voice: "plaza_guide_4",
+        id: "plaza_guide_4",
       },
       {
-        // the fishing lake (A10, owner 2026-11-16): words only until a clip is made in the guide's voice
+        // the fishing lake (A10, owner 2026-11-16)
         question: "낚시터는 어디에 있어요?",
         answer: "낚시터는 동쪽 길을 따라가면 있어요.",
-        voice: "plaza_guide_5",
-        textOnly: true,
+        id: "plaza_guide_5",
       },
       {
-        // the houses (집 실내 G, owner 2026-11-16: the guide may tell the code): words only until a clip is made in the guide's voice
+        // the houses (집 실내 G, owner 2026-11-16: the guide may tell the code)
         question: "집에는 어떻게 들어가요?",
         answer: "집 문 옆 번호키에 1004를 누르면 들어갈 수 있어요. 한 집에 여덟 분까지 함께 계실 수 있어요.",
-        voice: "plaza_guide_6",
-        textOnly: true,
+        id: "plaza_guide_6",
       },
     ],
   },

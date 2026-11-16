@@ -1,77 +1,39 @@
-import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
-import { GUIDE_AI_VOICE_LABEL, guideById } from "@caysonverse/shared/village/guides";
-import { useSoundStore } from "../stores/soundStore";
+import { useEffect, useState } from "react";
+import { guideById } from "@caysonverse/shared/village/guides";
 import { popOverlay, pushOverlay } from "../ui/overlayStack";
 import { closeGuideDialog, useGuideDialog } from "./guideDialogStore";
-import { createBrowserGuideVoice, type GuideVoice, type GuideVoiceState } from "./guideVoice";
 import { useLocalArea } from "./villageArea";
 import "./guideDialog.css";
-
-declare global {
-  interface Window {
-    /** Dev only: the guides' voice controller, for the e2e checks. */
-    __cvGuideVoice?: GuideVoice;
-  }
-}
 
 /** The dialog's id on the overlay stack (Esc closes it; WASD and E stay with it while it is open). */
 export const GUIDE_OVERLAY_ID = "guide";
 
-const IDLE: GuideVoiceState = { playing: null, asked: null };
-
 /**
- * A guide's questions (케이슨 마을 Task 9A; the store is guideDialogStore.ts, the voice guideVoice.ts). Opened by "문의하기"
- * within 2.2 m of a guide. Choosing a question shows its answer and plays its clip for this player only; pressing
- * the same question again (or 건너뛰기) skips it; another question stops the first. The menu's 소리 switch mutes the voice (the
- * text still shows). A small "AI 음성" label says the voice is synthetic. Closes with 닫기, Esc, or leaving the area.
- *
- * The voice controller lives as long as the village scene (this component is in its HUD): created and disposed in
- * one effect, so a StrictMode double mount leaves one element.
+ * A guide's questions (케이슨 마을 Task 9A; the store is guideDialogStore.ts). Opened by "문의하기" within reach of a guide.
+ * Choosing a question shows its answer in words only (the voice clips were taken out, owner 2026-11-17). The answer is a
+ * speech bubble from the guide's avatar, with the asked question above it as small "나: …" text and a "다른 질문" divider
+ * before the question buttons, so it never reads as one more button (owner 2026-11-17: "답변 글이 다른 질문 메뉴와 다른
+ * 모습으로"). Closes with 닫기, Esc, the backdrop, or leaving the area.
  */
 export function GuideDialog() {
   const openId = useGuideDialog();
   const area = useLocalArea();
-  const muted = useSoundStore((s) => s.muted);
-  const [voice, setVoice] = useState<GuideVoice | null>(null);
+  const [askedId, setAskedId] = useState<string | null>(null);
 
-  useEffect(() => {
-    const v = createBrowserGuideVoice(() => useSoundStore.getState().muted);
-    setVoice(v);
-    if (import.meta.env.DEV) window.__cvGuideVoice = v;
-    return () => {
-      v.dispose();
-      if (window.__cvGuideVoice === v) delete window.__cvGuideVoice;
-      setVoice(null);
-      closeGuideDialog();
-    };
-  }, []);
-
-  const subscribe = useCallback((fn: () => void) => voice?.subscribe(fn) ?? (() => {}), [voice]);
-  const snapshot = useCallback(() => voice?.state() ?? IDLE, [voice]);
-  const state = useSyncExternalStore(subscribe, snapshot, () => IDLE);
+  // The scene goes away: close the dialog.
+  useEffect(() => () => closeGuideDialog(), []);
 
   const guide = openId ? guideById(openId) : null;
   const open = guide !== null && guide.area === area;
 
-  // A hidden tab stops the clip.
-  useEffect(() => {
-    if (!voice) return;
-    const onVisibility = () => voice.setVisible(document.visibilityState !== "hidden");
-    document.addEventListener("visibilitychange", onVisibility);
-    return () => document.removeEventListener("visibilitychange", onVisibility);
-  }, [voice]);
-  // The menu's 소리 switch: muting stops the clip.
-  useEffect(() => {
-    voice?.setMuted(muted);
-  }, [voice, muted]);
   // Leaving the guide's area (a door) closes it.
   useEffect(() => {
     if (guide && guide.area !== area) closeGuideDialog();
   }, [guide, area]);
-  // Closed: stop the voice and forget the selection.
+  // Closed (or another guide): forget the selection.
   useEffect(() => {
-    if (!open) voice?.reset();
-  }, [open, voice]);
+    setAskedId(null);
+  }, [open, openId]);
   useEffect(() => {
     if (!open) return;
     pushOverlay(GUIDE_OVERLAY_ID, closeGuideDialog);
@@ -79,8 +41,7 @@ export function GuideDialog() {
   }, [open]);
 
   if (!open || !guide) return null;
-  const asked = guide.qas.find((q) => q.voice === state.asked) ?? null;
-  const playing = state.playing !== null;
+  const asked = guide.qas.find((q) => q.id === askedId) ?? null;
 
   return (
     <div className="cv-guide" role="dialog" aria-modal="true" aria-label={guide.name} data-guide={guide.id}>
@@ -88,33 +49,40 @@ export function GuideDialog() {
       <div className={`cv-guide-panel cv-guide-${guide.id}`}>
         <div className="cv-guide-head">
           <div className="cv-guide-name">{guide.name}</div>
-          <span className="cv-guide-ai" title="AI로 만든 목소리예요">
-            {GUIDE_AI_VOICE_LABEL}
-          </span>
         </div>
         {asked ? (
-          <div className="cv-guide-answer" aria-live="polite" data-voice={asked.voice} data-playing={playing ? "1" : "0"}>
-            <p>{asked.answer}</p>
-            {playing ? (
-              <button type="button" className="cv-guide-skip" onClick={() => voice?.skip()}>
-                건너뛰기
-              </button>
-            ) : muted ? (
-              <div className="cv-guide-muted">소리가 꺼져 있어요</div>
-            ) : null}
+          <div className="cv-guide-convo">
+            <p className="cv-guide-me">
+              <span className="cv-guide-me-who">나</span> {asked.question}
+            </p>
+            <div className="cv-guide-says">
+              <span className="cv-guide-avatar" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="18" height="18" focusable="false">
+                  <circle cx="12" cy="8.2" r="4" fill="currentColor" />
+                  <path d="M4.5 20.5c.6-4.2 3.6-6.6 7.5-6.6s6.9 2.4 7.5 6.6z" fill="currentColor" />
+                </svg>
+              </span>
+              <div className="cv-guide-answer" aria-live="polite" data-qa={asked.id}>
+                <span className="cv-guide-speaker">{guide.tag}</span>
+                <p>{asked.answer}</p>
+              </div>
+            </div>
+            <div className="cv-guide-divider" role="separator">
+              <span>다른 질문</span>
+            </div>
           </div>
         ) : (
           <p className="cv-guide-hint">궁금한 것을 골라 주세요.</p>
         )}
         <ul className="cv-guide-questions">
           {guide.qas.map((q) => (
-            <li key={q.voice}>
+            <li key={q.id}>
               <button
                 type="button"
-                className={q.voice === state.asked ? "is-asked" : undefined}
-                aria-pressed={q.voice === state.asked}
-                data-voice={q.voice}
-                onClick={() => voice?.press(q.voice)}
+                className={q.id === askedId ? "is-asked" : undefined}
+                aria-pressed={q.id === askedId}
+                data-qa={q.id}
+                onClick={() => setAskedId(q.id)}
               >
                 {q.question}
               </button>
