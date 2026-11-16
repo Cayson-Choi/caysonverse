@@ -35,6 +35,7 @@ import { MEMORIAL_CAMERA_BOXES, MEMORIAL_COLLIDERS } from "./generated/memorialC
 import { guideColliders } from "./guides";
 import { signalPoleColliders } from "./crossings";
 import { TRANSIT, busFootprint } from "./transit";
+import { LAKE_AREA, lakeColliders } from "./lakeLayout";
 import type { Bounds, MapGeometry } from "../school/geometry";
 
 export interface Point2 {
@@ -435,6 +436,13 @@ function hallNiche(walls: readonly CubbyWall[]): MemorialNiche {
   return { minX: round(aEnd, 6), maxX: round(b.start.x, 6), spring: 2.35, radius: round((b.start.x - aEnd) / 2 - 0.0825, 3), backZ: -6, frontZ: a.start.z };
 }
 
+/**
+ * The east edge of the village area. The village proper ends at x 95; the fishing lake (lakeLayout.ts, A10) joins it there
+ * and reaches x 186, so the area is the rectangle that holds both. Inside it, what is not village ground or lake ground is
+ * solid (`areaGapBlockers`, `lakeTerrainColliders`).
+ */
+export const VILLAGE_EAST_EDGE = 186;
+
 function makeVillageLayout(): VillageLayout {
   return {
     walkBounds: { minX: -95, maxX: 95, minZ: -95, maxZ: 95 },
@@ -540,7 +548,7 @@ function makeVillageLayout(): VillageLayout {
       waterfall: { centre: pt(-118, -78), size: sz(28, 14), height: 36, facing: "e" },
       lake: { centre: pt(130, -15), size: sz(60, 90), pavilion: { centre: pt(108, -12), size: sz(6, 6) } },
     },
-    areas: { village: { minX: -95, maxX: 95, minZ: -95, maxZ: 95 }, hall: boxAt(pt(300, 0), sz(15, 12)) },
+    areas: { village: { minX: -95, maxX: VILLAGE_EAST_EDGE, minZ: -95, maxZ: 95 }, hall: boxAt(pt(300, 0), sz(15, 12)) },
   };
 }
 
@@ -888,13 +896,24 @@ export function villageBounds(layout: VillageLayout): Bounds {
 /**
  * Fills the gap between the two areas (from the village's east edge to the hall's outer west wall,
  * the full z range of the bounds), so the spanning bounds do not let anyone walk from one to the other.
+ *
+ * The village area reaches east past x 95 to hold the fishing lake (`LAKE_AREA`, x 95.5..186): there the strips north and
+ * south of the lake zone (the area's full z range minus the lake's) are solid too — the same box width as the gap blocker
+ * east of the area, and 25 m or more thick, so no legal step crosses them.
  */
 export function areaGapBlockers(layout: VillageLayout): AABB[] {
   const bounds = villageBounds(layout);
-  const minX = layout.areas.village.maxX;
+  const v = layout.areas.village;
+  const minX = v.maxX;
   const maxX = layout.areas.hall.minX - DEFAULT_WALL_THICKNESS;
-  if (maxX <= minX) return [];
-  return [{ minX, maxX, minZ: bounds.minZ, maxZ: bounds.maxZ }];
+  const out: AABB[] = [];
+  // the lake's side strips: x from the old village edge (95) to the area's east edge, above and below the lake zone
+  if (v.maxX > 95 && v.maxX >= LAKE_AREA.maxX) {
+    if (LAKE_AREA.minZ > bounds.minZ) out.push({ minX: 95, maxX: v.maxX, minZ: bounds.minZ, maxZ: LAKE_AREA.minZ });
+    if (LAKE_AREA.maxZ < bounds.maxZ) out.push({ minX: 95, maxX: v.maxX, minZ: LAKE_AREA.maxZ, maxZ: bounds.maxZ });
+  }
+  if (maxX > minX) out.push({ minX, maxX, minZ: bounds.minZ, maxZ: bounds.maxZ });
+  return out;
 }
 
 /**
@@ -995,7 +1014,7 @@ export function buildVillageGeometry(
     "village",
     villageBounds(layout),
     hallWalls(layout),
-    [...areaGapBlockers(layout), ...hallSurroundBlockers(layout), ...village.obstacles, ...bus.map(stripHeight), ...signalPoleColliders(), ...busShelterColliders(layout), busShelterBenchCollider(layout), ...(hall?.obstacles ?? []), ...extra],
+    [...areaGapBlockers(layout), ...hallSurroundBlockers(layout), ...lakeColliders(), ...village.obstacles, ...bus.map(stripHeight), ...signalPoleColliders(), ...busShelterColliders(layout), busShelterBenchCollider(layout), ...(hall?.obstacles ?? []), ...extra],
     [...village.cameraBoxes, ...bus, busShelterRoofSlab(layout), busShelterLightBoxCameraBox(layout), ...(hall?.cameraBoxes ?? [])],
   );
 }
