@@ -3,22 +3,17 @@ import { useFrame } from "@react-three/fiber";
 import { useGLTF, useTexture } from "@react-three/drei";
 import {
   type MeshStandardMaterial,
-  AdditiveBlending,
   BufferGeometry,
   CircleGeometry,
   Color,
-  ConeGeometry,
   CylinderGeometry,
   Float32BufferAttribute,
-  Group,
   InstancedMesh,
   LineBasicMaterial,
   LineSegments,
   Matrix4,
   Mesh,
   MeshBasicMaterial,
-  Points,
-  PointsMaterial,
   Quaternion,
   RingGeometry,
   SphereGeometry,
@@ -35,6 +30,7 @@ import { dayNight } from "../village/dayNightDriver";
 import type { Pose } from "../game/types";
 import { LAKE_AREA, LAKE_FACE_DIR, LAKE_FISHING_SPOTS, LAKE_RENTAL_PAD, LAKE_SHORE, LAKE_WATER_Y, insidePolygon } from "@caysonverse/shared/village/lakeLayout";
 import { LAKE_URLS, lakeAssetWanted } from "./lakeAssets";
+import { createDrops } from "./lakeDrops";
 import { LakeGreybox } from "./LakeGreybox";
 import { createLakeWater, type LakeWater, type LakeWaterLook } from "./lakeWater";
 import { DEFAULT_SEAM, disposeLake, lakeDayNight, prepareLakeStructures, prepareLakeTerrain, type LakeSeam } from "./lakeModelPrep";
@@ -44,10 +40,12 @@ import { LakeSigns } from "./LakeSigns";
 import { LakeShopInterior } from "./LakeShopInterior";
 import { CAST_S, floatPose, scatter, tugIndex, type FloatPose, type Pt } from "./lakeFloat";
 import { elapsedSince, forEachAngler, selfId } from "./lakeNet";
-import { FISH_PHASE, emptyFishView, type FishView } from "./lakeProtocol";
+import { FISH_PHASE, type FishView } from "./lakeProtocol";
 import { rodTipOf } from "./rodTips";
+import { hookPointOf } from "./fishHooks";
+import { lineOnFish } from "./fishCatch";
+import { installLakeFx } from "./lakeFx";
 import { useLakeStore } from "./lakeStore";
-import { FISHING_CHAIRS, inLakeZone, nearestFreeChair } from "./lakeNearby";
 
 const IDLE_WAIT_MS = 5000;
 /** A lamp's light at night (B's `light__lake_lamp_*`: warm, 14 m): physical units, tuned by eye on the pier at 23:00. */
@@ -68,8 +66,10 @@ function dayLook() {
 }
 
 /** The lake's own water: made once, ticked with the clock and the time of day. */
-function useLakeWater(depthAttr: boolean, look?: LakeWaterLook): LakeWater {
+function useLakeWater(depthAttr: boolean, look?: LakeWaterLook, tier: VillageTier = "high"): LakeWater {
   const water = useMemo(() => createLakeWater({ depthAttr, look }), [depthAttr, look]);
+  // the tier is a uniform: a tier change must not make a new material (a new program; GL warnings on phones)
+  useEffect(() => water.setTier(tier), [water, tier]);
   useEffect(() => {
     activeWater = water;
     return () => {
@@ -123,7 +123,7 @@ function LakeGlb({ tier, pose }: { tier: VillageTier; pose: Pose }) {
     () => ({ reflDay: reflDay!, reflNight: reflNight!, lightmap: lmDay!, lightmapNight: lmNight!, lamps: dressed.lampHeads.map((p) => ({ x: p.x, z: p.z })) }),
     [reflDay, reflNight, lmDay, lmNight, dressed],
   );
-  const water = useLakeWater(false, look);
+  const water = useLakeWater(false, look, tier);
   useDrawn(dressed.seam);
   useEffect(() => {
     for (const m of dressed.water) {
@@ -209,7 +209,11 @@ function LakeFromFile({ tier, pose }: { tier: VillageTier; pose: Pose }) {
 
 // ───────────────────────────────────────── the rental pad and the chair markers ─────────────────────────────────────────
 
-/** The yellow circle in front of the office (design 7.1): stand in it to rent the rod. Always drawn: it is the way in. */
+/**
+ * The yellow circle in front of the office (design 7.1): stand in it to rent the rod. Always drawn: it is the way in.
+ * (The mint discs under the free fishing chairs and the arrow over the nearest one are gone, owner 2026-11-16: no floor discs or
+ * floating markers at seats; a chair is used by walking up to it + the button / E, or by tapping it.)
+ */
 function RentalPad() {
   const g = useMemo(() => ({ ring: new RingGeometry(LAKE_RENTAL_PAD.radius - 0.28, LAKE_RENTAL_PAD.radius, 48), disc: new CircleGeometry(LAKE_RENTAL_PAD.radius - 0.28, 48) }), []);
   const mat = useMemo(() => new MeshBasicMaterial({ color: "#ffd23a", transparent: true, opacity: 0.8, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4 }), []);
@@ -234,98 +238,12 @@ function RentalPad() {
   );
 }
 
-/**
- * Free fishing chairs glow while the player holds a rod and has not sat (design 7.1); the nearest one gets a bobbing arrow.
- * Occupancy comes from every angler's `fishSpot`, polled at 5 Hz.
- */
-function ChairMarkers({ pose }: { pose: Pose }) {
-  const parts = useMemo(() => {
-    const disc = new CircleGeometry(0.62, 24);
-    const mat = new MeshBasicMaterial({ color: "#7dffb2", transparent: true, opacity: 0.5, depthWrite: false, blending: AdditiveBlending, polygonOffset: true, polygonOffsetFactor: -4 });
-    const arrowGeo = new ConeGeometry(0.28, 0.6, 12);
-    arrowGeo.rotateX(Math.PI);
-    const arrowMat = new MeshBasicMaterial({ color: "#7dffb2" });
-    return { disc, mat, arrowGeo, arrowMat };
-  }, []);
-  const group = useRef<Group>(null);
-  const arrow = useRef<Mesh>(null);
-  const state = useRef({ show: false, occupied: new Set<number>(), nearest: -1, t: 0, view: emptyFishView() });
-  useEffect(
-    () => () => {
-      parts.disc.dispose();
-      parts.mat.dispose();
-      parts.arrowGeo.dispose();
-      parts.arrowMat.dispose();
-    },
-    [parts],
-  );
-  useFrame(({ clock }, delta) => {
-    const s = state.current;
-    s.t += delta;
-    if (s.t > 0.2) {
-      s.t = 0;
-      forEachAngler(() => undefined);
-      const me = selfId();
-      const occ = new Set<number>();
-      let mine = 0;
-      let mySpot = -1;
-      forEachAngler((sid, v) => {
-        if (sid === me) {
-          mine = v.rod;
-          mySpot = v.spot;
-        } else if (v.spot >= 0) occ.add(v.spot);
-      });
-      s.occupied = occ;
-      s.show = mine > 0 && mySpot < 0 && inLakeZone(pose.x, pose.z);
-      s.nearest = s.show ? nearestFreeChair(pose.x, pose.z, occ) : -1;
-    }
-    const gr = group.current;
-    if (!gr) return;
-    gr.visible = s.show;
-    if (!s.show) return;
-    for (let i = 0; i < gr.children.length; i++) {
-      const c = gr.children[i]!;
-      c.visible = !s.occupied.has(i);
-    }
-    const a = arrow.current;
-    if (a) {
-      // the arrow stands over the nearest free chair that is in sight (within 25 m), else over the nearest of all
-      let best = s.nearest;
-      if (best < 0) {
-        let d = Infinity;
-        for (let i = 0; i < FISHING_CHAIRS.length; i++) {
-          if (s.occupied.has(i)) continue;
-          const c = FISHING_CHAIRS[i]!;
-          const dd = Math.hypot(c.x - pose.x, c.z - pose.z);
-          if (dd < d) {
-            d = dd;
-            best = i;
-          }
-        }
-      }
-      const c = best >= 0 ? FISHING_CHAIRS[best] : undefined;
-      a.visible = !!c;
-      if (c) a.position.set(c.x, 2.1 + Math.sin(clock.elapsedTime * 4) * 0.12, c.z);
-    }
-  });
-  return (
-    <>
-      <group ref={group} visible={false}>
-        {FISHING_CHAIRS.map((c) => (
-          <mesh key={c.id} geometry={parts.disc} material={parts.mat} position={[c.x, 0.05, c.z]} rotation={[-Math.PI / 2, 0, 0]} />
-        ))}
-      </group>
-      <mesh ref={arrow} geometry={parts.arrowGeo} material={parts.arrowMat} visible={false} />
-    </>
-  );
-}
-
 // ───────────────────────────────────────── the floats, lines, rings and splashes ─────────────────────────────────────────
 
 const LINE_POINTS = 24;
 /** The float is drawn this much larger than design 4.4 (1.6x the real one): on a phone portrait screen it must read at 12 m (design 4.4: 30-40 px). */
 const FLOAT_VIEW_SCALE = 1.35;
-const MAX_SPLASH = 96;
+const MAX_SPLASH = 320;
 /** The room holds 30; one more than that for a pending join. */
 const MAX_FLOATS = 32;
 const SEGMENTS = LINE_POINTS - 1;
@@ -432,15 +350,10 @@ function LakeAnglers() {
     const haloMat = new MeshBasicMaterial({ color: "#ffffff", transparent: true, opacity: 0.32, depthWrite: false });
     const halo = new Mesh(haloGeo, haloMat);
     halo.visible = false;
-    const splashGeo = new BufferGeometry();
-    const sp = new Float32Array(MAX_SPLASH * 3);
-    splashGeo.setAttribute("position", new Float32BufferAttribute(sp, 3));
-    const splashMat = new PointsMaterial({ color: "#e8f4ff", size: 0.16, transparent: true, opacity: 0.85, depthWrite: false, sizeAttenuation: true });
-    const splash = new Points(splashGeo, splashMat);
-    splash.frustumCulled = false;
-    const vel = new Float32Array(MAX_SPLASH * 3);
-    const life = new Float32Array(MAX_SPLASH);
-    return { slots, floatGeo, floatMat, floatMesh, chemiGeo, chemiMat, chemiMesh, chemiBase, originDown, lineGeo, linePos, lineMat, lines, haloGeo, haloMat, halo, splash, splashGeo, splashMat, sp, vel, life, next: 0, ambient: 12 + Math.random() * 20 };
+    // lake v2: the spray of a splash and the drips off a fish (soft round drops, lakeDrops.ts)
+    const spray = createDrops(MAX_SPLASH, 0.085, 0.9);
+    const drips = createDrops(160, 0.035, 0.95);
+    return { slots, floatGeo, floatMat, floatMesh, chemiGeo, chemiMat, chemiMesh, chemiBase, originDown, lineGeo, linePos, lineMat, lines, haloGeo, haloMat, halo, spray, drips, ambient: 12 + Math.random() * 20 };
   }, [gearIn]);
   useEffect(
     () => () => {
@@ -454,27 +367,18 @@ function LakeAnglers() {
       parts.lineMat.dispose();
       parts.haloGeo.dispose();
       parts.haloMat.dispose();
-      parts.splashGeo.dispose();
-      parts.splashMat.dispose();
+      parts.spray.dispose();
+      parts.drips.dispose();
     },
     [parts],
   );
 
-  const emit = (x: number, y: number, z: number, n: number) => {
-    for (let k = 0; k < n; k++) {
-      const i = parts.next;
-      parts.next = (parts.next + 1) % MAX_SPLASH;
-      parts.sp[i * 3] = x;
-      parts.sp[i * 3 + 1] = y;
-      parts.sp[i * 3 + 2] = z;
-      const a = Math.random() * Math.PI * 2;
-      const sp = 0.4 + Math.random() * 1.1;
-      parts.vel[i * 3] = Math.cos(a) * sp * 0.6;
-      parts.vel[i * 3 + 1] = 1.6 + Math.random() * 1.8;
-      parts.vel[i * 3 + 2] = Math.sin(a) * sp * 0.6;
-      parts.life[i] = 0.6;
-    }
-  };
+  const emit = (x: number, y: number, z: number, n: number) => parts.spray.emit(x, y, z, n, 1);
+  // the catch rigs' splashes and drips (catchRig.ts) and their rings, while this lake is drawn
+  useEffect(() => {
+    installLakeFx(lakeRipple, (x, y, z, n, power, drip) => (drip ? parts.drips.emit(x, y, z, n, 0) : parts.spray.emit(x, y, z, n, power)));
+    return () => installLakeFx(null, null);
+  }, [parts]);
 
   useFrame((_state, delta) => {
     const me = selfId();
@@ -565,12 +469,30 @@ function LakeAnglers() {
         fz = tz + (p.z - tz) * k;
         fy = ty + (LAKE_WATER_Y - ty) * k + Math.sin(k * Math.PI) * 2.2;
       }
-      const show = (p.visible && !p.flying) || (p.flying && p.flight > 0.02);
+      // lake v2: a fish on the line (catchRig.ts) — the line ends at its mouth, the float rides the line 0.6 m above it
+      const hook = lineOnFish(v.phase) ? hookPointOf(sid) : null;
+      let lineX = fx;
+      let lineY = fy;
+      let lineZ = fz;
+      if (hook) {
+        lineX = hook.x;
+        lineY = hook.y;
+        lineZ = hook.z;
+        const dx = tx - hook.x;
+        const dy = ty - hook.y;
+        const dz = tz - hook.z;
+        const dl = Math.hypot(dx, dy, dz) || 1;
+        const up = Math.min(0.3, dl * 0.5);
+        fx = hook.x + (dx / dl) * up;
+        fy = hook.y + (dy / dl) * up;
+        fz = hook.z + (dz / dl) * up;
+      }
+      const show = !!hook || (p.visible && !p.flying) || (p.flying && p.flight > 0.02);
       slot.visible = show;
       if (show) {
-        tmpQ.setFromAxisAngle(Z_AXIS, (1 - p.stand) * 1.45);
+        tmpQ.setFromAxisAngle(Z_AXIS, hook ? 0 : (1 - p.stand) * 1.45);
         // the real float's origin is its water line: put it `originDown` under the top (turned with it while it lies)
-        tmpOff.set(0, -parts.originDown, 0).applyQuaternion(tmpQ);
+        tmpOff.set(0, hook ? 0 : -parts.originDown, 0).applyQuaternion(tmpQ);
         tmpP.set(fx + tmpOff.x, fy + tmpOff.y, fz + tmpOff.z);
         tmpS.setScalar(FLOAT_VIEW_SCALE);
         tmpM.compose(tmpP, tmpQ, tmpS);
@@ -585,19 +507,19 @@ function LakeAnglers() {
         haloShown = true;
       }
       // the line: tip -> float, slack by phase (taut while fighting)
-      const len = Math.hypot(fx - tx, fz - tz);
-      const sag = p.taut ? 0.02 * len : p.flying ? 0.04 * len : 0.12 * len * (1 - 0.6 * p.dive);
+      const len = Math.hypot(lineX - tx, lineZ - tz);
+      const sag = hook ? 0.01 * len : p.taut ? 0.02 * len : p.flying ? 0.04 * len : 0.12 * len * (1 - 0.6 * p.dive);
       const base = slot.index * SEGMENTS * 6;
       if (show) {
-        const lineEndY = p.flying ? fy : Math.max(fy, LAKE_WATER_Y + 0.01);
+        const lineEndY = hook ? lineY : p.flying ? fy : Math.max(fy, LAKE_WATER_Y + 0.01);
         let px = tx;
         let py = ty;
         let pz = tz;
         for (let i = 1; i < LINE_POINTS; i++) {
           const k = i / (LINE_POINTS - 1);
-          const nx = tx + (fx - tx) * k;
+          const nx = tx + (lineX - tx) * k;
           const ny = ty + (lineEndY - ty) * k - sag * 4 * k * (1 - k);
-          const nz = tz + (fz - tz) * k;
+          const nz = tz + (lineZ - tz) * k;
           const o = base + (i - 1) * 6;
           parts.linePos[o] = px;
           parts.linePos[o + 1] = py;
@@ -627,22 +549,10 @@ function LakeAnglers() {
     }
     (parts.lineGeo.getAttribute("position") as Float32BufferAttribute).needsUpdate = true;
     parts.halo.visible = haloShown;
-    // splash particles: ballistic, gone when they fall back to the water
-    let any = false;
-    for (let i = 0; i < MAX_SPLASH; i++) {
-      if (parts.life[i]! <= 0) {
-        parts.sp[i * 3 + 1] = -50;
-        continue;
-      }
-      any = true;
-      parts.life[i] = parts.life[i]! - delta;
-      parts.vel[i * 3 + 1] = parts.vel[i * 3 + 1]! - 9.8 * delta;
-      parts.sp[i * 3] = parts.sp[i * 3]! + parts.vel[i * 3]! * delta;
-      parts.sp[i * 3 + 1] = parts.sp[i * 3 + 1]! + parts.vel[i * 3 + 1]! * delta;
-      parts.sp[i * 3 + 2] = parts.sp[i * 3 + 2]! + parts.vel[i * 3 + 2]! * delta;
-      if (parts.sp[i * 3 + 1]! < LAKE_WATER_Y) parts.life[i] = 0;
-    }
-    if (any) (parts.splashGeo.getAttribute("position") as Float32BufferAttribute).needsUpdate = true;
+    // the drops: ballistic, gone when they fall back to the water
+    parts.spray.step(delta, LAKE_WATER_Y);
+    parts.drips.step(delta, LAKE_WATER_Y);
+
     // a fish jumping somewhere: now and then, the lake lives (design 4.2)
     parts.ambient -= delta;
     if (parts.ambient <= 0) {
@@ -669,7 +579,8 @@ function LakeAnglers() {
       {parts.chemiMesh && <primitive object={parts.chemiMesh} />}
       <primitive object={parts.lines} />
       <primitive object={parts.halo} />
-      <primitive object={parts.splash} />
+      <primitive object={parts.spray.points} />
+      <primitive object={parts.drips.points} />
     </>
   );
 }
@@ -683,7 +594,6 @@ export function LakeWorld({ pose, tier }: { pose: Pose; tier: VillageTier }) {
       <LakeModel tier={tier} pose={pose} />
       <LakeSigns />
       <RentalPad />
-      <ChairMarkers pose={pose} />
       <LakeAnglers />
     </>
   );

@@ -38,10 +38,13 @@ export const FISHING = {
   nibbleNoneMs: 600,
   nibbleTailMs: 500,
   hookedMs: 400,
-  liftMs: 1000,
-  netMs: 1200,
+  /** Lake v2 (owner 2026-11-16): the small fish is reeled in under the surface, breaks out and hangs from the line before the hand takes it (client fishCatch.ts). */
+  liftMs: 3000,
+  /** Lake v2: the big fish thrashes at the surface, then the net scoops it. */
+  netMs: 2400,
   landedMs: 2500,
-  releaseMs: 800,
+  /** Lake v2: the release clip, then the fish falls back into the water with a splash. */
+  releaseMs: 1300,
   missedMs: 1000,
   /** Cast to cast, and sit / stand to sit / stand (design 9.5). */
   castGapMs: 1500,

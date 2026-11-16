@@ -22,6 +22,13 @@ const OUT = opt("out", join(REPO, ".superpowers", "sdd", "evidence", "lake-fishi
 const dev = opt("device", "pc");
 const device = dev === "phone" ? PHONE : DESKTOP;
 const time = opt("time", "2026-11-03T12:30");
+/** Lake v2: keep casting until this many species were landed (the dex must list every one with its size and count). */
+const SPECIES = Number(opt("species", "4"));
+/** Lake v2: a frame sequence of the first lift-out (frames every ~120 ms) into <out>/<tag>-lift/. */
+const FRAMES = opt("frames", "1") === "1";
+/** Lake v2: first person for the casts (the catch must show in the view). */
+const FIRST_PERSON = opt("fp", "0") === "1";
+const caught = [];
 const tag = `${dev}-${time.slice(11, 13)}`;
 const run = createRun("lake-fishing-" + tag);
 run.evidence = OUT;
@@ -189,11 +196,20 @@ async function oneCast(n) {
       await sleep(700);
       await shot("16-netting");
     }
+  } else if (FRAMES && !seen.has("liftframes")) {
+    seen.add("liftframes");
+    // lake v2: the whole lift-out as frames (under the water, out with a splash, hanging on the line, into the hand)
+    const dir = join(OUT, `${tag}-lift`);
+    mkdirSync(dir, { recursive: true });
+    for (let k = 0; k < 26; k++) {
+      await p.page.screenshot({ path: join(dir, `f${String(k).padStart(2, "0")}.png`) });
+      await sleep(70);
+    }
   } else {
     await sleep(600);
     await once("lifting", "11-lifting");
   }
-  const landed = await waitPhase(["landed"], 4000);
+  const landed = await waitPhase(["landed"], 5000);
   run.check(`cast ${n}: landed`, !!landed, landed);
   const card = await p.page.waitForSelector("[data-lake-card]", { timeout: 4000 }).then(() => true, () => false);
   const text = await p.page.locator("[data-lake-card]").first().textContent().catch(() => "");
@@ -211,8 +227,39 @@ async function oneCast(n) {
 
 await run.step("cast until a small and a big fish (the server's cycle of species)", async () => {
   const got = new Set();
-  for (let n = 1; n <= 8 && !(got.has("small") && got.has("big")); n++) got.add(await oneCast(n));
+  if (FIRST_PERSON) {
+    // lake v2: the catch must show in first person too
+    await p.page.keyboard.press("KeyV");
+    await sleep(900);
+    const mode = await p.page.evaluate(async () => (await window.__imp("/src/game/viewState.ts")).viewState.mode);
+    run.check("first person while fishing", mode === "fp", mode);
+  }
+  // every catch, as the page sees the schema (a recorder in the page: a slow screenshot here never misses one)
+  await p.page.evaluate(async () => {
+    const net = await window.__imp("/src/lake/lakeNet.ts");
+    const proto = await window.__imp("/src/lake/lakeProtocol.ts");
+    const v = proto.emptyFishView();
+    const seen = new Set();
+    window.__e2eCaught = [];
+    setInterval(() => {
+      net.readFishView(net.selfId(), v);
+      if ((v.phase === proto.FISH_PHASE.landed || v.phase === proto.FISH_PHASE.releasing) && v.kind > 0 && !seen.has(v.seq)) {
+        seen.add(v.seq);
+        window.__e2eCaught.push({ kind: v.kind, cm: v.cm });
+      }
+    }, 40);
+  });
+  const sync = async () => {
+    caught.length = 0;
+    caught.push(...(await p.page.evaluate(() => window.__e2eCaught)));
+  };
+  const kinds = () => new Set(caught.map((c) => c.kind)).size;
+  for (let n = 1; n <= 12 && !(got.has("small") && got.has("big") && kinds() >= SPECIES); n++) {
+    got.add(await oneCast(n));
+    await sync();
+  }
   run.check("a small fish and a big fish were landed", got.has("small") && got.has("big"), [...got]);
+  run.check(`${SPECIES}+ species were landed`, kinds() >= SPECIES, caught);
 });
 
 await run.step("the dex, the board and standing up", async () => {
@@ -221,6 +268,28 @@ await run.step("the dex, the board and standing up", async () => {
   await shot("18-dex");
   const got = await p.page.locator(".cv-lake-dex-item.is-got").count();
   run.check("the dex lists the species caught", got >= 2, got);
+  // lake v2 (owner 2026-11-16: 4 species caught, only 1 in the dex): every species landed is there with its best size and count
+  const want = new Map();
+  for (const c of caught) {
+    const w = want.get(c.kind) ?? { best: 0, count: 0 };
+    want.set(c.kind, { best: Math.max(w.best, c.cm), count: w.count + 1 });
+  }
+  const shown = await p.page.evaluate(() =>
+    [...document.querySelectorAll(".cv-lake-dex-item.is-got")].map((e) => ({ id: e.getAttribute("data-dex"), best: Number(e.getAttribute("data-dex-best")), count: Number(e.getAttribute("data-dex-count")) })),
+  );
+  const ids = await p.page.evaluate(async (ks) => {
+    const proto = await window.__imp("/src/lake/lakeProtocol.ts");
+    return ks.map((k) => proto.species(k)?.id ?? "?");
+  }, [...want.keys()]);
+  const bad = [];
+  [...want.entries()].forEach(([k, w], i) => {
+    const s = shown.find((x) => x.id === ids[i]);
+    if (!s || s.best !== w.best || s.count !== w.count) bad.push({ kind: k, id: ids[i], want: w, shown: s ?? null });
+  });
+  run.check("every species landed is in the dex with its best length and count", bad.length === 0 && shown.length === want.size, { bad, shown, caught });
+  // the pictures: every caught card shows its own picture, the others a silhouette
+  const pics = await p.page.evaluate(() => [...document.querySelectorAll(".cv-lake-dex-item")].map((e) => ({ got: e.classList.contains("is-got"), pic: getComputedStyle(e.querySelector(".cv-lake-fishpic")).backgroundImage.includes("fish_cards") })));
+  run.check("the dex shows the species' own pictures (silhouettes for the others)", pics.length === 11 && pics.every((x) => x.pic), pics);
   const board = (await p.page.locator("[data-lake-board]").textContent().catch(() => "")) ?? "";
   run.check("the board (오늘의 대어) is shown", board.includes("오늘의 대어"), board);
   await press(p, p.page.locator(".cv-lake-dex-head button"));

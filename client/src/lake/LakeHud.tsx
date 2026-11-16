@@ -17,8 +17,12 @@ import { biteWindowMs } from "@caysonverse/shared/village/fishing";
 import { expireLakeUi, useLakeStore } from "./lakeStore";
 import { LakeCards } from "./LakeCards";
 import { LakePierCue } from "./LakePierCue";
-import { backToFishing, catchCamera, fishingCamera, restoreCamera } from "./lakeCamera";
+import { carriesHandItem } from "./fishingRig";
+import { backToFishing, catchCamera, fishingCamera, liftCamera, restoreCamera } from "./lakeCamera";
 import "./lake.css";
+
+/** The last cast recorded in the dex (session:seq): module-wide, so a remount of the HUD never records a catch twice. */
+let recordedCast = "";
 
 /** The HUD reads the schema this often (ms): a bite must turn the button red at once. */
 const POLL_MS = 80;
@@ -92,15 +96,27 @@ export function LakeHud({ pose, seat, orbit }: { pose: Pose; seat: SeatState; or
       seatedNoRod: view.rod === 0 && chairSpot >= 0,
     };
     // rod rented / returned: a line of words
-    if (view.rod > 0 && lastRod.current === 0) store.getState().say("낚싯대를 빌렸어요. 잔교의 빈 의자에 앉아서 던져요!", 4200);
-    if (view.rod === 0 && lastRod.current > 0) store.getState().say("낚싯대를 반납했어요.");
+    // the held item (손에 드는 것) is left with the shop while the rod is out, and given back with the rod (fishingRig.stowHandItem)
+    const item = carriesHandItem(selfId());
+    if (view.rod > 0 && lastRod.current === 0) store.getState().say(item ? "2칸 대를 빌렸어요. 들고 있던 물건은 가게에 맡겼어요. 빈 의자에 앉아서 던지세요!" : "2칸 대를 빌렸어요. 빈 의자에 앉아서 던지세요!", 4200);
+    if (view.rod === 0 && lastRod.current > 0) store.getState().say(item ? "낚싯대를 반납하고 맡긴 물건을 돌려받았어요." : "낚싯대를 반납했어요.");
     lastRod.current = view.rod;
     // the fish is landed: the card and the dex of this device
-    if (view.phase === FISH_PHASE.landed && lastPhase.current !== FISH_PHASE.landed && species(view.kind)) {
+    // Recorded once per CAST (its seq), from `landed` or, if the screen never saw `landed` (a slow phone, a hidden tab, a state
+    // patch that jumped it), from `releasing`: the edge alone lost catches (owner 2026-11-16: 4 species caught, 1 in the dex).
+    const caughtNow = (view.phase === FISH_PHASE.landed || view.phase === FISH_PHASE.releasing) && species(view.kind) !== null;
+    const castKey = `${selfId()}:${view.seq}`;
+    if (caughtNow && recordedCast !== castKey) {
+      recordedCast = castKey;
       store.getState().landed(view.kind, view.cm, Date.now());
       // the camera comes round to see the fish held up, and goes back over the shoulder for the next cast
       const spot = LAKE_FISHING_SPOTS[view.spot];
       if (spot) catchCamera(spot.yaw);
+    }
+    // the fish coming in: the camera goes round to the side to see the rod, the line and the fish come out of the water
+    if ((view.phase === FISH_PHASE.lifting || view.phase === FISH_PHASE.fighting) && lastPhase.current !== view.phase) {
+      const spot = LAKE_FISHING_SPOTS[view.spot];
+      if (spot) liftCamera(spot.yaw);
     }
     if (view.phase === FISH_PHASE.ready && lastPhase.current === FISH_PHASE.releasing) {
       const spot = LAKE_FISHING_SPOTS[view.spot];

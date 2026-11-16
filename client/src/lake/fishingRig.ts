@@ -10,13 +10,15 @@
 //    removed (`stripArm`, bound by the player when `hasRod` flips) so the arm is Carry_Rod's alone.
 // The rod folds to 1.15 m for walking and opens to 3.6 m over 0.6 s when the angler sits.
 
-import { AnimationMixer, LoopOnce, LoopRepeat, Quaternion, Vector3, type AnimationAction, type AnimationClip, type Object3D } from "three";
+import { AnimationMixer, LoopOnce, LoopRepeat, Object3D, Quaternion, Vector3, type AnimationAction, type AnimationClip, type Camera } from "three";
 import { FISHING_CLIPS, GRIP_OFFSET, NET_AXIS_L, ROD_AXIS_R, type FishingClip } from "@caysonverse/shared/village/fishingAnims";
 import type { BuiltAvatar } from "../game/characterAvatar";
 import { fishingAnimsNow, loadFishingAnims, withoutRightArm } from "./fishAnims";
 import { elapsedSince, readFishView } from "./lakeNet";
-import { FISH_PHASE, emptyFishView, needsNet, species, type FishView } from "./lakeProtocol";
-import { createFishModel, createNet, createRod, lakeGearReady, loadLakeGear, type FishModel, type Net, type Rod } from "./lakeProps";
+import { FISH_PHASE, emptyFishView, needsNet, type FishView } from "./lakeProtocol";
+import { createNet, createRod, lakeGearReady, loadLakeGear, type Net, type Rod } from "./lakeProps";
+import { createCatchRig, fpNarrow } from "./catchRig";
+import { HANG_END_S, NET_SCOOP_S, REEL_S } from "./fishCatch";
 import { registerRodTip } from "./rodTips";
 import { tugDip } from "./lakeFloat";
 
@@ -30,6 +32,10 @@ export interface RigContext {
   seatMode: "up" | "sitting" | "seated" | "standing";
   /** The player's own held sit (Sit_Chair_Idle) action, faded out while a fishing clip owns the body. */
   baseSit: AnimationAction | null;
+  /** My own avatar in first person (its body is hidden): the camera the catch is held up in front of. */
+  fpCamera?: Camera | null;
+  /** First person: the avatar's skin and top colours (its hands drawn holding the catch). */
+  fpLook?: { skin: string; top: string } | null;
 }
 
 export interface FishingRig {
@@ -58,12 +64,58 @@ export function stripArm(clip: AnimationClip): AnimationClip {
   return c;
 }
 
+/** Whose held item (the character's 손에 드는 것) is with the shop while they hold the rod: the HUD's words on rent / return. */
+const stowed = new Map<string, boolean>();
+const carries = new Map<string, boolean>();
+export function heldItemStowed(sid: string): boolean {
+  return stowed.get(sid) === true;
+}
+/** Whether this avatar holds an item of its own (it goes to the shop while a rod is rented). */
+export function carriesHandItem(sid: string): boolean {
+  return carries.get(sid) === true;
+}
+
+/**
+ * The held item goes to the shop while the rod is held (owner 2026-11-16): every item of character.glb is skinned to `handslot.r`
+ * alone, the bone the rod is held by too. The bone's own matrix is shrunk to nothing after the mixer has posed it (the item folds
+ * into the palm, nothing is rebuilt, the appearance is never touched), and the rod hangs from a proxy that copies the bone's
+ * unshrunk pose. Undone when the rod goes back: the item is in the hand again exactly as it was. Same on every screen (the rod is
+ * the schema's `rod`).
+ */
+export function stowHandItem(handslot: Object3D): { proxy: Object3D; restore(): void } {
+  const parent = handslot.parent;
+  const proxy = new Object3D();
+  proxy.name = "handslot.r.rod";
+  proxy.updateMatrix = function () {
+    this.matrix.compose(handslot.position, handslot.quaternion, handslot.scale);
+    this.matrixWorldNeedsUpdate = true;
+  };
+  parent?.add(proxy);
+  const own = handslot.updateMatrix;
+  handslot.updateMatrix = function () {
+    own.call(this);
+    this.matrix.scale(TINY);
+  };
+  return {
+    proxy,
+    restore() {
+      handslot.updateMatrix = own;
+      handslot.updateMatrix();
+      proxy.removeFromParent();
+    },
+  };
+}
+const TINY = new Vector3(1e-4, 1e-4, 1e-4);
+
 function bone(root: Object3D, name: string): Object3D | null {
   return root.getObjectByName(name) ?? root.getObjectByName(name.replace(/[.[\]:/]/g, "")) ?? null;
 }
 
 /** The clip a phase wants while seated at the chair (null: leave the body to the held sit). */
-export function clipForPhase(phase: number): FishingClip | null {
+export function clipForPhase(phase: number, t = 0): FishingClip | null {
+  // lake v2: the reel-in before the lift, the fight at the surface before the net (fishCatch.ts)
+  if (phase === FISH_PHASE.lifting && t < REEL_S) return "Fish_Sit_Fight";
+  if (phase === FISH_PHASE.netting && t < NET_SCOOP_S - 0.25) return "Fish_Sit_Fight";
   switch (phase) {
     case FISH_PHASE.ready:
     case FISH_PHASE.settling:
@@ -106,8 +158,12 @@ export function rodBend(view: FishView, t: number): number {
     case FISH_PHASE.fighting:
       return 0.75 + 0.2 * Math.sin(t * 5.5);
     case FISH_PHASE.lifting:
+      // reeled in hard, then the fish's weight on the line as it swings, then the hand takes it
+      if (t < REEL_S) return 0.72 + 0.14 * Math.sin(t * 9.5) + 0.06 * Math.sin(t * 23);
+      if (t < HANG_END_S) return 0.45 + 0.12 * Math.sin(t * 7.5);
+      return Math.max(0, 0.45 - (t - HANG_END_S) * 0.9);
     case FISH_PHASE.netting:
-      return 0.4;
+      return t < NET_SCOOP_S ? 0.8 + 0.12 * Math.sin(t * 8) : 0.35;
     default:
       return 0;
   }
@@ -119,10 +175,16 @@ export function createFishingRig(o: { sid: string; avatar: BuiltAvatar; mixer: A
   const root = avatar.root;
   let rod: Rod | null = null;
   let net: Net | null = null;
-  let fish: FishModel | null = null;
+  const catchRig = createCatchRig(sid);
+  const fpV = { cp: new Vector3(), fw: new Vector3(), rt: new Vector3(), up: new Vector3(), grip: new Vector3(), aim: new Vector3(), axis: new Vector3(), q: new Quaternion(), one: new Vector3(1, 1, 1) };
+  let catchShown = false;
+  let fpRod: Rod | null = null;
   let rodHost: Object3D | null = null;
   let netHost: Object3D | null = null;
   let unregisterTip: (() => void) | null = null;
+  let stow: ReturnType<typeof stowHandItem> | null = null;
+  const hasItem = avatar.parts.some((p) => p.startsWith("item__"));
+  carries.set(sid, hasItem);
   const actions = new Map<FishingClip, AnimationAction>();
   let current: FishingClip | null = null;
   let loading = false;
@@ -132,7 +194,6 @@ export function createFishingRig(o: { sid: string; avatar: BuiltAvatar; mixer: A
   let baseTouched = false;
   let lastPhase = -1;
   let lastSeq = -1;
-  const hands = { l: new Vector3(), r: new Vector3(), tmp: new Vector3() };
   const q = new Quaternion();
   let handR: Object3D | null = null;
   let handL: Object3D | null = null;
@@ -166,9 +227,14 @@ export function createFishingRig(o: { sid: string; avatar: BuiltAvatar; mixer: A
     if (rod.real) rod.root.quaternion.identity();
     else rod.root.quaternion.copy(q.setFromUnitVectors(Y, new Vector3(...ROD_AXIS_R).normalize()));
     rod.root.position.set(GRIP_OFFSET[0], GRIP_OFFSET[1], GRIP_OFFSET[2]);
-    // the bone's own scale (the rig is 1:1 in metres, but a parent scale would shrink the rod: undone here)
-    handR.add(rod.root);
-    rodHost = handR;
+    // the held item goes to the shop: the rod hangs from the proxy of the shrunk hand slot
+    if (hasItem && !stow) {
+      stow = stowHandItem(handR);
+      stowed.set(sid, true);
+    }
+    const host = stow ? stow.proxy : handR;
+    host.add(rod.root);
+    rodHost = host;
     unregisterTip = registerRodTip(sid, rod.tip);
   };
   const detachRod = (): void => {
@@ -179,6 +245,10 @@ export function createFishingRig(o: { sid: string; avatar: BuiltAvatar; mixer: A
     rod.dispose();
     rod = null;
     unfold = 0;
+    // the item comes back from the shop
+    stow?.restore();
+    stow = null;
+    stowed.delete(sid);
   };
   const attachNet = (): void => {
     if (net) return;
@@ -197,8 +267,14 @@ export function createFishingRig(o: { sid: string; avatar: BuiltAvatar; mixer: A
     net.dispose();
     net = null;
   };
-  const hideFish = (): void => {
-    if (fish) fish.root.visible = false;
+  const hideFish = (): void => catchRig.hide();
+  const dropFpRod = (): void => {
+    if (!fpRod) return;
+    fpRod.root.removeFromParent();
+    fpRod.dispose();
+    fpRod = null;
+    unregisterTip?.();
+    unregisterTip = rod ? registerRodTip(sid, rod.tip) : null;
   };
 
   const play = (name: FishingClip | null, speed = 1): void => {
@@ -225,6 +301,7 @@ export function createFishingRig(o: { sid: string; avatar: BuiltAvatar; mixer: A
       if (!readFishView(sid, view) || view.rod === 0) {
         if (rod || net || current) {
           play(null);
+          dropFpRod();
           detachRod();
           detachNet();
           hideFish();
@@ -239,13 +316,9 @@ export function createFishingRig(o: { sid: string; avatar: BuiltAvatar; mixer: A
       }
       if (!lakeGearReady()) void loadLakeGear();
       else if (rod && !rod.real) {
+        dropFpRod();
         detachRod(); // the stand-in made before lake_gear.glb came in: the real rod replaces it
         detachNet();
-        if (fish) {
-          fish.root.removeFromParent();
-          fish.dispose();
-          fish = null;
-        }
       }
       attachRod();
       const clipsReady = ensureActions();
@@ -259,7 +332,7 @@ export function createFishingRig(o: { sid: string; avatar: BuiltAvatar; mixer: A
       // which clip
       let want: FishingClip | null = null;
       if (clipsReady) {
-        if (atSpot && seated) want = clipForPhase(view.phase);
+        if (atSpot && seated) want = clipForPhase(view.phase, t);
         else if (!atSpot && ctx.seatMode === "up") want = "Carry_Rod";
       }
       if (want !== current || (want && !actions.get(want)?.isRunning())) {
@@ -296,49 +369,58 @@ export function createFishingRig(o: { sid: string; avatar: BuiltAvatar; mixer: A
       const wantNet = atSpot && (view.phase === FISH_PHASE.netting || (view.phase === FISH_PHASE.fighting && needsNet(view.kind, view.cm)));
       if (wantNet) attachNet();
       else detachNet();
-      // the fish: in the left hand when lifted, between the hands when shown and released
-      const showFish = atSpot && (view.phase === FISH_PHASE.lifting && t > 0.5 || view.phase === FISH_PHASE.landed || view.phase === FISH_PHASE.releasing || view.phase === FISH_PHASE.netting && t > 0.7);
-      if (showFish) {
-        handR = handR ?? bone(root, "handslot.r");
-        handL = handL ?? bone(root, "handslot.l");
-        const host = root.parent;
-        if (handR && handL && host) {
-          if (!fish) {
-            fish = createFishModel();
-            host.add(fish.root);
-          } else if (fish.root.parent !== host) {
-            host.add(fish.root);
-          }
-          const sp = species(view.kind);
-          fish.setCm(view.cm);
-          fish.setKind(view.kind, sp?.color ?? "#b9a46a");
-          handL.getWorldPosition(hands.l);
-          handR.getWorldPosition(hands.r);
-          if (view.phase === FISH_PHASE.lifting || view.phase === FISH_PHASE.netting) hands.tmp.copy(hands.l).add(new Vector3(0, -0.05, 0));
-          else hands.tmp.copy(hands.l).add(hands.r).multiplyScalar(0.5).add(new Vector3(0, 0.07, 0));
-          host.worldToLocal(hands.tmp);
-          fish.root.position.copy(hands.tmp);
-          // lie along the line between the hands (landed / released), else hang
-          const dir = hands.r.clone().sub(hands.l);
-          if (dir.lengthSq() > 1e-4 && view.phase !== FISH_PHASE.lifting && view.phase !== FISH_PHASE.netting) {
-            fish.root.quaternion.setFromUnitVectors(new Vector3(0, 0, 1), host.worldToLocal(dir.add(hands.l)).sub(host.worldToLocal(hands.l.clone())).normalize());
-          } else {
-            // hanging from the line, head up (nose +Z turned up), wriggling
-            fish.root.rotation.set(-Math.PI / 2.3 + Math.sin(t * 9) * 0.25, 0, 0);
-          }
-          fish.root.visible = true;
+      // the fish (lake v2, catchRig.ts): under the water, out on the line, into the hand or the net, shown, let go
+      handR = handR ?? bone(root, "handslot.r");
+      handL = handL ?? bone(root, "handslot.l");
+      // only while a fish is on (hooked .. releasing): an angler waiting, walking or anyone without a catch costs nothing here
+      const fpCam = ctx.fpCamera ?? null;
+      const catching = atSpot && view.phase >= FISH_PHASE.hooked && view.phase <= FISH_PHASE.releasing;
+      if (catching || catchShown) {
+        let world: Object3D | null = root;
+        while (world.parent) world = world.parent;
+        catchRig.update({ view, t, delta, atSpot, handL, handR, rodTip: fpRod?.tip ?? rod?.tip ?? null, netBag: net?.bag ?? null, world: world === root ? null : world, fpCamera: fpCam, fpLook: ctx.fpLook ?? null });
+        catchShown = catching;
+      }
+      // first person: the own body is hidden, so the rod is drawn by a copy that follows the hidden one (the line starts at its tip)
+      if (fpCam && rod && atSpot) {
+        let world: Object3D = root;
+        while (world.parent) world = world.parent;
+        if (!fpRod && world !== root) {
+          fpRod = createRod();
+          fpRod.root.matrixAutoUpdate = false;
+          fpRod.root.traverse((o) => (o.frustumCulled = false));
+          world.add(fpRod.root);
+          unregisterTip?.();
+          unregisterTip = registerRodTip(sid, fpRod.tip);
         }
-      } else hideFish();
+        if (fpRod) {
+          // held in the view (lake v2, 1st person): the grip at the lower right, the rod reaching up and out so its tip, the line
+          // and a fish hanging from it stay in the upper right of the view whatever the eye does
+          fpCam.updateMatrixWorld();
+          const cp = fpV.cp.setFromMatrixPosition(fpCam.matrixWorld);
+          const fw = fpV.fw.set(0, 0, -1).applyQuaternion(fpCam.quaternion);
+          const rt = fpV.rt.set(1, 0, 0).applyQuaternion(fpCam.quaternion);
+          const up = fpV.up.set(0, 1, 0).applyQuaternion(fpCam.quaternion);
+          // a narrow (portrait) view: everything closer to the middle so the rod and its tip stay on screen
+          const nk = fpNarrow(fpCam);
+          const grip = fpV.grip.copy(cp).addScaledVector(rt, 0.24 * nk).addScaledVector(up, -0.32).addScaledVector(fw, 0.3);
+          const aim = fpV.aim.copy(cp).addScaledVector(rt, 0.62 * nk).addScaledVector(up, 1.0).addScaledVector(fw, 3.0).sub(grip).normalize();
+          const axis = fpRod.real ? fpV.axis.set(ROD_AXIS_R[0], ROD_AXIS_R[1], ROD_AXIS_R[2]).normalize() : fpV.axis.set(0, 1, 0);
+          fpV.q.setFromUnitVectors(axis, aim);
+          fpRod.root.matrix.compose(grip, fpV.q, fpV.one);
+          fpRod.root.matrixWorldNeedsUpdate = true;
+          fpRod.setUnfold(unfold);
+          fpRod.setBend(rodBend(view, t));
+        }
+      } else if (fpRod) dropFpRod();
     },
     dispose() {
       play(null);
+      dropFpRod();
       detachRod();
       detachNet();
-      if (fish) {
-        fish.root.removeFromParent();
-        fish.dispose();
-        fish = null;
-      }
+      catchRig.dispose();
+      carries.delete(sid);
       for (const a of actions.values()) a.stop();
       actions.clear();
     },

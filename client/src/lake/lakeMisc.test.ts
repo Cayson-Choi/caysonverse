@@ -99,8 +99,8 @@ describe("the fishing clips and the rod carrier's arm", () => {
     expect(clipForPhase(FISH_PHASE.casting)).toBe("Fish_Sit_Cast");
     expect(clipForPhase(FISH_PHASE.hooked)).toBe("Fish_Sit_Strike");
     expect(clipForPhase(FISH_PHASE.fighting)).toBe("Fish_Sit_Fight");
-    expect(clipForPhase(FISH_PHASE.lifting)).toBe("Fish_Sit_Lift");
-    expect(clipForPhase(FISH_PHASE.netting)).toBe("Fish_Net");
+    expect(clipForPhase(FISH_PHASE.lifting, 2)).toBe("Fish_Sit_Lift"); // lake v2: after the reel-in
+    expect(clipForPhase(FISH_PHASE.netting, 2)).toBe("Fish_Net");
     expect(clipForPhase(FISH_PHASE.landed)).toBe("Fish_Stand_Show");
     expect(clipForPhase(FISH_PHASE.releasing)).toBe("Fish_Release");
     expect(clipForPhase(FISH_PHASE.none)).toBeNull();

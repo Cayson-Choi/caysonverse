@@ -203,6 +203,15 @@ await run.step("frames: 30 anglers (30 floats, 30 lines) against the lake alone"
   console.log("frames alone", JSON.stringify(alone), "with 30", JSON.stringify(crowd));
   run.check("frame stats readable", !!alone?.meanMs && !!crowd?.meanMs, { alone, crowd });
   run.check("30 anglers cost no more than 30 % (and 2 ms) of a frame", crowd.meanMs <= alone.meanMs * 1.3 + 2, { aloneMs: Math.round(alone.meanMs * 10) / 10, crowdMs: Math.round(crowd.meanMs * 10) / 10, p95: [alone.p95Ms, crowd.p95Ms] });
+  // lake v2: the same 30 all fighting a fish at once (rings, splashes and drops every half second each, the waves on the water)
+  await p.page.evaluate(async () => {
+    const clock = window.__cvLake.clock();
+    for (let i = 0; i < 30; i++) window.__cvLake.setView("bot" + i, { rod: 1, spot: i, phase: 9, seq: i + 1, sig: 0, kind: 6, cm: 50, at: clock });
+  });
+  const fight = await measure();
+  await run.shot(p, `${dev}-26-30-fighting.png`);
+  console.log("frames with 30 fighting", JSON.stringify(fight));
+  run.check("30 anglers fighting fish cost no more than 35 % (and 3 ms) of a frame", fight.meanMs <= alone.meanMs * 1.35 + 3, { aloneMs: Math.round(alone.meanMs * 10) / 10, fightMs: Math.round(fight.meanMs * 10) / 10, p95: [alone.p95Ms, fight.p95Ms] });
   await p.ctx.close();
 });
 

@@ -10,8 +10,13 @@ import {
   CylinderGeometry,
   Group,
   Mesh,
+  DoubleSide,
+  MeshPhysicalMaterial,
   MeshStandardMaterial,
   Object3D,
+  Vector2,
+  Vector3,
+  type Material,
   SphereGeometry,
   TorusGeometry,
   ConeGeometry,
@@ -19,9 +24,12 @@ import {
   type AnimationClip,
 } from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { DRACOLoader } from "three/addons/loaders/DRACOLoader.js";
+import { DRACO_PATH } from "../game/hub/hubModelPrep";
 import { clone as cloneSkinned } from "three/addons/utils/SkeletonUtils.js";
 import { LAKE_GEAR_NODES, lakeFishNode, type LakeFishId } from "@caysonverse/shared/village/lakeGear";
 import { fishKindFromId } from "@caysonverse/shared/village/fishing";
+import { NET_AXIS_L } from "@caysonverse/shared/village/fishingAnims";
 import { LAKE_URLS, lakeAssetWanted } from "./lakeAssets";
 
 interface GearFiles {
@@ -35,6 +43,10 @@ let gearPending: Promise<void> | null = null;
 export function loadLakeGear(): Promise<void> {
   if (!gearPending) {
     const loader = new GLTFLoader();
+    // lake v2: lake_fish.glb is Draco-compressed (the village's own decoder, client/public/draco/)
+    const draco = new DRACOLoader();
+    draco.setDecoderPath(DRACO_PATH);
+    loader.setDRACOLoader(draco);
     const gear = lakeAssetWanted("gear")
       ? loader.loadAsync(LAKE_URLS.gear).then((g) => {
           files.gear = { scene: g.scene, animations: g.animations };
@@ -237,7 +249,41 @@ export interface Net {
   root: Group;
   /** lake_gear.glb's net (placed with GRIP_OFFSET and no turn). */
   real?: boolean;
+  /** Inside the net's bag (lake v2): a netted fish lies here. */
+  bag: Object3D;
   dispose(): void;
+}
+
+/** The middle of the bag: the hoop is the far end of the net along its handle axis; the bag hangs below it (-Z of the hoop). */
+function addBag(root: Object3D, axis: Vector3): Object3D {
+  root.updateMatrixWorld(true);
+  const inv = root.matrixWorld.clone().invert();
+  const pts: Vector3[] = [];
+  const v = new Vector3();
+  root.traverse((o) => {
+    const m = o as Mesh;
+    if (!m.isMesh) return;
+    const pos = m.geometry.getAttribute("position");
+    for (let i = 0; i < pos.count; i += 3) pts.push(v.fromBufferAttribute(pos, i).applyMatrix4(m.matrixWorld).applyMatrix4(inv).clone());
+  });
+  const bag = new Object3D();
+  bag.name = "net_bag";
+  if (pts.length) {
+    let max = -Infinity;
+    for (const p of pts) max = Math.max(max, p.dot(axis));
+    // the hoop: the points within 0.55 m of the far end
+    const c = new Vector3();
+    let n = 0;
+    for (const p of pts)
+      if (p.dot(axis) > max - 0.55) {
+        c.add(p);
+        n++;
+      }
+    if (n) c.multiplyScalar(1 / n);
+    bag.position.copy(c);
+  }
+  root.add(bag);
+  return bag;
 }
 
 /** The net: the real one when lake_gear.glb is in, else the stand-in. Real: put on the left slot with GRIP_OFFSET, no turn. */
@@ -247,7 +293,8 @@ export function createNet(): Net {
   const root = src.clone(true) as Group;
   root.position.set(0, 0, 0);
   root.quaternion.identity();
-  return { root, real: true, dispose() {} };
+  const bag = addBag(root, new Vector3(...NET_AXIS_L).normalize());
+  return { root, real: true, bag, dispose() {} };
 }
 
 function createStandInNet(): Net {
@@ -263,8 +310,12 @@ function createStandInNet(): Net {
   const bag = new SphereGeometry(0.25, 12, 8, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2);
   bag.translate(0, 1.55, 0);
   root.add(new Mesh(handle, wood), new Mesh(rim, wood), new Mesh(bag, mesh));
+  const bagPoint = new Object3D();
+  bagPoint.position.set(0, 1.45, 0);
+  root.add(bagPoint);
   return {
     root,
+    bag: bagPoint,
     dispose() {
       handle.dispose();
       rim.dispose();
@@ -281,19 +332,91 @@ export interface FishModel {
   setCm(cm: number): void;
   /** Which species (`Player.fishKind`): the real model shows that one's `fish_<kind>` (the stand-in recolours). */
   setKind(kind: number, color: string): void;
+  /**
+   * The body's flex (lake v2): the tail beat's phase (rad), its amplitude (fraction of the length at the tail tip) and a static
+   * bend (fraction, + = the tail to the fish's left). A vertex-shader wave: the head stays, the tail sweeps.
+   */
+  setFlex(phase: number, amp: number, bend: number): void;
+  /** Far away (an angler across the lake): the 520-triangle LOD1 instead of the full model. */
+  setFar(far: boolean): void;
   dispose(): void;
 }
 
-/** The view scale of a held fish: 1.25x real, like the people (cm / refCm x 1.25). */
-export const FISH_VIEW_SCALE = 1.25;
+/**
+ * The view scale of a held fish (cm / refCm x this). Lake v2: 1.8x real (was 1.25x like the people): a 20 cm crucian at 1.25x was
+ * a speck in the chibi's hands at the fishing camera's 4.6 m (the 2026-11-16 frames); 1.8x reads as a fish, still smaller than the
+ * avatar's torso for the common sizes.
+ */
+export const FISH_VIEW_SCALE = 1.8;
+
+/** The flex uniform of one fish model's materials: x phase, y amplitude, z bend. */
+interface FlexUniform {
+  value: { x: number; y: number; z: number; set(x: number, y: number, z: number): unknown };
+}
+
+const FLEX_VERTEX = /* glsl */ `
+  // lake v2 fish flex: nose +Z, length 1 in model space; the head stays, the tail sweeps across (x)
+  float fs = clamp( 0.5 - position.z, 0.0, 1.05 );
+  float fw = smoothstep( 0.12, 1.0, fs ) * ( 0.35 + 0.65 * fs );
+  float fl = uFlex.y * fw * sin( uFlex.x - 5.2 * fs ) + uFlex.z * fs * fs;
+  transformed.x += fl;
+`;
+
+/**
+ * lake_fish.glb's materials made wet and alive (lake v2): the photo body gets a clear coat (the slime's sheen) over its normal map,
+ * the photo median fins are a little see-through, and every one bends with the flex uniform (onBeforeCompile).
+ */
+function liveMaterial(src: Material, flex: FlexUniform): Material {
+  const s = src as MeshStandardMaterial;
+  let m: MeshStandardMaterial;
+  if (/^M_fish/.test(s.name)) {
+    m = new MeshPhysicalMaterial({
+      name: s.name,
+      map: s.map,
+      normalMap: s.normalMap,
+      normalScale: new Vector2(0.85, 0.85),
+      roughness: 0.34,
+      metalness: 0,
+      clearcoat: 0.75,
+      clearcoatRoughness: 0.14,
+      specularIntensity: 0.8,
+      side: DoubleSide,
+    });
+  } else if (/^M_fin_photo/.test(s.name)) {
+    m = new MeshStandardMaterial({ name: s.name, map: s.map, roughness: 0.42, metalness: 0, side: DoubleSide, transparent: true, opacity: 0.86, depthWrite: true });
+  } else {
+    // the fins (lake v2): thin see-through membranes with rays, soft edges (alpha from the fin texture), a little glossy
+    m = s.clone();
+    m.roughness = 0.38;
+    m.side = DoubleSide;
+    m.transparent = true;
+    m.depthWrite = false;
+    m.alphaTest = 0.02;
+  }
+  m.onBeforeCompile = (sh) => {
+    sh.uniforms.uFlex = flex;
+    sh.vertexShader = sh.vertexShader.replace("#include <common>", "#include <common>\nuniform vec3 uFlex;").replace("#include <begin_vertex>", "#include <begin_vertex>\n" + FLEX_VERTEX);
+  };
+  m.customProgramCacheKey = () => "lake-fish-flex";
+  return m;
+}
 
 /** A landed fish: the real models (the catch's species shown) when lake_fish.glb is in, else the stand-in. Nose +Z. */
 export function createFishModel(): FishModel {
   const src = files.fish;
   if (!src) return createStandInFish();
   const root = new Group();
-  const kinds = new Map<string, Object3D>();
-  let shown: Object3D | null = null;
+  const kinds = new Map<string, { node: Object3D; near: Object3D[]; far: Object3D[] }>();
+  let shown: { node: Object3D; near: Object3D[]; far: Object3D[] } | null = null;
+  const flex: FlexUniform = { value: new Vector3(0, 0, 0) };
+  const owned = new Map<Material, Material>();
+  let far = false;
+  const applyLod = () => {
+    if (!shown) return;
+    const hasFar = shown.far.length > 0;
+    for (const o of shown.near) o.visible = !(far && hasFar);
+    for (const o of shown.far) o.visible = far;
+  };
   return {
     root,
     setCm(cm) {
@@ -302,28 +425,59 @@ export function createFishModel(): FishModel {
     setKind(kind) {
       const id = fishKindFromId(kind) as LakeFishId | null;
       if (!id) return;
-      let node = kinds.get(id);
-      if (!node) {
+      let entry = kinds.get(id);
+      if (!entry) {
         const s = src.getObjectByName(lakeFishNode(id));
         if (!s) return;
-        node = s.clone(true);
+        const node = s.clone(true);
         node.position.set(0, 0, 0);
         node.quaternion.identity();
         const ref = (s.userData as { refCm?: number }).refCm ?? 100;
         node.scale.setScalar(100 / ref);
+        const near: Object3D[] = [];
+        const farMeshes: Object3D[] = [];
         node.traverse((o) => {
-          if ((o as Mesh).isMesh) (o as Mesh).castShadow = true;
+          const mesh = o as Mesh;
+          if (!mesh.isMesh) return;
+          mesh.castShadow = true;
+          mesh.frustumCulled = false; // the flex moves the tail outside the rest bounds
+          const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+          const live = mats.map((mt) => {
+            let l = owned.get(mt);
+            if (!l) {
+              l = liveMaterial(mt, flex);
+              owned.set(mt, l);
+            }
+            return l;
+          });
+          mesh.material = Array.isArray(mesh.material) ? live : live[0]!;
+          let lod = false;
+          for (let up: Object3D | null = mesh; up && up !== node; up = up.parent) if (/_lod1/.test(up.name)) lod = true;
+          if (lod) farMeshes.push(mesh);
+          else near.push(mesh);
         });
-        kinds.set(id, node);
+        entry = { node, near, far: farMeshes };
+        kinds.set(id, entry);
         root.add(node);
       }
-      if (shown && shown !== node) shown.visible = false;
-      node.visible = true;
-      shown = node;
+      if (shown && shown !== entry) shown.node.visible = false;
+      entry.node.visible = true;
+      shown = entry;
+      applyLod();
+    },
+    setFlex(phase, amp, bend) {
+      flex.value.set(phase, amp, bend);
+    },
+    setFar(f) {
+      if (f === far) return;
+      far = f;
+      applyLod();
     },
     dispose() {
       root.clear();
       kinds.clear();
+      for (const m of owned.values()) m.dispose();
+      owned.clear();
     },
   };
 }
@@ -350,12 +504,14 @@ function createStandInFish(): FishModel {
   return {
     root,
     setCm(cm) {
-      const s = (cm / 100) * 1.25;
+      const s = (cm / 100) * FISH_VIEW_SCALE;
       root.scale.setScalar(Math.max(0.05, s));
     },
     setKind(_kind, hex) {
       mat.color.set(hex);
     },
+    setFlex() {},
+    setFar() {},
     dispose() {
       body.dispose();
       tail.dispose();

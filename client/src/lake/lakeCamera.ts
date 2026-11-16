@@ -42,3 +42,15 @@ export function backToFishing(bodyYaw: number): void {
   if (viewState.mode !== "tp" || !saved) return;
   viewState.orbitGoal = { yaw: fishingYaw(bodyYaw), pitch: FISHING_VIEW.pitch, distance: FISHING_VIEW.distance };
 }
+
+/**
+ * Lake v2: the fish coming in (lifting, the fight): the camera glides round to the angler's side, a little behind and further
+ * out, so the bent rod, the line and the fish breaking out of the water 3 m out in front are seen side on (from straight behind
+ * the head hid them). The player's own drag cancels it as always.
+ */
+export const LIFT_VIEW = { side: -2.3, pitch: 0.1, distance: 7 } as const;
+
+export function liftCamera(bodyYaw: number): void {
+  if (viewState.mode !== "tp" || !saved) return;
+  viewState.orbitGoal = { yaw: normalizeAngle(bodyYaw + LIFT_VIEW.side), pitch: LIFT_VIEW.pitch, distance: LIFT_VIEW.distance };
+}
