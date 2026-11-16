@@ -37,7 +37,12 @@ import { cubbyFocusAnchor, cubbyFocusWeight } from "./cubbyFocus";
 import { glassFocusUniform } from "./hallGlass";
 import { useQualityTier } from "../game/QualityEffects";
 import { LoadBoundary } from "./LoadBoundary";
-import { HALL_CUBBY_ANCHORS, SAMPLE_CUBBIES, SAMPLE_PHOTO_ATLAS } from "./sampleCubbies";
+import { HALL_CUBBY_ANCHORS, SAMPLE_CUBBIES, SAMPLE_PHOTO_ATLAS, SAMPLE_PROPS, type SampleCubby } from "./sampleCubbies";
+import { useClaims } from "./memorial/claimsStore";
+import { ClaimFrames } from "./memorial/ClaimFrames";
+
+/** A claimed cubby is dressed like the sample, minus the atlas photo frame: ClaimFrames stands the family's own photo there. */
+const CLAIM_PROPS = SAMPLE_PROPS.filter((p) => p.kind !== "photo_frame");
 import { HallRoom } from "./VillageHall";
 import { PublicAutoDoor } from "./PublicAutoDoor";
 import type { Pose } from "../game/types";
@@ -212,10 +217,15 @@ function MemorialHall() {
     atlas.needsUpdate = true;
     return makePhotoMaterial(atlas);
   }, [atlas]);
-  const cubbyProps = useMemo(
-    () => buildCubbyPropMeshes(props.scene, layoutCubbyProps(HALL_CUBBY_ANCHORS, SAMPLE_CUBBIES), photoMaterial),
-    [props, photoMaterial],
-  );
+  // The families' cubbies (memorial stage B) get the sample's props; rebuilt only when the set of claimed cubbies changes.
+  const claims = useClaims();
+  const claimedKey = [...claims.claims.keys()].sort().join(",");
+  const cubbyProps = useMemo(() => {
+    const claimed: SampleCubby[] = claimedKey
+      ? claimedKey.split(",").map((id) => ({ id, name: "", born: 0, passed: 0, line: "", photo: 0, props: CLAIM_PROPS }))
+      : [];
+    return buildCubbyPropMeshes(props.scene, layoutCubbyProps(HALL_CUBBY_ANCHORS, [...SAMPLE_CUBBIES, ...claimed]), photoMaterial);
+  }, [props, photoMaterial, claimedKey]);
   const candles = useMemo(() => makeCandles(props.scene), [props]);
   const selectMark = useMemo(() => makeSelectMark(), []);
   useEffect(
@@ -364,6 +374,7 @@ function MemorialHall() {
       {/* dispose={null}: the geometry and the shared materials belong to the loader's cache. */}
       <primitive object={nodes.root} dispose={null} />
       <primitive object={cubbyProps.group} dispose={null} />
+      <ClaimFrames anchors={HALL_CUBBY_ANCHORS} />
       <primitive object={candles.group} dispose={null} />
       <primitive object={selectMark} dispose={null} />
     </>

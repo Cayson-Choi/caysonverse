@@ -4,6 +4,9 @@ import express from "express";
 import { defineServer } from "colyseus";
 import { APP_NAME, DEFAULT_SERVER_PORT } from "@caysonverse/shared/constants";
 import { rooms } from "./rooms";
+import { fakeClockActive } from "./clock";
+import { initMemorial } from "./memorial/service";
+import { mountMemorialApi } from "./memorial/api";
 
 const PORT = Number(process.env.PORT ?? DEFAULT_SERVER_PORT);
 
@@ -11,6 +14,10 @@ const PORT = Number(process.env.PORT ?? DEFAULT_SERVER_PORT);
 // <repo>/client/dist both in dev (tsx, __dirname = server/src) and in the
 // production bundle (__dirname = server/dist). Present after `npm run build`.
 const clientDist = path.resolve(__dirname, "..", "..", "client", "dist");
+
+// Memorial persistence (SQLite + photo store outside the checkout). Never throws: without it the village still runs.
+initMemorial();
+if (fakeClockActive()) console.warn(`[${APP_NAME}] TEST CLOCK ACTIVE (CV_FAKE_NOW) - never on a real server`);
 
 const server = defineServer({
   // 케이슨 마을 (see ./rooms).
@@ -24,6 +31,9 @@ const server = defineServer({
     app.get("/healthz", (_req, res) => {
       res.json({ ok: true });
     });
+
+    // 추모관 모시기 API, photo files and the review page (before the SPA fallback).
+    mountMemorialApi(app);
 
     // Serve the built SPA whenever `client/dist` exists — no NODE_ENV gate, so a
     // bare `npm start` (which does NOT set NODE_ENV) serves the app on Railway

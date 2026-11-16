@@ -8,17 +8,20 @@ import {
   whenToLook,
   type SkyFigure,
 } from "@caysonverse/shared/village/constellations";
-import { altAzOf, seasonAt, type Vec3 } from "@caysonverse/shared/village/skyMath";
+import { altAzOf, moonPhaseName, seasonAt, type Vec3 } from "@caysonverse/shared/village/skyMath";
 import type { Orbit } from "../../game/types";
+import { clampFpPitch } from "../../game/viewMode";
 import { enterFp, exitFp, exitOverview, viewState } from "../../game/viewState";
 import { isTouchDevice } from "../../device";
 import { HUD_INFO_BTN_W_PX } from "../../game/hud";
 import { useTouchHudLayout } from "../../ui/useTouchHudLayout";
 import { useLocalArea } from "../villageArea";
 import { villageClock } from "../villageClock";
-import { MAX_LABELS, RING_LENGTH, skyOverlay } from "./finderRuntime";
+import { MAX_LABELS, clearSelection, selectFigure, skyOverlay } from "./finderRuntime";
+import { currentMoon, moonState } from "./StarSkyExtras";
 import { foundDateText, seasonCounts } from "./starProgress";
 import { anchorDirection, sky } from "./skyRuntime";
+import { moonDirection } from "./StarSkyExtras";
 import {
   closeFinder,
   setFinderView,
@@ -27,7 +30,7 @@ import {
   useStarFinder,
   type TargetShape,
 } from "./starFinderStore";
-import { countText, nextInRanking } from "./finderRules";
+import { compassWord, countText } from "./finderRules";
 import "./starFinder.css";
 
 /** The look-up pitch the finder starts a first-person view at (rad; negative = up): about 30° above the horizon. */
@@ -47,6 +50,16 @@ export function StarFinder({ orbit }: { orbit: Orbit }) {
   const open = useStarFinder((s) => s.open);
   const area = useLocalArea();
   const switched = useRef(false);
+
+  // While it is open the look is free all the way up to the zenith (no detour round a pitch limit).
+  useEffect(() => {
+    if (!open) return;
+    viewState.skyLook = true;
+    return () => {
+      viewState.skyLook = false;
+      viewState.fpPitch = Math.max(viewState.fpPitch, clampFpPitch(viewState.fpPitch));
+    };
+  }, [open]);
 
   // Open at night: into first person (and off the map), looking up a little.
   useEffect(() => {
@@ -90,20 +103,14 @@ export function StarFinder({ orbit }: { orbit: Orbit }) {
 
 /** The reticle, the edge arrow and the names on the sky: always mounted (found figures' names show with the card closed). */
 function SkyLayers() {
-  const reticle = useRef<HTMLDivElement>(null);
-  const ring = useRef<SVGCircleElement>(null);
   const arrow = useRef<HTMLDivElement>(null);
   const arrowText = useRef<HTMLSpanElement>(null);
   const labels = useRef<HTMLSpanElement[]>([]);
   useEffect(() => {
-    skyOverlay.reticle = reticle.current;
-    skyOverlay.ring = ring.current;
     skyOverlay.arrow = arrow.current;
     skyOverlay.arrowText = arrowText.current;
     skyOverlay.labels = labels.current.filter(Boolean);
     return () => {
-      skyOverlay.reticle = null;
-      skyOverlay.ring = null;
       skyOverlay.arrow = null;
       skyOverlay.arrowText = null;
       skyOverlay.labels = [];
@@ -121,20 +128,6 @@ function SkyLayers() {
           }}
         />
       ))}
-      <div className="cv-sky-reticle" ref={reticle} hidden>
-        <svg viewBox="0 0 100 100">
-          <circle className="cv-sky-reticle-base" cx="50" cy="50" r="46" />
-          <circle
-            className="cv-sky-reticle-ring"
-            ref={ring}
-            cx="50"
-            cy="50"
-            r="46"
-            style={{ strokeDasharray: RING_LENGTH.toFixed(1), strokeDashoffset: RING_LENGTH.toFixed(1) }}
-          />
-          <circle className="cv-sky-reticle-dot" cx="50" cy="50" r="2.2" />
-        </svg>
-      </div>
       <div className="cv-sky-arrow" ref={arrow} hidden>
         <span className="cv-sky-arrow-glyph">➜</span>
         <span className="cv-sky-arrow-text" ref={arrowText} />
@@ -265,16 +258,14 @@ function NightBody({ orbit }: { orbit: Orbit }) {
   const ready = useStarFinder((s) => s.catalogReady);
   const firstPerson = useStarFinder((s) => s.firstPerson);
   const targetId = useStarFinder((s) => s.targetId);
-  const foundNow = useStarFinder((s) => s.foundNow);
   const notice = useStarFinder((s) => s.notice);
   if (!ready) return <p className="cv-sky-text cv-sky-body">별을 불러오는 중이에요…</p>;
-  if (foundNow) return <FoundBody id={foundNow} />;
   return (
     <div className="cv-sky-body">
       {notice && <p className="cv-sky-notice">{notice}</p>}
       {!firstPerson && (
         <div className="cv-sky-fp">
-          <span>1인칭(V)에서 찾을 수 있어요</span>
+          <span>하늘은 1인칭에서 올려다봐요</span>
           <CardButton
             label="1인칭으로 보기"
             wide
@@ -287,66 +278,104 @@ function NightBody({ orbit }: { orbit: Orbit }) {
           </CardButton>
         </div>
       )}
-      {targetId ? <TargetBody id={targetId} /> : <p className="cv-sky-text">지금은 언덕 위로 올라온 별자리가 없어요. 조금 뒤에 다시 해 보세요.</p>}
+      {targetId ? <DetailBody id={targetId} /> : <ListBody orbit={orbit} />}
     </div>
   );
 }
 
-function TargetBody({ id }: { id: string }) {
+/** Tapping a name: into first person if needed, then the pick (the sky draws it and the view turns to it). */
+function pick(id: string, orbit: Orbit): void {
+  if (viewState.mode === "ov") exitOverview();
+  if (viewState.mode === "tp") enterFp(orbit.yaw);
+  selectFigure(id);
+}
+
+/** "지금 하늘에 보이는 별자리": one big row each. */
+function ListBody({ orbit }: { orbit: Orbit }) {
+  const ranking = useStarFinder((s) => s.ranking);
+  const info = useStarFinder((s) => s.rowInfo);
+  const found = useStarFinder((s) => s.progress.found);
+  const moon = sky.catalog ? currentMoon(sky.utcMs) : null;
+  const moonWhere = moon && moonState.alt > 3 ? `${compassWord(moonAz())}쪽 하늘에 떠 있어요` : "지금은 지평선 아래예요";
+  if (ranking.length === 0) return <p className="cv-sky-text">지금은 언덕 위로 올라온 별자리가 없어요. 조금 뒤에 다시 해 보세요.</p>;
+  return (
+    <>
+      <p className="cv-sky-lead">지금 하늘에 보이는 별자리 {ranking.length}개 · 이름을 누르면 하늘에서 알려줘요</p>
+      <ul className="cv-sky-list">
+        {ranking.map((id) => {
+          const f = figureById(id);
+          if (!f) return null;
+          return (
+            <li key={id}>
+              <button
+                type="button"
+                className="cv-sky-row"
+                tabIndex={-1}
+                onPointerDown={(e) => e.preventDefault()}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => pick(id, orbit)}
+              >
+                <span className="cv-sky-row-main">
+                  <span className="cv-sky-row-title">
+                    {figureTitle(f)}
+                    {found[id] && <span className="cv-sky-row-seen" aria-label="본 별자리"> ✓</span>}
+                  </span>
+                  <span className="cv-sky-row-sub">{info[id] ?? ""}</span>
+                </span>
+                <span className="cv-sky-row-go" aria-hidden="true">›</span>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+      {moon && moonState.alt > -90 && (
+        <p className="cv-sky-moonline">
+          🌙 오늘의 달 · {moonPhaseName(moon)} · {moonWhere}
+        </p>
+      )}
+    </>
+  );
+}
+
+function moonAz(): number {
+  const g = sky.catalog ? currentMoon(sky.utcMs) : null;
+  if (!g) return 0;
+  const d: Vec3 = [0, 0, 0];
+  // the moon's apparent direction (the same as the one the sky draws)
+  return altAzOf(moonDirection(currentMoon(sky.utcMs), d)).azDeg;
+}
+
+/** The picked figure: where it is, what to look for, its one-line story. */
+function DetailBody({ id }: { id: string }) {
   const f = figureById(id)!;
   const shape = useStarFinder((s) => s.targetShape);
   const where = useStarFinder((s) => s.targetWhere);
-  const ghost = useStarFinder((s) => s.ghost);
   const aimInfo = useStarFinder((s) => s.aimInfo);
-  const again = useStarFinder((s) => !!s.progress.found[id]);
-  const ranking = useStarFinder((s) => s.ranking);
-  const look = useRef<HTMLSpanElement>(null);
-  useEffect(() => {
-    skyOverlay.look = look.current;
-    return () => {
-      skyOverlay.look = null;
-    };
-  }, []);
+  const polaris = id === "polaris" ? polarisAltitude() : null;
   return (
     <>
       <div className="cv-sky-target">
         {shape && <MiniSky shape={shape} asterism={f.kind === "asterism"} />}
         <div className="cv-sky-target-text">
-          <p className="cv-sky-name">
-            {figureTitle(f)}
-            {again && <span className="cv-sky-again"> · 찾은 별자리</span>}
-          </p>
-          <p className="cv-sky-hint">{f.hint}</p>
+          <p className="cv-sky-name">{figureTitle(f)}</p>
           <p className="cv-sky-where">
             <span aria-hidden="true">📍 </span>
             {where}
           </p>
-          <p className="cv-sky-look">
-            <span aria-hidden="true">👀 </span>지금 보는 곳: <span ref={look} />
-          </p>
+          <p className="cv-sky-hint">{f.hint}</p>
         </div>
       </div>
-      <p className="cv-sky-text">가운데 동그라미에 1초 동안 맞춰 보세요.</p>
+      <p className="cv-sky-story">{f.story}</p>
+      {polaris !== null && <p className="cv-sky-tip">북극성 높이 {polaris.toFixed(1)}° — 마을의 위도(36.5°)와 거의 같아요.</p>}
       {id === "polaris" && <p className="cv-sky-tip">북두칠성이 낮을 땐 카시오페이아 W의 가운데에서 북쪽으로 따라가도 북극성이 나와요.</p>}
-      {ghost && <p className="cv-sky-tip">희미한 선을 따라가 보세요.</p>}
-      {aimInfo && <p className="cv-sky-info">✦ {aimInfo}</p>}
+      {aimInfo && <p className="cv-sky-info">✦ 지금 가운데에 있는 별: {aimInfo}</p>}
       <div className="cv-sky-actions">
-        {ranking.length > 1 && (
-          <CardButton label="다른 별자리" wide onClick={() => skipTarget()}>
-            다른 별자리
-          </CardButton>
-        )}
-        <ShowFoundToggle />
+        <CardButton label="별자리 목록으로" wide onClick={clearSelection}>
+          ← 다른 별자리
+        </CardButton>
       </div>
     </>
   );
-}
-
-/** "다른 별자리": the next figure that is up. */
-function skipTarget(): void {
-  const st = useStarFinder.getState();
-  const next = nextInRanking(st.ranking, st.targetId);
-  if (next && next !== st.targetId) patchFinder({ targetId: next, targetShape: null, ghost: false, aimInfo: null });
 }
 
 function ShowFoundToggle() {
@@ -354,30 +383,8 @@ function ShowFoundToggle() {
   return (
     <label className="cv-sky-toggle" onPointerDown={(e) => e.preventDefault()}>
       <input type="checkbox" tabIndex={-1} checked={on} onChange={(e) => setShowFound(e.currentTarget.checked)} />
-      찾은 별자리 보기
+      본 별자리 선 계속 보기
     </label>
-  );
-}
-
-function FoundBody({ id }: { id: string }) {
-  const f = figureById(id)!;
-  const polaris = id === "polaris" ? polarisAltitude() : null;
-  return (
-    <div className="cv-sky-body cv-sky-found">
-      <p className="cv-sky-big">찾았어요! ✨ {figureTitle(f)}</p>
-      <p className="cv-sky-story">{f.story}</p>
-      {polaris !== null && (
-        <p className="cv-sky-tip">
-          북극성 높이 {polaris.toFixed(1)}° — 마을의 위도(36.5°)와 거의 같아요.
-        </p>
-      )}
-      <div className="cv-sky-actions">
-        <CardButton label="다음 별자리" wide onClick={() => patchFinder({ foundNow: null, targetId: null, targetShape: null })}>
-          다음 별자리 →
-        </CardButton>
-        <ShowFoundToggle />
-      </div>
-    </div>
   );
 }
 

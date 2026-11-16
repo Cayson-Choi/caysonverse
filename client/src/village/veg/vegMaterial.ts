@@ -86,6 +86,19 @@ export interface VegMaterialOptions {
   sky: number;
   sun: number;
   back: number;
+  /**
+   * Per-fragment surface (2026-11-16, plants2: the bark and the bed soil): a tangent-space normal map (OpenGL, as Poly
+   * Haven's nor_gl) lit per pixel with the same terms (ambient, sky, sun), the geometry's `aTangent` the u direction and
+   * aLight the vertex's own light (its ambient occlusion); `normalScale` its strength.
+   */
+  normalMap?: Texture | null;
+  normalScale?: number;
+  /** A soft sun glint off the surface (cherry bark is glossy): its strength. */
+  gloss?: number;
+  /** Moss on the shaded (north) side where `aMoss` (0..1) says (old trunks near the ground). */
+  moss?: boolean;
+  /** The vertex colour's alpha cuts the surface (alpha test): the soil's soft edge. */
+  edgeAlpha?: boolean;
 }
 
 const VERT_PARS = /* glsl */ `uniform float uVegTime;
@@ -96,6 +109,15 @@ uniform vec3 uVegSun;
 uniform vec4 uVegShade;
 attribute float aWind;
 attribute float aLight;
+#ifdef VEG_NMAP
+attribute vec3 aTangent;
+attribute float aMoss;
+varying vec3 vVegNw;
+varying vec3 vVegTw;
+varying vec3 vVegWp;
+varying float vVegAo;
+varying float vVegMoss;
+#endif
 varying vec3 vVegLight;
 varying vec3 vVegTint;
 uniform vec4 uVegLamps[ ${VEG_LAMPS} ];
@@ -154,6 +176,13 @@ const VERT_PROJECT = /* glsl */ `#ifdef USE_INSTANCING
 	vegWorld.x += vegSwayK * ( sin( uVegTime * 1.7 + vegPhase ) * 0.65 + sin( uVegTime * 3.3 + vegPhase * 1.9 ) * 0.35 );
 	vegWorld.z += vegSwayK * ( sin( uVegTime * 1.3 + vegPhase * 1.3 ) * 0.5 + sin( uVegTime * 2.7 + vegPhase * 0.7 ) * 0.25 );
 	vVegLight = vec3( aLight * vegShadeK );
+#ifdef VEG_NMAP
+	vVegNw = vegN;
+	vVegTw = mat3( vegM ) * aTangent;
+	vVegWp = vegWorld;
+	vVegAo = aLight;
+	vVegMoss = aMoss;
+#endif
 	// the street lamps nearby, once they are on: what is within a metre of the glass, fading out by five (the ground
 	// under a lamp has no pool of its own in the night light map, so the leaves round it only catch a little of it)
 	float vegLampK = 0.0;
@@ -186,6 +215,19 @@ const VERT_PROJECT = /* glsl */ `#ifdef USE_INSTANCING
 
 const FRAG_PARS = /* glsl */ `#define SS_ONE_TAP
 #define SS_GEO_NORMAL
+#ifdef VEG_NMAP
+uniform sampler2D uVegNormal;
+uniform float uVegNormalScale;
+uniform vec3 uVegSunF;
+uniform vec4 uVegShadeF;
+uniform float uVegGloss;
+uniform vec3 uVegMossDir;
+varying vec3 vVegNw;
+varying vec3 vVegTw;
+varying vec3 vVegWp;
+varying float vVegAo;
+varying float vVegMoss;
+#endif
 uniform float uVegLift;
 uniform vec3 uVegTint;
 uniform float uVegNight;
@@ -203,21 +245,56 @@ const FRAG_MAP = /* glsl */ `#include <map_fragment>
 	diffuseColor.a *= 1.12;
 #endif`;
 
-const FRAG_COLOR = /* glsl */ `vec3 vegAlbedo = vColor.rgb * mix( vec3( 1.0 ), vVegTint, vColor.a );
+const FRAG_COLOR = /* glsl */ `#ifdef VEG_EDGE
+	if ( vColor.a < 0.5 ) discard;
+	vec3 vegAlbedo = vColor.rgb;
+#else
+	vec3 vegAlbedo = vColor.rgb * mix( vec3( 1.0 ), vVegTint, vColor.a );
+#endif
+	vec3 vegLightF = vVegLight;
+	float vegSunKF = vVegSunK;
+#ifdef VEG_NMAP
+	{
+		vec3 nN = normalize( vVegNw );
+		if ( !gl_FrontFacing ) nN = -nN;
+		vec3 nT = vVegTw - nN * dot( vVegTw, nN );
+		nT = dot( nT, nT ) > 1e-8 ? normalize( nT ) : normalize( cross( nN, vec3( 0.0, 0.0, 1.0 ) ) + 1e-4 );
+		vec3 nB = cross( nN, nT );
+		vec3 tn = texture2D( uVegNormal, vMapUv ).xyz * 2.0 - 1.0;
+		tn.xy *= uVegNormalScale;
+		vec3 n = normalize( nT * tn.x + nB * tn.y + nN * tn.z );
+		float ndl = dot( n, uVegSunF );
+		float diff = ndl > 0.0 ? ndl : -ndl * uVegShadeF.w;
+		float shade = uVegShadeF.x + uVegShadeF.y * ( 0.5 + 0.5 * n.y ) + uVegShadeF.z * diff;
+		// a soft glint (glossy bark), stronger on the lighter texels (the smooth skin between the lenticels)
+		vec3 vdir = normalize( cameraPosition - vVegWp );
+		float spec = pow( max( dot( reflect( -uVegSunF, n ), vdir ), 0.0 ), 18.0 ) * uVegGloss * uVegShadeF.z * smoothstep( 0.25, 0.7, dot( diffuseColor.rgb, vec3( 0.33 ) ) );
+		vegLightF = vec3( vVegAo * shade + spec );
+		vegSunKF = vVegAo * uVegShadeF.z * max( ndl, 0.0 ) + spec;
+#ifdef VEG_MOSS
+		// moss on the shaded side of an old trunk, near the ground, first in the bark's furrows (its darker texels)
+		vec2 hz = n.xz;
+		float side = dot( hz, uVegMossDir.xz ) / max( length( hz ), 1e-3 );
+		float furrow = 1.0 - smoothstep( 0.2, 0.75, dot( diffuseColor.rgb, vec3( 0.33 ) ) );
+		float mossK = vVegMoss * smoothstep( -0.15, 0.6, side ) * smoothstep( 0.15, 0.55, furrow + 0.35 * vVegMoss );
+		diffuseColor.rgb = mix( diffuseColor.rgb, vec3( 0.30, 0.36, 0.12 ) / max( vegAlbedo, vec3( 0.05 ) ) * ( 0.75 + 0.5 * furrow ), mossK );
+#endif
+	}
+#endif
+
 #ifdef VEG_CHERRY
 	// petals under the moon: their pink mostly gone (white-grey), a little brighter than their pink's luminance
 	vec3 vegPale = vec3( dot( vegAlbedo, vec3( 0.2126, 0.7152, 0.0722 ) ) * 1.18 );
 	vegAlbedo = mix( vegAlbedo, vegPale, uVegNight * 0.75 );
 #endif
 // the live sun's shadows (village/sunShadows.ts) take the sun's share of the light away (the moon's, a little, at night)
-vec3 vegLightNow = vVegLight;
-if ( uSsOn.w > 0.0 && uSsShade.w > 0.0 && vVegSunK > 0.001 ) {
+if ( uSsOn.w > 0.0 && uSsShade.w > 0.0 && vegSunKF > 0.001 ) {
 	vec3 vegN = dot( vSsNormal, vSsNormal ) > 1e-6 ? normalize( vSsNormal ) : uSsSunDir;
 	if ( dot( vegN, uSsSunDir ) < 0.0 ) vegN = - vegN;
 	float vegLit = ssLive( vegN, max( dot( vegN, uSsSunDir ), 0.0 ) );
-	vegLightNow -= vVegSunK * ( 1.0 - vegLit ) * uSsShade.w;
+	vegLightF -= vegSunKF * ( 1.0 - vegLit ) * uSsShade.w;
 }
-diffuseColor.rgb *= vegAlbedo * ( ( vegLightNow + uVegLift ) * uVegTint + vVegLamp * ${LAMP_COLOUR} * 0.32 );`;
+diffuseColor.rgb *= vegAlbedo * ( ( vegLightF + uVegLift ) * uVegTint + vVegLamp * ${LAMP_COLOUR} * 0.32 );`;
 
 const SUN = new Vector3(...DAY_SUN_DIRECTION).normalize();
 /**
@@ -236,6 +313,12 @@ export function vegMaterial(o: VegMaterialOptions): MeshBasicMaterial {
     alphaTest: o.alphaTest ?? 0,
   });
   const uniforms = {
+    uVegNormal: { value: o.normalMap ?? null },
+    uVegNormalScale: { value: o.normalScale ?? 1 },
+    uVegSunF: vegSunUniform, // the live sun once the live shadows run (as uVegSun)
+    uVegShadeF: { value: [o.ambient, o.sky, o.sun, o.back] },
+    uVegGloss: { value: o.gloss ?? 0 },
+    uVegMossDir: { value: new Vector3(-SUN.x, 0, -SUN.z).normalize() },
     uVegTime: vegTimeUniform,
     uVegWind: vegWindUniform,
     uVegWindAmp: { value: o.wind },
@@ -254,17 +337,18 @@ export function vegMaterial(o: VegMaterialOptions): MeshBasicMaterial {
   m.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, uniforms);
     bindSunShadowUniforms(shader.uniforms);
-    const defines = (o.sprite ? "#define VEG_SPRITE\n" : "") + (o.push && !o.sprite ? "#define VEG_PUSH\n" : "") + (o.twig && !o.sprite ? "#define VEG_TWIG\n" : "");
+    const surface = (o.normalMap ? "#define VEG_NMAP\n" : "") + (o.normalMap && o.moss ? "#define VEG_MOSS\n" : "") + (o.edgeAlpha ? "#define VEG_EDGE\n" : "");
+    const defines = surface + (o.sprite ? "#define VEG_SPRITE\n" : "") + (o.push && !o.sprite ? "#define VEG_PUSH\n" : "") + (o.twig && !o.sprite ? "#define VEG_TWIG\n" : "");
     shader.vertexShader = defines + shader.vertexShader
       .replace("void main() {", VERT_PARS)
       .replace("#include <color_vertex>", VERT_COLOR)
       .replace("#include <project_vertex>", VERT_PROJECT);
-    shader.fragmentShader = (o.cherry ? "#define VEG_CHERRY\n" : "") + shader.fragmentShader
+    shader.fragmentShader = surface + (o.cherry ? "#define VEG_CHERRY\n" : "") + shader.fragmentShader
       .replace("void main() {", FRAG_PARS)
       .replace("#include <map_fragment>", FRAG_MAP)
       .replace("#include <color_fragment>", FRAG_COLOR);
   };
-  m.customProgramCacheKey = () => `village-veg-${o.sprite ? "sprite" : "mesh"}-${o.cherry ? "cherry" : "foliage"}-${o.push ? "push" : "fixed"}-${o.twig ? "twig" : "solid"}`;
+  m.customProgramCacheKey = () => `village-veg-${o.sprite ? "sprite" : "mesh"}-${o.cherry ? "cherry" : "foliage"}-${o.push ? "push" : "fixed"}-${o.twig ? "twig" : "solid"}-${o.normalMap ? "nmap" : ""}${o.moss ? "moss" : ""}${o.edgeAlpha ? "edge" : ""}`;
   return m;
 }
 

@@ -7,8 +7,8 @@
  * 시각은 DEV 주소 `?time=<한국 시각>`으로 고정한다(villageClock.ts).
  *  - sky:   봄·여름·가을·겨울 저녁 21:00의 1인칭 하늘. 북극성 고도(마을 위도 36.5° 근처)와 주요 별의 고도/방위를 USNO 값과
  *           비교하고, 북쪽(북극성과 북두칠성)·남쪽(겨울 오리온)·여름의 대삼각형·가을 페가수스를 찍는다(HUD 숨김).
- *  - pc:    가을 밤, 3인칭에서 🔭 → 1인칭으로 바뀜, 목표 카드·조준원, 다른 쪽을 보면 가장자리 화살표, 목표를 조준원에
- *           맞추면 1초 뒤 발견(선·이름·이야기·진행 1/6), 다음 별자리, 닫으면 3인칭으로 돌아감.
+ *  - pc:    가을 밤, 3인칭에서 🔭 → 1인칭으로 바뀜, 지금 보이는 별자리 목록(큰 행), 이름을 누르면 선·이름·이야기가 하늘/카드에 나오고 시선이 그쪽으로 돌아감,
+ *           반대쪽을 보면 이름이 적힌 안내 화살표, 목록으로 돌아가기, 닫으면 3인칭으로 돌아감.
  *  - phone: 같은 흐름을 휴대폰 크기(터치)로: 🔭 탭, 화면 끌기로 둘러보기, 발견.
  *  - day:   낮(14:00)에는 별이 없고, 🔭은 "별은 밤에 보여요"와 오늘 저녁 시각.
  *  - tiers: 같은 하늘을 화려한/가벼운 화질로.
@@ -144,13 +144,6 @@ async function skyScenes(browser) {
   }
 }
 
-/** Point the first-person look at the finder's target (as a player would drag it there). */
-async function aimAtTarget(p) {
-  const f = (await skyOf(p)).finder;
-  await lookAt(p, f.targetAz, Math.min(85.5, f.targetAlt));
-  return f;
-}
-
 async function finderFlow(browser, device, label) {
   await run.step(`finder flow (${label})`, async () => {
     const p = await openPlayer(browser, run, { tag: `finder-${label}`, device, settings: { graphics: device === PHONE ? "low" : "high" } });
@@ -165,58 +158,89 @@ async function finderFlow(browser, device, label) {
       let s = await skyOf(p);
       const mode = await p.page.evaluate(() => window.__cvCamera?.().mode);
       run.check("🔭 at night switches to first person", mode === "fp", mode);
-      run.check("a target is chosen (autumn, first time: Cassiopeia)", s.finder.targetId === "Cas", s.finder);
-      const card = await p.page.locator(".cv-sky-card").innerText();
-      run.check("card: count, name, hint, where, how", /가을 발견 0\/6/.test(card) && /카시오페이아자리/.test(card) && /1초 동안 맞춰 보세요/.test(card) && /고도/.test(card), card.slice(0, 300));
-      run.check("reticle shows", await p.page.locator(".cv-sky-reticle").isVisible());
-      await run.shot(p, `${label}-1-card.png`);
+      run.check("nothing is picked yet: a list of what is up", s.finder.targetId === null && s.finder.ranking[0] === "Cas", s.finder);
+      const rows = await p.page.locator(".cv-sky-row").allInnerTexts();
+      run.check("rows: Korean names with where they stand", rows.length >= 8 && /카시오페이아자리/.test(rows[0]) && /북쪽/.test(rows[0]) && rows.some((r) => /북극성 찾기/.test(r)), rows.slice(0, 3));
+      // big tap targets
+      const box = await p.page.locator(".cv-sky-row").first().boundingBox();
+      run.check("each row is at least 44 px tall", !!box && box.height >= 44, box);
+      run.check("no aiming ring any more", (await p.page.locator(".cv-sky-reticle").count()) === 0);
+      await run.shot(p, `${label}-1-list.png`);
 
-      // looking the other way: the edge arrow
-      const f = s.finder;
-      await lookAt(p, (f.targetAz + 180) % 360, 20);
+      // a tap on a name: lines + name on the sky, the story on the card, the view turns to it
+      await p.page.evaluate(async () => {
+        const v = await window.__imp("/src/game/viewState.ts");
+        v.viewState.fpYaw = Math.PI * 0.9; // looking south: Cassiopeia is behind
+        v.viewState.fpPitch = -0.3;
+      });
       await sleep(400);
-      const arrow = await p.page.locator(".cv-sky-arrow").isVisible();
-      const arrowText = await p.page.locator(".cv-sky-arrow-text").innerText().catch(() => "");
-      run.check("edge arrow when the target is behind", arrow && /뒤쪽/.test(arrowText), arrowText);
-      await run.shot(p, `${label}-2-arrow.png`);
+      await press(p, p.page.locator(".cv-sky-row").first());
+      // the turn takes ~2 s of frames (slower on a busy machine): wait until the view faces the figure
+      await p.page.waitForFunction(
+        async () => {
+          const v = await window.__imp("/src/game/viewState.ts");
+          const f = window.__cvSky().finder;
+          if (f.targetAz == null) return false;
+          const az = ((((-v.viewState.fpYaw * 180) / Math.PI) % 360) + 360) % 360;
+          return Math.abs(((az - f.targetAz + 540) % 360) - 180) < 3;
+        },
+        null,
+        { timeout: 25000, polling: 500 },
+      ).catch(() => {});
+      await sleep(1500);
+      s = await skyOf(p);
+      run.check("picked: Cassiopeia", s.finder.targetId === "Cas", s.finder.targetId);
+      const card = await p.page.locator(".cv-sky-card").innerText();
+      run.check("card: name, where, story, count 1/6", /카시오페이아자리/.test(card) && /고도/.test(card) && /왕비/.test(card) && /가을 발견 1\/6|가을 1\/6|발견 1\/6/.test(card), card.slice(0, 300));
+      run.check("its lines are drawn", s.finder.lines.some((l) => l.id === "Cas" && l.brightness === 1), s.finder.lines);
+      const names = await p.page.locator(".cv-sky-label:not([hidden])").allInnerTexts();
+      run.check("names on the sky (the figure and its stars)", names.some((n) => /카시오페이아/.test(n)) && names.some((n) => /셰다르/.test(n)), names);
+      const aim = await p.page.evaluate(() => {
+        const f = window.__cvSky().finder;
+        return { az: f.targetAz, alt: f.targetAlt };
+      });
+      const look = await p.page.evaluate(async () => {
+        const v = await window.__imp("/src/game/viewState.ts");
+        return { yaw: v.viewState.fpYaw, pitch: v.viewState.fpPitch };
+      });
+      const lookAz = (((-look.yaw * 180) / Math.PI) % 360 + 360) % 360;
+      const dAz = Math.abs(((lookAz - aim.az + 540) % 360) - 180);
+      run.check("the view turned to it (azimuth within 20 deg; it stands 63 deg high, so under 9 deg on the sky)", dAz < 20, { lookAz, aimAz: aim.az });
+      const live = await p.page.locator(".cv-sky-announce").innerText();
+      run.check("screen readers hear it", /카시오페이아자리를 하늘에 그렸어요/.test(live), live);
+      const stored = await p.page.evaluate(() => JSON.parse(localStorage.getItem("cv-stars-v1") || "{}"));
+      run.check("progress stored on this device", !!stored.found?.Cas, stored);
+      await run.shot(p, `${label}-2-picked.png`);
 
       if (device === PHONE) {
         // a one-finger drag on the right of the screen turns the first-person look
         const before = await p.page.evaluate(async () => (await window.__imp("/src/game/viewState.ts")).viewState.fpYaw);
         const vp = p.page.viewportSize();
-        await touchDown(p, vp.width * 0.75, vp.height * 0.55);
-        for (let k = 1; k <= 8; k++) await touchMoveTo(p, vp.width * 0.75 - k * 15, vp.height * 0.55 + k * 6);
+        await touchDown(p, vp.width * 0.75, vp.height * 0.7);
+        for (let k = 1; k <= 8; k++) await touchMoveTo(p, vp.width * 0.75 - k * 15, vp.height * 0.7 + k * 6);
         await touchUp(p);
         await sleep(300);
         const after = await p.page.evaluate(async () => (await window.__imp("/src/game/viewState.ts")).viewState.fpYaw);
         run.check("a touch drag looks around in first person", Math.abs(after - before) > 0.05, { before, after });
       }
 
-      // into the reticle: found
-      await aimAtTarget(p);
-      await p.page.waitForFunction(() => window.__cvSky().finder.foundNow !== null, null, { timeout: 5000 });
-      await sleep(1600); // the reveal draws the lines and names
-      s = await skyOf(p);
-      const found = await p.page.locator(".cv-sky-card").innerText();
-      run.check("found: story and the season's count", /찾았어요!/.test(found) && /가을 발견 1\/6/.test(found), found.slice(0, 300));
-      run.check("found figure's lines drawn", s.finder.lines.some((l) => l.id === "Cas" && l.brightness === 1), s.finder.lines);
-      const names = await p.page.locator(".cv-sky-label:not([hidden])").allInnerTexts();
-      run.check("names on the sky (the figure and its stars)", names.some((n) => /카시오페이아/.test(n)) && names.some((n) => /셰다르/.test(n)), names);
-      const live = await p.page.locator(".cv-sky-announce").innerText();
-      run.check("screen readers hear it", /카시오페이아자리를 찾았어요/.test(live), live);
-      const stored = await p.page.evaluate(() => JSON.parse(localStorage.getItem("cv-stars-v1") || "{}"));
-      run.check("progress stored on this device", !!stored.found?.Cas, stored);
-      await hud(p, true);
-      await run.shot(p, `${label}-3-found.png`);
+      // looking the other way: the guide arrow with the name
+      await p.page.evaluate(async (az) => {
+        const v = await window.__imp("/src/game/viewState.ts");
+        v.viewState.fpYaw = (-((az + 180) % 360) * Math.PI) / 180;
+      }, aim.az);
+      await sleep(500);
+      const arrow = await p.page.locator(".cv-sky-arrow").isVisible();
+      const arrowText = await p.page.locator(".cv-sky-arrow-text").innerText().catch(() => "");
+      run.check("guide arrow names it when it is behind", arrow && /카시오페이아자리/.test(arrowText) && /뒤쪽|더 위로/.test(arrowText), arrowText);
+      await run.shot(p, `${label}-3-arrow.png`);
 
-      // next: Polaris (the first-timer's second step)
-      await press(p, p.page.getByRole("button", { name: /다음 별자리/ }));
-      await sleep(1500);
-      s = await skyOf(p);
-      run.check("next target: 북극성 찾기", s.finder.targetId === "polaris", s.finder.targetId);
-      await aimAtTarget(p);
-      await p.page.waitForFunction(() => window.__cvSky().finder.foundNow === "polaris", null, { timeout: 5000 });
-      await sleep(2200);
+      // back to the list, then Polaris
+      await press(p, p.page.getByRole("button", { name: /다른 별자리/ }));
+      await sleep(600);
+      run.check("back to the list", (await p.page.locator(".cv-sky-row").count()) >= 8);
+      await press(p, p.page.locator(".cv-sky-row", { hasText: "북극성 찾기" }));
+      await sleep(3200);
       const pol = await p.page.locator(".cv-sky-card").innerText();
       run.check("Polaris: its height is the village's latitude", /북극성 높이 3[67]\.\d° — 마을의 위도/.test(pol), pol.slice(0, 300));
       await run.shot(p, `${label}-4-polaris.png`);
@@ -226,7 +250,7 @@ async function finderFlow(browser, device, label) {
       await sleep(800);
       const back = await p.page.evaluate(() => window.__cvCamera?.().mode);
       run.check("closing returns to third person", back === "tp", back);
-      run.check("card and reticle gone", !(await p.page.locator(".cv-sky-card").isVisible()) && !(await p.page.locator(".cv-sky-reticle").isVisible()));
+      run.check("card gone", !(await p.page.locator(".cv-sky-card").isVisible()));
     } finally {
       await p.ctx.close();
     }

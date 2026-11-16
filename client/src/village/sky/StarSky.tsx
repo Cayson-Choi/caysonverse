@@ -22,6 +22,7 @@ import { finderFrame, finderProbe, glow, GLOW_SECONDS, lineSpec, REVEAL_DRAW, RE
 import { cachedStarCatalog, countUpTo, loadStarCatalog, type StarCatalog } from "./starCatalog";
 import { patchFinder } from "./starFinderStore";
 import { makeStarMaterial, planetColour, starColour, STAR_SPHERE, type StarUniforms } from "./starShader";
+import { SkyExtras, currentMoon, moonState } from "./StarSkyExtras";
 import { eqDirection, setSkyCatalog, sky, starDirection, updateSky, type FigureGeom } from "./skyRuntime";
 
 declare global {
@@ -205,6 +206,7 @@ export function StarSky({ tier }: { tier: QualityTier }) {
             const { altDeg, azDeg } = altAzOf(eqDirection(p.eq, d));
             return { id: p.id, name: p.name, mag: p.mag, alt: altDeg, az: azDeg };
           }),
+          moon: sky.catalog ? { altDeg: moonState.alt, illuminated: currentMoon(sky.utcMs).illuminated, waxing: currentMoon(sky.utcMs).waxing, elongationDeg: currentMoon(sky.utcMs).elongationDeg } : null,
           figures: sky.figures.length,
           finder: finderProbe(),
         };
@@ -242,6 +244,7 @@ export function StarSky({ tier }: { tier: QualityTier }) {
     <>
       {points && <primitive object={points} />}
       <SkyLines />
+      <SkyExtras />
     </>
   );
 }

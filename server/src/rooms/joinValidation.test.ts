@@ -162,11 +162,22 @@ describe("validateJoinOptions — appearance", () => {
     });
     expect(Object.keys(r.appearance).sort()).toEqual([...APPEARANCE_FIELDS].sort());
     expect(r.appearance).toEqual(DEFAULT_APPEARANCE);
-    // Only nickname + appearance come back: no stray top-level option survives either.
+    // Only nickname + appearance (+ the device key's hash) come back: no stray top-level option survives either.
     expect(Object.keys(accepted({ nickname: "test", appearance: DEFAULT_APPEARANCE, role: 1, x: 5 })).sort()).toEqual([
       "appearance",
+      "deviceKeyHash",
       "nickname",
     ]);
+  });
+
+  it("hashes a well-formed device key (memorial stage B) and ignores a malformed one without rejecting the join", () => {
+    const key = "A".repeat(43);
+    const r = accepted({ nickname: "test", appearance: DEFAULT_APPEARANCE, deviceKey: key });
+    expect(r.deviceKeyHash).toMatch(/^[0-9a-f]{64}$/);
+    expect(JSON.stringify(r)).not.toContain(key);
+    for (const bad of ["short", 42, null, "A".repeat(44), "A".repeat(42) + "!"]) {
+      expect(accepted({ nickname: "test", appearance: DEFAULT_APPEARANCE, deviceKey: bad }).deviceKeyHash).toBeNull();
+    }
   });
 
   it("checks the nickname before the appearance", () => {

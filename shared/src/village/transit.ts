@@ -113,13 +113,20 @@ export const TRANSIT = {
    * before this window opens, so the bus stands parked at the stop, doors open, through all of it.
    */
   boardingMs: 3 * 60 * 1000,
-  /** One cycle of the crossing signals: vehicles green 0-20 s, amber 20-23, red 23-40; pedestrians stop 0-24, walk 24-34, flashing 34-38, stop 38-40. */
-  signalCycleMs: 40 * 1000,
-  signalGreenMs: 20 * 1000,
+  /**
+   * One cycle of the crossing signals (Korean timing, 50 s: it divides the bus's 10-minute departures, so every trip
+   * meets the same phase): vehicles green 0-26 s, amber 26-29, red 29-50; pedestrians stop 0-31 (the 2 s all-red
+   * clearance 29-31 included), walk 31-43, flashing 43-48, stop 48-50 (all-red clearance before the vehicles' green).
+   * Walk and flashing lie inside the vehicles' red with `signalAllRedMs` to spare on both sides.
+   */
+  signalCycleMs: 50 * 1000,
+  signalGreenMs: 26 * 1000,
   signalAmberMs: 3 * 1000,
-  pedestrianStartMs: 24 * 1000,
-  pedestrianWalkMs: 10 * 1000,
-  pedestrianFlashingMs: 4 * 1000,
+  /** all-red clearance after the amber and again before the next green: nobody is shown a go */
+  signalAllRedMs: 2 * 1000,
+  pedestrianStartMs: 31 * 1000,
+  pedestrianWalkMs: 12 * 1000,
+  pedestrianFlashingMs: 5 * 1000,
   /** Where the bus's nose stops before a crosswalk's centre when the signal is not green (m along the road): 2 m of crosswalk + 3.6 m. */
   stopLineM: 5.6,
   busLengthM: 9,
@@ -514,9 +521,10 @@ export function signalAt(utcMs: number, offsetMs = 0): SignalState {
 }
 
 /**
- * The pedestrian phase of the same cycle (walk only while the vehicles are red): stop until 24 s, the walking figure for
- * 10 s, the flashing figure for 4 s (finish crossing, do not start), then stop for the last 2 s while the vehicles'
- * red is still on. Never overlaps the vehicles' green or amber.
+ * The pedestrian phase of the same cycle (walk only while the vehicles are red): stop until 25 s (the vehicles' amber
+ * ends at 23 s: 2 s all-red), the walking figure for 10 s, the flashing figure for 5 s (finish crossing, do not start),
+ * then stop for the last 2 s (48-50) while the vehicles' red is still on (all-red before their green). Never overlaps the
+ * vehicles' green or amber.
  */
 export function pedestrianSignalAt(utcMs: number, offsetMs = 0): PedestrianSignalState {
   const e = mod(utcMs + offsetMs, TRANSIT.signalCycleMs);

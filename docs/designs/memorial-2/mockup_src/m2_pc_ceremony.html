@@ -1,0 +1,46 @@
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><link rel="stylesheet" href="common.css">
+<style>
+body { width: 1440px; height: 900px; overflow: hidden; position: relative; background: #111; }
+/* Blender mockup render of the hall (entrance view), darkened to the evening ceremony light */
+.scene { position: absolute; inset: 0; background: url("../../../handoff/designs/memorial/overview.jpg") no-repeat; background-size: 6180px auto; background-position: -204px -156px; filter: brightness(0.42) saturate(0.8) sepia(0.25); }
+.warm { position: absolute; inset: 0; background: radial-gradient(ellipse 520px 380px at 50% 46%, rgba(255,190,110,0.28), transparent 70%), linear-gradient(180deg, rgba(10,12,40,0.35), rgba(0,0,0,0.0) 40%, rgba(0,0,0,0.45)); }
+.spark { position: absolute; width: 6px; height: 6px; border-radius: 3px; background: #ffd48a; box-shadow: 0 0 12px 4px rgba(255,200,120,0.75); }
+.top { position: absolute; top: 22px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.badge { background: rgba(247,243,236,0.94); padding: 8px 18px; border-radius: 999px; font-size: 15px; font-weight: 700; color: #4b3d31; box-shadow: 0 6px 18px rgba(0,0,0,.3); }
+.steps { display: flex; gap: 6px; }
+.steps div { padding: 5px 14px; border-radius: 999px; font-size: 13px; font-weight: 600; color: rgba(255,255,255,.7); background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.15); }
+.steps div.done { color: rgba(255,255,255,.9); }
+.steps div.on { background: #f3e2bf; color: #4b3d31; border-color: #f3e2bf; }
+.frame { position: absolute; left: 50%; top: 170px; transform: translateX(-50%); width: 380px; padding: 18px 18px 16px; border-radius: 6px; background: linear-gradient(180deg, #6d4c33, #5a3d28); box-shadow: 0 0 60px rgba(255,190,110,.45), 0 20px 50px rgba(0,0,0,.5); text-align: center; }
+.frame .ph { height: 300px; border-radius: 2px; background: url("../../../handoff/designs/memorial/option1_maltese.png") center/cover; border: 8px solid #f3ead9; }
+.frame .nm { color: #f8efdf; font-size: 26px; font-weight: 800; margin-top: 12px; letter-spacing: -0.3px; }
+.frame .sub { color: #e6d6bd; font-size: 14px; margin-top: 2px; }
+.queue { position: absolute; left: 50%; top: 600px; transform: translateX(-50%); color: rgba(255,245,230,.85); font-size: 14px; text-align: center; line-height: 1.6; }
+.queue b { color: #fff; }
+.side { position: absolute; left: 24px; bottom: 24px; width: 300px; padding: 14px 16px; font-size: 13.5px; line-height: 1.55; }
+.side h3 { font-size: 14px; margin-bottom: 4px; }
+.bottom { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.light { width: 260px; height: 64px; font-size: 19px; border-radius: 32px; background: #f3d79b; color: #4b3d31; box-shadow: 0 0 34px rgba(255,205,120,.7); }
+.flame { width: 14px; height: 22px; border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%; background: radial-gradient(circle at 50% 70%, #fff6d8, #ffb347 60%, #e8772e); }
+.count { color: rgba(255,245,230,.9); font-size: 14px; }
+.right { position: absolute; right: 24px; top: 22px; display: flex; gap: 8px; }
+.right div { width: 40px; height: 40px; border-radius: 20px; background: rgba(247,243,236,.85); display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; color: #4b3d31; }
+.av { position: absolute; bottom: 120px; width: 46px; height: 46px; border-radius: 23px; background: radial-gradient(circle at 40% 35%, #8a5a3c, #4a2f20); box-shadow: 0 0 0 2px rgba(0,0,0,.2); }
+.av::after { content: ""; position: absolute; left: 16px; top: -26px; width: 12px; height: 18px; border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%; background: radial-gradient(circle at 50% 70%, #fff6d8, #ffb347 60%, #e8772e); box-shadow: 0 0 16px 6px rgba(255,190,100,.55); }
+.av.off::after { display: none; }
+</style></head><body>
+<div class="scene"></div><div class="warm"></div>
+<div class="spark" style="left:640px;top:150px;opacity:.8"></div><div class="spark" style="left:790px;top:120px;opacity:.6"></div>
+<div class="spark" style="left:705px;top:90px;opacity:.5"></div><div class="spark" style="left:860px;top:190px;opacity:.7"></div>
+<div class="spark" style="left:580px;top:220px;opacity:.5"></div><div class="spark" style="left:745px;top:60px;opacity:.4"></div>
+<div class="top">
+  <div class="badge">매주 일요일 저녁 8시 · 함께하는 촛불 추모식</div>
+  <div class="steps"><div class="done">모이기</div><div class="done">여는 말</div><div class="on">이름 부르기</div><div>촛불 켜기</div><div>1분 묵념</div><div>맺는 말</div></div>
+</div>
+<div class="right"><div>소리</div><div>메뉴</div></div>
+<div class="frame"><div class="ph"></div><div class="nm">콩이</div><div class="sub">말티즈 · 이번 주 무지개다리 1주기</div></div>
+<div class="queue">함께 기억하는 아이들 <b>12 마리</b> 중 4번째<br>다음: 보리 · 나비 · 까미</div>
+<div class="av" style="left:470px"></div><div class="av" style="left:560px;bottom:96px"></div><div class="av off" style="left:860px;bottom:100px"></div><div class="av" style="left:940px"></div><div class="av" style="left:1030px;bottom:140px"></div>
+<div class="bottom"><div class="btn light"><span class="flame"></span>촛불 켜기</div><div class="count">지금 23명이 함께하고 있어요 · 말풍선은 추모식이 끝날 때까지 작게 보여요</div></div>
+<div class="sheet side"><h3>처음 오셨나요?</h3>이름이 불리는 동안 조용히 함께 기억해 주세요. 차례가 오면 아래 <b>촛불 켜기</b>가 밝아져요. 언제든 나가셔도 괜찮아요.</div>
+</body></html>

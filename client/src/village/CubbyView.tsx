@@ -2,7 +2,13 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { CANDLE_RATE } from "@caysonverse/shared/village/messages";
 import { sendLightCandle } from "../net/connection";
 import { popOverlay, pushOverlay } from "../ui/overlayStack";
-import { SAMPLE_BY_ID } from "./sampleCubbies";
+import { HALL_CUBBY_ANCHORS, SAMPLE_BY_ID } from "./sampleCubbies";
+import { claimYears } from "@caysonverse/shared/memorial/validate";
+import { claimFor, isMine, noteMyClaim, refreshSlot, useClaims } from "./memorial/claimsStore";
+import { mediaUrl, memorialApi, MemorialApiError } from "./memorial/memorialApi";
+import { MEM_COPY, openSheet } from "./memorial/memorialSheets";
+import { prepareUpload } from "./memorial/imageResize";
+import "./memorial/memorial.css";
 import {
   CUBBY_COPY,
   closeCubbyCard,
@@ -10,6 +16,7 @@ import {
   cubbyIdAt,
   litByLabel,
   moveCubbyRow,
+  openCubbyAt,
   photoAlt,
   photoBackground,
   rowLabel,
@@ -36,7 +43,10 @@ const LIGHT_WAIT_MS = 2000;
  * glides to the front of that cubby at its own height (cubbyFocus.ts) and the card docks beside it (on the right of a wide
  * screen, at the bottom of a phone), so the cubby itself stays in view; "위 칸" / "아래 칸" move the close-up through the column.
  * A filled cubby: portrait, name, years, the family's line and "촛불 켜기" (who lit it and how long ago); the hall's one example
- * is marked 견본. An empty one: "곧 이 자리에 우리 아이를 모실 수 있어요". Ends with "가까이 보기 끝내기", Esc, or leaving the hall.
+ * is marked 견본. A family's cubby (memorial stage B): its photo (the family also sees one in review, marked 검토 중이에요), name,
+ * years, line and candle; on the family's own devices 고치기 / 사진 바꾸기 / 가족 기기. An empty one: "우리 아이 모시기" while this
+ * family has a free cubby left (else "한 가족에 한 칸" + a way to its own), or the old "곧 …" line when the server has no memorial
+ * store. Ends with "가까이 보기 끝내기", Esc, or leaving the hall.
  */
 export function CubbyView() {
   const card = useCubbyCard();
@@ -47,6 +57,16 @@ export function CubbyView() {
   const [, setTick] = useState(0);
 
   const open = card !== null && area === "hall";
+  const claims = useClaims();
+  const [photoStatus, setPhotoStatus] = useState("");
+  const fileRef = useRef<HTMLInputElement>(null);
+  const cardId = card ? cubbyIdAt(card.column, card.row) : null;
+  // Opening a claimed cubby refetches it: fresh signed links for a family's photo in review, a photo approved meanwhile.
+  useEffect(() => {
+    setPhotoStatus("");
+    if (open && cardId && claims.claims.has(cardId)) void refreshSlot(cardId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, cardId]);
   const panelRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (card !== null && area !== "hall") closeCubbyCard();
@@ -130,6 +150,31 @@ export function CubbyView() {
 
   const lit = id !== null && burning ? burningCandles().get(id) : undefined;
   const bank = id ? id.split("-")[1] ?? "" : "";
+  const claim = sample ? undefined : claimFor(id, claims);
+  const mine = isMine(claim) ? claim : undefined;
+  const filled = Boolean(sample || claim);
+  const myFirst = [...claims.mine.keys()][0];
+  const shownPhoto = mine ? (mine.familyCover?.urls ?? null) : (claim?.photo ?? null);
+  const pendingPhoto = mine?.familyCover?.moderation === "pending";
+
+  const changePhoto = async (file: File | undefined) => {
+    if (!file || !mine) return;
+    setPhotoStatus(MEM_COPY.photoBusy);
+    const out = await prepareUpload(file);
+    if (out === "too_big") return setPhotoStatus(MEM_COPY.photoTooBig);
+    if (out === "not_image") return setPhotoStatus(MEM_COPY.photoNotImage);
+    setPhotoStatus(MEM_COPY.uploading);
+    try {
+      noteMyClaim((await memorialApi.uploadPhoto(mine.claimId, out)).claim);
+      setPhotoStatus(MEM_COPY.photoReview);
+    } catch (err) {
+      setPhotoStatus(err instanceof MemorialApiError ? err.message : MEM_COPY.photoNotImage);
+    }
+  };
+  const goMine = () => {
+    const a = HALL_CUBBY_ANCHORS.find((x) => x.id === myFirst);
+    if (a) openCubbyAt(a);
+  };
 
   return (
     <div className="cv-cubby" role="dialog" aria-modal="false" aria-label={CUBBY_COPY.dialog} data-cubby={id ?? ""}>
@@ -154,7 +199,44 @@ export function CubbyView() {
             </div>
           </div>
         ) : null}
-        {sample ? (
+        {claim ? (
+          <div className="cv-cubby-body" data-claimed={mine ? "mine" : "public"}>
+            <div
+              className={`cv-cubby-photo${shownPhoto ? " is-photo" : " is-empty"}`}
+              role="img"
+              aria-label={photoAlt(claim.petName)}
+              style={shownPhoto ? { backgroundImage: `url(${mediaUrl(shownPhoto.s512)})` } : undefined}
+            >
+              {burning ? <span className="cv-cubby-flame" aria-hidden="true" /> : null}
+              {mine && pendingPhoto ? <span className="cv-cubby-badge">{MEM_COPY.pending}</span> : null}
+            </div>
+            <div className="cv-cubby-text">
+              {mine ? <div className="cv-cubby-mine">{MEM_COPY.mineBadge}</div> : null}
+              <div className="cv-cubby-name">{claim.petName}</div>
+              {claimYears(claim) ? <div className="cv-cubby-years">{claimYears(claim)}</div> : null}
+              {claim.line ? <p className="cv-cubby-line">{claim.line}</p> : null}
+              {mine && mine.lastRejected && !photoStatus ? <p className="cv-cubby-note">{MEM_COPY.rejected}</p> : null}
+              {mine && !shownPhoto && !mine.lastRejected && !photoStatus ? <p className="cv-cubby-note">{MEM_COPY.noPhoto}</p> : null}
+              {mine && pendingPhoto && !photoStatus ? <p className="cv-cubby-note">{MEM_COPY.pendingNote}</p> : null}
+              {photoStatus ? <p className="cv-cubby-status" role="status">{photoStatus}</p> : null}
+            </div>
+          </div>
+        ) : null}
+        {mine && id ? (
+          <div className="cv-cubby-family">
+            <input ref={fileRef} type="file" accept="image/*" hidden onChange={(e) => void changePhoto(e.target.files?.[0])} />
+            <button type="button" onClick={() => openSheet({ kind: "edit", slotId: id })}>
+              {MEM_COPY.edit}
+            </button>
+            <button type="button" onClick={() => fileRef.current?.click()}>
+              {shownPhoto || mine.lastRejected ? MEM_COPY.photo : MEM_COPY.addPhoto}
+            </button>
+            <button type="button" onClick={() => openSheet({ kind: "family", slotId: id })}>
+              {MEM_COPY.family}
+            </button>
+          </div>
+        ) : null}
+        {filled ? (
           <>
             <button
               type="button"
@@ -170,7 +252,30 @@ export function CubbyView() {
           <>
             <div className="cv-cubby-photo is-empty" aria-hidden="true" />
             <div className="cv-cubby-name">{CUBBY_COPY.emptyTitle}</div>
-            <p className="cv-cubby-line">{CUBBY_COPY.empty}</p>
+            {claims.status === "off" || claims.status === "idle" || !id ? (
+              <p className="cv-cubby-line">{CUBBY_COPY.empty}</p>
+            ) : claims.freeLeft > 0 ? (
+              <>
+                <p className="cv-cubby-line">{MEM_COPY.free}</p>
+                <button type="button" className="cv-cubby-claim" onClick={() => openSheet({ kind: "claim", slotId: id })}>
+                  {MEM_COPY.claimCta}
+                </button>
+                {claims.mine.size === 0 ? (
+                  <button type="button" className="cv-cubby-link" onClick={() => openSheet({ kind: "recover", slotId: id })}>
+                    {MEM_COPY.haveCode}
+                  </button>
+                ) : null}
+              </>
+            ) : (
+              <>
+                <p className="cv-cubby-line">{MEM_COPY.oneOnly}</p>
+                {myFirst ? (
+                  <button type="button" className="cv-cubby-claim" onClick={goMine}>
+                    {MEM_COPY.goMine}
+                  </button>
+                ) : null}
+              </>
+            )}
           </>
         )}
         <div className="cv-cubby-nav">

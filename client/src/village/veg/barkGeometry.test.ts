@@ -54,7 +54,7 @@ describe("runtime bark: one bark from the ground to the twig tips", () => {
       const px = barkPixels(pattern);
       let sum = 0;
       for (let i = 0; i < px.length; i += 4) sum += px[i]!;
-      expect(sum / (px.length / 4) / 255).toBeCloseTo(0.78, 1);
+      expect(sum / (px.length / 4) / 255).toBeCloseTo(0.5, 1);
     }
   });
 

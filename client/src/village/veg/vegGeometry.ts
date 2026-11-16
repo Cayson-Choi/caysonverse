@@ -59,6 +59,13 @@ export class GeoBuilder {
   readonly wind: number[] = [];
   readonly light: number[] = [];
   readonly idx: number[] = [];
+  /** Per-fragment surfaces (the bark, the soil: vegMaterial `normalMap`): each vertex's u direction and moss share. */
+  readonly tan: number[] = [];
+  readonly mos: number[] = [];
+  /** Write `aTangent` and `aMoss` (set `tangent` and `moss` before each vertex). */
+  surface = false;
+  tangent: Vec3 = [1, 0, 0];
+  moss = 0;
   /** Wind weight given to vertices by height (m) when no weight is passed: y / windHeight. */
   windHeight = 0.3;
   /** The uv of vertices given none (the plant atlas's white cell for the plants: plantCells.SOLID_UV). */
@@ -79,6 +86,10 @@ export class GeoBuilder {
     this.uv.push(uv[0], uv[1]);
     this.wind.push(wind ?? Math.max(0, Math.min(1, p[1] / this.windHeight)));
     this.light.push(light);
+    if (this.surface) {
+      this.tan.push(this.tangent[0], this.tangent[1], this.tangent[2]);
+      this.mos.push(this.moss);
+    }
     return this.vertexCount - 1;
   }
 
@@ -94,6 +105,10 @@ export class GeoBuilder {
     g.setAttribute("uv", new Float32BufferAttribute(this.uv, 2));
     g.setAttribute("aWind", new Float32BufferAttribute(this.wind, 1));
     g.setAttribute("aLight", new Float32BufferAttribute(this.light, 1));
+    if (this.surface) {
+      g.setAttribute("aTangent", new Float32BufferAttribute(this.tan, 3));
+      g.setAttribute("aMoss", new Float32BufferAttribute(this.mos, 1));
+    }
     g.setIndex(this.vertexCount > 65535 ? new Uint32BufferAttribute(this.idx, 1) : new Uint16BufferAttribute(this.idx, 1));
     g.computeBoundingSphere();
     return g;

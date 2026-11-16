@@ -765,7 +765,7 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
         cancelOrbitGoal();
         const gain = dragSpeed();
         viewState.fpYaw = normalizeAngle(viewState.fpYaw - DRAG_SIGN * dx * gain);
-        viewState.fpPitch = clampFpPitch(viewState.fpPitch + DRAG_SIGN * dy * gain);
+        viewState.fpPitch = clampFpPitch(viewState.fpPitch + DRAG_SIGN * dy * gain, viewState.skyLook);
       } else {
         cancelOrbitGoal(); // a drag takes the camera back from any recenter glide
         const gain = dragSpeed();

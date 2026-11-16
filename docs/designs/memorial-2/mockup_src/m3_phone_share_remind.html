@@ -1,0 +1,81 @@
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><link rel="stylesheet" href="common.css">
+<style>
+body { width: 860px; height: 900px; overflow: hidden; background: #e2dcd2; display: flex; gap: 40px; padding: 28px 20px; }
+.phone { position: relative; width: 390px; height: 844px; border-radius: 40px; overflow: hidden; background: #f7f3ec; box-shadow: 0 20px 50px rgba(40,30,20,.3); flex: none; }
+.cap { position: absolute; top: -2px; left: 0; right: 0; text-align: center; font-size: 12px; color: #6c6158; }
+.status { height: 44px; display:flex; justify-content:space-between; align-items:center; padding: 0 28px; font-size: 14px; font-weight: 600; }
+.kbar { height: 44px; display: flex; align-items: center; gap: 10px; padding: 0 14px; border-bottom: 1px solid #e6ddd1; background: #fff; font-size: 13px; color: #6c6158; }
+.kbar .url { flex: 1; text-align: center; font-size: 12.5px; color: #3b322b; }
+.hero { height: 300px; background: url("../../../handoff/designs/memorial/option1_maltese.png") center 30%/cover; position: relative; }
+.hero::after { content:""; position:absolute; inset:0; background: linear-gradient(180deg, transparent 55%, rgba(247,243,236,1)); }
+.body { padding: 0 20px; margin-top: -40px; position: relative; text-align: center; }
+.body h1 { font-size: 28px; font-weight: 800; }
+.body .d { font-size: 13.5px; color: #8a7e73; margin-top: 2px; }
+.body .l { font-size: 15px; margin-top: 10px; line-height: 1.5; }
+.where { margin-top: 10px; font-size: 12.5px; color: #6c6158; }
+.stats { display: flex; justify-content: center; gap: 6px; margin-top: 10px; }
+.stats span { font-size: 12px; background: #efe9e0; padding: 3px 10px; border-radius: 999px; }
+.cta { display: grid; gap: 8px; margin: 16px 0 0; }
+.cta .btn { height: 52px; font-size: 16px; }
+.gbh { text-align: left; margin-top: 16px; font-size: 14px; font-weight: 700; }
+.gb { text-align: left; font-size: 13px; line-height: 1.45; padding: 7px 0; border-bottom: 1px solid #ece4d9; }
+.gb b { font-weight: 700; }
+.foot { position: absolute; bottom: 14px; left: 0; right: 0; text-align: center; font-size: 11px; color: #a0948a; }
+/* reminder sheet */
+.dim { position: absolute; inset: 0; background: url("../../../handoff/designs/memorial/overview.jpg") no-repeat; background-size: 3227px auto; background-position: -1235px -82px; filter: brightness(.55); }
+.rs { position: absolute; left: 0; right: 0; bottom: 0; background: #f7f3ec; border-radius: 22px 22px 0 0; padding: 10px 18px 30px; }
+.handle { width: 40px; height: 5px; border-radius: 3px; background: #d6ccbf; margin: 0 auto 12px; }
+.rs h2 { font-size: 19px; font-weight: 800; }
+.rs .s { font-size: 13px; color: #8a7e73; margin-top: 3px; line-height: 1.45; }
+.row { display: flex; align-items: center; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid #ebe3d8; }
+.row .t { font-size: 15px; font-weight: 700; } .row .m { font-size: 12.5px; color: #8a7e73; margin-top: 2px; }
+.tg { width: 50px; height: 30px; border-radius: 15px; background: #4b4fd8; position: relative; flex: none; }
+.tg::after { content:""; position:absolute; right: 3px; top: 3px; width: 24px; height: 24px; border-radius: 12px; background: #fff; }
+.tg.off { background: #d6ccbf; } .tg.off::after { right: auto; left: 3px; }
+.how { margin-top: 12px; font-size: 13px; font-weight: 700; }
+.opts { display: grid; gap: 8px; margin-top: 8px; }
+.opts .btn { height: 50px; font-size: 15px; }
+.note { font-size: 11.5px; color: #8a7e73; margin-top: 10px; line-height: 1.5; }
+</style></head><body>
+<div style="position:relative">
+<div class="cap">① 카카오톡에서 연 공유 링크 (가벼운 2D 페이지)</div>
+<div class="phone" style="margin-top:14px">
+  <div class="status"><span>9:41</span><span>●●● 5G</span></div>
+  <div class="kbar"><span>✕</span><span class="url">케이슨 마을 추모관<br><span style="color:#8a7e73;font-size:11px">…/m/7KQ2M9XD</span></span><span>⋯</span></div>
+  <div class="hero"></div>
+  <div class="body">
+    <h1>콩이</h1>
+    <div class="d">말티즈 · 2012. 4. 3 – 2025. 11. 16</div>
+    <div class="l">우리 집 막내, 열세 해 동안 늘 고마웠어.</div>
+    <div class="where">케이슨 마을 추모관 · A구역 4단 12번</div>
+    <div class="stats"><span>꽃 128</span><span>촛불 34</span><span>방명록 52</span></div>
+    <div class="cta">
+      <div class="btn primary">추모관에서 콩이 만나기</div>
+      <div class="btn soft">여기서 꽃 한 송이 놓기</div>
+    </div>
+    <div class="gbh">방명록</div>
+    <div class="gb"><b>하늘색토끼</b> · 콩이야, 벌써 1년이네. 늘 기억할게.</div>
+  </div>
+  <div class="foot">가족이 공개한 내용만 보여요 · 가족은 언제든 링크를 끌 수 있어요</div>
+</div></div>
+<div style="position:relative">
+<div class="cap">② 모시기 끝 / 칸 '정보'에서 여는 "기억하고 싶은 날"</div>
+<div class="phone" style="margin-top:14px">
+  <div class="dim"></div>
+  <div class="rs">
+    <div class="handle"></div>
+    <h2>기억하고 싶은 날</h2>
+    <div class="s">그날이 되면 콩이의 칸이 조용히 꾸며지고, 들르는 분들도 함께 기억할 수 있어요.</div>
+    <div class="row"><div><div class="t">생일 · 4월 3일</div><div class="m">작은 케이크와 가랜드</div></div><div class="tg"></div></div>
+    <div class="row"><div><div class="t">무지개다리 건넌 날 · 11월 16일</div><div class="m">흰 국화 화환과 "N주기" 리본</div></div><div class="tg"></div></div>
+    <div class="row"><div><div class="t">49일 · 100일</div><div class="m">처음 한 해에만 있어요</div></div><div class="tg off"></div></div>
+    <div class="row"><div><div class="t">추모식에서 이름 불러 주기</div><div class="m">그 주 일요일 저녁 8시 촛불 추모식</div></div><div class="tg"></div></div>
+    <div class="how">알림은 어떻게 받을까요?</div>
+    <div class="opts">
+      <div class="btn primary">내 휴대폰 달력에 넣기</div>
+      <div class="btn soft">마을에 들어올 때만 알려 주기</div>
+    </div>
+    <div class="note">달력 파일(.ics)은 이 기기에서만 만들어져요. 이름과 날짜가 다른 곳으로 보내지지 않아요. 하루 전 오전 9시에 알려 드려요.</div>
+  </div>
+</div></div>
+</body></html>
