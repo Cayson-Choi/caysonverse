@@ -40,7 +40,8 @@ import {
   jumpRegistry,
   jumpTimeScale,
 } from "./jump";
-import { ANIM_FADE, CLIP, MODEL_FACING_OFFSET } from "./constants";
+import { ANIM_FADE, CLIP, FLOOR_CLIP, MODEL_FACING_OFFSET } from "./constants";
+import { isFloorSeat } from "./seatClips";
 import { activeSeats } from "./activeMap";
 import {
   createSeatLine,
@@ -122,6 +123,12 @@ export function RemotePlayer({
   const sitDownAction = useRef<AnimationAction | null>(null);
   const sitIdleAction = useRef<AnimationAction | null>(null);
   const sitStandAction = useRef<AnimationAction | null>(null);
+  // The cross-legged floor-seat versions of the three sit clips (Seat.pose === "floor"): they take the roles of the three refs above
+  // while the avatar is on such a seat, so the state machine below never looks at which seat kind it is.
+  const floorSitDownAction = useRef<AnimationAction | null>(null);
+  const floorSitIdleAction = useRef<AnimationAction | null>(null);
+  const floorSitStandAction = useRef<AnimationAction | null>(null);
+  const chairSitActions = useRef<(AnimationAction | null)[]>([null, null, null]);
   const jumpAction = useRef<AnimationAction | null>(null);
   // Jump (Task 11): seq of the registry hop currently animating (-1 = none), and the
   // wrapper that keeps the blob shadow on the floor while the avatar is in the air.
@@ -171,15 +178,17 @@ export function RemotePlayer({
     idleAction.current = bind(CLIP.idle);
     walkAction.current = bind(CLIP.walk);
     runAction.current = bind(CLIP.run);
-    sitDownAction.current = bind(CLIP.sitDown);
-    sitIdleAction.current = bind(CLIP.sitIdle);
-    sitStandAction.current = bind(CLIP.sitStand);
+    chairSitActions.current = [bind(CLIP.sitDown), bind(CLIP.sitIdle), bind(CLIP.sitStand)];
+    floorSitDownAction.current = bind(FLOOR_CLIP.sitDown);
+    floorSitIdleAction.current = bind(FLOOR_CLIP.sitIdle);
+    floorSitStandAction.current = bind(FLOOR_CLIP.sitStand);
     jumpAction.current = bind(CLIP.jump);
 
     // The seat the avatar is DRAWN on (a change still on its way is replayed when the render time gets there).
     const rec = getRemoteRecord(sessionId);
     const startedIndex = rec ? (rec.seatLine ?? createSeatLine(rec.seatIndex)).drawn : -1;
     const startedSeated = startedIndex >= 0;
+    setSitClips(isFloorSeat(activeSeats()[startedIndex]));
     const rest = startedSeated ? sitIdleAction.current : idleAction.current;
     rest?.reset().fadeIn(0).play();
     loopRef.current = startedSeated ? null : "idle";
@@ -200,6 +209,14 @@ export function RemotePlayer({
       mixer.stopAllAction();
     };
   }, [mixer, animations, look, sessionId]);
+
+  /** Which three actions play the sit roles: the cross-legged floor ones on a floor seat, the chair ones otherwise. */
+  const setSitClips = (floor: boolean): void => {
+    const chair = chairSitActions.current;
+    sitDownAction.current = floor ? floorSitDownAction.current : chair[0];
+    sitIdleAction.current = floor ? floorSitIdleAction.current : chair[1];
+    sitStandAction.current = floor ? floorSitStandAction.current : chair[2];
+  };
 
   // DEV-only E2E probe (window.__cv.getRemoteGaits): publish this avatar's gait,
   // and drop the entry when it leaves. Dead code in production builds.
@@ -325,6 +342,8 @@ export function RemotePlayer({
    * idle. Never per frame.
    */
   const seatTransition = (what: SeatTransition): number => {
+    // The seat's kind decides which clips play the sit roles (set before the first clip of a sit starts; held until it is over).
+    if (what === "sit" || what === "seated") setSitClips(isFloorSeat(activeSeats()[seatRef.current?.seat ?? -1]));
     switch (what) {
       case "sit": {
         releaseLoop(ANIM_FADE);

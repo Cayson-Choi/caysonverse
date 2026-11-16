@@ -26,6 +26,16 @@ export const CLIP = {
   sitStand: "Sit_Chair_StandUp",
 } as const;
 
+/**
+ * The cross-legged floor sit (cushion / 보료 / floor sofa seats, `Seat.pose === "floor"`): the same three roles as
+ * CLIP.sitDown / sitIdle / sitStand, played instead of them by `seatClipBase` (seatClips.ts). They are manifest clips too.
+ */
+export const FLOOR_CLIP = {
+  sitDown: "Sit_Floor_Down",
+  sitIdle: "Sit_Floor_Idle",
+  sitStand: "Sit_Floor_StandUp",
+} as const;
+
 /** Crossfade duration (seconds) between the idle / walk / run loops. */
 export const ANIM_FADE = 0.2;
 

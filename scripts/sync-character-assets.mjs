@@ -94,7 +94,7 @@ export interface CharacterManifestShape {
   hairCut: number;
   hatHidesHair: readonly string[];
   npcOnly: Record<string, readonly string[]>;
-  /** 동작 클립 이름: 기본 7개와 하의 변형(*_LongSkirt, *_ShortSkirt). */
+  /** 동작 클립 이름: 기본 7개, 바닥 앉기 3개(Sit_Floor_*), 하의 변형(*_LongSkirt, *_ShortSkirt). */
   clips: readonly string[];
   /** 하의 부품 id → 기본 클립 → 변형 클립. 보폭은 유지하고 치마를 뚫지 않게 다리 움직임만 줄인다. */
   clipVariants: Record<string, Record<string, string>>;
