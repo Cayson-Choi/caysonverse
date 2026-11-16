@@ -968,6 +968,12 @@ export interface PlanOptions {
    * walk that merely stops against what is in the way — that stop is somewhere else, and the seat offered there another.
    */
   farFirst?: boolean;
+  /**
+   * Water nobody walks into (the waterfall's pool): the spot a click on ground that is in fact water goes to instead — the
+   * nearest shore spot (shared fallsWalk.ts fallsShoreSpot) — or null for any other click. It replaces the free spots
+   * round the click (rule 2); the ring goes on that spot.
+   */
+  shore?: (x: number, z: number) => { x: number; z: number } | null;
 }
 
 /**
@@ -1045,8 +1051,10 @@ export function startClickPlan(
   // one spot within MAX_PUSH of the paving behind plaza_4's backrest lay in a 7 cm gap and the farther ones were never
   // tried); an open surface is already a free spot, taken as it is.
   const furniture = !!options.furniture && insideGrown(surface.x, surface.z, options.furniture);
-  let spots: readonly FreeSpot[] =
-    kind === "ground"
+  const shore = kind === "ground" && options.shore ? options.shore(surface.x, surface.z) : null;
+  let spots: readonly FreeSpot[] = shore
+    ? [{ x: shore.x, z: shore.z }]
+    : kind === "ground"
       ? freeSpotsNear(surface.x, surface.z, obstacles, bounds, furniture ? FURNITURE_MAX_PUSH : MAX_PUSH)
       : [{ x: surface.x, z: surface.z }];
   if (spots.length === 0) {

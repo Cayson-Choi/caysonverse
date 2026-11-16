@@ -64,7 +64,7 @@ import { overviewAllowed } from "./indoorCamera";
 import { createFollowRig, createFollowSpot, noteAreaLimit, stepFollowRig } from "./followRig";
 import { rememberOrbit, restoreOrbit } from "./cameraMemory";
 import { cameraProbe } from "./cameraProbe";
-import { activeBounds, activeSeats, getActiveMap } from "./activeMap";
+import { activeBounds, activePickBounds, activeSeats, getActiveMap } from "./activeMap";
 import { localGlide } from "./seatMotion";
 import { seatApproachGoal, seatUnderTap, warmSeatApproachGoals } from "./seatTap";
 import { seatedEyeOffset, stepSeatedWeight } from "./seatedEye";
@@ -301,7 +301,7 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
       raycaster.near = cam.near; // nearer than the near plane is not drawn: nothing to click
       raycaster.far = cam.far;
       raycaster.layers.mask = cam.layers.mask;
-      return pickSurface(raycaster, scene, { area: activeBounds() });
+      return pickSurface(raycaster, scene, { area: activePickBounds() });
     };
     /**
      * Rule 4: how a ring at (x, z) on a surface at `surfaceY` would look from `cam` — as ClickMarker will draw it: its
@@ -350,7 +350,7 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
         pick.faceTall = faceIsTall(raycaster, scene, pick);
       }
       const map = mapNow;
-      const start = startClickPlan(from.x, from.z, surface, map.geometry.obstacles, activeBounds(), !!s, { furniture: map.furniture, farFirst: seatGoal !== null });
+      const start = startClickPlan(from.x, from.z, surface, map.geometry.obstacles, activeBounds(), !!s, { furniture: map.furniture, farFirst: seatGoal !== null, shore: map.shore });
       const cameraNow = (): PerspectiveCamera => {
         if (snap) return snap;
         const cam = camera as PerspectiveCamera;
