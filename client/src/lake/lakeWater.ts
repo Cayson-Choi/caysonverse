@@ -11,6 +11,7 @@
 
 import { Color, DataTexture, LinearFilter, LinearMipmapLinearFilter, RepeatWrapping, SRGBColorSpace, ShaderMaterial, UniformsLib, UniformsUtils, Vector3, Vector4, type Texture } from "three";
 import { makeRippleTexture } from "../village/villageWater";
+import { waveTexture } from "./lakeWaves";
 import { LAKE_LAMPS, LAKE_SHOP, LAKE_SHORE, distToPolygonEdge, insidePolygon } from "@caysonverse/shared/village/lakeLayout";
 
 export const RIPPLE_SLOTS = 32;
@@ -33,8 +34,13 @@ varying vec2 vLmUv;
 #endif
 varying vec3 vWorld;
 varying float vDepth;
+uniform float uTime;
 void main() {
   vec4 wp = modelMatrix * vec4( position, 1.0 );
+  #ifdef LAKE_SWELL
+  // lake v2: a mild swell (2-3 cm, 7-12 m long, the PC tier): the waterline climbs and falls on the bank (the lapping)
+  wp.y += 0.016 * sin( dot( wp.xz, vec2( 0.55, 0.21 ) ) - uTime * 1.1 ) + 0.010 * sin( dot( wp.xz, vec2( -0.23, 0.71 ) ) - uTime * 0.83 ) + 0.005 * sin( dot( wp.xz, vec2( 1.3, 0.4 ) ) - uTime * 1.9 );
+  #endif
   vWorld = wp.xyz;
   #ifdef USE_DEPTH_ATTR
   vDepth = aDepth;
@@ -57,6 +63,7 @@ const FRAGMENT = /* glsl */ `
 #include <fog_pars_fragment>
 uniform float uTime;
 uniform sampler2D uRipple;
+uniform sampler2D uWaves;
 uniform vec4 uRipples[${RIPPLE_SLOTS}];
 uniform vec4 uLamps[${LAMP_SLOTS}];
 uniform vec3 uShallow;
@@ -91,12 +98,26 @@ void main() {
     vec2 q = ( vWorld.xz - uBasin.xy ) / uBasin.zw;
     depth = clamp( 1.0 - dot( q, q ), 0.0, 1.0 );
   }
-  vec2 uv1 = vWorld.xz * 0.30 + uTime * vec2( 0.011, 0.007 );
-  vec2 uv2 = vWorld.xz * 0.85 + uTime * vec2( -0.009, 0.013 );
-  vec3 n1 = texture2D( uRipple, uv1 ).xyz * 2.0 - 1.0;
-  vec3 n2 = texture2D( uRipple, uv2 ).xyz * 2.0 - 1.0;
-  float gust = 0.5 + 0.5 * sin( vWorld.x * 0.045 + uTime * 0.06 ) * sin( vWorld.z * 0.037 - uTime * 0.045 + 1.3 );
-  vec2 slope = ( n1.xy + 0.6 * n2.xy ) * ( 0.035 + 0.09 * gust );
+  // lake v2: the water moves (owner 2026-11-16) — wind chop from the wave tile in two (three on PC) layers drifting with the
+  // wind, gust patches (cat's paws) running across, the old fine ripple on top; still a calm reservoir, never surf
+  vec2 p = vWorld.xz;
+  float gust = texture2D( uWaves, p * 0.011 + uTime * vec2( 0.0105, 0.0042 ) ).a;
+  gust = smoothstep( 0.3, 0.85, gust ) * 0.85 + 0.15 * ( 0.5 + 0.5 * sin( p.x * 0.045 + uTime * 0.06 ) );
+  vec2 s1 = texture2D( uWaves, p * 0.19 + uTime * vec2( 0.052, 0.021 ) ).rg * 2.0 - 1.0;
+  vec2 q2 = vec2( 0.8 * p.x - 0.6 * p.y, 0.6 * p.x + 0.8 * p.y );
+  vec2 s2 = texture2D( uWaves, q2 * 0.43 + uTime * vec2( 0.071, -0.033 ) ).rg * 2.0 - 1.0;
+  vec2 s2r = vec2( 0.8 * s2.x + 0.6 * s2.y, -0.6 * s2.x + 0.8 * s2.y );
+  vec3 n1 = texture2D( uRipple, p * 0.85 + uTime * vec2( -0.009, 0.013 ) ).xyz * 2.0 - 1.0;
+  vec2 chop = s1 * 0.55 + s2r * 0.4;
+  #ifdef LAKE_SWELL
+  vec2 s3 = texture2D( uWaves, p * 1.07 + uTime * vec2( 0.13, 0.06 ) ).rg * 2.0 - 1.0;
+  chop += s3 * 0.22;
+  // the swell's own slope (the vertex shader's waves)
+  vec2 swell = 0.016 * vec2( 0.55, 0.21 ) * cos( dot( p, vec2( 0.55, 0.21 ) ) - uTime * 1.1 ) + 0.010 * vec2( -0.23, 0.71 ) * cos( dot( p, vec2( -0.23, 0.71 ) ) - uTime * 0.83 );
+  #else
+  vec2 swell = vec2( 0.0 );
+  #endif
+  vec2 slope = chop * ( 0.04 + 0.085 * gust ) + n1.xy * 0.018 - swell * 3.0;
   #pragma unroll_loop_start
   for ( int i = 0; i < ${RIPPLE_SLOTS}; i ++ ) {
     {
@@ -148,6 +169,14 @@ void main() {
   float glint = pow( max( dot( R, normalize( uSunDir ) ), 0.0 ), 260.0 );
   vec3 col = mix( body, refl * 0.9, reflAmt );
   col += uSunColor * glint * 1.6 * ( 1.0 - uNight ) * shade;
+  // lake v2: the lapping at the bank — a thin pale line of wet foam that comes and goes with the small waves
+  {
+    float dS = data.g > 0.0 ? ( 1.0 - data.g ) * 3.0 : 3.0;
+    float along = vWorld.x * 0.61 + vWorld.z * 0.47;
+    float edge = 0.18 + 0.12 * sin( uTime * 1.25 + along ) + 0.05 * sin( uTime * 2.7 + along * 2.3 );
+    float foam = exp( - pow( ( dS - edge ) / 0.09, 2.0 ) ) * ( 0.6 + 0.4 * gust );
+    col = mix( col, vec3( 0.62, 0.62, 0.55 ) * uTint * shade, 0.22 * foam * ( 1.0 - 0.6 * uNight ) );
+  }
   #else
   vec3 refl = mix( uHorizon, uZenith, pow( ry, 0.6 ) );
   refl = mix( uTreeLine, refl, smoothstep( 0.03, 0.2, ry ) );
@@ -249,7 +278,7 @@ export interface LakeWaterLook {
   lamps?: ReadonlyArray<{ x: number; z: number }>;
 }
 
-export function createLakeWater(opts: { depthAttr?: boolean; ripple?: DataTexture; look?: LakeWaterLook } = {}): LakeWater {
+export function createLakeWater(opts: { depthAttr?: boolean; ripple?: DataTexture; look?: LakeWaterLook; tier?: "high" | "low" } = {}): LakeWater {
   const ripple = opts.ripple ?? makeRippleTexture();
   const ownsTexture = !opts.ripple;
   const rings: Vector4[] = Array.from({ length: RIPPLE_SLOTS }, () => new Vector4(0, 0, -100, 0));
@@ -265,6 +294,7 @@ export function createLakeWater(opts: { depthAttr?: boolean; ripple?: DataTextur
       {
         uTime: { value: 0 },
         uRipple: { value: ripple },
+        uWaves: { value: null },
         uRipples: { value: rings },
         uLamps: { value: lamps },
         uShallow: { value: new Vector3(shallow.r, shallow.g, shallow.b) },
@@ -290,13 +320,14 @@ export function createLakeWater(opts: { depthAttr?: boolean; ripple?: DataTextur
     ]),
     vertexShader: VERTEX,
     fragmentShader: FRAGMENT,
-    defines: opts.look ? { USE_LAKE_COLOR: "" } : opts.depthAttr ? { USE_DEPTH_ATTR: "" } : {},
+    defines: { ...(opts.look ? { USE_LAKE_COLOR: "" } : opts.depthAttr ? { USE_DEPTH_ATTR: "" } : {}), ...(opts.tier !== "low" ? { LAKE_SWELL: "" } : {}) },
     transparent: true,
     depthWrite: false,
     fog: true,
   });
   // UniformsUtils.merge clones the values (the arrays too): point the material and the ring list at the same objects
   material.uniforms.uRipple!.value = ripple;
+  material.uniforms.uWaves!.value = waveTexture();
   if (opts.look) {
     for (const t of [opts.look.reflDay, opts.look.reflNight]) {
       t.wrapS = RepeatWrapping;
