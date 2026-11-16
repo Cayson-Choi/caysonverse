@@ -1,76 +1,230 @@
-import { useRef } from "react";
+import { useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
-import { Group, Mesh, MeshStandardMaterial } from "three";
+import { DoubleSide, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial } from "three";
 import { CLOSED_AUTO_DOOR, PUBLIC_AUTO_DOOR, stepAutoDoor, type AutoDoorState } from "@caysonverse/shared/village/autoDoor";
 import { VILLAGE_LAYOUT, type AreaId } from "@caysonverse/shared/village/villageLayout";
 import type { Pose } from "../game/types";
-import { autoDoorOpenAmount } from "./publicAutoDoorModel";
+import { forEachRemotePosition } from "../game/remoteStore";
+import { doorObservation, stepShownOpening } from "./publicAutoDoorModel";
 import { hallDoor } from "./hallDoor";
+import { HALL_LEAF_MOUNT_Z, HALL_LEAF_SLIDE_M, entranceRig, hallDoorRig, type Box, type DoorRig } from "./autoDoorParts";
+import { litUniform } from "./villageModelPrep";
+
+export { HALL_LEAF_SLIDE_M };
 
 /**
- * A lightweight public entrance overlay for the current memorial hall GLB. It gives the player immediate visual
- * feedback for the proximity door while `UseDoor` remains the validated teleport action.
+ * The public auto doors (the memorial's entrance in the village, the hall's door inside), slid by the shared proximity state
+ * machine while `UseDoor` stays the validated teleport. Where the parts are, and why there, is autoDoorParts.ts (owner
+ * 2026-11-17: the hall's leaves slid across the tea corner and the hall map; doorClearance.test.ts sweeps every leaf).
  *
- * Inside the hall (2026-11-13 rebuild) the rebuilt model has its own glass leaves (`door__leaf_l` / `door__leaf_r`, see
- * hallDoor.ts): the same state machine slides THOSE, and the overlay's panels are hidden. Outside they are still the panels.
+ *  - Inside the hall the model has its own glass leaves (`door__leaf_l` / `door__leaf_r`, hallDoor.ts): they are hung on the
+ *    wall's outer face (`HALL_LEAF_MOUNT_Z`) and slide behind the wall; this adds the operator header and the sill track there.
+ *  - In the village it is a whole storefront door across the memorial porch's mouth: two fixed glass side-lights, two
+ *    bi-parting leaves running behind them, the operator header with its sensor, the floor track. Thin anodised aluminium,
+ *    clear glass with a Fresnel sheen and a frosted safety band.
+ *
+ * Every avatar in the area (not only the local one) holds the door open, and the shown opening turns round where it is when
+ * someone steps in while it closes, so a leaf never closes through anyone.
  */
-/** How far each model leaf of the hall's door slides when the door is fully open (m): a leaf is 1.04 m wide, the opening 2.2 m. */
-export const HALL_LEAF_SLIDE_M = 1.0;
+
+/** Test hook (e2e/door-clearance.mjs): a number 0..1 holds every auto door at that opening; null runs the live state machine. */
+export const autoDoorHold: { amount: number | null } = { amount: null };
+
+const DOORWAY_M = 1.15;
 
 export function PublicAutoDoor({ area, pose }: { area: AreaId; pose: Pose }) {
-  const root = useRef<Group>(null);
-  const left = useRef<Mesh>(null);
-  const right = useRef<Mesh>(null);
-  const sensor = useRef<Mesh>(null);
   const state = useRef<AutoDoorState>({ ...CLOSED_AUTO_DOOR });
-  const pad = area === "hall" ? VILLAGE_LAYOUT.memorial.interior.doorPad : VILLAGE_LAYOUT.memorial.exterior.doorPad;
-  const base = area === "hall" ? { x: pad.centre.x, z: 6 } : { x: pad.centre.x, z: -52 };
+  const shown = useRef(0);
+  const lastMs = useRef<number | null>(null);
+  const leafRefs = useRef<(Group | null)[]>([]);
+  const sensor = useRef<Mesh>(null);
+  const hall = area === "hall";
+  const pad = hall ? VILLAGE_LAYOUT.memorial.interior.doorPad : VILLAGE_LAYOUT.memorial.exterior.doorPad;
+  const rig = useMemo<DoorRig>(() => (hall ? hallDoorRig() : entranceRig()), [hall]);
+  const mats = useDoorMaterials(hall);
 
   useFrame(({ clock }) => {
     const nowMs = clock.elapsedTime * 1000;
-    const currentDistance = Math.hypot(pose.x - pad.centre.x, pose.z - pad.centre.z);
-    // Keep the threshold occupied while the player is in the sweep, preventing a closing panel from clipping them.
+    const others: { x: number; z: number }[] = [];
+    forEachRemotePosition((x, z, connected) => {
+      if (connected) others.push({ x, z });
+    });
     state.current = stepAutoDoor(
       state.current,
       nowMs,
-      { playerDistancesM: [currentDistance], doorwayOccupied: currentDistance <= 1.15 },
+      doorObservation(pad.centre, pose, others, DOORWAY_M),
       { ...PUBLIC_AUTO_DOOR, approachRadiusM: Math.max(PUBLIC_AUTO_DOOR.approachRadiusM, pad.radius + 0.75) },
     );
-    const amount = autoDoorOpenAmount(state.current, nowMs, PUBLIC_AUTO_DOOR);
-    const model = area === "hall" ? hallDoor.leaves : null;
-    if (root.current) root.current.visible = model === null;
-    if (model) {
-      // the model's leaves are authored closed: each slides along x toward its own side
-      model.left.position.x = -amount * HALL_LEAF_SLIDE_M;
-      model.right.position.x = amount * HALL_LEAF_SLIDE_M;
+    const dt = lastMs.current === null ? 0 : nowMs - lastMs.current;
+    lastMs.current = nowMs;
+    shown.current = stepShownOpening(shown.current, state.current, dt, PUBLIC_AUTO_DOOR);
+    const amount = autoDoorHold.amount ?? shown.current;
+    if (hall) {
+      const model = hallDoor.leaves;
+      if (!model) return;
+      // the model's leaves are authored closed on the room's face: hung on the outer face, each slides toward its own side
+      model.left.position.set(-amount * HALL_LEAF_SLIDE_M, 0, HALL_LEAF_MOUNT_Z);
+      model.right.position.set(amount * HALL_LEAF_SLIDE_M, 0, HALL_LEAF_MOUNT_Z);
       return;
     }
-    if (left.current) left.current.position.x = -0.58 - amount * 0.52;
-    if (right.current) right.current.position.x = 0.58 + amount * 0.52;
-    if (sensor.current) {
-      const material = sensor.current.material as MeshStandardMaterial;
-      material.emissiveIntensity = state.current.phase === "closed" ? 0.35 : 1.5;
-    }
+    rig.leaves.forEach((leaf, i) => {
+      const g = leafRefs.current[i];
+      if (g) g.position.x = amount * leaf.slideX;
+    });
+    if (sensor.current) (sensor.current.material as MeshStandardMaterial).emissiveIntensity = state.current.phase === "closed" ? 0.25 : 1.6;
   });
 
+  if (hall) {
+    return (
+      <group name="public_auto_door__hall">
+        {rig.parts.map((p) => (
+          <BoxMesh key={p.name} name={`auto_door__${p.name}`} b={p.box} material={mats.alu} />
+        ))}
+      </group>
+    );
+  }
+  const part = (name: string) => rig.parts.find((p) => p.name === name)!.box;
+  const header = part("header");
+  const sensorBox = part("sensor");
   return (
-    <group ref={root} position={[base.x, 0, base.z]} name={`public_auto_door__${area}`}>
-      <mesh ref={left} position={[-0.58, 1.5, 0]} castShadow>
-        <boxGeometry args={[1.1, 3, 0.12]} />
-        <meshStandardMaterial color="#9DD8EA" emissive="#56B9D2" emissiveIntensity={0.35} transparent opacity={0.52} roughness={0.25} metalness={0.05} />
-      </mesh>
-      <mesh ref={right} position={[0.58, 1.5, 0]} castShadow>
-        <boxGeometry args={[1.1, 3, 0.12]} />
-        <meshStandardMaterial color="#9DD8EA" emissive="#56B9D2" emissiveIntensity={0.35} transparent opacity={0.52} roughness={0.25} metalness={0.05} />
-      </mesh>
-      <mesh position={[0, 3.1, 0]}>
-        <boxGeometry args={[2.45, 0.16, 0.18]} />
-        <meshStandardMaterial color="#E8F4F7" roughness={0.35} />
-      </mesh>
-      <mesh ref={sensor} position={[0, 2.85, 0.12]}>
-        <sphereGeometry args={[0.06, 12, 8]} />
-        <meshStandardMaterial color="#D8FFF7" emissive="#74F6D5" emissiveIntensity={0.35} toneMapped={false} />
-      </mesh>
+    <group name="public_auto_door__village">
+      {rig.leaves.map((leaf, i) => (
+        <group key={leaf.name} name={leaf.name} ref={(g) => void (leafRefs.current[i] = g)}>
+          <GlassPanel b={leaf.closed} frame={mats.alu} glass={mats.glass} band={mats.band} seal={mats.seal} meetingEdge={i === 0 ? "max" : "min"} />
+        </group>
+      ))}
+      <GlassPanel b={part("side_light_l")} frame={mats.alu} glass={mats.glass} band={mats.band} seal={mats.seal} />
+      <GlassPanel b={part("side_light_r")} frame={mats.alu} glass={mats.glass} band={mats.band} seal={mats.seal} />
+      <group name="auto_door__header">
+        <BoxMesh b={header} material={mats.alu} />
+        {/* the cover's shadow line and its end caps: an extruded housing, not a plain block */}
+        <BoxMesh b={{ min: [header.min[0] + 0.02, header.min[1] + 0.2, header.max[2]], max: [header.max[0] - 0.02, header.min[1] + 0.208, header.max[2] + 0.002] }} material={mats.seal} />
+        <BoxMesh b={{ min: [header.min[0], header.min[1], header.min[2]], max: [header.min[0] + 0.012, header.max[1], header.max[2] + 0.004] }} material={mats.cap} />
+        <BoxMesh b={{ min: [header.max[0] - 0.012, header.min[1], header.min[2]], max: [header.max[0], header.max[1], header.max[2] + 0.004] }} material={mats.cap} />
+      </group>
+      <group name="auto_door__sensor">
+        <BoxMesh b={sensorBox} material={mats.seal} />
+        {/* its lens and the status light */}
+        <BoxMesh
+          b={{ min: [sensorBox.min[0] + 0.03, sensorBox.min[1] + 0.012, sensorBox.max[2]], max: [sensorBox.max[0] - 0.07, sensorBox.max[1] - 0.012, sensorBox.max[2] + 0.004] }}
+          material={mats.lens}
+        />
+        <mesh ref={sensor} position={[sensorBox.max[0] - 0.035, (sensorBox.min[1] + sensorBox.max[1]) / 2, sensorBox.max[2] + 0.004]}>
+          <sphereGeometry args={[0.009, 10, 6]} />
+          <meshStandardMaterial color="#9dffcf" emissive="#38e08e" emissiveIntensity={0.25} toneMapped={false} />
+        </mesh>
+      </group>
+      <group name="auto_door__track">
+        <BoxMesh b={part("track")} material={mats.cap} />
+        {/* the guide channel the leaves' shoes run in */}
+        <BoxMesh b={{ min: [part("track").min[0], part("track").max[1], -52.215], max: [part("track").max[0], part("track").max[1] + 0.001, -52.195] }} material={mats.seal} />
+      </group>
     </group>
   );
+}
+
+function BoxMesh({ b, material, name }: { b: Box; material: MeshStandardMaterial | MeshBasicMaterial; name?: string }) {
+  const size: [number, number, number] = [b.max[0] - b.min[0], b.max[1] - b.min[1], b.max[2] - b.min[2]];
+  const at: [number, number, number] = [(b.min[0] + b.max[0]) / 2, (b.min[1] + b.max[1]) / 2, (b.min[2] + b.max[2]) / 2];
+  return (
+    <mesh name={name} position={at} material={material} castShadow={material instanceof MeshStandardMaterial} receiveShadow>
+      <boxGeometry args={size} />
+    </mesh>
+  );
+}
+
+const STILE = 0.055;
+const TOP_RAIL = 0.07;
+const BOTTOM_RAIL = 0.11;
+
+/** One aluminium-framed glass panel filling `b` (x wide, y tall, z deep): stiles, rails, the pane in their middle, a frosted band. */
+function GlassPanel({
+  b,
+  frame,
+  glass,
+  band,
+  seal,
+  meetingEdge,
+}: {
+  b: Box;
+  frame: MeshStandardMaterial;
+  glass: MeshBasicMaterial;
+  band: MeshStandardMaterial;
+  seal: MeshStandardMaterial;
+  meetingEdge?: "min" | "max";
+}) {
+  const [x0, y0, z0] = b.min;
+  const [x1, y1, z1] = b.max;
+  const zc = (z0 + z1) / 2;
+  const pane = { x0: x0 + STILE, x1: x1 - STILE, y0: y0 + BOTTOM_RAIL, y1: y1 - TOP_RAIL };
+  return (
+    <group>
+      <BoxMesh b={{ min: [x0, y0, z0], max: [x0 + STILE, y1, z1] }} material={frame} />
+      <BoxMesh b={{ min: [x1 - STILE, y0, z0], max: [x1, y1, z1] }} material={frame} />
+      <BoxMesh b={{ min: [pane.x0, y1 - TOP_RAIL, z0], max: [pane.x1, y1, z1] }} material={frame} />
+      <BoxMesh b={{ min: [pane.x0, y0, z0], max: [pane.x1, y0 + BOTTOM_RAIL, z1] }} material={frame} />
+      {/* the glazing beads either side of the pane */}
+      <BoxMesh b={{ min: [pane.x0, pane.y0, z0 + 0.008], max: [pane.x1, pane.y0 + 0.012, z1 - 0.008] }} material={seal} />
+      <BoxMesh b={{ min: [pane.x0, pane.y1 - 0.012, z0 + 0.008], max: [pane.x1, pane.y1, z1 - 0.008] }} material={seal} />
+      <BoxMesh b={{ min: [pane.x0, pane.y0 + 0.012, zc - 0.005], max: [pane.x1, pane.y1 - 0.012, zc + 0.005] }} material={glass} />
+      {/* the safety band printed on the glass at eye height (both faces) */}
+      <BoxMesh b={{ min: [pane.x0, 1.38, zc - 0.0062], max: [pane.x1, 1.46, zc + 0.0062] }} material={band} />
+      {/* the meeting stile's rubber seal */}
+      {meetingEdge && (
+        <BoxMesh
+          b={meetingEdge === "max" ? { min: [x1 - 0.004, y0 + 0.02, z0 + 0.012], max: [x1, y1 - 0.02, z1 - 0.012] } : { min: [x0, y0 + 0.02, z0 + 0.012], max: [x0 + 0.004, y1 - 0.02, z1 - 0.012] }}
+          material={seal}
+        />
+      )}
+    </group>
+  );
+}
+
+/** The doors' materials: anodised aluminium (the hall's door is white like its leaves), black gaskets, clear glass. */
+function useDoorMaterials(hall: boolean) {
+  return useMemo(() => {
+    const alu = new MeshStandardMaterial({ color: hall ? "#e7e9e8" : "#3b3f45", metalness: 0.65, roughness: 0.34 });
+    const cap = new MeshStandardMaterial({ color: hall ? "#d3d6d5" : "#2c3035", metalness: 0.7, roughness: 0.3 });
+    const seal = new MeshStandardMaterial({ color: "#16181b", metalness: 0.1, roughness: 0.75 });
+    const lens = new MeshStandardMaterial({ color: "#0b0d10", metalness: 0.4, roughness: 0.12 });
+    const band = new MeshStandardMaterial({ color: "#eef2f2", roughness: 0.85, transparent: true, opacity: 0.55, depthWrite: false });
+    return { alu, cap, seal, lens, band, glass: doorGlass() };
+  }, [hall]);
+}
+
+/**
+ * Clear glass that reads as glass (as hallGlass.ts does for the hall): nearly clear head-on, a Schlick Fresnel sheen toward a
+ * grazing view and a soft broad sheen in the reflected direction that moves with the camera; dimmer at night (`litUniform`,
+ * the village's night weight).
+ */
+function doorGlass(): MeshBasicMaterial {
+  const m = new MeshBasicMaterial({ color: "#dcebec", transparent: true, depthWrite: false, side: DoubleSide });
+  m.onBeforeCompile = (shader) => {
+    shader.uniforms.uVillageLit = litUniform;
+    shader.vertexShader = shader.vertexShader
+      .replace("void main() {", "varying vec3 vDoorGlassWorld;\nvoid main() {")
+      .replace("#include <project_vertex>", "#include <project_vertex>\n\tvDoorGlassWorld = ( modelMatrix * vec4( transformed, 1.0 ) ).xyz;");
+    shader.fragmentShader = shader.fragmentShader
+      .replace("void main() {", "varying vec3 vDoorGlassWorld;\nuniform float uVillageLit;\nvoid main() {")
+      .replace(
+        "#include <opaque_fragment>",
+        /* glsl */ `#include <opaque_fragment>
+	{
+		vec3 V = normalize( cameraPosition - vDoorGlassWorld );
+		vec3 N = normalize( cross( dFdx( vDoorGlassWorld ), dFdy( vDoorGlassWorld ) ) );
+		if ( dot( N, V ) < 0.0 ) N = -N;
+		float ndv = clamp( dot( N, V ), 0.0, 1.0 );
+		float fres = 0.04 + 0.96 * pow( 1.0 - ndv, 5.0 );
+		vec3 R = reflect( -V, N );
+		float d = ( vDoorGlassWorld.y + 0.8 * ( vDoorGlassWorld.x + vDoorGlassWorld.z ) ) * 0.9 + R.y * 1.6 + R.x * 1.1;
+		float sheen = smoothstep( 0.35, 1.0, sin( d * 3.1416 ) );
+		float lit = 1.0 - 0.6 * uVillageLit;
+		float a = 0.1 + 0.75 * fres + 0.16 * sheen * lit;
+		vec3 col = mix( diffuseColor.rgb * mix( 1.0, 0.35, uVillageLit ), vec3( 1.0 ), clamp( sheen * 0.7 * lit, 0.0, 1.0 ) );
+		gl_FragColor = vec4( col, clamp( a, 0.0, 0.85 ) );
+	}`,
+      );
+  };
+  m.customProgramCacheKey = () => "public-door-glass";
+  return m;
 }
