@@ -19,7 +19,6 @@ import { useQualityTier } from "../game/QualityEffects";
 import { SceneWarmUp } from "../game/SceneWarmUp";
 import { VILLAGE_LAYOUT, buildingIdFromArea, isHouseArea, type AreaId } from "@caysonverse/shared/village/villageLayout";
 import { PlotMarkers } from "./PlotMarkers";
-import { DoorPad } from "./VillageHall";
 import { HallArea } from "./MemorialHall";
 import { CubbyView } from "./CubbyView";
 import { cubbyCardState, openCubbyCard } from "./cubbyCard";
@@ -62,7 +61,7 @@ import { HouseInterior } from "./HouseInterior";
 /**
  * 케이슨 마을 — the village scene (Task 4). A `PlayShell` on the village map under the village's afternoon
  * light: outside, the Blender model (Task 7: VillageModel — the plaza, houses, creek, plots, the far mountains and
- * the sky dome, with its far plane past the dome) with the words on the plots' signs and the memorial's door pad;
+ * the sky dome, with its far plane past the dome) with the words on the plots' signs;
  * inside, the memorial hall (Task 9: MemorialHall — the Task 8 model, the sample cubbies' props, the candles).
  *
  * Two areas share this room: the open village and the memorial hall's interior (`Player.area`). The scene follows
@@ -109,7 +108,7 @@ function PlainGround() {
 /** A failed village model: its cover lifts at once (the plain ground and the notice show, not "불러오는 중…"). */
 const uncoverVillage = () => vegDressing.uncover();
 
-/** What the local player's area draws: the village model and its signs and door pad, or the hall's room. */
+/** What the local player's area draws: the village model and its signs (no floor mark at the memorial's door), or the hall's room. */
 function VillageArea({ area, tier, pose }: { area: AreaId; tier: VillageTier; pose: Pose }) {
   if (area === "hall") return <HallArea pose={pose} />;
   if (isHouseArea(area)) return <HouseInterior buildingId={buildingIdFromArea(area)!} origin={[300, 0, 0]} tier={tier} />;
@@ -143,7 +142,6 @@ function VillageArea({ area, tier, pose }: { area: AreaId; tier: VillageTier; po
         <TransitRoadSignals />
       </LoadBoundary>
       <PlotMarkers />
-      <DoorPad pad={VILLAGE_LAYOUT.memorial.exterior.doorPad} y={0.06} />
       <PublicAutoDoor area="village" pose={pose} />
     </>
   );

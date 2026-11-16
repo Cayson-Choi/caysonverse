@@ -74,6 +74,7 @@ import type { AreaId } from "@caysonverse/shared/village/villageLayout";
 import { startRemoteSync, type PlayersRoom } from "./remoteSync";
 import type { AreaGate } from "./areaFilter";
 import { clearRemotes, getRemoteRecord, getRoster } from "./remoteStore";
+import { clearSentMoves, recordSentMove } from "./sentMoves";
 
 let seq = 0;
 type TestPlayer = Record<string, unknown>;
@@ -238,5 +239,48 @@ describe("startRemoteSync WITHOUT a gate — nothing about areas", () => {
     room.players.set("b", player({ area: "village" }));
     start();
     expect(getRoster()).toEqual(["a", "b"]);
+  });
+});
+
+describe("my own door: the server's new place is taken whole (owner 2026-11-16, live: out of the hall into a grey void)", () => {
+  afterEach(() => clearSentMoves());
+
+  it("in and straight back out without a step inside: I land at the village arrival, not at the hall's coordinates", () => {
+    const gate = makeGate("village");
+    // my last accepted Move: stamped 7, on the memorial's outside door pad
+    recordSentMove({ x: 0, z: -50.8, yaw: Math.PI, t: 7 });
+    const me = player({ area: "village", x: 0, z: -50.8, yaw: Math.PI, moveT: 7 });
+    room.players.set("me", me);
+    const self = { x: 0, z: -50.8, yaw: Math.PI };
+    start(gate, self);
+
+    h.patch(me, { area: "hall", x: 300, z: 3.6, yaw: Math.PI }); // in through the door (the stamp stays 7)
+    expect(gate.local()).toBe("hall");
+    expect([self.x, self.z]).toEqual([300, 3.6]);
+
+    // straight back out, no Move in between: the server puts me 1.4 m from where stamp 7 was sent
+    h.patch(me, { area: "village", x: 0, z: -49.4, yaw: 0 });
+    expect(gate.local()).toBe("village");
+    expect([self.x, self.z, self.yaw]).toEqual([0, -49.4, 0]);
+  });
+
+  it("the same the other way: out, and straight back in without a step outside", () => {
+    recordSentMove({ x: 300, z: 4.6, yaw: 0, t: 9 }); // last Move: on the hall's way-out pad
+    const me = player({ area: "hall", x: 300, z: 4.6, yaw: 0, moveT: 9 });
+    room.players.set("me", me);
+    const self = { x: 300, z: 4.6, yaw: 0 };
+    start(makeGate("hall"), self);
+    h.patch(me, { area: "village", x: 0, z: -49.4, yaw: 0 });
+    expect([self.x, self.z]).toEqual([0, -49.4]);
+    h.patch(me, { area: "hall", x: 300.4, z: 3.6, yaw: Math.PI }); // back in, still no Move: 1 m from stamp 9's pose
+    expect([self.x, self.z, self.yaw]).toEqual([300.4, 3.6, Math.PI]);
+  });
+
+  it("the seed (join, reconnect) is not a door: my pose is left to the usual check", () => {
+    const me = player({ area: "hall", x: 300, z: 3.6, yaw: 0 });
+    room.players.set("me", me);
+    const self = { x: 300.5, z: 3.4, yaw: 1 };
+    start(makeGate("village"), self);
+    expect([self.x, self.z, self.yaw]).toEqual([300.5, 3.4, 1]);
   });
 });

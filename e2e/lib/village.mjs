@@ -177,33 +177,30 @@ export const audioState = (p) =>
   });
 
 /**
- * The filled cubby the hall scenario visits: eye-level card (row 3, else 2/4), on the back wall east of the bench or on the east
- * wall, in a column that also has an empty row (step 9 visits it; T11 review minor 3).
+ * The filled cubby the hall scenario visits: the hall's one sample (견본) at eye level — bank A, column 11, row 3 (the layout of
+ * the memorial stage A: banks A/B either side of the niche, E on the east wall; e2e/village-hall.mjs picks the same one). Its
+ * column has empty rows above and below (step 9 visits one).
  */
 export const pickCubby = (p) =>
   p.page.evaluate(async () => {
     const s = await window.__imp("/src/village/sampleCubbies.ts");
     const t = await window.__imp("/src/village/villageTargets.ts");
     const c = await window.__imp("/src/village/cubbyCard.ts");
-    const cols = t.cubbyColumns().filter((col) => (col.wall === "n" && col.x > 300.6 && col.x < 303.2) || (col.wall === "e" && col.z > -4.4 && col.z < 1.2));
-    for (const want of [3, 2, 4]) {
-      for (const column of cols) {
-        const row = c.defaultRow(column.key);
-        const a = column.rows[row];
-        if (row !== want || !s.SAMPLE_BY_ID.has(a.id)) continue;
-        if (!column.rows.some((r) => !s.SAMPLE_BY_ID.has(r.id))) continue;
-        const fx = Math.sin(a.yaw);
-        const fz = Math.cos(a.yaw);
-        return { key: column.key, row, id: a.id, x: a.x, y: a.y, z: a.z, standX: a.x + fx * 0.85, standZ: a.z + fz * 0.85, sample: s.SAMPLE_BY_ID.get(a.id) };
-      }
-    }
-    return null;
+    const column = t.cubbyColumns().find((col) => col.key === "A_11");
+    if (!column) return null;
+    const row = c.defaultRow(column.key);
+    const a = column.rows[row];
+    if (!s.SAMPLE_BY_ID.has(a.id) || !column.rows.some((r) => !s.SAMPLE_BY_ID.has(r.id))) return null;
+    const fx = Math.sin(a.yaw);
+    const fz = Math.cos(a.yaw);
+    return { key: column.key, row, id: a.id, x: a.x, y: a.y, z: a.z, standX: a.x + fx * 0.85, standZ: a.z + fz * 0.85, sample: s.SAMPLE_BY_ID.get(a.id) };
   });
 
-/** Walk to the front of a picked cubby (round the bench first) and face it. */
+/** Walk to the front of a picked cubby (up the aisle between the benches, as e2e/village-hall.mjs does) and face it. */
 export async function standAtCubby(p, pick) {
-  await walkAndWait(p, 302.6, 0.5, 15000, 0.5);
-  await walkAndWait(p, 302.6, -3.6, 15000, 0.5);
+  await walkAndWait(p, 299.9, -1.5, 15000, 0.5);
+  await walkAndWait(p, 299.9, -3.9, 15000, 0.5);
+  // square in front of the column: line up 1.6 m out, then walk straight in (a click-move stops about 0.35 m short)
   const fx = (pick.standX - pick.x) / 0.85;
   const fz = (pick.standZ - pick.z) / 0.85;
   await walkAndWait(p, pick.x + fx * 1.6, pick.z + fz * 1.6, 15000, 0.4);

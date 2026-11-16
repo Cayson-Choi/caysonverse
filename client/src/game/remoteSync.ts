@@ -138,10 +138,19 @@ export function startRemoteSync(
         let seenArea: string | undefined;
         offs.push(
           $(player).listen("area", (value: string) => {
-            // A door puts me down FACING the way the server says (into the room / away from the building). The
-            // position is snapped just above; the facing comes with it, so the camera that swings behind me
-            // (CameraRig) looks the way I do. The first call is the seed (join, reconnect), not a door.
-            if (seenArea !== undefined && seenArea !== value) selfPose.yaw = player.yaw;
+            // A door puts me down WHERE and FACING the way the server says (into the room / away from the building),
+            // so the camera that swings behind me (CameraRig) looks the way I do. The first call is the seed (join,
+            // reconnect), not a door. The position is set here, not left to the divergence check above (owner
+            // 2026-11-16, live: "추모관 나오기를 했더니 이상한 공간에 들어와서 움직이지도 않아"): through the door and
+            // straight back out without a step inside, my echoed stamp still names my last Move at the OUTSIDE door,
+            // a metre or two from where the way out puts me, so the check took the new place for that old echo and
+            // kept me at the hall's coordinates in the village — an empty grey void, 300 m from anything, every
+            // step refused. A door is always the server's placement: take it whole.
+            if (seenArea !== undefined && seenArea !== value) {
+              selfPose.x = player.x;
+              selfPose.z = player.z;
+              selfPose.yaw = player.yaw;
+            }
             seenArea = value;
             areas.setLocal(normalizeArea(value));
           }),
