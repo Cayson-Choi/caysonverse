@@ -436,6 +436,11 @@ export interface BuildOptions {
   onShow?: (v: VillageVegetation) => void;
   /** How long (ms) a slice of work may run before the main thread is handed back (default STEP_SLICE_MS). */
   sliceMs?: () => number;
+  /**
+   * Only the flowers and grass tufts grown from `root`'s flower cards (their cards hidden), no trees, bushes or bark: the
+   * houses' own beds and gardens (집 외관 A8, houses/VillageHouses.tsx; village_houses.glb's M_leaf_flora planting cards).
+   */
+  flowersOnly?: boolean;
 }
 
 /** A slice of the build's work (ms) before the main thread is handed back. */
@@ -678,7 +683,7 @@ export class VillageVegetation {
     });
     if (await step("cards")) return v.abandon();
     // the houses' own model (집 외관 A8) takes the old porches' beds and the new footprints: no flowers or soil planted there
-    const houseGrounds = housesMode() === "new" ? makeHouseGrounds() : null;
+    const houseGrounds = housesMode() === "new" && !options.flowersOnly ? makeHouseGrounds() : null;
     const placed = placeFlowers(houseGrounds ? allCards.filter((c) => !houseGrounds((c.ax + c.bx) / 2, (c.az + c.bz) / 2)) : allCards);
     // the beds' soil (vegSoil.ts, 2026-11-16 plants2): built round the placed plants, and the plants set on it
     const soil = buildSoil(placed.plants);
@@ -763,6 +768,17 @@ export class VillageVegetation {
       v.flowerCells.push({ cell, batches, level: -1, visible: false });
     }
     if (await step("flowerMeshes")) return v.abandon();
+    if (options.flowersOnly) {
+      if (hide)
+        floraMeshes.forEach((mesh, mi) => {
+          const drop = placed.replaced.filter((c) => cardMesh.get(c) === mi);
+          if (drop.length) v.hideCards(mesh, drop);
+        });
+      stats.hiddenCards.flora = hide ? placed.replaced.length : 0;
+      stats.genMs = Math.round(work);
+      stats.wallMs = Math.round(performance.now() - start);
+      return v;
+    }
 
     // ── the trees' skeletons, replayed from the art script (the very limbs and cards of the file) ──
     const zelkova = zelkovaSkeleton();

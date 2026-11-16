@@ -48,6 +48,7 @@ import {
   houseLocalToWorld,
   houseProxyNode,
   houseShellNode,
+  porchKind,
   porchSlabLocal,
   localBox,
 } from "@caysonverse/shared/village/houseExterior";
@@ -114,9 +115,9 @@ export const HOUSE_LOOK = {
   glassEnv: 0.9,
   /** The rooms behind the windows at night: LIT.window's warm colour, this bright (× the village's lit weight). */
   windowGlow: 1.35,
-  /** The porch lamps' lens: a faint glow by day (frosted glass), lit at night. */
-  lampDay: 0.0,
-  lampNight: 2.4,
+  /** The keypad's screen (M_lamp: X2 hand-over, only the door lock's pad): a faint glow by day, a soft one at night. */
+  lampDay: 0.25,
+  lampNight: 0.9,
   /** The warm lamp light on the walls near a porch lamp or a street lantern at night (linear RGB x strength). */
   lampLight: [1.0, 0.6, 0.3] as const,
   lampStrength: 2.4,
@@ -498,8 +499,20 @@ export function hasPorchSlab(meshes: readonly Mesh[], h: Pick<SceneryHouse, "id"
   return false;
 }
 
+/**
+ * The porch lamps (X2 hand-over, porch_kit.py; their lenses are M_window, lit with the windows): the gable porch's ceiling
+ * downlight, the box canopies' two, otherwise (the decks, house 8's glass canopy) the two wall lights beside the door. Local
+ * (x, y, z), turned into the world per house.
+ */
+export function porchLampPoints(h: Pick<SceneryHouse, "id" | "centre" | "doorSide">): Vector3[] {
+  const kind = porchKind(h.id);
+  const at: Array<[number, number, number]> =
+    kind === "gable" ? [[0, 3.5, 4.19]] : kind === "canopy" && h.id !== "house_8" ? [[-0.65, 3.5, 3.975], [0.65, 3.5, 3.975]] : [[-1.3, 2.4, 3.2], [1.3, 2.4, 3.2]];
+  return at.map(([x, y, z]) => houseLocalPoint(h, x, y, z));
+}
+
 /** The porch lamps' lenses (M_lamp) of the model, one point per lamp (world: each connected bunch of its triangles' corners). */
-function lampPoints(meshes: readonly Mesh[]): Vector3[] {
+export function lampPoints(meshes: readonly Mesh[]): Vector3[] {
   const pts: Vector3[] = [];
   const v = new Vector3();
   for (const mesh of meshes) {
@@ -528,7 +541,7 @@ const A8_HOUSES = (): SceneryHouse[] => VILLAGE_LAYOUT.sceneryHouses.filter((h) 
  * Dress a CLONE-free copy of the houses' model for a tier: materials made here (the loader's stay as they are), the shells
  * merged per material into new geometry, the details reparented (their geometry stays the loader's).
  */
-export function prepareHouses(scene: Object3D, maps: Record<string, HouseMaps>): HouseNodes {
+export function prepareHouses(scene: Object3D, maps: Record<string, HouseMaps>, floraMap: Texture | null = null): HouseNodes {
   scene.updateWorldMatrix(true, true);
   const own = { materials: [] as Material[], geometries: [] as BufferGeometry[] };
   const made = new Map<string, Material>();
@@ -547,6 +560,8 @@ export function prepareHouses(scene: Object3D, maps: Record<string, HouseMaps>):
     else {
       // what a later kit adds (X2's M_leaf_flora: flower cards): the file's own material, lit, cut out
       const c = s.clone();
+      // the planting cards' picture is the village's (T_flora, by the material's name: X2 hand-over); the 3D plants hide them
+      if (c.name === "M_leaf_flora" && floraMap && !c.map) c.map = floraMap;
       if (c.alphaTest > 0 || c.name === "M_leaf_flora") {
         c.alphaTest = Math.max(c.alphaTest, 0.5);
         c.side = DoubleSide;
@@ -655,7 +670,7 @@ export function prepareHouses(scene: Object3D, maps: Record<string, HouseMaps>):
   const porches = houses.filter((h) => hasPorchSlab(byHouse.get(h.id) ?? [], h)).map((h) => h.id);
 
   // the night lamps: the porch lamps and the street lanterns within reach of a house
-  const points = lampPoints(lamps);
+  const points = houses.flatMap((h) => porchLampPoints(h));
   for (const [x, y, z] of lanternPositions()) {
     if (boxes.some((b) => gapToBox(x, z, b.box) <= HOUSE_LOOK.lanternReach)) points.push(new Vector3(x, y, z));
   }

@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
-import { RepeatWrapping, SRGBColorSpace, type Object3D } from "three";
+import { RepeatWrapping, SRGBColorSpace, type Material, type Mesh, type Object3D, type Texture } from "three";
 import { VILLAGE_LAYOUT } from "@caysonverse/shared/village/villageLayout";
 import { HOUSE_EXTERIOR_DEFAULT } from "@caysonverse/shared/village/houseOwnership";
 import { isTouchDevice } from "../../device";
@@ -22,6 +22,8 @@ import {
 } from "./housesPrep";
 import { buildHouseSigns, houseBoards } from "./houseSigns";
 import { getLocalPose, setPorchesDrawn } from "./houseLift";
+import { createVegetation, type VillageVegetation } from "../veg/villageVegetation";
+import { vegModeFrom } from "../veg/vegMode";
 
 declare global {
   interface Window {
@@ -73,8 +75,45 @@ export function VillageHouses({ villageRoot, tier }: { villageRoot: Object3D; ti
     });
     const full: Record<string, HouseMaps> = {};
     for (const [k, m] of Object.entries(maps)) if (m.map && m.normalMap) full[k] = { map: m.map, normalMap: m.normalMap, roughnessMap: m.roughnessMap ?? null };
-    return prepareHouses(gltf.scene, full);
-  }, [gltf, files, textures, gl]);
+    // the planting cards' picture: the village's own flower atlas (T_flora on its M_leaf_flora)
+    let floraMap: Texture | null = null;
+    villageRoot.traverse((o) => {
+      const m = (o as Mesh).material as Material | Material[] | undefined;
+      for (const x of Array.isArray(m) ? m : m ? [m] : []) if (!floraMap && x.name === "M_leaf_flora") floraMap = (x as { map?: Texture | null }).map ?? null;
+    });
+    return prepareHouses(gltf.scene, full, floraMap);
+  }, [gltf, files, textures, gl, villageRoot]);
+
+  // the beds' and gardens' plants: grown in 3D from the planting cards, as the village's (X2 hand-over; cards hidden)
+  const vegRef = useRef<VillageVegetation | null>(null);
+  useEffect(() => {
+    const mode = vegModeFrom(window.location.search, import.meta.env.DEV);
+    if (mode === "old") return;
+    let dead = false;
+    nodes.root.updateMatrixWorld(true);
+    void createVegetation(nodes.root, tier, mode, () => dead, { flowersOnly: true })
+      .then((v) => {
+        if (!v) return;
+        if (dead) {
+          v.dispose();
+          return;
+        }
+        // the flowers and grass tufts only: the beds' soil is the model's own (X2's, 0.29 m)
+        for (const c of [...v.group.children]) if (!c.name.startsWith("veg_flowers")) v.group.remove(c);
+        vegRef.current = v;
+        nodes.root.add(v.group);
+      })
+      .catch((e: unknown) => console.error("[houses] flowers failed", e));
+    return () => {
+      dead = true;
+      const v = vegRef.current;
+      vegRef.current = null;
+      if (v) {
+        nodes.root.remove(v.group);
+        v.dispose();
+      }
+    };
+  }, [nodes, tier]);
 
   const signs = useMemo(() => {
     const houses = VILLAGE_LAYOUT.sceneryHouses.filter((h) => h.kind === "house");
@@ -125,8 +164,9 @@ export function VillageHouses({ villageRoot, tier }: { villageRoot: Object3D; ti
 
   const device = isTouchDevice ? "phone" : "pc";
   const refs = useMemo(() => [{ x: 0, z: 0 }, { x: 0, z: 0 }], []);
-  useFrame(({ camera }) => {
+  useFrame(({ camera, clock, gl: r }) => {
     applyHousesDayNight(nodes, dayNight.applied);
+    vegRef.current?.update(camera, clock.elapsedTime, r.domElement.height);
     const p = getLocalPose();
     refs[0]!.x = camera.position.x;
     refs[0]!.z = camera.position.z;

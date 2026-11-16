@@ -2,11 +2,12 @@
  * 집 외관 A8 (X3): the boards at the houses' owner slots (contract ch. 4, shared houseExterior.ts `houseSlots`, state
  * houseOwnership.ts). Today every house shows its nameplate "N번 집" beside the door; the mailbox's name strip stays blank and
  * the yard sign hidden until a house has an owner or is for sale (the owner's roadmap, 2026-11-16). One merged mesh, one draw
- * call, one canvas atlas: a dark powder-coated aluminium plate with a thin brass rim and brass lettering, as Korean house
- * nameplates are; the sign a white board on a timber stake.
+ * call, one canvas atlas: the nameplate's lettering laid on X2's cream acrylic face (porch_kit.py: granite back plate,
+ * acrylic face 4 mm behind the slot), the mailbox strip and the yard sign as boards (the sign a white board on a stake).
  */
 import {
   BoxGeometry,
+  PlaneGeometry,
   BufferGeometry,
   CanvasTexture,
   Matrix4,
@@ -90,6 +91,21 @@ function drawBoard(ctx: CanvasRenderingContext2D, b: HouseBoard, c: Cell): void 
   const sign = b.kind === "sign";
   ctx.save();
   ctx.translate(c.x, c.y);
+  if (b.kind === "nameplate") {
+    // the lettering only, on X2's cream acrylic face (porch_kit.py nameplate): a deep charcoal cut-vinyl "N번 집"
+    ctx.clearRect(0, 0, c.w, c.h);
+    ctx.fillStyle = "#26292c";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    const n = b.lines.length;
+    b.lines.forEach((line, i) => {
+      const size = Math.round(c.h * (n === 1 ? 0.6 : i === 0 ? 0.46 : 0.3));
+      ctx.font = `700 ${size}px ${FONT}`;
+      ctx.fillText(line, c.w / 2, n === 1 ? c.h * 0.54 : i === 0 ? c.h * 0.36 : c.h * 0.76, c.w * 0.92);
+    });
+    ctx.restore();
+    return;
+  }
   // the face: charcoal powder coat (a white board for the sign), a little grain
   ctx.fillStyle = sign ? "#f1eee6" : PLATE;
   ctx.fillRect(0, 0, c.w, c.h);
@@ -122,7 +138,18 @@ function cellUv(c: Cell, W: number, H: number): [number, number, number, number]
 }
 
 /** One board's box (front +z = the street side), its UVs: the front the board's cell, the rest the plain edge. */
+/** The nameplate's lettering: inside X2's acrylic face (0.42 x 0.16, clear of its corner rosettes), 0.5 mm in front of it. */
+const PLATE_TEXT = { width: 0.4, height: 0.14, out: -0.0035 } as const;
+
 function boardGeometry(b: HouseBoard, front: [number, number, number, number], edge: [number, number, number, number]): BufferGeometry {
+  if (b.kind === "nameplate") {
+    const q = new PlaneGeometry(PLATE_TEXT.width, PLATE_TEXT.height);
+    const quv = q.getAttribute("uv");
+    for (let i = 0; i < quv.count; i++) quv.setXY(i, front[0] + (front[2] - front[0]) * quv.getX(i), front[1] + (front[3] - front[1]) * quv.getY(i));
+    q.translate(0, 0, PLATE_TEXT.out);
+    q.applyMatrix4(new Matrix4().compose(new Vector3(b.slot.x, b.slot.y, b.slot.z), new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), b.slot.yaw), new Vector3(1, 1, 1)));
+    return q;
+  }
   const g = new BoxGeometry(b.slot.width, b.slot.height, b.depth);
   const uv = g.getAttribute("uv");
   // BoxGeometry's faces: +x, -x, +y, -y, +z, -z, four corners each (u, v) in (0|1, 0|1)
@@ -134,8 +161,7 @@ function boardGeometry(b: HouseBoard, front: [number, number, number, number], e
     }
   }
   // the nameplate's and the strip's back on the wall face (the slot is 2 cm out from it): the board's centre half its depth out
-  const back = b.kind === "nameplate" ? -0.019 : 0;
-  g.translate(0, 0, back + b.depth / 2);
+  g.translate(0, 0, b.depth / 2);
   const parts: BufferGeometry[] = [g];
   if (b.kind === "sign") {
     // the timber stake from the bed into the board's back
@@ -179,7 +205,8 @@ export function buildHouseSigns(boards: readonly HouseBoard[], anisotropy = 4): 
     false,
   )!;
   geo.computeBoundingSphere();
-  const mat = new MeshStandardMaterial({ name: "M_house_boards", map: tex, roughness: 0.5, metalness: 0.15 });
+  // the nameplate's lettering is see-through round its letters (blended, no depth write: a click goes on to the plate)
+  const mat = new MeshStandardMaterial({ name: "M_house_boards", map: tex, roughness: 0.5, metalness: 0.05, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
   patchHouseLight(mat, "boards");
   const mesh = new Mesh(geo, mat);
   mesh.name = "house_boards";

@@ -18,6 +18,7 @@ import {
   makeHouseGrounds,
   oldHouseFootprints,
   pickDetail,
+  porchLampPoints,
   type HouseTextureMeta,
 } from "./housesPrep";
 import { houseBoards } from "./houseSigns";
@@ -209,6 +210,20 @@ describe("the houses' model and maps", () => {
     const low = new BoxGeometry(4, 0.1, 1.6);
     low.translate(c.x, 0.05, c.z);
     expect(hasPorchSlab([new Mesh(low)], h)).toBe(false);
+  });
+});
+
+describe("the porch lamps' night light (X2 hand-over: gable ceiling, box canopy two, else the wall lights)", () => {
+  it("one or two lamps a house, each over its porch in front of the door", () => {
+    for (const h of HOUSES) {
+      const pts = porchLampPoints(h);
+      expect(pts.length, h.id).toBe(h.id === "house_1" || h.id === "house_5" || h.id === "house_6" || h.id === "house_7" ? 1 : 2);
+      for (const p of pts) {
+        const d = Math.hypot(p.x - at(Number(h.id.slice(6)), 0, 3.6).x, p.z - at(Number(h.id.slice(6)), 0, 3.6).z);
+        expect(d, h.id).toBeLessThan(1.6);
+        expect(p.y).toBeGreaterThan(2.3);
+      }
+    }
   });
 });
 
