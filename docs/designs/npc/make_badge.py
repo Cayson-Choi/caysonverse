@@ -16,20 +16,3 @@ d.text(((W - tw) / 2, 64), "안내원", font=f2, fill=(34, 38, 60))
 d.rectangle([0, H - 10, W, H], fill=(75, 79, 216))
 im.save(sys.argv[1], optimize=True)
 
-
-def memorial(out):
-    """추모관 안내 명찰: 검은 판에 금빛 글씨(“케이슨 추모관 · 안내”)."""
-    W2, H2 = 320, 96
-    im2 = Image.new("RGB", (W2, H2), (24, 24, 28))
-    d2 = ImageDraw.Draw(im2)
-    d2.rectangle([3, 3, W2 - 4, H2 - 4], outline=(201, 168, 92), width=3)
-    fa = ImageFont.truetype("C:/Windows/Fonts/malgunbd.ttf", 22)
-    fb2 = ImageFont.truetype("C:/Windows/Fonts/malgunbd.ttf", 40)
-    t1 = "케이슨 추모관"; t2 = "안내"
-    d2.text(((W2 - d2.textlength(t1, font=fa)) / 2, 8), t1, font=fa, fill=(214, 186, 112))
-    d2.text(((W2 - d2.textlength(t2, font=fb2)) / 2, 36), t2, font=fb2, fill=(245, 242, 232))
-    im2.save(out, optimize=True)
-
-
-if len(sys.argv) > 2:
-    memorial(sys.argv[2])

@@ -79,13 +79,13 @@ describe("NPC 전용 모습은 조립실·옷장에 없다 (owner 2026-11-16)", 
   );
 
   it("every NPC look wears its own top (and the driver, the guide and the shopkeeper a hat of their own)", () => {
-    expect(Object.keys(NPC_LOOKS).sort()).toEqual(["bus_driver", "lake_shopkeeper", "memorial_staff", "village_guide"]);
+    expect(Object.keys(NPC_LOOKS).sort()).toEqual(["bus_driver", "lake_shopkeeper", "village_guide"]);
     for (const look of Object.values(NPC_LOOKS)) expect(look.parts.top?.startsWith(NPC_PART_PREFIX), look.id).toBe(true);
     expect(NPC_LOOKS.bus_driver.parts.hat).toBe("npc_driver_cap");
     expect(NPC_LOOKS.village_guide.parts.hat).toBe("npc_guide_hat");
     expect(NPC_LOOKS.village_guide.parts.item).toBe("npc_clipboard");
     expect(NPC_LOOKS.lake_shopkeeper.parts.hat).toBe("npc_shop_hat");
-    expect(npcIds.length).toBeGreaterThanOrEqual(8);
+    expect(npcIds.length).toBe(7);
     // the rest of each look (head, hair, face, trousers, shoes) is a character.glb part a player can also have
     for (const look of Object.values(NPC_LOOKS)) {
       for (const slot of CHARACTER_SLOTS) {
@@ -120,9 +120,9 @@ describe("NPC 전용 모습은 조립실·옷장에 없다 (owner 2026-11-16)", 
     }
   });
 
-  it("the two guides wear their NPC looks", () => {
+  it("the plaza guide wears its NPC look (the hall's desk guide has none: owner 2026-11-17 removed it)", () => {
     expect(GUIDES.find((g) => g.id === "plaza_guide")?.npc).toBe("village_guide");
-    expect(GUIDES.find((g) => g.id === "hall_desk")?.npc).toBe("memorial_staff");
+    for (const look of Object.values(NPC_LOOKS)) expect(JSON.stringify(look.parts)).not.toMatch(/memorial/);
   });
 });
 
@@ -159,7 +159,8 @@ describe("npc.glb (NPC 옷·소품·동작, 같은 뼈대)", () => {
     const mats = (npc.gltf.materials ?? []) as { name?: string; normalTexture?: unknown; pbrMetallicRoughness?: { roughnessFactor?: number } }[];
     const names = mats.map((m) => m.name ?? "");
     for (const n of names) expect(/^npc(fab)?_/.test(n), n).toBe(true);
-    expect(names).toEqual(expect.arrayContaining(["npc_badge", "npc_badge_memorial"]));
+    expect(names).toContain("npc_badge");
+    expect(names.some((n) => /memorial/.test(n))).toBe(false);
     const fabrics = mats.filter((m) => (m.name ?? "").startsWith("npcfab_"));
     expect(fabrics.map((m) => m.name).sort()).toEqual(["npcfab_canvas", "npcfab_cotton", "npcfab_mesh", "npcfab_poly", "npcfab_terry", "npcfab_wool"]);
     for (const f of fabrics) {

@@ -1,4 +1,4 @@
-# npc_build.py — 마을 NPC 3명(버스 기사·마을 안내원·추모관 안내)의 전용 옷·모자·소품과 동작을 만들어 npc.glb로 내보낸다.
+# npc_build.py — 마을 NPC 3명(버스 기사·마을 안내원·낚시터 대여점 주인; 추모관 안내는 owner 2026-11-17에 뺐다)의 전용 옷·모자·소품과 동작을 만들어 npc.glb로 내보낸다.
 #
 #   "C:/Program Files/Blender Foundation/Blender 5.3/blender.exe" -b art/character/cayson-toy.blend \
 #       --python docs/designs/npc/npc_build.py -- --export client/public/models/npc.glb [--render <dir>] [--badge <png>]
@@ -563,121 +563,6 @@ def long_sleeve_weights(co, g, d):
         return mixw((1 - k, {'chest': 1.0}), (k, arm))
     return coat_weights(co, g, d)
 
-def build_memorial(m, badge_img=None):
-    # 장례지도사 정장(owner 2026-11-16 "추모관 안내원 복장도 허접해" → 다시): 무광 모직 재킷(노치 라펠·두 단추·가슴 주머니와 흰 행커치프·
-    # 허리 주머니 덮개·소매 단추 셋), 빳빳한 흰 셔츠 깃·커프스, 매듭이 있는 검은 넥타이, 왼쪽 깃의 근조 리본(글자 없음), 오른쪽 가슴 명찰.
-    pr, trunk = trunk_from(SUIT_PROF, 1.035, segs=40, step=0.026)
-    bv = bvh_of_bms([trunk])
-    sleeves = []
-    for s in (1, -1):
-        pts = [Vector((s * x, 0, 1.107)) for x in (0.10, 0.20, 0.30, 0.40, 0.50, 0.60, 0.70)]
-        sleeves.append(tube_bm(pts, [0.150, 0.163, 0.160, 0.150, 0.140, 0.130, 0.124], segs=28, caps=(True, False), capn=5))
-    cuffs = [tube_bm([Vector((s * 0.672, 0, 1.107)), Vector((s * 0.712, 0, 1.107))], [0.112, 0.108], segs=24, caps=(False, False)) for s in (1, -1)]
-    collar = collar_bm(R=0.152, r=0.046, z=1.226)
-    a, b = prof_at(pr, 0.455)
-    hem = se_ring_bm(0.457, a - 0.002, b - 0.002, 2.5, 0.010, 0.014, segs=64, rsegs=8)
-    parts = [grp(setmat(hem, 0), 1), grp(setmat(collar, 0), 3)] + [grp(setmat(c, 1), 2) for c in cuffs]
-    # 흰 셔츠 V(깃 사이): 가운데 앞단(플래킷)과 작은 단추 둘
-    def vshape(u, v):
-        z = lerp(1.19, 0.86, v)
-        half = lerp(0.108, 0.0, smoothstep(0.0, 1.0, v) ** 0.9)
-        return (lerp(-half, half, u), z)
-    shirt = front_slab_bm(bv, vshape, 8, 14, 0.006, 0.001)
-    parts.append(lay(grp(setmat(shirt, 1), 1), 2))
-    # 셔츠 깃: 두꺼운 뾰족 깃 두 장(깃 밴드 위로 접힌 모양)
-    band = []
-    for k in range(17):
-        az = math.radians(lerp(-150, 150, k / 16)) + math.pi
-        band.append(Vector((0.150 * math.sin(az), -0.012 + 0.135 * math.cos(az) * -1, 1.236)))
-    parts.append(grp(setmat(tube_bm(band, [0.016] * len(band), segs=8, capn=2), 1), 3))
-    for s in (1, -1):
-        f = poly_slab_bm([(-s * 0.010, 0.016), (s * 0.098, 0.028), (s * 0.034, -0.094)], depth=0.016, bulge=0.005, round_k=1)
-        parts.append(grp(setmat(stick(f, bv[0], (s * 0.042, -1.5, 1.172), (0, 1, 0), lift=0.020), 1), 3))
-    # 넥타이: 매듭(위가 넓은 사다리꼴, 가운데 보조개) + 가운데 능선이 있는 대검
-    knot = poly_slab_bm([(-0.040, 0.0), (0.040, 0.0), (0.026, -0.056), (-0.026, -0.056)], depth=0.032, bulge=0.010, round_k=2)
-    parts.append(grp(setmat(stick(knot, bv[0], (0, -1.5, 1.162), (0, 1, 0), lift=0.022), 2), 3))
-    def blade(u, v):
-        w = lerp(0.046, 0.074, smoothstep(0.0, 0.9, v))
-        if v > 0.86: w *= max(0.0, (1 - (v - 0.86) / 0.14)) ** 0.9
-        return (lerp(-w / 2, w / 2, u), lerp(1.110, 0.875, v))
-    parts.append(grp(setmat(front_slab_bm(bv, blade, 5, 16, 0.015, 0.008, puff=0.005), 2), 1))
-    # 노치 라펠: 위 칼라 조각 + 노치(틈) + 넓은 라펠, 바깥 가장자리는 돋운 말림(입체)
-    for s in (1, -1):
-        def lap(u, v, s=s):
-            z = lerp(1.215, 0.840, v)
-            inner = lerp(0.108, 0.0, smoothstep(0.0, 1.0, v) ** 0.9)
-            if v < 0.14:
-                width = lerp(0.040, 0.050, v / 0.14)          # 위 칼라
-            elif v < 0.19:
-                width = 0.018                                  # 노치
-            else:
-                t = (v - 0.19) / 0.81
-                width = lerp(0.098, 0.0, t ** 0.85)            # 라펠: 끝이 뾰족하게 솟았다가 단추 쪽으로 좁아짐
-            return (s * (inner + u * width), z)
-        lp = front_slab_bm(bv, lap, 4, 30, 0.020, 0.006, puff=0.006)
-        parts.append(lay(grp(setmat(lp, 3), 1), 2))
-        edge = []
-        for k in range(31):
-            v = k / 30
-            x, z = lap(1.0, v)
-            edge.append(Vector((x, -0.8, z)))
-        pp, nn = project_path(bv, edge, 0.024, axis_c=lambda q: (q.x, 0.0, q.z))
-        parts.append(grp(setmat(tube_bm(pp, [0.0055] * len(pp), segs=6, capn=2), 3), 3))
-    # 앞여밈 선과 단추 두 개(테두리 있는 검은 단추)
-    for z in (0.80, 0.69):
-        bt = stick_on(button_bm(0.021, 0.012), bv[0], (0.0, 0, z), (0, 1, 0), lift=0.010)
-        rim = stick_on(xform(torus_bm(0.019, 0.004, segs=16, rsegs=5), Matrix.Rotation(math.radians(90), 4, 'X')), bv[0], (0.0, 0, z), (0, 1, 0), lift=0.016)
-        parts += [grp(setmat(bt, 4), 1), grp(setmat(rim, 4), 1)]
-    pp, nn = project_path(bv, [Vector((0.0, -0.8, z)) for z in [0.84, 0.78, 0.70, 0.62, 0.54, 0.47, 0.455]], 0.005, axis_c=lambda q: (0.0, 0.0, q.z))
-    parts.append(lay(grp(setmat(flat_strip_bm(pp, nn, 0.007, 0.006, rsegs=4), 2), 1), 2))
-    # 허리 주머니 덮개(가장자리 바느질 줄)
-    for s in (1, -1):
-        fl = front_slab_bm(bv, lambda u, v, s=s: (s * 0.190 + lerp(-0.078, 0.078, u), lerp(0.596, 0.640, v)), 6, 2, 0.015, 0.006, puff=0.004)
-        parts.append(lay(grp(setmat(fl, 0), 1), 2))
-    # 가슴 주머니(왼쪽 = +X): 웰트 + 흰 행커치프(두 뾰족 끝)
-    bp = front_slab_bm(bv, lambda u, v: (0.200 + lerp(-0.062, 0.062, u), lerp(0.930, 0.952, v)), 6, 2, 0.012, 0.004)
-    parts.append(lay(grp(setmat(bp, 0), 1), 2))
-    p, n = surf(bv[0], (0.200, -1.5, 0.955), (0, 1, 0))
-    if p is not None:
-        sq = poly_slab_bm([(-0.045, 0.0), (-0.028, 0.034), (-0.008, 0.012), (0.012, 0.040), (0.040, 0.0)], depth=0.008, bulge=0.003, round_k=1)
-        parts.append(grp(setmat(orient_front(sq, n, p + n * 0.013), 5), 3))
-    # 소매 단추 셋(소매 끝 바깥쪽)
-    for s in (1, -1):
-        for k in range(3):
-            x = s * (0.630 + 0.020 * k)
-            parts.append(grp(setmat(move_bm(ellipsoid_bm(0.010, 0.010, 0.006, segs=10, rings=5), (x, 0.0, 1.107 + 0.128 - 0.002 * k)), 4), 2))
-    # 근조 리본(검정, 글자 없음): 위 고리 + 아래로 벌어진 두 꼬리(끝은 V로 잘림) + 가운데 매듭 + 은색 핀 머리 — 왼쪽 라펠
-    p, n = surf(bv[0], (0.150, -1.5, 1.040), (0, 1, 0))
-    if p is not None:
-        rb = []
-        loop = []
-        for k in range(29):
-            t = 2 * math.pi * k / 28
-            loop.append(Vector((0.022 * math.sin(t), 0, 0.012 + 0.032 * (1 - math.cos(t)) / 2 * 1.3)))
-        rb.append(flat_strip_bm(loop, [Vector((0, -1, 0))] * len(loop), 0.018, 0.005, rsegs=4, caps=False))
-        for s in (1, -1):
-            rb.append(poly_slab_bm([(0, 0.012), (s * 0.011, 0.012), (s * 0.046, -0.064), (s * 0.034, -0.058), (s * 0.026, -0.072)], depth=0.005, bulge=0.001))
-        rb.append(move_bm(ellipsoid_bm(0.012, 0.007, 0.011, segs=10, rings=5), (0, -0.004, 0.010)))
-        ribbon = orient_front(xform(merge_bms(rb), Matrix.Scale(1.35, 4)), n, p + n * 0.030)
-        parts.append(grp(setmat(ribbon, 2), 3))
-        parts.append(grp(setmat(move_bm(ellipsoid_bm(0.006, 0.006, 0.006, segs=8, rings=4), p + n * 0.040 + Vector((0, 0, 0.026))), 6), 3))
-    body = [grp(setmat(trunk, 0), 1)] + [grp(setmat(s_, 0), 2) for s_ in sleeves]
-    top = finish_top('top__npc_memorial', 'npc_memorial', parts,
-                     [m['suit'], m['white'], m['tie'], m['suit_lapel'], m['black'], m['pocket_sq'], m['silver']],
-                     override=long_sleeve_weights, target=3000, dec_parts=body)
-    # 명찰(오른쪽 가슴 = -X): 금테 판 + 앞면 그림
-    p, n = surf(bv[0], (-0.222, -1.5, 1.000), (0, 1, 0))   # 오른쪽 가슴, 라펠 바깥(데스크 위로 보이게)
-    if p is not None and badge_img is not None:
-        p = p + n * 0.012
-        plate = orient_front(rbox_bm(0.120, 0.008, 0.040, 0.006, cuts=2), n, p + n * 0.014)
-        pob = new_obj('_mem_plate', merge_bms([setmat(plate, 0)]), [m['gold']])
-        skin(pob, rigid='chest')
-        join_into(top, [pob])
-        badge_card(top, badge_img, p, n, 0.112, 0.033, 0.0190, 'top__npc_memorial_badge', 'npc_badge_memorial')
-        weights_from_cloth(top, {'npc_gold', 'npc_badge_memorial'})
-        tag(top, 'top', 'npc_memorial', False)
-
-
 # ------------------------------------------------------------------ 4. 낚시터 대여점 주인 (owner 2026-11-16 "낚시대 대여점에도 안에 낚시대 관리하는 캐릭터")
 def build_shopkeeper(m):
     # 웃옷: 회청색 셔츠 + 주머니 많은 국방색 낚시 조끼(가슴 작은 주머니 2줄 + 아래 큰 주머니, 덮개·단추, D링) + 목에 두른 수건(흰 바탕, 끝에 파란 줄)
@@ -805,7 +690,6 @@ def build_shopkeeper(m):
 
 NPC_PARTS = ['top__npc_driver', 'hat__npc_driver_cap',
              'top__npc_guide', 'hat__npc_guide_hat', 'item__npc_clipboard',
-             'top__npc_memorial',
              'top__npc_shopkeeper', 'hat__npc_shop_hat']
 
 def build_parts(badge_path):
@@ -818,11 +702,6 @@ def build_parts(badge_path):
         print('BADGE', img.filepath, img.size[:], img.has_data)
     build_driver(m)
     build_guide(m, img)
-    mimg = None
-    mb = os.path.join(os.path.dirname(os.path.abspath(badge_path)), 'badge_memorial.png') if badge_path else None
-    if mb and os.path.exists(mb):
-        mimg = bpy.data.images.load(mb, check_existing=True); mimg.name = 'npc_badge_memorial'
-    build_memorial(m, mimg)
     build_shopkeeper(m)
     global FAB_DIR
     FAB_DIR = os.path.join(os.path.dirname(os.path.abspath(badge_path)), 'fabrics')
@@ -837,13 +716,11 @@ def build_parts(badge_path):
 LOOKS = {
     'driver': ['body__head', 'body__hands', 'bottom__pants', 'face__smile', 'hair__short__hat', 'hat__npc_driver_cap', 'top__npc_driver', 'bottom__pants', 'shoes__dress'],
     'guide': ['body__head', 'body__hands', 'bottom__pants', 'face__smile', 'hair__ponytail__hat', 'hat__npc_guide_hat', 'top__npc_guide', 'bottom__pants', 'shoes__sneakers', 'item__npc_clipboard'],
-    'memorial': ['body__head', 'body__hands', 'bottom__pants', 'face__calm', 'hair__bob', 'top__npc_memorial', 'shoes__dress'],
     'shop': ['body__head', 'body__hands', 'bottom__pants', 'face__glasses', 'hair__short__hat', 'hat__npc_shop_hat', 'top__npc_shopkeeper', 'bottom__pants', 'shoes__boots'],
 }
 LOOK_COLORS = {
     'driver': dict(skin='#F5C9A0', hair='#2B2420', shoes='#1B1B1F', bottom='#22305A'),
     'guide': dict(skin='#FFDCC2', hair='#4A3226', shoes='#F7F7F2', bottom='#3B4250'),
-    'memorial': dict(skin='#FFDCC2', hair='#2B2420', shoes='#1B1B1F', bottom='#1E2026'),
     'shop': dict(skin='#E0A47A', hair='#3A3430', shoes='#3F5A3A', bottom='#5B5446'),
 }
 
@@ -982,11 +859,6 @@ def fold_hands(dz=0.0):
         R={'s': (-0.035, -0.375, -0.30 + dz), 'pole': (-1, 0.4, -1), 'a': (FING_R, (1, -0.15, -0.25)), 'b': (BACK, (0, -1, 0.1)), 'wrist_share': 0.5, 'rel': True},
         L={'s': (0.035, -0.395, -0.285 + dz), 'pole': (1, 0.4, -1), 'a': (FING_L, (-1, -0.15, -0.25)), 'b': (BACK, (0, -1, 0.1)), 'wrist_share': 0.5, 'rel': True})
 
-def memorial_pose(frame=0, bow=0.0, head=4.0):
-    fh = fold_hands()
-    rot = {'spine': [((1, 0, 0), bow * 0.55)], 'chest': [((1, 0, 0), bow * 0.30)], 'head': [((1, 0, 0), head + bow * 0.25)]}
-    return stand_pose(frame, rot, fh['R'], fh['L'])
-
 def hl(yaw, pitch=0.0):
     return [((0, 0, 1), yaw), ((1, 0, 0), pitch)]
 
@@ -1048,21 +920,6 @@ def clip_defs():
         (40, lambda: stand_pose(0, {'head': [((0, 1, 0), 6)]}, R=guide_R(0.01), L=guide_L_wave(18))),
         (60, lambda: stand_pose(0, {'head': hl(0)}, R=guide_R())),
     ])
-    # 추모관 안내 서 있기(5 s 반복): 공수, 아주 잔잔한 숨, 고개를 살짝 숙였다 든다
-    C['Npc_Memorial_Idle'] = (120, True, [
-        (0, lambda: memorial_pose(0, head=4)),
-        (40, lambda: memorial_pose(10, head=6)),
-        (80, lambda: memorial_pose(18, head=3)),
-        (120, lambda: memorial_pose(0, head=4)),
-    ])
-    # 추모관 안내 인사(3 s, 한 번): 공수한 채 허리를 굽혀 천천히 절하고 일어선다
-    C['Npc_Memorial_Bow'] = (72, False, [
-        (0, lambda: memorial_pose(0, head=4)),
-        (18, lambda: memorial_pose(0, bow=30, head=4)),
-        (40, lambda: memorial_pose(0, bow=32, head=4)),
-        (64, lambda: memorial_pose(0, bow=0, head=4)),
-        (72, lambda: memorial_pose(0, head=4)),
-    ])
     # 낚시터 대여점 주인 서 있기(6 s 반복): 창구 턱에 두 손을 얹고 밖을 내다보다가, 오른손으로 턱을 훔치듯 정리한다
     C['Npc_Shop_Idle'] = (144, True, [
         (0, lambda: shop_pose(0, hl(0, 2))),
@@ -1107,7 +964,7 @@ def build_clips():
     return built
 
 CLIP_LOOKS = {'Npc_Drive': 'driver', 'Npc_Drive_Left': 'driver', 'Npc_Drive_Right': 'driver', 'Npc_Guide_Idle': 'guide',
-              'Npc_Guide_Greet': 'guide', 'Npc_Memorial_Idle': 'memorial', 'Npc_Memorial_Bow': 'memorial',
+              'Npc_Guide_Greet': 'guide',
               'Npc_Shop_Idle': 'shop', 'Npc_Shop_Wave': 'shop'}
 
 def add_wheel_proxy():

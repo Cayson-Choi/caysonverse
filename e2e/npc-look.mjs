@@ -1,5 +1,5 @@
 /**
- * e2e/npc-look.mjs — 마을 NPC 전용 모습(owner 2026-11-16): 광장 안내원, 추모관 안내, 버스 기사가 npc.glb의 전용 옷·동작으로
+ * e2e/npc-look.mjs — 마을 NPC 전용 모습(owner 2026-11-16): 광장 안내원, 버스 기사, 낚시터 대여점 주인이 npc.glb의 전용 옷·동작으로
  * 그려지는지, 동작이 굳지 않았는지(뼈 회전이 시간에 따라 바뀌는지), 문의하기를 열면 인사하는지, 버스 기사가 운전석에 앉아 운전대를
  * 잡는지 본다. 보통 화면(게임 카메라)과 가까이 찍은 화면(같은 장면을 따로 둔 카메라로 한 번 그린 것)을 남긴다.
  *
@@ -9,7 +9,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DESKTOP, PHONE, createRun, launchBrowser, openPlayer, press, sleep, turnCameraTo, waitIdle, walkAndWait, walkTo } from "./lib/common.mjs";
-import { act as actRaw, enterHall, joinVillage, leaveHall } from "./lib/village.mjs";
+import { act as actRaw, joinVillage } from "./lib/village.mjs";
 
 /** The action (E / the round button); a missing button (nothing to do here) is not a failure — the checks after it say what happened. */
 const act = (p) => actRaw(p).catch((e) => console.log("   (no action button: " + String(e).slice(0, 80) + ")"));
@@ -196,37 +196,7 @@ try {
   }
 
 
-  if (!phone && !ride) {
-    await run.step("memorial hall desk: suit and ribbon, folded hands, bow on 문의하기", async () => {
-      await enterHall(P);
-      await P.page.waitForFunction(() => (window.__cvAvatars?.() ?? {})["guide:hall_desk"]?.parts?.includes("top__npc_memorial"), null, { timeout: 60000 });
-      const a0 = await avatars(P);
-      run.check("hall desk: black suit with the ribbon, own idle", a0["guide:hall_desk"].clip === "Npc_Memorial_Idle", a0["guide:hall_desk"]);
-      await walkAndWait(P, 303.0, 4.6, 20000, 0.6);
-      await turnCameraTo(P, 306.4, 4.6);
-      await sleep(1200);
-      await run.shot(P, `${label}-hall-normal.png`);
-      await closeUp(P, `${label}-hall-close.png`, [303.9, 1.55, 5.4], [306.4, 1.1, 4.6], 34);
-      await closeUp(P, `${label}-hall-close-chest.png`, [304.9, 1.35, 4.9], [306.4, 1.0, 4.6], 30);
-      await act(P);
-      await sleep(500);
-      if (!(await P.page.evaluate(async () => (await window.__imp("/src/village/guideDialogStore.ts")).guideDialogOpen()))) {
-        summary.hallOpenedByModule = true;
-        await P.page.evaluate(async () => (await window.__imp("/src/village/guideDialogStore.ts")).openGuideDialog("hall_desk"));
-      }
-      await sleep(400);
-      const a1 = await avatars(P);
-      run.check("문의하기 opens and the hall desk bows (Npc_Memorial_Bow)", a1["guide:hall_desk"].clip === "Npc_Memorial_Bow", a1["guide:hall_desk"].clip);
-      await closeUp(P, `${label}-hall-bow.png`, [303.9, 1.55, 5.4], [306.4, 1.0, 4.6], 34);
-      await sleep(3200);
-      const a2 = await avatars(P);
-      run.check("back to the folded-hands idle", a2["guide:hall_desk"].clip === "Npc_Memorial_Idle", a2["guide:hall_desk"].clip);
-      await P.page.evaluate(async () => (await window.__imp("/src/village/guideDialogStore.ts")).closeGuideDialog());
-      await leaveHall(P);
-    });
-  }
   if (!ride) await run.step("lake rental shopkeeper: behind the window, idle, waves when I step on the pad and when a rod is rented", async () => {
-    if (!phone) for (const [x, z] of [[0, -33], [-14, -20], [-20, 5], [2, 15]]) await walkAndWait(P, x, z, 60000, 1.5);
     for (const [x, z] of [[30, 12], [46, 9], [62, 2], [80, -9], [100, -12]]) await walkAndWait(P, x, z, 60000, 2);
     await P.page.waitForFunction(() => (window.__cvAvatars?.() ?? {})["npc:lake_shopkeeper"]?.parts?.includes("top__npc_shopkeeper"), null, { timeout: 90000 });
     await sleep(1500);

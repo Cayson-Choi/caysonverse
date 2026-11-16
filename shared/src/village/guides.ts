@@ -44,11 +44,11 @@ export interface Guide {
   /** `atan2(dirX, dirZ)` (0 faces +z). */
   yaw: number;
   /**
-   * The guide's own NPC look (npcLooks.ts, owner 2026-11-16: "마을 안내원도 안내원만의 캐릭터 … 추모공간에 맞는 캐릭터"):
-   * outfits nobody can pick in the character creator, from npc.glb.
+   * The guide's own NPC look (npcLooks.ts, owner 2026-11-16: "마을 안내원도 안내원만의 캐릭터"): an outfit nobody can pick in the
+   * character creator, from npc.glb. Absent = the fixed look below.
    */
-  npc: NpcId;
-  /** A fixed look on the toy figure: drawn only while npc.glb cannot be had (its download failed). */
+  npc?: NpcId;
+  /** A fixed look on the toy figure: the guide's look when it has no NPC look, or while npc.glb cannot be had. */
   appearance: Appearance;
   qas: readonly GuideQA[];
 }
@@ -139,7 +139,6 @@ export const GUIDES: readonly Guide[] = deepFreeze([
     pos: { x: 306.4, z: 4.6 },
     reach: HALL_DESK_REACH_M,
     yaw: -Math.PI / 2, // faces -x
-    npc: "memorial_staff",
     appearance: appearanceFromIds(
       { hat: null, hair: "bob", face: "calm", top: "shirt_tie", bottom: "longskirt", shoes: "dress", item: null },
       { hatColor: 2, hairColor: 0, skin: 0, topColor: 7, bottomColor: 7, shoesColor: 7, itemColor: 2, voice: 1 },

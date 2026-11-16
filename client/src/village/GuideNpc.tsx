@@ -20,9 +20,9 @@ import { subscribeGuideDialog, guideDialogOpen } from "./guideDialogStore";
  * 조교's). Solidity comes from the guide's collider in the walk geometry (`guideColliders`), not from this component;
  * "문의하기" and the questions are the context button and GuideDialog.
  *
- * Since owner 2026-11-16 ("마을 안내원도 안내원만의 캐릭터 … 추모공간에 맞는 캐릭터") each guide wears its own NPC look from npc.glb
- * (npcLooks.ts: the plaza guide's red info vest, hat, badge and clipboard; the hall desk's black suit and mourning ribbon), with its
- * own idle and a greeting played once when its questions open. While npc.glb downloads nothing is drawn; if it fails, the old
+ * Since owner 2026-11-16 ("마을 안내원도 안내원만의 캐릭터") the plaza guide wears its own NPC look from npc.glb (npcLooks.ts: red
+ * info vest with reflective tape, hat, badge and clipboard), with its own idle and a wave when its questions open. A guide without an
+ * NPC look keeps the fixed look on the players' figure. While npc.glb downloads nothing is drawn; if it fails, the old
  * fixed look on the players' figure stands in (and the download is tried again).
  */
 function GuideBody({ guide, avatar, clips, idle, greet, probeId }: {
@@ -99,9 +99,9 @@ function GuideBody({ guide, avatar, clips, idle, greet, probeId }: {
 }
 
 /** The guide in its own NPC look (suspends on npc.glb). */
-function NpcGuideFigure({ guide }: { guide: Guide }) {
+function NpcGuideFigure({ guide, npc }: { guide: Guide; npc: NonNullable<Guide["npc"]> }) {
   const probeId = `guide:${guide.id}`;
-  const { avatar, clips, look } = useNpcAvatar(guide.npc, probeId);
+  const { avatar, clips, look } = useNpcAvatar(npc, probeId);
   return <GuideBody guide={guide} avatar={avatar} clips={clips} idle={look.idle} greet={look.greet} probeId={probeId} />;
 }
 
@@ -114,10 +114,11 @@ function FallbackGuideFigure({ guide }: { guide: Guide }) {
 }
 
 function GuideFigure({ guide }: { guide: Guide }) {
+  if (!guide.npc) return <FallbackGuideFigure guide={guide} />;
   return (
     <LoadBoundary fallback={<FallbackGuideFigure guide={guide} />} onReset={clearNpcCache} notice="안내원 모습을 불러오지 못했어요. 잠시 뒤 다시 불러올게요.">
       <Suspense fallback={null}>
-        <NpcGuideFigure guide={guide} />
+        <NpcGuideFigure guide={guide} npc={guide.npc} />
       </Suspense>
     </LoadBoundary>
   );

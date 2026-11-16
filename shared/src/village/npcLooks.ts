@@ -15,7 +15,7 @@ import type { CharacterSlot } from "../characterManifest";
 export const NPC_GLB_PATH = "/models/npc.glb";
 
 /** npc.glb 내용의 sha256 앞 8자리. 모델 URL에 ?v=로 붙인다. */
-export const NPC_GLB_HASH = "46d41f0e";
+export const NPC_GLB_HASH = "2f816d8d";
 
 /**
  * 디스크 예산(character.glb와 따로): 1.5 MB. owner 2026-11-16 "절대로 허접해 보이면 안되고 디테일을 잘 살리도록 해"로 옷감 노멀 맵·
@@ -38,10 +38,6 @@ export const NPC_CLIPS = {
   Npc_Guide_Idle: { seconds: 5.0, loop: true },
   /** 마을 안내원: 왼손을 들어 흔드는 인사(문의하기를 열 때 한 번). */
   Npc_Guide_Greet: { seconds: 2.5, loop: false },
-  /** 추모관 안내: 두 손을 배 앞에 모은 공수 자세, 잔잔한 숨. */
-  Npc_Memorial_Idle: { seconds: 5.0, loop: true },
-  /** 추모관 안내: 공수한 채 허리를 굽혀 천천히 하는 인사(문의하기를 열 때 한 번). */
-  Npc_Memorial_Bow: { seconds: 3.0, loop: false },
   /** 낚시터 대여점 주인: 창구 턱에 두 손을 얹고 밖을 내다보다가 오른손으로 턱을 훔치듯 정리한다. */
   Npc_Shop_Idle: { seconds: 6.0, loop: true },
   /** 낚시터 대여점 주인: 오른손을 흔들고 고개를 끄덕이는 인사(누가 대를 빌리거나 돌려줄 때). */
@@ -50,7 +46,7 @@ export const NPC_CLIPS = {
 
 export type NpcClip = keyof typeof NPC_CLIPS;
 
-export type NpcId = "bus_driver" | "village_guide" | "memorial_staff" | "lake_shopkeeper";
+export type NpcId = "bus_driver" | "village_guide" | "lake_shopkeeper";
 
 export interface NpcLook {
   id: NpcId;
@@ -85,14 +81,6 @@ export const NPC_LOOKS: Readonly<Record<NpcId, NpcLook>> = {
     colors: { skin: "#FFDCC2", hair: "#4A3226", hat: NEUTRAL, top: NEUTRAL, bottom: "#3B4250", shoes: "#F7F7F2", item: NEUTRAL, accent: NEUTRAL },
     idle: "Npc_Guide_Idle",
     greet: "Npc_Guide_Greet",
-  },
-  memorial_staff: {
-    id: "memorial_staff",
-    // 검은 정장 재킷(흰 셔츠, 검은 넥타이, 긴소매) + 왼쪽 깃의 검은 추모 리본(글자 없음), 검은 바지, 검은 구두, 단정한 단발
-    parts: { hat: null, hair: "bob", face: "calm", top: "npc_memorial", bottom: "pants", shoes: "dress", item: null },
-    colors: { skin: "#FFDCC2", hair: "#2B2420", hat: NEUTRAL, top: NEUTRAL, bottom: "#1E2026", shoes: "#1B1B1F", item: NEUTRAL, accent: NEUTRAL },
-    idle: "Npc_Memorial_Idle",
-    greet: "Npc_Memorial_Bow",
   },
   lake_shopkeeper: {
     id: "lake_shopkeeper",
