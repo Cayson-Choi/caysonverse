@@ -17,6 +17,7 @@ import { wrapOmega } from "../fountainLayout";
 import type { DayNightState } from "../dayNightBlend";
 import { FALLS, MACRO_RECT } from "./fallsConfig";
 import { GROUND_GRADE, GROUND_GRADE_NIGHT } from "../villageModelPrep";
+import { SS_DAY_FUNCTION, SS_FRAGMENT_PARS, SS_MAIN_TOP, SS_VERTEX_PARS, SS_VERTEX_WORLD, bindSunShadowUniforms } from "../sunShadows";
 
 /**
  * The falls' materials (design 5.2; W3 2026-11-16: "as real as the plaza fountain", owner). The falling water is drawn
@@ -550,12 +551,16 @@ uniform float uFallsSeamMean;
 #endif
 void main() {`;
 
-/** The day map (x the dusk tint) and the night map (a moonlit cast), by the clock's weight; as the village's `liftMaterial`. */
+/**
+ * The day map (x the dusk tint) and the night map (a moonlit cast), by the clock's weight; as the village's `liftMaterial`.
+ * The live sun shadows (sunShadows.ts, release 2) as on any model with its own bake (`SS_FOREIGN_BAKE`): the baked sun stays,
+ * the live shadows (the players', the village's casters) take a share of the light, the exposure's sun adaptation is undone.
+ */
 const ROCK_TEXEL = /* glsl */ `vec4 lightMapTexel = vec4( 0.0, 0.0, 0.0, 1.0 );
-	if ( uFallsNight < 0.999 ) lightMapTexel.rgb = texture2D( lightMap, vLightMapUv ).rgb * uFallsDayTint * ( 1.0 - uFallsNight );
+	if ( uFallsNight < 0.999 ) lightMapTexel.rgb = ssDay( texture2D( lightMap, vLightMapUv ).rgb, vLightMapUv ) * uFallsDayTint * ( 1.0 - uFallsNight );
 	if ( uFallsNight > 0.001 ) {
 		vec3 fallsNightLight = texture2D( uFallsNightMap, vLightMapUv ).rgb;
-		fallsNightLight *= mix( uFallsMoon, vec3( 1.0 ), smoothstep( 0.04, 0.22, dot( fallsNightLight, vec3( 0.2126, 0.7152, 0.0722 ) ) ) );
+		fallsNightLight *= mix( uFallsMoon, vec3( 1.0 ), smoothstep( 0.04, 0.22, dot( fallsNightLight, vec3( 0.2126, 0.7152, 0.0722 ) ) ) ) * ssNightShade() * uSsKeep;
 		lightMapTexel.rgb += fallsNightLight * uFallsNight;
 	}`;
 
@@ -621,13 +626,18 @@ export function rockMaterial(material: Material, kind: RockKind = "plain", macro
         .replace("void main() {", "varying vec3 vFallsWorld;\nvoid main() {")
         .replace("#include <project_vertex>", "#include <project_vertex>\n  vFallsWorld = ( modelMatrix * vec4( transformed, 1.0 ) ).xyz;");
     }
+    // the live sun shadows' world position and uniforms (sunShadows.ts)
+    bindSunShadowUniforms(shader.uniforms);
+    shader.vertexShader = shader.vertexShader.replace("void main() {", SS_VERTEX_PARS).replace("#include <project_vertex>", SS_VERTEX_WORLD);
     shader.fragmentShader =
       defines +
+      "#define SS_FOREIGN_BAKE\n" +
       shader.fragmentShader
         .replace("void main() {", ROCK_PARS)
         .replace(LIGHTMAP_TEXEL_FROM, ROCK_TEXEL)
         .replace("#include <color_fragment>", `${stone ? ROCK_ALBEDO : "#include <color_fragment>"}\n${SEAM_GLSL}`)
-        .replace("#include <aomap_fragment>", ROCK_LIGHT);
+        .replace("#include <aomap_fragment>", ROCK_LIGHT)
+        .replace("void main() {", `${SS_FRAGMENT_PARS}${SS_DAY_FUNCTION}void main() {\n${SS_MAIN_TOP}`);
   };
   m.customProgramCacheKey = () => `falls-rock-${kind}${macro ? "-macro" : ""}${seam ? "-seam" : ""}`;
   m.needsUpdate = true;

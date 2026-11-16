@@ -1,5 +1,6 @@
-import { DoubleSide, MeshBasicMaterial, Vector3, Vector4, type Texture } from "three";
+import { DoubleSide, MeshBasicMaterial, MeshDepthMaterial, Vector3, Vector4, type Material, type Texture } from "three";
 import { DAY_SUN_DIRECTION } from "../dayNightBlend";
+import { SS_FRAGMENT_PARS, bindSunShadowUniforms } from "../sunShadows";
 import { cherryTintUniform, foliageTintUniform, liftUniform, litUniform, vegNightUniform } from "../villageModelPrep";
 
 /**
@@ -101,6 +102,9 @@ uniform vec4 uVegLamps[ ${VEG_LAMPS} ];
 uniform float uVegLit;
 uniform float uVegViewH;
 varying float vVegLamp;
+varying float vVegSunK;
+varying vec3 vSsWorld;
+varying vec3 vSsNormal;
 void main() {`;
 
 const VERT_COLOR = /* glsl */ `vColor = color;
@@ -124,6 +128,8 @@ const VERT_PROJECT = /* glsl */ `#ifdef USE_INSTANCING
 	vec3 vegUp = vec3( viewMatrix[0][1], viewMatrix[1][1], viewMatrix[2][1] );
 	vec3 vegWorld = vegOrigin + vegRight * vegQ.x + vegUp * vegQ.y;
 	float vegShadeK = 1.0;
+	vSsNormal = vec3( 0.0 );
+	vVegSunK = 0.0;
 #ifdef USE_MAP
 	// half the bunches show the atlas's other bunch picture (the next cell to the right)
 	vMapUv.x += step( 0.5, fract( vegRoll * 7.31 ) ) * 0.25;
@@ -139,6 +145,8 @@ const VERT_PROJECT = /* glsl */ `#ifdef USE_INSTANCING
 	float vegNdl = dot( vegN, uVegSun );
 	float vegDiff = vegNdl > 0.0 ? vegNdl : -vegNdl * uVegShade.w;
 	float vegShadeK = uVegShade.x + uVegShade.y * ( 0.5 + 0.5 * vegN.y ) + uVegShade.z * vegDiff;
+	vSsNormal = vegN;
+	vVegSunK = aLight * uVegShade.z * vegDiff;
 #endif
 	float vegDist = distance( cameraPosition, vegOrigin );
 	float vegSwayK = aWind * uVegWind * uVegWindAmp * ( 1.0 - smoothstep( uVegWindFar * 0.5, uVegWindFar, vegDist ) );
@@ -172,15 +180,20 @@ const VERT_PROJECT = /* glsl */ `#ifdef USE_INSTANCING
 		vegWorld = cameraPosition + vegDir * ( vegEye + ${NEAR_ROOM.toFixed(3)} * vegK * vegK );
 	}
 #endif
+	vSsWorld = vegWorld;
 	vec4 mvPosition = viewMatrix * vec4( vegWorld, 1.0 );
 	gl_Position = projectionMatrix * mvPosition;`;
 
-const FRAG_PARS = /* glsl */ `uniform float uVegLift;
+const FRAG_PARS = /* glsl */ `#define SS_ONE_TAP
+#define SS_GEO_NORMAL
+uniform float uVegLift;
 uniform vec3 uVegTint;
 uniform float uVegNight;
 varying vec3 vVegLight;
 varying vec3 vVegTint;
 varying float vVegLamp;
+varying float vVegSunK;
+${SS_FRAGMENT_PARS}
 void main() {`;
 
 /** Keep cut-out foliage alpha stable without derivative instructions that trigger ANGLE warnings on mobile GPUs. */
@@ -196,9 +209,22 @@ const FRAG_COLOR = /* glsl */ `vec3 vegAlbedo = vColor.rgb * mix( vec3( 1.0 ), v
 	vec3 vegPale = vec3( dot( vegAlbedo, vec3( 0.2126, 0.7152, 0.0722 ) ) * 1.18 );
 	vegAlbedo = mix( vegAlbedo, vegPale, uVegNight * 0.75 );
 #endif
-diffuseColor.rgb *= vegAlbedo * ( ( vVegLight + uVegLift ) * uVegTint + vVegLamp * ${LAMP_COLOUR} * 0.32 );`;
+// the live sun's shadows (village/sunShadows.ts) take the sun's share of the light away (the moon's, a little, at night)
+vec3 vegLightNow = vVegLight;
+if ( uSsOn.w > 0.0 && uSsShade.w > 0.0 && vVegSunK > 0.001 ) {
+	vec3 vegN = dot( vSsNormal, vSsNormal ) > 1e-6 ? normalize( vSsNormal ) : uSsSunDir;
+	if ( dot( vegN, uSsSunDir ) < 0.0 ) vegN = - vegN;
+	float vegLit = ssLive( vegN, max( dot( vegN, uSsSunDir ), 0.0 ) );
+	vegLightNow -= vVegSunK * ( 1.0 - vegLit ) * uSsShade.w;
+}
+diffuseColor.rgb *= vegAlbedo * ( ( vegLightNow + uVegLift ) * uVegTint + vVegLamp * ${LAMP_COLOUR} * 0.32 );`;
 
 const SUN = new Vector3(...DAY_SUN_DIRECTION).normalize();
+/**
+ * Toward the light the vegetation is shaded from: the bake's sun at first, then the live sun (or the moon) once the live
+ * shadows run (village/LiveSunShadows.tsx writes it), so a crown's lit side faces the real sun. Shared by every material.
+ */
+export const vegSunUniform = { value: SUN.clone() };
 
 /** A vegetation material (see the file header). Double-sided, no shadows, fog as the village's foliage. */
 export function vegMaterial(o: VegMaterialOptions): MeshBasicMaterial {
@@ -214,7 +240,7 @@ export function vegMaterial(o: VegMaterialOptions): MeshBasicMaterial {
     uVegWind: vegWindUniform,
     uVegWindAmp: { value: o.wind },
     uVegWindFar: { value: o.windFar },
-    uVegSun: { value: SUN },
+    uVegSun: vegSunUniform,
     uVegShade: { value: [o.ambient, o.sky, o.sun, o.back] },
     uVegLift: liftUniform,
     uVegTint: o.cherry ? cherryTintUniform : foliageTintUniform,
@@ -224,8 +250,10 @@ export function vegMaterial(o: VegMaterialOptions): MeshBasicMaterial {
     uVegViewH: vegViewHeightUniform,
   };
   m.userData.vegUniforms = uniforms;
+  m.userData.vegOptions = o;
   m.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, uniforms);
+    bindSunShadowUniforms(shader.uniforms);
     const defines = (o.sprite ? "#define VEG_SPRITE\n" : "") + (o.push && !o.sprite ? "#define VEG_PUSH\n" : "") + (o.twig && !o.sprite ? "#define VEG_TWIG\n" : "");
     shader.vertexShader = defines + shader.vertexShader
       .replace("void main() {", VERT_PARS)
@@ -238,4 +266,28 @@ export function vegMaterial(o: VegMaterialOptions): MeshBasicMaterial {
   };
   m.customProgramCacheKey = () => `village-veg-${o.sprite ? "sprite" : "mesh"}-${o.cherry ? "cherry" : "foliage"}-${o.push ? "push" : "fixed"}-${o.twig ? "twig" : "solid"}`;
   return m;
+}
+
+const depthCopies = new WeakMap<Material, MeshDepthMaterial>();
+
+/**
+ * The live sun shadows' depth for a vegetation material (village/sunShadows.ts): the same vertex code (the far blossom
+ * sprites turn to the camera drawing them, here the shadow's, so a far crown casts a crown, not a flat card; the
+ * sway), the same cut-out. One per material, kept with it; null for a material that is not the vegetation's.
+ */
+export function vegDepthMaterial(material: Material): MeshDepthMaterial | null {
+  const o = material.userData.vegOptions as VegMaterialOptions | undefined;
+  const uniforms = material.userData.vegUniforms as Record<string, { value: unknown }> | undefined;
+  if (!o || !uniforms) return null;
+  let d = depthCopies.get(material);
+  if (d) return d;
+  d = new MeshDepthMaterial({ map: o.map ?? null, alphaTest: o.alphaTest ?? 0, side: DoubleSide });
+  d.onBeforeCompile = (shader) => {
+    Object.assign(shader.uniforms, uniforms);
+    const defines = (o.sprite ? "#define VEG_SPRITE\n" : "") + (o.push && !o.sprite ? "#define VEG_PUSH\n" : "");
+    shader.vertexShader = defines + shader.vertexShader.replace("void main() {", VERT_PARS).replace("#include <project_vertex>", VERT_PROJECT);
+  };
+  d.customProgramCacheKey = () => `village-veg-depth-${o.sprite ? "sprite" : "mesh"}-${o.push ? "push" : "fixed"}`;
+  depthCopies.set(material, d);
+  return d;
 }

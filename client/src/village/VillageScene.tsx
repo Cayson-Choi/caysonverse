@@ -63,6 +63,7 @@ import { PublicAutoDoor } from "./PublicAutoDoor";
 import { openKeypad, useKeypad } from "./keypadStore";
 import { VillageKeypad } from "./VillageKeypad";
 import { HouseInterior } from "./HouseInterior";
+import { liveSunEnabled } from "./sunShadows";
 
 /**
  * 케이슨 마을 — the village scene (Task 4). A `PlayShell` on the village map under the village's afternoon
@@ -404,6 +405,7 @@ export function VillageScene({ identity }: { identity: Identity }) {
       cameraPlanes={VILLAGE_CAMERA_PLANES}
       groundDecal={VILLAGE_GROUND_DECAL}
       shadowColor={VILLAGE_SHADOW_COLOR}
+      shadowFloor={area !== "village" || !liveSunEnabled()}
       world3d={({ pose }) => (
         <>
           <DayNight area={area} tier={tier} />

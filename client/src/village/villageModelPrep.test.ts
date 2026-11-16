@@ -65,6 +65,7 @@ import {
   FOLIAGE_NEAR_FADE,
   nearFadeUniform,
 } from "./villageModelPrep";
+import { sunShadowUniforms } from "./sunShadows";
 import { NEAR_FADE_KEY } from "../game/clickPick";
 import { DAY_LIFT, NIGHT_LOOK, dayNightAt, indoorState, type DayNightState } from "./dayNightBlend";
 import { parseKstTime } from "@caysonverse/shared/village/sunClock";
@@ -335,7 +336,13 @@ describe("prepareVillage: the model dressed for the game", () => {
     expect(fs).toContain("uniform sampler2D uVillageNightMap;");
     expect(fs.indexOf("vec3 villageAlbedo = diffuseColor.rgb;")).toBeLessThan(fs.indexOf("#include <color_fragment>"));
     // Both maps are read only while they count.
-    expect(fs).toContain("if ( uVillageNight < 0.999 ) lightMapTexel.rgb = texture2D( lightMap, vLightMapUv ).rgb * uVillageDayTint * ( 1.0 - uVillageNight );");
+    // The day map's texel goes through the live sun's swap (sunShadows.ts ssDay: the baked sun out, the real one in).
+    expect(fs).toContain("if ( uVillageNight < 0.999 ) lightMapTexel.rgb = ssDay( texture2D( lightMap, vLightMapUv ).rgb, vLightMapUv ) * uVillageDayTint * ( 1.0 - uVillageNight );");
+    expect(shader.uniforms.uSsOn).toBe(sunShadowUniforms.uSsOn);
+    expect(shader.uniforms.uSsNearMap).toBe(sunShadowUniforms.uSsNearMap);
+    // The normal, n.l and the live shadow are read at the top of main (the derivatives outside every branch).
+    expect(fs.indexOf("ssDayN = ssNormal();")).toBeGreaterThan(fs.indexOf("void main() {"));
+    expect(fs.indexOf("ssDayN = ssNormal();")).toBeLessThan(fs.indexOf("lightMapTexel"));
     expect(fs).toContain("vec3 villageNightLight = texture2D( uVillageNightMap, vLightMapUv ).rgb;");
     expect(fs).toContain("lightMapTexel.rgb += villageNightLight * uVillageNight;");
     expect(shader.uniforms.uVillageMoonTint).toBe(moonTintUniform);

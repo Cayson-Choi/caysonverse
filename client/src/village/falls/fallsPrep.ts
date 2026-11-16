@@ -28,6 +28,9 @@ import {
 import { createSpray, type FallsSpray } from "./fallsSpray";
 import { makeMistAtlas, makePoolBase } from "./fallsTextures";
 
+/** The falls' vertex-lit cards and bark: their light is waterfall.glb's own bake (the live sun shadows only shade it). */
+const FALLS_LIGHT = { key: "falls", foreignBake: true } as const;
+
 /**
  * Dress a falls model (the loaded `waterfall.glb`, or the DEV stand-in) for the graphics tier: the water meshes get
  * their shaders by node name (design §7.4), the rock and ground get the falls' light maps, the cliff's two LODs are
@@ -183,7 +186,7 @@ export function prepareFalls(root: Object3D, o: FallsPrepOptions): FallsParts {
           b.side = DoubleSide;
           b.transparent = false;
         }
-        liftMaterial(b);
+        liftMaterial(b, FALLS_LIGHT);
       } else if (kind === "lamp") {
         lampMaterial(b);
       } else if (o.lightmap && hasLm) {
@@ -203,7 +206,7 @@ export function prepareFalls(root: Object3D, o: FallsPrepOptions): FallsParts {
         rockMaterial(b, kind === "stone" ? "stone" : kind === "tint" ? "tint" : "plain", macro, seam);
         baked = true;
       } else if (m.name === MAT.leaf) {
-        liftMaterial(b);
+        liftMaterial(b, FALLS_LIGHT);
       }
       swapped.set(m, b);
       return b;
