@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import { useAnimations } from "@react-three/drei";
-import { LoopOnce, Vector3, type AnimationAction, type Group, type Object3D } from "three";
+import { LoopOnce, Vector3, type AnimationAction, type Group, type Material, type Object3D } from "three";
 import { LAKE_SHOPKEEPER_FLOOR_LIFT, LAKE_SHOPKEEPER_NODE } from "@caysonverse/shared/village/npcLooks";
 import type { Pose } from "../game/types";
 import { reportAvatarClip } from "../game/useAvatar";
@@ -9,8 +9,29 @@ import { useNpcAvatar } from "../village/npcAvatar";
 import { forEachAngler } from "./lakeNet";
 import { onRentalPad } from "./lakeNearby";
 import { emptyShopCue, stepShopCue } from "./shopkeeperCue";
+import { dayNight } from "../village/dayNightDriver";
 
 const PROBE = "npc:lake_shopkeeper";
+/**
+ * The shop's fluorescent light on the shopkeeper. The interior is drawn with baked light, the same by day and night, while the
+ * shopkeeper is lit live: at night the scene's light drops and he went dark (blue) inside a bright shop, on every tier. His own
+ * materials get the shop's light as a glow of their own colour (diffuse x SHOP_GLOW, added to the emissive term), as strong as
+ * the night is (nothing by day) — no extra scene light, so nothing else pays for it.
+ */
+const SHOP_GLOW = 0.6;
+
+/** Adds `diffuse x shopGlow` to a standard material's emissive light (its own copy: the avatar's materials are its own). */
+function addShopGlow(m: Material, glow: { value: number }): void {
+  m.onBeforeCompile = (shader) => {
+    shader.uniforms.shopGlow = glow;
+    shader.fragmentShader = shader.fragmentShader
+      .replace("void main() {", "uniform float shopGlow;\nvoid main() {")
+      .replace("#include <emissivemap_fragment>", "#include <emissivemap_fragment>\n\ttotalEmissiveRadiance += diffuseColor.rgb * shopGlow;");
+  };
+  m.customProgramCacheKey = () => "npc-shop-glow";
+  m.needsUpdate = true;
+}
+
 /** How often (s) the anglers are looked over for a rented / returned rod. */
 const SCAN_S = 0.4;
 
@@ -63,9 +84,14 @@ export function LakeShopkeeper({ structures, pose }: { structures: Object3D; pos
     };
   }, [actions, mixer, look]);
 
+  const glow = useMemo(() => ({ value: 0 }), []);
+  useEffect(() => {
+    for (const m of avatar.materials) addShopGlow(m, glow);
+  }, [avatar, glow]);
   const cue = useRef(emptyShopCue());
   const scanT = useRef(0);
   useFrame((_, delta) => {
+    glow.value = SHOP_GLOW * dayNight.applied.lights;
     scanT.current += delta;
     if (scanT.current < SCAN_S) return;
     scanT.current = 0;
