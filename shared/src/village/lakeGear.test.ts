@@ -47,9 +47,9 @@ describe("lake_fish.glb", () => {
     expect(hash(fishPath)).toBe(LAKE_FISH_GLB_HASH);
     expect(statSync(fishPath).size).toBeLessThanOrEqual(LAKE_FISH_MAX_BYTES);
   });
-  it("종마다 fish_<id> 노드, 재질 하나, 이미지 하나", () => {
+  it("종마다 fish_<id> 노드, 재질 둘(몸·지느러미), 이미지 둘", () => {
     for (const id of LAKE_FISH_IDS) expect(names, id).toContain(lakeFishNode(id));
-    expect(g.materials?.length).toBe(1);
-    expect(g.images?.length).toBe(1);
+    expect((g.materials ?? []).map((m) => m.name).sort()).toEqual(["M_fin", "M_fish"]);
+    expect(g.images?.length).toBe(2);
   });
 });

@@ -55,29 +55,46 @@ def paint_body(sp, seed):
         col *= shade[..., None]
     for fn in S.get("marks", []):
         col = fn(col, x, y, u, v)
-    # operculum edge + mouth line + gill darkening
+    # operculum (gill cover): curved edge, lighter plate, darker rim; mouth line from mouth_u0 to the snout tip
     if not S.get("no_head", False):
-        og = smooth(0.74, 0.76, u) * (1 - smooth(0.76, 0.78, u))
-        col *= (1 - 0.14 * og[..., None])
-        head = smooth(0.76, 0.80, u)
-        col = col * (1 - 0.0 * head[..., None])
-        ml = np.exp(-(((v - S.get("mouth_v", 0.58)) / 0.018) ** 2)) * smooth(0.93, 0.97, u)
-        col *= (1 - 0.8 * ml[..., None])
+        eu = 0.735 + 0.055 * (1 - (2 * v - 1) ** 2)
+        d = u - eu
+        rim = np.exp(-((d / 0.007) ** 2)) * smooth(0.05, 0.12, v) * (1 - smooth(0.90, 0.98, v))
+        plate = smooth(0.0, 0.012, d) * (1 - smooth(0.12, 0.2, d))
+        col = col * (1 + 0.10 * plate[..., None]) * (1 - 0.16 * rim[..., None])
+        col += 6 * plate[..., None]
+        mv = S.get("mouth_v", 0.58); mu0 = S.get("mouth_u0", 0.95)
+        mline = mv + 0.05 * np.clip((u - mu0) / max(1 - mu0, 1e-3), 0, 1) ** 2 * (-1)
+        ml = np.exp(-(((v - mline) / 0.016) ** 2)) * smooth(mu0, mu0 + 0.02, u)
+        col *= (1 - 0.75 * ml[..., None])
+        # darker snout/back of head
+        col *= 1 - 0.10 * smooth(0.78, 0.95, u)[..., None] * (1 - smooth(0.0, 0.5, v))[..., None]
     return np.clip(col, 0, 255)
 
 
-def paint_fin(sp, seed):
-    h, w = 56, 384
-    y, x = np.mgrid[0:h, 0:w].astype(np.float32)
-    f = 1 - y / (h - 1)                       # 0 base .. 1 tip
-    base = hexc(sp["fin_base"]); tip = hexc(sp["fin_tip"]); ray = hexc(sp["fin_ray"])
-    col = base[None, None, :] * (1 - f[..., None]) + tip[None, None, :] * f[..., None]
-    rays = 0.5 + 0.5 * np.cos(x * 2 * np.pi / 7.0)
-    col = col * (1 - 0.35 * rays[..., None]) + ray * 0.0
-    col *= (0.9 + 0.2 * noise(w, h, 8, seed + 5)[..., None])
-    edge = smooth(0.9, 1.0, f)
-    col = col * (1 - 0.25 * edge[..., None]) + hexc(sp.get("fin_edge", sp["fin_tip"])) * 0.25 * edge[..., None]
-    return np.clip(col, 0, 255)
+FW, FH = 128, 64
+
+
+def paint_fin(sp, seed, rays=14):
+    """RGBA fin cell 128x64: u across the base, v from the base (bottom row) to the tip (top row). Alpha-cut membrane with ray tips."""
+    y, x = np.mgrid[0:FH, 0:FW].astype(np.float32)
+    u = x / (FW - 1); t = 1 - y / (FH - 1)
+    base = hexc(sp["fin_base"]); tip = hexc(sp["fin_tip"]); edge = hexc(sp.get("fin_edge", sp["fin_tip"]))
+    n = sp.get("fin_rays", rays)
+    ph = (u * n) % 1.0
+    ray = np.exp(-(((ph - 0.5) / 0.09) ** 2))                 # 1 on the ray line
+    col = base[None, None, :] * (1 - t[..., None]) + tip[None, None, :] * t[..., None]
+    col = col * (1 - 0.30 * ray[..., None])
+    col = col * (1 - 0.25 * smooth(0.82, 1.0, t)[..., None]) + edge * 0.25 * smooth(0.82, 1.0, t)[..., None]
+    # front (u=1 side) spine: dark, thick, opaque
+    spine = smooth(0.92, 0.97, u)
+    col = col * (1 - 0.55 * spine[..., None]) + 0.0
+    nz = noise(FW, FH, 24, seed + 9)
+    memb_end = 0.86 + 0.05 * nz - 0.04 * (1 - ray)           # membrane stops short of ray tips
+    alpha = np.where((ray > 0.45) | (t < memb_end) | (spine > 0.5), 1.0, 0.0)
+    alpha = np.where(t > 0.985, 0.0, alpha)
+    rgba = np.concatenate([np.clip(col, 0, 255), (alpha * 255)[..., None]], axis=2)
+    return rgba
 
 
 def paint_eye(sp):
@@ -153,64 +170,67 @@ def belly_blush(c, a, u0=0.55, u1=1.0):
 def mirror_scales(seed):
     def f(col, x, y, u, v):
         r = np.random.RandomState(seed)
+        nz = noise(CW, BH, 18, seed + 3)
         out = col
-        for _ in range(26):
-            cu = r.uniform(0.18, 0.80) * CW; cv = r.uniform(0.12, 0.62) * BH
-            rx = r.uniform(24, 44); ry = r.uniform(18, 30)
-            d = np.hypot((x - cu) / rx, (y - cv) / ry)
-            rim = smooth(0.7, 1.0, d) * (1 - smooth(1.0, 1.15, d))
+        pts = [(0.30, 0.22), (0.42, 0.20), (0.55, 0.23), (0.68, 0.21), (0.25, 0.36), (0.38, 0.34), (0.50, 0.38), (0.63, 0.36), (0.74, 0.34),
+               (0.33, 0.52), (0.47, 0.55), (0.60, 0.50), (0.22, 0.12), (0.80, 0.14), (0.40, 0.08)]
+        for cu, cv in pts:
+            cu = (cu + r.uniform(-0.02, 0.02)) * CW; cv = (cv + r.uniform(-0.03, 0.03)) * BH
+            rx = r.uniform(22, 38); ry = r.uniform(17, 26)
+            d = np.hypot((x - cu) / rx, (y - cv) / ry) + 0.30 * (nz - 0.5)
+            rim = smooth(0.78, 1.0, d) * (1 - smooth(1.0, 1.12, d))
             inner = 1 - smooth(0.0, 1.0, d)
-            out = out * (1 - 0.09 * rim[..., None]) + 4 * inner[..., None]
+            out = out * (1 - 0.10 * rim[..., None]) + 7 * inner[..., None]
         return out
     return f
 
 
 SPECIES = {
-    "crucian_carp": dict(back="#6e6a3c", side="#a49a5c", side2="#bdb683", belly="#e0dcc0", scale=(12, 11, 0.13),
+    "crucian_carp": dict(back="#6e6a3c", side="#a49a5c", side2="#bdb683", belly="#e0dcc0", scale=(12, 11, 0.10),
                          marks=[lambda c, x, y, u, v: lateral_line(c, x, y, u, v, "#4a4630", 0.3)],
                          fin_base="#8a8450", fin_tip="#4e4c34", fin_ray="#3a3826", fin_edge="#26241a",
                          eye_ring="#c9a548", body_eye_ring="#77703f", mouth_v=0.62),
-    "bluegill": dict(back="#4d5a2e", side="#7f8b3a", side2="#c2a43a", belly="#e08a2c", scale=(11, 10, 0.12),
+    "bluegill": dict(back="#4d5a2e", side="#7f8b3a", side2="#c2a43a", belly="#e08a2c", scale=(11, 10, 0.09),
                      marks=[bars(7, "#2d3a22", 0.35, 0.18, 0.74, 0.0, 0.62, 0.02), opercle_spot(), belly_blush("#e7762a", 0.35, 0.5)],
                      fin_base="#8d7d3a", fin_tip="#5a5a34", fin_ray="#3c3c24", fin_edge="#2b2b1c",
-                     eye_ring="#d84a2a", body_eye_ring="#6a7436", mouth_v=0.55),
-    "minnow": dict(back="#5d6a56", side="#aeb8ae", side2="#cdd6cf", belly="#f0f0e6", scale=(9, 8, 0.10),
+                     eye_ring="#d84a2a", body_eye_ring="#6a7436", mouth_v=0.55, mouth_u0=0.95),
+    "minnow": dict(back="#5d6a56", side="#aeb8ae", side2="#cdd6cf", belly="#f0f0e6", scale=(9, 8, 0.08),
                    marks=[bars(8, "#3d8fa0", 0.55, 0.22, 0.72, 0.18, 0.72, 0.022), hstripe(0.42, 0.04, "#34687a", 0.35, 0.1, 0.8),
                           belly_blush("#e8864a", 0.35, 0.3, 0.8)],
                    fin_base="#e2915a", fin_tip="#c8c0a8", fin_ray="#9a7a5a", fin_edge="#f0e0c0",
-                   eye_ring="#d8d8d8", body_eye_ring="#9aa89a", mouth_v=0.50),
-    "prussian_carp": dict(back="#7c6a34", side="#b5984c", side2="#cdb97a", belly="#ece4c4", scale=(12, 11, 0.13),
+                   eye_ring="#d8d8d8", body_eye_ring="#9aa89a", mouth_v=0.50, mouth_u0=0.92),
+    "prussian_carp": dict(back="#7c6a34", side="#b5984c", side2="#cdb97a", belly="#ece4c4", scale=(12, 11, 0.10),
                              marks=[lambda c, x, y, u, v: lateral_line(c, x, y, u, v, "#5a4a24", 0.3)],
                              fin_base="#a89a62", fin_tip="#6a6240", fin_ray="#4a4630", fin_edge="#403a24",
                              eye_ring="#d6b050", body_eye_ring="#88743a", mouth_v=0.6),
-    "bass": dict(back="#3f4a2a", side="#7c8450", side2="#c9cdb0", belly="#eef0e2", scale=(10, 9, 0.10),
+    "bass": dict(back="#3f4a2a", side="#7c8450", side2="#c9cdb0", belly="#eef0e2", scale=(10, 9, 0.08),
                  marks=[hstripe(0.40, 0.045, "#22281a", 0.55, 0.10, 0.80), blotches("#2a3320", 0.25, 0.28, 30, 11, 0.55)],
                  fin_base="#7c8450", fin_tip="#3f4a2a", fin_ray="#2a3320", fin_edge="#d8dcc0",
-                 eye_ring="#c0482a", body_eye_ring="#5a6636", mouth_v=0.60, no_head=False),
-    "carp": dict(back="#5e4a22", side="#a78238", side2="#c8a85a", belly="#ead9a0", scale=(16, 13, 0.16),
+                 eye_ring="#c0482a", body_eye_ring="#5a6636", mouth_v=0.60, mouth_u0=0.8, no_head=False),
+    "carp": dict(back="#5e4a22", side="#a78238", side2="#c8a85a", belly="#ead9a0", scale=(16, 13, 0.12),
                  marks=[], fin_base="#9a6a3a", fin_tip="#6a4a2a", fin_ray="#4a321c", fin_edge="#3c2814",
                  eye_ring="#d9b24a", body_eye_ring="#80622e", mouth_v=0.68),
     "korean_bullhead": dict(back="#5b5226", side="#a1892f", side2="#c9ad45", belly="#e9dba0", scale=None,
                            marks=[blotches("#2b2512", 0.55, 0.30, 34, 21, 0.75), hstripe(0.26, 0.05, "#e8d98a", 0.45, 0.14, 0.78),
                                   bars(3, "#2b2512", 0.35, 0.30, 0.70, 0.0, 0.9, 0.04)],
                            fin_base="#8a7a30", fin_tip="#3c3414", fin_ray="#2a2410", fin_edge="#1c180a",
-                           eye_ring="#c8c0a0", body_eye_ring="#5b5226", mouth_v=0.52),
+                           eye_ring="#c8c0a0", body_eye_ring="#5b5226", mouth_v=0.52, mouth_u0=0.9),
     "catfish": dict(back="#3a3214", side="#5c4e1e", side2="#8c7a38", belly="#c8b878", scale=None,
                     marks=[blotches("#251f0c", 0.5, 0.35, 30, 31, 0.7), blotches("#a89c52", 0.25, 0.22, 14, 41, 0.9)],
-                    fin_base="#6a5a24", fin_tip="#2a220c", fin_ray="#201a0a", fin_edge="#4a3e1a",
-                    eye_ring="#d8d0a0", body_eye_ring="#3a3214", mouth_v=0.55),
+                    fin_base="#8a7634", fin_tip="#4a3c18", fin_ray="#201a0a", fin_edge="#a8944a",
+                    eye_ring="#d8d0a0", body_eye_ring="#3a3214", mouth_v=0.55, mouth_u0=0.86),
     "mirror_carp": dict(back="#4a4326", side="#8b7a3c", side2="#b5a15a", belly="#e8dba8", scale=None,
                          marks=[mirror_scales(77)], fin_base="#b06a38", fin_tip="#a8441e", fin_ray="#6a2a10", fin_edge="#5a2410",
                          eye_ring="#d8b04c", body_eye_ring="#6e5e30", mouth_v=0.68),
-    "snakehead": dict(back="#2e2e22", side="#5b5a3c", side2="#a39a74", belly="#e0d6ae", scale=(8, 7, 0.10),
+    "snakehead": dict(back="#2e2e22", side="#5b5a3c", side2="#a39a74", belly="#e0d6ae", scale=(8, 7, 0.08),
                       marks=[blotches("#1a1a12", 0.7, 0.34, 26, 51, 0.8), spots("#d9cfa0", 0.35, 18, 7, 61, 0.1, 0.5, 0.1, 0.7),
                              hstripe(0.40, 0.03, "#14140c", 0.45, 0.75, 0.97)],
-                      fin_base="#4a4a2e", fin_tip="#26261a", fin_ray="#1a1a10", fin_edge="#c8bd90",
-                      eye_ring="#caa44a", body_eye_ring="#34342a", mouth_v=0.50),
+                      fin_base="#6e6c48", fin_tip="#3c3c2a", fin_ray="#1a1a10", fin_edge="#d8cfa0",
+                      eye_ring="#caa44a", body_eye_ring="#34342a", mouth_v=0.50, mouth_u0=0.82),
     "eel": dict(back="#3a3e22", side="#5d6232", side2="#9a9246", belly="#e2d890", scale=None,
                 marks=[blotches("#262a16", 0.3, 0.3, 40, 71, 0.6)],
-                fin_base="#4e5228", fin_tip="#2a2e18", fin_ray="#1e2210", fin_edge="#a89c52",
-                eye_ring="#b8b070", body_eye_ring="#3a3e22", mouth_v=0.52),
+                fin_base="#6c7036", fin_tip="#3e4224", fin_ray="#1e2210", fin_edge="#c8bc66",
+                eye_ring="#b8b070", body_eye_ring="#3a3e22", mouth_v=0.52, mouth_u0=0.93),
 }
 ORDER = list(SPECIES)
 
@@ -222,15 +242,18 @@ def cell_origin(i):
 def paint_atlas(path):
     from PIL import Image
     atlas = np.zeros((CH * 3, CW * 4, 3), np.float32) + 128
+    fins = np.zeros((FH * 3, FW * 4, 4), np.float32)
     for i, k in enumerate(ORDER):
         sp = SPECIES[k]; ox, oy = cell_origin(i)
         seed = 100 + i * 7
         atlas[oy:oy + BH, ox:ox + CW] = paint_body(sp, seed)
-        fin = paint_fin(sp, seed)
-        atlas[oy + 196:oy + 252, ox:ox + 384] = fin
         atlas[oy + 192:oy + 256, ox + 400:ox + 464] = paint_eye(sp)
-        atlas[oy + 192:oy + 196, ox:ox + 384] = fin[0:1]
-    Image.fromarray(np.clip(atlas, 0, 255).astype(np.uint8)).save(path, quality=88)
+        fx, fy = (i % 4) * FW, (i // 4) * FH
+        fins[fy:fy + FH, fx:fx + FW] = paint_fin(sp, seed)
+    import os
+    Image.fromarray(np.clip(atlas, 0, 255).astype(np.uint8)).save(path, quality=82)
+    fp = os.path.join(os.path.dirname(path), "fish_fins.png")
+    Image.fromarray(np.clip(fins, 0, 255).astype(np.uint8), "RGBA").save(fp, optimize=True)
     return path
 
 

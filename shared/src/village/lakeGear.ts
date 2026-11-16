@@ -6,7 +6,7 @@ export const LAKE_GEAR_GLB_HASH = "6c87365a";
 export const LAKE_GEAR_MAX_BYTES = 250 * 1024;
 
 export const LAKE_FISH_PATH = "/models/lake/lake_fish.glb";
-export const LAKE_FISH_GLB_HASH = "fe28cd93";
+export const LAKE_FISH_GLB_HASH = "2c51a006";
 export const LAKE_FISH_MAX_BYTES = 600 * 1024;
 
 /**
@@ -24,7 +24,7 @@ export const ROD_FOLDED_LENGTH = 1.15;
 export const ROD_EXTENDED_LENGTH = 3.61;
 
 /**
- * lake_fish.glb: 종마다 뿌리 노드 `fish_<id>`(메시 자식 1개, 재질 M_fish 하나 + 2048x768 JPEG 아틀라스 공유).
+ * lake_fish.glb: 종마다 뿌리 노드 `fish_<id>`(메시 자식 1개, 재질 M_fish(몸·눈·수염) + M_fin(알파 컷 지느러미, alphaMode MASK) 두 재질, 아틀라스 JPEG 1 + PNG 1 공유).
  * 전체 길이(주둥이~꼬리 끝) = 1.0, +Z = 머리, +Y = 등, 길이 중앙이 원점. 클라이언트가 잡힌 cm / 노드 extras.refCm(=100)(× 아바타 배율)로 늘리고(extras.kindIndex = fishKind 번호 1~11) z 좌표로 꼬리 흔들기.
  */
 export const LAKE_FISH_IDS = [
