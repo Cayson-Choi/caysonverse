@@ -430,6 +430,9 @@ def build_guide(m, badge_img):
     rim.append(grp(setmat(tube_bm(hemrows, [0.012] * len(hemrows), segs=8, capn=2), 4), 1))
     toprow = [V(u / 48, 1.0, KV(1.0, 1.040)) for u in range(49)]
     rim.append(grp(setmat(tube_bm(toprow, [0.014] * len(toprow), segs=8, capn=2), 4), 1))
+    for s in (1, -1):   # 진동 둘레(소매가 나오는 곳) 바이어스: 셔츠 소매와 조끼가 만나는 선을 깔끔하게
+        ring = xform(torus_bm(0.150, 0.016, segs=32, rsegs=8), Matrix.Translation((s * 0.318, 0.0, 1.107)) @ Matrix.Rotation(math.radians(90), 4, 'Y'))
+        rim.append(grp(setmat(ring, 4), 2))
     # 아래 주머니 두 개(덮개 + 흰 테)
     for s in (1, -1):
         zc, w, h = 0.64, 0.15, 0.13
@@ -643,7 +646,7 @@ def build_memorial(m, badge_img=None):
                      [m['suit'], m['white'], m['tie'], m['suit_lapel'], m['black'], m['pocket_sq'], m['silver']],
                      override=long_sleeve_weights, target=3000, dec_parts=body)
     # 명찰(오른쪽 가슴 = -X): 금테 판 + 앞면 그림
-    p, n = surf(bv[0], (-0.212, -1.5, 0.925), (0, 1, 0))   # 오른쪽 가슴, 라펠 아래
+    p, n = surf(bv[0], (-0.222, -1.5, 1.000), (0, 1, 0))   # 오른쪽 가슴, 라펠 바깥(데스크 위로 보이게)
     if p is not None and badge_img is not None:
         p = p + n * 0.012
         plate = orient_front(rbox_bm(0.120, 0.008, 0.040, 0.006, cuts=2), n, p + n * 0.014)
@@ -680,6 +683,9 @@ def build_shopkeeper(m):
     parts.append(grp(setmat(tube_bm(hemrows, [0.011] * len(hemrows), segs=8, capn=2), 2), 1))
     toprow = [V(u / 48, 1.0, KV(1.0, 1.044)) for u in range(49)]
     parts.append(grp(setmat(tube_bm(toprow, [0.013] * len(toprow), segs=8, capn=2), 2), 1))
+    for s in (1, -1):
+        ring = xform(torus_bm(0.150, 0.015, segs=32, rsegs=8), Matrix.Translation((s * 0.318, 0.0, 1.107)) @ Matrix.Rotation(math.radians(90), 4, 'Y'))
+        parts.append(grp(setmat(ring, 2), 2))
     pockets = [(0.185, 0.96, 0.10, 0.085), (0.185, 0.84, 0.12, 0.09), (0.175, 0.635, 0.15, 0.13)]
     for s in (1, -1):
         for (x0, zc, w, h) in pockets:
