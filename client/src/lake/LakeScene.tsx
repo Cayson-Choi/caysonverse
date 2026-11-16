@@ -431,7 +431,7 @@ function LakeAnglers() {
       if (v.phase !== slot.lastPhase) {
         if (v.phase === FISH_PHASE.bite) lakeRipple(p.x, p.z, 0.8);
         if (v.phase === FISH_PHASE.missed) lakeRipple(p.x, p.z, 0.4);
-        if (v.phase === FISH_PHASE.lifting || v.phase === FISH_PHASE.netting) {
+        if (v.phase === FISH_PHASE.lifting) {
           lakeRipple(p.x, p.z, 1.0);
           emit(p.x, LAKE_WATER_Y, p.z, 18);
         }

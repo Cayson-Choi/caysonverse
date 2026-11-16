@@ -434,12 +434,12 @@ describe("big fish: hold, decay, loss, net (design 7.1, 8)", () => {
     s = holdLine(s.state, start + 1100, true); // one message a second is within the 1.5 s a message counts for
     expect(s.state.holdMs).toBeGreaterThan(900);
     s = holdLine(s.state, start + 1700, true);
-    expect(s.entered).toEqual(["netting"]);
-    expect(s.state.phase).toBe("netting");
-    const landed = tickFishing(s.state, start + 1700 + FISHING.netMs);
+    expect(s.entered).toEqual(["lifting"]); // lake v2: no net, lifted out on the line
+    expect(s.state.phase).toBe("lifting");
+    const landed = tickFishing(s.state, start + 1700 + FISHING.liftMs);
     expect(landed.state.phase).toBe("landed");
     expect(landed.state.lastResult).toBe("caught");
-    expect(tickFishing(s.state, start + 1700 + FISHING.netMs + FISHING.landedMs + FISHING.releaseMs).state.phase).toBe("ready");
+    expect(tickFishing(s.state, start + 1700 + FISHING.liftMs + FISHING.landedMs + FISHING.releaseMs).state.phase).toBe("ready");
   });
 
   it("a Hold message counts for 1.5 s at most: forgetting the 'up' does not hold the fish for ever", () => {
@@ -501,7 +501,7 @@ describe("a full fish through every stage (smoke)", () => {
     expect(s.phase).toBe("fighting");
     const at = s.fightStartAt;
     for (let i = 0; i <= 5; i++) s = holdLine(s, at + i * 1000, true).state;
-    expect(["netting", "landed"]).toContain(s.phase);
+    expect(["lifting", "landed"]).toContain(s.phase);
     s = tickFishing(s, s.phaseAt + 60_000).state;
     expect(s.phase).toBe("ready");
     expect(s.lastResult).toBe("caught");

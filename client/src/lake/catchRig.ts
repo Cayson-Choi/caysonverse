@@ -30,7 +30,8 @@ export interface CatchInput {
   handL: Object3D | null;
   handR: Object3D | null;
   rodTip: Object3D | null;
-  netBag: Object3D | null;
+  /** The avatar's root (its feet, facing +Z): the hug holds the fish against its chest. */
+  body: Object3D | null;
   /** The world (the scene): the fish hangs there, in world coordinates. */
   world: Object3D | null;
   /** First person, my own avatar: the camera to hold the fish in front of. */
@@ -281,7 +282,7 @@ export function createCatchRig(sid: string): CatchRig {
       stageT = stageChanged ? 0 : stageT + delta;
       // the tail beat
       flexPhase += delta * cs.beat * Math.PI * 2;
-      const bend = cs.stage === "net" ? 0.12 : cs.stage === "line" || cs.stage === "toHand" ? Math.sin(t * 2.3) * 0.08 : 0;
+      const bend = cs.stage === "show" ? 0.06 * Math.sin(t * 1.7) : cs.stage === "line" || cs.stage === "toHand" ? Math.sin(t * 2.3) * 0.08 : 0;
       f.setFlex(flexPhase, 0.075 * cs.wriggle, bend);
       const camD = Math.hypot(cameraProbe.x - lastPos.x, cameraProbe.y - lastPos.y, cameraProbe.z - lastPos.z);
       f.setFar(!i.fpCamera && camD > FAR_M);
@@ -297,7 +298,7 @@ export function createCatchRig(sid: string): CatchRig {
         case "surface": {
           // the fight's progress eases toward the wire's (a run out when the angler lets go, pulled in while held)
           if (view.phase === FISH_PHASE.fighting) reelK += (reelProgress(view) - reelK) * Math.min(1, delta * 2.2);
-          else if (view.phase !== FISH_PHASE.netting) reelK = 0;
+          else if (view.phase !== FISH_PHASE.lifting) reelK = 0;
           if (!underPos(view, view.phase === FISH_PHASE.lifting ? Math.min(t, REEL_S) : t, under, reelK)) break;
           const surf = cs.stage === "surface";
           const skim = !surf && skimming(view, t);
@@ -386,7 +387,6 @@ export function createCatchRig(sid: string): CatchRig {
         }
         case "toHand":
         case "hand":
-        case "net":
         case "show": {
           let target: Vector3 | null = null;
           const tq = q2;
@@ -426,11 +426,6 @@ export function createCatchRig(sid: string): CatchRig {
               const spread = Math.max(0.1, 0.3 * len);
               fpHands(i, target.clone().addScaledVector(axis, spread).add(below), target.clone().addScaledVector(axis, -spread * 0.95).add(below), 1, camUp, fwd, at);
             }
-          } else if (cs.stage === "net" && i.netBag) {
-            target = i.netBag.getWorldPosition(new Vector3()).add(new Vector3(0, -0.06, 0));
-            const side = i.handR && i.handL ? i.handR.getWorldPosition(new Vector3()).sub(i.handL.getWorldPosition(new Vector3())) : new Vector3(1, 0, 0);
-            side.y = 0;
-            lookAlong(side.lengthSq() > 1e-6 ? side : new Vector3(1, 0, 0), 1.2, tq);
           } else if ((cs.stage === "toHand" || cs.stage === "hand") && i.handL) {
             target = i.handL.getWorldPosition(new Vector3()).add(new Vector3(0, -0.04, 0));
             // held by the head, hanging, swinging a little
@@ -438,16 +433,36 @@ export function createCatchRig(sid: string): CatchRig {
             lookAlong(hang, Math.sin(t * 6) * 0.3, tq);
             target.addScaledVector(hang, -0.42 * len);
           } else if (i.handL && i.handR) {
+            // 품에 안기 (owner 2026-11-17): the fish taken in the arms, held against the chest — head up toward the right shoulder,
+            // its flank out, the two arms of Fish_Stand_Show round it; far enough out from the chest that it never goes into the body
+            // (a bigger fish further out and flatter, so its head stays clear of the face)
             const l = i.handL.getWorldPosition(new Vector3());
             const r = i.handR.getWorldPosition(new Vector3());
-            target = l.clone().add(r).multiplyScalar(0.5).add(new Vector3(0, 0.07, 0));
-            const dir = r.sub(l);
-            if (dir.lengthSq() < 1e-4) dir.set(1, 0, 0);
-            lookAlong(dir, 0, tq);
+            const mid = l.clone().add(r).multiplyScalar(0.5);
+            const side = r.clone().sub(l);
+            side.y = 0;
+            if (side.lengthSq() < 1e-4) side.set(1, 0, 0);
+            side.normalize();
+            let fwd = new Vector3(-side.z, 0, side.x); // the avatar's front (left -> right hand, turned a quarter)
+            if (i.body) {
+              const bf = i.body.getWorldDirection(new Vector3());
+              bf.y = 0;
+              if (bf.lengthSq() > 1e-4) fwd = bf.normalize();
+            }
+            const bodyAt = i.body ? i.body.getWorldPosition(new Vector3()) : mid.clone().addScaledVector(fwd, -0.25);
+            const out = 0.2 + 0.12 * len;
+            target = new Vector3(bodyAt.x, mid.y + 0.04, bodyAt.z).addScaledVector(fwd, out);
+            const tilt = Math.max(0.12, 0.5 - 0.35 * len);
+            const nose = side.clone().multiplyScalar(Math.cos(tilt)).add(new Vector3(0, Math.sin(tilt), 0)).normalize();
+            lookAlong(nose, 0, tq);
+            // the flank toward the front (the fish shown off), a little roll with its flapping
+            const flank = new Vector3(1, 0, 0).applyQuaternion(tq);
+            const ang = Math.atan2(flank.clone().cross(fwd).dot(nose), flank.dot(fwd));
+            tq.premultiply(new Quaternion().setFromAxisAngle(nose, ang + Math.sin(t * 5) * 0.12));
           }
           if (!target) break;
-          // the blends: from the line into the hand, from the surface into the net
-          const k = cs.stage === "toHand" || cs.stage === "net" ? cs.k : 1;
+          // the blend from the line into the hand
+          const k = cs.stage === "toHand" ? cs.k : 1;
           if (k < 1 && (fromStage === "line" || fromStage === "surface" || fromStage === "toHand")) {
             pos.copy(fromPos).lerp(target, k);
             pos.y += Math.sin(k * Math.PI) * 0.15;
@@ -456,7 +471,6 @@ export function createCatchRig(sid: string): CatchRig {
             pos.copy(target);
             rot.copy(tq);
           }
-          if (cs.stage === "net" && stageChanged) lakeSplash(pos.x, LAKE_WATER_Y, pos.z, 20, 1.4);
           drip -= delta;
           if (drip <= 0 && pos.y > LAKE_WATER_Y + 0.1) {
             drip = cs.stage === "show" ? 0.22 : 0.09;
@@ -488,7 +502,7 @@ export function createCatchRig(sid: string): CatchRig {
           break;
       }
       // ease in from the last pose over 0.35 s (hand -> held up, the show -> the release ...), unless the stage blends itself
-      const selfBlending = cs.stage === "toHand" || cs.stage === "net" || cs.stage === "drop" || cs.stage === "line" || cs.stage === "under";
+      const selfBlending = cs.stage === "toHand" || cs.stage === "drop" || cs.stage === "line" || cs.stage === "under";
       if (!selfBlending && fromStage !== "none" && stageT < 0.35 && !newCatchStart(view.phase)) {
         const k = stageT / 0.35;
         const e = k * k * (3 - 2 * k);
