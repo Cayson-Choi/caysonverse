@@ -39,6 +39,12 @@ export const VillageMsg = {
   FishingStand: "FishingStand",
   /** Ask for the "오늘의 대어" board (it is also sent on join and, to the people at the lake, whenever it changes). Empty payload. */
   FishingBoardRequest: "FishingBoardRequest",
+  /**
+   * The sender uses the stair of the house floor they stand on: floor 1's up pad → floor 2, floor 2's down pad → floor 1 (집 실내 G).
+   * Like `UseDoor` the server decides from the authoritative position, area and sitting state, at most once a second; anything else is
+   * dropped silently. (The way out of a house is `UseDoor` too.)
+   */
+  UseStair: "UseStair",
   /** Submit a house keypad code. The server validates the claimed house against the authoritative player position. */
   Keypad: "Keypad",
 } as const;
@@ -46,7 +52,10 @@ export const VillageMsg = {
 export type VillageMsg = (typeof VillageMsg)[keyof typeof VillageMsg];
 
 /** Client → server: use the door at hand. Carries no data (the server never reads it). */
-export type UseDoorPayload = Record<string, never>;
+export type UseDoorPayload = Record<string, never> | { loadFailed: true };
+
+/** Client → server: use the stair at hand. Carries no data (the server never reads it). */
+export type UseStairPayload = Record<string, never>;
 
 /** Client → server: light a candle in this cubby (a `cubbyAnchors` id, `<wall>_<row>_<col>`). */
 export interface LightCandlePayload {
@@ -62,6 +71,7 @@ export interface KeypadPayload {
 /** Payload type for each VillageMsg value. */
 export interface VillageMsgPayloads {
   [VillageMsg.UseDoor]: UseDoorPayload;
+  [VillageMsg.UseStair]: UseStairPayload;
   [VillageMsg.LightCandle]: LightCandlePayload;
   [VillageMsg.FishingRentRod]: FishingEmptyPayload;
   [VillageMsg.FishingReturnRod]: FishingEmptyPayload;
@@ -210,14 +220,24 @@ export interface FishingBoardPayload {
   entries: FishingBoardEntry[];
 }
 
-export type KeypadResultReason = "invalid_request" | "too_far" | "locked_out" | "rate_limited" | "invalid_code" | "wrong_code";
+export type KeypadResultReason =
+  | "invalid_request"
+  | "too_far"
+  | "locked_out"
+  | "rate_limited"
+  | "invalid_code"
+  | "wrong_code"
+  /** The house has no interior yet (its door stays locked). */
+  | "not_ready"
+  /** Eight players are already inside (both floors together): "집이 가득 찼어요". */
+  | "full"
+  /** Sitting or riding the bus: the keypad does nothing. */
+  | "busy";
 
 export interface KeypadResultPayload {
   ok: boolean;
   buildingId: string;
   reason?: KeypadResultReason;
   retryAfterMs?: number;
-  /** True while the house interior GLB is pending; the server uses the existing hall boundary as a placeholder. */
-  placeholder?: boolean;
   area?: string;
 }

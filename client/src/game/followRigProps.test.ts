@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { VILLAGE_LAYOUT } from "@caysonverse/shared/village/villageLayout";
+import { cameraWallBoxes } from "@caysonverse/shared/village/fallsWalk";
 import { HEAD_HEIGHT } from "./constants";
 import { VILLAGE_ACTIVE_MAP, setActiveMap } from "./activeMap";
 import { armBoxes, cameraBoxes, isPropCameraBox } from "./cameraCollision";
@@ -31,8 +32,11 @@ describe("the follow camera's arm: the player's distance, shortened only by buil
     expect(props.length).toBeGreaterThanOrEqual(8);
     expect(armBoxes().some((b) => b.minX === 46.8 && b.maxX === 51.1 && b.minZ === -5.85 && b.maxZ === -1.85)).toBe(true); // col__kiosk
     expect(armBoxes().length).toBe(all.length - props.length);
-    // every house and the café stay walls
-    expect(armBoxes().filter((b) => (b.height ?? 0) >= 12).length).toBe(11);
+    // every house and the café stay walls, and so does the waterfall cliff's camera wall (terrain, B1 W5)
+    const cliff = cameraWallBoxes(VILLAGE_LAYOUT);
+    expect(cliff.length).toBeGreaterThan(0);
+    for (const w of cliff) expect(armBoxes()).toContainEqual(w);
+    expect(armBoxes().filter((b) => (b.height ?? 0) >= 12).length).toBe(11 + cliff.length);
   });
 
   it("the café kiosk is a small building: a camera that would end up inside it is held in front of it (coordinator 2026-11-16)", () => {

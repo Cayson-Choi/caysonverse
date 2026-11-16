@@ -233,7 +233,7 @@ try {
     for (let i = 0; i < Math.abs(steps); i++) await A.page.getByRole("button", { name: label, exact: true }).click();
     await sleep(300);
     const line = await A.page.evaluate(() => document.querySelector(".cv-cubby-line")?.textContent);
-    run.check("empty: 곧 이 자리에 우리 아이를 모실 수 있어요", line === "곧 이 자리에 우리 아이를 모실 수 있어요", line);
+    run.check("empty: the claim line (memorial stage B: 지금은 무료로 …) or, with the memorial off, 곧 이 자리에 …", ["지금은 무료로, 한 가족에 한 칸까지 모실 수 있어요", "곧 이 자리에 우리 아이를 모실 수 있어요"].includes(line), line);
     await run.shot(A, "hall-card-empty.png");
     for (let i = 0; i < Math.abs(steps); i++) await A.page.getByRole("button", { name: steps > 0 ? "아래 칸" : "위 칸", exact: true }).click();
     await sleep(300);

@@ -39,6 +39,7 @@ import {
   isClick,
   pressTravel,
   setClickTarget,
+  setSeatWalk,
   getClickTarget,
   clearClickTarget,
   setPendingClick,
@@ -68,7 +69,7 @@ import { overviewAllowed } from "./indoorCamera";
 import { createFollowRig, createFollowSpot, noteAreaLimit, stepFollowRig } from "./followRig";
 import { rememberOrbit, restoreOrbit } from "./cameraMemory";
 import { cameraProbe } from "./cameraProbe";
-import { activeBounds, activeSeats, getActiveMap } from "./activeMap";
+import { activeBounds, activePickBounds, activeSeats, getActiveMap } from "./activeMap";
 import { localGlide } from "./seatMotion";
 import { seatApproachGoal, seatUnderTap, warmSeatApproachGoals } from "./seatTap";
 import { seatedEyeOffset, stepSeatedWeight } from "./seatedEye";
@@ -80,8 +81,9 @@ import { getTransitRenderPose } from "../net/transitSync";
 import { busRiderCamera, ownSeatIndex, riderFov, type TransitCameraPose } from "../village/transitCamera";
 import { busCamGoal, busCamState, busElevation, riderBusPoint, selfBusRide } from "./busRide";
 import { BUS_HOLDS, BUS_SEATS, busPlaceOf, cabinFloorAt, seatBodyPoint } from "@caysonverse/shared/village/busCabin";
-import { VILLAGE_LAYOUT, cubbyAtPoint } from "@caysonverse/shared/village/villageLayout";
+import { VILLAGE_LAYOUT, cubbyAtPoint, isHouseArea } from "@caysonverse/shared/village/villageLayout";
 import { localArea } from "../village/villageArea";
+import { armHouseUse, houseTapTarget } from "../village/houseTap";
 import { openCubbyAt } from "../village/cubbyCard";
 import { cubbyFocusAnchor, stepCubbyFocus, type FocusPose } from "../village/cubbyFocus";
 import type { Orbit, Pose, SeatState } from "./types";
@@ -97,7 +99,7 @@ function showUnreachableHint(): void {
 }
 import { getRemoteSeatIndices } from "./remoteStore";
 import { sendSit } from "../net/connection";
-import { SEAT_REACH, approachesSeat, seatDistance, seatTaken } from "@caysonverse/shared/worldMap";
+import { SEAT_APPROACH_SLACK, SEAT_REACH, approachesSeat, seatDistance, seatTaken } from "@caysonverse/shared/worldMap";
 
 interface CameraRigProps {
   pose: Pose;
@@ -341,7 +343,7 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
       raycaster.near = cam.near; // nearer than the near plane is not drawn: nothing to click
       raycaster.far = cam.far;
       raycaster.layers.mask = cam.layers.mask;
-      const pick = pickSurface(raycaster, scene, { area: activeBounds() });
+      const pick = pickSurface(raycaster, scene, { area: activePickBounds() });
       if (pick) {
         const { origin: o, direction: d } = raycaster.ray;
         pick.ray = { o: { x: o.x, y: o.y, z: o.z }, d: { x: d.x, y: d.y, z: d.z } };
@@ -414,15 +416,27 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
       }
       // In the hall every collider in the room is furniture (round 9: the floor seen under the letter table's edge, between its
       // chairs, had no free spot within MAX_PUSH and the tap was "unreachable"): floor inside one moves out as for a bench's box.
-      let furniture = localArea() === "hall" ? map.geometry.obstacles : map.furniture;
+      // (a house floor is a room like the hall: every collider in it is furniture or the stair)
+      const inRoom = localArea() === "hall" || isHouseArea(localArea());
+      let furniture = inRoom ? map.geometry.obstacles : map.furniture;
+      // A tap on a house's stair or front door walks to its pad and uses it there (houseTap.ts): the pad is the destination, the use is armed.
+      const houseTap = pick && !pick.blocker && isHouseArea(localArea()) ? houseTapTarget(localArea(), pick.x, pick.y, pick.z) : null;
+      if (houseTap) surface = { x: houseTap.x, y: 0, z: houseTap.z, ny: 1 };
+      armHouseUse(houseTap ? houseTap.id : null);
       // A click on a seat or (in the hall) on other furniture is no ground, yet means something (round 8 review: a tap on the
       // sofa did nothing): the seat's approach, to sit on arrival, or the floor next to the piece (furnitureClick.ts).
       let sitOn: number | null = seatGoal ? seatTapped : null;
-      if (!seatGoal && surface && surfaceKind(surface, map.geometry.obstacles, activeBounds()) === "none") {
+      // A house's floor is flat: anything facing up above it (a sofa's cushion at 0.46 m, a low table) is furniture, never a raised floor to
+      // walk onto, and a tap whose ray enters a seat (a floor cushion a few cm up, a 보료) is that seat — a tap on a cushion clear of its
+      // collider's box walked onto the cushion and did not sit (G round 3).
+      const inHouse = isHouseArea(localArea());
+      const kindNone = !!surface && surfaceKind(surface, map.geometry.obstacles, activeBounds()) === "none";
+      if (!seatGoal && !houseTap && surface && (kindNone || inHouse)) {
         const remote = new Set(getRemoteSeatIndices());
-        const fc = furnitureClick(pick, pick?.ray ?? null, map.seats ?? activeSeats(), map.seatArea, (i) => remote.has(i), from, 0, localArea() === "hall");
+        const fc = furnitureClick(pick, pick?.ray ?? null, map.seats ?? activeSeats(), map.seatArea, (i) => remote.has(i), from, 0, inRoom, { obstacles: map.geometry.obstacles, bounds: activeBounds() });
+        const counts = kindNone || (fc !== null && (fc.seatIndex !== null || surface.y > WALKABLE_MAX_Y));
         // (a click on the seat the player is sitting on stays nothing)
-        if (fc && !(fc.seatIndex !== null && fc.seatIndex === seat.index)) {
+        if (fc && counts && !(fc.seatIndex !== null && fc.seatIndex === seat.index)) {
           // the floor there (a column that meets a cushion or a seat first is not the floor: the room's floor level then)
           const fy = surfaceHeightAt(raycaster, scene, fc.surface.x, fc.surface.z, 0);
           surface = { ...fc.surface, y: fy <= WALKABLE_MAX_Y ? fy : 0 };
@@ -433,7 +447,8 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
       }
       // the walk that ends beside the clicked seat offers THAT one, though another may be a hair nearer (seatPreference.ts)
       setPreferredSeat(sitOn ?? -1);
-      const start = startClickPlan(from.x, from.z, surface, map.geometry.obstacles, activeBounds(), !!s, { furniture, farFirst: seatGoal !== null });
+      const start = startClickPlan(from.x, from.z, surface, map.geometry.obstacles, activeBounds(), !!s, { furniture, farFirst: seatGoal !== null, shore: map.shore });
+      const toShore = !!(surface && map.shore && map.shore(surface.x, surface.z));
       const cameraNow = (): PerspectiveCamera => {
         if (snap) return snap;
         const cam = camera as PerspectiveCamera;
@@ -445,13 +460,16 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
       const settle = (raw: ClickPlan): ClickPlan => {
         let plan = raw;
         if (plan.ok && plan.adjusted !== "none") plan = { ...plan, y: groundAt(plan.x, plan.z, plan.y, true) };
-        // Rule 4: only a ring on the screen takes a walk.
+        // Rule 4: only a ring on the screen takes a walk — but a click on the falls' pool walks to its nearest shore
+        // spot wherever that is (W6: on the phone's narrow portrait view the shore spot of a click on the pool's north
+        // or south part lies off the screen, and a tap on the water that does nothing is what B10 complained of)
         let view: RingView | null = null;
         let unseen: ClickPlan | null = null;
         if (plan.ok) {
           view = viewOfRing(plan.x, plan.y, plan.z, cameraNow());
-          // a seat clicked was itself in view: its approach (beside or under the camera) need not be
-          const seen = sitOn === null ? requireSeen(plan, view) : plan;
+          // a seat clicked was itself in view: its approach (beside or under the camera) need not be; a click on the falls' pool
+          // walks to its nearest shore spot wherever that is (W6: on the phone's portrait view it may lie off the screen)
+          const seen = sitOn === null && !houseTap && !toShore ? requireSeen(plan, view) : plan;
           if (!seen.ok) unseen = plan;
           plan = seen;
         }
@@ -574,6 +592,7 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
                 const walkTo = (now: ClickPlan, ring: Readonly<ClickTarget> | null) => {
                   if (now.ok) {
                     setClickTarget(now.x, now.z, now.y, now.via);
+                    if (seatOnArrival.current && seatOnArrival.current.x === now.x && seatOnArrival.current.z === now.z) setSeatWalk();
                     // should a second touch that came in time be handled only now, this walk is taken back
                     const set = clickGeneration();
                     taps.walked(() => {
@@ -746,7 +765,7 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
         cancelOrbitGoal();
         const gain = dragSpeed();
         viewState.fpYaw = normalizeAngle(viewState.fpYaw - DRAG_SIGN * dx * gain);
-        viewState.fpPitch = clampFpPitch(viewState.fpPitch + DRAG_SIGN * dy * gain);
+        viewState.fpPitch = clampFpPitch(viewState.fpPitch + DRAG_SIGN * dy * gain, viewState.skyLook);
       } else {
         cancelOrbitGoal(); // a drag takes the camera back from any recenter glide
         const gain = dragSpeed();
@@ -834,6 +853,8 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
                 if (clickGeneration() !== generation) return;
                 if (plan.ok) {
                   setClickTarget(plan.x, plan.z, plan.y, plan.via); // 벽·사람·하늘·갈 수 없는 곳은 무시 (clickPlan.ts)
+                  // a seat clicked: the walk ends right at its approach (a step short of it the seat may not be the one offered)
+                  if (seatOnArrival.current && seatOnArrival.current.x === plan.x && seatOnArrival.current.z === plan.z) setSeatWalk();
                 } else if (clickIntent(plan) === "stop") {
                   clearClickTarget(); // 내 발밑: 그 자리에 멈춤
                 } else {
@@ -955,7 +976,7 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
           const seats = getActiveMap().seats ?? activeSeats();
           const target = seats[index];
           const remote = getRemoteSeatIndices();
-          return !!target && !seatTaken(seats, index, (i) => remote.includes(i)) && approachesSeat(target, pose.x, pose.z) && seatDistance(target, pose.x, pose.z) <= SEAT_REACH;
+          return !!target && !seatTaken(seats, index, (i) => remote.includes(i)) && approachesSeat(target, pose.x, pose.z, SEAT_APPROACH_SLACK) && seatDistance(target, pose.x, pose.z) <= SEAT_REACH;
         },
       });
       seatOnArrival.current = step.next;

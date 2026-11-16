@@ -22,14 +22,8 @@
 import { isBlocked, type AABB } from "../collision";
 import type { Bounds } from "../school/geometry";
 import { PLAYER_RADIUS } from "../worldMap";
-import {
-  VILLAGE_LAYOUT,
-  houseInteriorGeometry,
-  isHouseArea,
-  villageGeometry,
-  type Disc,
-  type Point2,
-} from "./villageLayout";
+import { VILLAGE_LAYOUT, villageGeometry, type Disc, type Point2 } from "./villageLayout";
+import { EXIT_PAD, houseFloorBounds, localToWorld, parseHouseFloorArea } from "./houseAreas";
 
 /** Air between two arrivals' bodies (m), on top of their two radii. */
 export const ARRIVAL_GAP_M = 0.6;
@@ -82,13 +76,33 @@ export function makeArrivalArea(bounds: Bounds, obstacles: readonly AABB[], pads
 const L = VILLAGE_LAYOUT;
 const VILLAGE_AREA = makeArrivalArea(L.areas.village, villageGeometry.obstacles, [L.memorial.exterior.doorPad]);
 const HALL_AREA = makeArrivalArea(L.areas.hall, villageGeometry.obstacles, [L.memorial.interior.doorPad]);
-/** A house interior (paused on the client): the hall's room footprint, its own geometry, the way out at the same pad. */
-const HOUSE_AREA = makeArrivalArea(L.areas.hall, houseInteriorGeometry.obstacles, [L.memorial.interior.doorPad]);
+const HOUSE_AREAS = new Map<string, ArrivalArea>();
 
-/** The arrival geometry of a 케이슨 마을 area: the village, the memorial hall, or a house interior. */
+/**
+ * One floor of a house (집 실내 G): its room rectangle, the village geometry's colliders near it (the walls and the model's furniture)
+ * and, on floor 1, the way-out pad in the entrance. The stairs' pads are not listed: the arrival spot after a stair is deliberately
+ * 0.35 m from its pad's centre (houseAreas.ts: "도착 자리에서 바로 그 패드를 쓸 수 있어요").
+ */
+function houseFloorArea(area: string): ArrivalArea | null {
+  const hit = parseHouseFloorArea(area);
+  if (!hit) return null;
+  const cached = HOUSE_AREAS.get(area);
+  if (cached) return cached;
+  const pads: Disc[] = [];
+  if (hit.floor === 1) {
+    const c = localToWorld(hit.n, 1, EXIT_PAD.x, EXIT_PAD.z);
+    pads.push({ centre: { x: c.x, z: c.z }, radius: EXIT_PAD.radius });
+  }
+  const made = makeArrivalArea(houseFloorBounds(hit.n, hit.floor), villageGeometry.obstacles, pads);
+  HOUSE_AREAS.set(area, made);
+  return made;
+}
+
+/** The arrival geometry of a 케이슨 마을 area: the village, the memorial hall, or one floor of a house. */
 export function arrivalArea(area: string): ArrivalArea {
   if (area === "hall") return HALL_AREA;
-  if (isHouseArea(area)) return HOUSE_AREA;
+  const house = houseFloorArea(area);
+  if (house) return house;
   return VILLAGE_AREA;
 }
 
@@ -254,7 +268,7 @@ export function freeSpawnSpot(
   return findFreeSpot(nominal, area, others, spacing);
 }
 
-/** `findFreeSpot` in a 케이슨 마을 area by name ("village", "hall" or "house:<id>"). */
+/** `findFreeSpot` in a 케이슨 마을 area by name ("village", "hall" or "house:<id>:<floor>"). */
 export function spreadArrival(area: string, nominal: ArrivalPose, occupants: Iterable<Point2>): ArrivalSpot {
   return findFreeSpot(nominal, arrivalArea(area), occupants);
 }

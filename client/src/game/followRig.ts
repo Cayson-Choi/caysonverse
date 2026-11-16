@@ -35,7 +35,7 @@ import {
   type CameraLimit,
   type Vec3,
 } from "./indoorCamera";
-import { ARM_FREE, armBoxes, armHeightScaleAt, armLookLiftAt, cameraPad, indoorArmShape, springArmDistance, stepArmLimit } from "./cameraCollision";
+import { ARM_FREE, armBoxes, armHeightScaleAt, armLookLiftAt, cameraPad, indoorArmShape, segmentHitFraction, springArmDistance, stepArmLimit } from "./cameraCollision";
 import { createShoulderPose, portraitWeight, shoulderPose, shoulderTarget, stepShoulder, stepShoulderSide } from "./cameraShoulder";
 import { getActiveMap } from "./activeMap";
 import { HUNG, cameraSolids } from "./cameraSolids";
@@ -150,6 +150,19 @@ const shoulderSpot = createShoulderPose();
  * `armActive` is false while the third-person pose is not drawn at all (full first person): the walls are then not
  * cast against, and the arm is reset so coming back out of first person starts with a free arm.
  */
+/** How far (m) before a wall's box the in-wall guard leaves the lens, and the walls' height for its cast. */
+const IN_WALL_BACKOFF = 0.06;
+const WALL_HEIGHT_GUARD = 100;
+
+/** Whether (x, y, z) lies inside a standing wall box (a wall, a partition: at least 1.6 m tall, from the floor; props never count). */
+function insideTallBox(x: number, y: number, z: number): boolean {
+  for (const b of armBoxes()) {
+    if (b.height === undefined || b.height < 1.6 || b.minY !== undefined) continue;
+    if (x > b.minX && x < b.maxX && z > b.minZ && z < b.maxZ && y < b.height) return true;
+  }
+  return false;
+}
+
 export function stepFollowRig(
   rig: FollowRig,
   orbit: Readonly<Orbit>,
@@ -257,6 +270,17 @@ export function stepFollowRig(
     if (tpY > cap) tpY = Math.max(HEAD_HEIGHT, cap);
   }
   rig.solidLimit = ARM_FREE;
+
+  // The last word: never inside a wall's own box. A thin partition's end beside a doorway (12 cm, 집 실내 G house 2 upstairs) could take
+  // the shoulder's side leg past the padded corner and leave the lens in the board: pulled back along the head's line to just before it.
+  if (insideTallBox(tpX, tpY, tpZ)) {
+    const len = Math.hypot(tpX - x, tpY - HEAD_HEIGHT, tpZ - z);
+    const t = segmentHitFraction(x, HEAD_HEIGHT, z, tpX, tpY, tpZ, armBoxes(), WALL_HEIGHT_GUARD, 0);
+    const k = Math.max(0, t - IN_WALL_BACKOFF / Math.max(len, 1e-6));
+    tpX = x + (tpX - x) * k;
+    tpY = HEAD_HEIGHT + (tpY - HEAD_HEIGHT) * k;
+    tpZ = z + (tpZ - z) * k;
+  }
 
   // Never under the floor: a low pitch at a long zoom would otherwise look up at the ground's underside.
   out.x = tpX;

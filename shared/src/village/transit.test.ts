@@ -69,6 +69,76 @@ describe("traffic signals", () => {
   });
 });
 
+describe("signal phases: pedestrians go only while the vehicles are red, with all-red clearance (A4)", () => {
+  const STEP = 50;
+  const offsets = [0, 7_000, 13_500, 29_000, TRANSIT.signalCycleMs - 1];
+
+  it("never shows a vehicle green (or amber) together with a pedestrian walk/flashing, at every 50 ms of a cycle and any offset", () => {
+    for (const off of offsets) {
+      for (let t = 0; t < TRANSIT.signalCycleMs * 2; t += STEP) {
+        const v = signalAt(t, off);
+        const p = pedestrianSignalAt(t, off);
+        if (v.color !== "red") expect(p.color).toBe("stop");
+        if (p.color !== "stop") expect(v.color).toBe("red");
+        expect(v.canBusProceed && p.canCross).toBe(false);
+      }
+    }
+  });
+
+  it("has an all-red clearance of at least 2 s after the amber and before the next green", () => {
+    const clear = TRANSIT.signalAllRedMs;
+    // amber ends -> walk starts
+    expect(TRANSIT.pedestrianStartMs - (TRANSIT.signalGreenMs + TRANSIT.signalAmberMs)).toBeGreaterThanOrEqual(clear);
+    // flashing ends -> green starts
+    const pedEnd = TRANSIT.pedestrianStartMs + TRANSIT.pedestrianWalkMs + TRANSIT.pedestrianFlashingMs;
+    expect(TRANSIT.signalCycleMs - pedEnd).toBeGreaterThanOrEqual(clear);
+    for (let t = 0; t < TRANSIT.signalCycleMs; t += STEP) {
+      const v = signalAt(t).color;
+      const p = pedestrianSignalAt(t).color;
+      if (t >= TRANSIT.signalGreenMs + TRANSIT.signalAmberMs && t < TRANSIT.pedestrianStartMs) expect(`${v}/${p}`).toBe("red/stop");
+      if (t >= pedEnd) expect(`${v}/${p}`).toBe("red/stop");
+    }
+  });
+
+  it("runs the sequence green, amber, all-red, walk, flashing, all-red in order with the timing table", () => {
+    const seq: string[] = [];
+    for (let t = 0; t < TRANSIT.signalCycleMs; t += STEP) {
+      const k = `${signalAt(t).color}/${pedestrianSignalAt(t).color}`;
+      if (seq[seq.length - 1] !== k) seq.push(k);
+    }
+    expect(seq).toEqual(["green/stop", "amber/stop", "red/stop", "red/walk", "red/flashing", "red/stop"]);
+    expect(signalAt(25_999).color).toBe("green");
+    expect(signalAt(26_000).color).toBe("amber");
+    expect(signalAt(29_000).color).toBe("red");
+    expect(pedestrianSignalAt(30_999).color).toBe("stop");
+    expect(pedestrianSignalAt(31_000).color).toBe("walk");
+    expect(pedestrianSignalAt(43_000).color).toBe("flashing");
+    expect(pedestrianSignalAt(47_999).color).toBe("flashing");
+    expect(pedestrianSignalAt(48_000).color).toBe("stop");
+    expect(signalAt(49_999).color).toBe("red");
+    expect(signalAt(50_000).color).toBe("green");
+    expect(TRANSIT.departureEveryMs % TRANSIT.signalCycleMs).toBe(0);
+  });
+
+  it("keeps the bus off the crosswalk whenever the pedestrians may walk or are flashing, at every departure phase and crossing", () => {
+    const hour = Date.UTC(2026, 10, 12, 3, 0, 0);
+    const speed = routeLength() / TRANSIT.lapMs;
+    for (let off = 0; off < TRANSIT.signalCycleMs; off += 500) {
+      const tl = tripTimeline(hour + off);
+      for (const g of TRANSIT_HOLDS) {
+        for (let t = hour + off; t < tl.endMs; t += 250) {
+          const { distance } = busMotionAt(t, hour + off);
+          // the bus's body overlaps the zebra (2.5 m half-depth) when its centre is within half a bus + the zebra of the crossing
+          const crosswalkAt = g.distance + TRANSIT.busLengthM / 2 + TRANSIT.stopLineM;
+          const onZebra = Math.abs(distance - crosswalkAt) < TRANSIT.busLengthM / 2 + 2.35 - 0.01;
+          if (onZebra) expect(pedestrianSignalAt(t, g.offsetMs).color).toBe("stop");
+        }
+      }
+      expect(speed).toBeGreaterThan(0);
+    }
+  });
+});
+
 describe("the bus at the crosswalks' signals", () => {
   const hour = Date.UTC(2026, 10, 12, 3, 0, 0);
   const speed = routeLength() / TRANSIT.lapMs;
@@ -142,7 +212,7 @@ describe("the bus at the crosswalks' signals", () => {
 
   it("nextGreenAt is the same instant when green and the next cycle's start otherwise", () => {
     expect(nextGreenAt(5_000)).toBe(5_000);
-    expect(nextGreenAt(30_000)).toBe(40_000);
+    expect(nextGreenAt(30_000)).toBe(TRANSIT.signalCycleMs);
   });
 
   it("never has the bus on a crosswalk when the pedestrians' walk begins (review r1)", () => {
@@ -156,7 +226,7 @@ describe("the bus at the crosswalks' signals", () => {
         const clearAt = h.releaseMs + (h.stops ? stripes : (TRANSIT.stopLineM + 2.35 + TRANSIT.busLengthM) / leg.speed);
         // vehicles are still green when the bus's tail leaves the crosswalk
         expect(signalAt(clearAt - 1).color).toBe("green");
-        // and no walk phase (24-34 s) starts while it is on the zebra
+        // and no walk phase (31-43 s) starts while it is on the zebra
         for (let t = h.releaseMs; t < clearAt; t += 250) expect(pedestrianSignalAt(t).canCross).toBe(false);
       }
     }

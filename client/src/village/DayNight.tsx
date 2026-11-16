@@ -179,8 +179,10 @@ export function DayNight({ area, tier }: { area: AreaId; tier: QualityTier }) {
       sun.color.setRGB(s.keyColor[0], s.keyColor[1], s.keyColor[2]);
       sun.intensity = s.keyIntensity;
       keyOffset(s.keyDir, rig.keyOffset);
-      const t = sun.target.position;
-      sun.position.set(t.x + rig.keyOffset[0], t.y + rig.keyOffset[1], t.z + rig.keyOffset[2]);
+      if (!rig.aim.external) {
+        const t = sun.target.position;
+        sun.position.set(t.x + rig.keyOffset[0], t.y + rig.keyOffset[1], t.z + rig.keyOffset[2]);
+      }
     }
   });
   return <primitive object={glow} />;

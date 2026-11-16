@@ -1,0 +1,65 @@
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><link rel="stylesheet" href="common.css">
+<style>
+body { width: 390px; height: 844px; overflow: hidden; position: relative; background: #222; }
+.scene { position: absolute; inset: 0 0 auto 0; height: 470px; background: url("../../../handoff/designs/memorial/overview.jpg") no-repeat; background-size: 3227px auto; background-position: -1235px -82px; filter: saturate(0.95); }
+.scene::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(0,0,0,0.10), rgba(0,0,0,0) 30%, rgba(0,0,0,0.15)); }
+.focus { position: absolute; left: 150px; top: 170px; width: 92px; height: 92px; border: 3px solid #f4d58d; border-radius: 6px; box-shadow: 0 0 0 4px rgba(244,213,141,0.35), 0 0 30px rgba(255,214,140,0.7); }
+.wreath { position: absolute; left: 160px; top: 236px; width: 72px; height: 22px; border-radius: 12px; background: radial-gradient(circle at 10% 50%, #fff 5px, transparent 6px), radial-gradient(circle at 30% 50%, #fffaf0 6px, transparent 7px), radial-gradient(circle at 50% 50%, #fff 6px, transparent 7px), radial-gradient(circle at 70% 50%, #fffaf0 6px, transparent 7px), radial-gradient(circle at 90% 50%, #fff 5px, transparent 6px), #7a9a6a; box-shadow: 0 2px 6px rgba(0,0,0,.3); }
+.ribbon { position: absolute; left: 172px; top: 258px; padding: 1px 6px; background: #f7f3ec; color: #6b5a4a; font-size: 9px; border-radius: 3px; font-weight: 700; }
+.top { position: absolute; top: 50px; left: 12px; right: 12px; display: flex; justify-content: space-between; align-items: center; }
+.back { width: 40px; height: 40px; border-radius: 20px; background: rgba(247,243,236,.92); display:flex; align-items:center; justify-content:center; font-size: 20px; color:#3b322b; font-weight: 700; }
+.day { background: rgba(247,243,236,.94); color: #5b4a3c; padding: 8px 14px; border-radius: 999px; font-size: 13px; font-weight: 700; box-shadow: 0 4px 14px rgba(0,0,0,.18); display:flex; gap:6px; align-items:center; }
+.dot { width: 8px; height: 8px; border-radius: 4px; background: #f0b44c; box-shadow: 0 0 8px #f0b44c; }
+.sheet { position: absolute; left: 0; right: 0; bottom: 0; height: 432px; border-radius: 22px 22px 0 0; padding: 8px 16px 0; }
+.handle { width: 40px; height: 5px; border-radius: 3px; background: #d6ccbf; margin: 0 auto 10px; }
+.head { display: flex; gap: 12px; align-items: flex-start; }
+.photo { position: relative; width: 112px; height: 140px; border-radius: 12px; overflow: hidden; flex: none; background: url("../../../handoff/designs/memorial/option1_maltese.png") center/cover; box-shadow: 0 4px 12px rgba(0,0,0,.15); }
+.photo .count { position: absolute; right: 6px; bottom: 6px; background: rgba(0,0,0,.55); color: #fff; font-size: 11px; padding: 1px 7px; border-radius: 9px; }
+.photo .nav { position:absolute; top: 56px; width: 24px; height: 24px; border-radius: 12px; background: rgba(255,255,255,.85); font-size: 14px; display:flex; align-items:center; justify-content:center; font-weight:700; }
+h1 { font-size: 22px; font-weight: 800; letter-spacing: -0.3px; }
+.sp { font-size: 13px; color: #8a7e73; margin-top: 2px; }
+.line { font-size: 14px; margin-top: 8px; line-height: 1.45; }
+.stats { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+.stats span { font-size: 12px; background: #efe9e0; padding: 3px 9px; border-radius: 999px; color: #5f544a; }
+.tabs { display: flex; margin-top: 14px; border-bottom: 1px solid #e3dbd0; }
+.tabs div { flex: 1; text-align: center; padding: 8px 0 9px; font-size: 14px; font-weight: 600; color: #8a7e73; }
+.tabs div.on { color: #3b322b; border-bottom: 2.5px solid #4b4fd8; }
+.gb { padding: 10px 2px 0; }
+.gb .e { padding: 8px 0; border-bottom: 1px solid #efe8de; font-size: 13.5px; line-height: 1.45; }
+.gb .e b { font-weight: 700; } .gb .e .t { color: #a0948a; font-size: 11.5px; margin-left: 6px; }
+.gb .e .r { float: right; color: #b5aa9f; font-size: 11px; }
+.actions { position: absolute; left: 12px; right: 12px; bottom: 26px; display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 8px; }
+.actions .btn { flex-direction: column; height: 62px; font-size: 12.5px; gap: 3px; }
+.home { position:absolute; bottom: 8px; left: 50%; transform: translateX(-50%); width: 134px; height: 5px; border-radius: 3px; background: #2b2b2b; }
+.notch { position:absolute; top:0; left:50%; transform:translateX(-50%); width: 160px; height: 32px; background:#000; border-radius: 0 0 18px 18px; }
+.status { position:absolute; top: 10px; left: 26px; right: 26px; display:flex; justify-content:space-between; color:#fff; font-size: 14px; font-weight:600; }
+</style></head><body>
+<div class="scene"></div>
+<div class="focus"></div><div style="position:absolute;left:172px;top:186px;width:46px;height:56px;border:3px solid #e9dcc4;border-radius:3px;background:url(../../../handoff/designs/memorial/option1_maltese.png) center/cover;box-shadow:0 2px 6px rgba(0,0,0,.35)"></div><div class="wreath"></div><div class="ribbon">1주기</div>
+<div class="notch"></div><div class="status"><span>8:12</span><span>●●● 5G</span></div>
+<div class="top"><div class="back">‹</div><div class="day"><span class="dot"></span>오늘은 콩이의 무지개다리 1주기예요</div></div>
+<div class="sheet">
+  <div class="handle"></div>
+  <div class="head">
+    <div class="photo"><div class="nav" style="left:4px">‹</div><div class="nav" style="right:4px">›</div><span class="count">1 / 5</span></div>
+    <div style="flex:1;min-width:0">
+      <h1>콩이</h1>
+      <div class="sp">말티즈 · 2012. 4. 3 – 2025. 11. 16</div>
+      <div class="line">우리 집 막내, 열세 해 동안 늘 고마웠어.</div>
+      <div class="stats"><span>꽃 128</span><span>촛불 34</span><span>방명록 52</span></div>
+    </div>
+  </div>
+  <div class="tabs"><div>앨범</div><div class="on">방명록</div><div>정보</div></div>
+  <div class="gb">
+    <div class="e"><b>하늘색토끼</b><span class="t">오늘</span><span class="r">신고</span><br>콩이야, 벌써 1년이네. 늘 기억할게. 편히 쉬어.</div>
+    <div class="e"><b>모모엄마</b><span class="t">어제</span><span class="r">신고</span><br>저희 모모도 말티즈였어요. 무지개다리 건너 함께 뛰어놀길.</div>
+  </div>
+  <div class="actions">
+    <div class="btn primary">꽃 놓기</div>
+    <div class="btn soft">촛불 켜기</div>
+    <div class="btn soft">방명록 쓰기</div>
+    <div class="btn soft">공유</div>
+  </div>
+  <div class="home"></div>
+</div>
+</body></html>

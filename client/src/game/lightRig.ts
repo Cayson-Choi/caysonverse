@@ -15,6 +15,11 @@ export interface LightRig {
    * target plus this offset (`SunFollow` too, when the box follows the player). Its length stays the preset's.
    */
   keyOffset: [number, number, number];
+  /**
+   * Set (in place) by a scene that aims the sun and sizes its shadow box itself (케이슨 마을's live sun shadows,
+   * village/LiveSunShadows.tsx): `PlayShell`'s follow and the day and night's aim then leave the light's position alone.
+   */
+  aim: { external: boolean };
 }
 
 export const LightRigContext = createContext<LightRig | null>(null);

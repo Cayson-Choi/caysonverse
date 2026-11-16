@@ -21,18 +21,15 @@ import { hashUnit, mulberry32, valueNoise3 } from "./vegRandom";
  */
 
 /**
- * The plants' kinds. 2026-11-16 (the plants rebuild): French marigolds (6) share the yellow row with the pansies, and
- * the beds' plants stand on bark-chip mulch (7: a patch under every other bed plant, none in the meadow's wild ones).
+ * The plants' kinds. 2026-11-16 (the plants rebuild): French marigolds (6) share the yellow row with the pansies. (The
+ * flat bark-chip patches that were species 7 are gone: the beds have a real soil surface now, vegSoil.ts.)
  */
-export const SPECIES = { petunia: 0, pansy: 1, muscari: 2, tulip: 3, grass: 4, reed: 5, marigold: 6, mulch: 7 } as const;
+export const SPECIES = { petunia: 0, pansy: 1, muscari: 2, tulip: 3, grass: 4, reed: 5, marigold: 6 } as const;
 export type Species = (typeof SPECIES)[keyof typeof SPECIES];
-export const SPECIES_COUNT = 8;
+export const SPECIES_COUNT = 7;
 
 /** Minimum distance between two plants of a species (m): the planting spacing x 0.85 (the tufts: one per old card). */
-export const SPACING: Readonly<Record<Species, number>> = { 0: 0.19, 1: 0.135, 2: 0.11, 3: 0.14, 4: 0, 5: 0, 6: 0.2, 7: 0 };
-
-/** The share of a bed's plants that get a mulch patch under them (a 46 cm patch: about one bed's worth of cover). */
-export const MULCH_SHARE = 0.5;
+export const SPACING: Readonly<Record<Species, number>> = { 0: 0.19, 1: 0.135, 2: 0.11, 3: 0.14, 4: 0, 5: 0, 6: 0.2 };
 
 /** The wild patches in the meadow's grass are this much sparser than a bed. */
 export const WILD_SPACING = 1.7;
@@ -62,6 +59,8 @@ export interface Plant {
   light: number;
   /** A per-plant hash in [0, 1) (LOD thinning, wind phase). */
   seed: number;
+  /** One of the meadow's wild flowers (come up among the grass: no bed, no soil). */
+  wild?: boolean;
 }
 
 /** A raised bed on the plaza: plants are kept on its soil, and those near its rim lean out over it. */
@@ -350,10 +349,9 @@ export function placeFlowers(cards: readonly Card[], beds: readonly Bed[] = PLAZ
       tint,
       light: c.light,
       seed: rand(),
+      wild: c.wild ?? false,
     };
     plants.push(p);
-    if (!c.wild && rand() < MULCH_SHARE)
-      plants.push({ x, y: y + 0.001 + rand() * 0.003, z, species: SPECIES.mulch, yaw: rand() * Math.PI * 2, scale: 1.0 + 0.3 * rand(), leanX: 0, leanZ: 0, tint: [1, 1, 1], light: c.light, seed: rand() });
     const k = key(Math.floor(x / cell), Math.floor(z / cell));
     let list = grid.get(k);
     if (!list) grid.set(k, (list = []));

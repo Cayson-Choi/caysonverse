@@ -69,3 +69,19 @@ Poly Haven CC0 1.0 자산만 썼습니다.
 | leafy_grass, precast_stone_paving, island_tree_01(잎), japanese_zelkova_bark, sakura_bark (Poly Haven) | 위 표들 | CC0 1.0 | 창밖 정원 그림(낮 `T_m_garden`, 밤 `memorial_garden_night.webp`은 같은 그림을 어둡게 고쳐 별·달·정원등을 그린 것) |
 
 바닥 마루, 참나무, 래커, 패브릭, 작은 부품 색, 거실 액자 그림(강아지 수채화 느낌)은 스크립트가 직접 그렸습니다(절차적). 실사 견본 사진은 다음 단계(견본 칸)에서 출처와 함께 이 문서에 적습니다.
+
+## 런타임 식생 텍스처 (`veg/`) — 2026-11-16
+
+나무 껍질(`bark_*`), 화단 흙(`soil_*`), 화분 테두리 돌(`stone_*`)은 `docs/designs/plants2/tools/make_veg_textures.py`가 아래
+Poly Haven CC0 1.0 자산으로 만든 것입니다(2026-11-16 Poly Haven API로 내려받음). 흙의 바크 칩은 같은 껍질 사진을 잘라 붙였고,
+자갈·꽃잎·잎은 스크립트가 그렸습니다. AI로 만든 텍스처는 없습니다.
+
+| Poly Haven 자산 | 주소 | 쓰는 곳 |
+| --- | --- | --- |
+| sakura_bark | https://polyhaven.com/a/sakura_bark | 벚나무 껍질 `bark_cherry_*`, 바크 칩 |
+| japanese_zelkova_bark | https://polyhaven.com/a/japanese_zelkova_bark | 느티나무·활엽수 껍질 `bark_plates_*`, 바크 칩 |
+| bark_willow | https://polyhaven.com/a/bark_willow | 버드나무 껍질 `bark_willow_*`, 바크 칩 |
+| japanese_hackberry_bark | https://polyhaven.com/a/japanese_hackberry_bark | 어린 나무 껍질 `bark_smooth_*` |
+| bark_brown_02 | https://polyhaven.com/a/bark_brown_02 | 과수원 나무 껍질 `bark_plum_*`, 바크 칩 |
+| brown_mud | https://polyhaven.com/a/brown_mud | 화단 흙 바탕 `soil_*` |
+| rock_boulder_dry | https://polyhaven.com/a/rock_boulder_dry | 사각 화분 테두리 `stone_*` |

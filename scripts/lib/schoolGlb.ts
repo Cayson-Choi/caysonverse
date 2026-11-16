@@ -9,6 +9,7 @@
 
 import type { AABB } from "../../shared/src/collision";
 import { VILLAGE_SCENE_TRIANGLE_CAP, worstSceneTriangles } from "../../shared/src/village/houseExterior";
+import { HOUSE_BUDGET } from "../../shared/src/village/houseAreas";
 
 // ---------------------------------------------------------------------------------------------------------
 // glTF document (only the fields these tools read).
@@ -477,7 +478,7 @@ function meshTriangles(gltf: Gltf, meshIndex: number): number {
 // ---------------------------------------------------------------------------------------------------------
 // The budget checks.
 
-export type SchoolKind = "village" | "memorial";
+export type SchoolKind = "village" | "memorial" | "house";
 export type Level = "ok" | "fail" | "warn";
 
 export interface CheckResult {
@@ -496,6 +497,8 @@ const MB = 1024 * 1024;
 export const BUDGETS: Record<SchoolKind, { maxBytes: number; maxTriangles: number }> = {
   village: { maxBytes: 8 * MB, maxTriangles: 260_000 },
   memorial: { maxBytes: 1.5 * MB, maxTriangles: 60_000 },
+  // a house (집 실내 G, houseAreas.ts HOUSE_BUDGET.glb): both floors in one file, col__ boxes not counted
+  house: { maxBytes: HOUSE_BUDGET.glb.maxBytes, maxTriangles: HOUSE_BUDGET.glb.maxTriangles },
 };
 /** A required col__ box may differ from its layout box by at most this much on each side (m; boxes are read at 0.01). */
 export const BOX_TOLERANCE = 0.011;
@@ -507,7 +510,7 @@ export const MAX_MATERIALS = 24;
  * picture, where the windows' `M_window` glow flattened them into a cream plate — house review 2026-11-15; one more draw
  * in the fx chunks that hold them).
  */
-export const MATERIAL_LIMITS: Record<SchoolKind, number> = { village: MAX_MATERIALS + 2, memorial: MAX_MATERIALS };
+export const MATERIAL_LIMITS: Record<SchoolKind, number> = { village: MAX_MATERIALS + 2, memorial: MAX_MATERIALS, house: HOUSE_BUDGET.glb.maxMaterials };
 export const MAX_TEXTURE_SIDE = 2048;
 /** An obj__ node's origin may differ from the TS anchor by at most this much (m, on the ground plane). */
 export const OBJ_ANCHOR_TOLERANCE = 0.25;
@@ -548,6 +551,13 @@ export interface SchoolSpec {
    * `y` and whose x/z extent covers `room` (within BOX_TOLERANCE): the indoor camera's ceiling (memorial `ceil__hall`).
    */
   ceiling?: { node: string; y: number; room: AABB };
+  /** More ceiling slabs (a house has one per floor). */
+  ceilings?: Array<{ node: string; y: number; room: AABB }>;
+  /**
+   * Rectangles on the ground no col__ box may reach into (a house's entry corridor, its pads' discs as boxes, the landing), apart from
+   * walls (a collider whose name has `_wall_` in it: a pad lies against its wall by design). World coordinates.
+   */
+  clearBoxes?: Array<{ name: string; box: AABB }>;
 }
 
 export interface LightmapFile {
@@ -655,6 +665,8 @@ export function checkSchoolGlb(input: CheckInput): CheckResult[] {
   if (spec.requiredMaterials && spec.requiredMaterials.length > 0) out.push(checkRequiredMaterials(gltf, spec.requiredMaterials));
   if (spec.clearDiscs && spec.clearDiscs.length > 0) out.push(checkClearDiscs(spec.clearDiscs, colliders.colliders));
   if (spec.ceiling) out.push(checkCeiling(gltf, spec.ceiling));
+  for (const c of spec.ceilings ?? []) out.push(checkCeiling(gltf, c));
+  if (spec.clearBoxes && spec.clearBoxes.length > 0) out.push(checkClearBoxes(spec.clearBoxes, colliders.colliders));
   const instancing = checkInstancing(gltf);
   if (instancing) out.push(instancing);
 
@@ -689,7 +701,15 @@ export function checkSchoolGlb(input: CheckInput): CheckResult[] {
   out.push(checkTextures(input));
 
   const used = new Set(gltf.extensionsUsed ?? []);
-  out.push(result(used.has(UNLIT), "KHR_materials_unlit", used.has(UNLIT) ? "extensionsUsed에 있어요" : "extensionsUsed에 KHR_materials_unlit이 없어요"));
+  // (a house's M_* materials are lit by the game's indoor light: unlit is only needed for its LM_* ones, so a model without any needs none)
+  const needsUnlit = kind !== "house" || materials.some((m) => (m.name ?? "").startsWith(LIGHTMAP_MATERIAL_PREFIX));
+  out.push(
+    result(
+      !needsUnlit || used.has(UNLIT),
+      "KHR_materials_unlit",
+      used.has(UNLIT) ? "extensionsUsed에 있어요" : needsUnlit ? "extensionsUsed에 KHR_materials_unlit이 없어요" : "LM_ 재질이 없어서 필요 없어요",
+    ),
+  );
   const drawn = new Set<string>();
   for (const mesh of gltf.meshes ?? []) for (const prim of mesh.primitives) for (const k of Object.keys(prim.extensions ?? {})) drawn.add(k);
   const draco = used.has(DRACO) || drawn.has(DRACO);
@@ -780,6 +800,23 @@ function checkClearDiscs(
     problems.length === 0,
     "비워 둘 자리",
     problems.length === 0 ? `${discs.map((d) => d.name).join(", ")}에 col__ 상자가 없어요` : problems.join("; "),
+  );
+}
+
+/** No col__ box (but a wall) reaches into any of the rectangles (a house's entry corridor, pads, the landing). */
+function checkClearBoxes(zones: ReadonlyArray<{ name: string; box: AABB }>, boxes: readonly NamedBox[]): CheckResult {
+  const problems: string[] = [];
+  for (const z of zones) {
+    for (const b of boxes) {
+      if (b.name.includes("_wall_")) continue;
+      const overlap = b.box.minX < z.box.maxX - 1e-6 && b.box.maxX > z.box.minX + 1e-6 && b.box.minZ < z.box.maxZ - 1e-6 && b.box.maxZ > z.box.minZ + 1e-6;
+      if (overlap) problems.push(`${b.name}이(가) ${z.name} 안으로 들어와요`);
+    }
+  }
+  return result(
+    problems.length === 0,
+    "비워 둘 곳",
+    problems.length === 0 ? `${zones.map((z) => z.name).join(", ")}에 가구 상자가 없어요` : nameList(problems, 6),
   );
 }
 
@@ -1183,4 +1220,55 @@ export function checkVillageSceneTriangles(village: Gltf, bus: Gltf, extras: rea
     "마을 장면 삼각형 수 (마을 + 버스 + 신호등·정류장)",
     `${total}개 = 마을 ${v} + 버스 ${b}${more}, 한도 ${VILLAGE_SCENE_MAX_TRIANGLES}개 (마을 ${BUDGETS.village.maxTriangles} + 버스 ${VILLAGE_BUS_BUDGET.maxTriangles})`,
   );
+}
+
+// ---------------------------------------------------------------------------------------------------------
+// houses_props.glb (집 실내 K, the shared small props of every house) and a house's light-map / panorama files.
+
+/**
+ * Check houses_props.glb against its budget (HOUSE_BUDGET.props): file size and triangles (the instancing source count: every
+ * instanced node counts once per instance, like the village's). Returns two results.
+ */
+export function checkHousesProps(gltf: Gltf, byteLength: number): CheckResult[] {
+  const b = HOUSE_BUDGET.props;
+  const out: CheckResult[] = [result(byteLength <= b.maxBytes, "파일 크기", `${fmtMB(byteLength)} (${byteLength} 바이트), 한도 ${fmtMB(b.maxBytes)}`)];
+  try {
+    const tri = countFileTriangles(gltf);
+    out.push(result(tri <= b.maxTriangles, "삼각형 수", `${tri}개 (인스턴스 원본 기준), 한도 ${b.maxTriangles}개`));
+  } catch (err) {
+    out.push(result(false, "삼각형 수", `셀 수 없어요: ${(err as Error).message}`));
+  }
+  return out;
+}
+
+/** The size of one image file of a house: its bytes and (read from its header) side lengths. */
+export interface HouseImageFile {
+  path: string;
+  bytes: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * A house's light maps and window panorama next to its GLB (houseAreas.ts houseFiles): each that exists must be within HOUSE_BUDGET
+ * (day / night 2048 ≤ 450 KB, 1k ≤ 230 KB, the panorama 2048 × 1024); a missing one is a WARN (a house may ship the blockout's plain
+ * materials), never a failure.
+ */
+export function checkHouseImages(files: ReadonlyArray<{ kind: "lm" | "lm1k" | "view"; label: string; file: HouseImageFile | null }>): CheckResult[] {
+  const b = HOUSE_BUDGET;
+  const out: CheckResult[] = [];
+  for (const f of files) {
+    if (!f.file) {
+      out.push({ level: "warn", label: f.label, detail: "파일이 없어요 (라이트맵·창 밖 그림이 아직 없는 집이에요)" });
+      continue;
+    }
+    const maxBytes = f.kind === "lm" ? b.lightmap.maxBytes : f.kind === "lm1k" ? b.lightmap.maxBytes1k : Infinity;
+    const wantW = f.kind === "lm" ? b.lightmap.side : f.kind === "lm1k" ? b.lightmap.side1k : b.view.width;
+    const wantH = f.kind === "lm" ? b.lightmap.side : f.kind === "lm1k" ? b.lightmap.side1k : b.view.height;
+    const problems: string[] = [];
+    if (f.file.bytes > maxBytes) problems.push(`${(f.file.bytes / 1024).toFixed(0)} KB > ${(maxBytes / 1024).toFixed(0)} KB`);
+    if (f.file.width !== wantW || f.file.height !== wantH) problems.push(`${f.file.width}x${f.file.height} ≠ ${wantW}x${wantH}`);
+    out.push(result(problems.length === 0, f.label, problems.length === 0 ? `${f.file.width}x${f.file.height}, ${(f.file.bytes / 1024).toFixed(0)} KB` : problems.join("; ")));
+  }
+  return out;
 }

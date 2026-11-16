@@ -124,7 +124,7 @@ function noteSeat(m: SeatMotion, seat: number, seats: readonly Seat[], fallback:
   const s = seats[seat];
   m.seat = seat;
   m.bench = s !== undefined && s.seatY !== undefined;
-  m.lift = liftForSeatY(s?.seatY);
+  m.lift = liftForSeatY(s?.seatY, s?.pose);
   m.seatPose.x = s ? s.x : fallback.x;
   m.seatPose.z = s ? s.z : fallback.z;
   m.seatPose.yaw = s ? s.yaw : fallback.yaw;

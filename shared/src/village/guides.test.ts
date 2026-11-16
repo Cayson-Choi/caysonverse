@@ -29,7 +29,7 @@ describe("guides (Task 9A)", () => {
     expect(new Set(voices).size).toBe(voices.length);
     for (const g of GUIDES) {
       expect(g.qas.length).toBeGreaterThanOrEqual(3);
-      expect(g.qas.length).toBeLessThanOrEqual(5);
+      expect(g.qas.length).toBeLessThanOrEqual(6) // the plaza guide: 6 with the houses' code (집 실내 G);
       expect(g.tag).toBe("안내원");
       expect(validateAppearance(g.appearance)).toEqual(g.appearance);
       expect(guideById(g.id)).toBe(g);

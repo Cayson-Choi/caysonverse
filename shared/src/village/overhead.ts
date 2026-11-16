@@ -6,13 +6,13 @@
  * clamps the hop with it (`jumpOffsetY`, softly); the open village has no roof: infinite headroom, jumps unchanged.
  *
  * The roofs the game knows: the bus shelter's (`BUS_SHELTER_ROOF`, villageLayout.ts, also a camera slab), the memorial
- * hall's drawn ceiling and the private houses' (`wallHeight`: the whole area is under it). The café's awnings, the porch
+ * hall's drawn ceiling and the private houses' floors (`HOUSE_ROOM.ceiling`, lower under the attic slopes). The café's awnings, the porch
  * roofs and parasols are baked scenery with no collider or volume of their own: they have no headroom to clamp to.
  */
 
 import type { AABB } from "../collision";
 import { BUS_SHELTER_ROOF, VILLAGE_LAYOUT, isHouseArea, type AreaId, type VillageLayout } from "./villageLayout";
-import { HOUSE_INTERIOR_LAYOUTS } from "./houseInterior";
+import { HOUSE_LOW_CEILINGS, HOUSE_ROOM, parseHouseFloorArea } from "./houseAreas";
 
 /**
  * An avatar's top (m above its feet) when the caller does not know the real one: a bare head is 2.18 m (the client
@@ -53,8 +53,11 @@ const distanceTo = (b: AABB, x: number, z: number) => Math.hypot(Math.max(b.minX
 export function ceilingAbove(x: number, z: number, area: AreaId, layout: Pick<VillageLayout, "busStop"> = VILLAGE_LAYOUT): number {
   if (area === "hall") return HALL_DRAWN_CEILING_M;
   if (isHouseArea(area)) {
-    const house = HOUSE_INTERIOR_LAYOUTS[area.slice("house:".length)];
-    return house ? house.wallHeight : Infinity;
+    // a house floor (집 실내 G): its ceiling, the attic floors under their lowest slope
+    const hit = parseHouseFloorArea(area);
+    if (!hit) return Infinity;
+    const low = HOUSE_LOW_CEILINGS.find((l) => l.n === hit.n && l.floor === hit.floor);
+    return low ? low.lowest : HOUSE_ROOM.ceiling;
   }
   let low = Infinity;
   for (const v of villageOverheads(layout)) if (distanceTo(v.box, x, z) <= ROOF_EDGE_MARGIN_M && v.underside < low) low = v.underside;

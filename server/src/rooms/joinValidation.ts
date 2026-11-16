@@ -1,11 +1,18 @@
 import { NICKNAME_MIN, NICKNAME_MAX } from "@caysonverse/shared/constants";
+import { createHash } from "node:crypto";
 import { APPEARANCE_ERROR, validateAppearance, type Appearance } from "@caysonverse/shared/appearance";
+import { DEVICE_KEY_PATTERN } from "@caysonverse/shared/memorial/constants";
 
 /** Sanitized, accepted join options. */
 export interface JoinOptions {
   nickname: string;
   /** Exactly the 15 appearance fields, each an integer in its range (extra keys dropped). */
   appearance: Appearance;
+  /**
+   * SHA-256 (hex) of the optional device key (memorial stage B), or null when none / malformed. A bad key never rejects the join
+   * (an old bundle sends none); the raw key is not kept.
+   */
+  deviceKeyHash: string | null;
 }
 
 /** A rejected join, carrying a Korean, user-facing reason. */
@@ -75,5 +82,7 @@ export function validateJoinOptions(options: unknown): JoinOptions | JoinError {
   const appearance = validateAppearance(o.appearance);
   if (appearance === null) return { error: APPEARANCE_ERROR };
 
-  return { nickname, appearance };
+  const deviceKeyHash =
+    typeof o.deviceKey === "string" && DEVICE_KEY_PATTERN.test(o.deviceKey) ? createHash("sha256").update(o.deviceKey).digest("hex") : null;
+  return { nickname, appearance, deviceKeyHash };
 }

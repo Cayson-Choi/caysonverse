@@ -9,7 +9,7 @@ describe("server house keypad", () => {
   it("accepts the configured house code only at an authoritative house pad and never exposes the expected code", () => {
     const result = checkHouseKeypad({ ...base, code: "1004", rate: initialKeypadRate() });
     expect(result.decision).toEqual({ ok: true, buildingId: pad.buildingId });
-    expect(result.entry.placeholderArea).toBe("hall");
+    expect(result.entry.exit.yaw).toBeDefined(); // the porch spot the way out lands on
     expect(JSON.stringify(HOUSE_KEYPAD_POLICY)).not.toContain("1004");
     expect(JSON.stringify(result.decision)).not.toContain("1004");
   });

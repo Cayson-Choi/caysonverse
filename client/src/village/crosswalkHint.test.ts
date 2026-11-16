@@ -10,15 +10,15 @@ describe("crosswalk hint", () => {
 
   it("says wait while the figure is red (with the cars passing during their green), go while walking, hurry while flashing", () => {
     const atBus = [33.9, 1] as const;
-    expect(crosswalkHintAt(...atBus, 1_000)).toMatchObject({ tone: "wait", seconds: 23 });
+    expect(crosswalkHintAt(...atBus, 1_000)).toMatchObject({ tone: "wait", seconds: 30 });
     expect(crosswalkHintAt(...atBus, 1_000)!.text).toContain("차가 지나가요");
     expect(crosswalkHintAt(...atBus, TRANSIT.pedestrianStartMs - 500)!.text).not.toContain("차가 지나가요"); // cars are red already
     const walk = crosswalkHintAt(...atBus, TRANSIT.pedestrianStartMs + 100)!;
     expect(walk.tone).toBe("go");
-    expect(walk.seconds).toBe(14);
+    expect(walk.seconds).toBe(17);
     const flash = crosswalkHintAt(...atBus, TRANSIT.pedestrianStartMs + TRANSIT.pedestrianWalkMs + 100)!;
     expect(flash.tone).toBe("hurry");
-    expect(flash.seconds).toBe(4);
+    expect(flash.seconds).toBe(5);
   });
 
   it("also shows at the north crossing", () => {

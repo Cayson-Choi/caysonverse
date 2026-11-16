@@ -1,95 +1,252 @@
-import { useMemo } from "react";
-import type { VillageTier } from "./villageModelPrep";
-import { houseInteriorLayout, type HouseFurniture } from "@caysonverse/shared/village/houseInterior";
-import { DoorPad } from "./VillageHall";
+import { Suspense, useEffect, useMemo, useState } from "react";
+import { useFrame } from "@react-three/fiber";
+import { useGLTF } from "@react-three/drei";
+import { MeshBasicMaterial, RepeatWrapping, SRGBColorSpace, type Material, type Mesh, type Texture } from "three";
+import {
+  houseFloorBounds,
+  parseHouseFloorArea,
+  type HouseFloor,
+  type HouseNumber,
+} from "@caysonverse/shared/village/houseAreas";
+import { houseFloorGeometry } from "@caysonverse/shared/village/housesGeometry";
+import type { Pose } from "../game/types";
+import { DRACO_PATH, configureLightmap } from "../game/hub/hubModelPrep";
 import { VILLAGE_LAYOUT } from "@caysonverse/shared/village/villageLayout";
+import { MapBoxes } from "../game/MapBoxes";
+import { SceneWarmUp } from "../game/SceneWarmUp";
+import { useQualityTier } from "../game/QualityEffects";
+import { setSeatSightBlocker, setSeatSpotBlocker } from "../game/seatFraming";
+import { setCameraSolids } from "../game/cameraSolids";
+import { dayNight } from "./dayNightDriver";
+import { LoadBoundary } from "./LoadBoundary";
+import { arrivalCamera } from "./houseArrivalCamera";
+import { viewState } from "../game/viewState";
+import { CAMERA } from "../game/constants";
+import { buildSolidIndex } from "./hallSolidIndex";
+import { hallNightWeight } from "./hallNight";
+import { useNightMapWanted } from "./nightLightmap";
+import { beginHouseEntry, houseEntryFailed, houseEntryReady, houseEntryState } from "./houseEntry";
+import {
+  HOUSE_VIEW_MATERIAL,
+  disposeHouse,
+  dressLoadedHouse,
+  houseUrls,
+  houseViewMapping,
+  houseWantsLightmap,
+  houseWantsView,
+  isHouseLightmapMaterial,
+  PALE_SURFACES,
+  prepareHouse,
+  solidTriangles,
+  viewBandVSpan,
+} from "./houseModelPrep";
+import {
+  HOUSE_NIGHT_GAIN,
+  houseNightGainUniform,
+  houseNightMapUniform,
+  houseNightUniform,
+  patchHouseGlowMaterial,
+  patchHouseLightmapMaterial,
+  patchHouseViewMaterial,
+  resetHouseNight,
+} from "./houseNight";
+import { clearHouseCaches, holdHouseFiles, loadHouseTexture, noteHouseRequested } from "./houseRelease";
 
-const VARIANT_COLORS = {
-  pink: { wall: "#f5d8df", trim: "#9b5268", accent: "#d889a2" },
-  skyblue: { wall: "#d4e7f5", trim: "#477da1", accent: "#75b8dc" },
-  yellow: { wall: "#f4e6bc", trim: "#9e762d", accent: "#d4ad52" },
-  white: { wall: "#e8e9e4", trim: "#59636a", accent: "#9eaeb5" },
-  mint: { wall: "#d2ebdf", trim: "#3e7c68", accent: "#76bca2" },
-} as const;
+/**
+ * The inside of a house (집 실내 G): the local player's floor of `house_N.glb`, mounted while the local player is in one of the house's
+ * two floors (`house:house_N:1|2`). Holds the house's files while it shows (houseRelease.ts: prefetched at the door, kept 60 s after
+ * leaving), shows a plain room until the model is in, and draws the way-out and stair pads. A house with no light bake yet (every
+ * material `M_*`) is drawn as loaded under the village's indoor light; one with `LM_*` materials gets its day light map (the night map
+ * when night is near) and a window panorama on its `M_view` material.
+ */
 
-function Furniture({ item, colors }: { item: HouseFurniture; colors: (typeof VARIANT_COLORS)[keyof typeof VARIANT_COLORS] }) {
-  const { kind, x, z, yaw, width, depth, height } = item;
-  if (kind === "sofa") {
-    return (
-      <group position={[x, 0, z]} rotation-y={yaw}>
-        <mesh position={[0, height / 2, 0]} castShadow><boxGeometry args={[width, height, depth]} /><meshStandardMaterial color={colors.accent} roughness={0.82} /></mesh>
-        <mesh position={[0, height + 0.34, -depth * 0.35]} castShadow><boxGeometry args={[width, 0.68, depth * 0.28]} /><meshStandardMaterial color={colors.accent} roughness={0.84} /></mesh>
-        <mesh position={[-width * 0.38, height + 0.02, 0]}><boxGeometry args={[0.12, 0.12, depth * 0.72]} /><meshStandardMaterial color={colors.trim} /></mesh>
-        <mesh position={[width * 0.38, height + 0.02, 0]}><boxGeometry args={[0.12, 0.12, depth * 0.72]} /><meshStandardMaterial color={colors.trim} /></mesh>
-      </group>
-    );
-  }
-  if (kind === "table" || kind === "desk") {
-    return (
-      <group position={[x, 0, z]} rotation-y={yaw}>
-        <mesh position={[0, height, 0]} castShadow><boxGeometry args={[width, 0.14, depth]} /><meshStandardMaterial color={kind === "desk" ? colors.trim : "#8b5b3a"} roughness={0.65} /></mesh>
-        {[-1, 1].map((side) => <mesh key={side} position={[side * (width * 0.38), height / 2, 0]}><boxGeometry args={[0.12, height, 0.12]} /><meshStandardMaterial color="#51372b" /></mesh>)}
-      </group>
-    );
-  }
-  if (kind === "bed") {
-    return (
-      <group position={[x, 0, z]} rotation-y={yaw}>
-        <mesh position={[0, height / 2, 0]} castShadow><boxGeometry args={[width, height, depth]} /><meshStandardMaterial color="#765b52" roughness={0.78} /></mesh>
-        <mesh position={[0, height + 0.12, 0.08]}><boxGeometry args={[width * 0.94, 0.18, depth * 0.92]} /><meshStandardMaterial color={colors.wall} roughness={0.92} /></mesh>
-        <mesh position={[0, height + 0.36, -depth * 0.3]}><boxGeometry args={[width * 0.92, 0.5, 0.16]} /><meshStandardMaterial color={colors.accent} roughness={0.86} /></mesh>
-      </group>
-    );
-  }
-  if (kind === "wardrobe") {
-    return <mesh position={[x, height / 2, z]} rotation-y={yaw} castShadow><boxGeometry args={[width, height, depth]} /><meshStandardMaterial color={colors.trim} roughness={0.62} /></mesh>;
-  }
-  if (kind === "plant") {
-    return (
-      <group position={[x, 0, z]}>
-        <mesh position={[0, 0.18, 0]}><cylinderGeometry args={[0.2, 0.24, 0.36, 10]} /><meshStandardMaterial color="#b76b4d" roughness={0.9} /></mesh>
-        <mesh position={[0, height * 0.65, 0]}><sphereGeometry args={[0.42, 10, 8]} /><meshStandardMaterial color="#4f8b5e" roughness={0.92} /></mesh>
-      </group>
-    );
-  }
+/** The plain room shown while a model loads: the floor's walls (the colliders) and a floor, so nobody stands in a void. */
+function HouseRoom({ n, floor }: { n: HouseNumber; floor: HouseFloor }) {
+  const geometry = useMemo(() => houseFloorGeometry(n, floor), [n, floor]);
+  const b = houseFloorBounds(n, floor);
+  const material = useMemo(() => new MeshBasicMaterial({ color: "#E9E1D2" }), []);
+  useEffect(() => () => material.dispose(), [material]);
   return (
-    <group position={[x, 0, z]}>
-      <mesh position={[0, height * 0.5, 0]}><cylinderGeometry args={[0.04, 0.05, height, 8]} /><meshStandardMaterial color="#493e3a" /></mesh>
-      <mesh position={[0, height, 0]}><sphereGeometry args={[0.18, 10, 8]} /><meshStandardMaterial color="#ffcf72" emissive="#ff9e3b" emissiveIntensity={0.35} /></mesh>
-    </group>
-  );
-}
-
-/** Procedural private-house interior. Positions are local so the server can place each house in its own area. */
-export function HouseInterior({ buildingId, origin = [0, 0, 0], tier = "high" }: { buildingId: string; origin?: [number, number, number]; tier?: VillageTier }) {
-  const layout = useMemo(() => houseInteriorLayout(buildingId), [buildingId]);
-  const colors = VARIANT_COLORS[layout.variant];
-  const detail = tier === "low" ? 6 : 10;
-  const wall = layout.width / 2;
-  const depth = layout.depth / 2;
-  const stepCount = 8;
-  return (
-    <group name={`house-interior-${layout.buildingId}`} position={origin}>
-      <DoorPad pad={{ centre: { x: 0, z: VILLAGE_LAYOUT.memorial.interior.doorPad.centre.z }, radius: VILLAGE_LAYOUT.memorial.interior.doorPad.radius }} />
-      <mesh position={[0, -0.08, 0]} receiveShadow><boxGeometry args={[layout.width, 0.16, layout.depth]} /><meshStandardMaterial color="#a7a9a5" roughness={0.9} /></mesh>
-      <mesh position={[0, layout.wallHeight + 0.08, 0]}><boxGeometry args={[layout.width, 0.16, layout.depth]} /><meshStandardMaterial color={colors.wall} roughness={1} /></mesh>
-      <mesh position={[-wall, layout.wallHeight / 2, 0]} castShadow><boxGeometry args={[0.18, layout.wallHeight, layout.depth]} /><meshStandardMaterial color={colors.wall} roughness={0.94} /></mesh>
-      <mesh position={[wall, layout.wallHeight / 2, 0]} castShadow><boxGeometry args={[0.18, layout.wallHeight, layout.depth]} /><meshStandardMaterial color={colors.wall} roughness={0.94} /></mesh>
-      <mesh position={[0, layout.wallHeight / 2, -depth]} castShadow><boxGeometry args={[layout.width, layout.wallHeight, 0.18]} /><meshStandardMaterial color={colors.wall} roughness={0.94} /></mesh>
-      <mesh position={[0, layout.wallHeight / 2, depth]} castShadow><boxGeometry args={[layout.width, layout.wallHeight, 0.18]} /><meshStandardMaterial color={colors.wall} roughness={0.94} /></mesh>
-      <mesh position={[0, 1.65, -depth - 0.02]}><boxGeometry args={[2.2, 1.15, 0.04]} /><meshStandardMaterial color="#7dc9e8" emissive="#385f76" emissiveIntensity={0.12} roughness={0.2} /></mesh>
-      <mesh position={[0, 0.08, -depth + 0.18]}><boxGeometry args={[layout.width * 0.88, 0.06, 0.05]} /><meshStandardMaterial color={colors.trim} /></mesh>
-      {Array.from({ length: stepCount }, (_, i) => {
-        const t = i / stepCount;
-        return <mesh key={i} position={[layout.stairX, 0.16 + t * layout.secondFloorY, layout.stairZ + (i - stepCount / 2) * 0.34]} castShadow><boxGeometry args={[1.15, 0.18, 0.5]} /><meshStandardMaterial color="#795642" roughness={0.82} /></mesh>;
-      })}
-      <mesh position={[layout.stairX, layout.secondFloorY * 0.5, layout.stairZ - 1.5]}><boxGeometry args={[0.08, layout.secondFloorY, 0.08]} /><meshStandardMaterial color={colors.trim} /></mesh>
-      <mesh position={[layout.stairX, layout.secondFloorY * 0.5, layout.stairZ + 1.5]}><boxGeometry args={[0.08, layout.secondFloorY, 0.08]} /><meshStandardMaterial color={colors.trim} /></mesh>
-      {layout.furniture.map((item, index) => <Furniture key={`${item.kind}-${index}`} item={item} colors={colors} />)}
-      <mesh position={[layout.stairX, layout.secondFloorY + 0.02, layout.stairZ]} rotation-x={-Math.PI / 2}>
-        <circleGeometry args={[0.18, detail]} /><meshStandardMaterial color={colors.accent} emissive={colors.accent} emissiveIntensity={0.25} />
+    <group>
+      <mesh position={[(b.minX + b.maxX) / 2, -0.01, (b.minZ + b.maxZ) / 2]} material={material}>
+        <boxGeometry args={[b.maxX - b.minX, 0.02, b.maxZ - b.minZ]} />
       </mesh>
+      <MapBoxes geometry={geometry} />
     </group>
   );
 }
 
+// No ring or disc marks the way out or the stair on the boards (owner 2026-11-16, "집 안 출구 원판도 없애", as the memorial hall's door):
+// the door, the stair, the "나가기 / 2층" button and E are the cue; a tap on the door or the stair still walks there and uses it.
+
+/** One floor of the dressed house: the model with its light (when it has any), the window panorama. Suspends while loading. */
+function HouseFloorScene({ n, floor, pose }: { n: HouseNumber; floor: HouseFloor; pose: Pose }) {
+  noteHouseRequested(n);
+  const tier = useQualityTier();
+  const urls = houseUrls(n, tier);
+  const gltf = useGLTF(urls.glb, DRACO_PATH);
+  const wantsLightmap = useMemo(() => houseWantsLightmap(gltf.scene), [gltf]);
+  const wantsView = useMemo(() => houseWantsView(gltf.scene), [gltf]);
+  const nightWanted = useNightMapWanted();
+  const [day, setDay] = useState<Texture | null>(null);
+  const [view, setView] = useState<Texture | null>(null);
+  // Light maps and the panorama are plain reads: a missing file is a house without that light, not a crash.
+  useEffect(() => {
+    if (!wantsLightmap) return;
+    let live = true;
+    void loadHouseTexture(n, urls.lightmapDay).then((t) => live && setDay(t));
+    return () => {
+      live = false;
+    };
+  }, [n, urls.lightmapDay, wantsLightmap]);
+  useEffect(() => {
+    if (!wantsView) return;
+    let live = true;
+    void loadHouseTexture(n, urls.view).then((t) => live && setView(t));
+    return () => {
+      live = false;
+    };
+  }, [n, urls.view, wantsView]);
+  useEffect(() => {
+    if (!wantsLightmap || !nightWanted) return;
+    let live = true;
+    void loadHouseTexture(n, urls.lightmapNight).then((t) => {
+      if (!live || !t) return;
+      // the day map's settings (sRGB, unflipped, the second UV set): read raw, the night map came out washed and bright
+      houseNightMapUniform.value = configureLightmap(t);
+    });
+    return () => {
+      live = false;
+    };
+  }, [n, urls.lightmapNight, wantsLightmap, nightWanted]);
+  useEffect(() => {
+    houseNightGainUniform.value = HOUSE_NIGHT_GAIN[n] ?? 1;
+    return () => resetHouseNight();
+  }, [n]);
+
+  const nodes = useMemo(() => {
+    dressLoadedHouse(gltf.scene, n);
+    return prepareHouse(gltf.scene, n, floor, day);
+  }, [gltf, n, floor, day]);
+  useEffect(() => () => disposeHouse(nodes), [nodes]);
+  useEffect(() => {
+    for (const m of nodes.lightmapped) patchHouseLightmapMaterial(m, PALE_SURFACES.has(m.name));
+    for (const m of nodes.glows) patchHouseGlowMaterial(m);
+  }, [nodes]);
+  useEffect(() => {
+    if (!view) return;
+    // the band shows the village the way this house's real windows look out (houseViewMapping: the two builders' panoramas differ)
+    const side = VILLAGE_LAYOUT.sceneryHouses.find((h) => h.id === `house_${n}`)?.doorSide ?? "s";
+    const map = houseViewMapping(n, side, viewBandVSpan(nodes.root));
+    view.flipY = false;
+    view.colorSpace = SRGBColorSpace;
+    view.wrapS = RepeatWrapping;
+    view.offset.set(map.uShift, 0);
+    view.repeat.set(1, map.vScale);
+    view.needsUpdate = true;
+    const touched: Material[] = [];
+    for (const m of nodes.views) {
+      (m as MeshBasicMaterial).map = view;
+      patchHouseViewMaterial(m);
+      m.needsUpdate = true;
+      touched.push(m);
+    }
+    return () => {
+      for (const m of touched) (m as MeshBasicMaterial).map = null;
+    };
+  }, [nodes, view, n]);
+
+  // The seat framing and the follow camera must see this floor's solid model (the memorial hall's way, hallSolidIndex.ts): the camera
+  // never sits in or beyond a wall, a bookcase or the stair, and a seat's first framing sees the seated body.
+  useEffect(() => {
+    const b = houseFloorBounds(n, floor);
+    const solid = buildSolidIndex(solidTriangles(nodes.root), b.minX - 1, b.maxX + 1, b.minZ - 1, b.maxZ + 1);
+    const offSight = setSeatSightBlocker((fx, fy, fz, tx, ty, tz) => solid.segmentBlocked(fx, fy, fz, tx, ty, tz, 0.35));
+    const offSpot = setSeatSpotBlocker((x, y, z) => solid.underHung(x, y, z, 2.6, 1.0, 0.25) || solid.nearSolid(x, y, z, 0.3));
+    const offCamera = setCameraSolids(solid);
+    return () => {
+      offSight();
+      offSpot();
+      offCamera();
+    };
+  }, [nodes, n, floor]);
+
+  // This floor is drawn: the entry cover may open, and the camera glides to the direction that leaves it the longest clear arm (arrival camera).
+  useEffect(() => {
+    houseEntryReady();
+    const cam = arrivalCamera(n, floor, pose.x, pose.z, pose.yaw, CAMERA.distance);
+    viewState.orbitGoal = { yaw: cam.yaw, pitch: cam.pitch };
+  }, [nodes]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useFrame(() => {
+    const night = wantsLightmap || nodes.views.length > 0 || nodes.glows.length > 0 ? hallNightWeight(dayNight.outdoor.night, houseNightMapUniform.value !== null) : 0;
+    if (houseNightUniform.value !== night) houseNightUniform.value = night;
+  });
+
+  return <primitive object={nodes.root} dispose={null} />;
+}
+
+declare global {
+  interface Window {
+    /** Dev-only: the drawn floor of the house (house, floor, meshes drawn) for the e2e checks. */
+    __cvHouse?: () => { n: number; floor: number; meshes: number; lightmapped: boolean; viewMaterial: boolean };
+  }
+}
+
+/**
+ * The house floor the local player is on (mounted while they are in a house). `area` changes with the stair; the floor scene is
+ * keyed by it, so the other floor's group is the one hidden at once. The files are held for the whole stay.
+ */
+export function HouseArea({ area, pose }: { area: string; pose: Pose }) {
+  const hit = parseHouseFloorArea(area);
+  const n = hit?.n ?? 1;
+  const floor = hit?.floor ?? 1;
+  const inHouse = hit !== null;
+  useEffect(() => {
+    if (!inHouse) return;
+    // a house floor mounted without the keypad's "ok" having raised the cover (a reconnect into a house): raise it now
+    if (houseEntryState().phase === "idle") beginHouseEntry();
+    return holdHouseFiles(n);
+  }, [n, inHouse]);
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    window.__cvHouse = () => {
+      let meshes = 0;
+      let lm = false;
+      let view = false;
+      const scene = (window as unknown as { __cvThree?: () => { scene: { traverse(f: (o: Mesh) => void): void } } }).__cvThree?.().scene;
+      scene?.traverse((o) => {
+        if (!(o as Mesh).isMesh) return;
+        for (let p: { visible: boolean; parent: unknown } | null = o; p; p = p.parent as { visible: boolean; parent: unknown } | null) if (p.visible === false) return;
+        meshes += 1;
+        const m = (o as Mesh).material as Material | Material[];
+        for (const mat of Array.isArray(m) ? m : [m]) {
+          if (isHouseLightmapMaterial(mat.name) && (mat as MeshBasicMaterial).lightMap) lm = true;
+          if (mat.name === HOUSE_VIEW_MATERIAL) view = true;
+        }
+      });
+      return { n, floor, meshes, lightmapped: lm, viewMaterial: view };
+    };
+    return () => {
+      delete window.__cvHouse;
+    };
+  }, [n, floor]);
+  if (!hit) return null;
+  return (
+    <>
+      <LoadBoundary
+        fallback={<HouseRoom n={n} floor={floor} />}
+        onReset={() => {
+          clearHouseCaches(n);
+          houseEntryFailed();
+        }}
+        notice="집 안을 불러오지 못했어요. 잠시 뒤 다시 불러올게요."
+      >
+        <Suspense fallback={<HouseRoom n={n} floor={floor} />}>
+          <HouseFloorScene key={area} n={n} floor={floor} pose={pose} />
+          <SceneWarmUp />
+        </Suspense>
+      </LoadBoundary>
+    </>
+  );
+}

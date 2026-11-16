@@ -29,6 +29,7 @@
  */
 
 import { phaseAt, smoothstep, sunAt } from "@caysonverse/shared/village/sunClock";
+import { NL_POWER, SKY_SHARE, SUN_DIRECT_K, SUN_GAIN, shadowDirection } from "./sunShadows";
 
 export type Rgb = [number, number, number];
 export type Vec3 = [number, number, number];
@@ -49,6 +50,12 @@ export interface DayNightState {
   stars: number;
   /** The scene's tone-mapping exposure (× the player's brightness). */
   exposure: number;
+  /**
+   * The exposure without the sun's adaptation over the exposure with it (`sunAdaptation`; 1 at night and indoors): what a
+   * model with its OWN bake (the fishing lake, the waterfall: lit by their light maps alone, not by the live sun the
+   * adaptation takes back) multiplies its light by, so it keeps its baked brightness next to the village (release 2).
+   */
+  exposureKeep: number;
   /** The clear colour and the fog's (the dome's horizon haze by day, a dark blue at night). */
   sky: Rgb;
   hemiSky: Rgb;
@@ -77,6 +84,18 @@ export interface DayNightState {
   sunGlow: number;
   /** The sun glow's colour (linear): near white high up, golden at sunrise and sunset. */
   glowColor: Rgb;
+  /**
+   * Toward the light the live shadows are cast from (unit; docs/designs/sun-shadows): the real sun while it is up
+   * (above `SHADOW_SUN_BELOW`, its elevation held at 2° at least), the moon after. The scene's key light is aimed
+   * along it too, so the players' shadows fall the same way as the village's.
+   */
+  shadowDir: Vec3;
+  /** The live sun's direct light per n.l on the village's light-mapped surfaces (light-map units, linear; 0 at night). */
+  sunDirect: Rgb;
+  /** How much the live shadows darken the night light map (the moon's shadows): 0 by day. */
+  moonShade: number;
+  /** × the day map's sky and bounce light (sunShadows.ts SKY_SHARE by full sun: the sunny day's contrast). */
+  skyShare: number;
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -172,6 +191,40 @@ export const SUN_MIN_ELEVATION = 14;
 /** The key light sits this far from the player (m): the direction is what matters; the shadow box is sized for it. */
 export const KEY_DISTANCE = 50;
 
+/** The live shadows follow the sun down to this elevation (°), the moon below it (the sun's light is gone by then). */
+export const SHADOW_SUN_BELOW = -2;
+/**
+ * The sky's and the bounce's light on flat open ground in the day light map (light-map units, the bake's sun taken out:
+ * measured 0.94 L lit − 0.36 L sun, / 2), and the bake's sun elevation: the exposure's adaptation compares the ground's
+ * light now with the bake's (`sunAdaptation`).
+ */
+export const GROUND_SKY_LIGHT = 0.29;
+export const BAKE_SUN_ELEVATION = 20;
+/** How much of the brighter ground under a high sun the exposure takes back (1 = all of it, an eye that adapts fully). */
+export const SUN_ADAPT = 0.85;
+/** ... and never below this share of the day's exposure (a June noon: walls and shade must not sink). */
+export const ADAPT_FLOOR = 0.62;
+/**
+ * ... nor above this: a low sun lights the ground less than the baked one did (its light was taken out with it), and the
+ * golden hour's lanes fell under the day brightness bar (e2e village-daynight); the exposure lifts them a little.
+ */
+export const ADAPT_CEIL = 1.12;
+
+/**
+ * The exposure's factor for a sun at `elevationDeg` whose direct light on the light map is `directK` per n.l: under a
+ * sun higher than the bake's 20°, flat ground gets more light than the light map was graded for, and the pale plaza
+ * washed out against the tone curve's shoulder (its live shadows with it). The exposure comes down by the ratio of the
+ * bake's ground light to now (to the power SUN_ADAPT), between ADAPT_FLOOR and ADAPT_CEIL.
+ */
+export function sunAdaptation(elevationDeg: number, directK: number, skyShare = 1): number {
+  const bake = GROUND_SKY_LIGHT + SUN_DIRECT_K * Math.sin((BAKE_SUN_ELEVATION * Math.PI) / 180);
+  const now = GROUND_SKY_LIGHT * skyShare + directK * Math.max(0, Math.sin((elevationDeg * Math.PI) / 180)) ** NL_POWER;
+  return Math.min(ADAPT_CEIL, Math.max(ADAPT_FLOOR, (bake / now) ** SUN_ADAPT));
+}
+
+/** The moon's live shadows on the night light map at full night (a share of its light taken away). */
+export const MOON_SHADE = 0.35;
+
 /** Lamps, windows and the fountain's lights come on once the night weight passes this. */
 export const LIGHTS_ON_ABOVE = 0.3;
 /** ... and are fully on from here. */
@@ -256,6 +309,12 @@ export function stateFor(elevationDeg: number, azimuthDeg: number): DayNightStat
     mix(MOON_DIRECTION[2], sunDir[2], w),
   ]);
   const keyColor = mixRgb(NIGHT.moonColor, sunColor, w);
+  // The live sun on the light-mapped village: the bake's own white-to-noon colour (the golden cast is the day tint's),
+  // as strong as the key's sun share, in the light map's units (SUN_DIRECT_K: the baked sun's, measured).
+  const directColor = mixRgb(DAY.keyColor, DAY.noonKey, sunWhite);
+  const sunShare = sunIntensity / DAY_LOOK.keyIntensity;
+  const directK = (SUN_DIRECT_K / DAY.keyColor[0]) * sunShare * mix(1, SUN_GAIN, Math.min(1, sunShare));
+  const skyShare = mix(1, SKY_SHARE, Math.min(1, sunShare));
 
   const dayMix = (a: Rgb, b: Rgb) => mixRgb(a, b, n);
   return {
@@ -265,7 +324,8 @@ export function stateFor(elevationDeg: number, azimuthDeg: number): DayNightStat
     golden: g,
     lights: lightsAt(n),
     stars: smoothstep(0.55, 0.95, n),
-    exposure: mix(DAY_LOOK.exposure, NIGHT_LOOK.exposure, n),
+    exposure: mix(DAY_LOOK.exposure * sunAdaptation(elevationDeg, directK, skyShare), NIGHT_LOOK.exposure, n),
+    exposureKeep: mix(DAY_LOOK.exposure, NIGHT_LOOK.exposure, n) / mix(DAY_LOOK.exposure * sunAdaptation(elevationDeg, directK, skyShare), NIGHT_LOOK.exposure, n),
     sky: mixRgb(dayMix(DAY.sky, NIGHT.sky), GOLD.sky, g * 0.8),
     hemiSky: mixRgb(dayMix(DAY.hemiSky, NIGHT.hemiSky), GOLD.hemiSky, g * 0.7),
     hemiGround: mixRgb(dayMix(DAY.hemiGround, NIGHT.hemiGround), GOLD.hemiGround, g * 0.6),
@@ -284,6 +344,10 @@ export function stateFor(elevationDeg: number, azimuthDeg: number): DayNightStat
     sunDir: directionFrom(azimuthDeg, elevationDeg),
     sunGlow: sunGlowAt(elevationDeg),
     glowColor: mixRgb(GLOW_DAY, GLOW_GOLD, g),
+    shadowDir: elevationDeg > SHADOW_SUN_BELOW ? shadowDirection(directionFrom(azimuthDeg, elevationDeg)) : [...MOON_DIRECTION],
+    sunDirect: [directColor[0] * directK, directColor[1] * directK, directColor[2] * directK],
+    moonShade: MOON_SHADE * smoothstep(SHADOW_SUN_BELOW, -8, elevationDeg),
+    skyShare,
   };
 }
 
@@ -305,6 +369,8 @@ export function indoorState(): DayNightState {
   s.keyIntensity = DAY_LOOK.keyIntensity;
   s.sky = [...DAY.sky];
   s.sunGlow = 0; // no sun in the hall
+  s.shadowDir = [...DAY_SUN_DIRECTION];
+  s.exposureKeep = 1;
   s.exposure = 1.12; // a little above the open village's 0.95: the hall is a lit room, its darkest wall pixels must not sink (B7)
   return s;
 }
@@ -327,6 +393,8 @@ export function cloneState(s: DayNightState): DayNightState {
     waterTint: [...s.waterTint],
     sunDir: [...s.sunDir],
     glowColor: [...s.glowColor],
+    shadowDir: [...s.shadowDir],
+    sunDirect: [...s.sunDirect],
   };
 }
 
@@ -364,11 +432,12 @@ export function easeState(cur: DayNightState, target: DayNightState, dt: number)
   const k = easeFactor(dt);
   if (k <= 0) return;
   ease(cur as unknown as Tree, target as unknown as Tree, k);
-  const d = cur.keyDir;
-  const len = Math.hypot(d[0], d[1], d[2]) || 1;
-  d[0] /= len;
-  d[1] /= len;
-  d[2] /= len;
+  for (const d of [cur.keyDir, cur.shadowDir]) {
+    const len = Math.hypot(d[0], d[1], d[2]) || 1;
+    d[0] /= len;
+    d[1] /= len;
+    d[2] /= len;
+  }
 }
 
 /** How often the target is read from the clock (s): the sun moves 0.04° in this time, nobody sees a step. */

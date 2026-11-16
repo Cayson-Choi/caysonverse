@@ -33,6 +33,8 @@ import { DEFAULT_WALL_THICKNESS, makeGeometry, wallsAround } from "../school/geo
 import { VILLAGE_CAMERA_BOXES, VILLAGE_COLLIDERS } from "./generated/villageColliders";
 import { MEMORIAL_CAMERA_BOXES, MEMORIAL_COLLIDERS } from "./generated/memorialColliders";
 import { guideColliders } from "./guides";
+import { HOUSES_ZONE, allHouseWalls, houseColliders, housesBlockers } from "./housesGeometry";
+import { parseHouseFloorArea, type HouseFloor, type HouseFloorAreaId } from "./houseAreas";
 import { signalPoleColliders } from "./crossings";
 import { streetPoleColliders } from "./streetPoles";
 import { TRANSIT, busFootprint } from "./transit";
@@ -59,6 +61,7 @@ import {
 } from "./houseExterior";
 import { designExteriorWindowTable } from "./exteriorWindows";
 import { stageA8Colliders } from "./a8Staging";
+import { cameraWallBoxes, villageWalkArea, waterfallObstacles } from "./fallsWalk";
 import type { Bounds, MapGeometry } from "../school/geometry";
 
 export interface Point2 {
@@ -81,20 +84,25 @@ export interface Disc {
 /** A compass side: north is -z, east is +x. */
 export type Side = "n" | "s" | "e" | "w";
 
-/** The two places a player can be: the open village, or inside the memorial hall. */
-export type HouseAreaId = `house:${string}`;
+/**
+ * The places a player can be: the open village, the inside of the memorial hall, or one floor of a house (`house:house_3:2`, 집 실내 G:
+ * twenty areas, houseAreas.ts). Every area has its own rectangle in the one coordinate space.
+ */
+export type HouseAreaId = HouseFloorAreaId;
 export type AreaId = "village" | "hall" | HouseAreaId;
 
+/** True for exactly `house:house_<1..10>:<1|2>`. */
 export function isHouseArea(area: string): area is HouseAreaId {
-  return area.startsWith("house:") && area.length > "house:".length;
+  return parseHouseFloorArea(area) !== null;
 }
 
-export function houseArea(buildingId: string): HouseAreaId {
-  return `house:${buildingId}`;
+/** The area of a house floor: `house:<buildingId>:<floor>` (floor 1 = the entrance floor, the default). */
+export function houseArea(buildingId: string, floor: HouseFloor = 1): HouseAreaId {
+  return `house:${buildingId}:${floor}`;
 }
 
 export function buildingIdFromArea(area: string): string | null {
-  return isHouseArea(area) ? area.slice("house:".length) : null;
+  return parseHouseFloorArea(area)?.buildingId ?? null;
 }
 
 export type PlotId = "plot_n" | "plot_ne" | "plot_e" | "plot_w" | "plot_nw" | "plot_s";
@@ -308,6 +316,103 @@ export interface MemorialNiche {
   frontZ: number;
 }
 
+/** A point in the game's 3-D space (metres; y up, ground at 0). */
+export interface Point3 {
+  x: number;
+  y: number;
+  z: number;
+}
+
+/**
+ * A flat granite slab (너럭바위) by the plunge pool: an ellipse in plan, turned by `yaw` (radians, about +y; 0 keeps
+ * radiusX along x). Its top is level with the walk surface (players walk at y = 0; there is no floor height), so it
+ * reads as a slab because the gravel and the water round it sit lower, not because feet climb onto it.
+ */
+export interface WaterfallSlab {
+  id: string;
+  centre: Point2;
+  radiusX: number;
+  radiusZ: number;
+  yaw: number;
+  /** Height of the slab's top surface (m). */
+  top: number;
+}
+
+/** A low flat-topped rock to sit on: no back, so it is sat on from either long side (owner rule 2026-11-13). */
+export interface WaterfallSeat {
+  id: string;
+  centre: Point2;
+  /** Footprint: x across the stone, z along it (the sitters sit side by side along z). */
+  size: Size2;
+  /** Height of the seat surface (m). */
+  seatTop: number;
+  /** The two ways a sitter can face (the stone's long sides). */
+  facings: readonly ["w", "e"];
+}
+
+/**
+ * B1 waterfall (docs/designs/waterfall/design.md; W0 shape lock 2026-11-16, owner "추천대로" 2026-11-16). `centre`,
+ * `size`, `height` and `facing` are the original backdrop rectangle (the old cliff in village.glb, still read by
+ * parts_nature.py until the village rebuild); the rest is the locked shape of the separate `waterfall.glb` and its
+ * walkable rest area. The rock shape itself (cliff face, ledges, pool bed, channel) is art/village/tools/falls_shape.py,
+ * which reads these numbers from layout.json; docs/designs/waterfall/falls-contract.json is its export.
+ */
+export interface VillageWaterfall {
+  centre: Point2;
+  size: Size2;
+  /** Total height: the top of the upper cascade, where the water leaves the plateau (m). */
+  height: number;
+  facing: Side;
+  /** The site box: everything inside (ground, cliff, pool, banks) belongs to waterfall.glb; village.glb leaves a hole. */
+  site: Bounds;
+  /** The walkable rest area (폭포 쉼터) west of the village's walk bounds, minus the pool's keep-out. */
+  pocket: Bounds;
+  /** The opening in the walk bounds' west edge (x = walkBounds.minX) that leads into the pocket. */
+  entry: { x: number; minZ: number; maxZ: number };
+  /** The main ledge's lip: the lower plunge (17 m free fall) leaves the rock here. */
+  lip: Point3;
+  /** Speed (m/s, horizontal, toward +x) the plunge leaves the lip with; it falls on a parabola to `impact`. */
+  plungeSpeed: number;
+  /** Where the plunge meets the pool's surface: the centre of spray, ripples, foam and sound. */
+  impact: Point3;
+  /** The plunge pool (소): an ellipse; `radiusX/radiusZ` are its waterline. */
+  pool: {
+    centre: Point2;
+    radiusX: number;
+    radiusZ: number;
+    waterY: number;
+    /** Depth at the middle (m). */
+    depth: number;
+    /** Depth 1 m inside the waterline (m): the rim is shallow and clear. */
+    edgeDepth: number;
+    /** Nobody stands within this distance (m) of the waterline, except on a slab: the shore's edge stones. */
+    keepOut: number;
+    /** The pool cannot be entered: clicking its water walks the player to the nearest shore point. */
+    enterable: false;
+  };
+  /** The stream out of the pool to the site's south edge, where the village's feeder stream takes over. */
+  outlet: { points: readonly Point2[]; width: number; waterY: readonly [number, number] };
+  slabs: readonly WaterfallSlab[];
+  seats: readonly WaterfallSeat[];
+  /** Two warm ground lamps on the shore stones that light the bottom of the falls at night (baked into the night lightmap). */
+  lamps: readonly (Point2 & { aim: Point3 })[];
+  /**
+   * The camera may not go west of this line (north to south, x at each z; straight between points): the cliff and its
+   * flanks below 22 m stay west of it with 0.5 m to spare (falls_shape.py computes it from the locked rock face).
+   */
+  cameraWall: readonly Point2[];
+  /** The owner's choices (2026-11-16), kept as switches. */
+  options: {
+    walkable: boolean;
+    seats: boolean;
+    nightLamps: number;
+    /** The morning-mist rainbow is drawn only on this graphics tier. */
+    rainbowTier: "high" | "off";
+    /** Local hours (KST, decimal) the rainbow may show: a clear morning, the sun behind the viewer. */
+    rainbowHours: readonly [number, number];
+  };
+}
+
 export interface VillageLayout {
   /** Where the village's walkable ground ends (the server clamps players into the bounds). */
   walkBounds: Bounds;
@@ -344,9 +449,12 @@ export interface VillageLayout {
   plots: readonly VillagePlot[];
   memorial: { exterior: MemorialExterior; interior: MemorialInterior };
   sceneryHouses: readonly SceneryHouse[];
-  /** Outside the walk bounds, visual only: the waterfall on a cliff (back left) and the lake with a pavilion (right). */
+  /**
+   * Outside the walk bounds: the waterfall on a cliff (back left) and the lake with a pavilion (right). The lake is
+   * visual only; the waterfall has a small walkable rest area (`pocket`) by its pool.
+   */
   backdrop: {
-    waterfall: { centre: Point2; size: Size2; height: number; facing: Side };
+    waterfall: VillageWaterfall;
     lake: { centre: Point2; size: Size2; pavilion: { centre: Point2; size: Size2 } };
   };
   areas: Record<"village" | "hall", Bounds>;
@@ -580,7 +688,59 @@ function makeVillageLayout(): VillageLayout {
       house("kiosk", pt(48.6, -3.85), "wood", "w", "kiosk"),
     ],
     backdrop: {
-      waterfall: { centre: pt(-118, -78), size: sz(28, 14), height: 36, facing: "e" },
+      waterfall: {
+        centre: pt(-118, -78),
+        size: sz(28, 14),
+        height: 36,
+        facing: "e",
+        site: { minX: -140, maxX: -100, minZ: -104, maxZ: -58 },
+        pocket: { minX: -106, maxX: -95, minZ: -90, maxZ: -68 },
+        entry: { x: -95, minZ: -86, maxZ: -70 },
+        lip: { x: -117, y: 17, z: -78 },
+        plungeSpeed: 2.2,
+        // the parabola from the lip at 2.2 m/s: falls 17.25 m in 1.8753 s, 4.126 m out (falls_shape.py checks it)
+        impact: { x: -112.87, y: -0.25, z: -78 },
+        pool: { centre: pt(-111.5, -78), radiusX: 8.5, radiusZ: 11, waterY: -0.25, depth: 2.2, edgeDepth: 0.3, keepOut: 0.6, enterable: false },
+        outlet: { points: [pt(-110.4, -68.6), pt(-108.6, -64.8), pt(-107.4, -61.2), pt(-107, -58)], width: 3, waterY: [-0.25, -0.3] },
+        slabs: [
+          { id: "falls_slab_0", centre: pt(-102.9, -77.4), radiusX: 1.65, radiusZ: 2.5, yaw: 0.12, top: 0.04 },
+          { id: "falls_slab_1", centre: pt(-101.8, -81.6), radiusX: 1.6, radiusZ: 1.5, yaw: -0.3, top: 0.03 },
+          { id: "falls_slab_2", centre: pt(-101.6, -73.6), radiusX: 1.3, radiusZ: 1.4, yaw: 0.5, top: 0.02 },
+          { id: "falls_slab_3", centre: pt(-103, -85), radiusX: 1.3, radiusZ: 1.1, yaw: 0.2, top: 0.03 },
+        ],
+        seats: [
+          { id: "falls_seat_n", centre: pt(-101, -87.6), size: sz(0.8, 1.9), seatTop: 0.42, facings: ["w", "e"] },
+          { id: "falls_seat_s", centre: pt(-101, -69.6), size: sz(0.8, 1.9), seatTop: 0.42, facings: ["w", "e"] },
+        ],
+        lamps: [
+          { x: -106, z: -86.8, aim: { x: -116, y: 6, z: -78 } },
+          { x: -106, z: -69.2, aim: { x: -116, y: 6, z: -78 } },
+        ],
+        cameraWall: [
+          pt(-113.5, -98),
+          pt(-112.7, -96),
+          pt(-111.2, -94),
+          pt(-110.3, -92),
+          pt(-110.3, -90),
+          pt(-111.4, -88),
+          pt(-111.6, -86),
+          pt(-111.9, -84),
+          pt(-113.4, -82),
+          pt(-113.9, -80),
+          pt(-115.5, -78),
+          pt(-115.7, -76),
+          pt(-113.6, -74),
+          pt(-113.3, -72),
+          pt(-113.1, -70),
+          pt(-111.8, -68),
+          pt(-110.7, -66),
+          pt(-111.1, -64),
+          pt(-111.7, -62),
+          pt(-113.1, -60),
+          pt(-113.5, -58),
+        ],
+        options: { walkable: true, seats: true, nightLamps: 2, rainbowTier: "high", rainbowHours: [6.5, 10.5] },
+      },
       lake: { centre: pt(130, -15), size: sz(60, 90), pavilion: { centre: pt(108, -12), size: sz(6, 6) } },
     },
     areas: { village: { minX: -95, maxX: VILLAGE_EAST_EDGE, minZ: -95, maxZ: 95 }, hall: boxAt(pt(300, 0), sz(15, 12)) },
@@ -917,9 +1077,12 @@ export function hallWalls(layout: VillageLayout): AABB[] {
  */
 export const HALL_APRON = 5;
 
-/** The rectangle `villageGeometry` uses as its bounds: spans the village and the hall (walls and apron included). */
-export function villageBounds(layout: VillageLayout): Bounds {
-  const v = layout.areas.village;
+/**
+ * The rectangle round the hall's walls and their `HALL_APRON` (5 m) — the hall's part of the geometry (it was the whole of the village's
+ * bounds before the houses came, 집 실내 G).
+ */
+export function hallApronBounds(layout: VillageLayout): Bounds {
+  const v = villageWalkArea(layout); // the village's area plus the waterfall's rest area (B1 W5)
   const h = layout.areas.hall;
   const margin = DEFAULT_WALL_THICKNESS + HALL_APRON;
   return {
@@ -931,7 +1094,21 @@ export function villageBounds(layout: VillageLayout): Bounds {
 }
 
 /**
- * Fills the gap between the two areas (from the village's east edge to the hall's outer west wall,
+ * The rectangle `villageGeometry` uses as its bounds: spans the village, the hall (walls and apron included) and the ten houses' twenty
+ * rooms (`HOUSES_ZONE`: their walls x 359.7 .. 586.9, z -8.1 .. 30.3, with a 5 m apron).
+ */
+export function villageBounds(layout: VillageLayout): Bounds {
+  const a = hallApronBounds(layout);
+  return {
+    minX: Math.min(a.minX, HOUSES_ZONE.minX),
+    maxX: Math.max(a.maxX, HOUSES_ZONE.maxX),
+    minZ: Math.min(a.minZ, HOUSES_ZONE.minZ),
+    maxZ: Math.max(a.maxZ, HOUSES_ZONE.maxZ),
+  };
+}
+
+/**
+ * Fills the gap between the village and the hall (from the village's east edge to the hall's outer west wall,
  * the full z range of the bounds), so the spanning bounds do not let anyone walk from one to the other.
  *
  * The village area reaches east past x 95 to hold the fishing lake (`LAKE_AREA`, x 95.5..186): there the strips north and
@@ -954,21 +1131,28 @@ export function areaGapBlockers(layout: VillageLayout): AABB[] {
 }
 
 /**
- * Solid ground over ALL the free space around the hall's walls inside the bounds: the strips north and south
- * (from the walls' west face to the bounds' east edge) and the strip east of the walls. West of the walls the
- * gap blocker is adjacent. Every one is at least `HALL_APRON` (5 m) thick, so a legal step through a wall ends
- * inside a blocker and is dropped. `hallWalls` stay the render and camera geometry; these boxes are invisible.
+ * Solid ground over ALL the free space around the hall's walls inside the bounds: the strips north and south (from the walls' west
+ * face to the hall apron's east edge, and z out to the bounds' edges) and the strip east of the walls. West of the walls the gap
+ * blocker is adjacent; east of the apron the houses' blockers take over (`housesBlockers`). Every one is at least `HALL_APRON`
+ * (5 m) thick, so a legal step through a wall ends inside a blocker and is dropped. `hallWalls` stay the render and camera
+ * geometry; these boxes are invisible.
  */
 export function hallSurroundBlockers(layout: VillageLayout): AABB[] {
   const bounds = villageBounds(layout);
+  const apron = hallApronBounds(layout);
   const hall = layout.areas.hall;
   const t = DEFAULT_WALL_THICKNESS;
   const walls: AABB = { minX: hall.minX - t, maxX: hall.maxX + t, minZ: hall.minZ - t, maxZ: hall.maxZ + t };
   const out: AABB[] = [];
-  if (bounds.minZ < walls.minZ) out.push({ minX: walls.minX, maxX: bounds.maxX, minZ: bounds.minZ, maxZ: walls.minZ });
-  if (walls.maxZ < bounds.maxZ) out.push({ minX: walls.minX, maxX: bounds.maxX, minZ: walls.maxZ, maxZ: bounds.maxZ });
-  if (walls.maxX < bounds.maxX) out.push({ minX: walls.maxX, maxX: bounds.maxX, minZ: walls.minZ, maxZ: walls.maxZ });
+  if (bounds.minZ < walls.minZ) out.push({ minX: walls.minX, maxX: apron.maxX, minZ: bounds.minZ, maxZ: walls.minZ });
+  if (walls.maxZ < bounds.maxZ) out.push({ minX: walls.minX, maxX: apron.maxX, minZ: walls.maxZ, maxZ: bounds.maxZ });
+  if (walls.maxX < apron.maxX) out.push({ minX: walls.maxX, maxX: apron.maxX, minZ: walls.minZ, maxZ: walls.maxZ });
   return out;
+}
+
+/** The solid ground between the hall's apron and the houses, round and between the twenty house rooms (housesGeometry.ts). */
+export function houseBlockBlockers(layout: VillageLayout): AABB[] {
+  return housesBlockers(villageBounds(layout), hallApronBounds(layout).maxX);
 }
 
 /**
@@ -1039,6 +1223,8 @@ export function buildVillageGeometry(
   hall?: GeneratedColliders,
   /** Small solid things that are not in a model (Task 9A: the guides' colliders). */
   extra: readonly AABB[] = [],
+  /** The finished houses' colliders (housesGeometry.ts `houseColliders`); absent: the twenty rooms are empty (walls only). */
+  houses?: GeneratedColliders,
 ): MapGeometry {
   const village: GeneratedColliders =
     "obstacles" in colliders
@@ -1047,9 +1233,23 @@ export function buildVillageGeometry(
   return makeGeometry(
     "village",
     villageBounds(layout),
-    hallWalls(layout),
-    [...areaGapBlockers(layout), ...hallSurroundBlockers(layout), ...lakeColliders(), ...village.obstacles, ...signalPoleColliders(), ...streetPoleColliders(layout), ...busShelterColliders(layout), busShelterBenchCollider(layout), ...(hall?.obstacles ?? []), ...extra],
-    [...village.cameraBoxes, ...lakeCameraBoxes(), busShelterRoofSlab(layout), busShelterLightBoxCameraBox(layout), ...(hall?.cameraBoxes ?? [])],
+    [...hallWalls(layout), ...allHouseWalls()],
+    [
+      ...areaGapBlockers(layout),
+      ...hallSurroundBlockers(layout),
+      ...houseBlockBlockers(layout),
+      ...lakeColliders(),
+      ...village.obstacles,
+      ...signalPoleColliders(),
+      ...streetPoleColliders(layout),
+      ...busShelterColliders(layout),
+      busShelterBenchCollider(layout),
+      ...(hall?.obstacles ?? []),
+      ...extra,
+      ...(houses?.obstacles ?? []),
+      ...waterfallObstacles(layout),
+    ],
+    [...village.cameraBoxes, ...lakeCameraBoxes(), busShelterRoofSlab(layout), busShelterLightBoxCameraBox(layout), ...(hall?.cameraBoxes ?? []), ...(houses?.cameraBoxes ?? []), ...cameraWallBoxes(layout)],
   );
 }
 
@@ -1111,26 +1311,8 @@ export const villageGeometry: MapGeometry = buildVillageGeometry(
   // is no static collider (2026-11-15: it left an invisible wall at the empty stop): its body and mirrors are one moving
   // solid at its current pose, parked or not (busBody.ts, applied by the server and every client).
   [...guideColliders()],
-);
-
-/**
- * Where a family member lands inside a house (the keypad's way in). The house interiors share the hall's footprint, but not its
- * arrival spot: the hall's moved 1 m in (round 5) for its camera, which must not move the houses' with it (round 6 review). The
- * houses keep their own, 1.6 m in front of the shared door pad's centre and facing into the room.
- */
-export const HOUSE_INTERIOR_SPAWN: Readonly<{ x: number; z: number; yaw: number }> = Object.freeze({
-  x: VILLAGE_LAYOUT.memorial.interior.doorPad.centre.x,
-  z: VILLAGE_LAYOUT.memorial.interior.doorPad.centre.z - 1.6,
-  yaw: VILLAGE_LAYOUT.memorial.interior.spawn.yaw,
-});
-
-/** Procedural house interiors reuse the hall room footprint but omit memorial furniture and cubby obstacles. */
-export const houseInteriorGeometry: MapGeometry = makeGeometry(
-  "house",
-  VILLAGE_LAYOUT.areas.hall,
-  hallWalls(VILLAGE_LAYOUT),
-  [],
-  [],
+  // 집 실내 G: the finished houses' furniture and walls (generated/houses) and every floor's ceiling slab as a camera box.
+  houseColliders(),
 );
 
 /**

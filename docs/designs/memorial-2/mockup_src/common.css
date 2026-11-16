@@ -1,0 +1,10 @@
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: "Noto Sans KR", "Malgun Gothic", sans-serif; color: #3b322b; background: #e9e4dc; }
+.sheet { background: rgba(247, 243, 236, 0.98); border-radius: 18px; box-shadow: 0 18px 48px rgba(40, 30, 20, 0.28); }
+.pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 999px; font-size: 13px; font-weight: 600; }
+.btn { border: 0; border-radius: 14px; font-family: inherit; font-weight: 700; display: flex; align-items: center; justify-content: center; gap: 6px; }
+.btn.primary { background: #4b4fd8; color: #fff; }
+.btn.soft { background: #ece6dc; color: #3b322b; }
+.btn.ghost { background: transparent; color: #6c6158; border: 1px solid #d9d0c4; }
+.muted { color: #8a7e73; }
+.ico { width: 18px; height: 18px; display: inline-block; }

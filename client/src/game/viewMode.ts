@@ -44,6 +44,8 @@ export const OV_BLEND_SEC = 0.3;
  */
 export const FP_PITCH_MIN = -1.5;
 export const FP_PITCH_MAX = 1.2;
+/** While the star finder is open the look reaches (all but) the zenith: 0.7 deg short of straight up, so the camera's up vector never flips. */
+export const SKY_PITCH_MIN = -(Math.PI / 2 - 0.012);
 
 /**
  * Blend factor at/after which the OWN avatar group is hidden. Hiding at the
@@ -104,8 +106,9 @@ export function easeBlend(t: number): number {
 }
 
 /** Clamp a first-person look pitch into the wider FP range. */
-export function clampFpPitch(pitch: number): number {
-  return pitch < FP_PITCH_MIN ? FP_PITCH_MIN : pitch > FP_PITCH_MAX ? FP_PITCH_MAX : pitch;
+export function clampFpPitch(pitch: number, skyLook = false): number {
+  const min = skyLook ? SKY_PITCH_MIN : FP_PITCH_MIN;
+  return pitch < min ? min : pitch > FP_PITCH_MAX ? FP_PITCH_MAX : pitch;
 }
 
 /**

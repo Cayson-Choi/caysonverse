@@ -101,6 +101,19 @@ export interface ClickTarget extends GroundVec {
   y: number;
   /** A way round (clickPlan.ts findDetour): the corners walked by, in order, before the destination. */
   via?: readonly GroundVec[];
+  /** How near (m) the walk ends: ARRIVE_DIST, or SEAT_ARRIVE_DIST for a walk to a seat's approach (setSeatWalk). */
+  arrive?: number;
+}
+
+/**
+ * How near (m) a walk to a tapped seat's approach ends (집 실내 G round 3): ARRIVE_DIST short of it, at a chair round a small table or
+ * a cushion by the next one, the seat was no longer the one offered and nobody sat. Still more than a 30 fps run step's half (0.11 m).
+ */
+export const SEAT_ARRIVE_DIST = 0.14;
+
+/** The walk now set goes to a tapped seat's approach: it ends SEAT_ARRIVE_DIST from it, not ARRIVE_DIST. */
+export function setSeatWalk(): void {
+  if (state.target) state.target = { ...state.target, arrive: SEAT_ARRIVE_DIST };
 }
 
 /** The auto-move state: target + the no-progress measurement window. */
@@ -312,7 +325,7 @@ export function stepClickMove(px: number, pz: number, dt: number): GroundVec | n
 
   // Arrival and the no-progress release end this walk only: a tap made meanwhile is still waiting out its
   // double-tap window, its ring showing (round 3 review: the ring vanished at the arrival and came back 300 ms later).
-  if (hasArrived(px, pz, target.x, target.z)) {
+  if (Math.hypot(target.x - px, target.z - pz) < (target.arrive ?? ARRIVE_DIST)) {
     endWalk();
     return null;
   }

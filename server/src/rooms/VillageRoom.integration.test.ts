@@ -544,13 +544,13 @@ describe("VillageRoom arrivals never stack (integration, fix/arrival-spread)", (
     void room;
   });
 
-  it("two family members opening the same house's keypad in the same tick land apart inside it (the keypad is paused on the client, the rule stays right)", async () => {
+  it("two family members opening the same house's keypad in the same tick land apart inside it (the keypad's way in: the same arrival spread as the hall's door)", async () => {
     const { clients, players } = await crowd(2);
     const entry = keypadEntries()[0]!;
     placeAt(players[0], entry.pad.x - 0.3, entry.pad.z);
     placeAt(players[1], entry.pad.x + 0.3, entry.pad.z);
     for (const c of clients) c.send(VillageMsg.Keypad, { buildingId: entry.buildingId, code: "1004" });
-    const area = `house:${entry.buildingId}`;
+    const area = `house:${entry.buildingId}:1`;
     expect(await pollFor(() => players.every((p) => p.area === area))).toBe(true);
     expect(gaps(players)).toBeGreaterThanOrEqual(ARRIVAL_SPACING_M - SPACING_SLACK_M);
     for (const p of players) expect(offPad(p, IN_PAD)).toBe(true);
@@ -559,7 +559,7 @@ describe("VillageRoom arrivals never stack (integration, fix/arrival-spread)", (
   it("only the players of the arrival's own area count: someone at the same coordinates in a house does not push a hall arrival aside", async () => {
     const { clients, players } = await crowd(2);
     const [carol, bob] = players;
-    carol.area = "house:house_1"; // the houses' interiors share the hall's coordinates
+    carol.area = "house:house_1:1"; // the houses' interiors are their own rooms (once they shared the hall's coordinates)
     placeAt(carol, HALL_SPAWN.x, HALL_SPAWN.z);
     placeAt(bob, OUT_PAD.centre.x, OUT_PAD.centre.z);
     clients[1].send(VillageMsg.UseDoor, {});
