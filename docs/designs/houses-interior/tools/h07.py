@@ -23,8 +23,10 @@ MINT_WALL = (0.84, 0.94, 0.89, 1)
 SHEER = (0.95, 0.96, 0.92, 1)
 
 # ============================================================================================== floor 1: music room ===
+HB.hb_mats.use_wallpaper(7)
+WOOD_TRIM = (0.78, 0.62, 0.46, 1)
 win1 = HB.ext_windows(H, 1, w=1.5, style="grid", cols=3, rows=2, drape=("curtain", dict(folds=6, tn=SHEER, tie=0.4)))
-HB.room(H, 1, floor_kind="oak", wall_tn=MINT_WALL, wall_m="H_paint", ceil_tn=PAL["white"], windows=win1, entry=True, bath=dict(wall="back", c=9.4))
+HB.room(H, 1, floor_kind="oak", wall_tn=MINT_WALL, wall_m="H_wallpaper", trim_tn=WOOD_TRIM, casing_tn=WOOD_TRIM, ceil_tn=PAL["white"], windows=win1, entry=True, bath=dict(wall="back", c=9.4))
 HB.entry_hall(H)
 HB.stairs(H)
 
@@ -67,7 +69,7 @@ H.piece(1, "pend2", DE.pendant_globe, 3.0, 3.6, 3.7, 0.0, cols=False, drop=1.1, 
 
 # ============================================================================================== floor 2: workshop ===
 win2 = HB.ext_windows(H, 2, w=1.5, style="grid", cols=3, rows=2, drape=None)
-HB.room(H, 2, floor_kind="dark", wall_tn=(0.93, 0.93, 0.88, 1), wall_m="H_paint", ceil_tn=PAL["white"], windows=win2, bath=dict(wall="front", c=1.0))
+HB.room(H, 2, floor_kind="dark", wall_tn=(0.93, 0.93, 0.88, 1), wall_m="H_wallpaper", trim_tn=WOOD_TRIM, casing_tn=WOOD_TRIM, ceil_tn=PAL["white"], windows=win2, bath=dict(wall="front", c=1.0))
 # tool wall + main bench (back wall, right)
 H.piece(2, "pegboard", MU.pegboard, 9.1, 7.79, 1.0, PI, w=2.3, h=1.1, seed=2)
 H.piece(2, "bench", TA.workbench, 9.1, 7.2, 0, PI, w=2.0, d=0.8, h=0.9)

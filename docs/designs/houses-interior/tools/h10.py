@@ -22,11 +22,12 @@ from kit_core import PAL  # noqa: E402
 PI = math.pi
 H = HB.House(10)
 PINE_WALL = (1.0, 0.93, 0.82, 1)
+WOOD_TRIM = (0.5, 0.34, 0.22, 1)
 FLOOR_TN = (0.85, 0.66, 0.5, 1)
 
 # ============================================================================================== floor 1: 난로 거실 ===
 win1 = HB.ext_windows(H, 1, w=1.4, style="grid", cols=2, rows=2, drape=("curtain", dict(folds=6, tn=(0.62, 0.3, 0.25, 1), tie=0.4)))
-HB.room(H, 1, floor_kind="oak", floor_tn=FLOOR_TN, wall_tn=PINE_WALL, wall_m="H_wood_pine", ceil_tn=(0.9, 0.78, 0.6, 1), windows=win1, entry=True, bath=dict(wall="front", c=1.0),
+HB.room(H, 1, floor_kind="oak", floor_tn=FLOOR_TN, wall_tn=PINE_WALL, wall_m="H_wood_pine", ceil_tn=(0.9, 0.78, 0.6, 1), trim_tn=WOOD_TRIM, casing_tn=WOOD_TRIM, windows=win1, entry=True, bath=dict(wall="front", c=1.0),
         entry_kind="tile_grey")
 HB.entry_hall(H)
 HB.stairs(H)
@@ -62,7 +63,7 @@ H.piece(1, "plant2", HP.plant_big, 6.9, 5.2, 0, 0.0, kind="monstera", h=1.0)
 # ============================================================================================== floor 2: 다락 침실 ===
 win2 = HB.ext_windows(H, 2, w=1.4, style="grid", cols=2, rows=2, drape=("curtain", dict(folds=6, tn=(0.62, 0.3, 0.25, 1), tie=0.4)),
                       over={("left", HB.EXT_SIDE): dict(w=1.7, y0=0.95)})
-HB.room(H, 2, floor_kind="oak", floor_tn=FLOOR_TN, wall_tn=PINE_WALL, wall_m="H_wood_pine", windows=win2, bath=dict(wall="front", c=1.0),
+HB.room(H, 2, floor_kind="oak", floor_tn=FLOOR_TN, wall_tn=PINE_WALL, wall_m="H_wood_pine", trim_tn=WOOD_TRIM, casing_tn=WOOD_TRIM, windows=win2, bath=dict(wall="front", c=1.0),
         ceiling="custom", ceiling_fn=lambda F, hole: HB.ceiling_slope(F, hole, side="left", run=3.4, low=2.9, tn=(1.0, 0.95, 0.85, 1), lights=((6.5, 2.4), (6.5, 5.4))))
 H.piece(2, "rug", DE.rug_check, 5.3, 4.0, 0, 0.0, w=2.6, d=1.8, cols=False)
 H.piece(2, "bed", BE.bed_queen, 5.3, 6.75, 0, PI, tn=PAL["rug_red"], headboard="panel")

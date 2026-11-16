@@ -107,7 +107,7 @@ def main():
                 if nd.type == "BSDF_PRINCIPLED":
                     nd.inputs["IOR"].default_value = 1.0
     for m in bpy.data.materials:        # hanji panels / lamp shades (H_shade) are baked as openings (the game draws them unlit): let light through here too
-        if m.name == "H_shade" and m.node_tree:
+        if m.name in ("H_shade", "H_hanji") and m.node_tree:
             nt = m.node_tree
             mout = next(nd for nd in nt.nodes if nd.type == "OUTPUT_MATERIAL")
             src = mout.inputs["Surface"].links[0].from_node

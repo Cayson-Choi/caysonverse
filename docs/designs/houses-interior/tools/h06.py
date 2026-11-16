@@ -24,9 +24,11 @@ WALNUT = (0.5, 0.36, 0.3, 1)
 CREAM_WALL = (0.98, 0.93, 0.78, 1)          # warm cream paint: the yellow house's library
 
 # ============================================================================================ floor 1: library =====
+HB.hb_mats.use_wallpaper(6)
+WOOD_TRIM = (0.55, 0.38, 0.26, 1)
 win1 = HB.ext_windows(H, 1, w=1.4, style="grid", cols=3, rows=2, drape=("curtain", dict(folds=8, tn=(0.74, 0.6, 0.38, 1))),
                       over={("left", HB.EXT_SIDE): dict(w=1.5)})
-HB.room(H, 1, floor_kind="oak", wall_tn=CREAM_WALL, wall_m="H_paint", ceil_tn=PAL["white"], windows=win1, entry=True, bath=dict(wall="front", c=1.0))
+HB.room(H, 1, floor_kind="oak", wall_tn=CREAM_WALL, wall_m="H_wallpaper", trim_tn=WOOD_TRIM, casing_tn=WOOD_TRIM, ceil_tn=PAL["white"], windows=win1, entry=True, bath=dict(wall="front", c=1.0))
 HB.entry_hall(H)
 HB.stairs(H)
 
@@ -67,7 +69,7 @@ H.piece(1, "plant", HP.plant_big, 8.95, 0.7, 0, 0.0, kind="fiddle", h=1.5, leave
 # ============================================================================================== floor 2: bedroom ====
 win2 = HB.ext_windows(H, 2, w=1.4, style="grid", cols=3, rows=2, drape=("curtain", dict(folds=8, tn=(0.9, 0.86, 0.74, 1))),
                       over={("left", HB.EXT_SIDE): dict(w=1.7, y0=0.95, drape=("curtain", dict(folds=8, panels=2, tn=(0.9, 0.86, 0.74, 1))))})
-HB.room(H, 2, floor_kind="oak", wall_tn=CREAM_WALL, wall_m="H_paint", ceil_tn=PAL["white"], windows=win2, bath=dict(wall="front", c=1.0))
+HB.room(H, 2, floor_kind="oak", wall_tn=CREAM_WALL, wall_m="H_wallpaper", trim_tn=WOOD_TRIM, casing_tn=WOOD_TRIM, ceil_tn=PAL["white"], windows=win2, bath=dict(wall="front", c=1.0))
 H.piece(2, "bed", BE.bed, 5.3, 6.75, 0, PI, w=1.5, l=2.05, headboard="panel", tn=PAL["sage"])
 H.piece(2, "bedside", TA.bedside, 4.0, 7.5, 0, PI)
 H.piece(2, "bedside", TA.bedside, 6.6, 7.5, 0, PI)

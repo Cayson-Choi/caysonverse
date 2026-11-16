@@ -26,6 +26,7 @@ from kit_core import PAL  # noqa: E402
 import kit_shell as SH  # noqa: E402
 import kit_storage as ST  # noqa: E402
 import hb_pieces as HP  # noqa: E402,F401  (patches the heavy kit pieces with lighter ones)
+import hb_mats  # noqa: E402,F401
 
 W_, D_ = 10.6, 7.8
 PI = math.pi
@@ -143,7 +144,7 @@ def draw_floor(F, floor, kind, hole, entry, tn=None, entry_kind="tile_grey", ext
 
 def room(H, floor, floor_kind="oak", wall_tn=None, floor_tn=None, windows=(), entry=False, bath=None, doors=(), lights=((2.6, 3.9), (7.9, 3.9)),
          ceiling="flat", ceiling_fn=None, fixtures=(), entry_kind="tile_grey", wall_m="H_plaster", floor_extra=(), extra_ops=None, ceil_tn=None,
-         wall_h_fn=None):
+         wall_h_fn=None, trim_tn=None, casing_tn=None):
     """the room shell of a floor: floors (with the entry tile / stairwell hole), 4 walls with every opening, windows + curtains, entry door,
     bathroom door; the ceiling by `ceiling` ('flat' | 'none' | callable(F) via ceiling_fn). Returns the piece object."""
     ops = {"front": [], "right": [], "back": [], "left": []}
@@ -171,14 +172,14 @@ def room(H, floor, floor_kind="oak", wall_tn=None, floor_tn=None, windows=(), en
         elif ceiling_fn:
             ceiling_fn(F, hole if floor == 1 else None)
         for k, (Wf, ln) in fr.items():
-            SH.wall(Wf, ln, CEIL, ops.get(k, []), m=wall_m, tn=wall_tn)
+            SH.wall(Wf, ln, CEIL, ops.get(k, []), m=wall_m, tn=wall_tn, base_tn=trim_tn, crown_tn=trim_tn)
         if entry and floor == 1:
             SH.entry_door(fr["front"][0], 4.4, 6.2, 2.9)
         for w_ in windows:
             Wf = fr[w_["wall"]][0]
             s = wall_s(w_["wall"], w_["c"])
             SH.window(Wf, s - w_["w"] / 2, s + w_["w"] / 2, w_["y0"], w_["y1"], style=w_["style"], cols=w_.get("cols", 3), rows=w_.get("rows", 2),
-                      paper=w_.get("paper", False))
+                      paper=w_.get("paper", False), tn=w_.get("tn", casing_tn))
             kind, kw = w_.get("drape") or (None, {})
             if kind == "curtain":
                 kw = dict(kw)
@@ -196,7 +197,7 @@ def room(H, floor, floor_kind="oak", wall_tn=None, floor_tn=None, windows=(), en
         if bath:
             bw = bath.get("w", 0.9)
             s = wall_s(bath["wall"], bath["c"])
-            SH.bath_door(fr[bath["wall"]][0], s - bw / 2, s + bw / 2, h=2.1, handle_left=bath.get("handle_left", False))
+            SH.bath_door(fr[bath["wall"]][0], s - bw / 2, s + bw / 2, h=2.1, tn=casing_tn, handle_left=bath.get("handle_left", False))
         for fx in fixtures:
             fx(fr)
 
@@ -207,19 +208,70 @@ def room(H, floor, floor_kind="oak", wall_tn=None, floor_tn=None, windows=(), en
 
 
 def stairs(H):
-    """H.stairs() + a shaft under the 2F hole: plastered walls from the floor slab down to the 1F floor (-4.0) and an oak floor there, so the
-    well is not a void when looked into from above (the kit puts only the upper 8 steps there)"""
-    H.stairs()
+    """H.stairs() with a finished underside: the soffit under the treads is a wood board ceiling (H_plaster is aliased to wood while the stair is drawn),
+    the 2F opening gets a wood fascia and a skirting round the shaft, and the shaft below is plastered with a wood floor at -4.0"""
+    HP.MAT_ALIAS["H_plaster"] = "H_wood_pine"
+    try:
+        H.stairs()
+    finally:
+        HP.MAT_ALIAS.pop("H_plaster", None)
     x0, x1, z0, z1 = H.hole()
 
     def fn(F):
         t = PAL["white"]
+        wood = (0.62, 0.42, 0.28, 1)
         e = 0.015
         for (a, b, c, d, hint) in ((x0 + e, z0 + e, x0 + e, z1 - e, (1, 0, 0)), (x1 - e, z0 + e, x1 - e, z1 - e, (-1, 0, 0)),
                                    (x0 + e, z0 + e, x1 - e, z0 + e, (0, 1, 0)), (x0 + e, z1 - e, x1 - e, z1 - e, (0, -1, 0))):
-            K.gface(F, [(a, b, -0.3), (c, d, -0.3), (c, d, -4.0), (a, b, -4.0)], "H_plaster", (1, 0, 0), 2.5, hint, tn=t)
+            K.gface(F, [(a, b, -0.3), (c, d, -0.3), (c, d, -4.0), (a, b, -4.0)], "H_wood_pine", (1, 0, 0), 1.0, hint, tn=wood)
         K.gface(F, [(x0 + e, z0 + e, -4.0), (x1 - e, z0 + e, -4.0), (x1 - e, z1 - e, -4.0), (x0 + e, z1 - e, -4.0)], "H_floor_oak", (0, 1, 0), 2.4, (0, 0, 1))
+        # fascia + a nosing board along every edge of the hole (the stair's own rail side keeps its newels, the boards run under them)
+        for (a, b, c, d) in ((x0, z0, x0 + 0.05, z1), (x1 - 0.05, z0, x1, z1), (x0, z0, x1, z0 + 0.05), (x0, z1 - 0.05, x1, z1)):
+            K.rbox(F, a - 0.02, c + 0.02, b - 0.02, d + 0.02, -0.0, 0.012, "H_wood_oak", r=0.0, seg=1, tn=wood)
+            K.rbox(F, a - 0.02, c + 0.02, b - 0.02, d + 0.02, -0.3, -0.0, "H_wood_oak", r=0.0, seg=1, tn=(0.5, 0.34, 0.22, 1), skip=("+y",)) if False else None
     return H.piece(2, "well_shaft", fn, 0, 0, cols=False)
+
+
+def partition(H, floor, name, wall, c0, c1, at, gaps=(), m="H_wallpaper", tn=None, trim=(0.62, 0.42, 0.28, 1), t=0.12, h=CEIL):
+    """interior wall: runs along x (wall='x': z = at, x from c0 to c1) or along z (wall='z': x = at, z from c0 to c1), 12 cm thick, full height, with doorways
+    `gaps` = [(g0, g1)] (>= 1.6 m wide, no leaf - a wood door frame instead). Colliders part_<name>_<i> per segment. Wallpaper on both faces, wood skirting + crown."""
+    tn = tn or PAL["white"]
+    segs, c = [], c0
+    for (g0, g1) in sorted(gaps):
+        if g0 > c:
+            segs.append((c, g0))
+        c = g1
+    if c < c1:
+        segs.append((c, c1))
+
+    def fn(F):
+        for i, (a, b) in enumerate(segs):
+            if wall == "x":
+                K.rbox(F, a, b, at - t / 2, at + t / 2, 0.0, h, m, r=0.0, seg=1, tn=tn, skip=("-y",))
+                for sz in (-1, 1):
+                    K.rbox(F, a, b, at + sz * (t / 2 + 0.008) - 0.008, at + sz * (t / 2 + 0.008) + 0.008, 0.0, 0.10, "H_wood_oak", r=0.0, seg=1, tn=trim)
+                    K.rbox(F, a, b, at + sz * (t / 2 + 0.02) - 0.02, at + sz * (t / 2 + 0.02) + 0.02, h - 0.07, h, "H_wood_oak", r=0.0, seg=1, tn=trim)
+                K.col(F, a, b, at - t / 2, at + t / 2, h, name=f"part_{name}_{i}")
+            else:
+                K.rbox(F, at - t / 2, at + t / 2, a, b, 0.0, h, m, r=0.0, seg=1, tn=tn, skip=("-y",))
+                for sx in (-1, 1):
+                    K.rbox(F, at + sx * (t / 2 + 0.008) - 0.008, at + sx * (t / 2 + 0.008) + 0.008, a, b, 0.0, 0.10, "H_wood_oak", r=0.0, seg=1, tn=trim)
+                    K.rbox(F, at + sx * (t / 2 + 0.02) - 0.02, at + sx * (t / 2 + 0.02) + 0.02, a, b, h - 0.07, h, "H_wood_oak", r=0.0, seg=1, tn=trim)
+                K.col(F, at - t / 2, at + t / 2, a, b, h, name=f"part_{name}_{i}")
+        # door frame (jamb boards + head) in every doorway
+        for (g0, g1) in gaps:
+            hd = 2.45
+            if wall == "x":
+                for (a, b) in ((g0 - 0.05, g0), (g1, g1 + 0.05)):
+                    K.rbox(F, a, b, at - t / 2 - 0.01, at + t / 2 + 0.01, 0.0, hd, "H_wood_oak", r=0.0, seg=1, tn=trim, grain=(0, 0, 1))
+                K.rbox(F, g0 - 0.05, g1 + 0.05, at - t / 2 - 0.01, at + t / 2 + 0.01, hd, hd + 0.08, "H_wood_oak", r=0.0, seg=1, tn=trim)
+                K.rbox(F, g0, g1, at - t / 2, at + t / 2, hd + 0.08, h, m, r=0.0, seg=1, tn=tn, skip=("-y",))
+            else:
+                for (a, b) in ((g0 - 0.05, g0), (g1, g1 + 0.05)):
+                    K.rbox(F, at - t / 2 - 0.01, at + t / 2 + 0.01, a, b, 0.0, hd, "H_wood_oak", r=0.0, seg=1, tn=trim, grain=(0, 0, 1))
+                K.rbox(F, at - t / 2 - 0.01, at + t / 2 + 0.01, g0 - 0.05, g1 + 0.05, hd, hd + 0.08, "H_wood_oak", r=0.0, seg=1, tn=trim)
+                K.rbox(F, at - t / 2, at + t / 2, g0, g1, hd + 0.08, h, m, r=0.0, seg=1, tn=tn, skip=("-y",))
+    return H.piece(floor, "part_" + name, fn, 0, 0)
 
 
 # --------------------------------------------------------------------------------------------------------- entry hall --

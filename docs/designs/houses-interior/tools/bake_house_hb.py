@@ -34,6 +34,7 @@ from mathutils import Vector
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kit_core as K  # noqa: E402
+import hb_mats  # noqa: E402  (H_wallpaper / H_hanji)
 
 WORK, EXPORT = K.WORK, K.EXPORT
 LM_SCALE = 2.0         # the light map stores L / LM_SCALE (the game multiplies back: village convention)
@@ -194,7 +195,40 @@ def setup_lights(scene, night):
     log("lights", n, "night" if night else "day")
 
 
-def bake_lightmap(scene, obs, size, samples, out_png, lift, passes=1):
+def hanji_mask(obs, size):
+    """PIL mask (size x size) of every UV_LM triangle of faces whose material is H_hanji, grown by 3 px"""
+    from PIL import Image, ImageDraw
+    mk = Image.new("L", (size, size), 0)
+    d = ImageDraw.Draw(mk)
+    n = 0
+    for ob in obs:
+        me = ob.data
+        if "UV_LM" not in me.uv_layers:
+            continue
+        uv = me.uv_layers["UV_LM"].data
+        for p in me.polygons:
+            m = me.materials[p.material_index] if p.material_index < len(me.materials) else None
+            if m is None or m.name != "H_hanji":
+                continue
+            pts = [(uv[li].uv[0] * size, (1 - uv[li].uv[1]) * size) for li in p.loop_indices]
+            d.polygon(pts, fill=255, outline=255, width=3)
+            n += 1
+    log("hanji faces", n)
+    return np.array(mk) > 0 if n else None
+
+
+def make_hanji_transparent():
+    for m in bpy.data.materials:
+        if m.name == "H_hanji" and m.node_tree:
+            nt = m.node_tree
+            for nd in list(nt.nodes):
+                nt.nodes.remove(nd)
+            o = nt.nodes.new("ShaderNodeOutputMaterial")
+            t = nt.nodes.new("ShaderNodeBsdfTransparent")
+            nt.links.new(t.outputs[0], o.inputs["Surface"])
+
+
+def bake_lightmap(scene, obs, size, samples, out_png, lift, passes=1, override=None):
     img = bpy.data.images.new("LM_bake", size, size, alpha=False, float_buffer=True)
     added = []
     for m in {m for ob in obs for m in ob.data.materials if m}:
@@ -250,6 +284,8 @@ def bake_lightmap(scene, obs, size, samples, out_png, lift, passes=1):
     stats = dict(p05=float(np.percentile(nz, 5)), p50=float(np.percentile(nz, 50)), p95=float(np.percentile(nz, 95)),
                  clipped_pct=float((b.max(-1) > LM_SCALE).mean() * 100))
     b = b + lift * np.array([0.92, 0.96, 1.0], np.float32)
+    if override is not None:
+        b[override[0]] = np.array(override[1], np.float32)
     enc = np.clip(b / LM_SCALE, 0, 1)
     enc = np.where(enc <= 0.0031308, enc * 12.92, 1.055 * np.power(enc, 1 / 2.4) - 0.055)
     out = bpy.data.images.new("tmp_out", size, size, alpha=False)
@@ -406,6 +442,11 @@ def main():
     size = arg("--size", 2048, int)
     samples = arg("--samples", 384, int)
     night = bool(arg("--night"))
+    hb_mats.use_wallpaper(n)
+    DAY["sky"] = arg("--sky", DAY["sky"], float)
+    DAY["lamp_scale"] = arg("--lampday", DAY["lamp_scale"], float)
+    e_, a_, z_ = DAY["sun"]
+    DAY["sun"] = (arg("--sun", e_, float), a_, z_)
     out_dir = os.path.abspath(arg("--out", EXPORT))
     os.makedirs(out_dir, exist_ok=True)
     gpu(scene)
@@ -442,7 +483,10 @@ def main():
     for o in hidden:      # glass / lamp shades off for the bake (the sky comes in through the openings)
         o.hide_render = True
     if not arg("--nobake"):
-        stats = bake_lightmap(scene, lm_list, size, samples, lm_png, LM_LIFT_NIGHT if night else LM_LIFT_DAY, arg("--passes", 1, int))
+        mask = hanji_mask(lm_list, size)
+        make_hanji_transparent()
+        ov = (mask, (0.30, 0.215, 0.12) if night else (1.2, 1.15, 1.02)) if mask is not None else None
+        stats = bake_lightmap(scene, lm_list, size, samples, lm_png, LM_LIFT_NIGHT if night else LM_LIFT_DAY, arg("--passes", 1, int), override=ov)
         log("light map", "night" if night else "day", stats)
     if night:
         return

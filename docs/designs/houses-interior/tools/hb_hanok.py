@@ -59,15 +59,31 @@ def window_hanok(W, s0, s1, y0, y1, style="grid", cols=2, rows=2, tn=None, frame
     K.rbox(W, s0, s1, fz0, fz1, y1 - fw, y1, "H_wood_dark", r=0.0, seg=1, tn=wood)
     K.rbox(W, s0, s1, fz0, fz1, y0, y0 + fw, "H_wood_dark", r=0.0, seg=1, tn=wood)
     ins0, ins1, iy0, iy1 = s0 + fw, s1 - fw, y0 + fw, y1 - fw
-    K.gface(W, [(ins0, -0.15, iy0), (ins1, -0.15, iy0), (ins1, -0.15, iy1), (ins0, -0.15, iy1)], "H_shade", (1, 0, 0), 1.0, (0, 1, 0), tn=(1.0, 0.97, 0.9, 1))
-    nvert = max(1, int((ins1 - ins0) / 0.35))
-    for i in range(1, nvert):
-        x = ins0 + (ins1 - ins0) * i / nvert
-        K.rbox(W, x - 0.012, x + 0.012, -0.14, -0.105, iy0, iy1, "H_wood_dark", r=0.0, seg=1, tn=wood, grain=(0, 0, 1))
+    import hb_mats  # noqa: F401  (registers H_hanji)
+    K.gface(W, [(ins0, -0.15, iy0), (ins1, -0.15, iy0), (ins1, -0.15, iy1), (ins0, -0.15, iy1)], "H_hanji", (1, 0, 0), 1.0, (0, 1, 0), tn=(0.97, 0.94, 0.86, 1))
+    # two leaves: a centre stile + a doubled meeting rail, bars on the room side of the paper (z -0.14 .. -0.105)
+    xm = (ins0 + ins1) / 2
+    K.rbox(W, xm - 0.03, xm + 0.03, -0.17, -0.10, iy0, iy1, "H_wood_dark", r=0.0, seg=1, tn=wood, grain=(0, 0, 1))
+    split = iy0 + (iy1 - iy0) * 0.55           # below: 띠살 (horizontal slats every 17 cm), above: 완자/정자 lattice (square grid every 12 cm)
+    K.rbox(W, ins0, ins1, -0.17, -0.10, split - 0.02, split + 0.02, "H_wood_dark", r=0.0, seg=1, tn=wood)
     y = iy0 + 0.17
-    while y < iy1 - 0.05:
+    while y < split - 0.05:
         K.rbox(W, ins0, ins1, -0.14, -0.105, y - 0.011, y + 0.011, "H_wood_dark", r=0.0, seg=1, tn=wood)
         y += 0.17
+    nv = max(2, int((ins1 - ins0) / 0.12))
+    for i in range(1, nv):
+        x = ins0 + (ins1 - ins0) * i / nv
+        if abs(x - xm) > 0.04:
+            K.rbox(W, x - 0.008, x + 0.008, -0.14, -0.105, split + 0.02, iy1, "H_wood_dark", r=0.0, seg=1, tn=wood, grain=(0, 0, 1))
+    y = split + 0.14
+    while y < iy1 - 0.05:
+        K.rbox(W, ins0, ins1, -0.14, -0.105, y - 0.008, y + 0.008, "H_wood_dark", r=0.0, seg=1, tn=wood)
+        y += 0.12
+    nvert = max(1, int((ins1 - ins0) / 0.5))
+    for i in range(1, nvert):
+        x = ins0 + (ins1 - ins0) * i / nvert
+        if abs(x - xm) > 0.06:
+            K.rbox(W, x - 0.012, x + 0.012, -0.14, -0.105, iy0, split, "H_wood_dark", r=0.0, seg=1, tn=wood, grain=(0, 0, 1))
 
 
 SH.window = window_hanok

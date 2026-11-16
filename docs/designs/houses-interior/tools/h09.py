@@ -26,9 +26,11 @@ BLUSH_WALL = (0.98, 0.9, 0.87, 1)
 SHEER = (0.97, 0.95, 0.92, 1)
 
 # ======================================================================================== floor 1: kitchen + dining ==
+HB.hb_mats.use_wallpaper(9)
+WOOD_TRIM = (0.88, 0.72, 0.56, 1)
 patio = dict(c=2.55, w=3.7, y0=0.15, y1=2.5, style="slide", force=True, drape=("curtain", dict(folds=6, tn=SHEER, tie=0.5, over=0.35)))
 win1 = HB.ext_windows(H, 1, w=1.5, style="grid", cols=3, rows=2, drape=("curtain", dict(folds=6, tn=SHEER, tie=0.4)), over={("back", 3.03): patio})
-HB.room(H, 1, floor_kind="oak", wall_tn=BLUSH_WALL, wall_m="H_paint", ceil_tn=PAL["white"], windows=win1, entry=True, bath=dict(wall="left", c=5.8))
+HB.room(H, 1, floor_kind="oak", wall_tn=BLUSH_WALL, wall_m="H_wallpaper", trim_tn=WOOD_TRIM, casing_tn=WOOD_TRIM, ceil_tn=PAL["white"], windows=win1, entry=True, bath=dict(wall="left", c=5.8))
 HB.entry_hall(H)
 HB.stairs(H)
 
@@ -71,7 +73,8 @@ H.piece(1, "clock", DE.wall_clock, 3.47, 0.8, 2.2, -PI / 2, cols=False)
 
 # =============================================================================================== floor 2: family =====
 win2 = HB.ext_windows(H, 2, w=1.4, style="grid", cols=3, rows=2, drape=("curtain", dict(folds=6, tn=(0.95, 0.88, 0.84, 1), tie=0.4)))
-HB.room(H, 2, floor_kind="oak", wall_tn=(0.97, 0.88, 0.86, 1), wall_m="H_paint", ceil_tn=PAL["white"], windows=win2, bath=dict(wall="left", c=2.6))
+HB.room(H, 2, floor_kind="oak", wall_tn=(0.97, 0.88, 0.86, 1), wall_m="H_wallpaper", trim_tn=WOOD_TRIM, casing_tn=WOOD_TRIM, ceil_tn=PAL["white"], windows=win2, bath=dict(wall="left", c=2.6))
+HB.partition(H, 2, "bedroom", "x", 0.0, 4.0, 5.1, gaps=[(2.0, 3.7)], tn=(0.97, 0.88, 0.86, 1), trim=WOOD_TRIM)
 H.piece(2, "rug", DE.rug_rect, 8.6, 2.2, 0, PI / 2, w=3.0, d=2.2, cols=False, fringe=True, tn=PAL["rug_cream"])
 H.piece(2, "sofa", CA.sofa_floor_n, 7.25, 2.2, 0, PI / 2, n=3, w=2.4, tn=PAL["sofa_sage"])
 H.piece(2, "table", TA.table_low, 9.4, 2.2, 0, PI / 2, w=1.0, d=0.6, h=0.33)

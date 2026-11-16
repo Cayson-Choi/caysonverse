@@ -24,8 +24,10 @@ HANJI = (0.97, 0.93, 0.82, 1)
 WOODS = (0.36, 0.26, 0.2, 1)
 
 # =========================================================================================== floor 1: 대청마루 =====
+HB.hb_mats.use_wallpaper(8)
+WOOD_TRIM = (0.38, 0.27, 0.2, 1)
 win1 = HB.ext_windows(H, 1, w=1.5, y0=0.5, y1=2.45, style="hanok", drape=None, over={})
-HB.room(H, 1, floor_kind="maru", wall_tn=HANJI, wall_m="H_plaster", windows=win1, entry=True, bath=dict(wall="right", c=1.0),
+HB.room(H, 1, floor_kind="maru", wall_tn=HANJI, wall_m="H_wallpaper", trim_tn=WOOD_TRIM, windows=win1, entry=True, bath=dict(wall="right", c=1.0),
         ceiling="custom", ceiling_fn=lambda F, hole: HB.ceiling_hanok(F, hole))
 HB.entry_hall(H)
 HB.stairs(H)
@@ -67,7 +69,7 @@ H.piece(1, "branch", DE.vase_branch, 2.2, 2.2, 0.6, 0.0, cols=False, h=0.4)
 
 # ================================================================================================ floor 2: 다락 =====
 win2 = HB.ext_windows(H, 2, w=1.4, y0=0.9, y1=2.45, style="grid", cols=2, rows=2, drape=("curtain", dict(folds=6, tn=(0.95, 0.9, 0.8, 1), tie=0.35)))
-HB.room(H, 2, floor_kind="oak", wall_tn=(0.96, 0.9, 0.8, 1), wall_m="H_paint", ceil_tn=PAL["white"], windows=win2, bath=dict(wall="front", c=9.9),
+HB.room(H, 2, floor_kind="oak", wall_tn=(0.96, 0.9, 0.8, 1), wall_m="H_paint", trim_tn=(0.7, 0.52, 0.36, 1), casing_tn=(0.7, 0.52, 0.36, 1), ceil_tn=PAL["white"], windows=win2, bath=dict(wall="front", c=9.9),
         ceiling="custom", ceiling_fn=lambda F, hole: HB.ceiling_slope(F, hole, side="right", run=3.4, low=2.9, skylight=(8.4, 9.5, 2.8, 3.8)))
 H.piece(2, "rug", DE.rug_round, 5.1, 5.2, 0, 0.0, d=3.2, tn=PAL["rug_cream"])
 H.piece(2, "mattress", BE.mattress_sofa, 5.1, 7.25, 0, PI, w=1.9, d=0.95, tn=PAL["sofa_sage"])
