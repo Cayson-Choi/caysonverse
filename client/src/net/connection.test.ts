@@ -161,7 +161,8 @@ describe("joinVillage (케이슨 마을)", () => {
     expect(h.joinOrCreate).toHaveBeenCalledTimes(1);
     const [name, options] = h.joinOrCreate.mock.calls[0];
     expect(name).toBe(VILLAGE_ROOM);
-    expect(options).toEqual({ nickname: "가람", appearance: LOOK });
+    // + this browser's device key (memorial stage B: the server keeps only its hash)
+    expect(options).toEqual({ nickname: "가람", appearance: LOOK, deviceKey: expect.stringMatching(/^[A-Za-z0-9_-]{43}$/) });
     for (const field of APPEARANCE_FIELDS) expect(options).not.toHaveProperty(field); // never flat
     expect(options).not.toHaveProperty("adminCode");
     // The village is not a singleton: never a join-existing-only call.
@@ -171,7 +172,7 @@ describe("joinVillage (케이슨 마을)", () => {
   it("drops any extra field a caller passes (the join options are fixed)", async () => {
     h.joinOrCreate.mockResolvedValueOnce(fakeRoom());
     await joinVillage({ nickname: "가람", appearance: LOOK, adminCode: "secret" } as never);
-    expect(h.joinOrCreate.mock.calls[0][1]).toEqual({ nickname: "가람", appearance: LOOK });
+    expect(h.joinOrCreate.mock.calls[0][1]).toEqual({ nickname: "가람", appearance: LOOK, deviceKey: expect.any(String) });
   });
 
   it("adopts the room and arms the resilience (SDK reconnect off)", async () => {
