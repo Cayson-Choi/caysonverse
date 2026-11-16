@@ -193,8 +193,8 @@ export function createCatchRig(sid: string): CatchRig {
       sm.scale.set(1, L, 1);
     };
     // the shoulders under the lower corners of the view: only the forearms and the fists come in
-    place(0, gripR, at(0.46, -0.66, 0.42));
-    place(1, gripL, at(-0.46, -0.66, 0.42));
+    place(0, gripR, at(0.42, -0.44, 0.3));
+    place(1, gripL, at(-0.42, -0.44, 0.3));
   };
 
   const hide = () => {
@@ -353,8 +353,10 @@ export function createCatchRig(sid: string): CatchRig {
               tq.premultiply(new Quaternion().setFromAxisAngle(nose, ang + Math.sin(t * 6) * 0.08));
               // the hands: one under the head end, one under the tail end
               const axis = new Vector3(0, 0, 1).applyQuaternion(tq);
-              const below = camUp.clone().multiplyScalar(-0.04 - len * 0.06);
-              fpHands(i, target.clone().addScaledVector(axis, 0.28 * len).add(below), target.clone().addScaledVector(axis, -0.26 * len).add(below), 1, camUp, fwd, at);
+              // under the belly, never over the fish (a small fish between two fists was hidden)
+              const below = camUp.clone().multiplyScalar(-0.065 - len * 0.07).addScaledVector(fwd, 0.02);
+              const spread = Math.max(0.1, 0.3 * len);
+              fpHands(i, target.clone().addScaledVector(axis, spread).add(below), target.clone().addScaledVector(axis, -spread * 0.95).add(below), 1, camUp, fwd, at);
             }
           } else if (cs.stage === "net" && i.netBag) {
             target = i.netBag.getWorldPosition(new Vector3()).add(new Vector3(0, -0.06, 0));
