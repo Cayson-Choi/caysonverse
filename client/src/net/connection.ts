@@ -87,6 +87,12 @@ export function sendUseDoor(): void {
   room?.send(VillageMsg.UseDoor, {});
 }
 
+/** Use the stair at hand (a house's up / down pad); the server decides from our authoritative position, once a second. */
+export function sendUseStair(): void {
+  if (!room) return;
+  room?.send(VillageMsg.UseStair, {});
+}
+
 /** Submit a house keypad code; the server validates the authoritative position and never receives a reusable credential. */
 export function sendKeypad(buildingId: string, code: string): void {
   if (!room) return;

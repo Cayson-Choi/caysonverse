@@ -29,13 +29,15 @@ import {
   tickFishing,
   type FishingState,
 } from "@caysonverse/shared/village/fishing";
-import { HOUSE_INTERIOR_SPAWN, VILLAGE_LAYOUT, houseArea, houseInteriorGeometry, isHouseArea, villageGeometry } from "@caysonverse/shared/village/villageLayout";
+import { VILLAGE_LAYOUT, isHouseArea, villageGeometry } from "@caysonverse/shared/village/villageLayout";
+import { HOUSE_PLACES, HOUSE_POLICY, houseFloorArea, houseNumberOf, parseHouseFloorArea } from "@caysonverse/shared/village/houseAreas";
+import { houseIsReady } from "@caysonverse/shared/village/housesGeometry";
 import { VILLAGE_SEATS } from "@caysonverse/shared/village/benchSeats";
 import { arrivalArea, freeSpawnSpot, spreadArrival } from "@caysonverse/shared/village/arrivalSpot";
 import { PlayerRoom, baseTracking, spawnInDisk, type Tracking } from "./PlayerRoom";
 import { validateJoinOptions } from "./joinValidation";
 import { RateWindow } from "./rateLimit";
-import { DOOR_RATE, useDoor } from "./villageDoor";
+import { DOOR_RATE, useDoor, useHouseExit, useStair } from "./villageDoor";
 import { candleCubby } from "./villageCandle";
 import { CANDLES, type CandleBook } from "./candleBook";
 import { validateSit } from "./seating";
@@ -44,7 +46,7 @@ import {
   transitSnapshotAt,
   validateBusRide,
 } from "./transitRuntime";
-import { checkHouseKeypad, initialKeypadRate } from "./villageKeypad";
+import { checkHouseKeypad, initialKeypadRate, nearHouseDoor } from "./villageKeypad";
 import type { KeypadRateState } from "@caysonverse/shared/village/buildingAccess";
 
 /** Per-client bookkeeping (not part of synced state): the base's, plus the door-use cap. */
@@ -124,6 +126,9 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     });
     this.onMessage(VillageMsg.UseDoor, (client) => {
       this.handleUseDoor(client);
+    });
+    this.onMessage(VillageMsg.UseStair, (client) => {
+      this.handleUseStair(client);
     });
     this.onMessage(VillageMsg.LightCandle, (client, payload: unknown) => {
       this.handleLightCandle(client, payload);
@@ -222,13 +227,9 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     if (this.state.players.get(client.sessionId)?.area === "hall") this.sendCandles(client);
   }
 
-  /** The village map: the open village plus the memorial hall's sealed interior. */
+  /** The village map: the open village, the memorial hall's sealed interior and the twenty rooms of the ten houses (one coordinate space). */
   protected geometry(): MapGeometry {
     return villageGeometry;
-  }
-
-  protected geometryFor(player: Player): MapGeometry {
-    return isHouseArea(player.area) ? houseInteriorGeometry : villageGeometry;
   }
 
   /**
@@ -292,7 +293,31 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
    */
   protected deliverChat(client: Client, player: Player, text: string): void {
     const line: ChatBroadcast = { sid: client.sessionId, name: player.nickname, text };
-    this.broadcastToArea(player.area, MessageType.Chat, line);
+    // Inside a house the line is heard on BOTH floors of that house (owner Q2, HOUSE_POLICY.chatScope "house"); everywhere else in the area.
+    const house = HOUSE_POLICY.chatScope === "house" ? parseHouseFloorArea(player.area) : null;
+    if (house) this.broadcastToHouse(house.buildingId, MessageType.Chat, line);
+    else this.broadcastToArea(player.area, MessageType.Chat, line);
+  }
+
+  /** Broadcast to the clients whose player is on either floor of house `buildingId` (one encode; the others are the `except` list). */
+  private broadcastToHouse(buildingId: string, type: string, message: unknown): void {
+    const skip = this.otherArea;
+    skip.length = 0;
+    for (const c of this.clients) {
+      const here = parseHouseFloorArea(this.state.players.get(c.sessionId)?.area ?? "");
+      if (here?.buildingId !== buildingId) skip.push(c);
+    }
+    this.broadcast(type, message, skip.length > 0 ? { except: skip } : undefined);
+    skip.length = 0;
+  }
+
+  /** How many players are in house `buildingId` (both floors, a ghost waiting out its reconnection window included), minus `except`. */
+  private houseOccupants(buildingId: string, except?: string): number {
+    let n = 0;
+    this.state.players.forEach((p, sid) => {
+      if (sid !== except && parseHouseFloorArea(p.area)?.buildingId === buildingId) n++;
+    });
+    return n;
   }
 
   /** The memorial hall is quiet: no emoji, no jumping there (chat and walking are fine). */
@@ -453,7 +478,8 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     if (!player || !track) return; // no seat yet / already left → drop
     if (player.seatIndex >= 0) return; // sitting on a bench: stand up first (silent drop)
 
-    const arrival = useDoor(player.area, player.x, player.z);
+    // the village's memorial door and the hall's way out (useDoor), or a house's way out to its porch (useHouseExit)
+    const arrival = useDoor(player.area, player.x, player.z) ?? useHouseExit(player.area, player.x, player.z);
     if (arrival === null) return; // no door within reach → silent drop
 
     const now = this.now();
@@ -468,6 +494,29 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     player.area = arrival.area;
     track.lastAcceptedAt = now;
     if (arrival.area === "hall") this.sendCandles(client); // the candles already burning, and who lit them
+  }
+
+  /**
+   * Stair pipeline (집 실내 G): the door's rules on a house floor's stair pad — sender must have a seat, not be sitting, the pure `useStair`
+   * decides from the AUTHORITATIVE area and position (`padUsableFrom`), the 1-per-second cap (the door's: one counter for both, so a
+   * stair and a door cannot be used within the same second), then the player is put on the other floor's arrival spot (spread from whoever
+   * stands there) and `area` flips. Both floors count for the house's occupant limit, so a stair never changes it.
+   */
+  private handleUseStair(client: Client): void {
+    const player = this.state.players.get(client.sessionId);
+    const track = this.tracking.get(client.sessionId);
+    if (!player || !track) return;
+    if (player.seatIndex >= 0) return; // sitting: stand up first
+    const arrival = useStair(player.area, player.x, player.z);
+    if (arrival === null) return;
+    const now = this.now();
+    if (!track.doorRate.tryAccept(now)) return;
+    const at = spreadArrival(arrival.area, arrival, this.playersIn(arrival.area, client.sessionId));
+    player.x = at.x;
+    player.z = at.z;
+    player.yaw = at.yaw;
+    player.area = arrival.area;
+    track.lastAcceptedAt = now;
   }
 
   /**
@@ -594,13 +643,29 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     }
   }
 
-  /** House keypad: authoritative position + server-only code digest, then a placeholder hall teleport until house GLBs exist. */
+  /**
+   * House keypad (집 실내 G): authoritative position + server-only code digest, then in through the front door onto the entrance floor
+   * (`HOUSE_PLACES[n].spawnIn`, spread from whoever stands there). Refused without touching the code: while sitting or on the bus, away
+   * from the village, or for a house with no interior yet ("not_ready": its door stays locked). The code is checked (rate limit and lockout
+   * as before), and only a right code can learn that the house is full — eight players at most, both floors together ("full").
+   */
   private handleKeypad(client: Client, payload: unknown): void {
     const player = this.state.players.get(client.sessionId);
     const track = this.tracking.get(client.sessionId);
-    if (!player || !track || player.seatIndex >= 0 || player.area !== "village") return;
+    if (!player || !track || player.area !== "village") return;
     const body = payload !== null && typeof payload === "object" ? (payload as { buildingId?: unknown; code?: unknown }) : {};
     if (typeof body.buildingId !== "string" || typeof body.code !== "string") return;
+    const reply = (r: KeypadResultPayload) => client.send(VillageServerMsg.KeypadResult, r);
+    if (player.seatIndex >= 0 || this.busRiders.has(player)) {
+      reply({ ok: false, buildingId: body.buildingId, reason: "busy" });
+      return;
+    }
+    const n = houseNumberOf(body.buildingId);
+    if (n !== null && !houseIsReady(n)) {
+      // before the code is looked at: a house nobody can enter must not burn the player's attempts, nor say whether the code was right
+      reply({ ok: false, buildingId: body.buildingId, reason: nearHouseDoor(player, body.buildingId) ? "not_ready" : "too_far" });
+      return;
+    }
     const result = checkHouseKeypad({
       buildingId: body.buildingId,
       playerId: client.sessionId,
@@ -613,30 +678,39 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     });
     track.keypadRate = result.state;
     const decision = result.decision;
-    const response: KeypadResultPayload = decision.ok
-      ? { ok: true, buildingId: decision.buildingId, area: houseArea(decision.buildingId), placeholder: false }
-      : {
-          ok: false,
-          buildingId: body.buildingId,
-          reason:
-            decision.reason === "invalid_request" || decision.reason === "not_keypad_building"
-              ? "invalid_request"
-              : decision.reason === "rate_limited"
-                ? "wrong_code"
-                : decision.reason,
-          retryAfterMs: decision.retryAfterMs,
-        };
-    client.send(VillageServerMsg.KeypadResult, response);
-    if (!decision.ok) return;
+    if (!decision.ok) {
+      reply({
+        ok: false,
+        buildingId: body.buildingId,
+        reason:
+          decision.reason === "invalid_request" || decision.reason === "not_keypad_building"
+            ? "invalid_request"
+            : decision.reason === "rate_limited"
+              ? "wrong_code"
+              : decision.reason,
+        retryAfterMs: decision.retryAfterMs,
+      });
+      return;
+    }
+    const house = houseNumberOf(decision.buildingId);
+    if (house === null) {
+      reply({ ok: false, buildingId: body.buildingId, reason: "invalid_request" });
+      return;
+    }
+    if (this.houseOccupants(decision.buildingId, client.sessionId) >= HOUSE_POLICY.maxOccupants) {
+      reply({ ok: false, buildingId: decision.buildingId, reason: "full" });
+      return;
+    }
     const now = this.now();
-    const area = houseArea(decision.buildingId);
-    // The same spread as the hall's door: a family member coming in after another lands beside them, not inside.
-    // The houses' own arrival spot (not the hall's: round 6 review — moving the hall's spawn moved the houses' too).
-    const at = spreadArrival(area, HOUSE_INTERIOR_SPAWN, this.playersIn(area, client.sessionId));
+    const spot = HOUSE_PLACES[house].spawnIn;
+    const area = houseFloorArea(house, 1);
+    // The same spread as the hall's door: a visitor coming in after another lands beside them, not inside.
+    const at = spreadArrival(area, spot, this.playersIn(area, client.sessionId));
     player.x = at.x;
     player.z = at.z;
     player.yaw = at.yaw;
     player.area = area;
     track.lastAcceptedAt = now;
+    reply({ ok: true, buildingId: decision.buildingId, area });
   }
 }

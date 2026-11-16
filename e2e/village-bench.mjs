@@ -135,11 +135,15 @@ await run.step("1. join: A in shorts + wizard hat, B in a long skirt + space hel
   await joinVillage(B, "앉기B");
   all = await seats(A);
   // ONE global seat list (client = server): the village's 20 plaza / forecourt seats, the memorial hall's 31 (its model's
-  // seat__ markers: benches from either side, sofas / armchairs / chairs from the front), 4 in each house
+  // seat__ markers: benches from either side, sofas / armchairs / chairs from the front), then the houses' (from each finished
+  // house's seat__ markers, last in the list; 집 실내 G: house 1 has 12, on its two floors)
   const by = (area) => all.filter((s) => s.area === area).length;
-  run.check("20 village seats, 31 in the memorial hall (from its model), 4 per house", by("village") === 20 && by("hall") === 31 && by("house:house_1") === 4, {
+  const house1 = all.filter((s) => s.area.startsWith("house:house_1:")).length;
+  const lastNonHouse = all.reduce((m, s, i) => (s.area.startsWith("house:") ? m : i), -1);
+  run.check("20 village seats, 31 in the memorial hall (from its model), 12 in house 1 (its two floors), the houses' last", by("village") === 20 && by("hall") === 31 && house1 === 12 && lastNonHouse === 50, {
     village: by("village"),
     hall: by("hall"),
+    house1,
     total: all.length,
   });
 });

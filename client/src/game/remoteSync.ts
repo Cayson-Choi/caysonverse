@@ -131,7 +131,14 @@ export function startRemoteSync(
             // A door puts me down FACING the way the server says (into the room / away from the building). The
             // position is snapped just above; the facing comes with it, so the camera that swings behind me
             // (CameraRig) looks the way I do. The first call is the seed (join, reconnect), not a door.
-            if (seenArea !== undefined && seenArea !== value) selfPose.yaw = player.yaw;
+            // The position goes with it (집 실내 G): the echo watch above judges "diverged" against where I was at the last Move the
+            // server accepted, and a stair taken straight back (up, then down at once) puts me where that Move was: no divergence, no
+            // snap, and the client stood on the other floor while the server had me here. A door always places me: snap.
+            if (seenArea !== undefined && seenArea !== value) {
+              selfPose.yaw = player.yaw;
+              selfPose.x = player.x;
+              selfPose.z = player.z;
+            }
             seenArea = value;
             areas.setLocal(normalizeArea(value));
           }),

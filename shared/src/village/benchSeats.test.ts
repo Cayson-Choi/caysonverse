@@ -6,7 +6,8 @@ import { reachable, hasNear } from "../school/reachTestUtil";
 import { VILLAGE_COLLIDERS } from "./generated/villageColliders";
 import { MEMORIAL_COLLIDERS } from "./generated/memorialColliders";
 import { MEMORIAL_SEAT_MARKERS } from "./generated/memorialSeats";
-import { VILLAGE_LAYOUT, houseInteriorGeometry, isHouseArea, villageGeometry } from "./villageLayout";
+import { VILLAGE_LAYOUT, isHouseArea, villageGeometry } from "./villageLayout";
+import { houseFloorBounds, parseHouseFloorArea } from "./houseAreas";
 import { STAND_CLEARANCE, VILLAGE_BENCHES, VILLAGE_SEATS, benchSeatOffsets, type VillageBench, type VillageSeat } from "./benchSeats";
 
 /** The seated figure's width across the arms (sitPose.ts: the torso with the upper arms, -0.52..0.54 m) and the hands' (-0.53..0.58). */
@@ -133,7 +134,8 @@ describe("village seats (where a sitter goes)", () => {
   it("every seat point is in its own area and clear of the other seats of its area (one group is one place)", () => {
     for (let i = 0; i < VILLAGE_SEATS.length; i++) {
       const a = VILLAGE_SEATS[i]!;
-      const bounds = a.area === "village" ? L.areas.village : L.areas.hall;
+      const house = parseHouseFloorArea(a.area);
+      const bounds = a.area === "village" ? L.areas.village : house ? houseFloorBounds(house.n, house.floor) : L.areas.hall;
       expect(a.x, a.id).toBeGreaterThan(bounds.minX);
       expect(a.x, a.id).toBeLessThan(bounds.maxX);
       expect(a.z, a.id).toBeGreaterThan(bounds.minZ);
@@ -143,6 +145,9 @@ describe("village seats (where a sitter goes)", () => {
         if (a.area !== b.area || (a.group !== undefined && a.group === b.group)) continue;
         // people on the two sides of the letter table face each other across it (their arms rest on the table)
         if (a.bench.startsWith("letter_") && b.bench.startsWith("letter_") && Math.abs(Math.abs(Math.atan2(Math.sin(a.yaw - b.yaw), Math.cos(a.yaw - b.yaw))) - Math.PI) < 1e-3) continue;
+        // (the houses' places are as close as their furniture is — sofa seats 0.72 m apart, dining chairs facing each other across a table —
+        // and the contract's own rules govern them: seat width ≥ 0.38 m, `seatMarkerProblems`, houseSeats.test.ts)
+        if (isHouseArea(a.area)) continue;
         expect(Math.hypot(a.x - b.x, a.z - b.z), `${a.id} vs ${b.id}`).toBeGreaterThan(SEATED_HANDS_WIDTH);
       }
     }
@@ -334,8 +339,9 @@ describe("nobody is trapped in the hall: every seat can be left and the whole fl
 describe("village seats (where a sitter gets up to)", () => {
   it("every dismount spot is clear of every collider of its map (a standing body plus margin) and inside its area", () => {
     for (const s of VILLAGE_SEATS) {
-      const bounds = s.area === "village" ? L.areas.village : L.areas.hall;
-      const obstacles = isHouseArea(s.area) ? houseInteriorGeometry.obstacles : villageGeometry.obstacles;
+      const house = parseHouseFloorArea(s.area);
+      const bounds = s.area === "village" ? L.areas.village : house ? houseFloorBounds(house.n, house.floor) : L.areas.hall;
+      const obstacles = villageGeometry.obstacles;
       expect(isBlocked(s.standX, s.standZ, PLAYER_RADIUS + STAND_CLEARANCE, obstacles, 0), s.id).toBe(false);
       expect(s.standX - PLAYER_RADIUS, s.id).toBeGreaterThan(bounds.minX);
       expect(s.standX + PLAYER_RADIUS, s.id).toBeLessThan(bounds.maxX);

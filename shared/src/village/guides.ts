@@ -64,6 +64,13 @@ export const GUIDE_AI_VOICE_LABEL = "AI 음성";
 
 export const guideVoiceUrl = (voice: string): string => `${GUIDE_VOICE_DIR}/${voice}.m4a`;
 
+/**
+ * Answers with no recorded clip yet (the voices are made offline with VoxCPM2, art/village/voice/make_voice.py): the dialog shows the
+ * text and plays nothing. The house-code answer (집 실내 G, owner 2026-11-16: the guide may tell the code) is one; record it as
+ * plaza_guide_5.m4a and drop it from this list.
+ */
+export const GUIDE_TEXT_ONLY_VOICES: readonly string[] = Object.freeze(["plaza_guide_5"]);
+
 const PLAZA_POS = { x: 5, z: 12 };
 const SPAWN = { x: 0, z: 14 };
 
@@ -107,6 +114,11 @@ export const GUIDES: readonly Guide[] = deepFreeze([
         question: "여기도 밤이 오나요?",
         answer: "네, 이 마을은 한국의 실제 시간을 따라가요. 저녁이 되면 마을에도 해가 지고 밤이 찾아와요.",
         voice: "plaza_guide_4",
+      },
+      {
+        question: "집에는 어떻게 들어가요?",
+        answer: "집 문 옆 번호키에 1004를 누르면 들어갈 수 있어요. 한 집에 여덟 분까지 함께 계실 수 있어요.",
+        voice: "plaza_guide_5",
       },
     ],
   },

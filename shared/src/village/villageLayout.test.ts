@@ -9,6 +9,8 @@ import { PLAYER_RADIUS } from "../worldMap";
 import { VILLAGE_CAMERA_BOXES, VILLAGE_COLLIDERS } from "./generated/villageColliders";
 import { MEMORIAL_CAMERA_BOXES, MEMORIAL_COLLIDERS } from "./generated/memorialColliders";
 import { guideColliders } from "./guides";
+import { HOUSE_FLOORS, HOUSE_NUMBERS, houseFloorBounds } from "./houseAreas";
+import { HOUSES_BLOCK, allHouseWalls, houseColliders } from "./housesGeometry";
 import {
   HALL_APRON,
   HALL_CEILING_DROP,
@@ -17,6 +19,7 @@ import {
   VILLAGE_LAYOUT,
   VILLAGE_MODEL_COLLIDERS,
   areaGapBlockers,
+  houseBlockBlockers,
   BUS_MIRROR_REACH,
   boxAt,
   buildVillageGeometry,
@@ -48,6 +51,8 @@ const GRID = 0.5;
 /** The fine grid for the seal checks (m): finds a gap down to 0.9 m, where the 0.5 m grid needs 1.3 m. */
 const FINE_GRID = 0.1;
 const SPAWN = { x: L.spawn.x, z: L.spawn.z };
+/** Inside one of the ten houses' twenty rooms (their clear rectangles). */
+const inAnyHouseRoom = (p: Point2): boolean => HOUSE_NUMBERS.some((n) => HOUSE_FLOORS.some((f) => inside(houseFloorBounds(n, f), p)));
 const HALL = L.areas.hall;
 const HALL_SPAWN = { x: L.memorial.interior.spawn.x, z: L.memorial.interior.spawn.z };
 const STREAM = L.stream;
@@ -688,20 +693,21 @@ describe("village colliders are built from the layout", () => {
   });
 
   it("buildVillageGeometry takes a named collider list or the extractor's { obstacles, cameraBoxes }", () => {
-    const fixed = hallWalls(L).length + areaGapBlockers(L).length + hallSurroundBlockers(L).length + 1;
+    const walls = [...hallWalls(L), ...allHouseWalls()]; // the hall's four and the twenty house floors' four each
+    const fixed = walls.length + areaGapBlockers(L).length + hallSurroundBlockers(L).length + houseBlockBlockers(L).length + 1;
     const bare = buildVillageGeometry(L, []);
     expect(bare.obstacles).toHaveLength(fixed);
-    expect(bare.cameraBoxes).toEqual([...hallWalls(L), ...busShelterColliders(L)]);
+    expect(bare.cameraBoxes).toEqual([...walls, ...busShelterColliders(L)]);
     const box = { minX: 0, maxX: 1, minZ: 0, maxZ: 1 };
     const one = buildVillageGeometry(L, [{ id: "x", box, camera: false }]);
     expect(one.obstacles).toHaveLength(fixed + 1);
-    expect(one.cameraBoxes).toHaveLength(hallWalls(L).length + 1);
+    expect(one.cameraBoxes).toHaveLength(walls.length + 1);
     const tall = { ...box, height: 3 };
     const generated = buildVillageGeometry(L, { obstacles: [box], cameraBoxes: [tall] });
     expect(generated.obstacles).toHaveLength(fixed + 1);
     expect(generated.obstacles).toContainEqual(box);
     expect(generated.obstacles.at(-1)).toEqual(busShelterColliders(L)[0]);
-    expect(generated.cameraBoxes).toEqual([...hallWalls(L), tall, busShelterColliders(L)[0]]); // the height is kept
+    expect(generated.cameraBoxes).toEqual([...walls, tall, busShelterColliders(L)[0]]); // the height is kept
     expect(generated.bounds).toEqual(bare.bounds);
   });
 
@@ -778,10 +784,12 @@ describe("villageGeometry plays on the colliders generated from village.glb (Tas
   it("id 'village', bounds spanning both areas, the hall's walls as camera boxes, then the generated boxes", () => {
     expect(villageGeometry.id).toBe("village");
     expect(villageGeometry.bounds).toEqual(villageBounds(L));
-    expect(villageGeometry.bounds).toEqual({ minX: -95, maxX: 313, minZ: -95, maxZ: 95 }); // the B hall's walls plus a 5 m apron
+    // the village, the B hall's walls plus a 5 m apron, and the ten houses' twenty rooms (x 359.7..586.9, z -8.1..30.3) plus a 5 m apron
+    expect(villageGeometry.bounds).toEqual({ minX: -95, maxX: 591.9, minZ: -95, maxZ: 95 });
+    expect(HOUSES_BLOCK).toEqual({ minX: 359.7, maxX: 586.9, minZ: -8.1, maxZ: 30.3 });
     for (const w of hallWalls(L)) expect(villageGeometry.cameraBoxes).toContainEqual(w);
     // + the guides (Task 9A) and the parked bus's mirrors (bus review r3)
-    expect(villageGeometry).toEqual(buildVillageGeometry(L, VILLAGE_MODEL_COLLIDERS, HALL_MODEL_COLLIDERS, [...guideColliders(), ...busMirrorColliders()]));
+    expect(villageGeometry).toEqual(buildVillageGeometry(L, VILLAGE_MODEL_COLLIDERS, HALL_MODEL_COLLIDERS, [...guideColliders(), ...busMirrorColliders()], houseColliders()));
     expect(VILLAGE_MODEL_COLLIDERS.obstacles).toBe(VILLAGE_COLLIDERS);
     expect(VILLAGE_MODEL_COLLIDERS.cameraBoxes).toBe(VILLAGE_CAMERA_BOXES);
     for (const b of VILLAGE_COLLIDERS) expect(villageGeometry.obstacles).toContainEqual(b);
@@ -1235,7 +1243,7 @@ describe.each(GEOMETRIES)("village geometry invariants: %s", (_name, geo) => {
       for (let x = L.walkBounds.maxX + 0.5; x <= geo.bounds.maxX; x += 0.5) {
         for (let z = geo.bounds.minZ; z <= geo.bounds.maxZ; z += 0.5) {
           if (isBlocked(x, z, PLAYER_RADIUS, obstacles)) continue;
-          if (!inside(HALL, { x, z })) free++;
+          if (!inside(HALL, { x, z }) && !inAnyHouseRoom({ x, z })) free++;
         }
       }
       expect(free).toBe(0);

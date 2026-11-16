@@ -34,10 +34,11 @@ import { isBlocked } from "../collision";
 import { CHAIR_SIDE_CLEAR, CHAIR_SIDE_FAR, PLAYER_RADIUS, SEAT_REACH, approachesSeat, type Seat } from "../worldMap";
 import { BACKED_ROOT_AHEAD, SIT_ROOT_AHEAD } from "../sitPose";
 import { MEMORIAL_SEAT_MARKERS } from "./generated/memorialSeats";
-import type { SeatMarker } from "./seatMarkers";
 import type { Bounds } from "../school/geometry";
-import { VILLAGE_LAYOUT, houseArea, houseInteriorGeometry, villageGeometry, type AreaId, type Point2 } from "./villageLayout";
-import { HOUSE_INTERIOR_LAYOUTS } from "./houseInterior";
+import { VILLAGE_LAYOUT, houseArea, villageGeometry, type AreaId, type Point2 } from "./villageLayout";
+import { GENERATED_HOUSES } from "./generated/houses";
+import { HOUSE_NUMBERS, houseBuildingId, houseFloorBounds, compareHouseSeats, type HouseSeatPose } from "./houseAreas";
+import type { MapGeometry } from "../school/geometry";
 
 /** One bench of the village: what sitting on it needs to know about its model. */
 export interface VillageBench {
@@ -57,8 +58,11 @@ export interface VillageBench {
   kind: SeatKind;
 }
 
-/** What a seat is like to approach: a backrest behind it (front only, leaning back), or none (either side). */
-export type SeatKind = "backless" | "backed";
+/**
+ * What a seat is like to approach: a backrest behind it (front only, leaning back), none (either side), or — the houses' cushions,
+ * 보료 and floor sofas — on the floor (the cross-legged pose of chunk F; a cushion is sat on from any side, facing its table).
+ */
+export type SeatKind = "backless" | "backed" | "floor";
 
 /**
  * How far from a bench's centre its two seats are (m): 0.6 where the seat is long enough, else as far as keeps the
@@ -150,7 +154,7 @@ function dismountAhead(root: Point2, yaw: number, bounds: Bounds, id: string, ge
  * neighbour's (`STAND_NEIGHBOUR_MARGIN`). Review 2026-11-15 round 5: the second consult chair's spot was in the gap between the
  * two, as near the first chair, so stopping a step short of it and pressing E sat on the first one. Null: none within reach.
  */
-function chairStand(seat: Seat, neighbours: readonly Point2[], bounds: Bounds): Point2 | null {
+function chairStand(seat: Seat, neighbours: readonly Point2[], bounds: Bounds, geometry: MapGeometry = villageGeometry): Point2 | null {
   let best: Point2 | null = null;
   let bestD = Infinity;
   const step = 0.05;
@@ -170,7 +174,7 @@ function chairStand(seat: Seat, neighbours: readonly Point2[], bounds: Bounds): 
         const d = Math.hypot(px - seat.x, pz - seat.z);
         ok = !neighbours.some((n) => Math.hypot(n.x - px, n.z - pz) < d + (k === 8 ? STAND_NEIGHBOUR_MARGIN : 0.01));
       }
-      if (!ok || !standsClear(x, z, bounds)) continue;
+      if (!ok || !standsClear(x, z, bounds, geometry)) continue;
       best = { x, z };
       bestD = own;
     }
@@ -197,6 +201,12 @@ export interface VillageSeat extends Seat {
   kind: SeatKind;
   /** How far the sitter leans back into the backrest (rad); 0 where there is none. */
   lean: number;
+  /**
+   * A house seat's sitting pose (houseAreas.ts HouseSeatPose): `chair` (today's sit), `perch` (a bar / work stool: legs bent to the foot rail)
+   * or `floor` (cross-legged on a cushion, chunk F). Absent on the village's and the hall's seats (= `chair`). Until F's pose exists
+   * the client sits every house seat in the chair pose.
+   */
+  pose?: HouseSeatPose;
 }
 
 /** Wrap an angle into (-pi, pi]. */
@@ -210,22 +220,67 @@ function wrapYaw(a: number): number {
 }
 
 /**
- * The seats of one marker of the hall model: one facing, or for a backless seat sat from either side the front and the
+ * A marker of a model, as the seat list reads it: the hall's `SeatMarker` (seatMarkers.ts) or a house's `HouseSeatMarker` (houseAreas.ts,
+ * which adds `floor` seats and the `pose`). A `floor` marker with a back (a 보료, a floor sofa) is a backed seat on the ground; one
+ * without (a cushion) has one facing and is sat on from any side.
+ */
+interface MarkerSource {
+  id: string;
+  furn: string;
+  kind: "backless" | "backed" | "floor";
+  x: number;
+  z: number;
+  y: number;
+  yaw: number;
+  edge: number;
+  back: number;
+  width: number;
+  group: string;
+  both: boolean;
+  exitTurn: number;
+  lean: number;
+  pose?: HouseSeatPose;
+}
+
+/** Where a marker's seats are: the area, its walkable rectangle, the geometry the dismount is judged on, the other markers beside it. */
+interface MarkerPlace {
+  area: AreaId;
+  bounds: Bounds;
+  geometry: MapGeometry;
+  peers: readonly MarkerSource[];
+  /**
+   * A house's marker whose facing has no clear dismount spot ahead (a stool at a vanity, sat from the wall side: its other side is
+   * blocked by the furniture, which nobody can walk up to anyway) simply has no seat for that facing instead of failing the whole
+   * list; the tests insist that every marker keeps at least one.
+   */
+  lenient?: boolean;
+}
+
+/**
+ * The seats of one marker of a model: one facing, or for a backless seat sat from either side the front and the
  * back facing (one exclusive group). The root is where the avatar's origin goes (see the header): ahead of the front edge for
  * a backless seat, in front of the backrest's face for a backed one.
  */
-function markerSeats(m: SeatMarker): VillageSeat[] {
+function markerSeats(m: MarkerSource, place: MarkerPlace): VillageSeat[] {
   const out: VillageSeat[] = [];
+  const backed = m.kind === "backed" || (m.kind === "floor" && m.back > 0);
   const turns = m.kind === "backless" && m.both ? [0, Math.PI] : [0];
   for (const turn of turns) {
     const yaw = wrapYaw(m.yaw + turn);
     // `ahead` from the marker along the facing to the root; `frontEdge` from the root back to the seat's front edge
-    const ahead = m.kind === "backless" ? m.edge + SIT_ROOT_AHEAD : BACKED_ROOT_AHEAD - m.back;
-    const frontEdge = m.kind === "backless" ? SIT_ROOT_AHEAD : Math.max(0.05, ahead - m.edge);
+    const ahead = backed ? BACKED_ROOT_AHEAD - m.back : m.edge + SIT_ROOT_AHEAD;
+    const frontEdge = backed ? Math.max(0.05, ahead - m.edge) : SIT_ROOT_AHEAD;
     const p = offset(m.x, m.z, yaw, 0, ahead);
     const root = { x: Math.round(p.x * 1000) / 1000, z: Math.round(p.z * 1000) / 1000 };
     const id = turns.length > 1 ? `${m.id}:${turn === 0 ? "front" : "back"}` : m.id;
-    const stand = dismountAhead(root, yaw + m.exitTurn, VILLAGE_LAYOUT.areas.hall, id);
+    let stand: Point2;
+    try {
+      stand = dismountAhead(root, yaw + m.exitTurn, place.bounds, id, place.geometry);
+    } catch (err) {
+      if (place.lenient) continue;
+      throw err;
+    }
+    const cushion = m.kind === "floor" && m.back === 0;
     const seat: VillageSeat = {
       id,
       x: root.x,
@@ -234,11 +289,12 @@ function markerSeats(m: SeatMarker): VillageSeat[] {
       standX: stand.x,
       standZ: stand.z,
       seatY: m.y,
-      frontEdge,
+      // a cushion has no front: it is offered from every side (Seat.frontEdge absent), facing its table whichever side one comes from
+      frontEdge: cushion ? undefined : frontEdge,
       bench: m.id,
-      area: "hall",
+      area: place.area,
       kind: m.kind,
-      lean: m.kind === "backed" ? m.lean : 0,
+      lean: backed ? m.lean : 0,
       group: m.group,
       // a chair at a table has the table in front of it: it is also sat on from its sides, up to the backrest's face (never
       // through the backrest); a sofa or an armchair from the front only
@@ -248,10 +304,11 @@ function markerSeats(m: SeatMarker): VillageSeat[] {
       reachBonus: m.furn === "chair" ? CHAIR_REACH_BONUS : undefined,
       // the table in front: farther ahead than this is across it (the chair opposite's front), never this chair's
       aheadMax: m.furn === "chair" ? CHAIR_AHEAD_MAX : undefined,
+      pose: m.pose,
     };
     // the roots of the chairs of the same kind next to this one
-    const neighbours = MEMORIAL_SEAT_MARKERS.filter((o) => o.id !== m.id && o.furn === m.furn && Math.hypot(o.x - m.x, o.z - m.z) < 2.5).map((o) =>
-      offset(o.x, o.z, o.yaw, 0, o.kind === "backless" ? o.edge + SIT_ROOT_AHEAD : BACKED_ROOT_AHEAD - o.back),
+    const neighbours = place.peers.filter((o) => o.id !== m.id && o.furn === m.furn && Math.hypot(o.x - m.x, o.z - m.z) < 2.5).map((o) =>
+      offset(o.x, o.z, o.yaw, 0, o.kind === "backed" || (o.kind === "floor" && o.back > 0) ? BACKED_ROOT_AHEAD - o.back : o.edge + SIT_ROOT_AHEAD),
     );
     if (m.furn === "chair" && neighbours.length > 0 && seat.sideHalf !== undefined) {
       // beside it, behind the backrest's plane, only up to half the way to the next chair along the row (round 8 review)
@@ -266,7 +323,7 @@ function markerSeats(m: SeatMarker): VillageSeat[] {
       if (half < Infinity) seat.sideFar = Math.round(Math.min(CHAIR_SIDE_FAR, Math.max(CHAIR_SIDE_CLEAR + 0.1, half - seat.sideHalf + 0.1)) * 1000) / 1000;
     }
     if (m.furn === "chair" && neighbours.length > 0) {
-      const side = chairStand(seat, neighbours, VILLAGE_LAYOUT.areas.hall);
+      const side = chairStand(seat, neighbours, place.bounds, place.geometry);
       if (side) {
         seat.standX = side.x;
         seat.standZ = side.z;
@@ -309,26 +366,25 @@ function makeSeats(benches: readonly VillageBench[]): VillageSeat[] {
       }
     }
   }
-  for (const m of MEMORIAL_SEAT_MARKERS) seats.push(...markerSeats(m));
-  for (const layout of Object.values(HOUSE_INTERIOR_LAYOUTS)) {
-    const bounds = VILLAGE_LAYOUT.areas.hall;
-    for (const s of layout.seats) {
-      const root = { x: Math.round((300 + s.x) * 1000) / 1000, z: Math.round(s.z * 1000) / 1000 };
-      const stand = dismountAhead(root, s.yaw, bounds, s.id, houseInteriorGeometry);
-      seats.push({
-        id: `${layout.buildingId}:${s.id}`,
-        x: root.x,
-        z: root.z,
-        yaw: s.yaw,
-        standX: stand.x,
-        standZ: stand.z,
-        seatY: s.seatY,
-        frontEdge: SIT_ROOT_AHEAD,
-        bench: s.id,
-        area: houseArea(layout.buildingId),
-        kind: "backless",
-        lean: 0,
-      });
+  const hall = { area: "hall" as AreaId, bounds: VILLAGE_LAYOUT.areas.hall, geometry: villageGeometry, peers: MEMORIAL_SEAT_MARKERS as readonly MarkerSource[] };
+  for (const m of MEMORIAL_SEAT_MARKERS) seats.push(...markerSeats(m, hall));
+  // The houses, last (집 실내 G; design 6.4): house 1 floor 1, floor 2, house 2 … in marker order (compareHouseSeats), from each
+  // finished house's seat markers (generated/houses). A house without a model has no seats.
+  for (const n of HOUSE_NUMBERS) {
+    const house = GENERATED_HOUSES[n];
+    if (!house) continue;
+    const markers = [...house.seats].sort(compareHouseSeats);
+    for (const m of markers) {
+      const floorMarkers = markers.filter((o) => o.floor === m.floor);
+      seats.push(
+        ...markerSeats(m, {
+          area: houseArea(houseBuildingId(n), m.floor),
+          bounds: houseFloorBounds(n, m.floor),
+          geometry: villageGeometry,
+          peers: floorMarkers,
+          lenient: true,
+        }),
+      );
     }
   }
   return seats;

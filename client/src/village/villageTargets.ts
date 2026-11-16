@@ -1,4 +1,5 @@
-import { VILLAGE_LAYOUT, cubbyAnchors, type AreaId, type CubbyAnchor, type Disc, type VillageLayout } from "@caysonverse/shared/village/villageLayout";
+import { VILLAGE_LAYOUT, cubbyAnchors, isHouseArea, type AreaId, type CubbyAnchor, type Disc, type VillageLayout } from "@caysonverse/shared/village/villageLayout";
+import { houseOffers } from "@caysonverse/shared/village/houseTargets";
 import { HOUSE_KEYPAD_REACH_M, keypadEntries } from "@caysonverse/shared/village/buildingAccess";
 import { GUIDE_ASK_LABEL, nearestGuide } from "@caysonverse/shared/village/guides";
 import type { InteractTarget } from "../game/interact";
@@ -47,6 +48,7 @@ const NONE: readonly InteractTarget[] = Object.freeze([]);
 
 /** The door pad a player in `area` uses: the building's front door outside, the way out inside. */
 export function doorPadFor(area: AreaId, layout: VillageLayout = VILLAGE_LAYOUT): Disc {
+  // (a house floor's pads are houseTargets.ts's; villageTargets does not come here for one)
   return area === "village" ? layout.memorial.exterior.doorPad : layout.memorial.interior.doorPad;
 }
 
@@ -56,6 +58,12 @@ export function villageTargets(
   z: number,
   layout: VillageLayout = VILLAGE_LAYOUT,
 ): readonly InteractTarget[] {
+  // a house floor: its way out (floor 1) and its stair (both floors), houseTargets.ts
+  if (isHouseArea(area)) {
+    const offers = houseOffers(area, x, z);
+    if (offers.length === 0) return NONE;
+    return offers.map((o): InteractTarget => ({ kind: "door", id: o.id, dist: o.dist, icon: o.icon, label: o.label, short: o.short }));
+  }
   const pad = doorPadFor(area, layout);
   const dist = Math.hypot(x - pad.centre.x, z - pad.centre.z);
   // on the pad itself always; past its edge (the reach) inside a building only straight in front of the door, on the room's
@@ -63,8 +71,8 @@ export function villageTargets(
   const inFront =
     area === "village" || dist <= pad.radius || (Math.abs(x - pad.centre.x) <= DOOR_INSIDE_OFFER_HALF_WIDTH_M && z <= pad.centre.z);
   if (inFront && dist <= pad.radius + DOOR_OFFER_REACH_M) {
-    const label = area === "village" ? DOOR_LABEL.village : area === "hall" ? DOOR_LABEL.hall : "집 밖으로 나가기";
-    const short = area === "village" ? DOOR_SHORT.village : area === "hall" ? DOOR_SHORT.hall : "나가기";
+    const label = area === "village" ? DOOR_LABEL.village : DOOR_LABEL.hall;
+    const short = area === "village" ? DOOR_SHORT.village : DOOR_SHORT.hall;
     return [{ kind: "door", id: MEMORIAL_DOOR_ID, dist, icon: "🚪", label, short }];
   }
   if (area !== "village") return NONE;

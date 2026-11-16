@@ -14,6 +14,18 @@ import {
   greyboxColliders,
   hallWalls,
 } from "../../shared/src/village/villageLayout";
+import {
+  HOUSE_FLOORS,
+  HOUSE_MIN_COLLIDERS,
+  HOUSE_NODE,
+  HOUSE_ROOM,
+  houseFloorBounds,
+  houseKeepClear,
+  housePlacements,
+  houseRequiredNodes,
+  localRectToWorld,
+  type HouseNumber,
+} from "../../shared/src/village/houseAreas";
 import type { SchoolKind, SchoolSpec } from "./schoolGlb";
 
 /**
@@ -24,6 +36,7 @@ import type { SchoolKind, SchoolSpec } from "./schoolGlb";
 export const KNOWN_PROP_HEIGHTS: Readonly<Record<SchoolKind, Readonly<Record<string, number>>>> = {
   village: {},
   memorial: {},
+  house: {},
 };
 
 /**
@@ -108,6 +121,27 @@ function memorialSpec(): SchoolSpec {
   };
 }
 
-export function schoolSpec(kind: SchoolKind): SchoolSpec {
+/**
+ * 집 (house_N.glb, 집 실내 G; houseAreas.ts is the contract): the required nodes (floor groups, stair / door / spawn pads, ceiling slabs), the
+ * pads and arrival spots at their contract places (5 cm, 0.02 rad), at least HOUSE_MIN_COLLIDERS col__ boxes of this house, a ceiling slab
+ * per floor (underside 3.7 m, covering the room), and no furniture box in the zones that stay clear (entry corridor, pads, landing).
+ * The seat markers are checked by scripts/gen-house-seats.ts (`readHouse`), which check-school-glb runs for this kind.
+ */
+function houseSpec(n: HouseNumber): SchoolSpec {
+  return {
+    kind: "house",
+    requiredNodes: houseRequiredNodes(n),
+    requiredPrefixes: [{ prefix: `col__h${n}_`, min: HOUSE_MIN_COLLIDERS }],
+    placements: housePlacements(n),
+    identityRotationPrefixes: [],
+    ceilings: HOUSE_FLOORS.map((f) => ({ node: HOUSE_NODE.ceiling(n, f), y: HOUSE_ROOM.ceiling, room: houseFloorBounds(n, f) })),
+    clearBoxes: HOUSE_FLOORS.flatMap((f) =>
+      houseKeepClear(n, f).map((z) => ({ name: `${f}층 ${z.name}`, box: localRectToWorld(n, f, z.box) })),
+    ),
+  };
+}
+
+export function schoolSpec(kind: SchoolKind, house?: HouseNumber): SchoolSpec {
+  if (kind === "house") return houseSpec(house ?? 1);
   return kind === "village" ? villageSpec() : memorialSpec();
 }

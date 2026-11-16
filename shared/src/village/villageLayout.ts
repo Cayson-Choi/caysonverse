@@ -33,6 +33,8 @@ import { DEFAULT_WALL_THICKNESS, makeGeometry, wallsAround } from "../school/geo
 import { VILLAGE_CAMERA_BOXES, VILLAGE_COLLIDERS } from "./generated/villageColliders";
 import { MEMORIAL_CAMERA_BOXES, MEMORIAL_COLLIDERS } from "./generated/memorialColliders";
 import { guideColliders } from "./guides";
+import { HOUSES_ZONE, allHouseWalls, houseColliders, housesBlockers } from "./housesGeometry";
+import { parseHouseFloorArea, type HouseFloor, type HouseFloorAreaId } from "./houseAreas";
 import type { Bounds, MapGeometry } from "../school/geometry";
 
 export interface Point2 {
@@ -55,20 +57,25 @@ export interface Disc {
 /** A compass side: north is -z, east is +x. */
 export type Side = "n" | "s" | "e" | "w";
 
-/** The two places a player can be: the open village, or inside the memorial hall. */
-export type HouseAreaId = `house:${string}`;
+/**
+ * The places a player can be: the open village, the inside of the memorial hall, or one floor of a house (`house:house_3:2`, 집 실내 G:
+ * twenty areas, houseAreas.ts). Every area has its own rectangle in the one coordinate space.
+ */
+export type HouseAreaId = HouseFloorAreaId;
 export type AreaId = "village" | "hall" | HouseAreaId;
 
+/** True for exactly `house:house_<1..10>:<1|2>`. */
 export function isHouseArea(area: string): area is HouseAreaId {
-  return area.startsWith("house:") && area.length > "house:".length;
+  return parseHouseFloorArea(area) !== null;
 }
 
-export function houseArea(buildingId: string): HouseAreaId {
-  return `house:${buildingId}`;
+/** The area of a house floor: `house:<buildingId>:<floor>` (floor 1 = the entrance floor, the default). */
+export function houseArea(buildingId: string, floor: HouseFloor = 1): HouseAreaId {
+  return `house:${buildingId}:${floor}`;
 }
 
 export function buildingIdFromArea(area: string): string | null {
-  return isHouseArea(area) ? area.slice("house:".length) : null;
+  return parseHouseFloorArea(area)?.buildingId ?? null;
 }
 
 export type PlotId = "plot_n" | "plot_ne" | "plot_e" | "plot_w" | "plot_nw" | "plot_s";
@@ -686,8 +693,11 @@ export function hallWalls(layout: VillageLayout): AABB[] {
  */
 export const HALL_APRON = 5;
 
-/** The rectangle `villageGeometry` uses as its bounds: spans the village and the hall (walls and apron included). */
-export function villageBounds(layout: VillageLayout): Bounds {
+/**
+ * The rectangle round the hall's walls and their `HALL_APRON` (5 m) — the hall's part of the geometry (it was the whole of the village's
+ * bounds before the houses came, 집 실내 G).
+ */
+export function hallApronBounds(layout: VillageLayout): Bounds {
   const v = layout.areas.village;
   const h = layout.areas.hall;
   const margin = DEFAULT_WALL_THICKNESS + HALL_APRON;
@@ -700,7 +710,21 @@ export function villageBounds(layout: VillageLayout): Bounds {
 }
 
 /**
- * Fills the gap between the two areas (from the village's east edge to the hall's outer west wall,
+ * The rectangle `villageGeometry` uses as its bounds: spans the village, the hall (walls and apron included) and the ten houses' twenty
+ * rooms (`HOUSES_ZONE`: their walls x 359.7 .. 586.9, z -8.1 .. 30.3, with a 5 m apron).
+ */
+export function villageBounds(layout: VillageLayout): Bounds {
+  const a = hallApronBounds(layout);
+  return {
+    minX: Math.min(a.minX, HOUSES_ZONE.minX),
+    maxX: Math.max(a.maxX, HOUSES_ZONE.maxX),
+    minZ: Math.min(a.minZ, HOUSES_ZONE.minZ),
+    maxZ: Math.max(a.maxZ, HOUSES_ZONE.maxZ),
+  };
+}
+
+/**
+ * Fills the gap between the village and the hall (from the village's east edge to the hall's outer west wall,
  * the full z range of the bounds), so the spanning bounds do not let anyone walk from one to the other.
  */
 export function areaGapBlockers(layout: VillageLayout): AABB[] {
@@ -712,21 +736,28 @@ export function areaGapBlockers(layout: VillageLayout): AABB[] {
 }
 
 /**
- * Solid ground over ALL the free space around the hall's walls inside the bounds: the strips north and south
- * (from the walls' west face to the bounds' east edge) and the strip east of the walls. West of the walls the
- * gap blocker is adjacent. Every one is at least `HALL_APRON` (5 m) thick, so a legal step through a wall ends
- * inside a blocker and is dropped. `hallWalls` stay the render and camera geometry; these boxes are invisible.
+ * Solid ground over ALL the free space around the hall's walls inside the bounds: the strips north and south (from the walls' west
+ * face to the hall apron's east edge, and z out to the bounds' edges) and the strip east of the walls. West of the walls the gap
+ * blocker is adjacent; east of the apron the houses' blockers take over (`housesBlockers`). Every one is at least `HALL_APRON`
+ * (5 m) thick, so a legal step through a wall ends inside a blocker and is dropped. `hallWalls` stay the render and camera
+ * geometry; these boxes are invisible.
  */
 export function hallSurroundBlockers(layout: VillageLayout): AABB[] {
   const bounds = villageBounds(layout);
+  const apron = hallApronBounds(layout);
   const hall = layout.areas.hall;
   const t = DEFAULT_WALL_THICKNESS;
   const walls: AABB = { minX: hall.minX - t, maxX: hall.maxX + t, minZ: hall.minZ - t, maxZ: hall.maxZ + t };
   const out: AABB[] = [];
-  if (bounds.minZ < walls.minZ) out.push({ minX: walls.minX, maxX: bounds.maxX, minZ: bounds.minZ, maxZ: walls.minZ });
-  if (walls.maxZ < bounds.maxZ) out.push({ minX: walls.minX, maxX: bounds.maxX, minZ: walls.maxZ, maxZ: bounds.maxZ });
-  if (walls.maxX < bounds.maxX) out.push({ minX: walls.maxX, maxX: bounds.maxX, minZ: walls.minZ, maxZ: walls.maxZ });
+  if (bounds.minZ < walls.minZ) out.push({ minX: walls.minX, maxX: apron.maxX, minZ: bounds.minZ, maxZ: walls.minZ });
+  if (walls.maxZ < bounds.maxZ) out.push({ minX: walls.minX, maxX: apron.maxX, minZ: walls.maxZ, maxZ: bounds.maxZ });
+  if (walls.maxX < apron.maxX) out.push({ minX: walls.maxX, maxX: apron.maxX, minZ: walls.minZ, maxZ: walls.maxZ });
   return out;
+}
+
+/** The solid ground between the hall's apron and the houses, round and between the twenty house rooms (housesGeometry.ts). */
+export function houseBlockBlockers(layout: VillageLayout): AABB[] {
+  return housesBlockers(villageBounds(layout), hallApronBounds(layout).maxX);
 }
 
 /**
@@ -796,6 +827,8 @@ export function buildVillageGeometry(
   hall?: GeneratedColliders,
   /** Small solid things that are not in a model (Task 9A: the guides' colliders). */
   extra: readonly AABB[] = [],
+  /** The finished houses' colliders (housesGeometry.ts `houseColliders`); absent: the twenty rooms are empty (walls only). */
+  houses?: GeneratedColliders,
 ): MapGeometry {
   const village: GeneratedColliders =
     "obstacles" in colliders
@@ -804,9 +837,18 @@ export function buildVillageGeometry(
   return makeGeometry(
     "village",
     villageBounds(layout),
-    hallWalls(layout),
-    [...areaGapBlockers(layout), ...hallSurroundBlockers(layout), ...village.obstacles, ...busShelterColliders(layout), ...(hall?.obstacles ?? []), ...extra],
-    [...village.cameraBoxes, ...busShelterColliders(layout), ...(hall?.cameraBoxes ?? [])],
+    [...hallWalls(layout), ...allHouseWalls()],
+    [
+      ...areaGapBlockers(layout),
+      ...hallSurroundBlockers(layout),
+      ...houseBlockBlockers(layout),
+      ...village.obstacles,
+      ...busShelterColliders(layout),
+      ...(hall?.obstacles ?? []),
+      ...extra,
+      ...(houses?.obstacles ?? []),
+    ],
+    [...village.cameraBoxes, ...busShelterColliders(layout), ...(hall?.cameraBoxes ?? []), ...(houses?.cameraBoxes ?? [])],
   );
 }
 
@@ -850,26 +892,8 @@ export const villageGeometry: MapGeometry = buildVillageGeometry(
   // Task 9A: the two guides (plaza and hall desk) stand on a small collider each, so nobody walks through them; the
   // parked bus's mirrors hang past its box at head height (bus review r3): a collider under each.
   [...guideColliders(), ...busMirrorColliders()],
-);
-
-/**
- * Where a family member lands inside a house (the keypad's way in). The house interiors share the hall's footprint, but not its
- * arrival spot: the hall's moved 1 m in (round 5) for its camera, which must not move the houses' with it (round 6 review). The
- * houses keep their own, 1.6 m in front of the shared door pad's centre and facing into the room.
- */
-export const HOUSE_INTERIOR_SPAWN: Readonly<{ x: number; z: number; yaw: number }> = Object.freeze({
-  x: VILLAGE_LAYOUT.memorial.interior.doorPad.centre.x,
-  z: VILLAGE_LAYOUT.memorial.interior.doorPad.centre.z - 1.6,
-  yaw: VILLAGE_LAYOUT.memorial.interior.spawn.yaw,
-});
-
-/** Procedural house interiors reuse the hall room footprint but omit memorial furniture and cubby obstacles. */
-export const houseInteriorGeometry: MapGeometry = makeGeometry(
-  "house",
-  VILLAGE_LAYOUT.areas.hall,
-  hallWalls(VILLAGE_LAYOUT),
-  [],
-  [],
+  // 집 실내 G: the finished houses' furniture and walls (generated/houses) and every floor's ceiling slab as a camera box.
+  houseColliders(),
 );
 
 /**

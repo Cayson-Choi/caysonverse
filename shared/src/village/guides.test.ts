@@ -10,6 +10,7 @@ import {
   GUIDES,
   GUIDE_COLLIDER_HALF,
   GUIDE_REACH_M,
+  GUIDE_TEXT_ONLY_VOICES,
   guideById,
   guideColliders,
   guideVoiceUrl,
@@ -23,13 +24,13 @@ const L = VILLAGE_LAYOUT;
 const overlaps = (a: AABB, b: AABB) => a.minX < b.maxX && b.minX < a.maxX && a.minZ < b.maxZ && b.minZ < a.maxZ;
 
 describe("guides (Task 9A)", () => {
-  it("has the two guides with unique ids, 3-4 questions each, unique voice ids", () => {
+  it("has the two guides with unique ids, 3-5 questions each, unique voice ids", () => {
     expect(GUIDES.map((g) => g.id)).toEqual(["plaza_guide", "hall_desk"]);
     const voices = GUIDES.flatMap((g) => g.qas.map((q) => q.voice));
     expect(new Set(voices).size).toBe(voices.length);
     for (const g of GUIDES) {
       expect(g.qas.length).toBeGreaterThanOrEqual(3);
-      expect(g.qas.length).toBeLessThanOrEqual(4);
+      expect(g.qas.length).toBeLessThanOrEqual(5);
       expect(g.tag).toBe("안내원");
       expect(validateAppearance(g.appearance)).toEqual(g.appearance);
       expect(guideById(g.id)).toBe(g);
@@ -55,6 +56,10 @@ describe("guides (Task 9A)", () => {
       for (const q of g.qas) {
         expect(guideVoiceUrl(q.voice)).toBe(`/village/voice/${q.voice}.m4a`);
         const file = resolve(VOICE_DIR, `${q.voice}.m4a`);
+        if (GUIDE_TEXT_ONLY_VOICES.includes(q.voice)) {
+          expect(existsSync(file), `${file} is recorded: drop it from GUIDE_TEXT_ONLY_VOICES`).toBe(false);
+          continue;
+        }
         expect(existsSync(file), file).toBe(true);
         expect(statSync(file).size).toBeLessThanOrEqual(60 * 1024);
         expect(statSync(file).size).toBeGreaterThan(4 * 1024);

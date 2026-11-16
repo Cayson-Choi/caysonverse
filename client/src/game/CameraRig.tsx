@@ -73,8 +73,9 @@ import { useFpCursor } from "./useFpCursor";
 import { useSettingsStore } from "../stores/settingsStore";
 import { getTransitRenderPose, useTransitState } from "../net/transitSync";
 import { transitWindowCamera } from "../village/transitCamera";
-import { VILLAGE_LAYOUT, cubbyAtPoint } from "@caysonverse/shared/village/villageLayout";
+import { VILLAGE_LAYOUT, cubbyAtPoint, isHouseArea } from "@caysonverse/shared/village/villageLayout";
 import { localArea } from "../village/villageArea";
+import { armHouseUse, houseTapTarget } from "../village/houseTap";
 import { openCubbyAt } from "../village/cubbyCard";
 import { cubbyFocusAnchor, stepCubbyFocus, type FocusPose } from "../village/cubbyFocus";
 import type { Orbit, Pose, SeatState } from "./types";
@@ -375,13 +376,19 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
       const map = getActiveMap();
       // In the hall every collider in the room is furniture (round 9: the floor seen under the letter table's edge, between its
       // chairs, had no free spot within MAX_PUSH and the tap was "unreachable"): floor inside one moves out as for a bench's box.
-      let furniture = localArea() === "hall" ? map.geometry.obstacles : map.furniture;
+      // (a house floor is a room like the hall: every collider in it is furniture or the stair)
+      const inRoom = localArea() === "hall" || isHouseArea(localArea());
+      let furniture = inRoom ? map.geometry.obstacles : map.furniture;
+      // A tap on a house's stair or front door walks to its pad and uses it there (houseTap.ts): the pad is the destination, the use is armed.
+      const houseTap = pick && !pick.blocker && isHouseArea(localArea()) ? houseTapTarget(localArea(), pick.x, pick.y, pick.z) : null;
+      if (houseTap) surface = { x: houseTap.x, y: 0, z: houseTap.z, ny: 1 };
+      armHouseUse(houseTap ? houseTap.id : null);
       // A click on a seat or (in the hall) on other furniture is no ground, yet means something (round 8 review: a tap on the
       // sofa did nothing): the seat's approach, to sit on arrival, or the floor next to the piece (furnitureClick.ts).
       let sitOn: number | null = null;
-      if (surface && surfaceKind(surface, map.geometry.obstacles, activeBounds()) === "none") {
+      if (!houseTap && surface && surfaceKind(surface, map.geometry.obstacles, activeBounds()) === "none") {
         const remote = new Set(getRemoteSeatIndices());
-        const fc = furnitureClick(pick, pick?.ray ?? null, map.seats ?? activeSeats(), map.seatArea, (i) => remote.has(i), from, 0, localArea() === "hall");
+        const fc = furnitureClick(pick, pick?.ray ?? null, map.seats ?? activeSeats(), map.seatArea, (i) => remote.has(i), from, 0, inRoom);
         // (a click on the seat the player is sitting on stays nothing)
         if (fc && !(fc.seatIndex !== null && fc.seatIndex === seat.index)) {
           // the floor there (a column that meets a cushion or a seat first is not the floor: the room's floor level then)
@@ -410,7 +417,7 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
         if (plan.ok) {
           view = viewOfRing(plan.x, plan.y, plan.z, cameraNow());
           // a seat clicked was itself in view: its approach (beside or under the camera) need not be
-          const seen = sitOn === null ? requireSeen(plan, view) : plan;
+          const seen = sitOn === null && !houseTap ? requireSeen(plan, view) : plan;
           if (!seen.ok) unseen = plan;
           plan = seen;
         }
