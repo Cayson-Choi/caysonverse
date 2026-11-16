@@ -1,4 +1,4 @@
-import { ARC_LAND_R } from "./fountainLayout";
+import { ARC_LAND_R, BOWL_LAND_R } from "./fountainLayout";
 import {
   Color,
   DataTexture,
@@ -381,7 +381,7 @@ void main() {
       band = abs( dl );
       // Rough between the pedestal and the landings, calm toward the rim (a mirror for the sky).
       tilt *= mix( 2.0, 0.8, smoothstep( 3.1, 3.9, pr ) );
-      cover = max( 0.85 * ( 1.0 - smoothstep( 0.03, 0.34, nearJet ) ), 0.5 * ( 1.0 - smoothstep( 0.01, 0.1, band ) ) );
+      cover = max( 0.95 * ( 1.0 - smoothstep( 0.04, 0.46, nearJet ) ), 0.65 * ( 1.0 - smoothstep( 0.01, 0.14, band ) ) );
       // The nozzles' lights (16 on r 5.1): a bright point under each and a soft pool of light around it.
       float kn = floor( pth / PI2 * 16.0 + 0.5 );
       float dn = length( q - fpPoint( kn, 16.0, 5.1, 0.0 ) );
@@ -390,11 +390,15 @@ void main() {
       // The pedestal's pool: the crowns rain down around the 8 upright jets (r 1.9), the upper curtain lands on r 1.85.
       float ku = floor( ( pth - 0.2 ) / PI2 * 8.0 + 0.5 );
       fpRings( q, fpPoint( ku, 8.0, 1.9, 0.2 ), 0.28 * aa, 0.35, ku * 1.7, extra, nearJet );
+      // The bowl's 8 jets come down between them on r ${BOWL_LAND_R.toFixed(3)}.
+      float kb = floor( ( pth - ${(0.2 + Math.PI / 8).toFixed(5)} ) / PI2 * 8.0 + 0.5 );
+      float nearBowl = 9.0;
+      fpRings( q, fpPoint( kb, 8.0, ${BOWL_LAND_R.toFixed(4)}, ${(0.2 + Math.PI / 8).toFixed(5)} ), 0.3 * aa, 0.4, kb * 1.3, extra, nearBowl );
       float dl = pr - 1.85;
       extra += q / max( pr, 1e-3 ) * sign( dl ) * cos( abs( dl ) * FP_K - FP_W * uFTime ) * 0.2 * aa * exp( -abs( dl ) / 0.2 );
       band = abs( dl );
       tilt *= 2.4;
-      cover = max( 0.7 * ( 1.0 - smoothstep( 0.08, 0.55, nearJet ) ), 0.5 * ( 1.0 - smoothstep( 0.01, 0.1, band ) ) );
+      cover = max( max( 0.7 * ( 1.0 - smoothstep( 0.08, 0.55, nearJet ) ), 0.6 * ( 1.0 - smoothstep( 0.04, 0.3, nearBowl ) ) ), 0.65 * ( 1.0 - smoothstep( 0.01, 0.14, band ) ) );
       lit = exp( -nearJet * nearJet / 0.006 ) * 3.0 + exp( -nearJet * nearJet / 0.12 ) * 0.45;
     } else {
       tilt *= 1.8; // the bowl: the crowns' rain
