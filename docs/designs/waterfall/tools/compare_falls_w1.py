@@ -50,16 +50,16 @@ def sheet(name, pairs, title):
 
 sheet("w1-compare-day-1.jpg", [
     ("12_yongchu_hamyang.jpg", "참고 12 용추폭포(함양): 판상 화강암, 턱마다 초록, 양옆 울창한 활엽수 숲", "day_photo12.png",
-     "W1 3차 낮 — 쉼터 눈높이(1.7 m)에서 본 전체 (물·거품은 W2 자리 표시)"),
+     "W1 4차 낮 — 실측 스캔 바위(CC0)로 쌓은 절벽, 쉼터 눈높이(1.7 m) (물·거품은 W2 자리 표시)"),
     ("05_jikso_byeonsan_a.jpg", "참고 05 직소폭포(변산): 큰 세로 절리 기둥, 물 뒤 젖은 어두운 면, 숲", "day_photo05.png",
-     "W1 3차 낮 — 소 가장자리 낮은 눈높이에서 떨어지는 곳 쪽으로"),
-], "B1 폭포 W1 3차 바위·초목 — 실제 사진과 같은 구도 (낮)")
+     "W1 4차 낮 — 소 가장자리 낮은 눈높이에서 떨어지는 곳 쪽으로"),
+], "B1 폭포 W1 4차 바위·초목 — 실제 사진과 같은 구도 (낮)")
 sheet("w1-compare-day-2.jpg", [
-    ("04_guryong_jiri.jpg", "참고 04 구룡폭포(지리산): 둥근 화강암, 소 가장자리 바위", "day_bank.png", "W1 3차 낮 — 자갈 기슭·둥근 바위·풀"),
-    ("09_sambuyeon_a.jpg", "참고 09 삼부연폭포(철원): 절리 벽, 틈의 식물", "day_cliff_mid.png", "W1 3차 낮 — 남쪽 벽: 기둥 절리, 턱의 풀·덤불"),
-], "B1 폭포 W1 3차 바위·초목 — 가까이 (낮)")
+    ("04_guryong_jiri.jpg", "참고 04 구룡폭포(지리산): 둥근 화강암, 소 가장자리 바위", "day_bank.png", "W1 4차 낮 — 자갈 기슭·둥근 바위·풀"),
+    ("09_sambuyeon_a.jpg", "참고 09 삼부연폭포(철원): 절리 벽, 틈의 식물", "day_cliff_mid.png", "W1 4차 낮 — 남쪽 벽: 스캔 화강암 덩어리, 틈의 풀·덤불"),
+], "B1 폭포 W1 4차 바위·초목 — 가까이 (낮)")
 if os.path.exists(os.path.join(RDIR, "night_photo12.png")):
     sheet("w1-compare-night.jpg", [
-        ("12_yongchu_hamyang.jpg", "참고 12 (낮 사진만 있음: 구도 참고용)", "night_photo12.png", "W1 3차 밤 — 쉼터 눈높이, 따뜻한 바닥 등 2개 (자리 표시 조명)"),
-        ("04_guryong_jiri.jpg", "참고 04", "night_s8_front_slab.png", "W1 3차 밤 — 앞 너럭바위(S8)"),
-    ], "B1 폭포 W1 3차 — 밤 (라이트맵은 W3)")
+        ("12_yongchu_hamyang.jpg", "참고 12 (낮 사진만 있음: 구도 참고용)", "night_photo12.png", "W1 4차 밤 — 쉼터 눈높이, 따뜻한 바닥 등 2개 (자리 표시 조명)"),
+        ("04_guryong_jiri.jpg", "참고 04", "night_s8_front_slab.png", "W1 4차 밤 — 앞 너럭바위(S8)"),
+    ], "B1 폭포 W1 4차 — 밤 (라이트맵은 W3)")

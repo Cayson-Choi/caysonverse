@@ -1,0 +1,148 @@
+{
+ "downloaded": "2026-11-16",
+ "site": "https://polyhaven.com",
+ "api": "https://api.polyhaven.com",
+ "license": "CC0 1.0 Universal (public domain) - https://polyhaven.com/license",
+ "assets": [
+  {
+   "id": "namaqualand_cliff_02",
+   "type": "model",
+   "name": "Namaqualand Cliff 02",
+   "page": "https://polyhaven.com/a/namaqualand_cliff_02",
+   "authors": {
+    "Dario Barresi": "Photography",
+    "Rico Cilliers": "modeling"
+   },
+   "license": "CC0",
+   "dimensions_mm": [
+    20229.52938079834,
+    6593.420505523682,
+    7187.2673481702805
+   ],
+   "polycount": 363896,
+   "resolution": "1k",
+   "files": [
+    "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/namaqualand_cliff_02/namaqualand_cliff_02_1k.gltf",
+    "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/namaqualand_cliff_02/namaqualand_cliff_02_diff_1k.jpg",
+    "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/namaqualand_cliff_02/namaqualand_cliff_02_nor_gl_1k.jpg",
+    "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/namaqualand_cliff_02/namaqualand_cliff_02.bin",
+    "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/namaqualand_cliff_02/namaqualand_cliff_02_arm_1k.jpg"
+   ]
+  },
+  {
+   "id": "namaqualand_cliff_01",
+   "type": "model",
+   "name": "Namaqualand Cliff 01",
+   "page": "https://polyhaven.com/a/namaqualand_cliff_01",
+   "authors": {
+    "Jenelle van Heerden": "Photography",
+    "Rico Cilliers": "modeling"
+   },
+   "license": "CC0",
+   "dimensions_mm": [
+    8279.043674468994,
+    4390.161573886871,
+    4961.063176393509
+   ],
+   "polycount": 176938,
+   "resolution": "1k",
+   "files": [
+    "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/namaqualand_cliff_01/namaqualand_cliff_01_1k.gltf",
+    "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/namaqualand_cliff_01/namaqualand_cliff_01_nor_gl_1k.jpg",
+    "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/namaqualand_cliff_01/namaqualand_cliff_01.bin",
+    "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/namaqualand_cliff_01/namaqualand_cliff_01_diff_1k.jpg",
+    "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/namaqualand_cliff_01/namaqualand_cliff_01_arm_1k.jpg"
+   ]
+  },
+  {
+   "id": "rock_face_02",
+   "type": "model",
+   "name": "Rock Face 02",
+   "page": "https://polyhaven.com/a/rock_face_02",
+   "authors": {
+    "Dario Barresi": "All",
+    "Rico Cilliers": "processing"
+   },
+   "license": "CC0",
+   "dimensions_mm": [
+    4870.411515235901,
+    3472.859501838684,
+    4734.235167503357
+   ],
+   "polycount": 29566,
+   "resolution": "1k",
+   "files": [
+    "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/rock_face_02/rock_face_02_1k.gltf",
+    "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/rock_face_02/rock_face_02_nor_gl_1k.jpg",
+    "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/rock_face_02/rock_face_02_arm_1k.jpg",
+    "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/rock_face_02/rock_face_02.bin",
+    "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/rock_face_02/rock_face_02_diff_1k.jpg"
+   ]
+  },
+  {
+   "id": "boulder_01",
+   "type": "model",
+   "name": "Boulder 01",
+   "page": "https://polyhaven.com/a/boulder_01",
+   "authors": {
+    "Rico Cilliers": "All"
+   },
+   "license": "CC0",
+   "dimensions_mm": [
+    1272.6830840110779,
+    1830.7338953018188,
+    1003.8918256759644
+   ],
+   "polycount": 123976,
+   "resolution": "1k",
+   "files": [
+    "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/boulder_01/boulder_01_1k.gltf",
+    "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/boulder_01/boulder_01_arm_1k.jpg",
+    "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/boulder_01/boulder_01_diff_1k.jpg",
+    "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/boulder_01/boulder_01.bin",
+    "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/boulder_01/boulder_01_nor_gl_1k.jpg"
+   ]
+  },
+  {
+   "id": "namaqualand_boulder_03",
+   "type": "model",
+   "name": "Namaqualand Boulder 03",
+   "page": "https://polyhaven.com/a/namaqualand_boulder_03",
+   "authors": {
+    "Jenelle van Heerden": "modeling",
+    "Dario Barresi": "Photography"
+   },
+   "license": "CC0",
+   "dimensions_mm": [
+    2407.663106918335,
+    3065.406084060669,
+    1473.654329776764
+   ],
+   "polycount": 121546,
+   "resolution": "1k",
+   "files": [
+    "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/namaqualand_boulder_03/namaqualand_boulder_03_1k.gltf",
+    "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/namaqualand_boulder_03/namaqualand_boulder_03_diff_1k.jpg",
+    "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/namaqualand_boulder_03/namaqualand_boulder_03_nor_gl_1k.jpg",
+    "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/namaqualand_boulder_03/namaqualand_boulder_03.bin",
+    "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/namaqualand_boulder_03/namaqualand_boulder_03_arm_1k.jpg"
+   ]
+  },
+  {
+   "id": "lichen_rock",
+   "type": "texture",
+   "name": "Lichen Rock",
+   "page": "https://polyhaven.com/a/lichen_rock",
+   "authors": {
+    "Rico Cilliers": "All"
+   },
+   "license": "CC0",
+   "resolution": "1k",
+   "files": [
+    "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/lichen_rock/lichen_rock_diff_1k.jpg",
+    "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/lichen_rock/lichen_rock_nor_gl_1k.jpg",
+    "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/lichen_rock/lichen_rock_rough_1k.jpg"
+   ]
+  }
+ ]
+}

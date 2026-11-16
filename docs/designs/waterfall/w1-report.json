@@ -1,8 +1,18 @@
 {
  "fails": [],
- "worst_wall_gap_m": 0.5,
+ "worst_wall_gap_m": 0.502,
  "groove_max_dev_m": 0.0,
+ "groove_mesh_out_m": {
+  "lod0": 0.0099,
+  "lod1": 0.0232
+ },
+ "groove_mesh_in_m": {
+  "lod0": 1.4634,
+  "lod1": 2.0627
+ },
  "plunge_max_out_m": 0.0,
+ "zone_max_out_m": 0.0,
+ "backfacing_hits_macro": 5686,
  "falls_slab_0_top": 0.0412,
  "falls_slab_1_top": 0.0315,
  "falls_slab_2_top": 0.0215,
@@ -12,29 +22,26 @@
  "pocket_ground_bad_verts": 0,
  "max_x_cliff_ground": -100.0,
  "tris": {
-  "cliff_lod0": 14551,
-  "cliff_lod1": 5081,
-  "flank_lod0": 816,
-  "flank_lod1": 192,
+  "cliff_lod0": 24709,
+  "cliff_lod1": 5341,
+  "flank_lod0": 205,
+  "flank_lod1": 72,
   "ground": 5436,
-  "kit_instances": 55,
-  "kit_instance_tris": 4388,
+  "kit_instances": 56,
+  "kit_instance_tris": 5990,
   "kit_meshes": {
-   "falls_kit_0": 74,
-   "falls_kit_1": 78,
-   "falls_kit_2": 82,
-   "falls_kit_3": 90,
-   "falls_kit_4": 80,
-   "falls_kit_5": 80,
-   "falls_kit_6": 80
+   "falls_kit_0": 80,
+   "falls_kit_1": 90,
+   "falls_kit_2": 260,
+   "falls_kit_3": 300
   },
   "slabs_seats": 2624,
   "lamps": 52,
-  "pebbles": 4400,
-  "plants": 4106,
-  "plants_hi": 4608,
-  "trees": 38,
-  "tree_tris": 13496,
+  "pebbles": 2200,
+  "plants": 5736,
+  "plants_hi": 8020,
+  "trees": 30,
+  "tree_tris": 10856,
   "tree_templates": [
    388,
    388,
@@ -44,44 +51,313 @@
    396
   ]
  },
- "tris_total_w1_high": 54477,
- "tris_total_w1_low": 22847,
+ "tris_total_w1_high": 65828,
+ "tris_total_w1_low": 23075,
  "tex": {
-  "files": [
+  "used": [
    "T_falls_foliage.png",
    "T_falls_gravel.png",
    "T_falls_gravel_n.png",
-   "T_falls_rock.png",
    "T_falls_rock_macro.png",
-   "T_falls_rock_macro_n.png",
-   "T_falls_rock_n.png",
-   "T_falls_slab.png",
-   "T_falls_slab_n.png",
    "T_falls_turf.png",
-   "T_falls_turf_n.png"
+   "T_falls_turf_n.png",
+   "scans/T_falls_rock_base_d.png",
+   "scans/T_falls_rock_base_n.png",
+   "scans/T_falls_slab_d.png",
+   "scans/T_scan_boulder1_d.png",
+   "scans/T_scan_boulder1_n.png",
+   "scans/T_scan_boulder3_d.png",
+   "scans/T_scan_boulder3_n.png",
+   "scans/T_scan_cliff1_d.png",
+   "scans/T_scan_cliff1_n.png",
+   "scans/T_scan_cliff2_d.png",
+   "scans/T_scan_cliff2_n.png",
+   "scans/T_scan_face2_d.png",
+   "scans/T_scan_face2_n.png"
   ],
-  "sizes": "1024x1024: rock (+n), rock macro RGBA on UV2 (+n), slab (+n), gravel (+n), turf (+n), foliage RGBA"
+  "sizes": {
+   "T_bark.png": [
+    512,
+    512
+   ],
+   "T_falls_foliage.png": [
+    1024,
+    1024
+   ],
+   "T_falls_gravel.png": [
+    1024,
+    1024
+   ],
+   "T_falls_gravel_n.png": [
+    1024,
+    1024
+   ],
+   "T_falls_rock_base_d.png": [
+    512,
+    512
+   ],
+   "T_falls_rock_base_n.png": [
+    512,
+    512
+   ],
+   "T_falls_rock_macro.png": [
+    1024,
+    1024
+   ],
+   "T_falls_slab_d.png": [
+    512,
+    512
+   ],
+   "T_falls_turf.png": [
+    1024,
+    1024
+   ],
+   "T_falls_turf_n.png": [
+    1024,
+    1024
+   ],
+   "T_leaf_green.png": [
+    1024,
+    1024
+   ],
+   "T_scan_boulder1_d.png": [
+    512,
+    512
+   ],
+   "T_scan_boulder1_n.png": [
+    512,
+    512
+   ],
+   "T_scan_boulder3_d.png": [
+    512,
+    512
+   ],
+   "T_scan_boulder3_n.png": [
+    512,
+    512
+   ],
+   "T_scan_cliff1_d.png": [
+    1024,
+    1024
+   ],
+   "T_scan_cliff1_n.png": [
+    1024,
+    1024
+   ],
+   "T_scan_cliff2_d.png": [
+    1024,
+    1024
+   ],
+   "T_scan_cliff2_n.png": [
+    1024,
+    1024
+   ],
+   "T_scan_face2_d.png": [
+    512,
+    512
+   ],
+   "T_scan_face2_n.png": [
+    512,
+    512
+   ]
+  }
  },
- "joint_layout": {
-  "blocks": 67,
-  "tiers": [
-   -2.6,
-   9.6,
-   17.0,
-   27.6,
-   36.0,
-   41.0
-  ]
+ "scan_pieces": {
+  "placements": 40,
+  "by_kind": {
+   "cliff2": 19,
+   "boulder3": 1,
+   "cliff1": 11,
+   "face2": 9
+  },
+  "tris_lod0": {
+   "cliff2": 12445,
+   "cliff1": 4970,
+   "face2": 3480,
+   "boulder1": 0,
+   "boulder3": 136
+  },
+  "tris_lod1": {
+   "cliff2": 2769,
+   "cliff1": 976,
+   "face2": 625,
+   "boulder1": 0,
+   "boulder3": 49
+  },
+  "backing_tris": {
+   "lod0": 3678,
+   "lod1": 922
+  }
  },
- "glb_bytes": 3525216,
- "round": "3 (2026-11-16, strong model)",
+ "glb_bytes": 3721624,
+ "round": "4 (2026-11-16): photoscanned CC0 rocks (Poly Haven), owner-approved 2026-11-16",
+ "scan_assets": [
+  {
+   "id": "namaqualand_cliff_02",
+   "type": "model",
+   "page": "https://polyhaven.com/a/namaqualand_cliff_02",
+   "license": "CC0 1.0",
+   "authors": {
+    "Dario Barresi": "Photography",
+    "Rico Cilliers": "modeling"
+   },
+   "use": "main cliff sections (stacked, mirrored, bent)"
+  },
+  {
+   "id": "namaqualand_cliff_01",
+   "type": "model",
+   "page": "https://polyhaven.com/a/namaqualand_cliff_01",
+   "license": "CC0 1.0",
+   "authors": {
+    "Jenelle van Heerden": "Photography",
+    "Rico Cilliers": "modeling"
+   },
+   "use": "rounded granite masses (lower cliff, beside the plunge)"
+  },
+  {
+   "id": "rock_face_02",
+   "type": "model",
+   "page": "https://polyhaven.com/a/rock_face_02",
+   "license": "CC0 1.0",
+   "authors": {
+    "Dario Barresi": "All",
+    "Rico Cilliers": "processing"
+   },
+   "use": "small lichen rock-face pieces (beside the groove, upper rim)"
+  },
+  {
+   "id": "boulder_01",
+   "type": "model",
+   "page": "https://polyhaven.com/a/boulder_01",
+   "license": "CC0 1.0",
+   "authors": {
+    "Rico Cilliers": "All"
+   },
+   "use": "bank / talus boulders (instanced)"
+  },
+  {
+   "id": "namaqualand_boulder_03",
+   "type": "model",
+   "page": "https://polyhaven.com/a/namaqualand_boulder_03",
+   "license": "CC0 1.0",
+   "authors": {
+    "Jenelle van Heerden": "modeling",
+    "Dario Barresi": "Photography"
+   },
+   "use": "bank / shallows boulders (instanced), a few cliff-foot pieces"
+  },
+  {
+   "id": "lichen_rock",
+   "type": "texture",
+   "page": "https://polyhaven.com/a/lichen_rock",
+   "license": "CC0 1.0",
+   "authors": {
+    "Rico Cilliers": "All"
+   },
+   "use": "tiled texture: cliff backing face, walk slabs, seats, cobbles"
+  }
+ ],
+ "scan_prep": {
+  "boulder1": {
+   "asset": "boulder_01",
+   "dims_m": [
+    1.27,
+    1.83,
+    1.0
+   ],
+   "src_tris": 66122,
+   "hi_tris": 300,
+   "lo_tris": 90,
+   "tex": 512
+  },
+  "cliff2": {
+   "asset": "namaqualand_cliff_02",
+   "dims_m": [
+    6.59,
+    20.23,
+    7.18
+   ],
+   "src_tris": 194080,
+   "hi_tris": 948,
+   "lo_tris": 200,
+   "tex": 1024
+  },
+  "cliff1": {
+   "asset": "namaqualand_cliff_01",
+   "dims_m": [
+    4.39,
+    8.28,
+    4.96
+   ],
+   "src_tris": 94369,
+   "hi_tris": 636,
+   "lo_tris": 120,
+   "tex": 1024
+  },
+  "face2": {
+   "asset": "rock_face_02",
+   "dims_m": [
+    2.13,
+    2.71,
+    2.47
+   ],
+   "src_tris": 29564,
+   "hi_tris": 495,
+   "lo_tris": 80,
+   "tex": 512
+  },
+  "boulder3": {
+   "asset": "namaqualand_boulder_03",
+   "dims_m": [
+    2.41,
+    3.07,
+    1.47
+   ],
+   "src_tris": 64826,
+   "hi_tris": 260,
+   "lo_tris": 80,
+   "tex": 512
+  }
+ },
+ "texture_estimate": {
+  "glb_images_kb": {
+   "T_falls_turf_n": 432,
+   "T_falls_gravel_n": 371,
+   "T_leaf_green": 335,
+   "T_falls_gravel": 263,
+   "T_falls_foliage": 214,
+   "T_falls_turf": 206,
+   "T_scan_cliff2_d": 146,
+   "T_scan_cliff1_d": 113,
+   "T_falls_rock_base_d": 111,
+   "T_scan_cliff2_n": 90,
+   "T_falls_rock_base_n": 82,
+   "T_bark": 75,
+   "T_falls_slab_d": 74,
+   "T_scan_cliff1_n": 69,
+   "T_scan_boulder3_d": 63,
+   "T_scan_boulder1_n": 53,
+   "T_scan_face2_d": 53,
+   "T_scan_boulder1_d": 52,
+   "T_scan_boulder3_n": 43,
+   "T_scan_face2_n": 24
+  },
+  "macro_webp_kb": 67,
+  "rock_textures_kb": 1041,
+  "glb_total_kb": 3634,
+  "geometry_json_kb": 766,
+  "note": "Rock set (scan albedo + normal per asset, tiled backing, slab, macro) ~1041 KB as WebP q80 (the GLB as exported 3634 KB vs round 3's 3443 KB; ground / foliage / tree maps unchanged from round 3 are ~1.9 MB of it). For the 1.6 MB waterfall.glb target W3 must shrink both: rock at 512 (scan albedo + normal, backing) is ~437 KB; ground normals turf_n / gravel_n at 512 or KTX2 save ~0.6 MB; geometry (Draco) is ~766 KB."
+ },
+ "falls_shape_check": "python falls_shape.py --check: 44/44 ok (exit 0)",
  "contract_changes": {
-  "M_falls_rock": "adds T_falls_rock_macro (UV2, RGBA: RGB colour x2 with 0.5 = x1, A relief height 0.5 = 0, 1 unit = 0.3 m) and T_falls_rock_macro_n (GL normal in UV2 tangent space); albedo = T_falls_rock(UV0) x macro.rgb x 2, then the Col masks as before. UV0 is now projected per face (box), 4 m tile.",
-  "Col masks": "same meaning (R moss, G wet, B streak, A lichen) but sampled only at the corners of the merged planar faces (coarse); lichen/streak/ledge-moss detail now lives in the macro map.",
-  "rock kit": "inst__falls_rock_k (k 0..6) now uses M_falls_slab (no UV2); no blocks stuck on the cliff any more (bank boulders, shallows, talus only).",
-  "plants": "veg__falls_plants (both tiers) + veg__falls_plants_hi (high only), material M_leaf_falls_plants (T_falls_foliage, alpha-cut MASK 0.5, double-sided, same rules as M_leaf_*). Custom per-vertex normals.",
-  "trees": "new inst__falls_tree_k (k 0..5) instances, materials M_falls_bark (T_bark) + M_leaf_green (T_leaf_green, village atlas).",
-  "tiers": "objects with extras.tier = \"high\" are dropped on the low tier (export_extras on); falls_rock_lod1/falls_flank_lod1 carry tier = \"low\".",
-  "shape": "face_x_detailed: groove core (|z-channel| < 2.4) exactly face_x, 2.4..3.8 cut inward only; plunge zone below the ledge cut inward only; 0.5 m off the camera wall. W0 --check: 44/44 ok."
+  "falls_rock_lod0/lod1": "one mesh per tier, 5 material slots: 0 M_falls_rock (backing face, tiled scan texture T_falls_rock_base_d/_n 512), 1..4 M_falls_scan_<cliff2|cliff1|face2|boulder3> (UV0 = each scan's own baked albedo + GL normal map, 1024 for cliff2/cliff1, 512 for face2/boulder3). All slots: UV2 = the face's (z, y) square, T_falls_rock_macro RGB x2 (0.5 = x1) - now RGB only, no relief alpha, T_falls_rock_macro_n dropped. 'Col' R moss (up-facing, damp), G wet (darker + glossier); B and A are 0 (streaks / lichen live in the macro). Materials are double-sided (glTF doubleSided): the scan shells are closed, but the contract clamps cut a few open.",
+  "W3 lightmap": "UV2 is a planar (z, y) projection and the stacked scan pieces OVERLAP in it (side / under faces share texels with the faces in front). It stays right for the macro colour map, but W3 must bake the cliff's lightmap into its own non-overlapping UV (e.g. a UV3 lightmap pack of falls_rock_lod*), or bake AO into vertex colours.",
+  "rock kit": "inst__falls_rock_k is now k = 0..3 (was 0..6): scan boulders (0 boulder3 lo, 1 boulder1 lo, 2 boulder3 hi, 3 boulder1 hi) with M_falls_boulder_boulder3 / _boulder1 (same textures as the scan materials, no macro). Mesh origin = bbox centre.",
+  "slabs/seats/cobbles": "M_falls_slab now T_falls_slab_d (512, low-contrast grade of the lichen_rock scan) + T_falls_rock_base_n. Tops unchanged.",
+  "dropped textures": "T_falls_rock, T_falls_rock_n, T_falls_rock_macro_n, T_falls_slab, T_falls_slab_n (round-3 procedural)",
+  "W2 water": "groove core (|z - channel z| < 2.4 m above the ledge): the backing face is face_x minimised over each grid cell, so the drawn rock is never in front of face_x (raycast: <= 0.010 m lod0 / 0.023 m lod1 out) and at most 1.46 / 2.06 m behind it in W0's narrow cracks and sheet steps (cut inward only). Band 2.4-3.8 m and the plunge zone (|z - lip z| < 7.5 m below the ledge): no vertex out of face_x (pieces stop 3 cm behind it; triangles that would bridge the concave groove / alcove are dropped). W2's sheets can keep sitting on face_x.",
+  "W4 runtime / W5 walk": "no change: layout numbers, pocket ground 0, slabs 0.02-0.04, seats 0.42, camera wall gap >= 0.5 m all hold.",
+  "W6 village": "no change: site box, seam heights, flank / ground meshes as round 3 (flank grid coarser, same surface).",
+  "tiers": "falls_rock_lod1 = the lo LOD of every scan piece + a coarser backing face (low tier); trees 30 (every 4th on low)."
  }
 }
