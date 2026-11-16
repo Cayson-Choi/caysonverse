@@ -1,6 +1,7 @@
 import { BufferGeometry, Float32BufferAttribute, Uint16BufferAttribute, Uint32BufferAttribute } from "three";
 import { TUFT, linearHex } from "./flowerPlacement";
 import { mulberry32 } from "./vegRandom";
+import { SOLID_UV } from "./plantCells";
 import type { Vec3 } from "./vegLod";
 
 /**
@@ -13,11 +14,12 @@ import type { Vec3 } from "./vegLod";
  *    colour) multiplies it: 1 on petals, 0 on leaves, stems and the dark blotches and eyes that keep their own colour;
  *  - `aWind`: how far the vertex moves in the wind (0 at the ground, 1 at the top of the plant);
  *  - `aLight`: 1 (the instance's light multiplies it; the twigs carry their own light here instead);
- *  - `uv`: only the cherry's blossom pieces use a texture (the procedural atlas, vegAtlas.ts).
+ *  - `uv`: the cherry's blossom pieces use the blossom atlas (vegAtlas.ts); the grass tufts the plant atlas's white
+ *    cell (they are drawn with the bedding plants, vegPlants.ts / vegPlantAtlas.ts).
  * Sizes are real: metres, a petunia mound 25-30 cm across, its flowers 5-6 cm.
  */
 
-type Rgba = [number, number, number, number];
+export type Rgba = [number, number, number, number];
 
 const sub = (a: Vec3, b: Vec3): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 const add = (a: Vec3, b: Vec3): Vec3 => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
@@ -29,7 +31,7 @@ const norm = (a: Vec3): Vec3 => {
   return [a[0] / l, a[1] / l, a[2] / l];
 };
 /** Two unit vectors perpendicular to `n` (and each other). */
-function basis(n: Vec3): [Vec3, Vec3] {
+export function basis(n: Vec3): [Vec3, Vec3] {
   const helper: Vec3 = Math.abs(n[1]) < 0.9 ? [0, 1, 0] : [1, 0, 0];
   const t = norm(cross(helper, n));
   const b = cross(n, t);
@@ -41,7 +43,7 @@ export const rgba = (hex: string, tint = 0, k = 1): Rgba => {
   const c = linearHex(hex);
   return [c[0] * k, c[1] * k, c[2] * k, tint];
 };
-const mix = (a: Rgba, b: Rgba, t: number): Rgba => [
+export const mix = (a: Rgba, b: Rgba, t: number): Rgba => [
   a[0] + (b[0] - a[0]) * t,
   a[1] + (b[1] - a[1]) * t,
   a[2] + (b[2] - a[2]) * t,
@@ -59,6 +61,8 @@ export class GeoBuilder {
   readonly idx: number[] = [];
   /** Wind weight given to vertices by height (m) when no weight is passed: y / windHeight. */
   windHeight = 0.3;
+  /** The uv of vertices given none (the plant atlas's white cell for the plants: plantCells.SOLID_UV). */
+  defaultUv: [number, number] = [0.5, 0.5];
 
   get vertexCount(): number {
     return this.pos.length / 3;
@@ -67,7 +71,7 @@ export class GeoBuilder {
     return this.idx.length / 3;
   }
 
-  v(p: Vec3, n: Vec3, c: Rgba, uv: [number, number] = [0.5, 0.5], wind?: number, light = 1): number {
+  v(p: Vec3, n: Vec3, c: Rgba, uv: [number, number] = this.defaultUv, wind?: number, light = 1): number {
     this.pos.push(p[0], p[1], p[2]);
     const nn = norm(n);
     this.nrm.push(nn[0], nn[1], nn[2]);
@@ -216,7 +220,7 @@ export function tube(b: GeoBuilder, pts: Vec3[], radii: number[], sides: number,
       const a = (s / sides) * Math.PI * 2;
       const nrm = add(mul(tx, Math.cos(a)), mul(ty, Math.sin(a)));
       const p = add(pts[i]!, mul(nrm, radii[i]!));
-      ring.push(b.v(p, nrm, colour(t, nrm[1]), [0.5, 0.5], wind ? wind(t) : undefined, light ? light(p, nrm) : 1));
+      ring.push(b.v(p, nrm, colour(t, nrm[1]), b.defaultUv, wind ? wind(t) : undefined, light ? light(p, nrm) : 1));
     }
     rings.push(ring);
   }
@@ -231,303 +235,7 @@ export function tube(b: GeoBuilder, pts: Vec3[], radii: number[], sides: number,
   }
 }
 
-/** A low dome (the shaded heart of a mound, so no soil shows through it): `segs` around, one ring. */
-function dome(b: GeoBuilder, centre: Vec3, r: number, h: number, segs: number, colour: Rgba, top: Rgba): void {
-  const apex = b.v(add(centre, [0, h, 0]), [0, 1, 0], top, [0.5, 0.5], 0.3);
-  const ring: number[] = [];
-  const mid: number[] = [];
-  for (let s = 0; s < segs; s++) {
-    const a = (s / segs) * Math.PI * 2;
-    const dx = Math.cos(a);
-    const dz = Math.sin(a);
-    ring.push(b.v(add(centre, [dx * r, 0, dz * r]), [dx, 0.3, dz], colour, [0.5, 0.5], 0));
-    mid.push(b.v(add(centre, [dx * r * 0.75, h * 0.7, dz * r * 0.75]), [dx, 0.8, dz], mix(colour, top, 0.5), [0.5, 0.5], 0.2));
-  }
-  for (let s = 0; s < segs; s++) {
-    const s1 = (s + 1) % segs;
-    b.tri(ring[s]!, mid[s]!, mid[s1]!);
-    b.tri(ring[s]!, mid[s1]!, ring[s1]!);
-    b.tri(mid[s]!, apex, mid[s1]!);
-  }
-}
-
-/**
- * A petunia flower: a funnel (the throat 0.9 r deep) opening into five fused, wavy lobes; the throat darker, the veins
- * between the lobes darker (the star), the lobes' rims the flower's colour. 20 triangles; `simple`: a 5-triangle cup.
- */
-function petunia(b: GeoBuilder, at: Vec3, face: Vec3, r: number, roll: number, simple = false): void {
-  const f = norm(face);
-  const [t0, b0] = basis(f);
-  const throat = rgba("#E8D873", 0.35, 0.55); // a pale yellow throat, half tinted, darker
-  const vein = rgba("#FFFFFF", 1, 0.62);
-  const lobe = rgba("#FFFFFF", 1, 1);
-  const T = b.v(sub(at, mul(f, r * (simple ? 0.35 : 0.9))), f, throat);
-  if (simple) {
-    const rim: number[] = [];
-    for (let k = 0; k < 5; k++) {
-      const a = roll + (k / 5) * Math.PI * 2;
-      const dir = add(mul(t0, Math.cos(a)), mul(b0, Math.sin(a)));
-      rim.push(b.v(add(at, mul(dir, r)), add(f, mul(dir, 0.4)), lobe));
-    }
-    for (let k = 0; k < 5; k++) b.tri(T, rim[k]!, rim[(k + 1) % 5]!);
-    return;
-  }
-  const mid: number[] = [];
-  const rim: number[] = [];
-  for (let k = 0; k < 5; k++) {
-    const a = roll + (k / 5) * Math.PI * 2;
-    const dir = add(mul(t0, Math.cos(a)), mul(b0, Math.sin(a)));
-    mid.push(b.v(add(sub(at, mul(f, r * 0.42)), mul(dir, r * 0.38)), add(f, mul(dir, -0.3)), mix(throat, vein, 0.55)));
-  }
-  for (let k = 0; k < 10; k++) {
-    const a = roll + (k / 10) * Math.PI * 2;
-    const dir = add(mul(t0, Math.cos(a)), mul(b0, Math.sin(a)));
-    const isLobe = k % 2 === 0;
-    const rr = r * (isLobe ? 1 : 0.84);
-    // the rim turns back a little, and the lobes wave
-    const lift = r * (isLobe ? 0.12 : 0.02) * (k % 4 === 0 ? 1 : 0.6);
-    rim.push(b.v(add(add(at, mul(dir, rr)), mul(f, lift)), add(f, mul(dir, 0.25)), isLobe ? lobe : vein));
-  }
-  for (let k = 0; k < 5; k++) {
-    const k1 = (k + 1) % 5;
-    b.tri(T, mid[k]!, mid[k1]!);
-    b.tri(mid[k]!, rim[2 * k]!, rim[2 * k + 1]!);
-    b.tri(mid[k]!, rim[2 * k + 1]!, mid[k1]!);
-    b.tri(mid[k1]!, rim[2 * k + 1]!, rim[(2 * k + 2) % 10]!);
-  }
-}
-
-/**
- * A pansy / viola face: five rounded, slightly cupped petals (two upper, two side, the broad lower one) round a
- * yellow eye, the lower three with a dark blotch at the base. 25 triangles; `simple`: one 6-triangle disc.
- */
-function pansy(b: GeoBuilder, at: Vec3, face: Vec3, r: number, roll: number, simple = false): void {
-  const f = norm(face);
-  const [t0, b0] = basis(f);
-  const eye = rgba("#F2C21B", 0, 1);
-  const blotch = rgba("#2A1530", 0.15, 1);
-  const petal = rgba("#FFFFFF", 1, 1);
-  const petalBase = rgba("#FFFFFF", 1, 0.8);
-  const C = b.v(add(at, mul(f, -r * 0.08)), f, eye);
-  const dirAt = (a: number) => add(mul(t0, Math.cos(a + roll)), mul(b0, Math.sin(a + roll)));
-  if (simple) {
-    const rim: number[] = [];
-    for (let k = 0; k < 6; k++) {
-      const a = (k / 6) * Math.PI * 2;
-      rim.push(b.v(add(at, mul(dirAt(a), r * (k === 4 ? 1.1 : 0.9))), f, petal));
-    }
-    for (let k = 0; k < 6; k++) b.tri(C, rim[k]!, rim[(k + 1) % 6]!);
-    return;
-  }
-  // petals: [centre angle, half width (rad), length x r, blotch]; up is +pi/2 in the face's plane
-  const petals: Array<[number, number, number, boolean]> = [
-    [Math.PI / 2 + 0.55, 0.62, 1.0, false],
-    [Math.PI / 2 - 0.55, 0.62, 1.0, false],
-    [Math.PI + 0.25, 0.6, 0.9, true],
-    [-0.25, 0.6, 0.9, true],
-    [-Math.PI / 2, 0.85, 1.05, true],
-  ];
-  for (const [ca, hw, L, hasBlotch] of petals) {
-    // the inner part as wide as the rim: neighbouring petals overlap round the eye, as real ones do (no gaps)
-    const mids = [ca - hw * 1.05, ca + hw * 1.05].map((a) =>
-      b.v(add(at, mul(dirAt(a), r * 0.42 * L)), f, hasBlotch ? blotch : petalBase),
-    );
-    const rims = [-1, -0.35, 0.35, 1].map((s) => {
-      const a = ca + hw * s;
-      const rr = r * L * (1 - 0.12 * s * s);
-      // cupped: the rim comes forward
-      return b.v(add(add(at, mul(dirAt(a), rr)), mul(f, r * 0.14)), add(f, mul(dirAt(a), -0.2)), petal);
-    });
-    b.tri(C, mids[0]!, mids[1]!);
-    b.tri(mids[0]!, rims[0]!, rims[1]!);
-    b.tri(mids[0]!, rims[1]!, mids[1]!);
-    b.tri(mids[1]!, rims[1]!, rims[2]!);
-    b.tri(mids[1]!, rims[2]!, rims[3]!);
-  }
-}
-
-/**
- * A grape hyacinth (muscari) spike: a tapered column of small bells (radius bumps), dark blue at the base to lighter at
- * the tip, the topmost bells pale. `sides` 6 x `rings` 6 (60 triangles) or 4 x 3 (simple).
- */
-function spike(b: GeoBuilder, base: Vec3, dir: Vec3, length: number, r: number, simple = false): void {
-  const d = norm(dir);
-  const sides = simple ? 3 : 5;
-  const rings = simple ? 1 : 4;
-  const pts: Vec3[] = [];
-  const radii: number[] = [];
-  for (let i = 0; i <= rings; i++) {
-    const t = i / rings;
-    pts.push(add(base, mul(d, length * t)));
-    const bump = simple ? 1 : 1 + 0.22 * Math.cos(t * Math.PI * rings);
-    radii.push(i === rings ? r * 0.25 : r * (1 - 0.45 * t) * bump);
-  }
-  tube(b, pts, radii, sides, (t) => (t > 0.85 ? rgba("#E7EAF8", 0.35, 1) : mix(rgba("#FFFFFF", 1, 0.55), rgba("#FFFFFF", 1, 1.05), t)));
-}
-
-/**
- * A tulip: a stem, a cup of six petals (three outer, three inner, curving in at the top), two broad leaves.
- * 52 triangles + stem and leaves; `simple`: a 3-petal cup.
- */
-function tulip(b: GeoBuilder, base: Vec3, height: number, lean: Vec3, r: number, roll: number, simple = false): void {
-  const top = add(add(base, [0, height, 0]), mul(lean, height));
-  const stem = rgba("#6E9A3E");
-  tube(b, [base, add(add(base, [0, height * 0.55, 0]), mul(lean, height * 0.4)), top], [0.004, 0.0035, 0.004], 3, () => stem);
-  const up = norm(add([0, 1, 0], mul(lean, 0.8)));
-  const [t0, b0] = basis(up);
-  const petalBase = rgba("#C8C25A", 0.4, 0.75);
-  const petal = rgba("#FFFFFF", 1, 1);
-  const n = simple ? 3 : 6;
-  for (let k = 0; k < n; k++) {
-    const a = roll + (k / n) * Math.PI * 2 + (k % 2 ? 0.15 : 0);
-    const dir = add(mul(t0, Math.cos(a)), mul(b0, Math.sin(a)));
-    const side = norm(cross(up, dir));
-    const inner = k % 2 === 1;
-    const rr = r * (inner ? 0.88 : 1);
-    const h = r * 2.3 * (inner ? 0.95 : 1);
-    const p0 = top;
-    // the petal: narrow base, broad belly, a rounded tip curving back in
-    const mid = add(add(top, mul(up, h * 0.45)), mul(dir, rr * 1.05));
-    const tip = add(add(top, mul(up, h)), mul(dir, rr * 0.72));
-    const w1 = rr * (simple ? 1.1 : 0.85);
-    const w2 = rr * 0.55;
-    const nOut = dir;
-    const v0 = b.v(p0, nOut, petalBase);
-    const ml = b.v(add(mid, mul(side, -w1)), add(nOut, mul(side, -0.5)), mix(petalBase, petal, 0.6));
-    const mr = b.v(add(mid, mul(side, w1)), add(nOut, mul(side, 0.5)), mix(petalBase, petal, 0.6));
-    const mm = b.v(add(mid, mul(dir, rr * 0.12)), nOut, petal);
-    const tl = b.v(add(tip, mul(side, -w2)), nOut, petal);
-    const tr = b.v(add(tip, mul(side, w2)), nOut, petal);
-    const tt = b.v(add(add(tip, mul(up, rr * 0.25)), mul(dir, -rr * 0.05)), nOut, petal);
-    b.tri(v0, ml, mm);
-    b.tri(v0, mm, mr);
-    b.tri(ml, tl, mm);
-    b.tri(mm, tl, tt);
-    b.tri(mm, tt, tr);
-    b.tri(mm, tr, mr);
-  }
-}
-
-// ─────────────────────────────────────────────── plants ───────────────────────────────────────────────
-
-/** A species' two meshes: the full plant (near) and the simple one (mid and far). */
-export interface SpeciesMeshes {
-  lod0: BufferGeometry;
-  lod1: BufferGeometry;
-}
-
-/** A petunia mound, 25-30 cm across and 15-20 cm high: a dark core, 10 leaves, 7 trumpet flowers on its surface. */
-export function petuniaPlant(simple: boolean, seed = 1): BufferGeometry {
-  const b = new GeoBuilder();
-  b.windHeight = 0.2;
-  const rand = mulberry32(seed);
-  dome(b, [0, 0, 0], simple ? 0.14 : 0.13, simple ? 0.14 : 0.11, simple ? 6 : 8, LEAF.dark, LEAF.mid);
-  const leaves = simple ? 5 : 14;
-  for (let i = 0; i < leaves; i++) {
-    const a = (i / leaves) * Math.PI * 2 + rand() * 0.5;
-    const el = 0.25 + rand() * 0.6;
-    const dir: Vec3 = [Math.cos(a) * Math.cos(el), Math.sin(el), Math.sin(a) * Math.cos(el)];
-    const base: Vec3 = [Math.cos(a) * 0.05, 0.03 + rand() * 0.07, Math.sin(a) * 0.05];
-    leaf(b, base, dir, [0, 1, 0], simple ? 0.14 : 0.095 + rand() * 0.035, simple ? 0.09 : 0.055, { detail: simple ? 0 : 1, droop: 0.3 });
-  }
-  const flowers = simple ? 7 : 10;
-  for (let i = 0; i < flowers; i++) {
-    const a = (i / flowers) * Math.PI * 2 + rand() * 0.7;
-    const el = i === 0 ? 1.3 : 0.35 + rand() * 0.75;
-    const out: Vec3 = [Math.cos(a) * Math.cos(el), Math.sin(el), Math.sin(a) * Math.cos(el)];
-    const at: Vec3 = [out[0] * 0.15, 0.05 + out[1] * 0.12, out[2] * 0.15];
-    const face = norm(add(out, [0, 0.55, 0]));
-    petunia(b, at, face, simple ? 0.042 : 0.03 + rand() * 0.007, rand() * 6.28, simple);
-  }
-  return b.build();
-}
-
-/** A pansy rosette (15-18 cm): 8 spreading leaves, 5 faces held up on short stalks toward the light. */
-export function pansyPlant(simple: boolean, seed = 2): BufferGeometry {
-  const b = new GeoBuilder();
-  b.windHeight = 0.16;
-  const rand = mulberry32(seed);
-  const leaves = simple ? 5 : 11;
-  for (let i = 0; i < leaves; i++) {
-    const a = (i / leaves) * Math.PI * 2 + rand() * 0.4;
-    const el = 0.2 + rand() * 0.5;
-    leaf(b, [0, 0.01 + rand() * 0.03, 0], [Math.cos(a) * Math.cos(el), Math.sin(el), Math.sin(a) * Math.cos(el)], [0, 1, 0], simple ? 0.12 : 0.08 + rand() * 0.03, simple ? 0.07 : 0.048, {
-      detail: simple ? 0 : 1,
-      droop: 0.35,
-      colour: { rib: rgba("#6C9A3C"), edge: rgba("#3F6E25"), base: rgba("#2E5419") },
-    });
-  }
-  const flowers = simple ? 5 : 8;
-  const stem = rgba("#5B8A33");
-  for (let i = 0; i < flowers; i++) {
-    const a = (i / flowers) * Math.PI * 2 + rand() * 0.8;
-    const rr = 0.02 + rand() * 0.07;
-    const h = 0.08 + rand() * 0.08;
-    const at: Vec3 = [Math.cos(a) * rr, h, Math.sin(a) * rr];
-    if (!simple) tube(b, [[Math.cos(a) * 0.01, 0, Math.sin(a) * 0.01], sub(at, [0, 0.008, 0])], [0.0022, 0.0018], 3, () => stem);
-    // faces look up and out (toward the sun's side a little)
-    const face = norm([Math.cos(a) * 0.55 + 0.15, 0.85, Math.sin(a) * 0.55 - 0.1]);
-    pansy(b, at, face, simple ? 0.034 : 0.026 + rand() * 0.007, (rand() - 0.5) * 0.4, simple);
-  }
-  return b.build();
-}
-
-/** A clump of grape hyacinths: 6 arching strap leaves, 3-4 spikes on stalks 10-16 cm. */
-export function muscariPlant(simple: boolean, seed = 3): BufferGeometry {
-  const b = new GeoBuilder();
-  b.windHeight = 0.18;
-  const rand = mulberry32(seed);
-  const leaves = simple ? 4 : 8;
-  for (let i = 0; i < leaves; i++) {
-    const a = (i / leaves) * Math.PI * 2 + rand() * 0.6;
-    const el = 0.65 + rand() * 0.4;
-    leaf(b, [0, 0, 0], [Math.cos(a) * Math.cos(el), Math.sin(el), Math.sin(a) * Math.cos(el)], [0, 1, 0], 0.15 + rand() * 0.05, 0.012, {
-      strap: true,
-      detail: 0, // 1.2 cm wide straps: the fold does not show
-      droop: 0.5,
-      fold: 0.6,
-      colour: { rib: rgba("#7FA84B"), edge: rgba("#557F2E"), base: rgba("#3B6020") },
-    });
-  }
-  const spikes = simple ? 4 : 6;
-  const stalk = rgba("#6E9A42");
-  for (let i = 0; i < spikes; i++) {
-    const a = (i / spikes) * Math.PI * 2 + rand() * 0.9;
-    const rr = 0.01 + rand() * 0.04;
-    const h = 0.08 + rand() * 0.07;
-    const lean: Vec3 = [Math.cos(a) * 0.15, 1, Math.sin(a) * 0.15];
-    const sbase: Vec3 = [Math.cos(a) * rr, h, Math.sin(a) * rr];
-    if (!simple) tube(b, [[Math.cos(a) * 0.006, 0, Math.sin(a) * 0.006], sbase], [0.0022, 0.002], 3, () => stalk);
-    spike(b, sbase, lean, simple ? 0.06 : 0.045 + rand() * 0.015, simple ? 0.014 : 0.011, simple);
-  }
-  return b.build();
-}
-
-/** Two or three tulips (stems 25-35 cm), each with two broad leaves. */
-export function tulipPlant(simple: boolean, seed = 4): BufferGeometry {
-  const b = new GeoBuilder();
-  b.windHeight = 0.35;
-  const rand = mulberry32(seed);
-  const n = simple ? 2 : 3;
-  for (let i = 0; i < n; i++) {
-    const a = (i / n) * Math.PI * 2 + rand() * 0.8;
-    const at: Vec3 = [Math.cos(a) * 0.05, 0, Math.sin(a) * 0.05];
-    const lean: Vec3 = [Math.cos(a) * 0.08, 0, Math.sin(a) * 0.08];
-    for (let k = 0; k < (simple ? 1 : 2); k++) {
-      const la = a + (k ? 2.4 : -0.7) + rand() * 0.5;
-      const el = 0.9 + rand() * 0.35;
-      leaf(b, at, [Math.cos(la) * Math.cos(el), Math.sin(el), Math.sin(la) * Math.cos(el)], [0, 1, 0], 0.17 + rand() * 0.05, 0.045, {
-        strap: true,
-        detail: simple ? 0 : 1,
-        droop: 0.45,
-        fold: 0.5,
-        colour: { rib: rgba("#8AAE62"), edge: rgba("#5E8A4A"), base: rgba("#46703A") },
-      });
-    }
-    tulip(b, at, 0.26 + rand() * 0.1, lean, simple ? 0.026 : 0.021, rand() * 6.28, simple);
-  }
-  return b.build();
-}
+// ─────────────────── grass and reeds (the bedding plants and the bushes: vegPlants.ts, 2026-11-16) ───────────────────
 
 /**
  * A tuft of grass (or a clump of reeds by the water): blades rising from one root, spreading and arching out, each a
@@ -536,6 +244,7 @@ export function tulipPlant(simple: boolean, seed = 4): BufferGeometry {
  */
 export function grassTuft(simple: boolean, kind: "grass" | "reed" = "grass", seed = 31): BufferGeometry {
   const b = new GeoBuilder();
+  b.defaultUv = SOLID_UV; // drawn with the plants (the plant atlas's white cell)
   const { h: H, r: R } = TUFT[kind];
   b.windHeight = H;
   const rand = mulberry32(seed + (kind === "reed" ? 7 : 0));
@@ -589,18 +298,6 @@ export function grassTuft(simple: boolean, kind: "grass" | "reed" = "grass", see
     b.tri(c!, r!, tip);
   }
   return b.build();
-}
-
-/** Every species' meshes, in `SPECIES` order (the four flowers, then the meadow's grass tufts and the reeds). */
-export function speciesMeshes(): SpeciesMeshes[] {
-  return [
-    { lod0: petuniaPlant(false), lod1: petuniaPlant(true) },
-    { lod0: pansyPlant(false), lod1: pansyPlant(true) },
-    { lod0: muscariPlant(false), lod1: muscariPlant(true) },
-    { lod0: tulipPlant(false), lod1: tulipPlant(true) },
-    { lod0: grassTuft(false, "grass"), lod1: grassTuft(true, "grass") },
-    { lod0: grassTuft(false, "reed"), lod1: grassTuft(true, "reed") },
-  ];
 }
 
 // ─────────────────────────────────────────────── green canopy ───────────────────────────────────────────────
@@ -715,76 +412,6 @@ export function willowSpray(level: 0 | 1 | 2, seed = 23): BufferGeometry {
     });
   }
   return b.build();
-}
-
-/**
- * A round bush (instanced, scaled to each bush): a dense dark heart (a squashed ellipsoid sitting on the ground, so no
- * light shows through) covered all over by short leafy sprigs growing out of it. Unit size: radius 1 in x and z at
- * scale 1, 1 high, its base at y 0. Level 0: 230 sprigs of 4 folded leaves; level 1: 160 sprigs of 2 diamonds;
- * level 2: the heart and 24 leaves.
- */
-export function bushGeometry(level: 0 | 1 | 2, seed = 29): BufferGeometry {
-  const b = new GeoBuilder();
-  b.windHeight = 1.4;
-  const rand = mulberry32(seed + level * 17);
-  const heart = rgba("#2A501E", 1);
-  const heartTop = rgba("#41702A", 1);
-  // the heart: an ellipsoid round (0, 0.5, 0), radii 0.84 / 0.47, its bottom cut flat at the ground
-  const segs = [10, 8, 6][level]!;
-  const rings = [6, 5, 4][level]!;
-  const ring: number[][] = [];
-  for (let j = 0; j <= rings; j++) {
-    const v = -0.92 + (j / rings) * 1.92; // sin of the latitude, from just above the bottom to the top
-    const lat = Math.asin(Math.max(-1, Math.min(1, v)));
-    const y = 0.5 + Math.sin(lat) * 0.47;
-    const r = Math.cos(lat) * 0.84;
-    const row: number[] = [];
-    for (let i = 0; i < segs; i++) {
-      const a = (i / segs) * Math.PI * 2;
-      const n = norm([Math.cos(a) * Math.cos(lat), Math.sin(lat) * 1.6, Math.sin(a) * Math.cos(lat)]);
-      row.push(b.v([Math.cos(a) * r, Math.max(0.01, y), Math.sin(a) * r], n, mix(heart, heartTop, j / rings), [0.5, 0.5], 0));
-    }
-    ring.push(row);
-  }
-  for (let j = 0; j < rings; j++)
-    for (let i = 0; i < segs; i++) {
-      const i1 = (i + 1) % segs;
-      b.tri(ring[j]![i]!, ring[j + 1]![i]!, ring[j + 1]![i1]!);
-      b.tri(ring[j]![i]!, ring[j + 1]![i1]!, ring[j]![i1]!);
-    }
-  // sprigs: a Fibonacci sphere over the ellipsoid, the lowest band left out (the bush sits on the ground)
-  const count = [230, 160, 24][level]!;
-  const per = [4, 2, 1][level]!;
-  for (let k = 0; k < count; k++) {
-    const yN = 1 - ((k + 0.5) / count) * 1.75; // 1 .. -0.75
-    const rr = Math.sqrt(Math.max(0, 1 - yN * yN));
-    const a = k * 2.39996;
-    const n: Vec3 = norm([Math.cos(a) * rr, yN * 1.7, Math.sin(a) * rr]);
-    // a lumpy outline, not a ball: the sprigs stand out further on some sides
-    // (on the heart's surface, never inside it)
-    const lump = 1.06 + 0.05 * Math.sin(3 * a + 2 * yN) + 0.03 * Math.sin(5 * a - 3 * yN);
-    const at: Vec3 = [Math.cos(a) * rr * 0.84 * lump, 0.5 + yN * 0.47 * lump, Math.sin(a) * rr * 0.84 * lump];
-    for (let q = 0; q < per; q++) {
-      // the leaves lie over the bush like scales (along its surface, a little out), their blades facing out
-      const t = perpendicularOf(n, rand() * Math.PI * 2);
-      const dir = norm(add(add(t, mul(n, 0.5)), [0, 0.15, 0]));
-      const up0 = norm(add(n, [0, 0.35, 0]));
-      const up = Math.hypot(...cross(dir, up0)) < 1e-3 ? ([1, 0, 0] as Vec3) : up0;
-      const length = [0.15, 0.2, 0.28][level]! * (0.85 + rand() * 0.3);
-      leaf(b, add(at, mul(t, 0.02 * q)), dir, up, length, length * 0.55, {
-        fold: 0.35,
-        droop: 0.2,
-        detail: level === 0 ? 1 : 0,
-        colour: BROADLEAF[Math.floor(rand() * BROADLEAF.length)]!,
-      });
-    }
-  }
-  return b.build();
-}
-
-function perpendicularOf(n: Vec3, angle: number): Vec3 {
-  const [t, bb] = basis(n);
-  return norm(add(mul(t, Math.cos(angle)), mul(bb, Math.sin(angle))));
 }
 
 // ─────────────────────────────────────────────── cherry ───────────────────────────────────────────────

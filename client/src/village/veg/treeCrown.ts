@@ -111,6 +111,20 @@ export const GREEN_GROW: BroadleafOptions = {
   limbFrom: 0.72,
 };
 
+/**
+ * The plaza zelkova (13.5 m, crown 8.5 m round: a village 정자나무's broad dome). Grown as the greens are, but its crown
+ * is nine times a street green's: far fewer attractors per cubic metre and larger sprays, so its near level costs
+ * about one village green (3,000-odd sprays, not 9,000: 4.1 M triangles in view under it before this was set), and the
+ * twigs reach further between the limbs.
+ */
+export const ZELKOVA_GROW: BroadleafOptions = {
+  ...GREEN_GROW,
+  colonise: { ...GREEN_GROW.colonise, nodeStep: 0.3, maxLen: 1.8, reach: 3.2 },
+  density: 0.8,
+  minAttractors: 400,
+  size: 1.75,
+};
+
 export const YOUNG_GROW: BroadleafOptions = {
   colonise: { attractors: 0, rhoMin: 0.35, rhoSpan: 0.7, nodeStep: 0.12, limbFrom: 0.25, sideFrom: 0.1, maxLen: 0.55, reach: 1.1, maxKids: 3, gap: 0.74 },
   density: 40,
