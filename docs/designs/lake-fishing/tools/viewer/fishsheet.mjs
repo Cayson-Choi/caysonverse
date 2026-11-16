@@ -6,8 +6,9 @@ fs.mkdirSync(outDir, { recursive: true });
 const IDS = ["crucian_carp", "bluegill", "minnow", "prussian_carp", "bass", "carp", "korean_bullhead", "catfish", "mirror_carp", "snakehead", "eel"];
 const { page, close } = await open();
 for (const id of IDS) {
-  for (const [name, cam] of [["side", [-1.55, 0.05, 0]], ["34", [-1.0, 0.55, 0.9]], ["top", [0, 1.7, 0.01]]]) {
-    const url = await page.evaluate(([cfg]) => window.standalone(cfg, 900, 450), [{ src: "fish", node: "fish_" + id, cam, target: [0, 0, 0], fov: 30 }]);
+  // side: near-orthographic (camera 30 m away, fov 2.2 deg) so it overlays the normalized photo 1:1 (1 model unit = 520.8 px)
+  for (const [name, cam, fov, W, H] of [["side", [-30, 0, 0], 2.2, 1200, 600], ["34", [-1.0, 0.45, 0.95], 30, 900, 450], ["top", [0, 30, 0.001], 2.2, 1200, 600], ["front", [-0.35, 0.12, 1.6], 30, 600, 450]]) {
+    const url = await page.evaluate(([cfg, W, H]) => window.standalone(cfg, W, H), [{ src: "fish", node: "fish_" + id, cam, target: [0, 0, 0], fov }, W, H]);
     fs.writeFileSync(`${outDir}/${id}_${name}.png`, Buffer.from(url.split(",")[1], "base64"));
   }
 }

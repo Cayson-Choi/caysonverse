@@ -6,7 +6,7 @@ export const LAKE_GEAR_GLB_HASH = "6c87365a";
 export const LAKE_GEAR_MAX_BYTES = 250 * 1024;
 
 export const LAKE_FISH_PATH = "/models/lake/lake_fish.glb";
-export const LAKE_FISH_GLB_HASH = "2c51a006";
+export const LAKE_FISH_GLB_HASH = "c02adedf";
 export const LAKE_FISH_MAX_BYTES = 600 * 1024;
 
 /**
