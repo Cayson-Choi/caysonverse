@@ -179,7 +179,7 @@ export function buildHouseSigns(boards: readonly HouseBoard[], anisotropy = 4): 
     false,
   )!;
   geo.computeBoundingSphere();
-  const mat = new MeshStandardMaterial({ name: "M_house_boards", map: tex, roughness: 0.42, metalness: 0.35 });
+  const mat = new MeshStandardMaterial({ name: "M_house_boards", map: tex, roughness: 0.5, metalness: 0.15 });
   patchHouseLight(mat, "boards");
   const mesh = new Mesh(geo, mat);
   mesh.name = "house_boards";

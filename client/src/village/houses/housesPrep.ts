@@ -119,7 +119,9 @@ export const HOUSE_LOOK = {
   lampNight: 2.4,
   /** The warm lamp light on the walls near a porch lamp or a street lantern at night (linear RGB x strength). */
   lampLight: [1.0, 0.6, 0.3] as const,
-  lampStrength: 1.4,
+  lampStrength: 2.4,
+  /** Under the moon colours fade (the eye's night vision): the albedo this much toward its grey at full night. */
+  nightDesaturate: 0.45,
   /** A street lantern lights a house within this much of its body (m). */
   lanternReach: 12,
 } as const;
@@ -128,6 +130,8 @@ export const HOUSE_LOOK = {
 
 /** The lamps lighting the houses at night (world), shared by every house material (set by `prepareHouses`). */
 const lampUniform = { value: [new Vector3(0, -100, 0)] as Vector3[] };
+/** How deep in the night it is (DayNightState.night), shared by every house material. */
+const nightUniform = { value: 0 };
 let lampCount = 1;
 
 const HOUSE_FRAG_PARS = (count: number) => /* glsl */ `
@@ -135,7 +139,12 @@ const HOUSE_FRAG_PARS = (count: number) => /* glsl */ `
 uniform vec3 uHouseLamps[ HOUSE_LAMP_COUNT ];
 uniform float uVillageLit;
 uniform vec3 uHouseLampColor;
+uniform float uHouseNight;
 void main() {`;
+
+/** The night's colour fade on the albedo (after the vertex colour is in). */
+const HOUSE_NIGHT_COLOUR = /* glsl */ `#include <color_fragment>
+diffuseColor.rgb = mix( diffuseColor.rgb, vec3( dot( diffuseColor.rgb, vec3( 0.2126, 0.7152, 0.0722 ) ) ), uHouseNight );`;
 
 /** The live sun's shadow on the scene's key light (the sun by day, the moon at night): three's own shadow is off. */
 const HOUSE_LIGHTS_BEGIN = (): string =>
@@ -169,12 +178,14 @@ export function patchHouseLight(m: MeshStandardMaterial, key: string): void {
     shader.uniforms.uHouseLamps = lampUniform;
     shader.uniforms.uVillageLit = litUniform;
     shader.uniforms.uHouseLampColor = { value: lampColour };
+    shader.uniforms.uHouseNight = nightUniform;
     shader.vertexShader = "#define SS_GEO_NORMAL\n" + shader.vertexShader.replace("void main() {", SS_VERTEX_PARS).replace("#include <project_vertex>", SS_VERTEX_WORLD);
     shader.fragmentShader =
       "#define SS_GEO_NORMAL\n" +
       shader.fragmentShader
         .replace("void main() {", SS_FRAGMENT_PARS + HOUSE_FRAG_PARS(lampCount))
         .replace("#include <lights_fragment_begin>", HOUSE_LIGHTS_BEGIN())
+        .replace("#include <color_fragment>", HOUSE_NIGHT_COLOUR)
         .replace("#include <lights_fragment_end>", HOUSE_LAMP_LIGHT);
   };
   m.customProgramCacheKey = () => `village-house-${key}-${lampCount}`;
@@ -290,14 +301,17 @@ export function oldHouseFootprints(houses: readonly SceneryHouse[] = VILLAGE_LAY
     const body = box(h.id);
     if (!body) continue;
     out.push(boxFoot(body, OLD_HOUSE_EAVES, 14));
-    // the porch: the footprint's front strip (from the body to the edge) and the steps out past it
+    // the porch: from the old body to the farther of the old porch's front (A7 porch boxes: houses 7 and 9 stood 1.2 m nearer
+    // the street) and the new footprint's, the footprint's width, and out past that by the new steps' run
     const fp = { minX: h.centre.x - h.size.x / 2, maxX: h.centre.x + h.size.x / 2, minZ: h.centre.z - h.size.z / 2, maxZ: h.centre.z + h.size.z / 2 };
-    const porch: AABB = { ...fp };
+    const old = A7_MODEL_HOUSE_BOXES.filter((b) => b.id.startsWith(`${h.id}_porch_`)).map((b) => b.box);
+    const span = (k: "minX" | "maxX" | "minZ" | "maxZ", pick: (...v: number[]) => number) => pick(fp[k], body[k], ...old.map((b) => b[k]));
+    const porch: AABB = { minX: span("minX", Math.min), maxX: span("maxX", Math.max), minZ: span("minZ", Math.min), maxZ: span("maxZ", Math.max) };
     switch (h.doorSide) {
-      case "s": porch.minZ = body.maxZ; porch.maxZ = fp.maxZ + OLD_PORCH_STEPS; break;
-      case "n": porch.maxZ = body.minZ; porch.minZ = fp.minZ - OLD_PORCH_STEPS; break;
-      case "e": porch.minX = body.maxX; porch.maxX = fp.maxX + OLD_PORCH_STEPS; break;
-      case "w": porch.maxX = body.minX; porch.minX = fp.minX - OLD_PORCH_STEPS; break;
+      case "s": porch.minZ = body.maxZ; porch.maxZ += OLD_PORCH_STEPS; break;
+      case "n": porch.maxZ = body.minZ; porch.minZ -= OLD_PORCH_STEPS; break;
+      case "e": porch.minX = body.maxX; porch.maxX += OLD_PORCH_STEPS; break;
+      case "w": porch.maxX = body.minX; porch.minX -= OLD_PORCH_STEPS; break;
     }
     out.push(boxFoot(porch, 0.25, 4.5, OLD_PORCH_MIN_TOP));
     const garden = box(`garden_${h.id}`);
@@ -661,7 +675,8 @@ export function prepareHouses(scene: Object3D, maps: Record<string, HouseMaps>):
 }
 
 /** Per frame (number writes only): the night's windows, lamps and glass. */
-export function applyHousesDayNight(nodes: HouseNodes, s: Pick<DayNightState, "lights" | "hemiIntensity" | "hemiSky">): void {
+export function applyHousesDayNight(nodes: HouseNodes, s: Pick<DayNightState, "lights" | "night" | "hemiIntensity" | "hemiSky">): void {
+  nightUniform.value = s.night * HOUSE_LOOK.nightDesaturate;
   const g = nodes.glow;
   if (g.window) g.window.emissiveIntensity = s.lights * HOUSE_LOOK.windowGlow;
   if (g.lamp) g.lamp.emissiveIntensity = HOUSE_LOOK.lampDay + (HOUSE_LOOK.lampNight - HOUSE_LOOK.lampDay) * s.lights;

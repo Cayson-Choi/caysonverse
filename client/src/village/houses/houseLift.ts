@@ -74,3 +74,9 @@ export function publishLocalPose(x: number, z: number): void {
 export function getLocalPose(): Readonly<{ x: number; z: number }> {
   return localPose;
 }
+
+/** A house's porch bench seat (`house_N_porch`, the village seat markers; 집 외관 A8): a tap walks there, "앉기" sits. */
+export function isPorchSeat(seat: { bench?: string; id?: string } | undefined | null): boolean {
+  const name = seat?.bench ?? seat?.id;
+  return typeof name === "string" && /^house_\d+_porch$/.test(name);
+}

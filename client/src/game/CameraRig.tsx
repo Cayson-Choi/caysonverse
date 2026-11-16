@@ -75,7 +75,7 @@ import { seatApproachGoal, seatUnderTap, warmSeatApproachGoals } from "./seatTap
 import { seatedEyeOffset, stepSeatedWeight } from "./seatedEye";
 import { setPreferredSeat } from "./seatPreference";
 import { getLocalLift } from "./jump";
-import { getLocalStepLift } from "../village/houses/houseLift";
+import { getLocalStepLift, isPorchSeat } from "../village/houses/houseLift";
 import { useFpCursor } from "./useFpCursor";
 import { useSettingsStore } from "../stores/settingsStore";
 import { getTransitRenderPose } from "../net/transitSync";
@@ -981,7 +981,9 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
         },
       });
       seatOnArrival.current = step.next;
-      if (step.sit !== null) sendSit(step.sit);
+      // The houses' porch benches (집 외관 A8): a tap only walks there; "앉기" / E sits (owner 2026-11-17 "의자를 찍으면 자동 앉기는
+      // 빼줘" — every seat's version of this rule is fix/plaza-bench's; this keeps the porches to it until that lands).
+      if (step.sit !== null && !isPorchSeat((getActiveMap().seats ?? activeSeats())[step.sit] as { bench?: string } | undefined)) sendSit(step.sit);
     }
 
     // ── A door into or out of a building (케이슨 마을, indoorCamera.ts) ── the player was just put somewhere else: the

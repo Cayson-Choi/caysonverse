@@ -5,7 +5,8 @@ import { A7_MODEL_HOUSE_BOXES, A8_TREE_MOVES } from "@caysonverse/shared/village
 import { HOUSE_EXTERIOR_DEFAULT } from "@caysonverse/shared/village/houseOwnership";
 import { VILLAGE_LAYOUT } from "@caysonverse/shared/village/villageLayout";
 import { keypadEntries } from "@caysonverse/shared/village/buildingAccess";
-import { HOUSE_LIFT_EASE_S, HOUSE_LIFT_ZONES, easeLift, porchesDrawn, setPorchesDrawn, stepLiftAt, withSeatLift } from "./houseLift";
+import { HOUSE_LIFT_EASE_S, HOUSE_LIFT_ZONES, easeLift, isPorchSeat, porchesDrawn, setPorchesDrawn, stepLiftAt, withSeatLift } from "./houseLift";
+import { VILLAGE_SEAT_MARKERS } from "@caysonverse/shared/village/benchSeats";
 import {
   OLD_PORCH_STEPS,
   a8TreeShift,
@@ -72,6 +73,19 @@ describe("the porches' picture lift (houseLift.ts, contract ch. 3)", () => {
     expect(withSeatLift(0.3, 0.3)).toBe(0.3);
     expect(withSeatLift(0.3, 0)).toBe(0.3);
     expect(withSeatLift(0, 0.12)).toBe(0.12);
+  });
+});
+
+describe("the porch benches in the seat system (contract ch. 3)", () => {
+  it("houses 2, 9 and 10: id house_N_porch, seat top 0.75, a tap only walks there (isPorchSeat)", () => {
+    const porch = VILLAGE_SEAT_MARKERS.filter((m) => /_porch$/.test(m.id));
+    expect(porch.map((m) => m.id).sort()).toEqual(["house_10_porch", "house_2_porch", "house_9_porch"]);
+    for (const m of porch) {
+      expect(m.seatTop).toBe(0.75);
+      expect(isPorchSeat({ bench: m.id })).toBe(true);
+    }
+    expect(isPorchSeat({ bench: "plaza_bench_3" })).toBe(false);
+    expect(isPorchSeat(undefined)).toBe(false);
   });
 });
 
