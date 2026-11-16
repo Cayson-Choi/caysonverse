@@ -49,6 +49,12 @@ export const MAT = {
   leaf: "M_leaf_green",
 } as const;
 
+/**
+ * W1's macro colour map lies over the cliff's face as the (z, y) rectangle falls_shape.py FACE_Z x FACE_Y (its UV2). W3
+ * drops that UV set from the GLB (bytes) and the rock shader computes it from the world position instead.
+ */
+export const MACRO_RECT = { z0: -98.0, z1: -58.0, y0: -2.6, y1: 41.0 } as const;
+
 /** The old waterfall inside village.glb (kept until the village rebuild, W6): the cliff node and the card material. */
 export const OLD_CLIFF_NODE = "waterfall_cliff";
 export const OLD_CARD_MATERIAL = "M_waterfall";
@@ -82,8 +88,14 @@ export function fallsTierFrom(search: string, dev: boolean, tier: VillageTier): 
 }
 
 export interface FallsTierParams {
-  /** GPU droplets (design 5.2: high 160 / low 48) and mist puffs (28 / 10). */
+  /**
+   * GPU drops (W3, "as real as the fountain": design 5.2's 160 / 48 raised): splash drops thrown up where the water
+   * lands, drops peeling off the falling sheet, and soft churn clouds in the splash zone; mist puffs (28 / 10). Each is
+   * one instanced quad (2 triangles): the high tier's sum is held so the falls stay within 72k triangles.
+   */
   spray: number;
+  peel: number;
+  churn: number;
   mist: number;
   /** Rock detail: LOD1 always on low; LOD0 within `lod0Within` m on high. */
   lod0Within: number;
@@ -99,8 +111,8 @@ export interface FallsTierParams {
 
 export function fallsTierParams(tier: VillageTier): FallsTierParams {
   return tier === "high"
-    ? { spray: 160, mist: 28, lod0Within: 90, waterLayers: 3, detail: true, rainbow: FALLS.options.rainbowTier === "high", maxTexture: 1024 }
-    : { spray: 48, mist: 10, lod0Within: 0, waterLayers: 2, detail: false, rainbow: false, maxTexture: 512 };
+    ? { spray: 200, peel: 136, churn: 32, mist: 28, lod0Within: 90, waterLayers: 3, detail: true, rainbow: FALLS.options.rainbowTier === "high", maxTexture: 1024 }
+    : { spray: 72, peel: 40, churn: 12, mist: 10, lod0Within: 0, waterLayers: 3, detail: false, rainbow: false, maxTexture: 512 };
 }
 
 /** Beyond this distance (m, camera to impact) the spray, mist and sound stop and the cliff is LOD1 (design §6). */

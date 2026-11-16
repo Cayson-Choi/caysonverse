@@ -1,5 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { Mesh, ShaderMaterial, type InstancedBufferGeometry } from "three";
+import {
+  BoxGeometry,
+  DoubleSide,
+  Float32BufferAttribute,
+  Group,
+  Mesh,
+  MeshBasicMaterial,
+  MeshStandardMaterial,
+  ShaderMaterial,
+  Texture,
+  type InstancedBufferGeometry,
+} from "three";
 import { createWaterMaterial } from "../villageWater";
 import { createFallsAudio, fallsGain, brownNoise, FALLS_PEAK } from "./fallsAudio";
 import {
@@ -23,7 +34,7 @@ import {
 } from "./fallsConfig";
 import { patchPool } from "./fallsMaterials";
 import { disposeFalls, prepareFalls } from "./fallsPrep";
-import { dropletSeeds, mistSeeds } from "./fallsSpray";
+import { PARTICLE, buildFallsParticles, mistSeeds, wrapLife } from "./fallsSpray";
 import { createFallsStub, stubFaceX } from "./fallsStub";
 import { flowTextureData, mistAtlasData, MIST_ATLAS_TILES } from "./fallsTextures";
 import { FLAT_SKY_MAPPING, makeRippleTexture } from "../villageWater";
@@ -65,11 +76,13 @@ describe("which falls are drawn (the DEV flag and the build)", () => {
 });
 
 describe("the graphics tiers", () => {
-  it("high has 160 droplets, 28 mist puffs, all water layers and the rainbow; low has 48, 10, two layers and no rainbow", () => {
+  it("high has 200 splash + 136 peel drops, 32 churn clouds, 28 mist puffs and the rainbow; low 72 + 40 + 12, 10, no rainbow", () => {
     const hi = fallsTierParams("high");
     const lo = fallsTierParams("low");
-    expect([hi.spray, hi.mist, hi.waterLayers, hi.rainbow]).toEqual([160, 28, 3, true]);
-    expect([lo.spray, lo.mist, lo.waterLayers, lo.rainbow]).toEqual([48, 10, 2, false]);
+    expect([hi.spray, hi.peel, hi.churn, hi.mist, hi.waterLayers, hi.rainbow]).toEqual([200, 136, 32, 28, 3, true]);
+    expect([lo.spray, lo.peel, lo.churn, lo.mist, lo.waterLayers, lo.rainbow]).toEqual([72, 40, 12, 10, 3, false]);
+    // the particles are quads: the high tier's 2 x (drops + clouds + mist) + the rainbow's 48 triangles stay under 900
+    expect(2 * (hi.spray + hi.peel + hi.churn + hi.mist) + 48).toBeLessThan(900);
     expect(lo.maxTexture).toBeLessThan(hi.maxTexture);
     expect(lo.lod0Within).toBe(0); // the light tier never draws the heavy cliff
   });
@@ -216,19 +229,34 @@ describe("the stand-in textures and seeds", () => {
       }
     }
   });
-  it("seeds droplets and mist the same way every time, in range", () => {
-    const d = dropletSeeds(160);
-    expect(Array.from(d.seeds)).toEqual(Array.from(dropletSeeds(160).seeds));
-    expect(d.seeds).toHaveLength(640);
-    const sheet = Array.from({ length: 160 }, (_, i) => d.extra[i * 4]!).filter((k) => k === 1).length;
-    expect(sheet).toBeGreaterThan(20);
-    expect(sheet).toBeLessThan(80);
-    for (let i = 0; i < 160; i++) {
-      expect(d.seeds[i * 4]).toBeGreaterThanOrEqual(0);
-      expect(d.seeds[i * 4]).toBeLessThan(1.0001);
-      expect(d.extra[i * 4 + 1]).toBeGreaterThan(0.03);
-      expect(d.extra[i * 4 + 2]).toBeGreaterThan(0.7);
+  it("builds the drops the same way every time: splash up from the landing, peel off the sheet, churn in the splash zone", () => {
+    const d = buildFallsParticles(200, 136, 32);
+    expect(Array.from(d.origin)).toEqual(Array.from(buildFallsParticles(200, 136, 32).origin));
+    expect(d.count).toBe(368);
+    const kinds = [0, 0, 0];
+    for (let i = 0; i < d.count; i++) {
+      const kind = d.life[i * 4 + 3]!;
+      kinds[kind]!++;
+      const life = d.life[i * 4]!;
+      // every life divides the wrapped 600 s clock: no jump when it wraps
+      expect(Math.abs(600 / life - Math.round(600 / life))).toBeLessThan(1e-3); // float32
+      expect(d.life[i * 4 + 1]).toBeGreaterThanOrEqual(0);
+      expect(d.life[i * 4 + 1]).toBeLessThan(1);
+      const [ox, oy, oz] = [d.origin[i * 3]!, d.origin[i * 3 + 1]!, d.origin[i * 3 + 2]!];
+      if (kind === PARTICLE.splash) {
+        expect(Math.hypot(ox - FALLS.impact.x, oz - FALLS.impact.z)).toBeLessThan(3.2);
+        expect(d.vel[i * 3 + 1]).toBeGreaterThan(2); // thrown up
+      } else if (kind === PARTICLE.peel) {
+        expect(oy).toBeLessThan(FALLS.lip.y - 1.5); // the lower part of the fall
+        expect(oy).toBeGreaterThan(FALLS.pool.waterY);
+        expect(d.vel[i * 3 + 1]).toBeLessThan(0); // falling with the sheet
+        expect(d.vel[i * 3]).toBeGreaterThan(FALLS.plungeSpeed); // pushed out, away from the rock
+      } else {
+        expect(d.life[i * 4 + 2]).toBeGreaterThan(0.9); // soft clouds a metre or more across
+      }
     }
+    expect(kinds).toEqual([200, 136, 32]);
+    expect(wrapLife(1.37)).toBeCloseTo(600 / 438, 9);
     const m = mistSeeds(28);
     for (let i = 0; i < 28; i++) {
       expect(m.extra[i * 4]).toBeGreaterThanOrEqual(0);
@@ -320,7 +348,7 @@ describe("the stand-in model and its dressing", () => {
     expect(mat(NODE.outlet)).toContain("falls outlet");
     expect(mat(NODE.foam)).toContain("M_falls_foam");
     expect(parts.root.getObjectByName(`${NODE.plunge}2`)!.visible).toBe(true);
-    expect((parts.spray.droplets.geometry as InstancedBufferGeometry).instanceCount).toBe(160);
+    expect((parts.spray.droplets.geometry as InstancedBufferGeometry).instanceCount).toBe(368);
     expect((parts.spray.mist.geometry as InstancedBufferGeometry).instanceCount).toBe(28);
     expect(parts.spray.rainbow).not.toBeNull();
     expect(parts.pools).toHaveLength(2);
@@ -333,14 +361,70 @@ describe("the stand-in model and its dressing", () => {
     disposeFalls(parts);
   });
 
-  it("dresses the light tier: 48 droplets, 10 puffs, two water layers, no rainbow", () => {
+  it("dresses the light tier: 124 drops and clouds, 10 puffs, no rainbow", () => {
     const parts = prepareFalls(createFallsStub(), { tier: "low", sky: null, skyMapping: FLAT_SKY_MAPPING, lightmap: null, poolLift: 0 });
-    expect((parts.spray.droplets.geometry as InstancedBufferGeometry).instanceCount).toBe(48);
+    expect((parts.spray.droplets.geometry as InstancedBufferGeometry).instanceCount).toBe(124);
     expect((parts.spray.mist.geometry as InstancedBufferGeometry).instanceCount).toBe(10);
     expect(parts.spray.rainbow).toBeNull();
-    expect(parts.root.getObjectByName(`${NODE.plunge}2`)!.visible).toBe(false);
     expect(parts.root.getObjectByName(`${NODE.plunge}1`)!.visible).toBe(true);
     disposeFalls(parts);
+  });
+
+  it("dresses waterfall.glb by the art's material kinds (extras `falls`) and draws each tier's own meshes", () => {
+    const model = () => {
+      const root = new Group();
+      const geo = (lm: boolean) => {
+        const g = new BoxGeometry(1, 1, 1);
+        g.setAttribute("color", new Float32BufferAttribute(new Float32Array(g.getAttribute("position").count * 4), 4));
+        if (lm) g.setAttribute("uv1", g.getAttribute("uv").clone());
+        return g;
+      };
+      const std = (name: string, falls: string, macro = false) => {
+        const m = new MeshStandardMaterial({ name, map: new Texture() });
+        m.userData = { falls };
+        if (macro) m.emissiveMap = new Texture();
+        return m;
+      };
+      const add = (name: string, g: BoxGeometry, m: MeshStandardMaterial, tier?: string) => {
+        const mesh = new Mesh(g, m);
+        mesh.name = name;
+        if (tier) mesh.userData = { tier };
+        root.add(mesh);
+      };
+      add(NODE.rockLod0, geo(true), std("M_falls_rock", "stone", true), "high");
+      add(NODE.rockLod1, geo(true), std("M_falls_rock", "stone", true), "low");
+      add("falls_ground", geo(true), std("M_falls_ground", "tint"));
+      add("veg__falls_plants_hi", geo(false), std("M_leaf_falls_plants", "card"), "high");
+      add("falls_lamp_glass", geo(false), std("M_falls_lamp", "lamp"));
+      add(`${NODE.plunge}0`, geo(false), std("M_falls_water", "water"), "high");
+      add(`${NODE.plunge}0_low`, geo(false), std("M_falls_water", "water"), "low");
+      return root;
+    };
+    const lm = new Texture();
+    const hi = prepareFalls(model(), { tier: "high", sky: null, skyMapping: FLAT_SKY_MAPPING, lightmap: lm, poolLift: 0 });
+    const get = (p: typeof hi, n: string) => p.root.getObjectByName(n) as Mesh;
+    const rock = get(hi, NODE.rockLod0).material as MeshBasicMaterial;
+    expect(rock.isMeshBasicMaterial).toBe(true);
+    expect(rock.lightMap).toBe(lm);
+    expect(rock.vertexColors).toBe(true); // the moss / wet masks
+    expect(rock.customProgramCacheKey()).toBe("falls-rock-stone-macro");
+    expect((get(hi, "falls_ground").material as MeshBasicMaterial).customProgramCacheKey()).toBe("falls-rock-tint");
+    const plants = get(hi, "veg__falls_plants_hi").material as MeshBasicMaterial;
+    expect([plants.alphaTest, plants.side, plants.vertexColors, plants.lightMap]).toEqual([0.5, DoubleSide, true, null]);
+    expect(get(hi, "veg__falls_plants_hi").visible).toBe(true);
+    expect(get(hi, `${NODE.plunge}0`).visible).toBe(true);
+    expect(get(hi, `${NODE.plunge}0_low`).visible).toBe(false);
+    expect(get(hi, `${NODE.plunge}0`).geometry.getAttribute("normal")).toBeTruthy();
+    expect(hi.lod0.length + hi.lod1.length).toBe(2); // both LODs stay: the distance picks
+    expect(hi.baked).toBe(true);
+    disposeFalls(hi);
+    const lo = prepareFalls(model(), { tier: "low", sky: null, skyMapping: FLAT_SKY_MAPPING, lightmap: lm, poolLift: 0 });
+    expect(get(lo, "veg__falls_plants_hi").visible).toBe(false);
+    expect(get(lo, `${NODE.plunge}0`).visible).toBe(false);
+    expect(get(lo, `${NODE.plunge}0_low`).visible).toBe(true);
+    expect(get(lo, NODE.rockLod1).visible).toBe(true);
+    expect(get(lo, NODE.rockLod0).visible).toBe(false);
+    disposeFalls(lo);
   });
 
   it("shares one clock between every water surface and the spray", async () => {

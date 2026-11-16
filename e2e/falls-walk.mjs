@@ -141,7 +141,13 @@ async function watchBody(fn) {
 
 // ───────────────────────────── the placeholders: ground, water, rocks, stones, a grey cliff ─────────────────────────────
 
-await run.step("placeholders", async () => {
+// W3: with the real falls in the build (waterfall.glb, FallsModel) the placeholders are not needed: wait for the model instead
+const realFalls = await p.page
+  .waitForFunction(() => window.__cvFalls?.stats?.()?.runtime === "model", null, { timeout: 30000 })
+  .then(() => true)
+  .catch(() => false);
+console.log(realFalls ? "the real falls (waterfall.glb) are drawn: no placeholders" : "no waterfall.glb in this build: placeholders");
+if (!realFalls) await run.step("placeholders", async () => {
   await p.page.evaluate(async () => {
     const THREE = await window.__imp("/node_modules/.vite/deps/three.js");
     const { scene } = window.__cvThree();

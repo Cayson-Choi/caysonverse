@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { useFrame } from "@react-three/fiber";
-import type { Mesh, Object3D, Texture } from "three";
+import { useFrame, useThree } from "@react-three/fiber";
+import { Plane, Vector3, type Material, type Mesh, type Object3D, type Texture } from "three";
 import { configureLightmap } from "../../game/hub/hubModelPrep";
 import { dayNight } from "../dayNightDriver";
 import { useNightMapWanted } from "../nightLightmap";
@@ -9,6 +9,7 @@ import { freeTexture, type VillageTier } from "../villageModelPrep";
 import type { SkyMapping } from "../villageWater";
 import { createFallsAudio, type FallsAudio } from "./fallsAudio";
 import {
+  FALLS,
   OLD_POOL_LIFT,
   STUB_POOL_LIFT,
   distanceToImpact,
@@ -26,6 +27,7 @@ import { loadFallsModel, loadTexture, nightLightmapUrl } from "./fallsLoader";
 import { fallsDayNight, fallsUniforms, rockDayNight, rockUniforms } from "./fallsMaterials";
 import { disposeFalls, hideOldFalls, prepareFalls, villageHasOldFalls, type FallsParts } from "./fallsPrep";
 import { createFallsStub } from "./fallsStub";
+import { wrapTime } from "../fountainLayout";
 
 declare global {
   interface Window {
@@ -41,6 +43,8 @@ export interface FallsStats {
   lod: 0 | 1;
   distance: number;
   triangles: number;
+  /** Draw calls the falls add when all of them is in view (a multi-material mesh is one per material). */
+  draws: number;
   meshes: number;
   droplets: number;
   mist: number;
@@ -51,8 +55,45 @@ export interface FallsStats {
 }
 export interface FallsProbe {
   stats(): FallsStats | null;
+  /** Every mesh of the falls: name, triangles, whether it is drawn, its materials. */
+  list(): Array<{ name: string; tri: number; on: boolean; materials: string[] }>;
   /** Switch parts on or off at run time (DEV): `rainbow` a number forces its amount (null: the clock decides). */
-  set(v: Partial<FallsFx> & { rainbowAmount?: number | null; pinEye?: [number, number, number] | null; visible?: boolean; resetCpu?: boolean }): void;
+  set(v: Partial<FallsFx> & { rainbowAmount?: number | null; pinEye?: [number, number, number] | null; visible?: boolean; resetCpu?: boolean; cut?: boolean }): void;
+}
+
+/** The site box (layout, W0) as clipping planes: a point is cut when it is inside all of them (clipIntersection). */
+const SITE_CUT: Plane[] = (() => {
+  const S = FALLS.site;
+  return [
+    new Plane(new Vector3(-1, 0, 0), S.minX),
+    new Plane(new Vector3(1, 0, 0), -S.maxX),
+    new Plane(new Vector3(0, 0, -1), S.minZ),
+    new Plane(new Vector3(0, 0, 1), -S.maxZ),
+    new Plane(new Vector3(0, 1, 0), -60),
+  ];
+})();
+
+/** DEV: clip the village's materials inside the site box (on), or give them back (off). Returns the materials changed. */
+function setSiteCut(villageRoot: Object3D, on: boolean, done: Material[]): Material[] {
+  for (const m of done) {
+    m.clippingPlanes = null;
+    m.clipIntersection = false;
+    m.needsUpdate = true;
+  }
+  if (!on) return [];
+  const out = new Set<Material>();
+  villageRoot.traverse((o) => {
+    const mesh = o as Mesh;
+    if (!mesh.isMesh) return;
+    for (const m of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) {
+      if (m.clippingPlanes?.length) continue;
+      m.clippingPlanes = SITE_CUT;
+      m.clipIntersection = true;
+      m.needsUpdate = true;
+      out.add(m);
+    }
+  });
+  return [...out];
 }
 
 /** The falls start loading this long after the village mounts (ms): the village is drawn first. */
@@ -65,7 +106,9 @@ const smooth = (a: number, b: number, x: number): number => {
 
 function triangles(m: Mesh): number {
   const g = m.geometry;
-  return g.index ? g.index.count / 3 : (g.getAttribute("position")?.count ?? 0) / 3;
+  const n = g.index ? g.index.count / 3 : (g.getAttribute("position")?.count ?? 0) / 3;
+  const inst = (m as Mesh & { isInstancedMesh?: boolean; count?: number }).isInstancedMesh ? (m as unknown as { count: number }).count : 1;
+  return n * inst;
 }
 
 export interface FallsModelProps {
@@ -98,6 +141,18 @@ export function FallsModel({ villageRoot, tier: tierProp, sky, skyMapping, runti
   const lastDistance = useRef(0);
   const lastRainbow = useRef(0);
   const night = useNightMapWanted();
+  const cutRef = useRef<Material[]>([]);
+  const gl = useThree((st) => st.gl);
+  // DEV `?fallsCut=1`: preview of the village rebuild (W6) — the village's own ground, old cliff and pond inside the site box
+  // are clipped away so the falls are seen as they will be. Production keeps the old village there until W6 cuts the hole.
+  useEffect(() => {
+    if (!dev || new URLSearchParams(search).get("fallsCut") !== "1") return;
+    gl.localClippingEnabled = true;
+    cutRef.current = setSiteCut(villageRoot, true, cutRef.current);
+    return () => {
+      cutRef.current = setSiteCut(villageRoot, false, cutRef.current);
+    };
+  }, [dev, search, villageRoot, gl]);
 
   useEffect(() => {
     let alive = true;
@@ -173,17 +228,37 @@ export function FallsModel({ villageRoot, tier: tierProp, sky, skyMapping, runti
   useEffect(() => {
     if (!dev) return;
     window.__cvFalls = {
+      list() {
+        const p = partsRef.current;
+        if (!p) return [];
+        return p.meshes.map((m) => {
+          let on = m.visible;
+          for (let a = m.parent; on && a; a = a.parent) on = a.visible;
+          return { name: m.name, tri: triangles(m), on, materials: (Array.isArray(m.material) ? m.material : [m.material]).map((x) => x.name) };
+        });
+      },
       stats() {
         const p = partsRef.current;
         if (!p) return null;
         let tri = 0;
+        let draws = 0;
         for (const m of p.meshes) {
           let on = m.visible;
           for (let a = m.parent; on && a; a = a.parent) on = a.visible;
-          if (on) tri += triangles(m);
+          if (on) {
+            tri += triangles(m);
+            draws += Array.isArray(m.material) ? Math.max(1, m.geometry.groups.length) : 1;
+          }
         }
         const sp = p.spray;
-        if (sp.droplets.visible) tri += p.params.spray * 2;
+        const drops = p.params.spray + p.params.peel + p.params.churn;
+        if (sp.droplets.visible) {
+          tri += drops * 2;
+          draws++;
+        }
+        if (sp.mist.visible) draws++;
+        if (sp.rainbow?.visible) draws++;
+        if (sp.rainbow?.visible) tri += triangles(sp.rainbow);
         if (sp.mist.visible) tri += p.params.mist * 2;
         const a = audioRef.current;
         return {
@@ -193,8 +268,9 @@ export function FallsModel({ villageRoot, tier: tierProp, sky, skyMapping, runti
           lod: lodRef.current,
           distance: lastDistance.current,
           triangles: Math.round(tri),
+          draws,
           meshes: p.meshes.length,
-          droplets: sp.droplets.visible ? p.params.spray : 0,
+          droplets: sp.droplets.visible ? drops : 0,
           mist: sp.mist.visible ? p.params.mist : 0,
           rainbow: lastRainbow.current,
           audio: { target: a?.target ?? 0, running: a?.running ?? false },
@@ -213,12 +289,14 @@ export function FallsModel({ villageRoot, tier: tierProp, sky, skyMapping, runti
         // draw nothing of the falls (and keep the old falls hidden): the same page measured with and without them
         if (v.resetCpu) cpu.current = { ms: 0, n: 0 };
         if (v.visible !== undefined && partsRef.current) partsRef.current.root.visible = v.visible;
+        if (v.cut) gl.localClippingEnabled = true;
+        if (v.cut !== undefined) cutRef.current = setSiteCut(villageRoot, v.cut, cutRef.current);
       },
     };
     return () => {
       delete window.__cvFalls;
     };
-  }, [dev, runtime]);
+  }, [dev, runtime, gl, villageRoot]);
 
   useFrame(({ clock, camera }) => {
     const p = partsRef.current;
@@ -229,7 +307,8 @@ export function FallsModel({ villageRoot, tier: tierProp, sky, skyMapping, runti
     const d = eye ? distanceToImpact(eye[0], eye[1], eye[2]) : distanceToImpact(camera.position.x, camera.position.y, camera.position.z);
     lastDistance.current = d;
     const s = dayNight.applied;
-    fallsUniforms.uTime.value = clock.elapsedTime;
+    // the fountain's wrapped clock: every rate in the falls' shaders repeats over it (no jump, no float drift)
+    fallsUniforms.uTime.value = wrapTime(clock.elapsedTime);
     fallsDayNight(s, p.pools);
     rockDayNight(s);
     const f = fx.current;

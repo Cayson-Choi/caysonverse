@@ -1,4 +1,14 @@
-import { Mesh, MeshBasicMaterial, NoColorSpace, RepeatWrapping, type Material, type Object3D, type ShaderMaterial, type Texture } from "three";
+import {
+  DoubleSide,
+  Mesh,
+  MeshBasicMaterial,
+  NoColorSpace,
+  type Material,
+  type MeshStandardMaterial,
+  type Object3D,
+  type ShaderMaterial,
+  type Texture,
+} from "three";
 import { configureLightmap, isMesh, lightmapMaterial, materialsOf } from "../../game/hub/hubModelPrep";
 import { capModelTextures, freeTexture, liftMaterial, type VillageTier } from "../villageModelPrep";
 import { makeRippleTexture, type SkyMapping } from "../villageWater";
@@ -10,9 +20,18 @@ import {
   fallsTierParams,
   type FallsTierParams,
 } from "./fallsConfig";
-import { createCascadeMaterial, createFoamMaterial, createPlungeMaterial, createPoolMaterial, rockMaterial } from "./fallsMaterials";
+import { makeFountainNoise } from "../fountainWater";
+import {
+  createCascadeMaterial,
+  createFoamMaterial,
+  createPlungeMaterial,
+  createPoolMaterial,
+  lampMaterial,
+  rockMaterial,
+  setFallsSky,
+} from "./fallsMaterials";
 import { createSpray, type FallsSpray } from "./fallsSpray";
-import { makeFlowTexture, makeMistAtlas, makePoolBase } from "./fallsTextures";
+import { makeMistAtlas, makePoolBase } from "./fallsTextures";
 
 /**
  * Dress a falls model (the loaded `waterfall.glb`, or the DEV stand-in) for the graphics tier: the water meshes get
@@ -48,14 +67,6 @@ export interface FallsPrepOptions {
 }
 
 const PLUNGE_INDEX = new RegExp(`^${NODE.plunge}(\\d+)`);
-
-function dataTexture(t: Texture): Texture {
-  t.wrapS = RepeatWrapping;
-  t.wrapT = RepeatWrapping;
-  t.colorSpace = NoColorSpace;
-  t.needsUpdate = true;
-  return t;
-}
 
 /** A texture of the model by its name (`T_falls_flow`, `T_mist_atlas`), or by the material that carries it. */
 function findTexture(root: Object3D, textureName: string): Texture | null {
@@ -108,9 +119,10 @@ export function prepareFalls(root: Object3D, o: FallsPrepOptions): FallsParts {
   if (o.lightmap) configureLightmap(o.lightmap);
   if (o.tier === "low") capModelTextures(root, params.maxTexture);
 
-  const modelFlow = findTexture(root, "T_falls_flow");
-  const flow = modelFlow ? dataTexture(modelFlow) : makeFlowTexture(params.maxTexture >= 1024 ? 256 : 128);
-  if (!modelFlow) own.push(flow);
+  // the falling water's grain is the fountain's noise (one look for all the village's moving water: 16 KB)
+  const noise = makeFountainNoise();
+  own.push(noise);
+  setFallsSky(o.sky, o.skyMapping, noise);
   const modelMist = findTexture(root, "T_mist_atlas");
   const atlas = modelMist ?? makeMistAtlas(params.maxTexture >= 1024 ? 48 : 32);
   if (!modelMist) own.push(atlas);
@@ -119,11 +131,11 @@ export function prepareFalls(root: Object3D, o: FallsPrepOptions): FallsParts {
   const poolBase = makePoolBase();
   own.push(ripple, poolBase);
 
-  const waterOpts = { flow, detail: params.detail };
+  const waterOpts = { detail: params.detail };
   const plunge = createPlungeMaterial(waterOpts);
   const cascade = createCascadeMaterial(waterOpts);
   const foam = createFoamMaterial(waterOpts);
-  const poolOpts = { sky: o.sky, skyMapping: o.skyMapping, ripple, base: poolBase, flow, detail: params.detail };
+  const poolOpts = { sky: o.sky, skyMapping: o.skyMapping, ripple, base: poolBase, noise, detail: params.detail };
   const pool = createPoolMaterial(poolOpts);
   const outlet = createPoolMaterial({ ...poolOpts, outlet: true });
   pools.push(pool, outlet);
@@ -131,8 +143,23 @@ export function prepareFalls(root: Object3D, o: FallsPrepOptions): FallsParts {
 
   let baked = false;
   const swapped = new Map<Material, Material>();
+  const isLow = o.tier === "low";
+  // a node of several materials loads as a group of meshes (`name_1`, `name_2` ...): its name and extras are the group's
+  const up = (o: Object3D, f: (n: Object3D) => boolean): Object3D | null => {
+    for (let n: Object3D | null = o; n && n !== root.parent; n = n.parent) if (f(n)) return n;
+    return null;
+  };
   const dress = (mesh: Mesh): void => {
-    const name = mesh.name;
+    const name = mesh.name; // the water meshes have one material each: their own names
+    // the tier the art drew it for (extras): the rock's two LODs are picked by distance instead (below)
+    const tierOf = (up(mesh, (n) => typeof n.userData?.tier === "string")?.userData.tier as string | undefined) ?? undefined;
+    const lodNode = !!up(mesh, (n) => n.name === NODE.rockLod0 || n.name === NODE.rockLod1);
+    if (!lodNode && ((tierOf === "high" && isLow) || (tierOf === "low" && !isLow))) {
+      mesh.visible = false;
+      return;
+    }
+    const water = name.startsWith("W_falls_");
+    if (water && !mesh.geometry.getAttribute("normal")) mesh.geometry.computeVertexNormals();
     const plungeAt = PLUNGE_INDEX.exec(name);
     if (plungeAt) {
       const i = Number(plungeAt[1]);
@@ -159,43 +186,58 @@ export function prepareFalls(root: Object3D, o: FallsPrepOptions): FallsParts {
       return;
     }
     if (name.startsWith(NODE.foam)) {
-      // the light tier leaves the foam heap out (one draw call fewer): the pool's own foam shader shows the landing
-      if (!params.detail) mesh.visible = false;
       mesh.material = foam;
       mesh.renderOrder = 7;
       mesh.position.y += o.poolLift;
       return;
     }
-    // rock, ground, slabs, plants
+    // rock, ground, stones, plants, trees, lamps: by the kind W3 wrote on each material (extras `falls`)
+    const hasLm = !!mesh.geometry.getAttribute("uv1");
+    const hasColor = !!mesh.geometry.getAttribute("color");
     const dressMaterial = (m: Material): Material => {
       const seen = swapped.get(m);
       if (seen) return seen;
-      let b = m as MeshBasicMaterial;
-      const hasUv1 = !!mesh.geometry.getAttribute("uv1");
       if ((m as unknown as { isMeshLambertMaterial?: boolean }).isMeshLambertMaterial) {
         swapped.set(m, m);
         return m; // the stand-in: lit by the scene's lights
       }
-      if (!b.isMeshBasicMaterial) {
-        const std = m as MeshBasicMaterial;
-        b = new MeshBasicMaterial({ name: m.name, map: std.map ?? null, color: std.color ?? undefined });
-        own.push(b);
-      }
-      const rock = m.name === MAT.rock;
-      if (o.lightmap && hasUv1) {
+      const std = m as MeshStandardMaterial;
+      const kind = (m.userData?.falls as string | undefined) ?? (m.name === MAT.rock ? "stone" : m.name === MAT.leaf ? "card" : "plain");
+      const b = new MeshBasicMaterial({ name: m.name, map: std.map ?? null, color: std.color ?? undefined });
+      b.userData = { ...m.userData };
+      own.push(b, m);
+      if (std.emissiveMap) own.push(std.emissiveMap);
+      if (kind === "card" || kind === "bark") {
+        // vertex-lit like the village's foliage: COLOR_0 = baked light x tint (bake_waterfall.py), the clock's tint on it
+        b.vertexColors = hasColor;
+        if (kind === "card") {
+          b.alphaTest = 0.5;
+          b.side = DoubleSide;
+          b.transparent = false;
+        }
+        liftMaterial(b);
+      } else if (kind === "lamp") {
+        lampMaterial(b);
+      } else if (o.lightmap && hasLm) {
         lightmapMaterial(b, o.lightmap);
-        rockMaterial(b, rock);
+        b.vertexColors = hasColor && (kind === "stone" || kind === "tint");
+        // the macro map rides in the emissive slot (bake_waterfall.py); data, not colour
+        const macro = kind === "stone" ? (std.emissiveMap ?? null) : null;
+        if (macro) {
+          macro.colorSpace = NoColorSpace;
+          macro.needsUpdate = true;
+        }
+        rockMaterial(b, kind === "stone" ? "stone" : kind === "tint" ? "tint" : "plain", macro);
         baked = true;
       } else if (m.name === MAT.leaf) {
         liftMaterial(b);
       }
-      if (rock) b.vertexColors = true;
       swapped.set(m, b);
       return b;
     };
     mesh.material = Array.isArray(mesh.material) ? mesh.material.map(dressMaterial) : dressMaterial(mesh.material);
-    if (name === NODE.rockLod0) lod0.push(mesh);
-    else if (name === NODE.rockLod1) lod1.push(mesh);
+    if (up(mesh, (n) => n.name === NODE.rockLod0)) lod0.push(mesh);
+    else if (up(mesh, (n) => n.name === NODE.rockLod1)) lod1.push(mesh);
   };
 
   root.traverse((n) => {
@@ -214,7 +256,7 @@ export function prepareFalls(root: Object3D, o: FallsPrepOptions): FallsParts {
     lod1.forEach((m) => (m.visible = !useLod0));
   }
 
-  const spray = createSpray({ droplets: params.spray, mist: params.mist, rainbow: params.rainbow, atlas });
+  const spray = createSpray({ splash: params.spray, peel: params.peel, churn: params.churn, mist: params.mist, rainbow: params.rainbow, atlas });
   own.push(spray);
   root.add(spray.group);
   root.updateMatrixWorld(true);
