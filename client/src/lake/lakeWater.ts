@@ -35,12 +35,11 @@ varying vec2 vLmUv;
 varying vec3 vWorld;
 varying float vDepth;
 uniform float uTime;
+uniform float uHq;
 void main() {
   vec4 wp = modelMatrix * vec4( position, 1.0 );
-  #ifdef LAKE_SWELL
-  // lake v2: a mild swell (2-3 cm, 7-12 m long, the PC tier): the waterline climbs and falls on the bank (the lapping)
-  wp.y += 0.016 * sin( dot( wp.xz, vec2( 0.55, 0.21 ) ) - uTime * 1.1 ) + 0.010 * sin( dot( wp.xz, vec2( -0.23, 0.71 ) ) - uTime * 0.83 ) + 0.005 * sin( dot( wp.xz, vec2( 1.3, 0.4 ) ) - uTime * 1.9 );
-  #endif
+  // lake v2: a mild swell (2-3 cm, 7-12 m long, the PC tier: uHq): the waterline climbs and falls on the bank (the lapping)
+  wp.y += uHq * 0.016 * sin( dot( wp.xz, vec2( 0.55, 0.21 ) ) - uTime * 1.1 ) + 0.010 * sin( dot( wp.xz, vec2( -0.23, 0.71 ) ) - uTime * 0.83 ) + 0.005 * sin( dot( wp.xz, vec2( 1.3, 0.4 ) ) - uTime * 1.9 );
   vWorld = wp.xyz;
   #ifdef USE_DEPTH_ATTR
   vDepth = aDepth;
@@ -64,6 +63,7 @@ const FRAGMENT = /* glsl */ `
 uniform float uTime;
 uniform sampler2D uRipple;
 uniform sampler2D uWaves;
+uniform float uHq;
 uniform vec4 uRipples[${RIPPLE_SLOTS}];
 uniform vec4 uLamps[${LAMP_SLOTS}];
 uniform vec3 uShallow;
@@ -109,14 +109,11 @@ void main() {
   vec2 s2r = vec2( 0.8 * s2.x + 0.6 * s2.y, -0.6 * s2.x + 0.8 * s2.y );
   vec3 n1 = texture2D( uRipple, p * 0.85 + uTime * vec2( -0.009, 0.013 ) ).xyz * 2.0 - 1.0;
   vec2 chop = s1 * 0.55 + s2r * 0.4;
-  #ifdef LAKE_SWELL
+  // the PC tier (uHq 1): a third, finer chop layer and the swell's own slope (the vertex shader's waves). A uniform, not a define:
+  // the tier can change while playing and a new program then (a new material) left GL warnings on phones
   vec2 s3 = texture2D( uWaves, p * 1.07 + uTime * vec2( 0.13, 0.06 ) ).rg * 2.0 - 1.0;
-  chop += s3 * 0.22;
-  // the swell's own slope (the vertex shader's waves)
-  vec2 swell = 0.016 * vec2( 0.55, 0.21 ) * cos( dot( p, vec2( 0.55, 0.21 ) ) - uTime * 1.1 ) + 0.010 * vec2( -0.23, 0.71 ) * cos( dot( p, vec2( -0.23, 0.71 ) ) - uTime * 0.83 );
-  #else
-  vec2 swell = vec2( 0.0 );
-  #endif
+  chop += s3 * 0.22 * uHq;
+  vec2 swell = uHq * ( 0.016 * vec2( 0.55, 0.21 ) * cos( dot( p, vec2( 0.55, 0.21 ) ) - uTime * 1.1 ) + 0.010 * vec2( -0.23, 0.71 ) * cos( dot( p, vec2( -0.23, 0.71 ) ) - uTime * 0.83 ) );
   vec2 slope = chop * ( 0.04 + 0.085 * gust ) + n1.xy * 0.018 - swell * 3.0;
   #pragma unroll_loop_start
   for ( int i = 0; i < ${RIPPLE_SLOTS}; i ++ ) {
@@ -262,6 +259,8 @@ export interface LakeWater {
   ripple(x: number, z: number, strength: number): void;
   /** Per frame: the clock and the time of day. */
   update(timeS: number, day: LakeDayLook): void;
+  /** The quality tier (PC: the swell and the third chop layer). */
+  setTier(tier: "high" | "low"): void;
   dispose(): void;
 }
 
@@ -278,7 +277,7 @@ export interface LakeWaterLook {
   lamps?: ReadonlyArray<{ x: number; z: number }>;
 }
 
-export function createLakeWater(opts: { depthAttr?: boolean; ripple?: DataTexture; look?: LakeWaterLook; tier?: "high" | "low" } = {}): LakeWater {
+export function createLakeWater(opts: { depthAttr?: boolean; ripple?: DataTexture; look?: LakeWaterLook } = {}): LakeWater {
   const ripple = opts.ripple ?? makeRippleTexture();
   const ownsTexture = !opts.ripple;
   const rings: Vector4[] = Array.from({ length: RIPPLE_SLOTS }, () => new Vector4(0, 0, -100, 0));
@@ -295,6 +294,7 @@ export function createLakeWater(opts: { depthAttr?: boolean; ripple?: DataTextur
         uTime: { value: 0 },
         uRipple: { value: ripple },
         uWaves: { value: null },
+        uHq: { value: 1 },
         uRipples: { value: rings },
         uLamps: { value: lamps },
         uShallow: { value: new Vector3(shallow.r, shallow.g, shallow.b) },
@@ -320,7 +320,7 @@ export function createLakeWater(opts: { depthAttr?: boolean; ripple?: DataTextur
     ]),
     vertexShader: VERTEX,
     fragmentShader: FRAGMENT,
-    defines: { ...(opts.look ? { USE_LAKE_COLOR: "" } : opts.depthAttr ? { USE_DEPTH_ATTR: "" } : {}), ...(opts.tier !== "low" ? { LAKE_SWELL: "" } : {}) },
+    defines: opts.look ? { USE_LAKE_COLOR: "" } : opts.depthAttr ? { USE_DEPTH_ATTR: "" } : {},
     transparent: true,
     depthWrite: false,
     fog: true,
@@ -354,6 +354,9 @@ export function createLakeWater(opts: { depthAttr?: boolean; ripple?: DataTextur
     ripple(x, z, strength) {
       liveRings[next]!.set(x, z, timeNow, strength);
       next = (next + 1) % RIPPLE_SLOTS;
+    },
+    setTier(tier) {
+      material.uniforms.uHq!.value = tier === "low" ? 0 : 1;
     },
     update(t, day) {
       timeNow = t;

@@ -71,6 +71,9 @@ function shadowTexture(): CanvasTexture {
   return shadowTex;
 }
 
+/** A hooked fish starts under the water: never eased in from the last catch's pose. */
+const newCatchStart = (phase: number): boolean => phase === FISH_PHASE.hooked;
+
 export function createCatchRig(sid: string): CatchRig {
   let fish: FishModel | null = null;
   let shadow: Mesh | null = null;
@@ -87,6 +90,8 @@ export function createCatchRig(sid: string): CatchRig {
   const fromQ = new Quaternion();
   let fromStage = "none";
   let flexPhase = 0;
+  /** Seconds in the current stage: a stage that does not blend by itself eases in from the last pose (nothing snaps). */
+  let stageT = 0;
   let lastStage = "none";
   let lastPhase = -1;
   let lastSeq = -1;
@@ -168,6 +173,7 @@ export function createCatchRig(sid: string): CatchRig {
         fromStage = lastStage;
       }
       const stageChanged = cs.stage !== lastStage;
+      stageT = stageChanged ? 0 : stageT + delta;
       // the tail beat
       flexPhase += delta * cs.beat * Math.PI * 2;
       const bend = cs.stage === "net" ? 0.12 : cs.stage === "line" || cs.stage === "toHand" ? Math.sin(t * 2.3) * 0.08 : 0;
@@ -330,6 +336,14 @@ export function createCatchRig(sid: string): CatchRig {
         }
         default:
           break;
+      }
+      // ease in from the last pose over 0.35 s (hand -> held up, the show -> the release ...), unless the stage blends itself
+      const selfBlending = cs.stage === "toHand" || cs.stage === "net" || cs.stage === "drop" || cs.stage === "line" || cs.stage === "under";
+      if (!selfBlending && fromStage !== "none" && stageT < 0.35 && !newCatchStart(view.phase)) {
+        const k = stageT / 0.35;
+        const e = k * k * (3 - 2 * k);
+        pos.lerpVectors(fromPos, pos, e);
+        rot.slerpQuaternions(fromQ, rot.clone(), e);
       }
       f.root.position.copy(pos);
       f.root.quaternion.copy(rot);
