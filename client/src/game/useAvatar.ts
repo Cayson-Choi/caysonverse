@@ -12,7 +12,7 @@
 
 import { useEffect, useLayoutEffect, useMemo } from "react";
 import { useGLTF } from "@react-three/drei";
-import type { AnimationClip } from "three";
+import type { AnimationClip, Object3D } from "three";
 import { assembleAvatar, releaseAvatarSoon, retainAvatar, type BuiltAvatar } from "./characterAvatar";
 import { lookKey, type AvatarLook } from "./characterLook";
 import { CHARACTER_GLB_HASH } from "@caysonverse/shared/characterManifest";
@@ -70,19 +70,19 @@ export function reportAvatarClip(probeId: string | undefined, clip: string): voi
  */
 export function useAvatar(
   look: AvatarLook,
-  opts: { probeId?: string; decorate?: (a: BuiltAvatar) => void } = {},
+  opts: { probeId?: string; decorate?: (a: BuiltAvatar) => void; extra?: Object3D } = {},
 ): { avatar: BuiltAvatar; animations: AnimationClip[] } {
   const { scene, animations } = useGLTF(CHARACTER_MODEL_URL);
-  const { probeId, decorate } = opts;
+  const { probeId, decorate, extra } = opts;
   const key = lookKey(look);
 
   // 렌더 단계: 조립만 하고 잡지 않는다(머리말).
   const avatar = useMemo(
-    () => assembleAvatar({ scene }, look, decorate),
+    () => assembleAvatar({ scene, extra }, look, decorate),
     // look은 key(lookKey)가 대신한다 — 호출한 쪽이 렌더마다 새 look 객체를 만들어도 같은 외형이면 다시 조립하지
-    // 않는다. decorate는 다시 조립할 때의 값을 쓴다(매 렌더 새 함수여도 무시).
+    // 않는다. decorate는 다시 조립할 때의 값을 쓴다(매 렌더 새 함수여도 무시). extra(NPC 부품 장면)는 로더 캐시의 것이다.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [scene, key],
+    [scene, key, extra],
   );
 
   useLayoutEffect(() => {

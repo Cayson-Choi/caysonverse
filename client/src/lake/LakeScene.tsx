@@ -28,6 +28,8 @@ import {
 } from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { LoadBoundary } from "../village/LoadBoundary";
+import { LakeShopkeeper } from "./LakeShopkeeper";
+import { clearNpcCache } from "../village/npcAvatar";
 import { DRACO_PATH } from "../game/hub/hubModelPrep";
 import { dayNight } from "../village/dayNightDriver";
 import type { Pose } from "../game/types";
@@ -98,7 +100,7 @@ function Greybox() {
  * village's light-map recipe, the water with A's water data and reflection panoramas, the facilities with their helpers hidden
  * and their lamps lit at night.
  */
-function LakeGlb({ tier }: { tier: VillageTier }) {
+function LakeGlb({ tier, pose }: { tier: VillageTier; pose: Pose }) {
   const gltf = useGLTF(LAKE_URLS.lake, DRACO_PATH);
   const structs = useGLTF(LAKE_URLS.structures, DRACO_PATH);
   const [lmDay, lmNight, reflDay, reflNight, sLmDay, sLmNight] = useTexture([
@@ -142,6 +144,12 @@ function LakeGlb({ tier }: { tier: VillageTier }) {
       <primitive object={dressed.terrain} dispose={null} />
       <primitive object={dressed.facilities} dispose={null} />
       <LakeShopInterior />
+      {/* the rental's shopkeeper behind the office window (owner 2026-11-16): npc.glb waits in a Suspense of its own; a failed one is no shopkeeper */}
+      <LoadBoundary fallback={null} onReset={clearNpcCache} notice="대여점 주인 모습을 불러오지 못했어요. 잠시 뒤 다시 불러올게요.">
+        <Suspense fallback={null}>
+          <LakeShopkeeper structures={structs.scene} pose={pose} />
+        </Suspense>
+      </LoadBoundary>
       {tier === "high" &&
         dressed.lampHeads.map((p, i) => (
           <pointLight
@@ -161,7 +169,7 @@ function LakeGlb({ tier }: { tier: VillageTier }) {
 }
 
 /** The lake: its boxes at once when there is no file (placeholder), else the file after the village has settled (or on the way). */
-function LakeModel({ tier }: { tier: VillageTier }) {
+function LakeModel({ tier, pose }: { tier: VillageTier; pose: Pose }) {
   const wanted = lakeAssetWanted("lake");
   const [go, setGo] = useState(!wanted);
   useEffect(() => {
@@ -170,7 +178,7 @@ function LakeModel({ tier }: { tier: VillageTier }) {
     return () => window.clearTimeout(idle);
   }, [go]);
   if (!wanted) return <Greybox />;
-  return <>{go ? <LakeFromFile tier={tier} /> : <WatchForVisitor onNear={() => setGo(true)} />}</>;
+  return <>{go ? <LakeFromFile tier={tier} pose={pose} /> : <WatchForVisitor onNear={() => setGo(true)} />}</>;
 }
 
 function WatchForVisitor({ onNear }: { onNear: () => void }) {
@@ -182,7 +190,7 @@ function WatchForVisitor({ onNear }: { onNear: () => void }) {
   return null;
 }
 
-function LakeFromFile({ tier }: { tier: VillageTier }) {
+function LakeFromFile({ tier, pose }: { tier: VillageTier; pose: Pose }) {
   return (
     <LoadBoundary
       fallback={<Greybox />}
@@ -193,7 +201,7 @@ function LakeFromFile({ tier }: { tier: VillageTier }) {
       notice="낚시터를 불러오지 못했어요. 잠시 뒤 다시 불러올게요."
     >
       <Suspense fallback={null}>
-        <LakeGlb tier={tier} />
+        <LakeGlb tier={tier} pose={pose} />
       </Suspense>
     </LoadBoundary>
   );
@@ -672,7 +680,7 @@ export function LakeWorld({ pose, tier }: { pose: Pose; tier: VillageTier }) {
   if (import.meta.env.DEV && typeof location !== "undefined" && new URLSearchParams(location.search).has("nolake")) return null;
   return (
     <>
-      <LakeModel tier={tier} />
+      <LakeModel tier={tier} pose={pose} />
       <LakeSigns />
       <RentalPad />
       <ChairMarkers pose={pose} />

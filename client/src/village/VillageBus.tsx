@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { Suspense, useEffect, useMemo, useRef } from "react";
 import type { Mesh } from "three";
 import { useFrame, useThree } from "@react-three/fiber";
 import { type BusNodes, applyBusDayNight, disposeBus, followBusSigns, prepareBus, setBusAnisotropy } from "./villageBusPrep";
@@ -8,6 +8,9 @@ import type { VillageTier } from "./villageModelPrep";
 import { noteBusRequested } from "./villageRelease";
 import { getTransitRenderPose, onBusHorn, stepTransitRender } from "../net/transitSync";
 import { BUS_HORN_HEAR_M, playBusHorn } from "./busHorn";
+import { BusDriver } from "./BusDriver";
+import { LoadBoundary } from "./LoadBoundary";
+import { clearNpcCache } from "./npcAvatar";
 
 declare global {
   interface Window {
@@ -87,5 +90,15 @@ export function VillageBus({ tier }: { tier: VillageTier }) {
     for (const mesh of fixtures.current.values()) if (!mesh.visible) mesh.visible = true;
   });
   // dispose={null}: the geometry and the loader's materials belong to the loader's cache.
-  return <primitive object={nodes.root} dispose={null} />;
+  // The driver (owner 2026-11-16) rides in the bus as its child: npc.glb is waited for in a Suspense of its own, and a failed one
+  // is simply no driver (tried again later).
+  return (
+    <primitive object={nodes.root} dispose={null}>
+      <LoadBoundary fallback={null} onReset={clearNpcCache} notice="버스 기사 모습을 불러오지 못했어요. 잠시 뒤 다시 불러올게요.">
+        <Suspense fallback={null}>
+          <BusDriver busRoot={nodes.root} />
+        </Suspense>
+      </LoadBoundary>
+    </primitive>
+  );
 }

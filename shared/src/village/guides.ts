@@ -16,6 +16,7 @@ import type { Appearance } from "../appearance";
 import { appearanceFromIds } from "../appearance";
 import type { AABB } from "../collision";
 import type { AreaId } from "./villageLayout";
+import type { NpcId } from "./npcLooks";
 
 export type GuideId = "plaza_guide" | "hall_desk";
 
@@ -42,7 +43,12 @@ export interface Guide {
   reach?: number;
   /** `atan2(dirX, dirZ)` (0 faces +z). */
   yaw: number;
-  /** A fixed look on the toy figure. */
+  /**
+   * The guide's own NPC look (npcLooks.ts, owner 2026-11-16: "마을 안내원도 안내원만의 캐릭터"): an outfit nobody can pick in the
+   * character creator, from npc.glb. Absent = the fixed look below.
+   */
+  npc?: NpcId;
+  /** A fixed look on the toy figure: the guide's look when it has no NPC look, or while npc.glb cannot be had. */
   appearance: Appearance;
   qas: readonly GuideQA[];
 }
@@ -90,6 +96,7 @@ export const GUIDES: readonly Guide[] = deepFreeze([
     area: "village",
     pos: PLAZA_POS,
     yaw: Math.atan2(SPAWN.x - PLAZA_POS.x, SPAWN.z - PLAZA_POS.z),
+    npc: "village_guide",
     appearance: appearanceFromIds(
       { hat: null, hair: "bob", face: "smile", top: "shirt_tie", bottom: "pants", shoes: "sneakers", item: "map" },
       { hatColor: 2, hairColor: 1, skin: 1, topColor: 4, bottomColor: 7, shoesColor: 10, itemColor: 2, voice: 1 },
