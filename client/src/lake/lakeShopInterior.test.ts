@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { existsSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 import { BoxGeometry, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial } from "three";
-import { prepareShopInterior, SHOP_INTERIOR_URL } from "./LakeShopInterior";
+import { clearGlassMaterial, clearOfficeGlass, prepareShopInterior, SHOP_INTERIOR_URL } from "./LakeShopInterior";
 
 function meshOf(name: string): Mesh {
   return new Mesh(new BoxGeometry(), new MeshStandardMaterial({ name }));
@@ -40,5 +40,29 @@ describe("the fishing shop's interior (lake_shop_interior.glb)", () => {
     const made = prepareShopInterior(root);
     expect(made.length).toBe(1);
     expect((root.children[0] as Mesh).material).toBe((root.children[1] as Mesh).material);
+  });
+
+  it("clears only the office's window glass: its M_lake_glass mesh gets the clear material, the huts' glass keeps the shared one", () => {
+    const shared = new MeshStandardMaterial({ name: "M_lake_glass", transparent: true, opacity: 0.12 });
+    const wood = new MeshStandardMaterial({ name: "M_lake_wood" });
+    const scene = new Group();
+    const office = new Group();
+    office.name = "lake_office";
+    const officeGlass = new Mesh(new BoxGeometry(), shared);
+    const officeWood = new Mesh(new BoxGeometry(), wood);
+    office.add(officeGlass, officeWood);
+    const hut = new Group();
+    hut.name = "lake_hut_a";
+    const hutGlass = new Mesh(new BoxGeometry(), shared);
+    hut.add(hutGlass);
+    scene.add(office, hut);
+    const clear = clearGlassMaterial();
+    const done = new WeakSet<Mesh>();
+    expect(clearOfficeGlass(scene, clear, done)).toBe(1);
+    expect(officeGlass.material).toBe(clear);
+    expect(officeWood.material).toBe(wood);
+    expect(hutGlass.material).toBe(shared);
+    expect(clear.opacity).toBeLessThan(0.08);
+    expect(clearOfficeGlass(scene, clear, done)).toBe(0); // already done
   });
 });

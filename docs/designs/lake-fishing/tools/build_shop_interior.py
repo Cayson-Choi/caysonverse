@@ -1091,6 +1091,139 @@ def build_counter():
     box("atlas", Fr(101.0, top, -19.85), -0.1, 0.1, 0.0, 0.01, -0.06, 0.06, key="pl_white")
 
 
+# ------------------------------------------------------------------------------------------------ density pass (2026-11-17)
+# Real shops are packed (references 03 lure wall, 06 bait baskets): the upper side walls and the ceiling carry hanging stock,
+# the floor edges are lined with baskets and cartons, the counter's front has clip strips and a hook-pack stand.
+def hang_case(top, length, col, seed):
+    """A rod bag hung by its strap from a hook: a padded tube hanging straight down, the strap's loop, a zip line."""
+    r = random.Random(seed)
+    t = Vector(top)
+    rr = r.uniform(0.04, 0.05)
+    a = t + Vector((0, -0.08, 0))
+    cyl("atlas", a, a + Vector((0, -length, 0)), rr * 0.6, rr, 10, col, caps=(True, False))
+    cyl("atlas", a + Vector((0, -length, 0)), a + Vector((0, -length - 0.07, 0)), rr + 0.004, rr + 0.004, 10, "rubber")
+    poly_tube("atlas", [a + Vector((-0.02, 0, 0)), t, a + Vector((0.02, 0, 0))], 0.006, "pl_black", 4)
+    cyl("atlas", a + Vector((0, -0.05, rr)), a + Vector((0, -length + 0.05, rr)), 0.003, 0.003, 4, "pl_black", caps=(False, False))
+    for f_ in (0.3, 0.75):
+        y = -length * f_
+        cyl("atlas", a + Vector((0, y - 0.02, 0)), a + Vector((0, y + 0.02, 0)), rr + 0.003, rr + 0.003, 10, "pl_black", caps=(False, False))
+
+
+def keep_net(top, r=0.19, rings=7, drop=0.34):
+    """A 살림망 (keep net) hung folded: its hoops stacked loose under the top ring, the mesh sleeve between them, a cord."""
+    t = Vector(top)
+    cyl("atlas", t, t + Vector((0, -0.12, 0)), 0.003, 0.003, 3, "pl_black", caps=(False, False))
+    c0 = t + Vector((0, -0.12 - r * 0.15, 0))
+    up = Vector((0, 1, 0))
+    for k in range(rings):
+        cc = c0 + Vector((0.01 * math.sin(k * 1.7), -drop * k / (rings - 1), 0.012 * math.cos(k * 1.3)))
+        torus("atlas", cc, up + Vector((0.06 * math.sin(k), 0, 0.05 * math.cos(k))), r, 0.004, "pl_black" if k else "galv", seg=16, sides=3)
+    g = GEO["atlas"]
+    seg = 16
+    i0 = len(g["v"])
+    for j in range(2):
+        cc = c0 + Vector((0, -drop * j, 0))
+        for i in range(seg + 1):
+            a_ = i / seg * math.tau
+            g["v"].append(cc + Vector((math.cos(a_) * r * 0.985, 0, math.sin(a_) * r * 0.985)))
+    for i in range(seg):
+        idx = [i0 + i, i0 + i + 1, i0 + seg + 2 + i, i0 + seg + 1 + i]
+        uvs = [auv("net", i / seg * 0.999, 0), auv("net", (i + 1) / seg * 0.999, 0), auv("net", (i + 1) / seg * 0.999, 1), auv("net", i / seg * 0.999, 1)]
+        g["f"].append((idx, uvs, True))
+    pts = [c0 + Vector((math.cos(i / seg * math.tau) * r, -drop, math.sin(i / seg * math.tau) * r)) for i in range(seg)]
+    face("atlas", pts, [auv("net", 0.5 + 0.5 * math.cos(i / seg * math.tau), 0.5 + 0.5 * math.sin(i / seg * math.tau)) for i in range(seg)])
+
+
+def clip_strip(f, x, ytop, z, n, keys, w=0.075, h=0.11):
+    """A clip strip: a clear plastic strip hung from a hook, small packs clipped down it (hooks, sinkers, swivels)."""
+    box("atlas", f, x - 0.012, x + 0.012, ytop - n * (h + 0.012) - 0.02, ytop, z, z + 0.003, key="pl_clear")
+    for k in range(n):
+        lure_pack(f, x + rng.uniform(-0.004, 0.004), ytop - 0.02 - k * (h + 0.012), z + 0.006, rng.choice(keys), w, h, blister=False, tilt=rng.uniform(-0.05, 0.05))
+
+
+def ceiling_bar(p0, p1, y=3.12):
+    """A galvanised pipe hung from the ceiling on two threaded rods (S-hooks along it carry the stock)."""
+    a, b = Vector((p0[0], y, p0[1])), Vector((p1[0], y, p1[1]))
+    cyl("atlas", a, b, 0.012, 0.012, 6, "galv")
+    for q in (a + (b - a) * 0.1, a + (b - a) * 0.9):
+        cyl("atlas", q, Vector((q.x, CY, q.z)), 0.005, 0.005, 4, "galv", caps=(False, False))
+        cyl("atlas", Vector((q.x, CY - 0.01, q.z)), Vector((q.x, CY, q.z)), 0.03, 0.03, 8, "galv")
+    return a, b
+
+
+def build_density():
+    lures = [f"lure{i}" for i in range(8)]
+    worms = [f"worm{i}" for i in range(6)]
+    keys = [f"bait{i}" for i in range(8)]
+    # --- west wall, above the side window: a white wire grid of float packs (y 2.66..3.32)
+    wf = Fr(X0 + 0.03, 0, 0, math.pi / 2)  # local x = -z (world), local +z = +x
+    gz0, gz1 = -23.25, -21.25
+    for k in range(int((gz1 - gz0) / 0.05) + 1):
+        zz = gz0 + k * 0.05
+        cyl("atlas", (X0 + 0.03, 2.66, zz), (X0 + 0.03, 3.32, zz), 0.0026, sides=4, key="wire_white", caps=(False, False))
+    for yy in (2.66, 2.71, 2.81, 2.91, 3.01, 3.11, 3.21, 3.32):
+        cyl("atlas", (X0 + 0.034, yy, gz0), (X0 + 0.034, yy, gz1), 0.0026, sides=4, key="wire_white", caps=(False, False))
+    for c in range(12):
+        zc = gz0 + 0.1 + c * (gz1 - gz0 - 0.2) / 11
+        lx = -zc
+        peg_hook(wf, lx, 3.24, 0.1)
+        key = f"float{rng.randrange(6)}"
+        for k in range(rng.choice((2, 3))):
+            p = wf.sub(lx + rng.uniform(-0.003, 0.003), 3.25, 0.03 + k * 0.022, roll=rng.uniform(-0.03, 0.03))
+            box("atlas", p, -0.024, 0.024, -0.36, 0.0, -0.004, 0.004, keys={"F": key}, key="pl_clear")
+    # --- west corner above the chairs: rod bags hanging from a wall rail
+    box("wood", W0, X0, X0 + 0.05, 3.18, 3.23, -24.3, -23.3)
+    for k, col in enumerate(("canvas_blue", "pl_black", "canvas_green", "rod_wine", "pl_black")):
+        hang_case((X0 + 0.11, 3.2, -24.2 + k * 0.2), rng.uniform(0.85, 1.05), col, 900 + k)
+    # --- east wall by the door: two keep nets on hooks; a rod bag between the fridge and the pegboard
+    for k, z in enumerate((-21.75, -21.2)):
+        cyl("atlas", (X1, 3.25, z), (X1 - 0.12, 3.27, z), 0.004, sides=4, key="chrome")
+        keep_net((X1 - 0.24, 3.25, z), 0.2 if k == 0 else 0.17)
+    hang_case((X1 - 0.1, 3.2, -23.62), 0.9, "canvas_green", 950)
+    # --- ceiling bars over the west and east sides: clip strips, rod bags, a keep net
+    a, b = ceiling_bar((99.05, -23.6), (99.05, -21.7))
+    for k in range(6):
+        q = a + (b - a) * (0.08 + k * 0.17)
+        if k in (1, 4):
+            hang_case((q.x, q.y, q.z), 0.8, "canvas_blue" if k == 1 else "pl_black", 980 + k)
+        elif k == 2:
+            keep_net((q.x, q.y, q.z), 0.17)
+        else:
+            clip_strip(Fr(q.x, 0, q.z, 0.0), 0.0, q.y - 0.03, 0.0, 5, lures + worms)
+            clip_strip(Fr(q.x, 0, q.z, math.pi), 0.0, q.y - 0.03, 0.0, 5, lures + worms)
+    a, b = ceiling_bar((105.0, -23.3), (105.0, -21.9))
+    for k in range(5):
+        q = a + (b - a) * (0.1 + k * 0.2)
+        if k == 2:
+            hang_case((q.x, q.y, q.z), 0.85, "canvas_green", 990)
+        else:
+            clip_strip(Fr(q.x, 0, q.z, -math.pi / 2), 0.0, q.y - 0.03, 0.0, 6, lures)
+    # --- floor edges: baskets and cartons (reference 06)
+    bin_with_bags(Fr(98.62, FY, -20.55, math.pi / 2), 0.55, 0.3, 0.4, keys)
+    bin_with_bags(Fr(98.62, FY + 0.3, -20.52, math.pi / 2 + 0.05), 0.55, 0.26, 0.4, keys)
+    for (x, z, w, h, d, yaw, y0) in ((99.3, -20.05, 0.5, 0.32, 0.38, 0.04, FY), (99.32, -20.05, 0.46, 0.28, 0.34, -0.06, FY + 0.32), (99.75, -20.25, 0.32, 0.22, 0.3, 0.3, FY)):
+        c = Fr(x, y0, z, yaw)
+        box("atlas", c, -w / 2, w / 2, 0.0, h, -d / 2, d / 2, key="cardboard", skip="D")
+        box("atlas", c, -0.1, 0.1, h * 0.3, h * 0.7, -d / 2 - 0.002, -d / 2, key=f"bait{rng.randrange(8)}")
+    bin_with_bags(Fr(103.72, FY, ZB + 0.32), 0.8, 0.22, 0.4, keys)
+    bin_with_bags(Fr(105.45, FY, -20.55, -math.pi / 2), 0.5, 0.26, 0.38, keys)
+    # --- the counter's front (toward the shopkeeper): clip strips on its lip, a price sheet; a hook-pack stand on the top
+    cf = Fr(0, 0, CTR["z0"] + 0.03, math.pi)  # local +z = -z (toward the room), local x = -x
+    for x in (100.6, 101.15, 102.9, 103.45):
+        clip_strip(cf, -x, CTR["top"] - 0.03, 0.0, 6, lures + worms, 0.07, 0.1)
+    box("atlas", cf, -102.35, -101.75, 0.7, 1.08, 0.0, 0.002, key="paper")
+    st = Fr(101.62, CTR["top"], -20.42, 0.0)
+    box("atlas", st, -0.13, 0.13, 0.0, 0.012, -0.06, 0.06, key="pl_black")
+    box("atlas", st, -0.012, 0.012, 0.0, 0.34, -0.012, 0.012, key="pl_black")
+    for row in range(3):
+        for c in range(3):
+            x = -0.1 + c * 0.1
+            y = 0.32 - row * 0.1
+            cyl("atlas", st.g(x, y, 0.0), st.g(x, y + 0.006, 0.07), 0.0018, 0.0018, 3, "chrome", caps=(False, False))
+            for k in range(2):
+                lure_pack(st, x, y - 0.005, 0.02 + k * 0.02, rng.choice(lures), 0.06, 0.085, blister=False)
+
+
 # ------------------------------------------------------------------------------------------------ assemble, bake, export
 def make_mat(name):
     m = bpy.data.materials.new(name)
@@ -1277,6 +1410,7 @@ def main():
     build_west()
     build_east()
     build_counter()
+    build_density()
     objs = to_objects()
     total = sum(sum(len(p.vertices) - 2 for p in o.data.polygons) for o in objs.values())
     print("TOTAL tris", total)

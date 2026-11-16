@@ -23,6 +23,8 @@ PAIRS = [  # (name, left image, crop box or None, ref, caption)
     ("06_bait_fridge", "preview/fridge.png", None, "refs/ref08.jpg", "떡밥 선반·미끼 냉장고 (렌더) | 실제 미끼 냉장고"),
     ("07_counter", "preview/east.png", None, "refs/ref05.jpg", "카운터·동쪽 벽 (렌더) | 실제 카운터 주변"),
     ("08_floor_gear", "preview/west.png", None, "refs/ref06.jpg", "서쪽 벽·떡밥 상자 (렌더) | 실제 떡밥 바구니 진열"),
+    ("10_pad_day", "shots/pc-12-01-pad.png", (330, 150, 1010, 560), "refs/ref03.jpg", "노란 원에서 3인칭 (게임, 낮) | 실제 루어 벽"),
+    ("11_pad_night", "shots/pc-21-01-pad.png", (330, 150, 1010, 560), "refs/ref06.jpg", "노란 원에서 3인칭 (게임, 밤) | 실제 떡밥 바구니"),
     ("09_phone", "shots/phone-12-02-window.png", None, "refs/ref04.jpg", "폰 375x812 (게임) | 실제 찌 진열"),
 ]
 H = 520

@@ -7,8 +7,13 @@
 // The light is baked into COLOR_0 (linear irradiance x 0.5): drawn unlit (map x COLOR_0 x 2), the same by day and night as
 // a lit shop is, cheap on phones (9 materials, one draw each). Loaded with the lake's other files (inside LakeGlb), in a
 // Suspense and a load boundary of its own: a missing interior never holds up or replaces the lake.
+//
+// The office's own window glass (lake_structures.glb, node `lake_office`, its `M_lake_glass` primitive: the rental window's
+// sashes and the side window) gets a clear material of its own here (owner on the memorial: "유리가 투명했으면 좋겠어"):
+// the shared M_lake_glass (white, 12 % with the sky's reflection) veiled the whole shop. The huts' glass keeps M_lake_glass.
 
 import { Suspense, useEffect, useMemo } from "react";
+import { useFrame } from "@react-three/fiber";
 import { useGLTF } from "@react-three/drei";
 import { DoubleSide, MeshBasicMaterial, type Material, type Mesh, type MeshStandardMaterial, type Object3D } from "three";
 import { versionedUrl } from "../village/modelUrl";
@@ -66,6 +71,51 @@ export function prepareShopInterior(root: Object3D): Material[] {
   return [...made.values()];
 }
 
+/** The office in lake_structures.glb and the material of its window glass. */
+export const OFFICE_NODE = "lake_office";
+export const OFFICE_GLASS = "M_lake_glass";
+
+/** Near-clear window glass: a faint cool sheen, nothing that veils the room behind it. */
+export function clearGlassMaterial(): MeshBasicMaterial {
+  return new MeshBasicMaterial({ name: "shop_window_glass", color: 0xe8f4fa, transparent: true, opacity: 0.045, depthWrite: false, side: DoubleSide });
+}
+
+/**
+ * Give the office's glass meshes (under `lake_office`, material M_lake_glass) the clear material; returns how many were
+ * swapped now. Meshes already swapped are skipped (`done`), so it can run again when the lake's clone is rebuilt.
+ */
+export function clearOfficeGlass(scene: Object3D, glass: Material, done: WeakSet<Mesh>): number {
+  let n = 0;
+  scene.traverse((o) => {
+    if (o.name !== OFFICE_NODE) return;
+    o.traverse((c) => {
+      const m = c as Mesh;
+      if (!m.isMesh || done.has(m)) return;
+      const mats = Array.isArray(m.material) ? m.material : [m.material];
+      if (!mats.some((x) => x.name === OFFICE_GLASS)) return;
+      m.material = Array.isArray(m.material) ? m.material.map((x) => (x.name === OFFICE_GLASS ? glass : x)) : glass;
+      done.add(m);
+      n++;
+    });
+  });
+  return n;
+}
+
+/** Keep the office's window clear (looked for twice a second until found, then every 3 s: the facilities' clone can be rebuilt). */
+function ClearOfficeWindow() {
+  const glass = useMemo(clearGlassMaterial, []);
+  const done = useMemo(() => new WeakSet<Mesh>(), []);
+  const tick = useMemo(() => ({ t: 0, found: false }), []);
+  useFrame(({ scene }, dt) => {
+    tick.t -= dt;
+    if (tick.t > 0) return;
+    if (clearOfficeGlass(scene, glass, done) > 0) tick.found = true;
+    tick.t = tick.found ? 3 : 0.5; // after the first swap only a rebuilt clone needs it again
+  });
+  useEffect(() => () => glass.dispose(), [glass]);
+  return null;
+}
+
 function ShopInteriorModel() {
   const gltf = useGLTF(SHOP_INTERIOR_URL, DRACO_PATH);
   const dressed = useMemo(() => {
@@ -94,7 +144,12 @@ function ShopInteriorModel() {
       delete w.__cvShopInterior;
     };
   }, [dressed]);
-  return <primitive object={dressed.root} dispose={null} />;
+  return (
+    <>
+      <primitive object={dressed.root} dispose={null} />
+      <ClearOfficeWindow />
+    </>
+  );
 }
 
 export function LakeShopInterior() {

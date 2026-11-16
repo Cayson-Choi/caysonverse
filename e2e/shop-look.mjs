@@ -38,6 +38,22 @@ await run.step("walk to the shop", async () => {
     return { requests: n };
   });
   run.check("interior requested", shop.requests > 0, shop);
+  const glass = await p.page.evaluate(() => {
+    const r = window.__cvShopInterior?.();
+    if (!r) return null;
+    const out = { office: [], others: 0, draws: r.meshes, tris: r.tris };
+    r.scene.traverse((o) => {
+      if (!o.isMesh) return;
+      const names = [].concat(o.material).map((m) => m.name);
+      let inOffice = false;
+      for (let q = o; q; q = q.parent) if (q.name === "lake_office") inOffice = true;
+      if (inOffice && names.some((n) => /glass/i.test(n))) out.office.push(...names);
+      else if (names.includes("M_lake_glass")) out.others++;
+    });
+    return out;
+  });
+  run.check("office window glass is the clear one, the huts keep theirs", !!glass && glass.office.includes("shop_window_glass") && !glass.office.includes("M_lake_glass") && glass.others > 0, glass);
+  run.check("interior draw calls <= 12", !!glass && glass.draws <= 12, glass && { draws: glass.draws, tris: glass.tris });
 });
 await run.step("look in through the window", async () => {
   await walkAndWait(p, 102, -16.6, 20000, 0.6);
