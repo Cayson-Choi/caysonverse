@@ -1,4 +1,4 @@
-import { pedestrianSignalAt, signalAt, type PedestrianSignalColor, type SignalColor } from "@caysonverse/shared/village/transit";
+import { TRANSIT, pedestrianSignalAt, signalAt, type PedestrianSignalColor, type SignalColor } from "@caysonverse/shared/village/transit";
 
 /** What every crosswalk signal shows at an instant (the pure part of TransitRoadSignals). */
 export interface LampState {
@@ -22,7 +22,7 @@ export function lampsAt(nowMs: number, override?: Partial<Pick<LampState, "vehic
   const blinkOn = Math.floor(nowMs / BLINK_MS) % 2 === 0;
   const walking = ped === "walk" || ped === "flashing";
   // seconds to show: the walk phase's and the flashing phase's remaining time together (the figure turns red at 0)
-  const untilStop = p.color === "walk" ? p.remainingMs + 4_000 : p.color === "flashing" ? p.remainingMs : 0;
+  const untilStop = p.color === "walk" ? p.remainingMs + TRANSIT.pedestrianFlashingMs : p.color === "flashing" ? p.remainingMs : 0;
   return {
     vehicle: veh,
     ped,

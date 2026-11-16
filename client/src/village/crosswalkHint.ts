@@ -1,5 +1,5 @@
 import { SIGNAL_CROSSINGS, crossingFrame } from "@caysonverse/shared/village/crossings";
-import { pedestrianSignalAt, signalAt } from "@caysonverse/shared/village/transit";
+import { TRANSIT, pedestrianSignalAt, signalAt } from "@caysonverse/shared/village/transit";
 
 /** How near (m) to a crosswalk's centre the hint shows. */
 export const CROSSWALK_HINT_REACH_M = 6.5;
@@ -27,7 +27,7 @@ export function crosswalkHintAt(x: number, z: number, nowMs: number): CrosswalkH
   if (!near) return null;
   const p = pedestrianSignalAt(nowMs);
   const seconds = Math.max(1, Math.ceil(p.remainingMs / 1000));
-  if (p.color === "walk") return { tone: "go", text: "초록불이에요, 건너가요", seconds: Math.ceil((p.remainingMs + 4_000) / 1000) };
+  if (p.color === "walk") return { tone: "go", text: "초록불이에요, 건너가요", seconds: Math.ceil((p.remainingMs + TRANSIT.pedestrianFlashingMs) / 1000) };
   if (p.color === "flashing") return { tone: "hurry", text: "곧 빨간불이에요, 건너는 중이면 서둘러요", seconds };
   const car = signalAt(nowMs).color;
   return { tone: "wait", text: car === "green" ? "빨간불이에요, 차가 지나가요 · 기다려요" : "빨간불이에요, 잠깐 기다려요", seconds };
