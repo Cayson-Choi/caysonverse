@@ -57,11 +57,13 @@ export const SELF_CAMERA_HIDE_DISTANCE = 1.8;
  * Inside a building (a place with a camera limit) the own body is hidden only when the third-person camera is really inside the
  * head: nearer than this (m). Review 2026-11-15 round 5: it used to hide within 2.8 m (a faded head that near was a big see-through
  * disc, and then hiding it made the player vanish on arrival and on most seats); the arrival spot and the seat framing now keep the
- * camera 3.2 m+ from the head in normal play, and the body is never faded.
+ * camera 3.2 m+ from the head in normal play, and the body is never faded. Round 9 visual review (2026-11-16): a camera held
+ * 0.55–0.85 m off by low furniture behind (the lounge armchair) left the head only lightly faded, its see-through hair and face
+ * filling half the screen; under 1 m the body is now hidden (a clean first-person look) instead.
  */
-export const INDOOR_SELF_HIDE_DISTANCE = 0.6;
+export const INDOOR_SELF_HIDE_DISTANCE = 1.0;
 /** The hidden body shows again once the camera is this far from the head (a little past the hide distance: no flicker). */
-export const INDOOR_SELF_SHOW_DISTANCE = 0.8;
+export const INDOOR_SELF_SHOW_DISTANCE = 1.2;
 
 /**
  * Indoors, a third-person camera pushed this near the head by a wall (m) — the over-the-shoulder view (cameraShoulder.ts) —

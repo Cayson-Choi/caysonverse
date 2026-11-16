@@ -560,7 +560,7 @@ export function LocalPlayer({
     const inCloseUp = cubbyFocusWeight() > 0.33;
     // Indoors the player always sees their own avatar (review 2026-11-15 round 5: hiding it near the camera made it vanish on
     // arrival and on most seats). The arrival spot and the seat framing (seatFraming.ts) keep the camera 3.2 m+ from the head;
-    // the body is hidden only when the camera is really inside the head (INDOOR_SELF_HIDE_DISTANCE, 0.6 m), never faded.
+    // the body is hidden only when the camera is really inside the head (INDOOR_SELF_HIDE_DISTANCE, 1 m), never half-faded.
     const headDist = Math.hypot(cameraProbe.x - pose.x, cameraProbe.y - (group.position.y + HEAD_HEIGHT), cameraProbe.z - pose.z);
     closeHiddenRef.current = indoorCloseHidden(closeHiddenRef.current, indoorTp, headDist, INDOOR_SELF_HIDE_DISTANCE, INDOOR_SELF_SHOW_DISTANCE);
     const closeIndoors = closeHiddenRef.current && viewState.ovBlend <= OV_VIS_BLEND;
