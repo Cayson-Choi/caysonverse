@@ -129,6 +129,9 @@ export const GLOW_BOOST = 3.2;
  */
 export const GROUND_LAYER_OFFSET: Readonly<Record<string, number>> = {
   LM_plaza: -1,
+  // vrb2: the plaza disc's own materials since the rebuild (setts + sidewalk pavers, the ring road with its markings)
+  LM_setts: -1,
+  LM_road: -1,
   LM_lawn: -1,
   LM_concrete: -2,
   LM_stone: -2,
@@ -162,6 +165,9 @@ export const GROUND_GRADE: Readonly<Record<string, readonly [number, number, num
   LM_grass: [1.4, 1.34, 1.05],
   LM_lawn: [1.4, 1.34, 1.05],
   LM_plaza: [0.7, 0.7, 0.7],
+  // vrb2: what T_plaza was, as its own real-scale textures: the same grade
+  LM_setts: [0.7, 0.7, 0.7],
+  LM_road: [0.7, 0.7, 0.7],
 };
 
 /**

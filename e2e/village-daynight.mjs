@@ -112,7 +112,7 @@ const showHud = (p) =>
 async function maskOf(p) {
   return p.page.evaluate(() => {
     const { gl, scene, camera } = window.__cvThree();
-    const GROUND = new Set(["LM_grass", "LM_lawn", "LM_plaza", "LM_concrete", "LM_stone"]);
+    const GROUND = new Set(["LM_grass", "LM_lawn", "LM_plaza", "LM_setts", "LM_road", "LM_concrete", "LM_stone"]);
     // A MeshBasicMaterial from the village model's own class (no import in page code).
     let Basic = null;
     scene.traverse((o) => {

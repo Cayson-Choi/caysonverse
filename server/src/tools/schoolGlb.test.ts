@@ -882,7 +882,7 @@ describe("schoolSpec", () => {
     expect(spec.requiredBoxes).toEqual(colliders.map((c) => ({ node: colliderNode(c.id), box: c.box, camera: c.camera })));
     expect(spec.requiredBoxes!.filter((b) => !b.camera).map((b) => b.node)).toContain("col__plaza_fountain");
     expect(spec.requiredBoxes!.filter((b) => !b.camera).map((b) => b.node)).toContain("col__pavilion");
-    expect(spec.requiredMaterials).toEqual(["M_window", "M_lamp", "M_water", "M_glow_plot", "M_moon"]);
+    expect(spec.requiredMaterials).toEqual(["M_window", "M_lamp", "M_water", "M_moon"]);
     expect(VILLAGE_NON_LIGHTMAPPED.every((m) => !m.startsWith("LM_"))).toBe(true);
     expect(spec.requiredNodes).toContain("col__plaza_fountain");
     expect(spec.requiredNodes).toContain("col__memorial_back");

@@ -572,7 +572,10 @@ function makeVillageLayout(): VillageLayout {
     busStop: {
       // xwalk fix 2026-11-13: the shelter stands at the BACK of a paved waiting pad (BUS_STOP_PAD) with 3 m of clear paving
       // between the roadway's kerb and its roof (bus stop review: the old one stood on the kerb, 1.5 m from the bus's doors)
-      shelter: { centre: pt(40.9, -4.9), size: sz(1.5, 3.6) },
+      // vrb2 (VILLAGE-TODO A5, 2026-11-16): a Korean standard roadside shelter (art/village/tools/build_busstop.py): back
+      // posts and a cantilever roof, 4.4 x 1.8 m, its open front 0.85 m further from the road (x 41.0: 4.1 m of paving
+      // from the parked bus's side). The middle stays at z -4.9, so the bus's doors still stop at it (transit.ts unchanged).
+      shelter: { centre: pt(41.9, -4.9), size: sz(1.8, 4.4) },
       // owner 2026-11-15 ("버스가 도로 폭에 맞게 잘 정지한 상태로 있도록 해"): the bus stands in its lane along the curved
       // kerb (transit.ts BUS_LANE_RADIUS, BUS_STOP_ANGLE), no longer square to the map across the centre line
       bus: { centre: pt(TRANSIT.parked.x, TRANSIT.parked.z), size: sz(2.5, 9), yaw: TRANSIT.parked.yaw },
@@ -851,19 +854,35 @@ export function busBoardingDistance(x: number, z: number, layout: Pick<VillageLa
 
 /**
  * Solid parts of the bus stop: the shelter's rear glass and its two end glass panels (the side facing the road stays open
- * to the pad), then the stop sign's post. The rear glass comes first.
+ * to the pad), then the stop sign's post, then the lit ad box (vrb2). The rear glass comes first.
  */
+/** The shelter's side glass screens' depth from the back wall (m; build_busstop.py SIDE_DEPTH). */
+export const BUS_SHELTER_SIDE_DEPTH = 1.55;
+
+/** The lit ad / route box in the shelter's south bay (build_busstop.py: between the posts at z1 - 0.95 and z1 - 0.06, 0.76 m wide, 0.2 m deep). */
+export function busShelterLightBox(layout: Pick<VillageLayout, "busStop"> = VILLAGE_LAYOUT): { minZ: number; maxZ: number } {
+  const s = boxAt(layout.busStop.shelter.centre, layout.busStop.shelter.size);
+  const lz = (s.maxZ - 0.95 + s.maxZ - 0.06) / 2;
+  const r = (n: number) => Math.round(n * 1e6) / 1e6;
+  return { minZ: r(lz - 0.38), maxZ: r(lz + 0.38) };
+}
+
 export function busShelterColliders(layout: Pick<VillageLayout, "busStop"> = VILLAGE_LAYOUT): AABB[] {
   const s = boxAt(layout.busStop.shelter.centre, layout.busStop.shelter.size);
-  const t = 0.03; // half the glass's thickness as a collision skin
-  const rear = s.maxX - 0.05; // the back glass's plane (the posts' centre line)
+  const t = 0.06; // half the back posts' 0.12 m (the glass between them is 12 mm): one skin for the whole back wall
+  const rear = s.maxX - 0.05; // the back wall's plane (the posts' centre line)
   const r = (n: number) => Math.round(n * 1e6) / 1e6;
-  const end = (z: number): AABB => ({ minX: r(s.minX + 0.05), maxX: r(rear + t), minZ: r(z - t), maxZ: r(z + t) });
+  // vrb2: the side screens run BUS_SHELTER_SIDE_DEPTH from the back wall (the road side is open: no front posts), each
+  // ending in a 6 cm stile; 4 cm each side of the 12 mm pane so a body never touches the visible glass
+  const end = (z: number): AABB => ({ minX: r(rear - BUS_SHELTER_SIDE_DEPTH - 0.04), maxX: r(rear + t), minZ: r(z - 0.04), maxZ: r(z + 0.04) });
+  const lb = busShelterLightBox(layout);
   return [
     { minX: r(rear - t), maxX: r(rear + t), minZ: s.minZ, maxZ: s.maxZ },
-    end(s.minZ + 0.05),
-    end(s.maxZ - 0.05),
+    end(s.minZ + 0.06),
+    end(s.maxZ - 0.06),
     { minX: r(BUS_STOP_SIGN.x - BUS_SIGN_POST), maxX: r(BUS_STOP_SIGN.x + BUS_SIGN_POST), minZ: r(BUS_STOP_SIGN.z - BUS_SIGN_POST), maxZ: r(BUS_STOP_SIGN.z + BUS_SIGN_POST) },
+    // the lit ad / route box, 0.2 m deep, standing proud of the back wall's skin (vrb2)
+    { minX: r(rear - 0.11), maxX: r(rear + 0.05), minZ: lb.minZ, maxZ: lb.maxZ },
   ];
 }
 
@@ -875,7 +894,7 @@ export function busShelterColliders(layout: Pick<VillageLayout, "busStop"> = VIL
 export function busShelterBenchCollider(layout: Pick<VillageLayout, "busStop"> = VILLAGE_LAYOUT): AABB {
   const s = boxAt(layout.busStop.shelter.centre, layout.busStop.shelter.size);
   const r = (n: number) => Math.round(n * 1e6) / 1e6;
-  return { minX: r(s.maxX - 0.67), maxX: r(s.maxX - 0.1), minZ: r(layout.busStop.shelter.centre.z - 1.15), maxZ: r(layout.busStop.shelter.centre.z + 1.15) };
+  return { minX: r(s.maxX - 0.67), maxX: r(s.maxX - 0.12), minZ: r(layout.busStop.shelter.centre.z - 1.15), maxZ: r(layout.busStop.shelter.centre.z + 1.15) };
 }
 
 /**
@@ -883,7 +902,7 @@ export function busShelterBenchCollider(layout: Pick<VillageLayout, "busStop"> =
  * shelter's centre, its underside 3.3 m up at the posts (owner 2026-11-13: the wizard hat, 2.69 m, touched the old 2.55 m roof), the crown and the blue trim boards reaching 3.55 m. Shared by the
  * camera slab (`busShelterRoofSlab`) and the jump's headroom (overhead.ts).
  */
-export const BUS_SHELTER_ROOF = { halfX: 1.05, halfZ: 2.05, underside: 3.3, top: 3.55 } as const;
+export const BUS_SHELTER_ROOF = { halfX: 1.15, halfZ: 2.45, underside: 3.3, top: 3.55 } as const;
 
 /**
  * The shelter's roof as a camera box, like the hall's ceiling slab: a camera under it (the player standing in the shelter)
@@ -911,7 +930,9 @@ export function busShelterLightBoxCameraBox(layout: Pick<VillageLayout, "busStop
   const s = boxAt(layout.busStop.shelter.centre, layout.busStop.shelter.size);
   const xb = s.maxX - 0.05; // the back wall's plane
   const round6 = (n: number) => Math.round(n * 1e6) / 1e6;
-  return { minX: round6(xb - 0.03), maxX: round6(xb + 0.05), minZ: round6(c.z - 0.62), maxZ: round6(c.z + 0.62), height: BUS_SHELTER_ROOF.top };
+  void c;
+  const lb = busShelterLightBox(layout); // vrb2: the box is in the south bay now (it was the middle bay)
+  return { minX: round6(xb - 0.11), maxX: round6(xb + 0.05), minZ: lb.minZ, maxZ: lb.maxZ, height: BUS_SHELTER_ROOF.top };
 }
 
 /**

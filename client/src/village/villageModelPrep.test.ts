@@ -126,6 +126,8 @@ function fixture(): Fixture {
   const textures = { water: new Texture(), sky: new Texture(), leaf: new Texture() };
   const mats = {
     LM_plaza: mat("LM_plaza"),
+    LM_setts: mat("LM_setts"),
+    LM_road: mat("LM_road"),
     LM_grass: mat("LM_grass"),
     LM_lawn: mat("LM_lawn"),
     LM_concrete: mat("LM_concrete"),
@@ -142,7 +144,7 @@ function fixture(): Fixture {
   };
   mats.M_glow_plot.color.setRGB(0.016, 0.65, 1);
   const root = new Object3D();
-  const lm = new Mesh(new BoxGeometry(1, 1, 1), [mats.LM_plaza, mats.LM_grass, mats.LM_lawn, mats.LM_concrete, mats.LM_wood]);
+  const lm = new Mesh(new BoxGeometry(1, 1, 1), [mats.LM_plaza, mats.LM_grass, mats.LM_lawn, mats.LM_concrete, mats.LM_wood, mats.LM_setts, mats.LM_road]);
   lm.name = "village_lm_11";
   root.add(lm);
   root.add(mesh("village_fx_11", mats.M_glow_plot), mesh("village_fx_12", mats.M_window), mesh("village_fx_10", mats.M_lamp));
@@ -687,7 +689,7 @@ describe("prepareVillage: the model dressed for the game", () => {
     const b = drawCallBudget(nodes.root);
     expect(b.instanced).toBe(2);
     expect(b.instances).toBe(2334 + 19);
-    expect(b.meshes).toBeLessThan(20);
+    expect(b.meshes).toBeLessThan(22); // vrb2: the fixture's light-mapped mesh has the two new ground groups (LM_setts, LM_road)
   });
 });
 

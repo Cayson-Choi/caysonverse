@@ -673,7 +673,8 @@ describe("layout sanity (nothing is built on the water, the road or each other)"
     expect(bEnd.x).toBeLessThanOrEqual(GAP.maxX);
     expect(bEnd.z).toBeCloseTo(L.bridge.minZ, 9);
     const bus = lane("lane_bus");
-    expect(distToBox(bus.points[bus.points.length - 1], boxOf(L.busStop.shelter))).toBeLessThanOrEqual(2);
+    // vrb2 (A5): the shelter stands 0.85 m further back on the pad (front edge x 41.0); the lane still ends on the pad's edge
+    expect(distToBox(bus.points[bus.points.length - 1], boxOf(L.busStop.shelter))).toBeLessThanOrEqual(2.6);
   });
 
   it("every lane is clear of every collider by at least its half width (a body can walk its whole length)", () => {
@@ -858,9 +859,11 @@ describe("villageGeometry plays on the colliders generated from village.glb (Tas
     expect(villageGeometry).toEqual(buildVillageGeometry(L, VILLAGE_MODEL_COLLIDERS, HALL_MODEL_COLLIDERS, [...guideColliders()], houseColliders()));
     // the model's old parked-bus box (square to the map, over the centre line) is left out: the bus is its slices
     expect(VILLAGE_MODEL_COLLIDERS).toEqual(withoutLegacyBus({ obstacles: VILLAGE_COLLIDERS, cameraBoxes: VILLAGE_CAMERA_BOXES }));
-    expect(VILLAGE_COLLIDERS.filter((b) => sameBox(b, MODEL_LEGACY_BUS_BOX))).toHaveLength(1);
-    expect(VILLAGE_MODEL_COLLIDERS.obstacles).toHaveLength(VILLAGE_COLLIDERS.length - 1);
-    expect(VILLAGE_MODEL_COLLIDERS.cameraBoxes).toHaveLength(VILLAGE_CAMERA_BOXES.length - 1);
+    // vrb2: the village rebuild (layout without a `bus` box) no longer writes col__bus; the filter stays for older models
+    const legacy = VILLAGE_COLLIDERS.filter((b) => sameBox(b, MODEL_LEGACY_BUS_BOX)).length;
+    expect(legacy).toBe(0);
+    expect(VILLAGE_MODEL_COLLIDERS.obstacles).toHaveLength(VILLAGE_COLLIDERS.length - legacy);
+    expect(VILLAGE_MODEL_COLLIDERS.cameraBoxes).toHaveLength(VILLAGE_CAMERA_BOXES.length - VILLAGE_CAMERA_BOXES.filter((b) => sameBox(b, MODEL_LEGACY_BUS_BOX)).length);
     for (const b of VILLAGE_COLLIDERS) expect(villageGeometry.obstacles.some((o) => sameBox(o, b))).toBe(!sameBox(b, MODEL_LEGACY_BUS_BOX));
     for (const b of VILLAGE_CAMERA_BOXES) if (!sameBox(b, MODEL_LEGACY_BUS_BOX)) expect(villageGeometry.cameraBoxes).toContainEqual(b);
     for (const b of busParkedColliders(L)) expect(villageGeometry.cameraBoxes).not.toContainEqual(b);
@@ -1503,7 +1506,8 @@ describe("the bus stop's walking space (xwalk fix: the shelter at the back of th
   it("an avatar can stand and walk side by side between the bus's door side and the shelter, along its whole length", () => {
     for (let z = bus.minZ + 0.5; z <= -2.6; z += 0.5) {
       // the bus's door side runs along the kerb, 0.35 m off it: a body stands from 0.55 m off the side (its slices take 0.1)
-      for (let x = busDoorSideX(z) + 0.55; x <= shelter.minX - 0.5; x += 0.25) {
+      // (vrb2: the shelter moved back to x 41.0; past x 39.65 the café terrace's corner takes the pad's north end, as before)
+      for (let x = busDoorSideX(z) + 0.55; x <= Math.min(shelter.minX - 0.5, 39.65); x += 0.25) {
         expect(isBlocked(x, z, PLAYER_RADIUS, obstacles), `(${x}, ${z})`).toBe(false);
       }
     }
@@ -1533,13 +1537,14 @@ describe("the bus stop's walking space (xwalk fix: the shelter at the back of th
 });
 
 describe("the bus shelter's opaque light box as a camera box (visual review r4)", () => {
-  it("covers the back wall's light box (1.24 m wide, floor to roof) and nothing else of the shelter", () => {
+  it("covers the back wall's light box (vrb2: 0.76 m wide, 0.16 m deep, in the south bay) and nothing else of the shelter", () => {
     const b = busShelterLightBoxCameraBox(L);
     const s = boxOf(L.busStop.shelter);
-    expect(b.maxX - b.minX).toBeCloseTo(0.08, 6);
+    expect(b.maxX - b.minX).toBeCloseTo(0.16, 6);
     expect(b.maxX).toBeLessThanOrEqual(s.maxX);
-    expect(b.maxZ - b.minZ).toBeCloseTo(1.24, 6);
-    expect((b.minZ + b.maxZ) / 2).toBeCloseTo(L.busStop.shelter.centre.z, 6);
+    expect(b.maxZ - b.minZ).toBeCloseTo(0.76, 6);
+    expect((b.minZ + b.maxZ) / 2).toBeCloseTo(s.maxZ - 0.505, 6);
+    expect(b.minZ).toBeGreaterThan(L.busStop.shelter.centre.z + 1.15); // south of the bench
     expect(b.height).toBeGreaterThanOrEqual(2.55);
   });
 });
