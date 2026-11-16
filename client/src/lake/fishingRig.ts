@@ -176,6 +176,7 @@ export function createFishingRig(o: { sid: string; avatar: BuiltAvatar; mixer: A
   let rod: Rod | null = null;
   let net: Net | null = null;
   const catchRig = createCatchRig(sid);
+  const fpV = { cp: new Vector3(), fw: new Vector3(), rt: new Vector3(), up: new Vector3(), grip: new Vector3(), aim: new Vector3(), axis: new Vector3(), q: new Quaternion(), one: new Vector3(1, 1, 1) };
   let catchShown = false;
   let fpRod: Rod | null = null;
   let rodHost: Object3D | null = null;
@@ -393,8 +394,18 @@ export function createFishingRig(o: { sid: string; avatar: BuiltAvatar; mixer: A
           unregisterTip = registerRodTip(sid, fpRod.tip);
         }
         if (fpRod) {
-          rod.root.updateWorldMatrix(true, false);
-          fpRod.root.matrix.copy(rod.root.matrixWorld);
+          // held in the view (lake v2, 1st person): the grip at the lower right, the rod reaching up and out so its tip, the line
+          // and a fish hanging from it stay in the upper right of the view whatever the eye does
+          fpCam.updateMatrixWorld();
+          const cp = fpV.cp.setFromMatrixPosition(fpCam.matrixWorld);
+          const fw = fpV.fw.set(0, 0, -1).applyQuaternion(fpCam.quaternion);
+          const rt = fpV.rt.set(1, 0, 0).applyQuaternion(fpCam.quaternion);
+          const up = fpV.up.set(0, 1, 0).applyQuaternion(fpCam.quaternion);
+          const grip = fpV.grip.copy(cp).addScaledVector(rt, 0.24).addScaledVector(up, -0.32).addScaledVector(fw, 0.3);
+          const aim = fpV.aim.copy(cp).addScaledVector(rt, 0.62).addScaledVector(up, 1.0).addScaledVector(fw, 3.0).sub(grip).normalize();
+          const axis = fpRod.real ? fpV.axis.set(ROD_AXIS_R[0], ROD_AXIS_R[1], ROD_AXIS_R[2]).normalize() : fpV.axis.set(0, 1, 0);
+          fpV.q.setFromUnitVectors(axis, aim);
+          fpRod.root.matrix.compose(grip, fpV.q, fpV.one);
           fpRod.root.matrixWorldNeedsUpdate = true;
           fpRod.setUnfold(unfold);
           fpRod.setBend(rodBend(view, t));

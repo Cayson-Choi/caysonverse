@@ -77,18 +77,6 @@ function shadowTexture(): CanvasTexture {
 /** A hooked fish starts under the water: never eased in from the last catch's pose. */
 const newCatchStart = (phase: number): boolean => phase === FISH_PHASE.hooked;
 
-/** First person: ease the look's pitch toward a world point (only the pitch: the yaw is the seated body's). */
-function fpLookAt(p: Vector3, cam: Camera, delta: number, below = 0): void {
-  const c = new Vector3().setFromMatrixPosition(cam.matrixWorld);
-  const d = p.sub(c);
-  const len = d.length();
-  if (len < 1e-3) return;
-  // CameraRig: forward y = -sin(pitch); `below` looks a little under the point (the fish a little above the middle, the rod tip
-  // with the line going up to it at the top of the view)
-  const want = Math.max(-1.1, Math.min(1.1, -Math.asin(d.y / len) + below));
-  viewState.fpPitch += (want - viewState.fpPitch) * Math.min(1, delta * 3);
-}
-
 export function createCatchRig(sid: string): CatchRig {
   let fish: FishModel | null = null;
   let shadow: Mesh | null = null;
@@ -167,7 +155,7 @@ export function createCatchRig(sid: string): CatchRig {
       const cloth = new MeshStandardMaterial({ color: i.fpLook?.top ?? "#2f62c8", roughness: 0.85 });
       const fg = new SphereGeometry(0.052, 20, 14);
       fg.scale(1, 0.86, 1.08);
-      const sg = new CylinderGeometry(0.046, 0.058, 1, 16, 1, true);
+      const sg = new CylinderGeometry(0.036, 0.05, 1, 16, 1, true);
       sg.translate(0, 0.5, 0);
       for (let n = 0; n < 2; n++) {
         const fm = new Mesh(fg, skin);
@@ -198,8 +186,8 @@ export function createCatchRig(sid: string): CatchRig {
       sm.quaternion.setFromUnitVectors(UP, dir.normalize());
       sm.scale.set(1, L, 1);
     };
-    place(0, gripR, at(0.36, -0.5, 0.1));
-    place(1, gripL, at(-0.36, -0.5, 0.1));
+    place(0, gripR, at(0.42, -0.62, 0.22));
+    place(1, gripL, at(-0.42, -0.62, 0.22));
   };
 
   const hide = () => {
@@ -281,7 +269,8 @@ export function createCatchRig(sid: string): CatchRig {
         }
         case "line": {
           // first person: the eye follows the fish up toward the rod tip (the tip at the top of the view), as anyone would
-          if (i.fpCamera && rodTip) fpLookAt(hook.clone(), i.fpCamera, delta, 0.04);
+          // first person: the rod is held in the view (fishingRig), its tip at the upper right: the eye levels out to see the fish
+          if (i.fpCamera) viewState.fpPitch += (0.02 - viewState.fpPitch) * Math.min(1, delta * 2);
           // a pendulum: the mouth on a line from the rod tip that is reeled in to 0.75 m
           const k = Math.min(1, (t - REEL_S - 0.16) / (HANG_END_S - REEL_S - 0.16));
           const L0 = Math.max(0.8, tip.y - LAKE_WATER_Y);
