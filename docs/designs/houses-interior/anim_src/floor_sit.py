@@ -166,20 +166,20 @@ class Pose:
     """한 자세의 매개변수. 모두 뼈대 공간(도·미터)."""
     def __init__(self, **kw):
         self.hip_drop = 0.329       # 엉덩이 관절을 낮추는 높이
-        self.hip_back = 0.06        # 엉덩이를 뒤로 미는 거리
+        self.hip_back = 0.22        # 엉덩이를 뒤로 미는 거리
         self.hip_pitch = 0.0        # 골반 숙임(+ = 앞으로)
-        self.spine_pitch = 3.0
-        self.chest_pitch = 2.0
-        self.head_pitch = -2.0
+        self.spine_pitch = 6.0
+        self.chest_pitch = 4.0
+        self.head_pitch = -6.0
         self.head_yaw = 0.0
         self.breathe = 0.0          # 가슴 들썩임(도)
         # 왼다리(안쪽 · 아래쪽)와 오른다리(바깥쪽 · 위쪽): 허벅지 벌림 yaw(밖으로 +), 내림 pitch(아래로 +)
-        self.thigh_l = (36.0, 6.0)
-        self.thigh_r = (36.0, -2.0)
-        self.shin_l = (-0.70, -0.70, -0.03)   # 방향 벡터(정규화는 알아서)
-        self.shin_r = (0.70, -0.70, 0.06)
-        self.foot_l = (-14.0, 0.0)            # 발: 발끝 방향 yaw(안쪽 -)·pitch(발끝 내림 +). 발목 → 발바닥은 통째로 돈다
-        self.foot_r = (14.0, -2.0)
+        self.thigh_l = (55.0, 8.0)
+        self.thigh_r = (55.0, 4.0)
+        self.shin_l = (-0.80, -0.60, -0.02)   # 방향 벡터(정규화는 알아서)
+        self.shin_r = (0.50, -0.85, 0.18)
+        self.foot_l = (-65.0, -55.0)            # 발: 발끝 방향 yaw(안쪽 -)·pitch(발끝 내림 +). 발목 → 발바닥은 통째로 돈다
+        self.foot_r = (30.0, -58.0)
         self.hand_off = (-0.034, 0.003, 0.143)  # 손목 = 무릎 + 이 값(왼쪽 기준, 오른쪽은 x 부호 반대)
         self.plant = False          # True: 더 낮은 발목이 서 있을 때 발목 높이(0.145)에 오도록 엉덩이 높이를 자동으로 정한다
         self.hand_blend = 1.0       # 0 = 서 있을 때처럼 몸 옆(가슴 기준 상대 위치), 1 = 무릎 위
