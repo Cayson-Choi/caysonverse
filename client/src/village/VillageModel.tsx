@@ -23,7 +23,9 @@ import { preloadBus } from "./villageBusLoader";
 import { createVegetation, hideLegacyVegetationSources, vegModeFrom, vegetationPark, type VegStats, type VillageVegetation } from "./veg/villageVegetation";
 import { vegDressing } from "./vegDressing";
 import { createWaterfall3D, hideWaterfallCards, type Waterfall3D } from "./waterfall3d";
+import { VillageMountains, mountainsMode, preloadMountains } from "./VillageMountains";
 import type { Object3D } from "three";
+import { LakeVillagePatch } from "../lake/PatchVillage";
 import type { DrawnGap } from "./veg/drawnGap";
 
 declare global {
@@ -76,6 +78,9 @@ export function VillageModel({ tier }: { tier: VillageTier }) {
   useTexture.preload(VILLAGE_LIGHTMAP_URL);
   noteBusRequested();
   preloadBus();
+  // the distant mountains (B6): their own small files, read beside the model's, never waited for
+  const mountains = mountainsMode() === "new";
+  if (mountains) preloadMountains();
   const gltf = useGLTF(VILLAGE_MODEL_URL, DRACO_PATH);
   const lightmap = useTexture(VILLAGE_LIGHTMAP_URL);
   const gl = useThree((s) => s.gl);
@@ -232,8 +237,15 @@ export function VillageModel({ tier }: { tier: VillageTier }) {
   return (
     <>
       <primitive object={nodes.root} dispose={null} />
+      {/* The fishing lake takes the old backdrop lake out of this clone once it is drawn (lake/lakeVillagePatch.ts). */}
+      <LakeVillagePatch root={nodes.root} />
       {veg && <primitive object={veg.group} dispose={null} />}
       {waterfall && <primitive object={waterfall.runtime.group} dispose={null} />}
+      {mountains && (
+        <Suspense fallback={null}>
+          <VillageMountains nodes={nodes} tier={tier} />
+        </Suspense>
+      )}
       {night && (
         <Suspense fallback={null}>
           <NightLightmap />

@@ -1,3 +1,4 @@
+import { isTouchDevice } from "../device";
 import { Suspense, useEffect, useLayoutEffect, useState } from "react";
 import { useFrame } from "@react-three/fiber";
 import { useGLTF } from "@react-three/drei";
@@ -9,7 +10,9 @@ import { takeArmedHouseUse } from "./houseTap";
 import type { PlayersRoom } from "../game/remoteSync";
 import type { Pose } from "../game/types";
 import { getRoom, sendUseDoor, sendUseStair } from "../net/connection";
-import { rideStatusText, sendBusRide, showTransitNotice, startTransitSync, transitNowMs, transitTripAt, type TransitRoom, useTransitState } from "../net/transitSync";
+import { rideStatusText, sendBusRide, sendBusSit, sendBusStand, showTransitNotice, startTransitSync, transitNowMs, transitTripAt, type TransitRoom, useTransitState } from "../net/transitSync";
+import { BUS_VIEW_YAW, busCamGoal, busWalk, selfBusRide } from "../game/busRide";
+import { busRiderPoints, takenBusSpots } from "../game/remoteStore";
 import { TRANSIT, boardingOpensWords } from "@caysonverse/shared/village/transit";
 import type { Identity } from "../stores/appStore";
 import { DoorFade } from "./DoorFade";
@@ -30,8 +33,8 @@ import { DayNight } from "./DayNight";
 import { VillageModel } from "./VillageModel";
 import { VillageBus } from "./VillageBus";
 import { BUSSTOP_MODEL_URL, BusStopShelter } from "./BusStopShelter";
-import { FishingPondProps } from "./FishingPondProps";
 import { VillageMusic } from "./VillageMusic";
+import { LakeWorld } from "../lake/LakeScene";
 import { VILLAGE_CAMERA_PLANES, VILLAGE_GROUND_DECAL, type VillageTier } from "./villageModelPrep";
 import { clearBusCache, clearVillageCaches, holdVillageFiles, holdsVillageFiles } from "./villageRelease";
 import { LoadBoundary } from "./LoadBoundary";
@@ -39,11 +42,14 @@ import { areaGate, localArea, readSelfArea, releaseLocalArea, seedLocalArea, use
 import {
   BUS_RIDE_TARGET_BOARD,
   BUS_RIDE_TARGET_LEAVE,
+  BUS_STAND_TARGET_ID,
   CUBBY_TARGET_PREFIX,
   GUIDE_TARGET_PREFIX,
   KEYPAD_TARGET_PREFIX,
   busCountdownWords,
+  parseBusSitTarget,
   villageAndHallTargets,
+  villageBusCabinTargets,
   villageBusTarget,
   villageTargets,
 } from "./villageTargets";
@@ -53,7 +59,7 @@ import { guideDialogOpen, openGuideDialog } from "./guideDialogStore";
 import { StarSky } from "./sky/StarSky";
 import { StarFinder } from "./sky/StarFinder";
 import { StarFinderButton } from "./sky/StarFinderButton";
-import { FishingPanel } from "./FishingPanel";
+import { LakeHud } from "../lake/LakeHud";
 import { CrosswalkHintPill } from "./CrosswalkHintPill";
 import { BusStopHintPill } from "./BusStopHintPill";
 import { SIGNALS_MODEL_URL, TransitRoadSignals } from "./TransitRoadSignals";
@@ -131,7 +137,7 @@ function VillageArea({ area, tier, pose }: { area: AreaId; tier: VillageTier; po
               <BusStopShelter />
             </Suspense>
           </LoadBoundary>
-          <FishingPondProps />
+          <LakeWorld pose={pose} tier={tier} />
           {/* The bus at the stop (bus review r3, M2): its own error boundary and its own Suspense, so the village never
               waits for it. Its download starts with the model's, so it is usually in when the village shows (and warmed
               up with it); if it comes later it appears then (its own warm-up), and a stalled or failed bus is no bus. */}
@@ -183,6 +189,13 @@ function VillageDoors({ pose }: { pose: Pose }) {
     // Nothing is offered while the cubby card or a guide's questions are open (the E / action button hides).
     setTargetSource((p) => {
       const area = localArea();
+      // Aboard the bus the village offers nothing else: sit / hold / get up / get off by where I stand in the bus's frame.
+      if (selfBusRide.slot >= 0) {
+        const free = selfBusRide.slot === 0;
+        const ahead = free && busWalk.valid ? busWalk.ahead : selfBusRide.ahead;
+        const right = free && busWalk.valid ? busWalk.right : selfBusRide.right;
+        return villageBusCabinTargets(selfBusRide.slot, ahead, right, takenBusSpots(), busOnRoad(), busRiderPoints(), free && busWalk.valid ? busWalk.yaw : undefined);
+      }
       const base = villageAndHallTargets(area, p.x, p.z, cubbyCardState() !== null || guideDialogOpen() !== null || keypadOpen);
       const bus = villageBusTarget(area, p.x, p.z, boarded, ...busScheduleNow(), busOnRoad());
       // within the keypad's 2 m of a house door the house's model starts to come (it is usually in by the time the code is typed)
@@ -206,6 +219,16 @@ function VillageDoors({ pose }: { pose: Pose }) {
       if (target.id === BUS_RIDE_TARGET_LEAVE) {
         clearClickTarget();
         sendBusRide("leave");
+        return;
+      }
+      if (target.id === BUS_STAND_TARGET_ID) {
+        sendBusStand();
+        return;
+      }
+      const sit = parseBusSitTarget(target.id);
+      if (sit) {
+        clearClickTarget();
+        sendBusSit(sit.kind, sit.index);
         return;
       }
       if (target.kind === "object" && target.id.startsWith(GUIDE_TARGET_PREFIX)) {
@@ -257,10 +280,57 @@ function VillageDoors({ pose }: { pose: Pose }) {
  */
 const VILLAGE_SHADOW_COLOR = "#1d1e22";
 
-/** Small ride-status placeholder; the full window/camera view can build on this state. */
+/** The first ride on this device shows the "look around" hint once (a per-device convenience: browser storage, never required). */
+const RIDE_HINT_KEY = "cv.busRideHintSeen";
+function rideHintSeen(): boolean {
+  try {
+    return window.localStorage.getItem(RIDE_HINT_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+function markRideHintSeen(): void {
+  try {
+    window.localStorage.setItem(RIDE_HINT_KEY, "1");
+  } catch {
+    /* private window: the hint just shows again next time */
+  }
+}
+
+/** The quick views: the camera eases to look out of the left windows, the front, the right windows (the doors' side) or the back. */
+const RIDE_VIEWS: ReadonlyArray<{ id: string; label: string; short: string; yaw: number }> = [
+  { id: "left", label: "◀ 왼쪽 창", short: "◀ 왼쪽", yaw: BUS_VIEW_YAW.left },
+  { id: "front", label: "앞", short: "앞", yaw: BUS_VIEW_YAW.front },
+  { id: "right", label: "오른쪽 창 ▶", short: "오른쪽 ▶", yaw: BUS_VIEW_YAW.right },
+  { id: "back", label: "뒤", short: "뒤", yaw: BUS_VIEW_YAW.back },
+];
+
+/**
+ * The ride panel (owner 2026-11-15): where the bus is, the way to look around (drag the screen, or the quick views: left
+ * windows, front, right windows, back), how to sit or stand, and the way off. The hint shows once per device.
+ */
 function TransitRideHud() {
   const { boarded, snapshot, notice } = useTransitState();
+  const touch = isTouchDevice;
+  const [hint, setHint] = useState(false);
+  useEffect(() => {
+    if (!boarded || rideHintSeen()) return;
+    setHint(true);
+    markRideHintSeen();
+    const id = window.setTimeout(() => setHint(false), 9000);
+    return () => window.clearTimeout(id);
+  }, [boarded]);
   if (!boarded && !notice) return null;
+  const btn = {
+    border: 0,
+    borderRadius: 8,
+    padding: "6px 8px",
+    cursor: "pointer",
+    fontSize: 12,
+    background: "rgba(255,255,255,0.92)",
+    color: "#1b2147",
+    minHeight: 34,
+  } as const;
   return (
     <div
       style={{
@@ -269,23 +339,42 @@ function TransitRideHud() {
         borderRadius: 10,
         background: "rgba(20, 28, 52, 0.82)",
         color: "#fff",
-        fontSize: 12,
-        lineHeight: 1.35,
+        fontSize: touch ? 11 : 12,
+        lineHeight: 1.3,
+        pointerEvents: "auto",
+        maxWidth: touch ? 196 : 232,
       }}
+      data-testid="bus-ride-hud"
     >
       {boarded ? (
         <>
           <div>🚌 버스 탑승 중</div>
-          <div style={{ opacity: 0.75 }}>{rideStatusText(snapshot, busCountdownWords(busScheduleNow()[1]).long)}</div>
+          {touch && !hint ? null : <div style={{ opacity: 0.75 }}>{rideStatusText(snapshot, busCountdownWords(busScheduleNow()[1]).long)}</div>}
+          {notice ? (
+            // why a seat was refused (taken, the wrong side of a backed seat, too far): a rider must see it
+            <div role="alert" data-testid="bus-ride-notice" style={{ marginTop: 5, background: "rgba(255,196,64,0.28)", borderRadius: 8, padding: "5px 8px" }}>
+              {notice}
+            </div>
+          ) : null}
+          <div style={{ marginTop: 6, display: "flex", flexWrap: "nowrap", gap: 4 }} data-testid="bus-ride-views">
+            {RIDE_VIEWS.map((v) => (
+              <button key={v.id} type="button" data-view={v.id} style={{ ...btn, padding: "6px 6px", whiteSpace: "nowrap", flex: "0 0 auto" }} onClick={() => { busCamGoal.yaw = v.yaw; }}>
+                {touch ? v.short : v.label}
+              </button>
+            ))}
+          </div>
+          {hint ? (
+            <div style={{ marginTop: 6, background: "rgba(139,92,246,0.35)", borderRadius: 8, padding: "6px 8px" }} data-testid="bus-ride-hint">
+              {touch ? "화면을 끌어서 창밖을 둘러보세요 · 자리나 손잡이 가까이에서 아래 버튼" : "화면을 끌어서 창밖을 둘러보세요 · 자리나 손잡이 가까이에서 E"}
+            </div>
+          ) : touch ? null : (
+            <div style={{ marginTop: 5, opacity: 0.7 }}>화면을 끌면 둘러볼 수 있어요 · 자리·손잡이 가까이에서 E</div>
+          )}
           {snapshot?.status === "inTransit" ? (
             // the doors open only at the stop (the server refuses a leave on the lap): say when instead of a dead button
             <div style={{ marginTop: 4, opacity: 0.75 }}>정류장에 돌아오면 내려요</div>
           ) : (
-            <button
-              type="button"
-              onClick={() => sendBusRide("leave")}
-              style={{ marginTop: 5, border: 0, borderRadius: 7, padding: "4px 8px", cursor: "pointer" }}
-            >
+            <button type="button" onClick={() => sendBusRide("leave")} style={{ ...btn, marginTop: 6 }}>
               하차
             </button>
           )}
@@ -356,7 +445,7 @@ export function VillageScene({ identity }: { identity: Identity }) {
           <StarFinderButton />
         </>
       }
-      hud={({ orbit, pose }) => (
+      hud={({ orbit, pose, seat }) => (
         <>
           <VegVeil active={area === "village"} />
           <DoorFade />
@@ -364,7 +453,7 @@ export function VillageScene({ identity }: { identity: Identity }) {
           <CubbyView />
           <GuideDialog />
           <StarFinder orbit={orbit} />
-          {area === "village" && <FishingPanel pose={pose} />}
+          {area === "village" && <LakeHud pose={pose} seat={seat} orbit={orbit} />}
           {area === "village" && <CrosswalkHintPill pose={pose} />}
           {area === "village" && <BusStopHintPill pose={pose} />}
           <VillageKeypad />

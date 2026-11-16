@@ -1,5 +1,17 @@
+import { BUS_POLES, BUS_SEATS, BUS_STRAPS, BUS_CEILING } from "@caysonverse/shared/village/busCabin";
 import type { TransitPose } from "@caysonverse/shared/village/transit";
-import { busPlace } from "@caysonverse/shared/village/busSeats";
+
+/**
+ * The rider's camera inside the village bus (owner 2026-11-15: "버스 안에서 캐릭터는 창문의 왼쪽 오른쪽을 다 볼 수 있어야
+ * 해"). The old fixed over-the-shoulder shot (one window side only) is gone: inside the bus the camera is the village's
+ * third-person orbit, tied to the bus's frame — it turns with the bus, so "front" stays the front through the ring road's
+ * curve. Drag (mouse / one finger) turns it round the rider, the wheel / pinch pulls it in (all the way in is first person),
+ * and the panel's quick views (BUS_VIEW_YAW) ease it to the left windows, the front, the right windows or the back.
+ *
+ * Pure (unit-tested): `busRiderCamera` places the eye in the bus's own frame (ahead / right / up) and the spring arm keeps
+ * it inside the cabin's shell (its walls and ceiling: owner 2026-11-16, only walls shorten the arm; the seats and poles do not, and
+ * nothing is drawn see-through). `fadingFixtures` is kept for its tests but the scene no longer hides anything with it.
+ */
 
 export interface TransitCameraPose {
   x: number;
@@ -8,299 +20,277 @@ export interface TransitCameraPose {
   targetX: number;
   targetY: number;
   targetZ: number;
+  /** How far (m) the eye is from the rider's head after the arm was shortened by the cabin (0 = first person). */
+  arm: number;
+  /** First person: the eye is the rider's own and the avatar is hidden. */
+  firstPerson: boolean;
 }
-
-/**
- * A modest passenger eye point, just behind the front half of the cabin, aimed
- * through the right-side window. The bus route yaw uses the same `atan2(dx,dz)`
- * convention as this helper, so the view follows a moving bus without a snap.
- */
-export function transitWindowCamera(pose: TransitPose, eyeHeight = 1.62): TransitCameraPose {
-  const forwardX = Math.sin(pose.yaw);
-  const forwardZ = Math.cos(pose.yaw);
-  const rightX = Math.cos(pose.yaw);
-  const rightZ = -Math.sin(pose.yaw);
-  const x = pose.x + forwardX * 0.8;
-  const z = pose.z + forwardZ * 0.8;
-  return {
-    x,
-    y: eyeHeight,
-    z,
-    targetX: x + rightX * 9,
-    targetY: eyeHeight - 0.08,
-    targetZ: z + rightZ * 9,
-  };
-}
-
 
 /** The rider's lens (vertical degrees): wider than the village's 55 in the small cabin, wider still on a portrait phone. */
 export function riderFov(aspect: number): number {
   return aspect < 1 ? 78 : 68;
 }
 
-/** A thin thing in the cabin (bus-local m: `ahead` of the bus's centre, `right` towards the doors, then up) as a segment. */
-interface CabinBar {
-  a: readonly [number, number, number];
-  b: readonly [number, number, number];
-}
-
-/** build_bus.py's xf (m back from the nose) → ahead of the bus's centre. */
-const aheadOf = (xf: number) => 4.5 - xf;
+/** The longest arm (m) in the bus, and the distance under which the camera is the rider's own eye. */
+export const BUS_CAM = { maxDist: 2.6, firstPersonDist: 0.35, portraitMaxDist: 2.9, pad: 0.12 } as const;
 
 /**
- * The cabin's stanchions, ceiling rails and hand straps (art/village/tools/build_bus.py, "stanchions, ceiling rails and
- * hand straps"): what the rider's camera must not look through (checker r2: a rail and straps cut across the avatar's
- * shoulders and neck). Bus-local segments.
+ * The cabin's shell as the camera's limit (bus-local m): the eye stays inside it so a wall (the windscreen's cowl, the back
+ * wall, the roof) never hides the rider. The side windows are glass: the walls' inner face is 1.195, a little inside it.
  */
-export const CABIN_BARS: readonly CabinBar[] = (() => {
-  const bars: CabinBar[] = [];
-  const poles: Array<[number, number]> = [
-    [1.0, 0.45], [1.0, 1.45], [-0.33, 1.32], [1.0, 4.33], [1.0, 5.77], [0.32, 3.2], [0.32, 6.12], [-0.32, 6.12], [0.32, 7.05], [-0.32, 7.05],
-  ];
-  for (const [X, xf] of poles) bars.push({ a: [aheadOf(xf), X, xf < 6 ? 0.34 : 0.75], b: [aheadOf(xf), X, 2.5] });
-  // the fare terminals by both doors (a post and its reader, up to ~1.6 m) and the driver's screen's post
-  bars.push({ a: [aheadOf(0.95), 0.25, 0.34], b: [aheadOf(0.95), 0.25, 1.62] });
-  bars.push({ a: [aheadOf(5.83), 0.8, 0.34], b: [aheadOf(5.83), 0.8, 1.62] });
-  bars.push({ a: [aheadOf(1.32), -0.33, 0.34], b: [aheadOf(1.32), -0.33, 1.75] });
-  for (const s of [1, -1]) {
-    bars.push({ a: [aheadOf(1.5), s * 0.42, 2.5], b: [aheadOf(1.6), s * 0.42, 2.0] }); // the rail's bend up to the ceiling
-    bars.push({ a: [aheadOf(1.6), s * 0.42, 2.0], b: [aheadOf(8.0), s * 0.42, 2.0] });
-    bars.push({ a: [aheadOf(8.0), s * 0.42, 2.0], b: [aheadOf(8.1), s * 0.42, 2.5] });
-    for (let k = 0; k < 8; k++) {
-      const xf = 1.9 + k * 0.5;
-      bars.push({ a: [aheadOf(xf), s * 0.42, 1.67], b: [aheadOf(xf), s * 0.42, 2.0] });
-    }
-  }
-  return bars;
-})();
+export const BUS_SHELL = { aheadMin: -3.95, aheadMax: 3.95, right: 0.945, top: BUS_CEILING - 0.25 } as const;
 
-/** A box in the cabin (bus-local: ahead, right, height ranges). */
-interface CabinBox {
-  min: readonly [number, number, number];
-  max: readonly [number, number, number];
+/** The third person's lens never looks at a wall nearer than this along its middle ray (m): a lens pressed to a door leaf or a window frame fills the screen with it (review 2026-11-16, round 4). */
+export const TP_WALL_LOOK_M = 1.6;
+/** The cabin's inner half width (m): the walls the third person's lens must not look into. */
+const CABIN_HALF = 1.195;
+
+type V3 = readonly [number, number, number];
+
+/** The head's height over the floor the rider stands or sits on (m): the avatar's head centre (chibi, 2.18 m to the top). */
+export const RIDER_HEAD_STANDING = 1.95;
+export const RIDER_HEAD_SEATED = 1.62;
+
+/** Where the segment leaves the box (fraction), for a start inside it: 1 when the whole segment is inside. */
+function segmentBoxExit(p: V3, q: V3, min: V3, max: V3): number {
+  let exit = 1;
+  for (let k = 0; k < 3; k++) {
+    const d = q[k]! - p[k]!;
+    if (Math.abs(d) < 1e-9) continue;
+    const t = d > 0 ? (max[k]! - p[k]!) / d : (min[k]! - p[k]!) / d;
+    if (t < exit) exit = t;
+  }
+  return Math.max(0, exit);
 }
+
+export interface BusCamInput {
+  /** The bus's pose (world). */
+  bus: Pick<TransitPose, "x" | "z" | "yaw">;
+  /** The rider's point in the bus (m ahead of its middle, m towards its doors) and the floor under them. */
+  ahead: number;
+  right: number;
+  floor: number;
+  seated: boolean;
+  /** The camera's azimuth relative to the bus's heading (the world orbit's convention: 0 = in front of the rider looking back) */
+  yaw: number;
+  /** The camera's elevation over the head (rad, + = above looking down). */
+  elevation: number;
+  /** The wanted arm (m): 0 .. BUS_CAM.maxDist. Under firstPersonDist the camera is the rider's eye. */
+  dist: number;
+  /** The seat the rider sits on (its backrest is not a wall for them), or -1. */
+  ownSeat?: number;
+  /** The lens (vertical fov in radians, width / height): with it the third person is framed over the shoulder (the avatar low in a lower corner, not the screen middle). */
+  frame?: { vfov: number; aspect: number };
+}
+
+const EYE_SHELL_MIN_H = 0.3;
+
+/** Where the avatar's middle sits on the third-person screen (fractions of the half width / half height from the centre: right, down). */
+export const TP_FRAME = { x: 1.0, y: -0.8 } as const;
+/** The third person's arm (m) in the bus: the zoom may shorten it, but never into the avatar's lap (a chibi head is 1 m wide). */
+export const BUS_TP_MIN_ARM = 2.6;
+/** The least elevation (rad) of the third person's lens over the rider's head line: it looks down on the rider from above. */
+export const TP_ELEVATION = 0.3;
+/** Under this arm (m) the third person's lens tries the other side of the rider. */
+export const TP_FLIP_ARM = 2.2;
+/** The share of the rider's own sideways offset the third person's lens keeps (0 = in the aisle's middle). */
+export const TP_AISLE_KEEP = 0.2;
 
 /**
- * The seats' backrests (build_bus.py cabin() "seats": each `seat(xf, X, floor)` has its backrest 0.185 m behind the
- * cushion, 0.43 m wide, up to its grab handle ~1.08 m over its floor). A sight line through one is hidden by it.
+ * The eye and the point it looks at, in the world. The wanted eye is the rider's head plus the arm in the camera's azimuth
+ * and elevation; the arm is shortened only to stop inside the shell (the cabin's walls and ceiling).
  */
-export const SEAT_BACKS: readonly CabinBox[] = (() => {
-  const boxes: CabinBox[] = [];
-  const add = (xf: number, X: number, floor: number) =>
-    boxes.push({ min: [aheadOf(xf + 0.26), X - 0.215, floor + 0.4], max: [aheadOf(xf + 0.12), X + 0.215, floor + 1.08] });
-  add(1.02, -0.62, 0.34); // the driver's
-  for (const X of [0.97, -0.97]) add(2.35, X, 0.8);
-  for (const X of [0.97, 0.55]) add(3.55, X, 0.34);
-  for (const xf of [3.35, 4.05]) for (const X of [-0.97, -0.55]) add(xf, X, 0.34);
-  // the two side-facing seats on the wheelchair bay: their backs against the wall
-  for (const xf of [4.75, 5.25]) boxes.push({ min: [aheadOf(xf + 0.215), -1.2, 0.74], max: [aheadOf(xf - 0.215), -1.07, 1.42] });
-  for (const xf of [6.65, 7.4]) for (const X of [0.97, 0.55, -0.55, -0.97]) add(xf, X, Math.abs(X) > 0.8 ? 0.86 : 0.75);
-  for (const X of [-0.9, -0.45, 0, 0.45, 0.9]) add(8.35, X, 0.75);
-  return boxes;
-})();
-
-/** Does the segment p-q pass through the box (slab test)? */
-export function segmentHitsBox(p: readonly number[], q: readonly number[], box: CabinBox): boolean {
-  let t0 = 0;
-  let t1 = 1;
-  for (let i = 0; i < 3; i++) {
-    const d = q[i]! - p[i]!;
-    if (Math.abs(d) < 1e-12) {
-      if (p[i]! < box.min[i]! || p[i]! > box.max[i]!) return false;
-      continue;
+export function busRiderCamera(input: BusCamInput, out: TransitCameraPose = { x: 0, y: 0, z: 0, targetX: 0, targetY: 0, targetZ: 0, arm: 0, firstPerson: false }): TransitCameraPose {
+  const { bus, ahead, right, floor, seated, yaw, elevation } = input;
+  const headH = floor + (seated ? RIDER_HEAD_SEATED : RIDER_HEAD_STANDING);
+  const head: V3 = [ahead, right, headH + 0.1];
+  const dirA = Math.cos(yaw);
+  const dirR = -Math.sin(yaw);
+  const firstPerson = input.dist < BUS_CAM.firstPersonDist;
+  let eye: V3;
+  let target: V3;
+  if (firstPerson) {
+    // the rider's own eye: looking the way the camera's azimuth faces AWAY from the rider (the opposite of the orbit's offset)
+    const ce = Math.cos(elevation);
+    eye = [ahead - dirA * 0.05, right - dirR * 0.05, headH];
+    target = [eye[0] - dirA * ce * 3, eye[1] - dirR * ce * 3, eye[2] - Math.sin(elevation) * 3];
+  } else {
+    const d = input.dist;
+    // With a lens (frame) the camera stays on the AISLE line (in front of the rider or behind them, whichever the view yaw is nearer), raised
+    // and as far as the cabin allows: the cabin is as narrow as an avatar is tall, so the old orbit round the rider pressed the lens against a
+    // window and the rider's head filled the screen. The view yaw then only turns where the lens LOOKS (a side view looks at the windows, the
+    // rider at the edge of the picture or out of it).
+    const el = input.frame ? Math.max(TP_ELEVATION, Math.min(0.8, elevation)) : elevation;
+    const posA = input.frame ? (dirA >= 0 ? 1 : -1) : dirA;
+    const posR = input.frame ? 0 : dirR;
+    const min: V3 = [BUS_SHELL.aheadMin, -BUS_SHELL.right, Math.max(floor + EYE_SHELL_MIN_H, 0.6)];
+    const max: V3 = [BUS_SHELL.aheadMax, BUS_SHELL.right, BUS_SHELL.top];
+    const inside = (p: V3) => p[0] >= min[0] && p[0] <= max[0] && p[1] >= min[1] && p[1] <= max[1] && p[2] >= min[2] && p[2] <= max[2];
+    const eyeFor = (pa: number, pr: number): V3 => {
+      // a standing head under the raised rear's ceiling reaches the shell's top: the lens then starts from the top and looks down from there
+      const o: V3 = [head[0], head[1], Math.min(head[2], max[2])];
+      const elE = d > 1e-6 ? Math.min(el, Math.asin(Math.max(-1, Math.min(1, (max[2] - o[2]) / d)))) : el; // not above the ceiling
+      // the lens drifts to the aisle's middle as it backs off (a rider at the wall would otherwise be looked at from a hand's breadth off the wall)
+      const wantR = input.frame ? o[1] * TP_AISLE_KEEP : o[1] + pr * Math.cos(elE) * d;
+      const want: V3 = [o[0] + pa * Math.cos(elE) * d, wantR, o[2] + Math.sin(elE) * d];
+      // 1) the shell: inside its box; if the wanted eye is outside, stop where the arm leaves it
+      let t = 1;
+      if (inside(o)) {
+        if (!inside(want)) t = Math.min(t, segmentBoxExit(o, want, min, max));
+      } else {
+        t = 0; // a head outside the shell (the stairs, a stale pose): no arm
+      }
+      // the seats and poles are props: they never shorten the arm (owner 2026-11-16: only buildings and walls do)
+      t = Math.max(0, Math.min(1, t));
+      return [o[0] + (want[0] - o[0]) * t, o[1] + (want[1] - o[1]) * t, o[2] + (want[2] - o[2]) * t];
+    };
+    const armOf = (e: V3) => Math.hypot(e[0] - head[0], e[1] - head[1], e[2] - head[2]);
+    eye = eyeFor(posA, posR);
+    if (input.frame && armOf(eye) < TP_FLIP_ARM) {
+      // the aisle is short on this side (the cabin's end or a seat back close by): the lens goes to the other side if that gives a longer arm
+      const other = eyeFor(-posA, 0);
+      if (armOf(other) > armOf(eye)) eye = other;
     }
-    let a = (box.min[i]! - p[i]!) / d;
-    let b = (box.max[i]! - p[i]!) / d;
-    if (a > b) [a, b] = [b, a];
-    t0 = Math.max(t0, a);
-    t1 = Math.min(t1, b);
-    if (t0 > t1) return false;
+    target = head;
+    if (input.frame) {
+      const arm0 = Math.hypot(eye[0] - head[0], eye[1] - head[1], eye[2] - head[2]);
+      const centre: V3 = [head[0], head[1], head[2] - 0.85];
+      const toA = centre[0] - eye[0];
+      const toR = centre[1] - eye[1];
+      const horiz = Math.max(Math.hypot(toA, toR), 0.2);
+      const azAvatar = Math.atan2(toR, toA);
+      // the look direction: the view yaw's (the camera's azimuth is yaw, it looks back along it)
+      const azView = Math.atan2(Math.sin(yaw), -Math.cos(yaw));
+      const delta = Math.atan2(Math.sin(azView - azAvatar), Math.cos(azView - azAvatar));
+      const weight = Math.max(0, 1 - Math.abs(delta) / 0.9); // 1 when the lens looks at the rider: then the rider is put in a lower corner
+      const th = Math.tan(input.frame.vfov / 2);
+      const thetaX = Math.atan(TP_FRAME.x * th * input.frame.aspect) * weight;
+      let lookAz = azView - thetaX; // the lens turns left: the rider moves right on the screen
+      {
+        // a wall nearer than TP_WALL_LOOK_M along the middle ray: turn the look towards the aisle's axis until it is not
+        const sv = Math.sin(lookAz);
+        const wallDist = sv >= 0 ? CABIN_HALF - eye[1] : CABIN_HALF + eye[1];
+        if (Math.abs(sv) > 1e-6 && wallDist / Math.abs(sv) < TP_WALL_LOOK_M) {
+          const s2 = Math.min(1, Math.max(0.05, wallDist / TP_WALL_LOOK_M));
+          lookAz = Math.atan2((sv >= 0 ? 1 : -1) * s2, (Math.cos(lookAz) >= 0 ? 1 : -1) * Math.sqrt(1 - s2 * s2));
+        }
+      }
+      const down0 = Math.atan2(eye[2] - centre[2], horiz); // looking down at the rider's middle
+      const down = (down0 + Math.atan(TP_FRAME.y * th) * weight) * weight + 0.12 * (1 - weight); // up a little: the rider sits low
+      void arm0;
+      target = [eye[0] + Math.cos(lookAz) * Math.cos(down) * 3, eye[1] + Math.sin(lookAz) * Math.cos(down) * 3, eye[2] - Math.sin(down) * 3];
+    }
   }
-  return true;
+  const arm = Math.hypot(eye[0] - head[0], eye[1] - head[1], eye[2] - head[2]);
+  out.arm = firstPerson ? 0 : arm;
+  out.firstPerson = firstPerson || arm < BUS_CAM.firstPersonDist;
+  // to the world: the bus frame's ahead is its heading (sin yaw, cos yaw), its right is (-cos yaw, sin yaw)
+  const fx = Math.sin(bus.yaw);
+  const fz = Math.cos(bus.yaw);
+  const rx = -fz;
+  const rz = fx;
+  out.x = bus.x + fx * eye[0] + rx * eye[1];
+  out.y = eye[2];
+  out.z = bus.z + fz * eye[0] + rz * eye[1];
+  out.targetX = bus.x + fx * target[0] + rx * target[1];
+  out.targetY = target[2];
+  out.targetZ = bus.z + fz * target[0] + rz * target[1];
+  return out;
 }
 
-/** Distance from a point to a box (0 inside). */
-function boxDistance(p: readonly number[], box: CabinBox): number {
-  let d2 = 0;
-  for (let i = 0; i < 3; i++) {
-    const v = p[i]!;
-    const e = v < box.min[i]! ? box.min[i]! - v : v > box.max[i]! ? v - box.max[i]! : 0;
-    d2 += e * e;
-  }
-  return Math.sqrt(d2);
-}
-
-/** The cabin floor (m) under a bus-local spot: the raised rear (xf >= 6), the front wheel-arch platforms, else low. */
-function cabinFloor(ahead: number, right: number): number {
-  const xf = 4.5 - ahead;
-  if (xf >= 6.0) return 0.75;
-  if (xf >= 1.9 && xf <= 2.8 && Math.abs(right) > 0.5) return 0.8;
-  return 0.34;
-}
-
-/** Closest distance between segments p1-q1 and p2-q2 (3D). */
-export function segmentDistance(p1: readonly number[], q1: readonly number[], p2: readonly number[], q2: readonly number[]): number {
-  const d1 = [q1[0]! - p1[0]!, q1[1]! - p1[1]!, q1[2]! - p1[2]!];
-  const d2 = [q2[0]! - p2[0]!, q2[1]! - p2[1]!, q2[2]! - p2[2]!];
-  const r = [p1[0]! - p2[0]!, p1[1]! - p2[1]!, p1[2]! - p2[2]!];
-  const dot = (u: number[], v: number[]) => u[0]! * v[0]! + u[1]! * v[1]! + u[2]! * v[2]!;
+/** The shortest distance between two segments (bus-local points), for the fixtures' fade test. */
+export function segmentDistance(p1: V3, q1: V3, p2: V3, q2: V3): number {
+  const d1: V3 = [q1[0] - p1[0], q1[1] - p1[1], q1[2] - p1[2]];
+  const d2: V3 = [q2[0] - p2[0], q2[1] - p2[1], q2[2] - p2[2]];
+  const r: V3 = [p1[0] - p2[0], p1[1] - p2[1], p1[2] - p2[2]];
+  const dot = (a: V3, b: V3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
   const a = dot(d1, d1);
   const e = dot(d2, d2);
   const f = dot(d2, r);
-  const c = dot(d1, r);
-  const b = dot(d1, d2);
   let s: number;
   let t: number;
-  if (a <= 1e-12 && e <= 1e-12) return Math.hypot(r[0]!, r[1]!, r[2]!);
+  if (a <= 1e-12 && e <= 1e-12) return Math.hypot(r[0], r[1], r[2]);
   if (a <= 1e-12) {
     s = 0;
     t = Math.min(1, Math.max(0, f / e));
-  } else if (e <= 1e-12) {
-    t = 0;
-    s = Math.min(1, Math.max(0, -c / a));
   } else {
-    const denom = a * e - b * b;
-    s = denom > 1e-12 ? Math.min(1, Math.max(0, (b * f - c * e) / denom)) : 0;
-    t = (b * s + f) / e;
-    if (t < 0) {
+    const c = dot(d1, r);
+    if (e <= 1e-12) {
       t = 0;
       s = Math.min(1, Math.max(0, -c / a));
-    } else if (t > 1) {
-      t = 1;
-      s = Math.min(1, Math.max(0, (b - c) / a));
-    }
-  }
-  return Math.hypot(r[0]! + d1[0]! * s - d2[0]! * t, r[1]! + d1[1]! * s - d2[1]! * t, r[2]! + d1[2]! * s - d2[2]! * t);
-}
-
-/** The rider's camera in the bus's own frame: where it stands and what it looks at, each [ahead, right, height]. */
-export interface RiderShot {
-  eye: [number, number, number];
-  look: [number, number, number];
-  /** the rider's head and chest it keeps in clear sight */
-  head: [number, number, number];
-  chest: [number, number, number];
-  /** the clear space (m) its sight lines keep from every pole, rail and strap */
-  clearance: number;
-}
-
-/** How far (m) the lens keeps from every pole, rail and strap (review r3: a rail 0.13 m off it crossed the frame). */
-export const RIDER_EYE_CLEARANCE = 0.35;
-
-/** Clear space (m) kept between the camera's sight lines to the rider and every pole, rail and strap. */
-export const RIDER_SIGHT_CLEARANCE = 0.12;
-
-const shotCache = new Map<string, RiderShot>();
-
-/**
- * Where the rider's camera goes for place `slot` (bus-local; cached per slot and orientation). Checker r2: from behind
- * the seat the toy figure's big head and the seat back filled a third of the frame, and a ceiling rail and its straps cut
- * across the avatar's shoulders. Now the camera stands in the aisle IN FRONT of the rider at a passenger's eye height
- * (under the straps, over the seat backs), mostly across the aisle, and looks back at them: their face and body in their
- * seat (or standing in the aisle) with their side's window and the village going by behind them, like a friend turned
- * round in the seat in front. The spot is searched over the cabin — inside its walls, over its floor, not in a pole, with
- * clear sight lines to the rider's head and chest (no pole, rail or strap in between); a place near the nose (no room in
- * front) gets the same search from behind. A portrait phone stands a little further off (its narrow view).
- */
-export function riderShot(slot: number, portrait = false): RiderShot {
-  const key = `${slot}:${portrait ? 1 : 0}`;
-  const hit = shotCache.get(key);
-  if (hit) return hit;
-  const place = busPlace(slot);
-  const seatTop = place.floor + (place.seated ? 0.452 : 0);
-  const head: [number, number, number] = [place.ahead, place.right, seatTop + (place.seated ? 0.95 : 1.25)];
-  const chest: [number, number, number] = [place.ahead, place.right, seatTop + (place.seated ? 0.45 : 0.85)];
-  const shoulders: [number, number, number] = [place.ahead, place.right, (head[2] * 2 + chest[2]) / 3];
-  const side = place.right < -0.05 ? -1 : 1;
-  const want = portrait ? 2.4 : 2.2;
-  const look: [number, number, number] = [place.ahead, place.right + side * 0.25, (head[2] + chest[2]) / 2];
-  let best: { score: number; eye: [number, number, number] } | null = null;
-  // the full clearance where the cabin allows it; a standing place among the straps takes a little less
-  let clearance = RIDER_SIGHT_CLEARANCE;
-  for (const c of [RIDER_SIGHT_CLEARANCE, 0.07, 0.03]) {
-    clearance = c;
-    best = searchShot(place, head, chest, shoulders, side, want, c);
-    if (best) break;
-  }
-  const eye: [number, number, number] = best?.eye ?? [Math.max(place.ahead - 2.2, -4.15), -side * 0.15, 2.0];
-  const shot: RiderShot = { eye, look, head, chest, clearance };
-  shotCache.set(key, shot);
-  return shot;
-}
-
-function searchShot(
-  place: ReturnType<typeof busPlace>,
-  head: [number, number, number],
-  chest: [number, number, number],
-  shoulders: [number, number, number],
-  side: number,
-  want: number,
-  sight: number,
-): { score: number; eye: [number, number, number] } | null {
-  let best: { score: number; eye: [number, number, number] } | null = null;
-  for (let k = -30; k <= 30; k++) {
-    const da = k / 10;
-    if (Math.abs(da) < 1.2) continue;
-    const ahead = place.ahead + da;
-    if (ahead > 3.5 || ahead < -4.15) continue; // behind the windscreen; in front of the back wall
-    for (let j = -19; j <= 19; j++) {
-      const right = j / 20;
-      // the driver's place is behind its screen (xf 1.32, X -1.17..-0.35): only the front door's side is open further on
-      if (ahead > 3.05 && right < -0.2) continue;
-      const floor = cabinFloor(ahead, right);
-      for (const y of [1.45, 1.55, 1.65, 1.8, 1.95, 2.05, 2.15, 2.25]) {
-        if (y < floor + 1.15) continue; // over the seat backs
-        const eye: [number, number, number] = [ahead, right, y];
-        const dist = Math.hypot(da, right - place.right, y - head[2]);
-        if (dist < 1.6) continue; // the toy figure's big head would fill the view
-        let clear = true;
-        for (const bar of CABIN_BARS) {
-          if (
-            segmentDistance(eye, eye, bar.a, bar.b) < RIDER_EYE_CLEARANCE ||
-            segmentDistance(eye, head, bar.a, bar.b) < sight ||
-            segmentDistance(eye, chest, bar.a, bar.b) < sight
-          ) {
-            clear = false;
-            break;
-          }
-        }
-        // the face and shoulders over every seat back (the chest may sit behind the seat in front, as in a real bus)
-        if (clear) for (const box of SEAT_BACKS) if (segmentHitsBox(eye, head, box) || segmentHitsBox(eye, shoulders, box)) clear = false;
-        if (!clear) continue;
-        const chestHidden = SEAT_BACKS.some((box) => segmentHitsBox(eye, chest, box));
-        // a seat right in front of the lens fills half the frame (review r3): keep over a metre from every one
-        let crowd = 0;
-        for (const box of SEAT_BACKS) crowd += Math.max(0, 1.2 - boxDistance(eye, box));
-        const score =
-          (chestHidden ? 0.5 : 0) +
-          Math.abs(dist - want) +
-          crowd * 1.5 +
-          (da < 0 ? 1.5 : 0) + // from behind only when nothing in front works
-          (right * side > 0.2 ? 0.2 : 0) + // across the aisle: their window in view behind them
-          Math.abs(y - 1.8) * 0.3;
-        if (!best || score < best.score) best = { score, eye };
+    } else {
+      const b = dot(d1, d2);
+      const denom = a * e - b * b;
+      s = denom > 1e-12 ? Math.min(1, Math.max(0, (b * f - c * e) / denom)) : 0;
+      t = (b * s + f) / e;
+      if (t < 0) {
+        t = 0;
+        s = Math.min(1, Math.max(0, -c / a));
+      } else if (t > 1) {
+        t = 1;
+        s = Math.min(1, Math.max(0, (b - c) / a));
       }
     }
   }
-  return best;
+  const c1: V3 = [p1[0] + d1[0] * s, p1[1] + d1[1] * s, p1[2] + d1[2] * s];
+  const c2: V3 = [p2[0] + d2[0] * t, p2[1] + d2[1] * t, p2[2] + d2[2] * t];
+  return Math.hypot(c1[0] - c2[0], c1[1] - c2[1], c1[2] - c2[2]);
 }
 
+/** The two ceiling rails (build_bus.py): along the cabin at right ±0.60, 2.85 m up, from xf 1.62 to 8.0. */
+const RAIL_AHEAD: readonly [number, number] = [4.5 - 1.62, 4.5 - 8.0];
+const RAIL_H = 2.85;
+
+/** Strap groups: four straps 0.5 m apart, centred at the generated point. */
+const STRAP_HALF_SPAN = 0.75;
+
+/** How close (m) a thin thing may come to the lens, and to the line from the lens to the rider's head and chest, before it fades. */
+export const FADE_NEAR_LENS = 0.6;
+export const FADE_NEAR_SIGHT = 0.2;
+/** In third person, a fixture this close (m) to the rider's body axis is not drawn (it would run across the avatar). */
+export const FADE_NEAR_BODY = 0.45;
+
 /**
- * The rider's own view (owner 2026-11-15: the rider is in the bus now, busSeats.ts), from riderShot: a passenger's eye
- * in the aisle in front of them, looking back at them with their window behind, clear of the cabin's poles and straps.
+ * Names of the cabin fixtures (poles, strap groups, rails) the camera sees through: within `FADE_NEAR_LENS` of the eye, or
+ * within `FADE_NEAR_SIGHT` of the line from the eye to the rider's head or chest. Bus-local eye / head / chest points.
+ * Written into `out` (cleared first); returns it.
  */
-export function transitRiderCamera(bus: TransitPose, slot: number, aspect = 16 / 10): TransitCameraPose {
-  const { eye, look } = riderShot(slot, aspect < 1);
-  const fx = Math.sin(bus.yaw);
-  const fz = Math.cos(bus.yaw);
-  const rx = -fz; // the bus's right (doors)
-  const rz = fx;
-  return {
-    x: bus.x + fx * eye[0] + rx * eye[1],
-    y: eye[2],
-    z: bus.z + fz * eye[0] + rz * eye[1],
-    targetX: bus.x + fx * look[0] + rx * look[1],
-    targetY: look[2],
-    targetZ: bus.z + fz * look[0] + rz * look[1],
-  };
+export function fadingFixtures(eye: V3, head: V3, chest: V3, out: Set<string> = new Set()): Set<string> {
+  out.clear();
+  const eyeToHead = segmentLen(eye, head);
+  // Third person (review r1: poles, bells and straps ran across the sitting avatar's shoulders, arm and head): everything
+  // within the body's reach of the avatar's axis (feet to a hat's height) is not drawn either, whichever way the lens looks.
+  const body = eyeToHead > 0.05;
+  const bodyA: V3 = [head[0], head[1], chest[2] - 1.1];
+  const bodyB: V3 = [head[0], head[1], head[2] + 0.8];
+  for (const p of BUS_POLES) {
+    const a: V3 = [p.ahead, p.right, p.z0];
+    const b: V3 = [p.ahead, p.right, p.z1];
+    if (body && segmentDistance(bodyA, bodyB, a, b) < FADE_NEAR_BODY) {
+      out.add(p.name);
+      continue;
+    }
+    if (segmentDistance(eye, eye, a, b) < FADE_NEAR_LENS || (eyeToHead > 0.05 && (segmentDistance(eye, head, a, b) < FADE_NEAR_SIGHT || segmentDistance(eye, chest, a, b) < FADE_NEAR_SIGHT))) out.add(p.name);
+  }
+  for (const s of BUS_STRAPS) {
+    const a: V3 = [s.ahead - STRAP_HALF_SPAN, s.right, s.z0];
+    const b: V3 = [s.ahead + STRAP_HALF_SPAN, s.right, s.z1];
+    if (body && segmentDistance(bodyA, bodyB, a, b) < FADE_NEAR_BODY) out.add(s.name);
+    else if (segmentDistance(eye, eye, a, b) < FADE_NEAR_LENS || segmentDistance(eye, head, a, b) < FADE_NEAR_SIGHT || segmentDistance(eye, chest, a, b) < FADE_NEAR_SIGHT) out.add(s.name);
+  }
+  for (const [side, name] of [[1, "rail_r"], [-1, "rail_l"]] as const) {
+    const a: V3 = [RAIL_AHEAD[0], side * 0.6, RAIL_H];
+    const b: V3 = [RAIL_AHEAD[1], side * 0.6, RAIL_H];
+    if (segmentDistance(eye, eye, a, b) < FADE_NEAR_LENS || segmentDistance(eye, head, a, b) < FADE_NEAR_SIGHT || segmentDistance(eye, chest, a, b) < FADE_NEAR_SIGHT) out.add(name);
+  }
+  return out;
+}
+
+function segmentLen(a: V3, b: V3): number {
+  return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+}
+
+/** The seat a rider sits on (index into BUS_SEATS) from `busSeat`, or -1 (a backed seat's own back is no wall for the camera). */
+export function ownSeatIndex(busSeat: number): number {
+  return busSeat >= 1 && busSeat <= BUS_SEATS.length ? busSeat - 1 : -1;
 }

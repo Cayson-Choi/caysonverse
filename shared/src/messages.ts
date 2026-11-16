@@ -35,6 +35,12 @@ export const MessageType = {
   BusRejected: "bus_rejected",
   /** Server -> one client: the sender's authoritative boarded state. */
   BusRideState: "bus_ride_state",
+  /** Client -> server: a rider's step inside the bus, in the bus's own frame (about 10 Hz while walking in it). */
+  BusMove: "bus_move",
+  /** Client -> server: a rider sits in a free seat or takes hold of a pole. */
+  BusSit: "bus_sit",
+  /** Client -> server: a seated or holding rider stands free in the aisle. */
+  BusStand: "bus_stand",
 } as const;
 
 export type MessageType = (typeof MessageType)[keyof typeof MessageType];
@@ -168,6 +174,20 @@ export interface BusRideStatePayload {
   tripId: number;
 }
 
+/** A rider's step in the bus: where they are now in its own frame (shared village/busCabin.ts). */
+export interface BusMovePayload {
+  ahead: number;
+  right: number;
+  /** the facing's offset from the bus's heading (rad) */
+  yaw: number;
+}
+
+/** Take a free seat (`kind: "seat"`, an index into BUS_SEATS) or a hold spot (`"hold"`, into BUS_HOLDS). */
+export interface BusSitPayload {
+  kind: "seat" | "hold";
+  index: number;
+}
+
 /** Payload type for each message id, keyed by MessageType. */
 export interface MessagePayloads {
   [MessageType.Move]: MovePayload;
@@ -185,4 +205,7 @@ export interface MessagePayloads {
   [MessageType.BusState]: BusStatePayload;
   [MessageType.BusRejected]: BusRejectedPayload;
   [MessageType.BusRideState]: BusRideStatePayload;
+  [MessageType.BusMove]: BusMovePayload;
+  [MessageType.BusSit]: BusSitPayload;
+  [MessageType.BusStand]: Record<string, never>;
 }

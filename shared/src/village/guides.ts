@@ -24,8 +24,10 @@ export interface GuideQA {
   question: string;
   /** The answer shown in the dialog and spoken by the clip (1-3 short sentences, "~요"). */
   answer: string;
-  /** The clip id: `/village/voice/<voice>.m4a`. */
+  /** The clip id: `/village/voice/<voice>.m4a` (also the answer's key in the dialog). */
   voice: string;
+  /** No clip was made for this answer (yet): the dialog shows the words only. */
+  textOnly?: boolean;
 }
 
 export interface Guide {
@@ -64,12 +66,10 @@ export const GUIDE_AI_VOICE_LABEL = "AI 음성";
 
 export const guideVoiceUrl = (voice: string): string => `${GUIDE_VOICE_DIR}/${voice}.m4a`;
 
-/**
- * Answers with no recorded clip yet (the voices are made offline with VoxCPM2, art/village/voice/make_voice.py): the dialog shows the
- * text and plays nothing. The house-code answer (집 실내 G, owner 2026-11-16: the guide may tell the code) is one; record it as
- * plaza_guide_5.m4a and drop it from this list.
- */
-export const GUIDE_TEXT_ONLY_VOICES: readonly string[] = Object.freeze(["plaza_guide_5"]);
+/** Whether an answer has no clip (`GuideQA.textOnly`): the voice controller shows it without playing anything. */
+export function isTextOnlyVoice(voice: string): boolean {
+  return GUIDES.some((g) => g.qas.some((q) => q.voice === voice && q.textOnly === true));
+}
 
 const PLAZA_POS = { x: 5, z: 12 };
 const SPAWN = { x: 0, z: 14 };
@@ -116,9 +116,18 @@ export const GUIDES: readonly Guide[] = deepFreeze([
         voice: "plaza_guide_4",
       },
       {
+        // the fishing lake (A10, owner 2026-11-16): words only until a clip is made in the guide's voice
+        question: "낚시터는 어디에 있어요?",
+        answer: "낚시터는 동쪽 길을 따라가면 있어요.",
+        voice: "plaza_guide_5",
+        textOnly: true,
+      },
+      {
+        // the houses (집 실내 G, owner 2026-11-16: the guide may tell the code): words only until a clip is made in the guide's voice
         question: "집에는 어떻게 들어가요?",
         answer: "집 문 옆 번호키에 1004를 누르면 들어갈 수 있어요. 한 집에 여덟 분까지 함께 계실 수 있어요.",
-        voice: "plaza_guide_5",
+        voice: "plaza_guide_6",
+        textOnly: true,
       },
     ],
   },

@@ -21,6 +21,7 @@ import {
 import { useChatStore } from "../stores/chatStore";
 import { cubbyCardState } from "../village/cubbyCard";
 import { guideDialogOpen } from "../village/guideDialogStore";
+import { useLakeStore } from "../lake/lakeStore";
 import { isTouchDevice } from "../device";
 import type { Pose, SeatState } from "../game/types";
 import { rectStyle, useTouchHudLayout } from "./useTouchHudLayout";
@@ -96,6 +97,8 @@ export function ActionButton({ pose, seat }: { pose: Pose; seat: SeatState }) {
   // The hold target being held (not state: nothing is drawn from it; the ring is the scene's).
   const held = useRef<Held | null>(null);
   const layout = useTouchHudLayout();
+  // The fishing lake's big button (lake/LakeHud.tsx) owns this spot and the E key while it has something to offer.
+  const lakeOwns = useLakeStore((s) => s.ownsAction);
 
   // Personal rejection notice (occupied-seat race) → dimmed system row. Mirrors
   // chatSync's ChatRejected wiring; registered for this component's lifetime.
@@ -144,7 +147,7 @@ export function ActionButton({ pose, seat }: { pose: Pose; seat: SeatState }) {
   // A hold that is already going is not started a second time (the other way of pressing waits its turn).
   const act = useCallback(
     (by: HoldBy) => {
-      if (held.current !== null) return;
+      if (held.current !== null || useLakeStore.getState().ownsAction) return;
       interactNow(refresh, (it) => perform(it, (target) => void (held.current = { target, by })));
     },
     [refresh],
@@ -205,7 +208,7 @@ export function ActionButton({ pose, seat }: { pose: Pose; seat: SeatState }) {
           {interaction ? `E 키: ${label}` : ""}
         </span>
       )}
-      {interaction && (
+      {interaction && !lakeOwns && (
         <ActionButtonView
           interaction={interaction}
           layout={layout}

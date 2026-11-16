@@ -38,6 +38,7 @@ import {
   UPRIGHT_BREAK,
   TIME_WRAP,
   arcJet,
+  bowlJet,
   buildParticles,
   curtainFlow,
   particleCountAt,
@@ -244,16 +245,19 @@ export const CURTAIN_SEGMENTS = { high: { around: 96, down: 12 }, low: { around:
 export const STREAM = {
   // The outer-facing arcs read as a continuous, wet ribbon before they break into drops. A slightly wider core makes the
   // water visible on a phone-sized viewport without relying on a bloom-heavy white material.
-  arc: { width: [0.034, 0.058], break: ARC_BREAK },
-  upright: { width: [0.04, 0.084], break: UPRIGHT_BREAK },
+  // feat/fountain-rich: the owner found the water thin. A real plaza jet is a hand's width (5-9 cm) at the nozzle: these are
+  // about 1.5x the former streams, and the veil they fray into is wider and denser (RIBBON_FRAGMENT).
+  arc: { width: [0.07, 0.115], break: ARC_BREAK },
+  upright: { width: [0.082, 0.14], break: UPRIGHT_BREAK },
 } as const;
 
-/** The streams (16 arcs, 8 upright jets) as one ribbon geometry: the vertex shader places every vertex (see RIBBON_VERTEX). */
+/** The streams (16 arcs, 8 upright jets, 8 jets out of the bowl) as one ribbon geometry: the vertex shader places every vertex (see RIBBON_VERTEX). */
 export function buildRibbonGeometry(tier: "high" | "low"): BufferGeometry {
   const seg = RIBBON_SEGMENTS[tier];
   const jets: Array<{ jet: Jet; kind: 0 | 1; segments: number; seed: number }> = [];
   for (let k = 0; k < FOUNTAIN.arcs.count; k++) jets.push({ jet: arcJet(k), kind: 0, segments: seg.arc, seed: k });
   for (let k = 0; k < FOUNTAIN.uprights.count; k++) jets.push({ jet: uprightJet(k), kind: 1, segments: seg.upright, seed: k });
+  for (let k = 0; k < FOUNTAIN.bowlJets.count; k++) jets.push({ jet: bowlJet(k), kind: 0, segments: seg.arc, seed: 16 + k });
   const position: number[] = [];
   const origin: number[] = [];
   const vel: number[] = [];
@@ -507,13 +511,13 @@ void main() {
   vec3 R = reflect( -V, n );
   vec3 refl = skyAt( R ) * 0.9 + uGlintColor * pow( max( dot( R, uKeyDir ), 0.0 ), 600.0 ) * 8.0;
   // The glass lets the background through ( 1 - alpha ) and adds its reflection (alpha x colour).
-  float glassA = ( 0.05 + 0.8 * F ) * inCore * ( 1.0 - 0.75 * b );
+  float glassA = ( 0.2 + 0.8 * F ) * inCore * ( 1.0 - 0.7 * b );
   // White water: drops and streaks, sparse at the edge of the veil, denser in the core.
   float veil = exp( -u * u * 2.6 ) * b;
-  float streak = smoothstep( 0.5 - 0.22 * b, 0.95, n2 * 0.55 + n3 * 0.45 + 0.25 * inCore );
-  float whiteA = veil * streak * ( 0.35 + 0.55 * b );
+  float streak = smoothstep( 0.42 - 0.26 * b, 0.9, n2 * 0.55 + n3 * 0.45 + 0.3 * inCore );
+  float whiteA = veil * streak * ( 0.5 + 0.5 * b );
   // The smooth start is a little milky in the middle where the nozzle aerates it (an upright column more so).
-  whiteA += inCore * ( 1.0 - b ) * ( 0.06 + 0.05 * vUpright );
+  whiteA += inCore * ( 1.0 - b ) * ( 0.1 + 0.06 * vUpright );
   vec3 white = fwWhite( V, 0.8 );
   // At night the lights' light runs up inside the stream and leaks out where it breaks.
   // (An upright jet stands right over its light: its whole column glows a little.)
@@ -576,9 +580,9 @@ void main() {
   float grain = g1 * 0.6 + g2 * 0.4;
   // The sheet opens into strands as it falls (gaps between them widen; the strands keep their width) ...
   float tear = smoothstep( 0.22, 0.8, t );
-  float open = smoothstep( 0.4 * tear, 0.4 * tear + 0.07, strands );
+  float open = smoothstep( 0.26 * tear, 0.26 * tear + 0.07, strands );
   // ... and the strands' ends break into drops.
-  float drops = smoothstep( 0.32, 0.55, texture2D( uNoise, vec2( along * 7.3 + 0.21, launch * 7.0 ) ).a );
+  float drops = smoothstep( 0.22, 0.45, texture2D( uNoise, vec2( along * 7.3 + 0.21, launch * 7.0 ) ).a );
   float strand = open * mix( 1.0, drops, smoothstep( 0.72, 1.0, t ) );
   vec3 V = normalize( cameraPosition - vWorld );
   vec3 around = normalize( vec3( -vWorld.z + uOrigin.z, 0.0, vWorld.x - uOrigin.x ) );
@@ -590,8 +594,8 @@ void main() {
   vec3 refl = skyAt( R ) * 0.9 + uGlintColor * pow( max( dot( R, uKeyDir ), 0.0 ), 300.0 ) * 5.0;
   // The rounded lip: the water bulges over it and catches the sky in one bright line.
   float lip = 1.0 - smoothstep( 0.0, 0.06, t );
-  float glassA = ( 0.14 + 0.7 * F + 0.22 * lip + 0.12 * grain ) * ( 1.0 - 0.55 * tear );
-  float whiteA = tear * ( 0.2 + 0.55 * smoothstep( 0.45, 0.85, grain ) ) * smoothstep( 0.35, 0.7, strands + 0.25 * tear ) + 0.05 * ( 1.0 - tear );
+  float glassA = ( 0.27 + 0.7 * F + 0.25 * lip + 0.14 * grain ) * ( 1.0 - 0.5 * tear );
+  float whiteA = tear * ( 0.3 + 0.55 * smoothstep( 0.4, 0.8, grain ) ) * smoothstep( 0.3, 0.62, strands + 0.3 * tear ) + 0.09 * ( 1.0 - tear );
   vec3 white = fwWhite( V, 0.4 );
   // At night: the pedestal pool's lights (r 1.9) light the strands of the upper curtain that fall past them; a
   // little of the basin's light reaches the lower one.

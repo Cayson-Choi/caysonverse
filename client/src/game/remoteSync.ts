@@ -126,12 +126,20 @@ export function startRemoteSync(
       });
       // My place in the bus (busRide.ts): LocalPlayer draws me there while I ride.
       selfBusRide.slot = player.busSeat ?? -1;
+      selfBusRide.ahead = player.busAhead ?? 0;
+      selfBusRide.right = player.busRight ?? 0;
+      selfBusRide.yaw = player.busYaw ?? 0;
       noteSelfBusSeat(selfBusRide.slot);
       const offBus = $(player).listen("busSeat", (value: number) => {
         selfBusRide.slot = value ?? -1;
         noteSelfBusSeat(selfBusRide.slot);
       });
-      const offs = [off, offSeat, offBus];
+      const offBusPoint = $(player).onChange(() => {
+        selfBusRide.ahead = player.busAhead ?? 0;
+        selfBusRide.right = player.busRight ?? 0;
+        selfBusRide.yaw = player.busYaw ?? 0;
+      });
+      const offs = [off, offSeat, offBus, offBusPoint];
       // Which area I am in (the village scene's maps, bounds, lighting and filter follow it). Seeds the
       // current value immediately, then follows every door.
       if (areas) {
@@ -170,6 +178,9 @@ export function startRemoteSync(
         connected: player.connected,
         seatIndex: player.seatIndex,
         busSeat: player.busSeat ?? -1,
+        busAhead: player.busAhead ?? 0,
+        busRight: player.busRight ?? 0,
+        busYaw: player.busYaw ?? 0,
         snapshots: [],
         // The current moveT times a move we never saw (they may have stopped long ago): only a newer one counts.
         playout: createPlayout(moverClock(player)),
@@ -211,7 +222,16 @@ export function startRemoteSync(
       const record = getRemoteRecord(sessionId);
       if (record) record.busSeat = value ?? -1;
     });
-    perPlayer.set(sessionId, [...offArea, offChange, offConnected, offSeat, offBus]);
+    // ... and its point in the bus's own frame (walking, sitting, holding): drawn in that frame (RemotePlayer).
+    const offBusPoint = $(player).onChange(() => {
+      const record = getRemoteRecord(sessionId);
+      if (!record) return;
+      record.busSeat = player.busSeat ?? -1;
+      record.busAhead = player.busAhead ?? 0;
+      record.busRight = player.busRight ?? 0;
+      record.busYaw = player.busYaw ?? 0;
+    });
+    perPlayer.set(sessionId, [...offArea, offChange, offConnected, offSeat, offBus, offBusPoint]);
   }, true); // immediate → replay players already present when we joined
 
   const offRemove = $(room.state).players.onRemove((_player, sessionId: string) => {

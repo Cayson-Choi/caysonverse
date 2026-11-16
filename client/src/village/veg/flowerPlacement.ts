@@ -20,12 +20,19 @@ import { hashUnit, mulberry32, valueNoise3 } from "./vegRandom";
  *    standing where the card stood, as tall as it was: the "plants" of species grass and reed.
  */
 
-export const SPECIES = { petunia: 0, pansy: 1, muscari: 2, tulip: 3, grass: 4, reed: 5 } as const;
+/**
+ * The plants' kinds. 2026-11-16 (the plants rebuild): French marigolds (6) share the yellow row with the pansies, and
+ * the beds' plants stand on bark-chip mulch (7: a patch under every other bed plant, none in the meadow's wild ones).
+ */
+export const SPECIES = { petunia: 0, pansy: 1, muscari: 2, tulip: 3, grass: 4, reed: 5, marigold: 6, mulch: 7 } as const;
 export type Species = (typeof SPECIES)[keyof typeof SPECIES];
-export const SPECIES_COUNT = 6;
+export const SPECIES_COUNT = 8;
 
 /** Minimum distance between two plants of a species (m): the planting spacing x 0.85 (the tufts: one per old card). */
-export const SPACING: Readonly<Record<Species, number>> = { 0: 0.19, 1: 0.135, 2: 0.11, 3: 0.14, 4: 0, 5: 0 };
+export const SPACING: Readonly<Record<Species, number>> = { 0: 0.19, 1: 0.135, 2: 0.11, 3: 0.14, 4: 0, 5: 0, 6: 0.2, 7: 0 };
+
+/** The share of a bed's plants that get a mulch patch under them (a 46 cm patch: about one bed's worth of cover). */
+export const MULCH_SHARE = 0.5;
 
 /** The wild patches in the meadow's grass are this much sparser than a bed. */
 export const WILD_SPACING = 1.7;
@@ -150,6 +157,13 @@ export const PALETTES = {
     ["#3B2D8C", 1],
     ["#F2D24A", 0.7],
   ],
+  // French marigolds as planted in the Seoul beds: golden yellow, orange, deep orange, lemon
+  marigold: [
+    ["#F7B500", 3],
+    ["#F08A1C", 3],
+    ["#E2601A", 1.5],
+    ["#FFD23A", 1.5],
+  ],
   muscari: [
     ["#3448B4", 3],
     ["#4A5ECC", 2],
@@ -189,7 +203,11 @@ function driftUnit(x: number, z: number, salt: number): number {
 /** Which species a candidate from a card of `row` at (x, z) becomes. */
 export function speciesFor(row: number, x: number, z: number): { species: Species; palette: PaletteName } {
   if (row === FLORA_ROW.pink) return { species: SPECIES.petunia, palette: "petunia" };
-  if (row === FLORA_ROW.yellow) return { species: SPECIES.pansy, palette: "pansy" };
+  if (row === FLORA_ROW.yellow) {
+    // the yellow row: drifts of pansies and French marigolds (a 0.8 m warped lattice)
+    const m = valueNoise3(x / 0.8, 3.5, z / 0.8, 9);
+    return m < 0.45 ? { species: SPECIES.pansy, palette: "pansy" } : { species: SPECIES.marigold, palette: "marigold" };
+  }
   // the purple-spike row: drifts of muscari, violas and tulips (bigger patches: a 0.9 m warped lattice)
   const n = valueNoise3(x / 0.9, 7.5, z / 0.9, 5);
   if (n < 0.5) return { species: SPECIES.muscari, palette: "muscari" };
@@ -334,6 +352,8 @@ export function placeFlowers(cards: readonly Card[], beds: readonly Bed[] = PLAZ
       seed: rand(),
     };
     plants.push(p);
+    if (!c.wild && rand() < MULCH_SHARE)
+      plants.push({ x, y: y + 0.001 + rand() * 0.003, z, species: SPECIES.mulch, yaw: rand() * Math.PI * 2, scale: 1.0 + 0.3 * rand(), leanX: 0, leanZ: 0, tint: [1, 1, 1], light: c.light, seed: rand() });
     const k = key(Math.floor(x / cell), Math.floor(z / cell));
     let list = grid.get(k);
     if (!list) grid.set(k, (list = []));

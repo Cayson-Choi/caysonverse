@@ -96,7 +96,7 @@ try {
     const text = await dialogText(A);
     run.check("the dialog is the 마을 안내원's", (await A.page.locator(".cv-guide").getAttribute("data-guide")) === "plaza_guide" && text.includes("마을 안내원"), text);
     run.check("a small AI 음성 label", (await A.page.locator(".cv-guide-ai").textContent()) === "AI 음성", null);
-    run.check("4 questions", (await A.page.locator(".cv-guide-questions button").count()) === 4, null);
+    run.check("5 questions (the 5th: the fishing lake, words only)", (await A.page.locator(".cv-guide-questions button").count()) === 5, null);
     run.check("no '!' in the dialog", !text.includes("!"), text);
     await run.shot(A, "guide-plaza.png");
   });

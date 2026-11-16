@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { BUS_BODY, busClearance, busLocal, pushOutOfBus } from "./busBody";
+import { BUS_BODY, BUS_MIRRORS, busClearance, busLocal, pushOutOfBus } from "./busBody";
+import { TRANSIT } from "./transit";
 import { routePoseAtDistance, routeLength } from "./transit";
 
 const R = 0.4;
@@ -19,7 +20,7 @@ describe("the moving bus's body pushes avatars out (checker r2: walked into the 
       expect(busClearance(pose, side.x, side.z, R)).toBeCloseTo(1 - R, 9);
       const inside = at(pose, 0, 0);
       expect(busClearance(pose, inside.x, inside.z, R)).toBeCloseTo(-BUS_BODY.halfWidth - R, 9);
-      const corner = at(pose, BUS_BODY.halfLength + 0.3, BUS_BODY.halfWidth + 0.4);
+      const corner = at(pose, -BUS_BODY.halfLength - 0.3, BUS_BODY.halfWidth + 0.4);
       expect(busClearance(pose, corner.x, corner.z, R)).toBeCloseTo(0.5 - R, 9);
       const l = busLocal(pose, side.x, side.z);
       expect(l.ahead).toBeCloseTo(1, 9);
@@ -66,7 +67,7 @@ describe("the moving bus's body pushes avatars out (checker r2: walked into the 
 
   it("the body driving past someone at the kerb shoves them out, a little each frame, never leaving them inside", () => {
     const len = routeLength();
-    let p = at(routePoseAtDistance(50), 0, BUS_BODY.halfWidth + 0.2); // standing where the flank will pass over them
+    let p = at(routePoseAtDistance(50), 0, BUS_BODY.halfWidth + 0.65); // standing where the flank (and a mirror) will pass over them
     let biggest = 0;
     for (let d = 40; d < 60; d += 4.5 / 60) {
       const pose = routePoseAtDistance(d % len);
@@ -96,5 +97,44 @@ describe("the moving bus's body pushes avatars out (checker r2: walked into the 
     expect(busLocal(pose, front.x, front.z).ahead).toBeGreaterThan(BUS_BODY.halfLength);
     const nowhere = pushOutOfBus(pose, p.x, p.z, R, () => true)!;
     expect(busClearance(pose, nowhere.x, nowhere.z, R)).toBeGreaterThanOrEqual(0);
+  });
+});
+
+describe("the mirrors are solid, parked or driving; nothing is left behind the rear (2026-11-15 check)", () => {
+  const PARKED = TRANSIT.parked;
+  it("a body in a side mirror (door side or the other) is put out to its own side, never into the flank, at any pose", () => {
+    for (const pose of [PARKED, { x: 3, z: -8, yaw: 1.9 }, { x: 0, z: 0, yaw: -2.6 }]) {
+      for (const side of [1, -1]) {
+        const p = at(pose, BUS_BODY.halfLength + 0.1, side * (BUS_BODY.halfWidth + BUS_MIRRORS.side - 0.05));
+        expect(busClearance(pose, p.x, p.z, R)).toBeLessThan(0.03);
+        const out = pushOutOfBus(pose, p.x, p.z, R)!;
+        expect(out).not.toBeNull();
+        expect(busClearance(pose, out.x, out.z, R)).toBeGreaterThanOrEqual(0);
+        expect(Math.sign(busLocal(pose, out.x, out.z).right)).toBe(side);
+      }
+    }
+  });
+
+  it("a walk along the flank into the front mirror slides out round it, parked and driving alike", () => {
+    for (const pose of [PARKED, { x: 3, z: -8, yaw: 1.9 }]) {
+      let p = at(pose, 0, BUS_BODY.halfWidth + R + 0.05);
+      for (let i = 0; i < 90; i++) {
+        const fx = Math.sin(pose.yaw);
+        const fz = Math.cos(pose.yaw);
+        p = { x: p.x + fx * 0.1, z: p.z + fz * 0.1 };
+        p = pushOutOfBus(pose, p.x, p.z, R) ?? p;
+        expect(busClearance(pose, p.x, p.z, R)).toBeGreaterThanOrEqual(-1e-9);
+      }
+      expect(busLocal(pose, p.x, p.z).ahead).toBeGreaterThan(BUS_BODY.halfLength + BUS_MIRRORS.ahead); // got past it
+    }
+  });
+
+  it("the rear is exact: 0.05 m behind the tail (a body's radius clear) nothing pushes, 0.05 m nearer it does (no 0.3 m air wall)", () => {
+    for (const pose of [PARKED, { x: 3, z: -8, yaw: 1.9 }]) {
+      const clear = at(pose, -BUS_BODY.halfLength - R - 0.05, 0);
+      expect(pushOutOfBus(pose, clear.x, clear.z, R)).toBeNull();
+      const near = at(pose, -BUS_BODY.halfLength - R + 0.05, 0);
+      expect(pushOutOfBus(pose, near.x, near.z, R)).not.toBeNull();
+    }
   });
 });

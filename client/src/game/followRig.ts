@@ -10,8 +10,9 @@
  *   - the portrait pull-back (aspectFraming.ts): a narrow screen draws the same zoom a little farther — it depends on
  *     the screen's shape only, never on where the player is or what they do;
  *   - the place's camera limit (indoorCamera.ts): under the memorial hall's ceiling the camera is held below the roof;
- *   - the spring arm (cameraCollision.ts): a wall between the head and the camera pulls it in at once, and lets it back
- *     out (SPRING.returnRate) as soon as the way is clear;
+ *   - the spring arm (cameraCollision.ts): a building or a wall between the head and the camera pulls it in at once, and
+ *     lets it back out (SPRING.returnRate) as soon as the way is clear — props (lamps, posts, plants, trees, the shelter, the
+ *     kiosk, furniture) never change the distance (owner 2026-11-16);
  *   - the floor stop (`aboveGroundY`): never under the ground.
  * Nothing here knows about seats, NPCs, dialogs, cards or experiences: sitting down, standing up, an interaction or a
  * door changes no input but the player's position and the map, so none of them can move the zoom or the angle.
@@ -34,10 +35,10 @@ import {
   type CameraLimit,
   type Vec3,
 } from "./indoorCamera";
-import { ARM_FREE, armHeightScaleAt, armLookLiftAt, cameraBoxes, cameraPad, indoorArmShape, keepOutArmDistance, segmentHitFraction, springArmDistance, stepArmLimit } from "./cameraCollision";
+import { ARM_FREE, armBoxes, armHeightScaleAt, armLookLiftAt, cameraPad, indoorArmShape, segmentHitFraction, springArmDistance, stepArmLimit } from "./cameraCollision";
 import { createShoulderPose, portraitWeight, shoulderPose, shoulderTarget, stepShoulder, stepShoulderSide } from "./cameraShoulder";
 import { getActiveMap } from "./activeMap";
-import { cameraSolids, shapeAgainstSolids, type SolidSpot } from "./cameraSolids";
+import { HUNG, cameraSolids } from "./cameraSolids";
 import type { Orbit } from "./types";
 
 /** What the follow camera carries from one frame to the next. Mutated in place; never React state. */
@@ -142,7 +143,6 @@ const wantedSpot: Vec3 = { x: 0, y: 0, z: 0 };
 const headSpot: Vec3 = { x: 0, y: 0, z: 0 };
 const limitedSpot: Vec3 = { x: 0, y: 0, z: 0 };
 const shoulderSpot = createShoulderPose();
-const solidSpot: SolidSpot = { x: 0, y: 0, z: 0, clear: 0 };
 
 /**
  * Advance the rig by `dt` and write the third-person camera spot for a player standing at (x, z) into `out`.
@@ -154,9 +154,9 @@ const solidSpot: SolidSpot = { x: 0, y: 0, z: 0, clear: 0 };
 const IN_WALL_BACKOFF = 0.06;
 const WALL_HEIGHT_GUARD = 100;
 
-/** Whether (x, y, z) lies inside a standing camera box (a wall, a partition: at least 1.6 m tall, from the floor). */
+/** Whether (x, y, z) lies inside a standing wall box (a wall, a partition: at least 1.6 m tall, from the floor; props never count). */
 function insideTallBox(x: number, y: number, z: number): boolean {
-  for (const b of cameraBoxes()) {
+  for (const b of armBoxes()) {
     if (b.height === undefined || b.height < 1.6 || b.minY !== undefined) continue;
     if (x > b.minX && x < b.maxX && z > b.minZ && z < b.maxZ && y < b.height) return true;
   }
@@ -217,12 +217,9 @@ export function stepFollowRig(
     const reach = Math.sqrt(offX * offX + offY * offY + offZ * offZ);
     if (reach > 1e-6) {
       const indoor = indoorArmAt(map, limitNow);
-      // outdoors the camera also keeps out of the trees' trunks and limbs (cameraCollision.setCameraKeepOut)
-      const walls = springArmDistance(x, HEAD_HEIGHT, z, tpX, tpY, tpZ, reach);
-      const clear = indoor ? walls : Math.min(walls, keepOutArmDistance(x, HEAD_HEIGHT, z, tpX, tpY, tpZ, reach));
+      // only buildings and walls shorten the arm (owner 2026-11-16): not the trees, not the props (cameraCollision.armBoxes)
+      const clear = springArmDistance(x, HEAD_HEIGHT, z, tpX, tpY, tpZ, reach);
       rig.armLimit = stepArmLimit(rig.armLimit, clear, reach, dt);
-      // the arm growing back out stops in front of a limb it would run into (it takes it in at once, as a wall)
-      if (!indoor && rig.armLimit < reach) rig.armLimit = Math.min(rig.armLimit, keepOutArmDistance(x, HEAD_HEIGHT, z, tpX, tpY, tpZ, reach, undefined, rig.armLimit));
       if (rig.armLimit < reach) {
         const k = rig.armLimit / reach;
         tpX = x + offX * k;
@@ -249,7 +246,7 @@ export function stepFollowRig(
   rig.shoulder = stepShoulder(rig.shoulder, shoulderWanted, dt);
   if (rig.shoulder > 0) {
     const fresh = rig.shoulderSide === 0;
-    const sh = shoulderPose(x, z, orbit.yaw, tpX, tpZ, aspect, rig.shoulderSide, cameraBoxes(), cameraPad(), shoulderSpot, fresh ? Number.NaN : rig.shoulderSideEase);
+    const sh = shoulderPose(x, z, orbit.yaw, tpX, tpZ, aspect, rig.shoulderSide, armBoxes(), cameraPad(), shoulderSpot, fresh ? Number.NaN : rig.shoulderSideEase);
     rig.shoulderSideEase = fresh ? sh.side : stepShoulderSide(rig.shoulderSideEase, sh.side, dt);
     rig.shoulderSide = sh.side;
     const s = rig.shoulder;
@@ -265,25 +262,20 @@ export function stepFollowRig(
     rig.shoulderSideEase = 0;
   }
 
-  // The place's real shape (round 8 review): not up among the lounge's louvres, not inside a sofa's back or a bank's edge
-  // (cameraSolids.ts). Only where a solid model is registered (the hall) and the third-person pose is drawn.
+  // Under what hangs from the hall's ceiling (the lounge's louvres, the soffit: round 8 review) the camera is held below it — a
+  // ceiling, so it may (owner 2026-11-16). The hall's furniture (sofa backs, tables) no longer pulls the arm in: props never do.
   const solids = armActive ? cameraSolids() : null;
   if (solids) {
-    const sp = shapeAgainstSolids(solids, x, HEAD_HEIGHT, z, tpX, tpY, tpZ, rig.solidLimit, solidSpot);
-    const len = Math.hypot(tpX - x, tpY - HEAD_HEIGHT, tpZ - z);
-    rig.solidLimit = stepArmLimit(rig.solidLimit, sp.clear, len, dt);
-    tpX = sp.x;
-    tpY = sp.y;
-    tpZ = sp.z;
-  } else {
-    rig.solidLimit = ARM_FREE;
+    const cap = solids.hungCap(tpX, tpZ, HUNG.from, HUNG.clear, HUNG.near, HUNG.slope);
+    if (tpY > cap) tpY = Math.max(HEAD_HEIGHT, cap);
   }
+  rig.solidLimit = ARM_FREE;
 
   // The last word: never inside a wall's own box. A thin partition's end beside a doorway (12 cm, 집 실내 G house 2 upstairs) could take
   // the shoulder's side leg past the padded corner and leave the lens in the board: pulled back along the head's line to just before it.
   if (insideTallBox(tpX, tpY, tpZ)) {
     const len = Math.hypot(tpX - x, tpY - HEAD_HEIGHT, tpZ - z);
-    const t = segmentHitFraction(x, HEAD_HEIGHT, z, tpX, tpY, tpZ, cameraBoxes(), WALL_HEIGHT_GUARD, 0);
+    const t = segmentHitFraction(x, HEAD_HEIGHT, z, tpX, tpY, tpZ, armBoxes(), WALL_HEIGHT_GUARD, 0);
     const k = Math.max(0, t - IN_WALL_BACKOFF / Math.max(len, 1e-6));
     tpX = x + (tpX - x) * k;
     tpY = HEAD_HEIGHT + (tpY - HEAD_HEIGHT) * k;

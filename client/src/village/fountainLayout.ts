@@ -54,6 +54,12 @@ export const FOUNTAIN = {
    */
   arcs: { count: 16, nozzleR: 2.9, nozzleY: 0.45, endR: 5.1, endY: 0.42, lift: 2.6, apexY: 1.735 },
   uprights: { count: 8, r: 1.9, baseY: 0.8, height: 2.9, angle0: 0.2 },
+  /**
+   * 8 jets thrown out of the upper bowl (feat/fountain-rich): from r 1.1 on the bowl's water, up 0.9 m and out over its lip,
+   * to land on the pedestal's pool at r ~2.3 (between the upright jets: they sit half a step apart). The sculpture's column
+   * stands in the middle of the bowl, so a central jet cannot rise there; this ring is the bowl's own plume.
+   */
+  bowlJets: { count: 8, r: 1.1, y: 1.6, up: 4.2, out: 1.15, angle0: 0.2 + Math.PI / 8 },
   curtains: [
     { lipR: 1.64, lipY: 1.62, landR: 1.85, landY: 0.8 },
     { lipR: 2.52, lipY: 0.8, landR: 2.75, landY: 0.4 },
@@ -133,6 +139,24 @@ export const ARC_LAND_R = (() => {
   return Math.hypot(p[0], p[2]);
 })();
 
+/** The k-th jet out of the upper bowl: thrown up and out over its lip, down onto the pedestal's pool. */
+export function bowlJet(k: number): Jet {
+  const b = FOUNTAIN.bowlJets;
+  const angle = (2 * Math.PI * k) / b.count + b.angle0;
+  const c = Math.cos(angle);
+  const s = Math.sin(angle);
+  const origin: Vec3 = [b.r * c, b.y, b.r * s];
+  const velocity: Vec3 = [b.out * c, b.up, b.out * s];
+  return { origin, velocity, flight: timeDownTo(origin, velocity, FOUNTAIN.tier.y), angle };
+}
+
+/** Where the bowl's jets come down on the pedestal's pool (m from the centre). */
+export const BOWL_LAND_R = (() => {
+  const j = bowlJet(0);
+  const p = ballistic(j.origin, j.velocity, j.flight);
+  return Math.hypot(p[0], p[2]);
+})();
+
 /** The k-th upright jet: straight up 2.9 m from the pedestal's pool (its `flight` is the rise, nozzle to apex). */
 export function uprightJet(k: number): Jet {
   const u = FOUNTAIN.uprights;
@@ -164,10 +188,12 @@ export type ParticleKind = (typeof PARTICLE_KIND)[keyof typeof PARTICLE_KIND];
 export const PARTICLE_BUDGET = {
   // A fuller veil is made from moderately more drops in each emitter instead of more emitters. This keeps the 16/8 rhythm,
   // predictable LOD ordering and draw-call count while adding visible volume close to the basin.
-  high: { arcDrop: 52, crown: 128, curtainDrop: 72, arcSplash: 12, crownSplash: 10, curtainSplash: 28, mist: 28, head: 3 },
-  low: { arcDrop: 12, crown: 24, curtainDrop: 20, arcSplash: 0, crownSplash: 0, curtainSplash: 0, mist: 0, head: 1 },
+  // (feat/fountain-rich: the owner asked for a fuller fountain: more drops on every emitter, the bowl's own jets, a thick
+  // veil of curtain drops and more splashes where the water lands.)
+  high: { arcDrop: 64, crown: 160, curtainDrop: 120, arcSplash: 20, crownSplash: 16, curtainSplash: 48, mist: 48, head: 3, bowlDrop: 40, bowlSplash: 12 },
+  low: { arcDrop: 12, crown: 24, curtainDrop: 20, arcSplash: 0, crownSplash: 0, curtainSplash: 0, mist: 0, head: 1, bowlDrop: 6, bowlSplash: 0 },
 } as const;
-export const PARTICLE_CAP = { high: 2560, low: 512 } as const;
+export const PARTICLE_CAP = { high: 4096, low: 512 } as const;
 
 /** One particle: launched from `origin` with `velocity` every `life` s (offset by `phase`), kicked sideways after `kickAt` s. */
 export interface Particle {
@@ -281,7 +307,24 @@ export function buildParticles(tier: "high" | "low"): { particles: Particle[]; f
       put({
         kind: PARTICLE_KIND.arcDrop, origin: [...j.origin], velocity: v, kick, kickAt,
         life: life(j.origin, v, kick, kickAt), phase: rand(), show: ARC_BREAK.start + 0.12 * rand(),
-        size: 0.004 + 0.006 * rand(), seed: k + rand() * 0.999, far: i % 2 === 0 ? 1 : 0,
+        size: 0.006 + 0.008 * rand(), seed: k + rand() * 0.999, far: i % 2 === 0 ? 1 : 0,
+      });
+    }
+  }
+  // Drops off the bowl's jets: the same peeling-off as the arcs, from the bowl's lip down onto the pedestal's pool.
+  for (let k = 0; k < FOUNTAIN.bowlJets.count; k++) {
+    const j = bowlJet(k);
+    for (let i = 0; i < B.bowlDrop; i++) {
+      const along = 1 + 0.04 * gauss();
+      const v: Vec3 = [j.velocity[0] * along, j.velocity[1] * (1 + 0.025 * gauss()), j.velocity[2] * along];
+      const spread = 0.05 + 0.1 * rand();
+      const a = rand() * Math.PI * 2;
+      const kickAt = j.flight * (ARC_BREAK.start + 0.25 * rand());
+      const kick: [number, number] = [Math.cos(a) * spread, Math.sin(a) * spread];
+      put({
+        kind: PARTICLE_KIND.arcDrop, origin: [...j.origin], velocity: v, kick, kickAt,
+        life: life(j.origin, v, kick, kickAt), phase: rand(), show: ARC_BREAK.start + 0.12 * rand(),
+        size: 0.006 + 0.008 * rand(), seed: 16 + k + rand() * 0.999, far: i % 2 === 0 ? 1 : 0,
       });
     }
   }
@@ -339,6 +382,10 @@ export function buildParticles(tier: "high" | "low"): { particles: Particle[]; f
   for (let k = 0; k < FOUNTAIN.arcs.count; k++) {
     const a = arcJet(k).angle;
     splash(ARC_LAND_R * Math.cos(a), FOUNTAIN.pool.y, ARC_LAND_R * Math.sin(a), B.arcSplash, 0.1, [0.6, 1.6], [0.15, 0.6], k);
+  }
+  for (let k = 0; k < FOUNTAIN.bowlJets.count; k++) {
+    const a = bowlJet(k).angle;
+    splash(BOWL_LAND_R * Math.cos(a), FOUNTAIN.tier.y, BOWL_LAND_R * Math.sin(a), B.bowlSplash, 0.08, [0.4, 1.2], [0.1, 0.45], k);
   }
   for (let k = 0; k < FOUNTAIN.uprights.count; k++) {
     const a = uprightJet(k).angle;

@@ -24,7 +24,7 @@ import { isBlocked } from "@caysonverse/shared/collision";
 import { pushOutOfBus } from "@caysonverse/shared/village/busBody";
 import { forEachRemotePosition } from "./remoteStore";
 import { activeMapVersion, getActiveMap } from "./activeMap";
-import { getMovingBusPose } from "../net/transitSync";
+import { getBusBodyPose } from "../net/transitSync";
 import { localArea } from "../village/villageArea";
 
 interface MutableAABB {
@@ -109,17 +109,17 @@ function staticFree(x: number, z: number): boolean {
  * body). Every frame, after the walk's slide, the local body is put back outside the bus's body if it overlaps it
  * (shared busBody.ts pushOutOfBus: the nearest free side, never its front): a walk into the flank slides along it, and
  * the bus's body reaching me (at the kerb as it passes) shoves me out at its pace. The server does the same with every
- * avatar (VillageRoom), so the pose I send agrees with it. Returns the new spot, or null when I am clear (or not on the
- * village's road: parked, the bus is a static collider). Injectable for tests.
+ * avatar (VillageRoom), so the pose I send agrees with it. Parked or driving alike (the bus is no static collider any
+ * more: it left an invisible wall at the empty stop). Returns the new spot, or null when I am clear (or not in the
+ * village). Injectable for tests.
  */
 export function pushOutOfMovingBus(
   x: number,
   z: number,
-  movingBus: typeof getMovingBusPose = getMovingBusPose,
+  busBody: typeof getBusBodyPose = getBusBodyPose,
   inVillage: () => boolean = () => localArea() === "village",
   blocked: (x: number, z: number) => boolean = staticFree,
 ): { x: number; z: number } | null {
-  const bus = movingBus();
-  if (!bus || !inVillage()) return null;
-  return pushOutOfBus(bus, x, z, PLAYER_RADIUS, blocked);
+  if (!inVillage()) return null;
+  return pushOutOfBus(busBody(), x, z, PLAYER_RADIUS, blocked);
 }

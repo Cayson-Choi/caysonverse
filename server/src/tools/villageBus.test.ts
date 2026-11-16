@@ -8,6 +8,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { BUS_MIRROR_REACH, VILLAGE_LAYOUT } from "@caysonverse/shared/village/villageLayout";
+import { BUS_CEILING, BUS_HOLDS, BUS_POLES, BUS_STRAPS } from "@caysonverse/shared/village/busCabin";
 import type { Gltf } from "../../../scripts/lib/schoolGlb";
 import {
   BUDGETS,
@@ -40,6 +41,7 @@ describe("village_bus.glb (bus review: its budget is checked)", () => {
     expect(results.map((r) => r.label)).toEqual([
       "버스 노드",
       "버스 재질·그리기",
+      "버스 실내 부품 재질",
       "버스 라이트맵 없음",
       "버스 파일 크기",
       "버스 삼각형 수",
@@ -272,5 +274,45 @@ describe("village_bus.glb geometry: the wordmark decals and the signs behind gla
         expect(g!).toBeLessThan(0.1);
       }
     }
+  });
+});
+
+describe("village_bus.glb cabin fixtures match the generated cabin data (bus-ride 2026-11-15)", () => {
+  const { gltf } = load("village_bus.glb");
+  const nodeBox = (name: string) => {
+    const node = gltf.nodes!.find((n) => n.name === name);
+    expect(node, name).toBeDefined();
+    const prim = gltf.meshes![node!.mesh!]!.primitives[0]!;
+    const a = gltf.accessors![prim.attributes.POSITION!]!;
+    return { min: a.min as number[], max: a.max as number[] };
+  };
+
+  it("every pole is its own node, standing at the generated spot from its floor to the ceiling", () => {
+    for (const p of BUS_POLES) {
+      const { min, max } = nodeBox(p.name);
+      // glTF: x = right, y = up, z = -ahead
+      expect((min[0]! + max[0]!) / 2).toBeCloseTo(p.right, 1);
+      expect(-(min[2]! + max[2]!) / 2).toBeCloseTo(p.ahead, 1);
+      expect(min[1]!).toBeCloseTo(p.z0, 2);
+      expect(max[1]!).toBeCloseTo(p.z1, 2);
+    }
+    expect(BUS_CEILING).toBeCloseTo(3.15, 6);
+  });
+
+  it("the strap groups and a hold spot's pole exist as nodes (the camera fades them)", () => {
+    for (const s of BUS_STRAPS) nodeBox(s.name);
+    for (const h of BUS_HOLDS) expect(BUS_POLES.some((p) => p.name === h.pole), h.id).toBe(true);
+    const names = gltf.nodes!.map((n) => n.name ?? "");
+    expect(names.filter((n) => n.startsWith("stop_btn_")).length).toBeGreaterThanOrEqual(4);
+    expect(names).toContain("rail_l");
+    expect(names).toContain("rail_r");
+  });
+
+  it("the body is taller than before: window band to 2.75 m, roof edge 3.45 m (the 2.52 m head and 3.03 m hat fit)", () => {
+    const node = gltf.nodes!.find((n) => n.name === "village_bus")!;
+    const prim = gltf.meshes![node.mesh!]!.primitives.find((p) => gltf.materials![p.material!]!.name === "M_bus")!;
+    const a = gltf.accessors![prim.attributes.POSITION!]!;
+    expect((a.max as number[])[1]!).toBeGreaterThan(3.6);
+    expect((a.max as number[])[1]!).toBeLessThan(3.95);
   });
 });

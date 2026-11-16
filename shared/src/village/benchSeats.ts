@@ -43,6 +43,7 @@ import { isRemovedHouseSeat } from "./houseFixes";
 import { HOUSE_NUMBERS, HOUSE_PLACES, houseBuildingId, houseFloorBounds, compareHouseSeats, type HouseFloor, type HouseNumber, type HouseSeatMarker, type HouseSeatPose } from "./houseAreas";
 import type { MapGeometry } from "../school/geometry";
 import { VILLAGE_SEAT_MARKERS } from "./generated/villageSeatMarkers";
+import { lakeSeats, type LakeSeatKind } from "./lakeLayout";
 
 
 /**
@@ -377,10 +378,13 @@ export interface VillageSeat extends Seat {
   lean: number;
   /**
    * A house seat's sitting pose (houseAreas.ts HouseSeatPose): `chair` (today's sit), `perch` (a bar / work stool: legs bent to the foot rail)
-   * or `floor` (cross-legged on a cushion, chunk F). Absent on the village's and the hall's seats (= `chair`). Until F's pose exists
-   * the client sits every house seat in the chair pose.
+   * or `floor` (cross-legged on a cushion, chunk F). Absent on the village's and the hall's seats (= `chair`).
    */
   pose?: HouseSeatPose;
+  /** Lake seats (lakeLayout.ts, A10): what they are at the lake (a fishing chair, a shore bench, ...). Absent: a village seat. */
+  lake?: LakeSeatKind;
+  /** A fishing chair: the id of its spot in `LAKE_FISHING_SPOTS`. */
+  spot?: string;
 }
 
 /** Wrap an angle into (-pi, pi]. */
@@ -703,6 +707,9 @@ function makeSeats(benches: readonly VillageBench[]): VillageSeat[] {
   // stop shelter's bench, then the art's marked seats (café terrace chairs, porch benches)
   if (benches.includes(SHELTER_BENCH)) seats.push(...benchSeats(SHELTER_BENCH));
   seats.push(...villageMarkerSeats(VILLAGE_SEAT_MARKERS));
+  // the fishing lake's seats (A10) after every village seat: the 30 fishing chairs first, in LAKE_FISHING_SPOTS order
+  // (LAKE_SEAT_BASE + spot), then the shore benches, picnic, pavilion and porch benches
+  seats.push(...lakeVillageSeats());
   return seats;
 }
 
@@ -733,3 +740,71 @@ export function houseMarkerSeats(m: HouseSeatMarker): VillageSeat[] {
     }),
   );
 }
+
+/** Index of the first lake seat in `VILLAGE_SEATS`: the 30 fishing chairs are `LAKE_SEAT_BASE + spotIndex` (spotIndex = LAKE_FISHING_SPOTS order). */
+export const LAKE_SEAT_BASE: number = VILLAGE_SEATS.findIndex((s) => s.lake !== undefined);
+
+/** The seat index of the fishing chair of spot `spot` (0..29). */
+export function fishingSeatIndex(spot: number): number {
+  return LAKE_SEAT_BASE + spot;
+}
+
+/** The fishing spot of a seat index, or -1 when it is not a fishing chair. */
+export function fishingSpotOfSeat(seatIndex: number): number {
+  const s = VILLAGE_SEATS[seatIndex];
+  return s && s.lake === "fishing_chair" ? seatIndex - LAKE_SEAT_BASE : -1;
+}
+
+/**
+ * The lake's seats in the village's seat model (lakeLayout.ts `lakeSeats`, rule P6): a fishing chair or a backed bench is one
+ * seat sat on from its front (a fishing chair also from beside it: its front is the water); a backless board (picnic, pavilion)
+ * is two seats of one group, one per facing, the sitter facing the side they came from — its root `rootAhead` ahead of the
+ * board's middle, the hips over the board. A picnic bench is sat on from outside only (its other side is the table).
+ */
+function lakeVillageSeats(): VillageSeat[] {
+  const out: VillageSeat[] = [];
+  for (const s of lakeSeats()) {
+    const base = { bench: s.bench, area: "village" as AreaId, lake: s.kind, seatY: s.seatY, lean: 0 };
+    if (s.approach !== "either" || !s.other || s.rootAhead === undefined) {
+      out.push({
+        ...base,
+        id: `lake:${s.id}`,
+        x: s.x,
+        z: s.z,
+        yaw: s.yaw,
+        standX: s.standX,
+        standZ: s.standZ,
+        frontEdge: s.frontEdge,
+        approachEdge: s.approachEdge,
+        beside: s.beside,
+        kind: "backed",
+        spot: s.spot,
+      });
+      continue;
+    }
+    const ahead = s.rootAhead;
+    const deep = s.deep ?? 0.4;
+    // a picnic bench's second facing is the table's side: nobody can stand there to sit facing it (lakeLayout.ts gives it the
+    // first side's get-up spot), so a picnic board is the one seat sat on from outside (as lakeLayout's own rule chose)
+    const facings = [
+      { yaw: s.yaw, standX: s.standX, standZ: s.standZ, tag: "a" },
+      ...(s.kind === "picnic" ? [] : [{ yaw: s.other.yaw, standX: s.other.standX, standZ: s.other.standZ, tag: "b" }]),
+    ];
+    for (const f of facings) {
+      out.push({
+        ...base,
+        id: `lake:${s.id}:${f.tag}`,
+        x: Math.round((s.x + Math.sin(f.yaw) * ahead) * 1000) / 1000,
+        z: Math.round((s.z + Math.cos(f.yaw) * ahead) * 1000) / 1000,
+        yaw: f.yaw,
+        standX: f.standX,
+        standZ: f.standZ,
+        frontEdge: Math.round(Math.max(0.05, ahead - deep / 2) * 1000) / 1000,
+        kind: "backless",
+        group: facings.length > 1 ? `lake:${s.id}` : undefined,
+      });
+    }
+  }
+  return out;
+}
+

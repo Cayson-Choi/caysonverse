@@ -1091,6 +1091,11 @@ export const VILLAGE_BUS_GROUND_CLEARANCE = 0.01;
  */
 export const VILLAGE_SCENE_MAX_TRIANGLES = BUDGETS.village.maxTriangles + VILLAGE_BUS_BUDGET.maxTriangles;
 
+/** A separate cabin fixture of the bus (build_bus.py FIXTURE_PREFIXES): pole_*, rail_*, strap_*, stop_btn_*. */
+export function isBusFixtureName(name: string | undefined): boolean {
+  return name !== undefined && /^(pole|rail|strap|stop_btn)_/.test(name);
+}
+
 /**
  * Check village_bus.glb: the node and its four materials (one primitive each), not light-mapped, budgets, texture
  * sides, and the ground quad over the road (its POSITION accessor's lowest y plus the node's own y).
@@ -1099,7 +1104,9 @@ export function checkVillageBus(gltf: Gltf, byteLength: number, bin: Uint8Array 
   const out: CheckResult[] = [];
   const nodes = gltf.nodes ?? [];
   const materials = gltf.materials ?? [];
-  const meshNodes = nodes.filter((n) => n.mesh !== undefined);
+  // The cabin's poles, ceiling rails, strap groups and stop buttons are separate nodes (the rider camera fades the ones that
+  // come between it and the avatar: client transitCamera.ts), each one mesh in M_bus only; the body is the one other node.
+  const meshNodes = nodes.filter((n) => n.mesh !== undefined && !isBusFixtureName(n.name));
   const node = meshNodes.length === 1 && meshNodes[0]!.name === "village_bus" ? meshNodes[0]! : null;
   out.push(
     result(
@@ -1119,6 +1126,11 @@ export function checkVillageBus(gltf: Gltf, byteLength: number, bin: Uint8Array 
       sameSet ? `${want.join(", ")}: 재질마다 primitive 하나 (그리기 ${prims.length}번)` : `primitive 재질: ${used.join(", ") || "없음"} / 있어야 하는 것: ${want.join(", ")}`,
     ),
   );
+  const fixtureBad = nodes
+    .filter((n) => n.mesh !== undefined && isBusFixtureName(n.name))
+    .filter((n) => (gltf.meshes?.[n.mesh!]?.primitives ?? []).some((p) => p.material === undefined || materials[p.material]?.name !== "M_bus"))
+    .map((n) => n.name);
+  out.push(result(fixtureBad.length === 0, "버스 실내 부품 재질", fixtureBad.length === 0 ? "기둥·손잡이 등은 M_bus 하나만 써요" : `M_bus가 아닌 부품: ${fixtureBad.join(", ")}`));
   const lightmapped = materials.filter((m) => (m.name ?? "").startsWith(LIGHTMAP_MATERIAL_PREFIX)).map((m) => m.name);
   out.push(result(lightmapped.length === 0, "버스 라이트맵 없음", lightmapped.length === 0 ? "실시간 조명 재질이에요" : `LM_ 재질: ${lightmapped.join(", ")}`));
   out.push(

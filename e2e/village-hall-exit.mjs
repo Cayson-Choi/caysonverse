@@ -319,8 +319,10 @@ try {
           }
         }
         run.check(
-          `${dev}: the armchair-blocked view was met (a camera within 1.2 m of the head at least once)`,
-          rows.some((r) => r.head < 1.2),
+          // owner 2026-11-16 ("건물이나 벽에서는 바뀌도록 하자"): the armchair is furniture and no longer pulls the camera in, so the old
+          // blocked view (a camera within 1.2 m of the head) must not happen; only the lounge's walls may shorten the arm
+          `${dev}: the armchair no longer pulls the camera in (every camera at least 1.2 m from the head)`,
+          rows.every((r) => r.head >= 1.2),
           rows.map((r) => [r.deg, r.pitch, r.head, r.visible]),
         );
         // back out for the next device's clean start

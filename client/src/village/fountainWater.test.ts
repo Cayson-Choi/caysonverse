@@ -27,6 +27,8 @@ import {
   TIME_WRAP,
   arcBreakup,
   arcJet,
+  bowlJet,
+  BOWL_LAND_R,
   ballistic,
   buildParticles,
   curtainFlow,
@@ -241,6 +243,25 @@ describe("fountainLayout: the clock wraps without a jump", () => {
   });
 });
 
+describe("fountainLayout: the bowl's jets", () => {
+  it("8 jets thrown up and out of the upper bowl, landing inside the pedestal's lip between the upright jets", () => {
+    expect(FOUNTAIN.bowlJets.count).toBe(8);
+    for (let k = 0; k < FOUNTAIN.bowlJets.count; k++) {
+      const j = bowlJet(k);
+      close(j.origin[1], FOUNTAIN.bowl.y, 1e-9);
+      const end = ballistic(j.origin, j.velocity, j.flight);
+      close(end[1], FOUNTAIN.tier.y, 1e-9);
+      close(Math.hypot(end[0], end[2]), BOWL_LAND_R, 1e-9);
+      expect(BOWL_LAND_R).toBeGreaterThan(FOUNTAIN.bowl.lipR + 0.3);
+      expect(BOWL_LAND_R).toBeLessThan(FOUNTAIN.tier.lipR - 0.1);
+      // Half a step from the nearest upright jet.
+      const u = uprightJet(0).angle;
+      const d = Math.abs(((j.angle - u) / ((2 * Math.PI) / 8)) % 1);
+      close(Math.min(d, 1 - d), 0.5, 1e-6);
+    }
+  });
+});
+
 describe("fountainLayout: the particle pools", () => {
   for (const tier of ["high", "low"] as const) {
     it(`${tier}: within the cap, far class first, every cycle a whole number of times in the wrap`, () => {
@@ -257,7 +278,7 @@ describe("fountainLayout: the particle pools", () => {
       }
       const B = PARTICLE_BUDGET[tier];
       const count = (k: number) => particles.filter((p) => p.kind === k).length;
-      expect(count(PARTICLE_KIND.arcDrop)).toBe(B.arcDrop * 16);
+      expect(count(PARTICLE_KIND.arcDrop)).toBe(B.arcDrop * 16 + B.bowlDrop * FOUNTAIN.bowlJets.count);
       expect(count(PARTICLE_KIND.crown)).toBe(B.crown * 8);
       expect(count(PARTICLE_KIND.mist)).toBe(B.mist);
       expect(count(PARTICLE_KIND.head)).toBe(B.head * 8);
@@ -325,12 +346,12 @@ describe("fountainWater: the model's water cut down to its pools", () => {
 });
 
 describe("fountainWater: geometry and the system", () => {
-  it("one ribbon per jet (16 arcs, 8 upright), 2 vertices a step, a fixed bounding sphere round the fountain", () => {
+  it("one ribbon per jet (16 arcs, 8 upright, 8 out of the bowl), 2 vertices a step, a fixed bounding sphere round the fountain", () => {
     for (const tier of ["high", "low"] as const) {
       const g = buildRibbonGeometry(tier);
       const s = RIBBON_SEGMENTS[tier];
-      expect(g.getAttribute("position").count).toBe(16 * (s.arc + 1) * 2 + 8 * (s.upright + 1) * 2);
-      expect(g.index!.count / 3).toBe(16 * s.arc * 2 + 8 * s.upright * 2);
+      expect(g.getAttribute("position").count).toBe(24 * (s.arc + 1) * 2 + 8 * (s.upright + 1) * 2);
+      expect(g.index!.count / 3).toBe(24 * s.arc * 2 + 8 * s.upright * 2);
       expect(g.boundingSphere!.radius).toBeGreaterThan(6);
     }
     // The nominal positions are on the parabolas (the shader adds the sway and turns them to the camera).

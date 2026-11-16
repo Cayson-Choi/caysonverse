@@ -17,6 +17,9 @@ import { busDismountSpot } from "@caysonverse/shared/village/busSeats";
 import { busClearance } from "@caysonverse/shared/village/busBody";
 import { busDriveTrip, type BusDrive } from "@caysonverse/shared/village/busDrive";
 import { BUS_LEAVE_MOVING_NOTICE } from "./transitRuntime";
+import { BUS_ENTRY, BUS_SEATS, busLocalToWorld, busPlaceOf, seatFrontPoint } from "@caysonverse/shared/village/busCabin";
+import { busLocal } from "@caysonverse/shared/village/busBody";
+import { BUS_SEAT_FRONT_NOTICE, BUS_SEAT_TAKEN_NOTICE } from "./busCabinMove";
 import {
   SERVER_TIME_INTERVAL_MS,
   VillageMsg,
@@ -1221,12 +1224,12 @@ describe("VillageRoom bus riders are in the bus (integration, owner 2026-11-15)"
     return { room, client, player, bob, bobPlayer, slot, clock };
   }
 
-  it("boarding gives each rider a place in the bus (busSeats.ts) that every client sees; a leave on the lap is refused; back at the stop they get off at the door", async () => {
+  it("boarding puts each rider aboard and free just inside the front door (busCabin.ts BUS_ENTRY), which every client sees; a leave on the lap is refused; back at the stop they get off at the door", async () => {
     const { room, client, player, bob, bobPlayer, slot, clock } = await atTheStop();
     client.send(MessageType.BusRide, { action: "board" });
     expect(await pollFor(() => player.busSeat === 0)).toBe(true);
     bob.send(MessageType.BusRide, { action: "board" });
-    expect(await pollFor(() => bobPlayer.busSeat === 1)).toBe(true);
+    expect(await pollFor(() => bobPlayer.busSeat === 0)).toBe(true);
     // the other client draws the rider in that place
     expect(await pollFor(() => bob.state.players.get(client.sessionId)?.busSeat === 0)).toBe(true);
     // the bus leaves: the doors stay shut until it is back
@@ -1261,5 +1264,140 @@ describe("VillageRoom bus riders are in the bus (integration, owner 2026-11-15)"
     const spot = busDismountSpot(0);
     expect(player.x).toBeCloseTo(spot.x, 4);
     expect(player.z).toBeCloseTo(spot.z, 4);
+  });
+});
+
+describe("VillageRoom riding in the bus: walk, sit, hold, stand (integration, owner 2026-11-15)", () => {
+  async function aboard() {
+    const { room, client, player } = await visitor();
+    const bob = await colyseus.connectTo(room, JOIN_BOB);
+    const slot = Date.UTC(2026, 10, 15, 3, 10, 0);
+    const clock = { t: slot - 60_000 };
+    (room as unknown as { wallClock: () => number }).wallClock = () => clock.t;
+    room.tickBus();
+    const bobPlayer = room.state.players.get(bob.sessionId)!;
+    placeAt(player, 39.4, -6.2);
+    placeAt(bobPlayer, 39.4, -8.4);
+    client.send(MessageType.BusRide, { action: "board" });
+    expect(await pollFor(() => player.busSeat === 0)).toBe(true);
+    bob.send(MessageType.BusRide, { action: "board" });
+    expect(await pollFor(() => bobPlayer.busSeat === 0)).toBe(true);
+    // two riders boarding together are not put in one spot
+    expect(Math.hypot(player.busAhead - bobPlayer.busAhead, player.busRight - bobPlayer.busRight)).toBeGreaterThanOrEqual(0.55);
+    return { room, client, player, bob, bobPlayer, slot, clock };
+  }
+
+  it("a rider starts at the entry in the bus's frame; their world pose is that point of the parked bus", async () => {
+    const { player } = await aboard();
+    expect(player.busAhead).toBeCloseTo(BUS_ENTRY.ahead, 3);
+    expect(player.busRight).toBeCloseTo(BUS_ENTRY.right, 3);
+    const l = busLocal({ x: TRANSIT.parked.x, z: TRANSIT.parked.z, yaw: TRANSIT.parked.yaw }, player.x, player.z);
+    expect(l.ahead).toBeCloseTo(BUS_ENTRY.ahead, 1);
+    expect(l.right).toBeCloseTo(BUS_ENTRY.right, 1);
+  });
+
+  it("walking: a step down the aisle is accepted; one through a wall or a seat, or too far, is dropped", async () => {
+    const { client, player } = await aboard();
+    await new Promise((r) => setTimeout(r, 120));
+    client.send(MessageType.BusMove, { ahead: player.busAhead - 0.1, right: player.busRight - 0.15, yaw: 3 });
+    expect(await pollFor(() => Math.abs(player.busAhead - (BUS_ENTRY.ahead - 0.1)) < 1e-3)).toBe(true);
+    const at = { ahead: player.busAhead, right: player.busRight };
+    client.send(MessageType.BusMove, { ahead: at.ahead, right: 1.4, yaw: 0 }); // through the wall
+    client.send(MessageType.BusMove, { ahead: at.ahead - 6, right: at.right, yaw: 0 }); // too far in one step
+    client.send(MessageType.BusMove, { ahead: Number.NaN, right: 0, yaw: 0 });
+    await new Promise((r) => setTimeout(r, 150));
+    expect(player.busAhead).toBeCloseTo(at.ahead, 3);
+    expect(player.busRight).toBeCloseTo(at.right, 3);
+  });
+
+  it("sitting: the seat is taken, the second rider is refused with a notice, a backed seat from behind is refused; standing puts the rider in the aisle", async () => {
+    const { client, player, bob, bobPlayer } = await aboard();
+    const index = BUS_SEATS.findIndex((s) => s.id === "L2");
+    const front = seatFrontPoint(BUS_SEATS[index]!);
+    // put both next to the seat's front (a test seam: the walk there is the walk test's job)
+    for (const pl of [player, bobPlayer]) {
+      pl.busAhead = front.ahead;
+      pl.busRight = front.right;
+    }
+    client.send(MessageType.BusSit, { kind: "seat", index });
+    expect(await pollFor(() => player.busSeat === index + 1)).toBe(true);
+    expect(busPlaceOf(player.busSeat)).toEqual({ kind: "seat", index });
+    expect(player.busAhead).toBeCloseTo(BUS_SEATS[index]!.ahead, 3);
+    const taken = waitForMessage<{ reason: string }>(bob, MessageType.BusRejected, () => true);
+    bob.send(MessageType.BusSit, { kind: "seat", index });
+    expect((await taken).reason).toBe(BUS_SEAT_TAKEN_NOTICE);
+    expect(bobPlayer.busSeat).toBe(0);
+    // behind another backed seat
+    const r2 = BUS_SEATS.findIndex((s) => s.id === "R2");
+    bobPlayer.busAhead = BUS_SEATS[r2]!.ahead - 0.7;
+    bobPlayer.busRight = BUS_SEATS[r2]!.right;
+    const behind = waitForMessage<{ reason: string }>(bob, MessageType.BusRejected, () => true);
+    bob.send(MessageType.BusSit, { kind: "seat", index: r2 });
+    expect((await behind).reason).toBe(BUS_SEAT_FRONT_NOTICE);
+    // a hold spot, then both stand
+    const holdIndex = 1;
+    bobPlayer.busAhead = 1.7;
+    bobPlayer.busRight = -0.14;
+    bob.send(MessageType.BusSit, { kind: "hold", index: holdIndex });
+    expect(await pollFor(() => busPlaceOf(bobPlayer.busSeat).kind === "hold")).toBe(true);
+    client.send(MessageType.BusStand, {});
+    expect(await pollFor(() => player.busSeat === 0)).toBe(true);
+    expect(Math.abs(player.busRight)).toBeLessThan(1.0);
+    bob.send(MessageType.BusStand, {});
+    expect(await pollFor(() => bobPlayer.busSeat === 0)).toBe(true);
+  });
+
+  it("review r1: a flood of BusMove / BusSit messages is capped (no speed-up, no flood of replies)", async () => {
+    const { room, client, player } = await aboard();
+    const serverClient = room.clients.find((c) => c.sessionId === client.sessionId)!;
+    // the room's clock held still: 300 tiny steps in the same instant. Without a cap each is within the speed budget (the 10 ms floor
+    // allows 0.146 m); with it only about 14 pass, so the rider moved a fraction of the 3 m the 300 would have taken
+    const t0 = Date.now() + 5000;
+    (room as unknown as { now: () => number }).now = () => t0;
+    const start = player.busAhead;
+    let ahead = start;
+    for (let k = 0; k < 300; k++) {
+      ahead -= 0.01;
+      (room as unknown as { handleBusMove: (c: unknown, p: unknown) => void }).handleBusMove(serverClient, { ahead, right: player.busRight, yaw: 3 });
+    }
+    expect(start - player.busAhead).toBeLessThan(0.5);
+    expect(start - player.busAhead).toBeGreaterThan(0.05);
+    // sitting: every refusal is answered, so the answers are capped too
+    let replies = 0;
+    const fake = { sessionId: client.sessionId, send: () => { replies++; } };
+    for (let k = 0; k < 200; k++) (room as unknown as { handleBusSit: (c: unknown, p: unknown) => void }).handleBusSit(fake, { kind: "seat", index: 11 });
+    expect(replies).toBeLessThanOrEqual(6);
+    expect(replies).toBeGreaterThan(0);
+  });
+
+  it("review r1: a rider whose connection dropped is put off the bus when the lap ends (they used to ride on as a ghost holding a seat)", async () => {
+    process.env.CV_RECONNECT_WINDOW_S = "30";
+    const { room, client, player, slot, clock } = await aboard();
+    client.reconnection.enabled = false;
+    client.connection.close(4010, "test drop");
+    expect(await pollFor(() => room.state.players.get(client.sessionId)?.connected === false)).toBe(true);
+    expect(player.busSeat).toBe(0);
+    clock.t = slot + 20_000;
+    room.tickBus();
+    expect(player.busSeat).toBe(0); // still on the lap
+    clock.t = slot + 120_000; // well after the lap
+    room.tickBus();
+    expect(player.busSeat).toBe(-1);
+  });
+
+  it("while the bus is out on the lap the rider's world pose follows it (x/z are the bus's point); a seated rider moves with it", async () => {
+    const { room, client, player, slot, clock } = await aboard();
+    const index = BUS_SEATS.findIndex((s) => s.id === "R2");
+    const front = seatFrontPoint(BUS_SEATS[index]!);
+    player.busAhead = front.ahead;
+    player.busRight = front.right;
+    client.send(MessageType.BusSit, { kind: "seat", index });
+    expect(await pollFor(() => player.busSeat === index + 1)).toBe(true);
+    clock.t = slot + 20_000;
+    room.tickBus();
+    const trip = busDriveTrip((room as unknown as { driverAt: (n: number) => { drive: BusDrive } }).driverAt(clock.t).drive, clock.t);
+    const w = busLocalToWorld(trip.pose, BUS_SEATS[index]!.ahead + 0.0, BUS_SEATS[index]!.right);
+    expect(Math.hypot(player.x - w.x, player.z - w.z)).toBeLessThan(0.6);
+    expect(trip.status).toBe("inTransit");
   });
 });

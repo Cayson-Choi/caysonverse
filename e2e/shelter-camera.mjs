@@ -1,8 +1,8 @@
 /**
  * e2e/shelter-camera.mjs — visual review r4 (houses-m1): at the bus stop shelter and in front of the flower kiosk the
- * third-person camera must not sit behind an opaque panel with the avatar hidden. For each of the four facing directions it
- * turns the camera, waits for the spring arm to settle, saves the game view, and checks the camera's place; the
- * avatar is in the picture (look at the PNGs), and the camera is never behind the shelter's back-wall light box.
+ * third-person camera. Since owner 2026-11-16 ("건물이나 벽에서는 바뀌도록 하자") the shelter is a prop and the flower kiosk a small building (coordinator 2026-11-16): for each of the
+ * four facing directions it turns the camera, waits, saves the game view and checks that the camera-to-head distance is the
+ * player's zoom unless a building or a wall (not a prop) lies between the head and the camera.
  *
  *   server:  PORT=2863 npx tsx src/index.ts   (in server/)
  *   client:  VITE_SERVER_URL=http://localhost:2863 npx vite --port 5463 --strictPort   (in client/)
@@ -57,13 +57,24 @@ for (const [name, x, z] of SPOTS) {
       const info = await p.page.evaluate(async () => {
         const c = window.__cvCamera();
         const at = window.__cv.getPos();
-        return { cam: [c.x, c.y, c.z].map((n) => Math.round(n * 100) / 100), dist: Math.round(c.distance * 100) / 100 };
+        const cc = await window.__imp("/src/game/cameraCollision.ts");
+        const { HEAD_HEIGHT } = await window.__imp("/src/game/constants.ts");
+        const arm = Math.hypot(c.x - at.x, c.y - HEAD_HEIGHT, c.z - at.z);
+        // the spot the zoom asks for, along the drawn camera's own direction: is a building or a wall (not a prop) on the way?
+        const k = arm > 1e-6 ? c.distance / arm : 0;
+        const want = [at.x + (c.x - at.x) * k, HEAD_HEIGHT + (c.y - HEAD_HEIGHT) * k, at.z + (c.z - at.z) * k];
+        const wall = cc.segmentHitFraction(at.x, HEAD_HEIGHT, at.z, want[0], want[1], want[2], cc.armBoxes(), undefined, cc.cameraPad()) < 1;
+        const props = cc.segmentHitFraction(at.x, HEAD_HEIGHT, at.z, want[0], want[1], want[2], cc.cameraBoxes(), undefined, cc.cameraPad()) < 1;
+        const r = (n) => Math.round(n * 100) / 100;
+        return { cam: [c.x, c.y, c.z].map(r), dist: r(c.distance), arm: r(arm), wall, props };
       });
       await p.page.screenshot({ path: join(OUT, `${name}_${dir}_${tag}.png`) });
       console.log(name, dir, JSON.stringify({ at: [at.x, at.z].map((n) => Math.round(n * 100) / 100), ...info }));
-      const inShelterBack = info.cam[0] > 41.5 && Math.abs(info.cam[2] + 4.9) < 0.62 && name === "shelter";
       if (!before) {
-        run.check(`${name} ${dir}: camera not behind the light box`, !inShelterBack, info.cam);
+        // owner 2026-11-16: the arm is the player's zoom; only a building or a wall (here: the parked bus, the café) may shorten it
+        run.check(`${name} ${dir}: the arm is the zoom (${info.dist} m) unless a building or wall is in the way`, info.wall || Math.abs(info.arm - info.dist) < 0.05, info);
+        const inKiosk = info.cam[0] > 46.8 && info.cam[0] < 51.1 && info.cam[2] > -5.85 && info.cam[2] < -1.85 && info.cam[1] < 4.5;
+        run.check(`${name} ${dir}: the camera is never inside the kiosk (a building)`, !inKiosk, info.cam);
       }
     }
   });

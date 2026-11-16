@@ -10,7 +10,6 @@ import {
   GUIDES,
   GUIDE_COLLIDER_HALF,
   GUIDE_REACH_M,
-  GUIDE_TEXT_ONLY_VOICES,
   guideById,
   guideColliders,
   guideVoiceUrl,
@@ -30,7 +29,7 @@ describe("guides (Task 9A)", () => {
     expect(new Set(voices).size).toBe(voices.length);
     for (const g of GUIDES) {
       expect(g.qas.length).toBeGreaterThanOrEqual(3);
-      expect(g.qas.length).toBeLessThanOrEqual(5);
+      expect(g.qas.length).toBeLessThanOrEqual(6) // the plaza guide: 6 with the houses' code (집 실내 G);
       expect(g.tag).toBe("안내원");
       expect(validateAppearance(g.appearance)).toEqual(g.appearance);
       expect(guideById(g.id)).toBe(g);
@@ -55,11 +54,12 @@ describe("guides (Task 9A)", () => {
     for (const g of GUIDES)
       for (const q of g.qas) {
         expect(guideVoiceUrl(q.voice)).toBe(`/village/voice/${q.voice}.m4a`);
-        const file = resolve(VOICE_DIR, `${q.voice}.m4a`);
-        if (GUIDE_TEXT_ONLY_VOICES.includes(q.voice)) {
-          expect(existsSync(file), `${file} is recorded: drop it from GUIDE_TEXT_ONLY_VOICES`).toBe(false);
+        if (q.textOnly) {
+          // words only (the lake's way, 2026-11-16): never asked for, so no 404
+          expect(existsSync(resolve(VOICE_DIR, `${q.voice}.m4a`))).toBe(false);
           continue;
         }
+        const file = resolve(VOICE_DIR, `${q.voice}.m4a`);
         expect(existsSync(file), file).toBe(true);
         expect(statSync(file).size).toBeLessThanOrEqual(60 * 1024);
         expect(statSync(file).size).toBeGreaterThan(4 * 1024);

@@ -253,8 +253,10 @@ describe("villageBusTarget — the board button under the shelter (review r2)", 
     const { villageBusTarget, BUS_RIDE_TARGET_LEAVE } = await import("./villageTargets");
     expect(villageBusTarget("village", 38.5, -6.5, true, true, 60_000, false)?.id).toBe(BUS_RIDE_TARGET_LEAVE);
     expect(villageBusTarget("village", 38.5, -6.5, true, false, 400_000, true)).toBeNull();
-    // not boarded: the board button stays (it counts down) whether the bus is out or not
-    expect(villageBusTarget("village", 38.5, -6.5, false, false, 400_000, true)).not.toBeNull();
+    // not boarded: no action while the bus is away or its doors are shut (2026-11-15 check: the confusing "E 버스 타기 · 10분 뒤 출발")
+    expect(villageBusTarget("village", 38.5, -6.5, false, false, 400_000, true)).toBeNull();
+    expect(villageBusTarget("village", 38.5, -6.5, false, false, 400_000, false)).toBeNull();
+    expect(villageBusTarget("village", 38.5, -6.5, false, true, 100_000, true)).toBeNull();
   });
 
   it("always yields to a seat in reach (the café's north-west chairs, the shelter's bench), boarding or not (owner 2026-11-15)", async () => {
@@ -262,7 +264,7 @@ describe("villageBusTarget — the board button under the shelter (review r2)", 
     expect(villageBusTarget("village", 41.88, -10.7, false)?.yieldsToSeat).toBe(true); // chair 97 (cafe_terrace_5), 0.23 m off the area
     const s = VILLAGE_LAYOUT.busStop.shelter;
     expect(villageBusTarget("village", s.centre.x, s.centre.z, false)?.yieldsToSeat).toBe(true);
-    expect(villageBusTarget("village", s.centre.x, s.centre.z, false, false, 300_000)?.yieldsToSeat).toBe(true);
+    expect(villageBusTarget("village", s.centre.x, s.centre.z, false, true, 100_000)?.yieldsToSeat).toBe(true);
   });
 
   it("by the bus's doors no seat is in reach, so while boarding is open E there boards the bus", async () => {
@@ -288,14 +290,10 @@ describe("villageBusTarget — the board button under the shelter (review r2)", 
     }
   });
 
-  it("never hides the way to ride: outside the boarding window the button counts down to the next bus (review 2026-11-15)", async () => {
+  it("outside the boarding window there is no board action (the key-less chip says when: busStopHint.ts); the countdown words stay for it (review 2026-11-15)", async () => {
     const { villageBusTarget, busCountdownWords } = await import("./villageTargets");
     const s = VILLAGE_LAYOUT.busStop.shelter;
-    const waiting = villageBusTarget("village", s.centre.x, s.centre.z, false, false, 200_000)!;
-    expect(waiting.id).toBe("village_bus_board");
-    expect(waiting.label).toBe("버스 타기 · 4분 뒤 출발");
-    expect(waiting.short).toBe("4분 뒤");
-    expect(waiting.yieldsToSeat).toBe(true);
+    expect(villageBusTarget("village", s.centre.x, s.centre.z, false, false, 200_000)).toBeNull();
     expect(villageBusTarget("village", s.centre.x, s.centre.z, false, true, 20_000)).toMatchObject({ label: "버스 타기", short: "탑승" });
     expect(villageBusTarget("village", s.centre.x, s.centre.z, true, false)?.id).toBe("village_bus_leave");
     expect(busCountdownWords(45_200)).toEqual({ long: "46초", short: "46초 뒤" });
@@ -317,15 +315,11 @@ describe("villageBusTarget — the board button gives the shelter's bench the ke
     const s = VILLAGE_LAYOUT.busStop.shelter;
     const x = s.centre.x - 0.4;
     const z = s.centre.z + 0.77;
-    const idle = villageBusTarget("village", x, z, false, false)!;
+    expect(villageBusTarget("village", x, z, false, false)).toBeNull(); // not boarding: nothing offered, the bench keeps the key
     const boarding = villageBusTarget("village", x, z, false, true)!;
-    expect(idle.yieldsToSeat).toBe(true);
     expect(boarding.yieldsToSeat).toBe(true);
-    expect(villageBusTarget("village", x, z, true, false)!.yieldsToSeat).toBeUndefined();
+    expect(villageBusTarget("village", x, z, true, true)!.yieldsToSeat).toBeUndefined();
     const seat = { index: 20, dist: 0.5 };
-    // not boarding: the seat is the pick; with no seat in reach the board button is still offered
-    expect(pickInteraction({ seated: false, seat, targets: [idle] })).toEqual({ kind: "sit", seatIndex: 20 });
-    expect(pickInteraction({ seated: false, seat: null, targets: [idle] })?.kind).toBe("target");
     // boarding (3 min, owner 2026-11-15): the bench still sits; with no seat in reach the button boards
     expect(pickInteraction({ seated: false, seat, targets: [boarding] })).toEqual({ kind: "sit", seatIndex: 20 });
     expect(pickInteraction({ seated: false, seat: null, targets: [boarding] })?.kind).toBe("target");
@@ -355,5 +349,41 @@ describe("the hall desk and its visitor chairs (review 2026-11-15: '문의하기
     expect(idAt(303.29, 4.27)).toBe("consult_1");
     // the e2e's visitor spot a step back from the chairs still asks the desk
     expect(idAt(303.0, 3.9)).toBe("guide:hall_desk");
+  });
+});
+
+describe("villageBusCabinTargets: sit, hold, get up and get off inside the bus (owner 2026-11-15)", () => {
+  it("free in the aisle by a seat: 앉기 for the nearest free seat from its front; a taken seat is skipped; a hold spot offers 손잡이", async () => {
+    const { villageBusCabinTargets, parseBusSitTarget } = await import("./villageTargets");
+    const { BUS_SEATS, seatFrontPoint, busSeatNumber, BUS_HOLDS } = await import("@caysonverse/shared/village/busCabin");
+    const i = BUS_SEATS.findIndex((s) => s.id === "L2");
+    const front = seatFrontPoint(BUS_SEATS[i]!);
+    const t = villageBusCabinTargets(0, front.ahead, front.right, new Set(), true);
+    const sit = t.find((x) => x.id.startsWith("bus_sit:seat:"));
+    expect(sit).toBeDefined();
+    expect(parseBusSitTarget(sit!.id)).toEqual({ kind: "seat", index: expect.any(Number) });
+    const taken = new Set<number>([busSeatNumber(i)]);
+    const t2 = villageBusCabinTargets(0, front.ahead, front.right, taken, true);
+    expect(t2.some((x) => x.id === `bus_sit:seat:${i}`)).toBe(false);
+    const h = BUS_HOLDS[1]!;
+    const hold = villageBusCabinTargets(0, h.ahead, h.right, new Set(BUS_SEATS.map((_, k) => busSeatNumber(k))), true);
+    expect(hold.some((x) => x.id.startsWith("bus_sit:hold:"))).toBe(true);
+  });
+
+  it("seated or holding: 일어나기 only; in front of the middle door while the bus stands: 내리기 first, never on the lap", async () => {
+    const { villageBusCabinTargets, BUS_STAND_TARGET_ID, BUS_RIDE_TARGET_LEAVE } = await import("./villageTargets");
+    const seated = villageBusCabinTargets(3, 0, 0, new Set(), true);
+    expect(seated.map((x) => x.id)).toEqual([BUS_STAND_TARGET_ID]);
+    const door = villageBusCabinTargets(0, -0.5, 0.6, new Set(), false);
+    expect(door[0]!.id).toBe(BUS_RIDE_TARGET_LEAVE);
+    const lap = villageBusCabinTargets(0, -0.5, 0.6, new Set(), true);
+    expect(lap.some((x) => x.id === BUS_RIDE_TARGET_LEAVE)).toBe(false);
+  });
+
+  it("parseBusSitTarget refuses anything else", async () => {
+    const { parseBusSitTarget } = await import("./villageTargets");
+    expect(parseBusSitTarget("village_bus_leave")).toBeNull();
+    expect(parseBusSitTarget("bus_sit:seat:x")).toBeNull();
+    expect(parseBusSitTarget("bus_sit:hold:2")).toEqual({ kind: "hold", index: 2 });
   });
 });

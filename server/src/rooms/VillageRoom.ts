@@ -11,24 +11,9 @@ import {
   VillageMsg,
   VillageServerMsg,
   type CandleStatePayload,
-  type FishingRejectedPayload,
-  type FishingResultPayload,
-  type FishingStatePayload,
   type KeypadResultPayload,
   type ServerTimePayload,
 } from "@caysonverse/shared/village/messages";
-import {
-  FISHING_POND_REACH_M,
-  FISHING_RENTAL_REACH_M,
-  FISHING_SPOTS,
-  castLine,
-  createFishingState,
-  distanceSquared,
-  rentRod,
-  reelLine,
-  tickFishing,
-  type FishingState,
-} from "@caysonverse/shared/village/fishing";
 import { VILLAGE_LAYOUT, isHouseArea, villageGeometry } from "@caysonverse/shared/village/villageLayout";
 import { HOUSE_PLACES, HOUSE_POLICY, houseFloorArea, houseNumberOf, parseHouseFloorArea } from "@caysonverse/shared/village/houseAreas";
 import { houseIsReady } from "@caysonverse/shared/village/housesGeometry";
@@ -41,6 +26,7 @@ import { DOOR_RATE, useDoor, useHouseExit, useStair } from "./villageDoor";
 import { candleCubby } from "./villageCandle";
 import { CANDLES, type CandleBook } from "./candleBook";
 import { validateSit } from "./seating";
+import { VillageFishing } from "./villageFishing";
 import {
   BUS_STATE_RATE_MS,
   riderOnTrip,
@@ -48,7 +34,17 @@ import {
   validateBusRide,
 } from "./transitRuntime";
 import { BUS_DRIVER, BusDriver, busDriveTrip } from "@caysonverse/shared/village/busDrive";
-import { busDismountSpot, freeBusSlot } from "@caysonverse/shared/village/busSeats";
+import { busDismountSpot } from "@caysonverse/shared/village/busSeats";
+import {
+  BUS_HOLDS,
+  BUS_SEATS,
+  busPlaceOf,
+  busRiderWorldPose,
+  freeBusEntry,
+  seatStandUpSpot,
+  type BusRiderPoseFull,
+} from "@caysonverse/shared/village/busCabin";
+import { validateBusMove, validateBusSit } from "./busCabinMove";
 import { pushOutOfBus, type BusBodyPose } from "@caysonverse/shared/village/busBody";
 import { isBlocked } from "@caysonverse/shared/collision";
 import type { TransitPoint } from "@caysonverse/shared/village/transit";
@@ -56,6 +52,10 @@ import { checkHouseKeypad, initialKeypadRate, nearHouseDoor } from "./villageKey
 import type { KeypadRateState } from "@caysonverse/shared/village/buildingAccess";
 
 /** Per-client bookkeeping (not part of synced state): the base's, plus the door-use cap. */
+/** Most BusMove messages a second a rider may send (the client sends ten while it walks) and most sit / stand messages. */
+const BUS_MOVE_MAX_PER_SEC = 14;
+const BUS_ACT_MAX_PER_SEC = 6;
+
 interface VillageTracking extends Tracking {
   /** Sliding-window rate cap for door uses (1 per second). */
   doorRate: RateWindow;
@@ -67,6 +67,11 @@ interface VillageTracking extends Tracking {
   busTripId: number | null;
   /** Server-only state for house keypad failures and lockout. */
   keypadRate: KeypadRateState;
+  /** When the last step inside the bus was accepted (ms, the room clock): the walk speed budget. */
+  busMoveAt: number;
+  /** Caps on the bus messages: the steps (BusMove) and the rest (sit, stand): a flood never speeds a rider up or buys CPU. */
+  busMoveRate: RateWindow;
+  busActRate: RateWindow;
 }
 
 /**
@@ -120,8 +125,18 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
   private lastBusBroadcast = 0;
   /** The avatars on the road this tick (reused). */
   private readonly busObstacles: TransitPoint[] = [];
-  /** Fishing is room memory only: disconnecting or disposing a room loses the session's catch. */
-  private readonly fishing = new Map<string, FishingState>();
+  /** The fishing lake's rules (villageFishing.ts): room memory only, a disconnect loses the rod and the catch. */
+  private readonly fishing: VillageFishing = new VillageFishing({
+    now: () => this.now(),
+    wallClock: () => this.wallClock(),
+    player: (sid) => this.state.players.get(sid),
+    clients: () => this.clients,
+    sit: (client, seatIndex) => this.handleSit(client, { seatIndex }),
+    stand: (client) => this.handleStand(client),
+    onMessage: (type, handler) => {
+      this.onMessage(type, handler);
+    },
+  });
 
   /** The process's candles (every room's hall shows the same ones); a test may swap in its own. */
   protected candles: CandleBook = CANDLES;
@@ -150,15 +165,16 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     this.onMessage(MessageType.BusRide, (client, payload: unknown) => {
       this.handleBusRide(client, payload);
     });
-    this.onMessage(VillageMsg.FishingRentRod, (client) => {
-      this.handleFishingRentRod(client);
+    this.onMessage(MessageType.BusMove, (client, payload: unknown) => {
+      this.handleBusMove(client, payload);
     });
-    this.onMessage(VillageMsg.FishingCast, (client) => {
-      this.handleFishingCast(client);
+    this.onMessage(MessageType.BusSit, (client, payload: unknown) => {
+      this.handleBusSit(client, payload);
     });
-    this.onMessage(VillageMsg.FishingReel, (client) => {
-      this.handleFishingReel(client);
+    this.onMessage(MessageType.BusStand, (client) => {
+      this.handleBusStand(client);
     });
+    this.fishing.register(); // the fishing messages (villageFishing.ts)
     this.onMessage(VillageMsg.Keypad, (client, payload: unknown) => {
       this.handleKeypad(client, payload);
     });
@@ -168,8 +184,8 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     // client interpolates between snapshots and every client sees the same signal.
     // The driver looks ahead every BUS_DRIVER.tickMs: a brake, a re-start or a horn is published at once.
     this.clock.setInterval(() => this.tickBus(), BUS_DRIVER.tickMs);
-    // A short server tick moves a waiting bobber into its submerged window. The client never chooses this transition.
-    this.clock.setInterval(() => this.tickFishingSessions(), 100);
+    // The fishing stages that end by themselves (nibble, bite, the fight, ...). The client never chooses these transitions.
+    this.clock.setInterval(() => this.fishing.tick(), 100);
   }
 
   /** The server's wall clock (Unix epoch ms, UTC). A seam for tests; the door and move caps use `now()`. */
@@ -219,12 +235,11 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     player.connected = true;
     player.area = "village";
     this.seatPlayer(client, player); // state + tracking (createTracking below)
-    this.fishing.set(client.sessionId, createFishingState());
     client.send(VillageServerMsg.ServerTime, this.serverTime());
     const snapshot = this.busSnapshot(this.wallClock());
     client.send(MessageType.BusState, snapshot);
     client.send(MessageType.BusRideState, { boarded: false, tripId: snapshot.tripId } satisfies BusRideStatePayload);
-    this.sendFishingState(client, this.fishing.get(client.sessionId)!);
+    this.fishing.join(client);
   }
 
   /**
@@ -240,8 +255,7 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     const track = this.tracking.get(client.sessionId);
     const tripId = track?.busTripId ?? snapshot.tripId;
     client.send(MessageType.BusRideState, { boarded: track?.busBoarded === true, tripId } satisfies BusRideStatePayload);
-    const state = this.fishing.get(client.sessionId);
-    if (state) this.sendFishingState(client, state);
+    this.fishing.resend(client);
     if (this.state.players.get(client.sessionId)?.area === "hall") this.sendCandles(client);
   }
 
@@ -287,6 +301,9 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
       busBoarded: false,
       busTripId: null,
       keypadRate: initialKeypadRate(),
+      busMoveAt: now,
+      busMoveRate: new RateWindow(BUS_MOVE_MAX_PER_SEC),
+      busActRate: new RateWindow(BUS_ACT_MAX_PER_SEC),
     };
   }
 
@@ -360,7 +377,7 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
       player.busSeat = -1;
     }
     this.releaseSeat(client.sessionId);
-    this.fishing.delete(client.sessionId);
+    this.fishing.leave(client.sessionId);
     super.onLeave(client);
   }
 
@@ -393,15 +410,21 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     obstacles.length = 0;
     // The moving bus is solid (checker r2: walking at its flank went inside it, and it drove on with them in it): whoever
     // its body overlaps now is put out on the nearest free side, every client sees them there (shared busBody.ts).
-    const pose = this.movingBusPose(now);
-    if (pose) this.state.players.forEach((p) => this.pushOffBus(p, pose));
+    const pose = this.busBodyPose(now);
+    this.state.players.forEach((p) => {
+      if (this.busRiders.has(p)) this.placeRider(p, pose);
+      else this.pushOffBus(p, pose);
+    });
     if (changed || now - this.lastBusBroadcast >= BUS_STATE_RATE_MS || now < this.lastBusBroadcast) this.broadcastTransit();
   }
 
-  /** The bus's pose while it is out on the road at `now` (null while it stands at the stop: there it is a static collider). */
-  private movingBusPose(now: number): BusBodyPose | null {
-    const trip = busDriveTrip(this.driverAt(now).drive, now);
-    return trip.status === "inTransit" ? trip.pose : null;
+  /**
+   * The bus's body pose at `now`, wherever it is (parked at the stop or out on the road). The bus is one moving solid and
+   * no static collider (2026-11-15: a static slice left an invisible wall at the empty stop that trapped a person and
+   * blocked the returning bus), so it pushes at its stop and on the lap alike.
+   */
+  private busBodyPose(now: number): BusBodyPose {
+    return busDriveTrip(this.driverAt(now).drive, now).pose;
   }
 
   /**
@@ -421,8 +444,7 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
 
   /** Every accepted step is checked against the moving bus too: nobody's step ends inside it (the tick catches the rest). */
   protected afterMove(_client: Client, player: Player, _track: VillageTracking, _now: number): void {
-    const pose = this.movingBusPose(this.wallClock());
-    if (pose) this.pushOffBus(player, pose);
+    this.pushOffBus(player, this.busBodyPose(this.wallClock()));
   }
 
   /** Publish the bus and clear riders once their lap returns. */
@@ -430,20 +452,21 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     const now = this.wallClock();
     this.lastBusBroadcast = now;
     const snapshot = this.busSnapshot(now);
-    for (const client of this.clients) {
-      const track = this.tracking.get(client.sessionId);
-      if (!track?.busBoarded || track.busTripId === null) continue;
+    // Everyone tracked, not only the connected clients: a rider whose connection dropped (the reconnect window is still open)
+    // used to stay aboard through the lap, holding a seat and riding as a ghost in the next lap's bus (review r1).
+    for (const [sessionId, track] of this.tracking) {
+      if (!track.busBoarded || track.busTripId === null) continue;
       // A rider stays on one lap only: from boarding (the 3 min before the departure, the trip's own id) through the lap. Once
       // the bus is back at the stop (or a later trip is up), the ride ends and the player can board the next hourly trip.
       // (It used to end at once for anyone who boarded before the hour: the status was "boarding", not "inTransit".)
       if (!riderOnTrip(snapshot, track.busTripId)) {
-        const player = this.state.players.get(client.sessionId);
+        const player = this.state.players.get(sessionId);
         if (player) this.getOffBus(player, track);
         else {
           track.busBoarded = false;
           track.busTripId = null;
         }
-        client.send(MessageType.BusRideState, { boarded: false, tripId: snapshot.tripId } satisfies BusRideStatePayload);
+        this.clients.find((c) => c.sessionId === sessionId)?.send(MessageType.BusRideState, { boarded: false, tripId: snapshot.tripId } satisfies BusRideStatePayload);
       }
     }
     this.broadcast(MessageType.BusState, snapshot);
@@ -459,13 +482,107 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     track.busTripId = null;
     this.busRiders.delete(player);
     if (player.busSeat < 0) return;
-    const spot = busDismountSpot(player.busSeat);
+    // spread along the pavement, one spot after another
+    const spot = busDismountSpot(this.dismountSlot++);
     player.busSeat = -1;
+    player.busAhead = 0;
+    player.busRight = 0;
+    player.busYaw = 0;
     player.x = spot.x;
     player.z = spot.z;
     player.yaw = spot.yaw;
     player.moveT = 0;
     track.lastAcceptedAt = this.now();
+  }
+
+  /** The next pavement spot a rider getting off is put on (busSeats.ts busDismountSpot spreads them). */
+  private dismountSlot = 0;
+
+  /** Put an aboard rider at the world pose of their place in the bus (x/z/yaw follow it; written only when it moved over 2 cm). */
+  private readonly riderPose: BusRiderPoseFull = { x: 0, z: 0, yaw: 0, y: 0, seated: false, holding: false };
+  private placeRider(player: Player, bus: BusBodyPose): void {
+    if (player.busSeat < 0) return;
+    const w = busRiderWorldPose(bus, player.busSeat, player.busAhead, player.busRight, player.busYaw, this.riderPose);
+    if (Math.hypot(w.x - player.x, w.z - player.z) > 0.02) {
+      player.x = w.x;
+      player.z = w.z;
+    }
+    const yaw = Math.atan2(Math.sin(w.yaw), Math.cos(w.yaw));
+    if (Math.abs(Math.atan2(Math.sin(yaw - player.yaw), Math.cos(yaw - player.yaw))) > 0.02) player.yaw = yaw;
+  }
+
+  /** Where the other riders stand in the bus (bus-local): the bodies a step, a stand-up or a hold may not end inside. */
+  private otherBusPoints(except: Player): { ahead: number; right: number }[] {
+    const out: { ahead: number; right: number }[] = [];
+    this.state.players.forEach((p) => {
+      if (p === except || !this.busRiders.has(p) || p.busSeat < 0) return;
+      // seated riders are inside their seat's solid already (walkers never reach it); free and holding ones are bodies
+      if (busPlaceOf(p.busSeat).kind !== "seat") out.push({ ahead: p.busAhead, right: p.busRight });
+    });
+    return out;
+  }
+
+  /** The busSeat numbers other riders hold (seats and hold spots). */
+  private takenBusSpots(except: Player): Set<number> {
+    const taken = new Set<number>();
+    this.state.players.forEach((p) => {
+      if (p !== except && this.busRiders.has(p) && p.busSeat > 0) taken.add(p.busSeat);
+    });
+    return taken;
+  }
+
+  /** A step inside the bus (shared busCabin.ts): checked against the cabin, then written; a refused one is dropped (the schema is the echo). */
+  private handleBusMove(client: Client, payload: unknown): void {
+    const player = this.state.players.get(client.sessionId);
+    const track = this.tracking.get(client.sessionId);
+    if (!player || !track || !this.busRiders.has(player)) return;
+    const now = this.now();
+    if (!track.busMoveRate.tryAccept(now)) return;
+    const decision = validateBusMove({ busSeat: player.busSeat, ahead: player.busAhead, right: player.busRight }, payload, now - track.busMoveAt, this.otherBusPoints(player));
+    if (!decision.ok) return;
+    track.busMoveAt = now;
+    player.busAhead = decision.ahead;
+    player.busRight = decision.right;
+    player.busYaw = decision.yaw;
+    this.placeRider(player, this.busBodyPose(this.wallClock()));
+  }
+
+  /** Sit in a free seat or take hold of a pole. A refusal says why to the rider (a taken seat, the wrong side of a backed seat). */
+  private handleBusSit(client: Client, payload: unknown): void {
+    const player = this.state.players.get(client.sessionId);
+    const track = this.tracking.get(client.sessionId);
+    if (!player || !track || !this.busRiders.has(player)) return;
+    if (!track.busActRate.tryAccept(this.now())) return;
+    const decision = validateBusSit({ busSeat: player.busSeat, ahead: player.busAhead, right: player.busRight }, payload, this.takenBusSpots(player), this.otherBusPoints(player));
+    if (!decision.ok) {
+      if (decision.notice) client.send(MessageType.BusRejected, { reason: decision.notice });
+      return;
+    }
+    const spot = decision.kind === "seat" ? BUS_SEATS[decision.index]! : BUS_HOLDS[decision.index]!;
+    player.busSeat = decision.busSeat;
+    player.busAhead = spot.ahead;
+    player.busRight = spot.right;
+    player.busYaw = spot.yaw;
+    this.placeRider(player, this.busBodyPose(this.wallClock()));
+  }
+
+  /** From a seat or a hold spot back on one's feet in the aisle. */
+  private handleBusStand(client: Client): void {
+    const player = this.state.players.get(client.sessionId);
+    const track = this.tracking.get(client.sessionId);
+    if (!player || !track || !this.busRiders.has(player)) return;
+    if (!track.busActRate.tryAccept(this.now())) return;
+    const place = busPlaceOf(player.busSeat);
+    if (place.kind === "free") return;
+    if (place.kind === "seat") {
+      const spot = seatStandUpSpot(BUS_SEATS[place.index]!, this.otherBusPoints(player));
+      player.busAhead = spot.ahead;
+      player.busRight = spot.right;
+      player.busYaw = spot.yaw;
+    }
+    player.busSeat = 0;
+    track.busMoveAt = this.now();
+    this.placeRider(player, this.busBodyPose(this.wallClock()));
   }
 
   /** Validate one board/leave request against the authoritative player pose and schedule. */
@@ -490,12 +607,19 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
       track.busBoarded = true;
       track.busTripId = decision.tripId;
       this.busRiders.add(player);
-      // A place in the bus (busSeats.ts): every client draws the rider there, in the bus wherever it goes.
-      const taken: number[] = [];
+      // Aboard and free just inside the front door, facing back down the aisle (busCabin.ts BUS_ENTRY): the rider walks,
+      // sits or holds a pole from here; every client draws them in the bus wherever it goes.
+      const others: Array<{ ahead: number; right: number }> = [];
       this.state.players.forEach((p) => {
-        if (p !== player && this.busRiders.has(p)) taken.push(p.busSeat);
+        if (p !== player && this.busRiders.has(p)) others.push({ ahead: p.busAhead, right: p.busRight });
       });
-      player.busSeat = freeBusSlot(taken);
+      const entry = freeBusEntry(others);
+      player.busSeat = 0;
+      player.busAhead = entry.ahead;
+      player.busRight = entry.right;
+      player.busYaw = entry.yaw;
+      track.busMoveAt = this.now();
+      this.placeRider(player, this.busBodyPose(this.wallClock()));
       client.send(MessageType.BusRideState, { boarded: true, tripId: decision.tripId } satisfies BusRideStatePayload);
       return;
     }
@@ -511,10 +635,10 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
    * baseline so the seated span cannot later be spent as a one-shot displacement budget (D1). The client sees itself
    * seated once `seatIndex` syncs.
    */
-  private handleSit(client: Client, payload: unknown): void {
+  private handleSit(client: Client, payload: unknown): "seated" | "taken" | "dropped" {
     const player = this.state.players.get(client.sessionId);
     const track = this.tracking.get(client.sessionId);
-    if (!player || !track) return; // no seat yet / already left → drop
+    if (!player || !track) return "dropped"; // no seat yet / already left → drop
 
     const result = validateSit(
       { x: player.x, z: player.z, seatIndex: player.seatIndex },
@@ -523,22 +647,24 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
       client.sessionId,
       VILLAGE_SEATS,
     );
-    if (result === null) return; // malformed / already seated / out of reach → silent
+    if (result === null) return "dropped"; // malformed / already seated / out of reach → silent
     if ("reason" in result) {
       client.send(MessageType.SitRejected, { reason: result.reason }); // first come, first seated
-      return;
+      return "taken";
     }
 
     const seat = VILLAGE_SEATS[result.seatIndex];
     // The distance gate already keeps a bench in the other area out of reach (the hall is hundreds of metres away);
     // the area check states it.
-    if (seat.area !== player.area) return;
+    if (seat.area !== player.area) return "dropped";
     this.occupancy.set(result.seatIndex, client.sessionId);
     player.seatIndex = result.seatIndex;
     player.x = seat.x;
     player.z = seat.z;
     player.yaw = seat.yaw;
     track.lastAcceptedAt = this.now();
+    this.fishing.onSeated(client.sessionId, result.seatIndex); // a fishing chair with a rod: ready
+    return "seated";
   }
 
   /**
@@ -567,6 +693,7 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
   private releaseSeat(sessionId: string): void {
     const player = this.state.players.get(sessionId);
     if (!player || player.seatIndex < 0) return;
+    this.fishing.onStood(sessionId); // a fishing chair: the line comes out, the rod goes back on the shoulder
     if (this.occupancy.get(player.seatIndex) === sessionId) this.occupancy.delete(player.seatIndex);
     player.seatIndex = -1;
   }
@@ -648,111 +775,6 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     if (this.candles.burning(anchor.id, this.wallClock())) return; // already burning: the card shows who lit it
     if (!track.candleRate.tryAccept(this.now())) return;
     this.candles.light(anchor.id, player.nickname, this.wallClock());
-  }
-
-  /** Project the private state without exposing future bite timestamps to the browser. */
-  private fishingPayload(state: FishingState, now = this.now()): FishingStatePayload {
-    return {
-      phase: state.phase,
-      rodRented: state.rodRented,
-      castId: state.castId,
-      lastResult: state.lastResult,
-      catch: state.catch ? { ...state.catch } : null,
-      serverNowMs: now,
-    };
-  }
-
-  private sendFishingState(client: Client, state: FishingState, now = this.now()): void {
-    client.send(VillageServerMsg.FishingState, this.fishingPayload(state, now));
-  }
-
-  private sendFishingResult(client: Client, state: FishingState, event: FishingResultPayload["event"], now: number): void {
-    client.send(VillageServerMsg.FishingResult, { ...this.fishingPayload(state, now), event } satisfies FishingResultPayload);
-  }
-
-  private sendFishingRejected(client: Client, reason: FishingRejectedPayload["reason"]): void {
-    client.send(VillageServerMsg.FishingRejected, { reason } satisfies FishingRejectedPayload);
-  }
-
-  private fishingPlayer(client: Client): { player: Player; state: FishingState } | null {
-    const player = this.state.players.get(client.sessionId);
-    const state = this.fishing.get(client.sessionId);
-    if (!player || !state || player.area !== "village" || player.seatIndex >= 0) return null;
-    return { player, state };
-  }
-
-  private nearFishingSpot(player: Player, spot: { x: number; z: number }, reach: number): boolean {
-    return distanceSquared({ x: player.x, z: player.z }, spot) <= reach * reach + 1e-9;
-  }
-
-  private handleFishingRentRod(client: Client): void {
-    const found = this.fishingPlayer(client);
-    if (!found) return;
-    const now = this.now();
-    const result = rentRod(found.state, now, this.nearFishingSpot(found.player, FISHING_SPOTS.rental, FISHING_RENTAL_REACH_M));
-    if (!result.ok) {
-      this.sendFishingRejected(client, result.reject!);
-      return;
-    }
-    this.fishing.set(client.sessionId, result.state);
-    this.sendFishingState(client, result.state, now);
-  }
-
-  private handleFishingCast(client: Client): void {
-    const found = this.fishingPlayer(client);
-    if (!found) return;
-    const now = this.now();
-    const result = castLine(
-      found.state,
-      now,
-      this.nearFishingSpot(found.player, FISHING_SPOTS.pond, FISHING_POND_REACH_M),
-    );
-    if (!result.ok) {
-      this.sendFishingRejected(client, result.reject!);
-      return;
-    }
-    this.fishing.set(client.sessionId, result.state);
-    this.sendFishingResult(client, result.state, "cast", now);
-  }
-
-  private handleFishingReel(client: Client): void {
-    const found = this.fishingPlayer(client);
-    if (!found) return;
-    const now = this.now();
-    const result = reelLine(found.state, now);
-    if (!result.ok) {
-      this.fishing.set(client.sessionId, result.state);
-      this.sendFishingRejected(client, result.reject!);
-      if (result.state !== found.state) this.sendFishingState(client, result.state, now);
-      return;
-    }
-    this.fishing.set(client.sessionId, result.state);
-    const event = result.event;
-    if (event && event !== "rod_rented") this.sendFishingResult(client, result.state, event, now);
-    else this.sendFishingState(client, result.state, now);
-  }
-
-  /** Advance only the sessions that are waiting; no state is persisted beyond the room lifetime. */
-  private tickFishingSessions(): void {
-    const now = this.now();
-    for (const [sessionId, state] of this.fishing) {
-      const stepped = tickFishing(state, now);
-      if (!stepped.ok || !stepped.event) continue;
-      this.fishing.set(sessionId, stepped.state);
-      let client: Client | undefined;
-      for (const candidate of this.clients) {
-        if (candidate.sessionId === sessionId) {
-          client = candidate;
-          break;
-        }
-      }
-      if (!client) continue;
-      if (stepped.event === "bite" || stepped.event === "missed") {
-        this.sendFishingResult(client, stepped.state, stepped.event, now);
-      } else {
-        this.sendFishingState(client, stepped.state, now);
-      }
-    }
   }
 
   /**

@@ -1,6 +1,6 @@
 import { useLoader } from "@react-three/fiber";
 import { useGLTF } from "@react-three/drei";
-import { TextureLoader, type Texture } from "three";
+import { FileLoader, TextureLoader, type Texture } from "three";
 import type { GLTF } from "three-stdlib";
 import { DRACO_PATH } from "../game/hub/hubModelPrep";
 import { isHouseArea, type AreaId } from "@caysonverse/shared/village/villageLayout";
@@ -16,6 +16,7 @@ import {
 } from "./villageModelPrep";
 import { BUS_MODEL_URL } from "./villageBusPrep";
 import { clearBus, readBus } from "./villageBusLoader";
+import { MOUNTAINS_GRID_URL, MOUNTAINS_TEXTURE_URL } from "./mountains";
 
 /**
  * Releasing 케이슨 마을's files (Task 7 review I1; final review I2 for phones), in the counselling room's pattern
@@ -43,11 +44,17 @@ const readCache = useLoader;
 let held = false;
 let requested = false;
 let busRequested = false;
+let mountainsRequested = false;
 let timer: ReturnType<typeof setTimeout> | null = null;
 
 /** The model and its day light map are being read (VillageModel renders): a release must free them. */
 export function noteVillageRequested(): void {
   requested = true;
+}
+
+/** The distant mountains' files are being read (VillageModel preloads them): a release must free them. */
+export function noteMountainsRequested(): void {
+  mountainsRequested = true;
 }
 
 /** The village bus is being read (VillageBus renders): a release must free it. */
@@ -63,7 +70,7 @@ export const BUS_CACHE: CachedFile = {
   free: (g) => disposeVillageSource((g as GLTF).scene),
 };
 
-/** The village's two cache entries (the night light map has its own, below). */
+/** The village's two cache entries (the night light map has its own, below; the distant mountains theirs). */
 export const VILLAGE_CACHE: readonly CachedFile[] = [
   {
     id: VILLAGE_MODEL_URL,
@@ -76,6 +83,23 @@ export const VILLAGE_CACHE: readonly CachedFile[] = [
     read: () => readCache(TextureLoader, VILLAGE_LIGHTMAP_URL),
     clear: () => readCache.clear(TextureLoader, VILLAGE_LIGHTMAP_URL),
     free: (t) => freeTexture(t as Texture),
+  } satisfies CachedFile,
+];
+
+
+/** The distant mountains' two files (B6, VillageMountains): their own "requested" flag, like the bus's. */
+export const MOUNTAINS_CACHE: readonly CachedFile[] = [
+  {
+    id: MOUNTAINS_TEXTURE_URL,
+    read: () => readCache(TextureLoader, MOUNTAINS_TEXTURE_URL),
+    clear: () => readCache.clear(TextureLoader, MOUNTAINS_TEXTURE_URL),
+    free: (t) => freeTexture(t as Texture),
+  } satisfies CachedFile,
+  {
+    id: MOUNTAINS_GRID_URL,
+    read: () => readCache(FileLoader, MOUNTAINS_GRID_URL, (l) => l.setResponseType("arraybuffer")),
+    clear: () => readCache.clear(FileLoader, MOUNTAINS_GRID_URL),
+    free: () => {},
   } satisfies CachedFile,
 ];
 
@@ -107,6 +131,10 @@ function releaseNow(): void {
   if (busRequested) {
     busRequested = false;
     releaseCachedFile(BUS_CACHE, () => held);
+  }
+  if (mountainsRequested) {
+    mountainsRequested = false;
+    for (const f of MOUNTAINS_CACHE) releaseCachedFile(f, () => held);
   }
 }
 
@@ -183,5 +211,7 @@ export function clearVillageCaches(): void {
   requested = false;
   nightRequested = false;
   for (const f of VILLAGE_CACHE) f.clear();
+  mountainsRequested = false;
+  for (const f of MOUNTAINS_CACHE) f.clear();
   NIGHT_LIGHTMAP_CACHE.clear();
 }

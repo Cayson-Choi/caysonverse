@@ -60,6 +60,8 @@ export const BUS_DRIVER = {
   gapM: 1.5,
   /** Half the bus's width (m; village_bus.glb 2.49 m) and its mirrors' reach out (villageLayout.ts BUS_MIRROR_REACH.side). */
   halfWidthM: 1.25,
+  /** How far the mirrors reach past the nose (m; busBody.ts BUS_MIRRORS.ahead): the gap is kept from them, not the nose. */
+  mirrorAheadM: 0.37,
   /** An avatar's body radius (shared worldMap PLAYER_RADIUS). */
   avatarRadiusM: 0.4,
   /** Sideways slack between the bus's flank and an avatar it passes (m): someone on the pavement (kerb at r 37) is passed. */
@@ -184,7 +186,7 @@ function limitFor(distance: number, p: TransitPoint, length: number): number {
     const side = Math.abs(-rx * fz + rz * fx);
     if (side > lateral) continue;
     // the avatar's body surface along the lap, less the gap and half a bus: where the bus's centre must stop
-    return s + along - BUS_DRIVER.avatarRadiusM - BUS_DRIVER.gapM - half;
+    return s + along - BUS_DRIVER.avatarRadiusM - BUS_DRIVER.gapM - BUS_DRIVER.mirrorAheadM - half;
   }
   return Number.POSITIVE_INFINITY;
 }

@@ -1,4 +1,4 @@
-import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useFrame } from "@react-three/fiber";
 import { useGLTF } from "@react-three/drei";
 import { MeshBasicMaterial, RepeatWrapping, SRGBColorSpace, type Material, type Mesh, type Texture } from "three";
@@ -128,7 +128,6 @@ function HouseFloorScene({ n, floor, pose }: { n: HouseNumber; floor: HouseFloor
     dressLoadedHouse(gltf.scene, n);
     return prepareHouse(gltf.scene, n, floor, day);
   }, [gltf, n, floor, day]);
-  const solidRef = useRef<ReturnType<typeof buildSolidIndex> | null>(null);
   useEffect(() => () => disposeHouse(nodes), [nodes]);
   useEffect(() => {
     for (const m of nodes.lightmapped) patchHouseLightmapMaterial(m, PALE_SURFACES.has(m.name));
@@ -161,9 +160,7 @@ function HouseFloorScene({ n, floor, pose }: { n: HouseNumber; floor: HouseFloor
   // never sits in or beyond a wall, a bookcase or the stair, and a seat's first framing sees the seated body.
   useEffect(() => {
     const b = houseFloorBounds(n, floor);
-    // glass counts: the camera stops at a glass 중문 or door as at the partition it stands in (behind one the room was all haze)
-    const solid = buildSolidIndex(solidTriangles(nodes.root, true), b.minX - 1, b.maxX + 1, b.minZ - 1, b.maxZ + 1);
-    solidRef.current = solid;
+    const solid = buildSolidIndex(solidTriangles(nodes.root), b.minX - 1, b.maxX + 1, b.minZ - 1, b.maxZ + 1);
     const offSight = setSeatSightBlocker((fx, fy, fz, tx, ty, tz) => solid.segmentBlocked(fx, fy, fz, tx, ty, tz, 0.35));
     const offSpot = setSeatSpotBlocker((x, y, z) => solid.underHung(x, y, z, 2.6, 1.0, 0.25) || solid.nearSolid(x, y, z, 0.3));
     const offCamera = setCameraSolids(solid);
@@ -177,22 +174,7 @@ function HouseFloorScene({ n, floor, pose }: { n: HouseNumber; floor: HouseFloor
   // This floor is drawn: the entry cover may open, and the camera glides to the direction that leaves it the longest clear arm (arrival camera).
   useEffect(() => {
     houseEntryReady();
-    const solid = solidRef.current;
-    // the clear part of an arm by the drawn room (a glass 중문 is no collision box): halved down to 5 cm
-    const solidClear = solid
-      ? (ax: number, ay: number, az: number, bx: number, by: number, bz: number): number => {
-          if (!solid.segmentBlocked(ax, ay, az, bx, by, bz, 0)) return 1;
-          let lo = 0;
-          let hi = 1;
-          for (let i = 0; i < 6; i++) {
-            const mid = (lo + hi) / 2;
-            if (solid.segmentBlocked(ax, ay, az, ax + (bx - ax) * mid, ay + (by - ay) * mid, az + (bz - az) * mid, 0)) hi = mid;
-            else lo = mid;
-          }
-          return lo;
-        }
-      : undefined;
-    const cam = arrivalCamera(n, floor, pose.x, pose.z, pose.yaw, CAMERA.distance, 0.3, solidClear);
+    const cam = arrivalCamera(n, floor, pose.x, pose.z, pose.yaw, CAMERA.distance);
     viewState.orbitGoal = { yaw: cam.yaw, pitch: cam.pitch };
   }, [nodes]); // eslint-disable-line react-hooks/exhaustive-deps
 

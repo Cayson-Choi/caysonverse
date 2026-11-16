@@ -13,7 +13,7 @@
  *
  * Chat is never spoken (CHAT_VOICE_ENABLED stays false): only a guide's answer has a voice.
  */
-import { GUIDE_TEXT_ONLY_VOICES, guideVoiceUrl } from "@caysonverse/shared/village/guides";
+import { guideVoiceUrl, isTextOnlyVoice } from "@caysonverse/shared/village/guides";
 import { resumeVillageAudio, routeThroughGain, type GainSink } from "./villageAudio";
 import { activeVillageBgm } from "./villageBgm";
 
@@ -116,8 +116,8 @@ export class GuideVoice {
     if (this.disposed) return "none";
     this.stopClip();
     this.set({ playing: null, asked: voice });
-    // an answer with no recorded clip yet (guides.ts GUIDE_TEXT_ONLY_VOICES): the text is shown, nothing plays
-    if (GUIDE_TEXT_ONLY_VOICES.includes(voice)) {
+    if (isTextOnlyVoice(voice)) {
+      // an answer without a clip: its words show, nothing plays
       this.restoreMusic();
       return "none";
     }

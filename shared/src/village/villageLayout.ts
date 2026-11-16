@@ -36,7 +36,9 @@ import { guideColliders } from "./guides";
 import { HOUSES_ZONE, allHouseWalls, houseColliders, housesBlockers } from "./housesGeometry";
 import { parseHouseFloorArea, type HouseFloor, type HouseFloorAreaId } from "./houseAreas";
 import { signalPoleColliders } from "./crossings";
+import { streetPoleColliders } from "./streetPoles";
 import { TRANSIT, busFootprint } from "./transit";
+import { LAKE_AREA, lakeCameraBoxes, lakeColliders } from "./lakeLayout";
 import type { Bounds, MapGeometry } from "../school/geometry";
 
 export interface Point2 {
@@ -442,6 +444,13 @@ function hallNiche(walls: readonly CubbyWall[]): MemorialNiche {
   return { minX: round(aEnd, 6), maxX: round(b.start.x, 6), spring: 2.35, radius: round((b.start.x - aEnd) / 2 - 0.0825, 3), backZ: -6, frontZ: a.start.z };
 }
 
+/**
+ * The east edge of the village area. The village proper ends at x 95; the fishing lake (lakeLayout.ts, A10) joins it there
+ * and reaches x 186, so the area is the rectangle that holds both. Inside it, what is not village ground or lake ground is
+ * solid (`areaGapBlockers`, `lakeTerrainColliders`).
+ */
+export const VILLAGE_EAST_EDGE = 186;
+
 function makeVillageLayout(): VillageLayout {
   return {
     walkBounds: { minX: -95, maxX: 95, minZ: -95, maxZ: 95 },
@@ -547,7 +556,7 @@ function makeVillageLayout(): VillageLayout {
       waterfall: { centre: pt(-118, -78), size: sz(28, 14), height: 36, facing: "e" },
       lake: { centre: pt(130, -15), size: sz(60, 90), pavilion: { centre: pt(108, -12), size: sz(6, 6) } },
     },
-    areas: { village: { minX: -95, maxX: 95, minZ: -95, maxZ: 95 }, hall: boxAt(pt(300, 0), sz(15, 12)) },
+    areas: { village: { minX: -95, maxX: VILLAGE_EAST_EDGE, minZ: -95, maxZ: 95 }, hall: boxAt(pt(300, 0), sz(15, 12)) },
   };
 }
 
@@ -628,8 +637,8 @@ export function busEnvelope(layout: Pick<VillageLayout, "busStop"> = VILLAGE_LAY
   return envelope(busParkedFootprint(layout));
 }
 
-/** The parked bus's height as a camera box (m): village_bus.glb's roof with its pods. */
-export const BUS_HEIGHT = 3.3;
+/** The bus's height as a camera box (m): village_bus.glb's roof with its pods (taller since 2026-11-15: 3.45 m roof edge, pods to about 3.75). */
+export const BUS_HEIGHT = 3.75;
 /** How deep (m, along z) each of the parked bus's collider slices is. */
 const BUS_SLICE = 0.5;
 
@@ -912,13 +921,24 @@ export function villageBounds(layout: VillageLayout): Bounds {
 /**
  * Fills the gap between the village and the hall (from the village's east edge to the hall's outer west wall,
  * the full z range of the bounds), so the spanning bounds do not let anyone walk from one to the other.
+ *
+ * The village area reaches east past x 95 to hold the fishing lake (`LAKE_AREA`, x 95.5..186): there the strips north and
+ * south of the lake zone (the area's full z range minus the lake's) are solid too — the same box width as the gap blocker
+ * east of the area, and 25 m or more thick, so no legal step crosses them.
  */
 export function areaGapBlockers(layout: VillageLayout): AABB[] {
   const bounds = villageBounds(layout);
-  const minX = layout.areas.village.maxX;
+  const v = layout.areas.village;
+  const minX = v.maxX;
   const maxX = layout.areas.hall.minX - DEFAULT_WALL_THICKNESS;
-  if (maxX <= minX) return [];
-  return [{ minX, maxX, minZ: bounds.minZ, maxZ: bounds.maxZ }];
+  const out: AABB[] = [];
+  // the lake's side strips: x from the old village edge (95) to the area's east edge, above and below the lake zone
+  if (v.maxX > 95 && v.maxX >= LAKE_AREA.maxX) {
+    if (LAKE_AREA.minZ > bounds.minZ) out.push({ minX: 95, maxX: v.maxX, minZ: bounds.minZ, maxZ: LAKE_AREA.minZ });
+    if (LAKE_AREA.maxZ < bounds.maxZ) out.push({ minX: 95, maxX: v.maxX, minZ: LAKE_AREA.maxZ, maxZ: bounds.maxZ });
+  }
+  if (maxX > minX) out.push({ minX, maxX, minZ: bounds.minZ, maxZ: bounds.maxZ });
+  return out;
 }
 
 /**
@@ -1007,7 +1027,6 @@ export function hallInteriorColliders(
  * `hall` is the hall's interior (`hallInteriorColliders`: furniture, the cubby units, the ceiling slab); absent, the
  * room is empty (the greybox).
  */
-const stripHeight = ({ minX, maxX, minZ, maxZ }: AABB): AABB => ({ minX, maxX, minZ, maxZ });
 
 export function buildVillageGeometry(
   layout: VillageLayout,
@@ -1018,8 +1037,6 @@ export function buildVillageGeometry(
   /** The finished houses' colliders (housesGeometry.ts `houseColliders`); absent: the twenty rooms are empty (walls only). */
   houses?: GeneratedColliders,
 ): MapGeometry {
-  // the parked bus stands turned along the kerb: its slices, not a model or layout box (busParkedColliders)
-  const bus = busParkedColliders(layout);
   const village: GeneratedColliders =
     "obstacles" in colliders
       ? colliders
@@ -1032,16 +1049,17 @@ export function buildVillageGeometry(
       ...areaGapBlockers(layout),
       ...hallSurroundBlockers(layout),
       ...houseBlockBlockers(layout),
+      ...lakeColliders(),
       ...village.obstacles,
-      ...bus.map(stripHeight),
       ...signalPoleColliders(),
+      ...streetPoleColliders(layout),
       ...busShelterColliders(layout),
       busShelterBenchCollider(layout),
       ...(hall?.obstacles ?? []),
       ...extra,
       ...(houses?.obstacles ?? []),
     ],
-    [...village.cameraBoxes, ...bus, busShelterRoofSlab(layout), busShelterLightBoxCameraBox(layout), ...(hall?.cameraBoxes ?? []), ...(houses?.cameraBoxes ?? [])],
+    [...village.cameraBoxes, ...lakeCameraBoxes(), busShelterRoofSlab(layout), busShelterLightBoxCameraBox(layout), ...(hall?.cameraBoxes ?? []), ...(houses?.cameraBoxes ?? [])],
   );
 }
 
@@ -1096,9 +1114,10 @@ export const villageGeometry: MapGeometry = buildVillageGeometry(
   VILLAGE_LAYOUT,
   VILLAGE_MODEL_COLLIDERS,
   HALL_MODEL_COLLIDERS,
-  // Task 9A: the two guides (plaza and hall desk) stand on a small collider each, so nobody walks through them; the
-  // parked bus's mirrors hang past its box at head height (bus review r3): a collider under each.
-  [...guideColliders(), ...busMirrorColliders()],
+  // Task 9A: the two guides (plaza and hall desk) stand on a small collider each, so nobody walks through them. The bus
+  // is no static collider (2026-11-15: it left an invisible wall at the empty stop): its body and mirrors are one moving
+  // solid at its current pose, parked or not (busBody.ts, applied by the server and every client).
+  [...guideColliders()],
   // 집 실내 G: the finished houses' furniture and walls (generated/houses) and every floor's ceiling slab as a camera box.
   houseColliders(),
 );
