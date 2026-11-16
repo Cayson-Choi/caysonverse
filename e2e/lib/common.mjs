@@ -137,6 +137,12 @@ export async function launchBrowser() {
 export async function openPlayer(browser, run, { tag, device = DESKTOP, settings = {}, acceptDownloads = false }) {
   const ctx = await browser.newContext({ ...device, acceptDownloads });
   await ctx.addInitScript(() => {
+    // window.__imp finds a module among the page's resource timings; the dev server's modules (over 250 since the memorial hall
+    // joined main) overflow the browser's default buffer, after which a module loaded late is not listed and __imp would load
+    // a SECOND instance of it (its state empty: the bus ride's slot, the local area).
+    try {
+      performance.setResourceTimingBufferSize(5000);
+    } catch {}
     window.__imp = (p) => {
       const u = performance.getEntriesByType("resource").map((r) => r.name).find((n) => n.split("?")[0].endsWith(p));
       return import(/* @vite-ignore */ u ?? p);
