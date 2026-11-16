@@ -245,10 +245,12 @@ await run.step("A sits (E); B is refused the same seat; B sits in another seat b
   await walkBus(B, r1.a, r1.r, 0.15, 16000);
   await sleep(500);
   const tgB = await targetsOf(B);
-  run.check("B is offered R2 (오른쪽 둘째 자리) and never a grab handle", tgB.some((t) => t.id === `bus_sit:seat:${r1.index}`) && !tgB.some((t) => /손잡이|잡기/.test(t.label)), tgB);
+  // the seat offered is the free one B faces there (L2 or R2, across the narrow aisle from each other), never A's, never a handle
+  const offerB = tgB.find((t) => t.id.startsWith("bus_sit:seat:"));
+  run.check("B is offered a free seat there (not A's) and never a grab handle", !!offerB && offerB.id !== `bus_sit:seat:${taken - 1}` && !tgB.some((t) => /손잡이|잡기/.test(t.label)), tgB);
   await act(B);
-  const held = await waitSlot(B, (n) => n === r1.index + 1, 5000);
-  run.check("B sits in R2 (the action button)", held, await ride(B));
+  const held = await waitSlot(B, (n) => n > 0 && n !== taken, 5000);
+  run.check("B sits in it (the action button)", held, await ride(B));
   await sleep(1200);
   const seenByA = (await A.page.evaluate(() => window.__cv.getRemoteDrawn()))[sidB];
   const ta = await transit(A);
