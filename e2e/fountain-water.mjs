@@ -38,6 +38,7 @@ const { values: args } = parseArgs({
     rounds: { type: "string", default: "2" },
     device: { type: "string", default: "laptop" },
     label: { type: "string", default: "" },
+    throttle: { type: "string", default: "1" },
   },
 });
 
@@ -71,6 +72,7 @@ const DEVICES = {
   // The owner's laptop: 2560 x 1290 drawing buffer (dpr 1.5).
   laptop: { viewport: { width: 1707, height: 860 }, deviceScaleFactor: 1.5 },
   hd: { viewport: { width: 1280, height: 720 }, deviceScaleFactor: 1 },
+  pc: { viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1 },
   phone: PHONE,
 };
 
@@ -89,6 +91,7 @@ async function joinVillage(browser, { tier, time, water, device }) {
     } catch {}
   }, device === "phone" ? "auto" : tier);
   const page = await ctx.newPage();
+  if (Number(args.throttle) > 1) await (await ctx.newCDPSession(page)).send("Emulation.setCPUThrottlingRate", { rate: Number(args.throttle) });
   page.on("pageerror", (e) => console.log("   [pageerror]", e.message));
   page.on("console", (m) => {
     if (m.type() === "error" || /THREE\.WebGLProgram|shader/i.test(m.text())) console.log("   [console]", m.type(), m.text().slice(0, 400));
