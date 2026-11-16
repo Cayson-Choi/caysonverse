@@ -848,20 +848,21 @@ describe("checkSchoolGlb: anchors with height and facing, clear discs, the ceili
 });
 
 describe("schoolSpec", () => {
-  it("memorial: an anchor per cubby (2 cm, facing), the hall walls, the three banks and the niche as camera boxes, clear door pad and arrival, the ceiling", () => {
+  it("memorial: an anchor per cubby (2 cm, facing), the hall walls and the four banks (A, C, B, E) as camera boxes, clear door pad and arrival, the ceiling", () => {
     const spec = schoolSpec("memorial");
     const anchors = cubbyAnchors(VILLAGE_LAYOUT);
     const inn = VILLAGE_LAYOUT.memorial.interior;
     expect(spec.kind).toBe("memorial");
-    expect(anchors).toHaveLength(368);
+    expect(anchors).toHaveLength(416);
     for (const a of anchors) expect(spec.requiredNodes).toContain(cubbyAnchorNode(a.id));
-    expect(spec.placements).toHaveLength(368);
+    expect(spec.placements).toHaveLength(416);
     expect(spec.placements[0]).toEqual({ node: "anchor__cubby_M1-A-r0-c00", x: anchors[0]!.x, y: anchors[0]!.y, z: anchors[0]!.z, yaw: 0, tolerance: CUBBY_ANCHOR_TOLERANCE });
     expect(CUBBY_ANCHOR_TOLERANCE).toBe(0.02);
     expect(spec.requiredBoxes!.slice(0, 4)).toEqual(HALL_WALL_IDS.map((id, i) => ({ node: `col__${id}`, box: hallWalls(VILLAGE_LAYOUT)[i], camera: true })));
-    expect(spec.requiredBoxes!.find((b) => b.node === "col__cubby_a")!.box).toEqual({ minX: 292.5, maxX: 298.61, minZ: -6, maxZ: -5.61 });
+    expect(spec.requiredBoxes!.find((b) => b.node === "col__cubby_a")!.box).toEqual({ minX: 292.5, maxX: 298.56, minZ: -6, maxZ: -5.61 });
     expect(spec.requiredBoxes!.find((b) => b.node === "col__cubby_b")!.box).toEqual({ minX: 301.135, maxX: 307.5, minZ: -6, maxZ: -5.61 });
-    expect(spec.requiredBoxes!.find((b) => b.node === "col__niche")!.box).toEqual({ minX: 298.61, maxX: 301.135, minZ: -6, maxZ: -5.33 });
+    expect(spec.requiredBoxes!.find((b) => b.node === "col__cubby_c")!.box).toEqual({ minX: 298.56, maxX: 301.135, minZ: -6, maxZ: -5.61 });
+    expect(spec.requiredBoxes!.some((b) => b.node === "col__niche")).toBe(false);
     expect(spec.requiredNodes).toEqual(expect.arrayContaining(["door__leaf_l", "door__leaf_r"]));
     expect(spec.requiredBoxes!.find((b) => b.node === "col__cubby_e")!.box).toEqual({ minX: 307.11, maxX: 307.5, minZ: -5.61, maxZ: 2.065 });
     expect(spec.requiredBoxes!.every((b) => b.camera)).toBe(true);
@@ -973,7 +974,7 @@ describe("CLIs", () => {
     const ok = runTs("check-school-glb.ts", file, "memorial");
     expect(ok.stdout + ok.stderr).toContain("PASS");
     expect(ok.status).toBe(0);
-    expect(ok.stdout).toMatch(/OK\s+앵커 위치: 368개/);
+    expect(ok.stdout).toMatch(/OK\s+앵커 위치: 416개/);
     const k = nodes.findIndex((n) => n.name === "anchor__cubby_M1-E-r3-c07");
     nodes[k]!.translation = [nodes[k]!.translation![0]! - 0.05, nodes[k]!.translation![1]!, nodes[k]!.translation![2]!];
     fs.writeFileSync(file, makeGlb(g));
