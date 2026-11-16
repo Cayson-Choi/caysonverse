@@ -5,7 +5,7 @@ import { PerspectiveCamera, Raycaster, Vector2 } from "three";
 import type { Fog } from "three";
 import { CAMERA, CAMERA_FAR, FP_EYE_HEIGHT, HEAD_HEIGHT } from "./constants";
 import type { MoveControl } from "./constants";
-import { normalizeAngle } from "./yaw";
+import { normalizeAngle, stepYaw } from "./yaw";
 import { clampFpPitch, easeBlend } from "./viewMode";
 import {
   viewState,
@@ -88,8 +88,8 @@ import { openCubbyAt } from "../village/cubbyCard";
 import { cubbyFocusAnchor, stepCubbyFocus, type FocusPose } from "../village/cubbyFocus";
 import type { Orbit, Pose, SeatState } from "./types";
 import { BASE_FOV } from "./cameraShoulder";
-import { furnitureClick } from "./furnitureClick";
-import { stepSeatOnArrival, type SeatIntent } from "./seatOnArrival";
+import { furnitureClick, seatThroughFloor } from "./furnitureClick";
+import { FACE_SEAT_TURN, stepSeatOnArrival, yawToward, type SeatIntent } from "./seatOnArrival";
 import { UNREACHABLE_HINT, useClickHint } from "../stores/clickHintStore";
 
 /** A click on floor the avatar cannot get to: a short line instead of silence (round 9 review). */
@@ -98,8 +98,6 @@ function showUnreachableHint(): void {
   if (import.meta.env.DEV) window.__cvClickHints = (window.__cvClickHints ?? 0) + 1;
 }
 import { getRemoteSeatIndices } from "./remoteStore";
-import { sendSit } from "../net/connection";
-import { SEAT_APPROACH_SLACK, SEAT_REACH, approachesSeat, seatDistance, seatTaken } from "@caysonverse/shared/worldMap";
 
 interface CameraRigProps {
   pose: Pose;
@@ -255,10 +253,12 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
   const seatedEyeSeat = useRef<{ yaw: number; seatY?: number } | null>(null);
   /**
    * A seat clicked (furnitureClick.ts): once the walk to its approach (x, z) has started (`armed`: its ring is the walk's target)
-   * and ends there, the avatar sits on it. Another click, a key or the stick (the walk's target replaced or dropped short of the
-   * spot) forgets it.
+   * and ends there, the avatar turns to face it — and stays standing: the visitor sits with "앉기" (owner 2026-11-17, no sitting
+   * on a tap). Another click, a key or the stick (the walk's target replaced or dropped short of the spot) forgets it.
    */
   const seatOnArrival = useRef<SeatIntent | null>(null);
+  /** The seat the standing avatar is turning to face after its walk (seatOnArrival), and where it stood when it began. */
+  const faceSeat = useRef<{ index: number; x: number; z: number } | null>(null);
   // Z / C are registered in the shared KeyboardControls map; read their live state.
   const [, getKeys] = useKeyboardControls<MoveControl>();
   // A boarded village bus owns the camera pose until the server confirms a leave.
@@ -279,7 +279,7 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
     // stuck-release without inferring it from position traces alone.
     window.__cvClickTarget = () => getClickTarget();
     window.__cvClickPick = () => lastClickPick && { ...lastClickPick };
-    // the seat a click on furniture will sit on when its walk ends (furnitureClick.ts), or null
+    // the seat a click on furniture walks to (and turns toward when its walk ends: furnitureClick.ts), or null
     (window as unknown as { __cvSeatOnArrival?: () => unknown }).__cvSeatOnArrival = () => seatOnArrival.current && { ...seatOnArrival.current };
     return () => {
       delete (window as unknown as { __cvSeatOnArrival?: () => unknown }).__cvSeatOnArrival;
@@ -428,13 +428,18 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
       let sitOn: number | null = seatGoal ? seatTapped : null;
       // A house's floor is flat: anything facing up above it (a sofa's cushion at 0.46 m, a low table) is furniture, never a raised floor to
       // walk onto, and a tap whose ray enters a seat (a floor cushion a few cm up, a 보료) is that seat — a tap on a cushion clear of its
-      // collider's box walked onto the cushion and did not sit (G round 3).
+      // collider's box walked onto the cushion and did not sit (G round 3). Elsewhere a ground click may have gone between a bench's
+      // slats or through its backrest band to the floor beyond (seatThroughFloor, plaza bench hotfix): that seat; else it stays ground.
       const inHouse = isHouseArea(localArea());
       const kindNone = !!surface && surfaceKind(surface, map.geometry.obstacles, activeBounds()) === "none";
-      if (!seatGoal && !houseTap && surface && (kindNone || inHouse)) {
+      if (!seatGoal && !houseTap && surface) {
         const remote = new Set(getRemoteSeatIndices());
-        const fc = furnitureClick(pick, pick?.ray ?? null, map.seats ?? activeSeats(), map.seatArea, (i) => remote.has(i), from, 0, inRoom, { obstacles: map.geometry.obstacles, bounds: activeBounds() });
-        const counts = kindNone || (fc !== null && (fc.seatIndex !== null || surface.y > WALKABLE_MAX_Y));
+        const taken = (i: number) => remote.has(i);
+        const onFurniture = kindNone || inHouse;
+        const fc = onFurniture
+          ? furnitureClick(pick, pick?.ray ?? null, map.seats ?? activeSeats(), map.seatArea, taken, from, 0, inRoom, { obstacles: map.geometry.obstacles, bounds: activeBounds() })
+          : seatThroughFloor(pick, pick?.ray ?? null, map.seats ?? activeSeats(), map.seatArea, taken, from, map.furniture ?? []);
+        const counts = !onFurniture || kindNone || (fc !== null && (fc.seatIndex !== null || surface.y > WALKABLE_MAX_Y));
         // (a click on the seat the player is sitting on stays nothing)
         if (fc && counts && !(fc.seatIndex !== null && fc.seatIndex === seat.index)) {
           // the floor there (a column that meets a cushion or a seat first is not the floor: the room's floor level then)
@@ -962,25 +967,23 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
   }, [scene]);
 
   useFrame((state, delta) => {
-    // ── Sit on a clicked seat on arrival (round 8 review: a first-time visitor taps the sofa to sit) ──
+    // ── A clicked seat on arrival (round 8 review; owner 2026-11-17: no sitting on a tap) ── the walk ends at its approach, the
+    // avatar turns to face it, and "앉기" offers that very seat (seatPreference.ts): the visitor sits with the button / E.
     if (seatOnArrival.current) {
-      const step = stepSeatOnArrival(seatOnArrival.current, {
-        target: peekClickTarget(),
-        seated: seat.index >= 0,
-        pose,
-        now: performance.now(),
-        uiCaptured: isUiCaptured(),
-        // that very seat (not the nearest: between two rows of benches the facing seat of the next row can be nearer), if it is
-        // sat on from here and free; the server checks the same
-        canSit: (index) => {
-          const seats = getActiveMap().seats ?? activeSeats();
-          const target = seats[index];
-          const remote = getRemoteSeatIndices();
-          return !!target && !seatTaken(seats, index, (i) => remote.includes(i)) && approachesSeat(target, pose.x, pose.z, SEAT_APPROACH_SLACK) && seatDistance(target, pose.x, pose.z) <= SEAT_REACH;
-        },
-      });
+      const step = stepSeatOnArrival(seatOnArrival.current, { target: peekClickTarget(), seated: seat.index >= 0, pose, now: performance.now() });
       seatOnArrival.current = step.next;
-      if (step.sit !== null) sendSit(step.sit);
+      if (step.face !== null) faceSeat.current = { index: step.face, x: pose.x, z: pose.z };
+    }
+    if (faceSeat.current) {
+      const f = faceSeat.current;
+      const target = (getActiveMap().seats ?? activeSeats())[f.index];
+      // a step, a new walk or sitting ends the turn (the body turns with its own walk then)
+      const want = target && seat.index < 0 && peekClickTarget() === null && Math.hypot(pose.x - f.x, pose.z - f.z) < 0.02 ? yawToward(pose.x, pose.z, target.x, target.z) : null;
+      if (want === null) faceSeat.current = null;
+      else {
+        pose.yaw = stepYaw(pose.yaw, want, FACE_SEAT_TURN * delta);
+        if (Math.abs(normalizeAngle(want - pose.yaw)) < 0.01) faceSeat.current = null;
+      }
     }
 
     // ── A door into or out of a building (케이슨 마을, indoorCamera.ts) ── the player was just put somewhere else: the
