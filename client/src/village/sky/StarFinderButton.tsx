@@ -1,5 +1,6 @@
 import { HudButton } from "../../ui/HudButton";
 import { useLocalArea } from "../villageArea";
+import { useTransitState } from "../../net/transitSync";
 import { resumeVillageAudio } from "../villageAudio";
 import { closeFinder, openFinder, useStarFinder } from "./starFinderStore";
 
@@ -12,7 +13,8 @@ export function StarFinderButton() {
   const area = useLocalArea();
   const open = useStarFinder((s) => s.open);
   const day = useStarFinder((s) => s.phase === "day");
-  if (area !== "village") return null;
+  const { boarded } = useTransitState();
+  if (area !== "village" || boarded) return null; // no sky indoors or aboard the bus
   return (
     <HudButton
       label={open ? "별자리 찾기 닫기" : "별자리 찾기"}

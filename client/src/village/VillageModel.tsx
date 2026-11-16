@@ -22,6 +22,10 @@ import { holdNightLightmap, noteBusRequested, noteNightRequested, noteVillageReq
 import { preloadBus } from "./villageBusLoader";
 import { createVegetation, hideLegacyVegetationSources, vegModeFrom, vegetationPark, type VegStats, type VillageVegetation } from "./veg/villageVegetation";
 import { vegDressing } from "./vegDressing";
+import { villageLoad } from "../ui/villageLoad";
+
+/** The vegetation build's slice (ms) while the village is covered (see sliceMs below). */
+const COVERED_SLICE_MS = 160;
 import { VillageMountains, mountainsMode, preloadMountains } from "./VillageMountains";
 import { LakeVillagePatch } from "../lake/PatchVillage";
 import { FallsModel } from "./falls/FallsModel";
@@ -156,15 +160,21 @@ export function VillageModel({ tier }: { tier: VillageTier }) {
         dress(v);
       });
       if (!letGo) {
+        // timing marks (the entry's first-view measurement: e2e/load-timing.mjs reads them)
+        performance.mark?.("cv:veg-start");
         building = createVegetation(nodes.root, tier, mode, () => state === "dead" || stopped, {
-          // while carried (the player indoors) it works in short slices: the room they are in stays smooth
-          sliceMs: () => (state === "live" && !vegDressing.dressed() ? 50 : 12),
+          // while carried (the player indoors) it works in short slices: the room they are in stays smooth. Under the cover
+          // (nothing to see but the loading screen, whose animations run off the main thread) in long ones: every hand-back
+          // draws a whole village frame nobody sees (UX 2026-11-16: 50 ms slices spent about a third of the build drawing)
+          sliceMs: () => (state === "live" && !vegDressing.dressed() ? COVERED_SLICE_MS : 12),
+          onProgress: (f) => villageLoad.build(f),
           // the trees nearest the camera grow first, and each shows as soon as it is grown
           focus: () => {
             const p = getThree().camera.position;
             return [p.x, p.y, p.z];
           },
           onShow: (v) => {
+            performance.mark?.("cv:veg-shown");
             if (state === "live") setVeg(v);
           },
         }).catch((e: unknown) => {
@@ -173,6 +183,7 @@ export function VillageModel({ tier }: { tier: VillageTier }) {
           return null;
         });
         void building.then((v) => {
+          performance.mark?.("cv:veg-done");
           if (state !== "live") return; // carried (vegPark.ts takes it from here) or stopped
           building = null;
           vegDressing.done(dressing);

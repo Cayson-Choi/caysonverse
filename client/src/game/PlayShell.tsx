@@ -1,4 +1,4 @@
-import { Suspense, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode, type RefObject } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { KeyboardControls, useProgress } from "@react-three/drei";
 import { Object3D, type DirectionalLight, type HemisphereLight } from "three";
@@ -35,6 +35,7 @@ import { JumpButton } from "../ui/JumpButton";
 import { MenuPanel } from "../ui/MenuPanel";
 import { CoachMarks } from "../ui/CoachMarks";
 import { ClickHint } from "../ui/ClickHint";
+import { villageLoad } from "../ui/villageLoad";
 import { startJumpSync } from "../net/jumpSync";
 import { isTouchDevice } from "../device";
 import { getRenderProfile } from "./renderProfile";
@@ -144,11 +145,21 @@ function renderSlot(slot: ShellSlot, shell: ShellFrame): ReactNode {
   return typeof slot === "function" ? slot(shell) : slot;
 }
 
-/** DOM loading overlay driven by three's loader progress (GLB fetch/parse). */
+/**
+ * A small "불러오는 중…" chip while three's loaders fetch something after arrival (the lake, the hall). Never a cover over
+ * the play (UX 2026-11-16: it tinted the whole screen while the lake came in behind a village already in play), and
+ * nothing while the entry's own loading screen is up (VillageLoader shows the steps there).
+ */
 function LoadingOverlay() {
   const { active } = useProgress();
+  const entering = useSyncExternalStore(villageLoad.subscribe, () => villageLoad.get().open, () => false);
   if (!active) return null;
-  return <div className="cv-loading">불러오는 중…</div>;
+  // kept in the page (hidden) under the loading screen: scripts wait for it to go as "everything is in"
+  return (
+    <div className="cv-loading" role="status" hidden={entering}>
+      불러오는 중…
+    </div>
+  );
 }
 
 /** The local player's synced spawn, else the middle of the map (the server places us before we mount). */

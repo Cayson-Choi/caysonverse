@@ -9,10 +9,10 @@ import { PLAYER_RADIUS, SEAT_REACH, approachesSeat, type Seat } from "@caysonver
 import type { AABB } from "@caysonverse/shared/collision";
 import type { Bounds } from "@caysonverse/shared/school/geometry";
 import { isFreeSpot } from "./clickPlan";
-import { CHAIR_BACK_BEHIND, CHAIR_HALF_WIDTH } from "@caysonverse/shared/village/benchSeats";
+import { CHAIR_BACK_BEHIND, CHAIR_HALF_WIDTH, ZELKOVA_DECK } from "@caysonverse/shared/village/benchSeats";
+import { VILLAGE_LAYOUT } from "@caysonverse/shared/village/villageLayout";
 import { VILLAGE_SEAT_MARKERS } from "@caysonverse/shared/village/generated/villageSeatMarkers";
 import { lakeSeats } from "@caysonverse/shared/village/lakeLayout";
-import { VILLAGE_LAYOUT } from "@caysonverse/shared/village/villageLayout";
 
 /** A tap this far past a chair's footprint (m) still counts as on it (a seat's edge, a leg, a rail seen edge-on). */
 export const SEAT_TAP_MARGIN = 0.1;
@@ -45,6 +45,18 @@ const LAKE_CHAIR_FOOTPRINTS: Footprint[] = lakeSeats()
     return { id: s.bench, x: s.x - Math.sin(s.yaw) * back, z: s.z - Math.cos(s.yaw) * back, yaw: s.yaw, front: CHAIR_FRONT_EDGE, back: CHAIR_BACK_BEHIND, half: CHAIR_HALF_WIDTH };
   });
 
+/**
+ * The plaza zelkova deck's six places (평상, UX 2026-11-16): a strip of the deck along each face, from 0.4 m in to its rim (a
+ * tap on the deck's top or its edge sits at that face's place).
+ */
+const DECK_IN = 0.4;
+const ZELKOVA_DECK_FOOTPRINTS: Footprint[] = ZELKOVA_DECK.faces.map((deg, k) => {
+  const yaw = (deg * Math.PI) / 180;
+  const c = VILLAGE_LAYOUT.plaza.zelkova.centre;
+  const r = ZELKOVA_DECK.apothem - DECK_IN;
+  return { id: `zelkova_deck:${k + 1}`, x: c.x + Math.sin(yaw) * r, z: c.z + Math.cos(yaw) * r, yaw, front: DECK_IN + 0.05, back: 0.6, half: ZELKOVA_DECK.faceHalf };
+});
+
 const FOOTPRINTS: readonly Footprint[] = [...VILLAGE_SEAT_MARKERS.map((m): Footprint => ({
   id: m.id,
   x: m.x,
@@ -53,7 +65,7 @@ const FOOTPRINTS: readonly Footprint[] = [...VILLAGE_SEAT_MARKERS.map((m): Footp
   front: m.frontEdge,
   back: m.approach === "side" ? CHAIR_BACK_BEHIND : 0.3,
   half: m.approach === "side" ? CHAIR_HALF_WIDTH : (m.length ?? 1) / 2,
-})), ...LAKE_CHAIR_FOOTPRINTS];
+})), ...LAKE_CHAIR_FOOTPRINTS, ...ZELKOVA_DECK_FOOTPRINTS];
 
 /** The waterfall rest area's seat stones (B1 W5): backless, four seats each (two places, a west and an east side). */
 const STONES = VILLAGE_LAYOUT.backdrop.waterfall.options.seats ? VILLAGE_LAYOUT.backdrop.waterfall.seats : [];

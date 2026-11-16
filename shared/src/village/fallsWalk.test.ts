@@ -183,8 +183,10 @@ describe("the two stone seats (backless: sat on from either side)", () => {
   const stones = W.seats;
   const seatsOf = (id: string) => VILLAGE_SEATS.map((s, i) => ({ s, i })).filter(({ s }) => s.bench === id);
 
-  it("four seats a stone, after every other seat (no earlier index moved), in the village area", () => {
-    expect(VILLAGE_SEATS.slice(-8).map((s) => s.bench)).toEqual([...Array(4).fill("falls_seat_n"), ...Array(4).fill("falls_seat_s")]);
+  it("four seats a stone, after every seat release 1 had (no earlier index moved; only the zelkova deck of release 3 follows), in the village area", () => {
+    const falls = VILLAGE_SEATS.findIndex((s) => s.bench.startsWith("falls_seat_"));
+    expect(VILLAGE_SEATS.slice(falls, falls + 8).map((s) => s.bench)).toEqual([...Array(4).fill("falls_seat_n"), ...Array(4).fill("falls_seat_s")]);
+    expect(VILLAGE_SEATS.slice(falls + 8).every((s) => s.id.startsWith("zelkova_deck:"))).toBe(true);
     for (const st of stones) {
       const mine = seatsOf(st.id);
       expect(mine).toHaveLength(4);

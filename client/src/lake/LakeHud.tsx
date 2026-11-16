@@ -16,6 +16,7 @@ import { FISH_PHASE, emptyFishView, sigName, species, type FishView } from "./la
 import { biteWindowMs } from "@caysonverse/shared/village/fishing";
 import { expireLakeUi, useLakeStore } from "./lakeStore";
 import { LakeCards } from "./LakeCards";
+import { LakePierCue } from "./LakePierCue";
 import { backToFishing, catchCamera, fishingCamera, restoreCamera } from "./lakeCamera";
 import "./lake.css";
 
@@ -91,7 +92,7 @@ export function LakeHud({ pose, seat, orbit }: { pose: Pose; seat: SeatState; or
       seatedNoRod: view.rod === 0 && chairSpot >= 0,
     };
     // rod rented / returned: a line of words
-    if (view.rod > 0 && lastRod.current === 0) store.getState().say("2칸 대를 빌렸어요. 빈 의자에 앉아서 던지세요!", 4200);
+    if (view.rod > 0 && lastRod.current === 0) store.getState().say("낚싯대를 빌렸어요. 잔교의 빈 의자에 앉아서 던져요!", 4200);
     if (view.rod === 0 && lastRod.current > 0) store.getState().say("낚싯대를 반납했어요.");
     lastRod.current = view.rod;
     // the fish is landed: the card and the dex of this device
@@ -217,15 +218,18 @@ export function LakeHud({ pose, seat, orbit }: { pose: Pose; seat: SeatState; or
   const specRef = useRef<LakeButtonSpec | null>(null);
   specRef.current = spec;
 
-  // keys: E rents / sits / returns / goes to the rental; Space is the big button (held while fighting).
+  // keys: E rents / sits / goes to the rental; Space (and E) is the big button while seated (held while fighting). The rod goes
+  // back only by the 반납하기 button on the pad or by itself on leaving the lake, never by a key.
   useEffect(() => {
     const offE = onHotkey((action) => {
       if (action.type !== "interact") return;
       const sp = specRef.current;
       if (sp && sp.key === "E" && sp.enabled) perform(sp.action);
     });
+    // seated at a spot, E does what Space does (cast, pull, hold: UX 2026-11-16) — one key for every fishing step
+    const isFishKey = (code: string) => code === "Space" || code === "KeyE";
     const onDown = (e: KeyboardEvent): void => {
-      if (e.code !== "Space" || e.repeat || isUiCaptured()) return;
+      if (!isFishKey(e.code) || e.repeat || isUiCaptured()) return;
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
       const sp = specRef.current;
@@ -239,7 +243,7 @@ export function LakeHud({ pose, seat, orbit }: { pose: Pose; seat: SeatState; or
       } else perform(sp.action);
     };
     const onUp = (e: KeyboardEvent): void => {
-      if (e.code === "Space" && holdingRef.current) {
+      if (isFishKey(e.code) && holdingRef.current) {
         holdingRef.current = false;
         sendHold(false);
       }
@@ -295,6 +299,7 @@ export function LakeHud({ pose, seat, orbit }: { pose: Pose; seat: SeatState; or
           </div>
         ))}
       </div>
+      {ctx.view.rod > 0 && !ctx.seatedAtSpot && !ctx.onChair && ctx.nearChair < 0 && !ctx.nearRental && <LakePierCue pose={pose} orbit={orbit} />}
       {spec && (
         <LakeButton
           spec={spec}
@@ -389,7 +394,7 @@ function LakeButton({
         {spec.icon}
       </span>
       <span className="cv-lake-text">{spec.label}</span>
-      {!isTouchDevice && <kbd>{spec.key}</kbd>}
+      {!isTouchDevice && <kbd>{spec.key === "Space" ? "E · Space" : spec.key}</kbd>}
     </button>
   );
 }

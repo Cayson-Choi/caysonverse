@@ -165,6 +165,9 @@ function clamp(value: number, min: number, max: number): number {
   return value < min ? min : value > max ? max : value;
 }
 
+/** A Stand the server has not answered within this long (ms) is asked again while a move key is held. */
+const STAND_RETRY_MS = 1200;
+
 export function LocalPlayer({
   sessionId,
   nickname,
@@ -196,7 +199,8 @@ export function LocalPlayer({
   const sitFloorRef = useRef(false);
   const animTimerRef = useRef(0); // seconds left in the current transient clip
   const prevSeatRef = useRef(-1); // previous confirmed seatIndex (transition edge)
-  const standRequestedRef = useRef(false); // debounce: one Stand per seated episode
+  const standRequestedRef = useRef(false); // debounce: one Stand per seated episode (asked again after STAND_RETRY_MS)
+  const standAtRef = useRef(0);
   // A seat the sitter rests ON (a village bench, `seatY`): the lift of the seat in use, the seconds spent in the
   // current sit / stand clip and its length, and the glide onto the seat or off it (seatMotion.ts). A legacy chair
   // leaves all of it at rest (lift 0, no glide): it keeps its snap.
@@ -814,9 +818,10 @@ export function LocalPlayer({
         const r = busRiderWorldPose(bus, busSlot, spot.ahead, spot.right, spot.yaw, riderPoseRef.current);
         targetY = r.y;
         // a key (or the stick) on a seat or at a pole stands me up in the aisle: one BusStand, then I walk
-        if (moving && !busStandSentRef.current && !suspended) {
+        if (moving && !suspended && (!busStandSentRef.current || performance.now() - standAtRef.current > STAND_RETRY_MS)) {
           sendBusStand();
           busStandSentRef.current = true;
+          standAtRef.current = performance.now();
         }
       }
       // the floor under me eases over the steps (the raised rear, the step treads)
@@ -969,9 +974,13 @@ export function LocalPlayer({
     // 잡히면 Stand 한 번을 보내고 target은 남겨 두어, 기립이 확정되면 자동
     // 이동이 그 지점으로 이어진다 — "자동 기립 후 이동" 채택.
     if (seated) {
-      if ((moving || getClickTarget() !== null) && !standRequestedRef.current) {
+      // One Stand per press, asked again if the server has not stood us up a while later (a message lost, or refused
+      // while a sit was still settling: UX 2026-11-16, a held key must always get the player up).
+      const nowMs = performance.now();
+      if ((moving || getClickTarget() !== null) && (!standRequestedRef.current || nowMs - standAtRef.current > STAND_RETRY_MS)) {
         sendStand();
         standRequestedRef.current = true;
+        standAtRef.current = nowMs;
       }
       placeGroup(group, false, suspended, currentSeatLift() * fishRig.liftFactor());
       group.rotation.y = pose.yaw + MODEL_FACING_OFFSET;

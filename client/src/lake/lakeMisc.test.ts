@@ -35,10 +35,11 @@ describe("the seats of the room", () => {
   it("the village list keeps its indexes and the lake follows: the 30 chairs first", () => {
     expect(lakeSeats().length).toBe(56);
     expect(VILLAGE_SEATS.slice(0, LAKE_SEAT_BASE).every((s) => s.lake === undefined)).toBe(true);
-    // the lake's seats, then (release 2) only the waterfall rest area's stone seats after them
+    // the lake's seats, then only (release 2) the waterfall rest area's stones and, last, the plaza zelkova deck's six (UX 2026-11-16)
     const lakeEnd = VILLAGE_SEATS.findIndex((s, i) => i >= LAKE_SEAT_BASE && s.lake === undefined);
     expect(VILLAGE_SEATS.slice(LAKE_SEAT_BASE, lakeEnd).every((s) => s.lake !== undefined)).toBe(true);
-    expect(VILLAGE_SEATS.slice(lakeEnd).every((s) => s.bench.startsWith("falls_seat_"))).toBe(true);
+    expect(VILLAGE_SEATS.slice(lakeEnd).every((s) => s.bench.startsWith("falls_seat_") || s.id.startsWith("zelkova_deck:"))).toBe(true);
+    expect(VILLAGE_SEATS.slice(-6).every((s) => s.id.startsWith("zelkova_deck:"))).toBe(true);
     for (let i = 0; i < 30; i++) expect((VILLAGE_SEATS[LAKE_SEAT_BASE + i] as unknown as { spot: string }).spot).toBe(LAKE_FISHING_SPOTS[i]!.id);
     expect(FISHING_CHAIRS).toHaveLength(30);
   });
