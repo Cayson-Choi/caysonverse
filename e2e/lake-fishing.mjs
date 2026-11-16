@@ -211,7 +211,6 @@ async function oneCast(n) {
   }
   const landed = await waitPhase(["landed"], 5000);
   run.check(`cast ${n}: landed`, !!landed, landed);
-  if (landed) caught.push({ kind: landed.kind, cm: landed.cm });
   const card = await p.page.waitForSelector("[data-lake-card]", { timeout: 4000 }).then(() => true, () => false);
   const text = await p.page.locator("[data-lake-card]").first().textContent().catch(() => "");
   const label = await p.page.evaluate(async (k) => (await window.__imp("/src/lake/lakeProtocol.ts")).species(k)?.label ?? "?", landed?.kind ?? 0);
@@ -235,8 +234,30 @@ await run.step("cast until a small and a big fish (the server's cycle of species
     const mode = await p.page.evaluate(async () => (await window.__imp("/src/game/viewState.ts")).viewState.mode);
     run.check("first person while fishing", mode === "fp", mode);
   }
+  // every catch, as the page sees the schema (a recorder in the page: a slow screenshot here never misses one)
+  await p.page.evaluate(async () => {
+    const net = await window.__imp("/src/lake/lakeNet.ts");
+    const proto = await window.__imp("/src/lake/lakeProtocol.ts");
+    const v = proto.emptyFishView();
+    const seen = new Set();
+    window.__e2eCaught = [];
+    setInterval(() => {
+      net.readFishView(net.selfId(), v);
+      if ((v.phase === proto.FISH_PHASE.landed || v.phase === proto.FISH_PHASE.releasing) && v.kind > 0 && !seen.has(v.seq)) {
+        seen.add(v.seq);
+        window.__e2eCaught.push({ kind: v.kind, cm: v.cm });
+      }
+    }, 40);
+  });
+  const sync = async () => {
+    caught.length = 0;
+    caught.push(...(await p.page.evaluate(() => window.__e2eCaught)));
+  };
   const kinds = () => new Set(caught.map((c) => c.kind)).size;
-  for (let n = 1; n <= 12 && !(got.has("small") && got.has("big") && kinds() >= SPECIES); n++) got.add(await oneCast(n));
+  for (let n = 1; n <= 12 && !(got.has("small") && got.has("big") && kinds() >= SPECIES); n++) {
+    got.add(await oneCast(n));
+    await sync();
+  }
   run.check("a small fish and a big fish were landed", got.has("small") && got.has("big"), [...got]);
   run.check(`${SPECIES}+ species were landed`, kinds() >= SPECIES, caught);
 });

@@ -65,7 +65,9 @@ function dayLook() {
 
 /** The lake's own water: made once, ticked with the clock and the time of day. */
 function useLakeWater(depthAttr: boolean, look?: LakeWaterLook, tier: VillageTier = "high"): LakeWater {
-  const water = useMemo(() => createLakeWater({ depthAttr, look, tier }), [depthAttr, look, tier]);
+  const water = useMemo(() => createLakeWater({ depthAttr, look }), [depthAttr, look]);
+  // the tier is a uniform: a tier change must not make a new material (a new program; GL warnings on phones)
+  useEffect(() => water.setTier(tier), [water, tier]);
   useEffect(() => {
     activeWater = water;
     return () => {
