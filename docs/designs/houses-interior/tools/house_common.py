@@ -132,8 +132,85 @@ class House:
         problems = self.hb.check()
         for p in problems:
             print("CONTRACT CHECK:", p)
+        problems += self.aisles()
         self.nodes = self.hb.emit(self.coll)
         return problems
+
+    def aisles(self, R=0.62, step=0.1):
+        """G (click-to-walk): every walking aisle and every seat approach must be >= 1.3 m clear (a body of radius R = 0.62 fits). Flood
+        fill over the room from the arrival spot with the colliders grown by R; every pad, spawn and seat stand-up point must be reached."""
+        import collections
+        W, D = 10.6, 7.8
+        h = self.hb.h["places"]
+        out = []
+
+        def loc(spot, f):
+            ox, oz = HCT.origin(self.n, f)
+            return (spot["x"] - ox, oz - spot["z"])
+
+        for f in (1, 2):
+            boxes = [(c[2], c[3], c[4], c[5]) for c in self.hb.cols if c[0] == f and c[6] >= 0.15 and not c[1].startswith("wall")]
+            hx0, hx1, hz0, hz1 = self.hole() if f == 2 else (9, 9, 9, 9)
+
+            def free(x, z):
+                if x < R or x > W - R or z < R or z > D - R:
+                    return False
+                for (x0, x1, z0, z1) in boxes:
+                    dx = max(x0 - x, 0, x - x1)
+                    dz = max(z0 - z, 0, z - z1)
+                    if dx * dx + dz * dz < R * R:
+                        return False
+                return True
+            starts = [loc(h["spawnIn"], 1)] if f == 1 else [loc(h["spawnUp"], 2)]
+            targets = ([("exitPad", loc(h["exitPad"], 1)), ("upPad", loc(h["upPad"], 1)), ("spawnDown", loc(h["spawnDown"], 1))] if f == 1
+                       else [("downPad", loc(h["downPad"], 2)), ("spawnUp", loc(h["spawnUp"], 2))])
+            targets = [(n_, p_, 0.5) for (n_, p_) in targets]
+            for s in self.hb.seats:
+                if s["floor"] == f:
+                    a = s["local_yaw"]
+                    if s["approach"] == "front" and s["furn"] in ("sofa", "armchair", "beanbag", "floorsofa", "boryo"):
+                        d = s["edge"] + 0.75           # sofas / armchairs are entered from the front: the spot in front must be reached
+                        targets.append((s["id"] + "/" + s["furn"], (s["lx"] + math.sin(a) * d, s["lz"] + math.cos(a) * d), 0.62))
+                    else:                              # chairs, stools, cushions, bed edges: reachable from any side
+                        targets.append((s["id"] + "/" + s["furn"], (s["lx"], s["lz"]), 1.15))
+            gx, gz = int(W / step) + 1, int(D / step) + 1
+            cell = [[free(i * step, j * step) for j in range(gz)] for i in range(gx)]
+            seen = set()
+            q = collections.deque()
+            for (sx, sz) in starts:
+                i, j = int(round(sx / step)), int(round(sz / step))
+                best = None
+                for di in range(-6, 7):
+                    for dj in range(-6, 7):
+                        a_, b_ = i + di, j + dj
+                        if 0 <= a_ < gx and 0 <= b_ < gz and cell[a_][b_] and (best is None or di * di + dj * dj < best[0]):
+                            best = (di * di + dj * dj, a_, b_)
+                if best:
+                    q.append((best[1], best[2]))
+                    seen.add((best[1], best[2]))
+            while q:
+                i, j = q.popleft()
+                for di, dj in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                    a_, b_ = i + di, j + dj
+                    if 0 <= a_ < gx and 0 <= b_ < gz and (a_, b_) not in seen and cell[a_][b_]:
+                        seen.add((a_, b_))
+                        q.append((a_, b_))
+            if os.environ.get("CV_AISLE_MAP"):
+                tg = {(int(round(t[1][0] / step)), int(round(t[1][1] / step))) for t in targets}
+                for j in range(gz):
+                    print("MAP%d " % f + "".join("T" if (i, j) in tg else ("o" if (i, j) in seen else ("." if cell[i][j] else "#")) for i in range(0, gx, 1)))
+            for (name, (tx, tz), tol) in targets:
+                k = int(tol / step) + 1
+                ok = any(((int(round(tx / step)) + di) * step - tx) ** 2 + ((int(round(tz / step)) + dj) * step - tz) ** 2 <= tol * tol
+                         and (int(round(tx / step)) + di, int(round(tz / step)) + dj) in seen for di in range(-k, k + 1) for dj in range(-k, k + 1))
+                if not ok:
+                    fr_ = [(((i * step - tx) ** 2 + (j * step - tz) ** 2) ** 0.5, i * step, j * step) for i in range(gx) for j in range(gz) if cell[i][j]]
+                    nf = min(fr_) if fr_ else None
+                    ns_ = min((((i * step - tx) ** 2 + (j * step - tz) ** 2) ** 0.5, i * step, j * step) for (i, j) in seen) if seen else None
+                    out.append(f"AISLE floor {f}: {name} at ({tx:.2f},{tz:.2f}) not reachable with a 1.3 m aisle; nearest free {nf}, nearest reached {ns_}")
+        for o in out:
+            print("CONTRACT CHECK:", o)
+        return out
 
     def save(self, path):
         bpy.ops.wm.save_as_mainfile(filepath=path)

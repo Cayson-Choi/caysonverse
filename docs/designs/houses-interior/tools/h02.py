@@ -77,19 +77,16 @@ P(1, "plate2", "plate", 3.0, 3.05, 0.74)
 
 # living / play room (right): L sofa faces the TV on the back wall, play mat with toys and baskets
 H.piece(1, "sofa", SE.sofa_L, 8.0, 3.7, 0, 0.0, w=2.6, chaise=1.6, tn=PAL["sofa_sage"], pillow_tn=PAL["mustard"])
-H.piece(1, "coffee", TA.table_coffee_rect, 7.5, 5.15, 0, 0.0, w=1.0, d=0.55)
 H.piece(1, "mat", DE.rug_check, 8.9, 6.2, 0, 0.0, w=2.2, d=1.3, cols=False, a_tn=SKY, b_tn=YEL)
 H.piece(1, "tvstand", TA.tv_stand, 9.3, 7.55, 0, PI, w=1.6)
 H.piece(1, "tv", TA.tv_wall, 9.3, 7.78, 1.0, PI, w=1.3, cols=False)
 H.piece(1, "toychest", ST.trunk, 10.3, 2.6, 0, -PI / 2, w=0.9, d=0.45, h=0.4)
-for i, (x, z, tn_) in enumerate(((10.1, 1.75, RED), (9.5, 1.75, BLUE), (10.2, 5.5, GRN), (7.0, 6.9, YEL), (7.0, 6.35, SKY), (9.75, 4.9, RED))):
+for i, (x, z, tn_) in enumerate(((10.1, 1.75, RED), (9.5, 1.75, BLUE), (10.25, 6.7, GRN), (7.0, 6.9, YEL), (7.0, 6.35, SKY), (10.25, 5.9, RED))):
     H.piece(1, "basket", DE.basket, x, z, 0.0, 0.0, r=0.2, h=0.26, tn=tn_)
 P(1, "ball", "toy_ball", 8.2, 6.0, 0.014)
 P(1, "blocks", "toy_blocks", 9.3, 6.4, 0.014, 0.5)
 P(1, "car", "toy_car", 8.6, 5.8, 0.014, 1.1)
 P(1, "blocks", "toy_blocks", 7.7, 6.35, 0.014, 2.0)
-P(1, "cmag", "magazine", 7.35, 5.1, 0.4, 0.3)
-P(1, "cbook", "books3", 7.7, 5.2, 0.4, 0.8)
 P(1, "tvf", "frame_small", 8.7, 7.6, 0.45, PI)
 for i, x in enumerate((8.95, 9.5, 10.05)):
     H.piece(1, "kidart", DE.frame_art, x, 0.04, 1.5 + 0.06 * (i % 2), 0.0, w=0.4, h=0.5, art=i, cols=False)
@@ -113,10 +110,10 @@ H.piece(2, "dchair", SE.chair_desk, 3.9, 1.0, 0, PI)
 H.piece(2, "dchair", SE.chair_desk, 5.0, 1.0, 0, PI)
 H.piece(2, "toybox", DE.basket, 0.4, 5.5, 0.0, 0.0, r=0.28, h=0.4, tn=RED)
 H.piece(2, "rug", DE.rug_round, 2.8, 3.7, 0, 0.0, d=2.0, cols=False, tn=PAL["rug_cream"])
-H.piece(2, "bean", SE.bean_bag, 3.4, 5.0, 0, 0.0, tn=(0.9, 0.55, 0.45, 1))
+H.piece(2, "bean", SE.bean_bag, 3.0, 4.5, 0, 0.0, tn=(0.9, 0.55, 0.45, 1))
 H.piece(2, "plant", FX.plant_fern, 2.0, 6.0) if False else None
 H.piece(2, "art", DE.frame_art, 0.04, 3.0, 1.55, PI / 2, w=0.6, h=0.8, art=1, cols=False)
-H.piece(2, "lamp", DE.floor_lamp, 4.3, 5.2)
+H.piece(2, "lamp", DE.floor_lamp, 5.3, 5.2)
 H.piece(2, "basket", DE.basket, 1.0, 3.0, 0.0, 0.0, r=0.22, h=0.28, tn=YEL)
 H.piece(2, "basket", DE.basket, 4.2, 3.8, 0.0, 0.0, r=0.2, h=0.26, tn=BLUE)
 P(2, "blocks", "toy_blocks", 3.0, 3.4, 0.014, 0.9)
@@ -137,6 +134,9 @@ H.piece(2, "art", DE.frame_art, 10.56, 2.0, 1.75, -PI / 2, w=1.0, h=0.7, art=2, 
 H.piece(2, "dresser", TA.tv_stand, 7.0, 7.55, 0, PI, w=1.2, d=0.42, h=0.85) if False else None
 P(2, "nbook", "books3", 10.3, 3.15, 0.55, 0.4)
 P(2, "ncup", "mug_p", 10.3, 0.85, 0.55, 0.0) if False else None
+
+H.piece(1, "view", FX.view_band, 0, 0, 0, 0, cols=False, seats=False, house=2)
+H.piece(2, "view", FX.view_band, 0, 0, 0, 0, cols=False, seats=False, house=2)
 
 problems = H.finish()
 

@@ -36,9 +36,15 @@ import kit_fix  # noqa: E402,F401  (HA: H_leather override must also apply to th
 WORK, EXPORT = K.WORK, K.EXPORT
 LM_SCALE = 2.0         # the light map stores L / LM_SCALE (the game multiplies back: village convention)
 LM_LIFT_DAY, LM_LIFT_NIGHT = 0.08, 0.012
-UNLIT = ("H_lamp", "H_shade", "H_glass")
-DAY = dict(sun=(5.0, math.radians(52), math.radians(-30)), sky=2.4, lamp_scale=0.10)
-NIGHT = dict(sky=(0.02, 0.03, 0.07), lamp_scale=1.0)
+UNLIT = ("H_lamp", "H_shade", "H_glass", "M_view")
+
+
+def export_name(name):
+    """contract 5: LM_* receives the light map, M_* is drawn directly (lamp, shade, glass, window view)"""
+    base = name.split("_", 1)[1]
+    return ("M_" if name in UNLIT else "LM_") + base
+DAY = dict(sun=(4.0, math.radians(52), math.radians(-30)), sky=2.2, lamp_scale=0.10)
+NIGHT = dict(sky=(0.02, 0.03, 0.07), lamp_scale=0.45)
 
 
 def arg(name, default=None, cast=str):
@@ -267,7 +273,10 @@ def bake_lightmap(scene, obs, size, samples, out_png, lift, passes=1):
 def export_materials():
     out = {}
     for name, sp in K.MATS.items():
-        m = bpy.data.materials.new("E_" + name)
+        _old = bpy.data.materials.get(export_name(name))
+        if _old is not None:
+            _old.name = "auth_" + _old.name
+        m = bpy.data.materials.new(export_name(name))
         nt = m.node_tree
         for n in list(nt.nodes):
             nt.nodes.remove(n)
@@ -317,7 +326,7 @@ def export_materials():
 
 def convert(ob, EM):
     me = ob.data
-    names = [m.name for m in me.materials]
+    names = [(m.name[5:] if m.name.startswith("auth_") else m.name) for m in me.materials]
     uniq = []
     for n in names:
         if n not in uniq:
@@ -349,7 +358,7 @@ def patch_glb(path):
         pbr["roughnessFactor"] = 1.0
         for k in ("emissiveTexture", "emissiveFactor", "normalTexture"):
             m.pop(k, None)
-        if name == "E_H_glass":
+        if name == "M_glass":
             m["alphaMode"] = "BLEND"
         else:
             m.pop("alphaMode", None)

@@ -137,6 +137,9 @@ H.piece(2, "books", FX.futon_stack, 9.6, 1.2, 0, 0.0, w=0.9, d=0.6, n=5, tn_list
 H.piece(2, "plant", FX.plant_monstera_full, 9.8, 3.6)
 H.piece(2, "photos", DE.frame_family, 10.56, 5.3, 1.6, -PI / 2, cols=False)
 
+H.piece(1, "view", FX.view_band, 0, 0, 0, 0, cols=False, seats=False, house=4)
+H.piece(2, "view", FX.view_band, 0, 0, 0, 0, cols=False, seats=False, house=4)
+
 problems = H.finish()
 
 CAMS = [

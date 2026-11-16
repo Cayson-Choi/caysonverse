@@ -191,3 +191,26 @@ def futon_stack(F, w=1.0, d=0.7, n=6, seed=3, tn_list=None):
              bottom=False)
         y += th
     col(F, -w / 2 - 0.03, w / 2 + 0.03, -d / 2 - 0.03, d / 2 + 0.03, y, name="futon")
+
+
+# ---- window view (M_view) -------------------------------------------------------------------------------------------
+K.MATS["M_view"] = dict(color="#8FB4D8", rough=1.0)          # exported plain: G binds house_N_view.webp (top half day, bottom half night)
+
+
+def view_band(F, house=1, R=9.0, n=48, cx=5.3, cz=3.9, eye=1.6):
+    """the window panorama: a full ring (radius R, outside the walls, normals inward) centred on the room, latitude -45..+45 deg around
+    eye height `eye`; material M_view, UV 0..1 (u = 0.5 + bearing / 2pi, bearing 0 = local +z = into the room, + toward local +x; v = 1 top).
+    G samples house_N_view.webp (2048 x 1024, day = top half, night = bottom half) with repeat.y 0.5 and offset 0 / 0.5."""
+    import os
+    p = os.path.join(K.WORK, f"house_{house}_view_day.png")
+    if os.path.exists(p) and "tex" not in K.MATS["M_view"]:
+        pass
+    y0, y1 = eye - R, eye + R
+    for i in range(n):
+        a0 = -math.pi + 2 * math.pi * i / n
+        a1 = -math.pi + 2 * math.pi * (i + 1) / n
+        P0 = (cx + R * math.sin(a0), cz + R * math.cos(a0))
+        P1 = (cx + R * math.sin(a1), cz + R * math.cos(a1))
+        am = (a0 + a1) / 2
+        gface(F, [(P0[0], P0[1], y0), (P1[0], P1[1], y0), (P1[0], P1[1], y1), (P0[0], P0[1], y1)], "M_view", None, 1.0,
+              (-math.sin(am), -math.cos(am), 0), uv=[(i / n, 0.0), ((i + 1) / n, 0.0), ((i + 1) / n, 1.0), (i / n, 1.0)])

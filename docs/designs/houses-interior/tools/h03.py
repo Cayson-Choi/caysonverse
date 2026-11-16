@@ -69,19 +69,19 @@ H.piece(1, "cabinet", ST.mungap, 0.2, 1.1, 0, PI / 2, w=0.9)
 H.piece(1, "kimchi", KI.fridge_kimchi, 0.4, 2.35, 0, PI / 2)
 P(1, "kbasket", "leaf_pot", 0.35, 2.35, 1.1)
 # the table: six different farm chairs
-H.piece(1, "dtable", TA.table_dining_rect, 5.3, 5.0, 0, 0.0, w=1.9, d=0.95, legs="square")
+H.piece(1, "dtable", TA.table_dining_rect, 5.3, 4.85, 0, 0.0, w=1.9, d=0.95, legs="square")
 for i, x in enumerate((4.7, 5.3, 5.9)):
-    H.piece(1, "fchair", SE.chair_farm, x, 4.05, 0, 0.0, variant=i)
+    H.piece(1, "fchair", SE.chair_farm, x, 3.95, 0, 0.0, variant=i)
 for i, x in enumerate((4.7, 5.3, 5.9)):
-    H.piece(1, "fchair", SE.chair_farm, x, 5.95, 0, PI, variant=i + 3)
+    H.piece(1, "fchair", SE.chair_farm, x, 5.5, 0, PI, variant=i + 3)
 for i, x in enumerate((4.75, 5.3, 5.85)):
-    H.piece(1, "pend", DE.pendant_dome, x, 5.0, 2.55, 0.0, drop=1.15, r=0.2, cols=False)
-P(1, "fruit", "fruit_bowl", 5.3, 5.0, 0.74)
-P(1, "kcups", "mug_p", 4.8, 4.75, 0.74)
-P(1, "kcups", "mug_p", 5.85, 5.25, 0.74)
-P(1, "kplate", "plate", 4.75, 5.2, 0.74)
-P(1, "kplate", "plate", 5.85, 4.85, 0.74)
-P(1, "kteapot", "teapot", 5.0, 5.0, 0.74)
+    H.piece(1, "pend", DE.pendant_dome, x, 4.85, 2.55, 0.0, drop=1.15, r=0.2, cols=False)
+P(1, "fruit", "fruit_bowl", 5.3, 4.85, 0.74)
+P(1, "kcups", "mug_p", 4.8, 4.60, 0.74)
+P(1, "kcups", "mug_p", 5.85, 5.10, 0.74)
+P(1, "kplate", "plate", 4.75, 5.05, 0.74)
+P(1, "kplate", "plate", 5.85, 4.70, 0.74)
+P(1, "kteapot", "teapot", 5.0, 4.85, 0.74)
 # window platform (평상) with cushions
 H.piece(1, "pyeong", SE.pyeongsang, 2.6, 0.58, 0, 0.0, w=1.8, d=1.0)
 H.piece(1, "pcush", DE.basket, 1.95, 0.62, 0.36, 0.0, r=0.17, h=0.12, tn=(0.9, 0.65, 0.45, 1), cols=False)
@@ -120,15 +120,15 @@ P(2, "shelfvase", "vase_small", 1.0, 7.65, 1.0)
 H.piece(2, "orchid", DE.plant_orchid, 1.65, 7.65, 1.0)
 # sitting corner (right of the guest area): two-seat sofa between the front windows
 H.piece(2, "sofa", SE.sofa_2seat, 4.85, 0.55, 0, 0.0, w=1.7, tn=(0.85, 0.7, 0.4, 1), pillow_tn=(0.55, 0.65, 0.5, 1))
-H.piece(2, "coffee", TA.table_coffee_rect, 4.85, 1.9, 0, 0.0, w=0.95, d=0.5)
-P(2, "cmag", "magazine", 4.6, 1.9, 0.4, 0.3)
-P(2, "ccup", "mug_p", 5.1, 1.95, 0.4)
 H.piece(2, "plant", FX.plant_palm, 7.3, 5.4)
 H.piece(2, "lamp", DE.floor_lamp, 6.0, 0.7)
 H.piece(2, "art", DE.frame_art, 4.85, 0.04, 1.65, 0.0, w=0.7, h=0.5, art=1, cols=False)
 H.piece(2, "art", DE.frame_art, 0.04, 4.3, 1.8, PI / 2, w=0.5, h=0.65, art=2, cols=False) if False else None
 H.piece(2, "clock", DE.wall_clock, 0.04, 6.4, 1.9, PI / 2, cols=False)
 H.piece(2, "basket", DE.basket, 6.9, 2.6, 0.0, 0.0, r=0.25, h=0.35, tn=(0.85, 0.7, 0.45, 1))
+
+H.piece(1, "view", FX.view_band, 0, 0, 0, 0, cols=False, seats=False, house=3)
+H.piece(2, "view", FX.view_band, 0, 0, 0, 0, cols=False, seats=False, house=3)
 
 problems = H.finish()
 

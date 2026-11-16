@@ -62,15 +62,15 @@ P(1, "tpot", "leaf_pot", 6.7, 1.0, 0.3)
 H.piece(1, "hooks", FX.wall_hooks, 3.8, 0.01, 1.5, 0.0, n=3, spacing=0.2)
 
 # living group (rattan): sofa faces the front windows, two chairs across a low table, jute rug
-H.piece(1, "rug", DE.rug_round, 2.4, 3.9, 0, 0.0, d=2.8, cols=False, tn=(0.85, 0.74, 0.55, 1))
+H.piece(1, "rug", DE.rug_round, 2.4, 3.6, 0, 0.0, d=2.8, cols=False, tn=(0.85, 0.74, 0.55, 1))
 H.piece(1, "sofa", SE.sofa_rattan, 2.4, 4.75, 0, PI, w=1.7, d=0.85, seats=2)
-H.piece(1, "coffee", TA.table_coffee_rect, 2.4, 3.55, 0, 0.0, w=1.0, d=0.55)
-H.piece(1, "chair", SE.armchair_rattan, 0.95, 3.5, 0, PI / 2)
-H.piece(1, "chair", SE.armchair_rattan, 3.75, 3.5, 0, -PI / 2)
-P(1, "tmag", "magazine", 2.2, 3.55, 0.4, 0.3)
-P(1, "tpot2", "leaf_pot", 2.7, 3.6, 0.4)
-P(1, "tcup", "teacup", 2.5, 3.4, 0.4)
-H.piece(1, "pill", DE.plant_orchid, 2.0, 3.5, 0.4, 0.0, cols=False)
+H.piece(1, "coffee", TA.table_coffee_rect, 2.4, 2.5, 0, 0.0, w=1.0, d=0.55)
+H.piece(1, "chair", SE.armchair_rattan, 0.95, 3.4, 0, PI / 2)
+H.piece(1, "chair", SE.armchair_rattan, 0.95, 1.6, 0, PI / 2)
+P(1, "tmag", "magazine", 2.2, 2.5, 0.4, 0.3)
+P(1, "tpot2", "leaf_pot", 2.7, 2.55, 0.4)
+P(1, "tcup", "teacup", 2.5, 2.4, 0.4)
+H.piece(1, "pill", DE.plant_orchid, 2.0, 2.5, 0.4, 0.0, cols=False)
 # dining (right): round table, four cane chairs
 dx, dz = 8.0, 2.8
 H.piece(1, "dtable", TA.table_dining_round, dx, dz, 0, 0.0, d=1.1)
@@ -89,7 +89,6 @@ H.piece(1, "rubber", FX.plant_rubber_full, 6.75, 0.6)
 H.piece(1, "monstera", FX.plant_monstera_full, 9.8, 0.6, seed=9, leaves=28)
 H.piece(1, "olive", FX.plant_olive_full, 0.6, 6.8, seed=11)
 H.piece(1, "rubber", FX.plant_rubber_full, 4.4, 7.15, seed=3)
-H.piece(1, "palm", FX.plant_palm, 9.0, 4.5)
 H.piece(1, "monstera", FX.plant_monstera_full, 0.65, 5.3, seed=12)
 for (x, z, s) in ((1.7, 0.45, 5), (3.4, 0.45, 6), (7.2, 0.45, 7), (8.7, 0.45, 8)):
     H.piece(1, "hang", DE.plant_hanging, x, z, 3.7, 0.0, seed=s, drop=0.9, cols=False)
@@ -135,6 +134,9 @@ H.piece(2, "plant2", FX.plant_monstera_full, 6.4, 0.6, seed=14)
 H.piece(2, "boughs", DE.vase_branch, 8.0, 0.2, 0.0, 0.0, cols=False) if False else None
 H.piece(2, "art", DE.frame_art, 10.56, 1.9, 1.7, -PI / 2, w=0.7, h=0.5, art=2, cols=False)
 H.piece(2, "tealamp", DE.floor_lamp, 5.8, 5.4)
+
+H.piece(1, "view", FX.view_band, 0, 0, 0, 0, cols=False, seats=False, house=5)
+H.piece(2, "view", FX.view_band, 0, 0, 0, 0, cols=False, seats=False, house=5)
 
 problems = H.finish()
 
