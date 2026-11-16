@@ -95,6 +95,9 @@ const SEAT_HALF_DEFAULT = 0.42;
 const SEAT_HALF_ROW_MAX = 0.7;
 const SEAT_ROW_SPAN = 1.5;
 const SEAT_SIDE_PAD = 0.05;
+/** A hit this near (m) a seat's volume, held by none, ranks that seat by how near across it is (after every volume that holds the hit). */
+const SEAT_NEAR_TOL = 0.25;
+const SEAT_NEAR_RANK = 10;
 /** A ray entering a seat's volume this little (m) past the furniture it hit still clicks the seat (a face of the seat itself). */
 const SEAT_HIT_EPS = 0.05;
 /** ...and this far past a hit high up (a table top, at least SEAT_BEHIND_MIN_Y): a chair half hidden behind the table's edge. */
@@ -233,7 +236,13 @@ export function furnitureClick(
       if (!inArea(s) || Math.hypot(s.x - pick.x, s.z - pick.z) > 3) continue;
       const t = seatRayEntry(ray, seats, i);
       if (t > reach) continue;
-      const hold = t <= hitT + SEAT_HIT_EPS ? (seatVolumeHolds(pick, seats, i) ?? Infinity) : Infinity;
+      // (a hit just outside every volume — the top of a sofa's backrest tapped from behind it — goes to the seat it is nearest across, a
+      // second tier below the volumes that hold it: G round 3, house 7's middle sofa seat tapped from behind sat the visitor at its end)
+      const near = (): number => {
+        const loose = seatVolumeHolds(pick, seats, i, SEAT_NEAR_TOL);
+        return loose === null ? Infinity : SEAT_NEAR_RANK + loose;
+      };
+      const hold = t <= hitT + SEAT_HIT_EPS ? (seatVolumeHolds(pick, seats, i) ?? near()) : Infinity;
       if (hold > bestHold || (hold === bestHold && (hold < Infinity || t > bestT))) continue;
       if (!offered(i)) continue;
       best = i;
