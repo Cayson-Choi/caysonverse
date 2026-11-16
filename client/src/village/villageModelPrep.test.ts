@@ -834,7 +834,7 @@ describe("applyDayNight: the clock's numbers into the model (Task 7A)", () => {
     expect((shader.uniforms.uMoonFountain as { value: { x: number; y: number } }).value).toMatchObject({ x: c.x, y: c.z });
   });
 
-  it("the crescent's probe is the old bake's light: bluish sky on its face, the sun on its back, dim below, never negative", () => {
+  it("the crescent's probe is the bake's light without the sun: bluish sky on its face, sky and bounce on its back, dim below, never negative", () => {
     const yaw = (-25 * Math.PI) / 180;
     const front = [Math.sin(yaw), 0, Math.cos(yaw)] as const; // the face the spawn sees (build_village.py: yaw -25 deg)
     const back = [-front[0], 0, -front[2]] as const;
@@ -843,7 +843,10 @@ describe("applyDayNight: the clock's numbers into the model (Task 7A)", () => {
     // The old crescent's texels facing the spawn (n . front > 0.7) averaged (0.36, 0.44, 0.59) and those facing away
     // (< -0.7) (0.93, 0.92, 0.92): the probe's value straight on is within 0.12 of each.
     day(front).forEach((v, k) => expect(Math.abs(v - [0.36, 0.44, 0.59][k]!)).toBeLessThan(0.12));
-    day(back).forEach((v, k) => expect(Math.abs(v - [0.93, 0.92, 0.92][k]!)).toBeLessThan(0.12));
+    // vrb2 (sun-split bake): the back faced the baked morning sun (0.93, 0.92, 0.92 with it); without its direct light it
+    // keeps the sky's blue and the bounce (fit_moon_probe_split.py: about (0.47, 0.62, 0.75)); the game adds the real sun live
+    day(back).forEach((v, k) => expect(Math.abs(v - [0.47, 0.62, 0.75][k]!)).toBeLessThan(0.12));
+    expect(luma(day(back))).toBeLessThan(0.93 - 0.2);
     expect(day(front)[2]).toBeGreaterThan(day(front)[0] + 0.15); // the sky's blue
     expect(luma(day([0, 1, 0]))).toBeGreaterThan(luma(day([0, -1, 0])) + 0.4);
     // Over every direction: never negative, at most a hair past the map's clip at 1 (the shader clips).

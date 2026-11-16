@@ -1,0 +1,1700 @@
+diff -ruN -x __pycache__ a/art/village/tools/bake_village.py tools/bake_village.py
+--- a/art/village/tools/bake_village.py	2026-11-16 20:43:11.226403300 +0900
++++ b/art/village/tools/bake_village.py	2026-11-16 23:08:51.144913300 +0900
+@@ -3,6 +3,8 @@
+   blender -b art/village/work/village_authoring.blend -P art/village/tools/bake_village.py -- \
+         [--samples 384] [--size 2048] [--leafsamples 64] [--bdsamples 128] [--nobake]
+   blender -b art/village/work/village_lmprep.blend -P art/village/tools/bake_village.py -- --night [--samples 512]
++  blender -b art/village/work/village_lmprep.blend -P art/village/tools/bake_village.py -- --sunonly [--samples 128]
++        (the sun split of the CURRENT day map, nothing exported: work/village_lm_sun.png + village_lm_sunfree.png)
+   python art/village/tools/post_village.py --night        (night PNG -> client/public/models/village/village_lm_night.webp)
+ 
+ Day run (default):
+@@ -10,6 +12,9 @@
+   2. light-map UV ("UV_LM", 2nd set) packed over all LM meshes, with a texel-density weight per object
+      -> saves work/village_lmprep.blend (a later night bake reuses exactly these UVs)
+   3. Cycles DIFFUSE bake (direct + indirect, no colour) -> L / LM_SCALE as sRGB 8-bit -> export/village_lm.webp
++     SUN_SPLIT (2026-11-16): the sun lamp's direct light is baked alone and subtracted first (the game draws the real
++     sun live with real-time shadows); --keepsun bakes the old way (sun baked in, no GLB mark). Normals are exported
++     (the live sun's n.l).
+   4. vertex-colour lighting for alpha-card foliage and instanced vegetation (one representative per variant)
+   5. the backdrop (hills, ranges, waterfall cliff) baked COMBINED (with haze) into its own texture (M_backdrop)
+   6. authoring materials -> export materials (LM_* textured + light map; M_* never light-mapped)
+@@ -58,7 +63,7 @@
+ 
+ DENSITY = {  # light-map texel density weight per object (name prefix); default 0.7. Thin parts (bench slats, rails,
+              # posts) need >= 3 texels across or they read black, so small props get high weights.
+-    "plaza_disc": 1.0, "kerbs": 0.8, "fountain": 1.25, "benches": 3.0, "planters": 1.4, "lamps": 1.4,
++    "plaza_disc": 1.0, "plaza_grass": 0.8, "kerbs": 0.8, "fountain": 1.25, "benches": 3.0, "planters": 1.4, "lamps": 1.4,
+     "banners": 1.2, "ground_outer": 0.3, "lanes": 0.42, "plot_lawns": 0.42, "houses": 1.0, "fill_buildings": 1.0,
+     "cafe": 1.1, "memorial": 1.1, "bus_shelter": 1.5, "trees_": 0.55, "creek_rocks": 0.55,
+     "stone_walls": 0.8, "bridge": 2.2, "pavilion": 1.2, "lake_pavilion": 0.25, "lake_pier": 0.2, "plot_props": 1.6,
+@@ -234,7 +239,8 @@
+             nt.nodes.remove(tp)
+ 
+ 
+-def bake_lightmap(scene, objs, size, samples, out_png, emit_on=False, lift=LM_LIFT):
++def _bake_raw(scene, objs, size, samples, emit_on=False, passes=("DIRECT", "INDIRECT")):
++    """One Cycles DIFFUSE bake (no colour) on UV_LM -> the light, denoised, float (size, size, 3), L units."""
+     img = bpy.data.images.new("LM_bake", size, size, alpha=False, float_buffer=True)
+     added = []
+     for m in {m for o in objs for m in o.data.materials if m}:
+@@ -254,8 +260,8 @@
+     scene.cycles.samples = samples
+     scene.render.bake.margin = 8
+     scene.render.bake.margin_type = "EXTEND"
+-    log(f"baking light map {size}^2, {samples} samples, {len(objs)} objects")
+-    bpy.ops.object.bake(type="DIFFUSE", pass_filter={"DIRECT", "INDIRECT"}, margin=8, use_clear=True,
++    log(f"baking light map {size}^2, {samples} samples, {len(objs)} objects, passes {sorted(passes)}")
++    bpy.ops.object.bake(type="DIFFUSE", pass_filter=set(passes), margin=8, use_clear=True,
+                         target="IMAGE_TEXTURES", use_selected_to_active=False)
+     state.restore()
+     for m, n in added:
+@@ -270,6 +276,51 @@
+     b = a.copy()
+     for ax in (0, 1):
+         b = sum(np.roll(b, s, axis=ax) * w for s, w in zip((-1, 0, 1), k))
++    bpy.data.images.remove(img)
++    return b
++
++
++def encode_lm(b):
++    """Light (L units) -> the light map's encoding: L / LM_SCALE, clipped to 1, sRGB."""
++    enc = np.clip(b / LM_SCALE, 0, 1)
++    return np.where(enc <= 0.0031308, enc * 12.92, 1.055 * np.power(enc, 1 / 2.4) - 0.055)
++
++
++def decode_lm(enc):
++    """encode_lm's inverse (a clipped texel stays clipped)."""
++    return np.where(enc <= 0.04045, enc / 12.92, np.power((enc + 0.055) / 1.055, 2.4)) * LM_SCALE
++
++
++# Sun split (2026-11-16, the real sun and live shadows: docs/designs/sun-shadows/design.md in the repo). The day light
++# map keeps the sky, the bounce (the sun's bounce included) and the ambient lift, but NOT the sun's direct light: the game
++# draws that live, from the real sun on Korean time, with real-time shadows (client/src/village/sunShadows.ts). The
++# sun's direct light is baked on its own (the sun lamp alone: no sky, no emitters, DIRECT only), saved as
++# work/village_lm_sun.png (diagnostics, the crescent's probe fit) and subtracted; patch_glb marks the GLB
++# (asset.extras.cvLightmapSun = "live") so the game knows to add the live sun instead of correcting a baked one.
++SUN_SPLIT = True
++SUN_MARK = "live"
++
++
++def bake_sun_direct(scene, objs, size, samples):
++    """The sun lamp's direct light alone on UV_LM (L units): the world's strength at 0 while it bakes."""
++    saved = []
++    if scene.world and scene.world.node_tree:
++        for n in scene.world.node_tree.nodes:
++            if n.type == "BACKGROUND":
++                saved.append((n.inputs["Strength"], n.inputs["Strength"].default_value))
++                n.inputs["Strength"].default_value = 0.0
++    try:
++        return _bake_raw(scene, objs, size, samples, emit_on=False, passes=("DIRECT",))
++    finally:
++        for sock, v in saved:
++            sock.default_value = v
++
++
++def bake_lightmap(scene, objs, size, samples, out_png, emit_on=False, lift=LM_LIFT, subtract=None):
++    """Bake the light map, take `subtract` (L units: the sun's direct light) away when given, add the lift, save it."""
++    b = _bake_raw(scene, objs, size, samples, emit_on)
++    if subtract is not None:
++        b = np.maximum(b - subtract, 0.0)
+     lum = b @ np.array([0.2126, 0.7152, 0.0722], np.float32)
+     nz = lum[lum > 1e-4]
+     stats = {"p05": float(np.percentile(nz, 5)), "p50": float(np.percentile(nz, 50)),
+@@ -278,13 +329,40 @@
+     # ambient lift: a little sky bounce everywhere so shadowed and occluded texels never go black in the game
+     # (the unlit game look has no ambient term of its own)
+     b = b + lift * np.array([0.92, 0.96, 1.0], np.float32)
+-    enc = np.clip(b / LM_SCALE, 0, 1)
+-    enc = np.where(enc <= 0.0031308, enc * 12.92, 1.055 * np.power(enc, 1 / 2.4) - 0.055)
+-    save_png(enc, out_png)
+-    bpy.data.images.remove(img)
++    save_png(encode_lm(b), out_png)
+     return stats
+ 
+ 
++def load_png(path):
++    """A PNG as float RGB (Blender's row order, as save_png writes it), raw values (Non-Color)."""
++    img = bpy.data.images.load(path, check_existing=False)
++    img.colorspace_settings.name = "Non-Color"
++    w, h = img.size
++    px = np.empty(w * h * 4, np.float32)
++    img.pixels.foreach_get(px)
++    bpy.data.images.remove(img)
++    return px.reshape(h, w, 4)[..., :3].copy()
++
++
++def sun_only(scene, size, samples):
++    """--sunonly (on work/village_lmprep.blend): bake the sun's direct light alone into work/village_lm_sun.png and
++    write work/village_lm_sunfree.png = the shipped day map (work/village_lm.png) minus it, on the same UV_LM. Lets the
++    CURRENT day map be split without a full re-bake (and checks the split); nothing is exported."""
++    lms = [o for o in bpy.data.objects if o.type == "MESH" and o.get("cat") == "lm" and len(o.data.polygons)]
++    sun = bake_sun_direct(scene, lms, size, samples)
++    save_png(encode_lm(sun), os.path.join(WORK, "village_lm_sun.png"))
++    np.save(os.path.join(WORK, "village_lm_sun.npy"), sun.astype(np.float16))
++    day_png = os.path.join(WORK, "village_lm.png")
++    if os.path.exists(day_png):
++        day = decode_lm(load_png(day_png))
++        if day.shape == sun.shape:
++            free = np.maximum(day - sun, LM_LIFT * np.array([0.92, 0.96, 1.0], np.float32))
++            save_png(encode_lm(free), os.path.join(WORK, "village_lm_sunfree.png"))
++    lum = sun @ np.array([0.2126, 0.7152, 0.0722], np.float32)
++    log("sun direct", {"p50": float(np.percentile(lum[lum > 1e-4], 50)), "p99": float(np.percentile(lum, 99)),
++                       "max": float(lum.max())})
++
++
+ def save_png(rgb, path):
+     h, w, _ = rgb.shape
+     out = bpy.data.images.new("tmp_out", w, h, alpha=False)
+@@ -428,15 +506,15 @@
+ # ------------------------------------------------------------------------------------------- materials --
+ 
+ TEXTURES = {
+-    "LM_plaza": "T_plaza.png", "LM_grass": "T_grass.png", "LM_lawn": "T_lawn.png", "LM_stone": "T_stone.png",
++    "LM_plaza": "T_plaza.png", "LM_grass": "T_grass.png", "LM_lawn": "T_grass.png", "LM_stone": "T_stone.png",
+     "LM_concrete": "T_concrete.png", "LM_render": "T_render.png", "LM_wood": "T_wood.png", "LM_roof": "T_roof.png",
+-    "LM_rock": "T_rock.png", "LM_wall": "T_wall.png", "LM_bark": "T_bark.png", "LM_atlas": "T_atlas.png",
++    "LM_rock": "T_rock.png", "LM_wall": "T_wall.png", "LM_setts": "T_setts.png", "LM_road": "T_road.png", "LM_bark": "T_bark.png", "LM_atlas": "T_atlas.png",
+     "M_water": "T_water.png", "M_waterfall": "T_falls.png", "M_lamp": "T_glow.png", "M_window": "T_glow.png",
+     "M_shop": "T_glow.png",
+     "M_sky": "T_sky.png", "M_backdrop": None, "M_leaf_green": "T_leaf_green.png", "M_leaf_cherry": "T_leaf_cherry.png",
+     "M_leaf_flora": "T_flora.png", "M_bark": "T_bark.png", "M_glass": "T_glass.png",
+ }
+-VERTEX_COLOUR = {"LM_render", "LM_wood", "LM_roof", "LM_grass", "M_leaf_green", "M_leaf_cherry", "M_leaf_flora", "M_bark"}
++VERTEX_COLOUR = {"LM_setts", "LM_lawn", "LM_render", "LM_wood", "LM_roof", "LM_grass", "M_leaf_green", "M_leaf_cherry", "M_leaf_flora", "M_bark"}
+ ALPHA = {"M_leaf_green", "M_leaf_cherry", "M_leaf_flora", "M_water", "M_waterfall", "M_glass"}
+ FLAT = {"M_glow_plot": "#22D3FF"}
+ 
+@@ -587,6 +665,14 @@
+             if name in ("M_bark",):
+                 m["doubleSided"] = False
+     js["extensionsUsed"] = sorted(used)
++    # the light map's contract for the game (villageModelPrep.ts / sunShadows.ts): "live" = the day map has no direct
++    # sun (SUN_SPLIT), the game adds the real sun with live shadows; absent = the old map with the sun baked in
++    if SUN_SPLIT and not flag("--keepsun") and not flag("--nobake"):
++        extras = js.setdefault("asset", {}).setdefault("extras", {})
++        extras["cvLightmapSun"] = SUN_MARK
++        extras["cvBakeSun"] = {"azimuthDeg": U.LOOK["sun_azimuth_deg"], "elevationDeg": U.LOOK["sun_elevation_deg"],
++                               "strength": U.LOOK["sun_strength"], "colour": U.LOOK["sun_colour"],
++                               "angleDeg": U.LOOK["sun_angle_deg"]}
+     # seat markers: their custom properties (approach, frontEdge, standX/standZ, ...) as node extras (export_extras stays off:
+     # it would put every object's properties in the file)
+     for nd in js.get("nodes", []):
+@@ -696,6 +782,20 @@
+     log("day shop lights", n)
+ 
+ 
++# The GLB export's settings (bake_village.main and reexport_village.py). vrb2: positions at 18 bits (were 16): the backdrop
++# now spans 520 m, and the waterfall site box's outline must decode to within a few mm of its lines and seam heights
++# (16 bits gave 8 mm steps, the box edge moved up to 4 mm and opened a crack against waterfall.glb).
++EXPORT_KW = dict(export_format="GLB", use_selection=True, export_apply=True, export_yup=True,
++                 export_texcoords=True, export_normals=True, export_materials="EXPORT", export_image_format="WEBP",
++                 export_image_quality=80, export_animations=False, export_cameras=False, export_lights=False,
++                 export_extras=False, export_skins=False, export_morph=False, export_vertex_color="MATERIAL",
++                 export_tangents=False, export_gpu_instances=True,
++                 export_draco_mesh_compression_enable=True, export_draco_mesh_compression_level=6,
++                 export_draco_position_quantization=18, export_draco_normal_quantization=10,
++                 export_draco_texcoord_quantization=14, export_draco_color_quantization=10,
++                 export_draco_generic_quantization=12)
++
++
+ # ------------------------------------------------------------------------------------------------- main --
+ 
+ def main():
+@@ -704,6 +804,9 @@
+     scene.cycles.transparent_max_bounces = 24
+     size = arg("--size", 2048, int)
+     samples = arg("--samples", 384, int)
++    if flag("--sunonly"):
++        sun_only(scene, size, arg("--samples", 128, int))
++        return
+     if flag("--night"):
+         setup_night(scene)
+         lms = [o for o in bpy.data.objects if o.get("cat") == "lm"]
+@@ -725,8 +828,14 @@
+     lm_png = os.path.join(WORK, "village_lm.png")
+     stats = {}
+     if not flag("--nobake"):
++        sun = None
++        if SUN_SPLIT and not flag("--keepsun"):
++            # the sun lamp alone (before the day shop lights go in: they are not the sun)
++            sun = bake_sun_direct(scene, lms, size, max(64, samples // 3))
++            save_png(encode_lm(sun), os.path.join(WORK, "village_lm_sun.png"))
+         add_day_shop_lights(scene)
+-        stats = bake_lightmap(scene, lms, size, samples, lm_png)
++        stats = bake_lightmap(scene, lms, size, samples, lm_png, subtract=sun)
++        stats["sun_split"] = sun is not None
+         log("light map", stats)
+     # foliage vertex lighting: merged leaf meshes, non-LM bark of instanced trees, one representative per variant
+     fol = [o for o in bpy.data.objects if o.type == "MESH" and o.get("cat") == "leaf" and len(o.data.polygons)]
+@@ -789,15 +898,7 @@
+     bpy.ops.wm.save_as_mainfile(filepath=os.path.join(WORK, "village_export.blend"), copy=True)
+     glb = os.path.join(EXPORT, "village.glb")
+     select(exported + inst + cols + lights, exported[0])
+-    kw = dict(filepath=glb, export_format="GLB", use_selection=True, export_apply=True, export_yup=True,
+-              export_texcoords=True, export_normals=False, export_materials="EXPORT", export_image_format="WEBP",
+-              export_image_quality=80, export_animations=False, export_cameras=False, export_lights=False,
+-              export_extras=False, export_skins=False, export_morph=False, export_vertex_color="MATERIAL",
+-              export_tangents=False, export_gpu_instances=True,
+-              export_draco_mesh_compression_enable=True, export_draco_mesh_compression_level=6,
+-              export_draco_position_quantization=16, export_draco_normal_quantization=10,
+-              export_draco_texcoord_quantization=14, export_draco_color_quantization=10,
+-              export_draco_generic_quantization=12)
++    kw = dict(filepath=glb, **EXPORT_KW)
+     bpy.ops.export_scene.gltf(**kw)
+     seat_props = {o.name: {k: (round(float(o[k]), 3) if isinstance(o[k], float) else o[k]) for k in o.keys()
+                            if k != "cat" and isinstance(o[k], (int, float, str, bool))}
+diff -ruN -x __pycache__ a/art/village/tools/build_busstop.py tools/build_busstop.py
+--- a/art/village/tools/build_busstop.py	2026-11-16 20:43:11.227453300 +0900
++++ b/art/village/tools/build_busstop.py	2026-11-16 21:30:39.133872400 +0900
+@@ -45,8 +45,16 @@
+ RENDERS = arg("--renders")
+ 
+ # --- placement (shared/src/village/villageLayout.ts busStop) ---------------------------------------------------------
+-CX, CZ = 40.9, -4.9  # the shelter's centre
+-DEPTH, LEN = 1.5, 3.6
++# vrb2 (VILLAGE-TODO A5, 2026-11-16): the Korean standard roadside shelter (research: Seoul roadside / small-model smart
++# shelters, Osan and Nowon village-bus shelters): back posts only with a flat cantilever roof (no front posts: the whole
++# road side is open), a dark fascia with the stop's name, framed clear glass back wall and part-depth side screens, a lit
++# ad / route box in one end bay, the bench along the back. 0.9 m further from the road than before (the front edge
++# 4.1 m from the parked bus instead of 3.3 m), 4.4 m long, 1.8 m deep.
++CX, CZ = 41.9, -4.9  # the shelter's centre
++DEPTH, LEN = 1.8, 4.4
++ROOF_HX, ROOF_HZ = 1.15, 2.45     # the roof round the centre (shared villageLayout.ts BUS_SHELTER_ROOF)
++ROOF_BOTTOM, ROOF_TOP = 3.3, 3.55
++SIDE_DEPTH = 1.55                 # the side glass screens, from the back wall toward the road
+ PAD = [(38.6, -10.8), (40.4, -10.8), (40.4, -7.4), (43.4, -7.4), (43.4, -1.4), (38.6, -1.4)]
+ PAD_H = 0.045
+ SIGN_AT = (40.0, -1.8)
+@@ -57,7 +65,8 @@
+ def make_materials():
+     m = bpy.data
+     MAT["frame"] = material("M_stop_frame", srgb("#3F464D"), 0.5, 0.6)
+-    MAT["roof"] = material("M_stop_roof", srgb("#D7DCE1"), 0.5, 0.2)
++    MAT["roof"] = material("M_stop_roof", srgb("#555C63"), 0.45, 0.4)
++    MAT["soffit"] = material("M_stop_soffit", srgb("#C9CED3"), 0.5, 0.3)
+     MAT["trim"] = material("M_stop_trim", srgb("#1665B4"), 0.45, 0.1)
+     MAT["wood"] = material("M_stop_wood", srgb("#9C7448"), 0.7, 0.0)
+     MAT["steel"] = material("M_stop_steel", srgb("#8D949A"), 0.45, 0.7)
+@@ -72,8 +81,9 @@
+     except Exception:
+         pass
+     MAT["glass"] = glass
+-    for key, img, em in (("map", "T_stop_map.png", 0.55), ("bis", "T_stop_bis.png", 1.0), ("sign", "T_stop_sign.png", 0.0), ("pad", "T_pad.png", 0.0)):
+-        mat = material("M_stop_" + key, (1, 1, 1), 0.7 if key != "pad" else 0.9, 0.0, image=os.path.join(TEX, img))
++    for key, img, em in (("map", "T_stop_map.png", 0.55), ("bis", "T_stop_bis.png", 1.0), ("sign", "T_stop_sign.png", 0.0),
++                         ("pad", "T_pad.png", 0.0), ("name", "T_stop_name.png", 0.35), ("tactile", "T_tactile.png", 0.0)):
++        mat = material("M_stop_" + key, (1, 1, 1), 0.7 if key not in ("pad", "tactile") else 0.9, 0.0, image=os.path.join(TEX, img))
+         bsdf = next(n for n in mat.node_tree.nodes if n.type == "BSDF_PRINCIPLED")
+         if em:
+             tex = next(n for n in mat.node_tree.nodes if n.type == "TEX_IMAGE")
+@@ -131,68 +141,79 @@
+     top.uvfn = lambda p: (p[0] / 2.0, p[2] / 2.0)
+ 
+ 
++def quad_uv(part, pts, uvs=((0, 0), (1, 0), (1, 1), (0, 1))):
++    """A textured quad (game-space corners, counter-clockwise seen from its front); its UVs are kept per quad."""
++    ids = [part.vert(p) for p in pts]
++    part.quad(*ids)
++    part.uvq = getattr(part, "uvq", []) + list(uvs)
++    part.flat = True
++
++
+ def build_shelter(parts):
+-    fr, roof, trim, glass, steel, wood, led, black = (parts[k] for k in ("frame", "roof", "trim", "glass", "steel", "wood", "led", "black"))
+-    x0, x1 = CX - DEPTH / 2, CX + DEPTH / 2  # front (road side) and back
++    fr, roof, soffit, glass, steel, wood, led, black = (parts[k] for k in ("frame", "roof", "soffit", "glass", "steel", "wood", "led", "black"))
++    x0, x1 = CX - DEPTH / 2, CX + DEPTH / 2  # front (road side, open) and back
+     z0, z1 = CZ - LEN / 2, CZ + LEN / 2
+     yb = PAD_H  # floor
+-    ROOF_BOTTOM = 2.55
+-    # --- roof: an arched profile (x, y) extruded along z, with blue trim boards on the front and back edges
+-    f = Frame((0, 0, z0 - 0.25), (0, 0, 1))  # local x = world x, y up, z along +z
+-    rx0, rx1 = CX - 1.05, CX + 1.05
+-    pts = []
+-    N = 10
+-    for i in range(N + 1):
+-        t = i / N
+-        x = rx0 + (rx1 - rx0) * t
+-        sag = 0.07 * (1 - ((x - CX) / 1.05) ** 2)
+-        pts.append((x, ROOF_BOTTOM + 0.10 + sag))
+-    prof = [(rx0, ROOF_BOTTOM), (rx1, ROOF_BOTTOM)] + list(reversed(pts))
+-    f.prism(roof, prof, 0.0, LEN + 0.5)
+-    for xx in (rx0 + 0.03, rx1 - 0.03):  # trim boards (front and back edge), blue
+-        box(trim, xx, ROOF_BOTTOM - 0.01, CZ, 0.06, 0.16, LEN + 0.5)
+-    for zz in (z0 - 0.25 + 0.015, z1 + 0.25 - 0.015):  # end caps
+-        box(trim, CX, ROOF_BOTTOM + 0.04, zz, 2.1, 0.20, 0.03)
+-    # LED strip under the roof along the front
+-    box(led, CX - 0.55, ROOF_BOTTOM - 0.02, CZ, 0.05, 0.02, LEN - 0.4)
+-    # --- posts (square aluminium): front pair, back four
+-    post = lambda x, z: box(fr, x, (yb + ROOF_BOTTOM) / 2, z, 0.08, ROOF_BOTTOM - yb, 0.08)
+-    for z in (z0 + 0.05, z1 - 0.05):
+-        post(x0 + 0.05, z)
+-    back = [z0 + 0.05, CZ - 0.62, CZ + 0.62, z1 - 0.05]
+-    for z in back:
+-        post(x1 - 0.05, z)
+-    # --- back wall: glass | light box | glass, each in a thin frame, kick plate and top rail
+-    xb = x1 - 0.05
+-    gy0, gy1 = yb + 0.16, ROOF_BOTTOM - 0.10
+-
+-    def glass_panel_zy(xc, za, zb):
+-        box(glass, xc, (gy0 + gy1) / 2, (za + zb) / 2, 0.012, gy1 - gy0, zb - za - 0.08)
+-        box(fr, xc, gy0 - 0.08, (za + zb) / 2, 0.05, 0.16, zb - za)  # kick plate
+-        box(fr, xc, gy1 + 0.04, (za + zb) / 2, 0.05, 0.05, zb - za)  # top rail
+-        box(fr, xc, (gy0 + gy1) / 2, (za + zb) / 2, 0.03, 0.03, zb - za - 0.08)  # a mid rail
+-    glass_panel_zy(xb, back[0], back[1])
+-    glass_panel_zy(xb, back[2], back[3])
+-    # light box in the middle bay
+-    lb_y0, lb_y1 = yb + 0.42, yb + 2.04
+-    box(fr, xb + 0.01, (lb_y0 + lb_y1) / 2, CZ, 0.075, lb_y1 - lb_y0, 1.24)
+-    box(fr, xb, yb + 0.2, CZ, 0.05, 0.40, 1.24)
+-    box(fr, xb, (lb_y1 + ROOF_BOTTOM) / 2, CZ, 0.05, ROOF_BOTTOM - lb_y1, 1.24)
++    xb = x1 - 0.05  # the back wall's plane (the posts' centre line)
++    # --- roof: a flat slab (light soffit underneath), a 25 cm fascia all round, cantilevered from the back posts
++    rx0, rx1 = CX - ROOF_HX, CX + ROOF_HX
++    rz0, rz1 = CZ - ROOF_HZ, CZ + ROOF_HZ
++    box(roof, CX, ROOF_BOTTOM + 0.15, CZ, 2 * ROOF_HX - 0.1, 0.10, 2 * ROOF_HZ - 0.1)        # top sheet
++    box(soffit, CX, ROOF_BOTTOM + 0.03, CZ, 2 * ROOF_HX - 0.1, 0.02, 2 * ROOF_HZ - 0.1)      # soffit
++    for xx in (rx0 + 0.025, rx1 - 0.025):                                                     # front / back fascia
++        box(roof, xx, (ROOF_BOTTOM + ROOF_TOP) / 2, CZ, 0.05, ROOF_TOP - ROOF_BOTTOM, 2 * ROOF_HZ)
++    for zz in (rz0 + 0.025, rz1 - 0.025):                                                     # end fascia
++        box(roof, CX, (ROOF_BOTTOM + ROOF_TOP) / 2, zz, 2 * ROOF_HX, ROOF_TOP - ROOF_BOTTOM, 0.05)
++    # the stop's name on the front and back fascia (T_stop_name, 8:1)
++    nm = parts["name"]
++    yn0, yn1 = ROOF_BOTTOM + 0.035, ROOF_TOP - 0.035
++    w = (yn1 - yn0) * 8
++    xf = rx0 - 0.002
++    quad_uv(nm, [(xf, yn0, CZ - w / 2), (xf, yn0, CZ + w / 2), (xf, yn1, CZ + w / 2), (xf, yn1, CZ - w / 2)])
++    xk = rx1 + 0.002
++    quad_uv(nm, [(xk, yn0, CZ + w / 2), (xk, yn0, CZ - w / 2), (xk, yn1, CZ - w / 2), (xk, yn1, CZ + w / 2)])
++    # LED line lights in the soffit
++    for xx in (rx0 + 0.35, CX + 0.1):
++        box(led, xx, ROOF_BOTTOM + 0.012, CZ, 0.06, 0.02, 2 * ROOF_HZ - 0.6)
++    # --- back posts (120 mm square steel) and the tapered cantilever beams under the roof
++    posts = [z0 + 0.06, CZ - 0.65, z1 - 0.95, z1 - 0.06]
++    for z in posts:
++        box(fr, xb, (yb + ROOF_BOTTOM) / 2, z, 0.12, ROOF_BOTTOM - yb, 0.12)
++        box(fr, xb, yb + 0.01, z, 0.24, 0.02, 0.24)                                           # base plate
++        beam = [(xb + 0.06, ROOF_BOTTOM - 0.24), (xb + 0.06, ROOF_BOTTOM), (rx0 + 0.08, ROOF_BOTTOM), (rx0 + 0.08, ROOF_BOTTOM - 0.06)]
++        Frame((0, 0, z - 0.04), (0, 0, 1)).prism(fr, beam, 0.0, 0.08)
++    # --- back wall: two framed clear glass bays (kick plate, top rail, hand-height rail), the lit ad / route box in the
++    #     south bay
++    gy0, gy1 = yb + 0.18, ROOF_BOTTOM - 0.12
++
++    def glass_bay(xc, za, zb):
++        za, zb = za + 0.06, zb - 0.06
++        box(glass, xc, (gy0 + gy1) / 2, (za + zb) / 2, 0.012, gy1 - gy0, zb - za)
++        box(fr, xc, gy0 - 0.09, (za + zb) / 2, 0.05, 0.18, zb - za)        # kick plate
++        box(fr, xc, gy1 + 0.04, (za + zb) / 2, 0.05, 0.06, zb - za)        # top rail
++        box(fr, xc, yb + 1.05, (za + zb) / 2, 0.04, 0.05, zb - za)         # rail at hand height
++    glass_bay(xb, posts[0], posts[1])
++    glass_bay(xb, posts[1], posts[2])
++    lz = (posts[2] + posts[3]) / 2
++    ly0, ly1 = yb + 0.2, yb + 2.38
++    box(fr, xb - 0.03, (ly0 + ly1) / 2, lz, 0.16, ly1 - ly0, 0.76)   # within the footprint: x xb-0.11..xb+0.05
++    box(fr, xb, (ly1 + ROOF_BOTTOM) / 2, lz, 0.06, ROOF_BOTTOM - ly1, 0.76)
++    box(fr, xb, (yb + ly0) / 2, lz, 0.12, ly0 - yb, 0.5)
+     mp = parts["map"]
+-    xm = xb + 0.01 - 0.0375 - 0.001
+-    zz0, zz1 = CZ - 0.52, CZ + 0.52
+-    ids = [mp.vert((xm, y, z)) for z, y in ((zz0, lb_y0 + 0.06), (zz1, lb_y0 + 0.06), (zz1, lb_y1 - 0.06), (zz0, lb_y1 - 0.06))]
+-    mp.quad(*ids)
+-    mp.uvq = [(0, 0), (1, 0), (1, 1), (0, 1)]
+-    mp.flat = True
+-    # --- the ends: a glass panel each, full height
+-    for z in (z0 + 0.05, z1 - 0.05):
+-        xc = (x0 + 0.05 + x1 - 0.05) / 2
+-        w = (x1 - x0) - 0.1
+-        box(glass, xc, (gy0 + gy1) / 2, z, w - 0.08, gy1 - gy0, 0.012)
+-        box(fr, xc, gy0 - 0.08, z, w, 0.16, 0.05)
+-        box(fr, xc, gy1 + 0.04, z, w, 0.05, 0.05)
+-    # --- bench along the back wall: 3 seat slats, 2 back slats, 2 end frames + 2 arm dividers
++    lw, lh = 0.62, (ly1 - ly0) - 0.14
++    ya, yc = ly0 + 0.07, ly0 + 0.07 + lh
++    xi = xb - 0.111
++    quad_uv(mp, [(xi, ya, lz - lw / 2), (xi, ya, lz + lw / 2), (xi, yc, lz + lw / 2), (xi, yc, lz - lw / 2)])
++    xo = xb + 0.051
++    quad_uv(mp, [(xo, ya, lz + lw / 2), (xo, ya, lz - lw / 2), (xo, yc, lz - lw / 2), (xo, yc, lz + lw / 2)])
++    # --- side screens: framed glass from the back wall SIDE_DEPTH toward the road (the front stays open)
++    for z in (z0 + 0.06, z1 - 0.06):
++        xa, xc_ = xb - SIDE_DEPTH, xb - 0.06
++        box(glass, (xa + xc_) / 2, (gy0 + gy1) / 2, z, xc_ - xa, gy1 - gy0, 0.012)
++        box(fr, (xa + xc_) / 2, gy0 - 0.09, z, xc_ - xa, 0.18, 0.05)
++        box(fr, (xa + xc_) / 2, gy1 + 0.04, z, xc_ - xa, 0.06, 0.05)
++        box(fr, xa, (yb + ROOF_BOTTOM) / 2, z, 0.06, ROOF_BOTTOM - yb, 0.06)                  # the screen's front stile
++    # --- bench along the back wall (as before: the shared seat data reads it): 3 seat slats, 2 back slats, steel frames
+     bz0, bz1 = CZ - 1.15, CZ + 1.15
+     for dx in (0.10, 0.25, 0.40):
+         box(wood, x1 - 0.50 + dx - 0.20, yb + 0.45, CZ, 0.13, 0.035, bz1 - bz0)
+@@ -204,19 +225,28 @@
+         steel.tube((x1 - 0.20, yb + 0.44, z), (x1 - 0.17, yb + 1.0, z), 0.015, 0.015, seg=8)
+     for z in (CZ - 0.38, CZ + 0.38):
+         box(steel, x1 - 0.36, yb + 0.68, z, 0.40, 0.025, 0.04)
+-    # --- arrival display (BIS) under the roof's front edge: housing, two rods, the dot-matrix face
+-    bx = x0 + 0.12
+-    bz = CZ + 0.95
+-    by0, by1 = yb + 2.00, yb + 2.46
++    # --- arrival display (BIS) hung under the roof's front edge, above any hat (bottom 2.85 m)
++    bx = rx0 + 0.3
++    bz = CZ - 1.1
++    by0, by1 = 2.85, 3.2
+     box(black, bx, (by0 + by1) / 2, bz, 0.10, by1 - by0, 0.84)
+     for dz in (-0.28, 0.28):
+         steel.tube((bx, by1, bz + dz), (bx, ROOF_BOTTOM, bz + dz), 0.012, 0.012, seg=8)
+     bis = parts["bis"]
+     xf = bx - 0.05 - 0.001
+-    ids = [bis.vert((xf, y, z)) for z, y in ((bz - 0.38, by0 + 0.03), (bz + 0.38, by0 + 0.03), (bz + 0.38, by1 - 0.03), (bz - 0.38, by1 - 0.03))]
+-    bis.quad(*ids)
+-    bis.uvq = [(0, 0), (1, 0), (1, 1), (0, 1)]
+-    bis.flat = True
++    quad_uv(bis, [(xf, by0 + 0.03, bz - 0.38), (xf, by0 + 0.03, bz + 0.38), (xf, by1 - 0.03, bz + 0.38), (xf, by1 - 0.03, bz - 0.38)])
++
++
++def build_tactile(parts):
++    """Yellow warning blocks (점형 블록, 0.3 m) along the pad's road edge, where riders wait for the doors."""
++    t = parts["tactile"]
++    xa, xc = PAD[0][0] + 0.06, PAD[0][0] + 0.36
++    y = PAD_H + 0.004
++    za, zc = -10.5, -1.7
++    ids = [t.vert((xa, y, zc)), t.vert((xc, y, zc)), t.vert((xc, y, za)), t.vert((xa, y, za))]
++    t.quad(*ids)
++    t.uvfn = lambda p: (p[0] / 0.3, p[2] / 0.3)
++    t.flat = True
+ 
+ 
+ def build_sign(parts):
+@@ -250,10 +280,12 @@
+         "steel": ("stop_steel", "steel"), "black": ("stop_black", "black"), "concrete": ("pad_side", "concrete"),
+         "led": ("stop_led", "led"), "glass": ("stop_glass", "glass"), "map": ("stop_map", "map"), "bis": ("stop_bis", "bis"),
+         "sign": ("stop_sign", "sign"), "pad": ("pad_top", "pad"),
++        "soffit": ("stop_soffit", "soffit"), "name": ("stop_name", "name"), "tactile": ("pad_tactile", "tactile"),
+     }
+     parts = {k: Part(n, MAT[m]) for k, (n, m) in spec.items()}
+     build_pad(parts)
+     build_shelter(parts)
++    build_tactile(parts)
+     build_sign(parts)
+     for k, p in parts.items():
+         if not p.f:
+diff -ruN -x __pycache__ a/art/village/tools/build_village.py tools/build_village.py
+--- a/art/village/tools/build_village.py	2026-11-16 20:43:11.230076300 +0900
++++ b/art/village/tools/build_village.py	2026-11-16 22:04:59.241797600 +0900
+@@ -28,9 +28,12 @@
+ U.MATSPEC.update({
+     "LM_plaza": dict(tex="T_plaza.png", uv="plaza", rough=0.62, nor=NOR("rock_boulder_dry"), nor_scale=50.0,
+                      nor_strength=0.35),
++    # vrb2: the plaza's setts, the ring road with its markings, the sidewalk (build_plaza_disc), each at real scale on UV0
++    "LM_setts": dict(tex="T_setts.png", uv="explicit", rough=0.62, tint=True, nor=NOR("rock_boulder_dry"), nor_scale=8.0,
++                     nor_strength=0.3),
++    "LM_road": dict(tex="T_road.png", uv="explicit", rough=0.85, nor=NOR("asphalt_04"), nor_scale=8.0, nor_strength=0.3),
+     "LM_grass": dict(tex="T_grass.png", tile=3.0, rough=0.92, tint=True, nor=NOR("leafy_grass"), nor_strength=0.5),
+-    "LM_lawn": dict(tex="T_lawn.png", uv="explicit", rough=0.92, nor=NOR("leafy_grass"), nor_scale=6.0,
+-                    nor_strength=0.5),
++    "LM_lawn": dict(tex="T_grass.png", tile=3.0, rough=0.92, tint=True, nor=NOR("leafy_grass"), nor_strength=0.5),
+     "LM_stone": dict(tex="T_stone.png", tile=1.6, rough=0.55, nor=NOR("rock_boulder_dry"), nor_strength=0.45),
+     "LM_concrete": dict(tex="T_concrete.png", tile=3.0, rough=0.85, nor=NOR("asphalt_04"), nor_strength=0.4),
+     "LM_render": dict(tex="T_render.png", tile=2.5, rough=0.88, tint=True, nor=NOR("white_plaster_02"),
+@@ -373,15 +376,27 @@
+             ax, az, bx, bz = a["x"], a["z"], b["x"], b["z"]
+             L_ = math.hypot(bx - ax, bz - az)
+             ux, uz = (bx - ax) / L_, (bz - az) / L_
+-            # clip to outside the disc (r > DISC_R - 1.2)
++            # vrb2: the disc no longer paints the lanes (build_plaza_disc): a lane is drawn over the disc's grass verge
++            # (PLAZA_R .. R_IN, its ends under the kerbs) and from the sidewalk's granite edge outward (r >= SIDE_OUT - 0.1)
+             n = max(1, int(L_ / 2.0))
+-            for i in range(n):
+-                t0, t1 = i / n, (i + 1) / n
++            ts = {i / n for i in range(n + 1)}
++            for rr in (PLAZA_R, R_IN, SIDE_OUT - 0.1):
++                A2 = L_ * L_
++                B2 = 2 * (ax * (bx - ax) + az * (bz - az))
++                C2 = ax * ax + az * az - rr * rr
++                disc = B2 * B2 - 4 * A2 * C2
++                if disc >= 0:
++                    for t in ((-B2 - math.sqrt(disc)) / (2 * A2), (-B2 + math.sqrt(disc)) / (2 * A2)):
++                        if 0 < t < 1:
++                            ts.add(t)
++            ts = sorted(ts)
++            for i, (t0, t1) in enumerate(zip(ts[:-1], ts[1:])):
+                 x0, z0 = ax + (bx - ax) * t0, az + (bz - az) * t0
+                 x1, z1 = ax + (bx - ax) * t1, az + (bz - az) * t1
+-                if math.hypot(x1, z1) < DISC_R - 1.2 and math.hypot(x0, z0) < DISC_R - 1.2:
++                rm = math.hypot((x0 + x1) / 2, (z0 + z1) / 2)
++                if not (PLAZA_R < rm < R_IN or rm > SIDE_OUT - 0.1):
+                     continue
+-                e0 = 0.3 if i == n - 1 else 0.0
++                e0 = 0.3 if i == len(ts) - 2 else 0.0
+                 x1e, z1e = x1 + ux * e0, z1 + uz * e0
+                 q = [V(x0 - uz * hw, z0 + ux * hw, y), V(x1e - uz * hw, z1e + ux * hw, y),
+                      V(x1e + uz * hw, z1e - ux * hw, y), V(x0 + uz * hw, z0 - ux * hw, y)]
+@@ -430,24 +445,189 @@
+ 
+ 
+ def build_plaza_disc(c):
+-    """Polar disc r < DISC_R with the T_plaza texture (paving, road, sidewalk), 1 cm above the grid."""
++    """The plaza disc (r < DISC_R), 1 cm above the grid. vrb2 (2026-11-16, owner: the first-person ground was blurry next to
++    the crisp planters, and the road's lines stair-stepped): every surface has its own texture at real scale on UV0 (the
++    light map only lights it), instead of the one 2048 px T_plaza over 80 m:
++      r < 8      the fountain's surround (two rings of 64 charcoal blocks) and the ground under its basin  LM_setts
++      8 .. 30    granite setts in 0.6 m rings, ~0.9 m stones (alternate rings offset by half a stone), one quad per stone
++                 with its own T_setts cell; tones in Col: the 16 warm spokes, the warm/cool mosaic ring (8.6..12.6),
++                 the dark bands (12.6, 21.0, 29.4) — the pattern T_plaza painted                          LM_setts
++      31 .. 37   the ring road, u along it / v across it into T_road's rows (markings drawn in road space: smooth
++                 arcs): a 12 m crossing section at every crosswalk (stop lines at the signalised two), a bus-bay section
++                 without the centre line, plain sections between (whole 7 m dash periods)                  LM_road
++      37 .. 39   the sidewalk's concrete pavers (T_setts' bottom half, round the ring) and its granite edge LM_setts, LM_stone
++      30 .. 31, 39 .. DISC_R  grass: plaza_grass (build_plaza_grass), lanes over it (build_lanes)
++    Vertices are shared along every circle (each face lists its neighbours' vertices on its arcs): one connected disc, so
++    the light map packs it as one island as before."""
+     mb = MB()
+-    rings = [0.0, 3.0, 6.0, 8.0, 10.5, 13.0, 16.0, 19.0, 22.0, 25.0, 28.0, 30.0, 31.0, 34.0, 37.0, 39.0, DISC_R]
+-    segs = 160
+     y = 0.01
+-    for j in range(len(rings) - 1):
+-        r0, r1 = rings[j], rings[j + 1]
+-        for i in range(segs):
+-            a0, a1 = 2 * math.pi * i / segs, 2 * math.pi * (i + 1) / segs
+-            if r0 == 0:
+-                pts = [V(0, 0, y), V(r1 * math.cos(a0), r1 * math.sin(a0), y), V(r1 * math.cos(a1), r1 * math.sin(a1), y)]
+-            else:
+-                pts = [V(r0 * math.cos(a0), r0 * math.sin(a0), y), V(r1 * math.cos(a0), r1 * math.sin(a0), y),
+-                       V(r1 * math.cos(a1), r1 * math.sin(a1), y), V(r0 * math.cos(a1), r0 * math.sin(a1), y)]
+-            mb.face(pts, "LM_plaza", hint=Vector((0, 0, 1)))
++    TAU = 2 * math.pi
++    wrap = lambda a: (a + math.pi) % TAU - math.pi  # noqa: E731
++
++    def P(r, a):
++        return V(r * math.cos(a), r * math.sin(a), y)
++
++    # ---------------------------------------------------------------- stones (r < 30)
++    SETT_ALONG, SETT_ACROSS = 0.9, 0.6
++    rings = [(6.0, 7.0, 64, "surround"), (7.0, 8.0, 64, "surround")]
++    edges = [8.0] + [round(k * SETT_ACROSS, 6) for k in range(14, 51)]
++    for r0, r1 in zip(edges[:-1], edges[1:]):
++        ring = int(math.floor((r0 + r1) / 2 / SETT_ACROSS))
++        rings.append((r0, r1, max(8, int(round(TAU * (ring + 0.5) * SETT_ACROSS / SETT_ALONG))), ring))
++    # stone boundary angles per ring (ring k offset by half a stone when odd)
++    def bounds(n, off):
++        return [wrap(-math.pi + TAU * (k - off) / n) for k in range(n)]
++    ring_bounds = []
++    for (r0, r1, n, ring) in rings:
++        off = 0.5 * (ring % 2) if ring != "surround" else (0.5 if r0 == 7.0 else 0.0)
++        ring_bounds.append(bounds(n, off))
++    # the angles on each circle: both neighbours' stone boundaries and a point every <= 0.25 m (smooth arcs)
++    circles = {}
++    for i, (r0, r1, n, ring) in enumerate(rings):
++        for r in (r0, r1):
++            circles.setdefault(r, set()).update(round(a, 9) for a in ring_bounds[i])
++    for r, s in circles.items():
++        if r <= 12.0:       # smooth arcs where the stones are most curved (a 0.9 m chord at r 12 bows 8 mm)
++            m = max(64, int(math.ceil(TAU * r / 0.3)))
++            s.update(round(wrap(-math.pi + TAU * k / m), 9) for k in range(m))
++    circ = {r: sorted(s) for r, s in circles.items()}
++
++    def arc(r, a0, a1):
++        """Circle r's vertex angles from a0 to a1 (going up in angle, a1 may be past +pi)."""
++        out = [a0]
++        for a in circ[r]:
++            for aa in (a, a + TAU):
++                if a0 + 1e-9 < aa < a1 - 1e-9:
++                    out.append(aa)
++        out = sorted(set(out))
++        out.append(a1)
++        return out
++
++    def tone(ring, k, r0, r1, am):
++        rm = (r0 + r1) / 2
++        if ring == "surround":
++            h = ((k * 2654435761) % 1000) / 1000.0
++            return (0.46 + 0.08 * h, 0.44 + 0.08 * h, 0.43 + 0.08 * h, 1.0)
++        if 12.6 - 1e-6 < r0 < 13.2 or 21.0 - 1e-6 < r0 < 21.6 or 29.4 - 1e-6 < r0 < 30.0:
++            return (0.62, 0.60, 0.58, 1.0)
++        spoke = abs(((am + math.pi) / TAU * 16 + 0.5) % 1 - 0.5) * (TAU * rm / 16)
++        if spoke < 0.45 and 8.6 < rm < 29.4:
++            return (0.84, 0.75, 0.68, 1.0)
++        if 8.6 < rm < 12.6:
++            return (0.98, 0.88, 0.80, 1.0) if (ring + k) % 2 == 0 else (0.94, 0.95, 0.98, 1.0)
++        return (1.0, 1.0, 1.0, 1.0)
++
++    for i, (r0, r1, n, ring) in enumerate(rings):
++        b = ring_bounds[i]
++        lo = (r1 - SETT_ACROSS) if ring != "surround" else r0
++        span_r = SETT_ACROSS if ring != "surround" else (r1 - r0)
++        for k in range(n):
++            a0 = b[k]
++            a1 = b[(k + 1) % n]
++            if a1 <= a0:
++                a1 += TAU
++            h = (((k + 7) * 2654435761 + (999 if ring == "surround" else ring) * 40503) % 8)
++            cu0, cu1 = h / 8.0, (h + 1) / 8.0
++            uv = lambda r, a: (cu0 + (cu1 - cu0) * (a - a0) / (a1 - a0), 0.5 + 0.5 * (r - lo) / span_r)  # noqa: E731
++            outer = arc(r1, a0, a1)
++            inner = arc(r0, a0, a1)
++            pts = [P(r0, a) for a in inner] + [P(r1, a) for a in reversed(outer)]
++            uvs = [uv(r0, a) for a in inner] + [uv(r1, a) for a in reversed(outer)]
++            mb.face(pts, "LM_setts", uvs, hint=Vector((0, 0, 1)), tint=tone(ring, k, r0, r1, wrap((a0 + a1) / 2)))
++    # the ground under the fountain's basin: a fan to the first circle
++    inner6 = circ[6.0]
++    for a, b2 in zip(inner6, inner6[1:] + [inner6[0] + TAU]):
++        mb.face([V(0, 0, y), P(6.0, a), P(6.0, b2)], "LM_setts", [(0.06, 0.75), (0.07, 0.75), (0.07, 0.8)],
++                hint=Vector((0, 0, 1)), tint=(0.46, 0.44, 0.43, 1.0))
++
++    # ---------------------------------------------------------------- the ring road (31 .. 37) and the sidewalk (37 .. 39)
++    road_rows = {"plain": (0, 7.0), "bay": (1, 7.0), "xw_signal": (2, 12.0), "xw": (3, 12.0)}
++    secs = []
++    for lane_id, ang, signal in road_crossings():
++        h = 6.0 / 34.0
++        secs.append([ang - h, ang + h, "xw_signal" if signal else "xw"])
++    secs.sort()
++    bb = L["busStop"]["bus"]["bounds"]
++    zlo, zhi = bb["minZ"] - 1.2, bb["maxZ"] + 1.2
++    bay = (math.atan2(zlo, math.sqrt(34.0 ** 2 - zlo ** 2)), math.atan2(zhi, math.sqrt(34.0 ** 2 - zhi ** 2)))
++    # the gaps between crossings: bay where they overlap the bus's bay, plain elsewhere
++    full = []
++    for j, s in enumerate(secs):
++        full.append(s)
++        nxt = secs[(j + 1) % len(secs)][0] + (TAU if j == len(secs) - 1 else 0.0)
++        g0, g1 = s[1], nxt
++        cuts = [g0, g1]
++        for e in bay:
++            for ee in (e, e + TAU):
++                if g0 < ee < g1:
++                    cuts.append(ee)
++        cuts.sort()
++        for a, b2 in zip(cuts[:-1], cuts[1:]):
++            mid = wrap((a + b2) / 2)
++            kind = "bay" if bay[0] < mid < bay[1] else "plain"
++            full.append([a, b2, kind])
++    seg_m = 0.5
++    walk_periods = round(TAU * (R_OUT + SIDE_OUT) / 2 / 4.0)
++    road_angles = []
++    for (a0, a1, kind) in full:
++        n = max(1, int(math.ceil((a1 - a0) * R_OUT / seg_m)))
++        for k in range(n):
++            road_angles.append((a0 + (a1 - a0) * k / n, a0 + (a1 - a0) * (k + 1) / n, a0, a1, kind))
++    for (b0, b1, a0, a1, kind) in road_angles:
++        row, length = road_rows[kind]
++        periods = (34.0 * (a1 - a0)) / length
++        if kind in ("plain", "bay"):
++            periods = max(1, round(periods))
++        def uv(r, a, row=row, a0=a0, a1=a1, periods=periods):
++            return (periods * (a - a0) / (a1 - a0), (3 - row + (r - R_IN) / RING_W) / 4.0)
++        mb.face([P(R_IN, b0), P(R_IN, b1), P(R_OUT, b1), P(R_OUT, b0)], "LM_road",
++                [uv(R_IN, b0), uv(R_IN, b1), uv(R_OUT, b1), uv(R_OUT, b0)], hint=Vector((0, 0, 1)))
++        # the sidewalk: concrete pavers to 38.86 (T_setts' bottom half: a 4 m band round the ring) and a 14 cm granite edge
++        rw = SIDE_OUT - 0.14
++        wu = lambda a: walk_periods * (a + math.pi) / TAU  # noqa: E731
++        mb.face([P(R_OUT, b0), P(R_OUT, b1), P(rw, b1), P(rw, b0)], "LM_setts",
++                [(wu(b0), 0.0), (wu(b1), 0.0), (wu(b1), 0.5 * (rw - R_OUT) / 1.86), (wu(b0), 0.5 * (rw - R_OUT) / 1.86)],
++                hint=Vector((0, 0, 1)))
++        mb.face([P(SIDE_OUT - 0.14, b0), P(SIDE_OUT - 0.14, b1), P(SIDE_OUT, b1), P(SIDE_OUT, b0)], "LM_stone",
++                hint=Vector((0, 0, 1)))
+     return mb.finish("plaza_disc", c)
+ 
+ 
++def road_crossings():
++    """[(lane id, angle, signalised)] where each lane's first leg crosses the ring road's middle (R 34): the crosswalks
++    (make_textures.py crossings(): lane_plot_e has none; lane_bus and lane_plot_n are signalised, shared crossings.ts)."""
++    out = []
++    for lane in L["lanes"]:
++        if lane["id"] in ("lane_plot_e",):
++            continue
++        a, b = lane["points"][0], lane["points"][1]
++        dx, dz = b["x"] - a["x"], b["z"] - a["z"]
++        A = dx * dx + dz * dz
++        B = 2 * (a["x"] * dx + a["z"] * dz)
++        Cc = a["x"] ** 2 + a["z"] ** 2 - 34.0 ** 2
++        t = (-B + math.sqrt(B * B - 4 * A * Cc)) / (2 * A)
++        px, pz = a["x"] + t * dx, a["z"] + t * dz
++        out.append((lane["id"], math.atan2(pz, px), lane["id"] in ("lane_bus", "lane_plot_n")))
++    return out
++
++
++def build_plaza_grass(c):
++    """The disc's grass (vrb2): the verge between the plaza's kerb and the road's (30 .. 31) and the ring past the
++    sidewalk (39 .. DISC_R), world-tiled LM_grass with the outer ground's macro tint, 1 cm up like the disc."""
++    mb = MB()
++    y = 0.01
++    m = 512
++    for (r0, r1) in ((PLAZA_R, R_IN), (SIDE_OUT, DISC_R)):
++        for k in range(m):
++            a0, a1 = 2 * math.pi * k / m, 2 * math.pi * (k + 1) / m
++            pts = [V(r0 * math.cos(a0), r0 * math.sin(a0), y), V(r0 * math.cos(a1), r0 * math.sin(a1), y),
++                   V(r1 * math.cos(a1), r1 * math.sin(a1), y), V(r1 * math.cos(a0), r1 * math.sin(a0), y)]
++            mb.face(pts, "LM_grass", hint=Vector((0, 0, 1)))
++    ob = mb.finish("plaza_grass", c)
++    macro_tint(ob)
++    return ob
++
++
+ def lane_crossings():
+     """Angles (radians, game atan2(z, x)) and half-widths where lanes cross the ring (for kerb gaps)."""
+     out = []
+@@ -749,6 +929,7 @@
+     if "plaza" in parts:
+         c = U.coll("plaza", root)
+         build_plaza_disc(c)
++        build_plaza_grass(c)
+         build_ground(c)
+         build_lanes(c)
+         grass_tufts(c)
+@@ -791,6 +972,9 @@
+     if "backdrop" in parts:
+         c = U.coll("backdrop", root)
+         PN.backdrop(c)
++        # vrb2: the waterfall's site box out of the ground and the backdrop, the seam file for waterfall.glb
++        import falls_site
++        falls_site.apply(L, WORK)
+     U.make_light_empties(U.coll("lights", root))
+     bpy.ops.wm.save_as_mainfile(filepath=os.path.join(WORK, "village_authoring.blend"))
+     prev = arg("--preview")
+diff -ruN -x __pycache__ a/art/village/tools/falls_site.py tools/falls_site.py
+--- a/art/village/tools/falls_site.py	1970-01-01 09:00:00.000000000 +0900
++++ b/art/village/tools/falls_site.py	2026-11-16 21:37:14.810450000 +0900
+@@ -0,0 +1,265 @@
++"""B1 waterfall site box, cut in the village source (vrb2, 2026-11-16; design: docs/designs/waterfall/design.md §7.2 V4-V6).
++
++The falls are their own model (client/public/models/village/waterfall.glb) and own everything inside
++`layout.backdrop.waterfall.site` (x -140..-100, z -104..-58, game metres). parts_nature.backdrop() no longer builds the old
++cliff, rocks, ribbons, mist, foam or pool (V1-V3) and parts_fill plants no forest card in the box (V9). This module cuts the
++ground that is left, in the authoring scene, before the bake (so the bake never sees the old ground inside the box):
++
++  V5b  pocket flatten: the ground is first split on the rest pocket's lines (x -106..-95, z -90..-68) and the 2 m ramp's
++       lines, then every vertex there is lowered toward 0: y *= 1 - smooth(2, 0, distance to the pocket box).
++  V4/V6 the ground grid (ground_outer, LM_grass) and the backdrop terrain (backdrop_near) are split on the box's four lines
++       and every face inside it goes; the faces against the outline are split again at the falls ground's boundary vertex
++       lines (every metre, every 2 m on x -140..-128), so the outline has a vertex at each.
++  V5   the seam: the visible (top-most) ground's height 1 mm outside the outline at each of those points, rounded to
++       1/128 m, is the seam polyline; every outline vertex of a visible layer is snapped onto it (a layer hidden under
++       another stays). The polyline is written as art/village/work/waterfall_site_edge.json (172 points, 1 m, CCW from the
++       north-west corner), the file build_waterfall.py meshes the falls ground to.
++
++This is scripts/patch-village-falls-site.mjs (feat/falls-w6, which cut the shipped GLB in place) done on the source.
++Blender is (X, Y, Z) = (x, -z, y).
++"""
++import json
++import math
++import os
++
++import bmesh
++import bpy
++from mathutils import Vector
++from mathutils.bvhtree import BVHTree
++
++RAMP = 2.0
++EPS = 1e-5
++GROUND = ("ground_outer", "backdrop_near")
++
++
++def smooth(a, b, x):
++    t = max(0.0, min(1.0, (x - a) / (b - a)))
++    return t * t * (3 - 2 * t)
++
++
++def box_dist(x, z, b):
++    return math.hypot(max(b["minX"] - x, 0.0, x - b["maxX"]), max(b["minZ"] - z, 0.0, z - b["maxZ"]))
++
++
++def falls_axes(site):
++    xs = [x for x in range(int(site["minX"]), int(site["maxX"]) + 1) if x > -128 or x % 2 == 0]
++    zs = list(range(int(site["minZ"]), int(site["maxZ"]) + 1))
++    return xs, zs
++
++
++def edge_points(site):
++    b = site
++    pts = []
++
++    def run(x0, z0, x1, z1):
++        n = round(math.hypot(x1 - x0, z1 - z0))
++        for i in range(n):
++            pts.append((x0 + (x1 - x0) * i / n, z0 + (z1 - z0) * i / n))
++    run(b["minX"], b["minZ"], b["maxX"], b["minZ"])
++    run(b["maxX"], b["minZ"], b["maxX"], b["maxZ"])
++    run(b["maxX"], b["maxZ"], b["minX"], b["maxZ"])
++    run(b["minX"], b["maxZ"], b["minX"], b["minZ"])
++    return pts
++
++
++def on_edge(x, z, b, tol=1e-4):
++    if abs(z - b["minZ"]) < tol and b["minX"] - tol <= x <= b["maxX"] + tol:
++        return "n", x
++    if abs(z - b["maxZ"]) < tol and b["minX"] - tol <= x <= b["maxX"] + tol:
++        return "s", x
++    if abs(x - b["maxX"]) < tol and b["minZ"] - tol <= z <= b["maxZ"] + tol:
++        return "e", z
++    if abs(x - b["minX"]) < tol and b["minZ"] - tol <= z <= b["maxZ"] + tol:
++        return "w", z
++    return None
++
++
++def game(v):
++    """Blender vertex co (object = world: the builders' meshes have identity transforms) -> game (x, y, z)."""
++    return v.co.x, v.co.z, -v.co.y
++
++
++def bisect(bm, faces, axis, value):
++    """Split `faces` on the game line x = value (axis 0) or z = value (axis 2)."""
++    faces = [f for f in faces if f.is_valid]
++    if not faces:
++        return
++    if axis == 0:
++        co, no = Vector((value, 0, 0)), Vector((1, 0, 0))
++    else:
++        co, no = Vector((0, -value, 0)), Vector((0, 1, 0))
++    edges = {e for f in faces for e in f.edges}
++    verts = {v for f in faces for v in f.verts}
++    bmesh.ops.bisect_plane(bm, geom=list(faces) + list(edges) + list(verts), dist=1e-6, plane_co=co, plane_no=no)
++
++
++def faces_in(bm, x0, x1, z0, z1):
++    out = []
++    for f in bm.faces:
++        xs = [v.co.x for v in f.verts]
++        zs = [-v.co.y for v in f.verts]
++        if max(xs) > x0 + EPS and min(xs) < x1 - EPS and max(zs) > z0 + EPS and min(zs) < z1 - EPS:
++            out.append(f)
++    return out
++
++
++def pocket_flatten(bm, pocket):
++    lines = [(2, pocket["minZ"]), (2, pocket["minZ"] - 1), (2, pocket["minZ"] - RAMP), (2, pocket["maxZ"]),
++             (2, pocket["maxZ"] + 1), (2, pocket["maxZ"] + RAMP), (0, pocket["maxX"]), (0, pocket["maxX"] + 1),
++             (0, pocket["maxX"] + RAMP), (0, pocket["minX"]), (0, pocket["minX"] - 1), (0, pocket["minX"] - RAMP)]
++    area = (pocket["minX"] - RAMP, pocket["maxX"] + RAMP, pocket["minZ"] - RAMP, pocket["maxZ"] + RAMP)
++    for axis, v in lines:
++        bisect(bm, faces_in(bm, *area), axis, v)
++    n = 0
++    for vert in bm.verts:
++        x, y, z = game(vert)
++        if y > 3:
++            continue
++        k = smooth(RAMP, 0.0, box_dist(x, z, pocket))
++        if k > 0 and abs(y) > 1e-6:
++            vert.co.z = y * (1 - k)
++            n += 1
++    return n
++
++
++def box_cut(bm, site, xs, zs):
++    b = site
++    for axis, v in ((0, b["minX"]), (0, b["maxX"]), (2, b["minZ"]), (2, b["maxZ"])):
++        bisect(bm, faces_in(bm, b["minX"] - 20, b["maxX"] + 20, b["minZ"] - 20, b["maxZ"] + 20), axis, v)
++    inside = []
++    for f in bm.faces:
++        c = f.calc_center_median()
++        x, z = c.x, -c.y
++        if b["minX"] + EPS < x < b["maxX"] - EPS and b["minZ"] + EPS < z < b["maxZ"] - EPS:
++            inside.append(f)
++    bmesh.ops.delete(bm, geom=inside, context="FACES")
++    # the seam lines on the faces lying against the outline
++    def against(f, side):
++        on = [on_edge(v.co.x, -v.co.y, b) for v in f.verts]
++        return sum(1 for e in on if e and e[0] == side) >= 2
++    for side, axis, vals in (("n", 0, xs), ("s", 0, xs), ("e", 2, zs), ("w", 2, zs)):
++        for v in vals:
++            fs = [f for f in bm.faces if f.is_valid and against(f, side)]
++            bisect(bm, fs, axis, v)
++    return len(inside)
++
++
++def apply(layout, work_dir, log=print):
++    fall = layout["backdrop"]["waterfall"]
++    site, pocket = fall.get("site"), fall.get("pocket")
++    if not site:
++        return None
++    xs, zs = falls_axes(site)
++    objs = [bpy.data.objects[n] for n in GROUND if n in bpy.data.objects]
++    for o in objs:
++        assert o.matrix_world == o.matrix_world.Identity(4), o.name
++    report = {}
++    bms = {}
++    for o in objs:
++        bm = bmesh.new()
++        bm.from_mesh(o.data)
++        # triangulate round the box first, the way the glTF export splits a quad (its first diagonal, 0-2): the cut lines
++        # then cross the very triangles the shipped file had, so the seam heights are the ones waterfall.glb was built to
++        near = faces_in(bm, site["minX"] - 25, site["maxX"] + 25, site["minZ"] - 25, site["maxZ"] + 25)
++        bmesh.ops.triangulate(bm, faces=[f for f in near if len(f.verts) > 3], quad_method="FIXED", ngon_method="BEAUTY")
++        flat = pocket_flatten(bm, pocket) if pocket else 0
++        cut = box_cut(bm, site, xs, zs)
++        bms[o.name] = bm
++        report[o.name] = {"pocket_verts": flat, "faces_cut": cut}
++    # the seam: the top-most ground 1 mm outside the outline at the falls ground's boundary vertices
++    trees = []
++    for bm in bms.values():
++        bm.verts.ensure_lookup_table()
++        bm.faces.ensure_lookup_table()
++        trees.append(BVHTree.FromBMesh(bm))
++    NUDGE = 1e-3
++
++    def top(x, z):
++        best = None
++        for t in trees:
++            hit = t.ray_cast(Vector((x, -z, 500.0)), Vector((0, 0, -1)))
++            if hit[0] is not None and (best is None or hit[0].z > best):
++                best = hit[0].z
++        return best
++
++    def nudge_x(x):
++        return -NUDGE if x <= site["minX"] + EPS else NUDGE if x >= site["maxX"] - EPS else 0.0
++
++    def nudge_z(z):
++        return -NUDGE if z <= site["minZ"] + EPS else NUDGE if z >= site["maxZ"] - EPS else 0.0
++    q128 = lambda y: round(y * 128) / 128  # noqa: E731
++    sides = {"n": [], "s": [], "e": [], "w": []}
++    for x in xs:
++        sides["n"].append((x, q128(top(x + nudge_x(x), site["minZ"] - NUDGE))))
++        sides["s"].append((x, q128(top(x + nudge_x(x), site["maxZ"] + NUDGE))))
++    for z in zs:
++        sides["w"].append((z, q128(top(site["minX"] - NUDGE, z + nudge_z(z)))))
++        sides["e"].append((z, q128(top(site["maxX"] + NUDGE, z + nudge_z(z)))))
++
++    # the seam contract: waterfall.glb's ground was meshed to the repo's docs/designs/waterfall/waterfall_site_edge.json
++    # (read from the shipped GLB, whose Draco grid rounded the backdrop to 34 mm). When it is there its heights are the
++    # seam (the cut ground's measured heights differ by a few cm), so the falls model fits without a rebuild.
++    ref_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(work_dir))), "docs", "designs", "waterfall",
++                            "waterfall_site_edge.json")
++    ref_dev = None
++    if os.path.exists(ref_path):
++        ref = {(round(p["x"], 4), round(p["z"], 4)): p["y"] for p in json.load(open(ref_path))["points"]}
++        corners = {"n": lambda t: (t, site["minZ"]), "s": lambda t: (t, site["maxZ"]), "e": lambda t: (site["maxX"], t),
++                   "w": lambda t: (site["minX"], t)}
++        ref_dev = 0.0
++        for k, tab in sides.items():
++            for i, (t, y) in enumerate(tab):
++                key = tuple(round(v, 4) for v in corners[k](t))
++                if key in ref:
++                    ref_dev = max(ref_dev, abs(ref[key] - y))
++                    tab[i] = (t, ref[key])
++
++    def interp(tab, t):
++        if t <= tab[0][0]:
++            return tab[0][1]
++        for (t0, y0), (t1, y1) in zip(tab[:-1], tab[1:]):
++            if t <= t1:
++                return y0 + (y1 - y0) * (t - t0) / ((t1 - t0) or 1)
++        return tab[-1][1]
++    snapped, worst, worst_at = 0, 0.0, None
++    for name, bm in bms.items():
++        for v in bm.verts:
++            x, y, z = game(v)
++            e = on_edge(x, z, site)
++            if not e:
++                continue
++            t_top = top(x + nudge_x(x), z + nudge_z(z))
++            if t_top is None or y < t_top - 0.1:
++                continue        # a layer hidden under another stays
++            t = round(e[1] * 128) / 128
++            yy = round(interp(sides[e[0]], t) * 128) / 128
++            if abs(y - yy) > worst:
++                worst, worst_at = abs(y - yy), (name, round(x, 3), round(z, 3), round(y, 3), yy)
++            if e[0] in ("n", "s"):
++                v.co.x = t
++            else:
++                v.co.y = -t
++            v.co.z = yy
++            snapped += 1
++    for o in objs:
++        bm = bms[o.name]
++        bm.to_mesh(o.data)
++        bm.free()
++        o.data.update()
++    pts = []
++    for x, z in edge_points(site):
++        e = on_edge(x, z, site)
++        pts.append({"x": round(x, 6), "z": round(z, 6), "y": round(interp(sides[e[0]], e[1]), 7)})
++    edge = {
++        "format": "caysonverse-falls-site-edge", "version": 2, "provisional": False,
++        "note": ("village ground heights on the waterfall site box, from the village source build (art/village/tools/"
++                 "falls_site.py, vrb2): the village's seam is the polyline through these points (it has a vertex at each of "
++                 "the falls ground's boundary vertices; the points between lie on it), pocket flatten applied."),
++        "site": site, "spacing": 1, "order": "CCW from the north-west corner", "points": pts,
++    }
++    out = os.path.join(work_dir, "waterfall_site_edge.json")
++    json.dump(edge, open(out, "w"), indent=1)
++    report["seam_ref"] = {"file": ref_path if ref_dev is not None else None, "max_dev_m": None if ref_dev is None else round(ref_dev, 4)}
++    report["seam"] = {"snapped": snapped, "worst_snap_m": round(worst, 4), "worst_at": worst_at, "points": len(pts), "file": out}
++    log("FALLS_SITE", json.dumps(report))
++    return report
+diff -ruN -x __pycache__ a/art/village/tools/fit_moon_probe_split.py tools/fit_moon_probe_split.py
+--- a/art/village/tools/fit_moon_probe_split.py	1970-01-01 09:00:00.000000000 +0900
++++ b/art/village/tools/fit_moon_probe_split.py	2026-11-16 23:23:40.799020000 +0900
+@@ -0,0 +1,99 @@
++"""Re-fit the fountain crescent's DAY probe for a sun-split light map (vrb2, 2026-11-16; sun-shadows design §4 step 4).
++
++  blender -b art/village/work/village_lmprep.blend -P art/village/tools/fit_moon_probe_split.py -- [--samples 256] [--size 512]
++
++fit_moon_probe.py fits the probe to a GLB whose crescent was light-mapped; since fix/fix-moon-smooth the bake leaves the
++crescent out of the light map, so there is no such GLB for a new bake. This bakes the crescent alone, in the saved light-map
++scene (village_lmprep.blend: the same sun, sky and surroundings as the day bake), on its own UV: the full day light and the
++sun lamp's direct light, as bake_village.py does for the map (SUN_SPLIT), then fits SH9 over the normal (game axes, the
++same basis and robust ridge fit as fit_moon_probe.py) to
++  with_sun = (L + lift) / LM_SCALE           (checks the method against the shipped MOON_PROBE.day)
++  sun_free = (L - L_sun + lift) / LM_SCALE   (the new MOON_PROBE.day; sunShadows.ts MOON_PROBE_HAS_SUN = false)
++The night probe does not change (the night bake is the same). Prints both arrays.
++"""
++import json
++import os
++import sys
++
++import bpy
++import numpy as np
++
++sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
++import bake_village as BV  # noqa: E402
++
++
++def sh9(n):
++    """fit_moon_probe.py's basis (that module needs PIL, which Blender's Python lacks)."""
++    x, y, z = n[:, 0], n[:, 1], n[:, 2]
++    return np.stack([np.ones_like(x), y, z, x, x * y, y * z, 3 * z * z - 1, x * z, x * x - y * y], axis=1)
++
++
++def fit(F, Y, c, lam=5.0, it=10):
++    """fit_moon_probe.py's robust ridge least squares."""
++    R = np.diag([0, 0, 0, 0] + [lam] * 5)
++    w = np.ones(len(F))
++    for _ in range(it):
++        Fw = F * w[:, None]
++        co = np.linalg.solve(F.T @ Fw + R, Fw.T @ Y)
++        r = np.abs(Y - F @ co).max(1)
++        w = np.where(r < c, 1.0, c / r)
++    return co
++
++argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
++samples = int(argv[argv.index("--samples") + 1]) if "--samples" in argv else 256
++size = int(argv[argv.index("--size") + 1]) if "--size" in argv else 512
++scene = bpy.context.scene
++BV.gpu(scene)
++scene.cycles.transparent_max_bounces = 24
++moon = [o for o in bpy.data.objects if o.type == "MESH" and o.get("cat") == "moon"]
++assert moon, "no crescent (cat moon) in the scene"
++o = moon[0]
++me = o.data
++if "UV_LM" not in me.uv_layers:
++    me.uv_layers.new(name="UV_LM")
++me.uv_layers.active = me.uv_layers["UV_LM"]
++BV.select([o], o)
++bpy.ops.object.mode_set(mode="EDIT")
++bpy.ops.mesh.select_all(action="SELECT")
++bpy.ops.uv.smart_project(angle_limit=1.15, island_margin=0.01, area_weight=0.0, correct_aspect=True, scale_to_bounds=False)
++bpy.ops.uv.pack_islands(rotate=True, margin_method="FRACTION", margin=0.01)
++bpy.ops.object.mode_set(mode="OBJECT")
++full = BV._bake_raw(scene, [o], size, samples)
++sun = BV.bake_sun_direct(scene, [o], size, max(64, samples // 2))
++lift = BV.LM_LIFT * np.array([0.92, 0.96, 1.0], np.float32)
++# texels: rasterise the crescent's UV triangles (Blender image rows: v up)
++mw = o.matrix_world
++me.calc_loop_triangles()
++uvl = me.uv_layers["UV_LM"].data
++rows = []
++for t in me.loop_triangles:
++    P = np.array([list(mw @ me.vertices[v].co) for v in t.vertices])
++    U = np.array([list(uvl[li].uv) for li in t.loops]) * size
++    n = np.cross(P[1] - P[0], P[2] - P[0])
++    if np.linalg.norm(n) < 1e-12:
++        continue
++    n /= np.linalg.norm(n)
++    det = (U[1, 0] - U[0, 0]) * (U[2, 1] - U[0, 1]) - (U[2, 0] - U[0, 0]) * (U[1, 1] - U[0, 1])
++    if abs(det) < 1e-12:
++        continue
++    (x0, y0), (x1, y1) = np.floor(U.min(0)).astype(int), np.ceil(U.max(0)).astype(int)
++    for py in range(max(y0, 0), min(y1, size - 1) + 1):
++        for px in range(max(x0, 0), min(x1, size - 1) + 1):
++            cx, cy = px + 0.5, py + 0.5
++            l1 = ((U[1, 0] - cx) * (U[2, 1] - cy) - (U[2, 0] - cx) * (U[1, 1] - cy)) / det
++            l2 = ((U[2, 0] - cx) * (U[0, 1] - cy) - (U[0, 0] - cx) * (U[2, 1] - cy)) / det
++            if min(l1, l2, 1 - l1 - l2) < 0.02:      # texel centres well inside (no margin bleed)
++                continue
++            g = np.array([n[0], n[2], -n[1]])      # game axes: x east, y up, z south
++            rows.append([*g, *full[py, px], *sun[py, px]])
++A = np.array(rows)
++F = sh9(A[:, 0:3])
++with_sun = (A[:, 3:6] + lift) / BV.LM_SCALE
++sun_free = (np.maximum(A[:, 3:6] - A[:, 6:9], 0) + lift) / BV.LM_SCALE
++res = {}
++for name, Y in (("with_sun", with_sun), ("sun_free", sun_free)):
++    co = fit(F, Y, 0.05)
++    res[name] = co.round(4).tolist()
++    print(f"PROBE {name}: rms {np.sqrt(((Y - F @ co) ** 2).mean(0)).round(4).tolist()} texels {len(A)}")
++    print(f"PROBE {name}: {json.dumps(res[name])}")
++json.dump(res, open(os.path.join(BV.WORK, "moon_probe_split.json"), "w"), indent=1)
+diff -ruN -x __pycache__ a/art/village/tools/make_busstop_textures.py tools/make_busstop_textures.py
+--- a/art/village/tools/make_busstop_textures.py	2026-11-16 20:43:11.232793000 +0900
++++ b/art/village/tools/make_busstop_textures.py	2026-11-16 21:13:47.037964700 +0900
+@@ -95,3 +95,32 @@
+     pv[:, k * cell:k * cell + 3] *= 0.72
+ Image.fromarray((pv * 255).astype(np.uint8)).save(os.path.join(OUT, "T_pad.png"))
+ print("wrote", OUT)
++
++# --- vrb2 (VILLAGE-TODO A5, 2026-11-16): the Korean standard shelter's roof fascia and the boarding edge's tactile blocks --
++# T_stop_name.png 1024x128: the fascia band along the roof's front (Seoul roadside shelters: a dark band with the stop's
++#                 name in white and the route number in a coloured chip): "케이슨 마을" + "1004" (our own, no real stop ID)
++nm = Image.new("RGB", (1024, 128), (46, 52, 58))
++d = ImageDraw.Draw(nm)
++d.rectangle((0, 0, 1023, 7), fill=(28, 32, 36))
++d.rectangle((0, 120, 1023, 127), fill=(28, 32, 36))
++d.rounded_rectangle((36, 26, 196, 102), radius=14, fill=(46, 160, 67))     # village-bus green chip
++center_text(d, (116, 66), "1004", F(56), WHITE)
++center_text(d, (560, 66), "케이슨 마을", F(78), WHITE)
++d.text((990, 66), "마을버스", font=F(34), fill=(200, 208, 214), anchor="rm")
++nm.save(os.path.join(OUT, "T_stop_name.png"))
++
++# T_tactile.png 256x256: yellow warning blocks (점형 블록, 30 cm squares of 6x6 raised dots), 0.3 m a repeat, shaded dots
++N = 256
++yy, xx = np.mgrid[0:N, 0:N].astype(np.float32) / N
++base = np.array([0.93, 0.74, 0.10], np.float32)
++img = np.ones((N, N, 3), np.float32) * base
++cell = 1.0 / 6
++cx, cy = (xx % cell) / cell - 0.5, (yy % cell) / cell - 0.5
++r = np.hypot(cx, cy)
++dot = np.clip((0.33 - r) / 0.03, 0, 1)
++light = np.clip(0.5 + (-cx - cy) * 1.4, 0, 1)            # lit from the upper left
++img = img * (1 - 0.18 * dot[..., None]) + dot[..., None] * (0.12 * light[..., None]) * np.array([1, 0.9, 0.5])
++edge = np.minimum(np.minimum(xx, 1 - xx), np.minimum(yy, 1 - yy))
++img *= (1 - 0.35 * (edge < 0.012))[..., None]             # the joint round each block
++Image.fromarray((np.clip(img, 0, 1) * 255).astype(np.uint8)).save(os.path.join(OUT, "T_tactile.png"))
++print("wrote T_stop_name.png, T_tactile.png")
+diff -ruN -x __pycache__ a/art/village/tools/make_textures.py tools/make_textures.py
+--- a/art/village/tools/make_textures.py	2026-11-16 20:43:11.234365300 +0900
++++ b/art/village/tools/make_textures.py	2026-11-16 22:43:04.288175700 +0900
+@@ -56,6 +56,20 @@
+     L = L / L.mean()
+     green = np.array([0.31, 0.44, 0.17]) * bright
+     out = green[None, None] * (0.55 + 0.45 * L[..., None]) * 0.8 + g * 0.2 * np.array([0.8, 1.0, 0.7])
++    # vrb2 (owner 2026-11-16: "잔디 … 실제 같은 느낌이 안나"): a real lawn is not one flat lime: the blades' own contrast a
++    # little stronger, darker dense clumps, paler dry tufts, a few bluish clover patches and a hint of soil between
++    # blades, all inside the 3 m tile (the macro tint breaks the repeat at village scale)
++    n = g.shape[0]
++    clump = fbm((n, n), 9, 4, seed=71)
++    dry = smoothstep(0.62, 0.82, fbm((n, n), 5, 3, seed=72))
++    clover = smoothstep(0.70, 0.86, fbm((n, n), 7, 3, seed=73))
++    soil = smoothstep(0.80, 0.95, fbm((n, n), 22, 2, seed=74)) * (1 - L[..., None][..., 0] / L.max())
++    out = out * (0.86 + 0.30 * (L[..., None] - 1.0) * 0.6 + 0.0)
++    out = out * (0.84 + 0.28 * clump)[..., None]
++    out = out * (1 - 0.35 * dry[..., None]) + np.array([0.46, 0.44, 0.22]) * 0.35 * dry[..., None]
++    out = out * (1 - 0.45 * clover[..., None]) + np.array([0.20, 0.36, 0.17]) * 0.45 * clover[..., None]
++    out = out * (1 - 0.5 * soil[..., None]) + np.array([0.30, 0.24, 0.16]) * 0.5 * soil[..., None]
++    out = out * 1.17          # the same mean brightness as before (the ground grade and the luma gates are tuned to it)
+     return np.clip(out, 0, 1)
+ 
+ 
+@@ -169,14 +183,23 @@
+ # ---- crosswalks (xwalk fix 2026-11-13): ONE straight zebra per crossing, perpendicular to the ring road ------------------
+ XW_RING_R = 34.0           # the ring road's middle (road 31..37)
+ XW_WIDTH = 4.0             # along the road (bar length): the 4 m minimum of the traffic-marking rules
+-XW_BAR = 0.5               # bar width (45-50 cm), each bar parallel to the traffic, bars stacked across the road
+-XW_GAP = 0.55              # gap between bars
+-XW_BARS = 5                # 5 bars + 4 gaps = 4.7 m of the road's 6 m, 0.65 m clear of each kerb
++# vrb2 (VILLAGE-TODO A3, 2026-11-16): the Korean marking (도로교통법 시행규칙 별표6 532 횡단보도): bars 45-50 cm wide with
++# gaps as wide as the bars, across the whole carriageway; here 0.45 / 0.45, 6 bars + 5 gaps = 4.95 m of the 6 m road,
++# 0.52 m clear of each kerb (was 5 bars of 0.5 with 0.55 gaps)
++XW_BAR = 0.45              # bar width, each bar parallel to the traffic, bars stacked across the road
++XW_GAP = 0.45              # gap between bars (= the bar)
++XW_BARS = 6
+ XW_GAP_PAD = 0.3           # edge / centre lines break this far beyond the crosswalk's ends
+ # review r3 (2026-11-13): lane_plot_e meets the ring 8 m south of the signalised crossing (lane_bus), right where the bus
+ # stands at the stop line waiting for its green; a real road has no unsignalised crosswalk next to a signalised one, and no
+ # vehicle waits on one. Its walkers use the signalised crossing (plaza -> lane_bus zebra -> sidewalk), so it gets none.
+ XW_SKIP = {"lane_plot_e"}
++# vrb2: the two signalised crossings (shared crossings.ts SIGNAL_CROSSINGS: lane_bus, lane_plot_n) get a white stop line
++# (정지선, 0.45 m) in each lane on its approach side; the bus's nose stops TRANSIT.stopLineM = 5.6 m before the crossing's
++# centre, so the line is 5.15..5.6 m from it (3.15 m before the zebra). The ring is two-way, keep right: the outer lane
++# (R 34..37) runs clockwise and comes from the side of increasing angle, the inner lane (R 31..34) the other way.
++XW_SIGNALISED = {"lane_bus", "lane_plot_n"}
++XW_STOP_AT = (5.15, 5.6)
+ 
+ 
+ def crossings():
+@@ -218,6 +241,24 @@
+     return zebra
+ 
+ 
++def stop_line_mask(X, Z, px_m, sub=3):
++    """Anti-aliased coverage of the stop lines of the signalised crossings (polar, like the zebra)."""
++    m = np.zeros(X.shape, np.float32)
++    for _id, ang, _half in crossings():
++        if _id not in XW_SIGNALISED:
++            continue
++        for iy in range(sub):
++            for ix in range(sub):
++                xs = X + (ix + 0.5 - sub / 2) * px_m / sub
++                zs = Z + (iy + 0.5 - sub / 2) * px_m / sub
++                r = np.hypot(xs, zs)
++                tang = ((np.arctan2(zs, xs) - ang + np.pi) % (2 * np.pi) - np.pi) * XW_RING_R
++                outer = (r > 34.15) & (r < 36.62) & (tang > XW_STOP_AT[0]) & (tang < XW_STOP_AT[1])
++                inner = (r > 31.38) & (r < 33.85) & (tang < -XW_STOP_AT[0]) & (tang > -XW_STOP_AT[1])
++                m += (outer | inner).astype(np.float32) / (sub * sub)
++    return m
++
++
+ def crosswalk_gap(X, Z):
+     """True where the road's edge / centre lines must break for a crosswalk."""
+     gap = np.zeros(X.shape, bool)
+@@ -328,6 +369,7 @@
+     put_paint(centre, (0.95, 0.80, 0.25), 0.9)
+     # crosswalks: one straight zebra per crossing (crosswalk_mask), perpendicular to the road; nothing else is painted
+     put_paint(crosswalk_mask(X, Z, px) * road, paint, 0.92)
++    put_paint(stop_line_mask(X, Z, px) * road, paint, 0.92)
+     # review r2: the yellow dashed bus-bay box is gone (the owner: only the crosswalks are painted on the road, besides the
+     # edge and centre lines); the bus simply stops on the outer lane
+ 
+@@ -1187,9 +1229,140 @@
+     save(disp, "T_sky.png")
+ 
+ 
++
++# ---- vrb2 (2026-11-16, owner: "1인칭일때 바닥 … 화단과 같은 화질", "도로 바닥 선들도 매끄러운 곡선") -------------------------
++# The plaza, the ring road and its sidewalk no longer share ONE 2048 px texture over 80 m (T_plaza, 3.9 cm a texel: blurry
++# joints, stair-stepped lines). Each surface has its own texture at real scale on UV0 (the light map, UV1, only lights them):
++#   T_setts.png  2048 x 512   (top half) eight granite setts (0.9 m along a ring x 0.6 m across), one per 256 px cell: 3.5 / 2.3 mm a
++#                             texel; build_village.build_plaza_disc gives every stone a quad with its cell (polar UV) and a
++#                             tone in Col (spokes, the mosaic ring, the dark bands, the fountain surround)
++#   T_road.png   2048 x 2048  the ring road's asphalt WITH its markings, in road coordinates (u along the road, v across it,
++#                             R 31 -> 37): four 512 px rows = plain (7 m: edge lines, the 3 m yellow dash), bus bay (7 m: no
++#                             centre line), crossing with stop lines (12 m: the signalised ones) and crossing (12 m). Lines
++#                             are drawn analytically (anti-aliased) in road space, so on the curved road they are smooth
++#                             arcs at 1.2 cm across / 3.4-5.9 mm along a texel. Worn paint, tyre polish, a little grime.
++#   T_walk.png   1024 x 1024  the sidewalk's concrete pavers (0.4 m, 2 m a repeat), as T_plaza drew them, at 2 mm a texel
++SETT_ALONG, SETT_ACROSS, SETT_N = 0.9, 0.6, 8
++WALK_ALONG, WALK_ACROSS = 4.0, 1.86
++ROAD_ROWS = [("plain", 7.0), ("bay", 7.0), ("xw_signal", 12.0), ("xw", 12.0)]
++ROAD_R0, ROAD_W = 31.0, 6.0
++
++
++def setts():
++    W, H = 256 * SETT_N, 256
++    granite = adjust(load("rock_boulder_dry_diff_1k.jpg", 1024), 1.0, 0.35)
++    granite = (granite - granite.mean((0, 1))) * 0.5 + np.array([0.86, 0.82, 0.77])
++    out = np.zeros((H, W, 3), np.float32)
++    yy, xx = np.mgrid[0:H, 0:256].astype(np.float32)
++    s = (xx + 0.5) / 256 * SETT_ALONG          # metres along the stone
++    t = (yy + 0.5) / 256 * SETT_ACROSS         # metres across
++    joint = 0.006                              # half a 12 mm joint
++    for k in range(SETT_N):
++        rng = np.random.default_rng(100 + k)
++        ox, oz = rng.uniform(0, 1.6, 2)
++        g = sample(granite, s * 1.0 + ox, t * 1.0 + oz, 1.6)
++        tone = 0.95 + 0.08 * rng.random()
++        hue = np.array([1.0 + rng.uniform(-0.01, 0.015), 1.0, 1.0 + rng.uniform(-0.015, 0.01)])
++        st = g * tone * hue
++        # chipped, slightly rounded edges: distance to the stone's edge, wobbled
++        wob = (fbm((H, 256), 6, 3, seed=200 + k) - 0.5) * 0.006
++        d = np.minimum(np.minimum(s, SETT_ALONG - s), np.minimum(t, SETT_ACROSS - t)) + wob
++        bevel = smoothstep(joint, joint + 0.018, d)
++        # light from the upper left on the bevel (a raised, rounded top)
++        side = np.where(np.minimum(s, t) < np.minimum(SETT_ALONG - s, SETT_ACROSS - t), 1.08, 0.86)
++        lit = 1.0 + (side - 1.0) * (1 - bevel)
++        st = st * lit[..., None] * (0.78 + 0.22 * bevel)[..., None]
++        mortar = np.array([0.42, 0.40, 0.38]) * (0.9 + 0.2 * fbm((H, 256), 20, 2, seed=300 + k))[..., None]
++        m = smoothstep(joint + 0.002, joint - 0.002, d)[..., None]
++        st = st * (1 - m) + mortar * m
++        # a few darker weathering spots
++        spots = smoothstep(0.62, 0.8, fbm((H, 256), 10, 3, seed=400 + k))[..., None]
++        st = st * (1 - 0.08 * spots)
++        out[:, 256 * k:256 * (k + 1)] = st
++    # the bottom half: the sidewalk's concrete pavers as a band WALK_ALONG m along x 1.86 m across (37 .. 38.86): u repeats
++    # round the ring, v spans the band (one material for the plaza and its sidewalk: the village's material ceiling)
++    pavers = adjust(load("concrete_pavers_diff_1k.jpg", 1024), 1.0, 0.3)
++    pavers = (pavers - pavers.mean((0, 1))) * 0.9 + np.array([0.66, 0.63, 0.59])
++    jj, ii = np.mgrid[0:H, 0:W].astype(np.float32)
++    su = (ii + 0.5) / W * WALK_ALONG
++    sv = (jj + 0.5) / H * WALK_ACROSS
++    band = sample(pavers, su, sv, 2.0) * (0.95 + 0.1 * fbm((H, W), 8, 3, seed=9))[..., None]
++    save(np.concatenate([out, band], axis=0), "T_setts.png")
++
++
++def _aa(d, px):
++    """Coverage of a shape whose signed distance (m, negative inside) is d, with pixels px metres wide."""
++    return np.clip(0.5 - d / px, 0, 1)
++
++
++def road():
++    S, RH = 2048, 512
++    asphalt = adjust(load("clean_asphalt_diff_1k.jpg", 1024), 1.0, 0.4)
++    asphalt = (asphalt - asphalt.mean((0, 1))) * 1.6 + np.array([0.31, 0.31, 0.32])
++    rows = []
++    paint_w = np.array([0.93, 0.93, 0.90])
++    paint_y = np.array([0.95, 0.80, 0.25])
++    for ri, (kind, Lr) in enumerate(ROAD_ROWS):
++        jj, ii = np.mgrid[0:RH, 0:S].astype(np.float32)
++        u = (ii + 0.5) / S * Lr                       # metres along
++        r = ROAD_R0 + (1 - (jj + 0.5) / RH) * ROAD_W  # image row 0 = v 1 = the outer kerb (R 37)
++        pxu, pxr = Lr / S, ROAD_W / RH
++        a = sample(asphalt, u, r, 4.0)
++        wear = fbm((RH, S), 18, 4, seed=30 + ri)
++        a = a * (0.92 + 0.16 * wear)[..., None]
++        for rc in (32.6, 35.4):                        # tyre polish in each lane
++            a = a * (1 + 0.05 * np.exp(-((r - rc) / 0.45) ** 2))[..., None]
++        grime = np.exp(-((r - 37.0) / 0.25) ** 2) * 0.10 + np.exp(-((r - 31.0) / 0.2) ** 2) * 0.08
++        a = a * (1 - grime)[..., None]
++        worn = 0.80 + 0.20 * fbm((RH, S), 40, 3, seed=50 + ri)          # worn paint, the asphalt's grain shows
++        flecks = (fbm((RH, S), 90, 2, seed=60 + ri) > 0.80).astype(np.float32) * 0.22
++        paint_a = np.clip(worn - flecks, 0, 1)
++        out = a
++
++        def put(cov, col, alpha=0.93):
++            nonlocal out
++            m = (cov * alpha * paint_a)[..., None]
++            out = out * (1 - m) + col * m
++
++        def band(r0, r1):          # across-road band (a line along the road)
++            return np.minimum(_aa(r0 - r, pxr), _aa(r - r1, pxr))
++
++        def span(u0, u1):          # along-road range
++            return np.minimum(_aa(u0 - u, pxu), _aa(u - u1, pxu))
++        mid = Lr / 2
++        if kind in ("plain", "bay"):
++            put(band(31.22, 31.38) + band(36.62, 36.78), paint_w)
++            if kind == "plain":
++                put(band(33.925, 34.075) * span(2.0, 5.0), paint_y, 0.9)       # 3 m dash in a 7 m period
++        else:
++            gap = 2.0 + 0.3                                                       # edge lines break at the zebra
++            put((band(31.22, 31.38) + band(36.62, 36.78)) * (1 - span(mid - gap, mid + gap)), paint_w)
++            r0 = 34.0 - (XW_BARS * XW_BAR + (XW_BARS - 1) * XW_GAP) / 2
++            zebra = np.zeros_like(u)
++            for k in range(XW_BARS):
++                b0 = r0 + k * (XW_BAR + XW_GAP)
++                zebra = np.maximum(zebra, band(b0, b0 + XW_BAR))
++            put(zebra * span(mid - XW_WIDTH / 2, mid + XW_WIDTH / 2), paint_w, 0.92)
++            if kind == "xw_signal":
++                # stop lines: the outer lane (clockwise traffic, from increasing angle = increasing u) and the inner one
++                put(band(34.15, 36.62) * span(mid + XW_STOP_AT[0], mid + XW_STOP_AT[1]), paint_w, 0.92)
++                put(band(31.38, 33.85) * span(mid - XW_STOP_AT[1], mid - XW_STOP_AT[0]), paint_w, 0.92)
++        rows.append(out)
++    save(np.concatenate(rows, axis=0), "T_road.png")
++
++
++def walk():
++    N = 1024
++    pavers = adjust(load("concrete_pavers_diff_1k.jpg", 1024), 1.0, 0.3)
++    pavers = (pavers - pavers.mean((0, 1))) * 0.9 + np.array([0.66, 0.63, 0.59])
++    out = pavers * (0.95 + 0.1 * fbm((N, N), 8, 3, seed=9))[..., None]
++    save(out, "T_walk.png")
++
++
+ def main(argv):
+     jobs = {"tiles": tiles, "plaza": plaza, "lawn": lawn, "leaves": leaves, "flora": flora, "atlas": atlas,
+-            "water": water, "sky": sky, "glow": glow, "falls": falls, "glass": glass}
++            "water": water, "sky": sky, "glow": glow, "falls": falls, "glass": glass,
++            "setts": setts, "road": road, "walk": walk}
+     names = argv or list(jobs)
+     for n in names:
+         jobs[n]()
+diff -ruN -x __pycache__ a/art/village/tools/parts_buildings.py tools/parts_buildings.py
+--- a/art/village/tools/parts_buildings.py	2026-11-16 20:43:11.234882200 +0900
++++ b/art/village/tools/parts_buildings.py	2026-11-16 22:04:59.240288900 +0900
+@@ -280,6 +280,9 @@
+ 
+ # ---------------------------------------------------------------------------------------------- plots --
+ 
++PLOT_OUTLINES = False
++
++
+ def plots(c, cols):
+     lawn = MB()
+     glow = MB()
+@@ -288,9 +291,21 @@
+         b = p["bounds"]
+         x0, x1, z0, z1 = b["minX"], b["maxX"], b["minZ"], b["maxZ"]
+         y = 0.02
+-        pts = [V(x0, z1, y), V(x1, z1, y), V(x1, z0, y), V(x0, z0, y)]
+-        lawn.face(pts, "LM_lawn", [(0, 0), (1, 0), (1, 1), (0, 1)], hint=Vector((0, 0, 1)))
+-        if p["id"] == "plot_n":
++        # vrb2 (owner 2026-11-16: "잔디 … 실제 같은 느낌이 안나"): the lawn is the outer ground's real-scale grass (T_grass,
++        # 3 m a repeat, world UV) with its macro tint on a 2 m grid, not one 512 px picture stretched over the plot
++        nx_, nz_ = max(1, int(round((x1 - x0) / 2.0))), max(1, int(round((z1 - z0) / 2.0)))
++        for i in range(nx_):
++            for j in range(nz_):
++                xa, xb = x0 + (x1 - x0) * i / nx_, x0 + (x1 - x0) * (i + 1) / nx_
++                za, zb = z0 + (z1 - z0) * j / nz_, z0 + (z1 - z0) * (j + 1) / nz_
++                lawn.face([V(xa, zb, y), V(xb, zb, y), V(xb, za, y), V(xa, za, y)], "LM_lawn", hint=Vector((0, 0, 1)))
++        if p["id"] == "plot_n" or not PLOT_OUTLINES:
++            # vrb2 (owner: no floor markers): the plots' glowing cyan outline strips are gone
++            sp = p["signPost"]
++            if sp and p["id"] != "plot_n":
++                sign_post(mb, sp["x"], sp["z"], FACING[sp["facing"]])
++            if p["underConstruction"] and p["id"] != "plot_n":
++                construction(mb, p, cols)
+             continue
+         # glowing outline: a raised strip 0.15 wide, 0.1 m inside the plot edge
+         inset, wdt, hy = 0.1, 0.15, 0.06
+@@ -304,8 +319,10 @@
+             sign_post(mb, sp["x"], sp["z"], FACING[sp["facing"]])
+         if p["underConstruction"]:
+             construction(mb, p, cols)
+-    lawn.finish("plot_lawns", c)
+-    glow.finish("plot_outlines", c, cat="glow", auto=False)
++    import build_village as BV
++    BV.macro_tint(lawn.finish("plot_lawns", c))
++    if PLOT_OUTLINES:
++        glow.finish("plot_outlines", c, cat="glow", auto=False)
+     mb.finish("plot_props", c)
+ 
+ 
+diff -ruN -x __pycache__ a/art/village/tools/parts_fill.py tools/parts_fill.py
+--- a/art/village/tools/parts_fill.py	2026-11-16 20:43:11.235407600 +0900
++++ b/art/village/tools/parts_fill.py	2026-11-16 21:00:27.978158500 +0900
+@@ -304,6 +304,8 @@
+     # --- backdrop forest (outside the walk bounds), instanced crossed cards: near hills and up the mountain slopes
+     import parts_nature as PN
+     fx, fz = PN.FALL["centre"]["x"], PN.FALL["centre"]["z"]
++    site = PN.FALL.get("site")
++    FOREST_R = 240.0
+     far_tr = [[] for _ in fars]
+     placed = 0
+     tries = 0
+@@ -319,13 +321,19 @@
+             continue
+         if abs(z - fz) < 16 and fx - 8 < x < fx + 16:
+             continue
+-        y = PN.terrain_h(x, z)
+-        if y > 125:
++        if PN.terrain_h(x, z, legacy=True) > 125:
+             continue
++        y = PN.terrain_h(x, z)
+         rr = math.hypot(x, z)
+         H = rng.uniform(7.0, 12.0) * (1.0 + 0.5 * min(1.0, (rr - 116) / 300))
+-        far_tr[placed % len(fars)].append((x, z, y - 0.6, rng.uniform(0, 6.28), H))
++        yaw = rng.uniform(0, 6.28)
+         placed += 1
++        # vrb2: the same draws as before (the trees that stay keep their spot, size and card), but none past FOREST_R (the
++        # runtime mountains asset stands there: docs/designs/mountains/README.md step 4) and none in the waterfall's site
++        # box (waterfall.glb plants its own: design.md §7.2 V9)
++        if rr > FOREST_R or (site and site["minX"] < x < site["maxX"] and site["minZ"] < z < site["maxZ"]):
++            continue
++        far_tr[(placed - 1) % len(fars)].append((x, z, y - 0.6, yaw, H))
+     for k_, (m_, tr) in enumerate(zip(fars, far_tr)):
+         place(inst, f"far_{k_}", m_, tr)
+     # the variant sources are not exported
+diff -ruN -x __pycache__ a/art/village/tools/parts_nature.py tools/parts_nature.py
+--- a/art/village/tools/parts_nature.py	2026-11-16 20:43:11.235925100 +0900
++++ b/art/village/tools/parts_nature.py	2026-11-16 21:34:42.177774900 +0900
+@@ -279,7 +279,9 @@
+     return (q - 1.0) * min(rx, rz)
+ 
+ 
+-def terrain_h(x, z):
++def terrain_h(x, z, legacy=False):
++    """legacy=True: the pre-vrb2 terrain with the far ranges (only parts_fill's forest draw uses it, so the forest keeps
++    the very same random sequence and the trees that stay keep their places)."""
+     BV = bv()
+     d = max(abs(x), abs(z)) - 97.0
+     r = math.hypot(x, z)
+@@ -292,12 +294,14 @@
+         low = 1 - 0.8 * math.exp(-(daz / 38.0) ** 2)
+         n1 = noise.fractal(Vector((x * 0.0075, z * 0.0075, 0.3)), 0.9, 2.0, 4)
+         hills = max(0.0, 16 + 16 * n1) * smooth(25, 180, d) * (0.4 + 0.6 * low)
+-        n3 = noise.fractal(Vector((x * 0.0034, z * 0.0034, 4.1)), 1.0, 2.0, 3)
+-        mid = max(0.0, 28 + 26 * n3) * smooth(230, 470, r) * (0.45 + 0.55 * low)
+-        h += mid
+-        n2 = noise.ridged_multi_fractal(Vector((x * 0.0017, z * 0.0017, 1.7)), 1.1, 2.0, 4, 1.0, 2.0)
+-        mount = (max(0.0, n2) ** 1.25 * 125 + 14) * smooth(620, 880, r) * low
+-        h += hills + mount
++        # vrb2 (2026-11-16, docs/designs/mountains/README.md): the far ranges (the old `mid` r 230-470 and `mount`
++        # r 620-1050 terms) are gone: the runtime mountains asset (client mountains.ts, rings from r ~215) draws them
++        h += hills
++        if legacy:
++            n3 = noise.fractal(Vector((x * 0.0034, z * 0.0034, 4.1)), 1.0, 2.0, 3)
++            h += max(0.0, 28 + 26 * n3) * smooth(230, 470, r) * (0.45 + 0.55 * low)
++            n2 = noise.ridged_multi_fractal(Vector((x * 0.0017, z * 0.0017, 1.7)), 1.1, 2.0, 4, 1.0, 2.0)
++            h += (max(0.0, n2) ** 1.25 * 125 + 14) * smooth(620, 880, r) * low
+     # the lake basin (east), kept low with a meadow shore
+     ld = lake_d(x, z)
+     if ld < 40:
+@@ -313,6 +317,9 @@
+     return h
+ 
+ 
++BD_HALF = 260.0   # vrb2: the backdrop terrain's extent (m); the runtime mountains asset stands beyond it
++
++
+ def backdrop(c):
+     BV = bv()
+     backdrop_materials()
+@@ -325,11 +332,15 @@
+             ax = abs(x)
+             x += 56.0 if ax > 440 else 34.0 if ax > 260 else 14.0 if ax > 150 else 7.0     # coarser far hills (milestone 1 triangle budget; 56/34 m since the café's modelled room, 2026-11-15)
+         out.append(1100.0)
+-        return out
++        # vrb2 (mountains README step 2): only the hills out to |x|, |z| <= BD_HALF; the same grid lines as before (the
++        # axis still starts at -1100, so the near hills and the lake patch's seams keep their vertices), one line past it
++        lo = max(i for i, v in enumerate(out) if v <= -BD_HALF)
++        hi = min(i for i, v in enumerate(out) if v >= BD_HALF)
++        return out[lo:hi + 1]
+     xs = axis()
+     zs = axis()
+     H = [[terrain_h(x, z) for x in xs] for z in zs]
+-    near, far = MB(), MB()
++    near = MB()
+     G = BV.GROUND_HALF
+     for j in range(len(zs) - 1):
+         for i in range(len(xs) - 1):
+@@ -337,17 +348,18 @@
+             if max(abs(x0), abs(x1)) <= G + 0.01 and max(abs(z0), abs(z1)) <= G + 0.01:
+                 continue
+             pts = [V(x0, z0, H[j][i]), V(x1, z0, H[j][i + 1]), V(x1, z1, H[j + 1][i + 1]), V(x0, z1, H[j + 1][i])]
+-            r = math.hypot((x0 + x1) / 2, (z0 + z1) / 2)
+-            (near if r < 320 else far).face(pts, "BD_terrain", hint=Vector((0, 0, 1)), smooth=True)
++            near.face(pts, "BD_terrain", hint=Vector((0, 0, 1)), smooth=True)
+     near.finish("backdrop_near", c, cat="backdrop", auto=False)
+-    far.finish("backdrop_far", c, cat="backdrop", auto=False)
+ 
+     # --- the ground grid edge (|x| or |z| = G) meets the terrain exactly: ground_h(G) == terrain_h(G) (d = 15)
+     # --- waterfall cliff: a concave rock wall facing east, a falling ribbon, a plunge pool
++    # vrb2 (B1 waterfall, design.md §7.2 V1-V3): with a site box in the layout the falls are their own model
++    # (waterfall.glb): no cliff, rocks, ribbons, mist, foam or pool here (falls_site.py cuts the ground at the box)
++    site = FALL.get("site")
+     fx, fz = FALL["centre"]["x"], FALL["centre"]["z"]
+     Wd, Ht = FALL["size"]["x"] + 10, FALL["height"] + 4
+     cl = MB()
+-    nu, nv = 40, 30
++    nu, nv = (40, 30) if not site else (0, 0)
+ 
+     def face_x(u, v):
+         zz = fz + u * Wd / 2
+@@ -356,7 +368,7 @@
+               + noise.noise(Vector((zz * 0.9, v * 22.0, 8.3))) * 0.35)
+         return fx + 2.0 + 7.0 * u * u - 3.5 * v + nn - ledge * 2.2 + 1.5 * abs(u) ** 3
+     grid = []
+-    for j in range(nv + 1):
++    for j in range(nv + 1 if not site else 0):
+         row = []
+         for i in range(nu + 1):
+             u = -1 + 2 * i / nu
+@@ -368,14 +380,15 @@
+             q = [grid[j][i], grid[j][i + 1], grid[j + 1][i + 1], grid[j + 1][i]]
+             cl.face(q, "BD_rock", smooth=True, hint=Vector((1, 0, 0)))
+     rng = random.Random(5)
+-    for k in range(26):
++    for k in range(26 if not site else 0):
+         u = rng.uniform(-1, 1)
+         zz = fz + u * Wd / 2
+         rock(cl, face_x(u, 0) + rng.uniform(1.5, 9), zz, -0.3, rng.uniform(1.2, 3.2), rng.uniform(1.0, 2.6),
+              rng.uniform(0.8, 1.8), 800 + k, m="BD_rock", subdiv=2, yaw=rng.uniform(0, 3))
+-    cl.finish("waterfall_cliff", c, cat="backdrop", auto=False)
++    if not site:
++        cl.finish("waterfall_cliff", c, cat="backdrop", auto=False)
+     wf = MB()
+-    for k, (uc, ww) in enumerate(((-0.06, 4.2), (0.22, 2.0))):
++    for k, (uc, ww) in enumerate(((-0.06, 4.2), (0.22, 2.0)) if not site else ()):
+         n = 24
+         for j in range(n):
+             v0, v1 = j / n, (j + 1) / n
+@@ -389,10 +402,11 @@
+     # foam at the plunge
+     pc_x = face_x(0, 0) + 3.0
+     ring = [V(pc_x + 3.2 * math.cos(2 * math.pi * i / 16), fz + 3.8 * math.sin(2 * math.pi * i / 16), -0.12) for i in range(16)]
+-    wf.face(ring, "A_foam", [(0.75 + 0.24 * math.cos(2 * math.pi * i / 16), 0.5 + 0.45 * math.sin(2 * math.pi * i / 16))
+-                             for i in range(16)], hint=Vector((0, 0, 1)))
++    if not site:
++        wf.face(ring, "A_foam", [(0.75 + 0.24 * math.cos(2 * math.pi * i / 16), 0.5 + 0.45 * math.sin(2 * math.pi * i / 16))
++                                 for i in range(16)], hint=Vector((0, 0, 1)))
+     # mist at the base: soft billboards (M_waterfall, mist half of T_falls), crossed
+-    for k in range(5):
++    for k in range(5 if not site else 0):
+         mx = pc_x + 1.0 + k * 0.9
+         mz = fz + (k - 2) * 2.2
+         for a in (0.0, math.pi / 2, math.pi / 4):
+@@ -404,6 +418,11 @@
+     # the feeder stream from the plunge pool to the creek (outside the walk bounds)
+     BV2 = bv()
+     pts = BV2.feeder_pts()
++    # vrb2 (V7): with the site box the feeder starts where the falls' own outlet ends (-107, -58), its water -0.30 there
++    # falling to -0.43 at the creek (the leg inside the box is waterfall.glb's outlet)
++    y_top, y_drop = (-0.2, 0.23) if not site else (-0.30, 0.13)
++    if site:
++        pts = pts[1:]
+     acc = 0.0
+     total = sum(math.hypot(b[0] - a[0], b[1] - a[1]) for a, b in zip(pts[:-1], pts[1:]))
+     for a, b in zip(pts[:-1], pts[1:]):
+@@ -416,7 +435,7 @@
+             nx, nz = -(z1 - z0) / sl, (x1 - x0) / sl
+             f0 = (acc + math.hypot(x0 - a[0], z0 - a[1])) / total
+             f1 = (acc + math.hypot(x1 - a[0], z1 - a[1])) / total
+-            y0, y1 = -0.2 - 0.23 * f0, -0.2 - 0.23 * f1
++            y0, y1 = y_top - y_drop * f0, y_top - y_drop * f1
+             hw = 1.6
+             q = [V(x0 - nx * hw, z0 - nz * hw, y0), V(x1 - nx * hw, z1 - nz * hw, y1), V(x1 + nx * hw, z1 + nz * hw, y1),
+                  V(x0 + nx * hw, z0 + nz * hw, y0)]
+@@ -435,7 +454,8 @@
+             uv = [(0.25, 0.5), (0.25 + 0.24 * math.cos(a0), 0.5 + 0.48 * math.sin(a0)),
+                   (0.25 + 0.24 * math.cos(a1), 0.5 + 0.48 * math.sin(a1))]
+             wf.face(pts, "M_water", uv, hint=Vector((0, 0, 1)))
+-    disc(fx + 7, fz, 8, 11, -0.2, 32, 1)
++    if not site:
++        disc(fx + 7, fz, 8, 11, -0.2, 32, 1)
+     lc = LAKE["centre"]
+     disc(lc["x"], lc["z"], LAKE["size"]["x"] / 2 + 3, LAKE["size"]["z"] / 2 + 3, -0.35, 64, 1)
+     wf.finish("backdrop_water", c, cat="water", auto=False)
+diff -ruN -x __pycache__ a/art/village/tools/parts_props.py tools/parts_props.py
+--- a/art/village/tools/parts_props.py	2026-11-16 20:43:11.235925100 +0900
++++ b/art/village/tools/parts_props.py	2026-11-16 21:03:22.152969000 +0900
+@@ -128,6 +128,9 @@
+ 
+ # ------------------------------------------------------------------------------------------- bus stop --
+ 
++BAKE_BUS_OCCLUDER = False
++
++
+ def bus_stop(c, cols):
+     """The bus stop's bakes. XWALK FIX 2026-11-13: the box shelter, bench and sign pole that were built here are gone: the stop
+     (a paved waiting pad, a Korean-style glass shelter at its back, the stop sign) is its own lit model now,
+@@ -135,10 +138,17 @@
+     village bake no longer holds a shelter; what stays is the bus's shade (bus_occluder) and the bus's collider.
+     (The shipped village.glb had the old shelter taken out in place by scripts/patch-village-busstop.mjs; its light
+     maps still hold the old shelter's shadow until the next bake.)"""
+-    bus_occluder(c)
+-    bb = L["busStop"]["bus"]["bounds"]
+-    # 3.3 m: the roof's air conditioner (village_bus.glb tops out at 3.28)
+-    U.collider(cols, L["busStop"]["bus"]["node"], bb["minX"], bb["maxX"], bb["minZ"], bb["maxZ"], 3.3)
++    # vrb2 (sun split, 2026-11-16): the bus is no longer baked into the light maps. It drives off every 10 minutes and
++    # its sun shadow is drawn live with the real sun (client sunShadows.ts, LiveSunShadows: the bus is a caster), so a
++    # baked shade under the parked bus would stay on the empty road. bus_occluder() is kept for a --keepsun look.
++    if BAKE_BUS_OCCLUDER:
++        bus_occluder(c)
++    # vrb2: since 2026-11-15 the layout no longer lists the bus as a box (the game plays on villageLayout.ts
++    # busParkedColliders: the bus is a moving solid), so the model's legacy `col__bus` goes with this build
++    if "node" in L["busStop"]["bus"]:
++        bb = L["busStop"]["bus"]["bounds"]
++        # 3.3 m: the roof's air conditioner (village_bus.glb tops out at 3.28)
++        U.collider(cols, L["busStop"]["bus"]["node"], bb["minX"], bb["maxX"], bb["minZ"], bb["maxZ"], 3.3)
+ 
+ 
+ def bus_occluder(c):
+diff -ruN -x __pycache__ a/art/village/tools/reexport_village.py tools/reexport_village.py
+--- a/art/village/tools/reexport_village.py	1970-01-01 09:00:00.000000000 +0900
++++ b/art/village/tools/reexport_village.py	2026-11-16 23:08:39.667725400 +0900
+@@ -0,0 +1,30 @@
++"""Export village.glb again from the saved work/village_export.blend, exactly as bake_village.main's export (vrb2).
++
++  blender -b art/village/work/village_export.blend -P art/village/tools/reexport_village.py -- [--out <glb>]
++
++For an export setting change without a re-bake (the light maps stay valid: the same UV_LM). bake_village.EXPORT_KW holds
++the settings, so the two never drift.
++"""
++import os
++import sys
++
++import bpy
++
++sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
++import bake_village as BV  # noqa: E402
++
++argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
++out = argv[argv.index("--out") + 1] if "--out" in argv else os.path.join(BV.EXPORT, "village.glb")
++objs = bpy.data.objects
++exported = sorted([o for o in objs if o.type == "MESH" and o.name.startswith("village_") and o.get("cat") not in ("collider", "moon", "occluder")],
++                  key=lambda o: o.name)
++inst = [o for o in objs if o.get("cat") in ("inst", "inst_root")]
++cols = [o for o in objs if o.get("cat") == "collider"]
++lights = [o for o in objs if o.get("cat") in ("light", "seat")]
++BV.select(exported + inst + cols + lights, exported[0])
++bpy.ops.export_scene.gltf(filepath=out, **BV.EXPORT_KW)
++seat_props = {o.name: {k: (round(float(o[k]), 3) if isinstance(o[k], float) else o[k]) for k in o.keys()
++                       if k != "cat" and isinstance(o[k], (int, float, str, bool))}
++              for o in objs if o.get("cat") == "seat"}
++BV.patch_glb(out, seat_props)
++print("REEXPORTED", out, os.path.getsize(out), len(exported), "meshes")
