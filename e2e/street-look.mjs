@@ -8,7 +8,7 @@
  */
 import { join } from "node:path";
 import { mkdirSync, writeFileSync } from "node:fs";
-import { CLIENT_URL, DESKTOP, PHONE, createRun, entryReady, launchBrowser, openPlayer, press, sleep, walkAndWait } from "./lib/common.mjs";
+import { CLIENT_URL, DESKTOP, PHONE, createRun, entryReady, launchBrowser, openPlayer, press, sleep, turnCameraTo, walkAndWait } from "./lib/common.mjs";
 
 const run = createRun("street-look");
 const args = process.argv.slice(2);
@@ -23,20 +23,25 @@ const TIMES = opt("times", "12:30,21:00").split(",");
 const DEVICES = opt("devices", "desktop").split(",");
 
 const deg = (r) => (r * 180) / Math.PI;
-const pole = (a) => [26 * Math.cos((a * Math.PI) / 180), 26 * Math.sin((a * Math.PI) / 180)];
-const ring = (a, r) => [r * Math.cos((a * Math.PI) / 180), r * Math.sin((a * Math.PI) / 180)];
-const P80 = pole(-80);
-const P30 = pole(30);
-const LAMP1 = [12.93, -24.84];
-// each view: where the avatar stands, what it looks at (x, y, z)
+// azimuth (deg clockwise from north = -z) and radius -> [x, z]
+const polar = (az, r) => [r * Math.sin((az * Math.PI) / 180), -r * Math.cos((az * Math.PI) / 180)];
+// the plaza ring (streetLayout.ts PLAZA_RING: r 29, 7 posts from 14.5 deg)
+const ring = (k) => polar(14.5 + (k * 360) / 7, 29);
+const MEM = ring(0);
+const LAKE = ring(2);
+const VIL = ring(6);
+// each view: where the avatar stands, what it looks at (x, y, z); `tp`: the third-person camera (the owner's angle);
+// `top`: the overview from above
 const VIEWS = {
   street: { via: [[14, 2]], at: [13, -10], look: [0, 3.0, -26] },
-  banner: { via: [[14, 2], [12, -18]], at: ring(-71, 23.5), look: [P80[0], 3.35, P80[1]] },
-  lake: { via: [[14, 2]], at: ring(21, 23.5), look: [P30[0], 3.35, P30[1]] },
-  lamp: { via: [[14, 2]], at: [12.0, -23.1], look: [LAMP1[0], 3.7, LAMP1[1]] },
-  base: { at: [12.0, -23.1], look: [LAMP1[0], 0.35, LAMP1[1]] },
+  banner: { via: [[-14, 2]], at: polar(333, 24.5), look: [VIL[0], 3.35, VIL[1]] },
+  lake: { via: [[14, 2]], at: polar(108, 25), look: [LAKE[0], 3.35, LAKE[1]] },
+  lamp: { via: [[14, 2]], at: polar(17, 26.6), look: [MEM[0], 4.4, MEM[1]] },
+  base: { at: polar(17, 26.6), look: [MEM[0], 0.35, MEM[1]] },
+  edge: { tp: true, via: [[0, 20]], at: polar(150, 22), look: [...polar(168, 40)] },
+  top: { top: true, at: [0, 14] },
 };
-const NAMES = opt("views", "street,banner,lake,lamp,base").split(",").filter((v) => v in VIEWS);
+const NAMES = opt("views", "street,banner,lake,lamp,base,edge,top").split(",").filter((v) => v in VIEWS);
 
 let nickSeq = 0;
 async function joinVillage(p, time) {
@@ -87,7 +92,7 @@ try {
                 const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
                 const wx = e[0] * x + e[4] * y + e[8] * z + e[12], wy = e[1] * x + e[5] * y + e[9] * z + e[13], wz = e[2] * x + e[6] * y + e[10] * z + e[14];
                 maxY = Math.max(maxY, wy);
-                if (!L.LAMP_POSTS.some((p) => Math.hypot(wx - p.x, wz - p.z) < 0.3 && wy < p.lightY + 0.5)) inAll = false;
+                if (![...L.LAMP_POSTS, ...L.OLD_PLAZA_LAMPS].some((p) => Math.hypot(wx - p.x, wz - p.z) < 0.3 && wy < p.lightY + 0.5)) inAll = false;
               }
               if (inAll && maxY > 0.1) hits[o.name] = (hits[o.name] ?? 0) + 1;
             }
@@ -100,6 +105,37 @@ try {
           for (const w of v.via ?? []) await walkAndWait(P, w[0], w[1], 60000, 1.5);
           const me = await walkAndWait(P, v.at[0], v.at[1], 90000, 0.9);
           await hideHud(P);
+          if (v.top) {
+            await P.page.evaluate(async () => {
+              const vs = await window.__imp("/src/game/viewState.ts");
+              vs.enterOverview();
+            });
+            await sleep(2500);
+            await P.page.evaluate(async () => {
+              const vs = await window.__imp("/src/game/viewState.ts");
+              vs.viewState.ovCenterX = 0;
+              vs.viewState.ovCenterZ = 0;
+              vs.viewState.ovHeight = 62;
+            });
+            await sleep(2500);
+            const base = `${TAG}-${dev}-${time.replace(":", "")}-${name}`;
+            await run.shot(P, `${base}.png`);
+            await P.page.evaluate(async () => (await window.__imp("/src/game/viewState.ts")).dropOverview());
+            await sleep(800);
+            continue;
+          }
+          if (v.tp) {
+            await P.page.evaluate(async () => {
+              const vs = await window.__imp("/src/game/viewState.ts");
+              if (vs.viewState.mode === "fp") vs.exitFp(window.__cv.getOrbit());
+            });
+            await sleep(1200);
+            await turnCameraTo(P, v.look[0], v.look[1]);
+            await sleep(2500);
+            const base = `${TAG}-${dev}-${time.replace(":", "")}-${name}`;
+            await run.shot(P, `${base}.png`);
+            continue;
+          }
           await P.page.evaluate(async ([look, me]) => {
             const vs = await window.__imp("/src/game/viewState.ts");
             if (vs.viewState.mode !== "fp") vs.enterFp(0);

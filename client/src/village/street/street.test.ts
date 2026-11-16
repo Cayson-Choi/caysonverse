@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { BufferGeometry, Float32BufferAttribute, Group, Mesh, MeshBasicMaterial, Vector3 } from "three";
-import { BANNER, BANNER_ATLAS, BANNER_POLES, BANNER_TEXT, BANNER_THEMES, LAMP_POSTS, bannerSlot, lanternPositions } from "./streetLayout";
+import { VILLAGE_LAYOUT } from "@caysonverse/shared/village/villageLayout";
+import { signalPoleSpots } from "@caysonverse/shared/village/crossings";
+import { BANNER, BANNER_ATLAS, BANNER_POLES, BANNER_TEXT, BANNER_THEMES, LAMP_POSTS, OLD_BANNER_POLES, OLD_PLAZA_LAMPS, PLAZA_RING, bannerSlot, lanternPositions, ringAzimuth } from "./streetLayout";
 import { trimOldStreetFurniture } from "./streetTrim";
 import { LIFT_FROM_Y, bannerFabricGeometry, bannerHardwareGeometry, lampPostGeometry, lanternGlassGeometry, shaftRadius } from "./streetGeometry";
 import { metalTextures, poolTexture, weaveTexture } from "./streetMaterials";
@@ -17,7 +19,7 @@ function glbNodes(): Array<{ name: string; translation?: number[] }> {
 describe("streetLayout: the posts and poles stand where the bake put them", () => {
   const nodes = glbNodes();
   it("every lamp post is under its glb lantern light (x, z within 2 cm; the lantern's height)", () => {
-    for (const p of LAMP_POSTS) {
+    for (const p of [...LAMP_POSTS, ...OLD_PLAZA_LAMPS]) {
       const n = nodes.find((o) => o.name === p.light);
       expect(n, p.light).toBeDefined();
       const [x, y, z] = n!.translation!;
@@ -28,12 +30,39 @@ describe("streetLayout: the posts and poles stand where the bake put them", () =
   });
   it("no other glb light at a post's height is left without a post (4.23 m plaza/ring, 3.83 m lanes)", () => {
     const posts = nodes.filter((n) => /^light__lamp_/.test(n.name) && n.translation && [4.23, 3.83].some((h) => Math.abs(n.translation![1]! - h) < 0.005));
-    expect(posts.map((n) => n.name).sort()).toEqual(LAMP_POSTS.map((p) => p.light).sort());
+    expect(posts.map((n) => n.name).sort()).toEqual([...LAMP_POSTS, ...OLD_PLAZA_LAMPS].map((p) => p.light).sort());
   });
-  it("eight banner poles at r 26, each pair a theme, every theme on at least one pole", () => {
-    expect(BANNER_POLES).toHaveLength(8);
-    for (const p of BANNER_POLES) expect(Math.hypot(p.x, p.z)).toBeCloseTo(26, 6);
+  it("the plaza has ONE ring of posts: same radius, equal steps, every theme on at least one post", () => {
+    expect(BANNER_POLES).toHaveLength(PLAZA_RING.count);
+    BANNER_POLES.forEach((p, k) => {
+      expect(Math.hypot(p.x, p.z)).toBeCloseTo(PLAZA_RING.radius, 6);
+      const az = ((Math.atan2(p.x, -p.z) * 180) / Math.PI + 360) % 360;
+      expect(az).toBeCloseTo(ringAzimuth(k) % 360, 6);
+    });
     for (const t of BANNER_THEMES) expect(BANNER_POLES.some((p) => p.theme === t), t).toBe(true);
+  });
+  it("no post stands near another (owner 2026-11-16: no doubled posts): every two drawn posts >= 9 m apart", () => {
+    const all = [...LAMP_POSTS, ...BANNER_POLES];
+    for (let i = 0; i < all.length; i++)
+      for (let j = i + 1; j < all.length; j++) expect(Math.hypot(all[i]!.x - all[j]!.x, all[i]!.z - all[j]!.z), `${i}-${j}`).toBeGreaterThan(9);
+  });
+  it("the plaza posts keep clear of the lane mouths (>= 3 m from a lane's edge) and the crossings' signal poles (>= 4 m)", () => {
+    const seg = (px: number, pz: number, a: { x: number; z: number }, b: { x: number; z: number }) => {
+      const dx = b.x - a.x;
+      const dz = b.z - a.z;
+      const t = Math.max(-0.5, Math.min(1, ((px - a.x) * dx + (pz - a.z) * dz) / (dx * dx + dz * dz)));
+      return Math.hypot(px - a.x - t * dx, pz - a.z - t * dz);
+    };
+    for (const p of BANNER_POLES) {
+      for (const lane of VILLAGE_LAYOUT.lanes) {
+        for (let i = 0; i + 1 < lane.points.length; i++) {
+          expect(seg(p.x, p.z, lane.points[i]!, lane.points[i + 1]!) - lane.width / 2, lane.id).toBeGreaterThan(3);
+        }
+      }
+      for (const s of signalPoleSpots()) expect(Math.hypot(p.x - s.x, p.z - s.z)).toBeGreaterThan(4);
+      // on the paving, inside its edge (r 30)
+      expect(Math.hypot(p.x, p.z) + BANNER.armReach * 0).toBeLessThan(VILLAGE_LAYOUT.plaza.paving.radius);
+    }
   });
   it("the two prints of a pole are two different atlas cells, inside the 6 x 2 atlas", () => {
     for (const p of BANNER_POLES) {
@@ -60,8 +89,9 @@ describe("streetLayout: the posts and poles stand where the bake put them", () =
     expect(BANNER.inner).toBeGreaterThan(shaftRadius(BANNER.topY, 0.8) + 0.03);
     expect(BANNER.armReach).toBeGreaterThan(BANNER.inner + BANNER.width);
   });
-  it("lanternPositions: the 17 posts and 8 banner poles", () => {
+  it("lanternPositions: the kept posts and the plaza ring (the old plaza lamps are not drawn)", () => {
     expect(lanternPositions()).toHaveLength(LAMP_POSTS.length + BANNER_POLES.length);
+    expect(LAMP_POSTS.some((p) => OLD_PLAZA_LAMPS.some((o) => o.light === p.light))).toBe(false);
   });
 });
 
@@ -77,7 +107,7 @@ function cell(name: string, tris: number[][]): Mesh {
 
 describe("streetTrim: the baked posts and banner cards go, the paving and the rest stay", () => {
   const L = LAMP_POSTS[0]!;
-  const B = BANNER_POLES[1]!;
+  const B = OLD_BANNER_POLES[1]!;
   // a strip of the old post's shaft, a paving triangle under it, a house wall a metre off, the old banner's card on local x
   const c = Math.cos(B.yaw);
   const s = Math.sin(B.yaw);

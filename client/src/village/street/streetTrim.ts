@@ -6,7 +6,7 @@
 // `restore()` puts the originals back.
 
 import { BufferGeometry, Uint16BufferAttribute, Uint32BufferAttribute, Vector3, type BufferAttribute, type Mesh, type Object3D } from "three";
-import { BANNER_POLES, LAMP_POSTS, OLD_BANNER, OLD_LAMP_TOP_ABOVE_LIGHT } from "./streetLayout";
+import { LAMP_POSTS, OLD_BANNER, OLD_BANNER_POLES, OLD_LAMP_TOP_ABOVE_LIGHT, OLD_PLAZA_LAMPS } from "./streetLayout";
 
 /** Meshes never touched (sky, moon, the invisible boxes and markers, the water). */
 const KEEP = /^(village_sky|village_water|village_backdrop|fountain_moon|col__|light__|seat__|inst__)/;
@@ -34,7 +34,7 @@ interface Footprint {
 /** The old posts' and poles' footprints (parts_props.py lamp / banners, parts_fill.py lane lamps). */
 export function oldFootprints(): Footprint[] {
   const out: Footprint[] = [];
-  for (const p of LAMP_POSTS) {
+  for (const p of [...LAMP_POSTS, ...OLD_PLAZA_LAMPS]) {
     const top = p.lightY + OLD_LAMP_TOP_ABOVE_LIGHT;
     const r2 = OLD_LAMP_RADIUS * OLD_LAMP_RADIUS;
     out.push({
@@ -46,7 +46,7 @@ export function oldFootprints(): Footprint[] {
       inside: (x, y, z) => (x - p.x) ** 2 + (z - p.z) ** 2 < r2 && y > -0.05 && y < top,
     });
   }
-  for (const b of BANNER_POLES) {
+  for (const b of OLD_BANNER_POLES) {
     const c = Math.cos(b.yaw);
     const s = Math.sin(b.yaw);
     const pr = OLD_BANNER.poleRadius + 0.04;
