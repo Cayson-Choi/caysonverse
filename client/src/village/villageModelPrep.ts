@@ -817,6 +817,9 @@ function skyMaterial(source: MeshBasicMaterial, tier: VillageTier, curve: ToneCu
   const m = source.clone();
   m.fog = false;
   m.toneMapped = false;
+  // The dome is the backdrop of everything: drawn first and never in the depth buffer, so the sun glow behind the hills
+  // (DayNight.tsx) is not cut along the dome's polygon facets.
+  m.depthWrite = false;
   if (tier === "high") {
     const uniforms = {
       uAcesInInv: { value: new Matrix3().copy(ACES_IN_INV) },
@@ -912,7 +915,10 @@ export function prepareVillage(
     own.push(sky);
     swapMaterial(root, MATERIAL.sky, sky);
     const dome = meshesWith(root, MATERIAL.sky)[0];
-    if (dome) skyMapping = fitSkyMapping(dome.geometry, dome.matrixWorld);
+    if (dome) {
+      skyMapping = fitSkyMapping(dome.geometry, dome.matrixWorld);
+      dome.renderOrder = -100;
+    }
   }
 
   // The forest on the backdrop's hills: no fog, like the hills under it (one copy per leaf material it uses).
