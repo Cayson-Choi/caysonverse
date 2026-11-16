@@ -36,7 +36,7 @@ export function HouseEntryCover() {
     if (entry.phase !== "failed") return;
     if (inHouse) {
       useChatStore.getState().pushSystem(HOUSE_ENTRY_FAILED_TEXT);
-      sendUseDoor();
+      sendUseDoor({ loadFailed: true });
     }
     const t = setTimeout(resetHouseEntry, 1600);
     return () => clearTimeout(t);

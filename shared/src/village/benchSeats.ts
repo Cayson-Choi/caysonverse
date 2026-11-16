@@ -32,12 +32,12 @@
 
 import { isBlocked } from "../collision";
 import { CHAIR_SIDE_CLEAR, CHAIR_SIDE_FAR, PLAYER_RADIUS, SEAT_REACH, approachesSeat, type Seat } from "../worldMap";
-import { BACKED_ROOT_AHEAD, SIT_ROOT_AHEAD } from "../sitPose";
+import { BACKED_ROOT_AHEAD, FLOOR_SIT_POSE, SIT_ROOT_AHEAD } from "../sitPose";
 import { MEMORIAL_SEAT_MARKERS } from "./generated/memorialSeats";
 import type { Bounds } from "../school/geometry";
 import { VILLAGE_LAYOUT, houseArea, villageGeometry, type AreaId, type Point2 } from "./villageLayout";
 import { GENERATED_HOUSES } from "./generated/houses";
-import { HOUSE_NUMBERS, houseBuildingId, houseFloorBounds, compareHouseSeats, type HouseSeatPose } from "./houseAreas";
+import { HOUSE_NUMBERS, houseBuildingId, houseFloorBounds, compareHouseSeats, type HouseSeatMarker, type HouseSeatPose } from "./houseAreas";
 import type { MapGeometry } from "../school/geometry";
 
 /** One bench of the village: what sitting on it needs to know about its model. */
@@ -268,8 +268,11 @@ function markerSeats(m: MarkerSource, place: MarkerPlace): VillageSeat[] {
   for (const turn of turns) {
     const yaw = wrapYaw(m.yaw + turn);
     // `ahead` from the marker along the facing to the root; `frontEdge` from the root back to the seat's front edge
-    const ahead = backed ? BACKED_ROOT_AHEAD - m.back : m.edge + SIT_ROOT_AHEAD;
-    const frontEdge = backed ? Math.max(0.05, ahead - m.edge) : SIT_ROOT_AHEAD;
+    // a floor seat (cross-legged, FLOOR_SIT_POSE): the hips are 0.22 m behind the root, so a cushion's root is 0.22 m ahead of its centre (the
+    // hips land on it); a backed floor seat (보료, floor sofa) puts the torso's back (0.47 m behind the root) at its backrest
+    const floorPose = m.pose === "floor";
+    const ahead = floorPose ? (backed ? FLOOR_SIT_POSE.torsoBehindRoot - m.back : FLOOR_SIT_POSE.hipsBehindRoot) : backed ? BACKED_ROOT_AHEAD - m.back : m.edge + SIT_ROOT_AHEAD;
+    const frontEdge = backed ? Math.max(0.05, ahead - m.edge) : floorPose ? FLOOR_SIT_POSE.hipsBehindRoot : SIT_ROOT_AHEAD;
     const p = offset(m.x, m.z, yaw, 0, ahead);
     const root = { x: Math.round(p.x * 1000) / 1000, z: Math.round(p.z * 1000) / 1000 };
     const id = turns.length > 1 ? `${m.id}:${turn === 0 ? "front" : "back"}` : m.id;
@@ -397,3 +400,17 @@ function makeSeats(benches: readonly VillageBench[]): VillageSeat[] {
  * is in (`VillageSeat.area`).
  */
 export const VILLAGE_SEATS: readonly VillageSeat[] = Object.freeze(makeSeats(VILLAGE_BENCHES).map((s) => Object.freeze(s)));
+
+/**
+ * The seats one house seat marker makes (the list's own rule, exported for tests): a floor marker's root places the hips on the marker's
+ * centre (`FLOOR_SIT_POSE`), whatever the pose of the others.
+ */
+export function houseMarkerSeats(m: HouseSeatMarker): VillageSeat[] {
+  return markerSeats(m, {
+    area: houseArea(houseBuildingId(m.n), m.floor),
+    bounds: houseFloorBounds(m.n, m.floor),
+    geometry: villageGeometry,
+    peers: [m],
+    lenient: true,
+  });
+}

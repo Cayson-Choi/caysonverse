@@ -100,14 +100,14 @@ export const HOUSE_ENTRY_RESCUE_M = 1.2;
  * `exit`, buildingAccess.ts), in the village. Null for a position that is not within reach of floor 1's exit pad
  * (`padUsableFrom`, houseAreas.ts: the same shape as the memorial door's inside rule), on any other area, or a non-finite position.
  */
-export function useHouseExit(area: string, x: number, z: number): DoorArrival | null {
+export function useHouseExit(area: string, x: number, z: number, loadFailed = false): DoorArrival | null {
   const hit = parseHouseFloorArea(area);
   if (!hit || hit.floor !== 1) return null;
   if (!Number.isFinite(x) || !Number.isFinite(z)) return null;
   const local = worldToLocal(hit.n, 1, x, z);
-  // from the arrival spot itself too (it is 2.2 m from the pad, out of its reach): a player whose house model would not load is sent back
-  // out from where they arrived (the client gives up after 8 s, HouseEntryCover.tsx); nobody gains a way out they could not walk to
-  const rescue = Math.hypot(local.x - ENTRY_SPAWN.x, local.z - ENTRY_SPAWN.z) <= HOUSE_ENTRY_RESCUE_M;
+  // Only when the client says the house model failed to load (HouseEntryCover.tsx, after 8 s): then the arrival spot itself (2.2 m from the
+  // pad, out of its reach) is a way out too. Otherwise the contract's pad rule alone.
+  const rescue = loadFailed && Math.hypot(local.x - ENTRY_SPAWN.x, local.z - ENTRY_SPAWN.z) <= HOUSE_ENTRY_RESCUE_M;
   if (!rescue && !padUsableFrom(EXIT_PAD as HousePad, local.x, local.z)) return null;
   const entry = keypadEntryOf(hit.buildingId);
   if (!entry) return null;

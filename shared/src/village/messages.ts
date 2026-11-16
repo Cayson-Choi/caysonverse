@@ -42,7 +42,7 @@ export const VillageMsg = {
 export type VillageMsg = (typeof VillageMsg)[keyof typeof VillageMsg];
 
 /** Client → server: use the door at hand. Carries no data (the server never reads it). */
-export type UseDoorPayload = Record<string, never>;
+export type UseDoorPayload = Record<string, never> | { loadFailed: true };
 
 /** Client → server: use the stair at hand. Carries no data (the server never reads it). */
 export type UseStairPayload = Record<string, never>;

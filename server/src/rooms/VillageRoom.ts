@@ -124,8 +124,8 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     this.onMessage(MessageType.Stand, (client) => {
       this.handleStand(client);
     });
-    this.onMessage(VillageMsg.UseDoor, (client) => {
-      this.handleUseDoor(client);
+    this.onMessage(VillageMsg.UseDoor, (client, payload: unknown) => {
+      this.handleUseDoor(client, payload);
     });
     this.onMessage(VillageMsg.UseStair, (client) => {
       this.handleUseStair(client);
@@ -472,14 +472,15 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
    * is hundreds of metres away and dropped. Server-authoritative: the client sees its new place when the
    * state syncs (its existing large-correction snap applies it).
    */
-  private handleUseDoor(client: Client): void {
+  private handleUseDoor(client: Client, payload?: unknown): void {
     const player = this.state.players.get(client.sessionId);
     const track = this.tracking.get(client.sessionId);
     if (!player || !track) return; // no seat yet / already left → drop
     if (player.seatIndex >= 0) return; // sitting on a bench: stand up first (silent drop)
 
     // the village's memorial door and the hall's way out (useDoor), or a house's way out to its porch (useHouseExit)
-    const arrival = useDoor(player.area, player.x, player.z) ?? useHouseExit(player.area, player.x, player.z);
+    const loadFailed = payload !== null && typeof payload === "object" && (payload as { loadFailed?: unknown }).loadFailed === true;
+    const arrival = useDoor(player.area, player.x, player.z) ?? useHouseExit(player.area, player.x, player.z, loadFailed);
     if (arrival === null) return; // no door within reach → silent drop
 
     const now = this.now();

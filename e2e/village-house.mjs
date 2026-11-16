@@ -14,7 +14,8 @@ import {
 
 const phone = process.argv.includes("--phone");
 const night = process.argv.includes("--night");
-const quick = process.argv.includes("--quick"); // phone / night: three seats per floor instead of all
+const skipSeats = process.argv.includes("--skip-seats"); // the per-seat sweep is the long part: a rerun of the rest
+const quick = process.argv.includes("--quick"); // phone / night: five seats per floor (the cushion h1_1_3 and the first bed edges included) instead of all
 const name = `village-house${phone ? "-phone" : ""}${night ? "-night" : ""}`;
 const run = createRun(name);
 const outArg = process.argv.find((a) => a.startsWith("--out="));
@@ -138,7 +139,7 @@ try {
   // ---- seats: every seat of both floors
   const seatList = await p.page.evaluate(async () => {
     const m = await window.__imp("/src/village/benchSeats.ts");
-    return m.VILLAGE_SEATS.map((s, index) => ({ index, id: s.id, area: s.area, x: s.x, z: s.z, yaw: s.yaw, standX: s.standX, standZ: s.standZ, bench: s.bench, kind: s.kind, seatY: s.seatY })).filter((s) => s.area.startsWith("house:"));
+    return m.VILLAGE_SEATS.map((s, index) => ({ index, id: s.id, area: s.area, x: s.x, z: s.z, yaw: s.yaw, standX: s.standX, standZ: s.standZ, bench: s.bench, kind: s.kind, seatY: s.seatY, pose: s.pose })).filter((s) => s.area.startsWith("house:"));
   });
   run.check("house 1 has its 12 seats (13 places with both-facings)", seatList.length >= 12, seatList.length);
   /** A free spot from which the prompt offers seat `index` (the client's rule), nearest the seat first. */
@@ -159,38 +160,59 @@ try {
           if (col.isBlocked(x, z, 0.5, map.geometry.obstacles, 0)) continue;
           if (wm.nearestFreeSeat(x, z, () => false, wm.SEAT_REACH, bs.VILLAGE_SEATS) === seat.index) out.push({ x, z, d });
         }
+      // the spot a sitter stands up on is the first choice when the prompt offers the seat there (it is reachable by construction)
+      if (!col.isBlocked(seat.standX, seat.standZ, 0.45, map.geometry.obstacles, 0) && wm.nearestFreeSeat(seat.standX, seat.standZ, () => false, wm.SEAT_REACH, bs.VILLAGE_SEATS) === seat.index) out.push({ x: seat.standX, z: seat.standZ, d: 0 });
       return out;
     }, s);
 
-  for (const floor of [2, 1]) {
+  for (const floor of skipSeats ? [] : [2, 1]) {
     await run.step(`floor ${floor}: sit on every seat and get up again`, async () => {
       if (floor === 1) {
         // downstairs: from the top landing
         const down = { x: 364.56, z: 22.95 };
-        for (let i = 0; i < 3 && !(await targets(p)).some((t) => t.id === "house_stair:down"); i++) await walkAndWait(p, down.x + 0.2, down.z, 20000, 0.5);
+        // via the open floor beside the landing (the room's middle), then onto the pad; the position is logged for the report
+        for (let i = 0; i < 4 && !(await targets(p)).some((t) => t.id === "house_stair:down"); i++) {
+          if (i > 0) await walkAndWait(p, 366.5, 24.5, 20000, 0.8);
+          await walkAndWait(p, down.x - 0.15, down.z, 20000, 0.5);
+        }
+        run.check("on the landing, the down button is offered", (await targets(p)).some((t) => t.id === "house_stair:down"), await pos(p));
         await sleep(1100);
         await act();
         await waitArea("house:house_1:1");
         await coverGone();
       }
-      for (const seat of seatList.filter((s) => s.area === `house:house_1:${floor}`).slice(0, quick ? 3 : 99)) {
+      for (const seat of seatList.filter((s) => s.area === `house:house_1:${floor}`).slice(0, quick ? 5 : 99)) {
         const spots = await approachFor(seat);
         if (!run.check(`${seat.id}: a free spot from which the prompt offers it`, spots.length > 0, spots.length)) continue;
         // prefer the nearest spot that is straight in front for a backed seat
         const spot = spots.sort((a, b) => a.d - b.d)[0];
-        await walkAndWait(p, spot.x, spot.z, 25000, 0.6);
+        // the e2e walk is a straight click-move with sliding, no path search: go by open-floor hubs when the straight way is blocked by furniture
+        const hubs = floor === 1 ? [[365.3, -4.9], [362.0, -1.0], [366.5, -2.3], [368.4, -5.0]] : [[366.5, 24.5], [364.5, 26.5], [367.5, 28.2]];
+        let at = await walkAndWait(p, spot.x, spot.z, 25000, 0.3);
+        for (const h of hubs) {
+          if (Math.hypot(at.x - spot.x, at.z - spot.z) <= 0.35) break;
+          await walkAndWait(p, h[0], h[1], 25000, 0.9);
+          at = await walkAndWait(p, spot.x, spot.z, 25000, 0.3);
+        }
         await sleep(300);
         const tg = await p.page.evaluate(() => document.querySelector(".cv-action-btn")?.textContent ?? "");
         await act();
         await sleep(900);
         const st = await seatState();
         const sat = seatList.find((s) => s.index === st.seatIndex);
-        const ok = st.seatIndex === seat.index || (sat && sat.area === seat.area && Math.hypot(sat.x - seat.x, sat.z - seat.z) < 1.3); // the nearest seat of the same piece also counts
+        const ok = st.seatIndex === seat.index || (seat.pose !== "floor" && sat && sat.area === seat.area && Math.hypot(sat.x - seat.x, sat.z - seat.z) < 1.3); // the nearest seat of the same piece also counts (not for the floor cushion: it must be that seat)
         run.check(`${seat.id}: E sits (seatIndex ${st.seatIndex}, wanted ${seat.index})`, ok, { tg, st });
         if (st.seatIndex >= 0) {
           const d = Math.hypot(st.x - seatList.find((s) => s.index === st.seatIndex).x, st.z - seatList.find((s) => s.index === st.seatIndex).z);
           run.check(`${seat.id}: the sitter is on the seat spot`, d < 0.05, d);
-          await sleep(900);
+          await sleep(2600); // the sit-down clip (about 1.5 s) must be over: the hold clip is what the probe should name
+          const clip = await p.page.evaluate(() => {
+            const a = window.__cvAvatars?.();
+            const me = a && a[window.__cv.getSessionId()];
+            return me ? me.clip : null;
+          });
+          if (seat.pose === "floor") run.check(`${seat.id}: the cross-legged floor clip plays (Sit_Floor_Idle), legs on the cushion`, /Sit_Floor/.test(String(clip)), clip);
+          else run.check(`${seat.id}: a chair clip plays`, /Sit_Chair/.test(String(clip)), clip);
           await run.shot(p, `seat-${seat.id.replace(/[:]/g, "_")}.png`);
           await act(); // stand
           await sleep(1100);
@@ -202,14 +224,27 @@ try {
   }
 
   await run.step("a tap on a seat far away walks there and sits (3 seats, floor 1)", async () => {
-    for (const seat of seatList.filter((s) => s.area === "house:house_1:1" && s.kind === "backed").slice(0, 3)) {
+    if ((await areaOf()) === "house:house_1:2") {
+      // (a rerun that skipped the seat sweep arrives here upstairs)
+      await walkAndWait(p, 364.4, 22.95, 20000, 0.5);
+      await sleep(1100);
+      await act();
+      await waitArea("house:house_1:1");
+      await coverGone();
+      await sleep(1100);
+    }
+    const tapSeats = ["h1_1_0", "h1_1_4", "h1_1_5", "h1_1_6"].map((id) => seatList.find((x) => x.id === id)).filter(Boolean);
+    for (const seat of tapSeats) {
       await walkAndWait(p, 365.3, -4.9, 20000, 0.8);
-      await sleep(600);
+      await turnCameraTo(p, seat.x, seat.z);
+      await sleep(900);
       const s = await toScreen(seat.x, seat.seatY + 0.2, seat.z);
       if (!run.check(`${seat.id}: on screen to tap`, !!s, s)) continue;
       await tapAt(s);
+      await sleep(400);
+      const pk = await p.page.evaluate(() => { const k = window.__cvClickPick?.(); return k && { pick: k.pick && { name: k.pick.name, x: +k.pick.x.toFixed(2), y: +k.pick.y.toFixed(2), z: +k.pick.z.toFixed(2) }, plan: k.plan, sitOn: k.sitOn }; });
       const sat = await p.page.waitForFunction(() => window.__cv.getPos().seatIndex >= 0, null, { timeout: 15000 }).then(() => true, () => false);
-      run.check(`${seat.id}: the tap walked there and sat`, sat, await seatState());
+      run.check(`${seat.id}: the tap walked there and sat`, sat, { pos: await seatState(), click: pk });
       if (sat) {
         await run.shot(p, `tap-sit-${seat.id}.png`);
         await act();

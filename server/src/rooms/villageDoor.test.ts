@@ -140,8 +140,9 @@ describe("a house's way out and stair (집 실내 G)", () => {
       expect(useHouseExit(houseFloorArea(n, 1), ...(Object.values(w(n, 1, EXIT_PAD.x + 1.5, EXIT_PAD.z + 1.9)) as [number, number]))).toBeNull();
       // the arrival spot inside (spawn__h<N>_in, 2.2 m from the pad) offers no button, but the server takes the way out from it: the rescue of
       // a house whose model would not load (HOUSE_ENTRY_RESCUE_M); 1.5 m off it, no
-      expect(useHouseExit(houseFloorArea(n, 1), p.spawnIn.x, p.spawnIn.z)).not.toBeNull();
-      expect(useHouseExit(houseFloorArea(n, 1), ...(Object.values(w(n, 1, ENTRY_SPAWN.x + 1.5, ENTRY_SPAWN.z + 0.5)) as [number, number]))).toBeNull();
+      expect(useHouseExit(houseFloorArea(n, 1), p.spawnIn.x, p.spawnIn.z)).toBeNull(); // the contract's pad rule alone…
+      expect(useHouseExit(houseFloorArea(n, 1), p.spawnIn.x, p.spawnIn.z, true)).not.toBeNull(); // …unless the client says the model failed
+      expect(useHouseExit(houseFloorArea(n, 1), ...(Object.values(w(n, 1, ENTRY_SPAWN.x + 1.5, ENTRY_SPAWN.z + 0.5)) as [number, number]), true)).toBeNull();
       expect(useHouseExit(houseFloorArea(n, 1), ...(Object.values(w(n, 1, EXIT_PAD.x + 1.2, EXIT_PAD.z + 0.5)) as [number, number]))).toBeNull();
       expect(useHouseExit(houseFloorArea(n, 2), p.exitPad.x, p.exitPad.z + 30)).toBeNull();
       expect(useHouseExit("village", p.exitPad.x, p.exitPad.z)).toBeNull();

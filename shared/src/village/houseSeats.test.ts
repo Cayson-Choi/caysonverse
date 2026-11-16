@@ -120,3 +120,29 @@ describe("the house pads' buttons (houseTargets.ts)", () => {
     }
   });
 });
+
+describe("floor seats put the hips on the cushion (FLOOR_SIT_POSE)", () => {
+  // a free spot of house 1 floor 1: the open floor beside the stair's foot
+  const base = { n: 1 as const, floor: 1 as const, k: 0, x: 363.0, z: -1.2, y: 0.08, yaw: Math.PI / 2, width: 0.6, group: "t", both: false, exitTurn: 0 };
+  it("a cushion: the root is 0.22 m ahead of its centre, lifted by its own height (the lowest point rests on it); any side", async () => {
+    const { houseMarkerSeats } = await import("./benchSeats");
+    const { FLOOR_SIT_POSE, liftForSeatY } = await import("../sitPose");
+    const [s] = houseMarkerSeats({ ...base, id: "h1_1_90", furn: "cushion", kind: "floor", pose: "floor", approach: "any", edge: 0.3, back: 0, lean: 0 });
+    expect(s).toBeDefined();
+    expect(Math.hypot(s!.x - base.x, s!.z - base.z)).toBeCloseTo(FLOOR_SIT_POSE.hipsBehindRoot, 2);
+    // the hips (0.22 behind the root) are on the centre
+    expect(s!.x - Math.sin(s!.yaw) * FLOOR_SIT_POSE.hipsBehindRoot).toBeCloseTo(base.x, 2);
+    expect(s!.frontEdge).toBeUndefined();
+    expect(s!.pose).toBe("floor");
+    expect(liftForSeatY(s!.seatY, s!.pose)).toBeCloseTo(0.08, 6);
+  });
+  it("a 보료 with a back: the torso's back (0.47 m behind the root) is at the backrest, front approach only", async () => {
+    const { houseMarkerSeats } = await import("./benchSeats");
+    const { FLOOR_SIT_POSE } = await import("../sitPose");
+    const [s] = houseMarkerSeats({ ...base, id: "h1_1_91", furn: "boryo", kind: "floor", pose: "floor", approach: "front", edge: 0.4, back: 0.3, lean: 0.1 });
+    expect(s).toBeDefined();
+    const behind = (s!.x - base.x) * Math.sin(s!.yaw) + (s!.z - base.z) * Math.cos(s!.yaw); // root's distance ahead of the marker
+    expect(behind - FLOOR_SIT_POSE.torsoBehindRoot).toBeCloseTo(-0.3, 2);
+    expect(s!.frontEdge).toBeDefined();
+  });
+});

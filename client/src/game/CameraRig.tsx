@@ -91,7 +91,7 @@ function showUnreachableHint(): void {
 }
 import { getRemoteSeatIndices } from "./remoteStore";
 import { sendSit } from "../net/connection";
-import { SEAT_REACH, approachesSeat, seatDistance, seatTaken } from "@caysonverse/shared/worldMap";
+import { SEAT_APPROACH_SLACK, SEAT_REACH, approachesSeat, seatDistance, seatTaken } from "@caysonverse/shared/worldMap";
 
 interface CameraRigProps {
   pose: Pose;
@@ -388,7 +388,7 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
       let sitOn: number | null = null;
       if (!houseTap && surface && surfaceKind(surface, map.geometry.obstacles, activeBounds()) === "none") {
         const remote = new Set(getRemoteSeatIndices());
-        const fc = furnitureClick(pick, pick?.ray ?? null, map.seats ?? activeSeats(), map.seatArea, (i) => remote.has(i), from, 0, inRoom);
+        const fc = furnitureClick(pick, pick?.ray ?? null, map.seats ?? activeSeats(), map.seatArea, (i) => remote.has(i), from, 0, inRoom, { obstacles: map.geometry.obstacles, bounds: activeBounds() });
         // (a click on the seat the player is sitting on stays nothing)
         if (fc && !(fc.seatIndex !== null && fc.seatIndex === seat.index)) {
           // the floor there (a column that meets a cushion or a seat first is not the floor: the room's floor level then)
@@ -921,7 +921,7 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
           const seats = getActiveMap().seats ?? activeSeats();
           const target = seats[index];
           const remote = getRemoteSeatIndices();
-          return !!target && !seatTaken(seats, index, (i) => remote.includes(i)) && approachesSeat(target, pose.x, pose.z) && seatDistance(target, pose.x, pose.z) <= SEAT_REACH;
+          return !!target && !seatTaken(seats, index, (i) => remote.includes(i)) && approachesSeat(target, pose.x, pose.z, SEAT_APPROACH_SLACK) && seatDistance(target, pose.x, pose.z) <= SEAT_REACH;
         },
       });
       seatOnArrival.current = step.next;

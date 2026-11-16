@@ -19,6 +19,9 @@ import { setSeatSightBlocker, setSeatSpotBlocker } from "../game/seatFraming";
 import { setCameraSolids } from "../game/cameraSolids";
 import { dayNight } from "./dayNightDriver";
 import { LoadBoundary } from "./LoadBoundary";
+import { arrivalCamera } from "./houseArrivalCamera";
+import { viewState } from "../game/viewState";
+import { CAMERA } from "../game/constants";
 import { DoorPad } from "./VillageHall";
 import { buildSolidIndex } from "./hallSolidIndex";
 import { hallNightWeight } from "./hallNight";
@@ -74,7 +77,7 @@ function HousePads({ n, floor }: { n: HouseNumber; floor: HouseFloor }) {
 }
 
 /** One floor of the dressed house: the model with its light (when it has any), the window panorama. Suspends while loading. */
-function HouseFloorScene({ n, floor }: { n: HouseNumber; floor: HouseFloor }) {
+function HouseFloorScene({ n, floor, pose }: { n: HouseNumber; floor: HouseFloor; pose: Pose }) {
   noteHouseRequested(n);
   const tier = useQualityTier();
   const urls = houseUrls(n, tier);
@@ -153,10 +156,12 @@ function HouseFloorScene({ n, floor }: { n: HouseNumber; floor: HouseFloor }) {
     };
   }, [nodes, n, floor]);
 
-  // This floor is drawn: the entry cover may open.
+  // This floor is drawn: the entry cover may open, and the camera glides to the direction that leaves it the longest clear arm (arrival camera).
   useEffect(() => {
     houseEntryReady();
-  }, [nodes]);
+    const cam = arrivalCamera(n, floor, pose.x, pose.z, pose.yaw, CAMERA.distance);
+    viewState.orbitGoal = { yaw: cam.yaw, pitch: cam.pitch };
+  }, [nodes]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useFrame(() => {
     const night = wantsLightmap || nodes.views.length > 0 ? hallNightWeight(dayNight.outdoor.night, houseNightMapUniform.value !== null) : 0;
@@ -178,7 +183,6 @@ declare global {
  * keyed by it, so the other floor's group is the one hidden at once. The files are held for the whole stay.
  */
 export function HouseArea({ area, pose }: { area: string; pose: Pose }) {
-  void pose;
   const hit = parseHouseFloorArea(area);
   const n = hit?.n ?? 1;
   const floor = hit?.floor ?? 1;
@@ -224,7 +228,7 @@ export function HouseArea({ area, pose }: { area: string; pose: Pose }) {
         notice="집 안을 불러오지 못했어요. 잠시 뒤 다시 불러올게요."
       >
         <Suspense fallback={<HouseRoom n={n} floor={floor} />}>
-          <HouseFloorScene key={area} n={n} floor={floor} />
+          <HouseFloorScene key={area} n={n} floor={floor} pose={pose} />
           <SceneWarmUp />
         </Suspense>
       </LoadBoundary>

@@ -82,9 +82,10 @@ export async function joinVillage(params: VillageJoinParams): Promise<Room<World
  * carries no data; the server checks the distance to the door and a 1-per-second cap and silently drops anything
  * else. No-op unless this tab is in the village.
  */
-export function sendUseDoor(): void {
+export function sendUseDoor(opts?: { loadFailed?: boolean }): void {
   if (!room) return;
-  room?.send(VillageMsg.UseDoor, {});
+  // `loadFailed`: the house's model did not load, so the way out is also taken from the arrival spot (the server reads this one flag only)
+  room?.send(VillageMsg.UseDoor, opts?.loadFailed ? { loadFailed: true } : {});
 }
 
 /** Use the stair at hand (a house's up / down pad); the server decides from our authoritative position, once a second. */

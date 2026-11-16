@@ -14,8 +14,51 @@
  * Pure: no three.js; CameraRig looks the floor's height up.
  */
 
-import { approachesSeat, seatDistance, SEAT_REACH, type Seat } from "@caysonverse/shared/worldMap";
-import type { SurfacePoint } from "./clickPlan";
+import { approachesSeat, nearestFreeSeat, seatDistance, SEAT_REACH, type Seat } from "@caysonverse/shared/worldMap";
+import { isFreeSpot, type SurfacePoint } from "./clickPlan";
+import type { AABB } from "@caysonverse/shared/collision";
+import type { Bounds } from "@caysonverse/shared/school/geometry";
+
+/**
+ * A spot from which seat `i` is offered where its own stand spot is not (a house chair's sitter steps BACK on getting up — exitTurn π —
+ * so its stand spot lies behind its backrest, where the chair is never offered): the free spot of 0.6–1.3 m round the seat point that the
+ * prompt offers this seat from (approached, in reach, the nearest free seat there), the one nearest `from`. Null: none.
+ */
+export function seatApproachSpot(
+  seats: readonly Seat[],
+  i: number,
+  from: { x: number; z: number },
+  obstacles: readonly AABB[],
+  bounds: Bounds,
+  taken: (index: number) => boolean = () => false,
+): { x: number; z: number } | null {
+  const s = seats[i]!;
+  let best: { x: number; z: number } | null = null;
+  let bestD = Infinity;
+  for (const d of [0.6, 0.8, 1.0, 1.2]) {
+    for (let k = 0; k < 16; k++) {
+      const a = (k * Math.PI) / 8;
+      const x = Math.round((s.x + Math.cos(a) * d) * 100) / 100;
+      const z = Math.round((s.z + Math.sin(a) * d) * 100) / 100;
+      if (!isFreeSpot(x, z, obstacles, bounds)) continue;
+      if (!approachesSeat(s, x, z) || seatDistance(s, x, z) > SEAT_REACH) continue;
+      if (nearestFreeSeat(x, z, taken, SEAT_REACH, seats) !== i) continue;
+      // robust: a walk stops a few cm short of its spot (clickMove's arrive distance), so the free points round the spot must offer it too
+      let steady = true;
+      for (let m = 0; m < 8 && steady; m++) {
+        const ax = x + Math.cos((m * Math.PI) / 4) * 0.3;
+        const az = z + Math.sin((m * Math.PI) / 4) * 0.3;
+        if (isFreeSpot(ax, az, obstacles, bounds) && (!approachesSeat(s, ax, az) || nearestFreeSeat(ax, az, taken, SEAT_REACH, seats) !== i)) steady = false;
+      }
+      const fd = Math.hypot(x - from.x, z - from.z) + (steady ? 0 : 100); // a steady spot always beats an unsteady one
+      if (fd < bestD) {
+        bestD = fd;
+        best = { x, z };
+      }
+    }
+  }
+  return best;
+}
 
 /** Furniture is no higher than this (m): a click higher up (a wall, a shelf, the louvres) is still nothing. */
 export const FURNITURE_TOP = 1.3;
@@ -130,6 +173,8 @@ export function furnitureClick(
   floorY: number,
   /** Whether a click on furniture that is no seat walks next to it (the hall); otherwise it stays nothing. */
   otherFurniture: boolean,
+  /** The map's colliders and rectangle: with them a seat whose stand spot is no approach (a chair stepped back from) is walked to by an approach spot. */
+  world?: { obstacles: readonly AABB[]; bounds: Bounds },
 ): FurnitureClick | null {
   if (!pick || pick.y > FURNITURE_TOP) return null;
   const areaOf = (s: Seat) => (s as { area?: string }).area;
@@ -138,7 +183,8 @@ export function furnitureClick(
     const s = seats[i]!;
     if (!inArea(s) || taken(i)) return false;
     // its approach must offer it (a chair's side spot, a sofa's front) — never a spot behind a backrest
-    return approachesSeat(s, s.standX, s.standZ) && seatDistance(s, s.standX, s.standZ) <= SEAT_REACH;
+    if (approachesSeat(s, s.standX, s.standZ) && seatDistance(s, s.standX, s.standZ) <= SEAT_REACH) return true;
+    return world !== undefined && seatApproachSpot(seats, i, from, world.obstacles, world.bounds, taken) !== null;
   };
   const hitT = ray ? (pick.distance ?? Math.hypot(pick.x - ray.o.x, pick.y - ray.o.y, pick.z - ray.o.z)) : 0;
   // the seat whose volume the ray enters first, up to the furniture it hit (or a little past a table top's edge)
@@ -171,6 +217,10 @@ export function furnitureClick(
   }
   if (best >= 0) {
     const s = seats[best]!;
+    if (!(approachesSeat(s, s.standX, s.standZ) && seatDistance(s, s.standX, s.standZ) <= SEAT_REACH) && world) {
+      const spot = seatApproachSpot(seats, best, from, world.obstacles, world.bounds, taken);
+      if (spot) return { surface: { x: spot.x, y: floorY, z: spot.z, ny: 1 }, seatIndex: best };
+    }
     return { surface: { x: s.standX, y: floorY, z: s.standZ, ny: 1 }, seatIndex: best };
   }
   if (!otherFurniture) return null;

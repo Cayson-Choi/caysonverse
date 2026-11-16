@@ -56,6 +56,31 @@ for (const n of GENERATED_HOUSE_NUMBERS) {
         expect(bad.slice(0, 20).join("\n")).toBe("");
       }, 240_000);
 
+      it("from spots inside narrow aisles (a body's gap of 0.9–1.3 m between two pieces: the contract's minimum passage) to the pads, the open seat approaches and the room's open floor", () => {
+        const narrow = spots.filter((c) => {
+          const g = gapFrom(c.x, c.z);
+          return g >= 0.41 && g < 0.7;
+        });
+        const goals = [...targets, ...spots.filter((_, i) => i % 7 === 0).map((c) => ({ k: `floor ${c.x.toFixed(1)},${c.z.toFixed(1)}`, x: c.x, z: c.z }))].filter((t) => gapFrom(t.x, t.z) >= 0.7);
+        const bad: string[] = [];
+        let plans = 0;
+        for (const st of narrow) {
+          for (const t of goals) {
+            if (Math.hypot(t.x - st.x, t.z - st.z) < 0.5) continue;
+            plans++;
+            const plan = planClickMove(st.x, st.z, { x: t.x, y: 0.01, z: t.z, ny: 1 }, obstacles, bounds, false, { furniture: obstacles });
+            if (!plan.ok) {
+              if (plan.reason !== "here") bad.push(`${st.x.toFixed(1)},${st.z.toFixed(1)} -> ${t.k}: ${plan.reason}`);
+              continue;
+            }
+            if (!walkThere(st.x, st.z, plan.x, plan.z, obstacles, bounds, plan.via ?? []).arrived) bad.push(`${st.x.toFixed(1)},${st.z.toFixed(1)} -> ${t.k}: walk stops`);
+          }
+        }
+        expect(narrow.length, "narrow-aisle starts").toBeGreaterThan(5);
+        expect(plans).toBeGreaterThan(50);
+        expect(bad.slice(0, 20).join(String.fromCharCode(10))).toBe("");
+      }, 240_000);
+
       it("from the arrival spot every reachable floor point (a 0.75 m sample) takes a walk there", () => {
         const bad: string[] = [];
         let n2 = 0;
