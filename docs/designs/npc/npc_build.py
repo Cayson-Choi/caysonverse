@@ -236,8 +236,7 @@ def fabricize(ob):
                 uv.data[li].uv = (vx.co[a] / tile, vx.co[b] / tile)
             assign.append(slot(fabric_material(kind)))
         else:
-            for li in p.loop_indices: uv.data[li].uv = (0.0, 0.0)
-            assign.append(slot(src))
+            assign.append(slot(src))   # 단단한 면의 UV는 그대로(명찰 그림이 쓴다)
     me.materials.clear()
     for m in new_slots: me.materials.append(m)
     for p, i in zip(me.polygons, assign): p.material_index = i
@@ -429,6 +428,8 @@ def build_guide(m, badge_img):
     a_, b_ = prof_at(rows, 0.475)
     hemrows = [V(u / 40, 0.0, 1.040) for u in range(41)]
     rim.append(grp(setmat(tube_bm(hemrows, [0.012] * len(hemrows), segs=8, capn=2), 4), 1))
+    toprow = [V(u / 48, 1.0, KV(1.0, 1.040)) for u in range(49)]
+    rim.append(grp(setmat(tube_bm(toprow, [0.014] * len(toprow), segs=8, capn=2), 4), 1))
     # 아래 주머니 두 개(덮개 + 흰 테)
     for s in (1, -1):
         zc, w, h = 0.64, 0.15, 0.13
@@ -548,7 +549,7 @@ def build_memorial(m, badge_img=None):
     for s in (1, -1):
         pts = [Vector((s * x, 0, 1.107)) for x in (0.10, 0.20, 0.30, 0.40, 0.50, 0.60, 0.70)]
         sleeves.append(tube_bm(pts, [0.150, 0.163, 0.160, 0.150, 0.140, 0.130, 0.124], segs=28, caps=(True, False), capn=5))
-    cuffs = sleeve_cuff_bm(0.692, 0.104, 0.016, rr=0.012)
+    cuffs = [tube_bm([Vector((s * 0.672, 0, 1.107)), Vector((s * 0.712, 0, 1.107))], [0.112, 0.108], segs=24, caps=(False, False)) for s in (1, -1)]
     collar = collar_bm(R=0.152, r=0.046, z=1.226)
     a, b = prof_at(pr, 0.455)
     hem = se_ring_bm(0.457, a - 0.002, b - 0.002, 2.5, 0.010, 0.014, segs=64, rsegs=8)
@@ -642,8 +643,9 @@ def build_memorial(m, badge_img=None):
                      [m['suit'], m['white'], m['tie'], m['suit_lapel'], m['black'], m['pocket_sq'], m['silver']],
                      override=long_sleeve_weights, target=3000, dec_parts=body)
     # 명찰(오른쪽 가슴 = -X): 금테 판 + 앞면 그림
-    p, n = surf(bv[0], (-0.185, -1.5, 0.985), (0, 1, 0))
+    p, n = surf(bv[0], (-0.212, -1.5, 0.925), (0, 1, 0))   # 오른쪽 가슴, 라펠 아래
     if p is not None and badge_img is not None:
+        p = p + n * 0.012
         plate = orient_front(rbox_bm(0.120, 0.008, 0.040, 0.006, cuts=2), n, p + n * 0.014)
         pob = new_obj('_mem_plate', merge_bms([setmat(plate, 0)]), [m['gold']])
         skin(pob, rigid='chest')
@@ -676,6 +678,8 @@ def build_shopkeeper(m):
         parts.append(grp(setmat(tube_bm(pts, [0.012] * len(pts), segs=8, capn=2), 2), 1))
     hemrows = [V(u / 40, 0.0, 1.044) for u in range(41)]
     parts.append(grp(setmat(tube_bm(hemrows, [0.011] * len(hemrows), segs=8, capn=2), 2), 1))
+    toprow = [V(u / 48, 1.0, KV(1.0, 1.044)) for u in range(49)]
+    parts.append(grp(setmat(tube_bm(toprow, [0.013] * len(toprow), segs=8, capn=2), 2), 1))
     pockets = [(0.185, 0.96, 0.10, 0.085), (0.185, 0.84, 0.12, 0.09), (0.175, 0.635, 0.15, 0.13)]
     for s in (1, -1):
         for (x0, zc, w, h) in pockets:
@@ -736,15 +740,15 @@ def build_shopkeeper(m):
                target=4200, dec_parts=body)
     # 모자: 부드러운 면 벙거지 — 곧게 선 크라운(위 모서리 둥글게), 아래로 처진 챙, 챙과 크라운의 바느질 줄, 옆 공기구멍 둘
     zb = RIM + 0.004
-    crown = crown_bm(zb, 2.200, 0.074, flare_k=0.08, round_r=0.095)
+    crown = crown_bm(zb, 2.215, 0.074, flare_k=-0.03, round_r=0.15)
     def ringr(az):
         q = head_ring_pt(az, zb, 0.074)
         return Vector((q.x - HC.x, q.y - HC.y, 0)).length
     def brimP(u, v, lower=False):
         az = 2 * math.pi * u
         r0 = ringr(az) - 0.004
-        L = 0.150 + 0.010 * math.cos(az) ** 2
-        dro = math.radians(lerp(35, 68, v ** 1.1))
+        L = 0.165 + 0.010 * math.cos(az) ** 2
+        dro = math.radians(lerp(38, 74, v ** 1.1))
         d = Vector((math.sin(az), -math.cos(az), 0))
         p = Vector((HC.x, HC.y, zb + 0.004)) + d * (r0 + L * v * math.cos(dro)) + Vector((0, 0, -L * v * math.sin(dro)))
         if lower: p += Vector((0, 0, -0.013))
@@ -1152,7 +1156,7 @@ def export(path, clips):
                               export_animation_mode='NLA_TRACKS', export_skins=True, export_morph=False, export_apply=False,
                               export_yup=True, export_materials='EXPORT', export_def_bones=False,
                               export_optimize_animation_size=True, export_optimize_animation_keep_anim_armature=True,
-                              export_reset_pose_bones=True, export_vertex_color='MATERIAL', export_image_format='AUTO')
+                              export_reset_pose_bones=True, export_vertex_color='MATERIAL', export_image_format='AUTO', export_frame_step=2)
     FL['reset_pose'](r)
     return os.path.getsize(path)
 
