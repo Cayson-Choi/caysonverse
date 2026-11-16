@@ -4,7 +4,8 @@
  *  1. walk + E: walks the aisle with the keys to the seat's approach point (shared seatApproachPoint), turns until the UI
  *     offers THAT seat (the round button / E), takes it and checks the server agrees (busSeat); no message fallback;
  *  2. tap: stands up, walks to an aisle point 1.2-1.8 m away, turns the view towards the seat and taps (phone) / clicks (PC)
- *     its cushion on the screen; the rider walks there by itself and sits: busSeat = the seat within 15 s.
+ *     its cushion on the screen; the rider walks there by itself and stops, still standing (owner 2026-11-17: no auto-sit), the
+ *     action button offers that seat, and E / the button sits: busSeat = the seat.
  * Screenshots: the view from each seat, then the left / right windows. Optional second rider (--other): a PC client that
  * boards first and sits in R2, so the sweep also shows another rider (and R2 is not offered: it is taken).
  *
@@ -183,13 +184,23 @@ for (const pl of plan.slice(from, Math.min(to, plan.length - 1) + 1)) {
         tapInfo = { v, pitch, at };
         if (A.touch) await A.page.touchscreen.tap(at.x, at.y);
         else await A.page.mouse.click(at.x, at.y);
-        satTap = await pollUntil(async () => (await ride(A)).slot === pl.index + 1, 15000);
+        // owner 2026-11-17 ("의자를 찍으면 자동 앉기는 빼줘"): the tap only walks the rider there; arrived, they are still standing and
+        // the action button offers THAT seat; E / the button sits
+        const arrived = await pollUntil(async () => (await A.page.evaluate(async () => (await window.__imp("/src/game/busRide.ts")).busSeatGoal.index)) === -1, 15000);
+        await sleep(600);
+        const stillStanding = (await ride(A)).slot === 0;
+        const offered = (await targetsOf(A)).some((t) => t.id === `bus_sit:seat:${pl.index}`);
+        tapInfo = { v, pitch, at, arrived, stillStanding, offered };
+        if (arrived && stillStanding && offered) {
+          await act(A);
+          satTap = await pollUntil(async () => (await ride(A)).slot === pl.index + 1, 5000);
+        }
         break outer;
       }
     }
     if (!tapInfo) tapInfo = { tries };
   }
-  run.check(`${label}: a tap / click on it walks the rider there and sits`, satTap, { tapInfo, start: pl.start, now: await ride(A) });
+  run.check(`${label}: a tap / click on it walks the rider there (no auto-sit: still standing, the button offers that seat), E / the button sits`, satTap, { tapInfo, start: pl.start, now: await ride(A) });
   results.push({ label, walkE: satE, tap: satTap });
 }
 writeFileSync(join(OUT, `results-${tag}-${from}-${to}.json`), JSON.stringify(results, null, 1));

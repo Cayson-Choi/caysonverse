@@ -3,7 +3,7 @@ import { TRANSIT } from "@caysonverse/shared/village/transit";
 import { HOUSE_KEYPAD_REACH_M, keypadEntries } from "@caysonverse/shared/village/buildingAccess";
 import { GUIDE_ASK_LABEL, nearestGuide } from "@caysonverse/shared/village/guides";
 import type { InteractTarget } from "../game/interact";
-import { BUS_SEATS, busPlaceOf, busSeatNumber, inExitZone, nearestFreeSpot } from "@caysonverse/shared/village/busCabin";
+import { BUS_SEATS, busPlaceOf, busSeatNumber, inExitZone, nearestFreeSpot, seatApproachOk } from "@caysonverse/shared/village/busCabin";
 
 /**
  * What the village offers at a spot (케이슨 마을, Task 4) — pure: the scene hands it the local area and pose at
@@ -182,6 +182,7 @@ export function villageBusCabinTargets(
   busOnRoad: boolean,
   riders?: ReadonlyArray<{ ahead: number; right: number }>,
   yaw?: number,
+  preferred = -1,
 ): readonly InteractTarget[] {
   const place = busPlaceOf(busSeat);
   const out: InteractTarget[] = [];
@@ -197,7 +198,9 @@ export function villageBusCabinTargets(
     if (taken.has(busSeatNumber(i))) takenSeats.add(i);
   });
   void riders;
-  const spot = nearestFreeSpot(ahead, right, takenSeats, yaw);
+  // the seat a tap walked the rider to is the one offered while it can still be sat in from here (bus v3: a tap never sits)
+  const pref = preferred >= 0 && !takenSeats.has(preferred) && BUS_SEATS[preferred] && seatApproachOk(BUS_SEATS[preferred]!, ahead, right) ? { index: preferred, dist: 0 } : null;
+  const spot = pref ?? nearestFreeSpot(ahead, right, takenSeats, yaw);
   if (spot) {
     out.push({ kind: "object", id: `${BUS_SIT_TARGET_PREFIX}seat:${spot.index}`, dist: spot.dist, icon: "🪑", label: `앉기 (${busSeatName(spot.index)})`, short: "앉기", priority: 3 });
   }

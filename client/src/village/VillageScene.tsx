@@ -10,7 +10,7 @@ import type { PlayersRoom } from "../game/remoteSync";
 import type { Pose } from "../game/types";
 import { getRoom, sendUseDoor } from "../net/connection";
 import { rideStatusText, sendBusRide, sendBusSit, sendBusStand, showTransitNotice, startTransitSync, transitNowMs, transitTripAt, type TransitRoom, useTransitState } from "../net/transitSync";
-import { BUS_VIEW_YAW, busCamGoal, busWalk, selfBusRide } from "../game/busRide";
+import { BUS_VIEW_YAW, busCamGoal, busSeatPreferred, busWalk, selfBusRide } from "../game/busRide";
 import { busRiderPoints, takenBusSpots } from "../game/remoteStore";
 import { TRANSIT, boardingOpensWords } from "@caysonverse/shared/village/transit";
 import type { Identity } from "../stores/appStore";
@@ -188,7 +188,7 @@ function VillageDoors({ pose }: { pose: Pose }) {
         const free = selfBusRide.slot === 0;
         const ahead = free && busWalk.valid ? busWalk.ahead : selfBusRide.ahead;
         const right = free && busWalk.valid ? busWalk.right : selfBusRide.right;
-        return villageBusCabinTargets(selfBusRide.slot, ahead, right, takenBusSpots(), busOnRoad(), busRiderPoints(), free && busWalk.valid ? busWalk.yaw : undefined);
+        return villageBusCabinTargets(selfBusRide.slot, ahead, right, takenBusSpots(), busOnRoad(), busRiderPoints(), free && busWalk.valid ? busWalk.yaw : undefined, busSeatPreferred.index);
       }
       const base = villageAndHallTargets(area, p.x, p.z, cubbyCardState() !== null || guideDialogOpen() !== null || keypadOpen);
       const bus = villageBusTarget(area, p.x, p.z, boarded, ...busScheduleNow(), busOnRoad());

@@ -92,7 +92,7 @@ import type { MoveControl } from "./constants";
 import type { Orbit, Pose, SeatState } from "./types";
 import { getRoom, sendJump, sendMove, sendStand } from "../net/connection";
 import { getTransitRenderPose, useTransitState } from "../net/transitSync";
-import { busWalk, busCamState, busSeatGoal, selfBusRide } from "./busRide";
+import { busWalk, busCamState, busSeatGoal, busSeatPreferred, selfBusRide } from "./busRide";
 import { busRiderPoints, takenBusSpots } from "./remoteStore";
 import {
   BUS_SEATS,
@@ -108,7 +108,7 @@ import {
   type BusPlaceKind,
   type BusRiderPoseFull,
 } from "@caysonverse/shared/village/busCabin";
-import { sendBusMove, sendBusSit, sendBusStand, showTransitNotice } from "../net/transitSync";
+import { sendBusMove, sendBusStand, showTransitNotice } from "../net/transitSync";
 import { isInputSuspended } from "../net/resilience";
 import { useSettingsStore } from "../stores/settingsStore";
 import { cubbyFocusWeight } from "../village/cubbyFocus";
@@ -769,11 +769,12 @@ export function LocalPlayer({
             const goalSeat = BUS_SEATS[busSeatGoal.index]!;
             const ap = seatApproachPoint(goalSeat);
             if (seatApproachOk(goalSeat, busWalk.ahead, busWalk.right) && Math.hypot(ap.ahead - busWalk.ahead, ap.right - busWalk.right) < 0.45) {
-              // close enough (the server's own rule): sit, once the last step has gone out
+              // arrived (the server's own reach rule): stop here; the rider sits with E / the 앉기 button, which now offers THIS
+              // seat (owner 2026-11-17: "의자를 찍으면 자동 앉기는 빼줘" — a tap only walks there)
               sendBusMove(busWalk.ahead, busWalk.right, busWalk.yaw);
               busSendRef.current.at = performance.now();
               busSendRef.current.moving = false;
-              sendBusSit("seat", busSeatGoal.index);
+              busSeatPreferred.index = busSeatGoal.index;
               busSeatGoal.index = -1;
             } else {
               // down the aisle first (its middle), across to the approach point once level with it
@@ -803,6 +804,7 @@ export function LocalPlayer({
           }
         }
         if (moving && !suspended) {
+          busSeatPreferred.index = -1; // walking off by hand: the tapped seat is no longer the one offered
           const dirW = worldDirection(intent, bus.yaw + rel);
           const fx = Math.sin(bus.yaw);
           const fz = Math.cos(bus.yaw);
@@ -861,6 +863,7 @@ export function LocalPlayer({
         // a key (or the stick) on a seat stands me up in the aisle: one BusStand, then I walk. A tap on ANOTHER seat stands me up
         // too, and the walk to it follows (busSeatGoal); a tap on my own seat is nothing.
         if (busSeatGoal.index === placeNow.index) busSeatGoal.index = -1;
+        busSeatPreferred.index = -1;
         if ((moving || busSeatGoal.index >= 0) && !busStandSentRef.current && !suspended) {
           sendBusStand();
           busStandSentRef.current = true;

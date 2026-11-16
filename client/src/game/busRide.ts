@@ -21,10 +21,17 @@ export function riderBusPoint(self: { ahead: number; right: number }, kind: "fre
 
 /**
  * Bus v3 (owner 2026-11-16: "버스안에서 조금씩 이동해서 원하는 자리로 이동해서 … 어디든 앉을 수 있게"): a seat the rider tapped or
- * clicked (an index into BUS_SEATS), or -1. LocalPlayer walks the rider down the aisle to the seat's approach point and asks to
- * sit there; a key, the stick or a sit / stand clears it.
+ * clicked (an index into BUS_SEATS), or -1. LocalPlayer walks the rider down the aisle to the seat's approach point and stops
+ * there (owner 2026-11-17: no auto-sit — E / the 앉기 button sits, and offers that seat: busSeatPreferred); a key or the stick
+ * clears it.
  */
 export const busSeatGoal = { index: -1, at: 0 };
+
+/**
+ * The seat a tap walked the rider to (owner 2026-11-17: a tap never sits by itself): while the rider can still sit in it from
+ * where they stand, the E key / the 앉기 button offers THAT seat, whatever else is near. -1: none.
+ */
+export const busSeatPreferred = { index: -1 };
 
 /**
  * A request for the in-bus camera to turn to a quick view (the panel's ◀ 앞 ▶ 뒤 buttons): the orbit yaw relative to the

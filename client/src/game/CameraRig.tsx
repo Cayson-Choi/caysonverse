@@ -78,7 +78,7 @@ import { useFpCursor } from "./useFpCursor";
 import { useSettingsStore } from "../stores/settingsStore";
 import { getTransitRenderPose } from "../net/transitSync";
 import { busRiderCamera, ownSeatIndex, riderFov, type TransitCameraPose } from "../village/transitCamera";
-import { busCamGoal, busCamState, busElevation, busSeatGoal, riderBusPoint, selfBusRide } from "./busRide";
+import { busCamGoal, busCamState, busElevation, busSeatGoal, busSeatPreferred, riderBusPoint, selfBusRide } from "./busRide";
 import { BUS_SEATS, busPlaceOf, cabinFloorAt, seatBodyPoint } from "@caysonverse/shared/village/busCabin";
 import { busSeatUnderRay } from "../village/busSeatPick";
 import { VILLAGE_LAYOUT, cubbyAtPoint } from "@caysonverse/shared/village/villageLayout";
@@ -379,6 +379,7 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
       const index = busSeatUnderRay(getTransitRenderPose(), o, d);
       if (index >= 0) {
         busSeatGoal.index = index;
+        busSeatPreferred.index = -1;
         busSeatGoal.at = performance.now();
       }
       return true;

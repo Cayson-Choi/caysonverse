@@ -383,6 +383,20 @@ describe("villageBusCabinTargets: sit, get up and get off inside the bus (owner 
     expect(lap.some((x) => x.id === BUS_RIDE_TARGET_LEAVE)).toBe(false);
   });
 
+  it("owner 2026-11-17 (no auto-sit on tap): the seat a tap walked the rider to is the one offered while it is in reach", async () => {
+    const { villageBusCabinTargets } = await import("./villageTargets");
+    const { BUS_SEATS, seatApproachPoint, busSeatNumber } = await import("@caysonverse/shared/village/busCabin");
+    const l2 = BUS_SEATS.findIndex((s) => s.id === "L2");
+    const r2 = BUS_SEATS.findIndex((s) => s.id === "R2");
+    const ap = seatApproachPoint(BUS_SEATS[r2]!);
+    // at R2's approach point, preferring L2 (across the aisle, in reach): L2 is offered
+    const t = villageBusCabinTargets(0, ap.ahead, ap.right, new Set(), true, undefined, 0, l2);
+    expect(t.find((x) => x.id.startsWith("bus_sit:"))?.id).toBe(`bus_sit:seat:${l2}`);
+    // taken meanwhile: the nearest free one instead
+    const t2 = villageBusCabinTargets(0, ap.ahead, ap.right, new Set([busSeatNumber(l2)]), true, undefined, 0, l2);
+    expect(t2.find((x) => x.id.startsWith("bus_sit:"))?.id).not.toBe(`bus_sit:seat:${l2}`);
+  });
+
   it("parseBusSitTarget refuses anything else", async () => {
     const { parseBusSitTarget } = await import("./villageTargets");
     expect(parseBusSitTarget("village_bus_leave")).toBeNull();
