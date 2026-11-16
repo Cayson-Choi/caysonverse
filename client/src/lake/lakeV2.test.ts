@@ -143,3 +143,37 @@ describe("the water's wave tile", () => {
     expect(WAVE_TILE).toBeGreaterThanOrEqual(64);
   });
 });
+
+describe("the reel-in (owner 2026-11-17: the fish dragged in as the line is pulled)", () => {
+  const v = (reel: number) => ({ ...emptyFishView(), rod: 1, spot: 4, phase: FISH_PHASE.fighting, seq: 5, kind: 6, cm: 55, reel });
+  it("held: the fish comes in along the line (nearer the chair the further the fight has gone), at the surface", async () => {
+    const { reelHeld, reelProgress, skimming, underPos } = await import("./fishCatch");
+    const a = { x: 0, y: 0, z: 0, yaw: 0 };
+    const b = { x: 0, y: 0, z: 0, yaw: 0 };
+    underPos(v(128 | 10), 3, a, 0.1);
+    underPos(v(128 | 90), 3, b, 0.9);
+    const r = { x: 0, y: 0, z: 0 };
+    releasePoint(4, r);
+    expect(Math.hypot(b.x - r.x, b.z - r.z)).toBeLessThan(Math.hypot(a.x - r.x, a.z - r.z) - 1);
+    expect(reelHeld(v(128 | 40))).toBe(true);
+    expect(reelProgress(v(128 | 40))).toBeCloseTo(0.4);
+    expect(skimming(v(128 | 40), 3)).toBe(true);
+    expect(skimming(v(40), 3)).toBe(false);
+  });
+  it("let go: the line slackens (the rod straightens) and the fish runs deeper and wider", async () => {
+    const { underPos } = await import("./fishCatch");
+    expect(rodBend(v(40), 1)).toBeLessThan(rodBend(v(128 | 40), 1));
+    const held = { x: 0, y: 0, z: 0, yaw: 0 };
+    const free = { x: 0, y: 0, z: 0, yaw: 0 };
+    underPos(v(128 | 40), 3, held, 0.4);
+    underPos(v(40), 3, free, 0.4);
+    expect(free.y).toBeLessThan(held.y);
+  });
+  it("the wire carries the fight: fishReel is the hold bit and the progress, only while fighting", async () => {
+    const { fishingSync, createFishingState } = await import("@caysonverse/shared/village/fishing");
+    const s = { ...createFishingState(), phase: "fighting" as const, holdMs: 1500, holdNeedMs: 3000, holdDown: true };
+    expect(fishingSync(s).fishReel).toBe(128 | 50);
+    expect(fishingSync({ ...s, holdDown: false }).fishReel).toBe(50);
+    expect(fishingSync({ ...s, phase: "lifting" as const }).fishReel).toBe(0);
+  });
+});

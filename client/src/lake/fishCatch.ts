@@ -72,9 +72,10 @@ export function catchState(view: FishView, t: number, out: CatchState = { stage:
       out.beat = 5;
       break;
     case FISH_PHASE.fighting:
-      out.stage = thrashAt(view.seq, t) ? "surface" : "under";
-      out.wriggle = 1;
-      out.beat = 4.5;
+      // reeled in (the angler holds): dragged along the line at the surface, its back out; let go: it runs and dives a little
+      out.stage = thrashAt(view.seq, t, reelHeld(view)) ? "surface" : "under";
+      out.wriggle = reelHeld(view) ? 1.15 : 0.9;
+      out.beat = reelHeld(view) ? 6 : 4;
       break;
     case FISH_PHASE.lifting:
       if (t < REEL_S) {
@@ -143,12 +144,26 @@ export function flapPulse(t: number, seq: number): number {
   return ph < 0.45 ? Math.sin((ph / 0.45) * Math.PI) : 0;
 }
 
-/** During the fight a big fish rolls at the surface now and then: 0.6 s thrashes at seeded times. */
-export function thrashAt(seq: number, t: number): boolean {
+/** During the fight a big fish rolls at the surface now and then (more often while it is reeled in): thrashes at seeded times. */
+export function thrashAt(seq: number, t: number, held = false): boolean {
   if (t < 0.6) return true; // the hook set: it comes up once at once
-  const period = 2.4 + 1.2 * hash01(seq, 7, 1);
+  const period = (held ? 1.7 : 2.6) + 1.2 * hash01(seq, 7, 1);
   const ph = (t + hash01(seq, 8, 3) * period) % period;
-  return ph < 0.6;
+  return ph < (held ? 0.45 : 0.6);
+}
+
+/** The fight on the wire (Player.fishReel): is the angler holding (reeling in)? */
+export function reelHeld(view: FishView): boolean {
+  return (view.reel & 128) !== 0;
+}
+/** The fight on the wire: how far the fish is brought in, 0..1. */
+export function reelProgress(view: FishView): number {
+  return Math.min(100, view.reel & 127) / 100;
+}
+
+/** Is the fish being dragged in at the surface (its back out, a wake behind it): the small fish's reel-in, a big fish held. */
+export function skimming(view: FishView, t: number): boolean {
+  return (view.phase === FISH_PHASE.lifting && t < REEL_S) || (view.phase === FISH_PHASE.fighting && reelHeld(view));
 }
 
 export interface Pt3 {
@@ -168,7 +183,7 @@ export function faceOf(spot: number): { x: number; z: number } | null {
  * stages. Starts where the float went down (the cast's seeded landing point) and comes in toward the rod tip (lifting) or the net
  * (netting), running left and right across the line as it fights.
  */
-export function underPos(view: FishView, t: number, out: Pt3 & { yaw: number }): boolean {
+export function underPos(view: FishView, t: number, out: Pt3 & { yaw: number }, reelK?: number): boolean {
   const spot = LAKE_FISHING_SPOTS[view.spot];
   if (!spot) return false;
   const f = LAKE_FACE_DIR[spot.face];
@@ -183,16 +198,20 @@ export function underPos(view: FishView, t: number, out: Pt3 & { yaw: number }):
     case FISH_PHASE.hooked:
       k = 0.04 * t;
       break;
-    case FISH_PHASE.fighting:
-      // comes in slowly as the angler holds (the hold is not on the wire: the time is), never closer than 2.6 m
-      k = 0.72 * (1 - Math.exp(-t / 9));
-      swing = 1.3;
-      depth = 0.38;
+    case FISH_PHASE.fighting: {
+      // the fight's own progress (Player.fishReel, smoothed by the rig: `reelK`): from where it bit to 2.6 m off the rod tip
+      const held = reelHeld(view);
+      k = 0.06 + 0.74 * (reelK ?? reelProgress(view));
+      // a bigger fish runs wider; held, it is pulled straighter along the line
+      const big = Math.min(1.6, 0.7 + view.cm / 60);
+      swing = (held ? 0.45 : 1.5) * big;
+      depth = held ? 0.06 : 0.34;
       break;
+    }
     case FISH_PHASE.lifting:
       k = smooth(Math.min(1, t / REEL_S));
-      swing = 0.7 * (1 - k) + 0.12;
-      depth = 0.3 * (1 - k) + 0.06;
+      swing = (0.55 * (1 - k) + 0.1) * Math.min(1.4, 0.7 + view.cm / 60);
+      depth = 0.05;
       break;
     case FISH_PHASE.netting: {
       // in front of the angler, at the surface, where the net reaches

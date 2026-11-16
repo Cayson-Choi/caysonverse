@@ -11,7 +11,7 @@ import { viewState } from "../game/viewState";
 import { LAKE_WATER_Y } from "@caysonverse/shared/village/lakeLayout";
 import { FISH_PHASE, species, type FishView } from "./lakeProtocol";
 import { FISH_VIEW_SCALE, createFishModel, type FishModel } from "./lakeProps";
-import { REEL_S, HANG_END_S, catchState, releasePoint, underPos, type CatchState, type Pt3 } from "./fishCatch";
+import { REEL_S, HANG_END_S, catchState, reelProgress, releasePoint, skimming, underPos, type CatchState, type Pt3 } from "./fishCatch";
 import { setHookPoint } from "./fishHooks";
 import { lakeRipple, lakeSplash } from "./lakeFx";
 import { cameraProbe } from "../game/cameraProbe";
@@ -43,6 +43,40 @@ export interface CatchRig {
   update(i: CatchInput): void;
   hide(): void;
   dispose(): void;
+}
+
+let wakeTex: CanvasTexture | null = null;
+/** A V of foamy ripples spreading behind a fish dragged at the surface (its nose at the V's point, +x of the texture). */
+function wakeTexture(): CanvasTexture {
+  if (wakeTex) return wakeTex;
+  const c = document.createElement("canvas");
+  c.width = 256;
+  c.height = 128;
+  const g = c.getContext("2d")!;
+  g.clearRect(0, 0, 256, 128);
+  g.lineCap = "round";
+  for (let k = 0; k < 9; k++) {
+    // nested chevrons, fading and widening toward the tail end (left)
+    const x0 = 236 - k * 25;
+    const spread = 6 + k * 7;
+    const a = 0.55 * (1 - k / 9);
+    g.strokeStyle = `rgba(235,242,240,${a})`;
+    g.lineWidth = 3 - k * 0.2;
+    g.beginPath();
+    g.moveTo(x0, 64 - 2);
+    g.quadraticCurveTo(x0 - 14, 64 - spread * 0.6, x0 - 22, 64 - spread);
+    g.moveTo(x0, 64 + 2);
+    g.quadraticCurveTo(x0 - 14, 64 + spread * 0.6, x0 - 22, 64 + spread);
+    g.stroke();
+  }
+  // the churned water right behind the tail
+  const grd = g.createRadialGradient(214, 64, 2, 214, 64, 30);
+  grd.addColorStop(0, "rgba(240,246,244,0.55)");
+  grd.addColorStop(1, "rgba(240,246,244,0)");
+  g.fillStyle = grd;
+  g.fillRect(160, 20, 96, 88);
+  wakeTex = new CanvasTexture(c);
+  return wakeTex;
 }
 
 let shadowTex: CanvasTexture | null = null;
@@ -86,6 +120,10 @@ export function fpNarrow(cam: Camera): number {
 export function createCatchRig(sid: string): CatchRig {
   let fish: FishModel | null = null;
   let shadow: Mesh | null = null;
+  let wake: Mesh | null = null;
+  /** The fight's progress, smoothed (the wire sends it four times a second). */
+  let reelK = 0;
+  let splashT = 0;
   const cs: CatchState = { stage: "none", k: 0, wriggle: 0, beat: 0 };
   const under: Pt3 & { yaw: number } = { x: 0, y: 0, z: 0, yaw: 0 };
   const rel: Pt3 = { x: 0, y: 0, z: 0 };
@@ -130,6 +168,13 @@ export function createCatchRig(sid: string): CatchRig {
       shadow.frustumCulled = false;
     }
     if (shadow.parent !== world) world.add(shadow);
+    if (!wake) {
+      const mat = new MeshBasicMaterial({ map: wakeTexture(), transparent: true, depthWrite: false, opacity: 0.9 });
+      wake = new Mesh(new PlaneGeometry(1, 0.5), mat);
+      wake.renderOrder = 3;
+      wake.frustumCulled = false;
+    }
+    if (wake.parent !== world) world.add(wake);
   };
 
   /** Nose along `dir` (world), back up as far as it can be. */
@@ -201,6 +246,7 @@ export function createCatchRig(sid: string): CatchRig {
     if (hands) hands.visible = false;
     if (fish) fish.root.visible = false;
     if (shadow) shadow.visible = false;
+    if (wake) wake.visible = false;
     if (hookLive) setHookPoint(sid, null);
     hookLive = false;
   };
@@ -249,21 +295,43 @@ export function createCatchRig(sid: string): CatchRig {
       switch (cs.stage) {
         case "under":
         case "surface": {
-          if (!underPos(view, view.phase === FISH_PHASE.lifting ? Math.min(t, REEL_S) : t, under)) break;
+          // the fight's progress eases toward the wire's (a run out when the angler lets go, pulled in while held)
+          if (view.phase === FISH_PHASE.fighting) reelK += (reelProgress(view) - reelK) * Math.min(1, delta * 2.2);
+          else if (view.phase !== FISH_PHASE.netting) reelK = 0;
+          if (!underPos(view, view.phase === FISH_PHASE.lifting ? Math.min(t, REEL_S) : t, under, reelK)) break;
           const surf = cs.stage === "surface";
-          pos.set(under.x, surf ? LAKE_WATER_Y - 0.03 * len + Math.max(0, Math.sin(t * 9)) * 0.06 : under.y, under.z);
+          const skim = !surf && skimming(view, t);
+          // dragged in: the body just under the surface, its back and dorsal fin out of the water
+          pos.set(under.x, surf ? LAKE_WATER_Y - 0.03 * len + Math.max(0, Math.sin(t * 9)) * 0.06 : skim ? LAKE_WATER_Y - 0.035 * len : under.y, under.z);
           // a breach out of the water (lifting): it leaps up toward the rod
           if (view.phase === FISH_PHASE.lifting && surf) pos.y = LAKE_WATER_Y + ((t - REEL_S) / 0.16) * 0.25;
           const dir = a.set(Math.sin(under.yaw), surf ? 0.25 : 0, Math.cos(under.yaw));
           lookAlong(dir, surf ? Math.sin(t * 11) * 0.9 : Math.sin(t * 3) * 0.15, rot);
-          showShadow = !surf;
-          // swirls on the surface over it; splashes when it thrashes
+          showShadow = !surf && !skim;
+          // swirls on the surface over it; splashes when it thrashes, and now and then as it is dragged (a bigger fish, more)
           swirl -= delta;
           if (swirl <= 0) {
-            swirl = surf ? 0.22 : 0.5;
-            lakeRipple(pos.x, pos.z, surf ? 0.9 : 0.45);
+            swirl = surf ? 0.22 : skim ? 0.3 : 0.5;
+            lakeRipple(pos.x, pos.z, surf ? 0.9 : skim ? 0.6 : 0.45);
             if (surf) lakeSplash(pos.x, LAKE_WATER_Y, pos.z, 6, 0.8 + len);
           }
+          splashT -= delta;
+          if (skim && splashT <= 0) {
+            splashT = 0.35 + Math.random() * (0.9 - Math.min(0.5, len * 0.6));
+            const tail = new Vector3(0, 0, -0.45 * len).applyQuaternion(rot).add(pos);
+            lakeSplash(tail.x, LAKE_WATER_Y, tail.z, 4 + Math.round(len * 8), 0.45 + len * 0.7);
+          }
+          // the V of the wake behind it
+          if (wake && (skim || surf)) {
+            const wk = wake;
+            wk.visible = true;
+            const wl = Math.max(0.6, len * 2.6);
+            wk.scale.set(wl, wl, 1);
+            wk.rotation.set(-Math.PI / 2, 0, under.yaw - Math.PI / 2);
+            const back = new Vector3(Math.sin(under.yaw), 0, Math.cos(under.yaw)).multiplyScalar(-(wl * 0.5 - 0.42 * len));
+            wk.position.set(pos.x + back.x, LAKE_WATER_Y + 0.015, pos.z + back.z);
+            (wk.material as MeshBasicMaterial).opacity = surf ? 0.6 : 0.9;
+          } else if (wake) wake.visible = false;
           if (stageChanged && surf) {
             lakeRipple(pos.x, pos.z, 1.3);
             lakeSplash(pos.x, LAKE_WATER_Y, pos.z, 26, 1.2 + len);
@@ -440,6 +508,7 @@ export function createCatchRig(sid: string): CatchRig {
         sh.scale.set(len * 1.2, len * 1.2, 1);
         (sh.material as MeshBasicMaterial).opacity = 1;
       } else sh.visible = false;
+      if (wake && cs.stage !== "under" && cs.stage !== "surface") wake.visible = false;
       lastPos.copy(pos);
       lastQ.copy(rot);
       lastStage = cs.stage;
@@ -474,6 +543,12 @@ export function createCatchRig(sid: string): CatchRig {
         hands = null;
         fist.length = 0;
         sleeve.length = 0;
+      }
+      if (wake) {
+        wake.removeFromParent();
+        wake.geometry.dispose();
+        (wake.material as MeshBasicMaterial).dispose();
+        wake = null;
       }
       if (shadow) {
         shadow.removeFromParent();

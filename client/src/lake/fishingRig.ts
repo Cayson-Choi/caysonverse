@@ -156,7 +156,8 @@ export function rodBend(view: FishView, t: number): number {
     case FISH_PHASE.hooked:
       return 0.5;
     case FISH_PHASE.fighting:
-      return 0.75 + 0.2 * Math.sin(t * 5.5);
+      // held: bent hard under the load; let go: the tension drops (the fish takes line)
+      return (view.reel & 128) !== 0 ? 0.82 + 0.14 * Math.sin(t * 6.5) + 0.04 * Math.sin(t * 17) : 0.42 + 0.12 * Math.sin(t * 3.1);
     case FISH_PHASE.lifting:
       // reeled in hard, then the fish's weight on the line as it swings, then the hand takes it
       if (t < REEL_S) return 0.72 + 0.14 * Math.sin(t * 9.5) + 0.06 * Math.sin(t * 23);

@@ -366,13 +366,22 @@ for (const n of houses) {
           return k && { pick: k.pick && { name: k.pick.name, x: +k.pick.x.toFixed(2), y: +k.pick.y.toFixed(2), z: +k.pick.z.toFixed(2) }, plan: k.plan && { ok: k.plan.ok, reason: k.plan.reason, x: k.plan.x, z: k.plan.z }, sitOn: k.sitOn };
         });
         // no auto-sit (owner 2026-11-17, release 3): the tap walks to the seat and stops facing it; "앉기" / E sits on that very seat
+        // (the walk starts after the tap's double-tap wait: first see it move, then see it stop — up to 3 s for a seat a step away)
+        const p0 = await me();
+        for (let k = 0; k < 15; k++) {
+          const q = await me();
+          if (Math.hypot(q.x - p0.x, q.z - p0.z) > 0.05) break;
+          await sleep(200);
+        }
         for (let k = 0, last = null, still = 0; k < 75 && still < 4; k++) {
           await sleep(200);
           const q = await me();
           still = last && Math.hypot(q.x - last.x, q.z - last.z) < 0.01 ? still + 1 : 0;
           last = q;
         }
-        await act();
+        // only when the button offers a seat (never E on a door: a tap that ended at the way out must not leave the house)
+        const offersSit = await page.evaluate(() => [...document.querySelectorAll(".cv-action-btn")].some((b) => (b.textContent ?? "").includes("앉기")));
+        if (offersSit) await act();
         sat = await page.waitForFunction(() => window.__cv.getPos().seatIndex >= 0, null, { timeout: 8000 }).then(() => true, () => false);
         const st = await me();
         tries.push({ vantage, at: [Math.round(at.x * 100) / 100, Math.round(at.z * 100) / 100], click: pk, end: { i: st.seatIndex, x: Math.round(st.x * 100) / 100, z: Math.round(st.z * 100) / 100 } });

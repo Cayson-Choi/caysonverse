@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import { useAnimations, useKeyboardControls } from "@react-three/drei";
-import { Group, LoopOnce, type Plane } from "three";
+import { Group, LoopOnce, type AnimationAction, type AnimationClip, type Plane } from "three";
 import { setPreferredSeat } from "./seatPreference";
 import type { Appearance } from "@caysonverse/shared/appearance";
 import { PLAYER_RADIUS } from "@caysonverse/shared/worldMap";
@@ -115,6 +115,19 @@ import { isInputSuspended } from "../net/resilience";
 import { useSettingsStore } from "../stores/settingsStore";
 import { cubbyFocusWeight } from "../village/cubbyFocus";
 import { CARRY_STRIPPED_CLIPS, stripArm } from "../lake/fishingRig";
+
+/** The rod carrier's arm-less copy of a base clip, under its own name (see `baseClips` below), cached per clip. */
+const ROD_CLIP_SUFFIX = "~rod";
+const rodClips = new WeakMap<AnimationClip, AnimationClip>();
+function rodClip(c: AnimationClip): AnimationClip {
+  let r = rodClips.get(c);
+  if (!r) {
+    r = stripArm(c).clone();
+    r.name = c.name + ROD_CLIP_SUFFIX;
+    rodClips.set(c, r);
+  }
+  return r;
+}
 import { useFishingRig, useHasRod } from "../lake/useFishingRig";
 
 /** Fallback seconds for a sit/stand clip if its duration can't be read yet. */
@@ -287,8 +300,22 @@ export function LocalPlayer({
 
   // Fishing lake (A10): a rod carrier's walk / run / idle have no right arm (Carry_Rod owns it), the rig (rod, clips) is the lake's.
   const hasRod = useHasRod(sessionId);
-  const baseClips = useMemo(() => (hasRod ? animations.map((c) => (CARRY_STRIPPED_CLIPS.test(c.name) ? stripArm(c) : c)) : animations), [animations, hasRod]);
-  const { actions, mixer } = useAnimations(baseClips, model);
+  // The rod carrier's idle / walk / run / hop have no right arm (Carry_Rod owns it). Those arm-less copies go to drei under
+  // their OWN names (ROD_CLIP_SUFFIX): drei's useAnimations keeps its actions by clip name, and when its clips change its
+  // cleanup reads the old getters again after clearing that cache — so a same-named copy left the OLD clip's action behind
+  // under the name, and after returning the rod the idle and the walk played the arm-less copy: the right arm stood in its rest
+  // pose, stuck out forward with the held item level (owner 2026-11-17: "낚시대를 반납하고 나면 팔이 저 모양이야"). `actions`
+  // below maps the plain names to whichever copy is in use.
+  const baseClips = useMemo(() => (hasRod ? animations.map((c) => (CARRY_STRIPPED_CLIPS.test(c.name) ? rodClip(c) : c)) : animations), [animations, hasRod]);
+  const { actions: drei, mixer } = useAnimations(baseClips, model);
+  const actions = useMemo(() => {
+    const view: Record<string, AnimationAction | null> = {};
+    for (const c of animations) {
+      const name = hasRod && CARRY_STRIPPED_CLIPS.test(c.name) ? c.name + ROD_CLIP_SUFFIX : c.name;
+      Object.defineProperty(view, c.name, { enumerable: true, get: () => drei[name] ?? null });
+    }
+    return view;
+  }, [drei, animations, hasRod]);
   const fishRig = useFishingRig(sessionId, avatar, mixer);
 
   // The clip the mixer is on right now, as last reported to the DEV avatar probe
@@ -308,6 +335,11 @@ export function LocalPlayer({
   // Declared after useAvatar, so the avatar probe entry exists when idle is reported.
   useEffect(() => {
     const idleName = clipFor(CLIP.idle, look);
+    // The look's actions, resolved NOW (while this `actions` is drei's current one). The cleanup stops these objects: reading
+    // `actions[name]` in the cleanup after drei has swapped the clips (the rod's arm-less idle / walk, CARRY_STRIPPED_CLIPS, on
+    // rent and on return) re-creates the OLD clip's action in drei's name-keyed cache, and the next idle then played the arm-less
+    // clip: the right arm was left in its rest pose, stuck out forward (owner 2026-11-17: "낚시대를 반납하고 나면 팔이 저 모양이야").
+    const ownActions = LOOK_CLIPS.map((base) => actions[clipFor(base, look)]).filter((x): x is NonNullable<typeof x> => !!x);
     actions[idleName]?.reset().fadeIn(0).play();
     loopRef.current = "idle";
     // Unconditional: a (StrictMode) effect replay re-creates the probe entry with no clip.
@@ -323,8 +355,8 @@ export function LocalPlayer({
     );
     return () => {
       removeHook();
-      // Stop the clips this look actually plays (the resolved names, e.g. *_LongSkirt).
-      for (const base of LOOK_CLIPS) actions[clipFor(base, look)]?.stop();
+      // Stop the clips this look actually plays (the resolved names, e.g. *_LongSkirt): the objects resolved above.
+      for (const a of ownActions) a.stop();
     };
     // actions identity changes when the (memoized) model does — safe to depend on.
   }, [actions, look, pose, orbit, seat, sessionId]);

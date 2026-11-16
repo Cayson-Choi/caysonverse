@@ -508,7 +508,9 @@ function LakeAnglers() {
       }
       // the line: tip -> float, slack by phase (taut while fighting)
       const len = Math.hypot(lineX - tx, lineZ - tz);
-      const sag = hook ? 0.01 * len : p.taut ? 0.02 * len : p.flying ? 0.04 * len : 0.12 * len * (1 - 0.6 * p.dive);
+      // on a fish the line is taut; in the fight, when the angler lets go, it slackens (lake v2: Player.fishReel)
+      const slack = hook && v.phase === FISH_PHASE.fighting && (v.reel & 128) === 0;
+      const sag = hook ? (slack ? 0.05 : 0.008) * len : p.taut ? 0.02 * len : p.flying ? 0.04 * len : 0.12 * len * (1 - 0.6 * p.dive);
       const base = slot.index * SEGMENTS * 6;
       if (show) {
         const lineEndY = hook ? lineY : p.flying ? fy : Math.max(fy, LAKE_WATER_Y + 0.01);

@@ -83,6 +83,9 @@ export class Player extends Schema {
   @type("uint8") fishKind = 0; // the fish (FISH_KINDS index + 1): only from the hooked stage until it is released
   @type("uint8") fishCm = 0; // its length in cm
   @type("uint32") fishAt = 0; // when this stage began: the server clock (ServerTime ms) modulo 2^32, so every screen is in step
+  // lake v2 (owner 2026-11-17: the fish dragged in while the line is pulled): the big fish's fight on every screen — bit 7 = the angler
+  // holds (reels), bits 0..6 = how far it is brought in (0..100). Only while fighting; sent at most every FIGHT_SEND_MS and on presses.
+  @type("uint8") fishReel = 0;
 }
 
 /** The village room's synced state: every connected player, keyed by session id. */
