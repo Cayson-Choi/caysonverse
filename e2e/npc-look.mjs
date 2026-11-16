@@ -9,7 +9,10 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DESKTOP, PHONE, createRun, launchBrowser, openPlayer, press, sleep, turnCameraTo, waitIdle, walkAndWait, walkTo } from "./lib/common.mjs";
-import { act, enterHall, joinVillage, leaveHall } from "./lib/village.mjs";
+import { act as actRaw, enterHall, joinVillage, leaveHall } from "./lib/village.mjs";
+
+/** The action (E / the round button); a missing button (nothing to do here) is not a failure — the checks after it say what happened. */
+const act = (p) => actRaw(p).catch((e) => console.log("   (no action button: " + String(e).slice(0, 80) + ")"));
 
 const args = process.argv.slice(2);
 const opt = (n, fallback) => (args.find((a) => a.startsWith(`--${n}=`)) ?? `--${n}=${fallback}`).slice(n.length + 3);
@@ -109,7 +112,7 @@ try {
     run.check("draw meshes within the avatar budget (8)", a["guide:plaza_guide"].drawMeshes <= 8 && a["npc:bus_driver"].drawMeshes <= 8, [a["guide:plaza_guide"].drawMeshes, a["npc:bus_driver"].drawMeshes]);
   });
 
-  await run.step("plaza guide: normal view, close-ups, idle moves, greeting on 문의하기", async () => {
+  if (!ride) await run.step("plaza guide: normal view, close-ups, idle moves, greeting on 문의하기", async () => {
     await walkAndWait(P, 2.2, 15.2, 30000, 0.8);
     await turnCameraTo(P, 5, 12);
     await sleep(1200);
@@ -168,8 +171,11 @@ try {
           const ts = await window.__imp("/src/net/transitSync.ts");
           const pose = ts.getTransitRenderPose();
           const bus = window.__cvBus?.().root;
-          let w = null;
-          return { x: pose.x, z: pose.z, yaw: pose.yaw, moving: pose.moving ?? null, w };
+          let wheel = null;
+          bus?.traverse((o) => {
+            if (o.name === "bus_steering_wheel") wheel = o.quaternion.toArray().map((n) => Math.round(n * 1e4) / 1e4);
+          });
+          return { x: pose.x, z: pose.z, yaw: pose.yaw, wheel };
         });
         log.push({ t: Date.now() - t0, ...s });
         const n = log.length;
@@ -182,12 +188,15 @@ try {
         await sleep(500);
       }
       summary.rideLog = log;
+      const turns = log.filter((r) => r.wheel).map((r) => r.wheel);
+      const spreadW = turns.length ? Math.max(...turns.map((q) => Math.abs(q[2] - turns[0][2]))) : 0;
+      run.check("the steering wheel turned while the bus drove (v3 wheel node)", spreadW > 0.05, { samples: turns.length, spread: spreadW });
       run.check("the bus moved while watched", log.some((r, i) => i > 0 && Math.hypot(r.x - log[i - 1].x, r.z - log[i - 1].z) > 0.3), log.length);
     });
   }
 
 
-  if (!phone) {
+  if (!phone && !ride) {
     await run.step("memorial hall desk: suit and ribbon, folded hands, bow on 문의하기", async () => {
       await enterHall(P);
       await P.page.waitForFunction(() => (window.__cvAvatars?.() ?? {})["guide:hall_desk"]?.parts?.includes("top__npc_memorial"), null, { timeout: 60000 });
@@ -216,7 +225,7 @@ try {
       await leaveHall(P);
     });
   }
-  await run.step("lake rental shopkeeper: behind the window, idle, waves when I step on the pad and when a rod is rented", async () => {
+  if (!ride) await run.step("lake rental shopkeeper: behind the window, idle, waves when I step on the pad and when a rod is rented", async () => {
     if (!phone) for (const [x, z] of [[0, -33], [-14, -20], [-20, 5], [2, 15]]) await walkAndWait(P, x, z, 60000, 1.5);
     for (const [x, z] of [[30, 12], [46, 9], [62, 2], [80, -9], [100, -12]]) await walkAndWait(P, x, z, 60000, 2);
     await P.page.waitForFunction(() => (window.__cvAvatars?.() ?? {})["npc:lake_shopkeeper"]?.parts?.includes("top__npc_shopkeeper"), null, { timeout: 90000 });
