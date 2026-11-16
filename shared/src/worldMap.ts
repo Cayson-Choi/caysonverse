@@ -8,6 +8,7 @@
  */
 
 import type { AABB } from "./collision";
+import type { SeatPoseKind } from "./sitPose";
 
 export type { AABB };
 
@@ -97,8 +98,19 @@ export interface Seat {
    * seat point was 1.56 m away and the desk's "문의하기" came up instead). Absent: 0.
    */
   reachBonus?: number;
+  /**
+   * Where the seat is reached from and picked by (`seatDistance`, `nearestFreeSeat`) when that is not its seat point: a house seat's
+   * cushion (집 실내 G round 3). Four chairs round a small round table have their seat points together under it, 0.47 m apart, so
+   * the nearest seat point flipped with a step and E sat on the chair beside the one walked to; their cushions are 1.2 m apart.
+   */
+  reachFrom?: { x: number; z: number };
   /** How far (rad) a sitter leans back into a backrest (a sofa, an armchair, a chair); absent or 0: sits upright. */
   lean?: number;
+  /**
+   * Which sit pose the seat uses (sitPose.ts `SeatPoseKind`): `floor` = cross-legged on a floor cushion / 보료 / floor sofa (the
+   * Sit_Floor_* clips; `seatY` is then the cushion's height and the sitter's lowest point rests on it). Absent: `chair`; `perch` (stool height) also plays the chair clips for now.
+   */
+  pose?: SeatPoseKind;
 }
 
 const GROUP_MATES = new WeakMap<readonly Seat[], readonly (readonly number[])[]>();
@@ -165,8 +177,9 @@ export const CHAIR_SIDE_BEHIND = 0.8;
  */
 export const CHAIR_SIDE_FAR = 0.9;
 
-/** A player's distance from `seat` for the reach and the nearest-seat pick: from its seat point, less its `reachBonus`. */
+/** A player's distance from `seat` for the reach and the nearest-seat pick: from its seat point, less its `reachBonus` (or from `reachFrom`). */
 export function seatDistance(seat: Seat, x: number, z: number): number {
+  if (seat.reachFrom) return Math.hypot(x - seat.reachFrom.x, z - seat.reachFrom.z);
   return Math.hypot(x - seat.x, z - seat.z) - (seat.reachBonus ?? 0);
 }
 

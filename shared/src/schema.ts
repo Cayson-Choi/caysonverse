@@ -58,7 +58,7 @@ export class Player extends Schema {
   // village's seats past 127 (77 + 56 lake seats = 133; int8 tops out at 127).
   // The first legitimate discrete synced state — a seated player is fully
   // server-positioned (x/z/yaw snapped to the seat), so 100 seated avatars sync.
-  @type("int16") seatIndex = -1;
+  @type("int16") seatIndex = -1; // int16 (was int8, max 127): the village list passes 127 with the houses' and the lake's seats
   // 케이슨 마을: which area the player is in — "village" (the open village) or "hall" (inside the memorial hall,
   // where the room is quiet: no emoji, no jumping). Written by VillageRoom at join and on every door use.
   @type("string") area: AreaId = "village";

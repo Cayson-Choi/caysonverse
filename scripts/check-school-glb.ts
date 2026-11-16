@@ -1,8 +1,8 @@
 /**
- * scripts/check-school-glb.ts — 케이슨 마을 GLB(village) 점검 (케이슨 마을 1단계 Task 6), 추모관 실내 GLB(memorial) 점검 (Task 8).
- * (파일 이름의 "school"은 옛 이름이다.)
+ * scripts/check-school-glb.ts — 케이슨 마을 GLB(village) 점검 (케이슨 마을 1단계 Task 6), 추모관 실내 GLB(memorial) 점검 (Task 8),
+ * 집 실내 GLB(house) 점검 (집 실내 G, 2026-11-16). (파일 이름의 "school"은 옛 이름이다.)
  *
- *   npx tsx --tsconfig server/tsconfig.json scripts/check-school-glb.ts <glb> village|memorial
+ *   npx tsx --tsconfig server/tsconfig.json scripts/check-school-glb.ts <glb> village|memorial|house
  *
  * 확인하는 것 (하나라도 어긋나면 종료 코드 1, 모두 통과하면 0):
  *   - 파일 크기: village ≤ 8 MB (1 MB = 1024², 캐릭터 점검과 같다)
@@ -15,6 +15,11 @@
  *     방 벽 넷(col__hall_wall_n·s·e·w)과 칸 벽 둘(col__cubby_n·e)이 배치 자료 상자 그대로(카메라 높이), 안쪽 문 발판과
  *     들어온 자리에 col__ 상자가 없다, ceil__hall 판의 아랫면이 천장(3.4 m)이고 방을 다 덮는다, M_lamp·M_garden이 있고 LM_이 아니다.
  *     크기 ≤ 6 MB, 삼각형 ≤ 200k
+ *   - house (house_N.glb): 필수 노드(floor__/stair__/door__/spawn__/ceil__, houseAreas.ts houseRequiredNodes)가 약속 자리(5 cm, 0.02 rad)에 있고,
+ *     col__h<N>_* 상자가 20개 이상, 층마다 ceil__h<N>_<층> 판의 아랫면이 천장(3.7 m)이고 방을 다 덮고, 비워 둘 곳(현관 통로·패드·참·도착 자리)에
+ *     가구 상자가 없고, 자리 표식(seat__)이 gen-house-seats.ts의 점검(이름·extras·규칙·층마다 종류별 개수)을 통과한다. 크기 ≤ 1.0 MB, 삼각형 ≤ 45k,
+ *     재질 ≤ 24, 텍스처 ≤ 2048. 옆의 house_N_lm(_1k)·_lm_night(_1k)·_view .webp가 있으면 크기·바이트를 점검하고, 없으면 WARN
+ *     (집 번호 N은 파일 이름 house_N.glb에서 읽는다). 파일 이름이 houses_props.glb면 공용 소품 예산(≤ 0.6 MB, ≤ 25k 삼각형)만 본다
  *   - 삼각형 수: village ≤ 260k (EXT_mesh_gpu_instancing 인스턴스 수만큼 곱한다).
  *     Draco GLB도 읽는다: 풀지 않고, 확장이 JSON에 남기는 accessor count로 센다
  *   - 재질 ≤ 24, 텍스처(GLB 안 이미지) 한 변 ≤ 2048
@@ -29,18 +34,55 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { checkSchoolGlb, checkVillageBus, checkVillageSceneTriangles, imageSize, parseGlb } from "./lib/schoolGlb";
+import { checkHouseImages, checkHousesProps, checkSchoolGlb, checkVillageBus, checkVillageSceneTriangles, imageSize, parseGlb } from "./lib/schoolGlb";
 import { signalPoleSpots } from "../shared/src/village/crossings";
-import type { LightmapFile, SceneExtra, SchoolKind } from "./lib/schoolGlb";
+import type { CheckResult, HouseImageFile, LightmapFile, SceneExtra, SchoolKind } from "./lib/schoolGlb";
 import { schoolSpec } from "./lib/schoolSpec";
+import { houseNumberFromFile, readHouse } from "./gen-house-seats";
+import { houseFiles, type HouseNumber } from "../shared/src/village/houseAreas";
 
-const USAGE = "usage: npx tsx --tsconfig server/tsconfig.json scripts/check-school-glb.ts <glb> village|memorial";
-const KINDS: readonly SchoolKind[] = ["village", "memorial"];
+const USAGE = "usage: npx tsx --tsconfig server/tsconfig.json scripts/check-school-glb.ts <glb> village|memorial|house";
+const KINDS: readonly SchoolKind[] = ["village", "memorial", "house"];
+
+/** An image file next to a house GLB (the public URL's file name), with its bytes and header size; null when it is not there. */
+function houseImage(dir: string, url: string): HouseImageFile | null {
+  const file = path.join(dir, path.basename(url));
+  if (!fs.existsSync(file)) return null;
+  const data = fs.readFileSync(file);
+  const size = imageSize(data);
+  return { path: file, bytes: data.length, width: size?.width ?? 0, height: size?.height ?? 0 };
+}
+
+/** The checks of one house GLB beyond the shared ones: its seat markers (gen-house-seats readHouse) and its image files. */
+function houseExtras(glbPath: string, gltf: Parameters<typeof readHouse>[0], n: HouseNumber): CheckResult[] {
+  const { seats, problems } = readHouse(gltf, n);
+  const out: CheckResult[] = [
+    problems.length === 0
+      ? { level: "ok", label: "자리 표식", detail: `seat__ ${seats.length}개가 약속(이름·extras·규칙·층마다 종류별 개수)을 지켜요` }
+      : { level: "fail", label: "자리 표식", detail: problems.slice(0, 6).join("; ") + (problems.length > 6 ? ` 외 ${problems.length - 6}개` : "") },
+  ];
+  const dir = path.dirname(path.resolve(glbPath));
+  const f = houseFiles(n);
+  out.push(
+    ...checkHouseImages([
+      { kind: "lm", label: "낮 라이트맵 2048", file: houseImage(dir, f.lightmapDay) },
+      { kind: "lm1k", label: "낮 라이트맵 1k", file: houseImage(dir, f.lightmapDay1k) },
+      { kind: "lm", label: "밤 라이트맵 2048", file: houseImage(dir, f.lightmapNight) },
+      { kind: "lm1k", label: "밤 라이트맵 1k", file: houseImage(dir, f.lightmapNight1k) },
+      { kind: "view", label: "창 밖 파노라마", file: houseImage(dir, f.view) },
+    ]),
+  );
+  return out;
+}
 
 /** The light-map WebP that belongs to this room: next to the GLB, or in a `lightmaps/` folder next to it. */
 function findLightmap(glbPath: string, kind: SchoolKind): LightmapFile | null {
   const dir = path.dirname(glbPath);
+  // a house's day light map is its own: house_N_lm.webp next to house_N.glb
+  const stem = kind === "house" ? path.basename(glbPath, ".glb") : kind;
   const candidates = [
+    path.join(dir, `${stem}_lightmap.webp`),
+    path.join(dir, `${stem}_lm.webp`),
     path.join(dir, `${kind}_lightmap.webp`),
     path.join(dir, `${kind}_lm.webp`),
     path.join(dir, "lightmaps", `${kind}_lightmap.webp`),
@@ -73,6 +115,27 @@ export function main(argv: string[]): number {
     return 1;
   }
   const dir = path.dirname(path.resolve(glbPath));
+  // the shared small props of the houses: their own budget, nothing else to check
+  if (kind === "house" && path.basename(glbPath) === "houses_props.glb") {
+    const results = checkHousesProps(parsed.gltf, data.length);
+    console.log(`${glbPath} (houses_props)`);
+    let bad = 0;
+    for (const r of results) {
+      if (r.level === "fail") bad += 1;
+      console.log(`  ${r.level === "ok" ? "OK  " : r.level === "warn" ? "WARN" : "FAIL"} ${r.label}: ${r.detail}`);
+    }
+    if (bad > 0) {
+      console.error(`FAIL: ${bad}개 점검이 어긋났어요`);
+      return 1;
+    }
+    console.log("PASS");
+    return 0;
+  }
+  const houseN = kind === "house" ? houseNumberFromFile(glbPath) : null;
+  if (kind === "house" && houseN === null) {
+    console.error("FAIL: 집 파일 이름은 house_<1~10>.glb (공용 소품은 houses_props.glb)여야 해요");
+    return 1;
+  }
   let results;
   try {
     results = checkSchoolGlb({
@@ -80,7 +143,7 @@ export function main(argv: string[]): number {
       fileBytes: data.length,
       gltf: parsed.gltf,
       bin: parsed.bin,
-      spec: schoolSpec(kind),
+      spec: schoolSpec(kind, houseN ?? undefined),
       lightmap: findLightmap(glbPath, kind),
       readUri: (uri) => {
         let decoded: string;
@@ -120,6 +183,7 @@ export function main(argv: string[]): number {
       results.push({ level: "warn", label: "버스 파일", detail: `${busPath}가 없어서 버스와 마을 + 버스 삼각형은 세지 않았어요` });
     }
   }
+  if (kind === "house" && houseN !== null) results.push(...houseExtras(glbPath, parsed.gltf, houseN));
   console.log(`${glbPath} (${kind})`);
   let failed = 0;
   for (const r of results) {

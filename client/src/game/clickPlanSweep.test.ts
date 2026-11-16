@@ -20,6 +20,7 @@ import { reachable } from "@caysonverse/shared/school/reachTestUtil";
 import { inLakeWater, onLakeDeck } from "@caysonverse/shared/village/lakeLayout";
 import { findDetour, isFreeSpot, planClickMove, simulateWalk, walkThere, type ClickPlan } from "./clickPlan";
 import { ARRIVE_DIST, clearClickTarget, getClickTarget, setClickTarget, stepClickMove } from "./clickMove";
+import { villageWalkArea } from "@caysonverse/shared/village/fallsWalk";
 import { VILLAGE_ACTIVE_MAP, VILLAGE_FURNITURE, setActiveMap } from "./activeMap";
 
 const R = PLAYER_RADIUS;
@@ -85,7 +86,7 @@ describe("clickPlan sweep — seated, every tap on the open ground round a seat 
     const refused: string[] = [];
     let pushedFar = 0;
     VILLAGE_SEATS.filter((s) => !s.area.startsWith("house:")).forEach((s, i) => {
-      const bounds = s.area === "village" ? VILLAGE_LAYOUT.areas.village : VILLAGE_LAYOUT.areas.hall;
+      const bounds = s.area === "village" ? villageWalkArea(VILLAGE_LAYOUT) : VILLAGE_LAYOUT.areas.hall; // the village and the waterfall's rest area (its stone seats)
       for (let gx = -12; gx <= 12; gx++) {
         for (let gz = -12; gz <= 12; gz++) {
           const x = s.x + gx * 0.25;
@@ -106,6 +107,9 @@ describe("clickPlan sweep — seated, every tap on the open ground round a seat 
             // café's wall, 12 cm of free centres wide (x 40.9..41.5, z -7.2..-6.8). It is open ground by the sweep's rule, but the
             // planner finds no way in from a seat (the one way in is from the north); it is not a seat's refused tap.
             if (x > 40.9 && x < 41.5 && z > -7.2 && z < -6.8) continue;
+            // The same kind of slit at the waterfall: the south seat stone's end stands 0.65 m from the pocket's south edge (W0's
+            // numbers: stone z -70.55..-68.65, pocket to z -68), narrower than a body (0.8 m): open ground by the sweep's rule, no spot to stand.
+            if (x > -101.5 && x < -100.5 && z > -68.7 && z <= -68) continue;
             refused.push(`seat ${i} (${x.toFixed(2)}, ${z.toFixed(2)}): ${plan.reason}`);
             continue;
           }

@@ -1,0 +1,189 @@
+diff --git a/art/village/tools/bake_village.py b/art/village/tools/bake_village.py
+index bad49f2..da8c422 100644
+--- a/art/village/tools/bake_village.py
++++ b/art/village/tools/bake_village.py
+@@ -3,6 +3,8 @@
+   blender -b art/village/work/village_authoring.blend -P art/village/tools/bake_village.py -- \
+         [--samples 384] [--size 2048] [--leafsamples 64] [--bdsamples 128] [--nobake]
+   blender -b art/village/work/village_lmprep.blend -P art/village/tools/bake_village.py -- --night [--samples 512]
++  blender -b art/village/work/village_lmprep.blend -P art/village/tools/bake_village.py -- --sunonly [--samples 128]
++        (the sun split of the CURRENT day map, nothing exported: work/village_lm_sun.png + village_lm_sunfree.png)
+   python art/village/tools/post_village.py --night        (night PNG -> client/public/models/village/village_lm_night.webp)
+ 
+ Day run (default):
+@@ -10,6 +12,9 @@ Day run (default):
+   2. light-map UV ("UV_LM", 2nd set) packed over all LM meshes, with a texel-density weight per object
+      -> saves work/village_lmprep.blend (a later night bake reuses exactly these UVs)
+   3. Cycles DIFFUSE bake (direct + indirect, no colour) -> L / LM_SCALE as sRGB 8-bit -> export/village_lm.webp
++     SUN_SPLIT (2026-11-16): the sun lamp's direct light is baked alone and subtracted first (the game draws the real
++     sun live with real-time shadows); --keepsun bakes the old way (sun baked in, no GLB mark). Normals are exported
++     (the live sun's n.l).
+   4. vertex-colour lighting for alpha-card foliage and instanced vegetation (one representative per variant)
+   5. the backdrop (hills, ranges, waterfall cliff) baked COMBINED (with haze) into its own texture (M_backdrop)
+   6. authoring materials -> export materials (LM_* textured + light map; M_* never light-mapped)
+@@ -214,7 +219,8 @@ class BakeMaterialState:
+             sock.default_value = v
+ 
+ 
+-def bake_lightmap(scene, objs, size, samples, out_png, emit_on=False, lift=LM_LIFT):
++def _bake_raw(scene, objs, size, samples, emit_on=False, passes=("DIRECT", "INDIRECT")):
++    """One Cycles DIFFUSE bake (no colour) on UV_LM -> the light, denoised, float (size, size, 3), L units."""
+     img = bpy.data.images.new("LM_bake", size, size, alpha=False, float_buffer=True)
+     added = []
+     for m in {m for o in objs for m in o.data.materials if m}:
+@@ -234,8 +240,8 @@ def bake_lightmap(scene, objs, size, samples, out_png, emit_on=False, lift=LM_LI
+     scene.cycles.samples = samples
+     scene.render.bake.margin = 8
+     scene.render.bake.margin_type = "EXTEND"
+-    log(f"baking light map {size}^2, {samples} samples, {len(objs)} objects")
+-    bpy.ops.object.bake(type="DIFFUSE", pass_filter={"DIRECT", "INDIRECT"}, margin=8, use_clear=True,
++    log(f"baking light map {size}^2, {samples} samples, {len(objs)} objects, passes {sorted(passes)}")
++    bpy.ops.object.bake(type="DIFFUSE", pass_filter=set(passes), margin=8, use_clear=True,
+                         target="IMAGE_TEXTURES", use_selected_to_active=False)
+     state.restore()
+     for m, n in added:
+@@ -250,6 +256,51 @@ def bake_lightmap(scene, objs, size, samples, out_png, emit_on=False, lift=LM_LI
+     b = a.copy()
+     for ax in (0, 1):
+         b = sum(np.roll(b, s, axis=ax) * w for s, w in zip((-1, 0, 1), k))
++    bpy.data.images.remove(img)
++    return b
++
++
++def encode_lm(b):
++    """Light (L units) -> the light map's encoding: L / LM_SCALE, clipped to 1, sRGB."""
++    enc = np.clip(b / LM_SCALE, 0, 1)
++    return np.where(enc <= 0.0031308, enc * 12.92, 1.055 * np.power(enc, 1 / 2.4) - 0.055)
++
++
++def decode_lm(enc):
++    """encode_lm's inverse (a clipped texel stays clipped)."""
++    return np.where(enc <= 0.04045, enc / 12.92, np.power((enc + 0.055) / 1.055, 2.4)) * LM_SCALE
++
++
++# Sun split (2026-11-16, the real sun and live shadows: docs/designs/sun-shadows/design.md in the repo). The day light
++# map keeps the sky, the bounce (the sun's bounce included) and the ambient lift, but NOT the sun's direct light: the game
++# draws that live, from the real sun on Korean time, with real-time shadows (client/src/village/sunShadows.ts). The
++# sun's direct light is baked on its own (the sun lamp alone: no sky, no emitters, DIRECT only), saved as
++# work/village_lm_sun.png (diagnostics, the crescent's probe fit) and subtracted; patch_glb marks the GLB
++# (asset.extras.cvLightmapSun = "live") so the game knows to add the live sun instead of correcting a baked one.
++SUN_SPLIT = True
++SUN_MARK = "live"
++
++
++def bake_sun_direct(scene, objs, size, samples):
++    """The sun lamp's direct light alone on UV_LM (L units): the world's strength at 0 while it bakes."""
++    saved = []
++    if scene.world and scene.world.node_tree:
++        for n in scene.world.node_tree.nodes:
++            if n.type == "BACKGROUND":
++                saved.append((n.inputs["Strength"], n.inputs["Strength"].default_value))
++                n.inputs["Strength"].default_value = 0.0
++    try:
++        return _bake_raw(scene, objs, size, samples, emit_on=False, passes=("DIRECT",))
++    finally:
++        for sock, v in saved:
++            sock.default_value = v
++
++
++def bake_lightmap(scene, objs, size, samples, out_png, emit_on=False, lift=LM_LIFT, subtract=None):
++    """Bake the light map, take `subtract` (L units: the sun's direct light) away when given, add the lift, save it."""
++    b = _bake_raw(scene, objs, size, samples, emit_on)
++    if subtract is not None:
++        b = np.maximum(b - subtract, 0.0)
+     lum = b @ np.array([0.2126, 0.7152, 0.0722], np.float32)
+     nz = lum[lum > 1e-4]
+     stats = {"p05": float(np.percentile(nz, 5)), "p50": float(np.percentile(nz, 50)),
+@@ -258,13 +309,40 @@ def bake_lightmap(scene, objs, size, samples, out_png, emit_on=False, lift=LM_LI
+     # ambient lift: a little sky bounce everywhere so shadowed and occluded texels never go black in the game
+     # (the unlit game look has no ambient term of its own)
+     b = b + lift * np.array([0.92, 0.96, 1.0], np.float32)
+-    enc = np.clip(b / LM_SCALE, 0, 1)
+-    enc = np.where(enc <= 0.0031308, enc * 12.92, 1.055 * np.power(enc, 1 / 2.4) - 0.055)
+-    save_png(enc, out_png)
+-    bpy.data.images.remove(img)
++    save_png(encode_lm(b), out_png)
+     return stats
+ 
+ 
++def load_png(path):
++    """A PNG as float RGB (Blender's row order, as save_png writes it), raw values (Non-Color)."""
++    img = bpy.data.images.load(path, check_existing=False)
++    img.colorspace_settings.name = "Non-Color"
++    w, h = img.size
++    px = np.empty(w * h * 4, np.float32)
++    img.pixels.foreach_get(px)
++    bpy.data.images.remove(img)
++    return px.reshape(h, w, 4)[..., :3].copy()
++
++
++def sun_only(scene, size, samples):
++    """--sunonly (on work/village_lmprep.blend): bake the sun's direct light alone into work/village_lm_sun.png and
++    write work/village_lm_sunfree.png = the shipped day map (work/village_lm.png) minus it, on the same UV_LM. Lets the
++    CURRENT day map be split without a full re-bake (and checks the split); nothing is exported."""
++    lms = [o for o in bpy.data.objects if o.type == "MESH" and o.get("cat") == "lm" and len(o.data.polygons)]
++    sun = bake_sun_direct(scene, lms, size, samples)
++    save_png(encode_lm(sun), os.path.join(WORK, "village_lm_sun.png"))
++    np.save(os.path.join(WORK, "village_lm_sun.npy"), sun.astype(np.float16))
++    day_png = os.path.join(WORK, "village_lm.png")
++    if os.path.exists(day_png):
++        day = decode_lm(load_png(day_png))
++        if day.shape == sun.shape:
++            free = np.maximum(day - sun, LM_LIFT * np.array([0.92, 0.96, 1.0], np.float32))
++            save_png(encode_lm(free), os.path.join(WORK, "village_lm_sunfree.png"))
++    lum = sun @ np.array([0.2126, 0.7152, 0.0722], np.float32)
++    log("sun direct", {"p50": float(np.percentile(lum[lum > 1e-4], 50)), "p99": float(np.percentile(lum, 99)),
++                       "max": float(lum.max())})
++
++
+ def save_png(rgb, path):
+     h, w, _ = rgb.shape
+     out = bpy.data.images.new("tmp_out", w, h, alpha=False)
+@@ -566,6 +644,14 @@ def patch_glb(path):
+             if name in ("M_bark",):
+                 m["doubleSided"] = False
+     js["extensionsUsed"] = sorted(used)
++    # the light map's contract for the game (villageModelPrep.ts / sunShadows.ts): "live" = the day map has no direct
++    # sun (SUN_SPLIT), the game adds the real sun with live shadows; absent = the old map with the sun baked in
++    if SUN_SPLIT and not flag("--keepsun"):
++        extras = js.setdefault("asset", {}).setdefault("extras", {})
++        extras["cvLightmapSun"] = SUN_MARK
++        extras["cvBakeSun"] = {"azimuthDeg": U.LOOK["sun_azimuth_deg"], "elevationDeg": U.LOOK["sun_elevation_deg"],
++                               "strength": U.LOOK["sun_strength"], "colour": U.LOOK["sun_colour"],
++                               "angleDeg": U.LOOK["sun_angle_deg"]}
+     raw = json.dumps(js, separators=(",", ":")).encode("utf-8")
+     raw += b" " * ((4 - len(raw) % 4) % 4)
+     chunks[0][1] = raw
+@@ -659,6 +745,9 @@ def main():
+     scene.cycles.transparent_max_bounces = 24
+     size = arg("--size", 2048, int)
+     samples = arg("--samples", 384, int)
++    if flag("--sunonly"):
++        sun_only(scene, size, arg("--samples", 128, int))
++        return
+     if flag("--night"):
+         setup_night(scene)
+         lms = [o for o in bpy.data.objects if o.get("cat") == "lm"]
+@@ -680,7 +769,12 @@ def main():
+     lm_png = os.path.join(WORK, "village_lm.png")
+     stats = {}
+     if not flag("--nobake"):
+-        stats = bake_lightmap(scene, lms, size, samples, lm_png)
++        sun = None
++        if SUN_SPLIT and not flag("--keepsun"):
++            sun = bake_sun_direct(scene, lms, size, max(64, samples // 3))
++            save_png(encode_lm(sun), os.path.join(WORK, "village_lm_sun.png"))
++        stats = bake_lightmap(scene, lms, size, samples, lm_png, subtract=sun)
++        stats["sun_split"] = sun is not None
+         log("light map", stats)
+     # foliage vertex lighting: merged leaf meshes, non-LM bark of instanced trees, one representative per variant
+     fol = [o for o in bpy.data.objects if o.type == "MESH" and o.get("cat") == "leaf" and len(o.data.polygons)]
+@@ -743,7 +837,7 @@ def main():
+     glb = os.path.join(EXPORT, "village.glb")
+     select(exported + inst + cols + lights, exported[0])
+     kw = dict(filepath=glb, export_format="GLB", use_selection=True, export_apply=True, export_yup=True,
+-              export_texcoords=True, export_normals=False, export_materials="EXPORT", export_image_format="WEBP",
++              export_texcoords=True, export_normals=True, export_materials="EXPORT", export_image_format="WEBP",
+               export_image_quality=80, export_animations=False, export_cameras=False, export_lights=False,
+               export_extras=False, export_skins=False, export_morph=False, export_vertex_color="MATERIAL",
+               export_tangents=False, export_gpu_instances=True,

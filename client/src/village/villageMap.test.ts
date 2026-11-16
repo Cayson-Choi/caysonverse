@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { VILLAGE_LAYOUT } from "@caysonverse/shared/village/villageLayout";
 import { hallCeilingSlab, villageGeometry } from "@caysonverse/shared/village/villageLayout";
+import { villagePickArea, villageWalkArea } from "@caysonverse/shared/village/fallsWalk";
 import { SPRING } from "../game/cameraCollision";
 import { PLAYER_RADIUS } from "@caysonverse/shared/worldMap";
 import {
@@ -11,6 +12,7 @@ import {
   activeMapVersion,
   getActiveMap,
   mapBounds,
+  pickBoundsOf,
   setActiveMap,
   villageActiveMap,
 } from "../game/activeMap";
@@ -31,10 +33,23 @@ describe("the village's two maps (one geometry, the bounds of the area the playe
     // ...whose bounds reach from the village to the hall (x -95..310) — the wrong rectangle for any frame.
     expect(villageGeometry.bounds.minX).toBeLessThan(-90);
     expect(villageGeometry.bounds.maxX).toBeGreaterThan(300);
-    expect(mapBounds(VILLAGE_ACTIVE_MAP)).toEqual(VILLAGE_LAYOUT.areas.village);
+    // the village area plus the waterfall's rest area (B1 W5): the pocket reaches x -106
+    expect(mapBounds(VILLAGE_ACTIVE_MAP)).toEqual(villageWalkArea(VILLAGE_LAYOUT));
+    expect(mapBounds(VILLAGE_ACTIVE_MAP).minX).toBe(VILLAGE_LAYOUT.backdrop.waterfall.pocket.minX);
     expect(mapBounds(HALL_ACTIVE_MAP)).toEqual(VILLAGE_LAYOUT.areas.hall);
     expect(mapBounds(VILLAGE_ACTIVE_MAP).maxX).toBe(VILLAGE_LAYOUT.areas.village.maxX); // 186: the village and the fishing lake east of it (A10)
     expect(mapBounds(HALL_ACTIVE_MAP).minX).toBeGreaterThan(290);
+  });
+
+  it("clicks pick ground over the whole pool and a click on its water goes to the shore (the village map only)", () => {
+    expect(VILLAGE_ACTIVE_MAP.pickBounds).toEqual(villagePickArea(VILLAGE_LAYOUT));
+    expect(pickBoundsOf(VILLAGE_ACTIVE_MAP).minX).toBeLessThan(-118);
+    const spot = VILLAGE_ACTIVE_MAP.shore!(-111, -78)!;
+    expect(spot.x).toBeGreaterThan(-106);
+    expect(spot.x).toBeLessThan(-103);
+    expect(VILLAGE_ACTIVE_MAP.shore!(0, 0)).toBeNull();
+    expect(HALL_ACTIVE_MAP.shore).toBeUndefined();
+    expect(pickBoundsOf(HALL_ACTIVE_MAP)).toEqual(VILLAGE_LAYOUT.areas.hall);
   });
 
   it("a map without its own bounds reads the geometry's", () => {
@@ -50,17 +65,19 @@ describe("the village's two maps (one geometry, the bounds of the area the playe
 
   it("activeBounds follows the active map when the area flips (the sun, the overview and the click-move read it)", () => {
     setActiveMap(VILLAGE_ACTIVE_MAP);
-    expect(activeBounds()).toEqual(VILLAGE_LAYOUT.areas.village);
+    expect(activeBounds()).toEqual(villageWalkArea(VILLAGE_LAYOUT));
     const v = activeMapVersion();
     setActiveMap(villageActiveMap("hall")); // the door
     expect(activeMapVersion()).toBe(v + 1);
     expect(activeBounds()).toEqual(VILLAGE_LAYOUT.areas.hall);
     setActiveMap(villageActiveMap("village")); // and back
-    expect(activeBounds()).toEqual(VILLAGE_LAYOUT.areas.village);
+    expect(activeBounds()).toEqual(villageWalkArea(VILLAGE_LAYOUT));
   });
 
-  it("the HUD names the area: 케이슨 마을 outside, 추모관 inside", () => {
+  it("the HUD names the area: 케이슨 마을 outside, 추모관 inside, 폭포 쉼터 in the waterfall's rest area", () => {
     expect(VILLAGE_ACTIVE_MAP.zoneLabel(0, 0)).toBe("케이슨 마을");
+    expect(VILLAGE_ACTIVE_MAP.zoneLabel(-100, -78)).toBe("폭포 쉼터");
+    expect(VILLAGE_ACTIVE_MAP.zoneLabel(-94, -78)).toBe("케이슨 마을");
     expect(HALL_ACTIVE_MAP.zoneLabel(300, 0)).toBe("추모관");
   });
 

@@ -21,7 +21,6 @@ import { CAMERA_FAR } from "../game/constants";
 import { LIGHTMAP_CHANNEL, LIGHTMAP_INTENSITY } from "../game/hub/hubModelPrep";
 import { overviewFar } from "../game/overview";
 import {
-  FALLS_SPEED,
   FOUNTAIN_GLOW_STRENGTH,
   GLOW_BOOST,
   GROUND_GRADE,
@@ -47,7 +46,6 @@ import {
   disposeVillageSource,
   foliageTintUniform,
   drawCallBudget,
-  fallsDown,
   fitSkyMapping,
   liftTintUniform,
   liftUniform,
@@ -67,6 +65,7 @@ import {
   FOLIAGE_NEAR_FADE,
   nearFadeUniform,
 } from "./villageModelPrep";
+import { sunShadowUniforms } from "./sunShadows";
 import { NEAR_FADE_KEY } from "../game/clickPick";
 import { DAY_LIFT, NIGHT_LOOK, dayNightAt, indoorState, type DayNightState } from "./dayNightBlend";
 import { parseKstTime } from "@caysonverse/shared/village/sunClock";
@@ -115,16 +114,6 @@ function domeGeometry(): BufferGeometry {
   return g;
 }
 
-/** A waterfall sheet standing in the XY plane, 10 m tall; `vDown`: v grows as the sheet goes down. */
-function fallsGeometry(vDown: boolean): BufferGeometry {
-  const g = new PlaneGeometry(4, 10);
-  if (vDown) {
-    const uv = g.getAttribute("uv");
-    for (let i = 0; i < uv.count; i++) uv.setY(i, 1 - uv.getY(i));
-  }
-  return g;
-}
-
 interface Fixture {
   root: Object3D;
   mats: Record<string, MeshBasicMaterial>;
@@ -134,7 +123,7 @@ interface Fixture {
 }
 
 function fixture(): Fixture {
-  const textures = { water: new Texture(), sky: new Texture(), falls: new Texture(), leaf: new Texture() };
+  const textures = { water: new Texture(), sky: new Texture(), leaf: new Texture() };
   const mats = {
     LM_plaza: mat("LM_plaza"),
     LM_grass: mat("LM_grass"),
@@ -145,7 +134,6 @@ function fixture(): Fixture {
     M_backdrop: mat("M_backdrop"),
     M_glow_plot: mat("M_glow_plot"),
     M_water: mat("M_water", { map: textures.water, transparent: true, depthWrite: false }),
-    M_waterfall: mat("M_waterfall", { map: textures.falls, transparent: true }),
     M_leaf_green: mat("M_leaf_green", { map: textures.leaf, alphaTest: 0.5 }),
     M_window: mat("M_window"),
     M_shop: mat("M_shop"),
@@ -162,9 +150,6 @@ function fixture(): Fixture {
   root.add(mesh("village_glass", mats.M_glass));
   const pool = mesh("village_water_11", mats.M_water, new PlaneGeometry(12, 12).rotateX(-Math.PI / 2));
   root.add(pool, mesh("village_water_12", mats.M_water, new PlaneGeometry(6, 40).rotateX(-Math.PI / 2)));
-  const falls = mesh("village_water_-10", mats.M_waterfall, fallsGeometry(true));
-  falls.position.set(-118, 18, -78);
-  root.add(falls);
   root.add(mesh("village_sky", mats.M_sky, domeGeometry()));
   root.add(mesh("village_backdrop", mats.M_backdrop));
   root.add(mesh("village_leaf_10", mats.M_leaf_green));
@@ -351,7 +336,13 @@ describe("prepareVillage: the model dressed for the game", () => {
     expect(fs).toContain("uniform sampler2D uVillageNightMap;");
     expect(fs.indexOf("vec3 villageAlbedo = diffuseColor.rgb;")).toBeLessThan(fs.indexOf("#include <color_fragment>"));
     // Both maps are read only while they count.
-    expect(fs).toContain("if ( uVillageNight < 0.999 ) lightMapTexel.rgb = texture2D( lightMap, vLightMapUv ).rgb * uVillageDayTint * ( 1.0 - uVillageNight );");
+    // The day map's texel goes through the live sun's swap (sunShadows.ts ssDay: the baked sun out, the real one in).
+    expect(fs).toContain("if ( uVillageNight < 0.999 ) lightMapTexel.rgb = ssDay( texture2D( lightMap, vLightMapUv ).rgb, vLightMapUv ) * uVillageDayTint * ( 1.0 - uVillageNight );");
+    expect(shader.uniforms.uSsOn).toBe(sunShadowUniforms.uSsOn);
+    expect(shader.uniforms.uSsNearMap).toBe(sunShadowUniforms.uSsNearMap);
+    // The normal, n.l and the live shadow are read at the top of main (the derivatives outside every branch).
+    expect(fs.indexOf("ssDayN = ssNormal();")).toBeGreaterThan(fs.indexOf("void main() {"));
+    expect(fs.indexOf("ssDayN = ssNormal();")).toBeLessThan(fs.indexOf("lightMapTexel"));
     expect(fs).toContain("vec3 villageNightLight = texture2D( uVillageNightMap, vLightMapUv ).rgb;");
     expect(fs).toContain("lightMapTexel.rgb += villageNightLight * uVillageNight;");
     expect(shader.uniforms.uVillageMoonTint).toBe(moonTintUniform);
@@ -526,17 +517,10 @@ describe("prepareVillage: the model dressed for the game", () => {
     expect((high.water!.uniforms.uSkyMap!.value as { x: number }).x).toBe(DOME_MAP.uSign);
   });
 
-  it("the waterfall slides down its sheet: a copy of its material and map, moved every frame", () => {
+  it("tickVillage moves the water's clock (the waterfall is its own model since W6: nothing of it here)", () => {
     const f = fixture();
     const nodes = prepareVillage(f.root, new Texture(), "low");
-    const falls = materialOf(nodes.root, "village_water_-10");
-    expect(falls).not.toBe(f.mats.M_waterfall);
-    expect(falls.map).toBe(nodes.falls!.map);
-    expect(falls.map).not.toBe(f.textures.falls);
-    expect(nodes.falls!.down).toBe(1);
-    tickVillage(nodes, 1, 1);
-    expect(nodes.falls!.map.offset.y).toBeCloseTo(-FALLS_SPEED, 9);
-    expect(f.textures.falls.offset.y).toBe(0);
+    expect("falls" in nodes).toBe(false);
     tickVillage(nodes, 2.5, 1.15);
     expect(nodes.water!.uniforms.uTime!.value).toBe(2.5);
   });
@@ -707,7 +691,7 @@ describe("prepareVillage: the model dressed for the game", () => {
   });
 });
 
-describe("fitSkyMapping / fallsDown: read from the model's own geometry", () => {
+describe("fitSkyMapping: read from the model's own geometry", () => {
   it("recovers how the dome lays its texture, wherever the u seam falls", () => {
     const m = fitSkyMapping(domeGeometry());
     expect(m.uSign).toBe(-1);
@@ -720,17 +704,6 @@ describe("fitSkyMapping / fallsDown: read from the model's own geometry", () => 
     const g = new BufferGeometry();
     g.setAttribute("position", new Float32BufferAttribute([0, 0, 0, 1, 0, 0, 0, 1, 0], 3));
     expect(fitSkyMapping(g).vScale).toBe(0);
-  });
-
-  it("knows which way along v the sheet falls", () => {
-    const sheet = (vDown: boolean) => {
-      const m = new Mesh(fallsGeometry(vDown));
-      m.updateMatrixWorld(true);
-      return m;
-    };
-    expect(fallsDown([sheet(true)])).toBe(1);
-    expect(fallsDown([sheet(false)])).toBe(-1);
-    expect(fallsDown([])).toBe(1);
   });
 });
 
@@ -827,8 +800,8 @@ describe("applyDayNight: the clock's numbers into the model (Task 7A)", () => {
     expect(dayTintUniform.value.toArray()).toEqual([1, 1, 1]); // the day light map has no weight at night: no extra darkening
     expect(nodes.sky!.color.toArray()).toEqual([...NIGHT_LOOK.domeTint].map((v) => expect.closeTo(v, 5)));
     expect(nodes.sky!.color.b).toBeGreaterThan(nodes.sky!.color.r); // blue
-    // The far hills' shared material, the forest copies' and the falls' copy: all in the haze tint.
-    expect(nodes.hazed.length).toBeGreaterThanOrEqual(3);
+    // The far hills' shared material and the forest copies: all in the haze tint.
+    expect(nodes.hazed.length).toBeGreaterThanOrEqual(2);
     expect(nodes.hazed).toContain(f.mats.M_backdrop);
     for (const m of nodes.hazed) expect(m.color.b, m.name).toBeCloseTo(NIGHT_LOOK.hazeTint[2], 5);
     expect((nodes.water!.uniforms.uTint!.value.z as number)).toBeLessThan(0.5);

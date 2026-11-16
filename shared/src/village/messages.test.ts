@@ -6,6 +6,7 @@ describe("VillageMsg", () => {
   it("keeps village action wire names stable and collision-free", () => {
     expect(VillageMsg).toEqual({
       UseDoor: "UseDoor",
+      UseStair: "UseStair",
       LightCandle: "LightCandle",
       FishingRentRod: "FishingRentRod",
       FishingReturnRod: "FishingReturnRod",

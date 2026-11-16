@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { AVATAR_TOP_M, HALL_DRAWN_CEILING_M, HEAD_CLEARANCE_M, HEADROOM_FEATHER, ROOF_EDGE_MARGIN_M, ceilingAbove, jumpHeadroom, villageOverheads } from "./overhead";
 import { BUS_SHELTER_ROOF, VILLAGE_LAYOUT, busShelterRoofSlab, houseArea } from "./villageLayout";
-import { HOUSE_INTERIOR_IDS, HOUSE_INTERIOR_LAYOUTS } from "./houseInterior";
+import { HOUSE_FLOORS, HOUSE_LOW_CEILINGS, HOUSE_NUMBERS, HOUSE_ROOM, houseBuildingId } from "./houseAreas";
 
 const c = VILLAGE_LAYOUT.busStop.shelter.centre;
 
@@ -55,10 +55,12 @@ describe("what is over a jumper's head", () => {
   it("the hall and the houses are roofed everywhere; their ceilings are higher than a hop, so a normal jump stays", () => {
     expect(ceilingAbove(300, 0, "hall")).toBe(HALL_DRAWN_CEILING_M);
     expect(jumpHeadroom(300, 0, "hall")).toBeCloseTo(HALL_DRAWN_CEILING_M - AVATAR_TOP_M - HEAD_CLEARANCE_M, 9);
-    for (const id of HOUSE_INTERIOR_IDS) {
-      const wall = HOUSE_INTERIOR_LAYOUTS[id]!.wallHeight;
-      expect(ceilingAbove(300, 0, houseArea(id))).toBe(wall);
-      expect(jumpHeadroom(300, 0, houseArea(id))).toBeCloseTo(wall - AVATAR_TOP_M - HEAD_CLEARANCE_M, 9);
-    }
+    for (const n of HOUSE_NUMBERS)
+      for (const f of HOUSE_FLOORS) {
+        const area = houseArea(houseBuildingId(n), f);
+        const wall = HOUSE_LOW_CEILINGS.find((l) => l.n === n && l.floor === f)?.lowest ?? HOUSE_ROOM.ceiling;
+        expect(ceilingAbove(400, 0, area)).toBe(wall);
+        expect(jumpHeadroom(400, 0, area)).toBeCloseTo(wall - AVATAR_TOP_M - HEAD_CLEARANCE_M, 9);
+      }
   });
 });

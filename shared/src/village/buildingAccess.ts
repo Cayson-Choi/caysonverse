@@ -85,10 +85,12 @@ export const HOUSE_KEYPAD_REACH_M = 2;
 export interface KeypadEntry {
   buildingId: string;
   pad: Point2;
-  /** Temporary placeholder destination until each house interior GLB is exported. */
-  placeholderArea: "hall";
+  /** Where the way out of the house puts a player: on the porch in front of the door, facing away from it (house N's exit). */
+  exit: { x: number; z: number; yaw: number };
 }
 
+/** How far past the keypad pad (m, away from the wall) the way out of a house lands: 0.55 m past the pad, on the porch. */
+export const HOUSE_EXIT_PAST_PAD_M = 0.55;
 /** The pad stands on the porch (walkable deck), 0.65 m in front of the door, which is in the body's front wall (the porch depth in from the footprint edge). */
 export const KEYPAD_PAD_FROM_DOOR_M = 0.65;
 
@@ -104,10 +106,34 @@ function keypadPad(house: SceneryHouse): Point2 {
   }
 }
 
+/** The unit vector pointing out of the house through its door, and the yaw of a person walking that way (the game's atan2(dirX, dirZ)). */
+function outward(side: SceneryHouse["doorSide"]): { dx: number; dz: number; yaw: number } {
+  switch (side) {
+    case "n": return { dx: 0, dz: -1, yaw: Math.PI };
+    case "s": return { dx: 0, dz: 1, yaw: 0 };
+    case "e": return { dx: 1, dz: 0, yaw: Math.PI / 2 };
+    case "w": return { dx: -1, dz: 0, yaw: -Math.PI / 2 };
+  }
+}
+
 export function keypadEntries(layout: VillageLayout = VILLAGE_LAYOUT): readonly KeypadEntry[] {
   return layout.sceneryHouses
     .filter((h) => h.kind === "house")
-    .map((h) => ({ buildingId: h.id, pad: keypadPad(h), placeholderArea: "hall" as const }));
+    .map((h) => {
+      const pad = keypadPad(h);
+      const o = outward(h.doorSide);
+      const round = (v: number) => Math.round(v * 1000) / 1000;
+      return {
+        buildingId: h.id,
+        pad,
+        exit: { x: round(pad.x + o.dx * HOUSE_EXIT_PAST_PAD_M), z: round(pad.z + o.dz * HOUSE_EXIT_PAST_PAD_M), yaw: o.yaw },
+      };
+    });
+}
+
+/** The keypad entry of a house by its building id (`house_3`), or null. */
+export function keypadEntryOf(buildingId: string, layout: VillageLayout = VILLAGE_LAYOUT): KeypadEntry | null {
+  return keypadEntries(layout).find((e) => e.buildingId === buildingId) ?? null;
 }
 
 export function nearestKeypadEntry(x: number, z: number, layout: VillageLayout = VILLAGE_LAYOUT): { entry: KeypadEntry; distanceM: number } | null {

@@ -177,3 +177,37 @@ describe("Korean time for people: kstClock and parseKstTime", () => {
     for (const bad of ["", "noon", "2026-6-21", "2026-06-21T25", "2026-13-01T10:00"]) expect(parseKstTime(bad), bad).toBeNull();
   });
 });
+
+describe("sunAt: the noon sun over Seoul (2026-11-16, the live shadows' review)", () => {
+  // The highest the sun gets on a day is 90° − latitude + declination (+ refraction, ~0.02° that high). Declinations
+  // (Astronomical Almanac, rounded): 2026-03-20 −0.0°, 06-21 +23.44°, 09-23 −0.1°, 12-21 −23.44°, 11-16 −18.6°.
+  const cases = [
+    ["2026-03-20", 52.43],
+    ["2026-06-21", 75.87],
+    ["2026-09-23", 52.33],
+    ["2026-12-21", 29.0],
+    ["2026-11-16", 33.83],
+  ] as const;
+  for (const [date, want] of cases) {
+    it(`${date}: Seoul's noon elevation is ${want}° (±0.3°), due south (±1°), near 12:30 KST`, () => {
+      let best = { t: 0, el: -90, az: 0 };
+      const start = Date.parse(`${date}T11:00:00+09:00`);
+      for (let t = start; t <= start + 3 * 3_600_000; t += 30_000) {
+        const s = sunAt(t, SEOUL.lat, SEOUL.lon);
+        if (s.elevationDeg > best.el) best = { t, el: s.elevationDeg, az: s.azimuthDeg };
+      }
+      expect(Math.abs(best.el - want)).toBeLessThanOrEqual(0.3);
+      expect(Math.abs(best.az - 180)).toBeLessThanOrEqual(1);
+      // Seoul is 8° west of the 135° E time meridian: solar noon falls ~12:20-12:45 KST through the year
+      const k = kstClock(best.t);
+      expect(k.hour * 60 + k.minute).toBeGreaterThanOrEqual(12 * 60 + 10);
+      expect(k.hour * 60 + k.minute).toBeLessThanOrEqual(12 * 60 + 50);
+    });
+  }
+  it("the morning sun is in the east, the afternoon sun in the west (the village frame: east +x, north −z)", () => {
+    expect(sunAt(Date.parse("2026-11-16T09:00:00+09:00")).azimuthDeg).toBeGreaterThan(110);
+    expect(sunAt(Date.parse("2026-11-16T09:00:00+09:00")).azimuthDeg).toBeLessThan(150);
+    expect(sunAt(Date.parse("2026-11-16T15:00:00+09:00")).azimuthDeg).toBeGreaterThan(210);
+    expect(sunAt(Date.parse("2026-11-16T15:00:00+09:00")).azimuthDeg).toBeLessThan(240);
+  });
+});

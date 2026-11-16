@@ -1,8 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { PLAYER_RADIUS } from "@caysonverse/shared/constants";
 import { isBlocked } from "@caysonverse/shared/collision";
-import { HOUSE_INTERIOR_SPAWN, VILLAGE_LAYOUT, villageGeometry } from "@caysonverse/shared/village/villageLayout";
-import { DOOR_INSIDE_HALF_WIDTH_M, DOOR_RATE, DOOR_REACH_M, arrivalAfter, useDoor } from "./villageDoor";
+import { VILLAGE_LAYOUT, villageGeometry } from "@caysonverse/shared/village/villageLayout";
+import { keypadEntries } from "@caysonverse/shared/village/buildingAccess";
+import { ENTRY_SPAWN, EXIT_PAD, HOUSE_NUMBERS, HOUSE_PLACES, HOUSE_STAIR_TYPE, STAIR_PLANS, houseFloorArea, localToWorld } from "@caysonverse/shared/village/houseAreas";
+import { DOOR_INSIDE_HALF_WIDTH_M, DOOR_RATE, DOOR_REACH_M, arrivalAfter, useDoor, useHouseExit, useStair } from "./villageDoor";
 
 const L = VILLAGE_LAYOUT;
 const outPad = L.memorial.exterior.doorPad;
@@ -117,10 +119,69 @@ describe("the way out is used from in front of the door only (round 6 review, 20
   });
 });
 
-describe("a house's arrival spot is its own (round 6 review)", () => {
-  it("not the hall's spawn, and the way out is usable from it", () => {
-    const hall = VILLAGE_LAYOUT.memorial.interior.spawn;
-    expect(HOUSE_INTERIOR_SPAWN.z).not.toBe(hall.z);
-    expect(useDoor("house:house_1", HOUSE_INTERIOR_SPAWN.x, HOUSE_INTERIOR_SPAWN.z)).not.toBeNull();
+describe("a house's way out and stair (집 실내 G)", () => {
+  const w = (n: (typeof HOUSE_NUMBERS)[number], floor: 1 | 2, lx: number, lz: number) => localToWorld(n, floor, lx, lz);
+
+  it("a house floor is no memorial door: useDoor ignores it", () => {
+    const p = HOUSE_PLACES[1];
+    expect(useDoor(houseFloorArea(1, 1), p.exitPad.x, p.exitPad.z)).toBeNull();
+    expect(useDoor(houseFloorArea(1, 2), p.downPad.x, p.downPad.z)).toBeNull();
+  });
+
+  it("the way out: from the exit pad (and 1.3 m in front of it) to the house's porch, in the village, facing away from the door", () => {
+    const entries = keypadEntries();
+    for (const n of HOUSE_NUMBERS) {
+      const p = HOUSE_PLACES[n];
+      const entry = entries.find((e) => e.buildingId === `house_${n}`)!;
+      const out = useHouseExit(houseFloorArea(n, 1), p.exitPad.x, p.exitPad.z);
+      expect(out, `house ${n}`).toEqual({ area: "village", x: entry.exit.x, z: entry.exit.z, yaw: entry.exit.yaw });
+      // straight in front, on the room's side, up to the pad's reach (radius 0.7 + 1.3 = 2.0 m): yes; just past it: no
+      expect(useHouseExit(houseFloorArea(n, 1), ...(Object.values(w(n, 1, EXIT_PAD.x, EXIT_PAD.z + 1.9)) as [number, number]))).not.toBeNull();
+      expect(useHouseExit(houseFloorArea(n, 1), ...(Object.values(w(n, 1, EXIT_PAD.x + 1.5, EXIT_PAD.z + 1.9)) as [number, number]))).toBeNull();
+      // the arrival spot inside (spawn__h<N>_in, 2.2 m from the pad) offers no button, but the server takes the way out from it: the rescue of
+      // a house whose model would not load (HOUSE_ENTRY_RESCUE_M); 1.5 m off it, no
+      expect(useHouseExit(houseFloorArea(n, 1), p.spawnIn.x, p.spawnIn.z)).toBeNull(); // the contract's pad rule alone…
+      expect(useHouseExit(houseFloorArea(n, 1), p.spawnIn.x, p.spawnIn.z, true)).not.toBeNull(); // …unless the client says the model failed
+      expect(useHouseExit(houseFloorArea(n, 1), ...(Object.values(w(n, 1, ENTRY_SPAWN.x + 1.5, ENTRY_SPAWN.z + 0.5)) as [number, number]), true)).toBeNull();
+      expect(useHouseExit(houseFloorArea(n, 1), ...(Object.values(w(n, 1, EXIT_PAD.x + 1.2, EXIT_PAD.z + 0.5)) as [number, number]))).toBeNull();
+      expect(useHouseExit(houseFloorArea(n, 2), p.exitPad.x, p.exitPad.z + 30)).toBeNull();
+      expect(useHouseExit("village", p.exitPad.x, p.exitPad.z)).toBeNull();
+    }
+    expect(useHouseExit(houseFloorArea(1, 1), Number.NaN, 0)).toBeNull();
+  });
+
+  it("the porch arrival is on free ground (the porch steps do not block it) for every house", () => {
+    for (const e of keypadEntries()) expect(isBlocked(e.exit.x, e.exit.z, PLAYER_RADIUS, villageGeometry.obstacles, 0), e.buildingId).toBe(false);
+  });
+
+  it("the stair: floor 1's up pad → floor 2's arrival, floor 2's down pad → floor 1's arrival, both ways usable from where they put you", () => {
+    for (const n of HOUSE_NUMBERS) {
+      const p = HOUSE_PLACES[n];
+      const up = useStair(houseFloorArea(n, 1), p.upPad.x, p.upPad.z);
+      expect(up, `house ${n} up`).toEqual({ area: houseFloorArea(n, 2), x: p.spawnUp.x, z: p.spawnUp.z, yaw: p.spawnUp.yaw });
+      const down = useStair(houseFloorArea(n, 2), p.downPad.x, p.downPad.z);
+      expect(down, `house ${n} down`).toEqual({ area: houseFloorArea(n, 1), x: p.spawnDown.x, z: p.spawnDown.z, yaw: p.spawnDown.yaw });
+      // the arrival spots are 0.35 m from their pads: the stair can be used straight back
+      expect(useStair(houseFloorArea(n, 2), p.spawnUp.x, p.spawnUp.z), `house ${n} back down`).not.toBeNull();
+      expect(useStair(houseFloorArea(n, 1), p.spawnDown.x, p.spawnDown.z), `house ${n} back up`).not.toBeNull();
+      // the way in (spawn__h<N>_in) is far from the stair
+      expect(useStair(houseFloorArea(n, 1), p.spawnIn.x, p.spawnIn.z)).toBeNull();
+    }
+    expect(useStair("village", 0, 0)).toBeNull();
+    expect(useStair("hall", 300, 0)).toBeNull();
+    expect(useStair(houseFloorArea(1, 1), Number.NaN, 0)).toBeNull();
+  });
+
+  it("only in front of the stair pad: not from behind it (toward the stair), not 2 m away", () => {
+    for (const n of HOUSE_NUMBERS) {
+      const plan = STAIR_PLANS[HOUSE_STAIR_TYPE[n]];
+      const area = houseFloorArea(n, 1);
+      const fx = Math.sin(plan.upPad.facing);
+      const fz = Math.cos(plan.upPad.facing);
+      const at = (d: number) => w(n, 1, plan.upPad.x + fx * d, plan.upPad.z + fz * d);
+      expect(useStair(area, at(-1.0).x, at(-1.0).z), `house ${n} 1.0 m in front`).not.toBeNull();
+      expect(useStair(area, at(-2.0).x, at(-2.0).z), `house ${n} 2 m in front`).toBeNull();
+      expect(useStair(area, at(0.9).x, at(0.9).z), `house ${n} behind`).toBeNull();
+    }
   });
 });
