@@ -10,12 +10,13 @@ import { setClickTarget } from "../game/clickMove";
 import { LAKE_RENTAL_PAD, LAKE_FISHING_SPOTS } from "@caysonverse/shared/village/lakeLayout";
 import { coachSeen } from "./lakeDex";
 import { lakeButton, lakeCaption, showReturnButton, showStandButton, type LakeAction, type LakeButtonSpec, type LakeContext } from "./lakeHudModel";
-import { listenLake, readFishView, selfId, sendCast, sendFishSit, sendHold, sendRentRod, sendReturnRod, sendStand as sendFishStand, sendStrike, forEachAngler } from "./lakeNet";
+import { elapsedSince, listenLake, readFishView, selfId, sendCast, sendFishSit, sendHold, sendRentRod, sendReturnRod, sendStand as sendFishStand, sendStrike, forEachAngler } from "./lakeNet";
 import { chairSpotOfSeat, inLakeZone, nearestFreeChair, onRentalPad } from "./lakeNearby";
-import { FISH_PHASE, emptyFishView, species, type FishView } from "./lakeProtocol";
+import { FISH_PHASE, emptyFishView, sigName, species, type FishView } from "./lakeProtocol";
+import { biteWindowMs } from "@caysonverse/shared/village/fishing";
 import { expireLakeUi, useLakeStore } from "./lakeStore";
 import { LakeCards } from "./LakeCards";
-import { fishingCamera, restoreCamera } from "./lakeCamera";
+import { backToFishing, catchCamera, fishingCamera, restoreCamera } from "./lakeCamera";
 import "./lake.css";
 
 /** The HUD reads the schema this often (ms): a bite must turn the button red at once. */
@@ -96,6 +97,13 @@ export function LakeHud({ pose, seat, orbit }: { pose: Pose; seat: SeatState; or
     // the fish is landed: the card and the dex of this device
     if (view.phase === FISH_PHASE.landed && lastPhase.current !== FISH_PHASE.landed && species(view.kind)) {
       store.getState().landed(view.kind, view.cm, Date.now());
+      // the camera comes round to see the fish held up, and goes back over the shoulder for the next cast
+      const spot = LAKE_FISHING_SPOTS[view.spot];
+      if (spot) catchCamera(spot.yaw);
+    }
+    if (view.phase === FISH_PHASE.ready && lastPhase.current === FISH_PHASE.releasing) {
+      const spot = LAKE_FISHING_SPOTS[view.spot];
+      if (spot) backToFishing(spot.yaw);
     }
     lastPhase.current = view.phase;
     // the fishing camera: seated at a spot -> over the shoulder toward the float; standing up -> where it was
@@ -169,7 +177,19 @@ export function LakeHud({ pose, seat, orbit }: { pose: Pose; seat: SeatState; or
           const live = emptyFishView();
           readFishView(selfId(), live);
           if (live.phase === FISH_PHASE.bite) {
-            sendStrike();
+            // a 찌올림 opens its window a moment after it starts rising (shared biteWindowMs): a press before that is kept and
+            // sent when it opens, so the red button never turns a press away
+            const sig = sigName(live.sig);
+            const opens = sig === "none" ? 0 : biteWindowMs(sig)[0];
+            const early = opens - elapsedSince(live.at);
+            if (early > 0) {
+              const seq = live.seq;
+              window.setTimeout(() => {
+                const now = emptyFishView();
+                readFishView(selfId(), now);
+                if (now.phase === FISH_PHASE.bite && now.seq === seq) sendStrike();
+              }, early + 90);
+            } else sendStrike();
             break;
           }
           if (a.kind === "strike") {

@@ -37,6 +37,7 @@ import { createLakeWater, type LakeWater, type LakeWaterLook } from "./lakeWater
 import { DEFAULT_SEAM, disposeLake, lakeDayNight, prepareLakeStructures, prepareLakeTerrain, type LakeSeam } from "./lakeModelPrep";
 import type { VillageTier } from "../village/villageModelPrep";
 import { lakeFloatParts, loadLakeGear } from "./lakeProps";
+import { LakeSigns } from "./LakeSigns";
 import { CAST_S, floatPose, scatter, tugIndex, type FloatPose, type Pt } from "./lakeFloat";
 import { elapsedSince, forEachAngler, selfId } from "./lakeNet";
 import { FISH_PHASE, emptyFishView, type FishView } from "./lakeProtocol";
@@ -639,6 +640,7 @@ export function LakeWorld({ pose, tier }: { pose: Pose; tier: VillageTier }) {
   return (
     <>
       <LakeModel tier={tier} />
+      <LakeSigns />
       <RentalPad />
       <ChairMarkers pose={pose} />
       <LakeAnglers />

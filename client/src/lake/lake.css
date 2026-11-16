@@ -317,3 +317,10 @@
   display: grid;
   gap: 2px;
 }
+
+/* the lake on the top-down map (LakeSigns.tsx) */
+.cv-map-me.cv-lake-map-label {
+  background: #1f6f5c;
+  border-color: #bff3dd;
+  white-space: nowrap;
+}

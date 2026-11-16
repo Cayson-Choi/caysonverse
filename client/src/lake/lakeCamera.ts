@@ -28,3 +28,17 @@ export function restoreCamera(): void {
   if (viewState.mode === "tp") viewState.orbitGoal = { yaw: saved.yaw, pitch: saved.pitch, distance: saved.distance };
   saved = null;
 }
+
+/** Showing the catch (landed): the camera swings round to the angler's front, a little to the side, so the fish held up is seen. */
+export const CATCH_VIEW = { side: 0.55, pitch: 0.22, distance: 3.4 } as const;
+
+export function catchCamera(bodyYaw: number): void {
+  if (viewState.mode !== "tp" || !saved) return;
+  viewState.orbitGoal = { yaw: normalizeAngle(bodyYaw + CATCH_VIEW.side), pitch: CATCH_VIEW.pitch, distance: CATCH_VIEW.distance };
+}
+
+/** Back over the shoulder after the catch (the view the player had before sitting stays saved). */
+export function backToFishing(bodyYaw: number): void {
+  if (viewState.mode !== "tp" || !saved) return;
+  viewState.orbitGoal = { yaw: fishingYaw(bodyYaw), pitch: FISHING_VIEW.pitch, distance: FISHING_VIEW.distance };
+}
