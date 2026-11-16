@@ -13,6 +13,7 @@
 import type { Seat } from "@caysonverse/shared/worldMap";
 import { VILLAGE_LAYOUT, villageGeometry, houseInteriorGeometry, type AreaId, isHouseArea } from "@caysonverse/shared/village/villageLayout";
 import { VILLAGE_BENCHES, VILLAGE_SEATS } from "@caysonverse/shared/village/benchSeats";
+import { VILLAGE_AND_LAKE_SEATS } from "@caysonverse/shared/village/allSeats";
 import type { Bounds, MapGeometry } from "@caysonverse/shared/school/geometry";
 import type { AABB } from "@caysonverse/shared/collision";
 import { HALL_CAMERA_LIMIT, VILLAGE_CAMERA_PAD, type CameraLimit } from "./indoorCamera";
@@ -85,7 +86,7 @@ export const VILLAGE_ACTIVE_MAP: ActiveMap = Object.freeze({
   bounds: VILLAGE_LAYOUT.areas.village,
   cameraPad: VILLAGE_CAMERA_PAD,
   zoneLabel: () => "케이슨 마을",
-  seats: VILLAGE_SEATS, // every bench of the village (the hall's are out of reach from here)
+  seats: VILLAGE_AND_LAKE_SEATS, // every bench of the village (the hall's are out of reach from here) and the fishing lake's 56 seats after them
   furniture: VILLAGE_FURNITURE,
 });
 

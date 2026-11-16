@@ -49,7 +49,7 @@ import {
   villageBounds,
   villageGeometry,
 } from "./villageLayout";
-import { LAKE_AREA, lakeColliders } from "./lakeLayout";
+import { LAKE_AREA, lakeCameraBoxes, lakeColliders } from "./lakeLayout";
 import { signalPoleColliders } from "./crossings";
 import type { PlotId, Point2, Side, VillageLane } from "./villageLayout";
 
@@ -726,18 +726,18 @@ describe("village colliders are built from the layout", () => {
     const bare = buildVillageGeometry(L, []);
     expect(bare.obstacles).toHaveLength(fixed);
     for (const b of bus) expect(bare.obstacles).toContainEqual({ minX: b.minX, maxX: b.maxX, minZ: b.minZ, maxZ: b.maxZ });
-    expect(bare.cameraBoxes).toEqual([...hallWalls(L), ...bus, busShelterRoofSlab(L), busShelterLightBoxCameraBox(L)]);
+    expect(bare.cameraBoxes).toEqual([...hallWalls(L), ...lakeCameraBoxes(), ...bus, busShelterRoofSlab(L), busShelterLightBoxCameraBox(L)]);
     const box = { minX: 0, maxX: 1, minZ: 0, maxZ: 1 };
     const one = buildVillageGeometry(L, [{ id: "x", box, camera: false }]);
     expect(one.obstacles).toHaveLength(fixed + 1);
-    expect(one.cameraBoxes).toHaveLength(hallWalls(L).length + bus.length + 2); // the bus's slices, the shelter's roof slab and light box
+    expect(one.cameraBoxes).toHaveLength(hallWalls(L).length + lakeCameraBoxes().length + bus.length + 2); // the bus's slices, the shelter's roof slab and light box
     const tall = { ...box, height: 3 };
     const generated = buildVillageGeometry(L, { obstacles: [box], cameraBoxes: [tall] });
     expect(generated.obstacles).toHaveLength(fixed + 1);
     expect(generated.obstacles).toContainEqual(box);
     expect(generated.obstacles.slice(-busShelterColliders(L).length - 1, -1)).toEqual(busShelterColliders(L));
     expect(generated.obstacles.at(-1)).toEqual(busShelterBenchCollider(L));
-    expect(generated.cameraBoxes).toEqual([...hallWalls(L), tall, ...bus, busShelterRoofSlab(L), busShelterLightBoxCameraBox(L)]); // the height is kept; the shelter's glass is no camera box (seen through), its opaque light box is
+    expect(generated.cameraBoxes).toEqual([...hallWalls(L), tall, ...lakeCameraBoxes(), ...bus, busShelterRoofSlab(L), busShelterLightBoxCameraBox(L)]); // the height is kept; the shelter's glass is no camera box (seen through), its opaque light box is
     expect(generated.bounds).toEqual(bare.bounds);
   });
 

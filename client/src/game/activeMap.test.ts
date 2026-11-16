@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { afterEach, describe, expect, it } from "vitest";
 import { VILLAGE_SEATS } from "@caysonverse/shared/village/benchSeats";
+import { VILLAGE_AND_LAKE_SEATS } from "@caysonverse/shared/village/allSeats";
 import { villageGeometry } from "@caysonverse/shared/village/villageLayout";
 import {
   VILLAGE_ACTIVE_MAP,
@@ -42,10 +43,13 @@ describe("activeMap (the map seam)", () => {
   });
 
   it("each map names its seats: the village's benches, one list for both areas", () => {
-    expect(VILLAGE_ACTIVE_MAP.seats).toBe(VILLAGE_SEATS);
-    expect(villageActiveMap("village").seats).toBe(VILLAGE_SEATS);
+    // the open village's list is the village's benches with the fishing lake's seats after them (the same indexes for the benches)
+    expect(VILLAGE_ACTIVE_MAP.seats).toBe(VILLAGE_AND_LAKE_SEATS);
+    expect(VILLAGE_AND_LAKE_SEATS.slice(0, VILLAGE_SEATS.length)).toEqual(VILLAGE_SEATS);
+    expect(VILLAGE_AND_LAKE_SEATS.length).toBe(VILLAGE_SEATS.length + 56);
+    expect(villageActiveMap("village").seats).toBe(VILLAGE_AND_LAKE_SEATS);
     expect(villageActiveMap("hall").seats).toBe(VILLAGE_SEATS);
-    expect(activeSeats()).toBe(VILLAGE_SEATS);
+    expect(activeSeats()).toBe(VILLAGE_AND_LAKE_SEATS);
     setActiveMap(villageActiveMap("hall"));
     expect(activeSeats()).toBe(VILLAGE_SEATS);
     setActiveMap({ geometry: villageGeometry, zoneLabel: () => "" }); // a map without seats: nowhere to sit

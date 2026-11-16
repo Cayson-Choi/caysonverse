@@ -35,7 +35,7 @@ import { MEMORIAL_CAMERA_BOXES, MEMORIAL_COLLIDERS } from "./generated/memorialC
 import { guideColliders } from "./guides";
 import { signalPoleColliders } from "./crossings";
 import { TRANSIT, busFootprint } from "./transit";
-import { LAKE_AREA, lakeColliders } from "./lakeLayout";
+import { LAKE_AREA, lakeCameraBoxes, lakeColliders } from "./lakeLayout";
 import type { Bounds, MapGeometry } from "../school/geometry";
 
 export interface Point2 {
@@ -930,7 +930,7 @@ export function buildVillageGeometry(
     villageBounds(layout),
     hallWalls(layout),
     [...areaGapBlockers(layout), ...hallSurroundBlockers(layout), ...lakeColliders(), ...village.obstacles, ...bus.map(stripHeight), ...signalPoleColliders(), ...busShelterColliders(layout), busShelterBenchCollider(layout), ...(hall?.obstacles ?? []), ...extra],
-    [...village.cameraBoxes, ...bus, busShelterRoofSlab(layout), busShelterLightBoxCameraBox(layout), ...(hall?.cameraBoxes ?? [])],
+    [...village.cameraBoxes, ...lakeCameraBoxes(), ...bus, busShelterRoofSlab(layout), busShelterLightBoxCameraBox(layout), ...(hall?.cameraBoxes ?? [])],
   );
 }
 
