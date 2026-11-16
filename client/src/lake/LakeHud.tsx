@@ -16,6 +16,7 @@ import { FISH_PHASE, emptyFishView, sigName, species, type FishView } from "./la
 import { biteWindowMs } from "@caysonverse/shared/village/fishing";
 import { expireLakeUi, useLakeStore } from "./lakeStore";
 import { LakeCards } from "./LakeCards";
+import { carriesHandItem } from "./fishingRig";
 import { backToFishing, catchCamera, fishingCamera, restoreCamera } from "./lakeCamera";
 import "./lake.css";
 
@@ -91,8 +92,10 @@ export function LakeHud({ pose, seat, orbit }: { pose: Pose; seat: SeatState; or
       seatedNoRod: view.rod === 0 && chairSpot >= 0,
     };
     // rod rented / returned: a line of words
-    if (view.rod > 0 && lastRod.current === 0) store.getState().say("2칸 대를 빌렸어요. 빈 의자에 앉아서 던지세요!", 4200);
-    if (view.rod === 0 && lastRod.current > 0) store.getState().say("낚싯대를 반납했어요.");
+    // the held item (손에 드는 것) is left with the shop while the rod is out, and given back with the rod (fishingRig.stowHandItem)
+    const item = carriesHandItem(selfId());
+    if (view.rod > 0 && lastRod.current === 0) store.getState().say(item ? "2칸 대를 빌렸어요. 들고 있던 물건은 가게에 맡겼어요. 빈 의자에 앉아서 던지세요!" : "2칸 대를 빌렸어요. 빈 의자에 앉아서 던지세요!", 4200);
+    if (view.rod === 0 && lastRod.current > 0) store.getState().say(item ? "낚싯대를 반납하고 맡긴 물건을 돌려받았어요." : "낚싯대를 반납했어요.");
     lastRod.current = view.rod;
     // the fish is landed: the card and the dex of this device
     if (view.phase === FISH_PHASE.landed && lastPhase.current !== FISH_PHASE.landed && species(view.kind)) {
