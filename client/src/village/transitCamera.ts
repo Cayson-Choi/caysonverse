@@ -89,6 +89,8 @@ const EYE_SHELL_MIN_H = 0.3;
 export const TP_FRAME = { x: 1.0, y: -0.8 } as const;
 /** The third person's arm (m) in the bus: the zoom may shorten it, but never into the avatar's lap (a chibi head is 1 m wide). */
 export const BUS_TP_MIN_ARM = 2.6;
+/** ... and the longest (m): a lens farther back stands against the cabin's end wall, which then fills the picture. */
+export const BUS_TP_MAX_ARM = 3.2;
 /** The least elevation (rad) of the third person's lens over the rider's head line: it looks down on the rider from above. */
 export const TP_ELEVATION = 0.3;
 /** Under this arm (m) the third person's lens tries the other side of the rider. */
@@ -116,7 +118,7 @@ export function busRiderCamera(input: BusCamInput, out: TransitCameraPose = { x:
     target = [eye[0] - dirA * ce * 3, eye[1] - dirR * ce * 3, eye[2] - Math.sin(elevation) * 3];
   } else {
     // bus v3: the seats are bigger, a lens nearer than the third person's least arm filled the screen with the seated rider
-    const d = input.frame ? Math.max(input.dist, BUS_TP_MIN_ARM) : input.dist;
+    const d = input.frame ? Math.min(Math.max(input.dist, BUS_TP_MIN_ARM), BUS_TP_MAX_ARM) : input.dist;
     // With a lens (frame) the camera stays on the AISLE line (in front of the rider or behind them, whichever the view yaw is nearer), raised
     // and as far as the cabin allows: the cabin is as narrow as an avatar is tall, so the old orbit round the rider pressed the lens against a
     // window and the rider's head filled the screen. The view yaw then only turns where the lens LOOKS (a side view looks at the windows, the
@@ -132,7 +134,10 @@ export function busRiderCamera(input: BusCamInput, out: TransitCameraPose = { x:
       const o: V3 = [head[0], head[1], Math.min(head[2], max[2])];
       const elE = d > 1e-6 ? Math.min(el, Math.asin(Math.max(-1, Math.min(1, (max[2] - o[2]) / d)))) : el; // not above the ceiling
       // the lens drifts to the aisle's middle as it backs off (a rider at the wall would otherwise be looked at from a hand's breadth off the wall)
-      const wantR = input.frame ? o[1] * TP_AISLE_KEEP : o[1] + pr * Math.cos(elE) * d;
+      // bus v3: looking down the bus (front / back) at a rider seated by a wall, the lens stands on the far side of the aisle: the
+      // diagonal gives the arm the cabin's length alone cannot (the bigger seats put the rows closer to the cabin's ends)
+      const farSide = input.frame && seated && Math.abs(o[1]) > 0.4 && Math.abs(dirA) >= 0.5;
+      const wantR = input.frame ? (farSide ? -Math.sign(o[1]) * (BUS_SHELL.right - 0.05) : o[1] * TP_AISLE_KEEP) : o[1] + pr * Math.cos(elE) * d;
       const want: V3 = [o[0] + pa * Math.cos(elE) * d, wantR, o[2] + Math.sin(elE) * d];
       // 1) the shell: inside its box; if the wanted eye is outside, stop where the arm leaves it
       let t = 1;
