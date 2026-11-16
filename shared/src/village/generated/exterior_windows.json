@@ -1,0 +1,1638 @@
+{
+  "format": "caysonverse-exterior-windows",
+  "version": 1,
+  "source": "design",
+  "houses": {
+    "house_1": [
+      {
+        "wall": "front",
+        "floor": 1,
+        "kind": "door",
+        "at": 5.3,
+        "width": 1.8,
+        "height": 2.9,
+        "sill": 0
+      },
+      {
+        "wall": "front",
+        "floor": 1,
+        "kind": "window",
+        "at": 2,
+        "width": 1.4,
+        "height": 2,
+        "sill": 0.9
+      },
+      {
+        "wall": "front",
+        "floor": 1,
+        "kind": "window",
+        "at": 8.6,
+        "width": 1.4,
+        "height": 2,
+        "sill": 0.9
+      },
+      {
+        "wall": "front",
+        "floor": 2,
+        "kind": "window",
+        "at": 2,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      },
+      {
+        "wall": "front",
+        "floor": 2,
+        "kind": "window",
+        "at": 5.3,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      },
+      {
+        "wall": "front",
+        "floor": 2,
+        "kind": "window",
+        "at": 8.6,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      },
+      {
+        "wall": "back",
+        "floor": 1,
+        "kind": "window",
+        "at": 2.7,
+        "width": 1.4,
+        "height": 2,
+        "sill": 0.9
+      },
+      {
+        "wall": "back",
+        "floor": 1,
+        "kind": "window",
+        "at": 7.9,
+        "width": 1.4,
+        "height": 2,
+        "sill": 0.9
+      },
+      {
+        "wall": "back",
+        "floor": 2,
+        "kind": "window",
+        "at": 2.7,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      },
+      {
+        "wall": "back",
+        "floor": 2,
+        "kind": "window",
+        "at": 7.9,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      },
+      {
+        "wall": "left",
+        "floor": 1,
+        "kind": "window",
+        "at": 2.35,
+        "width": 1.4,
+        "height": 2,
+        "sill": 0.9
+      },
+      {
+        "wall": "left",
+        "floor": 1,
+        "kind": "window",
+        "at": 5.15,
+        "width": 1.8,
+        "height": 2,
+        "sill": 0.9
+      },
+      {
+        "wall": "left",
+        "floor": 2,
+        "kind": "window",
+        "at": 2.35,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      },
+      {
+        "wall": "left",
+        "floor": 2,
+        "kind": "window",
+        "at": 5.15,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      },
+      {
+        "wall": "right",
+        "floor": 1,
+        "kind": "window",
+        "at": 2.35,
+        "width": 1.4,
+        "height": 2,
+        "sill": 0.9
+      },
+      {
+        "wall": "right",
+        "floor": 1,
+        "kind": "window",
+        "at": 5.15,
+        "width": 1.8,
+        "height": 2,
+        "sill": 0.9
+      },
+      {
+        "wall": "right",
+        "floor": 2,
+        "kind": "window",
+        "at": 2.35,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      },
+      {
+        "wall": "right",
+        "floor": 2,
+        "kind": "window",
+        "at": 5.15,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      }
+    ],
+    "house_2": [
+      {
+        "wall": "front",
+        "floor": 1,
+        "kind": "door",
+        "at": 5.3,
+        "width": 1.8,
+        "height": 2.9,
+        "sill": 0
+      },
+      {
+        "wall": "front",
+        "floor": 1,
+        "kind": "window",
+        "at": 2,
+        "width": 1.4,
+        "height": 2,
+        "sill": 0.9
+      },
+      {
+        "wall": "front",
+        "floor": 1,
+        "kind": "window",
+        "at": 8.6,
+        "width": 1.4,
+        "height": 2,
+        "sill": 0.9
+      },
+      {
+        "wall": "front",
+        "floor": 2,
+        "kind": "window",
+        "at": 2,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      },
+      {
+        "wall": "front",
+        "floor": 2,
+        "kind": "window",
+        "at": 5.3,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      },
+      {
+        "wall": "front",
+        "floor": 2,
+        "kind": "window",
+        "at": 8.6,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      },
+      {
+        "wall": "back",
+        "floor": 1,
+        "kind": "window",
+        "at": 2.7,
+        "width": 1.4,
+        "height": 2,
+        "sill": 0.9
+      },
+      {
+        "wall": "back",
+        "floor": 1,
+        "kind": "window",
+        "at": 7.9,
+        "width": 1.4,
+        "height": 2,
+        "sill": 0.9
+      },
+      {
+        "wall": "back",
+        "floor": 2,
+        "kind": "window",
+        "at": 2.7,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      },
+      {
+        "wall": "back",
+        "floor": 2,
+        "kind": "window",
+        "at": 7.9,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      },
+      {
+        "wall": "left",
+        "floor": 1,
+        "kind": "window",
+        "at": 2.35,
+        "width": 1.4,
+        "height": 2,
+        "sill": 0.9
+      },
+      {
+        "wall": "left",
+        "floor": 1,
+        "kind": "window",
+        "at": 5.15,
+        "width": 1.8,
+        "height": 2,
+        "sill": 0.9
+      },
+      {
+        "wall": "left",
+        "floor": 2,
+        "kind": "window",
+        "at": 2.35,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      },
+      {
+        "wall": "left",
+        "floor": 2,
+        "kind": "window",
+        "at": 5.15,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      },
+      {
+        "wall": "right",
+        "floor": 1,
+        "kind": "window",
+        "at": 2.35,
+        "width": 1.4,
+        "height": 2,
+        "sill": 0.9
+      },
+      {
+        "wall": "right",
+        "floor": 1,
+        "kind": "window",
+        "at": 5.15,
+        "width": 1.8,
+        "height": 2,
+        "sill": 0.9
+      },
+      {
+        "wall": "right",
+        "floor": 2,
+        "kind": "window",
+        "at": 2.35,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      },
+      {
+        "wall": "right",
+        "floor": 2,
+        "kind": "window",
+        "at": 5.15,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      }
+    ],
+    "house_3": [
+      {
+        "wall": "front",
+        "floor": 1,
+        "kind": "door",
+        "at": 5.3,
+        "width": 1.8,
+        "height": 2.9,
+        "sill": 0
+      },
+      {
+        "wall": "front",
+        "floor": 1,
+        "kind": "window",
+        "at": 2,
+        "width": 1.4,
+        "height": 2,
+        "sill": 0.9
+      },
+      {
+        "wall": "front",
+        "floor": 1,
+        "kind": "window",
+        "at": 8.6,
+        "width": 1.4,
+        "height": 2,
+        "sill": 0.9
+      },
+      {
+        "wall": "front",
+        "floor": 2,
+        "kind": "window",
+        "at": 2,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      },
+      {
+        "wall": "front",
+        "floor": 2,
+        "kind": "patio",
+        "at": 5.3,
+        "width": 2.2,
+        "height": 2.6,
+        "sill": 4.1
+      },
+      {
+        "wall": "front",
+        "floor": 2,
+        "kind": "window",
+        "at": 8.6,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      },
+      {
+        "wall": "back",
+        "floor": 1,
+        "kind": "window",
+        "at": 2.7,
+        "width": 1.4,
+        "height": 2,
+        "sill": 0.9
+      },
+      {
+        "wall": "back",
+        "floor": 1,
+        "kind": "window",
+        "at": 7.9,
+        "width": 1.4,
+        "height": 2,
+        "sill": 0.9
+      },
+      {
+        "wall": "back",
+        "floor": 2,
+        "kind": "window",
+        "at": 2.7,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      },
+      {
+        "wall": "back",
+        "floor": 2,
+        "kind": "window",
+        "at": 7.9,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      },
+      {
+        "wall": "left",
+        "floor": 1,
+        "kind": "window",
+        "at": 2.35,
+        "width": 1.4,
+        "height": 2,
+        "sill": 0.9
+      },
+      {
+        "wall": "left",
+        "floor": 1,
+        "kind": "window",
+        "at": 5.15,
+        "width": 1.8,
+        "height": 2,
+        "sill": 0.9
+      },
+      {
+        "wall": "left",
+        "floor": 2,
+        "kind": "window",
+        "at": 2.35,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      },
+      {
+        "wall": "left",
+        "floor": 2,
+        "kind": "window",
+        "at": 5.15,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      },
+      {
+        "wall": "right",
+        "floor": 1,
+        "kind": "window",
+        "at": 2.35,
+        "width": 1.4,
+        "height": 2,
+        "sill": 0.9
+      },
+      {
+        "wall": "right",
+        "floor": 1,
+        "kind": "window",
+        "at": 5.15,
+        "width": 1.8,
+        "height": 2,
+        "sill": 0.9
+      },
+      {
+        "wall": "right",
+        "floor": 2,
+        "kind": "window",
+        "at": 2.35,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      },
+      {
+        "wall": "right",
+        "floor": 2,
+        "kind": "window",
+        "at": 5.15,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      }
+    ],
+    "house_4": [
+      {
+        "wall": "front",
+        "floor": 1,
+        "kind": "door",
+        "at": 5.3,
+        "width": 1.8,
+        "height": 2.9,
+        "sill": 0
+      },
+      {
+        "wall": "front",
+        "floor": 1,
+        "kind": "window",
+        "at": 2,
+        "width": 1.4,
+        "height": 2,
+        "sill": 0.9
+      },
+      {
+        "wall": "front",
+        "floor": 1,
+        "kind": "window",
+        "at": 8.6,
+        "width": 1.4,
+        "height": 2,
+        "sill": 0.9
+      },
+      {
+        "wall": "front",
+        "floor": 2,
+        "kind": "window",
+        "at": 2,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      },
+      {
+        "wall": "front",
+        "floor": 2,
+        "kind": "window",
+        "at": 5.3,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      },
+      {
+        "wall": "front",
+        "floor": 2,
+        "kind": "window",
+        "at": 8.6,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      },
+      {
+        "wall": "back",
+        "floor": 1,
+        "kind": "window",
+        "at": 2.7,
+        "width": 1.4,
+        "height": 2,
+        "sill": 0.9
+      },
+      {
+        "wall": "back",
+        "floor": 1,
+        "kind": "window",
+        "at": 7.9,
+        "width": 1.4,
+        "height": 2,
+        "sill": 0.9
+      },
+      {
+        "wall": "back",
+        "floor": 2,
+        "kind": "window",
+        "at": 2.7,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      },
+      {
+        "wall": "back",
+        "floor": 2,
+        "kind": "window",
+        "at": 7.9,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      },
+      {
+        "wall": "left",
+        "floor": 1,
+        "kind": "window",
+        "at": 2.35,
+        "width": 1.4,
+        "height": 2,
+        "sill": 0.9
+      },
+      {
+        "wall": "left",
+        "floor": 1,
+        "kind": "window",
+        "at": 5.15,
+        "width": 1.8,
+        "height": 2,
+        "sill": 0.9
+      },
+      {
+        "wall": "left",
+        "floor": 2,
+        "kind": "window",
+        "at": 2.35,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      },
+      {
+        "wall": "left",
+        "floor": 2,
+        "kind": "window",
+        "at": 5.15,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      },
+      {
+        "wall": "right",
+        "floor": 1,
+        "kind": "window",
+        "at": 2.35,
+        "width": 1.4,
+        "height": 2,
+        "sill": 0.9
+      },
+      {
+        "wall": "right",
+        "floor": 1,
+        "kind": "window",
+        "at": 5.15,
+        "width": 1.8,
+        "height": 2,
+        "sill": 0.9
+      },
+      {
+        "wall": "right",
+        "floor": 2,
+        "kind": "window",
+        "at": 2.35,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      },
+      {
+        "wall": "right",
+        "floor": 2,
+        "kind": "window",
+        "at": 5.15,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      }
+    ],
+    "house_5": [
+      {
+        "wall": "front",
+        "floor": 1,
+        "kind": "door",
+        "at": 5.3,
+        "width": 1.8,
+        "height": 2.9,
+        "sill": 0
+      },
+      {
+        "wall": "front",
+        "floor": 1,
+        "kind": "window",
+        "at": 2,
+        "width": 1.4,
+        "height": 2,
+        "sill": 0.9
+      },
+      {
+        "wall": "front",
+        "floor": 1,
+        "kind": "window",
+        "at": 8.6,
+        "width": 1.4,
+        "height": 2,
+        "sill": 0.9
+      },
+      {
+        "wall": "front",
+        "floor": 2,
+        "kind": "window",
+        "at": 2,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      },
+      {
+        "wall": "front",
+        "floor": 2,
+        "kind": "window",
+        "at": 5.3,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      },
+      {
+        "wall": "front",
+        "floor": 2,
+        "kind": "window",
+        "at": 8.6,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      },
+      {
+        "wall": "back",
+        "floor": 1,
+        "kind": "window",
+        "at": 2.7,
+        "width": 1.4,
+        "height": 2,
+        "sill": 0.9
+      },
+      {
+        "wall": "back",
+        "floor": 1,
+        "kind": "window",
+        "at": 7.9,
+        "width": 1.4,
+        "height": 2,
+        "sill": 0.9
+      },
+      {
+        "wall": "back",
+        "floor": 2,
+        "kind": "window",
+        "at": 2.7,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      },
+      {
+        "wall": "back",
+        "floor": 2,
+        "kind": "window",
+        "at": 7.9,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      },
+      {
+        "wall": "left",
+        "floor": 1,
+        "kind": "window",
+        "at": 2.35,
+        "width": 1.4,
+        "height": 2,
+        "sill": 0.9
+      },
+      {
+        "wall": "left",
+        "floor": 1,
+        "kind": "window",
+        "at": 5.15,
+        "width": 1.8,
+        "height": 2,
+        "sill": 0.9
+      },
+      {
+        "wall": "left",
+        "floor": 2,
+        "kind": "window",
+        "at": 2.35,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      },
+      {
+        "wall": "left",
+        "floor": 2,
+        "kind": "window",
+        "at": 5.15,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      },
+      {
+        "wall": "right",
+        "floor": 1,
+        "kind": "window",
+        "at": 2.35,
+        "width": 1.4,
+        "height": 2,
+        "sill": 0.9
+      },
+      {
+        "wall": "right",
+        "floor": 1,
+        "kind": "window",
+        "at": 5.15,
+        "width": 1.8,
+        "height": 2,
+        "sill": 0.9
+      },
+      {
+        "wall": "right",
+        "floor": 2,
+        "kind": "window",
+        "at": 2.35,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      },
+      {
+        "wall": "right",
+        "floor": 2,
+        "kind": "window",
+        "at": 5.15,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      }
+    ],
+    "house_6": [
+      {
+        "wall": "front",
+        "floor": 1,
+        "kind": "door",
+        "at": 5.3,
+        "width": 1.8,
+        "height": 2.9,
+        "sill": 0
+      },
+      {
+        "wall": "front",
+        "floor": 1,
+        "kind": "window",
+        "at": 2,
+        "width": 1.4,
+        "height": 2,
+        "sill": 0.9
+      },
+      {
+        "wall": "front",
+        "floor": 1,
+        "kind": "window",
+        "at": 8.6,
+        "width": 1.4,
+        "height": 2,
+        "sill": 0.9
+      },
+      {
+        "wall": "front",
+        "floor": 2,
+        "kind": "window",
+        "at": 2,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      },
+      {
+        "wall": "front",
+        "floor": 2,
+        "kind": "window",
+        "at": 5.3,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      },
+      {
+        "wall": "front",
+        "floor": 2,
+        "kind": "window",
+        "at": 8.6,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      },
+      {
+        "wall": "back",
+        "floor": 1,
+        "kind": "window",
+        "at": 2.7,
+        "width": 1.4,
+        "height": 2,
+        "sill": 0.9
+      },
+      {
+        "wall": "back",
+        "floor": 1,
+        "kind": "window",
+        "at": 7.9,
+        "width": 1.4,
+        "height": 2,
+        "sill": 0.9
+      },
+      {
+        "wall": "back",
+        "floor": 2,
+        "kind": "window",
+        "at": 2.7,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      },
+      {
+        "wall": "back",
+        "floor": 2,
+        "kind": "window",
+        "at": 7.9,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      },
+      {
+        "wall": "left",
+        "floor": 1,
+        "kind": "window",
+        "at": 2.35,
+        "width": 1.4,
+        "height": 2,
+        "sill": 0.9
+      },
+      {
+        "wall": "left",
+        "floor": 1,
+        "kind": "window",
+        "at": 5.15,
+        "width": 1.8,
+        "height": 2,
+        "sill": 0.9
+      },
+      {
+        "wall": "left",
+        "floor": 2,
+        "kind": "window",
+        "at": 2.35,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      },
+      {
+        "wall": "left",
+        "floor": 2,
+        "kind": "window",
+        "at": 5.15,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      },
+      {
+        "wall": "right",
+        "floor": 1,
+        "kind": "window",
+        "at": 2.35,
+        "width": 1.4,
+        "height": 2,
+        "sill": 0.9
+      },
+      {
+        "wall": "right",
+        "floor": 1,
+        "kind": "window",
+        "at": 5.15,
+        "width": 1.8,
+        "height": 2,
+        "sill": 0.9
+      },
+      {
+        "wall": "right",
+        "floor": 2,
+        "kind": "window",
+        "at": 2.35,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      },
+      {
+        "wall": "right",
+        "floor": 2,
+        "kind": "window",
+        "at": 5.15,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      }
+    ],
+    "house_7": [
+      {
+        "wall": "front",
+        "floor": 1,
+        "kind": "door",
+        "at": 5.3,
+        "width": 1.8,
+        "height": 2.9,
+        "sill": 0
+      },
+      {
+        "wall": "front",
+        "floor": 1,
+        "kind": "window",
+        "at": 2,
+        "width": 1.4,
+        "height": 2,
+        "sill": 0.9
+      },
+      {
+        "wall": "front",
+        "floor": 1,
+        "kind": "window",
+        "at": 8.6,
+        "width": 1.4,
+        "height": 2,
+        "sill": 0.9
+      },
+      {
+        "wall": "front",
+        "floor": 2,
+        "kind": "window",
+        "at": 2,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      },
+      {
+        "wall": "front",
+        "floor": 2,
+        "kind": "window",
+        "at": 5.3,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      },
+      {
+        "wall": "front",
+        "floor": 2,
+        "kind": "window",
+        "at": 8.6,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      },
+      {
+        "wall": "back",
+        "floor": 1,
+        "kind": "window",
+        "at": 2.7,
+        "width": 1.4,
+        "height": 2,
+        "sill": 0.9
+      },
+      {
+        "wall": "back",
+        "floor": 1,
+        "kind": "window",
+        "at": 7.9,
+        "width": 1.4,
+        "height": 2,
+        "sill": 0.9
+      },
+      {
+        "wall": "back",
+        "floor": 2,
+        "kind": "window",
+        "at": 2.7,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      },
+      {
+        "wall": "back",
+        "floor": 2,
+        "kind": "window",
+        "at": 7.9,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      },
+      {
+        "wall": "left",
+        "floor": 1,
+        "kind": "window",
+        "at": 2.35,
+        "width": 1.4,
+        "height": 2,
+        "sill": 0.9
+      },
+      {
+        "wall": "left",
+        "floor": 1,
+        "kind": "window",
+        "at": 5.15,
+        "width": 1.8,
+        "height": 2,
+        "sill": 0.9
+      },
+      {
+        "wall": "left",
+        "floor": 2,
+        "kind": "window",
+        "at": 2.35,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      },
+      {
+        "wall": "left",
+        "floor": 2,
+        "kind": "window",
+        "at": 5.15,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      },
+      {
+        "wall": "right",
+        "floor": 1,
+        "kind": "window",
+        "at": 2.35,
+        "width": 1.4,
+        "height": 2,
+        "sill": 0.9
+      },
+      {
+        "wall": "right",
+        "floor": 1,
+        "kind": "window",
+        "at": 5.15,
+        "width": 1.8,
+        "height": 2,
+        "sill": 0.9
+      },
+      {
+        "wall": "right",
+        "floor": 2,
+        "kind": "window",
+        "at": 2.35,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      },
+      {
+        "wall": "right",
+        "floor": 2,
+        "kind": "window",
+        "at": 5.15,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      }
+    ],
+    "house_8": [
+      {
+        "wall": "front",
+        "floor": 1,
+        "kind": "door",
+        "at": 5.3,
+        "width": 1.8,
+        "height": 2.9,
+        "sill": 0
+      },
+      {
+        "wall": "front",
+        "floor": 1,
+        "kind": "window",
+        "at": 2,
+        "width": 1.4,
+        "height": 2,
+        "sill": 0.9
+      },
+      {
+        "wall": "front",
+        "floor": 1,
+        "kind": "window",
+        "at": 8.6,
+        "width": 1.4,
+        "height": 2,
+        "sill": 0.9
+      },
+      {
+        "wall": "front",
+        "floor": 2,
+        "kind": "window",
+        "at": 2,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      },
+      {
+        "wall": "front",
+        "floor": 2,
+        "kind": "window",
+        "at": 5.3,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      },
+      {
+        "wall": "front",
+        "floor": 2,
+        "kind": "window",
+        "at": 8.6,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      },
+      {
+        "wall": "back",
+        "floor": 1,
+        "kind": "window",
+        "at": 2.7,
+        "width": 1.4,
+        "height": 2,
+        "sill": 0.9
+      },
+      {
+        "wall": "back",
+        "floor": 1,
+        "kind": "window",
+        "at": 7.9,
+        "width": 1.4,
+        "height": 2,
+        "sill": 0.9
+      },
+      {
+        "wall": "back",
+        "floor": 2,
+        "kind": "window",
+        "at": 2.7,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      },
+      {
+        "wall": "back",
+        "floor": 2,
+        "kind": "window",
+        "at": 7.9,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      },
+      {
+        "wall": "left",
+        "floor": 1,
+        "kind": "window",
+        "at": 2.35,
+        "width": 1.4,
+        "height": 2,
+        "sill": 0.9
+      },
+      {
+        "wall": "left",
+        "floor": 1,
+        "kind": "window",
+        "at": 5.15,
+        "width": 1.8,
+        "height": 2,
+        "sill": 0.9
+      },
+      {
+        "wall": "left",
+        "floor": 2,
+        "kind": "window",
+        "at": 2.35,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      },
+      {
+        "wall": "left",
+        "floor": 2,
+        "kind": "window",
+        "at": 5.15,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      },
+      {
+        "wall": "right",
+        "floor": 1,
+        "kind": "window",
+        "at": 2.35,
+        "width": 1.4,
+        "height": 2,
+        "sill": 0.9
+      },
+      {
+        "wall": "right",
+        "floor": 1,
+        "kind": "window",
+        "at": 5.15,
+        "width": 1.8,
+        "height": 2,
+        "sill": 0.9
+      },
+      {
+        "wall": "right",
+        "floor": 2,
+        "kind": "window",
+        "at": 2.35,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      },
+      {
+        "wall": "right",
+        "floor": 2,
+        "kind": "window",
+        "at": 5.15,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      }
+    ],
+    "house_9": [
+      {
+        "wall": "front",
+        "floor": 1,
+        "kind": "door",
+        "at": 5.3,
+        "width": 1.8,
+        "height": 2.9,
+        "sill": 0
+      },
+      {
+        "wall": "front",
+        "floor": 1,
+        "kind": "window",
+        "at": 2,
+        "width": 1.4,
+        "height": 2,
+        "sill": 0.9
+      },
+      {
+        "wall": "front",
+        "floor": 1,
+        "kind": "window",
+        "at": 8.6,
+        "width": 1.4,
+        "height": 2,
+        "sill": 0.9
+      },
+      {
+        "wall": "front",
+        "floor": 2,
+        "kind": "window",
+        "at": 2,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      },
+      {
+        "wall": "front",
+        "floor": 2,
+        "kind": "window",
+        "at": 5.3,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      },
+      {
+        "wall": "front",
+        "floor": 2,
+        "kind": "window",
+        "at": 8.6,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      },
+      {
+        "wall": "back",
+        "floor": 1,
+        "kind": "patio",
+        "at": 5.3,
+        "width": 2.7,
+        "height": 2.4,
+        "sill": 0
+      },
+      {
+        "wall": "back",
+        "floor": 2,
+        "kind": "window",
+        "at": 2.7,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      },
+      {
+        "wall": "back",
+        "floor": 2,
+        "kind": "window",
+        "at": 7.9,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      },
+      {
+        "wall": "left",
+        "floor": 1,
+        "kind": "window",
+        "at": 2.35,
+        "width": 1.4,
+        "height": 2,
+        "sill": 0.9
+      },
+      {
+        "wall": "left",
+        "floor": 1,
+        "kind": "window",
+        "at": 5.15,
+        "width": 1.8,
+        "height": 2,
+        "sill": 0.9
+      },
+      {
+        "wall": "left",
+        "floor": 2,
+        "kind": "window",
+        "at": 2.35,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      },
+      {
+        "wall": "left",
+        "floor": 2,
+        "kind": "window",
+        "at": 5.15,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      },
+      {
+        "wall": "right",
+        "floor": 1,
+        "kind": "window",
+        "at": 2.35,
+        "width": 1.4,
+        "height": 2,
+        "sill": 0.9
+      },
+      {
+        "wall": "right",
+        "floor": 1,
+        "kind": "window",
+        "at": 5.15,
+        "width": 1.8,
+        "height": 2,
+        "sill": 0.9
+      },
+      {
+        "wall": "right",
+        "floor": 2,
+        "kind": "window",
+        "at": 2.35,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      },
+      {
+        "wall": "right",
+        "floor": 2,
+        "kind": "window",
+        "at": 5.15,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      }
+    ],
+    "house_10": [
+      {
+        "wall": "front",
+        "floor": 1,
+        "kind": "door",
+        "at": 5.3,
+        "width": 1.8,
+        "height": 2.9,
+        "sill": 0
+      },
+      {
+        "wall": "front",
+        "floor": 1,
+        "kind": "window",
+        "at": 2,
+        "width": 1.4,
+        "height": 2,
+        "sill": 0.9
+      },
+      {
+        "wall": "front",
+        "floor": 1,
+        "kind": "window",
+        "at": 8.6,
+        "width": 1.4,
+        "height": 2,
+        "sill": 0.9
+      },
+      {
+        "wall": "front",
+        "floor": 2,
+        "kind": "window",
+        "at": 2,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      },
+      {
+        "wall": "front",
+        "floor": 2,
+        "kind": "window",
+        "at": 5.3,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      },
+      {
+        "wall": "front",
+        "floor": 2,
+        "kind": "window",
+        "at": 8.6,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      },
+      {
+        "wall": "back",
+        "floor": 1,
+        "kind": "window",
+        "at": 2.7,
+        "width": 1.4,
+        "height": 2,
+        "sill": 0.9
+      },
+      {
+        "wall": "back",
+        "floor": 1,
+        "kind": "window",
+        "at": 7.9,
+        "width": 1.4,
+        "height": 2,
+        "sill": 0.9
+      },
+      {
+        "wall": "back",
+        "floor": 2,
+        "kind": "window",
+        "at": 2.7,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      },
+      {
+        "wall": "back",
+        "floor": 2,
+        "kind": "window",
+        "at": 7.9,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      },
+      {
+        "wall": "left",
+        "floor": 1,
+        "kind": "window",
+        "at": 2.35,
+        "width": 1.4,
+        "height": 2,
+        "sill": 0.9
+      },
+      {
+        "wall": "left",
+        "floor": 1,
+        "kind": "window",
+        "at": 5.15,
+        "width": 1.8,
+        "height": 2,
+        "sill": 0.9
+      },
+      {
+        "wall": "left",
+        "floor": 2,
+        "kind": "window",
+        "at": 2.35,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      },
+      {
+        "wall": "left",
+        "floor": 2,
+        "kind": "window",
+        "at": 5.15,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      },
+      {
+        "wall": "right",
+        "floor": 1,
+        "kind": "window",
+        "at": 2.35,
+        "width": 1.4,
+        "height": 2,
+        "sill": 0.9
+      },
+      {
+        "wall": "right",
+        "floor": 1,
+        "kind": "window",
+        "at": 5.15,
+        "width": 1.8,
+        "height": 2,
+        "sill": 0.9
+      },
+      {
+        "wall": "right",
+        "floor": 2,
+        "kind": "window",
+        "at": 2.35,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      },
+      {
+        "wall": "right",
+        "floor": 2,
+        "kind": "window",
+        "at": 5.15,
+        "width": 1.4,
+        "height": 2,
+        "sill": 4.9
+      }
+    ]
+  }
+}

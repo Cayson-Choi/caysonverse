@@ -37,6 +37,28 @@ import { signalPoleColliders } from "./crossings";
 import { streetPoleColliders } from "./streetPoles";
 import { TRANSIT, busFootprint } from "./transit";
 import { LAKE_AREA, lakeCameraBoxes, lakeColliders } from "./lakeLayout";
+import {
+  HOUSE_A8,
+  HOUSE_DETAIL_LOD,
+  HOUSE_FLUSH_DECKS,
+  HOUSE_GLB_BUDGET,
+  HOUSE_SURFACE_RULES,
+  VILLAGE_SCENE_TRIANGLE_CAP,
+  houseDetailNode,
+  houseExteriorColliders,
+  houseFootprintSize,
+  houseLiftZones,
+  housePorchSeatMarker,
+  houseProxyNode,
+  houseShellNode,
+  houseSlots,
+  houseSolidBox,
+  localBox,
+  porchKind,
+  porchStairsLocal,
+} from "./houseExterior";
+import { designExteriorWindowTable } from "./exteriorWindows";
+import { stageA8Colliders } from "./a8Staging";
 import type { Bounds, MapGeometry } from "../school/geometry";
 
 export interface Point2 {
@@ -99,8 +121,12 @@ export interface VillagePlot {
 export type HouseColour = "pink" | "skyblue" | "yellow" | "white" | "mint" | "wood";
 
 /** The footprint of each kind of scenery building (x by z, m). */
-/** Approved building-scale B footprints; art generation consumes the exported layout JSON. */
-export const SCENERY_SIZES = { house: { x: 11.2, z: 8.4 }, cafe: { x: 20, z: 15 }, kiosk: { x: 5, z: 4 } } as const;
+/**
+ * Approved building-scale B footprints; art generation consumes the exported layout JSON. The house's is a door-south house's
+ * (A8, 2026-11-16: 11.2 along the front x 10.75 deep, houseExterior.ts HOUSE_A8); a house whose door faces east or west turns it
+ * (`houseFootprintSize`), so every house shows its wide side to the street.
+ */
+export const SCENERY_SIZES = { house: { x: 11.2, z: 10.75 }, cafe: { x: 20, z: 15 }, kiosk: { x: 5, z: 4 } } as const;
 
 /**
  * Café option 2 (2026-11-12 decision): 20 x 15 m, two floors. The open terrace in front of the door is walkable ground
@@ -129,8 +155,12 @@ export interface SceneryHouse {
   terrace: number;
 }
 
-/** The solid part of a scenery building: its footprint minus the walkable terrace on the door side. */
-export function solidBox(h: Pick<SceneryHouse, "centre" | "size" | "doorSide" | "terrace">): AABB {
+/**
+ * The solid part of a scenery building: its footprint minus the walkable terrace on the door side; a house's is its body plus the
+ * granite plinth (A8: 11.36 x 8.56, houseExterior.ts houseSolidBox), which stands 8 cm out of the footprint's sides.
+ */
+export function solidBox(h: Pick<SceneryHouse, "centre" | "size" | "doorSide" | "terrace"> & { kind?: SceneryHouse["kind"] }): AABB {
+  if (h.kind === "house") return houseSolidBox(h);
   const b = boxAt(h.centre, h.size);
   const t = h.terrace;
   const r2 = (v: number): number => Math.round(v * 100) / 100;     // the model's col__ boxes are written in centimetres
@@ -398,7 +428,7 @@ function house(
   doorSide: Side,
   kind: SceneryHouse["kind"] = "house",
 ): SceneryHouse {
-  const size = SCENERY_SIZES[kind];
+  const size = kind === "house" ? houseFootprintSize(doorSide) : SCENERY_SIZES[kind];
   return { id, kind, centre, size: sz(size.x, size.z), enterable: false, colour, doorSide, terrace: SCENERY_TERRACE[kind] };
 }
 
@@ -531,17 +561,21 @@ function makeVillageLayout(): VillageLayout {
     // Between the ring road's sidewalk (r 39) and the plots, doors toward the road. Houses 6-10 and the kiosk were
     // added with the Blender model (Task 6, validated there against lanes, plots, the road and the creek); the model's
     // col__<id> boxes sit exactly on these rectangles.
+    // A8 (owner "추천대로", 2026-11-16, docs/designs/house-exteriors/contract.md): the body is the interior plus its walls, so
+    // every footprint is 11.2 x 10.75 and `centre` is its box's centre. Each front edge stays where it was (a door-N/S house grew
+    // 2.35 m backwards: its centre moved 1.175 m back; a door-east house turned its wide side to the street: centre 0.225 m
+    // west), and five houses moved: 4 west 0.8, 7 and 9 north 1.2, 8 south 0.6, 10 north 0.6.
     sceneryHouses: [
-      house("house_1", pt(21, -42), "pink", "s"),
-      house("house_2", pt(-21, -42), "skyblue", "s"),
-      house("house_3", pt(29, 37.6), "yellow", "n"),
-      house("house_4", pt(-31.6, 39.4), "white", "n"),
-      house("house_5", pt(-47, -8), "mint", "e"),
-      house("house_6", pt(42, 42.5), "yellow", "n"),
-      house("house_7", pt(31, -56), "mint", "s"),
-      house("house_8", pt(-50, 40), "skyblue", "e"),
-      house("house_9", pt(-31, -56), "pink", "s"),
-      house("house_10", pt(-40.6, 27), "white", "e"),
+      house("house_1", pt(21, -43.175), "pink", "s"),
+      house("house_2", pt(-21, -43.175), "skyblue", "s"),
+      house("house_3", pt(29, 38.775), "yellow", "n"),
+      house("house_4", pt(-32.4, 40.575), "white", "n"),
+      house("house_5", pt(-46.775, -8), "mint", "e"),
+      house("house_6", pt(42, 43.675), "yellow", "n"),
+      house("house_7", pt(31, -58.375), "mint", "s"),
+      house("house_8", pt(-49.775, 40.6), "skyblue", "e"),
+      house("house_9", pt(-31, -58.375), "pink", "s"),
+      house("house_10", pt(-40.375, 26.4), "white", "e"),
       house("cafe", pt(50.6, -15.1), "wood", "w", "cafe"),
       house("kiosk", pt(48.6, -3.85), "wood", "w", "kiosk"),
     ],
@@ -787,6 +821,8 @@ export function greyboxColliders(layout: VillageLayout): VillageCollider[] {
     { id: "pavilion", box: boxAt(pavilion.centre, pavilion.size), camera: false },
     ...memorialColliders(memorial.exterior),
     ...sceneryHouses.map((h): VillageCollider => ({ id: h.id, box: solidBox(h), camera: true })),
+    // A8: each house's porch beds, step kerbs, posts and deck bench, its LPG cage and its garden (houseExterior.ts)
+    ...sceneryHouses.filter((h) => h.kind === "house").flatMap((h): VillageCollider[] => houseExteriorColliders(h)),
   ];
 }
 
@@ -1054,7 +1090,10 @@ export function withoutLegacyBus(g: GeneratedColliders): GeneratedColliders {
 }
 
 /** The village area's colliders generated from village.glb (Task 7): the layout's boxes plus the model's own. */
-export const VILLAGE_MODEL_COLLIDERS: GeneratedColliders = withoutLegacyBus({ obstacles: VILLAGE_COLLIDERS, cameraBoxes: VILLAGE_CAMERA_BOXES });
+export const VILLAGE_MODEL_COLLIDERS: GeneratedColliders = stageA8Colliders(
+  withoutLegacyBus({ obstacles: VILLAGE_COLLIDERS, cameraBoxes: VILLAGE_CAMERA_BOXES }),
+  VILLAGE_LAYOUT.sceneryHouses,
+);
 
 /** The hall's interior generated from memorial.glb (Task 8), wired in Task 9: furniture, cubby units, the ceiling slab. */
 export const HALL_MODEL_COLLIDERS: GeneratedColliders = hallInteriorColliders(VILLAGE_LAYOUT);
@@ -1093,6 +1132,42 @@ export const houseInteriorGeometry: MapGeometry = makeGeometry(
   [],
   [],
 );
+
+/**
+ * The A8 house contract for the Blender kit and build (X1, X2, X4): per house its frame (centre, door side), porch kind, solid,
+ * porch / LPG / garden collider boxes with their node names, lift zones, stairs, flush deck, porch seat, owner slots and node
+ * names; plus the shared numbers, budgets, surface rules and the design window table (docs/designs/house-exteriors/contract.md).
+ */
+export function exportHouseExteriors(layout: VillageLayout = VILLAGE_LAYOUT) {
+  return {
+    house: HOUSE_A8,
+    budget: HOUSE_GLB_BUDGET,
+    detailLod: HOUSE_DETAIL_LOD,
+    sceneCap: VILLAGE_SCENE_TRIANGLE_CAP,
+    surfaces: HOUSE_SURFACE_RULES,
+    windows: designExteriorWindowTable(),
+    houses: layout.sceneryHouses
+      .filter((h) => h.kind === "house")
+      .map((h) => {
+        const deck = HOUSE_FLUSH_DECKS[h.id];
+        return {
+          id: h.id,
+          centre: h.centre,
+          size: h.size,
+          doorSide: h.doorSide,
+          porch: porchKind(h.id),
+          solid: { node: colliderNode(h.id), ...solidBox(h) },
+          colliders: houseExteriorColliders(h).map((c) => ({ id: c.id, node: colliderNode(c.id), ...c.box })),
+          liftZones: houseLiftZones(h),
+          stairs: localBox(h, porchStairsLocal(h.id)),
+          flushDeck: deck ? localBox(h, deck) : null,
+          seat: housePorchSeatMarker(h),
+          slots: houseSlots(h),
+          nodes: { shell: houseShellNode(h.id), detail: houseDetailNode(h.id), proxy: houseProxyNode(h.id) },
+        };
+      }),
+  };
+}
 
 /**
  * Everything a Blender script needs, as plain JSON-able data (scripts/export-village-layout.ts writes it to
@@ -1163,6 +1238,7 @@ export function exportVillageLayout(layout: VillageLayout = VILLAGE_LAYOUT) {
       },
     },
     sceneryHouses: layout.sceneryHouses.map((h) => ({ ...bounded(h), solid: solidBox(h), node: colliderNode(h.id) })),
+    houseExteriors: exportHouseExteriors(layout),
     backdrop: {
       waterfall: bounded(layout.backdrop.waterfall),
       lake: { ...bounded(layout.backdrop.lake), pavilion: bounded(layout.backdrop.lake.pavilion) },

@@ -9,8 +9,7 @@ import { PLAYER_RADIUS, SEAT_REACH, approachesSeat, type Seat } from "@caysonver
 import type { AABB } from "@caysonverse/shared/collision";
 import type { Bounds } from "@caysonverse/shared/school/geometry";
 import { isFreeSpot } from "./clickPlan";
-import { CHAIR_BACK_BEHIND, CHAIR_HALF_WIDTH } from "@caysonverse/shared/village/benchSeats";
-import { VILLAGE_SEAT_MARKERS } from "@caysonverse/shared/village/generated/villageSeatMarkers";
+import { CHAIR_BACK_BEHIND, CHAIR_HALF_WIDTH, VILLAGE_SEAT_MARKERS } from "@caysonverse/shared/village/benchSeats";
 import { lakeSeats } from "@caysonverse/shared/village/lakeLayout";
 
 /** A tap this far past a chair's footprint (m) still counts as on it (a seat's edge, a leg, a rail seen edge-on). */

@@ -21,7 +21,7 @@ import {
   type VillageSeat,
 } from "./benchSeats";
 import { LAKE_FISHING_SPOTS, lakeSeats } from "./lakeLayout";
-import { VILLAGE_SEAT_MARKERS } from "./generated/villageSeatMarkers";
+import { VILLAGE_SEAT_MARKERS } from "./benchSeats";
 
 const MARKED = new Set(VILLAGE_SEAT_MARKERS.map((m) => m.id));
 /** The seats the art marks (café chairs, porch benches): appended after the benches', the hall's, the houses' and the shelter's. */

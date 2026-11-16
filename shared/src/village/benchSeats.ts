@@ -40,7 +40,8 @@ import type { SeatMarker } from "./seatMarkers";
 import type { Bounds } from "../school/geometry";
 import { VILLAGE_LAYOUT, houseArea, houseInteriorGeometry, villageGeometry, type AreaId, type Point2 } from "./villageLayout";
 import { HOUSE_INTERIOR_LAYOUTS } from "./houseInterior";
-import { VILLAGE_SEAT_MARKERS } from "./generated/villageSeatMarkers";
+import { VILLAGE_SEAT_MARKERS as MODEL_SEAT_MARKERS } from "./generated/villageSeatMarkers";
+import { stageA8SeatMarkers } from "./a8Staging";
 import { lakeSeats, type LakeSeatKind } from "./lakeLayout";
 
 /**
@@ -390,6 +391,12 @@ function besideChair(m: VillageSeatMarker, bounds: Bounds): Point2 {
   if (standsClear(m.standX!, m.standZ!, bounds)) return { x: m.standX!, z: m.standZ! };
   throw new Error(`seat ${m.id}: no clear get-up spot beside the chair`);
 }
+
+/**
+ * The art's marked village seats (village.glb seat__ markers), with the porch benches of houses 2, 9 and 10 at their A8 places
+ * (seatTop 0.75; a8Staging.ts: in place, so the indices stay) until the village is rebuilt with the A8 houses.
+ */
+export const VILLAGE_SEAT_MARKERS: readonly VillageSeatMarker[] = Object.freeze(stageA8SeatMarkers(MODEL_SEAT_MARKERS, VILLAGE_LAYOUT.sceneryHouses));
 
 /** The art's marked village seats (`VILLAGE_SEAT_MARKERS`) as village seats, in marker order: every one has a backrest. */
 function villageMarkerSeats(markers: readonly VillageSeatMarker[]): VillageSeat[] {

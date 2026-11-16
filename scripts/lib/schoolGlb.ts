@@ -8,6 +8,7 @@
  */
 
 import type { AABB } from "../../shared/src/collision";
+import { VILLAGE_SCENE_TRIANGLE_CAP, worstSceneTriangles } from "../../shared/src/village/houseExterior";
 
 // ---------------------------------------------------------------------------------------------------------
 // glTF document (only the fields these tools read).
@@ -1053,6 +1054,18 @@ export const VILLAGE_BUS_GROUND_CLEARANCE = 0.01;
  * the bus's own 40k (the bus is part of the village from the first frame).
  */
 export const VILLAGE_SCENE_MAX_TRIANGLES = BUDGETS.village.maxTriangles + VILLAGE_BUS_BUDGET.maxTriangles;
+/**
+ * The scene ceilings per tier once village_houses.glb is drawn too (house exteriors A8, owner Q3 2026-11-16): PC (high tier)
+ * 310k with the four nearest houses' detail, the phone 300k (= VILLAGE_SCENE_MAX_TRIANGLES) with two.
+ */
+export const VILLAGE_SCENE_MAX_TRIANGLES_PC = VILLAGE_SCENE_TRIANGLE_CAP.pc;
+export const VILLAGE_SCENE_MAX_TRIANGLES_PHONE = VILLAGE_SCENE_TRIANGLE_CAP.phone;
+
+/** village_houses.glb's triangles as the scene draws them: all the shells, and the largest one house's detail. */
+export interface SceneHouses {
+  shells: number;
+  maxDetail: number;
+}
 
 /** A separate cabin fixture of the bus (build_bus.py FIXTURE_PREFIXES): pole_*, rail_*, strap_*, stop_btn_*. */
 export function isBusFixtureName(name: string | undefined): boolean {
@@ -1149,12 +1162,22 @@ export interface SceneExtra {
   copies: number;
 }
 
-export function checkVillageSceneTriangles(village: Gltf, bus: Gltf, extras: readonly SceneExtra[] = []): CheckResult {
+export function checkVillageSceneTriangles(village: Gltf, bus: Gltf, extras: readonly SceneExtra[] = [], houses?: SceneHouses): CheckResult {
   const v = countTriangles(village);
   const b = countTriangles(bus);
   const counted = extras.map((e) => ({ name: e.name, copies: e.copies, tris: countTriangles(e.gltf) * e.copies }));
   const total = v + b + counted.reduce((n, e) => n + e.tris, 0);
   const more = counted.map((e) => ` + ${e.name} ${e.tris}${e.copies > 1 ? ` (${e.copies}벌)` : ""}`).join("");
+  if (houses) {
+    // the worst frame per tier: every shell plus the most detail that tier draws at once (houseExterior.ts HOUSE_DETAIL_LOD)
+    const pc = worstSceneTriangles(total, houses.shells, houses.maxDetail, "pc");
+    const phone = worstSceneTriangles(total, houses.shells, houses.maxDetail, "phone");
+    return result(
+      pc <= VILLAGE_SCENE_MAX_TRIANGLES_PC && phone <= VILLAGE_SCENE_MAX_TRIANGLES_PHONE,
+      "마을 장면 삼각형 수 (마을 + 버스 + 신호등·정류장 + 집 껍데기 + 가까운 집 디테일)",
+      `PC ${pc}개 / 한도 ${VILLAGE_SCENE_MAX_TRIANGLES_PC}, 폰 ${phone}개 / 한도 ${VILLAGE_SCENE_MAX_TRIANGLES_PHONE} (마을 ${v} + 버스 ${b}${more} + 껍데기 ${houses.shells} + 디테일 최대 ${houses.maxDetail} × PC 4 / 폰 2)`,
+    );
+  }
   return result(
     total <= VILLAGE_SCENE_MAX_TRIANGLES,
     "마을 장면 삼각형 수 (마을 + 버스 + 신호등·정류장)",

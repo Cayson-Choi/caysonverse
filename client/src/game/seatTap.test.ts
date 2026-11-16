@@ -7,7 +7,7 @@ import { describe, it, expect } from "vitest";
 import { VILLAGE_LAYOUT, villageGeometry } from "@caysonverse/shared/village/villageLayout";
 import { VILLAGE_SEATS } from "@caysonverse/shared/village/benchSeats";
 import { SEAT_REACH, approachesSeat, PLAYER_RADIUS } from "@caysonverse/shared/worldMap";
-import { VILLAGE_SEAT_MARKERS } from "@caysonverse/shared/village/generated/villageSeatMarkers";
+import { VILLAGE_SEAT_MARKERS } from "@caysonverse/shared/village/benchSeats";
 import { isBlocked } from "@caysonverse/shared/collision";
 import { isFreeSpot, planClickMove, simulateWalk } from "./clickPlan";
 import { VILLAGE_FURNITURE } from "./activeMap";
