@@ -58,6 +58,7 @@
 import { MOVE_SPEED } from "@caysonverse/shared/constants";
 import { PLAYER_RADIUS } from "@caysonverse/shared/worldMap";
 import { resolveCollision, type AABB } from "@caysonverse/shared/collision";
+import { LAKE_AREA } from "@caysonverse/shared/village/lakeLayout";
 import type { Bounds } from "@caysonverse/shared/school/geometry";
 import { ARRIVE_DIST, STUCK_MIN_DIST, STUCK_STEP_MAX_SEC, STUCK_WINDOW_SEC, VIA_REACH, viaPassed } from "./clickMove";
 
@@ -504,6 +505,16 @@ export const DETOUR_SLACK = 6;
 export const DETOUR_FAR_RATIO = 4;
 export const DETOUR_FAR_SLACK = 30;
 export const DETOUR_FAR_MARGIN = 40;
+
+/**
+ * The fishing lake (A10): a walk from or to a point inside its area takes the long way first (the "far" limits). Round the
+ * lake the straight line is short and the way long (from a 좌대's deck to the north shore: the walkway, the T, the whole pier
+ * and the bank, about 4 times the straight line), which DETOUR_MAX_RATIO refused and the walk stopped at the deck's edge.
+ * The village keeps its own limits: the far search only runs after the near one found nothing.
+ */
+function inLakeArea(x: number, z: number): boolean {
+  return x >= LAKE_AREA.minX && x <= LAKE_AREA.maxX && z >= LAKE_AREA.minZ && z <= LAKE_AREA.maxZ;
+}
 
 /** The search grid's cell (m); grown when the region would hold more than DETOUR_MAX_CELLS (a cross-map click). */
 const DETOUR_CELL = 0.5;
@@ -1084,7 +1095,8 @@ export function* finishClickPlanSteps(d: PendingDetour): Steps<ClickPlan> {
     if (round) return round;
   }
   const far = { ratio: DETOUR_FAR_RATIO, slack: DETOUR_FAR_SLACK, margin: DETOUR_FAR_MARGIN };
-  if (d.farFirst) {
+  const lakeWalk = inLakeArea(fromX, fromZ) || d.spots.some((s) => inLakeArea(s.x, s.z));
+  if (d.farFirst || lakeWalk) {
     const spot = d.spots.find((s) => !s.squeezed) ?? d.spots[0];
     const round = yield* roundToSteps(fromX, fromZ, spot, surface, obstacles, bounds, far);
     if (round) return round;
