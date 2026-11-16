@@ -385,7 +385,7 @@ describe("prepareVillage: the model dressed for the game", () => {
     const ground = compileOf(f.mats.LM_grass);
     expect(ground.uniforms).not.toHaveProperty("uVillageNearFade");
     expect(ground.fragmentShader).not.toContain("discard");
-    expect(f.mats.LM_grass.customProgramCacheKey()).toBe("village-light");
+    expect(f.mats.LM_grass.customProgramCacheKey()).toBe("village-light-ground");
     expect(f.mats.LM_grass.userData[NEAR_FADE_KEY]).toBeUndefined();
     expect(FOLIAGE_NEAR_FADE[0]).toBeGreaterThan(VILLAGE_CAMERA_PLANES.near);
   });

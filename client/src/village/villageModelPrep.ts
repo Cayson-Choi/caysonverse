@@ -1,4 +1,5 @@
 import { versionedUrl } from "./modelUrl";
+import { GROUND_SMOOTH_MATERIAL, GROUND_GRAIN_MATERIALS, GROUND_PARS, groundGrainTexture, groundMapFragment } from "./groundDetail";
 import {
   Box3,
   BufferGeometry,
@@ -361,6 +362,9 @@ void main() {
 			if ( villageKeep < villageNoise ) discard;
 		}
 	}`;
+/** How strongly the close-up ground grain modulates the albedo (groundDetail.ts). */
+export const groundGrainAmount = { value: 0.3 };
+
 /** The albedo before COLOR_0 (which is the light on the foliage, a tint on the light-mapped materials). */
 const LIFT_ALBEDO = /* glsl */ `vec3 villageAlbedo = diffuseColor.rgb;
 #include <color_fragment>`;
@@ -397,7 +401,14 @@ export function liftMaterial(material: Material, own?: { nightMap: { value: Text
   // The village's own leaves and trunks also fade out near the camera; the click pick skips them there (clickPick.ts).
   const foliage = FOLIAGE_MATERIALS.includes(material.name) && material.name !== "M_bark";
   if (foliage) material.userData[NEAR_FADE_KEY] = (FOLIAGE_NEAR_FADE[0] + FOLIAGE_NEAR_FADE[1]) / 2;
+  // The ground materials get the close-up sharpening (groundDetail.ts): a smoothed tap on the plaza atlas, a fine grain on all.
+  const ground = !own && GROUND_GRAIN_MATERIALS.includes(material.name);
+  const catmull = material.name === GROUND_SMOOTH_MATERIAL;
   material.onBeforeCompile = (shader) => {
+    if (ground) {
+      shader.uniforms.uVillageGrain = { value: groundGrainTexture() };
+      shader.uniforms.uVillageGrainAmount = groundGrainAmount;
+    }
     shader.uniforms.uVillageLift = liftUniform;
     shader.uniforms.uVillageLiftTint = liftTintUniform;
     shader.uniforms.uVillageDayTint = dayTintUniform;
@@ -410,10 +421,13 @@ export function liftMaterial(material: Material, own?: { nightMap: { value: Text
     shader.fragmentShader = shader.fragmentShader
       .replace("void main() {", foliage ? LIFT_PARS.replace("void main() {", NEAR_FADE_PARS) : LIFT_PARS)
       .replace(LIGHTMAP_TEXEL_FROM, LIGHTMAP_TEXEL_TO)
+      .replace("void main() {", ground ? GROUND_PARS : "void main() {")
+      .replace("#include <map_fragment>", ground ? groundMapFragment(catmull) : "#include <map_fragment>")
       .replace("#include <color_fragment>", LIFT_ALBEDO)
       .replace("#include <aomap_fragment>", LIFT_LIGHT);
   };
-  material.customProgramCacheKey = () => (foliage ? "village-light-foliage" : "village-light") + (own ? `-${own.key}` : "");
+  material.customProgramCacheKey = () =>
+    (foliage ? "village-light-foliage" : ground ? (catmull ? "village-light-ground-smooth" : "village-light-ground") : "village-light") + (own ? `-${own.key}` : "");
   material.needsUpdate = true;
 }
 
