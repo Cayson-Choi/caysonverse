@@ -24,12 +24,14 @@
 
 import {
   Box3,
+  type Bone,
   BufferGeometry,
   Color,
   DoubleSide,
   Float32BufferAttribute,
   MeshStandardMaterial,
   SkinnedMesh,
+  Skeleton,
   Sphere,
   Uint16BufferAttribute,
   Vector3,
@@ -38,7 +40,6 @@ import {
   type Material,
   type Mesh,
   type Object3D,
-  type Skeleton,
 } from "three";
 import { clone as cloneSkinned } from "three/addons/utils/SkeletonUtils.js";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
@@ -47,6 +48,11 @@ import { lookKey, solidColorFor, visibleParts, type AvatarLook } from "./charact
 export interface AvatarAssets {
   /** 캐시된 character.glb 장면. 읽기만 하고 바꾸지 않는다. */
   scene: Object3D;
+  /**
+   * NPC 전용 부품이 든 장면(npc.glb, 같은 뼈대·같은 뼈 순서). 외형의 부품이 character.glb에 없으면 여기서 복제해 아바타의 뼈에
+   * 다시 묶는다(shared/village/npcLooks.ts). 읽기만 하고 바꾸지 않는다.
+   */
+  extra?: Object3D;
 }
 
 export interface BuiltAvatar {
@@ -254,6 +260,38 @@ function countDrawn(built: BuiltAvatar): void {
 }
 
 /**
+ * character.glb에 없는 부품(NPC 전용, npc.glb)을 복제해 아바타 복제본의 뼈에 다시 묶고 holder(아마추어) 아래에 단다. npc.glb는 같은
+ * 뼈대에서 같은 뼈 순서로 내보냈으므로(npcLooks.test.ts) 뼈 이름으로 찾은 뼈 배열이 character 부품의 것과 같아져, 아래의 한-스킨
+ * 검사와 합치기를 그대로 지난다. 부품 노드의 변환은 항등(character.glb와 같은 약속)이다.
+ */
+function addExtraParts(extra: Object3D, root: Object3D, holder: Object3D, parts: readonly string[], kept: Object3D[]): void {
+  const have = new Set(kept.map((n) => n.name));
+  const missing = parts.filter((p) => !have.has(p));
+  if (missing.length === 0) return;
+  const bones = new Map<string, Bone>();
+  root.traverse((o) => {
+    if ((o as Bone).isBone) bones.set(o.name, o as Bone);
+  });
+  for (const name of missing) {
+    const source = extra.getObjectByName(name);
+    if (!source) continue;
+    const copy = source.clone(true);
+    copy.traverse((o) => {
+      const mesh = o as SkinnedMesh;
+      if (!mesh.isSkinnedMesh) return;
+      const own = mesh.skeleton.bones.map((b) => {
+        const bone = bones.get(b.name);
+        if (!bone) throw new Error(`characterAvatar: ${name} is skinned to a bone ${b.name} the character has not`);
+        return bone;
+      });
+      mesh.bind(new Skeleton(own, mesh.skeleton.boneInverses), mesh.bindMatrix);
+    });
+    holder.add(copy);
+    kept.push(copy);
+  }
+}
+
+/**
  * 아바타를 조립하되 합친 지오메트리를 잡지 않는다(렌더 단계용 — 위 소유 규칙). 그리기 전에 retainAvatar로 잡고,
  * releaseAvatar(또는 releaseAvatarSoon)로 놓는다. 소유까지 한 번에 하려면 buildAvatar.
  */
@@ -274,6 +312,7 @@ export function assembleAvatar(
   }
   const holder = kept[0]?.parent; // 아마추어(Rig). Task 2 테스트: 부품 변환은 항등
   if (!holder) throw new Error(`characterAvatar: none of ${parts.join(", ")} is in the character scene`);
+  if (assets.extra) addExtraParts(assets.extra, root, holder, parts, kept);
 
   const materials: Material[] = [];
   const solids: SkinnedMesh[] = [];
