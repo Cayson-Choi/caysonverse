@@ -8,7 +8,6 @@ import type { MovePayload } from "@caysonverse/shared/messages";
 import { recordSentMove } from "../game/sentMoves";
 import type { Appearance } from "@caysonverse/shared/appearance";
 import { VillageMsg } from "@caysonverse/shared/village/messages";
-import type { FishingEmptyPayload } from "@caysonverse/shared/village/messages";
 import { SERVER_URL } from "./endpoint";
 import { joinErrorNotice } from "./reconnectPolicy";
 import { attachResilience } from "./resilience";
@@ -101,27 +100,6 @@ export function sendKeypad(buildingId: string, code: string): void {
 export function sendLightCandle(cubby: string): void {
   if (!room) return;
   room?.send(VillageMsg.LightCandle, { cubby });
-}
-
-/** Rent the session's rod. The server validates the player's authoritative position at the kiosk. */
-export function sendFishingRentRod(): void {
-  if (!room) return;
-  const payload: FishingEmptyPayload = {};
-  room?.send(VillageMsg.FishingRentRod, payload);
-}
-
-/** Cast at the pond. The server chooses the bite time and owns the bobber phase. */
-export function sendFishingCast(): void {
-  if (!room) return;
-  const payload: FishingEmptyPayload = {};
-  room?.send(VillageMsg.FishingCast, payload);
-}
-
-/** Pull the line. A catch is possible only while the server reports a submerged bobber. */
-export function sendFishingReel(): void {
-  if (!room) return;
-  const payload: FishingEmptyPayload = {};
-  room?.send(VillageMsg.FishingReel, payload);
 }
 
 // ─────────────────────────── Player messages: the ACTIVE room ───────────────────────────
