@@ -33,6 +33,8 @@ export interface ViewState {
   fpYaw: number;
   /** FP look pitch (rad), separate from orbit.pitch; clamped to the FP range. */
   fpPitch: number;
+  /** The star finder is open: the first-person look may go all the way up to the zenith (viewMode.ts SKY_PITCH_MIN). */
+  skyLook: boolean;
   /** 0 = the underlying tp/fp pose, 1 = fully the top-down overview pose. */
   ovBlend: number;
   /** Mode to restore when overview exits ('tp' | 'fp' — never 'ov'). */
@@ -57,6 +59,7 @@ export const viewState: ViewState = {
   blend: 0,
   fpYaw: 0,
   fpPitch: 0,
+  skyLook: false,
   ovBlend: 0,
   prevMode: "tp",
   ovCenterX: 0,

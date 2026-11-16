@@ -10,6 +10,7 @@ import {
 } from "@caysonverse/shared/village/constellations";
 import { altAzOf, moonPhaseName, seasonAt, type Vec3 } from "@caysonverse/shared/village/skyMath";
 import type { Orbit } from "../../game/types";
+import { clampFpPitch } from "../../game/viewMode";
 import { enterFp, exitFp, exitOverview, viewState } from "../../game/viewState";
 import { isTouchDevice } from "../../device";
 import { HUD_INFO_BTN_W_PX } from "../../game/hud";
@@ -49,6 +50,16 @@ export function StarFinder({ orbit }: { orbit: Orbit }) {
   const open = useStarFinder((s) => s.open);
   const area = useLocalArea();
   const switched = useRef(false);
+
+  // While it is open the look is free all the way up to the zenith (no detour round a pitch limit).
+  useEffect(() => {
+    if (!open) return;
+    viewState.skyLook = true;
+    return () => {
+      viewState.skyLook = false;
+      viewState.fpPitch = Math.max(viewState.fpPitch, clampFpPitch(viewState.fpPitch));
+    };
+  }, [open]);
 
   // Open at night: into first person (and off the map), looking up a little.
   useEffect(() => {

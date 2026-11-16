@@ -89,6 +89,8 @@ const rt = {
   duskAt: -Infinity,
   reticlePx: 0,
   cardBottom: 0,
+  /** The card's box (CSS px): names under it are not drawn. */
+  cardRect: null as null | { l: number; t: number; r: number; b: number },
   /** The camera turn toward a picked figure (look yaw / pitch, rad) and the yaw we last wrote (to see the player take over). */
   rowText: "",
   turn: null as null | { yaw: number; altRad: number; below: number; lastYaw: number; lastPitch: number },
@@ -145,6 +147,7 @@ export function resetFinderRuntime(): void {
     duskAt: -Infinity,
     reticlePx: 0,
     cardBottom: 0,
+    cardRect: null,
     turn: null,
     rowText: "",
   });
@@ -279,7 +282,7 @@ function stepTurn(dt: number, fovDeg: number): void {
   }
   const dy = normalizeAngle(t.yaw - viewState.fpYaw);
   // looking above the figure by `below` of the view's height puts it that far under the middle
-  const goalPitch = clampFpPitch(-(t.altRad + t.below * ((fovDeg * Math.PI) / 180)));
+  const goalPitch = clampFpPitch(-(t.altRad + t.below * ((fovDeg * Math.PI) / 180)), true);
   const dp = goalPitch - viewState.fpPitch;
   const k = 1 - Math.exp(-4.2 * dt);
   // at most ~100 deg/s, so a half-turn takes under 2 s and never snaps
@@ -344,7 +347,9 @@ export function finderFrame(camera: PerspectiveCamera, dt: number, width: number
   if (st.open && rt.elapsed - rt.lastLook >= 0.25) {
     rt.lastLook = rt.elapsed;
     // where the card ends (the edge arrow keeps below it)
-    rt.cardBottom = skyOverlay.card ? skyOverlay.card.getBoundingClientRect().bottom : 0;
+    const cr = skyOverlay.card ? skyOverlay.card.getBoundingClientRect() : null;
+    rt.cardBottom = cr ? cr.bottom : 0;
+    rt.cardRect = cr ? { l: cr.left - 20, t: cr.top - 24, r: cr.right + 20, b: cr.bottom + 20 } : null;
   }
   if (st.open && skyOverlay.look && rt.lastLook === rt.elapsed) {
     const { altDeg, azDeg } = altAzOf(fwdArr);
@@ -437,6 +442,8 @@ function labels(camera: PerspectiveCamera, width: number, height: number): void 
   };
   const put = (x: number, y: number, text: string, kind: "figure" | "star" | "focus", opacity: number, centred: boolean): void => {
     if (n >= pool.length || n >= MAX_LABELS) return;
+    const cr = rt.cardRect;
+    if (cr && x > cr.l && x < cr.r && y > cr.t && y < cr.b) return; // under the card
     const el = pool[n++]!;
     if (el.textContent !== text) el.textContent = text;
     if (el.dataset.kind !== kind) {

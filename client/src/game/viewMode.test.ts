@@ -135,3 +135,15 @@ describe("viewMode — constants", () => {
     expect(OV_VIS_BLEND).toBeLessThan(1);
   });
 });
+
+describe("viewMode — clampFpPitch in sky-look (star finder open)", () => {
+  it("reaches all but the zenith, never exactly straight up, and keeps the downward limit", async () => {
+    const m = await import("./viewMode");
+    expect(m.clampFpPitch(-1.55, true)).toBe(-1.55);
+    expect(m.clampFpPitch(-3, true)).toBe(m.SKY_PITCH_MIN);
+    expect(m.SKY_PITCH_MIN).toBeGreaterThan(-Math.PI / 2);
+    expect(m.SKY_PITCH_MIN).toBeLessThan(-1.55);
+    expect(m.clampFpPitch(-1.56)).toBe(m.FP_PITCH_MIN);
+    expect(m.clampFpPitch(3, true)).toBe(m.FP_PITCH_MAX);
+  });
+});
