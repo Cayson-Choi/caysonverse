@@ -11,6 +11,7 @@ import { houseFloorBounds, parseHouseFloorArea } from "./houseAreas";
 import {
   CHAIR_BACK_BEHIND,
   LAKE_SEAT_BASE,
+  LATE_HOUSE_SEATS,
   SHELTER_BENCH,
   STAND_CLEARANCE,
   VILLAGE_BENCHES,
@@ -583,9 +584,13 @@ describe("the fishing lake's seats in the global index (A10, design 5.4 and 12.2
     expect(FALLS_SEATS).toHaveLength(8);
     const deck = VILLAGE_SEATS.filter((s) => s.id.startsWith("zelkova_deck:"));
     expect(deck).toHaveLength(6);
-    expect(LAKE_SEAT_BASE).toBe(VILLAGE_SEATS.length - lakeIdx.length - FALLS_SEATS.length - deck.length);
-    expect(VILLAGE_SEATS.slice(-deck.length)).toEqual(deck); // release 3 appended the deck last
-    expect(VILLAGE_SEATS.slice(-deck.length - FALLS_SEATS.length, -deck.length)).toEqual(FALLS_SEATS); // release 2's stones keep their indices
+    // release 3 appended the deck, then the house seats the art brought back (LATE_HOUSE_SEATS): no live index moved
+    const late = VILLAGE_SEATS.slice(-LATE_HOUSE_SEATS.length);
+    expect(late.map((s) => s.bench)).toEqual([...LATE_HOUSE_SEATS]);
+    const tail = VILLAGE_SEATS.length - late.length;
+    expect(LAKE_SEAT_BASE).toBe(tail - lakeIdx.length - FALLS_SEATS.length - deck.length);
+    expect(VILLAGE_SEATS.slice(tail - deck.length, tail)).toEqual(deck);
+    expect(VILLAGE_SEATS.slice(tail - deck.length - FALLS_SEATS.length, tail - deck.length)).toEqual(FALLS_SEATS); // release 2's stones keep their indices
     expect(lakeIdx[0]).toBe(LAKE_SEAT_BASE);
     expect(lakeIdx.every((i, k) => i === LAKE_SEAT_BASE + k)).toBe(true);
     expect(lake).toHaveLength(56);
@@ -651,7 +656,8 @@ describe("the plaza zelkova deck (평상, UX 2026-11-16)", () => {
 
   it("six places, the very last seats (after the lake's and release 2's waterfall stones), so no older index moves", () => {
     expect(deck).toHaveLength(6);
-    expect(deck.map(({ i }) => i)).toEqual([0, 1, 2, 3, 4, 5].map((k) => VILLAGE_SEATS.length - 6 + k));
+    // (only release 3's restored house seats, LATE_HOUSE_SEATS, follow them)
+    expect(deck.map(({ i }) => i)).toEqual([0, 1, 2, 3, 4, 5].map((k) => VILLAGE_SEATS.length - LATE_HOUSE_SEATS.length - 6 + k));
     expect(deck[0]!.i).toBeGreaterThan(LAKE_SEAT_BASE);
   });
 

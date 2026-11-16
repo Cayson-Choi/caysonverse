@@ -713,24 +713,27 @@ function makeSeats(benches: readonly VillageBench[]): VillageSeat[] {
   for (const m of MEMORIAL_SEAT_MARKERS) seats.push(...markerSeats(m, hall));
   // The houses (집 실내 G; design 6.4): house 1 floor 1, floor 2, house 2 … in marker order (compareHouseSeats), from each finished house's
   // seat markers (generated/houses). A house without a model has no seats.
+  // Seat ids are append-only (Player.seatIndex is the index): a seat a later release brings back (LATE_HOUSE_SEATS) is left out here
+  // and appended at the very end of the list instead, so no live index moves.
+  const late: VillageSeat[] = [];
   for (const n of HOUSE_NUMBERS) {
     const house = GENERATED_HOUSES[n];
     if (!house) continue;
     // (a seat on a piece the game takes out — houseFixes.ts — is no seat)
     const markers = house.seats.filter((m) => !isRemovedHouseSeat(m.id)).sort(compareHouseSeats);
+    // the floor's peers are every seat of the floor, the late ones too (their spots keep apart from each other)
     for (const m of markers) {
       const floorMarkers = markers.filter((o) => o.floor === m.floor);
-      seats.push(
-        ...withHouseReach(n, m.floor, villageGeometry, () =>
-          markerSeats(m, {
-            area: houseArea(houseBuildingId(n), m.floor),
-            bounds: houseFloorBounds(n, m.floor),
-            geometry: villageGeometry,
-            peers: floorMarkers,
-            lenient: true,
-          }),
-        ),
+      const made = withHouseReach(n, m.floor, villageGeometry, () =>
+        markerSeats(m, {
+          area: houseArea(houseBuildingId(n), m.floor),
+          bounds: houseFloorBounds(n, m.floor),
+          geometry: villageGeometry,
+          peers: floorMarkers,
+          lenient: true,
+        }),
       );
+      (LATE_HOUSE_SEATS.includes(m.id) ? late : seats).push(...made);
     }
   }
   // main's later seats last, so the benches', the hall's and the houses' indices stay as they were (review 2026-11-15): the bus
@@ -746,8 +749,17 @@ function makeSeats(benches: readonly VillageBench[]): VillageSeat[] {
   // the plaza zelkova's deck (평상, UX 2026-11-16) closes the list: after the lake's and after every seat another release adds
   // before it (release 2: the waterfall rest area's stones go between the lake's and these), so no index above ever moves
   seats.push(...zelkovaDeckSeats());
+  // release 3: the house seats the art round 2 brought back (house 9's two dining end chairs, taken out in release 2), last of all
+  seats.push(...late.sort((a, b) => LATE_HOUSE_SEATS.indexOf(a.bench) - LATE_HOUSE_SEATS.indexOf(b.bench)));
   return seats;
 }
+
+/**
+ * House seats that were not in the live list when they came (houseFixes.ts took their piece out in release 2; the houses' art round 2
+ * moved the piece and restored it in release 3). Seat ids are append-only, so these go at the very end of `VILLAGE_SEATS`, in this order,
+ * not in their house's place. A seat restored later is added here, after these.
+ */
+export const LATE_HOUSE_SEATS: readonly string[] = ["h9_1_7", "h9_1_10"];
 
 /**
  * The plaza zelkova's round deck (평상): an octagon about the trunk (VILLAGE_LAYOUT.plaza.zelkova), its faces 0.46 m up and

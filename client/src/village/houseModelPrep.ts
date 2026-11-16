@@ -120,14 +120,6 @@ export function houseWantsView(scene: Object3D): boolean {
 
 /** The wall materials whose patterned paper the builders also put on the ceilings (HA: `LM_plaster`, HB: `E_H_wallpaper` / `E_H_plaster`). */
 const WALL_PAPER = new Set(["LM_plaster", "E_H_wallpaper", "E_H_plaster"]);
-/**
- * The light map's strength on the pale painted and papered surfaces (walls, ceilings, trims): the day bakes clip there (sun on a white wall
- * stores the light map's maximum), so at the village's 1.6π every wall drew pure white — "blown windows", a showroom box. Matched to the
- * builders' Cycles sheets by eye in the game (review 2026-11-16); the wood, the floors, the fabrics keep the village's strength.
- */
-export const HOUSE_PALE_LIGHT = 0.8 * Math.PI;
-export const PALE_SURFACES: ReadonlySet<string> = new Set(["LM_plaster", "LM_paint", "LM_ceiling", "LM_tile_white", "E_H_wallpaper", "E_H_plaster", "E_H_paint", "E_H_tile_white"]);
-
 /** The plain painted ceiling the wallpaper's ceiling faces get (a light-mapped material: the bake's shading stays). */
 export const HOUSE_CEILING_MATERIAL = "LM_ceiling";
 const CEILING_COLOR = "#F1EDE6";
@@ -253,7 +245,6 @@ export function prepareHouse(source: Object3D, n: HouseNumber, floor: HouseFloor
       if (isHouseGlowMaterial(m.name) && !glows.includes(m)) glows.push(m);
       if (!lightmap || !isHouseLightmapMaterial(m.name)) continue;
       lightmapMaterial(m, lightmap);
-      if (PALE_SURFACES.has(m.name)) (m as MeshBasicMaterial).lightMapIntensity = HOUSE_PALE_LIGHT;
       if (!lightmapped.includes(m)) lightmapped.push(m);
     }
   });

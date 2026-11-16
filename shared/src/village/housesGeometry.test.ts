@@ -24,7 +24,7 @@ import { isRemovedHouseSeat } from "./houseFixes";
 import { GENERATED_HOUSES, GENERATED_HOUSE_NUMBERS } from "./generated/houses";
 import { HOUSES_APRON, HOUSES_BLOCK, HOUSES_ZONE, allHouseWalls, houseCeilingSlab, houseFloorGeometry, houseFloorOuter, houseIsReady, housesBlockers } from "./housesGeometry";
 import { VILLAGE_LAYOUT, houseArea, isHouseArea, buildingIdFromArea, villageBounds, villageGeometry } from "./villageLayout";
-import { VILLAGE_SEATS } from "./benchSeats";
+import { LATE_HOUSE_SEATS, VILLAGE_SEATS } from "./benchSeats";
 import { keypadEntries } from "./buildingAccess";
 import { generatedHouseNumbers, renderIndex } from "../../../scripts/gen-houses-index";
 
@@ -206,10 +206,13 @@ describe("the house seats in the one global list", () => {
   it("come in one run after every village bench and hall seat (main's later seats after them), in house, floor, marker order", () => {
     const firstHouse = VILLAGE_SEATS.findIndex((s) => isHouseArea(s.area));
     expect(firstHouse).toBe(51); // after the 20 village bench places and the hall's 31
-    const end = firstHouse + houseSeats.length;
+    // seat ids are append-only: the seats a later release restored (LATE_HOUSE_SEATS) are at the very end of the list instead
+    const inRun = houseSeats.filter((s) => !LATE_HOUSE_SEATS.includes(s.bench));
+    const end = firstHouse + inRun.length;
     expect(VILLAGE_SEATS.slice(firstHouse, end).every((s) => isHouseArea(s.area))).toBe(true);
-    expect(VILLAGE_SEATS.slice(end).some((s) => isHouseArea(s.area))).toBe(false);
-    const keys = houseSeats.map((s) => {
+    expect(VILLAGE_SEATS.slice(end, VILLAGE_SEATS.length - LATE_HOUSE_SEATS.length).some((s) => isHouseArea(s.area))).toBe(false);
+    expect(VILLAGE_SEATS.slice(-LATE_HOUSE_SEATS.length).map((s) => s.bench)).toEqual([...LATE_HOUSE_SEATS]);
+    const keys = inRun.map((s) => {
       const m = /^house:house_(\d+):([12])$/.exec(s.area)!;
       const k = Number(/^h\d+_[12]_(\d+)/.exec(s.bench)![1]);
       return [Number(m[1]), Number(m[2]), k] as const;

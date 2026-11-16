@@ -38,8 +38,8 @@ describe("the seats of the room", () => {
     // the lake's seats, then only (release 2) the waterfall rest area's stones and, last, the plaza zelkova deck's six (UX 2026-11-16)
     const lakeEnd = VILLAGE_SEATS.findIndex((s, i) => i >= LAKE_SEAT_BASE && s.lake === undefined);
     expect(VILLAGE_SEATS.slice(LAKE_SEAT_BASE, lakeEnd).every((s) => s.lake !== undefined)).toBe(true);
-    expect(VILLAGE_SEATS.slice(lakeEnd).every((s) => s.bench.startsWith("falls_seat_") || s.id.startsWith("zelkova_deck:"))).toBe(true);
-    expect(VILLAGE_SEATS.slice(-6).every((s) => s.id.startsWith("zelkova_deck:"))).toBe(true);
+    // (release 3: then the deck, and last the house seats the art brought back — LATE_HOUSE_SEATS)
+    expect(VILLAGE_SEATS.slice(lakeEnd).every((s) => s.bench.startsWith("falls_seat_") || s.id.startsWith("zelkova_deck:") || s.bench.startsWith("h9_"))).toBe(true);
     for (let i = 0; i < 30; i++) expect((VILLAGE_SEATS[LAKE_SEAT_BASE + i] as unknown as { spot: string }).spot).toBe(LAKE_FISHING_SPOTS[i]!.id);
     expect(FISHING_CHAIRS).toHaveLength(30);
   });
