@@ -1,6 +1,6 @@
 /**
  * The finder's "found it" sound: a short two-note chime made with Web Audio on the village's one AudioContext
- * (villageAudio.ts) — no sound file. Silent when the game's 🔊 is off, when the context has never been allowed to run
+ * (villageAudio.ts) — no sound file. Silent when the game's 소리 is off, when the context has never been allowed to run
  * (no gesture yet) or where there is no Web Audio.
  */
 

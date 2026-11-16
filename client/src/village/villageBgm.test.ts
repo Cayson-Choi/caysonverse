@@ -184,6 +184,25 @@ describe("VillageBgm", () => {
     expect(s.ticking()).toBe(1);
   });
 
+  it("the menu's volume scales the level (0.35 x volume), 0 is silent, a bad value means full", async () => {
+    const s = setup();
+    const bgm = s.make();
+    bgm.arm();
+    s.gesture("keydown");
+    await flush();
+    const a = s.audios[0]!;
+    s.advance(1500, bgm);
+    expect(a.volume).toBeCloseTo(0.35, 3);
+    bgm.setUserVolume(0.5);
+    expect(a.volume).toBeCloseTo(0.175, 3);
+    bgm.setUserVolume(0);
+    expect(a.volume).toBe(0);
+    bgm.setUserVolume(Number.NaN);
+    expect(a.volume).toBeCloseTo(0.35, 3);
+    bgm.setUserVolume(7);
+    expect(a.volume).toBeCloseTo(0.35, 3);
+  });
+
   it("a rejected play() does not throw and the next gesture tries again", async () => {
     const s = setup();
     const bgm = s.make();
@@ -483,8 +502,8 @@ describe("VillageBgm", () => {
   });
 });
 
-/** VillageBgmButton's effect (mountVillageBgm) run the way React StrictMode runs it: mount, cleanup, mount. */
-describe("VillageBgmButton mount effect under StrictMode", () => {
+/** VillageMusic's effect (mountVillageBgm) run the way React StrictMode runs it: mount, cleanup, mount. */
+describe("VillageMusic mount effect under StrictMode", () => {
   function env(s: ReturnType<typeof setup>) {
     const docListeners = new Set<() => void>();
     const doc = {

@@ -6,7 +6,7 @@
  *  - One clip at a time: asking another question stops the clip that is playing.
  *  - A second press of the same question while it plays skips it (`press`); `skip()` does the same.
  *  - A hidden tab stops the clip (`setVisible`).
- *  - The game's sound toggle (🔊, soundStore `muted`) mutes it: while muted nothing plays, and muting stops the clip.
+ *  - The game's sound toggle (the menu's 소리 switch, soundStore `muted`) mutes it: while muted nothing plays, and muting stops the clip.
  *  - While a clip plays the village music is ducked (`VillageBgm.duck`) and restored when it ends, is skipped, fails
  *    or the controller is disposed.
  *  - The level goes through a Web Audio GainNode when one is available (villageAudio.ts), else `element.volume`.

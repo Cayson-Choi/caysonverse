@@ -250,24 +250,25 @@ describe("touch HUD layout (375×812, buttonSize large — the tightest phone ca
     }
   });
 
-  it("the top-right group is four 60 px buttons 8 px apart, 12 px from the corner", () => {
+  it("the top-right group is three 60 px buttons 8 px apart, 12 px from the corner", () => {
     const l = layout();
-    expect(l.topButtons).toHaveLength(4);
-    expect(l.topButtons[3].x + l.topButtons[3].w).toBe(375 - 12);
+    expect(l.topButtons).toHaveLength(3);
+    expect(l.topButtons[2].x + l.topButtons[2].w).toBe(375 - 12);
     expect(l.topButtons[0].y).toBe(12);
-    for (let i = 1; i < 4; i++) {
+    for (let i = 1; i < 3; i++) {
       expect(l.topButtons[i].x - (l.topButtons[i - 1].x + l.topButtons[i - 1].w)).toBe(8);
     }
     // The left column (space name chip, 👥, chat log toggle) fits left of the group with a gap.
     expect(rectGap(l.roster, l.topButtons[0])).toBeGreaterThanOrEqual(MIN_GAP_PX);
   });
 
-  it("a 360 px or 320 px screen shrinks the top row (never under 48 px) instead of touching the column", () => {
+  it("a 360 px or 320 px screen keeps the three top buttons (the sound button moved into the menu) clear of the column", () => {
     const at = (vw: number) =>
       touchHudLayout({ vw, vh: 800, safe: NO_INSETS, size: "large", leftHanded: false });
     expect(at(375).topPx).toBe(60);
-    expect(at(360).topPx).toBe(58);
-    expect(at(320).topPx).toBe(48);
+    expect(at(360).topPx).toBe(60);
+    expect(at(320).topPx).toBe(60);
+    expect(at(280).topPx).toBeGreaterThanOrEqual(MIN_TOUCH_PX);
     for (const vw of [320, 360]) {
       const l = at(vw);
       expect(rectGap(l.roster, l.topButtons[0])).toBeGreaterThanOrEqual(MIN_GAP_PX);
@@ -275,6 +276,24 @@ describe("touch HUD layout (375×812, buttonSize large — the tightest phone ca
     }
     // Wide screens keep the chosen size.
     expect(at(812).topPx).toBe(60);
+  });
+
+  it("the 동서남북 dial hangs under the top group on its outer edge, inside the screen, clear of every button", () => {
+    for (const size of ["small", "medium", "large"] as ButtonSize[]) {
+      for (const leftHanded of [false, true]) {
+        for (const [vw, vh] of [[375, 812], [360, 740], [320, 568], [812, 375]]) {
+          const l = touchHudLayout({ vw, vh, safe: NO_INSETS, size, leftHanded });
+          const c = l.compass;
+          expect(c.w).toBe(64);
+          expect(c.y).toBeGreaterThanOrEqual(l.topGroup.y + l.topGroup.h + 8);
+          expect(inside(c, vw, vh, 0)).toBe(true);
+          // on the outer edge of the group (the corner side), so the left column and the middle stay free
+          if (leftHanded) expect(c.x).toBe(12);
+          else expect(c.x + c.w).toBe(vw - 12);
+          for (const r of restRects(l)) expect(rectGap(c, r)).toBeGreaterThanOrEqual(MIN_GAP_PX);
+        }
+      }
+    }
   });
 
   it("left-handed mirrors the whole HUD, top and bottom", () => {
@@ -287,10 +306,11 @@ describe("touch HUD layout (375×812, buttonSize large — the tightest phone ca
     expect(left.chat).toEqual(mirror(right.chat));
     expect(left.roster).toEqual(mirror(right.roster));
     expect(left.chatLog).toEqual(mirror(right.chatLog));
+    expect(left.compass).toEqual(mirror(right.compass));
     // Strict mirror: button i keeps its meaning, so the menu button ends up in the top-left corner.
     expect(left.topButtons).toEqual(right.topButtons.map(mirror));
     expect(left.jump.x).toBe(16);
-    expect(left.topButtons[3].x).toBe(12);
+    expect(left.topButtons[2].x).toBe(12);
     expect(crowded(restRects(left))).toEqual([]);
     expect(crowded(fanOpenRects(left))).toEqual([]);
   });
@@ -344,7 +364,7 @@ describe("touch HUD layout across sizes, hands and phone screens", () => {
     const side: SafeInsets = { top: 0, right: 47, bottom: 21, left: 47 };
     const landscape = touchHudLayout({ vw: 812, vh: 375, safe: side, size: "large", leftHanded: false });
     expect(landscape.jump.x + landscape.jump.w).toBe(812 - 47 - 16);
-    expect(landscape.topButtons[3].x + landscape.topButtons[3].w).toBe(812 - 47 - 12);
+    expect(landscape.topButtons[2].x + landscape.topButtons[2].w).toBe(812 - 47 - 12);
     expect(landscape.roster.x).toBe(47 + 12);
     expect(crowded(restRects(landscape))).toEqual([]);
     expect(crowded(fanOpenRects(landscape))).toEqual([]);

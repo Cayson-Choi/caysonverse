@@ -22,7 +22,7 @@ const IDLE: GuideVoiceState = { playing: null, asked: null };
 /**
  * A guide's questions (케이슨 마을 Task 9A; the store is guideDialogStore.ts, the voice guideVoice.ts). Opened by "문의하기"
  * within 2.2 m of a guide. Choosing a question shows its answer and plays its clip for this player only; pressing
- * the same question again (or 건너뛰기) skips it; another question stops the first. The 🔊 toggle mutes the voice (the
+ * the same question again (or 건너뛰기) skips it; another question stops the first. The menu's 소리 switch mutes the voice (the
  * text still shows). A small "AI 음성" label says the voice is synthetic. Closes with 닫기, Esc, or leaving the area.
  *
  * The voice controller lives as long as the village scene (this component is in its HUD): created and disposed in
@@ -60,7 +60,7 @@ export function GuideDialog() {
     document.addEventListener("visibilitychange", onVisibility);
     return () => document.removeEventListener("visibilitychange", onVisibility);
   }, [voice]);
-  // The 🔊 toggle: muting stops the clip.
+  // The menu's 소리 switch: muting stops the clip.
   useEffect(() => {
     voice?.setMuted(muted);
   }, [voice, muted]);

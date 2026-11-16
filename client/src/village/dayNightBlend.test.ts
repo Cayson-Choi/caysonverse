@@ -227,7 +227,7 @@ describe("the memorial hall: always the warm indoor light", () => {
     expect(s.night).toBe(0);
     expect(s.lights).toBe(0);
     expect(s.stars).toBe(0);
-    expect(s.exposure).toBe(DAY_LOOK.exposure);
+    expect(s.exposure).toBe(1.12); // the hall: a little above the open village's day exposure (B7)
     expect(s.keyIntensity).toBe(DAY_LOOK.keyIntensity);
     expect(s.keyDir).toEqual(DAY_SUN_DIRECTION);
     expect(s.dayTint).toEqual([1, 1, 1]);

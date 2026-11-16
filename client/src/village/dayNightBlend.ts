@@ -111,7 +111,7 @@ export const DAY_LOOK: Look = {
   hemiIntensity: 1.7,
   keyColor: "#FFD6A8",
   keyIntensity: 2.4,
-  exposure: 1.4,
+  exposure: 0.95,
 };
 
 /** Sunrise and sunset: a low orange sun, a warm haze. */
@@ -281,6 +281,7 @@ export function indoorState(): DayNightState {
   s.keyColor = [...DAY.keyColor];
   s.keyIntensity = DAY_LOOK.keyIntensity;
   s.sky = [...DAY.sky];
+  s.exposure = 1.12; // a little above the open village's 0.95: the hall is a lit room, its darkest wall pixels must not sink (B7)
   return s;
 }
 

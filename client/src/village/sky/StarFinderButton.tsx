@@ -4,7 +4,7 @@ import { resumeVillageAudio } from "../villageAudio";
 import { closeFinder, openFinder, useStarFinder } from "./starFinderStore";
 
 /**
- * 🔭 — 별자리 찾기, in the HUD's left column next to the music's ♪ (outside only: the memorial hall has no sky). By day it
+ * 🔭 — 별자리 찾기, in the HUD's left column (outside only: the memorial hall has no sky). By day it
  * is drawn dim with a small moon (there is something to do tonight) and opens the "별은 밤에 보여요" card. No hotkey: in
  * the village the letter keys type into the chat.
  */
