@@ -159,12 +159,22 @@ for (const pl of plan.slice(from, Math.min(to, plan.length - 1) + 1)) {
   let tapInfo = null;
   if (pl.start) {
     await walkBus(A, pl.start.ahead, pl.start.right, 0.2, 16000);
-    // turn towards the seat (the quick view) and look down at it as a player would (the first person's pitch: + looks down)
+    // turn towards the seat and look down at it as a player would (a drag does this; here the look is set straight at the seat's
+    // cushion: the first person's yaw is bus-relative, its look direction (-cos, sin) in (ahead, right); its pitch + looks down)
     const tries = [];
-    outer: for (const v of [pl.a < pl.start.ahead ? "back" : "front", "left", "right"]) {
-      await view(A, v);
-      for (const pitch of [0.35, 0.6, 0.15, 0.85]) {
-        await A.page.evaluate(async (pt) => { (await window.__imp("/src/game/viewState.ts")).viewState.fpPitch = pt; }, pitch);
+    const aim = await A.page.evaluate(async (i) => {
+      const c = await window.__imp("/shared/src/village/busCabin.ts");
+      const w = (await window.__imp("/src/game/busRide.ts")).busWalk;
+      const s = c.BUS_SEATS[i];
+      const da = s.ahead + 0.06 - w.ahead;
+      const dr = s.right - w.right;
+      const drop = c.cabinFloorAt(w.ahead) + 1.95 - (s.floor + 0.47);
+      return { yaw: Math.atan2(dr, -da), pitch: Math.atan2(drop, Math.hypot(da, dr)) };
+    }, pl.index);
+    outer: for (const v of ["aim", pl.a < pl.start.ahead ? "back" : "front", "left", "right"]) {
+      if (v !== "aim") await view(A, v);
+      for (const pitch of v === "aim" ? [aim.pitch, aim.pitch * 0.7] : [0.35, 0.6, 0.15, 0.85]) {
+        await A.page.evaluate(async ([pt, yaw]) => { const vs = (await window.__imp("/src/game/viewState.ts")).viewState; vs.fpPitch = pt; if (yaw !== null) vs.fpYaw = yaw; }, [pitch, v === "aim" ? aim.yaw : null]);
         await sleep(350);
         const at = await A.page.evaluate((i) => window.__cvBusSeatScreen?.(i) ?? null, pl.index);
         tries.push({ v, pitch, at: at && { x: Math.round(at.x), y: Math.round(at.y), on: at.onScreen } });

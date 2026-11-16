@@ -92,7 +92,7 @@ export const BUS_TP_MIN_ARM = 2.6;
 /** The least elevation (rad) of the third person's lens over the rider's head line: it looks down on the rider from above. */
 export const TP_ELEVATION = 0.3;
 /** Under this arm (m) the third person's lens tries the other side of the rider. */
-export const TP_FLIP_ARM = 2.2;
+export const TP_FLIP_ARM = 2.4;
 /** The share of the rider's own sideways offset the third person's lens keeps (0 = in the aisle's middle). */
 export const TP_AISLE_KEEP = 0.2;
 
@@ -115,7 +115,8 @@ export function busRiderCamera(input: BusCamInput, out: TransitCameraPose = { x:
     eye = [ahead - dirA * 0.05, right - dirR * 0.05, headH];
     target = [eye[0] - dirA * ce * 3, eye[1] - dirR * ce * 3, eye[2] - Math.sin(elevation) * 3];
   } else {
-    const d = input.dist;
+    // bus v3: the seats are bigger, a lens nearer than the third person's least arm filled the screen with the seated rider
+    const d = input.frame ? Math.max(input.dist, BUS_TP_MIN_ARM) : input.dist;
     // With a lens (frame) the camera stays on the AISLE line (in front of the rider or behind them, whichever the view yaw is nearer), raised
     // and as far as the cabin allows: the cabin is as narrow as an avatar is tall, so the old orbit round the rider pressed the lens against a
     // window and the rider's head filled the screen. The view yaw then only turns where the lens LOOKS (a side view looks at the windows, the
