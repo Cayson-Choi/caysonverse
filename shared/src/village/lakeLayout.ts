@@ -387,8 +387,119 @@ export function lakeGreyboxColliders(): LakeCollider[] {
   LAKE_LAMPS.forEach((l, i) => {
     if (lakeWalkable(l.x, l.z)) out.push(c(`lamp_${i + 1}`, boxAround(l.x, l.z, 0.3, 0.3)));
   });
+  // the small things of lake_structures.glb that had no box (lake v2 audit, 2026-11-17): the counter shelf outside the rental
+  // window (chest high, 0.42 m out), the awning's two posts, the info and welcome signs, the trash bins, the nets on the office's
+  // west wall, the stacked chairs
+  for (const p of LAKE_SMALL_PROPS) out.push(c(p.id, p.box));
+  // the pipe railings of the decks (owner 2026-11-17: "낚시터에 난간을 그냥 통과해버려"): thin walls along every rail, open where the
+  // rail is (the chairs, the walkways, the pier mouth); props for the camera (lakeCameraBoxes takes only the buildings)
+  lakeRailSegments().forEach((r, i) => out.push(c(`rail_${i + 1}`, r.box)));
   return out;
 }
+
+/** Bounds of the small props of lake_structures.glb (docs/designs/lake-fishing/tools/parts_lake_structures.py). */
+export const LAKE_SMALL_PROPS: readonly { id: string; box: AABB }[] = [
+  { id: "shop_counter", box: { minX: 99.85, maxX: 104.15, minZ: -19.5, maxZ: -19.08 } },
+  { id: "awning_post_w", box: { minX: 99.16, maxX: 99.36, minZ: -17.9, maxZ: -17.7 } },
+  { id: "awning_post_e", box: { minX: 104.64, maxX: 104.84, minZ: -17.9, maxZ: -17.7 } },
+  { id: "info_sign", box: { minX: 98.75, maxX: 100.45, minZ: -13.8, maxZ: -13.6 } },
+  { id: "welcome_sign", box: { minX: 97.22, maxX: 97.41, minZ: -14.6, maxZ: -12 } },
+  { id: "trash", box: { minX: 106.58, maxX: 107.12, minZ: -21.57, maxZ: -21.02 } },
+  { id: "nets", box: { minX: 97.76, maxX: 98, minZ: -23, maxZ: -20.8 } },
+  { id: "chair_stack", box: { minX: 98.43, maxX: 98.89, minZ: -19.5, maxZ: -19.38 } },
+];
+
+/** A railing's run: the line a -> b at the rail (x, z), the openings cut out. */
+export interface LakeRail {
+  deck: string;
+  a: LakePoint;
+  b: LakePoint;
+  /** The box a body cannot cross (the rail line, RAIL_THICK thick). */
+  box: AABB;
+}
+
+/** How thick a rail's wall is (m): the posts and the pipes (5 cm) and a little; the body's radius keeps it off the rail. */
+export const RAIL_THICK = 0.1;
+
+/**
+ * Every railing run of the decks, as docs/designs/lake-fishing/tools/parts_lake_structures.py builds them: the pier's entrance
+ * rails (from the mouth to the first chair), the T-end's four edges (opened at the pier, at both walkways and in front of P15 /
+ * P16), the walkways' two sides, the 좌대' four edges (opened in front of each chair and where the walkway joins). Only the runs
+ * between openings: the openings stay open.
+ */
+export function lakeRailSegments(): readonly LakeRail[] {
+  if (railCache) return railCache;
+  const out: LakeRail[] = [];
+  const t = RAIL_THICK / 2;
+  // a run a -> b along x (z fixed) or along z (x fixed), minus the openings [from, to] in metres from a
+  const run = (deck: string, a: LakePoint, b: LakePoint, openings: Array<[number, number]>) => {
+    const alongX = Math.abs(b.x - a.x) > Math.abs(b.z - a.z);
+    const len = alongX ? b.x - a.x : b.z - a.z;
+    const cuts = openings.map(([o0, o1]) => [Math.max(0, Math.min(o0, o1)), Math.min(len, Math.max(o0, o1))] as [number, number]).sort((p, q) => p[0] - q[0]);
+    let s0 = 0;
+    const pieces: Array<[number, number]> = [];
+    for (const [c0, c1] of cuts) {
+      if (c0 > s0) pieces.push([s0, c0]);
+      s0 = Math.max(s0, c1);
+    }
+    if (s0 < len) pieces.push([s0, len]);
+    for (const [p0, p1] of pieces) {
+      if (p1 - p0 < 0.05) continue;
+      const pa = alongX ? { x: a.x + p0, z: a.z } : { x: a.x, z: a.z + p0 };
+      const pb = alongX ? { x: a.x + p1, z: a.z } : { x: a.x, z: a.z + p1 };
+      const box = alongX
+        ? { minX: pa.x - t, maxX: pb.x + t, minZ: pa.z - t, maxZ: pa.z + t }
+        : { minX: pa.x - t, maxX: pa.x + t, minZ: pa.z - t, maxZ: pb.z + t };
+      out.push({ deck, a: pa, b: pb, box });
+    }
+  };
+  const spots = (g: string) => LAKE_FISHING_SPOTS.filter((s) => s.group === g);
+  // the pier: entrance rails both sides, from the mouth to x 111 (the fishing sides have a kerb, no rail)
+  {
+    const d = LAKE_PIER;
+    for (const z of [d.minZ + 0.1, d.maxZ - 0.1]) run("pier", { x: d.minX + 0.1, z }, { x: 111, z }, []);
+  }
+  // the T-end
+  {
+    const d = LAKE_PIER_T;
+    const i = 0.1;
+    const ch = [LAKE_FISHING_SPOTS.find((s) => s.id === "P15")!.anchor.z, LAKE_FISHING_SPOTS.find((s) => s.id === "P16")!.anchor.z];
+    run("pier_t", { x: d.maxX - i, z: d.minZ + i }, { x: d.maxX - i, z: d.maxZ - i }, ch.map((c) => [c - d.minZ - i - 0.8, c - d.minZ - i + 0.8]));
+    run("pier_t", { x: d.minX + i, z: d.minZ + i }, { x: d.minX + i, z: d.maxZ - i }, [[LAKE_PIER.minZ - d.minZ - i, LAKE_PIER.maxZ - d.minZ - i]]);
+    run("pier_t", { x: d.minX + i, z: d.minZ + i }, { x: d.maxX - i, z: d.minZ + i }, [[LAKE_WALKWAY_A.minX - d.minX - i, LAKE_WALKWAY_A.maxX - d.minX - i]]);
+    run("pier_t", { x: d.minX + i, z: d.maxZ - i }, { x: d.maxX - i, z: d.maxZ - i }, [[LAKE_WALKWAY_B.minX - d.minX - i, LAKE_WALKWAY_B.maxX - d.minX - i]]);
+  }
+  // the walkways: both sides, continuous
+  for (const [id, d] of [["walkway_a", LAKE_WALKWAY_A], ["walkway_b", LAKE_WALKWAY_B]] as const) {
+    run(id, { x: d.minX + 0.08, z: d.minZ + 0.1 }, { x: d.minX + 0.08, z: d.maxZ - 0.1 }, []);
+    run(id, { x: d.maxX - 0.08, z: d.minZ + 0.1 }, { x: d.maxX - 0.08, z: d.maxZ - 0.1 }, []);
+  }
+  // the 좌대: four edges, opened in front of each chair (+-0.8 m) and where the walkway joins
+  for (const [id, d, faceIn, wk] of [["jwadae_a", LAKE_JWADAE_A, "s", LAKE_WALKWAY_A], ["jwadae_b", LAKE_JWADAE_B, "n", LAKE_WALKWAY_B]] as const) {
+    const i = 0.1;
+    const edges: Record<"n" | "s" | "w" | "e", [LakePoint, LakePoint, "x" | "z"]> = {
+      n: [{ x: d.minX + i, z: d.minZ + i }, { x: d.maxX - i, z: d.minZ + i }, "x"],
+      s: [{ x: d.minX + i, z: d.maxZ - i }, { x: d.maxX - i, z: d.maxZ - i }, "x"],
+      w: [{ x: d.minX + i, z: d.minZ + i }, { x: d.minX + i, z: d.maxZ - i }, "z"],
+      e: [{ x: d.maxX - i, z: d.minZ + i }, { x: d.maxX - i, z: d.maxZ - i }, "z"],
+    };
+    for (const side of ["n", "s", "w", "e"] as const) {
+      const [a, b, ax] = edges[side];
+      const ops: Array<[number, number]> = [];
+      for (const sp of spots(id)) {
+        if (sp.face !== side) continue;
+        const c = ax === "x" ? sp.anchor.x : sp.anchor.z;
+        const lo = ax === "x" ? a.x : a.z;
+        ops.push([c - lo - 0.8, c - lo + 0.8]);
+      }
+      if (side === faceIn) ops.push([wk.minX - a.x - 0.02, wk.maxX - a.x + 0.02]);
+      run(id, a, b, ops);
+    }
+  }
+  railCache = out;
+  return out;
+}
+let railCache: LakeRail[] | null = null;
 
 /**
  * The facilities the third-person camera must not enter (the spring arm of cameraCollision.ts casts against these): the office,

@@ -123,10 +123,12 @@ export interface FishView {
   cm: number;
   /** Room-clock ms at which the phase began. */
   at: number;
+  /** Lake v2, the fight: bit 7 the angler holds (reels in), bits 0..6 how far the fish is brought in (0..100). */
+  reel: number;
 }
 
 export function emptyFishView(): FishView {
-  return { rod: 0, spot: -1, phase: 0, seq: 0, sig: 0, kind: 0, cm: 0, at: 0 };
+  return { rod: 0, spot: -1, phase: 0, seq: 0, sig: 0, kind: 0, cm: 0, at: 0, reel: 0 };
 }
 
 /** The personal FishingState (9.3). Fields are optional: the client reads what is there. */

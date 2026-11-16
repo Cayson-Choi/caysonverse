@@ -106,7 +106,7 @@ describe("the fishing clips and the rod carrier's arm", () => {
     expect(clipForPhase(FISH_PHASE.carry)).toBeNull();
   });
   it("the rod bends only for a bite, a fight and a lift, within 0..1", () => {
-    const v = { rod: 1, spot: 1, phase: 0, seq: 1, sig: 1, kind: 0, cm: 20, at: 0 };
+    const v = { rod: 1, spot: 1, phase: 0, seq: 1, sig: 1, kind: 0, cm: 20, at: 0, reel: 128 };
     for (const p of Object.values(FISH_PHASE)) for (let t = 0; t < 4; t += 0.1) {
       const b = rodBend({ ...v, phase: p }, t);
       expect(b).toBeGreaterThanOrEqual(0);

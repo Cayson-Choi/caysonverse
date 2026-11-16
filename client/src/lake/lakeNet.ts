@@ -17,6 +17,7 @@ interface PlayerLike {
   fishKind?: number;
   fishCm?: number;
   fishAt?: number;
+  fishReel?: number;
 }
 interface RoomLike {
   sessionId: string;
@@ -60,6 +61,7 @@ export function readFishView(sid: string, out: FishView): boolean {
   out.kind = p.fishKind ?? 0;
   out.cm = p.fishCm ?? 0;
   out.at = p.fishAt ?? 0;
+  out.reel = p.fishReel ?? 0;
   return true;
 }
 

@@ -774,6 +774,8 @@ export interface FishingSync {
   fishKind: number;
   fishCm: number;
   fishAt: number;
+  /** Lake v2: the fight (bit 7 the angler holds, bits 0..6 progress 0..100); 0 outside the fight. */
+  fishReel: number;
 }
 
 /** The synced fields of a state: the signal only while it bites, the fish only from `hooked` until it is released. */
@@ -788,6 +790,7 @@ export function fishingSync(s: FishingState): FishingSync {
     fishKind: fishShown ? fishKindId(s.catch!.kind) : 0,
     fishCm: fishShown ? Math.min(255, s.catch!.cm) : 0,
     fishAt: Math.floor(s.phaseAt) % 4294967296,
+    fishReel: s.phase === "fighting" ? Math.min(100, Math.round((100 * s.holdMs) / Math.max(1, s.holdNeedMs))) | (s.holdDown ? 128 : 0) : 0,
   };
 }
 

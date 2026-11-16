@@ -202,6 +202,7 @@ export class VillageFishing {
         s.fs = r.state;
         if (phase === "fighting" && now - s.lastFightSentAt >= FIGHT_SEND_MS) {
           s.lastFightSentAt = now;
+          this.sync(player, s.fs); // the fight's progress for every screen (fishReel)
           const c = this.clientOf(sid);
           if (c) this.sendState(c, s.fs, null);
         }
@@ -315,6 +316,7 @@ export class VillageFishing {
     if (p.fishKind !== f.fishKind) p.fishKind = f.fishKind;
     if (p.fishCm !== f.fishCm) p.fishCm = f.fishCm;
     if (p.fishAt !== f.fishAt) p.fishAt = f.fishAt;
+    if (p.fishReel !== f.fishReel) p.fishReel = f.fishReel;
   }
 
   // ---------------------------------------------------------------------------------------------- messages out

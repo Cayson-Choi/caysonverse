@@ -6,6 +6,7 @@ import {
   LAKE_AREA,
   LAKE_COLLIDER_AREA,
   LAKE_DECKS,
+  LAKE_PIER,
   LAKE_FACE_DIR,
   LAKE_FISHING_SPOTS,
   LAKE_FLOOR_Y,
@@ -195,6 +196,8 @@ describe("colliders: what walks and what does not (design 3)", () => {
         for (const w of [-1, 0, 1]) {
           const x = a.x + ((b.x - a.x) * t) / len + nx * w;
           const z = a.z + ((b.z - a.z) * t) / len + nz * w;
+          // the pier's entrance rails (lake v2: walls now) start 0.1 m inside its mouth: a body 1 m off the middle touches them
+          if (w !== 0 && x > LAKE_PIER.minX - R - 0.1) continue;
           expect(isBlocked(x, z, R, villageGeometry.obstacles, 0.01), `lane (${x.toFixed(1)}, ${z.toFixed(1)})`).toBe(false);
         }
       }
@@ -209,7 +212,8 @@ describe("colliders: what walks and what does not (design 3)", () => {
     }
     expect(isBlocked(LAKE_RENTAL_PAD.x, LAKE_RENTAL_PAD.z, R, villageGeometry.obstacles, 0.01)).toBe(false);
     expect(LAKE_RENTAL_PAD.z).toBeGreaterThan(-19.5); // south of the office
-    for (let z = -13; z <= -11; z += 0.25) expect(free(106, z)).toBe(true);
+    // the mouth between the two entrance rails (z -13.4 and -10.6, lake v2: walls): a body's middle fits from -12.9 to -11.1
+    for (let z = -12.75; z <= -11.25 + 1e-9; z += 0.25) expect(free(106, z)).toBe(true);
   });
 
   it("the village's gap blockers leave the lake zone open and seal the strips above and below it", () => {
