@@ -142,7 +142,9 @@ await run.step("both walk to the bus doors", async () => {
   ]);
   await sleep(800);
   const tg = await targetsOf(A);
-  run.check("A is offered 버스 타기 at the door", tg.some((t) => t.id === "village_bus_board"), tg);
+  // (the server may be started before the boarding window: the button comes once it opens)
+  const offeredBoard = await pollUntil(async () => (await targetsOf(A)).some((t) => t.id === "village_bus_board"), 420000, 500);
+  run.check("A is offered 버스 타기 at the door", offeredBoard, await targetsOf(A));
 });
 
 await run.step("both board: aboard and free at the entry; the ride panel has the quick views and the hint", async () => {
@@ -174,6 +176,8 @@ await run.step("both board: aboard and free at the entry; the ride panel has the
 });
 
 await run.step("A walks the aisle inside the cabin (the keys), the server follows", async () => {
+  // bus v3: nobody walks through anybody: B (boarded second, standing just behind A in the aisle) steps aside into the door's well first
+  await walkBus(B, 3.15, 0.8, 0.15, 12000);
   const before = await ride(A);
   const end = await walkBus(A, 1.5, 0.05, 0.3);
   const r = await ride(A);
@@ -236,14 +240,14 @@ await run.step("A sits (E); B is refused the same seat; B sits in another seat b
   run.check("B's ride panel shows the refusal (a rider must see why)", (await hud(B)).includes("다른 사람이 앉아 있어요"), refused);
   await shot(B, "cabin-3-B-seat-refused-phone.png");
   // B walks (keys) to R1's approach (the front kerb-side seat over the wheel housing) and sits with the action button
-  const r1 = await approachOf(B, "R1");
+  const r1 = await approachOf(B, "R2");
   await walkBus(B, r1.a, r1.r, 0.15, 16000);
   await sleep(500);
   const tgB = await targetsOf(B);
-  run.check("B is offered R1 (오른쪽 맨 앞자리) and never a grab handle", tgB.some((t) => t.id === `bus_sit:seat:${r1.index}`) && !tgB.some((t) => /손잡이|잡기/.test(t.label)), tgB);
+  run.check("B is offered R2 (오른쪽 둘째 자리) and never a grab handle", tgB.some((t) => t.id === `bus_sit:seat:${r1.index}`) && !tgB.some((t) => /손잡이|잡기/.test(t.label)), tgB);
   await act(B);
   const held = await waitSlot(B, (n) => n === r1.index + 1, 5000);
-  run.check("B sits in R1 (the action button)", held, await ride(B));
+  run.check("B sits in R2 (the action button)", held, await ride(B));
   await sleep(1200);
   const seenByA = (await A.page.evaluate(() => window.__cv.getRemoteDrawn()))[sidB];
   const ta = await transit(A);

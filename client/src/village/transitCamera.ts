@@ -92,7 +92,7 @@ export const BUS_TP_MIN_ARM = 2.6;
 /** The least elevation (rad) of the third person's lens over the rider's head line: it looks down on the rider from above. */
 export const TP_ELEVATION = 0.3;
 /** Under this arm (m) the third person's lens tries the other side of the rider. */
-export const TP_FLIP_ARM = 2.4;
+export const TP_FLIP_ARM = 2.2;
 /** The share of the rider's own sideways offset the third person's lens keeps (0 = in the aisle's middle). */
 export const TP_AISLE_KEEP = 0.2;
 
