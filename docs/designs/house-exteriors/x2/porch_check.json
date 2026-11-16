@@ -1,0 +1,1919 @@
+{
+ "format": "caysonverse-porch-check",
+ "version": 1,
+ "houses": {
+  "house_1": {
+   "kind": "gable",
+   "shell": {
+    "body": 1636,
+    "porch": 154,
+    "total": 1790
+   },
+   "detail": {
+    "body": 3026,
+    "porch": 1720,
+    "total": 4746
+   },
+   "shellMaterials": [
+    "LM_metal",
+    "LM_render",
+    "LM_roof",
+    "LM_stone",
+    "LM_wood",
+    "M_glass",
+    "M_window"
+   ],
+   "detailMaterials": [
+    "LM_metal",
+    "LM_stone",
+    "LM_wood",
+    "M_lamp",
+    "M_leaf_flora",
+    "M_screen"
+   ],
+   "doorClearance": {
+    "metres": 0.314,
+    "nearest": "nameplate/np_back",
+    "at": "lock at 95 deg"
+   },
+   "solids": 268,
+   "cost": {
+    "porch": {
+     "shell": 38,
+     "detail": 64
+    },
+    "roof": {
+     "shell": 116,
+     "detail": 390
+    },
+    "beds": {
+     "shell": 0,
+     "detail": 184
+    },
+    "nameplate": {
+     "shell": 0,
+     "detail": 60
+    },
+    "mailbox": {
+     "shell": 0,
+     "detail": 64
+    },
+    "lpg": {
+     "shell": 0,
+     "detail": 514
+    },
+    "garden": {
+     "shell": 0,
+     "detail": 444
+    }
+   },
+   "colliders": {
+    "garden": {
+     "collider": [
+      -3,
+      3,
+      -8.375,
+      -5.775
+     ],
+     "solids": [
+      -2.905,
+      2.905,
+      -0.01,
+      1.25,
+      -8.28,
+      -6.07
+     ]
+    },
+    "lpg": {
+     "collider": [
+      3.5,
+      4.9,
+      -6.005,
+      -5.355
+     ],
+     "solids": [
+      3.52,
+      4.88,
+      -0.02,
+      2.18,
+      -6.001,
+      -5.275
+     ]
+    },
+    "porch_1": {
+     "collider": [
+      -5.6,
+      -2.6,
+      3.205,
+      5.375
+     ],
+     "solids": [
+      -5.6,
+      -2.6,
+      -0.02,
+      0.735,
+      3.205,
+      5.375
+     ]
+    },
+    "porch_2": {
+     "collider": [
+      2.6,
+      5.6,
+      3.205,
+      5.375
+     ],
+     "solids": [
+      2.6,
+      5.6,
+      -0.02,
+      1.2,
+      3.205,
+      5.375
+     ]
+    },
+    "porch_3": {
+     "collider": [
+      -2.6,
+      -1.6,
+      5.275,
+      5.375
+     ],
+     "solids": [
+      -2.6,
+      -1.6,
+      0.3,
+      0.38,
+      5.275,
+      5.375
+     ]
+    },
+    "porch_4": {
+     "collider": [
+      1.6,
+      2.6,
+      5.275,
+      5.375
+     ],
+     "solids": [
+      1.6,
+      2.6,
+      0.3,
+      0.38,
+      5.275,
+      5.375
+     ]
+    },
+    "porch_5": {
+     "collider": [
+      -2.42,
+      -2.18,
+      5.035,
+      5.275
+     ],
+     "solids": [
+      -2.414,
+      -2.186,
+      0.3,
+      3.25,
+      5.045,
+      5.265
+     ]
+    },
+    "porch_6": {
+     "collider": [
+      2.18,
+      2.42,
+      5.035,
+      5.275
+     ],
+     "solids": [
+      2.186,
+      2.414,
+      0.3,
+      3.25,
+      5.045,
+      5.265
+     ]
+    }
+   },
+   "fails": []
+  },
+  "house_2": {
+   "kind": "deck",
+   "shell": {
+    "body": 1638,
+    "porch": 40,
+    "total": 1678
+   },
+   "detail": {
+    "body": 3026,
+    "porch": 2878,
+    "total": 5904
+   },
+   "shellMaterials": [
+    "LM_metal",
+    "LM_render",
+    "LM_roof",
+    "LM_stone",
+    "LM_wood",
+    "M_glass",
+    "M_window"
+   ],
+   "detailMaterials": [
+    "LM_metal",
+    "LM_stone",
+    "LM_wood",
+    "M_lamp",
+    "M_leaf_flora",
+    "M_screen"
+   ],
+   "doorClearance": {
+    "metres": 0.314,
+    "nearest": "nameplate/np_back",
+    "at": "lock at 95 deg"
+   },
+   "solids": 252,
+   "cost": {
+    "deck": {
+     "shell": 28,
+     "detail": 1564
+    },
+    "beds": {
+     "shell": 4,
+     "detail": 144
+    },
+    "sconces": {
+     "shell": 8,
+     "detail": 88
+    },
+    "nameplate": {
+     "shell": 0,
+     "detail": 60
+    },
+    "mailbox": {
+     "shell": 0,
+     "detail": 64
+    },
+    "lpg": {
+     "shell": 0,
+     "detail": 514
+    },
+    "garden": {
+     "shell": 0,
+     "detail": 444
+    }
+   },
+   "colliders": {
+    "garden": {
+     "collider": [
+      -3,
+      3,
+      -8.375,
+      -5.775
+     ],
+     "solids": [
+      -2.905,
+      2.905,
+      -0.01,
+      1.25,
+      -8.28,
+      -6.07
+     ]
+    },
+    "lpg": {
+     "collider": [
+      3.5,
+      4.9,
+      -6.005,
+      -5.355
+     ],
+     "solids": [
+      3.52,
+      4.88,
+      -0.02,
+      2.18,
+      -6.001,
+      -5.275
+     ]
+    },
+    "porch_1": {
+     "collider": [
+      -5.6,
+      -3.4,
+      3.205,
+      5.375
+     ],
+     "solids": [
+      -5.6,
+      -3.4,
+      -0.02,
+      0.735,
+      3.205,
+      5.375
+     ]
+    },
+    "porch_2": {
+     "collider": [
+      3.4,
+      5.6,
+      3.205,
+      5.375
+     ],
+     "solids": [
+      3.4,
+      5.6,
+      -0.02,
+      1.2,
+      3.205,
+      5.375
+     ]
+    },
+    "porch_3": {
+     "collider": [
+      -3.4,
+      -1.2,
+      5.275,
+      5.375
+     ],
+     "solids": [
+      -3.398,
+      -1.202,
+      0.005,
+      1.145,
+      5.279,
+      5.373
+     ]
+    },
+    "porch_4": {
+     "collider": [
+      1.2,
+      3.4,
+      5.275,
+      5.375
+     ],
+     "solids": [
+      1.202,
+      3.398,
+      0.005,
+      1.145,
+      5.279,
+      5.373
+     ]
+    },
+    "porch_5": {
+     "collider": [
+      -3.4,
+      -3.16,
+      5.035,
+      5.275
+     ],
+     "solids": [
+      -3.37,
+      -3.19,
+      0.3,
+      1.2,
+      5.115,
+      5.275
+     ]
+    },
+    "porch_6": {
+     "collider": [
+      -1.69,
+      -1.45,
+      5.035,
+      5.275
+     ],
+     "solids": [
+      -1.665,
+      -1.485,
+      0.3,
+      1.2,
+      5.115,
+      5.275
+     ]
+    },
+    "porch_7": {
+     "collider": [
+      1.45,
+      1.7,
+      5.035,
+      5.275
+     ],
+     "solids": [
+      1.485,
+      1.665,
+      0.3,
+      1.2,
+      5.115,
+      5.275
+     ]
+    },
+    "porch_8": {
+     "collider": [
+      3.16,
+      3.4,
+      5.035,
+      5.275
+     ],
+     "solids": [
+      3.19,
+      3.37,
+      0.3,
+      1.2,
+      5.115,
+      5.275
+     ]
+    },
+    "porch_9": {
+     "collider": [
+      -3.4,
+      -2.2,
+      3.205,
+      3.705
+     ],
+     "solids": [
+      -3.388,
+      -2.212,
+      0.3,
+      1.13,
+      3.235,
+      3.671
+     ]
+    }
+   },
+   "fails": []
+  },
+  "house_3": {
+   "kind": "canopy",
+   "shell": {
+    "body": 1648,
+    "porch": 54,
+    "total": 1702
+   },
+   "detail": {
+    "body": 3076,
+    "porch": 1960,
+    "total": 5036
+   },
+   "shellMaterials": [
+    "LM_metal",
+    "LM_render",
+    "LM_roof",
+    "LM_stone",
+    "LM_wood",
+    "M_glass",
+    "M_window"
+   ],
+   "detailMaterials": [
+    "LM_metal",
+    "LM_stone",
+    "LM_wood",
+    "M_lamp",
+    "M_leaf_flora",
+    "M_screen"
+   ],
+   "doorClearance": {
+    "metres": 0.314,
+    "nearest": "nameplate/np_back",
+    "at": "lock at 95 deg"
+   },
+   "solids": 240,
+   "cost": {
+    "porch": {
+     "shell": 34,
+     "detail": 40
+    },
+    "canopy": {
+     "shell": 8,
+     "detail": 124
+    },
+    "beds": {
+     "shell": 0,
+     "detail": 240
+    },
+    "nameplate": {
+     "shell": 0,
+     "detail": 60
+    },
+    "mailbox": {
+     "shell": 0,
+     "detail": 64
+    },
+    "lpg": {
+     "shell": 0,
+     "detail": 514
+    },
+    "garden": {
+     "shell": 0,
+     "detail": 444
+    },
+    "flush": {
+     "shell": 12,
+     "detail": 474
+    }
+   },
+   "colliders": {
+    "garden": {
+     "collider": [
+      -3,
+      3,
+      -8.375,
+      -5.775
+     ],
+     "solids": [
+      -2.905,
+      2.905,
+      -0.01,
+      1.25,
+      -8.28,
+      -6.07
+     ]
+    },
+    "lpg": {
+     "collider": [
+      3.5,
+      4.9,
+      -6.005,
+      -5.355
+     ],
+     "solids": [
+      3.52,
+      4.88,
+      -0.02,
+      2.18,
+      -6.001,
+      -5.275
+     ]
+    },
+    "porch_1": {
+     "collider": [
+      -5.6,
+      -1.6,
+      3.205,
+      5.375
+     ],
+     "solids": [
+      -5.6,
+      -1.6,
+      -0.02,
+      0.735,
+      3.205,
+      5.375
+     ]
+    },
+    "porch_2": {
+     "collider": [
+      1.6,
+      5.6,
+      3.205,
+      5.375
+     ],
+     "solids": [
+      1.6,
+      5.6,
+      -0.02,
+      1.2,
+      3.205,
+      5.375
+     ]
+    }
+   },
+   "fails": []
+  },
+  "house_4": {
+   "kind": "canopy",
+   "shell": {
+    "body": 1758,
+    "porch": 42,
+    "total": 1800
+   },
+   "detail": {
+    "body": 3026,
+    "porch": 1546,
+    "total": 4572
+   },
+   "shellMaterials": [
+    "LM_metal",
+    "LM_render",
+    "LM_stone",
+    "LM_wood",
+    "M_glass",
+    "M_window"
+   ],
+   "detailMaterials": [
+    "LM_metal",
+    "LM_stone",
+    "LM_wood",
+    "M_lamp",
+    "M_leaf_flora",
+    "M_screen"
+   ],
+   "doorClearance": {
+    "metres": 0.314,
+    "nearest": "nameplate/np_back",
+    "at": "lock at 95 deg"
+   },
+   "solids": 259,
+   "cost": {
+    "porch": {
+     "shell": 34,
+     "detail": 40
+    },
+    "canopy": {
+     "shell": 8,
+     "detail": 184
+    },
+    "beds": {
+     "shell": 0,
+     "detail": 240
+    },
+    "nameplate": {
+     "shell": 0,
+     "detail": 60
+    },
+    "mailbox": {
+     "shell": 0,
+     "detail": 64
+    },
+    "lpg": {
+     "shell": 0,
+     "detail": 514
+    },
+    "garden": {
+     "shell": 0,
+     "detail": 444
+    }
+   },
+   "colliders": {
+    "garden": {
+     "collider": [
+      -3.0,
+      3.0,
+      -8.375,
+      -5.775
+     ],
+     "solids": [
+      -2.905,
+      2.905,
+      -0.01,
+      1.25,
+      -8.28,
+      -6.07
+     ]
+    },
+    "lpg": {
+     "collider": [
+      3.5,
+      4.9,
+      -6.005,
+      -5.355
+     ],
+     "solids": [
+      3.52,
+      4.88,
+      -0.02,
+      2.18,
+      -6.001,
+      -5.275
+     ]
+    },
+    "porch_1": {
+     "collider": [
+      -5.6,
+      -1.6,
+      3.205,
+      5.375
+     ],
+     "solids": [
+      -5.6,
+      -1.6,
+      -0.02,
+      0.735,
+      3.205,
+      5.375
+     ]
+    },
+    "porch_2": {
+     "collider": [
+      1.6,
+      5.6,
+      3.205,
+      5.375
+     ],
+     "solids": [
+      1.6,
+      5.6,
+      -0.02,
+      1.2,
+      3.205,
+      5.375
+     ]
+    }
+   },
+   "fails": []
+  },
+  "house_5": {
+   "kind": "gable",
+   "shell": {
+    "body": 1632,
+    "porch": 154,
+    "total": 1786
+   },
+   "detail": {
+    "body": 3026,
+    "porch": 1720,
+    "total": 4746
+   },
+   "shellMaterials": [
+    "LM_metal",
+    "LM_render",
+    "LM_roof",
+    "LM_stone",
+    "LM_wood",
+    "M_glass",
+    "M_window"
+   ],
+   "detailMaterials": [
+    "LM_metal",
+    "LM_stone",
+    "LM_wood",
+    "M_lamp",
+    "M_leaf_flora",
+    "M_screen"
+   ],
+   "doorClearance": {
+    "metres": 0.314,
+    "nearest": "nameplate/np_back",
+    "at": "lock at 95 deg"
+   },
+   "solids": 268,
+   "cost": {
+    "porch": {
+     "shell": 38,
+     "detail": 64
+    },
+    "roof": {
+     "shell": 116,
+     "detail": 390
+    },
+    "beds": {
+     "shell": 0,
+     "detail": 184
+    },
+    "nameplate": {
+     "shell": 0,
+     "detail": 60
+    },
+    "mailbox": {
+     "shell": 0,
+     "detail": 64
+    },
+    "lpg": {
+     "shell": 0,
+     "detail": 514
+    },
+    "garden": {
+     "shell": 0,
+     "detail": 444
+    }
+   },
+   "colliders": {
+    "garden": {
+     "collider": [
+      -3,
+      3,
+      -8.375,
+      -5.775
+     ],
+     "solids": [
+      -2.905,
+      2.905,
+      -0.01,
+      1.25,
+      -8.28,
+      -6.07
+     ]
+    },
+    "lpg": {
+     "collider": [
+      3.5,
+      4.9,
+      -6.005,
+      -5.355
+     ],
+     "solids": [
+      3.52,
+      4.88,
+      -0.02,
+      2.18,
+      -6.001,
+      -5.275
+     ]
+    },
+    "porch_1": {
+     "collider": [
+      -5.6,
+      -2.6,
+      3.205,
+      5.375
+     ],
+     "solids": [
+      -5.6,
+      -2.6,
+      -0.02,
+      0.735,
+      3.205,
+      5.375
+     ]
+    },
+    "porch_2": {
+     "collider": [
+      2.6,
+      5.6,
+      3.205,
+      5.375
+     ],
+     "solids": [
+      2.6,
+      5.6,
+      -0.02,
+      1.2,
+      3.205,
+      5.375
+     ]
+    },
+    "porch_3": {
+     "collider": [
+      -2.6,
+      -1.6,
+      5.275,
+      5.375
+     ],
+     "solids": [
+      -2.6,
+      -1.6,
+      0.3,
+      0.38,
+      5.275,
+      5.375
+     ]
+    },
+    "porch_4": {
+     "collider": [
+      1.6,
+      2.6,
+      5.275,
+      5.375
+     ],
+     "solids": [
+      1.6,
+      2.6,
+      0.3,
+      0.38,
+      5.275,
+      5.375
+     ]
+    },
+    "porch_5": {
+     "collider": [
+      -2.42,
+      -2.18,
+      5.035,
+      5.275
+     ],
+     "solids": [
+      -2.414,
+      -2.186,
+      0.3,
+      3.25,
+      5.045,
+      5.265
+     ]
+    },
+    "porch_6": {
+     "collider": [
+      2.18,
+      2.42,
+      5.035,
+      5.275
+     ],
+     "solids": [
+      2.186,
+      2.414,
+      0.3,
+      3.25,
+      5.045,
+      5.265
+     ]
+    }
+   },
+   "fails": []
+  },
+  "house_6": {
+   "kind": "gable",
+   "shell": {
+    "body": 1644,
+    "porch": 154,
+    "total": 1798
+   },
+   "detail": {
+    "body": 3026,
+    "porch": 1720,
+    "total": 4746
+   },
+   "shellMaterials": [
+    "LM_metal",
+    "LM_render",
+    "LM_roof",
+    "LM_stone",
+    "LM_wood",
+    "M_glass",
+    "M_window"
+   ],
+   "detailMaterials": [
+    "LM_metal",
+    "LM_stone",
+    "LM_wood",
+    "M_lamp",
+    "M_leaf_flora",
+    "M_screen"
+   ],
+   "doorClearance": {
+    "metres": 0.314,
+    "nearest": "nameplate/np_back",
+    "at": "lock at 95 deg"
+   },
+   "solids": 268,
+   "cost": {
+    "porch": {
+     "shell": 38,
+     "detail": 64
+    },
+    "roof": {
+     "shell": 116,
+     "detail": 390
+    },
+    "beds": {
+     "shell": 0,
+     "detail": 184
+    },
+    "nameplate": {
+     "shell": 0,
+     "detail": 60
+    },
+    "mailbox": {
+     "shell": 0,
+     "detail": 64
+    },
+    "lpg": {
+     "shell": 0,
+     "detail": 514
+    },
+    "garden": {
+     "shell": 0,
+     "detail": 444
+    }
+   },
+   "colliders": {
+    "garden": {
+     "collider": [
+      -3,
+      3,
+      -8.375,
+      -5.775
+     ],
+     "solids": [
+      -2.905,
+      2.905,
+      -0.01,
+      1.25,
+      -8.28,
+      -6.07
+     ]
+    },
+    "lpg": {
+     "collider": [
+      3.5,
+      4.9,
+      -6.005,
+      -5.355
+     ],
+     "solids": [
+      3.52,
+      4.88,
+      -0.02,
+      2.18,
+      -6.001,
+      -5.275
+     ]
+    },
+    "porch_1": {
+     "collider": [
+      -5.6,
+      -2.6,
+      3.205,
+      5.375
+     ],
+     "solids": [
+      -5.6,
+      -2.6,
+      -0.02,
+      0.735,
+      3.205,
+      5.375
+     ]
+    },
+    "porch_2": {
+     "collider": [
+      2.6,
+      5.6,
+      3.205,
+      5.375
+     ],
+     "solids": [
+      2.6,
+      5.6,
+      -0.02,
+      1.2,
+      3.205,
+      5.375
+     ]
+    },
+    "porch_3": {
+     "collider": [
+      -2.6,
+      -1.6,
+      5.275,
+      5.375
+     ],
+     "solids": [
+      -2.6,
+      -1.6,
+      0.3,
+      0.38,
+      5.275,
+      5.375
+     ]
+    },
+    "porch_4": {
+     "collider": [
+      1.6,
+      2.6,
+      5.275,
+      5.375
+     ],
+     "solids": [
+      1.6,
+      2.6,
+      0.3,
+      0.38,
+      5.275,
+      5.375
+     ]
+    },
+    "porch_5": {
+     "collider": [
+      -2.42,
+      -2.18,
+      5.035,
+      5.275
+     ],
+     "solids": [
+      -2.414,
+      -2.186,
+      0.3,
+      3.25,
+      5.045,
+      5.265
+     ]
+    },
+    "porch_6": {
+     "collider": [
+      2.18,
+      2.42,
+      5.035,
+      5.275
+     ],
+     "solids": [
+      2.186,
+      2.414,
+      0.3,
+      3.25,
+      5.045,
+      5.265
+     ]
+    }
+   },
+   "fails": []
+  },
+  "house_7": {
+   "kind": "gable",
+   "shell": {
+    "body": 1638,
+    "porch": 154,
+    "total": 1792
+   },
+   "detail": {
+    "body": 3026,
+    "porch": 1720,
+    "total": 4746
+   },
+   "shellMaterials": [
+    "LM_metal",
+    "LM_render",
+    "LM_roof",
+    "LM_stone",
+    "LM_wood",
+    "M_glass",
+    "M_window"
+   ],
+   "detailMaterials": [
+    "LM_metal",
+    "LM_stone",
+    "LM_wood",
+    "M_lamp",
+    "M_leaf_flora",
+    "M_screen"
+   ],
+   "doorClearance": {
+    "metres": 0.314,
+    "nearest": "nameplate/np_back",
+    "at": "lock at 95 deg"
+   },
+   "solids": 268,
+   "cost": {
+    "porch": {
+     "shell": 38,
+     "detail": 64
+    },
+    "roof": {
+     "shell": 116,
+     "detail": 390
+    },
+    "beds": {
+     "shell": 0,
+     "detail": 184
+    },
+    "nameplate": {
+     "shell": 0,
+     "detail": 60
+    },
+    "mailbox": {
+     "shell": 0,
+     "detail": 64
+    },
+    "lpg": {
+     "shell": 0,
+     "detail": 514
+    },
+    "garden": {
+     "shell": 0,
+     "detail": 444
+    }
+   },
+   "colliders": {
+    "garden": {
+     "collider": [
+      -3,
+      3,
+      -8.375,
+      -5.775
+     ],
+     "solids": [
+      -2.905,
+      2.905,
+      -0.01,
+      1.25,
+      -8.28,
+      -6.07
+     ]
+    },
+    "lpg": {
+     "collider": [
+      3.5,
+      4.9,
+      -6.005,
+      -5.355
+     ],
+     "solids": [
+      3.52,
+      4.88,
+      -0.02,
+      2.18,
+      -6.001,
+      -5.275
+     ]
+    },
+    "porch_1": {
+     "collider": [
+      -5.6,
+      -2.6,
+      3.205,
+      5.375
+     ],
+     "solids": [
+      -5.6,
+      -2.6,
+      -0.02,
+      0.735,
+      3.205,
+      5.375
+     ]
+    },
+    "porch_2": {
+     "collider": [
+      2.6,
+      5.6,
+      3.205,
+      5.375
+     ],
+     "solids": [
+      2.6,
+      5.6,
+      -0.02,
+      1.2,
+      3.205,
+      5.375
+     ]
+    },
+    "porch_3": {
+     "collider": [
+      -2.6,
+      -1.6,
+      5.275,
+      5.375
+     ],
+     "solids": [
+      -2.6,
+      -1.6,
+      0.3,
+      0.38,
+      5.275,
+      5.375
+     ]
+    },
+    "porch_4": {
+     "collider": [
+      1.6,
+      2.6,
+      5.275,
+      5.375
+     ],
+     "solids": [
+      1.6,
+      2.6,
+      0.3,
+      0.38,
+      5.275,
+      5.375
+     ]
+    },
+    "porch_5": {
+     "collider": [
+      -2.42,
+      -2.18,
+      5.035,
+      5.275
+     ],
+     "solids": [
+      -2.414,
+      -2.186,
+      0.3,
+      3.25,
+      5.045,
+      5.265
+     ]
+    },
+    "porch_6": {
+     "collider": [
+      2.18,
+      2.42,
+      5.035,
+      5.275
+     ],
+     "solids": [
+      2.186,
+      2.414,
+      0.3,
+      3.25,
+      5.045,
+      5.265
+     ]
+    }
+   },
+   "fails": []
+  },
+  "house_8": {
+   "kind": "canopy",
+   "shell": {
+    "body": 1734,
+    "porch": 46,
+    "total": 1780
+   },
+   "detail": {
+    "body": 3026,
+    "porch": 1636,
+    "total": 4662
+   },
+   "shellMaterials": [
+    "LM_metal",
+    "LM_render",
+    "LM_stone",
+    "LM_wood",
+    "M_glass",
+    "M_window"
+   ],
+   "detailMaterials": [
+    "LM_metal",
+    "LM_stone",
+    "LM_wood",
+    "M_lamp",
+    "M_leaf_flora",
+    "M_screen"
+   ],
+   "doorClearance": {
+    "metres": 0.314,
+    "nearest": "nameplate/np_back",
+    "at": "lock at 95 deg"
+   },
+   "solids": 257,
+   "cost": {
+    "porch": {
+     "shell": 34,
+     "detail": 40
+    },
+    "canopy": {
+     "shell": 4,
+     "detail": 186
+    },
+    "beds": {
+     "shell": 0,
+     "detail": 240
+    },
+    "sconces": {
+     "shell": 8,
+     "detail": 88
+    },
+    "nameplate": {
+     "shell": 0,
+     "detail": 60
+    },
+    "mailbox": {
+     "shell": 0,
+     "detail": 64
+    },
+    "lpg": {
+     "shell": 0,
+     "detail": 514
+    },
+    "garden": {
+     "shell": 0,
+     "detail": 444
+    }
+   },
+   "colliders": {
+    "garden": {
+     "collider": [
+      -3.0,
+      3.0,
+      -8.375,
+      -5.775
+     ],
+     "solids": [
+      -2.905,
+      2.905,
+      -0.01,
+      1.25,
+      -8.28,
+      -6.07
+     ]
+    },
+    "lpg": {
+     "collider": [
+      3.5,
+      4.9,
+      -6.005,
+      -5.355
+     ],
+     "solids": [
+      3.52,
+      4.88,
+      -0.02,
+      2.18,
+      -6.001,
+      -5.275
+     ]
+    },
+    "porch_1": {
+     "collider": [
+      -5.6,
+      -1.6,
+      3.205,
+      5.375
+     ],
+     "solids": [
+      -5.6,
+      -1.6,
+      -0.02,
+      0.735,
+      3.205,
+      5.375
+     ]
+    },
+    "porch_2": {
+     "collider": [
+      1.6,
+      5.6,
+      3.205,
+      5.375
+     ],
+     "solids": [
+      1.6,
+      5.6,
+      -0.02,
+      1.2,
+      3.205,
+      5.375
+     ]
+    }
+   },
+   "fails": []
+  },
+  "house_9": {
+   "kind": "deck",
+   "shell": {
+    "body": 1584,
+    "porch": 46,
+    "total": 1630
+   },
+   "detail": {
+    "body": 2928,
+    "porch": 3000,
+    "total": 5928
+   },
+   "shellMaterials": [
+    "LM_metal",
+    "LM_render",
+    "LM_roof",
+    "LM_stone",
+    "LM_wood",
+    "M_glass",
+    "M_window"
+   ],
+   "detailMaterials": [
+    "LM_metal",
+    "LM_stone",
+    "LM_wood",
+    "M_lamp",
+    "M_leaf_flora",
+    "M_screen"
+   ],
+   "doorClearance": {
+    "metres": 0.314,
+    "nearest": "nameplate/np_back",
+    "at": "lock at 95 deg"
+   },
+   "solids": 169,
+   "cost": {
+    "deck": {
+     "shell": 28,
+     "detail": 1564
+    },
+    "beds": {
+     "shell": 4,
+     "detail": 144
+    },
+    "sconces": {
+     "shell": 8,
+     "detail": 88
+    },
+    "nameplate": {
+     "shell": 0,
+     "detail": 60
+    },
+    "mailbox": {
+     "shell": 0,
+     "detail": 64
+    },
+    "lpg": {
+     "shell": 0,
+     "detail": 514
+    },
+    "flush": {
+     "shell": 6,
+     "detail": 566
+    }
+   },
+   "colliders": {
+    "lpg": {
+     "collider": [
+      3.5,
+      4.9,
+      -6.005,
+      -5.355
+     ],
+     "solids": [
+      3.52,
+      4.88,
+      -0.02,
+      2.18,
+      -6.001,
+      -5.275
+     ]
+    },
+    "porch_1": {
+     "collider": [
+      -5.6,
+      -3.4,
+      3.205,
+      5.375
+     ],
+     "solids": [
+      -5.6,
+      -3.4,
+      -0.02,
+      0.735,
+      3.205,
+      5.375
+     ]
+    },
+    "porch_2": {
+     "collider": [
+      3.4,
+      5.6,
+      3.205,
+      5.375
+     ],
+     "solids": [
+      3.4,
+      5.6,
+      -0.02,
+      1.2,
+      3.205,
+      5.375
+     ]
+    },
+    "porch_3": {
+     "collider": [
+      -3.4,
+      -1.2,
+      5.275,
+      5.375
+     ],
+     "solids": [
+      -3.398,
+      -1.202,
+      0.005,
+      1.145,
+      5.279,
+      5.373
+     ]
+    },
+    "porch_4": {
+     "collider": [
+      1.2,
+      3.4,
+      5.275,
+      5.375
+     ],
+     "solids": [
+      1.202,
+      3.398,
+      0.005,
+      1.145,
+      5.279,
+      5.373
+     ]
+    },
+    "porch_5": {
+     "collider": [
+      -3.4,
+      -3.16,
+      5.035,
+      5.275
+     ],
+     "solids": [
+      -3.37,
+      -3.19,
+      0.3,
+      1.2,
+      5.115,
+      5.275
+     ]
+    },
+    "porch_6": {
+     "collider": [
+      -1.69,
+      -1.45,
+      5.035,
+      5.275
+     ],
+     "solids": [
+      -1.665,
+      -1.485,
+      0.3,
+      1.2,
+      5.115,
+      5.275
+     ]
+    },
+    "porch_7": {
+     "collider": [
+      1.46,
+      1.7,
+      5.035,
+      5.275
+     ],
+     "solids": [
+      1.485,
+      1.665,
+      0.3,
+      1.2,
+      5.115,
+      5.275
+     ]
+    },
+    "porch_8": {
+     "collider": [
+      3.16,
+      3.4,
+      5.035,
+      5.275
+     ],
+     "solids": [
+      3.19,
+      3.37,
+      0.3,
+      1.2,
+      5.115,
+      5.275
+     ]
+    },
+    "porch_9": {
+     "collider": [
+      -3.4,
+      -2.2,
+      3.205,
+      3.705
+     ],
+     "solids": [
+      -3.388,
+      -2.212,
+      0.3,
+      1.13,
+      3.235,
+      3.671
+     ]
+    }
+   },
+   "fails": []
+  },
+  "house_10": {
+   "kind": "deck",
+   "shell": {
+    "body": 1732,
+    "porch": 40,
+    "total": 1772
+   },
+   "detail": {
+    "body": 3026,
+    "porch": 2878,
+    "total": 5904
+   },
+   "shellMaterials": [
+    "LM_metal",
+    "LM_render",
+    "LM_stone",
+    "LM_wood",
+    "M_glass",
+    "M_window"
+   ],
+   "detailMaterials": [
+    "LM_metal",
+    "LM_stone",
+    "LM_wood",
+    "M_lamp",
+    "M_leaf_flora",
+    "M_screen"
+   ],
+   "doorClearance": {
+    "metres": 0.314,
+    "nearest": "nameplate/np_back",
+    "at": "lock at 95 deg"
+   },
+   "solids": 252,
+   "cost": {
+    "deck": {
+     "shell": 28,
+     "detail": 1564
+    },
+    "beds": {
+     "shell": 4,
+     "detail": 144
+    },
+    "sconces": {
+     "shell": 8,
+     "detail": 88
+    },
+    "nameplate": {
+     "shell": 0,
+     "detail": 60
+    },
+    "mailbox": {
+     "shell": 0,
+     "detail": 64
+    },
+    "lpg": {
+     "shell": 0,
+     "detail": 514
+    },
+    "garden": {
+     "shell": 0,
+     "detail": 444
+    }
+   },
+   "colliders": {
+    "garden": {
+     "collider": [
+      -3.6,
+      2.4,
+      -8.375,
+      -5.775
+     ],
+     "solids": [
+      -3.505,
+      2.305,
+      -0.01,
+      1.25,
+      -8.28,
+      -6.07
+     ]
+    },
+    "lpg": {
+     "collider": [
+      -4.9,
+      -3.5,
+      -6.005,
+      -5.355
+     ],
+     "solids": [
+      -4.88,
+      -3.52,
+      -0.02,
+      2.18,
+      -6.001,
+      -5.275
+     ]
+    },
+    "porch_1": {
+     "collider": [
+      -5.6,
+      -3.4,
+      3.205,
+      5.375
+     ],
+     "solids": [
+      -5.6,
+      -3.4,
+      -0.02,
+      0.735,
+      3.205,
+      5.375
+     ]
+    },
+    "porch_2": {
+     "collider": [
+      3.4,
+      5.6,
+      3.205,
+      5.375
+     ],
+     "solids": [
+      3.4,
+      5.6,
+      -0.02,
+      1.2,
+      3.205,
+      5.375
+     ]
+    },
+    "porch_3": {
+     "collider": [
+      -3.4,
+      -1.2,
+      5.275,
+      5.375
+     ],
+     "solids": [
+      -3.398,
+      -1.202,
+      0.005,
+      1.145,
+      5.279,
+      5.373
+     ]
+    },
+    "porch_4": {
+     "collider": [
+      1.2,
+      3.4,
+      5.275,
+      5.375
+     ],
+     "solids": [
+      1.202,
+      3.398,
+      0.005,
+      1.145,
+      5.279,
+      5.373
+     ]
+    },
+    "porch_5": {
+     "collider": [
+      -3.4,
+      -3.16,
+      5.035,
+      5.275
+     ],
+     "solids": [
+      -3.37,
+      -3.19,
+      0.3,
+      1.2,
+      5.115,
+      5.275
+     ]
+    },
+    "porch_6": {
+     "collider": [
+      -1.7,
+      -1.45,
+      5.035,
+      5.275
+     ],
+     "solids": [
+      -1.665,
+      -1.485,
+      0.3,
+      1.2,
+      5.115,
+      5.275
+     ]
+    },
+    "porch_7": {
+     "collider": [
+      1.45,
+      1.69,
+      5.035,
+      5.275
+     ],
+     "solids": [
+      1.485,
+      1.665,
+      0.3,
+      1.2,
+      5.115,
+      5.275
+     ]
+    },
+    "porch_8": {
+     "collider": [
+      3.16,
+      3.4,
+      5.035,
+      5.275
+     ],
+     "solids": [
+      3.19,
+      3.37,
+      0.3,
+      1.2,
+      5.115,
+      5.275
+     ]
+    },
+    "porch_9": {
+     "collider": [
+      -3.4,
+      -2.2,
+      3.205,
+      3.705
+     ],
+     "solids": [
+      -3.388,
+      -2.212,
+      0.3,
+      1.13,
+      3.235,
+      3.671
+     ]
+    }
+   },
+   "fails": []
+  }
+ },
+ "totalTriangles": 68518,
+ "pass": true
+}

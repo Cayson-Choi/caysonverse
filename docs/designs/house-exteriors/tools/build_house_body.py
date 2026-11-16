@@ -27,6 +27,7 @@ from mathutils import Vector
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import house_kit as K  # noqa: E402
+import porch_kit as PK  # noqa: E402  (X2: porches, steps, beds, LPG, gardens, flush decks, owner-slot fittings)
 
 argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
 
@@ -50,6 +51,9 @@ RES = tuple(int(v) for v in arg("--res", "1280x800").split("x"))
 BLEND = arg("--blend")
 ART = arg("--art", os.path.join("D:" + os.sep, "ClaudeCode", "caysonverse", "art", "village"))
 NO_EXPORT = "--no-export" in argv
+NO_PORCH = "--no-porch" in argv
+# the village's flower atlas (village.glb's M_leaf_flora; the game binds that texture, the GLB carries none)
+FLORA = arg("--flora", os.path.join(ART, "work", "tex", "T_flora.png"))
 T0 = time.time()
 
 
@@ -135,6 +139,30 @@ def make_materials(texinfo):
     except Exception:
         pass
     mats["M_screen"] = s
+    # X2: flower / vegetable cards (alpha-clipped, double sided, tinted by COLOR_0 like the village's flora)
+    f = bpy.data.materials.new("M_leaf_flora")
+    f.use_nodes = True
+    nt = f.node_tree
+    b = next(n for n in nt.nodes if n.type == "BSDF_PRINCIPLED")
+    if os.path.exists(FLORA):
+        t = tex_node(nt, FLORA, False)
+        ca = nt.nodes.new("ShaderNodeVertexColor")
+        ca.layer_name = "Col"
+        mix = nt.nodes.new("ShaderNodeMix")
+        mix.data_type = "RGBA"
+        mix.blend_type = "MULTIPLY"
+        mix.inputs[0].default_value = 1.0
+        nt.links.new(t.outputs["Color"], mix.inputs[6])
+        nt.links.new(ca.outputs["Color"], mix.inputs[7])
+        nt.links.new(mix.outputs[2], b.inputs["Base Color"])
+        nt.links.new(t.outputs["Alpha"], b.inputs["Alpha"])
+    b.inputs["Roughness"].default_value = 0.65
+    try:
+        f.surface_render_method = "DITHERED"
+    except Exception:
+        pass
+    f.use_backface_culling = False
+    mats["M_leaf_flora"] = f
     return mats
 
 
@@ -229,7 +257,13 @@ def patch_glb(path):
             pbr["baseColorFactor"] = [1, 1, 1, 1]
             pbr["metallicFactor"] = 0.0
             pbr["roughnessFactor"] = 1.0
-        m["doubleSided"] = m["name"] in ("M_screen",)
+        m["doubleSided"] = m["name"] in ("M_screen", "M_leaf_flora")
+        if m["name"] == "M_leaf_flora":
+            m["alphaMode"] = "MASK"
+            m["alphaCutoff"] = 0.5
+            pbr["baseColorFactor"] = [1, 1, 1, 1]
+            pbr["metallicFactor"] = 0.0
+            pbr["roughnessFactor"] = 0.65
         if m["name"] == "M_window":
             m["emissiveFactor"] = [1.0, 0.62, 0.30]
             m.setdefault("extensions", {})["KHR_materials_emissive_strength"] = {"emissiveStrength": 0.0}
@@ -238,7 +272,8 @@ def patch_glb(path):
                 js["extensionsUsed"].append("KHR_materials_emissive_strength")
     for k in ("textures", "images", "samplers"):
         js.pop(k, None)
-    js.setdefault("asset", {})["extras"] = {"caysonverse": "village_houses X1 body kit", "textures": "houses/house_textures.json"}
+    js.setdefault("asset", {})["extras"] = {"caysonverse": "village_houses X1 body kit + X2 porch kit", "textures": "houses/house_textures.json",
+                                           "flora": "village.glb M_leaf_flora (T_flora)"}
     blob = json.dumps(js, separators=(",", ":")).encode("utf-8")
     blob += b" " * ((4 - len(blob) % 4) % 4)
     out = struct.pack("<III", 0x46546C67, 2, 12 + 8 + len(blob) + len(rest)) + struct.pack("<II", len(blob), 0x4E4F534A) + blob + rest
@@ -329,6 +364,10 @@ def cam_world(house, p):
     return Vector((x, -z, p[1]))
 
 
+# mirrored views (house 10's LPG sits on the other corner)
+MIRROR_VIEWS = {"lpg"}
+
+
 VIEWDEF = {
     # name: (camera local (x, y, z), target local, lens mm)
     "street": ((-7.5, 1.6, K.ZF + 13.5), (0.3, 4.9, K.ZC + 1.0), 24),
@@ -339,6 +378,17 @@ VIEWDEF = {
     "door": ((0.55, 1.9, K.ZF + 1.15), (0.25, 1.5, K.ZF), 24),
     "eave": ((K.HB + 0.9, 6.7, K.ZF + 1.6), (K.HB + 0.15, 7.9, K.ZF + 0.55), 22),
     "roof": ((-K.HB - 1.5, 9.6, K.ZF + 2.2), (-1.5, 9.4, K.ZC + 1.2), 30),
+    # X2 porch views: the porch 3/4 at 6 m, and 1 m close-ups (eye 1.6 m over the lawn or the porch)
+    "porch": ((-4.6, 1.75, PK.HZ + 4.2), (0.2, 1.3, K.ZF + 0.6), 26),
+    "steps": ((1.15, 1.25, PK.HZ + 1.55), (0.55, 0.08, PK.HZ + 0.25), 26),
+    "deck": ((2.6, 1.9, PK.HZ + 0.7), (1.5, 0.28, K.ZF + 0.9), 24),
+    "post": ((1.25, 1.9, PK.HZ - 0.55), (2.3, 0.75, 5.155), 24),
+    "mailbox": ((-0.95, 1.9, K.ZF + 1.0), (-1.55, 1.42, K.ZF + 0.1), 26),
+    "lpg": ((2.6, 1.6, K.ZB - 1.9), (4.2, 0.95, K.ZB - 0.3), 22),
+    "garden": ((-4.6, 1.7, K.ZB - 5.4), (-0.4, 0.2, K.ZB - 1.8), 24),
+    "bed": ((3.0, 1.85, PK.HZ + 1.1), (4.2, 0.35, K.ZF + 0.9), 24),
+    "flush": ((9.6, 1.6, 5.5), (6.6, 0.2, 0.0), 24),
+    "back": ((-3.5, 1.7, K.ZB - 5.5), (0.0, 0.6, K.ZB - 0.5), 24),
 }
 
 
@@ -378,10 +428,25 @@ def render_house(house, H, outdir):
         lo = bpy.data.objects.new(ld.name, ld)
         lo.location = cam_world(house, (x, y, z))
         sc.collection.objects.link(lo)
+    # X2: the porch lamps' warm pools at night (the game's night light map, X4, bakes them)
+    kind = PK.KIND.get(H.id)
+    lamps = ([(0.0, 3.35, 4.19)] if kind == "gable" else
+             [(-0.65, 3.4, K.ZF + 0.85), (0.65, 3.4, K.ZF + 0.85)] if kind == "canopy" and H.id not in PK.GLASS_CANOPY else
+             [(-1.3, 2.3, K.ZF + 0.2), (1.3, 2.3, K.ZF + 0.2)])
+    for i, (x, y, z) in enumerate(lamps if not NO_PORCH else []):
+        ld = bpy.data.lights.new("winlight_porch_%s_%d" % (H.id, i), "POINT")
+        ld.energy = 60
+        ld.color = (1.0, 0.75, 0.5)
+        ld.shadow_soft_size = 0.06
+        lo = bpy.data.objects.new(ld.name, ld)
+        lo.location = cam_world(house, (x, y, z))
+        sc.collection.objects.link(lo)
     for t in TIMES:
         setup_world(t == "day", house)
         for v in VIEWS:
             p, q, lens = VIEWDEF[v]
+            if v in MIRROR_VIEWS and H.id in PK.LPG_MIRROR:
+                p, q = (-p[0], p[1], p[2]), (-q[0], q[1], q[2])
             cam.location = cam_world(house, p)
             d = cam_world(house, q) - cam.location
             cam.rotation_euler = d.to_track_quat("-Z", "Y").to_euler()
@@ -413,6 +478,8 @@ def main():
     built, objs, report = {}, [], {"houses": {}}
     for i, hid in enumerate(ids):
         H = K.build_house(hid, colours[hid], table["houses"][hid], 1000 + int(hid.split("_")[1]))
+        if not NO_PORCH:
+            PK.build_porch(H)
         hx = hxs[hid]
         so = part_object(H.shell, hx, mats)
         do = part_object(H.detail, hx, mats)

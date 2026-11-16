@@ -1,22 +1,33 @@
 /**
  * The A8 house body kit's output (X1, docs/designs/house-exteriors/tools/build_house_body.py): village_houses.glb and the
  * houses' PBR tiling sets checked against the contract (houseExterior.ts HOUSE_GLB_BUDGET, HOUSE_SURFACE_RULES; design 8 A1,
- * A4, A6). X2 adds the porches into the same `housedetail__` nodes, so the body detail keeps room for them: at most 5 detail
- * materials (X2 adds M_leaf_flora: contract 5's 6 draws) and a share of the 6,000-triangle detail budget.
+ * A4,
+ * A6). X2 (porch_kit.py, 2026-11-17) adds the porches, steps, beds, LPG, gardens, flush decks and owner-slot fittings into
+ * the same nodes: each house's detail <= 6,000 triangles and 6 materials (M_leaf_flora the sixth), its shell <= 1,800; and
+ * check_porch.py's report (x2/porch_check.json) proves every porch solid against the contract's colliders, lift zones,
+ * the body and the front door's swing — this file checks that report against houseExterior.ts.
  */
 import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { parseGlb, type Gltf } from "../../../scripts/lib/schoolGlb";
-import { HOUSE_GLB_BUDGET, HOUSE_SURFACE_RULES, houseDetailNode, houseShellNode, houseSlotNode } from "@caysonverse/shared/village/houseExterior";
+import {
+  HOUSE_GLB_BUDGET,
+  HOUSE_SURFACE_RULES,
+  houseDetailNode,
+  houseExteriorColliders,
+  houseShellNode,
+  houseSlotNode,
+  houseWorldToLocal,
+} from "@caysonverse/shared/village/houseExterior";
+import { VILLAGE_LAYOUT } from "@caysonverse/shared/village/villageLayout";
 
 const REPO = path.resolve(__dirname, "..", "..", "..");
 const MODELS = path.join(REPO, "client", "public", "models", "village");
 const GLB = path.join(MODELS, "village_houses.glb");
 const TEX = path.join(MODELS, "houses");
 const IDS = Array.from({ length: 10 }, (_, i) => `house_${i + 1}`);
-/** The body kit's own share of a house's detail budget (the rest is the porch kit's, X2). */
-const BODY_DETAIL_MAX = 3_400;
+const PORCH_CHECK = path.join(REPO, "docs", "designs", "house-exteriors", "x2", "porch_check.json");
 
 function load(): Gltf {
   return parseGlb(new Uint8Array(fs.readFileSync(GLB))).gltf;
@@ -47,14 +58,14 @@ describe("village_houses.glb (A8 house body kit)", () => {
     }
   });
 
-  it("stays in the triangle budgets, leaving the porch kit its share of the detail (A1)", () => {
+  it("stays in the triangle budgets with the porch kit in (A1)", () => {
     const g = load();
     let total = 0;
     for (const id of IDS) {
       const s = meshTris(g, node(g, houseShellNode(id)).mesh!);
       const d = meshTris(g, node(g, houseDetailNode(id)).mesh!);
       expect(s, id).toBeLessThanOrEqual(HOUSE_GLB_BUDGET.shellTriangles);
-      expect(d, id).toBeLessThanOrEqual(BODY_DETAIL_MAX);
+      expect(d, id).toBeLessThanOrEqual(HOUSE_GLB_BUDGET.detailTriangles);
       total += s + d;
     }
     expect(total).toBeLessThanOrEqual(HOUSE_GLB_BUDGET.totalTriangles);
@@ -68,7 +79,7 @@ describe("village_houses.glb (A8 house body kit)", () => {
     expect(g.images ?? []).toHaveLength(0);
     for (const id of IDS) {
       expect(g.meshes![node(g, houseShellNode(id)).mesh!]!.primitives.length, id).toBeLessThanOrEqual(HOUSE_GLB_BUDGET.shellDraws);
-      expect(g.meshes![node(g, houseDetailNode(id)).mesh!]!.primitives.length, id).toBeLessThanOrEqual(HOUSE_GLB_BUDGET.detailDraws - 1);
+      expect(g.meshes![node(g, houseDetailNode(id)).mesh!]!.primitives.length, id).toBeLessThanOrEqual(HOUSE_GLB_BUDGET.detailDraws);
     }
     expect(fs.statSync(GLB).size).toBeLessThanOrEqual(HOUSE_GLB_BUDGET.maxBytes);
   });
@@ -95,5 +106,60 @@ describe("village_houses.glb (A8 house body kit)", () => {
     expect(meta.mapSide).toBeLessThanOrEqual(HOUSE_SURFACE_RULES.mapSide);
     expect(bytes).toBeLessThanOrEqual(HOUSE_SURFACE_RULES.setsMaxBytes);
     for (const s of HOUSE_SURFACE_RULES.sets) expect(sets, s).toContain(s);
+  });
+
+  it("draws the beds' and gardens' planting spots with the village's flora material, alpha-clipped (X2)", () => {
+    const g = load();
+    const flora = g.materials!.find((m) => m.name === "M_leaf_flora");
+    expect(flora).toBeDefined();
+    expect((flora as { alphaMode?: string }).alphaMode).toBe("MASK");
+    for (const id of IDS) {
+      const prims = g.meshes![node(g, houseDetailNode(id)).mesh!]!.primitives;
+      expect(prims.some((p) => g.materials![p.material!]!.name === "M_leaf_flora"), id).toBe(true);
+    }
+  });
+});
+
+interface PorchReport {
+  pass: boolean;
+  totalTriangles: number;
+  houses: Record<
+    string,
+    {
+      fails: string[];
+      doorClearance: { metres: number };
+      colliders: Record<string, { collider: number[]; solids: number[] }>;
+    }
+  >;
+}
+
+describe("porch kit check (X2, check_porch.py report)", () => {
+  const rep = JSON.parse(fs.readFileSync(PORCH_CHECK, "utf8")) as PorchReport;
+
+  it("passes every check for the ten houses (contract, colliders, walk zones, clips, door swing, budgets, texels)", () => {
+    expect(rep.pass).toBe(true);
+    for (const id of IDS) expect(rep.houses[id]!.fails, id).toEqual([]);
+    expect(rep.totalTriangles).toBeLessThanOrEqual(HOUSE_GLB_BUDGET.totalTriangles);
+  });
+
+  it("keeps the front door's swing at least 5 cm from every porch part (owner 2026-11-17)", () => {
+    for (const id of IDS) expect(rep.houses[id]!.doorClearance.metres, id).toBeGreaterThanOrEqual(0.05);
+  });
+
+  it("builds to the contract's colliders: each one has its parts inside it, to the centimetre", () => {
+    for (const h of VILLAGE_LAYOUT.sceneryHouses.filter((q) => IDS.includes(q.id))) {
+      const r = rep.houses[h.id]!;
+      const want = houseExteriorColliders(h);
+      expect(Object.keys(r.colliders).length, h.id).toBe(want.length);
+      for (const c of want) {
+        const key = c.id.startsWith("garden_") ? "garden" : c.id.replace(`${h.id}_`, "");
+        const got = r.colliders[key];
+        expect(got, `${h.id} ${key}`).toBeDefined();
+        const a = houseWorldToLocal(h, c.box.minX, c.box.minZ);
+        const b = houseWorldToLocal(h, c.box.maxX, c.box.maxZ);
+        const local = [Math.min(a.lx, b.lx), Math.max(a.lx, b.lx), Math.min(a.lz, b.lz), Math.max(a.lz, b.lz)];
+        for (let i = 0; i < 4; i++) expect(Math.abs(got!.collider[i]! - local[i]!), `${h.id} ${key} [${i}]`).toBeLessThanOrEqual(0.011);
+      }
+    }
   });
 });
