@@ -3,6 +3,7 @@ import { TRANSIT } from "@caysonverse/shared/village/transit";
 import { HOUSE_KEYPAD_REACH_M, keypadEntries } from "@caysonverse/shared/village/buildingAccess";
 import { GUIDE_ASK_LABEL, nearestGuide } from "@caysonverse/shared/village/guides";
 import type { InteractTarget } from "../game/interact";
+import { BUS_HOLDS, BUS_SEATS, busHoldNumber, busPlaceOf, busSeatNumber, inExitZone, nearestFreeSpot } from "@caysonverse/shared/village/busCabin";
 
 /**
  * What the village offers at a spot (케이슨 마을, Task 4) — pure: the scene hands it the local area and pose at
@@ -102,10 +103,9 @@ export function busCountdownWords(ms: number): { long: string; short: string } {
  * `boardingNow`: the bus is taking riders (shared transit.ts TRANSIT.boardingMs: the 3 min before each departure, by the server's clock as the
  * bus snapshots carry it, transitSync.ts transitNowMs). `departsInMs`: how long until the next bus leaves.
  *
- * The way to ride is never hidden (review 2026-11-15: a first-time player at the stop must see how and when): outside the
- * boarding window the button is still there and counts down to the next departure ("버스 타기 · 7분 뒤 출발",
- * touch: "7분 뒤"); pressing it says when the bus leaves and that boarding opens 3 min before (VillageScene).
- * It always gives a free seat in reach the key (`yieldsToSeat`: the shelter's bench and the café chairs 97/98 sit inside
+ * The way to ride stays visible (review 2026-11-15) as a key-less chip (busStopHint.ts: when the next bus leaves and when boarding
+ * opens); the board ACTION exists only while the bus stands at the stop with its doors open (2026-11-15 check: the button with a
+ * countdown on it while the bus was away was confusing). It gives a free seat in reach the key (`yieldsToSeat`: the shelter's bench and the café chairs 97/98 sit inside
  * or by its area; owner 2026-11-13: 정류장 벤치에 앉을 수가 없어). With boarding open for 3 minutes (owner 2026-11-15)
  * riders wait on the bench like at a real stop, then stand and step towards the bus: no seat is in reach on the pad's
  * road half and at the doors, so there the button has the key (the stop's pill says so). "Leave" never yields, and is
@@ -129,18 +129,77 @@ export function villageBusTarget(
     if (busOnRoad) return null;
     return { kind: "object", id: BUS_RIDE_TARGET_LEAVE, dist, icon: "🚌", label: "버스에서 내리기", short: "하차", priority: 2 };
   }
-  const waiting = !boardingNow && departsInMs !== undefined && Number.isFinite(departsInMs);
-  const words = waiting ? busCountdownWords(departsInMs) : null;
+  // Not taking riders (the bus is away, or it stands at the stop with its doors still shut): no action at all (2026-11-15
+  // check: "E 버스 타기 · 10분 뒤 출발" showed on PC while the bus was away). The stop's timetable chip (busStopHint.ts, no
+  // key) says when it comes and when boarding opens.
+  if (!boardingNow || busOnRoad) return null;
+  void departsInMs;
   return {
     kind: "object",
     id: BUS_RIDE_TARGET_BOARD,
     dist,
     icon: "🚌",
-    label: words ? `버스 타기 · ${words.long} 뒤 출발` : "버스 타기",
-    short: words ? words.short : "탑승",
+    label: "버스 타기",
+    short: "탑승",
     priority: 2,
     yieldsToSeat: true,
   };
+}
+
+/** The target ids inside the bus: `bus_sit:seat:<index>` / `bus_sit:hold:<index>` (sit down / take hold) and `bus_stand` (get up). */
+export const BUS_SIT_TARGET_PREFIX = "bus_sit:";
+export const BUS_STAND_TARGET_ID = "bus_stand";
+
+/**
+ * What the bus offers a rider aboard (owner 2026-11-15: sit or stand, walk inside): free in the aisle, the nearest free
+ * seat or hold spot in reach (a backed seat only from its front: busCabin.ts nearestFreeSpot) — "앉기" or "손잡이 잡기";
+ * in front of the middle door while the bus stands, "내리기" first; seated or holding, "일어나기". `taken`: the busSeat numbers
+ * other riders hold. Nothing here is a world target (the door, a guide): aboard, those are not in reach.
+ */
+export function villageBusCabinTargets(
+  busSeat: number,
+  ahead: number,
+  right: number,
+  taken: ReadonlySet<number>,
+  busOnRoad: boolean,
+  riders?: ReadonlyArray<{ ahead: number; right: number }>,
+  yaw?: number,
+): readonly InteractTarget[] {
+  const place = busPlaceOf(busSeat);
+  const out: InteractTarget[] = [];
+  if (place.kind !== "free") {
+    out.push({ kind: "object", id: BUS_STAND_TARGET_ID, dist: 0, icon: "🧍", label: "일어나기", short: "일어나기", priority: 2 });
+    return out;
+  }
+  if (!busOnRoad && inExitZone(ahead, right)) {
+    out.push({ kind: "object", id: BUS_RIDE_TARGET_LEAVE, dist: 0, icon: "🚪", label: "버스에서 내리기", short: "하차", priority: 4 });
+  }
+  const takenSeats = new Set<number>();
+  const takenHolds = new Set<number>();
+  BUS_SEATS.forEach((_s, i) => {
+    if (taken.has(busSeatNumber(i))) takenSeats.add(i);
+  });
+  BUS_HOLDS.forEach((_h, i) => {
+    if (taken.has(busHoldNumber(i))) takenHolds.add(i);
+  });
+  const spot = nearestFreeSpot(ahead, right, takenSeats, takenHolds, riders, yaw);
+  if (spot) {
+    out.push(
+      spot.kind === "seat"
+        ? { kind: "object", id: `${BUS_SIT_TARGET_PREFIX}seat:${spot.index}`, dist: spot.dist, icon: "🪑", label: `앉기 (${BUS_SEATS[spot.index]!.id}번 자리)`, short: "앉기", priority: 3 }
+        : { kind: "object", id: `${BUS_SIT_TARGET_PREFIX}hold:${spot.index}`, dist: spot.dist, icon: "✋", label: "손잡이 잡고 서기", short: "잡기", priority: 3 },
+    );
+  }
+  return out;
+}
+
+/** The spot a `bus_sit:` target id names (`seat` or `hold`, and its index), or null. */
+export function parseBusSitTarget(id: string): { kind: "seat" | "hold"; index: number } | null {
+  if (!id.startsWith(BUS_SIT_TARGET_PREFIX)) return null;
+  const [kind, idx] = id.slice(BUS_SIT_TARGET_PREFIX.length).split(":");
+  const index = Number(idx);
+  if ((kind !== "seat" && kind !== "hold") || !Number.isInteger(index)) return null;
+  return { kind, index };
 }
 
 /** How near (m, on the ground) to a cubby column its close-up is offered (brief: 1.2 m). The server lets a candle be lit from 1.5 m. */

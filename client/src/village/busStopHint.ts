@@ -1,4 +1,4 @@
-import { boardingOpensWords, busTripAt, type BusTrip } from "@caysonverse/shared/village/transit";
+import { TRANSIT, boardingOpensWords, busTripAt, type BusTrip } from "@caysonverse/shared/village/transit";
 import { busBoardingDistance } from "@caysonverse/shared/village/villageLayout";
 import { BUS_OFFER_REACH_M, busCountdownWords } from "./villageTargets";
 
@@ -30,8 +30,14 @@ export function busStopHintAt(
   const trip = tripAt(nowMs);
   if (trip.status === "boarding") {
     // a phone has no E key: the round 🚌 button is how it boards (review 2026-11-15)
-    const how = touch ? "버스 앞에서 🚌 버튼" : "버스 앞에서 E / 🚌";
+    const how = touch ? "버스 앞에서 🚌 버튼" : "버스 앞에서 E";
     return { tone: "board", text: `지금 탈 수 있어요 · ${busCountdownWords(trip.startMs - nowMs).long} 뒤 출발 (${how})` };
+  }
+  if (trip.status === "inTransit") {
+    // "약 N분": just after the departure the exact whole-minute countdown rounded UP to a full cycle ("10분 뒤" 40 s after it left)
+    const left = Math.max(0, trip.nextStartMs - nowMs);
+    const words = left > TRANSIT.boardingMs ? `약 ${Math.max(1, Math.round(left / 60000))}분` : busCountdownWords(left).long;
+    return { tone: "wait", text: `버스 운행 중 · ${words} 뒤 출발 · 출발 ${boardingOpensWords()} 전부터 탈 수 있어요` };
   }
   // one countdown only (review 2026-11-15: a second, rounded one for the boarding window disagreed with the first)
   return { tone: "wait", text: `다음 버스 ${busCountdownWords(trip.nextStartMs - nowMs).long} 뒤 출발 · 출발 ${boardingOpensWords()} 전부터 탈 수 있어요` };

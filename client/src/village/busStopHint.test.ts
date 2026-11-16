@@ -16,15 +16,27 @@ describe("busStopHintAt — the stop's timetable line (review 2026-11-15)", () =
     // one countdown (review 2026-11-15: "4분 뒤 출발 · 20초 뒤부터" disagreed with itself)
     expect(busStopHintAt(s.x, s.z, base + every - 200_000, false)!.text).toBe("다음 버스 4분 뒤 출발 · 출발 3분 전부터 탈 수 있어요");
   });
+  it("while the bus is out on its lap the chip says it is running and when the next one leaves, with no key (2026-11-15 check)", () => {
+    // 20 s after a departure the bus is on the road (inTransit)
+    const h = busStopHintAt(s.x, s.z, base + 20_000, false)!;
+    expect(h).not.toBeNull();
+    expect(h.tone).toBe("wait");
+    expect(h.text).toMatch(/^버스 운행 중 · .+ 뒤 출발/);
+    expect(h.text).not.toMatch(/E/);
+  });
+  it("40 s after a departure the next one is about 9 minutes away, not rounded up to a whole cycle (review r1: it said 10분)", () => {
+    const h = busStopHintAt(s.x, s.z, base + 40_000, false)!;
+    expect(h.text).toMatch(/^버스 운행 중 · 약 9분 뒤 출발/);
+  });
   it("in the 3 boarding minutes: board now, by the bus", () => {
     const h = busStopHintAt(s.x, s.z, base + every - 12_000, false)!;
     expect(h.tone).toBe("board");
-    expect(h.text).toBe("지금 탈 수 있어요 · 12초 뒤 출발 (버스 앞에서 E / 🚌)");
+    expect(h.text).toBe("지금 탈 수 있어요 · 12초 뒤 출발 (버스 앞에서 E)");
     const open = busStopHintAt(s.x, s.z, base + every - TRANSIT.boardingMs, false)!;
     expect(open.tone).toBe("board");
     expect(open.text).toContain("지금 탈 수 있어요 · 3분 뒤 출발");
     // inside the window minutes and seconds: never a rounded-up "3분" that reads as if boarding just opened
-    expect(busStopHintAt(s.x, s.z, base + every - 121_000, false)!.text).toBe("지금 탈 수 있어요 · 2분 1초 뒤 출발 (버스 앞에서 E / 🚌)");
+    expect(busStopHintAt(s.x, s.z, base + every - 121_000, false)!.text).toBe("지금 탈 수 있어요 · 2분 1초 뒤 출발 (버스 앞에서 E)");
     expect(busStopHintAt(s.x, s.z, base + every - TRANSIT.boardingMs - 1, false)!.tone).toBe("wait");
   });
   it("a phone has no E key: its line names the 🚌 button only (review 2026-11-15)", () => {

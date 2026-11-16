@@ -61,10 +61,16 @@ export class Player extends Schema {
   // 케이슨 마을: which area the player is in — "village" (the open village) or "hall" (inside the memorial hall,
   // where the room is quiet: no emoji, no jumping). Written by VillageRoom at join and on every door use.
   @type("string") area: AreaId = "village";
-  // 케이슨 마을's bus: -1 = not on it; 0.. = the rider's place in the bus (shared village/busSeats.ts), given by
-  // VillageRoom on boarding. Every client draws a rider there, in the moving bus (owner 2026-11-15: the rider stood
-  // outside on the pad); x/z keep where they boarded until the server puts them down at the door on getting off.
+  // 케이슨 마을's bus: -1 = not aboard; 0 = aboard and free (walking or standing in the aisle); 1..SEATS = seated in
+  // BUS_SEATS[busSeat - 1]; above that, standing at a hold spot with a hand on its pole (shared village/busCabin.ts).
+  // The rider is a person in the moving bus's own frame (owner 2026-11-15: walk inside, sit or stand, look out every
+  // window): `busAhead` / `busRight` / `busYaw` are the position (m ahead of the bus's middle, m towards its doors) and the
+  // facing's offset from its heading. The server also keeps x/z/yaw at the rider's world pose every tick (proximity, chat
+  // bubbles), until it puts them down at the door on getting off.
   @type("int8") busSeat = -1;
+  @type("float32") busAhead = 0;
+  @type("float32") busRight = 0;
+  @type("float32") busYaw = 0;
 }
 
 /** The village room's synced state: every connected player, keyed by session id. */

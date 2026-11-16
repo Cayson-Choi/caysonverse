@@ -49,71 +49,110 @@ export function busLocal(pose: BusBodyPose, x: number, z: number): { ahead: numb
   return { ahead: dx * fx + dz * fz, right: -dx * fz + dz * fx };
 }
 
-function busWorld(pose: BusBodyPose, ahead: number, right: number): { x: number; z: number } {
+/** The world (x, z) of a bus-frame point (`ahead` along the heading, `right` towards the doors). */
+export function busWorld(pose: BusBodyPose, ahead: number, right: number): { x: number; z: number } {
   const fx = Math.sin(pose.yaw);
   const fz = Math.cos(pose.yaw);
   return { x: pose.x + fx * ahead - fz * right, z: pose.z + fz * ahead + fx * right };
 }
 
 /**
- * How far (m) a circle of radius `r` at (x, z) is from the body: negative = the circle overlaps it by that much (the
- * exact closest-point distance to the rectangle, minus r; inside the rectangle, minus the depth to its nearest face).
+ * The body's side mirrors (village_bus.glb mirror(): rabbit ears at head height). One bus-local rectangle each, a little
+ * overlapping the body's front corners (no seam), reaching `BUS_MIRROR_REACH` past the box: 0.27 m out, 0.37 m ahead.
+ * They are part of the one solid the avatars and the camera meet (2026-11-15 check: the moving bus had no mirror
+ * collision while the parked one had its own boxes).
  */
-export function busClearance(pose: BusBodyPose, x: number, z: number, r: number): number {
-  const { ahead, right } = busLocal(pose, x, z);
-  const ox = Math.abs(ahead) - BUS_BODY.halfLength;
-  const oz = Math.abs(right) - BUS_BODY.halfWidth;
+export const BUS_MIRRORS = {
+  side: 0.27,
+  ahead: 0.37,
+} as const;
+
+/** A bus-local rectangle (m): `a0..a1` along the heading, `r0..r1` towards the doors. */
+export interface BusRect {
+  a0: number;
+  a1: number;
+  r0: number;
+  r1: number;
+  /** The mirror's side (+1 door side, -1 the other), 0 for the body. A mirror is never pushed across the body. */
+  mirror: -1 | 0 | 1;
+}
+
+/** The solid shapes of the bus in its own frame: the body and the two mirrors. */
+export const BUS_SHAPES: readonly BusRect[] = [
+  { a0: -BUS_BODY.halfLength, a1: BUS_BODY.halfLength, r0: -BUS_BODY.halfWidth, r1: BUS_BODY.halfWidth, mirror: 0 },
+  { a0: BUS_BODY.halfLength - 0.1, a1: BUS_BODY.halfLength + BUS_MIRRORS.ahead, r0: BUS_BODY.halfWidth - 0.1, r1: BUS_BODY.halfWidth + BUS_MIRRORS.side, mirror: 1 },
+  { a0: BUS_BODY.halfLength - 0.1, a1: BUS_BODY.halfLength + BUS_MIRRORS.ahead, r0: -BUS_BODY.halfWidth - BUS_MIRRORS.side, r1: -BUS_BODY.halfWidth + 0.1, mirror: -1 },
+];
+
+function rectClearance(rc: BusRect, ahead: number, right: number, r: number): number {
+  const ox = Math.max(rc.a0 - ahead, ahead - rc.a1);
+  const oz = Math.max(rc.r0 - right, right - rc.r1);
   if (ox <= 0 && oz <= 0) return Math.max(ox, oz) - r;
   return Math.hypot(Math.max(ox, 0), Math.max(oz, 0)) - r;
 }
 
 /**
- * Where a circle (radius `r`) at (x, z) must be put so it is clear of the bus body, or null when it already is (by at
- * least `skin`). The candidates are the four faces (the circle moved straight out across each, just past it); the
- * nearest one wins, except that the bus's front (where it is going) is taken only when neither flank nor the rear is
- * free — pushed ahead, the bus would push the avatar again at once. A candidate inside a static obstacle (`blocked`) is
- * skipped; if all four are, the nearest is taken anyway (never left inside the bus).
- *
- * A circle off a corner (beside the body's end) is put out along the corner's outward direction instead, so grazing a
- * corner pushes it round it rather than across the whole body.
+ * How far (m) a circle of radius `r` at (x, z) is from the bus (body and mirrors): negative = the circle overlaps it by
+ * that much (the exact closest-point distance to the nearest shape, minus r; inside a shape, minus the depth to its
+ * nearest face).
  */
-export function pushOutOfBus(
-  pose: BusBodyPose,
-  x: number,
-  z: number,
-  r: number,
-  blocked: ((x: number, z: number) => boolean) | null = null,
-  skin = BUS_PUSH_SKIN,
-): { x: number; z: number } | null {
-  const clearance = busClearance(pose, x, z, r);
-  if (clearance >= skin) return null;
+export function busClearance(pose: BusBodyPose, x: number, z: number, r: number): number {
   const { ahead, right } = busLocal(pose, x, z);
-  const hl = BUS_BODY.halfLength;
-  const hw = BUS_BODY.halfWidth;
+  let best = Number.POSITIVE_INFINITY;
+  for (const rc of BUS_SHAPES) best = Math.min(best, rectClearance(rc, ahead, right, r));
+  return best;
+}
+
+/**
+ * One push out of one shape: the candidates are its faces (the circle moved straight out across each, just past it); the
+ * nearest one wins, except that the front (where the bus is going) is taken only when nothing else is free (pushed ahead,
+ * the bus would push the avatar again at once). A mirror is pushed out sideways or ahead only, never across the body. A
+ * candidate inside a static obstacle (`blocked`) is skipped; if all are, the nearest is taken anyway.
+ */
+function pushOutOfRect(
+  pose: BusBodyPose,
+  rc: BusRect,
+  ahead: number,
+  right: number,
+  r: number,
+  blocked: ((x: number, z: number) => boolean) | null,
+  skin: number,
+): { x: number; z: number } {
   const out = r + skin + BUS_PUSH_MARGIN;
-  const ox = Math.abs(ahead) - hl;
-  const oz = Math.abs(right) - hw;
+  const ox = Math.max(rc.a0 - ahead, ahead - rc.a1);
+  const oz = Math.max(rc.r0 - right, right - rc.r1);
   const candidates: Array<{ ahead: number; right: number; cost: number; front: boolean }> = [];
   if (ox > 0 && oz > 0) {
     // off a corner: straight out from the corner, then the faces as a fallback
     const d = Math.hypot(ox, oz);
-    const cornerA = Math.sign(ahead) * hl;
-    const cornerR = Math.sign(right) * hw;
+    const sa = ahead > rc.a1 ? 1 : -1;
+    const sr = right > rc.r1 ? 1 : -1;
+    const cornerA = sa > 0 ? rc.a1 : rc.a0;
+    const cornerR = sr > 0 ? rc.r1 : rc.r0;
     candidates.push({
-      ahead: cornerA + (ox / d) * out * Math.sign(ahead),
-      right: cornerR + (oz / d) * out * Math.sign(right),
+      ahead: cornerA + (ox / d) * out * sa,
+      right: cornerR + (oz / d) * out * sr,
       cost: out - d,
       front: false,
     });
   }
-  const rightSide = hw + out;
-  const frontEnd = hl + out;
-  candidates.push(
-    { ahead, right: rightSide, cost: Math.abs(rightSide - right), front: false },
-    { ahead, right: -rightSide, cost: Math.abs(-rightSide - right), front: false },
-    { ahead: -frontEnd, right, cost: Math.abs(-frontEnd - ahead), front: false },
-    { ahead: frontEnd, right, cost: Math.abs(frontEnd - ahead), front: true },
-  );
+  const rightSide = rc.r1 + out;
+  const leftSide = rc.r0 - out;
+  const frontEnd = rc.a1 + out;
+  const backEnd = rc.a0 - out;
+  if (rc.mirror === 0) {
+    candidates.push(
+      { ahead, right: rightSide, cost: Math.abs(rightSide - right), front: false },
+      { ahead, right: leftSide, cost: Math.abs(leftSide - right), front: false },
+      { ahead: backEnd, right, cost: Math.abs(backEnd - ahead), front: false },
+      { ahead: frontEnd, right, cost: Math.abs(frontEnd - ahead), front: true },
+    );
+  } else {
+    // a mirror: out to its own side, or ahead of it (the body is on its other side, the flank behind is the body's)
+    if (rc.mirror > 0) candidates.push({ ahead, right: rightSide, cost: Math.abs(rightSide - right), front: false });
+    else candidates.push({ ahead, right: leftSide, cost: Math.abs(leftSide - right), front: false });
+    candidates.push({ ahead: frontEnd, right, cost: Math.abs(frontEnd - ahead), front: true });
+  }
   // the front last: only when nothing else is free (the bus drives on into whoever it put there)
   const ordered = candidates
     .filter((c) => !c.front)
@@ -125,6 +164,43 @@ export function pushOutOfBus(
   }
   const nearest = candidates.slice().sort((a, b) => a.cost - b.cost)[0]!;
   return busWorld(pose, nearest.ahead, nearest.right);
+}
+
+/**
+ * Where a circle (radius `r`) at (x, z) must be put so it is clear of the bus (body and mirrors), or null when it already
+ * is (by at least `skin`). Up to three rounds: each pushes the circle out of the deepest shape it overlaps (a push out of
+ * a mirror may land it against the body). A circle off a corner (beside the body's end) is put out along the corner's
+ * outward direction instead, so grazing a corner pushes it round it rather than across the whole body.
+ */
+export function pushOutOfBus(
+  pose: BusBodyPose,
+  x: number,
+  z: number,
+  r: number,
+  blocked: ((x: number, z: number) => boolean) | null = null,
+  skin = BUS_PUSH_SKIN,
+): { x: number; z: number } | null {
+  let cx = x;
+  let cz = z;
+  let moved = false;
+  for (let round = 0; round < 3; round++) {
+    const { ahead, right } = busLocal(pose, cx, cz);
+    let deepest: BusRect | null = null;
+    let depth = skin;
+    for (const rc of BUS_SHAPES) {
+      const c = rectClearance(rc, ahead, right, r);
+      if (c < depth) {
+        depth = c;
+        deepest = rc;
+      }
+    }
+    if (!deepest) break;
+    const p = pushOutOfRect(pose, deepest, ahead, right, r, blocked, skin);
+    cx = p.x;
+    cz = p.z;
+    moved = true;
+  }
+  return moved ? { x: cx, z: cz } : null;
 }
 
 /** `blocked` for pushOutOfBus from a map's static colliders (the same test the server's Move validation uses). */

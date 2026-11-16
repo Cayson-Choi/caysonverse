@@ -58,7 +58,7 @@ import {
 } from "./jump";
 import { jumpHeadroom } from "@caysonverse/shared/village/overhead";
 import { localArea } from "../village/villageArea";
-import { beginSeatCamera, endSeatCamera, fpBodyYaw, viewState } from "./viewState";
+import { beginSeatCamera, endSeatCamera, enterFp, exitFp, fpBodyYaw, viewState } from "./viewState";
 import { HIDE_BLEND, OV_VIS_BLEND } from "./viewMode";
 import { cameraProbe } from "./cameraProbe";
 import { clipFor, lookFromAppearance } from "./characterLook";
@@ -92,8 +92,22 @@ import type { MoveControl } from "./constants";
 import type { Orbit, Pose, SeatState } from "./types";
 import { getRoom, sendJump, sendMove, sendStand } from "../net/connection";
 import { getTransitRenderPose, useTransitState } from "../net/transitSync";
-import { selfBusRide } from "./busRide";
-import { busPlace, busRiderPose, type BusRiderPose } from "@caysonverse/shared/village/busSeats";
+import { busWalk, busCamState, selfBusRide } from "./busRide";
+import { busRiderPoints } from "./remoteStore";
+import {
+  BUS_HOLDS,
+  BUS_SEATS,
+  BUS_WALK_RADIUS,
+  busLocalToWorld,
+  busPlaceOf,
+  busRiderWorldPose,
+  cabinFloorAt,
+  normalizeYaw,
+  stepInCabin,
+  type BusPlaceKind,
+  type BusRiderPoseFull,
+} from "@caysonverse/shared/village/busCabin";
+import { sendBusMove, sendBusStand } from "../net/transitSync";
 import { isInputSuspended } from "../net/resilience";
 import { useSettingsStore } from "../stores/settingsStore";
 import { cubbyFocusWeight } from "../village/cubbyFocus";
@@ -477,14 +491,26 @@ export function LocalPlayer({
     return true;
   }
 
-  // My place in the bus being drawn (-1: not riding) and the pose there (reused).
-  const ridingRef = useRef(-1);
-  const riderPoseRef = useRef<BusRiderPose>({ x: 0, z: 0, yaw: 0, y: 0, seated: true });
+  // What I am in the bus ("none": not riding, "free": in the aisle, "seat", "hold") and the pose drawn (reused).
+  const ridingRef = useRef<BusPlaceKind | "none">("none");
+  const riderPoseRef = useRef<BusRiderPoseFull>({ x: 0, z: 0, yaw: 0, y: 0, seated: false, holding: false });
+  // The orbit I had before boarding (put back on getting off), the floor height I stand at (eased over the steps), the
+  // BusMove throttle and the one Stand asked for when a key is pressed on a seat.
+  const orbitBeforeRideRef = useRef<{ yaw: number; pitch: number; distance: number } | null>(null);
+  const busYRef = useRef(0);
+  const wasFpBeforeRideRef = useRef(false);
+  const busSendRef = useRef({ at: 0, moving: false });
+  const busStandSentRef = useRef(false);
+  const busStepTmp = useRef({ ahead: 0, right: 0 }).current;
+  const busOthersTmp = useRef<{ ahead: number; right: number }[]>([]).current;
 
-  /** Onto the bus: whatever the body did gives way to the held seated pose (Idle on a standing place). */
-  function startRide(seated: boolean): void {
+  /**
+   * Onto the bus, or a change of place in it: whatever the body did gives way to the held seated pose on a seat; free or at
+   * a pole it is on its feet, and the locomotion step below puts Idle / the walk loop on it (a body that was seated is
+   * stood up first).
+   */
+  function startRide(kind: BusPlaceKind): void {
     clearClickTarget();
-    releaseLoop(ANIM_FADE);
     gaitRef.current = "idle";
     action(CLIP.jump)?.fadeOut(ANIM_FADE);
     jumpSeqRef.current = -1;
@@ -498,16 +524,34 @@ export function LocalPlayer({
     motion.bench = false;
     motion.lift = 0;
     animStateRef.current = "loco";
-    const hold = action(seated ? CLIP.sitIdle : CLIP.idle);
-    if (hold) {
-      hold.reset().fadeIn(ANIM_FADE).play();
-      reportClip(hold.getClip().name);
+    if (kind === "seat") {
+      releaseLoop(ANIM_FADE);
+      const hold = action(CLIP.sitIdle);
+      if (hold) {
+        hold.reset().fadeIn(ANIM_FADE).play();
+        reportClip(hold.getClip().name);
+      }
+    } else {
+      action(CLIP.sitIdle)?.fadeOut(ANIM_FADE);
+      loopRef.current = null; // the loco step puts the loop for the speed on
     }
     if (shadowRef.current) shadowRef.current.visible = false;
   }
 
   /** Off the bus: on the ground where the server put me down (outside the door), Idle, the seat state as synced. */
   function endRide(): void {
+    busWalk.valid = false;
+    busCamState.active = false;
+    const saved = orbitBeforeRideRef.current;
+    if (saved) {
+      if (!wasFpBeforeRideRef.current && viewState.mode === "fp") exitFp(orbit);
+      orbit.yaw = saved.yaw;
+      orbit.pitch = saved.pitch;
+      orbit.distance = saved.distance;
+      if (wasFpBeforeRideRef.current) viewState.fpYaw = saved.yaw;
+      orbitBeforeRideRef.current = null;
+    }
+    busStandSentRef.current = false;
     action(CLIP.sitIdle)?.fadeOut(ANIM_FADE);
     action(CLIP.idle)?.fadeOut(ANIM_FADE);
     loopRef.current = null; // the loco step puts a loop back on
@@ -583,33 +627,12 @@ export function LocalPlayer({
       cover ? Math.min(SELF_COVER_FADE_OPACITY, selfBody.hidingRing ? SELF_FADE_OPACITY : 1) : undefined,
     );
 
-    // The village bus (owner 2026-11-15: "버스에 탑승했는데 캐릭터는 버스안에 있지 않고 밖에 그대로 서있어"): while I ride,
-    // my avatar is in my place in the bus (busSeats.ts, given by the server), sitting on its seat or standing in the
-    // aisle, and moves with the bus, as every other client draws me. My pose stays where I boarded (nothing is sent);
-    // getting off, the server puts me down at the door and the pose follows it.
-    const busSlot = selfBusRide.slot; // the schema: the place and the dismount spot come in one patch
-    if (busSlot !== ridingRef.current) {
-      const was = ridingRef.current;
-      ridingRef.current = busSlot;
-      if (busSlot >= 0) {
-        if (was < 0 || busPlace(was).seated !== busPlace(busSlot).seated) startRide(busPlace(busSlot).seated);
-      } else endRide();
-    }
-    if (busSlot >= 0) {
-      const p = busRiderPose(getTransitRenderPose(), busSlot, riderPoseRef.current);
-      group.position.set(p.x, p.y, p.z);
-      group.rotation.y = p.yaw + MODEL_FACING_OFFSET;
-      group.visible = true; // the ride camera looks at me from behind my seat (transitCamera.ts)
-      publishLocalJump(0, true);
-      return;
-    }
-
     // Focus guard: while the chat input owns keyboard input — OR while the
     // resilience driver is reconnecting (world frozen behind the overlay) —
     // movement keys are zeroed so nothing walks the avatar. We don't touch drei's
     // key listeners, so nothing can get stuck on blur (see uiCapture.ts).
     const suspended = isInputSuspended();
-    const captured = isUiCaptured() || suspended || busBoarded;
+    const captured = isUiCaptured() || suspended || (busBoarded && selfBusRide.slot < 0);
     const keys = guardMoveKeys(getKeys(), captured);
     // The joystick obeys the same freeze (a held stick must not steer behind a close-up / the menu).
     const stick = guardMoveInput(moveInput, captured);
@@ -669,6 +692,155 @@ export function LocalPlayer({
     // auto-move target is walked at whichever speed the player is holding right now.
     const run = !suspended && (keys.run || stick.run);
     const gait = gaitFor(moving, run);
+
+    // ── The village bus (owner 2026-11-15: walk inside, sit or stand, look out of every window). I am a person in the
+    // bus's own frame: free in the aisle I walk it (camera-relative, against the cabin's seats and walls: busCabin.ts), a
+    // seat or a hold spot puts me there; the server checks every step and everyone sees me in the bus.
+    const busSlot = selfBusRide.slot;
+    const placeNow = busSlot < 0 ? null : busPlaceOf(busSlot);
+    const kindNow: BusPlaceKind | "none" = placeNow ? placeNow.kind : "none";
+    if (kindNow !== ridingRef.current) {
+      const was = ridingRef.current;
+      ridingRef.current = kindNow;
+      if (kindNow === "none") endRide();
+      else {
+        if (was === "none") {
+          // boarding: the camera is the bus's (transitCamera.ts), at a comfortable arm; the old orbit comes back on getting off
+          // The cabin is narrow and the avatar big: boarding starts in first person (the rider's own eye looking down the aisle,
+          // both rows of windows in view); the wheel / pinch out is the third-person arm inside the cabin (the camera's job).
+          orbitBeforeRideRef.current = { yaw: orbit.yaw, pitch: orbit.pitch, distance: orbit.distance };
+          wasFpBeforeRideRef.current = viewState.mode === "fp";
+          orbit.yaw = 0;
+          orbit.pitch = 0.6;
+          orbit.distance = 5.2;
+          enterFp(0); // the look yaw is bus-relative: 0 looks to the rear, the way the avatar faces at the entry
+          viewState.fpPitch = 0.05;
+          busWalk.ahead = selfBusRide.ahead;
+          busWalk.right = selfBusRide.right;
+          busWalk.yaw = selfBusRide.yaw;
+          busYRef.current = cabinFloorAt(selfBusRide.ahead, selfBusRide.right);
+        }
+        if (kindNow === "free" && was !== "free") {
+          busWalk.ahead = selfBusRide.ahead;
+          busWalk.right = selfBusRide.right;
+          busWalk.yaw = selfBusRide.yaw;
+        }
+        busStandSentRef.current = false;
+        startRide(kindNow);
+      }
+    }
+    if (kindNow !== "none" && placeNow) {
+      const bus = getTransitRenderPose();
+      let groundSpeedBus = 0;
+      let movedBusX = 0;
+      let movedBusZ = 0;
+      let targetY = busYRef.current;
+      let yawLocal = selfBusRide.yaw;
+      if (placeNow.kind === "free") {
+        if (!busWalk.valid) {
+          busWalk.ahead = selfBusRide.ahead;
+          busWalk.right = selfBusRide.right;
+          busWalk.yaw = selfBusRide.yaw;
+          busWalk.valid = true;
+        }
+        const rel = inFp ? viewState.fpYaw : orbit.yaw;
+        if (moving && !suspended) {
+          const dirW = worldDirection(intent, bus.yaw + rel);
+          const fx = Math.sin(bus.yaw);
+          const fz = Math.cos(bus.yaw);
+          const da = dirW.x * fx + dirW.z * fz;
+          const dr = -dirW.x * fz + dirW.z * fx;
+          const speed = moveSpeed(false);
+          const next = stepInCabin(busWalk, { ahead: busWalk.ahead + da * speed * delta, right: busWalk.right + dr * speed * delta }, BUS_WALK_RADIUS, busStepTmp, busRiderPoints(busOthersTmp));
+          const dA = next.ahead - busWalk.ahead;
+          const dR = next.right - busWalk.right;
+          busWalk.ahead = next.ahead;
+          busWalk.right = next.right;
+          if (delta > 0) groundSpeedBus = Math.hypot(dA, dR) / delta;
+          // the world-frame displacement, for the foot loop's backward test
+          movedBusX = dA * fx - dR * fz;
+          movedBusZ = dA * fz + dR * fx;
+          if (!inFp) {
+            const worldYaw = Math.atan2(dirW.x, dirW.z);
+            busWalk.yaw = normalizeYaw(stepYaw(busWalk.yaw + bus.yaw, worldYaw, TURN_SPEED * delta) - bus.yaw);
+          }
+        }
+        if (inFp) busWalk.yaw = normalizeYaw(fpBodyYaw(viewState.fpYaw));
+        // The server's point is a round trip behind mine. Once I have stood still long enough for my last step to have arrived
+        // (0.7 s after the last BusMove), any disagreement over 0.12 m means a step was refused: I take its point (review r1:
+        // the old 0.8 m rule let 0.1 - 0.8 m differences stand, so others saw me elsewhere and a sit was judged from there).
+        // While I walk, only a far one (a refused run of steps) takes me back.
+        const sinceSend = performance.now() - busSendRef.current.at;
+        const drift = Math.hypot(selfBusRide.ahead - busWalk.ahead, selfBusRide.right - busWalk.right);
+        if ((!moving && sinceSend > 700 && drift > 0.12) || drift > 1.6) {
+          busWalk.ahead = selfBusRide.ahead;
+          busWalk.right = selfBusRide.right;
+        }
+        // BusMove, at most ten a second while moving and one final when I stop
+        const send = busSendRef.current;
+        const nowT = performance.now();
+        if (moving && groundSpeedBus > 0 && nowT - send.at >= 100) {
+          sendBusMove(busWalk.ahead, busWalk.right, busWalk.yaw);
+          send.at = nowT;
+          send.moving = true;
+        } else if (!moving && send.moving) {
+          sendBusMove(busWalk.ahead, busWalk.right, busWalk.yaw);
+          send.moving = false;
+          send.at = nowT;
+        }
+        targetY = cabinFloorAt(busWalk.ahead, busWalk.right);
+        yawLocal = busWalk.yaw;
+        const w = busLocalToWorld(bus, busWalk.ahead, busWalk.right, riderPoseRef.current);
+        riderPoseRef.current.yaw = bus.yaw + yawLocal;
+        void w;
+      } else {
+        busWalk.valid = false;
+        const spot = placeNow.kind === "seat" ? BUS_SEATS[placeNow.index]! : BUS_HOLDS[placeNow.index]!;
+        busWalk.ahead = spot.ahead;
+        busWalk.right = spot.right;
+        const r = busRiderWorldPose(bus, busSlot, spot.ahead, spot.right, spot.yaw, riderPoseRef.current);
+        targetY = r.y;
+        // a key (or the stick) on a seat or at a pole stands me up in the aisle: one BusStand, then I walk
+        if (moving && !busStandSentRef.current && !suspended) {
+          sendBusStand();
+          busStandSentRef.current = true;
+        }
+      }
+      // the floor under me eases over the steps (the raised rear, the step treads)
+      const lerpK = Math.min(1, delta * 12);
+      busYRef.current = placeNow.kind === "seat" ? targetY : busYRef.current + (targetY - busYRef.current) * lerpK;
+      const rp = riderPoseRef.current;
+      group.position.set(rp.x, busYRef.current, rp.z);
+      group.rotation.y = rp.yaw + MODEL_FACING_OFFSET;
+      busCamState.avatar = group;
+      busCamState.avatar = group;
+      group.visible = !busCamState.firstPerson; // first person (the camera all the way in) is the rider's own eye
+      pose.x = rp.x;
+      pose.z = rp.z;
+      pose.yaw = rp.yaw;
+      publishLocalJump(0, true);
+      // the loop on the body follows the walk's speed (Idle on a seat's hold pose: a held clip owns the body)
+      if (placeNow.kind !== "seat" && animStateRef.current === "loco" && jumpSeqRef.current === -1) {
+        gaitRef.current = groundSpeedBus > 0.05 ? "walk" : "idle";
+        const drive = driveRef.current;
+        const loop = stepLoop(drive, loopRef.current ?? "idle", groundSpeedBus > 0.05, groundSpeedBus, delta);
+        stepFacing(drive, alongFacing(movedBusX, movedBusZ, rp.yaw), delta);
+        const speedNow = loopSpeed(drive);
+        if (loop !== loopRef.current) switchLoop(loop, speedNow);
+        else if (loop !== "idle") {
+          const playing = action(gaitClip(loop));
+          if (playing) playing.timeScale = loopTimeScale(loop, speedNow, stride, playing.time, playing.getClip().duration);
+        }
+        const fading = fadingRef.current;
+        if (fading) {
+          const out = action(gaitClip(fading.loop));
+          if (out) out.timeScale = loopTimeScale(fading.loop, speedNow, stride, out.time, out.getClip().duration);
+          fading.left -= delta;
+          if (fading.left <= 0) fadingRef.current = null;
+        }
+      }
+      return;
+    }
 
     const motion = seatMotionRef.current;
     if (seated && !wasSeated) {

@@ -53,10 +53,14 @@ describe("activeMap (the map seam)", () => {
   });
 
   it("cameraBoxes() follows the active map", () => {
-    expect(cameraBoxes()).toBe(villageGeometry.cameraBoxes);
+    // the village map's boxes, then the bus's body at its current pose (it is no static box of the map: cameraCollision.ts)
+    const boxes = cameraBoxes();
+    expect(boxes.slice(0, villageGeometry.cameraBoxes.length)).toEqual(villageGeometry.cameraBoxes);
+    expect(boxes.length).toBeGreaterThan(villageGeometry.cameraBoxes.length);
     const other: ActiveMap = { geometry: { ...villageGeometry, cameraBoxes: [] }, zoneLabel: () => "" };
     setActiveMap(other);
-    expect(cameraBoxes()).toBe(other.geometry.cameraBoxes);
+    expect(cameraBoxes().slice(0, 0)).toEqual([]);
+    expect(cameraBoxes().length).toBe(boxes.length - villageGeometry.cameraBoxes.length);
   });
 });
 

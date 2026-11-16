@@ -1,6 +1,7 @@
 import { pressJump } from "../game/jump";
 import { useQuiet } from "../game/quiet";
 import { sendJump } from "../net/connection";
+import { useTransitState } from "../net/transitSync";
 import { rectStyle, useTouchHudLayout } from "./useTouchHudLayout";
 import "./action.css";
 
@@ -25,7 +26,8 @@ import "./action.css";
 export function JumpButton({ sessionId }: { sessionId: string }) {
   const layout = useTouchHudLayout();
   const quiet = useQuiet();
-  if (quiet) return null; // no jumping in the quiet hall (quiet.ts): the server drops it
+  const { boarded } = useTransitState(); // no jumping aboard the bus (the server drops it): the button would be dead, so it is not shown
+  if (quiet || boarded) return null; // no jumping in the quiet hall (quiet.ts): the server drops it
   return (
     <button
       type="button"

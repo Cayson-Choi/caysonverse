@@ -5,8 +5,10 @@ import { busDriveTrip, type BusDrive } from "@caysonverse/shared/village/busDriv
 import { villageClock } from "../village/villageClock";
 import { selfBusRide } from "../game/busRide";
 import type {
+  BusMovePayload,
   BusRejectedPayload,
   BusRidePayload,
+  BusSitPayload,
   BusRideStatePayload,
   BusStatePayload,
 } from "@caysonverse/shared/messages";
@@ -149,9 +151,14 @@ function setRide(next: BusRideStatePayload): void {
  * scene listens (e2e village-bus-rider: a rider's client read "not aboard" mid-lap after a short drop, while the server
  * still had them in the bus). So the place keeps `boarded` true whatever the order.
  */
+let lastSelfSlot = -1;
 export function noteSelfBusSeat(slot: number): void {
   const aboard = slot >= 0;
-  if (aboard !== state.boarded) publish({ ...state, boarded: aboard, notice: aboard ? null : state.notice });
+  // A seat or a pole taken (a place of its own) answers the refusal that was on the panel: the old line must not stay (review r1).
+  const took = slot > 0 && lastSelfSlot !== slot;
+  lastSelfSlot = slot;
+  if (took && state.notice !== null) noticeUntil = 0;
+  if (aboard !== state.boarded || (took && state.notice !== null)) publish({ ...state, boarded: aboard, notice: aboard ? null : state.notice });
 }
 
 /** Bind one village room; cleanup is called when the scene unmounts or reconnects. */
@@ -177,6 +184,21 @@ export function startTransitSync(room: TransitRoom): () => void {
 /** Request a board/leave action; the server remains authoritative. */
 export function sendBusRide(action: BusRidePayload["action"]): void {
   boundRoom?.send(MessageType.BusRide, { action } satisfies BusRidePayload);
+}
+
+/** A step inside the bus, in its own frame (the walk sends it about 10 times a second while moving; the server checks it). */
+export function sendBusMove(ahead: number, right: number, yaw: number): void {
+  boundRoom?.send(MessageType.BusMove, { ahead, right, yaw } satisfies BusMovePayload);
+}
+
+/** Sit in a seat or take hold of a pole (an index into BUS_SEATS / BUS_HOLDS); the server says why not if it cannot. */
+export function sendBusSit(kind: BusSitPayload["kind"], index: number): void {
+  boundRoom?.send(MessageType.BusSit, { kind, index } satisfies BusSitPayload);
+}
+
+/** From a seat or a hold spot back on one's feet in the aisle. */
+export function sendBusStand(): void {
+  boundRoom?.send(MessageType.BusStand, {});
 }
 
 export function subscribeTransit(listener: () => void): () => void {
@@ -226,6 +248,15 @@ function refreshRenderPose(): void {
 export function getMovingBusPose(): Readonly<{ x: number; z: number; yaw: number }> | null {
   refreshRenderPose();
   return renderMoving ? renderPose : null;
+}
+
+/**
+ * The bus's body pose wherever it is, parked at the stop or out on the road (2026-11-15: one moving solid, no static
+ * collider at the stop, so nothing is left behind when the bus is away). Before the first snapshot it is the timetable's.
+ */
+export function getBusBodyPose(): Readonly<{ x: number; z: number; yaw: number }> {
+  refreshRenderPose();
+  return renderPose;
 }
 
 /** Frame step: the bus's pose from the timeline at the synced time (the argument is kept for callers; the pose needs no easing). */

@@ -1,4 +1,5 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
+import type { Mesh } from "three";
 import { useFrame, useThree } from "@react-three/fiber";
 import { type BusNodes, applyBusDayNight, disposeBus, followBusSigns, prepareBus, setBusAnisotropy } from "./villageBusPrep";
 import { readBus } from "./villageBusLoader";
@@ -7,6 +8,8 @@ import type { VillageTier } from "./villageModelPrep";
 import { noteBusRequested } from "./villageRelease";
 import { getTransitRenderPose, onBusHorn, stepTransitRender } from "../net/transitSync";
 import { BUS_HORN_HEAR_M, playBusHorn } from "./busHorn";
+import { busCamState } from "../game/busRide";
+import { fadingFixtures } from "./transitCamera";
 
 declare global {
   interface Window {
@@ -49,6 +52,23 @@ export function VillageBus({ tier }: { tier: VillageTier }) {
       disposeBus(nodes);
     };
   }, [nodes]);
+  // The cabin's poles, ceiling rails and strap groups are separate nodes: the ones between the rider's camera and the rider (or
+  // right at the lens) are taken out of the picture while they are (transitCamera.ts fadingFixtures), so none crosses the
+  // avatar's arm or face. (A see-through clone of the paint's material would compile a new shader program at the first
+  // ride, a stall and driver warnings; hiding the mesh costs nothing.)
+  const fixtures = useRef(new Map<string, Mesh>());
+  const hiding = useRef(new Set<string>());
+  useEffect(() => {
+    const map = fixtures.current;
+    map.clear();
+    nodes.root.traverse((o) => {
+      if (/^(pole|strap|rail)_/.test(o.name) && (o as Mesh).isMesh) map.set(o.name, o as Mesh);
+    });
+    return () => {
+      for (const m of map.values()) m.visible = true;
+      map.clear();
+    };
+  }, [nodes]);
   const camera = useThree((s) => s.camera);
   useEffect(() => {
     // The server's driver toots when it has stood a while for someone on the road: heard near the bus only.
@@ -68,6 +88,11 @@ export function VillageBus({ tier }: { tier: VillageTier }) {
     nodes.root.updateMatrixWorld(true);
     followBusSigns(nodes);
     applyBusDayNight(nodes, dayNight.applied, state.gl.toneMappingExposure);
+    const near = busCamState.active ? fadingFixtures(busCamState.eye, busCamState.head, busCamState.chest, hiding.current) : null;
+    for (const [name, mesh] of fixtures.current) {
+      const show = !(near && near.has(name));
+      if (mesh.visible !== show) mesh.visible = show;
+    }
   });
   // dispose={null}: the geometry and the loader's materials belong to the loader's cache.
   return <primitive object={nodes.root} dispose={null} />;

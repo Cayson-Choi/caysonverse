@@ -35,8 +35,10 @@ export const r2 = (n) => Math.round(n * 100) / 100;
 /** Console lines that are expected (the known Clock warning). */
 const ALLOWED_CONSOLE = [
   { name: "THREE.Clock deprecation", re: /THREE\.Clock/ },
-  // Windows ANGLE (D3D) compiler note on the village lightmap shaders; it also appears with the village alone (checked before the hall changes)
-  { name: "ANGLE X3595 gradient-in-loop", re: /X3595|THREE.WebGLProgram: Program Info Log/ },
+  // ANGLE/D3D's HLSL compiler (the PC tier's GPU path) notes a gradient in three.js's own shadow-sampling loop the first time a
+  // lit program compiles: a driver notice about stock three.js shader code, not an app error (seen in e2e/village-bus-stop.mjs
+  // with the bus parked and nobody aboard).
+  { name: "ANGLE X3595 shader-compile notice", re: /X3595|THREE\.WebGLProgram: Program Info Log/ },
 ];
 
 export function createRun(name) {

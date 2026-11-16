@@ -3,7 +3,7 @@
  * 2026-11-15: "버스에 탑승했는데 캐릭터는 버스안에 있지 않고 밖에 그대로 서있어", "도로에 캐릭터가 서 있으면 버스가 통과해버려").
  *
  * Two players in one room. A boards in the boarding window; B, a second client, watches from the pad:
- *  - A is drawn in the bus on both screens (B: its remote probe says "bus-seated", inside the bus's body), the stop's
+ *  - A is drawn in the bus on both screens (B: its remote probe says "bus-standing" at the entry, inside the bus's body), the stop's
  *    pill is gone on A's screen and the ride panel says "출발 대기 중 · N 뒤 출발"; screenshots of A's own view and B's;
  *  - B walks onto the bus's lane ahead of the stop; the bus leaves, slows and stands short of B (never overlapping B's
  *    body), with A still in it; screenshots from B (on the road) and A (in the bus); A's leave on the lap is refused;
@@ -120,7 +120,7 @@ await run.step("A boards: in the bus on both screens", async () => {
   const seen = (await B.page.evaluate(() => window.__cv.getRemoteDrawn()))[sidA];
   const b = await bus(B);
   const l = seen ? local(b, seen) : null;
-  run.check("B draws A seated in the bus", seen?.mode === "bus-seated" && l && Math.abs(l.ahead) < 4.3 && Math.abs(l.right) < 1.2 && seen.y > 0.3, { seen, local: l });
+  run.check("B draws A in the bus (free in the aisle at the entry: bus-standing)", /^bus-(standing|seated|holding)$/.test(seen?.mode ?? "") && l && Math.abs(l.ahead) < 4.3 && Math.abs(l.right) < 1.2 && seen.y > 0.3, { seen, local: l });
   await shot(A, `rider-1-self-boarded-${tag}.png`);
   // B looks at A's window from the pavement outside it, a little ahead of A so B's own body is not in the way
   const fx = Math.sin(b.yaw);
