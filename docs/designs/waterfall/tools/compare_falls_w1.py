@@ -49,7 +49,7 @@ def sheet(name, pairs, title):
 
 
 sheet("w1-compare-day-1.jpg", [
-    ("12_yongchu_hamyang.jpg", "참고 12 용추폭포(함양): 이끼 낀 회색 턱 절벽, 홈 속 물줄기, 둥근 자갈 기슭", "day_pool_wide.png", "W1 낮 — 쉼터에서 본 전체 (물·나무는 자리 표시)"),
+    ("12_yongchu_hamyang.jpg", "참고 12 용추폭포(함양): 이끼 낀 회색 턱 절벽, 홈 속 물줄기, 둥근 자갈 기슭", "day_photo12.png", "W1 낮 — 쉼터 눈높이에서 본 전체 (물·아바타는 자리 표시)"),
     ("05_jikso_byeonsan_a.jpg", "참고 05 직소폭포(변산): 세로로 갈라진 어두운 벽, 물 뒤 젖은 검은 면", "day_s8_front_slab.png", "W1 낮 — 앞 너럭바위(S8)에서 올려다본 모습"),
 ], "B1 폭포 W1 바위·땅 — 실제 사진과 나란히 (낮)")
 sheet("w1-compare-day-2.jpg", [

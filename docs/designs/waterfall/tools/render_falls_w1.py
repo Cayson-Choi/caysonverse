@@ -416,6 +416,7 @@ def shoot(name, loc, target, lens, night=False):
 day = "--night-only" not in argv
 night = "--day-only" not in argv
 if day:
+    shoot("day_photo12", V(-99.0, -80.5, 1.75), V(-117.0, -77.0, 9.0), 17)               # rest area at eye height, framed like photo 12
     shoot("day_s8_front_slab", V(-104.6, -78.8, 2.3), V(-116.0, -78.0, 11.0), 20)          # S8: front slab, looking up
     shoot("day_s7_rest_area", V(-100.0, -79.0, 2.6), V(-116.0, -78.5, 13.0), 20)           # S7: rest-area middle
     shoot("day_pool_wide", V(-93.5, -74.0, 3.6), V(-116.0, -78.5, 11.0), 18)               # behind the avatar (W0 framing)

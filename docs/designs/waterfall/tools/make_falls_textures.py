@@ -54,12 +54,12 @@ def local_contrast(a, k=0.35):
 
 # cliff granite: cool grey, a little lighter than the source (real wet-dry granite in photos 01/05/12 is mid grey)
 r = load("rock_face_diff_1k.jpg")
-r = local_contrast(desat(r, 0.18, gain=0.92, tint=(0.97, 0.98, 1.0), gamma=1.12), 0.55)
+r = local_contrast(desat(r, 0.30, gain=1.32, tint=(1.04, 1.0, 0.92), gamma=1.0), 0.55)
 save(r, "T_falls_rock.png")
 save(load("rock_face_nor_gl_1k.jpg"), "T_falls_rock_n.png")
 
 s = load("dry_riverbed_rock_diff_1k.jpg")
-save(local_contrast(desat(s, 0.22, gain=1.12, tint=(1.0, 0.99, 0.96)), 0.5), "T_falls_slab.png")
+save(local_contrast(desat(s, 0.18, gain=1.05, tint=(0.98, 0.98, 0.97)), 0.5), "T_falls_slab.png")
 save(load("dry_riverbed_rock_nor_gl_1k.jpg"), "T_falls_slab_n.png")
 
 g = load("river_small_rocks_diff_1k.jpg")

@@ -39,24 +39,29 @@ def _cell_worley(u, v, seed):
 
 
 def facet_detail(z, y):
-    """Fracture relief (m, + = out of the rock) at (z, y): planar facets of ~1.5 x 1.2 m, each tilted a little
-    (like joint-bounded granite blocks), cracks between them, and thin sheet joints. Range about -0.55 .. +0.32."""
-    # a slow domain warp so the cells are not on a grid
-    wz = z + 0.9 * F.noise3(z * 0.21, y * 0.21, 3.1)
-    wy = y + 0.9 * F.noise3(z * 0.21, y * 0.21, 8.7)
-    # two scales: 1.7 x 1.25 m facets and 0.6 x 0.45 m chips
-    f1, f2, cid, cx, cy = _cell_worley(wz / 2.6, wy / 6.5, 11)
-    tz = (cid - 0.5) * 0.7          # tilt of this facet across z (m per m of its own units)
-    ty = (F._hash2(int(cx * 7), int(cy * 7), 5) - 0.5) * 0.22
-    plane = tz * (wz / 2.6 - cx) * 2.6 + ty * (wy / 6.5 - cy) * 6.5
-    off = (F._hash2(int(cx * 13), int(cy * 13), 9) - 0.5) * 0.55
-    crack = math.exp(-((f2 - f1) / 0.05)) * 0.34
-    g1, g2, gid, gx, gy = _cell_worley(z / 1.3, y / 1.7, 31)
-    chip = ((gid - 0.5) * 0.10 + (F._hash2(int(gx * 5), int(gy * 5), 2) - 0.5) * 0.08 * (g1 * 2)) - math.exp(-((g2 - g1) / 0.10)) * 0.09
-    # sheet joints: faint horizontal steps every ~0.9 m
-    sq = y / 0.9 + 0.5 * F.noise3(z * 0.35, 0.7, 4.4)
-    sh = -0.12 * (sq - math.floor(sq)) ** 2 + 0.03 * math.sin(sq * math.pi * 2)
-    return plane + off - crack + chip + sh + 0.025 * F.noise3(z * 2.3, y * 2.3, 6.6)
+    """Granite jointing relief (m, + = out of the rock) at (z, y), round 2:
+      - tall columns (cells ~2.8 m wide, ~14 m tall): each a flat plane, pushed out or in as a whole, separated by deep
+        sharp vertical joints (photo 05);
+      - stepped horizontal sheet joints every ~2.2 m: the face tilts back a little then jumps (photo 12);
+      - a second, smaller set of planar facets (~1.1 x 2.2 m) with their own cracks.
+    Almost no smooth noise: large flat faces, hard edges, shadowed cracks. Range about -1.6 .. +0.5."""
+    wz = z + 0.35 * F.noise3(z * 0.17, y * 0.05, 3.1)
+    wy = y + 0.5 * F.noise3(z * 0.1, y * 0.1, 8.7)
+    f1, f2, cid, cx, cy = _cell_worley(wz / 2.8, wy / 14.0, 11)
+    off = (cid - 0.5) * 0.9
+    tz = (F._hash2(int(cx * 9), int(cy * 9), 4) - 0.5) * 0.22
+    plane = off + tz * (wz / 2.8 - cx) * 2.8
+    crack = math.exp(-((f2 - f1) / 0.05)) * 1.0
+    # sheet joints
+    sq = wy / 2.2 + 0.7 * F.noise3(z * 0.09, 0.7, 4.4)
+    k = math.floor(sq)
+    fr = sq - k
+    sheet = -0.45 * fr ** 1.6 + (F._hash2(k, int(cid * 977), 6) - 0.5) * 0.30
+    # smaller facets
+    g1, g2, gid, gx, gy = _cell_worley(wz / 1.1, wy / 2.2, 31)
+    sub = (gid - 0.5) * 0.28 + (F._hash2(int(gx * 5), int(gy * 5), 2) - 0.5) * 0.12 * (g1 * 2)
+    crack2 = math.exp(-((g2 - g1) / 0.07)) * 0.28
+    return plane + sheet + sub - crack - crack2 + 0.012 * F.noise3(z * 2.3, y * 2.3, 6.6)
 
 
 def detail_weight(z, y):
@@ -140,12 +145,13 @@ def Vb(x, z, y):
 
 KIT = {
     # kind: (sx, sy, sz) half-sizes in local units (x = out of the cliff, y = up, z = along the cliff); bevel facets, sphericity
-    0: dict(h=(1.0, 0.45, 1.4), pts=22, sph=0.04, rough=0.012, label="wide ledge slab"),
-    1: dict(h=(0.8, 1.35, 0.7), pts=22, sph=0.04, rough=0.012, label="tall angular pillar"),
-    2: dict(h=(1.0, 0.85, 1.0), pts=24, sph=0.06, rough=0.014, label="chunky cube-ish block"),
+    0: dict(h=(1.0, 0.45, 1.4), pts=16, sph=0.0, rough=0.010, label="wide ledge slab"),
+    1: dict(h=(0.8, 1.35, 0.7), pts=16, sph=0.0, rough=0.010, label="tall angular pillar"),
+    2: dict(h=(1.0, 0.85, 1.0), pts=18, sph=0.02, rough=0.010, label="chunky cube-ish block"),
     3: dict(h=(1.3, 0.55, 0.9), pts=20, sph=0.03, rough=0.012, label="wedge / leaning flake"),
     4: dict(h=(1.0, 0.75, 1.1), pts=30, sph=0.28, rough=0.014, label="rounded boulder (riprap)"),
     5: dict(h=(1.35, 0.30, 1.10), pts=18, sph=0.10, rough=0.010, label="flat stepping rock"),
+    6: dict(h=(1.0, 0.8, 1.0), pts=40, sph=0.8, rough=0.010, label="rounded river boulder"),
 }
 
 
@@ -207,7 +213,7 @@ def block_mesh(kind, seed, mat):
     # remove stray (interior) verts left by the hull
     bmesh.ops.delete(bm, geom=[v for v in bm.verts if not v.link_faces], context="VERTS")
     bmesh.ops.triangulate(bm, faces=bm.faces)
-    bmesh.ops.subdivide_edges(bm, edges=bm.edges[:], cuts=2, use_grid_fill=False)
+    bmesh.ops.subdivide_edges(bm, edges=bm.edges[:], cuts=(1 if kind == 6 else 2), use_grid_fill=False)
     for v in bm.verts:
         n = F.noise3(v.co.x * 2.1 + seed, v.co.y * 2.1, v.co.z * 2.1 + kind) * k["rough"]
         v.co += v.normal * n
@@ -242,7 +248,7 @@ def block_mesh(kind, seed, mat):
         streak = F.smooth(0.5, 0.15, abs(n.z)) * max(0.0, F.fbm(v.co.x * 3.0, v.co.y * 3.0, v.co.z * 0.5 + seed, 3)) * 1.3
         lich = max(0.0, F.noise3(v.co.x * 1.7, v.co.y * 1.7, v.co.z * 1.7 + 9)) * 0.9
         ca.data[i].color = (min(1, moss), min(1, wet), min(1, streak), min(1, lich))
-    sharpen(me, 34)
+    sharpen(me, 34 if kind != 6 else 80)
     return ob
 
 
@@ -405,7 +411,7 @@ class Leaves:
         nrm = side.cross(d).normalized()
         pts, cols, uvs = [], [], []
         pu = LEAF_PATCHES[rng.randrange(len(LEAF_PATCHES))]
-        t0 = tint if tint is not None else rng.uniform(0.85, 1.0)
+        t0 = tint if tint is not None else rng.uniform(0.92, 1.0)
         for i in range(st):
             t = i / (st - 1.0)
             ctr = Vector(base) + d * (length * t) - nrm * (droop * length * t * t)
@@ -486,12 +492,12 @@ def leaf_clump(Lv, centre, radius, height, n, rng, up=(0, 0, 1)):
     c = Vector(centre)
     for i in range(n):
         a = rng.uniform(0, 2 * math.pi)
-        e = rng.uniform(0.2, 1.3)                       # elevation of the leaf's direction (rad)
+        e = rng.uniform(0.05, 1.1)                      # elevation of the leaf's direction (rad)
         d = Vector((math.cos(a) * math.cos(e), math.sin(a) * math.cos(e), math.sin(e)))
         r0 = rng.uniform(0.0, radius * 0.35)
         base = c + Vector((math.cos(a) * r0, math.sin(a) * r0, rng.uniform(0.0, height * 0.35)))
         ln = rng.uniform(0.35, 0.8) * max(radius, height * 0.6)
-        Lv.leaf(base, d, (0, 0, 1), ln, ln * rng.uniform(0.5, 0.7), rng, droop=rng.uniform(0.12, 0.45), st=3)
+        Lv.leaf(base, d, (0, 0, 1), ln, ln * rng.uniform(0.7, 0.95), rng, droop=rng.uniform(0.2, 0.6), st=3)
 
 
 def fern(Lv, centre, n_fronds, size, rng):
@@ -553,3 +559,44 @@ def branch(Lv, start, direction, length, rng, leaf_n=26, droop=0.8):
         dd = Vector((math.cos(a) * 0.8, math.sin(a) * 0.8, -rng.uniform(0.05, 0.5))) + d * 0.2
         ln = rng.uniform(0.35, 0.6)
         Lv.leaf(p, dd, (0, 0, 1), ln, ln * 0.42, rng, droop=0.25)
+
+
+def canopy_tree(Lv_leaf, Lv_bark, x, z, y, h, rng, spread=1.0):
+    """A placeholder broadleaf crown for the site box: a trunk (tapered 6-sided prism) and 4-5 lumpy leaf masses
+    (80 triangles each) whose UVs sit in a dense opaque patch of T_leaf_green; vertex colour varies the green."""
+    base = Vector((x, -z, y))
+    # trunk
+    top = base + Vector((rng.uniform(-0.4, 0.4), rng.uniform(-0.4, 0.4), h * 0.62))
+    n = 6
+    r0, r1 = 0.22 * h / 8, 0.12 * h / 8
+    vs, fs, uv, col = [], [], [], []
+    for ring, (c, r) in enumerate(((base - Vector((0, 0, 0.4)), r0), (top, r1))):
+        for i in range(n):
+            a = 2 * math.pi * i / n
+            vs.append((c.x + r * math.cos(a), c.y + r * math.sin(a), c.z))
+            uv.append((0.22 + 0.01 * i / n, 0.46))
+            col.append((0.55, 0.45, 0.4, 1.0))
+    for i in range(n):
+        fs.append((i, (i + 1) % n, n + (i + 1) % n, n + i))
+    Lv_bark._add(vs, fs, uv, col)
+    for k in range(4):
+        a = rng.uniform(0, 6.28)
+        rr = rng.uniform(0.0, 0.2) * h * spread
+        c = top + Vector((math.cos(a) * rr, math.sin(a) * rr, h * rng.uniform(-0.05, 0.3)))
+        rad = h * rng.uniform(0.2, 0.3)
+        bm = bmesh.new()
+        bmesh.ops.create_icosphere(bm, subdivisions=1, radius=1.0)
+        ph = rng.uniform(0, 30)
+        pts, uvs, cols = [], [], []
+        shade = rng.uniform(0.75, 1.0)
+        for v in bm.verts:
+            nn = v.co.normalized()
+            r_ = rad * (1.0 + 0.22 * F.noise3(nn.x * 2 + ph, nn.y * 2, nn.z * 2))
+            p = c + Vector((nn.x * r_, nn.y * r_, nn.z * r_ * 0.8))
+            pts.append((p.x, p.y, p.z))
+            uvs.append((0.085 + 0.012 * nn.x, 0.285 + 0.012 * nn.z))
+            g = shade * (0.65 + 0.35 * (0.5 + 0.5 * nn.z))
+            cols.append((g * 0.92, g, g * 0.75, 1.0))
+        bm.verts.ensure_lookup_table()
+        Lv_leaf._add(pts, [tuple(v.index for v in f.verts) for f in bm.faces], uvs, cols)
+        bm.free()
