@@ -100,7 +100,7 @@ plan = await A.page.evaluate(async () => {
     const f = c.seatFrontPoint(s);
     let best = null;
     for (const margin of [0.55, 0.45, 0.38, 0]) {
-    if (best) break;
+    if (best && best.d < 5) break; // a robust spot found at this margin
     for (let a = -3.6; a <= 3.4; a += 0.05) for (let r = -0.25; r <= 0.25; r += 0.05) {
       if (c.cabinBlocked(a, r, 0.32) || !c.seatApproachOk(s, a, r) || c.BUS_HOLDS.some((h) => Math.hypot(a - h.ahead, r - h.right) < margin)) continue; // not on a pole's spot (it would be offered first)
       // standing here and looking one of the four ways, the seat must be the offered one, and still so a step (0.1 m) round the spot (the walk stops within a tolerance)

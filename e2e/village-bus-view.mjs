@@ -127,7 +127,7 @@ const screenBlock = () =>
     let n = 0;
     for (let ix = -0.9; ix <= 0.91; ix += 0.15) for (let iy = -0.9; iy <= 0.91; iy += 0.15) {
       rc.setFromCamera({ x: ix, y: iy }, camera);
-      const hits = rc.intersectObjects(scene.children, true).filter((h) => h.object.isMesh && !skip(h.object) && h.object.layers.test(camera.layers));
+      const hits = rc.intersectObjects(scene.children, true).filter((h) => h.object.isMesh && !skip(h.object) && h.object.layers.test(camera.layers) && !(h.face && Math.abs(h.face.normal.clone().transformDirection(h.object.matrixWorld).y) > 0.8)); // the ceiling and the floor are no body part in the way
       n++;
       if (hits.length) hit++;
     }

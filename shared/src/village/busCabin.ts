@@ -255,7 +255,7 @@ export function seatApproachOk(seat: BusSeat, ahead: number, right: number): boo
 /** A hold spot is the place to take hold of its pole: standing within this of it offers the hold, not the seat beside it. */
 export const BUS_HOLD_OFFER_M = 0.35;
 /** Standing this close to a pole's spot, the pole is offered whichever way they face. */
-export const BUS_HOLD_AT_M = 0.15;
+export const BUS_HOLD_AT_M = 0.25;
 /** The angle (rad) within which a seat counts as the one the rider faces. */
 export const BUS_SEAT_FACE_RAD = (50 * Math.PI) / 180;
 
