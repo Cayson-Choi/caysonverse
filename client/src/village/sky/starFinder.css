@@ -135,7 +135,7 @@
   z-index: 26; /* above the HUD rows (22-24), below the banner (30) and the menus */
   width: min(380px, calc(100vw - 32px));
   /* never down to the reticle in the middle of the screen (its radius comes from the frame) */
-  max-height: calc(50vh - var(--cv-sky-reticle, 84px) - 16px - 12px);
+  max-height: min(52vh, 440px);
   overflow-y: auto;
   padding: 10px 12px 12px;
   color: #ece7ff;
@@ -160,10 +160,11 @@
 /* A phone: under the top row of buttons, beside the button column (left / right inline from the touch layout);
    compact, foldable to its header, and above the reticle. */
 .cv-sky-card.is-touch {
-  top: calc(var(--cv-hud-top-end, 64px) + 8px);
+  /* under the compass dial (hud.css .cv-compass: 64 px under the top-right buttons) */
+  top: calc(16px + var(--cv-hud-btn, 48px) + 12px + 64px + 8px);
   width: auto;
   transform: none;
-  max-height: calc(50vh - var(--cv-sky-reticle, 84px) - var(--cv-hud-top-end, 64px) - 8px - 10px);
+  max-height: calc(100dvh - 160px - 190px);
   font-size: 13px;
   line-height: 1.35;
   padding: 8px 10px 10px;
@@ -419,4 +420,72 @@
   .cv-sky-card {
     animation: none;
   }
+}
+
+/* ── B3: the list of what is up now, and the picked figure ── */
+.cv-sky-lead {
+  font-size: 13px;
+  color: #c9c1f0;
+}
+.cv-sky-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.cv-sky-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-height: 48px;
+  padding: 6px 12px;
+  font: inherit;
+  text-align: left;
+  color: #f2eeff;
+  background: rgba(46, 38, 92, 0.85);
+  border: 1px solid rgba(150, 130, 220, 0.4);
+  border-radius: 12px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+.cv-sky-row:hover,
+.cv-sky-row:active {
+  background: rgba(86, 70, 160, 0.92);
+}
+.cv-sky-row-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.cv-sky-row-title {
+  font-size: 16px;
+  font-weight: 700;
+}
+.cv-sky-row-seen {
+  color: #ffd36b;
+  font-weight: 600;
+}
+.cv-sky-row-sub {
+  font-size: 12px;
+  color: #c9c1f0;
+}
+.cv-sky-row-go {
+  font-size: 22px;
+  color: #b9b0e6;
+}
+.cv-sky-moonline {
+  font-size: 12px;
+  color: #b9b0e6;
+}
+.cv-touch .cv-sky-btn {
+  min-width: 44px;
+  height: 44px;
+}
+.cv-sky-card.is-touch {
+  overflow-y: auto;
 }

@@ -3,9 +3,9 @@ import { fileURLToPath } from "node:url";
 import { PerspectiveCamera, Vector3 } from "three";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { parseKstTime } from "@caysonverse/shared/village/sunClock";
-import { altAzOf, type Vec3 } from "@caysonverse/shared/village/skyMath";
+import { altAzOf, angleDeg, type Vec3 } from "@caysonverse/shared/village/skyMath";
 import { viewState } from "../../game/viewState";
-import { finderFrame, lineSpec, resetFinderRuntime } from "./finderRuntime";
+import { clearSelection, finderFrame, lineSpec, resetFinderRuntime, selectFigure } from "./finderRuntime";
 import { parseStarCatalog } from "./starCatalog";
 import { anchorDirection, setSkyCatalog, sky, updateSky } from "./skyRuntime";
 import { closeFinder, openFinder, useStarFinder } from "./starFinderStore";
@@ -61,91 +61,94 @@ describe("the star finder's frame", () => {
     expect(st.duskText).toMatch(/^오늘 오후 5시 5\d분쯤$/);
   });
 
-  it("on an autumn night picks Cassiopeia first (the Dipper is down), and finds it after a second in the reticle", () => {
+  it("on an autumn night lists what is up (Cassiopeia first, the Dipper and Orion are not), with where each stands", () => {
     openFinder();
     run(0.1, night);
-    let st = useStarFinder.getState();
+    const st = useStarFinder.getState();
     expect(st.phase).toBe("night");
     expect(st.firstPerson).toBe(true);
-    expect(st.targetId).toBe("Cas");
+    expect(st.targetId).toBeNull(); // nothing is drawn until a name is tapped
+    expect(st.ranking[0]).toBe("Cas");
     expect(st.ranking[1]).toBe("polaris");
     expect(st.ranking).not.toContain("dipper");
     expect(st.ranking).not.toContain("Ori"); // winter's Orion is still under the hills at 21:00 in November
-    expect(st.targetWhere).toMatch(/^북쪽 하늘, 높이 \(고도 6\d°\)$/); // near its upper culmination in mid-November
-    expect(st.targetShape?.points.length).toBe(5);
-
-    // looking away for two seconds: nothing
-    look([0, 0.3, 1]);
-    run(2, night);
-    expect(useStarFinder.getState().foundNow).toBeNull();
-
-    // into the reticle: found after one second, not before
-    const d = anchorDirection(target(), [0, 0, 0]);
-    look(d);
-    run(0.9, night);
-    expect(useStarFinder.getState().foundNow).toBeNull();
-    run(0.2, night);
-    st = useStarFinder.getState();
-    expect(st.foundNow).toBe("Cas");
-    expect(st.progress.found.Cas).toBe("2026-11-10T21:00:00+09:00");
-    expect(st.announce).toMatch(/^카시오페이아자리를 찾았어요! 가을 발견 1\/6$/);
-    // its lines are drawn (revealing), at full brightness
-    expect(lineSpec.find((l) => l.geom.figure.id === "Cas")?.brightness).toBe(1);
+    expect(st.rowInfo.Cas).toBe("북쪽 · 높이");
+    expect(Object.keys(st.rowInfo).sort()).toEqual([...st.ranking].sort());
+    expect(lineSpec).toHaveLength(0);
   });
 
-  it("forgives a shaky hand: a short slip out of the reticle drains the count at double speed", () => {
+  it("a tap on a name draws its lines and name, marks it seen, and turns the view to it; a drag takes over", () => {
     openFinder();
     run(0.1, night);
+    viewState.fpYaw = 2.5; // looking south-ish
+    viewState.fpPitch = 0;
+    selectFigure("Cas");
+    let st = useStarFinder.getState();
+    expect(st.targetId).toBe("Cas");
+    expect(st.progress.found.Cas).toBe("2026-11-10T21:00:00+09:00");
+    expect(st.announce).toMatch(/^카시오페이아자리를 하늘에 그렸어요\. 가을 발견 1\/6$/);
+    run(0.1, night);
+    st = useStarFinder.getState();
+    expect(st.targetWhere).toMatch(/^북쪽 하늘, 높이 \(고도 6\d°\)$/);
+    expect(st.targetShape?.points.length).toBe(5);
+    expect(lineSpec.find((l) => l.geom.figure.id === "Cas")?.brightness).toBe(1);
+    // the view turns toward the figure within ~2 s, and ends facing it (a little above it)
+    run(2.5, night);
     const d = anchorDirection(target(), [0, 0, 0]);
-    look(d);
-    run(0.6, night);
-    look([0, 0.3, 1]);
-    run(0.1, night); // 0.6 - 0.2 = 0.4 left
-    look(d);
-    run(0.5, night);
-    expect(useStarFinder.getState().foundNow).toBeNull();
+    const fwd: Vec3 = [-Math.sin(viewState.fpYaw) * Math.cos(viewState.fpPitch), -Math.sin(viewState.fpPitch), -Math.cos(viewState.fpYaw) * Math.cos(viewState.fpPitch)];
+    expect(angleDeg(fwd, d)).toBeLessThan(6); // 0.08 of the view height under the middle (the card is above)
+    // picking again does not count twice
+    selectFigure("Cas");
+    expect(Object.keys(useStarFinder.getState().progress.found)).toEqual(["Cas"]);
+    // a drag in the middle of a turn stops it
+    viewState.fpYaw = 2.5;
+    viewState.fpPitch = 0;
+    selectFigure("polaris");
     run(0.2, night);
-    expect(useStarFinder.getState().foundNow).toBe("Cas");
+    const yawNow = viewState.fpYaw;
+    viewState.fpYaw = yawNow + 0.5; // the player's drag
+    run(1, night);
+    expect(viewState.fpYaw).toBeCloseTo(yawNow + 0.5, 6);
   });
 
-  it("does not aim in third person (the card asks for first person)", () => {
+  it("does not turn the camera in third person (the card asks for first person)", () => {
     viewState.mode = "tp";
     viewState.blend = 0;
     openFinder();
     run(0.1, night);
-    const d = anchorDirection(target(), [0, 0, 0]);
-    look(d);
-    run(2, night);
-    const st = useStarFinder.getState();
-    expect(st.firstPerson).toBe(false);
-    expect(st.foundNow).toBeNull();
+    viewState.fpYaw = 1;
+    selectFigure("Cas");
+    run(1, night);
+    expect(useStarFinder.getState().firstPerson).toBe(false);
+    expect(viewState.fpYaw).toBe(1);
   });
 
-  it("shows the faint ghost lines after 20 s without finding", () => {
+  it("lets go of a pick that has gone below the hills, and the back button clears it", () => {
     openFinder();
     run(0.1, night);
-    look([0, -0.2, 1]);
-    run(19.5, night);
-    expect(useStarFinder.getState().ghost).toBe(false);
-    run(1, night);
-    expect(useStarFinder.getState().ghost).toBe(true);
-    expect(lineSpec.find((l) => l.geom.figure.id === "Cas")?.brightness).toBe(0.15);
+    selectFigure("Cas");
+    run(0.1, night);
+    clearSelection();
+    expect(useStarFinder.getState().targetId).toBeNull();
+    selectFigure("Cas");
+    // the next morning the sky is gone (day): the pick is let go
+    run(0.1, parseKstTime("2026-11-11T14:00")!, 30);
+    const st = useStarFinder.getState();
+    expect(st.targetId).toBeNull();
   });
 
-  it("finds the summer sky's Lyra almost overhead (the 86° look-up reaches it)", () => {
+  it("shows the summer sky's Lyra almost overhead: the steepest look reaches it", () => {
     const summer = parseKstTime("2026-08-15T21:00")!;
-    useStarFinder.setState({ progress: { found: { dipper: "x", polaris: "y" }, showFound: false } });
     openFinder();
     run(0.1, summer);
-    useStarFinder.setState({ targetId: "Lyr" });
+    expect(useStarFinder.getState().ranking).toContain("Lyr");
+    selectFigure("Lyr");
+    run(3, summer);
     const g = sky.figures.find((x) => x.figure.id === "Lyr")!;
     const d = anchorDirection(g, [0, 0, 0]);
     expect(altAzOf(d).altDeg).toBeGreaterThan(75);
-    // the steepest first-person look (pitch -1.5 rad = 86°) still has it inside the allowance
-    const steep: Vec3 = [Math.sin(Math.atan2(d[0], -d[2])) * Math.cos(1.5), Math.sin(1.5), -Math.cos(Math.atan2(d[0], -d[2])) * Math.cos(1.5)];
-    look(altAzOf(d).altDeg > 86 ? steep : d);
-    run(1.1, summer);
-    expect(useStarFinder.getState().foundNow).toBe("Lyr");
+    const fwd: Vec3 = [-Math.sin(viewState.fpYaw) * Math.cos(viewState.fpPitch), -Math.sin(viewState.fpPitch), -Math.cos(viewState.fpYaw) * Math.cos(viewState.fpPitch)];
+    expect(angleDeg(fwd, d)).toBeLessThan(6);
   });
 
   it("keeps found figures drawn faintly when 찾은 별자리 보기 is on, and none when it is off", () => {
