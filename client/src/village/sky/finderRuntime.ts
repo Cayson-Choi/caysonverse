@@ -10,22 +10,23 @@ import { Vector3, type PerspectiveCamera } from "three";
 import { SEASON_NAME, STAR_NAMES, figureById, figureTitle } from "@caysonverse/shared/village/constellations";
 import { altAzOf, angleDeg, nextSunset, seasonAt, type Vec3 } from "@caysonverse/shared/village/skyMath";
 import { kstClock } from "@caysonverse/shared/village/sunClock";
+import { clampFpPitch } from "../../game/viewMode";
+import { normalizeAngle } from "../../game/yaw";
 import { viewState } from "../../game/viewState";
 import { anchorDirection, eqDirection, sky, starAltitudes, starDirection, type FigureGeom } from "./skyRuntime";
 import {
   BRIGHT_STAR_MAG,
   BRIGHT_STAR_NEAR_DEG,
   PLANET_NEAR_DEG,
-  RETICLE_DEG,
   arrowHint,
   duskWords,
+  compassWord,
+  heightWord,
   isFigureUp,
   lookText,
   rankTargets,
   revealOrder,
-  showGhost,
   skyShape,
-  stepAim,
   whereText,
   type Candidate,
 } from "./finderRules";
@@ -45,13 +46,9 @@ export const LINE_FOUND = 0.3;
 export const LINE_GHOST = 0.15;
 /** Names on the sky at once, at most. */
 export const MAX_LABELS = 10;
-/** The reticle's progress ring: a circle of r = 46 in a 100 x 100 view box (StarFinder.tsx draws it). */
-export const RING_LENGTH = 2 * Math.PI * 46;
 
 /** The HUD's elements the frame writes into (registered by StarFinder.tsx while it is mounted). */
 export const skyOverlay = {
-  reticle: null as HTMLElement | null,
-  ring: null as SVGCircleElement | null,
   arrow: null as HTMLElement | null,
   arrowText: null as HTMLElement | null,
   look: null as HTMLElement | null,
@@ -67,6 +64,8 @@ export interface LineFigure {
   revealAge: number;
   /** Line indexes in reveal order (null: as listed). */
   order: number[] | null;
+  /** The figure the player picked: its name and its stars' names stay on the sky. */
+  focus?: boolean;
 }
 
 /** What SkyLines draws this frame (rebuilt in place). */
@@ -90,6 +89,11 @@ const rt = {
   duskAt: -Infinity,
   reticlePx: 0,
   cardBottom: 0,
+  /** The card's box (CSS px): names under it are not drawn. */
+  cardRect: null as null | { l: number; t: number; r: number; b: number },
+  /** The camera turn toward a picked figure (look yaw / pitch, rad) and the yaw we last wrote (to see the player take over). */
+  rowText: "",
+  turn: null as null | { yaw: number; altRad: number; below: number; lastYaw: number; lastPitch: number },
 };
 
 const fwd = new Vector3();
@@ -143,6 +147,9 @@ export function resetFinderRuntime(): void {
     duskAt: -Infinity,
     reticlePx: 0,
     cardBottom: 0,
+    cardRect: null,
+    turn: null,
+    rowText: "",
   });
   lineSpec.length = 0;
   glow.stars = [];
@@ -163,24 +170,37 @@ function refresh(st: StarFinderState, firstPerson: boolean): void {
     patch.targetId = null;
     patch.targetShape = null;
     patch.ranking = [];
+    rt.turn = null;
   } else if (sky.catalog && st.open) {
     const season = seasonAt(sky.utcMs);
-    const cands: Candidate[] = sky.figures.map((g) => ({
-      id: g.figure.id,
-      season: g.figure.season,
-      up: isFigureUp(altAzOf(anchorDirection(g, dirA)).altDeg, starAltitudes(g)),
-      anchorAltDeg: altAzOf(dirA).altDeg,
-      found: !!st.progress.found[g.figure.id],
-    }));
+    const rows: Record<string, string> = {};
+    const cands: Candidate[] = sky.figures.map((g) => {
+      const { altDeg, azDeg } = altAzOf(anchorDirection(g, dirA));
+      rows[g.figure.id] = `${compassWord(azDeg)}쪽 · ${heightWord(altDeg)}`;
+      return {
+        id: g.figure.id,
+        season: g.figure.season,
+        up: isFigureUp(altDeg, starAltitudes(g)),
+        anchorAltDeg: altDeg,
+        found: !!st.progress.found[g.figure.id],
+      };
+    });
     const ranking = rankTargets(cands, season);
     if (ranking.join() !== st.ranking.join()) patch.ranking = ranking;
+    const rowText = ranking.map((id) => `${id}=${rows[id]}`).join("|");
+    if (rowText !== rt.rowText) {
+      rt.rowText = rowText;
+      patch.rowInfo = Object.fromEntries(ranking.map((id) => [id, rows[id]!]));
+    }
+    // The player picks (selectFigure); a pick that has set below the hills is let go.
     let target = st.targetId;
-    if (!st.foundNow && (target === null || !ranking.includes(target))) target = ranking[0] ?? null;
+    if (target !== null && !ranking.includes(target)) {
+      target = null;
+      rt.turn = null;
+    }
     if (target !== st.targetId) {
       patch.targetId = target;
-      patch.ghost = false;
-      rt.aim = 0;
-      rt.onTarget = 0;
+      patch.targetShape = null;
     }
     const g = geomOf(target);
     if (g) {
@@ -206,24 +226,74 @@ function refresh(st: StarFinderState, firstPerson: boolean): void {
   patchFinder(patch);
 }
 
-/** The target is found: progress, the reveal, the chime, the words for screen readers. */
-function found(st: StarFinderState, g: FigureGeom): void {
-  const id = g.figure.id;
-  setProgress(markFound(st.progress, id, sky.utcMs));
+/**
+ * The player picked a figure (a row of the list): it is marked seen (the album), its lines draw themselves on the sky with
+ * its name, and the view turns gently toward it (the player dragging the view takes over at once).
+ */
+export function selectFigure(id: string): void {
+  const g = geomOf(id);
+  const st = useStarFinder.getState();
+  if (!g || !sky.catalog) return;
+  const first = !st.progress.found[id];
+  if (first) {
+    setProgress(markFound(st.progress, id, sky.utcMs));
+    playFoundChime();
+  }
   const counts = seasonCounts(useStarFinder.getState().progress)[g.figure.season];
   patchFinder({
-    foundNow: id,
-    ghost: false,
+    targetId: id,
+    targetShape: null,
+    foundNow: null,
     aimInfo: null,
-    announce: `${withObjectParticle(g.figure.name)} 찾았어요! ${SEASON_NAME[g.figure.season]} 발견 ${counts.found}/${counts.total}`,
+    announce: `${withObjectParticle(g.figure.name)} 하늘에 그렸어요.${first ? ` ${SEASON_NAME[g.figure.season]} 발견 ${counts.found}/${counts.total}` : ""}`,
   });
   rt.revealId = id;
   rt.revealStart = rt.elapsed;
   rt.revealOrder = revealOrder(g.figure.lines, (hr) => sky.catalog!.mag[sky.catalog!.indexOf(hr)] ?? 9);
   glow.stars = g.stars;
   glow.start = rt.elapsed;
-  rt.aim = 0;
-  playFoundChime();
+  // the look direction that centres its aim point (the same yaw / pitch convention as CameraRig first-person pose)
+  const d = anchorDirection(g, [0, 0, 0]);
+  // The card covers the top of the screen (a phone: its top third), so the figure is brought to the lower part: `below` is
+  // how far under the middle (share of the screen height) it ends up.
+  const portrait = typeof window !== "undefined" && window.innerHeight > window.innerWidth;
+  rt.turn = { yaw: Math.atan2(-d[0], -d[2]), altRad: Math.asin(Math.max(-1, Math.min(1, d[1]))), below: portrait ? 0.2 : 0.08, lastYaw: NaN, lastPitch: NaN };
+  rt.lastRefresh = -Infinity; // refresh the picture and the words now
+}
+
+/** The back-to-list button: let go of the pick. */
+export function clearSelection(): void {
+  rt.turn = null;
+  rt.revealId = null;
+  patchFinder({ targetId: null, targetShape: null, foundNow: null, aimInfo: null });
+}
+
+/** Ease the first-person view toward the picked figure; stops when the player turns the view themselves. */
+function stepTurn(dt: number, fovDeg: number): void {
+  const t = rt.turn;
+  if (!t) return;
+  if (viewState.mode !== "fp") {
+    rt.turn = null;
+    return;
+  }
+  if (!Number.isNaN(t.lastYaw) && (Math.abs(normalizeAngle(viewState.fpYaw - t.lastYaw)) > 0.004 || Math.abs(viewState.fpPitch - t.lastPitch) > 0.004)) {
+    rt.turn = null; // the player's own drag
+    return;
+  }
+  const dy = normalizeAngle(t.yaw - viewState.fpYaw);
+  // looking above the figure by `below` of the view's height puts it that far under the middle
+  const goalPitch = clampFpPitch(-(t.altRad + t.below * ((fovDeg * Math.PI) / 180)), true);
+  const dp = goalPitch - viewState.fpPitch;
+  const k = 1 - Math.exp(-4.2 * dt);
+  // at most ~100 deg/s, so a half-turn takes under 2 s and never snaps
+  const cap = 1.75 * dt;
+  const sy = Math.max(-cap, Math.min(cap, dy * k + Math.sign(dy) * Math.min(Math.abs(dy), 0.02)));
+  const sp = Math.max(-cap, Math.min(cap, dp * k + Math.sign(dp) * Math.min(Math.abs(dp), 0.02)));
+  viewState.fpYaw = normalizeAngle(viewState.fpYaw + sy);
+  viewState.fpPitch = viewState.fpPitch + sp;
+  t.lastYaw = viewState.fpYaw;
+  t.lastPitch = viewState.fpPitch;
+  if (Math.abs(dy) < 0.01 && Math.abs(dp) < 0.01) rt.turn = null;
 }
 
 function hide(el: HTMLElement | null): void {
@@ -251,42 +321,35 @@ export function finderFrame(camera: PerspectiveCamera, dt: number, width: number
   if (rt.revealId && st.foundNow !== rt.revealId) rt.revealId = null; // "다음 별자리" pressed
 
   const night = st.phase === "night" && !!sky.catalog;
-  const aiming = st.open && night && firstPerson;
-  const g = aiming ? geomOf(st.targetId) : undefined;
+  const picking = st.open && night && firstPerson;
+  const g = picking ? geomOf(st.targetId) : undefined;
 
   camera.getWorldDirection(fwd);
   fwdArr[0] = fwd.x;
   fwdArr[1] = fwd.y;
   fwdArr[2] = fwd.z;
 
-  // ── the aim ──
-  if (g && !st.foundNow) {
+  // the guide: the view turns to the pick; the arrow shows the way while it is off screen
+  if (picking) stepTurn(dt, camera.fov);
+  else rt.turn = null;
+  if (g && !rt.turn) {
     anchorDirection(g, dirA);
-    const off = angleDeg(fwdArr, dirA);
-    rt.aim = stepAim(rt.aim, off <= g.aimDeg, dt);
-    rt.onTarget += dt;
-    if (!st.ghost && showGhost(rt.onTarget)) patchFinder({ ghost: true });
-    if (rt.aim >= 1) {
-      found(st, g);
-      st = useStarFinder.getState();
-    }
-    arrow(camera, off, width, height);
+    arrow(camera, angleDeg(fwdArr, dirA), width, height, figureTitle(g.figure));
   } else {
-    if (!aiming) rt.aim = 0;
     hide(skyOverlay.arrow);
   }
-  // the found figure's reveal stays clear of the reticle
-  reticle(camera, aiming && !st.foundNow, height, !!g && !st.foundNow && rt.aim > 0);
 
   // ── what the reticle passes over, where the player looks ──
-  if (aiming && rt.elapsed - rt.lastInfo >= 0.1) {
+  if (picking && rt.elapsed - rt.lastInfo >= 0.1) {
     rt.lastInfo = rt.elapsed;
-    patchFinder({ aimInfo: st.foundNow ? null : aimInfo() });
+    patchFinder({ aimInfo: aimInfo() });
   }
   if (st.open && rt.elapsed - rt.lastLook >= 0.25) {
     rt.lastLook = rt.elapsed;
     // where the card ends (the edge arrow keeps below it)
-    rt.cardBottom = skyOverlay.card ? skyOverlay.card.getBoundingClientRect().bottom : 0;
+    const cr = skyOverlay.card ? skyOverlay.card.getBoundingClientRect() : null;
+    rt.cardBottom = cr ? cr.bottom : 0;
+    rt.cardRect = cr ? { l: cr.left - 20, t: cr.top - 24, r: cr.right + 20, b: cr.bottom + 20 } : null;
   }
   if (st.open && skyOverlay.look && rt.lastLook === rt.elapsed) {
     const { altDeg, azDeg } = altAzOf(fwdArr);
@@ -314,30 +377,7 @@ function aimInfo(): string | null {
   return null;
 }
 
-function reticle(camera: PerspectiveCamera, on: boolean, height: number, active: boolean): void {
-  const el = skyOverlay.reticle;
-  if (!el) return;
-  if (!on) {
-    hide(el);
-    return;
-  }
-  show(el);
-  const r = Math.round((Math.tan((RETICLE_DEG * Math.PI) / 180) / Math.tan((camera.fov * Math.PI) / 360)) * (height / 2));
-  if (r !== rt.reticlePx) {
-    rt.reticlePx = r;
-    el.style.width = el.style.height = `${2 * r}px`;
-    // the card keeps above the reticle (starFinder.css reads this)
-    if (typeof document !== "undefined") document.documentElement.style.setProperty("--cv-sky-reticle", `${r}px`);
-  }
-  const ring = skyOverlay.ring;
-  if (ring) {
-    const off = (RING_LENGTH * (1 - rt.aim)).toFixed(1);
-    if (ring.style.strokeDashoffset !== off) ring.style.strokeDashoffset = off;
-  }
-  el.classList.toggle("is-aiming", active);
-}
-
-function arrow(camera: PerspectiveCamera, offAxisDeg: number, width: number, height: number): void {
+function arrow(camera: PerspectiveCamera, offAxisDeg: number, width: number, height: number, name: string): void {
   const el = skyOverlay.arrow;
   if (!el) return;
   // the target in camera space (x right, y up, -z forward), and whether it lands on the screen
@@ -364,7 +404,7 @@ function arrow(camera: PerspectiveCamera, offAxisDeg: number, width: number, hei
   el.style.transform = `translate(${x.toFixed(0)}px, ${y.toFixed(0)}px)`;
   const glyph = el.firstElementChild as HTMLElement | null;
   if (glyph) glyph.style.transform = `rotate(${(-hint.angleRad * 180) / Math.PI}deg)`;
-  const text = hint.behind ? "뒤쪽이에요 ↻" : hint.up ? "↑ 더 위로" : "";
+  const text = `${name}${hint.behind ? " · 뒤쪽 ↻" : hint.up ? " · 더 위로" : ""}`;
   if (skyOverlay.arrowText && skyOverlay.arrowText.textContent !== text) skyOverlay.arrowText.textContent = text;
 }
 
@@ -374,12 +414,11 @@ function buildLines(st: StarFinderState, night: boolean): void {
   const showFound = st.open || st.progress.showFound;
   for (const g of sky.figures) {
     const id = g.figure.id;
-    if (id === rt.revealId) {
-      lineSpec.push({ geom: g, brightness: LINE_FOUND_NOW, revealAge: rt.elapsed - rt.revealStart, order: rt.revealOrder });
+    if (st.open && id === st.targetId) {
+      const age = rt.elapsed - rt.revealStart;
+      lineSpec.push({ geom: g, brightness: LINE_FOUND_NOW, revealAge: age > 3 ? Infinity : age, order: rt.revealOrder, focus: true });
     } else if (showFound && st.progress.found[id]) {
       lineSpec.push({ geom: g, brightness: LINE_FOUND, revealAge: Infinity, order: null });
-    } else if (st.open && st.ghost && id === st.targetId && !st.foundNow) {
-      lineSpec.push({ geom: g, brightness: LINE_GHOST, revealAge: Infinity, order: null });
     }
   }
   // the one being revealed first (its names win the label budget)
@@ -403,6 +442,8 @@ function labels(camera: PerspectiveCamera, width: number, height: number): void 
   };
   const put = (x: number, y: number, text: string, kind: "figure" | "star" | "focus", opacity: number, centred: boolean): void => {
     if (n >= pool.length || n >= MAX_LABELS) return;
+    const cr = rt.cardRect;
+    if (cr && x > cr.l && x < cr.r && y > cr.t && y < cr.b) return; // under the card
     const el = pool[n++]!;
     if (el.textContent !== text) el.textContent = text;
     if (el.dataset.kind !== kind) {
@@ -431,12 +472,12 @@ function labels(camera: PerspectiveCamera, width: number, height: number): void 
   };
   for (const l of lineSpec) {
     if (l.brightness < LINE_FOUND) continue; // the ghost has no names
-    const revealing = l.revealAge !== Infinity;
-    const fadeIn = revealing ? Math.min(1, Math.max(0, (l.revealAge - 0.6) / 0.5)) : 1;
+    const focus = !!l.focus;
+    const fadeIn = l.revealAge !== Infinity ? Math.min(1, Math.max(0, (l.revealAge - 0.6) / 0.5)) : 1;
     if (fadeIn <= 0) continue;
     const f = l.geom.figure;
-    placeTitle(l.geom, figureTitle(f), revealing ? "focus" : "figure", revealing ? fadeIn : 0.75);
-    if (revealing) {
+    placeTitle(l.geom, figureTitle(f), focus ? "focus" : "figure", focus ? fadeIn : 0.75);
+    if (focus) {
       for (const i of l.geom.stars) {
         const name = STAR_NAMES[sky.catalog!.hr[i]!];
         if (name) place(starDirection(i, dirB), name, "star", fadeIn);
