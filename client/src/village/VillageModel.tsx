@@ -26,6 +26,7 @@ import { createWaterfall3D, hideWaterfallCards, type Waterfall3D } from "./water
 import { VillageMountains, mountainsMode, preloadMountains } from "./VillageMountains";
 import type { Object3D } from "three";
 import { LakeVillagePatch } from "../lake/PatchVillage";
+import { StreetFurniture } from "./street/StreetFurniture";
 import type { DrawnGap } from "./veg/drawnGap";
 
 declare global {
@@ -48,6 +49,12 @@ declare global {
 function fountainMode(): "new" | "old" {
   if (!import.meta.env.DEV || typeof location === "undefined") return "new";
   return new URLSearchParams(location.search).get("water") === "old" ? "old" : "new";
+}
+
+/** The lamp posts and street banners (street/): the new ones, or the model's own with the DEV address flag `?street=old`. */
+function streetMode(): "new" | "old" {
+  if (!import.meta.env.DEV || typeof location === "undefined") return "new";
+  return new URLSearchParams(location.search).get("street") === "old" ? "old" : "new";
 }
 
 function waterfallMode(): "new" | "old" {
@@ -237,6 +244,8 @@ export function VillageModel({ tier }: { tier: VillageTier }) {
   return (
     <>
       <primitive object={nodes.root} dispose={null} />
+      {/* The lamp posts and banners: the baked ones out of this clone, the new ones drawn in their places (street/). */}
+      {streetMode() === "new" && <StreetFurniture root={nodes.root} tier={tier} />}
       {/* The fishing lake takes the old backdrop lake out of this clone once it is drawn (lake/lakeVillagePatch.ts). */}
       <LakeVillagePatch root={nodes.root} />
       {veg && <primitive object={veg.group} dispose={null} />}
