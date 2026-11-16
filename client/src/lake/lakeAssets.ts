@@ -6,20 +6,28 @@
 // DEV: `?lake=glb` in the address asks for the files whatever the flags say (to try a file before the flag is flipped).
 
 import { FISHING_ANIMS_GLB_HASH, FISHING_ANIMS_PATH } from "@caysonverse/shared/village/fishingAnims";
+import { LAKE_FISH_GLB_HASH, LAKE_FISH_PATH, LAKE_GEAR_GLB_HASH, LAKE_GEAR_PATH } from "@caysonverse/shared/village/lakeGear";
 
 export const LAKE_URLS = {
-  /** Terrain, water, facilities, chairs, lamps, reeds (A + B). Nodes: `lake_water*` (+ optional `aDepth`), `col__lake_*`, `seat__lake_*`, `spot__*` are hidden/ignored by the draw. */
+  /** Chunk A: ground (`LM_*`, UV1 light map), water (`lake_water`, COLOR_0 data), reeds / trees (`inst__lake*`), the ridge. */
   lake: "/models/lake/lake.glb",
+  /** Chunk B: pier, 좌대, office, pavilion, benches, chairs, lamps (`col__` / `seat__` / `spot__` / `light__` helpers hidden). */
+  structures: "/models/lake/lake_structures.glb",
+  /** A's day and night light maps (UV1 of lake.glb) and the reflection panoramas. */
+  lightmap: "/models/lake/lake_lm.webp",
+  lightmapNight: "/models/lake/lake_lm_night.webp",
+  reflDay: "/models/lake/lake_refl_day.webp",
+  reflNight: "/models/lake/lake_refl_night.webp",
   /** The rod (nodes `grip`, `rod_tip`, a bone chain), the float (`float_top`), the net (`net_grip`) — C. */
-  gear: "/models/lake/lake_gear.glb",
+  gear: `${LAKE_GEAR_PATH}?v=${LAKE_GEAR_GLB_HASH}`,
   /** `fish_<species>` nodes — C. */
-  fish: "/models/lake/lake_fish.glb",
+  fish: `${LAKE_FISH_PATH}?v=${LAKE_FISH_GLB_HASH}`,
   /** The nine fishing clips (bones + clips, no mesh). */
   anims: `${FISHING_ANIMS_PATH}?v=${FISHING_ANIMS_GLB_HASH}`,
 } as const;
 
-/** The files that are in the repo now. */
-export const LAKE_PRESENT = { lake: false, gear: false, fish: false, anims: true } as const;
+/** The files that are in the repo now (F, 2026-11-16: every chunk's file landed). */
+export const LAKE_PRESENT = { lake: true, structures: true, lightmap: true, lightmapNight: true, reflDay: true, reflNight: true, gear: true, fish: true, anims: true } as const;
 
 export type LakeAsset = keyof typeof LAKE_PRESENT;
 

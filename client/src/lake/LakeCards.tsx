@@ -1,4 +1,6 @@
+import { useEffect } from "react";
 import { FISH_SPECIES, species } from "./lakeProtocol";
+import { sendBoardRequest } from "./lakeNet";
 import { useLakeStore, type CatchCard } from "./lakeStore";
 
 /** A little fish picture (a stand-in until lake_fish.glb's renders): a body, a tail and an eye in the species colour. */
@@ -18,6 +20,10 @@ export function LakeCards({ card }: { card: CatchCard | null }) {
   const dexOpen = useLakeStore((s) => s.dexOpen);
   const dex = useLakeStore((s) => s.dex);
   const halo = useLakeStore((s) => s.halo);
+  const board = useLakeStore((s) => s.board);
+  useEffect(() => {
+    if (dexOpen) sendBoardRequest();
+  }, [dexOpen]);
   const sp = card ? species(card.kind) : null;
   return (
     <>
@@ -70,6 +76,21 @@ export function LakeCards({ card }: { card: CatchCard | null }) {
               내 찌 둘레에 옅은 테두리 보이기
             </label>
             <div className="cv-lake-dex-note">이 기기에만 저장돼요.</div>
+            <div className="cv-lake-board" data-lake-board>
+              <strong>🏆 오늘의 대어</strong>
+              {board.length === 0 ? (
+                <div className="cv-lake-dex-sub">아직 없어요. 첫 대어의 주인공이 되어 봐요!</div>
+              ) : (
+                [...board]
+                  .sort((a, b) => b.cm - a.cm)
+                  .slice(0, 5)
+                  .map((b, i) => (
+                    <div key={i} className="cv-lake-dex-sub">
+                      {species(b.kind)?.label ?? b.label} {Math.round(b.cm)}cm · {b.by}
+                    </div>
+                  ))
+              )}
+            </div>
           </div>
         </div>
       )}

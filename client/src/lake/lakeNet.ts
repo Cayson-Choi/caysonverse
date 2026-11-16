@@ -6,7 +6,7 @@
 import { getRoom } from "../net/connection";
 import { transitNowMs } from "../net/transitSync";
 import { LAKE_FISHING_SPOTS } from "@caysonverse/shared/village/lakeLayout";
-import { LakeMsg, LakeServerMsg, emptyFishView, parsePersonalState, parseTrophy, rejectText, type FishView, type PersonalFishingState, type TrophyPayload } from "./lakeProtocol";
+import { LakeMsg, LakeServerMsg, emptyFishView, parseBoard, parsePersonalState, parseTrophy, rejectText, type BoardLine, type FishView, type PersonalFishingState, type TrophyPayload } from "./lakeProtocol";
 
 interface PlayerLike {
   rod?: number;
@@ -98,6 +98,7 @@ export const sendFishSit = (spot: number): void => send(LakeMsg.Sit, { spot });
 export const sendCast = (): void => send(LakeMsg.Cast);
 export const sendStrike = (): void => send(LakeMsg.Strike);
 export const sendStand = (): void => send(LakeMsg.Stand);
+export const sendBoardRequest = (): void => send(LakeMsg.BoardRequest);
 
 /** The hold: sent when it goes down or up, and repeated while down so the server's 1.5 s lapse never cuts a real hold (9.2). */
 let holdTimer: ReturnType<typeof setInterval> | null = null;
@@ -115,6 +116,8 @@ export interface LakeNetListeners {
   state(s: PersonalFishingState): void;
   rejected(text: string): void;
   trophy(t: TrophyPayload): void;
+  /** "오늘의 대어" (sent on joining and on request). */
+  board?(lines: BoardLine[]): void;
 }
 
 /** Subscribe to the personal and room messages of this room. Returns the unsubscribe. */
@@ -130,6 +133,10 @@ export function listenLake(l: LakeNetListeners): () => void {
     offs.push(r.onMessage(LakeServerMsg.Trophy, (p) => {
       const t = parseTrophy(p);
       if (t) l.trophy(t);
+    }));
+    offs.push(r.onMessage(LakeServerMsg.Board, (p) => {
+      const b = parseBoard(p);
+      if (b) l.board?.(b);
     }));
   }
   if (import.meta.env.DEV) mockPersonal = l.state;

@@ -16,7 +16,7 @@ import type { BuiltAvatar } from "../game/characterAvatar";
 import { fishingAnimsNow, loadFishingAnims, withoutRightArm } from "./fishAnims";
 import { elapsedSince, readFishView } from "./lakeNet";
 import { FISH_PHASE, emptyFishView, needsNet, species, type FishView } from "./lakeProtocol";
-import { createFishModel, createNet, createRod, type FishModel, type Net, type Rod } from "./lakeProps";
+import { createFishModel, createNet, createRod, lakeGearReady, loadLakeGear, type FishModel, type Net, type Rod } from "./lakeProps";
 import { registerRodTip } from "./rodTips";
 import { tugDip } from "./lakeFloat";
 
@@ -162,8 +162,9 @@ export function createFishingRig(o: { sid: string; avatar: BuiltAvatar; mixer: A
     handR = handR ?? bone(root, "handslot.r");
     if (!handR) return;
     rod = createRod();
-    q.setFromUnitVectors(Y, new Vector3(...ROD_AXIS_R).normalize());
-    rod.root.quaternion.copy(q);
+    // the stand-in points along +Y; lake_gear.glb's rod is authored along ROD_AXIS_R in the slot's frame already
+    if (rod.real) rod.root.quaternion.identity();
+    else rod.root.quaternion.copy(q.setFromUnitVectors(Y, new Vector3(...ROD_AXIS_R).normalize()));
     rod.root.position.set(GRIP_OFFSET[0], GRIP_OFFSET[1], GRIP_OFFSET[2]);
     // the bone's own scale (the rig is 1:1 in metres, but a parent scale would shrink the rod: undone here)
     handR.add(rod.root);
@@ -184,8 +185,8 @@ export function createFishingRig(o: { sid: string; avatar: BuiltAvatar; mixer: A
     handL = handL ?? bone(root, "handslot.l");
     if (!handL) return;
     net = createNet();
-    q.setFromUnitVectors(Y, new Vector3(...NET_AXIS_L).normalize());
-    net.root.quaternion.copy(q);
+    if (net.real) net.root.quaternion.identity();
+    else net.root.quaternion.copy(q.setFromUnitVectors(Y, new Vector3(...NET_AXIS_L).normalize()));
     net.root.position.set(GRIP_OFFSET[0], GRIP_OFFSET[1], GRIP_OFFSET[2]);
     handL.add(net.root);
     netHost = handL;
@@ -235,6 +236,16 @@ export function createFishingRig(o: { sid: string; avatar: BuiltAvatar; mixer: A
         }
         lift += (1 - lift) * Math.min(1, delta * 8);
         return;
+      }
+      if (!lakeGearReady()) void loadLakeGear();
+      else if (rod && !rod.real) {
+        detachRod(); // the stand-in made before lake_gear.glb came in: the real rod replaces it
+        detachNet();
+        if (fish) {
+          fish.root.removeFromParent();
+          fish.dispose();
+          fish = null;
+        }
       }
       attachRod();
       const clipsReady = ensureActions();
@@ -300,7 +311,7 @@ export function createFishingRig(o: { sid: string; avatar: BuiltAvatar; mixer: A
           }
           const sp = species(view.kind);
           fish.setCm(view.cm);
-          if (sp) fish.setColor(sp.color);
+          fish.setKind(view.kind, sp?.color ?? "#b9a46a");
           handL.getWorldPosition(hands.l);
           handR.getWorldPosition(hands.r);
           if (view.phase === FISH_PHASE.lifting || view.phase === FISH_PHASE.netting) hands.tmp.copy(hands.l).add(new Vector3(0, -0.05, 0));
@@ -310,9 +321,10 @@ export function createFishingRig(o: { sid: string; avatar: BuiltAvatar; mixer: A
           // lie along the line between the hands (landed / released), else hang
           const dir = hands.r.clone().sub(hands.l);
           if (dir.lengthSq() > 1e-4 && view.phase !== FISH_PHASE.lifting && view.phase !== FISH_PHASE.netting) {
-            fish.root.quaternion.setFromUnitVectors(new Vector3(1, 0, 0), host.worldToLocal(dir.add(hands.l)).sub(host.worldToLocal(hands.l.clone())).normalize());
+            fish.root.quaternion.setFromUnitVectors(new Vector3(0, 0, 1), host.worldToLocal(dir.add(hands.l)).sub(host.worldToLocal(hands.l.clone())).normalize());
           } else {
-            fish.root.rotation.set(0, 0, Math.PI / 2.3 + Math.sin(t * 9) * 0.25);
+            // hanging from the line, head up (nose +Z turned up), wriggling
+            fish.root.rotation.set(-Math.PI / 2.3 + Math.sin(t * 9) * 0.25, 0, 0);
           }
           fish.root.visible = true;
         }

@@ -183,6 +183,28 @@ export function parseTrophy(raw: unknown): TrophyPayload | null {
   return { name: r.by, kind: fishKindId(r.kind as FishKind), cm: r.cm, scope: typeof r.tier === "string" ? r.tier : undefined };
 }
 
+/** One line of the "오늘의 대어" board (shared `FishingBoardEntry`). */
+export interface BoardLine {
+  kind: number;
+  label: string;
+  cm: number;
+  by: string;
+}
+/** The room's FishingBoard (shared `FishingBoardPayload`): the best of each species today, read tolerantly. */
+export function parseBoard(raw: unknown): BoardLine[] | null {
+  if (!raw || typeof raw !== "object") return null;
+  const entries = (raw as { entries?: unknown }).entries;
+  if (!Array.isArray(entries)) return null;
+  const out: BoardLine[] = [];
+  for (const e of entries) {
+    if (!e || typeof e !== "object") continue;
+    const r = e as Record<string, unknown>;
+    if (typeof r.kind !== "string" || !(FISH_KINDS as readonly string[]).includes(r.kind) || typeof r.cm !== "number" || typeof r.by !== "string") continue;
+    out.push({ kind: fishKindId(r.kind as FishKind), label: typeof r.label === "string" ? r.label : "", cm: r.cm, by: r.by });
+  }
+  return out;
+}
+
 /** Korean words for a refused action (`FishingRejected {reason}`: shared `FishingReject`), never a code. */
 export function rejectText(reason: unknown): string {
   switch (reason) {

@@ -12,9 +12,13 @@
 
 import { BufferAttribute, BufferGeometry, Matrix4, Uint16BufferAttribute, Uint32BufferAttribute, type InstancedMesh, type Mesh, type Object3D } from "three";
 import { LAKE_AREA } from "@caysonverse/shared/village/lakeLayout";
+import { DEFAULT_SEAM, cellKey, type LakeSeam, type SeamRect } from "./lakeModelPrep";
 
-/** The zone R: the lake area. */
+/** The zone R: the lake area (the greybox's cut; lake.glb brings its own seam rectangles, `extras.lake.seam`). */
 export const LAKE_CUT = LAKE_AREA;
+
+/** The village's far forest on the backdrop hills: hidden under lake.glb's ridge (`lake_ridge` covers them). */
+const FAR_FOREST = /^inst__far_/;
 
 /** Meshes the patch never touches (the sky, the moon, the invisible collision boxes). */
 const KEEP = /^(village_sky|fountain_moon|col__|light__|seat__)/;
@@ -32,7 +36,9 @@ export interface VillagePatch {
   restore(): void;
 }
 
-const inside = (x: number, z: number): boolean => x > LAKE_CUT.minX && x < LAKE_CUT.maxX && z > LAKE_CUT.minZ && z < LAKE_CUT.maxZ;
+let holes: readonly SeamRect[] = [LAKE_CUT];
+const inRect = (r: SeamRect, x: number, z: number): boolean => x > r.minX && x < r.maxX && z > r.minZ && z < r.maxZ;
+const inside = (x: number, z: number): boolean => holes.some((r) => inRect(r, x, z));
 
 /**
  * A copy of `geo` without the triangles `drop` says (by the three vertices' world x and z; `tx`, `tz` = the mesh's offset),
@@ -86,7 +92,8 @@ const m4 = new Matrix4();
 const ZERO = new Matrix4().makeScale(0, 0, 0);
 
 /** Patch a clone of the village model. Safe to call again on the same clone (the second call finds nothing to take out). */
-export function patchVillage(root: Object3D): VillagePatch {
+export function patchVillage(root: Object3D, seam: LakeSeam = DEFAULT_SEAM): VillagePatch {
+  holes = seam.holes;
   const stats: PatchStats = { meshes: 0, trianglesRemoved: 0, instancesRemoved: 0 };
   const undo: Array<() => void> = [];
   root.updateWorldMatrix(true, true);
@@ -102,7 +109,8 @@ export function patchVillage(root: Object3D): VillagePatch {
         // the instance's world position: its translation plus the node's offset (the clone's nodes carry their own transform)
         const x = m4.elements[12] + inst.matrixWorld.elements[12];
         const z = m4.elements[14] + inst.matrixWorld.elements[14];
-        if (!inside(x, z)) continue;
+        const underRidge = FAR_FOREST.test(inst.name) && seam.ridgeCells.has(cellKey(x, z));
+        if (!inside(x, z) && !underRidge) continue;
         saved.push([i, Float32Array.from(attr.array.slice(i * 16, i * 16 + 16))]);
         ZERO.toArray(attr.array as unknown as number[], i * 16);
       }

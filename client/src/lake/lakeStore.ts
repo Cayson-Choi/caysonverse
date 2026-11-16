@@ -3,7 +3,8 @@
 
 import { create } from "zustand";
 import { loadDex, markCoachSeen, recordCatch, saveDex, type Dex } from "./lakeDex";
-import { catchBadge, species, type PersonalFishingState, type TrophyPayload } from "./lakeProtocol";
+import { catchBadge, species, type BoardLine, type PersonalFishingState, type TrophyPayload } from "./lakeProtocol";
+import { DEFAULT_SEAM, type LakeSeam } from "./lakeModelPrep";
 
 export interface CatchCard {
   id: number;
@@ -35,6 +36,10 @@ interface LakeStore {
   halo: boolean;
   /** The lake (greybox or lake.glb) is drawn: the village's old backdrop lake is taken out of its clone (lakeVillagePatch.ts). */
   drawn: boolean;
+  /** What the village patch cuts: lake.glb's seam rectangles and the ridge's footprint (the lake zone for the greybox). */
+  seam: LakeSeam;
+  /** "오늘의 대어": the room's board (the server's memory; it empties at 04:00 Korea time). */
+  board: BoardLine[];
   setPersonal(s: PersonalFishingState): void;
   landed(kind: number, cm: number, nowMs: number): void;
   say(text: string, ms?: number): void;
@@ -68,6 +73,8 @@ export const useLakeStore = create<LakeStore>((set, get) => ({
   ownsAction: false,
   halo: haloOn(),
   drawn: false,
+  seam: DEFAULT_SEAM,
+  board: [],
   setPersonal(s) {
     set({ personal: s });
   },

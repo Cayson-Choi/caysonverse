@@ -309,3 +309,11 @@
 .cv-touch.cv-chat-focus .cv-lake-btn {
   display: none;
 }
+
+.cv-lake-board {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.15);
+  display: grid;
+  gap: 2px;
+}

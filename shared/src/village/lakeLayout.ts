@@ -174,7 +174,11 @@ export const LAKE_PICNIC: readonly (LakePoint & { id: string })[] = [
   { id: "picnic_1", x: 99.5, z: 4.5 },
   { id: "picnic_2", x: 99.5, z: 12.5 },
 ];
-export const LAKE_LAMPS: readonly LakePoint[] = pts([[110, -15.2], [120, -15.2], [130, -15.2], [140, -19], [103, -14.5], [108, 0]]);
+/**
+ * Lamp posts. 2-4 stand on the pier's north edge and the T-end's corner (F, 2026-11-16: D1 had them at z -15.2 / -19, on piles
+ * in the water); between the pier's fishing chairs (x 113, 117, ... 137), clear of the chairs' get-up spots.
+ */
+export const LAKE_LAMPS: readonly LakePoint[] = pts([[110, -15.2], [119, -13.32], [131, -13.32], [140.3, -17.8], [103, -14.5], [108, 0]]);
 /** Reed beds: centre and radius (m). Visual only (they stand on the mud bank). */
 export const LAKE_REEDS: readonly { centre: LakePoint; radius: number }[] = [
   { centre: { x: 112, z: -40 }, radius: 4.5 }, { centre: { x: 123, z: 24 }, radius: 6 }, { centre: { x: 170, z: -40 }, radius: 9 },

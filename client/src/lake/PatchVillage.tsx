@@ -16,14 +16,15 @@ declare global {
  */
 export function LakeVillagePatch({ root }: { root: Object3D }) {
   const drawn = useLakeStore((s) => s.drawn);
+  const seam = useLakeStore((s) => s.seam);
   useLayoutEffect(() => {
     if (!drawn) return;
-    const patch = patchVillage(root);
+    const patch = patchVillage(root, seam);
     if (import.meta.env.DEV) window.__cvLakePatch = () => patch.stats;
     return () => {
       patch.restore();
       if (import.meta.env.DEV) delete window.__cvLakePatch;
     };
-  }, [drawn, root]);
+  }, [drawn, root, seam]);
   return null;
 }

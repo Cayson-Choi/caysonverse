@@ -1,7 +1,8 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useFrame } from "@react-three/fiber";
-import { useGLTF } from "@react-three/drei";
+import { useGLTF, useTexture } from "@react-three/drei";
 import {
+  type MeshStandardMaterial,
   AdditiveBlending,
   BufferGeometry,
   CircleGeometry,
@@ -22,6 +23,7 @@ import {
   RingGeometry,
   SphereGeometry,
   Vector3,
+  type Texture,
 } from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { LoadBoundary } from "../village/LoadBoundary";
@@ -31,7 +33,10 @@ import type { Pose } from "../game/types";
 import { LAKE_AREA, LAKE_FACE_DIR, LAKE_FISHING_SPOTS, LAKE_RENTAL_PAD, LAKE_SHORE, LAKE_WATER_Y, insidePolygon } from "@caysonverse/shared/village/lakeLayout";
 import { LAKE_URLS, lakeAssetWanted } from "./lakeAssets";
 import { LakeGreybox } from "./LakeGreybox";
-import { LAKE_WATER_NODE, createLakeWater, type LakeWater } from "./lakeWater";
+import { createLakeWater, type LakeWater, type LakeWaterLook } from "./lakeWater";
+import { DEFAULT_SEAM, disposeLake, lakeDayNight, prepareLakeStructures, prepareLakeTerrain, type LakeSeam } from "./lakeModelPrep";
+import type { VillageTier } from "../village/villageModelPrep";
+import { lakeFloatParts, loadLakeGear } from "./lakeProps";
 import { CAST_S, floatPose, scatter, tugIndex, type FloatPose, type Pt } from "./lakeFloat";
 import { elapsedSince, forEachAngler, selfId } from "./lakeNet";
 import { FISH_PHASE, emptyFishView, type FishView } from "./lakeProtocol";
@@ -56,8 +61,8 @@ function dayLook() {
 }
 
 /** The lake's own water: made once, ticked with the clock and the time of day. */
-function useLakeWater(depthAttr: boolean): LakeWater {
-  const water = useMemo(() => createLakeWater({ depthAttr }), [depthAttr]);
+function useLakeWater(depthAttr: boolean, look?: LakeWaterLook): LakeWater {
+  const water = useMemo(() => createLakeWater({ depthAttr, look }), [depthAttr, look]);
   useEffect(() => {
     activeWater = water;
     return () => {
@@ -70,51 +75,59 @@ function useLakeWater(depthAttr: boolean): LakeWater {
 }
 
 /** Tell the village its old backdrop lake can go (lakeVillagePatch.ts): while anything of the new lake is drawn. */
-function useDrawn(): void {
+function useDrawn(seam: LakeSeam): void {
   useEffect(() => {
-    useLakeStore.setState({ drawn: true });
-    return () => useLakeStore.setState({ drawn: false });
-  }, []);
+    useLakeStore.setState({ drawn: true, seam });
+    return () => useLakeStore.setState({ drawn: false, seam: DEFAULT_SEAM });
+  }, [seam]);
 }
 
 function Greybox() {
   const water = useLakeWater(false);
-  useDrawn();
+  useDrawn(DEFAULT_SEAM);
   return <LakeGreybox water={water} />;
 }
 
-/** lake.glb (A + B): the water mesh wears the lake's water, the helper nodes are hidden, the rest is drawn as it was baked. */
-function LakeGlb() {
+/**
+ * lake.glb (A) and lake_structures.glb (B), dressed by lakeModelPrep.ts: the ground with A's day / night light maps through the
+ * village's light-map recipe, the water with A's water data and reflection panoramas, the facilities with their helpers hidden
+ * and their lamps lit at night.
+ */
+function LakeGlb({ tier }: { tier: VillageTier }) {
   const gltf = useGLTF(LAKE_URLS.lake, DRACO_PATH);
-  const scene = useMemo(() => gltf.scene.clone(true), [gltf]);
-  const depth = useMemo(() => {
-    let has = false;
-    scene.traverse((o) => {
-      const m = o as Mesh;
-      if (m.isMesh && LAKE_WATER_NODE.test(m.name) && (m.geometry.getAttribute("aDepth") || m.geometry.getAttribute("_depth"))) has = true;
-    });
-    return has;
-  }, [scene]);
-  const water = useLakeWater(depth);
-  useDrawn();
+  const structs = useGLTF(LAKE_URLS.structures, DRACO_PATH);
+  const [lmDay, lmNight, reflDay, reflNight] = useTexture([LAKE_URLS.lightmap, LAKE_URLS.lightmapNight, LAKE_URLS.reflDay, LAKE_URLS.reflNight]) as Texture[];
+  const dressed = useMemo(() => {
+    const terrain = gltf.scene.clone(true);
+    const facilities = structs.scene.clone(true);
+    const t = prepareLakeTerrain(terrain, lmDay!, lmNight!, tier, gltf.scene.userData);
+    const f = prepareLakeStructures(facilities);
+    return { terrain, facilities, ...t, ...f };
+  }, [gltf, structs, lmDay, lmNight, tier]);
+  useEffect(() => () => disposeLake(dressed), [dressed]);
+  const look = useMemo<LakeWaterLook>(
+    () => ({ reflDay: reflDay!, reflNight: reflNight!, lightmap: lmDay!, lightmapNight: lmNight!, lamps: dressed.lampHeads.map((p) => ({ x: p.x, z: p.z })) }),
+    [reflDay, reflNight, lmDay, lmNight, dressed],
+  );
+  const water = useLakeWater(false, look);
+  useDrawn(dressed.seam);
   useEffect(() => {
-    scene.traverse((o) => {
-      if (/^(col__|seat__|spot__)/.test(o.name)) o.visible = false;
-      const m = o as Mesh;
-      if (m.isMesh && LAKE_WATER_NODE.test(m.name)) {
-        const g = m.geometry;
-        const d = g.getAttribute("_depth");
-        if (d && !g.getAttribute("aDepth")) g.setAttribute("aDepth", d);
-        m.material = water.material;
-        m.renderOrder = 2;
-      }
-    });
-  }, [scene, water]);
-  return <primitive object={scene} dispose={null} />;
+    for (const m of dressed.water) {
+      m.material = water.material;
+      m.renderOrder = 2;
+    }
+  }, [dressed, water]);
+  useFrame(() => lakeDayNight(dressed, dayNight.applied));
+  return (
+    <>
+      <primitive object={dressed.terrain} dispose={null} />
+      <primitive object={dressed.facilities} dispose={null} />
+    </>
+  );
 }
 
 /** The lake: its boxes at once when there is no file (placeholder), else the file after the village has settled (or on the way). */
-function LakeModel() {
+function LakeModel({ tier }: { tier: VillageTier }) {
   const wanted = lakeAssetWanted("lake");
   const [go, setGo] = useState(!wanted);
   useEffect(() => {
@@ -123,7 +136,7 @@ function LakeModel() {
     return () => window.clearTimeout(idle);
   }, [go]);
   if (!wanted) return <Greybox />;
-  return <>{go ? <LakeFromFile /> : <WatchForVisitor onNear={() => setGo(true)} />}</>;
+  return <>{go ? <LakeFromFile tier={tier} /> : <WatchForVisitor onNear={() => setGo(true)} />}</>;
 }
 
 function WatchForVisitor({ onNear }: { onNear: () => void }) {
@@ -135,15 +148,18 @@ function WatchForVisitor({ onNear }: { onNear: () => void }) {
   return null;
 }
 
-function LakeFromFile() {
+function LakeFromFile({ tier }: { tier: VillageTier }) {
   return (
     <LoadBoundary
       fallback={<Greybox />}
-      onReset={() => useGLTF.clear(LAKE_URLS.lake)}
+      onReset={() => {
+        useGLTF.clear(LAKE_URLS.lake);
+        useGLTF.clear(LAKE_URLS.structures);
+      }}
       notice="낚시터를 불러오지 못했어요. 잠시 뒤 다시 불러올게요."
     >
       <Suspense fallback={null}>
-        <LakeGlb />
+        <LakeGlb tier={tier} />
       </Suspense>
     </LoadBoundary>
   );
@@ -316,6 +332,7 @@ function createFloatGeometry(): BufferGeometry {
 }
 
 const tmpTip = new Vector3();
+const tmpOff = new Vector3();
 const tmpM = new Matrix4();
 const tmpQ = new Quaternion();
 const tmpP = new Vector3();
@@ -332,13 +349,36 @@ const FACE_SIDE = (f: { x: number; z: number }, seq: number): Pt => {
  * ONE instanced mesh and all the lines ONE line-segment object (design 10: the lake adds at most 45 draw calls; 30 anglers add 4 here).
  */
 function LakeAnglers() {
+  // lake_gear.glb's float (chunk C) once it is in; the drawn stand-in until then
+  const [gearIn, setGearIn] = useState(() => lakeFloatParts() !== null);
+  useEffect(() => {
+    if (gearIn) return;
+    let live = true;
+    void loadLakeGear().then(() => {
+      if (live && lakeFloatParts()) setGearIn(true);
+    });
+    return () => {
+      live = false;
+    };
+  }, [gearIn]);
   const parts = useMemo(() => {
     const slots = new Map<string, Slot>();
-    const floatGeo = createFloatGeometry();
-    const floatMat = new MeshBasicMaterial({ vertexColors: true });
+    const real = gearIn ? lakeFloatParts() : null;
+    const floatGeo = real?.body ? real.body.geometry.clone().applyMatrix4(real.body.matrixWorld) : createFloatGeometry();
+    const floatMat = real?.body ? (real.body.material as MeshStandardMaterial).clone() : new MeshBasicMaterial({ vertexColors: true });
     const floatMesh = new InstancedMesh(floatGeo, floatMat, MAX_FLOATS);
     floatMesh.frustumCulled = false;
     for (let i = 0; i < MAX_FLOATS; i++) floatMesh.setMatrixAt(i, ZERO_M);
+    const chemiGeo = real?.chemi ? real.chemi.geometry.clone().applyMatrix4(real.chemi.matrixWorld) : null;
+    const chemiMat = real?.chemi ? (real.chemi.material as MeshStandardMaterial).clone() : null;
+    const chemiBase = chemiMat?.emissiveIntensity ?? 1;
+    const chemiMesh = chemiGeo && chemiMat ? new InstancedMesh(chemiGeo, chemiMat, MAX_FLOATS) : null;
+    if (chemiMesh) {
+      chemiMesh.frustumCulled = false;
+      for (let i = 0; i < MAX_FLOATS; i++) chemiMesh.setMatrixAt(i, ZERO_M);
+    }
+    // the float's origin: its top (the stand-in) or the water line (lake_gear.glb, the top FLOAT_TOP_GLB above)
+    const originDown = real ? real.top * FLOAT_VIEW_SCALE : 0;
     const lineGeo = new BufferGeometry();
     const linePos = new Float32Array(MAX_FLOATS * SEGMENTS * 2 * 3).fill(-1000);
     lineGeo.setAttribute("position", new Float32BufferAttribute(linePos, 3));
@@ -358,13 +398,16 @@ function LakeAnglers() {
     splash.frustumCulled = false;
     const vel = new Float32Array(MAX_SPLASH * 3);
     const life = new Float32Array(MAX_SPLASH);
-    return { slots, floatGeo, floatMat, floatMesh, lineGeo, linePos, lineMat, lines, haloGeo, haloMat, halo, splash, splashGeo, splashMat, sp, vel, life, next: 0, ambient: 12 + Math.random() * 20 };
-  }, []);
+    return { slots, floatGeo, floatMat, floatMesh, chemiGeo, chemiMat, chemiMesh, chemiBase, originDown, lineGeo, linePos, lineMat, lines, haloGeo, haloMat, halo, splash, splashGeo, splashMat, sp, vel, life, next: 0, ambient: 12 + Math.random() * 20 };
+  }, [gearIn]);
   useEffect(
     () => () => {
       parts.floatGeo.dispose();
       parts.floatMat.dispose();
       parts.floatMesh.dispose();
+      parts.chemiGeo?.dispose();
+      parts.chemiMat?.dispose();
+      parts.chemiMesh?.dispose();
       parts.lineGeo.dispose();
       parts.lineMat.dispose();
       parts.haloGeo.dispose();
@@ -484,11 +527,17 @@ function LakeAnglers() {
       slot.visible = show;
       if (show) {
         tmpQ.setFromAxisAngle(Z_AXIS, (1 - p.stand) * 1.45);
-        tmpP.set(fx, fy, fz);
+        // the real float's origin is its water line: put it `originDown` under the top (turned with it while it lies)
+        tmpOff.set(0, -parts.originDown, 0).applyQuaternion(tmpQ);
+        tmpP.set(fx + tmpOff.x, fy + tmpOff.y, fz + tmpOff.z);
         tmpS.setScalar(FLOAT_VIEW_SCALE);
         tmpM.compose(tmpP, tmpQ, tmpS);
         parts.floatMesh.setMatrixAt(slot.index, tmpM);
-      } else parts.floatMesh.setMatrixAt(slot.index, ZERO_M);
+        parts.chemiMesh?.setMatrixAt(slot.index, tmpM);
+      } else {
+        parts.floatMesh.setMatrixAt(slot.index, ZERO_M);
+        parts.chemiMesh?.setMatrixAt(slot.index, ZERO_M);
+      }
       if (haloOn && sid === me && show && !p.flying && !p.taut) {
         parts.halo.position.set(fx, LAKE_WATER_Y + 0.02, fz);
         haloShown = true;
@@ -525,9 +574,15 @@ function LakeAnglers() {
       if (seen.has(sid) || !slot.visible) continue;
       slot.visible = false;
       parts.floatMesh.setMatrixAt(slot.index, ZERO_M);
+      parts.chemiMesh?.setMatrixAt(slot.index, ZERO_M);
       parts.linePos.fill(-1000, slot.index * SEGMENTS * 6, (slot.index + 1) * SEGMENTS * 6);
     }
     parts.floatMesh.instanceMatrix.needsUpdate = true;
+    if (parts.chemiMesh) {
+      parts.chemiMesh.instanceMatrix.needsUpdate = true;
+      // the 케미 light glows at night only (lake_gear.glb's M_chemi)
+      if (parts.chemiMat) parts.chemiMat.emissiveIntensity = parts.chemiBase * (0.05 + 1.6 * dayNight.applied.lights);
+    }
     (parts.lineGeo.getAttribute("position") as Float32BufferAttribute).needsUpdate = true;
     parts.halo.visible = haloShown;
     // splash particles: ballistic, gone when they fall back to the water
@@ -569,6 +624,7 @@ function LakeAnglers() {
   return (
     <>
       <primitive object={parts.floatMesh} />
+      {parts.chemiMesh && <primitive object={parts.chemiMesh} />}
       <primitive object={parts.lines} />
       <primitive object={parts.halo} />
       <primitive object={parts.splash} />
@@ -577,12 +633,12 @@ function LakeAnglers() {
 }
 
 /** What the lake adds to the village scene (replaces the old pond props): the lake itself, the pad, the markers, the anglers. */
-export function LakeWorld({ pose }: { pose: Pose }) {
+export function LakeWorld({ pose, tier }: { pose: Pose; tier: VillageTier }) {
   // DEV: `?nolake` leaves the lake out (to compare the village's frames and console with and without it).
   if (import.meta.env.DEV && typeof location !== "undefined" && new URLSearchParams(location.search).has("nolake")) return null;
   return (
     <>
-      <LakeModel />
+      <LakeModel tier={tier} />
       <RentalPad />
       <ChairMarkers pose={pose} />
       <LakeAnglers />

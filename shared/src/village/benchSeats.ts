@@ -547,8 +547,7 @@ export function fishingSpotOfSeat(seatIndex: number): number {
  * The lake's seats in the village's seat model (lakeLayout.ts `lakeSeats`, rule P6): a fishing chair or a backed bench is one
  * seat sat on from its front (a fishing chair also from beside it: its front is the water); a backless board (picnic, pavilion)
  * is two seats of one group, one per facing, the sitter facing the side they came from — its root `rootAhead` ahead of the
- * board's middle, the hips over the board. A picnic bench's table-side facing has the table in front: it is offered from any
- * side and stands up on the outer side.
+ * board's middle, the hips over the board. A picnic bench is sat on from outside only (its other side is the table).
  */
 function lakeVillageSeats(): VillageSeat[] {
   const out: VillageSeat[] = [];
@@ -573,13 +572,13 @@ function lakeVillageSeats(): VillageSeat[] {
     }
     const ahead = s.rootAhead;
     const deep = s.deep ?? 0.4;
+    // a picnic bench's second facing is the table's side: nobody can stand there to sit facing it (lakeLayout.ts gives it the
+    // first side's get-up spot), so a picnic board is the one seat sat on from outside (as lakeLayout's own rule chose)
     const facings = [
       { yaw: s.yaw, standX: s.standX, standZ: s.standZ, tag: "a" },
-      { yaw: s.other.yaw, standX: s.other.standX, standZ: s.other.standZ, tag: "b" },
+      ...(s.kind === "picnic" ? [] : [{ yaw: s.other.yaw, standX: s.other.standX, standZ: s.other.standZ, tag: "b" }]),
     ];
     for (const f of facings) {
-      // the picnic bench's second facing looks at the table: nobody stands in front of it, so it has no front-edge rule
-      const tableSide = s.kind === "picnic" && f.tag === "b";
       out.push({
         ...base,
         id: `lake:${s.id}:${f.tag}`,
@@ -588,9 +587,9 @@ function lakeVillageSeats(): VillageSeat[] {
         yaw: f.yaw,
         standX: f.standX,
         standZ: f.standZ,
-        frontEdge: tableSide ? undefined : Math.round(Math.max(0.05, ahead - deep / 2) * 1000) / 1000,
+        frontEdge: Math.round(Math.max(0.05, ahead - deep / 2) * 1000) / 1000,
         kind: "backless",
-        group: `lake:${s.id}`,
+        group: facings.length > 1 ? `lake:${s.id}` : undefined,
       });
     }
   }

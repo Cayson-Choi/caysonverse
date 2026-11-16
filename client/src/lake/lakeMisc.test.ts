@@ -14,7 +14,7 @@ import { LAKE_PRESENT, LAKE_URLS } from "./lakeAssets";
 import { isRightArmTrack, withoutRightArm } from "./fishAnims";
 import { FISHING_CHAIRS, chairSpotOfSeat, inLakeZone, nearestFreeChair, onRentalPad } from "./lakeNearby";
 import { patchVillage, trimGeometry } from "./lakeVillagePatch";
-import { catchBadge, FISH_PHASE } from "./lakeProtocol";
+import { FISH_PHASE } from "./lakeProtocol";
 import { clipForPhase, rodBend } from "./fishingRig";
 import { createRod, ROD_FOLDED_M, ROD_OPEN_M } from "./lakeProps";
 import { fishingYaw, FISHING_VIEW } from "./lakeCamera";

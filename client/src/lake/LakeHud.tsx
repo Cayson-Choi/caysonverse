@@ -18,7 +18,8 @@ import { LakeCards } from "./LakeCards";
 import { fishingCamera, restoreCamera } from "./lakeCamera";
 import "./lake.css";
 
-const POLL_MS = 200;
+/** The HUD reads the schema this often (ms): a bite must turn the button red at once. */
+const POLL_MS = 80;
 
 function sameCtx(a: LakeContext | null, b: LakeContext): boolean {
   if (!a) return false;
@@ -68,6 +69,7 @@ export function LakeHud({ pose, seat, orbit }: { pose: Pose; seat: SeatState; or
         state: (s) => store.getState().setPersonal(s),
         rejected: (t) => store.getState().say(t),
         trophy: (t) => store.getState().trophy(t),
+        board: (b) => store.setState({ board: b }),
       }),
     [store],
   );
@@ -161,12 +163,23 @@ export function LakeHud({ pose, seat, orbit }: { pose: Pose; seat: SeatState; or
           sendCast();
           break;
         case "strike":
-          sendStrike();
-          break;
-        case "tooEarly":
+        case "tooEarly": {
+          // the button shows the phase of the last poll: the press goes by the phase the server set NOW (a bite that
+          // began a moment ago is pulled, never turned away as "아직")
+          const live = emptyFishView();
+          readFishView(selfId(), live);
+          if (live.phase === FISH_PHASE.bite) {
+            sendStrike();
+            break;
+          }
+          if (a.kind === "strike") {
+            sendStrike(); // the server judges it (the bite's grace)
+            break;
+          }
           setShake((n) => n + 1);
           s.say("아직이에요! 찌가 크게 움직일 때까지 기다려요.");
           break;
+        }
         case "goRental":
           // get up, then walk to the yellow circle
           standUp();

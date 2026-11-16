@@ -125,7 +125,7 @@ function VillageArea({ area, tier, pose }: { area: AreaId; tier: VillageTier; po
               <BusStopShelter />
             </Suspense>
           </LoadBoundary>
-          <LakeWorld pose={pose} />
+          <LakeWorld pose={pose} tier={tier} />
           {/* The bus at the stop (bus review r3, M2): its own error boundary and its own Suspense, so the village never
               waits for it. Its download starts with the model's, so it is usually in when the village shows (and warmed
               up with it); if it comes later it appears then (its own warm-up), and a stalled or failed bus is no bus. */}
