@@ -1,6 +1,8 @@
 {
  "fails": [],
  "worst_wall_gap_m": 0.5,
+ "groove_max_dev_m": 0.0,
+ "plunge_max_out_m": 0.0,
  "falls_slab_0_top": 0.0412,
  "falls_slab_1_top": 0.0315,
  "falls_slab_2_top": 0.0215,
@@ -10,40 +12,76 @@
  "pocket_ground_bad_verts": 0,
  "max_x_cliff_ground": -100.0,
  "tris": {
-  "cliff_lod0": 16715,
-  "cliff_lod1": 2660,
-  "flank_lod0": 1279,
-  "flank_lod1": 496,
-  "ground": 7744,
-  "kit_instances": 54,
-  "kit_instance_tris": 14210,
+  "cliff_lod0": 14551,
+  "cliff_lod1": 5081,
+  "flank_lod0": 816,
+  "flank_lod1": 192,
+  "ground": 5436,
+  "kit_instances": 55,
+  "kit_instance_tris": 4388,
   "kit_meshes": {
-   "falls_kit_0": 252,
-   "falls_kit_1": 252,
-   "falls_kit_2": 252,
-   "falls_kit_3": 196,
-   "falls_kit_4": 322,
-   "falls_kit_5": 280,
-   "falls_kit_6": 248
+   "falls_kit_0": 74,
+   "falls_kit_1": 78,
+   "falls_kit_2": 82,
+   "falls_kit_3": 90,
+   "falls_kit_4": 80,
+   "falls_kit_5": 80,
+   "falls_kit_6": 80
   },
   "slabs_seats": 2624,
   "lamps": 52,
-  "pebbles": 6600,
-  "veg": 15726
+  "pebbles": 4400,
+  "plants": 4106,
+  "plants_hi": 4608,
+  "trees": 38,
+  "tree_tris": 13496,
+  "tree_templates": [
+   388,
+   388,
+   316,
+   340,
+   340,
+   396
+  ]
  },
- "tris_total_w1_high": 64950,
+ "tris_total_w1_high": 54477,
+ "tris_total_w1_low": 22847,
  "tex": {
   "files": [
+   "T_falls_foliage.png",
    "T_falls_gravel.png",
    "T_falls_gravel_n.png",
    "T_falls_rock.png",
+   "T_falls_rock_macro.png",
+   "T_falls_rock_macro_n.png",
    "T_falls_rock_n.png",
    "T_falls_slab.png",
    "T_falls_slab_n.png",
    "T_falls_turf.png",
    "T_falls_turf_n.png"
   ],
-  "sizes": "1024x1024 (rock, slab, gravel, turf) colour+normal"
+  "sizes": "1024x1024: rock (+n), rock macro RGBA on UV2 (+n), slab (+n), gravel (+n), turf (+n), foliage RGBA"
  },
- "glb_bytes": 2979164
+ "joint_layout": {
+  "blocks": 67,
+  "tiers": [
+   -2.6,
+   9.6,
+   17.0,
+   27.6,
+   36.0,
+   41.0
+  ]
+ },
+ "glb_bytes": 3525216,
+ "round": "3 (2026-11-16, strong model)",
+ "contract_changes": {
+  "M_falls_rock": "adds T_falls_rock_macro (UV2, RGBA: RGB colour x2 with 0.5 = x1, A relief height 0.5 = 0, 1 unit = 0.3 m) and T_falls_rock_macro_n (GL normal in UV2 tangent space); albedo = T_falls_rock(UV0) x macro.rgb x 2, then the Col masks as before. UV0 is now projected per face (box), 4 m tile.",
+  "Col masks": "same meaning (R moss, G wet, B streak, A lichen) but sampled only at the corners of the merged planar faces (coarse); lichen/streak/ledge-moss detail now lives in the macro map.",
+  "rock kit": "inst__falls_rock_k (k 0..6) now uses M_falls_slab (no UV2); no blocks stuck on the cliff any more (bank boulders, shallows, talus only).",
+  "plants": "veg__falls_plants (both tiers) + veg__falls_plants_hi (high only), material M_leaf_falls_plants (T_falls_foliage, alpha-cut MASK 0.5, double-sided, same rules as M_leaf_*). Custom per-vertex normals.",
+  "trees": "new inst__falls_tree_k (k 0..5) instances, materials M_falls_bark (T_bark) + M_leaf_green (T_leaf_green, village atlas).",
+  "tiers": "objects with extras.tier = \"high\" are dropped on the low tier (export_extras on); falls_rock_lod1/falls_flank_lod1 carry tier = \"low\".",
+  "shape": "face_x_detailed: groove core (|z-channel| < 2.4) exactly face_x, 2.4..3.8 cut inward only; plunge zone below the ledge cut inward only; 0.5 m off the camera wall. W0 --check: 44/44 ok."
+ }
 }

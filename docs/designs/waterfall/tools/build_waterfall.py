@@ -1,20 +1,27 @@
-"""B1 waterfall, W1: the rock and ground art of the falls site (authoring scene).
+"""B1 waterfall, W1: the rock, ground and plant art of the falls site (authoring scene). Round 3 (2026-11-16).
 
-  blender -b --factory-startup -P build_waterfall.py -- [--no-glb] [--quick]
+  blender -b --factory-startup -P build_waterfall.py -- [--no-glb]
 
 Reads the LOCKED shape from falls_shape.py (face_x over FACE_Z/FACE_Y, terrain_y minus is_cliff_cell, slabs, seats,
-lamps, camera wall) and builds, in GAME coordinates converted by Vb() = Blender (x, -z, y):
+lamps, camera wall) and the columnar joint layout from parts_falls_rock.py, and builds, in GAME coordinates converted
+by Vb() = Blender (x, -z, y):
 
-  falls_rock_lod0 / falls_rock_lod1   the cliff (face_x + fracture relief), UV0 planar 4 m tile, UV2 lightmap square,
-                                      'Col' R moss, G wet, B water-stain streaks, A lichen          M_falls_rock
-  falls_ground                        site ground west of the camera wall's pocket: gravel/turf/rock by slope (3 slots)
-  inst__falls_rock_k (k = 0..5)       the rock kit: jointed blocks on the cliff, bank riprap, talus (linked duplicates)
+  falls_rock_lod0 / falls_rock_lod1   the cliff: big planar granite blocks with bevelled edges and straight cracks
+                                      (coplanar faces merged, then triangulated), UV0 planar 4 m tile, UV2 = the face's
+                                      (z, y) square (lightmap AND the macro map T_falls_rock_macro), 'Col' R moss,
+                                      G wet, B water-stain streaks, A lichen                               M_falls_rock
+  falls_flank_lod0 / _lod1            the wooded slopes either side of the bare rock (forest floor)       M_falls_turf
+  falls_ground                        site ground west of the pocket: gravel / turf / boulder-granite by slope
+  inst__falls_rock_k (k = 0..6)       the rock kit: talus (column fragments), riprap, river boulders   M_falls_slab
+  inst__falls_pebble                  cobbles on the beach                                             M_falls_slab
+  inst__falls_tree_k (k = 0..5)       broadleaf trees on the flanks, the rim and the banks   M_falls_bark + M_leaf_green
   falls_slab_n / falls_seat_n|s       the 4 walkable flat rocks (top 0.02-0.04) and the 2 stone seats (top 0.42)
   falls_lamp_n + light__falls_lamp_n  placeholder warm lamps (baked into the night lightmap by W3)
-  veg__falls_*                        leaf clumps, ferns, moss cushions, grass, overhanging branches   M_leaf_green
-
-Nothing west of the camera wall is shared with the village: the ground east of the pocket (x > -100) belongs to
-village.glb. Writes art/village/work/falls_w1.blend (+ falls_w1.glb unless --no-glb) and falls_w1_report.json.
+  veg__falls_plants / veg__falls_plants_hi   alpha-cut plant cards (ledges, cracks, banks / flank undergrowth)
+                                                                                                    M_leaf_falls_plants
+Objects carry extras {"tier": "high"} when the low (iPhone) tier drops them (export_extras on).
+Nothing east of the pocket is drawn: the ground east of x -100 belongs to village.glb. Writes
+art/village/work/falls_w1.blend (+ falls_w1.glb unless --no-glb) and falls_w1_report.json.
 Each authoring material carries ["export"] = the GLB material name, like the village build.
 """
 import json
@@ -27,6 +34,7 @@ import sys
 import bmesh
 import bpy
 from mathutils import Vector
+from mathutils.bvhtree import BVHTree
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -41,7 +49,6 @@ CACHE = os.path.join(WORK, "falls_w1")
 os.makedirs(CACHE, exist_ok=True)
 argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
 NO_GLB = "--no-glb" in argv
-QUICK = "--quick" in argv          # coarse terrain cache only (iteration)
 
 S = F.SITE
 rng = random.Random(1116)
@@ -56,10 +63,12 @@ SRC.hide_render = True
 SRC.hide_viewport = True
 
 
-def link(ob, coll=None, cat=None):
+def link(ob, coll=None, cat=None, high_only=False):
     (coll or COLL).objects.link(ob)
     if cat:
         ob["cat"] = cat
+    if high_only:
+        ob["tier"] = "high"
     return ob
 
 
@@ -138,8 +147,7 @@ def mapr(nt, val, a, b, c=0.0, d=1.0, clamp=True):
     return m.outputs["Result"]
 
 
-def mixsep(nt, color):
-    """Luminance of a colour socket (RGB to BW)."""
+def lum_of(nt, color):
     n = N(nt, "ShaderNodeRGBToBW")
     nt.links.new(color, n.inputs[0])
     return n.outputs[0]
@@ -167,51 +175,75 @@ def rgb(h):
 MATS = {}
 
 
-def stone_material(name, export, tex, nor, tile_note, tint=(1, 1, 1, 1), moss_col="#34471F", base_rough=0.82, strength=1.1):
-    """Stone from a colour + normal texture and the 'Col' masks: R moss, G wet, B streaks, A lichen."""
+def stone_material(name, export, tex, nor, moss_col="#4A5E26", base_rough=0.8, strength=1.0, macro=None,
+                   streak_k=1.0, lich_k=1.0):
+    """Stone: tiled colour + normal (UV0), optional macro map on UV2 (RGB colour x2, A relief height -> bump), and the
+    'Col' masks: R moss, G wet (darker, glossy), B water-stain streaks, A lichen."""
     m = bpy.data.materials.new(name)
     m["export"] = export
     m.use_nodes = True
     nt = nodes_of(m)
-    out = N(nt, "ShaderNodeOutputMaterial", 1500, 0)
-    bs = N(nt, "ShaderNodeBsdfPrincipled", 1200, 0)
-    uv = N(nt, "ShaderNodeUVMap", -900, 0)
+    out = N(nt, "ShaderNodeOutputMaterial", 1700, 0)
+    bs = N(nt, "ShaderNodeBsdfPrincipled", 1400, 0)
+    uv = N(nt, "ShaderNodeUVMap", -1000, 0)
     uv.uv_map = "UVMap"
-    t = N(nt, "ShaderNodeTexImage", -600, 200)
+    t = N(nt, "ShaderNodeTexImage", -700, 250)
     t.image = img(tex)
     t.interpolation = "Cubic"
     nt.links.new(uv.outputs[0], t.inputs["Vector"])
-    tn = N(nt, "ShaderNodeTexImage", -600, -200)
+    tn = N(nt, "ShaderNodeTexImage", -700, -250)
     tn.image = img(nor, "Non-Color")
     nt.links.new(uv.outputs[0], tn.inputs["Vector"])
-    nm = N(nt, "ShaderNodeNormalMap", -300, -200)
+    nm = N(nt, "ShaderNodeNormalMap", -400, -250)
     nm.inputs["Strength"].default_value = strength
     nt.links.new(tn.outputs["Color"], nm.inputs["Color"])
-    nt.links.new(nm.outputs[0], bs.inputs["Normal"])
-    vc = N(nt, "ShaderNodeVertexColor", -900, -400)
+    normal = nm.outputs[0]
+    col = t.outputs["Color"]
+    if macro:
+        uv2 = N(nt, "ShaderNodeUVMap", -1000, -600)
+        uv2.uv_map = "UV2"
+        mt = N(nt, "ShaderNodeTexImage", -700, -600)
+        mt.image = img(macro, "Non-Color")
+        mt.interpolation = "Cubic"
+        nt.links.new(uv2.outputs[0], mt.inputs["Vector"])
+        col = mix(nt, col, mt.outputs["Color"], 1.0, "MULTIPLY")
+        col = mix(nt, col, (2.0, 2.0, 2.0, 1.0), 1.0, "MULTIPLY")
+        bump = N(nt, "ShaderNodeBump", -150, -500)
+        bump.inputs["Strength"].default_value = 1.0
+        bump.inputs["Distance"].default_value = 0.3
+        nt.links.new(mt.outputs["Alpha"], bump.inputs["Height"])
+        nt.links.new(normal, bump.inputs["Normal"])
+        normal = bump.outputs[0]
+    nt.links.new(normal, bs.inputs["Normal"])
+    vc = N(nt, "ShaderNodeVertexColor", -1000, -900)
     vc.layer_name = "Col"
-    sp = N(nt, "ShaderNodeSeparateColor", -650, -400)
+    sp = N(nt, "ShaderNodeSeparateColor", -750, -900)
     nt.links.new(vc.outputs["Color"], sp.inputs["Color"])
     R, G, B, A = sp.outputs[0], sp.outputs[1], sp.outputs[2], vc.outputs["Alpha"]
-    col = mix(nt, t.outputs["Color"], tint, 1.0, "MULTIPLY")
     # water-stain streaks: dark, slightly cool
-    col = mix(nt, col, (0.022, 0.025, 0.03, 1), mathn(nt, "MULTIPLY", B, 1.0))
-    # lichen: pale yellow-grey patches, not where it is wet
+    col = mix(nt, col, (0.035, 0.038, 0.042, 1), mathn(nt, "MULTIPLY", B, 0.75 * streak_k))
+    # lichen: pale grey patches, not where it is wet
     dry = mathn(nt, "SUBTRACT", 1.0, G)
-    rust_w = mathn(nt, "MULTIPLY", mapr(nt, A, 0.08, 0.3), mathn(nt, "SUBTRACT", 1.0, mapr(nt, A, 0.5, 0.62)))
-    lich_w = mapr(nt, A, 0.55, 0.8)
-    col = mix(nt, col, (0.34, 0.25, 0.17, 1), mathn(nt, "MULTIPLY", mathn(nt, "MULTIPLY", rust_w, dry), 0.28))
-    col = mix(nt, col, (0.62, 0.60, 0.40, 1), mathn(nt, "MULTIPLY", mathn(nt, "MULTIPLY", lich_w, dry), 0.6))
-    # moss: dark green, keeps the stone's relief by multiplying the stone luminance in
-    lum = mix(nt, (0.20, 0.30, 0.10, 1), t.outputs["Color"], 0.35, "MULTIPLY")
-    mossc = mix(nt, rgb(moss_col), lum, 0.35, "MULTIPLY")
-    tl = mathn(nt, "ADD", mathn(nt, "MULTIPLY", mixsep(nt, t.outputs["Color"]), 1.0), 0.0)
-    mfac = mathn(nt, "MULTIPLY", R, mapr(nt, tl, 0.18, 0.62, 1.25, 0.35))
-    col = mix(nt, col, mossc, mathn(nt, "MULTIPLY", mfac, 0.95))
+    lich_w = mapr(nt, A, 0.55, 0.85)
+    col = mix(nt, col, (0.66, 0.66, 0.6, 1), mathn(nt, "MULTIPLY", mathn(nt, "MULTIPLY", lich_w, dry), 0.45 * lich_k))
+    # moss: yellow-green, keeps the stone's relief by multiplying the stone luminance in
+    tl = lum_of(nt, t.outputs["Color"])
+    mm = N(nt, "ShaderNodeMix")
+    mm.data_type = "RGBA"
+    mm.blend_type = "MULTIPLY"
+    mm.inputs["Factor"].default_value = 1.0
+    mm.inputs[6].default_value = rgb(moss_col)
+    cc = N(nt, "ShaderNodeCombineColor")
+    lt = mapr(nt, tl, 0.1, 0.7, 0.6, 1.4)
+    for k in range(3):
+        nt.links.new(lt, cc.inputs[k])
+    nt.links.new(cc.outputs[0], mm.inputs[7])
+    mossc = mm.outputs[2]
+    col = mix(nt, col, mossc, mathn(nt, "MINIMUM", mathn(nt, "MULTIPLY", R, 0.95), 1.0))
     # wet: darker, glossier
-    col = mix(nt, col, (0.10, 0.105, 0.115, 1), mathn(nt, "MULTIPLY", G, 0.92), "MULTIPLY")
+    col = mix(nt, col, (0.30, 0.31, 0.33, 1), mathn(nt, "MULTIPLY", G, 1.0), "MULTIPLY")
     nt.links.new(col, bs.inputs["Base Color"])
-    rough = mapr(nt, G, 0.0, 1.0, base_rough, 0.28)
+    rough = mapr(nt, G, 0.0, 1.0, base_rough, 0.3)
     nt.links.new(rough, bs.inputs["Roughness"])
     nt.links.new(bs.outputs[0], out.inputs["Surface"])
     MATS[name] = m
@@ -248,35 +280,81 @@ def tinted_material(name, export, tex, nor, strength=0.9, rough=0.9):
     return m
 
 
-def leaf_material():
-    m = bpy.data.materials.new("M_leaf_green")
-    m["export"] = "M_leaf_green"
+def card_material(name, export, tex_path, translucent=0.3, rough=0.6, bright=1.0):
+    """Alpha-cut card foliage (glTF MASK, double-sided at runtime): texture x 'Col', some light through the leaves."""
+    m = bpy.data.materials.new(name)
+    m["export"] = export
     m.use_nodes = True
     nt = nodes_of(m)
-    out = N(nt, "ShaderNodeOutputMaterial", 900, 0)
-    bs = N(nt, "ShaderNodeBsdfPrincipled", 500, 0)
+    out = N(nt, "ShaderNodeOutputMaterial", 1100, 0)
+    bs = N(nt, "ShaderNodeBsdfPrincipled", 500, 100)
     uv = N(nt, "ShaderNodeUVMap", -600, 0)
     uv.uv_map = "UVMap"
     t = N(nt, "ShaderNodeTexImage", -300, 100)
-    t.image = bpy.data.images.load(os.path.join(WORK, "tex", "T_leaf_green.png"), check_existing=True)
+    t.image = bpy.data.images.load(tex_path, check_existing=True)
+    t.interpolation = "Linear"
     nt.links.new(uv.outputs[0], t.inputs["Vector"])
     vc = N(nt, "ShaderNodeVertexColor", -300, -150)
     vc.layer_name = "Col"
     col = mix(nt, t.outputs["Color"], vc.outputs["Color"], 1.0, "MULTIPLY")
+    if bright != 1.0:       # authoring renders only: the village bakes the leaves' light into COLOR_0 (brighter in game)
+        col = mix(nt, col, (bright, bright, bright, 1.0), 1.0, "MULTIPLY")
     nt.links.new(col, bs.inputs["Base Color"])
-    bs.inputs["Roughness"].default_value = 0.7
-    bs.inputs["Specular IOR Level"].default_value = 0.2
-    nt.links.new(bs.outputs[0], out.inputs["Surface"])
+    bs.inputs["Roughness"].default_value = rough
+    bs.inputs["Specular IOR Level"].default_value = 0.25
+    tr = N(nt, "ShaderNodeBsdfTranslucent", 500, -250)
+    nt.links.new(col, tr.inputs["Color"])
+    mx = N(nt, "ShaderNodeMixShader", 750, 0)
+    mx.inputs[0].default_value = translucent
+    nt.links.new(bs.outputs[0], mx.inputs[1])
+    nt.links.new(tr.outputs[0], mx.inputs[2])
+    # alpha clip at 0.5 (what the runtime's alphaTest does)
+    cut = mathn(nt, "GREATER_THAN", t.outputs["Alpha"], 0.5)
+    tp = N(nt, "ShaderNodeBsdfTransparent", 750, -250)
+    mx2 = N(nt, "ShaderNodeMixShader", 950, 0)
+    nt.links.new(cut, mx2.inputs[0])
+    nt.links.new(tp.outputs[0], mx2.inputs[1])
+    nt.links.new(mx.outputs[0], mx2.inputs[2])
+    nt.links.new(mx2.outputs[0], out.inputs["Surface"])
     m.use_backface_culling = False
-    MATS["M_leaf_green"] = m
+    try:
+        m.surface_render_method = "DITHERED"
+    except Exception:  # noqa: BLE001
+        pass
+    MATS[name] = m
     return m
 
 
-M_ROCK = stone_material("M_falls_rock", "M_falls_rock", "T_falls_rock.png", "T_falls_rock_n.png", "4 m", tint=(1.0, 1.0, 1.0, 1))
-M_SLAB = stone_material("M_falls_slab", "M_falls_slab", "T_falls_slab.png", "T_falls_slab_n.png", "3 m", moss_col="#3A5224", base_rough=0.78)
+def bark_material():
+    m = bpy.data.materials.new("M_falls_bark")
+    m["export"] = "M_falls_bark"
+    m.use_nodes = True
+    nt = nodes_of(m)
+    out = N(nt, "ShaderNodeOutputMaterial", 600, 0)
+    bs = N(nt, "ShaderNodeBsdfPrincipled", 300, 0)
+    uv = N(nt, "ShaderNodeUVMap", -600, 0)
+    uv.uv_map = "UVMap"
+    t = N(nt, "ShaderNodeTexImage", -300, 100)
+    t.image = bpy.data.images.load(os.path.join(WORK, "tex", "T_bark.png"), check_existing=True)
+    nt.links.new(uv.outputs[0], t.inputs["Vector"])
+    vc = N(nt, "ShaderNodeVertexColor", -300, -150)
+    vc.layer_name = "Col"
+    nt.links.new(mix(nt, t.outputs["Color"], vc.outputs["Color"], 1.0, "MULTIPLY"), bs.inputs["Base Color"])
+    bs.inputs["Roughness"].default_value = 0.9
+    nt.links.new(bs.outputs[0], out.inputs["Surface"])
+    MATS["M_falls_bark"] = m
+    return m
+
+
+M_ROCK = stone_material("M_falls_rock", "M_falls_rock", "T_falls_rock.png", "T_falls_rock_n.png",
+                        macro="T_falls_rock_macro.png", streak_k=0.5, lich_k=0.4, strength=0.8)
+M_SLAB = stone_material("M_falls_slab", "M_falls_slab", "T_falls_slab.png", "T_falls_slab_n.png", moss_col="#4F6A28",
+                        base_rough=0.74, strength=0.9)
 M_GROUND = tinted_material("M_falls_ground", "M_falls_ground", "T_falls_gravel.png", "T_falls_gravel_n.png", 1.0, 0.88)
 M_TURF = tinted_material("M_falls_turf", "M_falls_turf", "T_falls_turf.png", "T_falls_turf_n.png", 0.7, 0.95)
-M_LEAF = leaf_material()
+M_LEAF = card_material("M_leaf_green", "M_leaf_green", os.path.join(WORK, "tex", "T_leaf_green.png"), 0.3, bright=1.45)
+M_PLANT = card_material("M_leaf_falls_plants", "M_leaf_falls_plants", os.path.join(TEXF, "T_falls_foliage.png"), 0.35, bright=1.2)
+M_BARK = bark_material()
 M_LAMP = bpy.data.materials.new("M_falls_lamp")
 M_LAMP["export"] = "M_falls_lamp"
 M_LAMP.use_nodes = True
@@ -288,28 +366,7 @@ _e.inputs["Strength"].default_value = 3.0
 _nt.links.new(_e.outputs[0], _o.inputs["Surface"])
 
 # ============================================================================================ face grids ==
-MAX_STEP_Z = 0.8
-
-
-def face_axes(lod):
-    if lod == 0:
-        zs = list(F.FACE_Z[0] + (-90.0 - F.FACE_Z[0]) * k / 10 for k in range(10))
-        zs += list(-90.0 + 24.0 * k / 88 for k in range(89))
-        zs += list(-66.0 + (F.FACE_Z[1] + 66.0) * k / 10 for k in range(11))
-        ys = [F.FACE_Y[0] + k * (0.0 - F.FACE_Y[0]) / 4 for k in range(4)]
-        ys += [k * 0.3 for k in range(0, 34)]                         # 0 .. 9.9
-        ys += [10.0 + k * 0.45 for k in range(0, 27)]                 # 10 .. 21.7
-        ys += [22.0 + k * 0.9 for k in range(0, 22)]                  # 22 .. 40.9
-        ys += [F.FACE_Y[1]]
-    else:
-        zs = [F.FACE_Z[0] + (F.FACE_Z[1] - F.FACE_Z[0]) * k / 44 for k in range(45)]
-        ys = [F.FACE_Y[0], -1.0, 0.0] + [k * 0.85 for k in range(1, 22)] + [19.0 + k * 1.4 for k in range(0, 16)] + [F.FACE_Y[1]]
-        ys = sorted(set(round(y, 3) for y in ys))
-    return zs, ys
-
-
 SEAM_Z = -62.0       # south of this z the ground blends to the village seam (terrain_y), so the terrain mesh covers it
-# 1-m cell map of the steep ground (is_cliff_cell, contract): terrain skips these, the face covers them
 CLIFF = {}
 for xi in range(int(S["minX"]), int(S["maxX"])):
     for zi in range(int(S["minZ"]), int(S["maxZ"])):
@@ -331,17 +388,19 @@ def cliff_at(x, z, grow=0):
 def wetness(x, y, z):
     d_ch = abs(z - F.channel_z(y)) if y > F.LEDGE - 0.5 else 99.0
     d_pl = abs(z - F.LIP["z"]) if y <= F.LEDGE + 0.5 else 99.0
-    w = max(math.exp(-(d_ch / 3.4) ** 2), F.smooth(8.5, 3.5, d_pl) * (1.0 if y > -1 else 0.0))
-    # spray zone: low rock around the impact stays wet to about 8 m out
+    w = max(math.exp(-(d_ch / 3.6) ** 2), F.smooth(7.5, 3.0, d_pl) * (1.0 if y > -1 else 0.0))
     near = math.hypot(x - F.IMPACT["x"], z - F.IMPACT["z"]) - 5.0
-    w = max(w, math.exp(-max(0.0, near) / 3.5) * F.smooth(7.0, 1.5, y))
-    # the splash line: water level +- 1 m
-    w = max(w, F.smooth(1.4, 0.0, y - F.WATER_Y) * 0.9)
+    w = max(w, math.exp(-max(0.0, near) / 3.0) * F.smooth(6.0, 1.0, y))
+    w = max(w, F.smooth(1.2, 0.0, y - F.WATER_Y) * 0.9)
     return min(1.0, w)
 
 
+def flank_z(zc, yc):
+    return abs(zc - F.FZ) > 15.2 + 1.0 * F.noise3(zc * 0.12, yc * 0.06, 2.2)
+
+
 def build_face(lod):
-    zs, ys = face_axes(lod)
+    zs, ys, zk, yk = P.grid_lines(lod)
     nz, ny = len(zs), len(ys)
     X = [[P.face_x_detailed(z, y) for z in zs] for y in ys]
     verts, keepv = [], []
@@ -350,8 +409,7 @@ def build_face(lod):
             x = X[j][i]
             verts.append((x, z, y))
             keepv.append(y > F.floor_y(x, z) - 0.35)
-    # quads: kept where over the floor and in a cliff cell (one cell of overlap, pushed 5 cm into the rock)
-    faces, push = [], set()
+    rock_q, turf_q, push = [], [], set()
     for j in range(ny - 1):
         for i in range(nz - 1):
             a = j * nz + i
@@ -362,19 +420,18 @@ def build_face(lod):
             zm = sum(verts[k][1] for k in q) / 4
             ym = sum(verts[k][2] for k in q) / 4
             if ym > F.PLATEAU_Y + 2.0 or zm > SEAM_Z + 0.45:
-                continue                       # the last metres before the south edge follow the seam heights: terrain mesh
+                continue
             if cliff_at(xm, zm) and zm <= SEAM_Z:
-                faces += P._tri_split(verts, *q)
+                pass
             elif cliff_at(xm, zm, 1) or ym > F.TOP + 1.0 or zm > SEAM_Z:
                 for k in q:
                     push.add(k)
-                faces += P._tri_split(verts, *q)
-    # cavity + normals on the grid
+            else:
+                continue
+            (turf_q if flank_z(zm, ym) else rock_q).append(q)
     cols, uv0, uv2 = [], [], []
-    wall_ok = True
     for j, y in enumerate(ys):
         for i, z in enumerate(zs):
-            k = j * nz + i
             x = X[j][i]
             xl, xr = X[j][max(i - 1, 0)], X[j][min(i + 1, nz - 1)]
             xd, xu = X[max(j - 1, 0)][i], X[min(j + 1, ny - 1)][i]
@@ -383,44 +440,45 @@ def build_face(lod):
             Xz, Xy = (xr - xl) / dz, (xu - xd) / dy
             nlen = math.sqrt(1 + Xz * Xz + Xy * Xy)
             n_up = -Xy / nlen
-            cav = 0.5 * (xl + xr) - x + 0.5 * (xd + xu) - x         # > 0: a recess
+            cav = 0.5 * (xl + xr) - x + 0.5 * (xd + xu) - x
             wet = wetness(x, y, z)
-            nzn = F.fbm(z * 0.55, y * 0.55, 2.2)
-            moss = F.smooth(0.25, 0.6, n_up) * (0.45 + 0.6 * nzn) + F.smooth(0.05, 0.4, cav) * (0.45 + 0.5 * nzn)
-            moss += 0.45 * wet * F.smooth(8.0, 0.0, y) * (0.4 + 0.6 * max(0.0, nzn))
-            moss += 0.18 * F.smooth(0.1, 0.5, F.fbm(z * 0.22, y * 0.2, 7.7)) * F.smooth(14.0, 3.0, y)
-            moss *= 1.0 - 0.75 * F.smooth(0.55, 0.9, wet) * (1.0 if y > 2 else 0.0)
-            # water-stain streaks: long vertical dark runs under ledges, strongest in wet zones and the upper rock
-            sk = F.fbm(z * 1.1, y * 0.035 + 3.3, 1.7)
-            sk2 = F.noise3(z * 0.8, y * 0.09, 5.2)
-            streak = F.smooth(-0.05, 0.2, sk) * (0.6 + 0.4 * F.smooth(-0.2, 0.35, sk2)) + 0.55 * wet + 0.30 * F.smooth(0.1, 0.45, F.fbm(z * 0.12, y * 0.1, 3.3))
-            streak *= 1.0 - 0.35 * F.smooth(0.2, 0.7, n_up)
-            rn = F.fbm(z * 0.28 + 2, y * 0.2 + 5, 9.1)
-            ln_ = F.fbm(z * 0.8 + 4, y * 0.8, 2.9)
-            lich = 0.0
-            if F.smooth(0.0, 0.3, rn) > 0.05:
-                lich = 0.2 + 0.1 * F.smooth(0.0, 0.3, rn)                 # rust / ochre staining (A 0.1 .. 0.3)
-            if ln_ > 0.2:
-                lich = 0.62 + 0.3 * F.smooth(0.2, 0.5, ln_)               # pale lichen (A > 0.55)
-            lich *= (1.0 - wet)
-            cols.append((min(1.0, moss), wet, min(1.0, streak), lich))
+            nzn = F.fbm(z * 0.35, y * 0.35, 2.2)
+            # moss: up-facing ledges and recesses on the damp lower rock and near the water (the macro map paints
+            # the ledge tops and cracks in detail; this mask is the broad, runtime-tunable part)
+            damp = 0.35 + 0.65 * F.smooth(18.0, 2.0, y)
+            moss = (F.smooth(0.35, 0.75, n_up) * 0.7 + F.smooth(0.08, 0.4, cav) * 0.5) * damp * (0.6 + 0.4 * nzn)
+            moss += 0.55 * wet * F.smooth(6.0, 0.0, y) * (0.5 + 0.5 * max(0.0, nzn))
+            moss *= 1.0 - 0.8 * F.smooth(0.55, 0.9, wet) * (1.0 if y > 1.5 else 0.0)
+            streak = 0.45 * wet + 0.2 * F.smooth(0.15, 0.5, F.fbm(z * 0.9, y * 0.05 + 3.3, 1.7)) * F.smooth(6.0, 20.0, y)
+            ln_ = F.fbm(z * 0.3 + 4, y * 0.3, 2.9)
+            lich = (0.6 + 0.3 * F.smooth(0.0, 0.4, ln_)) * F.smooth(-0.1, 0.25, ln_) * (1.0 - wet)
+            cols.append((min(1.0, max(0.0, moss)), wet, min(1.0, streak), lich))
             uv0.append((z * 0.25 + 0.31, y * 0.25))
             uv2.append(((z - F.FACE_Z[0]) / (F.FACE_Z[1] - F.FACE_Z[0]), (y - F.FACE_Y[0]) / (F.FACE_Y[1] - F.FACE_Y[0])))
-    vb = []
-    for k, (x, z, y) in enumerate(verts):
-        vb.append(Vb(x - (0.05 if k in push else 0.0), z, y))
+    vb = [Vb(x - (0.05 if k in push else 0.0), z, y) for k, (x, z, y) in enumerate(verts)]
+    # where there is no block relief (groove, rim roll, flank blends) the bevel / crack-side lines carry nothing:
+    # dissolve them there so the curved parts keep only their fill resolution
+    drop = set()
+    for j, y in enumerate(ys):
+        for i, z in enumerate(zs):
+            if P.detail_weight(z, y) < 0.999 and (zk[z] == 0 or yk[y] == 0 or (yk[y] == 1 and abs(z - F.FZ) > 8.0)):
+                drop.add(j * nz + i)
 
-    def flank(tri):
-        zc = sum(verts[k][1] for k in tri) / 3
-        yc = sum(verts[k][2] for k in tri) / 3
-        return abs(zc - F.FZ) > 15.2 + 1.0 * F.noise3(zc * 0.12, yc * 0.06, 2.2)
-
-    def sub(name, tris, mat, colfn, sharp):
-        used = sorted({k for t in tris for k in t})
+    def sub(name, quads, mat, colfn, angle, sharp):
+        used = sorted({k for q in quads for k in q})
         remap = {k: i for i, k in enumerate(used)}
-        ob = P.mesh_from(name, [vb[k] for k in used], [tuple(remap[k] for k in t) for t in tris], mat,
+        ob = P.mesh_from(name, [vb[k] for k in used], [tuple(remap[k] for k in q) for q in quads], mat,
                          uv=[uv0[k] for k in used], uv2=[uv2[k] for k in used], colors=[colfn(k) for k in used])
         P.orient(ob.data, (1, 0, 0))
+        bm = bmesh.new()
+        bm.from_mesh(ob.data)
+        bm.verts.ensure_lookup_table()
+        dv = [bm.verts[remap[k]] for k in used if k in drop and not bm.verts[remap[k]].is_boundary]
+        bmesh.ops.dissolve_verts(bm, verts=dv, use_face_split=False, use_boundary_tear=False)
+        bm.to_mesh(ob.data)
+        bm.free()
+        P.planarize(ob.data, angle)
+        P.box_uv(ob.data, 4.0 if mat is M_ROCK else 3.0)
         P.sharpen(ob.data, sharp)
         return ob
 
@@ -429,11 +487,9 @@ def build_face(lod):
         n = F.fbm(z * 0.4, y * 0.4, 5.5)
         v_ = 0.8 + 0.5 * n
         return (v_ * 0.95, v_ * 1.02, v_ * 0.82, 1.0)
-    rock_t = [t for t in faces if not flank(t)]
-    turf_t = [t for t in faces if flank(t)]
-    ob = sub(f"falls_rock_lod{lod}", rock_t, M_ROCK, lambda k: cols[k], 62)
+    ob = sub(f"falls_rock_lod{lod}", rock_q, M_ROCK, lambda k: cols[k], 0.5 if lod == 0 else 2.0, 28)
     link(ob, cat="rock")
-    fk = sub(f"falls_flank_lod{lod}", turf_t, M_TURF, turf_col, 70)
+    fk = sub(f"falls_flank_lod{lod}", turf_q, M_TURF, turf_col, 2.0 if lod == 0 else 5.0, 70)
     link(fk, cat="ground")
     return ob, fk
 
@@ -444,27 +500,31 @@ FACE1, FLANK1 = build_face(1)
 for _o in (FACE1, FLANK1):
     _o.hide_render = True
     _o.hide_viewport = True
+    _o["tier"] = "low"
+FACE0["tier"] = "high"
+FLANK0["tier"] = "high"
 print("face tris", len(FACE0.data.polygons), len(FACE1.data.polygons), len(FLANK0.data.polygons))
 
 # =============================================================================================== terrain ==
 
 
 def tensor_axes():
-    xs = [S["minX"] + 2.0 * k for k in range(0, 8)]                       # -140 .. -126 at 2 m
-    xs += [-126.0 + 0.5 * k for k in range(0, 53)]                         # -126 .. -100 at 0.5 m
-    zs = [S["minZ"] + 1.0 * k for k in range(0, 5)]                        # -104 .. -100 at 1 m
-    zs += [-100.0 + 0.5 * k for k in range(0, 85)]                         # -100 .. -58 at 0.5 m
+    xs = [S["minX"] + 2.0 * k for k in range(0, 7)]                       # -140 .. -128 at 2 m
+    xs += [-126.0 + 1.0 * k for k in range(0, 12)]                         # -126 .. -115 at 1 m (plateau, cliff foot)
+    xs += [-114.0 + 0.5 * k for k in range(0, 29)]                         # -114 .. -100 at 0.5 m (pool, banks)
+    zs = [S["minZ"] + 1.0 * k for k in range(0, 12)]                       # -104 .. -93 at 1 m
+    zs += [-92.0 + 0.5 * k for k in range(0, 56)]                          # -92 .. -64.5 at 0.5 m
+    zs += [-64.0 + 1.0 * k for k in range(0, 7)]                           # -64 .. -58 at 1 m
     return xs, zs
 
 
 def ground_class(x, z):
-    """(gravel weight, turf weight) at a ground point: gravel round the water, the outlet and the rest area."""
+    """gravel weight at a ground point: gravel round the water, the outlet and the rest area."""
     sd = F.pool_signed_dist(x, z)
     od, _ = F.outlet_dist(x, z)
     g = max(F.smooth(4.8, 1.0, sd), F.smooth(3.4, 1.0, od - F.OUTLET["width"] / 2))
-    pb = F.POCKET
-    inpk = F._box_dist(x, z, pb)
-    g = max(g, F.smooth(2.0, 0.0, inpk) * F.smooth(-98.2, -102.5, -x) * 0.0 + F.smooth(2.0, 0.0, inpk) * 0.85 * F.smooth(-99.6, -103.0, x))
+    inpk = F._box_dist(x, z, F.POCKET)
+    g = max(g, F.smooth(2.0, 0.0, inpk) * 0.85 * F.smooth(-99.6, -103.0, x))
     g += 0.45 * F.fbm(x * 0.35, z * 0.35, 6.1) * (1 if g > 0.05 else 0)
     return g
 
@@ -486,11 +546,10 @@ def build_terrain():
     me = bpy.data.meshes.new("falls_ground")
     me.from_pydata(verts, [], quads)
     me.update()
-    # per-face class: rock where steep (the flank), gravel near water / rest area, turf elsewhere
     ob = bpy.data.objects.new("falls_ground", me)
     me.materials.append(M_GROUND)
     me.materials.append(M_TURF)
-    me.materials.append(M_ROCK)
+    me.materials.append(M_SLAB)
     me.update()
     P.orient(me, (0, 0, 1))
     mi = []
@@ -499,22 +558,21 @@ def build_terrain():
         gx, gz = c.x, -c.y
         n = p.normal
         g = ground_class(gx, gz)
-        if n.z < 0.45:
-            mi.append(2)
+        if n.z < 0.45 and abs(gz - F.FZ) < 15.0 and c.z < F.PLATEAU_Y - 1.0:
+            mi.append(2)                                  # steep rock among the bare granite only
         elif g > 0.5:
             mi.append(0)
         else:
-            mi.append(1)
+            mi.append(1)                                  # forest floor (also the steep wooded flanks)
     me.polygons.foreach_set("material_index", mi)
     me.polygons.foreach_set("use_smooth", [True] * len(me.polygons))
-    # UVs per loop by face class / axis, colours per vertex
     uv0 = me.uv_layers.new(name="UVMap")
     uv2 = me.uv_layers.new(name="UV2")
     for p in me.polygons:
         mid = p.material_index
         n = p.normal
         ax = max(range(3), key=lambda k: abs(n[k]))
-        tile = {0: 2.0, 1: 3.0, 2: 4.0}[mid]
+        tile = {0: 2.0, 1: 3.0, 2: 3.0}[mid]
         for li in p.loop_indices:
             co = me.vertices[me.loops[li].vertex_index].co
             if ax == 2:
@@ -533,19 +591,18 @@ def build_terrain():
     for i, v in enumerate(me.vertices):
         gx, gz, gy = v.co.x, -v.co.y, v.co.z
         sd = F.pool_signed_dist(gx, gz)
-        wet = F.smooth(1.6, 0.0, sd - 0.0) * 0.85
+        wet = F.smooth(1.6, 0.0, sd) * 0.85
         nzv = F.fbm(gx * 0.5, gz * 0.5, 4.4)
         cs = cls_of_vertex.get(i, {1})
         if 2 in cs:                                     # rock masks: R moss, G wet, B streak, A lichen
             moss = F.smooth(-0.1, 0.5, F.fbm(gx * 0.3, gz * 0.3 + gy * 0.2, 7.7)) * 0.7
             cols.data[i].color = (min(1.0, moss + wet * 0.4), wet, 0.0, max(0.0, nzv) * 0.7)
         elif 0 in cs:                                   # gravel tint: darker + greener when wet, warm variation
-            v_ = 0.78 + 0.28 * nzv
+            v_ = 0.8 + 0.25 * nzv
             k = 1.0 - 0.45 * wet
             cols.data[i].color = (v_ * k, v_ * k * 1.01, v_ * k * 0.96, 1.0)
-        else:                                           # turf tint
-            v_ = 0.8 + 0.4 * nzv
-            sh = 1.0 - 0.3 * F.smooth(6.0, 0.0, abs(gz - F.FZ) - 12.0)
+        else:                                           # forest floor tint
+            v_ = 0.8 + 0.35 * nzv
             cols.data[i].color = (v_ * 0.95, v_ * 1.02, v_ * 0.82, 1.0)
     link(ob, cat="ground")
     return ob
@@ -555,14 +612,30 @@ print("building terrain...")
 GROUND = build_terrain()
 print("ground tris", len(GROUND.data.polygons) * 2)
 
+# ray casts onto the built surfaces (plants and trees sit on what is drawn)
+_bv, _bp = [], []
+for ob in (FACE0, FLANK0, GROUND):
+    off = len(_bv)
+    _bv += [v.co.copy() for v in ob.data.vertices]
+    _bp += [tuple(off + i for i in p.vertices) for p in ob.data.polygons]
+BVH = BVHTree.FromPolygons(_bv, _bp)
+
+
+def surface_down(x, z, top=60.0):
+    """(Blender point, normal) of the first surface under (x, z) from above, or None."""
+    hit = BVH.ray_cast(Vector((x, -z, top)), Vector((0, 0, -1)))
+    if hit[0] is None:
+        return None
+    n = hit[1] if hit[1].z > 0 else -hit[1]
+    return hit[0], n
+
+
 # ============================================================================================= rock kit ==
-KIT = [P.block_mesh(k, 100 + k, M_ROCK) for k in range(7)]
+KIT = [P.block_mesh(k, 100 + k, M_SLAB) for k in range(7)]
 for ob in KIT:
     SRC.objects.link(ob)
 KIT_TRIS = {ob.name: sum(len(p.vertices) - 2 for p in ob.data.polygons) for ob in KIT}
 print("kit tris", KIT_TRIS)
-
-INST = []        # (kind, loc_game(x,z,y), yaw, tilt, scale(sx,sy,sz), tag)
 
 
 def kit_dims(kind, s):
@@ -574,117 +647,6 @@ def blocked_by_water(z, y):
     if y > F.LEDGE - 1.0:
         return abs(z - F.channel_z(y)) < F.CHANNEL_HALF + 1.8
     return abs(z - F.LIP["z"]) < 7.2 and y < F.LEDGE + 1.5
-
-
-def shelves(z, y0=0.8, y1=34.0, step=0.15, depth=0.28):
-    """Heights at z where the face steps back going up (a ledge to rest a block on)."""
-    out = []
-    y = y0
-    prev = P.face_x_detailed(z, y)
-    while y < y1:
-        a = P.face_x_detailed(z, y - 0.05)
-        b = P.face_x_detailed(z, y + 0.7)
-        if b < a - depth:
-            out.append((y, a - b))
-        y += step
-    return out
-
-
-def wall_clear(kind, loc, yaw, tilt, scale):
-    ob = KIT[kind]
-    for p in P.block_world_points(ob, Vector(Vb(*loc)), yaw, tilt, scale):
-        gx, gz = p.x, -p.y
-        if gx > F.camera_wall_x(gz) - 0.4:
-            return False
-    return True
-
-
-def place_cliff_blocks(n_shelf=7, n_knuckle=0):
-    placed = []
-    kinds_w = [(0, 0.35), (1, 0.30), (2, 0.20), (3, 0.15)]
-
-    def pick():
-        r = rng.random()
-        acc = 0
-        for k, w in kinds_w:
-            acc += w
-            if r <= acc:
-                return k
-        return 2
-    tries = 0
-    while len([p for p in placed if p[5] == "ledge"]) < n_shelf and tries < 900:
-        tries += 1
-        z = F.FZ + rng.uniform(-11.5, 11.5)
-        sh = shelves(z)
-        if not sh:
-            continue
-        y, depth = rng.choice(sh)
-        if blocked_by_water(z, y):
-            continue
-        kind = pick()
-        s = rng.uniform(2.0, 3.0)
-        sc_ = (s * rng.uniform(1.2, 1.5), s * rng.uniform(0.9, 1.1), s * rng.uniform(0.9, 1.1))
-        hx, hy, hz = kit_dims(kind, sc_)
-        if abs(z - F.FZ) > 9 and hz > 1.5:
-            continue
-        prot = rng.uniform(0.05, 0.3)
-        yc = y + hy * 0.9
-        xf = P.face_x_detailed(z, y + 0.1) + prot
-        loc = (xf - hx, z, yc)
-        yaw = rng.uniform(-0.06, 0.06)
-        tilt = rng.uniform(-0.03, 0.04)
-        if any(math.hypot(p[1][1] - z, p[1][2] - yc) < (hz + p[7]) * 0.9 for p in placed):
-            continue
-        if not wall_clear(kind, loc, yaw, tilt, sc_):
-            continue
-        placed.append((kind, loc, yaw, tilt, sc_, "ledge", None, hz))
-    tries = 0
-    while len([p for p in placed if p[5] == "knuckle"]) < n_knuckle and tries < 900:
-        tries += 1
-        z = F.FZ + rng.uniform(-12.5, 12.5)
-        y = rng.uniform(1.5, 36.0)
-        if blocked_by_water(z, y) or y > F.TOP - 1.0 and abs(z - F.FZ) > 9:
-            continue
-        kind = rng.choice([1, 0, 0, 3, 3])
-        s = rng.uniform(1.1, 1.8)
-        sc_ = (s, s * rng.uniform(0.85, 1.2), s * rng.uniform(0.85, 1.2))
-        hx, hy, hz = kit_dims(kind, sc_)
-        prot = rng.uniform(0.12, 0.4)
-        xf = P.face_x_detailed(z, y) + prot
-        loc = (xf - hx, z, y)
-        yaw = rng.uniform(-0.45, 0.45)
-        tilt = rng.uniform(-0.2, 0.2)
-        if any(math.hypot(p[1][1] - z, p[1][2] - y) < (hz + p[7]) * 0.85 for p in placed):
-            continue
-        if not wall_clear(kind, loc, yaw, tilt, sc_):
-            continue
-        placed.append((kind, loc, yaw, tilt, sc_, "knuckle", None, hz))
-    return placed
-
-
-def place_flank_rocks(n=12):
-    """Boulders and outcrops poking out of the wooded slopes beside the bare rock (they hide the rock/turf seam)."""
-    out = []
-    tries = 0
-    while len(out) < n and tries < 800:
-        tries += 1
-        side = rng.choice([-1, 1])
-        z = F.FZ + side * rng.choice([rng.uniform(13.0, 17.5), rng.uniform(14.0, 16.5), rng.uniform(11.5, 19.0)])
-        y = rng.uniform(0.8, 30.0)
-        x = P.face_x_detailed(z, y)
-        kind = rng.choice([4, 2, 1, 3, 0, 4])
-        s = rng.uniform(0.9, 1.6)
-        sc_ = (s * rng.uniform(0.9, 1.2), s * rng.uniform(0.8, 1.1), s * rng.uniform(0.9, 1.2))
-        hx, hy, hz = kit_dims(kind, sc_)
-        loc = (x - hx * 0.55, z, y + hy * 0.05)
-        yaw = rng.uniform(-0.6, 0.6)
-        tilt = rng.uniform(-0.1, 0.25)
-        if any(math.hypot(p_[1][1] - z, p_[1][2] - y) < (hz + p_[7]) * 0.9 for p_ in out):
-            continue
-        if not wall_clear(kind, loc, yaw, tilt, sc_):
-            continue
-        out.append((kind, loc, yaw, tilt, sc_, "flank", None, hz))
-    return out
 
 
 def in_pocket(x, z, grow=0.9):
@@ -701,18 +663,15 @@ def on_slab_or_seat(x, z, r):
     return False
 
 
-def place_bank_rocks(n_bank=26, n_water=8, n_talus=5):
+def place_bank_rocks(n_bank=44, n_water=9, n_talus=12):
     out = []
-    # shore boulders on the north, west and south sides of the pool (the east shore is the rest area: slabs, gravel only)
     tries = 0
-    while len(out) < n_bank and tries < 3000:
+    while len(out) < n_bank and tries < 4000:
         tries += 1
         a = rng.uniform(0, 2 * math.pi)
-        r_edge = F._pool_radius_dir(F.POOL_CX + math.cos(a), F.POOL_CZ + math.sin(a))
-        sd = rng.uniform(-0.6, 2.4)
-        # point at signed distance sd from the waterline along the ellipse normal (approx via radial scaling)
-        x = F.POOL_CX + (F.POOL_RX * math.cos(a)) * 1.0
-        z = F.POOL_CZ + (F.POOL_RZ * math.sin(a)) * 1.0
+        sd = rng.uniform(-0.7, 2.6)
+        x = F.POOL_CX + F.POOL_RX * math.cos(a)
+        z = F.POOL_CZ + F.POOL_RZ * math.sin(a)
         nx_, nz_ = math.cos(a) / F.POOL_RX, math.sin(a) / F.POOL_RZ
         nl = math.hypot(nx_, nz_)
         x += nx_ / nl * sd
@@ -722,20 +681,18 @@ def place_bank_rocks(n_bank=26, n_water=8, n_talus=5):
         od, _ = F.outlet_dist(x, z)
         if od < F.OUTLET["width"] / 2 + 1.0:
             continue
-        if abs(z - F.LIP["z"]) < 3.6 and x > F.LIP["x"] - 1:      # the plunge's footing: foam, not stones
+        if abs(z - F.LIP["z"]) < 3.6 and x > F.LIP["x"] - 1:
             continue
         if cliff_at(x, z, 1) and sd > 1.0:
             continue
-        k = rng.choice([6, 6, 6, 6, 4, 5])
-        s = rng.uniform(0.38, 0.95)
-        sc_ = (s * rng.uniform(0.85, 1.2), s * rng.uniform(0.7, 1.1), s * rng.uniform(0.85, 1.2))
+        k = rng.choice([6, 6, 6, 6, 4, 4, 5])
+        s = rng.uniform(0.32, 0.85)
+        sc_ = (s * rng.uniform(0.85, 1.2), s * rng.uniform(0.7, 1.05), s * rng.uniform(0.85, 1.2))
         hx, hy, hz = kit_dims(k, sc_)
-        if any(math.hypot(o[1][0] - x, o[1][2] - z) < (max(hx, hz) + max(kit_dims(o[0], o[4])[0], kit_dims(o[0], o[4])[2])) * 0.7 for o in out):
+        if any(math.hypot(o[1][0] - x, o[1][2] - z) < (max(hx, hz) + max(kit_dims(o[0], o[4])[0], kit_dims(o[0], o[4])[2])) * 0.72 for o in out):
             continue
         gy = F.floor_y(x, z)
-        yc = gy + hy * 0.55
-        out.append((k, (x, yc, z), rng.uniform(0, 6.28), rng.uniform(-0.15, 0.15), sc_, "bank", sd, 0))
-    # in the shallows: rocks just breaking the surface
+        out.append((k, (x, gy + hy * 0.45, z), rng.uniform(0, 6.28), rng.uniform(-0.15, 0.15), sc_, "bank", sd, 0))
     tries, cnt = 0, 0
     while cnt < n_water and tries < 2000:
         tries += 1
@@ -749,35 +706,32 @@ def place_bank_rocks(n_bank=26, n_water=8, n_talus=5):
         s = rng.uniform(0.32, 0.6)
         sc_ = (s * 1.1, s * 0.9, s * 1.1)
         hx, hy, hz = kit_dims(k, sc_)
-        bed = F.pool_bed_y(x, z)
         top = F.WATER_Y + rng.choice([0.28, 0.18, -0.12])
         yc = top - hy * 0.85
         if any(math.hypot(o[1][0] - x, o[1][2] - z) < 1.8 for o in out):
             continue
         out.append((k, (x, yc, z), rng.uniform(0, 6.28), rng.uniform(-0.2, 0.2), sc_, "shallow", 0, 0))
         cnt += 1
-    # talus: blocks fallen at the cliff foot, mostly on the north and south sides of the plunge
+    # talus: broken column pieces fallen at the cliff foot, mostly beside the plunge
     tries, cnt = 0, 0
-    while cnt < n_talus and tries < 1500:
+    while cnt < n_talus and tries < 2500:
         tries += 1
-        z = F.FZ + rng.choice([-1, 1]) * rng.uniform(6.5, 12.5)
-        x = P.face_x_detailed(z, 0.5) + rng.uniform(0.0, 2.6)
-        if in_pocket(x, z, 1.0) or F.pool_signed_dist(x, z) < -0.2:
+        z = F.FZ + rng.choice([-1, 1]) * rng.uniform(6.0, 14.5)
+        x = P.face_x_detailed(z, 0.5) + rng.uniform(1.2, 3.6)
+        if in_pocket(x, z, 1.0) or F.pool_signed_dist(x, z) < -0.4:
             continue
-        k = rng.choice([2, 3, 1, 0])
-        s = rng.uniform(0.55, 1.0)
+        k = rng.choice([2, 3, 1, 0, 0])
+        s = rng.uniform(0.5, 1.05)
         sc_ = (s, s * rng.uniform(0.7, 1.0), s * rng.uniform(0.8, 1.1))
         hx, hy, hz = kit_dims(k, sc_)
         if any(math.hypot(o[1][0] - x, o[1][2] - z) < 2.0 for o in out):
             continue
         gy = F.floor_y(x, z)
-        out.append((k, (x, gy + hy * 0.5, z), rng.uniform(0, 6.28), rng.uniform(-0.25, 0.25), sc_, "talus", 0, 0))
+        out.append((k, (x, gy + hy * 0.25, z), rng.uniform(0, 6.28), rng.uniform(-0.12, 0.12), sc_, "talus", 0, 0))
         cnt += 1
     return out
 
 
-CLIFF_BLOCKS = place_cliff_blocks()
-CLIFF_BLOCKS += place_flank_rocks()
 BANK_ROCKS = place_bank_rocks()
 
 
@@ -797,19 +751,17 @@ for k in range(7):
     r["cat"] = "inst_root"
     link(r)
     roots[k] = r
-count = 0
-for (kind, loc, yaw, tilt, sc_, tag, _a, _b) in CLIFF_BLOCKS:
-    ob = new_inst(kind, loc[0], loc[1], loc[2], yaw, tilt, sc_, tag, count)
-    ob.parent = roots[kind]
-    link(ob)
-    count += 1
+INST_COUNT = 0
+INST_TRIS = 0
+INST_TRIS_LOW = 0
 for (kind, loc, yaw, tilt, sc_, tag, _a, _b) in BANK_ROCKS:
-    ob = new_inst(kind, loc[0], loc[2], loc[1], yaw, tilt, sc_, tag, count)
+    ob = new_inst(kind, loc[0], loc[2], loc[1], yaw, tilt, sc_, tag, INST_COUNT)
     ob.parent = roots[kind]
-    link(ob)
-    count += 1
-INST_COUNT = count
-INST_TRIS = sum(KIT_TRIS[f'falls_kit_{k}'] for (k, *_r) in CLIFF_BLOCKS + BANK_ROCKS)
+    big = max(sc_) > 0.6 or tag == "talus"
+    link(ob, high_only=not big)
+    INST_COUNT += 1
+    INST_TRIS += KIT_TRIS[f"falls_kit_{kind}"]
+    INST_TRIS_LOW += KIT_TRIS[f"falls_kit_{kind}"] if big else 0
 print("kit instances", INST_COUNT, "tris", INST_TRIS)
 
 # ============================================================================ slabs, seats, lamps, gravel ==
@@ -825,12 +777,11 @@ for k, s in enumerate(F.SEATS):
     SEATS.append(ob)
 
 LAMP_TRIS = 0
+_M = __import__("mathutils").Matrix
 for k, lp in enumerate(F.LAMPS):
     bm = bmesh.new()
-    gy = 0.0
-    # stone post (octagonal, slightly tapered) + glass lantern + cap
     bmesh.ops.create_cone(bm, cap_ends=True, cap_tris=False, segments=8, radius1=0.17, radius2=0.12, depth=0.38,
-                          matrix=__import__("mathutils").Matrix.Translation((0, 0, 0.19)))
+                          matrix=_M.Translation((0, 0, 0.19)))
     stone = bpy.data.meshes.new(f"falls_lamp_{k}")
     bm.to_mesh(stone)
     bm.free()
@@ -852,7 +803,7 @@ for k, lp in enumerate(F.LAMPS):
     link(gob, cat="lamp")
     bm = bmesh.new()
     bmesh.ops.create_cone(bm, cap_ends=True, cap_tris=False, segments=8, radius1=0.17, radius2=0.04, depth=0.12,
-                          matrix=__import__("mathutils").Matrix.Translation((0, 0, 0.66)))
+                          matrix=_M.Translation((0, 0, 0.66)))
     cap = bpy.data.meshes.new(f"falls_lamp_cap_{k}")
     bm.to_mesh(cap)
     bm.free()
@@ -868,12 +819,12 @@ for k, lp in enumerate(F.LAMPS):
     link(em, cat="light")
     LAMP_TRIS += sum(len(m.polygons) for m in (stone, glass, cap))
 
-# pebbles: a few small rounded stones on the gravel round the slabs and the shore (shared mesh, 80 triangles)
+# cobbles: small water-worn stones on the beach round the pool (shared mesh, 80 triangles)
 bm = bmesh.new()
 bmesh.ops.create_icosphere(bm, subdivisions=1, radius=1.0)
 for v in bm.verts:
     n = v.co.normalized()
-    v.co = Vector((n.x * 1.25, n.y * 0.95, max(n.z, -0.3) * 0.62)) * (1 + 0.12 * F.noise3(n.x * 3, n.y * 3, n.z * 3))
+    v.co = Vector((n.x * 1.25, n.y * 0.95, max(n.z, -0.3) * 0.62)) * (1 + 0.1 * F.noise3(n.x * 2, n.y * 2, n.z * 2))
 pe = bpy.data.meshes.new("falls_pebble")
 bm.to_mesh(pe)
 bm.free()
@@ -893,22 +844,21 @@ link(pebble_root)
 PEBBLES = 0
 tries = 0
 prng = random.Random(55)
-while PEBBLES < 330 and tries < 40000:
+while PEBBLES < 220 and tries < 40000:
     tries += 1
     x = prng.uniform(S["minX"] + 10, -99.5)
     z = prng.uniform(-93.0, -63.0)
     sd = F.pool_signed_dist(x, z)
-    if sd < -0.3 or sd > 7.5 or on_slab_or_seat(x, z, 0.25):
+    if sd < -0.3 or sd > 6.0 or on_slab_or_seat(x, z, 0.25):
         continue
     if cliff_at(x, z, 1) or F.outlet_dist(x, z)[0] < F.OUTLET["width"] / 2 + 0.2:
         continue
     if abs(z - F.LIP["z"]) < 3.0 and x > F.LIP["x"] - 2:
         continue
-    # the beach thins out away from the water
-    if prng.random() > F.smooth(7.5, 0.5, sd) * 3.0:
+    if prng.random() > F.smooth(6.0, 0.5, sd) * 3.0:
         continue
     pocket = in_pocket(x, z, 0.3)
-    s_ = prng.uniform(0.07, 0.15) if pocket else prng.uniform(0.1, 0.34)
+    s_ = prng.uniform(0.07, 0.14) if pocket else prng.uniform(0.14, 0.36)
     gy = F.floor_y(x, z) if x < -105 else 0.0
     sink = 0.45 if pocket else 0.3
     ob = bpy.data.objects.new(f"pebble_{PEBBLES}", pe)
@@ -917,148 +867,231 @@ while PEBBLES < 330 and tries < 40000:
     ob.scale = (s_, s_ * prng.uniform(0.8, 1.2), s_)
     ob.parent = pebble_root
     ob["cat"] = "inst"
+    ob["tier"] = "high"
     link(ob)
     PEBBLES += 1
 PEBBLE_TRIS = PEBBLES * len(pe.polygons)
 
 # ================================================================================================== plants ==
-VEG = {}
-
-
-def veg(name):
-    if name not in VEG:
-        VEG[name] = P.Leaves()
-    return VEG[name]
-
-
-def ground_at(x, z):
-    return F.terrain_y(x, z)
-
-
 vrng = random.Random(77)
-VEG_FLANK = []
-# 1. bushes and ferns on the cliff's benches and ledges (cracks and tiers; photo 12 / 09)
-bench_sites = []
-for _ in range(6000):
-    z = F.FZ + vrng.uniform(-13.0, 13.0)
-    sh = shelves(z, 1.2, 36.0, 0.2, 0.3)
-    if not sh:
-        continue
-    y, dep = vrng.choice(sh)
-    if blocked_by_water(z, y) or abs(z - F.LIP["z"]) < 7.2 and y < F.LEDGE + 1.5:
-        continue
-    x = P.face_x_detailed(z, y + 0.12) - 0.1 - vrng.uniform(0.0, 0.25)
-    if any(math.hypot(b[1] - z, b[2] - y) < 1.7 for b in bench_sites):
-        continue
-    bench_sites.append((x, z, y + 0.05, dep))
-    if len(bench_sites) >= 26:
-        break
-nb = 0
-for (x, z, y, dep) in bench_sites:
-    if nb % 9 == 8:
-        P.fern(veg("fern"), Vb(x, z, y), 7, vrng.uniform(0.7, 1.1), vrng)
-    else:
-        P.leaf_clump(veg("bush"), Vb(x, z, y), vrng.uniform(1.4, 2.3), vrng.uniform(1.2, 2.0), 30, vrng)
-    nb += 1
-# 2. the foot of the cliff and the banks: ferns, bush clumps, moss on boulders, grass tufts
-bank_spots = []
-tries = 0
-while len(bank_spots) < 10 and tries < 2500:
-    tries += 1
-    a = vrng.uniform(0, 2 * math.pi)
-    nx_, nz_ = math.cos(a) / F.POOL_RX, math.sin(a) / F.POOL_RZ
-    nl = math.hypot(nx_, nz_)
-    x = F.POOL_CX + F.POOL_RX * math.cos(a) + nx_ / nl * vrng.uniform(1.2, 4.5)
-    z = F.POOL_CZ + F.POOL_RZ * math.sin(a) + nz_ / nl * vrng.uniform(1.2, 4.5)
-    if in_pocket(x, z, 1.2) or not F.in_box(x, z, S, -1.5) or cliff_at(x, z, 1):
-        continue
-    if F.outlet_dist(x, z)[0] < F.OUTLET["width"] / 2 + 1.8:
-        continue
-    if abs(z - F.LIP["z"]) < 4.0 and x > F.LIP["x"] - 2:
-        continue
-    if any(math.hypot(b[0] - x, b[1] - z) < 3.0 for b in bank_spots):
-        continue
-    bank_spots.append((x, z))
-for i, (x, z) in enumerate(bank_spots):
-    y = ground_at(x, z)
-    if i % 4 == 0 and i < 4:
-        P.fern(veg("fern"), Vb(x, z, y), 7, vrng.uniform(0.7, 1.15), vrng)
-    else:
-        P.leaf_clump(veg("bush"), Vb(x, z, y), vrng.uniform(1.3, 2.0), vrng.uniform(1.0, 1.6), 30, vrng)
-    P.Leaves.cushion(veg("moss"), Vb(x + 0.5, z + 0.3, y), vrng.uniform(0.25, 0.4), vrng)
-# moss cushions on the shore boulders' tops
-for (kind, loc, yaw, tilt, sc_, tag, _a, _b) in BANK_ROCKS:
-    if tag in ("bank", "talus") and vrng.random() < 0.5:
-        hx, hy, hz = kit_dims(kind, sc_)
-        P.Leaves.cushion(veg("moss"), Vb(loc[0], loc[2], loc[1] + hy * 0.85), vrng.uniform(0.18, 0.32), vrng)
-# grass tufts on the turf at the edge of the gravel, and along the flank
-gt = 0
-tries = 0
-while gt < 44 and tries < 6000:
-    tries += 1
-    x = vrng.uniform(S["minX"] + 14, -99.6)
-    z = vrng.uniform(-100.0, -58.5)
-    if cliff_at(x, z, 1) or in_pocket(x, z, 0.0) or F.pool_signed_dist(x, z) < 1.2:
-        continue
-    if F.outlet_dist(x, z)[0] < F.OUTLET["width"] / 2 + 0.6 or on_slab_or_seat(x, z, 0.5):
-        continue
-    g = ground_class(x, z)
-    if not (0.15 < g < 0.75 or (g <= 0.15 and vrng.random() < 0.35)):
-        continue
-    P.grass_tuft(veg("grass"), Vb(x, z, ground_at(x, z)), vrng.randint(5, 7), vrng.uniform(0.35, 0.7), vrng)
-    gt += 1
-# 2b. shrubs on the wooded slopes beside the bare rock, and canopy trees framing the cliff top and the sides
-for _ in range(400):
-    if len(VEG_FLANK) >= 12:
-        break
-    side = vrng.choice([-1, 1])
-    z = F.FZ + side * vrng.uniform(13.5, 19.5)
-    y = vrng.uniform(1.0, 30.0)
-    x = P.face_x_detailed(z, y) - 0.1
-    if any(math.hypot(b[1] - z, b[2] - y) < 2.5 for b in VEG_FLANK):
-        continue
-    VEG_FLANK.append((x, z, y))
-    P.leaf_clump(veg("bush"), Vb(x, z, y), vrng.uniform(1.5, 2.4), vrng.uniform(1.3, 2.2), 30, vrng)
-TREE_SPOTS = []
-for zc in (F.FZ - 11.5, F.FZ - 6.5, F.FZ + 5.0, F.FZ + 10.5):                 # on the rim, crowns leaning over the edge
-    xr = P.face_x_detailed(zc, F.TOP + 4.0) - 1.2
-    TREE_SPOTS.append((xr, zc, F.plateau_y(xr, zc) - 0.3, vrng.uniform(9.5, 11.5)))
-for _ in range(600):
-    if len(TREE_SPOTS) >= 20:
-        break
-    side = vrng.choice([-1, 1])
-    z = F.FZ + side * vrng.uniform(15.5, 19.8)
-    y = vrng.uniform(3.0, 30.0)
-    x = P.face_x_detailed(z, y) - 0.4
-    if any(math.hypot(t[1] - z, t[2] - y) < 5.5 for t in TREE_SPOTS):
-        continue
-    TREE_SPOTS.append((x, z, y - 0.3, vrng.uniform(7.5, 9.5)))
-for _ in range(200):
-    if len(TREE_SPOTS) >= 24:
-        break
-    x = vrng.uniform(-136, -126)
-    z = vrng.uniform(-100, -60)
-    if abs(z - F.CHANNEL_Z_TOP) < 5.5 or any(math.hypot(t[0] - x, t[1] - z) < 4.5 for t in TREE_SPOTS):
-        continue
-    TREE_SPOTS.append((x, z, F.terrain_y(x, z) - 0.3, vrng.uniform(9, 11)))
-for (x, z, y, h) in TREE_SPOTS:
-    P.canopy_tree(veg("canopy"), veg("trunk"), x, z, y, h, vrng)
-# 3. hardwood branches hanging over the rim, away from the groove (photos 12, 05)
-BR = []
-for zc in (F.FZ - 8.5, F.FZ + 7.0, F.FZ - 4.2):
-    y = F.TOP + 4.0
-    xr = P.face_x_detailed(zc, y - 1.0)
-    base = Vb(xr - 2.2, zc, F.plateau_y(xr - 2.2, zc) - 0.2)
-    P.branch(veg("branch"), base, (1.0, vrng.uniform(-0.25, 0.25), 0.15), vrng.uniform(3.4, 4.6), vrng, leaf_n=26)
-    BR.append(zc)
+PL = P.Leaves()          # ledges, cracks, banks (both tiers)
+PLH = P.Leaves()         # flank undergrowth (high tier only)
+FRESH = (0.95, 1.0, 0.85)
 
-VEG_OBS = []
-for name, lv in VEG.items():
-    ob = lv.mesh(f"veg__falls_{name}", M_LEAF)
-    link(ob, cat="leaf")
-    VEG_OBS.append(ob)
-VEG_TRIS = sum(lv.tris() for lv in VEG.values())
-print("veg tris", VEG_TRIS, {k: v.tris() for k, v in VEG.items()})
+
+def far_from(pts, x, z, y, d):
+    return all(math.hypot(p[1] - z, p[2] - y) >= d or abs(p[0] - x) > 3 for p in pts)
+
+
+# 1. ledges: sedge tufts, small shrubs, ferns, sprays hanging over the edge (photo 12: green in every step)
+LEDGE_SITES = []
+for (x, z, y, dep) in sorted(P.ledges(), key=lambda t: vrng.random()):
+    if abs(z - F.FZ) > 16.0 or blocked_by_water(z, y) or y > F.TOP + 0.5:
+        continue
+    if not far_from(LEDGE_SITES, x, z, y, 1.3):
+        continue
+    LEDGE_SITES.append((x, z, y, dep))
+    if len(LEDGE_SITES) >= 72:
+        break
+for i, (x, z, y, dep) in enumerate(LEDGE_SITES):
+    xb = x - min(dep * 0.5, 0.4)
+    base = Vector(Vb(xb, z, y + 0.02))
+    r = vrng.random()
+    if r < 0.38:
+        P.grass(PL, base, vrng.uniform(0.45, 0.85), vrng, n=3, tint=FRESH)
+        if vrng.random() < 0.5:
+            P.grass(PL, base + Vector((0.1, vrng.uniform(-0.6, 0.6), 0)), vrng.uniform(0.35, 0.6), vrng, n=2, tint=FRESH)
+    elif r < 0.7:
+        P.shrub(PL, base, vrng.uniform(0.6, 1.25), vrng.uniform(0.7, 1.3), vrng, tint=FRESH)
+    elif r < 0.85:
+        P.fern(PL, base, vrng.randint(6, 8), vrng.uniform(0.6, 0.95), vrng, tint=FRESH)
+    else:
+        P.hanging(PL, Vector(Vb(x + 0.05, z, y + 0.05)), (1, 0, 0), vrng.uniform(0.8, 1.6), vrng, n=3, tint=FRESH)
+        P.grass(PL, base, 0.4, vrng, n=2, tint=FRESH)
+# 2. vertical cracks: grass and hanging sprays growing out of the joints (damper, lower rock mostly)
+CRACK_SITES = []
+for (x, z, y) in sorted(P.cracks(), key=lambda t: vrng.random()):
+    if abs(z - F.FZ) > 15.0 or blocked_by_water(z, y) or y > F.TOP - 1.0:
+        continue
+    if vrng.random() > 0.35 + 0.65 * F.smooth(22.0, 4.0, y):
+        continue
+    if not far_from(CRACK_SITES, x, z, y, 2.2):
+        continue
+    CRACK_SITES.append((x, z, y))
+    if len(CRACK_SITES) >= 30:
+        break
+for (x, z, y) in CRACK_SITES:
+    if vrng.random() < 0.5:
+        P.hanging(PL, Vector(Vb(x + 0.02, z, y)), (1, 0, 0), vrng.uniform(0.7, 1.3), vrng, n=2, tint=FRESH)
+    else:
+        P.grass(PL, Vector(Vb(x - 0.05, z, y)), vrng.uniform(0.35, 0.6), vrng, up=(0.5, 0, 1), n=2, tint=FRESH)
+# 3. the banks and the cliff foot: ferns at the foot, sedge along the shore, shrubs at the beach's edge
+BANK_SITES = []
+tries = 0
+while len(BANK_SITES) < 46 and tries < 6000:
+    tries += 1
+    x = vrng.uniform(S["minX"] + 12, -100.5)
+    z = vrng.uniform(-101.0, -59.5)
+    sd = F.pool_signed_dist(x, z)
+    if sd < 0.15 or sd > 9.0 or in_pocket(x, z, 0.8) or on_slab_or_seat(x, z, 0.5):
+        continue
+    if F.outlet_dist(x, z)[0] < F.OUTLET["width"] / 2 + 0.3 or (abs(z - F.LIP["z"]) < 4.0 and x > F.LIP["x"] - 2):
+        continue
+    hit = surface_down(x, z)
+    if hit is None or hit[1].z < 0.6:
+        continue
+    if any(math.hypot(b[0] - x, b[1] - z) < 1.6 for b in BANK_SITES):
+        continue
+    BANK_SITES.append((x, z, hit[0]))
+for (x, z, p) in BANK_SITES:
+    sd = F.pool_signed_dist(x, z)
+    foot = cliff_at(x, z, 2)
+    r = vrng.random()
+    if sd < 1.6 and r < 0.7:
+        P.grass(PL, p, vrng.uniform(0.5, 1.0), vrng, n=3, tint=FRESH)          # sedge / reeds at the water (photo 05)
+    elif foot and r < 0.6:
+        P.fern(PL, p, vrng.randint(7, 9), vrng.uniform(0.8, 1.2), vrng, tint=FRESH)
+    elif r < 0.75:
+        P.shrub(PL, p, vrng.uniform(0.7, 1.3), vrng.uniform(0.8, 1.4), vrng, tint=FRESH)
+    else:
+        P.fern(PL, p, vrng.randint(6, 8), vrng.uniform(0.7, 1.0), vrng, tint=FRESH)
+# 4. the wooded flanks and the plateau: a dense shrub layer under the trees (high tier; W6's forest continues it)
+FLANK_SITES = []
+tries = 0
+while len(FLANK_SITES) < 95 and tries < 9000:
+    tries += 1
+    x = vrng.uniform(S["minX"] + 0.5, -100.5)
+    z = vrng.uniform(S["minZ"] + 0.5, S["maxZ"] - 0.5)
+    dz = abs(z - F.FZ)
+    hit = surface_down(x, z)
+    if hit is None:
+        continue
+    p, n = hit
+    plateau = p.z > F.PLATEAU_Y - 2.5
+    if not (dz > 14.0 or plateau):
+        continue
+    if F.pool_signed_dist(x, z) < 2.5 or in_pocket(x, z, 2.0) or F.outlet_dist(x, z)[0] < F.OUTLET["width"] / 2 + 1.0:
+        continue
+    if plateau and abs(z - F.CHANNEL_Z_TOP) < 4.0 and x > -130:
+        continue
+    if any(math.hypot(b[0] - x, b[1] - z) < 2.1 for b in FLANK_SITES):
+        continue
+    FLANK_SITES.append((x, z, p, n))
+for (x, z, p, n) in FLANK_SITES:
+    up = (Vector((0, 0, 1)) * 0.75 + n * 0.25).normalized()
+    if vrng.random() < 0.8:
+        P.shrub(PLH, p, vrng.uniform(1.0, 1.9), vrng.uniform(1.0, 1.9), vrng, up=up, tint=FRESH)
+    else:
+        P.fern(PLH, p, vrng.randint(7, 9), vrng.uniform(0.9, 1.3), vrng, up=up, tint=FRESH)
+
+# 5. the rim: shrubs along the top edge, sprays hanging over it (the forest reaches the edge in photos 05 / 12)
+RIM = []
+zz = F.FACE_Z[0] + 1.0
+while zz < F.FACE_Z[1] - 1.0:
+    z = zz + vrng.uniform(-0.4, 0.4)
+    zz += vrng.uniform(1.3, 2.0)
+    if abs(z - F.channel_z(F.TOP)) < 4.2:
+        continue
+    yr = F.TOP + vrng.uniform(0.6, 2.2)
+    x = P.face_x_detailed(z, yr)
+    RIM.append((x, z, yr))
+    P.shrub(PL, Vector(Vb(x - 0.35, z, yr - 0.1)), vrng.uniform(0.9, 1.6), vrng.uniform(0.9, 1.5), vrng,
+            up=(0.35, 0, 1), tint=FRESH)
+    if vrng.random() < 0.6:
+        yh = F.TOP - vrng.uniform(0.0, 1.0)
+        P.hanging(PL, Vector(Vb(P.face_x_detailed(z, yh) + 0.05, z, yh)), (1, 0, 0), vrng.uniform(1.2, 2.4), vrng,
+                  n=3, tint=FRESH)
+# 6. along both edges of the cascade groove: sprays hanging into it, small shrubs on its lips
+for side in (-1, 1):
+    y = F.LEDGE + 1.5
+    while y < F.TOP - 0.5:
+        z = F.channel_z(y) + side * vrng.uniform(3.4, 4.4)
+        x = P.face_x_detailed(z, y)
+        if vrng.random() < 0.55:
+            P.hanging(PL, Vector(Vb(x + 0.05, z, y)), (1, 0, 0), vrng.uniform(1.0, 2.0), vrng, n=2, tint=FRESH)
+        else:
+            P.shrub(PL, Vector(Vb(x - 0.2, z, y)), vrng.uniform(0.5, 0.9), vrng.uniform(0.6, 1.0), vrng,
+                    up=(0.4, 0, 1), tint=FRESH)
+        y += vrng.uniform(1.6, 2.8)
+print("rim plants", len(RIM))
+
+PLANTS = PL.mesh("veg__falls_plants", M_PLANT)
+link(PLANTS, cat="leaf")
+PLANTS_HI = PLH.mesh("veg__falls_plants_hi", M_PLANT)
+link(PLANTS_HI, cat="leaf", high_only=True)
+VEG_TRIS = PL.tris() + PLH.tris()
+VEG_TRIS_LOW = PL.tris()
+print("plant tris", PL.tris(), PLH.tris())
+
+# 5. trees: broadleaf templates (instanced), on the flanks, along the rim leaning out over the edge, and on the banks
+TPL_SPEC = [  # (H, R, lean, shell cards, card size)
+    (13.0, 4.8, 0.0, 46, (2.6, 3.6)), (15.5, 5.4, 0.1, 52, (2.8, 3.8)), (11.0, 4.2, 0.0, 40, (2.4, 3.3)),
+    (12.5, 5.2, 0.55, 46, (2.6, 3.6)), (10.0, 4.6, 0.75, 40, (2.4, 3.3)), (16.5, 4.6, 0.05, 48, (2.7, 3.7)),
+]
+TPL = []
+for k, (H, R, lean, shell, card) in enumerate(TPL_SPEC):
+    lv = P.tree_template(900 + k, H, R, lean, shell, card)
+    ob = lv.mesh(f"falls_tree_{k}", [M_BARK, M_LEAF])
+    SRC.objects.link(ob)
+    TPL.append((ob, lv.tris(), H, R, lean))
+print("tree template tris", [t[1] for t in TPL])
+TREE_SPOTS = []      # (x, z, base Blender point, template, yaw, scale)
+
+
+def tree_ok(x, z, r):
+    if in_pocket(x, z, 2.5) or F.pool_signed_dist(x, z) < 1.2 or F.outlet_dist(x, z)[0] < F.OUTLET["width"] / 2 + 1.2:
+        return False
+    if x > -101.5 and -92 < z < -64:
+        return False                                   # keep the rest area's view of the falls open
+    return all(math.hypot(t[0] - x, t[1] - z) >= r for t in TREE_SPOTS)
+
+
+# rim: crowns leaning out over the edge, either side of the groove (photos 05 / 12)
+for zc in (F.FZ - 13.0, F.FZ - 9.0, F.FZ - 5.2, F.FZ + 4.2, F.FZ + 8.2, F.FZ + 12.0):
+    x = F.face_x(zc, F.TOP + 4.5) - vrng.uniform(1.0, 2.0)
+    hit = surface_down(x, zc)
+    if hit and tree_ok(x, zc, 3.0):
+        TREE_SPOTS.append((x, zc, hit[0], vrng.choice([3, 4]), vrng.uniform(-0.35, 0.35), vrng.uniform(0.85, 1.1)))
+# flanks and the plateau behind
+tries = 0
+while len(TREE_SPOTS) < 44 and tries < 6000:
+    tries += 1
+    x = vrng.uniform(S["minX"] + 1.0, -100.5)
+    z = vrng.uniform(S["minZ"] + 0.5, S["maxZ"] - 0.5)
+    hit = surface_down(x, z)
+    if hit is None:
+        continue
+    p, n = hit
+    dz = abs(z - F.FZ)
+    plateau = p.z > F.PLATEAU_Y - 2.5
+    if not (dz > 14.5 or plateau or (F.pool_signed_dist(x, z) > 2.0 and p.z < 1.5 and dz > 11.5)):
+        continue
+    if plateau and abs(z - F.CHANNEL_Z_TOP) < 3.5 and x > -131:
+        continue
+    if not tree_ok(x, z, 5.2 if plateau else 4.6):
+        continue
+    k = vrng.choice([0, 1, 2, 5, 0, 2]) if plateau or dz > 18 else vrng.choice([0, 2, 3, 4])
+    yaw = vrng.uniform(-0.6, 0.6) if k in (3, 4) else vrng.uniform(0, 6.28)
+    TREE_SPOTS.append((x, z, p, k, yaw, vrng.uniform(0.8, 1.15)))
+tree_roots = {}
+TREE_TRIS = 0
+TREE_TRIS_LOW = 0
+for k in range(len(TPL)):
+    r = bpy.data.objects.new(f"inst__falls_tree_{k}", None)
+    r["cat"] = "inst_root"
+    link(r)
+    tree_roots[k] = r
+for i, (x, z, p, k, yaw, s) in enumerate(TREE_SPOTS):
+    ob = bpy.data.objects.new(f"falls_tree_{k}_{i}", TPL[k][0].data)
+    ob.location = p
+    ob.rotation_euler = (0.0, 0.0, yaw)
+    ob.scale = (s, s, s)
+    ob.parent = tree_roots[k]
+    low = i % 4 == 0
+    link(ob, cat="tree", high_only=not low)
+    TREE_TRIS += TPL[k][1]
+    TREE_TRIS_LOW += TPL[k][1] if low else 0
+print("trees", len(TREE_SPOTS), "tris", TREE_TRIS)
 
 # ============================================================================================ validation ==
 report = {"fails": []}
@@ -1069,26 +1102,40 @@ def tri_count(obs):
 
 
 worst_wall = 1e9
-for v in FACE0.data.vertices:
-    worst_wall = min(worst_wall, F.camera_wall_x(-v.co.y) - v.co.x)
-for (kind, loc, yaw, tilt, sc_, tag, _a, _b) in CLIFF_BLOCKS:
-    for p in P.block_world_points(KIT[kind], Vector(Vb(*loc)), yaw, tilt, sc_):
-        worst_wall = min(worst_wall, F.camera_wall_x(-p.y) - p.x)
+for ob in (FACE0, FACE1):
+    for v in ob.data.vertices:
+        worst_wall = min(worst_wall, F.camera_wall_x(-v.co.y) - v.co.x)
 report["worst_wall_gap_m"] = round(worst_wall, 3)
-if worst_wall < 0.3:
-    report["fails"].append(f"rock closer than 0.3 m to the camera wall ({worst_wall:.2f})")
-# slabs and seats: flat tops at the contract heights
+if worst_wall < 0.5 - 1e-3:
+    report["fails"].append(f"rock closer than 0.5 m to the camera wall ({worst_wall:.3f})")
+# the groove (W2's film) follows face_x exactly; under the ledge beside the plunge the rock is never out of face_x
+gd, pd = 0.0, 0.0
+for j in range(0, 80):
+    y = F.LEDGE + 0.6 + j * (F.TOP - F.LEDGE - 0.6) / 79
+    for dz in (-1.6, -0.8, 0.0, 0.8, 1.6):
+        z = F.channel_z(y) + dz
+        gd = max(gd, abs(P.face_x_detailed(z, y) - F.face_x(z, y)))
+for j in range(0, 60):
+    y = -0.2 + j * (F.LEDGE - 0.2) / 59
+    for dz in [k * 0.25 - 6.0 for k in range(49)]:
+        z = F.LIP["z"] + dz
+        pd = max(pd, P.face_x_detailed(z, y) - F.face_x(z, y))
+report["groove_max_dev_m"] = round(gd, 4)
+report["plunge_max_out_m"] = round(pd, 4)
+if gd > 0.02:
+    report["fails"].append(f"groove off face_x by {gd:.3f}")
+if pd > 0.001:
+    report["fails"].append(f"rock out of face_x in the plunge zone by {pd:.3f}")
 for s, ob in zip(F.SLABS, SLABS):
     zmax = max(v.co.z for v in ob.data.vertices)
     report[f"{s['id']}_top"] = round(zmax, 4)
-    if not (0.0 <= zmax <= 0.06):
+    if not (0.02 - 0.003 <= zmax <= 0.04 + 0.003):
         report["fails"].append(f"{s['id']} top {zmax}")
 for s, ob in zip(F.SEATS, SEATS):
     zmax = max(v.co.z for v in ob.data.vertices)
     report[f"{s['id']}_top"] = round(zmax, 4)
     if abs(zmax - s["seatTop"]) > 0.03:
         report["fails"].append(f"{s['id']} top {zmax}")
-# the pocket's walkable ground (visible mesh) stays at the walk level
 bad = 0
 for v in GROUND.data.vertices:
     gx, gz = v.co.x, -v.co.y
@@ -1097,21 +1144,32 @@ for v in GROUND.data.vertices:
 report["pocket_ground_bad_verts"] = bad
 if bad:
     report["fails"].append(f"{bad} pocket ground vertices off the walk level")
-# nothing out of the site box
 mx = -1e9
 for ob in COLL.objects:
     if ob.type == "MESH" and ob.get("cat") in ("rock", "ground"):
         for v in ob.data.vertices:
             mx = max(mx, v.co.x)
 report["max_x_cliff_ground"] = round(mx, 3)
-report["tris"] = {
-    "cliff_lod0": tri_count([FACE0]), "cliff_lod1": tri_count([FACE1]), "flank_lod0": tri_count([FLANK0]), "flank_lod1": tri_count([FLANK1]), "ground": tri_count([GROUND]),
+T = {
+    "cliff_lod0": tri_count([FACE0]), "cliff_lod1": tri_count([FACE1]), "flank_lod0": tri_count([FLANK0]),
+    "flank_lod1": tri_count([FLANK1]), "ground": tri_count([GROUND]),
     "kit_instances": INST_COUNT, "kit_instance_tris": INST_TRIS, "kit_meshes": KIT_TRIS,
-    "slabs_seats": tri_count(SLABS + SEATS), "lamps": LAMP_TRIS, "pebbles": PEBBLE_TRIS, "veg": VEG_TRIS,
+    "slabs_seats": tri_count(SLABS + SEATS), "lamps": LAMP_TRIS, "pebbles": PEBBLE_TRIS,
+    "plants": PL.tris(), "plants_hi": PLH.tris(), "trees": len(TREE_SPOTS), "tree_tris": TREE_TRIS,
+    "tree_templates": [t[1] for t in TPL],
 }
-high = tri_count([FACE0]) + tri_count([FLANK0]) + tri_count([GROUND]) + INST_TRIS + tri_count(SLABS + SEATS) + LAMP_TRIS + PEBBLE_TRIS + VEG_TRIS
+report["tris"] = T
+high = T["cliff_lod0"] + T["flank_lod0"] + T["ground"] + INST_TRIS + T["slabs_seats"] + LAMP_TRIS + PEBBLE_TRIS + VEG_TRIS + TREE_TRIS
+low = T["cliff_lod1"] + T["flank_lod1"] + T["ground"] + INST_TRIS_LOW + T["slabs_seats"] + LAMP_TRIS + VEG_TRIS_LOW + TREE_TRIS_LOW
 report["tris_total_w1_high"] = high
-report["tex"] = {"files": sorted(os.listdir(TEXF)), "sizes": "1024x1024 (rock, slab, gravel, turf) colour+normal"}
+report["tris_total_w1_low"] = low
+if high > 66000:
+    report["fails"].append(f"high tier {high} > 66k")
+if low > 24000:
+    report["fails"].append(f"low tier {low} > 24k")
+report["tex"] = {"files": sorted(os.listdir(TEXF)),
+                 "sizes": "1024x1024: rock (+n), rock macro RGBA on UV2 (+n), slab (+n), gravel (+n), turf (+n), foliage RGBA"}
+report["joint_layout"] = {"blocks": len(P.layout()["blocks"]), "tiers": [round(t, 2) for t in P.TIERS]}
 print(json.dumps(report, indent=1))
 json.dump(report, open(os.path.join(WORK, "falls_w1_report.json"), "w"), indent=1)
 save_cache()
@@ -1123,7 +1181,7 @@ if not NO_GLB:
         _o.hide_viewport = False
     for o in bpy.context.scene.objects:
         o.select_set(False)
-    sel = [o for o in COLL.objects if o.type in ("MESH", "EMPTY") and not (o.get("cat") == "rock" and o.name.endswith("lod1") and False)]
+    sel = [o for o in COLL.objects if o.type in ("MESH", "EMPTY")]
     for o in sel:
         o.select_set(True)
     bpy.context.view_layer.objects.active = FACE0
@@ -1131,7 +1189,7 @@ if not NO_GLB:
     kw = dict(filepath=glb, export_format="GLB", use_selection=True, export_apply=True, export_yup=True,
               export_texcoords=True, export_normals=True, export_materials="EXPORT", export_image_format="WEBP",
               export_image_quality=80, export_animations=False, export_cameras=False, export_lights=False,
-              export_extras=False, export_skins=False, export_morph=False, export_vertex_color="MATERIAL",
+              export_extras=True, export_skins=False, export_morph=False, export_vertex_color="MATERIAL",
               export_tangents=False, export_gpu_instances=True,
               export_draco_mesh_compression_enable=True, export_draco_mesh_compression_level=6,
               export_draco_position_quantization=14, export_draco_normal_quantization=10,
@@ -1142,5 +1200,5 @@ if not NO_GLB:
         print("GLB", glb, os.path.getsize(glb), "bytes")
         report["glb_bytes"] = os.path.getsize(glb)
         json.dump(report, open(os.path.join(WORK, "falls_w1_report.json"), "w"), indent=1)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         print("GLB export failed:", e)

@@ -21,7 +21,7 @@ ROOT = os.path.dirname(HERE)
 argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
 OUT = argv[0] if argv and not argv[0].startswith("--") else os.path.join(ROOT, "work", "falls_w1_render")
 SAMPLES = int(argv[argv.index("--samples") + 1]) if "--samples" in argv else 64
-ONLY = argv[argv.index("--only") + 1] if "--only" in argv else None
+ONLY = set(argv[argv.index("--only") + 1].split(",")) if "--only" in argv else None
 os.makedirs(OUT, exist_ok=True)
 HDRI = os.path.join(ROOT, "downloads", "hdri", "kloppenheim_06_puresky_1k.hdr")
 HDRI_N = os.path.join(ROOT, "downloads", "hdri", "qwantani_dusk_2_puresky_1k.hdr")
@@ -178,86 +178,48 @@ for k, st in enumerate(F.SIDE_STRANDS):
 cp = F.cascade_path(0.25)
 ribbon("PH_cascade", [(x + 0.2, y, z) for (x, y, z) in cp], [F.channel_width(y) * 0.8 for (_, y, _) in cp])
 rr = random.Random(3)
-foam_m = flat("foam", (0.95, 0.97, 1.0), 0.5)
-for k in range(46):
+foam_m = flat("foam", (0.92, 0.95, 0.97), 0.6)
+import bmesh as _bm  # noqa: E402
+for k in range(26):                                   # placeholder foam: low lumpy white mounds round the impact
     a = rr.uniform(0, 2 * math.pi)
-    r = rr.uniform(0.2, 3.2)
-    bpy.ops.mesh.primitive_uv_sphere_add(radius=rr.uniform(0.3, 0.75), location=V(F.IMPACT["x"] + r * math.cos(a), F.IMPACT["z"] + 1.1 * r * math.sin(a), -0.2), segments=10, ring_count=6)
-    o_ = bpy.context.object
-    o_.scale.z = 0.3
-    o_.data.materials.append(foam_m)
-    PH.append(o_)
-
-BARE = "--bare" in argv     # no forest / village context (fast look-dev)
-# ---------------------------------------------------------------------------------------- placeholder forest
-LEAF = flat("pleaf", (0.04, 0.10, 0.03))
-LEAF2 = flat("pleaf2", (0.06, 0.13, 0.035))
-LEAF3 = flat("pleaf3", (0.09, 0.16, 0.04))
-BARK = flat("pbark", (0.11, 0.08, 0.05))
-tr = random.Random(11)
-import bmesh  # noqa: E402
-
-
-def _tree_template(seed):
-    r = random.Random(seed)
-    bm = bmesh.new()
-    bmesh.ops.create_cone(bm, cap_ends=True, segments=7, radius1=0.2, radius2=0.12, depth=4.4, matrix=__import__("mathutils").Matrix.Translation((0, 0, 2.2)))
-    me_t = bpy.data.meshes.new(f"ptree_trunk{seed}")
-    bm.to_mesh(me_t)
-    bm.free()
-    bm = bmesh.new()
-    for i in range(6):
-        a = r.uniform(0, 6.28)
-        r_ = r.uniform(0.0, 1.6)
-        bmesh.ops.create_icosphere(bm, subdivisions=2, radius=r.uniform(1.7, 2.6),
-                                   matrix=__import__("mathutils").Matrix.Translation((r_ * math.cos(a), r_ * math.sin(a), 6.0 + r.uniform(-0.2, 2.4) + i * 0.15)))
+    r = rr.uniform(0.0, 2.6)
+    bm = _bm.new()
+    _bm.ops.create_icosphere(bm, subdivisions=3, radius=1.0)
     for v in bm.verts:
-        v.co += v.normal * (r.uniform(-0.3, 0.55) if False else 0.0)
-        v.co += Vector((r.uniform(-1, 1), r.uniform(-1, 1), r.uniform(-1, 1))) * 0.16
-    me_l = bpy.data.meshes.new(f"ptree_leaf{seed}")
-    bm.to_mesh(me_l)
+        v.co += v.normal * 0.18 * math.sin(v.co.x * 7 + k) * math.cos(v.co.y * 6 + v.co.z * 5)
+    me_ = bpy.data.meshes.new("foam")
+    bm.to_mesh(me_)
     bm.free()
-    for p_ in me_l.polygons:
+    o_ = bpy.data.objects.new("foam", me_)
+    o_.location = V(F.IMPACT["x"] + r * math.cos(a), F.IMPACT["z"] + 1.1 * r * math.sin(a), -0.32)
+    s_ = rr.uniform(0.45, 1.0)
+    o_.scale = (s_, s_ * rr.uniform(0.8, 1.3), s_ * 0.32)
+    me_.materials.append(foam_m)
+    for p_ in me_.polygons:
         p_.use_smooth = True
-    return me_t, me_l
-
-
-TREES = [_tree_template(k) for k in range(4)]
-LEAFS = (LEAF, LEAF2, LEAF3)
+    sc.collection.objects.link(o_)
+    PH.append(o_)
+BARE = "--bare" in argv     # no forest / village context (fast look-dev)
+# ------------------------------------------------------------------------- context forest (W6 stand-in, outside the box)
+# The site's own trees come from the W1 build (inst__falls_tree_k); round the box we instance the same templates so
+# the gorge reads as the forested valley of photos 05 / 12 (W6 brings the village's real forest there).
+tr = random.Random(11)
+TPL = [bpy.data.objects[n] for n in sorted(o.name for o in bpy.data.objects if o.name.startswith("falls_tree_") and o.name.count("_") == 2)]
 
 
 def tree(x, z, y, h):
-    k = tr.randrange(4)
-    me_t, me_l = TREES[k]
-    s = h / 11.0
-    for me, mat in ((me_t, BARK), (me_l, LEAFS[tr.randrange(3)])):
-        ob = bpy.data.objects.new("ptree", me)
-        ob.location = V(x, z, y)
-        ob.scale = (s, s, s * 0.9)
-        ob.rotation_euler = (0, 0, tr.uniform(0, 6.28))
-        sc.collection.objects.link(ob)
-        ob.material_slots  # noqa
-        if not me.materials:
-            me.materials.append(mat)
-        PH.append(ob)
+    ob = bpy.data.objects.new("ptree", TPL[tr.randrange(len(TPL))].data)
+    s = h / 13.0
+    ob.location = V(x, z, y)
+    ob.scale = (s, s, s)
+    ob.rotation_euler = (0, 0, tr.uniform(0, 6.28))
+    sc.collection.objects.link(ob)
+    PH.append(ob)
 
-
-for k in range(0 if BARE else 240):
-    x = tr.uniform(S["minX"] + 1, S["maxX"] - 1)
-    z = tr.uniform(S["minZ"] + 1, S["maxZ"] - 1)
-    y = F.terrain_y(x, z)
-    gy = (F.terrain_y(x + 1, z) - y, F.terrain_y(x, z + 1) - y)
-    if math.hypot(*gy) > 1.0 and abs(z - F.FZ) < F.FLANK_FULL:
-        continue
-    if abs(z - F.FZ) < F.FLANK_START - 1 and y < F.PLATEAU_Y - 1.5:
-        continue
-    if y < 0.6 or F.in_box(x, z, F.POCKET, 2.0) or F.pool_signed_dist(x, z) < 3.5 or abs(z - F.CHANNEL_Z_TOP) < 4 and y > F.TOP - 2:
-        continue
-    tree(x, z, y - 0.3, tr.uniform(7, 12))
 
 # village context: the current village terrain round the site (hole left for the site box) + trees on it
 import parts_nature as PN  # noqa: E402
-terr = flat("terr", (0.1, 0.19, 0.05), 0.95)
+terr = flat("terr", (0.07, 0.11, 0.035), 0.95)
 CX0, CX1, CZ0, CZ1, CS = -220.0, -56.0, -184.0, 26.0, 2.0
 cxn, czn = int((CX1 - CX0) / CS), int((CZ1 - CZ0) / CS)
 cv_, cf_ = [], []
@@ -273,14 +235,21 @@ for j in range(czn):
         a = j * (cxn + 1) + i
         cf_.append((a, a + 1, a + cxn + 2, a + cxn + 1))
 PH.append(mesh_obj("PH_village", cv_, cf_, terr))
-for k in range(0 if BARE else 380):
-    x, z = tr.uniform(CX0, -98), tr.uniform(CZ0, CZ1)
-    if F.in_box(x, z, S, 1.0) or (x > -100 and -92 < z < -64):
+placed = []
+for k in range(0 if BARE else 4000):
+    if len(placed) >= 900:
+        break
+    x, z = tr.uniform(CX0, -92), tr.uniform(CZ0, CZ1)
+    if F.in_box(x, z, S, 0.5) or (x > -100 and -94 < z < -62):
         continue
     y = PN.terrain_h(x, z)
-    if math.hypot(PN.terrain_h(x + 1, z) - y, PN.terrain_h(x, z + 1) - y) > 1.2 or y < 0.5:
+    if y < 0.4 and x > -100:
         continue
-    tree(x, z, y - 0.3, tr.uniform(7, 12))
+    near = 3.6 if abs(z + 78) < 60 and x > -170 else 5.0
+    if any(abs(px - x) < near and abs(pz - z) < near and math.hypot(px - x, pz - z) < near for px, pz in placed[-400:]):
+        continue
+    placed.append((x, z))
+    tree(x, z, F.pocket_flatten(x, z, y) - 0.3, tr.uniform(10, 16))
 
 # avatar for scale: 2.16 m chibi standing on the front slab
 AVA = flat("ava", (0.1, 0.25, 0.8), 0.5)
@@ -297,6 +266,7 @@ def avatar(x, z, y0=0.04):
 
 
 avatar(-103.4, -77.6)
+AVATAR_OBS = PH[-2:]
 
 # ------------------------------------------------------------------------------------------------- render setup
 EEVEE = "--eevee" in argv
@@ -371,14 +341,14 @@ for k, lp in enumerate(F.LAMPS):
 def set_day():
     env.image = bpy.data.images.load(HDRI, check_existing=True)
     bg.inputs["Strength"].default_value = 0.95
-    sun.energy = 4.2
+    sun.energy = 3.6
     sun.color = (1.0, 0.93, 0.82)
     sun.angle = math.radians(1.6)
     # ENE sun, 38 deg up: the falls face east, so the cliff is lit (design 5.3)
     az, el = math.radians(112), math.radians(40)
     d = Vector((math.cos(el) * math.sin(az), -math.cos(el) * math.cos(az), math.sin(el)))   # points from the scene to the sun
     sun_o.rotation_euler = (-d).to_track_quat("-Z", "Y").to_euler()
-    sc.view_settings.exposure = 0.35
+    sc.view_settings.exposure = 0.0
     for L in lamp_lights + spot:
         L.energy = 0.0
 
@@ -387,17 +357,20 @@ def set_night():
     env.image = bpy.data.images.load(HDRI_N, check_existing=True)
     bg.inputs["Strength"].default_value = 0.14
     sun.energy = 0.0
-    sc.view_settings.exposure = 2.2
+    sc.view_settings.exposure = 0.9
     for L in lamp_lights:
         L.energy = 90.0
     for L in spot:
         L.energy = 1800.0
 
 
-def shoot(name, loc, target, lens, night=False):
-    if ONLY and ONLY != name:
+def shoot(name, loc, target, lens, night=False, res=(1280, 720), ava=False):
+    if ONLY and name not in ONLY:
         return
     (set_night if night else set_day)()
+    sc.render.resolution_x, sc.render.resolution_y = res
+    for o in AVATAR_OBS:
+        o.hide_render = not ava
     cam = bpy.data.cameras.new(name)
     cam.lens = lens
     cam.clip_start = 0.05
@@ -412,25 +385,27 @@ def shoot(name, loc, target, lens, night=False):
     print("wrote", sc.render.filepath)
 
 
-# the sets of views (S7 / S8 of the design 9.1, a far one and detail ones)
+# the sets of views: photo-matched framings first (design 9.6), then S7 / S8 / far / detail views
 day = "--night-only" not in argv
 night = "--day-only" not in argv
+R43, R32 = (1280, 960), (1280, 854)
 if day:
-    shoot("day_photo12", V(-99.0, -80.5, 1.75), V(-117.0, -77.0, 9.0), 17)               # rest area at eye height, framed like photo 12
-    shoot("day_s8_front_slab", V(-104.6, -78.8, 2.3), V(-116.0, -78.0, 11.0), 20)          # S8: front slab, looking up
-    shoot("day_s7_rest_area", V(-100.0, -79.0, 2.6), V(-116.0, -78.5, 13.0), 20)           # S7: rest-area middle
-    shoot("day_pool_wide", V(-93.5, -74.0, 3.6), V(-116.0, -78.5, 11.0), 18)               # behind the avatar (W0 framing)
-    shoot("day_far", V(-62.0, -70.0, 3.0), V(-116.0, -78.0, 16.0), 30)                    # from the village side
+    shoot("day_photo12", V(-96.0, -81.5, 1.7), V(-117.0, -77.5, 12.5), 16, res=R43)        # photo 12: rest area, eye height
+    shoot("day_photo05", V(-101.8, -73.6, 0.7), V(-116.5, -80.0, 9.5), 18, res=R32)      # photo 05: low at the pool edge
+    shoot("day_s8_front_slab", V(-104.6, -78.8, 2.3), V(-116.0, -78.0, 11.0), 20, ava=True)  # S8: front slab, looking up
+    shoot("day_s7_rest_area", V(-100.0, -79.0, 2.6), V(-116.0, -78.5, 13.0), 20, ava=True)   # S7: rest-area middle
+    shoot("day_far", V(-62.0, -70.0, 3.0), V(-116.0, -78.0, 16.0), 30)                     # from the village side
     shoot("day_north_side", V(-103.0, -88.5, 2.0), V(-116.0, -80.0, 6.0), 22)              # S9: north end, rock and bank
-    shoot("day_rock_close", V(-107.0, -92.0, 2.2), V(-116.0, -93.0, 6.5), 28)              # the cliff's left flank at 10 m
+    shoot("day_rock_close", V(-106.5, -91.0, 2.2), V(-116.5, -91.5, 6.0), 26)              # the cliff's north wall at 10 m
     shoot("day_cliff_mid", V(-104.0, -72.0, 3.0), V(-117.5, -70.0, 9.0), 24)               # the south wall, jointed blocks
     shoot("day_bank", V(-100.0, -70.5, 1.7), V(-108.0, -75.0, 0.3), 24)                    # gravel bank, riprap, plants
 if night:
-    shoot("night_s8_front_slab", V(-104.6, -78.8, 2.3), V(-116.0, -78.0, 7.0), 20, night=True)
-    shoot("night_s7_rest_area", V(-98.0, -79.0, 2.6), V(-112.0, -78.5, 3.0), 22, night=True)
-if ONLY and ONLY.startswith("dbg_"):
-    ob = bpy.data.objects[ONLY[4:]]
+    shoot("night_photo12", V(-96.0, -81.5, 1.7), V(-117.0, -77.5, 12.5), 16, night=True, res=R43)
+    shoot("night_s8_front_slab", V(-104.6, -78.8, 2.3), V(-116.0, -78.0, 7.0), 20, night=True, ava=True)
+    shoot("night_s7_rest_area", V(-98.0, -79.0, 2.6), V(-112.0, -78.5, 3.0), 22, night=True, ava=True)
+for _dbg in [o for o in (ONLY or ()) if o.startswith("dbg_")]:
+    ob = bpy.data.objects[_dbg[4:]]
     vs = [ob.matrix_world @ v.co for v in ob.data.vertices]
     c = sum(vs, Vector()) / len(vs)
     c = vs[len(vs) // 3]
-    shoot(ONLY, (c.x + 2.0, c.y - 2.5, c.z + 1.0), (c.x, c.y, c.z), 35)
+    shoot(_dbg, (c.x + 2.0, c.y - 2.5, c.z + 1.0), (c.x, c.y, c.z), 35)

@@ -1,105 +1,370 @@
-"""B1 waterfall, W1: geometry parts for the rock and the plants (called by build_waterfall.py, run inside Blender).
+"""B1 waterfall, W1: geometry parts for the rock and the plants (called by build_waterfall.py, run inside Blender;
+the joint layout and face_x_detailed are pure Python so make_falls_textures.py can use them without Blender).
 
-Everything here is built from falls_shape (imported, never copied): the cliff is face_x() plus a fracture detail
-field, clamped so the shape contract still holds (the plunge and the upper-cascade film W2 wraps, the camera wall).
+Everything here is built from falls_shape (imported, never copied). Round 3 (2026-11-16, strong model):
 
-  facet_detail / face_x_detailed   fractured-granite relief added on the W0 height field (planar facets, cracks, sheet joints)
-  block_mesh(kind, seed)           a jointed granite block (rock kit k = 0..5): convex hull of a chamfered box, re-split
-  slab_mesh / seat_mesh            the walkable flat rocks and the 2 stone seats (flat tops at the contract heights)
-  leaf_clump / fern / grass_tuft   real leaf geometry (no cards): volumetric bush, fern fronds, grass blades, moss cushions
+  COLUMNAR JOINT LAYOUT   the face is partitioned into a few big granite blocks: 5 tiers between strong horizontal
+                          levels (the pool foot, the 9.6 m bench, the 17 m ledge, the 27.6 m bench, the 36 m top, the
+                          rim), each tier cut by long straight vertical joints 2-8 m apart (photo 05), some tiers split
+                          again by minor horizontal joints (photo 12's sheet steps). Each block is ONE PLANE fitted to
+                          face_x over the block, moved out/in and tilted a little, with a planar chamfer on its edges
+                          and a narrow V crack between blocks. No noise inside a block: the fine relief lives in the
+                          macro height/normal map (make_falls_textures.py), not in the geometry.
+  face_x_detailed         face_x + (block plane - face_x) x weight, clamped: 0.5 m off the camera wall, exactly face_x
+                          in the upper-cascade groove (W2's film), only cut inward where the plunge falls.
+  block_mesh(kind, seed)  rock kit k = 0..6: broken column fragments (talus), rounded riprap, flat stepping rock,
+                          river boulders
+  slab_mesh / seat_mesh   the walkable flat rocks and the 2 stone seats (flat tops at the contract heights)
+  Leaves + card plants    alpha-cut card foliage on T_falls_foliage (spray / fern / grass / hanging quadrants) and
+                          card-crowned broadleaf trees on the village's T_leaf_green (M_leaf_green), outward normals
 """
+import bisect
 import math
 import random
 
-import bmesh
-import bpy
-from mathutils import Vector
+try:
+    import bmesh
+    import bpy
+    from mathutils import Vector
+except ImportError:              # system python: layout + face_x_detailed only
+    bmesh = bpy = Vector = None
 
 import falls_shape as F
 
-# ============================================================================================== noise ==
+# ================================================================================= columnar joint layout ==
+TIERS = (F.FACE_Y[0], 9.6, F.LEDGE, 27.6, F.TOP, F.FACE_Y[1])        # strong horizontal levels (y, m)
+MINOR = ((3.0, 6.3), (13.3,), (20.6, 24.4), (31.8,), (38.6,))        # minor joints per tier (active per column)
+MINOR_P = (0.12, 0.1, 0.12, 0.15, 0.1)
+COL_W = ((1.9, 3.8), (2.2, 4.3), (2.8, 5.6), (3.3, 6.6), (4.5, 8.0))  # column widths per tier (m)
+CONTINUE_P = (0.6, 0.92, 0.5, 0.4)                                  # a joint carries on into the tier above
+CRACK_D = 0.06            # half-width of the V of a crack (m)
+CHAMFER_Z = 0.30          # bevel on a column's vertical edge
+CHAMFER_Y = 0.22          # bevel on a block's horizontal edge
+PLUNGE_HALF = 7.5
+GROOVE_FREE = 2.4         # |z - channel z| from which the blocks show beside the groove (cut inward only below 3.8)         # |z - lip z| inside which the blocks are cut back behind face_x (below the ledge)
 
 
-def _cell_worley(u, v, seed):
-    """Cellular noise with the nearest cell's centre: (f1, f2, id01, cx, cy)."""
-    iu, iv = math.floor(u), math.floor(v)
-    best = [9.0, 9.0, 0.0, 0.0, 0.0]
-    for di in (-1, 0, 1):
-        for dj in (-1, 0, 1):
-            ci, cj = iu + di, iv + dj
-            px = ci + 0.1 + 0.8 * F._hash2(ci, cj, seed)
-            py = cj + 0.1 + 0.8 * F._hash2(ci, cj, seed + 1)
-            d = math.hypot(u - px, v - py)
-            if d < best[0]:
-                best[1] = best[0]
-                best[0], best[2], best[3], best[4] = d, F._hash2(ci, cj, seed + 2), px, py
-            elif d < best[1]:
-                best[1] = d
-    return best
+class Block:
+    __slots__ = ("z0", "z1", "y0", "y1", "zc", "yc", "a", "b", "c", "ez", "ey", "ck_l", "ck_r", "ck_b", "ck_t",
+                 "zr", "kr", "yr", "ky",
+                 "tier", "col", "lum", "tint")
+
+    def plane(self, z, y):
+        """The block's faces: its plane, folded along a vertical ridge (a column's corner: two facets meeting at zr)
+        and leaning back above yr (a slab top), without the bevels."""
+        x = self.a + self.b * (z - self.zc) + self.c * (y - self.yc)
+        if self.kr:
+            x -= self.kr * (abs(z - self.zr) - 0.25 * (self.z1 - self.z0))
+        if self.ky and y > self.yr:
+            x -= self.ky * (y - self.yr)
+        return x
+
+    def x(self, z, y):
+        """The block's surface x at (z, y) (no weights, no clamps)."""
+        x = self.plane(z, y)
+        dl, dr = z - self.z0, self.z1 - z
+        db, dt = y - self.y0, self.y1 - y
+        drop = 0.0
+        for d, ck, chamf, e in ((dl, self.ck_l, CHAMFER_Z, self.ez), (dr, self.ck_r, CHAMFER_Z, self.ez),
+                                (db, self.ck_b, CHAMFER_Y, self.ey), (dt, self.ck_t, CHAMFER_Y, self.ey)):
+            if ck is None or d >= chamf:
+                continue
+            if d >= CRACK_D:
+                dd = e * (chamf - d) / (chamf - CRACK_D)
+            else:
+                dd = e + ck * (CRACK_D - max(d, 0.0)) / CRACK_D
+            drop = max(drop, dd)
+        return x - drop
 
 
-def facet_detail(z, y):
-    """Granite jointing relief (m, + = out of the rock) at (z, y), round 2:
-      - tall columns (cells ~2.8 m wide, ~14 m tall): each a flat plane, pushed out or in as a whole, separated by deep
-        sharp vertical joints (photo 05);
-      - stepped horizontal sheet joints every ~2.2 m: the face tilts back a little then jumps (photo 12);
-      - a second, smaller set of planar facets (~1.1 x 2.2 m) with their own cracks.
-    Almost no smooth noise: large flat faces, hard edges, shadowed cracks. Range about -1.6 .. +0.5."""
-    wz = z + 0.35 * F.noise3(z * 0.17, y * 0.05, 3.1)
-    wy = y + 0.5 * F.noise3(z * 0.1, y * 0.1, 8.7)
-    f1, f2, cid, cx, cy = _cell_worley(wz / 2.8, wy / 14.0, 11)
-    off = (cid - 0.5) * 0.9
-    tz = (F._hash2(int(cx * 9), int(cy * 9), 4) - 0.5) * 0.22
-    plane = off + tz * (wz / 2.8 - cx) * 2.8
-    crack = math.exp(-((f2 - f1) / 0.05)) * 1.0
-    # sheet joints
-    sq = wy / 2.2 + 0.7 * F.noise3(z * 0.09, 0.7, 4.4)
-    k = math.floor(sq)
-    fr = sq - k
-    sheet = -0.45 * fr ** 1.6 + (F._hash2(k, int(cid * 977), 6) - 0.5) * 0.30
-    # smaller facets
-    g1, g2, gid, gx, gy = _cell_worley(wz / 1.1, wy / 2.2, 31)
-    sub = (gid - 0.5) * 0.28 + (F._hash2(int(gx * 5), int(gy * 5), 2) - 0.5) * 0.12 * (g1 * 2)
-    crack2 = math.exp(-((g2 - g1) / 0.07)) * 0.28
-    return plane + sheet + sub - crack - crack2 + 0.012 * F.noise3(z * 2.3, y * 2.3, 6.6)
+def _solve3(m, r):
+    """Solve the 3x3 system m.x = r (Cramer)."""
+    def det(a):
+        return (a[0][0] * (a[1][1] * a[2][2] - a[1][2] * a[2][1]) - a[0][1] * (a[1][0] * a[2][2] - a[1][2] * a[2][0])
+                + a[0][2] * (a[1][0] * a[2][1] - a[1][1] * a[2][0]))
+    d = det(m)
+    out = []
+    for k in range(3):
+        mk = [row[:] for row in m]
+        for i in range(3):
+            mk[i][k] = r[i]
+        out.append(det(mk) / d)
+    return out
+
+
+def _fit(z0, z1, y0, y1, n=5):
+    zc, yc = 0.5 * (z0 + z1), 0.5 * (y0 + y1)
+    m = [[0.0] * 3 for _ in range(3)]
+    r = [0.0] * 3
+    pts = []
+    for i in range(n):
+        z = z0 + 0.12 + (z1 - z0 - 0.24) * i / (n - 1)
+        for j in range(n):
+            y = y0 + 0.12 + (y1 - y0 - 0.24) * j / (n - 1)
+            x = F.face_x(z, y)
+            pts.append((z, y, x))
+            v = (1.0, z - zc, y - yc)
+            for p in range(3):
+                r[p] += v[p] * x
+                for q in range(3):
+                    m[p][q] += v[p] * v[q]
+    a, b, c = _solve3(m, r)
+    return zc, yc, a, b, c, pts
+
+
+_LAYOUT = None
+
+
+def layout():
+    """The joint layout: {"tiers": [(y0, y1, cuts[z...], cols[[Block...] per column])], "blocks": [Block]}."""
+    global _LAYOUT
+    if _LAYOUT is not None:
+        return _LAYOUT
+    rng = random.Random(F.SEED * 7 + 3)
+    zA, zB = F.FACE_Z
+    tiers, blocks = [], []
+    prev_cuts = []
+    for t in range(len(TIERS) - 1):
+        y0, y1 = TIERS[t], TIERS[t + 1]
+        wlo, whi = COL_W[t]
+        cuts = []
+        # joints carried on from the tier below (long straight cracks through several tiers)
+        carried = [c for c in prev_cuts if rng.random() < (CONTINUE_P[t - 1] if t > 0 else 0)]
+        z = zA
+        while True:
+            nxt = [c for c in carried if c > z + wlo * 0.7]
+            step = rng.uniform(wlo, whi)
+            cand = z + step
+            if nxt and nxt[0] < cand + wlo * 0.5:
+                cand = nxt[0]
+            if cand > zB - wlo * 0.6:
+                break
+            cuts.append(round(cand, 3))
+            z = cand
+        prev_cuts = cuts
+        edges = [zA] + cuts + [zB]
+        cols = []
+        for ci in range(len(edges) - 1):
+            cz0, cz1 = edges[ci], edges[ci + 1]
+            joints = [y0] + [m for m in MINOR[t] if rng.random() < MINOR_P[t]] + [y1]
+            col = []
+            for k in range(len(joints) - 1):
+                b = Block()
+                b.z0, b.z1, b.y0, b.y1 = cz0, cz1, joints[k], joints[k + 1]
+                b.tier, b.col = t, ci
+                zc, yc, a, bz, cy, pts = _fit(cz0, cz1, b.y0, b.y1)
+                b.zc, b.yc = zc, yc
+                # move each block out or in as a whole and tilt it a little: the columns stand at different depths
+                big = rng.random() < 0.16
+                b.a = a + (rng.uniform(-0.55, 0.45) if big else rng.uniform(-0.12, 0.12)) * (1.0 if t < 4 else 0.5)
+                b.b = bz + rng.uniform(-0.06, 0.06)
+                b.c = cy + rng.uniform(-0.03, 0.05)
+                w_ = cz1 - cz0
+                b.kr, b.zr = 0.0, zc
+                if w_ > 1.6 and rng.random() < 0.65:
+                    b.kr = rng.uniform(0.07, 0.28)
+                    b.zr = round(cz0 + w_ * rng.uniform(0.3, 0.7), 3)
+                b.ky, b.yr = 0.0, b.y1
+                h_ = b.y1 - b.y0
+                if t >= 2 and h_ > 2.5 and rng.random() < 0.25:
+                    b.ky = rng.uniform(0.2, 0.45)
+                    b.yr = round(b.y0 + h_ * rng.uniform(0.45, 0.75), 3)
+                # below the ledge beside the plunge: push the plane behind face_x (cut inward only)
+                if b.y0 < F.LEDGE + 1.5 and min(abs(cz0 - F.LIP["z"]), abs(cz1 - F.LIP["z"]),
+                                                0 if cz0 < F.LIP["z"] < cz1 else 99) < PLUNGE_HALF:
+                    worst = max(b.plane(pz, py) - px for (pz, py, px) in pts
+                                if abs(pz - F.LIP["z"]) < PLUNGE_HALF and py < F.LEDGE + 0.4) \
+                        if any(abs(pz - F.LIP["z"]) < PLUNGE_HALF and py < F.LEDGE + 0.4 for (pz, py, px) in pts) else 0.0
+                    if worst > -0.05:
+                        b.a -= worst + 0.05
+                b.ez = rng.uniform(0.0, 0.08) if rng.random() < 0.8 else rng.uniform(0.1, 0.22)
+                b.ey = rng.uniform(0.0, 0.08)
+                b.lum = rng.uniform(-1.0, 1.0)
+                b.tint = rng.uniform(-1.0, 1.0)
+                col.append(b)
+                blocks.append(b)
+            cols.append(col)
+        tiers.append((y0, y1, cuts, cols))
+    # cracks: depth per joint (shared by the two blocks on either side), none on the outer edge of the face
+    def ckz(z, t):
+        return 0.1 + 0.7 * F._hash2(int(round(z * 100)), t, 41) ** 1.5
+    for (y0, y1, cuts, cols) in tiers:
+        for ci, col in enumerate(cols):
+            for k, b in enumerate(col):
+                b.ck_l = ckz(b.z0, b.tier) if ci > 0 else None
+                b.ck_r = ckz(b.z1, b.tier) if ci < len(cols) - 1 else None
+                b.ck_b = 0.12 + 0.25 * F._hash2(int(round(b.y0 * 100)), int(round(b.zc * 10)), 43) if b.y0 > F.FACE_Y[0] + 0.1 else None
+                b.ck_t = 0.12 + 0.25 * F._hash2(int(round(b.y1 * 100)), int(round(b.zc * 10)), 43) if b.y1 < F.FACE_Y[1] - 0.1 else None
+    # long columns: across the 17 m ledge (no bench there) a column whose two joints both carry on is ONE block
+    # (same plane, no horizontal joint), away from the plunge
+    lower = {(b.z0, b.z1): b for b in blocks if b.tier == 1 and abs(b.y1 - F.LEDGE) < 1e-6}
+    for b in blocks:
+        if b.tier != 2 or abs(b.y0 - F.LEDGE) > 1e-6:
+            continue
+        lo = lower.get((b.z0, b.z1))
+        if lo is None or min(abs(b.z0 - F.LIP["z"]), abs(b.z1 - F.LIP["z"])) < PLUNGE_HALF + 1.0 or b.z0 < F.LIP["z"] < b.z1:
+            continue
+        if rng.random() > 0.92:
+            continue
+        b.b, b.c = lo.b, lo.c
+        b.a = lo.a + lo.c * (b.yc - lo.yc) + lo.b * (b.zc - lo.zc)
+        b.kr, b.zr = lo.kr, lo.zr
+        if lo.kr:
+            b.a += 0.0
+        lo.ky = 0.0
+        lo.ck_t = None
+        b.ck_b = None
+        b.ez, b.lum, b.tint = lo.ez, lo.lum, lo.tint
+    _LAYOUT = {"tiers": tiers, "blocks": blocks}
+    return _LAYOUT
+
+
+def blocks_at(z, y, eps=1e-4):
+    """Blocks whose rectangle holds (z, y) (two or more on a joint line)."""
+    L = layout()
+    out = []
+    for (y0, y1, cuts, cols) in L["tiers"]:
+        if y < y0 - eps or y > y1 + eps:
+            continue
+        ci = bisect.bisect_right(cuts, z)
+        for cc in (ci - 1, ci, ci + 1):
+            if 0 <= cc < len(cols):
+                for b in cols[cc]:
+                    if b.z0 - eps <= z <= b.z1 + eps and b.y0 - eps <= y <= b.y1 + eps:
+                        out.append(b)
+    return out
+
+
+def block_surface(z, y):
+    bs = blocks_at(z, y)
+    if not bs:
+        return None
+    return min(b.x(z, y) for b in bs)
 
 
 def detail_weight(z, y):
-    """How much of the fracture relief applies at (z, y): full on the bare rock, none in the upper-cascade groove
-    (W2 wraps the film on the plain face_x), none out of the rock on and beside the plunge."""
+    """How much of the block relief applies at (z, y): full on the bare rock, fading onto the wooded flanks, none in
+    the upper-cascade groove (W2 wraps the film on the plain face_x)."""
     a = abs(z - F.FZ)
-    w = F.smooth(F.FLANK_FULL, F.FLANK_START + 2.0, a) * 0.85 + 0.15 * F.smooth(F.FLANK_FULL + 2.0, F.FLANK_FULL - 2.0, a)
+    w = F.smooth(F.FLANK_FULL - 1.0, F.FLANK_START + 3.0, a) * 0.9 + 0.1 * F.smooth(F.FLANK_FULL + 2.0, F.FLANK_FULL - 2.0, a)
     if y > F.LEDGE - 0.6:
         dz = abs(z - F.channel_z(y))
-        w *= F.smooth(F.CHANNEL_HALF + 0.2, F.CHANNEL_HALF + 2.6, dz)
+        w *= F.smooth(GROOVE_FREE, GROOVE_FREE + 1.2, dz)
+    w *= F.smooth(F.FACE_Y[0], F.FACE_Y[0] + 1.2, y) * F.smooth(F.PLATEAU_Y + 1.5, F.PLATEAU_Y - 2.5, y)
     return w
 
 
 def face_x_detailed(z, y):
-    """face_x + fracture detail, clamped: never closer than 0.5 m to the camera wall, never out of the rock where
-    the plunge or its side strands fall (|z - lip z| < 6.5, y below the ledge)."""
+    """face_x + block relief, clamped: never closer than 0.5 m to the camera wall, never out of the rock where the
+    plunge or its side strands fall (|z - lip z| < 6, y below the ledge; ramps to free over 1.5 m)."""
     base = F.face_x(z, y)
-    d = facet_detail(z, y) * detail_weight(z, y)
-    # fade the relief out at the very top and bottom of the mesh so the seams with the plateau and the bed are clean
-    d *= F.smooth(F.FACE_Y[0], F.FACE_Y[0] + 1.5, y) * F.smooth(F.PLATEAU_Y + 1.5, F.PLATEAU_Y - 3.5, y)
-    if abs(z - F.LIP["z"]) < 6.5 and y < F.LEDGE + 0.4:
-        d = min(d, 0.0)
+    w = detail_weight(z, y)
     cap = F.camera_wall_x(z) - 0.5 - base
+    if w <= 0.0:
+        return base + min(0.0, cap)
+    bx = block_surface(z, y)
+    if bx is None:
+        return base + min(0.0, cap)
+    d = bx - base
+    dzp = abs(z - F.LIP["z"])
+    if y < F.LEDGE + 1.5 and dzp < PLUNGE_HALF:
+        dmax = 4.0 * max(F.smooth(6.0, PLUNGE_HALF, dzp), F.smooth(F.LEDGE + 0.4, F.LEDGE + 1.5, y))
+        d = min(d, dmax)
+    if y > F.LEDGE - 0.6 and abs(z - F.channel_z(y)) < GROOVE_FREE + 1.4:
+        d = min(d, 0.0)                               # beside W2's film: only cut back, never over it
+    d *= w
     return base + min(d, cap)
 
 
+def grid_lines(lod):
+    """Structured grid lines of the face mesh: (zs, ys, zkind, ykind). Every crack and joint gets its own lines (so the
+    cracks are straight and the bevels planar), plus fill lines where the surface is curved (groove, alcove, flanks).
+    kind: 0 = bevel / crack-side offset, 1 = centre-zone fill, 2 = base fill, 3 = crack or joint centre. Where the
+    surface is curved (no block relief) the build dissolves the kind-0 lines, and kind-1 rows away from the falls."""
+    L = layout()
+    zA, zB = F.FACE_Z
+    yA, yB = F.FACE_Y
+    zl, yl = [], []
+    offs_z = (-CRACK_D, CRACK_D, -CHAMFER_Z, CHAMFER_Z) if lod == 0 else (-CHAMFER_Z, CHAMFER_Z)
+    offs_y = (-CRACK_D, CRACK_D, -CHAMFER_Y, CHAMFER_Y) if lod == 0 else (-CHAMFER_Y, CHAMFER_Y)
+    for (y0, y1, cuts, cols) in L["tiers"]:
+        for c in cuts:
+            zl.append((c, 3))
+            zl += [(c + o, 0) for o in offs_z]
+        for col in cols:
+            for b in col:
+                for yy in (b.y0, b.y1):
+                    if yA < yy < yB:
+                        yl.append((yy, 3))
+                        yl += [(yy + o, 0) for o in offs_y]
+                if b.kr and lod == 0:
+                    zl.append((b.zr, 3))
+                if b.ky and lod == 0:
+                    yl.append((b.yr, 3))
+
+    def fill(lst, a, b, step, kind):
+        n = max(1, int(math.ceil((b - a) / step)))
+        lst += [(a + (b - a) * k / n, kind) for k in range(n + 1)]
+    if lod == 0:
+        fill(zl, zA, zB, 1.3, 2)
+        fill(zl, F.FZ - 6.6, F.FZ + 6.6, 0.45, 2)                 # groove + alcove + plunge ramp
+        fill(zl, F.FZ - 21.0, F.FZ - 13.0, 0.9, 2)                # flank blends
+        fill(zl, F.FZ + 13.0, min(zB, F.FZ + 21.0), 0.9, 2)
+        fill(yl, yA, yB, 1.0, 2)
+        fill(yl, yA, F.LEDGE + 1.6, 0.5, 1)                       # alcove
+        fill(yl, F.LEDGE - 0.6, F.PLATEAU_Y + 2.6, 0.6, 1)        # groove, rim roll
+        yl += [(h + o, 1) for h in F.CASCADE_LEDGES for o in (-0.05, 0.1, 0.25)]
+        yl += [(F.LEDGE + o, 1) for o in (-0.9, -0.45, 0.0, 0.45, 0.9)]   # the lip bulge
+    else:
+        fill(zl, zA, zB, 2.2, 2)
+        fill(zl, F.FZ - 6.6, F.FZ + 6.6, 1.0, 2)
+        fill(yl, yA, yB, 1.6, 2)
+        fill(yl, F.LEDGE - 0.6, F.PLATEAU_Y + 2.6, 1.1, 1)
+        yl += [(h + 0.1, 1) for h in F.CASCADE_LEDGES]
+
+    def thin(lst, lo, hi):
+        out = []
+        for v, k in sorted((round(v, 4), k) for v, k in lst if lo <= v <= hi):
+            if out and v - out[-1][0] <= 0.02:
+                if k > out[-1][1]:
+                    out[-1] = (v, k)
+                continue
+            out.append((v, k))
+        return [v for v, _ in out], {v: k for v, k in out}
+    zs, zk = thin(zl, zA, zB)
+    ys, yk = thin(yl, yA, yB)
+    return zs, ys, zk, yk
+
+
+def ledges(min_depth=0.22, dz=0.7):
+    """(x, z, y, depth) points on the tops of the blocks where the block above stands back (plants, moss)."""
+    out = []
+    L = layout()
+    levels = sorted({b.y1 for b in L["blocks"] if F.FACE_Y[0] + 1 < b.y1 < F.TOP + 1.0})
+    z = F.FACE_Z[0] + 0.5
+    while z < F.FACE_Z[1] - 0.5:
+        for yl in levels:
+            lo = face_x_detailed(z, yl - 0.35)
+            hi = face_x_detailed(z, yl + 0.35)
+            if lo - hi > min_depth:
+                out.append((lo, z, yl, lo - hi))
+        z += dz
+    return out
+
+
+def cracks(step=1.2):
+    """(x, z, y) points at the bottom of the vertical joints (plants in the cracks)."""
+    out = []
+    for (y0, y1, cuts, cols) in layout()["tiers"]:
+        for c in cuts:
+            y = y0 + 0.6
+            while y < y1 - 0.4:
+                out.append((face_x_detailed(c, y), c, y))
+                y += step
+    return out
+
+
 # ====================================================================================== grid and meshes ==
-
-
-def make_bm_from_grid(xs_fn, zs, ys, keep=None):
-    """A structured grid over (z, y) -> bmesh quads. xs_fn(z, y) -> x. keep(i, j, pts) may drop a quad."""
-    nz = len(zs)
-    verts = []
-    for y in ys:
-        for z in zs:
-            verts.append((xs_fn(z, y), z, y))
-    return verts, nz
-
 
 def _tri_split(verts, a, b, c, d):
     """Split quad (a, b, c, d) along the shorter 3D diagonal -> two triangles."""
@@ -109,7 +374,7 @@ def _tri_split(verts, a, b, c, d):
     return [(a, b, d), (b, c, d)]
 
 
-def mesh_from(name, verts_bl, faces, mat=None, uv=None, uv2=None, colors=None, smooth=True, normals_by_angle=None):
+def mesh_from(name, verts_bl, faces, mat=None, uv=None, uv2=None, colors=None, smooth=True):
     me = bpy.data.meshes.new(name)
     me.from_pydata(verts_bl, [], faces)
     me.update()
@@ -141,17 +406,47 @@ def Vb(x, z, y):
     return (x, -z, y)
 
 
+def box_uv(me, tile=4.0, off=(0.31, 0.0)):
+    """UV0 by face: each face projected along its main axis (no stretched texture on the crack walls and steps)."""
+    uv = me.uv_layers["UVMap"]
+    for p in me.polygons:
+        n = p.normal
+        ax = max(range(3), key=lambda k: abs(n[k]))
+        for li in p.loop_indices:
+            co = me.vertices[me.loops[li].vertex_index].co
+            if ax == 0:
+                u, v = -co.y, co.z
+            elif ax == 1:
+                u, v = co.x + 0.17, co.z
+            else:
+                u, v = co.x + 0.53, -co.y
+            uv.data[li].uv = (u / tile + off[0], v / tile + off[1])
+
+
+def planarize(me, angle_deg=0.6):
+    """Merge the coplanar faces of a grid mesh (the flat block faces and bevels) into n-gons, then triangulate.
+    Positions, UVs and the 'Col' masks are linear on the remaining corners."""
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    bmesh.ops.dissolve_limit(bm, angle_limit=math.radians(angle_deg), use_dissolve_boundaries=False,
+                             verts=bm.verts[:], edges=bm.edges[:], delimit=set())
+    bmesh.ops.triangulate(bm, faces=bm.faces[:], quad_method="BEAUTY", ngon_method="BEAUTY")
+    bm.to_mesh(me)
+    bm.free()
+    me.update()
+
+
 # ======================================================================================== rock kit ==
 
 KIT = {
-    # kind: (sx, sy, sz) half-sizes in local units (x = out of the cliff, y = up, z = along the cliff); bevel facets, sphericity
-    0: dict(h=(1.0, 0.45, 1.4), pts=16, sph=0.0, rough=0.010, label="wide ledge slab"),
-    1: dict(h=(0.8, 1.35, 0.7), pts=16, sph=0.0, rough=0.010, label="tall angular pillar"),
-    2: dict(h=(1.0, 0.85, 1.0), pts=18, sph=0.02, rough=0.010, label="chunky cube-ish block"),
-    3: dict(h=(1.3, 0.55, 0.9), pts=20, sph=0.03, rough=0.012, label="wedge / leaning flake"),
-    4: dict(h=(1.0, 0.75, 1.1), pts=30, sph=0.28, rough=0.014, label="rounded boulder (riprap)"),
-    5: dict(h=(1.35, 0.30, 1.10), pts=18, sph=0.10, rough=0.010, label="flat stepping rock"),
-    6: dict(h=(1.0, 0.8, 1.0), pts=40, sph=0.8, rough=0.010, label="rounded river boulder"),
+    # kind: half-sizes (x = out of the cliff, y = up, z = along), label
+    0: dict(h=(1.0, 0.5, 1.4), label="flat column fragment"),
+    1: dict(h=(0.75, 1.3, 0.7), label="standing column piece"),
+    2: dict(h=(0.95, 0.8, 1.0), label="blocky fragment"),
+    3: dict(h=(1.25, 0.55, 0.9), label="wedge / leaning flake"),
+    4: dict(h=(1.0, 0.7, 1.1), label="rounded riprap boulder"),
+    5: dict(h=(1.35, 0.30, 1.10), label="flat stepping rock"),
+    6: dict(h=(1.0, 0.72, 1.0), label="rounded river boulder"),
 }
 
 
@@ -185,38 +480,55 @@ def sharpen(me, deg):
 
 
 def block_mesh(kind, seed, mat):
-    """One jointed granite block: the convex hull of points on a chamfered box (so planar facets with hard edges),
-    each face re-split (cuts=1) and nudged by a small rough noise. UV0 = local box projection, 3.0 m tile, random
-    offset; vertex colour 'Col' R moss (up-facing), G wet (low), B streak (sides), A lichen. ~350-650 triangles."""
+    """One rock of the kit.
+      0-3: a broken granite column fragment: a box with chamfered edges, cut by 2-3 random fracture planes (big flat
+           faces, crisp edges; ~60-120 triangles);
+      4, 6: a rounded, water-worn boulder (oblate, smooth-shaded subdivided icosphere with low lumps, 80 triangles);
+      5: a flat stepping rock (rounded slab).
+    UV0 = local box projection, 3.0 m tile, random offset; 'Col' R moss (up-facing), G wet (low), B streak, A lichen."""
     k = KIT[kind]
     rng = random.Random(seed * 977 + kind * 31)
     sx, sy, sz = k["h"]
-    pts = []
-    for i in range(k["pts"]):
-        d = Vector((rng.gauss(0, 1), rng.gauss(0, 1), rng.gauss(0, 1))).normalized()
-        c = d / max(abs(d.x), abs(d.y), abs(d.z))                # on the cube surface
-        p = c * (1.0 - k["sph"]) + d * k["sph"]
-        r = rng.uniform(0.80, 1.02)
-        pts.append(Vector((p.x * sx * r, p.y * sy * r, p.z * sz * r)))
-    # make sure the extremes exist so the block really has its size
-    for ax in range(3):
-        for sgn in (-1, 1):
-            v = Vector((0, 0, 0))
-            v[ax] = sgn * (sx, sy, sz)[ax] * rng.uniform(0.92, 1.0)
-            v[(ax + 1) % 3] = rng.uniform(-0.35, 0.35) * (sx, sy, sz)[(ax + 1) % 3]
-            v[(ax + 2) % 3] = rng.uniform(-0.35, 0.35) * (sx, sy, sz)[(ax + 2) % 3]
-            pts.append(v)
     bm = bmesh.new()
-    vs = [bm.verts.new(p) for p in pts]
-    bmesh.ops.convex_hull(bm, input=vs, use_existing_faces=False)
-    bm.verts.ensure_lookup_table()
-    # remove stray (interior) verts left by the hull
-    bmesh.ops.delete(bm, geom=[v for v in bm.verts if not v.link_faces], context="VERTS")
-    bmesh.ops.triangulate(bm, faces=bm.faces)
-    bmesh.ops.subdivide_edges(bm, edges=bm.edges[:], cuts=(1 if kind == 6 else 2), use_grid_fill=False)
-    for v in bm.verts:
-        n = F.noise3(v.co.x * 2.1 + seed, v.co.y * 2.1, v.co.z * 2.1 + kind) * k["rough"]
-        v.co += v.normal * n
+    if kind in (0, 1, 2, 3):
+        ch = 0.14
+        pts = []
+        for ix in (-1, 1):
+            for iy in (-1, 1):
+                for iz in (-1, 1):
+                    c = Vector((ix * sx, iz * sz, iy * sy))
+                    for ax in range(3):
+                        p = c.copy()
+                        p[ax] -= (ix, iz, iy)[ax] * ch * (sx, sz, sy)[ax] * rng.uniform(0.6, 1.2)
+                        pts.append(p)
+        vs = [bm.verts.new(p) for p in pts]
+        bmesh.ops.convex_hull(bm, input=vs, use_existing_faces=False)
+        bmesh.ops.delete(bm, geom=[v for v in bm.verts if not v.link_faces], context="VERTS")
+        for _ in range(3 if kind != 1 else 2):
+            n = Vector((rng.uniform(-1, 1), rng.uniform(-1, 1), rng.uniform(-0.6, 1.0))).normalized()
+            ext = abs(n.x) * sx + abs(n.y) * sz + abs(n.z) * sy
+            co = n * ext * rng.uniform(0.55, 0.8)
+            res = bmesh.ops.bisect_plane(bm, geom=bm.verts[:] + bm.edges[:] + bm.faces[:], dist=1e-5, plane_co=co,
+                                         plane_no=n, clear_outer=True)
+            cut = [e for e in res["geom_cut"] if isinstance(e, bmesh.types.BMEdge)]
+            if cut:
+                bmesh.ops.holes_fill(bm, edges=cut, sides=0)
+        bmesh.ops.triangulate(bm, faces=bm.faces[:])
+        bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
+    elif kind in (4, 6):
+        bmesh.ops.create_icosphere(bm, subdivisions=2, radius=1.0)
+        ph = rng.uniform(0, 40)
+        for v in bm.verts:
+            n = v.co.normalized()
+            lump = 1.0 + 0.10 * F.noise3(n.x * 1.6 + ph, n.y * 1.6, n.z * 1.6) + (0.07 * F.noise3(n.x * 3.3, n.y * 3.3 + ph, n.z * 3.3) if kind == 4 else 0.0)
+            flat = 1.0 - 0.25 * max(0.0, -n.z) ** 2          # flatter underside
+            v.co = Vector((n.x * sx * lump, n.y * sz * lump, n.z * sy * lump * flat))
+    else:
+        bmesh.ops.create_icosphere(bm, subdivisions=2, radius=1.0)
+        for v in bm.verts:
+            n = v.co.normalized()
+            top = min(1.0, max(n.z, -0.6))
+            v.co = Vector((n.x * sx, n.y * sz, (0.35 if n.z > 0.3 else 1.0) * top * sy * (1.0 + 0.05 * F.noise3(n.x * 2, n.y * 2, 3.3))))
     bm.normal_update()
     me = bpy.data.meshes.new(f"falls_kit_{kind}")
     bm.to_mesh(me)
@@ -239,16 +551,17 @@ def block_mesh(kind, seed, mat):
                 u, v_ = co.x, co.z
             uv.data[li].uv = (u / 3.0 + off[0], v_ / 3.0 + off[1])
     zmin = min(v.co.z for v in me.vertices)
-    zmax = max(v.co.z for v in me.vertices)
     for i, v in enumerate(me.vertices):
-        # per-vertex mask values in the kit's own frame (z up in Blender): moss on upward-facing, wet low, streaks on the sides
         n = v.normal
-        moss = F.smooth(0.55, 0.92, n.z) * (0.55 + 0.45 * F.noise3(v.co.x * 3, v.co.y * 3, 1.1 + kind)) + 0.18 * F.smooth(0.25, 0.0, v.co.z - zmin) * F.smooth(0.3, 0.8, 1 - abs(n.z))
-        wet = F.smooth(zmin + 0.5, zmin, v.co.z) * 0.8
-        streak = F.smooth(0.5, 0.15, abs(n.z)) * max(0.0, F.fbm(v.co.x * 3.0, v.co.y * 3.0, v.co.z * 0.5 + seed, 3)) * 1.3
+        moss = F.smooth(0.55, 0.92, n.z) * (0.35 + 0.45 * F.noise3(v.co.x * 3, v.co.y * 3, 1.1 + kind)) + 0.25 * F.smooth(0.3, 0.0, v.co.z - zmin)
+        wet = F.smooth(zmin + 0.45, zmin, v.co.z) * 0.8
+        streak = F.smooth(0.5, 0.15, abs(n.z)) * max(0.0, F.fbm(v.co.x * 3.0, v.co.y * 3.0, v.co.z * 0.5 + seed, 3)) * 1.1
         lich = max(0.0, F.noise3(v.co.x * 1.7, v.co.y * 1.7, v.co.z * 1.7 + 9)) * 0.9
         ca.data[i].color = (min(1, moss), min(1, wet), min(1, streak), min(1, lich))
-    sharpen(me, 34 if kind != 6 else 80)
+    if kind in (4, 5, 6):
+        me.shade_smooth()
+    else:
+        sharpen(me, 30)
     return ob
 
 
@@ -268,22 +581,15 @@ def slab_mesh(s, mat, seed):
     n = 40
     c, sn = math.cos(s["yaw"]), math.sin(s["yaw"])
     ph = [rng.uniform(0, 6.28) for _ in range(4)]
-    rings = []
-    for lev in (0.0, 1.0):
-        ring = []
-        for k in range(n):
-            a = 2 * math.pi * k / n
-            j = 1.0 + 0.06 * math.sin(2 * a + ph[0]) + 0.05 * math.sin(3 * a + ph[1]) + 0.03 * math.sin(5 * a + ph[2]) + 0.015 * math.sin(9 * a + ph[3])
-            # straightish fracture edges: pull to a polygon-ish shape
-            r = 1.0 + (j - 1.0) * (1.0 + 0.0 * lev)
-            lx, lz = s["radiusX"] * math.cos(a) * r, s["radiusZ"] * math.sin(a) * r
-            ring.append((lx, lz))
-        rings.append(ring)
+    ring0 = []
+    for k in range(n):
+        a = 2 * math.pi * k / n
+        j = 1.0 + 0.06 * math.sin(2 * a + ph[0]) + 0.05 * math.sin(3 * a + ph[1]) + 0.03 * math.sin(5 * a + ph[2]) + 0.015 * math.sin(9 * a + ph[3])
+        ring0.append((s["radiusX"] * math.cos(a) * j, s["radiusZ"] * math.sin(a) * j))
 
     def w(lx, lz):
         return (s["centre"]["x"] + lx * c + lz * sn, s["centre"]["z"] - lx * sn + lz * c)
     top = s["top"]
-    # profile levels (outer scale, height): top face flat, rounded shoulder, side down to -0.55 (buried)
     prof = [(0.0, top), (0.55, top), (0.86, top - 0.004), (0.97, top - 0.025), (1.0, top - 0.07), (1.02, top - 0.16), (1.04, -0.55)]
     verts, faces = [], []
     ring_idx = []
@@ -291,8 +597,7 @@ def slab_mesh(s, mat, seed):
     for (sc_, h) in prof[1:]:
         idx = []
         for k in range(n):
-            lx, lz = rings[0][k]
-            # tiny height noise on the flat top (+-3 mm), more on the shoulder
+            lx, lz = ring0[k]
             nz = F.noise3(lx * 1.3 + seed, lz * 1.3, 1.0) * (0.003 if sc_ <= 0.9 else 0.008)
             x, z = w(lx * sc_, lz * sc_)
             idx.append(len(verts))
@@ -303,12 +608,10 @@ def slab_mesh(s, mat, seed):
     for r in range(len(ring_idx) - 1):
         for k in range(n):
             faces.append((ring_idx[r][k], ring_idx[r + 1][k], ring_idx[r + 1][(k + 1) % n], ring_idx[r][(k + 1) % n]))
-    # fix the winding so normals point up/out (Blender y = -z: our (x, z) ring turns the other way)
     me = bpy.data.meshes.new(s["id"])
     me.from_pydata(verts, [], [tuple(reversed(f)) for f in faces])
     me.update()
     if me.polygons[0].normal.z < 0:
-        me.polygons.foreach_set("use_smooth", [True] * len(me.polygons))
         bm = bmesh.new()
         bm.from_mesh(me)
         bmesh.ops.reverse_faces(bm, faces=bm.faces)
@@ -332,21 +635,17 @@ def slab_mesh(s, mat, seed):
 
 def seat_mesh(s, mat, seed):
     """A backless stone seat: a hewn-looking granite block (size x z, flat seat at seatTop), broken edges, a little moss."""
-    rng = random.Random(seed)
     c = s["centre"]
     hx, hz = s["size"]["x"] / 2, s["size"]["z"] / 2
     top = s["seatTop"]
     bot = -0.2
     bm = bmesh.new()
-    # a box with 3 cuts along its length so the broken-edge noise has something to move
     bmesh.ops.create_cube(bm, size=1.0)
     for v in bm.verts:
         v.co = Vector((v.co.x * 2 * hx, v.co.y * 2 * hz, v.co.z * (top - bot) + (top + bot) / 2))
     bmesh.ops.subdivide_edges(bm, edges=bm.edges[:], cuts=5, use_grid_fill=True)
-    # round the vertical and top edges (a soft chamfer by pulling the corner vertices toward the centre)
     for v in bm.verts:
         px, py, pz = v.co.x / hx, v.co.y / hz, (v.co.z - (top + bot) / 2) / ((top - bot) / 2)
-        e = max(abs(px), abs(py))
         if abs(px) > 0.85 and abs(py) > 0.85:
             k = 0.16
             v.co.x -= math.copysign(k * hx * (abs(px) - 0.85) / 0.15 * 0.5, px)
@@ -382,94 +681,89 @@ def seat_mesh(s, mat, seed):
 
 
 # =========================================================================================== plants ==
-# Real leaf geometry. UVs point into a dense, fully opaque patch of T_leaf_green (the tree atlas), jittered per leaf so
-# the green varies; vertex colour 'Col' tints (grey 0.7..1.0, a few yellowish).
+# Alpha-cut cards. T_falls_foliage (make_falls_textures.py) is a 2x2 atlas, each quadrant drawn with its base at the
+# bottom centre: spray (broadleaf shrub twig, TL), fern frond (TR), grass/sedge clump (BL), hanging leafy spray (BR).
+# Trees use the village's T_leaf_green (2x2 leaf-cluster cards, M_leaf_green), so they match W6's forest round the box.
+# Normals are set per vertex (from the plant's centre outward, bent up) so a bush shades as one volume.
 
-LEAF_PATCHES = [(0.09, 0.29), (0.81, 0.31), (0.07, 0.26), (0.71, 0.33), (0.79, 0.35), (0.77, 0.83), (0.95, 0.75), (0.13, 0.27)]
+FOLIAGE = {"spray": (0.0, 0.5), "fern": (0.5, 0.5), "grass": (0.0, 0.0), "hang": (0.5, 0.0)}
 
 
 class Leaves:
-    """Accumulates leaf / blade triangles into one mesh (Blender coords, already world-placed)."""
+    """Accumulates card / tube geometry into one mesh (Blender coords). Per-vertex: uv, colour, normal."""
 
     def __init__(self):
-        self.v, self.f, self.uv, self.col = [], [], [], []
+        self.v, self.f, self.uv, self.col, self.nrm, self.fmat = [], [], [], [], [], []
 
-    def _add(self, pts, quads, uvs, cols):
+    def _add(self, pts, faces, uvs, cols, nrms=None, mat=0):
         b = len(self.v)
-        self.v += pts
+        self.v += [tuple(p) for p in pts]
         self.uv += uvs
         self.col += cols
-        for q in quads:
+        self.nrm += nrms if nrms is not None else [None] * len(pts)
+        for q in faces:
             self.f.append(tuple(b + i for i in q))
+            self.fmat.append(mat)
 
-    def leaf(self, base, d, up, length, width, rng, droop=0.25, tint=None, fold=0.28, st=4):
-        """A lanceolate leaf: 4 stations along d (unit), V-folded along the midrib, curling down by `droop`."""
-        d = Vector(d).normalized()
-        side = d.cross(Vector(up)).normalized()
-        if side.length < 1e-4:
-            side = Vector((1, 0, 0))
-        nrm = side.cross(d).normalized()
-        pts, cols, uvs = [], [], []
-        pu = LEAF_PATCHES[rng.randrange(len(LEAF_PATCHES))]
-        t0 = tint if tint is not None else rng.uniform(0.92, 1.0)
-        for i in range(st):
-            t = i / (st - 1.0)
-            ctr = Vector(base) + d * (length * t) - nrm * (droop * length * t * t)
-            wd = width * math.sin(math.pi * min(1.0, 0.12 + 0.88 * t) ** 0.9) * (1.0 if t < 0.98 else 0.2)
-            for sgn in (-1, 0, 1):
-                p = ctr + side * (sgn * wd * 0.5) + nrm * (fold * wd * (1 - abs(sgn)) * 0.5)
-                pts.append((p.x, p.y, p.z))
-                uvs.append((pu[0] + 0.03 * sgn * t + rng.uniform(-0.01, 0.01), pu[1] + 0.05 * t))
-                g = t0 * (1.0 - 0.12 * t)
-                cols.append((g, g, g * 0.95, 1.0))
-        quads = []
-        for i in range(st - 1):
-            a = i * 3
-            quads += [(a, a + 1, a + 4, a + 3), (a + 1, a + 2, a + 5, a + 4)]
-        self._add(pts, quads, uvs, cols)
-
-    def blade(self, base, d, up, length, width, rng, bend=0.5, tint=None):
-        """A grass blade: 3 stations, tapering to a point, bending over in the direction `d`."""
-        d = Vector(d).normalized()
-        side = d.cross(Vector(up)).normalized()
-        if side.length < 1e-4:
-            side = Vector((1, 0, 0))
-        pu = LEAF_PATCHES[rng.randrange(len(LEAF_PATCHES))]
-        t0 = tint if tint is not None else rng.uniform(0.7, 1.05)
-        pts, cols, uvs = [], [], []
-        for i in range(3):
-            t = i / 2.0
-            ctr = Vector(base) + Vector(up).normalized() * (length * t * (1 - 0.3 * bend * t)) + d * (length * bend * t * t * 0.7)
-            wd = width * (1.0 - t) if i < 2 else 0.0
+    def card(self, base, right, up, w, h, cell, tint=(1, 1, 1), nrm=None, bend=0.0, droop=None, segs=1, anchor=0.0,
+             cell_size=0.5, mat=0):
+        """A card w x h whose bottom centre is `base` (anchor 0; 0.5 = centred), along `up`, bent by `bend` rad per
+        segment toward `droop` (default: -up x right). UV: atlas cell (u0, v0) of cell_size."""
+        R = Vector(right).normalized()
+        U = Vector(up).normalized()
+        D = Vector(droop).normalized() if droop is not None else U.cross(R).normalized()
+        s = Vector(base) - U * (h * anchor)
+        u0, v0 = cell
+        pts, uvs, cols, nr = [], [], [], []
+        d = U
+        for k in range(segs + 1):
+            t = k / segs
             for sgn in (-1, 1):
-                p = ctr + side * (sgn * wd * 0.5)
-                pts.append((p.x, p.y, p.z))
-                uvs.append((pu[0] + 0.02 * sgn, pu[1] + 0.04 * t))
-                cols.append((t0 * (0.8 + 0.2 * t), t0 * (0.85 + 0.2 * t), t0 * 0.7, 1.0))
-        self._add(pts, [(0, 1, 3, 2), (2, 3, 5, 4)], uvs, cols)
+                p = s + R * (sgn * w * 0.5)
+                pts.append(p)
+                uvs.append((u0 + cell_size * (0.5 + 0.497 * sgn), v0 + cell_size * (0.004 + 0.99 * t)))
+                cols.append((tint[0], tint[1], tint[2], 1.0))
+                nr.append(Vector(nrm) if nrm is not None else None)
+            if k < segs:
+                s = s + d * (h / segs)
+                ang = bend * (k + 1)
+                d = (U * math.cos(ang) + D * math.sin(ang)).normalized()
+        faces = [(2 * k, 2 * k + 1, 2 * k + 3, 2 * k + 2) for k in range(segs)]
+        self._add(pts, faces, uvs, cols, nr, mat)
 
-    def cushion(self, centre, radius, rng, tint=0.55):
-        """A moss cushion: a flattened, lumpy dome (~70 triangles)."""
-        bm = bmesh.new()
-        bmesh.ops.create_icosphere(bm, subdivisions=2, radius=1.0)
-        pu = LEAF_PATCHES[rng.randrange(len(LEAF_PATCHES))]
-        ph = rng.uniform(0, 50)
-        for v in bm.verts:
-            n = v.co.normalized()
-            r = radius * (1.0 + 0.28 * F.noise3(n.x * 2.4 + ph, n.y * 2.4, n.z * 2.4))
-            v.co = Vector((n.x * r, n.y * r, max(n.z, -0.2) * r * 0.5)) + Vector(centre)
-        pts = [(v.co.x, v.co.y, v.co.z) for v in bm.verts]
-        bm.verts.ensure_lookup_table()
-        quads = [tuple(v.index for v in f.verts) for f in bm.faces]
-        uvs = [(pu[0] + 0.05 * math.sin(i), pu[1] + 0.05 * math.cos(i * 1.3)) for i in range(len(pts))]
-        cols = [(tint * rng.uniform(0.85, 1.1), tint * rng.uniform(0.95, 1.2), tint * 0.45, 1.0) for _ in pts]
-        self._add(pts, quads, uvs, cols)
-        bm.free()
+    def tube(self, pts, radii, segs, uv_v=1.0, col=(1, 1, 1), mat=0):
+        """A tapered tube through pts (bark); UV u around (0..1), v along length * uv_v."""
+        rings = []
+        verts, uvs, cols = [], [], []
+        acc = 0.0
+        for i, (p, r) in enumerate(zip(pts, radii)):
+            if i > 0:
+                acc += (pts[i] - pts[i - 1]).length
+            t = (pts[min(i + 1, len(pts) - 1)] - pts[max(i - 1, 0)]).normalized()
+            a = t.orthogonal().normalized()
+            b = t.cross(a).normalized()
+            ring = []
+            for k in range(segs + 1):
+                th = 2 * math.pi * k / segs
+                q = p + (a * math.cos(th) + b * math.sin(th)) * r
+                ring.append(len(verts))
+                verts.append(q)
+                uvs.append((k / segs, acc * uv_v))
+                cols.append((col[0], col[1], col[2], 1.0))
+            rings.append(ring)
+        faces = []
+        for i in range(len(rings) - 1):
+            for k in range(segs):
+                faces.append((rings[i][k], rings[i][k + 1], rings[i + 1][k + 1], rings[i + 1][k]))
+        self._add(verts, faces, uvs, cols, None, mat)
 
-    def mesh(self, name, mat):
+    def mesh(self, name, mats):
         me = bpy.data.meshes.new(name)
-        me.from_pydata(self.v, [], self.f)
+        me.from_pydata([tuple(p) for p in self.v], [], self.f)
         me.update()
+        for m in (mats if isinstance(mats, (list, tuple)) else [mats]):
+            me.materials.append(m)
+        me.polygons.foreach_set("material_index", self.fmat)
         uv = me.uv_layers.new(name="UVMap")
         ca = me.color_attributes.new("Col", "FLOAT_COLOR", "POINT")
         for p in me.polygons:
@@ -477,9 +771,17 @@ class Leaves:
                 uv.data[li].uv = self.uv[me.loops[li].vertex_index]
         for i, c in enumerate(self.col):
             ca.data[i].color = c
-        me.materials.append(mat)
         for p in me.polygons:
             p.use_smooth = True
+        me.update()
+        nr = []
+        for i, v in enumerate(me.vertices):
+            n = self.nrm[i]
+            nr.append(tuple(n.normalized()) if n is not None and n.length > 1e-6 else tuple(v.normal))
+        try:
+            me.normals_split_custom_set_from_vertices(nr)
+        except Exception as e:  # noqa: BLE001
+            print("custom normals failed:", e)
         ob = bpy.data.objects.new(name, me)
         return ob
 
@@ -487,116 +789,142 @@ class Leaves:
         return sum(len(f) - 2 for f in self.f)
 
 
-def leaf_clump(Lv, centre, radius, height, n, rng, up=(0, 0, 1)):
-    """A bush: n leaves radiating from the centre, longer and flatter at the bottom, reaching up and out."""
+def _green(rng, base=(1.0, 1.0, 1.0), var=0.12):
+    k = rng.uniform(1.0 - var, 1.0)
+    y = rng.uniform(-0.06, 0.06)
+    return (min(1.0, base[0] * k * (1 + y)), min(1.0, base[1] * k), min(1.0, base[2] * k * (1 - y)))
+
+
+def shrub(Lv, centre, radius, height, rng, n=None, up=(0, 0, 1), cell="spray", tint=(1, 1, 1)):
+    """A leafy shrub: n spray cards rising from the base in a dome (crossed, tilted outward), sizes ~ radius."""
     c = Vector(centre)
+    U = Vector(up).normalized()
+    n = n or max(5, int(4 + radius * 5))
     for i in range(n):
+        a = 2 * math.pi * i / n + rng.uniform(-0.4, 0.4)
+        out = Vector((math.cos(a), math.sin(a), 0.0))
+        tilt = rng.uniform(0.25, 0.9)
+        d = (U * math.cos(tilt) + out * math.sin(tilt)).normalized()
+        R = d.cross(Vector((0, 0, 1)) if abs(d.z) < 0.95 else Vector((1, 0, 0))).normalized()
+        R = (R * math.cos(rng.uniform(-0.5, 0.5)) + d.cross(R) * math.sin(rng.uniform(-0.5, 0.5))).normalized()
+        s = rng.uniform(0.75, 1.15) * max(radius * 1.2, height)
+        base = c + out * rng.uniform(0.0, radius * 0.35) - U * 0.08
+        nrm = out * 0.75 + U * 0.65
+        Lv.card(base, R, d, s * rng.uniform(0.85, 1.05), s, FOLIAGE[cell], _green(rng, tint), nrm=nrm,
+                bend=rng.uniform(0.0, 0.35), droop=out - U * 0.3, segs=2)
+    # a few cards across the top so the dome is closed from above
+    for i in range(max(2, n // 4)):
         a = rng.uniform(0, 2 * math.pi)
-        e = rng.uniform(0.05, 1.1)                      # elevation of the leaf's direction (rad)
-        d = Vector((math.cos(a) * math.cos(e), math.sin(a) * math.cos(e), math.sin(e)))
-        r0 = rng.uniform(0.0, radius * 0.35)
-        base = c + Vector((math.cos(a) * r0, math.sin(a) * r0, rng.uniform(0.0, height * 0.35)))
-        ln = rng.uniform(0.35, 0.8) * max(radius, height * 0.6)
-        Lv.leaf(base, d, (0, 0, 1), ln, ln * rng.uniform(0.7, 0.95), rng, droop=rng.uniform(0.2, 0.6), st=3)
+        R = Vector((math.cos(a), math.sin(a), 0))
+        F_ = Vector((-math.sin(a), math.cos(a), 0))
+        s = rng.uniform(0.8, 1.1) * radius * 1.3
+        base = c + U * height * rng.uniform(0.35, 0.6) - F_ * s * 0.45
+        Lv.card(base, R, (F_ + U * rng.uniform(0.2, 0.5)).normalized(), s, s, FOLIAGE[cell], _green(rng, tint),
+                nrm=U, segs=1)
 
 
-def fern(Lv, centre, n_fronds, size, rng):
-    """A fern: arching fronds, each with leaflet pairs along the rachis."""
+def fern(Lv, centre, n_fronds, size, rng, up=(0, 0, 1), tint=(1, 1, 1)):
+    """A fern: arching fronds (2-segment bent cards of the fern quadrant) radiating from the crown."""
     c = Vector(centre)
+    U = Vector(up).normalized()
     for k in range(n_fronds):
         a = 2 * math.pi * k / n_fronds + rng.uniform(-0.3, 0.3)
-        out = Vector((math.cos(a), math.sin(a), 0))
-        ln = size * rng.uniform(0.7, 1.15)
-        elev0 = rng.uniform(0.55, 1.1)
-        pairs = 9
-        prev = c
-        for i in range(1, pairs + 1):
-            t = i / pairs
-            e = elev0 - 1.6 * t * t * (0.6 + 0.4 * rng.random())
-            pos = c + out * (ln * t * 0.9) + Vector((0, 0, ln * 0.7 * math.sin(max(0.0, 1.0 - t) * elev0 * 1.4) * t * 1.2 - ln * 0.35 * t * t))
-            tang = (pos - prev)
-            tang = tang.normalized() if tang.length > 1e-6 else out
-            side = tang.cross(Vector((0, 0, 1)))
-            side = side.normalized() if side.length > 1e-6 else Vector((1, 0, 0))
-            w = ln * 0.32 * math.sin(math.pi * min(1.0, 0.15 + 0.85 * t)) ** 0.8
-            for sgn in (-1, 1):
-                d = (side * sgn * 0.9 + tang * 0.55 + Vector((0, 0, -0.18))).normalized()
-                Lv.leaf(pos, d, (0, 0, 1), w, w * 0.30, rng, droop=0.15, fold=0.1, tint=rng.uniform(0.7, 1.0), st=2)
-            prev = pos
+        out = Vector((math.cos(a), math.sin(a), 0.0))
+        el = rng.uniform(0.35, 0.9)
+        d = (U * math.sin(el) + out * math.cos(el)).normalized()
+        R = d.cross(out if abs(d.dot(out)) < 0.99 else Vector((0, 0, 1))).normalized()
+        if R.length < 1e-3:
+            R = Vector((-out.y, out.x, 0))
+        R = out.cross(U).normalized() if out.cross(U).length > 1e-3 else R
+        ln = size * rng.uniform(0.75, 1.15)
+        Lv.card(c, R, d, ln * 0.42, ln, FOLIAGE["fern"], _green(rng, tint, 0.18), nrm=U * 0.8 + out * 0.5,
+                bend=rng.uniform(0.25, 0.5), droop=out * 0.4 - U, segs=3)
 
 
-def grass_tuft(Lv, centre, n, h, rng):
+def grass(Lv, centre, h, rng, up=(0, 0, 1), n=3, tint=(1, 1, 1)):
+    """A grass / sedge clump: n crossed cards of the grass quadrant, standing on the ground."""
     c = Vector(centre)
-    for i in range(n):
-        a = rng.uniform(0, 2 * math.pi)
-        base = c + Vector((math.cos(a) * rng.uniform(0, h * 0.12), math.sin(a) * rng.uniform(0, h * 0.12), 0))
-        Lv.blade(base, (math.cos(a), math.sin(a), 0), (rng.uniform(-0.25, 0.25), rng.uniform(-0.25, 0.25), 1), h * rng.uniform(0.6, 1.0), h * 0.07, rng, bend=rng.uniform(0.3, 1.0))
+    U = Vector(up).normalized()
+    a0 = rng.uniform(0, math.pi)
+    for k in range(n):
+        a = a0 + math.pi * k / n
+        R = Vector((math.cos(a), math.sin(a), 0))
+        lean = Vector((rng.uniform(-0.15, 0.15), rng.uniform(-0.15, 0.15), 0))
+        hh = h * rng.uniform(0.8, 1.15)
+        Lv.card(c - U * 0.03, R, (U + lean).normalized(), hh * 1.1, hh, FOLIAGE["grass"], _green(rng, tint, 0.15),
+                nrm=U * 0.9 + R.cross(U) * 0.2, segs=1)
 
 
-def branch(Lv, start, direction, length, rng, leaf_n=26, droop=0.8):
-    """An overhanging hardwood branch (stem made of a few thin tapered quads + leaves along it, hanging toward the water)."""
-    s = Vector(start)
-    d = Vector(direction).normalized()
-    prev = s
-    pts = []
-    for i in range(6):
-        t = i / 5.0
-        p = s + d * (length * t) + Vector((0, 0, -droop * length * t * t * 0.6 + 0.12 * length * math.sin(t * 3.0)))
-        pts.append(p)
-    # stem: thin double triangles
-    for i in range(5):
-        a, b = pts[i], pts[i + 1]
-        w = 0.07 * (1 - i / 6.0)
-        side = (b - a).cross(Vector((0, 0, 1))).normalized() * w
-        pu = (0.5, 0.97)
-        Lv._add([(a - side).to_tuple(), (a + side).to_tuple(), (b + side * 0.8).to_tuple(), (b - side * 0.8).to_tuple()],
-                [(0, 1, 2, 3)], [pu] * 4, [(0.28, 0.2, 0.15, 1.0)] * 4)
-    for j in range(leaf_n):
-        t = rng.uniform(0.25, 1.0)
-        i = min(4, int(t * 5))
-        p = pts[i] + (pts[i + 1] - pts[i]) * (t * 5 - i)
-        a = rng.uniform(0, 2 * math.pi)
-        dd = Vector((math.cos(a) * 0.8, math.sin(a) * 0.8, -rng.uniform(0.05, 0.5))) + d * 0.2
-        ln = rng.uniform(0.35, 0.6)
-        Lv.leaf(p, dd, (0, 0, 1), ln, ln * 0.42, rng, droop=0.25)
+def hanging(Lv, anchor, out, length, rng, n=3, tint=(1, 1, 1)):
+    """Leafy sprays hanging out of a crack or over a ledge edge (hanging quadrant), drooping down along the rock."""
+    c = Vector(anchor)
+    O = Vector(out).normalized()
+    for k in range(n):
+        side = Vector((-O.y, O.x, 0)).normalized() * rng.uniform(-0.5, 0.5)
+        R = Vector((-O.y, O.x, 0)).normalized()
+        d = (Vector((0, 0, -1)) + O * rng.uniform(0.15, 0.45)).normalized()
+        L_ = length * rng.uniform(0.75, 1.2)
+        # the hanging quadrant is drawn tip-down from its top edge: anchor = 1 puts the card's top at the crack
+        Lv.card(c + side * L_ * 0.3 + O * 0.05, R, Vector((0, 0, 1)), L_ * 0.7, L_, FOLIAGE["hang"],
+                _green(rng, tint), nrm=O * 0.8 + Vector((0, 0, 0.4)), anchor=1.0, segs=1)
 
 
-def canopy_tree(Lv_leaf, Lv_bark, x, z, y, h, rng, spread=1.0):
-    """A placeholder broadleaf crown for the site box: a trunk (tapered 6-sided prism) and 4-5 lumpy leaf masses
-    (80 triangles each) whose UVs sit in a dense opaque patch of T_leaf_green; vertex colour varies the green."""
-    base = Vector((x, -z, y))
-    # trunk
-    top = base + Vector((rng.uniform(-0.4, 0.4), rng.uniform(-0.4, 0.4), h * 0.62))
-    n = 6
-    r0, r1 = 0.22 * h / 8, 0.12 * h / 8
-    vs, fs, uv, col = [], [], [], []
-    for ring, (c, r) in enumerate(((base - Vector((0, 0, 0.4)), r0), (top, r1))):
-        for i in range(n):
-            a = 2 * math.pi * i / n
-            vs.append((c.x + r * math.cos(a), c.y + r * math.sin(a), c.z))
-            uv.append((0.22 + 0.01 * i / n, 0.46))
-            col.append((0.55, 0.45, 0.4, 1.0))
-    for i in range(n):
-        fs.append((i, (i + 1) % n, n + (i + 1) % n, n + i))
-    Lv_bark._add(vs, fs, uv, col)
-    for k in range(4):
-        a = rng.uniform(0, 6.28)
-        rr = rng.uniform(0.0, 0.2) * h * spread
-        c = top + Vector((math.cos(a) * rr, math.sin(a) * rr, h * rng.uniform(-0.05, 0.3)))
-        rad = h * rng.uniform(0.2, 0.3)
-        bm = bmesh.new()
-        bmesh.ops.create_icosphere(bm, subdivisions=1, radius=1.0)
-        ph = rng.uniform(0, 30)
-        pts, uvs, cols = [], [], []
-        shade = rng.uniform(0.75, 1.0)
-        for v in bm.verts:
-            nn = v.co.normalized()
-            r_ = rad * (1.0 + 0.22 * F.noise3(nn.x * 2 + ph, nn.y * 2, nn.z * 2))
-            p = c + Vector((nn.x * r_, nn.y * r_, nn.z * r_ * 0.8))
-            pts.append((p.x, p.y, p.z))
-            uvs.append((0.085 + 0.012 * nn.x, 0.285 + 0.012 * nn.z))
-            g = shade * (0.65 + 0.35 * (0.5 + 0.5 * nn.z))
-            cols.append((g * 0.92, g, g * 0.75, 1.0))
-        bm.verts.ensure_lookup_table()
-        Lv_leaf._add(pts, [tuple(v.index for v in f.verts) for f in bm.faces], uvs, cols)
-        bm.free()
+def tree_template(seed, H, R, lean=0.0, cards_n=None, card=(2.0, 2.9)):
+    """A broadleaf tree at the origin (Blender coords): tapered trunk + limbs (bark, mat 0) and a full crown of
+    leaf-cluster cards (T_leaf_green quadrants, mat 1). `lean` tilts the crown toward +x (over a rim, toward the light).
+    ~360-480 triangles."""
+    rng = random.Random(seed)
+    Lv = Leaves()
+    trunk_r = 0.022 * H + rng.uniform(-0.02, 0.04)
+    fork_h = H * rng.uniform(0.32, 0.45)
+    lv = Vector((lean, rng.uniform(-0.15, 0.15), 0.0))
+    pts = [Vector((0, 0, -0.6)), Vector((0, 0, fork_h * 0.4)) + lv * fork_h * 0.15, Vector((0, 0, fork_h * 0.75)) + lv * fork_h * 0.45,
+           Vector((0, 0, fork_h)) + lv * fork_h * 0.8]
+    Lv.tube(pts, [trunk_r * 1.35, trunk_r, trunk_r * 0.88, trunk_r * 0.75], 6, uv_v=0.35, mat=0,
+            col=(0.85, 0.82, 0.8))
+    fork = pts[-1]
+    crown_c = fork + Vector((lean * (H - fork_h) * 0.45, 0, (H - fork_h) * 0.45))
+    crown_h = (H - fork_h) * 0.55
+    clusters = []
+    nl = rng.randint(5, 7)
+    for i in range(nl):
+        az = 2 * math.pi * i / nl + rng.uniform(-0.35, 0.35)
+        el = math.radians(rng.uniform(28, 62))
+        d = Vector((math.cos(az) * math.cos(el) + lean * 0.5, math.sin(az) * math.cos(el), math.sin(el))).normalized()
+        Lb = R * rng.uniform(0.7, 1.0) / max(0.45, math.cos(el))
+        Lb = min(Lb, (H - fork_h) * 1.0)
+        p0 = fork - Vector((0, 0, 0.1))
+        p1 = p0 + d * Lb * 0.5 + Vector((0, 0, Lb * 0.05))
+        p2 = p0 + d * Lb + Vector((0, 0, -Lb * 0.06))
+        r0 = trunk_r * 0.55
+        Lv.tube([p0, p1, p2], [r0, r0 * 0.55, 0.03], 4, uv_v=1.0, mat=0, col=(0.85, 0.82, 0.8))
+        clusters += [p2, p1.lerp(p2, 0.6)]
+    shell = cards_n or 36
+    for i in range(shell):
+        u = rng.uniform(-0.45, 1.0)
+        th = rng.uniform(0, 2 * math.pi)
+        rr = math.sqrt(max(0.0, 1 - u * u)) * rng.uniform(0.75, 1.0)
+        clusters.append(crown_c + Vector((math.cos(th) * rr * R, math.sin(th) * rr * R, u * crown_h)))
+    cmin, cmax = card
+    for p in clusters:
+        out = p - crown_c
+        out.z *= 0.6
+        if out.length < 1e-3:
+            out = Vector((0, 0, 1))
+        out.normalize()
+        for j in range(2):
+            n = Vector((rng.uniform(-1, 1), rng.uniform(-1, 1), rng.uniform(-0.5, 1))) + out * 0.9
+            n.normalize()
+            upv = out * 0.5 + Vector((0, 0, 0.9)) + Vector((rng.uniform(-0.4, 0.4), rng.uniform(-0.4, 0.4), 0))
+            upv = (upv - n * upv.dot(n)).normalized()
+            rv = n.cross(upv).normalized()
+            s = rng.uniform(cmin, cmax)
+            jit = Vector((rng.uniform(-0.3, 0.3), rng.uniform(-0.3, 0.3), rng.uniform(-0.2, 0.2))) * s
+            q = rng.randrange(4)
+            cell = ((q % 2) * 0.5, 1 - (q // 2 + 1) * 0.5)
+            shade = rng.uniform(0.86, 1.0) * (0.8 + 0.2 * max(0.0, (p - crown_c).z / max(crown_h, 1e-3) * 0.5 + 0.5))
+            nn = (p + jit - crown_c)
+            nn.z *= 0.8
+            nn = nn.normalized() * 0.8 + n * 0.2
+            Lv.card(p + jit, rv, upv, s, s, cell, (shade, shade, shade * 0.97), nrm=nn, anchor=0.5, mat=1)
+    return Lv
