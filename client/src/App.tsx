@@ -4,6 +4,7 @@ import { EntryScreen } from "./ui/EntryScreen";
 import { VillageScene } from "./village/VillageScene";
 import { ReconnectingOverlay } from "./ui/ReconnectingOverlay";
 import { AppErrorBoundary } from "./ui/AppErrorBoundary";
+import { VillageLoader } from "./ui/VillageLoader";
 
 /**
  * Suppress the browser context menu on the 3D canvas only (right-drag rotates the
@@ -47,6 +48,8 @@ export default function App() {
           <EntryScreen />
         )}
       </AppErrorBoundary>
+      {/* the entry's loading screen: from the 입장하기 press until the village is first seen (outside the scene's key) */}
+      <VillageLoader />
       <ReconnectingOverlay />
     </>
   );

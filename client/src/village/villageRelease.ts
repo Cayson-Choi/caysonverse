@@ -6,6 +6,7 @@ import { DRACO_PATH } from "../game/hub/hubModelPrep";
 import { isHouseArea, type AreaId } from "@caysonverse/shared/village/villageLayout";
 import type { QualityTier } from "../game/quality";
 import { type CachedFile, releaseCachedFile } from "./loaderRelease";
+import { forgetVillagePreload } from "./villagePreload";
 import {
   VILLAGE_LIGHTMAP_URL,
   VILLAGE_MODEL_URL,
@@ -126,6 +127,7 @@ function releaseNow(): void {
   releaseNight();
   if (requested) {
     requested = false;
+    forgetVillagePreload(); // the next entry fetches them again (early, on the entry screen)
     for (const f of VILLAGE_CACHE) releaseCachedFile(f, () => held);
   }
   if (busRequested) {
@@ -209,6 +211,7 @@ export function clearBusCache(): void {
  */
 export function clearVillageCaches(): void {
   requested = false;
+  forgetVillagePreload();
   nightRequested = false;
   for (const f of VILLAGE_CACHE) f.clear();
   mountainsRequested = false;

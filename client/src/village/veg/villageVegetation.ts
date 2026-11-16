@@ -435,6 +435,8 @@ export interface BuildOptions {
   onShow?: (v: VillageVegetation) => void;
   /** How long (ms) a slice of work may run before the main thread is handed back (default STEP_SLICE_MS). */
   sliceMs?: () => number;
+  /** How far the build is (0..1, rough: the flowers, then tree by tree, then the bark): the entry's loading screen. */
+  onProgress?: (fraction: number) => void;
 }
 
 /** A slice of the build's work (ms) before the main thread is handed back. */
@@ -630,7 +632,7 @@ export class VillageVegetation {
    * then shows as it is grown). `cancelled()` true: stop and free what was made (resolves null).
    */
   static async build(root: Object3D, tier: VillageTier, mode: Exclude<VegMode, "old">, cancelled: () => boolean = () => false, options: BuildOptions = {}): Promise<VillageVegetation | null> {
-    const { focus, onShow, sliceMs } = options;
+    const { focus, onShow, sliceMs, onProgress } = options;
     const v = new VillageVegetation(tier, mode);
     v.root = root;
     const steps = v.statsData.steps;
@@ -638,9 +640,11 @@ export class VillageVegetation {
     const start = performance.now();
     let t = start;
     let slice = start;
+    let early = 0; // the steps before the trees (cards, placement, the flowers' meshes): a little progress each
     const step = async (name: string) => {
       const now = performance.now();
       steps[name] = Math.round(now - t);
+      if (early < 9) onProgress?.(0.02 * ++early);
       work += now - t;
       // the main thread is handed back once a slice of work is done (not after every small step: each hand-back
       // costs a frame of the village's drawing before the build goes on)
@@ -1110,9 +1114,12 @@ export class VillageVegetation {
     jobs.sort((p, q) => p.d - q.d);
     // the vegetation is shown now (the flowers, and each tree as it comes)
     onShow?.(v);
-    for (const job of jobs) {
-      job.run();
-      if (await step(job.name)) return v.abandon();
+    early = 9; // from here the trees count
+    onProgress?.(0.2);
+    for (let j = 0; j < jobs.length; j++) {
+      jobs[j]!.run();
+      onProgress?.(0.2 + (0.7 * (j + 1)) / jobs.length);
+      if (await step(jobs[j]!.name)) return v.abandon();
     }
     stats.connection = conn;
     stats.originBlobs = blobs;

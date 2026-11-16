@@ -16,6 +16,8 @@ import { joinVillage } from "../net/connection";
 import { clearKicked } from "../net/kickSeam";
 import { saveIdentity, loadIdentity } from "../net/identityCache";
 import { useAppStore } from "../stores/appStore";
+import { beginVillageEntry, preloadVillageAfterCharacter } from "../village/villagePreload";
+import { villageLoad } from "./villageLoad";
 import "./entry.css";
 import "./builder.css";
 
@@ -24,7 +26,10 @@ const VILLAGE_DEPS: VillageEntryDeps = {
   joinVillage,
   saveIdentity,
   clearKicked,
-  enterVillage: (identity) => useAppStore.getState().enterVillage(identity),
+  enterVillage: (identity) => {
+    villageLoad.joined(); // the loading screen's 접속 step
+    useAppStore.getState().enterVillage(identity);
+  },
 };
 
 const px = (n: number) => `${Math.round(n * 10) / 10}px`;
@@ -168,6 +173,8 @@ export function EntryScreen() {
   // Warm the model cache as soon as the builder opens (the preview and then the world both use character.glb).
   useEffect(() => {
     preloadCharacterAssets();
+    // then the village's own files (while the nickname and the look are picked): entering starts with the planting
+    preloadVillageAfterCharacter();
   }, []);
 
   // Editing the form dismisses any leftover kick/disconnect notice.
@@ -224,8 +231,10 @@ export function EntryScreen() {
     clearNotice();
 
     setSubmitting(true);
+    beginVillageEntry(); // the loading screen (마을 → 캐릭터 → 접속) from this press until the village is seen
     const failed = await joinTheVillage(result.value);
     if (failed !== null) {
+      villageLoad.fail();
       setError(failed);
       setSubmitting(false);
     }

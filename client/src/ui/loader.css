@@ -1,0 +1,146 @@
+/* 입장 로딩 화면 (VillageLoader). 마을 그림 위에 단계·진행 막대·도움말 카드. 반투명 없이 진한 남색 판. */
+.cv-loader {
+  position: fixed;
+  inset: 0;
+  z-index: 58; /* 장면의 덮개(식생 44, 문 45)와 HUD 위, 메뉴(60)·다시 연결(100) 아래 */
+  display: grid;
+  place-items: end center;
+  padding: 0 16px calc(48px + env(safe-area-inset-bottom, 0px));
+  background: #0b0b14;
+  font-family: "Noto Sans KR", system-ui, sans-serif;
+  color: #fff;
+  opacity: 1;
+  transition: opacity 500ms ease-out;
+  pointer-events: auto;
+}
+.cv-loader.is-closing {
+  opacity: 0;
+  pointer-events: none;
+}
+.cv-loader-art,
+.cv-loader-art img,
+.cv-loader-shade {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.cv-loader-art img {
+  object-fit: cover;
+  animation: cv-loader-drift 18s ease-in-out infinite alternate;
+}
+.cv-loader-shade {
+  background: linear-gradient(to bottom, rgba(11, 11, 20, 0) 35%, rgba(11, 11, 20, 0.55) 70%, rgba(11, 11, 20, 0.85));
+}
+.cv-loader-card {
+  position: relative;
+  width: min(420px, 100%);
+  box-sizing: border-box;
+  padding: 18px 20px 16px;
+  border-radius: 18px;
+  background: #1c1d3a;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+}
+.cv-loader-logo {
+  display: block;
+  height: 22px;
+  width: auto;
+  margin-bottom: 6px;
+  opacity: 0.9;
+}
+.cv-loader-title {
+  margin: 0 0 12px;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.cv-loader-steps {
+  display: flex;
+  gap: 6px;
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+}
+.cv-loader-steps li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1 1 0;
+  padding: 6px 8px;
+  border-radius: 999px;
+  background: #2a2c52;
+  color: #b9b8e0;
+  white-space: nowrap;
+}
+.cv-loader-steps li.is-now {
+  background: #4b4fd8;
+  color: #fff;
+}
+.cv-loader-steps li.is-done {
+  background: #2f6b4f;
+  color: #fff;
+}
+.cv-loader-dot {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.18);
+  font-size: 11px;
+  font-weight: 700;
+}
+.cv-loader-bar {
+  height: 10px;
+  border-radius: 999px;
+  background: #2a2c52;
+  overflow: hidden;
+}
+.cv-loader-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #4b4fd8, #8b5cf6);
+  transition: width 400ms ease-out;
+}
+.cv-loader-now {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: #dcdaf7;
+}
+.cv-loader-pct {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+.cv-loader-tip {
+  margin: 12px 0 0;
+  padding-top: 10px;
+  border-top: 1px solid #2f3160;
+  font-size: 13px;
+  line-height: 1.45;
+  color: #f3efea;
+  animation: cv-loader-tip-in 500ms ease-out;
+}
+@keyframes cv-loader-drift {
+  from {
+    transform: scale(1.04) translateX(-1%);
+  }
+  to {
+    transform: scale(1.08) translateX(1%);
+  }
+}
+@keyframes cv-loader-tip-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cv-loader-art img,
+  .cv-loader-tip {
+    animation: none;
+  }
+}
