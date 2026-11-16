@@ -147,7 +147,12 @@ export function busRiderCamera(input: BusCamInput, out: TransitCameraPose = { x:
     };
     const armOf = (e: V3) => Math.hypot(e[0] - head[0], e[1] - head[1], e[2] - head[2]);
     eye = eyeFor(posA, posR);
-    if (input.frame && armOf(eye) < TP_FLIP_ARM) {
+    // bus v3: a side view (looking out of the windows, the yaw across the bus) has no "front" or "back" of its own: the lens takes
+    // the side of the aisle with the longer arm (the bigger seats put a wall-seat rider too close on the shorter side)
+    if (input.frame && Math.abs(dirA) < 0.5) {
+      const other = eyeFor(-posA, 0);
+      if (armOf(other) > armOf(eye) + 0.05) eye = other;
+    } else if (input.frame && armOf(eye) < TP_FLIP_ARM) {
       // the aisle is short on this side (the cabin's end or a seat back close by): the lens goes to the other side if that gives a longer arm
       const other = eyeFor(-posA, 0);
       if (armOf(other) > armOf(eye)) eye = other;
