@@ -104,7 +104,7 @@ plan = await A.page.evaluate(async () => {
     for (let a = -3.6; a <= 3.4; a += 0.05) for (let r = -0.25; r <= 0.25; r += 0.05) {
       if (c.cabinBlocked(a, r, 0.32) || !c.seatApproachOk(s, a, r) || c.BUS_HOLDS.some((h) => Math.hypot(a - h.ahead, r - h.right) < margin)) continue; // not on a pole's spot (it would be offered first)
       // standing here, facing forward, the seat must be the offered one
-      const o = c.nearestFreeSpot(a, r, new Set(), new Set(), undefined, 0);
+      const o = [0, Math.PI / 2, Math.PI, -Math.PI / 2].map((y) => c.nearestFreeSpot(a, r, new Set(), new Set(), undefined, y)).find((x) => x && x.kind === "seat" && x.index === i) ?? c.nearestFreeSpot(a, r, new Set(), new Set(), undefined, 0); // offered when looking one of the four ways (the quick views)
       const d = Math.hypot(a - f.ahead, r - f.right) + (o && o.kind === "seat" && o.index === i ? 0 : 5);
       if (!best || d < best.d) best = { a, r, d, margin };
     }

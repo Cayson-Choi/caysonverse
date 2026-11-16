@@ -101,7 +101,7 @@ export interface BusCamInput {
 const EYE_SHELL_MIN_H = 0.3;
 
 /** Where the avatar's middle sits on the third-person screen (fractions of the half width / half height from the centre: right, down). */
-export const TP_FRAME = { x: 0.85, y: -0.75 } as const;
+export const TP_FRAME = { x: 1.0, y: -0.8 } as const;
 /** The third person's arm (m) in the bus: the zoom may shorten it, but never into the avatar's lap (a chibi head is 1 m wide). */
 export const BUS_TP_MIN_ARM = 2.6;
 /** The least elevation (rad) of the third person's lens over the rider's head line: it looks down on the rider from above. */
