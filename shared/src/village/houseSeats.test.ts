@@ -62,7 +62,10 @@ describe("approaching every house seat (8 directions x 0.6 / 1.0 m)", () => {
       }
       // every seat can be approached from somewhere free (else nobody could sit on it)
       const stand = nearestFreeSeat(s.standX, s.standZ, free, SEAT_REACH, VILLAGE_SEATS);
-      if (!offeredSomewhere && stand === null) problems.push(`${s.id}: never offered from any free probe`);
+      // (one facing of a two-sided stool or bench may be the one never picked: its other facing, the same place, is — one group)
+      const sibling = VILLAGE_SEATS.findIndex((o, i) => i !== index && o.group !== undefined && o.group === s.group && o.bench === s.bench);
+      const siblingOffered = sibling >= 0 && nearestFreeSeat(VILLAGE_SEATS[sibling]!.standX, VILLAGE_SEATS[sibling]!.standZ, free, SEAT_REACH, VILLAGE_SEATS) === sibling;
+      if (!offeredSomewhere && stand === null && !siblingOffered) problems.push(`${s.id}: never offered from any free probe`);
     }
     expect(probes).toBeGreaterThan(30);
     expect(problems, problems.slice(0, 20).join("\n")).toEqual([]);

@@ -37,6 +37,7 @@ import {
   isClick,
   pressTravel,
   setClickTarget,
+  setSeatWalk,
   getClickTarget,
   clearClickTarget,
   setPendingClick,
@@ -582,6 +583,7 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
                 const walkTo = (now: ClickPlan, ring: Readonly<ClickTarget> | null) => {
                   if (now.ok) {
                     setClickTarget(now.x, now.z, now.y, now.via);
+                    if (seatOnArrival.current && seatOnArrival.current.x === now.x && seatOnArrival.current.z === now.z) setSeatWalk();
                     // should a second touch that came in time be handled only now, this walk is taken back
                     const set = clickGeneration();
                     taps.walked(() => {
@@ -842,6 +844,8 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
                 if (clickGeneration() !== generation) return;
                 if (plan.ok) {
                   setClickTarget(plan.x, plan.z, plan.y, plan.via); // 벽·사람·하늘·갈 수 없는 곳은 무시 (clickPlan.ts)
+                  // a seat clicked: the walk ends right at its approach (a step short of it the seat may not be the one offered)
+                  if (seatOnArrival.current && seatOnArrival.current.x === plan.x && seatOnArrival.current.z === plan.z) setSeatWalk();
                 } else if (clickIntent(plan) === "stop") {
                   clearClickTarget(); // 내 발밑: 그 자리에 멈춤
                 } else {

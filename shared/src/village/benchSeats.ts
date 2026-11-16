@@ -323,23 +323,30 @@ function chairStand(seat: Seat, neighbours: readonly Point2[], bounds: Bounds, g
   let best: Point2 | null = null;
   let bestD = Infinity;
   const step = 0.05;
+  // (distances from where the seat is picked: its seat point, or a house seat's cushion — Seat.reachFrom)
+  const cx = seat.reachFrom?.x ?? seat.x;
+  const cz = seat.reachFrom?.z ?? seat.z;
+  const bonus = seat.reachFrom ? 0 : (seat.reachBonus ?? 0);
   for (let ix = -26; ix <= 26; ix++) {
     for (let iz = -26; iz <= 26; iz++) {
-      const x = Math.round((seat.x + ix * step) * 1000) / 1000;
-      const z = Math.round((seat.z + iz * step) * 1000) / 1000;
-      const own = Math.hypot(x - seat.x, z - seat.z);
+      const x = Math.round((cx + ix * step) * 1000) / 1000;
+      const z = Math.round((cz + iz * step) * 1000) / 1000;
+      const own = Math.hypot(x - cx, z - cz);
       if (own >= bestD || own > 1.6) continue;
       // offered from the spot itself; and from anywhere a step short of it (a tap walk stops 0.35 m before its target) never the
-      // neighbour instead: there it is this chair or none
-      let ok = own - (seat.reachBonus ?? 0) <= SEAT_REACH - STAND_SHORT - 0.05 && approachesSeat(seat, x, z);
+      // neighbour instead: there it is this chair or none — and, for a house seat, this one still (a stop it is not offered from sat nobody)
+      let ok = own - bonus <= SEAT_REACH - STAND_SHORT - 0.05 && approachesSeat(seat, x, z);
       for (let k = 0; k <= 8 && ok; k++) {
         const a = (k * Math.PI) / 4;
         const px = k === 8 ? x : x + Math.cos(a) * STAND_SHORT;
         const pz = k === 8 ? z : z + Math.sin(a) * STAND_SHORT;
-        const d = Math.hypot(px - seat.x, pz - seat.z);
+        const d = Math.hypot(px - cx, pz - cz);
         ok = !neighbours.some((n) => Math.hypot(n.x - px, n.z - pz) < d + (k === 8 ? STAND_NEIGHBOUR_MARGIN : 0.01));
+        if (ok && seat.reachFrom && k < 8 && !isBlocked(px, pz, PLAYER_RADIUS, geometry.obstacles, 0)) ok = approachesSeat(seat, px, pz);
       }
       if (!ok || !standsClear(x, z, bounds, geometry)) continue;
+      // a house seat's spot keeps a hand's width more from the furniture: a tap-walk's way in to it turns there (G round 3: house 9's end chair)
+      if (seat.reachFrom && isBlocked(x, z, PLAYER_RADIUS + HOUSE_STAND_EXTRA, geometry.obstacles, 0)) continue;
       best = { x, z };
       bestD = own;
     }
@@ -349,6 +356,8 @@ function chairStand(seat: Seat, neighbours: readonly Point2[], bounds: Bounds, g
 
 /** How much nearer (m) a chair's dismount spot is to its own seat than to a neighbouring chair's (`chairStand`). */
 const STAND_NEIGHBOUR_MARGIN = 0.25;
+/** How much farther (m) than the body a house seat's side or neighbour-safe stand spot keeps from the furniture (`chairStand`). */
+const HOUSE_STAND_EXTRA = 0.12;
 /** How far short of its target a tap walk may stop (m; clickMove's ARRIVE_DIST and a little). */
 const STAND_SHORT = 0.35;
 /** How far ahead of its seat point (m) a chair at a table is still offered (`Seat.aheadMax`): its own side, not across the table. */
@@ -472,8 +481,10 @@ function markerSeats(m: MarkerSource, place: MarkerPlace): VillageSeat[] {
       // through the backrest); a sofa or an armchair from the front only
       sidePlane: m.furn === "chair" ? Math.round((ahead + m.back) * 1000) / 1000 : undefined,
       sideHalf: m.furn === "chair" ? Math.round((m.width / 2) * 1000) / 1000 : undefined,
-      // its seat point is under the desk / table (BACKED_ROOT_AHEAD in front of the backrest): reached that much farther
-      reachBonus: m.furn === "chair" ? CHAIR_REACH_BONUS : undefined,
+      // its seat point is under the desk / table (BACKED_ROOT_AHEAD in front of the backrest): reached that much farther — a house seat
+      // is reached from and picked by its cushion instead (Seat.reachFrom)
+      reachBonus: m.furn === "chair" && !place.lenient ? CHAIR_REACH_BONUS : undefined,
+      reachFrom: place.lenient ? { x: m.x, z: m.z } : undefined,
       // the table in front: farther ahead than this is across it (the chair opposite's front), never this chair's
       aheadMax: m.furn === "chair" ? CHAIR_AHEAD_MAX : undefined,
       pose: m.pose,
@@ -495,7 +506,8 @@ function markerSeats(m: MarkerSource, place: MarkerPlace): VillageSeat[] {
       if (half < Infinity) seat.sideFar = Math.round(Math.min(CHAIR_SIDE_FAR, Math.max(CHAIR_SIDE_CLEAR + 0.1, half - seat.sideHalf + 0.1)) * 1000) / 1000;
     }
     if (m.furn === "chair" && (neighbours.length > 0 || !ahead0)) {
-      const side = chairStand(seat, neighbours, place.bounds, place.geometry);
+      // (a house chair is picked by its cushion: its neighbours' cushions are what it must be nearer than)
+      const side = chairStand(seat, place.lenient ? place.peers.filter((o) => o.id !== m.id && o.furn === m.furn && Math.hypot(o.x - m.x, o.z - m.z) < 2.5).map((o) => ({ x: o.x, z: o.z })) : neighbours, place.bounds, place.geometry);
       if (side) {
         seat.standX = side.x;
         seat.standZ = side.z;
@@ -516,8 +528,8 @@ function markerSeats(m: MarkerSource, place: MarkerPlace): VillageSeat[] {
     // A house seat among others (cushions round a low table, a stool by a sofa, an ottoman between armchairs): its stand spot — where a tap
     // on it walks to, and where a walk stopping a step short of it ends — must offer THIS seat, not the next one (G round 3: house 3's
     // 2nd-floor cushion walked to a spot nearer its neighbour). A cushion always, any other seat when a neighbour is nearer its spot.
-    const others = place.lenient ? place.peers.filter((o) => o.id !== m.id && Math.hypot(o.x - m.x, o.z - m.z) < 2.5).map(markerRoot) : [];
-    const ownD = Math.hypot(seat.standX - seat.x, seat.standZ - seat.z);
+    const others = place.lenient ? place.peers.filter((o) => o.id !== m.id && Math.hypot(o.x - m.x, o.z - m.z) < 2.5).map((o) => ({ x: o.x, z: o.z })) : [];
+    const ownD = Math.hypot(seat.standX - m.x, seat.standZ - m.z);
     if (cushion || others.some((o) => Math.hypot(o.x - seat.standX, o.z - seat.standZ) <= ownD + 0.05)) {
       if (others.length > 0) {
         const spot = chairStand(seat, others, place.bounds, place.geometry);
@@ -532,12 +544,6 @@ function markerSeats(m: MarkerSource, place: MarkerPlace): VillageSeat[] {
   return out;
 }
 
-/** A marker's seat point (its first facing's), as markerSeats places it. */
-function markerRoot(o: MarkerSource): Point2 {
-  const backed = o.kind === "backed" || (o.kind === "floor" && o.back > 0);
-  const ahead = o.pose === "floor" ? (backed ? FLOOR_SIT_POSE.torsoBehindRoot - o.back : FLOOR_SIT_POSE.hipsBehindRoot) : backed ? BACKED_ROOT_AHEAD - o.back : o.edge + SIT_ROOT_AHEAD;
-  return offset(o.x, o.z, o.yaw, 0, ahead);
-}
 
 /**
  * Room (m) beyond PLAYER_RADIUS a café chair's get-up spot keeps from every collider. More than a bench's dismount
