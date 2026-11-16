@@ -21,7 +21,9 @@ FONT_R = "C:/Windows/Fonts/malgun.ttf"
 
 SHEETS = {
     "lake_compare_A_day": [
-        ("저수지 전경 (낮)", "overview_day.png", ["01_reservoir_overview_a.jpg", "01_reservoir_overview_c.jpg"],
+        ("넓은 전경 (사진과 같은 구도, B 시설 포함)", "wide_photo.png", ["01_reservoir_overview_a.jpg", "01_reservoir_overview_c.jpg"], "골짜기를 둘러싼 숲 능선, 흐릿한 녹갈색 물, 물가 마른 풀·진흙띠"),
+        ("좌대·잔교 쪽", "jwadae.png", ["02_jwadae_a.jpg", "03_pier_a.jpg"], "물색과 반사, 물가 풀"),
+        ("물가에서 본 전경 (낮)", "overview_day.png", ["01_reservoir_overview_a.jpg", "01_reservoir_overview_c.jpg"],
          "산·숲이 물에 비치고, 물은 탁한 녹갈색, 물가에 갈대 띠"),
         ("갈대 무더기", "reed_n.png", ["01_reservoir_overview_c.jpg"], "가는 곧은 줄기 1.4~2.3 m, 이삭, 휘어진 잎(두께 있는 줄기, 평면 카드 없음)"),
         ("부들", "cattail.png", ["06_cattail_b.jpg", "06_reeds_a.jpg"], "넓은 칼잎 + 갈색 원통 꽃대"),
@@ -30,7 +32,7 @@ SHEETS = {
         ("노지(물가 자리) 뒤편", "nojiside.png", ["01_reservoir_overview_a.jpg"], "자갈 노지, 풀밭, 물가 풀"),
     ],
     "lake_compare_A_night": [
-        ("밤 호수", "overview_day_night.png", ["07_night_chemi_a.jpg", "07_night_chemi_b.webp"], "거의 검은 수면, 가로등·창빛이 길게 비침"),
+        ("밤 호수 (전경)", "wide_photo_night.png", ["07_night_chemi_a.jpg", "07_night_chemi_b.webp"], "거의 검은 수면, 가로등·창빛이 길게 비침"),
         ("출고 파일 미리보기 (밤)", "game_overview_night.png", ["07_night_chemi_b.webp"], "밤 라이트맵 + 밤 반사 파노라마. 나무 꼭짓점색은 낮 빛이라 게임에서 밤에 어둡게 곱함"),
         ("밤 잔교 쪽", "pier_night.png", ["07_night_chemi_a.jpg"], "가로등 불빛이 물에 비침"),
     ],

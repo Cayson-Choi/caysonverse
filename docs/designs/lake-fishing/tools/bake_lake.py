@@ -46,7 +46,22 @@ arg = BK.arg
 flag = BK.flag
 
 
+NIGHT_LAKE = {
+    "moon_strength": 0.75, "sky": (0.075, 0.10, 0.19), "lift": 0.035,
+    "power": {"lake_lamp": 900.0, "lake_hut": 260.0, "lake_shop": 380.0, "lamp": 900.0, "window": 260.0},
+    "colour": {"lake_lamp": (1.0, 0.72, 0.42), "lake_hut": (1.0, 0.76, 0.5), "lake_shop": (1.0, 0.8, 0.55),
+               "lamp": (1.0, 0.72, 0.42), "window": (1.0, 0.76, 0.5)},
+}
+
+
 def setup_night(scene):
+    """The village's night (moon, flat sky, point lights at the light__* empties) lifted for the lake: photos of night fishing
+    are not black (design round 2). B's empties light__lake_lamp_* / _hut_* / _shop_inside carry the lamps and bungalows."""
+    BK.NIGHT["moon_strength"] = NIGHT_LAKE["moon_strength"]
+    BK.NIGHT["sky"] = NIGHT_LAKE["sky"]
+    BK.NIGHT["lift"] = NIGHT_LAKE["lift"]
+    BK.NIGHT["power"].update(NIGHT_LAKE["power"])
+    BK.NIGHT["colour"].update(NIGHT_LAKE["colour"])
     BK.setup_night(scene)
 
 
@@ -90,10 +105,10 @@ TEXTURES = {
     "LM_mud": os.path.join(WORK, "tex", "T_mud.png"), "LM_gravel": os.path.join(WORK, "tex", "T_gravel.png"),
     "LM_dirt": os.path.join(WORK, "tex", "T_dirt.png"),
     "M_leaf_green": os.path.join(U.TEX, "T_leaf_green.png"), "M_bark": os.path.join(U.TEX, "T_bark.png"),
-    "M_plant": None, "M_lakewater": None,
+    "M_plant": None, "M_lakewater": None, "M_ridge": None,
 }
 VERTEX_COLOUR = {"LM_rock", "LM_grass", "LM_mud", "LM_gravel", "LM_dirt", "M_leaf_green", "M_bark"}
-TINT_ONLY = {"M_plant", "M_lakewater"}      # base colour is the vertex colour itself
+TINT_ONLY = {"M_plant", "M_lakewater", "M_ridge"}      # base colour is the vertex colour itself
 ALPHA = {"M_leaf_green"}
 
 
@@ -173,6 +188,9 @@ def patch_glb(path, extras=None):
         elif name == "M_plant":
             m["doubleSided"] = True
             m.pop("alphaMode", None)
+        elif name == "M_ridge":
+            m.pop("alphaMode", None)
+            m["doubleSided"] = False
         elif name == "M_lakewater":
             m["alphaMode"] = "BLEND"
             m["doubleSided"] = False
@@ -231,6 +249,9 @@ def main():
             bpy.data.objects.remove(o)
     water = bpy.data.objects["lake_water"]
     water["cat"] = "lmwater"
+    for o in bpy.data.objects:
+        if o.get("cat") == "ridge":
+            o.visible_shadow = False       # the ridges are far backdrop: they must not shade the lake (the village's hills do not)
     # the tiny grass doesn't need to cast shadows (thousands of thin ribbons slow the bake and change nothing)
     for o in bpy.data.objects:
         if o.get("cat") == "inst" and any(k in o.name for k in ("grass", "daisy")):
@@ -257,6 +278,18 @@ def main():
     solid = lms + [o for o in bpy.data.objects if o.get("cat") == "occluder"]
     BK.vertex_light(solid, [], trees)
     plant_light(plants)
+    FOREST_TINT = {"forest_0": (1.0, 1.0, 1.0), "forest_1": (0.8, 0.95, 0.82), "forest_2": (1.12, 1.06, 0.72),
+                   "forest_3": (0.55, 0.8, 0.74), "forest_4": (1.06, 1.0, 0.8), "forest_5": (0.9, 1.0, 0.85)}
+    for o in trees:
+        for key, t in FOREST_TINT.items():
+            if key in o.name:
+                col = o.data.color_attributes["Col"]
+                n = len(o.data.loops)
+                a = np.empty(n * 4, np.float32)
+                col.data.foreach_get("color", a)
+                a = a.reshape(n, 4)
+                a[:, :3] = np.clip(a[:, :3] * np.array(t, np.float32), 0, 1)
+                col.data.foreach_set("color", a.ravel())
     EM = export_materials()
     mesh_objs = [o for o in bpy.data.objects if o.type == "MESH" and o.get("cat") not in ("collider", "occluder", "moon")]
     seen = set()
@@ -268,7 +301,7 @@ def main():
     ground = BK.join([o for o in mesh_objs if o.get("cat") == "lm" and len(o.data.polygons)], "lake_ground")
     water = bpy.data.objects["lake_water"]
     water.data.name = "lake_water"
-    exported = [ground, water]
+    exported = [ground, water] + [o for o in bpy.data.objects if o.get("cat") == "ridge"]
     for o in exported:
         o.data.uv_layers.active = o.data.uv_layers["UVMap"]
         if "Col" in o.data.color_attributes:
@@ -308,7 +341,9 @@ def lake_extras():
         "lake": {
             "waterY": G.WATER_Y, "floorY": G.FLOOR_Y,
             "lightMap": {"scale": BK.LM_SCALE, "uv": "TEXCOORD_1", "gameGain": GAME_GAIN},
-            "waterVertexColor": "COLOR_0: r = depth / 3.5 (m), g = 1 - min(1, depth / 1.2) (shallows), b = 0",
+            "waterVertexColor": "COLOR_0: r = depth / 3.5 (m), g = 1 - min(1, depth / 1.2) (shallows), b = distance from the shore / 24 m (0 at the bank, 1 in the middle)",
+            "waterLook": {"body": "murky green-brown: shallow #5d6b3a -> deep #26331f, mixed by r and b; roughness ~0.14; reflections softened (sample the panorama with a blur or mip bias ~ 1.5, stronger by b), Fresnel F0 0.02, darker towards the middle (b), two slow ripple normal layers"},
+            "ridges": "node lake_ridge: vertex-coloured (COLOR_0 = the final lit colour, unlit material M_ridge); forested ridges round the valley, laid 15 cm over the village backdrop terrain; the village far-forest trees under it can be hidden",
             "tiers": "nodes named inst__lakehi_* are PC tier only; inst__lake_* are always drawn",
             "sway": "attribute _sway (0 root .. 1 tip) on inst__lake*_reed/cattail/grass/daisy meshes",
             "seam": {"groundHole": {"minX": 95.5, "maxX": 112.0, "minZ": -69.5, "maxZ": 45.5},

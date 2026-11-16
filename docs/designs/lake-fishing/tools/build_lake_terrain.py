@@ -24,6 +24,7 @@ os.environ.setdefault("CV_LAYOUT", os.path.join(REPO, "art", "village", "layout.
 sys.path.insert(0, VILLAGE_TOOLS)
 sys.path.insert(0, HERE)
 
+import random  # noqa: E402
 import vlib as U  # noqa: E402
 from vlib import V, MB  # noqa: E402
 import build_village as BV  # noqa: E402  (registers the village's authoring materials in U.MATSPEC)
@@ -41,7 +42,7 @@ U.MATSPEC.update({
                    nor_strength=0.25),
     "LM_gravel": dict(tex=os.path.join(TEXL, "T_gravel.png"), tile=1.6, rough=0.95, tint=True,
                       nor="rock_boulder_dry_nor_gl_1k.jpg", nor_strength=0.5),
-    "M_lakewater": dict(color="#2d3b1f", rough=0.05),
+    "M_lakewater": dict(color="#2c3118", rough=0.2, bump_noise=60.0, bump_strength=0.22),
     "LM_dirt": dict(tex=os.path.join(TEXL, "T_dirt.png"), tile=2.0, rough=0.95, tint=True,
                     nor="rock_boulder_dry_nor_gl_1k.jpg", nor_strength=0.25),
 })
@@ -108,7 +109,7 @@ def build_cells():
     cells = np.array(cells, float)
     # (min size to reach, band distance): a cell is split while it is bigger than `size` and within `reach` of the water
     # (size, lo, hi): a cell is split to `size` while it reaches into the signed shore-distance band [lo, hi] (water is negative)
-    rules = [(2.0, -13.0, 13.0), (1.0, -4.0, 5.0), (0.5, -1.4, 2.5)]
+    rules = [(2.0, -3.5, 7.0), (1.0, -1.2, 2.5), (0.5, -0.45, 1.2)]
     done = []
     work = cells
     for size, lo, hi in rules:
@@ -337,12 +338,21 @@ def hill_tint(ob, is_grass):
     r = r * (1 - 0.5 * hillk)
     g = g * (1 - 0.36 * hillk)
     b = b * (1 - 0.46 * hillk)
-    # wet bank
-    wet = 1 - G.smoothstep(0.0, 1.6, np.abs(S)) * 1.0
+    # dried grass strip along the bank (the water level drops in summer): straw colour in the first ~4 m above the mud
+    straw = np.exp(-np.maximum(S - 1.2, 0) / 2.4) * (S > 0.2) * (0.6 + 0.4 * G.vnoise(X * 1.7, Z * 1.7, 12.0))
+    r = r * (1 + 0.42 * straw)
+    g = g * (1 + 0.12 * straw)
+    b = b * (1 - 0.38 * straw)
+    # wet bank: dark; the dry mud line above the waterline: sandy and light (an old water mark)
+    wet = 1 - G.smoothstep(0.0, 1.0, np.abs(S)) * 1.0
     wet = np.where(S > -3, wet, 0)
-    r = r * (1 - 0.30 * wet)
-    g = g * (1 - 0.27 * wet)
-    b = b * (1 - 0.22 * wet)
+    r = r * (1 - 0.38 * wet)
+    g = g * (1 - 0.34 * wet)
+    b = b * (1 - 0.26 * wet)
+    dry = G.smoothstep(0.55, 0.9, S) * (1 - G.smoothstep(1.3, 2.3, S)) * (0.7 + 0.3 * G.vnoise(X * 2.3, Z * 2.3, 6.0))
+    r = r * (1 + 0.62 * dry)
+    g = g * (1 + 0.55 * dry)
+    b = b * (1 + 0.38 * dry)
     out = np.stack([r, g, b, np.ones_like(r)], 1)
     out[:, :3] = np.clip(out[:, :3], 0, 1)
     # sRGB-encode like vlib._to_layer (a byte colour layer stores sRGB)
@@ -396,7 +406,8 @@ def build_water(coll):
     def vert(r, d, i):
         x, z = r[i]
         dep = d[i]
-        return (x, z, (min(1.0, dep / 3.5), 1 - min(1.0, dep / 1.2), 0.0, 1.0))
+        mid = min(1.0, max(0.0, -float(G.signed_shore(np.array([x]), np.array([z]))[0]) / 24.0))
+        return (x, z, (min(1.0, dep / 3.5), 1 - min(1.0, dep / 1.2), mid, 1.0))
 
     n = len(rings[0])
     quads = 0
@@ -414,7 +425,7 @@ def build_water(coll):
     last = rings[-1]
     cen = last.mean(axis=0)
     dc = depth_of(np.array([cen]))[0]
-    cv = (cen[0], cen[1], (min(1.0, dc / 3.5), 1 - min(1.0, dc / 1.2), 0.0, 1.0))
+    cv = (cen[0], cen[1], (min(1.0, dc / 3.5), 1 - min(1.0, dc / 1.2), 1.0, 1.0))
     for i in range(n):
         emit([vert(last, depths[-1], i), vert(last, depths[-1], (i + 1) % n), cv])
     ob = mb.finish("lake_water", coll, cat="water", auto=False)
@@ -424,59 +435,87 @@ def build_water(coll):
 
 # ---------------------------------------------------------------------------------------- rocks & riprap
 
+def quarry_rock(mb, x, z, y, sx, sz, sy, seed, yaw):
+    """An angular quarry stone: the convex hull of 11 random points on an ellipsoid (sharp edges, flat facets, a flattish
+    base), per-face tint: dark and wet near the waterline, lighter and dry above."""
+    import bmesh as _bm
+    rng = random.Random(seed)
+    bm = _bm.new()
+    pts = []
+    for _ in range(11):
+        v = Vector((rng.gauss(0, 1), rng.gauss(0, 1), rng.gauss(0, 1) * 0.8))
+        v.normalize()
+        v *= rng.uniform(0.78, 1.0)
+        pts.append(v)
+    verts = [bm.verts.new(p) for p in pts]
+    res = _bm.ops.convex_hull(bm, input=verts)
+    dead = {id(g): g for g in list(res.get("geom_interior", [])) + list(res.get("geom_unused", [])) if isinstance(g, _bm.types.BMVert)}
+    _bm.ops.delete(bm, geom=list(dead.values()), context="VERTS")
+    c, s = math.cos(yaw), math.sin(yaw)
+    P = {}
+    for v in bm.verts:
+        px, py, pz = v.co.x * sx, v.co.y * sz, max(v.co.z, -0.55) * sy
+        P[v.index] = V(x + px * c - py * s, z + px * s + py * c, y + pz + sy * 0.55)
+    bm.faces.ensure_lookup_table()
+    for f in bm.faces:
+        pts3 = [P[v.index] for v in f.verts]
+        cen = sum(pts3, Vector()) / len(pts3)
+        wet = max(0.0, min(1.0, (G.WATER_Y + 0.45 - cen.z) / 0.5))
+        t = 0.78 * (1 - wet) + 0.3 * wet
+        t *= rng.uniform(0.9, 1.08)
+        mb.face(pts3, "LM_rock", hint=cen - V(x, z, y + sy * 0.3), tint=(t, t * 0.98, t * 0.93, 1.0))
+    bm.free()
+
+
 def place_riprap(coll):
-    """Stone pitching (사석) on the bank at the pier root, a few boulders along the shore, shore stones in the reed beds."""
-    import random
+    """Stone pitching (사석) of angular quarry stones: stacked rows at the pier root, scattered stones and small heaps around
+    the waterline."""
     rng = random.Random(404)
     mb = MB()
-    mb.tint = (0.36, 0.36, 0.33, 1.0)
     HF = lambda x, z: float(G.height(np.array([x]), np.array([z]))[0])
-    # points of the waterline near the pier root: from the smoothed shore polyline
     sh = G.SHORE
-    near = [(x, z) for x, z in sh if 104 < x < 122 and -24 < z < 0]
     n = 0
-    for x, z in near:
-        # two rows on the bank slope, skipping the 3 m where the pier's boards leave the land
-        if -14.6 < z < -9.4:
+    # the pier root: three rows climbing the bank, big and dark at the water, smaller and drier above; the deck boards are free
+    for x, z in sh:
+        if not (104 < x < 122 and -24 < z < 0) or -14.8 < z < -9.2:
             continue
-        for row, off in enumerate((0.15, 0.75)):
-            # out from the waterline along the outward normal (west)
-            nx, nz = -1.0, 0.0
-            px, pz = x + nx * off + rng.uniform(-0.25, 0.25), z + rng.uniform(-0.25, 0.25)
-            s = float(G.signed_shore(np.array([px]), np.array([pz]))[0])
-            if s < -0.2:
-                continue
-            sz = rng.uniform(0.28, 0.55) * (1.2 if row == 0 else 0.9)
-            PN.rock(mb, px, pz, HF(px, pz) - sz * 0.22, sz * rng.uniform(1.0, 1.6), sz, sz * rng.uniform(0.55, 0.85),
-                    900 + n, subdiv=1, yaw=rng.uniform(0, 3.14))
-            n += 1
-    # rocks along the pier's first boards: a heap on both sides of the pier root
+        for row, off in enumerate((0.0, 0.6, 1.2)):
+            for k in range(2):
+                px, pz = x - off + rng.uniform(-0.3, 0.2), z + rng.uniform(-0.45, 0.45)
+                if float(G.signed_shore(np.array([px]), np.array([pz]))[0]) < -0.25:
+                    continue
+                sz = rng.uniform(0.22, 0.5) * (1.3 - 0.25 * row)
+                quarry_rock(mb, px, pz, HF(px, pz) - sz * 0.35, sz * rng.uniform(1.0, 1.5), sz * rng.uniform(0.8, 1.2), sz * rng.uniform(0.7, 1.0), 900 + n, rng.uniform(0, 3.14))
+                n += 1
+                if row == 0 and rng.random() < 0.5:        # a second stone stacked on the first
+                    quarry_rock(mb, px + 0.1, pz, HF(px, pz) + sz * 0.45, sz * 0.7, sz * 0.7, sz * 0.6, 4000 + n, rng.uniform(0, 3.14))
+                    n += 1
     for side in (-1, 1):
-        for k in range(9):
-            px = 109.0 + rng.uniform(0, 3.4)
-            pz = -12.0 + side * (2.3 + rng.uniform(0, 2.6))
-            s = float(G.signed_shore(np.array([px]), np.array([pz]))[0])
-            sz = rng.uniform(0.3, 0.6)
+        for k in range(10):
+            px = 109.0 + rng.uniform(0, 3.8)
+            pz = -12.0 + side * (2.2 + rng.uniform(0, 2.8))
+            sz = rng.uniform(0.28, 0.6)
             y = HF(px, pz)
-            PN.rock(mb, px, pz, y - sz * 0.2, sz * 1.3, sz, sz * 0.7, 950 + k + 20 * side, subdiv=1, yaw=rng.uniform(0, 3))
+            quarry_rock(mb, px, pz, y - sz * 0.3, sz * 1.3, sz, sz * 0.8, 950 + k + 20 * side, rng.uniform(0, 3))
             n += 1
-    # scattered shore stones (sparser, smaller) around the whole waterline, away from the reed beds' interior
-    for i in range(0, len(sh), 5):
-        x, z = sh[i]
-        if rng.random() < 0.45:
+    # scattered stones and small heaps around the whole waterline: some in the shallows, some on the dry mud line
+    for i in range(0, len(sh), 3):
+        if rng.random() < 0.55:
             continue
-        pr = sh[(i - 1) % len(sh)], sh[(i + 1) % len(sh)]
-        tx, tz = pr[1][0] - pr[0][0], pr[1][1] - pr[0][1]
+        x, z = sh[i]
+        a, b2 = sh[(i - 1) % len(sh)], sh[(i + 1) % len(sh)]
+        tx, tz = b2[0] - a[0], b2[1] - a[1]
         L_ = math.hypot(tx, tz)
         nx, nz = tz / L_, -tx / L_
         if G.inside_closed(np.array([x + nx * 0.5]), np.array([z + nz * 0.5]), G.SHORE)[0]:
             nx, nz = -nx, -nz
-        d = rng.uniform(-0.1, 0.9)
-        px, pz = x + nx * d, z + nz * d
-        sz = rng.uniform(0.18, 0.45)
-        PN.rock(mb, px, pz, HF(px, pz) - sz * 0.3, sz * rng.uniform(1.0, 1.7), sz, sz * rng.uniform(0.5, 0.8), 1100 + i,
-                subdiv=1, yaw=rng.uniform(0, 3.14))
-        n += 1
+        heap = rng.random() < 0.3
+        for j in range(rng.randint(3, 5) if heap else 1):
+            d = rng.uniform(-0.25, 1.4)
+            px, pz = x + nx * d + rng.uniform(-0.5, 0.5), z + tz / L_ * rng.uniform(-0.6, 0.6)
+            sz = rng.uniform(0.12, 0.42) * (1.0 if not heap else 0.8)
+            quarry_rock(mb, px, pz, HF(px, pz) - sz * 0.3, sz * rng.uniform(1.0, 1.7), sz, sz * rng.uniform(0.6, 0.9), 1100 + i * 7 + j, rng.uniform(0, 3.14))
+            n += 1
     ob = mb.finish("lake_rocks", coll)
     print("rocks", n, "faces", len(ob.data.polygons))
     return ob
@@ -544,14 +583,27 @@ def build_occluders(coll):
             dst.objects = [n for n in src.objects]
         n = 0
         for ob in dst.objects:
-            if ob is None:
+            if ob is None or ob.type == "LIGHT":
                 continue
-            if ob.type == "MESH" and not ob.name.startswith(("col__", "seat__", "spot__")):
+            if ob.type == "MESH" and ob.get("cat") != "collider" and not ob.name.startswith(("col__", "seat__", "spot__", "pv_", "Icosphere")):
                 ob["cat"] = "occluder"
                 coll.objects.link(ob)
                 n += 1
-        print("structures.blend linked:", n, "objects")
-        return
+            elif ob.type == "EMPTY" and ob.name.startswith("light__"):
+                ob["cat"] = "light"
+                coll.objects.link(ob)
+        tb = os.path.join(WORK, "tex_b")
+        fixed = 0
+        for im in bpy.data.images:
+            p = bpy.path.abspath(im.filepath) if im.filepath else ""
+            if p and not os.path.exists(p):
+                cand = os.path.join(tb, os.path.basename(p))
+                if os.path.exists(cand):
+                    im.filepath = cand
+                    im.reload()
+                    fixed += 1
+        print("structures.blend linked:", n, "meshes as shadow casters + its light__ empties; relinked", fixed, "textures")
+        return True
     mb = MB()
     for d in LAY["decks"]:
         cx, cz = (d["minX"] + d["maxX"]) / 2, (d["minZ"] + d["maxZ"]) / 2
@@ -577,7 +629,7 @@ def build_occluders(coll):
         for sz in (-2.85, 2.85):
             mb.box(pv["x"] + sx, pv["z"] + sz, 0.0, 0.3, 0.3, 3.0, "LM_wood")
     ob = mb.finish("occluder_greybox", coll, cat="occluder", auto=False)
-    return ob
+    return False
 
 
 def lights(coll):
@@ -595,13 +647,105 @@ def lights(coll):
     U.make_light_empties(coll)
 
 
+# --------------------------------------------------------------------------------------------------- ridges
+
+def build_ridges(coll):
+    """The valley (design round 2): forested ridges rising behind the lake, east and round the north and south, as a coarse
+    vertex-coloured terrain laid 15 cm over the village's own backdrop terrain (village terrain_h + a ridge bump, fading out
+    towards the village). Its inner edge is the lake zone's outline: those vertices take the seam heights, so it joins exactly.
+    Unlit vertex colour (cat 'ridge', M_ridge): canopy blotches, slope shading of the same sun, haze with distance."""
+    mat_ridge()
+    xs = [112.0 + 78.0 / 6 * i for i in range(0, 25)]
+    zs = [-70.0 + 119.0 / 8 * k for k in range(-10, 19)]
+    ZN0, ZN1, ZX0, ZX1 = -70.0, 49.0, 95.5, 190.0
+
+    def hfun(x, z):
+        base = PN.terrain_h(x, z)
+        dx = max(ZX0 - x, 0.0, x - ZX1)
+        dz = max(ZN0 - z, 0.0, z - ZN1)
+        d = math.hypot(dx, dz)
+        bh = G.boundary_height(x, z)
+        if bh is not None:
+            return bh, d
+        t = lambda a, b_, v: min(1.0, max(0.0, (v - a) / (b_ - a))) ** 2 * (3 - 2 * min(1.0, max(0.0, (v - a) / (b_ - a))))
+        ridge = 30.0 * t(10.0, 150.0, d) * (1 - 0.45 * t(240.0, 400.0, d))
+        n = 0.5 + 0.5 * float(G.vnoise(np.array([x * 0.9]), np.array([z * 0.9]), 33.0)[0])
+        west = t(112.0, 190.0, x)
+        return base + ridge * (0.6 + 0.8 * n) * west + 0.15 * t(0.0, 12.0, d), d
+    grid = {}
+    for j, z in enumerate(zs):
+        for i, x in enumerate(xs):
+            grid[(i, j)] = hfun(x, z)
+    mb = MB()
+    sun = np.array([math.sin(math.radians(U.LOOK["sun_azimuth_deg"])), -math.cos(math.radians(U.LOOK["sun_azimuth_deg"])), math.tan(math.radians(U.LOOK["sun_elevation_deg"]))])
+    sun = sun / np.linalg.norm(sun)
+    haze = np.array([0.66, 0.71, 0.85])
+    up = Vector((0, 0, 1))
+
+    def colour(x, z, h, d, h_dx, h_dz):
+        crown = 0.5 + 0.5 * float(G.vnoise(np.array([x * 0.55]), np.array([z * 0.55]), 3.0)[0])
+        crown2 = 0.5 + 0.5 * float(G.vnoise(np.array([x * 1.7]), np.array([z * 1.7]), 9.0)[0])
+        patch = 0.5 + 0.5 * float(G.vnoise(np.array([x * 0.05]), np.array([z * 0.05]), 15.0)[0])
+        base = np.array([0.085, 0.17, 0.055]) * (0.45 + 1.0 * crown) * (0.7 + 0.6 * crown2)
+        base = base + patch * np.array([0.05, 0.035, -0.01])          # yellower patches (deciduous), darker (conifers)
+        nrm = np.array([-h_dx, -h_dz, 1.0])
+        nrm = nrm / np.linalg.norm(nrm)
+        nl = 0.55 + 0.9 * max(0.0, float(nrm @ np.array([sun[0], sun[1], sun[2]])))
+        col = base * nl * 0.8 * 2.0
+        k = min(0.75, 0.12 + d / 420.0)
+        col = col * (1 - k) + haze * k * 0.55
+        return tuple(float(v) for v in np.clip(col, 0, 1)) + (1.0,)
+    for j in range(len(zs) - 1):
+        for i in range(len(xs) - 1):
+            cx, cz = (xs[i] + xs[i + 1]) / 2, (zs[j] + zs[j + 1]) / 2
+            if ZX0 < cx < ZX1 and ZN0 < cz < ZN1:
+                continue
+            q = [(i, j), (i + 1, j), (i + 1, j + 1), (i, j + 1)]
+            pts = [V(xs[a], zs[b], grid[(a, b)][0]) for a, b in q]
+            f = mb.face(pts, "M_ridge", None, hint=up, smooth=True)
+            if f is None:
+                continue
+            for lp, (a, b_) in zip(f.loops, [(0, 0)] * 4):
+                pass
+            # per-vertex colour with finite-difference slopes
+            order = {tuple(round(v, 3) for v in (p.x, p.y)): (a, b_) for p, (a, b_) in zip(pts, q)}
+            for lp in f.loops:
+                key = (round(lp.vert.co.x, 3), round(lp.vert.co.y, 3))
+                a, b_ = order[key]
+                x, z = xs[a], zs[b_]
+                hx = (grid[(min(a + 1, len(xs) - 1), b_)][0] - grid[(max(a - 1, 0), b_)][0]) / (xs[min(a + 1, len(xs) - 1)] - xs[max(a - 1, 0)])
+                hz = (grid[(a, min(b_ + 1, len(zs) - 1))][0] - grid[(a, max(b_ - 1, 0))][0]) / (zs[min(b_ + 1, len(zs) - 1)] - zs[max(b_ - 1, 0)])
+                c = colour(x, z, grid[(a, b_)][0], grid[(a, b_)][1], hx, hz)
+                lp[mb.col] = U._to_layer(c)
+    ob = mb.finish("lake_ridge", coll, cat="ridge", auto=False)
+    print("ridge faces", len(ob.data.polygons))
+    return ob
+
+
+def mat_ridge():
+    if "M_ridge" in bpy.data.materials:
+        return
+    m = bpy.data.materials.new("M_ridge")
+    m["export"] = "M_ridge"
+    nt = m.node_tree
+    for n in list(nt.nodes):
+        nt.nodes.remove(n)
+    out = nt.nodes.new("ShaderNodeOutputMaterial")
+    em = nt.nodes.new("ShaderNodeEmission")      # unlit like the game: the colour IS the lit colour
+    ca = nt.nodes.new("ShaderNodeVertexColor")
+    ca.layer_name = "Col"
+    nt.links.new(ca.outputs["Color"], em.inputs["Color"])
+    nt.links.new(em.outputs[0], out.inputs["Surface"])
+    U._MATS["M_ridge"] = m
+
+
 # ---------------------------------------------------------------------------------------------------- main
 
 def main():
     scene = bpy.context.scene
     for o in list(bpy.data.objects):
         bpy.data.objects.remove(o)
-    parts = arg("--parts", "terrain,veg").split(",")
+    parts = arg("--parts", "terrain,veg,ridge").split(",")
     G.set_seam(ordered_loop())
     dev = G.shore_deviation()
     print(f"visual shoreline deviates at most {dev:.2f} m from the collider polygon; seam loop {len(G.SEAM)} samples")
@@ -615,11 +759,14 @@ def main():
     water = build_water(U.coll("water", root))
     place_riprap(U.coll("rocks", root))
     build_trail(U.coll("trail", root))
-    build_occluders(U.coll("occluder", root))
+    real = build_occluders(U.coll("occluder", root))
+    if "ridge" in parts:
+        build_ridges(U.coll("ridge", root))
     if "veg" in parts:
         import parts_lake_veg as VG
         VG.build(U.coll("veg", root), lambda x, z: float(G.height(np.array([x]), np.array([z]))[0]))
-    lights(U.coll("lights", root))
+    if not real:
+        lights(U.coll("lights", root))
     info = {"shore_deviation_m": dev, "seam_samples": len(G.SEAM), "vertices": int(len(P))}
     json.dump(info, open(os.path.join(WORK, "terrain_info.json"), "w"), indent=1)
     out = os.path.join(WORK, "lake_authoring.blend")

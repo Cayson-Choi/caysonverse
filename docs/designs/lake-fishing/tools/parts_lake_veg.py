@@ -225,7 +225,7 @@ def cattail_clump(seed, plants=3, spread=0.25):
     return P
 
 
-def grass_tuft(seed, blades=13, rad=0.14, hmin=0.22, hmax=0.5):
+def grass_tuft(seed, blades=13, rad=0.14, hmin=0.22, hmax=0.5, dry=0.0):
     rng = random.Random(seed)
     P = Plant()
     for i in range(blades):
@@ -238,8 +238,9 @@ def grass_tuft(seed, blades=13, rad=0.14, hmin=0.22, hmax=0.5):
         path = [(bx, bz, 0.0), (bx + math.cos(az) * out * 0.35, bz + math.sin(az) * out * 0.35, h * 0.6),
                 (bx + math.cos(az) * out, bz + math.sin(az) * out, h * 0.95 - out * 0.15)]
         side = (-math.sin(az), math.cos(az))
-        c1 = mixc(C["grass_t"], C["grass_d"], rng.random() * 0.5)
-        P.ribbon(path, [0.022, 0.017, 0.0], C["grass_b"], c1, 0.05, 1.0, side=side)
+        c1 = mixc(C["grass_t"], C["grass_d"], min(1.0, rng.random() * 0.5 + dry))
+        c0 = mixc(C["grass_b"], C["grass_d"], dry * 0.8)
+        P.ribbon(path, [0.022, 0.017, 0.0], c0, c1, 0.05, 1.0, side=side)
     return P
 
 
@@ -373,6 +374,43 @@ def shore_normal(i):
     return nx, nz
 
 
+def mass_tree(F, shape, H, R, seed):
+    """A leafy tree without a visible bare trunk: a short thick trunk, then crown cards from 18-25 % of the height up,
+    clustered on an outline that depends on `shape`. About 90 triangles."""
+    rng = random.Random(seed)
+    th = H * 0.34
+    la = rng.uniform(0, 6.28)
+    lx, ly = math.cos(la) * 0.05 * th, math.sin(la) * 0.05 * th
+    pts = [V(0, 0, -0.1), V(lx * 0.5, ly * 0.5, th * 0.5), V(lx, ly, th)]
+    tr = 0.16 * (H / 8.0)
+    F.bark.tube(pts, [tr * 1.3, tr, tr * 0.7], F.bark_m, segs=4, uv_u=0.5, uv_v=0.5, uv_off=(0.5, 0))
+    z0 = H * (0.18 if shape in ("low", "wide", "vase") else 0.24)
+    ncards = 34 if shape != "cone" else 30
+    crown_c = V(0, 0, (z0 + H) / 2)
+    for i in range(ncards):
+        u = rng.random() ** (0.8 if shape != "cone" else 0.6)
+        zz = z0 + (H - z0) * u
+        t = (zz - z0) / (H - z0)
+        if shape == "cone":
+            rr = R * (1 - t) ** 0.9
+        elif shape == "vase":
+            rr = R * (0.55 + 0.6 * math.sin(math.pi * min(1.0, t * 0.9 + 0.1)))
+        elif shape == "tall":
+            rr = R * math.sin(math.pi * (0.15 + 0.8 * t)) * 0.95
+        else:
+            rr = R * math.sin(math.pi * (0.08 + 0.88 * t))
+        a = rng.uniform(0, 6.28)
+        rad = rr * math.sqrt(rng.random()) * 0.95
+        p = V(math.cos(a) * rad, math.sin(a) * rad, zz)
+        out = p - crown_c
+        out.z *= 0.5
+        if out.length > 1e-3:
+            out.normalize()
+        n = Vector((rng.uniform(-1, 1), rng.uniform(-1, 1), rng.uniform(-0.3, 1))) + out * 0.9
+        s = rng.uniform(1.5, 2.5) * (H / 8.5) ** 0.6
+        F.card(p, n, Vector((0, 0, 1)) + out * 0.4, s, s * 0.95, "M_leaf_green", rng.randrange(4), crown_c)
+
+
 # --------------------------------------------------------------------------------------------------- build
 
 def build(coll, hfn):
@@ -408,19 +446,19 @@ def build(coll, hfn):
         return lo, hi
 
     # ---------------------------------------------------------------- reeds and cattails
-    reed_v = [variant_plant(f"reed_{k}", lambda k=k: reed_clump(100 + k, stalks=6 + (k % 2))) for k in range(4)]
-    cat_v = [variant_plant(f"cattail_{k}", lambda k=k: cattail_clump(200 + k, plants=3)) for k in range(3)]
+    reed_v = [variant_plant(f"reed_{k}", lambda k=k: reed_clump(100 + k, stalks=5 + (k % 2))) for k in range(4)]
+    cat_v = [variant_plant(f"cattail_{k}", lambda k=k: cattail_clump(200 + k, plants=2)) for k in range(3)]
     reeds, cats = [], []
     for bed in LAY["reeds"]:
         cx, cz, r = bed["centre"]["x"], bed["centre"]["z"], bed["radius"]
-        cand = poisson(rng, cx - r * 1.2, cx + r * 1.2, cz - r * 1.2, cz + r * 1.2, 0.56,
+        cand = poisson(rng, cx - r * 1.2, cx + r * 1.2, cz - r * 1.2, cz + r * 1.2, 0.66,
                        lambda x, z, cx=cx, cz=cz, r=r: math.hypot(x - cx, z - cz) <= r * 1.15)
         if not cand:
             continue
         s = sfield([c[0] for c in cand], [c[1] for c in cand])
         for (x, z), si in zip(cand, s):
             patch = float(G.vnoise(np.array([x * 0.9]), np.array([z * 0.9]), 4.0)[0])
-            if not (-1.7 < si < 0.6) or patch < -0.6 or not allowed(x, z):
+            if not (-1.7 < si < 0.6) or patch < -0.34 or not allowed(x, z):
                 continue
             (cats if (rng.random() < 0.16 and si > -0.9) else reeds).append((x, z))
     for k in range(7):
@@ -434,7 +472,7 @@ def build(coll, hfn):
     report["cattail_clumps"] = len(tfc)
     for kk, meshes in enumerate(reed_v):
         sub = [t for i, t in enumerate(tfr) if i % len(reed_v) == kk]
-        lo, hi = split_tiers(sub, 0.32)
+        lo, hi = split_tiers(sub, 0.26)
         PF.place(inst, f"lake_reed_{kk}", meshes, lo)
         PF.place(inst, f"lakehi_reed_{kk}", meshes, hi)
     for kk, meshes in enumerate(cat_v):
@@ -445,7 +483,7 @@ def build(coll, hfn):
 
     # ---------------------------------------------------------------- grass tufts and daisies
     grass_v = [variant_plant(f"grass_{k}", lambda k=k: grass_tuft(300 + k, blades=8 + k, hmax=0.42 + 0.06 * k)) for k in range(4)]
-    tall_v = [variant_plant(f"grasstall_{k}", lambda k=k: grass_tuft(320 + k, blades=14, rad=0.2, hmin=0.45, hmax=0.9)) for k in range(2)]
+    tall_v = [variant_plant(f"grasstall_{k}", lambda k=k: grass_tuft(320 + k, blades=10, rad=0.2, hmin=0.45, hmax=0.95, dry=0.55 * k)) for k in range(3)]
     daisy_v = [variant_plant(f"daisy_{k}", lambda k=k: daisy_patch(340 + k, n=3)) for k in range(2)]
     cand = poisson(rng, 96.0, 189.0, -69.0, 48.0, 0.85, lambda x, z: True, tries=200000)
     xs = np.array([c[0] for c in cand])
@@ -459,16 +497,16 @@ def build(coll, hfn):
         if trail_min_dist(x, z) < LAY["trail"]["width"] / 2 + 0.2:
             continue
         near = math.exp(-max(0.0, si - 0.8) / 2.6)
-        pn = 0.14 + 0.62 * near
+        pn = 0.1 + 0.5 * near
         pn *= 0.55 + 0.45 * (G.vnoise(np.array([x * 0.6]), np.array([z * 0.6]), 9.0)[0] + 1) / 2
         if rng.random() > pn:
             continue
         walk = bool(iw and si >= 0.8)
-        if near > 0.45 and not walk and rng.random() < 0.55:
+        if near > 0.3 and not walk and rng.random() < 0.6:
             tall.append((x, z))
         else:
             grass.append((x, z))
-        if rng.random() < 0.1:
+        if rng.random() < 0.06:
             daisies.append((x + rng.uniform(-0.4, 0.4), z + rng.uniform(-0.4, 0.4)))
     tfg = inst_tf(grass, scale=(0.8, 1.3))
     tft = inst_tf(tall, scale=(0.8, 1.2))
@@ -490,9 +528,11 @@ def build(coll, hfn):
 
     # ---------------------------------------------------------------- willows, bushes, hill trees (not on walkable ground)
     willow_v = [PF.variant(f"lake_willow_{k}", src, lambda F, k=k: PT.tree(F, 0, 0, "willow", 8.5 + k * 1.2, 4.2 + k * 0.4, 70 + k, trunk_r=0.22)) for k in range(3)]
-    shrub_v = [PF.variant(f"lake_shrub_{k}", src, lambda F, k=k: PT.shrub(F, 0, 0, 0.95 + 0.2 * k, 0.65 + 0.1 * k, 90 + k)) for k in range(2)]
-    near_v = [PF.variant(f"lake_tree_{k}", src, lambda F, k=k: PT.tree(F, 0, 0, "green", 6.6 + k * 0.9, 2.5 + 0.3 * k, 110 + k, trunk_r=0.13)) for k in range(3)]
-    far_v = [PF.variant(f"lake_far_{k}", src, lambda F, k=k: PT.far_tree(F, 0, 0, 0, 1.0, 130 + k)) for k in range(3)]
+    shrub_v = [PF.variant(f"lake_shrub_{k}", src, lambda F, k=k: PT.shrub(F, 0, 0, 0.95 + 0.25 * k, 0.65 + 0.15 * k, 90 + k)) for k in range(3)]
+    # the forest: six crown shapes; the crown starts at 18-25 % of the height and a thick short trunk is hidden by the
+    # understorey: no bare Y-shaped sticks.
+    SHAPES = [("round", 8.5, 3.6), ("tall", 12.0, 3.2), ("vase", 9.5, 4.4), ("cone", 11.0, 2.7), ("low", 6.0, 3.0), ("wide", 7.5, 4.8)]
+    forest_v = [PF.variant(f"lake_forest_{k}", src, lambda F, k=k: mass_tree(F, SHAPES[k][0], SHAPES[k][1], SHAPES[k][2], 500 + k)) for k in range(len(SHAPES))]
 
     def land_ok(x, z, min_e=0.5, min_s=1.6):
         s_ = float(sfield([x], [z])[0])
@@ -515,44 +555,54 @@ def build(coll, hfn):
     hw = H([w[0] for w in willows], [w[1] for w in willows]) if willows else []
     for kk, meshes in enumerate(willow_v):
         tf = [(x, z, float(h) - 0.05, rng.uniform(0, 6.28), rng.uniform(0.9, 1.15)) for i, ((x, z), h) in enumerate(zip(willows, hw)) if i % 3 == kk]
-        PF.place(inst, f"lake_willow_{kk}", meshes, tf)
+        lo, hi = split_tiers(tf, 0.5)
+        PF.place(inst, f"lake_willow_{kk}", meshes, lo)
+        PF.place(inst, f"lakehi_willow_{kk}", meshes, hi)
     report["willows"] = len(willows)
+
+    def forest_ok(x, z):
+        n = float(G.vnoise(np.array([x * 0.07]), np.array([z * 0.07]), 5.0)[0])
+        edge = 2.4 + 3.2 * (n + 1)
+        if not land_ok(x, z, 1.6, edge):
+            return False
+        dens = 0.55 + 0.5 * float(G.vnoise(np.array([x * 0.11]), np.array([z * 0.11]), 8.0)[0])
+        return rng.random() < dens and allowed(x, z, 1.0, spots=False)
+    trees = poisson(rng, 96.0, 190.0, -70.0, 49.0, 3.5, forest_ok, tries=160000)
+    ht = H([c[0] for c in trees], [c[1] for c in trees]) if trees else []
+    tf_all = []
+    for (x, z), h in zip(trees, ht):
+        k = int(abs(math.sin(x * 12.9898 + z * 78.233) * 43758.5453) % 1 * len(SHAPES))
+        nk = float(G.vnoise(np.array([x * 0.05]), np.array([z * 0.05]), 17.0)[0])
+        if rng.random() < 0.7:
+            k = int((nk + 1) / 2 * len(SHAPES)) % len(SHAPES)
+        tf_all.append((k, (x, z, float(h) - 0.1, rng.uniform(0, 6.28), rng.uniform(0.7, 1.5))))
+    for kk, meshes in enumerate(forest_v):
+        sub = [t for k, t in tf_all if k == kk]
+        lo, hi = split_tiers(sub, 0.55)
+        PF.place(inst, f"lake_forest_{kk}", meshes, lo)
+        PF.place(inst, f"lakehi_forest_{kk}", meshes, hi)
     bushes = []
-    for i in range(0, len(G.SHORE), 3):
-        if rng.random() > 0.2:
+    for (x, z) in trees:
+        for _ in range(1 if rng.random() < 0.7 else 2):
+            a_ = rng.uniform(0, 6.28)
+            r_ = rng.uniform(1.0, 2.2)
+            bushes.append((x + math.cos(a_) * r_, z + math.sin(a_) * r_))
+    for i in range(0, len(G.SHORE), 2):
+        if rng.random() > 0.3:
             continue
         x, z = G.SHORE[i]
         nx, nz = shore_normal(i)
-        d = rng.uniform(1.0, 2.2)
-        px, pz = x + nx * d, z + nz * d
-        if not allowed(px, pz, 0.6) or walkable_pts([px], [pz], sfield([px], [pz]))[0]:
-            continue
-        bushes.append((px, pz))
+        d = rng.uniform(1.4, 3.2)
+        bushes.append((x + nx * d, z + nz * d))
+    bushes = [b for b in bushes if 96.0 < b[0] < 190.0 and -70.0 < b[1] < 49.0 and allowed(b[0], b[1], 0.6)
+              and not walkable_pts([b[0]], [b[1]], sfield([b[0]], [b[1]]))[0] and float(sfield([b[0]], [b[1]])[0]) > 1.4]
     hb = H([b[0] for b in bushes], [b[1] for b in bushes]) if bushes else []
     for kk, meshes in enumerate(shrub_v):
-        tf = [(x, z, float(h) - 0.05, rng.uniform(0, 6.28), rng.uniform(0.8, 1.4)) for i, ((x, z), h) in enumerate(zip(bushes, hb)) if i % 2 == kk]
-        PF.place(inst, f"lake_shrub_{kk}", meshes, tf)
-    report["bushes"] = len(bushes)
-    cand = poisson(rng, 96.0, 190.0, -70.0, 49.0, 3.7, lambda x, z: land_ok(x, z, 2.2, 3.0) and allowed(x, z, 1.0, spots=False), tries=90000)
-    near_t, far_t = [], []
-    if cand:
-        xs = np.array([c[0] for c in cand])
-        zs = np.array([c[1] for c in cand])
-        dw = G.Raster.dwo(xs, zs)
-        ss = sfield(xs, zs)
-        for (x, z), d_, s_ in zip(cand, dw, ss):
-            if rng.random() < 0.16:
-                continue
-            (near_t if min(d_, s_) < 11 and rng.random() < 0.5 and len(near_t) < 48 else far_t).append((x, z))
-    hn = H([c[0] for c in near_t], [c[1] for c in near_t]) if near_t else []
-    hf = H([c[0] for c in far_t], [c[1] for c in far_t]) if far_t else []
-    for kk, meshes in enumerate(near_v):
-        tf = [(x, z, float(h) - 0.1, rng.uniform(0, 6.28), rng.uniform(0.85, 1.25)) for i, ((x, z), h) in enumerate(zip(near_t, hn)) if i % 3 == kk]
-        PF.place(inst, f"lake_tree_{kk}", meshes, tf)
-    for kk, meshes in enumerate(far_v):
-        tf = [(x, z, float(h) - 0.6, rng.uniform(0, 6.28), rng.uniform(7.0, 12.0)) for i, ((x, z), h) in enumerate(zip(far_t, hf)) if i % 3 == kk]
-        PF.place(inst, f"lake_far_{kk}", meshes, tf)
-    report.update(near_trees=len(near_t), far_trees=len(far_t))
+        sub = [(x, z, float(h) - 0.05, rng.uniform(0, 6.28), rng.uniform(0.8, 1.6)) for i, ((x, z), h) in enumerate(zip(bushes, hb)) if i % len(shrub_v) == kk]
+        lo, hi = split_tiers(sub, 0.5)
+        PF.place(inst, f"lake_shrub_{kk}", meshes, lo)
+        PF.place(inst, f"lakehi_shrub_{kk}", meshes, hi)
+    report.update(forest_trees=len(trees), bushes=len(bushes))
     for o in list(src.objects):
         bpy.data.objects.remove(o)
     print("VEG", report)

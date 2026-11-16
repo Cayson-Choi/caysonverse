@@ -191,6 +191,8 @@ def height(px, pz, fields=None):
     s_out = np.maximum(s, 0.0)
     r_in = np.maximum(-s, 0.0)
     bank = WATER_Y * (1 - np.clip(s_out / BANK_W, 0, 1)) ** BANK_P
+    # uneven bank: ledges and ruts of the falling water level (only on the unwalkable band, <= 6 cm)
+    bank = bank + (0.055 * vnoise(px * 5.3, pz * 5.3, 21.0) + 0.03 * vnoise(px * 13.0, pz * 13.0, 4.0)) * (s_out > 0) * (1 - np.clip(s_out / BANK_W, 0, 1))
     # the lake bottom: shallow at the edge (0.05 m under the water at 1 m), 3 m in the middle
     k = np.clip(r_in / 22.0, 0, 1)
     bottom = -3.0 * (0.3 * k + 0.7 * k * k * (3 - 2 * k)) + 0.06 * vnoise(px, pz, 3.0) * smoothstep(0, 4, r_in)
