@@ -472,7 +472,7 @@ function LakeAnglers() {
         const dy = ty - hook.y;
         const dz = tz - hook.z;
         const dl = Math.hypot(dx, dy, dz) || 1;
-        const up = Math.min(0.6, dl * 0.5);
+        const up = Math.min(0.3, dl * 0.5);
         fx = hook.x + (dx / dl) * up;
         fy = hook.y + (dy / dl) * up;
         fz = hook.z + (dz / dl) * up;
@@ -482,7 +482,7 @@ function LakeAnglers() {
       if (show) {
         tmpQ.setFromAxisAngle(Z_AXIS, hook ? 0 : (1 - p.stand) * 1.45);
         // the real float's origin is its water line: put it `originDown` under the top (turned with it while it lies)
-        tmpOff.set(0, -parts.originDown, 0).applyQuaternion(tmpQ);
+        tmpOff.set(0, hook ? 0 : -parts.originDown, 0).applyQuaternion(tmpQ);
         tmpP.set(fx + tmpOff.x, fy + tmpOff.y, fz + tmpOff.z);
         tmpS.setScalar(FLOAT_VIEW_SCALE);
         tmpM.compose(tmpP, tmpQ, tmpS);

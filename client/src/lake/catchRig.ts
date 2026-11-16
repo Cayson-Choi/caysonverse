@@ -9,7 +9,7 @@
 import { CanvasTexture, Mesh, MeshBasicMaterial, MultiplyBlending, PlaneGeometry, Quaternion, Vector3, type Camera, type Object3D } from "three";
 import { LAKE_WATER_Y } from "@caysonverse/shared/village/lakeLayout";
 import { FISH_PHASE, species, type FishView } from "./lakeProtocol";
-import { createFishModel, type FishModel } from "./lakeProps";
+import { FISH_VIEW_SCALE, createFishModel, type FishModel } from "./lakeProps";
 import { REEL_S, HANG_END_S, catchState, releasePoint, underPos, type CatchState, type Pt3 } from "./fishCatch";
 import { setHookPoint } from "./fishHooks";
 import { lakeRipple, lakeSplash } from "./lakeFx";
@@ -157,7 +157,7 @@ export function createCatchRig(sid: string): CatchRig {
       const sh = shadow!;
       f.setCm(view.cm);
       f.setKind(view.kind, sp.color);
-      const len = (view.cm / 100) * 1.25; // the drawn length (FISH_VIEW_SCALE)
+      const len = (view.cm / 100) * FISH_VIEW_SCALE; // the drawn length
       const newCatch = view.seq !== lastSeq || view.phase !== lastPhase;
       if (view.seq !== lastSeq) dropSplashed = false;
       lastSeq = view.seq;
@@ -346,7 +346,7 @@ export function createCatchRig(sid: string): CatchRig {
       lastQ.copy(rot);
       lastStage = cs.stage;
       // the line's end: the mouth while the fish is on it
-      const onLine = cs.stage === "under" || cs.stage === "surface" || cs.stage === "line" || cs.stage === "toHand" || (cs.stage === "net" && cs.k < 0.5);
+      const onLine = cs.stage === "under" || cs.stage === "surface" || cs.stage === "line";
       setHookPoint(sid, onLine ? hook : null);
       hookLive = onLine;
       void newCatch;
