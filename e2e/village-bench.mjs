@@ -141,7 +141,9 @@ await run.step("1. join: A in shorts + wizard hat, B in a long skirt + space hel
   const by = (area) => all.filter((s) => s.area === area).length;
   const house1 = all.filter((s) => s.area.startsWith("house:house_1:")).length;
   const firstIds = all.slice(0, 20).map((s) => s.bench);
-  const houseIdx = all.map((s, i) => (s.area.startsWith("house:") ? i : -1)).filter((i) => i >= 0);
+  // (release 3: house seats a later release restored — benchSeats LATE_HOUSE_SEATS, h9_1_7 and h9_1_10 — sit at the very end instead)
+  const LATE = ["h9_1_7", "h9_1_10"];
+  const houseIdx = all.map((s, i) => (s.area.startsWith("house:") && !LATE.includes(s.bench) ? i : -1)).filter((i) => i >= 0);
   const housesEnd = houseIdx.length ? houseIdx[houseIdx.length - 1] + 1 : 51;
   run.check("20 plaza / forecourt seats first, 31 in the memorial hall at 20..50 (from its model), then the houses' in one run (house 1: 12)", firstIds.every((id) => /^(plaza_\d|memorial_forecourt)$/.test(id)) && all.slice(20, 51).every((s) => s.area === "hall") && by("hall") === 31 && house1 === 12 && houseIdx[0] === 51 && houseIdx.length === housesEnd - 51, {
     village: by("village"),

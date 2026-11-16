@@ -98,7 +98,8 @@ export function LakeHud({ pose, seat, orbit }: { pose: Pose; seat: SeatState; or
     // rod rented / returned: a line of words
     // the held item (손에 드는 것) is left with the shop while the rod is out, and given back with the rod (fishingRig.stowHandItem)
     const item = carriesHandItem(selfId());
-    if (view.rod > 0 && lastRod.current === 0) store.getState().say(item ? "2칸 대를 빌렸어요. 들고 있던 물건은 가게에 맡겼어요. 빈 의자에 앉아서 던지세요!" : "2칸 대를 빌렸어요. 빈 의자에 앉아서 던지세요!", 4200);
+    // (ux1's words for a first-timer: "낚싯대", not the rod's length; lake-v2's note about the held item)
+    if (view.rod > 0 && lastRod.current === 0) store.getState().say(item ? "낚싯대를 빌렸어요. 들고 있던 물건은 가게에 맡겼어요. 잔교의 빈 의자에 앉아서 던져요!" : "낚싯대를 빌렸어요. 잔교의 빈 의자에 앉아서 던져요!", 4200);
     if (view.rod === 0 && lastRod.current > 0) store.getState().say(item ? "낚싯대를 반납하고 맡긴 물건을 돌려받았어요." : "낚싯대를 반납했어요.");
     lastRod.current = view.rod;
     // the fish is landed: the card and the dex of this device
