@@ -13,6 +13,7 @@ export const HOUSE_9_COLLIDERS: readonly AABB[] = [
   { minX: 551.7, maxX: 562.9, minZ: 30, maxZ: 30.3 }, // col__h9_2_wall_front
   { minX: 552, maxX: 552.62, minZ: -3.32, maxZ: -2.22 }, // col__h9_1_sink
   { minX: 552, maxX: 552.62, minZ: -2.22, maxZ: -1.22 }, // col__h9_1_cook
+  { minX: 552, maxX: 554, minZ: 24.84, maxZ: 24.96 }, // col__h9_2_part_bedroom_0
   { minX: 552.02, maxX: 552.57, minZ: 28.4, maxZ: 29.6 }, // col__h9_2_wardrobe
   { minX: 552.03, maxX: 552.81, minZ: -1.21, maxZ: -0.29 }, // col__h9_1_fridge
   { minX: 552.08, maxX: 553.12, minZ: 22.15, maxZ: 24.26 }, // col__h9_2_bed
@@ -24,6 +25,7 @@ export const HOUSE_9_COLLIDERS: readonly AABB[] = [
   { minX: 555.63, maxX: 556.07, minZ: -3.07, maxZ: -2.63 }, // col__h9_1_stool3
   { minX: 555.63, maxX: 556.07, minZ: -2.52, maxZ: -2.08 }, // col__h9_1_stool2
   { minX: 555.63, maxX: 556.07, minZ: -1.97, maxZ: -1.53 }, // col__h9_1_stool
+  { minX: 555.7, maxX: 556, minZ: 24.84, maxZ: 24.96 }, // col__h9_2_part_bedroom_1
   { minX: 556.33, maxX: 556.97, minZ: -7.22, maxZ: -6.58 }, // col__h9_1_plant
   { minX: 557.06, maxX: 561.14, minZ: -7.7, maxZ: -6.4 }, // col__h9_1_stair_high
   { minX: 557.06, maxX: 562.5, minZ: 22.3, maxZ: 23.6 }, // col__h9_2_stairwell
@@ -59,9 +61,11 @@ export const HOUSE_9_CAMERA_BOXES: readonly CameraBox[] = [
   { minX: 551.7, maxX: 562.9, minZ: 21.9, maxZ: 22.2, height: 3.7 }, // col__h9_2_wall_back
   { minX: 551.7, maxX: 552, minZ: 22.2, maxZ: 30, height: 3.7 }, // col__h9_2_wall_left
   { minX: 551.7, maxX: 562.9, minZ: 30, maxZ: 30.3, height: 3.7 }, // col__h9_2_wall_front
+  { minX: 552, maxX: 554, minZ: 24.84, maxZ: 24.96, height: 3.7 }, // col__h9_2_part_bedroom_0
   { minX: 552.02, maxX: 552.57, minZ: 28.4, maxZ: 29.6, height: 1.9 }, // col__h9_2_wardrobe
   { minX: 552.03, maxX: 552.81, minZ: -1.21, maxZ: -0.29, height: 1.8 }, // col__h9_1_fridge
   { minX: 555.5, maxX: 555.6, minZ: -1.5, maxZ: 0, height: 3.7 }, // col__h9_1_part_entry_0
+  { minX: 555.7, maxX: 556, minZ: 24.84, maxZ: 24.96, height: 3.7 }, // col__h9_2_part_bedroom_1
   { minX: 557.06, maxX: 561.14, minZ: -7.7, maxZ: -6.4, height: 3.7 }, // col__h9_1_stair_high
   { minX: 558.12, maxX: 559.07, minZ: 29.65, maxZ: 29.95, height: 1.6 }, // col__h9_2_case
   { minX: 558.3, maxX: 559, minZ: -1.6, maxZ: -1.4, height: 2.4 }, // col__h9_1_part_entry_2
