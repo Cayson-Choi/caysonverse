@@ -15,7 +15,7 @@ import type { CharacterSlot } from "../characterManifest";
 export const NPC_GLB_PATH = "/models/npc.glb";
 
 /** npc.glb 내용의 sha256 앞 8자리. 모델 URL에 ?v=로 붙인다. */
-export const NPC_GLB_HASH = "2f816d8d";
+export const NPC_GLB_HASH = "e76612ac";
 
 /**
  * 디스크 예산(character.glb와 따로): 1.5 MB. owner 2026-11-16 "절대로 허접해 보이면 안되고 디테일을 잘 살리도록 해"로 옷감 노멀 맵·

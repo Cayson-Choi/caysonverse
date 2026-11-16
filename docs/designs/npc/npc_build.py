@@ -521,18 +521,36 @@ def build_guide(m, badge_img):
         join_into(top, [cob])
         tag(top, 'top', 'npc_guide', False)
         print('GUIDE UV', [l.name for l in top.data.uv_layers])
-    # 모자: 빨간 챙 넓은 안내원 모자 + 흰 띠 + 앞 흰 원 'i'
+    # 모자: 빨간 면 안내원 모자(서울 '움직이는 관광안내소' 모자처럼) — 부드러운 크라운에 가운데 접힘, 챙은 넓고 옆이 살짝 올라감,
+    # 흰 띠와 바느질 줄, 앞 흰 원 'i'
     zb = RIM + 0.004
-    dome = flare(dome_bm(zb, 0.075, segs=40, rows=14, top_extra=0.02), zb + 0.05, zb + 0.24, 0.04, 2.21, 0.55)
-    base_r = lambda az: Vector((head_ring_pt(az, zb, 0.075).x - HC.x, head_ring_pt(az, zb, 0.075).y - HC.y, 0)).length
-    brim = brim_bm(zb + 0.010, lambda az: base_r(az) + 0.175 + 0.030 * math.cos(az) ** 2, droop=0.070, thick=0.018, segs=56)
-    band = ring_follow_bm(zb + 0.040, 0.080, 0.012, 0.030, segs=56, rsegs=8)
-    tmpb = merge_bms([dome.copy(), band.copy()]); hb = bvh_of_bms([tmpb])[0]; tmpb.free()
+    crown = crown_bm(zb, 2.225, 0.075, flare_k=-0.02, round_r=0.13)
+    for v in crown.verts:                       # 위 가운데 앞뒤로 살짝 눌린 접힘(카우보이 모자 결)
+        if v.co.z > 2.17:
+            v.co.z -= 0.028 * math.exp(-((v.co.x - HC.x) / 0.07) ** 2) * smoothstep(2.17, 2.22, v.co.z)
+    def ringr(az):
+        q = head_ring_pt(az, zb, 0.075)
+        return Vector((q.x - HC.x, q.y - HC.y, 0)).length
+    def brimP(u, v, lower=False):
+        az = 2 * math.pi * u
+        r0 = ringr(az) - 0.004
+        L = 0.165 + 0.020 * math.cos(az) ** 2
+        side = abs(math.sin(az))
+        dro = math.radians(lerp(8, 18, v)) * (1 - 0.9 * side)
+        lift = 0.030 * side * v ** 1.6         # 옆은 살짝 올라간 챙
+        d = Vector((math.sin(az), -math.cos(az), 0))
+        p_ = Vector((HC.x, HC.y, zb + 0.006)) + d * (r0 + L * v * math.cos(dro)) + Vector((0, 0, -L * v * math.sin(dro) + lift))
+        if lower: p_ += Vector((0, 0, -0.014))
+        return p_
+    brim = grid_solid_bm(lambda u, v: brimP(u, v), 48, 6, closed_u=True, thick=lambda u, v: brimP(u, v, True))
+    band = ring_follow_bm(zb + 0.040, 0.080, 0.012, 0.030, segs=48, rsegs=8)
+    stitches = [setmat(stitch_ring_bm([brimP(k / 48, f_) + Vector((0, 0, 0.0025)) for k in range(48)]), 1) for f_ in (0.35, 0.70)]
+    tmpb = merge_bms([crown.copy(), band.copy()]); hb = bvh_of_bms([tmpb])[0]; tmpb.free()
     p2, n2 = surf(hb, (0, -1.5, zb + 0.085), (0, 1, 0))
     em = []
     if p2 is not None:
         em = [setmat(orient_front(disc_bm(0.046, 0.010), n2, p2 + n2 * 0.006), 1), setmat(orient_front(i_mark_bm(0.058), n2, p2 + n2 * 0.013), 0)]
-    finish_hat('hat__npc_guide_hat', 'npc_guide_hat', [setmat(dome, 0), setmat(brim, 0), setmat(band, 1)] + em, [m['red'], m['white']], target=1100)
+    finish_hat('hat__npc_guide_hat', 'npc_guide_hat', [setmat(crown, 0), setmat(brim, 0), setmat(band, 1)] + stitches + em, [m['red'], m['white']], target=1300)
     # 손에 드는 것: 클립보드(나무 판 + 은색 집게 + 안내지, 마을색 줄) — 오른손
     U, S, F = Vector((-1, 0, 0)), Vector((0, 0, 1)), Vector((0, 1, 0))
     Mx = frame_mat(U, S, F, GRIP)
