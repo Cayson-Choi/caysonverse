@@ -22,10 +22,11 @@ import { holdNightLightmap, noteBusRequested, noteNightRequested, noteVillageReq
 import { preloadBus } from "./villageBusLoader";
 import { createVegetation, hideLegacyVegetationSources, vegModeFrom, vegetationPark, type VegStats, type VillageVegetation } from "./veg/villageVegetation";
 import { vegDressing } from "./vegDressing";
-import { createWaterfall3D, hideWaterfallCards, type Waterfall3D } from "./waterfall3d";
 import { VillageMountains, mountainsMode, preloadMountains } from "./VillageMountains";
-import type { Object3D } from "three";
 import { LakeVillagePatch } from "../lake/PatchVillage";
+import { FallsModel } from "./falls/FallsModel";
+import { fallsMode, fallsRuntimeFor } from "./falls/fallsConfig";
+import { fallsModelBuilt } from "./falls/fallsLoader";
 import type { DrawnGap } from "./veg/drawnGap";
 
 declare global {
@@ -50,10 +51,8 @@ function fountainMode(): "new" | "old" {
   return new URLSearchParams(location.search).get("water") === "old" ? "old" : "new";
 }
 
-function waterfallMode(): "new" | "old" {
-  if (!import.meta.env.DEV || typeof location === "undefined") return "new";
-  return new URLSearchParams(location.search).get("waterfall") === "old" ? "old" : "new";
-}
+/** What draws the waterfall (falls/fallsConfig.ts): the model, the DEV stand-in, or nothing (`?falls=off`). */
+const fallsRuntime = () => fallsRuntimeFor(fallsMode(), fallsModelBuilt(), !!import.meta.env.DEV);
 
 /**
  * 케이슨 마을's model in the scene (Task 7): loads `village.glb` (Draco, decoder at /draco/, GPU instances) and its
@@ -205,19 +204,6 @@ export function VillageModel({ tier }: { tier: VillageTier }) {
       setVeg(null);
     };
   }, [nodes, tier, getThree]);
-  const waterfall = useMemo<{ runtime: Waterfall3D; hidden: Object3D[] } | null>(() => {
-    if (waterfallMode() === "old") return null;
-    const hidden = hideWaterfallCards(nodes.root);
-    return { runtime: createWaterfall3D(tier), hidden };
-  }, [nodes, tier]);
-  useEffect(() => {
-    return () => {
-      waterfall?.runtime.dispose();
-      waterfall?.hidden.forEach((o) => {
-        o.visible = true;
-      });
-    };
-  }, [waterfall]);
   const night = useNightMapWanted();
   useEffect(() => {
     // Dev/E2E probe: the dressed model (draw-call and material checks). Tree-shaken in production.
@@ -231,7 +217,6 @@ export function VillageModel({ tier }: { tier: VillageTier }) {
     tickVillage(nodes, clock.elapsedTime, gl.toneMappingExposure);
     applyDayNight(nodes, dayNight.applied);
     veg?.update(camera, clock.elapsedTime, gl.domElement.height);
-    waterfall?.runtime.update(clock.elapsedTime, camera);
   });
   // dispose={null}: the geometry and shared materials belong to the loader's cache.
   return (
@@ -240,11 +225,13 @@ export function VillageModel({ tier }: { tier: VillageTier }) {
       {/* The fishing lake takes the old backdrop lake out of this clone once it is drawn (lake/lakeVillagePatch.ts). */}
       <LakeVillagePatch root={nodes.root} />
       {veg && <primitive object={veg.group} dispose={null} />}
-      {waterfall && <primitive object={waterfall.runtime.group} dispose={null} />}
       {mountains && (
         <Suspense fallback={null}>
           <VillageMountains nodes={nodes} tier={tier} />
         </Suspense>
+      )}
+      {(fallsRuntime() === "model" || fallsRuntime() === "stub") && (
+        <FallsModel tier={tier} sky={nodes.sky?.map ?? null} skyMapping={nodes.skyMapping} runtime={fallsRuntime() as "model" | "stub"} />
       )}
       {night && (
         <Suspense fallback={null}>

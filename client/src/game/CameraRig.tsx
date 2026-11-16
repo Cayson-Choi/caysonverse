@@ -68,7 +68,7 @@ import { overviewAllowed } from "./indoorCamera";
 import { createFollowRig, createFollowSpot, noteAreaLimit, stepFollowRig } from "./followRig";
 import { rememberOrbit, restoreOrbit } from "./cameraMemory";
 import { cameraProbe } from "./cameraProbe";
-import { activeBounds, activeSeats, getActiveMap } from "./activeMap";
+import { activeBounds, activePickBounds, activeSeats, getActiveMap } from "./activeMap";
 import { localGlide } from "./seatMotion";
 import { seatApproachGoal, seatUnderTap, warmSeatApproachGoals } from "./seatTap";
 import { seatedEyeOffset, stepSeatedWeight } from "./seatedEye";
@@ -341,7 +341,7 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
       raycaster.near = cam.near; // nearer than the near plane is not drawn: nothing to click
       raycaster.far = cam.far;
       raycaster.layers.mask = cam.layers.mask;
-      const pick = pickSurface(raycaster, scene, { area: activeBounds() });
+      const pick = pickSurface(raycaster, scene, { area: activePickBounds() });
       if (pick) {
         const { origin: o, direction: d } = raycaster.ray;
         pick.ray = { o: { x: o.x, y: o.y, z: o.z }, d: { x: d.x, y: d.y, z: d.z } };
@@ -433,7 +433,8 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
       }
       // the walk that ends beside the clicked seat offers THAT one, though another may be a hair nearer (seatPreference.ts)
       setPreferredSeat(sitOn ?? -1);
-      const start = startClickPlan(from.x, from.z, surface, map.geometry.obstacles, activeBounds(), !!s, { furniture, farFirst: seatGoal !== null });
+      const start = startClickPlan(from.x, from.z, surface, map.geometry.obstacles, activeBounds(), !!s, { furniture, farFirst: seatGoal !== null, shore: map.shore });
+      const toShore = !!(surface && map.shore && map.shore(surface.x, surface.z));
       const cameraNow = (): PerspectiveCamera => {
         if (snap) return snap;
         const cam = camera as PerspectiveCamera;
@@ -445,13 +446,16 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
       const settle = (raw: ClickPlan): ClickPlan => {
         let plan = raw;
         if (plan.ok && plan.adjusted !== "none") plan = { ...plan, y: groundAt(plan.x, plan.z, plan.y, true) };
-        // Rule 4: only a ring on the screen takes a walk.
+        // Rule 4: only a ring on the screen takes a walk — but a click on the falls' pool walks to its nearest shore
+        // spot wherever that is (W6: on the phone's narrow portrait view the shore spot of a click on the pool's north
+        // or south part lies off the screen, and a tap on the water that does nothing is what B10 complained of)
         let view: RingView | null = null;
         let unseen: ClickPlan | null = null;
         if (plan.ok) {
           view = viewOfRing(plan.x, plan.y, plan.z, cameraNow());
-          // a seat clicked was itself in view: its approach (beside or under the camera) need not be
-          const seen = sitOn === null ? requireSeen(plan, view) : plan;
+          // a seat clicked was itself in view: its approach (beside or under the camera) need not be; a click on the falls' pool
+          // walks to its nearest shore spot wherever that is (W6: on the phone's portrait view it may lie off the screen)
+          const seen = sitOn !== null || toShore ? plan : requireSeen(plan, view);
           if (!seen.ok) unseen = plan;
           plan = seen;
         }

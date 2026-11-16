@@ -12,6 +12,7 @@ import { isFreeSpot } from "./clickPlan";
 import { CHAIR_BACK_BEHIND, CHAIR_HALF_WIDTH } from "@caysonverse/shared/village/benchSeats";
 import { VILLAGE_SEAT_MARKERS } from "@caysonverse/shared/village/generated/villageSeatMarkers";
 import { lakeSeats } from "@caysonverse/shared/village/lakeLayout";
+import { VILLAGE_LAYOUT } from "@caysonverse/shared/village/villageLayout";
 
 /** A tap this far past a chair's footprint (m) still counts as on it (a seat's edge, a leg, a rail seen edge-on). */
 export const SEAT_TAP_MARGIN = 0.1;
@@ -54,6 +55,9 @@ const FOOTPRINTS: readonly Footprint[] = [...VILLAGE_SEAT_MARKERS.map((m): Footp
   half: m.approach === "side" ? CHAIR_HALF_WIDTH : (m.length ?? 1) / 2,
 })), ...LAKE_CHAIR_FOOTPRINTS];
 
+/** The waterfall rest area's seat stones (B1 W5): backless, four seats each (two places, a west and an east side). */
+const STONES = VILLAGE_LAYOUT.backdrop.waterfall.options.seats ? VILLAGE_LAYOUT.backdrop.waterfall.seats : [];
+
 /**
  * The seat (index into `seats`) whose chair or bench the tap at (x, y, z) landed on, or -1. `seats` is the active map's
  * list; a marker whose seat is not in it (another area) never matches. The nearest footprint centre wins.
@@ -74,6 +78,28 @@ export function seatUnderTap(seats: readonly Seat[], x: number, y: number, z: nu
     const i = seats.findIndex((s) => (s as { bench?: string }).bench === f.id);
     if (i < 0) continue;
     best = i;
+    bestD = d;
+  }
+  // a seat stone: the seat of the tapped side and place nearest the tap (the stone has no front, every side is one)
+  for (const st of STONES) {
+    const dx = x - st.centre.x;
+    const dz = z - st.centre.z;
+    if (Math.abs(dx) > st.size.x / 2 + margin || Math.abs(dz) > st.size.z / 2 + margin) continue;
+    const d = Math.hypot(dx, dz);
+    if (d >= bestD) continue;
+    let at = -1;
+    let atD = Infinity;
+    for (let i = 0; i < seats.length; i++) {
+      const s = seats[i] as { bench?: string; x: number; z: number };
+      if (s.bench !== st.id) continue;
+      const sd = Math.hypot(x - s.x, z - s.z);
+      if (sd < atD) {
+        at = i;
+        atD = sd;
+      }
+    }
+    if (at < 0) continue;
+    best = at;
     bestD = d;
   }
   return best;
