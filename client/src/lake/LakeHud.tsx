@@ -17,7 +17,7 @@ import { biteWindowMs } from "@caysonverse/shared/village/fishing";
 import { expireLakeUi, useLakeStore } from "./lakeStore";
 import { LakeCards } from "./LakeCards";
 import { carriesHandItem } from "./fishingRig";
-import { backToFishing, catchCamera, fishingCamera, restoreCamera } from "./lakeCamera";
+import { backToFishing, catchCamera, fishingCamera, liftCamera, restoreCamera } from "./lakeCamera";
 import "./lake.css";
 
 /** The last cast recorded in the dex (session:seq): module-wide, so a remount of the HUD never records a catch twice. */
@@ -111,6 +111,11 @@ export function LakeHud({ pose, seat, orbit }: { pose: Pose; seat: SeatState; or
       // the camera comes round to see the fish held up, and goes back over the shoulder for the next cast
       const spot = LAKE_FISHING_SPOTS[view.spot];
       if (spot) catchCamera(spot.yaw);
+    }
+    // the fish coming in: the camera goes round to the side to see the rod, the line and the fish come out of the water
+    if ((view.phase === FISH_PHASE.lifting || view.phase === FISH_PHASE.fighting) && lastPhase.current !== view.phase) {
+      const spot = LAKE_FISHING_SPOTS[view.spot];
+      if (spot) liftCamera(spot.yaw);
     }
     if (view.phase === FISH_PHASE.ready && lastPhase.current === FISH_PHASE.releasing) {
       const spot = LAKE_FISHING_SPOTS[view.spot];
