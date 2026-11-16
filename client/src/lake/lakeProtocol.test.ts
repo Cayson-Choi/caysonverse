@@ -63,7 +63,8 @@ describe("the lake protocol is the server's own numbers (shared fishing.ts, desi
     expect(parseTrophy({ by: "가나", kind: "shark", cm: 3 })).toBeNull();
   });
   it("every refusal is Korean words, never the code", () => {
-    for (const r of ["not_near_rental", "already_has_rod", "no_rod", "not_near_return", "stand_first", "too_soon", "not_seated", "bad_spot", "spot_taken", "too_far", "already_cast", "too_early", "no_bite", "bite_expired", "not_fighting", "wrong_phase", "invalid_time", "???"])
+    for (const r of ["not_near_rental", "already_has_rod", "no_rod", "not_near_return", "stand_first", "too_soon", "not_seated", "bad_spot", "spot_taken", "too_far", "already_cast", "too_early", "no_bite", "bite_expired", "wrong_phase", "invalid_time", "???"])
       expect(rejectText(r)).toMatch(/[가-힣]/);
+    expect(rejectText("not_fighting")).toBe(""); // the hold's last repeats after the fight: silent
   });
 });

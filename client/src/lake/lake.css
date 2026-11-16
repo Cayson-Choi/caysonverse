@@ -178,11 +178,12 @@
   background: rgba(30, 90, 140, 0.88);
 }
 
-/* phone: the strip sits under the top row (the 4 buttons at the right, the roster column at the left), 8 px between its buttons */
+/* phone: the strip sits under the top row (the 4 buttons at the right, the roster column at the left), 8 px between its buttons,
+   clear of the compass dial under the right buttons (ui/hud.css .cv-compass: 64 px at right 16 px) */
 .cv-touch .cv-lake-top {
   top: calc(12px + 56px + env(safe-area-inset-top, 0px));
   left: 96px;
-  right: 12px;
+  right: calc(16px + 64px + 10px);
   width: auto;
   transform: none;
   gap: 8px;

@@ -129,7 +129,10 @@ export function listenLake(l: LakeNetListeners): () => void {
       const s = parsePersonalState(p);
       if (s) l.state(s);
     }));
-    offs.push(r.onMessage(LakeServerMsg.Rejected, (p) => l.rejected(rejectText((p as { reason?: unknown } | null)?.reason))));
+    offs.push(r.onMessage(LakeServerMsg.Rejected, (p) => {
+      const text = rejectText((p as { reason?: unknown } | null)?.reason);
+      if (text) l.rejected(text);
+    }));
     offs.push(r.onMessage(LakeServerMsg.Trophy, (p) => {
       const t = parseTrophy(p);
       if (t) l.trophy(t);

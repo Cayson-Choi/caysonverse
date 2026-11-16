@@ -234,6 +234,9 @@ export function rejectText(reason: unknown): string {
       return "아직이에요! 찌가 크게 움직일 때까지 기다려요.";
     case "bite_expired":
       return "조금 늦었어요. 다시 던져요.";
+    case "not_fighting":
+      // the held button's last repeats after the fight ended (the fish is in the net): nothing went wrong
+      return "";
     default:
       return "지금은 할 수 없어요.";
   }

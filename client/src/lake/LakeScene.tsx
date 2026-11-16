@@ -23,6 +23,7 @@ import {
   RingGeometry,
   SphereGeometry,
   Vector3,
+  type PointLight,
   type Texture,
 } from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
@@ -46,6 +47,8 @@ import { useLakeStore } from "./lakeStore";
 import { FISHING_CHAIRS, inLakeZone, nearestFreeChair } from "./lakeNearby";
 
 const IDLE_WAIT_MS = 5000;
+/** A lamp's light at night (B's `light__lake_lamp_*`: warm, 14 m): physical units, tuned by eye on the pier at 23:00. */
+const LAMP_LIGHT = { color: "#ffd9a0", intensity: 9, distance: 13, decay: 1.6 } as const;
 /** A player past this x (the village's east edge region) asks for the lake file at once (design 10). */
 const NEAR_X = 60;
 
@@ -118,11 +121,32 @@ function LakeGlb({ tier }: { tier: VillageTier }) {
       m.renderOrder = 2;
     }
   }, [dressed, water]);
-  useFrame(() => lakeDayNight(dressed, dayNight.applied));
+  // the lamps' own light at night on the pier and the 좌대 (the structures have no baked light map): the rich tier only, always in
+  // the scene (a light count that changes would recompile every lit material at dusk), dark by day
+  const lampLights = useRef<Array<PointLight | null>>([]);
+  useFrame(() => {
+    const s = dayNight.applied;
+    lakeDayNight(dressed, s);
+    for (const l of lampLights.current) if (l) l.intensity = LAMP_LIGHT.intensity * s.lights;
+  });
   return (
     <>
       <primitive object={dressed.terrain} dispose={null} />
       <primitive object={dressed.facilities} dispose={null} />
+      {tier === "high" &&
+        dressed.lampHeads.map((p, i) => (
+          <pointLight
+            key={i}
+            ref={(l) => {
+              lampLights.current[i] = l;
+            }}
+            position={[p.x, p.y - 0.15, p.z]}
+            color={LAMP_LIGHT.color}
+            intensity={0}
+            distance={LAMP_LIGHT.distance}
+            decay={LAMP_LIGHT.decay}
+          />
+        ))}
     </>
   );
 }
