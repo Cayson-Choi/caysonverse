@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import { useAnimations } from "@react-three/drei";
 import { LoopOnce, Vector3, type AnimationAction, type Group, type Object3D } from "three";
-import { LAKE_SHOPKEEPER_NODE } from "@caysonverse/shared/village/npcLooks";
+import { LAKE_SHOPKEEPER_FLOOR_LIFT, LAKE_SHOPKEEPER_NODE } from "@caysonverse/shared/village/npcLooks";
 import type { Pose } from "../game/types";
 import { reportAvatarClip } from "../game/useAvatar";
 import { useNpcAvatar } from "../village/npcAvatar";
@@ -31,6 +31,7 @@ export function LakeShopkeeper({ structures, pose }: { structures: Object3D; pos
       structures.updateWorldMatrix(true, true);
       node.getWorldPosition(at);
     }
+    at.y += LAKE_SHOPKEEPER_FLOOR_LIFT; // on the shop's floor tiles, behind the counter (top 1.42)
     return at;
   }, [structures]);
 

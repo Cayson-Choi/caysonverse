@@ -217,6 +217,39 @@ try {
     const w1 = await waved();
     run.check("stepping onto the rental pad: the shopkeeper waves", w1, (await avatars(P))["npc:lake_shopkeeper"].clip);
     await closeUp(P, `${label}-shop-wave.png`, [101.2, 2.0, -16.4], [102, 1.6, -20.9], 34);
+    // from the pad: the game's own camera, 3rd person and 1st person (the shop interior behind the clear window glass)
+    await turnCameraTo(P, 102, -20.9);
+    await sleep(2500);
+    await run.shot(P, `${label}-shop-pad-3rd.png`);
+    const viewBtn = P.page.locator('[aria-label="1인칭/3인칭 전환"]').first();
+    if (await viewBtn.count()) {
+      await press(P, viewBtn);
+      await sleep(1800);
+      await run.shot(P, `${label}-shop-pad-1st.png`);
+      summary.fp = await P.page.evaluate(() => window.__cv.getView?.() ?? null);
+      await press(P, viewBtn);
+      await sleep(1200);
+    }
+    // the counter check: both hands on the counter top (1.42 m) behind its edge, nothing of the body through the counter
+    const fit = await P.page.evaluate(() => {
+      const { scene } = window.__cvThree();
+      let sk = null;
+      scene.traverse((o) => {
+        if (sk || !o.isSkinnedMesh) return;
+        const w = o.skeleton.bones[0].getWorldPosition(o.position.clone());
+        if (Math.hypot(w.x - 102, w.z + 20.9) < 0.3) sk = o.skeleton;
+      });
+      if (!sk) return null;
+      const at = (n) => {
+        const b = sk.bones.find((x) => x.name.replace(/\./g, "") === n.replace(/\./g, ""));
+        const v = b.getWorldPosition(b.position.clone());
+        return { x: Math.round(v.x * 1000) / 1000, y: Math.round(v.y * 1000) / 1000, z: Math.round(v.z * 1000) / 1000 };
+      };
+      return { handL: at("handslot.l"), handR: at("handslot.r"), hips: at("hips"), chest: at("chest") };
+    });
+    summary.counterFit = fit;
+    run.check("hands rest on the counter top (1.42 m) on the shopkeeper's side of its back edge (z -20.55..-19.70)",
+      fit && [fit.handL, fit.handR].every((h) => h.y > 1.43 && h.y < 1.52 && h.z > -20.55 && h.z < -19.9), fit);
     await waitIdle(P);
     await sleep(6500);
     await act(P); // rent a rod (E on a PC; on a phone the lake's own big button)

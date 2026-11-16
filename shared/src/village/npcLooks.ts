@@ -15,7 +15,7 @@ import type { CharacterSlot } from "../characterManifest";
 export const NPC_GLB_PATH = "/models/npc.glb";
 
 /** npc.glb 내용의 sha256 앞 8자리. 모델 URL에 ?v=로 붙인다. */
-export const NPC_GLB_HASH = "4478a7dc";
+export const NPC_GLB_HASH = "6ad2589e";
 
 /**
  * 디스크 예산(character.glb와 따로): 1.5 MB. owner 2026-11-16 "절대로 허접해 보이면 안되고 디테일을 잘 살리도록 해"로 옷감 노멀 맵·
@@ -95,6 +95,11 @@ export const NPC_LOOKS: Readonly<Record<NpcId, NpcLook>> = {
 
 /** 낚시터 대여점 주인이 서는 자리: lake_structures.glb의 빈 노드(창구 안, 바닥 높이 0.4, 남쪽(+z)을 본다). */
 export const LAKE_SHOPKEEPER_NODE = "npc__lake_shopkeeper";
+/**
+ * 대여점 안 바닥 타일 윗면(lake_shop_interior.glb, build_shop_interior.py FY 0.44)이 그 노드(사무소 바닥판 0.40)보다 높은 만큼(m):
+ * 주인의 발이 타일 위에 서고, 두 손이 카운터 윗면(1.42)에 얹힌다(Npc_Shop_Idle, npc_build.py SHOP_COUNTER).
+ */
+export const LAKE_SHOPKEEPER_FLOOR_LIFT = 0.44 - 0.4;
 
 /** npc.glb에 있어야 하는 부품 메시 노드 이름(`<slot>__npc_*`), 정렬. */
 export function npcPartNodes(): string[] {

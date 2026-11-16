@@ -668,17 +668,23 @@ def build_shopkeeper(m):
     finish_top('top__npc_shopkeeper', 'npc_shopkeeper', parts + towel + zf,
                [m['towel'], m['olive'], m['olive_dark'], m['brass'], m['silver'], m['towel_blue'], m['shirt_grey'], m['zipper'], m['lure'], m['olive_mesh']],
                target=4200, dec_parts=body)
-    # 모자: 부드러운 면 벙거지 — 곧게 선 크라운(위 모서리 둥글게), 아래로 처진 챙, 챙과 크라운의 바느질 줄, 옆 공기구멍 둘
-    zb = RIM + 0.004
-    crown = crown_bm(zb, 2.215, 0.074, flare_k=-0.03, round_r=0.15)
+    # 모자: 부드러운 면 벙거지(coordinator 3차: 낮고 둥근 크라운, 챙은 사방 15~25° 아래로, 머리 위에 얹혀 눈썹·안경·눈이 챙 아래로 다 보이게)
+    # — 띠는 머리카락 선(1.84)보다 높은 1.95에 얹고, 크라운은 머리+머리카락 꼭대기(2.20) 바로 위 2.235까지만. 챙 0.13(머리 너비 1 m 기준
+    # 실제 벙거지 챙 6~7 cm 비율). 위는 살짝 처진(가운데가 내려앉은) 부드러운 면.
+    zb = 1.95
+    crown = crown_bm(zb, 2.235, 0.074, flare_k=0.025, round_r=0.11)
+    for v in crown.verts:   # 꼭대기 가운데가 살짝 내려앉은 부드러운 면
+        if v.co.z > 2.20:
+            rr = math.hypot(v.co.x - HC.x, v.co.y - HC.y)
+            v.co.z -= 0.012 * math.exp(-(rr / 0.20) ** 2)
     def ringr(az):
         q = head_ring_pt(az, zb, 0.074)
         return Vector((q.x - HC.x, q.y - HC.y, 0)).length
     def brimP(u, v, lower=False):
         az = 2 * math.pi * u
         r0 = ringr(az) - 0.004
-        L = 0.165 + 0.010 * math.cos(az) ** 2
-        dro = math.radians(lerp(38, 74, v ** 1.1))
+        L = 0.150 + 0.008 * math.cos(az) ** 2
+        dro = math.radians(lerp(15, 25, v))
         d = Vector((math.sin(az), -math.cos(az), 0))
         p = Vector((HC.x, HC.y, zb + 0.004)) + d * (r0 + L * v * math.cos(dro)) + Vector((0, 0, -L * v * math.sin(dro)))
         if lower: p += Vector((0, 0, -0.013))
@@ -692,14 +698,14 @@ def build_shopkeeper(m):
         pts = []
         for k in range(48):
             az = 2 * math.pi * k / 48
-            r = ringr(az) * (1 + 0.03 * (dz / 0.17)) + 0.003
+            r = ringr(az) * (1 + 0.025 * (dz / 0.285)) + 0.003
             pts.append(Vector((HC.x + math.sin(az) * r, HC.y - math.cos(az) * r, zb + dz)))
         stitches.append(setmat(stitch_ring_bm(pts), 1))
     holes = []
     for s_ in (1, -1):
         az = s_ * math.pi / 2
         r = ringr(az) * 1.02 + 0.004
-        q = Vector((HC.x + math.sin(az) * r, HC.y - math.cos(az) * r, zb + 0.10))
+        q = Vector((HC.x + math.sin(az) * r, HC.y - math.cos(az) * r, zb + 0.09))
         nrm = Vector((math.sin(az), -math.cos(az), 0))
         holes.append(orient_front(xform(torus_bm(0.010, 0.0035, segs=12, rsegs=4), Matrix.Rotation(math.radians(90), 4, 'X')), nrm, q))
     finish_hat('hat__npc_shop_hat', 'npc_shop_hat', [setmat(crown, 0), setmat(brim, 0)] + stitches + [setmat(h_, 2) for h_ in holes],
@@ -880,8 +886,12 @@ def fold_hands(dz=0.0):
 def hl(yaw, pitch=0.0):
     return [((0, 0, 1), yaw), ((1, 0, 0), pitch)]
 
-def shop_hand(side, x=0.20, y=-0.40, z=-0.27):
-    """대여점 주인: 손을 창구 턱(가슴 아래 앞)에 얹는다(손바닥 아래, 손가락 앞)."""
+# 낚시 대여점 카운터(lake_shop_interior.glb, build_shop_interior.py CTR): 윗면 1.42, 주인 쪽 모서리 z -20.55. 주인의 뿌리는 바닥 0.44,
+# z -20.9(npc__lake_shopkeeper) → 윗면은 뿌리 위 0.98, 모서리는 뿌리 앞 0.35. 손(쥔 점)은 윗면 위 3 cm, 모서리 안쪽 0.10~0.12에.
+SHOP_COUNTER = dict(top_above_root=1.42 - 0.44, edge_ahead=0.35)
+
+def shop_hand(side, x=0.20, y=-0.455, z=0.085):
+    """대여점 주인: 두 손을 카운터 윗면에 얹는다(손바닥 아래, 손가락 앞). s는 가슴 기준(가슴 머리 = 뿌리 위 약 0.97)."""
     sx = 1 if side == 'l' else -1
     return {'s': (sx * x, y, z), 'pole': (sx, 0.3, -1), 'a': (FING_L if side == 'l' else FING_R, (0, -1, -0.35)), 'b': (BACK, (0, 0.1, 1)), 'wrist_share': 0.5}
 
@@ -889,7 +899,7 @@ def shop_wave(tilt):
     t = math.radians(tilt)
     return {'s': (-0.44, -0.12, 0.50), 'pole': (-1, 0.2, -1), 'a': (FING_R, (math.sin(t), -0.15, math.cos(t))), 'b': (BACK, (0, 1, 0.1)), 'wrist_share': 0.6}
 
-def shop_pose(frame=0, head=None, R=None, L=None, lean=6.0):
+def shop_pose(frame=0, head=None, R=None, L=None, lean=3.0):
     rot = {'spine': [((1, 0, 0), lean * 0.6)], 'chest': [((1, 0, 0), lean * 0.4)]}
     if head: rot['head'] = head
     return stand_pose(frame, rot, R or shop_hand('r'), L or shop_hand('l'))
@@ -943,10 +953,10 @@ def clip_defs():
         (0, lambda: shop_pose(0, hl(0, 2))),
         (24, lambda: shop_pose(8, hl(22, 0))),
         (44, lambda: shop_pose(12, hl(26, -2))),
-        (64, lambda: shop_pose(16, hl(4, 10), R=shop_hand('r', x=0.06, z=-0.29))),
-        (76, lambda: shop_pose(18, hl(-2, 12), R=shop_hand('r', x=0.28, z=-0.29))),
-        (88, lambda: shop_pose(20, hl(2, 12), R=shop_hand('r', x=0.04, z=-0.29))),
-        (100, lambda: shop_pose(22, hl(-2, 10), R=shop_hand('r', x=0.24, z=-0.28))),
+        (64, lambda: shop_pose(16, hl(4, 10), R=shop_hand('r', x=0.06, z=0.085))),
+        (76, lambda: shop_pose(18, hl(-2, 12), R=shop_hand('r', x=0.28, z=0.085))),
+        (88, lambda: shop_pose(20, hl(2, 12), R=shop_hand('r', x=0.04, z=0.085))),
+        (100, lambda: shop_pose(22, hl(-2, 10), R=shop_hand('r', x=0.24, z=0.090))),
         (118, lambda: shop_pose(10, hl(-20, 0))),
         (144, lambda: shop_pose(0, hl(0, 2))),
     ])
@@ -977,6 +987,11 @@ def build_clips():
         FL['write_action'](name, poses, CLIP_BONES, float(length), cyclic)
         built.append(name)
         print('CLIP', name, len(poses), 'keys', length / FPS, 's', 'hand miss %.3f m' % DRIVE_MISS[0] if 'Drive' in name else '')
+        if name == 'Npc_Shop_Idle':
+            FL['reset_pose'](r); keys[0][1]()
+            for sd in ('l', 'r'):
+                h = FL['rig']().pose.bones['handslot.' + sd].head
+                print('SHOP HAND', sd, 'ahead %.3f' % -h.y, 'up %.3f' % h.z, '(counter top %.2f, edge %.2f ahead)' % (SHOP_COUNTER['top_above_root'], SHOP_COUNTER['edge_ahead']))
         DRIVE_MISS[0] = 0.0
     FL['reset_pose'](r)
     return built
