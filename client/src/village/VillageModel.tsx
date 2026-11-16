@@ -27,6 +27,7 @@ import { LakeVillagePatch } from "../lake/PatchVillage";
 import { FallsModel } from "./falls/FallsModel";
 import { fallsMode, fallsRuntimeFor } from "./falls/fallsConfig";
 import { fallsModelBuilt } from "./falls/fallsLoader";
+import { StreetFurniture } from "./street/StreetFurniture";
 import type { DrawnGap } from "./veg/drawnGap";
 import { LiveSunShadows } from "./LiveSunShadows";
 import { ensureShadowPlaceholder, liveSunEnabled } from "./sunShadows";
@@ -55,6 +56,12 @@ function fountainMode(): "new" | "old" {
 
 /** What draws the waterfall (falls/fallsConfig.ts): the model, the DEV stand-in, or nothing (`?falls=off`). */
 const fallsRuntime = () => fallsRuntimeFor(fallsMode(), fallsModelBuilt(), !!import.meta.env.DEV);
+
+/** The lamp posts and street banners (street/): the new ones, or the model's own with the DEV address flag `?street=old`. */
+function streetMode(): "new" | "old" {
+  if (!import.meta.env.DEV || typeof location === "undefined") return "new";
+  return new URLSearchParams(location.search).get("street") === "old" ? "old" : "new";
+}
 
 /**
  * 케이슨 마을's model in the scene (Task 7): loads `village.glb` (Draco, decoder at /draco/, GPU instances) and its
@@ -226,6 +233,8 @@ export function VillageModel({ tier }: { tier: VillageTier }) {
   return (
     <>
       <primitive object={nodes.root} dispose={null} />
+      {/* The lamp posts and banners: the baked ones out of this clone, the new ones drawn in their places (street/). */}
+      {streetMode() === "new" && <StreetFurniture root={nodes.root} tier={tier} />}
       {/* The fishing lake takes the old backdrop lake out of this clone once it is drawn (lake/lakeVillagePatch.ts). */}
       <LakeVillagePatch root={nodes.root} />
       {veg && <primitive object={veg.group} dispose={null} />}

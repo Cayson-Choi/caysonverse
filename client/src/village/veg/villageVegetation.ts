@@ -799,10 +799,10 @@ export class VillageVegetation {
     const twigMats = {} as Record<BarkPattern, Material>;
     for (const pattern of ["cherry", "plates", "willow", "smooth", "plum"] as const) {
       const map = barkTexture(pattern);
-      // the trunks and limbs lit per pixel with the bark photo's normal map (2026-11-16 plants2), moss on old wood
+      // the trunks and limbs lit per pixel with the bark photo's normal map (2026-11-16 plants2), no moss (owner 2026-11-16: "이끼는 안껴도 돼")
       const normal = flatNormal();
       const surf = BARK_SURFACE[pattern];
-      const mat = vegMaterial({ name: `M_veg_bark_${pattern}`, map, normalMap: normal, normalScale: surf.normal, gloss: surf.gloss, moss: true, wind: 0, windFar: 1, ambient: 0.55, sky: 0.2, sun: 0.45, back: 0.2 });
+      const mat = vegMaterial({ name: `M_veg_bark_${pattern}`, map, normalMap: normal, normalScale: surf.normal, gloss: surf.gloss, moss: false, wind: 0, windFar: 1, ambient: 0.55, sky: 0.2, sun: 0.45, back: 0.2 });
       barkMats[pattern] = mat;
       // the twigs' bark: the same, but giving way round the camera as the leaves do, and never thinner than a pixel
       const twig = vegMaterial({ name: `M_veg_twigs_${pattern}`, map, push: true, twig: true, wind: 0, windFar: 1, ambient: 0.55, sky: 0.2, sun: 0.45, back: 0.2 });

@@ -32,6 +32,7 @@
  * left, never a 521 "no rooms found"), and there is no admin to carry over.
  */
 
+import { bindClaimUpdates } from "../village/memorial/claimsStore";
 import type { Room } from "@colyseus/sdk";
 import type { WorldState } from "@caysonverse/shared/schema";
 import { RECONNECT_WINDOW_S } from "@caysonverse/shared/constants";
@@ -118,6 +119,7 @@ export function attachResilience(room: Room<WorldState>): void {
   // the new room's. Leaves with the room.
   bindVillageClock(room);
   bindHallCandles(room); // the memorial hall's candles (Task 9): CandleLit can come any time while in the hall
+  bindClaimUpdates(room); // a family claimed / changed a cubby (memorial stage B): refetch that cubby
 }
 
 /** True while recovering — read each frame (no subscribe) to suspend input. */

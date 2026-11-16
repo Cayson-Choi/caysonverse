@@ -1,3 +1,4 @@
+import { MemorialOverlays } from "./memorial/MemorialOverlays";
 import { isTouchDevice } from "../device";
 import { Suspense, useEffect, useLayoutEffect, useState } from "react";
 import { useFrame } from "@react-three/fiber";
@@ -453,6 +454,7 @@ export function VillageScene({ identity }: { identity: Identity }) {
           <DoorFade />
           <HouseEntryCover />
           <CubbyView />
+          <MemorialOverlays />
           <GuideDialog />
           <StarFinder orbit={orbit} />
           {area === "village" && <LakeHud pose={pose} seat={seat} orbit={orbit} />}
