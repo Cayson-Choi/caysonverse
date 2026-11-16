@@ -948,6 +948,7 @@ export function LocalPlayer({
       baseSit: action(CLIP.sitIdle) ?? null,
       // first person hides the own body: the catch is held up in front of the camera instead (lake v2)
       fpCamera: viewState.mode === "fp" ? state.camera : null,
+      fpLook: { skin: look.colors.skin, top: look.colors.top },
     });
 
     // Hide what hangs inside the bench while on it: from the moment the avatar stands on the seat's spot (the

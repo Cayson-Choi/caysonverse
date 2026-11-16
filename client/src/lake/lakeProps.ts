@@ -385,9 +385,13 @@ function liveMaterial(src: Material, flex: FlexUniform): Material {
   } else if (/^M_fin_photo/.test(s.name)) {
     m = new MeshStandardMaterial({ name: s.name, map: s.map, roughness: 0.42, metalness: 0, side: DoubleSide, transparent: true, opacity: 0.86, depthWrite: true });
   } else {
+    // the fins (lake v2): thin see-through membranes with rays, soft edges (alpha from the fin texture), a little glossy
     m = s.clone();
-    m.roughness = 0.45;
+    m.roughness = 0.38;
     m.side = DoubleSide;
+    m.transparent = true;
+    m.depthWrite = false;
+    m.alphaTest = 0.02;
   }
   m.onBeforeCompile = (sh) => {
     sh.uniforms.uFlex = flex;

@@ -6,7 +6,8 @@
 // First person (owner 2026-11-16): the own avatar is hidden in first person, so the fish is not hung on the hidden hands there —
 // from the moment the hand takes it, it is held in the lower middle of the view (in front of the camera, nose to the right).
 
-import { CanvasTexture, Mesh, MeshBasicMaterial, MultiplyBlending, PlaneGeometry, Quaternion, Vector3, type Camera, type Object3D } from "three";
+import { CanvasTexture, CylinderGeometry, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, MultiplyBlending, PlaneGeometry, Quaternion, SphereGeometry, Vector3, type Camera, type Object3D } from "three";
+import { viewState } from "../game/viewState";
 import { LAKE_WATER_Y } from "@caysonverse/shared/village/lakeLayout";
 import { FISH_PHASE, species, type FishView } from "./lakeProtocol";
 import { FISH_VIEW_SCALE, createFishModel, type FishModel } from "./lakeProps";
@@ -34,6 +35,8 @@ export interface CatchInput {
   world: Object3D | null;
   /** First person, my own avatar: the camera to hold the fish in front of. */
   fpCamera: Camera | null;
+  /** First person: the avatar's skin and top colours (the hands and sleeves drawn in the view). */
+  fpLook?: { skin: string; top: string } | null;
 }
 
 export interface CatchRig {
@@ -73,6 +76,18 @@ function shadowTexture(): CanvasTexture {
 
 /** A hooked fish starts under the water: never eased in from the last catch's pose. */
 const newCatchStart = (phase: number): boolean => phase === FISH_PHASE.hooked;
+
+/** First person: ease the look's pitch toward a world point (only the pitch: the yaw is the seated body's). */
+function fpLookAt(p: Vector3, cam: Camera, delta: number, below = 0): void {
+  const c = new Vector3().setFromMatrixPosition(cam.matrixWorld);
+  const d = p.sub(c);
+  const len = d.length();
+  if (len < 1e-3) return;
+  // CameraRig: forward y = -sin(pitch); `below` looks a little under the point (the fish a little above the middle, the rod tip
+  // with the line going up to it at the top of the view)
+  const want = Math.max(-1.1, Math.min(1.1, -Math.asin(d.y / len) + below));
+  viewState.fpPitch += (want - viewState.fpPitch) * Math.min(1, delta * 3);
+}
 
 export function createCatchRig(sid: string): CatchRig {
   let fish: FishModel | null = null;
@@ -139,7 +154,56 @@ export function createCatchRig(sid: string): CatchRig {
     return out;
   };
 
+  // first person: the avatar's hands (and sleeves) holding the fish; the avatar's own body is hidden in first person
+  let hands: Group | null = null;
+  let handsUsed = false;
+  const fist: Mesh[] = [];
+  const sleeve: Mesh[] = [];
+  const fpHands = (i: CatchInput, gripR: Vector3, gripL: Vector3 | null, k: number, camUp: Vector3, fwd: Vector3, at: (x: number, y: number, z: number) => Vector3) => {
+    if (!i.world) return;
+    if (!hands) {
+      hands = new Group();
+      const skin = new MeshStandardMaterial({ color: i.fpLook?.skin ?? "#f1c9a5", roughness: 0.62 });
+      const cloth = new MeshStandardMaterial({ color: i.fpLook?.top ?? "#2f62c8", roughness: 0.85 });
+      const fg = new SphereGeometry(0.052, 20, 14);
+      fg.scale(1, 0.86, 1.08);
+      const sg = new CylinderGeometry(0.046, 0.058, 1, 16, 1, true);
+      sg.translate(0, 0.5, 0);
+      for (let n = 0; n < 2; n++) {
+        const fm = new Mesh(fg, skin);
+        const sm = new Mesh(sg, cloth);
+        fist.push(fm);
+        sleeve.push(sm);
+        hands.add(fm, sm);
+      }
+      hands.traverse((o) => (o.frustumCulled = false));
+    }
+    const hs = hands;
+    if (hs.parent !== i.world) i.world.add(hs);
+    hs.visible = true;
+    handsUsed = true;
+    const place = (n: number, grip: Vector3 | null, shoulder: Vector3) => {
+      const fm = fist[n]!;
+      const sm = sleeve[n]!;
+      fm.visible = sm.visible = !!grip;
+      if (!grip) return;
+      // a reaching hand comes up from below the view
+      const p = shoulder.clone().lerp(grip, Math.min(1, k * 1.15));
+      fm.position.copy(p);
+      fm.quaternion.setFromUnitVectors(UP, fwd);
+      const wrist = p.clone().addScaledVector(fwd, -0.05).addScaledVector(camUp, -0.03);
+      const dir = shoulder.clone().sub(wrist);
+      const L = dir.length();
+      sm.position.copy(wrist);
+      sm.quaternion.setFromUnitVectors(UP, dir.normalize());
+      sm.scale.set(1, L, 1);
+    };
+    place(0, gripR, at(0.36, -0.5, 0.1));
+    place(1, gripL, at(-0.36, -0.5, 0.1));
+  };
+
   const hide = () => {
+    if (hands) hands.visible = false;
     if (fish) fish.root.visible = false;
     if (shadow) shadow.visible = false;
     if (hookLive) setHookPoint(sid, null);
@@ -216,6 +280,8 @@ export function createCatchRig(sid: string): CatchRig {
           break;
         }
         case "line": {
+          // first person: the eye follows the fish up toward the rod tip (the tip at the top of the view), as anyone would
+          if (i.fpCamera && rodTip) fpLookAt(hook.clone(), i.fpCamera, delta, 0.04);
           // a pendulum: the mouth on a line from the rod tip that is reeled in to 0.75 m
           const k = Math.min(1, (t - REEL_S - 0.16) / (HANG_END_S - REEL_S - 0.16));
           const L0 = Math.max(0.8, tip.y - LAKE_WATER_Y);
@@ -261,21 +327,38 @@ export function createCatchRig(sid: string): CatchRig {
           let target: Vector3 | null = null;
           const tq = q2;
           if (i.fpCamera) {
-            // first person: held in the lower middle of the view, side on, nose to the right
+            // first person (the own body is hidden): the fish is held in the view by the avatar's own hands (drawn here).
+            //  toHand / hand: by the head in the right hand, hanging head-up and swinging; show: side on in both hands.
             const cam = i.fpCamera;
             cam.updateMatrixWorld();
-            const fwd = a.set(0, 0, -1).applyQuaternion(cam.quaternion);
+            const camPos = new Vector3().setFromMatrixPosition(cam.matrixWorld);
+            const fwd = new Vector3(0, 0, -1).applyQuaternion(cam.quaternion);
             const right = new Vector3(1, 0, 0).applyQuaternion(cam.quaternion);
             const camUp = new Vector3(0, 1, 0).applyQuaternion(cam.quaternion);
-            const dist = 0.55 + len * 0.55;
-            target = new Vector3().setFromMatrixPosition(cam.matrixWorld).addScaledVector(fwd, dist).addScaledVector(camUp, -0.16 - len * 0.12);
-            const nose = right.clone().addScaledVector(fwd, -0.15).normalize();
-            lookAlong(nose, 0, tq);
-            // the flank toward the camera: roll so the fish's +X (its right flank) faces back at the camera
-            const flank = new Vector3(1, 0, 0).applyQuaternion(tq);
-            const toCam = fwd.clone().negate();
-            const ang = Math.atan2(flank.clone().cross(toCam).dot(nose), flank.dot(toCam));
-            tq.premultiply(new Quaternion().setFromAxisAngle(nose, ang + Math.sin(t * 6) * 0.08));
+            const at = (x: number, y: number, z: number) => camPos.clone().addScaledVector(right, x).addScaledVector(camUp, y).addScaledVector(fwd, z);
+            // the eye comes back down from the rod tip to the fish in the hands (a little below level)
+            viewState.fpPitch += (0.16 - viewState.fpPitch) * Math.min(1, delta * 2.5);
+            if (cs.stage === "toHand" || cs.stage === "hand") {
+              const grip = at(0.12, -0.02 + len * 0.1, 0.5 + len * 0.45);
+              const hang = camUp.clone().addScaledVector(right, Math.sin(t * 3.1) * 0.22).addScaledVector(fwd, -0.18 + Math.cos(t * 2.4) * 0.12).normalize();
+              lookAlong(hang, Math.sin(t * 6) * 0.35 + 0.9, tq);
+              target = grip.clone().addScaledVector(hang, -0.45 * len);
+              fpHands(i, grip, null, cs.stage === "toHand" ? cs.k : 1, camUp, fwd, at);
+            } else {
+              const dist = 0.55 + len * 0.55;
+              target = at(0, -0.16 - len * 0.12, dist);
+              const nose = right.clone().addScaledVector(fwd, -0.15).normalize();
+              lookAlong(nose, 0, tq);
+              // the flank toward the camera: roll so the fish's +X (its right flank) faces back at the camera
+              const flank = new Vector3(1, 0, 0).applyQuaternion(tq);
+              const toCam = fwd.clone().negate();
+              const ang = Math.atan2(flank.clone().cross(toCam).dot(nose), flank.dot(toCam));
+              tq.premultiply(new Quaternion().setFromAxisAngle(nose, ang + Math.sin(t * 6) * 0.08));
+              // the hands: one under the head end, one under the tail end
+              const axis = new Vector3(0, 0, 1).applyQuaternion(tq);
+              const below = camUp.clone().multiplyScalar(-0.04 - len * 0.06);
+              fpHands(i, target.clone().addScaledVector(axis, 0.28 * len).add(below), target.clone().addScaledVector(axis, -0.26 * len).add(below), 1, camUp, fwd, at);
+            }
           } else if (cs.stage === "net" && i.netBag) {
             target = i.netBag.getWorldPosition(new Vector3()).add(new Vector3(0, -0.06, 0));
             const side = i.handR && i.handL ? i.handR.getWorldPosition(new Vector3()).sub(i.handL.getWorldPosition(new Vector3())) : new Vector3(1, 0, 0);
@@ -345,6 +428,8 @@ export function createCatchRig(sid: string): CatchRig {
         pos.lerpVectors(fromPos, pos, e);
         rot.slerpQuaternions(fromQ, rot.clone(), e);
       }
+      if (!handsUsed && hands) hands.visible = false;
+      handsUsed = false;
       f.root.position.copy(pos);
       f.root.quaternion.copy(rot);
       // under the water the model is drawn too (the murky water hides most of it): the shadow on the surface reads as a dark shape
@@ -371,6 +456,25 @@ export function createCatchRig(sid: string): CatchRig {
         fish.root.removeFromParent();
         fish.dispose();
         fish = null;
+      }
+      if (hands) {
+        hands.removeFromParent();
+        const seen = new Set<unknown>();
+        hands.traverse((o) => {
+          const m = o as Mesh;
+          if (!m.isMesh) return;
+          if (!seen.has(m.geometry)) {
+            seen.add(m.geometry);
+            m.geometry.dispose();
+          }
+          if (!seen.has(m.material)) {
+            seen.add(m.material);
+            (m.material as MeshStandardMaterial).dispose();
+          }
+        });
+        hands = null;
+        fist.length = 0;
+        sleeve.length = 0;
       }
       if (shadow) {
         shadow.removeFromParent();

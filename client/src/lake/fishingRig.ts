@@ -34,6 +34,8 @@ export interface RigContext {
   baseSit: AnimationAction | null;
   /** My own avatar in first person (its body is hidden): the camera the catch is held up in front of. */
   fpCamera?: Camera | null;
+  /** First person: the avatar's skin and top colours (its hands drawn holding the catch). */
+  fpLook?: { skin: string; top: string } | null;
 }
 
 export interface FishingRig {
@@ -174,6 +176,7 @@ export function createFishingRig(o: { sid: string; avatar: BuiltAvatar; mixer: A
   let rod: Rod | null = null;
   let net: Net | null = null;
   const catchRig = createCatchRig(sid);
+  let catchShown = false;
   let fpRod: Rod | null = null;
   let rodHost: Object3D | null = null;
   let netHost: Object3D | null = null;
@@ -368,12 +371,19 @@ export function createFishingRig(o: { sid: string; avatar: BuiltAvatar; mixer: A
       // the fish (lake v2, catchRig.ts): under the water, out on the line, into the hand or the net, shown, let go
       handR = handR ?? bone(root, "handslot.r");
       handL = handL ?? bone(root, "handslot.l");
-      let world: Object3D | null = root;
-      while (world.parent) world = world.parent;
+      // only while a fish is on (hooked .. releasing): an angler waiting, walking or anyone without a catch costs nothing here
       const fpCam = ctx.fpCamera ?? null;
-      catchRig.update({ view, t, delta, atSpot, handL, handR, rodTip: fpRod?.tip ?? rod?.tip ?? null, netBag: net?.bag ?? null, world: world === root ? null : world, fpCamera: fpCam });
+      const catching = atSpot && view.phase >= FISH_PHASE.hooked && view.phase <= FISH_PHASE.releasing;
+      if (catching || catchShown) {
+        let world: Object3D | null = root;
+        while (world.parent) world = world.parent;
+        catchRig.update({ view, t, delta, atSpot, handL, handR, rodTip: fpRod?.tip ?? rod?.tip ?? null, netBag: net?.bag ?? null, world: world === root ? null : world, fpCamera: fpCam, fpLook: ctx.fpLook ?? null });
+        catchShown = catching;
+      }
       // first person: the own body is hidden, so the rod is drawn by a copy that follows the hidden one (the line starts at its tip)
       if (fpCam && rod && atSpot) {
+        let world: Object3D = root;
+        while (world.parent) world = world.parent;
         if (!fpRod && world !== root) {
           fpRod = createRod();
           fpRod.root.matrixAutoUpdate = false;
