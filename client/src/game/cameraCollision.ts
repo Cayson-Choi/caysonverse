@@ -47,7 +47,7 @@ export const ARM_FREE = 64;
 
 /**
  * Where, along the segment A → B, it first enters one of `boxes` (each spanning
- * y = `minY`..its own `height` — `minY` is 0 unless the box is a ceiling slab — or `height` when it
+ * y = `minY`..its own `height` — `minY` is 0 unless the box is a ceiling slab (or reaches under the floor: negative) — or `height` when it
  * states none): a fraction t in [0, 1), or 1 when nothing blocks it.
  *
  * Per box this is the usual slab test on x, y and z. A box that already contains A
@@ -87,7 +87,7 @@ export function segmentHitFraction(
     const top = b.height ?? height;
     // A ceiling slab hangs from `minY`; the margin pads it DOWNWARD too, so the arm stops `margin` under the underside.
     const rawBottom = b.minY ?? 0;
-    let bottom = rawBottom > 0 ? rawBottom - margin : 0;
+    let bottom = rawBottom > 0 ? rawBottom - margin : rawBottom; // a box may reach under the floor (minY < 0: the waterfall's cliff wall, so a low arm cannot dive under it)
     let minX = b.minX - margin;
     let maxX = b.maxX + margin;
     let minZ = b.minZ - margin;

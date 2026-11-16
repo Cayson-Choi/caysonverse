@@ -49,6 +49,7 @@ import {
   villageGeometry,
 } from "./villageLayout";
 import { signalPoleColliders } from "./crossings";
+import { cameraWallBoxes, villageWalkArea, waterfallObstacles } from "./fallsWalk";
 import type { PlotId, Point2, Side, VillageLane } from "./villageLayout";
 
 const L = VILLAGE_LAYOUT;
@@ -719,22 +720,24 @@ describe("village colliders are built from the layout", () => {
 
   it("buildVillageGeometry takes a named collider list or the extractor's { obstacles, cameraBoxes }", () => {
     const bus = busParkedColliders(L);
-    const fixed = hallWalls(L).length + areaGapBlockers(L).length + hallSurroundBlockers(L).length + bus.length + busShelterColliders(L).length + 1 /* the shelter's bench */ + signalPoleColliders().length;
+    const fixed = hallWalls(L).length + areaGapBlockers(L).length + hallSurroundBlockers(L).length + bus.length + busShelterColliders(L).length + 1 /* the shelter's bench */ + signalPoleColliders().length + waterfallObstacles(L).length;
     const bare = buildVillageGeometry(L, []);
     expect(bare.obstacles).toHaveLength(fixed);
     for (const b of bus) expect(bare.obstacles).toContainEqual({ minX: b.minX, maxX: b.maxX, minZ: b.minZ, maxZ: b.maxZ });
-    expect(bare.cameraBoxes).toEqual([...hallWalls(L), ...bus, busShelterRoofSlab(L), busShelterLightBoxCameraBox(L)]);
+    expect(bare.cameraBoxes).toEqual([...hallWalls(L), ...bus, busShelterRoofSlab(L), busShelterLightBoxCameraBox(L), ...cameraWallBoxes(L)]); // the waterfall's camera wall last (B1 W5)
     const box = { minX: 0, maxX: 1, minZ: 0, maxZ: 1 };
     const one = buildVillageGeometry(L, [{ id: "x", box, camera: false }]);
     expect(one.obstacles).toHaveLength(fixed + 1);
-    expect(one.cameraBoxes).toHaveLength(hallWalls(L).length + bus.length + 2); // the bus's slices, the shelter's roof slab and light box
+    expect(one.cameraBoxes).toHaveLength(hallWalls(L).length + bus.length + 2 + cameraWallBoxes(L).length); // the bus's slices, the shelter's roof slab and light box
     const tall = { ...box, height: 3 };
     const generated = buildVillageGeometry(L, { obstacles: [box], cameraBoxes: [tall] });
     expect(generated.obstacles).toHaveLength(fixed + 1);
     expect(generated.obstacles).toContainEqual(box);
-    expect(generated.obstacles.slice(-busShelterColliders(L).length - 1, -1)).toEqual(busShelterColliders(L));
-    expect(generated.obstacles.at(-1)).toEqual(busShelterBenchCollider(L));
-    expect(generated.cameraBoxes).toEqual([...hallWalls(L), tall, ...bus, busShelterRoofSlab(L), busShelterLightBoxCameraBox(L)]); // the height is kept; the shelter's glass is no camera box (seen through), its opaque light box is
+    const rest = waterfallObstacles(L).length; // the rest area's solid boxes close the list (B1 W5)
+    expect(generated.obstacles.slice(-rest)).toEqual(waterfallObstacles(L));
+    expect(generated.obstacles.slice(-busShelterColliders(L).length - 1 - rest, -1 - rest)).toEqual(busShelterColliders(L));
+    expect(generated.obstacles.at(-1 - rest)).toEqual(busShelterBenchCollider(L));
+    expect(generated.cameraBoxes).toEqual([...hallWalls(L), tall, ...bus, busShelterRoofSlab(L), busShelterLightBoxCameraBox(L), ...cameraWallBoxes(L)]); // the height is kept; the shelter's glass is no camera box (seen through), its opaque light box is
     expect(generated.bounds).toEqual(bare.bounds);
   });
 
@@ -828,7 +831,7 @@ describe("villageGeometry plays on the colliders generated from village.glb (Tas
   it("id 'village', bounds spanning both areas, the hall's walls as camera boxes, then the generated boxes", () => {
     expect(villageGeometry.id).toBe("village");
     expect(villageGeometry.bounds).toEqual(villageBounds(L));
-    expect(villageGeometry.bounds).toEqual({ minX: -95, maxX: 313, minZ: -95, maxZ: 95 }); // the B hall's walls plus a 5 m apron
+    expect(villageGeometry.bounds).toEqual({ minX: -106, maxX: 313, minZ: -95, maxZ: 95 }); // the waterfall pocket on the west (B1 W5), the B hall's walls plus a 5 m apron on the east
     for (const w of hallWalls(L)) expect(villageGeometry.cameraBoxes).toContainEqual(w);
     // + the guides (Task 9A) and the parked bus's mirrors (bus review r3)
     expect(villageGeometry).toEqual(buildVillageGeometry(L, VILLAGE_MODEL_COLLIDERS, HALL_MODEL_COLLIDERS, [...guideColliders(), ...busMirrorColliders()]));
@@ -978,7 +981,7 @@ describe.each(GEOMETRIES)("village geometry invariants: %s", (_name, geo) => {
 
     it("the village really was walked", () => {
       expect(r.length).toBeGreaterThan(100000);
-      expect(r.every((p) => inside(L.areas.village, p))).toBe(true);
+      expect(r.every((p) => inside(villageWalkArea(L), p))).toBe(true); // the village and the waterfall's rest area
     });
 
     it("the forest perimeter is reachable on every side and in every corner", () => {

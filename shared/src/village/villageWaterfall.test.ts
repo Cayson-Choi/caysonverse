@@ -4,7 +4,7 @@
  * (W5). docs/designs/waterfall/falls-contract.json is falls_shape.py's export; the last test keeps it in step.
  */
 import fs from "node:fs";
-import { fileURLToPath } from "node:url";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { VILLAGE_LAYOUT, boxAt, exportVillageLayout, type Point2, type WaterfallSlab } from "./villageLayout";
 import type { Bounds } from "../school/geometry";
@@ -213,7 +213,8 @@ describe("B1 waterfall: export for the Blender scripts and the art contract", ()
   });
 
   it("docs/designs/waterfall/falls-contract.json was exported from these same numbers (re-run falls_shape.py --export-contract if not)", () => {
-    const file = fileURLToPath(new URL("../../../docs/designs/waterfall/falls-contract.json", import.meta.url));
+    // (no import.meta.url: the server typecheck reads this file with its CommonJS settings; vitest runs with cwd = shared/)
+    const file = path.resolve(process.cwd(), "../docs/designs/waterfall/falls-contract.json");
     const contract = JSON.parse(fs.readFileSync(file, "utf8"));
     expect(contract.format).toBe("caysonverse-falls-contract");
     expect(contract.layout).toStrictEqual(JSON.parse(JSON.stringify(out.backdrop.waterfall)));

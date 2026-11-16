@@ -35,6 +35,7 @@ import { MEMORIAL_CAMERA_BOXES, MEMORIAL_COLLIDERS } from "./generated/memorialC
 import { guideColliders } from "./guides";
 import { signalPoleColliders } from "./crossings";
 import { TRANSIT, busFootprint } from "./transit";
+import { cameraWallBoxes, villageWalkArea, waterfallObstacles } from "./fallsWalk";
 import type { Bounds, MapGeometry } from "../school/geometry";
 
 export interface Point2 {
@@ -941,7 +942,7 @@ export const HALL_APRON = 5;
 
 /** The rectangle `villageGeometry` uses as its bounds: spans the village and the hall (walls and apron included). */
 export function villageBounds(layout: VillageLayout): Bounds {
-  const v = layout.areas.village;
+  const v = villageWalkArea(layout); // the village's area plus the waterfall's rest area (B1 W5)
   const h = layout.areas.hall;
   const margin = DEFAULT_WALL_THICKNESS + HALL_APRON;
   return {
@@ -1062,8 +1063,8 @@ export function buildVillageGeometry(
     "village",
     villageBounds(layout),
     hallWalls(layout),
-    [...areaGapBlockers(layout), ...hallSurroundBlockers(layout), ...village.obstacles, ...bus.map(stripHeight), ...signalPoleColliders(), ...busShelterColliders(layout), busShelterBenchCollider(layout), ...(hall?.obstacles ?? []), ...extra],
-    [...village.cameraBoxes, ...bus, busShelterRoofSlab(layout), busShelterLightBoxCameraBox(layout), ...(hall?.cameraBoxes ?? [])],
+    [...areaGapBlockers(layout), ...hallSurroundBlockers(layout), ...village.obstacles, ...bus.map(stripHeight), ...signalPoleColliders(), ...busShelterColliders(layout), busShelterBenchCollider(layout), ...(hall?.obstacles ?? []), ...extra, ...waterfallObstacles(layout)],
+    [...village.cameraBoxes, ...bus, busShelterRoofSlab(layout), busShelterLightBoxCameraBox(layout), ...(hall?.cameraBoxes ?? []), ...cameraWallBoxes(layout)],
   );
 }
 
