@@ -31,9 +31,13 @@ caysonverse(웹 3D 메타버스)의 배포·운영 방법입니다. DevOps 경�
 | 변수 | 뜻 | 없으면 |
 |---|---|---|
 | `PORT` | Node가 듣는 포트 | 2567 |
+| `CV_DATA_DIR`, `CV_DB_PATH`, `CV_MEDIA_DIR` | 추모관 모시기 저장소(SQLite·사진, 체크아웃 밖) | `/var/lib/caysonverse` 아래 |
+| `CV_ADMIN_KEY_SHA256`, `CV_MEDIA_SECRET` | 사진 검토 키의 해시, 서명 주소 비밀 | 검토 화면 꺼짐 / 켤 때마다 새로 |
+
+- 추모관 B단계(모시기·사진 검토) 서버 준비는 [`designs/memorial-2/deploy-notes.md`](designs/memorial-2/deploy-notes.md)에 있어요(폴더·권한·백업).
 
 - **시험 전용 변수는 운영에서 설정하지 않습니다**: `CV_RECONNECT_WINDOW_S`(재접속 대기 시간 시험용 줄임)는 테스트에서만 씁니다.
-- 예전에 있던 `ADMIN_CODE`·`TEACHER_KEYS_FILE`·`GROQ_*`·`NPC_VOICE`·`BANDIT_AI`는 방탈출·옛 월드 전용이라 코드와 함께 없앴습니다. 서버가 읽는 변수는 `PORT`(와 시험용 `CV_RECONNECT_WINDOW_S`)뿐입니다.
+- 예전에 있던 `ADMIN_CODE`·`TEACHER_KEYS_FILE`·`GROQ_*`·`NPC_VOICE`·`BANDIT_AI`는 방탈출·옛 월드 전용이라 코드와 함께 없앴습니다. 서버가 읽는 변수는 위 표(와 시험용 `CV_RECONNECT_WINDOW_S`, `CV_FAKE_NOW`)뿐입니다. `CV_FAKE_NOW`(추모관 시험 시계)는 운영에 절대 넣지 않습니다.
 - **`DEBUG=colyseus:*`는 운영에서 절대 켜지 마세요.** Colyseus의 디버그 로그에는 입장 요청과 입장권이 찍힙니다.
 
 ### 0.2 서버 올리기 (Oracle)

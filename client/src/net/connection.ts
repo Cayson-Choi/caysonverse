@@ -11,6 +11,7 @@ import { VillageMsg } from "@caysonverse/shared/village/messages";
 import { SERVER_URL } from "./endpoint";
 import { joinErrorNotice } from "./reconnectPolicy";
 import { attachResilience } from "./resilience";
+import { readyDeviceKey } from "../village/memorial/deviceKey";
 
 /** Options of a village (케이슨 마을) join: validated server-side against the join contract (no admin code). */
 export interface VillageJoinParams {
@@ -40,9 +41,12 @@ export function getActiveRoom(): Room<WorldState> | null {
   return room;
 }
 
-/** The options the village's `onJoin` reads: exactly nickname and appearance (never an admin code). */
-function villageJoinOptions(p: VillageJoinParams): VillageJoinParams {
-  return { nickname: p.nickname, appearance: p.appearance };
+/**
+ * The options the village's `onJoin` reads: nickname, appearance and this browser's device key (memorial stage B: the server
+ * keeps only its hash and maps it to the family that owns a cubby; never an admin code).
+ */
+function villageJoinOptions(p: VillageJoinParams, deviceKey: string): VillageJoinParams & { deviceKey: string } {
+  return { nickname: p.nickname, appearance: p.appearance, deviceKey };
 }
 
 /**
@@ -51,8 +55,9 @@ function villageJoinOptions(p: VillageJoinParams): VillageJoinParams {
  * a new one; there is no "world is full" refusal to retry. Throws the SDK's native error (the
  * caller maps it). Used by joinVillage and by the resilience driver's Phase-2 rejoin.
  */
-export function joinVillageRoom(params: VillageJoinParams): Promise<Room<WorldState>> {
-  return client.joinOrCreate<WorldState>(VILLAGE_ROOM, villageJoinOptions(params));
+export async function joinVillageRoom(params: VillageJoinParams): Promise<Room<WorldState>> {
+  const deviceKey = await readyDeviceKey();
+  return client.joinOrCreate<WorldState>(VILLAGE_ROOM, villageJoinOptions(params, deviceKey));
 }
 
 /**

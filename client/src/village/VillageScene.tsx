@@ -1,3 +1,4 @@
+import { MemorialOverlays } from "./memorial/MemorialOverlays";
 import { isTouchDevice } from "../device";
 import { Suspense, useEffect, useLayoutEffect, useState } from "react";
 import { useGLTF } from "@react-three/drei";
@@ -425,6 +426,7 @@ export function VillageScene({ identity }: { identity: Identity }) {
           <VegVeil active={area === "village"} />
           <DoorFade />
           <CubbyView />
+          <MemorialOverlays />
           <GuideDialog />
           <StarFinder orbit={orbit} />
           {area === "village" && <LakeHud pose={pose} seat={seat} orbit={orbit} />}
