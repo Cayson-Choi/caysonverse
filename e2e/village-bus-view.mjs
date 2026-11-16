@@ -103,6 +103,38 @@ const avatarShare = () =>
     const h = Math.max(0, cl(y1) - cl(y0));
     return { share: (w * h) / 4, wShare: w / 2, hShare: h / 2, corners: n };
   });
+// What blocks the picture other than the avatar: a grid of rays through the screen against everything in the scene but the avatar (glass and other
+// transparent panes let the light through, they are skipped); the share of rays that meet something within NEAR_M is the share of the screen a near
+// body part (a door leaf, a window frame, a pole) fills. Also: the eye is inside the cabin shell (the same box as the unit sweep).
+const NEAR_M = 0.75;
+const MAX_BLOCK = 0.25;
+const screenBlock = () =>
+  A.page.evaluate(async (NEAR) => {
+    const m = await window.__imp("/src/game/busRide.ts");
+    const tc = await window.__imp("/src/village/transitCamera.ts");
+    const { scene, camera } = window.__cvThree();
+    const three = await import(/* @vite-ignore */ performance.getEntriesByType("resource").map((r) => r.name).find((n) => n.split("?")[0].endsWith("/deps/three.js")));
+    const rc = new three.Raycaster();
+    rc.far = NEAR;
+    camera.updateMatrixWorld();
+    const avatar = m.busCamState.avatar;
+    const skip = (o) => {
+      for (let p = o; p; p = p.parent) if (p === avatar) return true;
+      const mats = Array.isArray(o.material) ? o.material : [o.material];
+      return mats.some((mt) => mt && (mt.transparent || mt.opacity < 1 || mt.visible === false)) || o.visible === false;
+    };
+    let hit = 0;
+    let n = 0;
+    for (let ix = -0.9; ix <= 0.91; ix += 0.15) for (let iy = -0.9; iy <= 0.91; iy += 0.15) {
+      rc.setFromCamera({ x: ix, y: iy }, camera);
+      const hits = rc.intersectObjects(scene.children, true).filter((h) => h.object.isMesh && !skip(h.object) && h.object.layers.test(camera.layers));
+      n++;
+      if (hits.length) hit++;
+    }
+    const e = m.busCamState.eye;
+    const S = tc.BUS_SHELL;
+    return { block: hit / n, eye: [...e], inShell: e[0] >= S.aheadMin - 1e-3 && e[0] <= S.aheadMax + 1e-3 && Math.abs(e[1]) <= S.right + 1e-3 && e[2] <= S.top + 1e-3 && e[2] > 0.3 };
+  }, NEAR_M);
 const MAX_SHARE = 0.36; // of the screen, the clipped BOUNDING BOX of the avatar (a bound: its silhouette is about half of it, 15-20% by eye in the screenshots)
 async function tpShares(label, tagName) {
   let k = 0;
@@ -112,6 +144,8 @@ async function tpShares(label, tagName) {
     await shot(`${tagName}-tp-${v}`);
     const r = await avatarShare();
     run.check(`1. ${label}, third person, ${v} view: the avatar fills at most ${MAX_SHARE * 100}% of the screen (bounding box, clipped)`, r.share !== null && r.share <= MAX_SHARE, r);
+    const b = await screenBlock();
+    run.check(`1. ${label}, third person, ${v} view: the lens is inside the cabin shell and no near body part (door, frame, pole) fills ${MAX_BLOCK * 100}% of the screen`, b.inShell && b.block < MAX_BLOCK, b);
     k++;
   }
 }

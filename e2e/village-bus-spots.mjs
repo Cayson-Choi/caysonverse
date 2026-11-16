@@ -103,9 +103,16 @@ plan = await A.page.evaluate(async () => {
     if (best) break;
     for (let a = -3.6; a <= 3.4; a += 0.05) for (let r = -0.25; r <= 0.25; r += 0.05) {
       if (c.cabinBlocked(a, r, 0.32) || !c.seatApproachOk(s, a, r) || c.BUS_HOLDS.some((h) => Math.hypot(a - h.ahead, r - h.right) < margin)) continue; // not on a pole's spot (it would be offered first)
-      // standing here, facing forward, the seat must be the offered one
-      const o = [0, Math.PI / 2, Math.PI, -Math.PI / 2].map((y) => c.nearestFreeSpot(a, r, new Set(), new Set(), undefined, y)).find((x) => x && x.kind === "seat" && x.index === i) ?? c.nearestFreeSpot(a, r, new Set(), new Set(), undefined, 0); // offered when looking one of the four ways (the quick views)
-      const d = Math.hypot(a - f.ahead, r - f.right) + (o && o.kind === "seat" && o.index === i ? 0 : 5);
+      // standing here and looking one of the four ways, the seat must be the offered one, and still so a step (0.1 m) round the spot (the walk stops within a tolerance)
+      const offersAt = (x, y, yaw) => { const o = c.nearestFreeSpot(x, y, new Set(), new Set(), undefined, yaw); return !!o && o.kind === "seat" && o.index === i; };
+      let ok = false;
+      for (const yaw of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) {
+        if (!offersAt(a, r, yaw)) continue;
+        let all = true;
+        for (const da of [-0.1, 0, 0.1]) for (const dr of [-0.1, 0, 0.1]) if (!c.cabinBlocked(a + da, r + dr, 0.32) && !offersAt(a + da, r + dr, yaw)) all = false;
+        if (all) { ok = true; break; }
+      }
+      const d = Math.hypot(a - f.ahead, r - f.right) + (ok ? 0 : 5);
       if (!best || d < best.d) best = { a, r, d, margin };
     }
     }
@@ -124,16 +131,18 @@ for (const pl of plan.slice(from, Math.min(to, plan.length - 1) + 1)) {
   if (!st.boarded) { results.push({ label, skipped: "ride over" }); continue; }
   const before = await ride(A);
   if (before.slot !== 0) { await act(A); await pollUntil(async () => (await ride(A)).slot === 0, 4000); } // stand up first
-  await walkBus(A, pl.a, pl.r, 0.2, 12000);
+  await walkBus(A, pl.a, pl.r, pl.kind === "seat" ? 0.1 : 0.2, 14000);
   let tg = await targetsOf(A);
   const want = `bus_sit:${pl.kind}:${pl.index}`;
   let offered = tg.some((t) => t.id === want);
+  const tried = [];
   let method = "ui";
   // a rider turns to the place they want (the quick views turn the body too): try each way of looking until the UI offers it
   for (const v of offered ? [] : ["back", "left", "right", "front"]) {
     await view(A, v);
     await sleep(500);
     tg = await targetsOf(A);
+    tried.push(`${v}:${tg.map((t) => t.id).join("+")}@${(await ride(A)).walk.ahead.toFixed(2)},${(await ride(A)).walk.right.toFixed(2)}`);
     if (tg.some((t) => t.id === want)) { offered = true; method = `ui (looking ${v})`; break; }
   }
   if (offered) await act(A);
@@ -143,7 +152,7 @@ for (const pl of plan.slice(from, Math.min(to, plan.length - 1) + 1)) {
   }
   const num = pl.kind === "seat" ? pl.index + 1 : 14 + 1 + pl.index;
   const ok = await pollUntil(async () => (await ride(A)).slot === num, 4000);
-  run.check(`${label}: taken (busSeat ${num}) via ${method}`, ok, { offered, offeredNow: tg.map((t) => t.id), at: pl.a.toFixed(2) + "," + pl.r.toFixed(2) });
+  run.check(`${label}: taken (busSeat ${num}) via ${method}`, ok, { offered, tried, offeredNow: tg.map((t) => t.id), at: pl.a.toFixed(2) + "," + pl.r.toFixed(2) });
   results.push({ label, method, ok, offeredUI: offered, uiFacingForward: pl.uiFacingForward });
   await sleep(700);
   await A.page.screenshot({ path: join(OUT, `${tag}-${String(pl.kind === "seat" ? pl.index : 14 + pl.index).padStart(2, "0")}-${pl.id}-view.png`) });

@@ -38,7 +38,12 @@ export const BUS_CAM = { maxDist: 2.6, firstPersonDist: 0.35, portraitMaxDist: 2
  * The cabin's shell as the camera's limit (bus-local m): the eye stays inside it so a wall (the windscreen's cowl, the back
  * wall, the roof) never hides the rider. The side windows are glass: the walls' inner face is 1.195, a little inside it.
  */
-export const BUS_SHELL = { aheadMin: -4.1, aheadMax: 4.0, right: 1.12, top: BUS_CEILING - 0.1 } as const;
+export const BUS_SHELL = { aheadMin: -3.95, aheadMax: 3.95, right: 0.945, top: BUS_CEILING - 0.25 } as const;
+
+/** The third person's lens never looks at a wall nearer than this along its middle ray (m): a lens pressed to a door leaf or a window frame fills the screen with it (review 2026-11-16, round 4). */
+export const TP_WALL_LOOK_M = 1.6;
+/** The cabin's inner half width (m): the walls the third person's lens must not look into. */
+const CABIN_HALF = 1.195;
 
 type V3 = readonly [number, number, number];
 
@@ -108,6 +113,8 @@ export const BUS_TP_MIN_ARM = 2.6;
 export const TP_ELEVATION = 0.3;
 /** Under this arm (m) the third person's lens tries the other side of the rider. */
 export const TP_FLIP_ARM = 2.2;
+/** The share of the rider's own sideways offset the third person's lens keeps (0 = in the aisle's middle). */
+export const TP_AISLE_KEEP = 0.2;
 
 /**
  * The eye and the point it looks at, in the world. The wanted eye is the rider's head plus the arm in the camera's azimuth
@@ -134,18 +141,22 @@ export function busRiderCamera(input: BusCamInput, out: TransitCameraPose = { x:
     // window and the rider's head filled the screen. The view yaw then only turns where the lens LOOKS (a side view looks at the windows, the
     // rider at the edge of the picture or out of it).
     const el = input.frame ? Math.max(TP_ELEVATION, Math.min(0.8, elevation)) : elevation;
-    const ce = Math.cos(el);
     const posA = input.frame ? (dirA >= 0 ? 1 : -1) : dirA;
     const posR = input.frame ? 0 : dirR;
     const min: V3 = [BUS_SHELL.aheadMin, -BUS_SHELL.right, Math.max(floor + EYE_SHELL_MIN_H, 0.6)];
     const max: V3 = [BUS_SHELL.aheadMax, BUS_SHELL.right, BUS_SHELL.top];
     const inside = (p: V3) => p[0] >= min[0] && p[0] <= max[0] && p[1] >= min[1] && p[1] <= max[1] && p[2] >= min[2] && p[2] <= max[2];
     const eyeFor = (pa: number, pr: number): V3 => {
-      const want: V3 = [head[0] + pa * ce * d, head[1] + pr * ce * d, head[2] + Math.sin(el) * d];
+      // a standing head under the raised rear's ceiling reaches the shell's top: the lens then starts from the top and looks down from there
+      const o: V3 = [head[0], head[1], Math.min(head[2], max[2])];
+      const elE = d > 1e-6 ? Math.min(el, Math.asin(Math.max(-1, Math.min(1, (max[2] - o[2]) / d)))) : el; // not above the ceiling
+      // the lens drifts to the aisle's middle as it backs off (a rider at the wall would otherwise be looked at from a hand's breadth off the wall)
+      const wantR = input.frame ? o[1] * TP_AISLE_KEEP : o[1] + pr * Math.cos(elE) * d;
+      const want: V3 = [o[0] + pa * Math.cos(elE) * d, wantR, o[2] + Math.sin(elE) * d];
       // 1) the shell: inside its box; if the wanted eye is outside, stop where the arm leaves it
       let t = 1;
-      if (inside(head)) {
-        if (!inside(want)) t = Math.min(t, segmentBoxExit(head, want, min, max));
+      if (inside(o)) {
+        if (!inside(want)) t = Math.min(t, segmentBoxExit(o, want, min, max));
       } else {
         t = 0; // a head outside the shell (the stairs, a stale pose): no arm
       }
@@ -155,11 +166,11 @@ export function busRiderCamera(input: BusCamInput, out: TransitCameraPose = { x:
         // grown by the pad in plan; the eye must stay clear of the back's face
         const bmin: V3 = [b.min[0] - BUS_CAM.pad, b.min[1] - BUS_CAM.pad, b.min[2]];
         const bmax: V3 = [b.max[0] + BUS_CAM.pad, b.max[1] + BUS_CAM.pad, b.max[2]];
-        const f = segmentBoxFraction(head, want, bmin, bmax);
+        const f = segmentBoxFraction(o, want, bmin, bmax);
         if (f < t) t = f;
       });
       t = Math.max(0, Math.min(1, t));
-      return [head[0] + (want[0] - head[0]) * t, head[1] + (want[1] - head[1]) * t, head[2] + (want[2] - head[2]) * t];
+      return [o[0] + (want[0] - o[0]) * t, o[1] + (want[1] - o[1]) * t, o[2] + (want[2] - o[2]) * t];
     };
     const armOf = (e: V3) => Math.hypot(e[0] - head[0], e[1] - head[1], e[2] - head[2]);
     eye = eyeFor(posA, posR);
@@ -182,7 +193,16 @@ export function busRiderCamera(input: BusCamInput, out: TransitCameraPose = { x:
       const weight = Math.max(0, 1 - Math.abs(delta) / 0.9); // 1 when the lens looks at the rider: then the rider is put in a lower corner
       const th = Math.tan(input.frame.vfov / 2);
       const thetaX = Math.atan(TP_FRAME.x * th * input.frame.aspect) * weight;
-      const lookAz = azView - thetaX; // the lens turns left: the rider moves right on the screen
+      let lookAz = azView - thetaX; // the lens turns left: the rider moves right on the screen
+      {
+        // a wall nearer than TP_WALL_LOOK_M along the middle ray: turn the look towards the aisle's axis until it is not
+        const sv = Math.sin(lookAz);
+        const wallDist = sv >= 0 ? CABIN_HALF - eye[1] : CABIN_HALF + eye[1];
+        if (Math.abs(sv) > 1e-6 && wallDist / Math.abs(sv) < TP_WALL_LOOK_M) {
+          const s2 = Math.min(1, Math.max(0.05, wallDist / TP_WALL_LOOK_M));
+          lookAz = Math.atan2((sv >= 0 ? 1 : -1) * s2, (Math.cos(lookAz) >= 0 ? 1 : -1) * Math.sqrt(1 - s2 * s2));
+        }
+      }
       const down0 = Math.atan2(eye[2] - centre[2], horiz); // looking down at the rider's middle
       const down = (down0 + Math.atan(TP_FRAME.y * th) * weight) * weight + 0.12 * (1 - weight); // up a little: the rider sits low
       void arm0;

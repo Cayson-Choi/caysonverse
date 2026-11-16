@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { BUS_HOLDS, BUS_POLES, BUS_SEATS, BUS_ENTRY, cabinFloorAt } from "@caysonverse/shared/village/busCabin";
+import { BUS_HOLDS, BUS_POLES, BUS_SEATS, BUS_ENTRY, cabinFloorAt, seatBodyPoint } from "@caysonverse/shared/village/busCabin";
 import { busLocal } from "@caysonverse/shared/village/busBody";
-import { BUS_CAM, BUS_SHELL, busRiderCamera, fadingFixtures, ownSeatIndex, riderFov, segmentDistance } from "./transitCamera";
+import { BUS_CAM, BUS_SHELL, BUS_TP_MIN_ARM, TP_WALL_LOOK_M, busRiderCamera, fadingFixtures, ownSeatIndex, riderFov, segmentDistance } from "./transitCamera";
 import { BUS_VIEW_YAW } from "../game/busRide";
 
 const bus = { x: 10, z: -4, yaw: 0.9 };
@@ -117,5 +117,62 @@ describe("poles, rails and straps between the lens and the rider fade (a pole ne
     expect(segmentDistance(V(0, 0, 0), V(1, 0, 0), V(0.5, 1, 0), V(0.5, 2, 0))).toBeCloseTo(1, 9);
     expect(segmentDistance(V(0, 0, 0), V(1, 0, 0), V(0.5, -1, 0), V(0.5, 1, 0))).toBeCloseTo(0, 9);
     expect(segmentDistance(V(0, 0, 0), V(1, 0, 0), V(0, 0.3, 0), V(1, 0.3, 0))).toBeCloseTo(0.3, 9);
+  });
+});
+
+describe("review 2026-11-16 round 4: the third person's lens stays inside the cabin and never looks into a near wall", () => {
+  const frames = [
+    { name: "PC", vfov: (68 * Math.PI) / 180, aspect: 1.6 },
+    { name: "phone", vfov: (78 * Math.PI) / 180, aspect: 375 / 812 },
+  ];
+  const places: { ahead: number; right: number; seated: boolean; floor: number; own: number }[] = [];
+  BUS_SEATS.forEach((s, i) => {
+    const p = seatBodyPoint(s);
+    places.push({ ahead: p.ahead, right: p.right, seated: true, floor: s.floor ?? cabinFloorAt(p.ahead), own: i });
+  });
+  BUS_HOLDS.forEach((h) => places.push({ ahead: h.ahead, right: h.right, seated: false, floor: cabinFloorAt(h.ahead), own: -1 }));
+  for (const a of [-3.4, -2, -0.5, 1, 2.4, 3.4]) for (const r of [-0.7, 0, 0.7]) places.push({ ahead: a, right: r, seated: false, floor: cabinFloorAt(a), own: -1 });
+
+  it("every place x every view yaw (the four quick views and a drag all round) x pitch extremes x arm x lens: eye in the shell (>= 0.25 m from walls and ceiling), the middle ray meets no wall nearer than TP_WALL_LOOK_M", () => {
+    let worst = Infinity;
+    let tested = 0;
+    const skipped = new Map<string, number>();
+    let total = 0;
+    for (const f of frames) {
+      for (const pl of places) {
+        const yaws = [BUS_VIEW_YAW.front, BUS_VIEW_YAW.back, BUS_VIEW_YAW.left, BUS_VIEW_YAW.right];
+        for (let y = -Math.PI; y < Math.PI; y += 0.3) yaws.push(y);
+        for (const yaw of yaws) {
+          for (const elevation of [-0.5, 0.1, 0.85]) {
+            for (const dist of [BUS_TP_MIN_ARM, 2.9, 3.4]) {
+              const c = busRiderCamera({ ...base, bus: { x: 0, z: 0, yaw: 0 }, ahead: pl.ahead, right: pl.right, floor: pl.floor, seated: pl.seated, ownSeat: pl.own, yaw, elevation, dist, frame: { vfov: f.vfov, aspect: f.aspect } });
+              // bus frame at heading 0: ahead = z, right = -x
+              const eye = { a: c.z, r: -c.x, h: c.y };
+              const tgt = { a: c.targetZ, r: -c.targetX, h: c.targetY };
+              const tag = `${f.name} ${JSON.stringify(pl)} yaw ${yaw.toFixed(2)} el ${elevation} d ${dist}`;
+              total++;
+              if (c.arm < BUS_CAM.firstPersonDist) { skipped.set(`${pl.seated ? "seat" : "stand"} ${pl.ahead.toFixed(2)},${pl.right.toFixed(2)} el ${elevation}`, 1 + (skipped.get(`${pl.seated ? "seat" : "stand"} ${pl.ahead.toFixed(2)},${pl.right.toFixed(2)} el ${elevation}`) ?? 0)); continue; }
+              tested++; // (a head outside the shell has no arm: the first-person eye)
+              expect(Math.abs(eye.r), tag).toBeLessThanOrEqual(1.195 - 0.25 + 1e-6);
+              expect(eye.h, tag).toBeLessThanOrEqual(3.15 - 0.25 + 1e-6);
+              expect(eye.a, tag).toBeGreaterThanOrEqual(-4.2 + 0.25 - 1e-6);
+              expect(eye.a, tag).toBeLessThanOrEqual(4.38 - 0.25 + 1e-6);
+              const da = tgt.a - eye.a;
+              const dr = tgt.r - eye.r;
+              const hz = Math.hypot(da, dr);
+              if (hz > 1e-6 && Math.abs(dr) > 1e-6) {
+                const wall = dr > 0 ? 1.195 - eye.r : 1.195 + eye.r;
+                const L = (wall * hz) / Math.abs(dr);
+                worst = Math.min(worst, L);
+                expect(L, tag).toBeGreaterThanOrEqual(TP_WALL_LOOK_M - 1e-3);
+              }
+            }
+          }
+        }
+      }
+    }
+    expect(worst).toBeGreaterThan(0);
+    if (tested <= total * 0.95) console.log([...skipped.entries()].slice(0, 40));
+    expect(tested).toBeGreaterThan(total * 0.95); // almost every case has a real arm
   });
 });
