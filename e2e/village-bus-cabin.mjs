@@ -7,7 +7,7 @@
  *    seat with E; B tries the same seat (a notice, the seat is not shared), then takes hold of a pole with the action button;
  *  - each sees the other in the bus (drawn pose inside the bus body, seated / holding);
  *  - the camera: every quick view (left, front, right, back) on both clients; a drag turns the view; the eye stays in the shell;
- *    screenshots of each view; no pole crosses the avatar's face (fading poles);
+ *    screenshots of each view; the poles are always drawn (owner 2026-11-16: nothing fades);
  *  - A stands up and walks; the bus leaves and the riders move with it; round the lap the bus stops and both get off.
  * Evidence: screenshots + JSON in --out.
  *
@@ -337,7 +337,8 @@ await run.step("review r1: a rider in the way of the view is not drawn; in third
     return { fp: cs.firstPerson, arm: cs.arm, names, vis, head: [...cs.head] };
   });
   run.check("A is in third person after the wheel", camA.fp === false, camA);
-  run.check("the poles and straps near A's body are named for hiding and are hidden in the scene", camA.names.length > 0 && camA.names.filter((n) => n in camA.vis).every((n) => camA.vis[n] === false), camA);
+  // owner 2026-11-16 ("반투명하게 보이게 하지 마"): the poles and straps are always drawn
+  run.check("the poles and straps are all drawn (none hidden near A's lens)", Object.keys(camA.vis).length > 0 && Object.values(camA.vis).every((v) => v === true), camA);
   await shot(A, "cabin-3-A-seated-3rd-pc.png");
   for (let i = 0; i < 6; i++) await A.page.mouse.wheel(0, -500);
   await sleep(900);

@@ -1,4 +1,4 @@
-import { BUS_POLES, BUS_SEAT_BACKS, BUS_SEATS, BUS_STRAPS, BUS_CEILING } from "@caysonverse/shared/village/busCabin";
+import { BUS_POLES, BUS_SEATS, BUS_STRAPS, BUS_CEILING } from "@caysonverse/shared/village/busCabin";
 import type { TransitPose } from "@caysonverse/shared/village/transit";
 
 /**
@@ -9,8 +9,8 @@ import type { TransitPose } from "@caysonverse/shared/village/transit";
  * and the panel's quick views (BUS_VIEW_YAW) ease it to the left windows, the front, the right windows or the back.
  *
  * Pure (unit-tested): `busRiderCamera` places the eye in the bus's own frame (ahead / right / up) and the spring arm keeps
- * it inside the cabin's shell and in front of the seat backs; `fadingFixtures` names the poles, strap groups and rails that
- * stand between the lens and the rider (or right at the lens), which the scene draws see-through.
+ * it inside the cabin's shell (its walls and ceiling: owner 2026-11-16, only walls shorten the arm; the seats and poles do not, and
+ * nothing is drawn see-through). `fadingFixtures` is kept for its tests but the scene no longer hides anything with it.
  */
 
 export interface TransitCameraPose {
@@ -50,26 +50,6 @@ type V3 = readonly [number, number, number];
 /** The head's height over the floor the rider stands or sits on (m): the avatar's head centre (chibi, 2.18 m to the top). */
 export const RIDER_HEAD_STANDING = 1.95;
 export const RIDER_HEAD_SEATED = 1.62;
-
-/** Where the segment from `p` towards `q` first meets a box (fraction 0..1), or 1: the slab test. */
-function segmentBoxFraction(p: V3, q: V3, min: V3, max: V3): number {
-  let enter = 0;
-  let exit = 1;
-  for (let k = 0; k < 3; k++) {
-    const d = q[k]! - p[k]!;
-    if (Math.abs(d) < 1e-9) {
-      if (p[k]! < min[k]! || p[k]! > max[k]!) return 1;
-      continue;
-    }
-    let t1 = (min[k]! - p[k]!) / d;
-    let t2 = (max[k]! - p[k]!) / d;
-    if (t1 > t2) [t1, t2] = [t2, t1];
-    if (t1 > enter) enter = t1;
-    if (t2 < exit) exit = t2;
-    if (enter > exit) return 1;
-  }
-  return enter;
-}
 
 /** Where the segment leaves the box (fraction), for a start inside it: 1 when the whole segment is inside. */
 function segmentBoxExit(p: V3, q: V3, min: V3, max: V3): number {
@@ -118,7 +98,7 @@ export const TP_AISLE_KEEP = 0.2;
 
 /**
  * The eye and the point it looks at, in the world. The wanted eye is the rider's head plus the arm in the camera's azimuth
- * and elevation; the arm is shortened to stop inside the shell and `BUS_CAM.pad` short of the first seat back.
+ * and elevation; the arm is shortened only to stop inside the shell (the cabin's walls and ceiling).
  */
 export function busRiderCamera(input: BusCamInput, out: TransitCameraPose = { x: 0, y: 0, z: 0, targetX: 0, targetY: 0, targetZ: 0, arm: 0, firstPerson: false }): TransitCameraPose {
   const { bus, ahead, right, floor, seated, yaw, elevation } = input;
@@ -160,15 +140,7 @@ export function busRiderCamera(input: BusCamInput, out: TransitCameraPose = { x:
       } else {
         t = 0; // a head outside the shell (the stairs, a stale pose): no arm
       }
-      // 2) the seat backs (the rider's own is no wall for them)
-      BUS_SEAT_BACKS.forEach((b, i) => {
-        if (i === input.ownSeat) return;
-        // grown by the pad in plan; the eye must stay clear of the back's face
-        const bmin: V3 = [b.min[0] - BUS_CAM.pad, b.min[1] - BUS_CAM.pad, b.min[2]];
-        const bmax: V3 = [b.max[0] + BUS_CAM.pad, b.max[1] + BUS_CAM.pad, b.max[2]];
-        const f = segmentBoxFraction(o, want, bmin, bmax);
-        if (f < t) t = f;
-      });
+      // the seats and poles are props: they never shorten the arm (owner 2026-11-16: only buildings and walls do)
       t = Math.max(0, Math.min(1, t));
       return [o[0] + (want[0] - o[0]) * t, o[1] + (want[1] - o[1]) * t, o[2] + (want[2] - o[2]) * t];
     };

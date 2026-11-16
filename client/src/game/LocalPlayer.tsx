@@ -717,8 +717,7 @@ export function LocalPlayer({
           orbitBeforeRideRef.current = { yaw: orbit.yaw, pitch: orbit.pitch, distance: orbit.distance };
           wasFpBeforeRideRef.current = viewState.mode === "fp";
           orbit.yaw = 0;
-          orbit.pitch = 0.6;
-          orbit.distance = 5.2;
+          orbit.pitch = 0.6; // the player's zoom stays as they set it (owner 2026-11-16)
           enterFp(0); // the look yaw is bus-relative: 0 looks to the rear, the way the avatar faces at the entry
           viewState.fpPitch = 0.05;
           busWalk.ahead = selfBusRide.ahead;

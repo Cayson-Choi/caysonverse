@@ -56,12 +56,15 @@ describe("the rider camera in the bus (owner 2026-11-15: look out of every windo
     }
   });
 
-  it("a seat back in the way shortens the arm (the rider's own seat does not); first person is the rider's eye", () => {
+  it("owner 2026-11-16: a seat back in the way does not shorten the arm, only the cabin's walls do; first person is the rider's eye", () => {
     const l2 = BUS_SEATS.findIndex((s) => s.id === "L2");
     const seat = BUS_SEATS[l2]!;
-    // camera low behind the seat in front of a rider standing in the aisle behind L2: the arm is cut short
+    // camera low behind the seat in front of a rider standing in the aisle behind L2: the seat is a prop, the arm stays whole
     const standingBehind = busRiderCamera({ ...base, ahead: seat.ahead + 2.0, right: seat.right, floor: 0.34, yaw: BUS_VIEW_YAW.front, elevation: -0.5, dist: 2.6 });
-    expect(standingBehind.arm).toBeLessThan(2.6);
+    expect(standingBehind.arm).toBeCloseTo(2.6, 5);
+    // a long zoom reaches the cabin's end wall: that wall shortens it
+    const long = busRiderCamera({ ...base, ahead: 0, right: 0, floor: 0.34, yaw: BUS_VIEW_YAW.front, elevation: 0, dist: 12 });
+    expect(long.arm).toBeLessThan(6);
     const own = busRiderCamera({ ...base, ahead: seat.ahead, right: seat.right, floor: seat.floor, seated: true, yaw: BUS_VIEW_YAW.back, elevation: 0.2, dist: 1.4, ownSeat: l2 });
     expect(own.arm).toBeGreaterThan(0.9);
     const fp = busRiderCamera({ ...base, yaw: 0, dist: 0 });

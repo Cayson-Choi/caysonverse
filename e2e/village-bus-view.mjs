@@ -160,7 +160,8 @@ const checkFade = async (label) => {
     scene.traverse((o) => { if (/^(pole|strap|stop_btn)_/.test(o.name)) vis[o.name] = o.visible; });
     return { fp: cs.firstPerson, arm: cs.arm, names, vis };
   });
-  run.check(`1. ${label}: third person, and every pole / strap / button near the body or between the lens and the body is hidden`, c.fp === false && c.names.filter((n) => n in c.vis).every((n) => c.vis[n] === false), c);
+  // owner 2026-11-16 ("반투명하게 보이게 하지 마"): nothing in the cabin is hidden or faded any more
+  run.check(`1. ${label}: third person, and every pole / strap / button is drawn (none hidden near the lens)`, c.fp === false && Object.keys(c.vis).length > 0 && Object.values(c.vis).every((v) => v === true), c);
 };
 await run.step("join, board", async () => {
   await joinVillage(A, "뷰", TIME);
