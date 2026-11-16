@@ -6,7 +6,8 @@ import { reachable, hasNear } from "../school/reachTestUtil";
 import { VILLAGE_COLLIDERS } from "./generated/villageColliders";
 import { MEMORIAL_COLLIDERS } from "./generated/memorialColliders";
 import { MEMORIAL_SEAT_MARKERS } from "./generated/memorialSeats";
-import { VILLAGE_LAYOUT, busShelterBenchCollider, busShelterColliders, houseInteriorGeometry, isHouseArea, villageGeometry } from "./villageLayout";
+import { VILLAGE_LAYOUT, busShelterBenchCollider, busShelterColliders, isHouseArea, villageGeometry } from "./villageLayout";
+import { houseFloorBounds, parseHouseFloorArea } from "./houseAreas";
 import {
   CHAIR_BACK_BEHIND,
   LAKE_SEAT_BASE,
@@ -103,12 +104,14 @@ describe("village benches (the models sitting needs)", () => {
 
 describe("village seats (where a sitter goes)", () => {
   it("one global list: plaza places (backed, one facing), the forecourt's (backless, two facings in one group), the hall's, the houses'", () => {
-    // 8 plaza benches x 2 places, the forecourt 2 places x 2 facings, the hall's markers (20..50), the houses'
-    // (51..90), the bus shelter's two, then the art's marked seats
+    // 8 plaza benches x 2 places, the forecourt 2 places x 2 facings, the hall's markers (20..50), the houses' (집 실내 G: from 51,
+    // every finished floor's), the bus shelter's two, then the art's marked seats
     expect(VILLAGE_SEATS.slice(16, 20).every((s) => s.bench === "memorial_forecourt")).toBe(true);
     expect(VILLAGE_SEATS.slice(20, 51).every((s) => s.area === "hall")).toBe(true);
-    expect(VILLAGE_SEATS.slice(51, 91).every((s) => isHouseArea(s.area))).toBe(true);
-    expect(VILLAGE_SEATS.slice(91, 93).map((s) => s.bench)).toEqual(["shelter", "shelter"]);
+    const housesEnd = VILLAGE_SEATS.findIndex((s, i) => i >= 51 && !isHouseArea(s.area));
+    expect(housesEnd).toBeGreaterThan(51 + 100); // the ten houses' 110-odd seats
+    expect(VILLAGE_SEATS.slice(51, housesEnd).every((s) => isHouseArea(s.area))).toBe(true);
+    expect(VILLAGE_SEATS.slice(housesEnd, housesEnd + 2).map((s) => s.bench)).toEqual(["shelter", "shelter"]);
     const plaza = VILLAGE_SEATS.slice(0, 16);
     plaza.forEach((s, i) => {
       const b = VILLAGE_BENCHES[Math.floor(i / 2)]!;
@@ -159,7 +162,8 @@ describe("village seats (where a sitter goes)", () => {
   it("every seat point is in its own area and clear of the other seats of its area (one group is one place)", () => {
     for (let i = 0; i < VILLAGE_SEATS.length; i++) {
       const a = VILLAGE_SEATS[i]!;
-      const bounds = a.area === "village" ? villageWalkArea(L) : L.areas.hall;
+      const house = parseHouseFloorArea(a.area);
+      const bounds = a.area === "village" ? villageWalkArea(L) : house ? houseFloorBounds(house.n, house.floor) : L.areas.hall;
       expect(a.x, a.id).toBeGreaterThan(bounds.minX);
       expect(a.x, a.id).toBeLessThan(bounds.maxX);
       expect(a.z, a.id).toBeGreaterThan(bounds.minZ);
@@ -169,6 +173,9 @@ describe("village seats (where a sitter goes)", () => {
         if (a.area !== b.area || (a.group !== undefined && a.group === b.group)) continue;
         // people on the two sides of the letter table face each other across it (their arms rest on the table)
         if (a.bench.startsWith("letter_") && b.bench.startsWith("letter_") && Math.abs(Math.abs(Math.atan2(Math.sin(a.yaw - b.yaw), Math.cos(a.yaw - b.yaw))) - Math.PI) < 1e-3) continue;
+        // (the houses' places are as close as their furniture is — sofa seats 0.72 m apart, dining chairs facing each other across a table —
+        // and the contract's own rules govern them: seat width ≥ 0.38 m, `seatMarkerProblems`, houseSeats.test.ts)
+        if (isHouseArea(a.area)) continue;
         // two sitters facing each other across a café table: their feet meet under it, their bodies (the hips, 0.397 m
         // behind each root) are what must keep apart
         const fa = { x: Math.sin(a.yaw), z: Math.cos(a.yaw) };
@@ -368,8 +375,9 @@ describe("nobody is trapped in the hall: every seat can be left and the whole fl
 describe("village seats (where a sitter gets up to)", () => {
   it("every dismount spot is clear of every collider of its map (a standing body plus margin) and inside its area", () => {
     for (const s of VILLAGE_SEATS) {
-      const bounds = s.area === "village" ? villageWalkArea(L) : L.areas.hall;
-      const obstacles = isHouseArea(s.area) ? houseInteriorGeometry.obstacles : villageGeometry.obstacles;
+      const house = parseHouseFloorArea(s.area);
+      const bounds = s.area === "village" ? villageWalkArea(L) : house ? houseFloorBounds(house.n, house.floor) : L.areas.hall;
+      const obstacles = villageGeometry.obstacles;
       expect(isBlocked(s.standX, s.standZ, PLAYER_RADIUS + STAND_CLEARANCE, obstacles, 0), s.id).toBe(false);
       expect(s.standX - PLAYER_RADIUS, s.id).toBeGreaterThan(bounds.minX);
       expect(s.standX + PLAYER_RADIUS, s.id).toBeLessThan(bounds.maxX);

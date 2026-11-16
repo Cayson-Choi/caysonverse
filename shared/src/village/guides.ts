@@ -122,6 +122,13 @@ export const GUIDES: readonly Guide[] = deepFreeze([
         voice: "plaza_guide_5",
         textOnly: true,
       },
+      {
+        // the houses (집 실내 G, owner 2026-11-16: the guide may tell the code): words only until a clip is made in the guide's voice
+        question: "집에는 어떻게 들어가요?",
+        answer: "집 문 옆 번호키에 1004를 누르면 들어갈 수 있어요. 한 집에 여덟 분까지 함께 계실 수 있어요.",
+        voice: "plaza_guide_6",
+        textOnly: true,
+      },
     ],
   },
   {

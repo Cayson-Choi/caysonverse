@@ -40,7 +40,39 @@ export const SIT_ROOT_AHEAD = SIT_POSE.calvesBehindRoot + 0.03;
  */
 export const BACKED_ROOT_AHEAD = SIT_POSE.torsoBehindRoot + 0.01;
 
+/**
+ * The seat kinds' sit poses (houses interior design 6.2, node extras `pose`): `chair` = the Sit_Chair_* clips above (a seat with a
+ * seat surface, feet hanging), `floor` = cross-legged on the floor, a cushion, a 보료 or a low floor sofa (Sit_Floor_* clips).
+ * Absent on a seat means `chair`. Names match the houses contract (houseAreas.ts): `perch` (a seat 0.6-0.75 m high, e.g. a bar stool)
+ * has no clip of its own yet and plays the chair clips; `floor` (seat surface 0.03-0.3 m) plays Sit_Floor_*, also on a backed 보료 / floor sofa
+ * (the lean-back of leanBack.ts applies to it like to any backed seat).
+ */
+export type SeatPoseKind = "chair" | "perch" | "floor";
+
+/**
+ * The cross-legged floor pose (`Sit_Floor_Idle`, also the last frame of `Sit_Floor_Down` and the first of `Sit_Floor_StandUp`),
+ * measured like SIT_POSE (root at the origin, model facing +z; client/src/game/sitPose.test.ts re-measures the GLB):
+ *  - the lowest point of the butt and the legs is at the root's floor (`contactY`), so a cushion `seatY` m high just lifts the
+ *    sitter by `seatY` (a floor sofa's seat cushion, a 보료 mat: the same);
+ *  - the hips bone is 0.22 m behind the root and 0.08 m up (the legs are splayed: knees out to 0.45 m each side, shins folded in so the feet cross
+ *    in front of the body); the toes reach 0.31 m in front of the root; the back of the torso is 0.47 m behind the root, the back of the head 0.54 m — so a backed floor seat
+ *    (a floor sofa) needs its backrest face `torsoBehindRoot` behind the root.
+ */
+export const FLOOR_SIT_POSE = {
+  /** Height above the root's floor of the lowest point of the seated body (m): a seat surface is lifted by its own height. */
+  contactY: 0,
+  /** How far behind the root the hips are while seated (m). */
+  hipsBehindRoot: 0.22,
+  /** How far in front of the root the toes reach (m): a table's edge in front of the sitter must stay beyond this. */
+  toesAheadOfRoot: 0.31,
+  /** How far to each side of the root the knees reach (m): a cushion must be at least twice this wide, centred on the root. */
+  kneesSideways: 0.45,
+  /** How far behind the root the back of the torso is (m): where a backrest's face must be on a backed floor seat. */
+  torsoBehindRoot: 0.47,
+} as const;
+
 /** How far (m) to raise the seated avatar so the sit pose's butt rests on a seat surface `seatY` m high. */
-export function liftForSeatY(seatY: number | undefined): number {
-  return seatY === undefined ? 0 : seatY - SIT_POSE.contactY;
+export function liftForSeatY(seatY: number | undefined, pose: SeatPoseKind = "chair"): number {
+  const contact = pose === "floor" ? FLOOR_SIT_POSE.contactY : SIT_POSE.contactY;
+  return seatY === undefined ? 0 : seatY - contact;
 }

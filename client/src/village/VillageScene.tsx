@@ -1,13 +1,15 @@
 import { isTouchDevice } from "../device";
 import { Suspense, useEffect, useLayoutEffect, useState } from "react";
+import { useFrame } from "@react-three/fiber";
 import { useGLTF } from "@react-three/drei";
 import { PlayShell } from "../game/PlayShell";
 import { villageActiveMap } from "../game/activeMap";
 import { clearClickTarget } from "../game/clickMove";
-import { setTargetHandler, setTargetSource } from "../game/interactTargets";
+import { fireTarget, setTargetHandler, setTargetSource } from "../game/interactTargets";
+import { takeArmedHouseUse } from "./houseTap";
 import type { PlayersRoom } from "../game/remoteSync";
 import type { Pose } from "../game/types";
-import { getRoom, sendUseDoor } from "../net/connection";
+import { getRoom, sendUseDoor, sendUseStair } from "../net/connection";
 import { rideStatusText, sendBusRide, sendBusSit, sendBusStand, showTransitNotice, startTransitSync, transitNowMs, transitTripAt, type TransitRoom, useTransitState } from "../net/transitSync";
 import { BUS_VIEW_YAW, busCamGoal, busWalk, selfBusRide } from "../game/busRide";
 import { busRiderPoints, takenBusSpots } from "../game/remoteStore";
@@ -20,7 +22,9 @@ import { vegetationPark } from "./veg/villageVegetation";
 import { doorFade } from "./doorFadeModel";
 import { useQualityTier } from "../game/QualityEffects";
 import { SceneWarmUp } from "../game/SceneWarmUp";
-import { VILLAGE_LAYOUT, buildingIdFromArea, isHouseArea, type AreaId } from "@caysonverse/shared/village/villageLayout";
+import { VILLAGE_LAYOUT, isHouseArea, type AreaId } from "@caysonverse/shared/village/villageLayout";
+import { HOUSE_STAIR_TARGET_PREFIX } from "@caysonverse/shared/village/houseTargets";
+import { houseNumberOf } from "@caysonverse/shared/village/houseAreas";
 import { PlotMarkers } from "./PlotMarkers";
 import { HallArea } from "./MemorialHall";
 import { CubbyView } from "./CubbyView";
@@ -62,7 +66,10 @@ import { SIGNALS_MODEL_URL, TransitRoadSignals } from "./TransitRoadSignals";
 import { PublicAutoDoor } from "./PublicAutoDoor";
 import { openKeypad, useKeypad } from "./keypadStore";
 import { VillageKeypad } from "./VillageKeypad";
-import { HouseInterior } from "./HouseInterior";
+import { HouseArea } from "./HouseInterior";
+import { HouseEntryCover } from "./HouseEntryCover";
+import { prefetchHouse } from "./houseRelease";
+import { houseOpen } from "./keypadText";
 import { liveSunEnabled } from "./sunShadows";
 
 /**
@@ -118,7 +125,7 @@ const uncoverVillage = () => vegDressing.uncover();
 /** What the local player's area draws: the village model and its signs (no floor mark at the memorial's door), or the hall's room. */
 function VillageArea({ area, tier, pose }: { area: AreaId; tier: VillageTier; pose: Pose }) {
   if (area === "hall") return <HallArea pose={pose} />;
-  if (isHouseArea(area)) return <HouseInterior buildingId={buildingIdFromArea(area)!} origin={[300, 0, 0]} tier={tier} />;
+  if (isHouseArea(area)) return <HouseArea area={area} pose={pose} />;
   return (
     <>
       {/* A failed download shows a plain ground and tries again, instead of the crash screen (final review m2). */}
@@ -192,6 +199,12 @@ function VillageDoors({ pose }: { pose: Pose }) {
       }
       const base = villageAndHallTargets(area, p.x, p.z, cubbyCardState() !== null || guideDialogOpen() !== null || keypadOpen);
       const bus = villageBusTarget(area, p.x, p.z, boarded, ...busScheduleNow(), busOnRoad());
+      // within the keypad's 2 m of a house door the house's model starts to come (it is usually in by the time the code is typed)
+      const keypad = base.find((t) => t.id.startsWith(KEYPAD_TARGET_PREFIX));
+      if (keypad) {
+        const n = houseNumberOf(keypad.id.slice(KEYPAD_TARGET_PREFIX.length));
+        if (n !== null && houseOpen(keypad.id.slice(KEYPAD_TARGET_PREFIX.length))) prefetchHouse(n);
+      }
       return bus ? [...base, bus] : base;
     });
     setTargetHandler((target, phase) => {
@@ -236,9 +249,12 @@ function VillageDoors({ pose }: { pose: Pose }) {
       }
       if (target.kind !== "door") return;
       clearClickTarget(); // a click-move in progress must not walk on after the teleport
+      const stair = target.id.startsWith(HOUSE_STAIR_TARGET_PREFIX);
       doorFade.begin(() => {
-        if (villageTargets(localArea(), pose.x, pose.z).length === 0) return false; // walked away while it closed
-        sendUseDoor();
+        // walked away while the curtain closed (the same thing still offered, or nothing to use)
+        if (!villageTargets(localArea(), pose.x, pose.z).some((t) => t.id === target.id)) return false;
+        if (stair) sendUseStair();
+        else sendUseDoor();
         return true;
       });
     });
@@ -247,6 +263,15 @@ function VillageDoors({ pose }: { pose: Pose }) {
       setTargetHandler(null);
     };
   }, [pose, boarded, keypadOpen]);
+  // A tap on a house's stair or front door armed its use (houseTap.ts): once the walk has brought us into the pad's reach, it is used.
+  useFrame(() => {
+    const area = localArea();
+    if (!isHouseArea(area)) return;
+    const offered = villageTargets(area, pose.x, pose.z);
+    const id = takeArmedHouseUse(offered.map((t) => t.id));
+    const target = id === null ? undefined : offered.find((t) => t.id === id);
+    if (target) fireTarget(target, "press");
+  });
   return null;
 }
 
@@ -426,6 +451,7 @@ export function VillageScene({ identity }: { identity: Identity }) {
         <>
           <VegVeil active={area === "village"} />
           <DoorFade />
+          <HouseEntryCover />
           <CubbyView />
           <GuideDialog />
           <StarFinder orbit={orbit} />

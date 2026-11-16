@@ -18,7 +18,8 @@ describe("keypad access boundary", () => {
     const entries = keypadEntries();
     expect(entries).toHaveLength(10);
     expect(entries.map((e) => e.buildingId)).toEqual([...HOUSE_KEYPAD_IDS]);
-    expect(entries.every((e) => e.placeholderArea === "hall")).toBe(true);
+    // the way out of each house lands on the porch, 0.55 m past its keypad pad, facing away from the door
+    for (const e of entries) expect(Math.hypot(e.exit.x - e.pad.x, e.exit.z - e.pad.z)).toBeCloseTo(0.55, 2);
     const near = nearestKeypadEntry(entries[0]!.pad.x, entries[0]!.pad.z);
     expect(near?.entry.buildingId).toBe(entries[0]!.buildingId);
     expect(near?.distanceM).toBe(0);

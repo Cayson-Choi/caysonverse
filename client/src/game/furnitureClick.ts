@@ -14,8 +14,62 @@
  * Pure: no three.js; CameraRig looks the floor's height up.
  */
 
-import { approachesSeat, seatDistance, SEAT_REACH, type Seat } from "@caysonverse/shared/worldMap";
-import type { SurfacePoint } from "./clickPlan";
+import { approachesSeat, nearestFreeSeat, seatDistance, SEAT_REACH, type Seat } from "@caysonverse/shared/worldMap";
+import { isFreeSpot, type SurfacePoint } from "./clickPlan";
+import type { AABB } from "@caysonverse/shared/collision";
+import type { Bounds } from "@caysonverse/shared/school/geometry";
+
+/**
+ * A spot from which seat `i` is offered where its own stand spot is not (a house chair's sitter steps BACK on getting up — exitTurn π —
+ * so its stand spot lies behind its backrest, where the chair is never offered): the free spot of 0.6–1.3 m round the seat point that the
+ * prompt offers this seat from (approached, in reach, the nearest free seat there), the one nearest `from`. Null: none.
+ */
+export function seatApproachSpot(
+  seats: readonly Seat[],
+  i: number,
+  from: { x: number; z: number },
+  obstacles: readonly AABB[],
+  bounds: Bounds,
+  taken: (index: number) => boolean = () => false,
+): { x: number; z: number } | null {
+  const s = seats[i]!;
+  let best: { x: number; z: number } | null = null;
+  let bestD = Infinity;
+  for (const d of [0.6, 0.8, 1.0, 1.2]) {
+    for (let k = 0; k < 16; k++) {
+      const a = (k * Math.PI) / 8;
+      const x = Math.round((s.x + Math.cos(a) * d) * 100) / 100;
+      const z = Math.round((s.z + Math.sin(a) * d) * 100) / 100;
+      if (!isFreeSpot(x, z, obstacles, bounds)) continue;
+      if (!approachesSeat(s, x, z) || seatDistance(s, x, z) > SEAT_REACH) continue;
+      if (nearestFreeSeat(x, z, taken, SEAT_REACH, seats) !== i) continue;
+      // robust: a walk stops a few cm short of its spot (clickMove's arrive distance), so the free points round the spot must offer it too
+      let steady = true;
+      for (let m = 0; m < 8 && steady; m++) {
+        const ax = x + Math.cos((m * Math.PI) / 4) * 0.3;
+        const az = z + Math.sin((m * Math.PI) / 4) * 0.3;
+        if (isFreeSpot(ax, az, obstacles, bounds) && (!approachesSeat(s, ax, az) || nearestFreeSeat(ax, az, taken, SEAT_REACH, seats) !== i)) steady = false;
+      }
+      const fd = Math.hypot(x - from.x, z - from.z) + (steady ? 0 : 100); // a steady spot always beats an unsteady one
+      if (fd < bestD) {
+        bestD = fd;
+        best = { x, z };
+      }
+    }
+  }
+  return best;
+}
+
+/** Whether the free points 0.3 m round (x, z) all offer seat `i` (a walk to (x, z) may stop there). */
+function steadyFor(seats: readonly Seat[], i: number, x: number, z: number, obstacles: readonly AABB[], bounds: Bounds, taken: (index: number) => boolean): boolean {
+  const s = seats[i]!;
+  for (let m = 0; m < 8; m++) {
+    const ax = x + Math.cos((m * Math.PI) / 4) * 0.3;
+    const az = z + Math.sin((m * Math.PI) / 4) * 0.3;
+    if (isFreeSpot(ax, az, obstacles, bounds) && (!approachesSeat(s, ax, az) || nearestFreeSeat(ax, az, taken, SEAT_REACH, seats) !== i)) return false;
+  }
+  return true;
+}
 
 /** Furniture is no higher than this (m): a click higher up (a wall, a shelf, the louvres) is still nothing. */
 export const FURNITURE_TOP = 1.3;
@@ -41,6 +95,9 @@ const SEAT_HALF_DEFAULT = 0.42;
 const SEAT_HALF_ROW_MAX = 0.7;
 const SEAT_ROW_SPAN = 1.5;
 const SEAT_SIDE_PAD = 0.05;
+/** A hit this near (m) a seat's volume, held by none, ranks that seat by how near across it is (after every volume that holds the hit). */
+const SEAT_NEAR_TOL = 0.25;
+const SEAT_NEAR_RANK = 10;
 /** A ray entering a seat's volume this little (m) past the furniture it hit still clicks the seat (a face of the seat itself). */
 const SEAT_HIT_EPS = 0.05;
 /** ...and this far past a hit high up (a table top, at least SEAT_BEHIND_MIN_Y): a chair half hidden behind the table's edge. */
@@ -78,6 +135,27 @@ function seatHalf(seats: readonly Seat[], i: number): number {
     if (across > 0.05 && across < SEAT_ROW_SPAN) half = Math.max(half, Math.min(SEAT_HALF_ROW_MAX, across / 2));
   }
   return half;
+}
+
+/**
+ * How well seat `i`'s click volume holds the point `p` (a click's hit): its distance (m) across from the seat's middle when `p` lies in
+ * the volume (`tol` round it), else null.
+ */
+export function seatVolumeHolds(p: { x: number; y: number; z: number }, seats: readonly Seat[], i: number, tol = 0.04): number | null {
+  const s = seats[i]!;
+  const backed = (s.lean ?? 0) > 0;
+  const fx = Math.sin(s.yaw);
+  const fz = Math.cos(s.yaw);
+  const fe = s.frontEdge ?? 0;
+  const depth = backed ? SEAT_DEPTH_BACKED : SEAT_DEPTH_BACKLESS;
+  const half = seatHalf(seats, i);
+  const dx = p.x - s.x;
+  const dz = p.z - s.z;
+  const across = Math.abs(dx * fz - dz * fx);
+  const ahead = dx * fx + dz * fz;
+  const up = p.y - (s.seatY ?? 0.45);
+  const inside = across <= half + tol && ahead >= -fe - depth - tol && ahead <= -fe + tol && up >= -SEAT_BELOW - tol && up <= (backed ? SEAT_ABOVE_BACKED : SEAT_ABOVE_BACKLESS) + tol;
+  return inside ? across : null;
 }
 
 /** Where (the ray's t, m) `ray` enters seat `i`'s click volume, or Infinity when it misses it. */
@@ -130,6 +208,8 @@ export function furnitureClick(
   floorY: number,
   /** Whether a click on furniture that is no seat walks next to it (the hall); otherwise it stays nothing. */
   otherFurniture: boolean,
+  /** The map's colliders and rectangle: with them a seat whose stand spot is no approach (a chair stepped back from) is walked to by an approach spot. */
+  world?: { obstacles: readonly AABB[]; bounds: Bounds },
 ): FurnitureClick | null {
   if (!pick || pick.y > FURNITURE_TOP) return null;
   const areaOf = (s: Seat) => (s as { area?: string }).area;
@@ -138,21 +218,36 @@ export function furnitureClick(
     const s = seats[i]!;
     if (!inArea(s) || taken(i)) return false;
     // its approach must offer it (a chair's side spot, a sofa's front) — never a spot behind a backrest
-    return approachesSeat(s, s.standX, s.standZ) && seatDistance(s, s.standX, s.standZ) <= SEAT_REACH;
+    if (approachesSeat(s, s.standX, s.standZ) && seatDistance(s, s.standX, s.standZ) <= SEAT_REACH) return true;
+    return world !== undefined && seatApproachSpot(seats, i, from, world.obstacles, world.bounds, taken) !== null;
   };
   const hitT = ray ? (pick.distance ?? Math.hypot(pick.x - ray.o.x, pick.y - ray.o.y, pick.z - ray.o.z)) : 0;
   // the seat whose volume the ray enters first, up to the furniture it hit (or a little past a table top's edge)
   let best = -1;
   if (ray) {
-    let bestT = hitT + (pick.y >= SEAT_BEHIND_MIN_Y ? SEAT_BEHIND : SEAT_HIT_EPS);
+    const reach = hitT + (pick.y >= SEAT_BEHIND_MIN_Y ? SEAT_BEHIND : SEAT_HIT_EPS);
+    let bestT = Infinity;
+    // A seat whose volume holds the hit itself (nearest its middle) beats one whose volume the ray only crossed on its way: a sofa tapped
+    // at a slant from its end crossed the empty upper boxes of the next cushions first and sat the visitor at the near end (G round 3,
+    // house 1). With no volume holding the hit, the earliest entry (a chair half hidden behind a table's edge).
+    let bestHold = Infinity;
     for (let i = 0; i < seats.length; i++) {
       const s = seats[i]!;
       if (!inArea(s) || Math.hypot(s.x - pick.x, s.z - pick.z) > 3) continue;
       const t = seatRayEntry(ray, seats, i);
-      if (t <= bestT && offered(i)) {
-        best = i;
-        bestT = t;
-      }
+      if (t > reach) continue;
+      // (a hit just outside every volume — the top of a sofa's backrest tapped from behind it — goes to the seat it is nearest across, a
+      // second tier below the volumes that hold it: G round 3, house 7's middle sofa seat tapped from behind sat the visitor at its end)
+      const near = (): number => {
+        const loose = seatVolumeHolds(pick, seats, i, SEAT_NEAR_TOL);
+        return loose === null ? Infinity : SEAT_NEAR_RANK + loose;
+      };
+      const hold = t <= hitT + SEAT_HIT_EPS ? (seatVolumeHolds(pick, seats, i) ?? near()) : Infinity;
+      if (hold > bestHold || (hold === bestHold && (hold < Infinity || t > bestT))) continue;
+      if (!offered(i)) continue;
+      best = i;
+      bestT = t;
+      bestHold = hold;
     }
   }
   // of the facings of one backless seat (one group), the one whose approach is nearer the player: sat from either side
@@ -171,6 +266,13 @@ export function furnitureClick(
   }
   if (best >= 0) {
     const s = seats[best]!;
+    // the stand spot when it offers the seat — and still does a step short of it all round (a tap-walk stops up to ARRIVE_DIST before its
+    // goal: G round 3, house 4's chair and house 3's cushions were walked to and not sat on); else the steadiest approach spot
+    const standOffers = approachesSeat(s, s.standX, s.standZ) && seatDistance(s, s.standX, s.standZ) <= SEAT_REACH;
+    if ((!standOffers || (world && !steadyFor(seats, best, s.standX, s.standZ, world.obstacles, world.bounds, taken))) && world) {
+      const spot = seatApproachSpot(seats, best, from, world.obstacles, world.bounds, taken);
+      if (spot) return { surface: { x: spot.x, y: floorY, z: spot.z, ny: 1 }, seatIndex: best };
+    }
     return { surface: { x: s.standX, y: floorY, z: s.standZ, ny: 1 }, seatIndex: best };
   }
   if (!otherFurniture) return null;

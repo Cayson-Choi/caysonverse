@@ -20,7 +20,8 @@ import {
   type ArrivalPose,
   type ArrivalSpot,
 } from "./arrivalSpot";
-import { VILLAGE_LAYOUT, houseInteriorGeometry, villageGeometry, type Point2 } from "./villageLayout";
+import { VILLAGE_LAYOUT, villageGeometry, type Point2 } from "./villageLayout";
+import { HOUSE_PLACES, houseFloorBounds } from "./houseAreas";
 
 const L = VILLAGE_LAYOUT;
 const HALL_SPAWN = L.memorial.interior.spawn;
@@ -77,7 +78,7 @@ describe("arrival spacing rules", () => {
     expect(isValidSpot(HALL_SPAWN, arrivalArea("hall"))).toBe(true);
     expect(isValidSpot(OUT_ARRIVAL, arrivalArea("village"))).toBe(true);
     expect(isValidSpot(PLAZA, arrivalArea("village"))).toBe(true);
-    expect(isValidSpot(HALL_SPAWN, arrivalArea("house:house_1"))).toBe(true);
+    for (const f of [HOUSE_PLACES[1].spawnIn, HOUSE_PLACES[1].spawnUp, HOUSE_PLACES[1].spawnDown]) expect(isValidSpot(f, arrivalArea(f.area)), f.area).toBe(true);
     expect(Math.hypot(HALL_SPAWN.x - IN_PAD.centre.x, HALL_SPAWN.z - IN_PAD.centre.z)).toBeCloseTo(IN_PAD.radius + 1.2, 9);
     expect(Math.hypot(OUT_ARRIVAL.x - OUT_PAD.centre.x, OUT_ARRIVAL.z - OUT_PAD.centre.z)).toBeCloseTo(OUT_PAD.radius + DOOR_PAD_CLEARANCE_M, 9);
   });
@@ -85,16 +86,19 @@ describe("arrival spacing rules", () => {
   it("each area has its own rectangle, colliders and door pad", () => {
     const hall = arrivalArea("hall");
     const village = arrivalArea("village");
-    const house = arrivalArea("house:house_3");
+    const house = arrivalArea("house:house_3:1");
+    const upstairs = arrivalArea("house:house_3:2");
     expect(hall.bounds).toEqual(L.areas.hall);
     expect(village.bounds).toEqual(L.areas.village);
-    expect(house.bounds).toEqual(L.areas.hall);
+    expect(house.bounds).toEqual(houseFloorBounds(3, 1));
+    expect(upstairs.bounds).toEqual(houseFloorBounds(3, 2));
     expect(hall.pads).toEqual([IN_PAD]);
     expect(village.pads).toEqual([OUT_PAD]);
-    expect(house.pads).toEqual([IN_PAD]);
-    // The hall keeps its furniture; a house interior uses its own (wall-only) geometry.
-    expect(hall.obstacles.length).toBeGreaterThan(house.obstacles.length);
-    for (const b of house.obstacles) expect(houseInteriorGeometry.obstacles).toContain(b);
+    expect(house.pads).toHaveLength(1); // floor 1: the way out in the entrance
+    expect(upstairs.pads).toHaveLength(0); // floor 2: the stair arrival is on its own pad on purpose
+    // A house floor keeps only the colliders near it (its walls and the blockers round it), all of them the village geometry's.
+    expect(house.obstacles.length).toBeGreaterThan(0);
+    for (const b of house.obstacles) expect(villageGeometry.obstacles).toContain(b);
     for (const b of hall.obstacles) expect(villageGeometry.obstacles).toContain(b);
     // Only the colliders that can touch the room are kept (the village's hundreds are not scanned for the hall).
     expect(hall.obstacles.length).toBeLessThan(villageGeometry.obstacles.length);
@@ -163,7 +167,8 @@ describe("findFreeSpot", () => {
       ["hall", HALL_SPAWN],
       ["village", OUT_ARRIVAL],
       ["village", PLAZA],
-      ["house:house_2", HALL_SPAWN],
+      ["house:house_1:1", HOUSE_PLACES[1].spawnIn],
+      ["house:house_1:2", HOUSE_PLACES[1].spawnUp],
     ] as const) {
       expect(spreadArrival(area, nominal, [])).toEqual({ x: nominal.x, z: nominal.z, yaw: nominal.yaw, free: true });
       const near = [{ x: nominal.x + ARRIVAL_SPACING_M, z: nominal.z }, { x: nominal.x, z: nominal.z - 1.5 }];
@@ -236,11 +241,17 @@ describe("findFreeSpot", () => {
     for (const s of spots) for (const o of loiterers) expect(Math.hypot(s.x - o.x, s.z - o.z)).toBeGreaterThanOrEqual(ARRIVAL_SPACING_M - SPACING_SLACK_M);
   });
 
-  it("a house interior (keypad entry) spreads its arrivals the same way", () => {
-    const spots = arriveTogether(12, "house:house_4", HALL_SPAWN);
-    expect(spots.every((s) => s.free)).toBe(true);
-    expect(minPairGap(spots)).toBeGreaterThanOrEqual(ARRIVAL_SPACING_M - SPACING_SLACK_M);
-    expectValid(spots, arrivalArea("house:house_4"));
+  it("a house floor (keypad entry, the stair's arrival) spreads its arrivals the same way: eight at the entry spot, eight at the stair top", () => {
+    for (const [area, nominal] of [
+      ["house:house_1:1", HOUSE_PLACES[1].spawnIn],
+      ["house:house_1:2", HOUSE_PLACES[1].spawnUp],
+      ["house:house_1:1", HOUSE_PLACES[1].spawnDown],
+    ] as const) {
+      const spots = arriveTogether(8, area, nominal);
+      expect(spots.every((s) => s.free), area).toBe(true);
+      expect(minPairGap(spots)).toBeGreaterThanOrEqual(ARRIVAL_SPACING_M - SPACING_SLACK_M);
+      expectValid(spots, arrivalArea(area));
+    }
   });
 
   it("a full room falls back gracefully: free is false, the spot is still valid (no collider, no pad), the least crowded one, and deterministic", () => {

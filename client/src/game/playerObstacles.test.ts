@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { PLAYER_RADIUS } from "@caysonverse/shared/worldMap";
-import { houseInteriorGeometry, villageGeometry } from "@caysonverse/shared/village/villageLayout";
+import { villageGeometry } from "@caysonverse/shared/village/villageLayout";
+import { houseFloorGeometry } from "@caysonverse/shared/village/housesGeometry";
+
+const houseInteriorGeometry = houseFloorGeometry(1, 1);
 import { VILLAGE_ACTIVE_MAP, getActiveMap, setActiveMap } from "./activeMap";
 import { collectObstacles, remoteBlocks } from "./playerObstacles";
 

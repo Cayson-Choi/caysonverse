@@ -129,6 +129,36 @@ describe("character manifest ↔ character.glb", () => {
     }
   });
 
+  it("actually animates: the cross-legged floor-sit clips (Sit_Floor_*) turn the legs and arms, and the idle breathes", () => {
+    const FLOOR_CLIPS = ["Sit_Floor_Down", "Sit_Floor_Idle", "Sit_Floor_StandUp"];
+    for (const clip of FLOOR_CLIPS) {
+      const anim = gltf.animations?.find((a) => a.name === clip);
+      expect(anim, clip).toBeDefined();
+      const moving = new Set<string>();
+      for (const ch of anim!.channels) {
+        const bone = gltf.nodes[ch.target.node].name ?? "";
+        if (ch.target.path !== "rotation") continue;
+        const v = readFloats(anim!.samplers[ch.sampler].output);
+        let spread = 0;
+        for (let i = 4; i < v.length; i += 1) spread = Math.max(spread, Math.abs(v[i] - v[i % 4]));
+        if (spread > 0.003) moving.add(bone);
+      }
+      if (clip === "Sit_Floor_Idle") {
+        expect([...moving].length, `${clip}: bones that rotate`).toBeGreaterThanOrEqual(3);
+        expect([...moving]).toEqual(expect.arrayContaining(["chest", "head"]));
+      } else {
+        for (const b of ["upperleg.l", "upperleg.r", "lowerleg.l", "lowerleg.r", "upperarm.l", "upperarm.r"]) expect(moving, `${clip}: ${b}`).toContain(b);
+      }
+    }
+  });
+
+  it("ships no animation data for the unweighted IK / control bones (dead data; it only costs file size)", () => {
+    const dead = /^(kneeIK|heelIK|IK-foot|IK-toe|control-(toe|heel|foot)-roll|elbowIK|handIK)\./;
+    for (const anim of gltf.animations ?? []) {
+      for (const ch of anim.channels) expect(gltf.nodes[ch.target.node].name ?? "", `${anim.name}`).not.toMatch(dead);
+    }
+  });
+
   it("keeps the bare legs under every short bottom identical (cloth fitting must never move skin)", () => {
     // 2026-11-10: the bottoms refit (clothfix v7) projected the shorts' own skin legs (mat_skin) as if they were cloth,
     // up to 14.5 cm, so every look with bare legs under shorts showed torn skin flaps (발주자 신고). The shorts, skirts
