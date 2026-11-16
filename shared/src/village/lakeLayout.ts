@@ -421,6 +421,8 @@ export interface LakeSeat extends Seat {
   other?: { yaw: number; standX: number; standZ: number };
   /** Backless seats: how far ahead of (x, z) the sitter's root goes along the facing (m). */
   rootAhead?: number;
+  /** Backless seats: the board's depth across the facing (m). */
+  deep?: number;
 }
 
 const STAND_STEP = 0.05;
@@ -542,7 +544,7 @@ function benchSeats(opts: {
       standX: first.stand.x,
       standZ: first.stand.z,
       seatY: opts.seatTop,
-      ...(backless ? { rootAhead: SIT_POSE.hipsBehindRoot } : { frontEdge: SIT_ROOT_AHEAD }),
+      ...(backless ? { rootAhead: SIT_POSE.hipsBehindRoot, deep: opts.deep } : { frontEdge: SIT_ROOT_AHEAD }),
     };
     if (backless) {
       const second = sides[1]!;

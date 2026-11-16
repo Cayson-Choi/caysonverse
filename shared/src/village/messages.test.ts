@@ -8,8 +8,13 @@ describe("VillageMsg", () => {
       UseDoor: "UseDoor",
       LightCandle: "LightCandle",
       FishingRentRod: "FishingRentRod",
+      FishingReturnRod: "FishingReturnRod",
+      FishingSit: "FishingSit",
       FishingCast: "FishingCast",
-      FishingReel: "FishingReel",
+      FishingStrike: "FishingStrike",
+      FishingHold: "FishingHold",
+      FishingStand: "FishingStand",
+      FishingBoardRequest: "FishingBoardRequest",
       Keypad: "Keypad",
     });
     const values = Object.values(VillageMsg);
@@ -25,8 +30,9 @@ describe("VillageMsg", () => {
       CandleLit: "CandleLit",
       CandleState: "CandleState",
       FishingState: "FishingState",
-      FishingResult: "FishingResult",
       FishingRejected: "FishingRejected",
+      FishingTrophy: "FishingTrophy",
+      FishingBoard: "FishingBoard",
       KeypadResult: "KeypadResult",
     });
     const others = new Set<string>([
