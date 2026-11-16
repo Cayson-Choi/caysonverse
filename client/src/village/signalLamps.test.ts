@@ -18,13 +18,13 @@ describe("crosswalk signal lamps", () => {
     expect(walk.ped).toBe("walk");
     expect(walk.walkLit && !walk.stopLit).toBe(true);
     expect(walk.countdown.color).toBe("green");
-    expect(walk.countdown.seconds).toBe(14); // 10 s of walking + 4 s of flashing
+    expect(walk.countdown.seconds).toBe(17); // 12 s of walking + 5 s of flashing
     const t0 = TRANSIT.pedestrianStartMs + TRANSIT.pedestrianWalkMs;
     const a = lampsAt(t0 + 1);
     const b = lampsAt(t0 + 1 + BLINK_MS);
     expect(a.ped).toBe("flashing");
     expect(a.walkLit).not.toBe(b.walkLit);
-    expect(a.countdown.seconds).toBe(4);
+    expect(a.countdown.seconds).toBe(5);
     for (let t = 0; t < TRANSIT.signalCycleMs; t += 250) {
       const s = lampsAt(t);
       if (s.walkLit) expect(s.vehicle).toBe("red");
