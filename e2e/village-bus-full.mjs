@@ -1,7 +1,7 @@
 /**
  * e2e/village-bus-full.mjs — the bus takes only as many riders as it holds (bus v3, owner 2026-11-16: "적절한 인원수만 탈 수 있게
- * 하고 나머지는 탑승을 못하게"). The real capacity is 25 (10 seats + 15 standing places, shared busCabin.ts BUS_CAPACITY, checked by
- * the server's integration test with 25 clients); here the DEV server is started with CV_DEV_BUS_CAPACITY=2 so three browsers
+ * 하고 나머지는 탑승을 못하게"). The real capacity is 26 (10 seats + 16 standing places, shared busCabin.ts BUS_CAPACITY, checked by
+ * the server's integration test with 26 clients); here the DEV server is started with CV_DEV_BUS_CAPACITY=2 so three browsers
  * show it: A and B board (B on the phone), C (PC) presses board at the door and is refused with "버스가 가득 찼어요. 다음 버스를
  * 기다려 주세요." on its screen and stays outside; A and B are in the bus, not inside each other. Then B gets off and C boards.
  *

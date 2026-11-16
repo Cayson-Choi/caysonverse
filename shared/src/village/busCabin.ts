@@ -88,7 +88,7 @@ export function inExitZone(ahead: number, right: number): boolean {
   return ahead >= z.aheadMin && ahead <= z.aheadMax && right >= z.rightMin && right <= z.rightMax;
 }
 
-/** The cabin floor's height at a bus-local point (m): the low floor, the two steps' treads, the raised rear. */
+/** The cabin floor's height at a bus-local point (m). Bus v3 (owner 2026-11-16): one flat low floor front to back (no raised rear, no steps). */
 export function cabinFloorAt(ahead: number, _right = 0): number {
   const xf = TRANSIT.busLengthM / 2 - ahead;
   let h = GEN_CABIN_FLOOR[0]!.h;
@@ -329,8 +329,8 @@ export function seatBodyPoint(seat: BusSeat): BusLocalPoint {
 }
 
 /**
- * The standing places (bus v3): the free floor (the walk radius clear of every seat, housing, post and wall), not on the step
- * between the floors, clear of every seated rider's legs, packed greedily a body apart (BUS_STAND_APART) starting from the
+ * The standing places (bus v3): the free floor (the walk radius clear of every seat, housing, post and wall), clear of every
+ * seated rider's legs, packed greedily a body apart (BUS_STAND_APART) starting from the
  * front door. Their count is the bus's standing capacity; the server puts a boarding rider on the first one nobody stands on.
  */
 export const BUS_STAND_APART = 0.62;
@@ -338,7 +338,6 @@ function standingSpots(): BusLocalPoint[] {
   const step = 0.05;
   const door: BusLocalPoint = { ahead: 3.4, right: 0.25 };
   const seated = BUS_SEATS.map(seatBodyPoint);
-  const xfOf = (ahead: number) => TRANSIT.busLengthM / 2 - ahead;
   const cand: Array<BusLocalPoint & { d: number }> = [];
   const na = Math.round((GEN_CABIN_BOUNDS.aheadMax - GEN_CABIN_BOUNDS.aheadMin) / step);
   const nr = Math.round((2 * GEN_CABIN_HALF_WIDTH) / step);
@@ -347,8 +346,6 @@ function standingSpots(): BusLocalPoint[] {
       const ahead = Math.round((GEN_CABIN_BOUNDS.aheadMin + i * step) * 1000) / 1000;
       const right = Math.round((-GEN_CABIN_HALF_WIDTH + j * step) * 1000) / 1000;
       if (cabinBlocked(ahead, right)) continue;
-      const xf = xfOf(ahead);
-      if (xf > 5.8 && xf < 6.2) continue; // the step between the low floor and the raised rear
       if (seated.some((p) => Math.hypot(p.ahead - ahead, p.right - right) < 0.55)) continue;
       cand.push({ ahead, right, d: Math.hypot(ahead - door.ahead, right - door.right) });
     }

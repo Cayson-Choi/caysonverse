@@ -96,19 +96,15 @@ describe("bus v3: the cabin data (generated from the Blender model)", () => {
     }
   });
 
-  it("a standing avatar head (2.18) and hat (2.69) are under the 3.15 ceiling on the low floor, the head on the raised rear", () => {
+  it("a standing avatar head (2.18) and hat (2.69) are under the 3.15 ceiling everywhere", () => {
     expect(BUS_CEILING).toBeGreaterThanOrEqual(3.15);
-    const low = cabinFloorAt(BUS_ENTRY.ahead);
-    expect(low).toBeCloseTo(0.34, 3);
-    expect(low + 2.69).toBeLessThan(BUS_CEILING);
-    expect(cabinFloorAt(-3) + 2.18).toBeLessThan(BUS_CEILING);
+    for (const a of [BUS_ENTRY.ahead, 0, -3]) expect(cabinFloorAt(a) + 2.69, `${a}`).toBeLessThan(BUS_CEILING);
   });
 
-  it("the floor steps up at xf 5.85 and 6.15", () => {
+  it("bus v3 (owner 2026-11-16: no raised rear): the floor is one flat level front to back, and the back row stands on it", () => {
     const ahead = (xf: number) => TRANSIT.busLengthM / 2 - xf;
-    expect(cabinFloorAt(ahead(5.0))).toBeCloseTo(0.34, 3);
-    expect(cabinFloorAt(ahead(6.0))).toBeCloseTo(0.545, 3);
-    expect(cabinFloorAt(ahead(7.0))).toBeCloseTo(0.75, 3);
+    for (const xf of [0.5, 3, 5, 6, 7, 8.5]) expect(cabinFloorAt(ahead(xf)), `xf ${xf}`).toBeCloseTo(0.34, 3);
+    for (const s of BUS_SEATS.filter((x) => x.id.startsWith("B"))) expect(s.floor, s.id).toBeCloseTo(0.34, 3);
   });
 
   it("busSeat numbers: 0 free, 1..10 seats", () => {

@@ -28,6 +28,8 @@ export const DESKTOP = { viewport: { width: 1280, height: 800 } };
 export const PHONE = { viewport: { width: 375, height: 812 }, hasTouch: true, isMobile: true, deviceScaleFactor: 2, userAgent: IPHONE_UA };
 
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+/** CV_E2E_SLOW=3 stretches the load / join timeouts on an overloaded machine (the checks themselves are unchanged). */
+export const SLOW = Math.max(1, Number(process.env.CV_E2E_SLOW || 1));
 export const r2 = (n) => Math.round(n * 100) / 100;
 
 // ───────────────────────────────────── a run: checks, errors, evidence ─────────────────────────────────────
@@ -156,6 +158,10 @@ export async function openPlayer(browser, run, { tag, device = DESKTOP, settings
     } catch {}
   }, settings);
   const page = await ctx.newPage();
+  if (SLOW > 1) {
+    page.setDefaultTimeout(30000 * SLOW);
+    page.setDefaultNavigationTimeout(30000 * SLOW);
+  }
   run.watch(page, tag);
   const touch = !!device.hasTouch;
   // The model files this tab fetched (name → bytes), in order: the first-load report reads them.
@@ -182,8 +188,8 @@ export async function toEntry(p, url = CLIENT_URL + "/") {
 }
 /** The entry screen is on (after a goto or a reload): the nickname box and the builder are ready. */
 export async function entryReady(p) {
-  await p.page.locator("input.cv-input").first().waitFor({ state: "visible", timeout: 30000 });
-  await p.page.waitForFunction(() => !document.querySelector(".cv-builder-hint.is-loading"), null, { timeout: 30000 }).catch(() => {});
+  await p.page.locator("input.cv-input").first().waitFor({ state: "visible", timeout: 30000 * SLOW });
+  await p.page.waitForFunction(() => !document.querySelector(".cv-builder-hint.is-loading"), null, { timeout: 30000 * SLOW }).catch(() => {});
   await sleep(700);
 }
 

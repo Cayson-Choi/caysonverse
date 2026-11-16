@@ -127,7 +127,7 @@ export function busRiderCamera(input: BusCamInput, out: TransitCameraPose = { x:
     const max: V3 = [BUS_SHELL.aheadMax, BUS_SHELL.right, BUS_SHELL.top];
     const inside = (p: V3) => p[0] >= min[0] && p[0] <= max[0] && p[1] >= min[1] && p[1] <= max[1] && p[2] >= min[2] && p[2] <= max[2];
     const eyeFor = (pa: number, pr: number): V3 => {
-      // a standing head under the raised rear's ceiling reaches the shell's top: the lens then starts from the top and looks down from there
+      // a standing head near the ceiling may reach the shell's top: the lens then starts from the top and looks down from there
       const o: V3 = [head[0], head[1], Math.min(head[2], max[2])];
       const elE = d > 1e-6 ? Math.min(el, Math.asin(Math.max(-1, Math.min(1, (max[2] - o[2]) / d)))) : el; // not above the ceiling
       // the lens drifts to the aisle's middle as it backs off (a rider at the wall would otherwise be looked at from a hand's breadth off the wall)

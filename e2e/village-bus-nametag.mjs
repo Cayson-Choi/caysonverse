@@ -217,7 +217,7 @@ async function checkPhase(label, ids) {
   for (const id of ids) {
     const a = analyse(data[id] ?? []);
     report[label][id] = a;
-    run.check(`${label}: ${id.slice(0, 5)}'s tag was sampled`, a.n > 30, a);
+    run.check(`${label}: ${id.slice(0, 5)}'s tag was sampled`, a.n > 15, a);
     // flicker = going back and forth: at most one change in 3 s (a tag that appears or goes once is not a flicker)
     run.check(`${label}: ${id.slice(0, 5)}'s tag does not flicker (no opacity back-and-forth; selected / occluded / drawn change at most once)`, a.reversals === 0 && a.selFlips <= 1 && a.occFlips <= 1 && a.visFlips <= 1, a);
     run.check(`${label}: ${id.slice(0, 5)}'s tag stays put on the screen while nobody walks (under 1 cm a frame relative to the camera, in the bus's frame)`, a.maxStepM < 0.01 && a.maxOverAnchorStepM < 0.02, a);

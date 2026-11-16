@@ -202,7 +202,7 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
   }
 
   /**
-   * How many may ride the bus (busCabin.ts BUS_CAPACITY: 10 seats + 15 standing places). DEV only (never in production):
+   * How many may ride the bus (busCabin.ts BUS_CAPACITY: 10 seats + 16 standing places = 26). DEV only (never in production):
    * CV_DEV_BUS_CAPACITY lowers it, so the e2e can fill the bus with a few browsers and see the next rider refused.
    */
   protected busCapacity(): number {

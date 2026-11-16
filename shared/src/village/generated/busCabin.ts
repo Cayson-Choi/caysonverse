@@ -16,11 +16,11 @@ export const GEN_CABIN_SEATS: readonly GenSeat[] = [
   { id: "L3", ahead: -0.05, right: -0.775, floor: 0.34, yaw: 0, backed: true },
   { id: "R1", ahead: 2.05, right: 0.775, floor: 0.8, yaw: 0, backed: true },
   { id: "R2", ahead: 1.05, right: 0.775, floor: 0.34, yaw: 0, backed: true },
-  { id: "RL1", ahead: -2.25, right: -0.775, floor: 0.86, yaw: 0, backed: true },
-  { id: "RR1", ahead: -2.25, right: 0.775, floor: 0.86, yaw: 0, backed: true },
-  { id: "B1", ahead: -3.85, right: -0.79, floor: 0.75, yaw: 0, backed: true },
-  { id: "B2", ahead: -3.85, right: 0, floor: 0.75, yaw: 0, backed: true },
-  { id: "B3", ahead: -3.85, right: 0.79, floor: 0.75, yaw: 0, backed: true },
+  { id: "RL1", ahead: -2.25, right: -0.775, floor: 0.8, yaw: 0, backed: true },
+  { id: "RR1", ahead: -2.25, right: 0.775, floor: 0.8, yaw: 0, backed: true },
+  { id: "B1", ahead: -3.85, right: -0.79, floor: 0.34, yaw: 0, backed: true },
+  { id: "B2", ahead: -3.85, right: 0, floor: 0.34, yaw: 0, backed: true },
+  { id: "B3", ahead: -3.85, right: 0.79, floor: 0.34, yaw: 0, backed: true },
 ];
 
 export const GEN_CABIN_SEAT_BACKS: readonly GenSeatBack[] = [
@@ -29,11 +29,11 @@ export const GEN_CABIN_SEAT_BACKS: readonly GenSeatBack[] = [
   { seat: "L3", min: [-0.345, -1.175, 0.79], max: [-0.225, -0.375, 1.59] },
   { seat: "R1", min: [1.755, 0.375, 1.25], max: [1.875, 1.175, 2.05] },
   { seat: "R2", min: [0.755, 0.375, 0.79], max: [0.875, 1.175, 1.59] },
-  { seat: "RL1", min: [-2.545, -1.175, 1.31], max: [-2.425, -0.375, 2.11] },
-  { seat: "RR1", min: [-2.545, 0.375, 1.31], max: [-2.425, 1.175, 2.11] },
-  { seat: "B1", min: [-4.145, -1.18, 1.2], max: [-4.025, -0.4, 2] },
-  { seat: "B2", min: [-4.145, -0.39, 1.2], max: [-4.025, 0.39, 2] },
-  { seat: "B3", min: [-4.145, 0.4, 1.2], max: [-4.025, 1.18, 2] },
+  { seat: "RL1", min: [-2.545, -1.175, 1.25], max: [-2.425, -0.375, 2.05] },
+  { seat: "RR1", min: [-2.545, 0.375, 1.25], max: [-2.425, 1.175, 2.05] },
+  { seat: "B1", min: [-4.145, -1.18, 0.79], max: [-4.025, -0.4, 1.59] },
+  { seat: "B2", min: [-4.145, -0.39, 0.79], max: [-4.025, 0.39, 1.59] },
+  { seat: "B3", min: [-4.145, 0.4, 0.79], max: [-4.025, 1.18, 1.59] },
 ];
 
 export const GEN_CABIN_SOLIDS: readonly GenSolid[] = [
@@ -59,9 +59,7 @@ export const GEN_CABIN_SOLIDS: readonly GenSolid[] = [
 
 /** The floor's heights by xf (m back from the front face): the low floor, the two steps' treads, the raised rear. */
 export const GEN_CABIN_FLOOR: readonly GenFloor[] = [
-  { xf0: 0.12, xf1: 5.85, h: 0.34 },
-  { xf0: 5.85, xf1: 6.15, h: 0.545 },
-  { xf0: 6.15, xf1: 8.7, h: 0.75 },
+  { xf0: 0.12, xf1: 8.7, h: 0.34 },
 ];
 
 export const GEN_CABIN_CEILING = 3.15;
