@@ -49,6 +49,21 @@ const stickPush = async (p, dy, ms) => {
   await touchUp(p);
 };
 
+/**
+ * After a tap on a seat (owner 2026-11-17: "의자를 찍으면 자동 앉기는 빼줘"): the walk ends beside it STANDING; then E / the 앉기
+ * button sits. True when it stood after the walk and the button then sat it. Records whether it sat by itself (it must not).
+ */
+async function tapThenSit(p) {
+  await p.page.waitForFunction(() => window.__cvClickTarget?.() === null, null, { timeout: 25000 }).catch(() => {});
+  await sleep(2500); // past the walk's end: an auto-sit would have happened by now
+  const autoSat = (await seatOf(p)) >= 0;
+  run.check("the tap only walked to the seat (no automatic sitting)", !autoSat, await pos(p));
+  if (autoSat) return true;
+  if (p.touch) await p.page.locator(".cv-action-btn").first().tap();
+  else await p.page.keyboard.press("KeyE");
+  return p.page.waitForFunction(() => window.__cv.getPos().seatIndex >= 0, null, { timeout: 8000 }).then(() => true, () => false);
+}
+
 /** Speed over `ms` while `hold` keeps the input on. */
 async function speedOf(p, hold, ms = 2200) {
   const a = await pos(p);
@@ -132,11 +147,11 @@ if (args.only !== "phone") {
     await sleep(600);
     const at = await screenAt(p, -23.2, 0.46, -4.25); // the deck's top by its east face
     await tapAt(p, at.x, at.y);
-    const sat = await p.page.waitForFunction(() => window.__cv.getPos().seatIndex >= 0, null, { timeout: 20000 }).then(() => true, () => false);
+    const sat = await tapThenSit(p);
     await sleep(1800);
     const s = await seatOf(p);
     const seat = await p.page.evaluate(async (i) => (await window.__imp("/src/game/activeMap.ts")).VILLAGE_ACTIVE_MAP.seats[i]?.id ?? null, s);
-    run.check("a click on the deck walks there and sits on it (a zelkova_deck seat)", sat && String(seat).startsWith("zelkova_deck"), { s, seat });
+    run.check("a click on the deck walks there and stands (no sitting on a tap); E / 앉기 then sits there (a zelkova_deck seat)", sat && String(seat).startsWith("zelkova_deck"), { s, seat });
     await shot(p, "8-deck-seated");
     await p.page.keyboard.down("KeyW");
     await sleep(400);
@@ -290,10 +305,10 @@ if (args.only !== "pc") {
     await sleep(600);
     const at = await screenAt(p, -23.2, 0.46, -4.25);
     await tapAt(p, at.x, at.y);
-    const sat = await p.page.waitForFunction(() => window.__cv.getPos().seatIndex >= 0, null, { timeout: 20000 }).then(() => true, () => false);
+    const sat = await tapThenSit(p);
     await sleep(1800);
     await shot(p, "8-deck-seated");
-    run.check("a tap on the deck sits there", sat, await pos(p));
+    run.check("a tap on the deck walks there without sitting; the 앉기 button sits there", sat, await pos(p));
     await stickPush(p, -40, 500);
     const up = await p.page.waitForFunction(() => window.__cv.getPos().seatIndex < 0, null, { timeout: 5000 }).then(() => true, () => false);
     run.check("the stick stands up from a seat", up);

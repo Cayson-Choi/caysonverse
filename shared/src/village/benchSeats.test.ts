@@ -570,8 +570,10 @@ describe("the fishing lake's seats in the global index (A10, design 5.4 and 12.2
 
   it("come after every village seat, so every older seat index stays (Player.seatIndex is int16)", () => {
     // only the plaza zelkova deck's seats (UX 2026-11-16) come after the lake's
+    // (release 2's waterfall stones sit between the lake's and the deck's; none on a branch without them)
     const deck = VILLAGE_SEATS.filter((s) => s.id.startsWith("zelkova_deck:")).length;
-    expect(LAKE_SEAT_BASE).toBe(VILLAGE_SEATS.length - lakeIdx.length - deck);
+    const falls = VILLAGE_SEATS.filter((s) => s.bench.startsWith("falls_seat_")).length;
+    expect(LAKE_SEAT_BASE).toBe(VILLAGE_SEATS.length - lakeIdx.length - falls - deck);
     expect(lakeIdx[0]).toBe(LAKE_SEAT_BASE);
     expect(lakeIdx.every((i, k) => i === LAKE_SEAT_BASE + k)).toBe(true);
     expect(lake).toHaveLength(56);
@@ -635,7 +637,7 @@ describe("the plaza zelkova deck (평상, UX 2026-11-16)", () => {
   const c = VILLAGE_LAYOUT.plaza.zelkova.centre;
   const box = { minX: c.x - 2.5, maxX: c.x + 2.5, minZ: c.z - 2.5, maxZ: c.z + 2.5 };
 
-  it("six places, appended after every other seat (the lake's included), so no older index moves", () => {
+  it("six places, the very last seats (after the lake's and release 2's waterfall stones), so no older index moves", () => {
     expect(deck).toHaveLength(6);
     expect(deck.map(({ i }) => i)).toEqual([0, 1, 2, 3, 4, 5].map((k) => VILLAGE_SEATS.length - 6 + k));
     expect(deck[0]!.i).toBeGreaterThan(LAKE_SEAT_BASE);

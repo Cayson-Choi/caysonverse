@@ -514,7 +514,8 @@ function makeSeats(benches: readonly VillageBench[]): VillageSeat[] {
   // the fishing lake's seats (A10) after every village seat: the 30 fishing chairs first, in LAKE_FISHING_SPOTS order
   // (LAKE_SEAT_BASE + spot), then the shore benches, picnic, pavilion and porch benches
   seats.push(...lakeVillageSeats());
-  // the plaza zelkova's deck (평상, UX 2026-11-16) after the lake's: appended last so every index above stays put
+  // the plaza zelkova's deck (평상, UX 2026-11-16) closes the list: after the lake's and after every seat another release adds
+  // before it (release 2: the waterfall rest area's stones go between the lake's and these), so no index above ever moves
   seats.push(...zelkovaDeckSeats());
   return seats;
 }
