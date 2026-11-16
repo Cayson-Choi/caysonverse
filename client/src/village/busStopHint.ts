@@ -33,9 +33,9 @@ export function busStopHintAt(
   if (boarded) return null;
   if (!(busBoardingDistance(x, z) <= BUS_HINT_REACH_M)) return null;
   const trip = tripAt(nowMs);
+  // a phone has no E key: the round 🚌 button is how it boards (review 2026-11-15); bus v3 QA: every line says how
+  const how = touch ? "버스 앞에서 🚌 버튼" : "버스 앞에서 E";
   if (trip.status === "boarding") {
-    // a phone has no E key: the round 🚌 button is how it boards (review 2026-11-15)
-    const how = touch ? "버스 앞에서 🚌 버튼" : "버스 앞에서 E";
     const left = BUS_CAPACITY - aboard;
     // bus v3 (owner 2026-11-16): only as many as the bus holds; a full one says so (the server refuses the next rider)
     if (left <= 0) return { tone: "wait", text: `버스가 가득 찼어요 · 다음 버스를 기다려 주세요` };
@@ -46,10 +46,11 @@ export function busStopHintAt(
     // "약 N분": just after the departure the exact whole-minute countdown rounded UP to a full cycle ("10분 뒤" 40 s after it left)
     const left = Math.max(0, trip.nextStartMs - nowMs);
     const words = left > TRANSIT.boardingMs ? `약 ${Math.max(1, Math.round(left / 60000))}분` : busCountdownWords(left).long;
-    return { tone: "wait", text: `버스 운행 중 · ${words} 뒤 출발 · 출발 ${boardingOpensWords()} 전부터 탈 수 있어요` };
+    // bus v3 QA: said positively (when the next one leaves), not that this one has gone
+    return { tone: "wait", text: `다음 버스는 ${words} 뒤 출발해요 · 출발 ${boardingOpensWords()} 전부터 탈 수 있어요 (${how})` };
   }
   // one countdown only (review 2026-11-15: a second, rounded one for the boarding window disagreed with the first)
-  return { tone: "wait", text: `다음 버스 ${busCountdownWords(trip.nextStartMs - nowMs).long} 뒤 출발 · 출발 ${boardingOpensWords()} 전부터 탈 수 있어요` };
+  return { tone: "wait", text: `다음 버스는 ${busCountdownWords(trip.nextStartMs - nowMs).long} 뒤 출발해요 · 출발 ${boardingOpensWords()} 전부터 탈 수 있어요 (${how})` };
 }
 
 /**

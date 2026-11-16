@@ -35,9 +35,11 @@ async function pollUntil(fn, ms, step = 150) {
   return false;
 }
 const toDoor = async (p) => {
-  await walkAndWait(p, 38.5, -0.5, 40000, 1);
-  await walkAndWait(p, 36.9, -6.0, 30000, 0.4);
-  await sleep(700);
+  await walkAndWait(p, 38.5, -0.5, 90000, 1);
+  await walkAndWait(p, 36.9, -6.0, 60000, 0.4);
+  // the board button is offered at the door (wait for it: a slow page takes a moment to see the stop)
+  await pollUntil(async () => (await p.page.evaluate(async () => (await window.__imp("/src/game/interactTargets.ts")).getTargets(window.__cv.getPos()).map((t) => t.id))).includes("village_bus_board"), 15000, 300);
+  await sleep(500);
 };
 
 await run.step("join A, B (phone), C", async () => {

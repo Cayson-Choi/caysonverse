@@ -302,10 +302,12 @@ function TransitRideHud() {
     borderRadius: 8,
     padding: "6px 8px",
     cursor: "pointer",
-    fontSize: 12,
+    fontSize: touch ? 13 : 12,
     background: "rgba(255,255,255,0.92)",
     color: "#1b2147",
-    minHeight: 34,
+    // bus v3 QA: every button in the ride panel is a full 48 px tap target on a phone (the views were 24 x 34)
+    minHeight: touch ? 48 : 34,
+    minWidth: touch ? 48 : undefined,
   } as const;
   return (
     <div
@@ -332,7 +334,10 @@ function TransitRideHud() {
               {notice}
             </div>
           ) : null}
-          <div style={{ marginTop: 6, display: "flex", flexWrap: "nowrap", gap: 4 }} data-testid="bus-ride-views">
+          <div
+            style={touch ? { marginTop: 6, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 } : { marginTop: 6, display: "flex", flexWrap: "nowrap", gap: 4 }}
+            data-testid="bus-ride-views"
+          >
             {RIDE_VIEWS.map((v) => (
               <button key={v.id} type="button" data-view={v.id} style={{ ...btn, padding: "6px 6px", whiteSpace: "nowrap", flex: "0 0 auto" }} onClick={() => { busCamGoal.yaw = v.yaw; }}>
                 {touch ? v.short : v.label}
@@ -350,7 +355,7 @@ function TransitRideHud() {
             // the doors open only at the stop (the server refuses a leave on the lap): say when instead of a dead button
             <div style={{ marginTop: 4, opacity: 0.75 }}>정류장에 돌아오면 내려요</div>
           ) : (
-            <button type="button" onClick={() => sendBusRide("leave")} style={{ ...btn, marginTop: 6 }}>
+            <button type="button" onClick={() => sendBusRide("leave")} style={{ ...btn, marginTop: 6, width: touch ? "100%" : undefined }}>
               하차
             </button>
           )}

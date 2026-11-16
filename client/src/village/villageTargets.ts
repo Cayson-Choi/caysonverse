@@ -86,7 +86,7 @@ export function villageTargets(
  * "4분 뒤" for the 60 px touch button): minutes are rounded up so it never says 0분, and both forms agree.
  */
 export function busCountdownWords(ms: number): { long: string; short: string } {
-  const s = Math.max(0, Math.ceil(ms / 1000));
+  const s = Math.max(1, Math.ceil(ms / 1000)); // never "0초": the last second reads "1초" (bus v3 QA: the wait said positively)
   // One rounding for every place that shows it (review r4: the phone button said "8분 뒤" while the pill said "7분 8초 뒤"):
   // whole minutes rounded up while boarding is not open yet (more than the boarding window away: always "4분" or more);
   // within it minutes and seconds (review 2026-11-15: "3분 뒤 출발" rounded up from 2:01 read as if boarding had just

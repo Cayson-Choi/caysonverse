@@ -718,9 +718,10 @@ export function LocalPlayer({
           // both rows of windows in view); the wheel / pinch out is the third-person arm inside the cabin (the camera's job).
           orbitBeforeRideRef.current = { yaw: orbit.yaw, pitch: orbit.pitch, distance: orbit.distance };
           wasFpBeforeRideRef.current = viewState.mode === "fp";
-          orbit.yaw = 0;
+          // bus v3 QA: boarding looks FORWARD (the windscreen and both rows of side windows), not at the rear seats
+          orbit.yaw = Math.PI;
           orbit.pitch = 0.6; // the player's zoom stays as they set it (owner 2026-11-16)
-          enterFp(0); // the look yaw is bus-relative: 0 looks to the rear, the way the avatar faces at the entry
+          enterFp(Math.PI); // the look yaw is bus-relative: PI looks to the front (BUS_VIEW_YAW.front)
           viewState.fpPitch = 0.05;
           busWalk.ahead = selfBusRide.ahead;
           busWalk.right = selfBusRide.right;
