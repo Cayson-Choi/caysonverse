@@ -491,30 +491,41 @@ describe("two clients and the cheats (design 12.10)", () => {
 });
 
 describe("the lake's seats in the room (design 12.2, server side)", () => {
-  it("a backless picnic seat past index 127 syncs as an int16 and is sat on from either side, facing the side the sitter came from", async () => {
+  it("a backless pavilion board past index 127 syncs as an int16 and is sat on from either side, facing the side the sitter came from", async () => {
     const { visitor } = await setup();
     const a = await visitor();
-    const idx = VILLAGE_SEATS.findIndex((s) => s.kind === "picnic");
+    const b = await visitor();
+    // the board's second facing (":b"): its own seat of the board's group
+    const idx = VILLAGE_SEATS.findIndex((s) => s.lake === "pavilion" && s.id.endsWith(":b"));
     expect(idx).toBeGreaterThanOrEqual(LAKE_SEAT_BASE);
+    expect(idx).toBeGreaterThan(127);
     const seat = VILLAGE_SEATS[idx]!;
-    expect(seat.other).toBeDefined();
-    // from the second side
-    a.player.x = seat.x + Math.sin(seat.other!.yaw) * 1.0;
-    a.player.z = seat.z + Math.cos(seat.other!.yaw) * 1.0;
+    const pair = VILLAGE_SEATS.findIndex((s) => s.group === seat.group && s !== seat);
+    expect(pair).toBeGreaterThanOrEqual(LAKE_SEAT_BASE);
+    expect(seat.kind).toBe("backless");
+    a.player.x = seat.x + Math.sin(seat.yaw) * 0.6;
+    a.player.z = seat.z + Math.cos(seat.yaw) * 0.6;
     a.client.send(MessageType.Sit, { seatIndex: idx });
-    await until(() => a.player.seatIndex === idx, "sitting on the picnic bench");
-    expect(a.player.yaw).toBeCloseTo(seat.other!.yaw, 5);
+    await until(() => a.player.seatIndex === idx, "sitting on the pavilion board");
+    expect(a.player.yaw).toBeCloseTo(seat.yaw, 5);
     await until(() => a.client.state.players.get(a.sid)?.seatIndex === idx, "the client seeing it");
+    // the other facing of the same place is taken with it
+    const other = VILLAGE_SEATS[pair]!;
+    b.player.x = other.x + Math.sin(other.yaw) * 0.6;
+    b.player.z = other.z + Math.cos(other.yaw) * 0.6;
+    b.client.send(MessageType.Sit, { seatIndex: pair });
+    await sleep(80);
+    expect(b.player.seatIndex).toBe(-1);
     a.client.send(MessageType.Stand, {});
     await until(() => a.player.seatIndex === -1, "standing");
-    expect(a.player.x).toBeCloseTo(seat.other!.standX, 5);
-    expect(a.player.z).toBeCloseTo(seat.other!.standZ, 5);
+    expect(a.player.x).toBeCloseTo(seat.standX, 5);
+    expect(a.player.z).toBeCloseTo(seat.standZ, 5);
   });
 
   it("a backed lake bench is sat on from the front only: from behind the backrest the Sit is dropped", async () => {
     const { visitor } = await setup();
     const a = await visitor();
-    const idx = VILLAGE_SEATS.findIndex((s) => s.kind === "bench");
+    const idx = VILLAGE_SEATS.findIndex((s) => s.lake === "bench");
     const seat = VILLAGE_SEATS[idx]!;
     a.player.x = seat.x - Math.sin(seat.yaw) * 1.0; // behind the backrest
     a.player.z = seat.z - Math.cos(seat.yaw) * 1.0;

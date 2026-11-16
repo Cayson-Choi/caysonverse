@@ -8,7 +8,6 @@ import type { MovePayload } from "@caysonverse/shared/messages";
 import { recordSentMove } from "../game/sentMoves";
 import type { Appearance } from "@caysonverse/shared/appearance";
 import { VillageMsg } from "@caysonverse/shared/village/messages";
-import type { FishingEmptyPayload, FishingHoldPayload, FishingSitPayload } from "@caysonverse/shared/village/messages";
 import { SERVER_URL } from "./endpoint";
 import { joinErrorNotice } from "./reconnectPolicy";
 import { attachResilience } from "./resilience";
@@ -102,46 +101,6 @@ export function sendKeypad(buildingId: string, code: string): void {
 export function sendLightCandle(cubby: string): void {
   if (!room) return;
   room?.send(VillageMsg.LightCandle, { cubby });
-}
-
-/** Rent the session's rod (design lake-fishing 9.3). The server validates the player's authoritative position at the rental pad. */
-export function sendFishingRentRod(): void {
-  room?.send(VillageMsg.FishingRentRod, {} satisfies FishingEmptyPayload);
-}
-
-/** Give the rod back at the office. */
-export function sendFishingReturnRod(): void {
-  room?.send(VillageMsg.FishingReturnRod, {} satisfies FishingEmptyPayload);
-}
-
-/** Sit on the fishing chair of spot `spot` (index into LAKE_FISHING_SPOTS, or its id). */
-export function sendFishingSit(spot: number | string): void {
-  room?.send(VillageMsg.FishingSit, { spot } satisfies FishingSitPayload);
-}
-
-/** Cast the line. The server draws the wait and the fish. */
-export function sendFishingCast(): void {
-  room?.send(VillageMsg.FishingCast, {} satisfies FishingEmptyPayload);
-}
-
-/** The pull. Only a bite window honours it (a nibble ignores it without penalty). */
-export function sendFishingStrike(): void {
-  room?.send(VillageMsg.FishingStrike, {} satisfies FishingEmptyPayload);
-}
-
-/** The big-fish button: true while pressed (repeat every <= 500 ms), false on release. */
-export function sendFishingHold(down: boolean): void {
-  room?.send(VillageMsg.FishingHold, { down } satisfies FishingHoldPayload);
-}
-
-/** Stand up from the fishing chair. */
-export function sendFishingStand(): void {
-  room?.send(VillageMsg.FishingStand, {} satisfies FishingEmptyPayload);
-}
-
-/** Ask for the "오늘의 대어" board. */
-export function sendFishingBoardRequest(): void {
-  room?.send(VillageMsg.FishingBoardRequest, {} satisfies FishingEmptyPayload);
 }
 
 // ─────────────────────────── Player messages: the ACTIVE room ───────────────────────────

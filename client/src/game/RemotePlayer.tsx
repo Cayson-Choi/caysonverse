@@ -59,6 +59,8 @@ import { benchClipPlanes, clipAvatar, enableBenchClipping } from "./benchClip";
 import { busPlace, busRiderPose, type BusRiderPose } from "@caysonverse/shared/village/busSeats";
 import { getTransitRenderPose } from "../net/transitSync";
 import { stepLean } from "./leanBack";
+import { CARRY_STRIPPED_CLIPS, stripArm } from "../lake/fishingRig";
+import { useFishingRig, useHasRod } from "../lake/useFishingRig";
 
 /** Fallback seconds for a sit/stand clip if its duration can't be read yet. */
 const SIT_CLIP_FALLBACK_SEC = 0.8;
@@ -103,6 +105,10 @@ export function RemotePlayer({
   const stride = useMemo(() => lookStride(look), [look]);
   const { avatar, animations } = useAvatar(look, { probeId: sessionId });
   const mixer = useMemo(() => new AnimationMixer(avatar.root), [avatar]);
+  // Fishing lake (A10): the rod in this avatar's hand, the fishing clips and the landed fish (lake/fishingRig.ts). A carrier's
+  // walk / run / idle have no right arm (Carry_Rod owns it): the base clips are bound again when the rod comes or goes.
+  const hasRod = useHasRod(sessionId);
+  const fishRig = useFishingRig(sessionId, avatar, mixer);
 
   // The tag and the bubble are anchored to THIS avatar's top (hair, hat, ...), measured once at assembly.
   const tagHeight = nametagRestHeight(avatar.topY);
@@ -174,7 +180,7 @@ export function RemotePlayer({
     const bind = (base: string): AnimationAction | null => {
       const name = clipFor(base, look);
       const clip = animations.find((c) => c.name === name);
-      return clip ? mixer.clipAction(clip) : null;
+      return clip ? mixer.clipAction(hasRod && CARRY_STRIPPED_CLIPS.test(clip.name) ? stripArm(clip) : clip) : null;
     };
     idleAction.current = bind(CLIP.idle);
     walkAction.current = bind(CLIP.walk);
@@ -207,7 +213,7 @@ export function RemotePlayer({
     return () => {
       mixer.stopAllAction();
     };
-  }, [mixer, animations, look, sessionId]);
+  }, [mixer, animations, look, sessionId, hasRod]);
 
   // DEV-only E2E probe (window.__cv.getRemoteGaits): publish this avatar's gait,
   // and drop the entry when it leaves. Dead code in production builds.
@@ -513,6 +519,9 @@ export function RemotePlayer({
     // A backed seat: lean back while seated (leanBack.ts). `seat.seat` is the seat index on the one global list.
     stepLean(avatar.root, seat.mode === "seated" ? (activeSeats()[seat.seat]?.lean ?? 0) : 0, delta);
 
+    // Fishing lake: the rod, the fishing clips, the landed fish; a no-op without a rod.
+    fishRig.update(delta, { seatMode: seat.mode, baseSit: sitIdleAction.current });
+
     // 3b) Jump (Task 11): a broadcast hop lifts the group (display only — the server
     //    y never changes) and plays Jump_Full_Short once, squeezed into
     //    JUMP_DURATION_MS. Only a standing avatar hops: a seated or sitting/standing
@@ -549,7 +558,7 @@ export function RemotePlayer({
         }
       }
       // A bench raises its sitter onto the seat surface (eased in / out with the clips); the shadow stays down.
-      const raise = lift + seatLift(seat);
+      const raise = lift + seatLift(seat) * fishRig.liftFactor();
       group.position.y = raise;
       if (shadowRef.current) shadowRef.current.position.y = -raise;
     }
@@ -627,11 +636,11 @@ export function RemotePlayer({
     // 7) Mixer discipline: paused while idle/seated-settled; every-frame during a
     //    crossfade OR a one-shot sit/stand/jump clip; distance-throttled while walking/running.
     const transient = seat.mode === "sitting" || seat.mode === "standing" || jumpSeqRef.current !== -1;
-    const active = (loopRef.current !== null && loopRef.current !== "idle") || fadeRef.current > 0 || transient;
+    const active = (loopRef.current !== null && loopRef.current !== "idle") || fadeRef.current > 0 || transient || fishRig.needsTick();
     if (active) {
       accDeltaRef.current += delta;
       framesSinceRef.current += 1;
-      if (fadeRef.current > 0 || transient) {
+      if (fadeRef.current > 0 || transient || fishRig.needsTick()) {
         mixer.update(accDeltaRef.current);
         accDeltaRef.current = 0;
         framesSinceRef.current = 0;

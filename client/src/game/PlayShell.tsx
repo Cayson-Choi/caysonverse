@@ -186,6 +186,10 @@ export function PlayShell(p: PlayShellProps) {
   }));
   const { pose, orbit, seat } = frame;
   const [moveInput] = useState<MoveInput>(() => ({ forward: 0, right: 0, run: false }));
+  // DEV only (e2e): the live seat state, so a test can play the server's part for seats it does not hand out yet (the lake's).
+  useEffect(() => {
+    if (import.meta.env.DEV) (window as unknown as { __cvSeat?: typeof seat }).__cvSeat = seat;
+  }, [seat]);
 
   // Every fresh scene starts uncaptured, in third person, with no panel open.
   useEffect(() => {

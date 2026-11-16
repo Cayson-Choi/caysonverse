@@ -24,6 +24,7 @@ import { createVegetation, hideLegacyVegetationSources, vegModeFrom, vegetationP
 import { vegDressing } from "./vegDressing";
 import { createWaterfall3D, hideWaterfallCards, type Waterfall3D } from "./waterfall3d";
 import type { Object3D } from "three";
+import { LakeVillagePatch } from "../lake/PatchVillage";
 import type { DrawnGap } from "./veg/drawnGap";
 
 declare global {
@@ -232,6 +233,8 @@ export function VillageModel({ tier }: { tier: VillageTier }) {
   return (
     <>
       <primitive object={nodes.root} dispose={null} />
+      {/* The fishing lake takes the old backdrop lake out of this clone once it is drawn (lake/lakeVillagePatch.ts). */}
+      <LakeVillagePatch root={nodes.root} />
       {veg && <primitive object={veg.group} dispose={null} />}
       {waterfall && <primitive object={waterfall.runtime.group} dispose={null} />}
       {night && (

@@ -19,7 +19,7 @@
  * `villageGeometry`, so a lake player is simply a village player further east (`Player.area` stays "village").
  */
 
-import type { AABB } from "../collision";
+import type { AABB, CameraBox } from "../collision";
 import { isBlocked } from "../collision";
 import { SIT_POSE, SIT_ROOT_AHEAD } from "../sitPose";
 import { PLAYER_RADIUS, type Seat } from "../worldMap";
@@ -384,6 +384,18 @@ export function lakeGreyboxColliders(): LakeCollider[] {
     if (lakeWalkable(l.x, l.z)) out.push(c(`lamp_${i + 1}`, boxAround(l.x, l.z, 0.3, 0.3)));
   });
   return out;
+}
+
+/**
+ * The facilities the third-person camera must not enter (the spring arm of cameraCollision.ts casts against these): the office,
+ * the log huts and the lamp posts, with the heights of their walls. Low furniture (benches, tables, the rod rack) is looked over,
+ * as in the village. B's `col__lake_*` camera boxes replace these when the facilities model lands.
+ */
+export function lakeCameraBoxes(): readonly CameraBox[] {
+  const height: Record<string, number> = { shop: 4.4, hut_a: 2.9, hut_b: 2.9 };
+  return lakeGreyboxColliders()
+    .filter((g) => g.id in height || g.id.startsWith("lamp_"))
+    .map((g) => ({ ...g.box, height: height[g.id] ?? 4.4 }));
 }
 
 let allCache: AABB[] | null = null;
