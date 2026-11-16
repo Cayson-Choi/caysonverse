@@ -15,6 +15,7 @@
  */
 
 import { approachesSeat, seatDistance, SEAT_REACH, type Seat } from "@caysonverse/shared/worldMap";
+import { VILLAGE_BENCHES } from "@caysonverse/shared/village/benchSeats";
 import type { SurfacePoint } from "./clickPlan";
 
 /** Furniture is no higher than this (m): a click higher up (a wall, a shelf, the louvres) is still nothing. */
@@ -80,22 +81,42 @@ function seatHalf(seats: readonly Seat[], i: number): number {
   return half;
 }
 
-/** Where (the ray's t, m) `ray` enters seat `i`'s click volume, or Infinity when it misses it. */
-export function seatRayEntry(ray: ClickRay, seats: readonly Seat[], i: number): number {
+/**
+ * Whether seat `s` has a backrest whose box belongs to its click volume: a seat the sitter leans back in (the hall's sofas,
+ * armchairs, chairs), or one of a "backed" kind sat upright (hotfix 2026-11-16: the plaza's benches have a slatted backrest
+ * but no lean, so their volume was the board alone — a click on the backrest of a bench facing away, which is how the spawn
+ * sees the plaza's nearest benches, met the backrest first and did nothing at all).
+ */
+function hasBackrest(s: Seat): boolean {
+  return (s.lean ?? 0) > 0 || (s as { kind?: string }).kind === "backed";
+}
+
+/** The backrest's band of a backed seat's volume (`seatRayEntry`'s `part`): its back this deep (m), from this high above the seat. */
+const BACKREST_BAND_DEPTH = 0.15;
+const BACKREST_BAND_FROM = 0.11;
+
+/**
+ * Where (the ray's t, m) `ray` enters seat `i`'s click volume, or Infinity when it misses it. `part: "backrest"`: only the band
+ * of a backed seat's volume where its backrest stands (the back BACKREST_BAND_DEPTH of it, above the board); Infinity for a
+ * seat without one.
+ */
+export function seatRayEntry(ray: ClickRay, seats: readonly Seat[], i: number, part: "all" | "backrest" = "all"): number {
   const s = seats[i]!;
-  const backed = (s.lean ?? 0) > 0;
+  const backed = hasBackrest(s);
+  if (part === "backrest" && !backed) return Infinity;
   const fx = Math.sin(s.yaw);
   const fz = Math.cos(s.yaw);
   const fe = s.frontEdge ?? 0;
   const depth = backed ? SEAT_DEPTH_BACKED : SEAT_DEPTH_BACKLESS;
   const half = seatHalf(seats, i);
+  const band = part === "backrest";
   // the seat's frame from its spot: across (right of its facing), ahead (its facing), up
   const ox = ray.o.x - s.x;
   const oz = ray.o.z - s.z;
   const slabs = [
     { o: ox * fz - oz * fx, d: ray.d.x * fz - ray.d.z * fx, lo: -half, hi: half },
-    { o: ox * fx + oz * fz, d: ray.d.x * fx + ray.d.z * fz, lo: -fe - depth, hi: -fe },
-    { o: ray.o.y - (s.seatY ?? 0.45), d: ray.d.y, lo: -SEAT_BELOW, hi: backed ? SEAT_ABOVE_BACKED : SEAT_ABOVE_BACKLESS },
+    { o: ox * fx + oz * fz, d: ray.d.x * fx + ray.d.z * fz, lo: -fe - depth, hi: band ? -fe - depth + BACKREST_BAND_DEPTH : -fe },
+    { o: ray.o.y - (s.seatY ?? 0.45), d: ray.d.y, lo: band ? BACKREST_BAND_FROM : -SEAT_BELOW, hi: backed ? SEAT_ABOVE_BACKED : SEAT_ABOVE_BACKLESS },
   ];
   let t0 = 0;
   let t1 = Infinity;
@@ -183,4 +204,66 @@ export function furnitureClick(
     if (t > hitT && Math.hypot(x - pick.x, z - pick.z) <= FLOOR_BEYOND_MAX) return { surface: { x, y: floorY, z, ny: 1 }, seatIndex: null };
   }
   return { surface: { x: pick.x, y: floorY, z: pick.z, ny: 1 }, seatIndex: null };
+}
+
+/** The open village's benches with a slatted backrest (the plaza's eight, the bus shelter's): what a click can go through. */
+const SLATTED_BENCHES: ReadonlySet<string> = new Set(VILLAGE_BENCHES.filter((b) => b.kind === "backed").map((b) => b.id));
+
+/** How near (m) a seat's spot must be to a ground click's track to be tested (its volume reaches ~0.9 m from it). */
+const NEAR_RAY = 1.5;
+
+/** Horizontal distance (m) from (px, pz) to the segment (ax, az)-(bx, bz). */
+function distanceToSegment(px: number, pz: number, ax: number, az: number, bx: number, bz: number): number {
+  const dx = bx - ax;
+  const dz = bz - az;
+  const l2 = dx * dx + dz * dz;
+  const k = l2 > 0 ? Math.max(0, Math.min(1, ((px - ax) * dx + (pz - az) * dz) / l2)) : 0;
+  return Math.hypot(px - (ax + dx * k), pz - (az + dz * k));
+}
+
+/**
+ * For a click that IS ground: the seat it went through on its way there, else null. A bench's slats have gaps (2.5-3.5 cm on
+ * the plaza's): a click on a bench, seen from behind or above, often goes on between them to the floor (hotfix 2026-11-16:
+ * it walked to the bench's side, or past it, without sitting). Two ways a ground click is on a seat:
+ *  - the floor it met lies under a piece of furniture (inside one of `furniture`'s boxes, where nobody stands anyway) and the
+ *    ray entered a seat's volume first (`furnitureClick`): seen between a board's slats;
+ *  - the ray went through the backrest band (`seatRayEntry`'s "backrest") of a slatted bench (SLATTED_BENCHES): seen between
+ *    its backrest's slats, wherever the floor beyond it lies.
+ * The floor seen beside a bench, or past a backless one's board (round 9), stays floor.
+ */
+export function seatThroughFloor(
+  pick: { x: number; y: number; z: number; distance?: number } | null,
+  ray: ClickRay | null,
+  seats: readonly Seat[],
+  area: string | undefined,
+  taken: (index: number) => boolean,
+  from: { x: number; z: number },
+  furniture: readonly { minX: number; maxX: number; minZ: number; maxZ: number }[],
+): FurnitureClick | null {
+  if (!pick || !ray) return null;
+  if (furniture.some((b) => pick.x > b.minX && pick.x < b.maxX && pick.z > b.minZ && pick.z < b.maxZ)) {
+    const fc = furnitureClick(pick, ray, seats, area, taken, from, 0, false);
+    if (fc && fc.seatIndex !== null) return fc;
+  }
+  const hitT = pick.distance ?? Math.hypot(pick.x - ray.o.x, pick.y - ray.o.y, pick.z - ray.o.z);
+  let best = -1;
+  let bestT = hitT;
+  for (let i = 0; i < seats.length; i++) {
+    const s = seats[i]!;
+    const a = (s as { area?: string }).area;
+    if ((area !== undefined && a !== undefined && a !== area) || taken(i)) continue;
+    // a slatted bench's backrest only (SLATTED_BENCHES): a sofa's or an armchair's is solid, and a terrace chair is too narrow
+    // for its volume's width (a tap on the floor beside it would sit)
+    if (!SLATTED_BENCHES.has((s as { bench?: string }).bench ?? "")) continue;
+    // only a seat near the ray's way (its ground track from the camera to the floor it met): the volume test is the costly part
+    if (distanceToSegment(s.x, s.z, ray.o.x, ray.o.z, pick.x, pick.z) > NEAR_RAY) continue;
+    const t = seatRayEntry(ray, seats, i, "backrest");
+    if (t >= bestT) continue;
+    if (!(approachesSeat(s, s.standX, s.standZ) && seatDistance(s, s.standX, s.standZ) <= SEAT_REACH)) continue;
+    best = i;
+    bestT = t;
+  }
+  if (best < 0) return null;
+  const s = seats[best]!;
+  return { surface: { x: s.standX, y: 0, z: s.standZ, ny: 1 }, seatIndex: best };
 }

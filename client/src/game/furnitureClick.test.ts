@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { VILLAGE_SEATS } from "@caysonverse/shared/village/benchSeats";
 import { SEAT_REACH, approachesSeat, nearestFreeSeat } from "@caysonverse/shared/worldMap";
-import { furnitureClick, seatRayEntry, type ClickRay } from "./furnitureClick";
+import { VILLAGE_FURNITURE } from "./activeMap";
+import { furnitureClick, seatRayEntry, seatThroughFloor, type ClickRay } from "./furnitureClick";
 
 const free = () => false;
 const idOf = (i: number | null | undefined) => (i === null || i === undefined ? null : VILLAGE_SEATS[i]!.id);
@@ -134,5 +135,113 @@ describe("a click on furniture (round 8 review: a tap on the sofa did nothing; r
   it("a ray that misses every seat's volume enters none of them", () => {
     const r = rayTo({ x: 300, y: 2, z: 0 }, { x: 300, y: 0, z: 0.5 });
     for (let i = 0; i < VILLAGE_SEATS.length; i++) expect(seatRayEntry(r, VILLAGE_SEATS, i)).toBe(Infinity);
+  });
+});
+
+// Hotfix 2026-11-16 ("광장에 있는 벤치에 앉기가 안되는데"): the plaza's 16 seats (0..15, backed benches facing the fountain).
+describe("a click on a plaza bench, from any side (hotfix 2026-11-16)", () => {
+  const PLAZA = VILLAGE_SEATS.slice(0, 16);
+  /** parts_props.py `bench`: slats 0.2625 m either side of the middle; three backrest slats 0.30-0.324 m behind it, 0.56-0.885 m up. */
+  const HALF_DEPTH = 0.2625;
+  const BACKREST_BACK = 0.324;
+  const middleOf = (s: (typeof PLAZA)[number]) => (s.frontEdge ?? 0) + HALF_DEPTH; // the bench's middle, behind the seat point
+  const toward = (s: (typeof PLAZA)[number], back: number, y: number): V => ({ x: s.x - Math.sin(s.yaw) * back, y, z: s.z - Math.cos(s.yaw) * back });
+  const behindCam = (s: (typeof PLAZA)[number], d: number, y: number): V => toward(s, middleOf(s) + d, y);
+  const offeredInVillage = (x: number, z: number) =>
+    idOf(nearestFreeSeat(x, z, (k) => VILLAGE_SEATS[k]!.area !== "village", SEAT_REACH, VILLAGE_SEATS));
+  const sitOn = (pick: V & { distance: number }, r: ClickRay, from: V) =>
+    furnitureClick(pick, r, VILLAGE_SEATS, "village", free, { x: from.x, z: from.z }, 0, false);
+
+  it("the plaza's seats are backed benches sat upright (no lean): their backrest is part of the click", () => {
+    expect(PLAZA.every((s) => s.bench.startsWith("plaza_") && s.kind === "backed" && s.lean === 0)).toBe(true);
+  });
+
+  it("a click on the backrest of a bench facing away, from near or far, low or high, walks to that seat to sit on it", () => {
+    PLAZA.forEach((s, i) => {
+      for (const [d, camY] of [[2.5, 1.9], [5.5, 2.6], [9, 3.4], [12, 4.5]] as const) {
+        const cam = behindCam(s, d, camY);
+        for (const y of [0.6, 0.72, 0.84]) {
+          const target = toward(s, middleOf(s) + BACKREST_BACK, y); // the backrest's back face, where the ray meets it
+          const r = rayTo(cam, target);
+          const fc = sitOn(at(r, Math.hypot(target.x - cam.x, target.y - cam.y, target.z - cam.z)), r, cam);
+          expect(fc?.seatIndex, `seat ${i} from ${d} m behind, backrest at ${y} m`).toBe(i);
+          // ...its approach, in front of the bench, where that very seat is offered
+          expect(approachesSeat(s, fc!.surface.x, fc!.surface.z)).toBe(true);
+          expect(offeredInVillage(fc!.surface.x, fc!.surface.z)).toBe(s.id);
+        }
+      }
+    });
+  });
+
+  it("a click on the board from in front or from beyond its end sits on that seat", () => {
+    PLAZA.forEach((s, i) => {
+      const board = toward(s, (s.frontEdge ?? 0) + 0.15, (s.seatY ?? 0.445) + 0.005);
+      const front = { x: s.x + Math.sin(s.yaw) * 3, y: 2.2, z: s.z + Math.cos(s.yaw) * 3 };
+      const mate = PLAZA.find((o) => o.bench === s.bench && o !== s)!;
+      const end = { x: s.x + (s.x - mate.x) * 1.8, y: 2.0, z: s.z + (s.z - mate.z) * 1.8 };
+      for (const cam of [front, end]) {
+        const r = rayTo(cam, board);
+        expect(sitOn(at(r, Math.hypot(board.x - cam.x, board.y - cam.y, board.z - cam.z)), r, cam)?.seatIndex, `seat ${i}`).toBe(i);
+      }
+    });
+  });
+
+  it("a click that goes between the slats to the floor under the bench is that seat; the floor beside the bench stays floor", () => {
+    PLAZA.forEach((s, i) => {
+      const cam = behindCam(s, 3, 4.0);
+      // aimed between the board and the backrest: the ray goes on to the floor under the bench
+      const aim = toward(s, middleOf(s) + 0.1, 0.5);
+      const r = rayTo(cam, aim);
+      const t = -cam.y / r.d.y;
+      const floor = at(r, t);
+      const fc = seatThroughFloor({ ...floor, y: 0 }, r, VILLAGE_SEATS, "village", free, { x: cam.x, z: cam.z }, VILLAGE_FURNITURE);
+      expect(fc?.seatIndex, `seat ${i}`).toBe(i);
+      // the floor a metre in front of the bench, seen over it: not under any furniture, so just floor
+      const open = toward(s, -1.0, 0);
+      const r2 = rayTo(cam, open);
+      expect(seatThroughFloor({ ...open, distance: 1 }, r2, VILLAGE_SEATS, "village", free, { x: cam.x, z: cam.z }, VILLAGE_FURNITURE)).toBeNull();
+    });
+  });
+
+  it("a click seen between the backrest's slats, from far behind, that meets the floor in front of the bench is that seat", () => {
+    PLAZA.forEach((s, i) => {
+      for (const [d, camY] of [[5.5, 2.6], [9, 3.4]] as const) {
+        const cam = behindCam(s, d, camY);
+        // the gap between the top two backrest slats (0.765-0.80 m), on the backrest's back face
+        const gap = toward(s, middleOf(s) + BACKREST_BACK, 0.78);
+        const r = rayTo(cam, gap);
+        const floor = at(r, -cam.y / r.d.y);
+        const fc = seatThroughFloor({ ...floor, y: 0 }, r, VILLAGE_SEATS, "village", free, { x: cam.x, z: cam.z }, VILLAGE_FURNITURE);
+        expect(fc?.seatIndex, `seat ${i} from ${d} m behind`).toBe(i);
+        expect(offeredInVillage(fc!.surface.x, fc!.surface.z)).toBe(s.id);
+      }
+    });
+  });
+
+  it("the floor seen beside a plaza bench, or over the board of the hall's backless bench (round 9), stays floor", () => {
+    PLAZA.forEach((s) => {
+      const mate = PLAZA.find((o) => o.bench === s.bench && o !== s)!;
+      // 1.2 m beyond the bench's end, from behind and to the side
+      const beside = { x: s.x + (s.x - mate.x) * 2.1, y: 0, z: s.z + (s.z - mate.z) * 2.1 };
+      const cam = behindCam(s, 5, 2.6);
+      const r = rayTo(cam, beside);
+      expect(seatThroughFloor({ ...beside, distance: Math.hypot(beside.x - cam.x, beside.y - cam.y, beside.z - cam.z) }, r, VILLAGE_SEATS, "village", free, { x: cam.x, z: cam.z }, VILLAGE_FURNITURE)).toBeNull();
+    });
+    // the hall's backless benches have no backrest band: the floor past the board is floor (the round 9 leg case)
+    const cam = { x: 302.0, y: 1.3, z: -4.6 };
+    const leg = { x: 302.2, y: 0.15, z: -2.91 };
+    const r = rayTo(cam, leg);
+    const t = -cam.y / r.d.y;
+    const floor = at(r, t);
+    expect(seatThroughFloor({ ...floor, y: 0 }, r, VILLAGE_SEATS, "hall", free, { x: cam.x, z: cam.z }, [])).toBeNull();
+  });
+
+  it("someone already on the seat: a click on its backrest is no sit on it", () => {
+    const s = PLAZA[6]!;
+    const cam = behindCam(s, 5.5, 2.6);
+    const target = toward(s, middleOf(s) + BACKREST_BACK, 0.72);
+    const r = rayTo(cam, target);
+    const fc = furnitureClick(at(r, Math.hypot(target.x - cam.x, target.y - cam.y, target.z - cam.z)), r, VILLAGE_SEATS, "village", (k) => k === 6, { x: cam.x, z: cam.z }, 0, false);
+    expect(fc?.seatIndex ?? null).not.toBe(6);
   });
 });
