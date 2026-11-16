@@ -50,6 +50,8 @@ export const busCamState = {
   chest: [0, 0, 0] as [number, number, number],
   /** the arm's length (m) after the cabin shortened it */
   arm: 0,
+  /** the local avatar's three.js group (e2e measures its share of the screen); null off the bus */
+  avatar: null as { visible: boolean } | null,
 };
 
 /** How the world orbit's zoom maps to the arm in the bus (m): the wheel / pinch keep working, the bus has its own range. */

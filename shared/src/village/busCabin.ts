@@ -254,6 +254,10 @@ export function seatApproachOk(seat: BusSeat, ahead: number, right: number): boo
 
 /** A hold spot is the place to take hold of its pole: standing within this of it offers the hold, not the seat beside it. */
 export const BUS_HOLD_OFFER_M = 0.35;
+/** Standing this close to a pole's spot, the pole is offered whichever way they face. */
+export const BUS_HOLD_AT_M = 0.15;
+/** The angle (rad) within which a seat counts as the one the rider faces. */
+export const BUS_SEAT_FACE_RAD = (50 * Math.PI) / 180;
 
 /**
  * What the rider can do from where they stand (the approach rules respected): the free hold spot they stand at (within
@@ -278,7 +282,28 @@ export function nearestFreeSpot(
     if (bestHold === null || d < bestHold.dist) bestHold = { kind: "hold", index: i, dist: d };
   });
   const hold = bestHold as { kind: "hold"; index: number; dist: number } | null;
-  if (hold !== null && hold.dist <= BUS_HOLD_OFFER_M) return hold;
+  if (hold !== null && hold.dist <= BUS_HOLD_OFFER_M) {
+    // Facing a free seat (within BUS_SEAT_FACE_RAD of the way they look, the approach rules respected) and not right at the pole: the seat
+    // they turned to is what is offered (review 2026-11-16: a pole's offer radius hid the seats beside it, so L3 / RL1 / RR2 were never offered)
+    if (yaw !== undefined && hold.dist > BUS_HOLD_AT_M) {
+      const f = facingVector(yaw);
+      let faced: { index: number; dist: number } | null = null;
+      BUS_SEATS.forEach((s, i) => {
+        if (takenSeats.has(i) || !seatApproachOk(s, ahead, right)) return;
+        const front = seatFrontPoint(s);
+        const da = front.ahead - ahead;
+        const dr = front.right - right;
+        const d = Math.hypot(da, dr);
+        if (d < 1e-6 || d > BUS_HOLD_REACH_M + 0.6) return;
+        const cos = (da * f.ahead + dr * f.right) / d;
+        if (Math.acos(Math.max(-1, Math.min(1, cos))) > BUS_SEAT_FACE_RAD) return;
+        if (faced === null || d < faced.dist) faced = { index: i, dist: d };
+      });
+      const fs = faced as { index: number; dist: number } | null;
+      if (fs !== null) return { kind: "seat", index: fs.index, dist: fs.dist };
+    }
+    return hold;
+  }
   // The seat the rider turns to: with a facing, the one nearest the point half a metre ahead of them (the seat across the
   // aisle is the one they look at, not the one level with them: otherwise the rear row's outer seats, always farther than the
   // middle one from the aisle, could never be offered); without one, the nearest.

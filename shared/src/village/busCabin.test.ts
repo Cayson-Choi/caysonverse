@@ -7,6 +7,7 @@ import {
   BUS_EXIT_ZONE,
   BUS_HOLDS,
   BUS_HOLD_COUNT,
+  BUS_HOLD_AT_M,
   BUS_HOLD_OFFER_M,
   BUS_RIDER_APART,
   BUS_WALL_SEAT_SHIFT,
@@ -277,5 +278,30 @@ describe("review r1: every seat can be offered from the aisle by facing it", () 
       }
     }
     expect([...offered].sort()).toEqual(BUS_SEATS.map((s) => s.id).sort());
+  });
+});
+
+describe("review 2026-11-16: a pole's offer radius does not hide the seat the rider faces", () => {
+  it("L3, RL1 and RR2 are offered from a point inside a pole's offer radius when the rider faces them; right at the pole the pole is", () => {
+    for (const id of ["L3", "RL1", "RR2"]) {
+      const idx = BUS_SEATS.findIndex((s) => s.id === id);
+      const front = seatFrontPoint(BUS_SEATS[idx]!);
+      let found = false;
+      for (let a = -3.6; a <= 3.4 && !found; a += 0.05) {
+        for (let r = -0.25; r <= 0.2501 && !found; r += 0.05) {
+          if (cabinBlocked(a, r, 0.32) || !seatApproachOk(BUS_SEATS[idx]!, a, r)) continue;
+          const dh = Math.min(...BUS_HOLDS.map((h) => Math.hypot(a - h.ahead, r - h.right)));
+          if (dh > BUS_HOLD_OFFER_M || dh <= BUS_HOLD_AT_M) continue;
+          const yaw = Math.atan2(-(front.right - r), front.ahead - a); // facingVector(yaw) points at the seat's front
+          const o = nearestFreeSpot(a, r, new Set(), new Set(), undefined, yaw);
+          if (o?.kind === "seat" && o.index === idx) found = true;
+        }
+      }
+      expect(found, id).toBe(true);
+    }
+    // standing at the pole itself, the pole is offered whichever way they face
+    const h = BUS_HOLDS[2]!;
+    expect(nearestFreeSpot(h.ahead, h.right, new Set(), new Set(), undefined, 0)?.kind).toBe("hold");
+    expect(nearestFreeSpot(h.ahead, h.right, new Set(), new Set(), undefined, Math.PI / 2)?.kind).toBe("hold");
   });
 });

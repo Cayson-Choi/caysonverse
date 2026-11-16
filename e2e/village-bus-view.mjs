@@ -78,6 +78,43 @@ async function walkBus(ahead, right, tol = 0.25, ms = 12000) {
   await release();
   await sleep(250);
 }
+// the avatar's share of the screen: the projected corners of every mesh's bounding box, as one box clipped to the screen (a bound: the silhouette is smaller)
+const avatarShare = () =>
+  A.page.evaluate(async () => {
+    const m = await window.__imp("/src/game/busRide.ts");
+    const { camera } = window.__cvThree();
+    const g = m.busCamState.avatar;
+    if (!g) return { share: null };
+    camera.updateMatrixWorld();
+    let x0 = 9, x1 = -9, y0 = 9, y1 = -9, n = 0;
+    g.traverse((o) => {
+      if (!o.isMesh || !o.geometry) return;
+      if (!o.geometry.boundingBox) o.geometry.computeBoundingBox();
+      const b = o.geometry.boundingBox;
+      for (const x of [b.min.x, b.max.x]) for (const y of [b.min.y, b.max.y]) for (const z of [b.min.z, b.max.z]) {
+        const v = b.min.clone().set(x, y, z).applyMatrix4(o.matrixWorld).project(camera);
+        if (v.z > 1) continue;
+        n++;
+        x0 = Math.min(x0, v.x); x1 = Math.max(x1, v.x); y0 = Math.min(y0, v.y); y1 = Math.max(y1, v.y);
+      }
+    });
+    const cl = (v) => Math.max(-1, Math.min(1, v));
+    const w = Math.max(0, cl(x1) - cl(x0));
+    const h = Math.max(0, cl(y1) - cl(y0));
+    return { share: (w * h) / 4, wShare: w / 2, hShare: h / 2, corners: n };
+  });
+const MAX_SHARE = 0.36; // of the screen, the clipped BOUNDING BOX of the avatar (a bound: its silhouette is about half of it, 15-20% by eye in the screenshots)
+async function tpShares(label, tagName) {
+  let k = 0;
+  for (const v of ["front", "back", "left", "right"]) {
+    await view(v);
+    await sleep(500);
+    await shot(`${tagName}-tp-${v}`);
+    const r = await avatarShare();
+    run.check(`1. ${label}, third person, ${v} view: the avatar fills at most ${MAX_SHARE * 100}% of the screen (bounding box, clipped)`, r.share !== null && r.share <= MAX_SHARE, r);
+    k++;
+  }
+}
 const checkFade = async (label) => {
   const c = await A.page.evaluate(async () => {
     const m = await window.__imp("/src/game/busRide.ts");
@@ -177,12 +214,8 @@ await run.step("3b. first person while seated, and standing at a pole", async ()
   await toggleV();
   s = await state();
   run.check("seated: V gives the third person", s.mode === "tp" && s.arm > 0.3, s);
-  await view("left");
-  await shot("10-seated-tp-left");
-  await view("right");
-  await shot("11-seated-tp-right");
+  await tpShares("seated", "10-seated");
   await view("front");
-  await shot("12-seated-tp-front");
   await checkFade("seated");
   await toggleV();
   s = await state();
@@ -205,11 +238,9 @@ await run.step("3b. first person while seated, and standing at a pole", async ()
   await toggleV();
   s = await state();
   run.check("standing at a pole: V gives the third person", s.mode === "tp" && s.arm > 0.3, s);
+  await tpShares("holding a pole", "16-hold");
   await view("front");
-  await shot("16-hold-tp-front");
   await checkFade("holding a pole");
-  await view("left");
-  await shot("17-hold-tp-left");
 });
 
 await browser.close();

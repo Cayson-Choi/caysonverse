@@ -75,7 +75,7 @@ import { getLocalLift } from "./jump";
 import { useFpCursor } from "./useFpCursor";
 import { useSettingsStore } from "../stores/settingsStore";
 import { getTransitRenderPose } from "../net/transitSync";
-import { busRiderCamera, ownSeatIndex, riderFov, type TransitCameraPose } from "../village/transitCamera";
+import { BUS_TP_MIN_ARM, busRiderCamera, ownSeatIndex, riderFov, type TransitCameraPose } from "../village/transitCamera";
 import { busArmFor, busCamGoal, busCamState, busElevation, riderBusPoint, selfBusRide } from "./busRide";
 import { BUS_HOLDS, BUS_SEATS, busPlaceOf, cabinFloorAt, seatBodyPoint } from "@caysonverse/shared/village/busCabin";
 import type { Orbit, Pose, SeatState } from "./types";
@@ -979,7 +979,8 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
           seated: place.kind === "seat",
           yaw: fp ? viewState.fpYaw : orbit.yaw,
           elevation: fp ? viewState.fpPitch : busElevation(orbit.pitch),
-          dist: fp ? 0 : busArmFor(orbit.distance, persp.aspect < 1),
+          dist: fp ? 0 : Math.max(busArmFor(orbit.distance, persp.aspect < 1), BUS_TP_MIN_ARM * (persp.aspect < 1 ? 1.15 : 1)),
+          frame: fp ? undefined : { vfov: (riderFov(persp.aspect) * Math.PI) / 180, aspect: persp.aspect },
           ownSeat: ownSeatIndex(selfBusRide.slot),
         },
         busRideCam,

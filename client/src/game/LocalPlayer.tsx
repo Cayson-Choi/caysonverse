@@ -769,6 +769,8 @@ export function LocalPlayer({
       const rp = riderPoseRef.current;
       group.position.set(rp.x, busYRef.current, rp.z);
       group.rotation.y = rp.yaw + MODEL_FACING_OFFSET;
+      busCamState.avatar = group;
+      busCamState.avatar = group;
       group.visible = !busCamState.firstPerson; // first person (the camera all the way in) is the rider's own eye
       pose.x = rp.x;
       pose.z = rp.z;
