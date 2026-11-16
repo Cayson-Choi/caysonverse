@@ -156,16 +156,25 @@ for (const pl of plan.slice(from, Math.min(to, plan.length - 1) + 1)) {
   let tapInfo = null;
   if (pl.start) {
     await walkBus(A, pl.start.ahead, pl.start.right, 0.2, 16000);
-    for (const v of [pl.a < pl.start.ahead ? "back" : "front", "left", "right"]) {
+    // turn towards the seat (the quick view) and look down at it as a player would (the first person's pitch: + looks down)
+    const tries = [];
+    outer: for (const v of [pl.a < pl.start.ahead ? "back" : "front", "left", "right"]) {
       await view(A, v);
-      const at = await A.page.evaluate((i) => window.__cvBusSeatScreen?.(i) ?? null, pl.index);
-      tapInfo = { v, at };
-      if (!at || !at.onScreen) continue;
-      if (A.touch) await A.page.touchscreen.tap(at.x, at.y);
-      else await A.page.mouse.click(at.x, at.y);
-      satTap = await pollUntil(async () => (await ride(A)).slot === pl.index + 1, 15000);
-      break;
+      for (const pitch of [0.35, 0.6, 0.15, 0.85]) {
+        await A.page.evaluate(async (pt) => { (await window.__imp("/src/game/viewState.ts")).viewState.fpPitch = pt; }, pitch);
+        await sleep(350);
+        const at = await A.page.evaluate((i) => window.__cvBusSeatScreen?.(i) ?? null, pl.index);
+        tries.push({ v, pitch, at: at && { x: Math.round(at.x), y: Math.round(at.y), on: at.onScreen } });
+        // on screen and clear of the HUD's corners (the ride panel top left, the buttons bottom right)
+        if (!at || !at.onScreen || at.y < 120 || at.y > (A.touch ? 640 : 660) || (at.x < 260 && at.y < 260)) continue;
+        tapInfo = { v, pitch, at };
+        if (A.touch) await A.page.touchscreen.tap(at.x, at.y);
+        else await A.page.mouse.click(at.x, at.y);
+        satTap = await pollUntil(async () => (await ride(A)).slot === pl.index + 1, 15000);
+        break outer;
+      }
     }
+    if (!tapInfo) tapInfo = { tries };
   }
   run.check(`${label}: a tap / click on it walks the rider there and sits`, satTap, { tapInfo, start: pl.start, now: await ride(A) });
   results.push({ label, walkE: satE, tap: satTap });

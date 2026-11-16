@@ -511,6 +511,8 @@ export function LocalPlayer({
   const busStepTmp = useRef({ ahead: 0, right: 0 }).current;
   const busOthersTmp = useRef<{ ahead: number; right: number }[]>([]).current;
   const busTakenTmp = useRef(new Set<number>()).current;
+  /** The body as drawn in the bus's frame: it glides between the aisle and a seat (bus v3), see the riding step. */
+  const busDrawRef = useRef({ a: 0, r: 0, yaw: 0, y: 0, until: 0, init: false, kind: "none" as BusPlaceKind | "none" });
 
   /**
    * Onto the bus, or a change of place in it: whatever the body did gives way to the held seated pose on a seat; free or at
@@ -549,6 +551,8 @@ export function LocalPlayer({
   /** Off the bus: on the ground where the server put me down (outside the door), Idle, the seat state as synced. */
   function endRide(): void {
     busWalk.valid = false;
+    busDrawRef.current.init = false;
+    busDrawRef.current.kind = "none";
     busCamState.active = false;
     const saved = orbitBeforeRideRef.current;
     if (saved) {
@@ -862,11 +866,48 @@ export function LocalPlayer({
           busStandSentRef.current = true;
         }
       }
-      // the floor under me eases over the steps (the raised rear, the step treads)
+      // the floor under me eases (a seat's platform over a wheel housing)
       const lerpK = Math.min(1, delta * 12);
       busYRef.current = placeNow.kind === "seat" ? targetY : busYRef.current + (targetY - busYRef.current) * lerpK;
       const rp = riderPoseRef.current;
-      group.position.set(rp.x, busYRef.current, rp.z);
+      // Bus v3 (owner 2026-11-16: "행동이 실제와 비슷한 느낌", not snappy): sitting down and standing up glide the body between the
+      // aisle and the seat over about a third of a second (in the bus's own frame, so the moving bus never drags it), instead of
+      // jumping there; walking in the aisle is drawn where it is.
+      {
+        const fxB = Math.sin(bus.yaw);
+        const fzB = Math.cos(bus.yaw);
+        const tA = (rp.x - bus.x) * fxB + (rp.z - bus.z) * fzB;
+        const tR = -(rp.x - bus.x) * fzB + (rp.z - bus.z) * fxB;
+        const tYaw = normalizeYaw(rp.yaw - bus.yaw);
+        const d = busDrawRef.current;
+        const nowT = performance.now();
+        if (!d.init) {
+          d.a = tA;
+          d.r = tR;
+          d.yaw = tYaw;
+          d.y = busYRef.current;
+          d.init = true;
+        }
+        if (placeNow.kind !== d.kind) {
+          d.kind = placeNow.kind;
+          d.until = nowT + 450;
+        }
+        if (nowT < d.until) {
+          const k = 1 - Math.exp(-delta * 9);
+          d.a += (tA - d.a) * k;
+          d.r += (tR - d.r) * k;
+          d.yaw = normalizeYaw(d.yaw + normalizeYaw(tYaw - d.yaw) * k);
+          d.y += (busYRef.current - d.y) * k;
+        } else {
+          d.a = tA;
+          d.r = tR;
+          d.yaw = tYaw;
+          d.y = busYRef.current;
+        }
+        busLocalToWorld(bus, d.a, d.r, rp);
+        rp.yaw = bus.yaw + d.yaw;
+        group.position.set(rp.x, d.y, rp.z);
+      }
       group.rotation.y = rp.yaw + MODEL_FACING_OFFSET;
       busCamState.avatar = group;
       busCamState.avatar = group;

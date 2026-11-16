@@ -180,6 +180,11 @@ await run.step("join, board", async () => {
 await run.step("3. first person is the start in the bus, and V / the eye button toggle it", async () => {
   let s = await state();
   run.check("boarding starts in first person (mode fp, camera in the eye, avatar hidden)", s.mode === "fp" && s.fp === true && s.arm === 0, s);
+  run.check("bus v3 QA: boarding looks forward (the windscreen and both side rows), not at the rear seats", angDiff(s.fpYaw, Math.PI) < 0.2, s);
+  if (phone) {
+    const sizes = await A.page.evaluate(() => [...document.querySelectorAll("[data-testid=bus-ride-hud] button")].map((b) => { const r = b.getBoundingClientRect(); return { t: b.textContent.trim(), w: Math.round(r.width), h: Math.round(r.height) }; }));
+    run.check("bus v3 QA: every ride-panel button is a 48 px tap target on the phone", sizes.length >= 4 && sizes.every((b) => b.w >= 48 && b.h >= 48), sizes);
+  }
   await shot("1-board-fp");
   await toggleV();
   s = await state();

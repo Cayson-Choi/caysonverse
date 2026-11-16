@@ -59,6 +59,8 @@ import {
 import { benchClipPlanes, clipAvatar, enableBenchClipping } from "./benchClip";
 import {
   BUS_SEATS,
+  busLocalToWorld,
+  seatBodyPoint,
   busPlaceOf,
   busRiderWorldPose,
   normalizeYaw,
@@ -478,8 +480,9 @@ export function RemotePlayer({
     if (placeNow) {
       const bus = getTransitRenderPose();
       const spot = placeNow.kind === "seat" ? BUS_SEATS[placeNow.index]! : null;
-      const tA = spot ? spot.ahead : rec.busAhead ?? 0;
-      const tR = spot ? spot.right : rec.busRight ?? 0;
+      const body = spot ? seatBodyPoint(spot) : null;
+      const tA = body ? body.ahead : rec.busAhead ?? 0;
+      const tR = body ? body.right : rec.busRight ?? 0;
       const tYaw = spot ? spot.yaw : rec.busYaw ?? 0;
       if (!bd.init) {
         bd.ahead = tA;
@@ -487,15 +490,19 @@ export function RemotePlayer({
         bd.yaw = tYaw;
         bd.init = true;
       }
-      const k = placeNow.kind === "seat" ? 1 : 1 - Math.exp(-delta * 14);
+      // bus v3 ("행동이 실제와 비슷한 느낌", not snappy): onto a seat and off it the body glides (about a third of a second), as walking does
+      const k = placeNow.kind === "seat" ? 1 - Math.exp(-delta * 9) : 1 - Math.exp(-delta * 14);
       const dA = (tA - bd.ahead) * k;
       const dR = (tR - bd.right) * k;
       bd.ahead += dA;
       bd.right += dR;
       bd.yaw = normalizeYaw(bd.yaw + normalizeYaw(tYaw - bd.yaw) * Math.min(1, delta * 12));
       const p = busRiderWorldPose(bus, busSlot, bd.ahead, bd.right, bd.yaw, riderPoseRef.current);
+      // drawn at the eased point (a seated rider's too: the seat's body point is where it glides to)
+      busLocalToWorld(bus, bd.ahead, bd.right, p);
+      p.yaw = bus.yaw + bd.yaw;
       const targetY = p.y;
-      bd.y = placeNow.kind === "seat" ? targetY : bd.init && bd.y > 0 ? bd.y + (targetY - bd.y) * Math.min(1, delta * 12) : targetY;
+      bd.y = bd.init && bd.y > 0 ? bd.y + (targetY - bd.y) * Math.min(1, delta * 12) : targetY;
       group.position.set(p.x, bd.y, p.z);
       group.rotation.y = p.yaw + MODEL_FACING_OFFSET;
       group.visible = !riderInTheWay(state.camera, p.x, bd.y, p.z, group.visible);
