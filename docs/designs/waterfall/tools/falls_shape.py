@@ -532,6 +532,11 @@ def terrain_y(x, z, use_edge=True):
                 keep *= (1.0 - w)
         if ws > 0:
             y = y * keep + (acc / ws) * (1.0 - keep)
+        # W6: the pocket stays the walk level 0 where the seam blend reaches into it (the village's pocket ramp is
+        # 0.13 m at its corners); faded out over the last 0.5 m to the box so the seam heights still hold there
+        inside = smooth(0.4, 0.0, _box_dist(x, z, POCKET))
+        if inside > 0.0:
+            y *= 1.0 - inside * smooth(0.0, 0.5, b["maxX"] - x)
     return y
 
 

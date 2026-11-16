@@ -76,9 +76,17 @@ export interface PickOptions {
   area?: Bounds | null;
 }
 
+/**
+ * A material's `userData` key: a blended, depth-less surface that a click lands on all the same (the waterfall's pool,
+ * W6: a click on it walks to the nearest shore, ActiveMap.shore — through it the ray would meet the pool's bed, 2 m
+ * down, or the cliff behind it, and no walk at all).
+ */
+export const PICK_SOLID_KEY = "pickSolid";
+
 /** A material that draws nothing a click could stand on (see the file header). */
 export function isSeeThrough(material: Material | undefined | null): boolean {
   if (!material || material.visible === false || material.colorWrite === false) return true;
+  if (material.userData?.[PICK_SOLID_KEY] === true) return false;
   if ((material as { isShadowMaterial?: boolean }).isShadowMaterial) return true;
   return material.transparent && !material.depthWrite;
 }

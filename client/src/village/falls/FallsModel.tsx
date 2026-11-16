@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { useFrame, useThree } from "@react-three/fiber";
-import { Plane, Vector3, type Material, type Mesh, type Object3D, type Texture } from "three";
+import { useFrame } from "@react-three/fiber";
+import { type Mesh, type Object3D, type Texture } from "three";
 import { configureLightmap } from "../../game/hub/hubModelPrep";
 import { dayNight } from "../dayNightDriver";
 import { useNightMapWanted } from "../nightLightmap";
@@ -9,9 +9,6 @@ import { freeTexture, type VillageTier } from "../villageModelPrep";
 import type { SkyMapping } from "../villageWater";
 import { createFallsAudio, type FallsAudio } from "./fallsAudio";
 import {
-  FALLS,
-  OLD_POOL_LIFT,
-  STUB_POOL_LIFT,
   distanceToImpact,
   fallsFxFrom,
   fallsNear,
@@ -25,7 +22,7 @@ import {
 } from "./fallsConfig";
 import { loadFallsModel, loadTexture, nightLightmapUrl } from "./fallsLoader";
 import { fallsDayNight, fallsUniforms, rockDayNight, rockUniforms } from "./fallsMaterials";
-import { disposeFalls, hideOldFalls, prepareFalls, villageHasOldFalls, type FallsParts } from "./fallsPrep";
+import { disposeFalls, prepareFalls, type FallsParts } from "./fallsPrep";
 import { createFallsStub } from "./fallsStub";
 import { wrapTime } from "../fountainLayout";
 
@@ -58,42 +55,7 @@ export interface FallsProbe {
   /** Every mesh of the falls: name, triangles, whether it is drawn, its materials. */
   list(): Array<{ name: string; tri: number; on: boolean; materials: string[] }>;
   /** Switch parts on or off at run time (DEV): `rainbow` a number forces its amount (null: the clock decides). */
-  set(v: Partial<FallsFx> & { rainbowAmount?: number | null; pinEye?: [number, number, number] | null; visible?: boolean; resetCpu?: boolean; cut?: boolean }): void;
-}
-
-/** The site box (layout, W0) as clipping planes: a point is cut when it is inside all of them (clipIntersection). */
-const SITE_CUT: Plane[] = (() => {
-  const S = FALLS.site;
-  return [
-    new Plane(new Vector3(-1, 0, 0), S.minX),
-    new Plane(new Vector3(1, 0, 0), -S.maxX),
-    new Plane(new Vector3(0, 0, -1), S.minZ),
-    new Plane(new Vector3(0, 0, 1), -S.maxZ),
-    new Plane(new Vector3(0, 1, 0), -60),
-  ];
-})();
-
-/** DEV: clip the village's materials inside the site box (on), or give them back (off). Returns the materials changed. */
-function setSiteCut(villageRoot: Object3D, on: boolean, done: Material[]): Material[] {
-  for (const m of done) {
-    m.clippingPlanes = null;
-    m.clipIntersection = false;
-    m.needsUpdate = true;
-  }
-  if (!on) return [];
-  const out = new Set<Material>();
-  villageRoot.traverse((o) => {
-    const mesh = o as Mesh;
-    if (!mesh.isMesh) return;
-    for (const m of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) {
-      if (m.clippingPlanes?.length) continue;
-      m.clippingPlanes = SITE_CUT;
-      m.clipIntersection = true;
-      m.needsUpdate = true;
-      out.add(m);
-    }
-  });
-  return [...out];
+  set(v: Partial<FallsFx> & { rainbowAmount?: number | null; pinEye?: [number, number, number] | null; visible?: boolean; resetCpu?: boolean }): void;
 }
 
 /** The falls start loading this long after the village mounts (ms): the village is drawn first. */
@@ -112,8 +74,6 @@ function triangles(m: Mesh): number {
 }
 
 export interface FallsModelProps {
-  /** The village model's root: its old waterfall is hidden while the falls are drawn. */
-  villageRoot: Object3D;
   tier: VillageTier;
   sky: Texture | null;
   skyMapping: SkyMapping;
@@ -123,10 +83,10 @@ export interface FallsModelProps {
 /**
  * The waterfall (B1, W4): `waterfall.glb` read late (fallsLoader.ts), dressed (fallsPrep.ts), and animated by a few
  * uniforms per frame: the clock, the time of day, how much spray and mist show, the rainbow, the cliff's LOD, and the
- * sound's distance (fallsAudio.ts). The old falls in village.glb stay until the model is in (then they are hidden;
- * the village rebuild, W6, removes them). Everything it makes is freed when it unmounts.
+ * sound's distance (fallsAudio.ts). The village has nothing of its own inside the site box (W6 cut it out of
+ * village.glb). Everything it makes is freed when it unmounts.
  */
-export function FallsModel({ villageRoot, tier: tierProp, sky, skyMapping, runtime }: FallsModelProps) {
+export function FallsModel({ tier: tierProp, sky, skyMapping, runtime }: FallsModelProps) {
   const dev = !!import.meta.env.DEV;
   const search = typeof location === "undefined" ? "" : location.search;
   const tier = fallsTierFrom(search, dev, tierProp);
@@ -141,25 +101,11 @@ export function FallsModel({ villageRoot, tier: tierProp, sky, skyMapping, runti
   const lastDistance = useRef(0);
   const lastRainbow = useRef(0);
   const night = useNightMapWanted();
-  const cutRef = useRef<Material[]>([]);
-  const gl = useThree((st) => st.gl);
-  // DEV `?fallsCut=1`: preview of the village rebuild (W6) — the village's own ground, old cliff and pond inside the site box
-  // are clipped away so the falls are seen as they will be. Production keeps the old village there until W6 cuts the hole.
-  useEffect(() => {
-    if (!dev || new URLSearchParams(search).get("fallsCut") !== "1") return;
-    gl.localClippingEnabled = true;
-    cutRef.current = setSiteCut(villageRoot, true, cutRef.current);
-    return () => {
-      cutRef.current = setSiteCut(villageRoot, false, cutRef.current);
-    };
-  }, [dev, search, villageRoot, gl]);
-
   useEffect(() => {
     let alive = true;
     let timer: ReturnType<typeof setTimeout> | null = null;
     let made: FallsParts | null = null;
-    let hidden: Object3D[] = [];
-    const finish = (root: Object3D, lightmap: Texture | null, stubLift: number | null): void => {
+    const finish = (root: Object3D, lightmap: Texture | null): void => {
       if (!alive) {
         // cancelled while loading: free what arrived
         root.traverse((n) => {
@@ -169,9 +115,7 @@ export function FallsModel({ villageRoot, tier: tierProp, sky, skyMapping, runti
         if (lightmap) freeTexture(lightmap);
         return;
       }
-      const lift = stubLift ?? (villageHasOldFalls(villageRoot) ? OLD_POOL_LIFT : 0);
-      made = prepareFalls(root, { tier, sky, skyMapping, lightmap, poolLift: lift });
-      hidden = hideOldFalls(villageRoot);
+      made = prepareFalls(root, { tier, sky, skyMapping, lightmap });
       lodRef.current = made.params.lod0Within > 0 ? 0 : 1;
       audioRef.current = createFallsAudio();
       partsRef.current = made;
@@ -180,13 +124,13 @@ export function FallsModel({ villageRoot, tier: tierProp, sky, skyMapping, runti
     timer = setTimeout(() => {
       timer = null;
       if (runtime === "stub") {
-        finish(createFallsStub(0), null, villageHasOldFalls(villageRoot) ? STUB_POOL_LIFT : 0);
+        finish(createFallsStub(0), null);
         return;
       }
       loadFallsModel()
-        .then((l) => finish(l.root, l.lightmap, null))
+        .then((l) => finish(l.root, l.lightmap))
         .catch((e: unknown) => {
-          // no falls this visit (the old ones stay): never an error in the console
+          // no falls this visit: never an error in the console
           console.warn("[falls] model not loaded", e);
         });
     }, FALLS_LATE_MS);
@@ -198,10 +142,9 @@ export function FallsModel({ villageRoot, tier: tierProp, sky, skyMapping, runti
       partsRef.current = null;
       setParts(null);
       if (made) disposeFalls(made);
-      for (const o of hidden) o.visible = true;
       rockUniforms.uNightMap.value = null;
     };
-  }, [runtime, tier, villageRoot, sky, skyMapping]);
+  }, [runtime, tier, sky, skyMapping]);
 
   // The night light map, only when night is near (as the village's: nightLightmap.ts).
   useEffect(() => {
@@ -286,17 +229,15 @@ export function FallsModel({ villageRoot, tier: tierProp, sky, skyMapping, runti
         if (v.rainbow !== undefined) f.rainbow = v.rainbow;
         if (v.rainbowAmount !== undefined) rainbowForce.current = v.rainbowAmount;
         if (v.pinEye !== undefined) pinEye.current = v.pinEye;
-        // draw nothing of the falls (and keep the old falls hidden): the same page measured with and without them
+        // draw nothing of the falls: the same page measured with and without them
         if (v.resetCpu) cpu.current = { ms: 0, n: 0 };
         if (v.visible !== undefined && partsRef.current) partsRef.current.root.visible = v.visible;
-        if (v.cut) gl.localClippingEnabled = true;
-        if (v.cut !== undefined) cutRef.current = setSiteCut(villageRoot, v.cut, cutRef.current);
       },
     };
     return () => {
       delete window.__cvFalls;
     };
-  }, [dev, runtime, gl, villageRoot]);
+  }, [dev, runtime]);
 
   useFrame(({ clock, camera }) => {
     const p = partsRef.current;

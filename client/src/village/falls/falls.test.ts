@@ -32,7 +32,8 @@ import {
   rainbowAmount,
   soundLevelAt,
 } from "./fallsConfig";
-import { patchPool } from "./fallsMaterials";
+import { patchPool, rockDayNight, rockUniforms, SEAM_GRASS } from "./fallsMaterials";
+import { isSeeThrough } from "../../game/clickPick";
 import { disposeFalls, prepareFalls } from "./fallsPrep";
 import { PARTICLE, buildFallsParticles, mistSeeds, wrapLife } from "./fallsSpray";
 import { createFallsStub, stubFaceX } from "./fallsStub";
@@ -42,22 +43,21 @@ import { FLAT_SKY_MAPPING, makeRippleTexture } from "../villageWater";
 describe("which falls are drawn (the DEV flag and the build)", () => {
   it("reads ?falls= only in DEV", () => {
     expect(fallsModeFrom("?falls=off", true)).toBe("off");
-    expect(fallsModeFrom("?falls=old", true)).toBe("old");
+    expect(fallsModeFrom("?falls=old", true)).toBe("new"); // the old runtime is gone (W6)
     expect(fallsModeFrom("?falls=stub", true)).toBe("stub");
     expect(fallsModeFrom("?falls=off", false)).toBe("new");
     expect(fallsModeFrom("", true)).toBe("new");
-    expect(fallsModeFrom("?waterfall=old", true)).toBe("old"); // the previous runtime's flag still works
+    expect(fallsModeFrom("?waterfall=old", true)).toBe("new");
   });
 
-  it("draws the model when the build has it, the stand-in in DEV without it, and the old falls in production without it", () => {
+  it("draws the model when the build has it, the stand-in in DEV without it, nothing in production without it", () => {
     expect(fallsRuntimeFor("new", true, false)).toBe("model");
     expect(fallsRuntimeFor("new", true, true)).toBe("model");
     expect(fallsRuntimeFor("new", false, true)).toBe("stub");
-    expect(fallsRuntimeFor("new", false, false)).toBe("old"); // production never loses its waterfall
+    expect(fallsRuntimeFor("new", false, false)).toBe("none"); // the village has no falls of its own since W6
     expect(fallsRuntimeFor("stub", true, true)).toBe("stub");
-    expect(fallsRuntimeFor("stub", true, false)).toBe("old");
+    expect(fallsRuntimeFor("stub", true, false)).toBe("model");
     expect(fallsRuntimeFor("off", true, true)).toBe("none");
-    expect(fallsRuntimeFor("old", true, true)).toBe("old");
   });
 
   it("knows a file was built only when the client has its hash", () => {
@@ -340,7 +340,7 @@ describe("the stand-in model and its dressing", () => {
   });
 
   it("dresses the high tier: shaders by node name, every layer, the cliff LOD0, the rainbow", () => {
-    const parts = prepareFalls(createFallsStub(), { tier: "high", sky: null, skyMapping: FLAT_SKY_MAPPING, lightmap: null, poolLift: 0.5 });
+    const parts = prepareFalls(createFallsStub(), { tier: "high", sky: null, skyMapping: FLAT_SKY_MAPPING, lightmap: null });
     const mat = (name: string) => ((parts.root.getObjectByName(name) as Mesh).material as ShaderMaterial).name;
     expect(mat(`${NODE.plunge}0`)).toContain("M_falls_water");
     expect(mat(`${NODE.cascade}`)).toContain("M_falls_cascade");
@@ -352,8 +352,13 @@ describe("the stand-in model and its dressing", () => {
     expect((parts.spray.mist.geometry as InstancedBufferGeometry).instanceCount).toBe(28);
     expect(parts.spray.rainbow).not.toBeNull();
     expect(parts.pools).toHaveLength(2);
-    // lifted over the old pool disc, and not alpha-additive anywhere
-    expect(parts.root.getObjectByName(NODE.pool)!.position.y).toBeCloseTo(0.5, 6);
+    // a click lands on the pool's water (W6: the shore walk), though it blends without depth
+    const poolMat = (parts.root.getObjectByName(NODE.pool) as Mesh).material as ShaderMaterial;
+    expect(poolMat.transparent && !poolMat.depthWrite).toBe(true);
+    expect(isSeeThrough(poolMat)).toBe(false);
+    expect(isSeeThrough((parts.root.getObjectByName(NODE.outlet) as Mesh).material as ShaderMaterial)).toBe(true);
+    // at its own height (no lift over an old pool disc since W6), and not alpha-additive anywhere
+    expect(parts.root.getObjectByName(NODE.pool)!.position.y).toBeCloseTo(0, 6);
     for (const m of parts.meshes) {
       const mm = m.material as ShaderMaterial;
       if (mm.isShaderMaterial) expect(mm.blending).not.toBe(2); // AdditiveBlending
@@ -362,7 +367,7 @@ describe("the stand-in model and its dressing", () => {
   });
 
   it("dresses the light tier: 124 drops and clouds, 10 puffs, no rainbow", () => {
-    const parts = prepareFalls(createFallsStub(), { tier: "low", sky: null, skyMapping: FLAT_SKY_MAPPING, lightmap: null, poolLift: 0 });
+    const parts = prepareFalls(createFallsStub(), { tier: "low", sky: null, skyMapping: FLAT_SKY_MAPPING, lightmap: null });
     expect((parts.spray.droplets.geometry as InstancedBufferGeometry).instanceCount).toBe(124);
     expect((parts.spray.mist.geometry as InstancedBufferGeometry).instanceCount).toBe(10);
     expect(parts.spray.rainbow).toBeNull();
@@ -401,14 +406,39 @@ describe("the stand-in model and its dressing", () => {
       return root;
     };
     const lm = new Texture();
-    const hi = prepareFalls(model(), { tier: "high", sky: null, skyMapping: FLAT_SKY_MAPPING, lightmap: lm, poolLift: 0 });
+    const hi = prepareFalls(model(), { tier: "high", sky: null, skyMapping: FLAT_SKY_MAPPING, lightmap: lm });
     const get = (p: typeof hi, n: string) => p.root.getObjectByName(n) as Mesh;
     const rock = get(hi, NODE.rockLod0).material as MeshBasicMaterial;
     expect(rock.isMeshBasicMaterial).toBe(true);
     expect(rock.lightMap).toBe(lm);
     expect(rock.vertexColors).toBe(true); // the moss / wet masks
     expect(rock.customProgramCacheKey()).toBe("falls-rock-stone-macro");
-    expect((get(hi, "falls_ground").material as MeshBasicMaterial).customProgramCacheKey()).toBe("falls-rock-tint");
+    // the ground fades to the village lawn at the seam (W6): its shader carries the seam blend, the rock's does not
+    const ground = get(hi, "falls_ground").material as MeshBasicMaterial;
+    expect(ground.customProgramCacheKey()).toBe("falls-rock-tint-seam");
+    const compiled = (m: MeshBasicMaterial) => {
+      const sh = {
+        uniforms: {} as Record<string, unknown>,
+        vertexShader: ["#include <common>", "void main() {", "#include <project_vertex>", "}"].join("\n"),
+        fragmentShader: ["void main() {", "vec4 lightMapTexel = texture2D( lightMap, vLightMapUv );", "#include <color_fragment>", "#include <aomap_fragment>", "}"].join("\n"),
+      };
+      m.onBeforeCompile(sh as never, null as never);
+      return sh;
+    };
+    const gs = compiled(ground);
+    expect(gs.fragmentShader).toContain("#define FALLS_SEAM");
+    expect(gs.fragmentShader).toContain("uFallsGrass");
+    expect(gs.vertexShader).toContain("vFallsWorld = ");
+    expect(gs.uniforms.uFallsGrass).toBe(rockUniforms.uGrass);
+    expect(compiled(rock).fragmentShader).not.toContain("#define FALLS_SEAM");
+    // the lawn colour follows the village lawn's grade: the day's sunny lime, the night's cool dark green
+    const state = (night: number) => ({ night, dayTint: [1, 1, 1], lift: 0.2, liftTint: [1, 1, 1] }) as never;
+    rockDayNight(state(0));
+    expect(rockUniforms.uGrass.value.y).toBeCloseTo(SEAM_GRASS[1] * 1.34, 6);
+    rockDayNight(state(1));
+    expect(rockUniforms.uGrass.value.y).toBeCloseTo(SEAM_GRASS[1] * 1.0, 6);
+    expect(rockUniforms.uGrass.value.z).toBeCloseTo(SEAM_GRASS[2] * 1.3, 6);
+    rockDayNight(state(0));
     const plants = get(hi, "veg__falls_plants_hi").material as MeshBasicMaterial;
     expect([plants.alphaTest, plants.side, plants.vertexColors, plants.lightMap]).toEqual([0.5, DoubleSide, true, null]);
     expect(get(hi, "veg__falls_plants_hi").visible).toBe(true);
@@ -418,7 +448,7 @@ describe("the stand-in model and its dressing", () => {
     expect(hi.lod0.length + hi.lod1.length).toBe(2); // both LODs stay: the distance picks
     expect(hi.baked).toBe(true);
     disposeFalls(hi);
-    const lo = prepareFalls(model(), { tier: "low", sky: null, skyMapping: FLAT_SKY_MAPPING, lightmap: lm, poolLift: 0 });
+    const lo = prepareFalls(model(), { tier: "low", sky: null, skyMapping: FLAT_SKY_MAPPING, lightmap: lm });
     expect(get(lo, "veg__falls_plants_hi").visible).toBe(false);
     expect(get(lo, `${NODE.plunge}0`).visible).toBe(false);
     expect(get(lo, `${NODE.plunge}0_low`).visible).toBe(true);
@@ -429,7 +459,7 @@ describe("the stand-in model and its dressing", () => {
 
   it("shares one clock between every water surface and the spray", async () => {
     const { fallsUniforms } = await import("./fallsMaterials");
-    const parts = prepareFalls(createFallsStub(), { tier: "high", sky: null, skyMapping: FLAT_SKY_MAPPING, lightmap: null, poolLift: 0 });
+    const parts = prepareFalls(createFallsStub(), { tier: "high", sky: null, skyMapping: FLAT_SKY_MAPPING, lightmap: null });
     fallsUniforms.uTime.value = 12.5;
     for (const m of parts.meshes) {
       const mm = m.material as ShaderMaterial;

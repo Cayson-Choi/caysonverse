@@ -12,14 +12,8 @@ import {
 import { configureLightmap, isMesh, lightmapMaterial, materialsOf } from "../../game/hub/hubModelPrep";
 import { capModelTextures, freeTexture, liftMaterial, type VillageTier } from "../villageModelPrep";
 import { makeRippleTexture, type SkyMapping } from "../villageWater";
-import {
-  MAT,
-  NODE,
-  OLD_CARD_MATERIAL,
-  OLD_CLIFF_NODE,
-  fallsTierParams,
-  type FallsTierParams,
-} from "./fallsConfig";
+import { PICK_SOLID_KEY } from "../../game/clickPick";
+import { MAT, NODE, fallsTierParams, type FallsTierParams } from "./fallsConfig";
 import { makeFountainNoise } from "../fountainWater";
 import {
   createCascadeMaterial,
@@ -28,6 +22,7 @@ import {
   createPoolMaterial,
   lampMaterial,
   rockMaterial,
+  SEAM_MEAN,
   setFallsSky,
 } from "./fallsMaterials";
 import { createSpray, type FallsSpray } from "./fallsSpray";
@@ -57,13 +52,14 @@ export interface FallsParts {
   baked: boolean;
 }
 
+/** The slab granite's albedo factor (see the dressing). */
+export const SLAB_ALBEDO = 0.7;
+
 export interface FallsPrepOptions {
   tier: VillageTier;
   sky: Texture | null;
   skyMapping: SkyMapping;
   lightmap: Texture | null;
-  /** Lift the pool this much (the old pool disc in village.glb is still under it until the village rebuild). */
-  poolLift: number;
 }
 
 const PLUNGE_INDEX = new RegExp(`^${NODE.plunge}(\\d+)`);
@@ -79,33 +75,6 @@ function findTexture(root: Object3D, textureName: string): Texture | null {
     }
   });
   return found;
-}
-
-/** Hide the old waterfall in village.glb (its cliff and the card sheets) until the village rebuild takes them out. Returns what it hid. */
-export function hideOldFalls(villageRoot: Object3D): Object3D[] {
-  const hidden: Object3D[] = [];
-  villageRoot.traverse((o) => {
-    if (o.name === OLD_CLIFF_NODE) {
-      o.visible = false;
-      hidden.push(o);
-      return;
-    }
-    if (!isMesh(o)) return;
-    if (materialsOf(o).some((m) => m.name === OLD_CARD_MATERIAL)) {
-      o.visible = false;
-      hidden.push(o);
-    }
-  });
-  return hidden;
-}
-
-/** Whether village.glb still carries the old waterfall (the new pool then sits above the old disc). */
-export function villageHasOldFalls(villageRoot: Object3D): boolean {
-  let has = false;
-  villageRoot.traverse((o) => {
-    if (!has && isMesh(o) && materialsOf(o).some((m) => m.name === OLD_CARD_MATERIAL)) has = true;
-  });
-  return has;
 }
 
 export function prepareFalls(root: Object3D, o: FallsPrepOptions): FallsParts {
@@ -137,6 +106,8 @@ export function prepareFalls(root: Object3D, o: FallsPrepOptions): FallsParts {
   const foam = createFoamMaterial(waterOpts);
   const poolOpts = { sky: o.sky, skyMapping: o.skyMapping, ripple, base: poolBase, noise, detail: params.detail };
   const pool = createPoolMaterial(poolOpts);
+  // a click on the pool lands on its water (the shore walk, ActiveMap.shore), not on its bed 2 m down (W6)
+  pool.userData[PICK_SOLID_KEY] = true;
   const outlet = createPoolMaterial({ ...poolOpts, outlet: true });
   pools.push(pool, outlet);
   own.push(plunge, cascade, foam, pool, outlet);
@@ -176,19 +147,16 @@ export function prepareFalls(root: Object3D, o: FallsPrepOptions): FallsParts {
     if (name.startsWith(NODE.pool)) {
       mesh.material = pool;
       mesh.renderOrder = 2;
-      mesh.position.y += o.poolLift;
       return;
     }
     if (name.startsWith(NODE.outlet)) {
       mesh.material = outlet;
       mesh.renderOrder = 2;
-      mesh.position.y += o.poolLift;
       return;
     }
     if (name.startsWith(NODE.foam)) {
       mesh.material = foam;
       mesh.renderOrder = 7;
-      mesh.position.y += o.poolLift;
       return;
     }
     // rock, ground, stones, plants, trees, lamps: by the kind W3 wrote on each material (extras `falls`)
@@ -227,7 +195,12 @@ export function prepareFalls(root: Object3D, o: FallsPrepOptions): FallsParts {
           macro.colorSpace = NoColorSpace;
           macro.needsUpdate = true;
         }
-        rockMaterial(b, kind === "stone" ? "stone" : kind === "tint" ? "tint" : "plain", macro);
+        // the ground's materials fade to the village lawn where the lawn meets the site box (W6)
+        const seam = m.name === MAT.ground ? SEAM_MEAN.ground : m.name === MAT.turf ? SEAM_MEAN.turf : 0;
+        // the flat rocks, seats and cobbles (one granite): their scan albedo is near white and read as plates laid
+        // on the gravel (W3 review); the photos' shore granite (12, 05) is mid grey
+        if (m.name === MAT.slab) b.color.multiplyScalar(SLAB_ALBEDO);
+        rockMaterial(b, kind === "stone" ? "stone" : kind === "tint" ? "tint" : "plain", macro, seam);
         baked = true;
       } else if (m.name === MAT.leaf) {
         liftMaterial(b);

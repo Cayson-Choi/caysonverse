@@ -35,7 +35,6 @@ const { values: args } = parseArgs({
     throttle: { type: "string", default: "1" },
     falls: { type: "string", default: "" },
     hud: { type: "boolean", default: false },
-    cut: { type: "boolean", default: false },
   },
 });
 
@@ -59,6 +58,14 @@ const POSES = {
   s9: { eye: [-100.5, 2.2, -88.5], target: [-114, 7, -78], fov: 60 },
   lip: { eye: [-104, 4, -73], target: [-115.5, 15, -78], fov: 45 },
   impact: { eye: [-104.5, 1.6, -75.5], target: [-112.5, 1.2, -78], fov: 50 },
+  // W6 (village cut): the seam and the site's edges from outside the box, and the forest round it
+  aerial: { eye: [-55, 75, -30], target: [-120, 8, -80], fov: 55 },
+  seamS: { eye: [-93, 3.2, -46], target: [-121, 6, -63], fov: 60 },
+  seamN: { eye: [-93, 3.2, -112], target: [-121, 8, -98], fov: 60 },
+  seamE: { eye: [-94.5, 1.8, -95], target: [-104, 0.5, -70], fov: 60 },
+  ridge: { eye: [-80, 28, -80], target: [-140, 38, -80], fov: 60 },
+  shoreS: { eye: [-99.5, 1.7, -69.5], target: [-108.5, -0.2, -75.5], fov: 60 },
+  shoreN: { eye: [-100, 1.7, -88], target: [-108.5, -0.2, -80.5], fov: 60 },
   // the plaza fountain at the same time of day (the owner's reference for "real water")
   fountain: { eye: [0.6, 1.55, 7.6], target: [0, 1.25, 0], fov: 55 },
   fountainMid: { eye: [7.5, 2.6, 7.5], target: [0, 1.4, 0], fov: 55 },
@@ -86,7 +93,6 @@ async function join_(browser, { tier, time, device }) {
   });
   const q = new URLSearchParams({ time: `2026-11-03T${TIMES[time] ?? time}` });
   if (args.falls) q.set("falls", args.falls);
-  if (args.cut) q.set("fallsCut", "1"); // DEV preview of the village rebuild (W6): the old village inside the site box clipped away
   await page.goto(`${CLIENT_URL}/?${q}`, { waitUntil: "domcontentloaded" });
   const p = { page, touch: device === "phone" };
   await entryReady(p);
@@ -152,7 +158,7 @@ try {
       if (!pose) throw new Error(`no pose ${name}`);
       await pin(page, pose);
       if (args.mode === "shots") {
-        const file = `${name}-${time}-${tag}${args.falls ? `-falls_${args.falls}` : ""}${args.cut ? "-cut" : ""}.png`;
+        const file = `${name}-${time}-${tag}${args.falls ? `-falls_${args.falls}` : ""}.png`;
         await page.screenshot({ path: join(OUT, file) });
         const s = await stats(page);
         results.push({ pose: name, time, tag, file, ...s, list: await page.evaluate(() => window.__cvFalls?.list?.() ?? []) });
@@ -160,7 +166,7 @@ try {
       } else if (args.mode === "seq") {
         const n = Number(args.frames);
         for (let i = 0; i < n; i++) {
-          await page.screenshot({ path: join(OUT, `seq-${name}-${time}-${tag}${args.cut ? "-cut" : ""}-${String(i).padStart(2, "0")}.png`) });
+          await page.screenshot({ path: join(OUT, `seq-${name}-${time}-${tag}-${String(i).padStart(2, "0")}.png`) });
           await sleep(Number(args.gap));
         }
         console.log(JSON.stringify({ seq: name, time, tag, frames: n }));

@@ -351,6 +351,7 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
       }
       const map = mapNow;
       const start = startClickPlan(from.x, from.z, surface, map.geometry.obstacles, activeBounds(), !!s, { furniture: map.furniture, farFirst: seatGoal !== null, shore: map.shore });
+      const toShore = !!(surface && map.shore && map.shore(surface.x, surface.z));
       const cameraNow = (): PerspectiveCamera => {
         if (snap) return snap;
         const cam = camera as PerspectiveCamera;
@@ -362,12 +363,14 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
       const settle = (raw: ClickPlan): ClickPlan => {
         let plan = raw;
         if (plan.ok && plan.adjusted !== "none") plan = { ...plan, y: groundAt(plan.x, plan.z, plan.y, true) };
-        // Rule 4: only a ring on the screen takes a walk.
+        // Rule 4: only a ring on the screen takes a walk — but a click on the falls' pool walks to its nearest shore
+        // spot wherever that is (W6: on the phone's narrow portrait view the shore spot of a click on the pool's north
+        // or south part lies off the screen, and a tap on the water that does nothing is what B10 complained of)
         let view: RingView | null = null;
         let unseen: ClickPlan | null = null;
         if (plan.ok) {
           view = viewOfRing(plan.x, plan.y, plan.z, cameraNow());
-          const seen = requireSeen(plan, view);
+          const seen = toShore ? plan : requireSeen(plan, view);
           if (!seen.ok) unseen = plan;
           plan = seen;
         }

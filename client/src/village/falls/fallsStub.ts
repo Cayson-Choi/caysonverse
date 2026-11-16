@@ -282,7 +282,7 @@ function foamGeometry(): BufferGeometry {
   return g;
 }
 
-/** The placeholder, with the nodes and materials of the contract. `poolLift`: see `OLD_POOL_LIFT`. */
+/** The placeholder, with the nodes and materials of the contract. `poolLift` raises its water (tests). */
 export function createFallsStub(poolLift = 0): Group {
   const root = new Group();
   root.name = "falls_stub";

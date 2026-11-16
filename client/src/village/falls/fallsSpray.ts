@@ -232,7 +232,7 @@ void main() {
   vHalf = vec2( hw, hl );
   vSoft = soft;
   vec3 V = normalize( cameraPosition - p );
-  vec3 col = flWhite( V, 1.0 - 0.5 * soft ) + flLamp( p ) * 1.4;
+  vec3 col = flWarm( flWhite( V, 1.0 - 0.5 * soft ), p, 1.4 );
   float tw = fract( sin( dot( vec2( aLife.y * 97.0, floor( uTime * 9.0 + aLife.y * 61.0 ) ), vec2( 12.9898, 78.233 ) ) ) * 43758.5453 );
   col += uGlintColor * step( 0.93, tw ) * ( 0.6 + 1.6 * clamp( dot( -uKeyDir, V ), 0.0, 1.0 ) ) * ( 1.0 - soft );
   vColor = col;
@@ -323,7 +323,7 @@ void main() {
   float a = texture2D( uAtlas, vUvAtlas ).a * vAlpha * 0.3;
   if ( vAlpha < 0.004 ) discard;
   vec3 V = normalize( cameraPosition - vMistPos );
-  vec3 col = flWhite( V, 0.9 ) * 0.92 + flLamp( vMistPos ) * 0.5;
+  vec3 col = flWarm( flWhite( V, 0.9 ) * 0.92, vMistPos, 0.5 );
   gl_FragColor = vec4( col, a );
   #include <tonemapping_fragment>
   #include <colorspace_fragment>

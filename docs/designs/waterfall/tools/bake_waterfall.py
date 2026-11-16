@@ -222,7 +222,8 @@ def lightmap_uv(objs, margin=arg("--margin", 0.002, float)):
         me.uv_layers["UV_LM"].data.foreach_set("uv", co)
         me.uv_layers.active = me.uv_layers["UV_LM"]
         keep_scan = o.name.startswith("falls_rock_lod")
-        sel = [not (keep_scan and p.material_index > 0) for p in me.polygons]
+        nq = o.get("n_quads")                       # W6: the ground's seam skirt (faces nq..) stays off the light map
+        sel = [not (keep_scan and p.material_index > 0) and not (nq is not None and p.index >= nq) for p in me.polygons]
         me.polygons.foreach_set("select", sel)
     select(objs)
     bpy.ops.object.mode_set(mode="EDIT")
@@ -238,13 +239,41 @@ def lightmap_uv(objs, margin=arg("--margin", 0.002, float)):
         co = np.empty(len(uv) * 2, np.float32)
         uv.foreach_get("uv", co)
         uv.foreach_set("uv", co * weight(o))
+    for o in objs:
+        nq = o.get("n_quads")
+        o.data.polygons.foreach_set("select", [not (nq is not None and p.index >= nq) for p in o.data.polygons])
     select(objs)
     bpy.ops.object.mode_set(mode="EDIT")
-    bpy.ops.mesh.select_all(action="SELECT")
     bpy.ops.uv.select_all(action="SELECT")
     bpy.ops.uv.pack_islands(rotate=True, scale=True, margin_method="FRACTION", margin=margin,
                             shape_method=arg("--shape", "CONCAVE"))
     bpy.ops.object.mode_set(mode="OBJECT")
+    for o in objs:
+        skirt_uv(o)
+
+
+def skirt_uv(o):
+    """W6: each skirt corner takes the light-map UV of the ground's outline vertex above it (the skirt has no texels of
+    its own: seen through a crack it shows the ground's edge light)."""
+    nq = o.get("n_quads")
+    if nq is None:
+        return
+    me = o.data
+    uv = me.uv_layers["UV_LM"].data
+    top = {}
+    for p in me.polygons[:nq]:
+        for li in p.loop_indices:
+            v = me.vertices[me.loops[li].vertex_index].co
+            top.setdefault((round(v.x, 4), round(v.y, 4)), (v.z, tuple(uv[li].uv)))
+    n = 0
+    for p in me.polygons[nq:]:
+        for li in p.loop_indices:
+            v = me.vertices[me.loops[li].vertex_index].co
+            t = top.get((round(v.x, 4), round(v.y, 4)))
+            if t is not None:
+                uv[li].uv = t[1]
+                n += 1
+    log("skirt UV corners", n)
 
 
 def uv_area(objs, layer="UV_LM"):
@@ -298,6 +327,10 @@ def overlap_report(objs, res=1024):
             "texels_overlap_pct_of_used": round(100 * (occ > 1).sum() / max(1, used), 3)}
 
 
+for _o in LM_OBJS:          # W6: a falls_w1.blend saved before "n_quads" was written: the skirt's first face from n_grid
+    if _o.get("n_grid") is not None and _o.get("n_quads") is None:
+        _ng = _o["n_grid"]
+        _o["n_quads"] = next((p.index for p in _o.data.polygons if max(p.vertices) >= _ng), len(_o.data.polygons))
 lightmap_uv(LM_OBJS)
 UVONLY = "--uvonly" in argv
 if False:

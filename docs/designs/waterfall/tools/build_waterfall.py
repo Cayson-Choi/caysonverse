@@ -371,7 +371,37 @@ M_SLAB = stone_material("M_falls_slab", "M_falls_slab", "scans/T_falls_slab_d.pn
 M_GROUND = tinted_material("M_falls_ground", "M_falls_ground", "T_falls_gravel.png", "T_falls_gravel_n.png", 1.0, 0.88)
 M_TURF = tinted_material("M_falls_turf", "M_falls_turf", "T_falls_turf.png", "T_falls_turf_n.png", 0.7, 0.95)
 M_LEAF = card_material("M_leaf_green", "M_leaf_green", os.path.join(WORK, "tex", "T_leaf_green.png"), 0.3, bright=1.45)
-M_PLANT = card_material("M_leaf_falls_plants", "M_leaf_falls_plants", os.path.join(TEXF, "T_falls_foliage.png"), 0.35, bright=1.2)
+def natural_foliage(src, dst, sat=0.62, val=0.9, hue_to=0.25, hue_k=0.35):
+    """W6: the plant cards read fluorescent in the game (texture saturation 0.77, the lift on top). A copy with the
+    saturation and value of the photos' rock plants (12 / 05: dull olive to fresh green, never neon), the hue pulled a
+    little toward 0.25 (yellow-green -> green). Alpha untouched."""
+    im = bpy.data.images.load(src, check_existing=False)
+    w, h = im.size
+    a = np.empty(w * h * 4, np.float32)
+    im.pixels.foreach_get(a)
+    a = a.reshape(-1, 4)
+    rgb = a[:, :3]
+    mx = rgb.max(1)
+    mn = rgb.min(1)
+    lum = rgb @ np.array([0.2126, 0.7152, 0.0722], np.float32)
+    out = lum[:, None] + (rgb - lum[:, None]) * sat                    # less saturated, same luminance
+    # hue: blend a little toward a mid green of the same luminance
+    green = np.stack([lum * 0.80, lum * 1.12, lum * 0.62], 1)
+    k = hue_k * np.clip((mx - mn) / np.maximum(mx, 1e-4), 0, 1)[:, None]
+    out = out * (1 - k) + green * k
+    a[:, :3] = np.clip(out * val, 0, 1)
+    nim = bpy.data.images.new(os.path.basename(dst)[:-4], w, h, alpha=True)
+    nim.pixels.foreach_set(a.ravel())
+    nim.filepath_raw = dst
+    nim.file_format = "PNG"
+    nim.save()
+    bpy.data.images.remove(nim)
+    bpy.data.images.remove(im)
+    return dst
+
+
+FOLIAGE_TEX = natural_foliage(os.path.join(TEXF, "T_falls_foliage.png"), os.path.join(TEXF, "T_falls_foliage_nat.png"))
+M_PLANT = card_material("M_leaf_falls_plants", "M_leaf_falls_plants", FOLIAGE_TEX, 0.35, bright=1.2)
 M_BARK = bark_material()
 M_LAMP = bpy.data.materials.new("M_falls_lamp")
 M_LAMP["export"] = "M_falls_lamp"
@@ -754,6 +784,24 @@ def build_terrain():
                 continue
             a = j * nx + i
             quads.append((a, a + 1, a + nx + 1, a + nx))
+    # W6: a skirt hanging 0.45 m straight down from the outline, both sides: the village's cut ground meets this edge
+    # exactly (waterfall_site_edge.json), the skirt only fills the sub-millimetre Draco rounding cracks along it
+    n_quads = len(quads)
+    ring = ([0 * nx + i for i in range(nx)] + [j * nx + (nx - 1) for j in range(1, nz)]
+            + [(nz - 1) * nx + i for i in range(nx - 2, -1, -1)] + [j * nx for j in range(nz - 2, 0, -1)] + [0])
+    below, top2, below2 = {}, {}, {}
+    for a in ring:
+        if a not in below:
+            v = verts[a]
+            below[a] = len(verts)
+            verts.append(Vector((v[0], v[1], v[2] - 0.45)))
+            top2[a] = len(verts)                      # the back side has its own corners (no two faces on one set)
+            verts.append(Vector((v[0], v[1], v[2])))
+            below2[a] = len(verts)
+            verts.append(Vector((v[0], v[1], v[2] - 0.45)))
+    for a, b in zip(ring[:-1], ring[1:]):
+        quads.append((a, b, below[b], below[a]))
+        quads.append((top2[a], below2[a], below2[b], top2[b]))
     me = bpy.data.meshes.new("falls_ground")
     me.from_pydata(verts, [], quads)
     me.update()
@@ -815,6 +863,8 @@ def build_terrain():
         else:                                           # forest floor tint
             v_ = 0.8 + 0.35 * nzv
             cols.data[i].color = (v_ * 0.95, v_ * 1.02, v_ * 0.82, 1.0)
+    ob["n_grid"] = nx * nz
+    ob["n_quads"] = n_quads              # faces from here on are the skirt (bake_waterfall.py keeps them off the light map)
     link(ob, cat="ground")
     return ob
 
@@ -923,8 +973,8 @@ def place_bank_rocks(n_bank=44, n_water=9, n_talus=9):
         hx, hy, hz = kit_dims(k, sc_)
         if any(math.hypot(o[1][0] - x, o[1][2] - z) < (max(hx, hz) + max(kit_dims(o[0], o[4])[0], kit_dims(o[0], o[4])[2])) * 0.72 for o in out):
             continue
-        gy = F.floor_y(x, z)
-        out.append((k, (x, gy + hy * 0.45, z), rng.uniform(0, 6.28), rng.uniform(-0.15, 0.15), sc_, "bank", sd, 0))
+        gy = F.terrain_y(x, z)
+        out.append((k, (x, gy + hy * 0.22, z), rng.uniform(0, 6.28), rng.uniform(-0.15, 0.15), sc_, "bank", sd, 0))
     tries, cnt = 0, 0
     while cnt < n_water and tries < 2000:
         tries += 1
@@ -958,8 +1008,8 @@ def place_bank_rocks(n_bank=44, n_water=9, n_talus=9):
         hx, hy, hz = kit_dims(k, sc_)
         if any(math.hypot(o[1][0] - x, o[1][2] - z) < 2.0 for o in out):
             continue
-        gy = F.floor_y(x, z)
-        out.append((k, (x, gy + hy * 0.25, z), rng.uniform(0, 6.28), rng.uniform(-0.12, 0.12), sc_, "talus", 0, 0))
+        gy = F.terrain_y(x, z)
+        out.append((k, (x, gy + hy * 0.12, z), rng.uniform(0, 6.28), rng.uniform(-0.12, 0.12), sc_, "talus", 0, 0))
         cnt += 1
     return out
 
@@ -1076,7 +1126,7 @@ link(pebble_root)
 PEBBLES = 0
 tries = 0
 prng = random.Random(55)
-while PEBBLES < 110 and tries < 40000:
+while PEBBLES < 72 and tries < 40000:
     tries += 1
     x = prng.uniform(S["minX"] + 10, -99.5)
     z = prng.uniform(-93.0, -63.0)
@@ -1091,8 +1141,8 @@ while PEBBLES < 110 and tries < 40000:
         continue
     pocket = in_pocket(x, z, 0.3)
     s_ = prng.uniform(0.07, 0.14) if pocket else prng.uniform(0.14, 0.36)
-    gy = F.floor_y(x, z) if x < -105 else 0.0
-    sink = 0.45 if pocket else 0.3
+    gy = F.terrain_y(x, z) if x < -105 else 0.0
+    sink = 0.75 if pocket else 0.6
     ob = bpy.data.objects.new(f"pebble_{PEBBLES}", pe)
     ob.location = Vb(x, z, gy - s_ * 0.62 * sink)
     ob.rotation_euler = (prng.uniform(-0.3, 0.3), prng.uniform(-0.3, 0.3), prng.uniform(0, 6.28))
@@ -1109,6 +1159,15 @@ vrng = random.Random(77)
 PL = P.Leaves()          # ledges, cracks, banks (both tiers)
 PLH = P.Leaves()         # flank undergrowth (high tier only)
 FRESH = (0.95, 1.0, 0.85)
+# W6: one tint per plant from the photos' rock-plant greens (fresh, olive, dry-yellow, shaded blue-green), not one for all
+_TRNG = random.Random(909)
+_TINTS = [(0.95, 1.0, 0.85), (0.86, 0.9, 0.72), (0.92, 0.88, 0.64), (0.74, 0.84, 0.76), (0.80, 0.80, 0.66)]
+
+
+def tn():
+    t = _TRNG.choice(_TINTS)
+    v = _TRNG.uniform(0.85, 1.05)
+    return (t[0] * v, t[1] * v, t[2] * v)
 
 
 def far_from(pts, x, z, y, d):
@@ -1133,10 +1192,10 @@ LEDGE_SITES = []
 for (x, z, y) in map_sites(LEDGE_MAP, 0.6, vrng):
     if abs(z - F.FZ) > 16.5 or blocked_by_water(z, y) or y > F.TOP + 2.0 or y < 0.3:
         continue
-    if not far_from(LEDGE_SITES, x, z, y, 1.15):
+    if not far_from(LEDGE_SITES, x, z, y, 1.6):
         continue
     LEDGE_SITES.append((x, z, y, 0.0))
-    if len(LEDGE_SITES) >= 135:
+    if len(LEDGE_SITES) >= 78:
         break
 for i, (x, z, y, dep) in enumerate(LEDGE_SITES):
     PL_ = PLH if i % 3 == 2 else PL           # a third of the ledge plants are high-tier only
@@ -1144,16 +1203,16 @@ for i, (x, z, y, dep) in enumerate(LEDGE_SITES):
     base = Vector(Vb(xb, z, y + 0.02))
     r = vrng.random()
     if r < 0.38:
-        P.grass(PL_, base, vrng.uniform(0.45, 0.85), vrng, n=3, tint=FRESH)
+        P.grass(PL_, base, vrng.uniform(0.45, 0.85), vrng, n=3, tint=tn())
         if vrng.random() < 0.5:
-            P.grass(PL_, base + Vector((0.1, vrng.uniform(-0.6, 0.6), 0)), vrng.uniform(0.35, 0.6), vrng, n=2, tint=FRESH)
-    elif r < 0.7:
-        P.shrub(PL_, base, vrng.uniform(0.9, 1.7), vrng.uniform(0.9, 1.7), vrng, tint=FRESH)
+            P.grass(PL_, base + Vector((0.1, vrng.uniform(-0.6, 0.6), 0)), vrng.uniform(0.35, 0.6), vrng, n=2, tint=tn())
+    elif r < 0.62:
+        P.shrub(PL_, base, vrng.uniform(0.6, 1.2), vrng.uniform(0.6, 1.2), vrng, tint=tn())
     elif r < 0.85:
-        P.fern(PL_, base, vrng.randint(6, 8), vrng.uniform(0.6, 0.95), vrng, tint=FRESH)
+        P.fern(PL_, base, vrng.randint(6, 8), vrng.uniform(0.6, 0.95), vrng, tint=tn())
     else:
-        P.hanging(PL_, Vector(Vb(x + 0.05, z, y + 0.05)), (1, 0, 0), vrng.uniform(0.8, 1.6), vrng, n=3, tint=FRESH)
-        P.grass(PL_, base, 0.4, vrng, n=2, tint=FRESH)
+        P.hanging(PL_, Vector(Vb(x + 0.05, z, y + 0.05)), (1, 0, 0), vrng.uniform(0.8, 1.6), vrng, n=3, tint=tn())
+        P.grass(PL_, base, 0.4, vrng, n=2, tint=tn())
 # 2. vertical cracks: grass and hanging sprays growing out of the joints (damper, lower rock mostly)
 CRACK_SITES = []
 for (x, z, y) in map_sites(CRACK_MAP, 0.55, vrng):
@@ -1164,13 +1223,13 @@ for (x, z, y) in map_sites(CRACK_MAP, 0.55, vrng):
     if not far_from(CRACK_SITES, x, z, y, 1.5) or not far_from(LEDGE_SITES, x, z, y, 0.8):
         continue
     CRACK_SITES.append((x, z, y))
-    if len(CRACK_SITES) >= 75:
+    if len(CRACK_SITES) >= 44:
         break
 for (x, z, y) in CRACK_SITES:          # high tier only (the low tier keeps the ledges, rim and groove-edge plants)
     if vrng.random() < 0.5:
-        P.hanging(PLH, Vector(Vb(x + 0.02, z, y)), (1, 0, 0), vrng.uniform(0.7, 1.3), vrng, n=2, tint=FRESH)
+        P.hanging(PLH, Vector(Vb(x + 0.02, z, y)), (1, 0, 0), vrng.uniform(0.7, 1.3), vrng, n=2, tint=tn())
     else:
-        P.grass(PLH, Vector(Vb(x - 0.05, z, y)), vrng.uniform(0.35, 0.6), vrng, up=(0.5, 0, 1), n=2, tint=FRESH)
+        P.grass(PLH, Vector(Vb(x - 0.05, z, y)), vrng.uniform(0.35, 0.6), vrng, up=(0.5, 0, 1), n=2, tint=tn())
 # 2b. cliff bushes: bigger leafy shrubs rooted in the joints and on the steps (photo 12: bushes all over the lower rock,
 #     sprays hanging off them); high tier, a few on both tiers
 BUSH_SITES = []
@@ -1179,18 +1238,18 @@ for (x, z, y) in map_sites(np.maximum(CRACK_MAP, LEDGE_MAP), 0.5, vrng):
         continue
     if vrng.random() > 0.35 + 0.65 * F.smooth(30.0, 8.0, y):
         continue
-    if any(math.hypot(b[1] - z, b[2] - y) < 2.8 for b in BUSH_SITES):
+    if any(math.hypot(b[1] - z, b[2] - y) < 3.6 for b in BUSH_SITES):
         continue
     BUSH_SITES.append((x, z, y))
-    if len(BUSH_SITES) >= 42:
+    if len(BUSH_SITES) >= 24:
         break
 for i, (x, z, y) in enumerate(BUSH_SITES):
     L_ = PL if i % 4 == 0 else PLH
     base = Vector(Vb(x - 0.15, z, y))
-    P.shrub(L_, base, vrng.uniform(1.3, 2.3), vrng.uniform(1.2, 2.0), vrng, up=(0.45, 0, 1), tint=FRESH)
+    P.shrub(L_, base, vrng.uniform(1.0, 1.8), vrng.uniform(1.0, 1.6), vrng, up=(0.45, 0, 1), tint=tn())
     if vrng.random() < 0.6:
         P.hanging(L_, Vector(Vb(x + 0.1, z + vrng.uniform(-0.6, 0.6), y + 0.1)), (1, 0, 0), vrng.uniform(1.2, 2.2), vrng,
-                  n=3, tint=FRESH)
+                  n=3, tint=tn())
 print("cliff bushes", len(BUSH_SITES))
 # 3. the banks and the cliff foot: ferns at the foot, sedge along the shore, shrubs at the beach's edge
 BANK_SITES = []
@@ -1215,13 +1274,13 @@ for (x, z, p) in BANK_SITES:
     foot = cliff_at(x, z, 2)
     r = vrng.random()
     if sd < 1.6 and r < 0.7:
-        P.grass(PL, p, vrng.uniform(0.5, 1.0), vrng, n=3, tint=FRESH)          # sedge / reeds at the water (photo 05)
+        P.grass(PL, p, vrng.uniform(0.5, 1.0), vrng, n=3, tint=tn())          # sedge / reeds at the water (photo 05)
     elif foot and r < 0.6:
-        P.fern(PL, p, vrng.randint(7, 9), vrng.uniform(0.8, 1.2), vrng, tint=FRESH)
+        P.fern(PL, p, vrng.randint(7, 9), vrng.uniform(0.8, 1.2), vrng, tint=tn())
     elif r < 0.75:
-        P.shrub(PL, p, vrng.uniform(0.7, 1.3), vrng.uniform(0.8, 1.4), vrng, tint=FRESH)
+        P.shrub(PL, p, vrng.uniform(0.7, 1.3), vrng.uniform(0.8, 1.4), vrng, tint=tn())
     else:
-        P.fern(PL, p, vrng.randint(6, 8), vrng.uniform(0.7, 1.0), vrng, tint=FRESH)
+        P.fern(PL, p, vrng.randint(6, 8), vrng.uniform(0.7, 1.0), vrng, tint=tn())
 # 4. the wooded flanks and the plateau: a dense shrub layer under the trees (high tier; W6's forest continues it)
 FLANK_SITES = []
 tries = 0
@@ -1247,9 +1306,9 @@ while len(FLANK_SITES) < 95 and tries < 9000:
 for (x, z, p, n) in FLANK_SITES:
     up = (Vector((0, 0, 1)) * 0.75 + n * 0.25).normalized()
     if vrng.random() < 0.8:
-        P.shrub(PLH, p, vrng.uniform(1.0, 1.9), vrng.uniform(1.0, 1.9), vrng, up=up, tint=FRESH)
+        P.shrub(PLH, p, vrng.uniform(1.0, 1.9), vrng.uniform(1.0, 1.9), vrng, up=up, tint=tn())
     else:
-        P.fern(PLH, p, vrng.randint(7, 9), vrng.uniform(0.9, 1.3), vrng, up=up, tint=FRESH)
+        P.fern(PLH, p, vrng.randint(7, 9), vrng.uniform(0.9, 1.3), vrng, up=up, tint=tn())
 
 # 5. the rim: shrubs along the top edge, sprays hanging over it (the forest reaches the edge in photos 05 / 12)
 RIM = []
@@ -1263,11 +1322,11 @@ while zz < F.FACE_Z[1] - 1.0:
     x = front_x(z, min(yr, F.PLATEAU_Y - 0.5))
     RIM.append((x, z, yr))
     P.shrub(PL, Vector(Vb(x - 0.35, z, yr - 0.1)), vrng.uniform(0.9, 1.6), vrng.uniform(0.9, 1.5), vrng,
-            up=(0.35, 0, 1), tint=FRESH)
+            up=(0.35, 0, 1), tint=tn())
     if vrng.random() < 0.6:
         yh = F.TOP - vrng.uniform(0.0, 1.0)
         P.hanging(PL, Vector(Vb(front_x(z, yh) + 0.05, z, yh)), (1, 0, 0), vrng.uniform(1.2, 2.4), vrng,
-                  n=3, tint=FRESH)
+                  n=3, tint=tn())
 # 6. along both edges of the cascade groove: sprays hanging into it, small shrubs on its lips
 for side in (-1, 1):
     y = F.LEDGE + 1.5
@@ -1275,10 +1334,10 @@ for side in (-1, 1):
         z = F.channel_z(y) + side * vrng.uniform(3.4, 4.4)
         x = front_x(z, y)
         if vrng.random() < 0.55:
-            P.hanging(PL, Vector(Vb(x + 0.05, z, y)), (1, 0, 0), vrng.uniform(1.0, 2.0), vrng, n=2, tint=FRESH)
+            P.hanging(PL, Vector(Vb(x + 0.05, z, y)), (1, 0, 0), vrng.uniform(1.0, 2.0), vrng, n=2, tint=tn())
         else:
             P.shrub(PL, Vector(Vb(x - 0.2, z, y)), vrng.uniform(0.5, 0.9), vrng.uniform(0.6, 1.0), vrng,
-                    up=(0.4, 0, 1), tint=FRESH)
+                    up=(0.4, 0, 1), tint=tn())
         y += vrng.uniform(1.6, 2.8)
 print("rim plants", len(RIM))
 
@@ -1431,6 +1490,8 @@ for s, ob in zip(F.SEATS, SEATS):
         report["fails"].append(f"{s['id']} top {zmax}")
 bad = 0
 for v in GROUND.data.vertices:
+    if v.index >= GROUND.get("n_grid", 10 ** 9):
+        continue                                   # the skirt below the outline
     gx, gz = v.co.x, -v.co.y
     if F.walk_surface_ok(gx, gz) and F.slab_at(gx, gz) is None and abs(v.co.z) > 0.06:
         bad += 1

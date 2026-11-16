@@ -16,6 +16,7 @@ import { WHITE_WATER_LIGHT } from "../fountainWater";
 import { wrapOmega } from "../fountainLayout";
 import type { DayNightState } from "../dayNightBlend";
 import { FALLS, MACRO_RECT } from "./fallsConfig";
+import { GROUND_GRADE, GROUND_GRADE_NIGHT } from "../villageModelPrep";
 
 /**
  * The falls' materials (design 5.2; W3 2026-11-16: "as real as the plaza fountain", owner). The falling water is drawn
@@ -86,6 +87,14 @@ vec3 flWhite( vec3 V, float forward ) {
 vec3 flLamp( vec3 p ) {
   float near = 1.0 - smoothstep( 0.0, 10.0, p.y - ${f6(FALLS.pool.waterY)} );
   return uLampColor * uLamp * near * near * 0.3;
+}
+// White water by the lamps (W6): the lamp's warm light takes the place of the moonlit blue near them instead of being
+// added to it (blue + orange read as a purple glow at the foot of the falls); higher up the moon's blue stays.
+vec3 flWarm( vec3 base, vec3 p, float k ) {
+  vec3 lamp = flLamp( p ) * k;
+  float w = uLamp * ( 1.0 - smoothstep( 0.0, 12.0, p.y - ${f6(FALLS.pool.waterY)} ) ) * 0.9;
+  float l = dot( base, vec3( 0.2126, 0.7152, 0.0722 ) );
+  return mix( base, vec3( l ), w * 0.85 ) + lamp;
 }
 `;
 
@@ -218,7 +227,7 @@ void main() {
   float whiteA = aer * mix( 0.22, 1.0, core ) * ( 0.45 + 0.55 * rocket ) * smoothstep( 0.15, 0.5, strands + 0.3 * aer )
     + 0.06 * ( 1.0 - aer );
   float shade = ( 0.6 + 0.45 * core * ( 0.5 + 0.5 * rocket ) ) * ( 0.94 + 0.12 * g3 );
-  vec3 white = flWhite( V, 0.6 ) * shade + flLamp( vWorldPos ) * 1.3 * shade;
+  vec3 white = flWarm( flWhite( V, 0.6 ) * shade, vWorldPos, 1.3 * shade );
   refl += flLamp( vWorldPos ) * 0.25;
   float a = whiteA + glassA * ( 1.0 - whiteA );
   vec3 col = ( white * whiteA + refl * glassA * ( 1.0 - whiteA ) ) / max( a, 1e-3 );
@@ -257,7 +266,7 @@ void main() {
   vec3 R = reflect( -V, nn );
   vec3 refl = skyAt( R ) * 0.85 + uGlintColor * pow( max( dot( R, uKeyDir ), 0.0 ), 200.0 ) * 4.0;
   float glassA = ( 0.18 + 0.7 * F ) * ( 1.0 - 0.6 * aer );
-  vec3 white = flWhite( V, 0.5 ) * ( 0.7 + 0.45 * n ) + flLamp( vWorldPos );
+  vec3 white = flWarm( flWhite( V, 0.5 ) * ( 0.7 + 0.45 * n ), vWorldPos, 1.0 );
   float a = whiteA + glassA * ( 1.0 - whiteA );
   vec3 col = ( white * whiteA + refl * glassA * ( 1.0 - whiteA ) ) / max( a, 1e-3 );
   // the film's sides: torn, see-through
@@ -300,7 +309,7 @@ void main() {
   float cover = clamp( vFalls.r * ( 0.7 + 0.35 * n ) * ( 1.0 - smoothstep( 1.5, 4.0, r ) * 0.6 ) + 0.1 * fc.a, 0.0, 1.0 );
   float fo = smoothstep( 1.0 - cover, 1.0 - cover + 0.2, lace * 0.6 + n * 0.5 );
   vec3 V = normalize( cameraPosition - vWorldPos );
-  vec3 col = flWhite( V, 0.3 ) * ( 0.72 + 0.3 * n ) + flLamp( vWorldPos ) * 0.8;
+  vec3 col = flWarm( flWhite( V, 0.3 ) * ( 0.72 + 0.3 * n ), vWorldPos, 0.8 );
   float alpha = fo * vFalls.a * 0.95 * uOpacity;
 ${FRAG_TAIL}`;
 
@@ -479,6 +488,36 @@ export function setFallsSky(sky: Texture | null, mapping: SkyMapping, noise: Tex
 
 // ───────────────────────────────────────────── the rock's light map ─────────────────────────────────────────────
 
+/**
+ * Where the falls ground meets the village's lawn (W6): the box's east side and the north / south sides east of x -112
+ * (west of it the village's side is the wooded backdrop). Over SEAM_FADE m the ground's albedo goes to the lawn's
+ * colour (a little world-space variation; the same for the gravel and the turf, so their stepped border goes under
+ * it), so the seam reads as lawn running into the forest floor and gravel, not as a dark olive strip along a straight
+ * line. Linear RGB: T_grass's mean (0.097, 0.177, 0.029) x 1.38 (the falls light map is darker there: matched by eye on the seam); x the
+ * lawn's grade of the time of day (villageModelPrep GROUND_GRADE / GROUND_GRADE_NIGHT), as the village's own lawn.
+ */
+export const SEAM_GRASS: readonly [number, number, number] = [0.136, 0.245, 0.04];
+export const SEAM_FADE = 3.0;
+/**
+ * The ground materials' mean albedo luminance (linear, their texture's mean x W1's vertex tint ~0.8): the seam keeps
+ * each one's grain as a ratio to it. T_falls_gravel (0.183, 0.167, 0.131), T_falls_turf (0.085, 0.085, 0.027).
+ */
+export const SEAM_MEAN = { ground: 0.134, turf: 0.066 } as const;
+const LAWN_DAY = GROUND_GRADE.LM_grass!;
+const LAWN_NIGHT = GROUND_GRADE_NIGHT.LM_grass!;
+const SEAM_GLSL = /* glsl */ `#ifdef FALLS_SEAM
+  float fsE = ${f6(FALLS.site.maxX)} - vFallsWorld.x;
+  float fsN = vFallsWorld.z - ${f6(FALLS.site.minZ)};
+  float fsS = ${f6(FALLS.site.maxZ)} - vFallsWorld.z;
+  float fsX = smoothstep( -114.0, -110.5, vFallsWorld.x );
+  float fsW = max( 1.0 - smoothstep( 0.0, ${f6(SEAM_FADE)}, fsE ), max( 1.0 - smoothstep( 0.0, ${f6(SEAM_FADE)}, fsN ), 1.0 - smoothstep( 0.0, ${f6(SEAM_FADE)}, fsS ) ) * fsX );
+  vec2 fsQ = vFallsWorld.xz * vec2( 0.37, 0.41 );
+  float fsV = 0.9 + 0.1 * sin( fsQ.x * 2.1 + sin( fsQ.y * 1.7 ) ) + 0.05 * sin( fsQ.y * 5.3 + fsQ.x * 3.1 );
+  // the texture's own grain, as a ratio to this material's mean (gravel and turf then give the same lawn)
+  float fsD = clamp( dot( diffuseColor.rgb, vec3( 0.2126, 0.7152, 0.0722 ) ) / uFallsSeamMean, 0.45, 1.7 );
+  diffuseColor.rgb = mix( diffuseColor.rgb, uFallsGrass * fsV * mix( 1.0, fsD, 0.7 ), fsW );
+#endif`;
+
 export const rockUniforms = {
   uNight: { value: 0 },
   uNightMap: { value: null as Texture | null },
@@ -488,6 +527,8 @@ export const rockUniforms = {
   uMoon: { value: new Vector3(0.55, 0.75, 1.2) },
   /** The macro map's rectangle: (z0, z span, y0, y span) in world metres (W1's UV2, computed here from the position). */
   uMacroRect: { value: new Vector4(MACRO_RECT.z0, MACRO_RECT.z1 - MACRO_RECT.z0, MACRO_RECT.y0, MACRO_RECT.y1 - MACRO_RECT.y0) },
+  /** The village lawn's colour the falls ground fades to at the seam (W6, `SEAM_GRASS`). */
+  uGrass: { value: new Vector3(SEAM_GRASS[0] * LAWN_DAY[0], SEAM_GRASS[1] * LAWN_DAY[1], SEAM_GRASS[2] * LAWN_DAY[2]) },
 };
 
 const ROCK_PARS = /* glsl */ `uniform float uFallsNight;
@@ -496,10 +537,16 @@ uniform vec3 uFallsDayTint;
 uniform float uFallsLift;
 uniform vec3 uFallsLiftTint;
 uniform vec3 uFallsMoon;
+#if defined( FALLS_MACRO ) || defined( FALLS_SEAM )
+varying vec3 vFallsWorld;
+#endif
 #ifdef FALLS_MACRO
 uniform sampler2D uFallsMacro;
 uniform vec4 uFallsMacroRect;
-varying vec3 vFallsWorld;
+#endif
+#ifdef FALLS_SEAM
+uniform vec3 uFallsGrass;
+uniform float uFallsSeamMean;
 #endif
 void main() {`;
 
@@ -544,10 +591,11 @@ export type RockKind = "stone" | "tint" | "plain";
 /**
  * A light-mapped material of waterfall.glb: its own day/night blend (the falls' light maps are not the village's, so
  * the village's shared night-map uniform cannot be used), and for stone the macro map and the vertex colour masks;
- * for `tint` the vertex colour multiplies (three's own). Idempotent.
+ * for `tint` the vertex colour multiplies (three's own). `seam` (W6, the ground's materials: their mean luminance,
+ * `SEAM_MEAN`) fades the albedo to the village lawn along the lawn's side of the site box. Idempotent.
  */
 const rockPatched = new WeakSet<Material>();
-export function rockMaterial(material: Material, kind: RockKind = "plain", macro: Texture | null = null): void {
+export function rockMaterial(material: Material, kind: RockKind = "plain", macro: Texture | null = null, seam = 0): void {
   if (rockPatched.has(material)) return;
   rockPatched.add(material);
   const m = material as MeshBasicMaterial;
@@ -559,10 +607,16 @@ export function rockMaterial(material: Material, kind: RockKind = "plain", macro
     shader.uniforms.uFallsLift = rockUniforms.uLift;
     shader.uniforms.uFallsLiftTint = rockUniforms.uLiftTint;
     shader.uniforms.uFallsMoon = rockUniforms.uMoon;
-    const defines = macro ? "#define FALLS_MACRO\n" : "";
+    const defines = (macro ? "#define FALLS_MACRO\n" : "") + (seam ? "#define FALLS_SEAM\n" : "");
     if (macro) {
       shader.uniforms.uFallsMacro = { value: macro };
       shader.uniforms.uFallsMacroRect = rockUniforms.uMacroRect;
+    }
+    if (seam) {
+      shader.uniforms.uFallsGrass = rockUniforms.uGrass;
+      shader.uniforms.uFallsSeamMean = { value: seam };
+    }
+    if (macro || seam) {
       shader.vertexShader = shader.vertexShader
         .replace("void main() {", "varying vec3 vFallsWorld;\nvoid main() {")
         .replace("#include <project_vertex>", "#include <project_vertex>\n  vFallsWorld = ( modelMatrix * vec4( transformed, 1.0 ) ).xyz;");
@@ -572,10 +626,10 @@ export function rockMaterial(material: Material, kind: RockKind = "plain", macro
       shader.fragmentShader
         .replace("void main() {", ROCK_PARS)
         .replace(LIGHTMAP_TEXEL_FROM, ROCK_TEXEL)
-        .replace("#include <color_fragment>", stone ? ROCK_ALBEDO : "#include <color_fragment>")
+        .replace("#include <color_fragment>", `${stone ? ROCK_ALBEDO : "#include <color_fragment>"}\n${SEAM_GLSL}`)
         .replace("#include <aomap_fragment>", ROCK_LIGHT);
   };
-  m.customProgramCacheKey = () => `falls-rock-${kind}${macro ? "-macro" : ""}`;
+  m.customProgramCacheKey = () => `falls-rock-${kind}${macro ? "-macro" : ""}${seam ? "-seam" : ""}`;
   m.needsUpdate = true;
 }
 
@@ -585,6 +639,8 @@ export function rockDayNight(s: DayNightState): void {
   rockUniforms.uDayTint.value.set(s.dayTint[0], s.dayTint[1], s.dayTint[2]);
   rockUniforms.uLift.value = s.lift;
   rockUniforms.uLiftTint.value.set(s.liftTint[0], s.liftTint[1], s.liftTint[2]);
+  const g = (k: 0 | 1 | 2) => SEAM_GRASS[k] * (LAWN_DAY[k]! + (LAWN_NIGHT[k]! - LAWN_DAY[k]!) * s.night);
+  rockUniforms.uGrass.value.set(g(0), g(1), g(2));
 }
 
 /** The lamp glass: dim warm glass by day, glowing (past the rich tier's bloom) once the lamps are on. */

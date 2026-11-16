@@ -423,3 +423,34 @@ W1(바위·땅·초목)·W2(물 메시)·W4(런타임)·W5(걷기)를 합치고(
 3. 클라이언트 정리: `OLD_POOL_LIFT`·`hideOldFalls`·`waterfall3d.ts`·`villageModelPrep.ts`의 `M_waterfall` 부분과 관련 시험 삭제, `?fallsCut` 미리보기 스위치 삭제.
 4. `falls-walk`의 소 클릭 단계를 다시 돌려 통과 확인, 둘레 걷기 남쪽 다리 문제는 W5 쪽에서 고치기.
 5. 배경 숲을 사이트 둘레까지(V9) — 지금 폭포 위 능선 뒤가 하늘로 비어 보이는 곳이 있어요.
+
+---
+
+## 15. W6 마을 자르기·폭포 다시 굽기 결과 (2026-11-16, `feat/falls-w6`)
+
+**왜 "전체 재빌드" 대신 GLB 자르기인가:** 지금 운영 중인 `village.glb`는 집·카페·키오스크 재건축(`feat/houses-m1`)으로 만든 파일인데, 그 빌드 스크립트(`parts_houses.py`, `parts_cafe.py`, `parts_kiosk.py`, `parts_memorial_ext.py` …)와 저장 장면이 이 PC에 없어요(이 PC의 `art/village/tools`·`work/*.blend`는 11월 3~11일 판). 그대로 `build_village.py`를 돌리면 옛 집·옛 카페로 돌아가요. 그래서 버스 정류장 때처럼(`patch-village-busstop.mjs`) **운영 파일을 제자리에서 잘랐어요** — 다른 모든 메시·이미지·라이트맵·충돌 상자·좌석 표시는 바이트 그대로예요.
+
+**`scripts/patch-village-falls-site.mjs`** (V1~V9, 두 번 돌려도 그대로):
+- V1~V3: `M_waterfall` 프리미티브(리본·안개 카드·거품 고리)와 그 재질·이미지 `T_falls`, 옛 절벽 격자(2,400면)와 바위 26개(사이트에 걸친 작은 덩어리 통째)를 지우고, 배경 지형(`M_backdrop`)·땅 격자(`LM_grass`)·물(`M_water`: 옛 소 원판, 물길 첫 구간)을 **사이트 상자 선에서 정확히 잘라요**(삼각형을 상자 네 선으로 나누고 모든 속성·라이트맵 UV를 선형 보간). 상자 안 먼 숲 카드 138장도 뺌.
+- V4/V5: 잘린 땅을 폭포 땅의 테두리 정점 자리(1 m마다, x −140..−128은 2 m)에서도 나눠 테두리 꺾임점을 맞추고, 보이는(맨 위) 땅의 높이로 테두리 폴리라인을 정해 `waterfall_site_edge.json`(172점, 북서쪽부터 반시계, `provisional: false`, 사본 [`waterfall_site_edge.json`](waterfall_site_edge.json))을 써요. 잘린 메시의 위치 양자화는 2의 거듭제곱 격자(배경 1/128 m, 원점도 그 배수)로 바꿔 상자 선·테두리 높이가 그대로 풀려요. 시험: 테두리 2 mm 밖 마을 땅 = 폴리라인 ±4 mm.
+- V5b: 쉼터(x −106..−95, z −90..−68)는 0, 밖 2 m에서 원래 높이로 — 땅을 주머니 선·경사 끝 선에서 먼저 나눠서 주머니 가장자리까지 평평해요(±1 cm).
+- V7: 물길은 (−107, −58)에서 물높이 −0.30으로 시작해 개울 쪽 −0.43까지(옛 −0.23 → −0.43).
+- V9: 상자 둘레 0.5~9 m 띠를 1.5 m 격자로 훑어 4.2 m 안에 숲 카드가 없는 곳을 찾았더니 2곳뿐(남동쪽 걸음 쪽 끝)이라 더 심지 않았어요(`--forest`로 넣을 수는 있음). 상자 안은 폭포 GLB의 나무가 채워요.
+- T_sky·T_backdrop은 main(a6d2f65 눈부심 고침)과 **바이트까지 같아요**(sha256 시험). `fix_sky_glare.py`를 다시 돌릴 필요 없음.
+- 크기: 5,579,396 → 5,544,500 B. 삼각형 마을 247,595 (전 약 252k), 장면 294,511 / 300,000. 충돌 상자 250개·좌석 표시 15개는 다시 뽑아도 같아요.
+- 라이트맵은 다시 굽지 않았어요(같은 해·하늘, 남은 면의 UV 그대로). 옛 절벽이 상자 밖 땅에 드리운 그림자는 상자 동쪽 경계에 조금 남을 수 있어요(눈에 띄는 곳 없음).
+
+**폭포 다시 만들기** (`build_waterfall.py` 약 10분 → `bake_waterfall.py --samples 512` 약 5분 → `post_waterfall.py`):
+- 새 이음매 파일로 땅을 다시 메시(테두리 정점 = 파일 높이, 시험 ±1.5 cm), 테두리 아래로 0.45 m 치마(양면, 라이트맵 섬 없음: 위 땅 테두리의 UV를 씀)로 Draco 반올림 틈을 막음. `falls_shape.terrain_y`는 쉼터 안을 0으로 지킴(마지막 0.5 m는 이음매 높이 그대로).
+- 잎 카드: 텍스처를 사진의 바위 풀 색으로(채도 ×0.62, 밝기 ×0.9, 초록 쪽으로 조금) `T_falls_foliage_nat.png`, 포기마다 색을 다섯 가지 중 하나 ± 밝기, 바위 위 개수 줄임(턱 135→78, 틈 75→44, 덤불 42→24, 덤불 크기도 작게).
+- 기슭 바위는 실제 메시 땅 높이(`terrain_y`)에 더 깊이(반높이의 22%만 위로), 자갈 110→72개를 절반 넘게 묻음. 런타임에서 너럭바위·돌 의자·자갈 화강암 albedo ×0.7(`SLAB_ALBEDO`).
+- `waterfall.glb` 1,612,080 B (≤ 1.6 MiB), 삼각형 high 68,142 / low 25,077, 라이트맵 낮 232 KB + 밤 76 KB.
+
+**런타임**
+- 지운 것: `waterfall3d.ts`, `OLD_POOL_LIFT`·`STUB_POOL_LIFT`·`OLD_*`, `hideOldFalls`·`villageHasOldFalls`, `poolLift`, `?fallsCut`·`setSiteCut`·`__cvFalls.set({cut})`, `fallsRuntime`의 `"old"`, `villageModelPrep`의 `M_waterfall`·`FALLS_SPEED`·`fallsDown`·`nodes.falls`, 관련 시험.
+- 이음매 잔디: 폭포 땅 재질(자갈·흙)이 마을 잔디와 닿는 쪽(상자 동쪽, 북·남쪽의 x > −112) 3 m 안에서 마을 잔디 색으로 바뀌어요(`SEAM_GRASS`, 시간대 등급도 마을 잔디처럼). 어두운 올리브 띠가 사라짐.
+- 밤 아래 물: 등의 따뜻한 빛을 푸른 달빛에 **더하던** 것을 그 자리 달빛을 바꾸게(`flWarm`) — 보라·분홍빛이 따뜻한 흰빛으로.
+- 소 클릭: 소 물면 재질은 깊이를 안 쓰는 혼합 재질이라 클릭이 물을 지나 2 m 아래 바닥이나 뒤 절벽에 맞았어요(`not-ground`). 물면 재질에 `userData.pickSolid`(clickPick `PICK_SOLID_KEY`)를 달아 클릭이 물에 닿고, 소를 눌렀을 때는 물가 자리가 화면 밖이어도(휴대폰 세로 화면에서 소의 북·남쪽) 걸어가요(`CameraRig`: 소 → 물가 계획은 규칙 4를 건너뜀).
+- `falls-walk` 시험 고침: 둘레 걷기는 돌 의자와 주머니 끝 사이 0.65 m 틈(몸이 못 지나감)을 의자의 안쪽으로 돌아가요. 소 클릭은 8방향(휴대폰 16방향), HUD 단추·패널 위 자리는 누르지 않음(휴대폰 기준 10번 이상).
+
+**시험 (W6)**: `falls-walk` PC 66/66, 휴대폰 52/52 + 소 클릭 단계 12/12(클릭 11번). 회귀: `village-desktop` 49/49, `village-hud` 114/114, `village-bus-board` 11/11, `arrival-spread` 21/21, `village-bench` 21/21, `sky-glare`·`light-spots` 통과(흰 날림 0), `village-perf --mode assets` 22/22, `check-school-glb village` PASS. `village-hall` 27/30·`village-mobile` 45/47의 실패는 추모관 안(소품 인스턴싱·칸 수·구석 카메라·카드)으로 W6 이전 파일로도 똑같이 실패(26/30)해요. vitest: shared 468/468, server 530/530(새 `villageFallsSite.test.ts` 9개 포함), client 2,509(전체 실행의 load-flaky 3개는 혼자 19/19).

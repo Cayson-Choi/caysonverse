@@ -284,7 +284,33 @@ if (only.includes("perimeter"))
         pts.push([x, z]);
       }
       for (let x = P.minX + 0.5; x <= P.maxX - 1; x += 1.5) pts.push([x, P.maxZ - 0.55]);
-      return pts.filter(([x, z]) => free(x, z) && surfaceOk(x, z));
+      const ok = pts.filter(([x, z]) => free(x, z) && surfaceOk(x, z));
+      // a stone seat stands 0.65 m from the pocket's south edge (W5: a gap no body fits through): a leg along the edge
+      // that would cross it goes round its pocket side instead (two corner legs), as a player walking the rim would
+      const out = [];
+      for (let i = 0; i < ok.length; i++) {
+        if (i > 0) {
+          const [ax, az] = ok[i - 1];
+          const [bx, bz] = ok[i];
+          for (const s of W.seats) {
+            const hx = s.size.x / 2 + 0.45;
+            const hz = s.size.z / 2 + 0.45;
+            let hit = false;
+            for (let t = 0; t <= 1; t += 0.05) {
+              const x = ax + (bx - ax) * t;
+              const z = az + (bz - az) * t;
+              if (Math.abs(x - s.centre.x) < hx && Math.abs(z - s.centre.z) < hz) hit = true;
+            }
+            if (!hit) continue;
+            const side = s.centre.z > (P.minZ + P.maxZ) / 2 ? -1 : 1; // toward the pocket's middle
+            const zc = s.centre.z + side * (hz + 0.15);
+            const dir = Math.sign(bx - ax) || 1;
+            out.push([s.centre.x - dir * (hx + 0.15), zc], [s.centre.x + dir * (hx + 0.15), zc]);
+          }
+        }
+        out.push(ok[i]);
+      }
+      return out.filter(([x, z]) => free(x, z) && surfaceOk(x, z));
     });
     run.check("a ring of legs round the pocket was found", legs.length > 20, legs.length);
     await toPocket();
@@ -324,7 +350,10 @@ if (only.includes("pool"))
       ["the south part", -110, -70],
       ["the far side", -117, -78],
     ];
-    const yaws = [0, Math.PI / 2, Math.PI, -Math.PI / 2];
+    // eight yaws: from the pocket's east side a yaw facing away sees none of the water (W6: 8 of 24 in view with four)
+    // (the phone's narrow portrait view sees less of the pool from each: sixteen there)
+    const nYaw = phone ? 16 : 8;
+    const yaws = Array.from({ length: nYaw }, (_, i) => (i * 2 * Math.PI) / nYaw - (i * 2 * Math.PI >= Math.PI * nYaw ? 2 * Math.PI : 0));
     let n = 0;
     for (const yaw of yaws) {
       for (const [name, wx, wz] of sam) {
@@ -342,7 +371,11 @@ if (only.includes("pool"))
             camera.updateMatrixWorld();
             const v = new THREE.Vector3(wx, y, wz).project(camera);
             const r = gl.domElement.getBoundingClientRect();
-            return { x: r.left + ((v.x + 1) / 2) * r.width, y: r.top + ((1 - v.y) / 2) * r.height, inFront: v.z < 1, onScreen: Math.abs(v.x) < 0.95 && Math.abs(v.y) < 0.95 };
+            const sx = r.left + ((v.x + 1) / 2) * r.width;
+            const sy = r.top + ((1 - v.y) / 2) * r.height;
+            // a spot under a HUD button or panel is no click on the water (a finger there opens the button)
+            const top = document.elementFromPoint(sx, sy);
+            return { x: sx, y: sy, inFront: v.z < 1, onScreen: Math.abs(v.x) < 0.95 && Math.abs(v.y) < 0.95 && top === gl.domElement };
           },
           [wx, wz, 0.1],
         );
@@ -370,7 +403,9 @@ if (only.includes("pool"))
         if (n === 1 || n === 7) await shot(`05-poolclick-${n}`);
       }
     }
-    run.check("the clicks were really made (at least 12 in view over the 4 yaws)", n >= 12, n);
+    // (the phone: its HUD covers part of the pool from some yaws, and those spots are skipped — 10 there)
+    const atLeast = phone ? 10 : 12;
+    run.check(`the clicks were really made (at least ${atLeast} in view over the ${yaws.length} yaws)`, n >= atLeast, n);
   });
 
 // ───────────────────────────────── 5. the stone seats: from both sides ─────────────────────────────────

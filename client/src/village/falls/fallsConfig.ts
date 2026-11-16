@@ -41,6 +41,7 @@ export const NODE = {
 export const MAT = {
   rock: "M_falls_rock",
   ground: "M_falls_ground",
+  turf: "M_falls_turf",
   slab: "M_falls_slab",
   water: "M_falls_water",
   cascade: "M_falls_cascade",
@@ -55,23 +56,13 @@ export const MAT = {
  */
 export const MACRO_RECT = { z0: -98.0, z1: -58.0, y0: -2.6, y1: 41.0 } as const;
 
-/** The old waterfall inside village.glb (kept until the village rebuild, W6): the cliff node and the card material. */
-export const OLD_CLIFF_NODE = "waterfall_cliff";
-export const OLD_CARD_MATERIAL = "M_waterfall";
-/** The old pool disc sits at y -0.2 in village.glb; the new pool is drawn this much above it until the rebuild. */
-export const OLD_POOL_LIFT = 0.06;
-/** The DEV stand-in lifts its pool above the village's meadow (the new pool is under the old ground until the rebuild cuts the hole). */
-export const STUB_POOL_LIFT = 0.55;
-
-/** What the falls draw for each `?falls=` value (DEV): `new` = the model if built, else the stand-in; `stub` = the stand-in; `old` = the previous runtime; `off` = nothing. */
-export type FallsMode = "new" | "stub" | "old" | "off";
+/** What the falls draw for each `?falls=` value (DEV): `new` = the model if built, else the stand-in; `stub` = the stand-in; `off` = nothing. */
+export type FallsMode = "new" | "stub" | "off";
 
 export function fallsModeFrom(search: string, dev: boolean): FallsMode {
   if (!dev) return "new";
   const v = new URLSearchParams(search).get("falls");
-  if (v === "off" || v === "old" || v === "stub") return v;
-  // the older flag of the previous runtime
-  if (new URLSearchParams(search).get("waterfall") === "old") return "old";
+  if (v === "off" || v === "stub") return v;
   return "new";
 }
 
@@ -195,16 +186,15 @@ export function plungeFallSeconds(): number {
 }
 
 /**
- * What draws the falls: `model` (waterfall.glb), `stub` (the DEV stand-in), `old` (the previous runtime, waterfall3d.ts:
- * kept until the file exists in a build, so production never loses its waterfall), or `none`.
+ * What draws the falls: `model` (waterfall.glb), `stub` (the DEV stand-in), or `none`. The village has no falls of its
+ * own since the site box was cut out of village.glb (W6), so there is nothing else to fall back on.
  */
-export type FallsRuntime = "model" | "stub" | "old" | "none";
+export type FallsRuntime = "model" | "stub" | "none";
 export function fallsRuntimeFor(mode: FallsMode, modelBuilt: boolean, dev: boolean): FallsRuntime {
   if (mode === "off") return "none";
-  if (mode === "old") return "old";
-  if (mode === "stub") return dev ? "stub" : "old";
+  if (mode === "stub") return dev ? "stub" : modelBuilt ? "model" : "none";
   if (modelBuilt) return "model";
-  return dev ? "stub" : "old";
+  return dev ? "stub" : "none";
 }
 
 /** DEV `?fallsFx=nospray,nomist,nosound,nowater` takes parts away (to measure what each costs), `?rainbow=1` forces the rainbow. */
