@@ -342,8 +342,12 @@ export interface FishModel {
   dispose(): void;
 }
 
-/** The view scale of a held fish: 1.25x real, like the people (cm / refCm x 1.25). */
-export const FISH_VIEW_SCALE = 1.25;
+/**
+ * The view scale of a held fish (cm / refCm x this). Lake v2: 1.8x real (was 1.25x like the people): a 20 cm crucian at 1.25x was
+ * a speck in the chibi's hands at the fishing camera's 4.6 m (the 2026-11-16 frames); 1.8x reads as a fish, still smaller than the
+ * avatar's torso for the common sizes.
+ */
+export const FISH_VIEW_SCALE = 1.8;
 
 /** The flex uniform of one fish model's materials: x phase, y amplitude, z bend. */
 interface FlexUniform {
@@ -496,7 +500,7 @@ function createStandInFish(): FishModel {
   return {
     root,
     setCm(cm) {
-      const s = (cm / 100) * 1.25;
+      const s = (cm / 100) * FISH_VIEW_SCALE;
       root.scale.setScalar(Math.max(0.05, s));
     },
     setKind(_kind, hex) {
