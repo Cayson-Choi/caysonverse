@@ -121,8 +121,9 @@ for (const pl of plan.slice(from, Math.min(to, plan.length - 1) + 1)) {
   const label = `seat ${pl.id}`;
   if (!(await status(A)).boarded) { results.push({ label, skipped: "ride over" }); continue; }
   const otherHere = O && pl.id === "R2";
-  // 1) walk + E
+  // 1) walk + E (looking level again: the tap below looks down)
   await standUp(A);
+  await A.page.evaluate(async () => { (await window.__imp("/src/game/viewState.ts")).viewState.fpPitch = 0; });
   await walkBus(A, pl.a, pl.r, 0.12, 16000);
   const want = `bus_sit:seat:${pl.index}`;
   let tg = await targetsOf(A);
@@ -144,6 +145,8 @@ for (const pl of plan.slice(from, Math.min(to, plan.length - 1) + 1)) {
   const satE = offered && (await pollUntil(async () => (await ride(A)).slot === pl.index + 1, 4000));
   run.check(`${label}: walk + E (the UI offers it, the server seats the rider)`, satE, { offered, tried, label: tg.find((t) => t.id === want)?.label, at: (await ride(A)).walk });
   await sleep(700);
+  await A.page.evaluate(async () => { (await window.__imp("/src/game/viewState.ts")).viewState.fpPitch = 0; });
+  await view(A, "front");
   const n = String(pl.index).padStart(2, "0");
   await A.page.screenshot({ path: join(OUT, `${tag}-${n}-${pl.id}-view.png`) });
   for (const v of ["left", "right"]) {

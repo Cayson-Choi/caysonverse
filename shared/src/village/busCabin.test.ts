@@ -8,6 +8,7 @@ import {
   BUS_EXIT_ZONE,
   BUS_RIDER_APART,
   BUS_SEATS,
+  BUS_SEAT_BACKS,
   BUS_SEAT_COUNT,
   BUS_SOLIDS,
   BUS_STANDING_COUNT,
@@ -92,6 +93,17 @@ describe("bus v3: the cabin data (generated from the Blender model)", () => {
         const A = seatBodyPoint(BUS_SEATS[a]!);
         const B = seatBodyPoint(BUS_SEATS[b]!);
         expect(Math.hypot(A.ahead - B.ahead, A.right - B.right), `${BUS_SEATS[a]!.id}-${BUS_SEATS[b]!.id}`).toBeGreaterThanOrEqual(0.6);
+      }
+    }
+  });
+
+  it("a seated rider sees over the seat in front of them (its backrest's top is under the seated eye)", () => {
+    for (const s of BUS_SEATS) {
+      const eye = s.floor + 0.452 - 0.39 + 1.55; // the seat's surface lifts the sit pose; the chibi's eyes ~1.55 m over its root
+      for (const o of BUS_SEATS) {
+        if (o === s || Math.abs(o.right - s.right) > 0.3 || o.ahead <= s.ahead || o.ahead - s.ahead > 1.6) continue;
+        const back = BUS_SEAT_BACKS.find((b) => b.seat === o.id)!;
+        expect(back.max[2], `${s.id} looks over ${o.id}`).toBeLessThan(eye);
       }
     }
   });
