@@ -150,6 +150,21 @@ const legs = () =>
     return { low: Math.round(low * 1000) / 1000, lowName, clip: mine ? mine.clip : null };
   });
 const shot = (f) => run.shot(p, f);
+/** Floor discs or rings drawn within 1 m of these pads (owner 2026-11-16: no disc at a house's exit or stair; the tap marker excepted). */
+const discsNear = (pads) =>
+  page.evaluate((pads) => {
+    const t = window.__cvThree?.();
+    const out = [];
+    const v = new t.camera.position.constructor();
+    t.scene.traverse((o) => {
+      if (!o.isMesh || !/^(RingGeometry|CircleGeometry)$/.test(o.geometry?.type ?? "")) return;
+      for (let q = o; q; q = q.parent) if (!q.visible) return;
+      o.getWorldPosition(v);
+      if (v.y > 0.3) return;
+      if (pads.some((p) => Math.hypot(p.x - v.x, p.z - v.z) < 1)) out.push({ type: o.geometry.type, x: +v.x.toFixed(2), z: +v.z.toFixed(2) });
+    });
+    return out;
+  }, pads);
 
 await page.goto(URL, { waitUntil: "domcontentloaded" });
 await entryReady(p);
@@ -203,6 +218,8 @@ for (const n of houses) {
     run.check(`h${n}: the arrival camera is in the room under the ceiling`, cam && cam.x > room.minX && cam.x < room.maxX && cam.z > room.minZ && cam.z < room.maxZ && cam.y < 3.7 && cam.y > 0.3, { cam, b });
     await sleep(600);
     await shot(`${tag}-1-arrival.png`);
+    const d1 = await discsNear([P.exitPad, P.upPad]);
+    run.check(`h${n}: no disc on the floor at the way out or the stair (floor 1)`, d1.length === 0, d1);
   });
 
   // The window view: its band's u against the bearing round its centre (both builders: u = 0.5 + bearing / 2π in the house's frame), and
@@ -428,6 +445,8 @@ for (const n of houses) {
     });
     run.check(`h${n}: HUD "${n}번 집 · 2층"`, label === `${n}번 집 · 2층`, label);
     await shot(`${tag}-2-arrival.png`);
+    const d2 = await discsNear([P.downPad]);
+    run.check(`h${n}: no disc on the floor at the stair (floor 2)`, d2.length === 0, d2);
     await sleep(1100);
     await goto(P.downPad.x, P.downPad.z, 0.3);
     const t2 = await targets(p);
@@ -459,7 +478,10 @@ for (const n of houses) {
 
   await run.step(`house ${n}: the way out`, async () => {
     if ((await areaOf()) === `house:house_${n}:2`) return;
-    const at = await goto(P.exitPad.x, P.exitPad.z, 0.3);
+    const at = await goto(P.exitPad.x + 0, P.exitPad.z - 1.4, 0.5);
+    await orbit(Math.PI, 0.7); // the camera behind, looking down at the boards by the front door
+    await shot(`${tag}-exit-pad.png`);
+    await goto(P.exitPad.x, P.exitPad.z, 0.3);
     const t = await targets(p);
     run.check(`h${n}: the way-out button is offered`, t.some((x) => x.id === "house_exit"), { at, t: t.slice(0, 3) });
     await act();

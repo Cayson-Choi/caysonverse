@@ -3,7 +3,6 @@ import { useFrame } from "@react-three/fiber";
 import { useGLTF } from "@react-three/drei";
 import { MeshBasicMaterial, RepeatWrapping, SRGBColorSpace, type Material, type Mesh, type Texture } from "three";
 import {
-  HOUSE_PLACES,
   houseFloorBounds,
   parseHouseFloorArea,
   type HouseFloor,
@@ -74,33 +73,8 @@ function HouseRoom({ n, floor }: { n: HouseNumber; floor: HouseFloor }) {
   );
 }
 
-/** A pad as a faint warm ring on the boards (the button shows within it and a little past it). */
-const PAD_RING = { outer: 0.55, inner: 0.5, colour: "#E9DDBF", opacity: 0.42 } as const;
-function PadRing({ x, z }: { x: number; z: number }) {
-  const material = useMemo(
-    () => new MeshBasicMaterial({ color: PAD_RING.colour, transparent: true, opacity: PAD_RING.opacity, depthWrite: false, toneMapped: false, fog: false }),
-    [],
-  );
-  useEffect(() => () => material.dispose(), [material]);
-  return (
-    <mesh position={[x, 0.05, z]} rotation-x={-Math.PI / 2} material={material} renderOrder={2}>
-      <ringGeometry args={[PAD_RING.inner, PAD_RING.outer, 48]} />
-    </mesh>
-  );
-}
-
-/** The way-out and stair pads of the floor, as faint rings on the boards. */
-function HousePads({ n, floor }: { n: HouseNumber; floor: HouseFloor }) {
-  const p = HOUSE_PLACES[n];
-  const pads = floor === 1 ? [p.exitPad, p.upPad] : [p.downPad];
-  return (
-    <>
-      {pads.map((pad) => (
-        <PadRing key={`${pad.x}:${pad.z}`} x={pad.x} z={pad.z} />
-      ))}
-    </>
-  );
-}
+// No ring or disc marks the way out or the stair on the boards (owner 2026-11-16, "집 안 출구 원판도 없애", as the memorial hall's door):
+// the door, the stair, the "나가기 / 2층" button and E are the cue; a tap on the door or the stair still walks there and uses it.
 
 /** One floor of the dressed house: the model with its light (when it has any), the window panorama. Suspends while loading. */
 function HouseFloorScene({ n, floor, pose }: { n: HouseNumber; floor: HouseFloor; pose: Pose }) {
@@ -285,7 +259,6 @@ export function HouseArea({ area, pose }: { area: string; pose: Pose }) {
           <SceneWarmUp />
         </Suspense>
       </LoadBoundary>
-      <HousePads n={n} floor={floor} />
     </>
   );
 }
