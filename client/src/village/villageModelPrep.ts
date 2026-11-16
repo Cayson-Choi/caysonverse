@@ -133,6 +133,8 @@ export const GROUND_LAYER_OFFSET: Readonly<Record<string, number>> = {
   // vrb2: the plaza disc's own materials since the rebuild (setts + sidewalk pavers, the ring road with its markings)
   LM_setts: -1,
   LM_road: -1,
+  LM_road_x: -1,
+  LM_walk: -1,
   LM_lawn: -1,
   LM_concrete: -2,
   LM_stone: -2,
@@ -169,6 +171,8 @@ export const GROUND_GRADE: Readonly<Record<string, readonly [number, number, num
   // vrb2: what T_plaza was, as its own real-scale textures: the same grade
   LM_setts: [0.7, 0.7, 0.7],
   LM_road: [0.7, 0.7, 0.7],
+  LM_road_x: [0.7, 0.7, 0.7],
+  LM_walk: [0.7, 0.7, 0.7],
 };
 
 /**

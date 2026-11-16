@@ -312,7 +312,7 @@ describe("layout values (brief + rulings + owner changes)", () => {
     expect(BUS_STOP_PAD.every((p) => p.x <= SIDEWALK_OUTER + 5)).toBe(true);
   });
 
-  it("six B-scale plots on a ring: ids, labels, sign text, plot_n due north, plot_w under construction", () => {
+  it("six B-scale plots on a ring: ids, labels, plot_n due north; no signs, no construction site (owner 2026-11-17)", () => {
     expect(L.plots.map((p) => [p.id, p.size.x, p.size.z])).toEqual(
       [
         ["plot_n", 28, 24],
@@ -336,9 +336,11 @@ describe("layout values (brief + rulings + owner changes)", () => {
     const upcoming: Record<string, string> = { plot_w: "도서관", plot_e: "학교", plot_ne: "성당", plot_nw: "절", plot_s: "교회" };
     for (const [id, label] of Object.entries(upcoming)) {
       expect(plot(id as PlotId).label, id).toBe(label);
-      expect(plot(id as PlotId).sign, id).toBe("곧 지어져요");
+      // vrb2 (owner 2026-11-17: real buildings are coming on every plot): no "곧 지어져요" signs, no crane on plot_w
+      expect(plot(id as PlotId).sign, id).toBeNull();
+      expect(plot(id as PlotId).signPost, id).toBeNull();
     }
-    expect(L.plots.filter((p) => p.underConstruction).map((p) => p.id)).toEqual(["plot_w"]);
+    expect(L.plots.filter((p) => p.underConstruction).map((p) => p.id)).toEqual([]);
   });
 
   it("memorial exterior: B footprint 20 x 16 centred on plot_n, door on the south face, pad r 2 m", () => {
@@ -664,8 +666,13 @@ describe("layout sanity (nothing is built on the water, the road or each other)"
       const start = l.points[0];
       const end = l.points[l.points.length - 1];
       expect(Math.hypot(start.x, start.z), `${p.id} start`).toBeCloseTo(L.plaza.paving.radius, 1);
-      const target = p.signPost ?? PAD.centre;
-      expect(Math.hypot(end.x - target.x, end.z - target.z), `${p.id} end`).toBeLessThanOrEqual(1.6);
+      // (vrb2: the sign posts are gone; a lane ends at its plot's edge, the memorial's at its door)
+      if (p.id === "plot_n") expect(Math.hypot(end.x - PAD.centre.x, end.z - PAD.centre.z), `${p.id} end`).toBeLessThanOrEqual(1.6);
+      else {
+        const b = boxAt(p.centre, p.size);
+        const d = Math.hypot(Math.max(b.minX - end.x, 0, end.x - b.maxX), Math.max(b.minZ - end.z, 0, end.z - b.maxZ));
+        expect(d, `${p.id} end`).toBeLessThanOrEqual(1.6);
+      }
     }
     const bridge = lane("lane_bridge");
     const bEnd = bridge.points[bridge.points.length - 1];
@@ -1450,7 +1457,7 @@ describe("export for the Blender scripts", () => {
     const n = out.plots.find((p) => p.id === "plot_n")!;
     expect(n).toMatchObject({ label: "추모관", sign: null, signPost: null, underConstruction: false, centre: { x: 0, z: -60 }, size: { x: 28, z: 24 }, bounds: { minX: -14, maxX: 14, minZ: -72, maxZ: -48 } });
     const w = out.plots.find((p) => p.id === "plot_w")!;
-    expect(w).toMatchObject({ label: "도서관", sign: "곧 지어져요", underConstruction: true, signPost: { x: -48, z: 15, facing: "e" }, bounds: { minX: -73, maxX: -47, minZ: 1, maxZ: 23 } });
+    expect(w).toMatchObject({ label: "도서관", sign: null, underConstruction: false, signPost: null, bounds: { minX: -73, maxX: -47, minZ: 1, maxZ: 23 } });
   });
 
   it("houses and the café export colour, door side, kind and rectangle", () => {

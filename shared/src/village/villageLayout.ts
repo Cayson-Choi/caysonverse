@@ -610,11 +610,13 @@ function makeVillageLayout(): VillageLayout {
     ],
     plots: [
       plot("plot_n", pt(0, -60), "추모관", { signPost: null, size: sz(28, 24) }),
-      plot("plot_ne", pt(52, -37), "성당", { signPost: { x: 40, z: -33, facing: "w" }, size: sz(26, 26) }),
-      plot("plot_e", pt(60, 15), "학교", { signPost: { x: 48, z: 15, facing: "w" }, size: sz(26, 26) }),
-      plot("plot_w", pt(-60, 12), "도서관", { signPost: { x: -48, z: 15, facing: "e" }, underConstruction: true, size: sz(26, 22) }),
-      plot("plot_nw", pt(-52, -37), "절", { signPost: { x: -40, z: -33, facing: "e" }, size: sz(26, 26) }),
-      plot("plot_s", pt(0, 58), "교회", { signPost: { x: 0, z: 50, facing: "n" }, size: sz(24, 18) }),
+      // vrb2 (owner 2026-11-17: "건설중이라는 크레인도 건물을 다 올릴거니까 빼고"): real buildings are coming on every empty
+      // plot, so no "곧 지어져요" / "공사 중" sign posts and no construction site on plot_w: clean lawns, ready for them
+      plot("plot_ne", pt(52, -37), "성당", { signPost: null, size: sz(26, 26) }),
+      plot("plot_e", pt(60, 15), "학교", { signPost: null, size: sz(26, 26) }),
+      plot("plot_w", pt(-60, 12), "도서관", { signPost: null, size: sz(26, 22) }),
+      plot("plot_nw", pt(-52, -37), "절", { signPost: null, size: sz(26, 26) }),
+      plot("plot_s", pt(0, 58), "교회", { signPost: null, size: sz(24, 18) }),
     ],
     memorial: {
       exterior: {

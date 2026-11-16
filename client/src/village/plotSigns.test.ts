@@ -13,21 +13,21 @@ describe("plotSigns — the words and places come from the layout", () => {
     }
   });
 
-  it("the exact signs", () => {
-    expect(plotSignText(plot("plot_ne"))).toBe("곧 지어져요 · 성당");
-    expect(plotSignText(plot("plot_e"))).toBe("곧 지어져요 · 학교");
-    expect(plotSignText(plot("plot_nw"))).toBe("곧 지어져요 · 절");
-    expect(plotSignText(plot("plot_s"))).toBe("곧 지어져요 · 교회");
+  // vrb2 (owner 2026-11-17: "건설중이라는 크레인도 건물을 다 올릴거니까 빼고"): real buildings are coming on every plot, so
+  // no plot has a sign, a sign post or a construction site; the words still work for a plot that has them
+  it("no plot has a sign or a construction site any more", () => {
+    for (const p of VILLAGE_LAYOUT.plots) {
+      expect(plotSignText(p), p.id).toBeNull();
+      expect(p.signPost, p.id).toBeNull();
+      expect(p.underConstruction, p.id).toBe(false);
+    }
+    expect(plotMarkerSpecs()).toEqual([]);
   });
 
-  it("the plot under construction (the library) says 공사 중, not 곧 지어져요", () => {
+  it("the words, for a plot that has a sign (곧 지어져요 / 공사 중)", () => {
     expect(SIGN_UNDER_CONSTRUCTION).toBe("공사 중");
-    const library = plot("plot_w");
-    expect(library.underConstruction).toBe(true);
-    expect(plotSignText(library)).toBe("공사 중 · 도서관");
-    expect(plotSignLines(library)).toEqual(["공사 중", "도서관"]);
-    // It is the only one.
-    expect(VILLAGE_LAYOUT.plots.filter((p) => p.underConstruction).map((p) => p.id)).toEqual(["plot_w"]);
+    expect(plotSignText({ sign: "곧 지어져요", label: "성당", underConstruction: false })).toBe("곧 지어져요 · 성당");
+    expect(plotSignLines({ sign: "곧 지어져요", label: "도서관", underConstruction: true })).toEqual(["공사 중", "도서관"]);
   });
 
   it("the memorial hall's plot (plot_n) has no sign and no marker", () => {
@@ -39,7 +39,7 @@ describe("plotSigns — the words and places come from the layout", () => {
   it("one marker per plot that has a sign, in the layout's order", () => {
     const expected = VILLAGE_LAYOUT.plots.filter((p) => p.sign !== null).map((p) => p.id);
     expect(plotMarkerSpecs().map((m) => m.id)).toEqual(expected);
-    expect(expected).toHaveLength(5);
+    expect(expected).toHaveLength(0);
   });
 
   it("each marker's outline is its plot's rectangle and its post is the layout's sign post, inside the plot", () => {
