@@ -1,7 +1,7 @@
 /**
  * House keypad e2e (집 실내 G, design chapter 8.1): K1 (2 m reach), K2 (wrong numbers), K3 (five wrong: 30 s lock, the right code refused
  * meanwhile), K4 (1004: the cover, the entrance floor, the camera inside), K8 (the way out: porch, the code again), K9 (two players in
- * one house, chat). House 1 is the only finished house: house 2 shows "아직 준비 중이에요".
+ * one house, chat). All ten houses are finished: house 2 shows its keys too.
  *
  *   server:  PORT=3011 npx tsx src/index.ts            (in server/)
  *   client:  VITE_SERVER_URL=http://localhost:3011 npx vite --port 5611 --strictPort   (in client/)
@@ -70,6 +70,7 @@ try {
     for (const [x, z] of WAYPOINTS.slice(1, 3)) await walkAndWait(a, x, z, 40000, 1.2);
     run.check("6 m from the door: no keypad target", !(await targets(a)).some((t) => t.id.startsWith("keypad:")), await pos(a));
     await walkAndWait(a, 21, -37.15, 40000, 1.2);
+    await walkAndWait(a, 21, -39.3, 40000, 1.2); // up onto the porch (release 1): the pad is 0.65 m in front of the door
     const t = await targets(a);
     run.check("at the door: the keypad target of house_1", t.some((x) => x.id === "keypad:house_1"), t);
   });
@@ -173,7 +174,7 @@ try {
     for (let i = 0; i < 60 && (await area(b)) !== "village"; i++) await sleep(150);
     await sleep(900);
     const p = await pos(b);
-    run.check("on the porch of house_1, 1.2 m from the wall", Math.hypot(p.x - 21, p.z + 36.0) < 1.2, p);
+    run.check("on the porch of house_1, 0.55 m out from the keypad pad (keypadEntries exit ≈ (21, -38.85))", Math.hypot(p.x - 21, p.z + 38.85) < 0.6, p);
     run.check("no keypad stays open", (await b.page.locator(".cv-keypad").count()) === 0);
     await openKeypad(b);
     const dots = await b.page.locator(".cv-keypad-dots").getAttribute("data-length");
@@ -182,15 +183,14 @@ try {
     await b.page.keyboard.press("Escape");
   });
 
-  await run.step("a house with no interior yet stays locked with a short message", async () => {
-    // house_2 is at (-21, -42), south door: pad ≈ (-21, -37.15)
-    for (const [x, z] of [[0, -20], [-15, -34], [-21, -37.15]]) await walkAndWait(b, x, z, 40000, 1.2);
+  await run.step("house_2 is finished too: its keypad shows the keys (all ten houses open)", async () => {
+    // house_2 is at (-21, -42), south door: the pad on the porch ≈ (-21, -39.4)
+    for (const [x, z] of [[0, -20], [-15, -34], [-21, -37.15], [-21, -39.3]]) await walkAndWait(b, x, z, 40000, 1.2);
     const tg = await targets(b);
     run.check("the keypad of house_2 is offered", tg.some((t) => t.id === "keypad:house_2"), tg);
     await openKeypad(b);
-    run.check("the keys are not shown", (await b.page.locator(".cv-keypad .cv-keypad-key").count()) === 0);
-    run.check('"이 집은 아직 준비 중이에요."', /아직 준비 중이에요/.test(await message(b)), await message(b));
-    await run.shot(b, "house-2-locked.png");
+    run.check("the 12 keys are shown", (await b.page.locator(".cv-keypad .cv-keypad-key").count()) === 12);
+    await run.shot(b, "house-2-keypad.png");
     await b.page.keyboard.press("Escape");
   });
 } catch (err) {

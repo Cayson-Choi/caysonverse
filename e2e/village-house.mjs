@@ -26,7 +26,7 @@ const device = phone ? PHONE : DESKTOP;
 const browser = await launchBrowser();
 const time = night ? "2026-11-03T22:30" : "2026-11-03T12:30";
 const URL = `${CLIENT_URL}/?time=${encodeURIComponent(time)}`;
-const DOOR = [[0, 14], [0, -20], [15, -34], [21, -37.15]];
+const DOOR = [[0, 14], [0, -20], [15, -34], [21, -37.15], [21, -39.3]]; // the keypad pad stands on the porch since release 1 (≈ (21, -39.40))
 
 const p = await openPlayer(browser, run, { tag: "house", device });
 const areaOf = () => p.page.evaluate(async () => (await window.__imp("/src/village/villageArea.ts")).localArea());
@@ -84,7 +84,7 @@ try {
     await run.shot(p, "f1-arrival.png");
     const info = await p.page.evaluate(() => window.__cvHouse?.());
     run.check("the house floor is drawn (dev probe)", info && info.n === 1 && info.floor === 1 && info.meshes > 10, info);
-    run.check("blockout: no light-mapped material, no window view (plain M_*)", info && info.lightmapped === false && info.viewMaterial === false, info);
+    run.check("the dressed model: light-mapped, with its window view (HA's house 1)", info && info.lightmapped === true && info.viewMaterial === true, info);
   });
 
   await run.step("up the stair (the button), and down again", async () => {
