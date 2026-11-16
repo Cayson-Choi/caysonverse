@@ -2,7 +2,7 @@
   "format": "caysonverse-house-textures",
   "version": 1,
   "mapSide": 1024,
-  "bytes": 3016956,
+  "bytes": 2896464,
   "materials": {
     "LM_render": {
       "sets": [

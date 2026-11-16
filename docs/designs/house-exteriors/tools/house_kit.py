@@ -10,7 +10,7 @@ degree gable roof over the 11.2 m front (eaves front and back 0.70, rakes 0.50),
 
 Every surface is a PBR set (contract 6): `Poly.mat` is one of the five textured materials or an exempt one (M_glass,
 M_window, M_lamp, M_screen); `uv` is in the set's tiling (house_textures.json: metres per texture width, bands);
-`col` is the linear RGBA vertex colour = the house's tint x light weathering (COLOR_0).
+`col` is the linear RGBA vertex colour = the house's tint (COLOR_0; no weathering since the owner's 2026-11-17 rule).
 
 Two meshes per house (contract 5): `shell` (always drawn: walls, reveals, glass, rooms and curtains seen through it, the
 plinth, roof, soffits, fascias, belt course, window heads, chimney) and `detail` (near only: window frames, sashes, handles,
@@ -443,8 +443,13 @@ class House:
         self.lights = []                # (x, y, z, kind) for the renders
         self.lit = set()
 
-    # weathering: a little darker and greyer at the foot of the walls (splash), softly darker under the eaves
+    # no weathering (owner 2026-11-17: "모두가 새것이어야 해 헌집은 없어야 해"): the walls are evenly their colour. The 2026-11-16
+    # build darkened the foot (0.80 at FL -> 1 at 1.25 m) and the top (0.94 over 7.2 m); housesPrep.ts freshenWalls undoes it in
+    # a model built then.
     def wall_shade(self, p):
+        return 1.0
+
+    def wall_shade_2026_11_16(self, p):
         y = p[1]
         k = 1.0
         if y < 1.25:

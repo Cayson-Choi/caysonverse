@@ -1096,13 +1096,13 @@ class Porch:
 
     # -------------------------------------------------------------------------------------------------- garden --
     def garden(self):
-        """col__garden_house_N: two raised vegetable beds of weathered timber (two 150 mm boards high, corner posts, a cap
+        """col__garden_house_N: two raised vegetable beds of new, oiled timber (owner 2026-11-17: everything brand-new) (two 150 mm boards high, corner posts, a cap
         board), tilled soil, rows of lettuce / cabbage leaves (the flora atlas's leafy bottoms), and pepper stakes (고추
         지지대: green-coated steel) with twine; inset in the collider (house 10's LPG cage stands near its corner)."""
         de = self.de
         dx = GARDEN_SHIFT.get(self.id, 0.0)
         gx0, gx1, gz0, gz1 = GARDEN[0] + dx, GARDEN[1] + dx, GARDEN[2], GARDEN[3]
-        timber = lin("#9C8A76")
+        timber = lin("#B98A5E")  # new oiled timber (was a weathered grey #9C8A76; housesPrep.ts FRESH_COLOURS maps old builds)
         soil_t = lin("#6E5843")
         cid = "garden"
         beds = [(gx0 + 0.12, (gx0 + gx1) / 2 - 0.2), ((gx0 + gx1) / 2 + 0.2, gx1 - 0.12)]

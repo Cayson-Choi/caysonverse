@@ -26,6 +26,7 @@
  *    is rebuilt with the A8 houses (X4: `modelHasA8Houses`), nothing is cut and its stand-in boxes (`houseproxy__`) are hidden.
  */
 import {
+  BufferAttribute,
   BufferGeometry,
   Color,
   DoubleSide,
@@ -44,8 +45,12 @@ import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js
 import type { AABB } from "@caysonverse/shared/collision";
 import {
   HOUSE_DETAIL_LOD,
+  HOUSE_BODY_BACK,
+  HOUSE_BODY_FRONT,
+  HOUSE_BODY_HALF,
   houseDetailNode,
   houseLocalToWorld,
+  houseWorldToLocal,
   houseProxyNode,
   houseShellNode,
   porchKind,
@@ -613,7 +618,9 @@ export function prepareHouses(scene: Object3D, maps: Record<string, HouseMaps>, 
       let t = 0;
       let d = 0;
       for (const mesh of meshes) {
-        const m = new Mesh(mesh.geometry, matsOf(mesh).map(material)[0]!);
+        const fresh = freshenColours(mesh.geometry);
+        if (fresh) own.geometries.push(fresh);
+        const m = new Mesh(fresh ?? mesh.geometry, matsOf(mesh).map(material)[0]!);
         m.name = mesh.name;
         mesh.matrixWorld.decompose(m.position, m.quaternion, m.scale);
         m.matrixAutoUpdate = false;
@@ -637,6 +644,7 @@ export function prepareHouses(scene: Object3D, maps: Record<string, HouseMaps>, 
     const merged = mergeGeometries(parts, false);
     for (const p of parts) p.dispose();
     if (!merged) continue;
+    if (name === "LM_render" || name === "LM_wood") freshenWalls(merged, name === "LM_wood");
     merged.computeBoundingSphere();
     merged.computeBoundingBox();
     own.geometries.push(merged);
@@ -687,6 +695,113 @@ export function prepareHouses(scene: Object3D, maps: Record<string, HouseMaps>, 
     own,
     stats: { shellTriangles, detailTriangles, shellDraws: shells.length, detailDraws, lamps: points.length },
   };
+}
+
+// ───────────────────────────────────────── brand-new (owner 2026-11-17) ─────────────────────────────────────────
+
+/**
+ * The X1 build's wall weathering (house_kit.py `wall_shade`, 2026-11-16): the vertex colour darkened to 0.80 at the foot of
+ * the walls (y 0.30, rising smoothly to 1 at 1.25 m) and to 0.94 under the eaves (above 7.2 m). The owner, 2026-11-17: "모두가
+ * 새것이어야 해 헌집은 없어야 해" — the kit no longer does it; until the houses' model is built again, `freshenWalls` takes it out.
+ */
+export function oldWallShade(y: number): number {
+  let k = 1;
+  if (y < 1.25) {
+    const t = Math.max(0, Math.min(1, (y - 0.3) / (1.25 - 0.3)));
+    k *= 0.8 + 0.2 * (t * t * (3 - 2 * t));
+  }
+  if (y > 7.2) k *= 0.94;
+  return k;
+}
+
+/** The houses' body planes (local): the front and back walls' outer faces and the side walls'. */
+const WALL_PLANE_TOL = 0.035;
+function onWallPlane(x: number, z: number): boolean {
+  for (const h of A8_HOUSES()) {
+    if (Math.abs(x - h.centre.x) > 7 || Math.abs(z - h.centre.z) > 7) continue;
+    const { lx, lz } = houseWorldToLocal(h, x, z);
+    if (lz < HOUSE_BODY_BACK - WALL_PLANE_TOL || lz > HOUSE_BODY_FRONT + WALL_PLANE_TOL || Math.abs(lx) > HOUSE_BODY_HALF + WALL_PLANE_TOL) continue;
+    if (Math.abs(lz - HOUSE_BODY_FRONT) < WALL_PLANE_TOL || Math.abs(lz - HOUSE_BODY_BACK) < WALL_PLANE_TOL || Math.abs(Math.abs(lx) - HOUSE_BODY_HALF) < WALL_PLANE_TOL) return true;
+  }
+  return false;
+}
+
+/**
+ * Undo the old wall weathering in a merged shell geometry (world positions; stucco, or the timber cladding's band of LM_wood:
+ * glTF v >= 0.5): every wall-plane vertex's colour divided by `oldWallShade(y)` — only when the model still has it (the
+ * walls' feet measurably darker than their middles), so a model built without it is left as it is. Returns the vertices changed.
+ */
+export function freshenWalls(geo: BufferGeometry, claddingBand: boolean): number {
+  const pos = geo.getAttribute("position");
+  const col = geo.getAttribute("color");
+  const uv = geo.getAttribute("uv");
+  if (!pos || !col) return 0;
+  const picks: number[] = [];
+  let foot = 0;
+  let footN = 0;
+  let mid = 0;
+  let midN = 0;
+  for (let i = 0; i < pos.count; i++) {
+    if (claddingBand && uv && uv.getY(i) < 0.5) continue;
+    const x = pos.getX(i);
+    const y = pos.getY(i);
+    const z = pos.getZ(i);
+    if (!onWallPlane(x, z)) continue;
+    picks.push(i);
+    const l = 0.2126 * col.getX(i) + 0.7152 * col.getY(i) + 0.0722 * col.getZ(i);
+    if (Math.abs(y - 0.3) < 0.03) {
+      foot += l;
+      footN++;
+    } else if (y > 1.4 && y < 3.5) {
+      mid += l;
+      midN++;
+    }
+  }
+  if (footN === 0 || midN === 0 || foot / footN / (mid / midN) > 0.9) return 0;
+  let n = 0;
+  for (const i of picks) {
+    const k = oldWallShade(pos.getY(i));
+    if (k >= 0.999) continue;
+    col.setXYZ(i, Math.min(1, col.getX(i) / k), Math.min(1, col.getY(i) / k), Math.min(1, col.getZ(i) / k));
+    n++;
+  }
+  col.needsUpdate = true;
+  return n;
+}
+
+/** Vertex colours of the 2026-11-17 build that look old, and their new ones (sRGB hex): the garden beds' weathered grey timber. */
+export const FRESH_COLOURS: ReadonlyArray<[string, string]> = Object.freeze([["#9C8A76", "#B98A5E"]]);
+
+const linHex = (hex: string): [number, number, number] => {
+  const c = new Color(hex); // three converts sRGB hex to its linear working colour
+  return [c.r, c.g, c.b];
+};
+
+/** A detail mesh's geometry with its old-looking colours replaced (a copy sharing every other attribute), or null when none is. */
+export function freshenColours(geo: BufferGeometry): BufferGeometry | null {
+  const col = geo.getAttribute("color");
+  if (!col) return null;
+  const maps = FRESH_COLOURS.map(([a, b]) => [linHex(a), linHex(b)] as const);
+  let copy: BufferAttribute | null = null;
+  for (let i = 0; i < col.count; i++) {
+    const r = col.getX(i);
+    const g = col.getY(i);
+    const b = col.getZ(i);
+    for (const [from, to] of maps) {
+      if (Math.abs(r - from[0]) < 0.012 && Math.abs(g - from[1]) < 0.012 && Math.abs(b - from[2]) < 0.012) {
+        copy ??= (col as BufferAttribute).clone();
+        copy.setXYZ(i, to[0], to[1], to[2]);
+      }
+    }
+  }
+  if (!copy) return null;
+  const out = new BufferGeometry();
+  for (const name of Object.keys(geo.attributes)) out.setAttribute(name, name === "color" ? copy : geo.getAttribute(name));
+  out.setIndex(geo.index);
+  for (const gr of geo.groups) out.addGroup(gr.start, gr.count, gr.materialIndex);
+  out.boundingBox = geo.boundingBox?.clone() ?? null;
+  out.boundingSphere = geo.boundingSphere?.clone() ?? null;
+  return out;
 }
 
 /** Per frame (number writes only): the night's windows, lamps and glass. */

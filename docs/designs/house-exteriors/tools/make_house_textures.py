@@ -14,8 +14,11 @@ Seven surface families (HOUSE_SURFACE_RULES.sets) in five materials, each an alb
   metal_painted + pvc_frame (LM_metal, two bands): top = ambientCG Metal027 (CC0) powder-coated steel, bottom = ambientCG
                        Plastic013A (CC0) white PVC; both 1.0 m along U x 0.5 m
 
-The tintable sets (render, metal, pvc, shingle) are neutral and bright: the house's colour comes from COLOR_0 (vertex
-colour = tint x weathering), so the owner's pastels stay exact. A band's UVs never cross its V range (the build script
+Owner 2026-11-17: "유럽 시골 마을의 동화같은 주택이지만 모두가 새것이어야 해 헌집은 없어야 해" — every set is BRAND-NEW: the
+scans' broad stains, clouds and run-off are taken out (`fresh`: their low frequencies flattened, the fine grain, pores and
+trowel marks kept), no streaks, no worn edges, the cedar freshly oiled, the shingles even. The tintable sets (render, metal,
+pvc, shingle) are neutral and bright: the house's colour comes from COLOR_0 (vertex colour = the tint), so the owner's
+pastels stay exact. A band's UVs never cross its V range (the build script
 splits faces), so bands need only tile along U. Licences: tools/SOURCES.md.
 """
 import argparse
@@ -92,6 +95,15 @@ def blur(a, r):
     return (c[k:] - c[:-k]) / k
 
 
+def fresh(lin, r=48, keep=0.0):
+    """Brand-new (owner 2026-11-17): divide a linear albedo by its own broad luminance (box blur radius `r`, wrapping) so the
+    scan's stains, clouds and weathering patches go and its fine grain stays; `keep` leaves that share of the broad tone."""
+    lum = lin @ LUMA
+    lo = blur(blur(lum, r), r)
+    k = (lo.mean() / np.maximum(lo, 1e-4)) ** (1.0 - keep)
+    return lin * k[..., None]
+
+
 def rot_normal(nor):
     """The normal map of an image turned 90 degrees counter-clockwise (np.rot90 k=1): new x = -old y, new y = old x."""
     v = nor * 2 - 1
@@ -105,7 +117,8 @@ def set_render(src):
     alb = resize(load(d + "Color.jpg"), N)
     nor = resize(load(d + "NormalGL.jpg"), N)
     rou = resize(load(d + "Roughness.jpg", "L"), N)
-    return neutral(alb, 0.80, contrast=1.6), normal_strength(nor, 1.35), rough_remap(rou, 0.86, 1.5)
+    alb = l2s(fresh(s2l(alb), 24))                 # the scan's grey clouds out: clean new stucco, its trowel grain kept
+    return neutral(alb, 0.82, contrast=1.25), normal_strength(nor, 1.35), rough_remap(rou, 0.86, 1.2)
 
 
 def set_granite(src):
@@ -134,7 +147,7 @@ TILE_SHINGLE_M = 2.0
 
 def set_shingle(src):
     """3-tab asphalt shingles at 512 px/m: tabs 1/3 m, 6 mm keyways up the exposure, granules, the shadow under the course
-    above (each row's top), a worn butt edge (each row's bottom), per-tab tone."""
+    above (each row's top), a crisp butt edge (each row's bottom), a barely varying tone: a new roof (owner 2026-11-17)."""
     rng = np.random.default_rng(11)
     H = W = N
     rh = H / SHINGLE_ROWS
@@ -144,7 +157,7 @@ def set_shingle(src):
     g = rng.random((H, W)).astype(np.float32)
     gran = (g - 0.5) * 0.55 + blur(rng.standard_normal((H, W)).astype(np.float32), 1) * 0.6
     sparkle = (rng.random((H, W)) > 0.985).astype(np.float32) * 0.5 - (rng.random((H, W)) > 0.982).astype(np.float32) * 0.4
-    base = 0.60 + gran * 0.16 + sparkle * 0.22 + blur(rng.standard_normal((H, W)).astype(np.float32), 8) * 0.35
+    base = 0.60 + gran * 0.16 + sparkle * 0.22 + blur(rng.standard_normal((H, W)).astype(np.float32), 8) * 0.06  # new: even
     tone = np.ones((H, W), np.float32)
     height = 0.6 + gran * 0.10
     xx = np.arange(W)
@@ -154,7 +167,7 @@ def set_shingle(src):
         for t in range(int(round(W / tab))):
             xa = (off + t * tab) % W
             cols = (xx - xa) % W
-            tone[y0:y1, cols < tab] *= 1.0 + rng.normal(0, 0.06)
+            tone[y0:y1, cols < tab] *= 1.0 + rng.normal(0, 0.025)  # new shingles from one batch: barely varying
             ks = cols < slot
             depth = int(rh * 0.86)
             tone[y1 - depth:y1, ks] *= 0.40
@@ -162,7 +175,7 @@ def set_shingle(src):
         sh = np.clip(1 - (np.arange(y1 - y0) / (rh * 0.24)), 0, 1) ** 1.5
         tone[y0:y1] *= (1 - 0.40 * sh)[:, None]
         height[y0:y1] -= (0.22 * sh)[:, None]
-        tone[y1 - 2:y1] *= 0.78
+        tone[y1 - 2:y1] *= 0.86
         height[y1 - 2:y1] -= 0.10
         height[y0:y1] += np.linspace(-0.05, 0.05, y1 - y0)[:, None]
     alb = np.clip(base * tone, 0.03, 1)[..., None].repeat(3, -1) * np.array([1.0, 1.0, 1.02], np.float32)
@@ -181,7 +194,7 @@ def set_oak(src):
     alb = np.rot90(resize(load(p + "diff_2k.jpg"), N), 1)
     nor = rot_normal(np.rot90(resize(load(p + "nor_gl_2k.jpg"), N), 1))
     rou = np.rot90(resize(load(p + "rough_2k.jpg", "L"), N), 1)
-    alb = l2s(s2l(alb) * 0.95)
+    alb = l2s(fresh(s2l(alb), 40, keep=0.3) * 0.97)   # new veneer: even, its grain kept
     return alb[:512], normal_strength(nor[:512].copy(), 1.2), rough_remap(rou[:512], 0.48, 0.8)
 
 
@@ -190,10 +203,10 @@ def set_cedar(src):
     alb = np.rot90(resize(load(p + "diff_2k.jpg"), N), 1)
     nor = rot_normal(np.rot90(resize(load(p + "nor_gl_2k.jpg"), N), 1))
     rou = np.rot90(resize(load(p + "rough_2k.jpg", "L"), N), 1)
-    lin = s2l(alb)
+    lin = fresh(s2l(alb), 40, keep=0.35)     # the scan's dark, patchy boards evened: new cladding
     lum = (lin @ LUMA)[..., None]
-    lin = lum + (lin - lum) * 0.42             # oiled, weathered cedar rather than the scan's saturated orange
-    return l2s(lin * 1.25)[:512], normal_strength(nor[:512].copy(), 1.6), rough_remap(rou[:512], 0.72, 1.0)
+    lin = lum + (lin - lum) * 0.65             # freshly oiled cedar: warm, not the weathered grey (owner 2026-11-17)
+    return l2s(lin * 1.25)[:512], normal_strength(nor[:512].copy(), 1.4), rough_remap(rou[:512], 0.58, 0.8)
 
 
 def set_metal(src):
@@ -201,12 +214,8 @@ def set_metal(src):
     alb = resize(load(d + "Color.jpg"), N)
     nor = resize(load(d + "NormalGL.jpg"), N)
     rou = resize(load(d + "Roughness.jpg", "L"), N)
-    rng = np.random.default_rng(5)
-    # light weathering: faint run-off streaks along U (members are mapped with their length along U)
-    streak = np.cumsum(rng.standard_normal((N, N)).astype(np.float32), axis=1)
-    streak = (streak - streak.mean(1, keepdims=True)) / (streak.std() + 1e-4)
-    streak = blur(streak, 2) * 0.035
-    a = np.clip(neutral(alb, 0.70, contrast=0.9) * (1 + streak[..., None]), 0, 1)
+    # new powder coat (owner 2026-11-17): no run-off streaks, the scan's clouds evened, its fine orange peel kept
+    a = np.clip(neutral(l2s(fresh(s2l(alb), 24)), 0.72, contrast=0.6), 0, 1)
     return a[:512], normal_strength(nor[:512].copy(), 1.0), rough_remap(rou[:512], 0.42, 2.0)
 
 

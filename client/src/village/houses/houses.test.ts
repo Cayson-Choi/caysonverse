@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BoxGeometry, Group, Mesh, MeshStandardMaterial } from "three";
+import { BoxGeometry, BufferGeometry, Float32BufferAttribute, Group, Mesh, MeshStandardMaterial } from "three";
 import { HOUSE_A8, HOUSE_BODY_FRONT, HOUSE_DETAIL_LOD, houseLocalToWorld, houseSlots, porchSlabLocal, porchTreadsLocal } from "@caysonverse/shared/village/houseExterior";
 import { A7_MODEL_HOUSE_BOXES, A8_TREE_MOVES } from "@caysonverse/shared/village/a8Staging";
 import { HOUSE_EXTERIOR_DEFAULT } from "@caysonverse/shared/village/houseOwnership";
@@ -19,6 +19,8 @@ import {
   oldHouseFootprints,
   pickDetail,
   porchLampPoints,
+  freshenWalls,
+  oldWallShade,
   type HouseTextureMeta,
 } from "./housesPrep";
 import { houseBoards } from "./houseSigns";
@@ -248,5 +250,35 @@ describe("the owner slots' boards (houseOwnership.ts)", () => {
       ["house_5", "mailbox", ["케이슨"]],
       ["house_5", "sign", ["케이슨님 댁"]],
     ]);
+  });
+});
+
+describe("brand-new houses (owner 2026-11-17: 모두가 새것이어야 해 헌집은 없어야 해)", () => {
+  const wall = (shade: (y: number) => number) => {
+    const g = new BufferGeometry();
+    const p = at(1, -2, HOUSE_BODY_FRONT);
+    const q = at(1, 2, HOUSE_BODY_FRONT);
+    const ys = [0.3, 0.8, 1.25, 2.5, 7.0, 7.6];
+    const pos: number[] = [];
+    const col: number[] = [];
+    for (const y of ys)
+      for (const c of [p, q]) {
+        pos.push(c.x, y, c.z);
+        const k = shade(y);
+        col.push(0.6 * k, 0.5 * k, 0.4 * k);
+      }
+    g.setAttribute("position", new Float32BufferAttribute(pos, 3));
+    g.setAttribute("color", new Float32BufferAttribute(col, 3));
+    return g;
+  };
+  it("the old build's darker wall foot and eaves are taken out (the wall evenly its colour)", () => {
+    const g = wall(oldWallShade);
+    expect(freshenWalls(g, false)).toBeGreaterThan(0);
+    const c = g.getAttribute("color");
+    for (let i = 0; i < c.count; i++) expect(c.getX(i)).toBeCloseTo(0.6, 4);
+  });
+  it("a model built without the weathering is left as it is", () => {
+    const g = wall(() => 1);
+    expect(freshenWalls(g, false)).toBe(0);
   });
 });
