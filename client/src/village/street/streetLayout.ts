@@ -3,15 +3,25 @@
  * 바꾸자", and of the posts: "이것도 너무 엉성해"). The shipped village.glb bakes both into its merged per-cell meshes
  * (art/village/tools/parts_props.py `lamps` / `banners`, parts_fill.py `lane_lamps`): a faceted 10-sided post with an
  * 8-sided lantern, and 6.6 m poles with one flat painted card each. The game takes those triangles out of its clone
- * (streetTrim.ts) and draws the new ones here, at the SAME places (the night light map's warm pools stay under them).
+ * (streetTrim.ts) and draws the new ones here.
+ *
+ * The plaza (owner 2026-11-16, night, a banner post right beside a plaza lamp: "광장에 조명등이 이렇게 배치된게 많아
+ * 안이쁘잖아. 원을 일정한 간격이나 같은 원의 위치에 배치하는게 이쁘지 않겠니?"): the bake had TWO sets on the paving's
+ * edge, five lamps at r 28 and eight banner poles at r 26, at unrelated angles (two pairs 2 m apart). Now the plaza has ONE
+ * set: PLAZA_RING, seven posts on one circle (r 29) at equal 51.4 deg steps, every one a street light carrying a banner
+ * pair. The step and phase were searched so every post stays >= 3.2 m clear of the lane mouths (3 m lanes), the crossings'
+ * signal poles, the planters and the zelkova's deck. The old plaza lamps (OLD_PLAZA_LAMPS) and old banner poles
+ * (OLD_BANNER_POLES) are taken out and not redrawn. The ring road's lamps (r 38.4, every 20 deg, gaps at the lanes) and the
+ * two lane lamps stay where they were: a regular row already, none near another post.
  *
  * For the later village rebake (the transforms to bake in, all game metres, y up, yaw as three.js rotation.y = the
  * Blender scripts' `yaw` in vlib.loc):
- *  - LAMP_POSTS: every post's foot (x, z) and its lantern's centre height `lightY` (= the glb's `light__lamp_N` empty;
- *    plaza/ring posts 4.23, lane posts 3.83). `yaw` turns the base's access door away from the plaza centre.
- *  - BANNER_POLES: the eight poles around the plaza paving at r 26 (the old poles' places), now street lights 5.03 m to the
- *    lantern's centre, each carrying a PAIR of 60 x 180 cm banners on two-way arms (local -x: design A, +x: design B as
- *    seen from the plaza), fabric 0.12..0.72 m out from the pole axis, its top rod at 4.22 m and bottom rod at 2.42 m.
+ *  - LAMP_POSTS: every post kept from the bake, its foot (x, z) and its lantern's centre height `lightY` (= the glb's
+ *    `light__lamp_N` empty; ring posts 4.23, lane posts 3.83). `yaw` turns the base's access door away from the plaza.
+ *  - OLD_PLAZA_LAMPS (light__lamp_1..5) and OLD_BANNER_POLES: delete them (and lamp 1-5's lights) in the rebake.
+ *  - BANNER_POLES (= PLAZA_RING): the seven plaza posts, street lights 5.03 m to the lantern's centre, each carrying a PAIR
+ *    of 60 x 180 cm banners on two-way arms (local -x: design A, +x: design B as seen from the plaza), fabric 0.12..0.72 m
+ *    out from the pole axis, its top rod at 4.22 m and bottom rod at 2.42 m. Bake a lamp light at each lantern.
  *  - The prints: client/public/models/village/street_banners.webp, made by tools/banners (banners.html -> render ->
  *    print). BANNER_SLOTS says which atlas cell holds which banner.
  */
@@ -36,13 +46,17 @@ const outward = (x: number, z: number): number => Math.atan2(x, z);
 
 const post = (light: string, x: number, z: number, lightY: number): LampPost => ({ light, x, z, lightY, yaw: outward(x, z) });
 
-/** The village's lamp posts, from village.glb's lights (plaza 1-5, ring road sidewalk 6-15, lanes 42-43). */
-export const LAMP_POSTS: readonly LampPost[] = [
+/** The bake's five plaza lamps (r 28): taken out, not redrawn (the plaza ring replaces them). */
+export const OLD_PLAZA_LAMPS: readonly LampPost[] = [
   post("light__lamp_1", 12.93, -24.84, 4.23),
   post("light__lamp_2", 27.57, -4.86, 4.23),
   post("light__lamp_3", 17.05, 22.21, 4.23),
   post("light__lamp_4", -17.05, 22.21, 4.23),
   post("light__lamp_5", -12.93, -24.84, 4.23),
+];
+
+/** The lamp posts kept from the bake and redrawn in place (ring road sidewalk 6-15, lanes 42-43). */
+export const LAMP_POSTS: readonly LampPost[] = [
   post("light__lamp_6", 33.255, 19.2, 4.23),
   post("light__lamp_7", 24.683, 29.416, 4.23),
   post("light__lamp_8", 13.134, 36.084, 4.23),
@@ -80,7 +94,7 @@ export const BANNER_TEXT: Readonly<Record<BannerTheme, { a: string; b: string }>
   stars: { a: "별 보기 좋은 마을 · 해가 지면 하늘을 올려다봐요", b: "별자리 찾기 · 밤이 되면 망원경 단추를 눌러 보세요" },
 };
 
-/** One banner pole: the old pole's place (r 26 around the plaza) and the pair it carries. */
+/** One plaza post: its place on the ring and the banner pair it carries. */
 export interface BannerPole {
   x: number;
   z: number;
@@ -89,24 +103,34 @@ export interface BannerPole {
   theme: BannerTheme;
 }
 
-/** The old poles' angles (deg, atan2(z, x)) in parts_props.banners, and what each pair now says. */
-const BANNER_POLE_ANGLES: ReadonlyArray<readonly [number, BannerTheme]> = [
-  [-100, "memorial"], // by the memorial hall's lane
-  [-80, "village"],
-  [-50, "cherry"],
-  [-20, "bus"], // the nearest to the bus stop (ring road, -11 deg)
-  [30, "lake"], // on the side of the fishing lake (x 95..186)
-  [55, "stars"],
-  [125, "village"],
-  [150, "cherry"],
-];
-
-export const BANNER_POLE_RADIUS = 26;
-
-export const BANNER_POLES: readonly BannerPole[] = BANNER_POLE_ANGLES.map(([deg, theme]) => {
+/** The bake's banner poles (parts_props.banners: r 26, angles in deg of atan2(z, x)): taken out, not redrawn. */
+export const OLD_BANNER_POLES: ReadonlyArray<{ x: number; z: number; yaw: number }> = [-100, -80, -50, -20, 30, 55, 125, 150].map((deg) => {
   const a = (deg * Math.PI) / 180;
-  const x = BANNER_POLE_RADIUS * Math.cos(a);
-  const z = BANNER_POLE_RADIUS * Math.sin(a);
+  const x = 26 * Math.cos(a);
+  const z = 26 * Math.sin(a);
+  return { x, z, yaw: Math.atan2(-x, -z) };
+});
+
+/**
+ * The plaza's one ring of posts: `count` posts on a circle of `radius` m, the first at `phaseDeg` (azimuth, deg clockwise
+ * from north = -z), then every 360 / count deg. Each post's banner theme in that order (clockwise from the north-east):
+ * the memorial hall's (north), the bus stop's and the lake's (east), then cherry, the village twice (one seen first from
+ * the spawn, facing north) and the stars.
+ */
+export const PLAZA_RING = {
+  radius: 29,
+  count: 7,
+  phaseDeg: 14.5,
+  themes: ["memorial", "bus", "lake", "cherry", "village", "stars", "village"] as readonly BannerTheme[],
+} as const;
+
+/** Azimuth (deg clockwise from north) of the ring's k-th post. */
+export const ringAzimuth = (k: number): number => PLAZA_RING.phaseDeg + (k * 360) / PLAZA_RING.count;
+
+export const BANNER_POLES: readonly BannerPole[] = PLAZA_RING.themes.map((theme, k) => {
+  const az = (ringAzimuth(k) * Math.PI) / 180;
+  const x = PLAZA_RING.radius * Math.sin(az);
+  const z = -PLAZA_RING.radius * Math.cos(az);
   return { x, z, yaw: Math.atan2(-x, -z), theme };
 });
 
