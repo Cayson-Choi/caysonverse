@@ -153,7 +153,7 @@ export function startRemoteSync(
             // straight back out without a step inside, my echoed stamp still names my last Move at the OUTSIDE door,
             // a metre or two from where the way out puts me, so the check took the new place for that old echo and
             // kept me at the hall's coordinates in the village — an empty grey void, 300 m from anything, every
-            // step refused. A door is always the server's placement: take it whole.
+            // step refused. A door (and a house's stair, 집 실내 G) is always the server's placement: take it whole.
             if (seenArea !== undefined && seenArea !== value) {
               selfPose.x = player.x;
               selfPose.z = player.z;

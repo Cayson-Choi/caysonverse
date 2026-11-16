@@ -1,0 +1,410 @@
+/* Memorial stage B sheets (모시기, 가족 기기, 코드로 연결) and the claimed card's extras: the cubby card's warm palette. */
+.cv-mem-sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 70; /* a modal: above the cubby card (35), the covers (40) and the HUD menu (60) */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(30, 22, 16, 0.38);
+  touch-action: manipulation;
+  color-scheme: light; /* native date / checkbox controls drawn light, like the panel */
+}
+.cv-mem-panel {
+  width: min(460px, 100%);
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+  box-sizing: border-box;
+  padding: 18px 20px 16px;
+  border-radius: 18px;
+  background: #f7f3ec;
+  color: #3b322b;
+  box-shadow: 0 18px 48px rgba(40, 30, 20, 0.3);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.cv-mem-panel.is-compact {
+  width: min(400px, 100%);
+}
+.cv-mem-head {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.cv-mem-title {
+  font-size: 20px;
+  font-weight: 700;
+}
+.cv-mem-where,
+.cv-mem-sub {
+  font-size: 14px;
+  color: #5c4a3a;
+}
+.cv-mem-steps {
+  display: flex;
+  gap: 6px;
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 14px;
+}
+.cv-mem-steps li {
+  flex: 1;
+  padding: 6px 0;
+  border-radius: 999px;
+  background: #ebe3d7;
+  color: #6c5f53;
+  text-align: center;
+}
+.cv-mem-steps li.is-on {
+  background: #4b4fd8;
+  color: #fff;
+  font-weight: 700;
+}
+.cv-mem-steps li.is-done {
+  background: #d9d6f6;
+  color: #3a3d9e;
+}
+.cv-mem-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.cv-mem-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 15px;
+  font-weight: 600;
+}
+.cv-mem-field em {
+  font-style: normal;
+  font-weight: 400;
+  font-size: 14px;
+  color: #6c5f53;
+  margin-left: 4px;
+}
+.cv-mem-field input[type="text"],
+.cv-mem-field input:not([type]),
+.cv-mem-field input[type="date"],
+.cv-mem-codeinput {
+  min-height: 46px;
+  padding: 0 12px;
+  border: 1px solid #d6cbbd;
+  border-radius: 12px;
+  background: #fffdf9;
+  color: #3b322b;
+  font: inherit;
+  font-size: 16px; /* 16 px: iPhone Safari does not zoom into the field */
+  font-weight: 400;
+  box-sizing: border-box;
+  width: 100%;
+}
+.cv-mem-field input:disabled {
+  opacity: 0.5;
+}
+.cv-mem-date {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.cv-mem-date input[type="date"] {
+  flex: 1;
+  min-width: 0;
+}
+.cv-mem-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  font-size: 14px;
+  font-weight: 400;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.cv-mem-check input {
+  width: 20px;
+  height: 20px;
+  accent-color: #4b4fd8;
+}
+.cv-mem-chips {
+  display: flex;
+  gap: 8px;
+}
+.cv-mem-chips button {
+  flex: 1;
+  min-height: 46px;
+  border: 1px solid #d6cbbd;
+  border-radius: 12px;
+  background: #fffdf9;
+  color: #4a3f36;
+  font: inherit;
+  font-size: 15px;
+  cursor: pointer;
+}
+.cv-mem-chips button.is-on {
+  border-color: #4b4fd8;
+  background: #eceefe;
+  color: #2e31a8;
+  font-weight: 700;
+}
+.cv-mem-preview {
+  align-self: center;
+  width: 160px;
+  aspect-ratio: 4 / 5;
+  border-radius: 6px;
+  border: 8px solid #c9a77c;
+  background: center / cover no-repeat;
+  box-shadow: 0 4px 12px rgba(60, 40, 20, 0.18);
+}
+.cv-mem-preview.is-empty {
+  border-color: #e3dbcf;
+  background: repeating-linear-gradient(135deg, #efe9df 0 10px, #f4efe7 10px 20px);
+}
+.cv-mem-preview.is-small {
+  width: 84px;
+  border-width: 5px;
+  flex: none;
+}
+.cv-mem-summary {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+}
+.cv-mem-sum-name {
+  font-size: 20px;
+  font-weight: 700;
+}
+.cv-mem-sum-sub {
+  font-size: 14px;
+  color: #5c4a3a;
+}
+.cv-mem-sum-line {
+  margin-top: 6px;
+  font-size: 15px;
+  line-height: 1.5;
+}
+.cv-mem-notes {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 14px;
+  line-height: 1.55;
+  color: #5c4a3a;
+}
+.cv-mem-note {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.55;
+  color: #5c4a3a;
+  text-align: center;
+}
+.cv-mem-note.is-strong {
+  color: #3b322b;
+  text-align: left;
+}
+.cv-mem-error {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #fbe9e4;
+  color: #8a2f22;
+  font-size: 14px;
+}
+.cv-mem-code,
+.cv-mem-link {
+  padding: 14px;
+  border-radius: 12px;
+  background: #fffdf9;
+  border: 1px dashed #b9a78f;
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-align: center;
+  user-select: all;
+  word-break: break-all;
+}
+.cv-mem-link {
+  font-size: 14px;
+  letter-spacing: 0;
+  font-weight: 600;
+}
+.cv-mem-row,
+.cv-mem-actions {
+  display: flex;
+  gap: 10px;
+}
+.cv-mem-actions {
+  margin-top: 4px;
+}
+.cv-mem-primary,
+.cv-mem-secondary,
+.cv-mem-ghost {
+  flex: 1;
+  min-height: 48px;
+  padding: 0 14px;
+  border-radius: 12px;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.cv-mem-primary {
+  border: none;
+  background: #4b4fd8;
+  color: #fff;
+}
+.cv-mem-secondary {
+  border: 1px solid #4b4fd8;
+  background: #fffdf9;
+  color: #2e31a8;
+}
+.cv-mem-ghost {
+  border: 1px solid #ddd2c4;
+  background: #fffdf9;
+  color: #4a3f36;
+}
+.cv-mem-ghost.is-small {
+  flex: none;
+  min-height: 44px;
+  padding: 0 14px;
+  font-size: 14px;
+}
+.cv-mem-primary:disabled,
+.cv-mem-secondary:disabled,
+.cv-mem-ghost:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.cv-mem-devices {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.cv-mem-device {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 4px 0 12px;
+  border-radius: 10px;
+  background: #fffdf9;
+  font-size: 15px;
+}
+
+/* the claimed card (CubbyView) */
+.cv-cubby-photo.is-photo {
+  background: center / cover no-repeat;
+}
+.cv-cubby-badge {
+  position: absolute;
+  left: 50%;
+  bottom: 6px;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: 100%;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(59, 50, 43, 0.86);
+  color: #fff;
+  font-size: 12px;
+  line-height: 1.4;
+}
+.cv-cubby-mine {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: #e6e7fc;
+  color: #2e31a8;
+  font-size: 12px;
+  font-weight: 700;
+}
+.cv-cubby-family {
+  display: flex;
+  gap: 6px;
+  width: 100%;
+}
+.cv-cubby-family button,
+.cv-cubby-claim {
+  flex: 1;
+  min-height: 44px;
+  border: 1px solid #4b4fd8;
+  border-radius: 12px;
+  background: #fffdf9;
+  color: #2e31a8;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.cv-cubby-claim {
+  width: 100%;
+  min-height: 48px;
+  border: none;
+  background: #4b4fd8;
+  color: #fff;
+  font-size: 15px;
+}
+.cv-cubby-link {
+  min-height: 44px;
+  border: none;
+  background: none;
+  color: #3a3d9e;
+  font: inherit;
+  font-size: 14px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.cv-cubby-status {
+  font-size: 14px;
+  color: #5c4a3a;
+}
+.cv-mem-notice {
+  position: fixed;
+  top: max(12px, env(safe-area-inset-top));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: max-content;
+  max-width: min(440px, calc(100% - 24px));
+  box-sizing: border-box;
+  padding: 8px 8px 8px 16px;
+  border-radius: 18px;
+  line-height: 1.45;
+  background: rgba(247, 243, 236, 0.97);
+  color: #3b322b;
+  box-shadow: 0 8px 24px rgba(40, 30, 20, 0.25);
+  font-size: 14px;
+}
+.cv-mem-notice button {
+  min-height: 36px;
+  min-width: 44px;
+  border: none;
+  border-radius: 999px;
+  background: #3b322b;
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+@media (max-width: 719px), (max-aspect-ratio: 1/1) {
+  .cv-mem-sheet {
+    align-items: stretch;
+    padding: 0;
+  }
+  .cv-mem-panel,
+  .cv-mem-panel.is-compact {
+    width: 100%;
+    max-height: none;
+    border-radius: 0;
+    padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom));
+  }
+  .cv-mem-actions {
+    margin-top: auto;
+  }
+}

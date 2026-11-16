@@ -183,6 +183,11 @@ const VIEWS = {
   bushClose: { eye: [-15.0, 1.45, -15.1], look: [-17.3, 1.0, -17.3], fov: 32 },
   zelkovaDeck: { eye: [-11.0, 3.0, 4.0], look: [-25.0, 3.5, -5.0], fov: 60 },
   zelkovaUnder: { eye: [-20.5, 1.7, -1.5], look: [-25.0, 4.5, -5.0], fov: 65 },
+  // 2026-11-16 plants2: the owner's angles (a square planter's soil at night, a cherry trunk in its bed), PC and phone
+  soilClose: { eye: [-15.95, 1.35, -15.9], look: [-17.1, 0.5, -17.05], fov: 50 },
+  ringSoil: { eye: [17.2, 1.45, -4.3], look: [18.1, 0.42, -5.3], fov: 50 },
+  trunkClose: { eye: [17.0, 1.25, -4.35], look: [18.26, 0.95, -5.24], fov: 50 },
+  zelkovaTrunk: { eye: [-22.3, 1.6, -2.6], look: [-25.0, 1.1, -5.0], fov: 55 },
   laneShrubs: { eye: [31.5, 1.8, -24.0], look: [36.5, 0.5, -30.5], fov: 55 },
 };
 
@@ -193,6 +198,10 @@ async function shots() {
     { label: "night", time: NIGHT, tier: "high", views: ["planterNight", "planterTop", "crownNight", "crownClose", "crownUnder"] },
     { label: "day", time: DAY, tier: "high", views: ["plazaDay", "plazaWide", "planterTop", "crownClose", "crownUnder", "fountainBed", "squarePlanter", "houseBed"] },
     { label: "phone", time: DAY, tier: "low", phone: true, views: ["phonePlaza", "planterNight", "crownUnder"] },
+    { label: "soilnight", time: NIGHT, tier: "high", views: ["soilClose", "ringSoil", "trunkClose", "zelkovaTrunk"] },
+    { label: "soilday", time: DAY, tier: "high", views: ["soilClose", "ringSoil", "trunkClose", "zelkovaTrunk", "fountainBed", "houseBed"] },
+    { label: "soilphone", time: DAY, tier: "low", phone: true, views: ["soilClose", "trunkClose"] },
+    { label: "soilphonenight", time: NIGHT, tier: "low", phone: true, views: ["soilClose", "trunkClose"] },
     { label: "plants", time: DAY, tier: "high", views: (a.views ? a.views.split(",") : ["squareClose", "bushClose", "squarePlanter", "planterTop", "fountainBed", "houseBed", "laneShrubs", "zelkovaDeck", "zelkovaUnder", "plazaWide"]) },
   ].filter((p) => !a.only || a.only.split(",").includes(p.label));
   const log = [];

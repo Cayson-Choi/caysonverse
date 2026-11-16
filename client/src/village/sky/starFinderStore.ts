@@ -33,6 +33,8 @@ export interface StarFinderState {
   firstPerson: boolean;
   /** The figures that are up now, best first. */
   ranking: string[];
+  /** Where each listed figure stands now ("남동쪽 · 중간쯤"). */
+  rowInfo: Record<string, string>;
   targetId: string | null;
   targetShape: TargetShape | null;
   /** "북동쪽 하늘, 중간쯤 (고도 54°)" */
@@ -58,6 +60,7 @@ export const useStarFinder = create<StarFinderState>(() => ({
   catalogReady: false,
   firstPerson: false,
   ranking: [],
+  rowInfo: {},
   targetId: null,
   targetShape: null,
   targetWhere: "",

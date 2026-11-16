@@ -75,10 +75,10 @@ export interface LakeDressed {
 /** The lake's own night light map and its weight (the village's are for village.glb's atlas). */
 export const lakeNightMap: { value: Texture | null } = { value: null };
 export const lakeNightBlend = { value: 0 };
-const LAKE_LIGHT = { nightMap: lakeNightMap, nightBlend: lakeNightBlend, key: "lake" };
+const LAKE_LIGHT = { nightMap: lakeNightMap, nightBlend: lakeNightBlend, key: "lake", foreignBake: true };
 /** The facilities' own night light map (UV1 of lake_structures.glb) and its light recipe (same weight as the terrain's). */
 export const structuresNightMap: { value: Texture | null } = { value: null };
-const STRUCT_LIGHT = { nightMap: structuresNightMap, nightBlend: lakeNightBlend, key: "lake-structures" };
+const STRUCT_LIGHT = { nightMap: structuresNightMap, nightBlend: lakeNightBlend, key: "lake-structures", foreignBake: true };
 
 /**
  * The lake's lawn (its own light map, its own vertex tint) next to the village's lawn at x 95.5: measured in the game at noon the

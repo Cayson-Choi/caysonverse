@@ -50,7 +50,7 @@ describe("plants rebuild (2026-11-16)", () => {
   it("bedding plants: one mesh pair per species, the full one within budget", () => {
     const m = plantMeshes();
     expect(m).toHaveLength(SPECIES_COUNT);
-    const budget: Record<number, number> = { [SPECIES.petunia]: 520, [SPECIES.pansy]: 360, [SPECIES.muscari]: 520, [SPECIES.tulip]: 260, [SPECIES.marigold]: 420, [SPECIES.mulch]: 8 };
+    const budget: Record<number, number> = { [SPECIES.petunia]: 520, [SPECIES.pansy]: 360, [SPECIES.muscari]: 520, [SPECIES.tulip]: 260, [SPECIES.marigold]: 420 };
     for (const [s, max] of Object.entries(budget)) {
       expect(tris(m[Number(s)]!.lod0), `species ${s}`).toBeLessThanOrEqual(max);
       expect(tris(m[Number(s)]!.lod1)).toBeLessThanOrEqual(tris(m[Number(s)]!.lod0));

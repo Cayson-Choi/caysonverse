@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MULCH_SHARE, PLAZA_BEDS, SPACING, SPECIES, TUFT, WILD_SPACING, bedAt, placeFlowers, speciesFor, type Plant } from "./flowerPlacement";
+import { PLAZA_BEDS, SPACING, SPECIES, TUFT, WILD_SPACING, bedAt, placeFlowers, speciesFor, type Plant } from "./flowerPlacement";
 import type { Card } from "./vegCards";
 
 let nextId = 0;
@@ -58,26 +58,12 @@ describe("placeFlowers", () => {
 
   it("keeps each species' planting distance", () => {
     const { plants } = placeFlowers(ringCards);
-    expect(minGap(plants.filter((p) => p.species !== SPECIES.mulch))).toBeGreaterThanOrEqual(0.999);
-  });
-
-  it("lays bark-chip mulch under about half the bed's plants, flat on its soil (2026-11-16)", () => {
-    const { plants } = placeFlowers(ringCards);
-    const mulch = plants.filter((p) => p.species === SPECIES.mulch);
-    const flowers = plants.filter((p) => p.species !== SPECIES.mulch);
-    expect(mulch.length / flowers.length).toBeGreaterThan(MULCH_SHARE - 0.15);
-    expect(mulch.length / flowers.length).toBeLessThan(MULCH_SHARE + 0.15);
-    for (const m of mulch) {
-      expect(m.leanX).toBe(0);
-      expect(m.leanZ).toBe(0);
-      expect(m.y - 0.38).toBeGreaterThan(0);
-      expect(m.y - 0.38).toBeLessThan(0.005);
-    }
+    expect(minGap(plants)).toBeGreaterThanOrEqual(0.999);
   });
 
   it("leans the plants on the rim out over it", () => {
     const { plants } = placeFlowers(ringCards);
-    const rim = plants.filter((p) => p.species !== SPECIES.mulch && Math.hypot(p.x - ring.x, p.z - ring.z) > 1.1);
+    const rim = plants.filter((p) => Math.hypot(p.x - ring.x, p.z - ring.z) > 1.1);
     expect(rim.length).toBeGreaterThan(5);
     for (const p of rim) {
       // the lean's top direction (leanZ about z tips toward -x for positive, leanX about x tips toward +z)
@@ -123,12 +109,12 @@ describe("placeFlowers", () => {
     }
     const flowers = plants.filter((p) => p.species < SPECIES.grass || p.species === SPECIES.marigold);
     expect(flowers.length).toBeGreaterThan(0);
-    // wild flowers come up among the grass: no mulch under them
-    expect(plants.some((p) => p.species === SPECIES.mulch)).toBe(false);
+    // wild flowers come up among the grass: marked wild (no bed soil under them)
+    for (const f of flowers) expect(f.wild).toBe(true);
     for (const a of flowers)
       for (const b of flowers) if (a !== b && a.species === b.species) expect(Math.hypot(a.x - b.x, a.z - b.z)).toBeGreaterThanOrEqual(SPACING[a.species] * WILD_SPACING - 1e-9);
     // the same card in a bed (no grass beside it) is planted denser
-    const bed = placeFlowers([card(50.3, 50.5, 0)]).plants.filter((p) => p.species !== SPECIES.mulch);
+    const bed = placeFlowers([card(50.3, 50.5, 0)]).plants;
     expect(bed.length).toBeGreaterThanOrEqual(flowers.length);
   });
 

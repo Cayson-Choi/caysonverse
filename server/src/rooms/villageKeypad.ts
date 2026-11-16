@@ -52,7 +52,7 @@ function codeMatches(code: string): boolean {
 export function checkHouseKeypad(input: KeypadCheck): KeypadCheckResult {
   const nearest = nearestKeypadEntry(input.x, input.z);
   const entry = nearest?.entry ?? null;
-  const emptyEntry: KeypadEntry = { buildingId: input.buildingId, pad: { x: input.x, z: input.z }, placeholderArea: "hall" };
+  const emptyEntry: KeypadEntry = { buildingId: input.buildingId, pad: { x: input.x, z: input.z }, exit: { x: input.x, z: input.z, yaw: 0 } };
   if (!entry || entry.buildingId !== input.buildingId) {
     return { state: input.rate, decision: { ok: false, reason: "too_far" }, entry: emptyEntry };
   }
@@ -66,3 +66,9 @@ export function checkHouseKeypad(input: KeypadCheck): KeypadCheckResult {
 }
 
 export const initialKeypadRate = (): KeypadRateState => EMPTY_KEYPAD_RATE;
+
+/** Whether (x, z) is within the keypad's reach of house `buildingId`'s door (what `checkHouseKeypad` requires), for the replies that come before the code is checked. */
+export function nearHouseDoor(at: { x: number; z: number }, buildingId: string): boolean {
+  const nearest = nearestKeypadEntry(at.x, at.z);
+  return nearest !== null && nearest.entry.buildingId === buildingId;
+}

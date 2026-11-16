@@ -47,6 +47,12 @@ const GATE = {
   memorial: { bytes: 6 * MIB, tris: 200_000, tex: 2048 },
   /** The bus at the stop (village_bus.glb, always drawn with the village; bus review): the bus task's 40k and 1.5 MB. */
   bus: { bytes: 1.5 * MIB, tris: 40_000, tex: 1024, draws: 4 },
+  /**
+   * The waterfall (B1, waterfall.glb, loaded late; design docs/designs/waterfall/design.md §6): 1.6 MB, textures <= 1024,
+   * triangles per tier (the file carries both tiers, told apart by the node extras `tier`) leaving room for the runtime's
+   * particle quads (high 840, low 268), light maps <= 1024 per side and 400 KB together.
+   */
+  falls: { bytes: 1.6 * MIB, tex: 1024, trisHigh: 72_000 - 840, trisLow: 30_000 - 268, lmBytes: 400 * 1024, lmSide: 1024 },
   /** The village scene's two always-drawn models together: the village's 260k plus the bus's 40k. */
   villageScene: { tris: 300_000 },
   /** The plan's "15 MB", decimal (T10 review I2). */
@@ -130,6 +136,19 @@ function inspectGlb(path) {
     trianglesWithoutInstanceMultiplier: drawnOnceTris,
     instancedCopies: instances,
     meshNodes: json.nodes.filter((n) => n.mesh !== undefined).length,
+    // triangles drawn on each graphics tier, by the node extras `tier` ("high" / "low"; none = both)
+    tierTriangles: (() => {
+      const t = { high: 0, low: 0 };
+      for (const n of json.nodes) {
+        if (n.mesh === undefined) continue;
+        const inst = n.extensions?.EXT_mesh_gpu_instancing;
+        const count = inst ? json.accessors[Object.values(inst.attributes)[0]].count : 1;
+        const tris = meshTris(json.meshes[n.mesh]) * count;
+        if (n.extras?.tier !== "low") t.high += tris;
+        if (n.extras?.tier !== "high") t.low += tris;
+      }
+      return t;
+    })(),
     drawPrimitives: draws,
     textures,
     maxTextureSide: Math.max(0, ...textures.map((t) => Math.max(t.w ?? 0, t.h ?? 0))),
@@ -157,6 +176,22 @@ if (args.mode === "assets") {
   check(`village_bus.glb <= ${fmt(GATE.bus.tris)} triangles (${fmt(bus.sceneTriangles)})`, bus.sceneTriangles <= GATE.bus.tris);
   check(`village_bus.glb textures <= ${GATE.bus.tex}^2 (largest side ${bus.maxTextureSide})`, bus.maxTextureSide <= GATE.bus.tex);
   check(`village_bus.glb <= ${GATE.bus.draws} draw calls (${bus.drawPrimitives} primitives)`, bus.drawPrimitives <= GATE.bus.draws);
+  // The waterfall: its own file, loaded after the village is up (never in the first-screen bytes).
+  const falls = (out["waterfall.glb"] = inspectGlb(join(M, "waterfall.glb")));
+  const G = GATE.falls;
+  check(`waterfall.glb <= ${G.bytes / MIB} MB (${fmt(falls.bytes)} B)`, falls.bytes <= G.bytes);
+  check(`waterfall.glb textures <= ${G.tex}^2 (largest side ${falls.maxTextureSide})`, falls.maxTextureSide <= G.tex);
+  check(`waterfall.glb high tier <= ${fmt(G.trisHigh)} triangles (${fmt(falls.tierTriangles.high)})`, falls.tierTriangles.high <= G.trisHigh);
+  check(`waterfall.glb low tier <= ${fmt(G.trisLow)} triangles (${fmt(falls.tierTriangles.low)})`, falls.tierTriangles.low <= G.trisLow);
+  let fallsLm = 0;
+  for (const f of ["waterfall_lm.webp", "waterfall_lm_night.webp"]) {
+    const p = join(M, f);
+    const size = imageSize(readFileSync(p), "image/webp");
+    out[f] = { bytes: statSync(p).size, ...size };
+    fallsLm += out[f].bytes;
+    check(`${f} <= ${G.lmSide} per side (${size?.w}x${size?.h})`, size && Math.max(size.w, size.h) <= G.lmSide);
+  }
+  check(`waterfall light maps together <= ${G.lmBytes / 1024} KB (${fmt(fallsLm)} B)`, fallsLm <= G.lmBytes);
   const sceneTris = out.village.sceneTriangles + bus.sceneTriangles;
   check(`village scene (village.glb + village_bus.glb) <= ${fmt(GATE.villageScene.tris)} triangles (${fmt(sceneTris)})`, sceneTris <= GATE.villageScene.tris);
   for (const f of ["village_lm.webp", "village_lm_night.webp", "memorial_lm.webp"]) {

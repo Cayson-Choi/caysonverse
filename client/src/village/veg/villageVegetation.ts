@@ -2,6 +2,10 @@ import {
   Box3,
   BufferAttribute,
   BufferGeometry,
+  DataTexture,
+  RGBAFormat,
+  SRGBColorSpace,
+  UnsignedByteType,
   Euler,
   Frustum,
   Group,
@@ -45,7 +49,8 @@ import { makeBlossomAtlas } from "./vegAtlas";
 import { GeoBuilder, blossomBunch, bunchSprite, leafSpray, willowSpray } from "./vegGeometry";
 import { BUSH_SPECIES, bushPlant, plantMeshes, type BushSpecies } from "./vegPlants";
 import { makePlantAtlas } from "./vegPlantAtlas";
-import { BARK_STYLE, barkLight, barkTexture, drawnBark, simplifyTwig, skeletonBark, skeletonBarkInto, taperSkeleton, twigBark, type BarkPattern } from "./barkGeometry";
+import { buildSoil, soilTextures } from "./vegSoil";
+import { BARK_STYLE, BARK_SURFACE, barkPhotos, flatNormal, barkLight, barkTexture, drawnBark, simplifyTwig, skeletonBark, skeletonBarkInto, taperSkeleton, twigBark, type BarkPattern } from "./barkGeometry";
 import { setCameraKeepOut } from "../../game/cameraCollision";
 import { bakedBarkIndex } from "./bakedBark";
 import { chooseLod, groupIntoCells, sphereDistance, VEG_TIERS, type Cell, type LodBands, type Vec3, type VegTierConfig } from "./vegLod";
@@ -106,6 +111,8 @@ export interface VegStats {
   /** Per kind: trees, foliage clusters (bunches or sprays) and twigs. */
   trees: Record<TreeKindStat, { trees: number; clusters: number; twigs: number }>;
   bushes: number;
+  /** The beds' soil (vegSoil.ts): beds and triangles. */
+  soil?: { beds: number; tris: number };
   /** Bushes per kind (vegPlants.BUSH_SPECIES: boxwood, azalea). */
   bushSpecies?: number[];
   /** Every crown's connection: the largest cluster-to-branch gap (m), twigs ending bare, clusters on no branch. */
@@ -670,6 +677,57 @@ export class VillageVegetation {
     });
     if (await step("cards")) return v.abandon();
     const placed = placeFlowers(allCards);
+    // the beds' soil (vegSoil.ts, 2026-11-16 plants2): built round the placed plants, and the plants set on it
+    const soil = buildSoil(placed.plants);
+    for (const p of placed.plants) {
+      const h = soil.heightAt(p);
+      if (h !== null) p.y = h - 0.004;
+    }
+    {
+      const soilMap = new DataTexture(new Uint8Array([70, 52, 38, 255]), 1, 1, RGBAFormat, UnsignedByteType);
+      soilMap.colorSpace = SRGBColorSpace;
+      soilMap.needsUpdate = true;
+      const soilNormal = flatNormal();
+      const soilMat = vegMaterial({ name: "M_veg_soil", map: soilMap, normalMap: soilNormal, normalScale: 1.3, edgeAlpha: true, wind: 0, windFar: 1, ambient: 0.5, sky: 0.2, sun: 0.52, back: 0.15 });
+      v.own.push(soilMap, soilNormal, soilMat);
+      soilTextures(low, (map, normal) => {
+        soilMat.map = map;
+        (soilMat.userData.vegUniforms as { uVegNormal: { value: unknown } }).uVegNormal.value = normal;
+        v.own.push(map, normal);
+      });
+      soil.soil.forEach((a, i) => {
+        const mesh = new Mesh(a.geo, soilMat);
+        mesh.name = `veg_soil_${i}`;
+        mesh.matrixAutoUpdate = false;
+        mesh.userData[CLICK_PICK_KEY] = "ignore";
+        v.group.add(mesh);
+        v.own.push(a.geo);
+      });
+      if (soil.coping) {
+        // the square planters' raised coping: the village's own granite photo (rock_boulder_dry), lit per pixel
+        const stoneMap = new DataTexture(new Uint8Array([150, 148, 142, 255]), 1, 1, RGBAFormat, UnsignedByteType);
+        stoneMap.colorSpace = SRGBColorSpace;
+        stoneMap.needsUpdate = true;
+        const stoneNormal = flatNormal();
+        const copingMat = vegMaterial({ name: "M_veg_coping", map: stoneMap, normalMap: stoneNormal, normalScale: 1.2, wind: 0, windFar: 1, ambient: 0.62, sky: 0.22, sun: 0.42, back: 0.2 });
+        v.own.push(stoneMap, stoneNormal);
+        soilTextures(
+          low,
+          (map, normal) => {
+            copingMat.map = map;
+            (copingMat.userData.vegUniforms as { uVegNormal: { value: unknown } }).uVegNormal.value = normal;
+            v.own.push(map, normal);
+          },
+          "stone",
+        );
+        const mesh = new Mesh(soil.coping, copingMat);
+        mesh.name = "veg_planter_coping";
+        mesh.matrixAutoUpdate = false;
+        v.group.add(mesh);
+        v.own.push(soil.coping, copingMat);
+      }
+      stats.soil = { beds: soil.beds, tris: soil.tris };
+    }
     if (await step("placement")) return v.abandon();
     // the plants' leaves, petals and mulch are pictures in the plant atlas (vegPlantAtlas.ts, the 2026-11-16 rebuild)
     const plantAtlas: Texture | null = makePlantAtlas();
@@ -741,12 +799,21 @@ export class VillageVegetation {
     const twigMats = {} as Record<BarkPattern, Material>;
     for (const pattern of ["cherry", "plates", "willow", "smooth", "plum"] as const) {
       const map = barkTexture(pattern);
-      const mat = vegMaterial({ name: `M_veg_bark_${pattern}`, map, wind: 0, windFar: 1, ambient: 0.55, sky: 0.2, sun: 0.45, back: 0.2 });
+      // the trunks and limbs lit per pixel with the bark photo's normal map (2026-11-16 plants2), no moss (owner 2026-11-16: "이끼는 안껴도 돼")
+      const normal = flatNormal();
+      const surf = BARK_SURFACE[pattern];
+      const mat = vegMaterial({ name: `M_veg_bark_${pattern}`, map, normalMap: normal, normalScale: surf.normal, gloss: surf.gloss, moss: false, wind: 0, windFar: 1, ambient: 0.55, sky: 0.2, sun: 0.45, back: 0.2 });
       barkMats[pattern] = mat;
       // the twigs' bark: the same, but giving way round the camera as the leaves do, and never thinner than a pixel
       const twig = vegMaterial({ name: `M_veg_twigs_${pattern}`, map, push: true, twig: true, wind: 0, windFar: 1, ambient: 0.55, sky: 0.2, sun: 0.45, back: 0.2 });
       twigMats[pattern] = twig;
-      v.own.push(map, mat, twig);
+      v.own.push(map, normal, mat, twig);
+      barkPhotos(pattern, low, (photo, photoNormal) => {
+        mat.map = photo;
+        twig.map = photo;
+        (mat.userData.vegUniforms as { uVegNormal: { value: unknown } }).uVegNormal.value = photoNormal;
+        v.own.push(photo, photoNormal);
+      });
     }
     const barkMatOf = (sk: TreeSkeleton) => barkMats[BARK_STYLE[sk.kind].pattern];
     const twigMatOf = (sk: TreeSkeleton) => twigMats[BARK_STYLE[sk.kind].pattern];

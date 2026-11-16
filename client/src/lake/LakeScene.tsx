@@ -39,6 +39,7 @@ import { DEFAULT_SEAM, disposeLake, lakeDayNight, prepareLakeStructures, prepare
 import type { VillageTier } from "../village/villageModelPrep";
 import { lakeFloatParts, loadLakeGear } from "./lakeProps";
 import { LakeSigns } from "./LakeSigns";
+import { LakeShopInterior } from "./LakeShopInterior";
 import { CAST_S, floatPose, scatter, tugIndex, type FloatPose, type Pt } from "./lakeFloat";
 import { elapsedSince, forEachAngler, selfId } from "./lakeNet";
 import { FISH_PHASE, emptyFishView, type FishView } from "./lakeProtocol";
@@ -140,6 +141,7 @@ function LakeGlb({ tier }: { tier: VillageTier }) {
     <>
       <primitive object={dressed.terrain} dispose={null} />
       <primitive object={dressed.facilities} dispose={null} />
+      <LakeShopInterior />
       {tier === "high" &&
         dressed.lampHeads.map((p, i) => (
           <pointLight

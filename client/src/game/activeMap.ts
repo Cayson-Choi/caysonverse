@@ -11,9 +11,22 @@
  */
 
 import type { Seat } from "@caysonverse/shared/worldMap";
-import { VILLAGE_LAYOUT, villageGeometry, houseInteriorGeometry, type AreaId, isHouseArea } from "@caysonverse/shared/village/villageLayout";
+import { VILLAGE_LAYOUT, villageGeometry, type AreaId } from "@caysonverse/shared/village/villageLayout";
+import {
+  HOUSE_CAMERA,
+  HOUSE_LOW_CEILINGS,
+  HOUSE_ROOM,
+  houseFloorBounds,
+  houseFloorLabel,
+  parseHouseFloorArea,
+  type HouseFloor,
+  type HouseNumber,
+} from "@caysonverse/shared/village/houseAreas";
+import { GENERATED_HOUSES } from "@caysonverse/shared/village/generated/houses";
+import { houseFloorGeometry } from "@caysonverse/shared/village/housesGeometry";
 import { VILLAGE_BENCHES, VILLAGE_SEATS } from "@caysonverse/shared/village/benchSeats";
 import { MEMORIAL_SEAT_MARKERS } from "@caysonverse/shared/village/generated/memorialSeats";
+import { fallsShoreSpot, inFallsRestArea, villagePickArea, villageWalkArea } from "@caysonverse/shared/village/fallsWalk";
 import type { Bounds, MapGeometry } from "@caysonverse/shared/school/geometry";
 import type { AABB } from "@caysonverse/shared/collision";
 import { HALL_CAMERA_LIMIT, VILLAGE_CAMERA_PAD, type CameraLimit } from "./indoorCamera";
@@ -58,6 +71,26 @@ export interface ActiveMap {
    * benches (`VILLAGE_FURNITURE`); absent elsewhere.
    */
   furniture?: readonly AABB[];
+  /**
+   * The rectangle a click may pick ground in, where it is wider than `bounds` (케이슨 마을: the waterfall's whole pool, so
+   * a click on the far side of the water is seen and walked to the shore). Absent: the map's own bounds (clickPick.ts).
+   */
+  pickBounds?: Bounds;
+  /**
+   * Water nobody walks into (the waterfall's pool): where a click on it goes instead, or null (clickPlan.ts
+   * PlanOptions.shore). Absent: no such water.
+   */
+  shore?: (x: number, z: number) => { x: number; z: number } | null;
+}
+
+/** The bounds a click picks ground in on `m`: its `pickBounds`, else the area's. */
+export function pickBoundsOf(m: ActiveMap): Bounds {
+  return m.pickBounds ?? mapBounds(m);
+}
+
+/** The pick bounds of the map the local player stands in right now. */
+export function activePickBounds(): Bounds {
+  return pickBoundsOf(current);
 }
 
 /** 케이슨 마을's spring-arm pad: wider than its 0.2 m near plane (Task 7 review m5). Lives in indoorCamera.ts (the hall's limit derives from it). */
@@ -92,9 +125,11 @@ export const VILLAGE_FURNITURE: readonly AABB[] = Object.freeze(
 /** 케이슨 마을, the open village : the village area's rectangle of the shared geometry. */
 export const VILLAGE_ACTIVE_MAP: ActiveMap = Object.freeze({
   geometry: villageGeometry,
-  bounds: VILLAGE_LAYOUT.areas.village,
+  bounds: villageWalkArea(VILLAGE_LAYOUT), // the village's area plus the waterfall's rest area (B1 W5)
+  pickBounds: villagePickArea(VILLAGE_LAYOUT),
+  shore: (x: number, z: number) => fallsShoreSpot(VILLAGE_LAYOUT, x, z),
   cameraPad: VILLAGE_CAMERA_PAD,
-  zoneLabel: () => "케이슨 마을",
+  zoneLabel: (x: number, z: number) => (inFallsRestArea(VILLAGE_LAYOUT, x, z) ? "폭포 쉼터" : "케이슨 마을"),
   seats: VILLAGE_SEATS, // the one global list; only the village's seats are offered from here
   seatArea: "village",
   furniture: VILLAGE_FURNITURE,
@@ -112,31 +147,59 @@ export const HALL_ACTIVE_MAP: ActiveMap = Object.freeze({
   furniture: VILLAGE_FURNITURE,
 });
 
-/** Procedural private house interiors: same room bounds/camera ceiling, no memorial furniture colliders. */
-export const HOUSE_ACTIVE_MAP: ActiveMap = Object.freeze({
-  geometry: houseInteriorGeometry,
-  bounds: VILLAGE_LAYOUT.areas.hall,
-  cameraLimit: HALL_CAMERA_LIMIT,
-  cameraPad: VILLAGE_CAMERA_PAD,
-  zoneLabel: () => "집 안",
-  seats: VILLAGE_SEATS,
-  furniture: [],
-});
+/**
+ * The camera limit of a house floor (design 7.6): under the ceiling less `HOUSE_CAMERA.ceilingPad`, lower in the attic rooms
+ * (`HOUSE_LOW_CEILINGS`: house 8 and 10's floor 2 slope from 2.9 m); no overview (a roof). One object per floor: a limit that differs
+ * from the last one is a crossing (the camera is re-seated at once, behind the stair's curtain).
+ */
+export function houseCameraLimit(n: HouseNumber, floor: HouseFloor): CameraLimit {
+  const low = HOUSE_LOW_CEILINGS.find((l) => l.n === n && l.floor === floor);
+  const top = low ? low.lowest : HOUSE_ROOM.ceiling;
+  return { maxY: Math.round((top - HOUSE_CAMERA.ceilingPad) * 1e6) / 1e6, overview: false };
+}
+
+/**
+ * The seat furniture of one house floor as colliders (for the tap planner: ground inside a sofa's or chair's box moves out to a spot a
+ * body stands on): the model's boxes that hold a seat marker's centre, at most 3 m a side (the village's `VILLAGE_FURNITURE` rule).
+ */
+function houseFurniture(n: HouseNumber, floor: HouseFloor): readonly AABB[] {
+  const g = GENERATED_HOUSES[n];
+  if (!g) return [];
+  const boxes = houseFloorGeometry(n, floor).obstacles;
+  const centres = g.seats.filter((m) => m.floor === floor);
+  return centres
+    .flatMap((c) => boxes.filter((o) => c.x > o.minX && c.x < o.maxX && c.z > o.minZ && c.z < o.maxZ && o.maxX - o.minX <= 3 && o.maxZ - o.minZ <= 3))
+    .filter((o, i, all) => all.indexOf(o) === i);
+}
 
 const HOUSE_MAPS = new Map<string, ActiveMap>();
+/**
+ * One house floor (집 실내 G): its own map — the floor's walls, furniture and ceiling slab as geometry, the floor's rectangle as bounds, the
+ * ceiling limit. The seat list stays the ONE global list (an index is the server's index), narrowed to this floor by `seatArea`; a filtered
+ * list would number a house's sofa 0..3 and the server would read those as the plaza's benches (the house-seat index bug of 2026-11-13).
+ */
 function houseActiveMap(area: AreaId): ActiveMap {
   const existing = HOUSE_MAPS.get(area);
   if (existing) return existing;
-  // The GLOBAL seat list (an index is the server's index), narrowed to this house by `seatArea`; a filtered list would number the
-  // house's sofa 0..3 and the server would read those as the plaza's benches (the house-seat index bug of 2026-11-13).
-  const map = Object.freeze({ ...HOUSE_ACTIVE_MAP, seats: VILLAGE_SEATS, seatArea: area });
+  const hit = parseHouseFloorArea(area);
+  if (!hit) return VILLAGE_ACTIVE_MAP;
+  const map: ActiveMap = Object.freeze({
+    geometry: houseFloorGeometry(hit.n, hit.floor),
+    bounds: houseFloorBounds(hit.n, hit.floor),
+    cameraLimit: houseCameraLimit(hit.n, hit.floor),
+    cameraPad: VILLAGE_CAMERA_PAD,
+    zoneLabel: () => houseFloorLabel(hit.n, hit.floor),
+    seats: VILLAGE_SEATS,
+    seatArea: area,
+    furniture: houseFurniture(hit.n, hit.floor),
+  });
   HOUSE_MAPS.set(area, map);
   return map;
 }
 
 /** The village map for the area the local player is in: one of two prebuilt maps, so a re-render is never a switch. */
 export function villageActiveMap(area: AreaId): ActiveMap {
-  return area === "hall" ? HALL_ACTIVE_MAP : isHouseArea(area) ? houseActiveMap(area) : VILLAGE_ACTIVE_MAP;
+  return area === "hall" ? HALL_ACTIVE_MAP : area === "village" ? VILLAGE_ACTIVE_MAP : houseActiveMap(area);
 }
 
 let current: ActiveMap = VILLAGE_ACTIVE_MAP;
