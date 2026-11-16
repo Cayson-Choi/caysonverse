@@ -13,6 +13,8 @@ import {
   stepViewBlend,
   stepOvBlend,
   toggleViewMode,
+  enterFp,
+  exitFp,
   toggleOverview,
   dropOverview,
   requestRecenter,
@@ -217,6 +219,7 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
   // Previous frame's mode, to detect the EDGE into overview and seed its camera
   // (distinct from viewState.prevMode, which is the mode overview will restore).
   const lastFrameMode = useRef(viewState.mode);
+  const busModeBeforeRef = useRef<string | null>(null); // the view mode before boarding the bus (null: not riding)
   // The rectangle the overview was last framed for: a different one (a door in 케이슨 마을) re-frames an open overview.
   const lastBounds = useRef(activeBounds());
   /** The seated FP eye's weight (0 standing .. 1 seated) and the seat it eases toward or away from (seatedEye.ts). */
@@ -945,6 +948,14 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
     // the rider's own eye. The world camera resumes on the very next frame after the authoritative leave state.
     if (selfBusRide.slot >= 0) {
       const persp = camera as PerspectiveCamera;
+      if (busModeBeforeRef.current === null) {
+        // boarding: first person is the default way to look out of the windows (owner 2026-11-16); V / the eye button / a zoom-out still give the third person
+        busModeBeforeRef.current = viewState.mode;
+        if (viewState.mode === "tp") {
+          enterFp(orbit.yaw);
+          viewState.fpPitch = 0;
+        }
+      }
       const fp = viewState.mode === "fp";
       if (busCamGoal.yaw !== null) {
         // the quick view's glide: the look yaw (first person) or the orbit yaw (third), relative to the bus
@@ -1008,11 +1019,15 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
         persp.fov = want;
         persp.updateProjectionMatrix();
       }
-    } else if (fovBeforeRideRef.current !== null) {
-      const persp = camera as PerspectiveCamera;
-      persp.fov = fovBeforeRideRef.current;
-      persp.near = nearBeforeRideRef.current;
-      persp.updateProjectionMatrix();
+    } else if (fovBeforeRideRef.current !== null || busModeBeforeRef.current !== null) {
+      if (busModeBeforeRef.current === "tp" && viewState.mode === "fp") exitFp(orbit); // got off: the view the player had before boarding
+      busModeBeforeRef.current = null;
+      if (fovBeforeRideRef.current !== null) {
+        const persp = camera as PerspectiveCamera;
+        persp.fov = fovBeforeRideRef.current;
+        persp.near = nearBeforeRideRef.current;
+        persp.updateProjectionMatrix();
+      }
       fovBeforeRideRef.current = null;
       busCamState.active = false;
       busCamState.firstPerson = false;
