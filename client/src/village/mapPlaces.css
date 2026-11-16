@@ -1,0 +1,75 @@
+/* The places on the top-down map (MapPlaces.tsx): a solid chip per place, a small card with "여기로 가기" on the picked one. */
+.cv-map-place {
+  pointer-events: none; /* only the chip and its card take a press: a neighbour's empty box never swallows one */
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  font-family: "Noto Sans KR", system-ui, sans-serif;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.cv-map-place-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 30px;
+  padding: 3px 10px;
+  border: 2px solid #ffffff;
+  border-radius: 999px;
+  background: #4b4fd8;
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.2;
+  white-space: nowrap;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  cursor: pointer;
+  pointer-events: auto;
+}
+.cv-map-place.is-house .cv-map-place-tag {
+  min-height: 26px;
+  padding: 2px 8px;
+  font-size: 12px;
+  background: #6b4f2e;
+}
+.cv-map-place.is-picked .cv-map-place-tag {
+  background: #8b5cf6;
+}
+.cv-map-place.is-compact .cv-map-place-name {
+  display: none;
+}
+.cv-map-place-card {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border-radius: 14px;
+  background: #1c1d3a;
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+  pointer-events: auto;
+}
+.cv-map-place-title {
+  font-size: 14px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+.cv-map-place-go {
+  white-space: nowrap;
+  min-height: 40px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 12px;
+  background: #ffffff;
+  color: #1b2147;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 800;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+  cursor: pointer;
+}
+/* the lake's own map name (LakeSigns.tsx) gives way to its place chip here (one name, which also walks there) */
+.cv-map-me.cv-lake-map-label {
+  display: none !important;
+}

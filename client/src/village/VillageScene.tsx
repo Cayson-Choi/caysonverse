@@ -1,6 +1,6 @@
 import { MemorialOverlays } from "./memorial/MemorialOverlays";
 import { isTouchDevice } from "../device";
-import { Suspense, useEffect, useLayoutEffect, useState } from "react";
+import { Suspense, useEffect, useLayoutEffect, useState, useSyncExternalStore, type ReactNode } from "react";
 import { useGLTF } from "@react-three/drei";
 import { PlayShell } from "../game/PlayShell";
 import { villageActiveMap } from "../game/activeMap";
@@ -64,6 +64,7 @@ import { PublicAutoDoor } from "./PublicAutoDoor";
 import { openKeypad, useKeypad } from "./keypadStore";
 import { VillageKeypad } from "./VillageKeypad";
 import { HouseInterior } from "./HouseInterior";
+import { MapPlaces } from "./MapPlaces";
 
 /**
  * 케이슨 마을 — the village scene (Task 4). A `PlayShell` on the village map under the village's afternoon
@@ -112,6 +113,17 @@ function PlainGround() {
   );
 }
 
+const dressedNow = () => vegDressing.dressed();
+/** Its children mount once the village has been dressed (and stay: a later cover does not take them away). */
+function AfterDressed({ children }: { children: ReactNode }) {
+  const dressed = useSyncExternalStore(vegDressing.subscribe, dressedNow, dressedNow);
+  const [once, setOnce] = useState(dressed);
+  useEffect(() => {
+    if (dressed) setOnce(true);
+  }, [dressed]);
+  return once || dressed ? <>{children}</> : null;
+}
+
 /** A failed village model: its cover lifts at once (the plain ground and the notice show, not "불러오는 중…"). */
 const uncoverVillage = () => vegDressing.uncover();
 
@@ -131,7 +143,6 @@ function VillageArea({ area, tier, pose }: { area: AreaId; tier: VillageTier; po
               <BusStopShelter />
             </Suspense>
           </LoadBoundary>
-          <LakeWorld pose={pose} tier={tier} />
           {/* The bus at the stop (bus review r3, M2): its own error boundary and its own Suspense, so the village never
               waits for it. Its download starts with the model's, so it is usually in when the village shows (and warmed
               up with it); if it comes later it appears then (its own warm-up), and a stalled or failed bus is no bus. */}
@@ -145,6 +156,13 @@ function VillageArea({ area, tier, pose }: { area: AreaId; tier: VillageTier; po
           <SceneWarmUp key={tier} />
         </Suspense>
       </LoadBoundary>
+      {/* The lake (100 m east) waits until the village is dressed (UX 2026-11-16): its files and its build never compete
+          with the plaza's on the way in, and its Suspense is its own (it never holds the village back). */}
+      <AfterDressed>
+        <Suspense fallback={null}>
+          <LakeWorld pose={pose} tier={tier} />
+        </Suspense>
+      </AfterDressed>
       <LoadBoundary fallback={null} onReset={() => useGLTF.clear(SIGNALS_MODEL_URL)} notice="횡단보도 신호등을 불러오지 못했어요. 잠시 뒤 다시 불러올게요.">
         <TransitRoadSignals />
       </LoadBoundary>
@@ -405,8 +423,9 @@ export function VillageScene({ identity }: { identity: Identity }) {
       cameraPlanes={VILLAGE_CAMERA_PLANES}
       groundDecal={VILLAGE_GROUND_DECAL}
       shadowColor={VILLAGE_SHADOW_COLOR}
-      world3d={({ pose }) => (
+      world3d={({ pose, seat }) => (
         <>
+          {area === "village" && <MapPlaces pose={pose} seat={seat} />}
           <DayNight area={area} tier={tier} />
           <VillageArea area={area} tier={tier} pose={pose} />
           <GuideNpcs area={area} />
