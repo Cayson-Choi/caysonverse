@@ -58,8 +58,8 @@ export interface SunShadowStats {
 /** Materials whose meshes cast the live shadows (the village's solid parts; not its sky, hills, water, glass or glows). */
 const CASTS = (name: string): boolean =>
   name.startsWith("LM_") || name === "M_bark" || name === "M_moon" || name === "M_lamp" || name.startsWith("M_leaf_");
-/** The runtime vegetation that casts (the trees and bushes, their far sprites too; not the flowers in the beds). */
-const VEG_CASTS = (name: string): boolean => name.startsWith("M_veg_") && name !== "M_veg_flowers";
+/** The runtime vegetation that casts (the trees and bushes, their far sprites too; not the flowers in the beds, nor the beds' soil: a flat skin on the bed). */
+const VEG_CASTS = (name: string): boolean => name.startsWith("M_veg_") && name !== "M_veg_flowers" && name !== "M_veg_soil";
 
 /** The area the far cascade and the mask cover: the village's walk bounds and the land round them. */
 export function villageShadowArea(margin = 40): MaskArea {

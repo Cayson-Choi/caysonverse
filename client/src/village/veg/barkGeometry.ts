@@ -1,4 +1,5 @@
-import { DataTexture, LinearFilter, LinearMipmapLinearFilter, RepeatWrapping, RGBAFormat, UnsignedByteType, type BufferGeometry } from "three";
+import { DataTexture, LinearFilter, LinearMipmapLinearFilter, NoColorSpace, RepeatWrapping, RGBAFormat, TextureLoader, UnsignedByteType, type BufferGeometry, type Texture } from "three";
+import { versionedUrl } from "../modelUrl";
 import { linearHex } from "./flowerPlacement";
 import { mulberry32 } from "./vegRandom";
 import type { Vec3 } from "./vegLod";
@@ -34,21 +35,40 @@ export interface BarkStyle {
 }
 
 /**
- * Bark colours, matched by eye against photos of each tree (sRGB, before light): a Yoshino cherry's grey-brown with a
- * purple cast, a zelkova's / street tree's grey-brown, a weeping willow's dark grey-brown with olive young shoots, a
- * young tree's smooth grey-brown, a plum's near-black brown-grey.
+ * Bark colours (sRGB, before light). 2026-11-16 (plants2, the owner: "나무 줄기도 좀 실제느낌 나도록 해봐"): the old
+ * bark's colour is each bark photo's own mean (docs/designs/plants2/tools/make_veg_textures.py: Poly Haven CC0
+ * sakura_bark, japanese_zelkova_bark, bark_willow, japanese_hackberry_bark, bark_brown_02), the cherry's a little
+ * redder (a Yoshino cherry's glossy red-brown); the young bark (twigs) as before.
  */
 export const BARK_STYLE: Readonly<Record<TreeKind, BarkStyle>> = {
-  cherry: { pattern: "cherry", old: "#5E4D48", young: "#6E4B40" },
-  zelkova: { pattern: "plates", old: "#6B635B", young: "#74624F" },
-  green: { pattern: "plates", old: "#67605A", young: "#71604F" },
-  young: { pattern: "smooth", old: "#716559", young: "#76604D" },
-  willow: { pattern: "willow", old: "#5E544A", young: "#857A4E" },
-  orchard: { pattern: "plum", old: "#4F4541", young: "#64493C" },
+  cherry: { pattern: "cherry", old: "#5F4A42", young: "#6E4B40" },
+  zelkova: { pattern: "plates", old: "#8A7A68", young: "#74624F" },
+  green: { pattern: "plates", old: "#7C6E60", young: "#71604F" },
+  young: { pattern: "smooth", old: "#7A6B55", young: "#76604D" },
+  willow: { pattern: "willow", old: "#4E4236", young: "#857A4E" },
+  orchard: { pattern: "plum", old: "#5A5142", young: "#64493C" },
 };
 
-/** The textures' mean value (linear): the vertex colours are divided by it, so the bark's average colour is `old`. */
-const TEX_MEAN = 0.78;
+/**
+ * How mossy each kind's old trunk is near the ground on its shaded side (0..1): the old zelkova, the willows and the
+ * village's big broadleaf trees most, the cherries a little, the young trees and the orchard's plums hardly.
+ */
+export const BARK_MOSS: Readonly<Record<TreeKind, number>> = { zelkova: 1, willow: 0.9, green: 0.75, cherry: 0.45, orchard: 0.3, young: 0 };
+
+/** Per-pixel bark (normal map, gloss) of each pattern: how strong its relief, how glossy. */
+export const BARK_SURFACE: Readonly<Record<BarkPattern, { normal: number; gloss: number }>> = {
+  cherry: { normal: 1.0, gloss: 0.35 },
+  plates: { normal: 1.1, gloss: 0.06 },
+  willow: { normal: 1.4, gloss: 0.03 },
+  smooth: { normal: 0.9, gloss: 0.1 },
+  plum: { normal: 1.2, gloss: 0.04 },
+};
+
+/**
+ * The textures' mean value (linear): the vertex colours are divided by it, so the bark's average colour is `old`. The
+ * bark photos are scaled to it channel by channel (make_veg_textures.py), the drawn stand-ins too.
+ */
+const TEX_MEAN = 0.5;
 
 /** A branch's radius (m) at which its bark is old (and below which young). */
 const OLD_R = 0.06;
@@ -72,7 +92,9 @@ export function barkColour(style: BarkStyle, r: number): Rgba {
 export function barkLight(c: Vec3, R: number, groundY: number, sun: Vec3, fork?: { p: Vec3; r: number }) {
   return (p: Vec3, n: Vec3) => {
     const rho = Math.min(1, Math.hypot(p[0] - c[0], (p[1] - c[1]) * 1.4, p[2] - c[2]) / R);
-    const foot = 0.82 + 0.18 * Math.min(1, Math.max(0, (p[1] - groundY) / 0.8));
+    // the foot in the grass's and the soil's shade (contact AO), a little stronger at the very bottom
+    const h = Math.max(0, (p[1] - groundY) / 0.9);
+    const foot = 0.62 + 0.38 * Math.min(1, h) ** 0.7;
     let crotch = 1;
     if (fork) {
       const d = Math.hypot(p[0] - fork.p[0], p[1] - fork.p[1], p[2] - fork.p[2]);
@@ -94,8 +116,11 @@ const norm = (a: Vec3): Vec3 => {
   return [a[0] / l, a[1] / l, a[2] / l];
 };
 
-/** A tile of the texture is this many circumferences tall. */
-const TILE_ASPECT = 2.2;
+/** A tile of the texture is this many circumferences tall (the bark photos are square: as tall as wide). */
+const TILE_ASPECT = 1;
+
+/** Trunks this thick and more wrap the texture round more than once (a tile is about this many metres round). */
+const TILE_ROUND = 1.1;
 
 export interface BarkTubeOptions {
   /** Radius bumps round the trunk's foot (the roots): how strong (share of the radius) up to `flareTop` m. */
@@ -104,6 +129,12 @@ export interface BarkTubeOptions {
   v0?: number;
   /** The first ring's u = 0 direction (a limb leaving the trunk takes the trunk's there: the pattern runs on). */
   tx0?: Vec3;
+  /** How many times the texture goes round (a thick trunk: more than once, so the bark keeps its real size). */
+  wraps?: number;
+  /** An irregular cross-section and wobble (share of the radius) on thick wood: no perfect cylinder. */
+  irregular?: { k: number; seed: number };
+  /** The moss share per point (written to `aMoss` when the builder is a surface). */
+  moss?: (p: Vec3, r: number) => number;
 }
 
 /** Each ring's texture v and u = 0 direction (a limb can take them up where it leaves). */
@@ -123,6 +154,8 @@ export function barkTube(b: GeoBuilder, pts: readonly Vec3[], radii: readonly nu
   let tx: Vec3 = o.tx0 ?? norm(cross(first, Math.abs(first[1]) < 0.9 ? [0, 1, 0] : [1, 0, 0]));
   const rings: number[][] = [];
   let v = o.v0 ?? 0;
+  const wraps = o.wraps ?? 1;
+  let along = 0;
   for (let i = 0; i < pts.length; i++) {
     const d = norm(i === 0 ? sub(pts[1]!, pts[0]!) : i === pts.length - 1 ? sub(pts[i]!, pts[i - 1]!) : sub(pts[i + 1]!, pts[i - 1]!));
     tx = norm(sub(tx, mul(d, dot(tx, d))));
@@ -131,25 +164,34 @@ export function barkTube(b: GeoBuilder, pts: readonly Vec3[], radii: readonly nu
     if (i > 0) {
       const l = len(sub(pts[i]!, pts[i - 1]!));
       const circ = Math.PI * (radii[i]! + radii[i - 1]!);
-      v += l / Math.max(0.02, circ * TILE_ASPECT);
+      v += (l * wraps) / Math.max(0.02, circ * TILE_ASPECT);
+      along += l;
     }
     frames.v.push(v);
     const r = radii[i]!;
     const colour = barkColour(style, r);
     const ring: number[] = [];
+    b.moss = o.moss ? o.moss(pts[i]!, r) : 0;
     for (let s = 0; s <= sides; s++) {
       const a = (s / sides) * Math.PI * 2;
       const nrm = add(mul(tx, Math.cos(a)), mul(ty, Math.sin(a)));
+      b.tangent = add(mul(tx, -Math.sin(a)), mul(ty, Math.cos(a)));
       let rr = r;
+      if (o.irregular && r > 0.03) {
+        // two slow lobes round the trunk that turn as it rises, and a slight swelling and narrowing along it
+        const q = o.irregular.seed;
+        const k = o.irregular.k * Math.min(1, (r - 0.03) / 0.06);
+        rr *= 1 + k * (0.55 * Math.sin(2 * a + q + along * 0.9) + 0.35 * Math.sin(3 * a + q * 2.3 - along * 0.6) + 0.25 * Math.sin(along * 2.1 + q * 0.7));
+      }
       if (o.flare) {
         const h = Math.max(0, pts[i]![1] - o.flare.groundY);
         const k = o.flare.k * Math.max(0, 1 - h / o.flare.top) ** 2;
         // five roots, unevenly spaced
         const bump = Math.max(0, Math.cos(5 * a + o.flare.seed) + 0.35 * Math.cos(3 * a + o.flare.seed * 1.7));
-        rr = r * (1 + k * bump);
+        rr *= 1 + k * bump;
       }
       const p = add(pts[i]!, mul(nrm, rr));
-      ring.push(b.v(p, nrm, colour, [s / sides, v], 0, light(p, nrm)));
+      ring.push(b.v(p, nrm, colour, [(s / sides) * wraps, v], 0, light(p, nrm)));
     }
     rings.push(ring);
   }
@@ -407,13 +449,61 @@ export function skeletonBarkInto(b: GeoBuilder, sk: TreeSkeleton, low: boolean, 
   const style = BARK_STYLE[sk.kind];
   const d = drawnBark(sk);
   const r0 = sk.trunk.radii[1]!;
-  const sides = barkSides(r0, low);
-  const frames = barkTube(b, d.trunk.pts, d.trunk.radii, sides, style, light, { flare: { k: 0.35, top: 0.45, seed: sk.index * 1.37, groundY: sk.base[1] } });
+  // a little rounder than before (the irregular outline needs the faces): 16 round a trunk on the PC
+  const sides = Math.max(barkSides(r0, low), low ? 8 : r0 > 0.09 ? 16 : 12);
+  const wraps = Math.max(1, Math.round((2 * Math.PI * r0) / TILE_ROUND));
+  const groundY = sk.base[1];
+  const mossK = BARK_MOSS[sk.kind];
+  // moss: old wood only (radius 6 cm and more), thickest at the foot, gone by 2.2 m up
+  const moss = (p: Vec3, r: number) => mossK * Math.max(0, Math.min(1, (r - 0.05) / 0.08)) * Math.max(0, 1 - (p[1] - groundY) / 2.2) ** 1.4;
+  b.surface = true;
+  const irregular = { k: 0.1, seed: sk.index * 2.17 };
+  const frames = barkTube(b, d.trunk.pts, d.trunk.radii, sides, style, light, { flare: { k: 0.42, top: 0.55, seed: sk.index * 1.37, groundY }, wraps, irregular, moss });
   const v0 = frames.v[frames.v.length - 1] ?? 0;
   const tx0 = frames.tx[frames.tx.length - 1];
   // the limbs with the trunk's faces round (their first ring is the trunk's last)
-  for (const tip of d.limbs) barkTube(b, tip.pts, tip.radii, sides, style, light, { v0, tx0 });
-  for (const tip of d.sides) barkTube(b, tip.pts, tip.radii, barkSides(tip.radii[0]!, low), style, light, { v0: 0.71 });
+  for (const tip of d.limbs) barkTube(b, tip.pts, tip.radii, sides, style, light, { v0, tx0, wraps, irregular, moss });
+  for (const tip of d.sides) barkTube(b, tip.pts, tip.radii, barkSides(tip.radii[0]!, low), style, light, { v0: 0.71, moss });
+  // a few surface roots running out from the flare and down into the ground
+  for (const root of surfaceRoots(sk, low)) barkTube(b, root.pts, root.radii, low ? 5 : 7, style, light, { moss: () => mossK * 0.6 });
+  b.moss = 0;
+}
+
+/**
+ * The surface roots of a tree (old trees show their roots where the trunk meets the ground): 4-6 of them (none on the
+ * young trees), leaving the trunk's foot between the flare's bumps, running out 3-6 trunk radii and down under the
+ * ground, tapering. Shorter in a planter (they stay inside its soil).
+ */
+export function surfaceRoots(sk: TreeSkeleton, low: boolean): Branch[] {
+  if (sk.kind === "young") return [];
+  const r0 = sk.trunk.radii[1]!;
+  const g = sk.base;
+  const rand = mulberry32(9001 + sk.index * 31);
+  const n = low ? 3 : sk.kind === "zelkova" ? 6 : 4 + Math.floor(rand() * 2);
+  // the plaza cherries stand in round planters (soil to r 1.27 round the trunk): their roots stay within 1 m
+  const reach = Math.min(sk.kind === "zelkova" ? 0.85 : 1.0, r0 * (sk.kind === "cherry" ? 5.5 : 4.5));
+  const out: Branch[] = [];
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2 + rand() * 0.6 + sk.index;
+    const dir: Vec3 = [Math.cos(a), 0, Math.sin(a)];
+    const L = reach * (0.65 + 0.35 * rand());
+    const rr = r0 * (0.32 + 0.12 * rand());
+    const pts: Vec3[] = [];
+    const radii: number[] = [];
+    const m = 6;
+    for (let k = 0; k <= m; k++) {
+      const t = k / m;
+      const sway = Math.sin(t * 3 + i) * 0.08 * L;
+      const side: Vec3 = [-dir[2], 0, dir[0]];
+      const dist = r0 * 0.75 + L * t;
+      // up out of the flare, along the ground, then diving under it
+      const y = g[1] + rr * 0.9 * (1 - t) ** 0.6 + (t > 0.7 ? -(t - 0.7) * 0.25 : 0) - rr * 0.35 * t;
+      pts.push([g[0] + dir[0] * dist + side[0] * sway, y, g[2] + dir[2] * dist + side[2] * sway]);
+      radii.push(Math.max(0.006, rr * (1 - 0.8 * t)));
+    }
+    out.push({ pts, radii });
+  }
+  return out;
 }
 
 /** A phone's twig: fewer rings, its shape kept within 1 cm (the clusters placed on the full line stay on it). */
@@ -451,7 +541,7 @@ export function twigBark(twigs: readonly Branch[], style: BarkStyle, low: boolea
 
 // ───────────────────────────────────────────── textures ─────────────────────────────────────────────
 
-const TEX_W = 128;
+const TEX_W = 256;
 const TEX_H = 256;
 
 /** Periodic value noise on a `px` x `py` lattice over the unit square (wraps both ways). */
@@ -610,6 +700,41 @@ export function barkPixels(pattern: BarkPattern): Uint8Array {
     out[i * 4 + 3] = 255;
   });
   return out;
+}
+
+/**
+ * A pattern's bark photo and its normal map (client/public/models/village/veg, make_veg_textures.py): `map` starts as
+ * the drawn stand-in (`barkTexture`) and is swapped for the photo once it has loaded (`onLoad`); `normal` starts
+ * flat. `low` (the phone): the half-size files. Null where there is no DOM (tests).
+ */
+export function barkPhotos(pattern: BarkPattern, low: boolean, onLoad: (map: Texture, normal: Texture) => void): void {
+  if (typeof document === "undefined") return;
+  const loader = new TextureLoader();
+  const setup = (t: Texture) => {
+    t.wrapS = RepeatWrapping;
+    t.wrapT = RepeatWrapping;
+    t.colorSpace = NoColorSpace;
+    t.minFilter = LinearMipmapLinearFilter;
+    t.magFilter = LinearFilter;
+    t.anisotropy = 8;
+    t.name = `T_veg_bark_${pattern}_photo`;
+    return t;
+  };
+  // the full-size photo only where it is seen up close most (the plaza's cherries and zelkova, the village's greens)
+  const c = low || (pattern !== "cherry" && pattern !== "plates") ? 512 : 1024;
+  const n = low ? 256 : 512;
+  let map: Texture | null = null;
+  let normal: Texture | null = null;
+  const done = () => map && normal && onLoad(map, normal);
+  loader.load(versionedUrl(`/models/village/veg/bark_${pattern}_c${c}.jpg`), (t) => ((map = setup(t)), done()));
+  loader.load(versionedUrl(`/models/village/veg/bark_${pattern}_n${n}.jpg`), (t) => ((normal = setup(t)), done()));
+}
+
+/** A flat normal map (1 x 1, up): the surface materials' normal until the photo's has loaded. */
+export function flatNormal(): DataTexture {
+  const t = new DataTexture(new Uint8Array([128, 128, 255, 255]), 1, 1, RGBAFormat, UnsignedByteType);
+  t.needsUpdate = true;
+  return t;
 }
 
 /** A pattern's texture (linear values: a multiplier on the bark colour), repeating, mipmapped. */
