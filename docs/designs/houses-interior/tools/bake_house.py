@@ -20,6 +20,7 @@ Budgets (design 7.2): <= 1.0 MB, <= 45,000 triangles (col__ excluded), <= 24 mat
 """
 import json
 import math
+import re
 import os
 import struct
 import sys
@@ -273,8 +274,7 @@ def bake_lightmap(scene, obs, size, samples, out_png, lift, passes=1):
 def export_materials():
     out = {}
     for name, sp in K.MATS.items():
-        _old = bpy.data.materials.get(export_name(name))
-        if _old is not None:
+        for _old in [x for x in bpy.data.materials if re.sub(r"\.\d+$", "", x.name) == export_name(name)]:
             _old.name = "auth_" + _old.name
         m = bpy.data.materials.new(export_name(name))
         nt = m.node_tree
@@ -326,7 +326,7 @@ def export_materials():
 
 def convert(ob, EM):
     me = ob.data
-    names = [(m.name[5:] if m.name.startswith("auth_") else m.name) for m in me.materials]
+    names = [re.sub(r"\.\d+$", "", (m.name[5:] if m.name.startswith("auth_") else m.name)) for m in me.materials]
     uniq = []
     for n in names:
         if n not in uniq:
@@ -410,6 +410,7 @@ def lm_by_floor():
 def main():
     scene = bpy.context.scene
     n = arg("--house", 0, int)
+    kit_fix.set_house(n)
     size = arg("--size", 2048, int)
     samples = arg("--samples", 384, int)
     night = bool(arg("--night"))

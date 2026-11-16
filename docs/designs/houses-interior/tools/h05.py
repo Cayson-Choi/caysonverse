@@ -23,6 +23,7 @@ import ha_common as HA  # noqa: E402
 PAL = K.PAL
 PI = math.pi
 H = HC.House(5)
+FX.set_house(5)
 P = HA.prop_fn(H)
 
 MINT = (0.86, 0.95, 0.9, 1)
@@ -49,7 +50,9 @@ for wall, lst in sp1.items():
             wins.append((wall, c - w / 2, c + w / 2, 0.5, 3.0, dict(style="grid", cols=4, rows=3)))
         else:
             wins.append((wall, c - w / 2, c + w / 2, 0.95, 2.4, dict(style="grid", cols=3, rows=2)))
-curt = [("left", 7.8 - 4.13 - 1.0, 7.8 - 4.13 + 1.0, 2.7, 0.04, dict(folds=9, tn=(0.97, 0.97, 0.94, 1))),
+curt = [("front", 2.68 - 1.4, 2.68 + 1.4, 3.3, 0.04, dict(folds=9, tn=(0.97, 0.97, 0.94, 1))),
+        ("front", 7.92 - 1.4, 7.92 + 1.4, 3.3, 0.04, dict(folds=9, tn=(0.97, 0.97, 0.94, 1))),
+        ("left", 7.8 - 4.13 - 1.0, 7.8 - 4.13 + 1.0, 2.7, 0.04, dict(folds=9, tn=(0.97, 0.97, 0.94, 1))),
         ("right", 4.13 - 1.0, 4.13 + 1.0, 2.7, 0.04, dict(folds=9, tn=(0.97, 0.97, 0.94, 1)))]
 H.shell(1, ops=ops, wall_tn=MINT, floor_kind="tile_grey", floor_tn=(1.0, 0.95, 0.85, 1), windows=wins, curtains=curt,
         lights=((2.6, 2.8), (2.6, 5.4), (8.0, 1.8), (8.0, 4.0), (5.3, 1.4)),
@@ -138,6 +141,9 @@ H.piece(2, "tealamp", DE.floor_lamp, 5.8, 5.4)
 H.piece(1, "view", FX.view_band, 0, 0, 0, 0, cols=False, seats=False, house=5)
 H.piece(2, "view", FX.view_band, 0, 0, 0, 0, cols=False, seats=False, house=5)
 
+H.piece(2, "part_a", FX.part_wall, 7.2, 0.0, 0, -PI / 2, length=6.0, openings=[(3.0, 4.8, 2.6)], tn=(0.95, 0.93, 0.84, 1))
+H.piece(2, "bedpend", DE.pendant_globe, 8.8, 3.2, 2.6, 0.0, drop=1.1, r=0.16, cols=False)
+
 problems = H.finish()
 
 CAMS = [
@@ -145,7 +151,7 @@ CAMS = [
     dict(name="1f_living", floor=1, eye=[5.3, 2.6, 1.25], look=[1.2, 5.0, 0.8], lens=16),
     dict(name="1f_dining", floor=1, eye=[4.8, 5.8, 1.25], look=[8.8, 1.2, 0.9], lens=16),
     dict(name="1f_windows", floor=1, eye=[5.2, 6.0, 1.25], look=[3.4, 0.4, 1.4], lens=16),
-    dict(name="2f_tea", floor=2, eye=[6.2, 5.6, 1.2], look=[2.4, 2.2, 0.7], lens=16),
+    dict(name="2f_tea", floor=2, eye=[6.6, 4.2, 1.2], look=[2.4, 2.2, 0.7], lens=16),
     dict(name="2f_bed", floor=2, eye=[4.8, 4.0, 1.25], look=[10.0, 1.6, 0.9], lens=16),
     dict(name="2f_well", floor=2, eye=[2.4, 2.4, 1.3], look=[7.0, 7.0, 0.2], lens=16),
 ]

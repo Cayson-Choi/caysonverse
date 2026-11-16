@@ -203,8 +203,9 @@ def view_band(F, house=1, R=9.0, n=48, cx=5.3, cz=3.9, eye=1.6):
     G samples house_N_view.webp (2048 x 1024, day = top half, night = bottom half) with repeat.y 0.5 and offset 0 / 0.5."""
     import os
     p = os.path.join(K.WORK, f"house_{house}_view_day.png")
-    if os.path.exists(p) and "tex" not in K.MATS["M_view"]:
-        pass
+    if os.path.exists(p) and os.environ.get("CV_VIEW_PREVIEW", "1") == "1":       # authoring / preview renders only (the export is a plain material)
+        K.MATS["M_view"] = dict(tex=p, rough=1.0, glow=1.0)
+        K._M.pop("M_view", None)
     y0, y1 = eye - R, eye + R
     for i in range(n):
         a0 = -math.pi + 2 * math.pi * i / n
@@ -214,3 +215,51 @@ def view_band(F, house=1, R=9.0, n=48, cx=5.3, cz=3.9, eye=1.6):
         am = (a0 + a1) / 2
         gface(F, [(P0[0], P0[1], y0), (P1[0], P1[1], y0), (P1[0], P1[1], y1), (P0[0], P0[1], y1)], "M_view", None, 1.0,
               (-math.sin(am), -math.cos(am), 0), uv=[(i / n, 0.0), ((i + 1) / n, 0.0), ((i + 1) / n, 1.0), (i / n, 1.0)])
+
+
+# ---- per-house wallpaper, shoes, partitions ------------------------------------------------------------------------------
+def set_house(n):
+    """H_plaster (walls + ceilings) becomes this house's patterned wallpaper T_h_wp<n>.png (same material count)"""
+    K.MATS["H_plaster"] = dict(tex=f"T_h_wp{n}.png", rough=0.92, tint=True)
+    K._M.pop("H_plaster", None)
+
+
+def shoes_pair(F, tn=(0.85, 0.85, 0.82, 1), sole=(0.95, 0.95, 0.95, 1)):
+    """a pair of sneakers (about 80 triangles): sole + upper + toe cap + tongue, two shoes slightly apart"""
+    for k, sx in enumerate((-0.07, 0.07)):
+        a = 0.12 * (1 if k else -1)
+        G = F.sub(sx, 0.0, 0.0, a)
+        rbox(G, -0.045, 0.045, -0.13, 0.13, 0.0, 0.025, "H_rubber", r=0.0, seg=1, tn=sole)
+        rbox(G, -0.04, 0.04, -0.12, 0.07, 0.025, 0.075, "H_fabric", r=0.0, seg=1, tn=tn)
+        rbox(G, -0.04, 0.04, 0.02, 0.12, 0.025, 0.055, "H_fabric", r=0.0, seg=1, tn=tuple(c * 0.8 for c in tn[:3]) + (1,))
+        rbox(G, -0.03, 0.03, -0.06, 0.0, 0.075, 0.1, "H_fabric", r=0.0, seg=1, tn=tn)
+
+
+def part_wall(F, length, openings=(), th=0.12, h=3.7, tn=None, name="part", along="x", trim_tn=None):
+    """interior partition: a wall of `length` along local +x of F with doorways (s0, s1, head) (doorless, >= 1.6 m wide), both faces
+    wallpapered, baseboards, a crown line, architrave on both sides, colliders per segment (camera boxes). Origin = start of the wall,
+    the wall is centred on z = 0."""
+    tn = tn or PAL["white"]
+    ttn = trim_tn or PAL["paint_white"]
+    ops = sorted(openings)
+    segs, s = [], 0.0
+    for (a, b, hd) in ops:
+        if a - s > 0.02:
+            segs.append((s, a))
+        s = b
+    if length - s > 0.02:
+        segs.append((s, length))
+    hz = th / 2
+    for (a, b) in segs:
+        rbox(F, a, b, -hz, hz, 0.0, h, "H_plaster", r=0.0, seg=1, tn=tn, grain=(1, 0, 0))
+        for sgn in (-1, 1):
+            rbox(F, a, b, sgn * hz if sgn > 0 else -hz - 0.014, (hz + 0.014) if sgn > 0 else -hz, 0.0, 0.1, "H_paint", r=0.0, seg=1, tn=ttn)
+            rbox(F, a, b, sgn * hz if sgn > 0 else -hz - 0.03, (hz + 0.03) if sgn > 0 else -hz, h - 0.08, h, "H_paint", r=0.0, seg=1, tn=ttn)
+        col(F, a, b, -hz, hz, h, name=name, camera=True)
+    for (a, b, hd) in ops:
+        rbox(F, a, b, -hz, hz, hd, h, "H_plaster", r=0.0, seg=1, tn=tn)
+        for sgn in (-1, 1):
+            z0, z1 = (hz, hz + 0.016) if sgn > 0 else (-hz - 0.016, -hz)
+            rbox(F, a - 0.07, a, z0, z1, 0.0, hd + 0.07, "H_paint", r=0.0, seg=1, tn=ttn)
+            rbox(F, b, b + 0.07, z0, z1, 0.0, hd + 0.07, "H_paint", r=0.0, seg=1, tn=ttn)
+            rbox(F, a - 0.07, b + 0.07, z0, z1, hd, hd + 0.07, "H_paint", r=0.0, seg=1, tn=ttn)

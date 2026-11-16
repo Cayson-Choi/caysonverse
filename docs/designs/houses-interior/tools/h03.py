@@ -24,6 +24,7 @@ import ha_common as HA  # noqa: E402
 PAL = K.PAL
 PI = math.pi
 H = HC.House(3)
+FX.set_house(3)
 P = HA.prop_fn(H)
 
 WALL1 = (0.97, 0.93, 0.8, 1)       # warm cream (노랑 집)
@@ -109,7 +110,7 @@ H.shell(2, ops=ops2, wall_tn=WALL2, windows=wins2, curtains=curt2, floor_kind="o
 # guest area (left): quilt chest + pile, low table with two floor cushions, low bookshelf
 H.piece(2, "closet", ST.wardrobe_wood, 0.3, 0.9, 0, PI / 2, w=1.2)
 H.piece(2, "futon", FX.futon_stack, 0.5, 2.2, 0, PI / 2, w=1.0, d=0.7, n=5)
-H.piece(2, "rug", DE.rug_rect, 2.6, 4.6, 0, 0.0, w=2.6, d=2.0, cols=False, tn=(0.86, 0.72, 0.55, 1), border_tn=(0.6, 0.4, 0.3, 1), fringe=False)
+H.piece(2, "rug", DE.rug_rect, 2.5, 4.6, 0, 0.0, w=2.2, d=1.9, cols=False, tn=(0.86, 0.72, 0.55, 1), border_tn=(0.6, 0.4, 0.3, 1), fringe=False)
 H.piece(2, "table", TA.table_low, 2.6, 4.6, 0, 0.0, w=1.2, d=0.7)
 H.piece(2, "cush", SE.bangseok, 2.6, 3.8, 0, 0.0, tn=PAL["rug_red"])
 H.piece(2, "cush", SE.bangseok, 2.6, 5.4, 0, PI, tn=PAL["sofa_navy"])
@@ -130,6 +131,10 @@ H.piece(2, "basket", DE.basket, 6.9, 2.6, 0.0, 0.0, r=0.25, h=0.35, tn=(0.85, 0.
 H.piece(1, "view", FX.view_band, 0, 0, 0, 0, cols=False, seats=False, house=3)
 H.piece(2, "view", FX.view_band, 0, 0, 0, 0, cols=False, seats=False, house=3)
 
+H.piece(2, "part_a", FX.part_wall, 3.8, 0.0, 0, -PI / 2, length=6.0, openings=[(3.4, 5.2, 2.6)], tn=WALL2)
+H.piece(2, "tpend", DE.pendant_dome, 2.5, 4.6, 2.55, 0.0, drop=1.15, r=0.2, cols=False)
+H.piece(2, "spend", DE.pendant_globe, 6.0, 2.5, 2.6, 0.0, drop=1.1, r=0.16, cols=False)
+
 problems = H.finish()
 
 CAMS = [
@@ -137,8 +142,8 @@ CAMS = [
     dict(name="1f_kitchen", floor=1, eye=[7.4, 2.6, 1.3], look=[2.6, 7.4, 1.1], lens=16),
     dict(name="1f_table", floor=1, eye=[2.4, 2.3, 1.25], look=[6.2, 5.3, 0.9], lens=16),
     dict(name="1f_window", floor=1, eye=[6.2, 3.3, 1.3], look=[1.6, 0.4, 0.7], lens=16),
-    dict(name="2f_guest", floor=2, eye=[6.8, 2.4, 1.3], look=[1.4, 5.4, 0.7], lens=16),
-    dict(name="2f_sofa", floor=2, eye=[3.3, 6.2, 1.3], look=[5.3, 0.6, 0.8], lens=16),
+    dict(name="2f_guest", floor=2, eye=[1.0, 1.3, 1.3], look=[2.8, 5.2, 0.6], lens=16),
+    dict(name="2f_sofa", floor=2, eye=[6.2, 5.6, 1.3], look=[4.6, 0.6, 0.8], lens=16),
     dict(name="2f_well", floor=2, eye=[6.6, 2.2, 1.3], look=[9.8, 6.0, 0.2], lens=16),
 ]
 json.dump(CAMS, open(os.path.join(K.WORK, "house_3_cams.json"), "w"), indent=1)

@@ -23,6 +23,7 @@ import ha_common as HA  # noqa: E402
 PAL = K.PAL
 PI = math.pi
 H = HC.House(4)
+FX.set_house(4)
 P = HA.prop_fn(H)
 
 WALL1 = (0.97, 0.92, 0.78, 1)          # warm wallpaper
@@ -30,6 +31,7 @@ RED = (0.78, 0.35, 0.33, 1)
 NAVY = (0.3, 0.38, 0.55, 1)
 GOLD = (0.88, 0.7, 0.3, 1)
 GRN = (0.45, 0.6, 0.45, 1)
+DARK = (0.42, 0.28, 0.18, 1)        # dark wood 창호 frames
 
 
 def face_center(cx, cz, x, z):
@@ -49,7 +51,7 @@ wins = []
 for wall, lst in sp1.items():
     for (c, w) in lst:
         kitchen = wall == "front" and c > 6
-        wins.append((wall, c - w / 2, c + w / 2, 0.8, 2.2, dict(style="grid", cols=3, rows=2) if kitchen else dict(style="slide", paper=True)))
+        wins.append((wall, c - w / 2, c + w / 2, 0.8, 2.2, dict(style="grid", cols=3, rows=2) if kitchen else dict(style="ttisal", tn=DARK)))
 H.shell(1, ops=ops, wall_tn=WALL1, floor_kind="jangpan", floor_tn=(0.95, 0.9, 0.78, 1), windows=wins,
         lights=((3.2, 2.8), (3.4, 5.6), (7.8, 2.0), (8.8, 5.6), (5.3, 1.4)),
         fixtures=[lambda fr: SH.entry_door(fr["front"][0], 4.4, 6.2, 2.9)])
@@ -113,7 +115,7 @@ H.piece(1, "basket", DE.basket, 2.4, 6.9, 0.0, 0.0, r=0.24, h=0.3, tn=(0.82, 0.6
 sp2 = HA.spec(skip=[("left", 7.8 - 4.13)])
 ops2 = HA.ops_windows(sp2, y0=0.8, y1=2.2)
 HA.merge(ops2, dict(front=[dict(s0=4.4, s1=5.3, y0=0.0, y1=2.13)]))
-wins2 = [(w, c - wd / 2, c + wd / 2, 0.8, 2.2, dict(style="ttisal")) for w, lst in sp2.items() for (c, wd) in lst]
+wins2 = [(w, c - wd / 2, c + wd / 2, 0.8, 2.2, dict(style="ttisal", tn=DARK)) for w, lst in sp2.items() for (c, wd) in lst]
 H.shell(2, ops=ops2, wall_tn=(0.96, 0.9, 0.76, 1), floor_kind="jangpan", floor_tn=(0.88, 0.8, 0.66, 1), windows=wins2,
         lights=((3.4, 2.4), (6.0, 3.2), (8.0, 5.6), (5.2, 5.6)),
         fixtures=[lambda fr: SH.bath_door(fr["front"][0], 4.4, 5.3, 2.1)])
@@ -132,13 +134,16 @@ H.piece(2, "tcush", SE.bangseok, 6.0, 4.1, 0, PI, tn=GRN)
 H.piece(2, "tea", DE.tea_set, 6.0, 3.3, 0.35, 0.0, cols=False)
 H.piece(2, "lantern", DE.hanji_lantern, 6.0, 3.3, 2.9, 0.0, drop=0.8, cols=False)
 H.piece(2, "rug", DE.rug_rect, 6.0, 3.3, 0, 0.0, w=2.4, d=2.4, cols=False, tn=(0.8, 0.62, 0.45, 1), border_tn=(0.5, 0.3, 0.25, 1), fringe=False)
-H.piece(2, "screen", ST.folding_screen, 9.2, 5.9, 0, PI / 2, panels=4, pw=0.45)
+H.piece(2, "screen", ST.folding_screen, 10.2, 6.5, 0, PI / 2, panels=4, pw=0.45)
 H.piece(2, "books", FX.futon_stack, 9.6, 1.2, 0, 0.0, w=0.9, d=0.6, n=5, tn_list=[(0.5, 0.4, 0.3, 1), (0.8, 0.7, 0.5, 1), (0.6, 0.5, 0.4, 1)])
 H.piece(2, "plant", FX.plant_monstera_full, 9.8, 3.6)
 H.piece(2, "photos", DE.frame_family, 10.56, 5.3, 1.6, -PI / 2, cols=False)
 
 H.piece(1, "view", FX.view_band, 0, 0, 0, 0, cols=False, seats=False, house=4)
 H.piece(2, "view", FX.view_band, 0, 0, 0, 0, cols=False, seats=False, house=4)
+
+H.piece(2, "part_a", FX.part_wall, 2.6, 5.0, 0, 0.0, length=8.0, openings=[(2.0, 4.0, 2.4)], tn=(0.96, 0.9, 0.76, 1), trim_tn=DARK)
+H.piece(1, "ondolpend", DE.hanji_lantern, 4.6, 5.0, 2.9, 0.0, drop=0.8, cols=False)
 
 problems = H.finish()
 

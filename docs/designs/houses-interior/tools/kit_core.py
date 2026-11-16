@@ -374,6 +374,7 @@ def rbox(F, x0, x1, z0, z1, y0, y1, m, r=0.01, seg=2, grain=(1, 0, 0), tile=1.0,
     sx, sz, sy = abs(x1 - x0), abs(z1 - z0), abs(y1 - y0)
     if r < 0.0035 and not (puff or sag or cuts):     # HA triangle budget: a bevel under 3.5 mm is invisible, 26 faces instead of 6
         r = 0
+    cuts = min(cuts, 3)
     if r < 0.012:
         seg = 1
     elif r < 0.03:

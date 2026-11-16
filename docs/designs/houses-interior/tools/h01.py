@@ -23,6 +23,7 @@ import kit_fix as FX  # noqa: E402
 PAL = K.PAL
 PI = math.pi
 H = HC.House(1)
+FX.set_house(1)
 
 WALL1 = (0.96, 0.955, 0.95, 1)          # cool white-greige
 FLOOR_TN = (0.97, 0.96, 0.95, 1)
@@ -57,7 +58,7 @@ ops["front"].append(dict(s0=4.4, s1=6.2, y0=0.0, y1=2.9))                 # entr
 ops["left"].append(dict(s0=7.8 - 1.55, s1=7.8 - 0.65, y0=0.0, y1=2.13))   # bathroom door (left wall, front)
 ops["left"].sort(key=lambda o: o["s0"])
 ops["front"].sort(key=lambda o: o["s0"])
-wins, curt = add_windows(W1, curtain=("left", "back"))
+wins, curt = add_windows(W1, curtain=("left", "right", "back"))
 H.shell(1, ops=ops, wall_tn=WALL1, floor_tn=FLOOR_TN, windows=wins, curtains=curt,
         lights=((2.6, 2.6), (2.6, 5.4), (5.3, 1.6), (8.3, 1.8), (8.3, 3.8)),
         fixtures=[lambda fr: SH.entry_door(fr["front"][1] if False else fr["front"][0], 4.4, 6.2, 2.9),
@@ -158,6 +159,10 @@ H.piece(2, "dlamp", DE.table_lamp, 10.3, 3.45, 0.74, 0.0, cols=False)
 H.piece(1, "view", FX.view_band, 0, 0, 0, 0, cols=False, seats=False, house=1)
 H.piece(2, "view", FX.view_band, 0, 0, 0, 0, cols=False, seats=False, house=1)
 
+H.piece(2, "part_a", FX.part_wall, 5.5, 0.0, 0, -PI / 2, length=6.2, openings=[(2.4, 4.2, 2.6)], tn=WALL2)
+H.piece(2, "bedpend", DE.pendant_globe, 3.2, 2.3, 2.6, 0.0, drop=1.1, r=0.16, cols=False)
+H.piece(1, "livepend", DE.pendant_dome, 2.5, 5.0, 2.55, 0.0, drop=1.15, r=0.22, cols=False)
+
 problems = H.finish()
 
 CAMS = [
@@ -166,8 +171,8 @@ CAMS = [
     dict(name="1f_kitchen", floor=1, eye=[5.9, 5.0, 1.3], look=[9.6, 1.3, 1.0], lens=16),
     dict(name="1f_stair", floor=1, eye=[4.7, 1.9, 1.3], look=[8.6, 6.8, 2.0], lens=16),
     dict(name="2f_bed", floor=2, eye=[7.3, 3.5, 1.3], look=[0.4, 1.9, 0.9], lens=16),
-    dict(name="2f_study", floor=2, eye=[4.5, 1.2, 1.3], look=[10.0, 4.3, 1.0], lens=16),
-    dict(name="2f_well", floor=2, eye=[2.6, 2.6, 1.3], look=[7.8, 7.0, 0.2], lens=16),
+    dict(name="2f_study", floor=2, eye=[6.4, 1.2, 1.3], look=[10.2, 4.3, 1.0], lens=16),
+    dict(name="2f_well", floor=2, eye=[7.0, 2.2, 1.3], look=[7.8, 7.0, 0.2], lens=16),
 ]
 json.dump(CAMS, open(os.path.join(K.WORK, "house_1_cams.json"), "w"), indent=1)
 H.save(os.path.join(K.WORK, "house_1_authoring.blend"))

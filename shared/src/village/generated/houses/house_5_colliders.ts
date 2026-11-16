@@ -30,6 +30,8 @@ export const HOUSE_5_COLLIDERS: readonly AABB[] = [
   { minX: 462.43, maxX: 463.07, minZ: -0.92, maxZ: -0.28 }, // col__h5_1_rubber
   { minX: 463.03, maxX: 463.75, minZ: -3.77, maxZ: -3.05 }, // col__h5_1_dchair2
   { minX: 463.03, maxX: 463.75, minZ: -2.55, maxZ: -1.83 }, // col__h5_1_dchair3
+  { minX: 463.14, maxX: 463.26, minZ: 24, maxZ: 25.2 }, // col__h5_2_part_a_1
+  { minX: 463.14, maxX: 463.26, minZ: 27, maxZ: 30 }, // col__h5_2_part_a_0
   { minX: 463.45, maxX: 464.55, minZ: -3.35, maxZ: -2.25 }, // col__h5_1_dtable
   { minX: 464.25, maxX: 464.97, minZ: -3.77, maxZ: -3.05 }, // col__h5_1_dchair
   { minX: 464.25, maxX: 464.97, minZ: -2.55, maxZ: -1.83 }, // col__h5_1_dchair4
@@ -53,6 +55,8 @@ export const HOUSE_5_CAMERA_BOXES: readonly CameraBox[] = [
   { minX: 456.3, maxX: 456.9, minZ: -7.1, maxZ: -6.5, height: 1.7 }, // col__h5_1_olive2
   { minX: 459.6, maxX: 460.2, minZ: -0.85, maxZ: -0.25, height: 1.7 }, // col__h5_1_olive
   { minX: 461.06, maxX: 465.14, minZ: -7.7, maxZ: -6.4, height: 3.7 }, // col__h5_1_stair_high
+  { minX: 463.14, maxX: 463.26, minZ: 24, maxZ: 25.2, height: 3.7 }, // col__h5_2_part_a_1
+  { minX: 463.14, maxX: 463.26, minZ: 27, maxZ: 30, height: 3.7 }, // col__h5_2_part_a_0
   { minX: 465.5, maxX: 466.1, minZ: 24.4, maxZ: 25, height: 1.7 }, // col__h5_2_plant
   { minX: 466.6, maxX: 466.9, minZ: -7.8, maxZ: 0, height: 3.7 }, // col__h5_1_wall_right
   { minX: 466.6, maxX: 466.9, minZ: 22.2, maxZ: 30, height: 3.7 }, // col__h5_2_wall_right

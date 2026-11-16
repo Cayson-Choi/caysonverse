@@ -22,6 +22,8 @@ export const HOUSE_3_COLLIDERS: readonly AABB[] = [
   { minX: 409.55, maxX: 409.75, minZ: 22.25, maxZ: 22.45 }, // col__h3_2_orchid
   { minX: 409.7, maxX: 411.5, minZ: -1.08, maxZ: -0.08 }, // col__h3_1_pyeong
   { minX: 410, maxX: 411.2, minZ: 25.05, maxZ: 25.75 }, // col__h3_2_table
+  { minX: 411.74, maxX: 411.86, minZ: 24, maxZ: 24.8 }, // col__h3_2_part_a_1
+  { minX: 411.74, maxX: 411.86, minZ: 26.6, maxZ: 30 }, // col__h3_2_part_a_0
   { minX: 411.9, maxX: 413, minZ: -7.8, maxZ: -7.46 }, // col__h3_1_upper2
   { minX: 412, maxX: 413.7, minZ: 28.98, maxZ: 29.93 }, // col__h3_2_sofa
   { minX: 412.35, maxX: 414.25, minZ: -5.32, maxZ: -4.37 }, // col__h3_1_dtable
@@ -56,6 +58,8 @@ export const HOUSE_3_CAMERA_BOXES: readonly CameraBox[] = [
   { minX: 408.02, maxX: 408.57, minZ: 28.5, maxZ: 29.7, height: 1.9 }, // col__h3_2_closet
   { minX: 408.06, maxX: 408.98, minZ: -7.77, maxZ: -6.99, height: 1.8 }, // col__h3_1_fridge
   { minX: 409.05, maxX: 410.25, minZ: -7.8, maxZ: -7.46, height: 2.2 }, // col__h3_1_upper
+  { minX: 411.74, maxX: 411.86, minZ: 24, maxZ: 24.8, height: 3.7 }, // col__h3_2_part_a_1
+  { minX: 411.74, maxX: 411.86, minZ: 26.6, maxZ: 30, height: 3.7 }, // col__h3_2_part_a_0
   { minX: 411.9, maxX: 413, minZ: -7.8, maxZ: -7.46, height: 2.2 }, // col__h3_1_upper2
   { minX: 414.98, maxX: 415.62, minZ: 24.28, maxZ: 24.92, height: 1.7 }, // col__h3_2_plant
   { minX: 415.95, maxX: 417.15, minZ: -7.79, maxZ: -7.37, height: 1.9 }, // col__h3_1_dishes

@@ -43,7 +43,7 @@ def main():
     scene.render.resolution_x = res
     scene.render.resolution_y = int(res * 9 / 16)
     scene.view_settings.view_transform = "AgX"
-    scene.view_settings.exposure = 0.0
+    scene.view_settings.exposure = -0.35 if not night else -0.2
     for o in bpy.data.objects:
         if o.name.startswith(K.COL_PREFIX) or o.name.startswith("ceil__"):
             o.hide_render = True

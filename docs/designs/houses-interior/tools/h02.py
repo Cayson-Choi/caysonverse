@@ -24,6 +24,7 @@ import ha_common as HA  # noqa: E402
 PAL = K.PAL
 PI = math.pi
 H = HC.House(2)
+FX.set_house(2)
 P = HA.prop_fn(H)
 
 WALL1 = (0.97, 0.97, 0.95, 1)
@@ -38,7 +39,7 @@ GRN = (0.55, 0.75, 0.5, 1)
 sp1 = HA.spec(skip=[("back", 10.6 - 3.04)])
 ops = HA.ops_windows(sp1)
 HA.merge(ops, dict(front=[dict(s0=4.4, s1=6.2, y0=0.0, y1=2.9)], right=[dict(s0=0.7, s1=1.6, y0=0.0, y1=2.13)]))
-wins, curt = HA.add_windows(sp1, curtain=("right", "back"))
+wins, curt = HA.add_windows(sp1, curtain=("right", "back", "left"))
 H.shell(1, ops=ops, wall_tn=WALL1, windows=wins, curtains=curt, floor_tn=(0.96, 0.95, 0.94, 1),
         lights=((2.4, 2.0), (2.6, 5.0), (5.3, 1.8), (8.2, 2.2), (8.6, 5.4)),
         fixtures=[lambda fr: SH.entry_door(fr["front"][0], 4.4, 6.2, 2.9),
@@ -97,11 +98,11 @@ H.piece(1, "sofa_pic", DE.frame_art, 10.56, 6.0, 1.5, -PI / 2, w=0.6, h=0.45, ar
 # ================================================================================================ floor 2 ======
 sp2 = HA.spec()
 ops2 = HA.ops_windows(sp2)
-HA.merge(ops2, dict(front=[dict(s0=5.9, s1=6.8, y0=0.0, y1=2.13)]))
-wins2, curt2 = HA.add_windows(sp2, curtain=("left", "right"))
+HA.merge(ops2, dict(front=[dict(s0=6.2, s1=7.1, y0=0.0, y1=2.13)]))
+wins2, curt2 = HA.add_windows(sp2, curtain=("left", "right", "back", "front"))
 H.shell(2, ops=ops2, wall_tn=WALL2, windows=wins2, curtains=curt2, floor_tn=(0.96, 0.95, 0.94, 1),
         lights=((2.2, 2.2), (3.4, 4.6), (8.4, 2.0), (8.6, 5.2)),
-        fixtures=[lambda fr: SH.bath_door(fr["front"][0], 5.9, 6.8, 2.1)])
+        fixtures=[lambda fr: SH.bath_door(fr["front"][0], 6.2, 7.1, 2.1)])
 # kids' room (left)
 H.piece(2, "bunk", BE.bunk_bed, 1.2, 1.4, 0, PI / 2, tn=SKY)
 H.piece(2, "desk", TA.kids_desk, 3.9, 0.3, 0, 0.0, w=1.0)
@@ -138,6 +139,10 @@ P(2, "ncup", "mug_p", 10.3, 0.85, 0.55, 0.0) if False else None
 H.piece(1, "view", FX.view_band, 0, 0, 0, 0, cols=False, seats=False, house=2)
 H.piece(2, "view", FX.view_band, 0, 0, 0, 0, cols=False, seats=False, house=2)
 
+H.piece(2, "part_a", FX.part_wall, 5.75, 0.0, 0, -PI / 2, length=6.2, openings=[(2.4, 4.3, 2.6)], tn=WALL2)
+H.piece(2, "kidpend", DE.pendant_dome, 2.8, 3.7, 2.6, 0.0, drop=1.1, r=0.2, cols=False)
+H.piece(2, "parpend", DE.pendant_globe, 8.4, 3.8, 2.6, 0.0, drop=1.1, r=0.16, cols=False)
+
 problems = H.finish()
 
 CAMS = [
@@ -146,7 +151,7 @@ CAMS = [
     dict(name="1f_living", floor=1, eye=[5.0, 1.5, 1.25], look=[9.4, 5.8, 0.9], lens=16),
     dict(name="1f_stair", floor=1, eye=[7.0, 5.0, 1.3], look=[2.0, 6.9, 1.5], lens=16),
     dict(name="2f_kids", floor=2, eye=[5.9, 3.4, 1.3], look=[1.0, 1.4, 0.9], lens=16),
-    dict(name="2f_parents", floor=2, eye=[5.6, 5.2, 1.3], look=[10.0, 2.2, 0.9], lens=16),
+    dict(name="2f_parents", floor=2, eye=[8.2, 5.6, 1.3], look=[10.3, 1.8, 0.9], lens=16),
     dict(name="2f_well", floor=2, eye=[8.0, 4.8, 1.3], look=[2.6, 7.0, 0.2], lens=16),
 ]
 json.dump(CAMS, open(os.path.join(K.WORK, "house_2_cams.json"), "w"), indent=1)
