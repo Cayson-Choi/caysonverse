@@ -76,7 +76,8 @@ describe("the houses' ground: bounds, walls, blockers", () => {
     const bounds = geo.bounds;
     let free = 0;
     let probed = 0;
-    for (let x = L.walkBounds.maxX + 0.5; x <= bounds.maxX; x += 0.5) {
+    // (from the village area's east edge: since release 1 it reaches the fishing lake, x 186)
+    for (let x = L.areas.village.maxX + 0.5; x <= bounds.maxX; x += 0.5) {
       for (let z = bounds.minZ; z <= bounds.maxZ; z += 0.5) {
         probed++;
         const inRoom = rooms.some((r) => inside(r, { x, z })) || inside(L.areas.hall, { x, z });

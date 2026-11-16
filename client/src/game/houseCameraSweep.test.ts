@@ -12,7 +12,7 @@ import { HOUSE_FLOORS, HOUSE_ROOM, houseFloorBounds, houseFloorArea } from "@cay
 import { isBlocked } from "@caysonverse/shared/collision";
 import { CAMERA, HEAD_HEIGHT } from "./constants";
 import { VILLAGE_ACTIVE_MAP, setActiveMap, villageActiveMap } from "./activeMap";
-import { SPRING } from "./cameraCollision";
+import { SPRING, isPropCameraBox } from "./cameraCollision";
 import { createFollowRig, createFollowSpot, stepFollowRig } from "./followRig";
 import type { Orbit } from "./types";
 
@@ -56,7 +56,8 @@ describe("the camera in every house floor", () => {
                     if (!(spot.y < ceil - 0.05 && spot.y > 0.2)) bad.push(`height ${spot.y.toFixed(2)} ${tag}`);
                     // not inside a tall box (the walls' own boxes are the room's rim: the test above covers them)
                     for (const b of map.geometry.cameraBoxes) {
-                      if (b.height === undefined || b.height < 1.6 || b.minY !== undefined) continue;
+                      // (the owner's camera rule, 2026-11-16: only walls and buildings shorten the arm — a fridge or a lamp is a prop the lens may pass)
+                      if (b.height === undefined || b.height < 1.6 || b.minY !== undefined || isPropCameraBox(b)) continue;
                       const within = spot.x > b.minX && spot.x < b.maxX && spot.z > b.minZ && spot.z < b.maxZ && spot.y < b.height;
                       if (within) bad.push(`inside a ${b.height} m box [${b.minX}..${b.maxX}, ${b.minZ}..${b.maxZ}] ${tag}: camera ${spot.x.toFixed(2)}, ${spot.y.toFixed(2)}, ${spot.z.toFixed(2)}`);
                     }
