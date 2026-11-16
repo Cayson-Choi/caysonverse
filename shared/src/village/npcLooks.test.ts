@@ -127,9 +127,10 @@ describe("NPC 전용 모습은 조립실·옷장에 없다 (owner 2026-11-16)", 
 });
 
 describe("npc.glb (NPC 옷·소품·동작, 같은 뼈대)", () => {
-  it("carries its content hash and stays within its own budget (1 MB)", () => {
+  it("carries its content hash and stays within its own budget (1.5 MB)", () => {
     const sha = createHash("sha256").update(npc.buf).digest("hex");
     expect(NPC_GLB_HASH).toBe(sha.slice(0, 8));
+    expect(NPC_GLB_MAX_BYTES).toBe(1.5 * 1024 * 1024);
     expect(statSync(NPC_GLB).size).toBeLessThanOrEqual(NPC_GLB_MAX_BYTES);
   });
 
@@ -154,10 +155,17 @@ describe("npc.glb (NPC 옷·소품·동작, 같은 뼈대)", () => {
     }
   });
 
-  it("uses only fixed-colour materials (no player tint) plus the guide's badge picture", () => {
-    const names = (npc.gltf.materials ?? []).map((m) => m.name ?? "");
-    for (const n of names) expect(n.startsWith("npc_"), n).toBe(true);
-    expect(names).toContain("npc_badge");
+  it("uses only its own materials (no player tint): fixed colours, the badges' pictures and matte fabrics with a weave normal map", () => {
+    const mats = (npc.gltf.materials ?? []) as { name?: string; normalTexture?: unknown; pbrMetallicRoughness?: { roughnessFactor?: number } }[];
+    const names = mats.map((m) => m.name ?? "");
+    for (const n of names) expect(/^npc(fab)?_/.test(n), n).toBe(true);
+    expect(names).toEqual(expect.arrayContaining(["npc_badge", "npc_badge_memorial"]));
+    const fabrics = mats.filter((m) => (m.name ?? "").startsWith("npcfab_"));
+    expect(fabrics.map((m) => m.name).sort()).toEqual(["npcfab_canvas", "npcfab_cotton", "npcfab_mesh", "npcfab_poly", "npcfab_terry", "npcfab_wool"]);
+    for (const f of fabrics) {
+      expect(f.normalTexture, f.name).toBeDefined();
+      expect(f.pbrMetallicRoughness?.roughnessFactor ?? 1, `${f.name} is matte`).toBeGreaterThanOrEqual(0.6);
+    }
   });
 
   it("ships exactly the NPC clips with their lengths", () => {

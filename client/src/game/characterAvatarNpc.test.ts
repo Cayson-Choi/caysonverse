@@ -108,6 +108,19 @@ describe("assembleAvatar with NPC parts from a second scene (npc.glb)", () => {
     releaseAvatar(a);
   });
 
+  it("draws a fabric (vertex colours x a weave normal map) apart instead of merging it into the flat colour mesh", () => {
+    const fabric = new MeshStandardMaterial({ name: "npcfab_wool", vertexColors: true, roughness: 0.93, normalMap: new Texture() });
+    const npc2 = rigWith([], [["top__npc_test", [["top__npc_test_1", fabric, 40], ["top__npc_test_2", mat("npc_gold", new Color(0.8, 0.6, 0.2)), 41]]]]);
+    const a = assembleAvatar({ scene: character, extra: npc2 }, { ...look, colors: { ...look.colors, bottom: "#000002" } });
+    retainAvatar(a);
+    expect(names(a.root)).toEqual(["avatar__solid", "face__smile", "top__npc_test_1"]);
+    const own = (a.root.getObjectByName("top__npc_test_1") as SkinnedMesh).material as MeshStandardMaterial;
+    expect(own).not.toBe(fabric); // its own copy (opacity, disposal)
+    expect(own.normalMap).toBe(fabric.normalMap);
+    expect(own.roughness).toBeCloseTo(0.93, 6);
+    releaseAvatar(a);
+  });
+
   it("never touches the npc scene it copies from", () => {
     const before = names(npc);
     const a = assembleAvatar({ scene: character, extra: npc }, look);

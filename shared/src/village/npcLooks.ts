@@ -15,10 +15,13 @@ import type { CharacterSlot } from "../characterManifest";
 export const NPC_GLB_PATH = "/models/npc.glb";
 
 /** npc.glb 내용의 sha256 앞 8자리. 모델 URL에 ?v=로 붙인다. */
-export const NPC_GLB_HASH = "c0f48918";
+export const NPC_GLB_HASH = "9f7676a4";
 
-/** 디스크 예산(character.glb와 따로): 1 MB. */
-export const NPC_GLB_MAX_BYTES = 1024 * 1024;
+/**
+ * 디스크 예산(character.glb와 따로): 1.5 MB. owner 2026-11-16 "절대로 허접해 보이면 안되고 디테일을 잘 살리도록 해"로 옷감 노멀 맵·
+ * 바느질·단추가 늘어 1 MB에서 올렸다(가중치·정점색은 8비트로 줄였다).
+ */
+export const NPC_GLB_MAX_BYTES = 1.5 * 1024 * 1024;
 
 /** NPC 전용 부품 id의 머리말. 플레이어 부품에는 없다. */
 export const NPC_PART_PREFIX = "npc_";

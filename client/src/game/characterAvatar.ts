@@ -334,7 +334,8 @@ export function assembleAvatar(
         }
       }
       const source = mesh.material as MeshStandardMaterial;
-      if (mesh.isSkinnedMesh && !source.map) {
+      // 텍스처(바탕 그림이나 노멀 맵: NPC 옷감)가 없는 것만 합친다. 옷감은 정점색 × 노멀 맵이라 따로 그린다.
+      if (mesh.isSkinnedMesh && !source.map && !source.normalMap) {
         solids.push(mesh); // 피부·틴트·고정색 → 합친다
         return;
       }
