@@ -60,6 +60,17 @@ export function seatApproachSpot(
   return best;
 }
 
+/** Whether the free points 0.3 m round (x, z) all offer seat `i` (a walk to (x, z) may stop there). */
+function steadyFor(seats: readonly Seat[], i: number, x: number, z: number, obstacles: readonly AABB[], bounds: Bounds, taken: (index: number) => boolean): boolean {
+  const s = seats[i]!;
+  for (let m = 0; m < 8; m++) {
+    const ax = x + Math.cos((m * Math.PI) / 4) * 0.3;
+    const az = z + Math.sin((m * Math.PI) / 4) * 0.3;
+    if (isFreeSpot(ax, az, obstacles, bounds) && (!approachesSeat(s, ax, az) || nearestFreeSeat(ax, az, taken, SEAT_REACH, seats) !== i)) return false;
+  }
+  return true;
+}
+
 /** Furniture is no higher than this (m): a click higher up (a wall, a shelf, the louvres) is still nothing. */
 export const FURNITURE_TOP = 1.3;
 
@@ -246,7 +257,10 @@ export function furnitureClick(
   }
   if (best >= 0) {
     const s = seats[best]!;
-    if (!(approachesSeat(s, s.standX, s.standZ) && seatDistance(s, s.standX, s.standZ) <= SEAT_REACH) && world) {
+    // the stand spot when it offers the seat — and still does a step short of it all round (a tap-walk stops up to ARRIVE_DIST before its
+    // goal: G round 3, house 4's chair and house 3's cushions were walked to and not sat on); else the steadiest approach spot
+    const standOffers = approachesSeat(s, s.standX, s.standZ) && seatDistance(s, s.standX, s.standZ) <= SEAT_REACH;
+    if ((!standOffers || (world && !steadyFor(seats, best, s.standX, s.standZ, world.obstacles, world.bounds, taken))) && world) {
       const spot = seatApproachSpot(seats, best, from, world.obstacles, world.bounds, taken);
       if (spot) return { surface: { x: spot.x, y: floorY, z: spot.z, ny: 1 }, seatIndex: best };
     }

@@ -513,9 +513,30 @@ function markerSeats(m: MarkerSource, place: MarkerPlace): VillageSeat[] {
         seat.sidePlane = CHAIR_BEHIND_PLANE;
       }
     }
+    // A house seat among others (cushions round a low table, a stool by a sofa, an ottoman between armchairs): its stand spot — where a tap
+    // on it walks to, and where a walk stopping a step short of it ends — must offer THIS seat, not the next one (G round 3: house 3's
+    // 2nd-floor cushion walked to a spot nearer its neighbour). A cushion always, any other seat when a neighbour is nearer its spot.
+    const others = place.lenient ? place.peers.filter((o) => o.id !== m.id && Math.hypot(o.x - m.x, o.z - m.z) < 2.5).map(markerRoot) : [];
+    const ownD = Math.hypot(seat.standX - seat.x, seat.standZ - seat.z);
+    if (cushion || others.some((o) => Math.hypot(o.x - seat.standX, o.z - seat.standZ) <= ownD + 0.05)) {
+      if (others.length > 0) {
+        const spot = chairStand(seat, others, place.bounds, place.geometry);
+        if (spot) {
+          seat.standX = spot.x;
+          seat.standZ = spot.z;
+        }
+      }
+    }
     out.push(seat);
   }
   return out;
+}
+
+/** A marker's seat point (its first facing's), as markerSeats places it. */
+function markerRoot(o: MarkerSource): Point2 {
+  const backed = o.kind === "backed" || (o.kind === "floor" && o.back > 0);
+  const ahead = o.pose === "floor" ? (backed ? FLOOR_SIT_POSE.torsoBehindRoot - o.back : FLOOR_SIT_POSE.hipsBehindRoot) : backed ? BACKED_ROOT_AHEAD - o.back : o.edge + SIT_ROOT_AHEAD;
+  return offset(o.x, o.z, o.yaw, 0, ahead);
 }
 
 /**

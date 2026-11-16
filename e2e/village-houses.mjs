@@ -325,8 +325,15 @@ for (const n of houses) {
       // piece is in front of it there, again from 1.6 m out in front of its stand spot (the tap that hit something else walked there)
       let sat = false;
       let tries = [];
-      for (const vantage of ["far", "near"]) {
-        const want = vantage === "far" ? { x: from.x, z: from.z } : { x: seat.standX + Math.sin(seat.yaw) * 1.6, z: seat.standZ + Math.cos(seat.yaw) * 1.6 };
+      for (const vantage of ["far", "near", "stand"]) {
+        // far: the arrival spot; near: 1.6 m out from the stand spot along the seat's facing; stand: the stand spot itself, 1 m back from it
+        const away = Math.hypot(seat.standX - seat.x, seat.standZ - seat.z) || 1;
+        const want =
+          vantage === "far"
+            ? { x: from.x, z: from.z }
+            : vantage === "near"
+              ? { x: seat.standX + Math.sin(seat.yaw) * 1.6, z: seat.standZ + Math.cos(seat.yaw) * 1.6 }
+              : { x: seat.standX + ((seat.standX - seat.x) / away) * 0.6, z: seat.standZ + ((seat.standZ - seat.z) / away) * 0.6 };
         const at = await goto(want.x, want.z, 0.9);
         await orbit(yawToward(at, seat.mx, seat.mz), 0.55);
         // the cushion's middle (the marker; the seat point of a chair at a table is under the table)
