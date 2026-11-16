@@ -37,7 +37,8 @@ export interface VillagePatch {
 }
 
 let holes: readonly SeamRect[] = [LAKE_CUT];
-const inRect = (r: SeamRect, x: number, z: number): boolean => x > r.minX && x < r.maxX && z > r.minZ && z < r.maxZ;
+// edges count as inside: a village triangle on the seam between two holes (x 112: ground hole | backdrop hole) is inside their union
+const inRect = (r: SeamRect, x: number, z: number): boolean => x >= r.minX && x <= r.maxX && z >= r.minZ && z <= r.maxZ;
 const inside = (x: number, z: number): boolean => holes.some((r) => inRect(r, x, z));
 
 /**
