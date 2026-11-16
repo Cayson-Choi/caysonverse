@@ -34,12 +34,12 @@ declare global {
 /** The rich tier's clear colour, written in place every frame (no allocation). */
 const SKY_CLEAR: [number, number, number] = [0, 0, 0];
 
-/** How far the sun glow sprite sits from the camera (m): past the hills (1.1 km), inside the sky dome (1.4 km). */
-const SUN_DISTANCE = 1300;
+/** How far the sun glow sprite sits from the camera (m): past the hills and the sky dome (1.4 km; the dome does not write depth), inside the far plane (1.6 km). */
+const SUN_DISTANCE = 1550;
 /** The sprite's side (m): about 20 degrees across, a halo, not a wash. */
-const SUN_SIZE = 680;
+const SUN_SIZE = 810; // 680 m at 1.3 km: the same angle
 /** ... and this much bigger with a low sun (morning, evening). */
-const SUN_SIZE_LOW_EXTRA = 380;
+const SUN_SIZE_LOW_EXTRA = 453;
 
 /** The glow's picture: a small soft core and a wide faint halo (alpha, white), fading to nothing at the edge. */
 function sunGlowTexture(): CanvasTexture {
@@ -56,9 +56,9 @@ function sunGlowTexture(): CanvasTexture {
         const t = Math.min(1, Math.max(0, (r - 0.05) / 0.07));
         const disc = 1 - t * t * (3 - 2 * t); // the sun's disc, a touch bloomed (~2 degrees across)
         const bloom = 1.3 * Math.exp(-((r / 0.1) ** 1.2));
-        const halo = 1.0 * Math.exp(-((r / 0.33) ** 1.6)); // the wide soft halo
-        const ef = Math.min(1, Math.max(0, (1 - r) / 0.45));
-        const edge = ef * ef * (3 - 2 * ef); // gone well before the picture's edge: no visible disc outline
+        const halo = 1.0 * Math.exp(-((r / 0.3) ** 1.6)); // the wide soft halo
+        const ef = Math.min(1, Math.max(0, (1 - r) / 0.4));
+        const edge = ef * ef * (3 - 2 * ef); // exactly 0 with zero slope at the picture's edge (the last 40% of the radius): no visible rim
         const sum = (disc + bloom + halo) * edge;
         const a = Math.min(1, sum);
         const i = (y * n + x) * 4;
