@@ -161,6 +161,8 @@ export function buildCubbyPropMeshes(propsScene: Object3D, layout: readonly Prop
       local.multiplyMatrices(inv, part.matrixWorld);
       const source = Array.isArray(part.material) ? part.material[0]! : part.material;
       const isPhoto = source.name === PHOTO_MATERIAL;
+      // frame_large's picture is drawn per cubby (the family's own photo, ClaimFrames.tsx), not from the instanced atlas
+      if (isPhoto && entry.kind !== "photo_frame") continue;
       let geometry: BufferGeometry = part.geometry;
       if (isPhoto) {
         geometry = part.geometry.clone();

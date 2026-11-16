@@ -28,8 +28,8 @@ import {
 const anchors = cubbyAnchors(VILLAGE_LAYOUT);
 
 describe("SAMPLE_CUBBIES — the hall's single example memorial (Task 9, cut down 2026-11-13)", () => {
-  it("exactly ONE of the 368 cubbies is filled (견본), a real cubby at eye height in bank A; every other one is empty", () => {
-    expect(anchors).toHaveLength(368);
+  it("exactly ONE of the 416 cubbies is filled (견본), a real cubby at eye height in bank A; every other one is empty", () => {
+    expect(anchors).toHaveLength(416);
     expect(SAMPLE_CUBBY_IDS).toEqual(["M1-A-r3-c11"]);
     expect(SAMPLE_CUBBIES).toHaveLength(1);
     expect(SAMPLE_CUBBIES[0]!.id).toBe("M1-A-r3-c11");
@@ -46,7 +46,7 @@ describe("SAMPLE_CUBBIES — the hall's single example memorial (Task 9, cut dow
     expect(hashId("M1-A-r3-c11")).not.toBe(hashId("M1-A-r3-c12"));
   });
 
-  it("every sample has a name from the list, sensible years, a line, a portrait in the atlas, an urn, a photo and a name card", () => {
+  it("every sample has a name from the list, sensible years, a line, and ONLY the photo frame, the chrysanthemums and the candle (owner 2026-11-17)", () => {
     for (const s of SAMPLE_CUBBIES) {
       expect(SAMPLE_NAMES).toContain(s.name);
       expect(SAMPLE_LINES).toContain(s.line);
@@ -55,9 +55,7 @@ describe("SAMPLE_CUBBIES — the hall's single example memorial (Task 9, cut dow
       expect(s.passed - s.born).toBeLessThanOrEqual(17);
       expect(Number.isInteger(s.photo) && s.photo >= 0 && s.photo < SAMPLE_PHOTO_ATLAS.count).toBe(true);
       const kinds = s.props.map((p) => p.kind);
-      expect(kinds.filter((k) => k === "urn_wood" || k === "urn_ceramic")).toHaveLength(1);
-      expect(kinds.filter((k) => k === "photo_frame")).toHaveLength(1);
-      expect(kinds.filter((k) => k === "name_card")).toHaveLength(1);
+      expect([...kinds].sort()).toEqual(["candle", "frame_large", "mum_vase"]);
       for (const p of s.props) {
         expect(Math.abs(p.u)).toBeLessThanOrEqual(0.2); // inside the 0.4 m cell
         expect(p.w).toBeGreaterThanOrEqual(0);
@@ -87,8 +85,7 @@ describe("layoutCubbyProps — one instanced mesh per prop type (Task 9)", () =>
         expect(entry!.cubbies).toHaveLength(want);
       }
     }
-    expect(layout.length).toBeGreaterThanOrEqual(3); // the one sample uses at least an urn, a photo frame and a name card
-    expect(layout.find((e) => e.kind === "photo_frame")!.photoTiles).toHaveLength(SAMPLE_CUBBIES.length);
+    expect(layout.map((e) => e.kind).sort()).toEqual(["candle", "frame_large", "mum_vase"]);
   });
 
   it("empty cubbies get no props", () => {
@@ -142,7 +139,7 @@ describe("the portraits share one material through a per-instance atlas tile", (
     expect(Array.from(photoTileAttribute([0, 5, 15]))).toEqual([0, 0, 0.25, 0.25, 0.75, 0.75]);
   });
 
-  it("builds one InstancedMesh per prop and slot, the photo slot on the atlas material with a photoTile attribute", () => {
+  it("builds one InstancedMesh per prop and slot; frame_large's picture slot is left to the per-cubby photo (ClaimFrames)", () => {
     // a stand-in props file: every kind one mesh, the photo frame and the name card two slots, like memorial_props.glb
     const scene = new Group();
     const props = new MeshBasicMaterial({ name: "M_props" });
@@ -152,25 +149,27 @@ describe("the portraits share one material through a per-instance atlas tile", (
       const node = new Group();
       node.name = `prop__${kind}`;
       node.add(new Mesh(new BoxGeometry(0.1, 0.1, 0.1), props));
-      if (kind === "photo_frame") node.add(new Mesh(new BoxGeometry(0.1, 0.1, 0.01), photo));
+      if (kind === "photo_frame" || kind === "frame_large") node.add(new Mesh(new BoxGeometry(0.1, 0.1, 0.01), photo));
       if (kind === "name_card") node.add(new Mesh(new BoxGeometry(0.1, 0.04, 0.01), name));
       scene.add(node);
     }
     const layout = layoutCubbyProps(anchors, SAMPLE_CUBBIES);
     const atlasMaterial = makePhotoMaterial(new Texture());
     const built = buildCubbyPropMeshes(scene, layout, atlasMaterial);
-    expect(built.meshes).toHaveLength(layout.length + 2); // one draw call per prop type used (+ the two second slots)
+    expect(built.meshes).toHaveLength(layout.length); // one draw call per prop type used; no atlas photo slot
     for (const e of layout) {
       const ms = built.meshes.filter((m) => m.name.startsWith(`inst__${e.kind}_`));
       for (const m of ms) expect(m.count).toBe(e.count);
     }
-    const photoMesh = built.meshes.find((m) => m.material === atlasMaterial)!;
-    expect(photoMesh.count).toBe(SAMPLE_CUBBIES.length);
-    const attr = photoMesh.geometry.getAttribute("photoTile");
-    expect(attr.itemSize).toBe(2);
-    expect(attr.count).toBe(SAMPLE_CUBBIES.length);
-    // only the photo slot was given a new material; the others share the file's
-    expect(built.meshes.filter((m) => m.material !== atlasMaterial).every((m) => m.material === props || m.material === name)).toBe(true);
+    expect(built.meshes.some((m) => m.material === atlasMaterial)).toBe(false);
+    expect(built.meshes.every((m) => m.material === props)).toBe(true);
+    // the old atlas photo frame still gets its tiles (a props file of the old kind)
+    const old = layoutCubbyProps(anchors, [{ ...SAMPLE_CUBBIES[0]!, props: [{ kind: "photo_frame", u: 0, w: 0.2, dy: 0, turn: 0 }] }]);
+    const oldBuilt = buildCubbyPropMeshes(scene, old, atlasMaterial);
+    const photoMesh = oldBuilt.meshes.find((m) => m.material === atlasMaterial)!;
+    expect(photoMesh.geometry.getAttribute("photoTile").itemSize).toBe(2);
+    expect(oldBuilt.meshes.filter((m) => m.material !== atlasMaterial).every((m) => m.material === props || m.material === name)).toBe(true);
+    for (const r of oldBuilt.own) r.dispose();
     for (const r of built.own) r.dispose();
   });
 });

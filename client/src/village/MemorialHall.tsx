@@ -37,12 +37,12 @@ import { cubbyFocusAnchor, cubbyFocusWeight } from "./cubbyFocus";
 import { glassFocusUniform } from "./hallGlass";
 import { useQualityTier } from "../game/QualityEffects";
 import { LoadBoundary } from "./LoadBoundary";
-import { HALL_CUBBY_ANCHORS, SAMPLE_CUBBIES, SAMPLE_PHOTO_ATLAS, SAMPLE_PROPS, type SampleCubby } from "./sampleCubbies";
+import { CUBBY_SET, HALL_CUBBY_ANCHORS, SAMPLE_CUBBIES, SAMPLE_PHOTO_ATLAS, type SampleCubby } from "./sampleCubbies";
 import { useClaims } from "./memorial/claimsStore";
 import { ClaimFrames } from "./memorial/ClaimFrames";
 
-/** A claimed cubby is dressed like the sample, minus the atlas photo frame: ClaimFrames stands the family's own photo there. */
-const CLAIM_PROPS = SAMPLE_PROPS.filter((p) => p.kind !== "photo_frame");
+/** A claimed cubby holds the same three things as the sample (CUBBY_SET); ClaimFrames lays the family's photo in the frame. */
+const CLAIM_PROPS = CUBBY_SET;
 import { HallRoom } from "./VillageHall";
 import { PublicAutoDoor } from "./PublicAutoDoor";
 import type { Pose } from "../game/types";
@@ -57,17 +57,21 @@ declare global {
 /** At most this many candles burn at once in one client's hall (an hour each, one per filled cubby). */
 export const MAX_CANDLES = 64;
 
-/** Where a lit candle stands in its cubby (the cubby's frame, cubbyProps.ts): front right, clear of the name card. */
-export const CANDLE_SPOT = { u: 0.155, w: 0.035, dy: 0, turn: 0 } as const;
+/** The cubby's candle (CUBBY_SET's candle: there from the start, unlit); 촛불 켜기 lights THIS candle. */
+export const CANDLE_SPOT = CUBBY_SET.find((p) => p.kind === "candle")!;
+/** The wick's tip in the candle prop's own frame (build_props.py candle: x, up, z): where the flame stands. */
+export const CANDLE_WICK = { x: 0.0019, y: 0.0715, z: 0 } as const;
 
 /**
  * The candle's light, two camera-facing cards (normal alpha blending: an additive glow vanishes on the bright cream
  * cubbies): a warm halo this wide (m) round the flame, and the flame itself (a teardrop), both centred this far above the
  * cubby floor. The flame is drawn past white (no tone mapping) so it reads as a light.
  */
-const HALO_SIZE = 0.28;
-const FLAME_SIZE = { x: 0.04, y: 0.075 } as const;
-const GLOW_HEIGHT = 0.06;
+const HALO_SIZE = 0.16;
+/** A real candle flame on a votive: about 1.4 cm wide and 3 cm tall (the card is a little larger: its edge is soft). */
+const FLAME_SIZE = { x: 0.02, y: 0.042 } as const;
+/** The flame card's centre above the wick tip (its base sits on the wick). */
+const GLOW_HEIGHT = 0.016;
 
 const ANCHOR_BY_ID: ReadonlyMap<string, CubbyAnchor> = new Map(HALL_CUBBY_ANCHORS.map((a) => [a.id, a]));
 
@@ -148,7 +152,9 @@ function makeCandles(propsScene: Object3D) {
   group.name = "hall_candles";
   const own: Array<{ dispose(): void }> = [];
   const parts: Array<{ mesh: InstancedMesh; local: Matrix4 }> = [];
-  const node = propsScene.getObjectByName("prop__tealight");
+  // Since 2026-11-17 the candle itself is a cubby prop that is always there (CUBBY_SET); lighting it adds only the flame and its
+  // glow. The old tealight instancing stays only for a props file without the candle.
+  const node = propsScene.getObjectByName("prop__candle") ? null : propsScene.getObjectByName("prop__tealight");
   if (node) {
     propsScene.updateMatrixWorld(true);
     const inv = new Matrix4().copy(node.matrixWorld).invert();
@@ -227,6 +233,23 @@ function MemorialHall() {
     return buildCubbyPropMeshes(props.scene, layoutCubbyProps(HALL_CUBBY_ANCHORS, [...SAMPLE_CUBBIES, ...claimed]), photoMaterial);
   }, [props, photoMaterial, claimedKey]);
   const candles = useMemo(() => makeCandles(props.scene), [props]);
+  // The props' glass (2026-11-17): the candle's votive holder and the frame's glass are clear — a faint white film, so the ivory wax
+  // and the photo read true through them (the file's tinted glass made the wax grey-blue).
+  useMemo(() => {
+    props.scene.traverse((o) => {
+      const m = (o as Mesh).material as MeshBasicMaterial | undefined;
+      if (!m || Array.isArray(m)) return;
+      if (m.name === "M_jar_glass") {
+        m.color.set(0xffffff);
+        m.opacity = 0.1;
+        m.depthWrite = false;
+      } else if (m.name === "M_frame_glass") {
+        m.color.set(0xffffff);
+        m.opacity = 0.035;
+        m.depthWrite = false;
+      }
+    });
+  }, [props]);
   const selectMark = useMemo(() => makeSelectMark(), []);
   useEffect(
     () => () => {
@@ -358,7 +381,7 @@ function MemorialHall() {
       if (!anchor) continue;
       placementMatrix(anchor, CANDLE_SPOT, tmpPlace);
       for (const p of candles.parts) p.mesh.setMatrixAt(i, tmpPart.multiplyMatrices(tmpPlace, p.local));
-      placePos.setFromMatrixPosition(tmpPlace);
+      placePos.set(CANDLE_WICK.x, CANDLE_WICK.y, CANDLE_WICK.z).applyMatrix4(tmpPlace);
       glowPos.set(placePos.x, placePos.y + GLOW_HEIGHT, placePos.z);
       const s = 1 + 0.08 * Math.sin(t * 9.1 + i * 1.7) + 0.05 * Math.sin(t * 23.3 + i);
       glowScale.set(s, s * 1.12, s);

@@ -7,7 +7,7 @@
  *   npm run dev   (다른 창에서)
  *   node e2e/village-guides.mjs [--out=<폴더>]
  *
- * 남기는 것(폴더): guide-plaza.png, guide-plaza-answer.png, guide-hall.png, guide-hall-answer.png, assertions-village-guides.json.
+ * 남기는 것(폴더): guide-plaza.png, guide-plaza-answer.png, guide-hall-none.png, assertions-village-guides.json.
  */
 import { mkdirSync } from "node:fs";
 import { CLIENT_URL, DESKTOP, createRun, entryReady, launchBrowser, openPlayer, press, sleep, turnCameraTo, walkAndWait, walkTo, waitIdle } from "./lib/common.mjs";
@@ -162,39 +162,18 @@ try {
     // (the chat-voice flag lived in game/tts.ts, which the village-only cleanup removed: nothing speaks chat any more)
   });
 
-  await run.step("into the hall: the desk guide at (306.4, 4.6), asked from the visitor side (3.5 m), 문의하기, a gentle answer, the hall music ducked", async () => {
+  await run.step("into the hall: nobody to ask there any more (the desk guide was removed, owner 2026-11-17)", async () => {
     for (const [x, z] of [[-20, 5], [-14, -20], [0, -33], [0, -50.8]]) await walkAndWait(A, x, z, 40000, 1.2);
     await A.page.keyboard.press("KeyE");
     await A.page.waitForFunction(async () => (await window.__imp("/src/village/villageArea.ts")).localArea() === "hall", null, { timeout: 15000 });
     await A.page.waitForFunction(() => !!window.__cvHall, null, { timeout: 60000 });
     await sleep(2500);
     const arrive = await targetsAt(A);
-    run.check("at the arrival point the desk is not offered yet", !arrive.some((t) => t.id === "guide:hall_desk"), arrive);
-    await walkAndWait(A, 303.0, 3.9, 15000, 0.3); // a step back from the two visitor chairs (the desk reaches 3.5 m; round 5: nearer, the chairs' 앉기 wins)
-    summary.deskStand = await A.page.evaluate(() => window.__cv.getPos());
-    await turnCameraTo(A, 306.4, 4.6);
-    await sleep(800);
+    run.check("no guide is offered at the arrival point", !arrive.some((t) => t.id.startsWith("guide:")), arrive);
+    await walkAndWait(A, 303.0, 3.9, 15000, 0.3);
     const ts = await targetsAt(A);
-    run.check("문의하기 is offered at the desk", ts.some((t) => t.id === "guide:hall_desk" && t.label === "문의하기"), ts);
-    await A.page.keyboard.press("KeyE");
-    await A.page.locator(".cv-guide").waitFor({ state: "visible", timeout: 5000 });
-    await sleep(500);
-    run.check("the dialog is the 추모관 안내 데스크's", (await A.page.locator(".cv-guide").getAttribute("data-guide")) === "hall_desk", null);
-    await run.shot(A, "guide-hall.png");
-    await question(A, 0).click();
-    await sleep(1500);
-    const s = await audio(A);
-    summary.hallPlay = s;
-    run.check("hall_desk_1.m4a plays", s.voice.playing === "hall_desk_1" && !s.voice.paused, s.voice);
-    run.check("the hall's music (0.15) is ducked to 0.045", Math.abs(s.music.level - 0.045) < 0.01, s.music);
-    await run.shot(A, "guide-hall-answer.png");
-    await A.page.locator(".cv-guide-skip").click();
-    await sleep(900);
-    const k = await audio(A);
-    run.check("건너뛰기 stops it, the hall music is back at 0.15", k.voice.playing === null && Math.abs(k.music.level - 0.15) < 0.02, k);
-    await A.page.keyboard.press("Escape");
-    await sleep(300);
-    run.check("Esc closes it", (await A.page.locator(".cv-guide").count()) === 0, null);
+    run.check("no 문의하기 by the desk", !ts.some((t) => t.id.startsWith("guide:")), ts);
+    await run.shot(A, "guide-hall-none.png");
   });
 
   await A.ctx.close();

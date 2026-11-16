@@ -66,9 +66,12 @@ const FRAG_OUT = /* glsl */ `#include <opaque_fragment>
 			// behind it hard to see — it read as rain): a faint band only, the sheens halved, so the cubby is in plain view
 			glint *= 1.0 - 0.8 * uGlassFocus;
 		}
-		sheen *= 1.0 - 0.5 * uGlassFocus * uPaneGrid.z;
-		float a = uGlassClear + 0.8 * fres + ( 0.14 * sheen + 0.15 * glint ) * lit * uGlassReflect;
-		vec3 tint = vec3( 0.86, 0.93, 0.93 );
+		// 2026-11-17 (owner: "유리가 투명했으면 좋겠어. 흐릿해서 사진이 잘 안보이잖아"): clear glass. Head-on almost nothing is
+		// added (the photo behind reads sharp); a faint sheen slides over it and the edges catch light only at a grazing angle.
+		// In a close-up the sheen nearly goes.
+		sheen *= 1.0 - 0.75 * uGlassFocus;
+		float a = uGlassClear + 0.45 * fres + ( 0.06 * sheen + 0.08 * glint ) * lit * uGlassReflect;
+		vec3 tint = vec3( 0.97, 0.99, 0.99 );
 		vec3 col = mix( tint, vec3( 1.0 ), clamp( ( sheen * 0.7 + glint ) * lit, 0.0, 1.0 ) );
 		gl_FragColor = vec4( col, clamp( a, 0.0, 0.85 ) );
 	}`;
@@ -77,12 +80,11 @@ const FRAG_OUT = /* glsl */ `#include <opaque_fragment>
 export const glassFocusUniform = { value: 0 };
 
 /** How clear the glass is head-on, with no reflection over it (alpha). */
-export const GLASS_CLEAR_ALPHA = 0.09;
+export const GLASS_CLEAR_ALPHA = 0.02;
 
 const E_WALL = VILLAGE_LAYOUT.memorial.interior.cubbyWalls.find((w) => w.bank === "E");
 /** The east bank's run on the floor (start, along) and its door grid (pitch, the first opening's lower edge) for the glint. */
 const PANE_RUN = E_WALL ? [E_WALL.start.x, E_WALL.start.z, E_WALL.along.x, E_WALL.along.z] : [0, 0, 1, 0];
-const PANE_GRID = E_WALL ? [E_WALL.cell + E_WALL.frame, E_WALL.plinth + E_WALL.frame, 1] : [1, 0, 0];
 const PANE_GRID_OFF = [1, 0, 0];
 
 /** Shade one of the hall's glass materials as reflective glass (idempotent). */
@@ -99,7 +101,8 @@ export function patchHallGlassMaterial(material: Material): void {
     // the cubby doors' sheens in full; the big window and the door (a garden behind them) half as strong
     shader.uniforms.uGlassReflect = { value: m.name === "M_glass_e" ? 1 : 0.5 };
     shader.uniforms.uPane = { value: PANE_RUN };
-    shader.uniforms.uPaneGrid = { value: m.name === "M_glass_e" ? PANE_GRID : PANE_GRID_OFF };
+    // no painted glint bands any more (they read as frost / scratches): the sheen alone, on every bank's doors
+    shader.uniforms.uPaneGrid = { value: PANE_GRID_OFF };
     shader.vertexShader = shader.vertexShader.replace("void main() {", VERT_PARS).replace("#include <project_vertex>", VERT_POS);
     shader.fragmentShader = shader.fragmentShader.replace("void main() {", FRAG_PARS).replace("#include <opaque_fragment>", FRAG_OUT);
   };

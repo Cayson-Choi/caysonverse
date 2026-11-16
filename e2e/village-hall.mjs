@@ -208,7 +208,7 @@ try {
     summary.card = card;
     run.check("the card is the eye-level cubby of that column", card.id === pick.id, card.id);
     run.check("name, years and line are the sample's", card.name === pick.sample.name && card.years === `${pick.sample.born} – ${pick.sample.passed}` && card.line === pick.sample.line, card);
-    run.check("the portrait is a tile of the atlas", /sample-photos\/atlas\.webp/.test(card.photo), card.photo);
+    run.check("the portrait is the sample photo (hi-res since 2026-11-17)", /sample-photos\/sample_1\.webp/.test(card.photo), card.photo);
     // the server keeps a candle lit for an hour: a rerun on the same server within it finds the sample's candle still lit
     // (round 8 review: the step failed on a rerun) — then the lit card is checked and the lighting step only watches it burn
     summary.candleAlreadyLit = card.button === "촛불이 켜져 있어요";

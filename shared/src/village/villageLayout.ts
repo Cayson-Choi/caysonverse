@@ -195,7 +195,7 @@ export interface MemorialExterior {
 export interface CubbyWall {
   /** The wall it stands against: "n" the back (north) wall, "e" the east wall. */
   wall: "n" | "e";
-  /** The bank (구역): A and B are the two white banks either side of the memorial niche on the north wall, E the oak bank with glass doors on the east wall. */
+  /** The bank (구역): A, C and B the white banks along the north wall (west to east), E the oak bank on the east wall. */
   bank: CubbyBank;
   /** White lacquer (banks A and B) or light oak with glass doors (bank E). */
   finish: "lacquer" | "oak";
@@ -219,8 +219,11 @@ export interface CubbyWall {
   yaw: number;
 }
 
-/** The three banks of cubbies (구역) of the memorial hall. */
-export type CubbyBank = "A" | "B" | "E";
+/**
+ * The banks of cubbies (구역) of the memorial hall. C (2026-11-17, owner: "기억의 자리 … 없애고 그냥 일반 칸으로") fills the north
+ * wall's middle where the arched niche stood; A, B and E keep their ids.
+ */
+export type CubbyBank = "A" | "B" | "C" | "E";
 
 /** The memorial hall's id of the hall in cubby ids (`M1-A-r3-c07`): a second hall would be `M2`. */
 export const HALL_ID = "M1";
@@ -259,23 +262,11 @@ export interface MemorialInterior {
   doorPad: Disc;
   /** Where a visitor appears when they come in (yaw faces into the room). */
   spawn: Point2 & { yaw: number };
-  /** The cubby banks: A and B (white lacquer, 14 x 8 each) either side of the niche on the north wall, E (light oak, glass doors, 18 x 8) on the east wall. */
+  /**
+   * The cubby banks: A, C and B (white, glass doors; 14, 6 and 14 x 8) along the north wall, E (light oak, glass doors, 18 x 8)
+   * on the east wall. 416 cubbies.
+   */
   cubbyWalls: readonly CubbyWall[];
-  /** The memorial niche (기억의 자리) between banks A and B on the north wall: an arched alcove with a skylight over it. */
-  niche: MemorialNiche;
-}
-
-/** The arched niche "기억의 자리" in the north wall (x range between the banks, the arch's spring height and radius, the back wall's z). */
-export interface MemorialNiche {
-  minX: number;
-  maxX: number;
-  /** Height where the arch starts to curve (m) and its radius. */
-  spring: number;
-  radius: number;
-  /** The niche's back wall (the hall's north wall, z). */
-  backZ: number;
-  /** The opening plane the banks share (z). */
-  frontZ: number;
 }
 
 export interface VillageLayout {
@@ -405,36 +396,30 @@ function house(
 /** Cubby size (inner, m), board thickness, depth to the back panel and the unit's full depth (the approved concept, 2026-11-03). */
 const CUBBY = { cell: 0.4, frame: 0.025, depth: 0.36, unitDepth: 0.39, plinth: 0.12, rows: 8 } as const;
 
-/** The width of the memorial niche between banks A and B (m): the design's 기억의 자리. */
-const NICHE_WIDTH = 2.525;
-/** Columns of a north bank (A, B) and of the east bank (E). */
+/** Columns of the north banks (A and B either side, C in the middle) and of the east bank (E). */
 const NORTH_BANK_COLS = 14;
+const CENTRE_BANK_COLS = 6;
 const EAST_BANK_COLS = 18;
 
 /**
- * The hall's three cubby banks (B plan room x 292.5..307.5, z -6..6): A and B, 14 x 8 each, on the north wall either side of
- * the 2.525 m niche, and E, 18 x 8, on the east wall from the north-east corner southwards: 14 x 8 x 2 + 18 x 8 = 368 cubbies.
- * The runs end exactly at the east cubbies' front plane (x 307.11), so B and E meet in the corner.
+ * The hall's cubby banks (B plan room x 292.5..307.5, z -6..6), each a free-standing unit like a real 봉안함 wall: along the
+ * north wall A (14), C (6) and B (14), 8 rows, side by side; E, 18 x 8, on the east wall from the north-east corner southwards:
+ * (14 + 6 + 14) x 8 + 18 x 8 = 416 cubbies. B ends exactly at the east cubbies' front plane (x 307.11), so B and E meet in the
+ * corner. 2026-11-17: C replaced the arched niche (owner), which moved A 5 cm west (ids never change; anchors follow the layout).
  */
 function hallCubbyWalls(): CubbyWall[] {
   const run = (cols: number) => cols * (CUBBY.cell + CUBBY.frame) + CUBBY.frame;
   const eastFront = 307.5 - CUBBY.unitDepth;
   const backFront = -6 + CUBBY.unitDepth;
   const bStart = round(eastFront - run(NORTH_BANK_COLS), 6);
-  const aStart = round(bStart - NICHE_WIDTH - run(NORTH_BANK_COLS), 6);
+  const cStart = round(bStart - run(CENTRE_BANK_COLS), 6);
+  const aStart = round(cStart - run(NORTH_BANK_COLS), 6);
   return [
     { wall: "n", bank: "A", finish: "lacquer", ...CUBBY, cols: NORTH_BANK_COLS, start: pt(aStart, backFront), along: pt(1, 0), yaw: FACING_SOUTH },
     { wall: "n", bank: "B", finish: "lacquer", ...CUBBY, cols: NORTH_BANK_COLS, start: pt(bStart, backFront), along: pt(1, 0), yaw: FACING_SOUTH },
     { wall: "e", bank: "E", finish: "oak", ...CUBBY, cols: EAST_BANK_COLS, start: pt(eastFront, backFront), along: pt(0, 1), yaw: FACING_WEST },
+    { wall: "n", bank: "C", finish: "lacquer", ...CUBBY, cols: CENTRE_BANK_COLS, start: pt(cStart, backFront), along: pt(1, 0), yaw: FACING_SOUTH },
   ];
-}
-
-/** The niche between banks A and B (derived from them, so the model and the code cannot drift apart). */
-function hallNiche(walls: readonly CubbyWall[]): MemorialNiche {
-  const a = walls[0]!;
-  const b = walls[1]!;
-  const aEnd = a.start.x + a.cols * (a.cell + a.frame) + a.frame;
-  return { minX: round(aEnd, 6), maxX: round(b.start.x, 6), spring: 2.35, radius: round((b.start.x - aEnd) / 2 - 0.0825, 3), backZ: -6, frontZ: a.start.z };
 }
 
 /**
@@ -525,7 +510,6 @@ function makeVillageLayout(): VillageLayout {
         // 2026-11-15 round 5: at z = 3.6 the wall held the camera 2.6 m from the head).
         spawn: { x: 300, z: 2.6, yaw: FACING_NORTH },
         cubbyWalls: hallCubbyWalls(),
-        niche: hallNiche(hallCubbyWalls()),
       },
     },
     // Between the ring road's sidewalk (r 39) and the plots, doors toward the road. Houses 6-10 and the kiosk were

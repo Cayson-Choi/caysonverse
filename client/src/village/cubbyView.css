@@ -218,3 +218,12 @@
   font-weight: 600;
   cursor: pointer;
 }
+
+/* the close-up's zoom (2026-11-17): − farther, + closer; 48 px square like the other card buttons */
+.cv-cubby-nav button.cv-cubby-zoom {
+  flex: 0 0 48px;
+  min-width: 48px;
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1;
+}

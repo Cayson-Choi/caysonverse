@@ -129,8 +129,8 @@ describe("villageAndHallTargets — the cubbies' close-up inside the hall (Task 
     return { x: c.x + Math.sin(a.yaw) * d, z: c.z + Math.cos(a.yaw) * d };
   };
 
-  it("46 columns (A 14 and B 14 on the back wall, E 18 on the east), each with its 8 rows bottom first", () => {
-    expect(cols).toHaveLength(46);
+  it("52 columns (A 14, C 6 and B 14 on the back wall, E 18 on the east), each with its 8 rows bottom first", () => {
+    expect(cols).toHaveLength(52);
     for (const c of cols) {
       expect(c.rows.map((r) => r.row)).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
       expect(cubbyColumn(`cubby:${c.key}`)).toBe(cubbyColumn(c.key));
@@ -186,10 +186,10 @@ describe("villageAndHallTargets — the guides' 문의하기 (Task 9A)", () => {
     expect(guideTarget("village", 5, 13.5)?.id).toBe("guide:plaza_guide");
   });
 
-  it("the hall desk offers 문의하기 inside the hall, not at the arrival point and not at the way out", () => {
-    const t = villageAndHallTargets("hall", 305.2, 4.4);
-    expect(t.map((x) => x.id)).toContain("guide:hall_desk");
-    expect(villageAndHallTargets("hall", inside.spawn.x, inside.spawn.z).map((x) => x.id)).not.toContain("guide:hall_desk");
+  it("no 문의하기 anywhere in the hall (the desk guide was removed, owner 2026-11-17); the way out still works", () => {
+    for (const [x, z] of [[305.2, 4.4], [303.0, 4.0], [inside.spawn.x, inside.spawn.z]] as const) {
+      expect(villageAndHallTargets("hall", x, z).some((t) => t.id.startsWith("guide:"))).toBe(false);
+    }
     const pad = inside.doorPad;
     expect(villageAndHallTargets("hall", pad.centre.x, pad.centre.z).map((t) => t.kind)).toEqual(["door"]);
   });
@@ -205,34 +205,22 @@ describe("the hall desk and the way out (Task 9A)", () => {
     const pick = (x: number, z: number) =>
       pickInteraction({ seated: false, seat: null, targets: villageAndHallTargets("hall", x, z) });
     // the B desk stands at (306.4, 4.6), beside the widened east wall
-    const atDesk = pick(305.0, 4.6); // 1.4 m from the desk, well beyond the door pad
-    expect(atDesk).toMatchObject({ kind: "target", target: { id: "guide:hall_desk" } });
+    const atDesk = pick(305.0, 4.6); // by the desk: nobody to ask there any more
+    expect(atDesk?.kind === "target" && atDesk.target.id.startsWith("guide:")).toBe(false);
     const atDoor = pick(300.6, 4.6); // 0.85 m from the pad, out of the desk's reach
     expect(atDoor).toMatchObject({ kind: "target", target: { id: MEMORIAL_DOOR_ID } });
     const between = pick(301.2, 5.2); // on the door pad and outside the desk reach
     expect(between).toMatchObject({ kind: "target", target: { id: MEMORIAL_DOOR_ID } });
   });
 
-  it("a guide and a cubby in reach: the nearer wins, the guide on a tie, whatever the door does", () => {
-    let both = 0;
-    for (let x = 296; x <= 307; x += 0.1)
-      for (let z = -6; z <= 6; z += 0.1) {
-        const t = villageAndHallTargets("hall", x, z);
-        const g = t.find((v) => v.id === "guide:hall_desk");
-        const c = t.find((v) => v.id.startsWith("cubby:"));
-        if (!g || !c) continue;
-        both += 1;
-        expect(g.priority ?? 0, `${x},${z}`).toBe(c.priority ?? 0);
-        const pick = pickInteraction({ seated: false, seat: null, targets: t });
-        const want = t.find((v) => (v.priority ?? 0) > (g.priority ?? 0)) ? null : c.dist < g.dist ? c.id : g.id;
-        if (want) expect(pick, `${x},${z}`).toMatchObject({ target: { id: want } });
-      }
-    expect(both).toBeGreaterThan(0);
-  });
 
   it("nothing is offered while the cubby card or a guide's questions are open (the action button hides)", () => {
-    expect(villageAndHallTargets("hall", 305.0, 4.6).length).toBeGreaterThan(0);
-    expect(villageAndHallTargets("hall", 305.0, 4.6, true)).toHaveLength(0);
+    // in front of a cubby column (the desk guide is gone, 2026-11-17)
+    const col = cubbyColumn("A_10")!;
+    const a0 = col.rows[0]!;
+    const p = { x: a0.x + Math.sin(a0.yaw) * 0.7, z: a0.z + Math.cos(a0.yaw) * 0.7 };
+    expect(villageAndHallTargets("hall", p.x, p.z).length).toBeGreaterThan(0);
+    expect(villageAndHallTargets("hall", p.x, p.z, true)).toHaveLength(0);
     expect(villageAndHallTargets("village", 5, 13.5, true)).toHaveLength(0);
   });
 });
@@ -334,7 +322,8 @@ describe("the hall desk and its visitor chairs (review 2026-11-15: '문의하기
   it("standing at the side of consult chair 0 offers 앉기; well away from both chairs the desk is asked", () => {
     expect(pick(304.15, 2.5)).toMatchObject({ kind: "sit" });
     expect(pick(304.48, 2.82)).toMatchObject({ kind: "sit" });
-    expect(pick(303.0, 4.0)).toMatchObject({ kind: "target", target: { id: "guide:hall_desk" } });
+    const away = pick(303.0, 4.0);
+    expect(away?.kind === "target" && away.target.id.startsWith("guide:")).toBe(false);
   });
   it("from the gap between the two chairs, where a tap-walk stops (x 303.83), each chair is offered: the nearer one", () => {
     const seats = (HALL_ACTIVE_MAP.seats ?? []) as readonly { id?: string }[];
@@ -347,8 +336,8 @@ describe("the hall desk and its visitor chairs (review 2026-11-15: '문의하기
     expect(idAt(304.3, 4.12)).toMatch(/^consult_/);
     // round 5: a step short of the second chair's own spot (303.54, 4.5) offers that chair (its seat point is under the desk)
     expect(idAt(303.29, 4.27)).toBe("consult_1");
-    // the e2e's visitor spot a step back from the chairs still asks the desk
-    expect(idAt(303.0, 3.9)).toBe("guide:hall_desk");
+    // a step back from the chairs: no guide to ask any more (owner 2026-11-17)
+    expect(String(idAt(303.0, 3.9))).not.toMatch(/^guide:/);
   });
 });
 

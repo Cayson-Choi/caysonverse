@@ -422,10 +422,11 @@ describe("layout values (brief + rulings + owner changes)", () => {
 describe("memorial hall cubby banks (Task 8, rebuilt 2026-11-13)", () => {
   const inn = L.memorial.interior;
   const anchors = cubbyAnchors(L);
-  const [bankA, bankB, bankE] = inn.cubbyWalls;
+  const [bankA, bankB, bankE, bankC] = inn.cubbyWalls;
 
-  it("three banks: A and B white lacquer 14 x 8 either side of the niche, E light oak 18 x 8 on the east wall; cubbies 0.40 m with 0.025 m boards", () => {
-    expect(inn.cubbyWalls).toHaveLength(3);
+  it("four banks: A, C, B white 14, 6, 14 x 8 along the north wall (C where the niche stood, 2026-11-17), E light oak 18 x 8 on the east wall; cubbies 0.40 m with 0.025 m boards", () => {
+    expect(inn.cubbyWalls).toHaveLength(4);
+    expect(bankC).toMatchObject({ wall: "n", bank: "C", finish: "lacquer", cols: 6, rows: 8, cell: 0.4, frame: 0.025 });
     expect(bankA).toMatchObject({ wall: "n", bank: "A", finish: "lacquer", cols: 14, rows: 8, cell: 0.4, frame: 0.025 });
     expect(bankB).toMatchObject({ wall: "n", bank: "B", finish: "lacquer", cols: 14, rows: 8, cell: 0.4, frame: 0.025 });
     expect(bankE).toMatchObject({ wall: "e", bank: "E", finish: "oak", cols: 18, rows: 8, cell: 0.4, frame: 0.025 });
@@ -434,26 +435,27 @@ describe("memorial hall cubby banks (Task 8, rebuilt 2026-11-13)", () => {
     expect(bankE.yaw).toBeCloseTo(-Math.PI / 2, 12); // faces -x
   });
 
-  it("the niche 기억의 자리 sits between the banks: 2.525 m wide, arched at 2.35 m with r 1.18", () => {
-    expect(inn.niche).toMatchObject({ minX: 298.61, maxX: 301.135, spring: 2.35, radius: 1.18, backZ: -6, frontZ: -5.61 });
-    expect(inn.niche.maxX - inn.niche.minX).toBeCloseTo(2.525, 9);
+  it("no niche any more: A, C and B stand side by side along the north wall, B ending at the east bank's front", () => {
     const runA = 14 * 0.425 + 0.025;
-    expect(bankA.start.x + runA).toBeCloseTo(inn.niche.minX, 9);
-    expect(bankB.start.x).toBeCloseTo(inn.niche.maxX, 9);
+    const runC = 6 * 0.425 + 0.025;
+    expect(bankA.start.x + runA).toBeCloseTo(bankC.start.x, 9);
+    expect(bankC.start.x + runC).toBeCloseTo(bankB.start.x, 9);
     expect(bankB.start.x + runA).toBeCloseTo(307.5 - 0.39, 9);
+    expect(bankA.start.x).toBeGreaterThan(L.memorial.interior.room.minX);
+    expect("niche" in inn).toBe(false);
   });
 
-  it("one anchor per cubby (368), stable ids M1-<bank>-r<row>-c<col> unique, nodes anchor__cubby_<id>", () => {
-    expect(anchors).toHaveLength(14 * 8 * 2 + 18 * 8);
+  it("one anchor per cubby (416), stable ids M1-<bank>-r<row>-c<col> unique, nodes anchor__cubby_<id>", () => {
+    expect(anchors).toHaveLength(14 * 8 * 2 + 6 * 8 + 18 * 8);
     expect(new Set(anchors.map((a) => a.id)).size).toBe(anchors.length);
     expect(anchors[0]).toMatchObject({ id: "M1-A-r0-c00", bank: "A", wall: "n", row: 0, col: 0 });
     expect(cubbyId("E", 7, 17)).toBe("M1-E-r7-c17");
     expect(cubbyId("A", 3, 7)).toBe("M1-A-r3-c07");
     expect(cubbyAnchorNode("M1-E-r7-c17")).toBe("anchor__cubby_M1-E-r7-c17");
     expect(anchors.some((a) => a.id === "M1-E-r7-c17")).toBe(true);
-    for (const a of anchors) expect(a.id).toMatch(/^M1-[ABE]-r[0-7]-c\d\d$/);
+    for (const a of anchors) expect(a.id).toMatch(/^M1-[ABCE]-r[0-7]-c\d\d$/);
     // the count per bank
-    for (const [bank, n] of [["A", 112], ["B", 112], ["E", 144]] as const) expect(anchors.filter((a) => a.bank === bank)).toHaveLength(n);
+    for (const [bank, n] of [["A", 112], ["B", 112], ["C", 48], ["E", 144]] as const) expect(anchors.filter((a) => a.bank === bank)).toHaveLength(n);
   });
 
   it("anchors sit on the opening plane, 0.425 m apart, the bottom one 0.345 m up and the top one under the cornice", () => {
@@ -484,20 +486,22 @@ describe("memorial hall cubby banks (Task 8, rebuilt 2026-11-13)", () => {
     const ba = cubbyWallBox(bankA);
     const bb = cubbyWallBox(bankB);
     const be = cubbyWallBox(bankE);
-    expect(ba).toEqual({ minX: 292.635, maxX: 298.61, minZ: -6, maxZ: -5.61 });
+    const bc = cubbyWallBox(bankC);
+    expect(ba).toEqual({ minX: 292.585, maxX: 298.56, minZ: -6, maxZ: -5.61 });
+    expect(bc).toEqual({ minX: 298.56, maxX: 301.135, minZ: -6, maxZ: -5.61 });
     expect(bb).toEqual({ minX: 301.135, maxX: 307.11, minZ: -6, maxZ: -5.61 });
     expect(be).toEqual({ minX: 307.11, maxX: 307.5, minZ: -5.61, maxZ: 2.065 });
     expect(overlaps(ba, bb)).toBe(false);
     expect(overlaps(bb, be)).toBe(false);
     const pad = inn.doorPad;
-    for (const b of [ba, bb, be]) {
+    for (const b of [ba, bb, be, bc]) {
       expect(b.minX >= HALL.minX && b.maxX <= HALL.maxX && b.minZ >= HALL.minZ && b.maxZ <= HALL.maxZ).toBe(true);
       expect(distToBox(pad.centre, b)).toBeGreaterThan(pad.radius + 1);
       expect(distToBox(HALL_SPAWN, b)).toBeGreaterThan(1);
     }
   });
 
-  it("the colliders generated from memorial.glb hold the hall walls exactly, the three banks and the niche, and keep the door pad and the spawn free", () => {
+  it("the colliders generated from memorial.glb hold the hall walls exactly, the four banks, and keep the door pad and the spawn free", () => {
     for (const w of hallWalls(L)) expect(MEMORIAL_COLLIDERS.some((c) => sameBox(c, w)), JSON.stringify(w)).toBe(true);
     const inside = MEMORIAL_COLLIDERS.filter((c) => !hallWalls(L).some((w) => sameBox(c, w)));
     expect(inside.length).toBeGreaterThanOrEqual(10);
@@ -506,14 +510,13 @@ describe("memorial hall cubby banks (Task 8, rebuilt 2026-11-13)", () => {
       expect(distToBox(inn.doorPad.centre, c)).toBeGreaterThan(inn.doorPad.radius);
       expect(distToBox(HALL_SPAWN, c)).toBeGreaterThan(PLAYER_RADIUS);
     }
-    // the banks and the niche are camera boxes up to the B ceiling
+    // the banks are camera boxes up to the B ceiling
     expect(MEMORIAL_CAMERA_BOXES.filter((b) => (b.height ?? 0) >= 4.5 - EPS).length).toBeGreaterThanOrEqual(4);
   });
 
-  it("exports the banks with their footprints, the niche and every anchor with its node name", () => {
+  it("exports the banks with their footprints and every anchor with its node name", () => {
     const out = exportVillageLayout(L).memorial.interior;
-    expect(out.cubbyWalls.map((w) => w.footprint)).toEqual([cubbyWallBox(bankA), cubbyWallBox(bankB), cubbyWallBox(bankE)]);
-    expect(out.niche).toEqual(inn.niche);
+    expect(out.cubbyWalls.map((w) => w.footprint)).toEqual([cubbyWallBox(bankA), cubbyWallBox(bankB), cubbyWallBox(bankE), cubbyWallBox(bankC)]);
     expect(out.cubbyAnchors).toHaveLength(anchors.length);
     for (const a of out.cubbyAnchors) expect(a.node).toBe(`anchor__cubby_${a.id}`);
   });
@@ -1548,7 +1551,7 @@ describe("cubbyAtPoint — a click on a cubby wall names its cubby (윗칸도 �
   });
   it("the top row works like any other (the case the owner asked about)", () => {
     const top = anchors.filter((a) => a.row === 7);
-    expect(top.length).toBe(14 + 14 + 18);
+    expect(top.length).toBe(14 + 6 + 14 + 18);
     for (const a of top) expect(cubbyAtPoint(VILLAGE_LAYOUT, a.x, a.y + 0.1, a.z)?.row).toBe(7);
   });
   it("the floor in front of a wall, the room's middle and points past the ends are no cubby", () => {

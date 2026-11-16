@@ -4,8 +4,8 @@ import { SAMPLE_CUBBY_IDS, SAMPLE_FILLED_IDS, hashId, sampleFilledIds } from "./
 
 describe("sampleFill — which cubbies hold the sample (shared by the client and the server's candle rule)", () => {
   const anchors = cubbyAnchors(VILLAGE_LAYOUT);
-  it("exactly ONE of the 368 cubbies holds the example, a real cubby at eye height in bank A", () => {
-    expect(anchors).toHaveLength(368);
+  it("exactly ONE of the 416 cubbies holds the example, a real cubby at eye height in bank A", () => {
+    expect(anchors).toHaveLength(416);
     expect(SAMPLE_FILLED_IDS.size).toBe(1);
     const ids = new Set(anchors.map((a) => a.id));
     for (const id of SAMPLE_FILLED_IDS) expect(ids.has(id)).toBe(true);

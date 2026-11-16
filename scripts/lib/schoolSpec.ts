@@ -59,8 +59,6 @@ function villageSpec(): SchoolSpec {
  */
 export const MEMORIAL_NON_LIGHTMAPPED = ["M_lamp", "M_garden", "M_skylight", "M_glass", "M_alu"] as const;
 
-/** The niche collider's back-to-front depth: the arched alcove, the altar console and 5 cm (bake: niche()). */
-export const NICHE_COLLIDER_MAX_Z = -5.33;
 
 /** How close (m) a cubby anchor must sit to the layout's opening centre (the cubbies are 0.425 m apart). */
 export const CUBBY_ANCHOR_TOLERANCE = 0.02;
@@ -70,14 +68,14 @@ export const HALL_WALL_IDS = ["hall_wall_n", "hall_wall_s", "hall_wall_e", "hall
 
 /**
  * 추모관 안 (memorial.glb, Task 8, rebuilt 2026-11-13): an `anchor__cubby_<id>` empty at every one of the 368 cubbies'
- * opening centres (within 2 cm, facing into the room), the hall's four walls, the three banks (A, B, E) and the niche as
+ * opening centres (within 2 cm, facing into the room), the hall's four walls, the four banks (A, C, B on the north wall, E) as
  * camera-height col__ boxes on the layout's rectangles, the door's two sliding leaves, no col__ box on the inside door pad or
  * where visitors arrive, the `ceil__hall` slab under the roof, and the materials the game drives itself.
  */
 function memorialSpec(): SchoolSpec {
   const inn = VILLAGE_LAYOUT.memorial.interior;
   const anchors = cubbyAnchors(VILLAGE_LAYOUT);
-  const [bankA, bankB, bankE] = inn.cubbyWalls;
+  const [bankA, bankB, bankE, bankC] = inn.cubbyWalls;
   const walls = hallWalls(VILLAGE_LAYOUT);
   const wallNodes = HALL_WALL_IDS.map((id) => colliderNode(id));
   const boxes = [
@@ -86,7 +84,7 @@ function memorialSpec(): SchoolSpec {
     { node: colliderNode("cubby_a"), box: { ...cubbyWallBox(bankA!), minX: inn.room.minX }, camera: true },
     { node: colliderNode("cubby_b"), box: { ...cubbyWallBox(bankB!), maxX: inn.room.maxX }, camera: true },
     { node: colliderNode("cubby_e"), box: cubbyWallBox(bankE!), camera: true },
-    { node: colliderNode("niche"), box: { minX: inn.niche.minX, maxX: inn.niche.maxX, minZ: inn.niche.backZ, maxZ: NICHE_COLLIDER_MAX_Z }, camera: true },
+    { node: colliderNode("cubby_c"), box: cubbyWallBox(bankC!), camera: true },
   ];
   return {
     kind: "memorial",

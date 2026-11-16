@@ -1,6 +1,6 @@
 /**
  * 케이슨 마을's guides (Task 9A, owner 2026-11-03: "어느 건물 또는 npc에게 문의할 때만 음성이 나오도록 ... 진짜 사람이
- * 말하는 것 같은 음성"). Two NPCs answer a few fixed questions; each answer has a pre-generated voice clip
+ * 말하는 것 같은 음성"). The plaza guide answers a few fixed questions; each answer has a pre-generated voice clip
  * (`/village/voice/<voice>.m4a`, made offline by art/village/voice/make_voice.py with VoxCPM2 from a DESIGNED voice —
  * never a clone of a real person). Chat is never spoken (CHAT_VOICE_ENABLED stays false).
  *
@@ -8,16 +8,15 @@
  * (`guideColliders`, part of the village geometry), so nobody walks through them.
  *
  *  - plaza_guide (마을 안내원) stands on the plaza at (5, 12), clear of the spawn disc (0, 14) r 3, facing the spawn.
- *  - hall_desk (추모관 안내 데스크) stands inside the B hall at (306.4, 4.6) facing -x: it sits beside the new desk
- *    footprint (x 304.6..305.35, z 3.4..5.8), clear of the 34-column north wall and the east cubby unit (which ends
- *    at z 2.07). The layout test pins the clearances and the arrival/door pads.
+ *  - (the memorial hall's desk guide was removed on 2026-11-17, owner: "추모관에 안내원은 없애자 없는게 낫겠다". What it
+ *    told visitors — how to look closer, light a candle, lay a pet to rest — is on the cubby card itself.)
  */
 import type { Appearance } from "../appearance";
 import { appearanceFromIds } from "../appearance";
 import type { AABB } from "../collision";
 import type { AreaId } from "./villageLayout";
 
-export type GuideId = "plaza_guide" | "hall_desk";
+export type GuideId = "plaza_guide";
 
 export interface GuideQA {
   /** The question as the player picks it. */
@@ -38,7 +37,7 @@ export interface Guide {
   tag: string;
   area: AreaId;
   pos: { x: number; z: number };
-  /** How far away (m) the guide can be asked; absent = GUIDE_REACH_M. The hall desk reaches over its counter and the two visitor chairs. */
+  /** How far away (m) the guide can be asked; absent = GUIDE_REACH_M. */
   reach?: number;
   /** `atan2(dirX, dirZ)` (0 faces +z). */
   yaw: number;
@@ -49,12 +48,6 @@ export interface Guide {
 
 /** Within this distance (m, on the ground) "문의하기" is offered. */
 export const GUIDE_REACH_M = 2.2;
-/**
- * The hall desk is asked from the visitor side of the counter, past the two consultation chairs (x 304.2) and the kiosk: a visitor
- * walking straight in from the door is stopped by them at about (302.96, 3.87), 3.52 m from the guide (review 2026-11-14), so the
- * reach is 4.0 m (x 302.4 on the desk's line).
- */
-export const HALL_DESK_REACH_M = 4.0;
 /** Half the side of a guide's square collider (m): 0.6 x 0.6, about the figure's footprint. */
 export const GUIDE_COLLIDER_HALF = 0.3;
 /** The words on the action button and the touch button. */
@@ -121,41 +114,6 @@ export const GUIDES: readonly Guide[] = deepFreeze([
         answer: "낚시터는 동쪽 길을 따라가면 있어요.",
         voice: "plaza_guide_5",
         textOnly: true,
-      },
-    ],
-  },
-  {
-    id: "hall_desk",
-    name: "추모관 안내 데스크",
-    tag: "안내원",
-    area: "hall",
-    pos: { x: 306.4, z: 4.6 },
-    reach: HALL_DESK_REACH_M,
-    yaw: -Math.PI / 2, // faces -x
-    appearance: appearanceFromIds(
-      { hat: null, hair: "bob", face: "calm", top: "shirt_tie", bottom: "longskirt", shoes: "dress", item: null },
-      { hatColor: 2, hairColor: 0, skin: 0, topColor: 7, bottomColor: 7, shoesColor: 7, itemColor: 2, voice: 1 },
-    ),
-    qas: [
-      {
-        question: "이곳은 어떤 곳인가요?",
-        answer: "이곳은 먼저 떠난 반려동물을 기억하는 추모관이에요. 편하게 머물다 가셔도 괜찮아요.",
-        voice: "hall_desk_1",
-      },
-      {
-        question: "칸을 가까이 보려면 어떻게 하나요?",
-        answer: "보고 싶은 칸 앞에 서서 E 키를 누르거나, 가까이 보기 버튼을 눌러 주세요.",
-        voice: "hall_desk_2",
-      },
-      {
-        question: "촛불은 어떻게 켜나요?",
-        answer: "칸을 가까이 보신 다음 촛불 켜기를 눌러 주세요. 켜진 촛불은 추모관 안에 계신 분들이 함께 볼 수 있어요.",
-        voice: "hall_desk_3",
-      },
-      {
-        question: "우리 아이도 이곳에 모실 수 있나요?",
-        answer: "곧 빈 칸에 가족분들이 아이의 사진과 이름을 직접 모실 수 있도록 준비하고 있어요.",
-        voice: "hall_desk_4",
       },
     ],
   },

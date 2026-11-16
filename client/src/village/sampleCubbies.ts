@@ -21,8 +21,17 @@ export { SAMPLE_CUBBY_IDS, hashId };
 /** The placeholder portraits: one atlas of 4 x 4 tiles (128 x 160 px each), drawn by scripts/make-sample-photos.mjs. */
 export const SAMPLE_PHOTO_ATLAS = { url: "/village/sample-photos/atlas.webp", cols: 4, rows: 4, count: 16 } as const;
 
-/** The nine props of memorial_props.glb (`prop__<kind>`). */
+/**
+ * The large hi-res portrait of the sample cubby (2026-11-17: the photo is the cubby's main object now, 45 % of its height, so the
+ * 128 px atlas tile was too soft). 512 x 640 WebP, 4:5.
+ */
+export const SAMPLE_PHOTO_URL = "/village/sample-photos/sample_1.webp";
+
+/** The props of memorial_props.glb (`prop__<kind>`). Since 2026-11-17 a cubby uses only frame_large, mum_vase and candle. */
 export type PropKind =
+  | "frame_large"
+  | "candle"
+  | "mum_vase"
   | "urn_wood"
   | "urn_ceramic"
   | "photo_frame"
@@ -34,6 +43,9 @@ export type PropKind =
   | "name_card";
 
 export const PROP_KINDS: readonly PropKind[] = [
+  "frame_large",
+  "candle",
+  "mum_vase",
   "urn_wood",
   "urn_ceramic",
   "photo_frame",
@@ -104,19 +116,19 @@ export function seeded(seed: number): () => number {
 }
 
 /**
- * The sample cubby's props, set by hand (review 2026-11-15: the seeded recipe stood the flower pot right in front of the photo, so
- * the close-up showed only the cat's ears). The way a real charnel cubby is dressed (design 1-3, reference g21_charnel): the
- * house-shaped frame at the back as the cubby's housing, the portrait upright in the middle in front of it, the urn to the left
- * and the flowers to the right — both clear of the portrait — and the name card on the front ledge. The lit candle stands at
- * the front right (`CANDLE_SPOT`, MemorialHall.tsx), clear of all of them.
+ * What a cubby holds (owner 2026-11-17: "추모관은 사진과 국화꽃과 초만 넣는 걸로 하자"), the same in the sample and in every
+ * family's cubby: the photo in a walnut frame standing at the back in the middle (the cubby's main object, 60 % of its height),
+ * white chrysanthemums in a small vase at the front left, a pillar candle in a glass holder at the front right — unlit until
+ * someone presses 촛불 켜기 (CANDLE_SPOT). The vase's heads lean away from the photo, the candle stays below it.
  */
-export const SAMPLE_PROPS: readonly PropPlacement[] = Object.freeze([
-  { kind: "house_frame", u: 0, w: 0.33, dy: 0, turn: 0 },
-  { kind: "photo_frame", u: 0, w: 0.2, dy: 0, turn: 0 },
-  { kind: "urn_wood", u: -0.13, w: 0.17, dy: 0, turn: 0.35 },
-  { kind: "flowers", u: 0.135, w: 0.22, dy: 0, turn: 0.6 },
-  { kind: "name_card", u: 0, w: 0.035, dy: 0, turn: 0 },
+export const CUBBY_SET: readonly PropPlacement[] = Object.freeze([
+  { kind: "frame_large", u: 0, w: 0.215, dy: 0, turn: 0 },
+  { kind: "mum_vase", u: -0.13, w: 0.1, dy: 0, turn: 0 },
+  { kind: "candle", u: 0.135, w: 0.09, dy: 0, turn: 0 },
 ] satisfies PropPlacement[]);
+
+/** Kept for the old name. */
+export const SAMPLE_PROPS = CUBBY_SET;
 
 /**
  * The sample memorials for `anchors`: the ids of `SAMPLE_CUBBY_IDS` that are among them, each with its props, a name, the years, a

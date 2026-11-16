@@ -353,9 +353,9 @@ describe("nobody is trapped in the hall: every seat can be left and the whole fl
     for (const s of hallSeats) expect(hasNear(reach, { x: s.standX, z: s.standZ }, 0.1), s.id).toBe(true);
   });
 
-  it("the places a visitor goes are on that floor: the door pad, the niche's front, the desk, the kiosk, the flower stand, the letter table, the lounge", () => {
+  it("the places a visitor goes are on that floor: the door pad, bank C's front, the desk, the kiosk, the flower stand, the letter table, the lounge", () => {
     const places: Array<[string, number, number]> = [
-      ["the door", 300, 5.2], ["the niche", 299.87, -4.5], ["the desk", 303.0, 4.1], ["the kiosk", 303.4, 3.4],
+      ["the door", 300, 5.2], ["bank C's front", 299.87, -4.5], ["the desk", 303.0, 4.1], ["the kiosk", 303.4, 3.4],
       ["the flowers", 302.8, 4.8], ["the mailbox", 297.2, -3.4], ["the lounge", 294.6, 3.0], ["east cubbies", 306.0, 0.0], ["bank A", 295.0, -4.9],
     ];
     for (const [name, x, z] of places) expect(hasNear(reach, { x, z }, 0.15), name).toBe(true);
