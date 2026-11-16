@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { TRANSIT, busTripAt, tripTimeline } from "@caysonverse/shared/village/transit";
 import { VILLAGE_LAYOUT, busBoardingArea } from "@caysonverse/shared/village/villageLayout";
-import { BUS_BOARD_REACH_M, BUS_LEAVE_MOVING_NOTICE, riderOnTrip, transitSnapshotAt, validateBusRide } from "./transitRuntime";
+import { BUS_BOARD_REACH_M, BUS_CROWDED_NOTICE, BUS_FULL_NOTICE, BUS_LEAVE_MOVING_NOTICE, riderOnTrip, transitSnapshotAt, validateBusRide } from "./transitRuntime";
+import { BUS_CAPACITY } from "@caysonverse/shared/village/busCabin";
 
 const hour = Math.floor(1_700_000_000_000 / TRANSIT.departureEveryMs) * TRANSIT.departureEveryMs;
 const boarding = hour + TRANSIT.departureEveryMs - TRANSIT.boardingMs + 5;
@@ -43,6 +44,17 @@ describe("VillageRoom transit runtime", () => {
     expect(riderOnTrip(transitSnapshotAt(rider + lapEnd + 1_000), rider)).toBe(false); // back at the stop
     expect(riderOnTrip(transitSnapshotAt(rider + TRANSIT.departureEveryMs - 5_000), rider)).toBe(false); // the next trip is up
     expect(riderOnTrip(transitSnapshotAt(boarding), null)).toBe(false);
+  });
+
+  it("bus v3: a rider over the capacity is refused at the door with a short Korean notice (owner 2026-11-16)", () => {
+    expect(BUS_CAPACITY).toBeGreaterThan(10);
+    expect(validateBusRide({ action: "board" }, { ...nearStop, boarded: false, aboard: BUS_CAPACITY - 1, standingFree: true }, boarding).ok).toBe(true);
+    expect(validateBusRide({ action: "board" }, { ...nearStop, boarded: false, aboard: BUS_CAPACITY, standingFree: true }, boarding)).toEqual({ ok: false, notice: BUS_FULL_NOTICE });
+    expect(BUS_FULL_NOTICE).toBe("버스가 가득 찼어요. 다음 버스를 기다려 주세요.");
+    // under the capacity but every standing place has a body on it: refused too (nobody is put inside another rider)
+    expect(validateBusRide({ action: "board" }, { ...nearStop, boarded: false, aboard: 5, standingFree: false }, boarding)).toEqual({ ok: false, notice: BUS_CROWDED_NOTICE });
+    // the leave of a rider is never refused for the count
+    expect(validateBusRide({ action: "leave" }, { ...nearStop, boarded: true, aboard: BUS_CAPACITY }, boarding).ok).toBe(true);
   });
 
   it("accepts a nearby boarding request only in the 3-minute boarding window (owner 2026-11-15)", () => {

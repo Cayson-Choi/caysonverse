@@ -58,7 +58,6 @@ import {
 } from "./remoteSeat";
 import { benchClipPlanes, clipAvatar, enableBenchClipping } from "./benchClip";
 import {
-  BUS_HOLDS,
   BUS_SEATS,
   busPlaceOf,
   busRiderWorldPose,
@@ -193,7 +192,7 @@ export function RemotePlayer({
   const prevConnectedRef = useRef(true);
   // The place in the village bus this avatar is drawn in (-1: not riding), and the pose there (reused).
   const ridingRef = useRef<BusPlaceKind | "none">("none");
-  const riderPoseRef = useRef<BusRiderPoseFull>({ x: 0, z: 0, yaw: 0, y: 0, seated: false, holding: false });
+  const riderPoseRef = useRef<BusRiderPoseFull>({ x: 0, z: 0, yaw: 0, y: 0, seated: false });
   // The rider's point in the bus's own frame as DRAWN: it eases to the server's (the patches come ten a second) and moves
   // with the bus, so the avatar walks the aisle smoothly whatever the bus does.
   const busDrawnRef = useRef({ ahead: 0, right: 0, yaw: 0, y: 0, init: false });
@@ -478,7 +477,7 @@ export function RemotePlayer({
     }
     if (placeNow) {
       const bus = getTransitRenderPose();
-      const spot = placeNow.kind === "seat" ? BUS_SEATS[placeNow.index]! : placeNow.kind === "hold" ? BUS_HOLDS[placeNow.index]! : null;
+      const spot = placeNow.kind === "seat" ? BUS_SEATS[placeNow.index]! : null;
       const tA = spot ? spot.ahead : rec.busAhead ?? 0;
       const tR = spot ? spot.right : rec.busRight ?? 0;
       const tYaw = spot ? spot.yaw : rec.busYaw ?? 0;
@@ -536,7 +535,7 @@ export function RemotePlayer({
         probe.z = p.z;
         probe.yaw = p.yaw;
         probe.y = bd.y;
-        probe.mode = p.seated ? "bus-seated" : p.holding ? "bus-holding" : "bus-standing";
+        probe.mode = p.seated ? "bus-seated" : "bus-standing";
         remoteDrawnProbe.set(sessionId, probe);
       }
       if (rec.connected !== prevConnectedRef.current) {

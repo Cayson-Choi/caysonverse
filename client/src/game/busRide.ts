@@ -1,7 +1,7 @@
 /**
  * The own avatar's place in the village bus (owner 2026-11-15): the schema's `Player.busSeat` and bus-local point for the
  * local player, mirrored here by remoteSync and read every frame by LocalPlayer, the rider camera and the ride panel.
- * -1 = not aboard; 0 = aboard and free (walking / standing in the aisle); 1.. = a seat or a hold spot (shared
+ * -1 = not aboard; 0 = aboard and free (walking / standing in the aisle); 1.. = a seat (shared
  * village/busCabin.ts busPlaceOf). `ahead` / `right` / `yaw`: the server's point in the bus's own frame (the walk predicts
  * its own and reconciles against these). Remotes keep theirs on their store record (remoteStore.ts).
  */
@@ -13,11 +13,18 @@ export const selfBusRide = { slot: -1, ahead: 0, right: 0, yaw: 0 };
  */
 export const busWalk = { ahead: 0, right: 0, yaw: 0, valid: false };
 
-/** My point in the bus's frame now: the predicted walk while free, the seat's or the hold spot's while sitting or holding. */
-export function riderBusPoint(self: { ahead: number; right: number }, kind: "free" | "seat" | "hold", seat?: { ahead: number; right: number }): { ahead: number; right: number } {
+/** My point in the bus's frame now: the predicted walk while free, the seat's while sitting. */
+export function riderBusPoint(self: { ahead: number; right: number }, kind: "free" | "seat", seat?: { ahead: number; right: number }): { ahead: number; right: number } {
   if (kind === "free") return busWalk.valid ? busWalk : self;
   return seat ?? self;
 }
+
+/**
+ * Bus v3 (owner 2026-11-16: "버스안에서 조금씩 이동해서 원하는 자리로 이동해서 … 어디든 앉을 수 있게"): a seat the rider tapped or
+ * clicked (an index into BUS_SEATS), or -1. LocalPlayer walks the rider down the aisle to the seat's approach point and asks to
+ * sit there; a key, the stick or a sit / stand clears it.
+ */
+export const busSeatGoal = { index: -1, at: 0 };
 
 /**
  * A request for the in-bus camera to turn to a quick view (the panel's ◀ 앞 ▶ 뒤 buttons): the orbit yaw relative to the

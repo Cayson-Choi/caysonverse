@@ -37,9 +37,9 @@ export const MessageType = {
   BusRideState: "bus_ride_state",
   /** Client -> server: a rider's step inside the bus, in the bus's own frame (about 10 Hz while walking in it). */
   BusMove: "bus_move",
-  /** Client -> server: a rider sits in a free seat or takes hold of a pole. */
+  /** Client -> server: a rider sits in a free seat. */
   BusSit: "bus_sit",
-  /** Client -> server: a seated or holding rider stands free in the aisle. */
+  /** Client -> server: a seated rider stands free in the aisle. */
   BusStand: "bus_stand",
 } as const;
 
@@ -182,9 +182,9 @@ export interface BusMovePayload {
   yaw: number;
 }
 
-/** Take a free seat (`kind: "seat"`, an index into BUS_SEATS) or a hold spot (`"hold"`, into BUS_HOLDS). */
+/** Take a free seat (`kind: "seat"`, an index into BUS_SEATS). Bus v3: the old `"hold"` (poles) is gone; the server drops it. */
 export interface BusSitPayload {
-  kind: "seat" | "hold";
+  kind: "seat";
   index: number;
 }
 

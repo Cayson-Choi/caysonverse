@@ -1,6 +1,10 @@
 import { TRANSIT, boardingOpensWords, busTripAt, type BusTrip } from "@caysonverse/shared/village/transit";
 import { busBoardingDistance } from "@caysonverse/shared/village/villageLayout";
+import { BUS_CAPACITY } from "@caysonverse/shared/village/busCabin";
 import { BUS_OFFER_REACH_M, busCountdownWords } from "./villageTargets";
+
+/** Bus v3: the stop's line names the places left once this few remain (a full bus says so instead of "board now"). */
+export const BUS_HINT_SPACE_FROM = 10;
 
 /** How far outside the boarding area (m) the stop's timetable line shows: the board button's reach and a little more. */
 export const BUS_HINT_REACH_M = BUS_OFFER_REACH_M + 1.2;
@@ -24,6 +28,7 @@ export function busStopHintAt(
   boarded: boolean,
   tripAt: (ms: number) => BusTrip = busTripAt,
   touch = false,
+  aboard = 0,
 ): BusStopHint | null {
   if (boarded) return null;
   if (!(busBoardingDistance(x, z) <= BUS_HINT_REACH_M)) return null;
@@ -31,7 +36,11 @@ export function busStopHintAt(
   if (trip.status === "boarding") {
     // a phone has no E key: the round 🚌 button is how it boards (review 2026-11-15)
     const how = touch ? "버스 앞에서 🚌 버튼" : "버스 앞에서 E";
-    return { tone: "board", text: `지금 탈 수 있어요 · ${busCountdownWords(trip.startMs - nowMs).long} 뒤 출발 (${how})` };
+    const left = BUS_CAPACITY - aboard;
+    // bus v3 (owner 2026-11-16): only as many as the bus holds; a full one says so (the server refuses the next rider)
+    if (left <= 0) return { tone: "wait", text: `버스가 가득 찼어요 · 다음 버스를 기다려 주세요` };
+    const space = left <= BUS_HINT_SPACE_FROM ? ` · 남은 자리 ${left}` : "";
+    return { tone: "board", text: `지금 탈 수 있어요 · ${busCountdownWords(trip.startMs - nowMs).long} 뒤 출발${space} (${how})` };
   }
   if (trip.status === "inTransit") {
     // "약 N분": just after the departure the exact whole-minute countdown rounded UP to a full cycle ("10분 뒤" 40 s after it left)

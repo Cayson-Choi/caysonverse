@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { TRANSIT } from "@caysonverse/shared/village/transit";
 import { VILLAGE_LAYOUT } from "@caysonverse/shared/village/villageLayout";
+import { BUS_CAPACITY } from "@caysonverse/shared/village/busCabin";
 import { busStopHintAt, createHintGate } from "./busStopHint";
 
 const every = TRANSIT.departureEveryMs;
@@ -27,6 +28,13 @@ describe("busStopHintAt — the stop's timetable line (review 2026-11-15)", () =
   it("40 s after a departure the next one is about 9 minutes away, not rounded up to a whole cycle (review r1: it said 10분)", () => {
     const h = busStopHintAt(s.x, s.z, base + 40_000, false)!;
     expect(h.text).toMatch(/^버스 운행 중 · 약 9분 뒤 출발/);
+  });
+  it("bus v3: the places left are named once 10 or fewer remain; a full bus says to wait for the next one (no board line)", () => {
+    const t = base + every - 12_000;
+    expect(busStopHintAt(s.x, s.z, t, false, undefined, false, 3)!.text).toBe("지금 탈 수 있어요 · 12초 뒤 출발 (버스 앞에서 E)");
+    expect(busStopHintAt(s.x, s.z, t, false, undefined, false, BUS_CAPACITY - 4)!.text).toBe("지금 탈 수 있어요 · 12초 뒤 출발 · 남은 자리 4 (버스 앞에서 E)");
+    const full = busStopHintAt(s.x, s.z, t, false, undefined, true, BUS_CAPACITY)!;
+    expect(full).toEqual({ tone: "wait", text: "버스가 가득 찼어요 · 다음 버스를 기다려 주세요" });
   });
   it("in the 3 boarding minutes: board now, by the bus", () => {
     const h = busStopHintAt(s.x, s.z, base + every - 12_000, false)!;

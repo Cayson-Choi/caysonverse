@@ -341,10 +341,10 @@ function TransitRideHud() {
           </div>
           {hint ? (
             <div style={{ marginTop: 6, background: "rgba(139,92,246,0.35)", borderRadius: 8, padding: "6px 8px" }} data-testid="bus-ride-hint">
-              {touch ? "화면을 끌어서 창밖을 둘러보세요 · 자리나 손잡이 가까이에서 아래 버튼" : "화면을 끌어서 창밖을 둘러보세요 · 자리나 손잡이 가까이에서 E"}
+              {touch ? "화면을 끌어서 창밖을 둘러보세요 · 빈 의자를 톡 누르면 가서 앉아요" : "화면을 끌어서 창밖을 둘러보세요 · 빈 의자를 누르거나 가까이에서 E"}
             </div>
           ) : touch ? null : (
-            <div style={{ marginTop: 5, opacity: 0.7 }}>화면을 끌면 둘러볼 수 있어요 · 자리·손잡이 가까이에서 E</div>
+            <div style={{ marginTop: 5, opacity: 0.7 }}>화면을 끌면 둘러볼 수 있어요 · 의자를 누르거나 가까이에서 E</div>
           )}
           {snapshot?.status === "inTransit" ? (
             // the doors open only at the stop (the server refuses a leave on the lap): say when instead of a dead button

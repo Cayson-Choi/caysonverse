@@ -2,15 +2,11 @@ import type { BusMovePayload, BusSitPayload } from "@caysonverse/shared/messages
 import { MOVE_ELAPSED_CEIL_MS, MOVE_ELAPSED_FLOOR_MS, MOVE_SPEED_SLACK, RUN_SPEED } from "@caysonverse/shared/constants";
 import {
   BUS_WALK_RADIUS,
-  BUS_HOLDS,
-  BUS_HOLD_REACH_M,
   BUS_RIDER_APART_SERVER,
   BUS_SEATS,
-  BUS_HOLD_COUNT,
   type BusLocalPoint,
   crowdBlocks,
   BUS_SEAT_COUNT,
-  busHoldNumber,
   busSeatNumber,
   cabinBlocked,
   normalizeYaw,
@@ -19,7 +15,7 @@ import {
 
 /**
  * Validation of a rider's actions inside the bus (shared village/busCabin.ts): a step in the bus's own frame, sitting in a
- * seat or taking hold of a pole. Pure: the room keeps who sits where and applies the result.
+ * seat. Pure: the room keeps who sits where and applies the result.
  */
 
 export type BusMoveDecision =
@@ -63,47 +59,36 @@ export function validateBusMove(
 }
 
 export type BusSitDecision =
-  | { ok: true; busSeat: number; kind: "seat" | "hold"; index: number }
+  | { ok: true; busSeat: number; kind: "seat"; index: number }
   | { ok: false; notice: string };
 
 export const BUS_SEAT_TAKEN_NOTICE = "다른 사람이 앉아 있어요.";
-export const BUS_HOLD_TAKEN_NOTICE = "다른 사람이 잡고 있어요.";
 export const BUS_SEAT_FRONT_NOTICE = "의자 앞쪽에서 앉을 수 있어요.";
 export const BUS_SEAT_FAR_NOTICE = "의자 가까이 가서 눌러 주세요.";
 
 /**
- * Sitting in a free seat or taking hold of a pole, from where the rider stands (aboard and free): the spot must be free
- * (`taken`: the busSeat numbers other riders hold), the rider within reach of it, and in front of a backed seat.
+ * Sitting in a free seat from where the rider stands (aboard and free): the seat must be free (`taken`: the busSeat numbers
+ * other riders hold), the rider within reach of it and in front of it (every seat is backed). Bus v3: there are no hold places
+ * any more (no poles); a `kind` other than "seat" is dropped silently.
  */
 export function validateBusSit(
   from: { busSeat: number; ahead: number; right: number },
   payload: unknown,
   taken: ReadonlySet<number>,
-  riders?: ReadonlyArray<BusLocalPoint>,
 ): BusSitDecision {
   if (from.busSeat !== 0) return { ok: false, notice: "" };
   if (payload === null || typeof payload !== "object") return { ok: false, notice: "" };
   const p = payload as Partial<BusSitPayload>;
-  if ((p.kind !== "seat" && p.kind !== "hold") || !Number.isInteger(p.index)) return { ok: false, notice: "" };
+  if (p.kind !== "seat" || !Number.isInteger(p.index)) return { ok: false, notice: "" };
   const index = p.index as number;
-  if (p.kind === "seat") {
-    if (index < 0 || index >= BUS_SEAT_COUNT) return { ok: false, notice: "" };
-    const number = busSeatNumber(index);
-    if (taken.has(number)) return { ok: false, notice: BUS_SEAT_TAKEN_NOTICE };
-    const seat = BUS_SEATS[index]!;
-    if (!seatApproachOk(seat, from.ahead, from.right)) {
-      // close enough but on the wrong side: say so; too far: say that
-      const d = Math.hypot(from.ahead - seat.ahead, from.right - seat.right);
-      return { ok: false, notice: d < 1.6 ? BUS_SEAT_FRONT_NOTICE : BUS_SEAT_FAR_NOTICE };
-    }
-    return { ok: true, busSeat: number, kind: "seat", index };
+  if (index < 0 || index >= BUS_SEAT_COUNT) return { ok: false, notice: "" };
+  const number = busSeatNumber(index);
+  if (taken.has(number)) return { ok: false, notice: BUS_SEAT_TAKEN_NOTICE };
+  const seat = BUS_SEATS[index]!;
+  if (!seatApproachOk(seat, from.ahead, from.right)) {
+    // close enough but on the wrong side: say so; too far: say that
+    const d = Math.hypot(from.ahead - seat.ahead, from.right - seat.right);
+    return { ok: false, notice: d < 1.6 ? BUS_SEAT_FRONT_NOTICE : BUS_SEAT_FAR_NOTICE };
   }
-  if (index < 0 || index >= BUS_HOLD_COUNT) return { ok: false, notice: "" };
-  const number = busHoldNumber(index);
-  if (taken.has(number)) return { ok: false, notice: BUS_HOLD_TAKEN_NOTICE };
-  const hold = BUS_HOLDS[index]!;
-  // someone standing at the pole's spot (not holding it yet) counts as holding it: two bodies never share a spot
-  if (riders && riders.some((o) => Math.hypot(o.ahead - hold.ahead, o.right - hold.right) < BUS_RIDER_APART_SERVER)) return { ok: false, notice: BUS_HOLD_TAKEN_NOTICE };
-  if (Math.hypot(from.ahead - hold.ahead, from.right - hold.right) > BUS_HOLD_REACH_M) return { ok: false, notice: BUS_SEAT_FAR_NOTICE };
-  return { ok: true, busSeat: number, kind: "hold", index };
+  return { ok: true, busSeat: number, kind: "seat", index };
 }

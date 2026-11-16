@@ -3,6 +3,7 @@ import type { Pose } from "../game/types";
 import { transitNowMs, transitTripAt, useTransitState } from "../net/transitSync";
 import { busStopHintAt, createHintGate, type BusStopHint } from "./busStopHint";
 import { isTouchDevice } from "../device";
+import { busRiderCount } from "../game/remoteStore";
 import "./crosswalkHint.css";
 
 /**
@@ -18,7 +19,7 @@ export function BusStopHintPill({ pose }: { pose: Pose }) {
     // The first sample is always published, a null one too (createHintGate: boarding must clear the line).
     const changed = createHintGate();
     const tick = (): void => {
-      const h = busStopHintAt(pose.x, pose.z, transitNowMs(), boarded, transitTripAt, isTouchDevice);
+      const h = busStopHintAt(pose.x, pose.z, transitNowMs(), boarded, transitTripAt, isTouchDevice, busRiderCount());
       if (changed(h)) setHint(h);
     };
     tick();

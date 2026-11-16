@@ -300,9 +300,11 @@ describe("the signs behind glass: lit amber dots on both tiers, none brighter th
   const SKY = [0, 1, 2].map((i) => (BUS_SKY.zenith[i]! + BUS_SKY.horizon[i]! + BUS_SKY.groundFar[i]!) / 3);
   const F = BUS_LOOK.glassF0; // head-on: the glass
   const FS = BUS_LOOK.signGlassF0; // head-on: the clear pane in front of a sign
+  // `opacity`: the r4 glass this test compares against (0.8 by day, 0.55 at night; bus v3 made the panes far clearer, 0.34 /
+  // 0.22, which only helps the signs: the glass in front of a sign is cleared on both tiers whatever the panes' tint)
   const TIMES = [
-    { name: "day", exposure: DAY_STATE.exposure, env: 1, led: BUS_LOOK.ledDay, opacity: BUS_LOOK.glassOpacity },
-    { name: "night", exposure: NIGHT_STATE.exposure, env: 0.1, led: BUS_LOOK.ledNight, opacity: BUS_LOOK.glassNightOpacity },
+    { name: "day", exposure: DAY_STATE.exposure, env: 1, led: BUS_LOOK.ledDay, opacity: 0.8 },
+    { name: "night", exposure: NIGHT_STATE.exposure, env: 0.1, led: BUS_LOOK.ledNight, opacity: 0.55 },
   ];
   /**
    * What reaches the eye from a sign texel head-on (GLASS_ADD's blend: dst × (1 - a') + sky F + tint, a' = mix(a, 1, F);

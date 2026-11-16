@@ -328,6 +328,12 @@ export function createNametagFrame(): NametagFrame {
       const n = states.length;
       if (n > 0) {
         frameNo++;
+        // The camera's world matrix as it is THIS frame (owner 2026-11-16: "버스안에서 이름표가 계속 빠르게 깜빡거리는데"). It used to be
+        // refreshed only by the 5 Hz pass below; in between, the size and the stacking lift were measured from where the camera
+        // was when the renderer last refreshed it. Riding the bus the camera moves with everyone in it, so every tag's depth
+        // from that stale matrix drifted and the 5 Hz refresh snapped it back: the tags pulsed in size and height five times
+        // a second. One refresh here (an object without parents: a few multiplies) keeps every tag still relative to the eye.
+        camera.updateMatrixWorld();
         const camX = camera.position.x;
         const camY = camera.position.y;
         const camZ = camera.position.z;

@@ -6,76 +6,34 @@
  */
 
 export interface GenSeat { id: string; ahead: number; right: number; floor: number; yaw: number; backed: boolean }
-export interface GenHold { id: string; ahead: number; right: number; floor: number; yaw: number; pole: string }
-export interface GenPole { name: string; ahead: number; right: number; z0: number; z1: number; r: number }
-export interface GenStrap { name: string; ahead: number; right: number; z0: number; z1: number }
 export interface GenSeatBack { seat: string; min: readonly [number, number, number]; max: readonly [number, number, number] }
 export interface GenSolid { id: string; minAhead: number; minRight: number; maxAhead: number; maxRight: number }
 export interface GenFloor { xf0: number; xf1: number; h: number }
 
 export const GEN_CABIN_SEATS: readonly GenSeat[] = [
-  { id: "L1", ahead: 2.15, right: -0.86, floor: 0.8, yaw: 0, backed: true },
-  { id: "L2", ahead: 1.25, right: -0.86, floor: 0.34, yaw: 0, backed: true },
-  { id: "L3", ahead: 0.4, right: -0.86, floor: 0.34, yaw: 0, backed: true },
-  { id: "R1", ahead: 2.15, right: 0.86, floor: 0.8, yaw: 0, backed: true },
-  { id: "R2", ahead: 1.1, right: 0.86, floor: 0.34, yaw: 0, backed: true },
-  { id: "W1", ahead: 0, right: -0.93, floor: 0.34, yaw: -1.571, backed: true },
-  { id: "W2", ahead: -1, right: -0.93, floor: 0.34, yaw: -1.571, backed: true },
-  { id: "RL1", ahead: -2.2, right: -0.86, floor: 0.86, yaw: 0, backed: true },
-  { id: "RR1", ahead: -2.2, right: 0.86, floor: 0.86, yaw: 0, backed: true },
-  { id: "RL2", ahead: -3.05, right: -0.86, floor: 0.75, yaw: 0, backed: true },
-  { id: "RR2", ahead: -3.05, right: 0.86, floor: 0.75, yaw: 0, backed: true },
-  { id: "B1", ahead: -3.85, right: -0.8, floor: 0.75, yaw: 0, backed: true },
+  { id: "L1", ahead: 2.05, right: -0.775, floor: 0.8, yaw: 0, backed: true },
+  { id: "L2", ahead: 1.05, right: -0.775, floor: 0.34, yaw: 0, backed: true },
+  { id: "L3", ahead: -0.05, right: -0.775, floor: 0.34, yaw: 0, backed: true },
+  { id: "R1", ahead: 2.05, right: 0.775, floor: 0.8, yaw: 0, backed: true },
+  { id: "R2", ahead: 1.05, right: 0.775, floor: 0.34, yaw: 0, backed: true },
+  { id: "RL1", ahead: -2.25, right: -0.775, floor: 0.86, yaw: 0, backed: true },
+  { id: "RR1", ahead: -2.25, right: 0.775, floor: 0.86, yaw: 0, backed: true },
+  { id: "B1", ahead: -3.85, right: -0.79, floor: 0.75, yaw: 0, backed: true },
   { id: "B2", ahead: -3.85, right: 0, floor: 0.75, yaw: 0, backed: true },
-  { id: "B3", ahead: -3.85, right: 0.8, floor: 0.75, yaw: 0, backed: true },
-];
-
-export const GEN_CABIN_HOLDS: readonly GenHold[] = [
-  { id: "H1", ahead: 3.35, right: 0.32, floor: 0.34, yaw: 0, pole: "pole_4" },
-  { id: "H2", ahead: 1.7, right: -0.14, floor: 0.34, yaw: 0, pole: "pole_0" },
-  { id: "H3", ahead: 0.95, right: -0.14, floor: 0.34, yaw: 0, pole: "pole_1" },
-  { id: "H4", ahead: 0.35, right: 0.28, floor: 0.34, yaw: 0, pole: "pole_3" },
-  { id: "H5", ahead: -1.1, right: 0.34, floor: 0.34, yaw: 0, pole: "pole_6" },
-  { id: "H6", ahead: -1.75, right: -0.14, floor: 0.75, yaw: 0, pole: "pole_7" },
-  { id: "H7", ahead: -2.62, right: 0.2, floor: 0.75, yaw: 0, pole: "pole_10" },
-];
-
-export const GEN_CABIN_POLES: readonly GenPole[] = [
-  { name: "pole_0", ahead: 1.7, right: -0.56, z0: 0.34, z1: 3.15, r: 0.0175 },
-  { name: "pole_1", ahead: 0.82, right: -0.56, z0: 0.34, z1: 3.15, r: 0.0175 },
-  { name: "pole_2", ahead: 1.63, right: 0.56, z0: 0.34, z1: 3.15, r: 0.0175 },
-  { name: "pole_3", ahead: 0.6, right: 0.56, z0: 0.34, z1: 3.15, r: 0.0175 },
-  { name: "pole_4", ahead: 2.95, right: 0.9, z0: 0.34, z1: 3.15, r: 0.0175 },
-  { name: "pole_5", ahead: 0.28, right: 0.9, z0: 0.34, z1: 3.15, r: 0.0175 },
-  { name: "pole_6", ahead: -1.32, right: 0.9, z0: 0.34, z1: 3.15, r: 0.0175 },
-  { name: "pole_7", ahead: -1.75, right: -0.56, z0: 0.75, z1: 3.15, r: 0.0175 },
-  { name: "pole_8", ahead: -1.75, right: 0.56, z0: 0.75, z1: 3.15, r: 0.0175 },
-  { name: "pole_9", ahead: -2.62, right: -0.56, z0: 0.75, z1: 3.15, r: 0.0175 },
-  { name: "pole_10", ahead: -2.62, right: 0.56, z0: 0.75, z1: 3.15, r: 0.0175 },
-];
-
-export const GEN_CABIN_STRAPS: readonly GenStrap[] = [
-  { name: "strap_r_0", ahead: 1.85, right: 0.6, z0: 2.45, z1: 2.85 },
-  { name: "strap_r_1", ahead: -0.15, right: 0.6, z0: 2.45, z1: 2.85 },
-  { name: "strap_l_0", ahead: 1.85, right: -0.6, z0: 2.45, z1: 2.85 },
-  { name: "strap_l_1", ahead: -0.15, right: -0.6, z0: 2.45, z1: 2.85 },
+  { id: "B3", ahead: -3.85, right: 0.79, floor: 0.75, yaw: 0, backed: true },
 ];
 
 export const GEN_CABIN_SEAT_BACKS: readonly GenSeatBack[] = [
-  { seat: "L1", min: [1.89, -1.17, 1.25], max: [2.01, -0.55, 1.92] },
-  { seat: "L2", min: [0.99, -1.17, 0.79], max: [1.11, -0.55, 1.46] },
-  { seat: "L3", min: [0.14, -1.17, 0.79], max: [0.26, -0.55, 1.46] },
-  { seat: "R1", min: [1.89, 0.55, 1.25], max: [2.01, 1.17, 1.92] },
-  { seat: "R2", min: [0.84, 0.55, 0.79], max: [0.96, 1.17, 1.46] },
-  { seat: "W1", min: [-0.31, -1.19, 0.79], max: [0.31, -1.07, 1.46] },
-  { seat: "W2", min: [-1.31, -1.19, 0.79], max: [-0.69, -1.07, 1.46] },
-  { seat: "RL1", min: [-2.46, -1.17, 1.31], max: [-2.34, -0.55, 1.98] },
-  { seat: "RR1", min: [-2.46, 0.55, 1.31], max: [-2.34, 1.17, 1.98] },
-  { seat: "RL2", min: [-3.31, -1.17, 1.2], max: [-3.19, -0.55, 1.87] },
-  { seat: "RR2", min: [-3.31, 0.55, 1.2], max: [-3.19, 1.17, 1.87] },
-  { seat: "B1", min: [-4.11, -1.11, 1.2], max: [-3.99, -0.49, 1.87] },
-  { seat: "B2", min: [-4.11, -0.31, 1.2], max: [-3.99, 0.31, 1.87] },
-  { seat: "B3", min: [-4.11, 0.49, 1.2], max: [-3.99, 1.11, 1.87] },
+  { seat: "L1", min: [1.755, -1.175, 1.25], max: [1.875, -0.375, 2.05] },
+  { seat: "L2", min: [0.755, -1.175, 0.79], max: [0.875, -0.375, 1.59] },
+  { seat: "L3", min: [-0.345, -1.175, 0.79], max: [-0.225, -0.375, 1.59] },
+  { seat: "R1", min: [1.755, 0.375, 1.25], max: [1.875, 1.175, 2.05] },
+  { seat: "R2", min: [0.755, 0.375, 0.79], max: [0.875, 1.175, 1.59] },
+  { seat: "RL1", min: [-2.545, -1.175, 1.31], max: [-2.425, -0.375, 2.11] },
+  { seat: "RR1", min: [-2.545, 0.375, 1.31], max: [-2.425, 1.175, 2.11] },
+  { seat: "B1", min: [-4.145, -1.18, 1.2], max: [-4.025, -0.4, 2] },
+  { seat: "B2", min: [-4.145, -0.39, 1.2], max: [-4.025, 0.39, 2] },
+  { seat: "B3", min: [-4.145, 0.4, 1.2], max: [-4.025, 1.18, 2] },
 ];
 
 export const GEN_CABIN_SOLIDS: readonly GenSolid[] = [
@@ -84,23 +42,19 @@ export const GEN_CABIN_SOLIDS: readonly GenSolid[] = [
   { id: "housing_l_235", minAhead: 1.51, minRight: -1.195, maxAhead: 2.79, maxRight: -0.595 },
   { id: "housing_l_675", minAhead: -2.89, minRight: -1.195, maxAhead: -1.61, maxRight: -0.595 },
   { id: "dash", minAhead: 3.95, minRight: -1.2, maxAhead: 4.5, maxRight: 1.2 },
-  { id: "driver_partition", minAhead: 3.1, minRight: -1.2, maxAhead: 4.5, maxRight: -0.35 },
+  { id: "driver_partition", minAhead: 2.7, minRight: -1.2, maxAhead: 4.5, maxRight: -0.35 },
   { id: "fare_95", minAhead: 3.49, minRight: 0.76, maxAhead: 3.61, maxRight: 0.88 },
   { id: "fare_583", minAhead: -1.39, minRight: 0.74, maxAhead: -1.27, maxRight: 0.86 },
-  { id: "seat_L1", minAhead: 1.87, minRight: -1.17, maxAhead: 2.43, maxRight: -0.55 },
-  { id: "seat_L2", minAhead: 0.97, minRight: -1.17, maxAhead: 1.53, maxRight: -0.55 },
-  { id: "seat_L3", minAhead: 0.12, minRight: -1.17, maxAhead: 0.68, maxRight: -0.55 },
-  { id: "seat_R1", minAhead: 1.87, minRight: 0.55, maxAhead: 2.43, maxRight: 1.17 },
-  { id: "seat_R2", minAhead: 0.82, minRight: 0.55, maxAhead: 1.38, maxRight: 1.17 },
-  { id: "seat_W1", minAhead: -0.31, minRight: -1.21, maxAhead: 0.31, maxRight: -0.65 },
-  { id: "seat_W2", minAhead: -1.31, minRight: -1.21, maxAhead: -0.69, maxRight: -0.65 },
-  { id: "seat_RL1", minAhead: -2.48, minRight: -1.17, maxAhead: -1.92, maxRight: -0.55 },
-  { id: "seat_RR1", minAhead: -2.48, minRight: 0.55, maxAhead: -1.92, maxRight: 1.17 },
-  { id: "seat_RL2", minAhead: -3.33, minRight: -1.17, maxAhead: -2.77, maxRight: -0.55 },
-  { id: "seat_RR2", minAhead: -3.33, minRight: 0.55, maxAhead: -2.77, maxRight: 1.17 },
-  { id: "seat_B1", minAhead: -4.13, minRight: -1.11, maxAhead: -3.57, maxRight: -0.49 },
-  { id: "seat_B2", minAhead: -4.13, minRight: -0.31, maxAhead: -3.57, maxRight: 0.31 },
-  { id: "seat_B3", minAhead: -4.13, minRight: 0.49, maxAhead: -3.57, maxRight: 1.11 },
+  { id: "seat_L1", minAhead: 1.77, minRight: -1.175, maxAhead: 2.36, maxRight: -0.375 },
+  { id: "seat_L2", minAhead: 0.77, minRight: -1.175, maxAhead: 1.36, maxRight: -0.375 },
+  { id: "seat_L3", minAhead: -0.33, minRight: -1.175, maxAhead: 0.26, maxRight: -0.375 },
+  { id: "seat_R1", minAhead: 1.77, minRight: 0.375, maxAhead: 2.36, maxRight: 1.175 },
+  { id: "seat_R2", minAhead: 0.77, minRight: 0.375, maxAhead: 1.36, maxRight: 1.175 },
+  { id: "seat_RL1", minAhead: -2.53, minRight: -1.175, maxAhead: -1.94, maxRight: -0.375 },
+  { id: "seat_RR1", minAhead: -2.53, minRight: 0.375, maxAhead: -1.94, maxRight: 1.175 },
+  { id: "seat_B1", minAhead: -4.13, minRight: -1.18, maxAhead: -3.54, maxRight: -0.4 },
+  { id: "seat_B2", minAhead: -4.13, minRight: -0.39, maxAhead: -3.54, maxRight: 0.39 },
+  { id: "seat_B3", minAhead: -4.13, minRight: 0.4, maxAhead: -3.54, maxRight: 1.18 },
 ];
 
 /** The floor's heights by xf (m back from the front face): the low floor, the two steps' treads, the raised rear. */
@@ -115,3 +69,13 @@ export const GEN_CABIN_HALF_WIDTH = 1.195;
 export const GEN_CABIN_BOUNDS = { aheadMin: -4.2, aheadMax: 4.38, right: 1.195 } as const;
 /** The two doors' xf spans (front, middle). */
 export const GEN_CABIN_DOORS: readonly (readonly [number, number])[] = [[0.4, 1.49], [4.35, 5.75]];
+/**
+ * The driver's place (nodes bus_driver_seat, bus_steering_wheel, bus_driver_sit in village_bus.glb): the seat's centre on the
+ * floor (its cushion's top `surface` m above the floor), where a sitter's root goes, and the steering wheel's hub (`y` up,
+ * its axis tilted back `tiltDeg` from vertical towards the driver).
+ */
+export const GEN_CABIN_DRIVER = {
+  seat: { ahead: 3.18, right: -0.62, floor: 0.34, surface: 0.452 },
+  sit: { ahead: 3.71, right: -0.62, floor: 0.34 },
+  wheel: { ahead: 3.94, right: -0.62, y: 1.3, tiltDeg: 35, radius: 0.22 },
+} as const;

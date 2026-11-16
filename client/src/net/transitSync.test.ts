@@ -106,6 +106,35 @@ describe("transitSync", () => {
     stop();
   });
 
+  it("bus v3 (owner: the name tags flickered in the bus): one render pose per animation frame, whoever asks and however late in it", () => {
+    const f = fakeRoom();
+    const stop = startTransitSync(f.room);
+    const hour = Math.floor(1_700_000_000_000 / TRANSIT.departureEveryMs) * TRANSIT.departureEveryMs;
+    const base = tripTimeline(hour).legs[0]!.fromMs + BUS_RAMP_MS + 5_000;
+    let mono = 1_000;
+    const spy = vi.spyOn(performance, "now").mockImplementation(() => mono);
+    const g = globalThis as unknown as { document?: unknown };
+    const hadDocument = "document" in g;
+    const saved = g.document;
+    const timeline = { currentTime: 16.7 };
+    g.document = { ...(saved as object | undefined), timeline };
+    f.emit(MessageType.BusState, { tripId: hour, status: "inTransit", progress: 0, x: 0, z: 0, yaw: 0, signal: "green", serverMs: base });
+    // frame 1: the camera asks, then 6 ms of work, then the riders and their tags ask: the same pose (it moved 2.6 cm meanwhile before)
+    const a = { ...getTransitRenderPose() };
+    mono += 6;
+    const b = { ...getTransitRenderPose() };
+    expect(b).toEqual(a);
+    // the next frame: a new pose (the bus moves on)
+    timeline.currentTime += 16.7;
+    mono += 10.7;
+    const c = getTransitRenderPose();
+    expect(Math.hypot(c.x - a.x, c.z - a.z)).toBeGreaterThan(0.03);
+    if (hadDocument) g.document = saved;
+    else delete g.document;
+    spy.mockRestore();
+    stop();
+  });
+
   it("agrees with the server's snapshot pose at the same server time (one shared function)", () => {
     const hour = Math.floor(1_700_000_000_000 / TRANSIT.departureEveryMs) * TRANSIT.departureEveryMs;
     const lap = tripTimeline(hour).endMs - hour;

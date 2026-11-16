@@ -1,7 +1,7 @@
 /**
  * e2e/village-bus-view.mjs — the owner's three complaints of 2026-11-16 about the bus view, proven in the game:
- *   1. structures never overlap the avatar: in the third person no pole / strap / rail is drawn within the avatar's body, and none lies
- *      between the camera and the avatar (checked on the draw list: the poles drawn are not near the body line);
+ *   1. structures never overlap the avatar: bus v3 has no pole / strap / rail at all (checked on the loaded scene), and in the third
+ *      person the lens stays inside the cabin with no near body part filling the screen;
  *   2. both side windows can be looked out of: the left / right quick view, and a drag (mouse on a PC, touch on a phone), turn the
  *      view to each side (the look yaw ends on the side), screenshots show the outside;
  *   3. first person works in the bus, seated and standing: boarding starts in it, V / the eye button toggle it both ways, and
@@ -152,22 +152,25 @@ async function tpShares(label, tagName) {
 const checkFade = async (label) => {
   const c = await A.page.evaluate(async () => {
     const m = await window.__imp("/src/game/busRide.ts");
-    const t = await window.__imp("/src/village/transitCamera.ts");
     const cs = m.busCamState;
-    const names = [...t.fadingFixtures(cs.eye, cs.head, cs.chest)];
     const { scene } = window.__cvThree();
-    const vis = {};
-    scene.traverse((o) => { if (/^(pole|strap|stop_btn)_/.test(o.name)) vis[o.name] = o.visible; });
-    return { fp: cs.firstPerson, arm: cs.arm, names, vis };
+    const handles = [];
+    const hidden = [];
+    scene.traverse((o) => {
+      if (/^(pole|strap|rail)_/.test(o.name)) handles.push(o.name);
+      if (/^(stop_btn_|bus_driver_seat|bus_steering_wheel)/.test(o.name) && !o.visible) hidden.push(o.name);
+    });
+    return { fp: cs.firstPerson, arm: cs.arm, handles, hidden };
   });
-  // owner 2026-11-16 ("반투명하게 보이게 하지 마"): nothing in the cabin is hidden or faded any more
-  run.check(`1. ${label}: third person, and every pole / strap / button is drawn (none hidden near the lens)`, c.fp === false && Object.keys(c.vis).length > 0 && Object.values(c.vis).every((v) => v === true), c);
+  // bus v3 (owner 2026-11-16): no pole, rail or strap at all; nothing in the cabin is hidden or faded ("반투명하게 보이게 하지 마")
+  run.check(`1. ${label}: third person, no pole / rail / strap in the cabin, nothing hidden near the lens`, c.fp === false && c.handles.length === 0 && c.hidden.length === 0, c);
 };
 await run.step("join, board", async () => {
   await joinVillage(A, "뷰", TIME);
   await pollUntil(() => A.page.evaluate(async () => (await window.__imp("/src/net/transitSync.ts")).getTransitState().snapshot !== null), 30000);
   await walkAndWait(A, 38.5, -0.5, 40000, 1);
   await walkAndWait(A, 37.7, -8.9, 30000, 0.5);
+  await pollUntil(async () => (await A.page.evaluate(async () => { const s = await window.__imp("/src/net/transitSync.ts"); return s.transitTripAt(s.transitNowMs()).status; })) === "boarding", 420000, 500); // the server may be started before the window opens
   await sleep(600);
   await act(A);
   run.check("aboard and free", await pollUntil(async () => { const s = await state(); return s.slot === 0 && s.boarded; }, 8000), await state());
@@ -221,23 +224,17 @@ await run.step("2. look out of the left and right windows (quick views and a dra
   await shot("6-fp-back");
 });
 
-await run.step("3b. first person while seated, and standing at a pole", async () => {
-  // sit: walk to the first seat the UI offers in the aisle
+await run.step("3b. first person while seated, and standing in the aisle", async () => {
+  // sit: walk to L2's approach point (the shared rule) and take the seat the UI offers there
   const spot = await A.page.evaluate(async () => {
     const c = await window.__imp("/shared/src/village/busCabin.ts");
-    let best = null;
-    for (let a = -3.6; a <= 3.4; a += 0.05) for (let r = -0.2; r <= 0.2001; r += 0.05) {
-      if (c.cabinBlocked(a, r, 0.32) || c.BUS_HOLDS.some((h) => Math.hypot(a - h.ahead, r - h.right) < 0.55)) continue;
-      const o = c.nearestFreeSpot(a, r, new Set(), new Set(), undefined, 0);
-      if (!o || o.kind !== "seat") continue;
-      const d = Math.hypot(a - 1.5, r);
-      if (!best || d < best.d) best = { a, r, d };
-    }
-    return best;
+    const i = c.BUS_SEATS.findIndex((s) => s.id === "L2");
+    const ap = c.seatApproachPoint(c.BUS_SEATS[i]);
+    return { a: ap.ahead, r: ap.right, i };
   });
-  await walkBus(spot.a, spot.r, 0.25);
+  await walkBus(spot.a, spot.r, 0.15);
   await act(A);
-  run.check("seated (the E / button offered a seat)", await pollUntil(async () => { const s = await state(); return s.slot >= 1 && s.slot <= 14; }, 5000), await state());
+  run.check("seated (the E / button offered a seat)", await pollUntil(async () => { const s = await state(); return s.slot >= 1 && s.slot <= 10; }, 5000), await state());
   await sleep(800);
   let s = await state();
   run.check("seated: first person (mode fp, avatar hidden)", s.mode === "fp" && s.fp === true, s);
@@ -255,27 +252,24 @@ await run.step("3b. first person while seated, and standing at a pole", async ()
   await toggleV();
   s = await state();
   run.check("seated: V back to first person", s.mode === "fp", s);
-  // stand up (E / the button) and hold a pole
+  // stand up (E / the button) and stand in the aisle by the middle door (bus v3: no poles to hold, people just stand)
   await act(A);
   run.check("stood up", await pollUntil(async () => (await state()).slot === 0, 4000), await state());
-  const hold = await A.page.evaluate(async () => { const c = await window.__imp("/shared/src/village/busCabin.ts"); return c.BUS_HOLDS.find((h) => Math.abs(h.right) < 0.9) ?? c.BUS_HOLDS[0]; });
-  await walkBus(hold.ahead, hold.right, 0.2);
-  await act(A);
-  run.check("holding a pole", await pollUntil(async () => (await state()).slot >= 15, 4000), await state());
+  await walkBus(-0.4, 0.26, 0.2);
   await sleep(800);
   s = await state();
-  run.check("standing at a pole: first person", s.mode === "fp" && s.fp === true, s);
-  await shot("13-hold-fp-front");
+  run.check("standing in the aisle: first person", s.mode === "fp" && s.fp === true && s.slot === 0, s);
+  await shot("13-stand-fp-front");
   await view("left");
-  await shot("14-hold-fp-left");
+  await shot("14-stand-fp-left");
   await view("right");
-  await shot("15-hold-fp-right");
+  await shot("15-stand-fp-right");
   await toggleV();
   s = await state();
-  run.check("standing at a pole: V gives the third person", s.mode === "tp" && s.arm > 0.3, s);
-  await tpShares("holding a pole", "16-hold");
+  run.check("standing: V gives the third person", s.mode === "tp" && s.arm > 0.3, s);
+  await tpShares("standing", "16-stand");
   await view("front");
-  await checkFade("holding a pole");
+  await checkFade("standing");
 });
 
 await browser.close();

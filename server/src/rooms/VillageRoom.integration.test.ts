@@ -16,8 +16,8 @@ import { TRANSIT, routePoseAtDistance } from "@caysonverse/shared/village/transi
 import { busDismountSpot } from "@caysonverse/shared/village/busSeats";
 import { busClearance } from "@caysonverse/shared/village/busBody";
 import { busDriveTrip, type BusDrive } from "@caysonverse/shared/village/busDrive";
-import { BUS_LEAVE_MOVING_NOTICE } from "./transitRuntime";
-import { BUS_ENTRY, BUS_SEATS, busLocalToWorld, busPlaceOf, seatFrontPoint } from "@caysonverse/shared/village/busCabin";
+import { BUS_FULL_NOTICE, BUS_LEAVE_MOVING_NOTICE } from "./transitRuntime";
+import { BUS_CAPACITY, BUS_ENTRY, BUS_RIDER_APART_SERVER, BUS_SEATS, busLocalToWorld, busPlaceOf, seatApproachPoint } from "@caysonverse/shared/village/busCabin";
 import { busLocal } from "@caysonverse/shared/village/busBody";
 import { BUS_SEAT_FRONT_NOTICE, BUS_SEAT_TAKEN_NOTICE } from "./busCabinMove";
 import {
@@ -1267,7 +1267,7 @@ describe("VillageRoom bus riders are in the bus (integration, owner 2026-11-15)"
   });
 });
 
-describe("VillageRoom riding in the bus: walk, sit, hold, stand (integration, owner 2026-11-15)", () => {
+describe("VillageRoom riding in the bus: walk, sit, stand, capacity (integration, owner 2026-11-15, bus v3 2026-11-16)", () => {
   async function aboard() {
     const { room, client, player } = await visitor();
     const bob = await colyseus.connectTo(room, JOIN_BOB);
@@ -1299,7 +1299,7 @@ describe("VillageRoom riding in the bus: walk, sit, hold, stand (integration, ow
   it("walking: a step down the aisle is accepted; one through a wall or a seat, or too far, is dropped", async () => {
     const { client, player } = await aboard();
     await new Promise((r) => setTimeout(r, 120));
-    client.send(MessageType.BusMove, { ahead: player.busAhead - 0.1, right: player.busRight - 0.15, yaw: 3 });
+    client.send(MessageType.BusMove, { ahead: player.busAhead - 0.1, right: player.busRight + 0.1, yaw: 3 }); // towards the door: away from the second rider
     expect(await pollFor(() => Math.abs(player.busAhead - (BUS_ENTRY.ahead - 0.1)) < 1e-3)).toBe(true);
     const at = { ahead: player.busAhead, right: player.busRight };
     client.send(MessageType.BusMove, { ahead: at.ahead, right: 1.4, yaw: 0 }); // through the wall
@@ -1313,7 +1313,7 @@ describe("VillageRoom riding in the bus: walk, sit, hold, stand (integration, ow
   it("sitting: the seat is taken, the second rider is refused with a notice, a backed seat from behind is refused; standing puts the rider in the aisle", async () => {
     const { client, player, bob, bobPlayer } = await aboard();
     const index = BUS_SEATS.findIndex((s) => s.id === "L2");
-    const front = seatFrontPoint(BUS_SEATS[index]!);
+    const front = seatApproachPoint(BUS_SEATS[index]!);
     // put both next to the seat's front (a test seam: the walk there is the walk test's job)
     for (const pl of [player, bobPlayer]) {
       pl.busAhead = front.ahead;
@@ -1334,12 +1334,14 @@ describe("VillageRoom riding in the bus: walk, sit, hold, stand (integration, ow
     const behind = waitForMessage<{ reason: string }>(bob, MessageType.BusRejected, () => true);
     bob.send(MessageType.BusSit, { kind: "seat", index: r2 });
     expect((await behind).reason).toBe(BUS_SEAT_FRONT_NOTICE);
-    // a hold spot, then both stand
-    const holdIndex = 1;
-    bobPlayer.busAhead = 1.7;
-    bobPlayer.busRight = -0.14;
-    bob.send(MessageType.BusSit, { kind: "hold", index: holdIndex });
-    expect(await pollFor(() => busPlaceOf(bobPlayer.busSeat).kind === "hold")).toBe(true);
+    // bus v3: no poles to hold any more: an old client's hold request is dropped, the rider stays free
+    bobPlayer.busAhead = 1.0;
+    bobPlayer.busRight = 0;
+    bob.send(MessageType.BusSit, { kind: "hold", index: 1 });
+    await new Promise((r) => setTimeout(r, 150));
+    expect(bobPlayer.busSeat).toBe(0);
+    bob.send(MessageType.BusSit, { kind: "seat", index: BUS_SEATS.findIndex((s) => s.id === "R2") });
+    expect(await pollFor(() => busPlaceOf(bobPlayer.busSeat).kind === "seat")).toBe(true);
     client.send(MessageType.BusStand, {});
     expect(await pollFor(() => player.busSeat === 0)).toBe(true);
     expect(Math.abs(player.busRight)).toBeLessThan(1.0);
@@ -1365,10 +1367,66 @@ describe("VillageRoom riding in the bus: walk, sit, hold, stand (integration, ow
     // sitting: every refusal is answered, so the answers are capped too
     let replies = 0;
     const fake = { sessionId: client.sessionId, send: () => { replies++; } };
-    for (let k = 0; k < 200; k++) (room as unknown as { handleBusSit: (c: unknown, p: unknown) => void }).handleBusSit(fake, { kind: "seat", index: 11 });
+    for (let k = 0; k < 200; k++) (room as unknown as { handleBusSit: (c: unknown, p: unknown) => void }).handleBusSit(fake, { kind: "seat", index: BUS_SEATS.length - 1 }); // the back row, far from the entry: refused with a notice
     expect(replies).toBeLessThanOrEqual(6);
     expect(replies).toBeGreaterThan(0);
   });
+
+  it("bus v3: the bus takes BUS_CAPACITY riders, nobody inside another; the next one is refused with the full notice", async () => {
+    const { room, client, player, bob, bobPlayer } = await aboard();
+    const riders = [player, bobPlayer];
+    const extra: (typeof bob)[] = [];
+    // seat the first two (a test seam: the sitting rules are the sit test's), so the standing places fill as well as the seats
+    for (const [pl, c, id] of [[player, client, "L2"], [bobPlayer, bob, "R2"]] as const) {
+      const idx = BUS_SEATS.findIndex((s) => s.id === id);
+      const ap = seatApproachPoint(BUS_SEATS[idx]!);
+      pl.busAhead = ap.ahead;
+      pl.busRight = ap.right;
+      c.send(MessageType.BusSit, { kind: "seat", index: idx });
+      expect(await pollFor(() => pl.busSeat === idx + 1)).toBe(true);
+    }
+    let seated = 2;
+    while (riders.length < BUS_CAPACITY) {
+      const c = await colyseus.connectTo(room, { nickname: `손님${riders.length}`, appearance: DEFAULT_APPEARANCE });
+      extra.push(c);
+      const pl = room.state.players.get(c.sessionId)!;
+      placeAt(pl, 39.4, -6.2 - (riders.length % 5) * 0.4);
+      c.send(MessageType.BusRide, { action: "board" });
+      expect(await pollFor(() => pl.busSeat === 0), `rider ${riders.length}`).toBe(true);
+      riders.push(pl);
+      // the seats fill first (each new rider walks to a free seat: a test seam puts them at its approach), then the standing places
+      if (seated < BUS_SEATS.length) {
+        const idx = BUS_SEATS.findIndex((_s, k) => !riders.some((r) => r.busSeat === k + 1));
+        const ap = seatApproachPoint(BUS_SEATS[idx]!);
+        pl.busAhead = ap.ahead;
+        pl.busRight = ap.right;
+        c.send(MessageType.BusSit, { kind: "seat", index: idx });
+        expect(await pollFor(() => pl.busSeat === idx + 1)).toBe(true);
+        seated++;
+      }
+    }
+    // nobody standing inside another
+    const standing = riders.filter((r) => r.busSeat === 0);
+    for (let a = 0; a < standing.length; a++) {
+      for (let b = a + 1; b < standing.length; b++) {
+        expect(Math.hypot(standing[a]!.busAhead - standing[b]!.busAhead, standing[a]!.busRight - standing[b]!.busRight)).toBeGreaterThanOrEqual(BUS_RIDER_APART_SERVER);
+      }
+    }
+    const late = await colyseus.connectTo(room, { nickname: "늦은손님", appearance: DEFAULT_APPEARANCE });
+    const latePlayer = room.state.players.get(late.sessionId)!;
+    placeAt(latePlayer, 39.4, -7.0);
+    const refused = waitForMessage<{ reason: string }>(late, MessageType.BusRejected, () => true);
+    late.send(MessageType.BusRide, { action: "board" });
+    expect((await refused).reason).toBe(BUS_FULL_NOTICE);
+    expect(latePlayer.busSeat).toBe(-1);
+    // a standing rider gets off at the stop: the late one can board (onto the standing place it left)
+    const leaver = extra[extra.length - 1]!;
+    expect(room.state.players.get(leaver.sessionId)!.busSeat).toBe(0);
+    leaver.send(MessageType.BusRide, { action: "leave" });
+    expect(await pollFor(() => room.state.players.get(leaver.sessionId)!.busSeat === -1)).toBe(true);
+    late.send(MessageType.BusRide, { action: "board" });
+    expect(await pollFor(() => latePlayer.busSeat === 0)).toBe(true);
+  }, 60_000);
 
   it("review r1: a rider whose connection dropped is put off the bus when the lap ends (they used to ride on as a ghost holding a seat)", async () => {
     process.env.CV_RECONNECT_WINDOW_S = "30";
@@ -1388,7 +1446,7 @@ describe("VillageRoom riding in the bus: walk, sit, hold, stand (integration, ow
   it("while the bus is out on the lap the rider's world pose follows it (x/z are the bus's point); a seated rider moves with it", async () => {
     const { room, client, player, slot, clock } = await aboard();
     const index = BUS_SEATS.findIndex((s) => s.id === "R2");
-    const front = seatFrontPoint(BUS_SEATS[index]!);
+    const front = seatApproachPoint(BUS_SEATS[index]!);
     player.busAhead = front.ahead;
     player.busRight = front.right;
     client.send(MessageType.BusSit, { kind: "seat", index });

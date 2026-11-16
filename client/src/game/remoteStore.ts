@@ -273,7 +273,14 @@ export function busRiderPoints(into: { ahead: number; right: number }[] = []): {
   return into;
 }
 
-/** The busSeat numbers (seats and hold spots, busCabin.ts) the remotes aboard hold now: what the local rider cannot take. */
+/** How many of the others are aboard the bus now (seated or standing): the stop's line counts the places left (bus v3). */
+export function busRiderCount(): number {
+  let n = 0;
+  for (const record of records.values()) if ((record.busSeat ?? -1) >= 0) n++;
+  return n;
+}
+
+/** The busSeat numbers (seats, busCabin.ts) the remotes aboard sit in now: what the local rider cannot take. */
 export function takenBusSpots(into: Set<number> = new Set()): Set<number> {
   into.clear();
   for (const record of records.values()) {
