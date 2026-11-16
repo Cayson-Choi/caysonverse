@@ -84,13 +84,13 @@ export function cameraBoxes(): readonly CameraBox[] {
 /**
  * Owner 2026-11-16 ("건물이나 벽에서는 바뀌도록 하자"; "반투명하게 보이게 하지 마"): the third-person arm stays at the distance the player
  * set, and only buildings and walls (a building's outside, the hall's / a house's / the bus cabin's walls and ceiling, the cubby
- * banks built into the hall's walls, the ground) may shorten it. Props and small things — lamps, posts, plants, the shelter's roof
- * and light box, the café kiosk, the bus's mirrors — never change the distance, and nothing is faded.
+ * banks built into the hall's walls, the café kiosk (a small building you can walk into), the ground) may shorten it. Props and
+ * small things — lamps, posts, plants, the shelter's roof and light box, the bus's mirrors — never change the distance, and nothing
+ * is faded.
  *
  * A camera box is a prop when its footprint is small (under 1 m one way and 1.5 m the other: lamps 0.3 m, the hall's plants and lamp,
- * the shelter's light box, the bus's mirrors), or it is the bus shelter's roof or the café kiosk.
+ * the shelter's light box, the bus's mirrors), or it is the bus shelter's roof.
  */
-const KIOSK_BOX = { minX: 46.8, maxX: 51.1, minZ: -5.85, maxZ: -1.85 } as const; // col__kiosk (village.glb)
 const SHELTER_ROOF = busShelterRoofSlab(VILLAGE_LAYOUT);
 const sameBox = (a: CameraBox, b: { minX: number; maxX: number; minZ: number; maxZ: number }) =>
   Math.abs(a.minX - b.minX) < 1e-4 && Math.abs(a.maxX - b.maxX) < 1e-4 && Math.abs(a.minZ - b.minZ) < 1e-4 && Math.abs(a.maxZ - b.maxZ) < 1e-4;
@@ -98,7 +98,7 @@ export function isPropCameraBox(b: CameraBox): boolean {
   const w = b.maxX - b.minX;
   const d = b.maxZ - b.minZ;
   if (Math.min(w, d) < 1 && Math.max(w, d) < 1.5) return true;
-  return sameBox(b, SHELTER_ROOF) || sameBox(b, KIOSK_BOX);
+  return sameBox(b, SHELTER_ROOF);
 }
 
 let armSource: readonly CameraBox[] | null = null;

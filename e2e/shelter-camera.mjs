@@ -1,6 +1,6 @@
 /**
  * e2e/shelter-camera.mjs — visual review r4 (houses-m1): at the bus stop shelter and in front of the flower kiosk the
- * third-person camera. Since owner 2026-11-16 ("건물이나 벽에서는 바뀌도록 하자") the shelter and the kiosk are props: for each of the
+ * third-person camera. Since owner 2026-11-16 ("건물이나 벽에서는 바뀌도록 하자") the shelter is a prop and the flower kiosk a small building (coordinator 2026-11-16): for each of the
  * four facing directions it turns the camera, waits, saves the game view and checks that the camera-to-head distance is the
  * player's zoom unless a building or a wall (not a prop) lies between the head and the camera.
  *
@@ -73,6 +73,8 @@ for (const [name, x, z] of SPOTS) {
       if (!before) {
         // owner 2026-11-16: the arm is the player's zoom; only a building or a wall (here: the parked bus, the café) may shorten it
         run.check(`${name} ${dir}: the arm is the zoom (${info.dist} m) unless a building or wall is in the way`, info.wall || Math.abs(info.arm - info.dist) < 0.05, info);
+        const inKiosk = info.cam[0] > 46.8 && info.cam[0] < 51.1 && info.cam[2] > -5.85 && info.cam[2] < -1.85 && info.cam[1] < 4.5;
+        run.check(`${name} ${dir}: the camera is never inside the kiosk (a building)`, !inKiosk, info.cam);
       }
     }
   });

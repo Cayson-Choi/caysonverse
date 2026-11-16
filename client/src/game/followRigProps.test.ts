@@ -24,19 +24,22 @@ describe("the follow camera's arm: the player's distance, shortened only by buil
   beforeEach(() => setActiveMap(VILLAGE_ACTIVE_MAP));
   afterEach(() => setActiveMap(VILLAGE_ACTIVE_MAP));
 
-  it("the café kiosk, the shelter's roof and light box and the lamps are props: not in the arm's boxes", () => {
+  it("the shelter's roof and light box and the lamps are props: not in the arm's boxes; the café kiosk is a building", () => {
     const all = cameraBoxes();
     const props = all.filter(isPropCameraBox);
-    // kiosk, shelter roof, shelter light box, the lake's six lamps (the bus's two mirrors only while it is in the map)
-    expect(props.length).toBeGreaterThanOrEqual(9);
+    // shelter roof, shelter light box, the lake's six lamps (the bus's two mirrors only while it is in the map)
+    expect(props.length).toBeGreaterThanOrEqual(8);
+    expect(armBoxes().some((b) => b.minX === 46.8 && b.maxX === 51.1 && b.minZ === -5.85 && b.maxZ === -1.85)).toBe(true); // col__kiosk
     expect(armBoxes().length).toBe(all.length - props.length);
     // every house and the café stay walls
     expect(armBoxes().filter((b) => (b.height ?? 0) >= 12).length).toBe(11);
   });
 
-  it("next to the kiosk, the camera behind it keeps the whole zoom", () => {
-    const orbit: Orbit = { yaw: Math.PI / 2, pitch: 0.2, distance: 6 }; // the camera east of the head, through the kiosk (x 46.8..51.1)
-    expect(arm(orbit, 45.3, -3.85)).toBeCloseTo(6, 4);
+  it("the café kiosk is a small building: a camera that would end up inside it is held in front of it (coordinator 2026-11-16)", () => {
+    const orbit: Orbit = { yaw: Math.PI / 2, pitch: 0.2, distance: 6 }; // the camera east of the head, into the kiosk (x 46.8..51.1)
+    expect(arm(orbit, 45.3, -3.85)).toBeLessThan(1.6);
+    const away: Orbit = { yaw: -Math.PI / 2, pitch: 0.2, distance: 6 };
+    expect(arm(away, 45.3, -3.85)).toBeCloseTo(6, 4);
   });
 
   it("under the bus shelter's roof a camera looking down from above keeps the whole zoom", () => {
