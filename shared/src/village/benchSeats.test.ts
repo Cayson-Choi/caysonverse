@@ -88,12 +88,14 @@ describe("village benches (the models sitting needs)", () => {
 
 describe("village seats (where a sitter goes)", () => {
   it("one global list: plaza places (backed, one facing), the forecourt's (backless, two facings in one group), the hall's, the houses'", () => {
-    // 8 plaza benches x 2 places, the forecourt 2 places x 2 facings, the hall's markers (20..50), the houses'
-    // (51..90), the bus shelter's two, then the art's marked seats
+    // 8 plaza benches x 2 places, the forecourt 2 places x 2 facings, the hall's markers (20..50), the houses' (집 실내 G: from 51,
+    // every finished floor's), the bus shelter's two, then the art's marked seats
     expect(VILLAGE_SEATS.slice(16, 20).every((s) => s.bench === "memorial_forecourt")).toBe(true);
     expect(VILLAGE_SEATS.slice(20, 51).every((s) => s.area === "hall")).toBe(true);
-    expect(VILLAGE_SEATS.slice(51, 91).every((s) => isHouseArea(s.area))).toBe(true);
-    expect(VILLAGE_SEATS.slice(91, 93).map((s) => s.bench)).toEqual(["shelter", "shelter"]);
+    const housesEnd = VILLAGE_SEATS.findIndex((s, i) => i >= 51 && !isHouseArea(s.area));
+    expect(housesEnd).toBeGreaterThan(51 + 100); // the ten houses' 110-odd seats
+    expect(VILLAGE_SEATS.slice(51, housesEnd).every((s) => isHouseArea(s.area))).toBe(true);
+    expect(VILLAGE_SEATS.slice(housesEnd, housesEnd + 2).map((s) => s.bench)).toEqual(["shelter", "shelter"]);
     const plaza = VILLAGE_SEATS.slice(0, 16);
     plaza.forEach((s, i) => {
       const b = VILLAGE_BENCHES[Math.floor(i / 2)]!;

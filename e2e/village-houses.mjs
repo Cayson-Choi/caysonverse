@@ -65,8 +65,17 @@ const idle = async (ms = 25000) => {
   }
   return false;
 };
-/** Walk the way the game plans a tap on the floor (findDetour round the colliders of the map one is in), then wait. */
-async function goto(x, z, tol = 0.35) {
+/**
+ * Walk the way the game plans a tap on the floor (findDetour round the colliders of the map one is in), then wait. A long way across the
+ * village the search gives up on is walked in halves.
+ */
+async function goto(x, z, tol = 0.35, depth = 0) {
+  const r = await gotoOnce(x, z, tol);
+  if (Math.hypot(r.x - x, r.z - z) <= tol || depth >= 3 || Math.hypot(r.x - x, r.z - z) < 4) return r;
+  await gotoOnce((r.x + x) / 2, (r.z + z) / 2, 1.5);
+  return goto(x, z, tol, depth + 1);
+}
+async function gotoOnce(x, z, tol) {
   for (let i = 0; i < 3; i++) {
     const planned = await page.evaluate(async ([x, z]) => {
       const am = await window.__imp("/src/game/activeMap.ts");

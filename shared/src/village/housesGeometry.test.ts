@@ -202,10 +202,12 @@ describe("seatIndex is int16 on the wire", () => {
 describe("the house seats in the one global list", () => {
   const houseSeats = VILLAGE_SEATS.filter((s) => isHouseArea(s.area));
 
-  it("come last, after every village and hall seat, in house, floor, marker order; each in its own floor's area", () => {
+  it("come in one run after every village bench and hall seat (main's later seats after them), in house, floor, marker order", () => {
     const firstHouse = VILLAGE_SEATS.findIndex((s) => isHouseArea(s.area));
-    expect(firstHouse).toBeGreaterThan(0);
-    expect(VILLAGE_SEATS.slice(firstHouse).every((s) => isHouseArea(s.area))).toBe(true);
+    expect(firstHouse).toBe(51); // after the 20 village bench places and the hall's 31
+    const end = firstHouse + houseSeats.length;
+    expect(VILLAGE_SEATS.slice(firstHouse, end).every((s) => isHouseArea(s.area))).toBe(true);
+    expect(VILLAGE_SEATS.slice(end).some((s) => isHouseArea(s.area))).toBe(false);
     const keys = houseSeats.map((s) => {
       const m = /^house:house_(\d+):([12])$/.exec(s.area)!;
       const k = Number(/^h\d+_[12]_(\d+)/.exec(s.bench)![1]);

@@ -1,4 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
+import { houseIsReady } from "@caysonverse/shared/village/housesGeometry";
+import { houseNumberOf } from "@caysonverse/shared/village/houseAreas";
 import { boot, type ColyseusTestServer } from "@colyseus/testing";
 import config from "@colyseus/tools";
 import { VILLAGE_ROOM, VILLAGE_MAX_CLIENTS, TYPING_RATE } from "@caysonverse/shared/constants";
@@ -138,9 +140,18 @@ describe("the keypad's way in", () => {
     expect(await pollFor(() => players[0]!.area === AREA1)).toBe(true);
   });
 
-  it("a house with no interior yet stays locked (not_ready) and the attempt is not counted against the lock", async () => {
+  it("all ten houses are finished: house 2's door opens with 1004 too", async () => {
     const { clients, players } = await crowd(1);
-    const e2 = keypadEntries()[1]!; // house_2: no generated files yet
+    const e2 = keypadEntries()[1]!;
+    atDoor(players[0]!, e2);
+    expect(await keypad(clients[0]!, e2.buildingId, "1004")).toMatchObject({ ok: true });
+  });
+
+  // (with every house finished no door is "not ready": the rule is kept for a house taken out of generated/houses again)
+  const allReady = keypadEntries().every((e) => houseIsReady(houseNumberOf(e.buildingId)!));
+  it.skipIf(allReady)("a house with no interior yet stays locked (not_ready) and the attempt is not counted against the lock", async () => {
+    const { clients, players } = await crowd(1);
+    const e2 = keypadEntries().find((e) => !houseIsReady(houseNumberOf(e.buildingId)!))!;
     atDoor(players[0]!, e2);
     for (let i = 0; i < 7; i++) expect(await keypad(clients[0]!, e2.buildingId, "1004")).toMatchObject({ ok: false, reason: "not_ready" });
     expect(players[0]!.area).toBe("village");

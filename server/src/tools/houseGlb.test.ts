@@ -21,14 +21,15 @@ function load(): { gltf: Gltf; bytes: number; bin: Uint8Array | null } {
 }
 
 function check(gltf: Gltf, bytes: number, bin: Uint8Array | null) {
-  return checkSchoolGlb({ kind: "house", fileBytes: bytes, gltf, bin, spec: schoolSpec("house", 1), lightmap: null });
+  // house_1 is the dressed model now (HA, LM_ materials): its day light map stands next to it, as the CLI finds it
+  return checkSchoolGlb({ kind: "house", fileBytes: bytes, gltf, bin, spec: schoolSpec("house", 1), lightmap: { path: GLB.replace(/.glb$/, "_lm.webp"), width: 2048, height: 2048 } });
 }
 const fails = (r: ReturnType<typeof check>) => r.filter((x) => x.level === "fail").map((x) => `${x.label}: ${x.detail}`);
 
 type Node = NonNullable<Gltf["nodes"]>[number];
 const nodeNamed = (g: Gltf, name: string) => (g.nodes ?? []).find((n) => n.name === name) as Node;
 
-describe("check-school-glb kind house on the house 1 blockout", () => {
+describe("check-school-glb kind house on house 1 (HA's dressed model)", () => {
   it("passes every check: required nodes at their places, ≥ 20 colliders, ceilings, clear zones, budgets", () => {
     const { gltf, bytes, bin } = load();
     const r = check(gltf, bytes, bin);
@@ -52,7 +53,8 @@ describe("check-school-glb kind house on the house 1 blockout", () => {
 
   it("fails a collider in the entry corridor (furniture in front of the door), but not a wall", () => {
     const { gltf, bytes, bin } = load();
-    const n = nodeNamed(gltf, "col__h1_1_plant_back");
+    // (any piece of furniture: the first floor-1 collider that is no wall)
+    const n = (gltf.nodes ?? []).find((x) => (x.name ?? "").startsWith("col__h1_1_") && !(x.name ?? "").includes("wall") && !(x.name ?? "").includes("stair")) as Node;
     n.translation = [365.3, 0.4, -2.0]; // the corridor x 4.3..6.3 local = world 364.3..366.3
     expect(fails(check(gltf, bytes, bin)).join("|")).toContain("비워 둘 곳");
   });
@@ -69,15 +71,14 @@ describe("check-school-glb kind house on the house 1 blockout", () => {
     gltf.materials = [...(gltf.materials ?? []), ...Array.from({ length: 20 }, (_, i) => ({ name: `M_x${i}` }))];
     expect(fails(check(gltf, bytes, bin)).join("|")).toContain("재질 수");
     const again = load();
-    for (const n of again.gltf.nodes ?? []) if ((n.name ?? "").startsWith("col__h1_1_") && !n.name!.includes("wall")) n.name = `x${n.name}`;
+    for (const n of again.gltf.nodes ?? []) if ((n.name ?? "").startsWith("col__h1_") && !n.name!.includes("wall")) n.name = `x${n.name}`;
     expect(fails(check(again.gltf, again.bytes, again.bin)).join("|")).toContain("노드 묶음");
   });
 
-  it("fails a file over 1 MB and a LM_ material without a light-map file (the blockout has none and needs none)", () => {
+  it("fails a file over 1 MB and a LM_ material without a light-map file", () => {
     const { gltf, bytes, bin } = load();
     expect(fails(check(gltf, HOUSE_BUDGET.glb.maxBytes + 1, bin)).join("|")).toContain("파일 크기");
-    gltf.materials![0]!.name = "LM_wall";
-    expect(fails(check(gltf, bytes, bin)).join("|")).toContain("라이트맵 파일");
+    expect(fails(checkSchoolGlb({ kind: "house", fileBytes: bytes, gltf, bin, spec: schoolSpec("house", 1), lightmap: null })).join("|")).toContain("라이트맵 파일");
   });
 
   it("the CLI: PASS (exit 0) on house_1.glb as `house`; a file not called house_<N>.glb is refused", () => {
@@ -95,7 +96,7 @@ describe("check-school-glb kind house on the house 1 blockout", () => {
 
 describe("houses_props.glb and the image files", () => {
   it("the props budget: ≤ 0.6 MB and ≤ 25 000 triangles", () => {
-    const { gltf } = load();
+    const gltf = parseGlb(fs.readFileSync(path.resolve(path.dirname(GLB), "houses_props.glb"))).gltf;
     expect(checkHousesProps(gltf, 0.3 * 1024 * 1024).every((r) => r.level === "ok")).toBe(true);
     expect(checkHousesProps(gltf, 0.7 * 1024 * 1024).some((r) => r.level === "fail")).toBe(true);
   });
