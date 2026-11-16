@@ -186,8 +186,9 @@ export function createCatchRig(sid: string): CatchRig {
       sm.quaternion.setFromUnitVectors(UP, dir.normalize());
       sm.scale.set(1, L, 1);
     };
-    place(0, gripR, at(0.42, -0.62, 0.22));
-    place(1, gripL, at(-0.42, -0.62, 0.22));
+    // the shoulders under the lower corners of the view: only the forearms and the fists come in
+    place(0, gripR, at(0.46, -0.66, 0.42));
+    place(1, gripL, at(-0.46, -0.66, 0.42));
   };
 
   const hide = () => {
@@ -328,7 +329,7 @@ export function createCatchRig(sid: string): CatchRig {
             // the eye comes back down from the rod tip to the fish in the hands (a little below level)
             viewState.fpPitch += (0.16 - viewState.fpPitch) * Math.min(1, delta * 2.5);
             if (cs.stage === "toHand" || cs.stage === "hand") {
-              const grip = at(0.12, -0.02 + len * 0.1, 0.5 + len * 0.45);
+              const grip = at(0.17, -0.07 + len * 0.12, 0.55 + len * 0.45);
               const hang = camUp.clone().addScaledVector(right, Math.sin(t * 3.1) * 0.22).addScaledVector(fwd, -0.18 + Math.cos(t * 2.4) * 0.12).normalize();
               lookAlong(hang, Math.sin(t * 6) * 0.35 + 0.9, tq);
               target = grip.clone().addScaledVector(hang, -0.45 * len);
