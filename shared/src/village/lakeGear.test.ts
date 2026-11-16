@@ -48,13 +48,14 @@ describe("lake_fish.glb", () => {
     expect(hash(fishPath)).toBe(LAKE_FISH_GLB_HASH);
     expect(statSync(fishPath).size).toBeLessThanOrEqual(LAKE_FISH_MAX_BYTES);
   });
-  it("종마다 fish_<id> 노드와 LOD1, 재질 셋(몸·짝지느러미·사진 지느러미), 이미지 넷(사진·노멀·사진 지느러미·짝지느러미), Draco", () => {
+  it("종마다 fish_<id> 노드와 LOD1, 재질 둘(사진 몸·반투명 지느러미), 이미지 셋(사진·노멀·지느러미), Draco·WebP", () => {
     for (const id of LAKE_FISH_IDS) {
       expect(names, id).toContain(lakeFishNode(id));
       expect(names, id).toContain(`${lakeFishNode(id)}_lod1`);
     }
-    expect((g.materials ?? []).map((m) => m.name).sort()).toEqual(["M_fin", "M_fin_photo", "M_fish"]);
-    expect(g.images?.length).toBe(4);
+    expect((g.materials ?? []).map((m) => m.name).sort()).toEqual(["M_fin", "M_fish"]);
+    expect(g.images?.length).toBe(3);
     expect(g.extensionsUsed ?? []).toContain("KHR_draco_mesh_compression");
+    expect(g.extensionsUsed ?? []).toContain("EXT_texture_webp");
   });
 });
