@@ -64,8 +64,8 @@ function dayLook() {
 }
 
 /** The lake's own water: made once, ticked with the clock and the time of day. */
-function useLakeWater(depthAttr: boolean, look?: LakeWaterLook): LakeWater {
-  const water = useMemo(() => createLakeWater({ depthAttr, look }), [depthAttr, look]);
+function useLakeWater(depthAttr: boolean, look?: LakeWaterLook, tier: VillageTier = "high"): LakeWater {
+  const water = useMemo(() => createLakeWater({ depthAttr, look, tier }), [depthAttr, look, tier]);
   useEffect(() => {
     activeWater = water;
     return () => {
@@ -119,7 +119,7 @@ function LakeGlb({ tier }: { tier: VillageTier }) {
     () => ({ reflDay: reflDay!, reflNight: reflNight!, lightmap: lmDay!, lightmapNight: lmNight!, lamps: dressed.lampHeads.map((p) => ({ x: p.x, z: p.z })) }),
     [reflDay, reflNight, lmDay, lmNight, dressed],
   );
-  const water = useLakeWater(false, look);
+  const water = useLakeWater(false, look, tier);
   useDrawn(dressed.seam);
   useEffect(() => {
     for (const m of dressed.water) {

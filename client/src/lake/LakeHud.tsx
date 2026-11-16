@@ -20,6 +20,9 @@ import { carriesHandItem } from "./fishingRig";
 import { backToFishing, catchCamera, fishingCamera, restoreCamera } from "./lakeCamera";
 import "./lake.css";
 
+/** The last cast recorded in the dex (session:seq): module-wide, so a remount of the HUD never records a catch twice. */
+let recordedCast = "";
+
 /** The HUD reads the schema this often (ms): a bite must turn the button red at once. */
 const POLL_MS = 80;
 
@@ -98,7 +101,12 @@ export function LakeHud({ pose, seat, orbit }: { pose: Pose; seat: SeatState; or
     if (view.rod === 0 && lastRod.current > 0) store.getState().say(item ? "낚싯대를 반납하고 맡긴 물건을 돌려받았어요." : "낚싯대를 반납했어요.");
     lastRod.current = view.rod;
     // the fish is landed: the card and the dex of this device
-    if (view.phase === FISH_PHASE.landed && lastPhase.current !== FISH_PHASE.landed && species(view.kind)) {
+    // Recorded once per CAST (its seq), from `landed` or, if the screen never saw `landed` (a slow phone, a hidden tab, a state
+    // patch that jumped it), from `releasing`: the edge alone lost catches (owner 2026-11-16: 4 species caught, 1 in the dex).
+    const caughtNow = (view.phase === FISH_PHASE.landed || view.phase === FISH_PHASE.releasing) && species(view.kind) !== null;
+    const castKey = `${selfId()}:${view.seq}`;
+    if (caughtNow && recordedCast !== castKey) {
+      recordedCast = castKey;
       store.getState().landed(view.kind, view.cm, Date.now());
       // the camera comes round to see the fish held up, and goes back over the shoulder for the next cast
       const spot = LAKE_FISHING_SPOTS[view.spot];
