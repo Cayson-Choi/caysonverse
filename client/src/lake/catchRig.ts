@@ -77,6 +77,12 @@ function shadowTexture(): CanvasTexture {
 /** A hooked fish starts under the water: never eased in from the last catch's pose. */
 const newCatchStart = (phase: number): boolean => phase === FISH_PHASE.hooked;
 
+/** 1 on a landscape screen, less on a narrow (portrait) one: horizontal offsets in the first-person view are scaled by it. */
+export function fpNarrow(cam: Camera): number {
+  const aspect = (cam as Camera & { aspect?: number }).aspect ?? 1.6;
+  return Math.max(0.3, Math.min(1, aspect / 1.6));
+}
+
 export function createCatchRig(sid: string): CatchRig {
   let fish: FishModel | null = null;
   let shadow: Mesh | null = null;
@@ -325,7 +331,8 @@ export function createCatchRig(sid: string): CatchRig {
             const fwd = new Vector3(0, 0, -1).applyQuaternion(cam.quaternion);
             const right = new Vector3(1, 0, 0).applyQuaternion(cam.quaternion);
             const camUp = new Vector3(0, 1, 0).applyQuaternion(cam.quaternion);
-            const at = (x: number, y: number, z: number) => camPos.clone().addScaledVector(right, x).addScaledVector(camUp, y).addScaledVector(fwd, z);
+            const nk = fpNarrow(cam);
+            const at = (x: number, y: number, z: number) => camPos.clone().addScaledVector(right, x * nk).addScaledVector(camUp, y).addScaledVector(fwd, z);
             // the eye comes back down from the rod tip to the fish in the hands (a little below level)
             viewState.fpPitch += (0.16 - viewState.fpPitch) * Math.min(1, delta * 2.5);
             if (cs.stage === "toHand" || cs.stage === "hand") {
@@ -335,7 +342,7 @@ export function createCatchRig(sid: string): CatchRig {
               target = grip.clone().addScaledVector(hang, -0.45 * len);
               fpHands(i, grip, null, cs.stage === "toHand" ? cs.k : 1, camUp, fwd, at);
             } else {
-              const dist = 0.55 + len * 0.55;
+              const dist = (0.55 + len * 0.55) / Math.max(0.42, nk);
               target = at(0, -0.16 - len * 0.12, dist);
               const nose = right.clone().addScaledVector(fwd, -0.15).normalize();
               lookAlong(nose, 0, tq);

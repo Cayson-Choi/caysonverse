@@ -17,7 +17,7 @@ import { fishingAnimsNow, loadFishingAnims, withoutRightArm } from "./fishAnims"
 import { elapsedSince, readFishView } from "./lakeNet";
 import { FISH_PHASE, emptyFishView, needsNet, type FishView } from "./lakeProtocol";
 import { createNet, createRod, lakeGearReady, loadLakeGear, type Net, type Rod } from "./lakeProps";
-import { createCatchRig } from "./catchRig";
+import { createCatchRig, fpNarrow } from "./catchRig";
 import { HANG_END_S, NET_SCOOP_S, REEL_S } from "./fishCatch";
 import { registerRodTip } from "./rodTips";
 import { tugDip } from "./lakeFloat";
@@ -401,8 +401,10 @@ export function createFishingRig(o: { sid: string; avatar: BuiltAvatar; mixer: A
           const fw = fpV.fw.set(0, 0, -1).applyQuaternion(fpCam.quaternion);
           const rt = fpV.rt.set(1, 0, 0).applyQuaternion(fpCam.quaternion);
           const up = fpV.up.set(0, 1, 0).applyQuaternion(fpCam.quaternion);
-          const grip = fpV.grip.copy(cp).addScaledVector(rt, 0.24).addScaledVector(up, -0.32).addScaledVector(fw, 0.3);
-          const aim = fpV.aim.copy(cp).addScaledVector(rt, 0.62).addScaledVector(up, 1.0).addScaledVector(fw, 3.0).sub(grip).normalize();
+          // a narrow (portrait) view: everything closer to the middle so the rod and its tip stay on screen
+          const nk = fpNarrow(fpCam);
+          const grip = fpV.grip.copy(cp).addScaledVector(rt, 0.24 * nk).addScaledVector(up, -0.32).addScaledVector(fw, 0.3);
+          const aim = fpV.aim.copy(cp).addScaledVector(rt, 0.62 * nk).addScaledVector(up, 1.0).addScaledVector(fw, 3.0).sub(grip).normalize();
           const axis = fpRod.real ? fpV.axis.set(ROD_AXIS_R[0], ROD_AXIS_R[1], ROD_AXIS_R[2]).normalize() : fpV.axis.set(0, 1, 0);
           fpV.q.setFromUnitVectors(axis, aim);
           fpRod.root.matrix.compose(grip, fpV.q, fpV.one);
