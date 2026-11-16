@@ -715,16 +715,8 @@ def build_office(rng):
     boxw(mb, ix0, ix1, WT - 0.04, WT, iz0, iz1, P["white"], "matte", skip="U")
     for (x, z) in ((cx - 1.9, cz + 0.2), (cx + 1.9, cz + 0.2)):
         boxw(mb, x - 0.7, x + 0.7, WT - 0.1, WT - 0.04, z - 0.07, z + 0.07, P["white"], "emit_white")
-    shelves(mb, rng, cx - 3.55, cx - 0.9, iz0, FL)
-    shelves(mb, rng, cx + 0.9, cx + 3.55, iz0, FL)
-    carp_print(mb, rng, cx, iz0)
-    # desk behind the window: top at 1.25, with a cash box, a ledger and a mug
-    boxw(mb, cx - 1.9, cx + 1.9, 1.2, 1.25, Z1 - 1.0, Z1 - 0.3, P["wood_light"], "wood")
-    for x in (cx - 1.8, cx + 1.8):
-        boxw(mb, x - 0.04, x + 0.04, FL, 1.2, Z1 - 0.95, Z1 - 0.35, P["pav_wood"], "wood")
-    boxw(mb, cx - 1.2, cx - 0.6, 1.25, 1.36, Z1 - 0.85, Z1 - 0.5, hexc("#3a3f46"), "paint")
-    boxw(mb, cx + 0.2, cx + 0.6, 1.25, 1.265, Z1 - 0.9, Z1 - 0.55, P["white"], "matte")
-    tubew(mb, (cx + 1.2, 1.25, Z1 - 0.7), (cx + 1.2, 1.34, Z1 - 0.7), 0.04, hexc("#2d6a9f"), "paint", 10)
+    # the fit-out (shelves of stock, the carp print, the desk with its cash box, ledger and mug) moved to its own model,
+    # lake_shop_interior.glb (build_shop_interior.py, 2026-11-17), which lines this room and keeps the counter where the desk was
     return mb
 
 
