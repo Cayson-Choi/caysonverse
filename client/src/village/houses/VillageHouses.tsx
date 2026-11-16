@@ -36,6 +36,7 @@ declare global {
       stats: unknown;
       cut: { meshes: number; trianglesRemoved: number; proxiesHidden: number } | null;
       boards: number;
+      prepares: number;
     };
   }
 }
@@ -47,12 +48,20 @@ declare global {
  */
 export { housesMode };
 
+/** How many times the houses were dressed this page (DEV: once per visit and tier, not per render). */
+let prepares = 0;
+
 export function VillageHouses({ villageRoot, tier }: { villageRoot: Object3D; tier: VillageTier }) {
   noteHousesRequested();
   const gltf = readHouses();
   const meta = readHouseTextureMeta();
   const files = useMemo(() => houseTextureFiles(meta, tier), [meta, tier]);
-  const textures = readHouseMaps(files.map((f) => f.url));
+  const read = readHouseMaps(files.map((f) => f.url));
+  // the same cached textures come back in a new array on every render: keep one array while they are the same (a new
+  // array would dress the houses again, and free the materials a warm-up may still be compiling)
+  const texKey = read.map((t) => t.uuid).join(",");
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const textures = useMemo(() => read, [texKey]);
   const gl = useThree((s) => s.gl);
 
   const nodes = useMemo(() => {
@@ -81,6 +90,7 @@ export function VillageHouses({ villageRoot, tier }: { villageRoot: Object3D; ti
       const m = (o as Mesh).material as Material | Material[] | undefined;
       for (const x of Array.isArray(m) ? m : m ? [m] : []) if (!floraMap && x.name === "M_leaf_flora") floraMap = (x as { map?: Texture | null }).map ?? null;
     });
+    prepares++;
     return prepareHouses(gltf.scene, full, floraMap);
   }, [gltf, files, textures, gl, villageRoot]);
 
@@ -153,6 +163,7 @@ export function VillageHouses({ villageRoot, tier }: { villageRoot: Object3D; ti
           stats: nodes.stats,
           cut: c ? { meshes: c.meshes, trianglesRemoved: c.trianglesRemoved, proxiesHidden: c.proxiesHidden } : null,
           boards: signs.mesh ? 1 : 0,
+          prepares,
         };
       };
     }

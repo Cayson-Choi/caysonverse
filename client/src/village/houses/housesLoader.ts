@@ -65,8 +65,11 @@ export function readHouses(): GLTF {
 /** Read the tiling sets' manifest. */
 export function readHouseTextureMeta(): HouseTextureMeta {
   const text = useLoader(HousesFileLoader, HOUSE_TEXTURES_URL) as unknown as string;
-  return JSON.parse(text) as HouseTextureMeta;
+  // one object per text (the same every render: the houses are dressed once)
+  if (parsed?.text !== text) parsed = { text, meta: JSON.parse(text) as HouseTextureMeta };
+  return parsed.meta;
 }
+let parsed: { text: string; meta: HouseTextureMeta } | null = null;
 
 /**
  * Read the maps (in the order given), one cache entry each (so a release frees each by its own key). The list's length is
