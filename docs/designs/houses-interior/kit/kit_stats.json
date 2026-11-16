@@ -1,0 +1,1479 @@
+{
+ "sofa_fabric_3": {
+  "tris": 3434,
+  "mats": [
+   "H_fabric",
+   "H_wood_oak"
+  ],
+  "ref": "02_modern_living",
+  "group": "seating",
+  "seats": 3
+ },
+ "sofa_L": {
+  "tris": 4300,
+  "mats": [
+   "H_fabric",
+   "H_wood_oak"
+  ],
+  "ref": "02_modern_living",
+  "group": "seating",
+  "seats": 4
+ },
+ "sofa_leather_3": {
+  "tris": 1938,
+  "mats": [
+   "H_fabric",
+   "H_leather",
+   "H_wood_oak"
+  ],
+  "ref": "06_grandparents_room",
+  "group": "seating",
+  "seats": 3
+ },
+ "sofa_rattan_2": {
+  "tris": 1952,
+  "mats": [
+   "H_fabric",
+   "H_rattan",
+   "H_wood_oak"
+  ],
+  "ref": "18_sunroom",
+  "group": "seating",
+  "seats": 2
+ },
+ "sofa_floor_2": {
+  "tris": 2250,
+  "mats": [
+   "H_fabric"
+  ],
+  "ref": "19_floor_sofa",
+  "group": "seating",
+  "seats": 2
+ },
+ "armchair_lounge": {
+  "tris": 1200,
+  "mats": [
+   "H_fabric",
+   "H_wood_oak"
+  ],
+  "ref": "02_modern_living",
+  "group": "seating",
+  "seats": 1
+ },
+ "armchair_reading": {
+  "tris": 1310,
+  "mats": [
+   "H_fabric",
+   "H_leather",
+   "H_wood_oak"
+  ],
+  "ref": "04_study",
+  "group": "seating",
+  "seats": 1
+ },
+ "chair_dining_upholstered": {
+  "tris": 596,
+  "mats": [
+   "H_fabric",
+   "H_wood_oak"
+  ],
+  "ref": "11_dining",
+  "group": "seating",
+  "seats": 1
+ },
+ "chair_desk": {
+  "tris": 1272,
+  "mats": [
+   "H_fabric",
+   "H_metal",
+   "H_rubber"
+  ],
+  "ref": "04_study",
+  "group": "seating",
+  "seats": 1
+ },
+ "ottoman": {
+  "tris": 310,
+  "mats": [
+   "H_fabric",
+   "H_leather",
+   "H_wood_oak"
+  ],
+  "ref": "04_study",
+  "group": "seating",
+  "seats": 1
+ },
+ "bangseok": {
+  "tris": 386,
+  "mats": [
+   "H_fabric"
+  ],
+  "ref": "06_grandparents_room",
+  "group": "seating",
+  "seats": 1
+ },
+ "boryo_anseok": {
+  "tris": 742,
+  "mats": [
+   "H_fabric"
+  ],
+  "ref": "17_sarangbang",
+  "group": "seating",
+  "seats": 1
+ },
+ "stairs_1f": {
+  "tris": 6076,
+  "mats": [
+   "H_floor_oak",
+   "H_metal",
+   "H_paint",
+   "H_plaster",
+   "H_wood_oak"
+  ],
+  "ref": "08_stairs_2f",
+  "group": null,
+  "seats": 0
+ },
+ "stairs_2f_view": {
+  "tris": 6696,
+  "mats": [
+   "H_floor_oak",
+   "H_metal",
+   "H_paint",
+   "H_plaster",
+   "H_wood_oak"
+  ],
+  "ref": "08_stairs_2f",
+  "group": null,
+  "seats": 0
+ },
+ "floor_jangpan": {
+  "tris": 114,
+  "mats": [
+   "H_jangpan",
+   "H_paint",
+   "H_plaster"
+  ],
+  "ref": "01_ondol_room",
+  "group": null,
+  "seats": 0
+ },
+ "floor_oak": {
+  "tris": 2,
+  "mats": [
+   "H_floor_oak"
+  ],
+  "ref": "02_modern_living",
+  "group": null,
+  "seats": 0
+ },
+ "floor_tile": {
+  "tris": 2,
+  "mats": [
+   "H_tile_grey"
+  ],
+  "ref": "16_genkwan",
+  "group": null,
+  "seats": 0
+ },
+ "floor_maru": {
+  "tris": 2298,
+  "mats": [
+   "H_wood_oak"
+  ],
+  "ref": "07_hanok_maru",
+  "group": null,
+  "seats": 0
+ },
+ "window_grid_curtain": {
+  "tris": 1358,
+  "mats": [
+   "H_fabric",
+   "H_floor_oak",
+   "H_glass",
+   "H_metal",
+   "H_paint",
+   "H_plaster"
+  ],
+  "ref": "02_modern_living",
+  "group": null,
+  "seats": 0
+ },
+ "window_slide_paper": {
+  "tris": 958,
+  "mats": [
+   "H_floor_oak",
+   "H_paint",
+   "H_paper",
+   "H_plaster"
+  ],
+  "ref": "01_ondol_room",
+  "group": null,
+  "seats": 0
+ },
+ "window_ttisal": {
+  "tris": 1030,
+  "mats": [
+   "H_floor_oak",
+   "H_paint",
+   "H_paper",
+   "H_plaster",
+   "H_wood_dark"
+  ],
+  "ref": "07_hanok_maru",
+  "group": null,
+  "seats": 0
+ },
+ "door_bath": {
+  "tris": 938,
+  "mats": [
+   "H_floor_oak",
+   "H_metal",
+   "H_paint",
+   "H_plaster",
+   "H_wood_walnut"
+  ],
+  "ref": "14_bathroom",
+  "group": null,
+  "seats": 0
+ },
+ "door_jungmun": {
+  "tris": 1060,
+  "mats": [
+   "H_floor_oak",
+   "H_glass",
+   "H_metal",
+   "H_paint",
+   "H_plaster"
+  ],
+  "ref": "16_genkwan",
+  "group": null,
+  "seats": 0
+ },
+ "door_entry": {
+  "tris": 1620,
+  "mats": [
+   "H_floor_oak",
+   "H_glass",
+   "H_metal",
+   "H_paint",
+   "H_plaster",
+   "H_stone",
+   "H_wood_dark"
+  ],
+  "ref": "16_genkwan",
+  "group": null,
+  "seats": 0
+ },
+ "armchair_rattan": {
+  "tris": 1008,
+  "mats": [
+   "H_fabric",
+   "H_rattan",
+   "H_wood_oak"
+  ],
+  "ref": "18_sunroom",
+  "group": "seating",
+  "seats": 1
+ },
+ "rocking_chair": {
+  "tris": 1216,
+  "mats": [
+   "H_fabric",
+   "H_wood_oak"
+  ],
+  "ref": "09_attic",
+  "group": "seating",
+  "seats": 1
+ },
+ "bean_bag": {
+  "tris": 864,
+  "mats": [
+   "H_fabric"
+  ],
+  "ref": "05_kids_room",
+  "group": "seating",
+  "seats": 1
+ },
+ "chair_dining_wood": {
+  "tris": 610,
+  "mats": [
+   "H_wood_oak"
+  ],
+  "ref": "11_dining",
+  "group": "seating",
+  "seats": 1
+ },
+ "chair_farm_0": {
+  "tris": 524,
+  "mats": [
+   "H_wood_oak"
+  ],
+  "ref": "03_farm_kitchen",
+  "group": "seating",
+  "seats": 1
+ },
+ "chair_farm_1": {
+  "tris": 604,
+  "mats": [
+   "H_wood_oak"
+  ],
+  "ref": "03_farm_kitchen",
+  "group": "seating",
+  "seats": 1
+ },
+ "chair_rattan_dining": {
+  "tris": 414,
+  "mats": [
+   "H_rattan",
+   "H_wood_oak"
+  ],
+  "ref": "18_sunroom",
+  "group": "seating",
+  "seats": 1
+ },
+ "stool_bar": {
+  "tris": 592,
+  "mats": [
+   "H_leather",
+   "H_metal"
+  ],
+  "ref": "11_dining",
+  "group": "seating",
+  "seats": 1
+ },
+ "stool_wood": {
+  "tris": 564,
+  "mats": [
+   "H_wood_oak"
+  ],
+  "ref": "13_workshop",
+  "group": "seating",
+  "seats": 1
+ },
+ "piano_bench": {
+  "tris": 734,
+  "mats": [
+   "H_leather",
+   "H_wood_oak"
+  ],
+  "ref": "12_hobby_music",
+  "group": "seating",
+  "seats": 1
+ },
+ "bench_log": {
+  "tris": 250,
+  "mats": [
+   "H_wood_oak"
+  ],
+  "ref": "13_workshop",
+  "group": "seating",
+  "seats": 2
+ },
+ "bench_dining": {
+  "tris": 232,
+  "mats": [
+   "H_wood_oak"
+  ],
+  "ref": "03_farm_kitchen",
+  "group": "seating",
+  "seats": 2
+ },
+ "pyeongsang": {
+  "tris": 756,
+  "mats": [
+   "H_wood_oak"
+  ],
+  "ref": "07_hanok_maru",
+  "group": "seating",
+  "seats": 2
+ },
+ "table_dining_rect_6": {
+  "tris": 322,
+  "mats": [
+   "H_wood_oak"
+  ],
+  "ref": "11_dining",
+  "group": "tables",
+  "seats": 0
+ },
+ "table_dining_round": {
+  "tris": 532,
+  "mats": [
+   "H_wood_oak"
+  ],
+  "ref": "18_sunroom",
+  "group": "tables",
+  "seats": 0
+ },
+ "table_low_sang": {
+  "tris": 322,
+  "mats": [
+   "H_wood_oak"
+  ],
+  "ref": "10_tea_room",
+  "group": "tables",
+  "seats": 0
+ },
+ "soban": {
+  "tris": 472,
+  "mats": [
+   "H_wood_oak"
+  ],
+  "ref": "06_grandparents_room",
+  "group": "tables",
+  "seats": 0
+ },
+ "coffee_round": {
+  "tris": 456,
+  "mats": [
+   "H_wood_oak"
+  ],
+  "ref": "02_modern_living",
+  "group": "tables",
+  "seats": 0
+ },
+ "coffee_rect": {
+  "tris": 196,
+  "mats": [
+   "H_wood_oak"
+  ],
+  "ref": "02_modern_living",
+  "group": "tables",
+  "seats": 0
+ },
+ "desk": {
+  "tris": 484,
+  "mats": [
+   "H_metal",
+   "H_wood_oak"
+  ],
+  "ref": "04_study",
+  "group": "tables",
+  "seats": 0
+ },
+ "workbench": {
+  "tris": 484,
+  "mats": [
+   "H_metal",
+   "H_wood_oak"
+  ],
+  "ref": "13_workshop",
+  "group": "tables",
+  "seats": 0
+ },
+ "seoan": {
+  "tris": 358,
+  "mats": [
+   "H_metal",
+   "H_wood_oak"
+  ],
+  "ref": "17_sarangbang",
+  "group": "tables",
+  "seats": 0
+ },
+ "bedside": {
+  "tris": 280,
+  "mats": [
+   "H_metal",
+   "H_wood_oak"
+  ],
+  "ref": "15_master_bedroom",
+  "group": "tables",
+  "seats": 0
+ },
+ "dressing_table": {
+  "tris": 594,
+  "mats": [
+   "H_ceramic",
+   "H_glass",
+   "H_metal",
+   "H_paint",
+   "H_wood_oak"
+  ],
+  "ref": "15_master_bedroom",
+  "group": "tables",
+  "seats": 0
+ },
+ "kids_desk": {
+  "tris": 274,
+  "mats": [
+   "H_paint",
+   "H_wood_oak"
+  ],
+  "ref": "05_kids_room",
+  "group": "tables",
+  "seats": 0
+ },
+ "tv_stand": {
+  "tris": 332,
+  "mats": [
+   "H_metal",
+   "H_screen",
+   "H_wood_oak"
+  ],
+  "ref": "02_modern_living",
+  "group": "tables",
+  "seats": 0
+ },
+ "tv_wall": {
+  "tris": 158,
+  "mats": [
+   "H_rubber",
+   "H_screen"
+  ],
+  "ref": "02_modern_living",
+  "group": "tables",
+  "seats": 0
+ },
+ "audio_cabinet": {
+  "tris": 410,
+  "mats": [
+   "H_rubber",
+   "H_screen",
+   "H_wood_oak"
+  ],
+  "ref": "12_hobby_music",
+  "group": "tables",
+  "seats": 0
+ },
+ "piano_upright": {
+  "tris": 3340,
+  "mats": [
+   "H_ceramic",
+   "H_lacquer",
+   "H_metal"
+  ],
+  "ref": "12_hobby_music",
+  "group": "tables",
+  "seats": 0
+ },
+ "bed_queen": {
+  "tris": 1750,
+  "mats": [
+   "H_fabric",
+   "H_wood_oak"
+  ],
+  "ref": "15_master_bedroom",
+  "group": "beds",
+  "seats": 2
+ },
+ "bed_double_padded": {
+  "tris": 1790,
+  "mats": [
+   "H_fabric",
+   "H_wood_oak"
+  ],
+  "ref": "15_master_bedroom",
+  "group": "beds",
+  "seats": 2
+ },
+ "bed_single": {
+  "tris": 1506,
+  "mats": [
+   "H_fabric",
+   "H_wood_oak"
+  ],
+  "ref": "05_kids_room",
+  "group": "beds",
+  "seats": 2
+ },
+ "bunk_bed": {
+  "tris": 3516,
+  "mats": [
+   "H_fabric",
+   "H_wood_oak"
+  ],
+  "ref": "05_kids_room",
+  "group": "beds",
+  "seats": 1
+ },
+ "mattress_sofa": {
+  "tris": 818,
+  "mats": [
+   "H_fabric",
+   "H_wood_oak"
+  ],
+  "ref": "09_attic",
+  "group": "beds",
+  "seats": 2
+ },
+ "window_seat": {
+  "tris": 1182,
+  "mats": [
+   "H_fabric",
+   "H_metal",
+   "H_paint"
+  ],
+  "ref": "18_sunroom",
+  "group": "beds",
+  "seats": 2
+ },
+ "wardrobe_jagae": {
+  "tris": 2508,
+  "mats": [
+   "H_jagae",
+   "H_lacquer",
+   "H_metal"
+  ],
+  "ref": "06_grandparents_room",
+  "group": "storage",
+  "seats": 0
+ },
+ "wardrobe_builtin": {
+  "tris": 462,
+  "mats": [
+   "H_metal",
+   "H_paint"
+  ],
+  "ref": "15_master_bedroom",
+  "group": "storage",
+  "seats": 0
+ },
+ "wardrobe_wood": {
+  "tris": 716,
+  "mats": [
+   "H_metal",
+   "H_wood_oak"
+  ],
+  "ref": "15_master_bedroom",
+  "group": "storage",
+  "seats": 0
+ },
+ "bookcase": {
+  "tris": 1358,
+  "mats": [
+   "H_atlas",
+   "H_wood_oak"
+  ],
+  "ref": "04_study",
+  "group": "storage",
+  "seats": 0
+ },
+ "bookwall": {
+  "tris": 9808,
+  "mats": [
+   "H_atlas",
+   "H_metal",
+   "H_wood_oak"
+  ],
+  "ref": "04_study",
+  "group": "storage",
+  "seats": 0
+ },
+ "wall_shelf": {
+  "tris": 5356,
+  "mats": [
+   "H_ceramic",
+   "H_metal",
+   "H_wood_oak"
+  ],
+  "ref": "03_farm_kitchen",
+  "group": "storage",
+  "seats": 0
+ },
+ "cabinet_glass": {
+  "tris": 2780,
+  "mats": [
+   "H_ceramic",
+   "H_glass",
+   "H_wood_oak"
+  ],
+  "ref": "03_farm_kitchen",
+  "group": "storage",
+  "seats": 0
+ },
+ "shoe_cabinet": {
+  "tris": 472,
+  "mats": [
+   "H_lamp",
+   "H_metal",
+   "H_paint",
+   "H_wood_oak"
+  ],
+  "ref": "16_genkwan",
+  "group": "storage",
+  "seats": 0
+ },
+ "banndaji": {
+  "tris": 554,
+  "mats": [
+   "H_metal",
+   "H_wood_oak"
+  ],
+  "ref": "07_hanok_maru",
+  "group": "storage",
+  "seats": 0
+ },
+ "mungap": {
+  "tris": 330,
+  "mats": [
+   "H_metal",
+   "H_wood_oak"
+  ],
+  "ref": "17_sarangbang",
+  "group": "storage",
+  "seats": 0
+ },
+ "toy_shelf": {
+  "tris": 1760,
+  "mats": [
+   "H_fabric",
+   "H_plastic",
+   "H_wood_oak"
+  ],
+  "ref": "05_kids_room",
+  "group": "storage",
+  "seats": 0
+ },
+ "trunk": {
+  "tris": 596,
+  "mats": [
+   "H_metal",
+   "H_wood_oak"
+  ],
+  "ref": "09_attic",
+  "group": "storage",
+  "seats": 0
+ },
+ "folding_screen": {
+  "tris": 362,
+  "mats": [
+   "H_fabric",
+   "H_lacquer",
+   "H_wood_oak"
+  ],
+  "ref": "17_sarangbang",
+  "group": "storage",
+  "seats": 0
+ },
+ "scroll_hanging": {
+  "tris": 108,
+  "mats": [
+   "H_fabric",
+   "H_lacquer",
+   "H_paint",
+   "H_paper",
+   "H_wood_oak"
+  ],
+  "ref": "17_sarangbang",
+  "group": "storage",
+  "seats": 0
+ },
+ "counter_sink_oak": {
+  "tris": 1284,
+  "mats": [
+   "H_metal",
+   "H_paint",
+   "H_tile_white",
+   "H_wood_oak"
+  ],
+  "ref": "03_farm_kitchen",
+  "group": "kitchen",
+  "seats": 0
+ },
+ "counter_gas_tile": {
+  "tris": 1682,
+  "mats": [
+   "H_metal",
+   "H_paint",
+   "H_rubber",
+   "H_tile_white",
+   "H_wood_oak"
+  ],
+  "ref": "03_farm_kitchen",
+  "group": "kitchen",
+  "seats": 0
+ },
+ "counter_induction_white": {
+  "tris": 1590,
+  "mats": [
+   "H_metal",
+   "H_paint",
+   "H_screen",
+   "H_stone",
+   "H_tile_white"
+  ],
+  "ref": "02_modern_living",
+  "group": "kitchen",
+  "seats": 0
+ },
+ "upper_cabinets": {
+  "tris": 378,
+  "mats": [
+   "H_metal",
+   "H_paint"
+  ],
+  "ref": "03_farm_kitchen",
+  "group": "kitchen",
+  "seats": 0
+ },
+ "hood": {
+  "tris": 96,
+  "mats": [
+   "H_lamp",
+   "H_metal"
+  ],
+  "ref": "03_farm_kitchen",
+  "group": "kitchen",
+  "seats": 0
+ },
+ "fridge": {
+  "tris": 274,
+  "mats": [
+   "H_metal",
+   "H_paint"
+  ],
+  "ref": "03_farm_kitchen",
+  "group": "kitchen",
+  "seats": 0
+ },
+ "fridge_double": {
+  "tris": 274,
+  "mats": [
+   "H_metal",
+   "H_paint"
+  ],
+  "ref": "03_farm_kitchen",
+  "group": "kitchen",
+  "seats": 0
+ },
+ "fridge_kimchi": {
+  "tris": 274,
+  "mats": [
+   "H_metal",
+   "H_paint"
+  ],
+  "ref": "03_farm_kitchen",
+  "group": "kitchen",
+  "seats": 0
+ },
+ "island": {
+  "tris": 378,
+  "mats": [
+   "H_paint",
+   "H_stone",
+   "H_wood_oak"
+  ],
+  "ref": "11_dining",
+  "group": "kitchen",
+  "seats": 0
+ },
+ "plant_monstera": {
+  "tris": 886,
+  "mats": [
+   "H_leaf",
+   "H_soil",
+   "H_terracotta"
+  ],
+  "ref": "18_sunroom",
+  "group": "decor",
+  "seats": 0
+ },
+ "plant_olive": {
+  "tris": 1974,
+  "mats": [
+   "H_leaf",
+   "H_soil",
+   "H_terracotta",
+   "H_wood_oak"
+  ],
+  "ref": "18_sunroom",
+  "group": "decor",
+  "seats": 0
+ },
+ "plant_rubber": {
+  "tris": 858,
+  "mats": [
+   "H_ceramic",
+   "H_leaf",
+   "H_soil"
+  ],
+  "ref": "18_sunroom",
+  "group": "decor",
+  "seats": 0
+ },
+ "plant_snake": {
+  "tris": 442,
+  "mats": [
+   "H_ceramic",
+   "H_leaf",
+   "H_soil"
+  ],
+  "ref": "18_sunroom",
+  "group": "decor",
+  "seats": 0
+ },
+ "plant_orchid": {
+  "tris": 648,
+  "mats": [
+   "H_ceramic",
+   "H_leaf",
+   "H_plastic",
+   "H_soil"
+  ],
+  "ref": "17_sarangbang",
+  "group": "decor",
+  "seats": 0
+ },
+ "plant_hanging": {
+  "tris": 678,
+  "mats": [
+   "H_ceramic",
+   "H_fabric",
+   "H_leaf",
+   "H_soil"
+  ],
+  "ref": "18_sunroom",
+  "group": "decor",
+  "seats": 0
+ },
+ "floor_lamp": {
+  "tris": 512,
+  "mats": [
+   "H_lamp",
+   "H_metal",
+   "H_shade"
+  ],
+  "ref": "02_modern_living",
+  "group": "decor",
+  "seats": 0
+ },
+ "table_lamp": {
+  "tris": 588,
+  "mats": [
+   "H_ceramic",
+   "H_lamp",
+   "H_metal",
+   "H_shade"
+  ],
+  "ref": "15_master_bedroom",
+  "group": "decor",
+  "seats": 0
+ },
+ "pendant_dome": {
+  "tris": 516,
+  "mats": [
+   "H_lamp",
+   "H_metal",
+   "H_paint",
+   "H_rubber"
+  ],
+  "ref": "03_farm_kitchen",
+  "group": "decor",
+  "seats": 0
+ },
+ "pendant_globe": {
+  "tris": 302,
+  "mats": [
+   "H_lamp",
+   "H_metal",
+   "H_paint",
+   "H_rubber"
+  ],
+  "ref": "11_dining",
+  "group": "decor",
+  "seats": 0
+ },
+ "pendant_bar": {
+  "tris": 540,
+  "mats": [
+   "H_lamp",
+   "H_rubber",
+   "H_wood_oak"
+  ],
+  "ref": "11_dining",
+  "group": "decor",
+  "seats": 0
+ },
+ "hanji_lantern": {
+  "tris": 486,
+  "mats": [
+   "H_paper",
+   "H_rubber",
+   "H_wood_oak"
+  ],
+  "ref": "07_hanok_maru",
+  "group": "decor",
+  "seats": 0
+ },
+ "string_lights": {
+  "tris": 992,
+  "mats": [
+   "H_lamp",
+   "H_rubber"
+  ],
+  "ref": "09_attic",
+  "group": "decor",
+  "seats": 0
+ },
+ "rug_rect": {
+  "tris": 1148,
+  "mats": [
+   "H_rug"
+  ],
+  "ref": "02_modern_living",
+  "group": "decor",
+  "seats": 0
+ },
+ "rug_round": {
+  "tris": 1048,
+  "mats": [
+   "H_rug"
+  ],
+  "ref": "05_kids_room",
+  "group": "decor",
+  "seats": 0
+ },
+ "rug_check": {
+  "tris": 206,
+  "mats": [
+   "H_rug"
+  ],
+  "ref": "09_attic",
+  "group": "decor",
+  "seats": 0
+ },
+ "frame_art": {
+  "tris": 82,
+  "mats": [
+   "H_atlas",
+   "H_paint",
+   "H_wood_oak"
+  ],
+  "ref": "02_modern_living",
+  "group": "decor",
+  "seats": 0
+ },
+ "frame_family": {
+  "tris": 98,
+  "mats": [
+   "H_atlas",
+   "H_wood_oak"
+  ],
+  "ref": "06_grandparents_room",
+  "group": "decor",
+  "seats": 0
+ },
+ "wall_clock": {
+  "tris": 778,
+  "mats": [
+   "H_paper",
+   "H_rubber",
+   "H_wood_oak"
+  ],
+  "ref": "06_grandparents_room",
+  "group": "decor",
+  "seats": 0
+ },
+ "calendar_wall": {
+  "tris": 412,
+  "mats": [
+   "H_atlas",
+   "H_metal",
+   "H_paper"
+  ],
+  "ref": "01_ondol_room",
+  "group": "decor",
+  "seats": 0
+ },
+ "mirror_round": {
+  "tris": 678,
+  "mats": [
+   "H_glass",
+   "H_metal"
+  ],
+  "ref": "15_master_bedroom",
+  "group": "decor",
+  "seats": 0
+ },
+ "wood_stove": {
+  "tris": 766,
+  "mats": [
+   "H_brick",
+   "H_lamp",
+   "H_metal",
+   "H_rubber"
+  ],
+  "ref": "09_attic",
+  "group": "decor",
+  "seats": 0
+ },
+ "firewood_pile": {
+  "tris": 1216,
+  "mats": [
+   "H_wood_oak"
+  ],
+  "ref": "13_workshop",
+  "group": "decor",
+  "seats": 0
+ },
+ "globe": {
+  "tris": 1262,
+  "mats": [
+   "H_ceramic",
+   "H_leaf",
+   "H_metal",
+   "H_wood_oak"
+  ],
+  "ref": "04_study",
+  "group": "decor",
+  "seats": 0
+ },
+ "guitar_stand": {
+  "tris": 884,
+  "mats": [
+   "H_metal",
+   "H_rubber",
+   "H_wood_oak"
+  ],
+  "ref": "12_hobby_music",
+  "group": "decor",
+  "seats": 0
+ },
+ "tea_set": {
+  "tris": 550,
+  "mats": [
+   "H_ceramic",
+   "H_wood_oak"
+  ],
+  "ref": "10_tea_room",
+  "group": "decor",
+  "seats": 0
+ },
+ "basket": {
+  "tris": 208,
+  "mats": [
+   "H_rattan",
+   "H_wood_oak"
+  ],
+  "ref": "16_genkwan",
+  "group": "decor",
+  "seats": 0
+ },
+ "boots_pair": {
+  "tris": 1168,
+  "mats": [
+   "H_plastic"
+  ],
+  "ref": "16_genkwan",
+  "group": "decor",
+  "seats": 0
+ },
+ "garlic_braid": {
+  "tris": 736,
+  "mats": [
+   "H_ceramic",
+   "H_rattan"
+  ],
+  "ref": "03_farm_kitchen",
+  "group": "decor",
+  "seats": 0
+ },
+ "vase_branch": {
+  "tris": 404,
+  "mats": [
+   "H_ceramic",
+   "H_leaf",
+   "H_wood_oak"
+  ],
+  "ref": "07_hanok_maru",
+  "group": "decor",
+  "seats": 0
+ },
+ "demo_living_stairs": {
+  "tris": 17900,
+  "mats": [
+   "H_atlas",
+   "H_ceramic",
+   "H_fabric",
+   "H_floor_oak",
+   "H_glass",
+   "H_lamp",
+   "H_leaf",
+   "H_metal",
+   "H_paint",
+   "H_plaster",
+   "H_rubber",
+   "H_rug",
+   "H_screen",
+   "H_shade",
+   "H_soil",
+   "H_terracotta",
+   "H_wood_oak"
+  ],
+  "ref": "08_stairs_2f",
+  "group": "demo",
+  "seats": 4
+ },
+ "demo_living_stairs_b": {
+  "tris": 17900,
+  "mats": [
+   "H_atlas",
+   "H_ceramic",
+   "H_fabric",
+   "H_floor_oak",
+   "H_glass",
+   "H_lamp",
+   "H_leaf",
+   "H_metal",
+   "H_paint",
+   "H_plaster",
+   "H_rubber",
+   "H_rug",
+   "H_screen",
+   "H_shade",
+   "H_soil",
+   "H_terracotta",
+   "H_wood_oak"
+  ],
+  "ref": "08_stairs_2f",
+  "group": "demo",
+  "seats": 4
+ },
+ "demo_ondol": {
+  "tris": 7870,
+  "mats": [
+   "H_atlas",
+   "H_fabric",
+   "H_jagae",
+   "H_jangpan",
+   "H_lacquer",
+   "H_lamp",
+   "H_metal",
+   "H_paint",
+   "H_paper",
+   "H_plaster",
+   "H_rubber",
+   "H_wood_oak"
+  ],
+  "ref": "01_ondol_room",
+  "group": "demo",
+  "seats": 4
+ },
+ "prop_books3": {
+  "tris": 30,
+  "mats": [
+   "H_atlas"
+  ],
+  "ref": null,
+  "group": "props",
+  "seats": 0
+ },
+ "prop_books5": {
+  "tris": 50,
+  "mats": [
+   "H_atlas"
+  ],
+  "ref": null,
+  "group": "props",
+  "seats": 0
+ },
+ "prop_book_row": {
+  "tris": 72,
+  "mats": [
+   "H_atlas"
+  ],
+  "ref": null,
+  "group": "props",
+  "seats": 0
+ },
+ "prop_plate": {
+  "tris": 264,
+  "mats": [
+   "H_atlas"
+  ],
+  "ref": null,
+  "group": "props",
+  "seats": 0
+ },
+ "prop_plates_stack": {
+  "tris": 1320,
+  "mats": [
+   "H_atlas"
+  ],
+  "ref": null,
+  "group": "props",
+  "seats": 0
+ },
+ "prop_bowl": {
+  "tris": 240,
+  "mats": [
+   "H_atlas"
+  ],
+  "ref": null,
+  "group": "props",
+  "seats": 0
+ },
+ "prop_fruit_bowl": {
+  "tris": 620,
+  "mats": [
+   "H_atlas"
+  ],
+  "ref": null,
+  "group": "props",
+  "seats": 0
+ },
+ "prop_mug": {
+  "tris": 148,
+  "mats": [
+   "H_atlas"
+  ],
+  "ref": null,
+  "group": "props",
+  "seats": 0
+ },
+ "prop_teacup": {
+  "tris": 112,
+  "mats": [
+   "H_atlas"
+  ],
+  "ref": null,
+  "group": "props",
+  "seats": 0
+ },
+ "prop_teapot": {
+  "tris": 220,
+  "mats": [
+   "H_atlas"
+  ],
+  "ref": null,
+  "group": "props",
+  "seats": 0
+ },
+ "prop_kettle": {
+  "tris": 224,
+  "mats": [
+   "H_atlas"
+  ],
+  "ref": null,
+  "group": "props",
+  "seats": 0
+ },
+ "prop_cushion_sq": {
+  "tris": 250,
+  "mats": [
+   "H_atlas"
+  ],
+  "ref": null,
+  "group": "props",
+  "seats": 0
+ },
+ "prop_cushion_round": {
+  "tris": 220,
+  "mats": [
+   "H_atlas"
+  ],
+  "ref": null,
+  "group": "props",
+  "seats": 0
+ },
+ "prop_toy_ball": {
+  "tris": 140,
+  "mats": [
+   "H_atlas"
+  ],
+  "ref": null,
+  "group": "props",
+  "seats": 0
+ },
+ "prop_toy_blocks": {
+  "tris": 126,
+  "mats": [
+   "H_atlas"
+  ],
+  "ref": null,
+  "group": "props",
+  "seats": 0
+ },
+ "prop_toy_car": {
+  "tris": 284,
+  "mats": [
+   "H_atlas"
+  ],
+  "ref": null,
+  "group": "props",
+  "seats": 0
+ },
+ "prop_teddy": {
+  "tris": 900,
+  "mats": [
+   "H_atlas"
+  ],
+  "ref": null,
+  "group": "props",
+  "seats": 0
+ },
+ "prop_candle": {
+  "tris": 66,
+  "mats": [
+   "H_atlas"
+  ],
+  "ref": null,
+  "group": "props",
+  "seats": 0
+ },
+ "prop_vase_small": {
+  "tris": 176,
+  "mats": [
+   "H_atlas"
+  ],
+  "ref": null,
+  "group": "props",
+  "seats": 0
+ },
+ "prop_leaf_pot": {
+  "tris": 206,
+  "mats": [
+   "H_atlas"
+  ],
+  "ref": null,
+  "group": "props",
+  "seats": 0
+ },
+ "prop_cutting_board": {
+  "tris": 148,
+  "mats": [
+   "H_atlas"
+  ],
+  "ref": null,
+  "group": "props",
+  "seats": 0
+ },
+ "prop_frame_small": {
+  "tris": 56,
+  "mats": [
+   "H_atlas"
+  ],
+  "ref": null,
+  "group": "props",
+  "seats": 0
+ },
+ "prop_magazine": {
+  "tris": 20,
+  "mats": [
+   "H_atlas"
+  ],
+  "ref": null,
+  "group": "props",
+  "seats": 0
+ },
+ "prop_pan": {
+  "tris": 202,
+  "mats": [
+   "H_atlas"
+  ],
+  "ref": null,
+  "group": "props",
+  "seats": 0
+ },
+ "prop_glass_cup": {
+  "tris": 112,
+  "mats": [
+   "H_atlas"
+  ],
+  "ref": null,
+  "group": "props",
+  "seats": 0
+ }
+}
