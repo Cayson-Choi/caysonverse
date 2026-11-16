@@ -26,6 +26,7 @@ const { values: a } = parseArgs({
     tiers: { type: "string", default: "high,low" },
     ms: { type: "string", default: "6000" },
     only: { type: "string", default: "" },
+    views: { type: "string", default: "" },
   },
 });
 const OUT = a.out;
@@ -177,6 +178,12 @@ const VIEWS = {
   squarePlanter: { eye: [-15.0, 1.9, -14.5], look: [-17.3, 0.6, -17.2], fov: 55 },
   houseBed: { eye: [-17.0, 1.8, -36.5], look: [-21.0, 0.3, -41.0], fov: 55 },
   phonePlaza: { eye: [6.0, 3.6, 2.0], look: [15.5, 1.4, -6.0], fov: 60 },
+  // 2026-11-16 plants rebuild: the square planter close up (the owner's screenshot), the plaza zelkova on its deck
+  squareClose: { eye: [-15.9, 1.45, -15.7], look: [-17.3, 0.65, -17.3], fov: 45 },
+  bushClose: { eye: [-15.0, 1.45, -15.1], look: [-17.3, 1.0, -17.3], fov: 32 },
+  zelkovaDeck: { eye: [-11.0, 3.0, 4.0], look: [-25.0, 3.5, -5.0], fov: 60 },
+  zelkovaUnder: { eye: [-20.5, 1.7, -1.5], look: [-25.0, 4.5, -5.0], fov: 65 },
+  laneShrubs: { eye: [31.5, 1.8, -24.0], look: [36.5, 0.5, -30.5], fov: 55 },
 };
 
 async function shots() {
@@ -186,6 +193,7 @@ async function shots() {
     { label: "night", time: NIGHT, tier: "high", views: ["planterNight", "planterTop", "crownNight", "crownClose", "crownUnder"] },
     { label: "day", time: DAY, tier: "high", views: ["plazaDay", "plazaWide", "planterTop", "crownClose", "crownUnder", "fountainBed", "squarePlanter", "houseBed"] },
     { label: "phone", time: DAY, tier: "low", phone: true, views: ["phonePlaza", "planterNight", "crownUnder"] },
+    { label: "plants", time: DAY, tier: "high", views: (a.views ? a.views.split(",") : ["squareClose", "bushClose", "squarePlanter", "planterTop", "fountainBed", "houseBed", "laneShrubs", "zelkovaDeck", "zelkovaUnder", "plazaWide"]) },
   ].filter((p) => !a.only || a.only.split(",").includes(p.label));
   const log = [];
   for (const p of plan) {
@@ -198,7 +206,11 @@ async function shots() {
         await sleep(1500);
         const file = join(OUT, `${p.label}-${v}-${veg}.png`);
         await s.page.screenshot({ path: file });
-        log.push(file);
+        const vt = await s.page.evaluate(() => {
+          const st = window.__cvVeg?.();
+          return st ? { tris: st.tris, calls: st.calls, bush: st.levels?.bush, flowers: st.levels?.flowers } : null;
+        });
+        log.push(`${file} ${JSON.stringify(vt)}`);
       }
       const stats = await s.page.evaluate(() => window.__cvVeg?.() ?? null);
       log.push(JSON.stringify({ plan: p.label, veg, stats, errors: s.errors.slice(0, 5) }));

@@ -23,7 +23,7 @@ import { BACKDROP_FOREST_PREFIX, CHERRY_MATERIAL, MATERIAL, type VillageTier } f
 import { CHERRY_GROW, cherryConnection, crownEnvelope, growCherry, type Bunch, type CherryCrown } from "./cherryTree";
 import type { Connection, Envelope, KeepOut } from "./crownGrowth";
 import { BUILDING_BOX, buildingSpace, crownKeepOut, type Box, buildingKeepOut, trimSkeleton } from "./crownSpace";
-import { GREEN_GROW, YOUNG_GROW, broadleafEnvelope, growBroadleaf, growWillow, leafConnection, willowEnvelope, type Leaf, type LeafCrown } from "./treeCrown";
+import { GREEN_GROW, YOUNG_GROW, ZELKOVA_GROW, broadleafEnvelope, growBroadleaf, growWillow, leafConnection, willowEnvelope, type Leaf, type LeafCrown } from "./treeCrown";
 import {
   PLAZA_CHERRY_SPECS,
   SHRUB_VARIANT,
@@ -39,10 +39,12 @@ import {
 import { bushSize, findBushes, type Bush } from "./shrubs";
 import { removePlazaZelkova, zelkovaSkeleton } from "./zelkova";
 import { TriangleGrid, faceNormal, openEdges, type DrawnGap, type V3 } from "./drawnGap";
-import { placeFlowers, SPECIES_COUNT, type Plant } from "./flowerPlacement";
+import { PLAZA_BEDS, placeFlowers, SPECIES_COUNT, linearHex, type Plant } from "./flowerPlacement";
 import { keepTriangles, readCards, type AttributeLike, type Card } from "./vegCards";
 import { makeBlossomAtlas } from "./vegAtlas";
-import { GeoBuilder, blossomBunch, bunchSprite, bushGeometry, leafSpray, speciesMeshes, willowSpray } from "./vegGeometry";
+import { GeoBuilder, blossomBunch, bunchSprite, leafSpray, willowSpray } from "./vegGeometry";
+import { BUSH_SPECIES, bushPlant, plantMeshes, type BushSpecies } from "./vegPlants";
+import { makePlantAtlas } from "./vegPlantAtlas";
 import { BARK_STYLE, barkLight, barkTexture, drawnBark, simplifyTwig, skeletonBark, skeletonBarkInto, taperSkeleton, twigBark, type BarkPattern } from "./barkGeometry";
 import { setCameraKeepOut } from "../../game/cameraCollision";
 import { bakedBarkIndex } from "./bakedBark";
@@ -90,9 +92,10 @@ const FLORA = "M_leaf_flora";
 const GREEN = "M_leaf_green";
 
 /** Tree classes as drawn: blossom bunches, broadleaf sprays, willow strands. */
-type DrawClass = "blossom" | "leaf" | "willow";
+/** "zelkova": the plaza zelkova's sprays (its leaves high over the eye: the plain folded leaves, not the fine ones). */
+type DrawClass = "blossom" | "leaf" | "willow" | "zelkova";
 /** Tree kinds as counted (stats). */
-export type TreeKindStat = "plaza_cherry" | "village_cherry" | "street_cherry" | "orchard" | "village_green" | "street_green" | "young" | "willow";
+export type TreeKindStat = "plaza_zelkova" | "plaza_cherry" | "village_cherry" | "street_cherry" | "orchard" | "village_green" | "street_green" | "young" | "willow";
 
 export interface VegStats {
   mode: VegMode;
@@ -103,6 +106,8 @@ export interface VegStats {
   /** Per kind: trees, foliage clusters (bunches or sprays) and twigs. */
   trees: Record<TreeKindStat, { trees: number; clusters: number; twigs: number }>;
   bushes: number;
+  /** Bushes per kind (vegPlants.BUSH_SPECIES: boxwood, azalea). */
+  bushSpecies?: number[];
   /** Every crown's connection: the largest cluster-to-branch gap (m), twigs ending bare, clusters on no branch. */
   connection: Connection;
   /** Foliage clusters drawn within 0.6 m (across) and 1.2 m (up) of an instanced tree's foot: the old blobs (0). */
@@ -195,6 +200,15 @@ const cardsOf = (mesh: Mesh): Card[] => {
   return readCards(worldPositions(mesh), g.index ? (g.index.array as ArrayLike<number>) : null, null, null);
 };
 
+/**
+ * The plaza zelkova (느티나무, the village's 정자나무 over its round deck) stands again (2026-11-16). It was taken out on
+ * 2026-11-12 because its old foliage had no reliable trunk-to-ground connection (the owner: "아예 저 나무는 몸통을
+ * 만들지 말고 없애버려"), which left the deck bare ("없애버리던가 아니면 뭔가 있게 하든가 해"). Since 2026-11-13 every tree
+ * is grown from its replayed skeleton, trunk from the ground through the deck's middle, twigs from its limbs and leaves
+ * on its twigs, so it is grown that way too (a broad dome, ZELKOVA_GROW). False: cut out again on arrival (zelkova.ts).
+ */
+export const PLAZA_ZELKOVA_GROWN = true;
+
 /** The zelkova's bark triangles the arrival took out, per village clone (the stats read it). */
 const zelkovaTris = new WeakMap<Object3D, number>();
 
@@ -211,14 +225,15 @@ export function hideLegacyVegetationSources(root: Object3D): () => void {
     hidden.push({ object, visible: object.visible });
     object.visible = false;
   });
-  const zelkova = removePlazaZelkova(root);
-  zelkovaTris.set(root, zelkova.tris);
+  // the plaza zelkova is grown again (2026-11-16, see PLAZA_ZELKOVA_GROWN): only the old removal path cuts it out
+  const zelkova = PLAZA_ZELKOVA_GROWN ? null : removePlazaZelkova(root);
+  if (zelkova) zelkovaTris.set(root, zelkova.tris);
   let done = false;
   return () => {
     if (done) return;
     done = true;
     for (const entry of hidden) entry.object.visible = entry.visible;
-    zelkova.restore();
+    zelkova?.restore();
     zelkovaTris.delete(root);
   };
 }
@@ -396,6 +411,8 @@ interface ClassDraw {
 
 interface BushDraw {
   bush: Bush;
+  /** Which bush it is drawn as (vegPlants.BUSH_SPECIES index). */
+  species: number;
   sphere: Sphere;
   batch: Batch;
   level: number;
@@ -505,6 +522,13 @@ function sphereOf(b: { x: number; y: number; z: number; r: number }, xf: Matrix4
 /** The bark's light of a tree (barkGeometry.barkLight): the same for its trunk, limbs and twigs. */
 const barkLightOf = (sk: TreeSkeleton) => barkLight(sk.crownC, sk.R, sk.base[1], DAY_SUN_DIRECTION as Vec3, { p: sk.trunk.pts[3]!, r: sk.trunk.radii[3]! });
 
+/** Whether a bush stands in one of the plaza's square planters (their clipped balls are boxwood). */
+const bushInPlanter = (b: Bush) => PLAZA_BEDS.some((bed) => bed.kind === "square" && Math.hypot(b.x - bed.x, b.z - bed.z) < 0.6);
+
+/** An azalea's flower colour (the tint only its trusses take): magenta, pink, white, coral, purple-pink (철쭉, 영산홍). */
+const AZALEA_COLOURS = ["#D62E7A", "#F07AA8", "#F6EEF2", "#EE6A5E", "#B54C9E", "#E8508E"].map(linearHex);
+const azaleaTint = (seed: number): number[] => [...AZALEA_COLOURS[Math.floor(((seed * 7919) % 1) * AZALEA_COLOURS.length)]!];
+
 /** The ten bushes' tints: a little hue variety (the leaves are tinted, the heart too). */
 const tintOf = (seed: number): number[] => {
   const f = (k: number) => (Math.sin(seed * 9301 + k * 49297) * 0.5 + 0.5) % 1;
@@ -534,7 +558,8 @@ export class VillageVegetation {
   private readonly trees: TreeDraw[] = [];
   private readonly classes = new Map<DrawClass, ClassDraw>();
   private readonly bushes: BushDraw[] = [];
-  private bushLayers: [Layer, Layer, Layer] | null = null;
+  /** Per bush species, its three levels (vegPlants.BUSH_SPECIES order). */
+  private bushLayers: Array<[Layer, Layer, Layer]> | null = null;
   private bushDirty = true;
   private readonly frustum = new Frustum();
   private readonly projView = new Matrix4();
@@ -564,7 +589,7 @@ export class VillageVegetation {
       plants: 0,
       bunches: 0,
       twigs: 0,
-      trees: { plaza_cherry: zero(), village_cherry: zero(), street_cherry: zero(), orchard: zero(), village_green: zero(), street_green: zero(), young: zero(), willow: zero() },
+      trees: { plaza_zelkova: zero(), plaza_cherry: zero(), village_cherry: zero(), street_cherry: zero(), orchard: zero(), village_green: zero(), street_green: zero(), young: zero(), willow: zero() },
       bushes: 0,
       connection: { clusters: 0, twigs: 0, maxGap: 0, unattached: 0, bareTips: 0 },
       originBlobs: 0,
@@ -646,9 +671,12 @@ export class VillageVegetation {
     if (await step("cards")) return v.abandon();
     const placed = placeFlowers(allCards);
     if (await step("placement")) return v.abandon();
-    const flowerMat = vegMaterial({ name: "M_veg_flowers", push: true, wind: 0.022, windFar: cfg.windFar ? 30 : 10, ambient: 0.5, sky: 0.12, sun: 0.5, back: 0.45 });
+    // the plants' leaves, petals and mulch are pictures in the plant atlas (vegPlantAtlas.ts, the 2026-11-16 rebuild)
+    const plantAtlas: Texture | null = makePlantAtlas();
+    if (plantAtlas) v.own.push(plantAtlas);
+    const flowerMat = vegMaterial({ name: "M_veg_flowers", push: true, map: plantAtlas, alphaTest: 0.5, wind: 0.022, windFar: cfg.windFar ? 30 : 10, ambient: 0.5, sky: 0.12, sun: 0.5, back: 0.45 });
     v.own.push(flowerMat);
-    const meshes = speciesMeshes();
+    const meshes = plantMeshes();
     const counts = new Array<number>(SPECIES_COUNT).fill(0);
     for (const p of placed.plants) counts[p.species]!++;
     stats.species = counts;
@@ -725,7 +753,7 @@ export class VillageVegetation {
     const leafMat = vegMaterial({ name: "M_veg_leaves", push: true, wind: 0.024, windFar: cfg.windFar ? 30 : 12, ambient: 0.44, sky: 0.2, sun: 0.42, back: 0.42 });
     const leafFarMat = vegMaterial({ name: "M_veg_leaves_far", push: true, wind: 0.01, windFar: 40, ambient: 0.54, sky: 0.18, sun: 0.38, back: 0.4 });
     const willowMat = vegMaterial({ name: "M_veg_willow", push: true, wind: 0.03, windFar: cfg.windFar ? 30 : 12, ambient: 0.54, sky: 0.2, sun: 0.4, back: 0.5 });
-    const bushMat = vegMaterial({ name: "M_veg_bush", push: true, wind: 0.01, windFar: 20, ambient: 0.5, sky: 0.22, sun: 0.4, back: 0.35 });
+    const bushMat = vegMaterial({ name: "M_veg_bush", push: true, map: plantAtlas, alphaTest: 0.5, wind: 0.01, windFar: 20, ambient: 0.5, sky: 0.22, sun: 0.4, back: 0.35 });
     v.own.push(bunchMat, spriteMat, leafMat, leafFarMat, willowMat, bushMat);
     const bunchGeo = blossomBunch();
     // the sprite takes the bunch's own matrix (scale size / 0.24): its quad is the bunch's size x SPRITE_K at scale 1
@@ -853,6 +881,11 @@ export class VillageVegetation {
     mkClass("blossom", [bunchGeo, spriteGeo], [bunchMat, spriteMat], spriteFarGeo, spriteMat, ch);
     mkClass("leaf", [sprayGeos[0], sprayGeos[1]], [leafMat, leafMat], sprayGeos[2], leafFarMat, gr);
     mkClass("willow", [willowGeos[0], willowGeos[1]], [willowMat, willowMat], willowGeos[2], leafFarMat, gr);
+    if (PLAZA_ZELKOVA_GROWN) {
+      const zelkovaSpray = leafSpray(0, 22, false);
+      v.own.push(zelkovaSpray);
+      mkClass("zelkova", [zelkovaSpray, sprayGeos[1]], [leafMat, leafMat], sprayGeos[2], leafFarMat, gr);
+    }
 
     // ── grow the crowns, nearest the camera first, and show each tree as soon as it is grown ──
     // each crown's connection is measured as it is grown (the e2e and the dev hook read it)
@@ -877,9 +910,9 @@ export class VillageVegetation {
         d.twig = twigObject(geo, xf, `veg_twigs_${d.name}`, twigMatOf(crown.skeleton));
       }
     };
-    const drawLeafy = (crown: LeafCrown, kind: TreeKindStat, places: readonly Place[]) => {
+    const drawLeafy = (crown: LeafCrown, kind: TreeKindStat, places: readonly Place[], asClass?: DrawClass) => {
       addConn(leafConnection(crown));
-      const cls: DrawClass = crown.kind === "willow" ? "willow" : "leaf";
+      const cls: DrawClass = asClass ?? (crown.kind === "willow" ? "willow" : "leaf");
       const geo = twigGeo(crown.twigs, crown.skeleton);
       stats.trees[kind].twigs += crown.twigs.length * places.length;
       for (const { xf, i } of places) {
@@ -912,6 +945,8 @@ export class VillageVegetation {
     stats.lamps = setVegLamps(lamps, [0, 0, 0]);
     const envOf = new Map<TreeSkeleton, Envelope>();
     for (const sk of plaza) envOf.set(sk, crownEnvelope(sk));
+    const zelkovaOn = PLAZA_ZELKOVA_GROWN ? [zelkova] : [];
+    for (const sk of zelkovaOn) envOf.set(sk, broadleafEnvelope(sk, ZELKOVA_GROW));
     for (const sk of village) envOf.set(sk, sk.kind === "cherry" ? crownEnvelope(sk) : broadleafEnvelope(sk, GREEN_GROW));
     for (const sk of young) envOf.set(sk, broadleafEnvelope(sk, YOUNG_GROW));
     for (const sk of willows) envOf.set(sk, willowEnvelope(sk));
@@ -926,7 +961,7 @@ export class VillageVegetation {
     // the limbs that would run on into a house's room are cut back short of it (crownSpace.trimSkeleton): the crown is
     // grown on the cut skeleton and its bark drawn from it. A single tree's: `drawnSk`; an instance's: `ownBark`
     const drawnSk = new Map<TreeSkeleton, TreeSkeleton>();
-    for (const sk of [...plaza, ...village, ...young]) {
+    for (const sk of [...zelkovaOn, ...plaza, ...village, ...young]) {
       const walls = buildingKeepOut(envOf.get(sk)!, boxes);
       const t = walls ? trimSkeleton(sk, walls) : null;
       // every limb and side branch tapering evenly to its tip (barkGeometry.taperSkeleton), cut back or not
@@ -990,6 +1025,7 @@ export class VillageVegetation {
     // the trunk (someone under one looks up into it, not into flowers 20 cm from their eyes)
     const ORCHARD = { attractors: 240, bunchStep: 0.045, bunchScale: 0.7, headroom: { r: 1.0, y: 2.0 }, dressBranches: true };
     const jobs = [
+      ...zelkovaOn.map((sk) => job("zelkova", away(sk.base[0], sk.base[2]), () => drawLeafy(growBroadleaf(drawnSk.get(sk)!, ZELKOVA_GROW, "green", keepOutOf(sk)), "plaza_zelkova", ONCE, "zelkova"))),
       ...plaza.map((sk) => job(`cherry${sk.index}`, away(sk.base[0], sk.base[2]), () => drawBlossom(growCherry(drawnSk.get(sk)!, { ...CHERRY_GROW, keepOut: keepOutOf(sk) }), "plaza_cherry", ONCE))),
       ...village.map((sk) =>
         job(`${sk.kind}${sk.index}`, away(sk.base[0], sk.base[2]), () =>
@@ -1031,26 +1067,39 @@ export class VillageVegetation {
         return { x: m.elements[12]!, y: m.elements[13]!, z: m.elements[14]!, h: variantBush.h * s, r: variantBush.r * s, seed: (Math.abs(Math.sin(m.elements[12]! * 3.1 + m.elements[14]! * 1.7)) * 1e4) % 1, cards: [] };
       }),
     ];
-    const bushGeos = [bushGeometry(0), bushGeometry(1), bushGeometry(2)] as const;
-    v.own.push(...bushGeos);
-    v.bushLayers = [0, 1, 2].map((k) => {
-      const layer = new Layer(bushGeos[k]!, bushMat, bushes.length, `veg_bushes_${k}`);
-      layer.mesh.userData[CLICK_PICK_KEY] = "ignore";
-      v.group.add(layer.mesh);
-      v.own.push(layer.mesh);
-      return layer;
-    }) as [Layer, Layer, Layer];
+    // which bush each one is: the plaza planters' and the memorial roof's clipped boxwood balls; elsewhere (the
+    // houses' porch corners, the lanes and plots) about half are azalea mounds (some in flower under the April cherries)
+    const speciesOfBush = (b: Bush): BushSpecies => (b.y > 2 || bushInPlanter(b) || b.seed < 0.5 ? "boxwood" : "azalea");
+    v.bushLayers = BUSH_SPECIES.map((sp) => {
+      const geos = [bushPlant(sp, 0), bushPlant(sp, 1), bushPlant(sp, 2)];
+      v.own.push(...geos);
+      return geos.map((geo, k) => {
+        const layer = new Layer(geo, bushMat, bushes.length, `veg_bushes_${sp}_${k}`);
+        layer.mesh.userData[CLICK_PICK_KEY] = "ignore";
+        v.group.add(layer.mesh);
+        v.own.push(layer.mesh);
+        return layer;
+      }) as [Layer, Layer, Layer];
+    });
     for (const b of bushes) {
+      const sp = speciesOfBush(b);
       const m = new Matrix4().compose(new Vector3(b.x, b.y, b.z), new Quaternion().setFromAxisAngle(UP, b.seed * Math.PI * 2), new Vector3(b.r, b.h, b.r));
-      v.bushes.push({ bush: b, sphere: new Sphere(new Vector3(b.x, b.y + b.h * 0.5, b.z), Math.max(b.r, b.h) * 1.25), batch: makeBatch([{ m, tint: tintOf(b.seed), light: 0.9 }]), level: -1 });
+      v.bushes.push({
+        bush: b,
+        species: BUSH_SPECIES.indexOf(sp),
+        sphere: new Sphere(new Vector3(b.x, b.y + b.h * 0.5, b.z), Math.max(b.r, b.h) * 1.25),
+        batch: makeBatch([{ m, tint: sp === "azalea" ? azaleaTint(b.seed) : tintOf(b.seed), light: 0.9 }]),
+        level: -1,
+      });
     }
+    stats.bushSpecies = BUSH_SPECIES.map((_, i) => v.bushes.filter((d) => d.species === i).length);
     stats.bushes = bushes.length;
     if (await step("bushes")) return v.abandon();
 
     // ── the bark: every tree's trunk, limbs and side branches drawn here, in its twigs' bark (barkGeometry.ts) ──
     // the trees placed one by one, merged per 40 m cell and kind of bark (culled by cell); the instanced variants as
     // instanced meshes on the file's own instance matrices
-    const single = [...plaza, ...village, ...willows, ...young];
+    const single = [...zelkovaOn, ...plaza, ...village, ...willows, ...young];
     const cells = new Map<string, { builder: GeoBuilder; pattern: BarkPattern }>();
     for (const sk of single) {
       const pattern = BARK_STYLE[sk.kind].pattern;
@@ -1526,9 +1575,9 @@ export class VillageVegetation {
     this.bushDirty = false;
     const layers = this.bushLayers;
     if (!layers) return;
-    for (const l of layers) l.begin();
-    for (const b of this.bushes) if (b.level <= 2) layers[b.level]!.push(b.batch);
-    for (const l of layers) l.end();
+    for (const set of layers) for (const l of set) l.begin();
+    for (const b of this.bushes) if (b.level <= 2) layers[b.species]![b.level]!.push(b.batch);
+    for (const set of layers) for (const l of set) l.end();
   }
 
   private recount(_changed: boolean): void {
@@ -1540,7 +1589,7 @@ export class VillageVegetation {
     let calls = 0;
     let twigMeshes = 0;
     for (const t of this.trees) {
-      const into = t.cls === "blossom" ? cherry : t.cls === "leaf" ? green : willow;
+      const into = t.cls === "blossom" ? cherry : t.cls === "willow" ? willow : green;
       const c = this.classes.get(t.cls)!;
       if ((t.level === 0 || t.level === 1) && t.seen) {
         into[t.level] += t.n;
@@ -1555,19 +1604,21 @@ export class VillageVegetation {
     }
     for (const [cls, c] of this.classes) {
       if (c.far.n) {
-        (cls === "blossom" ? cherry : cls === "leaf" ? green : willow)[2] += c.far.n;
+        (cls === "blossom" ? cherry : cls === "willow" ? willow : green)[2] += c.far.n;
         tris += c.far.n * c.far.tris;
         calls++;
       }
     }
     const bush: [number, number, number] = [0, 0, 0];
-    this.bushLayers?.forEach((l, k) => {
-      bush[k] = l.n;
-      if (l.n) {
-        tris += l.n * l.tris;
-        calls++;
-      }
-    });
+    this.bushLayers?.forEach((set) =>
+      set.forEach((l, k) => {
+        bush[k] += l.n;
+        if (l.n) {
+          tris += l.n * l.tris;
+          calls++;
+        }
+      }),
+    );
     for (const l of this.flowerLayers.flatMap((f) => [f.lod0, f.lod1])) {
       if (!l.n) continue;
       tris += l.n * l.tris;
