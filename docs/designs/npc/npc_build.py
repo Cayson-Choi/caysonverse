@@ -452,7 +452,7 @@ def build_guide(m, badge_img):
     rim.append(grp(setmat(tube_bm(toprow, [0.014] * len(toprow), segs=8, capn=2), 4), 1))
     for s in (1, -1):   # 진동 둘레(소매가 나오는 곳) 바이어스: 셔츠 소매와 조끼가 만나는 선을 깔끔하게
         ring = xform(torus_bm(0.150, 0.016, segs=32, rsegs=8), Matrix.Translation((s * 0.318, 0.0, 1.107)) @ Matrix.Rotation(math.radians(90), 4, 'Y'))
-        rim.append(grp(setmat(ring, 4), 2))
+        rim.append(grp(setmat(ring, 1), 2))   # 조끼색: 소매와 만나는 선이 흰 줄로 튀지 않게
     # 아래 주머니 두 개(덮개 + 흰 테)
     for s in (1, -1):
         zc, w, h = 0.64, 0.15, 0.13
@@ -462,9 +462,9 @@ def build_guide(m, badge_img):
     # 반사 띠(은회색, 위아래 가는 빨간 테 사이): 허리 높이로 앞 양쪽과 등에
     for zc in (0.735,):
         for sgn in (1, -1):
-            band_f = front_slab_bm(vb, lambda u, v, sgn=sgn: (sgn * lerp(0.085, 0.36, u), zc + lerp(-0.020, 0.020, v)), 10, 2, 0.008, 0.003)
+            band_f = front_slab_bm(vb, lambda u, v, sgn=sgn: (sgn * lerp(0.085, 0.29, u), zc + lerp(-0.020, 0.020, v)), 10, 2, 0.008, 0.003)
             parts.append(lay(grp(setmat(band_f, 5), 1), 2))
-        band_b = front_slab_bm(vb, lambda u, v: (lerp(-0.36, 0.36, u), zc + lerp(-0.020, 0.020, v)), 18, 2, 0.008, 0.003, direction=Vector((0, -1, 0)))
+        band_b = front_slab_bm(vb, lambda u, v: (lerp(-0.29, 0.29, u), zc + lerp(-0.020, 0.020, v)), 18, 2, 0.008, 0.003, direction=Vector((0, -1, 0)))
         parts.append(lay(grp(setmat(band_b, 5), 1), 2))
     # 왼쪽 가슴(+X) 흰 원 + 빨간 i
     p, n = surf(vb[0], (0.19, -1.5, 0.96), (0, 1, 0))
