@@ -61,6 +61,8 @@ const CASTS = (name: string): boolean =>
 /** The runtime vegetation that casts (the trees and bushes, their far sprites too; not the flowers in the beds, nor the beds' soil: a flat skin on the bed). */
 /** The runtime street furniture (street/StreetFurniture.tsx: the lamp posts and banner poles that replace the baked ones). */
 const STREET_CASTS = (name: string): boolean => name === "M_street_metal";
+/** The houses' model (집 외관 A8): the walls, roofs, trims, porches and the rooms behind the windows; not the glass, the screens or the lamps' lenses. */
+const HOUSE_CASTS = (name: string): boolean => name.startsWith("LM_") || name === "M_window" || name === "M_leaf_flora";
 const VEG_CASTS = (name: string): boolean => name.startsWith("M_veg_") && name !== "M_veg_flowers" && name !== "M_veg_soil";
 
 /** The area the far cascade and the mask cover: the village's walk bounds and the land round them. */
@@ -354,7 +356,11 @@ export function LiveSunShadows({
       const before = st.slice;
       if (veg) st.slice = markCasters(veg.group, VEG_CASTS, lights.slices, lights.marked, cfg.nearStatic, st.slice);
       // the street furniture's posts (mounted beside the model, not in it: the baked posts it replaces are trimmed out)
-      for (const o of scene.children) if (o !== nodes.root) st.slice = markCasters(o, STREET_CASTS, lights.slices, lights.marked, cfg.nearStatic, st.slice);
+      for (const o of scene.children) {
+        if (o === nodes.root) continue;
+        // the houses' own model (집 외관 A8, houses/VillageHouses.tsx): its solid parts cast like the village's
+        st.slice = markCasters(o, o.userData.cvHouses === true ? HOUSE_CASTS : STREET_CASTS, lights.slices, lights.marked, cfg.nearStatic, st.slice);
+      }
       if (st.slice !== before) {
         st.farDirty = true;
         st.sinceVeg = 0;

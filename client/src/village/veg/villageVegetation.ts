@@ -44,6 +44,7 @@ import { bushSize, findBushes, type Bush } from "./shrubs";
 import { removePlazaZelkova, zelkovaSkeleton } from "./zelkova";
 import { TriangleGrid, faceNormal, openEdges, type DrawnGap, type V3 } from "./drawnGap";
 import { PLAZA_BEDS, placeFlowers, SPECIES_COUNT, linearHex, type Plant } from "./flowerPlacement";
+import { a8TreeShift, housesMode, makeHouseGrounds } from "../houses/housesPrep";
 import { keepTriangles, readCards, type AttributeLike, type Card } from "./vegCards";
 import { makeBlossomAtlas } from "./vegAtlas";
 import { GeoBuilder, blossomBunch, bunchSprite, leafSpray, willowSpray } from "./vegGeometry";
@@ -676,7 +677,9 @@ export class VillageVegetation {
       stats.hiddenInstanced.push(mesh.name);
     });
     if (await step("cards")) return v.abandon();
-    const placed = placeFlowers(allCards);
+    // the houses' own model (집 외관 A8) takes the old porches' beds and the new footprints: no flowers or soil planted there
+    const houseGrounds = housesMode() === "new" ? makeHouseGrounds() : null;
+    const placed = placeFlowers(houseGrounds ? allCards.filter((c) => !houseGrounds((c.ax + c.bx) / 2, (c.az + c.bz) / 2)) : allCards);
     // the beds' soil (vegSoil.ts, 2026-11-16 plants2): built round the placed plants, and the plants set on it
     const soil = buildSoil(placed.plants);
     for (const p of placed.plants) {
@@ -764,7 +767,14 @@ export class VillageVegetation {
     // ── the trees' skeletons, replayed from the art script (the very limbs and cards of the file) ──
     const zelkova = zelkovaSkeleton();
     const plaza = PLAZA_CHERRY_SPECS.map(treeSkeleton);
-    const village = VILLAGE_TREE_SPECS.map(treeSkeleton);
+    // the file's trees as replayed (their cards and baked bark are found by these) and as drawn: the trees the A8 houses
+    // displace grow at their new spots (집 외관 A8, houses/housesPrep.ts a8TreeShift), the rest where they are
+    const villageFile = VILLAGE_TREE_SPECS.map(treeSkeleton);
+    const village = villageFile.map((sk, i) => {
+      const spec = VILLAGE_TREE_SPECS[i]!;
+      const shift = housesMode() === "new" ? a8TreeShift(spec.x, spec.z) : null;
+      return shift ? shiftSkeleton(sk, shift.dx, shift.dz) : sk;
+    });
     const willows = WILLOW_SPECS.map(treeSkeleton);
     const young = YOUNG_SPECS.map(treeSkeleton);
     const variant = {
@@ -1270,7 +1280,7 @@ export class VillageVegetation {
         if (o.matrixWorld.equals(new Matrix4())) barkMeshesOfFile.push(o);
       });
       for (const mesh of barkMeshesOfFile) {
-        const cut = bakedBarkIndex(mesh.geometry, single);
+        const cut = bakedBarkIndex(mesh.geometry, [...zelkovaOn, ...plaza, ...villageFile, ...willows, ...young]);
         if (!cut) continue;
         v.swapIndex(mesh, cut.index);
         stats.bark.bakedTris += cut.dropped;
@@ -1792,3 +1802,13 @@ export function createVegetation(root: Object3D, tier: VillageTier, mode: VegMod
 
 /** The vegetation kept while the player is indoors (vegPark.ts): VillageModel parks and takes it, VillageScene holds it. */
 export const vegetationPark = createVegPark<VillageVegetation>();
+
+/**
+ * A tree moved on the ground by (dx, dz) (game metres): its trunk, limbs, side branches and crown (Blender space: x, -z, up).
+ * Its `cards` and `petals` stay where the file has them: they are what the old flat crown drew, found and hidden by place.
+ */
+export function shiftSkeleton(sk: TreeSkeleton, dx: number, dz: number): TreeSkeleton {
+  const mv = (p: Vec3): Vec3 => [p[0] + dx, p[1] - dz, p[2]];
+  const br = (b: Branch): Branch => ({ pts: b.pts.map(mv), radii: b.radii });
+  return { ...sk, base: mv(sk.base), fork: mv(sk.fork), crownC: mv(sk.crownC), trunk: br(sk.trunk), limbs: sk.limbs.map(br), sides: sk.sides.map(br) };
+}

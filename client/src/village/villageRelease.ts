@@ -17,6 +17,7 @@ import {
 import { BUS_MODEL_URL } from "./villageBusPrep";
 import { clearBus, readBus } from "./villageBusLoader";
 import { MOUNTAINS_GRID_URL, MOUNTAINS_TEXTURE_URL } from "./mountains";
+import { clearHousesCache, forgetHouseTextures, housesCache } from "./houses/housesLoader";
 
 /**
  * Releasing 케이슨 마을's files (Task 7 review I1; final review I2 for phones), in the counselling room's pattern
@@ -55,6 +56,18 @@ export function noteVillageRequested(): void {
 /** The distant mountains' files are being read (VillageModel preloads them): a release must free them. */
 export function noteMountainsRequested(): void {
   mountainsRequested = true;
+}
+
+/** The houses' model and maps are being read (VillageHouses renders, 집 외관 A8): a release must free them. */
+let housesRequested = false;
+export function noteHousesRequested(): void {
+  housesRequested = true;
+}
+
+/** Forget the houses' cache entries (a failed load: the next try downloads again). */
+export function clearHousesFiles(): void {
+  housesRequested = false;
+  clearHousesCache();
 }
 
 /** The village bus is being read (VillageBus renders): a release must free it. */
@@ -136,6 +149,11 @@ function releaseNow(): void {
     mountainsRequested = false;
     for (const f of MOUNTAINS_CACHE) releaseCachedFile(f, () => held);
   }
+  if (housesRequested) {
+    housesRequested = false;
+    for (const f of housesCache()) releaseCachedFile(f, () => held);
+    forgetHouseTextures();
+  }
 }
 
 /**
@@ -214,4 +232,5 @@ export function clearVillageCaches(): void {
   mountainsRequested = false;
   for (const f of MOUNTAINS_CACHE) f.clear();
   NIGHT_LIGHTMAP_CACHE.clear();
+  clearHousesFiles();
 }

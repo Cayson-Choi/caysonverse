@@ -115,6 +115,7 @@ import { useSettingsStore } from "../stores/settingsStore";
 import { cubbyFocusWeight } from "../village/cubbyFocus";
 import { CARRY_STRIPPED_CLIPS, stripArm } from "../lake/fishingRig";
 import { useFishingRig, useHasRod } from "../lake/useFishingRig";
+import { easeLift, publishLocalPose, publishLocalStepLift, stepLiftAt, withSeatLift } from "../village/houses/houseLift";
 
 /** Fallback seconds for a sit/stand clip if its duration can't be read yet. */
 const SIT_CLIP_FALLBACK_SEC = 0.8;
@@ -201,6 +202,8 @@ export function LocalPlayer({
   // current sit / stand clip and its length, and the glide onto the seat or off it (seatMotion.ts). A legacy chair
   // leaves all of it at rest (lift 0, no glide): it keeps its snap.
   // `clip`: the planes that hide what hangs inside the bench (benchClip.ts), applied once the avatar is on the seat.
+  // The raised porches' picture lift (집 외관 A8, houses/houseLift.ts): eased per frame, added under the hop and the seat.
+  const stepLiftRef = useRef({ v: 0, t: 0 });
   const seatMotionRef = useRef<{
     bench: boolean;
     lift: number;
@@ -463,10 +466,18 @@ export function LocalPlayer({
    * flag shared by Space and the touch button (seated, sit / stand-up clip, reconnecting).
    */
   function placeGroup(group: Group, canJump: boolean, suspended: boolean, seatLift = 0): void {
-    const lift = stepJump(performance.now(), canJump);
-    // `seatLift` raises the sitter onto a bench's surface (0 everywhere else); the shadow stays on the floor.
-    group.position.set(pose.x, lift + seatLift, pose.z);
-    if (shadowRef.current) shadowRef.current.position.y = -(lift + seatLift);
+    const now = performance.now();
+    const lift = stepJump(now, canJump);
+    // The porch's lift (A8): eased toward the zone under the pose; a seat's own lift is not added on top of it.
+    const st = stepLiftRef.current;
+    st.v = easeLift(st.v, stepLiftAt(pose.x, pose.z), st.t > 0 ? Math.min(0.1, (now - st.t) / 1000) : 1);
+    st.t = now;
+    publishLocalStepLift(st.v);
+    publishLocalPose(pose.x, pose.z);
+    const base = withSeatLift(st.v, seatLift);
+    // `seatLift` raises the sitter onto a bench's surface (0 everywhere else); the shadow stays on the floor (the porch's).
+    group.position.set(pose.x, lift + base, pose.z);
+    if (shadowRef.current) shadowRef.current.position.y = -(lift + base) + st.v;
     publishLocalJump(lift, !canJump || suspended);
   }
 
@@ -832,6 +843,8 @@ export function LocalPlayer({
       pose.z = rp.z;
       pose.yaw = rp.yaw;
       publishLocalJump(0, true);
+      stepLiftRef.current.v = 0; // aboard: the bus's own floor carries the body
+      publishLocalStepLift(0);
       // the loop on the body follows the walk's speed (Idle on a seat's hold pose: a held clip owns the body)
       if (placeNow.kind !== "seat" && animStateRef.current === "loco" && jumpSeqRef.current === -1) {
         gaitRef.current = groundSpeedBus > 0.05 ? "walk" : "idle";

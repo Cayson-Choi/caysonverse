@@ -75,6 +75,7 @@ import { seatApproachGoal, seatUnderTap, warmSeatApproachGoals } from "./seatTap
 import { seatedEyeOffset, stepSeatedWeight } from "./seatedEye";
 import { setPreferredSeat } from "./seatPreference";
 import { getLocalLift } from "./jump";
+import { getLocalStepLift } from "../village/houses/houseLift";
 import { useFpCursor } from "./useFpCursor";
 import { useSettingsStore } from "../stores/settingsStore";
 import { getTransitRenderPose } from "../net/transitSync";
@@ -1054,7 +1055,9 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
     // this frame only by the zoom glide, the portrait pull-back, the place's ceiling limit, the spring arm and the
     // floor stop. It acts ONLY on the TP term, so it never touches the FP eye. The walls are not cast against at full
     // FP weight, where the TP term is not drawn.
-    stepFollowRig(rig, orbit, followX, followZ, aspect, delta, t < 1, tpSpot);
+    // the body's porch lift (집 외관 A8): the follow camera hangs from the raised head
+    const stepLift = getLocalStepLift();
+    stepFollowRig(rig, orbit, followX, followZ, aspect, delta, t < 1, tpSpot, stepLift);
     const tpX = tpSpot.x;
     const tpY = tpSpot.y;
     const tpZ = tpSpot.z;
@@ -1080,13 +1083,14 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
     // Own hop (jump.ts): the first-person eye and look target rise with the avatar's
     // display-only lift, weighted by the FP blend — the own body is hidden there, so
     // without this a Space press would show nothing. TP (t = 0) is untouched.
-    const hop = getLocalLift();
+    // The porch's lift (A8) too, but not while seated: the seated eye already stands on the seat's own height.
+    const hop = getLocalLift() + stepLift * (1 - seatedEyeW.current);
     const uPosY = lerp(tpY, FP_EYE_HEIGHT + hop + eye.dy, t);
     const uPosZ = lerp(tpZ, pose.z + eye.dz, t);
     // TP looks at the (smoothed) follow point, a little above the head; FP at the
     // pose-anchored eye line.
     const uTgtX = lerp(followX + tpSpot.lookX, pose.x + eye.dx + fwdX, t);
-    const uTgtY = lerp(HEAD_HEIGHT + CAMERA_LOOK_LIFT + tpLookLift, FP_EYE_HEIGHT + hop + eye.dy + fwdY, t);
+    const uTgtY = lerp(HEAD_HEIGHT + stepLift + CAMERA_LOOK_LIFT + tpLookLift, FP_EYE_HEIGHT + hop + eye.dy + fwdY, t);
     const uTgtZ = lerp(followZ + tpSpot.lookZ, pose.z + eye.dz + fwdZ, t);
 
     // ── Overview pose ── straight up over the pan-centre, looking down. A camera limit (a building's ceiling) is
@@ -1242,6 +1246,21 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
     if (cam.far !== far) {
       cam.far = far;
       cam.updateProjectionMatrix();
+    }
+
+    // DEV/E2E only: a fixed photo camera (window.__cvShot = { x, y, z, tx, ty, tz, fov? }) over the rig's pose, for the
+    // evidence sheets' street views (e2e/village-exteriors.mjs). Tree-shaken in production.
+    if (import.meta.env.DEV) {
+      const shot = (window as unknown as { __cvShot?: { x: number; y: number; z: number; tx: number; ty: number; tz: number; fov?: number } | null }).__cvShot;
+      if (shot) {
+        camera.position.set(shot.x, shot.y, shot.z);
+        camera.up.set(0, 1, 0);
+        camera.lookAt(shot.tx, shot.ty, shot.tz);
+        if (cam.isPerspectiveCamera && shot.fov && Math.abs(cam.fov - shot.fov) > 1e-3) {
+          cam.fov = shot.fov;
+          cam.updateProjectionMatrix();
+        }
+      }
     }
 
     // Publish the live camera for the dev/E2E hook.
