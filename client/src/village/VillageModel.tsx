@@ -25,6 +25,8 @@ import { vegDressing } from "./vegDressing";
 import { createWaterfall3D, hideWaterfallCards, type Waterfall3D } from "./waterfall3d";
 import type { Object3D } from "three";
 import type { DrawnGap } from "./veg/drawnGap";
+import { LiveSunShadows } from "./LiveSunShadows";
+import { ensureShadowPlaceholder, liveSunEnabled } from "./sunShadows";
 
 declare global {
   interface Window {
@@ -80,6 +82,8 @@ export function VillageModel({ tier }: { tier: VillageTier }) {
   const lightmap = useTexture(VILLAGE_LIGHTMAP_URL);
   const gl = useThree((s) => s.gl);
   const getThree = useThree((s) => s.get);
+  // The village's shaders bind the live shadows' samplers on every draw: a valid comparison texture before any map.
+  useMemo(() => ensureShadowPlaceholder(gl), [gl]);
   const nodes = useMemo(
     // A texture already on the GPU (a rich-to-light switch mid-visit) is never capped: its storage is immutable.
     () =>
@@ -234,6 +238,7 @@ export function VillageModel({ tier }: { tier: VillageTier }) {
       <primitive object={nodes.root} dispose={null} />
       {veg && <primitive object={veg.group} dispose={null} />}
       {waterfall && <primitive object={waterfall.runtime.group} dispose={null} />}
+      {liveSunEnabled() && <LiveSunShadows nodes={nodes} source={gltf.scene} lightmap={lightmap} tier={tier} veg={veg} lightmapSun={lightmapSunMark(gltf)} />}
       {night && (
         <Suspense fallback={null}>
           <NightLightmap />
@@ -241,6 +246,12 @@ export function VillageModel({ tier }: { tier: VillageTier }) {
       )}
     </>
   );
+}
+
+/** The GLB's light-map contract (bake_village.py SUN_SPLIT): "live" when the day map has no direct sun in it. */
+function lightmapSunMark(gltf: { asset?: { extras?: unknown } }): string | undefined {
+  const extras = gltf.asset?.extras as { cvLightmapSun?: unknown } | undefined;
+  return typeof extras?.cvLightmapSun === "string" ? extras.cvLightmapSun : undefined;
 }
 
 /** Loads the night light map and lays it on the model while mounted; its release frees it (villageRelease.ts). */

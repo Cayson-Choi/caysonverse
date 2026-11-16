@@ -101,6 +101,11 @@ export interface PlayShellProps {
   groundDecal?: GroundDecal;
   /** The rich tier's live shadows' colour (ShadowFloor); default the school's indigo. */
   shadowColor?: string;
+  /**
+   * Whether the rich tier lays the see-through shadow floor (ShadowFloor; default true). 케이슨 마을's open village
+   * turns it off: its ground takes the live shadows itself (village/sunShadows.ts).
+   */
+  shadowFloor?: boolean;
 }
 
 /**
@@ -114,15 +119,17 @@ function SunFollow({
   target,
   pose,
   key3,
+  aim,
 }: {
   sun: RefObject<DirectionalLight | null>;
   target: Object3D;
   pose: Pose;
   key3: readonly [number, number, number];
+  aim: LightRig["aim"];
 }) {
   useFrame(() => {
     const light = sun.current;
-    if (!light) return;
+    if (!light || aim.external) return;
     target.position.set(pose.x, 0, pose.z);
     light.position.set(pose.x + key3[0], key3[1], pose.z + key3[2]);
   });
@@ -241,7 +248,7 @@ export function PlayShell(p: PlayShellProps) {
   const [kx, ky, kz] = light.key.position;
   // The sun's offset from its target: this scene's own (the day and night move it by writing it in place).
   const [keyOffset] = useState<[number, number, number]>(() => [kx, ky, kz]);
-  const rig = useMemo<LightRig>(() => ({ sun: sunRef, hemi: hemiRef, keyOffset }), [keyOffset]);
+  const rig = useMemo<LightRig>(() => ({ sun: sunRef, hemi: hemiRef, keyOffset, aim: { external: false } }), [keyOffset]);
   const sunTarget = useMemo(() => {
     const o = new Object3D();
     o.position.set(cx, 0, cz);
@@ -282,7 +289,7 @@ export function PlayShell(p: PlayShellProps) {
           shadow-camera-bottom={-half}
         />
         {p.shadowFollowHalf !== undefined && profile.shadows && (
-          <SunFollow sun={sunRef} target={sunTarget} pose={pose} key3={keyOffset} />
+          <SunFollow sun={sunRef} target={sunTarget} pose={pose} key3={keyOffset} aim={rig.aim} />
         )}
 
         <KeyboardControls map={MOVE_KEYS}>
@@ -312,7 +319,7 @@ export function PlayShell(p: PlayShellProps) {
         </KeyboardControls>
         <NametagSystem />
         {p.effects && <QualityEffects tier={tier} brightness={brightness} exposure={light.exposure} toneCurve={light.toneCurve} />}
-        {p.effects && profile.shadows && <ShadowFloor bounds={b} decal={p.groundDecal ?? null} color={p.shadowColor} />}
+        {p.effects && profile.shadows && p.shadowFloor !== false && <ShadowFloor bounds={b} decal={p.groundDecal ?? null} color={p.shadowColor} />}
         {import.meta.env.DEV && <RenderStatsProbe />}
       </Canvas>
       <LoadingOverlay />

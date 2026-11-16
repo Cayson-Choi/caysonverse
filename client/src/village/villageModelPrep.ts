@@ -51,6 +51,7 @@ import { NEAR_FADE_KEY } from "../game/clickPick";
 import { renderScale } from "../game/renderScale";
 import { VILLAGE_LAYOUT } from "@caysonverse/shared/village/villageLayout";
 import type { DayNightState } from "./dayNightBlend";
+import { SS_DAY_FUNCTION, SS_FRAGMENT_PARS, SS_MAIN_TOP, SS_VERTEX_PARS, SS_VERTEX_WORLD, bindSunShadowUniforms } from "./sunShadows";
 
 /**
  * The village model (`village.glb`, 케이슨 마을 Task 6) dressed for the game (Task 7) — the pure part, unit-tested
@@ -373,18 +374,29 @@ const moonlitCast = (light: string) =>
  */
 const LIGHTMAP_TEXEL_FROM = "vec4 lightMapTexel = texture2D( lightMap, vLightMapUv );";
 const LIGHTMAP_TEXEL_TO = /* glsl */ `vec4 lightMapTexel = vec4( 0.0, 0.0, 0.0, 1.0 );
-	if ( uVillageNight < 0.999 ) lightMapTexel.rgb = texture2D( lightMap, vLightMapUv ).rgb * uVillageDayTint * ( 1.0 - uVillageNight );
+	if ( uVillageNight < 0.999 ) lightMapTexel.rgb = ssDay( texture2D( lightMap, vLightMapUv ).rgb, vLightMapUv ) * uVillageDayTint * ( 1.0 - uVillageNight );
 	if ( uVillageNight > 0.001 ) {
 		vec3 villageNightLight = texture2D( uVillageNightMap, vLightMapUv ).rgb;
-		villageNightLight *= ${moonlitCast("villageNightLight")};
+		villageNightLight *= ${moonlitCast("villageNightLight")} * ssNightShade();
 		lightMapTexel.rgb += villageNightLight * uVillageNight;
 	}`;
 const LIFT_LIGHT = /* glsl */ `#ifdef USE_LIGHTMAP
   reflectedLight.indirectDiffuse += uVillageLift * uVillageLiftTint;
 #else
   diffuseColor.rgb = ( diffuseColor.rgb + villageAlbedo * uVillageLift ) * uVillageFoliageTint;
+  diffuseColor.rgb *= 1.0 - uSsShade.y * ( 1.0 - ssDayLit ) * step( 1e-4, ssDayNl );
 #endif
 #include <aomap_fragment>`;
+
+/**
+ * The live sun and shadows' part of a patched village shader (sunShadows.ts): the uniforms, and the world position (and
+ * the mesh's normal when `geoNormal`: `SS_GEO_NORMAL`) out of the vertex shader. The fragment's code goes in with each
+ * material's own recipe.
+ */
+function patchSunShadows(shader: { uniforms: Record<string, { value: unknown }>; vertexShader: string }, geoNormal = false): void {
+  bindSunShadowUniforms(shader.uniforms);
+  shader.vertexShader = (geoNormal ? "#define SS_GEO_NORMAL\n" : "") + shader.vertexShader.replace("void main() {", SS_VERTEX_PARS).replace("#include <project_vertex>", SS_VERTEX_WORLD);
+}
 
 /**
  * Give a material the time of day's light (idempotent). Light-mapped: `day map × golden tint` blended with the night
@@ -406,11 +418,13 @@ export function liftMaterial(material: Material): void {
     shader.uniforms.uVillageNightMap = nightMapUniform;
     shader.uniforms.uVillageMoonTint = moonTintUniform;
     if (foliage) shader.uniforms.uVillageNearFade = nearFadeUniform;
+    patchSunShadows(shader);
     shader.fragmentShader = shader.fragmentShader
       .replace("void main() {", foliage ? LIFT_PARS.replace("void main() {", NEAR_FADE_PARS) : LIFT_PARS)
       .replace(LIGHTMAP_TEXEL_FROM, LIGHTMAP_TEXEL_TO)
       .replace("#include <color_fragment>", LIFT_ALBEDO)
-      .replace("#include <aomap_fragment>", LIFT_LIGHT);
+      .replace("#include <aomap_fragment>", LIFT_LIGHT)
+      .replace("void main() {", `${SS_FRAGMENT_PARS}${SS_DAY_FUNCTION}void main() {\n${SS_MAIN_TOP}`);
   };
   material.customProgramCacheKey = () => (foliage ? "village-light-foliage" : "village-light");
   material.needsUpdate = true;
@@ -602,13 +616,14 @@ float moonUplight( const in vec3 p, const in vec3 n ) {
 	}
 	return lit;
 }
-// the light a light-mapped surface facing n would get here (liftMaterial's recipe on the probe's texel)
-vec3 moonLight( const in vec3 n, const in float uplight ) {
+// the light a light-mapped surface facing n would get here (liftMaterial's recipe on the probe's texel; the live sun in
+// place of the baked one, shadowed by lit)
+vec3 moonLight( const in vec3 n, const in float uplight, const in float lit ) {
 	vec3 texel = vec3( 0.0 );
-	if ( uVillageNight < 0.999 ) texel = clamp( moonSH( MOON_DAY, n ), 0.0, 1.0 ) * uVillageDayTint * ( 1.0 - uVillageNight );
+	if ( uVillageNight < 0.999 ) texel = ssProbeDay( clamp( moonSH( MOON_DAY, n ), 0.0, 1.0 ), n, lit ) * uVillageDayTint * ( 1.0 - uVillageNight );
 	if ( uVillageNight > 0.001 ) {
 		vec3 villageNightLight = clamp( moonSH( MOON_NIGHT, n ) + uplight * MOON_UPLIGHT_COLOR, 0.0, 1.0 );
-		villageNightLight *= ${moonlitCast("villageNightLight")};
+		villageNightLight *= ${moonlitCast("villageNightLight")} * ssNightShade();
 		texel += villageNightLight * uVillageNight;
 	}
 	// by day the white crescent glared against the sky: dimmed (B2); the night keeps the bake value
@@ -620,7 +635,7 @@ void main() {`;
 export const MOON_LIGHT_FROM = "reflectedLight.indirectDiffuse += vec3( 1.0 );";
 const MOON_LIGHT_TO = /* glsl */ `{
 			vec3 moonN = normalize( vMoonNormal );
-			reflectedLight.indirectDiffuse += moonLight( moonN, uVillageNight > 0.001 ? moonUplight( vMoonWorld, moonN ) : 0.0 );
+			reflectedLight.indirectDiffuse += moonLight( moonN, uVillageNight > 0.001 ? moonUplight( vMoonWorld, moonN ) : 0.0, ssDayLit );
 		}`;
 /** Where its outgoing light is summed up: the glaze goes on top (not × the albedo). */
 export const MOON_GLAZE_FROM = "vec3 outgoingLight = reflectedLight.indirectDiffuse;";
@@ -634,7 +649,7 @@ const MOON_GLAZE_TO = /* glsl */ `vec3 outgoingLight = reflectedLight.indirectDi
 		vec4 moonR = MOON_GLAZE_ROUGHNESS * moonC0 + moonC1;
 		float moonA = min( moonR.x * moonR.x, exp2( - 9.28 * moonNV ) ) * moonR.x + moonR.y;
 		vec2 moonAB = vec2( - 1.04, 1.04 ) * moonA + moonR.zw;
-		outgoingLight += moonLight( reflect( - moonV, moonN ), 0.0 ) * ( 0.04 * moonAB.x + moonAB.y ) * MOON_GLAZE;
+		outgoingLight += moonLight( reflect( - moonV, moonN ), 0.0, ssDayLit ) * ( 0.04 * moonAB.x + moonAB.y ) * MOON_GLAZE;
 	}`;
 
 /**
@@ -656,8 +671,9 @@ export function moonMaterial(material: Material): void {
   material.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, uniforms);
     shader.vertexShader = shader.vertexShader.replace("void main() {", MOON_VERTEX_PARS).replace("#include <project_vertex>", MOON_VERTEX);
+    patchSunShadows(shader, true);
     shader.fragmentShader = shader.fragmentShader
-      .replace("void main() {", moonFragmentPars())
+      .replace("void main() {", `${SS_FRAGMENT_PARS}${SS_DAY_FUNCTION}${moonFragmentPars()}\n${SS_MAIN_TOP}`)
       .replace(MOON_LIGHT_FROM, MOON_LIGHT_TO)
       .replace(MOON_GLAZE_FROM, MOON_GLAZE_TO);
   };
