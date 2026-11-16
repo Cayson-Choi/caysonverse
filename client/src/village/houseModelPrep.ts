@@ -126,7 +126,7 @@ const WALL_PAPER = new Set(["LM_plaster", "E_H_wallpaper", "E_H_plaster"]);
  * builders' Cycles sheets by eye in the game (review 2026-11-16); the wood, the floors, the fabrics keep the village's strength.
  */
 export const HOUSE_PALE_LIGHT = 0.8 * Math.PI;
-const PALE = new Set(["LM_plaster", "LM_paint", "LM_ceiling", "LM_tile_white", "E_H_wallpaper", "E_H_plaster", "E_H_paint", "E_H_tile_white"]);
+export const PALE_SURFACES: ReadonlySet<string> = new Set(["LM_plaster", "LM_paint", "LM_ceiling", "LM_tile_white", "E_H_wallpaper", "E_H_plaster", "E_H_paint", "E_H_tile_white"]);
 
 /** The plain painted ceiling the wallpaper's ceiling faces get (a light-mapped material: the bake's shading stays). */
 export const HOUSE_CEILING_MATERIAL = "LM_ceiling";
@@ -253,7 +253,7 @@ export function prepareHouse(source: Object3D, n: HouseNumber, floor: HouseFloor
       if (isHouseGlowMaterial(m.name) && !glows.includes(m)) glows.push(m);
       if (!lightmap || !isHouseLightmapMaterial(m.name)) continue;
       lightmapMaterial(m, lightmap);
-      if (PALE.has(m.name)) (m as MeshBasicMaterial).lightMapIntensity = HOUSE_PALE_LIGHT;
+      if (PALE_SURFACES.has(m.name)) (m as MeshBasicMaterial).lightMapIntensity = HOUSE_PALE_LIGHT;
       if (!lightmapped.includes(m)) lightmapped.push(m);
     }
   });

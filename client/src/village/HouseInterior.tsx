@@ -35,11 +35,14 @@ import {
   houseWantsLightmap,
   houseWantsView,
   isHouseLightmapMaterial,
+  PALE_SURFACES,
   prepareHouse,
   solidTriangles,
   viewBandVSpan,
 } from "./houseModelPrep";
 import {
+  HOUSE_NIGHT_GAIN,
+  houseNightGainUniform,
   houseNightMapUniform,
   houseNightUniform,
   patchHouseGlowMaterial,
@@ -116,7 +119,10 @@ function HouseFloorScene({ n, floor, pose }: { n: HouseNumber; floor: HouseFloor
       live = false;
     };
   }, [n, urls.lightmapNight, wantsLightmap, nightWanted]);
-  useEffect(() => () => resetHouseNight(), [n]);
+  useEffect(() => {
+    houseNightGainUniform.value = HOUSE_NIGHT_GAIN[n] ?? 1;
+    return () => resetHouseNight();
+  }, [n]);
 
   const nodes = useMemo(() => {
     dressLoadedHouse(gltf.scene, n);
@@ -125,7 +131,7 @@ function HouseFloorScene({ n, floor, pose }: { n: HouseNumber; floor: HouseFloor
   const solidRef = useRef<ReturnType<typeof buildSolidIndex> | null>(null);
   useEffect(() => () => disposeHouse(nodes), [nodes]);
   useEffect(() => {
-    for (const m of nodes.lightmapped) patchHouseLightmapMaterial(m);
+    for (const m of nodes.lightmapped) patchHouseLightmapMaterial(m, PALE_SURFACES.has(m.name));
     for (const m of nodes.glows) patchHouseGlowMaterial(m);
   }, [nodes]);
   useEffect(() => {
