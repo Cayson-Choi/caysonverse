@@ -71,6 +71,12 @@ export interface DayNightState {
   hazeTint: Rgb;
   /** × the water's surface. */
   waterTint: Rgb;
+  /** Where the REAL sun is (unit vector, not clamped like `keyDir`): the sun glow sprite sits there. */
+  sunDir: Vec3;
+  /** The sun glow's strength, 0 (night, sun below the horizon) .. ~0.7 (a low sun); stays soft. */
+  sunGlow: number;
+  /** The sun glow's colour (linear): near white high up, golden at sunrise and sunset. */
+  glowColor: Rgb;
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -124,7 +130,7 @@ export const GOLDEN_LOOK = {
   keyScale: 0.85,
   /** The warm cast on the day light map and the foliage (× linear), at full golden hour. */
   dayTint: [1.16, 0.82, 0.6] as Rgb,
-  domeTint: [1.0, 0.84, 0.68] as Rgb,
+  domeTint: [1.55, 0.85, 0.45] as Rgb,
   hazeTint: [1.0, 0.78, 0.6] as Rgb,
   waterTint: [1.0, 0.8, 0.62] as Rgb,
 };
@@ -213,6 +219,20 @@ function normalize(v: Vec3): Vec3 {
   return [v[0] / len, v[1] / len, v[2] / len];
 }
 
+/** The sun glow's colours (linear): a warm white by day, a golden orange low. */
+const GLOW_DAY: Rgb = linearHex("#FFF1D8");
+const GLOW_GOLD: Rgb = linearHex("#FFA550");
+
+/**
+ * The soft glow around the real sun (a sprite, village/DayNight.tsx): none once the sun is down, mild when it is high,
+ * a little stronger low in the morning and evening (the longer path through the haze), never a wash over the screen.
+ */
+export function sunGlowAt(elevationDeg: number): number {
+  const up = smoothstep(-3, 6, elevationDeg);
+  const low = 1 - smoothstep(10, 40, elevationDeg);
+  return up * (0.34 + 0.3 * low);
+}
+
 /** The look for a sun elevation (°) and its compass azimuth (°): every number the scene needs, at that moment. */
 export function stateFor(elevationDeg: number, azimuthDeg: number): DayNightState {
   const phase = phaseAt(elevationDeg);
@@ -261,6 +281,9 @@ export function stateFor(elevationDeg: number, azimuthDeg: number): DayNightStat
     domeTint: dayMix(mixRgb(WHITE, GOLDEN_LOOK.domeTint, g), NIGHT_LOOK.domeTint),
     hazeTint: dayMix(mixRgb(WHITE, GOLDEN_LOOK.hazeTint, g), NIGHT_LOOK.hazeTint),
     waterTint: dayMix(mixRgb(WHITE, GOLDEN_LOOK.waterTint, g), NIGHT_LOOK.waterTint),
+    sunDir: directionFrom(azimuthDeg, elevationDeg),
+    sunGlow: sunGlowAt(elevationDeg),
+    glowColor: mixRgb(GLOW_DAY, GLOW_GOLD, g),
   };
 }
 
@@ -281,6 +304,7 @@ export function indoorState(): DayNightState {
   s.keyColor = [...DAY.keyColor];
   s.keyIntensity = DAY_LOOK.keyIntensity;
   s.sky = [...DAY.sky];
+  s.sunGlow = 0; // no sun in the hall
   s.exposure = 1.12; // a little above the open village's 0.95: the hall is a lit room, its darkest wall pixels must not sink (B7)
   return s;
 }
@@ -301,6 +325,8 @@ export function cloneState(s: DayNightState): DayNightState {
     domeTint: [...s.domeTint],
     hazeTint: [...s.hazeTint],
     waterTint: [...s.waterTint],
+    sunDir: [...s.sunDir],
+    glowColor: [...s.glowColor],
   };
 }
 

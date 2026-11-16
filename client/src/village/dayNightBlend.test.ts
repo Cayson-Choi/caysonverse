@@ -26,6 +26,7 @@ import {
   linearHex,
   linearLuma,
   stateFor,
+  sunGlowAt,
   type DayNightState,
 } from "./dayNightBlend";
 
@@ -291,5 +292,19 @@ describe("easing: the look glides to its target and never steps", () => {
     expect(into).toEqual([0, KEY_DISTANCE, 0]);
     keyOffset(directionFrom(70, 28), into);
     expect(len(into)).toBeCloseTo(KEY_DISTANCE, 9);
+  });
+});
+
+describe("the sun glow", () => {
+  it("is none at night, soft by day, a little stronger with a low sun, and sits where the real sun is", () => {
+    expect(sunGlowAt(-10)).toBe(0);
+    expect(stateFor(-20, 280).sunGlow).toBe(0);
+    expect(sunGlowAt(60)).toBeGreaterThan(0.2);
+    expect(sunGlowAt(8)).toBeGreaterThan(sunGlowAt(60));
+    for (const el of [-10, 0, 8, 30, 60, 90]) expect(sunGlowAt(el)).toBeLessThanOrEqual(0.7);
+    const s = stateFor(30, 90); // due east, 30 degrees up
+    expect(s.sunDir[0]).toBeCloseTo(Math.cos((30 * Math.PI) / 180), 9);
+    expect(s.sunDir[1]).toBeCloseTo(0.5, 9);
+    expect(indoorState().sunGlow).toBe(0);
   });
 });

@@ -1,6 +1,6 @@
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
-import { Color, type Camera, type Scene, type WebGLRenderer } from "three";
+import { AdditiveBlending, CanvasTexture, Color, Sprite, SpriteMaterial, type Camera, type Scene, type WebGLRenderer } from "three";
 import { isHouseArea, type AreaId } from "@caysonverse/shared/village/villageLayout";
 import { useLightRig } from "../game/lightRig";
 import { QUALITY, exposureFor, inverseNeutralToneMap, type QualityTier } from "../game/quality";
@@ -34,12 +34,68 @@ declare global {
 /** The rich tier's clear colour, written in place every frame (no allocation). */
 const SKY_CLEAR: [number, number, number] = [0, 0, 0];
 
+/** How far the sun glow sprite sits from the camera (m): past the hills (1.1 km), inside the sky dome (1.4 km). */
+const SUN_DISTANCE = 1300;
+/** The sprite's side (m): about 20 degrees across, a halo, not a wash. */
+const SUN_SIZE = 480;
+
+/** The glow's picture: a small soft core and a wide faint halo (alpha, white), fading to nothing at the edge. */
+function sunGlowTexture(): CanvasTexture {
+  const n = 128;
+  const canvas = document.createElement("canvas");
+  canvas.width = n;
+  canvas.height = n;
+  const ctx = canvas.getContext("2d");
+  if (ctx) {
+    const img = ctx.createImageData(n, n);
+    for (let y = 0; y < n; y++) {
+      for (let x = 0; x < n; x++) {
+        const r = Math.hypot((x + 0.5) / n - 0.5, (y + 0.5) / n - 0.5) * 2; // 0 centre .. 1 edge
+        const core = Math.exp(-((r / 0.07) ** 2));
+        const halo = 0.55 * Math.exp(-r / 0.16);
+        const edge = Math.max(0, 1 - r) ** 2;
+        const a = Math.min(1, (core + halo) * edge);
+        const i = (y * n + x) * 4;
+        img.data[i] = 255;
+        img.data[i + 1] = 255;
+        img.data[i + 2] = 255;
+        img.data[i + 3] = Math.round(a * 255);
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+  }
+  return new CanvasTexture(canvas);
+}
+
 export function DayNight({ area, tier }: { area: AreaId; tier: QualityTier }) {
   const rig = useLightRig();
   const scene = useThree((s) => s.scene);
   const gl = useThree((s) => s.gl);
   const get = useThree((s) => s.get);
   const toneMappedFrame = QUALITY[tier].bloom;
+  const glow = useMemo(() => {
+    const material = new SpriteMaterial({
+      map: sunGlowTexture(),
+      transparent: true,
+      blending: AdditiveBlending,
+      depthWrite: false,
+      fog: false,
+      toneMapped: false,
+    });
+    const sprite = new Sprite(material);
+    sprite.scale.set(SUN_SIZE, SUN_SIZE, 1);
+    sprite.frustumCulled = false;
+    sprite.visible = false;
+    sprite.raycast = () => {};
+    return sprite;
+  }, []);
+  useEffect(
+    () => () => {
+      glow.material.map?.dispose();
+      glow.material.dispose();
+    },
+    [glow],
+  );
 
   // Back from a hidden tab: snap to the clock instead of gliding from the look the tab was hidden with.
   useEffect(() => (typeof document !== "undefined" ? resetOnVisible(document) : undefined), []);
@@ -85,6 +141,21 @@ export function DayNight({ area, tier }: { area: AreaId; tier: QualityTier }) {
       }
     }
 
+    // The sun glow: a soft halo where the real sun is (never anywhere else), none indoors or once the sun is down.
+    const camera = get().camera;
+    const indoor = area === "hall" || isHouseArea(area);
+    const strength = indoor ? 0 : s.sunGlow;
+    glow.visible = strength > 0.01;
+    if (glow.visible) {
+      glow.position.set(
+        camera.position.x + s.sunDir[0] * SUN_DISTANCE,
+        camera.position.y + s.sunDir[1] * SUN_DISTANCE,
+        camera.position.z + s.sunDir[2] * SUN_DISTANCE,
+      );
+      glow.material.color.setRGB(s.glowColor[0], s.glowColor[1], s.glowColor[2]);
+      glow.material.opacity = Math.min(1, strength);
+    }
+
     if (!rig) return;
     const hemi = rig.hemi.current;
     if (hemi) {
@@ -101,5 +172,5 @@ export function DayNight({ area, tier }: { area: AreaId; tier: QualityTier }) {
       sun.position.set(t.x + rig.keyOffset[0], t.y + rig.keyOffset[1], t.z + rig.keyOffset[2]);
     }
   });
-  return null;
+  return <primitive object={glow} />;
 }

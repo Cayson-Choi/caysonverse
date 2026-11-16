@@ -26,6 +26,7 @@ const DEVICES = opt("devices", "desktop").split(",");
 const SPOT_ALL = { plaza: [0, 14], street: [-20, 5] };
 const SPOTS = opt("spots", "plaza").split(",").filter((s) => s in SPOT_ALL);
 const AZ = { N: 0, E: 90, S: 180, W: 270 };
+// Besides N/E/S/W: SUN looks toward the real sun (pitched so it sits in the upper half), ANTI away from it.
 const DIRS = opt("dirs", "N,E,S,W").split(",");
 const PITCHES = opt("pitches", "15,35").split(",").map(Number);
 
@@ -63,13 +64,27 @@ try {
           await hideHud(P);
           for (const d of DIRS) {
             for (const pitch of PITCHES) {
+              let az = AZ[d], pt = pitch;
+              if (d === "SUN" || d === "ANTI") {
+                const sd = await P.page.evaluate(() => window.__cvDayNight().applied.sunDir);
+                const sunAz = (Math.atan2(sd[0], -sd[2]) * 180) / Math.PI;
+                const sunEl = (Math.asin(sd[1]) * 180) / Math.PI;
+                az = d === "SUN" ? sunAz : sunAz + 180;
+                pt = d === "SUN" ? Math.max(3, sunEl - 12) : pitch;
+                if (sunEl < 0 && d === "SUN") pt = 3;
+              }
               await P.page.evaluate(async ([az, pt]) => {
                 const v = await window.__imp("/src/game/viewState.ts");
                 if (v.viewState.mode !== "fp") v.enterFp(0);
                 v.viewState.fpYaw = (-az * Math.PI) / 180;
                 v.viewState.fpPitch = (-pt * Math.PI) / 180;
-              }, [AZ[d], pitch]);
-              await sleep(first ? 3500 : 1800); first = false;
+              }, [az, pt]);
+              await P.page.waitForFunction(() => window.__cv.getView().blend >= 0.995, null, { timeout: 15000 }).catch(() => {});
+              await sleep(first ? 3000 : 1800); first = false;
+              // The test hides whatever sits within 3 m of the camera (the own avatar's translucent head parts, 1 m behind the eye), so the numbers are the sky's.
+              await P.page.evaluate(() => { const t = window.__cvThree(); const c = t.camera.position; t.scene.traverse((o) => { if (o.isMesh && o.getWorldPosition(c.clone()).distanceTo(c) < 3) o.visible = false; }); });
+              await sleep(300);
+              console.log('   view', JSON.stringify(await P.page.evaluate(() => { const v = window.__cv.getView(); return { m: v.mode, b: v.blend, y: v.fpYaw, p: v.fpPitch, sv: window.__cv.getSelfVisible() }; })));
               const base = `${TAG}-${dev}-${time.replace(":", "")}-${spot}-${d}${pitch}`;
               await run.shot(P, `${base}.png`);
               const { rgba, width, height } = decodePng(readFileSync(join(OUT, `${base}.png`)));
