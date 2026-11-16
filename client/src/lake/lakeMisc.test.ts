@@ -35,7 +35,11 @@ describe("the seats of the room", () => {
   it("the village list keeps its indexes and the lake follows: the 30 chairs first", () => {
     expect(lakeSeats().length).toBe(56);
     expect(VILLAGE_SEATS.slice(0, LAKE_SEAT_BASE).every((s) => s.lake === undefined)).toBe(true);
-    expect(VILLAGE_SEATS.slice(LAKE_SEAT_BASE).every((s) => s.lake !== undefined)).toBe(true);
+    // after the lake's: only the plaza zelkova deck's six (UX 2026-11-16), appended last
+    const after = VILLAGE_SEATS.slice(LAKE_SEAT_BASE);
+    const deck = after.filter((s) => s.id.startsWith("zelkova_deck:"));
+    expect(deck).toHaveLength(6);
+    expect(after.slice(0, after.length - deck.length).every((s) => s.lake !== undefined)).toBe(true);
     for (let i = 0; i < 30; i++) expect((VILLAGE_SEATS[LAKE_SEAT_BASE + i] as unknown as { spot: string }).spot).toBe(LAKE_FISHING_SPOTS[i]!.id);
     expect(FISHING_CHAIRS).toHaveLength(30);
   });
