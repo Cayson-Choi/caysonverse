@@ -91,7 +91,7 @@ describe("the goals are worked out ahead, one seat at a time (review 2026-11-15:
     const ticks: (() => void)[] = [];
     warmSeatApproachGoals(seats, obstacles, village, (run) => ticks.push(run));
     const marked = markedSeatIndices(seats);
-    expect(marked).toHaveLength(15);
+    expect(marked).toHaveLength(15 + 30); // the art's 15 marked seats and the lake's 30 fishing chairs (E2)
     let worst = 0;
     let n = 0;
     while (ticks.length > 0) {
@@ -100,7 +100,7 @@ describe("the goals are worked out ahead, one seat at a time (review 2026-11-15:
       worst = Math.max(worst, performance.now() - t0);
       n++;
     }
-    expect(n).toBe(15);
+    expect(n).toBe(15 + 30);
     expect(marked.every((i) => seatApproachGoalReady(seats, i))).toBe(true);
     console.log(`seatApproachGoal: worst seat ${worst.toFixed(2)} ms`);
     expect(worst).toBeLessThan(15); // was up to 20 ms; a loaded CI box gets slack
