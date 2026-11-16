@@ -243,6 +243,26 @@ def fabricize(ob):
     me.color_attributes.active_color = col
     print('FABRIC', ob.name, [m.name for m in new_slots])
 
+def weights_from_cloth(top, mat_names):
+    """명찰처럼 나중에 붙인 단단한 조각이 옷 표면과 같이 움직이게: 그 조각의 정점마다 가장 가까운 옷 정점의 뼈 가중치를 그대로 쓴다
+    (가슴 뼈에만 묶으면 숨쉬기·인사 때 옷이 앞으로 나와 조각이 옷 속에 묻힌다)."""
+    from mathutils.kdtree import KDTree
+    me = top.data
+    idx = {i for i, s_ in enumerate(top.material_slots) if s_.material and s_.material.name in mat_names}
+    mine = set()
+    for p_ in me.polygons:
+        if p_.material_index in idx: mine.update(p_.vertices)
+    others = [v for v in me.vertices if v.index not in mine]
+    kd = KDTree(len(others))
+    for k, v in enumerate(others): kd.insert(v.co, k)
+    kd.balance()
+    for vi in mine:
+        v = me.vertices[vi]
+        _, k, _ = kd.find(v.co)
+        src = others[k]
+        for g in list(v.groups): top.vertex_groups[g.group].remove([vi])
+        for g in src.groups: top.vertex_groups[g.group].add([vi], g.weight, 'REPLACE')
+
 def badge_card(top, img, p, n, w, h, lift, name, mat_name):
     """명찰 앞면: 텍스처를 붙인 얇은 판(가슴에 단단히). top에 합친다."""
     card = bmesh.new()
@@ -654,6 +674,7 @@ def build_memorial(m, badge_img=None):
         skin(pob, rigid='chest')
         join_into(top, [pob])
         badge_card(top, badge_img, p, n, 0.112, 0.033, 0.0190, 'top__npc_memorial_badge', 'npc_badge_memorial')
+        weights_from_cloth(top, {'npc_gold', 'npc_badge_memorial'})
         tag(top, 'top', 'npc_memorial', False)
 
 
