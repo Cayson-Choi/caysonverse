@@ -176,8 +176,9 @@ await run.step("both board: aboard and free at the entry; the ride panel has the
 });
 
 await run.step("A walks the aisle inside the cabin (the keys), the server follows", async () => {
-  // bus v3: nobody walks through anybody: B (boarded second, standing just behind A in the aisle) steps aside into the door's well first
-  await walkBus(B, 3.15, 0.8, 0.15, 12000);
+  // bus v3: nobody walks through anybody: B (boarded second, standing just behind A in the aisle) walks on down the bus first, to the
+  // middle door's standing room
+  await walkBus(B, -0.4, 0.6, 0.25, 20000);
   const before = await ride(A);
   const end = await walkBus(A, 1.5, 0.05, 0.3);
   const r = await ride(A);
