@@ -189,12 +189,12 @@ async function oneCast(n) {
       }
       await sleep(1200);
       await shot("15-fighting");
-      const netting = await waitPhase(["netting", "landed"], 9000);
+      const netting = await waitPhase(["lifting", "landed"], 9000);
       if (touch) await touchUp(p);
       else await p.page.mouse.up();
-      run.check(`cast ${n}: holding brought the fish to the net`, !!netting, netting);
+      run.check(`cast ${n}: holding brought the fish in (lifted out on the line: no net since lake v2)`, !!netting, netting);
       await sleep(700);
-      await shot("16-netting");
+      await shot("16-lifting-big");
     }
   } else if (FRAMES && !seen.has("liftframes")) {
     seen.add("liftframes");

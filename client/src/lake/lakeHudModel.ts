@@ -85,8 +85,6 @@ export function lakeButton(c: LakeContext): LakeButtonSpec | null {
       return B("cast", "올리는 중…", "🐟", "Space", "wait", false, { kind: "none" });
     case FISH_PHASE.fighting:
       return B("cast", "꾹 누르고 있어요", "💪", "Space", "hold", true, { kind: "hold" }, true);
-    case FISH_PHASE.netting:
-      return B("cast", "뜰채로 뜨는 중…", "🥅", "Space", "wait", false, { kind: "none" });
     case FISH_PHASE.landed:
       return B("cast", "잡았어요!", "🐟", "Space", "done", false, { kind: "none" });
     case FISH_PHASE.releasing:
@@ -120,8 +118,6 @@ export function lakeCaption(c: LakeContext, firstTime: boolean): string {
       return "걸렸어요!";
     case FISH_PHASE.fighting:
       return "버튼을 꾹 누르고 있어요. 힘을 빼면 끌려가요.";
-    case FISH_PHASE.netting:
-      return "뜰채로 떠요.";
     case FISH_PHASE.missed:
       return "찌가 다시 올라왔어요. 다음엔 빨간 버튼일 때!";
     default:

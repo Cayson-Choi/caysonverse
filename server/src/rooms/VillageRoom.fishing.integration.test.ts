@@ -306,8 +306,8 @@ describe("a fishing round (design 12.4, server side)", () => {
     a.client.send(VillageMsg.FishingHold, { down: true });
     await sleep(30);
     advance(700);
-    expect(a.player.fishPhase).toBe(fishingPhaseId("netting"));
-    advance(FISHING.netMs);
+    expect(a.player.fishPhase).toBe(fishingPhaseId("lifting"));
+    advance(FISHING.liftMs);
     expect(a.player.fishPhase).toBe(fishingPhaseId("landed"));
     expect(fishing.boardEntries()).toMatchObject([{ kind: "carp", cm: 35 }]);
   });
@@ -362,7 +362,7 @@ describe("a fishing round (design 12.4, server side)", () => {
         a.client.send(VillageMsg.FishingHold, { down: true });
         await sleep(20);
       }
-      advance(FISHING.netMs);
+      advance(FISHING.liftMs);
       expect(a.player.fishPhase).toBe(fishingPhaseId("landed"));
       advance(FISHING.landedMs + FISHING.releaseMs);
       expect(a.player.fishPhase).toBe(fishingPhaseId("ready"));

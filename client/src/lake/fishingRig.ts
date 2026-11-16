@@ -1,9 +1,9 @@
-// One avatar's fishing layer (design 6.2 / 6.3): the rod on the right hand (and the net on the left), the nine fishing clips on the
+// One avatar's fishing layer (design 6.2 / 6.3): the rod on the right hand (no net since lake v2), the fishing clips on the
 // avatar's own mixer, the landed fish in the hands. The same object serves my avatar and every other angler: it reads the
 // schema fields of its session id (lakeNet.readFishView) and decides what to show — nothing else.
 //
 // Clips are layered by weight on the player's mixer:
-//  - seated at a fishing chair: the Fish_Sit_* / Fish_Net / Fish_Stand_Show / Fish_Release body clips replace the held sit (the
+//  - seated at a fishing chair: the Fish_Sit_* / Fish_Stand_Show / Fish_Release body clips replace the held sit (the
 //    player's Sit_Chair_Idle action is held at weight 0 meanwhile; their legs are Sit_Chair_Idle's first frame, so the chair fit
 //    does not move);
 //  - standing with a rod: Carry_Rod on the right arm. The walk, run and idle clips of a carrier have their right-arm tracks
@@ -11,14 +11,14 @@
 // The rod folds to 1.15 m for walking and opens to 3.6 m over 0.6 s when the angler sits.
 
 import { AnimationMixer, LoopOnce, LoopRepeat, Object3D, Quaternion, Vector3, type AnimationAction, type AnimationClip, type Camera } from "three";
-import { FISHING_CLIPS, GRIP_OFFSET, NET_AXIS_L, ROD_AXIS_R, type FishingClip } from "@caysonverse/shared/village/fishingAnims";
+import { FISHING_CLIPS, GRIP_OFFSET, ROD_AXIS_R, type FishingClip } from "@caysonverse/shared/village/fishingAnims";
 import type { BuiltAvatar } from "../game/characterAvatar";
 import { fishingAnimsNow, loadFishingAnims, withoutRightArm } from "./fishAnims";
 import { elapsedSince, readFishView } from "./lakeNet";
-import { FISH_PHASE, emptyFishView, needsNet, type FishView } from "./lakeProtocol";
-import { createNet, createRod, lakeGearReady, loadLakeGear, type Net, type Rod } from "./lakeProps";
+import { FISH_PHASE, emptyFishView, type FishView } from "./lakeProtocol";
+import { createRod, lakeGearReady, loadLakeGear, type Rod } from "./lakeProps";
 import { createCatchRig, fpNarrow } from "./catchRig";
-import { HANG_END_S, NET_SCOOP_S, REEL_S } from "./fishCatch";
+import { HANG_END_S, REEL_S } from "./fishCatch";
 import { registerRodTip } from "./rodTips";
 import { tugDip } from "./lakeFloat";
 
@@ -113,9 +113,8 @@ function bone(root: Object3D, name: string): Object3D | null {
 
 /** The clip a phase wants while seated at the chair (null: leave the body to the held sit). */
 export function clipForPhase(phase: number, t = 0): FishingClip | null {
-  // lake v2: the reel-in before the lift, the fight at the surface before the net (fishCatch.ts)
+  // lake v2: the reel-in before the lift (fishCatch.ts)
   if (phase === FISH_PHASE.lifting && t < REEL_S) return "Fish_Sit_Fight";
-  if (phase === FISH_PHASE.netting && t < NET_SCOOP_S - 0.25) return "Fish_Sit_Fight";
   switch (phase) {
     case FISH_PHASE.ready:
     case FISH_PHASE.settling:
@@ -132,8 +131,6 @@ export function clipForPhase(phase: number, t = 0): FishingClip | null {
       return "Fish_Sit_Fight";
     case FISH_PHASE.lifting:
       return "Fish_Sit_Lift";
-    case FISH_PHASE.netting:
-      return "Fish_Net";
     case FISH_PHASE.landed:
       return "Fish_Stand_Show";
     case FISH_PHASE.releasing:
@@ -163,8 +160,7 @@ export function rodBend(view: FishView, t: number): number {
       if (t < REEL_S) return 0.72 + 0.14 * Math.sin(t * 9.5) + 0.06 * Math.sin(t * 23);
       if (t < HANG_END_S) return 0.45 + 0.12 * Math.sin(t * 7.5);
       return Math.max(0, 0.45 - (t - HANG_END_S) * 0.9);
-    case FISH_PHASE.netting:
-      return t < NET_SCOOP_S ? 0.8 + 0.12 * Math.sin(t * 8) : 0.35;
+
     default:
       return 0;
   }
@@ -175,13 +171,11 @@ export function createFishingRig(o: { sid: string; avatar: BuiltAvatar; mixer: A
   const view = emptyFishView();
   const root = avatar.root;
   let rod: Rod | null = null;
-  let net: Net | null = null;
   const catchRig = createCatchRig(sid);
   const fpV = { cp: new Vector3(), fw: new Vector3(), rt: new Vector3(), up: new Vector3(), grip: new Vector3(), aim: new Vector3(), axis: new Vector3(), q: new Quaternion(), one: new Vector3(1, 1, 1) };
   let catchShown = false;
   let fpRod: Rod | null = null;
   let rodHost: Object3D | null = null;
-  let netHost: Object3D | null = null;
   let unregisterTip: (() => void) | null = null;
   let stow: ReturnType<typeof stowHandItem> | null = null;
   const hasItem = avatar.parts.some((p) => p.startsWith("item__"));
@@ -251,23 +245,6 @@ export function createFishingRig(o: { sid: string; avatar: BuiltAvatar; mixer: A
     stow = null;
     stowed.delete(sid);
   };
-  const attachNet = (): void => {
-    if (net) return;
-    handL = handL ?? bone(root, "handslot.l");
-    if (!handL) return;
-    net = createNet();
-    if (net.real) net.root.quaternion.identity();
-    else net.root.quaternion.copy(q.setFromUnitVectors(Y, new Vector3(...NET_AXIS_L).normalize()));
-    net.root.position.set(GRIP_OFFSET[0], GRIP_OFFSET[1], GRIP_OFFSET[2]);
-    handL.add(net.root);
-    netHost = handL;
-  };
-  const detachNet = (): void => {
-    if (!net) return;
-    netHost?.remove(net.root);
-    net.dispose();
-    net = null;
-  };
   const hideFish = (): void => catchRig.hide();
   const dropFpRod = (): void => {
     if (!fpRod) return;
@@ -300,11 +277,10 @@ export function createFishingRig(o: { sid: string; avatar: BuiltAvatar; mixer: A
     },
     update(delta, ctx) {
       if (!readFishView(sid, view) || view.rod === 0) {
-        if (rod || net || current) {
+        if (rod || current) {
           play(null);
           dropFpRod();
           detachRod();
-          detachNet();
           hideFish();
         }
         if (baseTouched && ctx.baseSit) {
@@ -319,7 +295,6 @@ export function createFishingRig(o: { sid: string; avatar: BuiltAvatar; mixer: A
       else if (rod && !rod.real) {
         dropFpRod();
         detachRod(); // the stand-in made before lake_gear.glb came in: the real rod replaces it
-        detachNet();
       }
       attachRod();
       const clipsReady = ensureActions();
@@ -366,11 +341,7 @@ export function createFishingRig(o: { sid: string; avatar: BuiltAvatar; mixer: A
         rod.setUnfold(unfold);
         rod.setBend(atSpot ? rodBend(view, t) : 0);
       }
-      // the net: left hand while a big fish is fought and landed
-      const wantNet = atSpot && (view.phase === FISH_PHASE.netting || (view.phase === FISH_PHASE.fighting && needsNet(view.kind, view.cm)));
-      if (wantNet) attachNet();
-      else detachNet();
-      // the fish (lake v2, catchRig.ts): under the water, out on the line, into the hand or the net, shown, let go
+      // the fish (lake v2, catchRig.ts): under the water, out on the line, into the hand, taken in the arms, let go
       handR = handR ?? bone(root, "handslot.r");
       handL = handL ?? bone(root, "handslot.l");
       // only while a fish is on (hooked .. releasing): an angler waiting, walking or anyone without a catch costs nothing here
@@ -379,7 +350,7 @@ export function createFishingRig(o: { sid: string; avatar: BuiltAvatar; mixer: A
       if (catching || catchShown) {
         let world: Object3D | null = root;
         while (world.parent) world = world.parent;
-        catchRig.update({ view, t, delta, atSpot, handL, handR, rodTip: fpRod?.tip ?? rod?.tip ?? null, netBag: net?.bag ?? null, world: world === root ? null : world, fpCamera: fpCam, fpLook: ctx.fpLook ?? null });
+        catchRig.update({ view, t, delta, atSpot, handL, handR, rodTip: fpRod?.tip ?? rod?.tip ?? null, body: root, world: world === root ? null : world, fpCamera: fpCam, fpLook: ctx.fpLook ?? null });
         catchShown = catching;
       }
       // first person: the own body is hidden, so the rod is drawn by a copy that follows the hidden one (the line starts at its tip)
@@ -419,7 +390,6 @@ export function createFishingRig(o: { sid: string; avatar: BuiltAvatar; mixer: A
       play(null);
       dropFpRod();
       detachRod();
-      detachNet();
       catchRig.dispose();
       carries.delete(sid);
       for (const a of actions.values()) a.stop();

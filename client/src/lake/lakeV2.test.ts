@@ -5,7 +5,7 @@ vi.mock("../net/transitSync", () => ({ transitNowMs: () => Date.now() }));
 import { Bone, Object3D, Vector3 } from "three";
 import { FISHING } from "@caysonverse/shared/village/fishing";
 import { LAKE_FISH_IDS } from "@caysonverse/shared/village/lakeGear";
-import { HANG_END_S, LET_GO_S, NET_SCOOP_S, REEL_S, TO_HAND_S, DROP_S, catchState, lineOnFish, releasePoint, underPos } from "./fishCatch";
+import { HANG_END_S, LET_GO_S, REEL_S, TO_HAND_S, DROP_S, catchState, lineOnFish, releasePoint, underPos } from "./fishCatch";
 import { FISH_PHASE, FISH_SPECIES, emptyFishView } from "./lakeProtocol";
 import { clipForPhase, rodBend, stowHandItem } from "./fishingRig";
 import { recordCatch } from "./lakeDex";
@@ -25,10 +25,7 @@ describe("the catch's stages (lake v2) fit the server's phases", () => {
     expect(catchState(v, HANG_END_S + TO_HAND_S + 0.05).stage).toBe("hand");
     expect(HANG_END_S + TO_HAND_S).toBeLessThan(FISHING.liftMs / 1000);
   });
-  it("netting: thrashing at the surface, then in the net, inside netMs; release lets go and drops inside releaseMs", () => {
-    expect(catchState(view(FISH_PHASE.netting), 0.3).stage).toBe("surface");
-    expect(catchState(view(FISH_PHASE.netting), NET_SCOOP_S + 0.2).stage).toBe("net");
-    expect(NET_SCOOP_S).toBeLessThan(FISHING.netMs / 1000);
+  it("no net: release lets go and drops inside releaseMs; landed is the hug (show)", () => {
     expect(catchState(view(FISH_PHASE.releasing), 0.2).stage).toBe("show");
     expect(catchState(view(FISH_PHASE.releasing), LET_GO_S + 0.1).stage).toBe("drop");
     expect(LET_GO_S + DROP_S).toBeLessThanOrEqual(FISHING.releaseMs / 1000);
@@ -57,8 +54,6 @@ describe("the catch's stages (lake v2) fit the server's phases", () => {
   it("the clips: the reel-in before the lift, the fight before the net; the rod bends hard while reeling", () => {
     expect(clipForPhase(FISH_PHASE.lifting, 0.5)).toBe("Fish_Sit_Fight");
     expect(clipForPhase(FISH_PHASE.lifting, REEL_S + 0.1)).toBe("Fish_Sit_Lift");
-    expect(clipForPhase(FISH_PHASE.netting, 0.1)).toBe("Fish_Sit_Fight");
-    expect(clipForPhase(FISH_PHASE.netting, NET_SCOOP_S)).toBe("Fish_Net");
     expect(rodBend(view(FISH_PHASE.lifting), 0.5)).toBeGreaterThan(0.45);
     expect(rodBend(view(FISH_PHASE.lifting), 2.9)).toBeLessThan(0.3);
   });

@@ -6,15 +6,15 @@
 //                      fight goes on (fighting), swirls and now and then a thrash at the surface
 //  lifting (small)     0 .. REEL_S reeled in under the surface toward the rod tip; at REEL_S it breaks the surface (splash and spray)
 //                      and hangs from the line by its mouth, swinging and flapping, dripping; then the left hand takes it
-//  netting (big)       at the surface in front of the angler thrashing, then the net scoops it (Fish_Net) and it lies in the bag
-//  landed              held up between the hands, still flexing (Fish_Stand_Show)
+//  (lake v2: no net — a big fish brought in by the fight is lifted out on the line too, from where the fight left it)
+//  landed              taken in the arms (품에 안기), held against the chest and shown off, still flapping (Fish_Stand_Show)
 //  releasing           lowered with the release clip, then let go into the water with a splash
 //
 // The rig (fishingRig.ts) turns a stage into a pose with the avatar's hands, the rod tip and a little pendulum for the swing.
 
 import { LAKE_FACE_DIR, LAKE_FISHING_SPOTS, LAKE_WATER_Y } from "@caysonverse/shared/village/lakeLayout";
 import { floatPosition } from "@caysonverse/shared/village/fishing";
-import { FISH_PHASE, type FishView } from "./lakeProtocol";
+import { FISH_PHASE, needsNet, type FishView } from "./lakeProtocol";
 import { hash01 } from "./lakeFloat";
 
 /** Lifting: reeled in under the surface this long, then out of the water. */
@@ -24,8 +24,6 @@ export const HANG_END_S = 2.25;
 /** Lifting: the hand has it after this blend. */
 export const TO_HAND_S = 0.45;
 /** Netting: at the surface thrashing, then the net. */
-export const NET_SCOOP_S = 0.85;
-export const NET_IN_S = 1.45;
 /** Releasing: the hands let go here (Fish_Release is 19/24 s), the fish falls into the water. */
 export const LET_GO_S = 0.78;
 export const DROP_S = 0.42;
@@ -42,8 +40,6 @@ export type CatchStage =
   | "toHand"
   /** in the left hand */
   | "hand"
-  /** in the net's bag */
-  | "net"
   /** held up between the hands */
   | "show"
   /** let go: falling into the water (k 0..1) */
@@ -99,18 +95,6 @@ export function catchState(view: FishView, t: number, out: CatchState = { stage:
         out.stage = "hand";
         out.wriggle = 0.6;
         out.beat = 4;
-      }
-      break;
-    case FISH_PHASE.netting:
-      if (t < NET_SCOOP_S) {
-        out.stage = "surface";
-        out.wriggle = 1.2;
-        out.beat = 5.5;
-      } else {
-        out.stage = "net";
-        out.k = smooth((t - NET_SCOOP_S) / (NET_IN_S - NET_SCOOP_S));
-        out.wriggle = 0.8;
-        out.beat = 4.5;
       }
       break;
     case FISH_PHASE.landed:
@@ -181,7 +165,7 @@ export function faceOf(spot: number): { x: number; z: number } | null {
 /**
  * Where the fish is under (or at) the water, and which way it heads (yaw, atan2(dx, dz) of its nose), for the under / surface
  * stages. Starts where the float went down (the cast's seeded landing point) and comes in toward the rod tip (lifting) or the net
- * (netting), running left and right across the line as it fights.
+ * (a big fish after its fight), running left and right across the line as it fights.
  */
 export function underPos(view: FishView, t: number, out: Pt3 & { yaw: number }, reelK?: number): boolean {
   const spot = LAKE_FISHING_SPOTS[view.spot];
@@ -208,21 +192,13 @@ export function underPos(view: FishView, t: number, out: Pt3 & { yaw: number }, 
       depth = held ? 0.06 : 0.34;
       break;
     }
-    case FISH_PHASE.lifting:
-      k = smooth(Math.min(1, t / REEL_S));
+    case FISH_PHASE.lifting: {
+      // a big fish was already brought in by the fight (to 80 % of the way): the reel-in goes on from there
+      const k0 = needsNet(view.kind, view.cm) ? 0.8 : 0;
+      k = k0 + (1 - k0) * smooth(Math.min(1, t / REEL_S));
       swing = (0.55 * (1 - k) + 0.1) * Math.min(1.4, 0.7 + view.cm / 60);
       depth = 0.05;
       break;
-    case FISH_PHASE.netting: {
-      // in front of the angler, at the surface, where the net reaches
-      const nx = spot.anchor.x + f.x * 1.9;
-      const nz = spot.anchor.z + f.z * 1.9;
-      const wob = Math.sin(t * 7.1) * 0.18;
-      out.x = nx - f.z * wob;
-      out.z = nz + f.x * wob;
-      out.y = LAKE_WATER_Y - 0.04;
-      out.yaw = Math.atan2(-f.z, f.x) + Math.sin(t * 5.3) * 0.7;
-      return true;
     }
     default:
       return false;
@@ -257,5 +233,5 @@ export function releasePoint(spot: number, out: Pt3): boolean {
 
 /** The rod phases where the line ends at the fish's mouth (not at the float). */
 export function lineOnFish(phase: number): boolean {
-  return phase === FISH_PHASE.hooked || phase === FISH_PHASE.fighting || phase === FISH_PHASE.lifting || phase === FISH_PHASE.netting;
+  return phase === FISH_PHASE.hooked || phase === FISH_PHASE.fighting || phase === FISH_PHASE.lifting;
 }

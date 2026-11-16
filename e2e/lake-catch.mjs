@@ -198,7 +198,7 @@ await run.step("casts: the catch from the strike to the release", async () => {
           await p.page.mouse.down();
         }
         probes = await frames(join(OUT, `${tag}-c${n}-fight`), 10, 250);
-        await waitPhase(["netting", "landed"], 9000);
+        await waitPhase(["lifting", "landed"], 9000);
         if (touch) await touchUp(p);
         else await p.page.mouse.up();
       }

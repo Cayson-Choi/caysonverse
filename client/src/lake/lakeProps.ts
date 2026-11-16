@@ -18,7 +18,6 @@ import {
   Vector3,
   type Material,
   SphereGeometry,
-  TorusGeometry,
   ConeGeometry,
   type AnimationAction,
   type AnimationClip,
@@ -29,7 +28,6 @@ import { DRACO_PATH } from "../game/hub/hubModelPrep";
 import { clone as cloneSkinned } from "three/addons/utils/SkeletonUtils.js";
 import { LAKE_GEAR_NODES, lakeFishNode, type LakeFishId } from "@caysonverse/shared/village/lakeGear";
 import { fishKindFromId } from "@caysonverse/shared/village/fishing";
-import { NET_AXIS_L } from "@caysonverse/shared/village/fishingAnims";
 import { LAKE_URLS, lakeAssetWanted } from "./lakeAssets";
 
 interface GearFiles {
@@ -244,87 +242,7 @@ function createStandInRod(): Rod {
   };
 }
 
-export interface Net {
-  /** Node `net_grip`, put on the left hand's slot. The stand-in's handle points along +Y; the real one's is NET_AXIS_L already. */
-  root: Group;
-  /** lake_gear.glb's net (placed with GRIP_OFFSET and no turn). */
-  real?: boolean;
-  /** Inside the net's bag (lake v2): a netted fish lies here. */
-  bag: Object3D;
-  dispose(): void;
-}
-
-/** The middle of the bag: the hoop is the far end of the net along its handle axis; the bag hangs below it (-Z of the hoop). */
-function addBag(root: Object3D, axis: Vector3): Object3D {
-  root.updateMatrixWorld(true);
-  const inv = root.matrixWorld.clone().invert();
-  const pts: Vector3[] = [];
-  const v = new Vector3();
-  root.traverse((o) => {
-    const m = o as Mesh;
-    if (!m.isMesh) return;
-    const pos = m.geometry.getAttribute("position");
-    for (let i = 0; i < pos.count; i += 3) pts.push(v.fromBufferAttribute(pos, i).applyMatrix4(m.matrixWorld).applyMatrix4(inv).clone());
-  });
-  const bag = new Object3D();
-  bag.name = "net_bag";
-  if (pts.length) {
-    let max = -Infinity;
-    for (const p of pts) max = Math.max(max, p.dot(axis));
-    // the hoop: the points within 0.55 m of the far end
-    const c = new Vector3();
-    let n = 0;
-    for (const p of pts)
-      if (p.dot(axis) > max - 0.55) {
-        c.add(p);
-        n++;
-      }
-    if (n) c.multiplyScalar(1 / n);
-    bag.position.copy(c);
-  }
-  root.add(bag);
-  return bag;
-}
-
-/** The net: the real one when lake_gear.glb is in, else the stand-in. Real: put on the left slot with GRIP_OFFSET, no turn. */
-export function createNet(): Net {
-  const src = files.gear?.scene.getObjectByName(LAKE_GEAR_NODES.net);
-  if (!src) return createStandInNet();
-  const root = src.clone(true) as Group;
-  root.position.set(0, 0, 0);
-  root.quaternion.identity();
-  const bag = addBag(root, new Vector3(...NET_AXIS_L).normalize());
-  return { root, real: true, bag, dispose() {} };
-}
-
-function createStandInNet(): Net {
-  const wood = new MeshStandardMaterial({ color: "#6b4a2b", roughness: 0.8 });
-  const mesh = new MeshStandardMaterial({ color: "#2f5a3a", roughness: 0.9, transparent: true, opacity: 0.8 });
-  const root = new Group();
-  root.name = "net_grip";
-  const handle = new CylinderGeometry(0.02, 0.02, 1.5, 6);
-  handle.translate(0, 0.75, 0);
-  const rim = new TorusGeometry(0.25, 0.015, 6, 20);
-  rim.rotateX(Math.PI / 2);
-  rim.translate(0, 1.55, 0);
-  const bag = new SphereGeometry(0.25, 12, 8, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2);
-  bag.translate(0, 1.55, 0);
-  root.add(new Mesh(handle, wood), new Mesh(rim, wood), new Mesh(bag, mesh));
-  const bagPoint = new Object3D();
-  bagPoint.position.set(0, 1.45, 0);
-  root.add(bagPoint);
-  return {
-    root,
-    bag: bagPoint,
-    dispose() {
-      handle.dispose();
-      rim.dispose();
-      bag.dispose();
-      wood.dispose();
-      mesh.dispose();
-    },
-  };
-}
+// (lake v2, owner 2026-11-17: "뜰채는 가지고 있지도 않은데 뜰채 모양이 나오는건 없애": no net — lake_gear.glb's `net_grip` is not drawn)
 
 export interface FishModel {
   root: Group;

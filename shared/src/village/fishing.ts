@@ -14,7 +14,9 @@
  *    being sent (design 9.4). They carry no information about the fish.
  *
  * Stages (design 9.2): none -> carry (rod on the shoulder) -> ready (seated at a spot with a rod) -> casting -> settling ->
- * waiting -> nibble -> bite -> hooked -> (lifting | fighting -> netting) -> landed -> releasing -> ready; `missed` (a missed
+ * waiting -> nibble -> bite -> hooked -> (lifting | fighting -> lifting) -> landed -> releasing -> ready (lake v2: no net — a big
+ * fish brought in is lifted out on the line and taken in the arms like a small one; `netting` stays in the list, never entered,
+ * so the phase ids on the wire do not move); `missed` (a missed
  * bite or a lost fish) -> ready. Strike during nibble is ignored with no penalty ("too_early"); too late is `missed`.
  */
 
@@ -40,8 +42,6 @@ export const FISHING = {
   hookedMs: 400,
   /** Lake v2 (owner 2026-11-16): the small fish is reeled in under the surface, breaks out and hangs from the line before the hand takes it (client fishCatch.ts). */
   liftMs: 3000,
-  /** Lake v2: the big fish thrashes at the surface, then the net scoops it. */
-  netMs: 2400,
   landedMs: 2500,
   /** Lake v2: the release clip, then the fish falls back into the water with a splash. */
   releaseMs: 1300,
@@ -639,7 +639,7 @@ export function holdLine(state: FishingState, now: number, down: boolean): Fishi
   if (down === true) next.lastActiveAt = Math.max(next.lastActiveAt, now);
   next.lastActionAt = now;
   const entered = [...ticked.entered];
-  if (next.holdMs >= next.holdNeedMs) enter(next, "netting", now, entered);
+  if (next.holdMs >= next.holdNeedMs) enter(next, "lifting", now, entered);
   return { ok: true, state: next, action: "hold", entered };
 }
 
@@ -663,8 +663,8 @@ export function phaseEndsAt(s: FishingState): number | null {
       return s.phaseAt + FISHING.hookedMs;
     case "lifting":
       return s.phaseAt + FISHING.liftMs;
-    case "netting":
-      return s.phaseAt + FISHING.netMs;
+    case "netting": // never entered since lake v2 (no net); a stale state ends like a lift
+      return s.phaseAt + FISHING.liftMs;
     case "landed":
       return s.phaseAt + FISHING.landedMs;
     case "releasing":
@@ -692,7 +692,7 @@ export function tickFishing(state: FishingState, now: number): FishingActionResu
       const f = { ...s };
       integrateHold(f, now);
       if (f.holdMs >= f.holdNeedMs) {
-        enter(f, "netting", now, entered);
+        enter(f, "lifting", now, entered);
         s = f;
         continue;
       }
