@@ -33,6 +33,17 @@ export interface FocusInset {
 export const FOCUS_SPAN_PITCHES = 2.4;
 /** The glide in and out (s). */
 export const FOCUS_GLIDE_S = 0.55;
+/**
+ * The close-up's zoom (owner 2026-11-17: "마우스로 스크롤로 더 가깝게 아니면 조금 더 뒤로"): a factor on the span the screen shows.
+ * 1 = the default framing (the cubby and half a neighbour each side); the nearest shows about a third of that (the photo nearly
+ * fills the free part), the farthest 1.8 x (the neighbouring cubbies round it). Eased, clamped at both ends, kept for the session.
+ */
+export const ZOOM_MIN = 0.3;
+export const ZOOM_MAX = 1.8;
+/** One wheel notch / button press / pinch step multiplies or divides the zoom by this. */
+export const ZOOM_STEP = 1.18;
+/** The nearest the eye comes to the opening when zoomed in (m): the glass door is 6 mm out and the near plane 0.2 m off the eye. */
+export const ZOOM_MIN_DIST = 0.34;
 /** The nearest the eye comes to the cubby's opening (m): never inside the unit, even on a very wide screen. */
 const MIN_DIST = 0.75;
 /**
@@ -87,17 +98,20 @@ export function cubbyFocusPose(
   inset: FocusInset,
   furniture: readonly AABB[] = FURNITURE,
   solid: readonly AABB[] = SOLID,
+  zoom = 1,
 ): FocusPose {
   const wall = WALL_BY_BANK.get(anchor.bank);
   const pitch = wall ? wall.cell + wall.frame : 0.4;
-  const half = (FOCUS_SPAN_PITCHES * pitch) / 2;
+  const z = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Number.isFinite(zoom) ? zoom : 1));
+  const half = (FOCUS_SPAN_PITCHES * pitch * z) / 2;
+  const minDist = z < 1 ? Math.max(ZOOM_MIN_DIST, MIN_DIST * z) : MIN_DIST;
   const a = Math.max(0.2, Math.min(5, Number.isFinite(aspect) ? aspect : 1));
   const tan = Math.tan(((Number.isFinite(fovDeg) ? fovDeg : 50) * Math.PI) / 360);
   const f = Math.min(0.6, Math.max(0, inset.frac));
   // the free part's half-width and half-height, as shares of the whole view's
   const freeW = inset.side === "right" ? 1 - f : 1;
   const freeH = inset.side === "bottom" ? 1 - f : 1;
-  const want = Math.max(MIN_DIST, half / (freeW * a * tan), half / (freeH * tan));
+  const want = Math.max(minDist, half / (freeW * a * tan), half / (freeH * tan));
   const outX = Math.sin(anchor.yaw);
   const outZ = Math.cos(anchor.yaw);
   // the camera looks into the wall (-out); its right is (cos yaw, 0, -sin yaw)
@@ -165,7 +179,7 @@ export function cubbyFocusPose(
   };
 
   // over furniture: come closer (down to MIN_DIST) until the eye is clear of it
-  for (let dist = want; dist >= MIN_DIST - 1e-9; dist -= 0.05) {
+  for (let dist = want; dist >= minDist - 1e-9; dist -= 0.05) {
     const p = at(dist, true);
     if (p) return p;
   }
@@ -187,9 +201,36 @@ interface FocusState {
   t: number;
   /** The pose being drawn (follows the wanted one smoothly when the cubby changes while open). */
   cur: FocusPose | null;
+  /** The zoom asked for, and the one drawn (eased toward it). */
+  zoom: number;
+  zoomCur: number;
 }
 
-const state: FocusState = { anchor: null, inset: { side: "right", frac: 0 }, t: 0, cur: null };
+const state: FocusState = { anchor: null, inset: { side: "right", frac: 0 }, t: 0, cur: null, zoom: 1, zoomCur: 1 };
+
+/** Zoom the close-up: `dir` < 0 closer, > 0 farther, by `steps` steps (a pinch passes a fraction). Clamped. */
+export function nudgeCubbyZoom(dir: number, steps = 1): number {
+  const k = Math.pow(ZOOM_STEP, Math.sign(dir) * Math.abs(steps));
+  state.zoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, state.zoom * k));
+  return state.zoom;
+}
+
+/** Set the zoom directly (a pinch: the ratio of finger spreads), clamped. */
+export function setCubbyZoom(zoom: number): number {
+  if (Number.isFinite(zoom)) state.zoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, zoom));
+  return state.zoom;
+}
+
+/** The zoom asked for (1 = default). */
+export function cubbyZoom(): number {
+  return state.zoom;
+}
+
+/** Back to the default framing. */
+export function resetCubbyZoom(): void {
+  state.zoom = 1;
+  state.zoomCur = 1;
+}
 
 /** Look at `anchor` (null: glide back to the player's own camera). */
 export function setCubbyFocus(anchor: CubbyAnchor | null): void {
@@ -218,8 +259,11 @@ export function cubbyFocusWeight(): number {
 export function stepCubbyFocus(dt: number, aspect: number, fovDeg: number, out: FocusPose): number {
   const step = Math.max(0, Math.min(0.1, dt)) / FOCUS_GLIDE_S;
   state.t = state.anchor ? Math.min(1, state.t + step) : Math.max(0, state.t - step);
+  // the zoom eases toward what was asked (about a quarter of a second)
+  state.zoomCur += (state.zoom - state.zoomCur) * (1 - Math.exp(-Math.max(0, dt) * 9));
+  if (Math.abs(state.zoom - state.zoomCur) < 1e-4) state.zoomCur = state.zoom;
   if (state.anchor) {
-    const want = cubbyFocusPose(state.anchor, aspect, fovDeg, state.inset);
+    const want = cubbyFocusPose(state.anchor, aspect, fovDeg, state.inset, FURNITURE, SOLID, state.zoomCur);
     if (!state.cur || state.t <= step) state.cur = { ...want };
     else {
       // another row or column while open: the close-up slides there instead of jumping

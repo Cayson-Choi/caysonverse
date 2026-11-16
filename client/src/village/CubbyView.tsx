@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { CANDLE_RATE } from "@caysonverse/shared/village/messages";
 import { sendLightCandle } from "../net/connection";
 import { popOverlay, pushOverlay } from "../ui/overlayStack";
-import { HALL_CUBBY_ANCHORS, SAMPLE_BY_ID } from "./sampleCubbies";
+import { HALL_CUBBY_ANCHORS, SAMPLE_BY_ID, SAMPLE_PHOTO_URL } from "./sampleCubbies";
 import { claimYears } from "@caysonverse/shared/memorial/validate";
 import { claimFor, isMine, noteMyClaim, refreshSlot, useClaims } from "./memorial/claimsStore";
 import { mediaUrl, memorialApi, MemorialApiError } from "./memorial/memorialApi";
@@ -18,13 +18,12 @@ import {
   moveCubbyRow,
   openCubbyAt,
   photoAlt,
-  photoBackground,
   rowLabel,
   useCubbyCard,
   yearsLabel,
 } from "./cubbyCard";
 import { burningCandles, candleClock, isCandleBurning, pruneCandles, useCandles } from "./hallCandles";
-import { resetCubbyFocus, setCubbyFocus, setCubbyFocusInset } from "./cubbyFocus";
+import { ZOOM_MAX, ZOOM_MIN, cubbyZoom, nudgeCubbyZoom, resetCubbyFocus, setCubbyFocus, setCubbyFocusInset, setCubbyZoom } from "./cubbyFocus";
 import { useLocalArea } from "./villageArea";
 import "./cubbyView.css";
 
@@ -57,6 +56,8 @@ export function CubbyView() {
   const [, setTick] = useState(0);
 
   const open = card !== null && area === "hall";
+  useCubbyZoomInput(open);
+  const [, setZoomTick] = useState(0);
   const claims = useClaims();
   const [photoStatus, setPhotoStatus] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
@@ -185,7 +186,12 @@ export function CubbyView() {
         </div>
         {sample ? (
           <div className="cv-cubby-body">
-            <div className="cv-cubby-photo" role="img" aria-label={photoAlt(sample.name)} style={photoBackground(sample.photo)}>
+            <div
+              className="cv-cubby-photo is-photo"
+              role="img"
+              aria-label={photoAlt(sample.name)}
+              style={{ backgroundImage: `url(${SAMPLE_PHOTO_URL})` }}
+            >
               {burning ? <span className="cv-cubby-flame" aria-hidden="true" /> : null}
             </div>
             <div className="cv-cubby-text">
@@ -285,6 +291,32 @@ export function CubbyView() {
           <button type="button" onClick={() => moveCubbyRow(1)} disabled={card.row >= ROWS - 1}>
             {CUBBY_COPY.up}
           </button>
+          <button
+            type="button"
+            className="cv-cubby-zoom"
+            aria-label="조금 멀리 보기"
+            title="조금 멀리 보기"
+            disabled={cubbyZoom() >= ZOOM_MAX - 1e-6}
+            onClick={() => {
+              nudgeCubbyZoom(1);
+              setZoomTick((n) => n + 1);
+            }}
+          >
+            −
+          </button>
+          <button
+            type="button"
+            className="cv-cubby-zoom"
+            aria-label="더 가까이 보기"
+            title="더 가까이 보기"
+            disabled={cubbyZoom() <= ZOOM_MIN + 1e-6}
+            onClick={() => {
+              nudgeCubbyZoom(-1);
+              setZoomTick((n) => n + 1);
+            }}
+          >
+            +
+          </button>
         </div>
         <button type="button" className="cv-cubby-close" onClick={closeCubbyCard}>
           {CUBBY_COPY.exit}
@@ -292,6 +324,69 @@ export function CubbyView() {
       </div>
     </div>
   );
+}
+
+/**
+ * Zoom the close-up (owner 2026-11-17): the mouse wheel over the 3D view (over the card the card scrolls as before), a two-finger
+ * pinch on a phone, and the card's − / + buttons. Captured on the window before the camera rig sees it, so the player's own
+ * camera distance never changes (owner 2026-11-16: only the player's own zoom moves it).
+ */
+function useCubbyZoomInput(open: boolean): void {
+  useEffect(() => {
+    if (!open) return;
+    const overUi = (t: EventTarget | null) => t instanceof Element && t.closest("canvas") === null;
+    let acc = 0;
+    const onWheel = (e: WheelEvent) => {
+      if (overUi(e.target)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      acc += e.deltaMode === 1 ? e.deltaY * 33 : e.deltaY;
+      while (Math.abs(acc) >= 60) {
+        nudgeCubbyZoom(Math.sign(acc));
+        acc -= Math.sign(acc) * 60;
+      }
+    };
+    const touches = new Map<number, { x: number; y: number }>();
+    let pinch: { d: number; zoom: number } | null = null;
+    const spread = () => {
+      const [a, b] = [...touches.values()];
+      return a && b ? Math.hypot(a.x - b.x, a.y - b.y) : 0;
+    };
+    const onDown = (e: PointerEvent) => {
+      if (e.pointerType !== "touch" || overUi(e.target)) return;
+      touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (touches.size === 2) {
+        pinch = { d: spread(), zoom: cubbyZoom() };
+        e.stopPropagation();
+      }
+    };
+    const onMove = (e: PointerEvent) => {
+      if (!touches.has(e.pointerId)) return;
+      touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pinch && touches.size >= 2) {
+        const d = spread();
+        if (pinch.d > 10 && d > 10) setCubbyZoom(pinch.zoom * (pinch.d / d)); // fingers apart = closer
+        e.stopPropagation();
+      }
+    };
+    const onUp = (e: PointerEvent) => {
+      touches.delete(e.pointerId);
+      if (touches.size < 2) pinch = null;
+    };
+    const cap = { capture: true } as const;
+    window.addEventListener("wheel", onWheel, { capture: true, passive: false });
+    window.addEventListener("pointerdown", onDown, cap);
+    window.addEventListener("pointermove", onMove, cap);
+    window.addEventListener("pointerup", onUp, cap);
+    window.addEventListener("pointercancel", onUp, cap);
+    return () => {
+      window.removeEventListener("wheel", onWheel, cap);
+      window.removeEventListener("pointerdown", onDown, cap);
+      window.removeEventListener("pointermove", onMove, cap);
+      window.removeEventListener("pointerup", onUp, cap);
+      window.removeEventListener("pointercancel", onUp, cap);
+    };
+  }, [open]);
 }
 
 /** A wide screen docks the card on the right; a tall one (a phone held upright) at the bottom. */

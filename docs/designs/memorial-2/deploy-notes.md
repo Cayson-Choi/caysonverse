@@ -84,7 +84,13 @@
 - 가족 초대 링크는 `https://<클라이언트>/?f=<12자>`라서 Vercel에 rewrite가 필요 없어요. `/f/<코드>` 모양도 쓰고 싶으면 배포 폴더의 `vercel.json`에 `{"source": "/f/:code", "destination": "/index.html"}`를 더하면 앱이 알아서 읽어요.
 - 공유 링크 `/m/:code` → 서버 rewrite는 memorial-2 W5에서 더해요(설계 F6).
 
-## 7. 접속 끊김·재시작
+## 7. 2026-11-17 추모관 실내 다시 짓기
+
+- 기억의 자리(아치 제단)를 없애고 그 자리에 C 구역(6열 x 8단, 48칸)을 넣었어요. 칸 id는 `M1-C-r<단>-c<열>`이고 마이그레이션 003이 `slot`에 넣어요(서버를 켜면 저절로). 기존 A·B·E 칸 id와 모신 기록은 그대로예요(A 구역은 5 cm 서쪽으로 옮겨졌지만 id로 찾으므로 영향 없음).
+- 새 클라이언트 파일: `memorial.glb`, 라이트맵 4장, `memorial_props.glb`, `village/sample-photos/sample_1.webp`. 안내원 음성 `hall_desk_1~4.m4a`는 빠졌어요.
+- 서버 쪽 새 설정은 없어요.
+
+## 8. 접속 끊김·재시작
 
 - 서버를 다시 켜도 모신 칸·사진·가족 기기는 DB에 남아요. 방(Colyseus)은 예전처럼 새로 시작해요.
 - 기기 키는 브라우저 localStorage + IndexedDB 두 곳에 있어요. 둘 다 지워지면 복구 코드(모실 때 한 번 보여 줌)로 다시 연결해요.

@@ -44,11 +44,11 @@ describe("database", () => {
     const db = m.store.db;
     expect((db.prepare("PRAGMA journal_mode").get() as { journal_mode: string }).journal_mode).toBe("wal");
     expect((db.prepare("PRAGMA foreign_keys").get() as { foreign_keys: number }).foreign_keys).toBe(1);
-    expect(db.prepare("SELECT version FROM schema_migrations ORDER BY version").all().map((r) => (r as { version: number }).version)).toEqual([1, 2]);
+    expect(db.prepare("SELECT version FROM schema_migrations ORDER BY version").all().map((r) => (r as { version: number }).version)).toEqual([1, 2, 3]);
     expect(migrate(db, MIGRATIONS)).toEqual([]); // idempotent
     const prices = db.prepare("SELECT DISTINCT currency FROM price").all() as { currency: string }[];
     expect(prices.map((p) => p.currency)).toEqual(["FREE"]);
-    expect((db.prepare("SELECT COUNT(*) n FROM slot").get() as { n: number }).n).toBe(368);
+    expect((db.prepare("SELECT COUNT(*) n FROM slot").get() as { n: number }).n).toBe(416);
     expect((db.prepare("SELECT id FROM slot WHERE sample = 1").all() as { id: string }[]).map((r) => r.id)).toEqual(["M1-A-r3-c11"]);
     expect((db.prepare("SELECT COUNT(*) n FROM garden_spot").get() as { n: number }).n).toBe(16);
     for (const t of ["owner_key", "invite", "claim", "photo", "entitlement", "catalog", "price", "guestbook", "report", "block", "share_link", "ceremony", "claim_stats"]) {

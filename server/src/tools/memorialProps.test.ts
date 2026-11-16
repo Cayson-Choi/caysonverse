@@ -19,13 +19,13 @@ function load(): { gltf: Gltf; size: number } {
 const failed = (r: ReturnType<typeof checkMemorialProps>) => r.filter((x) => x.level === "fail");
 
 describe("memorial_props.glb (Task 9: the props Task 9 instances)", () => {
-  it("the real file passes: nine prop__ meshes, M_photo and M_name in their own slots, unlit, within budget", () => {
+  it("the real file passes: twelve prop__ meshes (the cubby set since 2026-11-17: frame_large, mum_vase, candle), the picture and the name in their own slots, unlit, within budget", () => {
     const { gltf, size } = load();
     const results = checkMemorialProps(gltf, size);
     expect(failed(results)).toEqual([]);
     expect(results.length).toBe(7);
-    expect(gltf.nodes!.filter((n) => n.name?.startsWith("prop__"))).toHaveLength(9);
-    expect(MEMORIAL_PROP_NAMES).toHaveLength(9);
+    expect(gltf.nodes!.filter((n) => n.name?.startsWith("prop__"))).toHaveLength(12);
+    expect(MEMORIAL_PROP_NAMES).toHaveLength(12);
     expect(size).toBeLessThanOrEqual(MEMORIAL_PROPS_BUDGET.maxBytes);
   });
 

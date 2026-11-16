@@ -11,11 +11,11 @@ describe("guideDialogStore (Task 9A)", () => {
     expect(n).toBe(1);
     openGuideDialog("guide:nobody");
     expect(guideDialogOpen()).toBe("plaza_guide");
-    openGuideDialog("hall_desk");
-    expect(guideDialogOpen()).toBe("hall_desk");
+    openGuideDialog("hall_desk"); // the hall's desk guide is gone (2026-11-17): an unknown id
+    expect(guideDialogOpen()).toBe("plaza_guide");
     closeGuideDialog();
     expect(guideDialogOpen()).toBeNull();
-    expect(n).toBe(3);
+    expect(n).toBe(2);
     off();
   });
 });

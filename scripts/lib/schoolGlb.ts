@@ -988,8 +988,11 @@ function checkLightmap(input: CheckInput): CheckResult[] {
 
 /** The nine props of the memorial cubbies, one mesh each, in the file's `prop__<name>` nodes. */
 export const MEMORIAL_PROP_NAMES = [
+  "candle",
   "flowers",
+  "frame_large",
   "house_frame",
+  "mum_vase",
   "name_card",
   "photo_frame",
   "plush_bear",
@@ -999,8 +1002,11 @@ export const MEMORIAL_PROP_NAMES = [
   "urn_wood",
 ] as const;
 
-/** memorial_props.glb's budget: its own file (0.18 MB, 7.7k triangles at Task 8). */
-export const MEMORIAL_PROPS_BUDGET = { maxBytes: 0.5 * MB, maxTriangles: 20_000 } as const;
+/**
+ * memorial_props.glb's budget: its own file (0.18 MB, 7.7k triangles at Task 8; 2026-11-17 the cubby set — a moulded frame,
+ * a candle in a glass holder and real chrysanthemum heads with petals — about 0.6 MB).
+ */
+export const MEMORIAL_PROPS_BUDGET = { maxBytes: 0.8 * MB, maxTriangles: 80_000 } as const;
 
 /**
  * Check memorial_props.glb: the nine `prop__*` nodes with one mesh each, the picture (`M_photo`, on prop__photo_frame) and
@@ -1029,19 +1035,21 @@ export function checkMemorialProps(gltf: Gltf, byteLength: number): CheckResult[
   const materialName = (i: number | undefined) => (i === undefined ? "" : (materials[i]?.name ?? ""));
   const slotOwners = (mat: string) =>
     props.filter((n) => n.mesh !== undefined && (gltf.meshes?.[n.mesh]?.primitives ?? []).some((p) => materialName(p.material) === mat)).map((n) => n.name);
-  for (const [mat, owner] of [
-    ["M_photo", "prop__photo_frame"],
-    ["M_name", "prop__name_card"],
+  for (const [mat, allowed] of [
+    ["M_photo", ["prop__frame_large", "prop__photo_frame"]],
+    ["M_name", ["prop__name_card"]],
   ] as const) {
-    const owners = slotOwners(mat);
-    const node = props.find((n) => n.name === owner);
-    const prims = node?.mesh !== undefined ? (gltf.meshes?.[node.mesh]?.primitives ?? []) : [];
-    const own = prims.length >= 2 && prims.filter((p) => materialName(p.material) === mat).length === 1;
-    const ok = owners.length === 1 && owners[0] === owner && own;
+    const owners = slotOwners(mat).sort();
+    const ownOne = (owner: string) => {
+      const node = props.find((n) => n.name === owner);
+      const prims = node?.mesh !== undefined ? (gltf.meshes?.[node.mesh]?.primitives ?? []) : [];
+      return prims.length >= 2 && prims.filter((p) => materialName(p.material) === mat).length === 1;
+    };
+    const ok = owners.length === allowed.length && owners.every((o, i) => o === allowed[i] && ownOne(o));
     out.push({
       level: ok ? "ok" : "fail",
       label: `${mat} 자리`,
-      detail: ok ? `${owner}에만 있고 따로 된 primitive예요` : `${mat}을 쓰는 소품: ${owners.join(", ") || "없음"} (${owner}에 따로 된 primitive 하나가 있어야 해요)`,
+      detail: ok ? `${allowed.join(", ")}에만 있고 따로 된 primitive예요` : `${mat}을 쓰는 소품: ${owners.join(", ") || "없음"} (${allowed.join(", ")}에 따로 된 primitive 하나씩)`,
     });
   }
   const lightmapped = materials.filter((m) => (m.name ?? "").startsWith(LIGHTMAP_MATERIAL_PREFIX)).map((m) => m.name);

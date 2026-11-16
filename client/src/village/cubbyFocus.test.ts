@@ -136,8 +136,8 @@ describe("cubbyFocusPose — every row of every bank, PC and phone (review 2026-
   const solid = MEMORIAL_COLLIDERS.filter((b) => !furniture.includes(b));
   const room = VILLAGE_LAYOUT.memorial.interior.room;
   for (const scr of SCREENS) {
-    it(`${scr.name}: all 368 cubbies — eye above the floor margin and at or above the cubby, in the room, out of the furniture, the cubby in the middle of the free part`, () => {
-      expect(anchors).toHaveLength(368);
+    it(`${scr.name}: all 416 cubbies — eye above the floor margin and at or above the cubby, in the room, out of the furniture, the cubby in the middle of the free part`, () => {
+      expect(anchors).toHaveLength(416);
       for (const a of anchors) {
         const p = cubbyFocusPose(a, scr.aspect, 50, scr.inset);
         expect(p.ey, a.id).toBeGreaterThanOrEqual(MIN_EYE_HEIGHT - 1e-9);

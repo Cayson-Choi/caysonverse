@@ -4,7 +4,6 @@ import { describe, expect, it } from "vitest";
 import { isBlocked, type AABB } from "../collision";
 import { validateAppearance } from "../appearance";
 import { PLAYER_RADIUS } from "../worldMap";
-import { MEMORIAL_COLLIDERS } from "./generated/memorialColliders";
 import { VILLAGE_COLLIDERS } from "./generated/villageColliders";
 import {
   GUIDES,
@@ -23,8 +22,9 @@ const L = VILLAGE_LAYOUT;
 const overlaps = (a: AABB, b: AABB) => a.minX < b.maxX && b.minX < a.maxX && a.minZ < b.maxZ && b.minZ < a.maxZ;
 
 describe("guides (Task 9A)", () => {
-  it("has the two guides with unique ids, 3-5 questions each, unique voice ids", () => {
-    expect(GUIDES.map((g) => g.id)).toEqual(["plaza_guide", "hall_desk"]);
+  it("has the plaza guide only (the hall's desk guide was removed, owner 2026-11-17), 3-5 questions, unique voice ids", () => {
+    expect(GUIDES.map((g) => g.id)).toEqual(["plaza_guide"]);
+    expect(guideById("hall_desk")).toBeNull();
     const voices = GUIDES.flatMap((g) => g.qas.map((q) => q.voice));
     expect(new Set(voices).size).toBe(voices.length);
     for (const g of GUIDES) {
@@ -79,28 +79,10 @@ describe("guides (Task 9A)", () => {
     for (const c of VILLAGE_COLLIDERS) expect(overlaps(box, c), JSON.stringify(c)).toBe(false);
   });
 
-  it("hall_desk stands at the B desk position (306.4, 4.6) facing -x, clear of the hall's col__ boxes, the door pad and the inside spawn", () => {
-    const g = guideById("hall_desk")!;
-    expect(g.pos).toEqual({ x: 306.4, z: 4.6 });
-    expect(g.area).toBe("hall");
-    expect(g.yaw).toBeCloseTo(-Math.PI / 2, 9);
-    const box = guideColliders([g])[0]!;
-    for (const c of MEMORIAL_COLLIDERS) expect(overlaps(box, c), JSON.stringify(c)).toBe(false);
+  it("nobody stands in the memorial hall any more: no guide, no collider there", () => {
+    expect(GUIDES.some((g) => g.area === "hall")).toBe(false);
     const room = L.memorial.interior.room;
-    expect(box.minX).toBeGreaterThan(room.minX);
-    expect(box.maxX).toBeLessThan(room.maxX);
-    expect(box.minZ).toBeGreaterThan(room.minZ);
-    expect(box.maxZ).toBeLessThan(room.maxZ);
-    const pad = L.memorial.interior.doorPad;
-    const spawn = L.memorial.interior.spawn;
-    const corner = GUIDE_COLLIDER_HALF * Math.SQRT2;
-    expect(Math.hypot(g.pos.x - pad.centre.x, g.pos.z - pad.centre.z)).toBeGreaterThan(pad.radius + corner + PLAYER_RADIUS);
-    expect(Math.hypot(g.pos.x - spawn.x, g.pos.z - spawn.z)).toBeGreaterThan(corner + PLAYER_RADIUS);
-    // the spawn and the door pad stay walkable
-    expect(isBlocked(spawn.x, spawn.z, PLAYER_RADIUS, villageGeometry.obstacles)).toBe(false);
-    expect(isBlocked(pad.centre.x, pad.centre.z, PLAYER_RADIUS, villageGeometry.obstacles)).toBe(false);
-    // "문의하기" is not offered right at the arrival point
-    expect(Math.hypot(g.pos.x - spawn.x, g.pos.z - spawn.z)).toBeGreaterThan(GUIDE_REACH_M);
+    for (const box of guideColliders()) expect(overlaps(box, room)).toBe(false);
   });
 
   it("each guide has a collider in the walk geometry, so players do not walk through them", () => {
@@ -112,12 +94,8 @@ describe("guides (Task 9A)", () => {
     expect(nearestGuide("village", 5, 12 + 1.5)?.guide.id).toBe("plaza_guide");
     expect(nearestGuide("village", 5, 12 + GUIDE_REACH_M + 0.01)).toBeNull();
     expect(nearestGuide("hall", 5, 13)).toBeNull();
-    expect(nearestGuide("hall", 305.0, 4.6)?.guide.id).toBe("hall_desk");
-    // the visitor side of the counter, behind the two consultation chairs (x 304.2): asked from x 303.0
-    expect(nearestGuide("hall", 303.0, 4.0)?.guide.id).toBe("hall_desk");
-    // where the chairs and the kiosk stop a visitor walking straight in from the door (review 2026-11-14)
-    expect(nearestGuide("hall", 302.96, 3.87)?.guide.id).toBe("hall_desk");
-    expect(nearestGuide("hall", 302.2, 4.6)).toBeNull();
+    expect(nearestGuide("hall", 305.0, 4.6)).toBeNull();
+    expect(nearestGuide("hall", 303.0, 4.0)).toBeNull();
     expect(nearestGuide("village", 301.5, 3.0)).toBeNull();
     expect(nearestGuide("village", Number.NaN, 0)).toBeNull();
   });
