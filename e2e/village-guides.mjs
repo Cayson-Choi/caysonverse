@@ -1,15 +1,16 @@
 /**
  * e2e/village-guides.mjs — 케이슨 마을 안내원 (1단계 Task 9A): 광장의 마을 안내원과 추모관 안내 데스크에 다가가 E로 문의하기,
- * 질문을 고르면 그 사람에게만 음성 클립이 재생되고 배경음악이 작아지는지, 같은 질문을 다시 누르면 건너뛰는지, 다른 질문은
- * 앞의 것을 멈추는지, 🔊 끄기가 음성을 끄는지, 안내원을 뚫고 지나갈 수 없는지 본다. 헤드리스 크롬은 소리를 내지 않으므로
- * 소리 요소와 GainNode의 상태만 읽는다.
+ * 질문을 고르면 답이 안내원의 말풍선으로 나오는지(질문 버튼과 다른 모양, 위에 작은 "나: 질문", 아래 "다른 질문" 구분선), 안내원이
+ * 글로만 답하는지(2026-11-17 음성을 뺐음: 음성 파일 요청 없음, 배경음악이 작아지지 않음), 안내원을 뚫고 지나갈 수 없는지 본다.
  *
  *   npm run dev   (다른 창에서)
  *   node e2e/village-guides.mjs [--out=<폴더>]
  *
- * 남기는 것(폴더): guide-plaza.png, guide-plaza-answer.png, guide-hall.png, guide-hall-answer.png, assertions-village-guides.json.
+ * 남기는 것(폴더): guide-plaza.png, guide-plaza-q1.png … guide-plaza-q6.png, guide-hall.png, guide-hall-answer.png,
+ * assertions-village-guides.json.
  */
 import { mkdirSync } from "node:fs";
+import { guideAnswer, standAtPlazaGuide } from "./lib/village.mjs";
 import { CLIENT_URL, DESKTOP, createRun, entryReady, launchBrowser, openPlayer, press, sleep, turnCameraTo, walkAndWait, walkTo, waitIdle } from "./lib/common.mjs";
 
 const run = createRun("village-guides");
@@ -19,19 +20,14 @@ run.evidence = opt("out", run.evidence);
 mkdirSync(run.evidence, { recursive: true });
 
 const r3 = (n) => Math.round(n * 1000) / 1000;
-/** The voice, the music and the shared AudioContext as the page sees them. */
+/** The music and the shared AudioContext as the page sees them. */
 const audio = (p) =>
   p.page.evaluate(async () => {
     const ctx = await window.__imp("/src/village/villageAudio.ts");
-    const v = window.__cvGuideVoice;
-    const el = v?.element();
     const bgm = window.__cvBgm;
     const r = (n) => Math.round(n * 1000) / 1000;
     return {
       context: ctx.villageAudioState(),
-      voice: v
-        ? { ...v.state(), routed: v.isRouted(), level: r(v.level()), src: el ? el.src.replace(/^https?:\/\/[^/]+/, "") : null, paused: el ? el.paused : null, elVolume: el ? el.volume : null }
-        : null,
       music: bgm ? { routed: bgm.isRouted(), level: r(bgm.level()), duck: r(bgm.duckLevel()), paused: bgm.element()?.paused ?? null, elVolume: bgm.element()?.volume ?? null } : null,
     };
   });
@@ -52,7 +48,7 @@ try {
     await p.page.locator("input.cv-input").first().fill(nick);
     await press(p, p.page.locator(".cv-submit"));
     await p.page.waitForFunction(() => window.__cv?.getScreen?.() === "village", null, { timeout: 40000 });
-    await p.page.waitForFunction(() => !!window.__cv?.getPos && !!window.__cvBgm && !!window.__cvGuideVoice, null, { timeout: 20000 });
+    await p.page.waitForFunction(() => !!window.__cv?.getPos && !!window.__cvBgm, null, { timeout: 20000 });
     await sleep(1500);
   };
 
@@ -84,10 +80,8 @@ try {
     run.check("the guide's collider keeps the player out (>= 0.5 m from its centre)", Math.hypot(at.x - 5, at.z - 12) >= 0.5, at);
   });
 
-  await run.step("near the plaza guide: 문의하기 opens the questions with the AI 음성 label", async () => {
-    await walkAndWait(A, 5, 13.7, 15000, 0.4);
-    await turnCameraTo(A, 5, 12);
-    await sleep(600);
+  await run.step("near the plaza guide: 문의하기 opens the questions (no AI 음성 label any more)", async () => {
+    await standAtPlazaGuide(A); // round the guide from the south (the walk-into check above leaves the player on its north side)
     const ts = await targetsAt(A);
     run.check("문의하기 is offered", ts.some((t) => t.id === "guide:plaza_guide" && t.label === "문의하기"), ts);
     await A.page.keyboard.press("KeyE");
@@ -95,64 +89,29 @@ try {
     await sleep(500);
     const text = await dialogText(A);
     run.check("the dialog is the 마을 안내원's", (await A.page.locator(".cv-guide").getAttribute("data-guide")) === "plaza_guide" && text.includes("마을 안내원"), text);
-    run.check("a small AI 음성 label", (await A.page.locator(".cv-guide-ai").textContent()) === "AI 음성", null);
-    run.check("5 questions (the 5th: the fishing lake, words only)", (await A.page.locator(".cv-guide-questions button").count()) === 5, null);
+    run.check("no AI 음성 label (the voice was taken out, 2026-11-17)", !text.includes("AI 음성"), text);
+    run.check("6 questions (the 5th: the fishing lake, the 6th: the houses)", (await A.page.locator(".cv-guide-questions button").count()) === 6, null);
     run.check("no '!' in the dialog", !text.includes("!"), text);
     await run.shot(A, "guide-plaza.png");
   });
 
-  await run.step("a question: the answer shows, its clip plays for the asker only, the music ducks", async () => {
-    await question(A, 0).click();
-    await sleep(700);
-    const s = await audio(A);
-    const sb = await audio(B);
-    summary.plazaPlay = s;
-    run.check("the clip plays (plaza_guide_1.m4a), routed at level 1", s.voice.playing === "plaza_guide_1" && s.voice.src === "/village/voice/plaza_guide_1.m4a" && s.voice.paused === false && s.voice.routed && s.voice.level === 1, s.voice);
-    run.check("the music is ducked to 0.3 of its level (0.35 x 0.3 = 0.105)", Math.abs(s.music.duck - 0.3) < 0.01 && Math.abs(s.music.level - 0.105) < 0.01, s.music);
-    run.check("the other player hears nothing (no clip, music not ducked)", sb.voice.playing === null && sb.voice.src === null && Math.abs(sb.music.duck - 1) < 0.001, sb);
-    const answer = await A.page.locator(".cv-guide-answer p").textContent();
-    run.check("the answer text shows", answer?.startsWith("여기는 케이슨 마을이에요."), answer);
-    await run.shot(A, "guide-plaza-answer.png");
-  });
-
-  await run.step("pressing the same question again skips it, and the music comes back", async () => {
-    await question(A, 0).click();
-    await sleep(900);
-    const s = await audio(A);
-    summary.plazaSkip = s;
-    run.check("skipped: paused, nothing playing, the answer stays", s.voice.playing === null && s.voice.paused === true && s.voice.asked === "plaza_guide_1", s.voice);
-    run.check("the music is back at 0.35", Math.abs(s.music.duck - 1) < 0.01 && Math.abs(s.music.level - 0.35) < 0.02, s.music);
-  });
-
-  await run.step("one clip at a time: a second question stops the first", async () => {
-    await question(A, 1).click();
-    await sleep(300);
-    await question(A, 2).click();
-    await sleep(500);
-    const s = await audio(A);
-    summary.plazaSwitch = s;
-    run.check("the third question's clip is the one playing", s.voice.playing === "plaza_guide_3" && s.voice.src === "/village/voice/plaza_guide_3.m4a" && !s.voice.paused, s.voice);
-    // let it finish by itself: ended gives the music back
-    await A.page.waitForFunction(() => window.__cvGuideVoice.state().playing === null, null, { timeout: 15000 });
-    await sleep(900);
-    const e = await audio(A);
-    run.check("when the clip ends the music is back", Math.abs(e.music.duck - 1) < 0.01, e.music);
-  });
-
-  await run.step("the 🔊 toggle mutes the voice", async () => {
-    await question(A, 3).click();
-    await sleep(400);
-    await A.page.evaluate(async () => (await window.__imp("/src/stores/soundStore.ts")).useSoundStore.getState().toggleMuted());
-    await sleep(900); // the music glides back over 0.7 s
-    let s = await audio(A);
-    run.check("muting stops the clip and gives the music back", s.voice.playing === null && s.voice.paused === true && Math.abs(s.music.duck - 1) < 0.01, s);
-    await question(A, 0).click();
-    await sleep(400);
-    s = await audio(A);
-    const muted = await A.page.locator(".cv-guide-muted").textContent().catch(() => null);
-    run.check("muted: a question shows its answer but plays nothing", s.voice.playing === null && s.voice.asked === "plaza_guide_1" && muted === "소리가 꺼져 있어요", { voice: s.voice, muted });
-    await A.page.evaluate(async () => (await window.__imp("/src/stores/soundStore.ts")).useSoundStore.getState().toggleMuted());
-    await sleep(200);
+  await run.step("each question: the answer shows as the guide's speech bubble, words only (no clip, the music stays)", async () => {
+    const qas = await A.page.evaluate(async () => (await window.__imp("/shared/src/village/guides.ts")).guideById("plaza_guide").qas.map((q) => ({ question: q.question, answer: q.answer })));
+    summary.plaza = [];
+    for (let i = 0; i < qas.length; i++) {
+      await question(A, i).click();
+      await sleep(400);
+      const g = await guideAnswer(A);
+      const s = await audio(A);
+      summary.plaza.push({ ...g, duck: s.music.duck });
+      run.check(`q${i + 1}: the bubble says the answer, '나: ${qas[i].question}' above it, '다른 질문' below`, g.answer === qas[i].answer && g.me === `나 ${qas[i].question}` && g.speaker === "안내원" && g.divider === "다른 질문", g);
+      run.check(`q${i + 1}: the bubble does not look like a button (its own tint)`, g.bubbleBg !== g.buttonBg, { bubble: g.bubbleBg, button: g.buttonBg });
+      run.check(`q${i + 1}: the asked question is marked`, (await question(A, i).getAttribute("aria-pressed")) === "true", null);
+      run.check(`q${i + 1}: no voice: no clip requested, no audio element, the music not ducked`, g.voiceRequests.length === 0 && g.audioElements === 0 && Math.abs(s.music.duck - 1) < 0.001, { req: g.voiceRequests, audio: g.audioElements, music: s.music });
+      await run.shot(A, `guide-plaza-q${i + 1}.png`);
+    }
+    const sb = await guideAnswer(B);
+    run.check("the other player sees no dialog", (await B.page.locator(".cv-guide").count()) === 0 && sb.voiceRequests.length === 0, sb);
   });
 
   await run.step("닫기 closes it; chat is never spoken", async () => {
@@ -162,7 +121,7 @@ try {
     // (the chat-voice flag lived in game/tts.ts, which the village-only cleanup removed: nothing speaks chat any more)
   });
 
-  await run.step("into the hall: the desk guide at (306.4, 4.6), asked from the visitor side (3.5 m), 문의하기, a gentle answer, the hall music ducked", async () => {
+  await run.step("into the hall: the desk guide at (306.4, 4.6), asked from the visitor side (3.5 m), 문의하기, a gentle answer in its bubble, the hall music not ducked", async () => {
     for (const [x, z] of [[-20, 5], [-14, -20], [0, -33], [0, -50.8]]) await walkAndWait(A, x, z, 40000, 1.2);
     await A.page.keyboard.press("KeyE");
     await A.page.waitForFunction(async () => (await window.__imp("/src/village/villageArea.ts")).localArea() === "hall", null, { timeout: 15000 });
@@ -182,16 +141,13 @@ try {
     run.check("the dialog is the 추모관 안내 데스크's", (await A.page.locator(".cv-guide").getAttribute("data-guide")) === "hall_desk", null);
     await run.shot(A, "guide-hall.png");
     await question(A, 0).click();
-    await sleep(1500);
+    await sleep(600);
+    const g = await guideAnswer(A);
     const s = await audio(A);
-    summary.hallPlay = s;
-    run.check("hall_desk_1.m4a plays", s.voice.playing === "hall_desk_1" && !s.voice.paused, s.voice);
-    run.check("the hall's music (0.15) is ducked to 0.045", Math.abs(s.music.level - 0.045) < 0.01, s.music);
+    summary.hall = { ...g, music: s.music };
+    run.check("the desk's answer shows in its bubble", g.answer?.startsWith("이곳은 먼저 떠난 반려동물을 기억하는 추모관이에요.") && g.me === "나 이곳은 어떤 곳인가요?" && g.divider === "다른 질문", g);
+    run.check("no voice: no clip requested, the hall's music stays at 0.15", g.voiceRequests.length === 0 && Math.abs(s.music.level - 0.15) < 0.02, { req: g.voiceRequests, music: s.music });
     await run.shot(A, "guide-hall-answer.png");
-    await A.page.locator(".cv-guide-skip").click();
-    await sleep(900);
-    const k = await audio(A);
-    run.check("건너뛰기 stops it, the hall music is back at 0.15", k.voice.playing === null && Math.abs(k.music.level - 0.15) < 0.02, k);
     await A.page.keyboard.press("Escape");
     await sleep(300);
     run.check("Esc closes it", (await A.page.locator(".cv-guide").count()) === 0, null);

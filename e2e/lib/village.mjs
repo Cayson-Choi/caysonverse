@@ -41,7 +41,7 @@ export async function joinVillage(p, prefix, time = NOON) {
   const sheet = await p.page.waitForFunction(() => window.__cv?.getScreen?.() === "village", null, { timeout: 40000 }).then(
     () => p.page.evaluate(() => ({ dialogOpen: !!document.querySelector("dialog[open]"), asks: document.body.textContent.includes("어디로 갈까요") })),
   );
-  await p.page.waitForFunction(() => !!window.__cv?.getPos && !!window.__cvBgm && !!window.__cvGuideVoice, null, { timeout: 30000 });
+  await p.page.waitForFunction(() => !!window.__cv?.getPos && !!window.__cvBgm, null, { timeout: 30000 });
   await sleep(1500);
   p.nick = nick;
   return { nick, sheet };
@@ -166,18 +166,26 @@ export const showHud = (p) =>
 
 /** A guide's question button by index (the dialog must be open). */
 export const question = (p, i) => p.page.locator(".cv-guide-questions button").nth(i);
-/** The shared audio state of the voice clip and the music (see e2e/village-guides.mjs). */
+/** The music's state (the guides speak in words only since 2026-11-17: nothing ducks it). */
 export const audioState = (p) =>
   p.page.evaluate(() => {
-    const v = window.__cvGuideVoice;
-    const el = v?.element();
     const bgm = window.__cvBgm;
     const r = (n) => Math.round(n * 1000) / 1000;
-    return {
-      voice: v ? { ...v.state(), routed: v.isRouted(), level: r(v.level()), src: el ? el.src.replace(/^https?:\/\/[^/]+/, "") : null, paused: el ? el.paused : null } : null,
-      music: bgm ? { level: r(bgm.level()), duck: r(bgm.duckLevel()), paused: bgm.element()?.paused ?? null } : null,
-    };
+    return { music: bgm ? { level: r(bgm.level()), duck: r(bgm.duckLevel()), paused: bgm.element()?.paused ?? null } : null };
   });
+
+/** The guide's answer as shown: the "나: …" line, the bubble's speaker and words, and whether the page ever asked for a voice clip. */
+export const guideAnswer = (p) =>
+  p.page.evaluate(() => ({
+    me: (document.querySelector(".cv-guide-me")?.textContent ?? "").replace(/\s+/g, " ").trim(),
+    speaker: document.querySelector(".cv-guide-speaker")?.textContent ?? null,
+    answer: document.querySelector(".cv-guide-answer p")?.textContent ?? null,
+    divider: document.querySelector(".cv-guide-divider")?.textContent ?? null,
+    bubbleBg: (() => { const e = document.querySelector(".cv-guide-answer"); return e ? getComputedStyle(e).backgroundColor : null; })(),
+    buttonBg: (() => { const e = document.querySelector(".cv-guide-questions button:not(.is-asked)"); return e ? getComputedStyle(e).backgroundColor : null; })(),
+    voiceRequests: performance.getEntriesByType("resource").map((r) => r.name).filter((n) => /\/village\/voice\/|\.m4a(\?|$)/.test(n)),
+    audioElements: document.querySelectorAll("audio").length,
+  }));
 
 /**
  * The filled cubby the hall scenario visits: the hall's one sample (견본) at eye level — bank A, column 11, row 3 (the layout of
@@ -328,7 +336,7 @@ export async function runVillageScenario({ name, device }) {
       run.check("A sees B", await sees(A, B), await A.page.evaluate(() => window.__cv.getRemotes().length));
     });
 
-    await run.step("2b. the plaza guide: 문의하기, a question, the answer shows, the voice clip plays, the music ducks", async () => {
+    await run.step("2b. the plaza guide: 문의하기, a question, the answer shows as the guide's speech bubble (words only, no voice), the music stays", async () => {
       // a first touch starts the music (the browser's rule); headless Chrome is silent, so the audio element and the GainNode are read
       if (phone) await A.page.touchscreen.tap(300, 300);
       else await A.page.mouse.click(640, 300);
@@ -344,22 +352,16 @@ export async function runVillageScenario({ name, device }) {
       await act(A);
       await A.page.locator(".cv-guide").waitFor({ state: "visible", timeout: 5000 });
       await sleep(500);
-      run.check("the dialog is the 마을 안내원's, with 6 questions (the 5th: the fishing lake, the 6th: the houses — words only)", (await A.page.locator(".cv-guide").getAttribute("data-guide")) === "plaza_guide" && (await A.page.locator(".cv-guide-questions button").count()) === 6);
+      run.check("the dialog is the 마을 안내원's, with 6 questions (the 5th: the fishing lake, the 6th: the houses)", (await A.page.locator(".cv-guide").getAttribute("data-guide")) === "plaza_guide" && (await A.page.locator(".cv-guide-questions button").count()) === 6);
+      run.check("no AI 음성 label (the voice was taken out, 2026-11-17)", !(await A.page.locator(".cv-guide").textContent()).includes("AI 음성"));
       await press(A, question(A, 0));
-      await A.page.waitForFunction(() => { const b = window.__cvBgm; return window.__cvGuideVoice?.state().playing && b && Math.abs(b.level() - 0.105) < 0.01; }, null, { timeout: 5000 }).catch(() => {});
+      await sleep(600);
+      const g = await guideAnswer(A);
       const s = await audioState(A);
-      const sb = await audioState(B);
-      summary.guide = s;
-      const answer = await A.page.locator(".cv-guide-answer p").textContent();
-      run.check("the answer text shows", !!answer && answer.startsWith("여기는 케이슨 마을이에요."), answer);
-      run.check("the voice clip plays (plaza_guide_1.m4a, routed through its gain at 1)", s.voice.playing === "plaza_guide_1" && s.voice.src === "/village/voice/plaza_guide_1.m4a" && s.voice.paused === false && s.voice.routed && s.voice.level === 1, s.voice);
-      run.check("the music ducks to 0.3 of its level (0.35 x 0.3)", Math.abs(s.music.duck - 0.3) < 0.01 && Math.abs(s.music.level - 0.105) < 0.01, s.music);
-      run.check("the other player hears nothing: no clip, music not ducked", sb.voice.playing === null && Math.abs(sb.music.duck - 1) < 0.001, sb);
+      summary.guide = { ...g, music: s.music };
+      run.check("the answer shows in the guide's bubble, the question above it as '나: …', then '다른 질문'", g.answer?.startsWith("여기는 케이슨 마을이에요.") && g.me === "나 여기는 어떤 곳이에요?" && g.speaker === "안내원" && g.divider === "다른 질문" && g.bubbleBg !== g.buttonBg, g);
+      run.check("no voice: no clip requested, the music is not ducked", g.voiceRequests.length === 0 && s.music && Math.abs(s.music.duck - 1) < 0.001, { req: g.voiceRequests, music: s.music });
       await run.shot(A, "guide-plaza-answer.png");
-      await press(A, A.page.locator(".cv-guide-skip"));
-      await A.page.waitForFunction(() => window.__cvGuideVoice?.state().playing === null && Math.abs((window.__cvBgm?.duckLevel() ?? 0) - 1) < 0.01, null, { timeout: 5000 }).catch(() => {});
-      const k = await audioState(A);
-      run.check("건너뛰기 stops the clip and the music is back", k.voice.playing === null && Math.abs(k.music.duck - 1) < 0.01, k);
       await press(A, A.page.locator(".cv-guide-close"));
       await A.page.waitForFunction(() => !document.querySelector(".cv-guide"), null, { timeout: 3000 });
     });
