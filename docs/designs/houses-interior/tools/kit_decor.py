@@ -243,9 +243,9 @@ def rug_round(F, d=1.6, tn=None, th=0.014):
     lathe(F, 0, 0, 0.0, [(0, th), (r * 0.99, th), (r, th * 0.5), (r, 0.0)], "H_rug", 40, tn=tuple(c * 0.75 for c in tn[:3]) + (1,), tile=0.8) if False else None
     lathe(F, 0, 0, 0.0, [(r, 0.0), (r, th * 0.6), (r * 0.985, th), (r * 0.7, th), (0, th)][::-1], "H_rug", 40, tn=tn, tile=0.8)
     lathe(F, 0, 0, th, [(r * 0.85, 0.0015), (r * 0.9, 0.0015)], "H_rug", 40, tn=tuple(c * 0.7 for c in tn[:3]) + (1,)) if False else None
-    for k in range(2):
+    for k in range(1):
         rr = r * (0.88 - 0.1 * k)
-        pts = [(rr * math.cos(a), rr * math.sin(a), th + 0.0015) for a in [i * 2 * math.pi / 48 for i in range(49)]]
+        pts = [(rr * math.cos(a), rr * math.sin(a), th + 0.0015) for a in [i * 2 * math.pi / 28 for i in range(29)]]
         tube(F, pts, 0.012, "H_rug", 4, tn=tuple(c * 0.65 for c in tn[:3]) + (1,), caps=False)
 
 

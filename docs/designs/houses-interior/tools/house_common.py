@@ -93,7 +93,7 @@ class House:
         self.lm[floor].append(ob)
         return ob
 
-    def shell(self, floor, ops=None, floor_kind="oak", wall_tn=None, lights=((2.6, 3.9), (7.9, 3.9)), windows=None, curtains=None, fixtures=()):
+    def shell(self, floor, ops=None, floor_kind="oak", wall_tn=None, lights=((2.6, 3.9), (7.9, 3.9)), windows=None, curtains=None, fixtures=(), floor_tn=None):
         """the whole room of a floor (floor, ceiling, walls with openings, baseboards, crown); the stairwell hole is cut as the plan says.
         windows: [(wall, s0, s1, y0, y1, dict(style=...))] drawn into the openings by the kit's window()."""
         SH = self.SH
@@ -101,7 +101,7 @@ class House:
 
         def fn(F):
             fr = SH.room_shell(F, 10.6, 7.8, ops=ops, hole=hole if floor == 1 else None, floor_hole=hole if floor == 2 else None,
-                               floor_kind=floor_kind, wall_tn=wall_tn, lights=lights)
+                               floor_kind=floor_kind, wall_tn=wall_tn, floor_tn=floor_tn, lights=lights)
             for (w, s0, s1, y0, y1, kw) in (windows or []):
                 SH.window(fr[w][0], s0, s1, y0, y1, **kw)
             for (w, s0, s1, y_top, y_bot, kw) in (curtains or []):

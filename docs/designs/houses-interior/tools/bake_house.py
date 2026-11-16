@@ -31,12 +31,13 @@ from mathutils import Vector
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kit_core as K  # noqa: E402
+import kit_fix  # noqa: E402,F401  (HA: H_leather override must also apply to the export materials)
 
 WORK, EXPORT = K.WORK, K.EXPORT
 LM_SCALE = 2.0         # the light map stores L / LM_SCALE (the game multiplies back: village convention)
 LM_LIFT_DAY, LM_LIFT_NIGHT = 0.08, 0.012
 UNLIT = ("H_lamp", "H_shade", "H_glass")
-DAY = dict(sun=(4.0, math.radians(52), math.radians(-30)), sky=1.0, lamp_scale=0.25)
+DAY = dict(sun=(5.0, math.radians(52), math.radians(-30)), sky=2.4, lamp_scale=0.10)
 NIGHT = dict(sky=(0.02, 0.03, 0.07), lamp_scale=1.0)
 
 

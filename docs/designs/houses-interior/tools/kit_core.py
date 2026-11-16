@@ -119,7 +119,11 @@ def _img(name, cs="sRGB"):
     return im
 
 
+ALIAS = {"H_screen": "H_rubber", "H_soil": "H_rubber", "H_plastic": "H_ceramic", "H_wood_walnut": "H_wood_dark"}   # HA: <= 24 materials per house
+
+
 def mat(name):
+    name = ALIAS.get(name, name)
     if name in _M:
         return _M[name]
     sp = MATS[name]
@@ -368,6 +372,12 @@ def rbox(F, x0, x1, z0, z1, y0, y1, m, r=0.01, seg=2, grain=(1, 0, 0), tile=1.0,
     subdivides the box first so puff/sag have vertices to move. skip = face directions to leave out ('+x','-x','+z',
     '-z','+y','-y')."""
     sx, sz, sy = abs(x1 - x0), abs(z1 - z0), abs(y1 - y0)
+    if r < 0.0035 and not (puff or sag or cuts):     # HA triangle budget: a bevel under 3.5 mm is invisible, 26 faces instead of 6
+        r = 0
+    if r < 0.012:
+        seg = 1
+    elif r < 0.03:
+        seg = min(seg, 2)
     bm = bmesh.new()
     bmesh.ops.create_cube(bm, size=1.0)
     bmesh.ops.scale(bm, vec=(sx, sz, sy), verts=bm.verts)
@@ -417,6 +427,8 @@ def rbox(F, x0, x1, z0, z1, y0, y1, m, r=0.01, seg=2, grain=(1, 0, 0), tile=1.0,
 
 def lathe(F, cx, cz, y0, profile, m, segs=24, tn=None, tile=1.0, smooth=True, uvscale=None):
     """Surface of revolution, profile [(r, y)] bottom to top; faces with r = 0 become triangles."""
+    if max(r for r, _ in profile) < 0.3:     # HA triangle budget: small turned parts need fewer segments
+        segs = max(8, int(segs * 0.62))
     rings = [[(cx + r * math.cos(2 * math.pi * i / segs), cz + r * math.sin(2 * math.pi * i / segs), y0 + y)
               for i in range(segs)] for (r, y) in profile]
     for j in range(len(profile) - 1):
@@ -456,6 +468,8 @@ def cyl(F, cx, cz, y0, y1, r, m, segs=16, r2=None, cap=True, tn=None, bottom=Fal
 
 def tube(F, pts, r, m, segs=8, tn=None, caps=True, uv_per_m=1.0):
     """Round bar along local points (lx, lz, ly); r number or list per point."""
+    if max(r if isinstance(r, (int, float)) else max(r) for r in [r]) < 0.045:
+        segs = max(4, int(segs * 0.7))
     n = len(pts)
     rs = r if isinstance(r, (list, tuple)) else [r] * n
     rings = []
