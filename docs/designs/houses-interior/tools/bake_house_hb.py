@@ -196,10 +196,8 @@ def setup_lights(scene, night):
 
 
 def hanji_mask(obs, size):
-    """PIL mask (size x size) of every UV_LM triangle of faces whose material is H_hanji, grown by 3 px"""
-    from PIL import Image, ImageDraw
-    mk = Image.new("L", (size, size), 0)
-    d = ImageDraw.Draw(mk)
+    """boolean mask (size x size) of every UV_LM triangle of faces whose material is H_hanji, grown by 3 px (numpy rasterizer, no PIL in Blender)"""
+    mk = np.zeros((size, size), bool)
     n = 0
     for ob in obs:
         me = ob.data
@@ -211,10 +209,26 @@ def hanji_mask(obs, size):
             if m is None or m.name != "H_hanji":
                 continue
             pts = [(uv[li].uv[0] * size, (1 - uv[li].uv[1]) * size) for li in p.loop_indices]
-            d.polygon(pts, fill=255, outline=255, width=3)
+            for k in range(1, len(pts) - 1):
+                tri = (pts[0], pts[k], pts[k + 1])
+                xs, ys = [t[0] for t in tri], [t[1] for t in tri]
+                x0, x1 = max(0, int(min(xs)) - 3), min(size - 1, int(max(xs)) + 3)
+                y0, y1 = max(0, int(min(ys)) - 3), min(size - 1, int(max(ys)) + 3)
+                if x1 < x0 or y1 < y0:
+                    continue
+                gx, gy = np.meshgrid(np.arange(x0, x1 + 1) + 0.5, np.arange(y0, y1 + 1) + 0.5)
+                (ax, ay), (bx, by), (cx, cy) = tri
+                den = (by - cy) * (ax - cx) + (cx - bx) * (ay - cy)
+                if abs(den) < 1e-9:
+                    continue
+                w1 = ((by - cy) * (gx - cx) + (cx - bx) * (gy - cy)) / den
+                w2 = ((cy - ay) * (gx - cx) + (ax - cx) * (gy - cy)) / den
+                w3 = 1 - w1 - w2
+                tol = 3.0 / max(1.0, abs(den) ** 0.5)
+                mk[y0:y1 + 1, x0:x1 + 1] |= (w1 >= -tol) & (w2 >= -tol) & (w3 >= -tol)
             n += 1
     log("hanji faces", n)
-    return np.array(mk) > 0 if n else None
+    return mk if n else None
 
 
 def make_hanji_transparent():
