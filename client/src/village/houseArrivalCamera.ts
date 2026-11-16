@@ -30,6 +30,8 @@ export function arrivalCamera(
   bodyYaw: number,
   wanted: number,
   pad = 0.3,
+  /** The drawn room's own test (the solid index: a glass 중문 the boxes do not hold): the fraction of the arm that is clear, 0..1. */
+  solidClear?: (ax: number, ay: number, az: number, bx: number, by: number, bz: number) => number,
 ): ArrivalCamera {
   const boxes = houseFloorGeometry(n, floor).cameraBoxes;
   const behind = normalizeAngle(bodyYaw + Math.PI); // the camera's yaw straight behind the body
@@ -39,7 +41,9 @@ export function arrivalCamera(
   for (let k = 0; k < ARRIVAL_STEPS; k++) {
     const yaw = normalizeAngle(behind + ((k - ARRIVAL_STEPS / 2) * 2 * Math.PI) / ARRIVAL_STEPS);
     if (Math.abs(normalizeAngle(yaw - behind)) > ARRIVAL_MAX_TURN) continue;
-    const t = segmentHitFraction(x, HEAD_HEIGHT, z, x + Math.sin(yaw) * h, y, z + Math.cos(yaw) * h, boxes, WALL_HEIGHT, pad);
+    const bx = x + Math.sin(yaw) * h;
+    const bz = z + Math.cos(yaw) * h;
+    const t = Math.min(segmentHitFraction(x, HEAD_HEIGHT, z, bx, y, bz, boxes, WALL_HEIGHT, pad), solidClear ? solidClear(x, HEAD_HEIGHT, z, bx, y, bz) : 1);
     const clear = t * wanted;
     // longer wins; within 0.15 m the one nearer straight behind
     if (clear > best.clear + 0.15 || (Math.abs(clear - best.clear) <= 0.15 && Math.abs(normalizeAngle(yaw - behind)) < Math.abs(normalizeAngle(best.yaw - behind)))) best = { yaw, pitch: ARRIVAL_PITCH, clear };

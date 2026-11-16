@@ -69,7 +69,7 @@ describe("the camera in every house floor", () => {
           }
         }
         expect(spots, `standable spots of house ${n} floor ${floor}`).toBeGreaterThan(15);
-        expect(cases).toBeGreaterThan(5000);
+        expect(cases).toBeGreaterThan(2000); // a furnished floor: 15+ spots × 144 views (the blockout had 5000+)
         expect(bad.slice(0, 12).join("\n")).toBe("");
       }, 240_000);
     }

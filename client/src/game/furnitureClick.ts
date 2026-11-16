@@ -123,6 +123,27 @@ function seatHalf(seats: readonly Seat[], i: number): number {
   return half;
 }
 
+/**
+ * How well seat `i`'s click volume holds the point `p` (a click's hit): its distance (m) across from the seat's middle when `p` lies in
+ * the volume (`tol` round it), else null.
+ */
+export function seatVolumeHolds(p: { x: number; y: number; z: number }, seats: readonly Seat[], i: number, tol = 0.04): number | null {
+  const s = seats[i]!;
+  const backed = (s.lean ?? 0) > 0;
+  const fx = Math.sin(s.yaw);
+  const fz = Math.cos(s.yaw);
+  const fe = s.frontEdge ?? 0;
+  const depth = backed ? SEAT_DEPTH_BACKED : SEAT_DEPTH_BACKLESS;
+  const half = seatHalf(seats, i);
+  const dx = p.x - s.x;
+  const dz = p.z - s.z;
+  const across = Math.abs(dx * fz - dz * fx);
+  const ahead = dx * fx + dz * fz;
+  const up = p.y - (s.seatY ?? 0.45);
+  const inside = across <= half + tol && ahead >= -fe - depth - tol && ahead <= -fe + tol && up >= -SEAT_BELOW - tol && up <= (backed ? SEAT_ABOVE_BACKED : SEAT_ABOVE_BACKLESS) + tol;
+  return inside ? across : null;
+}
+
 /** Where (the ray's t, m) `ray` enters seat `i`'s click volume, or Infinity when it misses it. */
 export function seatRayEntry(ray: ClickRay, seats: readonly Seat[], i: number): number {
   const s = seats[i]!;
@@ -190,15 +211,23 @@ export function furnitureClick(
   // the seat whose volume the ray enters first, up to the furniture it hit (or a little past a table top's edge)
   let best = -1;
   if (ray) {
-    let bestT = hitT + (pick.y >= SEAT_BEHIND_MIN_Y ? SEAT_BEHIND : SEAT_HIT_EPS);
+    const reach = hitT + (pick.y >= SEAT_BEHIND_MIN_Y ? SEAT_BEHIND : SEAT_HIT_EPS);
+    let bestT = Infinity;
+    // A seat whose volume holds the hit itself (nearest its middle) beats one whose volume the ray only crossed on its way: a sofa tapped
+    // at a slant from its end crossed the empty upper boxes of the next cushions first and sat the visitor at the near end (G round 3,
+    // house 1). With no volume holding the hit, the earliest entry (a chair half hidden behind a table's edge).
+    let bestHold = Infinity;
     for (let i = 0; i < seats.length; i++) {
       const s = seats[i]!;
       if (!inArea(s) || Math.hypot(s.x - pick.x, s.z - pick.z) > 3) continue;
       const t = seatRayEntry(ray, seats, i);
-      if (t <= bestT && offered(i)) {
-        best = i;
-        bestT = t;
-      }
+      if (t > reach) continue;
+      const hold = t <= hitT + SEAT_HIT_EPS ? (seatVolumeHolds(pick, seats, i) ?? Infinity) : Infinity;
+      if (hold > bestHold || (hold === bestHold && (hold < Infinity || t > bestT))) continue;
+      if (!offered(i)) continue;
+      best = i;
+      bestT = t;
+      bestHold = hold;
     }
   }
   // of the facings of one backless seat (one group), the one whose approach is nearer the player: sat from either side

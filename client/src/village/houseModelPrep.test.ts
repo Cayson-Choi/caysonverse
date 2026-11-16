@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { BoxGeometry, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, Texture } from "three";
+import { BoxGeometry, BufferAttribute, BufferGeometry, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, Texture } from "three";
 import { houseFiles } from "@caysonverse/shared/village/houseAreas";
-import { disposeHouse, houseUrls, houseWantsLightmap, houseWantsView, prepareHouse, solidTriangles, HOUSE_VIEW_MATERIAL } from "./houseModelPrep";
+import { disposeHouse, dressLoadedHouse, houseUrls, houseViewMapping, houseWantsLightmap, houseWantsView, isHouseLightmapMaterial, prepareHouse, solidTriangles, HOUSE_CEILING_MATERIAL, HOUSE_VIEW_MATERIAL } from "./houseModelPrep";
 import { houseGltfEntry } from "./houseRelease";
 import { houseNightUniform, patchHouseLightmapMaterial, resetHouseNight, houseNightMapUniform } from "./houseNight";
 
@@ -116,5 +116,41 @@ describe("the files and the night", () => {
     resetHouseNight();
     expect(houseNightUniform.value).toBe(0);
     expect(houseNightMapUniform.value).toBeNull();
+  });
+});
+
+describe("the builders' files dressed for the game (G round 3)", () => {
+  it("both builders' baked materials take the light map; lamps, shades and glass do not", () => {
+    expect(isHouseLightmapMaterial("LM_plaster")).toBe(true);
+    expect(isHouseLightmapMaterial("E_H_wallpaper")).toBe(true);
+    expect(isHouseLightmapMaterial("E_H_hanji")).toBe(true);
+    for (const m of ["E_H_lamp", "E_H_shade", "E_H_glass", "M_view", "M_glass"]) expect(isHouseLightmapMaterial(m)).toBe(false);
+  });
+
+  it("the window panorama turns to each house's real door: HA's images need no turn, HB's are centred on the north", () => {
+    expect(houseViewMapping(1, "s", 1)).toEqual({ uShift: 0, vScale: 1 });
+    expect(houseViewMapping(3, "n", 1)).toEqual({ uShift: 0, vScale: 1 });
+    expect(houseViewMapping(7, "s", 0.5)).toEqual({ uShift: 0, vScale: 2 });
+    expect(houseViewMapping(9, "s", 0.5).uShift).toBe(0);
+    expect(houseViewMapping(6, "n", 0.5).uShift).toBeCloseTo(0.5);
+    expect(houseViewMapping(8, "e", 0.5).uShift).toBeCloseTo(0.75);
+    expect(houseViewMapping(10, "e", 0.5).uShift).toBeCloseTo(0.75);
+  });
+
+  it("a wallpaper's high down-facing faces become a plain ceiling group; done once", () => {
+    const root = new Group();
+    const g = new BufferGeometry();
+    // a wall quad (facing +z) and a ceiling quad at 3.7 m facing down
+    g.setAttribute("position", new BufferAttribute(new Float32Array([0, 0, 0, 1, 0, 0, 1, 2, 0, 0, 3.7, 0, 1, 3.7, 0, 0, 3.7, 1]), 3));
+    const m = new MeshBasicMaterial();
+    m.name = "LM_plaster";
+    root.add(new Mesh(g, m));
+    dressLoadedHouse(root, 1);
+    const mesh = root.children[0] as Mesh;
+    expect(Array.isArray(mesh.material)).toBe(true);
+    expect((mesh.material as MeshBasicMaterial[])[1]!.name).toBe(HOUSE_CEILING_MATERIAL);
+    expect(g.groups).toEqual([{ start: 0, count: 3, materialIndex: 0 }, { start: 3, count: 3, materialIndex: 1 }]);
+    dressLoadedHouse(root, 1);
+    expect(g.groups).toHaveLength(2);
   });
 });

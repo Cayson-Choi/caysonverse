@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { VILLAGE_SEATS } from "@caysonverse/shared/village/benchSeats";
-import { GENERATED_HOUSE_NUMBERS } from "@caysonverse/shared/village/generated/houses";
+import { GENERATED_HOUSE_NUMBERS, GENERATED_HOUSES } from "@caysonverse/shared/village/generated/houses";
 import { HOUSE_FLOOR_AREAS, HOUSE_LOW_CEILINGS, HOUSE_PLACES, HOUSE_ROOM, HOUSE_CAMERA, houseFloorBounds, houseFloorLabel, houseFloorArea, parseHouseFloorArea } from "@caysonverse/shared/village/houseAreas";
 import { houseFloorGeometry, houseCeilingSlab } from "@caysonverse/shared/village/housesGeometry";
 import { HOUSE_EXIT_TARGET_ID, HOUSE_STAIR_UP_TARGET_ID } from "@caysonverse/shared/village/houseTargets";
@@ -45,7 +45,8 @@ describe("a house floor's active map", () => {
     for (const n of GENERATED_HOUSE_NUMBERS) {
       for (const f of [1, 2] as const) {
         const m = villageActiveMap(houseFloorArea(n, f));
-        expect(m.furniture!.length).toBeGreaterThan(0);
+        // (a floor whose seats are all cushions and 보료 on the boards — house 4 upstairs — has no seat furniture box)
+        if (GENERATED_HOUSES[n]!.seats.some((s) => s.floor === f && s.pose !== "floor")) expect(m.furniture!.length).toBeGreaterThan(0);
         for (const box of m.furniture!) expect(m.geometry.obstacles).toContain(box);
       }
     }

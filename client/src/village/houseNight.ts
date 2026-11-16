@@ -40,12 +40,19 @@ export function patchHouseLightmapMaterial(material: Material): void {
   material.needsUpdate = true;
 }
 
+/** Day brightness of the window panorama (1 at night). */
+export const VIEW_DAY = 0.86;
+
 const VIEW_PARS = /* glsl */ `uniform float uHouseNight;
 void main() {`;
-// the panorama image: day on its top half, night on its bottom half (v up: the top half is v 0.5..1)
+// The panorama image: day on its top half, night on its bottom half. The texture is not flipped (glTF), so v = 0 is the image's top row;
+// the band's v runs 0 (its top) .. 1 (its bottom) after the map's transform (houseModelPrep.ts houseViewMapping): the day half is 0..0.5,
+// the night half 0.5..1, cross-faded by the night weight (the v kept a texel off the halves' seam so the day never bleeds into the night).
+// By day the view is dimmed a little (VIEW_DAY): an unlit sunny panorama beside the baked room read as a blown-out window.
 const VIEW_MAP = /* glsl */ `#ifdef USE_MAP
-	vec4 sampledDiffuseColor = texture2D( map, vec2( vMapUv.x, vMapUv.y * 0.5 + 0.5 * ( 1.0 - uHouseNight ) ) );
-	diffuseColor *= sampledDiffuseColor;
+	float houseViewV = clamp( vMapUv.y, 0.003, 0.997 ) * 0.5;
+	vec4 sampledDiffuseColor = mix( texture2D( map, vec2( vMapUv.x, houseViewV ) ) * ${VIEW_DAY.toFixed(3)}, texture2D( map, vec2( vMapUv.x, houseViewV + 0.5 ) ), uHouseNight );
+	diffuseColor *= vec4( sampledDiffuseColor.rgb, 1.0 );
 #endif`;
 
 /** Let the window-view material show the panorama by day and by night (idempotent). The material needs its `map` set by the caller. */
@@ -57,6 +64,26 @@ export function patchHouseViewMaterial(material: Material): void {
     shader.fragmentShader = shader.fragmentShader.replace("void main() {", VIEW_PARS).replace("#include <map_fragment>", VIEW_MAP);
   };
   material.customProgramCacheKey = () => "house-view-night";
+  material.needsUpdate = true;
+}
+
+/** Day brightness of a lamp's bulb and shade (1 at night): by day a shade is lit paper, not a lantern. */
+export const GLOW_DAY = 0.72;
+
+const GLOW_PARS = /* glsl */ `uniform float uHouseNight;
+void main() {`;
+const GLOW_COLOR = /* glsl */ `#include <color_fragment>
+	diffuseColor.rgb *= mix( ${GLOW_DAY.toFixed(3)}, 1.0, uHouseNight );`;
+
+/** Let a bulb / lamp-shade material glow at night and calm down by day (idempotent). */
+export function patchHouseGlowMaterial(material: Material): void {
+  if (patched.has(material)) return;
+  patched.add(material);
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms.uHouseNight = houseNightUniform;
+    shader.fragmentShader = shader.fragmentShader.replace("void main() {", GLOW_PARS).replace("#include <color_fragment>", GLOW_COLOR);
+  };
+  material.customProgramCacheKey = () => "house-glow-night";
   material.needsUpdate = true;
 }
 

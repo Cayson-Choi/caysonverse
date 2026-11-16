@@ -1,7 +1,7 @@
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useFrame } from "@react-three/fiber";
 import { useGLTF } from "@react-three/drei";
-import { MeshBasicMaterial, type Material, type Mesh, type Texture } from "three";
+import { MeshBasicMaterial, RepeatWrapping, SRGBColorSpace, type Material, type Mesh, type Texture } from "three";
 import {
   HOUSE_PLACES,
   houseFloorBounds,
@@ -11,7 +11,8 @@ import {
 } from "@caysonverse/shared/village/houseAreas";
 import { houseFloorGeometry } from "@caysonverse/shared/village/housesGeometry";
 import type { Pose } from "../game/types";
-import { DRACO_PATH } from "../game/hub/hubModelPrep";
+import { DRACO_PATH, configureLightmap } from "../game/hub/hubModelPrep";
+import { VILLAGE_LAYOUT } from "@caysonverse/shared/village/villageLayout";
 import { MapBoxes } from "../game/MapBoxes";
 import { SceneWarmUp } from "../game/SceneWarmUp";
 import { useQualityTier } from "../game/QualityEffects";
@@ -30,13 +31,24 @@ import { beginHouseEntry, houseEntryFailed, houseEntryReady, houseEntryState } f
 import {
   HOUSE_VIEW_MATERIAL,
   disposeHouse,
+  dressLoadedHouse,
   houseUrls,
+  houseViewMapping,
   houseWantsLightmap,
   houseWantsView,
+  isHouseLightmapMaterial,
   prepareHouse,
   solidTriangles,
+  viewBandVSpan,
 } from "./houseModelPrep";
-import { houseNightMapUniform, houseNightUniform, patchHouseLightmapMaterial, patchHouseViewMaterial, resetHouseNight } from "./houseNight";
+import {
+  houseNightMapUniform,
+  houseNightUniform,
+  patchHouseGlowMaterial,
+  patchHouseLightmapMaterial,
+  patchHouseViewMaterial,
+  resetHouseNight,
+} from "./houseNight";
 import { clearHouseCaches, holdHouseFiles, loadHouseTexture, noteHouseRequested } from "./houseRelease";
 
 /**
@@ -109,10 +121,8 @@ function HouseFloorScene({ n, floor, pose }: { n: HouseNumber; floor: HouseFloor
     let live = true;
     void loadHouseTexture(n, urls.lightmapNight).then((t) => {
       if (!live || !t) return;
-      t.flipY = false;
-      t.channel = 1;
-      t.needsUpdate = true;
-      houseNightMapUniform.value = t;
+      // the day map's settings (sRGB, unflipped, the second UV set): read raw, the night map came out washed and bright
+      houseNightMapUniform.value = configureLightmap(t);
     });
     return () => {
       live = false;
@@ -120,14 +130,26 @@ function HouseFloorScene({ n, floor, pose }: { n: HouseNumber; floor: HouseFloor
   }, [n, urls.lightmapNight, wantsLightmap, nightWanted]);
   useEffect(() => () => resetHouseNight(), [n]);
 
-  const nodes = useMemo(() => prepareHouse(gltf.scene, n, floor, day), [gltf, n, floor, day]);
+  const nodes = useMemo(() => {
+    dressLoadedHouse(gltf.scene, n);
+    return prepareHouse(gltf.scene, n, floor, day);
+  }, [gltf, n, floor, day]);
+  const solidRef = useRef<ReturnType<typeof buildSolidIndex> | null>(null);
   useEffect(() => () => disposeHouse(nodes), [nodes]);
   useEffect(() => {
     for (const m of nodes.lightmapped) patchHouseLightmapMaterial(m);
+    for (const m of nodes.glows) patchHouseGlowMaterial(m);
   }, [nodes]);
   useEffect(() => {
     if (!view) return;
+    // the band shows the village the way this house's real windows look out (houseViewMapping: the two builders' panoramas differ)
+    const side = VILLAGE_LAYOUT.sceneryHouses.find((h) => h.id === `house_${n}`)?.doorSide ?? "s";
+    const map = houseViewMapping(n, side, viewBandVSpan(nodes.root));
     view.flipY = false;
+    view.colorSpace = SRGBColorSpace;
+    view.wrapS = RepeatWrapping;
+    view.offset.set(map.uShift, 0);
+    view.repeat.set(1, map.vScale);
     view.needsUpdate = true;
     const touched: Material[] = [];
     for (const m of nodes.views) {
@@ -139,13 +161,15 @@ function HouseFloorScene({ n, floor, pose }: { n: HouseNumber; floor: HouseFloor
     return () => {
       for (const m of touched) (m as MeshBasicMaterial).map = null;
     };
-  }, [nodes, view]);
+  }, [nodes, view, n]);
 
   // The seat framing and the follow camera must see this floor's solid model (the memorial hall's way, hallSolidIndex.ts): the camera
   // never sits in or beyond a wall, a bookcase or the stair, and a seat's first framing sees the seated body.
   useEffect(() => {
     const b = houseFloorBounds(n, floor);
-    const solid = buildSolidIndex(solidTriangles(nodes.root), b.minX - 1, b.maxX + 1, b.minZ - 1, b.maxZ + 1);
+    // glass counts: the camera stops at a glass 중문 or door as at the partition it stands in (behind one the room was all haze)
+    const solid = buildSolidIndex(solidTriangles(nodes.root, true), b.minX - 1, b.maxX + 1, b.minZ - 1, b.maxZ + 1);
+    solidRef.current = solid;
     const offSight = setSeatSightBlocker((fx, fy, fz, tx, ty, tz) => solid.segmentBlocked(fx, fy, fz, tx, ty, tz, 0.35));
     const offSpot = setSeatSpotBlocker((x, y, z) => solid.underHung(x, y, z, 2.6, 1.0, 0.25) || solid.nearSolid(x, y, z, 0.3));
     const offCamera = setCameraSolids(solid);
@@ -159,12 +183,27 @@ function HouseFloorScene({ n, floor, pose }: { n: HouseNumber; floor: HouseFloor
   // This floor is drawn: the entry cover may open, and the camera glides to the direction that leaves it the longest clear arm (arrival camera).
   useEffect(() => {
     houseEntryReady();
-    const cam = arrivalCamera(n, floor, pose.x, pose.z, pose.yaw, CAMERA.distance);
+    const solid = solidRef.current;
+    // the clear part of an arm by the drawn room (a glass 중문 is no collision box): halved down to 5 cm
+    const solidClear = solid
+      ? (ax: number, ay: number, az: number, bx: number, by: number, bz: number): number => {
+          if (!solid.segmentBlocked(ax, ay, az, bx, by, bz, 0)) return 1;
+          let lo = 0;
+          let hi = 1;
+          for (let i = 0; i < 6; i++) {
+            const mid = (lo + hi) / 2;
+            if (solid.segmentBlocked(ax, ay, az, ax + (bx - ax) * mid, ay + (by - ay) * mid, az + (bz - az) * mid, 0)) hi = mid;
+            else lo = mid;
+          }
+          return lo;
+        }
+      : undefined;
+    const cam = arrivalCamera(n, floor, pose.x, pose.z, pose.yaw, CAMERA.distance, 0.3, solidClear);
     viewState.orbitGoal = { yaw: cam.yaw, pitch: cam.pitch };
   }, [nodes]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useFrame(() => {
-    const night = wantsLightmap || nodes.views.length > 0 ? hallNightWeight(dayNight.outdoor.night, houseNightMapUniform.value !== null) : 0;
+    const night = wantsLightmap || nodes.views.length > 0 || nodes.glows.length > 0 ? hallNightWeight(dayNight.outdoor.night, houseNightMapUniform.value !== null) : 0;
     if (houseNightUniform.value !== night) houseNightUniform.value = night;
   });
 
@@ -206,7 +245,7 @@ export function HouseArea({ area, pose }: { area: string; pose: Pose }) {
         meshes += 1;
         const m = (o as Mesh).material as Material | Material[];
         for (const mat of Array.isArray(m) ? m : [m]) {
-          if (mat.name.startsWith("LM_")) lm = true;
+          if (isHouseLightmapMaterial(mat.name) && (mat as MeshBasicMaterial).lightMap) lm = true;
           if (mat.name === HOUSE_VIEW_MATERIAL) view = true;
         }
       });

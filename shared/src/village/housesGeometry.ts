@@ -16,6 +16,7 @@
 import type { AABB, CameraBox } from "../collision";
 import { makeGeometry, wallsAround, type Bounds, type MapGeometry } from "../school/geometry";
 import { GENERATED_HOUSES } from "./generated/houses";
+import { isRemovedHouseBox } from "./houseFixes";
 import {
   HOUSE_FLOORS,
   HOUSE_NUMBERS,
@@ -109,7 +110,7 @@ export function houseColliders(): { obstacles: AABB[]; cameraBoxes: CameraBox[] 
   for (const n of HOUSE_NUMBERS) {
     const g = GENERATED_HOUSES[n];
     if (g) {
-      obstacles.push(...g.colliders);
+      obstacles.push(...g.colliders.filter((b) => !isRemovedHouseBox(n, b)));
       cameraBoxes.push(...g.cameraBoxes);
     }
     for (const f of HOUSE_FLOORS) cameraBoxes.push(houseCeilingSlab(n, f));
@@ -143,7 +144,7 @@ export function houseFloorGeometry(n: HouseNumber, floor: HouseFloor): MapGeomet
   const outer = houseFloorOuter(n, floor);
   const g = GENERATED_HOUSES[n];
   const walls = houseFloorWalls(n, floor);
-  const props = g ? g.colliders.filter((b) => inOuter(b, outer)) : [];
+  const props = g ? g.colliders.filter((b) => inOuter(b, outer) && !isRemovedHouseBox(n, b)) : [];
   const tall = g ? g.cameraBoxes.filter((b) => inOuter(b, outer)) : [];
   const base = makeGeometry("house", houseFloorBounds(n, floor), walls, props, [...tall, houseCeilingSlab(n, floor)]);
   // the model holds its own four walls too; the duplicates add nothing but are harmless (same boxes, same side)

@@ -37,7 +37,8 @@ import { MEMORIAL_SEAT_MARKERS } from "./generated/memorialSeats";
 import type { Bounds } from "../school/geometry";
 import { VILLAGE_LAYOUT, houseArea, villageGeometry, type AreaId, type Point2 } from "./villageLayout";
 import { GENERATED_HOUSES } from "./generated/houses";
-import { HOUSE_NUMBERS, houseBuildingId, houseFloorBounds, compareHouseSeats, type HouseSeatMarker, type HouseSeatPose } from "./houseAreas";
+import { isRemovedHouseSeat } from "./houseFixes";
+import { HOUSE_NUMBERS, HOUSE_PLACES, houseBuildingId, houseFloorBounds, compareHouseSeats, type HouseFloor, type HouseNumber, type HouseSeatMarker, type HouseSeatPose } from "./houseAreas";
 import type { MapGeometry } from "../school/geometry";
 
 /** One bench of the village: what sitting on it needs to know about its model. */
@@ -122,7 +123,78 @@ export function standsClear(x: number, z: number, bounds: Bounds, geometry = vil
   // round 8: up from letter_s0 at the corner of the letter table's grown box, 5 cm in, every tap after was "unreachable")
   const q = PLAYER_RADIUS + STAND_SQUARE_CLEARANCE;
   for (const b of geometry.obstacles) if (x > b.minX - q && x < b.maxX + q && z > b.minZ - q && z < b.maxZ + q) return false;
-  return true;
+  return standReach === null || standReach(x, z);
+}
+
+/** While a house floor's seats are made: the spots a body walks to from the floor's arrival (houseStandReach), else null (any clear spot). */
+let standReach: ((x: number, z: number) => boolean) | null = null;
+
+/** The grid (m) and the body's extra width (m) of a house floor's walkable area for its stand spots. */
+const REACH_STEP = 0.1;
+const REACH_MARGIN = 0.05;
+const REACH_CACHE = new Map<string, (x: number, z: number) => boolean>();
+
+/**
+ * Where a body walks to on house N floor F from its arrival spot (a flood fill, the radius plus REACH_MARGIN: a slit a body only squeezes
+ * through diagonally — which no tap finds — does not count). A house seat's stand spot must be one of these (G round 3: house 7's
+ * window table chair stood up into a pocket behind its table reached only through such a slit).
+ */
+export function houseStandReach(n: HouseNumber, floor: HouseFloor, geometry: MapGeometry = villageGeometry): (x: number, z: number) => boolean {
+  const key = `${n}:${floor}`;
+  const hit = geometry === villageGeometry ? REACH_CACHE.get(key) : undefined;
+  if (hit) return hit;
+  const b = houseFloorBounds(n, floor);
+  const start = floor === 1 ? HOUSE_PLACES[n].spawnIn : HOUSE_PLACES[n].spawnUp;
+  const nx = Math.round((b.maxX - b.minX) / REACH_STEP) + 1;
+  const nz = Math.round((b.maxZ - b.minZ) / REACH_STEP) + 1;
+  const cellX = (i: number) => b.minX + i * REACH_STEP;
+  const cellZ = (j: number) => b.minZ + j * REACH_STEP;
+  const r = PLAYER_RADIUS + REACH_MARGIN;
+  const free = (i: number, j: number) => {
+    const x = cellX(i);
+    const z = cellZ(j);
+    return x > b.minX + r && x < b.maxX - r && z > b.minZ + r && z < b.maxZ - r && !isBlocked(x, z, r, geometry.obstacles, 0);
+  };
+  const seen = new Uint8Array(nx * nz);
+  const si = Math.round((start.x - b.minX) / REACH_STEP);
+  const sj = Math.round((start.z - b.minZ) / REACH_STEP);
+  const queue: number[] = [];
+  if (si >= 0 && sj >= 0 && si < nx && sj < nz && free(si, sj)) {
+    seen[sj * nx + si] = 1;
+    queue.push(sj * nx + si);
+  }
+  while (queue.length > 0) {
+    const c = queue.pop()!;
+    const i = c % nx;
+    const j = (c - i) / nx;
+    for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+      const a = i + di;
+      const k = j + dj;
+      if (a < 0 || k < 0 || a >= nx || k >= nz || seen[k * nx + a]) continue;
+      if (!free(a, k)) continue;
+      seen[k * nx + a] = 1;
+      queue.push(k * nx + a);
+    }
+  }
+  // a stand spot within a cell of a reached one (it stands with the dismount clearance, a little more than the fill's margin)
+  const reach = (x: number, z: number): boolean => {
+    const i0 = Math.floor((x - b.minX) / REACH_STEP);
+    const j0 = Math.floor((z - b.minZ) / REACH_STEP);
+    for (let j = j0; j <= j0 + 1; j++) for (let i = i0; i <= i0 + 1; i++) if (i >= 0 && j >= 0 && i < nx && j < nz && seen[j * nx + i]) return true;
+    return false;
+  };
+  if (geometry === villageGeometry) REACH_CACHE.set(key, reach);
+  return reach;
+}
+
+/** Make a house floor's seats with the stand spots kept to where a body walks to (standReach), then back to any clear spot. */
+function withHouseReach<T>(n: HouseNumber, floor: HouseFloor, geometry: MapGeometry, make: () => T): T {
+  standReach = houseStandReach(n, floor, geometry);
+  try {
+    return make();
+  } finally {
+    standReach = null;
+  }
 }
 
 /** How far (m) past the square growth of the colliders a dismount spot keeps (standsClear). */
@@ -145,6 +217,25 @@ function dismountAhead(root: Point2, yaw: number, bounds: Bounds, id: string, ge
     }
   }
   throw new Error(`no clear dismount spot ahead of bench seat ${id}`);
+}
+
+/**
+ * A house chair walled in by its table and the chairs beside it is offered from behind its backrest up to this far (m; `Seat.sidePlane`):
+ * its stand spot is there (markerSeats).
+ */
+export const CHAIR_BEHIND_PLANE = 1.6;
+
+/** The nearest clear spot round the seat point `root`, any side (a floor cushion is left wherever there is room), the facing first. */
+function dismountAround(root: Point2, yaw: number, bounds: Bounds, geometry: MapGeometry = villageGeometry): Point2 | null {
+  for (let d = STAND_STEP; d <= STAND_SEARCH + 1e-9; d += STAND_STEP) {
+    for (let k = 0; k < 16; k++) {
+      const turn = ((k % 2 === 0 ? 1 : -1) * Math.ceil(k / 2) * Math.PI) / 8;
+      const p = offset(root.x, root.z, yaw + turn, 0, d);
+      const spot = { x: Math.round(p.x * 1000) / 1000, z: Math.round(p.z * 1000) / 1000 };
+      if (standsClear(spot.x, spot.z, bounds, geometry)) return spot;
+    }
+  }
+  return null;
 }
 
 /**
@@ -276,14 +367,18 @@ function markerSeats(m: MarkerSource, place: MarkerPlace): VillageSeat[] {
     const p = offset(m.x, m.z, yaw, 0, ahead);
     const root = { x: Math.round(p.x * 1000) / 1000, z: Math.round(p.z * 1000) / 1000 };
     const id = turns.length > 1 ? `${m.id}:${turn === 0 ? "front" : "back"}` : m.id;
-    let stand: Point2;
+    let ahead0: Point2 | null = null;
     try {
-      stand = dismountAhead(root, yaw + m.exitTurn, place.bounds, id, place.geometry);
+      ahead0 = dismountAhead(root, yaw + m.exitTurn, place.bounds, id, place.geometry);
     } catch (err) {
-      if (place.lenient) continue;
-      throw err;
+      if (!place.lenient) throw err;
     }
     const cushion = m.kind === "floor" && m.back === 0;
+    // a house chair pulled up to its table or a cushion before its low table has the table straight ahead: nothing is clear there, so
+    // it is stood up from beside it (a chair: `chairStand` below, from its side; a cushion: the nearest clear spot all round)
+    if (!ahead0 && cushion) ahead0 = dismountAround(root, yaw, place.bounds, place.geometry);
+    if (!ahead0 && m.furn !== "chair") continue;
+    const stand: Point2 = ahead0 ?? root;
     const seat: VillageSeat = {
       id,
       x: root.x,
@@ -325,11 +420,23 @@ function markerSeats(m: MarkerSource, place: MarkerPlace): VillageSeat[] {
       }
       if (half < Infinity) seat.sideFar = Math.round(Math.min(CHAIR_SIDE_FAR, Math.max(CHAIR_SIDE_CLEAR + 0.1, half - seat.sideHalf + 0.1)) * 1000) / 1000;
     }
-    if (m.furn === "chair" && neighbours.length > 0) {
+    if (m.furn === "chair" && (neighbours.length > 0 || !ahead0)) {
       const side = chairStand(seat, neighbours, place.bounds, place.geometry);
       if (side) {
         seat.standX = side.x;
         seat.standZ = side.z;
+      } else if (!ahead0) {
+        // a chair in the middle of a row at a table (or at its head between two walls of chairs): neither its front nor its sides are
+        // clear, so — as one pulls such a chair out — it is sat on and stood up from from behind its backrest
+        let behind: Point2;
+        try {
+          behind = dismountAhead(root, yaw + Math.PI, place.bounds, id, place.geometry);
+        } catch {
+          continue;
+        }
+        seat.standX = behind.x;
+        seat.standZ = behind.z;
+        seat.sidePlane = CHAIR_BEHIND_PLANE;
       }
     }
     out.push(seat);
@@ -376,17 +483,20 @@ function makeSeats(benches: readonly VillageBench[]): VillageSeat[] {
   for (const n of HOUSE_NUMBERS) {
     const house = GENERATED_HOUSES[n];
     if (!house) continue;
-    const markers = [...house.seats].sort(compareHouseSeats);
+    // (a seat on a piece the game takes out — houseFixes.ts — is no seat)
+    const markers = house.seats.filter((m) => !isRemovedHouseSeat(m.id)).sort(compareHouseSeats);
     for (const m of markers) {
       const floorMarkers = markers.filter((o) => o.floor === m.floor);
       seats.push(
-        ...markerSeats(m, {
-          area: houseArea(houseBuildingId(n), m.floor),
-          bounds: houseFloorBounds(n, m.floor),
-          geometry: villageGeometry,
-          peers: floorMarkers,
-          lenient: true,
-        }),
+        ...withHouseReach(n, m.floor, villageGeometry, () =>
+          markerSeats(m, {
+            area: houseArea(houseBuildingId(n), m.floor),
+            bounds: houseFloorBounds(n, m.floor),
+            geometry: villageGeometry,
+            peers: floorMarkers,
+            lenient: true,
+          }),
+        ),
       );
     }
   }
@@ -406,11 +516,13 @@ export const VILLAGE_SEATS: readonly VillageSeat[] = Object.freeze(makeSeats(VIL
  * centre (`FLOOR_SIT_POSE`), whatever the pose of the others.
  */
 export function houseMarkerSeats(m: HouseSeatMarker): VillageSeat[] {
-  return markerSeats(m, {
-    area: houseArea(houseBuildingId(m.n), m.floor),
-    bounds: houseFloorBounds(m.n, m.floor),
-    geometry: villageGeometry,
-    peers: [m],
-    lenient: true,
-  });
+  return withHouseReach(m.n, m.floor, villageGeometry, () =>
+    markerSeats(m, {
+      area: houseArea(houseBuildingId(m.n), m.floor),
+      bounds: houseFloorBounds(m.n, m.floor),
+      geometry: villageGeometry,
+      peers: [m],
+      lenient: true,
+    }),
+  );
 }

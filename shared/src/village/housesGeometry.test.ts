@@ -20,6 +20,7 @@ import {
   type HouseFloor,
   type HouseNumber,
 } from "./houseAreas";
+import { isRemovedHouseSeat } from "./houseFixes";
 import { GENERATED_HOUSES, GENERATED_HOUSE_NUMBERS } from "./generated/houses";
 import { HOUSES_APRON, HOUSES_BLOCK, HOUSES_ZONE, allHouseWalls, houseCeilingSlab, houseFloorGeometry, houseFloorOuter, houseIsReady, housesBlockers } from "./housesGeometry";
 import { VILLAGE_LAYOUT, houseArea, isHouseArea, buildingIdFromArea, villageBounds, villageGeometry } from "./villageLayout";
@@ -214,9 +215,20 @@ describe("the house seats in the one global list", () => {
     expect(keys).toEqual(sorted);
   });
 
+  /**
+   * Markers the art leaves with no place to stand (listed for the art round, docs/designs/houses-interior/review): house 9's dining chair
+   * in the middle of the row on the stair's side — the table in front, a chair on each side, the stair 1 m behind its backrest.
+   */
+  const KNOWN_UNSITTABLE = new Set(["h9_1_6"]);
+
   it("every marker of every finished house has at least one seat; only a backless 'both' marker may lose a facing", () => {
     for (const n of GENERATED_HOUSE_NUMBERS) {
       for (const m of GENERATED_HOUSES[n]!.seats) {
+        if (isRemovedHouseSeat(m.id)) continue; // its piece is taken out (houseFixes.ts)
+        if (KNOWN_UNSITTABLE.has(m.id)) {
+          expect(houseSeats.filter((s) => s.bench === m.id), `${m.id} became sittable: drop it from KNOWN_UNSITTABLE`).toEqual([]);
+          continue;
+        }
         const mine = houseSeats.filter((s) => s.bench === m.id);
         expect(mine.length, m.id).toBeGreaterThanOrEqual(1);
         if (!(m.kind === "backless" && m.both)) expect(mine, m.id).toHaveLength(1);

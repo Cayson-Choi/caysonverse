@@ -386,11 +386,17 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
       // A click on a seat or (in the hall) on other furniture is no ground, yet means something (round 8 review: a tap on the
       // sofa did nothing): the seat's approach, to sit on arrival, or the floor next to the piece (furnitureClick.ts).
       let sitOn: number | null = null;
-      if (!houseTap && surface && surfaceKind(surface, map.geometry.obstacles, activeBounds()) === "none") {
+      // A house's floor is flat: anything facing up above it (a sofa's cushion at 0.46 m, a low table) is furniture, never a raised floor to
+      // walk onto, and a tap whose ray enters a seat (a floor cushion a few cm up, a 보료) is that seat — a tap on a cushion clear of its
+      // collider's box walked onto the cushion and did not sit (G round 3).
+      const inHouse = isHouseArea(localArea());
+      const kindNone = !!surface && surfaceKind(surface, map.geometry.obstacles, activeBounds()) === "none";
+      if (!houseTap && surface && (kindNone || inHouse)) {
         const remote = new Set(getRemoteSeatIndices());
         const fc = furnitureClick(pick, pick?.ray ?? null, map.seats ?? activeSeats(), map.seatArea, (i) => remote.has(i), from, 0, inRoom, { obstacles: map.geometry.obstacles, bounds: activeBounds() });
+        const counts = kindNone || (fc !== null && (fc.seatIndex !== null || surface.y > WALKABLE_MAX_Y));
         // (a click on the seat the player is sitting on stays nothing)
-        if (fc && !(fc.seatIndex !== null && fc.seatIndex === seat.index)) {
+        if (fc && counts && !(fc.seatIndex !== null && fc.seatIndex === seat.index)) {
           // the floor there (a column that meets a cushion or a seat first is not the floor: the room's floor level then)
           const fy = surfaceHeightAt(raycaster, scene, fc.surface.x, fc.surface.z, 0);
           surface = { ...fc.surface, y: fy <= WALKABLE_MAX_Y ? fy : 0 };
