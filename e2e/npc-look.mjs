@@ -219,7 +219,21 @@ try {
     await closeUp(P, `${label}-shop-wave.png`, [101.2, 2.0, -16.4], [102, 1.6, -20.9], 34);
     await waitIdle(P);
     await sleep(6500);
-    await act(P); // rent a rod
+    await act(P); // rent a rod (E on a PC; on a phone the lake's own big button)
+    await sleep(1200);
+    const rodNow = () => P.page.evaluate(async () => {
+      const n = await window.__imp("/src/lake/lakeNet.ts");
+      const v = { rod: 0 };
+      n.readFishView(n.selfId(), v);
+      return v.rod;
+    });
+    if ((await rodNow()) === 0) {
+      summary.rentedByModule = true;
+      const big = P.page.locator(".cv-lake-main, .cv-lake-btn").first();
+      if (await big.count()) await press(P, big).catch(() => {});
+      await sleep(800);
+      if ((await rodNow()) === 0) await P.page.evaluate(async () => (await window.__imp("/src/lake/lakeNet.ts")).sendRentRod());
+    }
     const w2 = await waved();
     const rod = await P.page.evaluate(async () => {
       const n = await window.__imp("/src/lake/lakeNet.ts");
