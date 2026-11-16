@@ -117,6 +117,12 @@ def main():
             nt.links.new(tr.outputs[0], mx.inputs[1])
             nt.links.new(src.outputs[0], mx.inputs[2])
             nt.links.new(mx.outputs[0], mout.inputs["Surface"])
+            if night and m.name == "H_hanji":            # lit paper at night: the lanterns glow through it (the bake paints the same into the light map)
+                mx.inputs["Fac"].default_value = 1.0
+                for nd in nt.nodes:
+                    if nd.type == "BSDF_PRINCIPLED":
+                        nd.inputs["Emission Color"].default_value = (0.95, 0.78, 0.5, 1.0)
+                        nd.inputs["Emission Strength"].default_value = 1.2
     for o in bpy.data.objects:
         if o.name.startswith((K.COL_PREFIX, "ceil__")) or o.get("cat") == "view":
             o.hide_render = True

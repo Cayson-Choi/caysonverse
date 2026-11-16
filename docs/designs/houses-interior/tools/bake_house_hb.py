@@ -459,6 +459,7 @@ def main():
     hb_mats.use_wallpaper(n)
     DAY["sky"] = arg("--sky", DAY["sky"], float)
     DAY["lamp_scale"] = arg("--lampday", DAY["lamp_scale"], float)
+    NIGHT["lamp_scale"] = arg("--lampnight", NIGHT["lamp_scale"], float)
     e_, a_, z_ = DAY["sun"]
     DAY["sun"] = (arg("--sun", e_, float), a_, z_)
     out_dir = os.path.abspath(arg("--out", EXPORT))
