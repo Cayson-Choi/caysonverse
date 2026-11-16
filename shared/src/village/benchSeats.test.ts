@@ -569,7 +569,9 @@ describe("the fishing lake's seats in the global index (A10, design 5.4 and 12.2
   const lakeIdx = VILLAGE_SEATS.map((s, i) => (s.lake ? i : -1)).filter((i) => i >= 0);
 
   it("come after every village seat, so every older seat index stays (Player.seatIndex is int16)", () => {
-    expect(LAKE_SEAT_BASE).toBe(VILLAGE_SEATS.length - lakeIdx.length);
+    // only the plaza zelkova deck's seats (UX 2026-11-16) come after the lake's
+    const deck = VILLAGE_SEATS.filter((s) => s.id.startsWith("zelkova_deck:")).length;
+    expect(LAKE_SEAT_BASE).toBe(VILLAGE_SEATS.length - lakeIdx.length - deck);
     expect(lakeIdx[0]).toBe(LAKE_SEAT_BASE);
     expect(lakeIdx.every((i, k) => i === LAKE_SEAT_BASE + k)).toBe(true);
     expect(lake).toHaveLength(56);
@@ -626,4 +628,40 @@ describe("the fishing lake's seats in the global index (A10, design 5.4 and 12.2
     }
   });
 });
+});
+
+describe("the plaza zelkova deck (평상, UX 2026-11-16)", () => {
+  const deck = VILLAGE_SEATS.map((s, i) => ({ s, i })).filter(({ s }) => s.id.startsWith("zelkova_deck:"));
+  const c = VILLAGE_LAYOUT.plaza.zelkova.centre;
+  const box = { minX: c.x - 2.5, maxX: c.x + 2.5, minZ: c.z - 2.5, maxZ: c.z + 2.5 };
+
+  it("six places, appended after every other seat (the lake's included), so no older index moves", () => {
+    expect(deck).toHaveLength(6);
+    expect(deck.map(({ i }) => i)).toEqual([0, 1, 2, 3, 4, 5].map((k) => VILLAGE_SEATS.length - 6 + k));
+    expect(deck[0]!.i).toBeGreaterThan(LAKE_SEAT_BASE);
+  });
+
+  it("each sits on the rim facing out, at the deck's height, a backless seat of the open village", () => {
+    for (const { s } of deck) {
+      expect(s).toMatchObject({ area: "village", kind: "backless", seatY: 0.46, lean: 0 });
+      expect(s.group).toBeUndefined(); // one facing: nobody stands on the deck to sit facing the trunk
+      const out = Math.hypot(s.x - c.x, s.z - c.z);
+      expect(out).toBeGreaterThan(2.3);
+      expect(out).toBeLessThan(2.6);
+      // facing away from the trunk
+      expect(Math.sin(s.yaw) * (s.x - c.x) + Math.cos(s.yaw) * (s.z - c.z)).toBeGreaterThan(2.2);
+    }
+  });
+
+  it("gets up onto clear ground outside the deck's collider, in front of the seat, and sitters keep apart", () => {
+    for (const { s } of deck) {
+      const inside = s.standX > box.minX - 0.3 && s.standX < box.maxX + 0.3 && s.standZ > box.minZ - 0.3 && s.standZ < box.maxZ + 0.3;
+      expect(inside, s.id).toBe(false);
+      expect(approachesSeat(s, s.standX, s.standZ)).toBe(true);
+      expect(Math.hypot(s.standX - s.x, s.standZ - s.z)).toBeLessThan(SEAT_REACH);
+    }
+    for (let a = 0; a < deck.length; a++)
+      for (let b = a + 1; b < deck.length; b++)
+        expect(Math.hypot(deck[a]!.s.x - deck[b]!.s.x, deck[a]!.s.z - deck[b]!.s.z)).toBeGreaterThan(1.2);
+  });
 });

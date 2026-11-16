@@ -16,6 +16,7 @@ import { isTouchDevice } from "../../device";
 import { HUD_INFO_BTN_W_PX } from "../../game/hud";
 import { useTouchHudLayout } from "../../ui/useTouchHudLayout";
 import { useLocalArea } from "../villageArea";
+import { useTransitState } from "../../net/transitSync";
 import { villageClock } from "../villageClock";
 import { MAX_LABELS, clearSelection, selectFigure, skyOverlay } from "./finderRuntime";
 import { currentMoon, moonState } from "./StarSkyExtras";
@@ -87,15 +88,23 @@ export function StarFinder({ orbit }: { orbit: Orbit }) {
     return () => clearTimeout(id);
   }, [notice]);
 
-  // The memorial hall has no sky.
+  // Indoors (the memorial hall, a house) and aboard the bus there is no sky to search: it closes (UX 2026-11-16).
+  const { boarded } = useTransitState();
   useEffect(() => {
-    if (area !== "village" && useStarFinder.getState().open) closeFinder();
-  }, [area]);
+    if ((area !== "village" || boarded) && useStarFinder.getState().open) closeFinder();
+  }, [area, boarded]);
+  // A scene change (a reconnect remounts the scene, leaving to the entry screen) closes it too: no card left open behind.
+  useEffect(
+    () => () => {
+      if (useStarFinder.getState().open) closeFinder();
+    },
+    [],
+  );
 
   return (
     <>
       <SkyLayers />
-      {open && area === "village" && <FinderCard orbit={orbit} />}
+      {open && area === "village" && !boarded && <FinderCard orbit={orbit} />}
       <Announcer />
     </>
   );

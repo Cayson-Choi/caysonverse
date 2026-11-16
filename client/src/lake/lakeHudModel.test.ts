@@ -93,3 +93,11 @@ describe("the words under the top bar", () => {
     expect(showStandButton(ctx({ nearRental: true }))).toBe(false);
   });
 });
+
+describe("UX 2026-11-16: no rod on a fishing chair", () => {
+  it("says to borrow one at the office first (never 던지기)", () => {
+    const c = ctx({ seatedNoRod: true });
+    expect(lakeCaption(c, false)).toBe("관리소에서 낚싯대를 먼저 빌려요.");
+    expect(lakeButton(c)?.label).not.toBe("던지기");
+  });
+});

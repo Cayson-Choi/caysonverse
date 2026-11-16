@@ -134,3 +134,9 @@ html:not(.cv-touch) .cv-coach {
     animation: none;
   }
 }
+
+/* ③ 말하기 is information only: the whole card takes a tap (it ends the guide), and says so. */
+.cv-coach.is-info {
+  pointer-events: auto;
+  cursor: pointer;
+}

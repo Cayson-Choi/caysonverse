@@ -514,7 +514,44 @@ function makeSeats(benches: readonly VillageBench[]): VillageSeat[] {
   // the fishing lake's seats (A10) after every village seat: the 30 fishing chairs first, in LAKE_FISHING_SPOTS order
   // (LAKE_SEAT_BASE + spot), then the shore benches, picnic, pavilion and porch benches
   seats.push(...lakeVillageSeats());
+  // the plaza zelkova's deck (평상, UX 2026-11-16) after the lake's: appended last so every index above stays put
+  seats.push(...zelkovaDeckSeats());
   return seats;
+}
+
+/**
+ * The plaza zelkova's round deck (평상): an octagon about the trunk (VILLAGE_LAYOUT.plaza.zelkova), its faces 0.46 m up and
+ * 2.31 m out from the trunk (measured on village.glb: the corners at game yaw 0, 45, 90, ... and the faces between them).
+ * Visitors sit on its rim facing out, the legs down over the edge — a backless seat with nothing behind the sitter but the deck,
+ * reached from outside only (the deck itself is solid ground nobody stands in), so each place is one facing. Six places, one per
+ * face, the two faces on the ring road's side (west) left free. The tap footprint (`ZELKOVA_DECK_FOOTPRINTS`) is the face's strip.
+ */
+export const ZELKOVA_DECK = { seatTop: 0.46, apothem: 2.31, faceHalf: 0.85, faces: [22.5, 67.5, 112.5, 157.5, 202.5, 337.5] } as const;
+
+function zelkovaDeckSeats(): VillageSeat[] {
+  const c = VILLAGE_LAYOUT.plaza.zelkova.centre;
+  const bounds = VILLAGE_LAYOUT.areas.village;
+  return ZELKOVA_DECK.faces.map((deg, k) => {
+    const yaw = wrapYaw((deg * Math.PI) / 180);
+    const p = offset(c.x, c.z, yaw, 0, ZELKOVA_DECK.apothem + SIT_ROOT_AHEAD);
+    const root = { x: Math.round(p.x * 1000) / 1000, z: Math.round(p.z * 1000) / 1000 };
+    const id = `zelkova_deck:${k + 1}`;
+    const stand = dismountAhead(root, yaw, bounds, id);
+    return {
+      id,
+      x: root.x,
+      z: root.z,
+      yaw,
+      standX: stand.x,
+      standZ: stand.z,
+      seatY: ZELKOVA_DECK.seatTop,
+      frontEdge: SIT_ROOT_AHEAD,
+      bench: id,
+      area: "village" as AreaId,
+      kind: "backless" as SeatKind,
+      lean: 0,
+    };
+  });
 }
 
 /**
@@ -523,7 +560,9 @@ function makeSeats(benches: readonly VillageBench[]): VillageSeat[] {
  *    facings): plaza 1..8 and the forecourt, 0..19;
  *  - the memorial hall's, from its model's markers: 20..50;
  *  - the houses' interiors: 51..90;
- *  - the bus stop shelter's bench (2), then the art's marked village seats (café terrace chairs, porch benches).
+ *  - the bus stop shelter's bench (2), then the art's marked village seats (café terrace chairs, porch benches);
+ *  - the fishing lake's (the 30 fishing chairs first: LAKE_SEAT_BASE + spot, then its benches, picnic and pavilion boards);
+ *  - the plaza zelkova's deck (6, UX 2026-11-16).
  * Index === `Player.seatIndex` in the village room: the server validates and assigns by this index, the client looks the seat up
  * by it (activeMap's `seats`) and offers only the seats of the area the player is in (`VillageSeat.area`).
  */

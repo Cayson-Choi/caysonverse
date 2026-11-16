@@ -6,9 +6,10 @@ import {
   COACH_CARD_MAX_W_PX,
   COACH_EDGE_PX,
   COACH_LOOK_RAD,
-  COACH_ZONE_LIFT_PX,
+  COACH_AVATAR_BAND,
   COACH_MOVE_M,
   COACH_POLL_MS,
+  coachAvatarRect,
   coachCardWidth,
   coachCopy,
   coachObstacles,
@@ -186,8 +187,8 @@ describe("coachCopy", () => {
     expect(coachCopy("move", false).body).toBe("W A S D(또는 방향키)로 걸어 보세요. Shift를 누르면 달려요.");
     expect(coachCopy("look", true).body).toBe("화면 오른쪽을 한 손가락으로 끌어 보세요. 두 손가락으로 벌리면 확대돼요.");
     expect(coachCopy("look", false).body).toBe("마우스를 끌거나 Z·C 키로 둘러보세요. 휠로 확대해요.");
-    expect(coachCopy("talk", true).body).toBe("아래 💬 버튼을 눌러 인사해 보세요.");
-    expect(coachCopy("talk", false).body).toBe("Enter 또는 / 를 누르고 인사해 보세요.");
+    expect(coachCopy("talk", true).body).toBe("아래 💬 버튼을 누르면 이웃과 이야기할 수 있어요.");
+    expect(coachCopy("talk", false).body).toBe("Enter 또는 / 를 누르면 이웃과 이야기할 수 있어요.");
   });
 
   it("every card is Korean text with a Hangul title and body", () => {
@@ -333,11 +334,11 @@ describe("placeCoachCard — where each card goes", () => {
     return { move: move.card, look: look.card, talk: talk.card, layout: move.layout };
   };
 
-  it("375×812 right-handed: ① hugs the left edge just above the stick zone, ② sits on the right under the top buttons, ③ is above the 💬 button", () => {
+  it("375×812 right-handed: ① and ② sit at the top under the buttons (off the avatar), ③ is above the 💬 button", () => {
     const { move, look, talk, layout } = at(375, 812, false);
-    // ①: flush left, bottom 8 px + the avatar-head lift above the zone (y = 406).
-    expect(move.x).toBe(COACH_EDGE_PX);
-    expect(move.y + move.h).toBeCloseTo(406 - MIN_GAP_PX - COACH_ZONE_LIFT_PX, 6);
+    // ①: at the top, on the stick's (left) side as far as the left column lets it
+    expect(move.y).toBeGreaterThanOrEqual(layout.topGroup.y + layout.topGroup.h + MIN_GAP_PX - 1e-6);
+    expect(move.y + move.h).toBeLessThanOrEqual(812 * COACH_AVATAR_BAND.top + 1e-6);
     // ②: flush right, below the top button row.
     expect(look.x + look.w).toBe(375 - COACH_EDGE_PX);
     expect(look.y).toBeGreaterThanOrEqual(layout.topGroup.y + layout.topGroup.h + MIN_GAP_PX);
@@ -346,11 +347,20 @@ describe("placeCoachCard — where each card goes", () => {
     expect(talk.x + talk.w).toBe(375 - COACH_EDGE_PX);
   });
 
-  it("left-handed mirrors ① and ② (the stick and the look half swap sides)", () => {
+  it("left-handed mirrors ② (the look half swaps sides); ① stays at the top, off the avatar", () => {
     const { move, look } = at(375, 812, true);
-    expect(move.x + move.w).toBe(375 - COACH_EDGE_PX); // ① above the right-hand stick zone
-    expect(move.y + move.h).toBeCloseTo(406 - MIN_GAP_PX - COACH_ZONE_LIFT_PX, 6);
+    expect(move.y + move.h).toBeLessThanOrEqual(812 * COACH_AVATAR_BAND.top + 1e-6);
     expect(look.x).toBe(COACH_EDGE_PX); // ② on the left, the look half
+  });
+
+  it("no card covers the avatar or its name tag on a portrait phone (UX 2026-11-16)", () => {
+    for (const { vw, vh } of PHONES.filter((v) => v.vh > v.vw && v.vh >= 640))
+      for (const leftHanded of [false, true])
+        for (const { step, card } of placeAll(vw, vh, "medium", leftHanded, NO_INSETS)) {
+          const a = coachAvatarRect(vw, vh);
+          const over = card.x < a.x + a.w && card.x + card.w > a.x && card.y < a.y + a.h && card.y + card.h > a.y;
+          expect(over, `${vw}×${vh} ${step} ${leftHanded} ${JSON.stringify(card)}`).toBe(false);
+        }
   });
 
   it("on a wide screen ③ is centred over the centred 💬 button", () => {
@@ -381,8 +391,8 @@ describe("coachObstacles", () => {
   it("covers every resting button plus the room-name chip", () => {
     const l = touchHudLayout({ vw: 375, vh: 812, safe: NO_INSETS, size: "medium", leftHanded: false });
     const obs = coachObstacles(l);
-    expect(obs.length).toBe(4 + 3 + 2 + 1); // jump, action, emoji, 💬 · 3 top buttons · 👥, chat-log toggle · the chip
-    const chip = obs[obs.length - 1];
+    expect(obs.length).toBe(4 + 3 + 2 + 1 + 1); // jump, action, emoji, 💬 · 3 top buttons · 👥, chat-log toggle · the chip · 🔭
+    const chip = obs[obs.length - 2];
     expect(chip.x).toBe(l.roster.x);
     expect(chip.y + chip.h + MIN_GAP_PX).toBe(l.roster.y); // the chip sits right above 👥
   });
@@ -390,7 +400,7 @@ describe("coachObstacles", () => {
   it("mirrors with the column when left-handed (the chip hangs from the right edge)", () => {
     const l = touchHudLayout({ vw: 375, vh: 812, safe: NO_INSETS, size: "medium", leftHanded: true });
     const obs = coachObstacles(l);
-    const chip = obs[obs.length - 1];
+    const chip = obs[obs.length - 2];
     expect(chip.x + chip.w).toBe(l.roster.x + l.roster.w);
   });
 });

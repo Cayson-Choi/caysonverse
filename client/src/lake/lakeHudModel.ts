@@ -101,7 +101,7 @@ export function lakeButton(c: LakeContext): LakeButtonSpec | null {
 /** The small line under the top bar: what to look at (never a different phase's words). */
 export function lakeCaption(c: LakeContext, firstTime: boolean): string {
   const v = c.view;
-  if (c.seatedNoRod) return "낚싯대가 없어요. 관리소에서 빌려요.";
+  if (c.seatedNoRod) return "관리소에서 낚싯대를 먼저 빌려요.";
   if (v.rod === 0) return c.nearRental ? "" : "";
   if (!c.seatedAtSpot) return c.nearChair >= 0 ? "빈 의자예요. 앉아서 낚시해요." : "";
   switch (v.phase) {

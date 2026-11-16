@@ -43,6 +43,11 @@ export const COACH_LOOK_RAD = 0.6;
 const EDGE_EPS = 1e-9;
 /** How often the move / look check runs (ms): 5 Hz. */
 export const COACH_POLL_MS = 200;
+/**
+ * ③ 말하기 only shows where 💬 is (UX 2026-11-16: a first-time player who did not want to chat was stuck on it): it ends by
+ * itself this long after it shows (ms), on a tap on its card, or when a line is really sent.
+ */
+export const COACH_TALK_AUTO_MS = 5000;
 
 /**
  * The step after `ev`. Only the matching action moves forward; skip ends the guide from
@@ -167,8 +172,8 @@ const COPY: Record<Exclude<CoachStep, "done">, { title: string; touch: string; p
   },
   talk: {
     title: "③ 말하기",
-    touch: "아래 💬 버튼을 눌러 인사해 보세요.",
-    pc: "Enter 또는 / 를 누르고 인사해 보세요.",
+    touch: "아래 💬 버튼을 누르면 이웃과 이야기할 수 있어요.",
+    pc: "Enter 또는 / 를 누르면 이웃과 이야기할 수 있어요.",
   },
 };
 
@@ -207,6 +212,21 @@ const COACH_CHIP_MAX_W_PX = 120;
  * avatar stands at the middle of the screen, right at that edge, and the card should clear its head.
  */
 export const COACH_ZONE_LIFT_PX = 32;
+/**
+ * Where the player's own avatar and its name tag are on a phone (the follow camera keeps them in the middle of the screen,
+ * the tag at about 40 % of the height and the feet at about 67 %): a card never sits over them (UX 2026-11-16: ① covered the
+ * name tag). Fractions of the screen, a little wider than measured on a 375×812 iPhone.
+ */
+export const COACH_AVATAR_BAND = { top: 0.35, bottom: 0.68, halfW: 75 } as const;
+/** Cost of each px² of a card over the avatar band, per px of card width (a spot clear of it always wins). */
+const AVATAR_PX_COST = 400;
+
+/** The avatar and its name tag on a `vw` × `vh` phone screen (see COACH_AVATAR_BAND). */
+export function coachAvatarRect(vw: number, vh: number): Rect {
+  const b = COACH_AVATAR_BAND;
+  return { x: vw / 2 - b.halfW, y: vh * b.top, w: 2 * b.halfW, h: vh * (b.bottom - b.top) };
+}
+
 /** Search resolution (px) of the free-spot search. */
 const COACH_GRID_PX = 4;
 /** Cost of one px of vertical overlap with the stick zone, in px of distance from the ideal spot. */
@@ -242,6 +262,8 @@ export function coachObstacles(l: TouchHudLayout): Rect[] {
   const chipW = COACH_CHIP_MAX_W_PX;
   const out = restRects(l);
   out.push({ x: onLeft ? edge : edge - chipW, y: l.roster.y - MIN_GAP_PX - HUD_CHIP_H_PX, w: chipW, h: HUD_CHIP_H_PX });
+  // the scene's own button under the chat-log toggle (케이슨 마을's 🔭): one more slot of the column
+  out.push({ ...l.chatLog, y: l.chatLog.y + l.chatLog.h + MIN_GAP_PX });
   return out;
 }
 
@@ -262,9 +284,8 @@ function overlapArea(a: Rect, b: Rect): number {
 /**
  * Where a phone shows the card for `step`: the free spot nearest to the step's ideal one.
  *
- *  - ① move: just above the stick zone (the lower quarter on the stick's side, a little
- *    higher than touching it so the avatar's head stays clear), flush with that side's edge —
- *    near the thumb's place without sitting on it.
+ *  - ① move: at the top on the stick's side, under the top button row (clear of the avatar and
+ *    its name tag in the middle of the screen).
  *  - ② look: on the look side, right under the top button row.
  *  - ③ talk: above the 💬 button, centred on it (the bottom cluster's buttons push it up).
  *
@@ -278,6 +299,25 @@ function overlapArea(a: Rect, b: Rect): number {
  * Not a per-frame call: CoachMarks runs it when the screen, settings or step change.
  */
 export function placeCoachCard(step: Exclude<CoachStep, "done">, input: CoachPlaceInput): Rect {
+  const full = placeAt(step, input);
+  if (full.cost < CLEAN_COST) return full.rect;
+  // No clean spot at full width (a portrait phone: the top-left column and the avatar leave only the strip beside the column
+  // above the avatar): the card narrows to that strip, beside the column.
+  const l = input.layout;
+  const colEdge = l.column.side === "left" ? l.roster.x + l.roster.w : l.roster.x;
+  const narrowW =
+    l.column.side === "left"
+      ? input.vw - input.safe.right - COACH_EDGE_PX - (colEdge + MIN_GAP_PX)
+      : colEdge - MIN_GAP_PX - (input.safe.left + COACH_EDGE_PX);
+  if (narrowW < 200 || narrowW >= input.w) return full.rect;
+  const narrow = placeAt(step, { ...input, w: narrowW, h: Math.ceil((input.h * input.w) / narrowW) });
+  return narrow.cost < full.cost ? { ...narrow.rect, h: input.h } : full.rect;
+}
+
+/** A cost under this is a spot with the full gap to every button and off the avatar (only the distance from the ideal). */
+const CLEAN_COST = 900;
+
+function placeAt(step: Exclude<CoachStep, "done">, input: CoachPlaceInput): { rect: Rect; cost: number } {
   const { vw, vh, safe, leftHanded, layout, w, h } = input;
   const minX = safe.left + COACH_EDGE_PX;
   const maxX = vw - safe.right - COACH_EDGE_PX - w;
@@ -292,8 +332,9 @@ export function placeCoachCard(step: Exclude<CoachStep, "done">, input: CoachPla
   let idealY: number;
   let zoneCost = ZONE_PX_COST;
   if (step === "move") {
+    // at the top on the stick's side (UX 2026-11-16: above the stick zone it sat on the avatar's name tag)
     idealX = leftHanded ? maxX : minX;
-    idealY = zone.y - MIN_GAP_PX - COACH_ZONE_LIFT_PX - h;
+    idealY = layout.topGroup.y + layout.topGroup.h + MIN_GAP_PX;
   } else if (step === "look") {
     idealX = leftHanded ? minX : maxX;
     idealY = layout.topGroup.y + layout.topGroup.h + MIN_GAP_PX;
@@ -306,6 +347,8 @@ export function placeCoachCard(step: Exclude<CoachStep, "done">, input: CoachPla
   idealY = clampY(idealY);
 
   const obstacles = coachObstacles(layout);
+  // the avatar band only where a card can go round it (a short landscape phone has no room above or below it)
+  const avatar = vh > vw ? coachAvatarRect(vw, vh) : null;
   let best: Rect = { x: idealX, y: idealY, w, h };
   let bestCost = Infinity;
   for (const y of axisValues(minY, Math.max(minY, maxY), idealY)) {
@@ -313,6 +356,7 @@ export function placeCoachCard(step: Exclude<CoachStep, "done">, input: CoachPla
       const cand: Rect = { x, y, w, h };
       let cost = Math.abs(x - idealX) + Math.abs(y - idealY);
       if (zoneCost > 0) cost += (overlapArea(cand, zone) / w) * zoneCost;
+      if (avatar) cost += (overlapArea(cand, avatar) / w) * AVATAR_PX_COST;
       if (cost >= bestCost) continue; // the shortfall below only adds
       for (const o of obstacles) {
         const gap = rectGap(cand, o);
@@ -325,5 +369,5 @@ export function placeCoachCard(step: Exclude<CoachStep, "done">, input: CoachPla
       }
     }
   }
-  return best;
+  return { rect: best, cost: bestCost };
 }

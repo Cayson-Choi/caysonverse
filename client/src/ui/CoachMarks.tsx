@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperti
 import {
   COACH_CARD_H_GUESS_PX,
   COACH_POLL_MS,
+  COACH_TALK_AUTO_MS,
   coachCardWidth,
   coachCopy,
   createCoachPoller,
@@ -76,14 +77,18 @@ function CoachCard({ step }: { step: Exclude<CoachStep, "done"> }) {
   // on its 건너뛰기 (ChatInput holds the chat layout for a tap that went down near the card — chatLayoutTargets.ts).
   useEffect(() => (spot ? addChatLayoutTargets(() => [spot]) : undefined), [spot]);
   const { title, body } = coachCopy(step, isTouchDevice, leftHanded);
+  // ③ only shows where 💬 is: a tap on the card (or 알겠어요) ends it, as does a sent line or COACH_TALK_AUTO_MS
+  const info = step === "talk";
 
   return (
     <div
       ref={ref}
-      className={"cv-coach" + (isTouchDevice ? " is-touch" : "")}
+      className={"cv-coach" + (isTouchDevice ? " is-touch" : "") + (info ? " is-info" : "")}
       style={style}
       role="status"
       data-step={step}
+      onPointerDown={info ? (e) => e.preventDefault() : undefined}
+      onClick={info ? () => report("talked") : undefined}
     >
       <div className="cv-coach-head">
         <span className="cv-coach-title">{title}</span>
@@ -93,9 +98,12 @@ function CoachCard({ step }: { step: Exclude<CoachStep, "done"> }) {
           tabIndex={-1}
           onPointerDown={(e) => e.preventDefault()}
           onMouseDown={(e) => e.preventDefault()}
-          onClick={() => report("skip")}
+          onClick={(e) => {
+            e.stopPropagation();
+            report(info ? "talked" : "skip");
+          }}
         >
-          건너뛰기
+          {info ? "알겠어요" : "건너뛰기"}
         </button>
       </div>
       <p className="cv-coach-body">{body}</p>
@@ -124,6 +132,13 @@ export function CoachMarks({ pose, orbit }: { pose: Pose; orbit: Orbit }) {
   const round = useCoachStore((s) => s.round);
   const report = useCoachStore((s) => s.report);
   const covered = useUiStore((s) => s.menuOpen || s.rosterOpen);
+
+  // ③ is information only: it ends by itself a few seconds after it shows (UX 2026-11-16), not only on a sent line
+  useEffect(() => {
+    if (step !== "talk" || covered) return;
+    const id = window.setTimeout(() => report("talked"), COACH_TALK_AUTO_MS);
+    return () => window.clearTimeout(id);
+  }, [step, round, covered, report]);
 
   useEffect(() => {
     if (step !== "move" && step !== "look") return;
