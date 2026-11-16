@@ -146,25 +146,26 @@ describe("the dex (kept on this device) and the card", () => {
     useLakeStore.setState({ dex: {}, card: null, notice: null, toasts: [] });
   });
   it("the first catch of a species is new, a bigger one a record", () => {
-    const a = recordCatch({}, 0, 24, Date.UTC(2026, 10, 16, 20));
+    const a = recordCatch({}, 1, 24, Date.UTC(2026, 10, 16, 20));
     expect(a.first).toBe(true);
-    expect(a.dex.crucian).toEqual({ best: 24, count: 1, first: "2026-11-17" }); // Korea time is +9
-    const b = recordCatch(a.dex, 0, 31, 0);
+    expect(a.dex.crucian_carp).toEqual({ best: 24, count: 1, first: "2026-11-17" }); // Korea time is +9
+    const b = recordCatch(a.dex, 1, 31, 0);
     expect(b).toMatchObject({ first: false, record: true });
-    expect(b.dex.crucian).toMatchObject({ best: 31, count: 2 });
-    const c = recordCatch(b.dex, 0, 20, 0);
+    expect(b.dex.crucian_carp).toMatchObject({ best: 31, count: 2 });
+    const c = recordCatch(b.dex, 1, 20, 0);
     expect(c.record).toBe(false);
     expect(recordCatch({}, 99, 1, 0).dex).toEqual({});
+    expect(recordCatch({}, 0, 1, 0).dex).toEqual({});
     expect(koreaDay(0)).toBe("1970-01-01");
   });
   it("landing a fish shows the card with the badge and fills the dex", () => {
-    useLakeStore.getState().landed(0, 31, Date.now());
+    useLakeStore.getState().landed(1, 31, Date.now());
     const s = useLakeStore.getState();
-    expect(s.card).toMatchObject({ kind: 0, cm: 31, first: true, badge: catchBadge(0, 31) });
-    expect(s.dex.crucian?.best).toBe(31);
+    expect(s.card).toMatchObject({ kind: 1, cm: 31, first: true, badge: "월척!" });
+    expect(s.dex.crucian_carp?.best).toBe(31);
   });
   it("cards and notices time out", () => {
-    useLakeStore.getState().landed(1, 12, Date.now());
+    useLakeStore.getState().landed(2, 12, Date.now());
     useLakeStore.getState().say("테스트", 1);
     expect(useLakeStore.getState().card).not.toBeNull();
     const t0 = performance.now();
@@ -176,7 +177,7 @@ describe("the dex (kept on this device) and the card", () => {
     expect(CARD_MS).toBeGreaterThan(3000);
   });
   it("a trophy toast names the angler, the species and the length", () => {
-    useLakeStore.getState().trophy({ name: "가나", kind: 5, cm: 72.4 });
+    useLakeStore.getState().trophy({ name: "가나", kind: 6, cm: 72.4 });
     expect(useLakeStore.getState().toasts[0]!.text).toBe("가나님이 잉어 72cm를 낚았어요!");
   });
 });

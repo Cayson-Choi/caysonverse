@@ -433,7 +433,7 @@ function LakeAnglers() {
         lakeRipple(slot.target.x, slot.target.z, 0.8);
       }
       if (v.phase === FISH_PHASE.nibble) {
-        const idx = tugIndex(t);
+        const idx = tugIndex(t, v.spot, v.seq);
         if (idx !== slot.tug) {
           slot.tug = idx;
           if (idx >= 0) lakeRipple(p.x, p.z, 0.35);

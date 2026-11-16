@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { LAKE_FISHING_SPOTS, LAKE_SHORE, LAKE_WATER_Y, distToPolygonEdge, insidePolygon, onLakeDeck } from "@caysonverse/shared/village/lakeLayout";
 import { CAST_S, FLOAT_TOP_M, RISE_S, SCATTER_M, SETTLE_S, biteMotion, floatPose, hash01, scatter, tugDip, tugIndex, type FloatPose } from "./lakeFloat";
 import { FISH_PHASE, FISH_SIG, emptyFishView } from "./lakeProtocol";
+import { floatPosition, nibbleTimesMs } from "@caysonverse/shared/village/fishing";
 
 const out = (): FloatPose => ({ visible: false, x: 0, z: 0, top: 0, y: 0, dive: 0, flying: false, flight: 0, stand: 1, taut: false });
 const view = (phase: number, extra = {}) => ({ ...emptyFishView(), rod: 1, spot: 4, phase, seq: 3, ...extra });
@@ -65,15 +66,19 @@ describe("the float of one angler, by phase (design 8)", () => {
   it("waiting bobs a few millimetres around the standing top", () => {
     for (let ms = 0; ms < 5000; ms += 250) expect(Math.abs(floatPose(view(FISH_PHASE.waiting), target, side, ms, out()).top - FLOAT_TOP_M)).toBeLessThan(0.01);
   });
-  it("the tugs dip the float a few centimetres and come back, in a rhythm", () => {
-    expect(tugDip(0.05, 3)).toBe(0);
+  it("the tugs dip the float a few centimetres at the server's seeded nibble times (nibbleTimesMs)", () => {
+    const [t1, t2] = nibbleTimesMs(4, 3).map((ms) => ms / 1000) as [number, number, number];
+    expect(tugDip(0.05, 4, 3)).toBe(0);
     let max = 0;
-    for (let t = 0; t < 6; t += 0.02) max = Math.max(max, tugDip(t, 3));
+    for (let t = 0; t < 6; t += 0.02) max = Math.max(max, tugDip(t, 4, 3));
     expect(max).toBeGreaterThan(0.03);
     expect(max).toBeLessThan(0.1);
-    expect(tugIndex(0.1)).toBe(-1);
-    expect(tugIndex(0.3)).toBe(0);
-    expect(tugIndex(0.15 + 0.62 + 0.1)).toBe(1);
+    expect(tugIndex(t1 - 0.05, 4, 3)).toBe(-1);
+    expect(tugIndex(t1 + 0.1, 4, 3)).toBe(0);
+    expect(tugIndex(t2 + 0.1, 4, 3)).toBe(1);
+  });
+  it("the landing point is the server's floatPosition", () => {
+    for (let i = 0; i < 30; i++) expect(scatter(LAKE_FISHING_SPOTS[i]!, 7)).toEqual(floatPosition(i, 7));
   });
   it("rise goes up two segments over 2 s and holds; sink goes under in 0.35 s; drag slides 45 cm while it goes under", () => {
     const rise0 = biteMotion(FISH_SIG.rise, 0);

@@ -98,7 +98,7 @@ const STANDS: ReadonlySet<FishingClip> = new Set(["Fish_Stand_Show", "Fish_Relea
 export function rodBend(view: FishView, t: number): number {
   switch (view.phase) {
     case FISH_PHASE.nibble:
-      return 0.12 * (tugDip(t, view.seq) / 0.06);
+      return 0.12 * (tugDip(t, view.spot, view.seq) / 0.06);
     case FISH_PHASE.bite:
       return 0.18;
     case FISH_PHASE.hooked:

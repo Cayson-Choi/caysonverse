@@ -1,104 +1,115 @@
-// The fishing lake (A10, chunk E): what the client knows of the server's fishing rules. Names are design 9.3 / 9.4 exactly
-// (D2 uses the same): messages FishingRentRod / FishingReturnRod / FishingSit {spot} / FishingCast / FishingStrike /
-// FishingHold {down} / FishingStand, the personal FishingState / FishingRejected, the room's FishingTrophy, and the Player
-// schema fields rod, fishSpot, fishPhase, fishSeq, fishSig, fishKind, fishCm, fishAt.
+// The fishing lake (A10, chunk E): what the client knows of the server's fishing rules. Names are design 9.3 / 9.4 exactly:
+// messages FishingRentRod / FishingReturnRod / FishingSit {spot} / FishingCast / FishingStrike / FishingHold {down} /
+// FishingStand / FishingBoardRequest, the personal FishingState / FishingRejected / FishingBoard, the room's FishingTrophy,
+// and the Player schema fields rod, fishSpot, fishPhase, fishSeq, fishSig, fishKind, fishCm, fishAt.
 //
-// This file is the ONE place the client states the numbers behind those fields (the phase and signal order, the species order).
-// The design lists the phases but not their numbers: the order of the diagram in 9.2 is used. If D2's enum differs, F changes
-// FISH_PHASE here (everything else reads the names).
+// The numbers behind those fields are NOT stated here: they come from the server's own rules (shared/village/fishing.ts:
+// FISHING_PHASES, FISH_SIGNALS, FISH_KINDS / FISH_TABLE), the single source of truth (F, 2026-11-16).
+
+import {
+  FISHING_PHASES,
+  FISH_KINDS,
+  FISH_SIGNALS,
+  FISH_TABLE,
+  fishKindFromId,
+  fishKindId,
+  needsNet as sharedNeedsNet,
+  trophyTier,
+  type FishKind,
+  type FishingPhase,
+  type FishSignal,
+} from "@caysonverse/shared/village/fishing";
+import { VillageMsg, VillageServerMsg } from "@caysonverse/shared/village/messages";
 
 export const LakeMsg = {
-  RentRod: "FishingRentRod",
-  ReturnRod: "FishingReturnRod",
-  Sit: "FishingSit",
-  Cast: "FishingCast",
-  Strike: "FishingStrike",
-  Hold: "FishingHold",
-  Stand: "FishingStand",
+  RentRod: VillageMsg.FishingRentRod,
+  ReturnRod: VillageMsg.FishingReturnRod,
+  Sit: VillageMsg.FishingSit,
+  Cast: VillageMsg.FishingCast,
+  Strike: VillageMsg.FishingStrike,
+  Hold: VillageMsg.FishingHold,
+  Stand: VillageMsg.FishingStand,
+  BoardRequest: VillageMsg.FishingBoardRequest,
 } as const;
 
 export const LakeServerMsg = {
-  State: "FishingState",
-  Rejected: "FishingRejected",
-  Trophy: "FishingTrophy",
+  State: VillageServerMsg.FishingState,
+  Rejected: VillageServerMsg.FishingRejected,
+  Trophy: VillageServerMsg.FishingTrophy,
+  Board: VillageServerMsg.FishingBoard,
 } as const;
 
-/** 9.2's diagram, in order: the numbers of `Player.fishPhase`. */
-export const FISH_PHASE = {
-  none: 0,
-  carry: 1,
-  ready: 2,
-  casting: 3,
-  settling: 4,
-  waiting: 5,
-  nibble: 6,
-  bite: 7,
-  hooked: 8,
-  lifting: 9,
-  fighting: 10,
-  netting: 11,
-  landed: 12,
-  releasing: 13,
-  missed: 14,
-} as const;
-export type FishPhaseName = keyof typeof FISH_PHASE;
-const PHASE_NAMES = Object.keys(FISH_PHASE) as FishPhaseName[];
+/** `Player.fishPhase` numbers: the index in the server's FISHING_PHASES. */
+export const FISH_PHASE = Object.freeze(Object.fromEntries(FISHING_PHASES.map((p, i) => [p, i]))) as Readonly<Record<FishingPhase, number>>;
+export type FishPhaseName = FishingPhase;
 export function phaseName(n: number): FishPhaseName {
-  return PHASE_NAMES[n] ?? "none";
+  return FISHING_PHASES[n] ?? "none";
 }
 
-/** `Player.fishSig`: how the bite shows on the float (8: rise = 찌올림, sink = 쏙 잠김, drag = 끌고 잠김). */
-export const FISH_SIG = { none: 0, rise: 1, sink: 2, drag: 3 } as const;
-export type FishSigName = keyof typeof FISH_SIG;
+/** `Player.fishSig`: how the bite shows on the float (rise = 찌올림, sink = 쏙 잠김, drag = 끌고 잠김); the index in FISH_SIGNALS. */
+export const FISH_SIG = Object.freeze(Object.fromEntries(FISH_SIGNALS.map((p, i) => [p, i]))) as Readonly<Record<FishSignal, number>>;
+export type FishSigName = FishSignal;
 export function sigName(n: number): FishSigName {
-  return (["none", "rise", "sink", "drag"] as const)[n] ?? "none";
+  return FISH_SIGNALS[n] ?? "none";
 }
 
 export interface FishSpecies {
-  id: string;
+  /** The server's kind name (= lake_fish.glb's `fish_<id>` node). */
+  id: FishKind;
+  /** `Player.fishKind` (1..11; 0 = none). */
+  kind: number;
   label: string;
-  /** Length in cm from which the fish is "big" (landed with the net; the same table as design 8's "뜰채" column). */
+  /** Length in cm from which the fish is "big" (held and netted): the server's table. */
   netFromCm: number;
-  /** Design 8's release column: the invasive ones go to the bin. */
+  /** The invasive ones go to the bin (the server's `disposal`). */
   invasive: boolean;
-  /** The colour of the card's picture (placeholder until lake_fish.glb). */
+  /** The colour of the card's little picture. */
   color: string;
-  /** "대물" length: the whole lake is told. */
-  trophyCm: number;
 }
 
-/** `Player.fishKind`: design 8's table order. */
-export const FISH_SPECIES: readonly FishSpecies[] = [
-  { id: "crucian", label: "붕어", netFromCm: 30, invasive: false, color: "#b9a46a", trophyCm: 30.3 },
-  { id: "bluegill", label: "블루길", netFromCm: 99, invasive: true, color: "#6f8f9e", trophyCm: 99 },
-  { id: "minnow", label: "피라미", netFromCm: 99, invasive: false, color: "#c9d3d8", trophyCm: 99 },
-  { id: "prussian", label: "떡붕어", netFromCm: 30, invasive: false, color: "#c7b57c", trophyCm: 33 },
-  { id: "bass", label: "배스", netFromCm: 40, invasive: true, color: "#6c7a4a", trophyCm: 45 },
-  { id: "carp", label: "잉어", netFromCm: 0, invasive: false, color: "#b9803f", trophyCm: 70 },
-  { id: "bagrid", label: "동자개", netFromCm: 99, invasive: false, color: "#a8924f", trophyCm: 99 },
-  { id: "catfish", label: "메기", netFromCm: 40, invasive: false, color: "#5d5a4a", trophyCm: 55 },
-  { id: "mirror", label: "향어", netFromCm: 0, invasive: false, color: "#a8844d", trophyCm: 55 },
-  { id: "snakehead", label: "가물치", netFromCm: 0, invasive: false, color: "#4f5640", trophyCm: 60 },
-  { id: "eel", label: "장어", netFromCm: 0, invasive: false, color: "#4b4b44", trophyCm: 60 },
-];
+/** Colours of the card pictures, by kind (presentation only). */
+const CARD_COLOR: Record<FishKind, string> = {
+  crucian_carp: "#b9a46a",
+  bluegill: "#6f8f9e",
+  minnow: "#c9d3d8",
+  prussian_carp: "#c7b57c",
+  bass: "#6c7a4a",
+  carp: "#b9803f",
+  korean_bullhead: "#a8924f",
+  catfish: "#5d5a4a",
+  mirror_carp: "#a8844d",
+  snakehead: "#4f5640",
+  eel: "#4b4b44",
+};
+
+/** Every species, in `Player.fishKind` order (FISH_SPECIES[i].kind = i + 1). */
+export const FISH_SPECIES: readonly FishSpecies[] = FISH_TABLE.map((t) => ({
+  id: t.kind,
+  kind: fishKindId(t.kind),
+  label: t.label,
+  netFromCm: t.netFromCm,
+  invasive: t.disposal === "bin",
+  color: CARD_COLOR[t.kind],
+}));
+
+/** The species of a `Player.fishKind` number, or null (0 / out of range). */
 export function species(kind: number): FishSpecies | null {
-  return FISH_SPECIES[kind] ?? null;
+  return kind >= 1 ? (FISH_SPECIES[kind - 1] ?? null) : null;
 }
 
-/** A big fish (45 cm and over, design 8): the one that is held down and netted. */
+/** A big fish (held down and netted): the server's own rule. */
 export function needsNet(kind: number, cm: number): boolean {
-  const s = species(kind);
-  return s !== null && cm >= s.netFromCm;
+  const k = fishKindFromId(kind);
+  return k !== null && sharedNeedsNet(k, cm);
 }
 
-/** The 월척 line for crucian (30.3 cm) and 4짜 (40 cm). */
+/** The card's badge: 4짜 / 월척 for a crucian (the server's integer 31 cm line), 대물 for any announced catch. */
 export function catchBadge(kind: number, cm: number): string {
-  const s = species(kind);
-  if (!s) return "";
-  if (s.id === "crucian" && cm >= 40) return "4짜!";
-  if (s.id === "crucian" && cm >= 30.3) return "월척!";
-  if (cm >= s.trophyCm && s.trophyCm < 99) return "대물!";
-  return "";
+  const k = fishKindFromId(kind);
+  if (!k) return "";
+  if (k === "crucian_carp" && cm >= 40) return "4짜!";
+  if (k === "crucian_carp" && cm >= 31) return "월척!";
+  return trophyTier(k, cm) !== "none" ? "대물!" : "";
 }
 
 /** Everything about one angler that the schema carries (design 9.4). */
@@ -129,60 +140,78 @@ export interface PersonalFishingState {
   catch?: { kind: number; cm: number; first?: boolean };
 }
 
+/**
+ * The personal FishingState (shared messages.ts `FishingStatePayload`): the phase NAME, the hold progress in ms and the fish by
+ * kind name. Read tolerantly; the HUD gets numbers (phase id, progress 0..1, fishKind id).
+ */
 export function parsePersonalState(raw: unknown): PersonalFishingState | null {
   if (!raw || typeof raw !== "object") return null;
   const r = raw as Record<string, unknown>;
   const num = (v: unknown): number | undefined => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
   const out: PersonalFishingState = {};
-  const phase = num(r.phase);
-  if (phase !== undefined) out.phase = phase;
-  const left = num(r.left ?? r.msLeft);
-  if (left !== undefined) out.left = left;
-  const progress = num(r.progress);
-  if (progress !== undefined) out.progress = Math.max(0, Math.min(1, progress));
-  if (typeof r.result === "string") out.result = r.result;
-  const c = r.catch ?? r.caught;
+  if (typeof r.phase === "string" && (FISHING_PHASES as readonly string[]).includes(r.phase)) out.phase = FISH_PHASE[r.phase as FishingPhase];
+  const closes = num(r.windowClosesInMs);
+  if (closes !== undefined) out.left = closes / 1000;
+  const hold = num(r.holdMs);
+  const need = num(r.holdNeedMs);
+  if (hold !== undefined && need !== undefined && need > 0) out.progress = Math.max(0, Math.min(1, hold / need));
+  if (typeof r.lastResult === "string") out.result = r.lastResult;
+  const c = r.catch;
   if (c && typeof c === "object") {
     const cc = c as Record<string, unknown>;
-    const kind = num(cc.kind);
-    const cm = num(cc.cm ?? cc.lengthCm);
-    if (kind !== undefined && cm !== undefined) out.catch = { kind, cm, first: cc.first === true };
+    const kind = typeof cc.kind === "string" && (FISH_KINDS as readonly string[]).includes(cc.kind) ? fishKindId(cc.kind as FishKind) : undefined;
+    const cm = num(cc.cm);
+    if (kind !== undefined && cm !== undefined) out.catch = { kind, cm };
   }
   return out;
 }
 
 export interface TrophyPayload {
   name: string;
+  /** `Player.fishKind` number. */
   kind: number;
   cm: number;
   /** "lake": told to the people at the lake, "village": the whole village (very rare). */
   scope?: string;
 }
+/** The room's FishingTrophy (shared `FishingTrophyPayload`: by, kind name, cm, tier). */
 export function parseTrophy(raw: unknown): TrophyPayload | null {
   if (!raw || typeof raw !== "object") return null;
   const r = raw as Record<string, unknown>;
-  if (typeof r.name !== "string" || typeof r.kind !== "number" || typeof r.cm !== "number") return null;
-  return { name: r.name, kind: r.kind, cm: r.cm, scope: typeof r.scope === "string" ? r.scope : undefined };
+  if (typeof r.by !== "string" || typeof r.kind !== "string" || typeof r.cm !== "number") return null;
+  if (!(FISH_KINDS as readonly string[]).includes(r.kind)) return null;
+  return { name: r.by, kind: fishKindId(r.kind as FishKind), cm: r.cm, scope: typeof r.tier === "string" ? r.tier : undefined };
 }
 
-/** Korean words for a refused action (`FishingRejected {reason}`), never a code. */
+/** Korean words for a refused action (`FishingRejected {reason}`: shared `FishingReject`), never a code. */
 export function rejectText(reason: unknown): string {
   switch (reason) {
     case "not_near_rental":
-    case "too_far":
       return "관리소 앞 노란 원으로 가까이 와요.";
+    case "not_near_return":
+      return "낚싯대는 관리소 앞에서 돌려줘요.";
     case "already_has_rod":
       return "이미 낚싯대를 빌렸어요.";
-    case "rod_required":
+    case "no_rod":
       return "먼저 관리소에서 낚싯대를 빌려요.";
+    case "stand_first":
+      return "먼저 일어나요.";
+    case "not_seated":
+      return "낚시 의자에 앉아서 해요.";
+    case "bad_spot":
+    case "too_far":
+      return "그 의자에 더 가까이 가요.";
     case "spot_taken":
       return "그 자리는 다른 분이 앉아 있어요. 다른 빈 의자를 골라요.";
-    case "no_free_spot":
-      return "빈 자리가 없어요. 벤치에서 구경해요.";
     case "too_soon":
       return "잠깐만요, 조금 있다가 다시 해요.";
-    case "not_yet":
+    case "already_cast":
+      return "이미 찌를 던졌어요. 찌를 봐요.";
+    case "too_early":
+    case "no_bite":
       return "아직이에요! 찌가 크게 움직일 때까지 기다려요.";
+    case "bite_expired":
+      return "조금 늦었어요. 다시 던져요.";
     default:
       return "지금은 할 수 없어요.";
   }

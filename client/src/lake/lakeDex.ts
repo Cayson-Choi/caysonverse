@@ -1,7 +1,7 @@
 // 내 도감 (design 9.6): which species this device has caught, the biggest of each and the first day. Kept on THIS device only
 // (localStorage) — there is no login yet, so the server cannot hold anyone's record; the panel says so.
 
-import { FISH_SPECIES } from "./lakeProtocol";
+import { FISH_SPECIES, species } from "./lakeProtocol";
 
 export interface DexEntry {
   /** Biggest length (cm). */
@@ -46,7 +46,7 @@ export function koreaDay(ms: number): string {
 
 /** Record a catch; returns the new dex and whether the species is new on this device. */
 export function recordCatch(dex: Dex, kind: number, cm: number, nowMs: number): { dex: Dex; first: boolean; record: boolean } {
-  const s = FISH_SPECIES[kind];
+  const s = species(kind);
   if (!s) return { dex, first: false, record: false };
   const prev = dex[s.id];
   const next: Dex = { ...dex, [s.id]: prev ? { best: Math.max(prev.best, cm), count: prev.count + 1, first: prev.first } : { best: cm, count: 1, first: koreaDay(nowMs) } };

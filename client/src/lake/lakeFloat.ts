@@ -1,18 +1,19 @@
 // The float (찌) of one angler as a function of the schema's fields and the room clock — pure, no three.js. Every screen
 // computes the same picture from (spot, fishSeq, fishSig, fishAt, fishPhase) (design 9.4: no coordinates are sent).
 //
-// The scatter of the landing point and the times of the 예신 tugs come from the same seed, `fishSeq` + the spot. D2's server
-// does not need them (it only picks the phase lengths); if D2 exports a shared seed function F can swap it in `scatter`.
+// The landing point and the times of the 예신 tugs are the server's own public seed functions (shared fishing.ts
+// `floatPosition`, `nibbleTimesMs`): the server, this screen and every other screen agree on them exactly.
 
 import { LAKE_FISHING_SPOTS, LAKE_WATER_Y, type LakeFishingSpot } from "@caysonverse/shared/village/lakeLayout";
+import { FISHING, floatPosition, nibbleTimesMs } from "@caysonverse/shared/village/fishing";
 import { FISH_PHASE, FISH_SIG, type FishView } from "./lakeProtocol";
 
 /** The float's top above the water when it stands (design 4.4: 1.6 x the real 5-10 cm, about 25 cm). */
 export const FLOAT_TOP_M = 0.25;
-/** How far the scatter reaches (m, design 2.3). */
-export const SCATTER_M = 0.6;
+/** How far the scatter reaches at most (m, design 2.3; the server's own radius, smaller near a neighbour or the shore). */
+export const SCATTER_M = FISHING.floatScatterM;
 
-/** A small integer hash to 0..1 (mulberry-style). */
+/** A small integer hash to 0..1 (mulberry-style): presentation only (the tug depth, the drag's side). */
 export function hash01(a: number, b = 0, c = 0): number {
   let h = (a | 0) * 374761393 + (b | 0) * 668265263 + (c | 0) * 2147483647;
   h = (h ^ (h >>> 13)) * 1274126177;
@@ -25,13 +26,11 @@ export interface Pt {
   z: number;
 }
 
-/** Where this cast's float lands: the spot's mark scattered +-SCATTER_M by the cast's seed. */
+/** Where this cast's float lands: the server's `floatPosition` (the spot's mark scattered by the cast's public seed). */
 export function scatter(spot: LakeFishingSpot, seq: number, out: Pt = { x: 0, z: 0 }): Pt {
-  const idx = LAKE_FISHING_SPOTS.indexOf(spot);
-  const a = hash01(idx + 1, seq, 11) * Math.PI * 2;
-  const r = Math.sqrt(hash01(idx + 1, seq, 23)) * SCATTER_M;
-  out.x = spot.float.x + Math.cos(a) * r;
-  out.z = spot.float.z + Math.sin(a) * r;
+  const p = floatPosition(LAKE_FISHING_SPOTS.indexOf(spot), seq);
+  out.x = p.x;
+  out.z = p.z;
   return out;
 }
 
@@ -65,31 +64,35 @@ export const CAST_S = 0.8;
 export const SETTLE_S = 2.0;
 /** The rise (찌올림): 2 segments up over 2.0 s, the top held 0.6 s (design 8). */
 export const RISE_S = 2.0;
-/** A tug (깔짝): every TUG_EVERY s one dips for TUG_S. */
-export const TUG_EVERY = 0.62;
+/** A tug (깔짝): a dip of TUG_S at each of the seeded nibble times (`nibbleTimesMs`). */
 export const TUG_S = 0.28;
 export const TUG_DEPTH = 0.06;
 
 const smooth = (t: number) => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));
 
 /**
- * The 예신 tug at time `t` seconds into the nibble phase: a dip of the float's top (m, positive = down). The number of tugs is
- * not known to the client (the server decides how long the phase lasts), so they keep coming in the seed's rhythm.
+ * The 예신 tug at time `t` seconds into the nibble phase: a dip of the float's top (m, positive = down), at the cast's seeded
+ * nibble times (the server ends the phase after the last one the fish uses, so the client never knows how many there are).
  */
-export function tugDip(t: number, seq: number): number {
-  if (t < 0.15) return 0;
-  const k = Math.floor((t - 0.15) / TUG_EVERY);
-  const into = t - 0.15 - k * TUG_EVERY;
-  if (into > TUG_S) return 0;
-  const depth = TUG_DEPTH * (0.7 + 0.6 * hash01(seq, k, 5));
-  return depth * Math.sin((into / TUG_S) * Math.PI);
+export function tugDip(t: number, spot: number, seq: number): number {
+  const times = nibbleTimesMs(spot, seq);
+  for (let k = 0; k < times.length; k++) {
+    const into = t - times[k]! / 1000;
+    if (into < 0 || into > TUG_S) continue;
+    const depth = TUG_DEPTH * (0.7 + 0.6 * hash01(seq, k, 5));
+    return depth * Math.sin((into / TUG_S) * Math.PI);
+  }
+  return 0;
 }
 
 /** Index of the tug in progress (-1 none): the water draws a small ring at its start. */
-export function tugIndex(t: number): number {
-  if (t < 0.15) return -1;
-  const k = Math.floor((t - 0.15) / TUG_EVERY);
-  return t - 0.15 - k * TUG_EVERY <= TUG_S ? k : -1;
+export function tugIndex(t: number, spot: number, seq: number): number {
+  const times = nibbleTimesMs(spot, seq);
+  for (let k = 0; k < times.length; k++) {
+    const into = t - times[k]! / 1000;
+    if (into >= 0 && into <= TUG_S) return k;
+  }
+  return -1;
 }
 
 /** The bite's motion `t` seconds after it began: the float's top (m above water) and the slide (m along the cast's direction). */
@@ -153,7 +156,7 @@ export function floatPose(view: FishView, target: Pt, side: Pt, elapsedMs: numbe
     }
     case FISH_PHASE.nibble: {
       out.visible = true;
-      const dip = tugDip(t, view.seq);
+      const dip = tugDip(t, view.spot, view.seq);
       out.top = FLOAT_TOP_M - dip;
       out.dive = Math.min(1, dip / 0.1);
       break;
@@ -187,6 +190,7 @@ export function floatPose(view: FishView, target: Pt, side: Pt, elapsedMs: numbe
 }
 
 /** Is the angler's float in the water at all (the water draws its rings for it). */
+const IN_WATER: ReadonlySet<number> = new Set([FISH_PHASE.settling, FISH_PHASE.waiting, FISH_PHASE.nibble, FISH_PHASE.bite, FISH_PHASE.hooked, FISH_PHASE.fighting, FISH_PHASE.missed]);
 export function floatInWater(phase: number): boolean {
-  return phase >= FISH_PHASE.settling && phase <= FISH_PHASE.fighting || phase === FISH_PHASE.missed;
+  return IN_WATER.has(phase);
 }
