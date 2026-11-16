@@ -15,3 +15,9 @@ All scans are CC0 (public domain); the downloads stay in `art/village/downloads/
 
 The reference photos the look was judged against (Korean countryside houses) are other people's photos: they stay in
 `art/village/refs/exterior/` with their `SOURCES.txt` and are never committed.
+
+## X2 porch kit (2026-11-17)
+No new texture sets (the seven sets are at the 3 MB budget): the porch, steps, beds, deck, bench, LPG, mailbox and garden reuse
+the sets above, tinted per part. The flower / vegetable cards use the village's own procedural `T_flora` atlas
+(`docs/handoff/art-tools/make_textures.py`, no third-party pixels) through village.glb's `M_leaf_flora`. The porch reference
+photos (other people's) stay in `art/village/refs/exterior_x2/` with their `SOURCES.txt`, never committed.

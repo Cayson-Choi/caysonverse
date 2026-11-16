@@ -50,6 +50,8 @@ FASCIA_H = 0.30
 SHINGLE_LIP = 0.028                    # design 4.1: each course 2.8 cm proud of the one above
 INTERIOR_W = 10.6
 INTERIOR_D = 7.8
+# X2 (porch_kit.py): the front eave's down pipes end in the porch beds' drain collars
+FRONT_PIPES_INTO_BEDS = True
 
 TRIM = "#F4F1EA"
 FRAME_WHITE = "#F3F1EC"
@@ -976,8 +978,14 @@ def gutter(H, s, ze, xe):
     yo = gy0
     y_kick = yo - 0.22
     y_wall = y_kick - abs(zo - zp) * 1.0                 # 45 degree swan neck
+    # X2: the front pipes stand in the porch's raised flower beds (porch_kit.beds, soil at 0.29) and run straight into a
+    # drain collar there (no shoe, no splash block buried in the bed); the back pipes keep their shoe and splash block.
+    into_bed = s > 0 and FRONT_PIPES_INTO_BEDS
     for px in (-(HB - 0.32), HB - 0.32):
-        pts = [(px, yo + 0.01, zo), (px, y_kick, zo), (px, y_wall, zp), (px, 0.24, zp), (px, 0.09, zp + s * 0.12)]
+        if into_bed:
+            pts = [(px, yo + 0.01, zo), (px, y_kick, zo), (px, y_wall, zp), (px, 0.27, zp)]
+        else:
+            pts = [(px, yo + 0.01, zo), (px, y_kick, zo), (px, y_wall, zp), (px, 0.24, zp), (px, 0.09, zp + s * 0.12)]
         square_tube(de, pts, hp, g)
         # clamps: a band round the pipe and a standoff to the wall
         for yy in (1.0, 2.6, 4.2, 5.8, max(y_wall - 0.4, 6.4)):
@@ -985,6 +993,8 @@ def gutter(H, s, ze, xe):
                 max(zp - s * (hp + 0.006), zp + s * (hp + 0.006)), "metal_painted", mul(g, 1.1), skip=(), along="x")
             box(de, px - 0.01, px + 0.01, yy + 0.005, yy + 0.025, min(zw, zp - s * hp), max(zw, zp - s * hp), "metal_painted",
                 mul(g, 0.9), skip=("bot",), along="z")
+        if into_bed:
+            continue
         # granite splash block on the lawn under the shoe
         sz0, sz1 = zp + s * 0.0, zp + s * 0.6
         box(de, px - 0.25, px + 0.25, -0.02, 0.05, min(sz0, sz1), max(sz0, sz1), "granite", (1, 1, 1, 1), skip=("bot",), along="z")
