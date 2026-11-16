@@ -100,14 +100,21 @@ function Greybox() {
 function LakeGlb({ tier }: { tier: VillageTier }) {
   const gltf = useGLTF(LAKE_URLS.lake, DRACO_PATH);
   const structs = useGLTF(LAKE_URLS.structures, DRACO_PATH);
-  const [lmDay, lmNight, reflDay, reflNight] = useTexture([LAKE_URLS.lightmap, LAKE_URLS.lightmapNight, LAKE_URLS.reflDay, LAKE_URLS.reflNight]) as Texture[];
+  const [lmDay, lmNight, reflDay, reflNight, sLmDay, sLmNight] = useTexture([
+    LAKE_URLS.lightmap,
+    LAKE_URLS.lightmapNight,
+    LAKE_URLS.reflDay,
+    LAKE_URLS.reflNight,
+    LAKE_URLS.structuresLm,
+    LAKE_URLS.structuresLmNight,
+  ]) as Texture[];
   const dressed = useMemo(() => {
     const terrain = gltf.scene.clone(true);
     const facilities = structs.scene.clone(true);
     const t = prepareLakeTerrain(terrain, lmDay!, lmNight!, tier, gltf.scene.userData);
-    const f = prepareLakeStructures(facilities);
+    const f = prepareLakeStructures(facilities, sLmDay!, sLmNight!);
     return { terrain, facilities, ...t, ...f };
-  }, [gltf, structs, lmDay, lmNight, tier]);
+  }, [gltf, structs, lmDay, lmNight, sLmDay, sLmNight, tier]);
   useEffect(() => () => disposeLake(dressed), [dressed]);
   const look = useMemo<LakeWaterLook>(
     () => ({ reflDay: reflDay!, reflNight: reflNight!, lightmap: lmDay!, lightmapNight: lmNight!, lamps: dressed.lampHeads.map((p) => ({ x: p.x, z: p.z })) }),
@@ -121,7 +128,7 @@ function LakeGlb({ tier }: { tier: VillageTier }) {
       m.renderOrder = 2;
     }
   }, [dressed, water]);
-  // the lamps' own light at night on the pier and the 좌대 (the structures have no baked light map): the rich tier only, always in
+  // the lamps' own light at night on the pier and the 좌대 (the facilities' light maps carry the lamps' pools; these lights are for the avatars): the rich tier only, always in
   // the scene (a light count that changes would recompile every lit material at dusk), dark by day
   const lampLights = useRef<Array<PointLight | null>>([]);
   useFrame(() => {

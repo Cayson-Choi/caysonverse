@@ -333,6 +333,12 @@ def hill_tint(ob, is_grass):
     k1 = 0.92 + 0.12 * G.vnoise(X * 0.9, Z * 0.9, 0.5) + 0.07 * G.vnoise(X * 3.3, Z * 3.3, 3.5)
     dry = np.clip(G.vnoise(X * 0.5, Z * 0.5, 7.0) * 0.6 + 0.1, 0, 1)
     r, g, b = k1 * (1 + 0.2 * dry), k1 * (1 + 0.03 * dry), k1 * (1 - 0.22 * dry)
+    # F follow-up: the photos' grass is a muted olive, not the village lawn's lime. Next to the village (x < ~104) the tone is the
+    # village's (the runtime grade matches the seam at x 95.5); eastward it moves to the muted olive of the reference photos.
+    olive = G.smoothstep(104.0, 136.0, X)
+    r = r * (1 + 0.04 * olive)
+    g = g * (1 - 0.13 * olive)
+    b = b * (1 + 0.22 * olive)
     hillk = G.smoothstep(1.0, 9.0, e)
     # the forest floor: darker, bluer green (the village's backdrop reads as a canopy there)
     r = r * (1 - 0.5 * hillk)
@@ -393,8 +399,15 @@ def build_water(coll):
     """The water surface: the outline 0.5 m past the waterline (hidden under the bank) as quad-strip rings towards the
     middle, which is fanned. Vertices carry the depth: COLOR_0 = (depth / 3.5, 1 - depth / 1.2 (clamped, the shallows),
     0). UV0 = world metres / 16."""
-    offs = [0.5, -0.2, -0.9, -1.8, -3.2, -5.2, -8.0, -12.0, -17.0]
+    offs = [0.5, -0.2, -0.9, -1.8, -3.2, -5.2, -8.0, -10.5, -13.5, -17.0]
     rings = water_rings(offs)
+    # F follow-up: the old fan from the last ring to the centre was one 17 m sliver per outline point (COLOR_0 showed bands); the
+    # middle is now filled by shrinking rings (every ~4 m), so the vertex data (depth, shallows, distance) is smooth enough to use
+    # as it is
+    base_ring = rings[-1]
+    cen0 = base_ring.mean(axis=0)
+    for f in (0.8, 0.6, 0.4, 0.2):
+        rings.append(cen0 + (base_ring - cen0) * f)
     mb = MB()
     up = Vector((0, 0, 1))
 

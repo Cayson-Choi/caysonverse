@@ -10,8 +10,11 @@
 //  - `inst__lakehi_*`: the rich tier only.
 //  - `lake_water`: the lake's runtime water (lakeWater.ts) reading COLOR_0 (r depth, g shallows, b distance from the shore).
 //  - structures: `col__*`, `seat__*`, `spot__*`, `light__*`, `npc__*` helpers hidden; the lamps' and windows' emissive glow
-//    follows the night; lamps 2-4 are moved onto the pier edge (D1 put their posts in the water; `LAKE_LAMPS` now stands
-//    them on the deck) by offsetting their vertices of the merged `lake_lamps` mesh at run time (art follow-up: B's model).
+//    follows the night; every lit-by-the-scene material of B's model (wood, metal, paint, siding, ...) is replaced by a
+//    light-mapped one, like the terrain's: B's own day / night light maps (`lake_structures_lm*.webp`, UV1, baked with the
+//    same sun, sky and lamps; art follow-up F2) give the pier, the huts and the office their ambient occlusion and the lamps'
+//    light pools at night, on phones too. Emissive and glass materials stay as the loader made them. B's model now has the
+//    lamps 2-4 where `LAKE_LAMPS` puts them (the old run-time vertex shift is gone).
 //
 // Everything here works on CLONES of the cached glTF scenes; the materials are the loader's, changed idempotently.
 
@@ -26,7 +29,7 @@ import {
   type Object3D,
   type Texture,
 } from "three";
-import { LAKE_AREA, LAKE_LAMPS } from "@caysonverse/shared/village/lakeLayout";
+import { LAKE_AREA } from "@caysonverse/shared/village/lakeLayout";
 import { configureLightmap, lightmapMaterial } from "../game/hub/hubModelPrep";
 import { GROUND_GRADE, GROUND_GRADE_NIGHT, liftMaterial, type VillageTier } from "../village/villageModelPrep";
 import type { DayNightState } from "../village/dayNightBlend";
@@ -53,15 +56,6 @@ export const cellKey = (x: number, z: number): number => Math.floor(x / RIDGE_CE
 /** The seam when lake.glb says nothing (or the greybox): the lake zone. */
 export const DEFAULT_SEAM: LakeSeam = { holes: [LAKE_AREA], ridgeCells: new Set() };
 
-/** Where B's model has the posts of lamps 2-4 (D1's first layout, in the water); `LAKE_LAMPS` has the new ones. */
-export const B_LAMP_POSTS: Readonly<Record<number, { x: number; z: number }>> = {
-  1: { x: 120, z: -15.2 },
-  2: { x: 130, z: -15.2 },
-  3: { x: 140, z: -19 },
-};
-/** The lamps' arms reach this far toward +z from the post, and this far around it (m): every lake_lamps vertex of a lamp. */
-const LAMP_REACH = { back: 0.6, ahead: 2.4, side: 0.9 };
-
 export interface LakeDressed {
   /** The lake's water meshes (they get the runtime water material). */
   water: Mesh[];
@@ -82,6 +76,19 @@ export interface LakeDressed {
 export const lakeNightMap: { value: Texture | null } = { value: null };
 export const lakeNightBlend = { value: 0 };
 const LAKE_LIGHT = { nightMap: lakeNightMap, nightBlend: lakeNightBlend, key: "lake" };
+/** The facilities' own night light map (UV1 of lake_structures.glb) and its light recipe (same weight as the terrain's). */
+export const structuresNightMap: { value: Texture | null } = { value: null };
+const STRUCT_LIGHT = { nightMap: structuresNightMap, nightBlend: lakeNightBlend, key: "lake-structures" };
+
+/**
+ * The lake's lawn (its own light map, its own vertex tint) next to the village's lawn at x 95.5: measured in the game at noon the
+ * lake's grass was 7 % / 5 % / 14 % brighter (r, g, b) than the village's, a visible seam; the village's grade times this makes the
+ * two lawns the same colour at the seam (measured again after the re-bake; east of x ~104 the build's vertex tint moves the lake
+ * to the photos' muted olive).
+ */
+export const LAKE_GRASS_MATCH = [0.88, 0.93, 0.915] as const;
+/** The same at night: the lake's night bake is lifted (photos of night fishing are not black), the village's lawn is darker, so the seam showed a step. */
+export const LAKE_GRASS_MATCH_NIGHT = [0.4, 0.46, 0.45] as const;
 
 const FOLIAGE = /^(M_plant|M_bark|M_leaf_)/;
 const HELPER = /^(col__|seat__|spot__|light__|npc__)/;
@@ -112,8 +119,10 @@ export function prepareLakeTerrain(root: Object3D, day: Texture, night: Texture 
       if (m.name.startsWith("LM_")) {
         lightmapMaterial(m, day);
         liftMaterial(m, LAKE_LIGHT);
-        const grade = GROUND_GRADE[m.name];
-        const gn = GROUND_GRADE_NIGHT[m.name];
+        const village = GROUND_GRADE[m.name];
+        const grade = village && m.name === "LM_grass" ? ([village[0]! * LAKE_GRASS_MATCH[0], village[1]! * LAKE_GRASS_MATCH[1], village[2]! * LAKE_GRASS_MATCH[2]] as const) : village;
+        const gnVillage = GROUND_GRADE_NIGHT[m.name];
+        const gn = gnVillage && m.name === "LM_grass" ? ([gnVillage[0]! * LAKE_GRASS_MATCH_NIGHT[0], gnVillage[1]! * LAKE_GRASS_MATCH_NIGHT[1], gnVillage[2]! * LAKE_GRASS_MATCH_NIGHT[2]] as const) : gnVillage;
         if (grade) {
           (m as MeshBasicMaterial).color.setRGB(grade[0], grade[1], grade[2]);
           if (gn && !graded.some((g) => g.material === m)) graded.push({ material: m as MeshBasicMaterial, day: grade, night: gn });
@@ -150,17 +159,31 @@ export function seamOf(extras: unknown, ridge: Mesh | null): LakeSeam {
   return { holes: rects.length > 0 ? rects : DEFAULT_SEAM.holes, ridgeCells: cells };
 }
 
-/** Which of B's lamps (0-based index into LAKE_LAMPS) a vertex of `lake_lamps` belongs to, among the moved ones; -1 none. */
-export function movedLampOf(x: number, z: number): number {
-  for (const [k, post] of Object.entries(B_LAMP_POSTS)) {
-    const dz = z - post.z;
-    if (Math.abs(x - post.x) <= LAMP_REACH.side && dz >= -LAMP_REACH.back && dz <= LAMP_REACH.ahead) return Number(k);
-  }
-  return -1;
+/** The light-mapped copy of one of B's lit materials (one per source material, whatever clone asks). */
+const lightMapped = new WeakMap<Material, MeshBasicMaterial>();
+
+/** Emissive or see-through materials keep the loader's lit material (a lamp's bulb, a window: nothing to occlude). */
+function keepsItsOwn(m: MeshStandardMaterial): boolean {
+  return (m.emissive && m.emissive.r + m.emissive.g + m.emissive.b > 0.01) || m.transparent || m.alphaTest > 0 || /glass/i.test(m.name);
 }
 
-/** Dress a clone of lake_structures.glb (B). */
-export function prepareLakeStructures(root: Object3D): Pick<LakeDressed, "glows" | "lampHeads" | "own"> {
+/** B's `MeshStandardMaterial` as a light-mapped basic one: the same texture, colour and vertex colours, the village's light recipe. */
+export function structureMaterial(src: MeshStandardMaterial, day: Texture): MeshBasicMaterial {
+  let m = lightMapped.get(src);
+  if (!m) {
+    m = new MeshBasicMaterial({ name: `LM_${src.name}`, map: src.map, color: src.color.clone(), vertexColors: src.vertexColors, side: src.side });
+    lightMapped.set(src, m);
+  }
+  lightmapMaterial(m, day);
+  liftMaterial(m, STRUCT_LIGHT);
+  return m;
+}
+
+/** Dress a clone of lake_structures.glb (B). `day` / `night`: its light maps (null: the loader's lit materials stay). */
+export function prepareLakeStructures(root: Object3D, day: Texture | null = null, night: Texture | null = null): Pick<LakeDressed, "glows" | "lampHeads" | "own"> {
+  if (day) configureLightmap(day);
+  if (night) configureLightmap(night);
+  structuresNightMap.value = night;
   const glows: LakeDressed["glows"] = [];
   const own: BufferGeometry[] = [];
   const lampHeads: Vector3[] = [];
@@ -169,12 +192,8 @@ export function prepareLakeStructures(root: Object3D): Pick<LakeDressed, "glows"
     if (HELPER.test(o.name)) {
       o.visible = false;
       if (/^light__lake_lamp_(\d+)/.test(o.name)) {
-        const k = Number(/^light__lake_lamp_(\d+)/.exec(o.name)![1]) - 1;
         const p = new Vector3();
         o.getWorldPosition(p);
-        const post = B_LAMP_POSTS[k];
-        const to = LAKE_LAMPS[k];
-        if (post && to) p.add(new Vector3(to.x - post.x, 0, to.z - post.z));
         lampHeads.push(p);
       }
       return;
@@ -183,46 +202,22 @@ export function prepareLakeStructures(root: Object3D): Pick<LakeDressed, "glows"
     if (!mesh.isMesh) return;
     mesh.castShadow = false;
     mesh.receiveShadow = false;
-    for (const m of materialsOf(mesh)) {
+    const mats = materialsOf(mesh);
+    const dressed = mats.map((m) => {
       const s = m as MeshStandardMaterial;
-      if (s.isMeshStandardMaterial && s.emissive && (s.emissive.r + s.emissive.g + s.emissive.b > 0.01) && !glows.some((g) => g.material === s)) glows.push({ material: s, strength: s.emissiveIntensity });
-    }
-    if (/^lake_lamps(_\d+)?$/.test(mesh.name)) {
-      const moved = moveLamps(mesh.geometry);
-      if (moved) {
-        own.push(moved);
-        mesh.geometry = moved;
-      }
-    }
+      if (!s.isMeshStandardMaterial) return m;
+      if (s.emissive && (s.emissive.r + s.emissive.g + s.emissive.b > 0.01) && !glows.some((g) => g.material === s)) glows.push({ material: s, strength: s.emissiveIntensity });
+      if (!day || keepsItsOwn(s) || !mesh.geometry.getAttribute("uv1")) return m;
+      return structureMaterial(s, day);
+    });
+    mesh.material = Array.isArray(mesh.material) ? dressed : dressed[0]!;
   });
   return { glows, lampHeads, own };
 }
 
-/** A copy of the lamps' geometry with lamps 2-4 moved onto the pier edge (null when nothing moves). */
-export function moveLamps(geo: BufferGeometry): BufferGeometry | null {
-  const src = geo.getAttribute("position") as BufferAttribute | undefined;
-  if (!src) return null;
-  const pos = src.clone();
-  let moved = 0;
-  for (let i = 0; i < pos.count; i++) {
-    const k = movedLampOf(pos.getX(i), pos.getZ(i));
-    if (k < 0) continue;
-    const post = B_LAMP_POSTS[k]!;
-    const to = LAKE_LAMPS[k]!;
-    pos.setXYZ(i, pos.getX(i) + to.x - post.x, pos.getY(i), pos.getZ(i) + to.z - post.z);
-    moved++;
-  }
-  if (moved === 0) return null;
-  const out = geo.clone();
-  out.setAttribute("position", pos);
-  out.computeBoundingBox();
-  out.computeBoundingSphere();
-  return out;
-}
-
 /** Per frame: the time of day on the lake's own parts (the shared village uniforms are already written by the village). */
 export function lakeDayNight(d: Pick<LakeDressed, "glows" | "hazed" | "graded">, s: DayNightState): void {
-  lakeNightBlend.value = lakeNightMap.value ? s.night : 0;
+  lakeNightBlend.value = lakeNightMap.value || structuresNightMap.value ? s.night : 0;
   for (const m of d.hazed) m.color.setRGB(s.hazeTint[0], s.hazeTint[1], s.hazeTint[2]);
   for (const g of d.graded) {
     const n = s.night;

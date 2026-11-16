@@ -119,23 +119,23 @@ void main() {
   vec3 R = reflect( -V, N );
   float ry = clamp( R.y, 0.0, 1.0 );
   #ifdef USE_LAKE_COLOR
-  // the baked panorama (equirect, its middle looking south = +z, its right edge west), blurred more toward the lake's middle
+  // the baked panorama (equirect, its middle looking south = +z, its right edge west), a little blurred (more toward the lake's middle)
   vec3 Rp = normalize( vec3( R.x, max( R.y, 0.0 ), R.z ) );
   vec2 puv = vec2( 0.5 + atan( -Rp.x, Rp.z ) / 6.2831853, 0.5 + asin( Rp.y ) / 3.1415927 );
-  // the water's data per pixel: COLOR_0 (r depth, g shallows, b distance from the shore) is per vertex on A's long sliver
-  // triangles and shows them as bands; the same quantities come from the shore's distance field (lakeShoreField)
+  // the water's data per pixel: A's COLOR_0 (r depth, g shallows, b distance from the shore) is per vertex: even with the mesh filled by
+  // rings every few metres (F: no more 17 m slivers) its straight triangle edges show as faint bands in the shallows, so the same
+  // quantities come from the shore's distance field (lakeShoreField), smooth per pixel; COLOR_0 stays the fallback look
   vec3 data = vData;
   {
     float d = texture2D( uShoreDist, ( vWorld.xz - uShoreBox.xy ) / uShoreBox.zw ).r * 24.0;
     data = vec3( clamp( d / 7.0, 0.0, 1.0 ), 1.0 - smoothstep( 0.0, 3.0, d ), clamp( d / 24.0, 0.0, 1.0 ) );
   }
-  float blur = 1.5 + 2.0 * data.b;
+  float blur = 1.0 + 1.6 * data.b;
   vec3 pano = mix( texture2D( uReflDay, puv, blur ).rgb, texture2D( uReflNight, puv, blur ).rgb, uNight );
-  // A's panorama was rendered from (145, -12), on the T-end's deck: below ~35 degrees it shows the deck and its railings, so
-  // the low reflections are the forested ridge's dark band and the horizon (as without the panorama); the sky above is the bake's
-  vec3 low = mix( uHorizon, uZenith, pow( ry, 0.6 ) );
-  low = mix( uTreeLine, low, smoothstep( 0.05, 0.32, ry ) );
-  vec3 refl = mix( low, pano, smoothstep( 0.5, 0.75, ry ) );
+  // the panorama is A's open-water render (from (162, -14), 1.5 m above the water, no deck or railing in view): the sky, the bank's
+  // forest and the far ridges all round, so the water reflects them as the photos do (no 35 degree fallback any more)
+  // a little lift of the dark bank (the photos' water shows the forest and the ridges as soft mid tones, not black)
+  vec3 refl = pow( pano, vec3( 0.86 ) ) * 1.08;
   // the bake's light on the water: the shadows of the trees and the structures (× 1.6, the light maps' gain)
   vec3 lm = texture2D( uLm, vLmUv ).rgb;
   if ( uLmNightOn > 0.5 ) lm = mix( lm, texture2D( uLmNight, vLmUv ).rgb * 2.2, uNight );
@@ -144,9 +144,9 @@ void main() {
   float deepMix = clamp( 0.65 * data.r + 0.55 * data.b, 0.0, 1.0 );
   vec3 body = mix( uShallow, uDeep, smoothstep( 0.0, 0.9, deepMix ) ) * uTint * shade;
   // softened reflections: a muted panorama, a little less in the shallows (the bank shows through), never a mirror
-  float reflAmt = clamp( fres * 0.85 + 0.06, 0.0, 0.72 ) * mix( 0.75, 1.0, data.b ) * ( 1.0 - uDebug.z );
+  float reflAmt = clamp( fres * 0.95 + 0.14, 0.0, 0.82 ) * mix( 0.8, 1.0, data.b ) * ( 1.0 - uDebug.z );
   float glint = pow( max( dot( R, normalize( uSunDir ) ), 0.0 ), 260.0 );
-  vec3 col = mix( body, refl * mix( 0.8, 0.65, data.b ), reflAmt );
+  vec3 col = mix( body, refl * 0.9, reflAmt );
   col += uSunColor * glint * 1.6 * ( 1.0 - uNight ) * shade;
   #else
   vec3 refl = mix( uHorizon, uZenith, pow( ry, 0.6 ) );
@@ -188,7 +188,7 @@ let shoreField: { texture: DataTexture; box: { minX: number; maxX: number; minZ:
 
 /**
  * The distance from the shore inside the water (m / 24, 0 at the bank), on a 192 x 256 grid over the shoreline's box: made once
- * from LAKE_SHORE, linearly filtered. The water reads it per pixel (depth, shallows and the distance of A's COLOR_0).
+ * from LAKE_SHORE. The water reads it per pixel (depth, shallows and the distance of A's COLOR_0 per vertex show triangle edges).
  */
 export function lakeShoreField(): { texture: DataTexture; box: { minX: number; maxX: number; minZ: number; maxZ: number } } {
   if (shoreField) return shoreField;

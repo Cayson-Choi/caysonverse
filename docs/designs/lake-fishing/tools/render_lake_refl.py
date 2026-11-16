@@ -1,5 +1,5 @@
 """The reflection panorama of the lake (design 4.2): a 1024 x 512 equirect picture of what stands around the water, seen from
-the middle of the lake just above the surface, day and night. The water shader looks it up by the reflected view direction.
+the middle of the lake just above the surface (1.5 m), day and night. The water shader looks it up by the reflected view direction.
 
   blender -b art/lake/work/lake_authoring.blend -P art/lake/tools/render_lake_refl.py -- --out art/lake/work [--night] [--samples 96]
   -> lake_refl_day.png / lake_refl_night.png (post_lake.py makes the WebP)
@@ -99,8 +99,8 @@ def main():
     if water:
         water.hide_render = True
     for o in bpy.data.objects:
-        if o.get("cat") == "collider":
-            o.hide_render = True
+        if o.get("cat") in ("collider", "occluder"):
+            o.hide_render = True   # the pier / huts / office are not part of the sky and shore picture (F, open-water point)
     # a sky dome like the village's is not in the lake scene: the world (HDRI) is the sky
     if night:
         BL.setup_night(scene)
@@ -143,8 +143,10 @@ def main():
     cd.clip_end = 6000
     cam = bpy.data.objects.new("refl", cd)
     scene.collection.objects.link(cam)
-    cx, cz = 145.0, -12.0
-    cam.location = V(cx, cz, G.WATER_Y + 1.0)
+    # an open-water point (F follow-up): the middle of the reservoir, 16 m from the nearest bank and from every deck, so no deck or
+    # railing is in view and the panorama is the sky, the ridges and the forest all round
+    cx, cz = 162.0, -14.0
+    cam.location = V(cx, cz, G.WATER_Y + 1.5)
     # forward = south (+z game): the picture's centre looks south, its left edge is north
     cam.rotation_mode = "QUATERNION"
     cam.rotation_quaternion = V(0, 1, 0).to_track_quat("-Z", "Y") if False else (Vector((0, -1, 0))).to_track_quat("-Z", "Y")

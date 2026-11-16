@@ -1,30 +1,56 @@
 import { describe, expect, it } from "vitest";
-import { BufferGeometry, Float32BufferAttribute, Mesh, MeshBasicMaterial } from "three";
+import { BufferGeometry, Float32BufferAttribute, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, Texture } from "three";
 import { LAKE_AREA, LAKE_DECKS, LAKE_LAMPS } from "@caysonverse/shared/village/lakeLayout";
-import { B_LAMP_POSTS, DEFAULT_SEAM, cellKey, moveLamps, movedLampOf, seamOf } from "./lakeModelPrep";
+import { DEFAULT_SEAM, cellKey, prepareLakeStructures, seamOf, structureMaterial } from "./lakeModelPrep";
 import { lakeShoreField } from "./lakeWater";
 
 const onDeck = (x: number, z: number) => LAKE_DECKS.some((d) => x >= d.box.minX && x <= d.box.maxX && z >= d.box.minZ && z <= d.box.maxZ);
 
-describe("the lake's lamps (D1 put 2-4 in the water; F stands them on the pier)", () => {
+describe("the lake's lamps (D1 put 2-4 in the water; F stands them on the pier, B's model now has them there)", () => {
   it("lamps 2-4 now stand on a deck, inside its edge", () => {
     for (const k of [1, 2, 3]) expect(onDeck(LAKE_LAMPS[k]!.x, LAKE_LAMPS[k]!.z), `lamp ${k + 1}`).toBe(true);
   });
-  it("a vertex of B's lamp 2-4 (post, arm, head) is moved by the post's offset; the others stay", () => {
-    expect(movedLampOf(120, -15.2)).toBe(1);
-    expect(movedLampOf(120.3, -13.15)).toBe(1); // the head over the pier
-    expect(movedLampOf(130, -14)).toBe(2);
-    expect(movedLampOf(140, -18)).toBe(3);
-    expect(movedLampOf(110, -15.2)).toBe(-1); // lamp 1 is on the ground
-    expect(movedLampOf(103, -14.5)).toBe(-1);
-    const g = new BufferGeometry();
-    g.setAttribute("position", new Float32BufferAttribute([120, 1, -15.2, 110, 1, -15.2, 130, 3, -13.15], 3));
-    const moved = moveLamps(g)!;
-    const p = moved.getAttribute("position");
-    expect([p.getX(0), p.getZ(0)]).toEqual([LAKE_LAMPS[1]!.x, expect.closeTo(LAKE_LAMPS[1]!.z, 5)]);
-    expect([p.getX(1), p.getZ(1)]).toEqual([110, expect.closeTo(-15.2, 5)]);
-    expect(p.getX(2)).toBeCloseTo(130 + LAKE_LAMPS[2]!.x - B_LAMP_POSTS[2]!.x, 5);
-    expect(g.getAttribute("position").getX(0)).toBe(120); // the loader's geometry is never edited
+});
+
+describe("the facilities' light-mapped materials", () => {
+  const src = (over: Partial<MeshStandardMaterial> = {}) => Object.assign(new MeshStandardMaterial({ name: "M_lake_wood", color: "#aa8855", vertexColors: true }), over);
+  it("a lit wood material becomes one light-mapped basic copy (the same copy every time), with B's colour and vertex colours", () => {
+    const day = new Texture();
+    const m = src();
+    const a = structureMaterial(m, day);
+    expect(a).toBeInstanceOf(MeshBasicMaterial);
+    expect(a.lightMap).toBe(day);
+    expect(a.vertexColors).toBe(true);
+    expect(a.color.getHex()).toBe(m.color.getHex());
+    expect(structureMaterial(m, day)).toBe(a);
+  });
+  it("prepareLakeStructures: glass and emissive keep their own material; helpers hide; a mesh without UV1 keeps its own", () => {
+    const day = new Texture();
+    const geo = new BufferGeometry();
+    geo.setAttribute("position", new Float32BufferAttribute([0, 0, 0, 1, 0, 0, 0, 1, 0], 3));
+    geo.setAttribute("uv1", new Float32BufferAttribute([0, 0, 1, 0, 0, 1], 2));
+    const wood = src();
+    const glass = new MeshStandardMaterial({ name: "M_lake_glass", transparent: true, opacity: 0.4 });
+    const bulb = new MeshStandardMaterial({ name: "M_lake_emit", emissive: "#ffeeaa", emissiveIntensity: 2 });
+    const root = new Group();
+    const mk = (name: string, m: MeshStandardMaterial, g = geo) => {
+      const o = new Mesh(g, m);
+      o.name = name;
+      root.add(o);
+      return o;
+    };
+    const a = mk("lake_pier", wood);
+    const b = mk("lake_glass", glass);
+    const c = mk("lake_bulb", bulb);
+    const noUv = mk("lake_nouv", wood, new BufferGeometry().setAttribute("position", new Float32BufferAttribute([0, 0, 0, 1, 0, 0, 0, 1, 0], 3)));
+    const helper = mk("col__lake_bench_1", wood);
+    const r = prepareLakeStructures(root, day, null);
+    expect((a.material as unknown as MeshBasicMaterial).lightMap).toBe(day);
+    expect(b.material).toBe(glass);
+    expect(c.material).toBe(bulb);
+    expect(noUv.material).toBe(wood);
+    expect(helper.visible).toBe(false);
+    expect(r.glows.map((g) => g.material)).toEqual([bulb]);
   });
 });
 
