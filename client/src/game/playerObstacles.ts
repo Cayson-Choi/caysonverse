@@ -20,8 +20,12 @@
  */
 
 import { PLAYER_RADIUS, type AABB } from "@caysonverse/shared/worldMap";
+import { isBlocked } from "@caysonverse/shared/collision";
+import { pushOutOfBus } from "@caysonverse/shared/village/busBody";
 import { forEachRemotePosition } from "./remoteStore";
 import { activeMapVersion, getActiveMap } from "./activeMap";
+import { getMovingBusPose } from "../net/transitSync";
+import { localArea } from "../village/villageArea";
 
 interface MutableAABB {
   minX: number;
@@ -93,4 +97,29 @@ export function collectObstacles(
     used++;
   });
   return combined;
+}
+
+/** A spot the body may be put on by the bus's push: not inside a static collider of the active map. */
+function staticFree(x: number, z: number): boolean {
+  return isBlocked(x, z, PLAYER_RADIUS, getActiveMap().geometry.obstacles);
+}
+
+/**
+ * The moving bus is solid (owner 2026-11-15; checker r2: walking at the side of the driving bus went straight into its
+ * body). Every frame, after the walk's slide, the local body is put back outside the bus's body if it overlaps it
+ * (shared busBody.ts pushOutOfBus: the nearest free side, never its front): a walk into the flank slides along it, and
+ * the bus's body reaching me (at the kerb as it passes) shoves me out at its pace. The server does the same with every
+ * avatar (VillageRoom), so the pose I send agrees with it. Returns the new spot, or null when I am clear (or not on the
+ * village's road: parked, the bus is a static collider). Injectable for tests.
+ */
+export function pushOutOfMovingBus(
+  x: number,
+  z: number,
+  movingBus: typeof getMovingBusPose = getMovingBusPose,
+  inVillage: () => boolean = () => localArea() === "village",
+  blocked: (x: number, z: number) => boolean = staticFree,
+): { x: number; z: number } | null {
+  const bus = movingBus();
+  if (!bus || !inVillage()) return null;
+  return pushOutOfBus(bus, x, z, PLAYER_RADIUS, blocked);
 }

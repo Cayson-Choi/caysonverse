@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { SEAT_REACH } from "@caysonverse/shared/worldMap";
 import { VILLAGE_SEATS } from "@caysonverse/shared/village/benchSeats";
+import { PREFERENCE_MS, preferredSeat, setPreferredSeat } from "./seatPreference";
 import {
   interactionIcon,
   interactionLabel,
@@ -52,6 +53,12 @@ describe("pickInteraction with scene targets", () => {
       kind: "sit",
       seatIndex: 3,
     });
+  });
+
+  it("a target that yieldsToSeat gives way to any seat in reach, even a farther one", () => {
+    const bus = t({ id: "bus", dist: 0.3, yieldsToSeat: true });
+    expect(pickInteraction({ ...base, seat: { index: 66, dist: 1.2 }, targets: [bus] })).toEqual({ kind: "sit", seatIndex: 66 });
+    expect(pickInteraction({ ...base, targets: [bus] })).toEqual({ kind: "target", target: bus });
   });
 
   it("a target with beatsSeatBeyond (the hall desk) beats a seat farther than that, and loses to one right beside the player", () => {
@@ -122,6 +129,31 @@ describe("pickInteraction with scene targets", () => {
     const targets = [t()];
     expect(interactInputAt(500, 500, -1, free, targets, village).targets).toBe(targets);
     expect(interactInputAt(500, 500, -1, free, undefined, village).targets).toBeUndefined();
+  });
+});
+
+describe("the tapped chair is the one offered (seatPreference.ts)", () => {
+  const seats = VILLAGE_SEATS;
+  const cafe = seats.findIndex((s) => s.bench === "cafe_terrace_7");
+  const other = seats.findIndex((s) => s.bench === "cafe_terrace_12");
+  const free = () => false;
+  it("a spot nearer to another chair still offers the tapped one, while it is free and approachable", () => {
+    const g = seats[cafe];
+    const x = 40.92;
+    const z = -11.67; // a tap-walk ending 0.35 m short of the corner chair: chair 12 is nearer
+    expect(interactInputAt(x, z, -1, free, undefined, { seats }).seat?.index).toBe(other);
+    setPreferredSeat(cafe);
+    expect(interactInputAt(x, z, -1, free, undefined, { seats }).seat?.index).toBe(cafe);
+    expect(interactInputAt(x, z, -1, (i) => i === cafe, undefined, { seats }).seat?.index).toBe(other); // taken meanwhile
+    expect(interactInputAt(g.x + 6, g.z, -1, free, undefined, { seats }).seat).toBeNull(); // out of reach
+    setPreferredSeat(-1);
+    expect(interactInputAt(x, z, -1, free, undefined, { seats }).seat?.index).toBe(other);
+  });
+  it("lapses after PREFERENCE_MS", () => {
+    setPreferredSeat(cafe, 1000);
+    expect(preferredSeat(1000 + PREFERENCE_MS - 1)).toBe(cafe);
+    expect(preferredSeat(1000 + PREFERENCE_MS)).toBe(-1);
+    setPreferredSeat(-1);
   });
 });
 

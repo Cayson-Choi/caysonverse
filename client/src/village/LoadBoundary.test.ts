@@ -82,4 +82,13 @@ describe("LoadBoundary retry", () => {
     expect(b.state).toEqual({ failed: true, tries: LOAD_RETRY_LIMIT });
     expect(onReset).toHaveBeenCalledTimes(LOAD_RETRY_LIMIT + 1);
   });
+
+  it("calls onFail on every failure (the village's cover lifts at once)", () => {
+    const onFail = vi.fn();
+    const b = new LoadBoundary({ fallback: "fallback", onReset: () => {}, onFail, notice: "n", children: "children" });
+    b.componentDidCatch();
+    b.componentDidCatch();
+    expect(onFail).toHaveBeenCalledTimes(2);
+    b.componentWillUnmount();
+  });
 });

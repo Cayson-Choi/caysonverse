@@ -134,18 +134,23 @@ await run.step("1. join: A in shorts + wizard hat, B in a long skirt + space hel
   await seedLook(B, LOOKS.longskirtHelmet);
   await joinVillage(B, "앉기B");
   all = await seats(A);
-  // ONE global seat list (client = server): the village's 20 plaza / forecourt seats, the memorial hall's 31 (its model's
-  // seat__ markers: benches from either side, sofas / armchairs / chairs from the front), then the houses' (from each finished
-  // house's seat__ markers, last in the list; 집 실내 G: house 1 has 12, on its two floors)
+  // ONE global seat list (client = server), in this order: the village's 20 plaza / forecourt seats (0..19), the memorial hall's 31
+  // (20..50; its model's seat__ markers: benches from either side, sofas / armchairs / chairs from the front), the houses' (집 실내 G:
+  // every finished house's floors, from their seat__ markers), then the bus shelter's 2 and the art's marked seats (café chairs, porch
+  // benches, review 2026-11-15)
   const by = (area) => all.filter((s) => s.area === area).length;
   const house1 = all.filter((s) => s.area.startsWith("house:house_1:")).length;
-  const lastNonHouse = all.reduce((m, s, i) => (s.area.startsWith("house:") ? m : i), -1);
-  run.check("20 village seats, 31 in the memorial hall (from its model), 12 in house 1 (its two floors), the houses' last", by("village") === 20 && by("hall") === 31 && house1 === 12 && lastNonHouse === 50, {
+  const firstIds = all.slice(0, 20).map((s) => s.bench);
+  const houseIdx = all.map((s, i) => (s.area.startsWith("house:") ? i : -1)).filter((i) => i >= 0);
+  const housesEnd = houseIdx.length ? houseIdx[houseIdx.length - 1] + 1 : 51;
+  run.check("20 plaza / forecourt seats first, 31 in the memorial hall at 20..50 (from its model), then the houses' in one run (house 1: 12)", firstIds.every((id) => /^(plaza_\d|memorial_forecourt)$/.test(id)) && all.slice(20, 51).every((s) => s.area === "hall") && by("hall") === 31 && house1 === 12 && houseIdx[0] === 51 && houseIdx.length === housesEnd - 51, {
     village: by("village"),
     hall: by("hall"),
     house1,
     total: all.length,
   });
+  run.check("the bus shelter's two seats follow the houses'", all[housesEnd]?.bench === "shelter" && all[housesEnd + 1]?.bench === "shelter", all.slice(housesEnd - 2, housesEnd + 3).map((s) => s.bench));
+  run.check("café chairs and porch benches are seats", all.filter((s) => s.bench.startsWith("cafe_terrace_")).length === 12 && all.filter((s) => s.bench.endsWith("_porch")).length === 3, all.length);
 });
 
 // plaza_4 (south-east of the fountain, by the spawn): seats 6 and 7

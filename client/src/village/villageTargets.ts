@@ -1,5 +1,6 @@
-import { VILLAGE_LAYOUT, cubbyAnchors, isHouseArea, type AreaId, type CubbyAnchor, type Disc, type VillageLayout } from "@caysonverse/shared/village/villageLayout";
+import { VILLAGE_LAYOUT, busBoardingDistance, cubbyAnchors, isHouseArea, type AreaId, type CubbyAnchor, type Disc, type VillageLayout } from "@caysonverse/shared/village/villageLayout";
 import { houseOffers } from "@caysonverse/shared/village/houseTargets";
+import { TRANSIT } from "@caysonverse/shared/village/transit";
 import { HOUSE_KEYPAD_REACH_M, keypadEntries } from "@caysonverse/shared/village/buildingAccess";
 import { GUIDE_ASK_LABEL, nearestGuide } from "@caysonverse/shared/village/guides";
 import type { InteractTarget } from "../game/interact";
@@ -31,8 +32,11 @@ export const KEYPAD_TARGET_PREFIX = "keypad:";
 export const KEYPAD_LABEL = "번호키 입력";
 export const KEYPAD_SHORT = "번호키";
 
-/** The bus target uses the same server-side 4.5 m gate, with a small client cushion. */
-export const BUS_OFFER_REACH_M = 4.2;
+/**
+ * How far (m) outside the boarding area (the bus, the waiting pad and the shelter, villageLayout.ts busBoardingArea) the
+ * board button is offered: inside the server's 1.2 m (transitRuntime.ts BUS_BOARD_REACH_M) with a small cushion.
+ */
+export const BUS_OFFER_REACH_M = 0.8;
 export const BUS_RIDE_TARGET_BOARD = "village_bus_board";
 export const BUS_RIDE_TARGET_LEAVE = "village_bus_leave";
 
@@ -84,19 +88,66 @@ export function villageTargets(
   return [{ kind: "object", id: `${KEYPAD_TARGET_PREFIX}${keypad.buildingId}`, dist: keypad.dist, icon: "🔢", label: KEYPAD_LABEL, short: KEYPAD_SHORT }];
 }
 
-/** A board/leave target around the east-side stop; the server re-checks the pose and schedule. */
-export function villageBusTarget(area: AreaId, x: number, z: number, boarded: boolean): InteractTarget | null {
+/**
+ * How long until the next bus leaves, for the board button's words while it is not taking riders: "4분" / "20초" (long, the pill and the desktop button;
+ * "4분 뒤" for the 60 px touch button): minutes are rounded up so it never says 0분, and both forms agree.
+ */
+export function busCountdownWords(ms: number): { long: string; short: string } {
+  const s = Math.max(0, Math.ceil(ms / 1000));
+  // One rounding for every place that shows it (review r4: the phone button said "8분 뒤" while the pill said "7분 8초 뒤"):
+  // whole minutes rounded up while boarding is not open yet (more than the boarding window away: always "4분" or more);
+  // within it minutes and seconds (review 2026-11-15: "3분 뒤 출발" rounded up from 2:01 read as if boarding had just
+  // opened), and seconds alone under a minute.
+  const boardS = Math.round(TRANSIT.boardingMs / 1000);
+  const words =
+    s > boardS ? `${Math.ceil(s / 60)}분` : s >= 60 ? (s % 60 === 0 ? `${s / 60}분` : `${Math.floor(s / 60)}분 ${s % 60}초`) : `${s}초`;
+  return { long: words, short: `${words} 뒤` };
+}
+
+/**
+ * A board/leave target around the east-side stop; the server re-checks the pose and schedule.
+ *
+ * `boardingNow`: the bus is taking riders (shared transit.ts TRANSIT.boardingMs: the 3 min before each departure, by the server's clock as the
+ * bus snapshots carry it, transitSync.ts transitNowMs). `departsInMs`: how long until the next bus leaves.
+ *
+ * The way to ride is never hidden (review 2026-11-15: a first-time player at the stop must see how and when): outside the
+ * boarding window the button is still there and counts down to the next departure ("버스 타기 · 7분 뒤 출발",
+ * touch: "7분 뒤"); pressing it says when the bus leaves and that boarding opens 3 min before (VillageScene).
+ * It always gives a free seat in reach the key (`yieldsToSeat`: the shelter's bench and the café chairs 97/98 sit inside
+ * or by its area; owner 2026-11-13: 정류장 벤치에 앉을 수가 없어). With boarding open for 3 minutes (owner 2026-11-15)
+ * riders wait on the bench like at a real stop, then stand and step towards the bus: no seat is in reach on the pad's
+ * road half and at the doors, so there the button has the key (the stop's pill says so). "Leave" never yields, and is
+ * offered only while the bus stands at the stop (`busOnRoad` false).
+ */
+export function villageBusTarget(
+  area: AreaId,
+  x: number,
+  z: number,
+  boarded: boolean,
+  boardingNow = true,
+  departsInMs?: number,
+  busOnRoad = false,
+): InteractTarget | null {
   if (area !== "village") return null;
-  const dist = Math.hypot(x - VILLAGE_LAYOUT.busStop.bus.centre.x, z - VILLAGE_LAYOUT.busStop.bus.centre.z);
+  const dist = busBoardingDistance(x, z);
   if (!(dist <= BUS_OFFER_REACH_M)) return null;
+  if (boarded) {
+    // Out on the lap the doors stay shut (the server refuses a leave): no "버스에서 내리기" / "하차" that does nothing
+    // (checker r2). The ride panel says "정류장에 돌아오면 내려요"; back at the stop the button is here again.
+    if (busOnRoad) return null;
+    return { kind: "object", id: BUS_RIDE_TARGET_LEAVE, dist, icon: "🚌", label: "버스에서 내리기", short: "하차", priority: 2 };
+  }
+  const waiting = !boardingNow && departsInMs !== undefined && Number.isFinite(departsInMs);
+  const words = waiting ? busCountdownWords(departsInMs) : null;
   return {
     kind: "object",
-    id: boarded ? BUS_RIDE_TARGET_LEAVE : BUS_RIDE_TARGET_BOARD,
+    id: BUS_RIDE_TARGET_BOARD,
     dist,
     icon: "🚌",
-    label: boarded ? "버스에서 내리기" : "버스 타기",
-    short: boarded ? "하차" : "탑승",
+    label: words ? `버스 타기 · ${words.long} 뒤 출발` : "버스 타기",
+    short: words ? words.short : "탑승",
     priority: 2,
+    yieldsToSeat: true,
   };
 }
 

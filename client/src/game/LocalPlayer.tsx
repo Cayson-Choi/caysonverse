@@ -2,11 +2,12 @@ import { useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import { useAnimations, useKeyboardControls } from "@react-three/drei";
 import { Group, LoopOnce, type Plane } from "three";
+import { setPreferredSeat } from "./seatPreference";
 import type { Appearance } from "@caysonverse/shared/appearance";
 import { PLAYER_RADIUS } from "@caysonverse/shared/worldMap";
 import { liftForSeatY } from "@caysonverse/shared/sitPose";
 import { resolveCollision } from "@caysonverse/shared/collision";
-import { collectObstacles } from "./playerObstacles";
+import { collectObstacles, pushOutOfMovingBus } from "./playerObstacles";
 import { activeBounds, activeSeats, getActiveMap } from "./activeMap";
 import {
   SIT_GLIDE,
@@ -56,6 +57,8 @@ import {
   publishLocalJump,
   resetLocalJump,
 } from "./jump";
+import { jumpHeadroom } from "@caysonverse/shared/village/overhead";
+import { localArea } from "../village/villageArea";
 import { beginSeatCamera, endSeatCamera, fpBodyYaw, viewState } from "./viewState";
 import { HIDE_BLEND, OV_VIS_BLEND } from "./viewMode";
 import { cameraProbe } from "./cameraProbe";
@@ -90,7 +93,9 @@ import {
 import type { MoveControl } from "./constants";
 import type { Orbit, Pose, SeatState } from "./types";
 import { getRoom, sendJump, sendMove, sendStand } from "../net/connection";
-import { useTransitState } from "../net/transitSync";
+import { getTransitRenderPose, useTransitState } from "../net/transitSync";
+import { selfBusRide } from "./busRide";
+import { busPlace, busRiderPose, type BusRiderPose } from "@caysonverse/shared/village/busSeats";
 import { isInputSuspended } from "../net/resilience";
 import { useSettingsStore } from "../stores/settingsStore";
 import { cubbyFocusWeight } from "../village/cubbyFocus";
@@ -419,7 +424,7 @@ export function LocalPlayer({
           reportClip(jump.getClip().name);
         }
       }
-      return jumpOffsetY(now - hop.startedAt);
+      return jumpOffsetY(now - hop.startedAt, jumpHeadroom(pose.x, pose.z, localArea(), avatar.topY));
     }
 
     if (phase === "landed" || phase === "dropped") {
@@ -480,6 +485,51 @@ export function LocalPlayer({
     return true;
   }
 
+  // My place in the bus being drawn (-1: not riding) and the pose there (reused).
+  const ridingRef = useRef(-1);
+  const riderPoseRef = useRef<BusRiderPose>({ x: 0, z: 0, yaw: 0, y: 0, seated: true });
+
+  /** Onto the bus: whatever the body did gives way to the held seated pose (Idle on a standing place). */
+  function startRide(seated: boolean): void {
+    clearClickTarget();
+    releaseLoop(ANIM_FADE);
+    gaitRef.current = "idle";
+    action(CLIP.jump)?.fadeOut(ANIM_FADE);
+    jumpSeqRef.current = -1;
+    action(CLIP.sitDown)?.fadeOut(ANIM_FADE);
+    action(CLIP.sitStand)?.fadeOut(ANIM_FADE);
+    const motion = seatMotionRef.current;
+    if (motion.clipped) clipAvatar(avatar, null);
+    motion.clipped = false;
+    motion.clip = null;
+    motion.glide = null;
+    motion.bench = false;
+    motion.lift = 0;
+    animStateRef.current = "loco";
+    const hold = action(seated ? CLIP.sitIdle : CLIP.idle);
+    if (hold) {
+      hold.reset().fadeIn(ANIM_FADE).play();
+      reportClip(hold.getClip().name);
+    }
+    if (shadowRef.current) shadowRef.current.visible = false;
+  }
+
+  /** Off the bus: on the ground where the server put me down (outside the door), Idle, the seat state as synced. */
+  function endRide(): void {
+    action(CLIP.sitIdle)?.fadeOut(ANIM_FADE);
+    action(CLIP.idle)?.fadeOut(ANIM_FADE);
+    loopRef.current = null; // the loco step puts a loop back on
+    animStateRef.current = "loco";
+    prevSeatRef.current = seat.index;
+    if (shadowRef.current) shadowRef.current.visible = true;
+    const me = getRoom()?.state?.players?.get?.(sessionId);
+    if (me) {
+      pose.x = me.x;
+      pose.z = me.z;
+      pose.yaw = me.yaw;
+    }
+  }
+
   // A remount may get the same assembled avatar back (useAvatar's cache): never hand it on clipped.
   useEffect(
     () => () => {
@@ -518,7 +568,7 @@ export function LocalPlayer({
     const inCloseUp = cubbyFocusWeight() > 0.33;
     // Indoors the player always sees their own avatar (review 2026-11-15 round 5: hiding it near the camera made it vanish on
     // arrival and on most seats). The arrival spot and the seat framing (seatFraming.ts) keep the camera 3.2 m+ from the head;
-    // the body is hidden only when the camera is really inside the head (INDOOR_SELF_HIDE_DISTANCE, 0.6 m), never faded.
+    // the body is hidden only when the camera is really inside the head (INDOOR_SELF_HIDE_DISTANCE, 1 m), never half-faded.
     const headDist = Math.hypot(cameraProbe.x - pose.x, cameraProbe.y - (group.position.y + HEAD_HEIGHT), cameraProbe.z - pose.z);
     closeHiddenRef.current = indoorCloseHidden(closeHiddenRef.current, indoorTp, headDist, INDOOR_SELF_HIDE_DISTANCE, INDOOR_SELF_SHOW_DISTANCE);
     const closeIndoors = closeHiddenRef.current && viewState.ovBlend <= OV_VIS_BLEND;
@@ -540,6 +590,27 @@ export function LocalPlayer({
       delta,
       cover ? Math.min(SELF_COVER_FADE_OPACITY, selfBody.hidingRing ? SELF_FADE_OPACITY : 1) : undefined,
     );
+
+    // The village bus (owner 2026-11-15: "버스에 탑승했는데 캐릭터는 버스안에 있지 않고 밖에 그대로 서있어"): while I ride,
+    // my avatar is in my place in the bus (busSeats.ts, given by the server), sitting on its seat or standing in the
+    // aisle, and moves with the bus, as every other client draws me. My pose stays where I boarded (nothing is sent);
+    // getting off, the server puts me down at the door and the pose follows it.
+    const busSlot = selfBusRide.slot; // the schema: the place and the dismount spot come in one patch
+    if (busSlot !== ridingRef.current) {
+      const was = ridingRef.current;
+      ridingRef.current = busSlot;
+      if (busSlot >= 0) {
+        if (was < 0 || busPlace(was).seated !== busPlace(busSlot).seated) startRide(busPlace(busSlot).seated);
+      } else endRide();
+    }
+    if (busSlot >= 0) {
+      const p = busRiderPose(getTransitRenderPose(), busSlot, riderPoseRef.current);
+      group.position.set(p.x, p.y, p.z);
+      group.rotation.y = p.yaw + MODEL_FACING_OFFSET;
+      group.visible = true; // the ride camera looks at me from behind my seat (transitCamera.ts)
+      publishLocalJump(0, true);
+      return;
+    }
 
     // Focus guard: while the chat input owns keyboard input — OR while the
     // resilience driver is reconnecting (world frozen behind the overlay) —
@@ -588,6 +659,7 @@ export function LocalPlayer({
     const gliding = seatMotionRef.current.glide !== null;
     if (manual) {
       clearClickTarget();
+      setPreferredSeat(-1); // the keys / stick took over: the chair tapped before no longer outranks a nearer one
     } else if (!suspended && !busBoarded && !seated && !gliding && !isUiCaptured()) {
       // ui-capture gate (review v2-14 M1): while the chat input owns the keyboard
       // the KEYS are frozen above — a pre-set click target must freeze too, or the
@@ -612,6 +684,7 @@ export function LocalPlayer({
       // (`seatY`): walk onto its spot while the clip starts, and rise to its surface as the body sits (seatMotion).
       // 진행 중이던 클릭 자동 이동도 여기서 해제된다 (design 29 (e) 착석 완료).
       clearClickTarget();
+      setPreferredSeat(-1); // sat down: the tapped chair's preference is spent (seatPreference.ts)
       const s = activeSeats()[seatIndex];
       motion.bench = s !== undefined && s.seatY !== undefined;
       sitFloorRef.current = isFloorSeat(s);
@@ -768,6 +841,16 @@ export function LocalPlayer({
         pose.yaw = stepYaw(pose.yaw, targetYaw, TURN_SPEED * delta);
       }
     }
+    // The moving bus is solid from every side (owner 2026-11-15; checker r2: walking at its flank went inside it): after
+    // the slide, out of its body to the nearest free side — a walk into it slides along it, and its body reaching me (at
+    // the kerb as it passes) shoves me out at its pace. Moving or not; the shove is sent like a step (the server pushes
+    // the same way, VillageRoom), and it is no step of the feet (groundSpeed above is the walk's alone).
+    const shoved = pushOutOfMovingBus(pose.x, pose.z);
+    if (shoved) {
+      pose.x = shoved.x;
+      pose.z = shoved.z;
+    }
+
     // FP: the body faces the look direction DIRECTLY (no TURN_SPEED lag), moving
     // or standing — fpBodyYaw (the look yaw is the camera's azimuth, half a turn
     // from the facing: it used to be copied as is, and other players saw a
@@ -807,7 +890,7 @@ export function LocalPlayer({
 
     // Throttled network send (idle: nothing; moving: <=1 per PATCH_RATE_MS;
     // exactly one final message on stop).
-    sender.update(performance.now(), moving, { x: pose.x, z: pose.z, yaw: pose.yaw });
+    sender.update(performance.now(), moving || shoved !== null, { x: pose.x, z: pose.z, yaw: pose.yaw });
   });
 
   return (

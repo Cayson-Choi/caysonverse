@@ -5,7 +5,8 @@
  * the ActionButton, never per frame), `pickInteraction` decides, and the rest is labels.
  */
 
-import { SEAT_REACH, nearestFreeSeat, seatDistance, type Seat } from "@caysonverse/shared/worldMap";
+import { SEAT_REACH, approachesSeat, nearestFreeSeat, seatDistance, seatTaken, type Seat } from "@caysonverse/shared/worldMap";
+import { preferredSeat } from "./seatPreference";
 
 /**
  * Something a scene offers besides the benches: the memorial hall's door, a house keypad, a guide to talk to, the
@@ -25,6 +26,13 @@ export interface InteractTarget {
    * Which target wins when several are in reach: the higher number first, the nearer one among equals (default 0).
    */
   priority?: number;
+  /**
+   * Gives way to a free seat in reach: while a seat is offered this target is not (the bus stop's board button: its area
+   * covers the shelter, and riders wait for the bus on the shelter's bench, so it must never take the E key from the bench;
+   * nor, on the 0.8 m fringe outside its area, hide a chair next to it). Absent: the target competes with the seat by
+   * distance as before.
+   */
+  yieldsToSeat?: boolean;
   /**
    * The target beats a free seat unless that seat is nearer than this (m): the hall desk is asked from among its visitor
    * chairs, and the chair's "앉기" only wins once you stand right at it.
@@ -51,6 +59,7 @@ export interface InteractInput {
  *  - Seated -> stand, whatever is nearby (the seat is the only thing you can do).
  *  - Seat and scene targets in reach -> the nearest; an exact tie goes seat > target.
  *    Among scene targets the higher `priority` wins, then the nearer one, then the earlier one in the list.
+ *    A target that `yieldsToSeat` is not offered while a free seat is in reach.
  */
 export function pickInteraction(i: InteractInput): Interaction | null {
   if (i.seated) return { kind: "stand" };
@@ -66,6 +75,7 @@ export function pickInteraction(i: InteractInput): Interaction | null {
     let nearest: InteractTarget | null = null;
     for (let k = 0; k < targets.length; k++) {
       const c = targets[k];
+      if (c.yieldsToSeat && i.seat) continue; // a free seat in reach goes first (see InteractTarget.yieldsToSeat)
       if (nearest === null) {
         nearest = c;
         continue;
@@ -175,7 +185,11 @@ export function interactInputAt(
     // be offered in the hall (the ghost "앉기" of 2026-11-13).
     const here = world.area;
     const taken = here === undefined ? isOccupied : (i: number) => isOccupied(i) || (world.seats[i] as { area?: string }).area !== here;
-    const index = nearestFreeSeat(x, z, taken, SEAT_REACH, world.seats);
+    let index = nearestFreeSeat(x, z, taken, SEAT_REACH, world.seats);
+    // the chair just tapped, while it is free and offered from here, over a nearer one beside it (seatPreference.ts)
+    const tapped = preferredSeat();
+    const t = tapped >= 0 ? world.seats[tapped] : undefined;
+    if (t && !seatTaken(world.seats, tapped, taken) && approachesSeat(t, x, z) && seatDistance(t, x, z) <= SEAT_REACH) index = tapped;
     if (index !== null) {
       seat = { index, dist: seatDistance(world.seats[index], x, z) };
     }

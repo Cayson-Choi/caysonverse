@@ -1,3 +1,4 @@
+import { versionedUrl } from "./modelUrl";
 import {
   Box3,
   BufferGeometry,
@@ -72,8 +73,8 @@ import type { DayNightState } from "./dayNightBlend";
  *  - Day and night (Task 7A, dayNightBlend.ts): every `LM_*` blends the day light map with the night one (`village_lm_night.webp`,
  *    the same UV set: the moon, and the lamps' and windows' pools) by one shared weight; the foliage's vertex light and
  *    the far hills, forest and falls take the time of day's tint; `M_window` and `M_lamp` (copies) glow warm and past
- *    white at night (the rich tier's bloom picks them up); the fountain's lights glow in the water. `M_glass` stays
- *    as it is: not emissive.
+ *    white at night (the rich tier's bloom picks them up); the fountain's lights glow in the water. `M_glass` is not emissive and goes
+ *    dark with the lit weight (`nightGlass`).
  *  - `M_moon` (the node `fountain_moon`, put in by scripts/patch-village-moon.mjs) is the fountain's crescent: unlit
  *    with normals and no light map; it gets the bake's own light on it as a smooth function of the normal (a probe) and
  *    the night bake's fountain lights, blended like the light maps, and a glaze (`moonMaterial`, `MOON_PROBE`).
@@ -89,10 +90,10 @@ import type { DayNightState } from "./dayNightBlend";
  * made here, listed in `own` and released with `disposeVillage`.
  */
 
-export const VILLAGE_MODEL_URL = "/models/village/village.glb";
-export const VILLAGE_LIGHTMAP_URL = "/models/village/village_lm.webp";
+export const VILLAGE_MODEL_URL = versionedUrl("/models/village/village.glb");
+export const VILLAGE_LIGHTMAP_URL = versionedUrl("/models/village/village_lm.webp");
 /** The night light map: baked on the same UV set as the day one (art/village/tools/bake_village.py --night). */
-export const VILLAGE_NIGHT_LIGHTMAP_URL = "/models/village/village_lm_night.webp";
+export const VILLAGE_NIGHT_LIGHTMAP_URL = versionedUrl("/models/village/village_lm_night.webp");
 
 /**
  * The village camera's planes (m): the sky dome is 1.4 km out (and the far range 1.1 km), so the far plane is past
@@ -112,6 +113,8 @@ export const MATERIAL = {
   water: "M_water",
   waterfall: "M_waterfall",
   window: "M_window",
+  /** The café's and the flower kiosk's painted interiors behind their shop glass (art: A_shop_glass). */
+  shop: "M_shop",
   lamp: "M_lamp",
   glass: "M_glass",
   moon: "M_moon",
@@ -200,6 +203,8 @@ export const foliageTintUniform = { value: new Vector3(1, 1, 1) };
 export const cherryTintUniform = { value: new Vector3(1, 1, 1) };
 /** The cherry blossoms' material: its foliage tint is `cherryTintUniform`. */
 export const CHERRY_MATERIAL = "M_leaf_cherry";
+/** How much it is night (0 day .. 1 night): the runtime blossoms lose their pink under the moon (veg/vegMaterial.ts). */
+export const vegNightUniform = { value: 0 };
 /**
  * The cool cast of moonlight on the night light map's dim texels (× linear): what the moon alone lights is bluish and
  * a little darker, while the lamps' and windows' pools (bright texels) keep their warm colour.
@@ -417,8 +422,20 @@ export function liftMaterial(material: Material): void {
  * pulled toward the glow colour; the rich tier's bloom (threshold 1.6) lets the lit ones shine.
  */
 export const LIT = {
-  window: { color: [1.0, 0.76, 0.46], boost: 2.1 },
-  lamp: { color: [1.0, 0.8, 0.5], boost: 3.4 },
+  /**
+   * Review 2026-11-15: (1.0, 0.76, 0.46) — linear, so sRGB (255, 227, 181) — at boost 2.1 clipped every channel of a pale
+   * pane, and lit windows read as cold cream plates. A 2700 K incandescent is sRGB (255, 169, 87), linear about
+   * (1.0, 0.40, 0.10): warm amber panes, the curtains' folds still showing, the brightest past the rich tier's bloom.
+   */
+  window: { color: [1.0, 0.45, 0.14], boost: 1.7 },
+  lamp: { color: [1.0, 0.5, 0.18], boost: 2.6 },
+  /**
+   * A shop's painted interior (`M_shop`: the café's room, the kiosk's flower shelves). The windows' recipe replaces each
+   * texel with the glow colour by its luma, which flattened these pictures into a cream plate at night (review
+   * 2026-11-15); a shop's light multiplies the picture instead (`LIT_SHOP`), so its shelves, menu board, pendants and
+   * flowers stay legible and only its brightest spots (the lamps' pools) reach the bloom.
+   */
+  shop: { color: [1.0, 0.88, 0.7], boost: 2.3 },
 } as const;
 /** How lit the windows and lamps are (0..1), shared by their copies. */
 export const litUniform = { value: 0 };
@@ -430,6 +447,28 @@ const LIT_GLOW = /* glsl */ `#include <map_fragment>
 float villageGlowLuma = dot( diffuseColor.rgb, vec3( 0.2126, 0.7152, 0.0722 ) );
 diffuseColor.rgb = mix( diffuseColor.rgb, uVillageLitColor * ( 0.4 + 0.9 * villageGlowLuma ) * uVillageLitBoost, uVillageLit );`;
 
+/** A shop's interior at night: the picture × the warm light (keeps its detail; see LIT.shop). */
+const LIT_SHOP = /* glsl */ `#include <map_fragment>
+diffuseColor.rgb = mix( diffuseColor.rgb, diffuseColor.rgb * uVillageLitColor * uVillageLitBoost, uVillageLit );`;
+
+const GLASS_PARS = /* glsl */ `uniform float uVillageLit;
+void main() {`;
+/** At night the unlit glass sheet would keep glowing with the day's sky sheen: it goes dark with the windows' lit weight. */
+const GLASS_NIGHT = /* glsl */ `#include <map_fragment>
+diffuseColor.rgb *= mix( 1.0, 0.1, uVillageLit );
+diffuseColor.a *= mix( 1.0, 0.55, uVillageLit );`;
+
+/** Dim the shared `M_glass` (windows, doors, shop glass) with the night, in place and idempotently (house review 2026-11-13). */
+export function nightGlass(m: Material): void {
+  const b = m as MeshBasicMaterial;
+  b.onBeforeCompile = (shader) => {
+    shader.uniforms.uVillageLit = litUniform;
+    shader.fragmentShader = shader.fragmentShader.replace("void main() {", GLASS_PARS).replace("#include <map_fragment>", GLASS_NIGHT);
+  };
+  b.customProgramCacheKey = () => "village-glass-night";
+  b.needsUpdate = true;
+}
+
 /** A copy of a window or lamp material that glows with `litUniform`. */
 export function litMaterial(source: Material, kind: keyof typeof LIT): MeshBasicMaterial {
   const m = (source as MeshBasicMaterial).clone();
@@ -440,9 +479,11 @@ export function litMaterial(source: Material, kind: keyof typeof LIT): MeshBasic
   };
   m.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, uniforms);
-    shader.fragmentShader = shader.fragmentShader.replace("void main() {", LIT_PARS).replace("#include <map_fragment>", LIT_GLOW);
+    shader.fragmentShader = shader.fragmentShader
+      .replace("void main() {", LIT_PARS)
+      .replace("#include <map_fragment>", kind === "shop" ? LIT_SHOP : LIT_GLOW);
   };
-  m.customProgramCacheKey = () => "village-lit";
+  m.customProgramCacheKey = () => (kind === "shop" ? "village-lit-shop" : "village-lit");
   return m;
 }
 
@@ -497,6 +538,9 @@ export const MOON_PROBE = {
   glaze: { strength: 1, roughness: 0.32 },
 } as const;
 
+/** × the crescent's light by day (1 at night): the bright white crescent glared against the daytime sky. */
+export const MOON_DAY_DIM = 0.5;
+
 type Rgb = readonly [number, number, number];
 /** A probe's value for the unit normal `n` (game axes), unclipped: the GLSL's `moonSH`. */
 export function moonProbe(c: readonly Rgb[], n: readonly [number, number, number]): [number, number, number] {
@@ -537,6 +581,7 @@ ${shArray("MOON_NIGHT", MOON_PROBE.night)}
 #define MOON_BOWL_Y ${f4(u.bowlY)}
 #define MOON_BOWL_SOFT ${f4(u.soft)}
 #define MOON_LIGHTMAP_SCALE ${f4(LIGHTMAP_INTENSITY / Math.PI)}
+#define MOON_DAY_DIM ${f4(MOON_DAY_DIM)}
 #define MOON_GLAZE ${f4(MOON_PROBE.glaze.strength)}
 #define MOON_GLAZE_ROUGHNESS ${f4(MOON_PROBE.glaze.roughness)}
 vec3 moonSH( const in vec3 c[ 9 ], const in vec3 n ) {
@@ -566,7 +611,8 @@ vec3 moonLight( const in vec3 n, const in float uplight ) {
 		villageNightLight *= ${moonlitCast("villageNightLight")};
 		texel += villageNightLight * uVillageNight;
 	}
-	return texel * MOON_LIGHTMAP_SCALE + uVillageLift * uVillageLiftTint;
+	// by day the white crescent glared against the sky: dimmed (B2); the night keeps the bake value
+	return ( texel * MOON_LIGHTMAP_SCALE + uVillageLift * uVillageLiftTint ) * mix( MOON_DAY_DIM, 1.0, uVillageNight );
 }
 void main() {`;
 }
@@ -891,6 +937,7 @@ export function prepareVillage(
   // The windows and lamps: copies that glow at night (M_glass, the lanterns' and windows' panes, stays as it is).
   for (const [name, kind] of [
     [MATERIAL.window, "window"],
+    [MATERIAL.shop, "shop"],
     [MATERIAL.lamp, "lamp"],
   ] as const) {
     const source = found.get(name);
@@ -899,6 +946,9 @@ export function prepareVillage(
     own.push(lit);
     swapMaterial(root, name, lit);
   }
+
+  const glassSource = found.get(MATERIAL.glass);
+  if (glassSource) nightGlass(glassSource);
 
   // The plots' outlines glow.
   const glowSource = found.get(MATERIAL.glowPlot) as MeshBasicMaterial | undefined;
@@ -1078,6 +1128,7 @@ export function applyDayNight(nodes: VillageNodes, s: DayNightState): void {
   dayTintUniform.value.set(s.dayTint[0], s.dayTint[1], s.dayTint[2]);
   foliageTintUniform.value.set(s.foliageTint[0], s.foliageTint[1], s.foliageTint[2]);
   cherryTintUniform.value.set(s.cherryTint[0], s.cherryTint[1], s.cherryTint[2]);
+  vegNightUniform.value = s.night;
   // No night map yet (it loads when night is near, final fix I2b): the day map alone, never a black blend.
   nightBlendUniform.value = nightMapUniform.value ? s.night : 0;
   litUniform.value = s.lights;

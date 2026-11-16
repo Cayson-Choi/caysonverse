@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { VILLAGE_LAYOUT, solidBox } from "./villageLayout";
 import { EMPTY_KEYPAD_RATE, HOUSE_KEYPAD_IDS, keypadEntries, nearestKeypadEntry, recordKeypadAttempt, validateKeypadAttempt, type KeypadPolicy } from "./buildingAccess";
 
 const policy: KeypadPolicy = {
@@ -44,5 +45,22 @@ describe("keypad access boundary", () => {
     expect(recordKeypadAttempt(s, 1_000, true, policy).decision).toEqual({ ok: false, reason: "locked_out", retryAfterMs: 29_200 });
     expect(recordKeypadAttempt(s, 30_200, true, policy, "house_1").decision).toEqual({ ok: true, buildingId: "house_1" });
   });
-});
 
+  it("every keypad pad stands on its house's door axis, on the walkable porch, 0.65 m in front of the model's door (milestone 1 review)", () => {
+    // the model's door is on the footprint's centre line, in the body's front wall, 2.25 m in from the footprint edge (the porch depth)
+    const PORCH = 2.25;
+    for (const e of keypadEntries()) {
+      const h = VILLAGE_LAYOUT.sceneryHouses.find((x) => x.id === e.buildingId)!;
+      expect(h.terrace, e.buildingId).toBe(PORCH);
+      const door = { n: [0, -1], s: [0, 1], e: [1, 0], w: [-1, 0] }[h.doorSide];
+      const halfDepth = (h.doorSide === "n" || h.doorSide === "s" ? h.size.z : h.size.x) / 2;
+      const doorPos = { x: h.centre.x + door[0]! * (halfDepth - PORCH), z: h.centre.z + door[1]! * (halfDepth - PORCH) };
+      const along = h.doorSide === "n" || h.doorSide === "s" ? Math.abs(e.pad.x - doorPos.x) : Math.abs(e.pad.z - doorPos.z);
+      expect(along, e.buildingId).toBeLessThan(0.01);
+      expect(Math.hypot(e.pad.x - doorPos.x, e.pad.z - doorPos.z), e.buildingId).toBeCloseTo(0.65, 2);
+      // the pad is outside the solid box (the porch is walkable) and inside the footprint
+      const sb = solidBox(h);
+      expect(e.pad.x < sb.minX || e.pad.x > sb.maxX || e.pad.z < sb.minZ || e.pad.z > sb.maxZ, e.buildingId).toBe(true);
+    }
+  });
+});

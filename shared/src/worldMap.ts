@@ -52,6 +52,17 @@ export interface Seat {
    */
   frontEdge?: number;
   /**
+   * How far behind the seat point a player may stand and still be offered the seat (m), when that is not `frontEdge`:
+   * a café chair at a table is sat on from beside it, anywhere in front of its backrest (benchSeats.ts markerSeats).
+   */
+  approachEdge?: number;
+  /**
+   * A chair sat on from beside it: a player at least `lateral` m to its side (clear of the chair's own width, so not
+   * behind its backrest) is offered it up to `edge` m behind the seat point — a tap-walk stops up to 0.35 m short of its
+   * goal, so one coming along the chair's side from behind would otherwise stop just past the backrest's plane.
+   */
+  beside?: { lateral: number; edge: number };
+  /**
    * Seats of one group are never taken at the same time (the two facings of one backless bench seat, which can be sat on from
    * either side). Absent: the seat is its own group.
    */
@@ -126,23 +137,28 @@ export function seatTaken(seats: readonly Seat[], index: number, isOccupied: (in
  * `frontEdge`, and for a seat with one (a bench) only in front of that edge (the side the sitter faces).
  */
 export function approachesSeat(seat: Seat, x: number, z: number, slack = 0): boolean {
-  if (seat.frontEdge === undefined) return true;
+  const edge = seat.approachEdge ?? seat.frontEdge;
+  if (edge === undefined) return true;
   const sin = Math.sin(seat.yaw);
   const cos = Math.cos(seat.yaw);
   const ahead = (x - seat.x) * sin + (z - seat.z) * cos;
+  const lateral = Math.abs((x - seat.x) * cos - (z - seat.z) * sin);
   if (seat.sidePlane !== undefined) {
+    // a hall chair at a table (memorial markers): beside it up to its backrest's plane, never across the table
     if (seat.aheadMax !== undefined && ahead > seat.aheadMax + slack) return false;
     if (ahead >= -seat.sidePlane - slack) return true;
     // a little behind the backrest's plane, but off to the side of the chair (not behind the backrest itself)
     if (seat.sideHalf === undefined) return false;
-    const lateral = Math.abs((x - seat.x) * cos - (z - seat.z) * sin);
     return (
       lateral >= seat.sideHalf + CHAIR_SIDE_CLEAR &&
       lateral <= seat.sideHalf + (seat.sideFar ?? CHAIR_SIDE_FAR) &&
       ahead >= -seat.sidePlane - CHAIR_SIDE_BEHIND - slack
     );
   }
-  return ahead >= -seat.frontEdge - slack;
+  if (ahead >= -edge - slack) return true;
+  // a village café chair sat on from beside it (`beside`)
+  if (!seat.beside) return false;
+  return lateral >= seat.beside.lateral && ahead >= -seat.beside.edge - slack;
 }
 
 /** How far (m) beyond a chair's side a visitor must stand to count as beside it rather than behind it (`Seat.sideHalf`). */

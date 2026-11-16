@@ -6,8 +6,7 @@ import { MapBoxes } from "../game/MapBoxes";
 
 /**
  * The memorial hall's plain room: since Task 9 the stand-in while memorial.glb loads (MemorialHall.tsx). A floor, the four walls (the colliders, drawn by
- * MapBoxes), the ceiling slab the indoor camera stays under (Task 5), and the glowing door pad of the way out. Also
- * the door pad outside, in front of the hall's glass entrance (the village model has no pad of its own).
+ * MapBoxes) and the ceiling slab the indoor camera stays under (Task 5). No door pad (owner 2026-11-16).
  */
 
 const COLOUR = { room: "#E9E1D2", ceiling: "#F2ECE0", doorPad: "#6D70F0" } as const;
@@ -15,36 +14,33 @@ const COLOUR = { room: "#E9E1D2", ceiling: "#F2ECE0", doorPad: "#6D70F0" } as co
 const HALL_DRAW: MapGeometry = makeGeometry("village", VILLAGE_LAYOUT.areas.hall, hallWalls(VILLAGE_LAYOUT), [], []);
 
 /**
- * The way-out mark inside the memorial hall (round 9 review: the big see-through violet disc on the mat read as a game UI in the
- * quiet hall and filled the bottom of the lounge's view): a thin warm ring, 1.1 m across, faint — on the mat at the door, where the
- * "나가기" button shows. The pad itself (where the door is used) keeps its radius.
+ * A glowing disc where a door is used (the house interiors' way out). The memorial hall draws none, inside or out (owner
+ * 2026-11-16: "추모관 들어오는 입구와 나가는 입구에 보라색 부분을 없애"): its glass door (which slides open as a visitor nears) and the
+ * "들어가기 / 나가기" button are the cue.
  */
-const SUBTLE_RING = { outer: 0.55, inner: 0.5, colour: "#E9DDBF", opacity: 0.42 } as const;
-
-/** A glowing disc where a door is used: the pad (the button shows within it and a little past it); `subtle`: a faint ring. */
-export function DoorPad({ pad, y = 0.05, subtle = false }: { pad: Disc; y?: number; subtle?: boolean }) {
+export function DoorPad({ pad, y = 0.05 }: { pad: Disc; y?: number }) {
   const material = useMemo(
     () =>
       new MeshBasicMaterial({
-        color: subtle ? SUBTLE_RING.colour : COLOUR.doorPad,
+        color: COLOUR.doorPad,
         transparent: true,
-        opacity: subtle ? SUBTLE_RING.opacity : 0.55,
+        opacity: 0.55,
         depthWrite: false,
         toneMapped: false,
         fog: false,
       }),
-    [subtle],
+    [],
   );
   useEffect(() => () => material.dispose(), [material]);
   return (
     <mesh position={[pad.centre.x, y, pad.centre.z]} rotation-x={-Math.PI / 2} material={material} renderOrder={2}>
-      {subtle ? <ringGeometry args={[SUBTLE_RING.inner, SUBTLE_RING.outer, 48]} /> : <circleGeometry args={[pad.radius, 40]} />}
+      <circleGeometry args={[pad.radius, 40]} />
     </mesh>
   );
 }
 
-export function HallRoom({ withPad = true }: { withPad?: boolean }) {
-  const { room, ceilingHeight, doorPad } = VILLAGE_LAYOUT.memorial.interior;
+export function HallRoom() {
+  const { room, ceilingHeight } = VILLAGE_LAYOUT.memorial.interior;
   const cx = (room.minX + room.maxX) / 2;
   const cz = (room.minZ + room.maxZ) / 2;
   return (
@@ -53,7 +49,6 @@ export function HallRoom({ withPad = true }: { withPad?: boolean }) {
         <boxGeometry args={[room.maxX - room.minX, 0.02, room.maxZ - room.minZ]} />
         <meshStandardMaterial color={COLOUR.room} roughness={0.95} />
       </mesh>
-      {withPad ? <DoorPad pad={doorPad} /> : null}
       <MapBoxes geometry={HALL_DRAW} />
       {/* The ceiling (Task 5): the roof seen from inside. The camera is held under it (indoorCamera.ts), so the
           player never sees the sky or the village through it. A plain slab until Task 9 dresses the room. */}

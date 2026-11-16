@@ -13,11 +13,14 @@ import { pickAppearance } from "@caysonverse/shared/appearance";
 import { visibilityChange } from "./placeFilter";
 import { normalizeArea, showsInArea, type AreaGate } from "./areaFilter";
 import type { Pose, SeatState } from "./types";
+import { selfBusRide } from "./busRide";
+import { noteSelfBusSeat } from "../net/transitSync";
 import { createPlayout } from "./playout";
 import { createEchoWatch, healDeadline, noteEcho, selfDiverged } from "./sentMoves";
 import {
   addRemote,
   clearRemotes,
+  getRemoteRecord,
   receiveRemotePose,
   removeRemote,
   setRemoteConnected,
@@ -121,23 +124,32 @@ export function startRemoteSync(
       const offSeat = $(player).listen("seatIndex", (value: number) => {
         selfSeat.index = value;
       });
-      const offs = [off, offSeat];
+      // My place in the bus (busRide.ts): LocalPlayer draws me there while I ride.
+      selfBusRide.slot = player.busSeat ?? -1;
+      noteSelfBusSeat(selfBusRide.slot);
+      const offBus = $(player).listen("busSeat", (value: number) => {
+        selfBusRide.slot = value ?? -1;
+        noteSelfBusSeat(selfBusRide.slot);
+      });
+      const offs = [off, offSeat, offBus];
       // Which area I am in (the village scene's maps, bounds, lighting and filter follow it). Seeds the
       // current value immediately, then follows every door.
       if (areas) {
         let seenArea: string | undefined;
         offs.push(
           $(player).listen("area", (value: string) => {
-            // A door puts me down FACING the way the server says (into the room / away from the building). The
-            // position is snapped just above; the facing comes with it, so the camera that swings behind me
-            // (CameraRig) looks the way I do. The first call is the seed (join, reconnect), not a door.
-            // The position goes with it (집 실내 G): the echo watch above judges "diverged" against where I was at the last Move the
-            // server accepted, and a stair taken straight back (up, then down at once) puts me where that Move was: no divergence, no
-            // snap, and the client stood on the other floor while the server had me here. A door always places me: snap.
+            // A door puts me down WHERE and FACING the way the server says (into the room / away from the building),
+            // so the camera that swings behind me (CameraRig) looks the way I do. The first call is the seed (join,
+            // reconnect), not a door. The position is set here, not left to the divergence check above (owner
+            // 2026-11-16, live: "추모관 나오기를 했더니 이상한 공간에 들어와서 움직이지도 않아"): through the door and
+            // straight back out without a step inside, my echoed stamp still names my last Move at the OUTSIDE door,
+            // a metre or two from where the way out puts me, so the check took the new place for that old echo and
+            // kept me at the hall's coordinates in the village — an empty grey void, 300 m from anything, every
+            // step refused. A door (and a house's stair, 집 실내 G) is always the server's placement: take it whole.
             if (seenArea !== undefined && seenArea !== value) {
-              selfPose.yaw = player.yaw;
               selfPose.x = player.x;
               selfPose.z = player.z;
+              selfPose.yaw = player.yaw;
             }
             seenArea = value;
             areas.setLocal(normalizeArea(value));
@@ -157,6 +169,7 @@ export function startRemoteSync(
         appearance: pickAppearance(player),
         connected: player.connected,
         seatIndex: player.seatIndex,
+        busSeat: player.busSeat ?? -1,
         snapshots: [],
         // The current moveT times a move we never saw (they may have stopped long ago): only a newer one counts.
         playout: createPlayout(moverClock(player)),
@@ -193,7 +206,12 @@ export function startRemoteSync(
       setRemoteConnected(sessionId, value);
     });
     const offSeat = $(player).listen("seatIndex", take);
-    perPlayer.set(sessionId, [...offArea, offChange, offConnected, offSeat]);
+    // A rider is drawn in the bus (RemotePlayer, busSeats.ts) from the moment the server gives the place.
+    const offBus = $(player).listen("busSeat", (value: number) => {
+      const record = getRemoteRecord(sessionId);
+      if (record) record.busSeat = value ?? -1;
+    });
+    perPlayer.set(sessionId, [...offArea, offChange, offConnected, offSeat, offBus]);
   }, true); // immediate → replay players already present when we joined
 
   const offRemove = $(room.state).players.onRemove((_player, sessionId: string) => {
@@ -206,5 +224,6 @@ export function startRemoteSync(
     offRemove();
     for (const sessionId of [...perPlayer.keys()]) detach(sessionId);
     clearRemotes();
+    selfBusRide.slot = -1;
   };
 }

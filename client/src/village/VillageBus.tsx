@@ -1,11 +1,12 @@
 import { useEffect, useMemo } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
-import { type BusNodes, applyBusDayNight, disposeBus, prepareBus, setBusAnisotropy } from "./villageBusPrep";
+import { type BusNodes, applyBusDayNight, disposeBus, followBusSigns, prepareBus, setBusAnisotropy } from "./villageBusPrep";
 import { readBus } from "./villageBusLoader";
 import { dayNight } from "./dayNightDriver";
 import type { VillageTier } from "./villageModelPrep";
 import { noteBusRequested } from "./villageRelease";
-import { getTransitRenderPose, stepTransitRender } from "../net/transitSync";
+import { getTransitRenderPose, onBusHorn, stepTransitRender } from "../net/transitSync";
+import { BUS_HORN_HEAR_M, playBusHorn } from "./busHorn";
 
 declare global {
   interface Window {
@@ -33,7 +34,11 @@ export function VillageBus({ tier }: { tier: VillageTier }) {
     // The root alone is made dynamic so the server-scheduled route can move the
     // complete bus without rebuilding materials or child matrices.
     n.root.matrixAutoUpdate = true;
-    n.root.matrixWorldAutoUpdate = true;
+    // prepareBus switched every node's world-matrix update off: without it only the root moved on paper and the
+    // meshes stayed drawn at the stop. The children's local matrices stay frozen; their world matrices follow the root.
+    n.root.traverse((o) => {
+      o.matrixWorldAutoUpdate = true;
+    });
     return n;
   }, [gltf, tier, gl]);
   useEffect(() => {
@@ -44,12 +49,24 @@ export function VillageBus({ tier }: { tier: VillageTier }) {
       disposeBus(nodes);
     };
   }, [nodes]);
+  const camera = useThree((s) => s.camera);
+  useEffect(() => {
+    // The server's driver toots when it has stood a while for someone on the road: heard near the bus only.
+    onBusHorn(() => {
+      const pose = getTransitRenderPose();
+      const d = Math.hypot(camera.position.x - pose.x, camera.position.z - pose.z);
+      if (d <= BUS_HORN_HEAR_M) playBusHorn(d);
+    });
+    return () => onBusHorn(null);
+  }, [camera]);
   useFrame((state, delta) => {
     stepTransitRender(delta);
     const pose = getTransitRenderPose();
     nodes.root.position.set(pose.x, 0, pose.z);
-    nodes.root.rotation.set(0, pose.yaw, 0);
+    // the model is built nose north (-z) and the pose's yaw is the heading (0 faces +z): half a turn between them
+    nodes.root.rotation.set(0, pose.yaw + Math.PI, 0);
     nodes.root.updateMatrixWorld(true);
+    followBusSigns(nodes);
     applyBusDayNight(nodes, dayNight.applied, state.gl.toneMappingExposure);
   });
   // dispose={null}: the geometry and the loader's materials belong to the loader's cache.

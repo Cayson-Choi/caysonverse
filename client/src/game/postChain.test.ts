@@ -256,10 +256,14 @@ describe("PostChain labels (fix/crisp-labels): drawn last, at full resolution, n
       const target = chain.target;
       r.gl.setRenderTarget(target);
       const compiled: { object: Object3D; scene: Object3D; target: WebGLRenderTarget | null }[] = [];
-      (r.gl as unknown as { compileAsync: unknown }).compileAsync = (object: Object3D, _c: Camera, scene: Object3D) => {
-        compiled.push({ object, scene, target: r.target() });
-        return Promise.resolve();
-      };
+      Object.assign(r.gl as object, {
+        compile: (object: Object3D, _c: Camera, scene: Object3D) => {
+          compiled.push({ object, scene, target: r.target() });
+          return new Set();
+        },
+        properties: { get: () => ({}) },
+        extensions: { has: () => true },
+      });
       const camera = new PerspectiveCamera();
       await chain.warmLabels(r.gl, camera);
       await chain.warmLabels(r.gl, camera);

@@ -148,6 +148,7 @@ function fixture(): Fixture {
     M_waterfall: mat("M_waterfall", { map: textures.falls, transparent: true }),
     M_leaf_green: mat("M_leaf_green", { map: textures.leaf, alphaTest: 0.5 }),
     M_window: mat("M_window"),
+    M_shop: mat("M_shop"),
     M_lamp: mat("M_lamp"),
     M_glass: mat("M_glass", { transparent: true }),
   };
@@ -157,6 +158,7 @@ function fixture(): Fixture {
   lm.name = "village_lm_11";
   root.add(lm);
   root.add(mesh("village_fx_11", mats.M_glow_plot), mesh("village_fx_12", mats.M_window), mesh("village_fx_10", mats.M_lamp));
+  root.add(mesh("village_fx_22", mats.M_shop));
   root.add(mesh("village_glass", mats.M_glass));
   const pool = mesh("village_water_11", mats.M_water, new PlaneGeometry(12, 12).rotateX(-Math.PI / 2));
   root.add(pool, mesh("village_water_12", mats.M_water, new PlaneGeometry(6, 40).rotateX(-Math.PI / 2)));
@@ -558,7 +560,7 @@ describe("prepareVillage: the model dressed for the game", () => {
     expect(nodes.own).toContain(lamp);
     expect(materialOf(nodes.root, "village_glass")).toBe(f.mats.M_glass);
     expect(f.mats.M_glass.toneMapped).toBe(true);
-    expect(f.mats.M_glass.customProgramCacheKey()).not.toBe("village-lit");
+    expect(f.mats.M_glass.customProgramCacheKey()).toBe("village-glass-night"); // dark at night with the lit weight (review 2026-11-13)
     // The hook: map_fragment is followed by the glow, mixed by the shared lit weight.
     const compile = (m: MeshBasicMaterial) => {
       const shader = {
@@ -581,6 +583,28 @@ describe("prepareVillage: the model dressed for the game", () => {
     // Glowing means past white: the boosted glow colour exceeds 1, so the rich tier's bloom (threshold 1.6) takes it.
     expect(Math.max(...LIT.window.color) * LIT.window.boost).toBeGreaterThan(1.6);
     expect(Math.max(...LIT.lamp.color) * LIT.lamp.boost).toBeGreaterThan(1.6);
+  });
+
+  it("a shop's painted interior (M_shop) is lit at night by multiplying the picture, not flattened to the windows' glow", () => {
+    const f = fixture();
+    const nodes = prepareVillage(f.root, new Texture(), "high");
+    const shop = materialOf(nodes.root, "village_fx_22");
+    expect(shop).not.toBe(f.mats.M_shop);
+    expect(shop.name).toBe("M_shop");
+    expect(nodes.own).toContain(shop);
+    expect(shop.customProgramCacheKey()).toBe("village-lit-shop");
+    const shader = {
+      uniforms: {} as Record<string, { value: unknown }>,
+      fragmentShader: "void main() {\n#include <map_fragment>\n#include <color_fragment>\n}",
+      vertexShader: "",
+    };
+    shop.onBeforeCompile(shader as never, null as never);
+    expect(shader.uniforms.uVillageLit).toBe(litUniform);
+    expect(shader.uniforms.uVillageLitBoost!.value).toBe(LIT.shop.boost);
+    expect(shader.fragmentShader).toContain("diffuseColor.rgb * uVillageLitColor * uVillageLitBoost");
+    expect(shader.fragmentShader).not.toContain("villageGlowLuma");
+    // A mid-grey picture texel (0.35) stays below the bloom threshold lit, so the picture is not washed out.
+    expect(0.35 * Math.max(...LIT.shop.color) * LIT.shop.boost).toBeLessThan(1);
   });
 
   it("the fountain's crescent (M_moon) gets the bake's light as a probe: never light-mapped, lifted or graded, patched once", () => {
@@ -798,7 +822,7 @@ describe("applyDayNight: the clock's numbers into the model (Task 7A)", () => {
     expect(liftUniform.value).toBeCloseTo(NIGHT_LOOK.lift, 9);
     expect(foliageTintUniform.value.toArray()).toEqual([...NIGHT_LOOK.foliageTint].map((v) => expect.closeTo(v, 5)));
     // The cherry blossoms darker still (Task 7A review m-g).
-    expect(cherryTintUniform.value.toArray()).toEqual([0.05, 0.07, 0.15].map((v) => expect.closeTo(v, 5)));
+    expect(cherryTintUniform.value.toArray()).toEqual([0.07, 0.08, 0.115].map((v) => expect.closeTo(v, 5)));
     for (let k = 0; k < 3; k++) expect(NIGHT_LOOK.cherryTint[k]).toBeLessThan(NIGHT_LOOK.foliageTint[k]!);
     expect(dayTintUniform.value.toArray()).toEqual([1, 1, 1]); // the day light map has no weight at night: no extra darkening
     expect(nodes.sky!.color.toArray()).toEqual([...NIGHT_LOOK.domeTint].map((v) => expect.closeTo(v, 5)));
@@ -1038,5 +1062,16 @@ describe("the shader patches against three's own MeshBasicMaterial shader (T7 re
     expect(count(fs, "gl_FragColor.rgb = villageInverseTone( gl_FragColor.rgb );\n#include <tonemapping_fragment>")).toBe(1);
     expect(fs).toContain("#define VILLAGE_INVERSE_NEUTRAL");
     expect(count(fs, "void main() {")).toBe(1);
+  });
+});
+
+describe("the village's files are versioned (a phone must not keep an old village.glb for a day)", () => {
+  it("the model, both light maps, the signals and the bus stop carry a content hash ?v=", async () => {
+    const { VILLAGE_MODEL_URL, VILLAGE_LIGHTMAP_URL, VILLAGE_NIGHT_LIGHTMAP_URL } = await import("./villageModelPrep");
+    const { SIGNALS_MODEL_URL } = await import("./TransitRoadSignals");
+    const { BUSSTOP_MODEL_URL } = await import("./BusStopShelter");
+    for (const url of [VILLAGE_MODEL_URL, VILLAGE_LIGHTMAP_URL, VILLAGE_NIGHT_LIGHTMAP_URL, SIGNALS_MODEL_URL, BUSSTOP_MODEL_URL]) {
+      expect(url).toMatch(/^\/models\/village\/[a-z_]+\.(glb|webp)\?v=[0-9a-f]{10}$/);
+    }
   });
 });

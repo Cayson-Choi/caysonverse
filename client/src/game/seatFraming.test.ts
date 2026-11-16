@@ -21,13 +21,17 @@ beforeEach(() => {
 afterEach(() => setActiveMap(VILLAGE_ACTIVE_MAP));
 
 describe("own avatar in view in the memorial hall (review 2026-11-15 round 5: it vanished on arrival and on most seats)", () => {
-  it("indoors the body is hidden only when the camera is really inside the head (< 0.6 m), never in normal play", () => {
-    expect(INDOOR_SELF_HIDE_DISTANCE).toBeLessThanOrEqual(0.6);
+  it("indoors the body is hidden only when the camera is right at the head (< 1 m), never in normal play (3.2 m+)", () => {
+    // round 9 visual review (2026-11-16): a camera held 0.55–0.85 m off by the lounge armchair behind left a half-faded head
+    // filling the screen: that whole band is now hidden, and the normal-play distances (minDistance 3.2 m) stay drawn
+    expect(INDOOR_SELF_HIDE_DISTANCE).toBeGreaterThanOrEqual(0.9);
+    expect(INDOOR_SELF_HIDE_DISTANCE).toBeLessThan(CAMERA.minDistance);
+    expect(INDOOR_SELF_SHOW_DISTANCE).toBeLessThan(CAMERA.minDistance);
     expect(indoorCloseHidden(false, true, 2.6, INDOOR_SELF_HIDE_DISTANCE, INDOOR_SELF_SHOW_DISTANCE)).toBe(false);
-    expect(indoorCloseHidden(false, true, 1.0, INDOOR_SELF_HIDE_DISTANCE, INDOOR_SELF_SHOW_DISTANCE)).toBe(false);
-    expect(indoorCloseHidden(false, true, 0.5, INDOOR_SELF_HIDE_DISTANCE, INDOOR_SELF_SHOW_DISTANCE)).toBe(true);
-    expect(indoorCloseHidden(true, true, 0.7, INDOOR_SELF_HIDE_DISTANCE, INDOOR_SELF_SHOW_DISTANCE)).toBe(true);
-    expect(indoorCloseHidden(true, true, 0.9, INDOOR_SELF_HIDE_DISTANCE, INDOOR_SELF_SHOW_DISTANCE)).toBe(false);
+    expect(indoorCloseHidden(false, true, 1.3, INDOOR_SELF_HIDE_DISTANCE, INDOOR_SELF_SHOW_DISTANCE)).toBe(false);
+    for (const d of [0.5, 0.55, 0.71, 0.85, 0.95]) expect(indoorCloseHidden(false, true, d, INDOOR_SELF_HIDE_DISTANCE, INDOOR_SELF_SHOW_DISTANCE), `${d} m`).toBe(true);
+    expect(indoorCloseHidden(true, true, 1.1, INDOOR_SELF_HIDE_DISTANCE, INDOOR_SELF_SHOW_DISTANCE)).toBe(true);
+    expect(indoorCloseHidden(true, true, 1.3, INDOOR_SELF_HIDE_DISTANCE, INDOOR_SELF_SHOW_DISTANCE)).toBe(false);
   });
 
   it("on arrival (the hall's spawn, facing in, the camera behind toward the door wall) the camera settles 3.2 m+ from the head on PC and phone", () => {

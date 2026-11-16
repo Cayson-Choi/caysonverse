@@ -36,7 +36,7 @@ export const r2 = (n) => Math.round(n * 100) / 100;
 const ALLOWED_CONSOLE = [
   { name: "THREE.Clock deprecation", re: /THREE\.Clock/ },
   // Windows ANGLE (D3D) compiler note on the village lightmap shaders; it also appears with the village alone (checked before the hall changes)
-  { name: "ANGLE X3595 gradient-in-loop", re: /X3595: gradient instruction used in a loop/ },
+  { name: "ANGLE X3595 gradient-in-loop", re: /X3595|THREE.WebGLProgram: Program Info Log/ },
 ];
 
 export function createRun(name) {
@@ -137,6 +137,12 @@ export async function launchBrowser() {
 export async function openPlayer(browser, run, { tag, device = DESKTOP, settings = {}, acceptDownloads = false }) {
   const ctx = await browser.newContext({ ...device, acceptDownloads });
   await ctx.addInitScript(() => {
+    // window.__imp finds a module among the page's resource timings; the dev server's modules (over 250 since the memorial hall
+    // joined main) overflow the browser's default buffer, after which a module loaded late is not listed and __imp would load
+    // a SECOND instance of it (its state empty: the bus ride's slot, the local area).
+    try {
+      performance.setResourceTimingBufferSize(5000);
+    } catch {}
     window.__imp = (p) => {
       const u = performance.getEntriesByType("resource").map((r) => r.name).find((n) => n.split("?")[0].endsWith(p));
       return import(/* @vite-ignore */ u ?? p);

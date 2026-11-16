@@ -11,7 +11,12 @@ import {
   TYPING_RATE,
 } from "@caysonverse/shared/constants";
 import { MessageType } from "@caysonverse/shared/messages";
-import type { ChatBroadcast, EmojiBroadcast, JumpBroadcast, SitRejectedPayload } from "@caysonverse/shared/messages";
+import type { BusStatePayload, ChatBroadcast, EmojiBroadcast, JumpBroadcast, SitRejectedPayload } from "@caysonverse/shared/messages";
+import { TRANSIT, routePoseAtDistance } from "@caysonverse/shared/village/transit";
+import { busDismountSpot } from "@caysonverse/shared/village/busSeats";
+import { busClearance } from "@caysonverse/shared/village/busBody";
+import { busDriveTrip, type BusDrive } from "@caysonverse/shared/village/busDrive";
+import { BUS_LEAVE_MOVING_NOTICE } from "./transitRuntime";
 import {
   SERVER_TIME_INTERVAL_MS,
   VillageMsg,
@@ -1010,6 +1015,29 @@ describe("VillageRoom benches (integration)", () => {
     expect(b.seatIndex).toBe(PLAZA_B);
   });
 
+  it("the bus stop shelter's bench: its two seats are taken from the road side, never from behind the glass (a bench with a back is sat on from the front)", async () => {
+    const SHELTER = VILLAGE_SEATS.map((s, i) => (s.bench === "shelter" ? i : -1)).filter((i) => i >= 0);
+    expect(SHELTER).toHaveLength(2);
+    const { client, player } = await visitor();
+    const seat = VILLAGE_SEATS[SHELTER[0]!]!;
+    // behind the bench, east of the glass wall, within reach of the seat: refused silently
+    placeAt(player, seat.x + 1.2, seat.z);
+    client.send(MessageType.Sit, { seatIndex: SHELTER[0] });
+    await settle(client);
+    expect(player.seatIndex).toBe(-1);
+    // in front of it, on the road side: seated on the seat, facing the road
+    inFrontOf(player, SHELTER[0]!);
+    client.send(MessageType.Sit, { seatIndex: SHELTER[0] });
+    expect(await pollFor(() => player.seatIndex === SHELTER[0])).toBe(true);
+    expect(player.x).toBe(seat.x);
+    expect(player.z).toBe(seat.z);
+    expect(player.yaw).toBeCloseTo(-Math.PI / 2, 5); // wrapYaw keeps 6 decimals
+    client.send(MessageType.Stand, {});
+    expect(await pollFor(() => player.seatIndex === -1)).toBe(true);
+    expect(aheadOf(SHELTER[0]!, player.x, player.z)).toBeGreaterThan(0); // on the road side of the bench
+    expect(isBlocked(player.x, player.z, PLAYER_RADIUS, villageGeometry.obstacles)).toBe(false);
+  });
+
   it("out of reach, a bad index or a bench of the other area: refused silently", async () => {
     const { client, player } = await visitor();
     const rejected: SitRejectedPayload[] = [];
@@ -1091,5 +1119,147 @@ describe("VillageRoom benches (integration)", () => {
     inFrontOf(c, PLAZA_B);
     carol.send(MessageType.Sit, { seatIndex: PLAZA_B });
     expect(await pollFor(() => c.seatIndex === PLAZA_B)).toBe(true);
+  });
+});
+
+describe("VillageRoom bus stops for avatars on the road (integration, owner 2026-11-15)", () => {
+  it("an avatar standing in the bus's lane holds it up for everyone (blocked snapshot, a brake in the drive), riders do not, and it drives on once they leave", async () => {
+    const { room, client, player } = await visitor();
+    const bob = await colyseus.connectTo(room, JOIN_BOB);
+    const slot = Date.UTC(2026, 10, 15, 3, 0, 0);
+    const clock = { t: slot - 1000 };
+    (room as unknown as { wallClock: () => number }).wallClock = () => clock.t;
+    const lane = routePoseAtDistance(30);
+    placeAt(player, lane.x, lane.z);
+    const seen: BusStatePayload[] = [];
+    bob.onMessage(MessageType.BusState, (m: BusStatePayload) => seen.push(m));
+    for (; clock.t < slot + 20_000; clock.t += 100) room.tickBus();
+    const last = await pollFor(() => seen.find((m) => m.serverMs !== undefined && m.serverMs >= slot + 19_000 && m.blocked === true));
+    expect(last, "the second client hears the bus stand for the avatar").toBeTruthy();
+    expect(last!.drive?.brake).not.toBeNull();
+    expect(last!.status).toBe("inTransit");
+    // the bus stands short of the avatar
+    const nose = Math.hypot(last!.x - lane.x, last!.z - lane.z);
+    expect(nose).toBeGreaterThan(TRANSIT.busLengthM / 2 + 0.4);
+    // the avatar steps onto the pavement: the bus drives on
+    placeAt(player, 41, -20);
+    for (; clock.t < slot + 30_000; clock.t += 100) room.tickBus();
+    const moving = await pollFor(() => seen.find((m) => m.serverMs !== undefined && m.serverMs >= slot + 29_000 && m.blocked === false));
+    expect(moving).toBeTruthy();
+    expect(moving!.drive?.fromMs).toBeGreaterThan(slot + 20_000);
+    void client;
+  });
+});
+
+describe("VillageRoom: nobody is ever inside the moving bus (integration, checker r2)", () => {
+  /** The bus's pose by the room's own driver at the room's clock. */
+  function busPose(room: VillageRoom, t: number) {
+    const drive = (room as unknown as { busDriver: { drive: BusDrive } }).busDriver.drive;
+    return busDriveTrip(drive, t);
+  }
+  function at(pose: { x: number; z: number; yaw: number }, ahead: number, right: number) {
+    const fx = Math.sin(pose.yaw);
+    const fz = Math.cos(pose.yaw);
+    return { x: pose.x + fx * ahead - fz * right, z: pose.z + fz * ahead + fx * right };
+  }
+
+  it("the bus's body reaching a walker (or a walker found inside it) puts them out on a flank, and every client sees it", async () => {
+    const { room, client, player } = await visitor();
+    const bob = await colyseus.connectTo(room, JOIN_BOB);
+    const slot = Date.UTC(2026, 10, 15, 3, 0, 0);
+    const clock = { t: slot - 1000 };
+    (room as unknown as { wallClock: () => number }).wallClock = () => clock.t;
+    for (; clock.t < slot + 8_000; clock.t += 100) room.tickBus();
+    const trip = busPose(room, clock.t);
+    expect(trip.status).toBe("inTransit");
+    const inside = at(trip.pose, 0.5, 0.4); // right in the bus's middle, door side
+    placeAt(player, inside.x, inside.z);
+    room.tickBus();
+    const now = busPose(room, clock.t).pose;
+    expect(busClearance(now, player.x, player.z, PLAYER_RADIUS)).toBeGreaterThanOrEqual(-1e-6);
+    const pushed = { x: player.x, z: player.z };
+    const seenByBob = () => bob.state?.players?.get(client.sessionId) as { x: number; z: number } | undefined;
+    expect(await pollFor(() => { const b = seenByBob(); return b && Math.hypot(b.x - pushed.x, b.z - pushed.z) < 1e-3; })).toBeTruthy();
+    // through the whole lap, standing beside the lane: never inside
+    for (; clock.t < slot + 60_000; clock.t += 100) {
+      room.tickBus();
+      const tr = busPose(room, clock.t);
+      if (tr.status === "inTransit") expect(busClearance(tr.pose, player.x, player.z, PLAYER_RADIUS)).toBeGreaterThanOrEqual(-1e-6);
+    }
+  });
+
+  it("a Move that ends inside the driving bus is taken but put out beside it (no step into its body)", async () => {
+    const { room, client, player } = await visitor();
+    const slot = Date.UTC(2026, 10, 15, 3, 0, 0);
+    const clock = { t: slot - 1000 };
+    (room as unknown as { wallClock: () => number }).wallClock = () => clock.t;
+    for (; clock.t < slot + 8_000; clock.t += 100) room.tickBus();
+    const pose = busPose(room, clock.t).pose;
+    const beside = at(pose, 0, 1.25 + PLAYER_RADIUS + 0.4);
+    placeAt(player, beside.x, beside.z);
+    const track = (room as unknown as { tracking: Map<string, Tracking> }).tracking.get(client.sessionId)!;
+    track.lastAcceptedAt = Date.now() - 1000;
+    const into = at(pose, 0, 0.6);
+    client.send(MessageType.Move, { x: into.x, z: into.z, yaw: 0 });
+    expect(await pollFor(() => Math.hypot(player.x - beside.x, player.z - beside.z) > 0.05)).toBe(true);
+    expect(busClearance(pose, player.x, player.z, PLAYER_RADIUS)).toBeGreaterThanOrEqual(-1e-6);
+  });
+});
+
+describe("VillageRoom bus riders are in the bus (integration, owner 2026-11-15)", () => {
+  /** A room on the clock `clock.t`, at a departure on the 10-minute grid with boarding open. */
+  async function atTheStop() {
+    const { room, client, player } = await visitor();
+    const bob = await colyseus.connectTo(room, JOIN_BOB);
+    const slot = Date.UTC(2026, 10, 15, 3, 10, 0);
+    const clock = { t: slot - 60_000 };
+    (room as unknown as { wallClock: () => number }).wallClock = () => clock.t;
+    room.tickBus();
+    const bobPlayer = room.state.players.get(bob.sessionId)!;
+    placeAt(player, 39.4, -6.2);
+    placeAt(bobPlayer, 39.4, -8.4);
+    return { room, client, player, bob, bobPlayer, slot, clock };
+  }
+
+  it("boarding gives each rider a place in the bus (busSeats.ts) that every client sees; a leave on the lap is refused; back at the stop they get off at the door", async () => {
+    const { room, client, player, bob, bobPlayer, slot, clock } = await atTheStop();
+    client.send(MessageType.BusRide, { action: "board" });
+    expect(await pollFor(() => player.busSeat === 0)).toBe(true);
+    bob.send(MessageType.BusRide, { action: "board" });
+    expect(await pollFor(() => bobPlayer.busSeat === 1)).toBe(true);
+    // the other client draws the rider in that place
+    expect(await pollFor(() => bob.state.players.get(client.sessionId)?.busSeat === 0)).toBe(true);
+    // the bus leaves: the doors stay shut until it is back
+    clock.t = slot + 10_000;
+    room.tickBus();
+    const refused = waitForMessage<{ reason: string }>(client, MessageType.BusRejected, () => true);
+    client.send(MessageType.BusRide, { action: "leave" });
+    expect((await refused).reason).toBe(BUS_LEAVE_MOVING_NOTICE);
+    expect(player.busSeat).toBe(0);
+    // the lap is over: both are put down outside the middle door, apart, clear of the bus
+    for (; clock.t < slot + 200_000; clock.t += 100) room.tickBus();
+    expect(await pollFor(() => player.busSeat === -1 && bobPlayer.busSeat === -1)).toBe(true);
+    const a = busDismountSpot(0);
+    const b = busDismountSpot(1);
+    expect([player.x, player.z]).toEqual([Math.fround(a.x), Math.fround(a.z)].map((v) => expect.closeTo(v, 4)));
+    expect([bobPlayer.x, bobPlayer.z]).toEqual([Math.fround(b.x), Math.fround(b.z)].map((v) => expect.closeTo(v, 4)));
+    expect(isBlocked(player.x, player.z, 0.4, villageGeometry.obstacles)).toBe(false);
+  });
+
+  it("a leave while the bus stands at the stop puts the rider down at the door at once, and boarding from the shelter's bench stands them up", async () => {
+    const { client, player } = await atTheStop();
+    const bench = VILLAGE_SEATS.findIndex((s) => s.area === "village" && Math.hypot(s.x - 40.9, s.z + 4.9) < 2);
+    expect(bench).toBeGreaterThanOrEqual(0);
+    placeAt(player, VILLAGE_SEATS[bench]!.standX, VILLAGE_SEATS[bench]!.standZ);
+    client.send(MessageType.Sit, { seatIndex: bench });
+    expect(await pollFor(() => player.seatIndex === bench)).toBe(true);
+    client.send(MessageType.BusRide, { action: "board" });
+    expect(await pollFor(() => player.busSeat === 0)).toBe(true);
+    expect(player.seatIndex).toBe(-1);
+    client.send(MessageType.BusRide, { action: "leave" });
+    expect(await pollFor(() => player.busSeat === -1)).toBe(true);
+    const spot = busDismountSpot(0);
+    expect(player.x).toBeCloseTo(spot.x, 4);
+    expect(player.z).toBeCloseTo(spot.z, 4);
   });
 });

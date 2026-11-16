@@ -1,6 +1,6 @@
 /* HUD chips and the top rows (controls-ux Task 16).
 
-   One button look for everything that is a HudButton: the top-right 👁 🗺 🔊 ☰, the 👥
+   One button look for everything that is a HudButton: the top-right 👁 🗺 ☰, the 👥
    count, and — as circles pinned by game/hud.ts — the phone's 💬 and emoji buttons. The
    jump and action buttons keep their own look in action.css but share the layout model.
 
@@ -77,7 +77,7 @@
   border-radius: 50%;
 }
 
-/* ── Top-right: 👁 🗺 🔊 ☰ ── */
+/* ── Top-right: 👁 🗺 ☰ ── */
 .cv-hud-right {
   position: fixed;
   top: 16px;
@@ -260,4 +260,93 @@ html:not(.cv-touch) .cv-hud-left {
   .cv-hud-btn {
     transition: none;
   }
+}
+
+/* ── 동서남북 dial (Compass.tsx): under the top-right buttons, small, never takes a press ── */
+.cv-compass {
+  --cv-compass-size: 64px;
+  --cv-compass-ring: 0deg;
+  --cv-compass-letter: 0deg;
+  position: fixed;
+  top: calc(16px + var(--cv-hud-btn, 48px) + 12px);
+  right: 16px;
+  z-index: 21;
+  width: var(--cv-compass-size);
+  height: var(--cv-compass-size);
+  border-radius: 50%;
+  background: rgba(18, 14, 36, 0.72);
+  border: 1px solid rgba(150, 130, 220, 0.4);
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.cv-compass-ring {
+  position: absolute;
+  inset: 0;
+  transform: rotate(var(--cv-compass-ring));
+}
+
+/* A letter sits on the ring at its own angle and is turned back so it reads upright. */
+.cv-compass-mark {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 0;
+  height: 0;
+}
+
+.cv-compass-mark.is-n { transform: translateY(calc(var(--cv-compass-size) * -0.33)); }
+.cv-compass-mark.is-e { transform: translateX(calc(var(--cv-compass-size) * 0.33)); }
+.cv-compass-mark.is-s { transform: translateY(calc(var(--cv-compass-size) * 0.33)); }
+.cv-compass-mark.is-w { transform: translateX(calc(var(--cv-compass-size) * -0.33)); }
+
+.cv-compass-letter {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform: translate(-50%, -50%) rotate(var(--cv-compass-letter));
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1;
+  color: #f2eeff;
+  text-shadow: 0 0 3px rgba(0, 0, 0, 0.6);
+}
+
+/* 북 is red, so "which way is north" reads without reading. */
+.cv-compass-mark.is-n .cv-compass-letter {
+  color: #ff6674;
+}
+
+/* The pointer: where you look (the top). */
+.cv-compass-pointer {
+  position: absolute;
+  left: 50%;
+  top: -5px;
+  width: 0;
+  height: 0;
+  transform: translateX(-50%);
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 7px solid #ffd54a;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.5));
+}
+
+/* ── "내 위치" tag on the overview map (OverviewMarker): a pill above the blinking marker ── */
+.cv-map-me {
+  transform: translateY(-50px);
+  padding: 3px 10px;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.2;
+  white-space: nowrap;
+  color: #fff;
+  background: #e3203a;
+  border: 2px solid #ffe14a;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
 }

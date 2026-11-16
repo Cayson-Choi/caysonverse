@@ -28,6 +28,7 @@ import {
 } from "three";
 import { FullScreenQuad } from "three/examples/jsm/postprocessing/Pass.js";
 import { UnrealBloomPass } from "three-stdlib";
+import { compileSafely } from "./compileSafely";
 import { setRenderScale } from "./renderScale";
 import { LABEL_LAYER, billboardSprite, canvasTexture } from "./spriteCanvas";
 
@@ -528,7 +529,7 @@ export class PostChain {
     const prev = renderer.getRenderTarget();
     renderer.setRenderTarget(null);
     try {
-      return renderer.compileAsync(this.labelWarmer, camera, this.labels).catch(() => undefined);
+      return compileSafely(renderer, this.labelWarmer, camera, this.labels);
     } finally {
       renderer.setRenderTarget(prev);
     }

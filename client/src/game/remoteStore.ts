@@ -28,6 +28,12 @@ export interface RemotePlayerRecord {
    * change (`seatLine`).
    */
   seatIndex: number;
+  /**
+   * The remote's place in the village bus (`Player.busSeat`, busSeats.ts): -1 = not on it. A rider is drawn in the bus
+   * (RemotePlayer) and is no body on the ground to bump into (`forEachRemotePosition` skips it). Optional for a record
+   * built without one (tests).
+   */
+  busSeat?: number;
   /** Position history ring buffer (on the remote's timeline), sampled by the interpolation layer. */
   snapshots: Snapshot[];
   /** When along `snapshots` this remote is drawn (playout.ts): its timeline, render time and lag. */
@@ -173,6 +179,8 @@ export function forEachRemotePosition(
   fn: (x: number, z: number, connected: boolean) => void,
 ): void {
   for (const record of records.values()) {
+    // A rider is in the bus (the moving bus is solid itself, playerObstacles.ts): no body where it boarded.
+    if ((record.busSeat ?? -1) >= 0) continue;
     const drawn = record.drawn;
     if (drawn) {
       fn(drawn.x, drawn.z, record.connected);
@@ -194,6 +202,8 @@ export interface RemoteSummary {
   yaw: number;
   connected: boolean;
   seatIndex: number;
+  /** The remote's place in the bus (-1: not riding). */
+  busSeat: number;
 }
 
 /** Dev/E2E view: each remote's appearance, newest known position + ghost flag + seat. */
@@ -210,6 +220,7 @@ export function getRemotes(): RemoteSummary[] {
       yaw: last?.yaw ?? 0,
       connected: record.connected,
       seatIndex: record.seatIndex,
+      busSeat: record.busSeat ?? -1,
     });
   }
   return out;

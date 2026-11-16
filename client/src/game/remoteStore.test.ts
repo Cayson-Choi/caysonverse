@@ -124,6 +124,21 @@ describe("remoteStore — the solid body is the one on screen (fix: collision on
     expect(seen).toEqual([[4.2, 6]]);
   });
 
+  it("a bus rider is no body on the ground (owner 2026-11-15: it is in the bus; where it boarded is empty pavement)", () => {
+    addRemote(rec("rider"));
+    addRemote(rec("walker"));
+    receiveRemotePose("rider", 1000, 0, 39.4, -6.2, 0);
+    receiveRemotePose("walker", 1000, 0, 1, 2, 0);
+    getRemoteRecord("rider")!.busSeat = 0;
+    const seen: Array<[number, number]> = [];
+    forEachRemotePosition((x, z) => seen.push([x, z]));
+    expect(seen).toEqual([[1, 2]]);
+    getRemoteRecord("rider")!.busSeat = -1;
+    seen.length = 0;
+    forEachRemotePosition((x, z) => seen.push([x, z]));
+    expect(seen).toHaveLength(2);
+  });
+
   it("a running remote blocks where it is drawn, not a playout lag ahead of it on empty floor", () => {
     setActiveMap(VILLAGE_ACTIVE_MAP);
     addRemote(rec("runner"));

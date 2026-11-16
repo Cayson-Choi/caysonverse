@@ -13,7 +13,8 @@ import { SEAT_APPROACH_SLACK, SEAT_REACH, approachesSeat, seatDistance, seatTake
  *                      impossible for an honest client: bad payload, an already
  *                      seated sender (the UI never offers it), or a seat beyond
  *                      SEAT_REACH (the prompt only shows in range → a farther
- *                      request is a tampered client).
+ *                      request is a tampered client), or one from behind a bench's
+ *                      back rest (the prompt is only offered in front of it).
  *   - `{ reason }`   → REJECT with a personal Korean notice. The ONE non-silent
  *                      case: a first-come race where the seat was taken by
  *                      someone else between prompt and click.

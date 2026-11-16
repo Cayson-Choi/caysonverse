@@ -21,10 +21,20 @@ import {
   areaGapBlockers,
   houseBlockBlockers,
   BUS_MIRROR_REACH,
+  BUS_STOP_PAD,
+  BUS_STOP_SIGN,
   boxAt,
   buildVillageGeometry,
+  busShelterBenchCollider,
   busShelterColliders,
+  busShelterRoofSlab,
+  busShelterLightBoxCameraBox,
   busMirrorColliders,
+  busParkedColliders,
+  busParkedFootprint,
+  busEnvelope,
+  MODEL_LEGACY_BUS_BOX,
+  withoutLegacyBus,
   colliderNode,
   cubbyAnchorNode,
   cubbyAnchors,
@@ -38,10 +48,12 @@ import {
   hallSurroundBlockers,
   hallWalls,
   segmentBand,
+  solidBox,
   segmentBank,
   villageBounds,
   villageGeometry,
 } from "./villageLayout";
+import { signalPoleColliders } from "./crossings";
 import type { PlotId, Point2, Side, VillageLane } from "./villageLayout";
 
 const L = VILLAGE_LAYOUT;
@@ -77,6 +89,22 @@ function farCorner(b: AABB, from: Point2 = { x: 0, z: 0 }): number {
 
 /** The box of a layout item with a centre and a size. */
 const boxOf = (o: { centre: Point2; size: { x: number; z: number } }) => boxAt(o.centre, o.size);
+/** The parked bus's own frame: `across` (+ = the door side) and `along` (+ = ahead) of a world point, and back. */
+const BUS_F = { x: Math.sin(L.busStop.bus.yaw), z: Math.cos(L.busStop.bus.yaw) };
+const BUS_R = { x: -BUS_F.z, z: BUS_F.x };
+const busLocal = (p: Point2) => {
+  const dx = p.x - L.busStop.bus.centre.x, dz = p.z - L.busStop.bus.centre.z;
+  return { across: dx * BUS_R.x + dz * BUS_R.z, along: dx * BUS_F.x + dz * BUS_F.z };
+};
+const busWorld = (across: number, along: number): Point2 => ({
+  x: L.busStop.bus.centre.x + BUS_R.x * across + BUS_F.x * along,
+  z: L.busStop.bus.centre.z + BUS_R.z * across + BUS_F.z * along,
+});
+/** The x of the parked bus's door side (its right, +x side) at `z`. */
+const busDoorSideX = (z: number) => {
+  const [, fr, rr] = busParkedFootprint(L);
+  return fr!.x + ((rr!.x - fr!.x) * (z - fr!.z)) / (rr!.z - fr!.z);
+};
 
 /** The compass side of a box's centre that faces the plaza centre (the dominant axis of the way there). */
 function sideTowardPlaza(c: Point2): Side {
@@ -252,22 +280,32 @@ describe("layout values (brief + rulings + owner changes)", () => {
   it("pavilion and bus stop (compact pavilion, shelter visual, parked 9 m bus 9 x 2.5 on the outer side of the road)", () => {
     expect(L.pavilion).toEqual({ centre: { x: -16, z: 62 }, size: { x: 5, z: 5 } });
     expect(L.busStop.bus.size).toEqual({ x: 2.5, z: 9 });
-    const bus = boxOf(L.busStop.bus);
-    // On the road: every corner within the band, and on the outer half (beyond the road's centre line).
-    for (const x of [bus.minX, bus.maxX]) {
-      for (const z of [bus.minZ, bus.maxZ]) {
-        const r = Math.hypot(x, z);
-        expect(r, `corner (${x}, ${z})`).toBeGreaterThanOrEqual(RING_INNER);
-        expect(r, `corner (${x}, ${z})`).toBeLessThanOrEqual(RING_OUTER + 0.05);
-      }
+    // On the road, in the outer lane (owner 2026-11-15): every corner between the centre line's paint and the kerb, the
+    // inner side's middle clear of the paint too, turned along the kerb (transit.test.ts checks the whole lap)
+    for (const c of busParkedFootprint(L)) {
+      const r = Math.hypot(c.x, c.z);
+      expect(r, `corner (${c.x}, ${c.z})`).toBeGreaterThanOrEqual(L.ringRoad.radius + 0.075);
+      expect(r, `corner (${c.x}, ${c.z})`).toBeLessThanOrEqual(RING_OUTER - 0.05);
     }
+    const innerMid = busWorld(-L.busStop.bus.size.x / 2, 0);
+    expect(Math.hypot(innerMid.x, innerMid.z)).toBeGreaterThanOrEqual(L.ringRoad.radius + 0.075);
+    const a = Math.atan2(L.busStop.bus.centre.z, L.busStop.bus.centre.x);
+    expect(Math.abs(L.busStop.bus.yaw - Math.atan2(Math.sin(a), -Math.cos(a)))).toBeLessThan(1e-9);
     expect(Math.hypot(L.busStop.bus.centre.x, L.busStop.bus.centre.z)).toBeGreaterThan(L.ringRoad.radius);
-    // The shelter stands on the sidewalk.
+    // The shelter stands at the back of its waiting pad, beyond the sidewalk, with a clear walking space of at least 2 m
+    // between the sidewalk's outer edge and the shelter's roof (0.3 m overhang) so a body can walk up to the bus.
     const shelter = boxOf(L.busStop.shelter);
-    expect(distToBox({ x: 0, z: 0 }, shelter)).toBeGreaterThanOrEqual(RING_OUTER);
-    const shelterR = Math.hypot(L.busStop.shelter.centre.x, L.busStop.shelter.centre.z);
-    expect(shelterR).toBeGreaterThanOrEqual(RING_OUTER);
-    expect(shelterR).toBeLessThanOrEqual(SIDEWALK_OUTER);
+    expect(distToBox({ x: 0, z: 0 }, shelter)).toBeGreaterThanOrEqual(SIDEWALK_OUTER);
+    const roofFront = shelter.minX - 0.3;
+    const kerbX = Math.sqrt(RING_OUTER ** 2 - L.busStop.shelter.centre.z ** 2);
+    expect(roofFront - kerbX, "clear paving between the kerb and the roof").toBeGreaterThanOrEqual(2.5);
+    // the bus pulls in 0.35 m off the kerb now (it stood 1.2-1.6 m off it, square to the map): 3 m of paving and kerb gap
+    expect(roofFront - busDoorSideX(L.busStop.shelter.centre.z), "clear space between the bus's doors and the roof").toBeGreaterThanOrEqual(3.4);
+    // the pad covers the shelter and clears the café
+    const cafe = L.sceneryHouses.find((h) => h.id === "cafe")!;
+    const cafeBox = boxOf(cafe);
+    for (const p of BUS_STOP_PAD) expect(p.x < cafeBox.minX || p.z > cafeBox.maxZ, `pad corner (${p.x}, ${p.z}) outside the café`).toBe(true);
+    expect(BUS_STOP_PAD.every((p) => p.x <= SIDEWALK_OUTER + 5)).toBe(true);
   });
 
   it("six B-scale plots on a ring: ids, labels, sign text, plot_n due north, plot_w under construction", () => {
@@ -349,7 +387,10 @@ describe("layout values (brief + rulings + owner changes)", () => {
       expect(["n", "s", "e", "w"], h.id).toContain(h.doorSide);
     }
     for (const h of houses) expect(h.size, h.id).toEqual({ x: 11.2, z: 8.4 });
-    expect(cafes[0].size).toEqual({ x: 16, z: 12.5 });
+    expect(cafes[0].size).toEqual({ x: 20, z: 15 });
+    expect(cafes[0].terrace).toBe(6);
+    for (const h of houses) expect(h.terrace, h.id).toBe(2.25);
+    expect(L.sceneryHouses.find((x) => x.kind === "kiosk")!.terrace).toBe(0.7);
   });
 
   it("backdrop: the waterfall back-left and the lake with a pavilion on the right, outside the walk bounds", () => {
@@ -627,7 +668,7 @@ describe("layout sanity (nothing is built on the water, the road or each other)"
     expect(bEnd.x).toBeLessThanOrEqual(GAP.maxX);
     expect(bEnd.z).toBeCloseTo(L.bridge.minZ, 9);
     const bus = lane("lane_bus");
-    expect(distToBox(bus.points[bus.points.length - 1], boxOf(L.busStop.shelter))).toBeLessThanOrEqual(1);
+    expect(distToBox(bus.points[bus.points.length - 1], boxOf(L.busStop.shelter))).toBeLessThanOrEqual(2);
   });
 
   it("every lane is clear of every collider by at least its half width (a body can walk its whole length)", () => {
@@ -647,7 +688,8 @@ describe("village colliders are built from the layout", () => {
   it("greybox list: unique ids for plaza, creek, pavilion, bus, memorial pieces, houses and café", () => {
     const ids = colliders.map((c) => c.id);
     expect(new Set(ids).size).toBe(ids.length); // unique, so Task 7's col__<id> names can match
-    for (const id of ["plaza_fountain", "plaza_zelkova", "pavilion", "bus", "cafe"]) expect(ids).toContain(id);
+    for (const id of ["plaza_fountain", "plaza_zelkova", "pavilion", "cafe"]) expect(ids).toContain(id);
+    expect(ids.filter((i) => i.startsWith("bus"))).toEqual([]); // the parked bus is its slices (busParkedColliders), not a box
     expect(ids).not.toContain("plaza_trunk");
     expect(ids).not.toContain("plaza_deck");
     expect(ids.filter((i) => i.startsWith("memorial_"))).toHaveLength(3);
@@ -663,10 +705,27 @@ describe("village colliders are built from the layout", () => {
     expect(box("plaza_zelkova")).toEqual(boxOf({ centre: L.plaza.zelkova.centre, size: L.plaza.zelkova.collider }));
   });
 
-  it("parked bus 9 x 2.5, scenery colliders match the layout footprints", () => {
-    expect(box("bus")).toEqual(boxOf(L.busStop.bus));
-    expect(box("cafe")).toEqual(boxOf(L.sceneryHouses.find((h) => h.kind === "cafe")!));
-    expect(box("house_3")).toEqual({ minX: 23.4, maxX: 34.6, minZ: 33.4, maxZ: 41.800000000000004 });
+  it("parked bus 9 x 2.5 turned along the kerb: its slices hold its whole body, at most 0.12 m more at a side; scenery colliders match the layout footprints", () => {
+    const slices = busParkedColliders(L);
+    const env = busEnvelope(L);
+    expect(slices.length).toBeGreaterThanOrEqual(18);
+    expect(slices[0]!.minZ).toBe(env.minZ);
+    expect(slices.at(-1)!.maxZ).toBe(env.maxZ);
+    for (let i = 1; i < slices.length; i++) expect(slices[i]!.minZ).toBe(slices[i - 1]!.maxZ); // no seam
+    for (const b of slices) expect(b.height).toBe(3.3);
+    const inSlice = (p: Point2) => slices.some((b) => p.x >= b.minX - 1e-5 && p.x <= b.maxX + 1e-5 && p.z >= b.minZ - 1e-5 && p.z <= b.maxZ + 1e-5);
+    for (let across = -1.25; across <= 1.25; across += 0.125) {
+      for (let along = -4.5; along <= 4.5; along += 0.125) expect(inSlice(busWorld(across, along)), `${across}, ${along}`).toBe(true);
+    }
+    // a point 0.12 m off a side (or the nose and tail) is outside every slice
+    for (let along = -4.4; along <= 4.4; along += 0.2) {
+      expect(inSlice(busWorld(1.25 + 0.12, along))).toBe(false);
+      expect(inSlice(busWorld(-1.25 - 0.12, along))).toBe(false);
+    }
+    // the café's solid box is its footprint minus the walkable terrace on the door (west) side (option 2: 20 x 15, terrace 6 m: the box ends at the façade)
+    expect(box("cafe")).toEqual({ minX: 46.6, maxX: 60.6, minZ: -22.6, maxZ: -7.6 });
+    expect(box("cafe")).toEqual(solidBox(L.sceneryHouses.find((h) => h.kind === "cafe")!));
+    expect(box("house_3")).toEqual({ minX: 23.4, maxX: 34.6, minZ: 35.65, maxZ: 41.8 });   // the body; the 2.25 m porch in front is walkable
   });
 
   it("the creek is walled off over its whole length except the bridge gap: boxes follow the curve, water plus 3 m of bank each side", () => {
@@ -693,87 +752,107 @@ describe("village colliders are built from the layout", () => {
   });
 
   it("buildVillageGeometry takes a named collider list or the extractor's { obstacles, cameraBoxes }", () => {
+    const bus = busParkedColliders(L);
     const walls = [...hallWalls(L), ...allHouseWalls()]; // the hall's four and the twenty house floors' four each
-    const fixed = walls.length + areaGapBlockers(L).length + hallSurroundBlockers(L).length + houseBlockBlockers(L).length + 1;
+    const fixed = walls.length + areaGapBlockers(L).length + hallSurroundBlockers(L).length + houseBlockBlockers(L).length + bus.length + busShelterColliders(L).length + 1 /* the shelter's bench */ + signalPoleColliders().length;
     const bare = buildVillageGeometry(L, []);
     expect(bare.obstacles).toHaveLength(fixed);
-    expect(bare.cameraBoxes).toEqual([...walls, ...busShelterColliders(L)]);
+    for (const b of bus) expect(bare.obstacles).toContainEqual({ minX: b.minX, maxX: b.maxX, minZ: b.minZ, maxZ: b.maxZ });
+    expect(bare.cameraBoxes).toEqual([...walls, ...bus, busShelterRoofSlab(L), busShelterLightBoxCameraBox(L)]);
     const box = { minX: 0, maxX: 1, minZ: 0, maxZ: 1 };
     const one = buildVillageGeometry(L, [{ id: "x", box, camera: false }]);
     expect(one.obstacles).toHaveLength(fixed + 1);
-    expect(one.cameraBoxes).toHaveLength(walls.length + 1);
+    expect(one.cameraBoxes).toHaveLength(walls.length + bus.length + 2); // the bus's slices, the shelter's roof slab and light box
     const tall = { ...box, height: 3 };
     const generated = buildVillageGeometry(L, { obstacles: [box], cameraBoxes: [tall] });
     expect(generated.obstacles).toHaveLength(fixed + 1);
     expect(generated.obstacles).toContainEqual(box);
-    expect(generated.obstacles.at(-1)).toEqual(busShelterColliders(L)[0]);
-    expect(generated.cameraBoxes).toEqual([...walls, tall, busShelterColliders(L)[0]]); // the height is kept
+    expect(generated.obstacles.slice(-busShelterColliders(L).length - 1, -1)).toEqual(busShelterColliders(L));
+    expect(generated.obstacles.at(-1)).toEqual(busShelterBenchCollider(L));
+    expect(generated.cameraBoxes).toEqual([...walls, tall, ...bus, busShelterRoofSlab(L), busShelterLightBoxCameraBox(L)]); // the height is kept; the shelter's glass is no camera box (seen through), its opaque light box is
     expect(generated.bounds).toEqual(bare.bounds);
   });
 
-  it("blocks the shelter rear glass while leaving the bus-facing side open", () => {
+  it("blocks the shelter's rear glass, its two end panels and the sign post while leaving the pad-facing side open", () => {
     const shelter = boxOf(L.busStop.shelter);
     const geometry = buildVillageGeometry(L, { obstacles: [], cameraBoxes: [] });
-    const walls = geometry.obstacles.filter((b) => b.minX >= shelter.maxX && b.minZ >= shelter.minZ - 0.01 && b.maxZ <= shelter.maxZ + 0.01);
-    expect(walls).toContainEqual(busShelterColliders(L)[0]);
-    expect(walls.some((b) => b.minX > shelter.maxX)).toBe(true);
+    for (const wall of busShelterColliders(L)) expect(geometry.obstacles).toContainEqual(wall);
+    const [rear, north, south, post] = busShelterColliders(L);
+    expect(rear!.maxX).toBeGreaterThan(shelter.maxX - 0.1); // at the back
+    expect(rear!.minX).toBeGreaterThan(shelter.minX + 1); // the front half of the shelter is open
+    expect(north!.maxZ).toBeLessThan(shelter.minZ + 0.2);
+    expect(south!.minZ).toBeGreaterThan(shelter.maxZ - 0.2);
+    expect(post!.maxX - post!.minX).toBeLessThan(0.2);
+    // nothing blocks the front: a body (radius 0.3) can stand at the shelter's front edge and at its middle
+    expect(isBlocked(shelter.minX + 0.3, L.busStop.shelter.centre.z, 0.3, busShelterColliders(L))).toBe(false);
+    expect(isBlocked(L.busStop.shelter.centre.x, L.busStop.shelter.centre.z, 0.3, busShelterColliders(L))).toBe(false);
   });
 
-  it("the greybox build: the colliders flagged camera are the buildings (houses, café, kiosk, bus, memorial)", () => {
+  it("the greybox build: the colliders flagged camera are the buildings (houses, café, kiosk, memorial; the bus's slices are added)", () => {
     const geo = buildVillageGeometry(L, colliders);
     for (const c of colliders) {
       expect(geo.obstacles, c.id).toContainEqual(c.box);
       expect(geo.cameraBoxes.some((b) => sameBox(b, c.box)), c.id).toBe(c.camera);
     }
     expect(colliders.filter((c) => c.camera).map((c) => c.id.split("_")[0]).sort()).toEqual(
-      ["bus", "cafe", "kiosk", ...Array<string>(10).fill("house"), "memorial", "memorial", "memorial"].sort(),
+      ["cafe", "kiosk", ...Array<string>(10).fill("house"), "memorial", "memorial", "memorial"].sort(),
     );
   });
 });
 
 describe("the parked bus's mirrors have colliders of their own (bus review r3: a head inside a mirror)", () => {
-  const bus = boxAt(L.busStop.bus.centre, L.busStop.bus.size);
   const mirrors = busMirrorColliders(L);
-  /** The mirror heads' plan rectangles in the village (village_bus.glb: |x| 1.27..1.50, 0.255..0.345 m ahead of the front). */
-  const heads: AABB[] = [
-    { minX: bus.minX - 0.25, maxX: bus.minX - 0.02, minZ: bus.minZ - 0.345, maxZ: bus.minZ - 0.255 },
-    { minX: bus.maxX + 0.02, maxX: bus.maxX + 0.25, minZ: bus.minZ - 0.345, maxZ: bus.minZ - 0.255 },
+  const hl = L.busStop.bus.size.z / 2;
+  const hw = L.busStop.bus.size.x / 2;
+  /** The mirror heads in the bus's own frame (village_bus.glb: |across| 1.27..1.50, 0.255..0.345 m ahead of the front). */
+  const heads = [
+    { a0: -1.5, a1: -1.27, l0: hl + 0.255, l1: hl + 0.345 },
+    { a0: 1.27, a1: 1.5, l0: hl + 0.255, l1: hl + 0.345 },
   ];
-  const gap = (px: number, pz: number, b: AABB) => Math.hypot(Math.max(b.minX - px, 0, px - b.maxX), Math.max(b.minZ - pz, 0, pz - b.maxZ));
+  const headGap = (p: Point2, h: (typeof heads)[number]) => {
+    const q = busLocal(p);
+    return Math.hypot(Math.max(h.a0 - q.across, 0, q.across - h.a1), Math.max(h.l0 - q.along, 0, q.along - h.l1));
+  };
+  const contains = (o: AABB, p: Point2) => p.x >= o.minX - 1e-5 && p.x <= o.maxX + 1e-5 && p.z >= o.minZ - 1e-5 && p.z <= o.maxZ + 1e-5;
 
-  it("one box at each front corner, out from the side and ahead of the front by the mirrors' reach, joined to the bus's box", () => {
+  it("one box at each front corner, round the mirror's reach out from the side and ahead of the front, joined to the bus", () => {
     expect(mirrors).toHaveLength(2);
-    const [l, r] = mirrors as [AABB, AABB];
-    expect(l.minX).toBeCloseTo(bus.minX - BUS_MIRROR_REACH.side, 6);
-    expect(r.maxX).toBeCloseTo(bus.maxX + BUS_MIRROR_REACH.side, 6);
-    for (const m of mirrors) {
-      expect(m.minZ).toBeCloseTo(bus.minZ - BUS_MIRROR_REACH.ahead, 6); // the nose is north (-z)
-      expect(overlaps(m, bus)).toBe(true);
+    for (const [i, h] of heads.entries()) {
+      const m = mirrors[i]!;
+      for (const [a, l] of [[h.a0, h.l0], [h.a1, h.l0], [h.a1, h.l1], [h.a0, h.l1]] as const) expect(contains(m, busWorld(a, l))).toBe(true);
+      // its far corner is the mirror's reach (the side's and the front's), and it reaches back onto the body
+      const side = i === 0 ? -1 : 1;
+      expect(contains(m, busWorld(side * (hw + BUS_MIRROR_REACH.side), hl + BUS_MIRROR_REACH.ahead))).toBe(true);
+      expect(contains(m, busWorld(side * (hw - 0.05), hl - 0.05))).toBe(true);
       expect(villageGeometry.obstacles).toContainEqual(m);
     }
-    const contains = (o: AABB, i: AABB) => o.minX <= i.minX && o.maxX >= i.maxX && o.minZ <= i.minZ && o.maxZ >= i.maxZ;
-    for (const [i, h] of heads.entries()) expect(contains(mirrors[i]!, h)).toBe(true);
   });
 
   it("nobody can stand with their head in a mirror: every free spot round the front corners keeps a body's radius from both heads", () => {
     // the reviewer's spot, at the west front corner with the mirror in the face
-    expect(isBlocked(32.34, -10.34, PLAYER_RADIUS, villageGeometry.obstacles)).toBe(true);
+    const face = busWorld(-hw - 0.2, hl + 0.35);
+    expect(isBlocked(face.x, face.z, PLAYER_RADIUS, villageGeometry.obstacles)).toBe(true);
     let free = 0;
-    for (let x = bus.minX - 1.5; x <= bus.maxX + 1.5; x += 0.05) {
-      for (let z = bus.minZ - 1.5; z <= bus.minZ + 0.6; z += 0.05) {
-        if (isBlocked(x, z, PLAYER_RADIUS, villageGeometry.obstacles)) continue;
+    for (let across = -hw - 1.5; across <= hw + 1.5; across += 0.05) {
+      for (let along = hl - 0.6; along <= hl + 1.5; along += 0.05) {
+        const p = busWorld(across, along);
+        if (isBlocked(p.x, p.z, PLAYER_RADIUS, villageGeometry.obstacles)) continue;
         free += 1;
-        for (const h of heads) expect(gap(x, z, h)).toBeGreaterThanOrEqual(PLAYER_RADIUS - 1e-6);
+        for (const h of heads) expect(headGap(p, h)).toBeGreaterThanOrEqual(PLAYER_RADIUS - 1e-6);
       }
     }
     expect(free).toBeGreaterThan(1000);
   });
 
-  it("the way across the front of the bus and along its sides stays open", () => {
-    const z = bus.minZ - BUS_MIRROR_REACH.ahead - PLAYER_RADIUS - 0.05;
-    for (let x = 31.6; x <= 36.6; x += 0.1) expect(isBlocked(x, z, PLAYER_RADIUS, villageGeometry.obstacles)).toBe(false);
-    for (let zz = bus.minZ + 0.1 + PLAYER_RADIUS + 0.05; zz <= bus.maxZ; zz += 0.25) {
-      expect(isBlocked(bus.minX - PLAYER_RADIUS - 0.05, zz, PLAYER_RADIUS, villageGeometry.obstacles)).toBe(false);
+  it("the way across the front of the bus and along its road side stays open", () => {
+    const along = hl + BUS_MIRROR_REACH.ahead + PLAYER_RADIUS + 0.2;
+    for (let across = -2.5; across <= 1.5; across += 0.1) {
+      const p = busWorld(across, along);
+      expect(isBlocked(p.x, p.z, PLAYER_RADIUS, villageGeometry.obstacles), `${across}`).toBe(false);
+    }
+    for (let l = -hl; l <= hl - 0.1 - PLAYER_RADIUS - 0.2; l += 0.25) {
+      const p = busWorld(-hw - PLAYER_RADIUS - 0.15, l);
+      expect(isBlocked(p.x, p.z, PLAYER_RADIUS, villageGeometry.obstacles), `${l}`).toBe(false);
     }
   });
 });
@@ -790,10 +869,14 @@ describe("villageGeometry plays on the colliders generated from village.glb (Tas
     for (const w of hallWalls(L)) expect(villageGeometry.cameraBoxes).toContainEqual(w);
     // + the guides (Task 9A) and the parked bus's mirrors (bus review r3)
     expect(villageGeometry).toEqual(buildVillageGeometry(L, VILLAGE_MODEL_COLLIDERS, HALL_MODEL_COLLIDERS, [...guideColliders(), ...busMirrorColliders()], houseColliders()));
-    expect(VILLAGE_MODEL_COLLIDERS.obstacles).toBe(VILLAGE_COLLIDERS);
-    expect(VILLAGE_MODEL_COLLIDERS.cameraBoxes).toBe(VILLAGE_CAMERA_BOXES);
-    for (const b of VILLAGE_COLLIDERS) expect(villageGeometry.obstacles).toContainEqual(b);
-    for (const b of VILLAGE_CAMERA_BOXES) expect(villageGeometry.cameraBoxes).toContainEqual(b);
+    // the model's old parked-bus box (square to the map, over the centre line) is left out: the bus is its slices
+    expect(VILLAGE_MODEL_COLLIDERS).toEqual(withoutLegacyBus({ obstacles: VILLAGE_COLLIDERS, cameraBoxes: VILLAGE_CAMERA_BOXES }));
+    expect(VILLAGE_COLLIDERS.filter((b) => sameBox(b, MODEL_LEGACY_BUS_BOX))).toHaveLength(1);
+    expect(VILLAGE_MODEL_COLLIDERS.obstacles).toHaveLength(VILLAGE_COLLIDERS.length - 1);
+    expect(VILLAGE_MODEL_COLLIDERS.cameraBoxes).toHaveLength(VILLAGE_CAMERA_BOXES.length - 1);
+    for (const b of VILLAGE_COLLIDERS) expect(villageGeometry.obstacles.some((o) => sameBox(o, b))).toBe(!sameBox(b, MODEL_LEGACY_BUS_BOX));
+    for (const b of VILLAGE_CAMERA_BOXES) if (!sameBox(b, MODEL_LEGACY_BUS_BOX)) expect(villageGeometry.cameraBoxes).toContainEqual(b);
+    for (const b of busParkedColliders(L)) expect(villageGeometry.cameraBoxes).toContainEqual(b);
   });
 
   it("the model holds every layout box at its exact rectangle, a camera box exactly where the layout says camera", () => {
@@ -971,6 +1054,13 @@ describe.each(GEOMETRIES)("village geometry invariants: %s", (_name, geo) => {
       expect(cut.length).toBeGreaterThan(90000);
     });
 
+    it("the café's terrace is walkable ground: its middle, the future door pad (45.1, -15.1) and the way-out spot (42.6, -15.1) are free and reached", () => {
+      for (const p of [{ x: 43.6, z: -15.1 }, { x: 45.1, z: -15.1 }, { x: 42.6, z: -15.1 }]) {
+        expect(isBlocked(p.x, p.z, PLAYER_RADIUS, obstacles), `${p.x}, ${p.z}`).toBe(false);
+        expect(hasNear(cut, p, GRID), `${p.x}, ${p.z}`).toBe(true);
+      }
+    });
+
     it("the memorial door pad and the arrival spot are reachable, without the bridge", () => {
       expect(hasNear(cut, PAD.centre, GRID)).toBe(true);
       expect(isBlocked(PAD.centre.x, PAD.centre.z, PLAYER_RADIUS, obstacles)).toBe(false);
@@ -1037,7 +1127,8 @@ describe.each(GEOMETRIES)("village geometry invariants: %s", (_name, geo) => {
     });
   });
 
-  describe("fine grid (0.1 m): a gap that a body fits through but the 0.5 m grid can miss", () => {
+  // 0.1 m flood fills over ~250 boxes: 3.5–4 s alone, past the 5 s default under --maxWorkers=2 (houses M1 review r3)
+  describe("fine grid (0.1 m): a gap that a body fits through but the 0.5 m grid can miss", { timeout: 30_000 }, () => {
     /** The creek and a little land on both sides; one fill covers its whole length (not the whole village). */
     const creekWindow: Bounds = { minX: L.walkBounds.minX, maxX: L.walkBounds.maxX, minZ: Math.min(...BANKS.map((b) => b.minZ)) - 4, maxZ: L.walkBounds.maxZ };
     /** A free spot on the north bank of every segment (the gap's segment: just west of the gap), 1.5 m from the bank. */
@@ -1338,12 +1429,15 @@ describe("export for the Blender scripts", () => {
     expect(out.areas).toEqual({ village: L.areas.village, hall: L.areas.hall });
   });
 
-  it("every collider has its col__<id> node name, and so do the pieces listed under stream, memorial, bus and houses", () => {
+  it("every collider has its col__<id> node name, and so do the pieces listed under stream, memorial and houses (the bus: its footprint)", () => {
     for (const c of out.colliders) expect(c.node).toBe(`col__${c.id}`);
     expect(out.colliders.map((c) => c.id)).toEqual(greyboxColliders(L).map((c) => c.id));
     for (const b of out.stream.banks) expect(b.node).toBe(`col__${b.id}`);
     for (const m of out.memorial.exterior.colliders) expect(m.node).toBe(`col__${m.id}`);
-    expect(out.busStop.bus.node).toBe("col__bus");
+    expect(out.busStop.bus).not.toHaveProperty("node");
+    expect(out.busStop.bus.yaw).toBe(L.busStop.bus.yaw);
+    expect(out.busStop.bus.footprint).toEqual(busParkedFootprint(L));
+    expect(out.busStop.bus.bounds).toEqual(busEnvelope(L));
     expect(out.pavilion.node).toBe("col__pavilion");
     expect(out.plaza.fountain.collider.node).toBe("col__plaza_fountain");
     expect(out.plaza.zelkova.collider.node).toBe("col__plaza_zelkova");
@@ -1361,7 +1455,7 @@ describe("export for the Blender scripts", () => {
     const pink = out.sceneryHouses.find((h) => h.id === "house_1")!;
     expect(pink).toMatchObject({ kind: "house", colour: "pink", doorSide: "s", bounds: { minX: 15.4, maxX: 26.6, minZ: -46.2, maxZ: -37.8 } });
     const cafe = out.sceneryHouses.find((h) => h.kind === "cafe")!;
-    expect(cafe).toMatchObject({ id: "cafe", doorSide: "w", colour: "wood", size: { x: 16, z: 12.5 } });
+    expect(cafe).toMatchObject({ id: "cafe", doorSide: "w", colour: "wood", size: { x: 20, z: 15 }, terrace: 6, solid: { minX: 46.6, maxX: 60.6, minZ: -22.6, maxZ: -7.6 } });
   });
 
   it("memorial exterior has footprint, door pad, arrival and collider pieces; interior has room, ceiling, door side, pad, spawn, walls and blockers", () => {
@@ -1399,6 +1493,55 @@ describe("export for the Blender scripts", () => {
     expect(out.backdrop.waterfall).toMatchObject({ height: 36, facing: "e", bounds: { minX: -132, maxX: -104, minZ: -85, maxZ: -71 } });
     expect(out.backdrop.lake.pavilion).toHaveProperty("bounds");
     expect(centre(out.plaza.fountain.collider.bounds)).toEqual({ x: 0, z: 0 });
+  });
+});
+
+describe("the bus stop's walking space (xwalk fix: the shelter at the back of the pad, room between it and the bus)", () => {
+  const bus = busEnvelope(L);
+  const shelter = boxOf(L.busStop.shelter);
+  const obstacles = villageGeometry.obstacles;
+
+  it("an avatar can stand and walk side by side between the bus's door side and the shelter, along its whole length", () => {
+    for (let z = bus.minZ + 0.5; z <= -2.6; z += 0.5) {
+      // the bus's door side runs along the kerb, 0.35 m off it: a body stands from 0.55 m off the side (its slices take 0.1)
+      for (let x = busDoorSideX(z) + 0.55; x <= shelter.minX - 0.5; x += 0.25) {
+        expect(isBlocked(x, z, PLAYER_RADIUS, obstacles), `(${x}, ${z})`).toBe(false);
+      }
+    }
+  });
+
+  it("a 2-wide corridor (two avatars abreast) is open from the bus's middle door to the shelter's front", () => {
+    const z = L.busStop.shelter.centre.z;
+    // (the door side slants across z: a body 0.4 m above or below the line meets it 0.1 m further out)
+    for (let x = busDoorSideX(z) + 0.65; x <= shelter.minX; x += 0.1) {
+      expect(isBlocked(x, z - 0.4, PLAYER_RADIUS, obstacles)).toBe(false);
+      expect(isBlocked(x, z + 0.4, PLAYER_RADIUS, obstacles)).toBe(false);
+    }
+  });
+
+  it("the stop sign's post is solid and the shelter's inside is walkable from the front", () => {
+    expect(isBlocked(BUS_STOP_SIGN.x, BUS_STOP_SIGN.z, PLAYER_RADIUS, obstacles)).toBe(true);
+    expect(isBlocked(shelter.minX + 0.3, L.busStop.shelter.centre.z, PLAYER_RADIUS, obstacles)).toBe(false);
+    expect(BUS_STOP_PAD.length).toBeGreaterThanOrEqual(6);
+  });
+
+  it("the signal posts are solid and off the sidewalk's walking line", () => {
+    for (const box of signalPoleColliders()) {
+      const c = { x: (box.minX + box.maxX) / 2, z: (box.minZ + box.maxZ) / 2 };
+      expect(isBlocked(c.x, c.z, PLAYER_RADIUS, obstacles)).toBe(true);
+    }
+  });
+});
+
+describe("the bus shelter's opaque light box as a camera box (visual review r4)", () => {
+  it("covers the back wall's light box (1.24 m wide, floor to roof) and nothing else of the shelter", () => {
+    const b = busShelterLightBoxCameraBox(L);
+    const s = boxOf(L.busStop.shelter);
+    expect(b.maxX - b.minX).toBeCloseTo(0.08, 6);
+    expect(b.maxX).toBeLessThanOrEqual(s.maxX);
+    expect(b.maxZ - b.minZ).toBeCloseTo(1.24, 6);
+    expect((b.minZ + b.maxZ) / 2).toBeCloseTo(L.busStop.shelter.centre.z, 6);
+    expect(b.height).toBeGreaterThanOrEqual(2.55);
   });
 });
 

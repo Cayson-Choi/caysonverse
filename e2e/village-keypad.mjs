@@ -18,7 +18,8 @@ mkdirSync(run.evidence, { recursive: true });
 
 const device = phoneRun ? PHONE : DESKTOP;
 const browser = await launchBrowser();
-const WAYPOINTS = [[0, 14], [0, -20], [15, -34], [21, -37.15]];
+// house_1 = (21,-42), south-facing: the keypad pad stands on the porch 0.65 m in front of the door (≈ (21,-39.40), keypadEntries())
+const WAYPOINTS = [[0, 14], [0, -20], [15, -34], [21, -37.15], [21, -39.3]];
 const URL = `${CLIENT_URL}/?time=${encodeURIComponent("2026-11-03T12:30")}`;
 
 async function join(tag, nickname) {

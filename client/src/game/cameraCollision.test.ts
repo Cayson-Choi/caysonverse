@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, it, expect } from "vitest";
 import type { AABB, CameraBox } from "@caysonverse/shared/collision";
 import { wallsAround } from "@caysonverse/shared/school/geometry";
-import { villageGeometry } from "@caysonverse/shared/village/villageLayout";
+import { busShelterLightBoxCameraBox, villageGeometry } from "@caysonverse/shared/village/villageLayout";
 import { PLAYER_RADIUS, WALL_HEIGHT } from "@caysonverse/shared/worldMap";
 import {
   ARM_FREE,
@@ -483,5 +483,61 @@ describe("indoor arm shaping (케이슨 마을 Task 9: the 9 x 12 m hall must no
     const wanted = 3.6 * Math.sin(0.35); // the height offset of the default pitch
     expect(wanted * armHeightScaleAt(k, true)).toBeCloseTo(wanted, 9); // indoors: about 1.2 m over the head
     expect(wanted * armHeightScaleAt(k, false)).toBeLessThan(0.25); // outdoors: about head height
+  });
+});
+
+describe("the camera's keep-out (the village trees' trunks and limbs)", () => {
+  it("pulls the arm in to just in front of what the camera would be in, and leaves a clear arm alone", async () => {
+    const { keepOutArmDistance } = await import("./cameraCollision");
+    // a limb across the arm's far end: x from 3.6 to 4.4 m is out of bounds
+    const limb = (x: number) => x > 3.6 && x < 4.4;
+    expect(keepOutArmDistance(0, 1.4, 0, 4, 1.4, 0, 4, (x) => limb(x))).toBeCloseTo(3.55, 5);
+    expect(keepOutArmDistance(0, 1.4, 0, 6, 1.4, 0, 6, (x) => limb(x))).toBe(6);
+    expect(keepOutArmDistance(0, 1.4, 0, 6, 1.4, 0, 6, null)).toBe(6);
+    // growing back out from 3 m it stops in front of it too
+    expect(keepOutArmDistance(0, 1.4, 0, 6, 1.4, 0, 6, (x) => limb(x), 4)).toBeCloseTo(3.55, 5);
+    // never shorter than the arm's minimum
+    expect(keepOutArmDistance(0, 1.4, 0, 4, 1.4, 0, 4, () => true)).toBe(0.6);
+  });
+});
+
+describe("cameraCollision — the bus shelter's opaque light box (visual review r4)", () => {
+  const boxes = villageGeometry.cameraBoxes;
+  const lightBox = busShelterLightBoxCameraBox();
+  const pad = VILLAGE_CAMERA_PAD;
+
+  it("pulls the arm in to in front of the light box when the camera would sit behind it (player at the pad, facing the road)", () => {
+    // Head 1.5 m up at (38.5, -5.2) facing west: the follow camera is 6 m behind it, east, behind the shelter's back wall.
+    const arm = springArmDistance(38.5, 1.5, -5.2, 44.5, 2.2, -5.2, 6.2, boxes, pad);
+    expect(arm).toBeLessThan(6.2);
+    // …and stops at the pad in front of the box, on the avatar's side of it (inside the shelter).
+    const camX = 38.5 + (arm / 6.2) * 6;
+    expect(camX).toBeLessThan(lightBox.minX);
+    expect(camX).toBeGreaterThan(lightBox.minX - pad - 0.1);
+  });
+
+  it("leaves a camera behind the shelter's glass bays alone: it sees the avatar through them", () => {
+    // 1 m to either side of the box's end, the cast crosses only glass (no camera box).
+    for (const z of [-4.9 - 1.1, -4.9 + 1.1]) {
+      expect(springArmDistance(38.5, 1.5, z, 44.5, 2.2, z, 6.2, boxes, pad)).toBe(6.2);
+    }
+  });
+
+  it("blocks the high camera too: the box reaches the roof, so a cast at 2.95 m (pad 37.6,-4.9 facing west; kiosk front facing the shelter) cannot pass over it (shelter check r5)", () => {
+    expect(lightBox.height).toBeGreaterThanOrEqual(3.3);
+    // the boarding pad, facing the road: the cast that used to pass over a 2.6 m box and leave the camera behind the wall
+    const fromPad = springArmDistance(37.6, 1.5, -4.9, 41.86, 2.95, -5.09, 4.25, boxes, pad);
+    expect(fromPad).toBeLessThan(4.25);
+    expect(37.6 + (fromPad / 4.25) * (41.86 - 37.6)).toBeLessThan(lightBox.minX);
+    // in front of the kiosk, turned toward the shelter: the camera would stand inside the shelter with the box in between
+    const fromKiosk = springArmDistance(45.3, 1.5, -3.85, 41.14, 2.95, -5.46, 4.6, boxes, pad);
+    expect(fromKiosk).toBeLessThan(4.6);
+    expect(45.3 - (fromKiosk / 4.6) * (45.3 - 41.14)).toBeGreaterThan(lightBox.maxX);
+  });
+
+  it("does not hold the camera facing north or south at the pad", () => {
+    // Facing north and south the camera is over the open pad, nowhere near the light box (facing east the parked bus is the wall).
+    expect(springArmDistance(38.5, 1.5, -5.2, 38.5, 2.2, 0.8, 6.2, boxes, pad)).toBe(6.2);
+    expect(springArmDistance(38.5, 1.5, -5.2, 38.5, 2.2, -11.2, 6.2, boxes, pad)).toBe(6.2);
   });
 });

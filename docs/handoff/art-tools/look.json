@@ -1,0 +1,11 @@
+{
+  "hdri": "kloppenheim_06_puresky",
+  "sun_azimuth_deg": 70,
+  "sun_elevation_deg": 20,
+  "sun_strength": 4.8,
+  "sun_colour": "#FFD6A8",
+  "sun_angle_deg": 2.2,
+  "sky_strength": 2.2,
+  "sky_exposure": 0.9,
+  "haze": "#A9B5D8"
+}

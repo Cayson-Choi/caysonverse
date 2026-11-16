@@ -68,11 +68,15 @@ import { rememberOrbit, restoreOrbit } from "./cameraMemory";
 import { cameraProbe } from "./cameraProbe";
 import { activeBounds, activeSeats, getActiveMap } from "./activeMap";
 import { localGlide } from "./seatMotion";
+import { seatApproachGoal, seatUnderTap, warmSeatApproachGoals } from "./seatTap";
+import { seatedEyeOffset, stepSeatedWeight } from "./seatedEye";
+import { setPreferredSeat } from "./seatPreference";
 import { getLocalLift } from "./jump";
 import { useFpCursor } from "./useFpCursor";
 import { useSettingsStore } from "../stores/settingsStore";
 import { getTransitRenderPose, useTransitState } from "../net/transitSync";
-import { transitWindowCamera } from "../village/transitCamera";
+import { riderFov, transitRiderCamera, transitWindowCamera } from "../village/transitCamera";
+import { selfBusRide } from "./busRide";
 import { VILLAGE_LAYOUT, cubbyAtPoint, isHouseArea } from "@caysonverse/shared/village/villageLayout";
 import { localArea } from "../village/villageArea";
 import { armHouseUse, houseTapTarget } from "../village/houseTap";
@@ -241,6 +245,9 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
   const lastFrameMode = useRef(viewState.mode);
   // The rectangle the overview was last framed for: a different one (a door in 케이슨 마을) re-frames an open overview.
   const lastBounds = useRef(activeBounds());
+  /** The seated FP eye's weight (0 standing .. 1 seated) and the seat it eases toward or away from (seatedEye.ts). */
+  const seatedEyeW = useRef(0);
+  const seatedEyeSeat = useRef<{ yaw: number; seatY?: number } | null>(null);
   /**
    * A seat clicked (furnitureClick.ts): once the walk to its approach (x, z) has started (`armed`: its ring is the walk's target)
    * and ends there, the avatar sits on it. Another click, a key or the stick (the walk's target replaced or dropped short of the
@@ -252,6 +259,8 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
   // A boarded village bus owns the camera pose until the server confirms a leave.
   // Keeping this as a tiny external-store hook avoids per-frame React renders.
   const { boarded: busBoarded } = useTransitState();
+  /** The lens's field of view before the bus ride widened it (null while not riding). */
+  const fovBeforeRideRef = useRef<number | null>(null);
   // First person hides the resting mouse cursor over the 3D view (fpCursor.ts) — the owner saw it as a stray icon.
   useFpCursor(gl.domElement, getKeys);
 
@@ -271,6 +280,26 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
       delete window.__cvCamera;
       delete window.__cvClickTarget;
       delete window.__cvClickPick;
+    };
+  }, []);
+
+  // The tapped chairs' goals (seatTap.ts) worked out ahead, one seat per timer tick, whenever the map's seats change
+  // (entering the village, a house): the first tap on a chair then never runs that search in its pointerup handler.
+  useEffect(() => {
+    let seen: readonly unknown[] | null = null;
+    let cancel = (): void => {};
+    const look = (): void => {
+      const seats = activeSeats();
+      if (seats === seen) return;
+      seen = seats;
+      cancel();
+      cancel = seats.length > 0 ? warmSeatApproachGoals(seats, getActiveMap().geometry.obstacles, activeBounds()) : () => {};
+    };
+    look();
+    const id = window.setInterval(look, 1000);
+    return () => {
+      window.clearInterval(id);
+      cancel();
     };
   }, []);
 
@@ -369,11 +398,16 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
       const g = localGlide.current;
       const from = walkStart(pose.x, pose.z, s, g && { x: g.toX, z: g.toZ });
       let surface: SurfacePoint | null = asSurface(pick);
+      const map = getActiveMap();
+      // A tap on a marked chair or porch bench (the art's village seats: the café terrace, the porches) walks to THAT seat's own
+      // approach spot (seatTap.ts), never the ground nearest it, and sits on arrival like any other seat clicked (below).
+      const seatTapped = surface ? seatUnderTap(activeSeats(), surface.x, surface.y, surface.z) : -1;
+      const seatGoal = seatTapped >= 0 && seatTapped !== seat.index ? seatApproachGoal(activeSeats(), seatTapped, map.geometry.obstacles, activeBounds()) : null;
+      if (seatGoal) surface = { x: seatGoal.x, y: surfaceHeightAt(raycaster, scene, seatGoal.x, seatGoal.z, 0.01), z: seatGoal.z, ny: 1 };
       // An upright face clicked low is a curb's side only if it ends there (not a step's riser): measured once.
       if (pick && surface && pick.ny < WALKABLE_MIN_NY && pick.y > 0 && pick.y <= WALKABLE_MAX_Y && pick.faceTall === undefined) {
         pick.faceTall = faceIsTall(raycaster, scene, pick);
       }
-      const map = getActiveMap();
       // In the hall every collider in the room is furniture (round 9: the floor seen under the letter table's edge, between its
       // chairs, had no free spot within MAX_PUSH and the tap was "unreachable"): floor inside one moves out as for a bench's box.
       // (a house floor is a room like the hall: every collider in it is furniture or the stair)
@@ -385,13 +419,13 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
       armHouseUse(houseTap ? houseTap.id : null);
       // A click on a seat or (in the hall) on other furniture is no ground, yet means something (round 8 review: a tap on the
       // sofa did nothing): the seat's approach, to sit on arrival, or the floor next to the piece (furnitureClick.ts).
-      let sitOn: number | null = null;
+      let sitOn: number | null = seatGoal ? seatTapped : null;
       // A house's floor is flat: anything facing up above it (a sofa's cushion at 0.46 m, a low table) is furniture, never a raised floor to
       // walk onto, and a tap whose ray enters a seat (a floor cushion a few cm up, a 보료) is that seat — a tap on a cushion clear of its
       // collider's box walked onto the cushion and did not sit (G round 3).
       const inHouse = isHouseArea(localArea());
       const kindNone = !!surface && surfaceKind(surface, map.geometry.obstacles, activeBounds()) === "none";
-      if (!houseTap && surface && (kindNone || inHouse)) {
+      if (!seatGoal && !houseTap && surface && (kindNone || inHouse)) {
         const remote = new Set(getRemoteSeatIndices());
         const fc = furnitureClick(pick, pick?.ray ?? null, map.seats ?? activeSeats(), map.seatArea, (i) => remote.has(i), from, 0, inRoom, { obstacles: map.geometry.obstacles, bounds: activeBounds() });
         const counts = kindNone || (fc !== null && (fc.seatIndex !== null || surface.y > WALKABLE_MAX_Y));
@@ -405,7 +439,9 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
           furniture = map.geometry.obstacles;
         }
       }
-      const start = startClickPlan(from.x, from.z, surface, map.geometry.obstacles, activeBounds(), !!s, { furniture });
+      // the walk that ends beside the clicked seat offers THAT one, though another may be a hair nearer (seatPreference.ts)
+      setPreferredSeat(sitOn ?? -1);
+      const start = startClickPlan(from.x, from.z, surface, map.geometry.obstacles, activeBounds(), !!s, { furniture, farFirst: seatGoal !== null });
       const cameraNow = (): PerspectiveCamera => {
         if (snap) return snap;
         const cam = camera as PerspectiveCamera;
@@ -1021,18 +1057,24 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
 
     // ── Underlying pose (tp<->fp, no teleport-cut) — the base the overview lifts
     // FROM and settles BACK TO. ──
-    const uPosX = lerp(tpX, pose.x, t);
+    // Seated, the FP eye is at the seated head (behind the seat point, a little higher; seatedEye.ts), eased with the clip.
+    const seatNow = seat.index >= 0 ? activeSeats()[seat.index] : undefined;
+    seatedEyeW.current = stepSeatedWeight(seatedEyeW.current, seatNow !== undefined, delta);
+    if (seatNow) seatedEyeSeat.current = seatNow;
+    const eyeSeat = seatedEyeSeat.current;
+    const eye = eyeSeat ? seatedEyeOffset(eyeSeat.yaw, eyeSeat.seatY, seatedEyeW.current) : { dx: 0, dy: 0, dz: 0 };
+    const uPosX = lerp(tpX, pose.x + eye.dx, t);
     // Own hop (jump.ts): the first-person eye and look target rise with the avatar's
     // display-only lift, weighted by the FP blend — the own body is hidden there, so
     // without this a Space press would show nothing. TP (t = 0) is untouched.
     const hop = getLocalLift();
-    const uPosY = lerp(tpY, FP_EYE_HEIGHT + hop, t);
-    const uPosZ = lerp(tpZ, pose.z, t);
+    const uPosY = lerp(tpY, FP_EYE_HEIGHT + hop + eye.dy, t);
+    const uPosZ = lerp(tpZ, pose.z + eye.dz, t);
     // TP looks at the (smoothed) follow point, a little above the head; FP at the
     // pose-anchored eye line.
-    const uTgtX = lerp(followX + tpSpot.lookX, pose.x + fwdX, t);
-    const uTgtY = lerp(HEAD_HEIGHT + CAMERA_LOOK_LIFT + tpLookLift, FP_EYE_HEIGHT + hop + fwdY, t);
-    const uTgtZ = lerp(followZ + tpSpot.lookZ, pose.z + fwdZ, t);
+    const uTgtX = lerp(followX + tpSpot.lookX, pose.x + eye.dx + fwdX, t);
+    const uTgtY = lerp(HEAD_HEIGHT + CAMERA_LOOK_LIFT + tpLookLift, FP_EYE_HEIGHT + hop + eye.dy + fwdY, t);
+    const uTgtZ = lerp(followZ + tpSpot.lookZ, pose.z + eye.dz + fwdZ, t);
 
     // ── Overview pose ── straight up over the pan-centre, looking down. A camera limit (a building's ceiling) is
     // bypassed here by construction (this is a separate pose term, never routed through the limit). ──
@@ -1074,10 +1116,26 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
     // resumes on the very next frame after the authoritative leave state,
     // preserving the player's TP/FP/overview orbit exactly as it was.
     if (busBoarded) {
-      const ride = transitWindowCamera(getTransitRenderPose());
+      // In my place in the bus (busSeats.ts): over my shoulder and out of the window; before the server's place
+      // arrives, the old passenger eye.
+      const persp = camera as PerspectiveCamera;
+      const ride = selfBusRide.slot >= 0 ? transitRiderCamera(getTransitRenderPose(), selfBusRide.slot, persp.aspect) : transitWindowCamera(getTransitRenderPose());
       camera.position.set(ride.x, ride.y, ride.z);
       camera.up.set(0, 1, 0);
       camera.lookAt(ride.targetX, ride.targetY, ride.targetZ);
+      // The cabin is small (review r3: the rider filled the frame): a wider lens in the bus, as a phone's camera held up
+      // in one, put back exactly as it was on getting off.
+      const want = riderFov(persp.aspect);
+      if (persp.isPerspectiveCamera && persp.fov !== want) {
+        if (fovBeforeRideRef.current === null) fovBeforeRideRef.current = persp.fov;
+        persp.fov = want;
+        persp.updateProjectionMatrix();
+      }
+    } else if (fovBeforeRideRef.current !== null) {
+      const persp = camera as PerspectiveCamera;
+      persp.fov = fovBeforeRideRef.current;
+      persp.updateProjectionMatrix();
+      fovBeforeRideRef.current = null;
     }
 
     // Overview looks down from far above; push the fog band out (eased by ovT) so

@@ -21,10 +21,20 @@ describe("chooseLod", () => {
     expect(chooseLod(3, 88, bands)).toBe(2);
   });
 
-  it("never uses a level a tier switches off (the phones' close-up blossoms)", () => {
-    const low = VEG_TIERS.low.cherry;
-    for (const d of [0, 0.5, 2, 5, 20]) expect(chooseLod(-1, d, low)).toBeGreaterThan(0);
-    expect(chooseLod(0, 1, low)).toBe(1);
+  it("never uses a level a tier switches off", () => {
+    const off = { far: [-1, 30, 600], hysteresis: 2 };
+    for (const d of [0, 0.5, 2, 5, 20]) expect(chooseLod(-1, d, off)).toBeGreaterThan(0);
+    expect(chooseLod(0, 1, off)).toBe(1);
+  });
+
+  it("phones draw the full 3D clusters only round the camera, never a flat sprite or sliver up close", () => {
+    for (const k of ["cherry", "green", "bush"] as const) {
+      const low = VEG_TIERS.low[k];
+      expect(chooseLod(-1, 0, low)).toBe(0);
+      expect(chooseLod(-1, 3, low)).toBe(0);
+      expect(low.far[0]!).toBeLessThan(VEG_TIERS.high[k].far[0]!);
+      expect(chooseLod(-1, 15, low)).toBe(1);
+    }
   });
 
   it("phones get closer, sparser bands than the rich tier", () => {

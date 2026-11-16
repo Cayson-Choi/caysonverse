@@ -132,6 +132,8 @@ export class VillageBgm {
   private readonly areaLevel = new Ramp(BGM_LEVEL_OUTSIDE);
   private readonly duckFactor = new Ramp(1);
   private readonly fade = new Ramp(0);
+  /** The player's own volume (the menu's slider), 0..1, a plain factor on top of the area level; 1 = as designed. */
+  private userVolume = 1;
   private enabled: boolean;
   private visible = true;
   private started = false; // a play() has been accepted
@@ -349,6 +351,12 @@ export class VillageBgm {
     this.setEnabled(!this.enabled);
   }
 
+  /** The menu's music volume slider: 0..1 of the designed level. Applies at once (the next apply() is this one). */
+  setUserVolume(volume: number): void {
+    this.userVolume = Number.isFinite(volume) ? clamp01(volume) : 1;
+    this.apply();
+  }
+
   /** In the memorial hall the music goes quiet. */
   setHall(inHall: boolean): void {
     this.areaLevel.go(inHall ? BGM_LEVEL_HALL : BGM_LEVEL_OUTSIDE, BGM_HALL_MS, this.deps.now());
@@ -563,7 +571,7 @@ export class VillageBgm {
       }
     }
     this.lastTime = t;
-    const v = clamp01(this.areaLevel.value(now) * this.duckFactor.value(now) * this.fade.value(now) * loopGain);
+    const v = clamp01(this.areaLevel.value(now) * this.duckFactor.value(now) * this.fade.value(now) * loopGain * this.userVolume);
     if (this.gain) this.gain.set(v);
     else a.volume = v;
   }
@@ -610,7 +618,7 @@ declare global {
   }
 }
 
-/** What VillageBgmButton's mount effect touches, injected so the effect is tested without a DOM. */
+/** What VillageMusic's mount effect touches, injected so the effect is tested without a DOM. */
 export interface BgmMountEnv {
   create: () => VillageBgm;
   doc: {
@@ -625,7 +633,7 @@ export interface BgmMountEnv {
 }
 
 /**
- * VillageBgmButton's mount effect: create and arm the controller, follow the tab's visibility, publish it; the
+ * VillageMusic's mount effect: create and arm the controller, follow the tab's visibility, publish it; the
  * returned cleanup disposes it. Under StrictMode React runs mount, cleanup, mount: the first controller is disposed
  * before the second exists, so one element stays live (villageBgm.test.ts).
  */

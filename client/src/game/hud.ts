@@ -131,8 +131,12 @@ export const HUD_INFO_BTN_W_PX = 72;
 export const HUD_NARROW_BELOW_PX = 480;
 /** The widest thing in the top-left column (the admin panel) — what the column's height cap must keep clear of the cluster. */
 export const HUD_COLUMN_MAX_W_PX = 300;
-/** Buttons in the top-right group: 👁 first-person, 🗺 map, 🔊 sound, ☰ menu. */
-export const HUD_TOP_BUTTON_COUNT = 4;
+/** Buttons in the top-right group: 👁 first-person, 🗺 map, ☰ menu (the sound settings live in the menu). */
+export const HUD_TOP_BUTTON_COUNT = 3;
+/** The 동서남북 dial's diameter, hung under the top-right group (it is not touchable). */
+export const HUD_COMPASS_PX = 64;
+/** Gap between the top group and the dial under it (the dial's pointer reaches 5 px above its disc). */
+export const HUD_COMPASS_GAP_PX = 12;
 
 export interface TouchHudLayout {
   /** The two-row cluster (phone portrait) rather than one row (wide screens). */
@@ -145,8 +149,10 @@ export interface TouchHudLayout {
   emoji: Rect;
   /** The 💬 button. */
   chat: Rect;
-  /** 👁 🗺 🔊 ☰ in that order (strict mirror when left-handed: ☰ is then in the corner). */
+  /** 👁 🗺 ☰ in that order (strict mirror when left-handed: ☰ is then in the corner). */
   topButtons: Rect[];
+  /** The 동서남북 dial under the top group, on its outer edge (a display, not a button). */
+  compass: Rect;
   /** Bounding box of `topButtons`. */
   topGroup: Rect;
   /** 👥 — below the room-name chip in the top-left column. */
@@ -214,7 +220,7 @@ function fanRects(emoji: Rect, count: number, left: number, right: number): Rect
 /**
  * Every touch HUD button as a rectangle, for a `vw` × `vh` screen.
  *
- *   top-right   👁 🗺 🔊 ☰  (each `topPx`, 8 px apart, 12 px from the corner)
+ *   top-right   👁 🗺 ☰  (each `topPx`, 8 px apart, 12 px from the corner), the compass dial under it
  *   top-left    room-name chip, then 👥, then the chat-log toggle (a column, 8 px apart)
  *   bottom-right  jump (72, 16 px from the edges); action (60) centred 12 px above it;
  *                 emoji (56) — phones: left of the action (a second row), wide screens:
@@ -237,7 +243,7 @@ export function touchHudLayout({ vw, vh, safe, size, leftHanded }: TouchHudInput
   const C = buttonPx(HUD_BASE.chat, size);
   const narrow = vw < HUD_NARROW_BELOW_PX;
   // The top-right group shares the row with the 72 px 👥 / chat-log column on its left. On a
-  // 360 px phone at 크게 (4 × 60 + gaps) they would touch, so the group gives up size first —
+  // 360 px phone at 크게 (3 × 60 + gaps) they would touch, so the group gives up size first —
   // never below 48 px, and never on a screen wide enough for the chosen size.
   const groupRoom = R - HUD_TOP_INSET_PX - (L + HUD_TOP_INSET_PX + HUD_INFO_BTN_W_PX + MIN_GAP_PX);
   const topFit = Math.floor((groupRoom - (HUD_TOP_BUTTON_COUNT - 1) * MIN_GAP_PX) / HUD_TOP_BUTTON_COUNT);
@@ -269,6 +275,13 @@ export function touchHudLayout({ vw, vh, safe, size, leftHanded }: TouchHudInput
       h: top,
     });
   }
+  const compass: Rect = {
+    x: R - HUD_TOP_INSET_PX - HUD_COMPASS_PX,
+    y: T + HUD_TOP_INSET_PX + top + HUD_COMPASS_GAP_PX,
+    w: HUD_COMPASS_PX,
+    h: HUD_COMPASS_PX,
+    round: true,
+  };
   const roster: Rect = {
     x: L + HUD_TOP_INSET_PX,
     y: T + HUD_TOP_INSET_PX + HUD_CHIP_H_PX + MIN_GAP_PX,
@@ -306,6 +319,7 @@ export function touchHudLayout({ vw, vh, safe, size, leftHanded }: TouchHudInput
     chat: chatF,
     topButtons: topF,
     topGroup: union(topF),
+    compass: m(compass),
     roster: m(roster),
     chatLog: m(chatLog),
     column: leftHanded

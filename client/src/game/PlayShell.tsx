@@ -10,6 +10,7 @@ import { LocalPlayer } from "./LocalPlayer";
 import { RemotePlayers } from "./RemotePlayers";
 import { CameraRig } from "./CameraRig";
 import { OverviewMarker } from "./OverviewMarker";
+import { CompassProbe } from "./CompassProbe";
 import { ClickMarker } from "./ClickMarker";
 import { NametagSystem } from "./NametagSystem";
 import { RenderStatsProbe } from "./RenderStatsProbe";
@@ -99,6 +100,8 @@ export interface PlayShellProps {
    * Default: 3 cm, no offset.
    */
   groundDecal?: GroundDecal;
+  /** The rich tier's live shadows' colour (ShadowFloor); default the school's indigo. */
+  shadowColor?: string;
 }
 
 /**
@@ -300,6 +303,7 @@ export function PlayShell(p: PlayShellProps) {
                 />
                 <RemotePlayers room={room} selfPose={pose} selfSeat={seat} blobShadow={profile.blobShadows} areas={p.areas} />
                 <OverviewMarker pose={pose} />
+                <CompassProbe />
                 <ClickMarker />
                 <SceneWarmUp key={tier} emoji />
               </Suspense>
@@ -309,7 +313,7 @@ export function PlayShell(p: PlayShellProps) {
         </KeyboardControls>
         <NametagSystem />
         {p.effects && <QualityEffects tier={tier} brightness={brightness} exposure={light.exposure} toneCurve={light.toneCurve} />}
-        {p.effects && profile.shadows && <ShadowFloor bounds={b} decal={p.groundDecal ?? null} />}
+        {p.effects && profile.shadows && <ShadowFloor bounds={b} decal={p.groundDecal ?? null} color={p.shadowColor} />}
         {import.meta.env.DEV && <RenderStatsProbe />}
       </Canvas>
       <LoadingOverlay />

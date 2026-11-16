@@ -38,7 +38,7 @@ import { glassFocusUniform } from "./hallGlass";
 import { useQualityTier } from "../game/QualityEffects";
 import { LoadBoundary } from "./LoadBoundary";
 import { HALL_CUBBY_ANCHORS, SAMPLE_CUBBIES, SAMPLE_PHOTO_ATLAS } from "./sampleCubbies";
-import { DoorPad, HallRoom } from "./VillageHall";
+import { HallRoom } from "./VillageHall";
 import { PublicAutoDoor } from "./PublicAutoDoor";
 import type { Pose } from "../game/types";
 
@@ -373,19 +373,18 @@ function MemorialHall() {
 /**
  * The memorial hall's interior (케이슨 마을 Task 9), mounted while the local player is in the hall. Holds the hall's files
  * for as long as it shows (memorialRelease.ts: loaded on entering, released on leaving), shows the plain room until the
- * model is in, and the way out's door pad. The candles go out when the hall is left (hallCandles.ts, on the area change).
+ * model is in (no floor mark at the way out: owner 2026-11-16). The candles go out when the hall is left (hallCandles.ts, on the area change).
  */
 export function HallArea({ pose }: { pose: Pose }) {
   useEffect(() => holdMemorialFiles(), []);
   return (
     <>
-      <LoadBoundary fallback={<HallRoom withPad={false} />} onReset={clearMemorialCaches} notice="추모관을 불러오지 못했어요. 잠시 뒤 다시 불러올게요.">
-        <Suspense fallback={<HallRoom withPad={false} />}>
+      <LoadBoundary fallback={<HallRoom />} onReset={clearMemorialCaches} notice="추모관을 불러오지 못했어요. 잠시 뒤 다시 불러올게요.">
+        <Suspense fallback={<HallRoom />}>
           <MemorialHall />
           <SceneWarmUp />
         </Suspense>
       </LoadBoundary>
-      <DoorPad pad={VILLAGE_LAYOUT.memorial.interior.doorPad} subtle />
       <PublicAutoDoor area="hall" pose={pose} />
     </>
   );

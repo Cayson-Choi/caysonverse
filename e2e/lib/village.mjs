@@ -64,6 +64,43 @@ export async function leaveHall(p) {
   await sleep(1500);
 }
 
+/**
+ * Watch the vegetation's cover (VegVeil, .cv-veg-veil) from now on: every 40 ms, whether it covers (data-covered or any
+ * opacity). `veilSeen` stops and returns how many samples saw it, and how many were taken.
+ */
+export async function watchVeil(p) {
+  await p.page.evaluate(() => {
+    clearInterval(window.__veilWatch);
+    window.__veilSeen = { covered: 0, samples: 0 };
+    window.__veilWatch = setInterval(() => {
+      const e = document.querySelector(".cv-veg-veil");
+      window.__veilSeen.samples++;
+      if (e && (e.getAttribute("data-covered") === "1" || parseFloat(getComputedStyle(e).opacity) > 0.02)) window.__veilSeen.covered++;
+    }, 40);
+  });
+}
+export const veilSeen = (p) => p.page.evaluate(() => (clearInterval(window.__veilWatch), window.__veilSeen));
+
+/**
+ * Back out of the hall (or a house) with the vegetation kept (vegPark.ts): watched from before the door until the
+ * village's kept vegetation has dressed it again (`__cvVeg().attaches` past `before`) and 1.5 s more. Returns the cover
+ * samples and the vegetation's numbers.
+ */
+export async function outWithoutCover(p, leave, before) {
+  await watchVeil(p);
+  await leave(p);
+  const dressed = await p.page
+    .waitForFunction((n) => (window.__cvVeg?.()?.attaches ?? 0) > n, before, { timeout: 60000 })
+    .then(() => true, () => false);
+  await sleep(1500);
+  const veil = await veilSeen(p);
+  const veg = await p.page.evaluate(() => {
+    const s = window.__cvVeg?.();
+    return s ? { attaches: s.attaches, trees: Object.values(s.trees).reduce((a, k) => a + k.trees, 0), cloneEdits: s.cloneEdits } : null;
+  });
+  return { dressed, veil, veg };
+}
+
 /** Drag the follow camera: a mouse on a PC, one finger (CDP touch) on a phone. dy > 0 moves down the screen. */
 export async function dragView(p, dx, dy) {
   const vp = p.page.viewportSize();
@@ -140,33 +177,30 @@ export const audioState = (p) =>
   });
 
 /**
- * The filled cubby the hall scenario visits: eye-level card (row 3, else 2/4), on the back wall east of the bench or on the east
- * wall, in a column that also has an empty row (step 9 visits it; T11 review minor 3).
+ * The filled cubby the hall scenario visits: the hall's one sample (견본) at eye level — bank A, column 11, row 3 (the layout of
+ * the memorial stage A: banks A/B either side of the niche, E on the east wall; e2e/village-hall.mjs picks the same one). Its
+ * column has empty rows above and below (step 9 visits one).
  */
 export const pickCubby = (p) =>
   p.page.evaluate(async () => {
     const s = await window.__imp("/src/village/sampleCubbies.ts");
     const t = await window.__imp("/src/village/villageTargets.ts");
     const c = await window.__imp("/src/village/cubbyCard.ts");
-    const cols = t.cubbyColumns().filter((col) => (col.wall === "n" && col.x > 300.6 && col.x < 303.2) || (col.wall === "e" && col.z > -4.4 && col.z < 1.2));
-    for (const want of [3, 2, 4]) {
-      for (const column of cols) {
-        const row = c.defaultRow(column.key);
-        const a = column.rows[row];
-        if (row !== want || !s.SAMPLE_BY_ID.has(a.id)) continue;
-        if (!column.rows.some((r) => !s.SAMPLE_BY_ID.has(r.id))) continue;
-        const fx = Math.sin(a.yaw);
-        const fz = Math.cos(a.yaw);
-        return { key: column.key, row, id: a.id, x: a.x, y: a.y, z: a.z, standX: a.x + fx * 0.85, standZ: a.z + fz * 0.85, sample: s.SAMPLE_BY_ID.get(a.id) };
-      }
-    }
-    return null;
+    const column = t.cubbyColumns().find((col) => col.key === "A_11");
+    if (!column) return null;
+    const row = c.defaultRow(column.key);
+    const a = column.rows[row];
+    if (!s.SAMPLE_BY_ID.has(a.id) || !column.rows.some((r) => !s.SAMPLE_BY_ID.has(r.id))) return null;
+    const fx = Math.sin(a.yaw);
+    const fz = Math.cos(a.yaw);
+    return { key: column.key, row, id: a.id, x: a.x, y: a.y, z: a.z, standX: a.x + fx * 0.85, standZ: a.z + fz * 0.85, sample: s.SAMPLE_BY_ID.get(a.id) };
   });
 
-/** Walk to the front of a picked cubby (round the bench first) and face it. */
+/** Walk to the front of a picked cubby (up the aisle between the benches, as e2e/village-hall.mjs does) and face it. */
 export async function standAtCubby(p, pick) {
-  await walkAndWait(p, 302.6, 0.5, 15000, 0.5);
-  await walkAndWait(p, 302.6, -3.6, 15000, 0.5);
+  await walkAndWait(p, 299.9, -1.5, 15000, 0.5);
+  await walkAndWait(p, 299.9, -3.9, 15000, 0.5);
+  // square in front of the column: line up 1.6 m out, then walk straight in (a click-move stops about 0.35 m short)
   const fx = (pick.standX - pick.x) / 0.85;
   const fz = (pick.standZ - pick.z) / 0.85;
   await walkAndWait(p, pick.x + fx * 1.6, pick.z + fz * 1.6, 15000, 0.4);
@@ -517,7 +551,13 @@ export async function runVillageScenario({ name, device }) {
     });
 
     await run.step("10. back out through the door", async () => {
-      await leaveHall(A);
+      // the village comes back dressed at once: its vegetation was kept while A was inside (vegPark.ts), no cover
+      const before = (await A.page.evaluate(() => window.__cvVeg?.()?.attaches)) ?? 0;
+      const out = await outWithoutCover(A, leaveHall, before);
+      summary.hallExit = out;
+      run.check("back out: the kept vegetation dressed the village again (no rebuild)", out.dressed && (out.veg?.attaches ?? 0) > before && out.veg.trees > 100, out);
+      run.check("back out: every change to the new clone made again (old cards and baked bark cut, instanced bark hidden)", (out.veg?.cloneEdits?.total ?? 0) > 3 && out.veg.cloneEdits.inEffect === out.veg.cloneEdits.total, out.veg?.cloneEdits);
+      run.check("back out: the cover (VegVeil) never showed", out.veil.covered === 0 && out.veil.samples > 20, out.veil);
       await leaveHall(B);
       const at = await pos(A);
       run.check("A is in the village again, outside the memorial's door", (await areaOf(A)) === "village" && Math.abs(at.x) < 20 && at.z < -40, at);

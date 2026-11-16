@@ -290,10 +290,13 @@ async function runOnce(throttle) {
       await button("menu close", ".cv-menu-close");
       await act("Escape menu (2nd)", () => tap("Escape"), 1200);
       await act("Escape menu close", () => tap("Escape"), 1200);
-      await button("bgm toggle", '[aria-label="배경음악 켜기/끄기"]');
-      await button("bgm toggle2", '[aria-label="배경음악 켜기/끄기"]');
-      await button("sound toggle", '[aria-label="소리 켜기/끄기"]', 1000);
-      await button("sound toggle2", '[aria-label="소리 켜기/끄기"]', 1000);
+      // the ♪ and 🔊 buttons moved into the menu's 소리 section (switches)
+      await button("menu open (sound)", '[aria-label="메뉴 열기"]');
+      await button("bgm toggle", "[role=switch][aria-labelledby=cv-menu-music]", 1000);
+      await button("bgm toggle2", "[role=switch][aria-labelledby=cv-menu-music]", 1000);
+      await button("sound toggle", "[role=switch][aria-labelledby=cv-menu-sound]", 1000);
+      await button("sound toggle2", "[role=switch][aria-labelledby=cv-menu-sound]", 1000);
+      await button("menu close (sound)", ".cv-menu-close");
       await button("view toggle", '[aria-label="1인칭/3인칭 전환"]');
       await button("view toggle2", '[aria-label="1인칭/3인칭 전환"]');
       await button("roster open", ".cv-hud-people", 1000);

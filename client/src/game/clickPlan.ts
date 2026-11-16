@@ -502,7 +502,7 @@ export const DETOUR_SLACK = 6;
  * way — the far creek bank tapped from the water's edge, its bridge 25 m off to the side).
  */
 export const DETOUR_FAR_RATIO = 4;
-export const DETOUR_FAR_SLACK = 10;
+export const DETOUR_FAR_SLACK = 30;
 export const DETOUR_FAR_MARGIN = 40;
 
 /** The search grid's cell (m); grown when the region would hold more than DETOUR_MAX_CELLS (a cross-map click). */
@@ -999,6 +999,11 @@ export interface PlanOptions {
    * fountain — activeMap.ts): visible ground inside one of these boxes moves out up to FURNITURE_MAX_PUSH, not MAX_PUSH.
    */
   furniture?: readonly AABB[];
+  /**
+   * The click is for THIS spot (a tap on a chair: seatTap.ts): a long way round to it is taken (DETOUR_FAR_*) before the
+   * walk that merely stops against what is in the way — that stop is somewhere else, and the seat offered there another.
+   */
+  farFirst?: boolean;
 }
 
 /**
@@ -1022,6 +1027,8 @@ export interface PendingDetour {
   walk: WalkResult;
   obstacles: readonly AABB[];
   bounds: Bounds;
+  /** PlanOptions.farFirst. */
+  farFirst?: boolean;
 }
 
 /** startClickPlan's answer: the plan itself, or a way round to look for first. */
@@ -1087,7 +1094,7 @@ export function startClickPlan(
   const first = straightTo(fromX, fromZ, spots[0], surface, seated, obstacles, bounds);
   if (first.plan) return { plan: first.plan };
   // Not straight there: a way round, walked to the end (rule 3) — looked for by finishClickPlan.
-  return { detour: { fromX, fromZ, spots, surface, seated, walk: first.walk, obstacles, bounds } };
+  return { detour: { fromX, fromZ, spots, surface, seated, walk: first.walk, obstacles, bounds, farFirst: options.farFirst } };
 }
 
 /**
@@ -1112,11 +1119,16 @@ export function* finishClickPlanSteps(d: PendingDetour): Steps<ClickPlan> {
     const round = yield* roundToSteps(fromX, fromZ, spot, surface, obstacles, bounds);
     if (round) return round;
   }
+  const far = { ratio: DETOUR_FAR_RATIO, slack: DETOUR_FAR_SLACK, margin: DETOUR_FAR_MARGIN };
+  if (d.farFirst) {
+    const spot = d.spots.find((s) => !s.squeezed) ?? d.spots[0];
+    const round = yield* roundToSteps(fromX, fromZ, spot, surface, obstacles, bounds, far);
+    if (round) return round;
+  }
   const stopped = stoppedOnTheWay(fromX, fromZ, d.walk, surface.y, obstacles, bounds);
   if (stopped.ok) return stopped;
   // Already against what is in the way, and no way round within DETOUR_MAX_RATIO: rather than nothing at all for a
   // click on ground in plain view (the far creek bank tapped from the water's edge), a longer way round.
-  const far = { ratio: DETOUR_FAR_RATIO, slack: DETOUR_FAR_SLACK, margin: DETOUR_FAR_MARGIN };
   const target = d.spots.find((s) => !s.squeezed) ?? d.spots[0];
   return (yield* roundToSteps(fromX, fromZ, target, surface, obstacles, bounds, far)) ?? stopped;
 }

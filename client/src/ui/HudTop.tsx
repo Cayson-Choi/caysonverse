@@ -8,7 +8,7 @@ import { HudButton } from "./HudButton";
 import { RosterPanel, useRosterCount, useRosterHotkey } from "./RosterPanel";
 import { ViewToggle } from "./ViewToggle";
 import { OverviewToggle } from "./OverviewToggle";
-import { SoundToggle } from "./SoundToggle";
+import { Compass } from "./Compass";
 import { useTouchHudLayout } from "./useTouchHudLayout";
 
 /** How often the room name is re-read from the pose (ms) — off the frame path. */
@@ -74,7 +74,7 @@ interface HudTopProps {
  * The top of the screen (controls-ux Task 16).
  *  - Top-left column: room name + 👥 player count, the roster list when open, then whatever
  *    the scene hangs under it (touch: the chat-log toggle).
- *  - Top-right: 👁 🗺 🔊 ☰ in one row, 8 px apart.
+ *  - Top-right: 👁 🗺 ☰ in one row, 8 px apart (the sound settings are in the menu), the 동서남북 dial under it.
  *
  * A PC lays both out in hud.css. A phone gets the numbers from game/hud.ts
  * `touchHudLayout` (the ones hud.test.ts checks): where the top group sits, which corner
@@ -111,6 +111,10 @@ export function HudTop({ pose, onToggleView, onToggleOverview, overviewDisabled,
     ? { ...sizeVar, left: layout.topGroup.x, top: layout.topGroup.y, right: "auto" }
     : undefined;
 
+  const compassStyle: CSSProperties | undefined = isTouchDevice
+    ? { left: layout.compass.x, top: layout.compass.y, right: "auto", ["--cv-compass-size" as string]: `${layout.compass.w}px` }
+    : undefined;
+
   return (
     <>
       <div
@@ -127,9 +131,9 @@ export function HudTop({ pose, onToggleView, onToggleOverview, overviewDisabled,
       >
         <ViewToggle onToggle={onToggleView} />
         <OverviewToggle onToggle={onToggleOverview} disabled={overviewDisabled} />
-        <SoundToggle />
         <MenuButton />
       </div>
+      <Compass style={compassStyle} />
     </>
   );
 }

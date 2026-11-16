@@ -1,5 +1,6 @@
 import { Suspense, useEffect, useLayoutEffect, useState } from "react";
 import { useFrame } from "@react-three/fiber";
+import { useGLTF } from "@react-three/drei";
 import { PlayShell } from "../game/PlayShell";
 import { villageActiveMap } from "../game/activeMap";
 import { clearClickTarget } from "../game/clickMove";
@@ -8,9 +9,13 @@ import { takeArmedHouseUse } from "./houseTap";
 import type { PlayersRoom } from "../game/remoteSync";
 import type { Pose } from "../game/types";
 import { getRoom, sendUseDoor, sendUseStair } from "../net/connection";
-import { sendBusRide, startTransitSync, type TransitRoom, useTransitState } from "../net/transitSync";
+import { rideStatusText, sendBusRide, showTransitNotice, startTransitSync, transitNowMs, transitTripAt, type TransitRoom, useTransitState } from "../net/transitSync";
+import { TRANSIT, boardingOpensWords } from "@caysonverse/shared/village/transit";
 import type { Identity } from "../stores/appStore";
 import { DoorFade } from "./DoorFade";
+import { VegVeil } from "./VegVeil";
+import { vegDressing } from "./vegDressing";
+import { vegetationPark } from "./veg/villageVegetation";
 import { doorFade } from "./doorFadeModel";
 import { useQualityTier } from "../game/QualityEffects";
 import { SceneWarmUp } from "../game/SceneWarmUp";
@@ -18,16 +23,15 @@ import { VILLAGE_LAYOUT, isHouseArea, type AreaId } from "@caysonverse/shared/vi
 import { HOUSE_STAIR_TARGET_PREFIX } from "@caysonverse/shared/village/houseTargets";
 import { houseNumberOf } from "@caysonverse/shared/village/houseAreas";
 import { PlotMarkers } from "./PlotMarkers";
-import { DoorPad } from "./VillageHall";
 import { HallArea } from "./MemorialHall";
 import { CubbyView } from "./CubbyView";
 import { cubbyCardState, openCubbyCard } from "./cubbyCard";
 import { DayNight } from "./DayNight";
 import { VillageModel } from "./VillageModel";
 import { VillageBus } from "./VillageBus";
-import { BusStopShelter } from "./BusStopShelter";
+import { BUSSTOP_MODEL_URL, BusStopShelter } from "./BusStopShelter";
 import { FishingPondProps } from "./FishingPondProps";
-import { VillageBgmButton } from "./VillageBgmButton";
+import { VillageMusic } from "./VillageMusic";
 import { VILLAGE_CAMERA_PLANES, VILLAGE_GROUND_DECAL, type VillageTier } from "./villageModelPrep";
 import { clearBusCache, clearVillageCaches, holdVillageFiles, holdsVillageFiles } from "./villageRelease";
 import { LoadBoundary } from "./LoadBoundary";
@@ -38,6 +42,7 @@ import {
   CUBBY_TARGET_PREFIX,
   GUIDE_TARGET_PREFIX,
   KEYPAD_TARGET_PREFIX,
+  busCountdownWords,
   villageAndHallTargets,
   villageBusTarget,
   villageTargets,
@@ -49,7 +54,9 @@ import { StarSky } from "./sky/StarSky";
 import { StarFinder } from "./sky/StarFinder";
 import { StarFinderButton } from "./sky/StarFinderButton";
 import { FishingPanel } from "./FishingPanel";
-import { TransitRoadSignals } from "./TransitRoadSignals";
+import { CrosswalkHintPill } from "./CrosswalkHintPill";
+import { BusStopHintPill } from "./BusStopHintPill";
+import { SIGNALS_MODEL_URL, TransitRoadSignals } from "./TransitRoadSignals";
 import { PublicAutoDoor } from "./PublicAutoDoor";
 import { openKeypad, useKeypad } from "./keypadStore";
 import { VillageKeypad } from "./VillageKeypad";
@@ -61,7 +68,7 @@ import { houseOpen } from "./keypadText";
 /**
  * 케이슨 마을 — the village scene (Task 4). A `PlayShell` on the village map under the village's afternoon
  * light: outside, the Blender model (Task 7: VillageModel — the plaza, houses, creek, plots, the far mountains and
- * the sky dome, with its far plane past the dome) with the words on the plots' signs and the memorial's door pad;
+ * the sky dome, with its far plane past the dome) with the words on the plots' signs;
  * inside, the memorial hall (Task 9: MemorialHall — the Task 8 model, the sample cubbies' props, the candles).
  *
  * Two areas share this room: the open village and the memorial hall's interior (`Player.area`). The scene follows
@@ -105,17 +112,25 @@ function PlainGround() {
   );
 }
 
-/** What the local player's area draws: the village model and its signs and door pad, or the hall's room. */
+/** A failed village model: its cover lifts at once (the plain ground and the notice show, not "불러오는 중…"). */
+const uncoverVillage = () => vegDressing.uncover();
+
+/** What the local player's area draws: the village model and its signs (no floor mark at the memorial's door), or the hall's room. */
 function VillageArea({ area, tier, pose }: { area: AreaId; tier: VillageTier; pose: Pose }) {
   if (area === "hall") return <HallArea pose={pose} />;
   if (isHouseArea(area)) return <HouseArea area={area} pose={pose} />;
   return (
     <>
       {/* A failed download shows a plain ground and tries again, instead of the crash screen (final review m2). */}
-      <LoadBoundary fallback={<PlainGround />} onReset={clearVillageCaches} notice="마을 풍경을 불러오지 못했어요. 잠시 뒤 다시 불러올게요.">
+      <LoadBoundary fallback={<PlainGround />} onReset={clearVillageCaches} onFail={uncoverVillage} notice="마을 풍경을 불러오지 못했어요. 잠시 뒤 다시 불러올게요.">
         <Suspense fallback={null}>
           <VillageModel tier={tier} />
-          <BusStopShelter />
+          {/* The bus stop's pad and shelter and the crosswalk signals are small files of their own: a failed one is just missing. */}
+          <LoadBoundary fallback={null} onReset={() => useGLTF.clear(BUSSTOP_MODEL_URL)} notice="버스 정류장을 불러오지 못했어요. 잠시 뒤 다시 불러올게요.">
+            <Suspense fallback={null}>
+              <BusStopShelter />
+            </Suspense>
+          </LoadBoundary>
           <FishingPondProps />
           {/* The bus at the stop (bus review r3, M2): its own error boundary and its own Suspense, so the village never
               waits for it. Its download starts with the model's, so it is usually in when the village shows (and warmed
@@ -130,12 +145,35 @@ function VillageArea({ area, tier, pose }: { area: AreaId; tier: VillageTier; po
           <SceneWarmUp key={tier} />
         </Suspense>
       </LoadBoundary>
-      <TransitRoadSignals />
+      <LoadBoundary fallback={null} onReset={() => useGLTF.clear(SIGNALS_MODEL_URL)} notice="횡단보도 신호등을 불러오지 못했어요. 잠시 뒤 다시 불러올게요.">
+        <TransitRoadSignals />
+      </LoadBoundary>
       <PlotMarkers />
-      <DoorPad pad={VILLAGE_LAYOUT.memorial.exterior.doorPad} y={0.06} />
       <PublicAutoDoor area="village" pose={pose} />
     </>
   );
+}
+
+/**
+ * Whether the bus takes riders now and how long until it leaves (ms), by the server's clock as the bus snapshots carry it
+ * (transitSync.ts transitNowMs) and the drive the server's bus driver publishes (transitTripAt: the timetable, held up for avatars on the road).
+ */
+function busScheduleNow(): [boolean, number] {
+  const now = transitNowMs();
+  const trip = transitTripAt(now);
+  if (trip.status === "boarding") return [true, trip.startMs - now];
+  return [false, trip.nextStartMs - now];
+}
+
+/** The bus is out on its lap now (its doors shut: no getting off until it is back at the stop). */
+function busOnRoad(): boolean {
+  return transitTripAt(transitNowMs()).status === "inTransit";
+}
+
+/** What pressing the board button says while the bus is not taking riders. */
+function busWaitNotice(departsInMs: number): string {
+  const every = Math.round(TRANSIT.departureEveryMs / 60000);
+  return `🚌 다음 버스는 ${busCountdownWords(departsInMs).long} 뒤에 떠나요. 버스는 ${every}분마다 다니고, 출발 ${boardingOpensWords()} 전부터 탈 수 있어요.`;
 }
 
 function VillageDoors({ pose }: { pose: Pose }) {
@@ -146,7 +184,7 @@ function VillageDoors({ pose }: { pose: Pose }) {
     setTargetSource((p) => {
       const area = localArea();
       const base = villageAndHallTargets(area, p.x, p.z, cubbyCardState() !== null || guideDialogOpen() !== null || keypadOpen);
-      const bus = villageBusTarget(area, p.x, p.z, boarded);
+      const bus = villageBusTarget(area, p.x, p.z, boarded, ...busScheduleNow(), busOnRoad());
       // within the keypad's 2 m of a house door the house's model starts to come (it is usually in by the time the code is typed)
       const keypad = base.find((t) => t.id.startsWith(KEYPAD_TARGET_PREFIX));
       if (keypad) {
@@ -159,7 +197,10 @@ function VillageDoors({ pose }: { pose: Pose }) {
       if (phase !== "press") return;
       if (target.id === BUS_RIDE_TARGET_BOARD) {
         clearClickTarget();
-        sendBusRide("board");
+        const [boardingNow, departsInMs] = busScheduleNow();
+        // Outside the boarding window (3 min before each departure): say when the bus leaves (the server would refuse; review 2026-11-15)
+        if (!boardingNow) showTransitNotice(busWaitNotice(departsInMs));
+        else sendBusRide("board");
         return;
       }
       if (target.id === BUS_RIDE_TARGET_LEAVE) {
@@ -210,6 +251,12 @@ function VillageDoors({ pose }: { pose: Pose }) {
   return null;
 }
 
+/**
+ * The live shadows' colour in the village (review r3): the school's indigo (#2b2a55) laid a purple-blue band and square
+ * on the road under the signals' arms and heads and round the bus. Shade on sunlit asphalt is a neutral dark grey.
+ */
+const VILLAGE_SHADOW_COLOR = "#1d1e22";
+
 /** Small ride-status placeholder; the full window/camera view can build on this state. */
 function TransitRideHud() {
   const { boarded, snapshot, notice } = useTransitState();
@@ -228,15 +275,20 @@ function TransitRideHud() {
     >
       {boarded ? (
         <>
-          <div>🚌 버스 탑승 중 · 창밖을 보는 중</div>
-          <div style={{ opacity: 0.75 }}>{snapshot?.signal === "red" ? "신호 대기" : "노선 운행 중"}</div>
-          <button
-            type="button"
-            onClick={() => sendBusRide("leave")}
-            style={{ marginTop: 5, border: 0, borderRadius: 7, padding: "4px 8px", cursor: "pointer" }}
-          >
-            하차
-          </button>
+          <div>🚌 버스 탑승 중</div>
+          <div style={{ opacity: 0.75 }}>{rideStatusText(snapshot, busCountdownWords(busScheduleNow()[1]).long)}</div>
+          {snapshot?.status === "inTransit" ? (
+            // the doors open only at the stop (the server refuses a leave on the lap): say when instead of a dead button
+            <div style={{ marginTop: 4, opacity: 0.75 }}>정류장에 돌아오면 내려요</div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => sendBusRide("leave")}
+              style={{ marginTop: 5, border: 0, borderRadius: 7, padding: "4px 8px", cursor: "pointer" }}
+            >
+              하차
+            </button>
+          )}
         </>
       ) : (
         <div>{notice}</div>
@@ -271,6 +323,8 @@ export function VillageScene({ identity }: { identity: Identity }) {
   // (Task 7 review I1). On the light (phone) tier they go while the player is in the hall too, and load again on the
   // way out (final review I2: the village's textures are not resident next to the hall's).
   const holdFiles = holdsVillageFiles(tier, area);
+  // The village's built vegetation is kept while this scene is up (indoors too): freed one tick after it goes.
+  useEffect(() => vegetationPark.hold(), []);
   useEffect(() => (holdFiles ? holdVillageFiles() : undefined), [holdFiles]);
   if (!room) return null;
 
@@ -285,6 +339,7 @@ export function VillageScene({ identity }: { identity: Identity }) {
       areas={areaGate}
       cameraPlanes={VILLAGE_CAMERA_PLANES}
       groundDecal={VILLAGE_GROUND_DECAL}
+      shadowColor={VILLAGE_SHADOW_COLOR}
       world3d={({ pose }) => (
         <>
           <DayNight area={area} tier={tier} />
@@ -296,19 +351,22 @@ export function VillageScene({ identity }: { identity: Identity }) {
       )}
       hudColumn={
         <>
-          <VillageBgmButton />
+          <VillageMusic />
           <TransitRideHud />
           <StarFinderButton />
         </>
       }
       hud={({ orbit, pose }) => (
         <>
+          <VegVeil active={area === "village"} />
           <DoorFade />
           <HouseEntryCover />
           <CubbyView />
           <GuideDialog />
           <StarFinder orbit={orbit} />
           {area === "village" && <FishingPanel pose={pose} />}
+          {area === "village" && <CrosswalkHintPill pose={pose} />}
+          {area === "village" && <BusStopHintPill pose={pose} />}
           <VillageKeypad />
         </>
       )}

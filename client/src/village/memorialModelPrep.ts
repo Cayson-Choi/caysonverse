@@ -1,3 +1,4 @@
+import { versionedUrl } from "./modelUrl";
 import { Box3, Vector3, type InstancedMesh, type Material, type Mesh, type MeshBasicMaterial, type Object3D, type Texture } from "three";
 import { COLLIDER_PREFIX, LIGHTMAP_MATERIAL_PREFIX, configureLightmap, isMesh, lightmapMaterial, materialsOf } from "../game/hub/hubModelPrep";
 import { HALL_CUBBY_MATERIAL, isSkylight, patchHallCubbyMaterial, patchHallGardenMaterial, patchHallLightmapMaterial, patchSkylightMaterial } from "./hallNight";
@@ -23,11 +24,14 @@ import { isHallGlass, patchHallGlassMaterial } from "./hallGlass";
  * map), so nothing is copied and `disposeMemorial` only frees the clone's instance buffers.
  */
 
-export const MEMORIAL_MODEL_URL = "/models/village/memorial.glb";
+export const MEMORIAL_MODEL_URL = versionedUrl("/models/village/memorial.glb");
 /** The day light map: 2048 px on the rich tier, 1024 px on the light one (phones; a quarter of the memory). */
-export const MEMORIAL_LIGHTMAP_URLS = { high: "/models/village/memorial_lm.webp", low: "/models/village/memorial_lm_1k.webp" } as const;
+export const MEMORIAL_LIGHTMAP_URLS = {
+  high: versionedUrl("/models/village/memorial_lm.webp"),
+  low: versionedUrl("/models/village/memorial_lm_1k.webp"),
+} as const;
 export const MEMORIAL_LIGHTMAP_URL = MEMORIAL_LIGHTMAP_URLS.high;
-export const MEMORIAL_PROPS_URL = "/models/village/memorial_props.glb";
+export const MEMORIAL_PROPS_URL = versionedUrl("/models/village/memorial_props.glb");
 
 export interface MemorialNodes {
   root: Object3D;

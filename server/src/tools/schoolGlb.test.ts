@@ -534,7 +534,7 @@ describe("checkSchoolGlb", () => {
     expect(BOX_TOLERANCE).toBeCloseTo(0.011, 6);
     expect(MAX_MATERIALS).toBe(24);
     // one more for the village: the fountain's live-lit crescent (M_moon)
-    expect(MATERIAL_LIMITS).toEqual({ village: 25, memorial: 24, house: 24 });
+    expect(MATERIAL_LIMITS).toEqual({ village: 26, memorial: 24, house: 24 });
     expect(BUDGETS.house).toEqual({ maxBytes: 1024 * 1024, maxTriangles: 45_000 }); // 집 실내 G: houseAreas HOUSE_BUDGET.glb
     expect(MAX_TEXTURE_SIDE).toBe(2048);
     expect(OBJ_ANCHOR_TOLERANCE).toBe(0.25);
@@ -599,12 +599,12 @@ describe("checkSchoolGlb", () => {
     expect(failed(run(g))).toEqual([]);
   });
 
-  it("the village may have 25 materials (the crescent's M_moon), not 26", () => {
+  it("the village may have 26 materials (the crescent's M_moon, the shops' M_shop), not 27", () => {
     const g = goodGltf();
     const spec = tinySpec({ kind: "village" });
-    g.materials = Array.from({ length: 26 }, (_, i) => ({ name: `M_${i}`, extensions: { KHR_materials_unlit: {} } }));
+    g.materials = Array.from({ length: 27 }, (_, i) => ({ name: `M_${i}`, extensions: { KHR_materials_unlit: {} } }));
     expect(failed(run(g, { kind: "village", spec })).map((r) => r.label).join()).toMatch(/재질/);
-    g.materials = g.materials.slice(0, 25);
+    g.materials = g.materials.slice(0, 26);
     expect(failed(run(g, { kind: "village", spec })).map((r) => r.label).join()).not.toMatch(/재질 수/);
   });
 

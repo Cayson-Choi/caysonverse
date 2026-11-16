@@ -23,7 +23,6 @@ import { LoadBoundary } from "./LoadBoundary";
 import { arrivalCamera } from "./houseArrivalCamera";
 import { viewState } from "../game/viewState";
 import { CAMERA } from "../game/constants";
-import { DoorPad } from "./VillageHall";
 import { buildSolidIndex } from "./hallSolidIndex";
 import { hallNightWeight } from "./hallNight";
 import { useNightMapWanted } from "./nightLightmap";
@@ -75,6 +74,21 @@ function HouseRoom({ n, floor }: { n: HouseNumber; floor: HouseFloor }) {
   );
 }
 
+/** A pad as a faint warm ring on the boards (the button shows within it and a little past it). */
+const PAD_RING = { outer: 0.55, inner: 0.5, colour: "#E9DDBF", opacity: 0.42 } as const;
+function PadRing({ x, z }: { x: number; z: number }) {
+  const material = useMemo(
+    () => new MeshBasicMaterial({ color: PAD_RING.colour, transparent: true, opacity: PAD_RING.opacity, depthWrite: false, toneMapped: false, fog: false }),
+    [],
+  );
+  useEffect(() => () => material.dispose(), [material]);
+  return (
+    <mesh position={[x, 0.05, z]} rotation-x={-Math.PI / 2} material={material} renderOrder={2}>
+      <ringGeometry args={[PAD_RING.inner, PAD_RING.outer, 48]} />
+    </mesh>
+  );
+}
+
 /** The way-out and stair pads of the floor, as faint rings on the boards. */
 function HousePads({ n, floor }: { n: HouseNumber; floor: HouseFloor }) {
   const p = HOUSE_PLACES[n];
@@ -82,7 +96,7 @@ function HousePads({ n, floor }: { n: HouseNumber; floor: HouseFloor }) {
   return (
     <>
       {pads.map((pad) => (
-        <DoorPad key={`${pad.x}:${pad.z}`} pad={{ centre: { x: pad.x, z: pad.z }, radius: pad.radius }} subtle />
+        <PadRing key={`${pad.x}:${pad.z}`} x={pad.x} z={pad.z} />
       ))}
     </>
   );

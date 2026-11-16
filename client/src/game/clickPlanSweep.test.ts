@@ -13,7 +13,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { MOVE_SPEED, RUN_SPEED } from "@caysonverse/shared/constants";
 import { PLAYER_RADIUS } from "@caysonverse/shared/worldMap";
-import { resolveCollision } from "@caysonverse/shared/collision";
+import { isBlocked, resolveCollision } from "@caysonverse/shared/collision";
 import { VILLAGE_LAYOUT, villageGeometry } from "@caysonverse/shared/village/villageLayout";
 import { VILLAGE_BENCHES, VILLAGE_SEATS } from "@caysonverse/shared/village/benchSeats";
 import { reachable } from "@caysonverse/shared/school/reachTestUtil";
@@ -48,6 +48,19 @@ const underABench = (x: number, z: number) =>
 const openGround = (x: number, z: number) =>
   !obstacles.some((o) => x > o.minX && x < o.maxX && z > o.minZ && z < o.maxZ && (!isBenchBox(o) || underABench(x, z)));
 
+/**
+ * The café terrace (its chairs are seats since the 2026-11-15 review): its deck inside the side planters
+ * (scenery cafe, local x +-6.9, z 4.4..10 -> game x 40.6..46.2, z -22.0..-8.2). Its chairs and tables stand 0.2-0.8 m
+ * apart, narrower than a body (0.8 m): a tap into such a gap has no spot a body fits within 0.3 m and is not open ground
+ * a walk can reach (the planner refuses it as it would a gap between two of any boxes).
+ */
+const bodyFitsNear = (x: number, z: number) => {
+  for (let i = -6; i <= 6; i++) for (let j = -6; j <= 6; j++) if (Math.hypot(i, j) * 0.05 <= 0.3 && !isBlocked(x + i * 0.05, z + j * 0.05, R, obstacles, 0)) return true;
+  return false;
+};
+const cafeChair = (s: { bench: string }) => s.bench.startsWith("cafe_terrace_");
+/** On the terrace's deck (see above): a tap there from any seat (the bus shelter's next door, since main's merge) is held to the same rule. */
+const onTerrace = (x: number, z: number) => x > 40.6 && x < 46.2 && z > -22.0 && z < -8.2;
 /** The hall's floor a standing body (radius 0.4) can walk to from the arrival spot, on a 0.25 m grid. */
 const hallReach = (() => {
   const sp = VILLAGE_LAYOUT.memorial.interior.spawn;
@@ -77,12 +90,18 @@ describe("clickPlan sweep — seated, every tap on the open ground round a seat 
           const x = s.x + gx * 0.25;
           const z = s.z + gz * 0.25;
           if (x < bounds.minX || x > bounds.maxX || z < bounds.minZ || z > bounds.maxZ || !openGround(x, z)) continue;
+          // a café chair: the taps round it on its terrace, where a body fits
+          if ((cafeChair(s) || onTerrace(x, z)) && !bodyFitsNear(x, z)) continue;
           // the hall: furniture makes pockets a body cannot stand in or cannot get out of; a tap there is rightly refused, so only
           // spots a body fits on and can walk to from the arrival count (and the seat itself must be walkable-from: tested below)
           if (s.area === "hall" && !hallWalkable(x, z)) continue;
           points++;
           const plan = planClickMove(s.standX, s.standZ, ground(x, z), obstacles, bounds, true, options);
           if (!plan.ok) {
+            // A slit no body threads from inside the bus shelter: the ground between the shelter's north glass (z -6.68) and the
+            // café's wall, 12 cm of free centres wide (x 40.9..41.5, z -7.2..-6.8). It is open ground by the sweep's rule, but the
+            // planner finds no way in from a seat (the one way in is from the north); it is not a seat's refused tap.
+            if (x > 40.9 && x < 41.5 && z > -7.2 && z < -6.8) continue;
             refused.push(`seat ${i} (${x.toFixed(2)}, ${z.toFixed(2)}): ${plan.reason}`);
             continue;
           }

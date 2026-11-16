@@ -1,8 +1,10 @@
+import { versionedUrl } from "./modelUrl";
 import {
   AddEquation,
   Color,
   CustomBlending,
   DoubleSide,
+  Matrix4,
   MeshBasicMaterial,
   MeshPhysicalMaterial,
   MeshStandardMaterial,
@@ -75,7 +77,7 @@ import { VILLAGE_GROUND_DECAL, type VillageTier } from "./villageModelPrep";
  * (`setBusAnisotropy`): the side wordmark and the rear louvres stay readable at a grazing 7-10 m.
  */
 
-export const BUS_MODEL_URL = "/models/village/village_bus.glb";
+export const BUS_MODEL_URL = versionedUrl("/models/village/village_bus.glb");
 
 export const BUS_MATERIAL = { body: "M_bus", glass: "M_bus_glass", led: "M_bus_led", ground: "M_bus_ground" } as const;
 
@@ -145,7 +147,11 @@ export const BUS_SKY = {
   groundFar: [0.32, 0.34, 0.3],
 } as const;
 
-/** Where the bus stands: the parked-bus box's centre, nose north as modelled (yaw 0). */
+/**
+ * Where `prepareBus` puts the bus: the parked bus's centre, nose north as modelled (yaw 0). This is the frame the signs'
+ * boxes are found in (`signs`); VillageBus then sets the live pose every frame (at the stop: turned along the kerb,
+ * layout `busStop.bus.yaw`) and `followBusSigns` maps the glass's test into this frame.
+ */
 export function busPlacement(layout: Pick<VillageLayout, "busStop"> = VILLAGE_LAYOUT): { x: number; z: number; yaw: number } {
   const c = layout.busStop.bus.centre;
   return { x: c.x, z: c.z, yaw: 0 };
@@ -169,8 +175,15 @@ export interface BusNodes {
   groundGlow: { value: number };
   /** The renderer's tone-mapping exposure now: the light tier's pool is worked out through its tone curve. */
   groundExposure: { value: number };
-  /** The signs behind the windows' glass (world boxes): the glass is clear in front of them, on both tiers. */
+  /**
+   * The signs behind the windows' glass, as boxes in the frame the bus was prepared in (`busPlacement`, nose north): the
+   * glass is clear in front of them, on both tiers. The glass maps itself and the eye into that frame (`signFrame`).
+   */
   signs: BusSign[];
+  /** From the world to the prepared frame (`followBusSigns` writes it as the bus moves and turns; the glass's shader reads it). */
+  signFrame: { value: Matrix4 };
+  /** The root's world matrix as prepared. */
+  prepared: Matrix4;
   /** The sky reflection's strength on the paint and on the glass (their shaders read these; `applyBusDayNight` writes). */
   bodySky: { value: number };
   glassSky: { value: number };
@@ -237,6 +250,8 @@ export const BUS_SIGN_SLOTS = 2;
 
 /** The signs' boxes as the glass's shader reads them (an empty slot faces nowhere: its normal is zero). */
 export interface BusSignUniforms {
+  /** World to the prepared frame, where the boxes are (the bus moves and turns: the boxes are not world boxes). */
+  uBusSignFrame: { value: Matrix4 };
   uBusSignLo: { value: Vector3[] };
   uBusSignHi: { value: Vector3[] };
   uBusSignN: { value: Vector3[] };
@@ -255,15 +270,17 @@ const SIGN_PARS = /* glsl */ `varying vec3 vBusWorld;
 uniform vec3 uBusSignLo[ ${BUS_SIGN_SLOTS} ];
 uniform vec3 uBusSignHi[ ${BUS_SIGN_SLOTS} ];
 uniform vec3 uBusSignN[ ${BUS_SIGN_SLOTS} ];
+uniform mat4 uBusSignFrame;
 uniform float uBusSignF0;
 bool busOverSign() {
-	vec3 d = vBusWorld - cameraPosition;
+	vec3 eye = ( uBusSignFrame * vec4( cameraPosition, 1.0 ) ).xyz;
+	vec3 d = ( uBusSignFrame * vec4( vBusWorld, 1.0 ) ).xyz - eye;
 	d = mix( d, vec3( 1e-5 ), vec3( lessThan( abs( d ), vec3( 1e-5 ) ) ) );
 	vec3 inv = 1.0 / d;
 	for ( int i = 0; i < ${BUS_SIGN_SLOTS}; i ++ ) {
-		if ( dot( cameraPosition - 0.5 * ( uBusSignLo[ i ] + uBusSignHi[ i ] ), uBusSignN[ i ] ) <= 0.0 ) continue;
-		vec3 t0 = ( uBusSignLo[ i ] - cameraPosition ) * inv;
-		vec3 t1 = ( uBusSignHi[ i ] - cameraPosition ) * inv;
+		if ( dot( eye - 0.5 * ( uBusSignLo[ i ] + uBusSignHi[ i ] ), uBusSignN[ i ] ) <= 0.0 ) continue;
+		vec3 t0 = ( uBusSignLo[ i ] - eye ) * inv;
+		vec3 t1 = ( uBusSignHi[ i ] - eye ) * inv;
 		vec3 tn = min( t0, t1 );
 		vec3 tf = max( t0, t1 );
 		float tNear = max( max( tn.x, tn.y ), tn.z );
@@ -284,8 +301,8 @@ const SIGN_VERTEX = /* glsl */ `#include <project_vertex>
 vBusWorld = ( modelMatrix * vec4( transformed, 1.0 ) ).xyz;`;
 
 /**
- * The same test in TypeScript (SIGN_PARS mirrors it): is the glass at `glass` (world) in front of one of `signs`, seen
- * from `eye`? Seen from a sign's side only, and with the sign beyond the glass.
+ * The same test in TypeScript (SIGN_PARS mirrors it): is the glass at `glass` in front of one of `signs`, seen from `eye`
+ * (both in the prepared frame, as the signs are)? Seen from a sign's side only, and with the sign beyond the glass.
  */
 export function busOverSign(eye: Vector3, glass: Vector3, signs: readonly BusSign[]): boolean {
   const d = [glass.x - eye.x, glass.y - eye.y, glass.z - eye.z].map((v) => (Math.abs(v) < 1e-5 ? 1e-5 : v));
@@ -572,10 +589,12 @@ export function prepareBus(source: Object3D, tier: VillageTier, layout: Pick<Vil
     groundGlow: { value: 0 },
     groundExposure: { value: 1 },
     signs: [],
+    signFrame: { value: new Matrix4() },
+    prepared: new Matrix4(),
     own: [],
   };
   // the glass, on both tiers: clear in front of the signs behind it (filled once the bus is placed, below)
-  const cover: BusSignUniforms = { uBusSignLo: { value: slots() }, uBusSignHi: { value: slots() }, uBusSignN: { value: slots() } };
+  const cover: BusSignUniforms = { uBusSignFrame: nodes.signFrame, uBusSignLo: { value: slots() }, uBusSignHi: { value: slots() }, uBusSignN: { value: slots() } };
   const swap = (m: Material): Material => {
     const hit = made.get(m);
     if (hit) return hit;
@@ -611,6 +630,7 @@ export function prepareBus(source: Object3D, tier: VillageTier, layout: Pick<Vil
     if (ground) o.renderOrder = -1; // under the glass, whatever the sort
   });
   root.updateMatrixWorld(true);
+  nodes.prepared.copy(root.matrixWorld);
   if (nodes.led) nodes.signs = busSignsBehindGlass(root, nodes.led);
   root.traverse((o) => {
     o.matrixAutoUpdate = false;
@@ -658,6 +678,15 @@ export function busEnvScale(s: Pick<DayNightState, "hemiIntensity" | "hemiSky">)
 }
 
 /** Per frame: the time of day and the renderer's exposure into the bus (plain number writes). */
+/**
+ * After the bus's root has moved (VillageBus, every frame: it runs its route, and parks turned along the kerb): the map
+ * from the world into the frame the signs' boxes were found in, so the glass stays clear in front of them wherever the
+ * bus stands. Call it with the root's world matrix up to date.
+ */
+export function followBusSigns(nodes: Pick<BusNodes, "root" | "signFrame" | "prepared">): void {
+  nodes.signFrame.value.copy(nodes.root.matrixWorld).invert().premultiply(nodes.prepared);
+}
+
 export function applyBusDayNight(nodes: BusNodes, s: Pick<DayNightState, "lights" | "hemiIntensity" | "hemiSky">, exposure = 1): void {
   const env = busEnvScale(s);
   nodes.bodySky.value = BUS_LOOK.envIntensity * env;

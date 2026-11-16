@@ -13,6 +13,7 @@ import { bubbleRestHeight, nametagRestHeight } from "./nametagLayout";
 import { useSpeechBubble } from "./useSpeechBubble";
 import { useEmoji } from "./useEmoji";
 import { getRemoteRecord, noteRemoteDrawn, remoteDrawnProbe } from "./remoteStore";
+import { pushOutOfMovingBus } from "./playerObstacles";
 import { sample, exceedsSnapDistance } from "./interpolation";
 import { advancePlayout, playoutGaitSpeed } from "./playout";
 import { nextGait } from "./locomotion";
@@ -40,6 +41,8 @@ import {
   jumpRegistry,
   jumpTimeScale,
 } from "./jump";
+import { jumpHeadroom } from "@caysonverse/shared/village/overhead";
+import { localArea } from "../village/villageArea";
 import { ANIM_FADE, CLIP, FLOOR_CLIP, MODEL_FACING_OFFSET } from "./constants";
 import { isFloorSeat } from "./seatClips";
 import { activeSeats } from "./activeMap";
@@ -54,6 +57,8 @@ import {
   type SeatTransition,
 } from "./remoteSeat";
 import { benchClipPlanes, clipAvatar, enableBenchClipping } from "./benchClip";
+import { busPlace, busRiderPose, type BusRiderPose } from "@caysonverse/shared/village/busSeats";
+import { getTransitRenderPose } from "../net/transitSync";
 import { stepLean } from "./leanBack";
 
 /** Fallback seconds for a sit/stand clip if its duration can't be read yet. */
@@ -160,6 +165,9 @@ export function RemotePlayer({
   const framesSinceRef = useRef(0); // frames since last mixer.update
   const accDeltaRef = useRef(0); // accumulated delta (s) since last mixer.update
   const prevConnectedRef = useRef(true);
+  // The place in the village bus this avatar is drawn in (-1: not riding), and the pose there (reused).
+  const ridingRef = useRef(-1);
+  const riderPoseRef = useRef<BusRiderPose>({ x: 0, z: 0, yaw: 0, y: 0, seated: true });
 
   // Bind idle/walk/sit actions and settle the resting pose (mixer stays paused
   // afterward — an idle/seated avatar is a frozen pose, per the v1 mixer rules).
@@ -378,11 +386,97 @@ export function RemotePlayer({
     }
   };
 
+  /**
+   * On the bus (owner 2026-11-15): the body leaves whatever it was doing for the held seated pose (or Idle on a standing
+   * place in the aisle); off it, Idle on the ground where the server put it down at the door.
+   */
+  const startRide = (seated: boolean): void => {
+    releaseLoop(ANIM_FADE);
+    setGait("idle");
+    jumpAction.current?.fadeOut(ANIM_FADE);
+    jumpSeqRef.current = -1;
+    sitDownAction.current?.fadeOut(ANIM_FADE);
+    sitStandAction.current?.fadeOut(ANIM_FADE);
+    const hold = seated ? sitIdleAction.current : idleAction.current;
+    hold?.reset().fadeIn(ANIM_FADE).play();
+    reportClip(hold);
+    fadeRef.current = ANIM_FADE;
+    if (benchClipRef.current.clipped) clipAvatar(avatar, null);
+    benchClipRef.current.clip = null;
+    benchClipRef.current.clipped = false;
+    if (shadowRef.current) shadowRef.current.visible = false;
+  };
+  const endRide = (rec: NonNullable<ReturnType<typeof getRemoteRecord>>): void => {
+    sitIdleAction.current?.fadeOut(ANIM_FADE);
+    idleAction.current?.reset().fadeIn(ANIM_FADE).play();
+    reportClip(idleAction.current);
+    loopRef.current = "idle";
+    setGait("idle");
+    fadeRef.current = ANIM_FADE;
+    if (shadowRef.current) shadowRef.current.visible = true;
+    // Down at the door: drawn from the server's spot at once (the poses from before the ride, on the pad, are dropped,
+    // so the avatar does not slide there first), and the seat motion starts afresh from it.
+    if (rec.snapshots.length > 1) rec.snapshots.splice(0, rec.snapshots.length - 1);
+    const newest = rec.snapshots[rec.snapshots.length - 1];
+    const drawn = drawnRef.current;
+    if (newest) {
+      drawn.x = newest.x;
+      drawn.z = newest.z;
+      drawn.yaw = newest.yaw;
+    }
+    const line = (rec.seatLine ??= createSeatLine(rec.seatIndex));
+    line.pending.length = 0;
+    line.drawn = rec.seatIndex;
+    seatRef.current = createSeatMotion(rec.seatIndex, activeSeats(), drawn);
+    primedRef.current = false;
+  };
+
   useFrame((state, delta) => {
     const group = groupRef.current;
     const rec = getRemoteRecord(sessionId);
+    if (!group || !rec || !seatRef.current) return;
+
+    // 0) The village bus: a rider is drawn in its place in the bus wherever the bus is (busSeats.ts, the bus's synced
+    //    pose: the same for every viewer), sitting on its seat or standing in the aisle, and moves with it.
+    const busSlot = rec.busSeat ?? -1;
+    if (busSlot !== ridingRef.current) {
+      const was = ridingRef.current;
+      ridingRef.current = busSlot;
+      if (busSlot >= 0) {
+        if (was < 0 || busPlace(was).seated !== busPlace(busSlot).seated) startRide(busPlace(busSlot).seated);
+      } else endRide(rec);
+    }
+    if (busSlot >= 0) {
+      const p = busRiderPose(getTransitRenderPose(), busSlot, riderPoseRef.current);
+      group.position.set(p.x, p.y, p.z);
+      group.rotation.y = p.yaw + MODEL_FACING_OFFSET;
+      const drawn = drawnRef.current;
+      drawn.x = p.x;
+      drawn.z = p.z;
+      drawn.yaw = p.yaw;
+      noteRemoteDrawn(rec, p.x, p.z);
+      advancePlayout(rec.playout, rec.snapshots, performance.now()); // its clock keeps going for the walk after
+      if (import.meta.env.DEV) {
+        const probe = remoteDrawnProbe.get(sessionId) ?? { t: 0, x: 0, z: 0, yaw: 0 };
+        probe.t = performance.now();
+        probe.x = p.x;
+        probe.z = p.z;
+        probe.yaw = p.yaw;
+        probe.y = p.y;
+        probe.mode = p.seated ? "bus-seated" : "bus-standing";
+        remoteDrawnProbe.set(sessionId, probe);
+      }
+      if (rec.connected !== prevConnectedRef.current) {
+        setAvatarOpacity(avatar, rec.connected ? 1 : 0.5);
+        prevConnectedRef.current = rec.connected;
+      }
+      if (fadeRef.current > 0) {
+        mixer.update(delta);
+        fadeRef.current = Math.max(0, fadeRef.current - delta);
+      }
+      return;
+    }
     const seat = seatRef.current;
-    if (!group || !rec || !seat) return;
 
     // 1) Advance this remote's playout clock (it trails the newest data by an adaptive lag and never
     //    passes it — playout.ts) and sample the snapshot buffer there. Seated players emit no moves, so the
@@ -401,6 +495,16 @@ export function RemotePlayer({
       //    / off a bench from the drawn pose, a snap onto / off a legacy chair (remoteSeat.ts).
       const line = (rec.seatLine ??= createSeatLine(rec.seatIndex));
       stepSeatMotion(seat, line, renderT, target, delta, activeSeats(), drawn, seatTransition);
+      // Never drawn inside the moving bus (checker r2): the server puts anyone its body reaches out on a flank, but this
+      // avatar is drawn a moment behind its moves (the playout lag) while the bus is drawn at the present — so the same
+      // push (shared busBody.ts) is applied to the drawn pose too, and it sits against the flank on every screen.
+      if (seat.mode === "up") {
+        const out = pushOutOfMovingBus(drawn.x, drawn.z);
+        if (out) {
+          drawn.x = out.x;
+          drawn.z = out.z;
+        }
+      }
       group.position.x = drawn.x;
       group.position.z = drawn.z;
       group.rotation.y = drawn.yaw + MODEL_FACING_OFFSET;
@@ -453,7 +557,7 @@ export function RemotePlayer({
             reportClip(jump);
           }
         }
-        lift = jumpOffsetY(nowMs - hop.startedAt);
+        lift = jumpOffsetY(nowMs - hop.startedAt, jumpHeadroom(group.position.x, group.position.z, localArea(), avatar.topY));
       } else if (phase === "landed" || phase === "dropped") {
         jumpSeqRef.current = -1;
         if (jump) {

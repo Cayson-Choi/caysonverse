@@ -26,6 +26,8 @@ export type Now = () => number;
 export interface VillageClock {
   /** The village's wall clock now (Unix epoch ms, UTC): the device clock plus the server's offset, or the DEV pin. */
   nowMs(): number;
+  /** The same wall clock WITHOUT the DEV pin: what the bus and the crosswalk signals run on (the bus is driven by the server's clock). */
+  liveMs(): number;
   /** The server told us its time `serverTimeMs`; the device clock read `deviceNowMs` just then (default: now). */
   sync(serverTimeMs: number, deviceNowMs?: number): void;
   /** Ms the server's clock is ahead of the device's (negative: behind); 0 before the first sync. */
@@ -46,6 +48,7 @@ export function createVillageClock(now: Now = Date.now): VillageClock {
   let pinned: number | null = null;
   return {
     nowMs: () => (pinned !== null ? pinned : now() + offset),
+    liveMs: () => now() + offset,
     sync(serverTimeMs, deviceNowMs = now()) {
       if (!Number.isFinite(serverTimeMs)) return;
       const next = serverTimeMs - deviceNowMs;

@@ -174,9 +174,12 @@ const SHADOW_COLOR = "#2b2a55";
 export function ShadowFloor({
   bounds,
   decal = null,
+  color = SHADOW_COLOR,
 }: {
   bounds: { minX: number; maxX: number; minZ: number; maxZ: number };
   decal?: GroundDecal | null;
+  /** The shadow's colour (default the school's indigo; 케이슨 마을 passes a neutral one). */
+  color?: string;
 }) {
   const { minX, maxX, minZ, maxZ } = bounds;
   const y = decal ? decalY(decal) : SHADOW_Y;
@@ -186,7 +189,7 @@ export function ShadowFloor({
       <shadowMaterial
         transparent
         opacity={SHADOW_OPACITY}
-        color={SHADOW_COLOR}
+        color={color}
         depthWrite={false}
         polygonOffset={!!decal}
         polygonOffsetFactor={decal ? decal.polygonOffsetFactor : 0}

@@ -1,5 +1,6 @@
 import { MeshBasicMaterial, SRGBColorSpace, TextureLoader, type Material, type Texture } from "three";
 import { configureLightmap } from "../game/hub/hubModelPrep";
+import { versionedUrl } from "./modelUrl";
 
 /**
  * The memorial hall at night (2026-11-13 rebuild; design.md 1-4): the hall's baked light changes with the village's clock.
@@ -15,8 +16,11 @@ import { configureLightmap } from "../game/hub/hubModelPrep";
  * hall is left (`disposeHallNight`). Until a night map is in, the weight stays 0: the hall is never dark for want of a file.
  */
 
-export const HALL_NIGHT_LIGHTMAP_URL = { high: "/models/village/memorial_lm_night.webp", low: "/models/village/memorial_lm_night_1k.webp" } as const;
-export const HALL_GARDEN_NIGHT_URL = "/models/village/memorial_garden_night.webp";
+export const HALL_NIGHT_LIGHTMAP_URL = {
+  high: versionedUrl("/models/village/memorial_lm_night.webp"),
+  low: versionedUrl("/models/village/memorial_lm_night_1k.webp"),
+} as const;
+export const HALL_GARDEN_NIGHT_URL = versionedUrl("/models/village/memorial_garden_night.webp");
 
 /** The weight of the night (0 day .. 1 night), shared by every patched material (a uniform object: one write per frame). */
 export const hallNightUniform = { value: 0 };

@@ -6,9 +6,13 @@ import { acquireUiCapture, releaseUiCapture } from "../game/uiCapture";
 import { SENSITIVITY, type ButtonSize } from "../game/settings";
 import { BRIGHTNESS, type GraphicsSetting } from "../game/quality";
 import type { NametagMode } from "../game/nametagSelect";
+import { isTouchDevice } from "../device";
 import { useSettingsStore } from "../stores/settingsStore";
 import { useUiStore } from "../stores/uiStore";
 import { useViewStore } from "../stores/viewStore";
+import { useSoundStore } from "../stores/soundStore";
+import { MUSIC_VOLUME, formatMusicVolume, useMusicStore } from "../stores/musicStore";
+import { activeVillageBgm } from "../village/villageBgm";
 import { FOCUSABLE_SELECTOR, tabWrapTarget } from "./focusTrap";
 import "./menu.css";
 
@@ -172,6 +176,12 @@ export function MenuPanel({ graphics = false, onToggleView, onShowGuide }: MenuP
   const settings = useSettingsStore((s) => s.settings);
   const update = useSettingsStore((s) => s.update);
   const isFp = useViewStore((s) => s.isFp);
+  const muted = useSoundStore((s) => s.muted);
+  const toggleMuted = useSoundStore((s) => s.toggleMuted);
+  const musicAvailable = useMusicStore((s) => s.available);
+  const musicOn = useMusicStore((s) => s.on);
+  const musicVolume = useMusicStore((s) => s.volume);
+  const setMusicVolume = useMusicStore((s) => s.setVolume);
   const panelRef = useRef<HTMLDivElement>(null);
   // A press that began on the dimmed backdrop (not inside the card) — see the backdrop's click.
   const pressedBackdrop = useRef(false);
@@ -270,33 +280,94 @@ export function MenuPanel({ graphics = false, onToggleView, onShowGuide }: MenuP
           메뉴
         </h2>
 
+        <section className="cv-menu-section" aria-labelledby="cv-menu-sec-sound">
+          <h3 id="cv-menu-sec-sound" className="cv-menu-section-title">
+            소리
+          </h3>
+
+          <div className="cv-menu-row">
+            <span id="cv-menu-sound" className="cv-menu-label">
+              소리 켜기
+            </span>
+            <Switch labelledBy="cv-menu-sound" on={!muted} onChange={() => toggleMuted()} />
+          </div>
+
+          {musicAvailable && (
+            <>
+              <div className="cv-menu-row">
+                <span id="cv-menu-music" className="cv-menu-label">
+                  배경음악
+                </span>
+                <Switch
+                  labelledBy="cv-menu-music"
+                  on={musicOn}
+                  disabled={muted}
+                  onChange={(on) => activeVillageBgm()?.setEnabled(on)}
+                />
+              </div>
+
+              <div className="cv-menu-row">
+                <label htmlFor="cv-menu-music-volume" className="cv-menu-label">
+                  음악 크기
+                </label>
+                <div className="cv-menu-slider">
+                  <input
+                    id="cv-menu-music-volume"
+                    type="range"
+                    min={MUSIC_VOLUME.min}
+                    max={MUSIC_VOLUME.max}
+                    step={MUSIC_VOLUME.step}
+                    value={musicVolume}
+                    disabled={muted || !musicOn}
+                    aria-valuetext={formatMusicVolume(musicVolume)}
+                    onChange={(e) => setMusicVolume(Number(e.target.value))}
+                  />
+                  <span className="cv-menu-value" aria-hidden="true">
+                    {formatMusicVolume(musicVolume)}
+                  </span>
+                </div>
+              </div>
+            </>
+          )}
+          {muted && (
+            <p className="cv-menu-note" id="cv-menu-sound-note">
+              소리가 꺼져 있어요
+            </p>
+          )}
+        </section>
+
         <section className="cv-menu-section" aria-labelledby="cv-menu-sec-settings">
           <h3 id="cv-menu-sec-settings" className="cv-menu-section-title">
             설정
           </h3>
 
-          <div className="cv-menu-row">
-            <span id="cv-menu-btn-size" className="cv-menu-label">
-              버튼 크기
-            </span>
-            <Segmented
-              labelledBy="cv-menu-btn-size"
-              value={settings.buttonSize}
-              options={BUTTON_SIZE_OPTIONS}
-              onChange={(buttonSize) => update({ buttonSize })}
-            />
-          </div>
+          {/* The touch layout's own settings: a PC has no on-screen buttons to resize or mirror. */}
+          {isTouchDevice && (
+            <>
+              <div className="cv-menu-row">
+                <span id="cv-menu-btn-size" className="cv-menu-label">
+                  버튼 크기
+                </span>
+                <Segmented
+                  labelledBy="cv-menu-btn-size"
+                  value={settings.buttonSize}
+                  options={BUTTON_SIZE_OPTIONS}
+                  onChange={(buttonSize) => update({ buttonSize })}
+                />
+              </div>
 
-          <div className="cv-menu-row">
-            <span id="cv-menu-left-handed" className="cv-menu-label">
-              왼손잡이 모드
-            </span>
-            <Switch
-              labelledBy="cv-menu-left-handed"
-              on={settings.leftHanded}
-              onChange={(leftHanded) => update({ leftHanded })}
-            />
-          </div>
+              <div className="cv-menu-row">
+                <span id="cv-menu-left-handed" className="cv-menu-label">
+                  왼손잡이 모드
+                </span>
+                <Switch
+                  labelledBy="cv-menu-left-handed"
+                  on={settings.leftHanded}
+                  onChange={(leftHanded) => update({ leftHanded })}
+                />
+              </div>
+            </>
+          )}
 
           <div className="cv-menu-row">
             <label htmlFor="cv-menu-sensitivity" className="cv-menu-label">
