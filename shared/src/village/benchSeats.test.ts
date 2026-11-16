@@ -7,9 +7,13 @@ import { MEMORIAL_COLLIDERS } from "./generated/memorialColliders";
 import { VILLAGE_LAYOUT, busShelterBenchCollider, busShelterColliders, houseInteriorGeometry, isHouseArea, villageGeometry } from "./villageLayout";
 import { CHAIR_BACK_BEHIND, SHELTER_BENCH, STAND_CLEARANCE, VILLAGE_BENCHES, VILLAGE_SEATS, benchSeatOffsets, type VillageBench } from "./benchSeats";
 import { VILLAGE_SEAT_MARKERS } from "./generated/villageSeatMarkers";
+import { villageWalkArea } from "./fallsWalk";
 
 const MARKED = new Set(VILLAGE_SEAT_MARKERS.map((m) => m.id));
 /** The seats the art marks (café chairs, porch benches): appended after the benches' and the houses'. */
+/** The waterfall rest area's stone seats are the last of the list (B1 W5; fallsWalk.test.ts holds their own tests). */
+const FALLS_SEATS = VILLAGE_SEATS.filter((s) => s.bench.startsWith("falls_seat_"));
+const BASE_SEATS = VILLAGE_SEATS.slice(0, VILLAGE_SEATS.length - FALLS_SEATS.length);
 const markedSeats = () => VILLAGE_SEATS.filter((s) => MARKED.has(s.bench));
 
 /** The seated figure's width across the arms (sitPose.ts: the torso with the upper arms, -0.52..0.54 m) and the hands' (-0.53..0.58). */
@@ -142,7 +146,7 @@ describe("village seats (where a sitter goes)", () => {
   it("no two sitters overlap: seats of different benches are far apart, and every seat point is in its own area", () => {
     for (let i = 0; i < VILLAGE_SEATS.length; i++) {
       const a = VILLAGE_SEATS[i]!;
-      const bounds = a.area === "village" ? L.areas.village : L.areas.hall;
+      const bounds = a.area === "village" ? villageWalkArea(L) : L.areas.hall;
       expect(a.x).toBeGreaterThan(bounds.minX);
       expect(a.x).toBeLessThan(bounds.maxX);
       expect(a.z).toBeGreaterThan(bounds.minZ);
@@ -167,7 +171,7 @@ describe("village seats (where a sitter goes)", () => {
 describe("village seats (where a sitter gets up to)", () => {
   it("every dismount spot is clear of every collider of the village (a standing body plus margin) and inside its area", () => {
     for (const s of VILLAGE_SEATS.filter((v) => !isHouseArea(v.area))) {
-      const bounds = s.area === "village" ? L.areas.village : L.areas.hall;
+      const bounds = s.area === "village" ? villageWalkArea(L) : L.areas.hall;
       const obstacles = isHouseArea(s.area) ? houseInteriorGeometry.obstacles : villageGeometry.obstacles;
       expect(isBlocked(s.standX, s.standZ, PLAYER_RADIUS + STAND_CLEARANCE, obstacles, 0), s.bench).toBe(false);
       expect(s.standX - PLAYER_RADIUS).toBeGreaterThan(bounds.minX);
@@ -189,7 +193,7 @@ describe("village seats (where a sitter gets up to)", () => {
   });
 
   it("two sitters of one bench get up to different spots, clear of each other and of the other seat", () => {
-    for (let i = 0; i < VILLAGE_SEATS.length - markedSeats().length; i += 2) {
+    for (let i = 0; i < BASE_SEATS.length - markedSeats().length; i += 2) {
       const a = VILLAGE_SEATS[i]!;
       const b = VILLAGE_SEATS[i + 1]!;
       expect(Math.hypot(a.standX - b.standX, a.standZ - b.standZ)).toBeGreaterThan(2 * PLAYER_RADIUS);
@@ -205,7 +209,7 @@ describe("the art's marked seats: café terrace chairs and porch benches (review
     expect(VILLAGE_SEAT_MARKERS.filter((m) => /^house_\d+_porch$/.test(m.id)).map((m) => m.id)).toEqual(["house_2_porch", "house_9_porch", "house_10_porch"]);
     const marked = markedSeats();
     expect(marked).toHaveLength(15);
-    expect(VILLAGE_SEATS.slice(-15)).toEqual(marked);
+    expect(BASE_SEATS.slice(-15)).toEqual(marked);
     expect(VILLAGE_SEATS.slice(0, VILLAGE_BENCHES.length * 2).every((s) => !MARKED.has(s.bench))).toBe(true);
   });
 

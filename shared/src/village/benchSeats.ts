@@ -35,6 +35,7 @@ import { SIT_ROOT_AHEAD } from "../sitPose";
 import type { Bounds } from "../school/geometry";
 import { VILLAGE_LAYOUT, houseArea, houseInteriorGeometry, villageGeometry, type AreaId, type Point2 } from "./villageLayout";
 import { HOUSE_INTERIOR_LAYOUTS } from "./houseInterior";
+import { fallsWalkable, villageWalkArea } from "./fallsWalk";
 import { VILLAGE_SEAT_MARKERS } from "./generated/villageSeatMarkers";
 
 /**
@@ -279,6 +280,33 @@ function markerSeats(markers: readonly VillageSeatMarker[]): VillageSeat[] {
   return seats;
 }
 
+/**
+ * The waterfall rest area's two stone seats (`backdrop.waterfall.seats`, owner 2026-11-16: backless seats, sat on from
+ * either long side). A stone is 0.8 m deep and 1.9 m long, 0.42 m high: two places along it, each facing west and east,
+ * so four seats a stone, in the order west places then east places (north to south by `benchSeatOffsets`). A sitter on
+ * either side is offered the seats of their own side only (a seat has a front edge: `approachesSeat`), and the two sides
+ * sit back to back on their own half of the stone, as on a log. The bench id is the stone's own (`falls_seat_n`/`_s`).
+ */
+function fallsStoneSeats(): VillageSeat[] {
+  if (!fallsWalkable(VILLAGE_LAYOUT)) return [];
+  const { seats: stones, options } = VILLAGE_LAYOUT.backdrop.waterfall;
+  if (!options.seats) return [];
+  const bounds = villageWalkArea(VILLAGE_LAYOUT);
+  const out: VillageSeat[] = [];
+  for (const stone of stones) {
+    for (const facing of stone.facings) {
+      const yaw = facing === "w" ? FACING_WEST : Math.PI / 2;
+      for (const along of benchSeatOffsets(stone.size.z)) {
+        const p = offset(stone.centre.x, stone.centre.z, yaw, along, stone.size.x / 2 + SIT_ROOT_AHEAD);
+        const root = { x: Math.round(p.x * 1000) / 1000, z: Math.round(p.z * 1000) / 1000 };
+        const stand = dismountAhead(root, yaw, bounds, `${stone.id}:${facing}:${along}`);
+        out.push({ x: root.x, z: root.z, yaw, standX: stand.x, standZ: stand.z, seatY: stone.seatTop, frontEdge: SIT_ROOT_AHEAD, bench: stone.id, area: "village" });
+      }
+    }
+  }
+  return out;
+}
+
 function makeSeats(benches: readonly VillageBench[]): VillageSeat[] {
   const seats: VillageSeat[] = [];
   for (const b of benches) {
@@ -310,6 +338,8 @@ function makeSeats(benches: readonly VillageBench[]): VillageSeat[] {
   }
   // the art's marked seats last, so the benches' and the houses' indices stay as they were (review 2026-11-15)
   seats.push(...markerSeats(VILLAGE_SEAT_MARKERS));
+  // the waterfall rest area's stone seats after everything else (B1 W5): no index before them moves
+  seats.push(...fallsStoneSeats());
   return seats;
 }
 
