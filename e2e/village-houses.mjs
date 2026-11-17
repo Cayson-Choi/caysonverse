@@ -361,15 +361,26 @@ for (const n of houses) {
       // piece is in front of it there, again from 1.6 m out in front of its stand spot (the tap that hit something else walked there)
       let sat = false;
       let tries = [];
-      for (const vantage of ["far", "near", "stand"]) {
+      for (const vantage of ["far", "near", "nearIn", "stand", "back"]) {
         // far: the arrival spot; near: 1.6 m out from the stand spot along the seat's facing; stand: the stand spot itself, 1 m back from it
         const away = Math.hypot(seat.standX - seat.x, seat.standZ - seat.z) || 1;
         const want =
           vantage === "far"
             ? { x: from.x, z: from.z }
-            : vantage === "near"
+            : vantage === "near" || vantage === "nearIn"
               ? { x: seat.standX + Math.sin(seat.yaw) * 1.6, z: seat.standZ + Math.cos(seat.yaw) * 1.6 }
-              : { x: seat.standX + ((seat.standX - seat.x) / away) * 0.6, z: seat.standZ + ((seat.standZ - seat.z) / away) * 0.6 };
+              : vantage === "stand"
+                ? { x: seat.standX + ((seat.standX - seat.x) / away) * 0.6, z: seat.standZ + ((seat.standZ - seat.z) / away) * 0.6 }
+                : // back: a pulled-out desk chair facing a wall desk — look at it from the room side, 1.4 m behind the seat
+                  { x: seat.x - Math.sin(seat.yaw) * 1.4, z: seat.z - Math.cos(seat.yaw) * 1.4 };
+        // (realism pass) a desk against a wall: "1.6 m out in front of its stand spot" is through that wall — keep the vantage in the room
+        const ox0 = P.exitPad.x - 5.3;
+        // (plain "near" is tried unclamped first: walking toward a point past the wall stops at the wall, which suits a bed's edge)
+        if (vantage !== "far" && vantage !== "near") {
+          const oz0 = floor === 1 ? 0 : 30;
+          want.x = Math.min(Math.max(want.x, ox0 + 0.45), ox0 + 10.6 - 0.45);
+          want.z = Math.min(Math.max(want.z, oz0 - 7.8 + 0.45), oz0 - 0.45);
+        }
         const at = await goto(want.x, want.z, 0.9);
         await orbit(yawToward(at, seat.mx, seat.mz), 0.55);
         // the cushion's middle (the marker; the seat point of a chair at a table is under the table)
