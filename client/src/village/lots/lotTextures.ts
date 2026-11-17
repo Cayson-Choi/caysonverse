@@ -307,3 +307,19 @@ export class LotTextureBank {
     this.queue = [];
   }
 }
+
+/**
+ * Drops a compressed map's mip levels above `max` texels (on its long side); a map without mips is left as it is. A
+ * level only becomes the top when both its sides are whole 4x4 blocks (a compressed texture's storage needs them: a
+ * 96x250 top was "glTexStorage2D: Invalid compressed image size" on the phone), so a map may stay above the cap.
+ */
+export function capMips(t: Texture, max: number): void {
+  const mips = (t as Texture & { mipmaps?: Array<{ width: number; height: number }> }).mipmaps;
+  if (!mips || mips.length < 2) return;
+  let k = 0;
+  while (k < mips.length - 1 && Math.max(mips[k]!.width, mips[k]!.height) > max && mips[k + 1]!.width % 4 === 0 && mips[k + 1]!.height % 4 === 0) k++;
+  if (k === 0) return;
+  (t as Texture & { mipmaps: unknown[] }).mipmaps = mips.slice(k);
+  t.image = { ...(t.image as object), width: mips[k]!.width, height: mips[k]!.height };
+  t.needsUpdate = true;
+}

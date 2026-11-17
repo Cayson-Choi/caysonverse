@@ -158,3 +158,92 @@ def bake_room(kit, objs, unit_id, out_dir, setup_day_night, size=1024, samples=9
         files[t] = p
         B.log("lightmap:", t, "->", p, "mean", float(out[t].mean()))
     return {"scale": round(scale, 4), "size": size, "channel": 1, "files": files}
+
+
+# ------------------------------------------------------------------------------------------------ the lots' exteriors --
+
+def _ground(lot_size=80.0):
+    """The bake's ground (occluder only): the walls' feet darken where they meet it, as on the village's own lawn."""
+    me = bpy.data.meshes.new("bake_ground")
+    h = lot_size / 2
+    me.from_pydata([(-h, -h, 0.0), (h, -h, 0.0), (h, h, 0.0), (-h, h, 0.0)], [], [(0, 1, 2, 3)])
+    o = bpy.data.objects.new("bake_ground", me)
+    bpy.context.scene.collection.objects.link(o)
+    return o
+
+
+def bake_lot(kit, objs, lot_id, out_dir, setup_world, size=1024, samples=96, centre=(0.0, 0.0)):
+    """A lot building's exterior (L6): its shell and detail structure share one atlas (`lm`, TEXCOORD_1) baked twice —
+    `ao`: the sky's reach (ambient occlusion, 0..1; the game multiplies the sky/ambient light by it, the live sun keeps its
+    own shadows) and `night`: the lamps', windows' and porch lights' glow on the walls (diffuse irradiance, `scale`)."""
+    os.makedirs(out_dir, exist_ok=True)
+    keep = ("lotshell__%s" % lot_id, "lotdetail__%s_mesh" % lot_id)
+    targets = [o for o in objs if o.type == "MESH" and o.name.split(".")[0] in keep]
+    if not targets:
+        B.log("lightmap: no lot meshes")
+        return None
+    _lightmap_uvs(targets)
+    _glass_clear()
+    sc = bpy.context.scene
+    sc.render.engine = "CYCLES"
+    try:
+        sc.world.light_settings.distance = 6.0
+    except Exception:
+        pass
+    # the sky's reach
+    setup_world(True)
+    B.log("lightmap: baking ao", size, "px", samples, "samples")
+    ao = _bake_type(targets, size, samples, "lm_%s_ao" % lot_id, "AO")
+    # the night lights (the sun and the sky out); the ground in now, for their bounce (not in the AO: the game's sky light
+    # already darkens toward the ground — a wall in the open stays 1, only eaves, reveals and corners darken)
+    g = _ground()
+    g.location = (centre[0], centre[1], 0.0)
+    setup_world(False)
+    sun = bpy.data.objects.get("Sun")
+    if sun is not None:
+        sun.hide_render = True
+    B.log("lightmap: baking night", size, "px", samples, "samples")
+    _, night = _bake_one(targets, size, samples, "lm_%s_night" % lot_id)
+    night = _blur_seams(night)
+    ao = _blur_seams(ao)
+    lit = night[night.max(axis=2) > 1e-6]
+    scale = float(np.percentile(lit.max(axis=1), 99.5)) if lit.size else 1.0
+    scale = max(scale, 1e-3)
+    files = {"ao": os.path.join(out_dir, "%s_lm_ao.png" % lot_id), "night": os.path.join(out_dir, "%s_lm_night.png" % lot_id)}
+    # the unbaked gutter of the AO map reads as full sky (1), not black
+    aofill = np.where(ao.max(axis=2, keepdims=True) > 1e-6, ao, 1.0)
+    _save(aofill, 1.0, files["ao"])
+    _save(night, scale, files["night"])
+    bpy.data.objects.remove(g)
+    B.log("lightmap: ao mean", float(aofill.mean()), "night scale", scale)
+    return {"scale": round(scale, 4), "size": size, "files": files}
+
+
+def _bake_type(targets, size, samples, name, kind):
+    img = bpy.data.images.new(name, size, size, alpha=False, float_buffer=True)
+    nodes, seen = [], set()
+    for o in targets:
+        o.data.uv_layers.active = o.data.uv_layers["lm"]
+        for m in o.data.materials:
+            if m is None or m.name in seen:
+                continue
+            seen.add(m.name)
+            m.use_nodes = True
+            n = m.node_tree.nodes.new("ShaderNodeTexImage")
+            n.image = img
+            m.node_tree.nodes.active = n
+            nodes.append((m, n))
+    sc = bpy.context.scene
+    sc.cycles.device = "CPU"
+    sc.cycles.samples = samples
+    sc.render.bake.margin = 6
+    bpy.ops.object.select_all(action="DESELECT")
+    for o in targets:
+        o.select_set(True)
+    bpy.context.view_layer.objects.active = targets[0]
+    bpy.ops.object.bake(type=kind, margin=6, use_clear=True)
+    for m, n in nodes:
+        m.node_tree.nodes.remove(n)
+    for o in targets:
+        o.data.uv_layers.active = o.data.uv_layers[0]
+    return np.array(img.pixels[:], dtype=np.float32).reshape(size, size, 4)[:, :, :3]

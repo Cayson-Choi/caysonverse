@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
-import { Mesh, Raycaster, Vector3, type Camera, type Object3D, type Scene, type WebGLRenderer } from "three";
+import { Mesh, Raycaster, Vector3, type Camera, type Object3D, type Scene, type Texture, type WebGLRenderer } from "three";
 import { CLOSED_AUTO_DOOR, PUBLIC_AUTO_DOOR, stepAutoDoor, type AutoDoorConfig, type AutoDoorState } from "@caysonverse/shared/village/autoDoor";
 import { LOTS_WITH_MODEL, VILLAGE_LOTS, lotDoorPoint, lotLocalToWorld, lotRoomOfDoor, type LotId } from "@caysonverse/shared/village/villageLots";
 import { isTouchDevice } from "../../device";
@@ -10,7 +10,7 @@ import type { Pose } from "../../game/types";
 import { autoDoorOpenAmount } from "../publicAutoDoorModel";
 import { dayNight } from "../dayNightDriver";
 import type { VillageTier } from "../villageModelPrep";
-import { disposeLoadedLots, loadLots, type LoadedLots } from "./lotsLoader";
+import { disposeLoadedLots, loadLots, type LoadedLot, type LoadedLots } from "./lotsLoader";
 import { applyLotTextures, applyLotsDayNight, disposeLots, lotsMode, pickLotLevels, prepareLots, setLotDoor, showLotLevels, visibleLoad, type LotLevel, type LotNodes } from "./lotsPrep";
 import { LotTextureBank } from "./lotTextures";
 import { setLotsDrawn } from "./lotsStore";
@@ -67,6 +67,18 @@ interface LotsCache {
 }
 let cache: LotsCache | null = null;
 
+/** GPU bytes of the lots' exterior lightmaps (compressed: 1 byte a texel, mips 4/3). */
+function lightmapBytes(lots: readonly LoadedLot[]): number {
+  let b = 0;
+  for (const l of lots)
+    if (l.lightmap)
+      for (const t of [l.lightmap.ao, l.lightmap.night]) {
+        const top = (t as Texture & { mipmaps?: Array<{ width: number; height: number }> }).mipmaps?.[0] ?? (t.image as { width?: number; height?: number });
+        b += (top?.width ?? 0) * (top?.height ?? 0) * (4 / 3);
+      }
+  return Math.round(b);
+}
+
 function freeCache(c: LotsCache): void {
   void c.ready.then((v) => {
     if (!v) return;
@@ -81,6 +93,7 @@ function freeCache(c: LotsCache): void {
         if (m.isMesh) m.geometry.dispose();
       });
     disposeLoadedLots(v.loaded);
+    for (const lot of v.loaded.lots) if (lot.lightmap) for (const t of [lot.lightmap.ao, lot.lightmap.night]) t.dispose();
     c.bank.dispose();
   });
 }
@@ -201,6 +214,7 @@ export function VillageLots({ pose, tier }: { pose: Pose; tier: VillageTier }) {
       visible: visibleLoad(nodes.root),
       loadMs: c.value?.loadMs,
       textures: c.bank.gpuBytes(device === "phone" ? "mobile" : "desktop"),
+      lightmaps: lightmapBytes(c.value?.loaded.lots ?? []),
       failed: c.value?.loaded.failed ?? [],
       doors: [...doors.current].map(([id, d]) => ({ id, phase: d.state.phase, pad: d.pad })),
       undersides: undersides(nodes.root),
@@ -223,6 +237,10 @@ export function VillageLots({ pose, tier }: { pose: Pose; tier: VillageTier }) {
 
   const others = useRef<number[]>([]).current;
   const wanted = useRef({ key: "", at: -1e9 });
+  const lmQueue = useRef<Texture[] | null>(null);
+  useEffect(() => {
+    lmQueue.current = null; // a new set of lots (a tier change): its lightmaps go up again before it shows
+  }, [nodes]);
   /** The door the camera last swung round for (null once the visitor walked away from it). */
   const doorView = useRef<string | null>(null);
   useFrame(({ camera: cam, clock }) => {
@@ -246,7 +264,17 @@ export function VillageLots({ pose, tier }: { pose: Pose; tier: VillageTier }) {
     const nowMs = clock.elapsedTime * 1000;
     if (c) {
       c.bank.pump(1);
-      const ready = c.bank.farReady();
+      // the exterior lightmaps (L6): one up a frame while the lots are still hidden (never a walk's frame later)
+      if (lmQueue.current === null) lmQueue.current = (c.value?.loaded.lots ?? []).flatMap((l) => (l.lightmap ? [l.lightmap.ao, l.lightmap.night] : []));
+      const lmNext = lmQueue.current.shift();
+      if (lmNext) {
+        try {
+          gl.initTexture(lmNext);
+        } catch {
+          /* drawn three's way */
+        }
+      }
+      const ready = c.bank.farReady() && lmQueue.current.length === 0;
       if (nodes.root.visible !== ready) nodes.root.visible = ready;
       const sets = new Set<string>();
       for (const [id, lv] of levels.current) if (lv >= 1) for (const s of nodes.lotSets.get(id) ?? []) sets.add(s);

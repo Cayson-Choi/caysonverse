@@ -4,7 +4,8 @@ import { DRACO_PATH } from "../../game/hub/hubModelPrep";
 import type { LotId } from "@caysonverse/shared/village/villageLots";
 import { getPbrKtx2Loader } from "../pbr/pbrLibrary";
 import { lotModelUrl } from "./lotsPrep";
-import { fetchLotManifest, loadLotOwnMap, manifestPaths, type LotManifest, type LotMatSpec, type LotTextureBank } from "./lotTextures";
+import { isTouchDevice } from "../../device";
+import { capMips, fetchLotManifest, loadLotOwnMap, manifestPaths, type LotManifest, type LotMatSpec, type LotTextureBank } from "./lotTextures";
 
 /**
  * Loading the lot buildings off the village's critical path (L5, lots v2): imperative, with their OWN loading manager and Draco
@@ -34,7 +35,18 @@ export interface LoadedLot {
   slides: Record<string, Record<string, number>>;
   doors: LotDoorExtras;
   vegetation: LotVegetationSpot[];
+  /** The exterior's baked light (L6, bake_lots.bake_lot): sky occlusion and night glow on TEXCOORD_1, or null. */
+  lightmap: LotLightmap | null;
 }
+
+/** A lot's exterior lightmaps: `ao` multiplies the sky/ambient light, `night` adds the lamps' glow (x `scale` x the night). */
+export interface LotLightmap {
+  ao: Texture;
+  night: Texture;
+  scale: number;
+}
+/** The exterior lightmaps' size on a phone (texels a side: their top mips dropped, capMips). */
+export const LOT_LIGHTMAP_PHONE_MAX = 512;
 
 export interface LoadedLots {
   lots: LoadedLot[];
@@ -64,9 +76,24 @@ export async function loadLots(ids: readonly LotId[], gl: WebGLRenderer, bank: L
     const settled = await Promise.allSettled(
       ids.map(async (id) => {
         const gltf = await loader.loadAsync(lotModelUrl(id));
-        const extras = (gltf.parser.json as { asset?: { extras?: { slides?: LoadedLot["slides"]; doors?: LotDoorExtras; vegetation?: LotVegetationSpot[]; textures?: unknown; sharedTextures?: unknown } } }).asset?.extras;
+        const extras = (gltf.parser.json as { asset?: { extras?: { slides?: LoadedLot["slides"]; doors?: LotDoorExtras; vegetation?: LotVegetationSpot[]; textures?: unknown; sharedTextures?: unknown; lightmap?: { ao: string; night: string; scale: number; channel?: number } } } }).asset?.extras;
+        let lightmap: LotLightmap | null = null;
+        const lm = extras?.lightmap;
+        if (lm) {
+          try {
+            const [ao, night] = await Promise.all([lm.ao, lm.night].map((p) => loadLotOwnMap(gl, `/models/village/${p}`)));
+            for (const t of [ao!, night!]) {
+              t.channel = lm.channel ?? 1;
+              t.anisotropy = 1;
+              if (isTouchDevice) capMips(t, LOT_LIGHTMAP_PHONE_MAX);
+            }
+            lightmap = { ao: ao!, night: night!, scale: lm.scale };
+          } catch (e) {
+            console.error(`[lots] ${id} lightmap`, e);
+          }
+        }
         return {
-          lot: { id, scene: gltf.scene, slides: extras?.slides ?? {}, doors: extras?.doors ?? {}, vegetation: extras?.vegetation ?? [] } satisfies LoadedLot,
+          lot: { id, scene: gltf.scene, slides: extras?.slides ?? {}, doors: extras?.doors ?? {}, vegetation: extras?.vegetation ?? [], lightmap } satisfies LoadedLot,
           manifests: [...manifestPaths(extras?.textures), ...manifestPaths(extras?.sharedTextures)],
         };
       }),

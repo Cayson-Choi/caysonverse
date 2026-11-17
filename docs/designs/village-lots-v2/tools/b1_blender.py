@@ -789,11 +789,28 @@ def run(lot_id, kit_mod, viewdef, prefix, tex_dir):
     for p in report["overlap"]["problems"][:150]:
         log(p)
     log("overlap problems:", len(report["overlap"]["problems"]), report["overlap"]["checked"])
+    # L6: the exterior's sky occlusion and night glow baked into an atlas on its shell and structure (bake_lots.bake_lot)
+    lightmap = None
+    if arg("--lightmap"):
+        import bake_lots
+        global WORLD, SUN_DIR, SUN_ELEV
+        WORLD = getattr(kit, "world_strength", 0.22)
+        SUN_DIR = getattr(kit, "sun_dir", None)
+        SUN_ELEV = getattr(kit, "sun_elev", 38)
+        night_lights(kit)
+        cx, cy = l2b((0.0, 0.0, 0.0))[:2]
+        lm = bake_lots.bake_lot(kit, objs, lot_id, arg("--lightmap"), setup_world, int(arg("--lm-size", "1024")), int(arg("--lm-samples", "64")), (cx, cy))
+        if lm:
+            lightmap = {"ao": "lots/%s/%s_lm_ao.ktx2" % (tex_dir, lot_id), "night": "lots/%s/%s_lm_night.ktx2" % (tex_dir, lot_id),
+                        "scale": lm["scale"], "channel": 1, "size": lm["size"],
+                        "note": "TEXCOORD_1 of the lotshell__ and lotdetail__ meshes: ao = the sky's reach (multiplies the sky/ambient light), "
+                                "night irradiance = (texel in linear) * scale (bake_lots.bake_lot)"}
     out = arg("--out", os.path.join(LOTS, lot_id + ".glb"))
     manifest = os.path.join(LOTS, tex_dir, "%s_textures.json" % lot_id)
     if "--no-export" not in argv:
         write_manifest(kit, lot, manifest)
         export(out, objs, {"caysonverse": "%s (lots v2 B1 kit)" % lot_id, "textures": "lots/%s/%s_textures.json" % (tex_dir, lot_id),
+                           **({"lightmap": lightmap} if lightmap else {}),
                            "doors": door_extras, "roofSlabs": kit.roof_slabs,
                            "vegetation": [dict(v, x=round(l2w(v["lx"], v["lz"])[0], 2), z=round(l2w(v["lx"], v["lz"])[1], 2)) for v in getattr(kit, "vegetation", [])]})
         report["glb"] = glb_stats(out)

@@ -25,7 +25,7 @@ const arg = (k) => process.argv.find((a) => a.startsWith(`--${k}=`))?.slice(k.le
 const OUT = arg("out") ?? run.evidence;
 mkdirSync(OUT, { recursive: true });
 const ONLY = (arg("only") ?? "pc,times,phone,before").split(",");
-const ROOMS = arg("rooms")?.split(",") ?? ["lot_school_class", "lot_library_reading", "lot_chapel_nave", "lot_church_nave", "lot_temple_hall"];
+const ROOMS = arg("rooms") === "none" ? [] : arg("rooms")?.split(",") ?? ["lot_school_class", "lot_library_reading", "lot_chapel_nave", "lot_church_nave", "lot_temple_hall"];
 const TIMES = { day: "2026-11-03T12:30", sunset: "2026-11-03T17:15", night: "2026-11-03T21:00" };
 const numbers = { rooms: {}, frames: {} };
 

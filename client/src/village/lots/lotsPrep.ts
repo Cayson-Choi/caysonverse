@@ -128,6 +128,47 @@ if ( uVillageLit > 0.001 ) {
 
 const lampColour = new Vector3(...LOT_LOOK.lampLight).multiplyScalar(LOT_LOOK.lampStrength);
 
+/** The exterior lightmaps' night: how far the lamps are on (applyLotsDayNight). */
+const lmNightUniform = { value: 0 };
+/** How much of the sky light the baked occlusion takes away (1: all of it in a fully occluded corner). */
+export const LOT_AO_STRENGTH = 0.6;
+/** The baked night glow's gain on the walls (over the bake's own scale). */
+export const LOT_LM_NIGHT_GAIN = 0.7;
+
+/**
+ * A lot surface with its exterior lightmaps (L6): the baked sky occlusion multiplies the sky and ambient light (the live
+ * sun keeps its own shadows), the baked night glow is added as the lamps come on. Both read TEXCOORD_1 through three's
+ * lightmap slot (its own term replaced): one program by day and by night.
+ */
+export function patchLotLightmap(m: MeshStandardMaterial, lm: { ao: Texture; night: Texture; scale: number }): void {
+  if (m.userData.lotLightmap) return;
+  m.userData.lotLightmap = true;
+  m.lightMap = lm.ao;
+  m.userData.lmNight = lm.night;
+  const scale = { value: lm.scale * LOT_LM_NIGHT_GAIN };
+  const prev = m.onBeforeCompile;
+  m.onBeforeCompile = (shader, r) => {
+    prev?.call(m, shader, r);
+    shader.uniforms.uLotLmNight = { value: lm.night };
+    shader.uniforms.uLotLmScale = scale;
+    shader.uniforms.uLotLmNightMix = lmNightUniform;
+    shader.fragmentShader = shader.fragmentShader
+      .replace("void main() {", "uniform sampler2D uLotLmNight;\nuniform float uLotLmScale;\nuniform float uLotLmNightMix;\nvoid main() {")
+      .replace(
+        "#include <lights_fragment_maps>",
+        `#if defined( RE_IndirectDiffuse ) && defined( USE_LIGHTMAP )
+  irradiance *= mix( 1.0, texture2D( lightMap, vLightMapUv ).r, ${LOT_AO_STRENGTH.toFixed(2)} );
+  irradiance += texture2D( uLotLmNight, vLightMapUv ).rgb * uLotLmScale * uLotLmNightMix;
+#endif
+#undef USE_LIGHTMAP
+#include <lights_fragment_maps>`,
+      );
+  };
+  const key = m.customProgramCacheKey.bind(m);
+  m.customProgramCacheKey = () => `${key()}|lotlm`;
+  m.needsUpdate = true;
+}
+
 /** A lit lot material: the live sun's shadows, the night lamps and the night's colour fade (idempotent per material). */
 export function patchLotLight(m: MeshStandardMaterial, key: string): void {
   m.onBeforeCompile = (shader) => {
@@ -373,10 +414,12 @@ function nightLampPoints(meshes: readonly Mesh[], max: number): Vector3[] {
  * part has none, so every shell material reads vertex colours) and an index: the kits' primitives differ (Draco's normalised
  * colours, RGBA, a part without UVs) and `mergeGeometries` refuses unlike sets.
  */
-export function mergeReady(g: BufferGeometry): BufferGeometry {
+export function mergeReady(g: BufferGeometry, keepUv1 = false): BufferGeometry {
   const pos = g.getAttribute("position");
   const n = pos.count;
-  for (const a of Object.keys(g.attributes)) if (!["position", "normal", "uv", "color"].includes(a)) g.deleteAttribute(a);
+  // (uv1: a baked lot's lightmap UVs, kept for its own surfaces' merge: all of one lot)
+  const keep = keepUv1 && g.getAttribute("uv1") ? ["position", "normal", "uv", "color", "uv1"] : ["position", "normal", "uv", "color"];
+  for (const a of Object.keys(g.attributes)) if (!keep.includes(a)) g.deleteAttribute(a);
   const f32 = (name: string, size: number, fill: number) => {
     const src = g.getAttribute(name);
     const out = new Float32Array(n * size).fill(fill);
@@ -387,6 +430,7 @@ export function mergeReady(g: BufferGeometry): BufferGeometry {
   if (!g.getAttribute("normal")) g.computeVertexNormals();
   else f32("normal", 3, 0);
   f32("uv", 2, 0);
+  if (g.getAttribute("uv1")) f32("uv1", 2, 0);
   f32("color", 3, 1);
   if (!g.index) g.setIndex(Array.from({ length: n }, (_, i) => i));
   g.morphAttributes = {};
@@ -560,8 +604,15 @@ const LAMP_NIGHT = /(downlights|_lamp$|_lamps$|bulbs|awning_light|lanterns?$|upl
  * Dress the lots' models for the game: materials made here (the loaders' stay as they are), the shells merged per material
  * into new geometry, each lot's detail and goods reparented as groups the LOD shows (their geometry stays the loader's).
  */
+/** A lot's exterior lightmaps as prepareLots takes them (lotsLoader's LotLightmap). */
+export interface LotLightmapMaps {
+  ao: Texture;
+  night: Texture;
+  scale: number;
+}
+
 export function prepareLots(
-  scenes: ReadonlyArray<{ id: LotId; scene: Object3D; slides: Record<string, Record<string, number>>; doors?: LotDoorExtras }>,
+  scenes: ReadonlyArray<{ id: LotId; scene: Object3D; slides: Record<string, Record<string, number>>; doors?: LotDoorExtras; lightmap?: LotLightmapMaps | null }>,
   specs: Record<string, LotMatSpec>,
   ownMaps: Record<string, Texture> = {},
 ): LotNodes {
@@ -577,8 +628,8 @@ export function prepareLots(
   };
   own.materials.push(glow.night);
   /** A material per source name and per "has vertex colours" (a missing COLOR_0 under vertexColors would read black). */
-  const material = (src: Material, colours = (src as MeshStandardMaterial).vertexColors === true): Material => {
-    const key = `${src.name}|${colours ? "c" : "-"}`;
+  const material = (src: Material, colours = (src as MeshStandardMaterial).vertexColors === true, lm: LotLightmapMaps | null = null): Material => {
+    const key = `${src.name}|${colours ? "c" : "-"}|${lm && src.name.startsWith("LM_") ? "lm" : "-"}`;
     const hit = made.get(key);
     if (hit) return hit;
     const s = src as MeshStandardMaterial;
@@ -587,6 +638,7 @@ export function prepareLots(
     if (src.name.startsWith("LM_")) {
       m = lotSurfaceMaterial(s, spec);
       (m as MeshStandardMaterial).vertexColors = colours;
+      if (lm) patchLotLightmap(m as MeshStandardMaterial, lm);
       // both faces: the buildings are shells (their rooms are drawn elsewhere), so through a rose window, a transom or an
       // open door one looked through the far walls' backs at the sky and the grass behind (L5v2 release-4 sheet)
       m.side = DoubleSide;
@@ -624,6 +676,7 @@ export function prepareLots(
   root.userData.cvLots = true;
   const shellParts = new Map<string, BufferGeometry[]>();
   const shellSource = new Map<string, Material>();
+  const shellLightmap = new Map<string, LotLightmapMaps>();
   const detail = new Map<LotId, Object3D>();
   const goods = new Map<LotId, Object3D>();
   const night: Object3D[] = [];
@@ -631,17 +684,18 @@ export function prepareLots(
   const doors: LotDoorRig[] = [];
   const stats: LotNodes["stats"] = { lots: [], shellTriangles: 0, shellDraws: 0, detailTriangles: {}, goodsTriangles: {}, detailDraws: {}, goodsDraws: {}, nightTriangles: 0, lamps: 0, vestibuleFloors: [] };
   const tmp = new Matrix4();
-  const dress = (o: Object3D) => {
+  const dress = (o: Object3D, lm: LotLightmapMaps | null = null) => {
     o.traverse((c) => {
       if (!isMeshObj(c)) return;
       const colours = !!c.geometry.getAttribute("color");
-      const ms = matsOf(c).map((m) => material(m, colours));
+      const baked = lm && c.geometry.getAttribute("uv1") ? lm : null;
+      const ms = matsOf(c).map((m) => material(m, colours, baked));
       c.material = ms.length > 1 ? ms : ms[0]!;
     });
   };
 
   const lotSets = new Map<LotId, Set<string>>();
-  for (const { id, scene, slides, doors: doorsX } of scenes) {
+  for (const { id, scene, slides, doors: doorsX, lightmap } of scenes) {
     scene.updateWorldMatrix(true, true);
     stats.lots.push(id);
     // the library sets this lot's surfaces use (the bank loads them in full while the lot is detailed)
@@ -656,10 +710,11 @@ export function prepareLots(
       if (lotOfNode(n, "lotshell__") === id) {
         node.traverse((o) => {
           if (!isMeshObj(o)) return;
-          const world = mergeReady(o.geometry.clone().applyMatrix4(tmp.copy(o.matrixWorld)));
           const key = matsOf(o)[0]!.name;
+          const world = mergeReady(o.geometry.clone().applyMatrix4(tmp.copy(o.matrixWorld)), !!lightmap && key.startsWith("LM_"));
           shellParts.set(key, [...(shellParts.get(key) ?? []), world]);
           shellSource.set(key, matsOf(o)[0]!);
+          if (lightmap && key.startsWith("LM_") && world.getAttribute("uv1")) shellLightmap.set(key, lightmap);
         });
         continue;
       }
@@ -681,7 +736,7 @@ export function prepareLots(
           night.push(copy);
           continue;
         }
-        dress(copy);
+        dress(copy, n.startsWith("door__") ? null : lightmap ?? null);
         if (n.startsWith("door__")) {
           const doorId = n.slice("door__".length);
           const ds = slides[doorId];
@@ -739,7 +794,7 @@ export function prepareLots(
     merged.computeBoundingSphere();
     merged.computeBoundingBox();
     own.geometries.push(merged);
-    let mat = material(shellSource.get(name)!, true);
+    let mat = material(shellSource.get(name)!, true, shellLightmap.get(name) ?? null);
     if (SHELL_DOUBLE_SIDED.has(name) && mat instanceof MeshStandardMaterial) {
       // a roof seen from under it (the market's open hall) and L3's hall roof, whose faces point down (L3 hand-back): both sides
       const d = mat.clone();
@@ -800,6 +855,7 @@ export function prepareLots(
 /** Per frame (number writes only): the night's glow, lamps, signs and glass. */
 export function applyLotsDayNight(nodes: LotNodes, s: Pick<DayNightState, "lights" | "night" | "hemiIntensity" | "hemiSky">): void {
   nightUniform.value = s.night * LOT_LOOK.nightDesaturate;
+  lmNightUniform.value = s.lights;
   const g = nodes.glow;
   g.night.opacity = s.lights * LOT_LOOK.glow;
   const on = s.lights > 0.01;
