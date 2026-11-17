@@ -146,7 +146,7 @@ G = Builder({
     "g_lamp": ((1.0, 0.92, 0.7), 0.0, 0.3, 0.0, 0.1, (1.0, 0.8, 0.45)),
 })
 CZ = 3.2  # the cabin's centre, south of the pivot
-GX, GZ = 1.7, 0.9  # half sizes (x along the wheel plane, z across)
+GX, GZ = 2.0, 0.9  # half sizes (x along the wheel plane, z across)
 TOP = -0.75
 FLOOR = -3.1
 G.box("floor", (2 * GX, 0.12, 2 * GZ), (0, FLOOR, CZ), "g_wood", 0.02, 2)
@@ -154,12 +154,12 @@ G.box("plinth", (2 * GX + 0.12, 0.34, 2 * GZ + 0.12), (0, FLOOR - 0.2, CZ), "g_i
 G.box("plinth_trim", (2 * GX + 0.2, 0.06, 2 * GZ + 0.2), (0, FLOOR - 0.02, CZ), "g_gold", 0.02, 2)
 for sx in (-1, 1):
     for sz in (-1, 1):
-        G.cyl(f"post_{sx}_{sz}", (sx * GX, FLOOR, CZ + sz * GZ), (sx * GX, TOP, CZ + sz * GZ), 0.07, 0.07, "g_gold", 10)
+        G.cyl(f"post_{sx}_{sz}", (sx * GX, FLOOR, CZ + sz * GZ), (sx * GX, TOP, CZ + sz * GZ), 0.035, 0.035, "g_gold", 8)
         G.ellipsoid(f"post_ball_{sx}_{sz}", (sx * GX, TOP + 0.05, CZ + sz * GZ), (0.1, 0.1, 0.1), "g_gold", seg=8, rings=6)
 # (no mid posts: the south glass is one open pane)
 G.box("rail_s", (2 * GX, 0.035, 0.035), (0, FLOOR + 0.95, CZ + GZ), "g_gold", 0.01, 1)
-G.box("rail_w", (0.05, 0.05, 2 * GZ), (-GX, FLOOR + 0.95, CZ), "g_gold", 0.01, 1)
-G.box("rail_e", (0.05, 0.05, 2 * GZ), (GX, FLOOR + 0.95, CZ), "g_gold", 0.01, 1)
+G.box("rail_w", (0.035, 0.035, 2 * GZ), (-GX, FLOOR + 0.95, CZ), "g_gold", 0.01, 1)
+G.box("rail_e", (0.035, 0.035, 2 * GZ), (GX, FLOOR + 0.95, CZ), "g_gold", 0.01, 1)
 H_GLASS = TOP - FLOOR - 0.2
 for (nm, size, loc) in (
     ("glass_s", (2 * GX - 0.1, H_GLASS, 0.02), (0, (TOP + FLOOR) / 2, CZ + GZ)),
@@ -170,7 +170,7 @@ for (nm, size, loc) in (
 # the north wall (towards the wheel): an indigo panelled wall with gilt frames, the bench against it
 G.box("wall_n", (2 * GX - 0.1, H_GLASS, 0.06), (0, (TOP + FLOOR) / 2, CZ - GZ), "g_indigo", 0.02, 2)
 for x in (-1.0, 1.0):
-    G.box(f"panel_frame_{x}", (1.2, 1.5, 0.03), (x, FLOOR + 1.35, CZ - GZ + 0.04), "g_gold", 0.02, 2)
+    G.box(f"panel_frame_{x}", (1.6, 1.5, 0.03), (x, FLOOR + 1.35, CZ - GZ + 0.04), "g_gold", 0.02, 2)
 G.box("door_handle", (0.06, 0.22, 0.04), (GX + 0.06, FLOOR + 1.15, CZ), "g_gold", 0.01, 1)
 # the roof: a gable (ridge along x), gilt ridge and finials, a lantern globe
 for sz in (-1, 1):
@@ -196,5 +196,5 @@ G.box("bench_base", (2 * GX - 0.2, 0.4, 0.5), (0, FLOOR + 0.26, CZ - 0.5), "g_wo
 G.box("cushion", (2 * GX - 0.2, 0.14, 0.52), (0, FLOOR + 0.5, CZ - 0.5), "g_velvet", 0.04, 2)
 G.box("back", (2 * GX - 0.2, 0.55, 0.12), (0, FLOOR + 0.9, CZ - 0.78), "g_velvet", 0.05, 2)
 for k in range(8):
-    G.ellipsoid(f"button_{k}", (-1.4 + k * 0.4, FLOOR + 0.95, CZ - 0.71), (0.03, 0.03, 0.03), "g_gold", seg=6, rings=4)
+    G.ellipsoid(f"button_{k}", (-1.75 + k * 0.5, FLOOR + 0.95, CZ - 0.71), (0.03, 0.03, 0.03), "g_gold", seg=6, rings=4)
 G.export("wheel_gondola.glb", 50.0, ao=True)
