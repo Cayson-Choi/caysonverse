@@ -33,7 +33,6 @@ export function installFade(material: Material): void {
     );
   };
   material.customProgramCacheKey = () => `${previousKey.call(material)}|${INSTALLED}`;
-  material.needsUpdate = true;
 }
 
 /** Set the cut of all of an avatar's materials. */
