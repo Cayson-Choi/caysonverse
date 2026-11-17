@@ -317,6 +317,9 @@ export function installProgramGate(
 
   own.renderBufferDirect = function (this: WebGLRenderer, camera, scene, geometry, material, object, group) {
     if (!material || !object) return original.call(this, camera, scene, geometry, material, object, group);
+    // a material with its own clipping planes (a bench sitter): renderer.compile cannot make its variant (three sets the
+    // clipping state per material only inside render), so it goes three's way
+    if (material.clippingPlanes && material.clippingPlanes.length > 0) return original.call(this, camera, scene, geometry, material, object, group);
     // a shadow pass (three passes no scene): gated the same way, its compile made against the scene three takes its lights from
     const shadow = scene === null;
     const lightsFrom = shadow ? (renders[renders.length - 1] ?? lastRender) : null;
