@@ -8,6 +8,7 @@ import { useSettingsStore } from "../stores/settingsStore";
 import { keyOffset } from "./dayNightBlend";
 import { dayNight, resetOnVisible } from "./dayNightDriver";
 import { villageClock } from "./villageClock";
+import { BAKED_ROOM_LIGHT, roomBaked } from "./lots/roomBaked";
 
 declare global {
   interface Window {
@@ -178,12 +179,12 @@ export function DayNight({ area, tier }: { area: AreaId; tier: QualityTier }) {
     if (hemi) {
       hemi.color.setRGB(s.hemiSky[0], s.hemiSky[1], s.hemiSky[2]);
       hemi.groundColor.setRGB(s.hemiGround[0], s.hemiGround[1], s.hemiGround[2]);
-      hemi.intensity = s.hemiIntensity * (isLotArea(area) ? LOT_ROOM_LIGHT.hemi : 1);
+      hemi.intensity = s.hemiIntensity * (isLotArea(area) ? LOT_ROOM_LIGHT.hemi * (roomBaked.on ? BAKED_ROOM_LIGHT.hemi : 1) : 1);
     }
     const sun = rig.sun.current;
     if (sun) {
       sun.color.setRGB(s.keyColor[0], s.keyColor[1], s.keyColor[2]);
-      sun.intensity = s.keyIntensity * (isLotArea(area) ? LOT_ROOM_LIGHT.key : 1);
+      sun.intensity = s.keyIntensity * (isLotArea(area) ? LOT_ROOM_LIGHT.key * (roomBaked.on ? BAKED_ROOM_LIGHT.key : 1) : 1);
       keyOffset(s.keyDir, rig.keyOffset);
       if (!rig.aim.external) {
         const t = sun.target.position;
