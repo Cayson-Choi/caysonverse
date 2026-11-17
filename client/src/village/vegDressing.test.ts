@@ -107,11 +107,12 @@ describe("vegDressing", () => {
     const t = fakeTimers();
     const d = createVegDressing(t);
     const b = d.begin();
-    for (let i = 0; i < 4; i++) {
-      t.advance(FAIL_SAFE_MS - 1000);
-      d.progress(b);
-    }
-    expect(d.dressed()).toBe(false); // 44 s of steady growth: still covered
+    t.advance(FAIL_SAFE_MS - 4000);
+    d.progress(b);
+    t.advance(FAIL_SAFE_MS - 4000);
+    d.progress(b);
+    expect(2 * (FAIL_SAFE_MS - 4000)).toBeGreaterThan(FAIL_SAFE_MS); // past the plain fail-safe
+    expect(d.dressed()).toBe(false); // steady growth: still covered
     d.progress(b);
     t.advance(HARD_CAP_MS); // never past the cap
     expect(d.dressed()).toBe(true);

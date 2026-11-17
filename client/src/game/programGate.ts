@@ -49,6 +49,10 @@ interface Track {
 export const MAX_SKIP_MS = 3000;
 /** Bytes of never-drawn geometry a frame may upload (its first draw copies its buffers to the GPU). */
 export const GEOMETRY_BYTES_PER_FRAME = 4 * 1024 * 1024;
+/** The same on a touch device (a phone's CPU copies them several times slower: a 4 MB frame cost ~100 ms at 4x). */
+export const GEOMETRY_BYTES_PER_FRAME_TOUCH = 1.5 * 1024 * 1024;
+const geometryBytesPerFrame = (): number =>
+  typeof navigator !== "undefined" && (navigator.maxTouchPoints ?? 0) > 0 ? GEOMETRY_BYTES_PER_FRAME_TOUCH : GEOMETRY_BYTES_PER_FRAME;
 /** DEV `?gatelog=1`: time every draw and log the slow ones and program switches (stats.mismatches). Off: the draw path as in production. */
 const LOG = import.meta.env.DEV && typeof location !== "undefined" && new URLSearchParams(location.search).get("gatelog") === "1";
 /** Programs one flush (one frame) may start. */
@@ -174,10 +178,11 @@ export function installProgramGate(
   };
   /** geometries drawn at least once (their buffers are on the GPU), and this frame's upload budget */
   const drawnGeometries = new WeakSet<BufferGeometry>();
-  let geometryBudget = GEOMETRY_BYTES_PER_FRAME;
+  const perFrameBytes = geometryBytesPerFrame();
+  let geometryBudget = perFrameBytes;
   let rafId = 0;
   const perFrame = () => {
-    geometryBudget = GEOMETRY_BYTES_PER_FRAME;
+    geometryBudget = perFrameBytes;
     rafId = requestAnimationFrame(perFrame);
   };
   if (typeof requestAnimationFrame === "function") rafId = requestAnimationFrame(perFrame);
@@ -364,7 +369,7 @@ export function installProgramGate(
       // village brings hundreds), the rest wait a frame; the first one of a frame always goes (whatever its size)
       if (ready !== false && !drawnGeometries.has(geometry)) {
         const bytes = geometryBytes(geometry);
-        if (bytes > geometryBudget && geometryBudget < GEOMETRY_BYTES_PER_FRAME) ready = false;
+        if (bytes > geometryBudget && geometryBudget < perFrameBytes) ready = false;
         else {
           geometryBudget -= bytes;
           drawnGeometries.add(geometry);

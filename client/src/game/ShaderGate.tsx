@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useLayoutEffect } from "react";
 import { useThree } from "@react-three/fiber";
 import { installProgramGate, type ProgramGateStats } from "./programGate";
 
@@ -16,7 +16,7 @@ const PREFETCH_EVERY_MS = 4000;
 export function ProgramGate(): null {
   const gl = useThree((s) => s.gl);
   const scene = useThree((s) => s.scene);
-  useEffect(() => {
+  useLayoutEffect(() => {
     // DEV: `?gate=off` leaves it out (to compare)
     if (import.meta.env.DEV && typeof location !== "undefined" && new URLSearchParams(location.search).get("gate") === "off") return;
     const gate = installProgramGate(gl);

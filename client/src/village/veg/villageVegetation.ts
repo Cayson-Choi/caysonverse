@@ -24,10 +24,11 @@ import {
 import { isMesh, materialsOf } from "../../game/hub/hubModelPrep";
 import { CLICK_PICK_KEY } from "../../game/clickPick";
 import { BACKDROP_FOREST_PREFIX, CHERRY_MATERIAL, MATERIAL, type VillageTier } from "../villageModelPrep";
-import { CHERRY_GROW, cherryConnection, crownEnvelope, growCherry, type Bunch, type CherryCrown } from "./cherryTree";
-import type { Connection, Envelope, KeepOut } from "./crownGrowth";
+import { CHERRY_GROW, cherryConnection, crownEnvelope, type Bunch, type CherryCrown } from "./cherryTree";
+import type { Connection, Envelope } from "./crownGrowth";
+import { barkLightOf, createCrownGrower, type GeoData, type GrowRequest, type GrowResult, type KeepOutSpec, type TwigSpec } from "./crownGrow";
 import { BUILDING_BOX, buildingSpace, crownKeepOut, type Box, buildingKeepOut, trimSkeleton } from "./crownSpace";
-import { GREEN_GROW, YOUNG_GROW, ZELKOVA_GROW, broadleafEnvelope, growBroadleaf, growWillow, leafConnection, willowEnvelope, type Leaf, type LeafCrown } from "./treeCrown";
+import { GREEN_GROW, YOUNG_GROW, ZELKOVA_GROW, broadleafEnvelope, leafConnection, willowEnvelope, type Leaf, type LeafCrown } from "./treeCrown";
 import {
   PLAZA_CHERRY_SPECS,
   SHRUB_VARIANT,
@@ -43,7 +44,8 @@ import {
 import { bushSize, findBushes, type Bush } from "./shrubs";
 import { removePlazaZelkova, zelkovaSkeleton } from "./zelkova";
 import { TriangleGrid, faceNormal, openEdges, type DrawnGap, type V3 } from "./drawnGap";
-import { PLAZA_BEDS, placeFlowers, SPECIES_COUNT, linearHex, type Plant } from "./flowerPlacement";
+import { PLAZA_BEDS, SPECIES_COUNT, linearHex, type Plant } from "./flowerPlacement";
+import type { FloraResult } from "./floraWork";
 import { a8TreeShift, housesMode, makeHouseGrounds } from "../houses/housesPrep";
 import { houseFlowerBoxBeds } from "../houses/houseFlowerBoxes";
 import { keepTriangles, readCards, type AttributeLike, type Card } from "./vegCards";
@@ -51,13 +53,12 @@ import { makeBlossomAtlas } from "./vegAtlas";
 import { GeoBuilder, blossomBunch, bunchSprite, leafSpray, willowSpray } from "./vegGeometry";
 import { BUSH_SPECIES, bushPlant, plantMeshes, type BushSpecies } from "./vegPlants";
 import { makePlantAtlas } from "./vegPlantAtlas";
-import { buildSoil, soilTextures } from "./vegSoil";
-import { BARK_STYLE, BARK_SURFACE, barkPhotos, flatNormal, barkLight, barkTexture, drawnBark, simplifyTwig, skeletonBark, skeletonBarkInto, taperSkeleton, twigBark, type BarkPattern } from "./barkGeometry";
+import { soilTextures } from "./vegSoil";
+import { BARK_STYLE, BARK_SURFACE, barkPhotos, flatNormal, barkTexture, drawnBark, simplifyTwig, skeletonBark, skeletonBarkInto, taperSkeleton, twigBark, type BarkPattern } from "./barkGeometry";
 import { setCameraKeepOut } from "../../game/cameraCollision";
 import { bakedBarkIndex } from "./bakedBark";
 import { chooseLod, groupIntoCells, sphereDistance, VEG_TIERS, type Cell, type LodBands, type Vec3, type VegTierConfig, HOUSE_FLOWER_LOD } from "./vegLod";
 import { vegMaterial, vegTimeUniform, vegViewHeightUniform, setVegLamps } from "./vegMaterial";
-import { DAY_SUN_DIRECTION } from "../dayNightBlend";
 import type { VegMode } from "./vegMode";
 import { createVegPark } from "./vegPark";
 
@@ -444,6 +445,8 @@ export interface BuildOptions {
    * houses' own beds and gardens (집 외관 A8, houses/VillageHouses.tsx; village_houses.glb's M_leaf_flora planting cards).
    */
   flowersOnly?: boolean;
+  /** A Web Worker for the crowns' growth (crownWorker.ts); none: they grow on the page. */
+  makeWorker?: () => Worker;
 }
 
 /** A slice of the build's work (ms) before the main thread is handed back. */
@@ -536,7 +539,19 @@ function sphereOf(b: { x: number; y: number; z: number; r: number }, xf: Matrix4
 }
 
 /** The bark's light of a tree (barkGeometry.barkLight): the same for its trunk, limbs and twigs. */
-const barkLightOf = (sk: TreeSkeleton) => barkLight(sk.crownC, sk.R, sk.base[1], DAY_SUN_DIRECTION as Vec3, { p: sk.trunk.pts[3]!, r: sk.trunk.radii[3]! });
+
+/** A geometry made on the page, or from the arrays a worker made. */
+function asGeometry(g: GeoData | BufferGeometry): BufferGeometry {
+  return "isBufferGeometry" in g ? (g as BufferGeometry) : geometryFrom(g as GeoData);
+}
+
+/** A geometry from the arrays a worker made (crownGrow.ts geoData). */
+function geometryFrom(d: GeoData): BufferGeometry {
+  const g = new BufferGeometry();
+  for (const [name, a] of Object.entries(d.attrs)) g.setAttribute(name, new BufferAttribute(a.array as unknown as Float32Array, a.itemSize, a.normalized));
+  if (d.index) g.setIndex(new BufferAttribute(d.index as unknown as Uint32Array, 1));
+  return g;
+}
 
 /** Whether a bush stands in one of the plaza's square planters (their clipped balls are boxwood). */
 const bushInPlanter = (b: Bush) => PLAZA_BEDS.some((bed) => bed.kind === "square" && Math.hypot(b.x - bed.x, b.z - bed.z) < 0.6);
@@ -644,6 +659,9 @@ export class VillageVegetation {
     const { focus, onShow, sliceMs, onProgress } = options;
     const v = new VillageVegetation(tier, mode, options.flowersOnly === true);
     v.root = root;
+    // the crowns' workers start loading now, while the flowers are laid out (crownGrow.ts)
+    const grower = createCrownGrower(options.makeWorker);
+    v.stopGrowing = () => grower.dispose();
     const steps = v.statsData.steps;
     let work = 0;
     const start = performance.now();
@@ -693,97 +711,103 @@ export class VillageVegetation {
     const houseGrounds = housesMode() === "new" && !options.flowersOnly ? makeHouseGrounds() : null;
     // the houses' own file (flowersOnly): their window boxes and baskets are beds too (geraniums, spilling over the rims)
     const beds = options.flowersOnly ? [...PLAZA_BEDS, ...houseFlowerBoxBeds()] : PLAZA_BEDS;
-    const placed = placeFlowers(houseGrounds ? allCards.filter((c) => !houseGrounds((c.ax + c.bx) / 2, (c.az + c.bz) / 2)) : allCards, beds);
-    // the beds' soil (vegSoil.ts, 2026-11-16 plants2): built round the placed plants, and the plants set on it
-    const soil = buildSoil(placed.plants);
-    for (const p of placed.plants) {
-      const h = soil.heightAt(p);
-      if (h !== null) p.y = h - 0.004;
-    }
-    {
-      const soilMap = new DataTexture(new Uint8Array([70, 52, 38, 255]), 1, 1, RGBAFormat, UnsignedByteType);
-      soilMap.colorSpace = SRGBColorSpace;
-      soilMap.needsUpdate = true;
-      const soilNormal = flatNormal();
-      const soilMat = vegMaterial({ name: "M_veg_soil", map: soilMap, normalMap: soilNormal, normalScale: 1.3, edgeAlpha: true, wind: 0, windFar: 1, ambient: 0.5, sky: 0.2, sun: 0.52, back: 0.15 });
-      v.own.push(soilMap, soilNormal, soilMat);
-      soilTextures(low, (map, normal) => {
-        soilMat.map = map;
-        (soilMat.userData.vegUniforms as { uVegNormal: { value: unknown } }).uVegNormal.value = normal;
-        v.own.push(map, normal);
-      });
-      soil.soil.forEach((a, i) => {
-        const mesh = new Mesh(a.geo, soilMat);
-        mesh.name = `veg_soil_${i}`;
-        mesh.matrixAutoUpdate = false;
-        mesh.userData[CLICK_PICK_KEY] = "ignore";
-        v.group.add(mesh);
-        v.own.push(a.geo);
-      });
-      if (soil.coping) {
-        // the square planters' raised coping: the village's own granite photo (rock_boulder_dry), lit per pixel
-        const stoneMap = new DataTexture(new Uint8Array([150, 148, 142, 255]), 1, 1, RGBAFormat, UnsignedByteType);
-        stoneMap.colorSpace = SRGBColorSpace;
-        stoneMap.needsUpdate = true;
-        const stoneNormal = flatNormal();
-        const copingMat = vegMaterial({ name: "M_veg_coping", map: stoneMap, normalMap: stoneNormal, normalScale: 1.2, wind: 0, windFar: 1, ambient: 0.62, sky: 0.22, sun: 0.42, back: 0.2 });
-        v.own.push(stoneMap, stoneNormal);
-        soilTextures(
-          low,
-          (map, normal) => {
-            copingMat.map = map;
-            (copingMat.userData.vegUniforms as { uVegNormal: { value: unknown } }).uVegNormal.value = normal;
-            v.own.push(map, normal);
-          },
-          "stone",
-        );
-        const mesh = new Mesh(soil.coping, copingMat);
-        mesh.name = "veg_planter_coping";
-        mesh.matrixAutoUpdate = false;
-        v.group.add(mesh);
-        v.own.push(soil.coping, copingMat);
-      }
-      stats.soil = { beds: soil.beds, tris: soil.tris };
-    }
-    if (await step("placement")) return v.abandon();
-    // the plants' leaves, petals and mulch are pictures in the plant atlas (vegPlantAtlas.ts, the 2026-11-16 rebuild)
+    const floraCards = houseGrounds ? allCards.filter((c) => !houseGrounds((c.ax + c.bx) / 2, (c.az + c.bz) / 2)) : allCards;
+    // ── the flowers' layout and the beds' soil: worked out off the page (floraWork.ts, in the crowns' worker) while the
+    //    page makes the materials and asks for the crowns; dressed here when it comes back ──
+    const floraJob = grower.flora(floraCards, beds);
+    let placed: { plants: Plant[]; replaced: Card[] } = { plants: [], replaced: [] };
     const plantAtlas: Texture | null = makePlantAtlas();
     if (plantAtlas) v.own.push(plantAtlas);
-    const flowerMat = vegMaterial({ name: "M_veg_flowers", push: true, map: plantAtlas, alphaTest: 0.5, wind: 0.022, windFar: cfg.windFar ? 30 : 10, ambient: 0.5, sky: 0.12, sun: 0.5, back: 0.45 });
-    v.own.push(flowerMat);
-    const meshes = plantMeshes();
-    const counts = new Array<number>(SPECIES_COUNT).fill(0);
-    for (const p of placed.plants) counts[p.species]!++;
-    stats.species = counts;
-    meshes.forEach((sm, s) => {
-      const lod0 = new Layer(sm.lod0, flowerMat, counts[s]!, `veg_flowers_${s}_full`);
-      const lod1 = new Layer(sm.lod1, flowerMat, counts[s]!, `veg_flowers_${s}_simple`);
-      v.flowerLayers.push({ lod0, lod1 });
-      v.group.add(lod0.mesh, lod1.mesh);
-      v.own.push(sm.lod0, sm.lod1, lod0.mesh, lod1.mesh);
-    });
-    const fl = cfg.flowers;
-    const midK = fl.mid < 1 ? fl.mid ** -0.25 : 1;
-    for (const cell of groupIntoCells(placed.plants, 8, 0.6)) {
-      const batches = [];
-      for (let s = 0; s < SPECIES_COUNT; s++) {
-        const list = cell.items.filter((p) => p.species === s);
-        batches.push({
-          full: makeBatch(list.map((p) => ({ m: plantMatrix(p, 1), tint: p.tint, light: p.light }))),
-          mid: makeBatch(list.filter((p) => p.seed < fl.mid).map((p) => ({ m: plantMatrix(p, midK), tint: p.tint, light: p.light }))),
-          thin: makeBatch(list.filter((p) => p.seed < fl.thin).map((p) => ({ m: plantMatrix(p, fl.thinScale), tint: p.tint, light: p.light }))),
+    const dressFlora = (fr: FloraResult) => {
+      placed = { plants: fr.plants, replaced: fr.replaced.map((i) => floraCards[i]!) };
+      // the beds' soil (vegSoil.ts, 2026-11-16 plants2): built round the placed plants, and the plants set on it (floraWork.ts)
+      const soil = { soil: fr.soil.map((a) => ({ ...a, geo: asGeometry(a.geo) })), coping: fr.coping ? asGeometry(fr.coping) : null, beds: fr.beds, tris: fr.tris };
+      {
+        const soilMap = new DataTexture(new Uint8Array([70, 52, 38, 255]), 1, 1, RGBAFormat, UnsignedByteType);
+        soilMap.colorSpace = SRGBColorSpace;
+        soilMap.needsUpdate = true;
+        const soilNormal = flatNormal();
+        const soilMat = vegMaterial({ name: "M_veg_soil", map: soilMap, normalMap: soilNormal, normalScale: 1.3, edgeAlpha: true, wind: 0, windFar: 1, ambient: 0.5, sky: 0.2, sun: 0.52, back: 0.15 });
+        v.own.push(soilMap, soilNormal, soilMat);
+        soilTextures(low, (map, normal) => {
+          soilMat.map = map;
+          (soilMat.userData.vegUniforms as { uVegNormal: { value: unknown } }).uVegNormal.value = normal;
+          v.own.push(map, normal);
         });
+        soil.soil.forEach((a, i) => {
+          const mesh = new Mesh(a.geo, soilMat);
+          mesh.name = `veg_soil_${i}`;
+          mesh.matrixAutoUpdate = false;
+          mesh.userData[CLICK_PICK_KEY] = "ignore";
+          v.group.add(mesh);
+          v.own.push(a.geo);
+        });
+        if (soil.coping) {
+          // the square planters' raised coping: the village's own granite photo (rock_boulder_dry), lit per pixel
+          const stoneMap = new DataTexture(new Uint8Array([150, 148, 142, 255]), 1, 1, RGBAFormat, UnsignedByteType);
+          stoneMap.colorSpace = SRGBColorSpace;
+          stoneMap.needsUpdate = true;
+          const stoneNormal = flatNormal();
+          const copingMat = vegMaterial({ name: "M_veg_coping", map: stoneMap, normalMap: stoneNormal, normalScale: 1.2, wind: 0, windFar: 1, ambient: 0.62, sky: 0.22, sun: 0.42, back: 0.2 });
+          v.own.push(stoneMap, stoneNormal);
+          soilTextures(
+            low,
+            (map, normal) => {
+              copingMat.map = map;
+              (copingMat.userData.vegUniforms as { uVegNormal: { value: unknown } }).uVegNormal.value = normal;
+              v.own.push(map, normal);
+            },
+            "stone",
+          );
+          const mesh = new Mesh(soil.coping, copingMat);
+          mesh.name = "veg_planter_coping";
+          mesh.matrixAutoUpdate = false;
+          v.group.add(mesh);
+          v.own.push(soil.coping, copingMat);
+        }
+        stats.soil = { beds: soil.beds, tris: soil.tris };
       }
-      v.flowerCells.push({ cell, batches, level: -1, visible: false });
-    }
-    if (await step("flowerMeshes")) return v.abandon();
+      // the plants' leaves, petals and mulch are pictures in the plant atlas (vegPlantAtlas.ts, the 2026-11-16 rebuild)
+      const flowerMat = vegMaterial({ name: "M_veg_flowers", push: true, map: plantAtlas, alphaTest: 0.5, wind: 0.022, windFar: cfg.windFar ? 30 : 10, ambient: 0.5, sky: 0.12, sun: 0.5, back: 0.45 });
+      v.own.push(flowerMat);
+      const meshes = plantMeshes();
+      const counts = new Array<number>(SPECIES_COUNT).fill(0);
+      for (const p of placed.plants) counts[p.species]!++;
+      stats.species = counts;
+      meshes.forEach((sm, s) => {
+        const lod0 = new Layer(sm.lod0, flowerMat, counts[s]!, `veg_flowers_${s}_full`);
+        const lod1 = new Layer(sm.lod1, flowerMat, counts[s]!, `veg_flowers_${s}_simple`);
+        v.flowerLayers.push({ lod0, lod1 });
+        v.group.add(lod0.mesh, lod1.mesh);
+        v.own.push(sm.lod0, sm.lod1, lod0.mesh, lod1.mesh);
+      });
+      const fl = cfg.flowers;
+      const midK = fl.mid < 1 ? fl.mid ** -0.25 : 1;
+      for (const cell of groupIntoCells(placed.plants, 8, 0.6)) {
+        const batches = [];
+        for (let s = 0; s < SPECIES_COUNT; s++) {
+          const list = cell.items.filter((p) => p.species === s);
+          batches.push({
+            full: makeBatch(list.map((p) => ({ m: plantMatrix(p, 1), tint: p.tint, light: p.light }))),
+            mid: makeBatch(list.filter((p) => p.seed < fl.mid).map((p) => ({ m: plantMatrix(p, midK), tint: p.tint, light: p.light }))),
+            thin: makeBatch(list.filter((p) => p.seed < fl.thin).map((p) => ({ m: plantMatrix(p, fl.thinScale), tint: p.tint, light: p.light }))),
+          });
+        }
+        v.flowerCells.push({ cell, batches, level: -1, visible: false });
+      }
+    };
     if (options.flowersOnly) {
+      // the houses' own file: only its flowers (no trees, bushes or bark), so nothing else to wait for
+      dressFlora(await floraJob);
+      grower.dispose();
+      if (await step("flowerMeshes")) return v.abandon();
       if (hide)
         floraMeshes.forEach((mesh, mi) => {
           const drop = placed.replaced.filter((c) => cardMesh.get(c) === mi);
           if (drop.length) v.hideCards(mesh, drop);
         });
       stats.hiddenCards.flora = hide ? placed.replaced.length : 0;
+      stats.plants = placed.plants.length;
       stats.genMs = Math.round(work);
       stats.wallMs = Math.round(performance.now() - start);
       return v;
@@ -969,11 +993,13 @@ export class VillageVegetation {
       v.group.add(m);
       return m;
     };
-    const twigGeo = (twigs: readonly Branch[], sk: TreeSkeleton) => {
-      // the orchard's small trees: their finest twigs a little thicker (4.5 mm, a plum's real twig), so they read as
-      // lines between the blossoms, not as dots
-      // the young trees' twigs come within arm's reach: rounder, pointed at the tip (twigBark `near`)
-      const geo = twigBark(twigs, BARK_STYLE[sk.kind], low, barkLightOf(sk), low ? simplifyTwig : undefined, sk.kind === "orchard" ? 0.0045 : 0, sk.kind === "young");
+    // the orchard's small trees: their finest twigs a little thicker (4.5 mm, a plum's real twig), so they read as
+    // lines between the blossoms, not as dots; the young trees' twigs come within arm's reach: rounder, pointed at the
+    // tip (twigBark `near`). Made with the crown (crownGrow.ts), in the worker where there is one.
+    const twigSpec = (sk: TreeSkeleton): TwigSpec => ({ low, minR: sk.kind === "orchard" ? 0.0045 : 0, near: sk.kind === "young" });
+    const twigGeo = (twigs: readonly Branch[], sk: TreeSkeleton, made?: GrowResult) => {
+      const t = twigSpec(sk);
+      const geo = made?.geo ?? (made?.twig ? geometryFrom(made.twig) : twigBark(twigs, BARK_STYLE[sk.kind], low, barkLightOf(sk), low ? simplifyTwig : undefined, t.minR, t.near));
       v.own.push(geo);
       stats.twigVertices += geo.getAttribute("position").count;
       return geo;
@@ -1002,20 +1028,20 @@ export class VillageVegetation {
     /** Where a crown is drawn: the instance matrix (null: as grown) and its number (the draw's name). */
     type Place = { xf: Matrix4 | null; i: number };
     const ONCE: Place[] = [{ xf: null, i: 0 }];
-    const drawBlossom = (crown: CherryCrown, kind: TreeKindStat, places: readonly Place[]) => {
-      addConn(cherryConnection(crown));
+    const drawBlossom = (crown: CherryCrown, kind: TreeKindStat, places: readonly Place[], made?: GrowResult) => {
+      addConn(made?.conn ?? cherryConnection(crown));
       stats.bunches += crown.bunches.length * places.length;
-      const geo = twigGeo(crown.twigs, crown.skeleton);
+      const geo = twigGeo(crown.twigs, crown.skeleton, made);
       stats.trees[kind].twigs += crown.twigs.length * places.length;
       for (const { xf, i } of places) {
         const d = addTree(`${kind}_${crown.skeleton.index}_${i}`, "blossom", kind, crown.bunches, bunchMatrix, bunchTint, crown.bounds, xf, ch);
         d.twig = twigObject(geo, xf, `veg_twigs_${d.name}`, twigMatOf(crown.skeleton));
       }
     };
-    const drawLeafy = (crown: LeafCrown, kind: TreeKindStat, places: readonly Place[], asClass?: DrawClass) => {
-      addConn(leafConnection(crown));
+    const drawLeafy = (crown: LeafCrown, kind: TreeKindStat, places: readonly Place[], asClass?: DrawClass, made?: GrowResult) => {
+      addConn(made?.conn ?? leafConnection(crown));
       const cls: DrawClass = asClass ?? (crown.kind === "willow" ? "willow" : "leaf");
-      const geo = twigGeo(crown.twigs, crown.skeleton);
+      const geo = twigGeo(crown.twigs, crown.skeleton, made);
       stats.trees[kind].twigs += crown.twigs.length * places.length;
       for (const { xf, i } of places) {
         const d = addTree(`${kind}_${crown.skeleton.index}_${i}`, cls, kind, crown.leaves, leafMatrix, leafTint, crown.bounds, xf, gr);
@@ -1077,32 +1103,39 @@ export class VillageVegetation {
       orchard: taperSkeleton(variant.orchard),
     };
     const ownBark: Record<VariantKey, Array<{ i: number; sk: TreeSkeleton; xf: Matrix4 }>> = { street_cherry: [], orchard: [], street_green: [] };
-    const keepOutOf = (sk: TreeSkeleton) => {
-      const k = crownKeepOut(envOf.get(sk)!, allEnvs, boxes);
-      if (k) stats.makingRoom.push(`${sk.kind}${sk.index}`);
-      return k;
+    // each crown's growth is a request (crownGrow.ts): grown by a worker where there is one, the page drawing the crowns
+    // already grown meanwhile (perf/no-hitch: the growth was about half a slow phone's arrival, in one piece per tree)
+    const envIndex = new Map<Envelope, number>(allEnvs.map((e, i) => [e, i]));
+    const koOf = (env: Envelope, name: string, xf?: Matrix4): KeepOutSpec | undefined => {
+      if (!crownKeepOut(env, allEnvs, boxes)) return undefined;
+      stats.makingRoom.push(name);
+      return { own: envIndex.get(env)!, xf: xf ? Array.from(xf.elements) : undefined };
     };
-    const job = (name: string, d: number, run: () => void) => ({ name, d, run });
+    const keepOutOf = (sk: TreeSkeleton) => koOf(envOf.get(sk)!, `${sk.kind}${sk.index}`);
+    type Job = { name: string; d: number; req: GrowRequest; draw: (made: GrowResult) => void };
+    // the request carries the skeleton without its baked cards (the growth never reads them; they would only be copied
+    // to the worker and back)
+    const job = (name: string, d: number, req: GrowRequest, draw: (made: GrowResult) => void): Job => ({
+      name,
+      d,
+      req: { ...req, sk: { ...req.sk, cards: [], petals: [] }, twig: twigSpec(req.sk) } as GrowRequest,
+      draw,
+    });
+    const drawAny = (kind: TreeKindStat, places: readonly Place[], asClass?: DrawClass) => (made: GrowResult) =>
+      "bunches" in made.crown ? drawBlossom(made.crown, kind, places, made) : drawLeafy(made.crown, kind, places, asClass, made);
     /**
      * A variant's instances: those that meet nothing share one crown (grown once at the origin); each of the others
      * grows its own, its keep-out carried to the origin through the instance matrix.
      */
-    const instanceJobs = (key: VariantKey, kind: TreeKindStat, grow: (keepOut?: KeepOut, sk?: TreeSkeleton) => CherryCrown | LeafCrown) => {
+    const instanceJobs = (key: VariantKey, kind: TreeKindStat, req: (ko?: KeepOutSpec, sk?: TreeSkeleton) => GrowRequest) => {
       const shared: Place[] = [];
-      const out: Array<ReturnType<typeof job>> = [];
-      const draw = (crown: CherryCrown | LeafCrown, places: readonly Place[]) => ("bunches" in crown ? drawBlossom(crown, kind, places) : drawLeafy(crown, kind, places));
+      const out: Job[] = [];
       xfs[key].forEach((xf, i) => {
-        const world = crownKeepOut(instEnv[key][i]!, allEnvs, boxes);
-        if (!world) {
+        const ko = koOf(instEnv[key][i]!, `${key}${i}`, xf);
+        if (!ko) {
           shared.push({ xf, i });
           return;
         }
-        stats.makingRoom.push(`${key}${i}`);
-        const w = new Vector3();
-        const local: KeepOut = (p) => {
-          w.set(p[0], p[1], p[2]).applyMatrix4(xf);
-          return world([w.x, w.y, w.z]);
-        };
         // its limbs cut back short of a house beside it (drawn with a bark of its own, not the shared instanced one)
         const walls = buildingKeepOut(instEnv[key][i]!, boxes);
         const wl = new Vector3();
@@ -1117,40 +1150,53 @@ export class VillageVegetation {
           ownBark[key].push({ i, sk: own, xf });
           stats.trimmed.push(`${key}${i}`);
         }
-        out.push(job(`${key}${i}`, away(xf.elements[12]!, xf.elements[14]!), () => draw(grow(local, own), [{ xf, i }])));
+        out.push(job(`${key}${i}`, away(xf.elements[12]!, xf.elements[14]!), req(ko, own), drawAny(kind, [{ xf, i }])));
       });
-      if (shared.length) out.push(job(key, nearestOf(shared), () => draw(grow(), shared)));
+      if (shared.length) out.push(job(key, nearestOf(shared), req(), drawAny(kind, shared)));
       return out;
     };
     const STREET_CHERRY = { attractors: 400, bunchStep: 0.08, dressBranches: true };
     // the orchard's small trees (3.8 m): smaller flowers, closer together (about the same blossom), and head room at
     // the trunk (someone under one looks up into it, not into flowers 20 cm from their eyes)
     const ORCHARD = { attractors: 240, bunchStep: 0.045, bunchScale: 0.7, headroom: { r: 1.0, y: 2.0 }, dressBranches: true };
-    const jobs = [
-      ...zelkovaOn.map((sk) => job("zelkova", away(sk.base[0], sk.base[2]), () => drawLeafy(growBroadleaf(drawnSk.get(sk)!, ZELKOVA_GROW, "green", keepOutOf(sk)), "plaza_zelkova", ONCE, "zelkova"))),
-      ...plaza.map((sk) => job(`cherry${sk.index}`, away(sk.base[0], sk.base[2]), () => drawBlossom(growCherry(drawnSk.get(sk)!, { ...CHERRY_GROW, keepOut: keepOutOf(sk) }), "plaza_cherry", ONCE))),
+    const leafy = (sk: TreeSkeleton, o: typeof GREEN_GROW, leaf: "green" | "young", ko?: KeepOutSpec): GrowRequest => ({ kind: "broadleaf", sk, o, leaf, ko });
+    const cherry = (sk: TreeSkeleton, o: Omit<typeof CHERRY_GROW, "keepOut">, ko?: KeepOutSpec): GrowRequest => ({ kind: "cherry", sk, o, ko });
+    const jobs: Job[] = [
+      ...zelkovaOn.map((sk) => job("zelkova", away(sk.base[0], sk.base[2]), leafy(drawnSk.get(sk)!, ZELKOVA_GROW, "green", keepOutOf(sk)), drawAny("plaza_zelkova", ONCE, "zelkova"))),
+      ...plaza.map((sk) => job(`cherry${sk.index}`, away(sk.base[0], sk.base[2]), cherry(drawnSk.get(sk)!, CHERRY_GROW, keepOutOf(sk)), drawAny("plaza_cherry", ONCE))),
       ...village.map((sk) =>
-        job(`${sk.kind}${sk.index}`, away(sk.base[0], sk.base[2]), () =>
-          sk.kind === "cherry"
-            ? drawBlossom(growCherry(drawnSk.get(sk)!, { ...CHERRY_GROW, keepOut: keepOutOf(sk) }), "village_cherry", ONCE)
-            : drawLeafy(growBroadleaf(drawnSk.get(sk)!, GREEN_GROW, "green", keepOutOf(sk)), "village_green", ONCE),
-        ),
+        sk.kind === "cherry"
+          ? job(`${sk.kind}${sk.index}`, away(sk.base[0], sk.base[2]), cherry(drawnSk.get(sk)!, CHERRY_GROW, keepOutOf(sk)), drawAny("village_cherry", ONCE))
+          : job(`${sk.kind}${sk.index}`, away(sk.base[0], sk.base[2]), leafy(drawnSk.get(sk)!, GREEN_GROW, "green", keepOutOf(sk)), drawAny("village_green", ONCE)),
       ),
-      ...instanceJobs("street_cherry", "street_cherry", (keepOut, sk) => growCherry(sk ?? taperedVariant.street_cherry, { ...STREET_CHERRY, keepOut })),
-      ...instanceJobs("orchard", "orchard", (keepOut, sk) => growCherry(sk ?? taperedVariant.orchard, { ...ORCHARD, keepOut })),
-      ...instanceJobs("street_green", "street_green", (keepOut, sk) => growBroadleaf(sk ?? taperedVariant.street_green, GREEN_GROW, "green", keepOut)),
-      ...young.map((sk) => job(`young${sk.index}`, away(sk.base[0], sk.base[2]), () => drawLeafy(growBroadleaf(drawnSk.get(sk)!, YOUNG_GROW, "young", keepOutOf(sk)), "young", ONCE))),
-      ...willows.map((sk) => job(`willow${sk.index}`, away(sk.base[0], sk.base[2]), () => drawLeafy(growWillow(drawnSk.get(sk)!), "willow", ONCE))),
+      ...instanceJobs("street_cherry", "street_cherry", (ko, sk) => cherry(sk ?? taperedVariant.street_cherry, STREET_CHERRY, ko)),
+      ...instanceJobs("orchard", "orchard", (ko, sk) => cherry(sk ?? taperedVariant.orchard, ORCHARD, ko)),
+      ...instanceJobs("street_green", "street_green", (ko, sk) => leafy(sk ?? taperedVariant.street_green, GREEN_GROW, "green", ko)),
+      ...young.map((sk) => job(`young${sk.index}`, away(sk.base[0], sk.base[2]), leafy(drawnSk.get(sk)!, YOUNG_GROW, "young", keepOutOf(sk)), drawAny("young", ONCE))),
+      ...willows.map((sk) => job(`willow${sk.index}`, away(sk.base[0], sk.base[2]), { kind: "willow", sk: drawnSk.get(sk)! }, drawAny("willow", ONCE))),
     ];
     jobs.sort((p, q) => p.d - q.d);
+    // every crown asked for at once (nearest first): the workers grow them in that order while the page draws
+    grower.init(allEnvs, boxes);
+    const crowns = jobs.map((j) => grower.grow(j.req));
+    dressFlora(await floraJob);
+    if (await step("placement")) return v.abandon();
     // the vegetation is shown now (the flowers, and each tree as it comes)
     onShow?.(v);
     early = 9; // from here the trees count
     onProgress?.(0.2);
-    for (let j = 0; j < jobs.length; j++) {
-      jobs[j]!.run();
-      onProgress?.(0.2 + (0.7 * (j + 1)) / jobs.length);
-      if (await step(jobs[j]!.name)) return v.abandon();
+    try {
+      for (let j = 0; j < jobs.length; j++) {
+        const made = await crowns[j]!;
+        if (import.meta.env.DEV) ((globalThis as { __cvCrownTimes?: unknown[] }).__cvCrownTimes ??= []).push([jobs[j]!.name, Math.round((made as { ms?: number }).ms ?? -1), Math.round(performance.now())]);
+        if (cancelled()) return v.abandon();
+        jobs[j]!.draw(made);
+        onProgress?.(0.2 + (0.7 * (j + 1)) / jobs.length);
+        if (await step(jobs[j]!.name)) return v.abandon();
+      }
+    } finally {
+      grower.dispose();
+      v.stopGrowing = null;
     }
     stats.connection = conn;
     stats.originBlobs = blobs;
@@ -1477,9 +1523,13 @@ export class VillageVegetation {
 
   /** A build that was cancelled: free what it made. */
   private abandon(): null {
+    this.stopGrowing?.();
     this.dispose();
     return null;
   }
+
+  /** Stops the crowns' workers (a build cancelled before its trees were done). */
+  private stopGrowing: (() => void) | null = null;
 
   /** Give `mesh` (a mesh of the village clone) a copy of its geometry without the cards' triangles. */
   private hideCards(mesh: Mesh, drop: readonly Card[]): void {
