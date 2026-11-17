@@ -32,6 +32,17 @@ const drawn = (P, want) =>
       const d = Math.hypot(g.position.x - x, g.position.z - z);
       if (!best || d < best.d) best = { d, pos: [g.position.x, g.position.z], world: [g.matrixWorld.elements[12], g.matrixWorld.elements[14]], mwau: g.matrixWorldAutoUpdate };
     });
+    // far avatars (perf/crowd) are drawn as an instance of the crowd mesh, not as a skinned group: the instance's position counts
+    t.scene.traverse((o) => {
+      if (o.name !== "avatar__impostors" || !o.isInstancedMesh) return;
+      const e = o.instanceMatrix.array;
+      for (let i = 0; i < o.count; i++) {
+        const sx = e[i * 16] ** 2 + e[i * 16 + 5] ** 2;
+        if (sx === 0) continue; // a free slot
+        const d = Math.hypot(e[i * 16 + 12] - x, e[i * 16 + 14] - z);
+        if (!best || d < best.d) best = { d, pos: [e[i * 16 + 12], e[i * 16 + 14]], world: [e[i * 16 + 12], e[i * 16 + 14]], mwau: "instance" };
+      }
+    });
     return best;
   }, want);
 

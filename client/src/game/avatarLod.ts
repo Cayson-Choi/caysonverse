@@ -18,6 +18,8 @@ export const AVATAR_LOD = {
   cadence: [1, 2, 3, 4, 6] as const,
   /** Avatars within this distance cast a shadow. */
   shadowM: 24,
+  /** Frames between refreshes of a standing avatar that has not moved nor had its pose touched, beyond the near band. */
+  stillCadence: 12,
 };
 
 /** Frames between two refreshes of an avatar's node tree at `distance` (m); `behind`: it is behind the camera. */
@@ -38,4 +40,12 @@ export function behindCamera(x: number, z: number, cx: number, cz: number, fx: n
   if (d < 4) return false;
   // more than ~100° off the view direction: out of any phone or desktop field of view
   return (dx * fx + dz * fz) / (d * (Math.hypot(fx, fz) || 1)) < -0.17;
+}
+
+/**
+ * DEV only (e2e/crowd-100.mjs --lod old): the avatar level of detail of perf/crowd (stand-ins for far avatars, the slow
+ * refresh of avatars that stand still) switched off, to measure the same build with and without it in one run.
+ */
+export function crowdLodOff(): boolean {
+  return import.meta.env.DEV && typeof window !== "undefined" && (window as unknown as { __cvLodOff?: boolean }).__cvLodOff === true;
 }

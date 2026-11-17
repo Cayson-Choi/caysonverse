@@ -4,6 +4,7 @@ import { startRemoteSync, type PlayersRoom } from "./remoteSync";
 import type { AreaGate } from "./areaFilter";
 import { getRoster, subscribeRoster } from "./remoteStore";
 import { RemotePlayer } from "./RemotePlayer";
+import { CrowdLayer } from "./crowdLayer";
 import { preloadCharacterAssets } from "./useAvatar";
 import type { Pose, SeatState } from "./types";
 
@@ -49,7 +50,7 @@ export function RemotePlayers({
   const roster = useSyncExternalStore(subscribeRoster, getRoster, getRoster);
 
   return (
-    <>
+    <CrowdLayer blobShadow={blobShadow}>
       {roster.map((sessionId) => (
         // Per-avatar Suspense so one remote's model load never blanks the others
         // (or the local player, which shares the scene's outer boundary).
@@ -57,6 +58,6 @@ export function RemotePlayers({
           <RemotePlayer sessionId={sessionId} blobShadow={blobShadow} />
         </Suspense>
       ))}
-    </>
+    </CrowdLayer>
   );
 }

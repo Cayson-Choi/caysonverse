@@ -33,7 +33,9 @@ import {
   stepLoop,
 } from "./stride";
 import { decideMixerTick } from "./mixerThrottle";
-import { AVATAR_LOD, avatarTreeCadence, behindCamera } from "./avatarLod";
+import { AVATAR_LOD, avatarTreeCadence, behindCamera, crowdLodOff } from "./avatarLod";
+import { useCrowd } from "./crowdLayer";
+import { impostorColors, wantsImpostor } from "./crowdImpostor";
 import { typingRegistry } from "./typing";
 import {
   JUMP_FADE_IN_S,
@@ -142,6 +144,13 @@ export function RemotePlayer({
 
   const groupRef = useRef<Group>(null);
   const lodFramesRef = useRef(0); // frames since the node tree was last refreshed (step 8)
+  // Far stand-in (crowdImpostor.ts): the slot this avatar holds in the scene's crowd (-1: it is drawn as the full avatar), the
+  // stride phase of its walk, and whether a pose was applied (mixer tick) since the last tree refresh, and where the group was then.
+  const crowd = useCrowd();
+  const slotRef = useRef(-1);
+  const phaseRef = useRef(0);
+  const treeDirtyRef = useRef(true);
+  const refreshedAtRef = useRef({ x: 0, y: 0, z: 0, yaw: 0 });
   const castsRef = useRef(true); // whether the avatar casts a shadow now (step 8)
   const castersRef = useRef<Object3D[] | null>(null);
 
@@ -150,6 +159,7 @@ export function RemotePlayer({
   // releases them on unmount; this component owns only its mixer (cleanup below).
   const look = useMemo(() => lookFromAppearance(appearance), [appearance]);
   const stride = useMemo(() => lookStride(look), [look]);
+  const crowdColors = useMemo(() => impostorColors(look), [look]);
   const { avatar, animations } = useAvatar(look, { probeId: sessionId });
   const mixer = useMemo(() => new AnimationMixer(avatar.root), [avatar]);
   // Fishing lake (A10): the rod in this avatar's hand, the fishing clips and the landed fish (lake/fishingRig.ts). A carrier's
@@ -495,6 +505,39 @@ export function RemotePlayer({
     primedRef.current = false;
   };
 
+  /**
+   * The viewer came close (or the avatar sat down, boarded, was disconnected...): the full avatar is back in the scene, posed
+   * as the mixer last left it, and the stand-in's slot is free.
+   */
+  const leaveImpostor = (group: Group | null): void => {
+    if (slotRef.current < 0) return;
+    crowd?.release(slotRef.current);
+    slotRef.current = -1;
+    if (group) {
+      if (avatar.root.parent !== group) group.add(avatar.root);
+      if (shadowRef.current) shadowRef.current.visible = true;
+      mixer.update(0);
+      refreshAvatarMatrices(group);
+      treeDirtyRef.current = false;
+    }
+    lodFramesRef.current = 0;
+  };
+  // The stand-in's slot goes back when the avatar leaves, and when the scene rebuilds its crowd (then the full avatar shows
+  // again at once; the next frame decides afresh). The avatar itself is fixed for the mount: on its way out nothing is re-added.
+  useEffect(() => {
+    return () => {
+      if (slotRef.current < 0) return;
+      crowd?.release(slotRef.current);
+      slotRef.current = -1;
+      lodFramesRef.current = 0;
+      const group = groupRef.current;
+      if (group && avatar.root.parent === null) {
+        group.add(avatar.root);
+        if (shadowRef.current) shadowRef.current.visible = true;
+      }
+    };
+  }, [crowd, avatar]);
+
   useFrame((state, delta) => {
     const group = groupRef.current;
     const rec = getRemoteRecord(sessionId);
@@ -504,6 +547,7 @@ export function RemotePlayer({
     const rideSlot = rec.rideSeat ?? -1;
     if (rideSlot >= 0 || coasterRidingRef.current) {
       if (rideSlot >= 0) {
+        leaveImpostor(group);
         if (!coasterRidingRef.current) {
           coasterRidingRef.current = true;
           startRide("seat");
@@ -555,6 +599,7 @@ export function RemotePlayer({
       }
     }
     if (placeNow) {
+      leaveImpostor(group);
       const bus = getTransitRenderPose();
       const spot = placeNow.kind === "seat" ? BUS_SEATS[placeNow.index]! : null;
       const body = spot ? seatBodyPoint(spot) : null;
@@ -807,6 +852,42 @@ export function RemotePlayer({
     //    typing — is the NametagSystem's job; this avatar only registered it.)
     const camDist = state.camera.position.distanceTo(group.position);
 
+    // 6b) Far stand-in (crowdImpostor.ts): a standing or walking avatar well away from the camera is one instance of the crowd
+    //     mesh — no mixer, no node tree, no draws of its own. Hysteresis between ENTER and EXIT; anything but a plain ground
+    //     avatar (seated, getting up, hopping, fishing, ghosted) stays a full avatar.
+    if (crowd && !crowdLodOff()) {
+      const eligible =
+        !!target && seat.mode === "up" && jumpSeqRef.current === -1 && rec.connected && !hasRod && !fishRig.needsTick();
+      if (eligible) crowd.report(camDist);
+      const want = wantsImpostor(slotRef.current >= 0, eligible, camDist, crowd.thresholdM);
+      if (want && slotRef.current < 0) {
+        const slot = crowd.acquire(crowdColors);
+        if (slot >= 0) {
+          slotRef.current = slot;
+          avatar.root.removeFromParent();
+          if (crowd.blob && shadowRef.current) shadowRef.current.visible = false;
+        }
+      } else if (!want && slotRef.current >= 0) {
+        leaveImpostor(group);
+      }
+    }
+    if (slotRef.current >= 0) {
+      if (group.matrixWorldAutoUpdate) {
+        group.matrixAutoUpdate = false;
+        group.matrixWorldAutoUpdate = false;
+      }
+      const moving = loopRef.current !== null && loopRef.current !== "idle";
+      const speed = moving ? loopSpeed(driveRef.current) : 0;
+      phaseRef.current += (4 + speed) * delta;
+      crowd!.place(slotRef.current, group.position.x, group.position.y, group.position.z, group.rotation.y, speed, phaseRef.current, stepLiftRef.current);
+      lodFramesRef.current += 1;
+      if (lodFramesRef.current >= 2) {
+        lodFramesRef.current = 0;
+        refreshAvatarMatrices(group); // the tag and the blob under it (the avatar's tree is out of the scene)
+      }
+      return;
+    }
+
     // 7) Mixer discipline: paused while idle/seated-settled; every-frame during a
     //    crossfade OR a one-shot sit/stand/jump clip; distance-throttled while walking/running.
     const transient = seat.mode === "sitting" || seat.mode === "standing" || jumpSeqRef.current !== -1;
@@ -818,6 +899,7 @@ export function RemotePlayer({
         mixer.update(accDeltaRef.current);
         accDeltaRef.current = 0;
         framesSinceRef.current = 0;
+        treeDirtyRef.current = true;
         if (fadeRef.current > 0) fadeRef.current = Math.max(0, fadeRef.current - delta);
       } else {
         const tick = decideMixerTick(camDist, framesSinceRef.current, accDeltaRef.current);
@@ -825,12 +907,15 @@ export function RemotePlayer({
           mixer.update(tick.delta);
           accDeltaRef.current = 0;
           framesSinceRef.current = 0;
+          treeDirtyRef.current = true;
         }
       }
     }
 
     // 8) Far LOD (avatarLod.ts): the avatar's node tree (bones, meshes, tag) is refreshed here, every frame near, every few
-    //    frames far or behind the camera (three's own pass skips it); only near avatars cast a shadow.
+    //    frames far or behind the camera (three's own pass skips it); only near avatars cast a shadow. A standing avatar that
+    //    has not moved and whose pose has not been touched since the last refresh (idle: the mixer is paused) is refreshed
+    //    rarely beyond the near band: nothing in its tree has changed (the tag's size and fade follow at that pace).
     if (group.matrixWorldAutoUpdate) {
       group.matrixAutoUpdate = false;
       group.matrixWorldAutoUpdate = false;
@@ -838,9 +923,24 @@ export function RemotePlayer({
     const ce = state.camera.matrixWorld.elements;
     const behind = behindCamera(group.position.x, group.position.z, state.camera.position.x, state.camera.position.z, -ce[8]!, -ce[10]!);
     lodFramesRef.current += 1;
-    if (lodFramesRef.current >= avatarTreeCadence(camDist, behind) || transient || fadeRef.current > 0) {
+    const at = refreshedAtRef.current;
+    const still =
+      !treeDirtyRef.current &&
+      seat.mode === "up" &&
+      at.x === group.position.x &&
+      at.y === group.position.y &&
+      at.z === group.position.z &&
+      at.yaw === group.rotation.y;
+    let cadence = avatarTreeCadence(camDist, behind);
+    if (still && camDist >= AVATAR_LOD.nearM && !crowdLodOff()) cadence = Math.max(cadence, AVATAR_LOD.stillCadence);
+    if (lodFramesRef.current >= cadence || transient || fadeRef.current > 0) {
       lodFramesRef.current = 0;
       refreshAvatarMatrices(group);
+      treeDirtyRef.current = false;
+      at.x = group.position.x;
+      at.y = group.position.y;
+      at.z = group.position.z;
+      at.yaw = group.rotation.y;
     }
     const casts = camDist < AVATAR_LOD.shadowM;
     if (casts !== castsRef.current) {

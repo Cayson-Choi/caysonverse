@@ -152,6 +152,8 @@ export async function openPlayer(browser, run, { tag, device = DESKTOP, settings
       return import(/* @vite-ignore */ u ?? p);
     };
   });
+  // CV_LOD_OFF=1: the far-avatar stand-ins and the still-avatar skipping (perf/crowd) switched off, to tell them from a regression
+  if (process.env.CV_LOD_OFF) await ctx.addInitScript(() => (window.__cvLodOff = true));
   await ctx.addInitScript((extra) => {
     try {
       if (!localStorage.getItem("cv-settings-v1")) localStorage.setItem("cv-settings-v1", JSON.stringify({ coachDone: true, ...extra }));
