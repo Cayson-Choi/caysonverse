@@ -49,3 +49,9 @@ export function behindCamera(x: number, z: number, cx: number, cz: number, fx: n
 export function crowdLodOff(): boolean {
   return import.meta.env.DEV && typeof window !== "undefined" && (window as unknown as { __cvLodOff?: boolean }).__cvLodOff === true;
 }
+
+/** DEV only (e2e/crowd-look.mjs): `window.__cvAvatarForce[sessionId]` = "full" | "imp" pins one avatar's drawing, to photograph both side by side. */
+export function crowdForce(sessionId: string): "full" | "imp" | null {
+  if (!import.meta.env.DEV || typeof window === "undefined") return null;
+  return (window as unknown as { __cvAvatarForce?: Record<string, "full" | "imp"> }).__cvAvatarForce?.[sessionId] ?? null;
+}

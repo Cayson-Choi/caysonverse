@@ -39,7 +39,7 @@ export const IMPOSTOR_MAX_M = 28;
 /** Half the gap (m) between becoming a stand-in and becoming a full avatar again: an avatar on the border does not flicker. */
 export const IMPOSTOR_HYST_M = 1.5;
 /** Full avatars drawn at once: the PC tier, and the touch / low-spec tier. */
-export const FULL_BUDGET = { rich: { count: 32, minM: 14 }, lite: { count: 8, minM: 11 } } as const;
+export const FULL_BUDGET = { rich: { count: 32, minM: 14 }, lite: { count: 10, minM: 14 } } as const;
 /** Most stand-ins at once (a room holds 30 players; the rest is slack for several rooms' worth of looks). */
 export const IMPOSTOR_CAPACITY = 128;
 
@@ -60,8 +60,8 @@ export function crowdThreshold(distances: Float32Array, n: number, budget: numbe
 export const PART = { skin: 0, hair: 1, top: 2, bottom: 3, shoes: 4 } as const;
 
 /** Swing: rotation about the X axis through the hip / the shoulder (m above the feet). */
-const HIP_Y = 0.52;
-const SHOULDER_Y = 0.98;
+const HIP_Y = 0.54;
+const SHOULDER_Y = 1.0;
 
 interface Piece {
   geometry: BufferGeometry;
@@ -83,7 +83,12 @@ function finish(piece: Piece): BufferGeometry {
   for (let i = 0; i < n; i++) {
     if (piece.part === "head") {
       // the top and the back of the head are hair, the face and the sides skin
-      part[i] = normal.getY(i) > 0.25 || normal.getZ(i) < -0.2 || (normal.getY(i) > 0.05 && pos.getZ(i) < 0.1) ? PART.hair : PART.skin;
+      const hair = normal.getY(i) > 0.25 || normal.getZ(i) < -0.2 || (normal.getY(i) > 0.05 && pos.getZ(i) < 0.1);
+      part[i] = hair ? PART.hair : PART.skin;
+      if (hair) {
+        // the hair (or hat) stands a little off the skull, like the avatar's
+        pos.setXYZ(i, pos.getX(i) * 1.07, 1.4 + (pos.getY(i) - 1.4) * 1.07, pos.getZ(i) * 1.07);
+      }
     } else {
       part[i] = piece.part;
     }
@@ -104,18 +109,18 @@ export function buildFigureGeometry(): BufferGeometry {
   };
   // legs (bottom colour) and shoes: swing about the hip, one forward while the other is back
   for (const side of [1, -1]) {
-    add(new CylinderGeometry(0.115, 0.1, 0.4, 7, 1), PART.bottom, side * 0.13, 0.32, 0, side, HIP_Y);
-    add(new BoxGeometry(0.2, 0.12, 0.3), PART.shoes, side * 0.13, 0.06, 0.04, side, HIP_Y);
+    add(new CylinderGeometry(0.13, 0.115, 0.42, 7, 1), PART.bottom, side * 0.15, 0.33, 0, side, HIP_Y);
+    add(new BoxGeometry(0.23, 0.13, 0.34), PART.shoes, side * 0.15, 0.065, 0.05, side, HIP_Y);
   }
   // body (top colour): a slightly tapered trunk
-  add(new CylinderGeometry(0.27, 0.3, 0.5, 8, 1), PART.top, 0, 0.77);
+  add(new CylinderGeometry(0.31, 0.34, 0.54, 8, 1), PART.top, 0, 0.78);
   // arms (top colour) with skin hands: swing about the shoulder, against the legs
   for (const side of [1, -1]) {
-    add(new CylinderGeometry(0.075, 0.07, 0.4, 6, 1), PART.top, side * 0.36, 0.78, 0, -side * 0.85, SHOULDER_Y);
-    add(new SphereGeometry(0.085, 6, 5), PART.skin, side * 0.36, 0.56, 0, -side * 0.85, SHOULDER_Y);
+    add(new CylinderGeometry(0.09, 0.085, 0.42, 6, 1), PART.top, side * 0.43, 0.79, 0, -side * 0.85, SHOULDER_Y);
+    add(new SphereGeometry(0.1, 6, 5), PART.skin, side * 0.43, 0.56, 0, -side * 0.85, SHOULDER_Y);
   }
   // head: skin face, hair on the top and the back (a bald or hatted figure tints that cap by its own colour)
-  add(new SphereGeometry(0.34, 12, 9), "head", 0, 1.3);
+  add(new SphereGeometry(0.41, 12, 9), "head", 0, 1.4);
   const merged = mergeGeometries(pieces.map(finish), false);
   if (!merged) throw new Error("crowdImpostor: cannot merge the figure");
   merged.computeBoundingSphere();

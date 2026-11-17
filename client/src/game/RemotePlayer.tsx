@@ -33,7 +33,7 @@ import {
   stepLoop,
 } from "./stride";
 import { decideMixerTick } from "./mixerThrottle";
-import { AVATAR_LOD, avatarTreeCadence, behindCamera, crowdLodOff } from "./avatarLod";
+import { AVATAR_LOD, avatarTreeCadence, behindCamera, crowdForce, crowdLodOff } from "./avatarLod";
 import { useCrowd } from "./crowdLayer";
 import { impostorColors, wantsImpostor } from "./crowdImpostor";
 import { typingRegistry } from "./typing";
@@ -859,7 +859,8 @@ export function RemotePlayer({
       const eligible =
         !!target && seat.mode === "up" && jumpSeqRef.current === -1 && rec.connected && !hasRod && !fishRig.needsTick();
       if (eligible) crowd.report(camDist);
-      const want = wantsImpostor(slotRef.current >= 0, eligible, camDist, crowd.thresholdM);
+      const forced = import.meta.env.DEV ? crowdForce(sessionId) : null;
+      const want = forced ? forced === "imp" && eligible : wantsImpostor(slotRef.current >= 0, eligible, camDist, crowd.thresholdM);
       if (want && slotRef.current < 0) {
         const slot = crowd.acquire(crowdColors);
         if (slot >= 0) {
