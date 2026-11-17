@@ -41,6 +41,7 @@ import {
   type BakedCard,
   type Branch,
   type TreeSkeleton,
+  type TreeSpec,
 } from "./treeSkeleton";
 import { bushSize, findBushes, type Bush } from "./shrubs";
 import { removePlazaZelkova, zelkovaSkeleton } from "./zelkova";
@@ -448,6 +449,15 @@ export interface BuildOptions {
   flowersOnly?: boolean;
   /** A Web Worker for the crowns' growth (crownWorker.ts); none: they grow on the page. */
   makeWorker?: () => Worker;
+  /**
+   * 케이슨랜드: grow only THESE trees (game metres, any kind) and none of the village's; the root given is then an empty group. The park's
+   * trees, broadleaf and blossoming, use the village's own crowns, bark, leaves and levels of detail.
+   */
+  parkTrees?: readonly TreeSpec[];
+  /** 케이슨랜드: bushes to draw (the village's own boxwood and azalea look), added to those found in the root's cards (none for a park build). */
+  parkBushes?: readonly Bush[];
+  /** 케이슨랜드: the share of each crown's clusters the far level keeps (the tier's `thin` scaled by it; the kept ones grow to cover), for a park of many trees. */
+  farThin?: number;
 }
 
 /** A slice of the build's work (ms) before the main thread is handed back. */
@@ -660,6 +670,12 @@ export class VillageVegetation {
     const { focus, onShow, sliceMs, onProgress } = options;
     const v = new VillageVegetation(tier, mode, options.flowersOnly === true);
     v.root = root;
+    if (options.farThin) {
+      // a copy (VEG_TIERS is shared with the village): the far level keeps fewer clusters, each grown to cover
+      const k = options.farThin;
+      const thin = <T extends { thin: number; thinScale: number }>(c: T): T => ({ ...c, thin: c.thin * k, thinScale: c.thinScale / Math.sqrt(k) });
+      (v as unknown as { cfg: VegTierConfig }).cfg = { ...v.cfg, cherry: thin(v.cfg.cherry), green: thin(v.cfg.green) };
+    }
     // the crowns' workers start loading now, while the flowers are laid out (crownGrow.ts)
     const grower = createCrownGrower(options.makeWorker);
     // the plant atlas drawn in the first worker (an OffscreenCanvas) while the page reads the cards and the skeletons
@@ -820,19 +836,21 @@ export class VillageVegetation {
 
     // ── the trees' skeletons, replayed from the art script (the very limbs and cards of the file) ──
     const zelkova = zelkovaSkeleton();
-    const plaza = PLAZA_CHERRY_SPECS.map(treeSkeleton);
+    // (a park build, 케이슨랜드: only its own trees and bushes, none of the village's)
+    const parkOnly = options.parkTrees !== undefined;
+    const plaza = parkOnly ? [] : PLAZA_CHERRY_SPECS.map(treeSkeleton);
     // the file's trees as replayed (their cards and baked bark are found by these) and as drawn: the trees the A8 houses
     // displace grow at their new spots (집 외관 A8, houses/housesPrep.ts a8TreeShift), the rest where they are
-    const villageFile = VILLAGE_TREE_SPECS.map(treeSkeleton);
+    const villageFile = (options.parkTrees ?? VILLAGE_TREE_SPECS).map(treeSkeleton);
     const village = villageFile.map((sk, i) => {
-      const spec = VILLAGE_TREE_SPECS[i]!;
-      const shift = housesMode() === "new" ? a8TreeShift(spec.x, spec.z) : null;
+      const spec = (options.parkTrees ?? VILLAGE_TREE_SPECS)[i]!;
+      const shift = !parkOnly && housesMode() === "new" ? a8TreeShift(spec.x, spec.z) : null;
       return shift ? shiftSkeleton(sk, shift.dx, shift.dz) : sk;
     });
     // (the lot buildings' trees with them: the schoolyard's, from the lot models' extras, L5v2)
-    village.push(...LOT_TREE_SPECS.map(treeSkeleton));
-    const willows = WILLOW_SPECS.map(treeSkeleton);
-    const young = YOUNG_SPECS.map(treeSkeleton);
+    if (!parkOnly) village.push(...LOT_TREE_SPECS.map(treeSkeleton));
+    const willows = parkOnly ? [] : WILLOW_SPECS.map(treeSkeleton);
+    const young = parkOnly ? [] : YOUNG_SPECS.map(treeSkeleton);
     const variant = {
       street_green: treeSkeleton(VARIANT_SPECS.street_green),
       street_cherry: treeSkeleton(VARIANT_SPECS.street_cherry),
@@ -1080,7 +1098,7 @@ export class VillageVegetation {
     stats.lamps = setVegLamps(lamps, [0, 0, 0]);
     const envOf = new Map<TreeSkeleton, Envelope>();
     for (const sk of plaza) envOf.set(sk, crownEnvelope(sk));
-    const zelkovaOn = PLAZA_ZELKOVA_GROWN ? [zelkova] : [];
+    const zelkovaOn = PLAZA_ZELKOVA_GROWN && !parkOnly ? [zelkova] : [];
     for (const sk of zelkovaOn) envOf.set(sk, broadleafEnvelope(sk, ZELKOVA_GROW));
     for (const sk of village) envOf.set(sk, sk.kind === "cherry" ? crownEnvelope(sk) : broadleafEnvelope(sk, GREEN_GROW));
     for (const sk of young) envOf.set(sk, broadleafEnvelope(sk, YOUNG_GROW));
@@ -1220,6 +1238,7 @@ export class VillageVegetation {
     const variantBush = bushSize(SHRUB_VARIANT.H, SHRUB_VARIANT.R);
     const bushes: Bush[] = [
       ...found,
+      ...(options.parkBushes ?? []),
       ...xfs.shrub.map((m) => {
         const s = new Vector3().setFromMatrixScale(m).x;
         return { x: m.elements[12]!, y: m.elements[13]!, z: m.elements[14]!, h: variantBush.h * s, r: variantBush.r * s, seed: (Math.abs(Math.sin(m.elements[12]! * 3.1 + m.elements[14]! * 1.7)) * 1e4) % 1, cards: [] };

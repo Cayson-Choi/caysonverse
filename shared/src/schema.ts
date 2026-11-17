@@ -86,6 +86,10 @@ export class Player extends Schema {
   // lake v2 (owner 2026-11-17: the fish dragged in while the line is pulled): the big fish's fight on every screen — bit 7 = the angler
   // holds (reels), bits 0..6 = how far it is brought in (0..100). Only while fighting; sent at most every FIGHT_SEND_MS and on presses.
   @type("uint8") fishReel = 0;
+  // 케이슨랜드 (design docs/designs/caysonland/DESIGN.md): -1 = not on a ride; 0..11 = the seat of the 별똥별 급행 (shared/land/coaster.ts) the
+  // player rides. Appended at the END of the schema (older clients ignore an unknown trailing field). The ride itself is not state: every
+  // screen computes the train from the wall clock (coasterAt), so only "who sits where" travels. Written only by villageCoaster.ts.
+  @type("int8") rideSeat = -1;
 }
 
 /** The village room's synced state: every connected player, keyed by session id. */

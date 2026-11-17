@@ -20,6 +20,7 @@
  */
 
 import { lotRoomOf } from "./villageLots";
+import { PARK_BOUNDS, PARK_EXIT_PAD, PARK_SOLIDS } from "./parkArea";
 import { isBlocked, type AABB } from "../collision";
 import type { Bounds } from "../school/geometry";
 import { PLAYER_RADIUS } from "../worldMap";
@@ -77,6 +78,7 @@ export function makeArrivalArea(bounds: Bounds, obstacles: readonly AABB[], pads
 const L = VILLAGE_LAYOUT;
 const VILLAGE_AREA = makeArrivalArea(L.areas.village, villageGeometry.obstacles, [L.memorial.exterior.doorPad]);
 const HALL_AREA = makeArrivalArea(L.areas.hall, villageGeometry.obstacles, [L.memorial.interior.doorPad]);
+const PARK_ARRIVAL_AREA = makeArrivalArea(PARK_BOUNDS, PARK_SOLIDS, [{ centre: { x: PARK_EXIT_PAD.x, z: PARK_EXIT_PAD.z }, radius: PARK_EXIT_PAD.radius }]);
 const HOUSE_AREAS = new Map<string, ArrivalArea>();
 const LOT_ROOM_AREAS = new Map<string, ArrivalArea>();
 
@@ -114,6 +116,7 @@ function houseFloorArea(area: string): ArrivalArea | null {
 /** The arrival geometry of a 케이슨 마을 area: the village, the memorial hall, or one floor of a house. */
 export function arrivalArea(area: string): ArrivalArea {
   if (area === "hall") return HALL_AREA;
+  if (area === "park") return PARK_ARRIVAL_AREA;
   const room = lotRoomArrivalArea(area);
   if (room) return room;
   const house = houseFloorArea(area);

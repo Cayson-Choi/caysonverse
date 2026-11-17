@@ -35,6 +35,8 @@ export interface RemotePlayerRecord {
    * built without one (tests).
    */
   busSeat?: number;
+  /** The remote's seat on the 별똥별 급행 (`Player.rideSeat`, land/coasterRide.ts): -1 = not riding. A rider is drawn in the car (RemotePlayer). */
+  rideSeat?: number;
   /** The remote's point in the bus's own frame (m ahead of its middle, m towards its doors, the facing's offset: busCabin.ts). */
   busAhead?: number;
   busRight?: number;
@@ -185,7 +187,7 @@ export function forEachRemotePosition(
 ): void {
   for (const record of records.values()) {
     // A rider is in the bus (the moving bus is solid itself, playerObstacles.ts): no body where it boarded.
-    if ((record.busSeat ?? -1) >= 0) continue;
+    if ((record.busSeat ?? -1) >= 0 || (record.rideSeat ?? -1) >= 0) continue;
     const drawn = record.drawn;
     if (drawn) {
       fn(drawn.x, drawn.z, record.connected);
@@ -212,6 +214,8 @@ export interface RemoteSummary {
   busAhead: number;
   busRight: number;
   busYaw: number;
+  /** The remote's seat on the 별똥별 급행 (-1: not riding). */
+  rideSeat: number;
 }
 
 /** Dev/E2E view: each remote's appearance, newest known position + ghost flag + seat. */
@@ -229,6 +233,7 @@ export function getRemotes(): RemoteSummary[] {
       connected: record.connected,
       seatIndex: record.seatIndex,
       busSeat: record.busSeat ?? -1,
+      rideSeat: record.rideSeat ?? -1,
       busAhead: record.busAhead ?? 0,
       busRight: record.busRight ?? 0,
       busYaw: record.busYaw ?? 0,

@@ -45,6 +45,7 @@ import {
   BUS_RIDE_TARGET_BOARD,
   BUS_RIDE_TARGET_LEAVE,
   BUS_STAND_TARGET_ID,
+  COASTER_BOARD_TARGET_ID,
   CUBBY_TARGET_PREFIX,
   GUIDE_TARGET_PREFIX,
   KEYPAD_TARGET_PREFIX,
@@ -77,6 +78,11 @@ import { prefetchHouse } from "./houseRelease";
 import { houseOpen } from "./keypadText";
 import { liveSunEnabled } from "./sunShadows";
 import { MapPlaces } from "./MapPlaces";
+import { ParkWorld } from "../land/ParkWorld";
+import { CoasterHud } from "../land/CoasterHud";
+import { sendRideBoard } from "../net/connection";
+import { landPose } from "../land/coasterRide";
+import { startRideAudio } from "../land/coasterAudio";
 
 /**
  * 케이슨 마을 — the village scene (Task 4). A `PlayShell` on the village map under the village's afternoon
@@ -139,8 +145,32 @@ function AfterDressed({ children }: { children: ReactNode }) {
 /** A failed village model: its cover lifts at once (the plain ground and the notice show, not "불러오는 중…"). */
 const uncoverVillage = () => vegDressing.uncover();
 
+/** Copies the live pose into the land HUD's module (the HUD column is outside the 3D slot's frame objects). */
+function LandPoseProbe({ pose }: { pose: Pose }) {
+  useFrame(() => {
+    landPose.x = pose.x;
+    landPose.z = pose.z;
+  });
+  return null;
+}
+
+/** 케이슨랜드 (the park area): no village model to dress, so the loading cover lifts at once; the park loads in its own Suspense. */
+function ParkArea({ tier }: { tier: VillageTier }) {
+  useEffect(() => {
+    uncoverVillage();
+  }, []);
+  return (
+    <LoadBoundary fallback={null} onReset={() => undefined} onFail={uncoverVillage} notice="케이슨랜드를 불러오지 못했어요. 잠시 뒤 다시 불러올게요.">
+      <Suspense fallback={null}>
+        <ParkWorld tier={tier} />
+      </Suspense>
+    </LoadBoundary>
+  );
+}
+
 /** What the local player's area draws: the village model and its signs (no floor mark at the memorial's door), or the hall's room. */
 function VillageArea({ area, tier, pose }: { area: AreaId; tier: VillageTier; pose: Pose }) {
+  if (area === "park") return <ParkArea tier={tier} />;
   if (area === "hall") return <HallArea pose={pose} />;
   if (isHouseArea(area)) return <HouseArea area={area} pose={pose} />;
   if (isLotArea(area)) return <LotRoomArea area={area} pose={pose} />;
@@ -241,6 +271,12 @@ function VillageDoors({ pose }: { pose: Pose }) {
         // Outside the boarding window (3 min before each departure): say when the bus leaves (the server would refuse; review 2026-11-15)
         if (!boardingNow) showTransitNotice(busWaitNotice(departsInMs));
         else sendBusRide("board");
+        return;
+      }
+      if (target.id === COASTER_BOARD_TARGET_ID) {
+        clearClickTarget();
+        startRideAudio(); // inside the press: the browser lets the sound start
+        sendRideBoard();
         return;
       }
       if (target.id === BUS_RIDE_TARGET_LEAVE) {
@@ -477,7 +513,8 @@ export function VillageScene({ identity }: { identity: Identity }) {
           <VillageArea area={area} tier={tier} pose={pose} />
           <GuideNpcs area={area} />
           <VillageDoors pose={pose} />
-          {area === "village" && <StarSky tier={tier} />}
+          <LandPoseProbe pose={pose} />
+          {(area === "village" || area === "park") && <StarSky tier={tier} />}
           <VeilFrameThrottle active={area === "village"} />
         </>
       )}
@@ -485,6 +522,7 @@ export function VillageScene({ identity }: { identity: Identity }) {
         <>
           <VillageMusic />
           <TransitRideHud />
+          <CoasterHud />
           <StarFinderButton />
         </>
       }

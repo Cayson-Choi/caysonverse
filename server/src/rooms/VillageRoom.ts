@@ -39,6 +39,8 @@ import {
 } from "./transitRuntime";
 import { BUS_DRIVER, BusDriver, busDriveTrip } from "@caysonverse/shared/village/busDrive";
 import { busDismountSpot } from "@caysonverse/shared/village/busSeats";
+import { VillageCoaster } from "./villageCoaster";
+import { parkGeometry, useParkDoor } from "@caysonverse/shared/village/parkArea";
 import {
   BUS_CAPACITY,
   BUS_SEATS,
@@ -156,6 +158,17 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     },
   });
 
+  /** The 별똥별 급행 (villageCoaster.ts): who sits where; the train is the wall clock's. */
+  private readonly coaster: VillageCoaster = new VillageCoaster({
+    wallClock: () => this.wallClock(),
+    player: (sid) => this.state.players.get(sid),
+    players: () => this.state.players.entries(),
+    clients: () => this.clients,
+    onMessage: (type, handler) => {
+      this.onMessage(type, handler);
+    },
+  });
+
   /** The process's candles (every room's hall shows the same ones); a test may swap in its own. */
   protected candles: CandleBook = CANDLES;
   private offCandles: (() => void) | null = null;
@@ -196,6 +209,7 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
       this.handleBusStand(client);
     });
     this.fishing.register(); // the fishing messages (villageFishing.ts)
+    this.coaster.register(); // RideBoard / RideLeave (villageCoaster.ts)
     this.onMessage(VillageMsg.Keypad, (client, payload: unknown) => {
       this.handleKeypad(client, payload);
     });
@@ -207,6 +221,8 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     this.clock.setInterval(() => this.tickBus(), BUS_DRIVER.tickMs);
     // The fishing stages that end by themselves (nibble, bite, the fight, ...). The client never chooses these transitions.
     this.clock.setInterval(() => this.fishing.tick(), 100);
+    // The coaster's laps that are over unload (the train and its stations are the wall clock's; only the seats are state).
+    this.clock.setInterval(() => this.coaster.tick(), 500);
   }
 
   /** The server's wall clock (Unix epoch ms, UTC). A seam for tests; the door and move caps use `now()`. */
@@ -296,6 +312,11 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
   /** The village map: the open village, the memorial hall's sealed interior and the twenty rooms of the ten houses (one coordinate space). */
   protected geometry(): MapGeometry {
     return villageGeometry;
+  }
+
+  /** The park (케이슨랜드) is its own place with its own frame and solids; every other area walks on the village geometry. */
+  protected override geometryFor(player: Player): MapGeometry {
+    return player.area === "park" ? parkGeometry : villageGeometry;
   }
 
   /**
@@ -413,6 +434,7 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     }
     this.releaseSeat(client.sessionId);
     this.fishing.leave(client.sessionId);
+    this.coaster.leave(client.sessionId);
     super.onLeave(client);
   }
 
@@ -778,7 +800,7 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     // the village's memorial door and the hall's way out (useDoor), or a house's way out to its porch (useHouseExit)
     const loadFailed = payload !== null && typeof payload === "object" && (payload as { loadFailed?: unknown }).loadFailed === true;
     // …or a lot building's door and its room's way out (L5v2, villageLots.ts useLotDoor: the same reach and in-front rules)
-    const arrival = useDoor(player.area, player.x, player.z) ?? useHouseExit(player.area, player.x, player.z, loadFailed) ?? useLotDoor(player.area, player.x, player.z);
+    const arrival = useDoor(player.area, player.x, player.z) ?? useHouseExit(player.area, player.x, player.z, loadFailed) ?? useLotDoor(player.area, player.x, player.z) ?? useParkDoor(player.area, player.x, player.z);
     if (arrival === null) return; // no door within reach → silent drop
 
     const now = this.now();

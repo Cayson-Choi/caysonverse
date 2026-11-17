@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
-import { AnimationMixer, Group, LoopOnce, Vector3, type AnimationAction, type Camera, type Object3D, type Plane } from "three";
+import { AnimationMixer, Group, LoopOnce, Quaternion, Vector3, type AnimationAction, type Camera, type Object3D, type Plane } from "three";
 import { busCamState } from "./busRide";
 import { DEFAULT_APPEARANCE } from "@caysonverse/shared/appearance";
 import { setAvatarOpacity } from "./characterAvatar";
@@ -70,6 +70,7 @@ import {
   type BusRiderPoseFull,
 } from "@caysonverse/shared/village/busCabin";
 import { getTransitRenderPose } from "../net/transitSync";
+import { carSeatPose, coasterNow } from "../land/coasterRide";
 import { stepLean } from "./leanBack";
 import { CARRY_STRIPPED_CLIPS, stripArm } from "../lake/fishingRig";
 import { useFishingRig, useHasRod } from "../lake/useFishingRig";
@@ -220,6 +221,9 @@ export function RemotePlayer({
   const prevConnectedRef = useRef(true);
   // The place in the village bus this avatar is drawn in (-1: not riding), and the pose there (reused).
   const ridingRef = useRef<BusPlaceKind | "none">("none");
+  /** On the 별똥별 급행 (Player.rideSeat): drawn in the car, seated, tilting with it (land/coasterRide.ts carSeatPose). */
+  const coasterRidingRef = useRef(false);
+  const coasterPose = useRef({ pos: new Vector3(), quat: new Quaternion() });
   const riderPoseRef = useRef<BusRiderPoseFull>({ x: 0, z: 0, yaw: 0, y: 0, seated: false });
   // The rider's point in the bus's own frame as DRAWN: it eases to the server's (the patches come ten a second) and moves
   // with the bus, so the avatar walks the aisle smoothly whatever the bus does.
@@ -495,6 +499,41 @@ export function RemotePlayer({
     const group = groupRef.current;
     const rec = getRemoteRecord(sessionId);
     if (!group || !rec || !seatRef.current) return;
+
+    // 0a) The 별똥별 급행: a rider is seated in the car, on the shared clock's train (the same for every viewer).
+    const rideSlot = rec.rideSeat ?? -1;
+    if (rideSlot >= 0 || coasterRidingRef.current) {
+      if (rideSlot >= 0) {
+        if (!coasterRidingRef.current) {
+          coasterRidingRef.current = true;
+          startRide("seat");
+        }
+        const cp = coasterPose.current;
+        carSeatPose(coasterNow().s, rideSlot, cp.pos, cp.quat);
+        group.position.copy(cp.pos);
+        group.quaternion.copy(cp.quat);
+        group.visible = true;
+        const dr = drawnRef.current;
+        dr.x = cp.pos.x;
+        dr.z = cp.pos.z;
+        noteRemoteDrawn(rec, cp.pos.x, cp.pos.z);
+        advancePlayout(rec.playout, rec.snapshots, performance.now());
+        if (fadeRef.current > 0) {
+          mixer.update(delta);
+          fadeRef.current = Math.max(0, fadeRef.current - delta);
+        }
+        // the avatar's node tree is refreshed by hand: the walking path switches the automatic update off (step 8 below), and a group
+        // with matrixWorldAutoUpdate off keeps the matrixWorld it is given
+        refreshAvatarMatrices(group);
+        return;
+      }
+      // got off: upright again, on the ground where the server has them
+      coasterRidingRef.current = false;
+      group.quaternion.identity();
+      group.rotation.set(0, 0, 0);
+      group.visible = true;
+      endRide(rec);
+    }
 
     // 0) The village bus: a rider is a person in the bus's own frame (busCabin.ts): free in the aisle they walk (eased from
     //    the server's point, ten patches a second), on a seat they sit, at a pole they hold on; they move with the bus,
