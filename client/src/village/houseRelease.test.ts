@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { Group } from "three";
+import { Group, Texture } from "three";
 
 /** A stand-in for the loader's cache, keyed by url: only what was requested can be read. */
 const h = vi.hoisted(() => {
@@ -25,7 +25,7 @@ vi.mock("@react-three/drei", () => {
   return { useGLTF };
 });
 
-import { clearHouseCaches, heldHouses, holdHouseFiles, noteHouseRequested, prefetchHouse, releaseHouseNow, requestedHouses } from "./houseRelease";
+import { clearHouseCaches, heldHouses, holdHouseFiles, loadHouseTexture, noteHouseRequested, prefetchHouse, releaseHouseNow, requestedHouses } from "./houseRelease";
 
 const url = (n: number) => `/models/village/houses/house_${n}.glb`;
 
@@ -95,3 +95,25 @@ describe("houseRelease: prefetch, hold, release", () => {
     expect(h.preloaded.filter((u) => u === url(1))).toHaveLength(2);
   });
 });
+
+describe("houseRelease: the shared albedo files (realism pass)", () => {
+  it("a texture two houses asked for is freed only when the last of them lets it go", async () => {
+    const made: Texture[] = [];
+    const loader = { loadAsync: async () => { const t = new Texture<HTMLImageElement>(); made.push(t); return t; } };
+    const url = "/textures/houses/hi/T_h_floor_oak.webp";
+    const a = await loadHouseTexture(1, url, loader);
+    const b = await loadHouseTexture(2, url, loader);
+    expect(a).toBe(b);
+    expect(made).toHaveLength(1);
+    const freed = vi.spyOn(a as Texture, "dispose");
+    releaseHouseNow(1);
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+    expect(freed).not.toHaveBeenCalled();
+    // house 2 still reads the same texture (no second download)
+    expect(await loadHouseTexture(2, url, loader)).toBe(a);
+    releaseHouseNow(2);
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+    expect(freed).toHaveBeenCalled();
+  });
+});
+

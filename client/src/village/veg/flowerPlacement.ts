@@ -66,6 +66,22 @@ export interface Plant {
 /** A raised bed on the plaza: plants are kept on its soil, and those near its rim lean out over it. */
 export type Bed =
   | { kind: "ring"; x: number; z: number; rMin: number; rMax: number; lean: number }
+  /**
+   * A house's window box or hanging basket (the Colmar houses, 2026-11-17: shared/.../generated/house_flower_boxes.json):
+   * a level rectangle of soil at height y, planted full of geraniums that spill over its rims.
+   */
+  | {
+      kind: "box";
+      x0: number;
+      x1: number;
+      z0: number;
+      z1: number;
+      y: number;
+      /** The way out of the wall (unit, x z) for a window box: its plants trail over the outer rim; none = all round (a pot, a basket). */
+      out?: [number, number] | null;
+      /** "window" (geraniums and trailing petunias, dense), "pot" (the same in a terracotta pot or basket), "border" (a mixed edge). */
+      plant?: "window" | "pot" | "border";
+    }
   | { kind: "square"; x: number; z: number; half: number; hole: number; lean: number }
   | { kind: "fountain"; half: number; rMin: number; lean: number };
 
@@ -83,17 +99,51 @@ export const PLAZA_BEDS: readonly Bed[] = [
 
 /** The grid step (m) candidates are laid on over a raised bed. */
 export const BED_GRID = 0.07;
+/** A window box, pot or basket: candidates every 5 cm, plants 11 cm apart (twice a bed's density: the overflowing boxes). */
+export const BOX_GRID = 0.05;
+export const BOX_SPACING = 0.11;
 
 /** A raised bed's bounding box [x0, x1, z0, z1]. */
 export function bedBox(bed: Bed): [number, number, number, number] {
+  if (bed.kind === "box") return [bed.x0, bed.x1, bed.z0, bed.z1];
   if (bed.kind === "ring") return [bed.x - bed.rMax, bed.x + bed.rMax, bed.z - bed.rMax, bed.z + bed.rMax];
   if (bed.kind === "square") return [bed.x - bed.half, bed.x + bed.half, bed.z - bed.half, bed.z + bed.half];
   return [-bed.half, bed.half, -bed.half, bed.half];
 }
 
 /** Which bed a point is on (or null), and whether it is allowed there. */
-export function bedAt(beds: readonly Bed[], x: number, z: number): { bed: Bed; ok: boolean; out: [number, number] } | null {
+export function bedAt(beds: readonly Bed[], x: number, z: number, y?: number): { bed: Bed; ok: boolean; out: [number, number] } | null {
   for (const bed of beds) {
+    if (bed.kind === "box") {
+      // a box is found only at its own height (boxes of the two storeys stand one over the other)
+      if (y === undefined || Math.abs(y - bed.y) > 0.3) continue;
+      if (x < bed.x0 - 0.15 || x > bed.x1 + 0.15 || z < bed.z0 - 0.15 || z > bed.z1 + 0.15) continue;
+      // a box overflows: its planting reaches 4 cm past the outer rim (the mounds hang over it)
+      const o = bed.out ?? null;
+      const ox0 = bed.x0 - (o && o[0] < 0 ? 0.04 : 0);
+      const ox1 = bed.x1 + (o && o[0] > 0 ? 0.04 : 0);
+      const oz0 = bed.z0 - (o && o[1] < 0 ? 0.04 : 0);
+      const oz1 = bed.z1 + (o && o[1] > 0 ? 0.04 : 0);
+      const ok = x >= ox0 && x <= ox1 && z >= oz0 && z <= oz1;
+      const cx = (bed.x0 + bed.x1) / 2;
+      const cz = (bed.z0 + bed.z1) / 2;
+      const hx = Math.max(1e-3, (bed.x1 - bed.x0) / 2);
+      const hz = Math.max(1e-3, (bed.z1 - bed.z0) / 2);
+      if (o) {
+        // a window box: 0 at the wall's rim, 1 at the outer rim and past it; the ends lean out a little along the box
+        const across = Math.abs(o[0]) > 0.5 ? (x - cx) / hx : (z - cz) / hz;
+        const t = Math.max(0, Math.min(1.2, (across * Math.sign(Math.abs(o[0]) > 0.5 ? o[0] : o[1]) + 1) / 2));
+        const along = Math.abs(o[0]) > 0.5 ? (z - cz) / hz : (x - cx) / hx;
+        const endLean = Math.max(0, Math.abs(along) - 0.75) * 1.5 * Math.sign(along);
+        const ex = o[0] * t + (Math.abs(o[0]) > 0.5 ? 0 : endLean);
+        const ez = o[1] * t + (Math.abs(o[0]) > 0.5 ? endLean : 0);
+        return { bed, ok, out: [ex, ez] };
+      }
+      // a pot or a basket: out all round from its middle
+      const ex = (x - cx) / hx;
+      const ez = (z - cz) / hz;
+      return { bed, ok, out: [Math.max(-1.2, Math.min(1.2, ex)), Math.max(-1.2, Math.min(1.2, ez))] };
+    }
     if (bed.kind === "ring") {
       const dx = x - bed.x;
       const dz = z - bed.z;
@@ -134,6 +184,22 @@ export function linearHex(hex: string): [number, number, number] {
 
 /** Colour palettes (sRGB, weight). Petunias as in the Seoul beds (magenta, pink, white, purple, red). */
 export const PALETTES = {
+  /** Trailing petunias round the boxes' rims: magenta, pink, a deep purple, white. */
+  trailing: [
+    ["#C2187A", 3],
+    ["#E8559A", 2.5],
+    ["#FBF7F9", 2.5],
+    ["#7A2C93", 1],
+  ],
+  /** Window boxes and hanging baskets (the Colmar houses): zonal geranium reds, a coral, two pinks, a little white. */
+  geranium: [
+    ["#D21F2C", 4],
+    ["#E8323C", 3],
+    ["#F25A4E", 1.5],
+    ["#E8559A", 1.5],
+    ["#F7A1C0", 1],
+    ["#FBF7F9", 0.5],
+  ],
   petunia: [
     ["#C2187A", 3],
     ["#E8559A", 3],
@@ -282,7 +348,7 @@ export function placeFlowers(cards: readonly Card[], beds: readonly Bed[] = PLAZ
       }
       continue;
     }
-    const onBed = bedAt(beds, cx, cz);
+    const onBed = bedAt(beds, cx, cz, card.floor);
     if (onBed) {
       let list = bedCards.get(onBed.bed);
       if (!list) bedCards.set(onBed.bed, (list = []));
@@ -297,12 +363,12 @@ export function placeFlowers(cards: readonly Card[], beds: readonly Bed[] = PLAZ
   }
   for (const [bed, list] of bedCards) {
     const [x0, x1, z0, z1] = bedBox(bed);
-    const step = BED_GRID;
+    const step = bed.kind === "box" ? BOX_GRID : BED_GRID;
     for (let x = x0; x <= x1; x += step)
       for (let z = z0; z <= z1; z += step) {
         const px = x + (rand() - 0.5) * step;
         const pz = z + (rand() - 0.5) * step;
-        const at = bedAt([bed], px, pz);
+        const at = bedAt([bed], px, pz, bed.kind === "box" ? bed.y : undefined);
         if (!at || !at.ok) continue;
         // the planting (row) and the light of the nearest old card
         let best = list[0]!;
@@ -326,23 +392,30 @@ export function placeFlowers(cards: readonly Card[], beds: readonly Bed[] = PLAZ
   }
   for (const c of candidates) {
     const { x, y, z, row } = c;
-    const onBed = bedAt(beds, x, z);
+    const onBed = bedAt(beds, x, z, y);
     if (onBed && !onBed.ok) continue;
-    const { species, palette } = speciesFor(row, x, z);
-    if (tooClose(x, y, z, SPACING[species] * (c.wild ? WILD_SPACING : 1))) continue;
+    // window boxes, pots and baskets (the Colmar houses, owner 2026-11-17: overflowing like the Petite Venise photo): planted
+    // twice as close as a bed, geraniums with trailing petunias (pink, magenta, white) round the rims; borders a mixed edge
+    const box = onBed?.bed.kind === "box" ? onBed.bed : null;
+    const rim = box ? Math.hypot(onBed!.out[0], onBed!.out[1]) : 0;
+    const { species, palette } = box
+      ? { species: SPECIES.petunia, palette: (box.plant === "border" ? (rand() < 0.5 ? "geranium" : "trailing") : rim > 0.75 && rand() < 0.4 ? "trailing" : "geranium") as PaletteName }
+      : speciesFor(row, x, z);
+    if (tooClose(x, y, z, box ? BOX_SPACING : SPACING[species] * (c.wild ? WILD_SPACING : 1))) continue;
     const drift = driftUnit(x, z, species * 7 + row);
     const base = linearHex(pick(PALETTES[palette], drift));
     const bright = 0.92 + 0.16 * rand();
     const tint: [number, number, number] = [Math.min(1, base[0] * bright), Math.min(1, base[1] * bright), Math.min(1, base[2] * bright)];
     const out = onBed?.out ?? [0, 0];
-    const leanOut = 0.18 + 0.22 * rand(); // 10-23 degrees over a rim
+    // over a box's rim the plants trail: 30-60 degrees and a little lower (hanging over the edge); elsewhere 10-23 degrees
+    const leanOut = box && box.plant !== "border" ? 0.5 + 0.55 * rand() : 0.18 + 0.22 * rand();
     const p: Plant = {
       x,
       y,
       z,
       species,
       yaw: rand() * Math.PI * 2,
-      scale: 1.0 + 0.4 * rand(),
+      scale: box ? (box.plant === "border" ? 1.0 : 1.5) + 0.5 * rand() : 1.0 + 0.4 * rand(),
       // lean toward +x tips the top toward +x: a rotation about z of -angle; toward +z: about x of +angle
       leanX: out[1] * leanOut + (rand() - 0.5) * 0.12,
       leanZ: -out[0] * leanOut + (rand() - 0.5) * 0.12,

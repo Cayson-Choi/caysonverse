@@ -51,7 +51,7 @@ export const BAKE_SUBTRACT_FLOOR = 0.3;
 export const LIGHTMAP_SUN_LIVE = "live";
 
 /** Whether the crescent's probe (villageModelPrep MOON_PROBE) was fitted to a day map WITH the sun (re-fit at the next bake). */
-export const MOON_PROBE_HAS_SUN = true;
+export const MOON_PROBE_HAS_SUN = false; // vrb2: re-fitted for the sun-split bake (villageModelPrep MOON_PROBE.day)
 
 /** The shadow direction's lowest elevation (°): lower and the live shadows stretch across the whole village. */
 export const SHADOW_MIN_ELEVATION = 2;

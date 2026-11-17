@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { SIT_ROOT_AHEAD } from "@caysonverse/shared/sitPose";
 import { VILLAGE_SEATS } from "@caysonverse/shared/village/benchSeats";
-import { VILLAGE_SEAT_MARKERS } from "@caysonverse/shared/village/generated/villageSeatMarkers";
+import { VILLAGE_SEAT_MARKERS } from "@caysonverse/shared/village/benchSeats";
 import { SEATED_HEAD_BEHIND_ROOT, seatedEyeOffset, stepSeatedWeight } from "./seatedEye";
 
 describe("the seated first-person eye (review 2026-11-15)", () => {

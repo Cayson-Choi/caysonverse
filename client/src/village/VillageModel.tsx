@@ -35,6 +35,10 @@ import { fallsModelBuilt } from "./falls/fallsLoader";
 import { StreetFurniture } from "./street/StreetFurniture";
 import type { DrawnGap } from "./veg/drawnGap";
 import { LiveSunShadows } from "./LiveSunShadows";
+import { VillageHouses, housesMode } from "./houses/VillageHouses";
+import { preloadHouses } from "./houses/housesLoader";
+import { LoadBoundary } from "./LoadBoundary";
+import { clearHousesFiles } from "./villageRelease";
 import { ensureShadowPlaceholder, liveSunEnabled } from "./sunShadows";
 
 declare global {
@@ -94,6 +98,9 @@ export function VillageModel({ tier }: { tier: VillageTier }) {
   // the distant mountains (B6): their own small files, read beside the model's, never waited for
   const mountains = mountainsMode() === "new";
   if (mountains) preloadMountains();
+  // the houses' own model (집 외관 A8): its files start beside the village's, never waited for
+  const houses = housesMode() === "new";
+  if (houses) preloadHouses();
   const gltf = useGLTF(VILLAGE_MODEL_URL, DRACO_PATH);
   const lightmap = useTexture(VILLAGE_LIGHTMAP_URL);
   const gl = useThree((s) => s.gl);
@@ -168,7 +175,13 @@ export function VillageModel({ tier }: { tier: VillageTier }) {
           // (nothing to see but the loading screen, whose animations run off the main thread) in long ones: every hand-back
           // draws a whole village frame nobody sees (UX 2026-11-16: 50 ms slices spent about a third of the build drawing)
           sliceMs: () => (state === "live" && !vegDressing.dressed() ? COVERED_SLICE_MS : 12),
-          onProgress: (f) => villageLoad.build(f),
+          // the crowns grow in Web Workers (veg/crownWorker.ts) while the page draws the ones grown
+          makeWorker: () => new Worker(new URL("./veg/crownWorker.ts", import.meta.url), { type: "module" }),
+          onProgress: (f) => {
+            villageLoad.build(f);
+            // still growing: the cover waits for it (vegDressing.ts HARD_CAP_MS), the trees never grow on screen
+            vegDressing.progress(dressing);
+          },
           // the trees nearest the camera grow first, and each shows as soon as it is grown
           focus: () => {
             const p = getThree().camera.position;
@@ -247,6 +260,14 @@ export function VillageModel({ tier }: { tier: VillageTier }) {
       <primitive object={nodes.root} dispose={null} />
       {/* The lamp posts and banners: the baked ones out of this clone, the new ones drawn in their places (street/). */}
       {streetMode() === "new" && <StreetFurniture root={nodes.root} tier={tier} />}
+      {/* The ten houses (집 외관 A8): drawn when in, the old ones cut out of this clone then; a failure keeps the old ones. */}
+      {houses && (
+        <LoadBoundary fallback={null} onReset={clearHousesFiles} notice="집 모습을 새로 불러오지 못했어요. 잠시 뒤 다시 불러올게요.">
+          <Suspense fallback={null}>
+            <VillageHouses key={tier} villageRoot={nodes.root} tier={tier} />
+          </Suspense>
+        </LoadBoundary>
+      )}
       {/* The fishing lake takes the old backdrop lake out of this clone once it is drawn (lake/lakeVillagePatch.ts). */}
       <LakeVillagePatch root={nodes.root} />
       {/* The lot buildings (L5) take the old plot signs and posts out of this clone once they are drawn (lots/LotsVillagePatch.tsx). */}

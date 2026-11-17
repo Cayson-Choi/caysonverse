@@ -10,6 +10,8 @@ import { PLAYER_RADIUS } from "../worldMap";
 import { VILLAGE_CAMERA_BOXES, VILLAGE_COLLIDERS } from "./generated/villageColliders";
 import { MEMORIAL_CAMERA_BOXES, MEMORIAL_COLLIDERS } from "./generated/memorialColliders";
 import { guideColliders } from "./guides";
+import { A7_MODEL_HOUSE_BOXES, A8_TREE_MOVES, modelHasA8Houses, stageA8Colliders } from "./a8Staging";
+import { houseFootprintSize } from "./houseExterior";
 import { HOUSE_FLOORS, HOUSE_NUMBERS, houseFloorBounds } from "./houseAreas";
 import { HOUSES_BLOCK, allHouseWalls, houseColliders } from "./housesGeometry";
 import {
@@ -314,7 +316,7 @@ describe("layout values (brief + rulings + owner changes)", () => {
     expect(BUS_STOP_PAD.every((p) => p.x <= SIDEWALK_OUTER + 5)).toBe(true);
   });
 
-  it("six B-scale plots on a ring: ids, labels, sign text, plot_n due north, plot_w under construction", () => {
+  it("six B-scale plots on a ring: ids, labels, plot_n due north; no signs, no construction site (owner 2026-11-17)", () => {
     expect(L.plots.map((p) => [p.id, p.size.x, p.size.z])).toEqual(
       [
         ["plot_n", 28, 24],
@@ -338,9 +340,11 @@ describe("layout values (brief + rulings + owner changes)", () => {
     const upcoming: Record<string, string> = { plot_w: "도서관", plot_e: "학교", plot_ne: "성당", plot_nw: "절", plot_s: "교회" };
     for (const [id, label] of Object.entries(upcoming)) {
       expect(plot(id as PlotId).label, id).toBe(label);
-      expect(plot(id as PlotId).sign, id).toBe("곧 지어져요");
+      // vrb2 (owner 2026-11-17: real buildings are coming on every plot): no "곧 지어져요" signs, no crane on plot_w
+      expect(plot(id as PlotId).sign, id).toBeNull();
+      expect(plot(id as PlotId).signPost, id).toBeNull();
     }
-    expect(L.plots.filter((p) => p.underConstruction).map((p) => p.id)).toEqual(["plot_w"]);
+    expect(L.plots.filter((p) => p.underConstruction).map((p) => p.id)).toEqual([]);
   });
 
   it("memorial exterior: B footprint 20 x 16 centred on plot_n, door on the south face, pad r 2 m", () => {
@@ -392,7 +396,8 @@ describe("layout values (brief + rulings + owner changes)", () => {
       expect(h.enterable, h.id).toBe(false);
       expect(["n", "s", "e", "w"], h.id).toContain(h.doorSide);
     }
-    for (const h of houses) expect(h.size, h.id).toEqual({ x: 11.2, z: 8.4 });
+    // A8: 11.2 along the front x 10.75 deep; the door-east houses (5, 8, 10) turned so the wide side faces the street
+    for (const h of houses) expect(h.size, h.id).toEqual(h.doorSide === "e" || h.doorSide === "w" ? { x: 10.75, z: 11.2 } : { x: 11.2, z: 10.75 });
     expect(cafes[0].size).toEqual({ x: 20, z: 15 });
     expect(cafes[0].terrace).toBe(6);
     for (const h of houses) expect(h.terrace, h.id).toBe(2.25);
@@ -596,7 +601,7 @@ describe("layout sanity (nothing is built on the water, the road or each other)"
       for (const [pid, pb] of plotBoxes) expect(overlaps(b, pb), `${h.id} / ${pid}`).toBe(false);
       // Its near side closer to the plaza than the plot ring's middle: between the road and the plots.
       expect(distToBox({ x: 0, z: 0 }, b), h.id).toBeLessThan(plot("plot_n").centre.z * -1);
-      expect(h.size, h.id).toEqual(SCENERY_SIZES[h.kind]);
+      expect(h.size, h.id).toEqual(h.kind === "house" ? houseFootprintSize(h.doorSide) : SCENERY_SIZES[h.kind]);
     }
   });
 
@@ -609,7 +614,8 @@ describe("layout sanity (nothing is built on the water, the road or each other)"
   });
 
   it("the originally planned house position (52, 30) was in the old stream; the new layout has no house near the creek", () => {
-    for (const h of L.sceneryHouses) expect(distToBox({ x: h.centre.x, z: WATER_MIN_Z }, boxOf(h)), h.id).toBeGreaterThan(20);
+    // A8 (deeper houses): house 6 reaches z 49.05, 17.95 m short of the creek's southernmost bank line
+    for (const h of L.sceneryHouses) expect(distToBox({ x: h.centre.x, z: WATER_MIN_Z }, boxOf(h)), h.id).toBeGreaterThan(15);
   });
 
   it("memorial footprint sits inside plot_n with the arrival and the door pad", () => {
@@ -669,8 +675,13 @@ describe("layout sanity (nothing is built on the water, the road or each other)"
       const start = l.points[0];
       const end = l.points[l.points.length - 1];
       expect(Math.hypot(start.x, start.z), `${p.id} start`).toBeCloseTo(L.plaza.paving.radius, 1);
-      const target = p.signPost ?? PAD.centre;
-      expect(Math.hypot(end.x - target.x, end.z - target.z), `${p.id} end`).toBeLessThanOrEqual(1.6);
+      // (vrb2: the sign posts are gone; a lane ends at its plot's edge, the memorial's at its door)
+      if (p.id === "plot_n") expect(Math.hypot(end.x - PAD.centre.x, end.z - PAD.centre.z), `${p.id} end`).toBeLessThanOrEqual(1.6);
+      else {
+        const b = boxAt(p.centre, p.size);
+        const d = Math.hypot(Math.max(b.minX - end.x, 0, end.x - b.maxX), Math.max(b.minZ - end.z, 0, end.z - b.maxZ));
+        expect(d, `${p.id} end`).toBeLessThanOrEqual(1.6);
+      }
     }
     const bridge = lane("lane_bridge");
     const bEnd = bridge.points[bridge.points.length - 1];
@@ -678,7 +689,8 @@ describe("layout sanity (nothing is built on the water, the road or each other)"
     expect(bEnd.x).toBeLessThanOrEqual(GAP.maxX);
     expect(bEnd.z).toBeCloseTo(L.bridge.minZ, 9);
     const bus = lane("lane_bus");
-    expect(distToBox(bus.points[bus.points.length - 1], boxOf(L.busStop.shelter))).toBeLessThanOrEqual(2);
+    // vrb2 (A5): the shelter stands 0.85 m further back on the pad (front edge x 41.0); the lane still ends on the pad's edge
+    expect(distToBox(bus.points[bus.points.length - 1], boxOf(L.busStop.shelter))).toBeLessThanOrEqual(2.6);
   });
 
   it("every lane is clear of every collider by at least its half width (a body can walk its whole length)", () => {
@@ -703,7 +715,10 @@ describe("village colliders are built from the layout", () => {
     expect(ids).not.toContain("plaza_trunk");
     expect(ids).not.toContain("plaza_deck");
     expect(ids.filter((i) => i.startsWith("memorial_"))).toHaveLength(3);
-    expect(ids.filter((i) => i.startsWith("house_"))).toHaveLength(10);
+    expect(ids.filter((i) => /^house_\d+$/.test(i))).toHaveLength(10);
+    // A8: every house's porch pieces, LPG cage and garden (house 9 has a back deck instead) are layout boxes too
+    expect(ids.filter((i) => /^house_\d+_lpg$/.test(i))).toHaveLength(10);
+    expect(ids.filter((i) => /^garden_house_\d+$/.test(i))).toHaveLength(9);
     expect(ids).toContain("kiosk");
     // One box per creek segment, the gap segment in two.
     expect(ids.filter((i) => i.startsWith("stream_bank_"))).toHaveLength(STREAM.segments.length + 1);
@@ -735,7 +750,7 @@ describe("village colliders are built from the layout", () => {
     // the café's solid box is its footprint minus the walkable terrace on the door (west) side (option 2: 20 x 15, terrace 6 m: the box ends at the façade)
     expect(box("cafe")).toEqual({ minX: 46.6, maxX: 60.6, minZ: -22.6, maxZ: -7.6 });
     expect(box("cafe")).toEqual(solidBox(L.sceneryHouses.find((h) => h.kind === "cafe")!));
-    expect(box("house_3")).toEqual({ minX: 23.4, maxX: 34.6, minZ: 35.65, maxZ: 41.8 });   // the body; the 2.25 m porch in front is walkable
+    expect(box("house_3")).toEqual({ minX: 23.32, maxX: 34.68, minZ: 35.57, maxZ: 44.13 });   // A8: the body + plinth; the 2.25 m porch in front is walkable
   });
 
   it("the creek is walled off over its whole length except the bridge gap: boxes follow the curve, water plus 3 m of bank each side", () => {
@@ -869,21 +884,30 @@ describe("villageGeometry plays on the colliders generated from village.glb (Tas
     // + the guides (Task 9A) and the parked bus's mirrors (bus review r3)
     expect(villageGeometry).toEqual(buildVillageGeometry(L, VILLAGE_MODEL_COLLIDERS, HALL_MODEL_COLLIDERS, [...guideColliders()], houseColliders(), lotGeometryColliders()));
     // the model's old parked-bus box (square to the map, over the centre line) is left out: the bus is its slices
-    // ...and what a lot building replaces (plot_w's scaffold, col__construction: L5, villageLots LOT_REPLACED_MODEL_BOXES) is left out too
-    expect(VILLAGE_MODEL_COLLIDERS).toEqual(withoutLotReplaced(withoutLegacyBus({ obstacles: VILLAGE_COLLIDERS, cameraBoxes: VILLAGE_CAMERA_BOXES })));
-    expect(VILLAGE_COLLIDERS.filter((b) => sameBox(b, MODEL_LEGACY_BUS_BOX))).toHaveLength(1);
-    const gone = (b: { minX: number; maxX: number; minZ: number; maxZ: number }) => sameBox(b, MODEL_LEGACY_BUS_BOX) || replacedByLot(b);
-    expect(VILLAGE_MODEL_COLLIDERS.obstacles).toHaveLength(VILLAGE_COLLIDERS.filter((b) => !gone(b)).length);
-    expect(VILLAGE_MODEL_COLLIDERS.cameraBoxes).toHaveLength(VILLAGE_CAMERA_BOXES.filter((b) => !gone(b)).length);
-    for (const b of VILLAGE_COLLIDERS) expect(villageGeometry.obstacles.some((o) => sameBox(o, b))).toBe(!gone(b));
-    for (const b of VILLAGE_CAMERA_BOXES) if (!gone(b)) expect(villageGeometry.cameraBoxes).toContainEqual(b);
+    // A8 hand-over: the A7 houses' boxes swapped for the contract's until village.glb is rebuilt with the new houses (a8Staging.ts);
+    // vrb2's rebuild (release 4) has no col__bus box any more (the filter stays for older models)
+    // ...and what a lot building replaces (plot_w's scaffold, L5): vrb2's rebuild has none left, so nothing is taken out
+    expect(VILLAGE_MODEL_COLLIDERS).toEqual(withoutLotReplaced(stageA8Colliders(withoutLegacyBus({ obstacles: VILLAGE_COLLIDERS, cameraBoxes: VILLAGE_CAMERA_BOXES }), L.sceneryHouses)));
+    expect(VILLAGE_COLLIDERS.filter((b) => replacedByLot(b))).toHaveLength(0);
+    const legacy = VILLAGE_COLLIDERS.filter((b) => sameBox(b, MODEL_LEGACY_BUS_BOX)).length;
+    expect(legacy).toBe(0);
+    const a7 = (b: AABB) => A7_MODEL_HOUSE_BOXES.some((l) => sameBox(l.box, b));
+    const a7Count = VILLAGE_COLLIDERS.filter(a7).length;
+    expect(a7Count).toBe(A7_MODEL_HOUSE_BOXES.length); // every A7 box is still in the model (vrb2 rebuilt the village with the A7 houses)
+    const added = greyboxColliders(L).filter((c) => /^(house_\d+(_porch_\d+|_lpg)?|garden_house_\d+)$/.test(c.id)).length + A8_TREE_MOVES.length;
+    expect(VILLAGE_MODEL_COLLIDERS.obstacles).toHaveLength(VILLAGE_COLLIDERS.length - legacy - a7Count + added);
+    expect(VILLAGE_MODEL_COLLIDERS.cameraBoxes).toHaveLength(VILLAGE_CAMERA_BOXES.length - VILLAGE_CAMERA_BOXES.filter((b) => sameBox(b, MODEL_LEGACY_BUS_BOX)).length - VILLAGE_CAMERA_BOXES.filter(a7).length + 10);
+    for (const b of VILLAGE_COLLIDERS) expect(villageGeometry.obstacles.some((o) => sameBox(o, b))).toBe(!sameBox(b, MODEL_LEGACY_BUS_BOX) && !a7(b));
+    for (const b of VILLAGE_CAMERA_BOXES) if (!sameBox(b, MODEL_LEGACY_BUS_BOX) && !a7(b)) expect(villageGeometry.cameraBoxes).toContainEqual(b);
     for (const b of busParkedColliders(L)) expect(villageGeometry.cameraBoxes).not.toContainEqual(b);
   });
 
   it("the model holds every layout box at its exact rectangle, a camera box exactly where the layout says camera", () => {
+    // until village.glb is rebuilt with the A8 houses (X4) their boxes come from the hand-over (a8Staging.ts); after it, the model
+    const model = modelHasA8Houses(VILLAGE_COLLIDERS, L.sceneryHouses) ? { obstacles: VILLAGE_COLLIDERS, cameraBoxes: VILLAGE_CAMERA_BOXES } : VILLAGE_MODEL_COLLIDERS;
     for (const c of colliders) {
-      expect(VILLAGE_COLLIDERS.some((b) => sameBox(b, c.box)), c.id).toBe(true);
-      expect(VILLAGE_CAMERA_BOXES.some((b) => sameBox(b, c.box)), c.id).toBe(c.camera);
+      expect(model.obstacles.some((b) => sameBox(b, c.box)), c.id).toBe(true);
+      expect(model.cameraBoxes.some((b) => sameBox(b, c.box)), c.id).toBe(c.camera);
     }
   });
 
@@ -1465,12 +1489,13 @@ describe("export for the Blender scripts", () => {
     const n = out.plots.find((p) => p.id === "plot_n")!;
     expect(n).toMatchObject({ label: "추모관", sign: null, signPost: null, underConstruction: false, centre: { x: 0, z: -60 }, size: { x: 28, z: 24 }, bounds: { minX: -14, maxX: 14, minZ: -72, maxZ: -48 } });
     const w = out.plots.find((p) => p.id === "plot_w")!;
-    expect(w).toMatchObject({ label: "도서관", sign: "곧 지어져요", underConstruction: true, signPost: { x: -48, z: 15, facing: "e" }, bounds: { minX: -73, maxX: -47, minZ: 1, maxZ: 23 } });
+    expect(w).toMatchObject({ label: "도서관", sign: null, underConstruction: false, signPost: null, bounds: { minX: -73, maxX: -47, minZ: 1, maxZ: 23 } });
   });
 
   it("houses and the café export colour, door side, kind and rectangle", () => {
     const pink = out.sceneryHouses.find((h) => h.id === "house_1")!;
-    expect(pink).toMatchObject({ kind: "house", colour: "pink", doorSide: "s", bounds: { minX: 15.4, maxX: 26.6, minZ: -46.2, maxZ: -37.8 } });
+    expect(pink).toMatchObject({ kind: "house", colour: "pink", doorSide: "s", bounds: { minX: 15.4, maxX: 26.6, minZ: -48.55, maxZ: -37.8 } });
+    expect(out.houseExteriors.houses).toHaveLength(10);
     const cafe = out.sceneryHouses.find((h) => h.kind === "cafe")!;
     expect(cafe).toMatchObject({ id: "cafe", doorSide: "w", colour: "wood", size: { x: 20, z: 15 }, terrace: 6, solid: { minX: 46.6, maxX: 60.6, minZ: -22.6, maxZ: -7.6 } });
   });
@@ -1521,7 +1546,8 @@ describe("the bus stop's walking space (xwalk fix: the shelter at the back of th
   it("an avatar can stand and walk side by side between the bus's door side and the shelter, along its whole length", () => {
     for (let z = bus.minZ + 0.5; z <= -2.6; z += 0.5) {
       // the bus's door side runs along the kerb, 0.35 m off it: a body stands from 0.55 m off the side (its slices take 0.1)
-      for (let x = busDoorSideX(z) + 0.55; x <= shelter.minX - 0.5; x += 0.25) {
+      // (vrb2: the shelter moved back to x 41.0; past x 39.65 the café terrace's corner takes the pad's north end, as before)
+      for (let x = busDoorSideX(z) + 0.55; x <= Math.min(shelter.minX - 0.5, 39.65); x += 0.25) {
         expect(isBlocked(x, z, PLAYER_RADIUS, obstacles), `(${x}, ${z})`).toBe(false);
       }
     }
@@ -1551,13 +1577,14 @@ describe("the bus stop's walking space (xwalk fix: the shelter at the back of th
 });
 
 describe("the bus shelter's opaque light box as a camera box (visual review r4)", () => {
-  it("covers the back wall's light box (1.24 m wide, floor to roof) and nothing else of the shelter", () => {
+  it("covers the back wall's light box (vrb2: 0.76 m wide, 0.16 m deep, in the south bay) and nothing else of the shelter", () => {
     const b = busShelterLightBoxCameraBox(L);
     const s = boxOf(L.busStop.shelter);
-    expect(b.maxX - b.minX).toBeCloseTo(0.08, 6);
+    expect(b.maxX - b.minX).toBeCloseTo(0.16, 6);
     expect(b.maxX).toBeLessThanOrEqual(s.maxX);
-    expect(b.maxZ - b.minZ).toBeCloseTo(1.24, 6);
-    expect((b.minZ + b.maxZ) / 2).toBeCloseTo(L.busStop.shelter.centre.z, 6);
+    expect(b.maxZ - b.minZ).toBeCloseTo(0.76, 6);
+    expect((b.minZ + b.maxZ) / 2).toBeCloseTo(s.maxZ - 0.505, 6);
+    expect(b.minZ).toBeGreaterThan(L.busStop.shelter.centre.z + 1.15); // south of the bench
     expect(b.height).toBeGreaterThanOrEqual(2.55);
   });
 });

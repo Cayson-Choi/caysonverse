@@ -186,7 +186,7 @@ describe("the two stone seats (backless: sat on from either side)", () => {
   it("four seats a stone, after every seat release 1 had (no earlier index moved; only the zelkova deck of release 3 follows), in the village area", () => {
     const falls = VILLAGE_SEATS.findIndex((s) => s.bench.startsWith("falls_seat_"));
     expect(VILLAGE_SEATS.slice(falls, falls + 8).map((s) => s.bench)).toEqual([...Array(4).fill("falls_seat_n"), ...Array(4).fill("falls_seat_s")]);
-    expect(VILLAGE_SEATS.slice(falls + 8).every((s) => isLotSeat(s) || s.id.startsWith("zelkova_deck:") || s.bench.startsWith("h9_"))).toBe(true);
+    expect(VILLAGE_SEATS.slice(falls + 8).every((s) => isLotSeat(s) || s.id.startsWith("zelkova_deck:") || /^h\d+_/.test(s.bench))).toBe(true);
     for (const st of stones) {
       const mine = seatsOf(st.id);
       expect(mine).toHaveLength(4);

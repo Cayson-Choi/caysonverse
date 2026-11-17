@@ -68,9 +68,15 @@ def fix_backdrop(im):
 def enc(im):
     f = io.BytesIO(); im.save(f, "WEBP", quality=90, method=6); return f.getvalue()
 
-repl = {18: enc(fix_sky(Image.open(io.BytesIO(img_bytes(18)))))}
+# the images by NAME (vrb2: the rebuilt file's image order differs from the 2026-11-16 file's, where T_sky was image 18 and
+# T_backdrop image 4; fixed indices graded the wrong textures)
+def img_index(name):
+    return next(i for i, im in enumerate(js["images"]) if im.get("name") == name)
+
+SKY, BACKDROP = img_index("T_sky"), img_index("T_backdrop")
+repl = {SKY: enc(fix_sky(Image.open(io.BytesIO(img_bytes(SKY)))))}
 if "--sky-only" not in sys.argv:
-    repl[4] = enc(fix_backdrop(Image.open(io.BytesIO(img_bytes(4)))))
+    repl[BACKDROP] = enc(fix_backdrop(Image.open(io.BytesIO(img_bytes(BACKDROP)))))
 for i, data in repl.items():
     Image.open(io.BytesIO(data)).convert("RGB").save(dst.rsplit(".", 1)[0] + f"_img{i}.png")
 

@@ -18,6 +18,7 @@ import { TRANSIT, boardingOpensWords } from "@caysonverse/shared/village/transit
 import type { Identity } from "../stores/appStore";
 import { DoorFade } from "./DoorFade";
 import { VegVeil } from "./VegVeil";
+import { VeilFrameThrottle } from "./VeilFrameThrottle";
 import { vegDressing } from "./vegDressing";
 import { vegetationPark } from "./veg/villageVegetation";
 import { doorFade } from "./doorFadeModel";
@@ -477,6 +478,7 @@ export function VillageScene({ identity }: { identity: Identity }) {
           <GuideNpcs area={area} />
           <VillageDoors pose={pose} />
           {area === "village" && <StarSky tier={tier} />}
+          <VeilFrameThrottle active={area === "village"} />
         </>
       )}
       hudColumn={

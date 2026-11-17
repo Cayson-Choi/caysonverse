@@ -1246,7 +1246,7 @@ async function walkIn(p) {
       const me = await pos(p);
       for (let y = Math.round(vp.height * 0.3); y < vp.height * 0.7 && !s; y += 6) {
         const a = await p.page.evaluate(([x, y]) => window.__cm.analyze(x, y), [Math.round(vp.width * 0.62), y]);
-        if (a.kind === "ground" && a.hit.mat === "LM_plaza" && Math.hypot(a.hit.x - me.x, a.hit.z - me.z) >= 14) s = { x: vp.width * 0.62, y };
+        if (a.kind === "ground" && (a.hit.mat === "LM_plaza" || a.hit.mat === "LM_setts") && Math.hypot(a.hit.x - me.x, a.hit.z - me.z) >= 14) s = { x: vp.width * 0.62, y };
       }
       if (!run.check("a far plaza point is on the phone's screen", !!s, {})) return;
     }

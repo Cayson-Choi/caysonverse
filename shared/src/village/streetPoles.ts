@@ -27,9 +27,25 @@ export interface PoleSpot {
 
 const wrap = (a: number): number => Math.atan2(Math.sin(a), Math.cos(a));
 
-/** Every street lamp's base (plaza lamps, then the ring road's, skipping the lanes' crossings and the bus stop). */
+/**
+ * The plaza's ring of street-light posts with banners (main 7e7c5b7, client street/streetLayout.ts PLAZA_RING: seven posts on
+ * r 29 at azimuth 14.5 + k * 360/7 deg clockwise from north). vrb2: they replaced the five old plaza lamps (r 28) and the eight
+ * old banner poles (r 26), which the rebake no longer builds; the colliders follow the posts that stand (the old spots were
+ * left as invisible boxes and the new posts had none).
+ */
+export const PLAZA_RING_POSTS = { radius: 29, count: 7, phaseDeg: 14.5 } as const;
+
+export function plazaRingSpots(): PoleSpot[] {
+  const r = PLAZA_RING_POSTS;
+  return Array.from({ length: r.count }, (_, k) => {
+    const az = ((r.phaseDeg + (k * 360) / r.count) * Math.PI) / 180;
+    return { x: r.radius * Math.sin(az), z: -r.radius * Math.cos(az) };
+  });
+}
+
+/** Every street lamp's base (the plaza ring's posts, then the ring road's, skipping the lanes' crossings and the bus stop). */
 export function lampSpots(layout: Pick<VillageLayout, "plaza" | "lanes">): PoleSpot[] {
-  const pts: PoleSpot[] = layout.plaza.lamps.map((p) => ({ x: p.x, z: p.z }));
+  const pts: PoleSpot[] = plazaRingSpots();
   const laneAngles: number[] = [];
   for (const lane of layout.lanes) {
     const a = lane.points[0]!;
@@ -51,8 +67,8 @@ export function lampSpots(layout: Pick<VillageLayout, "plaza" | "lanes">): PoleS
   return pts;
 }
 
-/** The banner (flag) poles' bases. */
-export function bannerSpots(): PoleSpot[] {
+/** The OLD banner (flag) poles' bases (gone since vrb2: the plaza ring's posts carry the banners). */
+export function oldBannerSpots(): PoleSpot[] {
   return BANNER_ANGLES_DEG.map((deg) => {
     const a = (deg * Math.PI) / 180;
     return { x: BANNER_RADIUS * Math.cos(a), z: BANNER_RADIUS * Math.sin(a) };
@@ -65,4 +81,9 @@ const boxAt = (s: PoleSpot, h: number): AABB => ({ minX: r6(s.x - h), maxX: r6(s
 /** A solid box round every lamp and banner pole (obstacles only: no camera box, the camera passes a thin pole). */
 export function streetPoleColliders(layout: Pick<VillageLayout, "plaza" | "lanes">): AABB[] {
   return [...lampSpots(layout).map((s) => boxAt(s, LAMP_COLLIDER_HALF)), ...bannerSpots().map((s) => boxAt(s, BANNER_COLLIDER_HALF))];
+}
+
+/** The banner poles that stand on their own (none since vrb2: every banner hangs on a plaza ring post, a lamp collider). */
+export function bannerSpots(): PoleSpot[] {
+  return [];
 }

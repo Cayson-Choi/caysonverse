@@ -20,7 +20,7 @@ describe("seatApproachSpot", () => {
         const from = { x: (bounds.minX + bounds.maxX) / 2, z: (bounds.minZ + bounds.maxZ) / 2 };
         const bad: string[] = [];
         VILLAGE_SEATS.forEach((s, i) => {
-          if (s.area !== area) return;
+          if (s.area !== area || s.retired) return; // (a retired seat keeps its index, far away: release 4 h2_1_0:back, h2_1_1:back)
           const standOffers =
             approachesSeat(s, s.standX, s.standZ) && seatDistance(s, s.standX, s.standZ) <= SEAT_REACH && nearestFreeSeat(s.standX, s.standZ, () => false, SEAT_REACH, VILLAGE_SEATS) === i;
           if (standOffers) return;

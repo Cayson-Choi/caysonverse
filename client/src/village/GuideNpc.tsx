@@ -13,6 +13,7 @@ import { bubbleRestHeight, nametagRestHeight } from "../game/nametagLayout";
 import { reportAvatarClip, useAvatar } from "../game/useAvatar";
 import { LoadBoundary } from "./LoadBoundary";
 import { clearNpcCache, useNpcAvatar } from "./npcAvatar";
+import { SceneWarmUp } from "../game/SceneWarmUp";
 import { subscribeGuideDialog, guideDialogOpen } from "./guideDialogStore";
 
 /**
@@ -119,6 +120,8 @@ function GuideFigure({ guide }: { guide: Guide }) {
     <LoadBoundary fallback={<FallbackGuideFigure guide={guide} />} onReset={clearNpcCache} notice="안내원 모습을 불러오지 못했어요. 잠시 뒤 다시 불러올게요.">
       <Suspense fallback={null}>
         <NpcGuideFigure guide={guide} npc={guide.npc} />
+        {/* its outfit and face materials compiled as soon as npc.glb is in, not the first time the guide comes into view */}
+        <SceneWarmUp />
       </Suspense>
     </LoadBoundary>
   );

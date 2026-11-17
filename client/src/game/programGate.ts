@@ -49,6 +49,10 @@ interface Track {
 export const MAX_SKIP_MS = 3000;
 /** Bytes of never-drawn geometry a frame may upload (its first draw copies its buffers to the GPU). */
 export const GEOMETRY_BYTES_PER_FRAME = 4 * 1024 * 1024;
+/** The same on a touch device (a phone's CPU copies them several times slower: a 4 MB frame cost ~100 ms at 4x). */
+export const GEOMETRY_BYTES_PER_FRAME_TOUCH = 1.5 * 1024 * 1024;
+const geometryBytesPerFrame = (): number =>
+  typeof navigator !== "undefined" && (navigator.maxTouchPoints ?? 0) > 0 ? GEOMETRY_BYTES_PER_FRAME_TOUCH : GEOMETRY_BYTES_PER_FRAME;
 /** DEV `?gatelog=1`: time every draw and log the slow ones and program switches (stats.mismatches). Off: the draw path as in production. */
 const LOG = import.meta.env.DEV && typeof location !== "undefined" && new URLSearchParams(location.search).get("gatelog") === "1";
 /** Programs one flush (one frame) may start. */
@@ -151,8 +155,16 @@ export function installProgramGate(
   let lastRender: { scene: Scene; camera: Camera } | null = null;
   const ownRender = gl as WebGLRenderer & { render: WebGLRenderer["render"] };
   const originalRender = ownRender.render;
+  let lastRenderAt = -1e9;
   ownRender.render = function (this: WebGLRenderer, scene, camera) {
     const r = { scene: scene as Scene, camera };
+    // a frame after a long gap (the loading veil draws the scene a few times a second: VeilFrameThrottle): nobody watches
+    // a frame rate there, so new geometry is not rationed (otherwise it took many seconds and objects were forced)
+    if (renders.length === 0) {
+      const at = now();
+      if (at - lastRenderAt > 150) geometryBudget = Infinity;
+      lastRenderAt = at;
+    }
     renders.push(r);
     try {
       return originalRender.call(this, scene, camera);
@@ -174,10 +186,17 @@ export function installProgramGate(
   };
   /** geometries drawn at least once (their buffers are on the GPU), and this frame's upload budget */
   const drawnGeometries = new WeakSet<BufferGeometry>();
-  let geometryBudget = GEOMETRY_BYTES_PER_FRAME;
+  const perFrameBytes = geometryBytesPerFrame();
+  let geometryBudget = perFrameBytes;
   let rafId = 0;
   const perFrame = () => {
-    geometryBudget = GEOMETRY_BYTES_PER_FRAME;
+    geometryBudget = perFrameBytes;
+    // the queued work goes on every display frame, drawn or not (under the loading veil the scene is drawn a few times a
+    // second only, and its compiles would crawl: VeilFrameThrottle)
+    if (!flushQueued && (queue.size > 0 || uploads.size > 0)) {
+      flushQueued = true;
+      setTimeout(flush, 0);
+    }
     rafId = requestAnimationFrame(perFrame);
   };
   if (typeof requestAnimationFrame === "function") rafId = requestAnimationFrame(perFrame);
@@ -323,6 +342,9 @@ export function installProgramGate(
 
   own.renderBufferDirect = function (this: WebGLRenderer, camera, scene, geometry, material, object, group) {
     if (!material || !object) return original.call(this, camera, scene, geometry, material, object, group);
+    // a material with its own clipping planes (a bench sitter): renderer.compile cannot make its variant (three sets the
+    // clipping state per material only inside render), so it goes three's way
+    if (material.clippingPlanes && material.clippingPlanes.length > 0) return original.call(this, camera, scene, geometry, material, object, group);
     // a shadow pass (three passes no scene): gated the same way, its compile made against the scene three takes its lights from
     const shadow = scene === null;
     const lightsFrom = shadow ? (renders[renders.length - 1] ?? lastRender) : null;
@@ -368,7 +390,7 @@ export function installProgramGate(
       // village brings hundreds), the rest wait a frame; the first one of a frame always goes (whatever its size)
       if (ready !== false && !drawnGeometries.has(geometry)) {
         const bytes = geometryBytes(geometry);
-        if (bytes > geometryBudget && geometryBudget < GEOMETRY_BYTES_PER_FRAME) ready = false;
+        if (bytes > geometryBudget && geometryBudget < perFrameBytes) ready = false;
         else {
           geometryBudget -= bytes;
           drawnGeometries.add(geometry);

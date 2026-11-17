@@ -141,20 +141,44 @@ function clumps(plants: Plant[]): SoilShape[] {
     }
     floor /= group.length;
     // the field: the largest (cover - distance) over the plants (a union of discs, soft-edged by its zero line)
-    const g2 = new Map<string, Plant[]>();
+    // a dense grid of cells over the bed (each cell's plants as flat x/z arrays) and plain sqrt: this field is read a few
+    // hundred thousand times per village (perf/no-hitch: it was the build's largest single cost on a slow phone)
     const c2 = 0.3;
+    const gx0 = Math.floor((x0 - COVER) / c2) - 3;
+    const gz0 = Math.floor((z0 - COVER) / c2) - 3;
+    const gw = Math.floor((x1 + COVER) / c2) + 3 - gx0 + 1;
+    const gh = Math.floor((z1 + COVER) / c2) + 3 - gz0 + 1;
+    const counts = new Int32Array(gw * gh + 1);
+    const cellOf = (x: number, z: number) => (Math.floor(z / c2) - gz0) * gw + (Math.floor(x / c2) - gx0);
+    for (const p of group) counts[cellOf(p.x, p.z) + 1]!++;
+    for (let i = 1; i < counts.length; i++) counts[i]! += counts[i - 1]!;
+    const px = new Float64Array(group.length);
+    const pz = new Float64Array(group.length);
+    const fill = counts.slice(0, gw * gh);
     for (const p of group) {
-      const k = `${Math.floor(p.x / c2)},${Math.floor(p.z / c2)}`;
-      const l = g2.get(k);
-      if (l) l.push(p);
-      else g2.set(k, [p]);
+      const at = fill[cellOf(p.x, p.z)]!++;
+      px[at] = p.x;
+      pz[at] = p.z;
     }
     const sd = (x: number, z: number) => {
       let best = -1;
-      const gx = Math.floor(x / c2);
-      const gz = Math.floor(z / c2);
-      for (let a = -2; a <= 2; a++)
-        for (let b = -2; b <= 2; b++) for (const p of g2.get(`${gx + a},${gz + b}`) ?? []) best = Math.max(best, COVER - Math.hypot(x - p.x, z - p.z));
+      const gx = Math.floor(x / c2) - gx0;
+      const gz = Math.floor(z / c2) - gz0;
+      for (let b = -2; b <= 2; b++) {
+        const row = gz + b;
+        if (row < 0 || row >= gh) continue;
+        for (let a = -2; a <= 2; a++) {
+          const col = gx + a;
+          if (col < 0 || col >= gw) continue;
+          const c = row * gw + col;
+          for (let i = counts[c]!, e = counts[c + 1]!; i < e; i++) {
+            const dx = x - px[i]!;
+            const dz = z - pz[i]!;
+            const v = COVER - Math.sqrt(dx * dx + dz * dz);
+            if (v > best) best = v;
+          }
+        }
+      }
       // a little wobble on the edge (dug by hand)
       return best + 0.025 * (valueNoise3(x * 3.1, 0.5, z * 3.1, 77) - 0.5);
     };
@@ -169,9 +193,10 @@ function soilMesh(b: GeoBuilder, s: SoilShape, centre: [number, number] | null):
   const nx = Math.max(1, Math.ceil((x1 - x0) / s.step));
   const nz = Math.max(1, Math.ceil((z1 - z0) / s.step));
   // the plants near each vertex (contact shade): a coarse hash
-  const ph = new Map<string, Plant[]>();
+  const ph = new Map<number, Plant[]>();
+  const keyP = (gx: number, gz: number) => (gx + 32768) * 65536 + (gz + 32768);
   for (const p of s.plants) {
-    const k = `${Math.floor(p.x / 0.2)},${Math.floor(p.z / 0.2)}`;
+    const k = keyP(Math.floor(p.x / 0.2), Math.floor(p.z / 0.2));
     const l = ph.get(k);
     if (l) l.push(p);
     else ph.set(k, [p]);
@@ -200,7 +225,16 @@ function soilMesh(b: GeoBuilder, s: SoilShape, centre: [number, number] | null):
     let near = 9;
     const gx = Math.floor(x / 0.2);
     const gz = Math.floor(z / 0.2);
-    for (let a = -1; a <= 1; a++) for (let c = -1; c <= 1; c++) for (const p of ph.get(`${gx + a},${gz + c}`) ?? []) near = Math.min(near, Math.hypot(x - p.x, z - p.z) / Math.max(0.6, p.scale));
+    for (let a = -1; a <= 1; a++)
+      for (let c = -1; c <= 1; c++) {
+        const cell = ph.get(keyP(gx + a, gz + c));
+        if (!cell) continue;
+        for (const p of cell) {
+          const dx = x - p.x;
+          const dz = z - p.z;
+          near = Math.min(near, Math.sqrt(dx * dx + dz * dz) / Math.max(0.6, p.scale));
+        }
+      }
     ao *= 0.7 + 0.3 * smooth(0.02, 0.13, near);
     if (centre && s.heart > 0) ao *= 0.62 + 0.38 * smooth(s.heart * 0.45, s.heart, Math.hypot(x - centre[0], z - centre[1]));
     // alpha: the soft edge (0.5 on the zero line)
@@ -308,7 +342,7 @@ export function buildSoil(plants: readonly Plant[]): Soil {
   for (const bed of PLAZA_BEDS) {
     const ps = onPlaza.get(bed);
     if (!ps || !ps.length) continue;
-    shapes.push({ s: plazaShape(bed, ps), centre: bed.kind === "fountain" ? null : [bed.x, bed.z] });
+    shapes.push({ s: plazaShape(bed, ps), centre: bed.kind === "fountain" || bed.kind === "box" ? null : [bed.x, bed.z] });
   }
   for (const s of clumps(rest)) shapes.push({ s, centre: null });
   // merge the beds' meshes per 16 m area (few draw calls, culled by area)

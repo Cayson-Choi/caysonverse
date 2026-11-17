@@ -40,7 +40,7 @@ describe("the seats of the room", () => {
     const lakeEnd = VILLAGE_SEATS.findIndex((s, i) => i >= LAKE_SEAT_BASE && s.lake === undefined);
     expect(VILLAGE_SEATS.slice(LAKE_SEAT_BASE, lakeEnd).every((s) => s.lake !== undefined)).toBe(true);
     // (release 3: then the deck, and last the house seats the art brought back — LATE_HOUSE_SEATS)
-    expect(VILLAGE_SEATS.slice(lakeEnd).every((s) => s.bench.startsWith("falls_seat_") || s.id.startsWith("zelkova_deck:") || s.bench.startsWith("h9_") || isLotSeat(s))).toBe(true); // (lots v2's after those)
+    expect(VILLAGE_SEATS.slice(lakeEnd).every((s) => s.bench.startsWith("falls_seat_") || s.id.startsWith("zelkova_deck:") || /^h\d+_/.test(s.bench) || isLotSeat(s))).toBe(true); // (lots v2's after those)
     for (let i = 0; i < 30; i++) expect((VILLAGE_SEATS[LAKE_SEAT_BASE + i] as unknown as { spot: string }).spot).toBe(LAKE_FISHING_SPOTS[i]!.id);
     expect(FISHING_CHAIRS).toHaveLength(30);
   });

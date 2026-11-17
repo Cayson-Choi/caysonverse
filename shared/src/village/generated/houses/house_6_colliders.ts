@@ -19,10 +19,10 @@ export const HOUSE_6_COLLIDERS: readonly AABB[] = [
   { minX: 480.12, maxX: 480.67, minZ: 26.8, maxZ: 27.7 }, // col__h6_2_desk
   { minX: 480.49, maxX: 481.41, minZ: -2.55, maxZ: -1.65 }, // col__h6_1_armchair
   { minX: 480.5, maxX: 482.2, minZ: -7.8, maxZ: -7.46 }, // col__h6_1_shelf_b1
-  { minX: 480.63, maxX: 481.37, minZ: -3.53, maxZ: -2.87 }, // col__h6_1_ottoman
   { minX: 480.72, maxX: 481.08, minZ: -0.88, maxZ: -0.52 }, // col__h6_1_lamp_l
+  { minX: 481.09, maxX: 481.71, minZ: -5, maxZ: -4.5 }, // col__h6_1_ottoman
   { minX: 481.89, maxX: 482.51, minZ: -1.31, maxZ: -0.69 }, // col__h6_1_sidetable
-  { minX: 482.65, maxX: 483.35, minZ: -3.91, maxZ: -3.29 }, // col__h6_1_ottoman2
+  { minX: 482.24, maxX: 482.86, minZ: -5, maxZ: -4.5 }, // col__h6_1_ottoman2
   { minX: 482.94, maxX: 483.86, minZ: -2.85, maxZ: -1.95 }, // col__h6_1_armchair2
   { minX: 483.5, maxX: 483.6, minZ: -1.5, maxZ: 0 }, // col__h6_1_part_entry_0
   { minX: 483.58, maxX: 484.22, minZ: 29.08, maxZ: 29.72 }, // col__h6_2_plant
@@ -30,11 +30,13 @@ export const HOUSE_6_COLLIDERS: readonly AABB[] = [
   { minX: 483.78, maxX: 484.22, minZ: 22.3, maxZ: 22.7 }, // col__h6_2_bedside
   { minX: 483.9, maxX: 486.3, minZ: -7.8, maxZ: -7.46 }, // col__h6_1_shelf_b2
   { minX: 484.2, maxX: 486, minZ: -7.15, maxZ: -6.35 }, // col__h6_1_desk
-  { minX: 484.52, maxX: 486.08, minZ: 22.12, maxZ: 24.28 }, // col__h6_2_bed
-  { minX: 485, maxX: 485.6, minZ: -6.15, maxZ: -5.53 }, // col__h6_1_deskchair
+  { minX: 484.52, maxX: 486.08, minZ: 22.22, maxZ: 24.38 }, // col__h6_2_bed
+  { minX: 485, maxX: 485.6, minZ: -5.53, maxZ: -4.91 }, // col__h6_1_deskchair
+  { minX: 485.8, maxX: 486.8, minZ: 29.48, maxZ: 29.93 }, // col__h6_2_dressing
   { minX: 486.3, maxX: 487, minZ: -1.6, maxZ: -1.4 }, // col__h6_1_part_entry_2
   { minX: 486.38, maxX: 486.83, minZ: 22.3, maxZ: 22.7 }, // col__h6_2_bedside2
   { minX: 487, maxX: 487.1, minZ: -1.5, maxZ: 0 }, // col__h6_1_part_entry_1
+  { minX: 487.32, maxX: 488.52, minZ: -0.54, maxZ: -0.08 }, // col__h6_1_drawers
   { minX: 487.98, maxX: 488.93, minZ: -4.78, maxZ: -3.03 }, // col__h6_1_sofa
   { minX: 488.23, maxX: 488.87, minZ: -7.37, maxZ: -6.73 }, // col__h6_1_plant
   { minX: 488.57, maxX: 488.93, minZ: -2.83, maxZ: -2.47 }, // col__h6_1_lamp_r

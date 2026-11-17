@@ -190,6 +190,13 @@ async function streetShots(p, tag) {
        out.push({ f: l.id + "_street", eye: W(0, 1.7, d + 16), look: W(0, 4, 0) });
        out.push({ f: l.id + "_corner", eye: W(-0.6 * l.front, 2.4, d + 8), look: W(0, 4, 0) });
      }
+     // a test eye never inside a building or a wall: slid toward its target until it is clear of every camera box (and 0.5 m more)
+     const G = await window.__imp("/shared/src/village/villageLayout.ts");
+     const boxes = G.villageGeometry.cameraBoxes;
+     const inside = (p) => boxes.some((b) => p[0] > b.minX - 0.5 && p[0] < b.maxX + 0.5 && p[2] > b.minZ - 0.5 && p[2] < b.maxZ + 0.5 && p[1] < (b.height ?? 4) + 0.3 && p[1] > (b.minY ?? -1) - 0.3);
+     for (const o of out) {
+       for (let k = 0; k < 60 && inside(o.eye); k++) o.eye = [o.eye[0] + (o.look[0] - o.eye[0]) * 0.03, o.eye[1], o.eye[2] + (o.look[2] - o.eye[2]) * 0.03];
+     }
      return out;`,
   );
   for (const s of shots) await render(p, `${tag}_${s.f}.jpg`, s.eye, s.look);

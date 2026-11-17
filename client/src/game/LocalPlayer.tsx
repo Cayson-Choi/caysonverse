@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef } from "react";
+import { MessageType, type StandRejectedPayload } from "@caysonverse/shared/messages";
+import { useClickHint } from "../stores/clickHintStore";
 import { useFrame } from "@react-three/fiber";
 import { useAnimations, useKeyboardControls } from "@react-three/drei";
 import { Group, LoopOnce, type AnimationAction, type AnimationClip, type Plane } from "three";
@@ -20,6 +22,8 @@ import {
   type Glide,
 } from "./seatMotion";
 import { benchClipPlanes, clipAvatar, enableBenchClipping } from "./benchClip";
+import { useBenchClipWarmUp } from "./benchClipWarmUp";
+import { vegDressing } from "../village/vegDressing";
 import { stepLean } from "./leanBack";
 import { isFloorSeat, seatClipBase } from "./seatClips";
 import { readIntent, worldDirection } from "./input";
@@ -129,6 +133,7 @@ function rodClip(c: AnimationClip): AnimationClip {
   return r;
 }
 import { useFishingRig, useHasRod } from "../lake/useFishingRig";
+import { easeLift, publishLocalPose, publishLocalStepLift, stepLiftAt, withSeatLift } from "../village/houses/houseLift";
 
 /** Fallback seconds for a sit/stand clip if its duration can't be read yet. */
 const SIT_CLIP_FALLBACK_SEC = 0.8;
@@ -179,7 +184,7 @@ function clamp(value: number, min: number, max: number): number {
   return value < min ? min : value > max ? max : value;
 }
 
-/** A Stand the server has not answered within this long (ms) is asked again while a move key is held. */
+/** A Stand the server has not answered within this long (ms) is asked again while a move key is held; also how long a held key waits after a refused Stand (StandRejected). */
 const STAND_RETRY_MS = 1200;
 
 export function LocalPlayer({
@@ -215,10 +220,13 @@ export function LocalPlayer({
   const prevSeatRef = useRef(-1); // previous confirmed seatIndex (transition edge)
   const standRequestedRef = useRef(false); // debounce: one Stand per seated episode (asked again after STAND_RETRY_MS)
   const standAtRef = useRef(0);
+  const standRetryAtRef = useRef(0); // after a refused Stand (StandRejected): not before this (performance.now())
   // A seat the sitter rests ON (a village bench, `seatY`): the lift of the seat in use, the seconds spent in the
   // current sit / stand clip and its length, and the glide onto the seat or off it (seatMotion.ts). A legacy chair
   // leaves all of it at rest (lift 0, no glide): it keeps its snap.
   // `clip`: the planes that hide what hangs inside the bench (benchClip.ts), applied once the avatar is on the seat.
+  // The raised porches' picture lift (집 외관 A8, houses/houseLift.ts): eased per frame, added under the hop and the seat.
+  const stepLiftRef = useRef({ v: 0, t: 0 });
   const seatMotionRef = useRef<{
     bench: boolean;
     lift: number;
@@ -241,6 +249,8 @@ export function LocalPlayer({
   const look = useMemo(() => lookFromAppearance(appearance), [appearance]);
   const stride = useMemo(() => lookStride(look), [look]);
   const { avatar, animations } = useAvatar(look, { probeId: sessionId });
+  // the bench sitter's shaders made under the village's loading veil (benchClipWarmUp.ts): the first sit never freezes
+  useBenchClipWarmUp(avatar, () => !vegDressing.dressed() && localArea() === "village");
   const model = avatar.root;
 
   // The own tag and bubble are anchored to THIS avatar's top (hair, hat, ...), measured once at assembly.
@@ -362,6 +372,19 @@ export function LocalPlayer({
   }, [actions, look, pose, orbit, seat, sessionId]);
 
   const sender = useRef(createMoveSender(sendMove)).current;
+
+  // Nothing in front of the seat is free to stand on (owner 2026-11-17, standSpot.ts): the server keeps us seated and says why. The
+  // line shows over the scene (the click hint), and the next key, stick or tap may ask again; a seated tap's walk is dropped.
+  useEffect(() => {
+    const room = getRoom();
+    if (!room) return;
+    return room.onMessage(MessageType.StandRejected, (m: StandRejectedPayload) => {
+      standRequestedRef.current = false;
+      standRetryAtRef.current = performance.now() + STAND_RETRY_MS; // a held key asks again after a pause, not every frame
+      clearClickTarget();
+      useClickHint.getState().show(m.reason);
+    });
+  }, []);
 
   // 클릭 자동 이동 리셋 (design 29 (e)): 이 컴포넌트는 접속 세대(epoch)마다
   // 리마운트되므로, 마운트/언마운트 양쪽에서 target을 비워 재접속·월드 교체
@@ -500,10 +523,18 @@ export function LocalPlayer({
    * flag shared by Space and the touch button (seated, sit / stand-up clip, reconnecting).
    */
   function placeGroup(group: Group, canJump: boolean, suspended: boolean, seatLift = 0): void {
-    const lift = stepJump(performance.now(), canJump);
-    // `seatLift` raises the sitter onto a bench's surface (0 everywhere else); the shadow stays on the floor.
-    group.position.set(pose.x, lift + seatLift, pose.z);
-    if (shadowRef.current) shadowRef.current.position.y = -(lift + seatLift);
+    const now = performance.now();
+    const lift = stepJump(now, canJump);
+    // The porch's lift (A8): eased toward the zone under the pose; a seat's own lift is not added on top of it.
+    const st = stepLiftRef.current;
+    st.v = easeLift(st.v, stepLiftAt(pose.x, pose.z), st.t > 0 ? Math.min(0.1, (now - st.t) / 1000) : 1);
+    st.t = now;
+    publishLocalStepLift(st.v);
+    publishLocalPose(pose.x, pose.z);
+    const base = withSeatLift(st.v, seatLift);
+    // `seatLift` raises the sitter onto a bench's surface (0 everywhere else); the shadow stays on the floor (the porch's).
+    group.position.set(pose.x, lift + base, pose.z);
+    if (shadowRef.current) shadowRef.current.position.y = -(lift + base) + st.v;
     publishLocalJump(lift, !canJump || suspended);
   }
 
@@ -965,6 +996,8 @@ export function LocalPlayer({
       pose.z = rp.z;
       pose.yaw = rp.yaw;
       publishLocalJump(0, true);
+      stepLiftRef.current.v = 0; // aboard: the bus's own floor carries the body
+      publishLocalStepLift(0);
       // the loop on the body follows the walk's speed (Idle on a seat's hold pose: a held clip owns the body)
       if (placeNow.kind !== "seat" && animStateRef.current === "loco" && jumpSeqRef.current === -1) {
         gaitRef.current = groundSpeedBus > 0.05 ? "walk" : "idle";
@@ -1106,9 +1139,10 @@ export function LocalPlayer({
     // 이동이 그 지점으로 이어진다 — "자동 기립 후 이동" 채택.
     if (seated) {
       // One Stand per press, asked again if the server has not stood us up a while later (a message lost, or refused
-      // while a sit was still settling: UX 2026-11-16, a held key must always get the player up).
+      // while a sit was still settling: UX 2026-11-16, a held key must always get the player up); after a StandRejected (nowhere
+      // to stand in front of a backed seat, seat-front) not before standRetryAtRef.
       const nowMs = performance.now();
-      if ((moving || getClickTarget() !== null) && (!standRequestedRef.current || nowMs - standAtRef.current > STAND_RETRY_MS)) {
+      if ((moving || getClickTarget() !== null) && nowMs >= standRetryAtRef.current && (!standRequestedRef.current || nowMs - standAtRef.current > STAND_RETRY_MS)) {
         sendStand();
         standRequestedRef.current = true;
         standAtRef.current = nowMs;

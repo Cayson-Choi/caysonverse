@@ -18,6 +18,8 @@ const arg = (k, d) => {
 const phone = process.argv.includes("--phone");
 const night = process.argv.includes("--night");
 const noCamera = process.argv.includes("--no-camera");
+/** realism pass 2026-11-17: also shoot each spot in first person (two looks), for the game | real sheets */
+const fpShots = process.argv.includes("--fp");
 const houses = arg("houses", "1,2,3,4,5,6,7,8,9,10").split(",").map(Number);
 const seatsArg = arg("seats", "all");
 const name = `village-houses${phone ? "-phone" : ""}${night ? "-night" : ""}`;
@@ -122,6 +124,7 @@ const toScreen = (x, y, z) =>
     const cam = t.camera;
     cam.updateMatrixWorld();
     const v = new cam.position.constructor(x, y, z).project(cam);
+    window.__cvLastProject = { x: +v.x.toFixed(3), y: +v.y.toFixed(3), z: +v.z.toFixed(3), cam: [+cam.position.x.toFixed(2), +cam.position.y.toFixed(2), +cam.position.z.toFixed(2)] };
     if (v.z > 1 || Math.abs(v.x) > 0.92 || Math.abs(v.y) > 0.85) return null;
     const r = t.gl.domElement.getBoundingClientRect();
     return { x: r.left + ((v.x + 1) / 2) * r.width, y: r.top + ((1 - v.y) / 2) * r.height };
@@ -296,6 +299,22 @@ for (const n of houses) {
         await orbit(yaw, 0.32);
         await shot(`${tag}-${floor}-s${k}-y${Math.round((yaw * 180) / Math.PI)}.png`);
       }
+      if (fpShots) {
+        for (const yaw of [0, Math.PI]) {
+          await page.evaluate(async (yaw) => {
+            const vs = await window.__imp("/src/game/viewState.ts");
+            vs.enterFp(yaw);
+            vs.viewState.fpPitch = -0.12;
+          }, yaw);
+          await sleep(1300);
+          await shot(`${tag}-${floor}-s${k}-fp${Math.round((yaw * 180) / Math.PI)}.png`);
+        }
+        await page.evaluate(async () => {
+          const vs = await window.__imp("/src/game/viewState.ts");
+          vs.viewState.mode = "tp";
+        });
+        await sleep(900);
+      }
     }
     run.check(`h${n} floor ${floor}: shot from ≥ 3 spots`, k >= 3, k);
     if (noCamera) return;
@@ -328,7 +347,8 @@ for (const n of houses) {
     return m.VILLAGE_SEATS.map((s, index) => {
       const mk = markers.find((k) => k.id === s.bench);
       return { index, id: s.id, area: s.area, x: s.x, z: s.z, yaw: s.yaw, standX: s.standX, standZ: s.standZ, bench: s.bench, kind: s.kind, seatY: s.seatY, pose: s.pose, frontEdge: s.frontEdge, mx: mk?.x ?? s.x, mz: mk?.z ?? s.z, furn: mk?.furn };
-    }).filter((s) => s.area.startsWith(`house:house_${n}:`));
+      // (a retired seat keeps its index far outside the map: release 4 retired h2_1_0:back, h2_1_1:back — no seat to try)
+    }).filter((s, i) => s.area.startsWith(`house:house_${n}:`) && !m.VILLAGE_SEATS[i].retired);
   }, n);
   H.seats = seatList.length;
 
@@ -342,15 +362,26 @@ for (const n of houses) {
       // piece is in front of it there, again from 1.6 m out in front of its stand spot (the tap that hit something else walked there)
       let sat = false;
       let tries = [];
-      for (const vantage of ["far", "near", "stand"]) {
+      for (const vantage of ["far", "near", "nearIn", "stand", "back"]) {
         // far: the arrival spot; near: 1.6 m out from the stand spot along the seat's facing; stand: the stand spot itself, 1 m back from it
         const away = Math.hypot(seat.standX - seat.x, seat.standZ - seat.z) || 1;
         const want =
           vantage === "far"
             ? { x: from.x, z: from.z }
-            : vantage === "near"
+            : vantage === "near" || vantage === "nearIn"
               ? { x: seat.standX + Math.sin(seat.yaw) * 1.6, z: seat.standZ + Math.cos(seat.yaw) * 1.6 }
-              : { x: seat.standX + ((seat.standX - seat.x) / away) * 0.6, z: seat.standZ + ((seat.standZ - seat.z) / away) * 0.6 };
+              : vantage === "stand"
+                ? { x: seat.standX + ((seat.standX - seat.x) / away) * 0.6, z: seat.standZ + ((seat.standZ - seat.z) / away) * 0.6 }
+                : // back: a pulled-out desk chair facing a wall desk — look at it from the room side, 1.4 m behind the seat
+                  { x: seat.x - Math.sin(seat.yaw) * 1.4, z: seat.z - Math.cos(seat.yaw) * 1.4 };
+        // (realism pass) a desk against a wall: "1.6 m out in front of its stand spot" is through that wall — keep the vantage in the room
+        const ox0 = P.exitPad.x - 5.3;
+        // (plain "near" is tried unclamped first: walking toward a point past the wall stops at the wall, which suits a bed's edge)
+        if (vantage !== "far" && vantage !== "near") {
+          const oz0 = floor === 1 ? 0 : 30;
+          want.x = Math.min(Math.max(want.x, ox0 + 0.45), ox0 + 10.6 - 0.45);
+          want.z = Math.min(Math.max(want.z, oz0 - 7.8 + 0.45), oz0 - 0.45);
+        }
         const at = await goto(want.x, want.z, 0.9);
         await orbit(yawToward(at, seat.mx, seat.mz), 0.55);
         // the cushion's middle (the marker; the seat point of a chair at a table is under the table)
@@ -428,17 +459,41 @@ for (const n of houses) {
   await run.step(`house ${n}: up the stair (a tap on it), and down again (the button)`, async () => {
     if ((await areaOf()) !== `house:house_${n}:1`) return;
     const up = P.upPad;
-    // a tap on the stair from 2.5 m in front of its pad
-    const back = { x: up.x - Math.sin(up.yaw) * 2.4, z: up.z - Math.cos(up.yaw) * 2.4 };
-    let at = await goto(back.x, back.z, 0.9);
-    await orbit(yawToward(at, up.x + Math.sin(up.yaw) * 1.2, up.z + Math.cos(up.yaw) * 1.2), 0.5);
-    const s = await toScreen(up.x + Math.sin(up.yaw) * 1.0, 0.6, up.z + Math.cos(up.yaw) * 1.0);
+    // a tap on the stair from ~2.4 m in front of its pad. Stairs C / D start at the front wall (the pad 1.3 m in): straight back is outside
+    // the room (the walk stopped 0.7 m from the pad and, on a phone's narrow view, the stair point was off screen — art round 2's phone h6
+    // failure), so step back diagonally into the room instead: the first spot that is inside the room with a 0.8 m margin.
+    const ox = 360 + 24 * (n - 1);
+    const inRoom = (q) => q.x > ox + 0.8 && q.x < ox + 10.6 - 0.8 && q.z < -0.8 && q.z > -7.8 + 0.8;
+    const fx = Math.sin(up.yaw);
+    const fz = Math.cos(up.yaw);
+    const cands = [
+      { x: up.x - fx * 2.4, z: up.z - fz * 2.4 },
+      ...[1, -1].map((sg) => ({ x: up.x - fx * 1.2 + fz * sg * 2.0, z: up.z - fz * 1.2 - fx * sg * 2.0 })),
+      ...[1, -1].map((sg) => ({ x: up.x + fz * sg * 2.4, z: up.z - fx * sg * 2.4 })),
+      // beside the flight, out in the room (C / D on a phone: the camera behind a spot by the front wall or the hall partition is pushed
+      // round and never faces the stair)
+      ...[1, -1].map((sg) => ({ x: up.x + fz * sg * 1.8 + fx * 2.0, z: up.z - fx * sg * 1.8 + fz * 2.0 })),
+    ];
+    // try the spots in turn (straight back first, as before): the first one walked to from which the stair point is on screen
+    let at = null;
+    let s = null;
+    search: for (const back of [cands[0], ...cands.slice(5).filter(inRoom), ...cands.slice(1, 5).filter(inRoom)]) {
+      at = await goto(back.x, back.z, 0.9);
+      for (const pitch of [0.5, 0.3, 0.15]) {
+        await orbit(yawToward(at, up.x + Math.sin(up.yaw) * 1.6, up.z + Math.cos(up.yaw) * 1.6), pitch);
+        // a tread on screen: 1.0 .. 2.8 m up the flight from the pad (the treads rise ~0.69 m per m)
+        for (const d of [1.0, 1.6, 2.2, 2.8]) {
+          s = await toScreen(up.x + Math.sin(up.yaw) * d, 0.1 + 0.69 * Math.max(0, d - 0.6), up.z + Math.cos(up.yaw) * d);
+          if (s) break search;
+        }
+      }
+    }
     let upstairs = false;
     if (s) {
       await tapAt(s);
       upstairs = await waitArea(`house:house_${n}:2`, 15000);
     }
-    run.check(`h${n}: a tap on the stair walks there and goes up`, upstairs, { s, at, pick: await page.evaluate(() => window.__cvClickPick?.()?.pick?.name ?? null) });
+    run.check(`h${n}: a tap on the stair walks there and goes up`, upstairs, { s, at, last: await page.evaluate(() => window.__cvLastProject ?? null), pick: await page.evaluate(() => window.__cvClickPick?.()?.pick?.name ?? null) });
     if (!upstairs) {
       at = await goto(up.x, up.z, 0.3);
       const t = await targets(p);

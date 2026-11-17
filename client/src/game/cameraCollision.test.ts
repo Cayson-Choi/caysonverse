@@ -507,32 +507,35 @@ describe("cameraCollision — the bus shelter's opaque light box (visual review 
   const pad = VILLAGE_CAMERA_PAD;
 
   it("pulls the arm in to in front of the light box when the camera would sit behind it (player at the pad, facing the road)", () => {
-    // Head 1.5 m up at (38.5, -5.2) facing west: the follow camera is 6 m behind it, east, behind the shelter's back wall.
-    const arm = springArmDistance(38.5, 1.5, -5.2, 44.5, 2.2, -5.2, 6.2, boxes, pad);
+    // vrb2: the shelter moved 1 m back and its light box to the south bay (z ~ -3.2).
+    // Head 1.5 m up at (39.5, LZ) facing west: the follow camera is 6 m behind it, east, behind the shelter's back wall.
+    const LZ = (lightBox.minZ + lightBox.maxZ) / 2;
+    const arm = springArmDistance(39.5, 1.5, LZ, 45.5, 2.2, LZ, 6.2, boxes, pad);
     expect(arm).toBeLessThan(6.2);
     // …and stops at the pad in front of the box, on the avatar's side of it (inside the shelter).
-    const camX = 38.5 + (arm / 6.2) * 6;
+    const camX = 39.5 + (arm / 6.2) * 6;
     expect(camX).toBeLessThan(lightBox.minX);
     expect(camX).toBeGreaterThan(lightBox.minX - pad - 0.1);
   });
 
   it("leaves a camera behind the shelter's glass bays alone: it sees the avatar through them", () => {
     // 1 m to either side of the box's end, the cast crosses only glass (no camera box).
-    for (const z of [-4.9 - 1.1, -4.9 + 1.1]) {
-      expect(springArmDistance(38.5, 1.5, z, 44.5, 2.2, z, 6.2, boxes, pad)).toBe(6.2);
+    for (const z of [-4.9 - 1.1, -4.9 + 0.3]) {
+      expect(springArmDistance(39.5, 1.5, z, 45.5, 2.2, z, 6.2, boxes, pad)).toBe(6.2);
     }
   });
 
   it("blocks the high camera too: the box reaches the roof, so a cast at 2.95 m (pad 37.6,-4.9 facing west; kiosk front facing the shelter) cannot pass over it (shelter check r5)", () => {
     expect(lightBox.height).toBeGreaterThanOrEqual(3.3);
     // the boarding pad, facing the road: the cast that used to pass over a 2.6 m box and leave the camera behind the wall
-    const fromPad = springArmDistance(37.6, 1.5, -4.9, 41.86, 2.95, -5.09, 4.25, boxes, pad);
+    const LZ = (lightBox.minZ + lightBox.maxZ) / 2;
+    const fromPad = springArmDistance(38.6, 1.5, LZ, 42.86, 2.95, LZ - 0.19, 4.25, boxes, pad);
     expect(fromPad).toBeLessThan(4.25);
-    expect(37.6 + (fromPad / 4.25) * (41.86 - 37.6)).toBeLessThan(lightBox.minX);
+    expect(38.6 + (fromPad / 4.25) * (42.86 - 38.6)).toBeLessThan(lightBox.minX);
     // in front of the kiosk, turned toward the shelter: the camera would stand inside the shelter with the box in between
-    const fromKiosk = springArmDistance(45.3, 1.5, -3.85, 41.14, 2.95, -5.46, 4.6, boxes, pad);
+    const fromKiosk = springArmDistance(45.3, 1.5, LZ + 0.2, 42.14, 2.95, LZ - 0.3, 4.6, boxes, pad);
     expect(fromKiosk).toBeLessThan(4.6);
-    expect(45.3 - (fromKiosk / 4.6) * (45.3 - 41.14)).toBeGreaterThan(lightBox.maxX);
+    expect(45.3 - (fromKiosk / 4.6) * (45.3 - 42.14)).toBeGreaterThan(lightBox.maxX);
   });
 
   it("does not hold the camera facing north or south at the pad", () => {

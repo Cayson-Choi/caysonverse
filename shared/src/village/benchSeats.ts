@@ -33,6 +33,7 @@
  */
 
 import { isBlocked } from "../collision";
+import { standSide } from "./standSpot";
 import { CHAIR_SIDE_CLEAR, CHAIR_SIDE_FAR, PLAYER_RADIUS, SEAT_REACH, approachesSeat, type Seat } from "../worldMap";
 import { BACKED_ROOT_AHEAD, FLOOR_SIT_POSE, SIT_ROOT_AHEAD } from "../sitPose";
 import { MEMORIAL_SEAT_MARKERS } from "./generated/memorialSeats";
@@ -43,7 +44,8 @@ import { isRemovedHouseSeat } from "./houseFixes";
 import { HOUSE_NUMBERS, HOUSE_PLACES, houseBuildingId, houseFloorBounds, compareHouseSeats, type HouseFloor, type HouseNumber, type HouseSeatMarker, type HouseSeatPose } from "./houseAreas";
 import type { MapGeometry } from "../school/geometry";
 import { fallsWalkable, villageWalkArea } from "./fallsWalk";
-import { VILLAGE_SEAT_MARKERS } from "./generated/villageSeatMarkers";
+import { VILLAGE_SEAT_MARKERS as MODEL_SEAT_MARKERS } from "./generated/villageSeatMarkers";
+import { stageA8SeatMarkers } from "./a8Staging";
 import { lakeSeats, type LakeSeatKind } from "./lakeLayout";
 import { LOTS_WITH_MODEL, LOT_ROOMS, VILLAGE_LOTS, lotLocalToWorld, lotRoomPoint, lotSeatMarkers, type LotInteriorSeat } from "./villageLots";
 
@@ -146,20 +148,24 @@ const FACING_WEST = -Math.PI / 2;
 
 /**
  * The bus stop shelter's bench (art/village/tools/build_busstop.py build_shelter, village_busstop.glb; the shelter's centre is
- * busStop.shelter.centre (40.9, -4.9), its back glass at x 41.6): three 0.13 m slats at x 40.985..41.415 (the seat, 0.5125 m up
+ * busStop.shelter.centre, its back glass 0.05 m inside its back edge): three 0.13 m slats 0.235..0.665 m in front of the back edge (the seat, 0.5125 m up
  * from the ground: 4.5 cm of pad and 0.4675 m of bench), 2.3 m long along z, two slatted back rests at x 41.48 and two arm
  * dividers at z -/+0.38 from the centre that cut it into a 0.76 m middle cell and two 0.77 m end cells. Its back is the glass
  * wall: a bench with a back rest is sat on from the front only (the road side, facing west), like the plaza's. Two seats, in
  * the end cells: the middle cell is too narrow for the toy figure's 1.05 m across the arms, and a seat 1.53 m from its
  * neighbour keeps both sitters clear of the dividers.
  */
+const SHELTER_BACK_X = VILLAGE_LAYOUT.busStop.shelter.centre.x + VILLAGE_LAYOUT.busStop.shelter.size.x / 2;
+
 export const SHELTER_BENCH: VillageBench = {
   id: "shelter",
   area: "village",
-  centre: { x: 41.2, z: VILLAGE_LAYOUT.busStop.shelter.centre.z },
+  // vrb2: placed from the shelter's back (centre + depth / 2): the slats' middle 0.45 m in front of it (build_busstop.py
+  // x1 - 0.50 + 0.25 - 0.20), so the bench follows the shelter when it moves (it was the fixed x 41.2 for the back at 41.65)
+  centre: { x: SHELTER_BACK_X - 0.45, z: VILLAGE_LAYOUT.busStop.shelter.centre.z },
   yaw: FACING_WEST,
   seatTop: 0.5125,
-  frontEdge: 41.2 - 40.985,
+  frontEdge: 0.215,
   length: 2.3,
   seatOffsets: [-0.765, 0.765],
   kind: "backed",
@@ -322,7 +328,14 @@ function dismountAround(root: Point2, yaw: number, bounds: Bounds, geometry: Map
  * neighbour's (`STAND_NEIGHBOUR_MARGIN`). Review 2026-11-15 round 5: the second consult chair's spot was in the gap between the
  * two, as near the first chair, so stopping a step short of it and pressing E sat on the first one. Null: none within reach.
  */
-function chairStand(seat: Seat, neighbours: readonly Point2[], bounds: Bounds, geometry: MapGeometry = villageGeometry): Point2 | null {
+function chairStand(
+  seat: Seat,
+  neighbours: readonly Point2[],
+  bounds: Bounds,
+  geometry: MapGeometry = villageGeometry,
+  /** Only spots this allows (`frontOnly`: in front of the seat, owner 2026-11-17). */
+  allow?: (x: number, z: number) => boolean,
+): Point2 | null {
   let best: Point2 | null = null;
   let bestD = Infinity;
   const step = 0.05;
@@ -336,6 +349,7 @@ function chairStand(seat: Seat, neighbours: readonly Point2[], bounds: Bounds, g
       const z = Math.round((cz + iz * step) * 1000) / 1000;
       const own = Math.hypot(x - cx, z - cz);
       if (own >= bestD || own > 1.6) continue;
+      if (allow && !allow(x, z)) continue;
       // offered from the spot itself; and from anywhere a step short of it (a tap walk stops 0.35 m before its target) never the
       // neighbour instead: there it is this chair or none — and, for a house seat, this one still (a stop it is not offered from sat nobody)
       let ok = own - bonus <= SEAT_REACH - STAND_SHORT - 0.05 && approachesSeat(seat, x, z);
@@ -488,6 +502,7 @@ function markerSeats(m: MarkerSource, place: MarkerPlace): VillageSeat[] {
       // a chair at a table has the table in front of it: it is also sat on from its sides, up to the backrest's face (never
       // through the backrest); a sofa or an armchair from the front only
       sidePlane: m.furn === "chair" ? Math.round((ahead + m.back) * 1000) / 1000 : undefined,
+      backrest: backed ? Math.round((ahead + m.back) * 1000) / 1000 : undefined,
       sideHalf: m.furn === "chair" ? Math.round((m.width / 2) * 1000) / 1000 : undefined,
       // its seat point is under the desk / table (BACKED_ROOT_AHEAD in front of the backrest): reached that much farther — a house seat
       // is reached from and picked by its cushion instead (Seat.reachFrom)
@@ -547,6 +562,20 @@ function markerSeats(m: MarkerSource, place: MarkerPlace): VillageSeat[] {
         }
       }
     }
+    // A backed seat is stood up from in FRONT of it wherever there is room (owner 2026-11-17: "의자 앞에 가서 앉고 일어서면 의자 앞에
+    // 서고"): a chair whose spot above came out beside or behind it gets the nearest front spot it is offered from, if any — beside it
+    // stays only where its front is its table and the chairs next to it (standSpot.ts; the sweep in standSpot.test.ts lists those).
+    if (backed && standSide(seat, seat.standX, seat.standZ) !== "front") {
+      const peers = place.peers.filter((o) => o.id !== m.id && Math.hypot(o.x - m.x, o.z - m.z) < 2.5);
+      const near = place.lenient ? peers.map((o) => ({ x: o.x, z: o.z })) : neighbours;
+      const front = chairStand(seat, near, place.bounds, place.geometry, (x, z) => standSide(seat, x, z) === "front");
+      // ...else, if it came out behind the backrest, the nearest spot beside it that is not (never through the backrest)
+      const beside = front ?? (standSide(seat, seat.standX, seat.standZ) === "behind" ? chairStand(seat, near, place.bounds, place.geometry, (x, z) => standSide(seat, x, z) !== "behind") : null);
+      if (beside) {
+        seat.standX = beside.x;
+        seat.standZ = beside.z;
+      }
+    }
     out.push(seat);
   }
   return out;
@@ -589,6 +618,12 @@ function besideChair(m: VillageSeatMarker, bounds: Bounds): Point2 {
   throw new Error(`seat ${m.id}: no clear get-up spot beside the chair`);
 }
 
+/**
+ * The art's marked village seats (village.glb seat__ markers), with the porch benches of houses 2, 9 and 10 at their A8 places
+ * (seatTop 0.75; a8Staging.ts: in place, so the indices stay) until the village is rebuilt with the A8 houses.
+ */
+export const VILLAGE_SEAT_MARKERS: readonly VillageSeatMarker[] = Object.freeze(stageA8SeatMarkers(MODEL_SEAT_MARKERS, VILLAGE_LAYOUT.sceneryHouses));
+
 /** The art's marked village seats (`VILLAGE_SEAT_MARKERS`) as village seats, in marker order: every one has a backrest. */
 function villageMarkerSeats(markers: readonly VillageSeatMarker[]): VillageSeat[] {
   const bounds = VILLAGE_LAYOUT.areas.village;
@@ -622,6 +657,8 @@ function villageMarkerSeats(markers: readonly VillageSeatMarker[]): VillageSeat[
           area: "village",
           kind: "backed",
           lean: 0,
+          backrest: Math.round((SIT_ROOT_AHEAD + m.frontEdge + CHAIR_BACK_BEHIND) * 1000) / 1000,
+          sideHalf: CHAIR_HALF_WIDTH,
         });
       } else {
         const stand = dismountAhead(root, yaw, bounds, `${m.id}:${along}`);
@@ -640,6 +677,19 @@ function villageMarkerSeats(markers: readonly VillageSeatMarker[]): VillageSeat[
           lean: 0,
         });
       }
+    }
+  }
+  // A terrace chair is stood up from in FRONT of it where its table leaves room (owner 2026-11-17), else beside it as above: the
+  // nearest front spot it is offered from, nearer it than the chairs round it, with the terrace's clearance (CHAIR_STAND_CLEARANCE).
+  for (const seat of seats) {
+    if (seat.beside === undefined || standSide(seat, seat.standX, seat.standZ) === "front") continue;
+    const near = seats.filter((o) => o !== seat && o.beside !== undefined && Math.hypot(o.x - seat.x, o.z - seat.z) < 2.5).map((o) => ({ x: o.x, z: o.z }));
+    const front = chairStand(seat, near, bounds, villageGeometry, (x, z) =>
+      standSide(seat, x, z) === "front" && !isBlocked(x, z, PLAYER_RADIUS + CHAIR_STAND_CLEARANCE, villageGeometry.obstacles, 0),
+    );
+    if (front) {
+      seat.standX = front.x;
+      seat.standZ = front.z;
     }
   }
   return seats;
@@ -671,6 +721,8 @@ function benchSeats(b: VillageBench): VillageSeat[] {
         bench: b.id,
         area: b.area,
         kind: b.kind,
+        // a backed bench's backrest stands at the back of its board (the board's depth, twice its front edge, behind the front edge)
+        backrest: b.kind === "backed" ? Math.round((SIT_ROOT_AHEAD + 2 * b.frontEdge) * 1000) / 1000 : undefined,
         lean: 0,
         group: turns.length > 1 ? place : undefined,
       });
@@ -749,6 +801,8 @@ function makeSeats(benches: readonly VillageBench[]): VillageSeat[] {
   // seat markers (generated/houses). A house without a model has no seats.
   // Seat ids are append-only (Player.seatIndex is the index): a seat a later release brings back (LATE_HOUSE_SEATS) is left out here
   // and appended at the very end of the list instead, so no live index moves.
+  const houseMade = new Map<string, VillageSeat>();
+  const houseNew: VillageSeat[] = [];
   for (const n of HOUSE_NUMBERS) {
     const house = GENERATED_HOUSES[n];
     if (!house) continue;
@@ -766,7 +820,21 @@ function makeSeats(benches: readonly VillageBench[]): VillageSeat[] {
           lenient: true,
         }),
       );
-      (LATE_HOUSE_SEATS.includes(m.id) ? late : seats).push(...made);
+      for (const seat of made) {
+        if (LATE_HOUSE_SEATS.includes(m.id)) late.push(seat);
+        else if (HOUSE_SEAT_ORDER.includes(seat.id)) houseMade.set(seat.id, seat);
+        else houseNew.push(seat);
+      }
+    }
+  }
+  // The houses' seats in their live order (HOUSE_SEAT_ORDER, release 3.1's indices 51..168): a seat the houses no longer have keeps
+  // its index as a retired seat (the realism pass 2026-11-17 re-laid houses 2, 6 and 9); a seat they add goes after every list below
+  for (const id of HOUSE_SEAT_ORDER) {
+    const seat = houseMade.get(id);
+    if (seat) seats.push(seat);
+    else {
+      const [, n, floor] = /^h(\d+)_(\d)_/.exec(id)!;
+      seats.push(retiredSeat(id, houseArea(houseBuildingId(Number(n) as HouseNumber), Number(floor) as HouseFloor)));
     }
   }
   // main's later seats last, so the benches', the hall's and the houses' indices stay as they were (review 2026-11-15): the bus
@@ -784,8 +852,11 @@ function makeSeats(benches: readonly VillageBench[]): VillageSeat[] {
   seats.push(...zelkovaDeckSeats());
   // release 3: the house seats the art round 2 brought back (house 9's two dining end chairs, taken out in release 2), last of all
   seats.push(...late.sort((a, b) => LATE_HOUSE_SEATS.indexOf(a.bench) - LATE_HOUSE_SEATS.indexOf(b.bench)));
-  // the lot buildings' seats (village-lots contract 4, L5 2026-11-17) after every seat main has (the falls' stones last): no earlier
-  // index moves. they go after every seat main has, the zelkova deck and the late house seats included (never renumber).
+  // release 4: the house seats the realism pass (2026-11-17) added or turned round (ADDED_HOUSE_SEATS order; any later one after them)
+  const addedAt = (s: VillageSeat) => (ADDED_HOUSE_SEATS.includes(s.id) ? ADDED_HOUSE_SEATS.indexOf(s.id) : ADDED_HOUSE_SEATS.length);
+  seats.push(...houseNew.map((s, i) => ({ s, i })).sort((a, b) => addedAt(a.s) - addedAt(b.s) || a.i - b.i).map(({ s }) => s));
+  // the lot buildings' seats (village-lots contract 4, L5 2026-11-17) after every seat main has (release 4's added house
+  // seats last, ADDED_HOUSE_SEATS): no earlier index moves (never renumber).
   seats.push(...lotVillageSeats());
   // the lot buildings' walk-in rooms (L5v2, contract 11): every chair, pew, nook and 방석 inside, after every seat above (never renumber)
   seats.push(...lotInteriorSeats());
@@ -980,6 +1051,37 @@ export function isLotSeat(seat: object | undefined): boolean {
  * not in their house's place. A seat restored later is added here, after these.
  */
 export const LATE_HOUSE_SEATS: readonly string[] = ["h9_1_7", "h9_1_10"];
+
+/**
+ * Release 4 (houses realism pass 2026-11-17, houses 2, 6 and 9 re-laid): seat ids new to the houses, by seat id, appended after
+ * LATE_HOUSE_SEATS in this order (their old ids h2_1_0:back and h2_1_1:back keep their indices as retired seats). A later one goes after.
+ */
+export const ADDED_HOUSE_SEATS: readonly string[] = ["h2_1_0:front", "h2_1_1:front", "h6_1_2:back", "h9_1_6"];
+
+/** Every seat after the zelkova deck, in order: release 3's restored house seats, then release 4's added ones (seat ids, bench ids for LATE). */
+export const TAIL_HOUSE_SEATS: readonly string[] = [...LATE_HOUSE_SEATS, ...ADDED_HOUSE_SEATS];
+
+/**
+ * The houses' seats in the order they took in release 3.1 (Player.seatIndex 51..168): seat ids are append-only. A seat no longer in
+ * the houses keeps its index as a retired seat (retiredSeat); a seat added later goes at the very end of VILLAGE_SEATS.
+ */
+export const HOUSE_SEAT_ORDER: readonly string[] = [
+  "h1_1_0", "h1_1_1", "h1_1_2", "h1_1_3", "h1_1_4", "h1_1_5", "h1_1_6", "h1_1_7",
+  "h1_2_0", "h1_2_1", "h1_2_2:back", "h1_2_3", "h2_1_0:back", "h2_1_1:back", "h2_1_2", "h2_1_3",
+  "h2_1_4", "h2_1_5", "h2_1_6", "h2_1_7", "h2_1_8", "h2_2_0", "h2_2_1", "h2_2_2",
+  "h2_2_3", "h2_2_4", "h2_2_5", "h3_1_0", "h3_1_1", "h3_1_2", "h3_1_3", "h3_1_4",
+  "h3_1_5", "h3_1_6:front", "h3_1_7:front", "h3_2_0", "h3_2_1", "h3_2_2", "h3_2_3", "h4_1_0",
+  "h4_1_1", "h4_1_2", "h4_1_3", "h4_1_4", "h4_1_5", "h4_1_6", "h4_2_0", "h4_2_1",
+  "h4_2_2", "h5_1_0", "h5_1_1", "h5_1_2", "h5_1_3", "h5_1_4", "h5_1_5", "h5_1_6",
+  "h5_1_7", "h5_2_0", "h5_2_1", "h5_2_2", "h5_2_3", "h5_2_4", "h6_1_0", "h6_1_1",
+  "h6_1_2:front", "h6_1_3:front", "h6_1_3:back", "h6_1_4", "h6_1_5", "h6_1_6", "h6_2_0", "h6_2_1",
+  "h6_2_2", "h6_2_3", "h7_1_0", "h7_1_1", "h7_1_2", "h7_1_3", "h7_1_4:back", "h7_1_5",
+  "h7_1_6", "h7_2_0:back", "h7_2_1:back", "h7_2_2:front", "h7_2_2:back", "h8_1_0:front", "h8_1_1:front", "h8_1_2",
+  "h8_1_3", "h8_1_4", "h8_1_5", "h8_2_0", "h8_2_1", "h8_2_2", "h8_2_3", "h9_1_0:back",
+  "h9_1_1:back", "h9_1_2:front", "h9_1_2:back", "h9_1_3", "h9_1_4", "h9_1_5", "h9_1_8", "h9_1_9",
+  "h9_2_0", "h9_2_1", "h9_2_2", "h9_2_3", "h10_1_0", "h10_1_1", "h10_1_2", "h10_1_3",
+  "h10_1_4:front", "h10_1_5:front", "h10_2_0", "h10_2_1", "h10_2_2", "h10_2_3",
+];
 
 /**
  * The plaza zelkova's round deck (평상): an octagon about the trunk (VILLAGE_LAYOUT.plaza.zelkova), its faces 0.46 m up and

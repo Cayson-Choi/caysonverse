@@ -28,8 +28,11 @@ import { useNightMapWanted } from "./nightLightmap";
 import { beginHouseEntry, houseEntryFailed, houseEntryReady, houseEntryState } from "./houseEntry";
 import {
   HOUSE_VIEW_MATERIAL,
+  applyHouseTextures,
   disposeHouse,
   dressLoadedHouse,
+  houseSharedTextureNames,
+  houseTextureUrl,
   houseUrls,
   houseViewMapping,
   houseWantsLightmap,
@@ -117,6 +120,20 @@ function HouseFloorScene({ n, floor, pose }: { n: HouseNumber; floor: HouseFloor
     };
   }, [n, urls.lightmapNight, wantsLightmap, nightWanted]);
   useEffect(() => () => resetHouseNight(), [n]);
+  // The shared full-size albedos (houseModelPrep HOUSE_TEXTURE_DIR): the GLB's small copies show until they are in.
+  useEffect(() => {
+    let live = true;
+    const names = houseSharedTextureNames(gltf.scene);
+    void Promise.all(names.map((name) => loadHouseTexture(n, houseTextureUrl(name, tier)).then((t) => [name, t] as const))).then((got) => {
+      if (!live) return;
+      const map = new Map<string, Texture>();
+      for (const [name, t] of got) if (t) map.set(name, t);
+      applyHouseTextures(gltf.scene, map);
+    });
+    return () => {
+      live = false;
+    };
+  }, [gltf, n, tier]);
 
   const nodes = useMemo(() => {
     dressLoadedHouse(gltf.scene, n);

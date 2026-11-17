@@ -39,6 +39,28 @@ import { signalPoleColliders } from "./crossings";
 import { streetPoleColliders } from "./streetPoles";
 import { TRANSIT, busFootprint } from "./transit";
 import { LAKE_AREA, lakeCameraBoxes, lakeColliders } from "./lakeLayout";
+import {
+  HOUSE_A8,
+  HOUSE_DETAIL_LOD,
+  HOUSE_FLUSH_DECKS,
+  HOUSE_GLB_BUDGET,
+  HOUSE_SURFACE_RULES,
+  VILLAGE_SCENE_TRIANGLE_CAP,
+  houseDetailNode,
+  houseExteriorColliders,
+  houseFootprintSize,
+  houseLiftZones,
+  housePorchSeatMarker,
+  houseProxyNode,
+  houseShellNode,
+  houseSlots,
+  houseSolidBox,
+  localBox,
+  porchKind,
+  porchStairsLocal,
+} from "./houseExterior";
+import { designExteriorWindowTable } from "./exteriorWindows";
+import { stageA8Colliders } from "./a8Staging";
 import { cameraWallBoxes, villageWalkArea, waterfallObstacles } from "./fallsWalk";
 import { LOT_ROOMS, carveBlockers, isLotArea, lotGeometryColliders, lotRoomColliders, lotRoomOuter, lotRoomWalls, replacedByLot, type LotAreaId } from "./villageLots";
 import type { Bounds, MapGeometry } from "../school/geometry";
@@ -116,8 +138,12 @@ export interface VillagePlot {
 export type HouseColour = "pink" | "skyblue" | "yellow" | "white" | "mint" | "wood";
 
 /** The footprint of each kind of scenery building (x by z, m). */
-/** Approved building-scale B footprints; art generation consumes the exported layout JSON. */
-export const SCENERY_SIZES = { house: { x: 11.2, z: 8.4 }, cafe: { x: 20, z: 15 }, kiosk: { x: 5, z: 4 } } as const;
+/**
+ * Approved building-scale B footprints; art generation consumes the exported layout JSON. The house's is a door-south house's
+ * (A8, 2026-11-16: 11.2 along the front x 10.75 deep, houseExterior.ts HOUSE_A8); a house whose door faces east or west turns it
+ * (`houseFootprintSize`), so every house shows its wide side to the street.
+ */
+export const SCENERY_SIZES = { house: { x: 11.2, z: 10.75 }, cafe: { x: 20, z: 15 }, kiosk: { x: 5, z: 4 } } as const;
 
 /**
  * Café option 2 (2026-11-12 decision): 20 x 15 m, two floors. The open terrace in front of the door is walkable ground
@@ -146,8 +172,12 @@ export interface SceneryHouse {
   terrace: number;
 }
 
-/** The solid part of a scenery building: its footprint minus the walkable terrace on the door side. */
-export function solidBox(h: Pick<SceneryHouse, "centre" | "size" | "doorSide" | "terrace">): AABB {
+/**
+ * The solid part of a scenery building: its footprint minus the walkable terrace on the door side; a house's is its body plus the
+ * granite plinth (A8: 11.36 x 8.56, houseExterior.ts houseSolidBox), which stands 8 cm out of the footprint's sides.
+ */
+export function solidBox(h: Pick<SceneryHouse, "centre" | "size" | "doorSide" | "terrace"> & { kind?: SceneryHouse["kind"] }): AABB {
+  if (h.kind === "house") return houseSolidBox(h);
   const b = boxAt(h.centre, h.size);
   const t = h.terrace;
   const r2 = (v: number): number => Math.round(v * 100) / 100;     // the model's col__ boxes are written in centimetres
@@ -506,7 +536,7 @@ function house(
   doorSide: Side,
   kind: SceneryHouse["kind"] = "house",
 ): SceneryHouse {
-  const size = SCENERY_SIZES[kind];
+  const size = kind === "house" ? houseFootprintSize(doorSide) : SCENERY_SIZES[kind];
   return { id, kind, centre, size: sz(size.x, size.z), enterable: false, colour, doorSide, terrace: SCENERY_TERRACE[kind] };
 }
 
@@ -566,7 +596,10 @@ function makeVillageLayout(): VillageLayout {
     busStop: {
       // xwalk fix 2026-11-13: the shelter stands at the BACK of a paved waiting pad (BUS_STOP_PAD) with 3 m of clear paving
       // between the roadway's kerb and its roof (bus stop review: the old one stood on the kerb, 1.5 m from the bus's doors)
-      shelter: { centre: pt(40.9, -4.9), size: sz(1.5, 3.6) },
+      // vrb2 (VILLAGE-TODO A5, 2026-11-16): a Korean standard roadside shelter (art/village/tools/build_busstop.py): back
+      // posts and a cantilever roof, 4.4 x 1.8 m, its open front 0.85 m further from the road (x 41.0: 4.1 m of paving
+      // from the parked bus's side). The middle stays at z -4.9, so the bus's doors still stop at it (transit.ts unchanged).
+      shelter: { centre: pt(41.9, -4.9), size: sz(1.8, 4.4) },
       // owner 2026-11-15 ("버스가 도로 폭에 맞게 잘 정지한 상태로 있도록 해"): the bus stands in its lane along the curved
       // kerb (transit.ts BUS_LANE_RADIUS, BUS_STOP_ANGLE), no longer square to the map across the centre line
       bus: { centre: pt(TRANSIT.parked.x, TRANSIT.parked.z), size: sz(2.5, 9), yaw: TRANSIT.parked.yaw },
@@ -601,11 +634,13 @@ function makeVillageLayout(): VillageLayout {
     ],
     plots: [
       plot("plot_n", pt(0, -60), "추모관", { signPost: null, size: sz(28, 24) }),
-      plot("plot_ne", pt(52, -37), "성당", { signPost: { x: 40, z: -33, facing: "w" }, size: sz(26, 26) }),
-      plot("plot_e", pt(60, 15), "학교", { signPost: { x: 48, z: 15, facing: "w" }, size: sz(26, 26) }),
-      plot("plot_w", pt(-60, 12), "도서관", { signPost: { x: -48, z: 15, facing: "e" }, underConstruction: true, size: sz(26, 22) }),
-      plot("plot_nw", pt(-52, -37), "절", { signPost: { x: -40, z: -33, facing: "e" }, size: sz(26, 26) }),
-      plot("plot_s", pt(0, 58), "교회", { signPost: { x: 0, z: 50, facing: "n" }, size: sz(24, 18) }),
+      // vrb2 (owner 2026-11-17: "건설중이라는 크레인도 건물을 다 올릴거니까 빼고"): real buildings are coming on every empty
+      // plot, so no "곧 지어져요" / "공사 중" sign posts and no construction site on plot_w: clean lawns, ready for them
+      plot("plot_ne", pt(52, -37), "성당", { signPost: null, size: sz(26, 26) }),
+      plot("plot_e", pt(60, 15), "학교", { signPost: null, size: sz(26, 26) }),
+      plot("plot_w", pt(-60, 12), "도서관", { signPost: null, size: sz(26, 22) }),
+      plot("plot_nw", pt(-52, -37), "절", { signPost: null, size: sz(26, 26) }),
+      plot("plot_s", pt(0, 58), "교회", { signPost: null, size: sz(24, 18) }),
     ],
     memorial: {
       exterior: {
@@ -632,17 +667,21 @@ function makeVillageLayout(): VillageLayout {
     // Between the ring road's sidewalk (r 39) and the plots, doors toward the road. Houses 6-10 and the kiosk were
     // added with the Blender model (Task 6, validated there against lanes, plots, the road and the creek); the model's
     // col__<id> boxes sit exactly on these rectangles.
+    // A8 (owner "추천대로", 2026-11-16, docs/designs/house-exteriors/contract.md): the body is the interior plus its walls, so
+    // every footprint is 11.2 x 10.75 and `centre` is its box's centre. Each front edge stays where it was (a door-N/S house grew
+    // 2.35 m backwards: its centre moved 1.175 m back; a door-east house turned its wide side to the street: centre 0.225 m
+    // west), and five houses moved: 4 west 0.8, 7 and 9 north 1.2, 8 south 0.6, 10 north 0.6.
     sceneryHouses: [
-      house("house_1", pt(21, -42), "pink", "s"),
-      house("house_2", pt(-21, -42), "skyblue", "s"),
-      house("house_3", pt(29, 37.6), "yellow", "n"),
-      house("house_4", pt(-31.6, 39.4), "white", "n"),
-      house("house_5", pt(-47, -8), "mint", "e"),
-      house("house_6", pt(42, 42.5), "yellow", "n"),
-      house("house_7", pt(31, -56), "mint", "s"),
-      house("house_8", pt(-50, 40), "skyblue", "e"),
-      house("house_9", pt(-31, -56), "pink", "s"),
-      house("house_10", pt(-40.6, 27), "white", "e"),
+      house("house_1", pt(21, -43.175), "pink", "s"),
+      house("house_2", pt(-21, -43.175), "skyblue", "s"),
+      house("house_3", pt(29, 38.775), "yellow", "n"),
+      house("house_4", pt(-32.4, 40.575), "white", "n"),
+      house("house_5", pt(-46.775, -8), "mint", "e"),
+      house("house_6", pt(42, 43.675), "yellow", "n"),
+      house("house_7", pt(31, -58.375), "mint", "s"),
+      house("house_8", pt(-49.775, 40.6), "skyblue", "e"),
+      house("house_9", pt(-31, -58.375), "pink", "s"),
+      house("house_10", pt(-40.375, 26.4), "white", "e"),
       house("cafe", pt(50.6, -15.1), "wood", "w", "cafe"),
       house("kiosk", pt(48.6, -3.85), "wood", "w", "kiosk"),
     ],
@@ -844,19 +883,35 @@ export function busBoardingDistance(x: number, z: number, layout: Pick<VillageLa
 
 /**
  * Solid parts of the bus stop: the shelter's rear glass and its two end glass panels (the side facing the road stays open
- * to the pad), then the stop sign's post. The rear glass comes first.
+ * to the pad), then the stop sign's post, then the lit ad box (vrb2). The rear glass comes first.
  */
+/** The shelter's side glass screens' depth from the back wall (m; build_busstop.py SIDE_DEPTH). */
+export const BUS_SHELTER_SIDE_DEPTH = 1.55;
+
+/** The lit ad / route box in the shelter's south bay (build_busstop.py: between the posts at z1 - 0.95 and z1 - 0.06, 0.76 m wide, 0.2 m deep). */
+export function busShelterLightBox(layout: Pick<VillageLayout, "busStop"> = VILLAGE_LAYOUT): { minZ: number; maxZ: number } {
+  const s = boxAt(layout.busStop.shelter.centre, layout.busStop.shelter.size);
+  const lz = (s.maxZ - 0.95 + s.maxZ - 0.06) / 2;
+  const r = (n: number) => Math.round(n * 1e6) / 1e6;
+  return { minZ: r(lz - 0.38), maxZ: r(lz + 0.38) };
+}
+
 export function busShelterColliders(layout: Pick<VillageLayout, "busStop"> = VILLAGE_LAYOUT): AABB[] {
   const s = boxAt(layout.busStop.shelter.centre, layout.busStop.shelter.size);
-  const t = 0.03; // half the glass's thickness as a collision skin
-  const rear = s.maxX - 0.05; // the back glass's plane (the posts' centre line)
+  const t = 0.06; // half the back posts' 0.12 m (the glass between them is 12 mm): one skin for the whole back wall
+  const rear = s.maxX - 0.05; // the back wall's plane (the posts' centre line)
   const r = (n: number) => Math.round(n * 1e6) / 1e6;
-  const end = (z: number): AABB => ({ minX: r(s.minX + 0.05), maxX: r(rear + t), minZ: r(z - t), maxZ: r(z + t) });
+  // vrb2: the side screens run BUS_SHELTER_SIDE_DEPTH from the back wall (the road side is open: no front posts), each
+  // ending in a 6 cm stile; 4 cm each side of the 12 mm pane so a body never touches the visible glass
+  const end = (z: number): AABB => ({ minX: r(rear - BUS_SHELTER_SIDE_DEPTH - 0.04), maxX: r(rear + t), minZ: r(z - 0.04), maxZ: r(z + 0.04) });
+  const lb = busShelterLightBox(layout);
   return [
     { minX: r(rear - t), maxX: r(rear + t), minZ: s.minZ, maxZ: s.maxZ },
-    end(s.minZ + 0.05),
-    end(s.maxZ - 0.05),
+    end(s.minZ + 0.06),
+    end(s.maxZ - 0.06),
     { minX: r(BUS_STOP_SIGN.x - BUS_SIGN_POST), maxX: r(BUS_STOP_SIGN.x + BUS_SIGN_POST), minZ: r(BUS_STOP_SIGN.z - BUS_SIGN_POST), maxZ: r(BUS_STOP_SIGN.z + BUS_SIGN_POST) },
+    // the lit ad / route box, 0.2 m deep, standing proud of the back wall's skin (vrb2)
+    { minX: r(rear - 0.11), maxX: r(rear + 0.05), minZ: lb.minZ, maxZ: lb.maxZ },
   ];
 }
 
@@ -868,7 +923,7 @@ export function busShelterColliders(layout: Pick<VillageLayout, "busStop"> = VIL
 export function busShelterBenchCollider(layout: Pick<VillageLayout, "busStop"> = VILLAGE_LAYOUT): AABB {
   const s = boxAt(layout.busStop.shelter.centre, layout.busStop.shelter.size);
   const r = (n: number) => Math.round(n * 1e6) / 1e6;
-  return { minX: r(s.maxX - 0.67), maxX: r(s.maxX - 0.1), minZ: r(layout.busStop.shelter.centre.z - 1.15), maxZ: r(layout.busStop.shelter.centre.z + 1.15) };
+  return { minX: r(s.maxX - 0.67), maxX: r(s.maxX - 0.12), minZ: r(layout.busStop.shelter.centre.z - 1.15), maxZ: r(layout.busStop.shelter.centre.z + 1.15) };
 }
 
 /**
@@ -876,7 +931,7 @@ export function busShelterBenchCollider(layout: Pick<VillageLayout, "busStop"> =
  * shelter's centre, its underside 3.3 m up at the posts (owner 2026-11-13: the wizard hat, 2.69 m, touched the old 2.55 m roof), the crown and the blue trim boards reaching 3.55 m. Shared by the
  * camera slab (`busShelterRoofSlab`) and the jump's headroom (overhead.ts).
  */
-export const BUS_SHELTER_ROOF = { halfX: 1.05, halfZ: 2.05, underside: 3.3, top: 3.55 } as const;
+export const BUS_SHELTER_ROOF = { halfX: 1.15, halfZ: 2.45, underside: 3.3, top: 3.55 } as const;
 
 /**
  * The shelter's roof as a camera box, like the hall's ceiling slab: a camera under it (the player standing in the shelter)
@@ -904,7 +959,9 @@ export function busShelterLightBoxCameraBox(layout: Pick<VillageLayout, "busStop
   const s = boxAt(layout.busStop.shelter.centre, layout.busStop.shelter.size);
   const xb = s.maxX - 0.05; // the back wall's plane
   const round6 = (n: number) => Math.round(n * 1e6) / 1e6;
-  return { minX: round6(xb - 0.03), maxX: round6(xb + 0.05), minZ: round6(c.z - 0.62), maxZ: round6(c.z + 0.62), height: BUS_SHELTER_ROOF.top };
+  void c;
+  const lb = busShelterLightBox(layout); // vrb2: the box is in the south bay now (it was the middle bay)
+  return { minX: round6(xb - 0.11), maxX: round6(xb + 0.05), minZ: lb.minZ, maxZ: lb.maxZ, height: BUS_SHELTER_ROOF.top };
 }
 
 /**
@@ -940,6 +997,8 @@ export function greyboxColliders(layout: VillageLayout): VillageCollider[] {
     { id: "pavilion", box: boxAt(pavilion.centre, pavilion.size), camera: false },
     ...memorialColliders(memorial.exterior),
     ...sceneryHouses.map((h): VillageCollider => ({ id: h.id, box: solidBox(h), camera: true })),
+    // A8: each house's porch beds, step kerbs, posts and deck bench, its LPG cage and its garden (houseExterior.ts)
+    ...sceneryHouses.filter((h) => h.kind === "house").flatMap((h): VillageCollider[] => houseExteriorColliders(h)),
   ];
 }
 
@@ -1262,7 +1321,9 @@ export function withoutLegacyBus(g: GeneratedColliders): GeneratedColliders {
 }
 
 /** The village area's colliders generated from village.glb (Task 7): the layout's boxes plus the model's own. */
-export const VILLAGE_MODEL_COLLIDERS: GeneratedColliders = withoutLotReplaced(withoutLegacyBus({ obstacles: VILLAGE_COLLIDERS, cameraBoxes: VILLAGE_CAMERA_BOXES }));
+export const VILLAGE_MODEL_COLLIDERS: GeneratedColliders = withoutLotReplaced(
+  stageA8Colliders(withoutLegacyBus({ obstacles: VILLAGE_COLLIDERS, cameraBoxes: VILLAGE_CAMERA_BOXES }), VILLAGE_LAYOUT.sceneryHouses),
+);
 
 /** The generated colliders without what a built lot replaces (villageLots.ts LOT_REPLACED_MODEL_BOXES: plot_w's scaffold, L5). */
 export function withoutLotReplaced(g: GeneratedColliders): GeneratedColliders {
@@ -1291,6 +1352,42 @@ export const villageGeometry: MapGeometry = buildVillageGeometry(
   // 마을 부지 건물 (L5, 2026-11-17): the six lot buildings' boxes, appended last (no earlier obstacle's index moves)
   lotGeometryColliders(),
 );
+
+/**
+ * The A8 house contract for the Blender kit and build (X1, X2, X4): per house its frame (centre, door side), porch kind, solid,
+ * porch / LPG / garden collider boxes with their node names, lift zones, stairs, flush deck, porch seat, owner slots and node
+ * names; plus the shared numbers, budgets, surface rules and the design window table (docs/designs/house-exteriors/contract.md).
+ */
+export function exportHouseExteriors(layout: VillageLayout = VILLAGE_LAYOUT) {
+  return {
+    house: HOUSE_A8,
+    budget: HOUSE_GLB_BUDGET,
+    detailLod: HOUSE_DETAIL_LOD,
+    sceneCap: VILLAGE_SCENE_TRIANGLE_CAP,
+    surfaces: HOUSE_SURFACE_RULES,
+    windows: designExteriorWindowTable(),
+    houses: layout.sceneryHouses
+      .filter((h) => h.kind === "house")
+      .map((h) => {
+        const deck = HOUSE_FLUSH_DECKS[h.id];
+        return {
+          id: h.id,
+          centre: h.centre,
+          size: h.size,
+          doorSide: h.doorSide,
+          porch: porchKind(h.id),
+          solid: { node: colliderNode(h.id), ...solidBox(h) },
+          colliders: houseExteriorColliders(h).map((c) => ({ id: c.id, node: colliderNode(c.id), ...c.box })),
+          liftZones: houseLiftZones(h),
+          stairs: localBox(h, porchStairsLocal(h.id)),
+          flushDeck: deck ? localBox(h, deck) : null,
+          seat: housePorchSeatMarker(h),
+          slots: houseSlots(h),
+          nodes: { shell: houseShellNode(h.id), detail: houseDetailNode(h.id), proxy: houseProxyNode(h.id) },
+        };
+      }),
+  };
+}
 
 /**
  * Everything a Blender script needs, as plain JSON-able data (scripts/export-village-layout.ts writes it to
@@ -1361,6 +1458,7 @@ export function exportVillageLayout(layout: VillageLayout = VILLAGE_LAYOUT) {
       },
     },
     sceneryHouses: layout.sceneryHouses.map((h) => ({ ...bounded(h), solid: solidBox(h), node: colliderNode(h.id) })),
+    houseExteriors: exportHouseExteriors(layout),
     backdrop: {
       waterfall: bounded(layout.backdrop.waterfall),
       lake: { ...bounded(layout.backdrop.lake), pavilion: bounded(layout.backdrop.lake.pavilion) },

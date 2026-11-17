@@ -1,4 +1,5 @@
 import { lotRoomOf } from "./villageLots";
+import { standSide } from "./standSpot";
 import { describe, expect, it } from "vitest";
 import { isBlocked, type AABB } from "../collision";
 import { PLAYER_RADIUS, SEAT_APPROACH_SLACK, SEAT_REACH, approachesSeat, nearestFreeSeat, seatTaken } from "../worldMap";
@@ -13,6 +14,7 @@ import {
   CHAIR_BACK_BEHIND,
   LAKE_SEAT_BASE,
   LATE_HOUSE_SEATS,
+  TAIL_HOUSE_SEATS,
   SHELTER_BENCH,
   STAND_CLEARANCE,
   VILLAGE_BENCHES,
@@ -25,7 +27,7 @@ import {
   type VillageSeat,
 } from "./benchSeats";
 import { LAKE_FISHING_SPOTS, lakeSeats } from "./lakeLayout";
-import { VILLAGE_SEAT_MARKERS } from "./generated/villageSeatMarkers";
+import { VILLAGE_SEAT_MARKERS } from "./benchSeats";
 import { villageWalkArea } from "./fallsWalk";
 
 const MARKED = new Set(VILLAGE_SEAT_MARKERS.map((m) => m.id));
@@ -384,12 +386,14 @@ describe("the art's marked seats: café terrace chairs and porch benches (review
       const ahead = (s.x - m.x) * f.x + (s.z - m.z) * f.z;
       expect(ahead).toBeCloseTo(m.frontEdge + SIT_ROOT_AHEAD, 3);
       expect(s.seatY).toBe(m.seatTop);
-      // the art's spot, or further out on the line from the chair where the terrace's clearance needs it
-      expect(Math.hypot(s.standX - m.standX!, s.standZ - m.standZ!)).toBeLessThanOrEqual(0.5);
-      // the get-up spot is beside the chair (not ahead: the table is there), within reach and a short step
+      // owner 2026-11-17: in FRONT of the chair where its table leaves room (standSpot.ts); else beside it — the art's spot, or further
+      // out on the line from the chair where the terrace's clearance needs it — never behind it
       const standAhead = (s.standX - m.x) * f.x + (s.standZ - m.z) * f.z;
+      if (standSide(s, s.standX, s.standZ) !== "front") {
+        expect(Math.hypot(s.standX - m.standX!, s.standZ - m.standZ!)).toBeLessThanOrEqual(0.5);
+        expect(standAhead).toBeLessThanOrEqual(m.frontEdge);
+      }
       expect(standAhead).toBeGreaterThanOrEqual(-CHAIR_BACK_BEHIND);
-      expect(standAhead).toBeLessThanOrEqual(m.frontEdge);
       expect(Math.hypot(s.standX - s.x, s.standZ - s.z)).toBeLessThan(1.2); // a step aside, well within SEAT_REACH
       expect(approachesSeat(s, s.standX, s.standZ)).toBe(true);
       expect(nearestFreeSeat(s.standX, s.standZ, () => false, SEAT_REACH, VILLAGE_SEATS)).toBe(i);
@@ -521,13 +525,13 @@ describe("the fishing lake's seats in the global index (A10, design 5.4 and 12.2
     expect(FALLS_SEATS).toHaveLength(8);
     const deck = VILLAGE_SEATS.filter((s) => s.id.startsWith("zelkova_deck:"));
     expect(deck).toHaveLength(6);
-    // release 3 appended the deck, then the house seats the art brought back (LATE_HOUSE_SEATS): no live index moved; lots v2 (L5v2)
-    // appends the lot buildings' seats after those (isLotSeat)
+    // release 3 appended the deck, then the house seats the art brought back (LATE_HOUSE_SEATS): no live index moved
+    // (release 4 then the house seats the realism pass added: TAIL_HOUSE_SEATS; lots v2 after those, L5v2)
     const lotFirst = VILLAGE_SEATS.findIndex((s) => isLotSeat(s));
     const end = lotFirst >= 0 ? lotFirst : VILLAGE_SEATS.length;
-    const late = VILLAGE_SEATS.slice(end - LATE_HOUSE_SEATS.length, end);
-    expect(late.map((s) => s.bench)).toEqual([...LATE_HOUSE_SEATS]);
     expect(VILLAGE_SEATS.slice(end).every((s) => isLotSeat(s))).toBe(true);
+    const late = VILLAGE_SEATS.slice(end - TAIL_HOUSE_SEATS.length, end);
+    expect(late.map((s) => (LATE_HOUSE_SEATS.includes(s.bench) ? s.bench : s.id))).toEqual([...TAIL_HOUSE_SEATS]);
     const tail = end - late.length;
     expect(LAKE_SEAT_BASE).toBe(tail - lakeIdx.length - FALLS_SEATS.length - deck.length);
     expect(VILLAGE_SEATS.slice(tail - deck.length, tail)).toEqual(deck);
@@ -597,9 +601,8 @@ describe("the plaza zelkova deck (평상, UX 2026-11-16)", () => {
   it("six places, the very last seats (after the lake's and release 2's waterfall stones), so no older index moves", () => {
     expect(deck).toHaveLength(6);
     // (only release 3's restored house seats, LATE_HOUSE_SEATS, follow them)
-    // (lots v2's seats come after those, L5v2)
-    const end = VILLAGE_SEATS.findIndex((s) => isLotSeat(s));
-    expect(deck.map(({ i }) => i)).toEqual([0, 1, 2, 3, 4, 5].map((k) => (end >= 0 ? end : VILLAGE_SEATS.length) - LATE_HOUSE_SEATS.length - 6 + k));
+    const end = VILLAGE_SEATS.findIndex((s) => isLotSeat(s)); // (lots v2's seats come after those, L5v2)
+    expect(deck.map(({ i }) => i)).toEqual([0, 1, 2, 3, 4, 5].map((k) => (end >= 0 ? end : VILLAGE_SEATS.length) - TAIL_HOUSE_SEATS.length - 6 + k));
     expect(deck[0]!.i).toBeGreaterThan(LAKE_SEAT_BASE);
   });
 

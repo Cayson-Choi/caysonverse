@@ -79,7 +79,8 @@ function isConstruction(b: AABB): boolean {
 describe("the lots: frame, ids, words", () => {
   it("six lots, one per empty plot plus the 케이슨랜드 gate; the memorial's plot stays as it is", () => {
     expect(VILLAGE_LOTS.map((l) => l.id)).toEqual(["lot_school", "lot_chapel", "lot_library", "lot_temple", "lot_church", "lot_gate"]);
-    const empty = VILLAGE_LAYOUT.plots.filter((p) => p.sign !== null).map((p) => p.id).sort();
+    // (vrb2, release 4: the plots lost their signs — the empty plots are every plot but the memorial's)
+    const empty = VILLAGE_LAYOUT.plots.filter((p) => p.id !== "plot_n").map((p) => p.id).sort();
     expect(VILLAGE_LOTS.map((l) => l.plot).filter((p) => p !== null).sort()).toEqual(empty);
     expect(VILLAGE_LOTS.filter((l) => l.plot === null).map((l) => l.id)).toEqual(["lot_gate"]);
   });

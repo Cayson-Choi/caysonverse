@@ -4,6 +4,7 @@ import { join, resolve } from "node:path";
 import { BoxGeometry, BufferGeometry, Float32BufferAttribute, Group, Mesh, Uint8BufferAttribute, Vector3 } from "three";
 import { LOT_DETAIL_LOD, LOT_INTERIORS, LOT_ROOMS, VILLAGE_LOTS, lotFootprint, lotRoomDoor, type LotId } from "@caysonverse/shared/village/villageLots";
 import { pbrSetInfo } from "../pbr/pbrLibrary";
+import { VILLAGE_LAYOUT } from "@caysonverse/shared/village/villageLayout";
 import { LOT_TREE_SPECS } from "../veg/treeSkeleton";
 import { PHONE_GOODS_REACH, innerHingePivot, mergeReady, pickLotLevels, setLotDoor, type LotLevel } from "./lotsPrep";
 import { LOT_DOOR_PADS, LOT_SLOT_HOOKS, lotDoorNotice, lotDoorTarget, lotExitTarget, lotSlotHandlers, onLotSlot } from "./lotTargets";
@@ -185,7 +186,9 @@ describe("lot doors, the rooms' ways out, the slots", () => {
   });
   it("the village clone's trim: each lot's footprint, its plot's old sign post, plot_w's scaffold and crane", () => {
     const feet = lotTrimFootprints(VILLAGE_LOTS.map((l) => l.id));
-    expect(feet.length).toBe(6 + 5 + 2);
+    // 6 footprints, the plots' old sign posts (none since vrb2's rebuild, release 4: the plots lost their signs), the scaffold and the jib
+    const posts = VILLAGE_LOTS.filter((l) => l.plot && VILLAGE_LAYOUT.plots.find((p) => p.id === l.plot)?.signPost).length;
+    expect(feet.length).toBe(6 + posts + 2);
     const jib = feet[feet.length - 1]!;
     expect(jib.inside(-60, 22, 4)).toBe(true);
     expect(jib.inside(-60, 8, 4)).toBe(false);

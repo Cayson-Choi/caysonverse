@@ -139,7 +139,7 @@ try {
   // ---- seats: every seat of both floors
   const seatList = await p.page.evaluate(async () => {
     const m = await window.__imp("/src/village/benchSeats.ts");
-    return m.VILLAGE_SEATS.map((s, index) => ({ index, id: s.id, area: s.area, x: s.x, z: s.z, yaw: s.yaw, standX: s.standX, standZ: s.standZ, bench: s.bench, kind: s.kind, seatY: s.seatY, pose: s.pose })).filter((s) => s.area.startsWith("house:"));
+    return m.VILLAGE_SEATS.map((s, index) => ({ index, id: s.id, area: s.area, x: s.x, z: s.z, yaw: s.yaw, standX: s.standX, standZ: s.standZ, bench: s.bench, kind: s.kind, seatY: s.seatY, pose: s.pose, retired: s.retired })).filter((s) => s.area.startsWith("house:") && !s.retired);
   });
   run.check("house 1 has its 12 seats (13 places with both-facings)", seatList.length >= 12, seatList.length);
   /** A free spot from which the prompt offers seat `index` (the client's rule), nearest the seat first. */
@@ -223,7 +223,7 @@ try {
     });
   }
 
-  await run.step("a tap on a seat far away walks there and sits (3 seats, floor 1)", async () => {
+  await run.step("a tap on a seat far away walks there, then 앉기 sits (3 seats, floor 1)", async () => {
     if ((await areaOf()) === "house:house_1:2") {
       // (a rerun that skipped the seat sweep arrives here upstairs)
       await walkAndWait(p, 364.4, 22.95, 20000, 0.5);
@@ -243,8 +243,14 @@ try {
       await tapAt(s);
       await sleep(400);
       const pk = await p.page.evaluate(() => { const k = window.__cvClickPick?.(); return k && { pick: k.pick && { name: k.pick.name, x: +k.pick.x.toFixed(2), y: +k.pick.y.toFixed(2), z: +k.pick.z.toFixed(2) }, plan: k.plan, sitOn: k.sitOn }; });
-      const sat = await p.page.waitForFunction(() => window.__cv.getPos().seatIndex >= 0, null, { timeout: 15000 }).then(() => true, () => false);
-      run.check(`${seat.id}: the tap walked there and sat`, sat, { pos: await seatState(), click: pk });
+      // owner 2026-11-17 ("의자를 찍으면 자동 앉기는 빼줘"): the tap walks there and stops standing; 앉기 (E / the button) then sits
+      await p.page.waitForFunction(() => window.__cvClickTarget?.() === null, null, { timeout: 15000 }).catch(() => {});
+      await sleep(700);
+      const standing = (await p.page.evaluate(() => window.__cv.getPos().seatIndex)) < 0;
+      run.check(`${seat.id}: the tap walked there and stopped standing (no sitting on a tap)`, standing && pk?.sitOn !== null && pk?.sitOn !== undefined, { pos: await seatState(), click: pk });
+      if (standing) await act();
+      const sat = await p.page.waitForFunction(() => window.__cv.getPos().seatIndex >= 0, null, { timeout: 8000 }).then(() => true, () => false);
+      run.check(`${seat.id}: then 앉기 sat on it`, sat, { pos: await seatState() });
       if (sat) {
         await run.shot(p, `tap-sit-${seat.id}.png`);
         await act();

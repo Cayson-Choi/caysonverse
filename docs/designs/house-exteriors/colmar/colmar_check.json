@@ -1,0 +1,42 @@
+{
+ "house_1": {
+  "solids": 53,
+  "clips": []
+ },
+ "house_2": {
+  "solids": 49,
+  "clips": []
+ },
+ "house_3": {
+  "solids": 47,
+  "clips": []
+ },
+ "house_4": {
+  "solids": 51,
+  "clips": []
+ },
+ "house_5": {
+  "solids": 48,
+  "clips": []
+ },
+ "house_6": {
+  "solids": 53,
+  "clips": []
+ },
+ "house_7": {
+  "solids": 52,
+  "clips": []
+ },
+ "house_8": {
+  "solids": 50,
+  "clips": []
+ },
+ "house_9": {
+  "solids": 52,
+  "clips": []
+ },
+ "house_10": {
+  "solids": 49,
+  "clips": []
+ }
+}

@@ -172,7 +172,10 @@ export function stepFollowRig(
   dt: number,
   armActive: boolean,
   out: FollowSpot,
+  lift = 0,
 ): FollowSpot {
+  // The head the camera hangs from: raised with the body on a porch (집 외관 A8, houses/houseLift.ts; 0 elsewhere).
+  const head = HEAD_HEIGHT + lift;
   // The zoom glide: a wheel notch or a pinch eases in, and the distance then holds the player's value exactly.
   rig.renderDist = smoothToward(rig.renderDist, orbit.distance, dt);
 
@@ -187,14 +190,14 @@ export function stepFollowRig(
   out.distance = limitedDistance(wantedDistance, rig.limit, engage);
   const wantedHoriz = wantedDistance * Math.cos(orbit.pitch);
   let tpX = x + wantedHoriz * Math.sin(orbit.yaw);
-  let tpY = HEAD_HEIGHT + wantedDistance * Math.sin(orbit.pitch);
+  let tpY = head + wantedDistance * Math.sin(orbit.pitch);
   let tpZ = z + wantedHoriz * Math.cos(orbit.yaw);
   if (engage > 0) {
     wantedSpot.x = tpX;
     wantedSpot.y = tpY;
     wantedSpot.z = tpZ;
     headSpot.x = x;
-    headSpot.y = HEAD_HEIGHT;
+    headSpot.y = head;
     headSpot.z = z;
     indoorCameraClamp(wantedSpot, headSpot, rig.limit, engage, limitedSpot);
     tpX = limitedSpot.x;
@@ -212,13 +215,13 @@ export function stepFollowRig(
   let shoulderWanted = 0;
   if (armActive) {
     const offX = tpX - x;
-    const offY = tpY - HEAD_HEIGHT;
+    const offY = tpY - head;
     const offZ = tpZ - z;
     const reach = Math.sqrt(offX * offX + offY * offY + offZ * offZ);
     if (reach > 1e-6) {
       const indoor = indoorArmAt(map, limitNow);
       // only buildings and walls shorten the arm (owner 2026-11-16): not the trees, not the props (cameraCollision.armBoxes)
-      const clear = springArmDistance(x, HEAD_HEIGHT, z, tpX, tpY, tpZ, reach);
+      const clear = springArmDistance(x, head, z, tpX, tpY, tpZ, reach);
       rig.armLimit = stepArmLimit(rig.armLimit, clear, reach, dt);
       if (rig.armLimit < reach) {
         const k = rig.armLimit / reach;
@@ -227,7 +230,7 @@ export function stepFollowRig(
         if (indoor) {
           // Shaped against the old 3.6 m reference, not the (now uncapped) wanted arm: see indoorArmShape.
           const shape = indoorArmShape(rig.armLimit, reach, offY, orbit.pitch, Math.max(INDOOR_LIFT_MIN, Math.min(PORTRAIT_INDOOR_LIFT_MAX, aspectDistanceScale(aspect))));
-          tpY = HEAD_HEIGHT + shape.offY;
+          tpY = head + shape.offY;
           out.lookLift = shape.lookLift;
           // A portrait phone's view widens as the wall cuts the arm short (round 8 review: on arrival, the door wall 3.1 m
           // behind, the own back covered half a phone's screen): whole once the arm is PORTRAIT_WIDEN_AT m short.
@@ -235,7 +238,7 @@ export function stepFollowRig(
           // Pushed this close to the head by the wall behind: over the shoulder instead of over the head (cameraShoulder.ts).
           shoulderWanted = shoulderTarget(Math.hypot(tpX - x, tpZ - z));
         } else {
-          tpY = HEAD_HEIGHT + offY * armHeightScaleAt(k, indoor);
+          tpY = head + offY * armHeightScaleAt(k, indoor);
           out.lookLift = armLookLiftAt(k, indoor);
         }
       }
@@ -267,18 +270,18 @@ export function stepFollowRig(
   const solids = armActive ? cameraSolids() : null;
   if (solids) {
     const cap = solids.hungCap(tpX, tpZ, HUNG.from, HUNG.clear, HUNG.near, HUNG.slope);
-    if (tpY > cap) tpY = Math.max(HEAD_HEIGHT, cap);
+    if (tpY > cap) tpY = Math.max(head, cap);
   }
   rig.solidLimit = ARM_FREE;
 
   // The last word: never inside a wall's own box. A thin partition's end beside a doorway (12 cm, 집 실내 G house 2 upstairs) could take
   // the shoulder's side leg past the padded corner and leave the lens in the board: pulled back along the head's line to just before it.
   if (insideTallBox(tpX, tpY, tpZ)) {
-    const len = Math.hypot(tpX - x, tpY - HEAD_HEIGHT, tpZ - z);
-    const t = segmentHitFraction(x, HEAD_HEIGHT, z, tpX, tpY, tpZ, armBoxes(), WALL_HEIGHT_GUARD, 0);
+    const len = Math.hypot(tpX - x, tpY - head, tpZ - z);
+    const t = segmentHitFraction(x, head, z, tpX, tpY, tpZ, armBoxes(), WALL_HEIGHT_GUARD, 0);
     const k = Math.max(0, t - IN_WALL_BACKOFF / Math.max(len, 1e-6));
     tpX = x + (tpX - x) * k;
-    tpY = HEAD_HEIGHT + (tpY - HEAD_HEIGHT) * k;
+    tpY = head + (tpY - head) * k;
     tpZ = z + (tpZ - z) * k;
   }
 

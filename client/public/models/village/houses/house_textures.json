@@ -1,0 +1,95 @@
+{
+  "format": "caysonverse-house-textures",
+  "version": 1,
+  "mapSide": 1024,
+  "bytes": 2100262,
+  "materials": {
+    "LM_render": {
+      "sets": [
+        "render"
+      ],
+      "u_m": 2.0,
+      "v_m": 2.0,
+      "maps": {
+        "albedo": "house_render_albedo.webp",
+        "normal": "house_render_normal.webp",
+        "rough": "house_render_rough.webp"
+      }
+    },
+    "LM_stone": {
+      "sets": [
+        "sandstone"
+      ],
+      "u_m": 1.0,
+      "v_m": 1.0,
+      "maps": {
+        "albedo": "house_sandstone_albedo.webp",
+        "normal": "house_sandstone_normal.webp",
+        "rough": "house_sandstone_rough.webp"
+      }
+    },
+    "LM_roof": {
+      "sets": [
+        "clay_tile"
+      ],
+      "u_m": 2.0,
+      "rows": 14,
+      "exposure_m": 0.14285714285714285,
+      "maps": {
+        "albedo": "house_tile_albedo.webp",
+        "normal": "house_tile_normal.webp",
+        "rough": "house_tile_rough.webp"
+      }
+    },
+    "LM_wood": {
+      "sets": [
+        "oak",
+        "painted_boards"
+      ],
+      "bands": {
+        "oak": {
+          "v0": 0.5,
+          "v1": 1.0,
+          "u_m": 1.83,
+          "v_m": 0.915
+        },
+        "timber_cladding": {
+          "v0": 0.0,
+          "v1": 0.5,
+          "u_m": 1.13,
+          "v_m": 0.565
+        }
+      },
+      "maps": {
+        "albedo": "house_wood_albedo.webp",
+        "normal": "house_wood_normal.webp",
+        "rough": "house_wood_rough.webp"
+      }
+    },
+    "LM_metal": {
+      "sets": [
+        "iron",
+        "painted_frame"
+      ],
+      "bands": {
+        "metal_painted": {
+          "v0": 0.5,
+          "v1": 1.0,
+          "u_m": 1.0,
+          "v_m": 0.5
+        },
+        "pvc_frame": {
+          "v0": 0.0,
+          "v1": 0.5,
+          "u_m": 1.0,
+          "v_m": 0.5
+        }
+      },
+      "maps": {
+        "albedo": "house_metal_albedo.webp",
+        "normal": "house_metal_normal.webp",
+        "rough": "house_metal_rough.webp"
+      }
+    }
+  }
+}

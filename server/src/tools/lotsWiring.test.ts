@@ -178,7 +178,9 @@ describe("the five walk-in rooms (contract 11)", () => {
 describe("seats: outside 12, inside 52, after every seat main has", () => {
   it("the lot seats come after main's last seat, in LOT_SEAT_ORDER then LOT_INTERIOR_SEAT_ORDER, never renumbering earlier ones", () => {
     const first = VILLAGE_SEATS.findIndex((s) => isLotSeat(s));
-    expect(VILLAGE_SEATS[first - 1]!.bench).toBe("h9_1_10"); // main's last seat (release 3's late house seat)
+    // main's last seat: release 4's added house seats (houses-real, ADDED_HOUSE_SEATS) end at index 269 — the lots' start at 270
+    expect(first).toBe(270);
+    expect(VILLAGE_SEATS.findIndex((s) => s.id.startsWith("lotin:"))).toBe(302);
     const lot = VILLAGE_SEATS.slice(first);
     expect(lot.every((s) => isLotSeat(s))).toBe(true);
     const outside = lot.filter((s) => s.area === "village");

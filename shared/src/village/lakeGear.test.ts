@@ -19,8 +19,9 @@ function gltf(path: string) {
     nodes: { name?: string; children?: number[]; mesh?: number }[];
     animations?: { name: string }[];
     scenes: { nodes: number[] }[];
-    materials?: { name: string }[];
-    images?: unknown[];
+    meshes?: { name?: string; primitives: { material?: number }[] }[];
+    materials?: { name: string; doubleSided?: boolean; normalTexture?: unknown }[];
+    images?: { name?: string }[];
     extensionsUsed?: string[];
   };
 }
@@ -48,14 +49,28 @@ describe("lake_fish.glb", () => {
     expect(hash(fishPath)).toBe(LAKE_FISH_GLB_HASH);
     expect(statSync(fishPath).size).toBeLessThanOrEqual(LAKE_FISH_MAX_BYTES);
   });
-  it("종마다 fish_<id> 노드와 LOD1, 재질 둘(사진 몸·반투명 지느러미), 이미지 셋(사진·노멀·지느러미), Draco·WebP", () => {
+  it("종마다 fish_<id> 노드와 LOD1, 재질 둘(사진 몸·지느러미), 이미지 넷(사진·노멀·지느러미·지느러미 노멀), Draco·WebP", () => {
     for (const id of LAKE_FISH_IDS) {
       expect(names, id).toContain(lakeFishNode(id));
       expect(names, id).toContain(`${lakeFishNode(id)}_lod1`);
     }
     expect((g.materials ?? []).map((m) => m.name).sort()).toEqual(["M_fin", "M_fish"]);
-    expect(g.images?.length).toBe(3);
+    expect(g.images?.length).toBe(4);
     expect(g.extensionsUsed ?? []).toContain("KHR_draco_mesh_compression");
     expect(g.extensionsUsed ?? []).toContain("EXT_texture_webp");
+  });
+  // hotfix 2026-11-17 (owner: "잡았는데 지느러미가 안보이는 것도 있어"): every species' near model has its fin primitive, both
+  // materials are double sided, and the fins have their own normal map (the rays)
+  it("종마다 가까운 모델에 지느러미(M_fin) 조각이 있고, 두 재질 모두 양면, 지느러미 노멀맵", () => {
+    const fin = (g.materials ?? []).findIndex((m) => m.name === "M_fin");
+    expect(fin).toBeGreaterThanOrEqual(0);
+    for (const id of LAKE_FISH_IDS) {
+      const node = g.nodes.find((n) => n.name === `${lakeFishNode(id)}_mesh`);
+      expect(node?.mesh, id).toBeTypeOf("number");
+      const prims = g.meshes?.[node!.mesh!]?.primitives ?? [];
+      expect(prims.some((p) => p.material === fin), id).toBe(true);
+    }
+    for (const m of g.materials ?? []) expect(m.doubleSided, m.name).toBe(true);
+    expect((g.materials ?? [])[fin]?.normalTexture).toBeTruthy();
   });
 });

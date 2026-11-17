@@ -15,6 +15,7 @@ import { applyLotTextures, applyLotsDayNight, disposeLots, lotsMode, pickLotLeve
 import { LotTextureBank } from "./lotTextures";
 import { setLotsDrawn } from "./lotsStore";
 import { doorSwingClearance } from "./lotDoorCheck";
+import { viewState } from "../../game/viewState";
 import { LOT_ROOM_PREFETCH_M, prefetchLotRoom } from "./LotRoom";
 
 declare global {
@@ -37,6 +38,17 @@ interface DoorRun {
 
 /** The swing doors' timing (an oak double door on closers: slower than the glass sliders). */
 export const LOT_SWING_DOOR: Readonly<AutoDoorConfig> = Object.freeze({ ...PUBLIC_AUTO_DOOR, openingMs: 1100, closingMs: 1400 });
+
+/** Within this far past a room door's pad (m) the camera is brought round to the street side, when it is more than DOOR_VIEW_MAX_OFF off it. */
+export const DOOR_VIEW_REACH = 1.2;
+export const DOOR_VIEW_MAX_OFF = (70 * Math.PI) / 180;
+export const DOOR_VIEW_PITCH = 0.32;
+
+/** A lot door's outward facing (the yaw from the visitor at its pad to a camera behind them, out on the street). */
+function doorOutYaw(doorId: string): number {
+  const room = lotRoomOfDoor(doorId)!;
+  return lotDoorPoint(room.lot, room.door).arrival.yaw;
+}
 
 /** Eased door travel (a closer's start and stop), 0..1. */
 const ease = (t: number) => t * t * (3 - 2 * t);
@@ -211,6 +223,8 @@ export function VillageLots({ pose, tier }: { pose: Pose; tier: VillageTier }) {
 
   const others = useRef<number[]>([]).current;
   const wanted = useRef({ key: "", at: -1e9 });
+  /** The door the camera last swung round for (null once the visitor walked away from it). */
+  const doorView = useRef<string | null>(null);
   useFrame(({ camera: cam, clock }) => {
     if (!nodes) return;
     const c = store.current;
@@ -242,6 +256,23 @@ export function VillageLots({ pose, tier }: { pose: Pose; tier: VillageTier }) {
         c.bank.want(sets, performance.now());
       }
       if (c.bank.takeChanged()) for (const m of nodes.surfaces) applyLotTextures(m, c.bank);
+    }
+    // At a room's door the camera stands on the street side (owner review 2026-11-17: on the building's side the wall cut the arm short
+    // and the lens sat in the avatar's face): walking up to a pad with the camera behind the wall plane, the orbit glides round once
+    if (posed) {
+      let near: { id: string; yaw: number } | null = null;
+      for (const rig of nodes.doors) {
+        const run = doors.current.get(rig.id);
+        if (!run) continue;
+        if (Math.hypot(pose.x - run.pad.x, pose.z - run.pad.z) <= run.pad.radius + DOOR_VIEW_REACH) near = { id: rig.id, yaw: doorOutYaw(rig.id) };
+      }
+      if (!near) doorView.current = null;
+      else if (doorView.current !== near.id) {
+        doorView.current = near.id;
+        const camYaw = Math.atan2(cam.position.x - pose.x, cam.position.z - pose.z);
+        const off = Math.abs(Math.atan2(Math.sin(camYaw - near.yaw), Math.cos(camYaw - near.yaw)));
+        if (off > DOOR_VIEW_MAX_OFF && viewState.mode === "tp") viewState.orbitGoal = { yaw: near.yaw, pitch: DOOR_VIEW_PITCH };
+      }
     }
     // the doors: anyone (this player, the others) within the approach of a door's pad opens it
     for (const rig of nodes.doors) {

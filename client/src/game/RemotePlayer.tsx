@@ -73,6 +73,7 @@ import { getTransitRenderPose } from "../net/transitSync";
 import { stepLean } from "./leanBack";
 import { CARRY_STRIPPED_CLIPS, stripArm } from "../lake/fishingRig";
 import { useFishingRig, useHasRod } from "../lake/useFishingRig";
+import { easeLift, stepLiftAt, withSeatLift } from "../village/houses/houseLift";
 
 /** Fallback seconds for a sit/stand clip if its duration can't be read yet. */
 const SIT_CLIP_FALLBACK_SEC = 0.8;
@@ -176,6 +177,8 @@ export function RemotePlayer({
   // Jump (Task 11): seq of the registry hop currently animating (-1 = none), and the
   // wrapper that keeps the blob shadow on the floor while the avatar is in the air.
   const jumpSeqRef = useRef(-1);
+  // The raised porches' picture lift (집 외관 A8, houses/houseLift.ts), eased per frame.
+  const stepLiftRef = useRef(0);
   const shadowRef = useRef<Group>(null);
   // Current gait (idle / walk / run), derived from interpolated speed only.
   const gaitRef = useRef<Gait>("idle");
@@ -679,9 +682,11 @@ export function RemotePlayer({
         }
       }
       // A bench raises its sitter onto the seat surface (eased in / out with the clips); the shadow stays down.
-      const raise = lift + seatLift(seat) * fishRig.liftFactor();
+      // The porch's lift (A8) under the drawn pose; a seat's own lift is not added on top of it.
+      stepLiftRef.current = easeLift(stepLiftRef.current, stepLiftAt(group.position.x, group.position.z), Math.min(0.1, delta));
+      const raise = lift + withSeatLift(stepLiftRef.current, seatLift(seat) * fishRig.liftFactor());
       group.position.y = raise;
-      if (shadowRef.current) shadowRef.current.position.y = -raise;
+      if (shadowRef.current) shadowRef.current.position.y = -raise + stepLiftRef.current;
     }
     if (import.meta.env.DEV && target) {
       // E2E probe (window.__cv.getRemoteDrawn): what this viewer sees, frame by frame. Mutated in place.

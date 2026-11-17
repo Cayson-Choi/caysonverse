@@ -379,7 +379,7 @@ export async function runVillageScenario({ name, device }) {
       await run.shot(A, "bridge-across.png");
     });
 
-    await run.step("4. a plot sign reads 곧 지어져요 · <building>", async () => {
+    await run.step("4. the empty plots: no signs (owner 2026-11-17)", async () => {
       await walkAndWait(A, -24, 66, 40000, 1.2);
       await walkAndWait(A, -24, 46, 40000, 1.5);
       await walkAndWait(A, 0, 44, 40000, 1.5);
@@ -404,17 +404,9 @@ export async function runVillageScenario({ name, device }) {
         return { specs, faces, inFrame: frustumHits.length };
       });
       summary.signs = signs;
-      const texts = signs.specs.map((s) => s.text);
-      run.check("the empty plots' signs read 곧 지어져요 · 성당 / 학교 / 절 / 교회", ["성당", "학교", "절", "교회"].every((b) => texts.includes(`곧 지어져요 · ${b}`)), texts);
-      run.check("the library's plot (under construction) reads 공사 중 · 도서관 (the brief's 곧 지어져요 · 도서관 predates Task 4's 공사 중)", texts.includes("공사 중 · 도서관"), texts);
-      // lots v2 (L5v2): the five plots are built — their buildings stand there and the old signs are gone from the scene (PlotMarkers)
-      const built = await A.page.evaluate(() => window.__cvLots?.()?.stats?.lots ?? []);
-      if (built.length >= 5) {
-        run.check("the built plots show no old sign (the lot buildings stand there)", signs.faces === 0, { faces: signs.faces, built });
-      } else {
-        run.check("every sign has its painted face and back in the scene (5 x 2)", signs.faces === 10, signs.faces);
-        run.check("the church sign (plot_s) is in front of the camera", signs.inFrame >= 1, signs);
-      }
+      // vrb2 (owner 2026-11-17: "건설중이라는 크레인도 건물을 다 올릴거니까 빼고"): real buildings are coming on every plot,
+      // so the "곧 지어져요" / "공사 중" signs are gone
+      run.check("no plot has a sign any more (the buildings are coming)", signs.specs.length === 0 && signs.faces === 0, signs);
       await run.shot(A, "plot-sign.png");
     });
 

@@ -6,7 +6,7 @@
 import { LAKE_FISH_IDS, type LakeFishId } from "@caysonverse/shared/village/lakeGear";
 
 /** fish_cards.webp's sha256 (first 8): bump with the file. */
-export const FISH_CARDS_HASH = "e124882e";
+export const FISH_CARDS_HASH = "2de267ab";
 export const FISH_CARDS_URL = `/models/lake/fish_cards.webp?v=${FISH_CARDS_HASH}`;
 export const CARD_CELL = { w: 384, h: 192, cols: 4, rows: 3 } as const;
 

@@ -185,7 +185,7 @@ describe("walking in the cabin", () => {
       expect(reached(free, ap), `reach ${s.id}`).toBe(true);
       expect(seatApproachOk(s, ap.ahead, ap.right), `approach ${s.id}`).toBe(true);
       expect(nearestFreeSpot(ap.ahead, ap.right, new Set())).not.toBeNull();
-      const spot = seatStandUpSpot(s);
+      const spot = seatStandUpSpot(s)!;
       expect(cabinBlocked(spot.ahead, spot.right), `stand-up of ${s.id}`).toBe(false);
       expect(reached(free, spot), `reach ${s.id}`).toBe(true);
     }
@@ -228,8 +228,9 @@ describe("walking in the cabin", () => {
 
   it("standing up never puts a rider inside another", () => {
     for (const seat of BUS_SEATS) {
-      const first = seatStandUpSpot(seat);
+      const first = seatStandUpSpot(seat)!;
       const second = seatStandUpSpot(seat, [{ ahead: first.ahead, right: first.right }]);
+      if (!second) continue; // nothing else free in front of or beside a backed seat: the rider stays seated (seat-front, StandRejected)
       expect(Math.hypot(second.ahead - first.ahead, second.right - first.right), seat.id).toBeGreaterThanOrEqual(BUS_RIDER_APART);
       expect(cabinBlocked(second.ahead, second.right)).toBe(false);
     }
