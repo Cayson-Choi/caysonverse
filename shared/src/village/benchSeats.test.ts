@@ -1,3 +1,4 @@
+import { standSide } from "./standSpot";
 import { describe, expect, it } from "vitest";
 import { isBlocked, type AABB } from "../collision";
 import { PLAYER_RADIUS, SEAT_APPROACH_SLACK, SEAT_REACH, approachesSeat, nearestFreeSeat, seatTaken } from "../worldMap";
@@ -23,9 +24,12 @@ import {
 } from "./benchSeats";
 import { LAKE_FISHING_SPOTS, lakeSeats } from "./lakeLayout";
 import { VILLAGE_SEAT_MARKERS } from "./generated/villageSeatMarkers";
+import { villageWalkArea } from "./fallsWalk";
 
 const MARKED = new Set(VILLAGE_SEAT_MARKERS.map((m) => m.id));
 /** The seats the art marks (café chairs, porch benches): appended after the benches', the hall's, the houses' and the shelter's. */
+/** The waterfall rest area's stone seats close the list, after the lake's (B1 W5, release 2; fallsWalk.test.ts holds their own tests). */
+const FALLS_SEATS = VILLAGE_SEATS.filter((s) => s.bench.startsWith("falls_seat_"));
 const markedSeats = () => VILLAGE_SEATS.filter((s) => MARKED.has(s.bench));
 
 /** The seated figure's width across the arms (sitPose.ts: the torso with the upper arms, -0.52..0.54 m) and the hands' (-0.53..0.58). */
@@ -160,7 +164,7 @@ describe("village seats (where a sitter goes)", () => {
     for (let i = 0; i < VILLAGE_SEATS.length; i++) {
       const a = VILLAGE_SEATS[i]!;
       const house = parseHouseFloorArea(a.area);
-      const bounds = a.area === "village" ? L.areas.village : house ? houseFloorBounds(house.n, house.floor) : L.areas.hall;
+      const bounds = a.area === "village" ? villageWalkArea(L) : house ? houseFloorBounds(house.n, house.floor) : L.areas.hall;
       expect(a.x, a.id).toBeGreaterThan(bounds.minX);
       expect(a.x, a.id).toBeLessThan(bounds.maxX);
       expect(a.z, a.id).toBeGreaterThan(bounds.minZ);
@@ -373,7 +377,7 @@ describe("village seats (where a sitter gets up to)", () => {
   it("every dismount spot is clear of every collider of its map (a standing body plus margin) and inside its area", () => {
     for (const s of VILLAGE_SEATS) {
       const house = parseHouseFloorArea(s.area);
-      const bounds = s.area === "village" ? L.areas.village : house ? houseFloorBounds(house.n, house.floor) : L.areas.hall;
+      const bounds = s.area === "village" ? villageWalkArea(L) : house ? houseFloorBounds(house.n, house.floor) : L.areas.hall;
       const obstacles = villageGeometry.obstacles;
       expect(isBlocked(s.standX, s.standZ, PLAYER_RADIUS + STAND_CLEARANCE, obstacles, 0), s.id).toBe(false);
       expect(s.standX - PLAYER_RADIUS, s.id).toBeGreaterThan(bounds.minX);
@@ -428,12 +432,14 @@ describe("the art's marked seats: café terrace chairs and porch benches (review
       const ahead = (s.x - m.x) * f.x + (s.z - m.z) * f.z;
       expect(ahead).toBeCloseTo(m.frontEdge + SIT_ROOT_AHEAD, 3);
       expect(s.seatY).toBe(m.seatTop);
-      // the art's spot, or further out on the line from the chair where the terrace's clearance needs it
-      expect(Math.hypot(s.standX - m.standX!, s.standZ - m.standZ!)).toBeLessThanOrEqual(0.5);
-      // the get-up spot is beside the chair (not ahead: the table is there), within reach and a short step
+      // owner 2026-11-17: in FRONT of the chair where its table leaves room (standSpot.ts); else beside it — the art's spot, or further
+      // out on the line from the chair where the terrace's clearance needs it — never behind it
       const standAhead = (s.standX - m.x) * f.x + (s.standZ - m.z) * f.z;
+      if (standSide(s, s.standX, s.standZ) !== "front") {
+        expect(Math.hypot(s.standX - m.standX!, s.standZ - m.standZ!)).toBeLessThanOrEqual(0.5);
+        expect(standAhead).toBeLessThanOrEqual(m.frontEdge);
+      }
       expect(standAhead).toBeGreaterThanOrEqual(-CHAIR_BACK_BEHIND);
-      expect(standAhead).toBeLessThanOrEqual(m.frontEdge);
       expect(Math.hypot(s.standX - s.x, s.standZ - s.z)).toBeLessThan(1.2); // a step aside, well within SEAT_REACH
       expect(approachesSeat(s, s.standX, s.standZ)).toBe(true);
       expect(nearestFreeSeat(s.standX, s.standZ, () => false, SEAT_REACH, VILLAGE_SEATS)).toBe(i);
@@ -576,8 +582,10 @@ describe("the fishing lake's seats in the global index (A10, design 5.4 and 12.2
   const lake = lakeSeats();
   const lakeIdx = VILLAGE_SEATS.map((s, i) => (s.lake ? i : -1)).filter((i) => i >= 0);
 
-  it("come after every village seat, so every older seat index stays (Player.seatIndex is int16)", () => {
-    expect(LAKE_SEAT_BASE).toBe(VILLAGE_SEATS.length - lakeIdx.length);
+  it("come after every village seat, so every older seat index stays (Player.seatIndex is int16); only the waterfall's stone seats follow", () => {
+    expect(FALLS_SEATS).toHaveLength(8);
+    expect(LAKE_SEAT_BASE).toBe(VILLAGE_SEATS.length - lakeIdx.length - FALLS_SEATS.length);
+    expect(VILLAGE_SEATS.slice(-FALLS_SEATS.length)).toEqual(FALLS_SEATS); // release 2 appended them: the lake's indices stay release 1's
     expect(lakeIdx[0]).toBe(LAKE_SEAT_BASE);
     expect(lakeIdx.every((i, k) => i === LAKE_SEAT_BASE + k)).toBe(true);
     expect(lake).toHaveLength(56);

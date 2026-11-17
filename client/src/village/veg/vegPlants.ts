@@ -18,7 +18,7 @@ import type { Vec3 } from "./vegLod";
  *  - Bedding plants, at real size: petunia mounds (trumpets with net veins on funnels), pansies (faces with blotches
  *    and whiskers on cupped discs, held up on stalks), grape hyacinths (spikes of urn bells round a stalk), tulips
  *    (streaked cups), French marigolds (ruffled pompom heads over pinnate fronds), each with its own textured leaves,
- *    and bark-chip mulch under the plants of a bed.
+ *    (the beds' soil they stand on: vegSoil.ts).
  *
  * The vertex attributes are vegGeometry's (rgb x the atlas texel is the albedo, a the share of the instance's colour);
  * every vertex here has a uv in the plant atlas (the white cell where untextured).
@@ -575,27 +575,8 @@ export function marigoldPlant(simple: boolean, seed = 6): BufferGeometry {
   return b.build();
 }
 
-/** A patch of bark-chip mulch (42 cm, irregular: the picture's outline), lying on the soil: 8 triangles. */
-export function mulchPatch(seed = 8): BufferGeometry {
-  const b = builder(1);
-  const rand = mulberry32(seed);
-  const segs = 8;
-  const R = 0.23;
-  const lift = 0.004;
-  const c = b.v([0, lift + 0.003, 0], [0, 1, 0], grey(1, 0), plantUv(PLANT_CELL.mulch, 0.5, 0.5), 0);
-  const rim: number[] = [];
-  for (let s = 0; s < segs; s++) {
-    const a = (s / segs) * Math.PI * 2;
-    const k = 1.02 + rand() * 0.04;
-    rim.push(b.v([Math.cos(a) * R * k, lift, Math.sin(a) * R * k], [0, 1, 0], grey(0.92, 0), plantUv(PLANT_CELL.mulch, 0.5 + 0.5 * Math.cos(a) * k, 0.5 + 0.5 * Math.sin(a) * k, 0), 0));
-  }
-  for (let s = 0; s < segs; s++) b.tri(c, rim[(s + 1) % segs]!, rim[s]!);
-  return b.build();
-}
-
-/** The species' meshes in flowerPlacement.SPECIES order: petunia, pansy, muscari, tulip, grass, reed, marigold, mulch. */
+/** The species' meshes in flowerPlacement.SPECIES order: petunia, pansy, muscari, tulip, grass, reed, marigold. */
 export function plantMeshes(): Array<{ lod0: BufferGeometry; lod1: BufferGeometry }> {
-  const mulch = mulchPatch();
   return [
     { lod0: petuniaPlant2(false), lod1: petuniaPlant2(true) },
     { lod0: pansyPlant2(false), lod1: pansyPlant2(true) },
@@ -604,7 +585,6 @@ export function plantMeshes(): Array<{ lod0: BufferGeometry; lod1: BufferGeometr
     { lod0: grassTuft(false, "grass"), lod1: grassTuft(true, "grass") },
     { lod0: grassTuft(false, "reed"), lod1: grassTuft(true, "reed") },
     { lod0: marigoldPlant(false), lod1: marigoldPlant(true) },
-    { lod0: mulch, lod1: mulch.clone() },
   ];
 }
 

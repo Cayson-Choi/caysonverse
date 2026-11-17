@@ -5,12 +5,12 @@
 import type { HouseSeatMarker } from "../../houseAreas";
 
 export const HOUSE_3_SEAT_MARKERS: readonly HouseSeatMarker[] = [
-  { id: "h3_1_0", n: 3, floor: 1, k: 0, furn: "chair", kind: "backed", pose: "chair", approach: "front", x: 411.7, z: -4.45, y: 0.455, yaw: 1.570793, edge: 0.22, back: 0.2, width: 0.4, group: "h3_1_0", both: false, exitTurn: 0, lean: 0.22 },
-  { id: "h3_1_1", n: 3, floor: 1, k: 1, furn: "chair", kind: "backed", pose: "chair", approach: "front", x: 411.7, z: -5.05, y: 0.455, yaw: 1.570793, edge: 0.22, back: 0.2, width: 0.4, group: "h3_1_1", both: false, exitTurn: 0, lean: 0.22 },
-  { id: "h3_1_2", n: 3, floor: 1, k: 2, furn: "chair", kind: "backed", pose: "chair", approach: "front", x: 411.7, z: -5.65, y: 0.455, yaw: 1.570793, edge: 0.22, back: 0.2, width: 0.4, group: "h3_1_2", both: false, exitTurn: 0, lean: 0.22 },
-  { id: "h3_1_3", n: 3, floor: 1, k: 3, furn: "chair", kind: "backed", pose: "chair", approach: "front", x: 414.9, z: -4.45, y: 0.455, yaw: -1.570793, edge: 0.22, back: 0.2, width: 0.4, group: "h3_1_3", both: false, exitTurn: 0, lean: 0.22 },
-  { id: "h3_1_4", n: 3, floor: 1, k: 4, furn: "chair", kind: "backed", pose: "chair", approach: "front", x: 414.9, z: -5.05, y: 0.455, yaw: -1.570793, edge: 0.22, back: 0.2, width: 0.4, group: "h3_1_4", both: false, exitTurn: 0, lean: 0.22 },
-  { id: "h3_1_5", n: 3, floor: 1, k: 5, furn: "chair", kind: "backed", pose: "chair", approach: "front", x: 414.9, z: -5.65, y: 0.455, yaw: -1.570793, edge: 0.22, back: 0.2, width: 0.4, group: "h3_1_5", both: false, exitTurn: 0, lean: 0.22 },
+  { id: "h3_1_0", n: 3, floor: 1, k: 0, furn: "chair", kind: "backed", pose: "chair", approach: "front", x: 411.52, z: -4.45, y: 0.455, yaw: 1.570793, edge: 0.22, back: 0.2, width: 0.4, group: "h3_1_0", both: false, exitTurn: 0, lean: 0.22 },
+  { id: "h3_1_1", n: 3, floor: 1, k: 1, furn: "chair", kind: "backed", pose: "chair", approach: "front", x: 411.52, z: -5.05, y: 0.455, yaw: 1.570793, edge: 0.22, back: 0.2, width: 0.4, group: "h3_1_1", both: false, exitTurn: 0, lean: 0.22 },
+  { id: "h3_1_2", n: 3, floor: 1, k: 2, furn: "chair", kind: "backed", pose: "chair", approach: "front", x: 411.52, z: -5.65, y: 0.455, yaw: 1.570793, edge: 0.22, back: 0.2, width: 0.4, group: "h3_1_2", both: false, exitTurn: 0, lean: 0.22 },
+  { id: "h3_1_3", n: 3, floor: 1, k: 3, furn: "chair", kind: "backed", pose: "chair", approach: "front", x: 415.08, z: -4.45, y: 0.455, yaw: -1.570793, edge: 0.22, back: 0.2, width: 0.4, group: "h3_1_3", both: false, exitTurn: 0, lean: 0.22 },
+  { id: "h3_1_4", n: 3, floor: 1, k: 4, furn: "chair", kind: "backed", pose: "chair", approach: "front", x: 415.08, z: -5.05, y: 0.455, yaw: -1.570793, edge: 0.22, back: 0.2, width: 0.4, group: "h3_1_4", both: false, exitTurn: 0, lean: 0.22 },
+  { id: "h3_1_5", n: 3, floor: 1, k: 5, furn: "chair", kind: "backed", pose: "chair", approach: "front", x: 415.08, z: -5.65, y: 0.455, yaw: -1.570793, edge: 0.22, back: 0.2, width: 0.4, group: "h3_1_5", both: false, exitTurn: 0, lean: 0.22 },
   { id: "h3_1_6", n: 3, floor: 1, k: 6, furn: "bench", kind: "backless", pose: "chair", approach: "any", x: 410.15, z: -0.58, y: 0.36, yaw: 3.141593, edge: 0.5, back: 0, width: 0.9, group: "h3_1_6", both: true, exitTurn: 0, lean: 0 },
   { id: "h3_1_7", n: 3, floor: 1, k: 7, furn: "bench", kind: "backless", pose: "chair", approach: "any", x: 411.05, z: -0.58, y: 0.36, yaw: 3.141593, edge: 0.5, back: 0, width: 0.9, group: "h3_1_7", both: true, exitTurn: 0, lean: 0 },
   { id: "h3_2_0", n: 3, floor: 2, k: 0, furn: "cushion", kind: "floor", pose: "floor", approach: "any", x: 410.6, z: 26.2, y: 0.05, yaw: 3.141593, edge: 0.25, back: 0, width: 0.5, group: "h3_2_0", both: false, exitTurn: 0, lean: 0 },

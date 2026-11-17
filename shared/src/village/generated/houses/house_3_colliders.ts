@@ -20,9 +20,9 @@ export const HOUSE_3_COLLIDERS: readonly AABB[] = [
   { minX: 409.05, maxX: 410.25, minZ: -7.8, maxZ: -7.46 }, // col__h3_1_upper
   { minX: 409.7, maxX: 411.5, minZ: -1.08, maxZ: -0.08 }, // col__h3_1_pyeong
   { minX: 410, maxX: 411.2, minZ: 25.05, maxZ: 25.75 }, // col__h3_2_table
-  { minX: 411.42, maxX: 411.95, minZ: -5.9, maxZ: -5.4 }, // col__h3_1_fchair3
-  { minX: 411.42, maxX: 411.95, minZ: -5.3, maxZ: -4.8 }, // col__h3_1_fchair2
-  { minX: 411.42, maxX: 411.95, minZ: -4.7, maxZ: -4.2 }, // col__h3_1_fchair
+  { minX: 411.24, maxX: 411.77, minZ: -5.9, maxZ: -5.4 }, // col__h3_1_fchair3
+  { minX: 411.24, maxX: 411.77, minZ: -5.3, maxZ: -4.8 }, // col__h3_1_fchair2
+  { minX: 411.24, maxX: 411.77, minZ: -4.7, maxZ: -4.2 }, // col__h3_1_fchair
   { minX: 411.74, maxX: 411.86, minZ: 24, maxZ: 24.8 }, // col__h3_2_part_a_1
   { minX: 411.74, maxX: 411.86, minZ: 26.6, maxZ: 30 }, // col__h3_2_part_a_0
   { minX: 411.9, maxX: 413, minZ: -7.8, maxZ: -7.46 }, // col__h3_1_upper2
@@ -32,9 +32,9 @@ export const HOUSE_3_COLLIDERS: readonly AABB[] = [
   { minX: 412.82, maxX: 413.77, minZ: -6, maxZ: -4.1 }, // col__h3_1_dtable
   { minX: 413.1, maxX: 414.3, minZ: -7.8, maxZ: -7.18 }, // col__h3_1_gasrun
   { minX: 413.82, maxX: 414.18, minZ: 29.12, maxZ: 29.48 }, // col__h3_2_lamp
-  { minX: 414.65, maxX: 415.18, minZ: -5.9, maxZ: -5.4 }, // col__h3_1_fchair6
-  { minX: 414.65, maxX: 415.18, minZ: -5.3, maxZ: -4.8 }, // col__h3_1_fchair5
-  { minX: 414.65, maxX: 415.18, minZ: -4.7, maxZ: -4.2 }, // col__h3_1_fchair4
+  { minX: 414.83, maxX: 415.36, minZ: -5.9, maxZ: -5.4 }, // col__h3_1_fchair6
+  { minX: 414.83, maxX: 415.36, minZ: -5.3, maxZ: -4.8 }, // col__h3_1_fchair5
+  { minX: 414.83, maxX: 415.36, minZ: -4.7, maxZ: -4.2 }, // col__h3_1_fchair4
   { minX: 414.98, maxX: 415.62, minZ: 24.28, maxZ: 24.92 }, // col__h3_2_plant
   { minX: 415.07, maxX: 416.02, minZ: -0.53, maxZ: -0.07 }, // col__h3_1_chest
   { minX: 415.1, maxX: 416.1, minZ: 29.46, maxZ: 29.92 }, // col__h3_2_drawers

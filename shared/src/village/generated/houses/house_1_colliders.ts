@@ -37,14 +37,14 @@ export const HOUSE_1_COLLIDERS: readonly AABB[] = [
   { minX: 366.33, maxX: 366.85, minZ: -2.75, maxZ: -2.25 }, // col__h1_1_dchair
   { minX: 366.88, maxX: 367.12, minZ: -1.5, maxZ: 0 }, // col__h1_1_entry
   { minX: 367.1, maxX: 369.7, minZ: -0.63, maxZ: -0.01 }, // col__h1_1_sinkrun
-  { minX: 367.75, maxX: 368.55, minZ: -3.65, maxZ: -2.15 }, // col__h1_1_dtable
+  { minX: 367.89, maxX: 368.39, minZ: -3.6, maxZ: -2.2 }, // col__h1_1_dtable
+  { minX: 368.07, maxX: 368.69, minZ: 25.55, maxZ: 26.15 }, // col__h1_2_deskchair
   { minX: 368.4, maxX: 369, minZ: 24.5, maxZ: 25.1 }, // col__h1_2_plant2
-  { minX: 368.43, maxX: 369.05, minZ: 25.55, maxZ: 26.15 }, // col__h1_2_deskchair
   { minX: 368.9, maxX: 369.9, minZ: 29.48, maxZ: 29.93 }, // col__h1_2_dressing
   { minX: 369.14, maxX: 370.5, minZ: -7.7, maxZ: -6.4 }, // col__h1_1_stair_low
   { minX: 369.15, maxX: 369.65, minZ: 28.69, maxZ: 29.11 }, // col__h1_2_stool
-  { minX: 369.45, maxX: 369.97, minZ: -3.55, maxZ: -3.05 }, // col__h1_1_dchair4
-  { minX: 369.45, maxX: 369.97, minZ: -2.75, maxZ: -2.25 }, // col__h1_1_dchair3
+  { minX: 369.43, maxX: 369.95, minZ: -3.55, maxZ: -3.05 }, // col__h1_1_dchair4
+  { minX: 369.43, maxX: 369.95, minZ: -2.75, maxZ: -2.25 }, // col__h1_1_dchair3
   { minX: 369.72, maxX: 370.08, minZ: 24.42, maxZ: 24.78 }, // col__h1_2_lamp2
   { minX: 369.8, maxX: 370.56, minZ: -0.75, maxZ: -0.05 }, // col__h1_1_fridge
   { minX: 369.88, maxX: 370.53, minZ: 25.15, maxZ: 26.55 }, // col__h1_2_desk

@@ -49,7 +49,7 @@ describe("the houses' ground: bounds, walls, blockers", () => {
   it("the block is x 359.7 .. 586.9, z -8.1 .. 30.3 and the village's bounds span it with a 5 m apron", () => {
     expect(HOUSES_BLOCK).toEqual({ minX: 359.7, maxX: 586.9, minZ: -8.1, maxZ: 30.3 });
     const b = villageBounds(L);
-    expect(b.minX).toBe(-95);
+    expect(b.minX).toBe(-106); // the waterfall rest area on the west (B1 W5, release 2)
     expect(b.maxX).toBeCloseTo(586.9 + HOUSES_APRON, 6);
     expect(b.minZ).toBeLessThanOrEqual(-8.1 - HOUSES_APRON + 1e-9);
     expect(b.maxZ).toBeGreaterThanOrEqual(30.3 + HOUSES_APRON - 1e-9);
@@ -222,7 +222,7 @@ describe("the house seats in the one global list", () => {
    * Markers the art leaves with no place to stand (listed for the art round, docs/designs/houses-interior/review): house 9's dining chair
    * in the middle of the row on the stair's side — the table in front, a chair on each side, the stair 1 m behind its backrest.
    */
-  const KNOWN_UNSITTABLE = new Set(["h9_1_6"]);
+  const KNOWN_UNSITTABLE = new Set<string>([]);   // realism pass 2026-11-17: house 9's dining chair has room now
 
   it("every marker of every finished house has at least one seat; only a backless 'both' marker may lose a facing", () => {
     for (const n of GENERATED_HOUSE_NUMBERS) {

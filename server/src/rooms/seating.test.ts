@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { SEAT_REACH, type Seat } from "@caysonverse/shared/worldMap";
 import { VILLAGE_SEATS as SEATS } from "@caysonverse/shared/village/benchSeats";
-import { validateSit as validateSitOn, SEAT_OCCUPIED } from "./seating";
+import { chooseStandSpot, validateSit as validateSitOn, SEAT_OCCUPIED } from "./seating";
+import { BODY_APART, standSide } from "@caysonverse/shared/village/standSpot";
 
 /** The village's benches are the seat list unless a test passes its own. */
 const validateSit = (
@@ -143,5 +144,38 @@ describe("validateSit — backed seats and two-sided benches (the rebuilt hall)"
     expect(validateSit(p, { seatIndex: back }, new Map([[front, "someone"]]), SELF)).toEqual({ reason: SEAT_OCCUPIED });
     const neighbour = SEATS.findIndex((v) => v.id === "bench_w1_s1:back");
     expect(validateSit(p, { seatIndex: back }, new Map([[neighbour, "someone"]]), SELF)).toEqual({ seatIndex: back });
+  });
+});
+
+// Owner 2026-11-17: stand up in FRONT of a backed seat, never behind its backrest; nothing free in front: stay seated.
+describe("chooseStandSpot — the server's stand-up spot", () => {
+  const sofa = SEATS.find((s) => s.id === "sofa_a0")!;
+  const plaza = SEATS[6]!;
+  it("nobody about: the seat's own stand point, in front of it", () => {
+    for (const s of [plaza, sofa]) {
+      expect(chooseStandSpot(s, s.area, [])).toEqual({ x: s.standX, z: s.standZ });
+      expect(standSide(s, s.standX, s.standZ)).toBe("front");
+    }
+  });
+  it("someone on the stand point: front-left / front-right / further forward, clear of them, still in front", () => {
+    for (const s of [plaza, sofa]) {
+      const other = { x: s.standX, z: s.standZ };
+      const spot = chooseStandSpot(s, s.area, [other])!;
+      expect(spot).not.toBeNull();
+      expect(Math.hypot(spot.x - other.x, spot.z - other.z)).toBeGreaterThanOrEqual(BODY_APART);
+      expect(standSide(s, spot.x, spot.z)).toBe("front");
+    }
+  });
+  it("every seat of the game, nobody about: its own stand point (the waterfall's stones too: the village's walk area, not areas.village)", () => {
+    for (const s of SEATS) expect(chooseStandSpot(s, s.area, []), s.id).toEqual({ x: s.standX, z: s.standZ });
+  });
+  it("a crowd all round the front: null (the sitter stays seated), never a spot behind the backrest", () => {
+    const crowd: { x: number; z: number }[] = [];
+    for (let dx = -3; dx <= 3; dx += 0.3) for (let dz = -3; dz <= 3; dz += 0.3) {
+      const x = plaza.x + dx;
+      const z = plaza.z + dz;
+      if (standSide(plaza, x, z) !== "behind") crowd.push({ x, z });
+    }
+    expect(chooseStandSpot(plaza, plaza.area, crowd)).toBeNull();
   });
 });

@@ -24,8 +24,11 @@ import { validateJoinOptions } from "./joinValidation";
 import { RateWindow } from "./rateLimit";
 import { DOOR_RATE, useDoor, useHouseExit, useStair } from "./villageDoor";
 import { candleCubby } from "./villageCandle";
+import { memorial } from "../memorial/service";
+import { MemorialServerMsg } from "@caysonverse/shared/memorial/messages";
 import { CANDLES, type CandleBook } from "./candleBook";
-import { validateSit } from "./seating";
+import { chooseStandSpot, validateSit } from "./seating";
+import { STAND_BLOCKED } from "@caysonverse/shared/village/standSpot";
 import { VillageFishing } from "./villageFishing";
 import {
   BUS_STATE_RATE_MS,
@@ -72,6 +75,11 @@ interface VillageTracking extends Tracking {
   /** Caps on the bus messages: the steps (BusMove) and the rest (sit, stand): a flood never speeds a rider up or buys CPU. */
   busMoveRate: RateWindow;
   busActRate: RateWindow;
+  /**
+   * SHA-256 of the device key sent at join (memorial stage B), or null. Server memory only — never in the synced state. The
+   * key maps to an `owner` through the DB (memorial/service.ts); memorial-2 W1/W3 read it with `memorialKeyHash`.
+   */
+  keyHash: string | null;
 }
 
 /**
@@ -141,10 +149,13 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
   /** The process's candles (every room's hall shows the same ones); a test may swap in its own. */
   protected candles: CandleBook = CANDLES;
   private offCandles: (() => void) | null = null;
+  private offClaims: (() => void) | null = null;
 
   onCreate(): void {
     // A candle lit in ANY room's hall burns in this room's hall too (the book is shared by every shard).
     this.offCandles = this.candles.onLit((c) => this.broadcastToArea("hall", VillageServerMsg.CandleLit, c));
+    // A cubby claimed, edited or given an approved photo in ANY room (or over HTTPS) → every hall refetches that cubby.
+    this.offClaims = memorial()?.onClaimUpdated((p) => this.broadcastToArea("hall", MemorialServerMsg.ClaimUpdated, p)) ?? null;
     // Move, Chat, Emoji, Jump, Typing (+ the "*" catch-all for stray types).
     this.registerPlayerMessages();
     this.onMessage(MessageType.Sit, (client, payload) => {
@@ -204,6 +215,8 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
   onDispose(): void {
     this.offCandles?.();
     this.offCandles = null;
+    this.offClaims?.();
+    this.offClaims = null;
   }
 
   /** The candles burning now, to one client (it came into the hall, or came back inside it). */
@@ -235,6 +248,8 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     player.connected = true;
     player.area = "village";
     this.seatPlayer(client, player); // state + tracking (createTracking below)
+    const track = this.tracking.get(client.sessionId);
+    if (track) track.keyHash = result.deviceKeyHash;
     client.send(VillageServerMsg.ServerTime, this.serverTime());
     const snapshot = this.busSnapshot(this.wallClock());
     client.send(MessageType.BusState, snapshot);
@@ -304,6 +319,7 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
       busMoveAt: now,
       busMoveRate: new RateWindow(BUS_MOVE_MAX_PER_SEC),
       busActRate: new RateWindow(BUS_ACT_MAX_PER_SEC),
+      keyHash: null,
     };
   }
 
@@ -576,6 +592,11 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     if (place.kind === "free") return;
     if (place.kind === "seat") {
       const spot = seatStandUpSpot(BUS_SEATS[place.index]!, this.otherBusPoints(player));
+      // never behind the seat's back; nothing free in front or beside it: still seated, and told why (owner 2026-11-17)
+      if (!spot) {
+        client.send(MessageType.BusRejected, { reason: STAND_BLOCKED });
+        return;
+      }
       player.busAhead = spot.ahead;
       player.busRight = spot.right;
       player.busYaw = spot.yaw;
@@ -679,8 +700,19 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
 
     const seat = VILLAGE_SEATS[player.seatIndex];
     if (seat) {
-      player.x = seat.standX;
-      player.z = seat.standZ;
+      // in front of the seat — its stand point, else front-left / front-right, else further forward — never behind its backrest;
+      // nothing free (another visitor standing there, the furniture): still seated, and told why (owner 2026-11-17, standSpot.ts)
+      const others: { x: number; z: number }[] = [];
+      this.state.players.forEach((o, id) => {
+        if (id !== client.sessionId && o.area === player.area) others.push({ x: o.x, z: o.z });
+      });
+      const spot = chooseStandSpot(seat, player.area, others);
+      if (!spot) {
+        client.send(MessageType.StandRejected, { reason: STAND_BLOCKED });
+        return;
+      }
+      player.x = spot.x;
+      player.z = spot.z;
     }
     this.releaseSeat(client.sessionId);
     track.lastAcceptedAt = this.now();
@@ -770,11 +802,19 @@ export class VillageRoom extends PlayerRoom<WorldState, VillageTracking> {
     const track = this.tracking.get(client.sessionId);
     if (!player || !track) return;
     const cubby = payload !== null && typeof payload === "object" ? (payload as { cubby?: unknown }).cubby : undefined;
-    const anchor = candleCubby(player.area, player.x, player.z, cubby);
+    const anchor = candleCubby(player.area, player.x, player.z, cubby, undefined, (id) => memorial()?.isClaimed(id) === true);
     if (anchor === null) return;
     if (this.candles.burning(anchor.id, this.wallClock())) return; // already burning: the card shows who lit it
     if (!track.candleRate.tryAccept(this.now())) return;
     this.candles.light(anchor.id, player.nickname, this.wallClock());
+  }
+
+  /**
+   * The device-key hash a session joined with (null: none / an old client). Survives a reconnect (same tracking). The memorial-2
+   * room features (flowers, the ceremony candle) key their once-a-day limits on it.
+   */
+  memorialKeyHash(sessionId: string): string | null {
+    return this.tracking.get(sessionId)?.keyHash ?? null;
   }
 
   /**

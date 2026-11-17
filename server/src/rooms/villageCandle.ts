@@ -11,7 +11,8 @@ import { SAMPLE_FILLED_IDS, sampleFilledIds } from "@caysonverse/shared/village/
  * candle itself is kept by the server for an hour (candleBook.ts).
  *
  * Only a FILLED cubby takes a candle (final fix, T9 review): an empty one shows "곧 이 자리에 …" and has nobody to light
- * it for. Which cubbies are filled is the shared seed-stable choice (shared/village/sampleFill.ts).
+ * it for. Which cubbies are filled is the shared seed-stable choice (shared/village/sampleFill.ts) plus every cubby a family has
+ * claimed (memorial stage B, `claimed`).
  */
 
 /** Every cubby's anchor by id, built once. */
@@ -38,13 +39,15 @@ export function candleCubby(
   z: number,
   cubby: unknown,
   layout: VillageLayout = VILLAGE_LAYOUT,
+  /** A cubby a family has claimed (memorial stage B) is filled too. */
+  claimed: (id: string) => boolean = () => false,
 ): CubbyAnchor | null {
   if (area !== "hall") return null;
   if (!Number.isFinite(x) || !Number.isFinite(z)) return null;
   if (typeof cubby !== "string") return null;
   const anchor = anchorsOf(layout).get(cubby);
   if (!anchor) return null;
-  if (!filledOf(layout).has(cubby)) return null;
+  if (!filledOf(layout).has(cubby) && !claimed(cubby)) return null;
   if (Math.hypot(x - anchor.x, z - anchor.z) > CANDLE_REACH_M) return null;
   return anchor;
 }

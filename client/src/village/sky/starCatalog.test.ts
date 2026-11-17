@@ -54,6 +54,36 @@ describe("the shipped star file (stars.v1.bin)", () => {
     expect(cat.bv[cat.indexOf(2061)]).toBeGreaterThan(1.5);
   });
 
+  it("places 14 landmark stars within 0.01° of the published J2000 positions, with their magnitudes and colours (B3 check)", () => {
+    // [HR, RA°, Dec°, V, B−V range]
+    const known: [number, number, number, number, [number, number]][] = [
+      [424, 37.95456, 89.26411, 2.02, [0.4, 0.8]],
+      [168, 10.12684, 56.53733, 2.23, [1.0, 1.3]],
+      [21, 2.29452, 59.14978, 2.27, [0.3, 0.5]],
+      [4301, 165.93195, 61.75103, 1.79, [0.9, 1.2]],
+      [5191, 206.88516, 49.31326, 1.86, [-0.3, -0.1]],
+      [2061, 88.79293, 7.40706, 0.5, [1.5, 2.0]],
+      [1713, 78.63447, -8.20164, 0.12, [-0.2, 0.0]],
+      [2491, 101.28716, -16.71612, -1.46, [-0.1, 0.1]],
+      [7001, 279.23473, 38.78369, 0.03, [-0.1, 0.1]],
+      [7924, 310.35798, 45.28034, 1.25, [0.0, 0.2]],
+      [7557, 297.69583, 8.86832, 0.77, [0.1, 0.3]],
+      [6134, 247.35192, -26.432, 0.96, [1.6, 1.95]],
+      [5340, 213.9153, 19.18241, -0.04, [1.1, 1.3]],
+      [1708, 79.17233, 45.99803, 0.08, [0.7, 1.0]],
+    ];
+    for (const [hr, ra0, dec0, v, [b0, b1]] of known) {
+      const i = cat.indexOf(hr);
+      expect(i, `HR ${hr}`).toBeGreaterThanOrEqual(0);
+      const [ra, dec] = raDec(cat.eq, i);
+      expect(Math.abs(ra - ra0) * Math.cos((dec0 * Math.PI) / 180), `HR ${hr} RA`).toBeLessThan(0.01);
+      expect(Math.abs(dec - dec0), `HR ${hr} Dec`).toBeLessThan(0.01);
+      expect(Math.abs(cat.mag[i]! - v), `HR ${hr} V`).toBeLessThan(0.1);
+      expect(cat.bv[i]!, `HR ${hr} B-V`).toBeGreaterThan(b0 - 0.05);
+      expect(cat.bv[i]!, `HR ${hr} B-V`).toBeLessThan(b1 + 0.05);
+    }
+  });
+
   it("has every star the figures use", () => {
     for (const hr of allFigureStars()) expect(cat.indexOf(hr), `HR ${hr}`).toBeGreaterThanOrEqual(0);
     expect(cat.indexOf(9999)).toBe(-1);

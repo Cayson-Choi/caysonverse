@@ -347,3 +347,68 @@ export function seasonAt(utcMs: number): CalendarSeason {
 export function nextSeason(s: CalendarSeason): CalendarSeason {
   return s === "spring" ? "summer" : s === "summer" ? "autumn" : s === "autumn" ? "winter" : "spring";
 }
+
+// ── the moon ──
+
+export interface MoonPosition {
+  /** Geocentric J2000 equatorial unit vector (the same `skyMatrix` places it; add the parallax in the scene). */
+  eq: Vec3;
+  /** The sun's J2000 equatorial unit vector (to orient the lit side). */
+  sunEq: Vec3;
+  /** Horizontal parallax (°): a moon on the horizon stands this much lower than the Earth's centre sees it (~0.95°). */
+  parallaxDeg: number;
+  /** Sun-moon angle (°), 0 = new, 180 = full. */
+  elongationDeg: number;
+  /** Lit share of the disc, 0..1. */
+  illuminated: number;
+  /** Waxing (evening moon, lit on the west... toward the sun's side) or waning. */
+  waxing: boolean;
+}
+
+/**
+ * The moon (and the sun's longitude for its phase) from the Astronomical Almanac's low-precision lunar series
+ * (Meeus-style, ~0.3° in longitude, ~0.2° in latitude; plenty for a sky seen with the eye). Ecliptic of date ->
+ * equator of date (the obliquity of date) -> J2000 by the transposed precession matrix.
+ */
+export function moonAt(utcMs: number): MoonPosition {
+  const t = (julianDay(utcMs) - 2451545.0) / 36525;
+  const s = (a: number, b: number) => Math.sin((a + b * t) * RAD);
+  const c = (a: number, b: number) => Math.cos((a + b * t) * RAD);
+  const lon =
+    218.32 + 481267.881 * t + 6.29 * s(135.0, 477198.87) - 1.27 * s(259.3, -413335.36) + 0.66 * s(235.7, 890534.22) +
+    0.21 * s(269.9, 954397.74) - 0.19 * s(357.5, 35999.05) - 0.11 * s(186.5, 966404.03);
+  const lat = 5.13 * s(93.3, 483202.02) + 0.28 * s(228.2, 960400.89) - 0.28 * s(318.3, 6003.15) - 0.17 * s(217.6, -407332.21);
+  const par = 0.9508 + 0.0518 * c(135.0, 477198.87) + 0.0095 * c(259.3, -413335.36) + 0.0078 * c(235.7, 890534.22) + 0.0028 * c(269.9, 954397.74);
+  const g = 357.529 + 35999.05 * t;
+  const sunLon = 280.46 + 36000.77 * t + 1.915 * Math.sin(g * RAD) + 0.02 * Math.sin(2 * g * RAD);
+  const eps = (23.439291 - 0.0130042 * t) * RAD;
+  const P = precessionMatrix(utcMs);
+  const toJ2000 = (lonDeg: number, latDeg: number): Vec3 => {
+    const l = lonDeg * RAD, b = latDeg * RAD;
+    const xe = Math.cos(b) * Math.cos(l);
+    const ye = Math.cos(b) * Math.sin(l);
+    const ze = Math.sin(b);
+    // ecliptic -> equator of date
+    const x = xe;
+    const y = ye * Math.cos(eps) - ze * Math.sin(eps);
+    const z = ye * Math.sin(eps) + ze * Math.cos(eps);
+    // equator of date -> J2000: Pᵀ
+    return [P[0]! * x + P[3]! * y + P[6]! * z, P[1]! * x + P[4]! * y + P[7]! * z, P[2]! * x + P[5]! * y + P[8]! * z];
+  };
+  const eq = toJ2000(lon, lat);
+  const sunEq = toJ2000(sunLon, 0);
+  const elongationDeg = angleDeg(eq, sunEq);
+  const illuminated = (1 - Math.cos(elongationDeg * RAD)) / 2;
+  const waxing = mod(lon - sunLon, 360) < 180;
+  return { eq, sunEq, parallaxDeg: par, elongationDeg, illuminated, waxing };
+}
+
+/** Korean phase word for the album/HUD ("보름달", "초승달"...). */
+export function moonPhaseName(m: Pick<MoonPosition, "illuminated" | "waxing">): string {
+  const k = m.illuminated;
+  if (k < 0.03) return "삭 (달이 안 보여요)";
+  if (k > 0.97) return "보름달";
+  if (k < 0.4) return m.waxing ? "초승달" : "그믐달";
+  if (k < 0.6) return m.waxing ? "상현달" : "하현달";
+  return m.waxing ? "차오르는 달" : "기우는 달";
+}

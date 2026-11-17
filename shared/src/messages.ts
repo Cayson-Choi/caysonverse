@@ -16,6 +16,8 @@ export const MessageType = {
   Stand: "stand",
   /** Server -> one client: a personal notice that their sit request was rejected. */
   SitRejected: "sit_rejected",
+  /** Server -> one client: a personal notice that their stand request was refused (nothing in front of the seat is free). */
+  StandRejected: "stand_rejected",
   /**
    * Client -> server: the sender jumped. Server -> everyone except the sender: relay
    * tagged with the sender's sid (the sender hopped locally). A transient event
@@ -102,6 +104,11 @@ export type StandPayload = Record<string, never>;
 
 /** Server -> the sender only: why their sit request was dropped (Korean reason). */
 export interface SitRejectedPayload {
+  reason: string;
+}
+
+/** Server -> the sender only: why they are still seated (Korean reason, standSpot.ts STAND_BLOCKED). */
+export interface StandRejectedPayload {
   reason: string;
 }
 
@@ -197,6 +204,7 @@ export interface MessagePayloads {
   [MessageType.Sit]: SitPayload;
   [MessageType.Stand]: StandPayload;
   [MessageType.SitRejected]: SitRejectedPayload;
+  [MessageType.StandRejected]: StandRejectedPayload;
   // Jump/Typing travel both ways under one id (request up, relay down), so each
   // entry lists both shapes.
   [MessageType.Jump]: JumpPayload | JumpBroadcast;

@@ -26,6 +26,7 @@ import { GENERATED_HOUSES } from "@caysonverse/shared/village/generated/houses";
 import { houseFloorGeometry } from "@caysonverse/shared/village/housesGeometry";
 import { VILLAGE_BENCHES, VILLAGE_SEATS } from "@caysonverse/shared/village/benchSeats";
 import { MEMORIAL_SEAT_MARKERS } from "@caysonverse/shared/village/generated/memorialSeats";
+import { fallsShoreSpot, inFallsRestArea, villagePickArea, villageWalkArea } from "@caysonverse/shared/village/fallsWalk";
 import type { Bounds, MapGeometry } from "@caysonverse/shared/school/geometry";
 import type { AABB } from "@caysonverse/shared/collision";
 import { HALL_CAMERA_LIMIT, VILLAGE_CAMERA_PAD, type CameraLimit } from "./indoorCamera";
@@ -70,6 +71,26 @@ export interface ActiveMap {
    * benches (`VILLAGE_FURNITURE`); absent elsewhere.
    */
   furniture?: readonly AABB[];
+  /**
+   * The rectangle a click may pick ground in, where it is wider than `bounds` (케이슨 마을: the waterfall's whole pool, so
+   * a click on the far side of the water is seen and walked to the shore). Absent: the map's own bounds (clickPick.ts).
+   */
+  pickBounds?: Bounds;
+  /**
+   * Water nobody walks into (the waterfall's pool): where a click on it goes instead, or null (clickPlan.ts
+   * PlanOptions.shore). Absent: no such water.
+   */
+  shore?: (x: number, z: number) => { x: number; z: number } | null;
+}
+
+/** The bounds a click picks ground in on `m`: its `pickBounds`, else the area's. */
+export function pickBoundsOf(m: ActiveMap): Bounds {
+  return m.pickBounds ?? mapBounds(m);
+}
+
+/** The pick bounds of the map the local player stands in right now. */
+export function activePickBounds(): Bounds {
+  return pickBoundsOf(current);
 }
 
 /** 케이슨 마을's spring-arm pad: wider than its 0.2 m near plane (Task 7 review m5). Lives in indoorCamera.ts (the hall's limit derives from it). */
@@ -104,9 +125,11 @@ export const VILLAGE_FURNITURE: readonly AABB[] = Object.freeze(
 /** 케이슨 마을, the open village : the village area's rectangle of the shared geometry. */
 export const VILLAGE_ACTIVE_MAP: ActiveMap = Object.freeze({
   geometry: villageGeometry,
-  bounds: VILLAGE_LAYOUT.areas.village,
+  bounds: villageWalkArea(VILLAGE_LAYOUT), // the village's area plus the waterfall's rest area (B1 W5)
+  pickBounds: villagePickArea(VILLAGE_LAYOUT),
+  shore: (x: number, z: number) => fallsShoreSpot(VILLAGE_LAYOUT, x, z),
   cameraPad: VILLAGE_CAMERA_PAD,
-  zoneLabel: () => "케이슨 마을",
+  zoneLabel: (x: number, z: number) => (inFallsRestArea(VILLAGE_LAYOUT, x, z) ? "폭포 쉼터" : "케이슨 마을"),
   seats: VILLAGE_SEATS, // the one global list; only the village's seats are offered from here
   seatArea: "village",
   furniture: VILLAGE_FURNITURE,

@@ -33,6 +33,7 @@
  */
 
 import { isBlocked } from "../collision";
+import { standSide } from "./standSpot";
 import { CHAIR_SIDE_CLEAR, CHAIR_SIDE_FAR, PLAYER_RADIUS, SEAT_REACH, approachesSeat, type Seat } from "../worldMap";
 import { BACKED_ROOT_AHEAD, FLOOR_SIT_POSE, SIT_ROOT_AHEAD } from "../sitPose";
 import { MEMORIAL_SEAT_MARKERS } from "./generated/memorialSeats";
@@ -42,6 +43,7 @@ import { GENERATED_HOUSES } from "./generated/houses";
 import { isRemovedHouseSeat } from "./houseFixes";
 import { HOUSE_NUMBERS, HOUSE_PLACES, houseBuildingId, houseFloorBounds, compareHouseSeats, type HouseFloor, type HouseNumber, type HouseSeatMarker, type HouseSeatPose } from "./houseAreas";
 import type { MapGeometry } from "../school/geometry";
+import { fallsWalkable, villageWalkArea } from "./fallsWalk";
 import { VILLAGE_SEAT_MARKERS } from "./generated/villageSeatMarkers";
 import { lakeSeats, type LakeSeatKind } from "./lakeLayout";
 
@@ -320,7 +322,14 @@ function dismountAround(root: Point2, yaw: number, bounds: Bounds, geometry: Map
  * neighbour's (`STAND_NEIGHBOUR_MARGIN`). Review 2026-11-15 round 5: the second consult chair's spot was in the gap between the
  * two, as near the first chair, so stopping a step short of it and pressing E sat on the first one. Null: none within reach.
  */
-function chairStand(seat: Seat, neighbours: readonly Point2[], bounds: Bounds, geometry: MapGeometry = villageGeometry): Point2 | null {
+function chairStand(
+  seat: Seat,
+  neighbours: readonly Point2[],
+  bounds: Bounds,
+  geometry: MapGeometry = villageGeometry,
+  /** Only spots this allows (`frontOnly`: in front of the seat, owner 2026-11-17). */
+  allow?: (x: number, z: number) => boolean,
+): Point2 | null {
   let best: Point2 | null = null;
   let bestD = Infinity;
   const step = 0.05;
@@ -334,6 +343,7 @@ function chairStand(seat: Seat, neighbours: readonly Point2[], bounds: Bounds, g
       const z = Math.round((cz + iz * step) * 1000) / 1000;
       const own = Math.hypot(x - cx, z - cz);
       if (own >= bestD || own > 1.6) continue;
+      if (allow && !allow(x, z)) continue;
       // offered from the spot itself; and from anywhere a step short of it (a tap walk stops 0.35 m before its target) never the
       // neighbour instead: there it is this chair or none — and, for a house seat, this one still (a stop it is not offered from sat nobody)
       let ok = own - bonus <= SEAT_REACH - STAND_SHORT - 0.05 && approachesSeat(seat, x, z);
@@ -484,6 +494,7 @@ function markerSeats(m: MarkerSource, place: MarkerPlace): VillageSeat[] {
       // a chair at a table has the table in front of it: it is also sat on from its sides, up to the backrest's face (never
       // through the backrest); a sofa or an armchair from the front only
       sidePlane: m.furn === "chair" ? Math.round((ahead + m.back) * 1000) / 1000 : undefined,
+      backrest: backed ? Math.round((ahead + m.back) * 1000) / 1000 : undefined,
       sideHalf: m.furn === "chair" ? Math.round((m.width / 2) * 1000) / 1000 : undefined,
       // its seat point is under the desk / table (BACKED_ROOT_AHEAD in front of the backrest): reached that much farther — a house seat
       // is reached from and picked by its cushion instead (Seat.reachFrom)
@@ -541,6 +552,20 @@ function markerSeats(m: MarkerSource, place: MarkerPlace): VillageSeat[] {
           seat.standX = spot.x;
           seat.standZ = spot.z;
         }
+      }
+    }
+    // A backed seat is stood up from in FRONT of it wherever there is room (owner 2026-11-17: "의자 앞에 가서 앉고 일어서면 의자 앞에
+    // 서고"): a chair whose spot above came out beside or behind it gets the nearest front spot it is offered from, if any — beside it
+    // stays only where its front is its table and the chairs next to it (standSpot.ts; the sweep in standSpot.test.ts lists those).
+    if (backed && standSide(seat, seat.standX, seat.standZ) !== "front") {
+      const peers = place.peers.filter((o) => o.id !== m.id && Math.hypot(o.x - m.x, o.z - m.z) < 2.5);
+      const near = place.lenient ? peers.map((o) => ({ x: o.x, z: o.z })) : neighbours;
+      const front = chairStand(seat, near, place.bounds, place.geometry, (x, z) => standSide(seat, x, z) === "front");
+      // ...else, if it came out behind the backrest, the nearest spot beside it that is not (never through the backrest)
+      const beside = front ?? (standSide(seat, seat.standX, seat.standZ) === "behind" ? chairStand(seat, near, place.bounds, place.geometry, (x, z) => standSide(seat, x, z) !== "behind") : null);
+      if (beside) {
+        seat.standX = beside.x;
+        seat.standZ = beside.z;
       }
     }
     out.push(seat);
@@ -618,6 +643,8 @@ function villageMarkerSeats(markers: readonly VillageSeatMarker[]): VillageSeat[
           area: "village",
           kind: "backed",
           lean: 0,
+          backrest: Math.round((SIT_ROOT_AHEAD + m.frontEdge + CHAIR_BACK_BEHIND) * 1000) / 1000,
+          sideHalf: CHAIR_HALF_WIDTH,
         });
       } else {
         const stand = dismountAhead(root, yaw, bounds, `${m.id}:${along}`);
@@ -636,6 +663,19 @@ function villageMarkerSeats(markers: readonly VillageSeatMarker[]): VillageSeat[
           lean: 0,
         });
       }
+    }
+  }
+  // A terrace chair is stood up from in FRONT of it where its table leaves room (owner 2026-11-17), else beside it as above: the
+  // nearest front spot it is offered from, nearer it than the chairs round it, with the terrace's clearance (CHAIR_STAND_CLEARANCE).
+  for (const seat of seats) {
+    if (seat.beside === undefined || standSide(seat, seat.standX, seat.standZ) === "front") continue;
+    const near = seats.filter((o) => o !== seat && o.beside !== undefined && Math.hypot(o.x - seat.x, o.z - seat.z) < 2.5).map((o) => ({ x: o.x, z: o.z }));
+    const front = chairStand(seat, near, bounds, villageGeometry, (x, z) =>
+      standSide(seat, x, z) === "front" && !isBlocked(x, z, PLAYER_RADIUS + CHAIR_STAND_CLEARANCE, villageGeometry.obstacles, 0),
+    );
+    if (front) {
+      seat.standX = front.x;
+      seat.standZ = front.z;
     }
   }
   return seats;
@@ -667,12 +707,43 @@ function benchSeats(b: VillageBench): VillageSeat[] {
         bench: b.id,
         area: b.area,
         kind: b.kind,
+        // a backed bench's backrest stands at the back of its board (the board's depth, twice its front edge, behind the front edge)
+        backrest: b.kind === "backed" ? Math.round((SIT_ROOT_AHEAD + 2 * b.frontEdge) * 1000) / 1000 : undefined,
         lean: 0,
         group: turns.length > 1 ? place : undefined,
       });
     }
   }
   return seats;
+}
+
+/**
+ * The waterfall rest area's two stone seats (`backdrop.waterfall.seats`, owner 2026-11-16: backless seats, sat on from
+ * either long side). A stone is 0.8 m deep and 1.9 m long, 0.42 m high: two places along it, each facing west and east,
+ * so four seats a stone, in the order west places then east places (north to south by `benchSeatOffsets`). A sitter on
+ * either side is offered the seats of their own side only (a seat has a front edge: `approachesSeat`), and the two sides
+ * sit back to back on their own half of the stone, as on a log (so no exclusive group). The bench id is the stone's own
+ * (`falls_seat_n`/`_s`).
+ */
+function fallsStoneSeats(): VillageSeat[] {
+  if (!fallsWalkable(VILLAGE_LAYOUT)) return [];
+  const { seats: stones, options } = VILLAGE_LAYOUT.backdrop.waterfall;
+  if (!options.seats) return [];
+  const bounds = villageWalkArea(VILLAGE_LAYOUT);
+  const out: VillageSeat[] = [];
+  for (const stone of stones) {
+    for (const facing of stone.facings) {
+      const yaw = facing === "w" ? FACING_WEST : Math.PI / 2;
+      for (const along of benchSeatOffsets(stone.size.z)) {
+        const p = offset(stone.centre.x, stone.centre.z, yaw, along, stone.size.x / 2 + SIT_ROOT_AHEAD);
+        const root = { x: Math.round(p.x * 1000) / 1000, z: Math.round(p.z * 1000) / 1000 };
+        const id = `${stone.id}:${facing}:${along}`;
+        const stand = dismountAhead(root, yaw, bounds, id);
+        out.push({ id, x: root.x, z: root.z, yaw, standX: stand.x, standZ: stand.z, seatY: stone.seatTop, frontEdge: SIT_ROOT_AHEAD, bench: stone.id, area: "village", kind: "backless", lean: 0 });
+      }
+    }
+  }
+  return out;
 }
 
 function makeSeats(benches: readonly VillageBench[]): VillageSeat[] {
@@ -710,6 +781,9 @@ function makeSeats(benches: readonly VillageBench[]): VillageSeat[] {
   // the fishing lake's seats (A10) after every village seat: the 30 fishing chairs first, in LAKE_FISHING_SPOTS order
   // (LAKE_SEAT_BASE + spot), then the shore benches, picnic, pavilion and porch benches
   seats.push(...lakeVillageSeats());
+  // the waterfall rest area's stone seats (B1 W5) after the lake's (release 2): no index before them moves, so the lake's
+  // LAKE_SEAT_BASE + spot indices stay what release 1's clients and server use
+  seats.push(...fallsStoneSeats());
   return seats;
 }
 
@@ -720,6 +794,7 @@ function makeSeats(benches: readonly VillageBench[]): VillageSeat[] {
  *  - the memorial hall's, from its model's markers: 20..50;
  *  - the houses' interiors (집 실내 G: every finished house's floors, in house, floor, marker order);
  *  - the bus stop shelter's bench (2), then the art's marked village seats (café terrace chairs, porch benches).
+ *  - the fishing lake's seats (`LAKE_SEAT_BASE` on: the 30 fishing chairs first), then the waterfall rest area's stone seats.
  * Index === `Player.seatIndex` in the village room: the server validates and assigns by this index, the client looks the seat up
  * by it (activeMap's `seats`) and offers only the seats of the area the player is in (`VillageSeat.area`).
  */

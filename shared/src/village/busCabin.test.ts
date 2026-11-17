@@ -112,7 +112,7 @@ describe("walking in the cabin", () => {
   it("every seat stand-up spot, every hold spot and the exit zone are reachable from the entry through the aisle", () => {
     const free = reachable();
     for (const s of BUS_SEATS) {
-      const spot = seatStandUpSpot(s);
+      const spot = seatStandUpSpot(s)!;
       expect(cabinBlocked(spot.ahead, spot.right), `stand-up of ${s.id}`).toBe(false);
       expect(free.has(cellOf(spot)), `reach ${s.id}`).toBe(true);
     }
@@ -138,7 +138,7 @@ describe("walking in the cabin", () => {
   it("from the entry a rider can sit in every seat from its front (the approach point is reachable and allowed)", () => {
     const free = reachable();
     for (const s of BUS_SEATS) {
-      const spot = seatStandUpSpot(s);
+      const spot = seatStandUpSpot(s)!;
       expect(seatApproachOk(s, spot.ahead, spot.right), `approach ${s.id}`).toBe(true);
       expect(free.has(cellOf(spot)), s.id).toBe(true);
       expect(nearestFreeSpot(spot.ahead, spot.right, new Set(), new Set())).not.toBeNull();
@@ -236,8 +236,8 @@ describe("review r1: holds, crowd and the wall seats", () => {
 
   it("standing up never puts a rider inside another", () => {
     const seat = BUS_SEATS.find((x) => x.id === "R2")!;
-    const first = seatStandUpSpot(seat);
-    const second = seatStandUpSpot(seat, [{ ahead: first.ahead, right: first.right }]);
+    const first = seatStandUpSpot(seat)!;
+    const second = seatStandUpSpot(seat, [{ ahead: first.ahead, right: first.right }])!;
     expect(Math.hypot(second.ahead - first.ahead, second.right - first.right)).toBeGreaterThanOrEqual(0.11);
     expect(cabinBlocked(second.ahead, second.right)).toBe(false);
   });

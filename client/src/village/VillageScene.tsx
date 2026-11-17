@@ -1,3 +1,4 @@
+import { MemorialOverlays } from "./memorial/MemorialOverlays";
 import { isTouchDevice } from "../device";
 import { Suspense, useEffect, useLayoutEffect, useState } from "react";
 import { useFrame } from "@react-three/fiber";
@@ -70,6 +71,7 @@ import { HouseArea } from "./HouseInterior";
 import { HouseEntryCover } from "./HouseEntryCover";
 import { prefetchHouse } from "./houseRelease";
 import { houseOpen } from "./keypadText";
+import { liveSunEnabled } from "./sunShadows";
 
 /**
  * 케이슨 마을 — the village scene (Task 4). A `PlayShell` on the village map under the village's afternoon
@@ -429,6 +431,7 @@ export function VillageScene({ identity }: { identity: Identity }) {
       cameraPlanes={VILLAGE_CAMERA_PLANES}
       groundDecal={VILLAGE_GROUND_DECAL}
       shadowColor={VILLAGE_SHADOW_COLOR}
+      shadowFloor={area !== "village" || !liveSunEnabled()}
       world3d={({ pose }) => (
         <>
           <DayNight area={area} tier={tier} />
@@ -451,6 +454,7 @@ export function VillageScene({ identity }: { identity: Identity }) {
           <DoorFade />
           <HouseEntryCover />
           <CubbyView />
+          <MemorialOverlays />
           <GuideDialog />
           <StarFinder orbit={orbit} />
           {area === "village" && <LakeHud pose={pose} seat={seat} orbit={orbit} />}

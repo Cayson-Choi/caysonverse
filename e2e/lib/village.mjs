@@ -7,6 +7,9 @@
 import { mkdirSync } from "node:fs";
 import { CLIENT_URL, DESKTOP, PHONE, createRun, entryReady, launchBrowser, layoutReport, openPlayer, press, pos, sleep, touchDown, touchMoveTo, touchUp, turnCameraTo, visibleButtons, waitIdle, walkAndWait, walkTo } from "./common.mjs";
 
+/** An empty cubby's line: the free claim (memorial stage B, main a3724de) or, with the memorial off, the old "soon" line. */
+const EMPTY_CUBBY_LINES = ["지금은 무료로, 한 가족에 한 칸까지 모실 수 있어요", "곧 이 자리에 우리 아이를 모실 수 있어요"];
+
 /** The pinned noon the other village scripts use (so the day/night look is the same every run). */
 export const NOON = "2026-11-03T12:30";
 /** The memorial's door, outside: the walk from the plaza (waypoints around the plaza and the lane north). */
@@ -341,7 +344,7 @@ export async function runVillageScenario({ name, device }) {
       await act(A);
       await A.page.locator(".cv-guide").waitFor({ state: "visible", timeout: 5000 });
       await sleep(500);
-      run.check("the dialog is the 마을 안내원's, with 5 questions (the 5th: the fishing lake, words only)", (await A.page.locator(".cv-guide").getAttribute("data-guide")) === "plaza_guide" && (await A.page.locator(".cv-guide-questions button").count()) === 5);
+      run.check("the dialog is the 마을 안내원's, with 6 questions (the 5th: the fishing lake, the 6th: the houses — words only)", (await A.page.locator(".cv-guide").getAttribute("data-guide")) === "plaza_guide" && (await A.page.locator(".cv-guide-questions button").count()) === 6);
       await press(A, question(A, 0));
       await A.page.waitForFunction(() => { const b = window.__cvBgm; return window.__cvGuideVoice?.state().playing && b && Math.abs(b.level() - 0.105) < 0.01; }, null, { timeout: 5000 }).catch(() => {});
       const s = await audioState(A);
@@ -546,7 +549,7 @@ export async function runVillageScenario({ name, device }) {
         for (let i = 0; i < Math.abs(steps); i++) await press(A, A.page.getByRole("button", { name: steps > 0 ? "위 칸" : "아래 칸", exact: true }));
         await sleep(400);
         const line = await A.page.evaluate(() => document.querySelector(".cv-cubby-line")?.textContent);
-        run.check("empty: 곧 이 자리에 우리 아이를 모실 수 있어요", line === "곧 이 자리에 우리 아이를 모실 수 있어요", line);
+        run.check("empty: the claim line (memorial stage B: 지금은 무료로 …) or, with the memorial off, 곧 이 자리에 …", EMPTY_CUBBY_LINES.includes(line), line);
         await run.shot(A, "hall-card-empty.png");
       }
       await press(A, A.page.locator(".cv-cubby-close"));

@@ -3,6 +3,8 @@ import { phaseAt, sunAt } from "@caysonverse/shared/village/sunClock";
 import { LIGHTING } from "../game/sceneLighting";
 import { inverseNeutralToneMap, neutralToneMap } from "../game/quality";
 import {
+  ADAPT_CEIL,
+  ADAPT_FLOOR,
   DAY_LIFT,
   DAY_LOOK,
   DAY_SUN_DIRECTION,
@@ -26,6 +28,7 @@ import {
   linearHex,
   linearLuma,
   stateFor,
+  sunAdaptation,
   sunGlowAt,
   type DayNightState,
 } from "./dayNightBlend";
@@ -74,7 +77,9 @@ describe("a summer noon, a winter noon, a midnight", () => {
     expect(s.night).toBe(0);
     expect(s.lights).toBe(0);
     expect(s.stars).toBe(0);
-    expect(s.exposure).toBe(DAY_LOOK.exposure);
+    // the live sun's exposure adaptation (docs/designs/sun-shadows): down under a high sun, never below ADAPT_FLOOR
+    expect(s.exposure).toBeLessThanOrEqual(DAY_LOOK.exposure * ADAPT_CEIL);
+    expect(s.exposure).toBeGreaterThanOrEqual(DAY_LOOK.exposure * ADAPT_FLOOR - 1e-9);
     expect(s.lift).toBe(DAY_LIFT);
     expect(s.dayTint).toEqual([1, 1, 1]);
     expect(s.foliageTint).toEqual([1, 1, 1]);
@@ -306,5 +311,44 @@ describe("the sun glow", () => {
     expect(s.sunDir[0]).toBeCloseTo(Math.cos((30 * Math.PI) / 180), 9);
     expect(s.sunDir[1]).toBeCloseTo(0.5, 9);
     expect(indoorState().sunGlow).toBe(0);
+  });
+});
+
+describe("the live sun and its shadows (docs/designs/sun-shadows)", () => {
+  const RAD_ = 180 / Math.PI;
+  it("the shadows follow the real sun while it is up, its elevation held at 2 degrees at least, the moon after", () => {
+    for (const [el, az] of [
+      [35, 176],
+      [18, 132],
+      [6.5, 241],
+    ] as const) {
+      const d = stateFor(el, az).shadowDir;
+      expect(Math.asin(d[1]) * RAD_).toBeCloseTo(el, 6);
+      expect(((Math.atan2(d[0], -d[2]) * RAD_) + 360) % 360).toBeCloseTo(az, 6);
+    }
+    expect(Math.asin(stateFor(0.5, 246).shadowDir[1]) * RAD_).toBeCloseTo(2, 6);
+    const night = stateFor(-30, 280).shadowDir;
+    const moon = directionFrom(NIGHT_MOON.azimuthDeg, NIGHT_MOON.elevationDeg);
+    for (let i = 0; i < 3; i++) expect(night[i]).toBeCloseTo(moon[i]!, 9);
+  });
+  it("the live sun's direct light is the bake's at the bake's hour and none at night; the moon's shade only at night", () => {
+    expect(stateFor(-20, 280).sunDirect).toEqual([0, 0, 0]);
+    expect(stateFor(35, 176).sunDirect[0]).toBeGreaterThan(0.7);
+    expect(stateFor(35, 176).moonShade).toBe(0);
+    expect(stateFor(-20, 280).moonShade).toBeGreaterThan(0.3);
+  });
+  it("the exposure adapts down under a high sun (a little up under a low one), and the sky's share drops with full sun only", () => {
+    expect(sunAdaptation(5, 0.73)).toBeGreaterThan(1);
+    expect(sunAdaptation(5, 0.73)).toBeLessThanOrEqual(ADAPT_CEIL);
+    expect(sunAdaptation(60, 1.06, 0.68)).toBeLessThan(0.85);
+    expect(sunAdaptation(35, 1.06, 0.68)).toBeLessThan(sunAdaptation(20, 1.06, 0.68) + 1e-9);
+    expect(stateFor(40, 180).skyShare).toBeCloseTo(0.68, 6);
+    expect(stateFor(-20, 280).skyShare).toBe(1);
+    expect(stateFor(40, 180).exposure).toBeLessThan(DAY_LOOK.exposure);
+  });
+  it("easing keeps the shadow direction a unit vector", () => {
+    const cur = cloneState(stateFor(10, 120));
+    easeState(cur, stateFor(40, 200), 1.7);
+    expect(Math.hypot(...cur.shadowDir)).toBeCloseTo(1, 12);
   });
 });
