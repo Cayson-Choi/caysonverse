@@ -109,7 +109,7 @@ function ParkSky() {
 function Ground({ all }: { all: Texture[] }) {
   const grass = useMemo(() => {
     // the village lawn's own set (Poly Haven leafy_grass), graded green-gold like the village lawn (GROUND_GRADE LM_grass: sunny, lime; the raw albedo is dry straw)
-    const m = parkMaterial(pickSet(all, "LeafyGrass"), 1, { color: new Color(0.52, 1.1, 0.36), normalScale: 0.9 });
+    const m = parkMaterial(pickSet(all, "LeafyGrass"), 1, { color: new Color(0.4, 1.2, 0.26), normalScale: 0.9 });
     setRepeat(m, 700 / 5, 620 / 5);
     // broad light and dark patches (a mown-and-wild mottle) so the lawn is not one flat green at a distance
     m.lightMap = macroTexture();

@@ -152,7 +152,7 @@ export function buildTrack(track: CoasterTrack, detail: TrackDetail = "full"): T
   const step = detail === "full" ? 2 : 3; // a ring every metre (1.5 on a phone)
   const loopFrom = track.marks.loopFrom ?? -1;
   const loopTo = track.marks.loopTo ?? -1;
-  const supportEvery = detail === "full" ? 16 : 24; // samples (8 m / 12 m)
+  const supportEvery = detail === "full" ? 20 : 28; // samples (8 m / 12 m)
   const tieEvery = Math.max(1, Math.round((detail === "full" ? 1.4 : 2.4) / track.ds));
   let triangles = 0;
   for (let c = 0; c < CHUNKS; c++) {

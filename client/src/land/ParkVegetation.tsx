@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import { Group } from "three";
 import { coasterTrack } from "@caysonverse/shared/land/coaster";
@@ -70,6 +70,7 @@ export function ParkVegetation() {
   const getThree = useThree((s) => s.get);
   const [veg, setVeg] = useState<VillageVegetation | null>(null);
   const specs = useMemo(parkTreeSpecs, []);
+  const lastSweep = useRef(-1);
   useEffect(() => {
     let dead = false;
     let built: VillageVegetation | null = null;
@@ -103,6 +104,13 @@ export function ParkVegetation() {
   }, [specs, getThree]);
   useFrame(({ clock, gl, camera }) => {
     veg?.update(camera, clock.elapsedTime, gl.domElement.height);
+    // the park's crowns draw no shadow of their own (the village's near ones do): every leaf layer twice in the shadow pass is the frame's largest cost
+    if (veg && Math.floor(clock.elapsedTime * 2) !== lastSweep.current) {
+      lastSweep.current = Math.floor(clock.elapsedTime * 2);
+      veg.group.traverse((o) => {
+        if (o.castShadow) o.castShadow = false;
+      });
+    }
   });
   return veg ? <primitive object={veg.group} dispose={null} /> : null;
 }
