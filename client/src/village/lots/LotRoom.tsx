@@ -57,7 +57,7 @@ import { LotTextureBank, fetchLotManifest, manifestPaths, type LotMatSpec } from
  */
 export const ROOM_TEXTURES: Readonly<Record<string, { pcAlbedoOnly: readonly string[]; phoneFull: readonly string[] }>> = {
   lot_school_class: { pcAlbedoOnly: ["grass", "cast_iron"], phoneFull: ["floor_wood"] },
-  lot_library_reading: { pcAlbedoOnly: ["aluminium_brushed"], phoneFull: ["floor_wood"] },
+  lot_library_reading: { pcAlbedoOnly: ["aluminium_brushed", "wood_painted"], phoneFull: ["floor_wood"] },
   lot_chapel_nave: { pcAlbedoOnly: ["aluminium_brushed"], phoneFull: [] }, // (the phone's chapel: its statues' own maps take the rest of the 8 MB)
   lot_church_nave: { pcAlbedoOnly: [], phoneFull: ["floor_wood"] },
   lot_temple_hall: { pcAlbedoOnly: [], phoneFull: ["wood_pine_natural"] },

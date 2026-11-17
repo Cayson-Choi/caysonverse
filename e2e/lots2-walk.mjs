@@ -214,7 +214,13 @@ async function streetShots(p, tag) {
      }
      return out;`,
   );
+  // the game picks each lot's detail by where the player and ITS camera are, not this test camera: a shot from across the
+  // village drew the far shells (one albedo, no goods), which is what the release-4 sheet showed. Every lot in full detail
+  // for the shots (its near maps given time to come), then back to the game's own choice.
+  await p.page.evaluate(() => window.__cvLotsForce?.(2));
+  await sleep(8000);
   for (const s of shots) await render(p, `${tag}_${s.f}.jpg`, s.eye, s.look);
+  await p.page.evaluate(() => window.__cvLotsForce?.(null));
 }
 
 /** The camera stays in the room: inside its walls (a little in), under its ceiling, while the view goes round. */
