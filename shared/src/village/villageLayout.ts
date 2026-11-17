@@ -40,6 +40,7 @@ import { streetPoleColliders } from "./streetPoles";
 import { TRANSIT, busFootprint } from "./transit";
 import { LAKE_AREA, lakeCameraBoxes, lakeColliders } from "./lakeLayout";
 import { cameraWallBoxes, villageWalkArea, waterfallObstacles } from "./fallsWalk";
+import { LOT_ROOMS, carveBlockers, isLotArea, lotGeometryColliders, lotRoomColliders, lotRoomOuter, lotRoomWalls, replacedByLot, type LotAreaId } from "./villageLots";
 import type { Bounds, MapGeometry } from "../school/geometry";
 
 export interface Point2 {
@@ -67,7 +68,15 @@ export type Side = "n" | "s" | "e" | "w";
  * twenty areas, houseAreas.ts). Every area has its own rectangle in the one coordinate space.
  */
 export type HouseAreaId = HouseFloorAreaId;
-export type AreaId = "village" | "hall" | HouseAreaId;
+/** A lot building's walk-in room (L5v2, villageLots.ts `LOT_ROOMS`): `lot:<unit id>`. */
+export type { LotAreaId };
+export type AreaId = "village" | "hall" | HouseAreaId | LotAreaId;
+
+/** Inside a roofed place: the memorial hall, a house floor or a lot building's room (the indoor light, the quiet, the camera's roof). */
+export function isIndoorArea(area: string): boolean {
+  return area === "hall" || isHouseArea(area) || isLotArea(area);
+}
+export { isLotArea };
 
 /** True for exactly `house:house_<1..10>:<1|2>`. */
 export function isHouseArea(area: string): area is HouseAreaId {
@@ -1173,6 +1182,8 @@ export function buildVillageGeometry(
   extra: readonly AABB[] = [],
   /** The finished houses' colliders (housesGeometry.ts `houseColliders`); absent: the twenty rooms are empty (walls only). */
   houses?: GeneratedColliders,
+  /** The lot buildings' boxes (villageLots.ts `lotGeometryColliders`, L5): only lots whose model holds them; absent: none. */
+  lots?: GeneratedColliders,
 ): MapGeometry {
   const village: GeneratedColliders =
     "obstacles" in colliders
@@ -1181,11 +1192,12 @@ export function buildVillageGeometry(
   return makeGeometry(
     "village",
     villageBounds(layout),
-    [...hallWalls(layout), ...allHouseWalls()],
+    // the lot buildings' walk-in rooms (L5v2) stand in the houses' solid ground: their walls, and the ground carved round them
+    [...hallWalls(layout), ...allHouseWalls(), ...lotRoomWalls()],
     [
       ...areaGapBlockers(layout),
       ...hallSurroundBlockers(layout),
-      ...houseBlockBlockers(layout),
+      ...carveBlockers(houseBlockBlockers(layout), LOT_ROOMS.map((r) => lotRoomOuter(r))),
       ...lakeColliders(),
       ...village.obstacles,
       ...signalPoleColliders(),
@@ -1196,8 +1208,20 @@ export function buildVillageGeometry(
       ...extra,
       ...(houses?.obstacles ?? []),
       ...waterfallObstacles(layout),
+      ...(lots?.obstacles ?? []),
+      ...lotRoomColliders().obstacles,
     ],
-    [...village.cameraBoxes, ...lakeCameraBoxes(), busShelterRoofSlab(layout), busShelterLightBoxCameraBox(layout), ...(hall?.cameraBoxes ?? []), ...(houses?.cameraBoxes ?? []), ...cameraWallBoxes(layout)],
+    [
+      ...village.cameraBoxes,
+      ...lakeCameraBoxes(),
+      busShelterRoofSlab(layout),
+      busShelterLightBoxCameraBox(layout),
+      ...(hall?.cameraBoxes ?? []),
+      ...(houses?.cameraBoxes ?? []),
+      ...cameraWallBoxes(layout),
+      ...(lots?.cameraBoxes ?? []),
+      ...lotRoomColliders().cameraBoxes,
+    ],
   );
 }
 
@@ -1238,7 +1262,13 @@ export function withoutLegacyBus(g: GeneratedColliders): GeneratedColliders {
 }
 
 /** The village area's colliders generated from village.glb (Task 7): the layout's boxes plus the model's own. */
-export const VILLAGE_MODEL_COLLIDERS: GeneratedColliders = withoutLegacyBus({ obstacles: VILLAGE_COLLIDERS, cameraBoxes: VILLAGE_CAMERA_BOXES });
+export const VILLAGE_MODEL_COLLIDERS: GeneratedColliders = withoutLotReplaced(withoutLegacyBus({ obstacles: VILLAGE_COLLIDERS, cameraBoxes: VILLAGE_CAMERA_BOXES }));
+
+/** The generated colliders without what a built lot replaces (villageLots.ts LOT_REPLACED_MODEL_BOXES: plot_w's scaffold, L5). */
+export function withoutLotReplaced(g: GeneratedColliders): GeneratedColliders {
+  const keep = (b: AABB) => !replacedByLot(b);
+  return { obstacles: g.obstacles.filter(keep), cameraBoxes: g.cameraBoxes.filter(keep) };
+}
 
 /** The hall's interior generated from memorial.glb (Task 8), wired in Task 9: furniture, cubby units, the ceiling slab. */
 export const HALL_MODEL_COLLIDERS: GeneratedColliders = hallInteriorColliders(VILLAGE_LAYOUT);
@@ -1258,6 +1288,8 @@ export const villageGeometry: MapGeometry = buildVillageGeometry(
   [...guideColliders()],
   // 집 실내 G: the finished houses' furniture and walls (generated/houses) and every floor's ceiling slab as a camera box.
   houseColliders(),
+  // 마을 부지 건물 (L5, 2026-11-17): the six lot buildings' boxes, appended last (no earlier obstacle's index moves)
+  lotGeometryColliders(),
 );
 
 /**

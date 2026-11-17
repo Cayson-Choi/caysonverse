@@ -12,6 +12,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { exportVillageLayout } from "../shared/src/village/villageLayout";
+import { lotsForLayoutJson } from "../shared/src/village/villageLots";
 
 const REPO = path.resolve(__dirname, "..");
 const DEFAULT_OUT = path.join(REPO, "art", "village", "layout.json");
@@ -23,7 +24,8 @@ export function main(argv: string[]): number {
     return 1;
   }
   const outFile = path.resolve(argv[0] ?? DEFAULT_OUT);
-  const layout = exportVillageLayout();
+  // the lot buildings (village-lots contract 8.4, L5): vrb2 lays the ground of each lot from this
+  const layout = { ...exportVillageLayout(), lots: lotsForLayoutJson() };
   try {
     fs.mkdirSync(path.dirname(outFile), { recursive: true });
     fs.writeFileSync(outFile, `${JSON.stringify(layout, null, 2)}\n`, "utf8");
@@ -32,7 +34,7 @@ export function main(argv: string[]): number {
     return 1;
   }
   console.log(
-    `PASS: 마을 배치 → ${outFile} (부지 ${layout.plots.length}곳, 집 ${layout.sceneryHouses.length}채, 충돌 상자 ${layout.colliders.length}개)`,
+    `PASS: 마을 배치 → ${outFile} (부지 ${layout.plots.length}곳, 집 ${layout.sceneryHouses.length}채, 충돌 상자 ${layout.colliders.length}개, 부지 건물 ${(layout.lots as unknown[]).length}채)`,
   );
   return 0;
 }

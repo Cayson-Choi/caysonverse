@@ -15,6 +15,8 @@ import {
   allLotColliders,
   allLotSeatMarkers,
   lotBox,
+  lotGeometryColliders,
+  lotRoomColliders,
   lotColliders,
   lotDoorPoints,
   lotFootprint,
@@ -65,7 +67,10 @@ const A8_TREES: readonly [string, number, number][] = [
   ["tree_15", 34, 49], ["tree_16", 21.5, 46.5], ["tree_17", -39.8, 48.5], ["tree_19", -50.05, 0.4], ["tree_26", 23, -66], ["tree_27", -38.5, -66], ["bush_15", -45.4, 18.6],
 ];
 /** Today's village obstacles, minus what vrb2 removes from the plots (the library's scaffold, col__construction). */
-const villageObstacles: AABB[] = villageGeometry.obstacles.filter((b) => !isConstruction(b));
+// (the lots' own boxes and rooms, wired since L5v2, are not what a lot must keep clear of)
+const ownKey = (b: AABB) => `${b.minX},${b.maxX},${b.minZ},${b.maxZ}`;
+const lotOwn = new Set([...lotGeometryColliders().obstacles, ...lotRoomColliders().obstacles].map(ownKey));
+const villageObstacles: AABB[] = villageGeometry.obstacles.filter((b) => !isConstruction(b) && !lotOwn.has(ownKey(b)));
 function isConstruction(b: AABB): boolean {
   // col__construction (generated villageColliders.ts): x -72.4..-66.3, z 2.6..21.4
   return b.minX === -72.4 && b.maxX === -66.3 && b.minZ === 2.6 && b.maxZ === 21.4;

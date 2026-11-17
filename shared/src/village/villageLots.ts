@@ -967,7 +967,7 @@ export function lotsForLayoutJson(): unknown {
  * (server/src/tools/lot*Glb.test.ts and villageLotsWiring.test.ts check the files). Only these lots' boxes go into the walk and
  * camera colliders: a box with no building drawn round it would be an invisible wall (contract 9, L5). All six since 2026-11-17.
  */
-export const LOTS_WITH_MODEL: readonly LotId[] = Object.freeze([]); // v2: none yet — L5v2 adds each lot when its GLB lands (the gate first)
+export const LOTS_WITH_MODEL: readonly LotId[] = Object.freeze(["lot_school", "lot_chapel", "lot_library", "lot_temple", "lot_church", "lot_gate"]); // v2: all six (B1–B3, L5v2 2026-11-17)
 
 /**
  * Roofs a third-person camera may stand UNDER but never pass through (T8): camera boxes with a floor (`CameraBox.minY`), local to
@@ -979,9 +979,11 @@ export const LOT_ROOF_SLABS: Readonly<Record<LotId, readonly { rect: LotRect; mi
   lot_chapel: Object.freeze([]),
   lot_library: Object.freeze([{ rect: rect(4.4, 9.6, -5.9, 3.4), minY: 2.7, height: 3.2 }]), // pergola beams
   lot_temple: Object.freeze([
-    { rect: rect(-3.6, 3.6, 11.2, 13), minY: 4.4, height: 6.8 }, // 일주문 roof
-    { rect: rect(-8.3, 8.3, -3, -1.3), minY: 4.6, height: 8 }, // 대웅전 front eaves
-    { rect: rect(-11.6, -7.8, -10.4, -6.6), minY: 3.6, height: 7 }, // 범종각 roof
+    // L5v2 from B3's measured undersides (contract 9): the 일주문's 창방 hangs 3.72–4.1 under its 4.9 eaves (x ±2.95), so the slab
+    // starts under the 창방; the 대웅전's front eaves 4.9 (corners 5.4) to z −3.15, x ±7.6; the 범종각's eaves 3.5 over x −11.85..−7.55, z −10.6..−6.4
+    { rect: rect(-3.6, 3.6, 11.2, 13), minY: 3.6, height: 6.8 }, // 일주문 roof
+    { rect: rect(-8.3, 8.3, -3.2, -1.3), minY: 4.6, height: 8 }, // 대웅전 front eaves
+    { rect: rect(-11.9, -7.5, -10.65, -6.35), minY: 3.4, height: 7 }, // 범종각 roof
   ]),
   lot_church: Object.freeze([{ rect: rect(-2.2, 2.2, 3, 4.8), minY: 3.6, height: 4.8 }]), // columned porch
   lot_gate: Object.freeze([]),
@@ -1239,4 +1241,201 @@ export function lotInteriorSeatBoxes(s: LotInteriorSeat): { seat: LotRect; front
     case "right": return { seat: rect(s.x - b, s.x + f, s.z - h, s.z + h), front: rect(s.x + f, s.x + f + c, s.z - h, s.z + h) };
     case "left": return { seat: rect(s.x - f, s.x + b, s.z - h, s.z + h), front: rect(s.x - f - c, s.x - f, s.z - h, s.z + h) };
   }
+}
+
+// ─────────────────────────────── the walk-in rooms in the game (L5v2, 2026-11-17) ───────────────────────────────
+
+/**
+ * Where each room stands in the game (its frame's origin, world x / z). B1–B3 built the rooms at `interior.origin`, but three of
+ * those (교실 410,0 · 성당 안 440,0 · 열람실 470,0) fall inside the houses' block (집 실내 G: the twenty house rooms at x 359.7..586.9,
+ * z −8.1..30.3), so L5v2 moves them onto the row of the other two (z 40, clear of the houses' apron at 35.3) and the game shifts
+ * their model by the difference (`LotRoom.shift`). The contract's room-frame numbers (solids, seats, door) are unchanged.
+ */
+export const LOT_ROOM_AT: Readonly<Record<string, Point2>> = Object.freeze({
+  lot_school_class: Object.freeze({ x: 470, z: 40 }),
+  lot_chapel_nave: Object.freeze({ x: 500, z: 40 }),
+  lot_library_reading: Object.freeze({ x: 530, z: 40 }),
+});
+
+/** A walk-in room's area id: `lot:<unit id>`. */
+export type LotAreaId = `lot:${string}`;
+
+/** A walk-in room as the game uses it. */
+export interface LotRoom {
+  area: LotAreaId;
+  unit: LotUnit;
+  lot: VillageLot;
+  spec: LotInteriorSpec;
+  door: LotDoor;
+  /** The room frame's origin in the game. */
+  origin: Point2;
+  /** What to add to the model's world coordinates (the builder's origin → `origin`). */
+  shift: Point2;
+  /** The floor's rectangle (inside faces of the walls). */
+  bounds: { minX: number; maxX: number; minZ: number; maxZ: number };
+  ceiling: number;
+}
+
+/** The rooms' walls (m): outside the floor's rectangle, like the houses' (no openings: the doors are teleport pads). */
+export const LOT_ROOM_WALL = 0.5;
+
+/** Every walk-in room, in `LOT_INTERIORS` order. */
+export const LOT_ROOMS: readonly LotRoom[] = Object.freeze(
+  LOT_INTERIORS.map((spec): LotRoom => {
+    const lot = villageLot(spec.lot);
+    const unit = lot.units.find((u) => u.id === spec.unit)!;
+    const door = lot.doors.find((d) => d.id === unit.door)!;
+    const origin = LOT_ROOM_AT[unit.id] ?? unit.interior.origin;
+    const bounds = { minX: origin.x, maxX: R6(origin.x + unit.interior.size.x), minZ: origin.z, maxZ: R6(origin.z + unit.interior.size.z) };
+    return Object.freeze({
+      area: unit.interior.area as LotAreaId,
+      unit,
+      lot,
+      spec,
+      door,
+      origin,
+      shift: { x: R6(origin.x - unit.interior.origin.x), z: R6(origin.z - unit.interior.origin.z) },
+      bounds: Object.freeze(bounds),
+      ceiling: unit.interior.ceiling,
+    });
+  }),
+);
+
+export function isLotArea(area: string): area is LotAreaId {
+  return typeof area === "string" && area.startsWith("lot:") && LOT_ROOMS.some((r) => r.area === area);
+}
+
+export function lotRoomOf(area: string): LotRoom | null {
+  return LOT_ROOMS.find((r) => r.area === area) ?? null;
+}
+
+/** The room a lot door opens into (null: 케이슨랜드's gate, which stays shut). */
+export function lotRoomOfDoor(doorId: string): LotRoom | null {
+  return LOT_ROOMS.find((r) => r.door.id === doorId) ?? null;
+}
+
+/** A room-frame point in the world. */
+export function lotRoomPoint(r: LotRoom, x: number, z: number): Point2 {
+  return { x: R6(r.origin.x + x), z: R6(r.origin.z + z) };
+}
+
+/** The room's way out (world): its pad, and the spot a visitor arrives on coming in (facing into the room, +z: yaw 0). */
+export function lotRoomDoor(r: LotRoom): { exitPad: { x: number; z: number; radius: number }; arrival: { x: number; z: number; yaw: number } } {
+  const d = lotInteriorDoor(r.spec);
+  const pad = lotRoomPoint(r, d.exitPad.x, d.exitPad.z);
+  const arr = lotRoomPoint(r, d.arrival.x, d.arrival.z);
+  return { exitPad: { ...pad, radius: d.exitPad.radius }, arrival: { ...arr, yaw: 0 } };
+}
+
+/** The walls round every room. */
+export function lotRoomWalls(thickness = LOT_ROOM_WALL): AABB[] {
+  return LOT_ROOMS.flatMap((r) => {
+    const b = r.bounds;
+    const t = thickness;
+    return [
+      { minX: b.minX - t, maxX: b.maxX + t, minZ: b.minZ - t, maxZ: b.minZ },
+      { minX: b.minX - t, maxX: b.maxX + t, minZ: b.maxZ, maxZ: b.maxZ + t },
+      { minX: b.minX - t, maxX: b.minX, minZ: b.minZ, maxZ: b.maxZ },
+      { minX: b.maxX, maxX: b.maxX + t, minZ: b.minZ, maxZ: b.maxZ },
+    ];
+  });
+}
+
+/** A room with its walls: the hole each room needs in the solid ground round the houses (`carveBlockers`). */
+export function lotRoomOuter(r: LotRoom, thickness = LOT_ROOM_WALL): AABB {
+  return { minX: r.bounds.minX - thickness, maxX: r.bounds.maxX + thickness, minZ: r.bounds.minZ - thickness, maxZ: r.bounds.maxZ + thickness };
+}
+
+/** One room's fixed furniture (`LOT_INTERIORS` solids, the model's `col__<unit>_<name>`) in the world. */
+export function lotRoomSolids(r: LotRoom): Array<AABB & { name: string; height: number }> {
+  return r.spec.solids.map((s) => {
+    const a = lotRoomPoint(r, s.rect.x0, s.rect.z0);
+    const b = lotRoomPoint(r, s.rect.x1, s.rect.z1);
+    return { name: s.name, minX: a.x, maxX: b.x, minZ: a.z, maxZ: b.z, height: s.height };
+  });
+}
+
+/** How much of a pew's seat (m, from its front edge) a standing body's knees may reach over (`lotRoomColliders`). */
+export const LOT_PEW_KNEE = 0.1;
+
+/**
+ * The rooms' fixed furniture as obstacles; the tall ones (≥ 1.6 m) and each room's ceiling as camera boxes (the camera stays under the
+ * ceiling and out of the stacks, the confessional, the partitions).
+ */
+export function lotRoomColliders(): { obstacles: AABB[]; cameraBoxes: CameraBox[] } {
+  const obstacles: AABB[] = [];
+  const cameraBoxes: CameraBox[] = [];
+  for (const r of LOT_ROOMS) {
+    for (const s of lotRoomSolids(r)) {
+      const box = { minX: s.minX, maxX: s.maxX, minZ: s.minZ, maxZ: s.maxZ };
+      // a pew's walk box stops LOT_PEW_KNEE short of its seat's front edge (the pews face +z): a standing body's knees reach over the
+      // seat's lip, so the 0.9 m between a pew and the back of the next one is the 1.0 m a body (radius 0.4) stands and walks in
+      obstacles.push(s.name.startsWith("pew_") ? { ...box, maxZ: R6(box.maxZ - LOT_PEW_KNEE) } : box);
+      if (s.height >= 1.6) cameraBoxes.push({ ...box, height: s.height });
+    }
+    const o = lotRoomOuter(r);
+    cameraBoxes.push({ ...o, minY: R6(r.ceiling - 0.1), height: R6(r.ceiling + 0.1) });
+  }
+  return { obstacles, cameraBoxes };
+}
+
+/**
+ * `blockers` with every `hole` cut out (each box split into the up-to-four pieces round a hole): the houses' solid ground round the
+ * twenty house rooms covers the rooms' row too, so each room (with its walls) is carved out of it. Pieces thinner than 1 mm go.
+ */
+export function carveBlockers(blockers: readonly AABB[], holes: readonly AABB[]): AABB[] {
+  let out: AABB[] = [...blockers];
+  for (const h of holes) {
+    const next: AABB[] = [];
+    for (const b of out) {
+      if (h.minX >= b.maxX || h.maxX <= b.minX || h.minZ >= b.maxZ || h.maxZ <= b.minZ) {
+        next.push(b);
+        continue;
+      }
+      const push = (p: AABB) => {
+        if (p.maxX - p.minX > 1e-3 && p.maxZ - p.minZ > 1e-3) next.push(p);
+      };
+      push({ minX: b.minX, maxX: b.maxX, minZ: b.minZ, maxZ: Math.max(b.minZ, h.minZ) });
+      push({ minX: b.minX, maxX: b.maxX, minZ: Math.min(b.maxZ, h.maxZ), maxZ: b.maxZ });
+      const z0 = Math.max(b.minZ, h.minZ);
+      const z1 = Math.min(b.maxZ, h.maxZ);
+      push({ minX: b.minX, maxX: Math.max(b.minX, h.minX), minZ: z0, maxZ: z1 });
+      push({ minX: Math.min(b.maxX, h.maxX), maxX: b.maxX, minZ: z0, maxZ: z1 });
+    }
+    out = next;
+  }
+  return out;
+}
+
+/** How far past a pad's radius (m) a lot door is still used (the memorial's `DOOR_REACH_M`). */
+export const LOT_DOOR_REACH_M = 1.3;
+/** Inside a room the way out is used past its pad's edge only straight in front of the door (the memorial's rule). */
+export const LOT_DOOR_INSIDE_HALF_WIDTH_M = 0.8;
+
+/**
+ * Using a lot door (pure, the server's rule): in the village within reach of a room's door pad → into the room (its arrival spot);
+ * in a room within reach of its exit pad (past the pad's edge only straight in front of the door, on the room's side) → out to the
+ * door's arrival. Null for anything else (the gate, another area, a non-finite position, too far).
+ */
+export function useLotDoor(area: string, x: number, z: number): { area: "village" | LotAreaId; x: number; z: number; yaw: number } | null {
+  if (!Number.isFinite(x) || !Number.isFinite(z)) return null;
+  if (area === "village") {
+    let best: { r: LotRoom; d: number } | null = null;
+    for (const r of LOT_ROOMS) {
+      const p = lotDoorPoint(r.lot, r.door).pad;
+      const d = Math.hypot(x - p.x, z - p.z);
+      if (d <= p.radius + LOT_DOOR_REACH_M && (!best || d < best.d)) best = { r, d };
+    }
+    if (!best) return null;
+    const a = lotRoomDoor(best.r).arrival;
+    return { area: best.r.area, x: a.x, z: a.z, yaw: a.yaw };
+  }
+  const r = lotRoomOf(area);
+  if (!r) return null;
+  const pad = lotRoomDoor(r).exitPad;
+  const d = Math.hypot(x - pad.x, z - pad.z);
+  if (d > pad.radius + LOT_DOOR_REACH_M) return null;
+  if (d > pad.radius && (Math.abs(x - pad.x) > LOT_DOOR_INSIDE_HALF_WIDTH_M || z < pad.z)) return null;
+  const out = lotDoorPoint(r.lot, r.door).arrival;
+  return { area: "village", x: out.x, z: out.z, yaw: out.yaw };
 }
