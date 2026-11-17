@@ -37,7 +37,7 @@ export const HOUSE_6_COLLIDERS: readonly AABB[] = [
   { minX: 486.38, maxX: 486.83, minZ: 22.3, maxZ: 22.7 }, // col__h6_2_bedside2
   { minX: 487, maxX: 487.1, minZ: -1.5, maxZ: 0 }, // col__h6_1_part_entry_1
   { minX: 487.32, maxX: 488.52, minZ: -0.54, maxZ: -0.08 }, // col__h6_1_drawers
-  { minX: 487.98, maxX: 488.93, minZ: -4.78, maxZ: -3.03 }, // col__h6_1_sofa
+  { minX: 488.02, maxX: 488.88, minZ: -4.78, maxZ: -3.03 }, // col__h6_1_sofa
   { minX: 488.23, maxX: 488.87, minZ: -7.37, maxZ: -6.73 }, // col__h6_1_plant
   { minX: 488.57, maxX: 488.93, minZ: -2.83, maxZ: -2.47 }, // col__h6_1_lamp_r
   { minX: 488.65, maxX: 489.05, minZ: -5.38, maxZ: -4.93 }, // col__h6_1_side

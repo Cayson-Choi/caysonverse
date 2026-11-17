@@ -148,7 +148,7 @@ export function seatVolumeHolds(p: { x: number; y: number; z: number }, seats: r
   const fx = Math.sin(s.yaw);
   const fz = Math.cos(s.yaw);
   const fe = s.frontEdge ?? 0;
-  const depth = backed ? SEAT_DEPTH_BACKED : SEAT_DEPTH_BACKLESS;
+  const depth = backed ? Math.max(SEAT_DEPTH_BACKED, s.clickDepth ?? 0) : SEAT_DEPTH_BACKLESS;
   const half = seatHalf(seats, i);
   const dx = p.x - s.x;
   const dz = p.z - s.z;
@@ -185,7 +185,7 @@ export function seatRayEntry(ray: ClickRay, seats: readonly Seat[], i: number, p
   const fx = Math.sin(s.yaw);
   const fz = Math.cos(s.yaw);
   const fe = s.frontEdge ?? 0;
-  const depth = backed ? SEAT_DEPTH_BACKED : SEAT_DEPTH_BACKLESS;
+  const depth = backed ? Math.max(SEAT_DEPTH_BACKED, s.clickDepth ?? 0) : SEAT_DEPTH_BACKLESS;
   const half = seatHalf(seats, i);
   const band = part === "backrest";
   // the seat's frame from its spot: across (right of its facing), ahead (its facing), up
