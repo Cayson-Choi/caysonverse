@@ -586,6 +586,9 @@ export function prepareLots(
     if (src.name.startsWith("LM_")) {
       m = lotSurfaceMaterial(s, spec);
       (m as MeshStandardMaterial).vertexColors = colours;
+      // both faces: the buildings are shells (their rooms are drawn elsewhere), so through a rose window, a transom or an
+      // open door one looked through the far walls' backs at the sky and the grass behind (L5v2 release-4 sheet)
+      m.side = DoubleSide;
       surfaces.push(m as MeshStandardMaterial);
     } else if (src.name === "M_glass") m = glow.glass = glassMaterial(s, glow.glassSky);
     else if (spec?.kind === "screen") m = new MeshBasicMaterial({ name: src.name, vertexColors: colours, toneMapped: true });

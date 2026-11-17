@@ -200,7 +200,7 @@ async function streetShots(p, tag) {
        const W = (x, y, z) => { const q = L.lotLocalToWorld(l, x, z); return [q.x, y, q.z]; };
        const d = l.depth / 2;
        out.push({ f: l.id + "_street", eye: W(0, 1.7, d + 16), look: W(0, 4, 0) });
-       out.push({ f: l.id + "_corner", eye: W(-0.6 * l.front, 2.4, d + 8), look: W(0, 4, 0) });
+       out.push({ f: l.id + "_corner", eye: W(-0.6 * l.front, 2.4, d + 8), alt: W(0.6 * l.front, 2.4, d + 8), look: W(0, 4, 0) });
      }
      // a test eye never inside a building or a wall: slid back AWAY from its target (outward, never deeper into the building
      // it looks at: the library's corner eye landed in its own wing that way) until it is clear of every camera box (and 0.5 m more)
@@ -208,6 +208,8 @@ async function streetShots(p, tag) {
      const boxes = G.villageGeometry.cameraBoxes;
      const inside = (p) => boxes.some((b) => p[0] > b.minX - 0.5 && p[0] < b.maxX + 0.5 && p[2] > b.minZ - 0.5 && p[2] < b.maxZ + 0.5 && p[1] < (b.height ?? 4) + 0.3 && p[1] > (b.minY ?? -1) - 0.3);
      for (const o of out) {
+       // a corner in a neighbour (the library's left one is in house 10): the other corner
+       if (o.alt && inside(o.eye) && !inside(o.alt)) o.eye = o.alt;
        for (let k = 0; k < 60 && inside(o.eye); k++) o.eye = [o.eye[0] - (o.look[0] - o.eye[0]) * 0.03, o.eye[1], o.eye[2] - (o.look[2] - o.eye[2]) * 0.03];
      }
      return out;`,
