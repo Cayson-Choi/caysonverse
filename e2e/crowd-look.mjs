@@ -150,16 +150,17 @@ await page.evaluate(async () => {
 });
 await sleep(2500);
 const frames = [];
-for (const mode of ["full", "full", "imp", "imp"]) {
-  await page.evaluate((m) => (window.__cvAvatarForce.walker = m), mode);
-  await sleep(mode === "full" && frames.length === 0 ? 300 : 60);
-  const pos = await page.evaluate(() => {
-    const d = window.__cvThree(); // the walker's current drawn spot: from the DEV probe
-    return window.__cv.getRemoteDrawn().walker;
-  });
+const grab = async () => {
+  const pos = await page.evaluate(() => window.__cv.getRemoteDrawn().walker);
   const f = await crop(pos.x, pos.z, `_${args.device}-seq${frames.length}.png`);
   frames.push(f.file);
-}
+};
+await grab(); // the full avatar
+await page.evaluate(() => (window.__cvAvatarForce.walker = "imp")); // the dissolve starts (a quarter of a second)
+await grab();
+await grab();
+await sleep(400);
+await grab(); // the stand-in alone
 await montage(frames, `${args.device}-seq.png`);
 await page.evaluate(() => clearInterval(window.__walkTimer));
 const code = run.finish();

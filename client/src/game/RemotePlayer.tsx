@@ -35,7 +35,8 @@ import {
 import { decideMixerTick } from "./mixerThrottle";
 import { AVATAR_LOD, avatarTreeCadence, behindCamera, crowdForce, crowdLodOff } from "./avatarLod";
 import { useCrowd } from "./crowdLayer";
-import { impostorColors, wantsImpostor } from "./crowdImpostor";
+import { setFadeCut } from "./avatarFade";
+import { IMPOSTOR_FADE_PER_S, impostorColors, wantsImpostor } from "./crowdImpostor";
 import { typingRegistry } from "./typing";
 import {
   JUMP_FADE_IN_S,
@@ -148,6 +149,8 @@ export function RemotePlayer({
   // stride phase of its walk, and whether a pose was applied (mixer tick) since the last tree refresh, and where the group was then.
   const crowd = useCrowd();
   const slotRef = useRef(-1);
+  const wantImpRef = useRef(false); // the last decision (the hysteresis reads it)
+  const impARef = useRef(0); // the stand-in's share of the dissolve: 0 = the full avatar only, 1 = the stand-in only
   const phaseRef = useRef(0);
   const treeDirtyRef = useRef(true);
   const refreshedAtRef = useRef({ x: 0, y: 0, z: 0, yaw: 0 });
@@ -513,6 +516,9 @@ export function RemotePlayer({
     if (slotRef.current < 0) return;
     crowd?.release(slotRef.current);
     slotRef.current = -1;
+    wantImpRef.current = false;
+    impARef.current = 0;
+    setFadeCut(avatar.materials, 0);
     if (group) {
       if (avatar.root.parent !== group) group.add(avatar.root);
       if (shadowRef.current) shadowRef.current.visible = true;
@@ -529,6 +535,9 @@ export function RemotePlayer({
       if (slotRef.current < 0) return;
       crowd?.release(slotRef.current);
       slotRef.current = -1;
+      wantImpRef.current = false;
+      impARef.current = 0;
+      setFadeCut(avatar.materials, 0);
       lodFramesRef.current = 0;
       const group = groupRef.current;
       if (group && avatar.root.parent === null) {
@@ -858,18 +867,42 @@ export function RemotePlayer({
     if (crowd && !crowdLodOff()) {
       const eligible =
         !!target && seat.mode === "up" && jumpSeqRef.current === -1 && rec.connected && !hasRod && !fishRig.needsTick();
-      if (eligible) crowd.report(camDist);
-      const forced = import.meta.env.DEV ? crowdForce(sessionId) : null;
-      const want = forced ? forced === "imp" && eligible : wantsImpostor(slotRef.current >= 0, eligible, camDist, crowd.thresholdM);
-      if (want && slotRef.current < 0) {
-        const slot = crowd.acquire(crowdColors);
-        if (slot >= 0) {
-          slotRef.current = slot;
-          avatar.root.removeFromParent();
-          if (crowd.blob && shadowRef.current) shadowRef.current.visible = false;
+      if (!eligible) {
+        leaveImpostor(group); // at once: the avatar sits, boards, hops...
+      } else {
+        crowd.report(camDist);
+        const forced = import.meta.env.DEV ? crowdForce(sessionId) : null;
+        const want = forced ? forced === "imp" : wantsImpostor(wantImpRef.current, true, camDist, crowd.thresholdM);
+        wantImpRef.current = want;
+        if (want && slotRef.current < 0) {
+          const slot = crowd.acquire(crowdColors);
+          if (slot >= 0) {
+            slotRef.current = slot;
+            impARef.current = 0;
+            if (crowd.blob && shadowRef.current) shadowRef.current.visible = false;
+          } else {
+            wantImpRef.current = false;
+          }
         }
-      } else if (!want && slotRef.current >= 0) {
-        leaveImpostor(group);
+        if (slotRef.current >= 0) {
+          // the dissolve: a quarter of a second between the full avatar and its stand-in, both drawn meanwhile
+          const a = impARef.current;
+          const next = want ? Math.min(1, a + delta * IMPOSTOR_FADE_PER_S) : Math.max(0, a - delta * IMPOSTOR_FADE_PER_S);
+          impARef.current = next;
+          if (next >= 1) {
+            if (avatar.root.parent === group) avatar.root.removeFromParent();
+          } else {
+            if (avatar.root.parent !== group) {
+              group.add(avatar.root);
+              mixer.update(0);
+              refreshAvatarMatrices(group);
+              treeDirtyRef.current = false;
+              lodFramesRef.current = 0;
+            }
+            setFadeCut(avatar.materials, next);
+          }
+          if (next <= 0 && !want) leaveImpostor(group);
+        }
       }
     }
     if (slotRef.current >= 0) {
@@ -880,13 +913,16 @@ export function RemotePlayer({
       const moving = loopRef.current !== null && loopRef.current !== "idle";
       const speed = moving ? loopSpeed(driveRef.current) : 0;
       phaseRef.current += (4 + speed) * delta;
-      crowd!.place(slotRef.current, group.position.x, group.position.y, group.position.z, group.rotation.y, speed, phaseRef.current, stepLiftRef.current);
-      lodFramesRef.current += 1;
-      if (lodFramesRef.current >= 2) {
-        lodFramesRef.current = 0;
-        refreshAvatarMatrices(group); // the tag and the blob under it (the avatar's tree is out of the scene)
+      crowd!.place(slotRef.current, group.position.x, group.position.y, group.position.z, group.rotation.y, speed, phaseRef.current, stepLiftRef.current, impARef.current);
+      if (impARef.current >= 1) {
+        lodFramesRef.current += 1;
+        if (lodFramesRef.current >= 2) {
+          lodFramesRef.current = 0;
+          refreshAvatarMatrices(group); // the tag and the blob under it (the avatar's tree is out of the scene)
+        }
+        return;
       }
-      return;
+      // dissolving: the full avatar is still in the scene and goes through the whole frame below
     }
 
     // 7) Mixer discipline: paused while idle/seated-settled; every-frame during a

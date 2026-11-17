@@ -22,6 +22,7 @@
 // 캐시는 한 캐릭터 장면을 전제한다(drei가 URL마다 GLTF를 하나만 캐시한다). 합치기는 Task 2 테스트가 고정한 전제
 // (부품 변환 항등, 스킨 1개, 인덱스 있음, 속성 화이트리스트)에 기댄다.
 
+import { installFade } from "./avatarFade";
 import {
   Box3,
   type Bone,
@@ -393,6 +394,7 @@ export function assembleAvatar(
   const built: BuiltAvatar = { root, materials, parts, solidKey, drawMeshes: 0, triangles: 0, topY: 0 };
   decorate?.(built); // NPC 헤일로 등. 재질은 built.materials에 넣는다
   for (const m of built.materials) {
+    installFade(m);
     const base: OpacityBase = { transparent: m.transparent, depthWrite: m.depthWrite, opacity: m.opacity };
     m.userData.base = base;
   }

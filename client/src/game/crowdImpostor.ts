@@ -27,6 +27,7 @@ import {
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import type { AvatarLook } from "./characterLook";
 import { CLICK_PICK_KEY } from "./clickPick";
+import { FADE_GLSL } from "./avatarFade";
 
 /**
  * A standing / walking avatar farther than the crowd's threshold from the camera is drawn as a stand-in. The threshold is the
@@ -40,6 +41,8 @@ export const IMPOSTOR_MAX_M = 28;
 export const IMPOSTOR_HYST_M = 1.5;
 /** Full avatars drawn at once: the PC tier, and the touch / low-spec tier. */
 export const FULL_BUDGET = { rich: { count: 32, minM: 14 }, lite: { count: 10, minM: 14 } } as const;
+/** The dissolve between a full avatar and its stand-in takes 1 / this seconds. */
+export const IMPOSTOR_FADE_PER_S = 4;
 /** Most stand-ins at once (a room holds 30 players; the rest is slack for several rooms' worth of looks). */
 export const IMPOSTOR_CAPACITY = 128;
 
@@ -57,7 +60,7 @@ export function crowdThreshold(distances: Float32Array, n: number, budget: numbe
 }
 
 /** Vertex part ids (the `aPart` attribute): which of the avatar's colours a vertex takes. */
-export const PART = { skin: 0, hair: 1, top: 2, bottom: 3, shoes: 4 } as const;
+export const PART = { skin: 0, hair: 1, top: 2, bottom: 3, shoes: 4, eye: 5, blush: 6 } as const;
 
 /** Swing: rotation about the X axis through the hip / the shoulder (m above the feet). */
 const HIP_Y = 0.54;
@@ -121,6 +124,15 @@ export function buildFigureGeometry(): BufferGeometry {
   }
   // head: skin face, hair on the top and the back (a bald or hatted figure tints that cap by its own colour)
   add(new SphereGeometry(0.41, 12, 9), "head", 0, 1.4);
+  // the face: two eyes and two cheeks on the front (+Z) of the head, the avatar's own face in two colours
+  for (const side of [1, -1]) {
+    const eye = new SphereGeometry(0.045, 6, 5);
+    eye.scale(0.8, 1.15, 0.6);
+    add(eye, PART.eye, side * 0.15, 1.4, 0.385);
+    const cheek = new SphereGeometry(0.075, 6, 4);
+    cheek.scale(1, 0.65, 0.35);
+    add(cheek, PART.blush, side * 0.25, 1.3, 0.33);
+  }
   const merged = mergeGeometries(pieces.map(finish), false);
   if (!merged) throw new Error("crowdImpostor: cannot merge the figure");
   merged.computeBoundingSphere();
@@ -158,10 +170,12 @@ attribute vec3 aHair;
 attribute vec3 aTop;
 attribute vec3 aBottom;
 attribute vec3 aShoes;
-attribute vec2 aGait; // x: the stride phase (rad), y: the speed (m/s)
+attribute vec3 aGait; // x: the stride phase (rad), y: the speed (m/s), z: the fade-in share (1 = drawn whole)
+varying float vAlpha;
 varying vec3 vTint;
 void main() {
-  vTint = aPart < 0.5 ? aSkin : aPart < 1.5 ? aHair : aPart < 2.5 ? aTop : aPart < 3.5 ? aBottom : aShoes;`,
+  vAlpha = aGait.z;
+  vTint = aPart < 0.5 ? aSkin : aPart < 1.5 ? aHair : aPart < 2.5 ? aTop : aPart < 3.5 ? aBottom : aPart < 4.5 ? aShoes : aPart < 5.5 ? vec3( 0.012, 0.008, 0.01 ) : vec3( 0.5, 0.16, 0.15 );`,
       )
       .replace(
         "#include <begin_vertex>",
@@ -180,7 +194,7 @@ void main() {
 }`,
       );
     shader.fragmentShader = shader.fragmentShader
-      .replace("void main() {", "varying vec3 vTint;\nvoid main() {")
+      .replace("void main() {", `varying vec3 vTint;\nvarying float vAlpha;\n${FADE_GLSL}\nvoid main() {\n  if ( vAlpha < 1.0 && cvDither( gl_FragCoord.xy ) >= vAlpha ) discard;`)
       .replace("#include <color_fragment>", "#include <color_fragment>\n  diffuseColor.rgb *= vTint;");
   };
   material.customProgramCacheKey = () => "avatar__impostor_v1";
@@ -229,7 +243,7 @@ export class CrowdImpostors {
       geometry.setAttribute(name, attr);
       this.colorAttrs.push(attr);
     }
-    this.gait = new InstancedBufferAttribute(new Float32Array(capacity * 2), 2);
+    this.gait = new InstancedBufferAttribute(new Float32Array(capacity * 3), 3);
     geometry.setAttribute("aGait", this.gait);
     for (let i = 0; i < capacity; i++) this.mesh.setMatrixAt(i, ZERO);
     if (blob) {
@@ -283,7 +297,7 @@ export class CrowdImpostors {
    * Place one stand-in: at (x, y, z) facing `yaw`, at `speed` m/s, the stride phase advancing `dt` s. Writes the matrix by hand
    * (no scratch objects); three uploads the changed buffers once per render.
    */
-  place(slot: number, x: number, y: number, z: number, yaw: number, speed: number, phase: number, floorY: number): void {
+  place(slot: number, x: number, y: number, z: number, yaw: number, speed: number, phase: number, floorY: number, alpha = 1): void {
     const c = Math.cos(yaw);
     const s = Math.sin(yaw);
     const m = this.mesh.instanceMatrix.array as Float32Array;
@@ -306,8 +320,9 @@ export class CrowdImpostors {
     m[o + 14] = z;
     m[o + 15] = 1;
     const g = this.gait.array as Float32Array;
-    g[slot * 2] = phase;
-    g[slot * 2 + 1] = speed;
+    g[slot * 3] = phase;
+    g[slot * 3 + 1] = speed;
+    g[slot * 3 + 2] = alpha;
     this.mesh.instanceMatrix.needsUpdate = true;
     this.gait.needsUpdate = true;
     if (this.blob) this.blob.instanceMatrix.needsUpdate = true;
