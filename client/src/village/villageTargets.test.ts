@@ -88,8 +88,8 @@ describe("villageTargets — the memorial hall's door", () => {
     const { spawn } = VILLAGE_LAYOUT;
     expect(villageTargets("village", spawn.x, spawn.z)).toHaveLength(0);
     expect(villageTargets("village", 0, 0)).toHaveLength(0);
-    const sign = VILLAGE_LAYOUT.plots.find((p) => p.id === "plot_e")!.signPost!;
-    expect(villageTargets("village", sign.x, sign.z)).toHaveLength(0);
+    // (vrb2: the plots' signs are gone; where plot_e's stood, at its lane's end, nothing is offered)
+    expect(villageTargets("village", 48, 15)).toHaveLength(0);
     expect(villageTargets("hall", inside.origin.x, inside.origin.z)).toHaveLength(0);
     expect(villageTargets("hall", inside.spawn.x, inside.spawn.z - 1)).toHaveLength(0);
   });

@@ -9,7 +9,7 @@
  *   - 필수 노드: TS 배치 자료(shared/src/village/villageLayout.ts)에서 읽는다 (scripts/lib/schoolSpec.ts)
  *   - col__* 노드에 회전·부모가 없다
  *   - village: 배치 자료(shared/src/village/villageLayout.ts)의 col__ 상자가 모두 있고 위치·크기가 같다(0.01 m),
- *     카메라 상자 높이가 배치 자료의 camera 표시와 맞는다(1.6 m), 밤 굽기용 light__ 노드가 있다, M_window·M_lamp·M_water·M_glow_plot 재질이
+ *     카메라 상자 높이가 배치 자료의 camera 표시와 맞는다(1.6 m), 밤 굽기용 light__ 노드가 있다, M_window·M_lamp·M_water·M_moon 재질이
  *     있고 LM_이 아니다, GPU 인스턴스 노드는 확장이 extensionsUsed에 있고 TRANSLATION·ROTATION·SCALE 수가 같다
  *   - memorial: 칸마다 anchor__cubby_<벽>_<줄>_<칸> 노드가 배치 자료(cubbyAnchors)의 입구 가운데에서 2 cm 안에 있고 방 안쪽을 본다,
  *     방 벽 넷(col__hall_wall_n·s·e·w)과 칸 벽 둘(col__cubby_n·e)이 배치 자료 상자 그대로(카메라 높이), 안쪽 문 발판과

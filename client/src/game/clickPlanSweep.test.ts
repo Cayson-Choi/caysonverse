@@ -106,7 +106,8 @@ describe("clickPlan sweep — seated, every tap on the open ground round a seat 
             // A slit no body threads from inside the bus shelter: the ground between the shelter's north glass (z -6.68) and the
             // café's wall, 12 cm of free centres wide (x 40.9..41.5, z -7.2..-6.8). It is open ground by the sweep's rule, but the
             // planner finds no way in from a seat (the one way in is from the north); it is not a seat's refused tap.
-            if (x > 40.9 && x < 41.5 && z > -7.2 && z < -6.8) continue;
+            // (vrb2: the shelter moved back 1 m and grew to 4.4 m: its north screen is at z -7.04, x 41.2..42.85 now)
+            if (x > 41.2 && x < 42.9 && z > -7.65 && z < -6.95) continue;
             // The same kind of slit at the waterfall: the south seat stone's end stands 0.65 m from the pocket's south edge (W0's
             // numbers: stone z -70.55..-68.65, pocket to z -68), narrower than a body (0.8 m): open ground by the sweep's rule, no spot to stand.
             if (x > -101.5 && x < -100.5 && z > -68.7 && z <= -68) continue;

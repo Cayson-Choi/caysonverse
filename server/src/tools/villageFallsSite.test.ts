@@ -106,9 +106,11 @@ describe("village.glb: the waterfall site box is cut out (W6, V1-V9)", () => {
     expect(json.nodes.map((n: Json) => n.name)).not.toContain("village_water_-10");
   });
 
-  it("keeps the sky-glare fix (a6d2f65): T_sky and T_backdrop are main's bytes", () => {
+  // vrb2 (village rebuild from the Blender source): T_sky is main's bytes (the same source + tools/fix_sky_glare.py), T_backdrop
+  // is the new bake's (no old cliff, the hills trimmed to 260 m) graded once by the same fix_sky_glare.py
+  it("keeps the sky-glare fix (a6d2f65): T_sky is main's bytes, T_backdrop the rebuild's graded bake", () => {
     expect(sha(imageBytes(village.json, village.bin, "T_sky"))).toBe("04b8d68379dd94dd");
-    expect(sha(imageBytes(village.json, village.bin, "T_backdrop"))).toBe("d6c9d939129f54f5");
+    expect(sha(imageBytes(village.json, village.bin, "T_backdrop"))).toBe("f951a36d348c0e83");
   });
 
   it("draws no ground, rock or water inside the box", () => {
@@ -155,7 +157,9 @@ describe("village.glb: the waterfall site box is cut out (W6, V1-V9)", () => {
         worst = Math.max(worst, Math.abs(h! - (a.y + (b.y - a.y) * t)));
       }
     }
-    expect(worst).toBeLessThan(0.006);
+    // vrb2: the rebuilt file's positions are Draco 18-bit over the whole backdrop (2 mm steps) and the seam heights 1/128 m:
+    // 6.2 mm at worst (the in-place cut re-encoded its few primitives on an exact grid: 6 mm)
+    expect(worst).toBeLessThan(0.0075);
   });
 
   it("is flat in the rest pocket east of the box (V5b): 0 within 1 cm", () => {

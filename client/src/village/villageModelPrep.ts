@@ -130,6 +130,11 @@ export const GLOW_BOOST = 3.2;
  */
 export const GROUND_LAYER_OFFSET: Readonly<Record<string, number>> = {
   LM_plaza: -1,
+  // vrb2: the plaza disc's own materials since the rebuild (setts + sidewalk pavers, the ring road with its markings)
+  LM_setts: -1,
+  LM_road: -1,
+  LM_road_x: -1,
+  LM_walk: -1,
   LM_lawn: -1,
   LM_concrete: -2,
   LM_stone: -2,
@@ -163,6 +168,11 @@ export const GROUND_GRADE: Readonly<Record<string, readonly [number, number, num
   LM_grass: [1.4, 1.34, 1.05],
   LM_lawn: [1.4, 1.34, 1.05],
   LM_plaza: [0.7, 0.7, 0.7],
+  // vrb2: what T_plaza was, as its own real-scale textures: the same grade
+  LM_setts: [0.7, 0.7, 0.7],
+  LM_road: [0.7, 0.7, 0.7],
+  LM_road_x: [0.7, 0.7, 0.7],
+  LM_walk: [0.7, 0.7, 0.7],
 };
 
 /**
@@ -550,16 +560,19 @@ export const FOUNTAIN_GLOW_STRENGTH = 1.5;
  *    0.04, `roughness`; Karis' fit, as three's physical material uses), about 4 % facing the eye and a third at the rim.
  */
 export const MOON_PROBE = {
+  // vrb2: the day probe without the sun's direct light (the sun-split bake: the game adds the real sun live). The shipped
+  // probe minus the sun's own SH9 projection, measured by art/village/tools/fit_moon_probe_split.py (the crescent baked alone
+  // in the day scene: full light and the sun lamp's direct light on the same texels, fitted the same way)
   day: [
-    [0.5804, 0.6162, 0.6842],
-    [0.2772, 0.3275, 0.3891],
-    [-0.2239, -0.1916, -0.125],
-    [0.235, 0.1937, 0.1385],
-    [-0.0309, -0.0331, -0.0761],
-    [-0.1074, -0.0885, -0.0153],
-    [0.023, 0.0272, 0.0377],
-    [-0.0615, -0.0564, -0.0383],
-    [0.1252, 0.119, 0.1165],
+    [0.3951, 0.4916, 0.6115],
+    [0.1454, 0.2389, 0.3376],
+    [-0.1027, -0.1094, -0.0763],
+    [-0.0997, -0.0317, 0.0067],
+    [-0.2119, -0.1531, -0.1437],
+    [-0.0173, -0.0295, 0.0168],
+    [0.0522, 0.0466, 0.0487],
+    [0.1548, 0.0898, 0.0477],
+    [0.0091, 0.0412, 0.0715],
   ],
   night: [
     [0.025, 0.0289, 0.0427],

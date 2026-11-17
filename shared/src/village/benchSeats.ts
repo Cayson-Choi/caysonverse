@@ -145,20 +145,24 @@ const FACING_WEST = -Math.PI / 2;
 
 /**
  * The bus stop shelter's bench (art/village/tools/build_busstop.py build_shelter, village_busstop.glb; the shelter's centre is
- * busStop.shelter.centre (40.9, -4.9), its back glass at x 41.6): three 0.13 m slats at x 40.985..41.415 (the seat, 0.5125 m up
+ * busStop.shelter.centre, its back glass 0.05 m inside its back edge): three 0.13 m slats 0.235..0.665 m in front of the back edge (the seat, 0.5125 m up
  * from the ground: 4.5 cm of pad and 0.4675 m of bench), 2.3 m long along z, two slatted back rests at x 41.48 and two arm
  * dividers at z -/+0.38 from the centre that cut it into a 0.76 m middle cell and two 0.77 m end cells. Its back is the glass
  * wall: a bench with a back rest is sat on from the front only (the road side, facing west), like the plaza's. Two seats, in
  * the end cells: the middle cell is too narrow for the toy figure's 1.05 m across the arms, and a seat 1.53 m from its
  * neighbour keeps both sitters clear of the dividers.
  */
+const SHELTER_BACK_X = VILLAGE_LAYOUT.busStop.shelter.centre.x + VILLAGE_LAYOUT.busStop.shelter.size.x / 2;
+
 export const SHELTER_BENCH: VillageBench = {
   id: "shelter",
   area: "village",
-  centre: { x: 41.2, z: VILLAGE_LAYOUT.busStop.shelter.centre.z },
+  // vrb2: placed from the shelter's back (centre + depth / 2): the slats' middle 0.45 m in front of it (build_busstop.py
+  // x1 - 0.50 + 0.25 - 0.20), so the bench follows the shelter when it moves (it was the fixed x 41.2 for the back at 41.65)
+  centre: { x: SHELTER_BACK_X - 0.45, z: VILLAGE_LAYOUT.busStop.shelter.centre.z },
   yaw: FACING_WEST,
   seatTop: 0.5125,
-  frontEdge: 41.2 - 40.985,
+  frontEdge: 0.215,
   length: 2.3,
   seatOffsets: [-0.765, 0.765],
   kind: "backed",
