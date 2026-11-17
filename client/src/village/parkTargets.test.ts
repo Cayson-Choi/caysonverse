@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { COASTER_QUEUE_PAD, PARK_EXIT_PAD, parkGateDoor } from "@caysonverse/shared/village/parkArea";
-import { COASTER_BOARD_TARGET_ID, PARK_DOOR_ID, villageTargets } from "./villageTargets";
+import { CAROUSEL_PAD, COASTER_QUEUE_PAD, PARK_EXIT_PAD, parkGateDoor } from "@caysonverse/shared/village/parkArea";
+import { CAROUSEL_BOARD_TARGET_ID, COASTER_BOARD_TARGET_ID, PARK_DOOR_ID, villageTargets } from "./villageTargets";
 
 describe("park targets", () => {
   it("offers the way out under the arch and nothing in the open", () => {
@@ -9,6 +9,10 @@ describe("park targets", () => {
   });
   it("offers the coaster at its queue gate, not from the plaza", () => {
     expect(villageTargets("park", COASTER_QUEUE_PAD.x, COASTER_QUEUE_PAD.z).map((t) => t.id)).toEqual([COASTER_BOARD_TARGET_ID]);
+    expect(villageTargets("park", 40, -112)).toEqual([]);
+  });
+  it("offers the carousel at its gate, and only there", () => {
+    expect(villageTargets("park", CAROUSEL_PAD.x, CAROUSEL_PAD.z).map((t) => t.id)).toEqual([CAROUSEL_BOARD_TARGET_ID]);
     expect(villageTargets("park", 40, -112)).toEqual([]);
   });
   it("offers the park gate at the village gate lot's pad", () => {

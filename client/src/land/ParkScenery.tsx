@@ -49,6 +49,17 @@ export function circuitGround(): { x: number; z: number; px: number; pz: number;
   return out;
 }
 
+/** The ponds: one under the loop, one under the first drop (ellipses, metres). */
+export const PARK_PONDS: readonly { x: number; z: number; rx: number; rz: number }[] = (() => {
+  const t = coasterTrack();
+  const li = Math.round(((t.marks.loopFrom ?? 0) + (t.marks.loopTo ?? 0)) / 2);
+  const di = Math.min(t.n - 1, t.liftTo + 50);
+  return Object.freeze([
+    { x: t.pos[3 * li]! + 6, z: 20, rx: 20, rz: 13 },
+    { x: t.pos[3 * di]! + 4, z: 15, rx: 10, rz: 6.5 },
+  ]);
+})();
+
 /** Whether the lawn at (x, z) is taken: a path, the plaza, a building, the station, the pond, the circuit's own ground. */
 export function taken(x: number, z: number, ground: ReturnType<typeof circuitGround>, pond: { x: number; z: number }): boolean {
   if (Math.hypot(x - PARK_PLAZA.x, z - PARK_PLAZA.z) < PARK_PLAZA.radius + 5) return true;
@@ -59,14 +70,15 @@ export function taken(x: number, z: number, ground: ReturnType<typeof circuitGro
   if (x > q.minX - 6 && x < q.maxX + 6 && z > q.minZ - 8 && z < q.maxZ + 8) return true;
   if (x > -24 && x < 24 && z > -12 && z < 8) return true;
   if (PARK_SHOPS.some((s) => Math.abs(x - s.x) < s.d / 2 + 5 && Math.abs(z - s.z) < s.w / 2 + 4)) return true;
-  if (Math.hypot((x - pond.x) / 20, (z - pond.z) / 13) < 1) return true;
+  void pond;
+  for (const p of PARK_PONDS) if (Math.hypot((x - p.x) / (p.rx + 1.5), (z - p.z) / (p.rz + 1.5)) < 1) return true;
   for (const g of ground) if (Math.hypot(g.x - x, g.z - z) < 7) return true;
   return false;
 }
 
 // ───────────────────────────────────────── the circuit's ground: a path, a fence, a hedge, shrubs, a pond ─────────────────────────────────────────
 
-function CircuitGround({ all, pond }: { all: Texture[]; pond: { x: number; z: number } }) {
+function CircuitGround({ all }: { all: Texture[] }) {
   const ground = useMemo(circuitGround, []);
   const pathGeo = useMemo(() => {
     const pos: number[] = [];
@@ -136,24 +148,32 @@ function CircuitGround({ all, pond }: { all: Texture[]; pond: { x: number; z: nu
     const m = new Matrix4();
     const q = new Quaternion();
     const rnd = rngOf(77);
-    const N = 34;
-    for (let i = 0; i < N; i++) {
-      const a = (i / N) * Math.PI * 2;
-      const s = 0.7 + rnd() * 0.9;
-      m.compose(new Vector3(pond.x + Math.cos(a) * 20.3, 0.25, pond.z + Math.sin(a) * 13.3), q.setFromAxisAngle(new Vector3(0, 1, 0), rnd() * 6), new Vector3(s, s * 0.6, s));
-      rocks.current?.setMatrixAt(i, m);
+    let i = 0;
+    for (const pond of PARK_PONDS) {
+      const N = pond.rx > 15 ? 34 : 22;
+      for (let k = 0; k < N && i < 56; k++, i++) {
+        const a = (k / N) * Math.PI * 2;
+        const s = 0.7 + rnd() * 0.9;
+        m.compose(new Vector3(pond.x + Math.cos(a) * (pond.rx + 0.3), 0.25, pond.z + Math.sin(a) * (pond.rz + 0.3)), q.setFromAxisAngle(new Vector3(0, 1, 0), rnd() * 6), new Vector3(s, s * 0.6, s));
+        rocks.current?.setMatrixAt(i, m);
+      }
     }
-    if (rocks.current) rocks.current.instanceMatrix.needsUpdate = true;
-  }, [pond]);
+    if (rocks.current) {
+      rocks.current.count = i;
+      rocks.current.instanceMatrix.needsUpdate = true;
+    }
+  }, []);
   return (
     <group>
       <mesh geometry={pathGeo} material={gravel} receiveShadow />
       <mesh geometry={fence} material={fenceMat} castShadow />
       <mesh geometry={hedge} material={hedgeMat} castShadow receiveShadow />
-      <mesh position={[pond.x, 0.08, pond.z]} rotation-x={-Math.PI / 2} scale={[20, 13, 1]} material={waterMat}>
-        <circleGeometry args={[1, 40]} />
-      </mesh>
-      <instancedMesh frustumCulled={false} ref={rocks} args={[rockGeo, rockMat, 34]} castShadow receiveShadow />
+      {PARK_PONDS.map((pond, i) => (
+        <mesh key={i} position={[pond.x, 0.08, pond.z]} rotation-x={-Math.PI / 2} scale={[pond.rx, pond.rz, 1]} material={waterMat}>
+          <circleGeometry args={[1, 40]} />
+        </mesh>
+      ))}
+      <instancedMesh frustumCulled={false} ref={rocks} args={[rockGeo, rockMat, 56]} castShadow receiveShadow />
     </group>
   );
 }
@@ -209,15 +229,9 @@ export function ParkMountains({ tier }: { tier: "high" | "low" }) {
 }
 
 export function ParkScenery({ all }: { all: Texture[] }) {
-  // the pond lies under the loop's side of the circuit
-  const pond = useMemo(() => {
-    const t = coasterTrack();
-    const i = Math.round(((t.marks.loopFrom ?? 0) + (t.marks.loopTo ?? 0)) / 2);
-    return { x: t.pos[3 * i]! + 6, z: 20 };
-  }, []);
   return (
     <group>
-      <CircuitGround all={all} pond={pond} />
+      <CircuitGround all={all} />
     </group>
   );
 }

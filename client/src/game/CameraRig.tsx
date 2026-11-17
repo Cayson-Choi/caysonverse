@@ -83,6 +83,8 @@ import { getTransitRenderPose } from "../net/transitSync";
 import { busRiderCamera, ownSeatIndex, riderFov, type TransitCameraPose } from "../village/transitCamera";
 import { resetRideCamera, selfRide, stepRideCamera } from "../land/coasterRide";
 import { stepRideAudio, stopRideAudio } from "../land/coasterAudio";
+import { resetCarouselCamera, stepCarouselCamera } from "../land/carouselRide";
+import { startCarouselMusic, stopCarouselMusic } from "../land/carouselAudio";
 import { busCamGoal, busCamState, busElevation, busSeatGoal, busSeatPreferred, riderBusPoint, selfBusRide } from "./busRide";
 import { BUS_SEATS, busPlaceOf, cabinFloorAt, seatBodyPoint } from "@caysonverse/shared/village/busCabin";
 import { busSeatUnderRay } from "../village/busSeatPick";
@@ -1279,11 +1281,16 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
         viewState.fpYaw = 0;
         viewState.fpPitch = 0.1; // a rider settles looking a little down at the bar
         resetRideCamera();
+        resetCarouselCamera();
+        if (selfRide.ride === 2) startCarouselMusic();
         persp.near = 0.05;
         persp.updateProjectionMatrix();
       }
-      stepRideCamera(persp, Math.min(delta, 0.1), viewState.fpYaw, viewState.fpPitch, baseFov.current || rideBeforeRef.current.fov);
-      stepRideAudio(performance.now());
+      if (selfRide.ride === 2) stepCarouselCamera(persp, Math.min(delta, 0.1), viewState.fpYaw, viewState.fpPitch, baseFov.current || rideBeforeRef.current.fov);
+      else {
+        stepRideCamera(persp, Math.min(delta, 0.1), viewState.fpYaw, viewState.fpPitch, baseFov.current || rideBeforeRef.current.fov);
+        stepRideAudio(performance.now());
+      }
       cameraProbe.distance = 0;
     } else if (rideBeforeRef.current !== null) {
       const was = rideBeforeRef.current;
@@ -1294,7 +1301,9 @@ export function CameraRig({ pose, orbit, seat, fogRange, far: baseFar = CAMERA_F
       persp.near = was.near;
       persp.updateProjectionMatrix();
       resetRideCamera();
+      resetCarouselCamera();
       stopRideAudio();
+      stopCarouselMusic();
     }
 
     // Overview looks down from far above; push the fog band out (eased by ovT) so

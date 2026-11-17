@@ -2,7 +2,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import { Group } from "three";
 import { coasterTrack } from "@caysonverse/shared/land/coaster";
-import { PARK_TREES } from "@caysonverse/shared/village/parkArea";
+import { PARK_PLANTERS, PARK_TREES, PARK_TROUGHS } from "@caysonverse/shared/village/parkArea";
+import { PARK_PONDS } from "./ParkScenery";
+import type { Bed } from "../village/veg/flowerPlacement";
+import type { Card } from "../village/veg/vegCards";
 import { isTouchDevice } from "../device";
 import { createVegetation, type VillageVegetation } from "../village/veg/villageVegetation";
 import type { Bush } from "../village/veg/shrubs";
@@ -20,6 +23,38 @@ const rngOf = (seed: number) => () => ((seed = (seed * 16807) % 2147483647) / 21
  * Every tier uses the village's PHONE levels of detail (veg/vegLod.ts VEG_TIERS.low): a full crown right at the player's feet, the simple 3D
  * sprays beyond, thinned far out; the PC frame budget (DESIGN.md section 8) cannot carry the PC bands for the park's trees.
  */
+/** The flower beds: the plaza's troughs, the planters at the promenade's end, and borders along the circuit's path and round the ponds (planted by the village's flower system). */
+export function parkBeds(): { beds: Bed[]; cards: Card[] } {
+  const beds: Bed[] = [];
+  const rnd = rngOf(515);
+  for (const t of PARK_TROUGHS) beds.push({ kind: "box", x0: t.x0 + 0.1, x1: t.x1 - 0.1, z0: t.z0 + 0.1, z1: t.z1 - 0.1, y: t.y, out: null, plant: "pot" });
+  for (const p of PARK_PLANTERS) beds.push({ kind: "box", x0: p.x - p.w / 2 + 0.1, x1: p.x + p.w / 2 - 0.1, z0: p.z - p.d / 2 + 0.1, z1: p.z + p.d / 2 - 0.1, y: 0.84, out: null, plant: "pot" });
+  const ground = circuitGround();
+  ground.forEach((g, i) => {
+    if (i % 4 !== 2 || (g.z < 9 && g.x > -45 && g.x < 35)) return;
+    const side = i % 8 === 2 ? 1 : -1;
+    const cx = g.x + g.px * 4.2 * side;
+    const cz = g.z + g.pz * 4.2 * side;
+    beds.push({ kind: "box", x0: cx - 0.8, x1: cx + 0.8, z0: cz - 0.55, z1: cz + 0.55, y: 0.1, out: null, plant: "border" });
+  });
+  for (const pond of PARK_PONDS) {
+    for (let k = 0; k < 6; k++) {
+      const a = (k / 6) * Math.PI * 2 + 0.3;
+      const cx = pond.x + Math.cos(a) * (pond.rx + 2.2);
+      const cz = pond.z + Math.sin(a) * (pond.rz + 2.2);
+      beds.push({ kind: "box", x0: cx - 0.9, x1: cx + 0.9, z0: cz - 0.6, z1: cz + 0.6, y: 0.1, out: null, plant: "border" });
+    }
+  }
+  // a planting card standing in each bed (pink, yellow or purple row): the village's placement fills the whole bed round it
+  const cards: Card[] = beds.map((b, id) => {
+    if (b.kind !== "box") throw new Error("box beds only");
+    const x = (b.x0 + b.x1) / 2;
+    const z = (b.z0 + b.z1) / 2;
+    return { id: 100000 + id, x, y: b.y + 0.15, z, ax: x - 0.2, az: z, bx: x + 0.2, bz: z, floor: b.y, h: 0.3, u: 0.5, v: [0.12, 0.37, 0.62][Math.floor(rnd() * 3)]!, light: 1, tris: [] };
+  });
+  return { beds, cards };
+}
+
 export function parkTreeSpecs(): { trees: TreeSpec[]; bushes: Bush[] } {
   const rnd = rngOf(7771);
   const trees: TreeSpec[] = [];
@@ -34,7 +69,7 @@ export function parkTreeSpecs(): { trees: TreeSpec[]; bushes: Bush[] } {
   const li = Math.round(((t.marks.loopFrom ?? 0) + (t.marks.loopTo ?? 0)) / 2);
   pond.x = t.pos[3 * li]! + 6;
   // dense groups along the layout (the ride passes between tree walls) and out beyond it: clusters of 8-16 trees with an understorey of shrubs
-  const perCluster = isTouchDevice ? 7 : 12;
+  const perCluster = isTouchDevice ? 6 : 12;
   const near = isTouchDevice ? 8 : 13; // clusters along the circuit
   const centres: { x: number; z: number; r: number }[] = [];
   for (let i = 0; i < near; i++) {
@@ -89,6 +124,7 @@ export function ParkVegetation() {
   const getThree = useThree((s) => s.get);
   const [veg, setVeg] = useState<VillageVegetation | null>(null);
   const specs = useMemo(parkTreeSpecs, []);
+  const flowerBeds = useMemo(parkBeds, []);
   const lastSweep = useRef(-1);
   useEffect(() => {
     let dead = false;
@@ -96,7 +132,9 @@ export function ParkVegetation() {
     createVegetation(new Group(), "low", "new", () => dead, {
       parkTrees: specs.trees,
       parkBushes: specs.bushes,
-      farThin: 0.4,
+      farThin: isTouchDevice ? 0.22 : 0.4,
+      parkBeds: flowerBeds.beds,
+      parkCards: flowerBeds.cards,
       makeWorker: () => new Worker(new URL("../village/veg/crownWorker.ts", import.meta.url), { type: "module" }),
       focus: () => {
         const p = getThree().camera.position;
@@ -120,7 +158,7 @@ export function ParkVegetation() {
       setVeg(null);
       built?.dispose();
     };
-  }, [specs, getThree]);
+  }, [specs, flowerBeds, getThree]);
   useFrame(({ clock, gl, camera }) => {
     veg?.update(camera, clock.elapsedTime, gl.domElement.height);
     // the park's crowns draw no shadow of their own (the village's near ones do): every leaf layer twice in the shadow pass is the frame's largest cost

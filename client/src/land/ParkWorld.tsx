@@ -30,9 +30,11 @@ import {
   PARK_PLATFORM,
   PARK_PLAZA,
   PARK_QUEUE_HALL,
+  PARK_TROUGHS,
 } from "@caysonverse/shared/village/parkArea";
 import { isTouchDevice } from "../device";
 import { CoasterWorld } from "./CoasterWorld";
+import { CarouselWorld } from "./CarouselWorld";
 import { Shops } from "./ParkShops";
 import { ParkMountains, ParkScenery } from "./ParkScenery";
 import { ParkProps } from "./ParkProps";
@@ -248,15 +250,34 @@ function QueueHall({ all, pine }: { all: Texture[]; pine: Texture }) {
     b.box([cx, 4.0, q.minZ + 3.0], X, Y, 5, 0.6, 0.08, [0.16, 0.18, 0.62]);
     return b.build();
   }, [q, cx, cz]);
-  const roofGeo = useMemo(() => {
-    const b = new GeoBuilder();
+  const { roofGeo, trimGeo } = useMemo(() => {
+    const roof = new GeoBuilder();
+    const trim = new GeoBuilder();
     const w = q.maxX - q.minX;
     const d = q.maxZ - q.minZ;
-    const alpha = 0.32;
+    // a hip-less gable: the ridge runs along x; each side slopes down to eaves that overhang the posts by 1.4 m (shingle slabs, a ridge cap,
+    // timber fascia boards, visible rafters under the eaves)
+    const alpha = 0.34;
+    const ca = Math.cos(alpha);
+    const sa = Math.sin(alpha);
+    const eaveY = 4.75;
+    const half = d / 2 + 1.5;
+    const rise = half * Math.tan(alpha);
+    const L = half / ca / 2 + 0.1;
     for (const sgn of [-1, 1]) {
-      b.box([cx, 5.4 + 0.5, cz + (sgn * (d / 4 - 0.5)) / 1], X, [0, Math.cos(alpha), -sgn * Math.sin(alpha)], w / 2 + 0.6, 0.12, d / 4 + 1.4, [1, 1, 1], 2.4);
+      // the slab's middle is half way from the ridge to the eave; its normal tilts away from the ridge
+      roof.box([cx, eaveY + rise / 2 + 0.05, cz + (sgn * half) / 2], X, [0, ca, sgn * sa], w / 2 + 1.5, 0.12, L, [1, 1, 1], 2.4);
+      // the fascia board along the eave and a drip edge
+      trim.box([cx, eaveY - 0.02, cz + sgn * half], X, Y, w / 2 + 1.5, 0.17, 0.05, [0.4, 0.26, 0.16]);
+      // rafters: a rafter every 2.3 m, running up the slope under the slab
+      for (let x = q.minX - 1; x <= q.maxX + 1.01; x += 2.3) trim.box([x, eaveY + rise / 2 - 0.14, cz + (sgn * half) / 2], [1, 0, 0], [0, ca, sgn * sa], 0.07, 0.1, L - 0.1, [0.42, 0.28, 0.17]);
     }
-    return b.build();
+    trim.box([cx, eaveY + rise + 0.2, cz], X, Y, w / 2 + 1.5, 0.14, 0.45, [0.55, 0.27, 0.22]);
+    // gable end boards
+    for (const e of [-1, 1]) {
+      for (let k = 0; k < 6; k++) trim.box([cx + e * (w / 2 + 1.4), eaveY + (k * rise) / 6 + rise / 12, cz], X, Y, 0.06, rise / 12, half * (1 - (k + 0.5) / 6), [0.4, 0.26, 0.16]);
+    }
+    return { roofGeo: roof.build(), trimGeo: trim.build() };
   }, [q, cx, cz]);
   const wall = useMemo(() => {
     const t = pine.clone();
@@ -265,11 +286,13 @@ function QueueHall({ all, pine }: { all: Texture[]; pine: Texture }) {
     t.needsUpdate = true;
     return new MeshStandardMaterial({ map: t, vertexColors: true, roughness: 0.8 });
   }, [pine]);
-  const roof = useMemo(() => parkMaterial(pickSet(all, "RoofingTiles013A"), 1, { color: new Color("#8e94f0"), normalScale: 1 }), [all]);
+  const roof = useMemo(() => parkMaterial(pickSet(all, "RoofingTiles013A"), 1, { color: new Color(1.9, 1.35, 1.1), normalScale: 1.2 }), [all]);
+  const trimMat = useMemo(() => new MeshStandardMaterial({ vertexColors: true, roughness: 0.8 }), []);
   return (
     <group>
       <mesh geometry={geo} material={wall} castShadow receiveShadow />
       <mesh geometry={roofGeo} material={roof} castShadow receiveShadow />
+      <mesh geometry={trimGeo} material={trimMat} castShadow />
       <mesh position={[PARK_PLATFORM.minX, 0, 0]} visible={false} />
     </group>
   );
@@ -343,18 +366,14 @@ function Lamps() {
 
 /** Flower beds ring the fountain and line the promenade; park benches stand along the paths (decor: no seat ids yet). */
 function Beds({ pine }: { pine: Texture }) {
-  const flowers = useRef<InstancedMesh>(null);
-  const geo = useMemo(() => new SphereGeometry(0.13, 6, 4), []);
-  const mat = useMemo(() => new MeshStandardMaterial({ color: "#ffffff", roughness: 0.7 }), []);
   const bedGeo = useMemo(() => {
     const b = new GeoBuilder();
-    const ring = PARK_PLAZA.radius - 8;
-    for (let i = 0; i < 24; i++) {
-      const a = (i / 24) * Math.PI * 2;
-      const nx = Math.cos(a);
-      const nz = Math.sin(a);
-      b.box([PARK_PLAZA.x + nx * ring, 0.25, PARK_PLAZA.z + nz * ring], [-nz, 0, nx], Y, 1.5, 0.25, 0.9, [0.78, 0.76, 0.72]);
-      b.box([PARK_PLAZA.x + nx * ring, 0.4, PARK_PLAZA.z + nz * ring], [-nz, 0, nx], Y, 1.35, 0.1, 0.75, [0.3, 0.2, 0.14]);
+    // the flower troughs round the fountain (stone, with a cap course; the flowers and soil are the village flower system's)
+    for (const t of PARK_TROUGHS) {
+      const cx = (t.x0 + t.x1) / 2;
+      const cz = (t.z0 + t.z1) / 2;
+      b.box([cx, 0.4, cz], X, Y, (t.x1 - t.x0) / 2, 0.4, (t.z1 - t.z0) / 2, [0.78, 0.76, 0.72], 2);
+      b.box([cx, 0.82, cz], X, Y, (t.x1 - t.x0) / 2 + 0.07, 0.04, (t.z1 - t.z0) / 2 + 0.07, [0.86, 0.84, 0.8]);
     }
     // hedges lining the promenade's two sides
     for (const hx of [28.6, 51.4]) b.box([hx, 0.55, -150], X, Y, 0.6, 0.55, 28, [0.2, 0.42, 0.22]);
@@ -378,36 +397,9 @@ function Beds({ pine }: { pine: Texture }) {
     t.needsUpdate = true;
     return new MeshStandardMaterial({ map: t, vertexColors: true, roughness: 0.75 });
   }, [pine]);
-  const N = 600;
-  useEffect(() => {
-    const m = new Matrix4();
-    const col = new Color();
-    const palette = ["#ff8fb1", "#ffd45c", "#b99cff", "#ffffff", "#ff9a5c", "#8fd0ff"];
-    const ring = PARK_PLAZA.radius - 8;
-    let n = 0;
-    for (let i = 0; i < 24; i++) {
-      const a = (i / 24) * Math.PI * 2;
-      for (let k = 0; k < 25 && n < N; k++, n++) {
-        const lx = -1.2 + (k % 5) * 0.6;
-        const lz = -0.6 + Math.floor(k / 5) * 0.3;
-        const x = PARK_PLAZA.x + Math.cos(a) * (ring + lz) - Math.sin(a) * lx;
-        const z = PARK_PLAZA.z + Math.sin(a) * (ring + lz) + Math.cos(a) * lx;
-        m.makeTranslation(x, 0.6, z);
-        flowers.current?.setMatrixAt(n, m);
-        col.set(palette[(i + k) % palette.length]!);
-        flowers.current?.setColorAt(n, col);
-      }
-    }
-    if (flowers.current) {
-      flowers.current.count = n;
-      flowers.current.instanceMatrix.needsUpdate = true;
-      if (flowers.current.instanceColor) flowers.current.instanceColor.needsUpdate = true;
-    }
-  }, []);
   return (
     <group>
       <mesh geometry={bedGeo} material={benchMat} castShadow receiveShadow />
-      <instancedMesh frustumCulled={false} ref={flowers} args={[geo, mat, N]} />
     </group>
   );
 }
@@ -467,6 +459,7 @@ export function ParkWorld({ tier }: { tier: VillageTier }) {
         <ParkMountains tier={tier === "high" ? "high" : "low"} />
       </Suspense>
       <CoasterWorld all={all} pine={pine!} env={env} />
+      <CarouselWorld env={env} />
     </group>
   );
 }

@@ -36,7 +36,7 @@ import { COASTER_SITE } from "./site";
 export const landPose = { x: 0, z: 0 };
 
 /** Which seat I sit in (the server's `Player.rideSeat` for me), -1 = not riding. */
-export const selfRide = { slot: -1 };
+export const selfRide = { slot: -1, ride: 0 };
 
 /** Why the last boarding was refused, and when (for the HUD). */
 export const rideNotice: { reason: "closed" | "full" | "busy" | null; at: number } = { reason: null, at: 0 };

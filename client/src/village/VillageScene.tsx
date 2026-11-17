@@ -45,7 +45,7 @@ import {
   BUS_RIDE_TARGET_BOARD,
   BUS_RIDE_TARGET_LEAVE,
   BUS_STAND_TARGET_ID,
-  COASTER_BOARD_TARGET_ID,
+  RIDE_BOARD_PREFIX,
   CUBBY_TARGET_PREFIX,
   GUIDE_TARGET_PREFIX,
   KEYPAD_TARGET_PREFIX,
@@ -273,10 +273,10 @@ function VillageDoors({ pose }: { pose: Pose }) {
         else sendBusRide("board");
         return;
       }
-      if (target.id === COASTER_BOARD_TARGET_ID) {
+      if (target.id.startsWith(RIDE_BOARD_PREFIX)) {
         clearClickTarget();
         startRideAudio(); // inside the press: the browser lets the sound start
-        sendRideBoard();
+        sendRideBoard(target.id.slice(RIDE_BOARD_PREFIX.length) as "coaster" | "carousel" | "wheel");
         return;
       }
       if (target.id === BUS_RIDE_TARGET_LEAVE) {

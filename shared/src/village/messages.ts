@@ -86,7 +86,7 @@ export interface VillageMsgPayloads {
   [VillageMsg.FishingStand]: FishingEmptyPayload;
   [VillageMsg.FishingBoardRequest]: FishingEmptyPayload;
   [VillageMsg.Keypad]: KeypadPayload;
-  [VillageMsg.RideBoard]: Record<string, never>;
+  [VillageMsg.RideBoard]: RideBoardPayload;
   [VillageMsg.RideLeave]: Record<string, never>;
 }
 
@@ -253,4 +253,9 @@ export interface KeypadResultPayload {
 /** Server → client: a RideBoard was refused. */
 export interface RideNoticePayload {
   reason: "closed" | "full" | "busy";
+}
+
+/** Client → server: get on the ride `ride` ("coaster" | "carousel" | "wheel"; absent = the coaster, an older client). */
+export interface RideBoardPayload {
+  ride?: string;
 }

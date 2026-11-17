@@ -137,15 +137,20 @@ export function startRemoteSync(
       });
       // My seat on the 별똥별 급행 (land/coasterRide.ts): the camera is the car's while it is >= 0.
       selfRide.slot = player.rideSeat ?? -1;
+      selfRide.ride = player.rideId ?? 0;
       const offRide = $(player).listen("rideSeat", (value: number) => {
         selfRide.slot = value ?? -1;
+        selfRide.ride = player.rideId ?? 0;
+      });
+      const offRideId = $(player).listen("rideId", (value: number) => {
+        selfRide.ride = value ?? 0;
       });
       const offBusPoint = $(player).onChange(() => {
         selfBusRide.ahead = player.busAhead ?? 0;
         selfBusRide.right = player.busRight ?? 0;
         selfBusRide.yaw = player.busYaw ?? 0;
       });
-      const offs = [off, offSeat, offBus, offBusPoint, offRide];
+      const offs = [off, offSeat, offBus, offBusPoint, offRide, offRideId];
       // Which area I am in (the village scene's maps, bounds, lighting and filter follow it). Seeds the
       // current value immediately, then follows every door.
       if (areas) {
@@ -185,6 +190,7 @@ export function startRemoteSync(
         seatIndex: player.seatIndex,
         busSeat: player.busSeat ?? -1,
         rideSeat: player.rideSeat ?? -1,
+        rideId: player.rideId ?? 0,
         busAhead: player.busAhead ?? 0,
         busRight: player.busRight ?? 0,
         busYaw: player.busYaw ?? 0,
@@ -235,6 +241,7 @@ export function startRemoteSync(
       if (!record) return;
       record.busSeat = player.busSeat ?? -1;
       record.rideSeat = player.rideSeat ?? -1;
+      record.rideId = player.rideId ?? 0;
       record.busAhead = player.busAhead ?? 0;
       record.busRight = player.busRight ?? 0;
       record.busYaw = player.busYaw ?? 0;

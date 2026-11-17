@@ -225,8 +225,8 @@ export function waitForSelf(r: SelfWaitable): Promise<void> {
 }
 
 /** 케이슨랜드 별똥별 급행: get on / off (the server picks the seat while boarding is open; docs/designs/caysonland/DESIGN.md). */
-export function sendRideBoard(): void {
-  room?.send(VillageMsg.RideBoard, {});
+export function sendRideBoard(ride: "coaster" | "carousel" | "wheel" = "coaster"): void {
+  room?.send(VillageMsg.RideBoard, { ride });
 }
 export function sendRideLeave(): void {
   room?.send(VillageMsg.RideLeave, {});

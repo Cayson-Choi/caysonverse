@@ -46,7 +46,7 @@ import {
 import { bushSize, findBushes, type Bush } from "./shrubs";
 import { removePlazaZelkova, zelkovaSkeleton } from "./zelkova";
 import { TriangleGrid, faceNormal, openEdges, type DrawnGap, type V3 } from "./drawnGap";
-import { PLAZA_BEDS, SPECIES_COUNT, linearHex, type Plant } from "./flowerPlacement";
+import { PLAZA_BEDS, SPECIES_COUNT, linearHex, type Bed, type Plant } from "./flowerPlacement";
 import type { FloraResult } from "./floraWork";
 import { a8TreeShift, housesMode, makeHouseGrounds } from "../houses/housesPrep";
 import { houseFlowerBoxBeds } from "../houses/houseFlowerBoxes";
@@ -458,6 +458,9 @@ export interface BuildOptions {
   parkBushes?: readonly Bush[];
   /** 케이슨랜드: the share of each crown's clusters the far level keeps (the tier's `thin` scaled by it; the kept ones grow to cover), for a park of many trees. */
   farThin?: number;
+  /** 케이슨랜드: the flower beds (village flowerPlacement `Bed`s, boxes) and a planting card in each (`parkCards`): planted with the village's flowers. */
+  parkBeds?: readonly Bed[];
+  parkCards?: readonly Card[];
 }
 
 /** A slice of the build's work (ms) before the main thread is handed back. */
@@ -725,11 +728,13 @@ export class VillageVegetation {
       for (const xf of instanceMatrices(mesh)) allCards.push(...readFlora(mesh.geometry, transformedPositions(mesh.geometry, xf)));
       stats.hiddenInstanced.push(mesh.name);
     });
+    // (a park build: its own flower beds, each with a planting card standing in it, so the village's flower placement fills them)
+    if (options.parkCards) allCards.push(...options.parkCards);
     if (await step("cards")) return v.abandon();
     // the houses' own model (집 외관 A8) takes the old porches' beds and the new footprints: no flowers or soil planted there
     const houseGrounds = housesMode() === "new" && !options.flowersOnly ? makeHouseGrounds() : null;
     // the houses' own file (flowersOnly): their window boxes and baskets are beds too (geraniums, spilling over the rims)
-    const beds = options.flowersOnly ? [...PLAZA_BEDS, ...houseFlowerBoxBeds()] : PLAZA_BEDS;
+    const beds = options.parkBeds ? options.parkBeds : options.flowersOnly ? [...PLAZA_BEDS, ...houseFlowerBoxBeds()] : PLAZA_BEDS;
     const floraCards = houseGrounds ? allCards.filter((c) => !houseGrounds((c.ax + c.bx) / 2, (c.az + c.bz) / 2)) : allCards;
     // ── the flowers' layout and the beds' soil: worked out off the page (floraWork.ts, in the crowns' worker) while the
     //    page makes the materials and asks for the crowns; dressed here when it comes back ──

@@ -70,7 +70,7 @@ import {
   type BusRiderPoseFull,
 } from "@caysonverse/shared/village/busCabin";
 import { getTransitRenderPose } from "../net/transitSync";
-import { carSeatPose, coasterNow } from "../land/coasterRide";
+import { rideSeatPose } from "../land/rideSeats";
 import { stepLean } from "./leanBack";
 import { CARRY_STRIPPED_CLIPS, stripArm } from "../lake/fishingRig";
 import { useFishingRig, useHasRod } from "../lake/useFishingRig";
@@ -509,7 +509,7 @@ export function RemotePlayer({
           startRide("seat");
         }
         const cp = coasterPose.current;
-        carSeatPose(coasterNow().s, rideSlot, cp.pos, cp.quat);
+        rideSeatPose(rec.rideId ?? 0, rideSlot, cp.pos, cp.quat);
         group.position.copy(cp.pos);
         group.quaternion.copy(cp.quat);
         group.visible = true;

@@ -65,8 +65,7 @@ export function ParkProps({ all }: { all: Texture[] }) {
     for (const p of PARK_PLANTERS) {
       b.box([p.x, 0.4, p.z], X, Y, p.w / 2, 0.4, p.d / 2, [0.74, 0.72, 0.68], 2);
       b.box([p.x, 0.82, p.z], X, Y, p.w / 2 + 0.08, 0.05, p.d / 2 + 0.08, [0.82, 0.8, 0.76]);
-      b.box([p.x, 0.88, p.z], X, Y, p.w / 2 - 0.1, 0.06, p.d / 2 - 0.1, [0.3, 0.2, 0.14]);
-      for (let i = 0; i < 3; i++) b.box([p.x - 0.9 + i * 0.9, 1.25, p.z], X, Y, 0.4, 0.38, 0.4, i === 1 ? [0.22, 0.46, 0.24] : [0.95, 0.55, 0.68]);
+      // (the soil and the flowers are the village flower system's: ParkVegetation plants these troughs)
     }
     return b.build();
   }, []);

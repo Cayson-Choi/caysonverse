@@ -90,6 +90,8 @@ export class Player extends Schema {
   // player rides. Appended at the END of the schema (older clients ignore an unknown trailing field). The ride itself is not state: every
   // screen computes the train from the wall clock (coasterAt), so only "who sits where" travels. Written only by villageCoaster.ts.
   @type("int8") rideSeat = -1;
+  // Which ride `rideSeat` is a seat of: 0 = none, 1 = 별똥별 급행, 2 = 달빛 회전목마, 3 = 하늘 등불 바퀴 (shared/land/rides.ts RIDE). Appended after rideSeat.
+  @type("uint8") rideId = 0;
 }
 
 /** The village room's synced state: every connected player, keyed by session id. */

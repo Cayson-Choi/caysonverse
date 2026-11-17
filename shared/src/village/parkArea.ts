@@ -39,6 +39,10 @@ export const PARK_PLAZA = Object.freeze({ x: 40, z: -112, radius: 26, fountainHa
 export const COASTER_QUEUE_PAD = Object.freeze({ x: -17, z: -46, radius: 3.2 });
 export const COASTER_BOARD_REACH_M = 6;
 
+/** The carousel's boarding pad (its entrance gate, south of the platform) and the wheel's (phase 2c). */
+export const CAROUSEL_PAD = Object.freeze({ x: 110, z: -119, radius: 3 });
+export const WHEEL_PAD = Object.freeze({ x: 205, z: -119, radius: 3 });
+
 /** The village side: the gate lot's door pad and where you stand coming out (world metres, from the gate lot). */
 export function parkGateDoor() {
   const lot = villageLot("lot_gate");
@@ -188,6 +192,31 @@ export const PARK_BINS: readonly { x: number; z: number }[] = Object.freeze([
   { x: -12.2, z: -100 },
 ]);
 
+/** The star plaza's flower troughs (stone, 0.8 m high; the village flower system plants them): twelve round the fountain, axis-aligned rectangles. */
+export interface ParkTrough {
+  x0: number;
+  x1: number;
+  z0: number;
+  z1: number;
+  /** soil height (m) */
+  y: number;
+}
+function buildTroughs(): ParkTrough[] {
+  const out: ParkTrough[] = [];
+  const ring = PARK_PLAZA.radius - 8.5;
+  for (let k = 0; k < 12; k++) {
+    const a = ((k + 0.5) / 12) * Math.PI * 2;
+    const cx = PARK_PLAZA.x + Math.cos(a) * ring;
+    const cz = PARK_PLAZA.z + Math.sin(a) * ring;
+    const alongZ = Math.abs(Math.cos(a)) > Math.abs(Math.sin(a));
+    const hx = alongZ ? 0.8 : 1.6;
+    const hz = alongZ ? 1.6 : 0.8;
+    out.push({ x0: Math.round((cx - hx) * 10) / 10, x1: Math.round((cx + hx) * 10) / 10, z0: Math.round((cz - hz) * 10) / 10, z1: Math.round((cz + hz) * 10) / 10, y: 0.84 });
+  }
+  return out;
+}
+export const PARK_TROUGHS: readonly ParkTrough[] = Object.freeze(buildTroughs());
+
 /** Everything a player body collides with. */
 function buildSolids(): AABB[] {
   const out: AABB[] = [];
@@ -203,6 +232,8 @@ function buildSolids(): AABB[] {
   // the gate arch's two towers
   out.push(box(29.5, 33, -190, -183), box(47, 50.5, -190, -183));
   out.push(box(PARK_KIOSK.x - PARK_KIOSK.w / 2, PARK_KIOSK.x + PARK_KIOSK.w / 2, PARK_KIOSK.z - PARK_KIOSK.d / 2, PARK_KIOSK.z + PARK_KIOSK.d / 2));
+  out.push(box(110 - 12.8, 110 + 12.8, -135 - 12.8, -135 + 12.8)); // the carousel's platform and its fence (the ride's own pad is outside it)
+  for (const t of PARK_TROUGHS) out.push(box(t.x0, t.x1, t.z0, t.z1));
   for (const p of PARK_PLANTERS) out.push(box(p.x - p.w / 2, p.x + p.w / 2, p.z - p.d / 2, p.z + p.d / 2));
   for (const b of PARK_BINS) out.push(box(b.x - 0.3, b.x + 0.3, b.z - 0.3, b.z + 0.3));
   for (const t of PARK_TREES) out.push(box(t.x - 0.45, t.x + 0.45, t.z - 0.45, t.z + 0.45));

@@ -2,10 +2,14 @@ import { describe, expect, it } from "vitest";
 import type { Client } from "colyseus";
 import { COASTER_CYCLE_MS, COASTER_DWELL_MS, COASTER_SEATS, COASTER_UNLOAD_MS } from "@caysonverse/shared/land/coaster";
 import { VillageMsg, VillageServerMsg } from "@caysonverse/shared/village/messages";
+import { CAROUSEL_CYCLE_MS, CAROUSEL_SEATS } from "@caysonverse/shared/land/carousel";
 import { VillageCoaster, type CoasterHost } from "./villageCoaster";
+
+const CAROUSEL_T0 = 1_900_000_000_000 - (1_900_000_000_000 % CAROUSEL_CYCLE_MS);
 
 interface P {
   rideSeat: number;
+  rideId: number;
   seatIndex: number;
   busSeat: number;
   fishSpot: number;
@@ -13,7 +17,7 @@ interface P {
   x: number;
   z: number;
 }
-const newPlayer = (): P => ({ rideSeat: -1, seatIndex: -1, busSeat: -1, fishSpot: -1, area: "park", x: -17, z: -46 });
+const newPlayer = (): P => ({ rideSeat: -1, rideId: 0, seatIndex: -1, busSeat: -1, fishSpot: -1, area: "park", x: -17, z: -46 });
 const T0 = 1_900_000_000_000 - (1_900_000_000_000 % COASTER_CYCLE_MS);
 
 function rig() {
@@ -47,7 +51,7 @@ function rig() {
       players.set(sid, newPlayer());
       return client(sid);
     },
-    send: (sid: string, type: string) => handlers.get(type)!(client(sid), {}),
+    send: (sid: string, type: string, payload: unknown = {}) => handlers.get(type)!(client(sid), payload),
     setNow: (t: number) => {
       now = t;
     },
@@ -131,5 +135,44 @@ describe("VillageCoaster (server rules)", () => {
     r.coaster.tick();
     expect(r.players.get("a")!.rideSeat).toBe(-1);
     void COASTER_UNLOAD_MS;
+  });
+
+  it("the carousel: its own pad, its own schedule and its own 24 seats, one ride at a time", () => {
+    const r = rig();
+    r.add("a");
+    r.players.get("a")!.x = 110; // the carousel's pad (110, -119): the coaster's queue gate is far away
+    r.players.get("a")!.z = -119;
+    r.setNow(CAROUSEL_T0 + 10_000);
+    r.send("a", VillageMsg.RideBoard, { ride: "coaster" });
+    expect(r.players.get("a")!.rideSeat).toBe(-1); // not at the coaster's pad
+    r.send("a", VillageMsg.RideBoard, { ride: "carousel" });
+    expect(r.players.get("a")!.rideId).toBe(2);
+    expect(r.players.get("a")!.rideSeat).toBe(0);
+    r.send("a", VillageMsg.RideBoard, { ride: "carousel" }); // already aboard
+    expect(r.players.get("a")!.rideSeat).toBe(0);
+    for (let i = 1; i < CAROUSEL_SEATS; i++) {
+      r.add(`c${i}`);
+      r.players.get(`c${i}`)!.x = 110;
+      r.players.get(`c${i}`)!.z = -119;
+      r.send(`c${i}`, VillageMsg.RideBoard, { ride: "carousel" });
+    }
+    r.add("late");
+    r.players.get("late")!.x = 110;
+    r.players.get("late")!.z = -119;
+    r.send("late", VillageMsg.RideBoard, { ride: "carousel" });
+    expect(r.players.get("late")!.rideSeat).toBe(-1);
+    // the unload at the end of the carousel's cycle
+    r.setNow(CAROUSEL_T0 + CAROUSEL_CYCLE_MS + 100);
+    r.coaster.tick();
+    expect(r.players.get("a")!.rideSeat).toBe(-1);
+    expect(r.players.get("a")!.rideId).toBe(0);
+  });
+  it("an unknown ride or the unbuilt wheel is refused", () => {
+    const r = rig();
+    r.add("a");
+    r.send("a", VillageMsg.RideBoard, { ride: "teacups" });
+    expect(r.players.get("a")!.rideSeat).toBe(-1);
+    r.send("a", VillageMsg.RideBoard, { ride: "wheel" });
+    expect(r.players.get("a")!.rideSeat).toBe(-1);
   });
 });

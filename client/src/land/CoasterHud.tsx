@@ -6,7 +6,8 @@ import { COASTER_DWELL_MS, COASTER_SEATS } from "@caysonverse/shared/land/coaste
 import { coasterNow, landPose, rideComfort, rideNotice, selfRide, setRideComfort, subscribeRideComfort, type RideComfort } from "./coasterRide";
 import { rideMuted, setRideMuted } from "./coasterAudio";
 import { useLocalArea } from "../village/villageArea";
-import { COASTER_QUEUE_PAD } from "@caysonverse/shared/village/parkArea";
+import { RIDES, rideById } from "@caysonverse/shared/land/rides";
+import { villageClock } from "../village/villageClock";
 
 const NOTICE_TEXT = {
   closed: "지금은 탈 수 없어요. 다음 출발을 기다려 주세요.",
@@ -67,23 +68,40 @@ export function CoasterHud() {
   }, []);
   const comfort = useSyncExternalStore(subscribeRideComfort, rideComfort, rideComfort);
   const [muted, setMuted] = useState(rideMuted());
-  const now = coasterNow();
   const riding = selfRide.slot >= 0;
+  // the ride in question: the one I sit on, else the nearest whose boarding pad is within sight (70 m)
+  const wall = villageClock.liveMs();
+  let def = riding ? (rideById(selfRide.ride) ?? RIDES[0]!) : null;
+  if (!def && area === "park") {
+    let best = 70;
+    for (const r of RIDES) {
+      if (r.seats <= 0) continue;
+      const d = Math.hypot(pose.x - r.pad.x, pose.z - r.pad.z);
+      if (d < best) {
+        best = d;
+        def = r;
+      }
+    }
+  }
+  const now = def ? def.statusAt(wall) : coasterNow();
   const secs = Math.max(0, Math.ceil(now.departsInMs / 1000));
   const noticeFresh = rideNotice.reason !== null && performance.now() - rideNotice.at < 4500;
+  const icon = def?.key === "carousel" ? "🎠" : def?.key === "wheel" ? "🎡" : "🎢";
+  const isCoaster = !def || def.key === "coaster";
   if (!riding) {
-    // in the park, within sight of the coaster's queue: when it leaves, and how to get on
-    if (area !== "park" || Math.hypot(pose.x - COASTER_QUEUE_PAD.x, pose.z - COASTER_QUEUE_PAD.z) > 70) return null;
+    if (!def) return null;
     return (
       <div style={box} data-testid="coaster-hud">
-        <div>🎢 별똥별 급행</div>
+        <div>
+          {icon} {def.name}
+        </div>
         <div style={{ opacity: 0.8 }}>
           {now.status === "unloading" && `손님이 내리는 중 · ${secs}초 뒤 출발`}
           {now.status === "boarding" && `탑승 중 · ${secs}초 뒤 출발`}
           {now.status === "gate" && `곧 출발해요 (${secs}초)`}
           {now.status === "riding" && `운행 중 · 다음 출발까지 ${secs}초`}
         </div>
-        <div style={{ opacity: 0.7 }}>대기줄 입구에서 "타기"</div>
+        <div style={{ opacity: 0.7 }}>{isCoaster ? '대기줄 입구에서 "타기"' : '입구에서 "타기"'}</div>
         {noticeFresh ? (
           <div role="alert" data-testid="coaster-notice" style={{ marginTop: 5, background: "rgba(255,196,64,0.28)", borderRadius: 8, padding: "5px 8px" }}>
             {NOTICE_TEXT[rideNotice.reason!]}
@@ -94,20 +112,26 @@ export function CoasterHud() {
   }
   return (
     <div style={box} data-testid="coaster-ride-hud">
-      <div>🎢 별똥별 급행 탑승 중</div>
+      <div>
+        {icon} {def?.name} 탑승 중
+      </div>
       {/* a phone keeps the panel small: the ride is the view */}
       {isTouchDevice ? null : (
         <>
           <div style={{ opacity: 0.8 }}>
-            {now.status === "riding" ? `${Math.max(0, Math.round((now.phase - COASTER_DWELL_MS) / 1000))}초 · 안전바를 잡고 있어요` : now.status === "gate" ? `곧 출발해요 (${secs}초)` : "출발을 기다리는 중이에요"}
+            {now.status === "riding"
+              ? `${Math.max(0, Math.round((now.phase - (isCoaster ? COASTER_DWELL_MS : 30_000)) / 1000))}초 · ${isCoaster ? "안전바를 잡고 있어요" : "말이 오르내려요"}`
+              : now.status === "gate"
+                ? `곧 출발해요 (${secs}초)`
+                : "출발을 기다리는 중이에요"}
           </div>
           <div style={{ marginTop: 4, opacity: 0.7 }}>화면을 끌면 둘러볼 수 있어요</div>
         </>
       )}
-      <div style={{ marginTop: 6, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 }}>
-        <button type="button" data-testid="coaster-comfort" style={{ ...btn, fontSize: 12 }} onClick={() => setRideComfort(((comfort + 1) % 3) as RideComfort)}>
+      <div style={{ marginTop: 6, display: "grid", gridTemplateColumns: isCoaster ? "1fr 1fr" : "1fr", gap: 4 }}>
+        {isCoaster ? <button type="button" data-testid="coaster-comfort" style={{ ...btn, fontSize: 12 }} onClick={() => setRideComfort(((comfort + 1) % 3) as RideComfort)}>
           {isTouchDevice ? COMFORT_SHORT[comfort] : COMFORT_LABEL[comfort]}
-        </button>
+        </button> : null}
         <button
           type="button"
           style={{ ...btn, fontSize: 12 }}
