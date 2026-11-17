@@ -33,7 +33,6 @@ export const HOUSE_7_COLLIDERS: readonly AABB[] = [
   { minX: 510.9, maxX: 511.7, minZ: 22.27, maxZ: 22.73 }, // col__h7_2_toolchest
   { minX: 511, maxX: 511.1, minZ: -1.5, maxZ: 0 }, // col__h7_1_part_entry_1
   { minX: 511.9, maxX: 513, minZ: -2.95, maxZ: -1.85 }, // col__h7_1_table
-  { minX: 511.92, maxX: 514.28, minZ: 22.21, maxZ: 22.37 }, // col__h7_2_pegboard
   { minX: 512.1, maxX: 514.1, minZ: 22.4, maxZ: 23.2 }, // col__h7_2_bench
   { minX: 512.18, maxX: 512.73, minZ: 23.37, maxZ: 23.92 }, // col__h7_2_stool
   { minX: 512.66, maxX: 513.34, minZ: -6.09, maxZ: -5.41 }, // col__h7_1_musicstand
