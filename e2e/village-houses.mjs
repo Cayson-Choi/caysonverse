@@ -347,7 +347,8 @@ for (const n of houses) {
     return m.VILLAGE_SEATS.map((s, index) => {
       const mk = markers.find((k) => k.id === s.bench);
       return { index, id: s.id, area: s.area, x: s.x, z: s.z, yaw: s.yaw, standX: s.standX, standZ: s.standZ, bench: s.bench, kind: s.kind, seatY: s.seatY, pose: s.pose, frontEdge: s.frontEdge, mx: mk?.x ?? s.x, mz: mk?.z ?? s.z, furn: mk?.furn };
-    }).filter((s) => s.area.startsWith(`house:house_${n}:`));
+      // (a retired seat keeps its index far outside the map: release 4 retired h2_1_0:back, h2_1_1:back — no seat to try)
+    }).filter((s, i) => s.area.startsWith(`house:house_${n}:`) && !m.VILLAGE_SEATS[i].retired);
   }, n);
   H.seats = seatList.length;
 

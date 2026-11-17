@@ -139,7 +139,7 @@ try {
   // ---- seats: every seat of both floors
   const seatList = await p.page.evaluate(async () => {
     const m = await window.__imp("/src/village/benchSeats.ts");
-    return m.VILLAGE_SEATS.map((s, index) => ({ index, id: s.id, area: s.area, x: s.x, z: s.z, yaw: s.yaw, standX: s.standX, standZ: s.standZ, bench: s.bench, kind: s.kind, seatY: s.seatY, pose: s.pose })).filter((s) => s.area.startsWith("house:"));
+    return m.VILLAGE_SEATS.map((s, index) => ({ index, id: s.id, area: s.area, x: s.x, z: s.z, yaw: s.yaw, standX: s.standX, standZ: s.standZ, bench: s.bench, kind: s.kind, seatY: s.seatY, pose: s.pose, retired: s.retired })).filter((s) => s.area.startsWith("house:") && !s.retired);
   });
   run.check("house 1 has its 12 seats (13 places with both-facings)", seatList.length >= 12, seatList.length);
   /** A free spot from which the prompt offers seat `index` (the client's rule), nearest the seat first. */
