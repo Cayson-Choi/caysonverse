@@ -1561,5 +1561,146 @@ export const PBR_SETS: readonly PbrSetInfo[] = [
         }
       }
     }
+  },
+  {
+    "id": "dancheong_wood",
+    "label": "단청 (절 목부재 채색 아틀라스)",
+    "group": "wood",
+    "use": "Fresh Korean temple dancheong on timber: a painted ATLAS (tileMeters 1, process.atlas), not a tiling texture. Regions (docs/designs/village-lots-v2/tools/temple_atlas.py): 머리초 beams, 서까래·부연 sides and ends, 주의초, 우물반자 연화, 공포 초엽, 수미단 모란 relief, 운문, 금단청 넝쿨 (gold leaf = metal), 연등 paper, and a neutral paint strip to tint (석간주 columns, 주칠 frames).",
+    "tileMeters": 1,
+    "tileEstimated": false,
+    "density": 2048,
+    "source": {
+      "provider": "local",
+      "asset": "dancheong_atlas",
+      "page": "https://github.com/Cayson-Choi/caysonverse/blob/main/docs/designs/village-lots-v2/tools/temple_dancheong.py",
+      "license": "CC0 1.0 Universal"
+    },
+    "meanAlbedo": [
+      0.5757,
+      0.5738,
+      0.5383
+    ],
+    "meanOrm": [
+      0.9941,
+      0.5953,
+      0.0297
+    ],
+    "tiers": {
+      "2k": {
+        "albedo": {
+          "bytes": 695510,
+          "hash": "a9238d5e3e"
+        }
+      },
+      "1k": {
+        "albedo": {
+          "bytes": 228731,
+          "hash": "e127896767"
+        },
+        "normal": {
+          "bytes": 665953,
+          "hash": "ae62b3db22"
+        },
+        "orm": {
+          "bytes": 507971,
+          "hash": "48bc034049"
+        }
+      }
+    }
+  },
+  {
+    "id": "wood_pine_natural",
+    "label": "소나무 백골 (마루, 백골 부재)",
+    "group": "wood",
+    "use": "Natural unpainted pale softwood (Korean pine 소나무 look): the 대웅전 우물마루 floor, 툇마루, the 일주문's unpainted parts, 방석 frames, temple furniture. Brand-new, oiled.",
+    "tileMeters": 1.89,
+    "tileEstimated": false,
+    "density": 512,
+    "source": {
+      "provider": "polyhaven",
+      "asset": "hinoki_planks",
+      "page": "https://polyhaven.com/a/hinoki_planks",
+      "license": "CC0 1.0 Universal"
+    },
+    "meanAlbedo": [
+      0.6045,
+      0.464,
+      0.3143
+    ],
+    "meanOrm": [
+      0.9484,
+      0.8241,
+      0.0024
+    ],
+    "tiers": {
+      "2k": {
+        "albedo": {
+          "bytes": 721658,
+          "hash": "9d63842cdf"
+        }
+      },
+      "1k": {
+        "albedo": {
+          "bytes": 200287,
+          "hash": "7170dd9c33"
+        },
+        "normal": {
+          "bytes": 423461,
+          "hash": "f6e6c016fb"
+        },
+        "orm": {
+          "bytes": 455897,
+          "hash": "9630cbcd01"
+        }
+      }
+    }
+  },
+  {
+    "id": "stone_wall_korean",
+    "label": "화강석 돌담·석축 (절 담장)",
+    "group": "stone",
+    "use": "Temple 돌담 and 석축: grey granite blocks laid with fine joints, brand-new and clean (under a 기와 coping); the 대웅전 기단 sides, the 범종각 and 석등 bases.",
+    "tileMeters": 1.9,
+    "tileEstimated": false,
+    "density": 512,
+    "source": {
+      "provider": "polyhaven",
+      "asset": "japanese_stone_wall",
+      "page": "https://polyhaven.com/a/japanese_stone_wall",
+      "license": "CC0 1.0 Universal"
+    },
+    "meanAlbedo": [
+      0.505,
+      0.4897,
+      0.4589
+    ],
+    "meanOrm": [
+      0.8644,
+      0.7888,
+      0.005
+    ],
+    "tiers": {
+      "2k": {
+        "albedo": {
+          "bytes": 944406,
+          "hash": "b1f89af036"
+        }
+      },
+      "1k": {
+        "albedo": {
+          "bytes": 264392,
+          "hash": "02d67712f6"
+        },
+        "normal": {
+          "bytes": 1353605,
+          "hash": "429039a7b4"
+        },
+        "orm": {
+          "bytes": 1029699,
+          "hash": "03898eb114"
+        }
+      }
+    }
   }
 ] as const;

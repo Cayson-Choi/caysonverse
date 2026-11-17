@@ -90,7 +90,9 @@ describe("PBR manifest and files", () => {
       expect(Object.keys(s.tiers["1k"] ?? {}).sort(), s.id).toEqual(["albedo", "normal", "orm"]);
       expect(s.tiers["2k"]?.albedo, s.id).toBeTruthy();
       expect(s.source?.license, s.id).toBe("CC0 1.0 Universal");
-      expect(s.source?.page, s.id).toMatch(/^https:\/\/(polyhaven\.com|ambientcg\.com)\//);
+      // a CC0 scan from Poly Haven / ambientCG, or (lots v2 B3: dancheong_wood) an atlas painted by a script in this repo
+      const own = (s.source as { provider?: string } | null)?.provider === "local";
+      expect(s.source?.page, s.id).toMatch(own ? /^https:\/\/github\.com\/Cayson-Choi\/caysonverse\/blob\/main\/docs\/designs\// : /^https:\/\/(polyhaven\.com|ambientcg\.com)\//);
       expect(s.tileMeters, s.id).toBeGreaterThan(0.2);
       expect(s.meanAlbedo?.length, s.id).toBe(3);
     }

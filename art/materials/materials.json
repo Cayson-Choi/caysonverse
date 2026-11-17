@@ -546,6 +546,64 @@
       },
       "note": "Added by lots v2 B1 (2026-11-17). Clean square natural slates (ambientCG RoofingTiles003), recoloured from green-grey to blue-grey Welsh slate. Poly Haven roof_slates_03 was tried first and dropped (a ridge strip in the tile).",
       "tileEstimated": true
+    },
+    {
+      "id": "dancheong_wood",
+      "label": "단청 (절 목부재 채색 아틀라스)",
+      "group": "wood",
+      "use": "Fresh Korean temple dancheong on timber: a painted ATLAS (tileMeters 1, process.atlas), not a tiling texture. Regions (docs/designs/village-lots-v2/tools/temple_atlas.py): 머리초 beams, 서까래·부연 sides and ends, 주의초, 우물반자 연화, 공포 초엽, 수미단 모란 relief, 운문, 금단청 넝쿨 (gold leaf = metal), 연등 paper, and a neutral paint strip to tint (석간주 columns, 주칠 frames).",
+      "source": {
+        "provider": "local",
+        "asset": "dancheong_atlas"
+      },
+      "tileMeters": 1,
+      "density": 2048,
+      "process": {
+        "atlas": true
+      },
+      "note": "Added by lots v2 B3 (2026-11-17). Hand-painted from observation of real temple dancheong (general 머리초/금단청 forms, brand-new colours, no 卍, no letters) by docs/designs/village-lots-v2/tools/temple_dancheong.py; the wood grain under the paint is Poly Haven hinoki_planks' normal (CC0). Own work, CC0."
+    },
+    {
+      "id": "wood_pine_natural",
+      "label": "소나무 백골 (마루, 백골 부재)",
+      "group": "wood",
+      "use": "Natural unpainted pale softwood (Korean pine 소나무 look): the 대웅전 우물마루 floor, 툇마루, the 일주문's unpainted parts, 방석 frames, temple furniture. Brand-new, oiled.",
+      "source": {
+        "provider": "polyhaven",
+        "asset": "hinoki_planks"
+      },
+      "tileMeters": 1.89,
+      "density": 512,
+      "process": {
+        "albedo": {
+          "saturation": 1.05,
+          "lift": 0.0
+        },
+        "roughness": {
+          "scale": 0.9,
+          "offset": 0
+        }
+      },
+      "note": "Added by lots v2 B3 (2026-11-17). Clean raw softwood planks with small knots (Poly Haven hinoki_planks, 1.89 m), close to fresh Korean pine 마루."
+    },
+    {
+      "id": "stone_wall_korean",
+      "label": "화강석 돌담·석축 (절 담장)",
+      "group": "stone",
+      "use": "Temple 돌담 and 석축: grey granite blocks laid with fine joints, brand-new and clean (under a 기와 coping); the 대웅전 기단 sides, the 범종각 and 석등 bases.",
+      "source": {
+        "provider": "polyhaven",
+        "asset": "japanese_stone_wall"
+      },
+      "tileMeters": 1.9,
+      "density": 512,
+      "process": {
+        "albedo": {
+          "saturation": 0.9,
+          "lift": 0.02
+        }
+      },
+      "note": "Added by lots v2 B3 (2026-11-17). Grey granite irregular-block wall (Poly Haven japanese_stone_wall, 1.9 m): the look of a new Korean temple 돌담·석축 (no moss)."
     }
   ]
 }

@@ -357,7 +357,8 @@ async function buildMaps(set, src, size) {
   report.seams.before = { x: +s0.x.toFixed(2), y: +s0.y.toFixed(2) };
   const band = Math.round(size / 16);
   for (const axis of ["x", "y"]) {
-    if (s0[axis] > SEAM_LIMIT) {
+    // an atlas (process.atlas: dancheong_wood, lots v2 B3) is laid out in regions, never wrapped: leave its edges alone
+    if (s0[axis] > SEAM_LIMIT && !proc.atlas) {
       makeTileable(albedo, size, 3, axis, band);
       makeTileable(normal, size, 3, axis, band);
       makeTileable(orm, size, 3, axis, band);
