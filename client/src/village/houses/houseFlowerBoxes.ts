@@ -14,12 +14,15 @@ interface BoxRow {
   z0: number;
   z1: number;
   y: number;
+  out?: [number, number] | null;
+  plant?: "window" | "pot" | "border";
 }
 
 /** Every house's window boxes and baskets as `box` beds. */
 export function houseFlowerBoxBeds(): Bed[] {
   const houses = (table as { houses: Record<string, BoxRow[]> }).houses;
   const out: Bed[] = [];
-  for (const rows of Object.values(houses)) for (const r of rows) out.push({ kind: "box", x0: r.x0, x1: r.x1, z0: r.z0, z1: r.z1, y: r.y });
+  for (const rows of Object.values(houses))
+    for (const r of rows) out.push({ kind: "box", x0: r.x0, x1: r.x1, z0: r.z0, z1: r.z1, y: r.y, out: r.out ?? null, plant: r.plant ?? "window" });
   return out;
 }

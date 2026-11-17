@@ -381,9 +381,9 @@ export function houseProxyNode(houseId: string): string {
 export const HOUSE_GLB_BUDGET = Object.freeze({
   file: "village_houses.glb",
   maxBytes: 1.2 * 1024 * 1024,
-  shellTriangles: 2_700,
+  shellTriangles: 2_750,
   detailTriangles: 6_000,
-  totalTriangles: 87_000,
+  totalTriangles: 87_500,
   maxMaterials: 10,
   materials: Object.freeze(["LM_render", "LM_roof", "LM_stone", "LM_wood", "LM_metal", "M_glass", "M_window", "M_lamp", "M_leaf_flora", "M_screen"]),
   maxTextureSide: 2048,

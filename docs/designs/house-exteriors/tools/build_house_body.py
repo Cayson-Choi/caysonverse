@@ -522,8 +522,13 @@ def main():
             for bx in getattr(H, "window_boxes", []):
                 p0 = K.local_to_world(c, hx["doorSide"], bx["x0"], bx["z0"])
                 p1 = K.local_to_world(c, hx["doorSide"], bx["x1"], bx["z1"])
-                rows.append({"x0": round(min(p0[0], p1[0]), 3), "x1": round(max(p0[0], p1[0]), 3), "z0": round(min(p0[1], p1[1]), 3),
-                             "z1": round(max(p0[1], p1[1]), 3), "y": round(bx["y"], 3)})
+                row = {"x0": round(min(p0[0], p1[0]), 3), "x1": round(max(p0[0], p1[0]), 3), "z0": round(min(p0[1], p1[1]), 3),
+                       "z1": round(max(p0[1], p1[1]), 3), "y": round(bx["y"], 3), "plant": bx.get("plant", "window")}
+                o = bx.get("out")
+                if o:
+                    ow = K.local_to_world((0.0, 0.0), hx["doorSide"], o[0], o[1])
+                    row["out"] = [round(ow[0], 3), round(ow[1], 3)]
+                rows.append(row)
             out[hid] = rows
         with open(BOXES_OUT, "w", encoding="utf-8", newline="\n") as f:
             json.dump({"format": "caysonverse-house-flower-boxes", "version": 1, "houses": out}, f, indent=1)

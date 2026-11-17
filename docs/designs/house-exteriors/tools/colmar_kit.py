@@ -514,7 +514,7 @@ class Colmar:
             # glazing bars: rows - 1 level bars (front + top edge)
             for j in range(1, rows):
                 yy = b0 + sf + (b1 - b0 - 2 * sf) * j / rows
-                W.box(de, a + sf, b - sf, yy - 0.014, yy + 0.014, fc - 0.035, fc - 0.005, "pvc_frame", fr, faces="fu", along="u")
+                W.box(de, a + sf, b - sf, yy - 0.014, yy + 0.014, fc - 0.035, fc - 0.005, "pvc_frame", fr, faces="f", along="u")
             W.quad(sh, [(a + sf, b0 + sf, fc), (b - sf, b0 + sf, fc), (b - sf, b1 - sf, fc), (a + sf, b1 - sf, fc)], "M_glass",
                    (1, 1, 1, 1), uvs=[(0, 0), (1, 0), (1, 1), (0, 1)])
             # a brass-ish espagnolette handle on the meeting stile
@@ -536,8 +536,6 @@ class Colmar:
         # sandstone sill (6 cm, 8 cm proud, a drip groove)
         if o is None or o["kind"] == "window":
             W.box(de, u0 - 0.08, u1 + 0.08, v0 - 0.06, v0, -0.08, d0, "granite", self.stone, faces="frltu", along="u")
-            W.box(de, u0 - 0.04, u1 + 0.04, v0 - 0.072, v0 - 0.06, -0.06, -0.045, "granite", mul(self.stone, 0.75), faces="fltr",
-                  along="u")
             self.reg_wall_box("sill", W, u0 - 0.08, u1 + 0.08, v0 - 0.072, v0, -0.08, 0.0)
         # sandstone head (a lintel stone over the opening, 3 cm proud) on plastered ground floors
         if storey == 1 and self.c["ground_style"] != "timber":
@@ -556,16 +554,35 @@ class Colmar:
         u0, u1, v0, v1 = r
         pt = self.shutter
         dsh0, dsh1 = -0.085, -0.055
-        louvre = self.c.get("shutter_style") == "louvre"
+        # louvred leaves with real slats on the street side; the back's are plain boards (budget)
+        louvre = self.c.get("shutter_style") == "louvre" and W.n == (0, 1)
         for (a, b, side) in ((u0 - sw, u0 - 0.01, -1), (u1 + 0.01, u1 + sw, 1)):
-            W.box(de, a, b, v0 - 0.01, v1 + 0.01, dsh0, dsh1, "timber_cladding", pt, faces="flr", along="u" if louvre else "y")
             if louvre:
-                # the raised frame: stiles and rails 6 cm, 1.2 cm proud; the slats are the board texture laid level
-                for (ua, ub) in ((a, a + 0.06), (b - 0.06, b)):
-                    W.box(de, ua, ub, v0 - 0.01, v1 + 0.01, dsh0 - 0.012, dsh0, "timber_cladding", mul(pt, 1.05), faces="flr", along="y")
-                for (ya, yb) in ((v0 - 0.01, v0 + 0.06), ((v0 + v1) / 2 - 0.03, (v0 + v1) / 2 + 0.03), (v1 - 0.06, v1 + 0.01)):
-                    W.box(de, a + 0.06, b - 0.06, ya, yb, dsh0 - 0.012, dsh0, "timber_cladding", mul(pt, 1.05), faces="ftu", along="u")
+                # a louvred leaf: two stiles and three rails (front + edges), between them real slats — one 45-degree board
+                # every 10 cm, each a single angled quad, over the leaf's dark back (the shadow seen between the slats)
+                W.box(de, a, b, v0 - 0.01, v1 + 0.01, dsh0, dsh1, "timber_cladding", pt, faces="lr", along="y")
+                for (ua, ub) in ((a, a + 0.065), (b - 0.065, b)):
+                    W.box(de, ua, ub, v0 - 0.01, v1 + 0.01, dsh0 - 0.004, dsh0 + 0.02, "timber_cladding", mul(pt, 1.04), faces="f", along="y")
+                ym = (v0 + v1) / 2
+                for (ya, yb) in ((v0 - 0.01, v0 + 0.07), (ym - 0.035, ym + 0.035), (v1 - 0.07, v1 + 0.01)):
+                    W.box(de, a + 0.065, b - 0.065, ya, yb, dsh0 - 0.004, dsh0 + 0.02, "timber_cladding", mul(pt, 1.04), faces="ftu",
+                          along="u")
+                W.quad(de, [(a + 0.065, v0, dsh1 - 0.002), (b - 0.065, v0, dsh1 - 0.002), (b - 0.065, v1, dsh1 - 0.002),
+                            (a + 0.065, v1, dsh1 - 0.002)], "timber_cladding", mul(pt, 0.12), (0, 0, -1), uax=W.T)
+                for (ya, yb) in ((v0 + 0.07, ym - 0.035), (ym + 0.035, v1 - 0.07)):
+                    nsl = max(1, int((yb - ya) / 0.10))
+                    for k in range(nsl):
+                        y0s = ya + (yb - ya) * k / nsl
+                        y1s = y0s + (yb - ya) / nsl
+                        # front edge low and out, back edge high and in: rain runs off outward, the light catches the tops
+                        # a 50-degree slat: from its front edge (2 cm proud of the frame) up and back to the leaf's back, 6 cm of
+                        # its 10 cm pitch; the dark back shows in the rest (the louvre's stripes of light and shadow)
+                        W.quad(de, [(a + 0.065, y0s, dsh0 - 0.02), (b - 0.065, y0s, dsh0 - 0.02), (b - 0.065, y0s + 0.06, dsh1 - 0.004),
+                                    (a + 0.065, y0s + 0.06, dsh1 - 0.004)], "timber_cladding", mul(pt, 1.0),
+                               (0, 0.75, -0.66), uax=W.T)
             else:
+                W.box(de, a, b, v0 - 0.01, v1 + 0.01, dsh0, dsh1, "timber_cladding", pt, faces="flr", along="y")
+            if not louvre:
                 # a heart cut-out (a dark diamond-and-lobes shape through the board)
                 cu, cy = (a + b) / 2, v1 - 0.32
                 pts = [(cu, cy - 0.07, dsh0 - 0.001), (cu + 0.06, cy + 0.01, dsh0 - 0.001), (cu + 0.035, cy + 0.06, dsh0 - 0.001),
@@ -575,7 +592,7 @@ class Colmar:
                 ha, hb = (b - 0.34, b - 0.01) if side < 0 else (a + 0.01, a + 0.34)
                 W.box(de, ha, hb, yy - 0.018, yy + 0.018, dsh0 - 0.016, dsh0 - (0.012 if louvre else 0.0), "metal_painted",
                       lin(IRON), faces="f", along="u")
-            self.reg_wall_box("shutter", W, a, b, v0 - 0.01, v1 + 0.01, dsh0 - 0.016, 0.0)
+            self.reg_wall_box("shutter", W, a, b, v0 - 0.01, v1 + 0.01, dsh0 - 0.022, 0.0)
 
     def wants_box(self, wname, r, storey):
         """Flower boxes under the street-facing windows, except where the porch is (a deck house's bench and rail beside the
@@ -615,7 +632,7 @@ class Colmar:
             W.box(de, uu - 0.012, uu + 0.012, yb - 0.012, yb, d0 + 0.03, d1, "metal_painted", lin(IRON), faces="flru", along="d")
         self.reg_wall_box("flowerbox", W, a, b, yb - 0.12, yt + 0.32, d0, 0.0)
         # planting cards: one per ~0.3 m, the pink / red row (row 0), leaning out a little
-        n = max(2, int(round((b - a) / 0.3)))
+        n = max(3, int(round((b - a) / 0.22)))
         reds = ["#E5323C", "#F0506E", "#D8283A", "#F27AA0"]
         for k in range(n):
             uu = a + 0.1 + (b - a - 0.2) * (k + 0.5) / n
@@ -625,7 +642,7 @@ class Colmar:
         # the bed for the 3D plants (world mapping is the build's: local AABB of the soil, its top)
         pa, pb = W.P(a + 0.02, yt - 0.03, d0 + 0.02), W.P(b - 0.02, yt - 0.03, d1)
         self.window_boxes.append(dict(x0=min(pa[0], pb[0]), x1=max(pa[0], pb[0]), z0=min(pa[2], pb[2]), z1=max(pa[2], pb[2]),
-                                      y=yt - 0.03, lean=1.0, out=(W.n[0], W.n[1])))
+                                      y=yt - 0.03, plant="window", out=(W.n[0], W.n[1])))
 
     def card(self, p, w, h, W, tint, row=0):
         """A flower card standing on point p across the wall's direction (M_leaf_flora, T_flora row `row`)."""
@@ -1037,16 +1054,16 @@ class Colmar:
         self.reg_wall_box("sign", W, u - 0.25, u + 0.25, y - 0.42, y + 0.15, -0.88, 0.0)
 
     def baskets(self):
-        """Hanging baskets of trailing geraniums on iron brackets beside the 1F windows (front corners)."""
-        if not self.c["baskets"]:
-            return
+        """Hanging baskets of trailing geraniums on scrolled iron brackets: one each side of the front door (every house), and
+        at the front corners beside the ground-floor windows (some houses)."""
         de = self.de
         W = Wall((0, 1), (0.0, ZF))
         iron = lin(IRON)
-        for u in (-(HB - 0.62), HB - 0.62):
-            if u > 0 and self.c["sign"]:
-                continue
-            y = FL + 2.75
+        # (not on the canopy houses: the door hood's brackets stand there)
+        spots = [] if K_KIND.get(self.H.id) == "canopy" else [(-1.45, FL + 2.95), (1.45, FL + 2.95)]
+        if self.c["baskets"]:
+            spots += [(u, FL + 2.75) for u in (-(HB - 0.62), HB - 0.62) if not (u > 0 and self.c["sign"])]
+        for (u, y) in spots:
             W.box(de, u - 0.03, u + 0.03, y - 0.08, y + 0.08, -0.012, 0.0, "metal_painted", iron, faces="fltru", along="y")
             W.box(de, u - 0.01, u + 0.01, y + 0.04, y + 0.06, -0.45, -0.012, "metal_painted", iron, faces="ftu", along="d")
             # chains and the basket (a coir-lined iron bowl)
@@ -1069,8 +1086,8 @@ class Colmar:
             Wx = Wall((1, 0), (0.0, 0.0))
             self.card(p, 0.34, 0.30, W, lin("#E5323C"))
             self.card(p, 0.34, 0.30, Wx, lin("#F0506E"))
-            self.window_boxes.append(dict(x0=p[0] - 0.13, x1=p[0] + 0.13, z0=p[2] - 0.13, z1=p[2] + 0.13, y=yb + 0.10, lean=1.0,
-                                          out=(0, 1)))
+            self.window_boxes.append(dict(x0=p[0] - 0.14, x1=p[0] + 0.14, z0=p[2] - 0.14, z1=p[2] + 0.14, y=yb + 0.10, plant="pot",
+                                          out=None))
             self.reg_wall_box("basket", W, u - 0.2, u + 0.2, yb - 0.05, y + 0.1, -0.52, 0.0)
 
 

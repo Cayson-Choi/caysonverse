@@ -106,6 +106,10 @@ try {
             const shot = shotFor(h, n, view);
             await P.page.evaluate((s) => (window.__cvShot = s), shot);
             await sleep(1400);
+            // a late load (a house's plants, a texture) can bring the "불러오는 중…" overlay back after the HUD was hidden:
+            // wait for it to go and hide whatever the page added since (it is the loading cover, not part of the house)
+            await P.page.waitForFunction(() => !document.querySelector(".cv-loading") && document.querySelector(".cv-veg-veil")?.getAttribute("data-covered") !== "1", null, { timeout: 30000 }).catch(() => {});
+            await hideHud(P);
             const file = join(OUT, `${TAG}-${key}-house${n}-${view}.png`);
             await P.page.screenshot({ path: file });
             const stats = await P.page.evaluate(() => {

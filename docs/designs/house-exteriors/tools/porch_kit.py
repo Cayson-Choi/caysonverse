@@ -172,11 +172,15 @@ class Porch:
         if k == "gable":
             self.run("roof", self.gable_roof)
         elif k == "canopy":
-            if self.id in GLASS_CANOPY:
+            if COLMAR:
+                self.run("canopy", self.timber_canopy)
+            elif self.id in GLASS_CANOPY:
                 self.run("canopy", self.glass_canopy)
             else:
                 self.run("canopy", self.box_canopy)
         self.run("beds", self.beds)
+        if COLMAR:
+            self.run("border", self.border)
         if k != "gable" and not (k == "canopy" and self.id not in GLASS_CANOPY):
             self.run("sconces", self.sconces)
         self.run("nameplate", self.nameplate)
@@ -719,6 +723,69 @@ class Porch:
                           skip=("back",), along="y")
                 self.reg_seg("tierod", g, "over", (bx, y1 - 0.01, z1 - 0.12), (bx, 4.62, ZF + 0.03), 0.012)
 
+    def timber_canopy(self):
+        """Houses 3, 4, 8 in the Colmar dress: a small timber-and-tile door hood (Alsace's "auvent"): a lean-to roof of the
+        house's beaver-tail tiles, 14 degrees, from a wall plate at 4.05 to an oak fascia at 3.62, 3.7 x 1.6 m (the box
+        canopy's place), on two oak brackets (a wall post, a curved-look knee brace, a cantilever beam), painted board ceiling
+        with the two downlights, a lead flashing on the wall."""
+        sh, de = self.sh, self.de
+        H = self.H
+        oak = H.fascia                                   # the house's beam colour
+        x0, x1, z1 = -1.85, 1.85, ZF + 1.6
+        yw, yf = 3.95, 3.55                              # the underside at the wall and at the front
+        t = 0.14                                         # roof thickness (rafters + battens + tiles)
+        g = "porchframe"                                 # one frame with its braces (porch_kit.brace registers there)
+        tan = (yw - yf) / (z1 - ZF)
+        yu = lambda z: yw - (z - ZF) * tan
+        # tiles: 4 stepped courses (shell, LM_roof), each a pair of texture rows
+        info = K.TEX["LM_roof"]
+        rows, um = info["rows"], info["u_m"]
+        L = z1 + 0.08 - ZF
+        n = 4
+        for k in range(n):
+            za, zb = z1 + 0.08 - k * L / n, z1 + 0.08 - (k + 1) * L / n
+            lip = 0.02 if k > 0 else 0.035
+            ya, yb = yu(za) + t + lip, yu(zb) + t
+            r = self.rng.randrange(rows - 2)
+            vb, vt = 1 - (r + 3) / rows, 1 - r / rows
+            uo = self.rng.random()
+            uv = [(x0 / um + uo, vb), (x1 / um + uo, vb), (x1 / um + uo, vt), (x0 / um + uo, vt)]
+            face(sh, [(x0 - 0.06, ya, za), (x1 + 0.06, ya, za), (x1 + 0.06, yb, zb), (x0 - 0.06, yb, zb)], "shingle", lin(H.spec["roof_tint"]),
+                 (0, 1, tan), uvs=uv)
+            rv = vb + max(3.0, lip * 520.0) / 1024
+            face(sh, [(x0 - 0.06, ya - lip, za), (x1 + 0.06, ya - lip, za), (x1 + 0.06, ya, za), (x0 - 0.06, ya, za)], "shingle",
+                 mul(lin(H.spec["roof_tint"]), 0.7), (0, -0.2, 1), uvs=[(x0 / um, vb), (x1 / um, vb), (x1 / um, rv), (x0 / um, rv)])
+        # the fascia and the barge boards (oak, shell), the ceiling (painted boards, shell)
+        face(sh, [(x0 - 0.06, yf - 0.02, z1 + 0.08), (x1 + 0.06, yf - 0.02, z1 + 0.08), (x1 + 0.06, yf + t, z1 + 0.08), (x0 - 0.06, yf + t, z1 + 0.08)],
+             "oak", oak, (0, 0, 1), uax=(1, 0, 0))
+        for sx in (x0 - 0.06, x1 + 0.06):
+            sg = 1 if sx > 0 else -1
+            face(sh, [(sx, yw - 0.02, ZF), (sx, yf - 0.02, z1 + 0.08), (sx, yf + t, z1 + 0.08), (sx, yw + t, ZF)], "oak", oak, (sg, 0, 0),
+                 uax=(0, 0, 1))
+        face(sh, [(x0 - 0.06, yw - 0.02, ZF), (x1 + 0.06, yw - 0.02, ZF), (x1 + 0.06, yf - 0.02, z1 + 0.08), (x0 - 0.06, yf - 0.02, z1 + 0.08)],
+             "timber_cladding", lin("#F1EDE4"), (0, -1, -tan), uax=(1, 0, 0))
+        nseg = 16
+        for k in range(nseg):
+            za, zb = ZF + (z1 + 0.08 - ZF) * k / nseg, ZF + (z1 + 0.08 - ZF) * (k + 1) / nseg
+            self.reg("roof", g, "over", x0 - 0.06, x1 + 0.06, yu(zb) - 0.02, yu(za) + t + 0.04, za, zb)
+        # the wall plate and the lead flashing over the roof's top edge (detail)
+        self.sbox(de, "plate", g, "over", x0 - 0.06, x1 + 0.06, yw - 0.02, yw + 0.12, ZF, ZF + 0.08, "oak", mul(oak, 0.95), skip=("back",),
+                  along="x")
+        face(de, [(x0 - 0.06, yw + t + 0.012, ZF + 0.002), (x1 + 0.06, yw + t + 0.012, ZF + 0.002), (x1 + 0.06, yw + t + 0.16, ZF + 0.002),
+                  (x0 - 0.06, yw + t + 0.16, ZF + 0.002)], "metal_painted", lin("#8E9398"), (0, 0, 1), uax=(1, 0, 0))
+        # two brackets: a wall post, a cantilever beam under the roof, a knee brace (oak, 100 mm)
+        for bx in (x0 + 0.2, x1 - 0.2):
+            self.sbox(de, "post", g, "over", bx - 0.05, bx + 0.05, yw - 0.85, yw - 0.02, ZF, ZF + 0.10, "oak", oak, skip=("back",), along="y")
+            zb_ = z1 - 0.05
+            self.sbox(de, "beam", g, "over", bx - 0.05, bx + 0.05, yu(zb_) - 0.12, yu(ZF) - 0.02, ZF, zb_, "oak", mul(oak, 1.04),
+                      skip=("back",), along="z")
+            self.brace((bx, yw - 0.80, ZF + 0.10), (bx, yu(ZF + 0.85) - 0.12, ZF + 0.85), "z", oak)
+            # a carved end on the beam (a small scroll board)
+            face(de, [(bx - 0.05, yu(zb_) - 0.12, zb_ + 0.002), (bx + 0.05, yu(zb_) - 0.12, zb_ + 0.002), (bx + 0.05, yu(zb_) - 0.02, zb_ + 0.002),
+                      (bx - 0.05, yu(zb_) - 0.02, zb_ + 0.002)], "oak", mul(oak, 0.8), (0, 0, 1), uax=(1, 0, 0))
+        for dx in (-0.65, 0.65):
+            self.downlight(dx, yu(ZF + 0.925) - 0.04, ZF + 0.85, r=0.055)
+
     def brace_steel(self, a, b, tint, h=0.02):
         """A flat steel strut (40 x 12) in the plane x = const."""
         de = self.de
@@ -876,6 +943,11 @@ class Porch:
             # pansies and marigolds in front; clear of the down pipe and the yard sign's stake and board
             m_in = 0.36
             avoid_r = 0.42
+            pot = None
+            if COLMAR and not (sgn > 0 and abs(xin) + 0.42 + 0.40 > SLOTS["sign"][0] - SLOTS["sign"][3] / 2):
+                # (on the right, only where the yard sign's board stays clear)
+                pot = (sgn * (abs(xin) + 0.42), HZ - KERB - 0.36)
+                self.terracotta(pot[0], pot[1], soil, cid)
             xs_ = []
             nx = max(1, int(round((sx1 - sx0 - 2 * m_in) / 0.40)))
             for c in range(nx + 1):
@@ -890,6 +962,8 @@ class Porch:
                     xx = x + self.rng.uniform(-0.03, 0.03)
                     zz = z + self.rng.uniform(-0.03, 0.03)
                     if math.hypot(xx - px, zz - zp) < avoid_r:
+                        continue
+                    if pot and math.hypot(xx - pot[0], zz - pot[1]) < 0.55:
                         continue
                     if sgn > 0:
                         # under the yard sign's board (0.65 m up) only the low pansies / marigolds, and none on its stake
@@ -907,6 +981,52 @@ class Porch:
                 self.reg("sign_board", "sign", "col", sxs - sw / 2 - 0.02, sxs + sw / 2 + 0.02, sy - shh / 2, sy + shh / 2, szs - 0.03,
                          szs + 0.03, col=cid)
                 self.reg("sign_stake", "sign", "col", sxs - 0.03, sxs + 0.03, soil, sy - shh / 2, szs - 0.03, szs + 0.03, col=cid)
+
+    def terracotta(self, x, z, y0, cid):
+        """A big terracotta pot (Colmar 2026-11-17: "big terracotta pots of flowers at the steps"): 0.62 m across, 0.52 tall,
+        a rolled rim, on the bed's soil, planted with geraniums and trailing petunias (a `pot` bed: the game fills it)."""
+        de = self.de
+        n = 10
+        r0, r1, h = 0.20, 0.31, 0.52
+        tc = lin("#C46A43")
+        for k in range(n):
+            a0, a1 = 2 * math.pi * k / n, 2 * math.pi * (k + 1) / n
+            q = [(x + r0 * math.cos(a0), y0, z + r0 * math.sin(a0)), (x + r0 * math.cos(a1), y0, z + r0 * math.sin(a1)),
+                 (x + r1 * math.cos(a1), y0 + h, z + r1 * math.sin(a1)), (x + r1 * math.cos(a0), y0 + h, z + r1 * math.sin(a0))]
+            face(de, q, "granite", mul(tc, 0.94 + 0.06 * (k % 2)), (math.cos((a0 + a1) / 2), 0.3, math.sin((a0 + a1) / 2)), uax=UP)
+            # the rolled rim: an outward band
+            rr = r1 + 0.03
+            q2 = [(x + r1 * math.cos(a0), y0 + h - 0.07, z + r1 * math.sin(a0)), (x + r1 * math.cos(a1), y0 + h - 0.07, z + r1 * math.sin(a1)),
+                  (x + rr * math.cos(a1), y0 + h - 0.03, z + rr * math.sin(a1)), (x + rr * math.cos(a0), y0 + h - 0.03, z + rr * math.sin(a0))]
+            face(de, q2, "granite", mul(tc, 1.06), (math.cos((a0 + a1) / 2), -0.6, math.sin((a0 + a1) / 2)), uax=(1, 0, 0))
+            q3 = [(x + rr * math.cos(a0), y0 + h - 0.03, z + rr * math.sin(a0)), (x + rr * math.cos(a1), y0 + h - 0.03, z + rr * math.sin(a1)),
+                  (x + r1 * math.cos(a1), y0 + h, z + r1 * math.sin(a1)), (x + r1 * math.cos(a0), y0 + h, z + r1 * math.sin(a0))]
+            face(de, q3, "granite", mul(tc, 1.1), (math.cos((a0 + a1) / 2), 0.8, math.sin((a0 + a1) / 2)), uax=(1, 0, 0))
+        top = y0 + h - 0.04
+        self.quad(de, [(x - 0.26, top, z - 0.26), (x + 0.26, top, z - 0.26), (x + 0.26, top, z + 0.26), (x - 0.26, top, z + 0.26)], "granite",
+                  lin("#4A3A2E"), UP)
+        for k in range(3):
+            yaw = k * math.pi / 3
+            self.card(x, z, top, 0.40, 0.36, yaw, 0, lin(self.rng.choice(["#E5323C", "#F0506E", "#D8283A"])))
+        self.reg("plant", "plant", "col", x - 0.34, x + 0.34, y0, top + 0.5, z - 0.34, z + 0.34, col=cid)
+        boxes = getattr(self.H, "window_boxes", None)
+        if boxes is not None:
+            boxes.append(dict(x0=x - 0.25, x1=x + 0.25, z0=z - 0.25, z1=z + 0.25, y=top, plant="pot", out=None))
+
+    def border(self):
+        """Colmar: a flower border along the front, on the lawn just before the beds' kerbs, either side of the steps (a strip
+        0.30 deep, planted full by the game: geraniums and petunias). No edging — it is lawn the players may cross."""
+        hst = self.spec["hst"]
+        boxes = getattr(self.H, "window_boxes", None)
+        for sgn in (-1, 1):
+            xa, xb = sorted((sgn * (hst + 0.40), sgn * (HW - 0.15)))
+            z0, z1 = HZ + 0.06, HZ + 0.34
+            n = max(2, int(round((xb - xa) / 0.4)))
+            for k in range(n):
+                x = xa + (xb - xa) * (k + 0.5) / n
+                self.card(x, (z0 + z1) / 2, 0.005, 0.36, 0.26, self.rng.uniform(0, math.pi), 0, lin(self.rng.choice(["#E5323C", "#F0506E", "#F27AA0"])))
+            if boxes is not None:
+                boxes.append(dict(x0=xa, x1=xb, z0=z0, z1=z1, y=0.005, plant="border", out=(0, 1)))
 
     # --------------------------------------------------------------------------------------------- owner slots --
     def nameplate(self):

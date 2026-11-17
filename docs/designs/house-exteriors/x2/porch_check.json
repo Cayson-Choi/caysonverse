@@ -10,9 +10,9 @@
     "total": 2382
    },
    "detail": {
-    "body": 3378,
-    "porch": 1720,
-    "total": 5098
+    "body": 3174,
+    "porch": 1880,
+    "total": 5054
    },
    "shellMaterials": [
     "LM_render",
@@ -35,7 +35,7 @@
     "nearest": "x1 door_jamb",
     "at": "lock at 95 deg"
    },
-   "solids": 268,
+   "solids": 264,
    "cost": {
     "porch": {
      "shell": 38,
@@ -47,7 +47,11 @@
     },
     "beds": {
      "shell": 0,
-     "detail": 184
+     "detail": 308
+    },
+    "border": {
+     "shell": 0,
+     "detail": 36
     },
     "nameplate": {
      "shell": 0,
@@ -110,7 +114,7 @@
       -5.6,
       -2.6,
       -0.02,
-      0.735,
+      1.27,
       3.205,
       5.375
      ]
@@ -126,7 +130,7 @@
       2.6,
       5.6,
       -0.02,
-      1.2,
+      1.27,
       3.205,
       5.375
      ]
@@ -206,9 +210,9 @@
     "total": 2328
    },
    "detail": {
-    "body": 3820,
-    "porch": 1906,
-    "total": 5726
+    "body": 3768,
+    "porch": 2008,
+    "total": 5776
    },
    "shellMaterials": [
     "LM_render",
@@ -231,7 +235,7 @@
     "nearest": "x1 door_jamb",
     "at": "lock at 95 deg"
    },
-   "solids": 240,
+   "solids": 238,
    "cost": {
     "deck": {
      "shell": 38,
@@ -239,7 +243,11 @@
     },
     "beds": {
      "shell": 4,
-     "detail": 144
+     "detail": 206
+    },
+    "border": {
+     "shell": 0,
+     "detail": 40
     },
     "sconces": {
      "shell": 8,
@@ -306,7 +314,7 @@
       -5.6,
       -3.4,
       -0.02,
-      0.735,
+      1.27,
       3.205,
       5.375
      ]
@@ -446,13 +454,13 @@
    "kind": "canopy",
    "shell": {
     "body": 2640,
-    "porch": 54,
-    "total": 2694
+    "porch": 84,
+    "total": 2724
    },
    "detail": {
-    "body": 3526,
-    "porch": 1960,
-    "total": 5486
+    "body": 3374,
+    "porch": 2100,
+    "total": 5474
    },
    "shellMaterials": [
     "LM_render",
@@ -475,19 +483,23 @@
     "nearest": "x1 door_jamb",
     "at": "lock at 95 deg"
    },
-   "solids": 240,
+   "solids": 250,
    "cost": {
     "porch": {
      "shell": 34,
      "detail": 40
     },
     "canopy": {
-     "shell": 8,
-     "detail": 124
+     "shell": 38,
+     "detail": 104
     },
     "beds": {
      "shell": 0,
-     "detail": 240
+     "detail": 364
+    },
+    "border": {
+     "shell": 0,
+     "detail": 36
     },
     "nameplate": {
      "shell": 0,
@@ -554,7 +566,7 @@
       -5.6,
       -1.6,
       -0.02,
-      0.735,
+      1.27,
       3.205,
       5.375
      ]
@@ -570,7 +582,7 @@
       1.6,
       5.6,
       -0.02,
-      1.2,
+      1.27,
       3.205,
       5.375
      ]
@@ -582,13 +594,13 @@
    "kind": "canopy",
    "shell": {
     "body": 1916,
-    "porch": 42,
-    "total": 1958
+    "porch": 72,
+    "total": 1988
    },
    "detail": {
-    "body": 3274,
-    "porch": 1546,
-    "total": 4820
+    "body": 3030,
+    "porch": 1626,
+    "total": 4656
    },
    "shellMaterials": [
     "LM_render",
@@ -611,19 +623,23 @@
     "nearest": "x1 door_jamb",
     "at": "lock at 95 deg"
    },
-   "solids": 259,
+   "solids": 249,
    "cost": {
     "porch": {
      "shell": 34,
      "detail": 40
     },
     "canopy": {
-     "shell": 8,
-     "detail": 184
+     "shell": 38,
+     "detail": 104
     },
     "beds": {
      "shell": 0,
-     "detail": 240
+     "detail": 364
+    },
+    "border": {
+     "shell": 0,
+     "detail": 36
     },
     "nameplate": {
      "shell": 0,
@@ -686,7 +702,7 @@
       -5.6,
       -1.6,
       -0.02,
-      0.735,
+      1.27,
       3.205,
       5.375
      ]
@@ -702,7 +718,7 @@
       1.6,
       5.6,
       -0.02,
-      1.2,
+      1.27,
       3.205,
       5.375
      ]
@@ -718,9 +734,9 @@
     "total": 2328
    },
    "detail": {
-    "body": 3570,
-    "porch": 1720,
-    "total": 5290
+    "body": 3458,
+    "porch": 1880,
+    "total": 5338
    },
    "shellMaterials": [
     "LM_render",
@@ -743,7 +759,7 @@
     "nearest": "x1 door_jamb",
     "at": "lock at 95 deg"
    },
-   "solids": 268,
+   "solids": 264,
    "cost": {
     "porch": {
      "shell": 38,
@@ -755,7 +771,11 @@
     },
     "beds": {
      "shell": 0,
-     "detail": 184
+     "detail": 308
+    },
+    "border": {
+     "shell": 0,
+     "detail": 36
     },
     "nameplate": {
      "shell": 0,
@@ -818,7 +838,7 @@
       -5.6,
       -2.6,
       -0.02,
-      0.735,
+      1.27,
       3.205,
       5.375
      ]
@@ -834,7 +854,7 @@
       2.6,
       5.6,
       -0.02,
-      1.2,
+      1.27,
       3.205,
       5.375
      ]
@@ -914,9 +934,9 @@
     "total": 2078
    },
    "detail": {
-    "body": 3666,
-    "porch": 1720,
-    "total": 5386
+    "body": 3414,
+    "porch": 1880,
+    "total": 5294
    },
    "shellMaterials": [
     "LM_render",
@@ -939,7 +959,7 @@
     "nearest": "x1 door_jamb",
     "at": "lock at 95 deg"
    },
-   "solids": 268,
+   "solids": 264,
    "cost": {
     "porch": {
      "shell": 38,
@@ -951,7 +971,11 @@
     },
     "beds": {
      "shell": 0,
-     "detail": 184
+     "detail": 308
+    },
+    "border": {
+     "shell": 0,
+     "detail": 36
     },
     "nameplate": {
      "shell": 0,
@@ -1014,7 +1038,7 @@
       -5.6,
       -2.6,
       -0.02,
-      0.735,
+      1.27,
       3.205,
       5.375
      ]
@@ -1030,7 +1054,7 @@
       2.6,
       5.6,
       -0.02,
-      1.2,
+      1.27,
       3.205,
       5.375
      ]
@@ -1110,9 +1134,9 @@
     "total": 2390
    },
    "detail": {
-    "body": 3674,
-    "porch": 1720,
-    "total": 5394
+    "body": 3694,
+    "porch": 1880,
+    "total": 5574
    },
    "shellMaterials": [
     "LM_render",
@@ -1135,7 +1159,7 @@
     "nearest": "x1 door_jamb",
     "at": "lock at 95 deg"
    },
-   "solids": 268,
+   "solids": 264,
    "cost": {
     "porch": {
      "shell": 38,
@@ -1147,7 +1171,11 @@
     },
     "beds": {
      "shell": 0,
-     "detail": 184
+     "detail": 308
+    },
+    "border": {
+     "shell": 0,
+     "detail": 36
     },
     "nameplate": {
      "shell": 0,
@@ -1210,7 +1238,7 @@
       -5.6,
       -2.6,
       -0.02,
-      0.735,
+      1.27,
       3.205,
       5.375
      ]
@@ -1226,7 +1254,7 @@
       2.6,
       5.6,
       -0.02,
-      1.2,
+      1.27,
       3.205,
       5.375
      ]
@@ -1302,13 +1330,13 @@
    "kind": "canopy",
    "shell": {
     "body": 2398,
-    "porch": 42,
-    "total": 2440
+    "porch": 72,
+    "total": 2470
    },
    "detail": {
-    "body": 3274,
-    "porch": 1486,
-    "total": 4760
+    "body": 2978,
+    "porch": 1626,
+    "total": 4604
    },
    "shellMaterials": [
     "LM_render",
@@ -1331,19 +1359,23 @@
     "nearest": "x1 door_jamb",
     "at": "lock at 95 deg"
    },
-   "solids": 239,
+   "solids": 249,
    "cost": {
     "porch": {
      "shell": 34,
      "detail": 40
     },
     "canopy": {
-     "shell": 8,
-     "detail": 124
+     "shell": 38,
+     "detail": 104
     },
     "beds": {
      "shell": 0,
-     "detail": 240
+     "detail": 364
+    },
+    "border": {
+     "shell": 0,
+     "detail": 36
     },
     "nameplate": {
      "shell": 0,
@@ -1406,7 +1438,7 @@
       -5.6,
       -1.6,
       -0.02,
-      0.735,
+      1.27,
       3.205,
       5.375
      ]
@@ -1422,7 +1454,7 @@
       1.6,
       5.6,
       -0.02,
-      1.2,
+      1.27,
       3.205,
       5.375
      ]
@@ -1438,9 +1470,9 @@
     "total": 2149
    },
    "detail": {
-    "body": 3632,
-    "porch": 2028,
-    "total": 5660
+    "body": 3672,
+    "porch": 2130,
+    "total": 5802
    },
    "shellMaterials": [
     "LM_render",
@@ -1463,7 +1495,7 @@
     "nearest": "x1 door_jamb",
     "at": "lock at 95 deg"
    },
-   "solids": 157,
+   "solids": 155,
    "cost": {
     "deck": {
      "shell": 38,
@@ -1471,7 +1503,11 @@
     },
     "beds": {
      "shell": 4,
-     "detail": 144
+     "detail": 206
+    },
+    "border": {
+     "shell": 0,
+     "detail": 40
     },
     "sconces": {
      "shell": 8,
@@ -1522,7 +1558,7 @@
       -5.6,
       -3.4,
       -0.02,
-      0.735,
+      1.27,
       3.205,
       5.375
      ]
@@ -1666,9 +1702,9 @@
     "total": 2166
    },
    "detail": {
-    "body": 3408,
-    "porch": 1906,
-    "total": 5314
+    "body": 3220,
+    "porch": 2008,
+    "total": 5228
    },
    "shellMaterials": [
     "LM_render",
@@ -1691,7 +1727,7 @@
     "nearest": "x1 door_jamb",
     "at": "lock at 95 deg"
    },
-   "solids": 240,
+   "solids": 238,
    "cost": {
     "deck": {
      "shell": 38,
@@ -1699,7 +1735,11 @@
     },
     "beds": {
      "shell": 4,
-     "detail": 144
+     "detail": 206
+    },
+    "border": {
+     "shell": 0,
+     "detail": 40
     },
     "sconces": {
      "shell": 8,
@@ -1766,7 +1806,7 @@
       -5.6,
       -3.4,
       -0.02,
-      0.735,
+      1.27,
       3.205,
       5.375
      ]
@@ -1903,6 +1943,6 @@
    "fails": []
   }
  },
- "totalTriangles": 75847,
+ "totalTriangles": 75803,
  "pass": true
 }
