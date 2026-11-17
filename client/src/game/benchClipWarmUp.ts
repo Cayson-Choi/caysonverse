@@ -24,6 +24,9 @@ export function useBenchClipWarmUp(avatar: BuiltAvatar, when: () => boolean): vo
   const frames = useRef(0);
   useFrame(({ gl, scene, camera }) => {
     if (warmed || ++frames.current < AFTER_FRAMES || !when()) return;
+    // not while the scene's own shaders are still compiling: this pass waits for every program in flight (a slow phone's
+    // arrival compiles a hundred), so it goes once they are done (still under the veil)
+    if (gl.info.programs?.some((p) => (p as unknown as { isReady?: () => boolean | null }).isReady?.() === false)) return;
     warmed = true;
     const before = gl.info.programs?.length ?? 0;
     enableBenchClipping(gl);
