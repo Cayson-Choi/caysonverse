@@ -18,6 +18,17 @@
    매끄러운 곡선, 한국 규격 횡단보도 45/45 cm 6줄, 신호 있는 두 곳 정지선, 버스 정차 구간 중앙선 없음), 부지 잔디를 실제 크기 잔디로, 부지 하늘색 빛 띠 삭제.
 5. 버스 정류장(village_busstop.glb, build_busstop.py): 한국 표준 쉘터, 0.85 m 뒤로.
 
+## 2차 (2026-11-17, 사장님 요청 반영)
+- 바닥 근접 화질: 광장 화강석 판석 1,140 px/m(T_setts 2048², 6종, CC0 Granite002A 결), 보도 판석 200×100 mm 1,024 px/m(T_walk, LM_walk), 연석·화분 LM_stone 1,024 px/m,
+  정류장 바닥 1,024 px/m, 도로는 두 장(T_road 일반·버스 정차, T_road_x 횡단보도) 한 줄 1,024 px로 가로 5.9 mm.
+- 새것·깨끗한 동화 마을: 도로 때·칠 닳음 없음, 판석 얼룩 없음, 잔디 흙 얼룩 없음.
+- 숲 가장자리 평평한 띠: 텍스처 잔디 땅(LM_grass)을 ±152 m까지(배경 7 m 격자 선 그대로), 배경은 그 밖에서. 숲 카드는 ±128 m 밖(카드 나무 밑동이 가까이 안 보임).
+- 빈 부지: 팻말 5개·plot_w 공사장·col__construction 없음, 부지 위 잔디 겹(LM_lawn) 없이 바닥 잔디 그대로.
+- 광장 가로등: 옛 가로등 5개·배너 기둥 8개 안 굽고, 밤 불빛은 광장 고리 기둥 7개(light__lamp_1..5, 44, 45, 5.03 m) 자리로. 충돌도 고리 기둥으로(streetPoles.ts).
+- 카페 테라스: 의자를 탁자에서 0.81 m(앞 0.6 m 빈 바닥, 앉은 사람이 언제나 일어설 수 있게), 2인 탁자도 같은 줄, 탁자 사이 통로 1.4 m(시험 seatFrontClear).
+- 골목길·보도: 화강석 자갈 12.5 cm(T_walk, 1,024 px/m, 콜마르 참고) — 골목은 콘크리트 대신 자갈.
+- tools/fix_sky_glare.py는 이미지 이름으로 찾음(번호 고정이라 엉뚱한 텍스처를 고치던 문제).
+
 ## 다시 만들기
 ```
 python tools/make_textures.py tiles setts road plaza ; python tools/make_busstop_textures.py   (art/village에서)

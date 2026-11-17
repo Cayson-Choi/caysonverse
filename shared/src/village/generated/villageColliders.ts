@@ -18,7 +18,6 @@ export const VILLAGE_COLLIDERS: readonly AABB[] = [
   { minX: -75.02, maxX: -74.52, minZ: -65.11, maxZ: -64.61 }, // col__tree_89
   { minX: -74.96, maxX: -74.46, minZ: -70.14, maxZ: -69.64 }, // col__tree_88
   { minX: -73.25, maxX: -72.75, minZ: -0.25, maxZ: 0.25 }, // col__tree_25
-  { minX: -72.4, maxX: -66.3, minZ: 2.6, maxZ: 21.4 }, // col__construction
   { minX: -72.25, maxX: -71.75, minZ: 29.75, maxZ: 30.25 }, // col__tree_32
   { minX: -71.3, maxX: -68.7, minZ: 44.4, maxZ: 47.6 }, // col__picnic_3
   { minX: -70.49, maxX: -69.99, minZ: -70.41, maxZ: -69.91 }, // col__tree_92
@@ -189,25 +188,25 @@ export const VILLAGE_COLLIDERS: readonly AABB[] = [
   { minX: 40.6, maxX: 46.2, minZ: -22.6, maxZ: -22 }, // col__cafe_planter_1
   { minX: 40.6, maxX: 46.2, minZ: -8.2, maxZ: -7.6 }, // col__cafe_planter_2
   { minX: 40.65, maxX: 41.15, minZ: 4.72, maxZ: 5.22 }, // col__tree_45
+  { minX: 40.82, maxX: 41.26, minZ: -20.92, maxZ: -20.48 }, // col__cafe_terrace_chair_3
+  { minX: 40.82, maxX: 41.26, minZ: -19.72, maxZ: -19.28 }, // col__cafe_terrace_chair_4
+  { minX: 40.82, maxX: 41.26, minZ: -10.92, maxZ: -10.48 }, // col__cafe_terrace_chair_7
+  { minX: 40.82, maxX: 41.26, minZ: -9.72, maxZ: -9.28 }, // col__cafe_terrace_chair_8
   { minX: 40.85, maxX: 41.29, minZ: -17.82, maxZ: -17.38 }, // col__cafe_terrace_chair_10
   { minX: 40.85, maxX: 41.29, minZ: -12.82, maxZ: -12.38 }, // col__cafe_terrace_chair_12
   { minX: 40.89, maxX: 41.39, minZ: 16.24, maxZ: 16.74 }, // col__tree_40
-  { minX: 41.12, maxX: 41.56, minZ: -20.92, maxZ: -20.48 }, // col__cafe_terrace_chair_3
-  { minX: 41.12, maxX: 41.56, minZ: -19.72, maxZ: -19.28 }, // col__cafe_terrace_chair_4
-  { minX: 41.12, maxX: 41.56, minZ: -10.92, maxZ: -10.48 }, // col__cafe_terrace_chair_7
-  { minX: 41.12, maxX: 41.56, minZ: -9.72, maxZ: -9.28 }, // col__cafe_terrace_chair_8
   { minX: 41.43, maxX: 42.33, minZ: 9.46, maxZ: 10.36 }, // col__shrub_5
-  { minX: 41.58, maxX: 42.42, minZ: -18.02, maxZ: -17.18 }, // col__cafe_terrace_table_3
-  { minX: 41.58, maxX: 42.42, minZ: -13.02, maxZ: -12.18 }, // col__cafe_terrace_table_4
   { minX: 41.85, maxX: 42.75, minZ: -21.3, maxZ: -18.9 }, // col__cafe_terrace_table_1
   { minX: 41.85, maxX: 42.75, minZ: -11.3, maxZ: -8.9 }, // col__cafe_terrace_table_2
+  { minX: 41.88, maxX: 42.72, minZ: -18.02, maxZ: -17.18 }, // col__cafe_terrace_table_3
+  { minX: 41.88, maxX: 42.72, minZ: -13.02, maxZ: -12.18 }, // col__cafe_terrace_table_4
   { minX: 42.45, maxX: 43.35, minZ: 15.65, maxZ: 16.55 }, // col__shrub_8
-  { minX: 42.71, maxX: 43.15, minZ: -17.82, maxZ: -17.38 }, // col__cafe_terrace_chair_9
-  { minX: 42.71, maxX: 43.15, minZ: -12.82, maxZ: -12.38 }, // col__cafe_terrace_chair_11
-  { minX: 43.04, maxX: 43.48, minZ: -20.92, maxZ: -20.48 }, // col__cafe_terrace_chair_1
-  { minX: 43.04, maxX: 43.48, minZ: -19.72, maxZ: -19.28 }, // col__cafe_terrace_chair_2
-  { minX: 43.04, maxX: 43.48, minZ: -10.92, maxZ: -10.48 }, // col__cafe_terrace_chair_5
-  { minX: 43.04, maxX: 43.48, minZ: -9.72, maxZ: -9.28 }, // col__cafe_terrace_chair_6
+  { minX: 43.31, maxX: 43.75, minZ: -17.82, maxZ: -17.38 }, // col__cafe_terrace_chair_9
+  { minX: 43.31, maxX: 43.75, minZ: -12.82, maxZ: -12.38 }, // col__cafe_terrace_chair_11
+  { minX: 43.34, maxX: 43.78, minZ: -20.92, maxZ: -20.48 }, // col__cafe_terrace_chair_1
+  { minX: 43.34, maxX: 43.78, minZ: -19.72, maxZ: -19.28 }, // col__cafe_terrace_chair_2
+  { minX: 43.34, maxX: 43.78, minZ: -10.92, maxZ: -10.48 }, // col__cafe_terrace_chair_5
+  { minX: 43.34, maxX: 43.78, minZ: -9.72, maxZ: -9.28 }, // col__cafe_terrace_chair_6
   { minX: 43.58, maxX: 44.08, minZ: 9.34, maxZ: 9.84 }, // col__tree_39
   { minX: 44.26, maxX: 47.6, minZ: 38.3, maxZ: 40.55 }, // col__house_6_porch_1
   { minX: 44.41, maxX: 45.31, minZ: 10.62, maxZ: 11.52 }, // col__shrub_7
@@ -258,7 +257,6 @@ export const VILLAGE_COLLIDERS: readonly AABB[] = [
 
 // 위 상자 가운데 1.6 m 이상 큰 소품(사물함·책장…): 카메라가 뚫고 보면 안 되는 상자(높이 포함).
 export const VILLAGE_CAMERA_BOXES: readonly CameraBox[] = [
-  { minX: -72.4, maxX: -66.3, minZ: 2.6, maxZ: 21.4, height: 8 }, // col__construction
   { minX: -55.6, maxX: -46.65, minZ: 35.8, maxZ: 44.2, height: 12 }, // col__house_8
   { minX: -52.6, maxX: -43.65, minZ: -12.2, maxZ: -3.8, height: 12 }, // col__house_5
   { minX: -46.2, maxX: -37.25, minZ: 22.8, maxZ: 31.2, height: 12 }, // col__house_10

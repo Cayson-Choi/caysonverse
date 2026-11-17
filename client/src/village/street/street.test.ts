@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { BufferGeometry, Float32BufferAttribute, Group, Mesh, MeshBasicMaterial, Vector3 } from "three";
 import { VILLAGE_LAYOUT } from "@caysonverse/shared/village/villageLayout";
 import { signalPoleSpots } from "@caysonverse/shared/village/crossings";
-import { BANNER, BANNER_ATLAS, BANNER_POLES, BANNER_TEXT, BANNER_THEMES, LAMP_POSTS, OLD_BANNER_POLES, OLD_PLAZA_LAMPS, PLAZA_RING, bannerSlot, lanternPositions, ringAzimuth } from "./streetLayout";
+import { BANNER, BANNER_ATLAS, BANNER_POLES, BANNER_POLE_LIGHT_Y, BANNER_TEXT, BANNER_THEMES, LAMP_POSTS, OLD_BANNER_POLES, OLD_PLAZA_LAMPS, PLAZA_RING, bannerSlot, lanternPositions, ringAzimuth } from "./streetLayout";
 import { trimOldStreetFurniture } from "./streetTrim";
 import { LIFT_FROM_Y, bannerFabricGeometry, bannerHardwareGeometry, lampPostGeometry, lanternGlassGeometry, shaftRadius } from "./streetGeometry";
 import { metalTextures, poolTexture, weaveTexture } from "./streetMaterials";
@@ -19,7 +19,7 @@ function glbNodes(): Array<{ name: string; translation?: number[] }> {
 describe("streetLayout: the posts and poles stand where the bake put them", () => {
   const nodes = glbNodes();
   it("every lamp post is under its glb lantern light (x, z within 2 cm; the lantern's height)", () => {
-    for (const p of [...LAMP_POSTS, ...OLD_PLAZA_LAMPS]) {
+    for (const p of LAMP_POSTS) {
       const n = nodes.find((o) => o.name === p.light);
       expect(n, p.light).toBeDefined();
       const [x, y, z] = n!.translation!;
@@ -30,7 +30,22 @@ describe("streetLayout: the posts and poles stand where the bake put them", () =
   });
   it("no other glb light at a post's height is left without a post (4.23 m plaza/ring, 3.83 m lanes)", () => {
     const posts = nodes.filter((n) => /^light__lamp_/.test(n.name) && n.translation && [4.23, 3.83].some((h) => Math.abs(n.translation![1]! - h) < 0.005));
-    expect(posts.map((n) => n.name).sort()).toEqual([...LAMP_POSTS, ...OLD_PLAZA_LAMPS].map((p) => p.light).sort());
+    expect(posts.map((n) => n.name).sort()).toEqual(LAMP_POSTS.map((p) => p.light).sort());
+  });
+  it("vrb2 rebake: the old plaza lamps' lights moved to the plaza ring's posts (lantern 5.03 m), posts 5-6 got light__lamp_44/45", () => {
+    const names = ["light__lamp_1", "light__lamp_2", "light__lamp_3", "light__lamp_4", "light__lamp_5", "light__lamp_44", "light__lamp_45"];
+    BANNER_POLES.forEach((p, k) => {
+      const n = nodes.find((o) => o.name === names[k]);
+      expect(n, names[k]).toBeDefined();
+      const [x, y, z] = n!.translation!;
+      expect(Math.abs(x! - p.x), names[k]).toBeLessThan(0.02);
+      expect(Math.abs(z! - p.z), names[k]).toBeLessThan(0.02);
+      expect(Math.abs(y! - BANNER_POLE_LIGHT_Y), names[k]).toBeLessThan(0.02);
+    });
+    for (const o of OLD_PLAZA_LAMPS) {
+      const n = nodes.find((m) => m.name === o.light)!;
+      expect(Math.hypot(n.translation![0]! - o.x, n.translation![2]! - o.z), o.light).toBeGreaterThan(1);
+    }
   });
   it("the plaza has ONE ring of posts: same radius, equal steps, every theme on at least one post", () => {
     expect(BANNER_POLES).toHaveLength(PLAZA_RING.count);

@@ -110,7 +110,7 @@ describe("village.glb: the waterfall site box is cut out (W6, V1-V9)", () => {
   // is the new bake's (no old cliff, the hills trimmed to 260 m) graded once by the same fix_sky_glare.py
   it("keeps the sky-glare fix (a6d2f65): T_sky is main's bytes, T_backdrop the rebuild's graded bake", () => {
     expect(sha(imageBytes(village.json, village.bin, "T_sky"))).toBe("04b8d68379dd94dd");
-    expect(sha(imageBytes(village.json, village.bin, "T_backdrop"))).toBe("8dc0d318c9885f68");
+    expect(sha(imageBytes(village.json, village.bin, "T_backdrop"))).toBe("f951a36d348c0e83");
   });
 
   it("draws no ground, rock or water inside the box", () => {
