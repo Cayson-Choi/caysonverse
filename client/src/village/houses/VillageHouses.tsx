@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { houseFlowerBoxBeds } from "./houseFlowerBoxes";
 import { flowerMassMesh } from "./houseFlowerMass";
+import type { Mesh as MassMesh } from "three";
 import { HOUSE_FLOWER_MASS } from "../veg/vegLod";
 import { useFrame, useThree } from "@react-three/fiber";
 import { RepeatWrapping, SRGBColorSpace, type Material, type Mesh, type Object3D, type Texture } from "three";
@@ -27,6 +28,19 @@ import { buildHouseSigns, houseBoards } from "./houseSigns";
 import { getLocalPose, setPorchesDrawn } from "./houseLift";
 import { createVegetation, type VillageVegetation } from "../veg/villageVegetation";
 import { vegModeFrom } from "../veg/vegMode";
+
+/** The flower masses, one per graphics tier, made once (houseFlowerMass.ts). */
+const flowerMasses = new Map<string, MassMesh>();
+function flowerMassFor(tier: "high" | "low"): MassMesh {
+  let m = flowerMasses.get(tier);
+  if (!m) {
+    const beds = houseFlowerBoxBeds().filter((b): b is Extract<typeof b, { kind: "box" }> => b.kind === "box");
+    const lod = HOUSE_FLOWER_MASS[tier];
+    m = flowerMassMesh(beds, lod.near, lod.full).mesh;
+    flowerMasses.set(tier, m);
+  }
+  return m;
+}
 
 declare global {
   interface Window {
@@ -129,14 +143,13 @@ export function VillageHouses({ villageRoot, tier }: { villageRoot: Object3D; ti
   }, [nodes, tier]);
 
   // the window boxes', baskets', pots' and borders' flower masses: full mounds of colour from the street (houseFlowerMass.ts)
+  // (one mesh per tier, kept for the session: freeing its material while the warm-up still compiles it is what made the
+  // glGetProgramiv warnings on a remount — X3's lesson with the house materials)
   useEffect(() => {
-    const beds = houseFlowerBoxBeds().filter((b): b is Extract<typeof b, { kind: "box" }> => b.kind === "box");
-    const m = HOUSE_FLOWER_MASS[tier];
-    const mass = flowerMassMesh(beds, m.near, m.full);
-    nodes.root.add(mass.mesh);
+    const mass = flowerMassFor(tier);
+    nodes.root.add(mass);
     return () => {
-      nodes.root.remove(mass.mesh);
-      mass.dispose();
+      nodes.root.remove(mass);
     };
   }, [nodes, tier]);
 
