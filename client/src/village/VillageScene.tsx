@@ -155,14 +155,14 @@ function LandPoseProbe({ pose }: { pose: Pose }) {
 }
 
 /** 케이슨랜드 (the park area): no village model to dress, so the loading cover lifts at once; the park loads in its own Suspense. */
-function ParkArea() {
+function ParkArea({ tier }: { tier: VillageTier }) {
   useEffect(() => {
     uncoverVillage();
   }, []);
   return (
     <LoadBoundary fallback={null} onReset={() => undefined} onFail={uncoverVillage} notice="케이슨랜드를 불러오지 못했어요. 잠시 뒤 다시 불러올게요.">
       <Suspense fallback={null}>
-        <ParkWorld />
+        <ParkWorld tier={tier === "high" ? "high" : "low"} />
       </Suspense>
     </LoadBoundary>
   );
@@ -170,7 +170,7 @@ function ParkArea() {
 
 /** What the local player's area draws: the village model and its signs (no floor mark at the memorial's door), or the hall's room. */
 function VillageArea({ area, tier, pose }: { area: AreaId; tier: VillageTier; pose: Pose }) {
-  if (area === "park") return <ParkArea />;
+  if (area === "park") return <ParkArea tier={tier} />;
   if (area === "hall") return <HallArea pose={pose} />;
   if (isHouseArea(area)) return <HouseArea area={area} pose={pose} />;
   if (isLotArea(area)) return <LotRoomArea area={area} pose={pose} />;

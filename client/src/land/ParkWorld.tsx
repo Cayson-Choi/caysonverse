@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef } from "react";
-import { useFrame } from "@react-three/fiber";
+import { Suspense, useEffect, useMemo, useRef } from "react";
+import { useFrame, useThree } from "@react-three/fiber";
 import { useTexture } from "@react-three/drei";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import {
@@ -8,7 +8,6 @@ import {
   CircleGeometry,
   Color,
   CylinderGeometry,
-  DoubleSide,
   ExtrudeGeometry,
   Float32BufferAttribute,
   IcosahedronGeometry,
@@ -17,7 +16,8 @@ import {
   Mesh,
   MeshBasicMaterial,
   MeshStandardMaterial,
-  PlaneGeometry,
+  PMREMGenerator,
+  Scene,
   Quaternion,
   RepeatWrapping,
   RingGeometry,
@@ -30,24 +30,23 @@ import {
 } from "three";
 import {
   COASTER_QUEUE_PAD,
-  PARK_BOUNDS,
   PARK_EXIT_PAD,
   PARK_LAMPS,
   PARK_PLATFORM,
   PARK_PLAZA,
   PARK_QUEUE_HALL,
-  PARK_SHOPS,
   PARK_TREES,
-  type ParkShop,
 } from "@caysonverse/shared/village/parkArea";
 import { isTouchDevice } from "../device";
 import { CoasterWorld } from "./CoasterWorld";
+import { Shops } from "./ParkShops";
+import { ParkMountains, ParkScenery } from "./ParkScenery";
+import { ParkProps } from "./ParkProps";
 import { GeoBuilder, type V3 } from "./geoBuilder";
 import { gateSignTexture } from "./canvasTextures";
 import { ALL_PARK_URLS, parkMaterial, pickSet } from "./pbr";
 
 const PINE_URL = (isTouchDevice ? "/textures/houses/lo/" : "/textures/houses/hi/") + "T_h_wood_pine.webp";
-const PLASTER_URL = (isTouchDevice ? "/textures/houses/lo/" : "/textures/houses/hi/") + "T_h_plaster.webp";
 const X: V3 = [1, 0, 0];
 const Y: V3 = [0, 1, 0];
 
@@ -114,7 +113,7 @@ function ParkSky() {
 function Ground({ all }: { all: Texture[] }) {
   const grass = useMemo(() => {
     const m = parkMaterial(pickSet(all, "Grass001"), 1, { color: new Color("#d4e2bc"), normalScale: 0.9 });
-    setRepeat(m, 700 / 3.5, 400 / 3.5);
+    setRepeat(m, 700 / 3.5, 620 / 3.5);
     // the CC0 grass albedo is dark: lift it with a little of its own colour as emission
     m.emissiveMap = m.map;
     m.emissive = new Color(0.42, 0.46, 0.36);
@@ -154,92 +153,14 @@ function Ground({ all }: { all: Texture[] }) {
   const plazaMat = useMemo(() => parkMaterial(setsPave, (PARK_PLAZA.radius * 2) / 3, { color: new Color("#e9dfd2"), polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 }), [setsPave]);
   return (
     <group>
-      <mesh rotation-x={-Math.PI / 2} position={[105, 0, -96]} material={grass} receiveShadow>
-        <planeGeometry args={[700, 400]} />
+      <mesh rotation-x={-Math.PI / 2} position={[105, 0, 14]} material={grass} receiveShadow>
+        <planeGeometry args={[700, 620]} />
       </mesh>
       {rects}
       <mesh rotation-x={-Math.PI / 2} position={[PARK_PLAZA.x, 0.04, PARK_PLAZA.z]} geometry={plazaGeo} material={plazaMat} receiveShadow />
       <mesh rotation-x={-Math.PI / 2} position={[PARK_PLAZA.x, 0.06, PARK_PLAZA.z]} geometry={ring} material={gold} />
       <mesh rotation-x={-Math.PI / 2} position={[PARK_PLAZA.x, 0.06, PARK_PLAZA.z]} geometry={inlay} material={gold} />
       <mesh rotation-x={-Math.PI / 2} position={[COASTER_QUEUE_PAD.x, 0.07, COASTER_QUEUE_PAD.z]} geometry={padRing} material={gold} />
-    </group>
-  );
-}
-
-// ───────────────────────────────────────── a storybook shop front ─────────────────────────────────────────
-
-function addShop(wall: GeoBuilder, roof: GeoBuilder, s: ParkShop): void {
-  const F: V3 = [s.faces, 0, 0];
-  const wallH = 4.2;
-  const half = s.d / 2;
-  const c = (f: number, y: number, side: number): V3 => [s.x + s.faces * f, y, s.z + side];
-  // the body, a plinth, and the half-timbering on the street face and the ends
-  wall.box(c(0, wallH / 2, 0), F, Y, half, wallH / 2, s.w / 2, s.wall, 3);
-  wall.box(c(0, 0.3, 0), F, Y, half + 0.15, 0.3, s.w / 2 + 0.15, [0.55, 0.53, 0.5], 2);
-  const beam = s.beam;
-  for (let k = -s.w / 2 + 0.6; k <= s.w / 2 - 0.5; k += s.w / 6) wall.box(c(half + 0.04, wallH / 2 + 0.3, k), F, Y, 0.08, wallH / 2 - 0.3, 0.14, beam);
-  for (const y of [1.0, 2.6, wallH - 0.1]) wall.box(c(half + 0.05, y, 0), F, Y, 0.09, 0.13, s.w / 2 + 0.05, beam);
-  // diagonal braces between the posts on the street face
-  for (let k = -s.w / 2 + 0.6; k < s.w / 2 - 0.6; k += s.w / 3) {
-    const dx: V3 = [0, 0.7, 0.7];
-    wall.box(c(half + 0.06, 3.3, k + s.w / 12), [s.faces * 0.0, 0, 1], dx[1] > 0 ? [0, 0.7071, -0.7071] : Y, s.w / 14, 0.07, 0.09, beam);
-  }
-  // the door (dark wood, a lintel) and windows with white frames and warm panes
-  wall.box(c(half + 0.08, 1.35, -s.w / 4), F, Y, 0.07, 1.35, 0.7, [0.32, 0.2, 0.12]);
-  wall.box(c(half + 0.1, 2.85, -s.w / 4), F, Y, 0.09, 0.08, 0.85, beam);
-  for (const k of [s.w / 6, s.w / 3 + 0.4]) {
-    wall.box(c(half + 0.07, 2.0, k), F, Y, 0.06, 0.6, 0.78, [0.95, 0.94, 0.9]);
-    wall.box(c(half + 0.1, 2.0, k), F, Y, 0.04, 0.5, 0.68, [0.66, 0.82, 0.95]);
-    wall.box(c(half + 0.12, 2.0, k), F, Y, 0.03, 0.5, 0.03, [0.95, 0.94, 0.9]);
-    wall.box(c(half + 0.12, 2.0, k), F, Y, 0.03, 0.03, 0.68, [0.95, 0.94, 0.9]);
-    wall.box(c(half + 0.35, 1.3, k), F, Y, 0.3, 0.06, 0.82, beam); // a flower box under it
-    wall.box(c(half + 0.35, 1.45, k), F, Y, 0.26, 0.1, 0.78, [0.5, 0.74, 0.4]);
-  }
-  // a striped awning over the door
-  for (let i = 0; i < 6; i++) {
-    const col: V3 = i % 2 === 0 ? [0.86, 0.3, 0.3] : [0.97, 0.94, 0.88];
-    wall.box(c(half + 0.7, 3.0 - 0.1, -s.w / 4 - 0.75 + i * 0.3), F, [0, 1, 0], 0.7, 0.04, 0.15, col);
-  }
-  // the pitched roof: two slabs, a ridge cap, the gable ends stepped
-  const rh = s.roofH;
-  const alpha = Math.atan2(rh, half + 0.4);
-  const ca = Math.cos(alpha);
-  const sa = Math.sin(alpha);
-  const L = Math.hypot(half + 0.4, rh) / 2 + 0.2;
-  for (const sgn of [1, -1]) {
-    const dir: V3 = [s.faces * sgn * ca, -sa, 0];
-    const nrm: V3 = [s.faces * sgn * sa, ca, 0];
-    // the slab's middle is half way from the ridge to the eave
-    roof.box([s.x + s.faces * sgn * (half / 2 + 0.2), wallH + rh / 2 + 0.05, s.z], dir, nrm, L, 0.1, s.w / 2 + 0.5, [1, 1, 1], 2.4);
-  }
-  roof.box([s.x, wallH + rh + 0.12, s.z], F, Y, 0.35, 0.1, s.w / 2 + 0.55, [0.55, 0.28, 0.25]);
-  for (let k = 0; k < 5; k++) {
-    const w = half * (1 - (k + 0.5) / 5);
-    for (const e of [-1, 1]) wall.box(c(0, wallH + (k * rh) / 5 + rh / 10, e * (s.w / 2 - 0.02)), F, Y, w, rh / 10, 0.1, s.wall);
-  }
-  // a chimney
-  wall.box([s.x - s.faces * (half * 0.4), wallH + rh + 0.4, s.z + s.w / 3], X, Y, 0.45, 1.0, 0.45, [0.72, 0.45, 0.38], 1);
-}
-
-function Shops({ plaster, all }: { plaster: Texture; all: Texture[] }) {
-  const { wallGeo, roofGeo } = useMemo(() => {
-    const w = new GeoBuilder();
-    const r = new GeoBuilder();
-    for (const s of PARK_SHOPS) addShop(w, r, s);
-    return { wallGeo: w.build(), roofGeo: r.build() };
-  }, []);
-  const wallMat = useMemo(() => {
-    const t = plaster.clone();
-    t.wrapS = t.wrapT = RepeatWrapping;
-    t.colorSpace = SRGBColorSpace;
-    t.needsUpdate = true;
-    return new MeshStandardMaterial({ map: t, vertexColors: true, roughness: 0.85 });
-  }, [plaster]);
-  const roofMat = useMemo(() => parkMaterial(pickSet(all, "RoofingTiles013A"), 1, { color: new Color("#b96a52"), normalScale: 1.0 }), [all]);
-  return (
-    <group>
-      <mesh geometry={wallGeo} material={wallMat} castShadow receiveShadow />
-      <mesh geometry={roofGeo} material={roofMat} castShadow receiveShadow />
     </group>
   );
 }
@@ -404,6 +325,10 @@ function Trees() {
       g.translate(x, y, z);
       return g;
     };
+    if (isTouchDevice) {
+      // phones: one blob or one cone a tree
+      return [blob(2.1, 0, 0, 0), new CylinderGeometry(0.01, 1.9, 5.2, 7).translate(0, 0.9, 0).toNonIndexed(), blob(1.7, 0, 0, 0)];
+    }
     const round = mergeGeometries([blob(1.7, 0, 0, 0), blob(1.3, 1.2, -0.5, 0.4), blob(1.35, -1.1, -0.4, -0.5), blob(1.1, 0.2, 1.1, -0.2), blob(1.0, -0.3, -0.7, 1.2)])!;
     const fir = mergeGeometries([new CylinderGeometry(0.01, 1.9, 2.4, 9).translate(0, 1.9, 0), new CylinderGeometry(0.01, 1.5, 2.2, 9).translate(0, 3.3, 0), new CylinderGeometry(0.01, 1.1, 2.0, 9).translate(0, 4.6, 0)].map((g) => g.toNonIndexed()))!;
     const bushy = mergeGeometries([blob(1.5, 0, 0, 0), blob(1.2, 1.0, 0.2, 0.3), blob(1.2, -0.9, 0.1, -0.4)])!;
@@ -443,9 +368,9 @@ function Trees() {
   }, []);
   return (
     <group>
-      <instancedMesh ref={trunk} args={[trunkGeo, trunkMat, PARK_TREES.length]} castShadow />
+      <instancedMesh frustumCulled={false} ref={trunk} args={[trunkGeo, trunkMat, PARK_TREES.length]} castShadow />
       {geos.map((g, k) => (
-        <instancedMesh key={k} ref={canopies[k]} args={[g, leafMat, PARK_TREES.length]} castShadow receiveShadow />
+        <instancedMesh frustumCulled={false} key={k} ref={canopies[k]} args={[g, leafMat, PARK_TREES.length]} castShadow receiveShadow />
       ))}
     </group>
   );
@@ -471,8 +396,8 @@ function Lamps() {
   }, []);
   return (
     <group>
-      <instancedMesh ref={post} args={[postGeo, postMat, PARK_LAMPS.length]} castShadow />
-      <instancedMesh ref={bulb} args={[bulbGeo, bulbMat, PARK_LAMPS.length]} />
+      <instancedMesh frustumCulled={false} ref={post} args={[postGeo, postMat, PARK_LAMPS.length]} castShadow />
+      <instancedMesh frustumCulled={false} ref={bulb} args={[bulbGeo, bulbMat, PARK_LAMPS.length]} />
     </group>
   );
 }
@@ -543,33 +468,66 @@ function Beds({ pine }: { pine: Texture }) {
   return (
     <group>
       <mesh geometry={bedGeo} material={benchMat} castShadow receiveShadow />
-      <instancedMesh ref={flowers} args={[geo, mat, N]} />
+      <instancedMesh frustumCulled={false} ref={flowers} args={[geo, mat, N]} />
     </group>
   );
 }
 
 // ───────────────────────────────────────── the park ─────────────────────────────────────────
 
+/** A PMREM of a bright sky (with a sun) for the clear-coat and the painted steel: the park has no environment map of its own. */
+function useSkyEnv(): Texture {
+  const gl = useThree((st) => st.gl);
+  return useMemo(() => {
+    const sc = new Scene();
+    const sky = new Mesh(new SphereGeometry(100, 32, 16), new MeshBasicMaterial({ vertexColors: true, side: BackSide, toneMapped: false }));
+    const g = sky.geometry;
+    const pos = g.attributes.position!;
+    const col = new Float32Array(pos.count * 3);
+    const hz = new Color("#f2f6fa");
+    const zen = new Color("#5d98de");
+    const gnd = new Color("#5a7a45");
+    const c = new Color();
+    for (let i = 0; i < pos.count; i++) {
+      const h = pos.getY(i) / 100;
+      if (h >= 0) c.copy(hz).lerp(zen, Math.pow(h, 0.5));
+      else c.copy(hz).lerp(gnd, Math.min(1, -h * 3));
+      col.set([c.r, c.g, c.b], i * 3);
+    }
+    g.setAttribute("color", new Float32BufferAttribute(col, 3));
+    sc.add(sky);
+    const sun = new Mesh(new SphereGeometry(9, 12, 8), new MeshBasicMaterial({ color: new Color(14, 12, 9), toneMapped: false }));
+    sun.position.set(45, 70, 35);
+    sc.add(sun);
+    const pm = new PMREMGenerator(gl);
+    const rt = pm.fromScene(sc, 0.03);
+    pm.dispose();
+    return rt.texture;
+  }, [gl]);
+}
+
 /** Everything of 케이슨랜드 that stands in the park area (park-local metres). */
-export function ParkWorld() {
+export function ParkWorld({ tier = "high" }: { tier?: "high" | "low" }) {
   const all = useTexture(ALL_PARK_URLS) as Texture[];
-  const [pine, plaster] = useTexture([PINE_URL, PLASTER_URL]) as Texture[];
-  void PARK_BOUNDS;
-  void DoubleSide;
-  void PlaneGeometry;
-  void MeshBasicMaterial;
+  const [pine] = useTexture([PINE_URL]) as Texture[];
+  const env = useSkyEnv();
   return (
     <group>
       <ParkSky />
       <Ground all={all} />
-      <Shops plaster={plaster!} all={all} />
+      <Shops all={all} />
       <GateArch all={all} />
       <QueueHall all={all} pine={pine!} />
       <Fountain all={all} />
       <Trees />
       <Lamps />
       <Beds pine={pine!} />
-      <CoasterWorld all={all} pine={pine!} />
+      <ParkProps all={all} />
+      <ParkScenery all={all} />
+      <Suspense fallback={null}>
+        <ParkMountains tier={tier} />
+      </Suspense>
+      <CoasterWorld all={all} pine={pine!} env={env} />
     </group>
   );
 }

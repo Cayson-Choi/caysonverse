@@ -576,9 +576,12 @@ export function coasterBoardingOpen(nowMs: number): boolean {
   return coasterAt(nowMs).status === "boarding";
 }
 
-/** Which car (0 = the front) and which side (0 = left, 1 = right) seat `seat` is. */
+/**
+ * Which car (0 = the front) and which side (0 = left, 1 = right) seat `seat` is. The first riders sit in the SECOND car (so the view ahead
+ * has a car's padded seat backs and headrests in it, as on a real ride); the front car is the last to fill.
+ */
 export function seatCar(seat: number): { car: number; side: 0 | 1 } {
-  return { car: Math.floor(seat / 2), side: (seat % 2) as 0 | 1 };
+  return { car: (Math.floor(seat / 2) + 1) % COASTER_CARS, side: (seat % 2) as 0 | 1 };
 }
 
 /** Arc length of car `car`'s centre when the head is at `s`. */

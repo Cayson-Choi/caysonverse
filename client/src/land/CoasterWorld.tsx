@@ -109,14 +109,14 @@ function Station({ concrete, pine }: { concrete: ReturnType<typeof pickSet>; pin
   );
 }
 
-export function CoasterWorld({ all, pine }: { all: Texture[]; pine: Texture }) {
+export function CoasterWorld({ all, pine, env }: { all: Texture[]; pine: Texture; env: Texture }) {
   const track = useMemo(() => coasterTrack(), []);
   const built: TrackBuild = useMemo(() => buildTrack(track, DETAIL), [track]);
   const car = useMemo(() => buildCar(DETAIL), []);
   const maps = useMemo(() => ({ metal: pickSet(all, "PaintedMetal013"), concrete: pickSet(all, "Concrete034") }), [all]);
   // painted steel: the vertex colours are the paint; the set gives the surface (orange-peel bump, the gloss that varies)
-  const steelMat = useMemo(() => parkMaterial(maps.metal, 0.5, { useColor: false, vertexColors: true, metalness: 0.25, normalScale: 0.35 }), [maps]);
-  const carMat = useMemo(() => new MeshPhysicalMaterial({ vertexColors: true, roughness: 0.3, metalness: 0.2, clearcoat: 1, clearcoatRoughness: 0.08 }), []);
+  const steelMat = useMemo(() => parkMaterial(maps.metal, 0.5, { useColor: false, vertexColors: true, metalness: 0.25, normalScale: 0.35, envMap: env, envMapIntensity: 0.45 }), [maps, env]);
+  const carMat = useMemo(() => new MeshPhysicalMaterial({ vertexColors: true, roughness: 0.3, metalness: 0.2, clearcoat: 1, clearcoatRoughness: 0.06, envMap: env, envMapIntensity: 1.25 }), [env]);
   // (no dispose on cleanup: React's dev double-mount would delete the programs the memoised materials still use)
   if (import.meta.env.DEV && typeof window !== "undefined") (window as unknown as { __cvCoasterTris?: number }).__cvCoasterTris = built.triangles;
   return (

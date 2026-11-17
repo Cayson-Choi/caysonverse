@@ -6,9 +6,9 @@ const track = coasterTrack();
 
 describe("coaster geometry budget", () => {
   const built = buildTrack(track);
-  it("stays inside the static triangle budget (PC <= 115k, phone <= 60k) and the draw-call budget", () => {
+  it("stays inside the static triangle budget (PC <= 125k, phone <= 60k) and the draw-call budget", () => {
     expect(built.triangles).toBeGreaterThan(30_000);
-    expect(built.triangles).toBeLessThanOrEqual(115_000);
+    expect(built.triangles).toBeLessThanOrEqual(125_000);
     const light = buildTrack(track, "light");
     console.log("coaster track triangles", built.triangles, "light", light.triangles);
     expect(light.triangles).toBeLessThanOrEqual(60_000);

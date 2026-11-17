@@ -78,43 +78,70 @@ function lateral(track: CoasterTrack, i: number): V3 {
 const lerp3 = (a: V3, b: V3, f: number): V3 => [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f];
 const off = (p: V3, d: V3, k: number): V3 => [p[0] + d[0] * k, p[1] + d[1] * k, p[2] + d[2] * k];
 
-/** One tapered tubular column pair from the spine to the footing, with collars, struts, X bracing, base flanges and bolts. */
-function support(steel: GeoBuilder, spine: V3, lat: V3, detail: TrackDetail): void {
+/** The horizontal direction along the track at sample `i` (flattened). */
+function alongH(track: CoasterTrack, i: number): V3 {
+  const t = tanAt(track, i);
+  const h = Math.hypot(t[0], t[2]);
+  return h > 0.2 ? [t[0] / h, 0, t[2] / h] : norm([-lateral(track, i)[2], 0, lateral(track, i)[0]]);
+}
+
+/**
+ * One support: on a phone a pair of thick tapered tubular columns; on a PC a BOX TRUSS (four thick tapered corner tubes, two lateral and two
+ * along the track) laced with horizontal rings and X braces every panel, collars at the joints, a saddle under the spine, and base flanges with
+ * bolts on concrete footings. At gameplay distance it reads as a thick painted steel column.
+ */
+function support(steel: GeoBuilder, spine: V3, lat: V3, along: V3, detail: TrackDetail): void {
   const h = spine[1];
-  const spread = 1.0 + h * 0.075;
-  const top: [V3, V3] = [off([spine[0], spine[1] - 0.12, spine[2]], lat, 0.32), off([spine[0], spine[1] - 0.12, spine[2]], lat, -0.32)];
-  const gnd: [V3, V3] = [off([spine[0], 0.34, spine[2]], lat, spread), off([spine[0], 0.34, spine[2]], lat, -spread)];
-  const rTop = 0.16;
-  const rBot = 0.2 + Math.min(0.12, h * 0.005);
+  const spread = 1.1 + h * 0.08;
+  const rTop = detail === "full" ? 0.2 : 0.3;
+  const rBot = (detail === "full" ? 0.28 : 0.42) + Math.min(0.12, h * 0.005);
   const sides = detail === "full" ? 8 : 6;
-  steel.cylinder(top[0], gnd[0], rTop, rBot, sides, COLORS.support);
-  steel.cylinder(top[1], gnd[1], rTop, rBot, sides, COLORS.support);
+  const corners: [number, number][] = detail === "full" ? [[1, 1], [1, -1], [-1, 1], [-1, -1]] : [[1, 0], [-1, 0]];
+  const top: V3[] = [];
+  const gnd: V3[] = [];
+  for (const [l, a] of corners) {
+    const t0: V3 = [spine[0] + lat[0] * l * 0.34 + along[0] * a * 0.4, spine[1] - 0.14, spine[2] + lat[2] * l * 0.34 + along[2] * a * 0.4];
+    const g0: V3 = [spine[0] + lat[0] * l * spread + along[0] * a * (0.4 + h * 0.03), 0.34, spine[2] + lat[2] * l * spread + along[2] * a * (0.4 + h * 0.03)];
+    top.push(t0);
+    gnd.push(g0);
+    steel.cylinder(t0, g0, rTop, rBot, sides, COLORS.support);
+  }
   // a saddle plate under the spine
-  steel.box([spine[0], spine[1] - 0.26, spine[2]], lat, [0, 1, 0], 0.55, 0.045, 0.28, COLORS.collar);
-  const panels = Math.max(1, Math.floor(h / 6));
+  steel.box([spine[0], spine[1] - 0.3, spine[2]], lat, [0, 1, 0], 0.6, 0.05, 0.4, COLORS.collar);
+  const panels = Math.max(1, Math.floor(h / 5));
+  const strutR = detail === "full" ? 0.07 : 0.09;
   for (let k = 1; k <= panels; k++) {
     const f = k / (panels + 1);
-    const a = lerp3(gnd[0], top[0], f);
-    const b = lerp3(gnd[1], top[1], f);
-    steel.cylinder(a, b, 0.055, 0.055, 5, COLORS.strut);
+    const f0 = (k - 1) / (panels + 1);
+    const ring = gnd.map((g, i) => lerp3(g, top[i]!, f));
+    const ring0 = gnd.map((g, i) => lerp3(g, top[i]!, f0));
+    // lateral pair across (corners 0-2 / 1-3 are the two sides along the track), X-braced
+    const link = (i: number, j: number, i0: number, j0: number): void => {
+      steel.cylinder(ring[i]!, ring[j]!, strutR, strutR, 5, COLORS.strut);
+      if (detail === "full") {
+        steel.cylinder(ring0[i0]!, ring[j]!, strutR * 0.8, strutR * 0.8, 4, COLORS.strut);
+        steel.cylinder(ring0[j0]!, ring[i]!, strutR * 0.8, strutR * 0.8, 4, COLORS.strut);
+      }
+    };
     if (detail === "full") {
-      const f0 = (k - 1) / (panels + 1);
-      const a0 = lerp3(gnd[0], top[0], f0);
-      const b0 = lerp3(gnd[1], top[1], f0);
-      steel.cylinder(a0, b, 0.04, 0.04, 4, COLORS.strut);
-      steel.cylinder(b0, a, 0.04, 0.04, 4, COLORS.strut);
-      // collars at the panel joints
-      for (const pa of [a, b]) steel.cylinder([pa[0], pa[1] - 0.09, pa[2]], [pa[0], pa[1] + 0.09, pa[2]], 0.15, 0.15, 8, COLORS.collar, true);
+      link(0, 2, 0, 2); // the +lat side, front-back
+      link(1, 3, 1, 3); // the -lat side
+      link(0, 1, 0, 1); // the +along face, left-right
+      link(2, 3, 2, 3);
+      for (const r of ring) steel.cylinder([r[0], r[1] - 0.11, r[2]], [r[0], r[1] + 0.11, r[2]], rTop + 0.1, rTop + 0.1, 8, COLORS.collar, true);
+    } else {
+      steel.cylinder(ring[0]!, ring[1]!, strutR, strutR, 5, COLORS.strut);
+      const a0 = ring0[0]!;
+      steel.cylinder(a0, ring[1]!, 0.07, 0.07, 4, COLORS.strut);
+      steel.cylinder(ring0[1]!, ring[0]!, 0.07, 0.07, 4, COLORS.strut);
     }
   }
-  // base flange (a square plate with four bolts) on a concrete footing, each leg
+  // base flange on a concrete footing, each leg; four bolts on a PC
   for (const g of gnd) {
-    steel.box([g[0], 0.16, g[2]], [1, 0, 0], [0, 1, 0], 0.55, 0.16, 0.55, COLORS.foot);
-    steel.box([g[0], 0.37, g[2]], [1, 0, 0], [0, 1, 0], 0.34, 0.04, 0.34, COLORS.collar);
+    steel.box([g[0], 0.16, g[2]], [1, 0, 0], [0, 1, 0], 0.7, 0.16, 0.7, COLORS.foot);
+    steel.box([g[0], 0.37, g[2]], [1, 0, 0], [0, 1, 0], 0.46, 0.05, 0.46, COLORS.collar);
     if (detail === "full") {
-      for (const [dx, dz] of [[-0.25, -0.25], [0.25, -0.25], [-0.25, 0.25], [0.25, 0.25]] as const) {
-        steel.cylinder([g[0] + dx, 0.41, g[2] + dz], [g[0] + dx, 0.47, g[2] + dz], 0.035, 0.035, 6, COLORS.bolt, true);
-      }
+      for (const [dx, dz] of [[-0.34, -0.34], [0.34, -0.34], [-0.34, 0.34], [0.34, 0.34]] as const) steel.cylinder([g[0] + dx, 0.42, g[2] + dz], [g[0] + dx, 0.5, g[2] + dz], 0.045, 0.045, 6, COLORS.bolt, true);
     }
   }
 }
@@ -125,7 +152,7 @@ export function buildTrack(track: CoasterTrack, detail: TrackDetail = "full"): T
   const step = detail === "full" ? 2 : 3; // a ring every metre (1.5 on a phone)
   const loopFrom = track.marks.loopFrom ?? -1;
   const loopTo = track.marks.loopTo ?? -1;
-  const supportEvery = detail === "full" ? 14 : 22; // samples (7 m / 11 m)
+  const supportEvery = detail === "full" ? 16 : 24; // samples (8 m / 12 m)
   const tieEvery = Math.max(1, Math.round((detail === "full" ? 1.4 : 2.4) / track.ds));
   let triangles = 0;
   for (let c = 0; c < CHUNKS; c++) {
@@ -182,7 +209,7 @@ export function buildTrack(track: CoasterTrack, detail: TrackDetail = "full"): T
         const rel = (i - loopFrom) / (loopTo - loopFrom);
         if (!(Math.abs(rel - 0.25) < 0.04 || Math.abs(rel - 0.75) < 0.04)) continue;
       }
-      support(steel, spine, lateral(track, i), detail);
+      support(steel, spine, lateral(track, i), alongH(track, i), detail);
     }
 
     // the lift hill: catwalk + handrails on the right, the chain and the anti-rollback rack
@@ -279,9 +306,14 @@ export function buildCar(detail: TrackDetail = "full"): BufferGeometry {
     b.box([sx * 1.003, 0.34, -0.1], X, Y, 0.006, 0.035, 1.05, COLORS.carTrim);
     b.box([sx * 1.003, 0.27, -0.1], X, Y, 0.006, 0.012, 1.1, COLORS.carWhite);
   }
+  // a gold nose tip and crisp panel seams down the flanks
+  b.box([0, 0.46, 1.5], X, Y, 0.12, 0.05, 0.04, COLORS.carTrim);
+  for (const sx of [-1, 1]) for (const z of [-0.9, -0.2, 0.5]) b.box([sx * 1.004, 0.4, z], X, Y, 0.005, 0.2, 0.008, COLORS.seatDark);
   // padded rim along the cockpit sides, with stanchions
   for (const sx of [-1, 1]) {
-    b.tube([[sx * 0.93, 0.6, -1.2], [sx * 0.97, 0.62, -0.3], [sx * 0.97, 0.62, 0.55], [sx * 0.9, 0.64, 0.75]], 0.06, 8, COLORS.seatDark);
+    // two short padded rims (behind the rider and by the hood); none beside the rider's elbows, where they would fill the first-person corners
+    b.tube([[sx * 0.93, 0.6, -1.25], [sx * 0.97, 0.63, -0.9], [sx * 0.97, 0.63, -0.65]], 0.075, 10, COLORS.carBody2);
+    b.tube([[sx * 0.97, 0.63, 0.62], [sx * 0.9, 0.65, 0.78], [sx * 0.86, 0.66, 0.9]], 0.075, 10, COLORS.carBody2);
     for (const z of [-1.0, -0.3, 0.4]) b.cylinder([sx * 0.95, 0.4, z], [sx * 0.95, 0.6, z], 0.025, 0.025, 5, COLORS.bar);
   }
   // seats: a padded cushion, a padded back and a headrest (lofts centred on x = 0, moved to the seat), and the lap bar
@@ -302,7 +334,7 @@ export function buildCar(detail: TrackDetail = "full"): BufferGeometry {
     const start = b.vertices;
     padded(SEAT_TOP - 0.07, 0.07, -0.64, 0.14, 0.34, COLORS.seat); // the cushion: its top is at SEAT_TOP
     padded(SEAT_TOP + 0.4, 0.42, -0.74, -0.56, 0.32, COLORS.seat); // the back
-    padded(SEAT_TOP + 0.93, 0.1, -0.74, -0.56, 0.2, COLORS.seatDark); // the headrest
+    padded(SEAT_TOP + 0.95, 0.13, -0.76, -0.54, 0.25, COLORS.seatDark); // the headrest
     for (let v = start; v < b.vertices; v++) b.pos[3 * v] = b.pos[3 * v]! + x;
     const y0 = SEAT_TOP + 0.26;
     const path: V3[] = [
@@ -317,8 +349,8 @@ export function buildCar(detail: TrackDetail = "full"): BufferGeometry {
       [x + 0.3, 0.44, 0.02],
     ];
     b.tube(path, 0.028, 8, COLORS.bar);
-    b.tube(path.slice(2, 7), 0.062, 10, COLORS.pad); // the padded section over the thighs
-    for (const sg of [-1, 1]) b.cylinder([x + sg * 0.3, y0, 0.3], [x + sg * 0.25, y0 + 0.3, 0.5], 0.032, 0.028, 8, COLORS.grip, true);
+    b.tube(path.slice(2, 7), 0.085, 12, COLORS.pad); // the padded section over the thighs
+    for (const sg of [-1, 1]) b.cylinder([x + sg * 0.3, y0, 0.3], [x + sg * 0.25, y0 + 0.3, 0.5], 0.04, 0.034, 10, COLORS.grip, true);
   }
   // the grab bar across the hood
   b.tube([[-0.8, 0.95, 0.92], [-0.8, 1.06, 0.94], [0, 1.09, 0.97], [0.8, 1.06, 0.94], [0.8, 0.95, 0.92]], 0.024, 8, COLORS.bar);

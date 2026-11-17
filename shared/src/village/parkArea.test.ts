@@ -63,9 +63,9 @@ describe("park layout", () => {
     }
     for (const t of PARK_TREES) {
       expect(Math.hypot(t.x - PARK_PLAZA.x, t.z - PARK_PLAZA.z)).toBeGreaterThan(PARK_PLAZA.radius);
-      expect(t.z).toBeLessThan(-18);
+      expect(t.z).toBeLessThan(-7);
     }
-    expect(PARK_TREES.length).toBeGreaterThan(60);
+    expect(PARK_TREES.length).toBeGreaterThan(120);
     expect(PARK_LAMPS.length).toBeGreaterThan(30);
   });
   it("the queue gate stands within the server's boarding reach of itself and far from the plaza", () => {

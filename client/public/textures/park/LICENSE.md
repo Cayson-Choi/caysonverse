@@ -11,3 +11,5 @@ ambientCG의 CC0 1.0(퍼블릭 도메인) 실사 PBR 세트를 1K로 내려받�
 | `PaintedMetal013_*` | ambientCG `PaintedMetal013` | 코스터 도장 강관·열차 |
 | `RoofingTiles013A_*` | ambientCG `RoofingTiles013A` | 지붕 |
 | `Concrete034_*` | ambientCG `Concrete034` | 기초·승강장 가장자리 |
+| `Plaster003_*` | ambientCG `Plaster003` | 상점 회벽 |
+| `PaintedPlaster017_*` | ambientCG `PaintedPlaster017` | 상점 칠한 회벽(얼룩) |

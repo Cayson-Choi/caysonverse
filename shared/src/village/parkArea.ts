@@ -109,6 +109,7 @@ function onPath(x: number, z: number, m: number): boolean {
   const P = PARK_PLAZA;
   if (Math.hypot(x - P.x, z - P.z) < P.radius + m) return true;
   if (x > 28 - m && x < 52 + m && z < -134 + m) return true; // the promenade
+  if (x > -24 - m && x < 24 + m && z > -20 - m) return true; // the station's frontage
   if (z > -118 - m && z < -106 + m && x > -23 - m && x < 345 + m) return true; // the east-west avenue
   if (x > -23 - m && x < -11 + m && z > -118 && z < -40) return true; // the queue approach
   return false;
@@ -119,7 +120,7 @@ function buildTrees(): ParkTree[] {
   const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
   const out: ParkTree[] = [];
   let guard = 0;
-  while (out.length < 96 && guard++ < 6000) {
+  while (out.length < 190 && guard++ < 20000) {
     const x = PARK_BOUNDS.minX + 8 + rnd() * (PARK_BOUNDS.maxX - PARK_BOUNDS.minX - 16);
     const z = PARK_BOUNDS.minZ + 8 + rnd() * (PARK_BOUNDS.maxZ - PARK_BOUNDS.minZ - 18);
     if (onPath(x, z, 5)) continue;
@@ -127,11 +128,11 @@ function buildTrees(): ParkTree[] {
     const q = PARK_QUEUE_HALL;
     if (x > q.minX - 8 && x < q.maxX + 8 && z > q.minZ - 8 && z < q.maxZ + 8) continue;
     if (Math.hypot(x - PARK_EXIT_PAD.x, z - PARK_EXIT_PAD.z) < 14) continue;
-    if (z > -18) continue; // keep the strip along the coaster clear
+    if (z > -7) continue; // a clear verge along the coaster's boundary hedge
     // the ride plots (phase 2b / 3): the carousel's and the wheel's ground stay open
     if (Math.hypot(x - 110, z + 135) < 30 || Math.hypot(x - 205, z + 135) < 34) continue;
     // a loose minimum distance between trees
-    if (out.some((t) => Math.hypot(t.x - x, t.z - z) < 7)) continue;
+    if (out.some((t) => Math.hypot(t.x - x, t.z - z) < 6)) continue;
     out.push({ x: Math.round(x * 10) / 10, z: Math.round(z * 10) / 10, s: 0.8 + rnd() * 0.7, kind: (Math.floor(rnd() * 3) % 3) as 0 | 1 | 2 });
   }
   return out;
@@ -153,6 +154,24 @@ function buildLamps(): { x: number; z: number }[] {
 }
 export const PARK_LAMPS: readonly { x: number; z: number }[] = Object.freeze(buildLamps());
 
+/** People-scale props: a ticket kiosk by the arch, stone planters at the promenade's south end, litter bins by the lamp posts. */
+export const PARK_KIOSK = Object.freeze({ x: 55, z: -177, w: 4.2, d: 3.4 });
+export const PARK_PLANTERS: readonly { x: number; z: number; w: number; d: number }[] = Object.freeze([
+  { x: 33.5, z: -137, w: 3, d: 1.6 },
+  { x: 46.5, z: -137, w: 3, d: 1.6 },
+  { x: 33.5, z: -182, w: 3, d: 1.6 },
+  { x: 46.5, z: -182, w: 3, d: 1.6 },
+]);
+export const PARK_BINS: readonly { x: number; z: number }[] = Object.freeze([
+  { x: 32.2, z: -164 },
+  { x: 47.8, z: -164 },
+  { x: 32.2, z: -146 },
+  { x: 47.8, z: -146 },
+  { x: 64, z: -108.6 },
+  { x: 150, z: -108.6 },
+  { x: -12.2, z: -100 },
+]);
+
 /** Everything a player body collides with. */
 function buildSolids(): AABB[] {
   const out: AABB[] = [];
@@ -167,6 +186,9 @@ function buildSolids(): AABB[] {
   out.push(box(PARK_PLAZA.x - f, PARK_PLAZA.x + f, PARK_PLAZA.z - f, PARK_PLAZA.z + f));
   // the gate arch's two towers
   out.push(box(29.5, 33, -190, -183), box(47, 50.5, -190, -183));
+  out.push(box(PARK_KIOSK.x - PARK_KIOSK.w / 2, PARK_KIOSK.x + PARK_KIOSK.w / 2, PARK_KIOSK.z - PARK_KIOSK.d / 2, PARK_KIOSK.z + PARK_KIOSK.d / 2));
+  for (const p of PARK_PLANTERS) out.push(box(p.x - p.w / 2, p.x + p.w / 2, p.z - p.d / 2, p.z + p.d / 2));
+  for (const b of PARK_BINS) out.push(box(b.x - 0.3, b.x + 0.3, b.z - 0.3, b.z + 0.3));
   for (const t of PARK_TREES) out.push(box(t.x - 0.45, t.x + 0.45, t.z - 0.45, t.z + 0.45));
   return out;
 }

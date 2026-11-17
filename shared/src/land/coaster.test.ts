@@ -132,9 +132,11 @@ describe("coaster schedule", () => {
   });
   it("seats: 12, two to a car, the front car first", () => {
     expect(COASTER_SEATS).toBe(COASTER_CARS * 2);
-    expect(seatCar(0)).toEqual({ car: 0, side: 0 });
-    expect(seatCar(1)).toEqual({ car: 0, side: 1 });
-    expect(seatCar(11)).toEqual({ car: 5, side: 1 });
+    expect(seatCar(0)).toEqual({ car: 1, side: 0 });
+    expect(seatCar(1)).toEqual({ car: 1, side: 1 });
+    expect(seatCar(10)).toEqual({ car: 0, side: 0 }); // the front car fills last
+    expect(seatCar(11)).toEqual({ car: 0, side: 1 });
+    expect(new Set(Array.from({ length: COASTER_SEATS }, (_, i) => `${seatCar(i).car}:${seatCar(i).side}`)).size).toBe(COASTER_SEATS);
     expect(carArc(20, 2)).toBeCloseTo(20 - 2 * CAR_PITCH, 6);
   });
 });
