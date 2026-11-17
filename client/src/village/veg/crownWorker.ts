@@ -6,7 +6,7 @@
  */
 import type { Envelope } from "./crownGrowth";
 import type { Box } from "./crownSpace";
-import { floraTransfers, growFrom, layFlora, transfersOf, type WorkerIn, type WorkerOut } from "./crownGrow";
+import { floraTransfers, growFrom, layFlora, makeTextures, textureTransfers, transfersOf, type WorkerIn, type WorkerOut } from "./crownGrow";
 
 let envs: Envelope[] = [];
 let boxes: Box[] = [];
@@ -16,6 +16,11 @@ scope.onmessage = (e: MessageEvent<WorkerIn>) => {
   if (m.type === "init") {
     envs = m.envs;
     boxes = m.boxes;
+    return;
+  }
+  if (m.type === "atlas") {
+    const result = makeTextures();
+    scope.postMessage({ type: "atlas", id: m.id, result } satisfies WorkerOut, textureTransfers(result));
     return;
   }
   if (m.type === "flora") {

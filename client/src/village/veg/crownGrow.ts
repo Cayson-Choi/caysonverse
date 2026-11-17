@@ -10,11 +10,12 @@ import { crownKeepOut, type Box } from "./crownSpace";
 import { growBroadleaf, growWillow, leafConnection, type BroadleafOptions, type LeafCrown, type LeafKind } from "./treeCrown";
 import { cherryConnection, growCherry, type CherryCrown, type GrowOptions } from "./cherryTree";
 import type { TreeSkeleton } from "./treeSkeleton";
-import { BARK_STYLE, barkLight, simplifyTwig, twigBark } from "./barkGeometry";
+import { BARK_STYLE, barkLight, barkPixels, simplifyTwig, twigBark, type BarkPattern } from "./barkGeometry";
 import { DAY_SUN_DIRECTION } from "../dayNightBlend";
 import type { Vec3 } from "./vegLod";
 import type { Card } from "./vegCards";
 import { floraTransfers, layFlora, type FloraResult } from "./floraWork";
+import { plantAtlasPixels } from "./vegPlantAtlas";
 
 /** A crown's keep-out as data: `own` indexes the build's envelopes; `xf` (16 numbers, column-major) maps local to world. */
 export interface KeepOutSpec {
@@ -107,10 +108,41 @@ export function growFrom(req: GrowRequest, envs: readonly Envelope[], boxes: rea
 }
 
 /** Messages between the page and the worker. */
-export type WorkerIn = { type: "init"; envs: Envelope[]; boxes: Box[] } | { type: "grow"; id: number; req: GrowRequest } | { type: "flora"; id: number; cards: Card[] };
-export type WorkerOut = { type: "crown"; id: number; result: GrowResult } | { type: "flora"; id: number; result: FloraResult } | { type: "error"; id: number; message: string };
+export type WorkerIn = { type: "init"; envs: Envelope[]; boxes: Box[] } | { type: "grow"; id: number; req: GrowRequest } | { type: "flora"; id: number; cards: Card[] } | { type: "atlas"; id: number };
+export type WorkerOut = { type: "crown"; id: number; result: GrowResult } | { type: "flora"; id: number; result: FloraResult } | { type: "atlas"; id: number; result: Textures | null } | { type: "error"; id: number; message: string };
 
-export { floraTransfers, layFlora };
+export { floraTransfers, layFlora, plantAtlasPixels };
+
+/** The plant atlas's pixels (vegPlantAtlas.ts). */
+export type AtlasPixels = { data: Uint8Array; width: number; height: number };
+
+/** The kinds of bark the build draws (villageVegetation.ts). */
+export const BARK_PATTERNS: readonly BarkPattern[] = ["cherry", "plates", "willow", "smooth", "plum"];
+
+/** The textures drawn in code, made off the page: the plant atlas (null: no OffscreenCanvas there) and every bark. */
+export interface Textures {
+  atlas: AtlasPixels | null;
+  bark: Partial<Record<BarkPattern, Uint8Array>>;
+}
+
+/** Make them (in the worker). */
+export function makeTextures(): Textures {
+  let atlas: AtlasPixels | null = null;
+  try {
+    atlas = typeof OffscreenCanvas !== "undefined" ? plantAtlasPixels() : null;
+  } catch {
+    atlas = null;
+  }
+  const bark: Textures["bark"] = {};
+  for (const p of BARK_PATTERNS) bark[p] = barkPixels(p);
+  return { atlas, bark };
+}
+
+export function textureTransfers(t: Textures): ArrayBuffer[] {
+  const out = Object.values(t.bark).map((a) => a!.buffer as ArrayBuffer);
+  if (t.atlas) out.push(t.atlas.data.buffer as ArrayBuffer);
+  return out;
+}
 
 /** Grows crowns off the page where it can: `grow` returns a promise; requests are served in the order they are made. */
 export interface CrownGrower {
@@ -119,16 +151,21 @@ export interface CrownGrower {
   grow(req: GrowRequest): Promise<GrowResult>;
   /** The flowers' layout and soil (floraWork.ts). */
   flora(cards: Card[]): Promise<FloraResult>;
+  /** The textures drawn in code (the plant atlas, the barks), made off the page (null: make them here). */
+  atlas(): Promise<Textures | null>;
   /** Whether a worker does the growing (false: on the page, at `grow`). */
   readonly offPage: boolean;
   dispose(): void;
 }
 
-/** How many workers (each a thread of its own): at most 3 (the last also lays the flowers out), one fewer than the cores. */
+/** How many workers (each a thread of its own): at most 4, one fewer than the device's cores. */
 function workerCount(): number {
   const cores = typeof navigator !== "undefined" ? navigator.hardwareConcurrency || 2 : 2;
-  return Math.max(1, Math.min(3, cores - 1));
+  return Math.max(1, Math.min(4, cores - 1));
 }
+
+/** Crowns a worker holds at a time (one growing, one waiting: it never idles for a round trip). */
+const CROWNS_IN_FLIGHT = 2;
 
 /**
  * The workers start loading at once (made at the build's start, they are ready by the time the crowns are asked for);
@@ -144,6 +181,7 @@ export function createCrownGrower(makeWorker?: () => Worker): CrownGrower {
     },
     grow: (req) => Promise.resolve(growFrom(req, envs, boxes)),
     flora: (cards) => Promise.resolve(layFlora(cards)),
+    atlas: () => Promise.resolve(null),
     offPage: false,
     dispose: () => {},
   };
@@ -156,26 +194,65 @@ export function createCrownGrower(makeWorker?: () => Worker): CrownGrower {
   }
   const waiting = new Map<number, { resolve: (r: GrowResult) => void; req: GrowRequest }>();
   const floras = new Map<number, { resolve: (r: FloraResult) => void; cards: Card[] }>();
+  const atlases = new Map<number, (r: Textures | null) => void>();
   let next = 1;
   let broken = false;
+  // the crowns wait here, nearest first; each worker is handed the next one as it finishes (the one that laid the
+  // flowers out joins in when it is done)
+  const queue: Array<{ id: number; req: GrowRequest }> = [];
+  const load = new Map<Worker, number>(workers.map((w) => [w, 0]));
+  const owner = new Map<number, Worker>();
+  const give = (w: Worker, id: number, msg: WorkerIn, weight: number) => {
+    owner.set(id, w);
+    load.set(w, load.get(w)! + weight);
+    w.postMessage(msg);
+  };
+  const pump = () => {
+    for (const w of workers) {
+      while (queue.length && load.get(w)! < CROWNS_IN_FLIGHT) {
+        const job = queue.shift()!;
+        give(w, job.id, { type: "grow", id: job.id, req: job.req }, 1);
+      }
+    }
+  };
+  const done = (id: number, weight: number) => {
+    const w = owner.get(id);
+    owner.delete(id);
+    if (w) load.set(w, Math.max(0, load.get(w)! - weight));
+    pump();
+  };
   for (const w of workers) {
     w.onmessage = (e: MessageEvent<WorkerOut>) => {
       const m = e.data;
+      const at = atlases.get(m.id);
+      if (at) {
+        atlases.delete(m.id);
+        done(m.id, CROWNS_IN_FLIGHT);
+        at(m.type === "atlas" ? m.result : null);
+        return;
+      }
       const fl = floras.get(m.id);
       if (fl) {
         floras.delete(m.id);
+        done(m.id, CROWNS_IN_FLIGHT);
         fl.resolve(m.type === "flora" ? m.result : layFlora(fl.cards));
         return;
       }
       const job = waiting.get(m.id);
       if (!job) return;
       waiting.delete(m.id);
+      done(m.id, 1);
       // a crown the worker could not grow is grown here (the same result)
       job.resolve(m.type === "crown" ? m.result : growFrom(job.req, envs, boxes));
     };
     w.onerror = () => {
       // a worker that fails to load: everything still waiting, and all later requests, are grown on the page
       broken = true;
+      for (const q of queue.splice(0)) {
+        const job = waiting.get(q.id);
+        waiting.delete(q.id);
+        job?.resolve(growFrom(q.req, envs, boxes));
+      }
       for (const [id, job] of waiting) {
         waiting.delete(id);
         job.resolve(growFrom(job.req, envs, boxes));
@@ -184,9 +261,12 @@ export function createCrownGrower(makeWorker?: () => Worker): CrownGrower {
         floras.delete(id);
         fl.resolve(layFlora(fl.cards));
       }
+      for (const [id, at] of atlases) {
+        atlases.delete(id);
+        at(null);
+      }
     };
   }
-  let rr = 0;
   return {
     offPage: true,
     init(e, b) {
@@ -194,13 +274,22 @@ export function createCrownGrower(makeWorker?: () => Worker): CrownGrower {
       boxes = b;
       for (const w of workers) w.postMessage({ type: "init", envs, boxes } satisfies WorkerIn);
     },
+    atlas() {
+      if (broken) return Promise.resolve(null);
+      const id = next++;
+      return new Promise((resolve) => {
+        atlases.set(id, resolve);
+        // the first worker: done long before the crowns are asked for
+        give(workers[0]!, id, { type: "atlas", id }, CROWNS_IN_FLIGHT);
+      });
+    },
     flora(cards) {
       if (broken) return Promise.resolve(layFlora(cards));
       const id = next++;
       return new Promise((resolve) => {
         floras.set(id, { resolve, cards });
-        // the last worker: the first trees' crowns go to the others first
-        workers[workers.length - 1]!.postMessage({ type: "flora", id, cards } satisfies WorkerIn);
+        // the last worker (busy with it: the crowns go to the others until it is done)
+        give(workers[workers.length - 1]!, id, { type: "flora", id, cards }, CROWNS_IN_FLIGHT);
       });
     },
     grow(req) {
@@ -208,14 +297,16 @@ export function createCrownGrower(makeWorker?: () => Worker): CrownGrower {
       const id = next++;
       return new Promise((resolve) => {
         waiting.set(id, { resolve, req });
-        const crownWorkers = workers.length > 2 ? workers.length - 1 : workers.length;
-        workers[rr++ % crownWorkers]!.postMessage({ type: "grow", id, req } satisfies WorkerIn);
+        queue.push({ id, req });
+        pump();
       });
     },
     dispose() {
       for (const w of workers) w.terminate();
+      queue.length = 0;
       waiting.clear();
       floras.clear();
+      atlases.clear();
     },
   };
 }
