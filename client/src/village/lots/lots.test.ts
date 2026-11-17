@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync, existsSync, readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { BoxGeometry, BufferGeometry, Float32BufferAttribute, Group, Mesh, Uint8BufferAttribute, Vector3 } from "three";
+import { BoxGeometry, CompressedTexture, BufferGeometry, Float32BufferAttribute, Group, Mesh, Uint8BufferAttribute, Vector3 } from "three";
 import { LOT_DETAIL_LOD, LOT_INTERIORS, LOT_ROOMS, VILLAGE_LOTS, lotFootprint, lotRoomDoor, type LotId } from "@caysonverse/shared/village/villageLots";
 import { pbrSetInfo } from "../pbr/pbrLibrary";
 import { VILLAGE_LAYOUT } from "@caysonverse/shared/village/villageLayout";
@@ -10,7 +10,7 @@ import { PHONE_GOODS_REACH, innerHingePivot, mergeReady, pickLotLevels, setLotDo
 import { LOT_DOOR_PADS, LOT_SLOT_HOOKS, lotDoorNotice, lotDoorTarget, lotExitTarget, lotSlotHandlers, onLotSlot } from "./lotTargets";
 import { lotTrimFootprints } from "./LotsVillagePatch";
 import { manifestPaths } from "./lotTextures";
-import { LOT_ROOM_PHONE_FILES, sacredFile, sacredUrl } from "./LotRoom";
+import { LOT_ROOM_PHONE_FILES, SACRED_MAP_MAX, capMips, sacredFile, sacredUrl } from "./LotRoom";
 
 const LOTS_DIR = resolve(__dirname, "..", "..", "..", "public", "models", "village", "lots");
 /** A GLB's JSON chunk. */
@@ -192,5 +192,43 @@ describe("lot doors, the rooms' ways out, the slots", () => {
     const jib = feet[feet.length - 1]!;
     expect(jib.inside(-60, 22, 4)).toBe(true);
     expect(jib.inside(-60, 8, 4)).toBe(false);
+  });
+});
+
+describe("sacred pieces' maps: capped by dropping mips (L5v2 budget pass)", () => {
+  const chain = (w: number, h: number) => {
+    const out: Array<{ width: number; height: number; data: Uint8Array }> = [];
+    for (;;) {
+      out.push({ width: w, height: h, data: new Uint8Array(1) });
+      if (w === 1 && h === 1) return out;
+      w = Math.max(1, w >> 1);
+      h = Math.max(1, h >> 1);
+    }
+  };
+  const tex = (w: number, h: number) => new CompressedTexture(chain(w, h) as never, w, h);
+
+  it("a 2048 statue map drops to the cap; its image follows the new top level", () => {
+    const t = tex(2048, 2048);
+    capMips(t, SACRED_MAP_MAX.desktop.color);
+    expect(t.mipmaps![0]).toMatchObject({ width: 1024, height: 1024 });
+    expect(t.image).toMatchObject({ width: 1024, height: 1024 });
+    capMips(t, SACRED_MAP_MAX.desktop.color); // twice is once (a copy shares its maps)
+    expect(t.mipmaps![0]!.width).toBe(1024);
+  });
+
+  it("never a top level that is not whole 4x4 blocks (192x500 stays: 96x250 is no compressed size)", () => {
+    const t = tex(384, 1000);
+    capMips(t, 256);
+    expect(t.mipmaps![0]).toMatchObject({ width: 192, height: 500 });
+  });
+
+  it("a map at or under its cap, or without mips, is left as it is", () => {
+    const t = tex(512, 512);
+    const before = t.mipmaps;
+    capMips(t, 512);
+    expect(t.mipmaps).toBe(before);
+    const one = new CompressedTexture([{ width: 2048, height: 2048, data: new Uint8Array(1) }] as never, 2048, 2048);
+    capMips(one, 256);
+    expect(one.mipmaps![0]!.width).toBe(2048);
   });
 });

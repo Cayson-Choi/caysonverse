@@ -49,6 +49,73 @@ import { LotTextureBank, fetchLotManifest, manifestPaths, type LotMatSpec } from
  * The camera keeps to the drawn room (its solid index: never in a wall, a stack or a pew), and arrives looking into the room.
  */
 
+/**
+ * Each room's texture plan (owner budgets, contract 11 + coordinator 2026-11-17: classroom 24 MB, reading room 32, chapel 28, church 28,
+ * 대웅전 48 on a PC; the phone's 8 / 10 / 8 / 8 / 14): on a PC every set in full at 1K except the listed small parts (their albedo
+ * only: a 1.4 MB map instead of 4.2 MB); on a phone every set as its albedo only (0.7 MB) except the floor (and the 대웅전's 마루)
+ * that fills the view. `LotRoom` reports the total (`__cvLotRoom().textures`, the sacred pieces' own maps included).
+ */
+export const ROOM_TEXTURES: Readonly<Record<string, { pcAlbedoOnly: readonly string[]; phoneFull: readonly string[] }>> = {
+  lot_school_class: { pcAlbedoOnly: ["grass", "cast_iron"], phoneFull: ["floor_wood"] },
+  lot_library_reading: { pcAlbedoOnly: ["aluminium_brushed"], phoneFull: ["floor_wood"] },
+  lot_chapel_nave: { pcAlbedoOnly: ["aluminium_brushed"], phoneFull: [] }, // (the phone's chapel: its statues' own maps take the rest of the 8 MB)
+  lot_church_nave: { pcAlbedoOnly: [], phoneFull: ["floor_wood"] },
+  lot_temple_hall: { pcAlbedoOnly: [], phoneFull: ["wood_pine_natural"] },
+};
+
+function roomSetFull(unit: string, set: string, phone: boolean): boolean {
+  const plan = ROOM_TEXTURES[unit];
+  if (!plan) return !phone;
+  return phone ? plan.phoneFull.includes(set) : !plan.pcAlbedoOnly.includes(set);
+}
+
+/** Estimated GPU bytes of a room's own and sacred maps (compressed: 1 byte a texel on a desktop, 0.5–1 on a phone; mips 4/3). */
+function ownTextureBytes(root: Object3D, mobile: boolean): number {
+  const seen = new Set<Texture>();
+  let bytes = 0;
+  root.traverse((o) => {
+    if (!isMesh(o) || !o.visible) return;
+    for (const m of matsOf(o))
+      for (const k of ["map", "normalMap", "aoMap", "roughnessMap", "metalnessMap", "emissiveMap"] as const) {
+        const t = (m as MeshStandardMaterial)[k];
+        if (!t || seen.has(t) || (m as MeshStandardMaterial).userData.lotSet) continue;
+        seen.add(t);
+        const img = (t as Texture & { mipmaps?: Array<{ width: number; height: number }> }).mipmaps?.[0] ?? (t.image as { width?: number; height?: number } | null);
+        if (!img?.width || !img.height) continue;
+        bytes += img.width * img.height * (mobile && k === "map" ? 0.5 : 1) * (4 / 3);
+      }
+  });
+  return Math.round(bytes);
+}
+
+/**
+ * The largest a sacred piece's own map is drawn (texels on its long side), by kind (colour: albedo and the glass's
+ * emissive; normal; ORM: ambient occlusion, roughness, metalness) and tier. The pieces' files carry 2048 px statues and
+ * 768x2000 lancets: the chapel's eight came to 56 MB of a 28 MB room (L5v2 budget pass). A KTX2 map keeps its mips, so
+ * the cap only drops the levels above it (no re-encode, no new file); a piece is seen from a few metres, where 1024 /
+ * 512 is still 300+ px a metre (the ORM's soft shading the least of it: 256).
+ */
+export const SACRED_MAP_MAX = {
+  desktop: { color: 1024, normal: 512, orm: 256 },
+  mobile: { color: 1024, normal: 256, orm: 256 },
+} as const;
+
+/**
+ * Drops a compressed map's mip levels above `max` texels (on its long side); a map without mips is left as it is. A
+ * level only becomes the top when both its sides are whole 4x4 blocks (a compressed texture's storage needs them: a
+ * 96x250 top was "glTexStorage2D: Invalid compressed image size" on the phone), so a map may stay above the cap.
+ */
+export function capMips(t: Texture, max: number): void {
+  const mips = (t as Texture & { mipmaps?: Array<{ width: number; height: number }> }).mipmaps;
+  if (!mips || mips.length < 2) return;
+  let k = 0;
+  while (k < mips.length - 1 && Math.max(mips[k]!.width, mips[k]!.height) > max && mips[k + 1]!.width % 4 === 0 && mips[k + 1]!.height % 4 === 0) k++;
+  if (k === 0) return;
+  (t as Texture & { mipmaps: unknown[] }).mipmaps = mips.slice(k);
+  t.image = { ...(t.image as object), width: mips[k]!.width, height: mips[k]!.height };
+  t.needsUpdate = true;
+}
+
 /** The rooms B2 made a phone file for (`<unit>_phone.glb`, its extras' `phone.file`). */
 export const LOT_ROOM_PHONE_FILES: ReadonlySet<string> = new Set(["lot_chapel_nave", "lot_church_nave"]);
 
@@ -279,12 +346,14 @@ async function loadRoom(room: LotRoom, gl: WebGLRenderer, phone: boolean): Promi
   const file = phone && LOT_ROOM_PHONE_FILES.has(unit) ? `${unit}_phone` : unit;
   const { loader, draco } = lotGltfLoader(gl);
   // (no staging: the room uploads everything under its entry cover, below)
-  const bank = new LotTextureBank(gl, phone ? "1k" : "2k", false);
+  // the 1K tier in every room (a room is seen from a few metres: 1K over a set's 1.5–2 m tile is the 512 px/m the surfaces need), and the
+  // room's texture plan for which sets come in full (albedo, normal, ORM) or as their albedo only (ROOM_TEXTURES)
+  const bank = new LotTextureBank(gl, "1k", false);
   try {
     const gltf = await loader.loadAsync(versionedUrl(`/models/village/lots/${file}.glb`));
     const extras = (gltf.parser.json as { asset?: { extras?: { textures?: unknown; sacred?: SacredEntry[] } } }).asset?.extras ?? {};
     const manifests = await Promise.all(manifestPaths(extras.textures).map((p) => fetchLotManifest(p)));
-    const { specs, own, textures } = await loadManifestMaps(manifests, gl, bank, true);
+    const { specs, own, textures } = await loadManifestMaps(manifests, gl, bank, (set) => roomSetFull(unit, set, phone));
     const scene = gltf.scene;
     scene.updateMatrixWorld(true);
 
@@ -293,7 +362,19 @@ async function loadRoom(room: LotRoom, gl: WebGLRenderer, phone: boolean): Promi
       const f = sacredFile(s, phone);
       return f ? [{ s, f }] : [];
     });
-    const props = await Promise.allSettled(sacred.map(({ f }) => loader.loadAsync(sacredUrl(f))));
+    // each file read once: a piece the room shows more than once (the church's six clear lancets, the temple's two
+    // bodhisattvas) is a copy of the first, sharing its maps (read once per anchor, the church's six were six sets of maps)
+    const files = [...new Set(sacred.map(({ f }) => f))];
+    const read = await Promise.allSettled(files.map((f) => loader.loadAsync(sacredUrl(f))));
+    const firstUse = new Set<string>();
+    const props: Array<PromiseSettledResult<{ scene: Group }>> = sacred.map(({ f }) => {
+      const r = read[files.indexOf(f)]!;
+      if (r.status !== "fulfilled") return r;
+      const fresh = !firstUse.has(f);
+      firstUse.add(f);
+      // (copies are made before the first is dressed below: each starts from the file's own materials)
+      return { status: "fulfilled", value: { scene: fresh ? r.value.scene : (r.value.scene.clone(true) as Group) } };
+    });
 
     const materials: Material[] = [];
     const surfaces: MeshStandardMaterial[] = [];
@@ -394,8 +475,13 @@ async function loadRoom(room: LotRoom, gl: WebGLRenderer, phone: boolean): Promi
           o.visible = false;
           return;
         }
+        const cap = SACRED_MAP_MAX[phone ? "mobile" : "desktop"];
         const out = matsOf(o).map((mat) => {
           let m = mat as MeshStandardMaterial;
+          for (const k of ["map", "emissiveMap", "normalMap", "aoMap", "roughnessMap", "metalnessMap"] as const) {
+            const t = m[k];
+            if (t) capMips(t, k === "map" || k === "emissiveMap" ? cap.color : k === "normalMap" ? cap.normal : cap.orm);
+          }
           const set = /^M_pbr_(.+)$/.exec(m.name)?.[1];
           if (set) {
             // a library set by name (sacred.json: the file carries only a fallback colour and metre UVs)
@@ -660,7 +746,7 @@ export function LotRoomArea({ area, pose }: { area: string; pose: Pose }) {
         origin: room.origin,
         stats: loaded.stats,
         visible: { triangles: Math.round(visTris), draws: visDraws },
-        textures: loaded.bank.gpuBytes(phone ? "mobile" : "desktop"),
+        textures: { ...loaded.bank.gpuBytes(phone ? "mobile" : "desktop"), own: ownTextureBytes(loaded.root, phone) },
         lamps: { count: loaded.lamps.base.length, fire: loaded.lamps.fire >= 0 },
         fire: !!loaded.fire,
         lightpools: loaded.lightpools.length,

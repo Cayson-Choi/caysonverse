@@ -97,7 +97,8 @@ export async function loadManifestMaps(
   manifests: readonly LotManifest[],
   gl: WebGLRenderer,
   bank: LotTextureBank,
-  near = false,
+  /** true: every set in full at the bank's tier; a function: per set (a room's texture plan, LotRoom.tsx). */
+  near: boolean | ((set: string) => boolean) = false,
 ): Promise<{ specs: Record<string, LotMatSpec>; own: Record<string, Texture>; textures: Texture[] }> {
   const specs: Record<string, LotMatSpec> = {};
   const dirOf: Record<string, string> = {};
@@ -111,7 +112,7 @@ export async function loadManifestMaps(
   const textures: Texture[] = [];
   const sets = new Set(Object.values(specs).flatMap((s) => (s.pbr ? [s.pbr] : [])));
   await Promise.all([
-    ...[...sets].map((id) => (near ? bank.loadNear(id) : bank.loadFar(id)).catch((e: unknown) => console.error(`[lots] set ${id}`, e))),
+    ...[...sets].map((id) => ((typeof near === "function" ? near(id) : near) ? bank.loadNear(id) : bank.loadFar(id)).catch((e: unknown) => console.error(`[lots] set ${id}`, e))),
     ...Object.entries(specs)
       .filter(([, s]) => (s.kind === "own" || s.kind === "lightpool") && s.maps?.albedo)
       .map(async ([name, s]) => {
