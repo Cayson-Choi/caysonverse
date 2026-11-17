@@ -362,7 +362,7 @@ for (const n of houses) {
       // piece is in front of it there, again from 1.6 m out in front of its stand spot (the tap that hit something else walked there)
       let sat = false;
       let tries = [];
-      for (const vantage of ["far", "near", "nearIn", "stand", "back"]) {
+      for (const vantage of ["far", "near", "nearIn", "stand", "back", "ring"]) {
         // far: the arrival spot; near: 1.6 m out from the stand spot along the seat's facing; stand: the stand spot itself, 1 m back from it
         const away = Math.hypot(seat.standX - seat.x, seat.standZ - seat.z) || 1;
         const want =
@@ -382,7 +382,25 @@ for (const n of houses) {
           want.x = Math.min(Math.max(want.x, ox0 + 0.45), ox0 + 10.6 - 0.45);
           want.z = Math.min(Math.max(want.z, oz0 - 7.8 + 0.45), oz0 - 0.45);
         }
-        const at = await goto(want.x, want.z, 0.9);
+        let at = vantage === "ring" ? await me() : await goto(want.x, want.z, 0.9);
+        if (vantage === "ring") {
+          // (layered pass 2) every fixed vantage was blocked (a phone sees little from the doorway of a small room): the first point
+          // 1.4–2.2 m round the stand spot that a walk actually reaches, the way a player steps into the room before tapping
+          let ok = false;
+          for (const r of [1.4, 1.8, 2.2]) {
+            for (let k = 0; k < 12 && !ok; k++) {
+              const a = (k * Math.PI) / 6;
+              const tx = seat.standX + Math.sin(a) * r;
+              const tz = seat.standZ + Math.cos(a) * r;
+              const got = await goto(tx, tz, 0.5);
+              if (Math.hypot(got.x - tx, got.z - tz) <= 0.5) {
+                at = got;
+                ok = true;
+              }
+            }
+            if (ok) break;
+          }
+        }
         await orbit(yawToward(at, seat.mx, seat.mz), 0.55);
         // the cushion's middle (the marker; the seat point of a chair at a table is under the table)
         const sc = await toScreen(seat.mx, seat.seatY + 0.04, seat.mz);
@@ -416,6 +434,16 @@ for (const n of houses) {
         sat = await page.waitForFunction(() => window.__cv.getPos().seatIndex >= 0, null, { timeout: 8000 }).then(() => true, () => false);
         const st = await me();
         tries.push({ vantage, at: [Math.round(at.x * 100) / 100, Math.round(at.z * 100) / 100], click: pk, end: { i: st.seatIndex, x: Math.round(st.x * 100) / 100, z: Math.round(st.z * 100) / 100 } });
+        // (layered pass 2) the marker was hidden behind ANOTHER seat from here (a sofa seat seen past its neighbour's backrest from
+        // the sofa's end): the tap rightly took the seat it hit. Get up and look again from nearer — only when the click itself named
+        // that other seat (what was under the finger), never when it named this one.
+        if (sat && st.seatIndex !== seat.index && pk && pk.sitOn !== null && pk.sitOn !== undefined && pk.sitOn !== seat.index && vantage !== "ring") {
+          tries[tries.length - 1].occludedBy = pk.sitOn;
+          await act();
+          await sleep(2200); // the get-up clip carries the body to the stand spot before the next walk
+          sat = false;
+          continue;
+        }
         if (sat) break;
         // the click named this seat yet the walk ended unseated: that is the failure itself (no second try hides it)
         if (pk && pk.sitOn === seat.index) break;

@@ -34,6 +34,7 @@ export const HOUSE_8_COLLIDERS: readonly AABB[] = [
   { minX: 537.1, maxX: 537.5, minZ: -0.7, maxZ: -0.3 }, // col__h8_1_snake
   { minX: 537.43, maxX: 538.43, minZ: -7.4, maxZ: -5.6 }, // col__h8_1_pyeongsang
   { minX: 537.68, maxX: 538.32, minZ: 29.08, maxZ: 29.72 }, // col__h8_2_plant
+  { minX: 538.19, maxX: 538.6, minZ: 27.09, maxZ: 28.95 }, // col__h8_2_bookcase_built
   { minX: 538.25, maxX: 538.55, minZ: 22.9, maxZ: 24.5 }, // col__h8_2_shelf
   { minX: 538.28, maxX: 538.58, minZ: -2.65, maxZ: -1.75 }, // col__h8_1_mungap
   { minX: 538.6, maxX: 538.9, minZ: -7.8, maxZ: 0 }, // col__h8_1_wall_right
@@ -52,6 +53,7 @@ export const HOUSE_8_CAMERA_BOXES: readonly CameraBox[] = [
   { minX: 531.5, maxX: 531.6, minZ: -1.5, maxZ: 0, height: 3.7 }, // col__h8_1_part_entry_0
   { minX: 534.3, maxX: 535, minZ: -1.6, maxZ: -1.4, height: 2.4 }, // col__h8_1_part_entry_2
   { minX: 535, maxX: 535.1, minZ: -1.5, maxZ: 0, height: 3.7 }, // col__h8_1_part_entry_1
+  { minX: 538.19, maxX: 538.6, minZ: 27.09, maxZ: 28.95, height: 2.6 }, // col__h8_2_bookcase_built
   { minX: 538.6, maxX: 538.9, minZ: -7.8, maxZ: 0, height: 3.7 }, // col__h8_1_wall_right
   { minX: 538.6, maxX: 538.9, minZ: 22.2, maxZ: 30, height: 3.7 }, // col__h8_2_wall_right
 ];
